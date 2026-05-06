@@ -433,3 +433,4 @@
 | 2026-05-07T01:08:00+00:00 | ingest:create | pages/patterns/mapfile-process-substitution-pipefail-safe.md | PR #868 review/fix (`grep -F \| head -1` の pipefail no-match abort を `mapfile -t < <(...)` 置換で解消、MEDIUM 1 件、test+error-handling debate で severity 統一) を新規 pattern ページ化 |
 | 2026-05-07T01:08:00+00:00 | ingest:skip | raw/reviews/20260506T164259Z-pr-868-cycle2.md | PR #868 cycle 2 re-review: cycle 1 の F-01/F-02 が両方 FIXED 確認、新規 blocking finding 0 件、cycle 1 raw source で経験則は既に抽出済みのため重複 ingest 不要 |
 | 2026-05-06T17:14:46+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=106, broken_refs=212 |
+| 2026-05-07T04:15:00+00:00 | ingest:create | pages/heuristics/cleanup-refactor-preserve-reasoning-remove-journal.md | PR #877 review (charter cleanup の 41 件削除、reasoning 保持 + review-history journal 除去の 3 分類削除単位、0 finding 1 cycle 承認) を新規 heuristic ページ化 |

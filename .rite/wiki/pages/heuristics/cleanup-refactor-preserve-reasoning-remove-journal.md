@@ -1,0 +1,73 @@
+---
+title: "Cleanup refactor は reasoning prose を保持し review-history journal のみ削除する"
+domain: "heuristics"
+created: "2026-05-07T04:15:00+00:00"
+updated: "2026-05-07T04:15:00+00:00"
+sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260506T190517Z-pr-877.md"
+tags: [refactor, cleanup, charter, simplification]
+confidence: medium
+---
+
+# Cleanup refactor は reasoning prose を保持し review-history journal のみ削除する
+
+## 概要
+
+charter cleanup / simplification refactor で過去の review cycle 経緯記述や finding ID 引用を機械的に削除する際、reasoning prose (なぜそう実装したかの根拠) を残し、review-history journal (`cycle 10 C-1 対応`、`旧実装は X だった、本 cycle で Y を追加` 等) のみを除去するのが正しい削除単位。reasoning ごと消すと LLM runtime の判断材料が失われる。
+
+## 詳細
+
+### 削除単位の 3 分類 (PR #877 で実測)
+
+charter で禁止されている `cycle [0-9]+|verified-review cycle` パターンの引用は、以下 3 種に分類して削除する:
+
+1. **inline parenthetical** (約 60% — table cell 末尾の `(cycle 8 H-5 対応)` 等)
+   - phrase 単位で削除する
+   - 削除後の文末が `されていない)` `**WARNING only**)` 等で自然に閉じることを確認する
+   - 空括弧 `()` や末尾 `、)` のような artifact が残らないか grep で検証
+
+2. **bash literal 内 historical comment 行** (約 40% — `# verified-review cycle 15 F-8 対応:` 等)
+   - 行単位で削除可能 (bash 構文に影響なし)
+   - 同一 `# A\n# B\ncode` から `# A\ncode` への変更は構造的閉じトークン (`}` / `fi` / `esac`) に影響しない
+
+3. **prose blockquote 内 cycle 番号付き経緯記述** (残り)
+   - 文節単位で書き換える
+   - 例: `verified-review (cycle 8) M-9 対応: 旧実装は X だった。本 cycle で Y を追加` → `silent data loss 防止のため hard fail させる`
+   - **WHY を残し、HOW IT GOT THERE を削除する**
+
+### 「reasoning は残す」が中核原則
+
+`旧実装は Y だった、本 cycle で Z を追加` のような構造の削除では、`本 cycle で Z を追加` 部分だけ消して `Y のため Z にする` 形に書き換える。これにより:
+
+- LLM が runtime に reading するときの「なぜそう実装したか」の根拠が維持される
+- review-history journal (charter 禁止対象) は除去される
+- charter 5 自問の `[3] 説明か手順か` で「説明 (経緯) は削除、手順 (根拠) は維持」の境界が明確化する
+
+### 削除パターンの非対称性は意図的
+
+3 分類で削除単位が異なる (phrase / line / 文節) のは表面的な構文単位の違いではなく、各構造で「reasoning vs journal」の境界が異なる場所に出るため:
+
+- table cell では reasoning は cell 本文、journal は parenthetical → phrase 削除
+- bash literal comment では reasoning は次行の動作仕様、journal は単独行 → 行削除
+- prose blockquote では reasoning と journal が文中に混在 → 文節書き換え
+
+「全て同じ単位で削除」とすると、reasoning ごと消す経路 (case 1 で table 全行削除) や bash 動作説明ごと消す経路 (case 2 で `# explanation\n# cycle X` の前者まで巻き込む) が出るため、構造別の削除単位を意識する必要がある。
+
+### Cross-validation で削除の安全性を担保
+
+charter cleanup は機械的削除のため文意破壊や構造破壊のリスクがある。PR #877 では以下で安全性を担保:
+
+- pre-commit baseline grep で develop HEAD の lint findings 数を記録 → 本 PR でリグレッションがゼロであることを実証 (drift 32 件 / comment-journal 22 件→7 件で 15 件削減確認)
+- Reviewer 並列起動 (Prompt Engineer + Code Quality) で AC-1/2/3 + cross-file impact + 表構造整合性を独立検証
+- AC-2 (`bash plugins/rite/hooks/tests/4-site-symmetry.test.sh`) で機能契約 non-regression を機械確認
+
+これにより 0 件 finding で 1 cycle で承認に到達した。
+
+## 関連ページ
+
+- [既存ページなし — 本ページが本テーマの初出](#)
+
+## ソース
+
+- [PR #877 review results](raw/reviews/20260506T190517Z-pr-877.md)

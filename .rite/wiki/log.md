@@ -429,3 +429,6 @@
 | 2026-05-06T08:31:12Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=117, broken_refs=191 |
 | 2026-05-07T00:30:00+09:00 | ingest:update | pages/heuristics/asymmetric-fix-resolution-via-hub-creation.md | PR #867 review (Issue #854: hub 行が 3+ test 参照に成長したら inline 連結から bullet list 化、判断基準を blockquote callout で文書化、両 reviewer 0 findings) を Option B → bullet list 化の 2 段階 evolution sub-pattern として追加 |
 | 2026-05-07T00:35:00+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=117, broken_refs=191 |
+| 2026-05-07T01:08:00+00:00 | ingest:update | pages/heuristics/references-extraction-content-fidelity.md | PR #868 review/fix (test docstring sibling cross-reference 反転 = Comment Rot、HIGH 1 件) を「test ファイル間の docstring cross-reference にも適用」として scope 拡張 |
+| 2026-05-07T01:08:00+00:00 | ingest:create | pages/patterns/mapfile-process-substitution-pipefail-safe.md | PR #868 review/fix (`grep -F \| head -1` の pipefail no-match abort を `mapfile -t < <(...)` 置換で解消、MEDIUM 1 件、test+error-handling debate で severity 統一) を新規 pattern ページ化 |
+| 2026-05-07T01:08:00+00:00 | ingest:skip | raw/reviews/20260506T164259Z-pr-868-cycle2.md | PR #868 cycle 2 re-review: cycle 1 の F-01/F-02 が両方 FIXED 確認、新規 blocking finding 0 件、cycle 1 raw source で経験則は既に抽出済みのため重複 ingest 不要 |

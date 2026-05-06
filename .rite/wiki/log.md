@@ -6,6 +6,11 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-05-06T20:35:00+09:00 | ingest:skip | raw/reviews/20260506T105501Z-pr-866.md | PR #866 cycle 1 review (1 MEDIUM + 1 LOW): convention SoT 設置時の覆盖範囲明示不足 / runner 仕様への依存。既存 `pages/anti-patterns/asymmetric-fix-transcription.md` の sub-pattern (累積対策 PR の覆盖範囲明示漏れ) で十分カバー済み、新規経験則化価値が薄いため skip |
+| 2026-05-06T20:35:00+09:00 | ingest:skip | raw/reviews/20260506T110313Z-pr-866-cycle2.md | PR #866 cycle 2 review (1 MEDIUM + 1 LOW): convention 自身と scope 内既存コードの day-one 違反。新規 convention 文書化 PR の典型 fractal pattern で `asymmetric-fix-transcription.md` 既収録、新規価値なし |
+| 2026-05-06T20:35:00+09:00 | ingest:skip | raw/reviews/20260506T110759Z-pr-866-cycle3.md | PR #866 cycle 3 review (mergeable, 0 findings): 3 cycle で 12→2→0 収束パターン。fingerprint cycling 不発、累積 fix-introduced regression なしのため新規経験則化不要 |
+| 2026-05-06T20:35:00+09:00 | ingest:skip | raw/fixes/20260506T105852Z-pr-866.md | PR #866 cycle 1 fix: convention SoT に scope 限定 1 行追加 + downstream consumer 視点リライト。既存「Asymmetric Fix Transcription」で覆盖済みの典型対応のため skip |
+| 2026-05-06T20:35:00+09:00 | ingest:skip | raw/fixes/20260506T110500Z-pr-866-cycle2.md | PR #866 cycle 2 fix: Hard precondition 2 箇所への >&2 付与 + grep ベース動的列挙。convention 自己整合性 fix で既存ページ覆盖済み、独立経験則化価値なし |
 | 2026-05-03T17:55:00+00:00 | ingest:skip | raw/fixes/20260416T123629Z-pr-545.md | PR #545 cycle 2 fix (1 fixed + 1 replied): i18n ラベルのハードコード修正のみで「同テンプレート内の他ラベルとの一貫性確保」という単発 cleanup fix。cycle 1 (jq -n create mode CRITICAL fix) は `pages/patterns/jq-create-mode-preserve-existing.md` に独立経験則として記録済みだが、cycle 2 は別領域 (i18n) かつ独立経験則化価値なしのため skip。raw は `ingested: true` のまま orphan 状態だったため本記録で missing_concept=0 を達成 (Issue #797) |
 | 2026-05-03T17:30:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=86, broken_refs=149 |
 | 2026-05-03T17:25:46+00:00 | ingest:skip | raw/reviews/20260503T171512Z-pr-796.md | PR #796 review (0 findings, mergeable): PR 5/8 の累積抽出パターン (SoT 宣言 + 抽出経緯 + caller redirect + 内部リンク書き換え) の対称性確認と既存 Wiki 経験則の予防的 chase 成功記録のみで、novel な独立経験則の抽出なし。Wiki 経験則 PR #794「caller redirect ↔ template mirror 対称化漏れ」予防的 grep chase / PR #765「inverse failure / defect transcription」累積 17 回目の即治療 (commit ff8c415) は既存ページに記録済みのため重複回避 |

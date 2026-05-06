@@ -22,8 +22,9 @@
 #
 #   Beyond the caller comment, the Phase 3.4 deactivation `bash` literal
 #   itself is byte-identical between the two files. The two are managed
-#   as a co-evolving pair (create-register.md Phase 3.4 even states:
-#   "Same policy as create-register.md Phase 3.4." in its sibling).
+#   as a co-evolving pair (create-decompose.md Phase 3.4 even states
+#   "Same policy as create-register.md Phase 3.4." referencing its
+#   sibling create-register.md).
 #
 #   This test verifies:
 #     1. Each file has exactly 1 occurrence of `<!-- caller:`.
@@ -102,7 +103,13 @@ for label in decompose register; do
     decompose) target="$DECOMPOSE" ;;
     register)  target="$REGISTER" ;;
   esac
-  caller_line=$(grep -F '<!-- caller:' "$target" | head -1)
+  # Use mapfile + process substitution instead of `grep | head -1` to avoid
+  # `set -o pipefail` aborting the script when grep finds 0 matches (exit 1).
+  # The pipefail-induced abort would make the empty-string check below dead
+  # code and prevent subsequent phases from running. Same pattern as the
+  # sibling test caller-html-literal-symmetry.test.sh.
+  mapfile -t _caller_lines < <(grep -F '<!-- caller:' "$target")
+  caller_line="${_caller_lines[0]:-}"
   if [ -z "$caller_line" ]; then
     fail "$label: no caller-comment line extracted; cannot verify required elements"
     continue
@@ -118,8 +125,10 @@ done
 
 echo
 echo "=== cross-file caller literal byte equality (allowed-diff stripped) ==="
-decompose_line=$(grep -F '<!-- caller:' "$DECOMPOSE" | head -1)
-register_line=$(grep -F '<!-- caller:' "$REGISTER" | head -1)
+mapfile -t _decompose_lines < <(grep -F '<!-- caller:' "$DECOMPOSE")
+mapfile -t _register_lines < <(grep -F '<!-- caller:' "$REGISTER")
+decompose_line="${_decompose_lines[0]:-}"
+register_line="${_register_lines[0]:-}"
 # Strip the single allowed semantic difference from the decompose side and
 # compare. Use bash parameter expansion (no regex / sed) so the comparison
 # is unambiguous — only the literal substring " on the Normal path" is

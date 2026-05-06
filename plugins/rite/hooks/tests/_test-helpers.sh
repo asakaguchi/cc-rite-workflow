@@ -17,18 +17,45 @@
 #   (`bash 4-site-symmetry.test.sh`) because it defines its own SCRIPT_DIR
 #   before sourcing this file.
 #
+# Output convention (Issue #853):
+#   Tests sourcing this helper follow a single canonical convention so the
+#   pass/fail stream and any supporting failure detail stay together for
+#   readers and downstream tooling.
+#
+#   stdout (canonical for test-result stream):
+#     - pass / fail / assert / assert_grep / assert_not_grep markers
+#     - print_summary block (PASS/FAIL counts, Failed assertions list,
+#       optional drift_hint_text)
+#     - test phase headers (e.g., `echo "=== ... ==="`)
+#     - failure detail context (expected/actual diffs, "--- block ---"
+#       dumps that immediately follow a fail() line). Keep these on
+#       stdout so the failure marker and its diff render in the same
+#       stream — splitting them across stdout/stderr makes the diff
+#       hard to correlate when callers redirect only one stream.
+#
+#   stderr (>&2 — reserved for environment errors only):
+#     - Hard preconditions that prevent the test from running
+#       (missing executable, mktemp/jq failure, malformed config).
+#       These are NOT test failures; they are infrastructure problems
+#       that callers may want to handle separately from PASS/FAIL.
+#
+#   `run-tests.sh` does not split stdout/stderr (each test inherits the
+#   parent shell's streams), so this convention is observable rather
+#   than enforced — but downstream consumers that grep for `❌` or
+#   `PASS:` benefit from a single source stream.
+#
 # Provided variables (initialized to 0 / empty array on source):
 #   PASS, FAIL, FAILED_NAMES
 #
 # Provided functions:
 #   _helpers_resolve_plugin_root <script_dir>
 #   _helpers_resolve_repo_root   <script_dir>
-#   pass <label>
-#   fail <label>
-#   assert <label> <expected> <actual>
+#   pass <label>                                 # writes to stdout
+#   fail <label>                                 # writes to stdout
+#   assert <label> <expected> <actual>           # writes to stdout (via pass/fail)
 #   assert_grep     <label> <file> <pattern>     # ERE, exits via fail() if not found
 #   assert_not_grep <label> <file> <pattern>     # ERE, exits via fail() if found
-#   print_summary [test_name] [drift_hint_text]  # returns 1 if FAIL > 0
+#   print_summary [test_name] [drift_hint_text]  # writes to stdout, returns 1 if FAIL > 0
 
 # Resolve PLUGIN_ROOT from the test's SCRIPT_DIR (tests/ is 2 levels below).
 # plugins/rite/hooks/tests/<test>.sh -> plugins/rite (2 up)
@@ -51,11 +78,16 @@ PASS=0
 FAIL=0
 FAILED_NAMES=()
 
+# Pass marker — writes to stdout (see "Output convention" in the file header).
 pass() {
   PASS=$((PASS + 1))
   echo "  ✅ $1"
 }
 
+# Fail marker — writes to stdout (see "Output convention" in the file header).
+# Any failure-detail context the caller emits afterwards (expected/actual,
+# block dumps, etc.) MUST also go to stdout so it stays adjacent to this
+# marker in the result stream.
 fail() {
   FAIL=$((FAIL + 1))
   FAILED_NAMES+=("$1")
@@ -113,6 +145,7 @@ assert_not_grep() {
 # the "Failed assertions:" loop in every test file.
 # drift_hint_text (optional) is echoed verbatim after the failure list — used by
 # tests like 4-site-symmetry that point readers at canonical anchor docs.
+# Writes everything to stdout (see "Output convention" in the file header).
 print_summary() {
   local test_name="${1:-summary}"
   local drift_hint="${2:-}"

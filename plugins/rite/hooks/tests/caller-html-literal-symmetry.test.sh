@@ -79,10 +79,13 @@ if [ "${#caller_lines[@]}" -ge 2 ]; then
     pass "caller HTML inline literals are byte-identical across the 2 example blocks"
   else
     fail "caller HTML inline literals diverge between [interview:skipped] and [interview:completed] example blocks"
-    echo "  --- skipped block caller literal ---" >&2
-    echo "    ${caller_lines[0]}" >&2
-    echo "  --- completed block caller literal ---" >&2
-    echo "    ${caller_lines[1]}" >&2
+    # Output convention (Issue #853): failure detail context stays on stdout so it
+    # appears adjacent to the fail() marker above in a single result stream.
+    # See _test-helpers.sh "Output convention" section.
+    echo "  --- skipped block caller literal ---"
+    echo "    ${caller_lines[0]}"
+    echo "  --- completed block caller literal ---"
+    echo "    ${caller_lines[1]}"
   fi
 else
   fail "fewer than 2 caller-comment lines extracted; cannot compare"

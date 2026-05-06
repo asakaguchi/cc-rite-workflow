@@ -438,3 +438,4 @@
 | 2026-05-06T20:09:46Z | ingest:update | pages/heuristics/cleanup-refactor-preserve-reasoning-remove-journal.md | PR #878 review (sibling PR、`pr/fix.md` から 31 件削除、prompt-engineer/code-quality 共に 0 blocking で 1 cycle 着地) を既存ページに統合し PR #877 + PR #878 連続 2 PR 検証セクションを追加。confidence: medium → high に格上げ |
 | 2026-05-06T20:11:30Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=106, broken_refs=1 |
 | 2026-05-06T21:02:18Z | ingest:update | pages/heuristics/cleanup-refactor-preserve-reasoning-remove-journal.md | PR #879 review (3 番目の sibling PR、`pr/cleanup.md` から 16 件削除、prompt-engineer/code-quality 共に 0 finding で 1 cycle 着地) を既存ページに統合し PR #877+#878+#879 連続 3 PR 検証セクションへ拡張。high confidence の累積確認 (合計 88 件、ファイル別密度にスケール) |
+| 2026-05-06T21:05:43Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=106, broken_refs=16 |

@@ -127,6 +127,25 @@ else
   outer_fail "TC-4.1: expected PASS=2 FAIL=2 got PASS=$gp FAIL=$gf"
 fi
 
+# TC-4.2 / TC-4.3: file-not-found path emits "file not found" diagnostic
+missing_state=$(bash -c "
+  source '$HELPERS'
+  assert_grep     'missing-grep'     '/nonexistent/path/xyz' 'pattern' 2>&1
+  assert_not_grep 'missing-not-grep' '/nonexistent/path/xyz' 'pattern' 2>&1
+  echo \"FAIL=\$FAIL\"
+")
+mfail=$(echo "$missing_state" | grep '^FAIL=' | cut -d= -f2)
+if [ "$mfail" = "2" ]; then
+  outer_pass "TC-4.2: file-not-found increments FAIL for both assert_grep and assert_not_grep"
+else
+  outer_fail "TC-4.2: expected FAIL=2 got FAIL=$mfail"
+fi
+if echo "$missing_state" | grep -q 'file not found'; then
+  outer_pass "TC-4.3: file-not-found diagnostic message is emitted"
+else
+  outer_fail "TC-4.3: 'file not found' diagnostic missing in output"
+fi
+
 # === TC-5: print_summary return code ===
 echo
 echo "TC-5: print_summary return code"

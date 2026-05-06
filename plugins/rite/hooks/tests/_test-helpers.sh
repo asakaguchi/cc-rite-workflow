@@ -75,10 +75,15 @@ assert() {
 }
 
 # Pattern presence assertion (ERE via grep -E).
+# File-existence check distinguishes "file missing" (grep exit 2) from "pattern absent" (grep exit 1).
 assert_grep() {
   local label="$1"
   local file="$2"
   local pattern="$3"
+  if [ ! -f "$file" ]; then
+    fail "$label (file not found: $file)"
+    return
+  fi
   if grep -qE "$pattern" "$file"; then
     pass "$label"
   else
@@ -87,10 +92,15 @@ assert_grep() {
 }
 
 # Pattern absence assertion (ERE via grep -E).
+# File-existence check distinguishes "file missing" (grep exit 2) from "pattern absent" (grep exit 1).
 assert_not_grep() {
   local label="$1"
   local file="$2"
   local pattern="$3"
+  if [ ! -f "$file" ]; then
+    fail "$label (file not found: $file)"
+    return
+  fi
   if grep -qE "$pattern" "$file"; then
     fail "$label (anti-pattern found in $file: $pattern)"
   else

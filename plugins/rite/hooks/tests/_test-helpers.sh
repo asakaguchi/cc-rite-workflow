@@ -18,11 +18,13 @@
 #   before sourcing this file.
 #
 # Output convention (Issue #853):
-#   Scope: applies to tests that `source` this helper (e.g., 4-site-symmetry,
-#   caller-html-literal-symmetry, caller-markdown-block, _test-helpers self-test).
-#   Tests that define `pass()` / `fail()` inline (e.g.,
-#   create-interview-responsibility-separation.test.sh) are migration candidates
-#   but are NOT covered by this convention until they switch to sourcing this file.
+#   Scope: applies to tests that `source` this helper. Enumerate the current
+#   set with:
+#     grep -l 'source.*_test-helpers.sh' plugins/rite/hooks/tests/*.test.sh
+#   Tests that define `pass()` / `fail()` inline (enumerate with the inverse
+#   `grep -L 'source.*_test-helpers.sh' plugins/rite/hooks/tests/*.test.sh`)
+#   are migration candidates but are NOT covered by this convention until
+#   they switch to sourcing this file.
 #
 #   Tests sourcing this helper follow a single canonical convention so the
 #   pass/fail stream and any supporting failure detail stay together for

@@ -58,7 +58,8 @@ REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 TARGET="$REPO_ROOT/plugins/rite/commands/issue/create-interview.md"
 
 if [ ! -f "$TARGET" ]; then
-  echo "  ❌ FILE NOT FOUND: $TARGET"
+  # Output convention (Issue #853): Hard precondition (missing target file) → stderr
+  echo "  ❌ FILE NOT FOUND: $TARGET" >&2
   exit 1
 fi
 

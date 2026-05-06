@@ -421,3 +421,4 @@
 | 2026-05-06T04:50:00Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #858 review: 1-line minimal-diff doc PR で Asymmetric Fix Transcription の解決手段として Option B (hub 化 + 責務分離文書化) を採用、両 reviewer 0 blocking findings、累積 25 回目の resolution alternative 観測として new section 追加 |
 | 2026-05-06T04:51:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=99, broken_refs=191 |
 | 2026-05-06T08:30:08Z | ingest:skip | raw/reviews/20260506T081109Z-pr-864.md | PR #864 (Issue #861 — create-interview.md 責務分離 invariant の machine-verifiable enforcement) review: 0 blocking findings、Negative test pattern の経験則は既存 structural-guarantee-code-level-enforcement / drift-check-anchor-* 系で covered、project-specific takeaway のみで汎用 page 化価値 limited、page 化不要 |
+| 2026-05-06T08:31:12Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=117, broken_refs=191 |

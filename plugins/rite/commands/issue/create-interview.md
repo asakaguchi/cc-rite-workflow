@@ -304,7 +304,13 @@ Sub-skill 完了 (interview finished or skipped) 時、control は **MUST** call
 
 **WARNING**: **GitHub Issue は未作成**。本セクションで停止すると deliverable なしで workflow 放棄。
 
-本セクションは marker 形式の SoT であり、かつ **両 test の hub** (= bash 引数 symmetry / HTML literal byte equality 両 test の参照 SoT) として機能する。bash 引数 symmetry は [`hooks/tests/4-site-symmetry.test.sh`](../../hooks/tests/4-site-symmetry.test.sh) で test 担保、`[interview:skipped]` / `[interview:completed]` 2 example block 間の caller HTML inline literal の byte equality は [`hooks/tests/caller-html-literal-symmetry.test.sh`](../../hooks/tests/caller-html-literal-symmetry.test.sh) で test 担保する。bash block 側コメント (🚨 MANDATORY Pre-flight / Return Output Format) は bash 引数 symmetry のみを inline 言及し、HTML literal symmetry は本セクションを single source として参照する責務分離を維持する（この責務分離 invariant 自体は [`hooks/tests/create-interview-responsibility-separation.test.sh`](../../hooks/tests/create-interview-responsibility-separation.test.sh) で machine-verifiable に enforce される — bash block 内に `caller-html-literal-symmetry` reference が紛れ込んだ場合に lint failure として検出される）。
+本セクションは marker 形式の SoT であり、かつ **複数 test の参照 hub** として機能する。本セクションが変更された場合、以下の test が drift detection として連動する:
+
+- **bash 引数 symmetry** ([`hooks/tests/4-site-symmetry.test.sh`](../../hooks/tests/4-site-symmetry.test.sh)): bash block 側コメント (🚨 MANDATORY Pre-flight / Return Output Format) で `flow-state-update.sh patch` の CLI 引数 (`--phase` / `--active` / `--next` / `--preserve-error-count`) の presence を 4 site 横断で pin する。
+- **caller HTML inline literal byte equality** ([`hooks/tests/caller-html-literal-symmetry.test.sh`](../../hooks/tests/caller-html-literal-symmetry.test.sh)): `[interview:skipped]` / `[interview:completed]` 2 example block 間の caller HTML inline literal が byte equal であることを担保する。
+- **責務分離 invariant** ([`hooks/tests/create-interview-responsibility-separation.test.sh`](../../hooks/tests/create-interview-responsibility-separation.test.sh)): bash block 側コメントは bash 引数 symmetry のみを inline 言及し、HTML literal symmetry は本セクションを single source として参照する責務分離を machine-verifiable に enforce する (bash block 内に `caller-html-literal-symmetry` reference が紛れ込んだ場合に lint failure として検出される)。
+
+> **Bullet list 化基準** (将来の symmetry / invariant test 追加時): 本 SoT 行が参照する test が **3 件以上** になった時点で、可読性のため inline 連結ではなく bullet list 形式で列挙する (本 list がその移行例)。test 追加時は (a) 本 bullet list に該当 test を追加し、(b) 当該 test ファイル冒頭コメントから本 SoT 行への back-reference を維持すること。**判断基準の根拠**: inline 連結は 2 test 程度までは許容されるが、3 test 以上になると 1 段落が約 280 字を超え、各 test の責務境界が読み取りづらくなるため (Issue #854)。
 
 **Output rules**:
 

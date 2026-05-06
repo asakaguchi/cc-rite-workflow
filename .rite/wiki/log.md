@@ -428,3 +428,4 @@
 | 2026-05-06T08:30:08Z | ingest:skip | raw/reviews/20260506T081109Z-pr-864.md | PR #864 (Issue #861 — create-interview.md 責務分離 invariant の machine-verifiable enforcement) review: 0 blocking findings、Negative test pattern の経験則は既存 structural-guarantee-code-level-enforcement / drift-check-anchor-* 系で covered、project-specific takeaway のみで汎用 page 化価値 limited、page 化不要 |
 | 2026-05-06T08:31:12Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=117, broken_refs=191 |
 | 2026-05-07T00:30:00+09:00 | ingest:update | pages/heuristics/asymmetric-fix-resolution-via-hub-creation.md | PR #867 review (Issue #854: hub 行が 3+ test 参照に成長したら inline 連結から bullet list 化、判断基準を blockquote callout で文書化、両 reviewer 0 findings) を Option B → bullet list 化の 2 段階 evolution sub-pattern として追加 |
+| 2026-05-07T00:35:00+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=117, broken_refs=191 |

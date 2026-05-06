@@ -18,6 +18,12 @@
 #   before sourcing this file.
 #
 # Output convention (Issue #853):
+#   Scope: applies to tests that `source` this helper (e.g., 4-site-symmetry,
+#   caller-html-literal-symmetry, caller-markdown-block, _test-helpers self-test).
+#   Tests that define `pass()` / `fail()` inline (e.g.,
+#   create-interview-responsibility-separation.test.sh) are migration candidates
+#   but are NOT covered by this convention until they switch to sourcing this file.
+#
 #   Tests sourcing this helper follow a single canonical convention so the
 #   pass/fail stream and any supporting failure detail stay together for
 #   readers and downstream tooling.
@@ -39,10 +45,13 @@
 #       These are NOT test failures; they are infrastructure problems
 #       that callers may want to handle separately from PASS/FAIL.
 #
-#   `run-tests.sh` does not split stdout/stderr (each test inherits the
-#   parent shell's streams), so this convention is observable rather
-#   than enforced — but downstream consumers that grep for `❌` or
-#   `PASS:` benefit from a single source stream.
+#   The convention exists so downstream consumers (CI log parsers, grep
+#   filters scanning for `❌` / `PASS:`) can rely on a single source stream
+#   to capture the full test-result narrative without losing failure
+#   detail context. `run-tests.sh` currently inherits the parent shell's
+#   streams (no per-test split), so the rule is observable rather than
+#   enforced — if the runner grows per-stream capture in the future,
+#   tests honoring this convention will continue to work without change.
 #
 # Provided variables (initialized to 0 / empty array on source):
 #   PASS, FAIL, FAILED_NAMES

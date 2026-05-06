@@ -20,7 +20,8 @@ outer_pass() { OUTER_PASS=$((OUTER_PASS + 1)); echo "  ✅ $1"; }
 outer_fail() { OUTER_FAIL=$((OUTER_FAIL + 1)); OUTER_FAILED+=("$1"); echo "  ❌ $1"; }
 
 if [ ! -f "$HELPERS" ]; then
-  echo "FATAL: $HELPERS not found"
+  # Output convention (Issue #853): Hard precondition (missing executable) → stderr
+  echo "FATAL: $HELPERS not found" >&2
   exit 1
 fi
 

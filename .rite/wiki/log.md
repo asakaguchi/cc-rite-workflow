@@ -435,3 +435,4 @@
 | 2026-05-06T17:14:46+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=106, broken_refs=212 |
 | 2026-05-07T04:15:00+00:00 | ingest:create | pages/heuristics/cleanup-refactor-preserve-reasoning-remove-journal.md | PR #877 review (charter cleanup の 41 件削除、reasoning 保持 + review-history journal 除去の 3 分類削除単位、0 finding 1 cycle 承認) を新規 heuristic ページ化 |
 | 2026-05-07T04:20:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=119, broken_refs=191 |
+| 2026-05-06T20:09:46Z | ingest:update | pages/heuristics/cleanup-refactor-preserve-reasoning-remove-journal.md | PR #878 review (sibling PR、`pr/fix.md` から 31 件削除、prompt-engineer/code-quality 共に 0 blocking で 1 cycle 着地) を既存ページに統合し PR #877 + PR #878 連続 2 PR 検証セクションを追加。confidence: medium → high に格上げ |

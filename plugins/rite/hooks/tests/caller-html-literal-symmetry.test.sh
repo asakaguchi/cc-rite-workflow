@@ -51,16 +51,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+# shellcheck source=_test-helpers.sh
+source "$SCRIPT_DIR/_test-helpers.sh"
+REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 
 TARGET="$REPO_ROOT/plugins/rite/commands/issue/create-interview.md"
-
-PASS=0
-FAIL=0
-FAILED_NAMES=()
-
-pass() { PASS=$((PASS + 1)); echo "  ✅ $1"; }
-fail() { FAIL=$((FAIL + 1)); FAILED_NAMES+=("$1"); echo "  ❌ $1"; }
 
 if [ ! -f "$TARGET" ]; then
   echo "  ❌ FILE NOT FOUND: $TARGET"
@@ -115,23 +110,14 @@ else
   fail "no caller-comment line extracted; cannot verify required elements"
 fi
 
-echo
-echo "─── $(basename "$0") summary ──────────────────────"
-echo "PASS: $PASS"
-echo "FAIL: $FAIL"
+DRIFT_HINT='⚠️ caller HTML inline literal symmetry drift detected.
+   The 2 example output blocks in create-interview.md
+   ([interview:skipped] and [interview:completed]) must contain
+   an identical <!-- caller: ... --> line. Restore symmetry by
+   replicating the change across both example blocks.
+   Do NOT relax this test.'
 
-if [ "$FAIL" -ne 0 ]; then
-  echo "Failed assertions:"
-  for n in "${FAILED_NAMES[@]}"; do
-    echo "  - $n"
-  done
-  echo
-  echo "⚠️ caller HTML inline literal symmetry drift detected."
-  echo "   The 2 example output blocks in create-interview.md"
-  echo "   ([interview:skipped] and [interview:completed]) must contain"
-  echo "   an identical <!-- caller: ... --> line. Restore symmetry by"
-  echo "   replicating the change across both example blocks."
-  echo "   Do NOT relax this test."
+if ! print_summary "$(basename "$0")" "$DRIFT_HINT"; then
   exit 1
 fi
 

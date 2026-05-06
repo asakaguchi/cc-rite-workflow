@@ -81,7 +81,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+# shellcheck source=_test-helpers.sh
+source "$SCRIPT_DIR/_test-helpers.sh"
+REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 
 SITES=(
   "plugins/rite/commands/issue/create.md"
@@ -95,22 +97,15 @@ REQUIRED_ARGS=(
   "--preserve-error-count"
 )
 
-PASS=0
-FAIL=0
-FAILED_NAMES=()
-
 assert_arg_present() {
   local site="$1" arg="$2"
   local count
   count=$(grep -cE -- "$arg" "$REPO_ROOT/$site" 2>/dev/null || true)
   count=${count:-0}
   if [ "$count" -ge 1 ]; then
-    echo "  ✅ $site: $arg (count=$count)"
-    PASS=$((PASS + 1))
+    pass "$site: $arg (count=$count)"
   else
-    echo "  ❌ $site: $arg (count=0, expected >= 1)"
-    FAIL=$((FAIL + 1))
-    FAILED_NAMES+=("$site|$arg")
+    fail "$site|$arg (count=0, expected >= 1)"
   fi
 }
 
@@ -118,32 +113,21 @@ for arg in "${REQUIRED_ARGS[@]}"; do
   echo "=== Checking: $arg present in all sites ==="
   for site in "${SITES[@]}"; do
     if [ ! -f "$REPO_ROOT/$site" ]; then
-      echo "  ❌ $site: FILE NOT FOUND"
-      FAIL=$((FAIL + 1))
-      FAILED_NAMES+=("$site|FILE_NOT_FOUND")
+      fail "$site|FILE_NOT_FOUND"
       continue
     fi
     assert_arg_present "$site" "$arg"
   done
 done
 
-echo
-echo "─── $(basename "$0") summary ──────────────────────"
-echo "PASS: $PASS"
-echo "FAIL: $FAIL"
+DRIFT_HINT='⚠️ 4-site bash literal symmetry drift detected.
+   Locate the failing (file, arg) pair above and inspect the
+   '\''DRIFT-CHECK ANCHOR (semantic, 4-site)'\'' comments in
+   commands/issue/create.md and commands/issue/create-interview.md.
+   Restore the missing --phase / --active / --next / --preserve-error-count
+   argument so the canonical bash literals stay in lockstep.'
 
-if [ "$FAIL" -ne 0 ]; then
-  echo "Failed assertions:"
-  for n in "${FAILED_NAMES[@]}"; do
-    echo "  - $n"
-  done
-  echo
-  echo "⚠️ 4-site bash literal symmetry drift detected."
-  echo "   Locate the failing (file, arg) pair above and inspect the"
-  echo "   'DRIFT-CHECK ANCHOR (semantic, 4-site)' comments in"
-  echo "   commands/issue/create.md and commands/issue/create-interview.md."
-  echo "   Restore the missing --phase / --active / --next / --preserve-error-count"
-  echo "   argument so the canonical bash literals stay in lockstep."
+if ! print_summary "$(basename "$0")" "$DRIFT_HINT"; then
   exit 1
 fi
 

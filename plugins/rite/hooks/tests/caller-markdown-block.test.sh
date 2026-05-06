@@ -38,50 +38,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=_test-helpers.sh
+source "$SCRIPT_DIR/_test-helpers.sh"
+PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 COMMANDS_DIR="$PLUGIN_ROOT/commands"
-
-PASS=0
-FAIL=0
-
-assert() {
-  local label="$1"
-  local expected="$2"
-  local actual="$3"
-  if [ "$expected" = "$actual" ]; then
-    echo "  ✅ PASS: $label"
-    PASS=$((PASS + 1))
-  else
-    echo "  ❌ FAIL: $label (expected='$expected' actual='$actual')"
-    FAIL=$((FAIL + 1))
-  fi
-}
-
-assert_grep() {
-  local label="$1"
-  local file="$2"
-  local pattern="$3"
-  if grep -qE "$pattern" "$file"; then
-    echo "  ✅ PASS: $label"
-    PASS=$((PASS + 1))
-  else
-    echo "  ❌ FAIL: $label (pattern not found in $file: $pattern)"
-    FAIL=$((FAIL + 1))
-  fi
-}
-
-assert_not_grep() {
-  local label="$1"
-  local file="$2"
-  local pattern="$3"
-  if grep -qE "$pattern" "$file"; then
-    echo "  ❌ FAIL: $label (anti-pattern found in $file: $pattern)"
-    FAIL=$((FAIL + 1))
-  else
-    echo "  ✅ PASS: $label"
-    PASS=$((PASS + 1))
-  fi
-}
 
 START_MD="$COMMANDS_DIR/issue/start.md"
 IMPLEMENT_MD="$COMMANDS_DIR/issue/implement.md"
@@ -166,11 +126,9 @@ assert_2line_validation() {
   local next_line
   next_line=$(grep -A 1 "case \"\\\$${var_name}\" in\$" "$file" | grep -E "^\s*''\|\*\[!0-9\]\*\)" || true)
   if [ -n "$next_line" ]; then
-    echo "  ✅ PASS: $label"
-    PASS=$((PASS + 1))
+    pass "$label"
   else
-    echo "  ❌ FAIL: $label (case \"\$${var_name}\" in の直後行に \`''|*[!0-9]*)\` が存在しない: $file)"
-    FAIL=$((FAIL + 1))
+    fail "$label (case \"\$${var_name}\" in の直後行に \`''|*[!0-9]*)\` が存在しない: $file)"
   fi
 }
 
@@ -243,12 +201,7 @@ assert_grep "TC-6.3: start.md の implementation_round inline form が canonical
   'if val=\$\(bash \{plugin_root\}/hooks/state-read\.sh --field implementation_round.*then :; else rc=\$\?'
 
 # === Summary ===
-echo ""
-echo "=== Summary ==="
-echo "  PASS: $PASS"
-echo "  FAIL: $FAIL"
-
-if [ "$FAIL" -gt 0 ]; then
+if ! print_summary "$(basename "$0")"; then
   exit 1
 fi
 exit 0

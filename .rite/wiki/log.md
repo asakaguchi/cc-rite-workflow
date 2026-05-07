@@ -446,3 +446,4 @@
 | 2026-05-07T04:03:20+00:00 | ingest:update | pages/heuristics/cleanup-refactor-preserve-reasoning-remove-journal.md | PR #882 review (6 番目の sibling PR、`pr/references/archive-procedures.md` から 4 件削除、prompt-engineer/code-quality 共に 0 finding で 1 cycle 着地) を既存ページに統合し連続 6 PR 検証セクションへ拡張 (合計 105 件削除)。references/ 配下の reference ファイルにも本パターンが適用可能であることを実証 |
 | 2026-05-07T13:14:09+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=106, broken_refs=218 |
 | 2026-05-07T14:08:59+09:00 | ingest:update | pages/heuristics/cleanup-refactor-preserve-reasoning-remove-journal.md | PR #883 sibling 7 件目を追記 (raw/reviews/20260507T044332Z-pr-883.md) |
+| 2026-05-07T14:09:50+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=106, broken_refs=218 |

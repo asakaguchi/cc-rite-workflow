@@ -417,6 +417,140 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   fi
 fi
 
+# Pattern 6 (charter-lint): commit message charter pattern enforcement.
+# Scope: `git commit -m "..."` / `git commit -F <file>` invocations.
+# Default: WARN to stderr (exit 0 — commit passes).
+# RITE_COMMIT_LINT_STRICT=true: BLOCK via JSON deny + exit 2.
+# Exclusions:
+#   (a) commits whose staged files are ALL under docs/designs/
+#   (b) message ranges enclosed by triple-backtick Markdown fences
+#       (only when fence pairs are balanced — odd fence count disables exclusion)
+# Independent of $BLOCKED_PATTERN: when set by Pattern 1-5 (gh-pr-diff / jq != null /
+# create-lifecycle / reviewer subagent state-mutating git), Pattern 6 is skipped so the
+# more specific block reason takes precedence.
+#
+# Known limitations (acknowledged false negatives):
+#   - HEREDOC subshell form (`-m "$(cat <<EOF ... EOF)"`) is not parsed; the regex captures
+#     up to the first `"` of `$(cat <<EOF`, leaving the body unchecked. Project canonical
+#     commit patterns that use this form bypass the lint.
+#   - `--message=...` long-form, `--file=...` long-form, multiple `-m` flags
+#     (`-m title -m body`), and editor mode (no `-m`/`-F`) are not parsed.
+# Pattern matching is heredoc-aware via the heredoc-stripped $CMD_CHECK at line ~70.
+if [ -z "$BLOCKED_PATTERN" ]; then
+  CHARTER_CHECK=0
+  # Detect `git commit` with word boundaries (Pattern 4/5 normalization style):
+  # normalize shell meta-chars + whitespace to single space, then match space-padded
+  # `git commit ` to avoid false positives on `git commit-tree`, `echo "git commit"`,
+  # function definitions, and comment lines.
+  CHARTER_NORM="${COMMAND//$'\t'/ }"
+  CHARTER_NORM="${CHARTER_NORM//$'\n'/ }"
+  CHARTER_NORM="${CHARTER_NORM//$'\r'/ }"
+  CHARTER_NORM="${CHARTER_NORM//;/ }"
+  CHARTER_NORM="${CHARTER_NORM//&/ }"
+  CHARTER_NORM="${CHARTER_NORM//|/ }"
+  CHARTER_NORM="${CHARTER_NORM//(/ }"
+  CHARTER_NORM="${CHARTER_NORM//)/ }"
+  CHARTER_NORM="${CHARTER_NORM//\{/ }"
+  CHARTER_NORM="${CHARTER_NORM//\}/ }"
+  CHARTER_NORM="${CHARTER_NORM//\`/ }"
+  CHARTER_NORM="${CHARTER_NORM//\$/ }"
+  while [[ "$CHARTER_NORM" == *"  "* ]]; do
+    CHARTER_NORM="${CHARTER_NORM//  / }"
+  done
+  CHARTER_PADDED=" $CHARTER_NORM "
+  case "$CHARTER_PADDED" in
+    *" git commit "*) CHARTER_CHECK=1 ;;
+  esac
+
+  CHARTER_MSG=""
+  if [ "$CHARTER_CHECK" = "1" ]; then
+    if [[ "$COMMAND" =~ -m[[:space:]]+\"([^\"]*)\" ]]; then
+      CHARTER_MSG="${BASH_REMATCH[1]}"
+    elif [[ "$COMMAND" =~ -m[[:space:]]+\'([^\']*)\' ]]; then
+      CHARTER_MSG="${BASH_REMATCH[1]}"
+    elif [[ "$COMMAND" =~ -F[[:space:]]+([^[:space:]]+) ]]; then
+      CHARTER_FILE="${BASH_REMATCH[1]}"
+      if [ -f "$CHARTER_FILE" ] && [ -r "$CHARTER_FILE" ]; then
+        CHARTER_MSG=$(cat "$CHARTER_FILE" 2>/dev/null) || CHARTER_MSG=""
+      else
+        echo "[charter-lint] WARN: -F file path unresolvable: $CHARTER_FILE (charter check skipped)" >&2
+        CHARTER_CHECK=0
+      fi
+    else
+      CHARTER_CHECK=0
+    fi
+  fi
+
+  if [ "$CHARTER_CHECK" = "1" ] && [ -n "$CHARTER_MSG" ]; then
+    STAGED_FILES=$(git diff --cached --name-only 2>/dev/null) || STAGED_FILES=""
+    if [ -n "$STAGED_FILES" ]; then
+      ALL_DESIGNS=1
+      while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        case "$f" in
+          docs/designs/*) ;;
+          *) ALL_DESIGNS=0; break ;;
+        esac
+      done <<< "$STAGED_FILES"
+      if [ "$ALL_DESIGNS" = "1" ]; then
+        CHARTER_CHECK=0
+      fi
+    fi
+  fi
+
+  if [ "$CHARTER_CHECK" = "1" ] && [ -n "$CHARTER_MSG" ]; then
+    # Code block exclusion is only safe when fence pairs are balanced. An unclosed
+    # fence (odd fence count) would make the awk toggle consume everything after the
+    # opening fence and silently drop a real charter pattern. Count fences first; if
+    # odd, fall back to the raw message.
+    CHARTER_FENCE_COUNT=$(grep -c '^[[:space:]]*```' <<< "$CHARTER_MSG" 2>/dev/null) || CHARTER_FENCE_COUNT=0
+    if [ $((CHARTER_FENCE_COUNT % 2)) -eq 0 ]; then
+      CHARTER_MSG_STRIPPED=$(awk '
+        BEGIN { in_block = 0 }
+        /^[[:space:]]*```/ { in_block = !in_block; next }
+        !in_block { print }
+      ' <<< "$CHARTER_MSG") || CHARTER_MSG_STRIPPED="$CHARTER_MSG"
+    else
+      CHARTER_MSG_STRIPPED="$CHARTER_MSG"
+    fi
+
+    CHARTER_HIT=""
+    if [[ "$CHARTER_MSG_STRIPPED" =~ verified-review[[:space:]]+cycle ]]; then
+      CHARTER_HIT="verified-review cycle"
+    elif [[ "$CHARTER_MSG_STRIPPED" =~ cycle[[:space:]]+[0-9]+ ]]; then
+      CHARTER_HIT="cycle [0-9]+"
+    elif [[ "$CHARTER_MSG_STRIPPED" =~ Issue[[:space:]]+#[0-9]+[[:space:]]+で.*対応 ]]; then
+      CHARTER_HIT="Issue #[0-9]+ で.*対応"
+    fi
+
+    if [ -n "$CHARTER_HIT" ]; then
+      STRICT_MODE="${RITE_COMMIT_LINT_STRICT:-false}"
+      case "$STRICT_MODE" in
+        true|yes|1|TRUE|YES) STRICT_MODE="true" ;;
+        *) STRICT_MODE="false" ;;
+      esac
+
+      if [ "$STRICT_MODE" = "true" ]; then
+        echo "[charter-lint] BLOCK: commit message contains charter-forbidden pattern: $CHARTER_HIT" >&2
+        echo "[charter-lint] See: plugins/rite/skills/rite-workflow/references/simplification-charter.md" >&2
+        # jq must succeed; if it fails the script's `set -e` + `trap 'exit 0' ERR` would
+        # silently downgrade the BLOCK to allow. Force fail-closed by emitting a minimal
+        # JSON deny inline and exiting 2 explicitly.
+        if ! jq -n --arg reason "BLOCKED (commit-msg-charter-violation): commit message contains charter-forbidden pattern: $CHARTER_HIT. Rewrite without literal cycle numbers / Issue references / verified-review cycle text. See plugins/rite/skills/rite-workflow/references/simplification-charter.md." \
+          '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $reason}}'; then
+          echo "[charter-lint] FATAL: jq invocation failed; emitting fallback deny" >&2
+          printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED (commit-msg-charter-violation): jq unavailable; failing closed."}}\n'
+        fi
+        exit 2
+      else
+        echo "[charter-lint] WARN: commit message contains charter-forbidden pattern: $CHARTER_HIT" >&2
+        echo "[charter-lint] See: plugins/rite/skills/rite-workflow/references/simplification-charter.md" >&2
+        echo "[charter-lint] Set RITE_COMMIT_LINT_STRICT=true to block this commit." >&2
+      fi
+    fi
+  fi
+fi
+
 # --- Result ---
 
 if [ -z "$BLOCKED_PATTERN" ]; then

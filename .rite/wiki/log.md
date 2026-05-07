@@ -443,3 +443,4 @@
 | 2026-05-07T02:36:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=106, broken_refs=216 |
 | 2026-05-07T03:30:00Z | ingest:update | pages/heuristics/cleanup-refactor-preserve-reasoning-remove-journal.md | PR #881 review (5 番目の sibling PR、`pr/references/fact-check.md` から 2 件削除、prompt-engineer/code-quality 共に 0 finding で 1 cycle 着地) を既存ページに統合し連続 5 PR 検証セクションへ拡張 (合計 101 件削除)。極小規模 (+2/-2) でも同パターンが成立することを実証し、規模スケール下限が 2 件まで拡張された |
 | 2026-05-07T03:35:18Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=119, broken_refs=216 |
+| 2026-05-07T04:03:20+00:00 | ingest:update | pages/heuristics/cleanup-refactor-preserve-reasoning-remove-journal.md | PR #882 review (6 番目の sibling PR、`pr/references/archive-procedures.md` から 4 件削除、prompt-engineer/code-quality 共に 0 finding で 1 cycle 着地) を既存ページに統合し連続 6 PR 検証セクションへ拡張 (合計 105 件削除)。references/ 配下の reference ファイルにも本パターンが適用可能であることを実証 |

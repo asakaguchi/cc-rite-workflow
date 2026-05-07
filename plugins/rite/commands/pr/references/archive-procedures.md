@@ -17,7 +17,7 @@ github:
 
 ### 3.2 Update Status via Shared Script
 
-> **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `commands/issue/start.md` Phase 2.4 / 5.5.1 / 5.7.2 (Issue #496 / PR #531). Direct inline `gh api graphql` + `gh project field-list` + `gh project item-edit` calls have been removed because LLM attention loss / partial-failure paths through the 3-stage inline pipeline produced silent skips that left Issue Status stuck at the previous value (Issue #658 — observed on #593 stuck at "In Review" and #652 stuck at "In Progress").
+> **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `commands/issue/start.md` Phase 2.4 / 5.5.1 / 5.7.2. Direct inline `gh api graphql` + `gh project field-list` + `gh project item-edit` calls have been removed because LLM attention loss / partial-failure paths through the 3-stage inline pipeline produced silent skips that left Issue Status stuck at the previous value.
 
 Skip Phase 3.2 if `github.projects.enabled: false` in `rite-config.yml` or if no related Issue was identified in `cleanup.md` Phase 1.5, and proceed to Phase 3.5 (work memory update). Otherwise, invoke the shared script to transition the Issue Status to **Done**:
 
@@ -99,7 +99,7 @@ If a work memory comment exists on the Issue, automatically append a completion 
 
 ```bash
 # ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること（クロスプロセス変数参照を防止）
-# comment_data の取得・追記内容の heredoc 定義・PATCH を分割すると変数が失われる（Issue #693）
+# comment_data の取得・追記内容の heredoc 定義・PATCH を分割すると変数が失われる
 comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
   --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
 comment_id=$(echo "$comment_data" | jq -r '.id // empty')
@@ -142,7 +142,7 @@ NEW_SECTION_EOF
 fi
 ```
 
-**Note for Claude**: ⚠️ このブロック全体を**1つの Bash ツール呼び出し**で実行すること。`current_body` 取得・追記内容の heredoc 定義・PATCH を別の Bash ツール呼び出しに分割すると、前の呼び出しのシェル変数（`current_body` 等）が失われてヘッダーが消失する（Issue #693）。`{3.5.2の内容を実際の値で置換して記述}` を 3.5.2 のテンプレートから生成した実際の追記内容で置換し、**すべてを1ブロックで**実行する。
+**Note for Claude**: ⚠️ このブロック全体を**1つの Bash ツール呼び出し**で実行すること。`current_body` 取得・追記内容の heredoc 定義・PATCH を別の Bash ツール呼び出しに分割すると、前の呼び出しのシェル変数（`current_body` 等）が失われてヘッダーが消失する。`{3.5.2の内容を実際の値で置換して記述}` を 3.5.2 のテンプレートから生成した実際の追記内容で置換し、**すべてを1ブロックで**実行する。
 
 #### 3.5.2 Update Content
 
@@ -424,7 +424,7 @@ If all child Issues are complete, auto-close the parent Issue without user confi
 
 ##### 3.7.2.1 Update Parent Issue's Projects Status to "Done"
 
-Skip this substep if `github.projects.enabled: false` in `rite-config.yml` and proceed to 3.7.2.2 (close processing). Otherwise, invoke the shared script to transition the parent Issue Status to **Done** (same delegate pattern as Phase 3.2 — see Issue #658 for rationale):
+Skip this substep if `github.projects.enabled: false` in `rite-config.yml` and proceed to 3.7.2.2 (close processing). Otherwise, invoke the shared script to transition the parent Issue Status to **Done** (same delegate pattern as Phase 3.2):
 
 ```bash
 bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \

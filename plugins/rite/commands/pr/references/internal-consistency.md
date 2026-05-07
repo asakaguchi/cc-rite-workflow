@@ -14,7 +14,7 @@
 >
 > 新規 finding を書く際、CHANGELOG / README / tech-writer.md checklist 項目を編集する際、META 行を構成する際のいずれにおいても上記 canonical form を使う。3 形式併存は Phase 5.1.3 Step 2 が破壊する silent 障害の root cause となる。
 
-## Doc-Heavy 用語集 (本 Issue #350 検証付きレビュー L-12 で追加)
+## Doc-Heavy 用語集
 
 「ドキュメント中心 PR」を表す語が複数存在し、それぞれの用法を統一する:
 
@@ -337,7 +337,7 @@ review.md Phase 5.1.3 Step 2 (件数非依存 META check) は、上記 (a + inco
 
 ## Cross-Reference
 
-**Note** (本 Issue #350 検証付きレビュー L-16 で構造整理): 以下は「本ファイルがどこから参照されているか」のリンク集のみで、drift 監視 invariant の詳細は次の `## Drift Detection Invariants` セクションに分離した。
+**Note**: 以下は「本ファイルがどこから参照されているか」のリンク集のみ。drift 監視 invariant の詳細は次の `## Drift Detection Invariants` セクションに分離している。
 
 本ファイルは以下の箇所から参照される (本ファイルからの相対パスで記載):
 
@@ -349,7 +349,7 @@ review.md Phase 5.1.3 Step 2 (件数非依存 META check) は、上記 (a + inco
 
 **drift 検出の invariant** (3 系統の drift 監視対象 — 区別が必要):
 
-本 PR では **3 種類** の drift 監視対象が存在する。系統 1 と系統 2 はいずれも「3 ファイル間の等価性」だが対象集合が異なり、系統 3 は「同一ファイル内の 2 箇所重複」で構造的に異なる (本 Issue #350 検証付きレビュー L-1 / M-12 で指摘):
+本 PR では **3 種類** の drift 監視対象が存在する。系統 1 と系統 2 はいずれも「3 ファイル間の等価性」だが対象集合が異なり、系統 3 は「同一ファイル内の 2 箇所重複」で構造的に異なる:
 
 #### 系統 1: `doc_file_patterns` の 3 ファイル等価性
 
@@ -375,11 +375,11 @@ tech-writer Activation patterns は以下 **3 ファイル**で**等価な集合
 
 #### 系統 3: Phase 5.4 Doc-Heavy 報告セクションの 2 箇所重複 (drift 種 — 将来 Issue で追跡)
 
-本 Issue #350 検証付きレビュー L-2 で発見された drift リスク:
+drift リスク:
 
 `plugins/rite/commands/pr/review.md` の Phase 5.4 には、Doc-Heavy PR Mode の検証状態を表示するセクションが **full mode template と verification mode template の 2 箇所** (約 50 行) で重複定義されている。PR 自身が drift 防止を手動ルールで宣言しているが、ドッグフーディング repo では過去に同種の 3 ファイル等価性 drift (系統 1 / 系統 2) が複数回発生しており、手動ルールだけでは再発防止に不十分であることが実証済み。
 
-**現状 (本 Issue #350 検証付きレビュー C-3 対応後)**: 2 箇所のセクション本文 (placeholder ルール / 表構造 / 影響説明) は、本 Issue #350 検証付きレビュー C-3 対応で literal 一致を **取り戻している**。verification mode template 側に固有の「verification mode + Doc-Heavy 組み合わせでも post-condition check は実行される」という追記が 1 行あるが、これは責務上正当な差分。重複構造そのものは残っており、将来の更新時に再 drift する手動依存リスクは健在。
+**現状**: 2 箇所のセクション本文 (placeholder ルール / 表構造 / 影響説明) は literal 一致を維持している。verification mode template 側に固有の「verification mode + Doc-Heavy 組み合わせでも post-condition check は実行される」という追記が 1 行あるが、これは責務上正当な差分。重複構造そのものは残っており、将来の更新時に再 drift する手動依存リスクは健在。
 
 **将来 Issue**: 本系統 3 の自動検出は Issue #353 のスコープ外 (Issue #353 は系統 1 のみを対象とする)。将来対応の具体的な検査方法:
 

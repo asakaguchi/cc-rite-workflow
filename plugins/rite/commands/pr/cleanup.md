@@ -4,6 +4,8 @@ description: PR マージ後のクリーンアップを実行
 
 # /rite:pr:cleanup
 
+> **Charter**: This command and its `references/` are subject to the [Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述・cycle 番号引用・重複 confirmation は書かない。
+
 ## Contract
 **Input**: Merged PR (auto-detected from current branch or specified)
 **Output**: Cleanup result summary table (branch deletion, Status update, Issue close results)

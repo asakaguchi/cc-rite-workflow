@@ -1,5 +1,7 @@
 # Fix Targeting Rules
 
+> **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
+
 Defines how fix targets are determined in the `/rite:issue:start` review-fix loop.
 
 ## Overview

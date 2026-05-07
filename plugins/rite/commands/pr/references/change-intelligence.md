@@ -1,5 +1,7 @@
 # Change Intelligence Summary
 
+> **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
+
 Pre-computed change statistics provided to reviewers to improve review quality and focus.
 
 ## Purpose

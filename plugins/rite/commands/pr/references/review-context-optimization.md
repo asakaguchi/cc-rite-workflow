@@ -1,5 +1,7 @@
 # Review Context Optimization
 
+> **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
+
 Optimization rules for handling large PRs in `/rite:pr:review`.
 
 ## Change Scale Determination

@@ -1,5 +1,7 @@
 # Reviewer Fallback Profiles
 
+> **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
+
 Built-in minimal profiles for when skill files (`skills/reviewers/*.md`) cannot be loaded.
 
 **Relationship between fallback and official skill files:**

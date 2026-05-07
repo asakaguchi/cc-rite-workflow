@@ -1,5 +1,7 @@
 # Assessment Rules (Phase 5.3)
 
+> **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
+
 > **Source**: Extracted from `review.md` Phase 5.3.1-5.3.7. This file is the source of truth for assessment rules.
 
 ## 5.3.0 Observed Likelihood Gate (Post-Reviewer Safety Net)

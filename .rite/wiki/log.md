@@ -447,3 +447,6 @@
 | 2026-05-07T13:14:09+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=106, broken_refs=218 |
 | 2026-05-07T14:08:59+09:00 | ingest:update | pages/heuristics/cleanup-refactor-preserve-reasoning-remove-journal.md | PR #883 sibling 7 件目を追記 (raw/reviews/20260507T044332Z-pr-883.md) |
 | 2026-05-07T14:09:50+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=106, broken_refs=218 |
+| 2026-05-07T19:05:29+09:00 | ingest:skip | raw/reviews/20260507T084228Z-pr-884.md | PR #884 cycle 1 review (10 findings) — patterns covered by existing pages (asymmetric-fix / set-e-trap-err interaction / pattern-completion-gate). dogfooding artifact, no new generalization extractable |
+| 2026-05-07T19:05:29+09:00 | ingest:skip | raw/reviews/20260507T093211Z-pr-884.md | PR #884 cycle 2 review (mergeable, 5 scope-outside findings) — Issue policy compliance pattern, already captured in scope-outside-handling wiki page (see Issue #876 §2 policy). dogfooding artifact |
+| 2026-05-07T19:05:29+09:00 | ingest:skip | raw/fixes/20260507T091317Z-pr-884.md | PR #884 cycle 1 fix (10/10 fixed) — naming convention / fail-closed for STRICT mode / fence count fail-safe / mutation testing strengthening. all 4 patterns covered by existing wiki pages |

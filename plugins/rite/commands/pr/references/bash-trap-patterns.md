@@ -120,7 +120,7 @@ regression を起こす経路を防ぐ、(2) Form B 単一規範に揃え Asymme
 
 **まとめ**: Form A → 戻り値無視 OK、Form B → `return 0` 必須。
 
-### `${var:-}` と空引数ガード variant
+### `${var:-}` と空引数ガード variant (BSD/macOS rm 対応)
 
 `rm -f "${var:-}"` は `var` が未定義/空文字列のとき `rm -f ""` の silent no-op となり、cleanup が
 mktemp 失敗経路や早期 exit 経路で呼ばれても安全に動作する (defense-in-depth)。ただし一部の
@@ -153,6 +153,8 @@ _rite_<scope>_<phase>_cleanup() {
 - 短縮形 `_rite_p{NN}_cleanup` は使用しない (scope 不在で複数 site と衝突する)
 
 > **Note**: 既存 site の旧命名 (`_rite_wiki_lint_phase2_cleanup` 等) は維持し、一括リネームは行わない。
+> Phase 2.2 site (`wiki/lint.md`) は `phase22` 規約確立前の実装で `_rite_wiki_lint_phase2_cleanup`
+> として実装されているため、新規 site では `phase22` を採用すること (旧名と規約名が共存しても衝突は起きない)。
 > 同一 site に新規 cleanup 関数を追加する場合は必ず規約形式 (`phase22` 等) を採用すること。
 
 ### パス先行宣言 → trap 先行設定 → mktemp の順序

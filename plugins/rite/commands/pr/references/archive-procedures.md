@@ -19,7 +19,7 @@ github:
 
 ### 3.2 Update Status via Shared Script
 
-> **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `commands/issue/start.md` Phase 2.4 / 5.5.1 / 5.7.2. Direct inline `gh api graphql` + `gh project field-list` + `gh project item-edit` calls have been removed because LLM attention loss / partial-failure paths through the 3-stage inline pipeline produced silent skips that left Issue Status stuck at the previous value.
+> **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `commands/issue/start.md` Phase 2.4 / 5.5.1 / 5.7.2.
 
 Skip Phase 3.2 if `github.projects.enabled: false` in `rite-config.yml` or if no related Issue was identified in `cleanup.md` Phase 1.5, and proceed to Phase 3.5 (work memory update). Otherwise, invoke the shared script to transition the Issue Status to **Done**:
 
@@ -35,7 +35,7 @@ bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
   '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
 ```
 
-`auto_add: false` because by cleanup time the Issue is already registered in the Project (start.md Phase 2.4 auto-added it if missing). The script internally executes the GraphQL `projectItems` query → `gh project field-list` → `gh project item-edit` triple in a single fail-fast pipeline.
+`auto_add: false` because by cleanup time the Issue is already registered in the Project (start.md Phase 2.4 auto-added it if missing).
 
 #### 3.2.1 Result Handling
 
@@ -65,10 +65,8 @@ The LLM retains `projects_status_updated` in conversation context. Phase 5.1 use
 **Bash 実装パターン** (LLM 向け実装ヒント — Phase 3.2 の `bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"` 行を以下のように書き換える):
 
 ```bash
-# Phase 3.2 の script delegate invocation を defensive shape で書き換える
-# (sister sites: close.md Phase 1.3.2.1 / 4.2.1, ready.md Phase 4.2.1, archive-procedures.md Phase 3.7.2.1
-#  と byte-for-byte 整合させる — `|| status_json=""` fallback / jq 2>/dev/null 抑制 / `failed|*)`
-#  catch-all は AC-2 silent skip 復活ベクタを塞ぐために必須)
+# `|| status_json=""` fallback / jq 2>/dev/null 抑制 / `failed|*)` catch-all により
+# script が JSON-emit 前に死んだ場合も silent fall-through を防ぐ
 status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args") || status_json=""
 status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
 status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
@@ -82,8 +80,6 @@ case "$status_result" in
     echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします。" >&2
     ;;
   failed|*)
-    # script が JSON-emit 前に死んだ場合 (jq 不在 / mktemp 失敗 / `{plugin_root}` 置換漏れ等) は
-    # status_result が空文字となり `*)` で捕捉される — silent fall-through 防止
     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  /' >&2
     echo "警告: Projects Status の \"Done\" への更新に失敗しました。手動で更新する場合: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id>" >&2
     ;;
@@ -465,8 +461,6 @@ Inspect the script's stdout JSON:
 > esac
 > ```
 >
-> 上記が delegate-only 経路 (cleanup 経由 parent Issue auto-close では Step 3 inconsistency summary は別 phase 3.7.2.2 で扱う) の標準パターン。`.warnings[]` の stderr surface を必ず含めること。
->
 > **完全形 (state machine + signal-specific trap + tempfile + 一体化された inconsistency summary)** が必要な場合は `commands/issue/close.md` Phase 4.6.3 を参照 (Issue close と Status update を unified block で扱う)。
 
 ##### 3.7.2.2 Close the Parent Issue
@@ -568,7 +562,7 @@ gh issue close {parent_issue_number}
 
 ### Fail-Closed Gate (Post-Condition Check)
 
-Before resetting state, check for residual work memory files. If Phase 3 (Projects Status Update) completed but Phase 4 was skipped (due to LLM attention loss), this ensures work memory files are still cleaned up.
+Before resetting state, check for residual work memory files. If Phase 3 (Projects Status Update) completed but Phase 4 was skipped, this ensures work memory files are still cleaned up.
 
 ```bash
 # Phase 4 開始前: 作業メモリファイル残存チェック
@@ -585,7 +579,7 @@ Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-pat
 After the Fail-Closed Gate, run the cleanup-work-memory script. This script performs all cleanup steps in a single deterministic invocation:
 
 1. Resets flow state to `active: false` (prevents `post-tool-wm-sync.sh` from recreating files)
-2. Deletes `.rite-compact-state` and its lockdir (#756)
+2. Deletes `.rite-compact-state` and its lockdir
 3. Deletes ALL `.rite-work-memory/issue-*.md` files and their lockdirs (both current Issue and stale leftovers)
 4. Reports deletion results (deleted/failed/remaining counts)
 
@@ -595,9 +589,7 @@ Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-pat
 bash {plugin_root}/hooks/cleanup-work-memory.sh
 ```
 
-**Why a script instead of inline shell**: Previous implementations (#740, #753, #776) used inline shell fragments with LLM placeholders (`{issue_number}`, `{branch_name}`, etc.). When the LLM failed to substitute these placeholders, `jq` commands failed silently and `rm` commands deleted literal filenames instead of actual files. The script reads the issue number directly from the flow state file, eliminating placeholder dependency.
-
-**Key design**: The script resets flow state to `active: false` **before** deleting files. This ordering prevents the `post-tool-wm-sync.sh` PostToolUse hook from recreating files after deletion (the hook checks `active == true` and exits early when false).
+**Key design**: The script resets flow state to `active: false` **before** deleting files. This ordering prevents the `post-tool-wm-sync.sh` PostToolUse hook from recreating files after deletion (the hook checks `active == true` and exits early when false). The script reads the issue number directly from the flow state file, eliminating LLM placeholder substitution dependency.
 
 **Error handling:**
 

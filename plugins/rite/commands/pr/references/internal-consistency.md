@@ -170,11 +170,9 @@ Read: src/config/services.ts → .SERVICES 配列の要素数をカウント
    - エントリーポイント: `src/index.ts` / `app/page.tsx` のレンダリング順
    - メインメニュー: nav / sidebar の項目順
    - 設定ファイル: `rite-config.yml` の記述順 (自己記述的な場合)
-3. 不一致であれば本ファイル下部の [Severity Mapping](#severity-mapping) に従い報告
+3. 不一致であれば本ファイル下部の [Severity Mapping](#severity-mapping) に従い報告 (本項目の Default Severity は CRITICAL)
 
 **注意**: 単純な "アルファベット順 vs カテゴリ順" のような表現差は Confidence 80 未満で除外。実装側の明確な priority (例: `priorityOrder = ['autonomous', ...]`) との乖離のみ報告。
-
-> **Severity**: 本項目の重要度は常に CRITICAL。一次根拠は本ファイル下部の [Severity Mapping](#severity-mapping) を参照（`tech-writer.md` 側の Critical Checklist は本ファイルへの単方向参照であり循環しない）。
 
 ### 5. Screenshot Presence
 
@@ -277,7 +275,7 @@ review.md Phase 5.1.3 Step 2 (件数非依存 META check) は、上記 (a + inco
 
 ### Severity Mapping
 
-> **One-way reference**: 本テーブルが文書-実装整合性 5 項目の severity に関する**一次根拠**である。`tech-writer.md` の Critical (Must Fix) チェックリストは本テーブルを単方向参照しており、循環参照は存在しない。
+本テーブルが文書-実装整合性 5 項目の severity に関する一次根拠である。
 
 | Verification Category | Default Severity | 根拠 |
 |-----------------------|------------------|------|
@@ -339,60 +337,16 @@ review.md Phase 5.1.3 Step 2 (件数非依存 META check) は、上記 (a + inco
 
 ## Cross-Reference
 
-**Note**: 以下は「本ファイルがどこから参照されているか」のリンク集のみ。drift 監視 invariant の詳細は次の `## Drift Detection Invariants` セクションに分離している。
-
 本ファイルは以下の箇所から参照される (本ファイルからの相対パスで記載):
 
 - [`../../../skills/reviewers/tech-writer.md`](../../../skills/reviewers/tech-writer.md) — Critical (Must Fix) チェックリストの「文書-実装整合性」5 項目および "Doc-Heavy PR Mode (Conditional)" セクション (Quick Reference テーブル + Verification skip handling)
 - [`../review.md`](../review.md) — Phase 1.2.7 Doc-Heavy PR Detection、Phase 2.2.1 Doc-Heavy Reviewer Override、Phase 5.1.3 Doc-Heavy Post-Condition Check
-- [`../../../skills/reviewers/SKILL.md`](../../../skills/reviewers/SKILL.md) — Reviewers 一覧テーブルの tech-writer 行 (representative file patterns)。tech-writer.md / review.md / SKILL.md の 3 者で等価な doc_file_patterns を保持する (drift 監視対象、本ファイル自身は patterns を保持しない)
+- [`../../../skills/reviewers/SKILL.md`](../../../skills/reviewers/SKILL.md) — Reviewers 一覧テーブルの tech-writer 行 (representative file patterns)
 
-## Drift Detection Invariants
+本ファイルから参照する関連ファイル:
 
-**drift 検出の invariant** (3 系統の drift 監視対象 — 区別が必要):
-
-本 PR では **3 種類** の drift 監視対象が存在する。系統 1 と系統 2 はいずれも「3 ファイル間の等価性」だが対象集合が異なり、系統 3 は「同一ファイル内の 2 箇所重複」で構造的に異なる:
-
-#### 系統 1: `doc_file_patterns` の 3 ファイル等価性
-
-tech-writer Activation patterns は以下 **3 ファイル**で**等価な集合**を参照する必要がある (syntax は異なってよいが、マッチするファイル集合が同一であること):
-
-1. `plugins/rite/skills/reviewers/tech-writer.md` Activation セクション (source of truth)
-2. `plugins/rite/commands/pr/review.md` Phase 1.2.7 `doc_file_patterns` (疑似コード形式)
-3. `plugins/rite/skills/reviewers/SKILL.md` Reviewers テーブル tech-writer 行 (representative)
-
-> **Note — 本ファイル (`internal-consistency.md`) の位置付け**: 本ファイルは `doc_file_patterns` を**保持しない**(参照される検証プロトコルの定義書)。したがって本系統の drift 監視対象は上記 3 ファイル限定であり、本ファイルは invariant の対象外。
-
-> **自動検出 (Issue #353 系統 1)**: 本系統の drift は `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` で自動検出される (`/rite:lint` Phase 3.7 から呼び出し、warning/non-blocking)。各ファイルの該当セクションから glob token 集合を抽出し pairwise set difference を報告する。系統 2 / 系統 3 は本検証の対象外 (将来 Issue で追跡)。
-
-#### 系統 2: canonical category name の 3 ファイル literal 一致
-
-5 verification categories の canonical name (`Implementation Coverage` / `Enumeration Completeness` / `UX Flow Accuracy` / `Order-Emphasis Consistency` / `Screenshot Presence`) は以下 **3 ファイル**で **literal substring match に耐えうる完全同一文字列** で書かれる必要がある (review.md Phase 5.1.3 Step 2 が literal substring match で検査するため):
-
-1. `plugins/rite/commands/pr/references/internal-consistency.md` (本ファイル、source of truth)
-2. `plugins/rite/skills/reviewers/tech-writer.md` Critical Checklist と Doc-Heavy PR Mode セクション
-3. `plugins/rite/commands/pr/review.md` Phase 5.1.3 Step 2 META check の literal substring 一覧
-
-> **Note — `SKILL.md` は本系統の対象外**: SKILL.md は `doc_file_patterns` (Reviewers テーブルの tech-writer 行) のみを保持し、canonical category name は一切登場しない。Issue #353 系統 1 の drift 検出 lint は本系統 2 をカバーしない (系統 1 は `doc_file_patterns` の 3 ファイル集合を扱い、系統 2 は canonical category name の別の 3 ファイル集合を扱う。集合は重複するが完全同一ではない: 系統 1 は SKILL.md を含み internal-consistency.md を含まない / 系統 2 は internal-consistency.md を含み SKILL.md を含まない)。系統 2 の自動検出は将来 Issue で追跡。
-
-#### 系統 3: Phase 5.4 Doc-Heavy 報告セクションの 2 箇所重複 (drift 種 — 将来 Issue で追跡)
-
-drift リスク:
-
-`plugins/rite/commands/pr/review.md` の Phase 5.4 には、Doc-Heavy PR Mode の検証状態を表示するセクションが **full mode template と verification mode template の 2 箇所** (約 50 行) で重複定義されている。PR 自身が drift 防止を手動ルールで宣言しているが、ドッグフーディング repo では過去に同種の 3 ファイル等価性 drift (系統 1 / 系統 2) が複数回発生しており、手動ルールだけでは再発防止に不十分であることが実証済み。
-
-**現状**: 2 箇所のセクション本文 (placeholder ルール / 表構造 / 影響説明) は literal 一致を維持している。verification mode template 側に固有の「verification mode + Doc-Heavy 組み合わせでも post-condition check は実行される」という追記が 1 行あるが、これは責務上正当な差分。重複構造そのものは残っており、将来の更新時に再 drift する手動依存リスクは健在。
-
-**将来 Issue**: 本系統 3 の自動検出は Issue #353 のスコープ外 (Issue #353 は系統 1 のみを対象とする)。将来対応の具体的な検査方法:
-
-- `review.md` 内で「Doc-Heavy PR Mode の検証状態」を示す同一見出しパターン (例: `#### Doc-Heavy PR Mode 検証状態` / `#### Doc-Heavy verification state` 等) が **2 回以上** 出現するかを検査
-- 出現した場合は、両方のセクション本文を diff して literal 一致を確認 (verification mode 固有の追記 1 行を許可リストに登録した上で、それ以外の差分があれば lint エラー)
-- 将来的には full mode template 側のみを source of truth とし、verification mode template 側は参照 1 行に置き換える (または独立 reference ファイルに切り出す) リファクタリングを優先検討する
-
-**現状サマリー**: 系統 1 の自動 lint は `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` として Issue #353 で実装済み (`/rite:lint` Phase 3.7 から warning/non-blocking で呼び出し)。系統 2 と系統 3 は将来 Issue で追跡。
-
-**関連ファイル** (本ファイルからの相対パスを明示):
-
-- [`./fact-check.md`](./fact-check.md) (同ディレクトリ) — 外部仕様検証の対応ファイル
-- [`./assessment-rules.md`](./assessment-rules.md) (同ディレクトリ) — ALL findings are blocking ルール
+- [`./fact-check.md`](./fact-check.md) — 外部仕様検証の対応ファイル
+- [`./assessment-rules.md`](./assessment-rules.md) — ALL findings are blocking ルール
 - [`../../../agents/_reviewer-base.md`](../../../agents/_reviewer-base.md) — Confidence Scoring 80+ ゲートの定義
+
+drift 監視は `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` (`/rite:lint` Phase 3.7) で自動検出する (warning/non-blocking)。

@@ -156,6 +156,8 @@ See [references/coding-principles.md](./references/coding-principles.md) for the
 
 `plugins/rite/` 配下のファイルを編集する LLM・メンテナ、および rite workflow が生成する commit message / Issue body / PR description / review 指摘は、自己生成的に肥大化しないよう **Simplification Charter** に従う。runtime に効かない経緯記述は書かない / git log で代替できるものはコードに書かない / `Issue #` / `PR #` / `cycle #` の本文引用は禁止 / 重複 confirmation 禁止。
 
+特に `commands/pr/cleanup.md` および `commands/pr/references/` 配下のファイル群（**pr/cleanup 系**）は本 charter の主要適用対象であり、各ファイル冒頭に charter SoT 参照行を持つ。
+
 See [references/simplification-charter.md](./references/simplification-charter.md) for the 5 self-questions (5 つの自問) / prohibited patterns (禁止パターン) / recommended patterns (推奨パターン).
 
 ## Common Principles (AskUserQuestion Reduction)

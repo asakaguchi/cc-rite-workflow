@@ -1,5 +1,7 @@
 # Fact-Check Phase Reference
 
+> **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
+
 > **Source**: Referenced from `review.md` Phase 5 Critic Phase (`#### Fact-Check Phase`, between Deduplication and Specification Consistency Verification). This file is the source of truth for fact-check rules.
 
 ## Overview

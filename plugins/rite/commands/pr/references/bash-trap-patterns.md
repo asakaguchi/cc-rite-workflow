@@ -1,5 +1,7 @@
 # Bash Trap + Cleanup Patterns
 
+> **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
+
 このファイルは `plugins/rite/commands/pr/fix.md`、`review.md`、`issue/start.md`、`plugins/rite/commands/wiki/lint.md`、および `plugins/rite/commands/wiki/ingest.md` の bash block で繰り返し使用される
 **signal-specific trap + cleanup function パターン**の canonical 定義と根拠を集約する。
 

@@ -1,5 +1,7 @@
 # Archive Procedures (Cleanup Phase 3-4)
 
+> **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
+
 > **Source**: Extracted from `cleanup.md` Phase 3-4. This file is the source of truth for Projects Status Update, Issue close, Parent Issue handling, and state reset procedures.
 
 ## Phase 3: Projects Status Update

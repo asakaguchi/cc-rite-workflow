@@ -1,5 +1,7 @@
 # Internal Consistency Verification Reference
 
+> **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
+
 > **Source**: Referenced from `tech-writer.md` Critical (Must Fix) checklist の「文書-実装整合性」5 項目。本ファイルは**ドキュメント記述とプロダクト実装の整合性**を検証するための "source of truth" である。
 >
 > **用語統一**: 本テーマの canonical 表記は **「文書-実装整合性」** とする (英訳: `Doc-Impl Consistency`)。「ドキュメント-実装整合性」/「内部事実」/「内部整合性」/「Internal Consistency」は同義として扱う。新規記述では canonical 表記を優先するが、既存の同義表現はそのまま残してよい (機械的置換は drift リスク)。

@@ -1580,11 +1580,11 @@ trap - EXIT INT TERM HUP
 
 **Self-check and branching**:
 
-1. **Has `<!-- [cleanup:completed] -->` been output (as inline HTML sentinel at the trailing position of the final list item of Phase 5.2, per #652)?** (grep the recent response text — `grep -F '[cleanup:completed]'` matches HTML-comment form regardless of inline / independent-line position. **Note (#652)**: この broad match は **terminal state 到達判定**用途 (Item 0 Routing dispatcher の `[cleanup:completed]` matcher と同意味の「存在確認」) であり、独立行 regression 検出 (#652 の再発検出) 用途には不十分。独立行 regression を検出したい場合は `grep -nE '^<!--\s*\[cleanup:completed\]\s*-->$'` 等、**行頭から独立行で出力された case のみをマッチ**する正規表現を別途使用する。本 Item 1 は terminal 判定の broad match に留め、regression 検出は別機構 (review-fix loop / lint 等) に委譲する)
+1. **Has `<!-- [cleanup:completed] -->` been output (as inline HTML sentinel at the trailing position of the final list item of Phase 5.2)?** (grep the recent response text — `grep -F '[cleanup:completed]'` matches HTML-comment form regardless of inline / independent-line position. **Note**: この broad match は **terminal state 到達判定**用途 (Routing dispatcher Step 2 の `[cleanup:completed]` matcher と同意味の「存在確認」) であり、独立行 regression 検出 (independent-line emission の再発検出) 用途には不十分。独立行 regression を検出したい場合は `grep -nE '^<!--\s*\[cleanup:completed\]\s*-->$'` 等、**行頭から独立行で出力された case のみをマッチ**する正規表現を別途使用する。本 Item 1 は terminal 判定の broad match に留め、regression 検出は別機構 (review-fix loop / lint 等) に委譲する)
    - **Yes** — terminal state reached. flow state の `.phase` は既に `cleanup_completed`、`active: false`。**本 Yes 分岐は terminal 到達後の重複呼び出し防止のための例外経路**であり、non-terminal (phase=cleanup_pre_ingest) 時点の Step 0/1 正規路 (Correct-pattern の Step 1「Runs 🚨 Mandatory After Wiki Ingest Pre-write (writes cleanup_post_ingest)」) と矛盾しないことに留意する。Step 0 / Step 1 below MUST be skipped. 理由: `cleanup_completed` は terminal state であり、Step 0/1 の `flow-state-update.sh patch --if-exists` は active=false でも file が存在すれば patch するため、phase を `cleanup_post_ingest` に巻き戻して flow state を破壊する。phase-transition-whitelist.sh の terminal acceptance は next phase のみを判定し、prev が terminal でも accept するため whitelist 保護には依存できない — 実行しないことで確実に防ぐ。
    - **No** — Phase 5 has NOT been output yet (phase=cleanup_pre_ingest など non-terminal 状態)。Steps 0-2 below are **critical** — execute immediately to force the workflow into the terminal state (Step 0/1 が正規 handoff パス)。
 
-**Step 0: Immediate Bash Action (Issue #650)**: Execute this bash block as the **very first tool call** after `rite:wiki:ingest` returns (Self-check No branch), **before any other tool use or narrative text**. This step replaces the natural turn-boundary point ("the sub-skill finished") with a concrete, non-optional next tool call — the LLM is invoking a bash command, not ending a task. The bash block re-affirms the flow-state phase (idempotent with Step 1) and, on failure only, emits a `[CONTEXT] STEP_0_PATCH_FAILED=1` retained flag to stderr that the LLM can observe in subsequent context (the actual continuation marker `[CONTEXT] WIKI_INGEST_DONE=1` is produced by Phase 4.W.3 on success path *before* Step 0 runs, and `<!-- [ingest:completed] -->` HTML comment sentinel is produced by the sub-skill itself — `[ingest:completed:` colon form は future-proof defensive matcher で現状 emitter は不在、Pre-check Item 0 matcher 定義と整合)。**stderr observability 前提**: 本 flag は Claude Code の `ToolUseResult.stderr` として後続 turn の context に流入する — これは `pr/review.md` の `[CONTEXT] LOCAL_SAVE_FAILED=1` / `pr/fix.md` の `[CONTEXT] WM_UPDATE_FAILED=1` 他 40+ 箇所で採用されている repo-wide convention に依拠している (create.md と同一 convention、40+ 箇所同時改修契約)。
+**Step 0: Immediate Bash Action**: Execute this bash block as the **very first tool call** after `rite:wiki:ingest` returns (Self-check No branch), **before any other tool use or narrative text**. This step replaces the natural turn-boundary point ("the sub-skill finished") with a concrete, non-optional next tool call — the LLM is invoking a bash command, not ending a task. The bash block re-affirms the flow-state phase (idempotent with Step 1) and, on failure only, emits a `[CONTEXT] STEP_0_PATCH_FAILED=1` retained flag to stderr that the LLM can observe in subsequent context (the actual continuation marker `[CONTEXT] WIKI_INGEST_DONE=1` is produced by Phase 4.W.3 on success path *before* Step 0 runs, and `<!-- [ingest:completed] -->` HTML comment sentinel is produced by the sub-skill itself — `[ingest:completed:` colon form は future-proof defensive matcher で現状 emitter は不在、Routing dispatcher Step 1 の matcher 定義 (4 種集約) と整合)。**stderr observability 前提**: 本 flag は Claude Code の `ToolUseResult.stderr` として後続 turn の context に流入する — これは `pr/review.md` の `[CONTEXT] LOCAL_SAVE_FAILED=1` / `pr/fix.md` の `[CONTEXT] WM_UPDATE_FAILED=1` 他 40+ 箇所で採用されている repo-wide convention に依拠している (create.md と同一 convention、40+ 箇所同時改修契約)。
 
 ```bash
 # Idempotent patch + retained flag on failure (aligned with create.md Step 0 canonical pattern, Issue #650).
@@ -1805,16 +1805,16 @@ if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "cleanup_completed" \
     --next "none" --active false \
     --if-exists; then
-  echo "WARNING: flow-state-update.sh patch (cleanup_completed) failed — flow state may still report active=true. Pre-check Item 3 (.phase = cleanup_completed AND .active = false) will then fail. Manually run: bash {plugin_root}/hooks/flow-state-update.sh patch --phase cleanup_completed --next none --active false --if-exists" >&2
+  echo "WARNING: flow-state-update.sh patch (cleanup_completed) failed — flow state may still report active=true. Subsequent self-verification (Phase 5.3 末尾) will fail because '.phase = cleanup_completed AND .active = false' won't hold. Manually run: bash {plugin_root}/hooks/flow-state-update.sh patch --phase cleanup_completed --next none --active false --if-exists" >&2
 fi
 ```
 
 > **Reminder**: 上記 Step 1 bash 実行はこの Phase 5.3 で LLM が取る最後の action。直後にさらに text output / tool call を追加してはならない (terminal 条件、output ordering 参照)。bash tool stdout は markdown text channel と分離されているため、sentinel の最終行性質は既に保たれている。
 
-**Self-verification** (Pre-check Item 1-3 evaluation, 場面 (b) mode):
-- Item 1: `grep -F '[cleanup:completed]'` against the response output finds the HTML-commented sentinel in Phase 5.2 final list item? → MUST be YES
-- Item 2: User-visible `クリーンアップが完了しました` checklist + `次のステップ:` ordered list displayed? → MUST be YES
-- Item 3: flow state の `.phase = cleanup_completed` and `.active = false`? → MUST be YES
+**Self-verification** (turn 終了直前の必須チェック — 全 3 項目が YES で turn を閉じてよい):
+- `grep -F '[cleanup:completed]'` against the response output finds the HTML-commented sentinel in Phase 5.2 final list item? → MUST be YES
+- User-visible `クリーンアップが完了しました` checklist + `次のステップ:` ordered list displayed? → MUST be YES
+- flow state の `.phase = cleanup_completed` and `.active = false`? → MUST be YES
 
 If all three are YES, stop is allowed. If any is NO, return to the missing step and re-output before ending the turn.
 

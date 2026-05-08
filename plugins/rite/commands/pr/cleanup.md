@@ -26,98 +26,28 @@ When this command is executed, run the following phases in order.
 
 ## Sub-skill Return Protocol
 
-> **Reference**: See `start.md` [Sub-skill Return Protocol (Global)](../issue/start.md#sub-skill-return-protocol-global) and `create.md` [Sub-skill Return Protocol](../issue/create.md#sub-skill-return-protocol) for the canonical contract. The same rules apply here — DO NOT end your response after a sub-skill (`rite:wiki:ingest`) returns, DO NOT re-invoke the completed skill, and IMMEDIATELY proceed to the 🚨 Mandatory After Wiki Ingest section in the **same response turn**.
+> **Reference**: See `start.md` [Sub-skill Return Protocol (Global)](../issue/start.md#sub-skill-return-protocol-global) and `create.md` [Sub-skill Return Protocol](../issue/create.md#sub-skill-return-protocol) for the canonical contract. Same rules apply: DO NOT end your response after `rite:wiki:ingest` returns, DO NOT re-invoke the completed skill, and IMMEDIATELY proceed to 🚨 Mandatory After Wiki Ingest in the **same response turn**.
 
-### Pre-check list (Issue #604 — mandatory before ending any response turn)
+### Routing dispatcher (MUST execute step-by-step)
 
-**Enforcement coupling**: protocol violation 時は `stop-guard.sh` が `cleanup_pre_ingest` / `cleanup_post_ingest` phase を block し、`manual_fallback_adopted` workflow_incident sentinel が stderr に echo されて Phase 5.4.4.1 (start.md 配下) で post-hoc 検出される (AC-7)。つまり「turn を閉じたつもりが stop-guard に止められる」という体験で強制される。
+After any sub-skill return, output two HTML-comment evidence lines (bare bracket form is forbidden — it would conflict with the `[cleanup:completed]` sentinel rule). Neither evidence line may be the response's final line; the final line is reserved for Phase 5.2's last list item with inline `<!-- [cleanup:completed] -->`.
 
-**Evaluation context** (2 場面で同じチェックリストを使う):
-
-| 場面 (a): sub-skill return 直後 | 場面 (b): turn 終了直前 |
-|---|---|
-| まだワークフロー中途。`NO` は「次の継続ステップを実行すべき」を意味する | 終端到達確認。`NO` は **protocol violation** (工程を飛ばして停止しようとしている) |
-
-場面 (a) では Item 1-3 が `NO` でも正常 (Phase 5 完了レポート未出力段階)。場面 (b) では 3 項目すべて `YES` が turn 終了の必要条件 (Item 0 は routing dispatcher で集計対象外)。
-
-**Procedure**: Item 0 は **routing dispatcher** (YES/NO ではなく tag に応じて経路を選ぶ前段処理)。Item 0 を最優先で evaluate し、該当する経路に進んだ後、場面 (b) では **Item 1-3 が YES/NO で評価される状態チェック**。turn 終了の可否は Item 1-3 のみを集計する。
-
-| # | Check (種別) | If YES/NO / routing, do |
-|---|-------------|------------------------|
-| 0 | **Routing dispatcher (MUST execute step-by-step, skip 禁止 — Issue #621)**: 直前の sub-skill return tag は何か? | 本 Item は routing dispatcher (YES/NO 集計から除外)。手順 (1)(2)(3) は下記 **Item 0 — Routing dispatcher 手順** サブセクションで定義する。evidence 出力の義務化により LLM の silent skip を検出可能にする。 |
-| 1 | **State check**: `[cleanup:completed]` が HTML コメント形式で Phase 5.2 最終 list item 末尾に inline 出力済みか (#652)? | 推奨形式: `grep -F '[cleanup:completed]'` (fixed string で HTML コメント内の string も matchable。inline / independent-line 両形式で match 可能)。場面 (a) では `NO` でも legitimate — 次の Mandatory After Wiki Ingest / Phase 5 出力に進む。場面 (b) では `NO` は terminal sub-skill (Phase 5) が未完了 — Phase 5 完了メッセージ + 次のステップ ordered list (最終 list item 末尾に inline HTML sentinel を含む) を出力する。 |
-| 2 | **State check**: ユーザー向け完了メッセージ (`クリーンアップが完了しました` 行を含むブロック) が表示済みか? | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は Phase 5 完了レポートが欠落 — Phase 5.1 / 5.2 を実行する。 |
-| 3 | **State check**: flow state が deactivate 済みか? (`active: false`, `phase: cleanup_completed`) | 場面 (a) では `NO` でも legitimate。場面 (b) では `NO` は terminal state 未到達 — Phase 5 末尾の flow-state deactivate を実行する。 |
-
-**Rule**: **Item 1-3 すべて `YES`** が turn 終了の必要条件 **ただし場面 (b) においてのみ**。Item 0 は routing dispatcher で YES/NO 集計には含まれない。場面 (a) では Item 1-3 の `NO` は「次のステップに進め」を意味する正常シグナル。
-
-#### Item 0 — Routing dispatcher 手順 (MUST execute step-by-step, skip 禁止 — Issue #621)
-
-全 step を同等の粒度で対称配置する (同型性ルール)。どの step も skip すると Issue #621 regression (H1+H3 複合症状) を再発させる。
-
-1. **`ingest` 関連 marker を検索して evidence を出力する (Issue #650 — 4 種 matcher 集約)**:
-   - 直前応答の text body に対し **以下の 4 種 marker** を grep -F で検索する (ingest sub-skill return / Phase 4.W.3 success 経路の両方を defense-in-depth で網羅):
-     - `[ingest:completed]` (現行 sentinel。bare bracket 文字列、HTML-comment 内でも matchable)
-     - `[ingest:completed:` (AC-2 literal / future-proof defensive matcher: sentinel 形式が `[ingest:completed:{run_id}]` へ進化した場合に備える。現状 sub-skill は bare `[ingest:completed]` を emit するが、いずれかが matched すれば continuation trigger として扱う)
-     - `[CONTEXT] WIKI_INGEST_DONE=` (Phase 4.W.3 On success 経路で caller 自身が emit する実 marker、`pr=`・`type=cleanup_ingest` を含む — ingest が成功完了したことの直接シグナル)
-     - `[CONTEXT] INGEST_DONE=` (AC-2 literal defensive matcher: 将来 sub-skill が WIKI_ prefix なしで emit するよう変更された場合に備える)
-   - **いずれかが matched** した時点で `ingest=matched`、すべて unmatched なら `ingest=unmatched` と判定する (OR 集約)
-   - 判定結果を response text に 1 行含める: **HTML コメント形式のみ許容** (`<!-- [routing-check] ingest=matched -->` または `<!-- [routing-check] ingest=unmatched -->`)。bare bracket 形式 (`[routing-check] ingest=matched`) は禁止 — 同ファイル内の bare sentinel 禁止規約 (#604, mirrors #561) と衝突し、Mode B implicit stop を誘発するため
-   - 本 evidence 行は response の最終行に置いてはならない (最終行は Phase 5.2 最終 list item (inline HTML sentinel `<!-- [cleanup:completed] -->` 付き) 専用、#652)
-2. **`[cleanup:completed]` を検索して evidence を出力する**:
-   - 直前応答の text body に対し `[cleanup:completed]` を grep -F で検索する
-   - 判定結果を response text に 1 行含める: `<!-- [routing-check] cleanup=matched -->` または `<!-- [routing-check] cleanup=unmatched -->` (HTML コメント形式のみ許容)
-   - 本 evidence 行も response の最終行に置いてはならない (最終行は Phase 5.2 最終 list item (inline HTML sentinel `<!-- [cleanup:completed] -->` 付き) 専用、#652)
-3. **上記 2 行の判定に従って routing する** (両 tag matched 時の優先順位を明示):
-   - **優先ルール**: 両方 matched が発生しうるのは同一 session 内で過去 cleanup 完了済み後に次 PR cleanup で ingest を呼んだ直後等の混在ケース。このとき **`ingest=matched` を優先採択**し `cleanup=matched` は無視する (直前 sub-skill return は ingest なので continuation trigger が真の意図)
-   - `ingest=matched` → **continuation trigger** として即座に 🚨 Mandatory After Wiki Ingest (`cleanup_post_ingest` patch → Phase 5 Completion Report) を同 turn 内で実行
-   - `cleanup=matched` (かつ `ingest=unmatched`) → terminal 到達、場面 (b) Item 1-3 評価へ進む
-   - どちらも unmatched → 通常の Phase 進行中 (場面 (a) 継続、Item 1-3 の `NO` は legitimate)
-
-> **評価範囲の scope**: 「直前応答」は現在の turn 直前の assistant response 1 件のみを指す (会話履歴全体ではない)。過去の session で残存する sentinel を誤拾いしない。
-
-> **⚠️ 検出 hook の scope** (Issue #621 root cause fix の限界): 本 Item 0 は **prompt 表面での形式義務化のみ** を実装する。evidence の出力を machine-enforced で検査する hook (`stop-guard.sh` / `workflow-incident-emit.sh` への `[routing-check]` パターン検査追加) は**本 PR の scope 外**で、follow-up Issue として追跡する (Issue #621 MUST「機械的強制」の完全達成には hook 側の検証 logic 追加が必要だが、prompt 側の義務化と hook 側の検証を分離して PR ごとにレビューするための意図的な scope 分割)。現状は prompt が evidence 出力を LLM に強制 → LLM が HTML コメント形式で出力 → `cleanup_pre_ingest` / `cleanup_post_ingest` phase の stop-guard block (既存 5 層) が combined で H1+H3 regression を防ぐ構成。
+1. `ingest` marker check — grep -F the previous response for any of `[ingest:completed]`, `[ingest:completed:`, `[CONTEXT] WIKI_INGEST_DONE=`, `[CONTEXT] INGEST_DONE=`. Emit `<!-- [routing-check] ingest=matched -->` or `<!-- [routing-check] ingest=unmatched -->`.
+2. `cleanup` marker check — grep -F the previous response for `[cleanup:completed]`. Emit `<!-- [routing-check] cleanup=matched -->` or `<!-- [routing-check] cleanup=unmatched -->`.
+3. Routing (priority: `ingest=matched` wins over `cleanup=matched` in mixed sessions because the most recent sub-skill return is the true continuation trigger):
+   - `ingest=matched` → continuation trigger: immediately run 🚨 Mandatory After Wiki Ingest (`cleanup_post_ingest` patch → Phase 5 Completion Report) in the same turn.
+   - `cleanup=matched` (and `ingest=unmatched`) → terminal reached.
+   - Both unmatched → workflow in progress, continue normally.
 
 ### Anti-pattern (what NOT to do)
 
-When `rite:wiki:ingest` returns (typically with a recap message such as "Wiki ingest と auto-lint まで完了しました"):
-
-```
-[WRONG]
-<Skill rite:wiki:ingest returns>
-<LLM output: "※ recap: Wiki ingest と auto-lint まで完了しました">
-<LLM ends turn. User sees "Cooked for Xm Ys" and must type `continue` manually.>
-```
-
-This is a **bug**. The sub-skill return is NOT a turn boundary — it is a hand-off signal. Ending the turn here abandons the cleanup workflow mid-flight, leaving Phase 5 (Completion Report) unexecuted and the flow state in a non-terminal state. The recap message belongs at the **start** of the same response turn (informational), not at the end (turn boundary).
+Ending the turn after `rite:wiki:ingest` returns is an **anti-pattern**: it abandons the cleanup workflow mid-flight, leaves Phase 5 unexecuted, and leaves the flow state non-terminal. The recap message belongs at the **start** of the same response turn, not as a turn boundary.
 
 ### Correct-pattern (what to do)
 
-```
-[CORRECT]
-<Skill rite:wiki:ingest returns>
-<LLM output: brief recap (optional)>
-<In the same response turn, LLM IMMEDIATELY:>
-  1. Runs 🚨 Mandatory After Wiki Ingest Pre-write (writes cleanup_post_ingest)
-  2. Outputs Phase 5.1 Cleanup Result Summary
-  3. Outputs Phase 5.2 Guidance for Next Steps — **最終 list item 末尾に inline `<!-- [cleanup:completed] -->` HTML sentinel を literal として含める** (#652: 独立行で出力しない。Phase 5.2 出力の一部として同一行に配置する)
-  4. Phase 5.3 Step 1: Deactivates flow state (cleanup_completed, active: false) — この bash 実行後に LLM は追加の text / tool call を出力せず turn を閉じる (inline sentinel は **上記 Step 3 (Phase 5.2 最終 list item inline sentinel)** で markdown text 終端として既に出力済み。bash tool は markdown channel と分離されているため sentinel 最終性は保たれる)
-```
+The **correct-pattern**: in the same response turn, immediately (1) run 🚨 Mandatory After Wiki Ingest Pre-write (`cleanup_post_ingest`); (2) output Phase 5.1 Cleanup Result Summary; (3) output Phase 5.2 Guidance for Next Steps with **inline `<!-- [cleanup:completed] -->` HTML sentinel at the trailing position of the final list item** (not on an independent line); (4) Phase 5.3 Step 1 deactivates flow state (`cleanup_completed`, `active: false`) and the turn closes — DO NOT stop earlier.
 
-**Rule**: Treat `rite:wiki:ingest` return as a **continuation trigger**, not a stopping point. The **only** valid stop is after the user-visible completion message (`クリーンアップが完了しました`) + next-steps block (with `<!-- [cleanup:completed] -->` as inline HTML sentinel at the trailing position of the final list item of Phase 5.2 — #652) have been displayed. The HTML-commented sentinel is invisible in rendered views but grep-matchable for hooks/scripts.
-
-> **Contract phrases (AC-6 / Issue #604)**: The anti-pattern / correct-pattern contract above uses these exact phrases: `anti-pattern`, `correct-pattern`, `same response turn`, `DO NOT stop`. These phrases are grep-verified as part of the AC-6 static check — do not rewrite them away. Manual verification command:
->
-> ```bash
-> for p in "anti-pattern" "correct-pattern" "same response turn" "DO NOT stop"; do
->   grep -c "$p" plugins/rite/commands/pr/cleanup.md
-> done
-> # Expected: all 4 counts >= 1
-> ```
-
-**Completion marker convention** (Issue #604, mirrors create.md Issue #561 D-01, updated by #652): The unified completion marker for `/rite:pr:cleanup` is `[cleanup:completed]`, emitted as an HTML comment (`<!-- [cleanup:completed] -->`) **as inline HTML sentinel at the trailing position of the final list item of Phase 5.2** (not as an independent line — #652: independent-line emission triggers CommonMark HTML block blank-line requirements and causes a visible blank line in rendered view). The HTML comment form keeps the string grep-matchable (`grep -F '[cleanup:completed]'`) while ensuring the user-visible final content is the `クリーンアップが完了しました` checklist + guidance block. Phase 5 handles flow-state deactivation (`cleanup_completed`, `active: false`) in Phase 5.3 Step 1, and the inline HTML sentinel is emitted as part of the final list item of Phase 5.2 (Terminal Completion pattern).
-
-**Defense-in-depth**: Phase 1.0 activates flow state to `cleanup` (Phase 1-4 区間の保護)。Phase 4.W.2 writes flow state to `cleanup_pre_ingest` before invoking `rite:wiki:ingest`, then 🚨 Mandatory After Wiki Ingest Step 1 (Phase 4.W sub-section: `### 🚨 Mandatory After Wiki Ingest` at h3, inside `## Phase 4.W`) writes `cleanup_post_ingest` after the sub-skill returns. Phase 5.3 Step 1 writes `cleanup_completed` with `active: false` as the terminal flow-state deactivate step (the completion marker itself is emitted inline by the final list item of Phase 5.2, see the completion marker convention above — #652). This ensures the workflow completes even if the orchestrator fails to continue after sub-skill return — `stop-guard.sh` will block premature `end_turn` during `cleanup` / `cleanup_pre_ingest` / `cleanup_post_ingest` and emit the `manual_fallback_adopted` sentinel for Phase 5.4.4.1 (start.md 配下) detection.
+**Completion marker**: `[cleanup:completed]` is emitted as an HTML comment (`<!-- [cleanup:completed] -->`) inline at the trailing position of Phase 5.2's final list item — keeps the marker grep-matchable (`grep -F '[cleanup:completed]'`) while making `クリーンアップが完了しました` the user-visible final content. `stop-guard.sh` blocks premature `end_turn` during `cleanup` / `cleanup_pre_ingest` / `cleanup_post_ingest` and emits `manual_fallback_adopted` for Phase 5.4.4.1 (start.md 配下) detection.
 
 ---
 
@@ -1650,11 +1580,11 @@ trap - EXIT INT TERM HUP
 
 **Self-check and branching**:
 
-1. **Has `<!-- [cleanup:completed] -->` been output (as inline HTML sentinel at the trailing position of the final list item of Phase 5.2, per #652)?** (grep the recent response text — `grep -F '[cleanup:completed]'` matches HTML-comment form regardless of inline / independent-line position. **Note (#652)**: この broad match は **terminal state 到達判定**用途 (Item 0 Routing dispatcher の `[cleanup:completed]` matcher と同意味の「存在確認」) であり、独立行 regression 検出 (#652 の再発検出) 用途には不十分。独立行 regression を検出したい場合は `grep -nE '^<!--\s*\[cleanup:completed\]\s*-->$'` 等、**行頭から独立行で出力された case のみをマッチ**する正規表現を別途使用する。本 Item 1 は terminal 判定の broad match に留め、regression 検出は別機構 (review-fix loop / lint 等) に委譲する)
-   - **Yes** — terminal state reached. flow state の `.phase` は既に `cleanup_completed`、`active: false`。**本 Yes 分岐は terminal 到達後の重複呼び出し防止のための例外経路**であり、non-terminal (phase=cleanup_pre_ingest) 時点の Step 0/1 正規路 (Correct-pattern の Step 1「Runs 🚨 Mandatory After Wiki Ingest Pre-write (writes cleanup_post_ingest)」) と矛盾しないことに留意する。Step 0 / Step 1 below MUST be skipped. 理由: `cleanup_completed` は terminal state であり、Step 0/1 の `flow-state-update.sh patch --if-exists` は active=false でも file が存在すれば patch するため、phase を `cleanup_post_ingest` に巻き戻して flow state を破壊する。phase-transition-whitelist.sh の terminal acceptance は next phase のみを判定し、prev が terminal でも accept するため whitelist 保護には依存できない — 実行しないことで確実に防ぐ。
+1. **Has `<!-- [cleanup:completed] -->` been output (as inline HTML sentinel at the trailing position of the final list item of Phase 5.2)?** (grep the recent response text — `grep -F '[cleanup:completed]'` matches HTML-comment form regardless of inline / independent-line position. **Note**: この broad match は **terminal state 到達判定**用途 (Routing dispatcher Step 2 の `[cleanup:completed]` matcher と同意味の「存在確認」) であり、独立行 regression 検出 (independent-line emission の再発検出) 用途には不十分。独立行 regression を検出したい場合は `grep -nE '^<!--\s*\[cleanup:completed\]\s*-->$'` 等、**行頭から独立行で出力された case のみをマッチ**する正規表現を別途使用する。本 Item 1 は terminal 判定の broad match に留め、regression 検出は別機構 (review-fix loop / lint 等) に委譲する)
+   - **Yes** — terminal state reached. flow state の `.phase` は既に `cleanup_completed`、`active: false`。**本 Yes 分岐は terminal 到達後の重複呼び出し防止のための例外経路**であり、non-terminal (phase=cleanup_pre_ingest) 時点の Step 0/1 正規路 (Correct-pattern の項目 (1)「run 🚨 Mandatory After Wiki Ingest Pre-write (`cleanup_post_ingest`)」) と矛盾しないことに留意する。Step 0 / Step 1 below MUST be skipped. 理由: `cleanup_completed` は terminal state であり、Step 0/1 の `flow-state-update.sh patch --if-exists` は active=false でも file が存在すれば patch するため、phase を `cleanup_post_ingest` に巻き戻して flow state を破壊する。phase-transition-whitelist.sh の terminal acceptance は next phase のみを判定し、prev が terminal でも accept するため whitelist 保護には依存できない — 実行しないことで確実に防ぐ。
    - **No** — Phase 5 has NOT been output yet (phase=cleanup_pre_ingest など non-terminal 状態)。Steps 0-2 below are **critical** — execute immediately to force the workflow into the terminal state (Step 0/1 が正規 handoff パス)。
 
-**Step 0: Immediate Bash Action (Issue #650)**: Execute this bash block as the **very first tool call** after `rite:wiki:ingest` returns (Self-check No branch), **before any other tool use or narrative text**. This step replaces the natural turn-boundary point ("the sub-skill finished") with a concrete, non-optional next tool call — the LLM is invoking a bash command, not ending a task. The bash block re-affirms the flow-state phase (idempotent with Step 1) and, on failure only, emits a `[CONTEXT] STEP_0_PATCH_FAILED=1` retained flag to stderr that the LLM can observe in subsequent context (the actual continuation marker `[CONTEXT] WIKI_INGEST_DONE=1` is produced by Phase 4.W.3 on success path *before* Step 0 runs, and `<!-- [ingest:completed] -->` HTML comment sentinel is produced by the sub-skill itself — `[ingest:completed:` colon form は future-proof defensive matcher で現状 emitter は不在、Pre-check Item 0 matcher 定義と整合)。**stderr observability 前提**: 本 flag は Claude Code の `ToolUseResult.stderr` として後続 turn の context に流入する — これは `pr/review.md` の `[CONTEXT] LOCAL_SAVE_FAILED=1` / `pr/fix.md` の `[CONTEXT] WM_UPDATE_FAILED=1` 他 40+ 箇所で採用されている repo-wide convention に依拠している (create.md と同一 convention、40+ 箇所同時改修契約)。
+**Step 0: Immediate Bash Action**: Execute this bash block as the **very first tool call** after `rite:wiki:ingest` returns (Self-check No branch), **before any other tool use or narrative text**. This step replaces the natural turn-boundary point ("the sub-skill finished") with a concrete, non-optional next tool call — the LLM is invoking a bash command, not ending a task. The bash block re-affirms the flow-state phase (idempotent with Step 1) and, on failure only, emits a `[CONTEXT] STEP_0_PATCH_FAILED=1` retained flag to stderr that the LLM can observe in subsequent context (the actual continuation marker `[CONTEXT] WIKI_INGEST_DONE=1` is produced by Phase 4.W.3 on success path *before* Step 0 runs, and `<!-- [ingest:completed] -->` HTML comment sentinel is produced by the sub-skill itself — `[ingest:completed:` colon form は future-proof defensive matcher で現状 emitter は不在、Routing dispatcher Step 1 の matcher 定義 (4 種集約) と整合)。**stderr observability 前提**: 本 flag は Claude Code の `ToolUseResult.stderr` として後続 turn の context に流入する — これは `pr/review.md` の `[CONTEXT] LOCAL_SAVE_FAILED=1` / `pr/fix.md` の `[CONTEXT] WM_UPDATE_FAILED=1` 他 40+ 箇所で採用されている repo-wide convention に依拠している (create.md と同一 convention、40+ 箇所同時改修契約)。
 
 ```bash
 # Idempotent patch + retained flag on failure (aligned with create.md Step 0 canonical pattern, Issue #650).
@@ -1875,16 +1805,16 @@ if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "cleanup_completed" \
     --next "none" --active false \
     --if-exists; then
-  echo "WARNING: flow-state-update.sh patch (cleanup_completed) failed — flow state may still report active=true. Pre-check Item 3 (.phase = cleanup_completed AND .active = false) will then fail. Manually run: bash {plugin_root}/hooks/flow-state-update.sh patch --phase cleanup_completed --next none --active false --if-exists" >&2
+  echo "WARNING: flow-state-update.sh patch (cleanup_completed) failed — flow state may still report active=true. Subsequent self-verification (Phase 5.3 末尾) will fail because '.phase = cleanup_completed AND .active = false' won't hold. Manually run: bash {plugin_root}/hooks/flow-state-update.sh patch --phase cleanup_completed --next none --active false --if-exists" >&2
 fi
 ```
 
 > **Reminder**: 上記 Step 1 bash 実行はこの Phase 5.3 で LLM が取る最後の action。直後にさらに text output / tool call を追加してはならない (terminal 条件、output ordering 参照)。bash tool stdout は markdown text channel と分離されているため、sentinel の最終行性質は既に保たれている。
 
-**Self-verification** (Pre-check Item 1-3 evaluation, 場面 (b) mode):
-- Item 1: `grep -F '[cleanup:completed]'` against the response output finds the HTML-commented sentinel in Phase 5.2 final list item? → MUST be YES
-- Item 2: User-visible `クリーンアップが完了しました` checklist + `次のステップ:` ordered list displayed? → MUST be YES
-- Item 3: flow state の `.phase = cleanup_completed` and `.active = false`? → MUST be YES
+**Self-verification** (turn 終了直前の必須チェック — 全 3 項目が YES で turn を閉じてよい):
+- `grep -F '[cleanup:completed]'` against the response output finds the HTML-commented sentinel in Phase 5.2 final list item? → MUST be YES
+- User-visible `クリーンアップが完了しました` checklist + `次のステップ:` ordered list displayed? → MUST be YES
+- flow state の `.phase = cleanup_completed` and `.active = false`? → MUST be YES
 
 If all three are YES, stop is allowed. If any is NO, return to the missing step and re-output before ending the turn.
 

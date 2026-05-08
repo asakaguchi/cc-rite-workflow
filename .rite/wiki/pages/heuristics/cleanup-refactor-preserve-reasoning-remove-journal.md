@@ -2,7 +2,7 @@
 title: "Cleanup refactor は reasoning prose を保持し review-history journal のみ削除する"
 domain: "heuristics"
 created: "2026-05-07T04:15:00+00:00"
-updated: "2026-05-08T03:43:04+00:00"
+updated: "2026-05-08T06:30:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260506T190517Z-pr-877.md"
@@ -28,6 +28,8 @@ sources:
     ref: "raw/fixes/20260508T033003Z-pr-890.md"
   - type: "fixes"
     ref: "raw/fixes/20260508T033628Z-pr-890.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260508T060713Z-pr-891.md"
 tags: [refactor, cleanup, charter, simplification, pre-commit-gate]
 confidence: high
 ---
@@ -123,6 +125,19 @@ PR #890 (`pr/cleanup.md` の Sub-skill Return Protocol セクションを 96 行
 
 **規模スケールへの拡張**: PR #890 は -70 行という大規模 slim でありながら charter 違反引用は cycle 番号引用ではなく **section 構造の identity 表現** (heading / Item 番号) が中心だった点で、既存 8 PR (charter 違反引用の機械的削除中心) とは failure mode が異なる。本経験則の `削除単位の 3 分類` (inline parenthetical / bash literal comment / prose blockquote) は **削除対象が引用 phrase / 行 / 文節の場合** に適用される canonical で、**削除対象が section heading / Item 番号体系の場合** は本ページの新 sub-pattern (broken intra-file reference + 構造ラベル変更時の verbatim 引用 grep 不一致) を併用する必要がある。累計 117 件 / 9 PR で 8 PR (1 cycle) + 1 PR (3 cycle) の sibling 比率が確立し、本経験則の信頼性は high 水準を維持したまま「適用範囲の境界」を実測した。
 
+### PR #891 で構造ラベル grep 拡張が canonical 化を達成 (Phase C2 cleanup.md slim、Issue #845)
+
+PR #891 (`pr/cleanup.md` の Phase 1 / Phase 4.W から散文削除、-24 行) は連続 10 件目の sibling として、PR #890 で発見された canonical 対策の拡張 (構造ラベル grep 対象拡張) を **Phase C1 (PR #890) からの学習として実適用した最初の事例**。結果として再び **0 finding 1 cycle 着地** に回復し、PR #890 の 3 cycle 構成は「対策未適用時の限界」だったことが事後的に確認された。
+
+具体的には:
+
+- **構造ラベル grep の対象拡張を pre-commit gate に追加** — 削除する識別子だけでなく `Step [0-9]+` / `Phase [0-9]+\.[0-9]+` / heading hierarchy など変更する構造ラベルも `grep -nE` で事前列挙し、slim 後に再 grep して全 hit 件数 0 を確認する gate を実装
+- **DRIFT-CHECK ANCHOR semantic 保全 / 4-site-symmetry test PASS / bang-backtick check 0 件** を maintaining しながら散文削除を完了
+- **削減量 -24 行は SHOULD 目標 -100〜-150 を下回る** が、これは scope を Phase 1 / Phase 4.W に厳密限定した結果。reasoning prose と機能契約 (DRIFT-CHECK ANCHOR symmetry / Step 0/1 idempotent patch / Sub-skill Return Protocol routing dispatcher) を保持した上で削れる journal-only 散文の上限値を明示
+- **AC-3 (cleanup.md ≤1500 行) は本 PR 後 1810 行で未達**、Phase D へ持ち越しの方針がユーザー承認済み — 単一 PR で大規模 slim を強行するより scope 限定 + sibling 反復で機能契約保全を優先する判断
+
+**対策実装の効果実証**: PR #890 の 3 cycle 収束で発見された 2 sub-pattern (broken intra-file reference + 構造ラベル変更時の verbatim 引用 grep 不一致) が、対策実装後の PR #891 では cycle 1 で 0 件検出されたことで、canonical 対策の効果が実測された。これにより本経験則の sub-pattern 「PR #890 で発見された限界」は **対策が canonical 化された段階で 1 cycle 着地に回復する** ことが確認され、累計 141 件 / 10 PR で **9 PR (1 cycle) + 1 PR (3 cycle)** の sibling 比率に更新。本経験則の信頼性は high 水準を維持したまま、適用範囲の境界が「対策未適用時のみ 3 cycle / 対策適用後は 1 cycle」として明確化された。
+
 ## 関連ページ
 
 - [既存ページなし — 本ページが本テーマの初出](#)
@@ -141,3 +156,4 @@ PR #890 (`pr/cleanup.md` の Sub-skill Return Protocol セクションを 96 行
 - [PR #890 review cycle 3 (mergeable)](raw/reviews/20260508T034304Z-pr-890.md)
 - [PR #890 fix cycle 1](raw/fixes/20260508T033003Z-pr-890.md)
 - [PR #890 fix cycle 2](raw/fixes/20260508T033628Z-pr-890.md)
+- [PR #891 review results](raw/reviews/20260508T060713Z-pr-891.md)

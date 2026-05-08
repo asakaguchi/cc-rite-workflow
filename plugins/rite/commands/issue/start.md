@@ -4,6 +4,8 @@ description: Issue の作業を開始（ブランチ作成 → 実装 → PR 作
 
 # /rite:issue:start
 
+> **Charter**: This command and its `references/` are subject to the [Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述・cycle 番号引用・重複 confirmation は書かない。
+
 ## Contract
 **Input**: Issue number (required), optionally a flow state record from a previous interrupted session
 **Output**: `## 完了報告` (completion report with Issue/PR details and phase progress table)

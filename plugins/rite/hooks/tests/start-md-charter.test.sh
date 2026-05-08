@@ -64,7 +64,7 @@ else
   fail "Upper: \`cycle [0-9]+\` count <= 1 (actual=$cycle_count, expected <=1)"
 fi
 
-bell_count=$(grep -c '🚨' "$START_MD" || true)
+bell_count=$(grep -oE '🚨' "$START_MD" | wc -l | tr -d ' ')
 if [ "$bell_count" -le 5 ]; then
   pass "Upper: \`🚨\` count <= 5 (actual=$bell_count)"
 else
@@ -127,8 +127,11 @@ done < <(awk '
                     in_block=0; in_create=0; block=""; next
                   }
   in_block && /flow-state-update\.sh create/ {
+                    # 同一 bash block 内に複数 create 呼び出しがある場合、前 block を先に flush
+                    # してから新 block を開始する (multi-create-per-block blind spot 防止)
+                    if (in_create) { printf "%s%c", block, 0 }
                     in_create=1
-                    block = (block == "" ? $0 : block "\n" $0)
+                    block=$0
                     next
                   }
   in_block && in_create { block = block "\n" $0 }
@@ -141,7 +144,7 @@ else
 fi
 
 # === Summary ===
-if ! print_summary "start-md-charter" \
+if ! print_summary "$(basename "$0" .test.sh)" \
   "後続 PR (B-H) の slim 進捗で上限超過パターンを削減してください。STRICT_CHARTER=1 での fail は ratchet として設計されています。"; then
   exit 1
 fi

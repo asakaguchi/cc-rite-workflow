@@ -2,7 +2,7 @@
 title: "Cleanup refactor は reasoning prose を保持し review-history journal のみ削除する"
 domain: "heuristics"
 created: "2026-05-07T04:15:00+00:00"
-updated: "2026-05-07T16:33:53+00:00"
+updated: "2026-05-08T03:43:04+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260506T190517Z-pr-877.md"
@@ -20,7 +20,15 @@ sources:
     ref: "raw/reviews/20260507T044332Z-pr-883.md"
   - type: "reviews"
     ref: "raw/reviews/20260507T163353Z-pr-889.md"
-tags: [refactor, cleanup, charter, simplification]
+  - type: "reviews"
+    ref: "raw/reviews/20260508T032656Z-pr-890.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260508T034304Z-pr-890.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260508T033003Z-pr-890.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260508T033628Z-pr-890.md"
+tags: [refactor, cleanup, charter, simplification, pre-commit-gate]
 confidence: high
 ---
 
@@ -98,6 +106,23 @@ PR #883 (`pr/references/internal-consistency.md` から 5 件削除、+5/-5 行)
 
 PR #889 (`pr/references/fact-check.md` から 5 件削除、+5/-5 行で行数 438 不変) は連続 8 件目の sibling として references/ 配下への適用 3 例目を実証した。削除対象は (a) セクション見出し `Internal Likelihood Claims（検証必要・新規）` から `・新規` を削除、(b) 段落 `External Claim と直交する新カテゴリ` から `新` を削除、(c) blockquote 内の `歴史的経緯により` / `caller 側 (review.md / assessment-rules.md) の同期が必要なため別 PR で対応予定` 削除、(d) `新セクションは` を `### 外部仕様の検証結果 および ### 矛盾により除外された指摘 セクションは` に具体化、(e) blockquote 末尾の `caller 側の更新は別 PR で対応し、本ファイルと意図的に PR を分離している` を削除、の 5 種で、`歴史的経緯` / `別 PR で対応` / `意図的に PR を分離` / `新カテゴリ` / `新セクション` / `検証必要・新規` の 6 種 charter 違反パターンが含まれる混合ケース。**in-place edit 中心 (5 insertions + 5 deletions、行数 438 不変)** でも reviewer が「specificity 向上」(`新セクションは` → 具体的セクション名への置換) を改善方向の変更として認識した観察が追加され、本経験則の適用範囲は「-N 行の削除規模」だけでなく「行数不変の inline 置換」にも及ぶことが実証された。両 reviewer (prompt-engineer / code-quality、sole reviewer guard により co-reviewer 追加) ともに 0 blocking findings で 1 cycle 着地、累計 110 件削除 / 8 PR 連続成功で本経験則の信頼性は最高水準で再確認された。事前 Wiki query injection の効用は PR #883 に続き本 PR でも観察された。
 
+### PR #890 で発見された限界: slim refactor で識別子削除 / 構造ラベル変更を伴う場合は 3 cycle 構成になりうる (Phase C1 cleanup.md slim、Issue #845)
+
+PR #890 (`pr/cleanup.md` の Sub-skill Return Protocol セクションを 96 行 → 26 行に slim、-70 行) は連続 9 件目の sibling だが、**初めて 1 cycle 着地から外れた 3 cycle 構成** で収束した (cycle 1 で 4 件 broken refs 検出、cycle 2 で 1 件 Step 番号引用検出、cycle 3 で 0 blocking)。これは「reasoning prose 保持 / journal 削除」原則は維持されたが、**section heading や Item 番号体系を削除する slim refactor では同ファイル内の暗黙参照 (orphan dangling reference) が発生する** という限界を明らかにした。具体的な failure mode は 2 種:
+
+1. **broken intra-file reference (cycle 1, CRITICAL × 4)**: 削除した識別子 (例: `Pre-check Item N` / `場面 (a)/(b)` / `Item 0 Routing dispatcher`) を、同ファイル内 4 箇所の散文・WARNING メッセージが name-by-name で参照したまま残置 → 削除済み識別子への dangling reference。両 reviewer (prompt-engineer / code-quality) が独立検出した cross-validation 高信頼度。
+2. **literal 構造ラベル変更時の verbatim 引用 grep 不一致 (cycle 2, LOW × 1)**: `Step 1` ラベル → `inline (1)` 番号への構造的書き換えで、別の場所の verbatim 引用と grep 不一致。cycle 1 の broken reference (識別子削除) とは別 class (構造ラベル変更) の漏れ。
+
+**canonical 対策の拡張**: 既存経験則の `pre-commit baseline grep` 段階で、削除予定の識別子だけでなく **「変更する構造ラベル」も grep の対象に含める** ことが必要。具体的には:
+
+- 削除する識別子 (例: `Pre-check Item`、`場面 (a)/(b)`、`Routing dispatcher`) の同ファイル内全箇所を `grep -nE` で事前列挙
+- 変更する構造ラベル (例: `Step [0-9]+`、`Phase [0-9]+\.[0-9]+`、heading hierarchy 変更) の同ファイル内全箇所を `grep -nE` で事前列挙
+- 両 grep 結果を slim 後に再 grep し、**全 hit 件数が 0 になる** ことを pre-commit gate で確認
+
+この 2 拡張を pre-commit gate に追加することで、broken intra-file reference / 構造ラベル grep 不一致の両 sub-pattern を構造的に予防できる。PR #890 の 3 cycle 収束は事後的に修正コスト (+7/-7 + cycle 2 の最小差分) が低く済んだが、pre-commit gate に上記 2 拡張を入れていれば 0 cycle で landed していた可能性が高い。
+
+**規模スケールへの拡張**: PR #890 は -70 行という大規模 slim でありながら charter 違反引用は cycle 番号引用ではなく **section 構造の identity 表現** (heading / Item 番号) が中心だった点で、既存 8 PR (charter 違反引用の機械的削除中心) とは failure mode が異なる。本経験則の `削除単位の 3 分類` (inline parenthetical / bash literal comment / prose blockquote) は **削除対象が引用 phrase / 行 / 文節の場合** に適用される canonical で、**削除対象が section heading / Item 番号体系の場合** は本ページの新 sub-pattern (broken intra-file reference + 構造ラベル変更時の verbatim 引用 grep 不一致) を併用する必要がある。累計 117 件 / 9 PR で 8 PR (1 cycle) + 1 PR (3 cycle) の sibling 比率が確立し、本経験則の信頼性は high 水準を維持したまま「適用範囲の境界」を実測した。
+
 ## 関連ページ
 
 - [既存ページなし — 本ページが本テーマの初出](#)
@@ -112,3 +137,7 @@ PR #889 (`pr/references/fact-check.md` から 5 件削除、+5/-5 行で行数 4
 - [PR #882 review results](raw/reviews/20260507T040320Z-pr-882.md)
 - [PR #883 review results](raw/reviews/20260507T044332Z-pr-883.md)
 - [PR #889 review results](raw/reviews/20260507T163353Z-pr-889.md)
+- [PR #890 review cycle 1](raw/reviews/20260508T032656Z-pr-890.md)
+- [PR #890 review cycle 3 (mergeable)](raw/reviews/20260508T034304Z-pr-890.md)
+- [PR #890 fix cycle 1](raw/fixes/20260508T033003Z-pr-890.md)
+- [PR #890 fix cycle 2](raw/fixes/20260508T033628Z-pr-890.md)

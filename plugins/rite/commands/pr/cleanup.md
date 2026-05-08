@@ -43,7 +43,7 @@ After any sub-skill return, output two HTML-comment evidence lines (bare bracket
 
 The **correct-pattern**: in the same response turn, immediately (1) run Mandatory After Wiki Ingest Pre-write (`cleanup_post_ingest`); (2) output Phase 5.1 Cleanup Result Summary; (3) output Phase 5.2 Guidance for Next Steps with **inline `<!-- [cleanup:completed] -->` HTML sentinel at the trailing position of the final list item** (not on an independent line); (4) Phase 5.3 Step 1 deactivates flow state (`cleanup_completed`, `active: false`) and the turn closes — DO NOT stop earlier. Ending the turn after `rite:wiki:ingest` returns abandons the cleanup workflow mid-flight, leaves Phase 5 unexecuted, and leaves the flow state non-terminal.
 
-**Completion marker**: `[cleanup:completed]` is emitted as an HTML comment (`<!-- [cleanup:completed] -->`) inline at the trailing position of Phase 5.2's final list item — keeps the marker grep-matchable (`grep -F '[cleanup:completed]'`) while making `クリーンアップが完了しました` the user-visible final content. `stop-guard.sh` blocks premature `end_turn` during `cleanup` / `cleanup_pre_ingest` / `cleanup_post_ingest` and emits `manual_fallback_adopted` for the start.md 配下 incident detection.
+**Completion marker**: `[cleanup:completed]` is emitted as an HTML comment (`<!-- [cleanup:completed] -->`) inline at the trailing position of Phase 5.2's final list item — keeps the marker grep-matchable (`grep -F '[cleanup:completed]'`) while making `クリーンアップが完了しました` the user-visible final content. `stop-guard.sh` blocks premature `end_turn` during `cleanup` / `cleanup_pre_ingest` / `cleanup_post_ingest` and emits `manual_fallback_adopted` for `start.md` Phase 5.4.4.1 (Workflow Incident Detection) consumer.
 
 ---
 
@@ -1168,7 +1168,7 @@ Skill: rite:wiki:ingest
 
 > **⚠️ Loss-safe continuation**: `/rite:wiki:ingest` は同セッション内で Skill ツール経由で invoke される。ingest.md の結果パターン（成功/失敗）を確認し、Phase 4.W.3 に進むこと。ingest 成否に関わらず cleanup は続行する。
 
-> **🚨 Immediate after rite:wiki:ingest returns**: When the sub-skill outputs `<!-- [ingest:completed] -->` and returns control, do **NOT** end the turn. The sub-skill return is a CONTINUATION TRIGGER (see [Anti-pattern / Correct-pattern](#anti-pattern-what-not-to-do) above). **Immediately** proceed to Phase 4.W.3 result handling, then to 🚨 Mandatory After Wiki Ingest below, in the **same response turn**.
+> **🚨 Immediate after rite:wiki:ingest returns**: When the sub-skill outputs `<!-- [ingest:completed] -->` and returns control, do **NOT** end the turn. The sub-skill return is a CONTINUATION TRIGGER (see [Correct continuation pattern](#correct-continuation-pattern) above). **Immediately** proceed to Phase 4.W.3 result handling, then to 🚨 Mandatory After Wiki Ingest below, in the **same response turn**.
 
 ### 4.W.3 Result Handling
 

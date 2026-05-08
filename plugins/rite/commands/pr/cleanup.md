@@ -70,13 +70,10 @@ Retain the `plugin_root` value output above and use it for all subsequent `{plug
 
 Activate flow state so that `stop-guard.sh` blocks premature `end_turn` during cleanup phases.
 
-> **Convention note (#608 follow-up, create.md との非対称)**: 本ファイルの `flow-state-update.sh` 呼び出しは **`if ! ... ; then echo "WARNING..." >&2; fi`** で包み、失敗時にユーザー可視 WARNING を表示する defense-in-depth パターンを採用している。一方 `commands/issue/create.md` 系は bare `bash flow-state-update.sh` のみ (defense-in-depth なし)。本ファイル先行採用した意図的乖離で、stop-guard 保護がない場合のユーザー影響が cleanup (PR merge 直後の長い workflow) で特に大きいため。create.md 側の convention 揃えは別 Issue で追跡予定。
->
-> **Fail-safe**: hook 失敗時も WARNING のみで続行し cleanup 本体は中断しない。stop-guard 保護が一時的に無効になっても、ユーザーは "continue" を入力することで recovery できる。
+> **Fail-safe**: `flow-state-update.sh` 呼び出しは `if ! ... ; then echo "WARNING..." >&2; fi` で包み、失敗時もユーザー可視 WARNING のみで続行する。stop-guard 保護が一時的に無効になっても、ユーザーは "continue" を入力することで recovery できる。
 
 ```bash
-# state file の正しい path を解決 (schema_version=2 は per-session file、
-# legacy は single-file 形式)。Issue #680 で導入された canonical resolver を経由する。
+# state file の正しい path を解決 (schema_version=2 は per-session file、legacy は single-file 形式)。
 # helper が exit 失敗で空文字列を返す異常ケースは、後続 [ -f "" ] が false に評価され
 # create branch に進む (PR merge 直後で state file 不在の場合と同等の安全動作)。
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
@@ -89,13 +86,13 @@ if [ -n "$state_file" ] && [ -f "$state_file" ]; then
   # の protection が silent 無効化されるのを防ぐため、ここで明示的に re-activate する。
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
       --phase "cleanup" --active true --next "Execute cleanup phases. Do NOT stop."; then
-    echo "WARNING: flow-state-update.sh patch (cleanup activate) failed — stop-guard will not block premature end_turn during Phase 1-4. Investigate the helper exit reason in stderr above. Cleanup will still proceed, but the user may need to type 'continue' to resume." >&2
+    echo "WARNING: flow-state-update.sh patch (cleanup activate) failed — stop-guard will not block premature end_turn during Phase 1-4. Cleanup will still proceed, but the user may need to type 'continue' to resume." >&2
   fi
 else
   if ! bash {plugin_root}/hooks/flow-state-update.sh create \
       --phase "cleanup" --issue 0 --branch "" --pr 0 \
       --next "Execute cleanup phases. Do NOT stop."; then
-    echo "WARNING: flow-state-update.sh create (cleanup activate) failed — flow state was not created. stop-guard will exit immediately on every stop attempt with no protection. Investigate the helper exit reason in stderr above." >&2
+    echo "WARNING: flow-state-update.sh create (cleanup activate) failed — flow state was not created. stop-guard will exit immediately on every stop attempt with no protection." >&2
   fi
 fi
 ```
@@ -317,13 +314,7 @@ comment_body=$(echo "$comment_data" | jq -r '.body // empty')
 - `{comment_id}`: Used when updating the work memory in Phase 1.7.4 and Phase 3.5
 - `{comment_body}`: Used for detecting incomplete tasks
 
-**About variable persistence:**
-
-Bash variables (`comment_id`, `comment_body`) are only valid within the shell session. When the LLM (Claude) uses them across multiple Bash invocations, the values are lost. Therefore:
-
-1. The LLM **remembers** the retrieved `comment_id` value **within the conversation context**
-2. When updating the work memory in Phase 1.7.4, the remembered value is embedded directly into the command
-3. If needed, the value can be re-retrieved in Phase 1.7.4 (by running the same command as in 1.6.1)
+**About variable persistence**: Bash variables (`comment_id`, `comment_body`) do not persist across Bash tool invocations. The LLM retains `comment_id` in conversation context and embeds it directly when updating work memory in Phase 1.7.4 (or re-runs the command in 1.6.1 to re-fetch).
 
 If no comment is found (both local file and Issue comment), skip this check and proceed to Phase 2.
 
@@ -338,7 +329,7 @@ Detect unchecked checkboxes (`- [ ]`) in the "Progress" section of the work memo
 # grep: 未完了チェックボックス（- [ ]）を検出
 # head -10: 表示量を制限（大量のタスクがある場合の可読性確保）
 #
-# SIGPIPE 防止 (#398): `echo "$comment_body" | sed | grep | head -10` の pipeline では
+# SIGPIPE 防止: `echo "$comment_body" | sed | grep | head -10` の pipeline では
 # comment_body が pipe buffer (64KB) を超えると head -10 の早期終了で echo に SIGPIPE が届く。
 # here-string `<<<` で echo subprocess を排除し、sed が一時ファイルから読むため SIGPIPE 経路がない。
 progress_section=$(sed -n '/### 進捗/,/### /p' <<< "$comment_body")
@@ -1369,7 +1360,7 @@ if [[ -n "$wiki_section" ]]; then
   auto_ingest=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_ingest:/ { print; exit }' \
     | sed 's/[[:space:]]#.*//' | sed 's/.*auto_ingest:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
 fi
-case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="true" ;; esac  # #483: opt-out default
+case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="true" ;; esac  # opt-out default
 case "$auto_ingest" in true|yes|1) auto_ingest="true" ;; *) auto_ingest="false" ;; esac
 echo "wiki_enabled=$wiki_enabled auto_ingest=$auto_ingest"
 ```
@@ -1454,24 +1445,23 @@ If `pending_count == 0`, skip Phase 4.W.2-4.W.3 and proceed to Phase 5. Otherwis
 
 **MUST**: `/rite:wiki:ingest` の invoke は本 step の必須処理であり、**時間的制約・context 残量・セッション経過を理由にした skip は禁止**。skip が許される唯一の条件は Phase 4.W.1 で判定済みの「設定値による disable」「pending raw source が 0 件」などの機械的 Skip condition のみ。LLM の自己判断による省略は identity 違反である。
 
-> **Anti-pattern**: 「cleanup がすでに長いので wiki ingest は次回にしよう」「context が圧迫しているので wiki 起動を飛ばそう」と判断すること。これらは品質を犠牲にした expediency であり、Wiki 経路が silent skip される主要な原因である（Issue #560）。
+> **Anti-pattern**: 「cleanup がすでに長いので wiki ingest は次回にしよう」「context が圧迫しているので wiki 起動を飛ばそう」と判断すること。これらは品質を犠牲にした expediency であり、Wiki 経路が silent skip される主要な原因である。
 >
 > **Correct pattern**: Phase 4.W.1 で `pending_count >= 1` が確定したら、例外なく下記の Skill invocation を実行する。継続困難な場合は `/clear` + `/rite:resume` をユーザーに案内してセッションを継続させる。
 >
 > **Identity reference**: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` / `clear_resume_is_canonical` / `quality_over_expediency` principle を参照。
 
-**Pre-write** (before invoking `rite:wiki:ingest`, Issue #604): Update flow state to `cleanup_pre_ingest` so `stop-guard.sh` blocks premature `end_turn` during sub-skill execution and surfaces the phase-specific HINT (sub-skill in-flight, output `<!-- [cleanup:completed] -->` after Phase 5 in the SAME response turn). The `if ! cmd; then` rc capture is mandatory — silent patch failure here disables the stop-guard defence-in-depth that exists specifically to keep this turn from ending mid-sub-skill (#608 follow-up):
+**Pre-write** (before invoking `rite:wiki:ingest`): Update flow state to `cleanup_pre_ingest` so `stop-guard.sh` blocks premature `end_turn` during sub-skill execution and surfaces the phase-specific HINT. The `if ! cmd; then` rc capture is mandatory — silent patch failure here disables the stop-guard defence-in-depth that keeps this turn from ending mid-sub-skill:
 
 ```bash
+# --active true を明示する理由: Phase 1.0 patch が fail-safe path を経由した場合 active=false
+# 残存状態のまま到達する可能性があるため、各 patch で active=true を明示的に pin する。
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "cleanup_pre_ingest" --active true \
-    --next "After rite:wiki:ingest returns: run 🚨 Mandatory After Wiki Ingest (Pre-write cleanup_post_ingest) → Phase 5 Completion Report (cleanup_completed + <!-- [cleanup:completed] --> as inline HTML sentinel at the trailing position of the final list item of Phase 5.2, #652) in the SAME response turn. Do NOT stop." \
+    --next "After rite:wiki:ingest returns: run 🚨 Mandatory After Wiki Ingest (Pre-write cleanup_post_ingest) → Phase 5 Completion Report (cleanup_completed + <!-- [cleanup:completed] --> as inline HTML sentinel at the trailing position of the final list item of Phase 5.2) in the SAME response turn. Do NOT stop." \
     --if-exists; then
-  echo "WARNING: flow-state-update.sh patch (cleanup_pre_ingest) failed — stop-guard defence-in-depth is disabled for this Phase 4.W.2 invocation. Sub-skill rite:wiki:ingest will still be invoked, but premature end_turn will not be blocked. Investigate the helper exit reason in stderr above before relying on this protection again." >&2
+  echo "WARNING: flow-state-update.sh patch (cleanup_pre_ingest) failed — stop-guard defence-in-depth is disabled for this Phase 4.W.2 invocation. Sub-skill rite:wiki:ingest will still be invoked, but premature end_turn will not be blocked." >&2
 fi
-# --active true を明示する理由は Phase 1.0 と同じ。Phase 1.0 patch が
-# WARNING で続行した fail-safe path を経由した場合、active=false 残存状態のまま Phase 4.W.2 まで
-# 到達する可能性があるため、各 patch で active=true を明示的に pin する (defense-in-depth 完全化)。
 ```
 
 Invoke the `/rite:wiki:ingest` Skill to process pending raw sources into Wiki pages:
@@ -1480,9 +1470,9 @@ Invoke the `/rite:wiki:ingest` Skill to process pending raw sources into Wiki pa
 Skill: rite:wiki:ingest
 ```
 
-> **⚠️ NFR-3 (Issue #525 再発防止)**: `/rite:wiki:ingest` は同セッション内で Skill ツール経由で invoke される。ingest.md の結果パターン（成功/失敗）を確認し、Phase 4.W.3 に進むこと。ingest の成功/失敗に関わらず cleanup は続行する（loss-safe continuation）。
+> **⚠️ NFR-3**: `/rite:wiki:ingest` は同セッション内で Skill ツール経由で invoke される。ingest.md の結果パターン（成功/失敗）を確認し、Phase 4.W.3 に進むこと。ingest の成功/失敗に関わらず cleanup は続行する（loss-safe continuation）。
 
-> **🚨 Immediate after rite:wiki:ingest returns** (Issue #604): When the sub-skill outputs `<!-- [ingest:completed] -->` and returns control, do **NOT** end the turn. The sub-skill return is a CONTINUATION TRIGGER (see [Anti-pattern / Correct-pattern](#anti-pattern-what-not-to-do) above). **Immediately** proceed to Phase 4.W.3 result handling, then to 🚨 Mandatory After Wiki Ingest below, in the **same response turn**.
+> **🚨 Immediate after rite:wiki:ingest returns**: When the sub-skill outputs `<!-- [ingest:completed] -->` and returns control, do **NOT** end the turn. The sub-skill return is a CONTINUATION TRIGGER (see [Anti-pattern / Correct-pattern](#anti-pattern-what-not-to-do) above). **Immediately** proceed to Phase 4.W.3 result handling, then to 🚨 Mandatory After Wiki Ingest below, in the **same response turn**.
 
 ### 4.W.3 Result Handling
 
@@ -1493,7 +1483,7 @@ Skill: rite:wiki:ingest
 [CONTEXT] WIKI_INGEST_DONE=1; pr={pr_number}; type=cleanup_ingest
 ```
 
-**Push failure detection** (Issue #555): after the `rite:wiki:ingest` Skill invocation returns, inspect the ingest Skill's stdout lines emitted in this conversation context for the marker `push=failed` (written by `wiki-worktree-commit.sh` via ingest.md Phase 5.1 when `wiki-worktree-commit.sh` returns rc=4). When detected, the commit has landed on the local wiki branch but the origin push failed — AC-3 requires an observable sentinel so cleanup continues (loss-safe) while the incident layer can register the divergence.
+**Push failure detection**: after the `rite:wiki:ingest` Skill invocation returns, inspect the ingest Skill's stdout lines emitted in this conversation context for the marker `push=failed` (written by `wiki-worktree-commit.sh` via ingest.md Phase 5.1 when it returns rc=4). When detected, the commit has landed on the local wiki branch but the origin push failed — emit an observable sentinel so cleanup continues (loss-safe) while the incident layer can register the divergence.
 
 **LLM detection and substitution rule**: Claude must inspect the ingest Skill's output (which appears in the conversation context between Phase 4.W.2 invocation and this block) for a line matching the `push=failed` pattern. Typical positive match: `[wiki-worktree-commit] committed=1; branch=wiki; head=<sha>; push=failed`. Typical negatives: `push=ok`, `reason=no-pending`, or no `[wiki-worktree-commit]` status line at all (ingest skipped). Based on the detection result, substitute `{wiki_push_failed}` with either `"true"` (detected) or `"false"` (not detected). Do NOT rely on shell env vars — Claude Code's Bash tool does not persist state across tool calls.
 
@@ -1511,8 +1501,8 @@ wiki_branch=$(awk '/^wiki:/{h=1;next} h && /^[[:space:]]+branch_name:/{print;exi
 [ -z "$wiki_branch" ] && wiki_branch="wiki"
 
 if [ "$wiki_push_failed" = "true" ]; then
-  # reason=commit_rc_4 で start.md Phase 5.6.2 の aggregation pattern と統一する (cleanup 固有情報は
-  # source= key で併記)。旧 `reason=commit_ok_push_failed` は aggregation table と drift していた
+  # reason=commit_rc_4 で start.md Phase 5.6.2 の aggregation pattern と統一する
+  # (cleanup 固有情報は source= key で併記)。
   echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; source=cleanup_4W"
   emit_err=$(mktemp /tmp/rite-wiki-pushfail-emit-err-XXXXXX 2>/dev/null) || emit_err=""
   trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
@@ -1531,8 +1521,7 @@ if [ "$wiki_push_failed" = "true" ]; then
   fi
   [ -n "$emit_err" ] && rm -f "$emit_err"
   trap - EXIT INT TERM HUP
-  # ユーザー可視の push 失敗警告は Phase 5.1 Completion Report display rules に一元化した。
-  # ここでは sentinel emit のみを行い、重複メッセージを避ける (review.md / fix.md / close.md と同じ pattern)。
+  # ユーザー可視の push 失敗警告は Phase 5.1 Completion Report display rules に一元化済み。
 fi
 ```
 
@@ -1570,66 +1559,53 @@ trap - EXIT INT TERM HUP
 
 **Non-blocking guarantee**: Regardless of success or failure, proceed to Phase 5 (Completion Report).
 
-### 🚨 Mandatory After Wiki Ingest (Issue #604 / #650 — Defense-in-Depth)
+### 🚨 Mandatory After Wiki Ingest (Defense-in-Depth)
 
 > **⚠️ 同 turn 内で必ず実行すること (MUST execute in the SAME response turn)**: `rite:wiki:ingest` の return 直後、**応答を終了せずに** 以下の Step 0 → Step 1 → Step 2 を順に即座に実行する。Phase 5 (Completion Report) は本セクションを経由してのみ実行される唯一の経路である。
 
 > **Enforcement**: `stop-guard.sh` は `cleanup_pre_ingest` / `cleanup_post_ingest` phase で `end_turn` を block し、`manual_fallback_adopted` workflow_incident sentinel を stderr に echo する。protocol violation は次回 turn の Phase 5.4.4.1 (start.md 配下) で post-hoc 検出される。
 
-> **⚠️ Known tracking item**: 下記 Self-check は LLM の自己 introspection に依存しており、silent corruption の risk を trace 可能な形で記録する目的で本注記を残している。誤 Yes 判定で Step 0/1 skip → stale HINT、誤 No 判定で cleanup_completed phase を cleanup_post_ingest に巻き戻し (Step 0/1 の spec 参照)、双方向で silent inconsistency が起きうる。多重故障時の safety net は session-end.sh cleanup lifecycle WARN (次セッション起動時に観測可能) であるため単発完全 silent ではないが、Self-check を flow state 直読の機械判定 (`current_phase=cleanup_completed && current_active=false` なら skip) に置換する refactor を別 Issue で tracking 予定。現状は defense-in-depth として機能している範疇。
-
 **Self-check and branching**:
 
-1. **Has `<!-- [cleanup:completed] -->` been output (as inline HTML sentinel at the trailing position of the final list item of Phase 5.2)?** (grep the recent response text — `grep -F '[cleanup:completed]'` matches HTML-comment form regardless of inline / independent-line position. **Note**: この broad match は **terminal state 到達判定**用途 (Routing dispatcher Step 2 の `[cleanup:completed]` matcher と同意味の「存在確認」) であり、独立行 regression 検出 (independent-line emission の再発検出) 用途には不十分。独立行 regression を検出したい場合は `grep -nE '^<!--\s*\[cleanup:completed\]\s*-->$'` 等、**行頭から独立行で出力された case のみをマッチ**する正規表現を別途使用する。本 Item 1 は terminal 判定の broad match に留め、regression 検出は別機構 (review-fix loop / lint 等) に委譲する)
-   - **Yes** — terminal state reached. flow state の `.phase` は既に `cleanup_completed`、`active: false`。**本 Yes 分岐は terminal 到達後の重複呼び出し防止のための例外経路**であり、non-terminal (phase=cleanup_pre_ingest) 時点の Step 0/1 正規路 (Correct-pattern の項目 (1)「run 🚨 Mandatory After Wiki Ingest Pre-write (`cleanup_post_ingest`)」) と矛盾しないことに留意する。Step 0 / Step 1 below MUST be skipped. 理由: `cleanup_completed` は terminal state であり、Step 0/1 の `flow-state-update.sh patch --if-exists` は active=false でも file が存在すれば patch するため、phase を `cleanup_post_ingest` に巻き戻して flow state を破壊する。phase-transition-whitelist.sh の terminal acceptance は next phase のみを判定し、prev が terminal でも accept するため whitelist 保護には依存できない — 実行しないことで確実に防ぐ。
-   - **No** — Phase 5 has NOT been output yet (phase=cleanup_pre_ingest など non-terminal 状態)。Steps 0-2 below are **critical** — execute immediately to force the workflow into the terminal state (Step 0/1 が正規 handoff パス)。
+1. **Has `<!-- [cleanup:completed] -->` been output (as inline HTML sentinel at the trailing position of the final list item of Phase 5.2)?** (`grep -F '[cleanup:completed]'` で HTML-comment form を terminal 判定 broad match。独立行 regression 検出は `grep -nE '^<!--\s*\[cleanup:completed\]\s*-->$'` の行頭マッチ正規表現を別途使用する)
+   - **Yes** — terminal state reached. flow state は既に `cleanup_completed, active: false`。Step 0 / Step 1 below MUST be skipped. 理由: `flow-state-update.sh patch --if-exists` は active=false でも file が存在すれば patch するため、実行すると phase を `cleanup_post_ingest` に巻き戻して flow state を破壊する (phase-transition-whitelist.sh の terminal acceptance は next phase のみを判定するため依存できない — 実行しないことで確実に防ぐ)。
+   - **No** — Phase 5 has NOT been output yet。Steps 0-2 below are **critical** — execute immediately to force the workflow into the terminal state。
 
-**Step 0: Immediate Bash Action**: Execute this bash block as the **very first tool call** after `rite:wiki:ingest` returns (Self-check No branch), **before any other tool use or narrative text**. This step replaces the natural turn-boundary point ("the sub-skill finished") with a concrete, non-optional next tool call — the LLM is invoking a bash command, not ending a task. The bash block re-affirms the flow-state phase (idempotent with Step 1) and, on failure only, emits a `[CONTEXT] STEP_0_PATCH_FAILED=1` retained flag to stderr that the LLM can observe in subsequent context (the actual continuation marker `[CONTEXT] WIKI_INGEST_DONE=1` is produced by Phase 4.W.3 on success path *before* Step 0 runs, and `<!-- [ingest:completed] -->` HTML comment sentinel is produced by the sub-skill itself — `[ingest:completed:` colon form は future-proof defensive matcher で現状 emitter は不在、Routing dispatcher Step 1 の matcher 定義 (4 種集約) と整合)。**stderr observability 前提**: 本 flag は Claude Code の `ToolUseResult.stderr` として後続 turn の context に流入する — これは `pr/review.md` の `[CONTEXT] LOCAL_SAVE_FAILED=1` / `pr/fix.md` の `[CONTEXT] WM_UPDATE_FAILED=1` 他 40+ 箇所で採用されている repo-wide convention に依拠している (create.md と同一 convention、40+ 箇所同時改修契約)。
+**Step 0: Immediate Bash Action**: Execute this bash block as the **very first tool call** after `rite:wiki:ingest` returns (Self-check No branch), **before any other tool use or narrative text**. This step replaces the natural turn-boundary point ("the sub-skill finished") with a concrete, non-optional next tool call. The bash block re-affirms the flow-state phase (idempotent with Step 1) and, on failure only, emits a `[CONTEXT] STEP_0_PATCH_FAILED=1` retained flag to stderr (repo-wide `ToolUseResult.stderr` convention で後続 turn の context に流入する)。
 
 ```bash
-# Idempotent patch + retained flag on failure (aligned with create.md Step 0 canonical pattern, Issue #650).
-# --preserve-error-count for same-phase self-patch (RE-ENTRY escalation integrity):
-# 未指定時は patch mode JQ_FILTER が .error_count = 0 でリセットし
-# stop-guard.sh の RE-ENTRY DETECTED escalation + THRESHOLD=3 bail-out が永久に unreachable になる。
-# --if-exists で flow state file 不在時は silent skip (Phase 1.0 Activate 未経由で本セクション到達する
-# 経路は本来存在しないが defense-in-depth として付与)。
+# --preserve-error-count: 未指定時は JQ_FILTER が .error_count = 0 でリセットし、
+#   stop-guard.sh の RE-ENTRY DETECTED escalation + THRESHOLD=3 bail-out が unreachable になる。
+# --if-exists: flow state file 不在時は silent skip (defense-in-depth)。
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "cleanup_post_ingest" --active true \
     --next "Step 0 Immediate Bash Action fired; proceeding to Phase 5 Completion Report. Do NOT stop." \
     --if-exists \
     --preserve-error-count; then
   echo "[CONTEXT] STEP_0_PATCH_FAILED=1" >&2
-  # 非 blocking: Step 1 が idempotent patch として再試行する。ここで exit 1 すると
-  # 既に進捗している workflow を kill してしまうため、warning のみで continue する。
-  # 本 flag は stop-guard.sh cleanup_post_ingest case arm の HINT で grep 参照される
-  # (create.md と同一 pattern): dead marker ではなく
-  # LLM post-hoc 観察用の retained flag。検出時は Step 1 の redundant patch が primary 防御層になる。
+  # Step 1 が idempotent patch として再試行する non-blocking failure。
 fi
 ```
 
-> **Rationale (Issue #650)**: ユーザー報告症状 (`rite:wiki:ingest` return 直後に caller が implicit stop し、`continue` 介入が必要) の根本原因は、LLM が sub-skill return tag (`<!-- [ingest:completed] -->`) を turn 境界として誤認する turn-boundary heuristic の発火。これは #634/#636 で create→interview 境界に対して解決した regression pattern と同型で、本 Issue は cleanup→ingest 境界に canonical pattern を適用する。Step 0 は **具体的な bash tool 呼び出し** を sub-skill return 直後の必須アクションとして挿入することで、turn 境界シグナルを消去する — LLM は「終わった」ではなく「この bash を実行する必要がある」と認識する。Step 0 は Step 1 と idempotent (patch mode は重複実行耐性あり) — この冗長性こそが防御機構である。
+> **Rationale**: caller が implicit stop し `continue` 介入が必要となる症状の根本原因は、LLM が sub-skill return tag (`<!-- [ingest:completed] -->`) を turn 境界として誤認する turn-boundary heuristic の発火。Step 0 は **具体的な bash tool 呼び出し** を sub-skill return 直後の必須アクションとして挿入することで turn 境界シグナルを消去する。Step 0 は Step 1 と idempotent (patch mode は重複実行耐性あり) — この冗長性が防御機構である。
 >
-> **DRIFT-CHECK ANCHOR (semantic — Issue #650 / Issue #660)**: 本 Step 0 bash block は `hooks/stop-guard.sh` `cleanup_pre_ingest` case arm WORKFLOW_HINT (`bash plugins/rite/hooks/flow-state-update.sh patch --phase cleanup_post_ingest --active true ... --preserve-error-count` を literal snapshot として含む) と **2 site が bash 引数対称** (`--phase` / `--active` / `--next` / `--preserve-error-count` の symmetry)。いずれか 1 site を更新する際は対称先も同時更新する必要がある。symmetry が崩れると error_count reset loop または `active=false` 残存による stop-guard early return (Issue #660) が再発する。Issue #660 で `--active true` を symmetry 引数 list に追加したため本 ANCHOR comment も 4-arg 表記に統一済み (literal block (Step 0 Immediate Bash Action / Step 1 idempotent re-patch fenced bash blocks) は既に `--active true` を含む)。`--if-exists` は本 Step 0 / Step 1 (cleanup.md 側) および stop-guard.sh の WORKFLOW_HINT の 2 箇所に存在する。**`wiki/ingest.md` Phase 9.1 Step 3 (terminal patch `ingest_completed, active=false`) は ring 構造の successor state を patch するため直接 symmetry 対象ではない** が、sub-skill return 後 caller Mandatory After が `cleanup_post_ingest` へ書き戻す ring handoff の一端として列挙する (create.md canonical の第 2 site (create-interview.md) が flow-state patch を呼ばない非対称構造と同じ rationale)。
+> **DRIFT-CHECK ANCHOR (semantic)**: 本 Step 0 bash block は `hooks/stop-guard.sh` `cleanup_pre_ingest` case arm WORKFLOW_HINT と **2 site が bash 引数対称** (`--phase` / `--active` / `--next` / `--preserve-error-count` / `--if-exists` の symmetry)。いずれか 1 site を更新する際は対称先も同時更新する必要がある。symmetry が崩れると error_count reset loop または `active=false` 残存による stop-guard early return が再発する。**`wiki/ingest.md` Phase 9.1 Step 3 (terminal patch `ingest_completed, active=false`) は ring 構造の successor state を patch するため直接 symmetry 対象ではない** が、sub-skill return 後 caller Mandatory After が `cleanup_post_ingest` へ書き戻す ring handoff の一端として列挙する。
 
-**Step 1**: Update flow state to post-ingest phase (atomic — idempotent re-patch). The Step 0 bash block (above) already wrote `cleanup_post_ingest` via idempotent patch; this second write refreshes the timestamp and `next_action`. The 2 重 patch design ensures at least one of Step 0 / Step 1 succeeds even under transient failures. 同時失敗のみ `[CONTEXT] STEP_1_PATCH_FAILED=1` として retained flag を残す (`[CONTEXT] STEP_0_PATCH_FAILED=1` と併せて LLM が post-hoc で観察可能)。`--preserve-error-count` も Step 0 と対称に付与 — これがないと RE-ENTRY DETECTED escalation + THRESHOLD bail-out が永久に unreachable になる:
+**Step 1**: Update flow state to post-ingest phase (idempotent re-patch)。Step 0 が既に書いた `cleanup_post_ingest` の timestamp / `next_action` を refresh する。2 重 patch design は transient failure 下でも Step 0 / Step 1 のいずれかが成功することを保証し、同時失敗時のみ `[CONTEXT] STEP_1_PATCH_FAILED=1` を retained flag として残す。`--preserve-error-count` は Step 0 と対称に付与 (RE-ENTRY DETECTED escalation + THRESHOLD bail-out を機能させるため):
 
 ```bash
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "cleanup_post_ingest" --active true \
-    --next "rite:wiki:ingest completed/skipped/failed. Proceed to Phase 5 (Completion Report) and emit <!-- [cleanup:completed] --> as inline HTML sentinel at the trailing position of the final list item of Phase 5.2 (#652) in the SAME response turn. Do NOT stop." \
+    --next "rite:wiki:ingest completed/skipped/failed. Proceed to Phase 5 (Completion Report) and emit <!-- [cleanup:completed] --> as inline HTML sentinel at the trailing position of the final list item of Phase 5.2 in the SAME response turn. Do NOT stop." \
     --if-exists \
     --preserve-error-count; then
   echo "[CONTEXT] STEP_1_PATCH_FAILED=1" >&2
-  # 非 blocking: Step 0 / Step 1 同時失敗の persistent 障害シグナルを LLM が post-hoc で
-  # 観察可能にする。stop-guard.sh cleanup_post_ingest case arm の HINT で grep 参照される。
 fi
-# --active true 明示 (Phase 1.0 と同じ理由)。Phase 1.0 patch 失敗時の
-# fail-safe path 経由で到達した場合に備え、defense-in-depth を各 patch 箇所で完全化する。
 ```
 
-**Step 2**: **→ Proceed to Phase 5 now**. The Phase 5 procedure handles the user-visible completion message, the `<!-- [cleanup:completed] -->` HTML comment sentinel (inline at the trailing position of the final list item of Phase 5.2 (ordered list), #652), and the final flow-state deactivate (`cleanup_completed`, `active: false`) in a single contiguous block.
+**Step 2**: **→ Proceed to Phase 5 now**. The Phase 5 procedure handles the user-visible completion message, the `<!-- [cleanup:completed] -->` HTML comment sentinel (inline at the trailing position of the final list item of Phase 5.2 ordered list), and the final flow-state deactivate (`cleanup_completed`, `active: false`) in a single contiguous block.
 
-> **Anti-pattern reminder**: Do NOT output a recap line such as "※ wiki ingest 完了。次は Phase 5 完了レポート" as the **last** content of the response — that would create a turn-boundary heuristic trigger (the LLM may end the turn after a "looks final" recap line). Recap lines are acceptable as **leading** informational content only; the final user-visible content MUST be the Phase 5.2 ordered list whose final item carries the inline HTML-commented sentinel (#652).
+> **Anti-pattern reminder**: Do NOT output a recap line such as "※ wiki ingest 完了。次は Phase 5 完了レポート" as the **last** content of the response — that would create a turn-boundary heuristic trigger. Recap lines are acceptable as **leading** informational content only; the final user-visible content MUST be the Phase 5.2 ordered list whose final item carries the inline HTML-commented sentinel.
 
 ---
 

@@ -75,7 +75,10 @@ fi
 echo ""
 echo "--- Lower bounds (current-state protection) ---"
 
-ask_count=$(grep -c 'AskUserQuestion' "$START_MD" || true)
+# 上限 assert と単位を揃えるため `grep -oE | wc -l` (occurrence 単位) に統一する。
+# `grep -c` (line 単位) では 1 行に複数出現する phrase を 1 とカウントしてしまい、後続 PR で
+# 1 行集約 slim を行った際に行数 30 を満たしつつ実出現が 30 未満になる ratchet 漏れリスクがある。
+ask_count=$(grep -oE 'AskUserQuestion' "$START_MD" | wc -l | tr -d ' ')
 if [ "$ask_count" -ge 30 ]; then
   pass "Lower: \`AskUserQuestion\` count >= 30 (actual=$ask_count)"
 else
@@ -83,7 +86,7 @@ else
 fi
 
 # `Mandatory After` (markdown heading 内) または `🚨 After ` (review/fix の after section) を集計
-mandatory_count=$(grep -cE 'Mandatory After|🚨 After ' "$START_MD" || true)
+mandatory_count=$(grep -oE 'Mandatory After|🚨 After ' "$START_MD" | wc -l | tr -d ' ')
 if [ "$mandatory_count" -ge 30 ]; then
   pass "Lower: \`Mandatory After\` count >= 30 (actual=$mandatory_count)"
 else
@@ -96,14 +99,18 @@ echo "--- Symmetry (flow-state-update.sh create 5-arg invariant) ---"
 
 # bash code block 内 (```bash ... ```) の `flow-state-update.sh create` 呼び出しのみ対象。
 # markdown 散文 (table cell / prose mention) の言及は対象外。
+# 各 create 呼び出しに対して、bash block 終端 ``` までを動的に block として抽出する
+# (固定 +7 行 window では line continuation の長さに依存して block を取り損ねるリスクがある)。
+# awk でファイル全体を 1 度走査し、各 block を `\0` 区切りで出力 → bash の read -d '' で受ける。
 total=0
 asymmetric=0
-while IFS= read -r line_no; do
-  [ -z "$line_no" ] && continue
+while IFS= read -r -d '' block; do
+  [ -z "$block" ] && continue
   total=$((total + 1))
-  end=$((line_no + 7))
-  block=$(sed -n "${line_no},${end}p" "$START_MD")
+  first_line=$(printf '%s' "$block" | head -1 | sed 's/^[[:space:]]*//' | cut -c1-80)
   missing=""
+  # 引数検出 regex は `--flag value` (space 区切り) 形式を前提とする。`--flag=value` 形式は
+  # 現状 start.md では使われていないが、将来書式変更時はこの regex を拡張する必要がある。
   for flag in '--phase' '--issue' '--branch' '--pr' '--next'; do
     if ! printf '%s\n' "$block" | grep -qE -- "${flag}([[:space:]]|$)"; then
       missing="${missing} ${flag}"
@@ -111,12 +118,20 @@ while IFS= read -r line_no; do
   done
   if [ -n "$missing" ]; then
     asymmetric=$((asymmetric + 1))
-    echo "  ⚠️ asymmetric (line ${line_no}, missing:${missing})"
+    echo "  ⚠️ asymmetric (block starting: ${first_line}, missing:${missing})"
   fi
 done < <(awk '
-  /^```bash/ { in_block=1; next }
-  /^```$/    { in_block=0; next }
-  in_block && /flow-state-update\.sh create/ { print NR }
+  /^```bash/      { in_block=1; in_create=0; block=""; next }
+  /^```$/         {
+                    if (in_create) { printf "%s%c", block, 0 }
+                    in_block=0; in_create=0; block=""; next
+                  }
+  in_block && /flow-state-update\.sh create/ {
+                    in_create=1
+                    block = (block == "" ? $0 : block "\n" $0)
+                    next
+                  }
+  in_block && in_create { block = block "\n" $0 }
 ' "$START_MD")
 
 if [ "$asymmetric" -eq 0 ]; then

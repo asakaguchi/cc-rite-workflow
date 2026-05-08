@@ -50,21 +50,23 @@ echo ""
 echo "--- Upper bounds (Charter limits) ---"
 
 # `grep -oE 'Issue #[0-9]+'` は数字限定のため `Issue #N` placeholder は自動除外される
-issue_count=$(grep -oE 'Issue #[0-9]+' "$START_MD" | wc -l | tr -d ' ')
+# 注: `set -euo pipefail` 配下では grep 0 マッチ (exit 1) で pipeline 全体が abort するため、
+# `{ grep ... || true; }` で 0 マッチを exit 0 に正規化する (ratchet ideal 達成時の silent abort 防止)
+issue_count=$({ grep -oE 'Issue #[0-9]+' "$START_MD" || true; } | wc -l | tr -d ' ')
 if [ "$issue_count" -le 1 ]; then
   pass "Upper: \`Issue #[0-9]+\` count <= 1 (actual=$issue_count)"
 else
   fail "Upper: \`Issue #[0-9]+\` count <= 1 (actual=$issue_count, expected <=1)"
 fi
 
-cycle_count=$(grep -oE 'cycle [0-9]+' "$START_MD" | wc -l | tr -d ' ')
+cycle_count=$({ grep -oE 'cycle [0-9]+' "$START_MD" || true; } | wc -l | tr -d ' ')
 if [ "$cycle_count" -le 1 ]; then
   pass "Upper: \`cycle [0-9]+\` count <= 1 (actual=$cycle_count)"
 else
   fail "Upper: \`cycle [0-9]+\` count <= 1 (actual=$cycle_count, expected <=1)"
 fi
 
-bell_count=$(grep -oE '🚨' "$START_MD" | wc -l | tr -d ' ')
+bell_count=$({ grep -oE '🚨' "$START_MD" || true; } | wc -l | tr -d ' ')
 if [ "$bell_count" -le 5 ]; then
   pass "Upper: \`🚨\` count <= 5 (actual=$bell_count)"
 else
@@ -78,15 +80,18 @@ echo "--- Lower bounds (current-state protection) ---"
 # 上限 assert と単位を揃えるため `grep -oE | wc -l` (occurrence 単位) に統一する。
 # `grep -c` (line 単位) では 1 行に複数出現する phrase を 1 とカウントしてしまい、後続 PR で
 # 1 行集約 slim を行った際に行数 30 を満たしつつ実出現が 30 未満になる ratchet 漏れリスクがある。
-ask_count=$(grep -oE 'AskUserQuestion' "$START_MD" | wc -l | tr -d ' ')
+# 注: 0 マッチ時の pipefail abort 回避は `{ ... || true; }` で実装 (上限 assert と同パターン)。
+ask_count=$({ grep -oE 'AskUserQuestion' "$START_MD" || true; } | wc -l | tr -d ' ')
 if [ "$ask_count" -ge 30 ]; then
   pass "Lower: \`AskUserQuestion\` count >= 30 (actual=$ask_count)"
 else
   fail "Lower: \`AskUserQuestion\` count >= 30 (actual=$ask_count, expected >=30)"
 fi
 
-# `Mandatory After` (markdown heading 内) または `🚨 After ` (review/fix の after section) を集計
-mandatory_count=$(grep -oE 'Mandatory After|🚨 After ' "$START_MD" | wc -l | tr -d ' ')
+# `Mandatory After` (markdown heading 内) または `🚨 After ` (review/fix の after section) を集計。
+# 注: 別 Issue #907 で heading-anchor 限定への変更を検討中。本 PR では現状仕様 (occurrence 単位、
+# heading + prose mention 合算) を維持する。
+mandatory_count=$({ grep -oE 'Mandatory After|🚨 After ' "$START_MD" || true; } | wc -l | tr -d ' ')
 if [ "$mandatory_count" -ge 30 ]; then
   pass "Lower: \`Mandatory After\` count >= 30 (actual=$mandatory_count)"
 else
@@ -144,7 +149,7 @@ else
 fi
 
 # === Summary ===
-if ! print_summary "$(basename "$0" .test.sh)" \
+if ! print_summary "$(basename "$0")" \
   "後続 PR (B-H) の slim 進捗で上限超過パターンを削減してください。STRICT_CHARTER=1 での fail は ratchet として設計されています。"; then
   exit 1
 fi

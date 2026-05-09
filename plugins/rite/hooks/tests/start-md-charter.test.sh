@@ -88,14 +88,16 @@ else
   fail "Lower: \`AskUserQuestion\` count >= 30 (actual=$ask_count, expected >=30)"
 fi
 
-# `Mandatory After` (markdown heading 内) または `🚨 After ` (review/fix の after section) を集計。
-# 注: 別 Issue #907 で heading-anchor 限定への変更を検討中。本 PR では現状仕様 (occurrence 単位、
-# heading + prose mention 合算) を維持する。
-mandatory_count=$({ grep -oE 'Mandatory After|🚨 After ' "$START_MD" || true; } | wc -l | tr -d ' ')
-if [ "$mandatory_count" -ge 30 ]; then
-  pass "Lower: \`Mandatory After\` count >= 30 (actual=$mandatory_count)"
+# heading-anchor 限定: `### 🚨 Mandatory After …` (h3) と `#### N.N.N 🚨 After …` (h4) を行頭マッチで集計。
+# 散文 mention (`**🚨 Immediate after …**`) や table cell の参照 (`| 🚨 After Review |`) は除外する。
+# occurrence 単位の旧 regex (`Mandatory After|🚨 After `) は heading 14 件 + prose mention 30 件超 = 51 件
+# となり、後続 slim PR が prose mention を削減すると heading 数が無傷でも閾値割れする false-positive
+# ratchet を生んだ。本 assert は heading 自体の削除のみを catch する真正な構造保護として機能する。
+mandatory_count=$({ grep -oE '^#+ .*🚨 (Mandatory After|After )' "$START_MD" || true; } | wc -l | tr -d ' ')
+if [ "$mandatory_count" -ge 17 ]; then
+  pass "Lower: \`Mandatory After\` heading-anchor count >= 17 (actual=$mandatory_count)"
 else
-  fail "Lower: \`Mandatory After\` count >= 30 (actual=$mandatory_count, expected >=30)"
+  fail "Lower: \`Mandatory After\` heading-anchor count >= 17 (actual=$mandatory_count, expected >=17)"
 fi
 
 # === 対称性 assert: flow-state-update.sh create の 5 引数 ===

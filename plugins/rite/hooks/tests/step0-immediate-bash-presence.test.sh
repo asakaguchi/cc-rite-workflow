@@ -89,11 +89,20 @@ echo "=== TC-1: create.md Mandatory After Interview Step 0 ==="
 # TC-1.1: VERY FIRST tool call keyword presence (Mandatory After Interview)
 # uppercase 形式のみ pin する。canonical phrasing (sub-skill-return-protocol.md
 # 「3 layer canonical signaling pattern」blockquote の共通 keyword) が uppercase で固定されているため、
-# lowercase phrasing は drift の兆候として fail させる意図。alternation regex で 2 種の bold パターン
-# (`**VERY FIRST tool call**` / `**VERY FIRST tool call (cognitive action)**`) を両方許容する形式に
-# 拡張している — 後者は Mandatory After Delegation prose の Self-check が cognitive 判定行為であり
-# tool call ではないため、canonical scheme と分離した phrasing を採用しているため。
-assert_grep "TC-1.1: create.md に uppercase '**VERY FIRST tool call**' or '**VERY FIRST tool call (cognitive action)**' keyword が存在 (canonical phrasing pin)" \
+# lowercase phrasing は drift の兆候として fail させる意図。
+#
+# alternation regex の現状と限界 (実情の disclaimer):
+# 第 1 branch `\*\*VERY FIRST tool call\*\*` のみが create.md の現在の phrasing (line 209 Mandatory
+# After Interview prose) と match する。第 2 branch `\*\*VERY FIRST tool call \(cognitive action\)\*\*`
+# は **dead branch** で、create.md 内に同形式の literal は存在しない (Mandatory After Delegation prose
+# line 306 は long bold `**MUST proceed to Self-check as your VERY FIRST cognitive action BEFORE ...
+# narrative**` の中に "VERY FIRST cognitive action" を含む形式で、第 2 branch の syntactic shape とは
+# 一致しない)。つまり Mandatory After Delegation prose の bold は本 TC-1.1 では直接 pin できておらず、
+# TC-4.1 の `VERY FIRST` count >= 3 で間接 catch されている (line 209 の Interview prose 内で
+# `**VERY FIRST tool call**` 1 回 + line 306 の Delegation prose 内で `VERY FIRST` 出現 2 回 = 計 3 回)。
+# 第 2 branch は将来 phrasing を `**VERY FIRST tool call (cognitive action)**` 形式に統一した場合の
+# forward compatibility 用に保持し、現状は dead branch として disclaim する (Issue #910 review F-03)。
+assert_grep "TC-1.1: create.md に uppercase '**VERY FIRST tool call**' keyword が存在 (canonical phrasing pin、現状は第 1 branch のみ active)" \
   "$CREATE_MD" \
   '\*\*VERY FIRST tool call(\*\*| \(cognitive action\)\*\*)'
 
@@ -270,8 +279,11 @@ assert_grep "TC-5.5: create-interview.md plain-text reminder blockquote 行に '
 DRIFT_HINT="\
 This test pins imperative keyword presence (Issue #910 mitigation) across
 4 cross-orchestrator grep targets (create.md ×2, cleanup.md, ingest.md) +
-2 supplementary caller HTML literal pins (create-interview.md). If you
-weakened the imperative strength (e.g., reverted MUST → IMMEDIATELY,
+3 supplementary pin types in create-interview.md (5 assertions total):
+  (e1) caller HTML literal positive pins (TC-5.3/5.4) — 2 keyword pin
+  (e2) caller HTML literal anti-pattern revert (TC-5.1/5.2) — 旧文言 (継続中.../IMMEDIATELY) の再出現を block
+  (e3) plain-text reminder Layer 3b (TC-5.5) — '⏭ MUST continue (turn を閉じない):' blockquote 行を pin
+If you weakened the imperative strength (e.g., reverted MUST → IMMEDIATELY,
 removed 'VERY FIRST', or restored '継続中' status reporting), restore the
 original strength.
 

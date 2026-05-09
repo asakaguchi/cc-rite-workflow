@@ -19,7 +19,12 @@
 #     - `flow-state-update.sh create` 各呼び出しが
 #       --phase / --issue / --branch / --pr / --next の 5 種すべてを含む
 #     - 検出対象は bash code block 内 (indented fence `   ```bash` も含む) の
-#       コードのみ。shell コメント (`# ... flow-state-update.sh create ...`) は除外。
+#       コードのみ。shell コメント (行頭 `# ...` の comment-only 行、および
+#       行内 `cmd # ...` 形式の inline comment 末尾部分) は除外。
+#       quoted `#` (`echo "#foo"` 等の double/single quote 内) は完全 shell-aware
+#       パース未実装のため scope 外 (Issue #912 finding 1)。
+#     - bash code fence 終端 (` ``` `) は trailing whitespace を許容 (CommonMark
+#       準拠、Issue #912 finding 2)。
 #   対称性-下限 (Issue #908 finding 3):
 #     - `flow-state-update.sh create` の (上記検出対象内) 呼び出し数 ≥ 1
 #       (全削除 regression を catch する真正な保護)
@@ -126,6 +131,13 @@ echo "--- Symmetry (flow-state-update.sh create 5-arg invariant) ---"
 # Issue #908 finding 2: shell コメント行 (`# ... flow-state-update.sh create ...`) を
 # false positive 検出してしまう問題に対し、shell コメント開始行を前置 not-match `!/^[[:space:]]*#/`
 # で除外する形式を採用 (前置 not-match で除外 → create 含有を別 regex で判定)。
+# Issue #912 finding 1: 行内 inline `#` comment (`cmd # ...flow-state-update.sh create...`)
+# も false positive で count される問題に対し、`sub(/[[:space:]]+#.*$/, "", line)` で
+# whitespace-preceded inline shell comment を strip してから literal 判定する。
+# quoted `#` (`echo "#foo"` 等の double/single quote 内) は完全 shell-aware パース未実装の
+# ため scope 外として明示。
+# Issue #912 finding 2: bash code fence 終端 (` ``` `) は CommonMark 上 trailing whitespace
+# を許容するため、fence 終端 regex を `^[[:space:]]*```[[:space:]]*$` に拡張する。
 # (詳細な regex 設計理由は直下 awk block の inline コメント参照)
 # 各 create 呼び出しに対して、bash block 終端 ``` までを動的に block として抽出する
 # (固定 +7 行 window では line continuation の長さに依存して block を取り損ねるリスクがある)。
@@ -152,8 +164,12 @@ done < <(awk '
   # Issue #908 finding 1: indented bash code fence (e.g., リスト項目内の `   ```bash`) も検出
   # するため `^[[:space:]]*` を許容する。fence 開始/終了の対称適用が必須
   # (Asymmetric Fix Transcription 防止)。
-  /^[[:space:]]*```bash/      { in_block=1; in_create=0; block=""; next }
-  /^[[:space:]]*```$/         {
+  # Issue #912 finding 2: fence 終端 (` ``` `) は CommonMark 上 trailing whitespace を
+  # 許容するため `[[:space:]]*$` で末尾空白を許容する (例: ` ```<EOL>` / ` ``` <EOL>` 両方を
+  # 受容)。fence 開始側 (`^[[:space:]]*```bash`) は info string `bash` 直後の任意空白が code
+  # language の一部にはならない (CommonMark 仕様) ため、開始側の拡張は不要。
+  /^[[:space:]]*```bash/        { in_block=1; in_create=0; block=""; next }
+  /^[[:space:]]*```[[:space:]]*$/ {
                     if (in_create) { printf "%s%c", block, 0 }
                     in_block=0; in_create=0; block=""; next
                   }
@@ -166,14 +182,31 @@ done < <(awk '
   #      silent miss する backtracking trap がある (PR #911 cycle 2 で empirical 再現確認済み)。
   #   2. 前置 not-match `!/^[[:space:]]*#/` は「shell コメント開始行のみ除外」と意図が直接的で、
   #      X の行頭出現有無に影響を受けない。これは bash/awk regex の確立されたイディオム。
-  # 仕様: shell コメント開始行 (`^[[:space:]]*#`) を除外したうえで `flow-state-update.sh create` を含む行を検出。
-  in_block && !/^[[:space:]]*#/ && /flow-state-update\.sh create/ {
-                    # 同一 bash block 内に複数 create 呼び出しがある場合、前 block を先に flush
-                    # してから新 block を開始する (multi-create-per-block blind spot 防止)
-                    if (in_create) { printf "%s%c", block, 0 }
-                    in_create=1
-                    block=$0
-                    next
+  # Issue #912 finding 1: 行内 inline `#` comment (`cmd # ...flow-state-update.sh create...`)
+  # も false positive を生む問題に対し、judgement-only 用の line copy を作って
+  # `sub(/[[:space:]]+#.*$/, "", line)` で whitespace-preceded inline shell comment を strip
+  # してから literal を判定する。`block=$0` は元の line を保持する (display 用の正確性維持)。
+  # scope 外 (= strip しない / false positive を残す) ケース:
+  #   - quoted `#` (`echo "#foo # cmd flow-state-update.sh create"` 等の double/single quote 内
+  #     の `#`) は完全 shell-aware パース未実装のため、`sub` が quote を理解せず一律に strip する。
+  #     現実的には quote 内に `flow-state-update.sh create` literal を書く運用は皆無と判断し
+  #     scope 外として許容する (`# Wiki: PR #909 Same-file 3-site sync` の経験則に従い、
+  #     上方の preamble コメント L131-138 と本ブロックを sync 更新する際はこの仕様文と
+  #     `sub` 実装と冒頭 spec L18-30 の 3 site を同時に修正すること)。
+  # 仕様: shell コメント開始行 (`^[[:space:]]*#`) を除外し、行内 inline shell comment を strip した
+  #       うえで `flow-state-update.sh create` を含む行を検出。
+  in_block && !/^[[:space:]]*#/ {
+                    # Issue #912 finding 1: judgement-only line copy で inline `#` comment strip
+                    line = $0
+                    sub(/[[:space:]]+#.*$/, "", line)
+                    if (line ~ /flow-state-update\.sh create/) {
+                      # 同一 bash block 内に複数 create 呼び出しがある場合、前 block を先に flush
+                      # してから新 block を開始する (multi-create-per-block blind spot 防止)
+                      if (in_create) { printf "%s%c", block, 0 }
+                      in_create=1
+                      block=$0
+                      next
+                    }
                   }
   in_block && in_create { block = block "\n" $0 }
 ' "$START_MD")

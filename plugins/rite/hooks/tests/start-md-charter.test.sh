@@ -63,16 +63,23 @@ FIXTURES_DIR="$SCRIPT_DIR/fixtures/start-md"
 #     - 0 行以上の diagnostic 行 (`⚠️ asymmetric (...)`、asymmetric block ごとに 1 行)
 #     - 末尾 1 行: "TOTAL|ASYMMETRIC" 形式の metrics
 #   caller は `tail -1` で metrics を、`sed '$d'` で diagnostics を分離する。
-#   stderr は environment error 専用 (本関数では使わない / _test-helpers.sh L33-49 convention 遵守)。
+#   stderr は environment error 専用 (本関数では使わない / _test-helpers.sh の "Output convention
+#   (Issue #853)" 節遵守)。
 #
-# Same-file 3-site sync (Wiki: PR #909 経験則):
-#   冒頭 spec の "対称性:" / "対称性-下限" / "Mutation meta-test" 節 / 関数内 awk preamble /
-#   関数内 awk inline コメントの 3 site を挙動変更時に同期更新すること (本関数化に伴い
-#   2-3 site が本関数内に集約された)。
+# Same-file 3-site sync (Wiki: PR #909 経験則 / canonical-list-count-claim-drift-anchor):
+#   挙動変更時に以下の 3 site を同期更新すること:
+#     (1) 冒頭 spec preamble (L18-30 範囲の "対称性:" / "対称性-下限" / "Mutation meta-test"
+#         3 subsection を含む単一 site)
+#     (2) compute_symmetry_for() 関数の docstring (本コメント直前)
+#     (3) compute_symmetry_for() 内の awk inline コメント (Issue #908/#912 finding 1/2 説明)
+#   本関数化に伴い、上記 (2) と (3) が本関数内に集約された。
 compute_symmetry_for() {
   local target="$1"
-  local total=0 asymmetric=0
-  local block first_line missing
+  local total=0
+  local asymmetric=0
+  local block=""
+  local first_line=""
+  local missing=""
   local diagnostics=""
   # bash code block 内 (```bash ... ```) の `flow-state-update.sh create` 呼び出しのみ対象。
   # markdown 散文 (table cell / prose mention) の言及は対象外。
@@ -107,7 +114,7 @@ compute_symmetry_for() {
       asymmetric=$((asymmetric + 1))
       # diagnostic は stdout に蓄積 (caller が tail -1 で metrics を、sed '$d' で diagnostics を
       # 分離する 2-stream-on-stdout 設計)。stderr は environment error 専用とし、
-      # _test-helpers.sh L33-49 の output convention (failure detail は stdout 推奨) に揃える。
+      # _test-helpers.sh の "Output convention (Issue #853)" 節 (failure detail は stdout 推奨) に揃える。
       diagnostics+="  ⚠️ asymmetric (block starting: ${first_line}, missing:${missing})"$'\n'
     fi
   done < <(awk '
@@ -141,9 +148,9 @@ compute_symmetry_for() {
     #     の `#`) は完全 shell-aware パース未実装のため、`sub` が quote を理解せず一律に strip する。
     #     現実的には quote 内に `flow-state-update.sh create` literal を書く運用は皆無と判断し
     #     scope 外として許容する (`# Wiki: PR #909 Same-file 3-site sync` の経験則に従い、
-    #     関数 docstring の preamble と本ブロックを sync 更新する際はこの仕様文と
-    #     `sub` 実装と冒頭 spec の "対称性:" / "Mutation meta-test" 節の 3 site を同時に
-    #     修正すること)。
+    #     関数 docstring の preamble と本ブロックを sync 更新する際は、関数 docstring の
+    #     "Same-file 3-site sync" 節で定義された 3 site (冒頭 spec preamble / 関数 docstring /
+    #     関数内 awk inline コメント) を同時に修正すること)。
     # 仕様: shell コメント開始行 (`^[[:space:]]*#`) を除外し、行内 inline shell comment を strip した
     #       うえで `flow-state-update.sh create` を含む行を検出。
     in_block && !/^[[:space:]]*#/ {
@@ -328,12 +335,15 @@ else
     fi
     fixture_output=$(compute_symmetry_for "$fixture_path")
     fixture_metrics=$(printf '%s\n' "$fixture_output" | tail -1)
+    fixture_diag=$(printf '%s\n' "$fixture_output" | sed '$d')
     actual_total="${fixture_metrics%%|*}"
     actual_asym="${fixture_metrics##*|}"
     if [ "$actual_total" = "$exp_total" ] && [ "$actual_asym" = "$exp_asym" ]; then
       pass "Meta: $fname → total=$actual_total asymmetric=$actual_asym (expected total=$exp_total asym=$exp_asym)"
     else
       fail "Meta: $fname → total=$actual_total asymmetric=$actual_asym (expected total=$exp_total asym=$exp_asym)"
+      # mismatch 時は diagnostic を印字する (本体 assert L257-258 と出力対称性を維持、debug 情報の silent loss 防止)
+      [ -n "$fixture_diag" ] && printf '%s\n' "$fixture_diag"
     fi
   done
 fi

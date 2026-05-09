@@ -908,7 +908,7 @@ fi
 
 **Step 3** (terminal gate): At Phase 9, output the user-visible completion message + caller continuation HTML comment (Phase 9.1 設計判断により実行経路を問わず常に出力) + `<!-- [ingest:completed] -->` HTML コメント sentinel as the absolute last line. Phase 9.1 Step 3 bash block (後述) は sentinel 出力後に実行され `ingest_completed` への deactivate patch を行う (caller 経由時は直後に caller Mandatory After が `cleanup_post_ingest` へ書き戻す)。
 
-> **Caller-side coupling**: caller (cleanup/review/fix/close) は本 sub-skill return 後に caller の Mandatory After セクション (例: cleanup.md `🚨 Mandatory After Wiki Ingest`) を実行する責務を持つ。caller 継続 HTML コメントはその責務を grep-able 形式で表現したもの (`<!-- continuation: caller MUST proceed ... -->`)。`stop-guard.sh` の HINT で `ingest_pre_lint` / `ingest_post_lint` / caller phase 別の継続指示が出るため、本マーカーは defense-in-depth の多層防御として機能する。
+> **Caller-side coupling**: caller (cleanup/review/fix/close) は本 sub-skill return 後に caller の Mandatory After セクション (例: cleanup.md `🚨 Mandatory After Wiki Ingest`) を実行する責務を持つ。caller 継続 HTML コメントはその責務を grep-able 形式で表現したもの (canonical full form は本ファイル Phase 9.1 で出力される `<!-- continuation: caller MUST execute its 🚨 Mandatory After Wiki Ingest Step 0 bash literal as VERY FIRST tool call BEFORE any text output ... -->`)。`stop-guard.sh` は Layer 2 retire (#675) 済みのため stop block は発火しないが、Layer 1 (prompt contract) と Layer 3 (caller HTML hint) で defense-in-depth を実現する (詳細は `skills/rite-workflow/references/sub-skill-return-protocol.md` Defense-in-depth layers 参照)。
 
 ### 8.3 Lint 実行結果の取得とパース
 
@@ -1125,13 +1125,13 @@ Wiki Ingest が完了しました。
 
 > **Informational — 実 caller の現状**: 現時点で本 skill を Skill ツール経由で invoke する caller は `pr/cleanup.md` Phase 4.W のみ (`cleanup_pre_ingest` / `cleanup_post_ingest` phase で active flow-state を持つ)。`pr/review.md` / `pr/fix.md` / `issue/close.md` の Wiki 関連 Phase は Issue #547 以降 `wiki-ingest-trigger.sh` + `wiki-ingest-commit.sh` の単一プロセス設計に移行済みで、Skill: `rite:wiki:ingest` を invoke しないため `phase5_*` 等の e2e phase で本 sentinel を消費するパスは存在しない。単独実行時に caller 継続コメントを出力しても無害 (該当する caller がいないため grep 結果が利用されないだけ) のため、判定 logic を持たず常に出力する設計を採用する。
 
-**Step 1 (= Output ordering #2 — caller 継続 HTML コメント)**: Step 0 の policy に従い実行経路を問わず常に出力する:
+**Step 1 (= Output ordering #2 — caller 継続 HTML コメント)**: Step 0 の policy に従い実行経路を問わず常に出力する (rationale: 後続の blockquote — Issue #910):
 
 ```
 <!-- continuation: caller MUST execute its 🚨 Mandatory After Wiki Ingest Step 0 bash literal as VERY FIRST tool call BEFORE any text output, narrative, or response generation, then proceed to its Phase 5/Phase X Completion Report in the SAME response turn. DO NOT end the turn. DO NOT output any narrative text before this bash call. -->
 ```
 
-> **Imperative 強度の rationale (Issue #910)**: caller (例: cleanup.md) が implicit stop する症状の根本原因は、LLM が sub-skill return tag (`<!-- [ingest:completed] -->`) を turn 境界として誤認する turn-boundary heuristic の発火。`MUST execute as VERY FIRST tool call BEFORE any text output` という命令形 + 否定形重ねがけ (`DO NOT end the turn` / `DO NOT output any narrative text`) によって LLM の natural stopping point を消去する設計 (Issue #910 D-01)。
+> **Imperative 強度の rationale (Issue #910)**: caller (例: cleanup.md) が implicit stop する症状の根本原因は、LLM が sub-skill return tag (`<!-- [ingest:completed] -->`) を turn 境界として誤認する turn-boundary heuristic の発火。`MUST execute as VERY FIRST tool call BEFORE any text output` という命令形 + 否定形重ねがけ (`DO NOT end the turn` / `DO NOT output any narrative text`) によって LLM の natural stopping point を消去する設計 (Issue #910 D-01)。本 sub-skill (`rite:wiki:ingest`) は内部で `rite:wiki:lint --auto` を呼び出す 2 層構造であり、`--auto` flag は `rite:wiki:lint` 側に適用される (本 sub-skill 自体は flag を取らない)。
 
 **Step 2 (= Output ordering #3 — sentinel HTML コメント)**: HTML コメント sentinel を応答の **absolute last line** として出力する:
 

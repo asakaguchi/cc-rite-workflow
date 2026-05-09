@@ -88,12 +88,18 @@ else
   fail "Lower: \`AskUserQuestion\` count >= 30 (actual=$ask_count, expected >=30)"
 fi
 
-# heading-anchor 限定: `### 🚨 Mandatory After …` (h3) と `#### N.N.N 🚨 After …` (h4) を行頭マッチで集計。
+# heading-anchor 限定: 行頭の `#+ … 🚨 (Mandatory After|After <Word>)` のみを集計する。
+# 現状の構造:
+#   - h3: `### 🚨 Mandatory After N.N` 14 件
+#   - h4: `#### N.N.N 🚨 (After Review|After Fix|Mandatory After …)` 3 件
+#   - 合計: 17 件 (実測値、本 assert の閾値根拠)
 # 散文 mention (`**🚨 Immediate after …**`) や table cell の参照 (`| 🚨 After Review |`) は除外する。
-# occurrence 単位の旧 regex (`Mandatory After|🚨 After `) は heading 14 件 + prose mention 30 件超 = 51 件
+# 旧 regex (`Mandatory After|🚨 After `) は occurrence 単位で heading 17 件 + prose mention 等 34 件 = 51 件
 # となり、後続 slim PR が prose mention を削減すると heading 数が無傷でも閾値割れする false-positive
 # ratchet を生んだ。本 assert は heading 自体の削除のみを catch する真正な構造保護として機能する。
-mandatory_count=$({ grep -oE '^#+ .*🚨 (Mandatory After|After )' "$START_MD" || true; } | wc -l | tr -d ' ')
+# `After ` 側を `After [A-Za-z]` (単語境界) として `Mandatory After` 側との trailing-space 非対称性を解消し、
+# 将来 `### 🚨 After-Review` (hyphen) など想定外の heading 命名が混入した場合の取りこぼしも防ぐ。
+mandatory_count=$({ grep -oE '^#+ .*🚨 (Mandatory After|After [A-Za-z])' "$START_MD" || true; } | wc -l | tr -d ' ')
 if [ "$mandatory_count" -ge 17 ]; then
   pass "Lower: \`Mandatory After\` heading-anchor count >= 17 (actual=$mandatory_count)"
 else

@@ -477,3 +477,4 @@
 | 2026-05-09T02:25:00+00:00 | ingest:update | pages/anti-patterns/test-pin-protection-theater.md | PR #909 fix (cycle 1) — wording-revision drift 修正 + regex 対称性 (`After [A-Za-z]`) の累積適用事例として既存 page sources に追記 (raw/fixes/20260509T014534Z-pr-909.md) |
 | 2026-05-09T02:25:00+00:00 | ingest:update | pages/anti-patterns/test-pin-protection-theater.md | PR #909 fix (cycle 2) — same-file 3-site dead reference 解消 + 副次的主張削除 + 暗黙メンテナンスルール明文化を canonical 対策として追加 (raw/fixes/20260509T015613Z-pr-909.md) |
 | 2026-05-09T02:25:00+00:00 | ingest:skip | raw/reviews/20260509T020233Z-pr-909.md | PR #909 cycle 3 final review (0 findings, merge-ready)。3-cycle 収束パターンの典型例だが既存 fix-induced-drift / mutation-testing-test-fidelity で説明可能。READ-ONLY review protocol の指摘は empirical evidence anchor が薄く codification は見送り |
+| 2026-05-09T02:30:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=112, broken_refs=211 |

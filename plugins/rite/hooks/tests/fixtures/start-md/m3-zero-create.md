@@ -13,9 +13,10 @@
 
 このセクションには bash code block が存在するが、いずれの block にも
 `flow-state-update.sh create` literal を **一切含まない** ことに注意。
-literal を含む文字列を `echo "..."` 内に書くと quoted-string 内でも
-awk 判定の scope 外として検出されてしまうため、literal 出現を回避した
-シンプルな command のみを記述する。
+quoted-string 内 (`echo "..."` 等) であっても awk は shell quote を解釈しない
+ため、literal が含まれていれば quote の内外を問わず count されてしまう。
+これを回避するため literal 出現自体を含まないシンプルな command のみを
+記述する。
 
 ```bash
 echo "no creation invocation here"

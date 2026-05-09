@@ -59,16 +59,21 @@ FIXTURES_DIR="$SCRIPT_DIR/fixtures/start-md"
 #   $1: target — 解析対象 markdown file (本体: $START_MD, meta-test: M1-M6 fixture)
 #
 # Output:
-#   stdout: "TOTAL|ASYMMETRIC" 形式の 1 行 (`|` 区切り)
-#   stderr: 各 asymmetric block の diagnostic (`⚠️ asymmetric (...)`)
+#   stdout (複数行):
+#     - 0 行以上の diagnostic 行 (`⚠️ asymmetric (...)`、asymmetric block ごとに 1 行)
+#     - 末尾 1 行: "TOTAL|ASYMMETRIC" 形式の metrics
+#   caller は `tail -1` で metrics を、`sed '$d'` で diagnostics を分離する。
+#   stderr は environment error 専用 (本関数では使わない / _test-helpers.sh L33-49 convention 遵守)。
 #
 # Same-file 3-site sync (Wiki: PR #909 経験則):
-#   冒頭 spec L18-30 / 関数内 awk preamble / 関数内 awk inline コメントの 3 site を
-#   挙動変更時に同期更新すること (本関数化に伴い 2-3 site が本関数内に集約された)。
+#   冒頭 spec の "対称性:" / "対称性-下限" / "Mutation meta-test" 節 / 関数内 awk preamble /
+#   関数内 awk inline コメントの 3 site を挙動変更時に同期更新すること (本関数化に伴い
+#   2-3 site が本関数内に集約された)。
 compute_symmetry_for() {
   local target="$1"
   local total=0 asymmetric=0
-  local block first_line missing flag
+  local block first_line missing
+  local diagnostics=""
   # bash code block 内 (```bash ... ```) の `flow-state-update.sh create` 呼び出しのみ対象。
   # markdown 散文 (table cell / prose mention) の言及は対象外。
   # Issue #908 finding 1: indented fence (`   ```bash` 等、リスト項目内 block) も含めるため
@@ -100,8 +105,10 @@ compute_symmetry_for() {
     done
     if [ -n "$missing" ]; then
       asymmetric=$((asymmetric + 1))
-      # diagnostic は stderr に出力 (本体 assert 出力と分離、関数の stdout は metrics のみ)
-      echo "  ⚠️ asymmetric (block starting: ${first_line}, missing:${missing})" >&2
+      # diagnostic は stdout に蓄積 (caller が tail -1 で metrics を、sed '$d' で diagnostics を
+      # 分離する 2-stream-on-stdout 設計)。stderr は environment error 専用とし、
+      # _test-helpers.sh L33-49 の output convention (failure detail は stdout 推奨) に揃える。
+      diagnostics+="  ⚠️ asymmetric (block starting: ${first_line}, missing:${missing})"$'\n'
     fi
   done < <(awk '
     # Issue #908 finding 1: indented bash code fence (e.g., リスト項目内の `   ```bash`) も検出
@@ -135,7 +142,8 @@ compute_symmetry_for() {
     #     現実的には quote 内に `flow-state-update.sh create` literal を書く運用は皆無と判断し
     #     scope 外として許容する (`# Wiki: PR #909 Same-file 3-site sync` の経験則に従い、
     #     関数 docstring の preamble と本ブロックを sync 更新する際はこの仕様文と
-    #     `sub` 実装と冒頭 spec L18-30 の 3 site を同時に修正すること)。
+    #     `sub` 実装と冒頭 spec の "対称性:" / "Mutation meta-test" 節の 3 site を同時に
+    #     修正すること)。
     # 仕様: shell コメント開始行 (`^[[:space:]]*#`) を除外し、行内 inline shell comment を strip した
     #       うえで `flow-state-update.sh create` を含む行を検出。
     in_block && !/^[[:space:]]*#/ {
@@ -153,6 +161,10 @@ compute_symmetry_for() {
                     }
     in_block && in_create { block = block "\n" $0 }
   ' "$target")
+  # diagnostics を metrics の前に出力 (caller は `sed '$d'` で diag、`tail -1` で metrics を分離)
+  if [ -n "$diagnostics" ]; then
+    printf '%s' "$diagnostics"
+  fi
   printf '%s|%s\n' "$total" "$asymmetric"
 }
 
@@ -240,7 +252,10 @@ fi
 echo ""
 echo "--- Symmetry (flow-state-update.sh create 5-arg invariant) ---"
 
-metrics=$(compute_symmetry_for "$START_MD")
+symmetry_output=$(compute_symmetry_for "$START_MD")
+metrics=$(printf '%s\n' "$symmetry_output" | tail -1)
+diag=$(printf '%s\n' "$symmetry_output" | sed '$d')
+[ -n "$diag" ] && printf '%s\n' "$diag"
 total="${metrics%%|*}"
 asymmetric="${metrics##*|}"
 
@@ -294,6 +309,16 @@ else
     fail "Meta: META_FIXTURES counter != 6 (actual=${#META_FIXTURES[@]}, expected=6)"
   fi
 
+  # M6 trailing whitespace pre-check: fixture 末尾 fence の trailing whitespace は M6 識別力の
+  # 唯一の load-bearing 要素。`prettier --write` / `trim_trailing_whitespace=true` editorconfig 等で
+  # 黙って剥がされた場合、新旧 regex 双方で total=1 となり meta-test が依然 pass し
+  # 識別力が silently 失われる。本 pre-check で trailing ws の保持を機械保証する。
+  if grep -qE '```[[:space:]]+$' "$FIXTURES_DIR/m6-fence-trailing-ws.md"; then
+    pass "Meta: m6 fixture trailing whitespace 保持 (load-bearing for identification power)"
+  else
+    fail "Meta: m6 fixture lost trailing whitespace (load-bearing for identification power; check .editorconfig / prettier)"
+  fi
+
   for entry in "${META_FIXTURES[@]}"; do
     IFS='|' read -r fname exp_total exp_asym <<<"$entry"
     fixture_path="$FIXTURES_DIR/$fname"
@@ -301,7 +326,8 @@ else
       fail "Meta: fixture not found: $fname"
       continue
     fi
-    fixture_metrics=$(compute_symmetry_for "$fixture_path")
+    fixture_output=$(compute_symmetry_for "$fixture_path")
+    fixture_metrics=$(printf '%s\n' "$fixture_output" | tail -1)
     actual_total="${fixture_metrics%%|*}"
     actual_asym="${fixture_metrics##*|}"
     if [ "$actual_total" = "$exp_total" ] && [ "$actual_asym" = "$exp_asym" ]; then

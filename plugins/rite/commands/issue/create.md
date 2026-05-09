@@ -303,7 +303,7 @@ fi
 | `phases_skipped` flag | Phase 0.3 | `"0.4-0.5"` (Phase 0.3 早期分解時) または `null` |
 | `decomposition_decision_finalized` flag | Phase 0.3 | `true` (Phase 0.3 で「いいえ、単一」明示選択時) または `null`。Phase 0.3 fast-path 由来であることを示す traceability context として handoff (詳細・retention 仕様は Phase 0.3 の Retention mechanism 段落参照、`create-register` 側 path 認識への影響なし) |
 
-**🚨 Immediate after delegation returns**: sub-skill が `<!-- [create:completed:{N}] -->` (HTML comment 形式) を出力したら同 turn 内で Mandatory After Delegation を実行。**MUST proceed to Self-check as your VERY FIRST cognitive action BEFORE any text output or narrative** — sub-skill return 直後の text generation を抑制し、Self-check 結果に応じて Normal path (terminal state 既達 → Steps 1-3 を no-op で skip) または異常経路 (Steps 1-3 で terminal state に強制遷移) のいずれかへ進む。Step 4 (terminal gate) は両経路共通で常に実行。canonical scheme `**VERY FIRST tool call** = bash literal 実行` とは分離した cognitive 判定行為であることを明示するため、本 site では `tool call` を外し `cognitive action` 単独形に修正している (Issue #910 で実証された implicit stop 対策、F-11 cycle 4 fix)。
+**🚨 Immediate after delegation returns**: sub-skill が `<!-- [create:completed:{N}] -->` (HTML comment 形式) を出力したら同 turn 内で Mandatory After Delegation を実行。**MUST proceed to Self-check as your VERY FIRST cognitive action BEFORE any text output or narrative** — sub-skill return 直後の text generation を抑制し、Self-check 結果に応じて Normal path (terminal state 既達 → Steps 1-3 を no-op で skip) または異常経路 (Steps 1-3 で terminal state に強制遷移) のいずれかへ進む。Step 4 (terminal gate) は両経路共通で常に実行。Self-check は cognitive 判定行為であり tool call ではないため、canonical scheme `**VERY FIRST tool call** = bash literal 実行` とは独立した phrasing (`**VERY FIRST cognitive action**`) を採用する (Issue #910 で実証された implicit stop 対策)。
 
 ### 🚨 Mandatory After Delegation (Defense-in-Depth)
 

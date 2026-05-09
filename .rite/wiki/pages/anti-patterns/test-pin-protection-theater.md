@@ -2,7 +2,7 @@
 title: "Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する"
 domain: "anti-patterns"
 created: "2026-04-24T14:55:00+00:00"
-updated: "2026-05-06T04:00:00+09:00"
+updated: "2026-05-09T02:25:00Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260424T095915Z-pr-655-cycle6.md"
@@ -14,7 +14,13 @@ sources:
     ref: "raw/reviews/20260505T185107Z-pr-848.md"
   - type: "fixes"
     ref: "raw/fixes/20260505T185354Z-pr-848.md"
-tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase]
+  - type: "reviews"
+    ref: "raw/reviews/20260509T014302Z-pr-909.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260509T014534Z-pr-909.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260509T015613Z-pr-909.md"
+tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase, same-file-3-site-sync, subsidiary-claim-empirical-verification]
 confidence: high
 ---
 
@@ -170,12 +176,52 @@ PR #848 では 3 戦略を比較し WARNING 側に「リテラル値」を復元
 3. **WARNING 文言改訂を含む PR では事前に `bash <test>.test.sh` を local で実行する**: PR 作成前の標準 verification gate として組み込む (CI red 顕在化を待たずに PR 内で fix できる)
 4. **docstring SoT 統一 refactor では「caller pattern guidance を WARNING text に二重記載しない」だけでなく、「WARNING 文言と test pin の依存関係」も併せて明記する**: 二重記載を解消する scope と、test との依存関係を明示する scope を分離せず同 PR 内で 1 回で達成する (PR #848 cycle 1 fix で実装)
 
+### Same-file 3-site sync sub-pattern (PR #909 で実測)
+
+PR #848 で抽出された Wording-revision drift は cross-file (helper 本体 ↔ test pin) の asymmetric drift だったが、PR #909 で **同一ファイル内の 3 site sync** に同型 pattern が発現することが実測された。`plugins/rite/hooks/tests/start-md-charter.test.sh` 内で:
+
+- **site 1 (line 17)**: ファイル冒頭の「Assertions」一覧に `Mandatory After ≥ 30` という旧仕様の記述
+- **site 2 (line 102-106)**: 実装 (heading-anchor 限定 regex + 閾値 17)
+- **site 3 (inline comment)**: 実装直近のコメント (内訳 h3 14 + h4 3 = 17)
+
+の 3 箇所が同一 invariant (heading 数 17 件) を表現するが、cycle 1 で line 17 が旧 `≥ 30` のまま残置 → reviewer が「冒頭サマリと実装のどちらが SoT か判断不能」状態を MEDIUM finding として検出。PR #848 の cross-file asymmetric drift と surface は同一だが、scope が same-file に縮小しても **dead reference として後続 reviewer / 改修者を誤導する liability** が生じる。
+
+#### 暗黙メンテナンスルール明文化 (PR #909 cycle 2 で追加)
+
+3-site sync invariant が same-file 内に存在する場合、コメント末尾に **1 行の同期更新ルール明文化** を canonical 化する:
+
+```bash
+# heading 追加/削除時は内訳 (h3 N / h4 M / 合計 K) と閾値 `-ge K` / `>=K` を同期更新
+mandatory_count=$(grep -oE '^#+ .*🚨 (Mandatory After|After )' "$START_MD" | wc -l | tr -d ' ')
+if [ "$mandatory_count" -ge 17 ]; then
+  pass "Lower: heading-anchor count >= 17 (actual=$mandatory_count)"
+fi
+```
+
+暗黙ルールは drift 要因。`grep -nE '内訳|sync|同期更新'` で codified ルールの存在を grep 検証可能にすることで、改修者が「数値変更時の同期義務」を見落とす silent regression を構造的に防ぐ。本 codification は [Wiki page: 暗黙メンテナンスルールの明文化](../patterns/canonical-list-count-claim-drift-anchor.md) の単一ファイル版 sub-application として位置付ける。
+
+#### 副次的主張のファクト検証 (POSIX ERE empirical verification)
+
+PR #909 cycle 2 F-02 で「`After [A-Za-z]` で `### 🚨 After-Review` (hyphen) の取りこぼしも防ぐ」という副次的主張がコメントに混入していたが、`After [A-Za-z]` は POSIX ERE で **literal 空白** を要求するため hyphen 形式にはマッチしない (実証: `echo "### 🚨 After-Review" | grep -oE '...After [A-Za-z]' → NO MATCH`)。検証なしの副次的主張は将来「守れているはず」誤前提を生み、後続 reviewer / 改修者の判断を誤らせる liability。
+
+canonical pattern: 「将来的な X 取りこぼし防止」型の副次的主張を test pin / 実装コメントに書く際は、必ず POSIX ERE / regex engine の literal 動作で empirical 実証する。検証できない副次的主張は削除し「必要時に `After[ -][A-Za-z]` 等への拡張を検討」と open-ended に書き換える方が dead claim を残すよりも honest。
+
+#### 累積対策 (PR #909 で codify)
+
+| Sub-pattern | scope | codify 方法 |
+|-------------|-------|------------|
+| Protection theater (claim-actual gap) | 任意 | mutation test の silent PASS 検出 |
+| Wording-revision drift (cross-file asymmetric) | helper ↔ test pin | docstring に test 同期義務を明記 |
+| **Same-file 3-site sync (PR #909)** | 同一ファイル内 | コメント末尾に sync ルールを 1 行明文化 |
+| **副次的主張のファクト誤認 (PR #909)** | 任意 | POSIX ERE / regex engine の literal 動作で empirical 検証 |
+
 ## 関連ページ
 
 - [HINT-specific 文言 pin で case arm 削除 regression を検知する](../patterns/hint-specific-assertion-pin.md)
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](fix-induced-drift-in-cumulative-defense.md)
 - [canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する](../patterns/canonical-reference-sample-code-strict-sync.md)
 - [Fix 修正コメント自身が canonical convention を破る self-drift](fix-comment-self-drift.md)
+- [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
 
 ## ソース
 
@@ -183,3 +229,6 @@ PR #848 では 3 戦略を比較し WARNING 側に「リテラル値」を復元
 - [PR #655 cycle 4 review — canonical phrase partial unification の blind spot 指摘](../../raw/reviews/20260424T085837Z-pr-655.md)
 - [PR #848 review — WARNING 文言改訂時の test pin asymmetric drift (CRITICAL test regression cross-validated)](../../raw/reviews/20260505T185107Z-pr-848.md)
 - [PR #848 fix — 修正戦略 3 択比較と docstring への test 同期義務 codify](../../raw/fixes/20260505T185354Z-pr-848.md)
+- [PR #909 review (cycle 1) — same-file 3-site sync drift / regex 副次的主張ファクト誤認 / 暗黙メンテナンスルール](../../raw/reviews/20260509T014302Z-pr-909.md)
+- [PR #909 fix (cycle 1) — wording-revision drift 修正 + regex 対称性 (`After [A-Za-z]`)](../../raw/fixes/20260509T014534Z-pr-909.md)
+- [PR #909 fix (cycle 2) — same-file 3-site dead reference 解消 + 副次的主張削除 + 暗黙メンテナンスルール明文化](../../raw/fixes/20260509T015613Z-pr-909.md)

@@ -19,12 +19,13 @@ Phase 番号取扱方針: エントリは機能名レベルで変更を記述し
 ### 修正
 
 - 横断的 orchestrator return-block implicit stop regression を mitigation (#910)
+  - 用語注: 本エントリ中の「site」は文脈で 3 種の意味を持つため、以下のように呼び分ける — (a) **4 ファイル** (修正対象のソースファイル)、(b) **4 grep target** (test pin 箇所: `create.md` 内 2 箇所 + `cleanup.md` 1 箇所 + `ingest.md` 1 箇所)、(c) **3 signaling layer** (caller HTML hint / sub-skill plain-text reminder / sub-skill HTML continuation comment)。
   - `stop-guard.sh` 撤去 (#674/#675) 以降、prompt-side defense のみが残った状態で、sub-skill (`rite:issue:create-interview`, `rite:wiki:ingest --auto`) が HTML-comment sentinel + 4-line return block を emit して return した直後に LLM の turn-boundary heuristic が誤発火する症状 (`Sautéed for 7m 40s` 等) が `/rite:pr:cleanup` (wiki ingest auto-lint return 後) と `/rite:issue:create` (`[interview:skipped]` return 後) の双方で観測されていた。
-  - 4 site で imperative 強度を強化: `commands/issue/create-interview.md` caller HTML literal + plain-text continuation reminder (`継続中` → `MUST continue (turn を閉じない)` recast)、`commands/issue/create.md` Mandatory After Interview / Mandatory After Delegation prose、`commands/pr/cleanup.md` Mandatory After Wiki Ingest Step 0、`commands/wiki/ingest.md` continuation HTML comment。新 imperative keyword 群 (`MUST execute as VERY FIRST tool call BEFORE any text output, narrative, or response generation` / `DO NOT end the turn` / `DO NOT output any narrative text before this bash call`) で LLM の natural stopping point を消去する設計。
+  - **4 ファイル** で imperative 強度を強化: `commands/issue/create-interview.md` caller HTML literal + plain-text continuation reminder (`継続中` → `MUST continue (turn を閉じない)` recast)、`commands/issue/create.md` Mandatory After Interview / Mandatory After Delegation prose、`commands/pr/cleanup.md` Mandatory After Wiki Ingest Step 0、`commands/wiki/ingest.md` continuation HTML comment。新 imperative keyword 群 (`MUST execute as VERY FIRST tool call BEFORE any text output, narrative, or response generation` / `DO NOT end the turn` / `DO NOT output any narrative text before this bash call`) で LLM の natural stopping point を消去する設計。
   - `create-interview.md` Output rules に Rule 5 追加: 「4-line invariant 単独では implicit stop を完全に防がない。caller-side Step 0 first-tool-call contract が load-bearing 層」を明示。
-  - 横断 regression test `hooks/tests/step0-immediate-bash-presence.test.sh` 追加 (4 site で 12 assertion: presence + imperative keyword pin。byte equality は既存 `caller-html-literal-symmetry.test.sh` に委譲する責務分離維持)。
-  - `skills/rite-workflow/references/sub-skill-return-protocol.md` canonical contract を更新: 「prompt-side defense alone is insufficient」と「3 site canonical signaling pattern」を追記。
-  - Non-goal 遵守: `hooks/stop-guard.sh` 復活なし、`hooks/flow-state-update.sh` 無変更、sub-skill Phase 9.2 三点セット出力契約無変更、`[interview:*]` HTML-comment wrap 形式 (#561) 維持。
+  - 横断 regression test `hooks/tests/step0-immediate-bash-presence.test.sh` 追加 (**4 grep target** に対する presence + imperative keyword pin。byte equality は既存 `caller-html-literal-symmetry.test.sh` に委譲する責務分離維持)。
+  - `skills/rite-workflow/references/sub-skill-return-protocol.md` canonical contract を更新: 「prompt-side defense alone is insufficient」と **3-layer** canonical signaling pattern (caller HTML hint / sub-skill plain-text reminder / sub-skill HTML continuation comment) を追記。
+  - Non-goal 遵守: `hooks/stop-guard.sh` 復活なし、`hooks/flow-state-update.sh` 無変更、sub-skill 三点セット出力契約 (sentinel + status-line + continuation-hint) 無変更、`[interview:*]` HTML-comment wrap 形式 (#561) 維持。
 
 ### 変更
 

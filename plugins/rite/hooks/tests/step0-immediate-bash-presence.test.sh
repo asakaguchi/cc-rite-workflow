@@ -44,9 +44,11 @@ COMMANDS_DIR="$PLUGIN_ROOT/commands"
 CREATE_MD="$COMMANDS_DIR/issue/create.md"
 CLEANUP_MD="$COMMANDS_DIR/pr/cleanup.md"
 INGEST_MD="$COMMANDS_DIR/wiki/ingest.md"
+INTERVIEW_MD="$COMMANDS_DIR/issue/create-interview.md"
 
 # Hard precondition — missing target file is an environment error, not a test failure.
-for f in "$CREATE_MD" "$CLEANUP_MD" "$INGEST_MD"; do
+# F-05: INTERVIEW_MD を precondition guard に組み込み、silent skip による regression 見逃しを防ぐ。
+for f in "$CREATE_MD" "$CLEANUP_MD" "$INGEST_MD" "$INTERVIEW_MD"; do
   if [ ! -f "$f" ]; then
     echo "  ❌ FILE NOT FOUND: $f" >&2
     exit 1
@@ -56,9 +58,11 @@ done
 echo "=== TC-1: create.md Mandatory After Interview Step 0 ==="
 
 # TC-1.1: VERY FIRST tool call keyword presence (Mandatory After Interview)
-# 「**very first tool call**」と「**VERY FIRST tool call**」の両方を許容する
-# (cycle 1 review 対応: 表記揺れに対する戦略的緩和)
-assert_grep "TC-1.1: create.md に 'VERY FIRST tool call' keyword が存在" \
+# F-08: 当初コメントは「両方を許容」と書かれていたが、ERE は大文字小文字を区別するため
+# regex `\*\*VERY FIRST tool call\*\*` は uppercase 形式のみ pin する。これは canonical
+# (sub-skill-return-protocol.md:84 の「3 site canonical signaling pattern」共通 keyword)
+# が uppercase で固定されているため意図的: lowercase phrasing は drift の兆候として fail させる。
+assert_grep "TC-1.1: create.md に uppercase '**VERY FIRST tool call**' keyword が存在 (canonical phrasing pin)" \
   "$CREATE_MD" \
   '\*\*VERY FIRST tool call\*\*'
 
@@ -68,9 +72,17 @@ assert_grep "TC-1.2: create.md に 'BEFORE any text output' keyword が存在" \
   'BEFORE any text output'
 
 # TC-1.3: Step 0 bash literal が存在 (flow-state-update.sh patch --phase create_post_interview)
-assert_grep "TC-1.3: create.md Step 0 bash literal (flow-state-update.sh patch --phase create_post_interview) が存在" \
+# F-04, F-10 (LOW): Step 0 specific anchor + alternation を 2 つの assert_grep に分割して
+# specificity を上げる。Mandatory After Interview header の存在も確認することで、
+# Step 0 を完全削除し他の bash block (Phase 0.5 pre-flight 等) だけ残された
+# regression を false negative させない設計。
+assert_grep "TC-1.3a: create.md に 'Mandatory After Interview' header が存在 (Step 0 が属するセクション anchor)" \
   "$CREATE_MD" \
-  'flow-state-update\.sh patch[[:space:]]*\\?[[:space:]]*$|--phase[[:space:]]+"create_post_interview"'
+  'Mandatory After Interview'
+
+assert_grep "TC-1.3b: create.md に Step 0 bash literal '--phase \"create_post_interview\"' が存在" \
+  "$CREATE_MD" \
+  'phase[[:space:]]+"create_post_interview"'
 
 echo
 echo "=== TC-2: cleanup.md Mandatory After Wiki Ingest Step 0 ==="
@@ -95,49 +107,87 @@ assert_grep "TC-2.3: cleanup.md Step 0 bash literal (phase \"cleanup_post_ingest
 echo
 echo "=== TC-3: ingest.md caller continuation HTML comment ==="
 
-# TC-3.1: caller MUST execute its 🚨 Mandatory After ... Step 0 bash literal
-assert_grep "TC-3.1: ingest.md caller continuation HTML に 'MUST execute' + 'Step 0 bash literal' keyword 群" \
-  "$INGEST_MD" \
-  'caller MUST execute its.*Step 0 bash literal'
+# F-02 (HIGH): TC-3.2/3.3/3.4 は **`<!-- continuation:` で始まる単一行内** に keyword が
+# 出現することを pin する。当初実装は file 全体に対する grep だったため、rationale prose
+# (ingest.md:1134 の「Imperative 強度の rationale」段落) にも keyword が含まれており、
+# 万一 line 1131 の `<!-- continuation: ... -->` 自体が削除されても rationale prose を
+# 残せば test が誤って pass する false-negative 経路が存在した。HTML comment 行頭 anchor を
+# 含めることで「caller continuation HTML literal そのもの」を直接 pin する。
 
-# TC-3.2: VERY FIRST tool call BEFORE any text output
-assert_grep "TC-3.2: ingest.md caller continuation HTML に 'VERY FIRST tool call BEFORE any text output' keyword" \
+# TC-3.1: caller continuation HTML literal に 'MUST execute' + 'Step 0 bash literal'
+assert_grep "TC-3.1: ingest.md caller continuation HTML literal に 'MUST execute' + 'Step 0 bash literal' keyword 群" \
   "$INGEST_MD" \
-  'VERY FIRST tool call BEFORE any text output'
+  '<!-- continuation:.*caller MUST execute its.*Step 0 bash literal'
 
-# TC-3.3: 否定形重ねがけ (DO NOT end the turn / DO NOT output any narrative text)
-assert_grep "TC-3.3: ingest.md caller continuation HTML に 'DO NOT end the turn' keyword" \
+# TC-3.2: caller continuation HTML literal 1 行内に 'VERY FIRST tool call BEFORE any text output'
+assert_grep "TC-3.2: ingest.md caller continuation HTML literal 1 行内に 'VERY FIRST tool call BEFORE any text output' keyword" \
   "$INGEST_MD" \
-  'DO NOT end the turn'
-assert_grep "TC-3.4: ingest.md caller continuation HTML に 'DO NOT output any narrative text' keyword" \
+  '<!-- continuation:.*VERY FIRST tool call BEFORE any text output'
+
+# TC-3.3 / TC-3.4: 否定形重ねがけ (DO NOT end the turn / DO NOT output any narrative text)
+# 両 keyword が caller continuation HTML literal 同一行内に出現することを別個に pin。
+assert_grep "TC-3.3: ingest.md caller continuation HTML literal 1 行内に 'DO NOT end the turn' keyword" \
   "$INGEST_MD" \
-  'DO NOT output any narrative text'
+  '<!-- continuation:.*DO NOT end the turn'
+assert_grep "TC-3.4: ingest.md caller continuation HTML literal 1 行内に 'DO NOT output any narrative text' keyword" \
+  "$INGEST_MD" \
+  '<!-- continuation:.*DO NOT output any narrative text'
 
 echo
-echo "=== TC-4: Cross-orchestrator imperative keyword count ==="
+echo "=== TC-4: Cross-orchestrator imperative keyword count (per-file 最低数) ==="
 
-# TC-4.1: 4 site (create.md ×2 ヶ所 / cleanup.md / ingest.md) で 'VERY FIRST tool call' が
-# 合計 4 ヶ所以上 grep hit する。create.md には Mandatory After Interview と Mandatory After
-# Delegation の 2 ヶ所で言及される想定。
-total_very_first=$(grep -cF 'VERY FIRST' "$CREATE_MD" "$CLEANUP_MD" "$INGEST_MD" 2>/dev/null \
-  | awk -F: '{sum+=$2} END {print sum+0}')
-if [ "$total_very_first" -ge 4 ]; then
-  pass "TC-4.1: 'VERY FIRST' keyword が 3 file 横断で 4 ヶ所以上 grep hit (実測=$total_very_first)"
+# F-03 (MEDIUM): TC-4.1 は当初 file 横断合計 `>=4` という緩い閾値だったため、
+# 1 file の imperative 強度が完全消失しても他 file で hit 数が増えれば pass する
+# false-negative 経路が存在した。per-file の minimum を pin する形に強化することで
+# 「4 site それぞれが imperative 強度を保持している」ことを構造的に検証する。
+# 期待値の根拠 (実装直後の実測):
+#   - create.md   : >= 2  (Mandatory After Interview + Mandatory After Delegation)
+#   - cleanup.md  : >= 1  (Mandatory After Wiki Ingest)
+#   - ingest.md   : >= 1  (continuation HTML comment line)
+# いずれかが下回れば即 fail。site 単位での弱化を確実に検出する。
+
+count_create=$(grep -cF 'VERY FIRST' "$CREATE_MD" 2>/dev/null || echo 0)
+count_cleanup=$(grep -cF 'VERY FIRST' "$CLEANUP_MD" 2>/dev/null || echo 0)
+count_ingest=$(grep -cF 'VERY FIRST' "$INGEST_MD" 2>/dev/null || echo 0)
+
+if [ "$count_create" -ge 2 ]; then
+  pass "TC-4.1: create.md に 'VERY FIRST' keyword が 2 ヶ所以上 (実測=$count_create, 期待>=2)"
 else
-  fail "TC-4.1: 'VERY FIRST' keyword が 4 ヶ所未満 (実測=$total_very_first, 期待>=4)"
+  fail "TC-4.1: create.md に 'VERY FIRST' keyword が 2 ヶ所未満 (実測=$count_create, 期待>=2 — Mandatory After Interview / Delegation 双方で必要)"
+fi
+
+if [ "$count_cleanup" -ge 1 ]; then
+  pass "TC-4.2: cleanup.md に 'VERY FIRST' keyword が 1 ヶ所以上 (実測=$count_cleanup, 期待>=1)"
+else
+  fail "TC-4.2: cleanup.md に 'VERY FIRST' keyword が 1 ヶ所未満 (実測=$count_cleanup, 期待>=1 — Mandatory After Wiki Ingest で必要)"
+fi
+
+if [ "$count_ingest" -ge 1 ]; then
+  pass "TC-4.3: ingest.md に 'VERY FIRST' keyword が 1 ヶ所以上 (実測=$count_ingest, 期待>=1)"
+else
+  fail "TC-4.3: ingest.md に 'VERY FIRST' keyword が 1 ヶ所未満 (実測=$count_ingest, 期待>=1 — caller continuation HTML literal で必要)"
 fi
 
 echo
 echo "=== TC-5: Anti-pattern (旧文言の revert) 検出 ==="
 
+# F-05: INTERVIEW_MD は precondition guard で存在保証済 (line 49-55)。if-guard を撤去し
+#       silent skip による regression 見逃しを排除。
+
 # TC-5.1: '自動継続します' (現状報告) が create-interview.md に残っていない
 # (S2 で 「MUST continue」へ recast 済み)
-INTERVIEW_MD="$COMMANDS_DIR/issue/create-interview.md"
-if [ -f "$INTERVIEW_MD" ]; then
-  assert_not_grep "TC-5.1: create-interview.md に旧 '⏭ 継続中:.*自動継続します' 文言が残っていない" \
-    "$INTERVIEW_MD" \
-    '⏭ 継続中:.*自動継続します'
-fi
+assert_not_grep "TC-5.1: create-interview.md に旧 '⏭ 継続中:.*自動継続します' 文言が残っていない" \
+  "$INTERVIEW_MD" \
+  '⏭ 継続中:.*自動継続します'
+
+# F-07: TC-5.2 — caller HTML literal 内の旧 phrasing revert 検出。
+# Issue #910 mitigation の load-bearing 設計として `MUST execute as VERY FIRST tool call
+# BEFORE any text output` への recast を採用した。`IMMEDIATELY run this as your next tool
+# call` のような旧 caller HTML literal phrasing が caller HTML literal 内に再出現すると
+# imperative 強度が弱まる経路となるため、anti-pattern として明示的に block する。
+assert_not_grep "TC-5.2: create-interview.md caller HTML literal に旧 'IMMEDIATELY run this as your next tool call' 文言が残っていない" \
+  "$INTERVIEW_MD" \
+  'IMMEDIATELY run this as your next tool call'
 
 DRIFT_HINT="\
 This test pins imperative keyword presence (Issue #910 mitigation) across 4

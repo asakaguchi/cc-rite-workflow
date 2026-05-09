@@ -69,15 +69,15 @@ This abandons the workflow with no Issue created and no flow-state cleanup. HTML
 
 ## Defense-in-depth layers
 
-The contract is enforced at three layers. Violating any one layer is a bug:
+The contract is enforced across multiple layers. Layer 2 (the runtime hard gate) was removed in #675; Layer 1 + Layer 3 are the active enforcement surfaces today. Violating any active layer is a bug:
 
-| Layer | Mechanism | File |
-|-------|-----------|------|
-| 1. Prompt contract | Anti-pattern / correct-pattern + "same response turn" warnings | `commands/issue/start.md` (Sub-skill Return Protocol Global), `commands/issue/create.md` (Sub-skill Return Protocol), this reference |
-| 2. Flow state | Sub-skills write `*_post_*` phases + `active: true` before return; stop-guard blocks stop attempts until terminal state | `hooks/flow-state-update.sh` + `hooks/stop-guard.sh` |
-| 3. Caller-continuation hints | HTML comment `<!-- caller: ... -->` immediately before the sub-skill's result pattern | Defense-in-Depth sections in `commands/issue/create-interview.md`, `commands/issue/create-register.md`, `commands/issue/create-decompose.md` |
+| Layer | Mechanism | File | Status |
+|-------|-----------|------|--------|
+| 1. Prompt contract | Anti-pattern / correct-pattern + "same response turn" warnings | `commands/issue/start.md` (Sub-skill Return Protocol Global), `commands/issue/create.md` (Sub-skill Return Protocol), this reference | active |
+| 2. ~~Flow state hard gate~~ | ~~Sub-skills write `*_post_*` phases + `active: true` before return; stop-guard blocks stop attempts until terminal state~~ | ~~`hooks/flow-state-update.sh` + `hooks/stop-guard.sh`~~ | **removed in #675** — `stop-guard.sh` was deleted; `flow-state-update.sh` still emits `*_post_*` phases for observability/sentinel emit, but no stop is blocked |
+| 3. Caller-continuation hints | HTML comment `<!-- caller: ... -->` immediately before the sub-skill's result pattern | Defense-in-Depth sections in `commands/issue/create-interview.md`, `commands/issue/create-register.md`, `commands/issue/create-decompose.md` | active |
 
-When all three layers are present, the LLM receives the continuation signal from three independent sources: the prompt itself, the stop-guard's blocking message, and the inline HTML comment in the sub-skill output.
+With Layer 2 removed, the LLM receives the continuation signal from two independent sources: the prompt itself (Layer 1) and the inline HTML comment in the sub-skill output (Layer 3). The imperative strength of those two surfaces is therefore load-bearing — see the blockquote below.
 
 > **⚠️ Important — prompt-side defense alone is insufficient**: Issue #910 で実証された通り、stop-guard.sh の撤去 (#674/#675) 以降は Layer 2 の hard gate が存在せず、Layer 1 (prompt contract) と Layer 3 (caller HTML hint) のみが残った状態では LLM の turn-boundary heuristic 起因の implicit stop を完全には防げない。`/rite:pr:cleanup` 実行中の `rite:wiki:ingest --auto` lint return 後 / `/rite:issue:create` 実行中の `rite:issue:create-interview` `[interview:skipped]` return 後の双方で `Sautéed for 7m 40s` 等の implicit stop が観測されている。**Mitigation**: Layer 3 (caller HTML hint) と sub-skill 側 plain-text reminder の **imperative 強度** が defense 強度を決定する。`IMMEDIATELY` 単独ではなく `MUST execute as VERY FIRST tool call BEFORE any text output, narrative, or response generation` のような命令形 + 否定形重ねがけが implicit stop の確率を下げる経験的観測 (Issue #910 D-01)。`継続中` のような現状報告ではなく `MUST continue (turn を閉じない)` のような命令形が natural stopping point を消去する。
 
@@ -95,4 +95,4 @@ When the contract is violated in practice — the user types `continue` to recov
 - `commands/issue/create-interview.md` — Defense-in-Depth + caller continuation comment
 - `commands/issue/create-register.md` — Terminal Completion + caller continuation comment
 - `commands/issue/create-decompose.md` — Terminal Completion (Normal path) + caller continuation comment
-- `hooks/stop-guard.sh` — Phase-aware continuation hints for `create_post_interview` / `create_delegation` / `create_post_delegation`
+- ~~`hooks/stop-guard.sh`~~ — removed in #675; the file no longer exists. Historical context: previously emitted phase-aware continuation hints for `create_post_interview` / `create_delegation` / `create_post_delegation`. Layer 2 protection has been retired in favor of strengthened Layer 1 + Layer 3 imperative phrasing.

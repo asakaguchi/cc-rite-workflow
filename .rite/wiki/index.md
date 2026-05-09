@@ -88,9 +88,10 @@
 | [ratchet test では occurrence 単位 (`grep -oE \| wc -l`) を原則とし line 単位は混在させない](pages/patterns/test-counting-occurrence-vs-line-unit.md) | patterns | charter 違反パターンの上限・下限を機械検証する ratchet test では occurrence 単位 (`grep -oE pattern \| wc -l`) に統一すること。`grep -c file` (line 単位) と混在させると、1 行に複数出現する phrase の集約 slim を後続 PR で行う際 ratchet 漏れを構造的に起こす。実測で `AskUserQuestion` occurrence 35 vs line 34、`🚨` occurrence 41 vs line 35 の差が確認された。読みやすさ優先のスニペットでは line 単位を許容するが、ratchet 用途では occurrence を canonical とする。 | 2026-05-08T17:20:17+00:00 | high |
 | [bash code block 終端は固定 +N 行 window ではなく awk state machine で動的追跡する](pages/patterns/awk-bash-block-termination-tracking.md) | patterns | 「次に取った行数 +7 まで読む」固定 window でツールを書くと、対象行が長文化したり multi-line 引数を取り始めた瞬間に window が `\`\`\`` を越えて散文に到達する silent regression を起こす。`awk` の state machine で `in_block` / `in_create` flag を持ち bash code block の `\`\`\`` 終端まで読む実装に切り替えれば行数依存の脆弱性を排除できる。`\0` 区切り出力 + bash の `read -d ''` で portable に受けられる。multi-create-per-block の flush timing 漏れ (mutation test で実証された design flaw) も canonical 対策付き。 | 2026-05-08T17:20:17+00:00 | high |
 | [Issue 起票前の grep 棚卸しで「違反あり」前提が既に解消済みか確認する](pages/heuristics/issue-precondition-grep-survey.md) | heuristics | charter 違反 / refactor 残作業を扱う Issue を起票するとき、Issue body に書く「違反あり」「残作業あり」前提は既に過去の関連 PR で解消済みのケースがある。Issue 起票時に `grep` ベースで `Issue #N` / `PR #N` / `cycle N` / `Drift guard` / `NFR-N` 等を一通り棚卸しすれば、無駄な PR 起こしを回避できる。Issue #892 (Phase D) で起票時「違反あり」と仮定した内容が実際は Phase A-C で全削除済み + 合計目標も達成済みだったことが判明し、PR を作成せず DoD 見直しのみで close した実例。 | 2026-05-08T15:34:21+00:00 | high |
+| [awk negative-class + greedy + literal の組み合わせは backtracking で literal を silent miss する](pages/anti-patterns/awk-regex-backtracking-trap-with-greedy-literal.md) | anti-patterns | awk POSIX ERE で「行頭 `#` 以外で行内に literal X」を `^[[:space:]]*[^#].*X` 形式で書くと、X が行頭から始まる行で `[^...]` が X 先頭文字を消費し literal 再発見不能の backtracking trap を作る。canonical fix は前置 not-match `!/^[[:space:]]*#/ && /X/` で除外と検出を独立 regex に分離する確立イディオム。PR #911 cycle 1/2 で 2 連続発生 (cycle 1 fix が新たな silent miss を作った self-induced regression)、cycle 2 で error-handling-reviewer が empirical mutation test で再現確認。lookahead 非対応の POSIX ERE 環境では前置 not-match が唯一の確立解。 | 2026-05-09T03:50:00+00:00 | high |
 
 ## 統計
 
-- 総ページ数: 82
-- ドメイン別: patterns=32, heuristics=24, anti-patterns=26
-- 最終更新: 2026-05-08T17:43:55+00:00
+- 総ページ数: 83
+- ドメイン別: patterns=32, heuristics=24, anti-patterns=27
+- 最終更新: 2026-05-09T03:50:00+00:00

@@ -198,13 +198,13 @@ fi
 
 Invoke `skill: "rite:issue:create-interview"`.
 
-**🚨 Immediate after interview returns**: result pattern (`[interview:completed]` / `[interview:skipped]` / `[CONTEXT] INTERVIEW_DONE=1`) を観測したら、応答を終了せず Mandatory After Interview の Step 0 を **同 turn 内連続実行する**。
+**🚨 Immediate after interview returns**: result pattern (`[interview:completed]` / `[interview:skipped]` / `[CONTEXT] INTERVIEW_DONE=1`) を観測したら、応答を終了せず Mandatory After Interview の Step 0 を **同 turn 内連続実行する**。**MUST execute Step 0 bash literal as your VERY FIRST tool call BEFORE any text output, narrative, or response generation** — text output を先に出すと LLM の turn-boundary heuristic が誤発火し implicit stop の経路が開く (Issue #910 で実証)。
 
 ### 🚨 Mandatory After Interview
 
 > **⚠️ 同 turn 内連続実行する (MUST execute in the SAME response turn)**: `[interview:*]` return tag は turn 境界ではなく継続トリガ — turn を閉じると workflow が停止し Issue は作成されない。No GitHub Issue has been created yet。flow state の `.phase = create_post_interview` (sub-skill 内製)。`phase-transition-whitelist.sh` の whitelist transition graph により、active の間は `create_delegation` (Phase 3 Delegation Routing Pre-write) または `create_completed` (terminal sub-skill) への transition のみが許可される — `pre-tool-bash-guard.sh` / `session-end.sh` が enforce 経路。
 
-**Step 0: Immediate Bash Action**: sub-skill return 直後の **very first tool call** として実行し turn-boundary 感を bash invocation に置換。失敗時は stderr に `[CONTEXT] STEP_0_PATCH_FAILED=1` retained flag を emit (非 blocking、Step 1 が idempotent patch として再試行):
+**Step 0: Immediate Bash Action**: sub-skill return 直後の **VERY FIRST tool call** として実行 — `text output` / narrative / response generation よりも前に bash invocation を発行し、turn-boundary heuristic を bash invocation で 置換 する。Issue #910 D-01 の経験的観測: imperative 強度 (`MUST execute`, `VERY FIRST`, `BEFORE any text output`) が implicit stop の確率を下げる。失敗時は stderr に `[CONTEXT] STEP_0_PATCH_FAILED=1` retained flag を emit (非 blocking、Step 1 が idempotent patch として再試行):
 
 ```bash
 # Re-affirm phase + refresh timestamp (idempotent with Step 1)。--if-exists は file 不在 skip
@@ -301,13 +301,13 @@ fi
 | `phases_skipped` flag | Phase 0.3 | `"0.4-0.5"` (Phase 0.3 早期分解時) または `null` |
 | `decomposition_decision_finalized` flag | Phase 0.3 | `true` (Phase 0.3 で「いいえ、単一」明示選択時) または `null`。Phase 0.3 fast-path 由来であることを示す traceability context として handoff (詳細・retention 仕様は Phase 0.3 の Retention mechanism 段落参照、`create-register` 側 path 認識への影響なし) |
 
-**🚨 Immediate after delegation returns**: sub-skill が `[create:completed:{N}]` を出力したら同 turn 内で Mandatory After Delegation を実行。
+**🚨 Immediate after delegation returns**: sub-skill が `<!-- [create:completed:{N}] -->` (HTML comment 形式) を出力したら同 turn 内で Mandatory After Delegation を実行。**MUST execute Self-check as your VERY FIRST cognitive action BEFORE any text output or narrative** — sub-skill return 直後の text generation を抑制し、Self-check 結果に基づき即座に Step 1-4 (異常経路) または `<!-- [create:completed:{N}] -->` 観測確認 (Normal path) のいずれかへ進む (Issue #910 で実証された implicit stop 対策)。
 
 ### 🚨 Mandatory After Delegation (Defense-in-Depth)
 
 > **⚠️ 同 turn 内連続実行する (MUST execute in the SAME response turn)**: terminal sub-skill (`create-register.md`, `create-decompose.md`) は通常 `[create:completed:{N}]` + `create_completed` / `active: false` を内製出力する (Terminal Completion pattern)。本セクションは欠落時の defense-in-depth recovery path。
 
-**Self-check**: `[create:completed:{N}]` が出力済みか? **Yes** (Normal path) → terminal state 既達、Steps 1-3 は **no-op で skip** (Step 1 は retrograde transition になる)。**No** (異常経路) → Steps 1-3 が critical、terminal state に強制遷移。
+**Self-check**: `<!-- [create:completed:{N}] -->` が出力済みか? **Yes** (Normal path) → terminal state 既達、Steps 1-3 は **no-op で skip** (Step 1 は retrograde transition になる)。**No** (異常経路) → Steps 1-3 が critical、terminal state に強制遷移。
 
 **Step 1** (異常経路のみ):
 

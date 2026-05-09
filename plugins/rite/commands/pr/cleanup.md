@@ -1265,7 +1265,7 @@ trap - EXIT INT TERM HUP
    - **Yes** — terminal reached. flow state は既に `cleanup_completed, active: false`。Step 0 / Step 1 below MUST be skipped (`flow-state-update.sh patch --if-exists` は active=false でも patch するため、実行すると phase を `cleanup_post_ingest` に巻き戻して flow state を破壊する)。
    - **No** — Phase 5 has NOT been output yet。Steps 0-2 below are critical — execute immediately to force the workflow into the terminal state.
 
-**Step 0: Immediate Bash Action**: Execute this bash block as the **very first tool call** after `rite:wiki:ingest` returns (Self-check No branch), **before any other tool use or narrative text**. This replaces the natural turn-boundary point ("the sub-skill finished") with a concrete next tool call. The block re-affirms the flow-state phase (idempotent with Step 1) and, on failure only, emits `[CONTEXT] STEP_0_PATCH_FAILED=1` to stderr.
+**Step 0: Immediate Bash Action**: **MUST execute** this bash block as your **VERY FIRST tool call** after `rite:wiki:ingest` returns (Self-check No branch), **BEFORE any text output, narrative, or response generation**. text output を先に出すと LLM の turn-boundary heuristic が誤発火し implicit stop の経路が開く (Issue #910 で実証)。This replaces the natural turn-boundary point ("the sub-skill finished") with a concrete next tool call. The block re-affirms the flow-state phase (idempotent with Step 1) and, on failure only, emits `[CONTEXT] STEP_0_PATCH_FAILED=1` to stderr.
 
 ```bash
 # --preserve-error-count: 未指定時は JQ_FILTER が .error_count = 0 でリセットし、

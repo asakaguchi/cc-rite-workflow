@@ -1128,8 +1128,10 @@ Wiki Ingest が完了しました。
 **Step 1 (= Output ordering #2 — caller 継続 HTML コメント)**: Step 0 の policy に従い実行経路を問わず常に出力する:
 
 ```
-<!-- continuation: caller MUST proceed to its own Mandatory After section (e.g. cleanup.md 🚨 Mandatory After Wiki Ingest) and then to its Phase 5/Phase X Completion Report. DO NOT stop. -->
+<!-- continuation: caller MUST execute its 🚨 Mandatory After Wiki Ingest Step 0 bash literal as VERY FIRST tool call BEFORE any text output, narrative, or response generation, then proceed to its Phase 5/Phase X Completion Report in the SAME response turn. DO NOT end the turn. DO NOT output any narrative text before the Step 0 bash call. -->
 ```
+
+> **Imperative 強度の rationale (Issue #910)**: caller (例: cleanup.md) が implicit stop する症状の根本原因は、LLM が sub-skill return tag (`<!-- [ingest:completed] -->`) を turn 境界として誤認する turn-boundary heuristic の発火。`MUST execute as VERY FIRST tool call BEFORE any text output` という命令形 + 否定形重ねがけ (`DO NOT end the turn` / `DO NOT output any narrative text`) によって LLM の natural stopping point を消去する設計 (Issue #910 D-01)。
 
 **Step 2 (= Output ordering #3 — sentinel HTML コメント)**: HTML コメント sentinel を応答の **absolute last line** として出力する:
 

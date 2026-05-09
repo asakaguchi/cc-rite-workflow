@@ -4,8 +4,14 @@
 # Issue #897 / PR A: 後続 PR (B-H) の slim 進捗を機械的に保護するドリフト検出ゲート。
 #
 # Run modes:
-#   STRICT_CHARTER 未設定 (default): skip して exit 0 (CI red 化しない)
-#   STRICT_CHARTER=1                : 全 assert 実行 (上限超過時は fail = ratchet)
+#   STRICT_CHARTER 未設定 (default): meta-test のみ実行 (Charter assertions skip; CI red 化しない)
+#   STRICT_CHARTER=1                : meta-test + Charter assertions 全実行 (上限超過時は fail = ratchet)
+#
+# Gate 配置の意図 (Issue #914 / PR #915 cycle 3 finding F-02):
+#   meta-test (mutation fixture identification power) は CI で常時実行する。これは PR #915 の
+#   設計意図 (CI 自動実行で identification power の regression を機械検出可能にする) に合致する。
+#   一方 Charter assertions (Issue#/cycle/🚨 上限) は develop に pre-existing 違反があり、
+#   後続 slim PR (B-H) で削減するまで CI red 化を避けるため STRICT_CHARTER=1 opt-in で gate する。
 #
 # Assertions:
 #   上限 (Charter 違反パターン上限):
@@ -68,8 +74,8 @@ FIXTURES_DIR="$SCRIPT_DIR/fixtures/start-md"
 #
 # Same-file 3-site sync (Wiki: PR #909 経験則 / canonical-list-count-claim-drift-anchor):
 #   挙動変更時に以下の 3 site を同期更新すること:
-#     (1) 冒頭 spec preamble (L18-30 範囲の "対称性:" / "対称性-下限" / "Mutation meta-test"
-#         3 subsection を含む単一 site)
+#     (1) 冒頭 spec preamble の "対称性:" / "対称性-下限" / "Mutation meta-test"
+#         3 subsection を含む単一 site (本ファイル冒頭 header コメント、節題で参照)
 #     (2) compute_symmetry_for() 関数の docstring (本コメント直前)
 #     (3) compute_symmetry_for() 内の awk inline コメント (Issue #908/#912 finding 1/2 説明)
 #   本関数化に伴い、上記 (2) と (3) が本関数内に集約された。
@@ -175,9 +181,89 @@ compute_symmetry_for() {
   printf '%s|%s\n' "$total" "$asymmetric"
 }
 
-# Env gate: opt-in via STRICT_CHARTER=1
+echo "=== start-md-charter ==="
+echo ""
+
+# === Mutation meta-test (Issue #914) ===
+# `compute_symmetry_for()` の identification power (= mutation を確実に区別できる能力) を
+# fixtures/start-md/M1-M6 に対する期待値テーブル駆動で empirical 検証する。
+# 過去 PR (#911 S7/S8/S9 / #913 M5/M6) で `/tmp` に作って捨てていた mutation fixture を永続化し、
+# CI 自動実行で identification power の regression を機械検出可能にする。
+#
+# Gate 配置: Charter assertions (Upper/Lower/Symmetry) は STRICT_CHARTER=1 opt-in だが、
+# meta-test は **常時実行**。develop の pre-existing Charter 違反 (Issue#/cycle/🚨 上限超過) を
+# 理由に CI で skip すると identification power の regression を CI で検出できず、本 PR の
+# 設計意図に反する。Charter assertions と meta-test の opt-in 境界を分離することで、
+# 「develop の Charter 違反は許容しつつ、mutation 識別力は CI で必ず検証」を両立する。
+#
+# META_FIXTURES counter pin: 6 entries (M1-M6) — drift 検出アンカー (Wiki: 「N site 対称化 counter
+# 宣言」経験則)。fixture 追加/削除時はこの counter (`-eq 6` assert) と META_FIXTURES 配列を
+# 同期更新すること。
+#
+# 期待値テーブル形式: name|expected_total|expected_asymmetric
+# Symmetry-bound (>= 1) の期待結果は expected_total から導出 (1 で pass, 0 で fail)。
+echo "--- Mutation meta-test (M1-M6 fixture identification power) ---"
+
+if [ ! -d "$FIXTURES_DIR" ]; then
+  fail "Meta: fixtures dir not found: $FIXTURES_DIR"
+else
+  declare -a META_FIXTURES=(
+    "m1-indented-fence.md|1|0"
+    "m2-shell-comment-line.md|0|0"
+    "m3-zero-create.md|0|0"
+    "m4-backtracking-trap.md|1|0"
+    "m5-inline-comment.md|0|0"
+    "m6-fence-trailing-ws.md|1|0"
+  )
+
+  # counter pin: drift 検出アンカー
+  if [ "${#META_FIXTURES[@]}" -eq 6 ]; then
+    pass "Meta: META_FIXTURES counter == 6 (drift 検出アンカー)"
+  else
+    fail "Meta: META_FIXTURES counter != 6 (actual=${#META_FIXTURES[@]}, expected=6)"
+  fi
+
+  # M6 trailing whitespace pre-check: fixture 末尾 fence の trailing whitespace は M6 識別力の
+  # 唯一の load-bearing 要素。`prettier --write` / `trim_trailing_whitespace=true` editorconfig 等で
+  # 黙って剥がされた場合、新旧 regex 双方で total=1 となり meta-test が依然 pass し
+  # 識別力が silently 失われる。本 pre-check で trailing ws の保持を機械保証する。
+  if grep -qE '```[[:space:]]+$' "$FIXTURES_DIR/m6-fence-trailing-ws.md"; then
+    pass "Meta: m6 fixture trailing whitespace 保持 (load-bearing for identification power)"
+  else
+    fail "Meta: m6 fixture lost trailing whitespace (load-bearing for identification power; check .editorconfig / prettier)"
+  fi
+
+  for entry in "${META_FIXTURES[@]}"; do
+    IFS='|' read -r fname exp_total exp_asym <<<"$entry"
+    fixture_path="$FIXTURES_DIR/$fname"
+    if [ ! -f "$fixture_path" ]; then
+      fail "Meta: fixture not found: $fname"
+      continue
+    fi
+    fixture_output=$(compute_symmetry_for "$fixture_path")
+    fixture_metrics=$(printf '%s\n' "$fixture_output" | tail -1)
+    fixture_diag=$(printf '%s\n' "$fixture_output" | sed '$d')
+    actual_total="${fixture_metrics%%|*}"
+    actual_asym="${fixture_metrics##*|}"
+    if [ "$actual_total" = "$exp_total" ] && [ "$actual_asym" = "$exp_asym" ]; then
+      pass "Meta: $fname → total=$actual_total asymmetric=$actual_asym (expected total=$exp_total asym=$exp_asym)"
+    else
+      fail "Meta: $fname → total=$actual_total asymmetric=$actual_asym (expected total=$exp_total asym=$exp_asym)"
+      # mismatch 時は diagnostic を印字する (本体 assert と出力対称性を維持、debug 情報の silent loss 防止)
+      [ -n "$fixture_diag" ] && printf '%s\n' "$fixture_diag"
+    fi
+  done
+fi
+
+# Env gate: Charter assertions のみ opt-in via STRICT_CHARTER=1
+# meta-test は上で常時実行済み (CI で identification power の regression を機械検出)。
 if [ "${STRICT_CHARTER:-}" != "1" ]; then
-  echo "[start-md-charter] skip (STRICT_CHARTER not set; opt-in only)"
+  echo ""
+  echo "[start-md-charter] charter assertions skipped (STRICT_CHARTER not set; opt-in only); meta-test executed"
+  if ! print_summary "$(basename "$0")" \
+    "Meta-test only ran. Charter assertions are opt-in via STRICT_CHARTER=1 (develop の pre-existing 違反対応のため)."; then
+    exit 1
+  fi
   exit 0
 fi
 
@@ -186,7 +272,8 @@ if [ ! -f "$START_MD" ]; then
   exit 1
 fi
 
-echo "=== start-md-charter (STRICT_CHARTER=1) ==="
+echo ""
+echo "=== Charter assertions (STRICT_CHARTER=1) ==="
 echo "target: $START_MD"
 echo ""
 
@@ -280,72 +367,6 @@ if [ "$total" -ge 1 ]; then
   pass "Symmetry-bound: \`flow-state-update.sh create\` invocations >= 1 (actual=$total)"
 else
   fail "Symmetry-bound: \`flow-state-update.sh create\` invocations >= 1 (actual=$total, expected >=1)"
-fi
-
-# === Mutation meta-test (Issue #914) ===
-# `compute_symmetry_for()` の identification power (= mutation を確実に区別できる能力) を
-# fixtures/start-md/M1-M6 に対する期待値テーブル駆動で empirical 検証する。
-# 過去 PR (#911 S7/S8/S9 / #913 M5/M6) で `/tmp` に作って捨てていた mutation fixture を永続化し、
-# CI 自動実行で identification power の regression を機械検出可能にする。
-#
-# META_FIXTURES counter pin: 6 entries (M1-M6) — drift 検出アンカー (Wiki: 「N site 対称化 counter
-# 宣言」経験則)。fixture 追加/削除時はこの counter (`-eq 6` assert) と META_FIXTURES 配列を
-# 同期更新すること。
-#
-# 期待値テーブル形式: name|expected_total|expected_asymmetric
-# Symmetry-bound (>= 1) の期待結果は expected_total から導出 (1 で pass, 0 で fail)。
-echo ""
-echo "--- Mutation meta-test (M1-M6 fixture identification power) ---"
-
-if [ ! -d "$FIXTURES_DIR" ]; then
-  fail "Meta: fixtures dir not found: $FIXTURES_DIR"
-else
-  declare -a META_FIXTURES=(
-    "m1-indented-fence.md|1|0"
-    "m2-shell-comment-line.md|0|0"
-    "m3-zero-create.md|0|0"
-    "m4-backtracking-trap.md|1|0"
-    "m5-inline-comment.md|0|0"
-    "m6-fence-trailing-ws.md|1|0"
-  )
-
-  # counter pin: drift 検出アンカー
-  if [ "${#META_FIXTURES[@]}" -eq 6 ]; then
-    pass "Meta: META_FIXTURES counter == 6 (drift 検出アンカー)"
-  else
-    fail "Meta: META_FIXTURES counter != 6 (actual=${#META_FIXTURES[@]}, expected=6)"
-  fi
-
-  # M6 trailing whitespace pre-check: fixture 末尾 fence の trailing whitespace は M6 識別力の
-  # 唯一の load-bearing 要素。`prettier --write` / `trim_trailing_whitespace=true` editorconfig 等で
-  # 黙って剥がされた場合、新旧 regex 双方で total=1 となり meta-test が依然 pass し
-  # 識別力が silently 失われる。本 pre-check で trailing ws の保持を機械保証する。
-  if grep -qE '```[[:space:]]+$' "$FIXTURES_DIR/m6-fence-trailing-ws.md"; then
-    pass "Meta: m6 fixture trailing whitespace 保持 (load-bearing for identification power)"
-  else
-    fail "Meta: m6 fixture lost trailing whitespace (load-bearing for identification power; check .editorconfig / prettier)"
-  fi
-
-  for entry in "${META_FIXTURES[@]}"; do
-    IFS='|' read -r fname exp_total exp_asym <<<"$entry"
-    fixture_path="$FIXTURES_DIR/$fname"
-    if [ ! -f "$fixture_path" ]; then
-      fail "Meta: fixture not found: $fname"
-      continue
-    fi
-    fixture_output=$(compute_symmetry_for "$fixture_path")
-    fixture_metrics=$(printf '%s\n' "$fixture_output" | tail -1)
-    fixture_diag=$(printf '%s\n' "$fixture_output" | sed '$d')
-    actual_total="${fixture_metrics%%|*}"
-    actual_asym="${fixture_metrics##*|}"
-    if [ "$actual_total" = "$exp_total" ] && [ "$actual_asym" = "$exp_asym" ]; then
-      pass "Meta: $fname → total=$actual_total asymmetric=$actual_asym (expected total=$exp_total asym=$exp_asym)"
-    else
-      fail "Meta: $fname → total=$actual_total asymmetric=$actual_asym (expected total=$exp_total asym=$exp_asym)"
-      # mismatch 時は diagnostic を印字する (本体 assert L257-258 と出力対称性を維持、debug 情報の silent loss 防止)
-      [ -n "$fixture_diag" ] && printf '%s\n' "$fixture_diag"
-    fi
-  done
 fi
 
 # === Summary ===

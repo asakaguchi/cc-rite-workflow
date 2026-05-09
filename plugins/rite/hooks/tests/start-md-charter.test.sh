@@ -14,7 +14,7 @@
 #     - `🚨`            ≤ 5
 #   下限 (現状値の保護):
 #     - `AskUserQuestion` ≥ 30
-#     - `Mandatory After` ≥ 30
+#     - `Mandatory After` heading-anchor (h3+h4) ≥ 17 (実測: h3 14 + h4 3)
 #   対称性:
 #     - `flow-state-update.sh create` 各呼び出しが
 #       --phase / --issue / --branch / --pr / --next の 5 種すべてを含む
@@ -97,8 +97,11 @@ fi
 # 旧 regex (`Mandatory After|🚨 After `) は occurrence 単位で heading 17 件 + prose mention 等 34 件 = 51 件
 # となり、後続 slim PR が prose mention を削減すると heading 数が無傷でも閾値割れする false-positive
 # ratchet を生んだ。本 assert は heading 自体の削除のみを catch する真正な構造保護として機能する。
-# `After ` 側を `After [A-Za-z]` (単語境界) として `Mandatory After` 側との trailing-space 非対称性を解消し、
-# 将来 `### 🚨 After-Review` (hyphen) など想定外の heading 命名が混入した場合の取りこぼしも防ぐ。
+# `After ` 側を `After [A-Za-z]` として `Mandatory After` 側との trailing-space 非対称性を解消する
+# (旧 regex で `🚨 After<EOL>` 等が誤マッチする潜在問題の予防)。なお、`After-Review` 等のハイフン形は
+# いずれの regex でも対象外であり、必要になった時点で `After[ -][A-Za-z]` 等への拡張を検討する。
+# 更新ルール: 本 assert 対象の heading を追加/削除する PR では上記内訳 (h3 N 件 / h4 M 件 / 合計 K 件)
+# と本ブロック直下の閾値 `-ge K` / `>=K` を同期更新すること (内訳と閾値の drift 防止)。
 mandatory_count=$({ grep -oE '^#+ .*🚨 (Mandatory After|After [A-Za-z])' "$START_MD" || true; } | wc -l | tr -d ' ')
 if [ "$mandatory_count" -ge 17 ]; then
   pass "Lower: \`Mandatory After\` heading-anchor count >= 17 (actual=$mandatory_count)"

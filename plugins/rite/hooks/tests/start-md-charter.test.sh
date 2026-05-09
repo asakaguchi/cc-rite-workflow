@@ -18,6 +18,11 @@
 #   対称性:
 #     - `flow-state-update.sh create` 各呼び出しが
 #       --phase / --issue / --branch / --pr / --next の 5 種すべてを含む
+#     - 検出対象は bash code block 内 (indented fence `   ```bash` も含む) の
+#       コードのみ。shell コメント (`# ... flow-state-update.sh create ...`) は除外。
+#   対称性-下限 (Issue #908 finding 3):
+#     - `flow-state-update.sh create` の (上記検出対象内) 呼び出し数 ≥ 1
+#       (全削除 regression を catch する真正な保護)
 #
 # Note (PR C 以降):
 #   `MUST execute in the SAME response turn` ≥ 30 / `DO NOT stop` ≥ 30 の追加 assert は
@@ -29,7 +34,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_test-helpers.sh
 source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
-START_MD="$PLUGIN_ROOT/commands/issue/start.md"
+# Issue #908: START_MD を env override 可能にする (mutation test fixture を渡せるように)
+START_MD="${START_MD:-$PLUGIN_ROOT/commands/issue/start.md}"
 
 # Env gate: opt-in via STRICT_CHARTER=1
 if [ "${STRICT_CHARTER:-}" != "1" ]; then
@@ -115,6 +121,10 @@ echo "--- Symmetry (flow-state-update.sh create 5-arg invariant) ---"
 
 # bash code block 内 (```bash ... ```) の `flow-state-update.sh create` 呼び出しのみ対象。
 # markdown 散文 (table cell / prose mention) の言及は対象外。
+# Issue #908 finding 1: indented fence (`   ```bash` 等、リスト項目内 block) も含めるため
+# `^[[:space:]]*` を許容する。fence 開始/終了を対称適用 (Asymmetric Fix Transcription 防止)。
+# Issue #908 finding 2: shell コメント行 (`# ... flow-state-update.sh create ...`) を
+# false positive 検出してしまう問題に対し `^[[:space:]]*[^#]` 先頭ガードで除外。
 # 各 create 呼び出しに対して、bash block 終端 ``` までを動的に block として抽出する
 # (固定 +7 行 window では line continuation の長さに依存して block を取り損ねるリスクがある)。
 # awk でファイル全体を 1 度走査し、各 block を `\0` 区切りで出力 → bash の read -d '' で受ける。
@@ -137,12 +147,18 @@ while IFS= read -r -d '' block; do
     echo "  ⚠️ asymmetric (block starting: ${first_line}, missing:${missing})"
   fi
 done < <(awk '
-  /^```bash/      { in_block=1; in_create=0; block=""; next }
-  /^```$/         {
+  # Issue #908 finding 1: indented bash code fence (e.g., リスト項目内の `   ```bash`) も検出
+  # するため `^[[:space:]]*` を許容する。fence 開始/終了の対称適用が必須
+  # (Asymmetric Fix Transcription 防止)。
+  /^[[:space:]]*```bash/      { in_block=1; in_create=0; block=""; next }
+  /^[[:space:]]*```$/         {
                     if (in_create) { printf "%s%c", block, 0 }
                     in_block=0; in_create=0; block=""; next
                   }
-  in_block && /flow-state-update\.sh create/ {
+  # Issue #908 finding 2: shell コメント行 (`# ... flow-state-update.sh create ...`) を
+  # false positive で検出してしまう問題に対し、行頭 (任意空白後) の最初の非空白文字が
+  # `#` でないことを要求する `[^#]` 先頭ガードを追加。
+  in_block && /^[[:space:]]*[^#].*flow-state-update\.sh create/ {
                     # 同一 bash block 内に複数 create 呼び出しがある場合、前 block を先に flush
                     # してから新 block を開始する (multi-create-per-block blind spot 防止)
                     if (in_create) { printf "%s%c", block, 0 }
@@ -157,6 +173,16 @@ if [ "$asymmetric" -eq 0 ]; then
   pass "Symmetry: all ${total} \`flow-state-update.sh create\` invocations have 5 args (--phase/--issue/--branch/--pr/--next)"
 else
   fail "Symmetry: ${asymmetric}/${total} invocations missing required args"
+fi
+
+# Issue #908 finding 3: total=0 (= 1 つも `flow-state-update.sh create` を含む bash block が無い) でも
+# 上の `pass` が成功扱いになる false-positive を防ぐ。後続 PR で誤って create 呼び出しを全削除した場合の
+# regression 検出能力を保護する下限 (`-ge 1`)。具体的な現状値 (32 等) を pin すると後続 slim PR の
+# 正当な減少と衝突するため、「呼び出しが消滅していないこと」のみを保護する。
+if [ "$total" -ge 1 ]; then
+  pass "Symmetry-bound: \`flow-state-update.sh create\` invocations >= 1 (actual=$total)"
+else
+  fail "Symmetry-bound: \`flow-state-update.sh create\` invocations >= 1 (actual=$total, expected >=1)"
 fi
 
 # === Summary ===

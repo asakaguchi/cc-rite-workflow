@@ -124,7 +124,8 @@ echo "--- Symmetry (flow-state-update.sh create 5-arg invariant) ---"
 # Issue #908 finding 1: indented fence (`   ```bash` 等、リスト項目内 block) も含めるため
 # `^[[:space:]]*` を許容する。fence 開始/終了を対称適用 (Asymmetric Fix Transcription 防止)。
 # Issue #908 finding 2: shell コメント行 (`# ... flow-state-update.sh create ...`) を
-# false positive 検出してしまう問題に対し `^[[:space:]]*[^#]` 先頭ガードで除外。
+# false positive 検出してしまう問題に対し `^[[:space:]]*[^[:space:]#]` 先頭ガードで除外。
+# (詳細な regex 設計理由は line 161 付近の inline コメント参照)
 # 各 create 呼び出しに対して、bash block 終端 ``` までを動的に block として抽出する
 # (固定 +7 行 window では line continuation の長さに依存して block を取り損ねるリスクがある)。
 # awk でファイル全体を 1 度走査し、各 block を `\0` 区切りで出力 → bash の read -d '' で受ける。
@@ -157,8 +158,14 @@ done < <(awk '
                   }
   # Issue #908 finding 2: shell コメント行 (`# ... flow-state-update.sh create ...`) を
   # false positive で検出してしまう問題に対し、行頭 (任意空白後) の最初の非空白文字が
-  # `#` でないことを要求する `[^#]` 先頭ガードを追加。
-  in_block && /^[[:space:]]*[^#].*flow-state-update\.sh create/ {
+  # `#` でないことを要求する `[^[:space:]#]` 先頭ガードを追加。
+  # `[^#]` ではなく `[^[:space:]#]` を使う理由: awk POSIX ERE の貪欲マッチで `[[:space:]]*` が
+  # leading whitespace をゼロ文字消費した後 `[^#]` が space 文字にマッチし、続く `.*` が `#` 以降を
+  # 消費して indented shell comment (`    # ... flow-state-update.sh create ...`) を誤検出する
+  # backtracking 経路があった (PR #911 review で empirical mutation test で再現確認済み)。
+  # negative class に whitespace を含めることで leading whitespace consume 後の最初の非空白文字が
+  # `#` でないことを保証する (bash/awk regex の確立されたイディオム)。
+  in_block && /^[[:space:]]*[^[:space:]#].*flow-state-update\.sh create/ {
                     # 同一 bash block 内に複数 create 呼び出しがある場合、前 block を先に flush
                     # してから新 block を開始する (multi-create-per-block blind spot 防止)
                     if (in_create) { printf "%s%c", block, 0 }

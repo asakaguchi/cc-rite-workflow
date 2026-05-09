@@ -1257,7 +1257,9 @@ trap - EXIT INT TERM HUP
 
 ### 🚨 Mandatory After Wiki Ingest (Defense-in-Depth)
 
-> **⚠️ MUST execute in the SAME response turn**: `rite:wiki:ingest` の return 直後、応答を終了せずに Step 0 → Step 1 → Step 2 を即座に実行する。Phase 5 (Completion Report) は本セクション経由でのみ実行される唯一の経路。`stop-guard.sh` は `cleanup_pre_ingest` / `cleanup_post_ingest` phase で `end_turn` を block し、protocol violation は次回 turn の post-hoc incident detection で検出される。
+> **⚠️ MUST execute in the SAME response turn**: `rite:wiki:ingest` の return 直後、応答を終了せずに Step 0 → Step 1 → Step 2 を即座に実行する。Phase 5 (Completion Report) は本セクション経由でのみ実行される唯一の経路。
+>
+> **Layer 2 historical note (#675)**: 以下 prose 中の `stop-guard.sh` への言及 (line 1272 / 1284) は historical context — Layer 2 hard gate (`hooks/stop-guard.sh`) は #675 で撤去済で、現行 runtime には存在しない。Defense は Layer 1 (本 prose 自体) + Layer 3 (caller HTML hint) のみに依存する (`sub-skill-return-protocol.md` Defense-in-depth layers 参照)。protocol violation の post-hoc incident detection も `workflow-incident-emit.sh` に移譲済。
 
 **Self-check and branching**:
 

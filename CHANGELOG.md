@@ -17,6 +17,16 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
 
 ## [Unreleased]
 
+### Fixed
+
+- Mitigated cross-orchestrator return-block implicit stop regression (#910)
+  - After `stop-guard.sh` was removed (#674/#675), prompt-side defense alone became insufficient against the LLM turn-boundary heuristic that fires when sub-skills (`rite:issue:create-interview`, `rite:wiki:ingest --auto`) return their HTML-comment sentinel + 4-line return block. The symptom (`Sautéed for 7m 40s` etc.) was observed in both `/rite:pr:cleanup` (after wiki ingest auto-lint) and `/rite:issue:create` (after `[interview:skipped]`).
+  - Strengthened the imperative form across 4 sites: `commands/issue/create-interview.md` caller HTML literal + plain-text continuation reminder (recast from `継続中` to `MUST continue (turn を閉じない)`), `commands/issue/create.md` Mandatory After Interview / Mandatory After Delegation prose, `commands/pr/cleanup.md` Mandatory After Wiki Ingest Step 0, and `commands/wiki/ingest.md` continuation HTML comment. New imperative keywords (`MUST execute as VERY FIRST tool call BEFORE any text output, narrative, or response generation` / `DO NOT end the turn` / `DO NOT output any narrative text before this bash call`) are designed to suppress the LLM's natural stopping point.
+  - Added Output Rule 5 to `create-interview.md` clarifying that the 4-line invariant alone does not prevent implicit stops — the caller-side Step 0 first-tool-call contract is the load-bearing layer.
+  - Added cross-orchestrator regression test `hooks/tests/step0-immediate-bash-presence.test.sh` (12 assertions across the 4 sites; presence + imperative-keyword pin; byte equality is left to the existing `caller-html-literal-symmetry.test.sh` to preserve responsibility separation).
+  - Updated `skills/rite-workflow/references/sub-skill-return-protocol.md` canonical contract to document the "prompt-side defense alone is insufficient" finding and the 3-site canonical signaling pattern.
+  - Non-goals upheld: `hooks/stop-guard.sh` is not revived, `hooks/flow-state-update.sh` is unchanged, sub-skill Phase 9.2 三点セット output contract is unchanged, and the `[interview:*]` HTML-comment wrap form (#561) is preserved.
+
 ### Changed
 
 - Completed zero-base redesign of `/rite:issue:create` (Phase E) (#823)

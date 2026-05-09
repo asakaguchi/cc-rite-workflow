@@ -22,7 +22,7 @@ When Claude Code invokes a Skill tool and the sub-skill outputs its result patte
 1. **DO NOT end your response.** You are still in the middle of the orchestrator's phase flow.
 2. **DO NOT re-invoke the completed skill.** It already finished — re-invoking wastes context and may corrupt state.
 3. **IMMEDIATELY** execute the orchestrator's 🚨 Mandatory After section for the current phase, starting with the flow state update, then proceeding to the next phase — **in the same response turn**.
-4. If the stop-guard hook blocks a stop attempt (exit 2), follow the `ACTION:` instructions in its stderr message instead of retrying the stop.
+4. ~~If the stop-guard hook blocks a stop attempt (exit 2), follow the `ACTION:` instructions in its stderr message instead of retrying the stop.~~ — Layer 2 hard gate was removed in #675 (`hooks/stop-guard.sh` no longer exists); this contract item is retained as historical context only and no longer triggers in practice. Detection of turn-boundary heuristic firing now relies entirely on Layer 1 (prompt contract — items 1-3 above) and Layer 3 (caller HTML hint + sub-skill plain-text reminder + sub-skill HTML continuation comment, see Defense-in-depth layers below).
 
 ## Self-check after every sub-skill return
 
@@ -75,13 +75,18 @@ The contract is enforced across multiple layers. Layer 2 (the runtime hard gate)
 |-------|-----------|------|--------|
 | 1. Prompt contract | Anti-pattern / correct-pattern + "same response turn" warnings | `commands/issue/start.md` (Sub-skill Return Protocol Global), `commands/issue/create.md` (Sub-skill Return Protocol), this reference | active |
 | 2. ~~Flow state hard gate~~ | ~~Sub-skills write `*_post_*` phases + `active: true` before return; stop-guard blocks stop attempts until terminal state~~ | ~~`hooks/flow-state-update.sh` + `hooks/stop-guard.sh`~~ | **removed in #675** — `stop-guard.sh` was deleted; `flow-state-update.sh` still emits `*_post_*` phases for observability/sentinel emit, but no stop is blocked |
-| 3. Caller-continuation hints | HTML comment `<!-- caller: ... -->` immediately before the sub-skill's result pattern | Defense-in-Depth sections in `commands/issue/create-interview.md`, `commands/issue/create-register.md`, `commands/issue/create-decompose.md` | active |
+| 3. Caller-continuation hints | HTML comment `<!-- caller: ... -->` (issue creation paths) または `<!-- continuation: ... -->` (wiki ingest path) immediately before the sub-skill's result pattern | Defense-in-Depth sections in `commands/issue/create-interview.md`, `commands/issue/create-register.md`, `commands/issue/create-decompose.md`, `commands/wiki/ingest.md` | active |
 
 With Layer 2 removed, the LLM receives the continuation signal from two independent sources: the prompt itself (Layer 1) and the inline HTML comment in the sub-skill output (Layer 3). The imperative strength of those two surfaces is therefore load-bearing — see the blockquote below.
 
 > **⚠️ Important — prompt-side defense alone is insufficient**: Issue #910 で実証された通り、stop-guard.sh の撤去 (#674/#675) 以降は Layer 2 の hard gate が存在せず、Layer 1 (prompt contract) と Layer 3 (caller HTML hint) のみが残った状態では LLM の turn-boundary heuristic 起因の implicit stop を完全には防げない。`/rite:pr:cleanup` 実行中の `rite:wiki:ingest --auto` lint return 後 / `/rite:issue:create` 実行中の `rite:issue:create-interview` `[interview:skipped]` return 後の双方で `Sautéed for 7m 40s` 等の implicit stop が観測されている。**Mitigation**: Layer 3 (caller HTML hint) と sub-skill 側 plain-text reminder の **imperative 強度** が defense 強度を決定する。`IMMEDIATELY` 単独ではなく `MUST execute as VERY FIRST tool call BEFORE any text output, narrative, or response generation` のような命令形 + 否定形重ねがけが implicit stop の確率を下げる経験的観測 (Issue #910 D-01)。`継続中` のような現状報告ではなく `MUST continue (turn を閉じない)` のような命令形が natural stopping point を消去する。
 
-> **3 site canonical signaling pattern** (Issue #910 適用): caller HTML hint / sub-skill plain-text reminder / sub-skill HTML continuation comment の 3 site で **共通の imperative keyword 群** を反復することで、LLM が任意の path で return block を read しても turn-boundary heuristic が発火しない構造にする。共通 keyword: `MUST execute as VERY FIRST tool call BEFORE any text output`、`DO NOT end the turn`、`DO NOT output any narrative text before this bash call`。これらの keyword は `hooks/tests/step0-immediate-bash-presence.test.sh` で 4 site (`commands/issue/create.md` Mandatory After Interview / Mandatory After Delegation, `commands/pr/cleanup.md` Mandatory After Wiki Ingest, `commands/wiki/ingest.md` continuation HTML comment) を grep で pin する。
+> **3 layer canonical signaling pattern** (Issue #910 適用): caller HTML hint (Layer 3a) / sub-skill plain-text reminder (Layer 3b) / sub-skill HTML continuation comment (Layer 3c) の 3 layer で **共通 intent** (命令形 / natural stopping point の消去) を反復することで、LLM が任意の path で return block を read しても turn-boundary heuristic が発火しない構造にする。**phrasing は layer により意図的に異なる**:
+>
+> - **HTML comment 層 (3a / 3c)**: 英語 canonical full form (`MUST execute as VERY FIRST tool call BEFORE any text output`、`DO NOT end the turn`、`DO NOT output any narrative text before this bash call`)。LLM が機械的に grep して読み取る経路。
+> - **Plain-text reminder 層 (3b)**: user-facing 短縮 Japanese imperative form (`MUST continue (turn を閉じない)`、`停止禁止` 等)。ユーザーにも可視な status indicator として簡潔さを優先 (詳細な caller 向け instruction は HTML comment 層に集約)。
+>
+> 両層で共通の intent (命令形であること、現状報告 phrasing でないこと) を維持しつつ、phrasing は層別に最適化する設計。これらの keyword (HTML comment 層の英語 canonical) は `hooks/tests/step0-immediate-bash-presence.test.sh` で 4 grep target (`commands/issue/create.md` Mandatory After Interview / Mandatory After Delegation, `commands/pr/cleanup.md` Mandatory After Wiki Ingest, `commands/wiki/ingest.md` continuation HTML comment) を pin する。
 
 ## Relationship to Workflow Incident Detection
 

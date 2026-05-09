@@ -305,7 +305,7 @@ fi
 
 ### 🚨 Mandatory After Delegation (Defense-in-Depth)
 
-> **⚠️ 同 turn 内連続実行する (MUST execute in the SAME response turn)**: terminal sub-skill (`create-register.md`, `create-decompose.md`) は通常 `[create:completed:{N}]` + `create_completed` / `active: false` を内製出力する (Terminal Completion pattern)。本セクションは欠落時の defense-in-depth recovery path。
+> **⚠️ 同 turn 内連続実行する (MUST execute in the SAME response turn)**: terminal sub-skill (`create-register.md`, `create-decompose.md`) は通常 `<!-- [create:completed:{N}] -->` + `create_completed` / `active: false` を内製出力する (Terminal Completion pattern、HTML comment 形式 — Issue #561 整合)。本セクションは欠落時の defense-in-depth recovery path。
 
 **Self-check**: `<!-- [create:completed:{N}] -->` が出力済みか? **Yes** (Normal path) → terminal state 既達、Steps 1-3 は **no-op で skip** (Step 1 は retrograde transition になる)。**No** (異常経路) → Steps 1-3 が critical、terminal state に強制遷移。
 

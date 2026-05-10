@@ -121,10 +121,12 @@ CREATE_MD="$COMMANDS_DIR/issue/create.md"
 CLEANUP_MD="$COMMANDS_DIR/pr/cleanup.md"
 INGEST_MD="$COMMANDS_DIR/wiki/ingest.md"
 INTERVIEW_MD="$COMMANDS_DIR/issue/create-interview.md"
+LINT_MD="$COMMANDS_DIR/wiki/lint.md"
 
 # Hard precondition — missing target file is an environment error, not a test failure.
 # INTERVIEW_MD も precondition guard に含めることで、TC-5.x の if-guard 経由 silent skip を排除する。
-for f in "$CREATE_MD" "$CLEANUP_MD" "$INGEST_MD" "$INTERVIEW_MD"; do
+# LINT_MD は TC-6 (lint.md Phase 9.2 Layer 3b imperative recast pin、Issue #917 cycle 5 で追加) のため。
+for f in "$CREATE_MD" "$CLEANUP_MD" "$INGEST_MD" "$INTERVIEW_MD" "$LINT_MD"; do
   if [ ! -f "$f" ]; then
     echo "  ❌ FILE NOT FOUND: $f" >&2
     exit 1
@@ -373,20 +375,50 @@ assert_grep "TC-5.5: create-interview.md plain-text reminder blockquote 行に '
   "$INTERVIEW_MD" \
   '^> ⏭ MUST continue \(turn を閉じない\):'
 
+echo
+echo "=== TC-6: lint.md Phase 9.2 Layer 3b imperative recast (Issue #917 cycle 5) ==="
+
+# 設計意図 (Issue #917 cycle 5 で test-reviewer F-06 対応):
+#   commands/wiki/lint.md の Phase 9.2 三点セット blockquote (3 site — Phase 1.1 早期 return /
+#   Phase 1.3 早期 return / Phase 9.2 documentation example) は Issue #917 で
+#   `> ⏭ 継続中:` (status reporting) → `> ⏭ MUST continue (turn を閉じない):` (imperative)
+#   に recast されたが、recast 対象の lint.md を pin する assertion がこれまで存在せず、
+#   revert (継続中: への戻し) が全 hook test suite で false-negative となる経路があった。
+#
+# 2 assertion 直交カバレッジ:
+#   - TC-6.1: imperative recast の positive pin (echo command 行に MUST continue keyword 存在)
+#   - TC-6.2: anti-pattern revert pin (旧 `⏭ 継続中:` status reporting が残っていない)
+#
+# echo 行は bash heredoc / inline echo の両方の form を取り得るため `>` blockquote prefix だけで
+# anchor し、行内の echo コマンド本体は問わない (実装の細部に過剰結合しないため)。
+
+# TC-6.1: lint.md に Layer 3b imperative `MUST continue (turn を閉じない)` blockquote が存在
+assert_grep "TC-6.1: lint.md Phase 9.2 blockquote 行に '⏭ MUST continue (turn を閉じない):' が存在 (Layer 3b imperative 強度 pin、Issue #917 で recast)" \
+  "$LINT_MD" \
+  '> ⏭ MUST continue \(turn を閉じない\):'
+
+# TC-6.2: 旧 `⏭ 継続中:` status reporting が lint.md に残っていない
+assert_not_grep "TC-6.2: lint.md に旧 '⏭ 継続中:' status reporting が残っていない (Issue #917 で imperative 形式に recast 済み)" \
+  "$LINT_MD" \
+  '⏭ 継続中:'
+
 DRIFT_HINT="\
 This test pins imperative keyword presence (Issue #910 / #917 mitigation) across
 5 cross-orchestrator grep targets (create.md ×2, cleanup.md, ingest.md ×2 —
 continuation HTML comment + Mandatory After Auto-Lint Step 0 prose, Issue #917 で
-4 → 5 に拡張) + 3 supplementary pin types in create-interview.md (5 assertions total):
+4 → 5 に拡張) + 3 supplementary pin types in create-interview.md (5 assertions total)
++ TC-6 (lint.md Phase 9.2 imperative recast pin、Issue #917 cycle 5 で追加):
   (e1) caller HTML literal positive pins (TC-5.3/5.4) — 2 keyword pin
   (e2) anti-pattern revert — 2 site に分解 (cycle 8 TW LOW 03):
        (e2-a) plain-text reminder content (TC-5.1) — 旧 '⏭ 継続中:.*自動継続します' 文言の再出現を block
        (e2-b) caller HTML literal content (TC-5.2) — 旧 'IMMEDIATELY run this as your next tool call' 文言の再出現を block
   (e3) plain-text reminder Layer 3b (TC-5.5) — '⏭ MUST continue (turn を閉じない):' blockquote 行を pin
+  (e4) lint.md Phase 9.2 Layer 3b imperative recast (TC-6.1/6.2) — positive pin (MUST continue) +
+       anti-pattern pin (継続中: status reporting が残っていない)
 If you weakened the imperative strength (e.g., reverted MUST → IMMEDIATELY,
-removed 'VERY FIRST', restored '継続中' status reporting in lint.md Phase 9.2,
-or removed Step 0 from ingest.md Mandatory After Auto-Lint), restore the
-original strength.
+removed 'VERY FIRST', restored '継続中' status reporting in lint.md Phase 9.2 — now
+directly caught by TC-6 — or removed Step 0 from ingest.md Mandatory After Auto-Lint),
+restore the original strength.
 
 Reference: skills/rite-workflow/references/sub-skill-return-protocol.md
 \"3 layer canonical signaling pattern\" blockquote and \"Issue #910 / #917 imperative

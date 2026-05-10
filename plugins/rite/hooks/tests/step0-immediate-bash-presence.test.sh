@@ -11,9 +11,10 @@
 #   imperative 強度を強化することで mitigation を図る対策。
 #
 # Purpose:
-#   主たる 4 cross-orchestrator grep target + 補完的な 2 caller HTML literal pin
-#   = 計 6 site で以下を grep verify する。imperative keyword の適用範囲は site
-#   (= layer) ごとに異なることに注意:
+#   主たる 4 cross-orchestrator grep target + 補完的な 3 supplementary pin types
+#   (caller HTML literal positive 2 + anti-pattern revert 2 + plain-text reminder 1
+#   = 計 5 supplementary assertion) で以下を grep verify する。imperative keyword の
+#   適用範囲は site (= layer) ごとに異なることに注意:
 #
 #   1. Step 0 Immediate Bash literal の section anchor + bash 行が存在
 #      — orchestrator prose 層 2 site のみに適用 (TC-1.3 create.md / TC-2.3 cleanup.md)
@@ -34,13 +35,19 @@
 #
 #   Note (粒度の使い分け): create.md は **2 セクション anchor** (Mandatory After Interview / Mandatory
 #   After Delegation) として `×2` と数える上記 4 grep target だが、TC-4.1 の `count >= 3` は
-#   `VERY FIRST` keyword の **occurrence count** (= 3 prose site: line 201/207/304) を pin する。
-#   両者は粒度が異なる ("section anchor 数" vs "keyword occurrence 数") ことに注意。
+#   `VERY FIRST` keyword の **行カウント** (`grep -cF` の戻り値、= prose 3 site: line 203/209/306)
+#   を pin する。両者は粒度が異なる ("section anchor 数" vs "keyword 出現行数") ことに注意。
+#   注: `grep -cF` はマッチ行数を返すため、line 306 のように同一行に複数 occurrence がある場合
+#   でも count に 1 加算される。token 数 ("VERY FIRST" の出現回数) ではなく行数。
 #
-# 2 supplementary caller HTML literal pins (補完 pin scope):
-#   (e) commands/issue/create-interview.md caller HTML literal — TC-5.3/5.4 で 2 keyword pin
-#       (byte equality は caller-html-literal-symmetry.test.sh が pin。本 test は imperative
-#        keyword presence pin で「両ブロック同時 weak-phrasing 差し替え」regression を補完検出)
+# 3 supplementary pin types (補完 pin scope、計 5 assertion):
+#   (e1) commands/issue/create-interview.md caller HTML literal positive — TC-5.3/5.4 で 2 keyword pin
+#        (byte equality は caller-html-literal-symmetry.test.sh が pin。本 test は imperative
+#         keyword presence pin で「両ブロック同時 weak-phrasing 差し替え」regression を補完検出)
+#   (e2) commands/issue/create-interview.md anti-pattern revert — TC-5.1/5.2 で旧文言 (`継続中.../自動継続します`、
+#        `IMMEDIATELY run this as your next tool call`) の再出現を block
+#   (e3) commands/issue/create-interview.md plain-text reminder Layer 3b — TC-5.5 で
+#        `^> ⏭ MUST continue (turn を閉じない):` blockquote 行を pin (caller HTML literal とは別 site)
 #
 # Coverage matrix (test 間の責務分離):
 #   - byte equality (両ブロック完全一致): caller-html-literal-symmetry.test.sh が pin
@@ -86,25 +93,25 @@ done
 
 echo "=== TC-1: create.md Mandatory After Interview Step 0 ==="
 
-# TC-1.1: VERY FIRST tool call keyword presence (Mandatory After Interview)
+# TC-1.1: VERY FIRST tool call keyword presence (Mandatory After Interview Step 0 prose)
 # uppercase 形式のみ pin する。canonical phrasing (sub-skill-return-protocol.md
 # 「3 layer canonical signaling pattern」blockquote の共通 keyword) が uppercase で固定されているため、
 # lowercase phrasing は drift の兆候として fail させる意図。
 #
-# alternation regex の現状と限界 (実情の disclaimer):
-# 第 1 branch `\*\*VERY FIRST tool call\*\*` のみが create.md の現在の phrasing (line 209 Mandatory
-# After Interview prose) と match する。第 2 branch `\*\*VERY FIRST tool call \(cognitive action\)\*\*`
-# は **dead branch** で、create.md 内に同形式の literal は存在しない (Mandatory After Delegation prose
-# line 306 は long bold `**MUST proceed to Self-check as your VERY FIRST cognitive action BEFORE ...
-# narrative**` の中に "VERY FIRST cognitive action" を含む形式で、第 2 branch の syntactic shape とは
-# 一致しない)。つまり Mandatory After Delegation prose の bold は本 TC-1.1 では直接 pin できておらず、
-# TC-4.1 の `VERY FIRST` count >= 3 で間接 catch されている (line 209 の Interview prose 内で
-# `**VERY FIRST tool call**` 1 回 + line 306 の Delegation prose 内で `VERY FIRST` 出現 2 回 = 計 3 回)。
-# 第 2 branch は将来 phrasing を `**VERY FIRST tool call (cognitive action)**` 形式に統一した場合の
-# forward compatibility 用に保持し、現状は dead branch として disclaim する (Issue #910 review F-03)。
-assert_grep "TC-1.1: create.md に uppercase '**VERY FIRST tool call**' keyword が存在 (canonical phrasing pin、現状は第 1 branch のみ active)" \
+# regex は `\*\*VERY FIRST tool call\*\*` のみ pin する (旧 alternation の第 2 branch
+# `\*\*VERY FIRST tool call \(cognitive action\)\*\*` は dead code として削除済み、cycle 7 F-07 対応)。
+# 削除理由: create.md line 306 は long bold `**MUST proceed to Self-check as your VERY FIRST cognitive
+# action BEFORE ... narrative**` 形式で、第 2 branch の syntactic shape (`**VERY FIRST tool call (cognitive
+# action)**`) には一致しないため永続的に dead。
+# TC-1.1 が pin する scope: line 209 の Step 0 prose 内 `**VERY FIRST tool call**` Markdown bold (rationale
+# section の line 306 backtick literal `**VERY FIRST tool call** = bash literal 実行` にも match するが、
+# 後者は説明文脈であり TC-1.1 の主目的は line 209 の Step 0 prose 強度 pin)。Mandatory After Delegation
+# prose line 306 の Markdown bold (`**...VERY FIRST cognitive action...**`) は本 TC-1.1 では直接 pin できず
+# TC-4.1 の per-file count >= 3 で間接 catch される (cognitive action variant を直接 pin する独立 assertion
+# は今後の拡張で検討、cycle 7 F-07 推奨対応 (b))。
+assert_grep "TC-1.1: create.md に uppercase '**VERY FIRST tool call**' keyword が存在 (Step 0 prose canonical phrasing pin)" \
   "$CREATE_MD" \
-  '\*\*VERY FIRST tool call(\*\*| \(cognitive action\)\*\*)'
+  '\*\*VERY FIRST tool call\*\*'
 
 # TC-1.2: BEFORE any text output keyword presence
 assert_grep "TC-1.2: create.md に 'BEFORE any text output' keyword が存在" \
@@ -189,12 +196,15 @@ echo "=== TC-4: Cross-orchestrator imperative keyword count (per-file 最低数)
 # create.md の閾値を `>= 3` にしているのも、Mandatory After Delegation site のみ単独 weakening
 # した場合の `>= 2` fallthrough を防ぐため。
 #
-# 期待値の根拠 (現在の実測):
-#   - create.md   : >= 3  (Mandatory After Interview prose + Step 0 prose + Mandatory After Delegation prose)
-#                  (注: Mandatory After Delegation prose の line は `**VERY FIRST tool call (cognitive action)**`
-#                       形式で literal が異なる。Self-check 自体が cognitive 判定行為のため canonical bash
-#                       literal 経路と分離している意図。grep -cF 'VERY FIRST' は parenthetical 付きでも
-#                       count 加算される)
+# 期待値の根拠 (現在の実測、grep -cF はマッチ行数を返す):
+#   - create.md   : >= 3  (line 203 Mandatory After Interview prose + line 209 Step 0 prose +
+#                          line 306 Mandatory After Delegation prose / rationale prose)
+#                  (注: line 306 の Mandatory After Delegation prose は `**VERY FIRST cognitive action**`
+#                       形式 (`tool call` を含まない) を採用。Self-check 自体が cognitive 判定行為のため
+#                       canonical bash literal 経路 (`**VERY FIRST tool call**`) と分離している意図。
+#                       `grep -cF 'VERY FIRST'` は **行数** をカウントするため、line 306 のように同一行に
+#                       複数の `VERY FIRST` occurrence (`cognitive action` + canonical scheme rationale 内の
+#                       `tool call`) があっても count に 1 のみ加算される。token 数ではなく行数。)
 #   - cleanup.md  : >= 1  (Mandatory After Wiki Ingest)
 #   - ingest.md   : >= 1  (Phase 9.1 continuation HTML comment line)
 # いずれかが下回れば即 fail。site 単位での弱化を確実に検出する。

@@ -1,44 +1,52 @@
 #!/bin/bash
 # step0-immediate-bash-presence.test.sh
 #
-# Cross-orchestrator regression test for Issue #910 — orchestrator return-block
+# Cross-orchestrator regression test for Issue #910 / #917 — orchestrator return-block
 # 直後の implicit stop regression。
 #
 # Background:
 #   stop-guard.sh 撤去 (#674/#675) 以降、prompt-side defense のみが残り、LLM の
 #   turn-boundary heuristic 起因の implicit stop が `Sautéed for 7m 40s` 等として
 #   実測されている。Issue #910 は caller-side Step 0 Immediate Bash literal の
-#   imperative 強度を強化することで mitigation を図る対策。
+#   imperative 強度を強化することで mitigation を図る対策。Issue #917 で 5 番目の
+#   canonical site (commands/wiki/ingest.md Mandatory After Auto-Lint Step 0 prose)
+#   を 4 site → 5 site 対称化に拡張。
 #
 # Purpose:
-#   主たる 4 cross-orchestrator grep target + 補完的な 3 supplementary pin types
+#   主たる 5 cross-orchestrator grep target + 補完的な 3 supplementary pin types
 #   (caller HTML literal positive 2 + anti-pattern revert 2 + plain-text reminder 1
 #   = 計 5 supplementary assertion) で以下を grep verify する。imperative keyword の
 #   適用範囲は site (= layer) ごとに異なることに注意:
 #
 #   1. Step 0 Immediate Bash literal の section anchor + bash 行が存在
-#      — orchestrator prose 層 2 site のみに適用 (TC-1.3 create.md / TC-2.3 cleanup.md)
+#      — orchestrator prose 層 3 site に適用 (TC-1.3 create.md / TC-2.3 cleanup.md / TC-3.5/3.6 ingest.md)
 #   2. positive imperative keyword: `MUST execute` / `VERY FIRST` / `BEFORE any text output`
-#      — 4 site で計 6 assertion (TC-1.1/1.2 = create.md, TC-2.1/2.2 = cleanup.md, TC-3.2 = ingest.md,
+#      — 5 site で計 7 assertion (TC-1.1/1.2 = create.md, TC-2.1/2.2 = cleanup.md, TC-3.2 = ingest.md
+#        continuation HTML literal, TC-3.7 = ingest.md Mandatory After Auto-Lint Step 0 prose,
 #        TC-5.3 = create-interview.md)
-#        (粒度: site 数 = 4、assertion 数 = 6 — protocol-doc L98 の granularity-mixing prohibition と整合)
+#        (粒度: site 数 = 5、assertion 数 = 7 — protocol-doc の **Granularity-mixing prohibition** note (3 layer canonical signaling pattern blockquote 末尾) と整合)
 #   3. 否定形重ねがけ: `DO NOT end the turn` / `DO NOT output any narrative`
 #      — HTML comment 層のみに 2 site で計 3 assertion (TC-3.3/3.4 = ingest.md continuation HTML literal,
 #        TC-5.4 = create-interview.md caller HTML literal)
-#        (粒度: site 数 = 2、assertion 数 = 3 — 同上 granularity-mixing prohibition と整合)
-#      — orchestrator prose 層 (create.md / cleanup.md prose) は positive imperative のみで否定形を持たない
-#        (sub-skill-return-protocol.md Defense-in-depth layers table の Layer 1 row + Layer 3 row 共通の
-#         imperative 強度設計 — Layer 1 prose は positive imperative のみ、Layer 3 HTML comment は positive
-#         + 否定形両方を載せる site-by-site の phrasing 強度規定)
+#        (粒度: site 数 = 2、assertion 数 = 3 — 同上 **Granularity-mixing prohibition** note (3 layer canonical signaling pattern blockquote 末尾) と整合)
+#      — orchestrator prose 層 (create.md / cleanup.md / ingest.md Mandatory After Auto-Lint Step 0 prose)
+#        は positive imperative のみで否定形を持たない (sub-skill-return-protocol.md Defense-in-depth
+#        layers table の Layer 1 row + Layer 3 row 共通の imperative 強度設計 — Layer 1 prose は
+#        positive imperative のみ、Layer 3 HTML comment は positive + 否定形両方を載せる site-by-site
+#        の phrasing 強度規定)
 #
-# 4 cross-orchestrator grep targets (主たる pin scope):
+# 5 cross-orchestrator grep targets (主たる pin scope、Issue #917 で 4 → 5 に拡張):
 #   (a) commands/issue/create.md       — Mandatory After Interview Step 0 (positive imperative のみ)
 #   (b) commands/issue/create.md       — Mandatory After Delegation pre-section prose (positive imperative のみ)
 #   (c) commands/pr/cleanup.md         — Mandatory After Wiki Ingest Step 0 (positive imperative のみ)
 #   (d) commands/wiki/ingest.md        — Phase 9.1 caller continuation HTML comment (positive + 否定形両方)
+#   (e) commands/wiki/ingest.md        — Mandatory After Auto-Lint Step 0 prose (positive imperative のみ、
+#                                        Issue #917 で追加。cleanup.md Step 0 と byte-equal 相当の二重 patch
+#                                        構造で対称化、`Step 0: Immediate Bash Action` 名称 + Markdown bold
+#                                        `**VERY FIRST tool call**` で TC-3.7 が直接 pin する)
 #
 #   Note (粒度の使い分け): create.md は **2 セクション anchor** (Mandatory After Interview / Mandatory
-#   After Delegation) として `×2` と数える上記 4 grep target だが、TC-4.1 の `count >= 3` は
+#   After Delegation) として `×2` と数える上記 5 grep target だが、TC-4.1 の `count >= 3` は
 #   `VERY FIRST` keyword の **行カウント** (`grep -cF` の戻り値、= prose 3 site: Mandatory After Interview
 #   prose / Step 0 prose / Mandatory After Delegation prose) を pin する。両者は粒度が異なる
 #   ("section anchor 数" vs "keyword 出現行数") ことに注意。
@@ -113,10 +121,12 @@ CREATE_MD="$COMMANDS_DIR/issue/create.md"
 CLEANUP_MD="$COMMANDS_DIR/pr/cleanup.md"
 INGEST_MD="$COMMANDS_DIR/wiki/ingest.md"
 INTERVIEW_MD="$COMMANDS_DIR/issue/create-interview.md"
+LINT_MD="$COMMANDS_DIR/wiki/lint.md"
 
 # Hard precondition — missing target file is an environment error, not a test failure.
 # INTERVIEW_MD も precondition guard に含めることで、TC-5.x の if-guard 経由 silent skip を排除する。
-for f in "$CREATE_MD" "$CLEANUP_MD" "$INGEST_MD" "$INTERVIEW_MD"; do
+# LINT_MD は TC-6 (lint.md Phase 9.2 Layer 3b imperative recast pin、Issue #917 cycle 5 で追加) のため。
+for f in "$CREATE_MD" "$CLEANUP_MD" "$INGEST_MD" "$INTERVIEW_MD" "$LINT_MD"; do
   if [ ! -f "$f" ]; then
     echo "  ❌ FILE NOT FOUND: $f" >&2
     exit 1
@@ -220,6 +230,43 @@ assert_grep "TC-3.4: ingest.md caller continuation HTML literal 1 行内に 'DO 
   "$INGEST_MD" \
   '^<!-- continuation:.*DO NOT output any narrative text'
 
+# TC-3.5 / TC-3.6 / TC-3.7: ingest.md Mandatory After Auto-Lint Step 0 prose (Issue #917 — 5 番目の canonical site)
+# Pre-#917 baseline では本 site は意図的に canonical phrasing 適用対象外として残置されていたが、
+# PR #916 マージ直後の実機実行で Mandatory After Auto-Lint Step 0 が未発火で implicit stop する事象を
+# 直接観測 (累積 27 回目)。Issue #917 D-01 で 5 site 対称化を判定し、本 TC で grep pin する。
+#
+# 設計意図 (3 assertion 組合せの直交カバレッジ):
+#   - TC-3.5: '### .*Mandatory After Auto-Lint' Markdown level-3 heading anchor (section 削除を確実に検出)
+#   - TC-3.6: 'phase "ingest_post_lint"' bash literal が 2 回出現 (Step 0 + Step 1 idempotent 二重 patch
+#             構造を pin、Step 0 削除時 count が 1 に減って fail)
+#   - TC-3.7: '**VERY FIRST tool call**' Markdown bold (Step 0 prose 限定で出現する canonical phrasing pin、
+#             cleanup.md Step 0 prose と同型の imperative 強度を保証)
+
+# TC-3.5: Mandatory After Auto-Lint section heading anchor
+assert_grep "TC-3.5: ingest.md に '### .*Mandatory After Auto-Lint' Markdown level-3 heading が存在 (Step 0 が属するセクション anchor)" \
+  "$INGEST_MD" \
+  '^### .*Mandatory After Auto-Lint'
+
+# TC-3.6: Step 0 + Step 1 二重 patch 構造の保証 (count >= 2)
+# `grep -c ... || echo 0` idiom の落とし穴を回避するため、TC-4 と同じ
+# `if cmd; then :; else N=0` 形式を採用 (該当 idiom の rationale は TC-4 セクション参照)。
+if count_ingest_phase=$(grep -cE 'phase[[:space:]]+"ingest_post_lint"' "$INGEST_MD" 2>/dev/null); then :; else count_ingest_phase=0; fi
+if [ "$count_ingest_phase" -ge 2 ]; then
+  pass "TC-3.6: ingest.md Mandatory After Auto-Lint に 'phase \"ingest_post_lint\"' bash literal が 2 回以上 (実測=$count_ingest_phase, 期待>=2 — Step 0 + Step 1 idempotent 二重 patch 構造、cleanup.md Step 0/1 と byte-equal 相当の対称設計)"
+else
+  fail "TC-3.6: ingest.md Mandatory After Auto-Lint に 'phase \"ingest_post_lint\"' bash literal が 2 回未満 (実測=$count_ingest_phase, 期待>=2 — Step 0 が削除された可能性。Issue #917 で確立した cleanup.md Step 0/1 と byte-equal 相当の二重 patch 構造を維持すること)"
+fi
+
+# TC-3.7: Step 0 prose 内の canonical Markdown bold pin
+# Mandatory After Auto-Lint Step 0 prose 限定で出現する `**VERY FIRST tool call**` (Markdown bold) を
+# pin する。continuation HTML comment / Caller-side coupling rationale prose では bold なし `VERY FIRST tool call`
+# 形式のため、bold 形式の存在で Mandatory After Auto-Lint Step 0 prose 強度を直接 pin できる
+# (TC-3.2 の continuation HTML comment 内 `VERY FIRST tool call BEFORE any text output` とは
+# 直交した assertion)。
+assert_grep "TC-3.7: ingest.md に uppercase '**VERY FIRST tool call**' Markdown bold が存在 (Mandatory After Auto-Lint Step 0 prose canonical phrasing pin、Issue #917 で追加された 5th canonical site)" \
+  "$INGEST_MD" \
+  '\*\*VERY FIRST tool call\*\*'
+
 echo
 echo "=== TC-4: Cross-orchestrator imperative keyword count (per-file 最低数) ==="
 
@@ -243,7 +290,12 @@ echo "=== TC-4: Cross-orchestrator imperative keyword count (per-file 最低数)
 #                   変更。drift 判定は構造名 anchor の存在 (`^### .*Mandatory After Interview` 等)
 #                   と grep keyword の `count >= N` で orthogonal に行う。)
 #   - cleanup.md  : >= 1  (Mandatory After Wiki Ingest)
-#   - ingest.md   : >= 1  (Phase 9.1 continuation HTML comment line)
+#   - ingest.md   : >= 2  (Mandatory After Auto-Lint Step 0 prose [Issue #917、5th canonical site] +
+#                          Phase 9.1 caller continuation HTML comment、計 2 canonical site。
+#                          rationale/description prose の `VERY FIRST` 言及 [Caller-side coupling rationale prose /
+#                          Imperative 強度 rationale prose] は load-bearing でないため期待値最低 2 の根拠とはしない
+#                          (実 grep -cF count には rationale 行も含まれ実測=4 だが、threshold 2 は load-bearing
+#                          canonical 2 site のみで満たすことを要求する設計)。)
 # いずれかが下回れば即 fail。site 単位での弱化を確実に検出する。
 
 # `grep -c ... || echo 0` idiom (注: || は logical OR) は 0 match 時に "0\n0" (length 3) を返す
@@ -269,10 +321,10 @@ else
   fail "TC-4.2: cleanup.md に 'VERY FIRST' keyword が 1 ヶ所未満 (実測=$count_cleanup, 期待>=1 — Mandatory After Wiki Ingest で必要)"
 fi
 
-if [ "$count_ingest" -ge 1 ]; then
-  pass "TC-4.3: ingest.md に 'VERY FIRST' keyword が 1 ヶ所以上 (実測=$count_ingest, 期待>=1)"
+if [ "$count_ingest" -ge 2 ]; then
+  pass "TC-4.3: ingest.md に 'VERY FIRST' keyword が 2 ヶ所以上 (実測=$count_ingest, 期待>=2 — Mandatory After Auto-Lint Step 0 prose [Issue #917] + caller continuation HTML literal の 2 canonical site)"
 else
-  fail "TC-4.3: ingest.md に 'VERY FIRST' keyword が 1 ヶ所未満 (実測=$count_ingest, 期待>=1 — caller continuation HTML literal で必要)"
+  fail "TC-4.3: ingest.md に 'VERY FIRST' keyword が 2 ヶ所未満 (実測=$count_ingest, 期待>=2 — Issue #917 で 5th canonical site (Mandatory After Auto-Lint Step 0 prose) を追加。Step 0 prose の '**VERY FIRST tool call**' か Phase 9.1 continuation HTML comment の 'VERY FIRST tool call' が削除された可能性)"
 fi
 
 echo
@@ -323,21 +375,79 @@ assert_grep "TC-5.5: create-interview.md plain-text reminder blockquote 行に '
   "$INTERVIEW_MD" \
   '^> ⏭ MUST continue \(turn を閉じない\):'
 
+echo
+echo "=== TC-6: lint.md Phase 9.2 Layer 3b imperative recast (Issue #917 cycle 5) ==="
+
+# 設計意図 (Issue #917 cycle 5 で test-reviewer F-06 対応、cycle 6 で TC-6.1 anchor 強化 + count
+# assertion 追加):
+#   commands/wiki/lint.md の Phase 9.2 三点セット blockquote (3 site — Phase 1.1 早期 return /
+#   Phase 1.3 早期 return / Phase 9.2 documentation example) は Issue #917 で
+#   `> ⏭ 継続中:` (status reporting) → `> ⏭ MUST continue (turn を閉じない):` (imperative)
+#   に recast されたが、recast 対象の lint.md を pin する assertion がこれまで存在せず、
+#   revert (継続中: への戻し) が全 hook test suite で false-negative となる経路があった。
+#
+# 3 assertion 直交カバレッジ:
+#   - TC-6.1: imperative recast の positive pin (line-start anchor + echo / raw blockquote 両 form)
+#   - TC-6.2: anti-pattern revert pin (旧 `⏭ 継続中:` status reporting が残っていない)
+#   - TC-6.3: count pin (3 canonical site すべての存在を保証、部分削除も検出)
+#
+# regex 設計 (cycle 6 で line-start anchor 強化):
+#   `^[[:space:]]*(echo ")?> ⏭ MUST continue \(turn を閉じない\):` で 2 form を line-start で受け入れる:
+#     (a) `  echo "> ⏭ MUST continue ..."` (実装の echo 行、L157/L230)
+#     (b) `> ⏭ MUST continue ...` (doc-spec の raw blockquote、L1774)
+#   line-start anchor を持たない regex は L1781 の rationale prose 内 inline backtick literal
+#   (`` `> ⏭ MUST continue ...` ``) に false-positive match して 3 canonical site 全 revert でも
+#   PASS する (cycle 5 test-reviewer F-01 で reproduction 確認済)。TC-5.5 の learning 継承。
+
+# TC-6.1: lint.md に Layer 3b imperative `MUST continue (turn を閉じない)` blockquote が存在
+# (line-start anchor で L1781 の inline backtick literal を除外)
+assert_grep "TC-6.1: lint.md Phase 9.2 blockquote (line-start anchor) に '⏭ MUST continue (turn を閉じない):' が存在 (Layer 3b imperative 強度 pin、Issue #917 で recast)" \
+  "$LINT_MD" \
+  '^[[:space:]]*(echo ")?> ⏭ MUST continue \(turn を閉じない\):'
+
+# TC-6.2: 旧 `⏭ 継続中:` status reporting が lint.md に残っていない
+assert_not_grep "TC-6.2: lint.md に旧 '⏭ 継続中:' status reporting が残っていない (Issue #917 で imperative 形式に recast 済み)" \
+  "$LINT_MD" \
+  '⏭ 継続中:'
+
+# TC-6.3: lint.md に Layer 3b imperative blockquote が 3 site (L157 / L230 / L1774) で存在
+# (count pin、部分削除を検出 — TC-6.1 の line-start anchor regex を再利用)
+# `assert_count` helper が存在しないため TC-4 と同形 (grep -cE + if/else + pass/fail) で実装。
+# `grep -c ... || echo 0` idiom は 0 match 時に "0\n0" を返す副作用があるため、
+# `if cmd; then :; else N=0` 形式で grep の exit code を独立捕捉する。
+if count_lint_imperative=$(grep -cE '^[[:space:]]*(echo ")?> ⏭ MUST continue \(turn を閉じない\):' "$LINT_MD" 2>/dev/null); then :; else count_lint_imperative=0; fi
+
+if [ "$count_lint_imperative" -ge 3 ]; then
+  pass "TC-6.3: lint.md に Layer 3b imperative blockquote が 3 site 以上 (実測=$count_lint_imperative, 期待>=3 — Phase 1.1 / Phase 1.3 早期 return + Phase 9.2 doc-spec の 3 canonical site)"
+else
+  fail "TC-6.3: lint.md に Layer 3b imperative blockquote が 3 site 未満 (実測=$count_lint_imperative, 期待>=3 — Phase 1.1 / Phase 1.3 早期 return + Phase 9.2 doc-spec のいずれかが部分削除/weak-phrasing 化された可能性、cycle 5 test-reviewer F-01 の coverage gap 対応)"
+fi
+
 DRIFT_HINT="\
-This test pins imperative keyword presence (Issue #910 mitigation) across
-4 cross-orchestrator grep targets (create.md ×2, cleanup.md, ingest.md) +
-3 supplementary pin types in create-interview.md (5 assertions total):
+This test pins imperative keyword presence (Issue #910 / #917 mitigation) across
+5 cross-orchestrator grep targets (create.md ×2, cleanup.md, ingest.md ×2 —
+continuation HTML comment + Mandatory After Auto-Lint Step 0 prose, Issue #917 で
+4 → 5 に拡張) + 3 supplementary pin types in create-interview.md (5 assertions total)
++ TC-6 (lint.md Phase 9.2 imperative recast pin、Issue #917 cycle 5 で追加、cycle 6 で
+line-start anchor 強化 + count assertion 追加):
   (e1) caller HTML literal positive pins (TC-5.3/5.4) — 2 keyword pin
   (e2) anti-pattern revert — 2 site に分解 (cycle 8 TW LOW 03):
        (e2-a) plain-text reminder content (TC-5.1) — 旧 '⏭ 継続中:.*自動継続します' 文言の再出現を block
        (e2-b) caller HTML literal content (TC-5.2) — 旧 'IMMEDIATELY run this as your next tool call' 文言の再出現を block
   (e3) plain-text reminder Layer 3b (TC-5.5) — '⏭ MUST continue (turn を閉じない):' blockquote 行を pin
+  (e4) lint.md Phase 9.2 Layer 3b imperative recast (TC-6.1/6.2/6.3):
+       - TC-6.1: line-start anchor 付き positive pin (echo / raw blockquote 両 form 受け入れ、
+         L1781 の inline backtick literal を除外)
+       - TC-6.2: anti-pattern pin (継続中: status reporting が残っていない)
+       - TC-6.3: count pin (3 canonical site すべての存在保証、部分削除も検出)
 If you weakened the imperative strength (e.g., reverted MUST → IMMEDIATELY,
-removed 'VERY FIRST', or restored '継続中' status reporting), restore the
-original strength.
+removed 'VERY FIRST', restored '継続中' status reporting in lint.md Phase 9.2 — now
+directly caught by TC-6 — or removed Step 0 from ingest.md Mandatory After Auto-Lint),
+restore the original strength.
 
 Reference: skills/rite-workflow/references/sub-skill-return-protocol.md
-\"3 layer canonical signaling pattern\" blockquote.
+\"3 layer canonical signaling pattern\" blockquote and \"Issue #910 / #917 imperative
+strengthening coverage (Layer 1 + Layer 3, 5 site canonical)\" Scope note.
 "
 
 if ! print_summary "step0-immediate-bash-presence.test" "$DRIFT_HINT"; then

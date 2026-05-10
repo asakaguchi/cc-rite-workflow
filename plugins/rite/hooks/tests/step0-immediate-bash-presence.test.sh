@@ -35,19 +35,44 @@
 #
 #   Note (粒度の使い分け): create.md は **2 セクション anchor** (Mandatory After Interview / Mandatory
 #   After Delegation) として `×2` と数える上記 4 grep target だが、TC-4.1 の `count >= 3` は
-#   `VERY FIRST` keyword の **行カウント** (`grep -cF` の戻り値、= prose 3 site: line 203/209/306)
-#   を pin する。両者は粒度が異なる ("section anchor 数" vs "keyword 出現行数") ことに注意。
-#   注: `grep -cF` はマッチ行数を返すため、line 306 のように同一行に複数 occurrence がある場合
-#   でも count に 1 加算される。token 数 ("VERY FIRST" の出現回数) ではなく行数。
+#   `VERY FIRST` keyword の **行カウント** (`grep -cF` の戻り値、= prose 3 site: Mandatory After Interview
+#   prose / Step 0 prose / Mandatory After Delegation prose) を pin する。両者は粒度が異なる
+#   ("section anchor 数" vs "keyword 出現行数") ことに注意。
+#   注: `grep -cF` はマッチ行数を返すため、Mandatory After Delegation prose 行のように同一行に複数
+#   occurrence がある場合でも count に 1 加算される。token 数 ("VERY FIRST" の出現回数) ではなく行数。
+#   注 (cycle 8 CQ LOW 02 — line-number rot 回避): 本 test 内の prose reference は **構造名**
+#   (Mandatory After Interview prose / Step 0 prose / Mandatory After Delegation prose) で行う。実
+#   line number (例: 203/209/306) は create.md 上部に行追加があると即 silent rot するため意図的に
+#   保持しない。drift 判定は構造名 anchor の存在 (`^### .*Mandatory After Interview` 等) と grep keyword の
+#   `count >= N` で行う orthogonal 設計。
 #
 # 3 supplementary pin types (補完 pin scope、計 5 assertion):
+#   Intentional ordering convention (cycle 8 test info 02): e1 → e2 → e3 で「positive pin → anti-pattern
+#   revert → plain-text Layer 3b」の意味グループ順に並べる。本順序は TC-5 内の assertion 番号順序
+#   (TC-5.1 → 5.5) とはずれており (TC-5.1/5.2=anti-pattern revert, TC-5.3/5.4=positive pin,
+#   TC-5.5=plain-text reminder)、e1/e2/e3 は意味グループ順、TC-5.1〜5.5 は assertion 実行順 (anti-pattern
+#   check を先に走らせて positive pin を後に置く設計) で各々独立に並べてある。混同しないこと。
+#
 #   (e1) commands/issue/create-interview.md caller HTML literal positive — TC-5.3/5.4 で 2 keyword pin
 #        (byte equality は caller-html-literal-symmetry.test.sh が pin。本 test は imperative
 #         keyword presence pin で「両ブロック同時 weak-phrasing 差し替え」regression を補完検出)
-#   (e2) commands/issue/create-interview.md anti-pattern revert — TC-5.1/5.2 で旧文言 (`継続中.../自動継続します`、
-#        `IMMEDIATELY run this as your next tool call`) の再出現を block
+#   (e2) commands/issue/create-interview.md anti-pattern revert — 2 site に分解 (cycle 8 TW LOW 03):
+#        (e2-a) plain-text reminder content — TC-5.1 で旧 `⏭ 継続中:.*自動継続します` 文言の再出現を block
+#               (target = plain-text Markdown blockquote 行内容)
+#        (e2-b) caller HTML literal content — TC-5.2 で旧 `IMMEDIATELY run this as your next tool call`
+#               文言の再出現を block (target = caller HTML literal 1 行内文字列)
 #   (e3) commands/issue/create-interview.md plain-text reminder Layer 3b — TC-5.5 で
 #        `^> ⏭ MUST continue (turn を閉じない):` blockquote 行を pin (caller HTML literal とは別 site)
+#
+# Future enhancement TODO (cycle 8 test reviewer info 01/03):
+#   - TC-1.4 (cognitive-action 直接 weakening 独立 pin、test info 01): Mandatory After Delegation
+#     pre-section prose の `**VERY FIRST cognitive action**` 単独 phrasing 弱化を直接 pin する独立
+#     assertion の追加を検討。現在は TC-4.1 count >= 3 で間接 catch されるのみ (cycle 7 F-07 推奨対応 (b))。
+#     blocker ではないため follow-up Issue 化推奨。
+#   - TC-1.3b の Step 0 specific 拡張 (test info 03): 現状 `phase "create_post_interview"` は Step 0 と
+#     Step 1 両方に match するため Step 0 単独削除を直接特定できない。TC-1.1 が確実に catch する
+#     orthogonal 設計だが、将来 Step 0 specific pin が必要なら `--phase "create_post_interview" --active true`
+#     の Step 0 引数組合せ pattern を要求する形に拡張可能。blocker ではないため follow-up Issue 化推奨。
 #
 # Coverage matrix (test 間の責務分離):
 #   - byte equality (両ブロック完全一致): caller-html-literal-symmetry.test.sh が pin
@@ -100,15 +125,16 @@ echo "=== TC-1: create.md Mandatory After Interview Step 0 ==="
 #
 # regex は `\*\*VERY FIRST tool call\*\*` のみ pin する (旧 alternation の第 2 branch
 # `\*\*VERY FIRST tool call \(cognitive action\)\*\*` は dead code として削除済み、cycle 7 F-07 対応)。
-# 削除理由: create.md line 306 は long bold `**MUST proceed to Self-check as your VERY FIRST cognitive
-# action BEFORE ... narrative**` 形式で、第 2 branch の syntactic shape (`**VERY FIRST tool call (cognitive
-# action)**`) には一致しないため永続的に dead。
-# TC-1.1 が pin する scope: line 209 の Step 0 prose 内 `**VERY FIRST tool call**` Markdown bold (rationale
-# section の line 306 backtick literal `**VERY FIRST tool call** = bash literal 実行` にも match するが、
-# 後者は説明文脈であり TC-1.1 の主目的は line 209 の Step 0 prose 強度 pin)。Mandatory After Delegation
-# prose line 306 の Markdown bold (`**...VERY FIRST cognitive action...**`) は本 TC-1.1 では直接 pin できず
-# TC-4.1 の per-file count >= 3 で間接 catch される (cognitive action variant を直接 pin する独立 assertion
-# は今後の拡張で検討、cycle 7 F-07 推奨対応 (b))。
+# 削除理由: create.md の Mandatory After Delegation pre-section prose は long bold
+# `**MUST proceed to Self-check as your VERY FIRST cognitive action BEFORE ... narrative**` 形式で、
+# 第 2 branch の syntactic shape (`**VERY FIRST tool call (cognitive action)**`) には一致しないため
+# 永続的に dead。
+# TC-1.1 が pin する scope: Step 0 prose 内 `**VERY FIRST tool call**` Markdown bold (Mandatory After
+# Delegation の rationale section にある backtick literal `**VERY FIRST tool call** = bash literal 実行` にも
+# match するが、後者は説明文脈であり TC-1.1 の主目的は Step 0 prose 強度 pin)。Mandatory After Delegation
+# prose の Markdown bold (`**...VERY FIRST cognitive action...**`) は本 TC-1.1 では直接 pin できず TC-4.1 の
+# per-file count >= 3 で間接 catch される (cognitive action variant を直接 pin する独立 assertion は今後の
+# 拡張で検討、cycle 7 F-07 推奨対応 (b)、cycle 8 test info 01 で再確認)。
 assert_grep "TC-1.1: create.md に uppercase '**VERY FIRST tool call**' keyword が存在 (Step 0 prose canonical phrasing pin)" \
   "$CREATE_MD" \
   '\*\*VERY FIRST tool call\*\*'
@@ -197,14 +223,18 @@ echo "=== TC-4: Cross-orchestrator imperative keyword count (per-file 最低数)
 # した場合の `>= 2` fallthrough を防ぐため。
 #
 # 期待値の根拠 (現在の実測、grep -cF はマッチ行数を返す):
-#   - create.md   : >= 3  (line 203 Mandatory After Interview prose + line 209 Step 0 prose +
-#                          line 306 Mandatory After Delegation prose / rationale prose)
-#                  (注: line 306 の Mandatory After Delegation prose は `**VERY FIRST cognitive action**`
+#   - create.md   : >= 3  (Mandatory After Interview prose + Step 0 prose +
+#                          Mandatory After Delegation prose / rationale prose の 3 prose site)
+#                  (注: Mandatory After Delegation prose は `**VERY FIRST cognitive action**`
 #                       形式 (`tool call` を含まない) を採用。Self-check 自体が cognitive 判定行為のため
 #                       canonical bash literal 経路 (`**VERY FIRST tool call**`) と分離している意図。
-#                       `grep -cF 'VERY FIRST'` は **行数** をカウントするため、line 306 のように同一行に
-#                       複数の `VERY FIRST` occurrence (`cognitive action` + canonical scheme rationale 内の
-#                       `tool call`) があっても count に 1 のみ加算される。token 数ではなく行数。)
+#                       `grep -cF 'VERY FIRST'` は **行数** をカウントするため、Mandatory After Delegation
+#                       prose の同一行に複数の `VERY FIRST` occurrence (`cognitive action` + canonical scheme
+#                       rationale 内の `tool call`) があっても count に 1 のみ加算される。token 数ではなく行数。)
+#                  (cycle 8 CQ LOW 02: 元々 `line 203 / line 209 / line 306` の line number 参照を
+#                   持っていたが、create.md 上部に行追加があると即 silent rot するため意図的に構造名のみに
+#                   変更。drift 判定は構造名 anchor の存在 (`^### .*Mandatory After Interview` 等)
+#                   と grep keyword の `count >= N` で orthogonal に行う。)
 #   - cleanup.md  : >= 1  (Mandatory After Wiki Ingest)
 #   - ingest.md   : >= 1  (Phase 9.1 continuation HTML comment line)
 # いずれかが下回れば即 fail。site 単位での弱化を確実に検出する。
@@ -291,7 +321,9 @@ This test pins imperative keyword presence (Issue #910 mitigation) across
 4 cross-orchestrator grep targets (create.md ×2, cleanup.md, ingest.md) +
 3 supplementary pin types in create-interview.md (5 assertions total):
   (e1) caller HTML literal positive pins (TC-5.3/5.4) — 2 keyword pin
-  (e2) caller HTML literal anti-pattern revert (TC-5.1/5.2) — 旧文言 (継続中.../IMMEDIATELY) の再出現を block
+  (e2) anti-pattern revert — 2 site に分解 (cycle 8 TW LOW 03):
+       (e2-a) plain-text reminder content (TC-5.1) — 旧 '⏭ 継続中:.*自動継続します' 文言の再出現を block
+       (e2-b) caller HTML literal content (TC-5.2) — 旧 'IMMEDIATELY run this as your next tool call' 文言の再出現を block
   (e3) plain-text reminder Layer 3b (TC-5.5) — '⏭ MUST continue (turn を閉じない):' blockquote 行を pin
 If you weakened the imperative strength (e.g., reverted MUST → IMMEDIATELY,
 removed 'VERY FIRST', or restored '継続中' status reporting), restore the

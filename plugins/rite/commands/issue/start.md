@@ -80,13 +80,13 @@ Execute phases sequentially. **Do NOT stop between phases unless the user explic
 
 > **CRITICAL — AUTOMATIC CONTINUATION REQUIREMENT**: This is the single most important rule in this document. When a sub-skill returns, you MUST continue responding in the same turn. Ending your response after a sub-skill returns is a **bug** that forces the user to type "continue" manually.
 
-This protocol applies to **every** sub-skill invocation in this document. Each 🚨 Mandatory After section enforces it at specific transition points.
+This protocol applies to **every** sub-skill invocation in this document. Each Mandatory After section enforces it at specific transition points.
 
 **When a sub-skill outputs a result pattern (e.g., `[review:mergeable]`, `[fix:pushed]`, `[pr:created:123]`) and returns control to you:**
 
 1. **DO NOT end your response.** You are still in the middle of the e2e flow. Ending your response here is equivalent to crashing mid-workflow.
 2. **DO NOT re-invoke the completed skill.** It already finished. Re-invoking wastes time and may cause errors.
-3. **IMMEDIATELY** locate the 🚨 Mandatory After section for the current phase and execute its steps — starting with the flow state update, then proceeding to the next phase.
+3. **IMMEDIATELY** locate the Mandatory After section for the current phase and execute its steps — starting with the flow state update, then proceeding to the next phase.
 4. If the stop-guard hook blocks a stop attempt (exit 2), follow the `ACTION:` instructions in its stderr message.
 
 **Self-check**: After every sub-skill returns, ask yourself: "Have I output the completion report (Phase 5.6)?" If not, you are NOT done — keep going.
@@ -112,7 +112,7 @@ This protocol applies to **every** sub-skill invocation in this document. Each �
 | `{default_branch}` | `gh repo view --json defaultBranchRef` (Phase 2.3.2.3 only) |
 | `{project_number}` | `github.projects.project_number` in `rite-config.yml` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
-| `{parent_issue_number}` | Write: Phase 1.6 / Phase 2.4 で flow-state に書き込み (`flow-state-update.sh create/patch`)。Read: [Phase 5.1.2 (implement.md)](./implement.md) / Phase 5.7 で `state-read.sh` 経由 (Issue #687 AC-4、per-session state)。Workflow Termination は Phase 5.7 の `[CONTEXT] PARENT_ISSUE=...` emit を LLM-routing signal として使い state を re-read しない。歴史的経緯と fix-cycle context は [`references/state-read-evolution.md`](../../references/state-read-evolution.md) を参照 |
+| `{parent_issue_number}` | Write: Phase 1.6 / Phase 2.4 で flow-state に書き込み (`flow-state-update.sh create/patch`)。Read: [Phase 5.1.2 (implement.md)](./implement.md) / Phase 5.7 で `state-read.sh` 経由 (per-session state)。Workflow Termination は Phase 5.7 の `[CONTEXT] PARENT_ISSUE=...` emit を LLM-routing signal として使い state を re-read しない。歴史的経緯と fix context は [`references/state-read-evolution.md`](../../references/state-read-evolution.md) を参照 |
 
 ---
 
@@ -331,7 +331,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 ```
 
 > **Module**: [Projects Integration](../../references/projects-integration.md#24-github-projects-status-update). Runtime execution delegates to `plugins/rite/scripts/projects-status-update.sh`, which is the single source of truth for Projects Status updates across Phase 2.4, 5.5.1, and 5.7.2. `projects-integration.md` §2.4 documents the underlying API calls for reference and debugging, but callers MUST NOT re-inline those bash blocks here — always delegate to the script.
-<!-- Refactor origin: Issue #496 / PR #531. Do not re-inline Step 2-3. -->
+<!-- Do not re-inline Step 2-3. -->
 
 
 
@@ -380,7 +380,7 @@ The script is the single source of truth for Projects Status updates. See [proje
 
 **Step 3** — Parent Issue Status Update (2.4.7): **always execute** this substep regardless of whether the current Issue was identified as a parent in Phase 0.3 (Phase 0.3 detects children, not parents). **Execute the full 3-method detection and Status update procedure from [projects-integration.md §2.4.7](../../references/projects-integration.md#247-parent-issue-status-update-for-child-issues)** (Method 1: `## 親 Issue` body meta PRIMARY → Method 2: Sub-Issues API → Method 3: tasklist search → 2.4.7.2 Retrieve → 2.4.7.3 Status Condition → 2.4.7.4 Update). When all three methods fail, the referenced procedure emits a debug log and skips silently — this is the normal path for standalone Issues (AC-4).
 
-> **Issue #513 regression guard**: Do NOT replace this delegation with an inline simplification (e.g., querying only `trackedInIssues` or only one detection method). Past incident: a `trackedInIssues`-only inline version in this file caused AC-1 failure in repositories that manage parent-child links via body tasklist and `## 親 Issue` meta rather than GitHub's native Sub-Issues feature.
+> **Regression guard**: Do NOT replace this delegation with an inline simplification (e.g., querying only `trackedInIssues` or only one detection method). Past incident: a `trackedInIssues`-only inline version in this file caused AC-1 failure in repositories that manage parent-child links via body tasklist and `## 親 Issue` meta rather than GitHub's native Sub-Issues feature.
 
 ### 🚨 Mandatory After 2.4
 
@@ -485,7 +485,7 @@ fi
 
 > **⚠️ Why `.phase`, not `.previous_phase`**: `flow-state-update.sh` `create` mode assigns the outgoing `.phase` value to `.previous_phase` (see `hooks/flow-state-update.sh` create branch). Therefore the **expected post-phase marker** appears in `.phase`, and `.previous_phase` holds the *predecessor*. Checking `.previous_phase` here would always compare against the phase *one step behind* the expected marker and would ERROR on every normal entry (prompt-engineer cycle-3 CRITICAL).
 
-> **⚠️ Why `state-read.sh`, not direct `jq` on the legacy state file** (Issue #687 AC-4): When `flow_state.schema_version=2`, the active state is written to `.rite/sessions/{session_id}.flow-state`, while the legacy state file may retain another session's residue. Reading the legacy file inline returns stale residue (observed in #687 reproduction: `phase5_post_stop_hook` from a prior session leaked into a fresh Phase 3 check). `state-read.sh` resolves the per-session file first and falls back to legacy only when per-session is absent.
+> **⚠️ Why `state-read.sh`, not direct `jq` on the legacy state file**: When `flow_state.schema_version=2`, the active state is written to `.rite/sessions/{session_id}.flow-state`, while the legacy state file may retain another session's residue. Reading the legacy file inline returns stale residue (e.g., `phase5_post_stop_hook` from a prior session leaking into a fresh Phase 3 check). `state-read.sh` resolves the per-session file first and falls back to legacy only when per-session is absent.
 
 ```bash
 # `if ! var=$(cmd); then rc=$?` パターンは bash 仕様上 `$?` が常に 0 になる (「!」 が pipeline 全体を反転し、
@@ -620,7 +620,7 @@ If exit code is `1` (blocked), stop execution and display the preflight output. 
 
 **Orchestration**: `/rite:issue:start` controls all. Skills output patterns: lint (`[lint:success/skipped/error/aborted]`), create (`[pr:created:{n}/create-failed]`), review (`[review:mergeable/fix-needed:{n}]`), fix (`[fix:pushed/issues-created/replied-only/error]`), ready (`[ready:completed/error]`).
 
-**Sub-skill return protocol**: See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global). Each 🚨 Mandatory After section below enforces it at specific transition points.
+**Sub-skill return protocol**: See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global). Each Mandatory After section below enforces it at specific transition points.
 
 Invocation: `skill: "rite:lint"` or `skill: "rite:pr:review", args: "67"`
 
@@ -668,7 +668,7 @@ Each hook entry uses the format: `{"matcher": "", "hooks": [{"type": "command", 
 chmod +x {plugin_root}/hooks/stop-guard.sh {plugin_root}/hooks/pre-compact.sh {plugin_root}/hooks/post-compact.sh {plugin_root}/hooks/session-start.sh {plugin_root}/hooks/session-end.sh {plugin_root}/hooks/pre-tool-bash-guard.sh {plugin_root}/hooks/post-tool-wm-sync.sh 2>/dev/null || true
 ```
 
-If `chmod` fails, display `⚠️ Hook scripts may not be executable. Flow may require manual continuation after sub-skill returns.` If hook registration fails (e.g., file permission error), display the same warning and continue — 🚨 Mandatory After instructions provide textual fallback.
+If `chmod` fails, display `⚠️ Hook scripts may not be executable. Flow may require manual continuation after sub-skill returns.` If hook registration fails (e.g., file permission error), display the same warning and continue — Mandatory After instructions provide textual fallback.
 
 **Step 5**: Update version marker after hook registration:
 
@@ -681,7 +681,7 @@ fi
 
 **Step 6**: Read `workflow_incident.enabled` from `rite-config.yml` and cache for the rest of Phase 5 (used by Phase 5.4.4.1). Default to `true` when the section is absent (#366).
 
-> **Parser correctness** (cycle 1 review C1 / devops 既存問題 → #411 で再修正): The previous `grep -A3` implementation only read 3 lines after `workflow_incident:`, so adding comments, extra keys, or reordering `enabled:` below line 3 caused silent fallback to default-on — breaking `enabled: false` opt-out (AC-8). The corrected implementation uses `sed -n` section range extraction (`/^workflow_incident:/,/^[a-zA-Z]/p`) to capture the entire section regardless of line count. Additionally, `case` now normalizes the value via `tr '[:upper:]' '[:lower:]'` and accepts common boolean variants (`yes`/`no`/`1`/`0`) to prevent `enabled: FALSE` from silently falling through to default-on. Use `[[:space:]]` instead of `\s` for portability across BSD/GNU grep.
+> **Parser correctness**: The previous `grep -A3` implementation only read 3 lines after `workflow_incident:`, so adding comments, extra keys, or reordering `enabled:` below line 3 caused silent fallback to default-on — breaking `enabled: false` opt-out (AC-8). The corrected implementation uses `sed -n` section range extraction (`/^workflow_incident:/,/^[a-zA-Z]/p`) to capture the entire section regardless of line count. Additionally, `case` now normalizes the value via `tr '[:upper:]' '[:lower:]'` and accepts common boolean variants (`yes`/`no`/`1`/`0`) to prevent `enabled: FALSE` from silently falling through to default-on. Use `[[:space:]]` instead of `\s` for portability across BSD/GNU grep.
 
 ```bash
 # 1) workflow_incident: section 全体を sed -n で範囲抽出（grep -A3 の固定行数制限を排除）
@@ -766,7 +766,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 Invoke `skill: "rite:lint"` after 5.1.
 
-**🚨 Immediate after lint returns**: When `rite:lint` outputs a result pattern and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After 5.2 below. The lint sub-skill has already updated flow state to `phase5_post_lint` via Phase 4.0 (defense-in-depth, #716); execute the 🚨 Mandatory After 5.2 steps without delay.
+**Immediate after lint returns**: When `rite:lint` outputs a result pattern and returns control, do **NOT** churn or pause — **immediately** proceed to Mandatory After 5.2 below. The lint sub-skill has already updated flow state to `phase5_post_lint` via Phase 4.0 (defense-in-depth, #716); execute the Mandatory After 5.2 steps without delay.
 
 **Results**: `[lint:success/skipped]`→5.2.1→5.3, `[lint:error]`→fix→5.2, `[lint:aborted]`→**emit sentinel and proceed to 5.6** (#366):
 
@@ -774,7 +774,7 @@ Invoke `skill: "rite:lint"` after 5.1.
 bash {plugin_root}/hooks/workflow-incident-emit.sh --type manual_fallback_adopted --details "rite:lint aborted by user" --pr-number 0 || true
 ```
 
-`|| true` is required to ensure non-blocking behavior (AC-10) — emit failure must not halt the workflow. **The orchestrator MUST then include the emitted sentinel line as part of its visible output text** so Phase 5.4.4.1 in subsequent context can detect it via grep (cycle 1 review C2 fix - see Workflow Incident Sentinel Visibility Rule below).
+`|| true` is required to ensure non-blocking behavior (AC-10) — emit failure must not halt the workflow. **The orchestrator MUST then include the emitted sentinel line as part of its visible output text** so Phase 5.4.4.1 in subsequent context can detect it via grep (see Workflow Incident Sentinel Visibility Rule below).
 
 #### 5.2.0.1 Out-of-Scope Warnings
 
@@ -849,7 +849,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
   --next "Phase 5.2.1: Check Issue checklist completion. All complete->Phase 5.3 PR creation (invoke rite:pr:create). Incomplete->return to Phase 5.1 implementation. Do NOT stop."
 ```
 
-**Step 2**: **Run Phase 5.4.4.1 (Workflow Incident Detection)** (cycle 2 review H-NEW1 fix). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `[lint:aborted]` orchestrator-direct emit, or by lint.md sub-skill via Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7 (parse → dedupe → AskUserQuestion → create-issue / skip → mark processed). If no sentinel found, skip silently. Phase 5.4.4.1 is **non-blocking** — continue to Step 3 regardless of detection result.
+**Step 2**: **Run Phase 5.4.4.1 (Workflow Incident Detection)**. Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `[lint:aborted]` orchestrator-direct emit, or by lint.md sub-skill via Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7 (parse → dedupe → AskUserQuestion → create-issue / skip → mark processed). If no sentinel found, skip silently. Phase 5.4.4.1 is **non-blocking** — continue to Step 3 regardless of detection result.
 
 **Step 3**: **→ Proceed to 5.2.1 now**.
 
@@ -971,7 +971,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 Invoke `skill: "rite:pr:create"`.
 
-**🚨 Immediate after pr:create returns**: When `rite:pr:create` outputs a result pattern (`[pr:created:{N}]` or `[pr:create-failed]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 🚨 Mandatory After 5.3 below. The review-fix loop has NOT started yet — you MUST continue to Phase 5.4.
+**Immediate after pr:create returns**: When `rite:pr:create` outputs a result pattern (`[pr:created:{N}]` or `[pr:create-failed]`) and returns control, do **NOT** churn or pause — **immediately** proceed to Mandatory After 5.3 below. The review-fix loop has NOT started yet — you MUST continue to Phase 5.4.
 
 **Patterns**: `[pr:created:{number}]`→extract number, proceed 5.4. `[pr:create-failed]`→**emit sentinel and ask user** (#366):
 
@@ -985,7 +985,7 @@ Then ask user via `AskUserQuestion` (「再試行」/「Edit ツールで PR 作
 bash {plugin_root}/hooks/workflow-incident-emit.sh --type manual_fallback_adopted --details "rite:pr:create manual fallback" --pr-number 0 || true
 ```
 
-**The orchestrator MUST include the emitted sentinel lines in its visible output text** so Phase 5.4.4.1 detection via context grep can trigger in the next cycle (cycle 1 review C2 / H2 fix).
+**The orchestrator MUST include the emitted sentinel lines in its visible output text** so Phase 5.4.4.1 detection via context grep can trigger in the next cycle.
 
 ### 🚨 Mandatory After 5.3
 
@@ -993,7 +993,7 @@ bash {plugin_root}/hooks/workflow-incident-emit.sh --type manual_fallback_adopte
 
 **Verify**: `[pr:created:{number}]`, number saved. Review has NOT started yet.
 
-**Run Phase 5.4.4.1 (Workflow Incident Detection)** (cycle 2 review H-NEW1 fix). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `[pr:create-failed]` orchestrator-direct emit, or by pr/create.md sub-skill if applicable). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue regardless of detection result.
+**Run Phase 5.4.4.1 (Workflow Incident Detection)**. Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `[pr:create-failed]` orchestrator-direct emit, or by pr/create.md sub-skill if applicable). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue regardless of detection result.
 
 **→ Proceed to 5.4 now**.
 
@@ -1175,7 +1175,7 @@ echo "✅ Fingerprint 循環 finding を #$(printf '%s' "$result" | jq -r '.issu
 
 Invoke `skill: "rite:pr:review"`.
 
-**🚨 Immediate after review returns**: When `rite:pr:review` outputs a result pattern and returns control, do **NOT** churn or pause — **immediately** proceed to 5.4.3 🚨 After Review below. The review sub-skill has already updated flow state to `phase5_post_review` via Phase 8.0 (defense-in-depth, #719); execute the 5.4.3 steps without delay.
+**Immediate after review returns**: When `rite:pr:review` outputs a result pattern and returns control, do **NOT** churn or pause — **immediately** proceed to 5.4.3 After Review below. The review sub-skill has already updated flow state to `phase5_post_review` via Phase 8.0 (defense-in-depth, #719); execute the 5.4.3 steps without delay.
 
 #### 5.4.2 Review Patterns
 
@@ -1261,7 +1261,7 @@ After the review result is received, verify that the review was properly execute
 
 4. **When `reviewer_sections >= 1`**: Review quality verified. Proceed to Step 3.
 
-**Step 3 (Workflow Incident Detection)** (cycle 2 review H-NEW1 fix): Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by the review.md sub-skill (per Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3.1 regardless of detection result.
+**Step 3 (Workflow Incident Detection)**: Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by the review.md sub-skill (per Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3.1 regardless of detection result.
 
 **Step 3.1 (Quality Signal 3 & 4 Detection — #557)**: After review returns, grep the latest `📜 rite レビュー結果` PR comment AND conversation context for the following signal markers, then route accordingly:
 
@@ -1293,7 +1293,7 @@ For Signal 3, grep the conversation context (already present from review.md stde
 | Result Pattern | Action |
 |----------------|--------|
 | `[review:mergeable]` | **→ Proceed to Phase 5.5** (Ready for Review). Skip fix entirely. |
-| `[review:fix-needed:{n}]` | **Invoke `skill: "rite:pr:fix"`** via the Skill tool (Phase 5.4.4). After it returns, proceed to 🚨 After Fix (5.4.6). |
+| `[review:fix-needed:{n}]` | **Invoke `skill: "rite:pr:fix"`** via the Skill tool (Phase 5.4.4). After it returns, proceed to After Fix (5.4.6). |
 
 > **禁止**: Edit ツールや Bash ツールでコードを直接修正してはならない。修正は必ず `skill: "rite:pr:fix"` を Skill ツールで呼び出して実行すること。
 
@@ -1312,7 +1312,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 Invoke `skill: "rite:pr:fix"`.
 
-**🚨 Immediate after fix returns**: When `rite:pr:fix` outputs a result pattern (`[fix:pushed]`, `[fix:pushed-wm-stale]`, `[fix:issues-created:{N}]`, `[fix:replied-only]`, or `[fix:error]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 5.4.6 🚨 After Fix below. The fix sub-skill has already updated flow state to `phase5_post_fix` via its defense-in-depth mechanism (fixes #709); execute the 5.4.6 steps without delay.
+**Immediate after fix returns**: When `rite:pr:fix` outputs a result pattern (`[fix:pushed]`, `[fix:pushed-wm-stale]`, `[fix:issues-created:{N}]`, `[fix:replied-only]`, or `[fix:error]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 5.4.6 After Fix below. The fix sub-skill has already updated flow state to `phase5_post_fix` via its defense-in-depth mechanism (fixes #709); execute the 5.4.6 steps without delay.
 
 #### 5.4.4.1 Workflow Incident Detection (#366, expanded by #524)
 
@@ -1325,16 +1325,16 @@ Invoke `skill: "rite:pr:fix"`.
 | `skill_load_failure` | Orchestrator post-condition check (#366) | AskUserQuestion → register Issue / skip |
 | `hook_abnormal_exit` | Skill internal failure paths (#366) | AskUserQuestion → register Issue / skip |
 | `manual_fallback_adopted` | Orchestrator fallback prompts (#366) | AskUserQuestion → register Issue / skip |
-| `wiki_ingest_skipped` | review/fix/close Phase X.X.W when `wiki.enabled=false` / `wiki.auto_ingest=false` (#524), **OR** `wiki-ingest-commit.sh` exits 2 (wiki branch missing locally — fresh clone, #528 PR #529) | AskUserQuestion → register Issue / skip. Two sub-cases: (a) **configuration disable** (`wiki.enabled=false` / `auto_ingest=false`) is intentional — user typically skips; (b) **`commit_branch_missing`** is an operational state on fresh clones — recommended action is to run `git fetch origin wiki:wiki` or `/rite:wiki:init` and re-run the enclosing phase, rather than creating a tracking Issue |
-| `wiki_ingest_failed` | review/fix/close Phase X.X.W when `wiki-ingest-trigger.sh` exits non-zero / non-2 (#524), **OR** `wiki-ingest-commit.sh` exits non-0/2/4 (git stash/checkout/commit failure, #528 PR #529) | AskUserQuestion → register Issue / skip — recommended to register because both trigger and commit paths are supposed to be reliable |
-| `wiki_ingest_push_failed` | review/fix/close Phase X.X.W when `wiki-ingest-commit.sh` exits 4 — commit landed locally on the wiki branch but origin push failed (#528 PR #529, addresses the silent-success regression) | AskUserQuestion → register Issue / skip — recommended to **register** because the local commit is preserved but origin diverges from local. Manual recovery: `git push origin wiki` on the enclosing dev branch once connectivity / auth is restored |
-| `gitignore_drift` | `/rite:lint` Phase 3.9 when `gitignore-health-check.sh` detects that the `.rite/wiki/` rule (PR #564 last-line-of-defense) is missing from `.gitignore`, OR when `same_branch` strategy lacks the required negation entry (#567) | AskUserQuestion → register Issue / skip — recommended to **register** because a missing `.rite/wiki/` rule allows wiki-ingest-trigger.sh temporary writes to leak into develop branch PR diffs. Manual recovery: restore the `.rite/wiki/` entry (and `!.rite/wiki/` negation for `same_branch`) to `.gitignore` |
+| `wiki_ingest_skipped` | review/fix/close Phase X.X.W when `wiki.enabled=false` / `wiki.auto_ingest=false`, **OR** `wiki-ingest-commit.sh` exits 2 (wiki branch missing locally — fresh clone) | AskUserQuestion → register Issue / skip. Two sub-cases: (a) **configuration disable** (`wiki.enabled=false` / `auto_ingest=false`) is intentional — user typically skips; (b) **`commit_branch_missing`** is an operational state on fresh clones — recommended action is to run `git fetch origin wiki:wiki` or `/rite:wiki:init` and re-run the enclosing phase, rather than creating a tracking Issue |
+| `wiki_ingest_failed` | review/fix/close Phase X.X.W when `wiki-ingest-trigger.sh` exits non-zero / non-2, **OR** `wiki-ingest-commit.sh` exits non-0/2/4 (git stash/checkout/commit failure) | AskUserQuestion → register Issue / skip — recommended to register because both trigger and commit paths are supposed to be reliable |
+| `wiki_ingest_push_failed` | review/fix/close Phase X.X.W when `wiki-ingest-commit.sh` exits 4 — commit landed locally on the wiki branch but origin push failed (addresses the silent-success regression) | AskUserQuestion → register Issue / skip — recommended to **register** because the local commit is preserved but origin diverges from local. Manual recovery: `git push origin wiki` on the enclosing dev branch once connectivity / auth is restored |
+| `gitignore_drift` | `/rite:lint` Phase 3.9 when `gitignore-health-check.sh` detects that the `.rite/wiki/` rule (last-line-of-defense) is missing from `.gitignore`, OR when `same_branch` strategy lacks the required negation entry | AskUserQuestion → register Issue / skip — recommended to **register** because a missing `.rite/wiki/` rule allows wiki-ingest-trigger.sh temporary writes to leak into develop branch PR diffs. Manual recovery: restore the `.rite/wiki/` entry (and `!.rite/wiki/` negation for `same_branch`) to `.gitignore` |
 
 The processing flow below applies uniformly to all seven types — there is no per-type branching beyond the table above.
 
 **Sub-case routing note for `wiki_ingest_skipped` with `reason=commit_branch_missing`**: when the sentinel `details` field or the accompanying `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing` status line indicates the operational fresh-clone sub-case, the AskUserQuestion offered here defaults to **"skip"** (no tracking Issue) and shows the recovery hint as the primary option: run `git fetch origin wiki:wiki` on the current working tree, then re-run the enclosing phase. Creating a tracking Issue for `commit_branch_missing` would be an anti-pattern because the state is transient and user-resolvable within seconds. The configuration-disable sub-case retains the existing behaviour (the prompt makes the state visible but user typically skips).
 
-**Workflow Incident Sentinel Visibility Rule** (cycle 1 review C2 fix; cycle 2 review M-NEW1 fix — pr/create.md 追加; #436 fix — inline 実行に移行):
+**Workflow Incident Sentinel Visibility Rule**:
 
 Sub-skills (`lint.md`, `pr/create.md`, `pr/fix.md`, `pr/review.md`) execute inline within the orchestrator's conversation context (previously these used forked execution which caused `AskUserQuestion` to fail in e2e flow — see #436). Bash tool call stdout from these sub-skills is directly visible in the orchestrator's conversation context.
 
@@ -1366,19 +1366,19 @@ Since sub-skills now execute inline, the sentinel is already part of the orchest
 
 ---
 
-**When to execute** (cycle 2 review H-NEW1 fix — explicit routing):
+**When to execute** (explicit routing):
 
 This phase runs **after every Skill invocation in Phase 5** at the following explicit invocation points:
 
 | Caller | Invocation point | Trigger |
 |--------|------------------|---------|
-| Phase 5.2 (lint) | 🚨 Mandatory After 5.2 — Step 2 | Always after `[lint:*]` pattern |
-| Phase 5.3 (pr:create) | 🚨 Mandatory After 5.3 — between "Verify" and "Proceed to 5.4 now" | Always after `[pr:created:{N}]` or `[pr:create-failed]` |
-| Phase 5.4.3 (pr:review) | 🚨 After Review — Step 3 | Always after `[review:*]` pattern |
-| Phase 5.4.6 (pr:fix) | 🚨 After Fix — Step 3 | Always after `[fix:*]` pattern |
-| Phase 5.5.0.1 (pr:ready) | 🚨 Mandatory After 5.5 — Step 3 | Always after `[ready:*]` pattern |
+| Phase 5.2 (lint) | Mandatory After 5.2 — Step 2 | Always after `[lint:*]` pattern |
+| Phase 5.3 (pr:create) | Mandatory After 5.3 — between "Verify" and "Proceed to 5.4 now" | Always after `[pr:created:{N}]` or `[pr:create-failed]` |
+| Phase 5.4.3 (pr:review) | After Review — Step 3 | Always after `[review:*]` pattern |
+| Phase 5.4.6 (pr:fix) | After Fix — Step 3 | Always after `[fix:*]` pattern |
+| Phase 5.5.0.1 (pr:ready) | Mandatory After 5.5 — Step 3 | Always after `[ready:*]` pattern |
 
-**Each 🚨 Mandatory After section MUST include a "Run Phase 5.4.4.1 detection" step** that directs the orchestrator to grep the recent conversation context for sentinel lines BEFORE proceeding to the next phase. The orchestrator's grep operates on the same conversation context that contains the bash subprocess stdout (for orchestrator-direct emits in Phase 5.2/5.3/5.5) and the sub-skill response message text (for sub-skill emits per the Sentinel Visibility Rule).
+**Each Mandatory After section MUST include a "Run Phase 5.4.4.1 detection" step** that directs the orchestrator to grep the recent conversation context for sentinel lines BEFORE proceeding to the next phase. The orchestrator's grep operates on the same conversation context that contains the bash subprocess stdout (for orchestrator-direct emits in Phase 5.2/5.3/5.5) and the sub-skill response message text (for sub-skill emits per the Sentinel Visibility Rule).
 
 It is also triggered when an `AskUserQuestion` fallback option that emits a sentinel (e.g., "manual fallback") is selected.
 
@@ -1425,7 +1425,7 @@ It is also triggered when an `AskUserQuestion` fallback option that emits a sent
 5. **Branch on user choice**:
 
    - **「はい」**: Proceed to step 6 (create Issue)
-   - **「skip」**: Add `type` to `workflow_incident_processed_types` (so it won't be re-asked in this session), append `{type, details, root_cause_hint, iteration_id}` to a context-local `workflow_incident_skipped` list (for Phase 5.6 reporting). Both successful skip and failed registration paths (step 6 fallthrough) MUST add to this list to prevent silent loss (cycle 1 review M1).
+   - **「skip」**: Add `type` to `workflow_incident_processed_types` (so it won't be re-asked in this session), append `{type, details, root_cause_hint, iteration_id}` to a context-local `workflow_incident_skipped` list (for Phase 5.6 reporting). Both successful skip and failed registration paths (step 6 fallthrough) MUST add to this list to prevent silent loss.
 
 6. **Create Issue via common script**:
 
@@ -1477,17 +1477,17 @@ It is also triggered when an `AskUserQuestion` fallback option that emits a sent
 
    # AC-10 non-blocking guarantee: Issue body が空 (HEREDOC 失敗 / disk full / inode 枯渇) でも
    # workflow を halt せず、warning + workflow_incident_skipped 追加で fallthrough する。
-   # 旧実装の `exit 1` は AC-10 と論理矛盾するため除去 (cycle 1 review C3 で指摘)
+   # 旧実装の `exit 1` は AC-10 と論理矛盾するため除去
    if [ ! -s "$tmpfile" ]; then
      echo "WARNING: Issue body is empty (HEREDOC failure?). Skipping incident registration. Adding to workflow_incident_skipped for Phase 5.6 reporting." >&2
      # context-local list に追加して Phase 5.6.1 で表示する (fallthrough、exit しない)
      # workflow_incident_skipped に {type, details, root_cause_hint, iteration_id} を追加
      # その後 step 7 (processed_types に追加) を実行してから本 step を抜ける
    else
-     # jq -n を別変数に切り出して exit code をチェック (cycle 1 review H6 / error-handling 指摘)
+     # jq -n を別変数に切り出して exit code をチェック
      # 旧実装は jq parse error を silent に握りつぶしていた
-     # cycle 2 review H-N2 fix: trap は冒頭の統合 trap で既に設定済み (上書きしない)
-     # #414 fix: mktemp 失敗チェック追加 (jq_err は先行宣言済み、統合 trap で cleanup 対象)
+     # trap は冒頭の統合 trap で既に設定済み (上書きしない)
+     # mktemp 失敗チェック (jq_err は先行宣言済み、統合 trap で cleanup 対象)
      jq_err=$(mktemp /tmp/rite-start-wi-jqerr-XXXXXX) || {
        echo "WARNING: mktemp failed for jq_err. Proceeding without jq stderr capture." >&2
        jq_err=""
@@ -1513,7 +1513,7 @@ It is also triggered when an `AskUserQuestion` fallback option that emits a sent
          },
          options: { source: "workflow_incident", non_blocking_projects: true }
        }' 2>"${jq_err:-/dev/null}"); then
-       # cycle 2 review M-N3 fix: || result="" で AC-10 non-blocking 保証
+       # || result="" で AC-10 non-blocking 保証
        # 旧実装は `result=$(bash ...)` のみで、create-issue-with-projects.sh の非ゼロ exit が
        # set -e 環境下で bash プロセス自体を kill する経路があった
        result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$json_args") || result=""
@@ -1522,7 +1522,7 @@ It is also triggered when an `AskUserQuestion` fallback option that emits a sent
        echo "WARNING: Skipping incident registration. Adding to workflow_incident_skipped for Phase 5.6 reporting." >&2
        result=""
      fi
-     # cycle 2 review H-N2 fix: 統合 trap が EXIT で削除するため、明示的 rm は不要 (重複削除は no-op)
+     # 統合 trap が EXIT で削除するため、明示的 rm は不要 (重複削除は no-op)
      # rm -f "$jq_err"  ← 削除済み (統合 trap に統一)
 
      if [ -z "$result" ]; then
@@ -1540,7 +1540,7 @@ It is also triggered when an `AskUserQuestion` fallback option that emits a sent
    fi
    ```
 
-   **After the bash block** (cycle 2 review H-N3 / M-NEW2 fix — explicit prose for context-local list management):
+   **After the bash block** (explicit prose for context-local list management):
 
    The orchestrator (Claude executing `/rite:issue:start`) MUST track the result of step 6 in two context-local lists for Phase 5.6 reporting and dedupe:
 
@@ -1606,7 +1606,7 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
   2>/dev/null || true
 ```
 
-**Step 3 (Workflow Incident Detection)** (cycle 2 review H-NEW1 fix): Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by the fix.md sub-skill (per Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 4 regardless of detection result.
+**Step 3 (Workflow Incident Detection)**: Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by the fix.md sub-skill (per Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 4 regardless of detection result.
 
 > **Note (v0.4.0 #557)**: The former Step 3.5 (Review-Fix Loop Hard Limit Check) was removed. The review-fix loop no longer has a cycle-count-based hard limit. Non-convergence is now detected exclusively via the four quality signals (see `commands/pr/references/fix-relaxation-rules.md#four-quality-signals-for-escalation`):
 > 1. Fingerprint cycling → Phase 5.4.1.0 (before every re-review)
@@ -1644,7 +1644,7 @@ When loop completes, confirm via `AskUserQuestion`:
 
 **Ready**→invoke `rite:pr:ready`→5.5.1. **Draft**→5.6. **More fixes**→terminate.
 
-**🚨 Immediate after ready returns**: When `rite:pr:ready` outputs `[ready:completed]` and returns control, do **NOT** churn or pause — **immediately** proceed to 5.5.0.1 🚨 Mandatory After 5.5 below. The ready sub-skill has already updated flow state to `phase5_post_ready` via Phase 4.6 (defense-in-depth, fixes #17); execute the 5.5.0.1 steps without delay. The completion report (Phase 5.6) has NOT been output yet — `ready.md` intentionally skips it in e2e flow. You MUST continue to Phase 5.5.1, 5.5.2, and 5.6.
+**Immediate after ready returns**: When `rite:pr:ready` outputs `[ready:completed]` and returns control, do **NOT** churn or pause — **immediately** proceed to 5.5.0.1 Mandatory After 5.5 below. The ready sub-skill has already updated flow state to `phase5_post_ready` via Phase 4.6 (defense-in-depth, fixes #17); execute the 5.5.0.1 steps without delay. The completion report (Phase 5.6) has NOT been output yet — `ready.md` intentionally skips it in e2e flow. You MUST continue to Phase 5.5.1, 5.5.2, and 5.6.
 
 **Results**: `[ready:completed]`→5.5.0.1→5.5.1→5.5.2→5.6. `[ready:error]`→**emit sentinel and ask user** (#366):
 
@@ -1658,7 +1658,7 @@ Then ask user via `AskUserQuestion` (「再試行」/「Edit ツールで手動 
 bash {plugin_root}/hooks/workflow-incident-emit.sh --type manual_fallback_adopted --details "rite:pr:ready manual fallback" --pr-number {pr_number} || true
 ```
 
-**The orchestrator MUST include the emitted sentinel lines in its visible output text** so Phase 5.4.4.1 detection via context grep can trigger in the next cycle (cycle 1 review C2 / H3 fix).
+**The orchestrator MUST include the emitted sentinel lines in its visible output text** so Phase 5.4.4.1 detection via context grep can trigger in the next cycle.
 
 #### 5.5.0.1 🚨 Mandatory After 5.5
 
@@ -1688,13 +1688,13 @@ WM_SOURCE="ready" \
   bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
-**Step 3 (Workflow Incident Detection)** (cycle 2 review H-NEW1 fix): Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by `[ready:error]` orchestrator-direct emit. If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 4 regardless of detection result.
+**Step 3 (Workflow Incident Detection)**: Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by `[ready:error]` orchestrator-direct emit. If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 4 regardless of detection result.
 
 **Step 4**: **→ Proceed to 5.5.1 now**.
 
 #### 5.5.1 Update Issue Status to "In Review"
 
-**Pre-condition check** (#490 AC-5): Verify that Phase 5.5 (Ready) completed. The current `.phase` must be `phase5_post_ready` (the Mandatory After 5.5 marker). See the "Why `.phase`, not `.previous_phase`" explanation in Phase 3 pre-condition above. The pre-condition reads `.phase` via `state-read.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy state file snapshot which may hold another session's residue.
+**Pre-condition check** (#490 AC-5): Verify that Phase 5.5 (Ready) completed. The current `.phase` must be `phase5_post_ready` (the Mandatory After 5.5 marker). See the "Why `.phase`, not `.previous_phase`" explanation in Phase 3 pre-condition above. The pre-condition reads `.phase` via `state-read.sh` so per-session state is consulted instead of the legacy state file snapshot which may hold another session's residue.
 
 ```bash
 # `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
@@ -1728,7 +1728,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 **Owner**: `/rite:issue:start` (defense-in-depth — `rite:pr:ready` Phase 4 also attempts this, but may not execute reliably within e2e flow).
 
-**Note**: Delegates to `plugins/rite/scripts/projects-status-update.sh`. `ready.md` Phase 4.2 も同じく `projects-status-update.sh` delegate に統一済み (PR #659 / Issue #658 で旧 inline GraphQL mutation 経路は完全削除)。本 Phase 5.5.1 は defense-in-depth の二重実行であり、ready.md 失敗時の補完として機能する。
+**Note**: Delegates to `plugins/rite/scripts/projects-status-update.sh`。`ready.md` Phase 4.2 も同じく `projects-status-update.sh` delegate に統一済み。本 Phase 5.5.1 は defense-in-depth の二重実行であり、ready.md 失敗時の補完として機能する。
 
 Skip if `projects.enabled: false` in rite-config.yml. Otherwise invoke the shared script to transition the Issue Status to **In Review**:
 
@@ -1792,19 +1792,17 @@ Otherwise:
 | `test_pass_rate` | From Phase 5.2 lint results | 100% if tests passed or no tests configured |
 | `review_critical_high` | Phase 5.4 review results | Count of CRITICAL+HIGH findings from the last `📜 rite レビュー結果` PR comment |
 | `review_fix_loops` | PR comments | Count `📜 rite レビュー結果` comments on the PR: `gh api repos/{owner}/{repo}/issues/{pr_number}/comments --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | length'` |
-| `plan_deviation_count` | flow-state | Read `implementation_round` field (set by Phase 5.1.3) via `state-read.sh`. **Use the same fail-fast pattern documented at the Phase 3 pre-condition** (canonical `if cmd; then :; else rc=$?; fi` form). state-read.sh launch failure 時は metrics output を skip し、silent に `"0"` 扱い (= "no deviation" の誤分類) しないこと。Issue #687 AC-4 — per-session state, not legacy state file snapshot。Phase 5.1 への re-entry 数 (checklist failure 由来) を計測。詳細な bash literal は本ファイル Phase 3 pre-condition の bash block を参照 |
+| `plan_deviation_count` | flow-state | Read `implementation_round` field (set by Phase 5.1.3) via `state-read.sh`. **Use the same fail-fast pattern documented at the Phase 3 pre-condition** (canonical `if cmd; then :; else rc=$?; fi` form). state-read.sh launch failure 時は metrics output を skip し、silent に `"0"` 扱い (= "no deviation" の誤分類) しないこと。per-session state を参照 (legacy state file snapshot ではない)。Phase 5.1 への re-entry 数 (checklist failure 由来) を計測。詳細な bash literal は本ファイル Phase 3 pre-condition の bash block を参照 |
 
-> **Note (cycle 43 F-12 LOW 対応)**: 旧版は本 table cell 内に 250 字超の bash literal (state-read.sh 経由の implementation_round capture form と歴史記述 cycle 35 F-12 / cycle 38 F-02 の caller-count pin 撤廃経緯) を埋め込んでいた。LLM が table を読み取って値を提示する際にこの literal を正規の Bash tool 呼び出しとして実行する/placeholder substitute で混入させるリスク (cycle 38 F-17 で `--next` 文字列から削除した経緯と semantically 同型) があったため、cell prose を Phase 3 pre-condition への semantic reference に降格し、actual bash literal は下記の独立 code block として分離した。
->
-> **歴史的経緯 (caller-count pin 撤廃)**: verified-review cycle 35 F-12 で fail-fast block を導入、cycle 38 F-02 で「6 / 7 caller sites」の prose self-undercount drift が 2 回発生したため caller-count pin を撤廃し semantic anchor reference に統一。
+> **Note**: bash literal は table cell 内に埋め込まず、独立 code block として下に分離している。これは LLM が table を読んで値を提示する際に、cell 内 literal を正規の Bash tool 呼び出しと誤認するリスクを避けるため。table cell 内の prose は Phase 3 pre-condition への semantic reference にとどめる。
 
-**`plan_deviation_count` 取得 bash block** (cycle 43 F-12 LOW 対応で table cell から分離。canonical capture pattern を維持し caller-markdown-block.test.sh G-03 metatest が pass することを保証):
+**`plan_deviation_count` 取得 bash block** (canonical capture pattern を維持し caller-markdown-block.test.sh G-03 metatest が pass することを保証):
 
 ```bash
 # canonical fail-fast pattern (Phase 3 pre-condition と同型): state-read.sh 起動失敗時は
 # silent default 0 (= "no deviation") に降格せず、metrics output を skip する。
-# 注意: cycle 41 II-1 で確立した inline form を 1 行で維持 (caller-markdown-block.test.sh
-# TC-6 が `if val=...; then :; else rc=$?` の 1 行 canonical capture pattern を grep で pin)。
+# 注意: inline 1 行 form を維持 (caller-markdown-block.test.sh TC-6 が
+# `if val=...; then :; else rc=$?` の 1 行 canonical capture pattern を grep で pin する)。
 if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "WARNING: state-read.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; val=""; fi
 # numeric type validation (writer/reader/resume 3 layer 対称化 doctrine): 他 caller (Phase 5.7
 # parent_issue_number / implement.md parent_issue_number / pr/review.md loop_count /
@@ -1832,7 +1830,7 @@ plan_deviation_count="$val"
 # Claude は値を読み取れない。同型の cross-boundary state transfer は resume.md Phase 2.1 Step 1
 # / start.md Phase 5.7 で確立済みの canonical pattern。
 #
-# Emit channel policy (cycle 49 H-1 修正): cross-boundary state transfer の sentinel は **stdout / stderr のいずれでも会話コンテキストに記録される**。
+# Emit channel policy: cross-boundary state transfer の sentinel は **stdout / stderr のいずれでも会話コンテキストに記録される**。
 # Claude Code の Bash tool は stdout/stderr 両方を会話コンテキストに取り込む仕様のため、emit channel の
 # 統一は機能要件ではない。本箇所は METRICS_SKIPPED と PLAN_DEVIATION_COUNT を一貫して stderr に emit する
 # (両者を観測値ストリームとして揃える設計選択)。PARENT_ISSUE / PARENT_ISSUE_DISPLAY は stdout 側で emit する
@@ -1888,7 +1886,7 @@ Update the Issue work memory comment by appending the metrics table per [Executi
 
 ```bash
 # ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること（クロスプロセス変数参照を防止）
-# comment_data の取得・追記内容の heredoc 定義・PATCH を分割すると変数が失われる（Issue #693, #835）
+# comment_data の取得・追記内容の heredoc 定義・PATCH を分割すると変数が失われる
 comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
   --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
 comment_id=$(echo "$comment_data" | jq -r '.id // empty')
@@ -1989,9 +1987,9 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 ### 5.6 Completion Report
 
-> **Historical note (informational only — no action required)**: The `phase="completed", active: false` patch and `.rite-compact-state` cleanup were previously placed between Mandatory After 5.5.2 and this heading. That placement caused a **state flap** — the Phase 5.6 Pre-write (`create --phase phase5_completion`) re-activated the workflow and recorded `previous_phase="completed"`, which stop-guard then rejected as an invalid transition (prompt-engineer + devops CRITICAL, fixed in cycle 1). The terminal state update now runs at the end of Phase 5.7 or, when no parent is identified, immediately after this Phase 5.6 — see the "Workflow Termination" block below. This note is purely historical context for future maintainers and contains no executable instructions.
+> **Historical note (informational only — no action required)**: The `phase="completed", active: false` patch and `.rite-compact-state` cleanup were previously placed between Mandatory After 5.5.2 and this heading. That placement caused a **state flap** — the Phase 5.6 Pre-write (`create --phase phase5_completion`) re-activated the workflow and recorded `previous_phase="completed"`, which stop-guard then rejected as an invalid transition. The terminal state update now runs at the end of Phase 5.7 or, when no parent is identified, immediately after this Phase 5.6 — see the "Workflow Termination" block below. This note is purely historical context for future maintainers and contains no executable instructions.
 
-**Pre-condition check** (#490 AC-5): Verify that both Phase 5.5.1 (Status) and 5.5.2 (Metrics) completed. The current `.phase` must be `phase5_post_metrics` — the earlier `phase5_post_status_in_review` alternative was removed because it let Metrics silently skip (AC-5 violation, prompt-engineer + code-quality CRITICAL). See the "Why `.phase`, not `.previous_phase`" explanation in Phase 3 pre-condition above. The pre-condition reads `.phase` via `state-read.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy state file snapshot.
+**Pre-condition check** (#490 AC-5): Verify that both Phase 5.5.1 (Status) and 5.5.2 (Metrics) completed. The current `.phase` must be `phase5_post_metrics` — the earlier `phase5_post_status_in_review` alternative was removed because it let Metrics silently skip (AC-5 violation). See the "Why `.phase`, not `.previous_phase`" explanation in Phase 3 pre-condition above. The pre-condition reads `.phase` via `state-read.sh` so per-session state is consulted instead of the legacy state file snapshot.
 
 If `metrics.enabled: false` in rite-config.yml, Phase 5.5.2 must still write the `phase5_post_metrics` marker (the phase body may short-circuit Steps 1-5 below, but the Mandatory After block must run unconditionally — see Phase 5.5.2 Skip Steps note).
 
@@ -2025,7 +2023,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
   --next "Execute Phase 5.6 (Completion Report). Determine parent_issue_number routing in Phase 5.7 (\"Parent Issue Completion\"). If parent_issue_number is non-zero, proceed to Phase 5.7; otherwise jump directly to the Workflow Termination block (bypass 5.7). Do NOT stop."
 ```
 
-> **verified-review cycle 38 F-17 LOW / cycle 9 F-06 MEDIUM 対応**: 旧 `--next` 文字列は literal `bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0` を埋め込んでおり、Phase 5.7 の actual caller (本ファイル末尾の `Parent Issue Completion` ブロック) と semantic 重複していた。cycle 38 F-17 で literal を削除したが、`state-read.sh` という helper 名が `--next` 文字列に残存しており、LLM が「state-read.sh を呼べ」と解釈する hallucination 経路がまだ閉じていなかった (PR #688 cycle 9 F-06 review 指摘)。本 cycle で `state-read.sh` 含む helper 名を含まない手順記述に簡素化し、Phase 5.7 への semantic anchor reference のみを残した (caller 2 重起動 silent regression を構造的に防ぐ)。
+> **Note**: `--next` 文字列に `state-read.sh` 等の helper 名や bash literal を埋め込まない。Phase 5.7 の actual caller (本ファイル末尾の `Parent Issue Completion` ブロック) と semantic 重複し、LLM が「state-read.sh を呼べ」と解釈する hallucination 経路を作る (caller 2 重起動 silent regression の根)。Phase 5.7 への semantic anchor reference のみを残すこと。
 
 > See [completion-report.md](./completion-report.md) for the full procedure (template read, placeholder substitution, output cases, self-verification, and inline fallbacks).
 
@@ -2078,9 +2076,9 @@ Scan the recent conversation context for these patterns (the same context the Ph
 | `[CONTEXT] WIKI_INGEST_DONE=1; ...` | `done_count` (number of successful trigger + ingest cycles in this Issue) |
 | `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=disabled` | `skipped_disabled_count` |
 | `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=auto_ingest_off` | `skipped_auto_off_count` |
-| `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing` | `skipped_commit_branch_missing_count` (layer 0 / PR #529: `wiki-ingest-commit.sh` exited 2 because the wiki branch does not exist locally — treated as a legitimate skip separate from `wiki.enabled=false`/`auto_ingest=false`) |
+| `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing` | `skipped_commit_branch_missing_count` (`wiki-ingest-commit.sh` exited 2 because the wiki branch does not exist locally — treated as a legitimate skip separate from `wiki.enabled=false`/`auto_ingest=false`) |
 | `[CONTEXT] WIKI_INGEST_FAILED=1; reason=commit_rc_*` or `reason=trigger_exit_*` | `failed_count` (all `commit_rc_*` values fold into `failed_count` — `commit_rc_3` = git stash/checkout/commit failure, `commit_rc_5+` = future exit codes. Only `commit_rc_4` is segregated into `push_failed_count` below because it represents the commit-landed-push-failed sub-case) |
-| `[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4` | `push_failed_count` (PR #529 CRITICAL fix: `wiki-ingest-commit.sh` exited 4 — commit landed on local wiki branch but origin push failed. Local branch diverges from origin. Manual recovery: `git push origin wiki`) |
+| `[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4` | `push_failed_count` (`wiki-ingest-commit.sh` exited 4 — commit landed on local wiki branch but origin push failed. Local branch diverges from origin. Manual recovery: `git push origin wiki`) |
 
 Also retrieve the current wiki branch state (best-effort — never block on this):
 
@@ -2131,7 +2129,7 @@ echo "[CONTEXT] WIKI_LAST_COMMIT=${last_wiki_commit:-}"
 
 ### 5.7 Parent Issue Completion
 
-**Condition**: `parent_issue_number` is non-zero in flow-state. Read deterministically via `state-read.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy state file snapshot:
+**Condition**: `parent_issue_number` is non-zero in flow-state. Read deterministically via `state-read.sh` so per-session state is consulted instead of the legacy state file snapshot:
 
 ```bash
 # `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
@@ -2205,7 +2203,7 @@ Inspect the script's stdout JSON:
 
 **Step 2**: Close the parent Issue via `/rite:issue:close` Skill invocation.
 
-> **Why Skill invoke (not `gh issue close`)**: `close.md` Phase 4.4.W.2 で Wiki raw source の蓄積（`wiki-ingest-commit.sh`）が発火する。直接 `gh issue close` を実行すると close.md を経由しないため、Wiki 経路が 100% silent skip になる（Issue #532 / #534 で修正）。
+> **Why Skill invoke (not `gh issue close`)**: `close.md` Phase 4.4.W.2 で Wiki raw source の蓄積（`wiki-ingest-commit.sh`）が発火する。直接 `gh issue close` を実行すると close.md を経由しないため、Wiki 経路が 100% silent skip になる。
 
 **Pre-write** (before invoking `rite:issue:close`): Update flow state so stop-guard can resume flow if interrupted:
 
@@ -2213,14 +2211,14 @@ Inspect the script's stdout JSON:
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_parent_close" --issue {issue_number} --branch "{branch_name}" \
   --pr {pr_number} \
-  --next "After rite:issue:close returns: proceed to 🚨 Mandatory After 5.7.2, then 5.7.3 (Next Child). Do NOT stop."
+  --next "After rite:issue:close returns: proceed to Mandatory After 5.7.2, then 5.7.3 (Next Child). Do NOT stop."
 ```
 
 Invoke `skill: "rite:issue:close", args: "{parent_issue_number}"`.
 
 > **Note**: `close.md` receives `{parent_issue_number}` as its `{issue_number}` argument. Phase 4.1 executes `gh issue close`, Phase 4.4.W triggers Wiki ingest. The close.md `AskUserQuestion` (Phase 3) will present options to the user — since the user already confirmed "Close parent Issue" in Phase 5.7.2's own `AskUserQuestion`, they should select the manual close option when prompted by close.md.
 
-> **Note**: `close.md` does NOT output a machine-readable result pattern (unlike `[review:mergeable]` etc.). When it returns control, immediately proceed to 🚨 Mandatory After 5.7.2.
+> **Note**: `close.md` does NOT output a machine-readable result pattern (unlike `[review:mergeable]` etc.). When it returns control, immediately proceed to Mandatory After 5.7.2.
 
 ### 🚨 Mandatory After 5.7.2
 
@@ -2259,9 +2257,9 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 > **Placement**: This block runs **after** Phase 5.7 completes **or after Phase 5.6** when no parent Issue was identified in Phase 1.6 / 2.4.7 (the Phase 5.7 skip branch). Both paths converge here so the terminal `phase="completed", active: false` state is set exactly once, with `previous_phase` pointing at a whitelist-valid source (`phase5_post_parent_completion` or `phase5_completion`).
 
-**Parent-skip routing** (prompt-engineer HIGH — Phase 5.7 skip branch missing termination): When `parent_issue_number` is `0` in flow-state (determined in Phase 5.7 via `state-read.sh`), Phase 5.7 is skipped entirely. In that case, jump from the end of Phase 5.6 directly to this block (bypassing 5.7.1-5.7.3 and Mandatory After 5.7) — do **not** leave the workflow in `phase5_completion, active: true`, which would cause the next stop attempt to block indefinitely.
+**Parent-skip routing**: When `parent_issue_number` is `0` in flow-state (determined in Phase 5.7 via `state-read.sh`), Phase 5.7 is skipped entirely. In that case, jump from the end of Phase 5.6 directly to this block (bypassing 5.7.1-5.7.3 and Mandatory After 5.7) — do **not** leave the workflow in `phase5_completion, active: true`, which would cause the next stop attempt to block indefinitely.
 
-> **Why this routing relies on Phase 5.7 emit, not state re-read** (verified-review cycle 35 F-13 → cycle 36 F-10 history、cycle 14 F-02 で inline 段落から blockquote 切り出し): Phase 5.7 が `parent_issue_number` の **single source of truth for the read** であり、本 Workflow Termination block は state を re-read しない。orchestrator の branching decision は Phase 5.7 の `[CONTEXT] PARENT_ISSUE=none` echo (LLM-level routing signal、会話履歴で観測可能) で駆動され、bash 変数経由ではない (Bash tool invocation は shell state を境界を跨いで共有しない)。cycle 35 F-13 で本 forward-reference clarification を導入、cycle 36 F-10 で `0` 値が LLM-readable `[CONTEXT]` emit 経由で流れることを明示し、cycle 35 commit message が learned pattern として警告した「bash 仕様 verify 不足」pitfall を構造的に予防した。Issue #687 AC-4 と整合。
+> **Why this routing relies on Phase 5.7 emit, not state re-read**: Phase 5.7 が `parent_issue_number` の **single source of truth for the read** であり、本 Workflow Termination block は state を re-read しない。orchestrator の branching decision は Phase 5.7 の `[CONTEXT] PARENT_ISSUE=none` echo (LLM-level routing signal、会話履歴で観測可能) で駆動され、bash 変数経由ではない (Bash tool invocation は shell state を境界を跨いで共有しない)。
 
 **Step 1**: Update flow state to the terminal state (patch mode, preserves `previous_phase`):
 

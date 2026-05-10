@@ -24,11 +24,11 @@
 #      — 5 site で計 7 assertion (TC-1.1/1.2 = create.md, TC-2.1/2.2 = cleanup.md, TC-3.2 = ingest.md
 #        continuation HTML literal, TC-3.7 = ingest.md Mandatory After Auto-Lint Step 0 prose,
 #        TC-5.3 = create-interview.md)
-#        (粒度: site 数 = 5、assertion 数 = 7 — protocol-doc の granularity-mixing prohibition (3 layer canonical signaling pattern blockquote 末尾) と整合)
+#        (粒度: site 数 = 5、assertion 数 = 7 — protocol-doc の **Granularity-mixing prohibition** note (3 layer canonical signaling pattern blockquote 末尾) と整合)
 #   3. 否定形重ねがけ: `DO NOT end the turn` / `DO NOT output any narrative`
 #      — HTML comment 層のみに 2 site で計 3 assertion (TC-3.3/3.4 = ingest.md continuation HTML literal,
 #        TC-5.4 = create-interview.md caller HTML literal)
-#        (粒度: site 数 = 2、assertion 数 = 3 — 同上 granularity-mixing prohibition (3 layer canonical signaling pattern blockquote 末尾) と整合)
+#        (粒度: site 数 = 2、assertion 数 = 3 — 同上 **Granularity-mixing prohibition** note (3 layer canonical signaling pattern blockquote 末尾) と整合)
 #      — orchestrator prose 層 (create.md / cleanup.md / ingest.md Mandatory After Auto-Lint Step 0 prose)
 #        は positive imperative のみで否定形を持たない (sub-skill-return-protocol.md Defense-in-depth
 #        layers table の Layer 1 row + Layer 3 row 共通の imperative 強度設計 — Layer 1 prose は

@@ -1117,7 +1117,12 @@ Wiki Ingest が完了しました。
 > **設計判断 — flow-state ring** (Issue #618 / #917, supersedes the former YAGNI stance): `ingest.md` は Phase 8.2 Pre-write (`ingest_pre_lint`)、🚨 Mandatory After Auto-Lint Step 0 + Step 1 (idempotent 二重 patch、`ingest_post_lint` — Step 0 が FIRST patch、Step 1 が idempotent retry、Issue #917 で 5 site canonical 対称化)、Phase 9.1 Step 3 (`ingest_completed`, active=false) の 3 logical patch site (4 physical bash call) で flow-state-update.sh を呼ぶ。caller 経由時は caller phase を一時上書きし、sub-skill return 後 caller Mandatory After (例: cleanup.md `🚨 Mandatory After Wiki Ingest`) が caller phase (`cleanup_post_ingest`) に書き戻す ring 構造で完遂する。単独実行時は `--if-exists` により flow-state 不在なら no-op (従来互換)。本設計反転は Issue #618 (ingest→lint return 後の implicit stop を多層防御で防ぐ) の AC-2/AC-3 要件に対応。
 
 <!-- 設計メモ (非レンダリング注釈):
-     Step 番号と Output ordering の対応は以下の通り:
+     ⚠️ Step 番号 namespace 注意: 以下は **Phase 9.1 セクション内** の Step 番号定義であり、
+     🚨 Mandatory After Auto-Lint section の Step 0 + Step 1 (idempotent 二重 patch、L899/L917
+     周辺、Issue #917 で 5 site canonical 対称化) とは別系統である。同 file 内で Step 番号
+     namespace が衝突する経路があるため明示分離する (Issue #917 cycle 7 prompt-engineer F-02 対応)。
+
+     Step 番号と Output ordering の対応は以下の通り (Phase 9.1 セクション内):
        - Step 0  : policy 宣言 (meta-step、非出力)
        - Step 1  : Output ordering #2 (caller 継続 HTML コメント、response text に出力)
        - Step 2  : Output ordering #3 (sentinel HTML コメント、response text absolute last line に出力)

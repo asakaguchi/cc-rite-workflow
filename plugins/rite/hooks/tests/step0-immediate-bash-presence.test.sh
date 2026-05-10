@@ -19,9 +19,13 @@
 #   1. Step 0 Immediate Bash literal の section anchor + bash 行が存在
 #      — orchestrator prose 層 2 site のみに適用 (TC-1.3 create.md / TC-2.3 cleanup.md)
 #   2. positive imperative keyword: `MUST execute` / `VERY FIRST` / `BEFORE any text output`
-#      — 全 6 site に適用 (TC-1.1 / TC-1.2 / TC-2.1 / TC-2.2 / TC-3.2 / TC-5.3)
+#      — 4 site で計 6 assertion (TC-1.1/1.2 = create.md, TC-2.1/2.2 = cleanup.md, TC-3.2 = ingest.md,
+#        TC-5.3 = create-interview.md)
+#        (粒度: site 数 = 4、assertion 数 = 6 — protocol-doc L98 の granularity-mixing prohibition と整合)
 #   3. 否定形重ねがけ: `DO NOT end the turn` / `DO NOT output any narrative`
-#      — HTML comment 層 (caller HTML hint / continuation HTML literal) のみに適用 (TC-3.3 / TC-3.4 / TC-5.4)
+#      — HTML comment 層のみに 2 site で計 3 assertion (TC-3.3/3.4 = ingest.md continuation HTML literal,
+#        TC-5.4 = create-interview.md caller HTML literal)
+#        (粒度: site 数 = 2、assertion 数 = 3 — 同上 granularity-mixing prohibition と整合)
 #      — orchestrator prose 層 (create.md / cleanup.md prose) は positive imperative のみで否定形を持たない
 #        (sub-skill-return-protocol.md Defense-in-depth layers table の Layer 1 row + Layer 3 row 共通の
 #         imperative 強度設計 — Layer 1 prose は positive imperative のみ、Layer 3 HTML comment は positive
@@ -64,15 +68,18 @@
 #   (e3) commands/issue/create-interview.md plain-text reminder Layer 3b — TC-5.5 で
 #        `^> ⏭ MUST continue (turn を閉じない):` blockquote 行を pin (caller HTML literal とは別 site)
 #
-# Future enhancement TODO (cycle 8 test reviewer info 01/03):
+# Future enhancement notes (cycle 8 test reviewer info 01/03; cycle 9 LOW 03 で permanence rationale 明示):
+#   - 本 inline notes は **proactive Issue 化を予定しない**。新たな implicit-stop regression が dogfooding
+#     で観測された時点で reactive に Issue 化を判断する design (cycle 9 CQ LOW 03 への対応として明示)。
 #   - TC-1.4 (cognitive-action 直接 weakening 独立 pin、test info 01): Mandatory After Delegation
 #     pre-section prose の `**VERY FIRST cognitive action**` 単独 phrasing 弱化を直接 pin する独立
-#     assertion の追加を検討。現在は TC-4.1 count >= 3 で間接 catch されるのみ (cycle 7 F-07 推奨対応 (b))。
-#     blocker ではないため follow-up Issue 化推奨。
+#     assertion の追加余地。現在は TC-4.1 count >= 3 で間接 catch されるのみ (cycle 7 F-07 推奨対応 (b))。
+#     blocker ではないため reactive 判断 (regression 観測時に file)。
 #   - TC-1.3b の Step 0 specific 拡張 (test info 03): 現状 `phase "create_post_interview"` は Step 0 と
 #     Step 1 両方に match するため Step 0 単独削除を直接特定できない。TC-1.1 が確実に catch する
-#     orthogonal 設計だが、将来 Step 0 specific pin が必要なら `--phase "create_post_interview" --active true`
-#     の Step 0 引数組合せ pattern を要求する形に拡張可能。blocker ではないため follow-up Issue 化推奨。
+#     orthogonal 設計のため現状で sufficient。将来 Step 0 specific pin が必要 (例: TC-1.1 が誤って
+#     pass する状況が発覚) なら `--phase "create_post_interview" --active true` の Step 0 引数組合せ
+#     pattern を要求する形に拡張可能。blocker ではないため reactive 判断 (regression 観測時に file)。
 #
 # Coverage matrix (test 間の責務分離):
 #   - byte equality (両ブロック完全一致): caller-html-literal-symmetry.test.sh が pin

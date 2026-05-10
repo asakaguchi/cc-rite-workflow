@@ -1118,9 +1118,11 @@ Wiki Ingest が完了しました。
 
 <!-- 設計メモ (非レンダリング注釈):
      ⚠️ Step 番号 namespace 注意: 以下は **Phase 9.1 セクション内** の Step 番号定義であり、
-     🚨 Mandatory After Auto-Lint section の Step 0 + Step 1 (idempotent 二重 patch、L899/L917
-     周辺、Issue #917 で 5 site canonical 対称化) とは別系統である。同 file 内で Step 番号
-     namespace が衝突する経路があるため明示分離する (Issue #917 cycle 7 prompt-engineer F-02 対応)。
+     🚨 Mandatory After Auto-Lint section の **Step 0 (Immediate Bash Action) + Step 1
+     (idempotent re-patch)** (idempotent 二重 patch、Issue #917 で 5 site canonical 対称化)
+     とは別系統である。同 file 内で Step 番号 namespace が衝突する経路があるため明示分離
+     する (Issue #917 cycle 6 prompt-engineer F-02 対応、cycle 7 prompt-engineer F-01 で
+     literal line number 参照を semantic name に置換し PR #617 規約遵守)。
 
      Step 番号と Output ordering の対応は以下の通り (Phase 9.1 セクション内):
        - Step 0  : policy 宣言 (meta-step、非出力)

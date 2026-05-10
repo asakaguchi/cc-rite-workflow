@@ -273,8 +273,8 @@ After the flow-state update, output the result pattern. Caller-continuation remi
 
 ```
 [CONTEXT] INTERVIEW_DONE=1; scope=skipped; next=phase_2
-> ⏭ 継続中: Phase 2 → Phase 3 Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
-<!-- caller: IMMEDIATELY run this as your next tool call (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --active true --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 2. Do NOT stop.' --if-exists --preserve-error-count` THEN (after the bash command above succeeds) continue with Phase 2 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
+> ⏭ MUST continue (turn を閉じない): Phase 2 → Phase 3 Delegation Routing → terminal sub-skill — Issue 未作成のため停止禁止。
+<!-- caller: MUST execute the following bash command as your VERY FIRST tool call BEFORE any text output, narrative, or response generation (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --active true --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 2. Do NOT stop.' --if-exists --preserve-error-count` IMMEDIATELY AFTER bash success, continue with Phase 2 (Task Decomposition Decision) in the SAME response turn. DO NOT end the turn. DO NOT output any narrative text before this bash call. No GitHub Issue has been created yet. -->
 <!-- [interview:skipped] -->
 ```
 
@@ -282,12 +282,12 @@ After the flow-state update, output the result pattern. Caller-continuation remi
 
 ```
 [CONTEXT] INTERVIEW_DONE=1; scope=completed; next=phase_2
-> ⏭ 継続中: Phase 2 → Phase 3 Delegation Routing → terminal sub-skill (Issue 未作成、自動継続します)
-<!-- caller: IMMEDIATELY run this as your next tool call (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --active true --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 2. Do NOT stop.' --if-exists --preserve-error-count` THEN (after the bash command above succeeds) continue with Phase 2 (Task Decomposition Decision) in the SAME response turn. DO NOT stop. No GitHub Issue has been created yet. -->
+> ⏭ MUST continue (turn を閉じない): Phase 2 → Phase 3 Delegation Routing → terminal sub-skill — Issue 未作成のため停止禁止。
+<!-- caller: MUST execute the following bash command as your VERY FIRST tool call BEFORE any text output, narrative, or response generation (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --active true --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 2. Do NOT stop.' --if-exists --preserve-error-count` IMMEDIATELY AFTER bash success, continue with Phase 2 (Task Decomposition Decision) in the SAME response turn. DO NOT end the turn. DO NOT output any narrative text before this bash call. No GitHub Issue has been created yet. -->
 <!-- [interview:completed] -->
 ```
 
-> **Plain-text form rationale**: 短く user-friendly な Markdown blockquote (`> ⏭ 継続中:`) にすることで (a) rendered Markdown で視覚的に「自動継続中」の文脈が明確、(b) HTML コメント (LLM 向け詳細) との責任分担が明確。詳細な caller 向け instruction は HTML コメント側に残し、plain-text 行は user 向けの短い status indicator として機能する。user-visible な最終コンテンツは `⏭ 継続中:` blockquote となり、sentinel token は HTML コメント化されレンダリング時に不可視。
+> **Plain-text form rationale**: 短く user-friendly な Markdown blockquote (`> ⏭ MUST continue (turn を閉じない):`) にすることで (a) rendered Markdown で視覚的に「停止禁止・継続必須」の文脈が明確、(b) HTML コメント (LLM 向け詳細) との責任分担が明確。詳細な caller 向け instruction は HTML コメント側に残し、plain-text 行は user 向けの短い imperative status indicator として機能する。user-visible な最終コンテンツは `⏭ MUST continue` blockquote となり、sentinel token は HTML コメント化されレンダリング時に不可視。`継続中` (現状報告) ではなく `MUST continue` (命令形) を採用するのは、Issue #910 で実証された「reminder 文言が現状報告的に解釈されると LLM の turn-boundary heuristic implicit stop を防げない」事象への対策。
 
 Result patterns (grep-matchable string inside HTML comment):
 
@@ -322,3 +322,5 @@ Sub-skill 完了 (interview finished or skipped) 時、control は **MUST** call
 2. Bare `[interview:*]` 形式（HTML comment wrap なし）は **禁止**（user-visible terminal token として regressed）
 3. Result pattern の **後ろに narrative text を出さない**（`→ Return to create.md` 等）— LLM の natural stopping point を生む
 4. Caller は HTML comment 内の grep-matchable 文字列と plain-text `[CONTEXT] INTERVIEW_DONE=1` marker を grep で読取り、即 Phase 2 へ継続
+
+> **Caller responsibility note (Issue #910 — sub-skill 出力契約の対象外)**: 上記 **Rules 0-3** は本 sub-skill (`create-interview.md`) の出力に関する MUST/MUST NOT 制約 (主語 = 本 sub-skill)。**Rule 4** は subject = Caller の **Caller-side expectation** (本 sub-skill が caller に期待する後続動作の documentation であり、本 sub-skill の MUST/MUST NOT ではない — sub-skill 側 Output rules section に置いているのは emit される 4-line block の caller-side 解釈契約を文書化するため、文法的主語の違いにより本 note で明示的に分離する)。一方、**4-line invariant 単独では LLM turn-boundary heuristic 起因の implicit stop を完全に防がない** (Issue #910 で実証)。本 sub-skill が emit する return block の構造健全性は必要条件であって十分条件ではなく、**caller (`create.md`) 側**の 🚨 Mandatory After Interview Step 0 が sub-skill return 直後の **VERY FIRST tool call** として bash literal を fire することが MUST。Step 0 を text output / narrative より前に実行する責務は caller 側に存在し、本 sub-skill 側では caller HTML comment の imperative 強度 (`MUST execute as VERY FIRST tool call BEFORE any text output`) と plain-text reminder の命令形 (`MUST continue (turn を閉じない)`) で signaling する。phrasing 設計の rationale (`継続中` 不採用 / `MUST continue` 採用、命令形が implicit stop 確率を下げる経験的観測 Issue #910 D-01) は前述 **Plain-text form rationale** blockquote (Output format example 直下) を参照 (本 note と同 rationale を 2 重保持しないことで cycle 8 Asymmetric Fix Transcription を回避)。本 note は caller 側責務の記録であり、本 sub-skill の Output rules には含まない (主語が異なるため)。

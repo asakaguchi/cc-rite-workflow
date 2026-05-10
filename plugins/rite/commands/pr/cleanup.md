@@ -1257,7 +1257,9 @@ trap - EXIT INT TERM HUP
 
 ### 🚨 Mandatory After Wiki Ingest (Defense-in-Depth)
 
-> **⚠️ MUST execute in the SAME response turn**: `rite:wiki:ingest` の return 直後、応答を終了せずに Step 0 → Step 1 → Step 2 を即座に実行する。Phase 5 (Completion Report) は本セクション経由でのみ実行される唯一の経路。`stop-guard.sh` は `cleanup_pre_ingest` / `cleanup_post_ingest` phase で `end_turn` を block し、protocol violation は次回 turn の post-hoc incident detection で検出される。
+> **⚠️ MUST execute in the SAME response turn**: `rite:wiki:ingest` の return 直後、応答を終了せずに Step 0 → Step 1 → Step 2 を即座に実行する。Phase 5 (Completion Report) は本セクション経由でのみ実行される唯一の経路。
+>
+> **Layer 2 retirement note (#675 — applies to all `stop-guard.sh` mentions anywhere in this file, both above and below this note)**: The Stop hook `hooks/stop-guard.sh` was removed in #675. All prose in this file that mentions `stop-guard.sh` (e.g., "blocks premature `end_turn`", "RE-ENTRY DETECTED escalation + THRESHOLD bail-out", "active!=true early exit", `cleanup_pre_ingest` arm WORKFLOW_HINT 等) is **historical context** describing the pre-#675 design. At runtime, the helper file no longer exists; defense relies on Layer 1 (this prose itself) and Layer 3 (caller HTML hint, see `sub-skill-return-protocol.md` Defense-in-depth layers). protocol violation の post-hoc incident detection は `workflow-incident-emit.sh` に移譲済。Read the rest of this file (both prose preceding and following this note) with this disclaimer in mind — `stop-guard.sh` references are kept as grep-able markers for historical cross-references and incremental cleanup tracking, not as active runtime claims.
 
 **Self-check and branching**:
 
@@ -1265,7 +1267,7 @@ trap - EXIT INT TERM HUP
    - **Yes** — terminal reached. flow state は既に `cleanup_completed, active: false`。Step 0 / Step 1 below MUST be skipped (`flow-state-update.sh patch --if-exists` は active=false でも patch するため、実行すると phase を `cleanup_post_ingest` に巻き戻して flow state を破壊する)。
    - **No** — Phase 5 has NOT been output yet。Steps 0-2 below are critical — execute immediately to force the workflow into the terminal state.
 
-**Step 0: Immediate Bash Action**: Execute this bash block as the **very first tool call** after `rite:wiki:ingest` returns (Self-check No branch), **before any other tool use or narrative text**. This replaces the natural turn-boundary point ("the sub-skill finished") with a concrete next tool call. The block re-affirms the flow-state phase (idempotent with Step 1) and, on failure only, emits `[CONTEXT] STEP_0_PATCH_FAILED=1` to stderr.
+**Step 0: Immediate Bash Action**: **MUST execute** this bash block as your **VERY FIRST tool call** after `rite:wiki:ingest` returns (Self-check No branch), **BEFORE any text output, narrative, or response generation**. text output を先に出すと LLM の turn-boundary heuristic が誤発火し implicit stop の経路が開く (Issue #910 で実証)。This replaces the natural turn-boundary point ("the sub-skill finished") with a concrete next tool call. The block re-affirms the flow-state phase (idempotent with Step 1) and, on failure only, emits `[CONTEXT] STEP_0_PATCH_FAILED=1` to stderr.
 
 ```bash
 # --preserve-error-count: 未指定時は JQ_FILTER が .error_count = 0 でリセットし、

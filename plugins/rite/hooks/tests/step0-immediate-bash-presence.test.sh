@@ -24,11 +24,11 @@
 #      — 5 site で計 7 assertion (TC-1.1/1.2 = create.md, TC-2.1/2.2 = cleanup.md, TC-3.2 = ingest.md
 #        continuation HTML literal, TC-3.7 = ingest.md Mandatory After Auto-Lint Step 0 prose,
 #        TC-5.3 = create-interview.md)
-#        (粒度: site 数 = 5、assertion 数 = 7 — protocol-doc L98 の granularity-mixing prohibition と整合)
+#        (粒度: site 数 = 5、assertion 数 = 7 — protocol-doc の granularity-mixing prohibition (3 layer canonical signaling pattern blockquote 末尾) と整合)
 #   3. 否定形重ねがけ: `DO NOT end the turn` / `DO NOT output any narrative`
 #      — HTML comment 層のみに 2 site で計 3 assertion (TC-3.3/3.4 = ingest.md continuation HTML literal,
 #        TC-5.4 = create-interview.md caller HTML literal)
-#        (粒度: site 数 = 2、assertion 数 = 3 — 同上 granularity-mixing prohibition と整合)
+#        (粒度: site 数 = 2、assertion 数 = 3 — 同上 granularity-mixing prohibition (3 layer canonical signaling pattern blockquote 末尾) と整合)
 #      — orchestrator prose 層 (create.md / cleanup.md / ingest.md Mandatory After Auto-Lint Step 0 prose)
 #        は positive imperative のみで否定形を持たない (sub-skill-return-protocol.md Defense-in-depth
 #        layers table の Layer 1 row + Layer 3 row 共通の imperative 強度設計 — Layer 1 prose は
@@ -46,7 +46,7 @@
 #                                        `**VERY FIRST tool call**` で TC-3.7 が直接 pin する)
 #
 #   Note (粒度の使い分け): create.md は **2 セクション anchor** (Mandatory After Interview / Mandatory
-#   After Delegation) として `×2` と数える上記 4 grep target だが、TC-4.1 の `count >= 3` は
+#   After Delegation) として `×2` と数える上記 5 grep target だが、TC-4.1 の `count >= 3` は
 #   `VERY FIRST` keyword の **行カウント** (`grep -cF` の戻り値、= prose 3 site: Mandatory After Interview
 #   prose / Step 0 prose / Mandatory After Delegation prose) を pin する。両者は粒度が異なる
 #   ("section anchor 数" vs "keyword 出現行数") ことに注意。
@@ -290,8 +290,8 @@ echo "=== TC-4: Cross-orchestrator imperative keyword count (per-file 最低数)
 #   - cleanup.md  : >= 1  (Mandatory After Wiki Ingest)
 #   - ingest.md   : >= 2  (Mandatory After Auto-Lint Step 0 prose [Issue #917、5th canonical site] +
 #                          Phase 9.1 caller continuation HTML comment、計 2 canonical site。
-#                          rationale/description prose の `VERY FIRST` 言及 [line ~935 Caller-side coupling /
-#                          line ~1158 Imperative 強度 rationale] は load-bearing でないため計数に含めない。)
+#                          rationale/description prose の `VERY FIRST` 言及 [Caller-side coupling rationale prose /
+#                          Imperative 強度 rationale prose] は load-bearing でないため計数に含めない。)
 # いずれかが下回れば即 fail。site 単位での弱化を確実に検出する。
 
 # `grep -c ... || echo 0` idiom (注: || は logical OR) は 0 match 時に "0\n0" (length 3) を返す

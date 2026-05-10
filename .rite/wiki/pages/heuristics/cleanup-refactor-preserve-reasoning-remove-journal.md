@@ -2,7 +2,7 @@
 title: "Cleanup refactor は reasoning prose を保持し review-history journal のみ削除する"
 domain: "heuristics"
 created: "2026-05-07T04:15:00+00:00"
-updated: "2026-05-09T00:10:00+00:00"
+updated: "2026-05-10T23:36:54+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260506T190517Z-pr-877.md"
@@ -34,6 +34,10 @@ sources:
     ref: "raw/reviews/20260508T141025Z-pr-894.md"
   - type: "reviews"
     ref: "raw/reviews/20260508T150042Z-pr-895.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260510T113017Z-pr-921.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260510T232242Z-pr-921.md"
 tags: [refactor, cleanup, charter, simplification, pre-commit-gate]
 confidence: high
 ---
@@ -165,6 +169,25 @@ PR #895 (`pr/references/internal-consistency.md` の slim、-58 行で 352→294
 - **code-quality reviewer が pre-existing dangling reference (`#drift-detection-invariants` from `tech-writer.md:25` / `review.md:580`、PR #845 由来)** を本 PR スコープ外の調査推奨として surface したが、Issue #892「Scope 外指摘ハンドリングポリシー」により対応見送り。連作 PR でも reviewer による既存 drift の surface は継続的に発生し、scope policy で意図的に分離する運用が canonical
 - 累計 158 件削除 / 12 PR で **11 PR (1 cycle) + 1 PR (3 cycle)** の sibling 比率に更新。references/ 配下への適用は 5 例連続成功で、`pr/references/*.md` 拡張は very high confidence で確立した
 
+### PR #921 で test-pinned anchor string が削除対象除外サブクラス (3rd class) として追加 (Phase B 機械削除、Issue #898)
+
+PR #921 (`commands/issue/start.md` の charter 違反パターン機械削除、2305→2303 行、-2 行) は Phase B として連続 13 件目の sibling になったが、**初期サイクルで 1 CRITICAL の test breakage を踏み抜き**、本経験則の doctrine に **「test-pinned anchor string」という第三のサブクラスを除外要件として追加** することになった。最終的に 2 cycle で 0 finding 1 cycle 着地 (final review) を達成し、doctrine 拡張後の機械削除 PR は load-bearing reference (test pin / AC anchor / cross-file delegation claim) を確認するだけで通過可能であることが両 reviewer (prompt-engineer + error-handling) の 8 観点 pass 確認で実証された。
+
+サブクラスの拡張内容:
+
+- **旧 doctrine** (2 sub-class): reasoning prose は保持、review-history journal のみ削除
+- **新 doctrine** (3 sub-class): reasoning prose は保持、review-history journal のみ削除、**ただし test-pinned anchor string (`grep -q "..."` で test が依存している literal phrase) は journal-like に見えても削除対象から除外する**
+
+具体的に踏み抜いた事象: `parent-child-sync-static.test.sh:186` が依存していた Issue #513 anchor string が「journal-like phrase」として `grep -E '(Issue|PR) #[0-9]+'` の機械削除対象に含まれてしまい test が red 化。pre-commit baseline grep の対象が「削除する識別子」のみで「test-pin 対象 anchor」を含めていなかったため silent regression として CI まで残った。
+
+canonical 対策の拡張: pre-commit baseline grep に「**削除対象 phrase が `*.test.sh` / `*.test.bash` 等の test ファイル内で `grep -q` / `assert_contains` 等の pin assertion 経由で参照されていないか先行確認する**」を **PR #890 で確立された「変更する構造ラベルも grep の対象に含める」拡張に続く 2 番目の拡張** として追加。test-pin grep を pre-commit baseline grep の必須項目に組み込むことで、test ファイル経由の dependency が機械削除候補に含まれる前に検出可能になる。
+
+副次的観察 (1st review cycle で発覚した 1 MEDIUM):
+
+- **Asymmetric Fix Transcription regex 取りこぼし**: charter test の `cycle [0-9]+` regex が **hyphen 形 `cycle-N`** (例: `cycle-1`, `prompt-engineer cycle-2`) を catch せず、4 箇所が silent 残存。space 形のみで pin した正規表現が hyphen 形を取りこぼした failure mode (本ページ scope 外、[Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) ページ参照)
+
+累計 159 件削除 / 13 PR (Phase B 開始) で **12 PR (1 cycle) + 1 PR (2 cycle for doctrine extension)** の sibling 比率に更新。`commands/*.md` への適用 (references/ 配下から本体 commands/ への scope 拡張) は本 PR が初 PR となり、本体 command file は test pin 密度が references/ より高いため doctrine 拡張が surface した。
+
 ## 関連ページ
 
 - [既存ページなし — 本ページが本テーマの初出](#)
@@ -185,3 +208,5 @@ PR #895 (`pr/references/internal-consistency.md` の slim、-58 行で 352→294
 - [PR #890 fix cycle 2](raw/fixes/20260508T033628Z-pr-890.md)
 - [PR #891 review results](raw/reviews/20260508T060713Z-pr-891.md)
 - [PR #894 review results](raw/reviews/20260508T141025Z-pr-894.md)
+- [PR #921 cycle 1 review (1 CRITICAL test breakage + 2 MEDIUM、test-pinned anchor string sub-class の起点)](raw/reviews/20260510T113017Z-pr-921.md)
+- [PR #921 final review (両 reviewer 0 findings、doctrine 拡張後の機械削除 PR 1 cycle 着地 + 推奨事項 2 件 scope 外)](raw/reviews/20260510T232242Z-pr-921.md)

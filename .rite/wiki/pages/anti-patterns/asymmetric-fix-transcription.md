@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-06T04:50:00Z"
+updated: "2026-05-10T23:36:54+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260505T170709Z-pr-846.md"
@@ -158,6 +158,8 @@ sources:
     ref: "raw/fixes/20260504T202458Z-pr-827.md"
   - type: "reviews"
     ref: "raw/reviews/20260505T151316Z-pr-839.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260510T113017Z-pr-921.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix"]
 confidence: high
 ---
@@ -557,6 +559,20 @@ Issue #851 では line 27/247 の bash block コメントが line 307 SoT への
 
 **選択基準と詳細な canonical 対策**は別ページで管理: [Asymmetric Fix Transcription の解決は両側修正 (Option A) より hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
 
+### Hyphen 形 (`prompt-engineer cycle-N`) を space 形 regex が catch せず silent 残存 (PR #921 cycle 1 review、累積 26 回目)
+
+PR #921 (`commands/issue/start.md` の charter 違反パターン機械削除) の **cycle 1 review** で、charter test 用の `cycle [0-9]+` regex (space 区切り想定) が **hyphen 区切り形式 `cycle-N`** (例: `prompt-engineer cycle-2`, `prompt-engineer cycle-4`) を 4 箇所で silent に取りこぼした事例が surface した。元 PR は `cycle N` (space) 形を `Issue#N` / `PR#N` と並んで charter 違反として機械削除する scope だったが、reviewer (code-quality) が `git grep -nE 'cycle-[0-9]+'` で hyphen 形を独立検出して MEDIUM finding として report。
+
+**Asymmetric drift の構造**:
+
+- **削除側 regex** (charter test): `cycle [0-9]+` (space pattern only)
+- **実際に文書化されている書式 variants**: `cycle N` (space, dominant) と `cycle-N` (hyphen, parenthetical 内に多用) の **2 variants が共存**
+- **silent regression**: charter test pass / 削除完了の状態でも hyphen 形 4 件が「scope 外残存」として silent に保持され、後続 PR で再発を許す経路を温存
+
+**canonical 対策の拡張**: charter test / propagation scan regex は **同一概念の表記揺れ variants をすべて alternation で列挙** する。本 case では `cycle[ -][0-9]+` (空白 OR hyphen) のような character class または `cycle[[:space:]]?-?[0-9]+` の柔軟形式に統一する。 PR #813 で確立された「`(line N, M)` 形式 → `本セクション直前の line N` 散文形式の表記揺れ」cluster と同型の問題で、**同一概念の表記 variants を事前列挙する propagation scan pattern coverage の拡張** (PR #661 系列 REC-04) が再現された。
+
+**累積 26 回目** (PR #813 累積 21 回目 + PR #827 累積 22 回目 + PR #838 累積 24 回目 + PR #858 累積 25 回目 に続く) として記録。今回の特徴は (1) **charter test 自体が enforcement 層なのに表記揺れに silent**、(2) **reviewer の grep 独立検出のみが catch source** (元 author の事前 grep に hyphen 形が含まれず)、(3) **fix cost は最小** (4 箇所 manual sweep) だが、表記揺れ列挙不全による silent regression 経路自体は character class 拡張で構造的に閉塞する必要がある。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -639,3 +655,4 @@ Issue #851 では line 27/247 の bash block コメントが line 307 SoT への
 - [PR #838 review cycle 4 (両 reviewer 評価「可」、0 blocking findings、4-cycle 構造的収束、Phase 5.3.0 安全網の effectiveness と Doc-Heavy retrospective PR の典型的 convergence 軌跡を実測)](raw/reviews/20260505T140020Z-pr-838-cycle4.md)
 - [PR #846 review (PR #839 の更なる follow-up: state-read.sh docstring の non-boolean caller 列挙に `next_action` 1 件を追加、PR #839 が見落とした 6 → 7 caller の cumulative 再発を 0 blocking 1 cycle で収束。code-quality reviewer の investigation suggestion で `pr_number` が docstring 列挙されているが `state-read.sh --field pr_number` を呼ぶ実 caller がゼロ件 (work-memory-update.sh:77 の docstring 例にのみ存在) であることを発見し、docstring 列挙が「現状の caller 完全列挙」ではなく「documented-supported field list」として運用されている lexicon-implementation gap を可視化。helper / caller / prose 3 layer 同期契約の next iteration として「列挙の意味論宣言 (caller list vs supported field list) 自体が drift 源になりうる」観点を追加 — sub-pattern 識別後も意味論層で同型 drift が再発する shrinking-cycle observation)](raw/reviews/20260505T170709Z-pr-846.md)
 - [PR #858 review (1-line minimal-diff doc PR で Asymmetric Fix Transcription の解決手段として Option B (hub 化 + 責務分離文書化) を採用、両 reviewer 0 blocking findings で merge 完了、Issue #851 の line 307 を「両 test の hub」と明示することで line 27/247 bash block コメントとの asymmetric pattern を構造的に閉塞)](raw/reviews/20260506T035708Z-pr-858.md)
+- [PR #921 cycle 1 review (charter clean refactor で `cycle [0-9]+` space regex が hyphen 形 `prompt-engineer cycle-N` を 4 箇所取りこぼし、code-quality reviewer の独立 grep 検出で MEDIUM finding として surface、累積 26 回目の表記揺れ列挙不全)](raw/reviews/20260510T113017Z-pr-921.md)

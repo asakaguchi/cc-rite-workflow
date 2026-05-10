@@ -378,43 +378,68 @@ assert_grep "TC-5.5: create-interview.md plain-text reminder blockquote 行に '
 echo
 echo "=== TC-6: lint.md Phase 9.2 Layer 3b imperative recast (Issue #917 cycle 5) ==="
 
-# 設計意図 (Issue #917 cycle 5 で test-reviewer F-06 対応):
+# 設計意図 (Issue #917 cycle 5 で test-reviewer F-06 対応、cycle 6 で TC-6.1 anchor 強化 + count
+# assertion 追加):
 #   commands/wiki/lint.md の Phase 9.2 三点セット blockquote (3 site — Phase 1.1 早期 return /
 #   Phase 1.3 早期 return / Phase 9.2 documentation example) は Issue #917 で
 #   `> ⏭ 継続中:` (status reporting) → `> ⏭ MUST continue (turn を閉じない):` (imperative)
 #   に recast されたが、recast 対象の lint.md を pin する assertion がこれまで存在せず、
 #   revert (継続中: への戻し) が全 hook test suite で false-negative となる経路があった。
 #
-# 2 assertion 直交カバレッジ:
-#   - TC-6.1: imperative recast の positive pin (echo command 行に MUST continue keyword 存在)
+# 3 assertion 直交カバレッジ:
+#   - TC-6.1: imperative recast の positive pin (line-start anchor + echo / raw blockquote 両 form)
 #   - TC-6.2: anti-pattern revert pin (旧 `⏭ 継続中:` status reporting が残っていない)
+#   - TC-6.3: count pin (3 canonical site すべての存在を保証、部分削除も検出)
 #
-# echo 行は bash heredoc / inline echo の両方の form を取り得るため `>` blockquote prefix だけで
-# anchor し、行内の echo コマンド本体は問わない (実装の細部に過剰結合しないため)。
+# regex 設計 (cycle 6 で line-start anchor 強化):
+#   `^[[:space:]]*(echo ")?> ⏭ MUST continue \(turn を閉じない\):` で 2 form を line-start で受け入れる:
+#     (a) `  echo "> ⏭ MUST continue ..."` (実装の echo 行、L157/L230)
+#     (b) `> ⏭ MUST continue ...` (doc-spec の raw blockquote、L1774)
+#   line-start anchor を持たない regex は L1781 の rationale prose 内 inline backtick literal
+#   (`` `> ⏭ MUST continue ...` ``) に false-positive match して 3 canonical site 全 revert でも
+#   PASS する (cycle 5 test-reviewer F-01 で reproduction 確認済)。TC-5.5 の learning 継承。
 
 # TC-6.1: lint.md に Layer 3b imperative `MUST continue (turn を閉じない)` blockquote が存在
-assert_grep "TC-6.1: lint.md Phase 9.2 blockquote 行に '⏭ MUST continue (turn を閉じない):' が存在 (Layer 3b imperative 強度 pin、Issue #917 で recast)" \
+# (line-start anchor で L1781 の inline backtick literal を除外)
+assert_grep "TC-6.1: lint.md Phase 9.2 blockquote (line-start anchor) に '⏭ MUST continue (turn を閉じない):' が存在 (Layer 3b imperative 強度 pin、Issue #917 で recast)" \
   "$LINT_MD" \
-  '> ⏭ MUST continue \(turn を閉じない\):'
+  '^[[:space:]]*(echo ")?> ⏭ MUST continue \(turn を閉じない\):'
 
 # TC-6.2: 旧 `⏭ 継続中:` status reporting が lint.md に残っていない
 assert_not_grep "TC-6.2: lint.md に旧 '⏭ 継続中:' status reporting が残っていない (Issue #917 で imperative 形式に recast 済み)" \
   "$LINT_MD" \
   '⏭ 継続中:'
 
+# TC-6.3: lint.md に Layer 3b imperative blockquote が 3 site (L157 / L230 / L1774) で存在
+# (count pin、部分削除を検出 — TC-6.1 の line-start anchor regex を再利用)
+# `assert_count` helper が存在しないため TC-4 と同形 (grep -cE + if/else + pass/fail) で実装。
+# `grep -c ... || echo 0` idiom は 0 match 時に "0\n0" を返す副作用があるため、
+# `if cmd; then :; else N=0` 形式で grep の exit code を独立捕捉する。
+if count_lint_imperative=$(grep -cE '^[[:space:]]*(echo ")?> ⏭ MUST continue \(turn を閉じない\):' "$LINT_MD" 2>/dev/null); then :; else count_lint_imperative=0; fi
+
+if [ "$count_lint_imperative" -ge 3 ]; then
+  pass "TC-6.3: lint.md に Layer 3b imperative blockquote が 3 site 以上 (実測=$count_lint_imperative, 期待>=3 — Phase 1.1 / Phase 1.3 早期 return + Phase 9.2 doc-spec の 3 canonical site)"
+else
+  fail "TC-6.3: lint.md に Layer 3b imperative blockquote が 3 site 未満 (実測=$count_lint_imperative, 期待>=3 — Phase 1.1 / Phase 1.3 早期 return + Phase 9.2 doc-spec のいずれかが部分削除/weak-phrasing 化された可能性、cycle 5 test-reviewer F-01 の coverage gap 対応)"
+fi
+
 DRIFT_HINT="\
 This test pins imperative keyword presence (Issue #910 / #917 mitigation) across
 5 cross-orchestrator grep targets (create.md ×2, cleanup.md, ingest.md ×2 —
 continuation HTML comment + Mandatory After Auto-Lint Step 0 prose, Issue #917 で
 4 → 5 に拡張) + 3 supplementary pin types in create-interview.md (5 assertions total)
-+ TC-6 (lint.md Phase 9.2 imperative recast pin、Issue #917 cycle 5 で追加):
++ TC-6 (lint.md Phase 9.2 imperative recast pin、Issue #917 cycle 5 で追加、cycle 6 で
+line-start anchor 強化 + count assertion 追加):
   (e1) caller HTML literal positive pins (TC-5.3/5.4) — 2 keyword pin
   (e2) anti-pattern revert — 2 site に分解 (cycle 8 TW LOW 03):
        (e2-a) plain-text reminder content (TC-5.1) — 旧 '⏭ 継続中:.*自動継続します' 文言の再出現を block
        (e2-b) caller HTML literal content (TC-5.2) — 旧 'IMMEDIATELY run this as your next tool call' 文言の再出現を block
   (e3) plain-text reminder Layer 3b (TC-5.5) — '⏭ MUST continue (turn を閉じない):' blockquote 行を pin
-  (e4) lint.md Phase 9.2 Layer 3b imperative recast (TC-6.1/6.2) — positive pin (MUST continue) +
-       anti-pattern pin (継続中: status reporting が残っていない)
+  (e4) lint.md Phase 9.2 Layer 3b imperative recast (TC-6.1/6.2/6.3):
+       - TC-6.1: line-start anchor 付き positive pin (echo / raw blockquote 両 form 受け入れ、
+         L1781 の inline backtick literal を除外)
+       - TC-6.2: anti-pattern pin (継続中: status reporting が残っていない)
+       - TC-6.3: count pin (3 canonical site すべての存在保証、部分削除も検出)
 If you weakened the imperative strength (e.g., reverted MUST → IMMEDIATELY,
 removed 'VERY FIRST', restored '継続中' status reporting in lint.md Phase 9.2 — now
 directly caught by TC-6 — or removed Step 0 from ingest.md Mandatory After Auto-Lint),

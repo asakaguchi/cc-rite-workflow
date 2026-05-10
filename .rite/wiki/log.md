@@ -487,3 +487,18 @@
 | 2026-05-09T09:10:00Z | ingest:create | pages/heuristics/test-env-gate-ci-alignment.md | PR #915 review — meta-test の env gate 配置 (`STRICT_CHARTER=1` 内側 vs 外側) と CI workflow 起動コマンド (`bash run-tests.sh` env 未設定) の non-alignment が PR description「CI で常時実行」claim を silent に破壊する構造を heuristic 化、`grep -E '<TEST_NAME>\|STRICT_<GATE>=' .github/workflows/*.yml` での 1 行 alignment 検証を canonical gate として追加 (raw/reviews/20260509T071343Z-pr-915.md) |
 | 2026-05-09T09:10:00Z | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #915 review — load-bearing whitespace pre-check (適用 6) 追加: M6 fixture 末尾 fence の trailing whitespace が mutation 識別力の唯一の load-bearing 要素になる脆弱性を formatter (prettier / editorconfig) silent strip から守る `grep -qE '\`\`\`[[:space:]]+$' "$FIXTURE" \|\| fail` の self-pin canonical 化 (raw/reviews/20260509T071343Z-pr-915.md) |
 | 2026-05-09T09:14:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=112, broken_refs=231 |
+| 2026-05-10T03:00:00Z | ingest:skip | raw/reviews/20260509T125508Z-pr-916.md | PR #916 cycle 2 review — Issue #910 累積 26 回目対策、既存 asymmetric-fix-transcription.md / caller-side-imperative-reinforcement 範囲の繰り返しのため skip |
+| 2026-05-10T03:00:00Z | ingest:skip | raw/reviews/20260509T133726Z-pr-916.md | PR #916 cycle 3 review — 同上 |
+| 2026-05-10T03:00:00Z | ingest:skip | raw/reviews/20260509T140312Z-pr-916.md | PR #916 cycle 4 review (CRITICAL 1 件 + HIGH 4 件、convergence stalled) — 同上 |
+| 2026-05-10T03:00:00Z | ingest:skip | raw/reviews/20260509T145522Z-pr-916.md | PR #916 cycle 5 review — 同上 |
+| 2026-05-10T03:00:00Z | ingest:skip | raw/reviews/20260509T153359Z-pr-916.md | PR #916 cycle 6 review — 同上 |
+| 2026-05-10T03:00:00Z | ingest:skip | raw/reviews/20260510T003114Z-pr-916-cycle-7.md | PR #916 cycle 7 review — 同上 |
+| 2026-05-10T03:00:00Z | ingest:skip | raw/reviews/20260510T013756Z-pr-916-cycle-8.md | PR #916 cycle 8 review — 同上 |
+| 2026-05-10T03:00:00Z | ingest:skip | raw/reviews/20260510T020748Z-pr-916-cycle-9.md | PR #916 cycle 9 review (累積収束) — 同上 |
+| 2026-05-10T03:00:00Z | ingest:skip | raw/fixes/20260509T130024Z-pr-916.md | PR #916 cycle 3 fix — Issue #910 累積 26 回目対策の累積パターン、新規経験則なし |
+| 2026-05-10T03:00:00Z | ingest:skip | raw/fixes/20260509T134857Z-pr-916.md | PR #916 cycle 4 fix — 同上 |
+| 2026-05-10T03:00:00Z | ingest:skip | raw/fixes/20260509T150938Z-pr-916.md | PR #916 cycle 5 fix — 同上 |
+| 2026-05-10T03:00:00Z | ingest:skip | raw/fixes/20260509T154100Z-pr-916-cycle-6.md | PR #916 cycle 6 fix — 同上 |
+| 2026-05-10T03:00:00Z | ingest:skip | raw/fixes/20260510T010539Z-pr-916-cycle-7.md | PR #916 cycle 7 fix — 同上 |
+| 2026-05-10T03:00:00Z | ingest:skip | raw/fixes/20260510T013757Z-pr-916-cycle-8.md | PR #916 cycle 8 fix — 同上 |
+| 2026-05-10T03:00:00Z | ingest:skip | raw/fixes/20260510T020749Z-pr-916-cycle-9.md | PR #916 cycle 9 fix (累積収束) — 同上 |

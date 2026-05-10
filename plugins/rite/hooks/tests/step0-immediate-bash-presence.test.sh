@@ -291,7 +291,9 @@ echo "=== TC-4: Cross-orchestrator imperative keyword count (per-file 最低数)
 #   - ingest.md   : >= 2  (Mandatory After Auto-Lint Step 0 prose [Issue #917、5th canonical site] +
 #                          Phase 9.1 caller continuation HTML comment、計 2 canonical site。
 #                          rationale/description prose の `VERY FIRST` 言及 [Caller-side coupling rationale prose /
-#                          Imperative 強度 rationale prose] は load-bearing でないため計数に含めない。)
+#                          Imperative 強度 rationale prose] は load-bearing でないため期待値最低 2 の根拠とはしない
+#                          (実 grep -cF count には rationale 行も含まれ実測=4 だが、threshold 2 は load-bearing
+#                          canonical 2 site のみで満たすことを要求する設計)。)
 # いずれかが下回れば即 fail。site 単位での弱化を確実に検出する。
 
 # `grep -c ... || echo 0` idiom (注: || は logical OR) は 0 match 時に "0\n0" (length 3) を返す

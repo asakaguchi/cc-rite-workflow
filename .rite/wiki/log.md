@@ -502,3 +502,4 @@
 | 2026-05-10T03:00:00Z | ingest:skip | raw/fixes/20260510T010539Z-pr-916-cycle-7.md | PR #916 cycle 7 fix — 同上 |
 | 2026-05-10T03:00:00Z | ingest:skip | raw/fixes/20260510T013757Z-pr-916-cycle-8.md | PR #916 cycle 8 fix — 同上 |
 | 2026-05-10T03:00:00Z | ingest:skip | raw/fixes/20260510T020749Z-pr-916-cycle-9.md | PR #916 cycle 9 fix (累積収束) — 同上 |
+| 2026-05-10T03:01:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=127, broken_refs=231 |

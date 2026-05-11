@@ -18,7 +18,7 @@
 #
 # Non-regression (AC-3): the raw string `[create:completed:` / `[interview:`
 # must still appear in each file so hook/grep contracts remain matchable.
-# I-4 PR #926 verified-review: create-interview.md の `[interview:` prefix は
+# I-4: create-interview.md の `[interview:` prefix は
 # `[interview:completed]` / `[interview:skipped]` / `[interview:error]` の 3 値を
 # 取る (Pre-flight failure 経路は `[interview:error]` halt sentinel として load-bearing)。
 # Check 3 の正規表現 `\[interview:(completed|skipped|error)\]` には全 3 値が含まれる。
@@ -95,7 +95,7 @@ done
 # 3. 上記失敗時、SCRIPT_DIR/.. (= plugin root) を使って plugin 内の相対パスで検証対象を参照
 #    (marketplace install: ~/.claude/plugins/cache/rite-marketplace/rite/{ver}/hooks/ から見て
 #     plugin root は {ver}/ なので、そこに commands/issue/*.md, skills/rite-workflow/* が存在)
-# trap install (両経路共通、I-3 PR #926 verified-review 対応):
+# trap install (両経路共通):
 # 旧実装は `--repo-root` 経路で trap install されず、`else` 経路でのみ install されていた。
 # 将来 `--repo-root` 経路後段で tempfile を追加した時に SIGINT/TERM/HUP 中断で orphan leak する
 # 構造的非対称があったため、両経路共通の lifecycle に統一する。`--repo-root` 経路では
@@ -134,7 +134,7 @@ else
     REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
     CHECK_PATHS_PREFIX=""
   elif [ -z "$_git_err" ]; then
-    # H-1 対応 (PR #926 verified-review): mktemp 失敗 + git rev-parse 失敗の組合せ。
+    # H-1 対応: mktemp 失敗 + git rev-parse 失敗の組合せ。
     # 旧実装は「stderr empty → legitimate fallback」と誤分類して check を続行していたが、
     # 実体は「stderr の中身を観測する手段を失ったため、エラー種別を区別できない」状態。
     # marketplace fallback と permission denied / binary 不在 / corrupt index を silent に
@@ -184,7 +184,7 @@ if [ ! -f "$CREATE_REGISTER" ]; then
 else
   # AC-3 non-regression: the raw sentinel string must still be present somewhere
   # in the file so downstream hook/grep contracts continue to match
-  # (I-9 PR #926 verified-review: stop-guard.sh は #675 で撤去済、現役の grep contract は
+  # (I-9: stop-guard.sh は #675 で撤去済、現役の grep contract は
   # workflow-incident-emit.sh の sentinel grep / pre-tool-bash-guard.sh / phase-transition-whitelist.sh 等)。
   if grep -qE '\[create:completed:' "$CREATE_REGISTER"; then
     pass "create-register.md: contains [create:completed:...] string (AC-3 non-regression)"
@@ -241,7 +241,7 @@ CREATE_INTERVIEW="${REPO_ROOT}${CHECK_PATHS_PREFIX:+/${CHECK_PATHS_PREFIX}}/comm
 if [ ! -f "$CREATE_INTERVIEW" ]; then
   fail "create-interview.md not found at $CREATE_INTERVIEW"
 else
-  # IMP-4 対応 (PR #926 verified-review): AC-3 non-regression を bullet sentinel と halt sentinel に分割。
+  # IMP-4 対応: AC-3 non-regression を bullet sentinel と halt sentinel に分割。
   # 旧実装 `grep -qE '\[interview:(completed|skipped|error)\]'` は OR 判定で 1 match で pass
   # するため、halt-rule prose で `[interview:error]` が 6 回出現する状況では bullet
   # `[interview:completed]` / `[interview:skipped]` を両方 silent 削除しても通過する false-positive

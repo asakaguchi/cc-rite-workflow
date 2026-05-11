@@ -45,7 +45,9 @@ create.md (orchestrator)
 <LLM ends turn. User sees "Cooked for 2m 0s" and must type `continue` manually.>
 ```
 
-これは **bug**。return tag は turn 境界ではなく hand-off signal。同 response turn 内で Phase 2 (Task Decomposition Decision) へ進まないと workflow が abandoned になる (I-1 PR #926 verified-review: parent-routing pattern 移行で `Mandatory After Interview` セクションは削除済。残存する `Mandatory After Delegation` は terminal sub-skill 直後のみ発火する別経路)。両形式 (詳細は本セクション末尾 "Sentinel 形式" blockquote) とも turn 境界ではなく continuation trigger として扱う必要がある。
+これは **bug**。return tag は turn 境界ではなく hand-off signal。同 response turn 内で Phase 2 (Task Decomposition Decision) へ進まないと workflow が abandoned になる。両形式 (詳細は本セクション末尾 "Sentinel 形式" blockquote) とも turn 境界ではなく continuation trigger として扱う必要がある。
+
+> **Note**: `Mandatory After Interview` セクションは parent-routing pattern 移行で削除済。残存する `Mandatory After Delegation` は terminal sub-skill (create-register / create-decompose) 直後のみ発火する別経路。
 
 ### Correct-pattern (what to do)
 
@@ -190,17 +192,17 @@ if ! state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh); then
   state_root=""
 fi
 diag_log="${state_root:-/tmp}/.rite-flow-state-diag.log"
-# H-2 対応 (PR #926 verified-review): create-interview.md L42 と完全対称化。
+# create-interview.md mkdir block と対称化。
 # 旧 `mkdir -p ... 2>/dev/null || true` は silent fallback で `_resolve-flow-state-path.sh` の
 # redirect 失敗を握りつぶし cold-start branch に化ける経路を生む。WARNING を emit して可視化する。
 if ! mkdir -p "$(dirname "$diag_log")" 2>/dev/null; then
-  # L-2 対応 (PR #926 verified-review): create-interview.md と対称化。
+  # create-interview.md と対称化。
   # mkdir 失敗時に redirect 自体が失敗して helper が起動不能になる経路を防ぐため、
   # diag_log を /dev/null に fallback して redirect が常に成立するようにする。
   echo "WARNING: cannot create diag_log dir $(dirname "$diag_log") — diagnostic output redirected to /dev/null instead" >&2
   diag_log="/dev/null"
 fi
-# H-3 対応 (PR #926 verified-review): create-interview.md の `_resolve-flow-state-path.sh` block と完全対称化 (構造参照化、I-5 PR #926 verified-review 対応 — 旧 `L45-53` は drift していた)。
+# create-interview.md の `_resolve-flow-state-path.sh` block と完全対称化 (構造参照化、旧 hardcoded 行番号は drift していた)。
 # 旧 `... || state_file=""` は helper exit 非ゼロを silent 吸収し、create-interview.md 側で
 # halt 判定の根拠にしている FLOW_STATE_PATH_RESOLVE_FAILED retained flag が caller 側で立たない
 # 対称性破綻を生む。retained flag + workflow-incident-emit を加える。
@@ -292,15 +294,15 @@ if ! state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh); then
   state_root=""
 fi
 diag_log="${state_root:-/tmp}/.rite-flow-state-diag.log"
-# H-2 対応 (PR #926 verified-review): Phase 1 Pre-write と対称化。
+# Phase 1 Pre-write と対称化。
 if ! mkdir -p "$(dirname "$diag_log")" 2>/dev/null; then
-  # L-2 対応 (PR #926 verified-review): create-interview.md と対称化。
+  # create-interview.md と対称化。
   # mkdir 失敗時に redirect 自体が失敗して helper が起動不能になる経路を防ぐため、
   # diag_log を /dev/null に fallback して redirect が常に成立するようにする。
   echo "WARNING: cannot create diag_log dir $(dirname "$diag_log") — diagnostic output redirected to /dev/null instead" >&2
   diag_log="/dev/null"
 fi
-# H-3 対応 (PR #926 verified-review): Phase 1 Pre-write と対称化。
+# Phase 1 Pre-write と対称化 (構造参照化、旧 hardcoded 行番号は drift していた)。
 if ! state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>>"$diag_log"); then
   echo "[CONTEXT] FLOW_STATE_PATH_RESOLVE_FAILED=1; reason=helper_exit_nonzero" >&2
   bash {plugin_root}/hooks/workflow-incident-emit.sh \

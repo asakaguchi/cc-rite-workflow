@@ -1,7 +1,7 @@
 #!/bin/bash
 # caller-html-literal-symmetry-decompose-register.test.sh
 #
-# ⚠️ DELETION CHECKLIST (PR #926 verified-review M12 対応 — 削除忘れ防止):
+# ⚠️ DELETION CHECKLIST (削除忘れ防止):
 #   本テストは parent-routing-unification ADR (docs/designs/parent-routing-unification.md) PR-5 で
 #   create-decompose.md / create-register.md からも caller HTML literal が撤去されるタイミングで
 #   **テストファイル全体を削除する** こと。PR-5 マージ時のチェックリスト:
@@ -9,9 +9,8 @@
 #     2. plugins/rite/hooks/tests/run-all-tests.sh が個別 list していれば該当行も削除
 #     3. plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md
 #        "廃止済 invariant test" list (line 94 付近) に本ファイル名を追記
-#     4. plugins/rite/hooks/tests/_test-helpers.sh の TQ-2 コメントブロック (line 160-163 付近、
-#        本ファイル名を例示している箇所) を削除 (NH-1 PR #926 verified-review 対応 —
-#        referenced file が消滅するため例示コメントも陳腐化する)
+#     4. plugins/rite/hooks/tests/_test-helpers.sh の例示コメント (本ファイル名を例示している箇所)
+#        を削除 (referenced file が消滅するため例示コメントも陳腐化する)
 #   PR-5 完了後に本ファイルが残ると、対象ファイル削除後に file-not-found exit 1 を出すが
 #   CI が個別 stderr を見ない場合 silent fail する経路があるため必ず削除する。
 #

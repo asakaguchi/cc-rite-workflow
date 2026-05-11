@@ -276,11 +276,12 @@ HOOK_INPUT_BLOCKING=$(jq -n --arg cwd "$TD" --arg sid "$SID_INV" \
 patch_active() {
   local file="$1" value="$2"
   if jq ".active = $value" "$file" > "${file}.tmp"; then
-    # M-2 PR #926 verified-review: mv 失敗 (disk full / EXDEV / permission denied) を
-    # 明示的に handle し、flow-state-update.sh canonical mv pattern と対称化する。
+    # mv 失敗 (disk full / EXDEV / permission denied) を明示 handle。
+    # `if ! cmd; then` の中で `$?` は `!` 演算後の値 (常に 0) のため rc 取得不可。
+    # flow-state-update.sh canonical mv pattern (`flow-state-update.sh:661-666`) と
+    # 同じく rc を表示せず失敗メッセージのみで fail-fast する。
     if ! mv "${file}.tmp" "$file"; then
-      mv_rc=$?
-      echo "ERROR: mv failed for $file (rc=$mv_rc, disk full / EXDEV / permission denied?)" >&2
+      echo "ERROR: mv failed for $file (disk full / EXDEV / permission denied?)" >&2
       rm -f "${file}.tmp"
       exit 1
     fi
@@ -291,7 +292,7 @@ patch_active() {
   fi
 }
 
-# M-6 対応 (PR #926 verified-review): guard 自体の syntax error / set -u 違反等が silent skip
+# M-6 対応: guard 自体の syntax error / set -u 違反等が silent skip
 # されないよう、stderr を tempfile に退避して exit code + stderr 空判定で異常終了を検知する。
 # 旧 `2>/dev/null` は guard が壊れて出力なしの場合と「正常 silent skip」を区別できなかった。
 _guard_stderr=$(mktemp /tmp/rite-and-logic-guard-err-XXXXXX) || _guard_stderr=""
@@ -360,7 +361,7 @@ echo "  Layer 2 sentinel         : workflow-incident-emit.sh が WORKFLOW_INCIDE
 echo "  Layer 3 Pre-check        : state-read.sh --field phase pre-condition"
 echo "  Layer 4 whitelist        : phase-transition-whitelist.sh が source 可能"
 echo "  Layer 5 Pre-flight       : preflight-check.sh の compact_state gate"
-echo "  Layer 6 retired          : parent-routing pattern 移行で撤去 (ADR docs/designs/parent-routing-unification.md、I-7 PR #926 verified-review: numbering gap 維持理由を明示)"
+echo "  Layer 6 retired          : parent-routing pattern 移行で撤去 (ADR docs/designs/parent-routing-unification.md)"
 echo "  Layer 7 minimal presence : --active true が commands/issue/ 配下に 4 file 以上で出現"
 echo "  Layer 8 case arm         : phase-transition-whitelist.sh の declare -gA dispatch"
 

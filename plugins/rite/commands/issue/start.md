@@ -766,7 +766,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 Invoke `skill: "rite:lint"` after 5.1.
 
-**Immediate after lint returns**: When `rite:lint` outputs a result pattern and returns control, do **NOT** churn or pause — **immediately** proceed to Mandatory After 5.2 below. The lint sub-skill has already updated flow state to `phase5_post_lint` via Phase 4 (defense-in-depth, #716); execute the Mandatory After 5.2 steps without delay.
+**Immediate after lint returns**: When `rite:lint` outputs a result pattern and returns control, do **NOT** churn or pause — **immediately** proceed to Mandatory After 5.2 below. The lint sub-skill has already updated flow state to `phase5_post_lint` via Phase 4.0 (defense-in-depth, #716); execute the Mandatory After 5.2 steps without delay.
 
 **Results**: `[lint:success/skipped]`→5.2.1→5.3, `[lint:error]`→fix→5.2, `[lint:aborted]`→**emit sentinel and proceed to 5.6** (#366):
 
@@ -1175,7 +1175,7 @@ echo "✅ Fingerprint 循環 finding を #$(printf '%s' "$result" | jq -r '.issu
 
 Invoke `skill: "rite:pr:review"`.
 
-**Immediate after review returns**: When `rite:pr:review` outputs a result pattern and returns control, do **NOT** churn or pause — **immediately** proceed to 5.4.3 After Review below. The review sub-skill has already updated flow state to `phase5_post_review` via Phase 8 (defense-in-depth, #719); execute the 5.4.3 steps without delay.
+**Immediate after review returns**: When `rite:pr:review` outputs a result pattern and returns control, do **NOT** churn or pause — **immediately** proceed to 5.4.3 After Review below. The review sub-skill has already updated flow state to `phase5_post_review` via Phase 8.0 (defense-in-depth, #719); execute the 5.4.3 steps without delay.
 
 #### 5.4.2 Review Patterns
 
@@ -1620,7 +1620,7 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
 | Fix Result Pattern | Preceding Review Pattern | Action |
 |--------------------|--------------------------|--------|
 | `[fix:pushed]` | _(any)_ | **Invoke `skill: "rite:pr:review", args: "{pr_number}"`** via the Skill tool (re-review, Phase 5.4.1). |
-| `[fix:pushed-wm-stale]` | _(any)_ | **Work memory が stale です。手動介入が必要かを `AskUserQuestion` でユーザーに確認** (推奨: stale 警告ログを残した上で `skill: "rite:pr:review", args: "{pr_number}"` を起動して再レビューに進む / 中断して手動で work memory を修復する)。silent に `[fix:pushed]` 扱いしてはならない (fix.md Phase 8 caller semantics 参照)。 |
+| `[fix:pushed-wm-stale]` | _(any)_ | **Work memory が stale です。手動介入が必要かを `AskUserQuestion` でユーザーに確認** (推奨: stale 警告ログを残した上で `skill: "rite:pr:review", args: "{pr_number}"` を起動して再レビューに進む / 中断して手動で work memory を修復する)。silent に `[fix:pushed]` 扱いしてはならない (fix.md Phase 8.1 caller semantics 参照)。 |
 | `[fix:issues-created:{n}]` | _(any)_ | **Invoke `skill: "rite:pr:review", args: "{pr_number}"`** via the Skill tool (re-review, Phase 5.4.1). |
 | `[fix:replied-only]` | _(any)_ | **→ Proceed to Phase 5.5** (Ready for Review). |
 | `[fix:error]` | _(any)_ | Ask the user how to proceed via `AskUserQuestion` with options: 「再試行」/「Edit ツールで手動 fallback (incident 記録)」/「Phase 5.6 にスキップ」/「terminate」. If user selects 「Edit ツールで手動 fallback」, **emit sentinel** via `bash {plugin_root}/hooks/workflow-incident-emit.sh --type manual_fallback_adopted --details "rite:pr:fix error fallback" --pr-number {pr_number} \|\| true` before proceeding (#366). The sentinel will be picked up by Phase 5.4.4.1 in the next cycle. |

@@ -21,7 +21,7 @@
 #     (bash var / arg、`$error_count` / `${error_count}` 等の **string literal**) の
 #     **読取** 出現。helper 自身 (`flow-state-update.sh` / `migrate-flow-state.sh`) と
 #     本 test 自身は除外。
-#   - **検出 limitation** (I-14 PR #926 verified-review): 本 test は string-based field
+#   - **検出 limitation**: 本 test は string-based field
 #     access (literal) のみを捕捉する。variable indirection (`local field="error_count";
 #     jq ".$field"` / `eval "x=\$$varname"` 等) は対象外。現状の hooks/ にそのような
 #     indirection は存在しないため実用的な制約だが、将来 indirection 経由の reader が
@@ -73,7 +73,7 @@ violations=""
 #   - flow-state-update.sh (hooks/) / migrate-flow-state.sh (hooks/scripts/) は
 #     ALLOWLIST_REGEX で除外 (helper 自身)
 
-# M-5 対応 (PR #926 verified-review): grep stderr を tempfile に退避して silent IO エラーを検出。
+# M-5 対応: grep stderr を tempfile に退避して silent IO エラーを検出。
 # 旧 `2>/dev/null` は grep -RIl が permission denied / broken symlink / IO error で読めないパスを
 # silent skip させ、load-bearing test invariant (dead-code claim) の保護を silent に失う経路があった。
 # stderr が空でなければ test を fail させて未保護領域を可視化する。
@@ -82,7 +82,7 @@ violations=""
 # `set +e` で一時的に disable して exit code を取得する。grep rc=2 (IO error) は stderr 非空判定で
 # 検出する (rc 1/2 を直接区別する必要がないため `|| true` ではなく明示的 set +e/set -e 形式)。
 #
-# I-2 PR #926 verified-review: mktemp 失敗時に fail-fast (旧 `|| _grep_err=""` 経路は
+# I-2: mktemp 失敗時に fail-fast (旧 `|| _grep_err=""` 経路は
 # silent `/dev/null` fallback で dead-code claim 保護の load-bearing 検出能力を完全無効化していた)。
 # verify-terminal-output.sh:120-124 の H-1 canonical pattern と対称化。
 if ! _grep_err=$(mktemp /tmp/rite-error-count-grep-err-XXXXXX); then
@@ -91,15 +91,13 @@ if ! _grep_err=$(mktemp /tmp/rite-error-count-grep-err-XXXXXX); then
   exit 1
 fi
 
+# mktemp は fail-fast 済のため _grep_err は invariant で非空。以下の grep は常に stderr を tempfile に退避する。
+
 # jq field access ('.error_count') の探索
 set +e
-if [ -n "$_grep_err" ]; then
-  jq_field_hits=$(grep -RIlE '\.error_count' "$HOOKS_DIR" --include='*.sh' --exclude-dir='tests' 2>"$_grep_err")
-else
-  jq_field_hits=$(grep -RIlE '\.error_count' "$HOOKS_DIR" --include='*.sh' --exclude-dir='tests' 2>/dev/null)
-fi
+jq_field_hits=$(grep -RIlE '\.error_count' "$HOOKS_DIR" --include='*.sh' --exclude-dir='tests' 2>"$_grep_err")
 set -e
-if [ -n "$_grep_err" ] && [ -s "$_grep_err" ]; then
+if [ -s "$_grep_err" ]; then
   fail "TC-1: grep over $HOOKS_DIR emitted stderr (test cannot guarantee jq_field coverage — silent IO error)"
   head -5 "$_grep_err" | sed 's/^/  /' >&2
 fi
@@ -114,15 +112,11 @@ if [ -n "$jq_field_hits" ]; then
 fi
 
 # bash variable expansion ('$error_count' / '${error_count') の探索
-[ -n "$_grep_err" ] && : > "$_grep_err"  # truncate before reuse
+: > "$_grep_err"  # truncate before reuse
 set +e
-if [ -n "$_grep_err" ]; then
-  bash_var_hits=$(grep -RIlE '\$\{?error_count\b' "$HOOKS_DIR" --include='*.sh' --exclude-dir='tests' 2>"$_grep_err")
-else
-  bash_var_hits=$(grep -RIlE '\$\{?error_count\b' "$HOOKS_DIR" --include='*.sh' --exclude-dir='tests' 2>/dev/null)
-fi
+bash_var_hits=$(grep -RIlE '\$\{?error_count\b' "$HOOKS_DIR" --include='*.sh' --exclude-dir='tests' 2>"$_grep_err")
 set -e
-if [ -n "$_grep_err" ] && [ -s "$_grep_err" ]; then
+if [ -s "$_grep_err" ]; then
   fail "TC-1: grep over $HOOKS_DIR emitted stderr (test cannot guarantee bash_var coverage — silent IO error)"
   head -5 "$_grep_err" | sed 's/^/  /' >&2
 fi
@@ -135,7 +129,7 @@ if [ -n "$bash_var_hits" ]; then
     violations+="$f"$'\n'
   done <<< "$bash_var_hits"
 fi
-[ -n "$_grep_err" ] && rm -f "$_grep_err"
+rm -f "$_grep_err"
 
 # 重複除去
 violations=$(printf '%s' "$violations" | sort -u | sed '/^$/d')

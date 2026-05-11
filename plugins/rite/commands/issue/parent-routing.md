@@ -324,7 +324,7 @@ gh issue close {issue_number} --comment "すべての子 Issue が完了した�
 
 ## Defense-in-Depth: Flow State Update (Before Return)
 
-> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4, `review.md` Phase 8).
+> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
 
 Before returning control to the caller, update flow state to the post-parent-routing phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
 

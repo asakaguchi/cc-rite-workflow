@@ -93,16 +93,6 @@ The LLM receives the continuation signal from two independent sources: the promp
 >
 > **廃止済**: `create.md` Mandatory After Interview / `create-interview.md` caller HTML literal + Layer 3a/3b は parent-routing pattern (ADR `docs/designs/parent-routing-unification.md`) で sub-skill 内製化済 (caller-side hint 不要)。撤去済 invariant test: `4-site-symmetry.test.sh` / `caller-html-literal-symmetry.test.sh` / `step0-immediate-bash-presence.test.sh` / `create-interview-responsibility-separation.test.sh`。Interim coverage は `hooks/tests/parent-routing-pattern-interim.test.sh` が担う (統合計画は ADR 参照)。
 
-> **Historical context note (S-1/S-2 PR #926 verified-review 対応)**: 上記撤去済 test 名 (`4-site-symmetry.test.sh` 等) は CHANGELOG.md / CHANGELOG.ja.md および以下の旧 ADR で「active 保護対象」として参照されているが、これらは作成時点 (PR-2 マージ前) の状態を historical immutability として保持しており、`parent-routing-unification.md` ADR の PR-2 で正式に retire 済の事実は本 sub-skill-return-protocol.md と当該 ADR の §6.1 で集約管理する。
->
-> - `docs/designs/pr-cleanup-simplification.md`
-> - `docs/designs/refactor-create-mds-body-slimdown.md`
-> - `docs/designs/issue-create-zerobase-redesign.md`
-> - `docs/designs/issue-create-sub-skill-consolidation-evaluation.md`
-> - `docs/designs/improve-issue-create-skill-design.md`
->
-> reader が上記 historical ADR を参照する際は **本 sub-skill-return-protocol.md / `parent-routing-unification.md` を canonical source として優先する** こと。`parent-routing-unification.md` § 6.1 の table が retired test list の唯一の真実の源。
-
 ## Relationship to Workflow Incident Detection
 
 When the contract is violated in practice — the user types `continue` to recover — the orchestrator MAY emit the `auto_continuation_failed` sentinel via `plugins/rite/hooks/workflow-incident-emit.sh` so the incident is auto-registered as an Issue via Phase 5.4.4.1. This is an **optional observability sentinel** (MAY) — it does not enforce the contract but records violations for later diagnosis. The detection heuristic has false-positive risk and is out of scope for Issue #525 MUST requirements. The active layers (Layer 1 + Layer 3) above are the actual enforcement; the sentinel is observability. See `docs/SPEC.md` "Sub-skill Return Auto-Continuation Contract" section for the full specification.

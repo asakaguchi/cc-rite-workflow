@@ -157,7 +157,7 @@ assert_not_grep() {
 # drift_hint_text (optional) is echoed verbatim after the failure list — used by
 # tests that point readers at canonical anchor docs (e.g.
 # parent-routing-pattern-interim.test.sh).
-# TQ-2 PR #926 verified-review: 旧 `caller-html-literal-symmetry-decompose-register.test.sh`
+# TQ-2: 旧 `caller-html-literal-symmetry-decompose-register.test.sh`
 # を例示していたが、本 test は PR-5 で削除予定 (parent-routing-unification ADR PR-5 で
 # create-register / create-decompose 移行と同時に retire)。代わりに永続的に存在する
 # parent-routing-pattern-interim.test.sh を例示。

@@ -401,7 +401,7 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
     # _log_flow_diag is defined later in the file; inline the diag write here
     # because we exit before reaching that definition's call sites.
     _diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
-    # M-4 対応 (PR #926 verified-review): diag log 書込み失敗を完全 silent にせず WARNING を 1 行 emit。
+    # M-4 対応: diag log 書込み失敗を完全 silent にせず WARNING を 1 行 emit。
     # 旧 `|| true` は disk full / permission denied で post-hoc audit-trail 検出経路が完全に途絶える。
     if ! echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] flow_state_mkdir_failed path=$_flow_state_dir" >> "$_diag_file" 2>/dev/null; then
       echo "WARNING: diag log append failed: $_diag_file (post-hoc audit-trail unavailable)" >&2
@@ -420,7 +420,7 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
   # 適用 (.rite-work-memory dir と同型)。multi-user CI runner / shared dev host で session metadata が
   # group-readable になる経路を防ぐ。chmod 失敗は best-effort skip (filesystem が ACL 非対応 / SELinux
   # 制約等で chmod 不能な環境でも flow-state 機能は維持する)。
-  # M-4 対応 (PR #926 verified-review): chmod 失敗時も WARNING を 1 行 emit して observability を維持。
+  # M-4 対応: chmod 失敗時も WARNING を 1 行 emit して observability を維持。
   if ! chmod 700 "$_flow_state_dir" 2>/dev/null; then
     echo "WARNING: chmod 700 failed: $_flow_state_dir (best-effort skip — defense-in-depth depth lost on non-POSIX/busybox env)" >&2
   fi
@@ -501,7 +501,7 @@ if ! TMP_STATE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null); then
   # diag log を書き込む。関数名 anchor で定義位置を semantic に参照する (cycle 43 F-02 で hardcoded
   # 行番号 L332 から関数名 anchor に置換)。
   _diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
-  # M-4 対応 (PR #926 verified-review): diag log 書込み失敗を完全 silent にせず WARNING を 1 行 emit。
+  # M-4 対応: diag log 書込み失敗を完全 silent にせず WARNING を 1 行 emit。
   if ! echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] tmp_state_mktemp_failed path=${FLOW_STATE}" >> "$_diag_file" 2>/dev/null; then
     echo "WARNING: diag log append failed: $_diag_file (post-hoc audit-trail unavailable for tmp_state_mktemp_failed)" >&2
   fi
@@ -525,7 +525,7 @@ fi
 # multi-user CI runner / shared dev host で session_id・issue_number・branch・phase 等の metadata と
 # (将来) 機密値を含む可能性がある file が他ユーザーに読まれる経路を構造的に塞ぐ。chmod 失敗は
 # best-effort skip (cycle 41 F-14 と対称)。
-# M-4 対応 (PR #926 verified-review): chmod 失敗時も WARNING を 1 行 emit して observability を維持。
+# M-4 対応: chmod 失敗時も WARNING を 1 行 emit して observability を維持。
 if ! chmod 600 "$TMP_STATE" 2>/dev/null; then
   echo "WARNING: chmod 600 failed: $TMP_STATE (best-effort skip — defense-in-depth depth lost on non-POSIX/busybox env)" >&2
 fi
@@ -538,10 +538,9 @@ fi
 # を含まない実装と drift していたため修正。truncation は stop-guard.sh 次回起動時に発火する)
 _log_flow_diag() {
   local diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
-  # M-4 PR #926 verified-review (対称性破綻補完): 他 2 site の M-4 対応と対称化し、
-  # diag log append 失敗 (disk full / permission denied) を WARNING emit に統一する。
-  # 旧 `|| true` は post-hoc audit-trail 検出経路が disk full 状況で site ごとに非対称に
-  # silent suppress されていた。append 失敗時に WARNING を 1 行出して可視化する。
+  # 他 2 site の WARNING emit pattern と対称化: diag log append 失敗 (disk full /
+  # permission denied) を完全 silent にせず WARNING を 1 行 emit する。旧 `|| true` は
+  # post-hoc audit-trail 検出経路が disk full 状況で site ごとに非対称に silent suppress されていた。
   if ! echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $1" >> "$diag_file" 2>/dev/null; then
     echo "WARNING: diag log append failed: $diag_file (post-hoc audit-trail unavailable for: $1)" >&2
   fi

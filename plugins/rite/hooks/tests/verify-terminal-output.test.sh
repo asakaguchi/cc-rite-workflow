@@ -105,7 +105,7 @@ else
 fi
 
 # Test 2: regression — bare sentinel form in register/decompose
-# (I-10 PR #926 verified-review: create-interview default bare is canonical post-PR-2、
+# (I-10: create-interview default bare is canonical post-PR-2、
 # 本テストの fail trigger は register/decompose の bare form のみ)
 echo "Test 2: Regression — bare sentinel form (register/decompose only)"
 setup_plugin_tree "$TEST_DIR/test2" "false"
@@ -322,7 +322,7 @@ exit 128
 FAKEGIT_EOF
 chmod +x "$TEST_DIR/test9/bin/git"
 setup_plugin_tree "$TEST_DIR/test9" "true" "bare"
-# I-13 PR #926 verified-review: fake git 起動を pre-flight assertion で検証する。
+# I-13: fake git 起動を pre-flight assertion で検証する。
 # CI 環境差 (PATH ordering の差 / chmod ビット消失 / shebang 解釈失敗) で fake git が起動せず
 # real git に fallback して Test 9 が silent skip するリスクを排除する。
 # 期待: fake git は stderr に "simulated unexpected git error" を含む fatal メッセージを emit する。

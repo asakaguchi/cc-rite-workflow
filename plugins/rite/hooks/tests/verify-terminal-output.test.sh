@@ -104,8 +104,10 @@ else
   fail "expected exit 0, got $?"
 fi
 
-# Test 2: regression — bare sentinel form in all 3 files (should FAIL)
-echo "Test 2: Regression — bare sentinel form"
+# Test 2: regression — bare sentinel form in register/decompose
+# (I-10 PR #926 verified-review: create-interview default bare is canonical post-PR-2、
+# 本テストの fail trigger は register/decompose の bare form のみ)
+echo "Test 2: Regression — bare sentinel form (register/decompose only)"
 setup_plugin_tree "$TEST_DIR/test2" "false"
 if bash "$HOOK" --quiet --repo-root "$TEST_DIR/test2" >/dev/null 2>&1; then
   fail "expected exit 1 on bare sentinel form, got exit 0"
@@ -320,6 +322,16 @@ exit 128
 FAKEGIT_EOF
 chmod +x "$TEST_DIR/test9/bin/git"
 setup_plugin_tree "$TEST_DIR/test9" "true" "bare"
+# I-13 PR #926 verified-review: fake git 起動を pre-flight assertion で検証する。
+# CI 環境差 (PATH ordering の差 / chmod ビット消失 / shebang 解釈失敗) で fake git が起動せず
+# real git に fallback して Test 9 が silent skip するリスクを排除する。
+# 期待: fake git は stderr に "simulated unexpected git error" を含む fatal メッセージを emit する。
+fake_git_probe=$(PATH="$TEST_DIR/test9/bin:/usr/bin:/bin" git rev-parse --show-toplevel 2>&1 || true)
+if printf '%s' "$fake_git_probe" | grep -q 'simulated unexpected git error'; then
+  :  # fake git 起動確認 OK
+else
+  fail "Test 9 pre-flight: fake git binary が起動しない (probe output: $fake_git_probe)"
+fi
 # PATH=... を bash 直前に置くことで bash プロセス自身に PATH を渡す
 # (PATH=... cd ... は cd builtin にのみ PATH を設定する罠を回避)
 if (cd "$TEST_DIR/test9" && PATH="$TEST_DIR/test9/bin:/usr/bin:/bin" bash "$HOOK" --quiet >/dev/null 2>&1); then

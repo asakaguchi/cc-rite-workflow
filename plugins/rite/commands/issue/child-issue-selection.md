@@ -172,7 +172,7 @@ After a child Issue is selected:
 
 ## Defense-in-Depth: Flow State Update (Before Return)
 
-> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0).
+> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `lint.md` Phase 4, `review.md` Phase 8).
 
 Before returning control to the caller, update flow state to the post-child-selection phase. This ensures the stop-guard routes correctly even if the caller's 🚨 Mandatory After section is not executed immediately:
 

@@ -45,7 +45,7 @@ create.md (orchestrator)
 <LLM ends turn. User sees "Cooked for 2m 0s" and must type `continue` manually.>
 ```
 
-これは **bug**。return tag は turn 境界ではなく hand-off signal。Mandatory After を即時実行せず Phase 2 へ進まないと workflow が abandoned になる。両形式 (詳細は本セクション末尾 "Sentinel 形式" blockquote) とも turn 境界ではなく continuation trigger として扱う必要がある。
+これは **bug**。return tag は turn 境界ではなく hand-off signal。同 response turn 内で Phase 2 (Task Decomposition Decision) へ進まないと workflow が abandoned になる (I-1 PR #926 verified-review: parent-routing pattern 移行で `Mandatory After Interview` セクションは削除済。残存する `Mandatory After Delegation` は terminal sub-skill 直後のみ発火する別経路)。両形式 (詳細は本セクション末尾 "Sentinel 形式" blockquote) とも turn 境界ではなく continuation trigger として扱う必要がある。
 
 ### Correct-pattern (what to do)
 
@@ -200,7 +200,7 @@ if ! mkdir -p "$(dirname "$diag_log")" 2>/dev/null; then
   echo "WARNING: cannot create diag_log dir $(dirname "$diag_log") — diagnostic output redirected to /dev/null instead" >&2
   diag_log="/dev/null"
 fi
-# H-3 対応 (PR #926 verified-review): create-interview.md L45-53 と完全対称化。
+# H-3 対応 (PR #926 verified-review): create-interview.md の `_resolve-flow-state-path.sh` block と完全対称化 (構造参照化、I-5 PR #926 verified-review 対応 — 旧 `L45-53` は drift していた)。
 # 旧 `... || state_file=""` は helper exit 非ゼロを silent 吸収し、create-interview.md 側で
 # halt 判定の根拠にしている FLOW_STATE_PATH_RESOLVE_FAILED retained flag が caller 側で立たない
 # 対称性破綻を生む。retained flag + workflow-incident-emit を加える。

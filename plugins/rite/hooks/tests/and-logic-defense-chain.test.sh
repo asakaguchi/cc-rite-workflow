@@ -276,7 +276,14 @@ HOOK_INPUT_BLOCKING=$(jq -n --arg cwd "$TD" --arg sid "$SID_INV" \
 patch_active() {
   local file="$1" value="$2"
   if jq ".active = $value" "$file" > "${file}.tmp"; then
-    mv "${file}.tmp" "$file"
+    # M-2 PR #926 verified-review: mv 失敗 (disk full / EXDEV / permission denied) を
+    # 明示的に handle し、flow-state-update.sh canonical mv pattern と対称化する。
+    if ! mv "${file}.tmp" "$file"; then
+      mv_rc=$?
+      echo "ERROR: mv failed for $file (rc=$mv_rc, disk full / EXDEV / permission denied?)" >&2
+      rm -f "${file}.tmp"
+      exit 1
+    fi
   else
     echo "ERROR: jq patch failed for $file (.active = $value)" >&2
     rm -f "${file}.tmp"
@@ -353,6 +360,7 @@ echo "  Layer 2 sentinel         : workflow-incident-emit.sh が WORKFLOW_INCIDE
 echo "  Layer 3 Pre-check        : state-read.sh --field phase pre-condition"
 echo "  Layer 4 whitelist        : phase-transition-whitelist.sh が source 可能"
 echo "  Layer 5 Pre-flight       : preflight-check.sh の compact_state gate"
+echo "  Layer 6 retired          : parent-routing pattern 移行で撤去 (ADR docs/designs/parent-routing-unification.md、I-7 PR #926 verified-review: numbering gap 維持理由を明示)"
 echo "  Layer 7 minimal presence : --active true が commands/issue/ 配下に 4 file 以上で出現"
 echo "  Layer 8 case arm         : phase-transition-whitelist.sh の declare -gA dispatch"
 

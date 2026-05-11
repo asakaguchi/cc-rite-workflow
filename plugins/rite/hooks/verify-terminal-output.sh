@@ -95,6 +95,20 @@ done
 # 3. 上記失敗時、SCRIPT_DIR/.. (= plugin root) を使って plugin 内の相対パスで検証対象を参照
 #    (marketplace install: ~/.claude/plugins/cache/rite-marketplace/rite/{ver}/hooks/ から見て
 #     plugin root は {ver}/ なので、そこに commands/issue/*.md, skills/rite-workflow/* が存在)
+# trap install (両経路共通、I-3 PR #926 verified-review 対応):
+# 旧実装は `--repo-root` 経路で trap install されず、`else` 経路でのみ install されていた。
+# 将来 `--repo-root` 経路後段で tempfile を追加した時に SIGINT/TERM/HUP 中断で orphan leak する
+# 構造的非対称があったため、両経路共通の lifecycle に統一する。`--repo-root` 経路では
+# `_git_err=""` のまま cleanup は no-op で安全 (rm -f "" は idempotent)。
+_git_err=""
+_rite_verify_terminal_cleanup() {
+  rm -f "${_git_err:-}"
+}
+trap 'rc=$?; _rite_verify_terminal_cleanup; exit $rc' EXIT
+trap '_rite_verify_terminal_cleanup; exit 130' INT
+trap '_rite_verify_terminal_cleanup; exit 143' TERM
+trap '_rite_verify_terminal_cleanup; exit 129' HUP
+
 if [ -n "$REPO_ROOT_OVERRIDE" ]; then
   if [ ! -d "$REPO_ROOT_OVERRIDE" ]; then
     echo "ERROR: --repo-root '$REPO_ROOT_OVERRIDE' is not a directory" >&2
@@ -107,16 +121,6 @@ else
   # stderr を一時ファイルに退避し、`not a git repository` / `dubious ownership` (= legitimate
   # marketplace fallback 経路) のみ silent fallback を許容し、それ以外 (permission denied / git
   # binary 不在 / その他予期しないエラー) は明示的に exit 1 で fail させる。
-  # trap 4 行で SIGINT / SIGTERM / SIGHUP 中断時の tempfile leak を防ぐ
-  # (flow-state-update.sh の canonical pattern と対称化)。
-  _git_err=""
-  _rite_verify_terminal_cleanup() {
-    rm -f "${_git_err:-}"
-  }
-  trap 'rc=$?; _rite_verify_terminal_cleanup; exit $rc' EXIT
-  trap '_rite_verify_terminal_cleanup; exit 130' INT
-  trap '_rite_verify_terminal_cleanup; exit 143' TERM
-  trap '_rite_verify_terminal_cleanup; exit 129' HUP
   if ! _git_err=$(mktemp /tmp/rite-verify-terminal-git-err-XXXXXX 2>/dev/null); then
     echo "WARNING: mktemp failed; cannot capture git stderr — fallback decision will be heuristic" >&2
     echo "  hint: /tmp の inode 枯渇 / read-only filesystem / permission 拒否を確認してください" >&2
@@ -179,8 +183,9 @@ if [ ! -f "$CREATE_REGISTER" ]; then
   fail "create-register.md not found at $CREATE_REGISTER"
 else
   # AC-3 non-regression: the raw sentinel string must still be present somewhere
-  # in the file so hook/grep contracts (stop-guard.sh WORKFLOW_HINT grep etc.)
-  # continue to match.
+  # in the file so downstream hook/grep contracts continue to match
+  # (I-9 PR #926 verified-review: stop-guard.sh は #675 で撤去済、現役の grep contract は
+  # workflow-incident-emit.sh の sentinel grep / pre-tool-bash-guard.sh / phase-transition-whitelist.sh 等)。
   if grep -qE '\[create:completed:' "$CREATE_REGISTER"; then
     pass "create-register.md: contains [create:completed:...] string (AC-3 non-regression)"
   else

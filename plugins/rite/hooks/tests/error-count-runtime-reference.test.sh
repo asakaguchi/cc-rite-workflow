@@ -17,9 +17,15 @@
 #
 # Scope:
 #   - 検証対象 directory: `plugins/rite/hooks/`
-#   - reader 判定: `.error_count` (jq field access) または `error_count`
-#     (bash var / arg) の **読取** 出現。helper 自身 (`flow-state-update.sh`
-#     / `migrate-flow-state.sh`) と本 test 自身は除外。
+#   - reader 判定: `.error_count` (jq field access **literal**) または `error_count`
+#     (bash var / arg、`$error_count` / `${error_count}` 等の **string literal**) の
+#     **読取** 出現。helper 自身 (`flow-state-update.sh` / `migrate-flow-state.sh`) と
+#     本 test 自身は除外。
+#   - **検出 limitation** (I-14 PR #926 verified-review): 本 test は string-based field
+#     access (literal) のみを捕捉する。variable indirection (`local field="error_count";
+#     jq ".$field"` / `eval "x=\$$varname"` 等) は対象外。現状の hooks/ にそのような
+#     indirection は存在しないため実用的な制約だが、将来 indirection 経由の reader が
+#     再導入された場合は本 test では catch できない。Scope 拡張時は本注記も更新すること。
 #
 # When this test fails:
 #   いずれかの hook が `error_count` を runtime 参照するようになった。
@@ -75,7 +81,15 @@ violations=""
 # 注: `set -euo pipefail` 下で grep rc=1 (no match) が script 早期 exit を引き起こすため、
 # `set +e` で一時的に disable して exit code を取得する。grep rc=2 (IO error) は stderr 非空判定で
 # 検出する (rc 1/2 を直接区別する必要がないため `|| true` ではなく明示的 set +e/set -e 形式)。
-_grep_err=$(mktemp /tmp/rite-error-count-grep-err-XXXXXX) || _grep_err=""
+#
+# I-2 PR #926 verified-review: mktemp 失敗時に fail-fast (旧 `|| _grep_err=""` 経路は
+# silent `/dev/null` fallback で dead-code claim 保護の load-bearing 検出能力を完全無効化していた)。
+# verify-terminal-output.sh:120-124 の H-1 canonical pattern と対称化。
+if ! _grep_err=$(mktemp /tmp/rite-error-count-grep-err-XXXXXX); then
+  echo "ERROR: mktemp failed for grep stderr capture — test invariant (silent IO error detection) is disabled" >&2
+  echo "  hint: /tmp の inode 枯渇 / read-only filesystem / permission 拒否を確認してください" >&2
+  exit 1
+fi
 
 # jq field access ('.error_count') の探索
 set +e

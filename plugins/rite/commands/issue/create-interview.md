@@ -107,7 +107,7 @@ fi
 
 > **Note — `phase-transition-whitelist.sh` の現状 runtime semantics**: `rite_phase_transition_allowed` predicate **単体** は本リポ内で **runtime caller 0 件** (stop-guard.sh 撤去 #675 以降)。一方で **同じファイル** が export する `rite_phase_is_create_lifecycle_in_progress` / `rite_phase_is_cleanup_lifecycle_in_progress` は依然 runtime caller を持つ (`pre-tool-bash-guard.sh:201-202` の Pattern 5 / `session-end.sh:87-88, 95-96`)。したがって `_RITE_PHASE_TRANSITIONS` graph 自体は advisory (transition の機械的 reject は行われない) だが、graph 上の phase 名は lifecycle predicate の判定に load-bearing で参照される。**ファイル全体を documentation-only と推論せず**、phase 名や lifecycle 定義を削除する際は predicate caller への影響を必ず確認すること。本二段書き込み rationale (audit-trail fidelity) は「現状 advisory な transition graph が将来 reactivate された場合のための future-proofing」であり、現在の runtime 影響は副次的 (caller-side / 手動 invocation 時の `previous_phase` log 整合性のみ)。
 
-**`[interview:error]` halt 判定ルール**: `.phase = create_post_interview` を確定できないまま sub-skill が終了する経路は audit-trail 破損または state 不在のため、Phase 2 進入禁止で halt する。**Return Output bash block (本ファイル末尾) は `--if-exists` で file 不在時 silent skip (exit 0、`flow-state-update.sh:439,459` 参照) する**ため、`INTERVIEW_RETURN_PATCH_FAILED` だけでは捕捉できない経路がある。Claude (本 sub-skill) は Return Output bash block 完了後、conversation context を grep して以下のいずれかが立っていれば `[interview:completed]` / `[interview:skipped]` ではなく `[interview:error]` を emit し、caller (`create.md`) に manual intervention を要求する:
+**`[interview:error]` halt 判定ルール**: `.phase = create_post_interview` を確定できないまま sub-skill が終了する経路は audit-trail 破損または state 不在のため、Phase 2 進入禁止で halt する。**Return Output bash block (本ファイル末尾) は `--if-exists` で file 不在時 silent skip (exit 0、`flow-state-update.sh` の patch / increment mode 内 `IF_EXISTS && ! -f $FLOW_STATE` 分岐参照) する**ため、`INTERVIEW_RETURN_PATCH_FAILED` だけでは捕捉できない経路がある。Claude (本 sub-skill) は Return Output bash block 完了後、conversation context を grep して以下のいずれかが立っていれば `[interview:completed]` / `[interview:skipped]` ではなく `[interview:error]` を emit し、caller (`create.md`) に manual intervention を要求する:
 
 | 観測される retained flag (一つ以上満たせば halt) | 状態 | 理由 |
 |--|--|--|
@@ -337,7 +337,7 @@ if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
   echo "[CONTEXT] INTERVIEW_RETURN_PATCH_FAILED=1" >&2
   # 非 blocking: Pre-flight (head) で同 phase 書込済のため caller は正常動作可能。
   # 同 phase 自己 patch であり idempotent。`--if-exists` は idempotent guard として機能する
-  # — `flow-state-update.sh:439, 459` 実装で **patch / increment 両 mode** で file 不在時に exit 0 で silent skip する。
+  # — `flow-state-update.sh` の **patch / increment 両 mode** 内 `IF_EXISTS && ! -f $FLOW_STATE` 分岐で file 不在時に exit 0 で silent skip する。
   # Pre-flight 成功時は file 存在保証下で no-op 化を不要にし、Pre-flight 失敗 + cold-start `create` 失敗の
   # 二重失敗時のみ silent skip する。後者は Pre-flight 側の retained flag (`PREFLIGHT_CREATE_FAILED`)
   # が context に残っているため、post-hoc 検出は Pre-flight 側 flag に依存する設計

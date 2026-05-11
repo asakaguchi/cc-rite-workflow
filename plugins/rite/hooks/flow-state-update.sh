@@ -538,7 +538,13 @@ fi
 # を含まない実装と drift していたため修正。truncation は stop-guard.sh 次回起動時に発火する)
 _log_flow_diag() {
   local diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
-  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $1" >> "$diag_file" 2>/dev/null || true
+  # M-4 PR #926 verified-review (対称性破綻補完): 他 2 site の M-4 対応と対称化し、
+  # diag log append 失敗 (disk full / permission denied) を WARNING emit に統一する。
+  # 旧 `|| true` は post-hoc audit-trail 検出経路が disk full 状況で site ごとに非対称に
+  # silent suppress されていた。append 失敗時に WARNING を 1 行出して可視化する。
+  if ! echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $1" >> "$diag_file" 2>/dev/null; then
+    echo "WARNING: diag log append failed: $diag_file (post-hoc audit-trail unavailable for: $1)" >&2
+  fi
 }
 
 case "$MODE" in

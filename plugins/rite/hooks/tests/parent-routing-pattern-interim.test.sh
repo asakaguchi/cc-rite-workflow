@@ -1,6 +1,17 @@
 #!/bin/bash
 # parent-routing-pattern-interim.test.sh
 #
+# ⚠️ DELETION CHECKLIST (Test Quality (i) PR #926 verified-review — 削除忘れ防止):
+#   本テストは parent-routing-unification ADR (docs/designs/parent-routing-unification.md) PR-7 で
+#   `parent-routing-pattern-uniformity.test.sh` が新設されるタイミングで **本ファイル全体を削除する** こと。
+#   PR-7 で各 sub-skill が parent-routing pattern canonical form に統一されるため、本 interim test の
+#   pin 対象 (create-interview.md のみの interim 形態) は uniformity test の subset として吸収される。
+#   PR-7 マージ時のチェックリスト:
+#     1. plugins/rite/hooks/tests/parent-routing-pattern-interim.test.sh を削除
+#     2. plugins/rite/hooks/tests/run-all-tests.sh が個別 list していれば該当行も削除
+#     3. ADR §6.1 / sub-skill-return-protocol.md 廃止済 invariant test list に本ファイル名を追記
+#     4. PR-7 統合計画 task list (ADR §6.1 PR-7 引き継ぎ箇所) の各 IMP-2 / IMP-3 / IMP-4 / IMP-5 / TQ-4 を確認
+#
 # Interim invariant test for the parent-routing pattern migration.
 # 移行ロードマップ・統合計画は ADR docs/designs/parent-routing-unification.md 参照。
 #
@@ -88,6 +99,18 @@ else
   fail "TC-1c-1: create-interview.md cold-start branch の 'create + --phase \"create_interview\"' sequence が消失 (単段 create --phase create_post_interview への退化、audit-trail fidelity 欠落)"
 fi
 # 二段書き込みの第 2 段 (create_post_interview への patch) は TC-1 で既に pin 済。
+
+# TC-1d / TC-1e (I-12 PR #926 verified-review 対応): per-section directional check
+# TC-1 の `count >= 3` だけでは「Pre-flight if-branch を削除して Return Output re-patch を 2 重化」
+# のような refactor mistake (count=3 維持) を catch できない silent drift を持つ。
+# Pre-flight section と Return Output section の heading anchor をそれぞれ独立に pin することで、
+# どちらの section が silent 削除されても fail する補完防御を追加する。
+assert_grep "TC-1d: create-interview.md に Pre-flight section heading anchor が存在 (Pre-flight 削除の silent regression を catch)" \
+  "$INTERVIEW_MD" \
+  '^## 🚨 MANDATORY Pre-flight: Flow State Update'
+assert_grep "TC-1e: create-interview.md に Defense-in-Depth (Return Output) section heading anchor が存在 (Return Output 削除の silent regression を catch)" \
+  "$INTERVIEW_MD" \
+  '^## Defense-in-Depth: Flow State Update \(Before Return\)'
 
 echo
 echo "=== TC-2: create-interview.md parent-routing pattern compliance ==="
@@ -279,16 +302,21 @@ fi
 _silent_failure_pattern='2>/dev/null[[:space:]]*\|\|[[:space:]]*(true|:|return[[:space:]]+0|\{[[:space:]]*true[[:space:]]*;?[[:space:]]*\})'
 
 # anti-pattern revert detection: silent failure variation が workflow-incident-emit.sh と co-located で残っていないこと
-if grep -B1 -A1 'workflow-incident-emit\.sh' "$INTERVIEW_MD" | grep -qE "$_silent_failure_pattern"; then
-  fail "TC-6e: create-interview.md で workflow-incident-emit.sh 呼び出し近傍に silent failure pattern (|| true / || : / || return 0 / || { true; } のいずれか) が残存 (anti-pattern revert)"
+# M-5 (M-7) PR #926 verified-review 対応: grep -B1 -A1 では 5+ 行に渡る invocation block の
+# 中間行に挿入された `2>/dev/null` を catch できないため、-A 8 に拡大して invocation block 全体
+# (backslash 続行 5-7 行 + || echo WARNING フォールバック行) を範囲に含める。
+# 加えて comment lines (先頭 `#`) を pre-filter で除外することで、explainer comment 内の
+# 旧パターン例示 (`# 旧 mkdir ... 2>/dev/null || true`) を偽陽性として hit させない。
+if grep -B1 -A8 'workflow-incident-emit\.sh' "$INTERVIEW_MD" | grep -v '^[[:space:]]*#' | grep -qE "$_silent_failure_pattern"; then
+  fail "TC-6e: create-interview.md で workflow-incident-emit.sh invocation block 内に silent failure pattern (|| true / || : / || return 0 / || { true; } のいずれか) が残存 (anti-pattern revert)"
 else
-  pass "TC-6e: create-interview.md で workflow-incident-emit.sh と silent failure pattern の co-location なし (silent failure 防御維持)"
+  pass "TC-6e: create-interview.md で workflow-incident-emit.sh と silent failure pattern の co-location なし (invocation block 全体 8 行範囲 + comment 除外、silent failure 防御維持)"
 fi
 
-if grep -B1 -A1 'workflow-incident-emit\.sh' "$CREATE_MD" | grep -qE "$_silent_failure_pattern"; then
-  fail "TC-6f: create.md で workflow-incident-emit.sh 呼び出し近傍に silent failure pattern (|| true / || : / || return 0 / || { true; } のいずれか) が残存 (anti-pattern revert)"
+if grep -B1 -A8 'workflow-incident-emit\.sh' "$CREATE_MD" | grep -v '^[[:space:]]*#' | grep -qE "$_silent_failure_pattern"; then
+  fail "TC-6f: create.md で workflow-incident-emit.sh invocation block 内に silent failure pattern (|| true / || : / || return 0 / || { true; } のいずれか) が残存 (anti-pattern revert)"
 else
-  pass "TC-6f: create.md で workflow-incident-emit.sh と silent failure pattern の co-location なし (silent failure 防御維持)"
+  pass "TC-6f: create.md で workflow-incident-emit.sh と silent failure pattern の co-location なし (invocation block 全体 8 行範囲 + comment 除外、silent failure 防御維持)"
 fi
 
 # create.md Mandatory After Delegation の imperative phrasing を pin。
@@ -300,6 +328,17 @@ assert_grep "TC-6g: create.md に Mandatory After Delegation の '**VERY FIRST c
 assert_grep "TC-6h: create.md に Mandatory After Delegation の 'BEFORE any text output or narrative' keyword が存在" \
   "$CREATE_MD" \
   'BEFORE any text output or narrative'
+
+# TC-6j: Mandatory After Interview section の不在 pin (I-11 PR #926 verified-review 対応)
+# parent-routing pattern 移行で create.md から `🚨 Mandatory After Interview` section を完全削除した。
+# git revert / 別 Issue で section が古い phrasing で復活する catastrophic regression を mechanical に検出する。
+# TC-6g/h は **存在** pin (Mandatory After Delegation の load-bearing phrasing 維持) なのに対し、
+# 本 TC は **不在** pin で対称化する。両者の組合せで「Delegation のみ存続 / Interview は撤去」を保証。
+if grep -qE '^### .*🚨.*Mandatory After Interview' "$CREATE_MD"; then
+  fail "TC-6j: create.md に '🚨 Mandatory After Interview' section anchor が復活した (parent-routing pattern 移行の意図に反する catastrophic revert — git revert / 別 Issue で誤判断の可能性)"
+else
+  pass "TC-6j: create.md から '🚨 Mandatory After Interview' section anchor が削除されたまま維持 (parent-routing pattern 整合性、catastrophic revert なし)"
+fi
 
 # TC-6i: 8 種 retained flag 名の echo presence を個別に pin する。
 # flag 名は ADR documented stable contract のため (rename / typo を確実に catch)、
@@ -339,14 +378,14 @@ if [ ! -f "$PRE_CHECK_ROUTING_MD" ]; then
   fail "TC-7: pre-check-routing.md not found at $PRE_CHECK_ROUTING_MD"
 else
   # IMP-2 対応 (PR #926 verified-review): create.md には Halt rule (line 66 付近) と
-  # Phase 1 return branch (line 230 付近) の **2 箇所** で `[interview:error]` halt prose が存在する。
+  # Phase 1 return branch (line 251 付近) の **2 箇所** で `[interview:error]` halt prose が存在する。
   # 旧 `grep -q` の 1 match pass は片方を silent 削除しても通過する false negative を持っていたため、
   # `grep -c` で count >= 2 に強化し独立 pin する。
   if interview_error_halt_count=$(grep -cE '\[interview:error\].*halt' "$CREATE_MD" 2>/dev/null); then :; else interview_error_halt_count=0; fi
   if [ "$interview_error_halt_count" -ge 2 ]; then
     pass "TC-7a: create.md に '[interview:error] ... halt' prose が 2 site 以上 (実測=$interview_error_halt_count, Halt rule + Phase 1 return branch の 2 site が load-bearing)"
   else
-    fail "TC-7a: create.md の '[interview:error] ... halt' prose が 2 site 未満 (実測=$interview_error_halt_count, 期待>=2 — Halt rule (L66 付近) または Phase 1 return branch (L230 付近) のいずれかが削除された可能性)"
+    fail "TC-7a: create.md の '[interview:error] ... halt' prose が 2 site 未満 (実測=$interview_error_halt_count, 期待>=2 — Halt rule (L66 付近) または Phase 1 return branch (L251 付近) のいずれかが削除された可能性)"
   fi
 
   # pre-check-routing.md Item 0 dispatcher は `[interview:error]` matched 時の Phase 2 進入禁止経路を持つ。

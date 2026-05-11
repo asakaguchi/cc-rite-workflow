@@ -41,30 +41,29 @@ If the marker has **not** been output, you are NOT done — keep going in the sa
 
 ## Anti-pattern (what NOT to do)
 
-Issue #561 以降、sentinel は HTML コメント形式 (`<!-- [interview:skipped] -->` / `<!-- [create:completed:{N}] -->`) で emit される:
+`create-interview` は parent-routing pattern (ADR `docs/designs/parent-routing-unification.md`) で **bare bracket form** `[interview:skipped]` / `[interview:completed]` を emit する (PR-2 #926 で HTML-comment form から移行)。`create-register` / `create-decompose` は依然 HTML-comment form `<!-- [create:completed:{N}] -->` を emit する (PR-5 で bare bracket 化予定の暫定形):
 
 ```
 [WRONG]
 <Skill rite:issue:create-interview returns>
-<LLM output: "<!-- [interview:skipped] -->">
+<LLM output: "[interview:skipped]">
 <LLM ends turn. User sees "Cooked for 2m 0s" and must type `continue`.>
 ```
 
-This abandons the workflow with no Issue created and no flow-state cleanup. HTML コメント化によって sentinel 自体の turn 境界 heuristic triggering は弱まるが、Mandatory After を同 turn 内で実行しなければ本質的な bug は再発する。
+This abandons the workflow with no Issue created and no flow-state cleanup. Sentinel 形式 (bare bracket / HTML-comment) に関わらず、return tag は turn 境界ではなく continuation trigger として扱い、同 turn 内で Phase 2 へ進まなければ本質的な bug は再発する。
 
 ## Correct-pattern (what to do)
 
 ```
 [CORRECT]
 <Skill rite:issue:create-interview returns>
-<LLM output: "<!-- [interview:skipped] -->">
+<LLM output: "[interview:skipped]">
 <In the SAME response turn, LLM IMMEDIATELY:>
-  1. Runs Pre-write bash for Phase 0.6
-  2. Evaluates Phase 0.6 triggers
-  3. Runs Delegation Routing Pre-write bash
-  4. Invokes skill: "rite:issue:create-register"
-  5. Waits for <!-- [create:completed:{N}] --> (HTML コメント形式)
-  6. Runs Mandatory After Delegation self-check
+  1. Evaluates Phase 0.6 triggers (Task Decomposition Decision)
+  2. Runs Delegation Routing Pre-write bash
+  3. Invokes skill: "rite:issue:create-register"
+  4. Waits for <!-- [create:completed:{N}] --> (HTML コメント形式 — PR-5 で bare bracket 化予定)
+  5. Runs Mandatory After Delegation self-check
 <Orchestrator terminal completion reached. Turn may end.>
 ```
 
@@ -74,14 +73,14 @@ The contract is enforced across two active layers (Layer 2 was retired in #675).
 
 | Layer | Mechanism | File | Status |
 |-------|-----------|------|--------|
-| 1. Prompt contract | Anti-pattern / correct-pattern + "same response turn" warnings + Mandatory After orchestrator prose | `commands/issue/start.md` (Sub-skill Return Protocol Global), `commands/issue/create.md` (Sub-skill Return Protocol + Mandatory After Delegation — Mandatory After Interview は PR-2 #926 で廃止), `commands/pr/cleanup.md` (Mandatory After Wiki Ingest), `commands/wiki/ingest.md` (Mandatory After Auto-Lint), this reference | active |
-| 3. Caller-continuation hints (decomposed into 3 sub-layers 3a/3b/3c — see "3 layer canonical signaling pattern" blockquote below) | (3a) caller HTML hint with `<!-- caller: ... -->` prefix (issue creation paths only) immediately before the sub-skill's result pattern + (3b) plain-text Markdown blockquote reminder (`> ⏭ MUST continue (turn を閉じない): ...` 等の命令形) emitted by the sub-skill alongside the HTML hint + (3c) sub-skill HTML continuation comment with `<!-- continuation: ... -->` prefix (wiki ingest path only) that the caller greps | Defense-in-Depth sections in `commands/issue/create-interview.md`, `commands/issue/create-register.md`, `commands/issue/create-decompose.md`, `commands/wiki/ingest.md`; Phase 9.2 三点セット blockquote (Layer 3b imperative) in `commands/wiki/lint.md` | active |
+| 1. Prompt contract | Anti-pattern / correct-pattern + "same response turn" warnings + Mandatory After orchestrator prose | `commands/issue/start.md` (Sub-skill Return Protocol Global), `commands/issue/create.md` (Sub-skill Return Protocol + Mandatory After Delegation — Mandatory After Interview は廃止済), `commands/pr/cleanup.md` (Mandatory After Wiki Ingest — PR-4 で parent-routing 移行予定), `commands/wiki/ingest.md` (Mandatory After Auto-Lint — PR-3 で parent-routing 移行予定), this reference | active |
+| 3. Caller-continuation hints (decomposed into 3 sub-layers 3a/3b/3c — see "3 layer canonical signaling pattern" blockquote below) | (3a) caller HTML hint with `<!-- caller: ... -->` prefix (issue creation paths only) immediately before the sub-skill's result pattern + (3b) plain-text Markdown blockquote reminder (`> ⏭ MUST continue (turn を閉じない): ...` 等の命令形) emitted by the sub-skill alongside the HTML hint + (3c) sub-skill HTML continuation comment with `<!-- continuation: ... -->` prefix (wiki ingest path only) that the caller greps | Defense-in-Depth sections in ~~`commands/issue/create-interview.md`~~ (廃止済 — parent-routing pattern), `commands/issue/create-register.md` (PR-5 で移行予定), `commands/issue/create-decompose.md` (PR-5 で移行予定), `commands/wiki/ingest.md` (PR-4 で移行予定); Phase 9.2 三点セット blockquote (Layer 3b imperative) in `commands/wiki/lint.md` | active |
 
 > **Layer numbering note**: Layer 2 (the former runtime hard gate via `hooks/stop-guard.sh`) was retired in #675. The numbering gap is intentional — `commands/wiki/ingest.md` and other documents that still use `Layer 2` as a grep-able marker do so to keep historical cross-references resolvable in-repo. See commit `e2dfae0` (or `git log -- plugins/rite/hooks/stop-guard.sh`) for the historical Layer 2 mechanism.
 
 The LLM receives the continuation signal from two independent sources: the prompt itself (Layer 1) and the **inline HTML comment + plain-text reminder + sub-skill HTML continuation comment** in the sub-skill output (Layer 3 = 3a + 3b + 3c の internal decomposition、下記 blockquote 参照)。The imperative strength of those two surfaces (Layer 1 と Layer 3 全体) is therefore load-bearing — see the blockquote below.
 
-> **⚠️ DEPRECATED — PR-2 #926 (ADR docs/designs/parent-routing-unification.md) で `create.md` Mandatory After Interview / `create-interview.md` Layer 3a/3b site は廃止済。本セクションは historical reference として残存。canonical な記述は L100 の Historical note を参照。PR-8 で全面 rewrite 予定**。
+> **⚠️ DEPRECATED — ADR `docs/designs/parent-routing-unification.md` で `create.md` Mandatory After Interview / `create-interview.md` Layer 3a/3b site は廃止済。本セクションは historical reference として残存。canonical な記述は本セクション末尾の "Historical note (parent-routing pattern migration)" blockquote を参照。PR-8 で全面 rewrite 予定**。
 >
 > **Scope note — Issue #910 / #917 imperative strengthening coverage (Layer 1 + Layer 3, 5 site canonical) — 本記述は PR-2 #926 マージ時点で部分的 stale**: The canonical imperative phrasing (`MUST execute as VERY FIRST tool call BEFORE any text output`, `DO NOT end the turn`, `DO NOT output any narrative text before this bash call`) is applied across two layers:
 >
@@ -111,11 +110,11 @@ The LLM receives the continuation signal from two independent sources: the promp
 >
 > 3a/3b/3c の機構的差異は **HTML/plain-text の出力形式** と **prefix literal** (3a: `<!-- caller: -->` for issue creation paths / 3c: `<!-- continuation: -->` for wiki ingest path) で、両者とも sub-skill が emit して caller LLM が grep する経路は共通。共通の intent (命令形であること、現状報告 phrasing でないこと) を維持しつつ、phrasing は層別に最適化する設計。
 >
-> **Historical note (PR-2 #926 / ADR docs/designs/parent-routing-unification.md)**:
+> **Historical note (parent-routing pattern migration — ADR `docs/designs/parent-routing-unification.md`)**:
 >
-> - **撤去済 invariant test (PR-2 で削除)**: `4-site-symmetry.test.sh` / `caller-html-literal-symmetry.test.sh` / `step0-immediate-bash-presence.test.sh` / `create-interview-responsibility-separation.test.sh`
-> - **廃止済 sub-skill 内 site (PR-2 で削除)**: `create-interview.md` の caller HTML literal / Layer 3a / step0 site (parent-routing pattern では caller-side Step 0 不要)
-> - **残存対象 (後続 PR で移行予定、ADR §6.1 参照)**:
+> - **撤去済 invariant test**: `4-site-symmetry.test.sh` / `caller-html-literal-symmetry.test.sh` / `step0-immediate-bash-presence.test.sh` / `create-interview-responsibility-separation.test.sh`
+> - **廃止済 sub-skill 内 site**: `create-interview.md` の caller HTML literal / Layer 3a / step0 site (parent-routing pattern では caller-side Step 0 不要)
+> - **残存対象 (後続 PR で移行予定、ADR Implementation Strategy table 参照)**:
 >   - `wiki/ingest.md` Mandatory After Auto-Lint Step 0 → PR-3
 >   - `wiki/ingest.md` Phase 9.1 continuation HTML comment → PR-4
 >   - `cleanup.md` Mandatory After Wiki Ingest Step 0 → PR-4

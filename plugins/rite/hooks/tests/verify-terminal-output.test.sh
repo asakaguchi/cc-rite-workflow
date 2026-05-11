@@ -206,8 +206,8 @@ else
 fi
 
 # Test 8: regression — HTML-commented [interview:*] form (parent-routing pattern violation)
-# PR-2 #920 で create-interview は bare bracket form に移行済。HTML-commented form が混入したら
-# verify-terminal-output.sh Check 3 の negative assertion が exit 1 を返す必要がある。
+# parent-routing pattern 移行で create-interview は bare bracket form に移行済。
+# HTML-commented form が混入したら verify-terminal-output.sh Check 3 の negative assertion が exit 1 を返す必要がある。
 echo "Test 8: Regression — HTML-commented [interview:*] form should fail"
 setup_plugin_tree "$TEST_DIR/test8" "true" "html"
 if bash "$HOOK" --quiet --repo-root "$TEST_DIR/test8" >/dev/null 2>&1; then
@@ -216,6 +216,57 @@ else
   rc=$?
   if [ "$rc" = "1" ]; then
     pass "exit 1 on HTML-commented [interview:*] (parent-routing pattern violation detected)"
+  else
+    fail "expected exit 1, got $rc"
+  fi
+fi
+
+# Test 8b: F2 false-positive prevention — inline HTML-comment in prose should NOT trigger (CG-3 対応)
+# rationale prose 内に inline HTML-comment 形式の sentinel literal が含まれていても、
+# verify-terminal-output.sh Check 3 の line-anchored regex (^...$) は match してはならない。
+echo "Test 8b: F2 false-positive prevention — inline HTML-comment in rationale prose"
+setup_plugin_tree "$TEST_DIR/test8b" "true" "bare"
+# bare bracket form で正常 setup された create-interview.md に inline HTML-comment を含む rationale 行を追加
+# 行頭/行末 anchor を持つ regex は inline 出現に match しないため、本 fixture では exit 0 を期待する
+echo "Old form was <!-- [interview:completed] --> historically (inline mention in prose)." >> "$TEST_DIR/test8b/plugins/rite/commands/issue/create-interview.md"
+if bash "$HOOK" --quiet --repo-root "$TEST_DIR/test8b" >/dev/null 2>&1; then
+  pass "exit 0 on inline HTML-comment in prose (line-anchored regex correctly avoids false positive)"
+else
+  rc=$?
+  fail "expected exit 0 on inline HTML-comment in prose, got $rc (line-anchored regex broke)"
+fi
+
+# Test 8c: F2 false-positive prevention — backtick-wrapped literal in rationale should NOT trigger (CG-3 対応)
+echo "Test 8c: F2 false-positive prevention — backtick-wrapped literal in migration note"
+setup_plugin_tree "$TEST_DIR/test8c" "true" "bare"
+# Migration note 等で sentinel を backtick で quote するのは自然な編集 pattern。
+# 行頭が backtick または space + backtick で始まるため、line-anchored regex は match しない。
+echo 'Migration note: `<!-- [interview:completed] -->` was the old form.' >> "$TEST_DIR/test8c/plugins/rite/commands/issue/create-interview.md"
+if bash "$HOOK" --quiet --repo-root "$TEST_DIR/test8c" >/dev/null 2>&1; then
+  pass "exit 0 on backtick-wrapped HTML-comment literal in rationale prose"
+else
+  rc=$?
+  fail "expected exit 0 on backtick-wrapped literal, got $rc (line-anchored regex broke)"
+fi
+
+# Test 8d: skipped form alternation coverage — HTML-commented [interview:skipped] alone should also fail (TQ-1 対応)
+# Test 8 fixture では completed/skipped が連続行で書かれるため regex の (skipped) alternation 削除を catch できない。
+# skipped のみ独立行で配置することで alternation 健全性を pin する。
+echo "Test 8d: TQ-1 — HTML-commented [interview:skipped] alone should fail (alternation coverage)"
+setup_plugin_tree "$TEST_DIR/test8d" "true" "bare"
+# bare form で setup した create-interview.md を skipped のみ HTML-comment 化に上書き
+cat > "$TEST_DIR/test8d/plugins/rite/commands/issue/create-interview.md" <<'EOF'
+# create-interview
+Test fixture (skipped only HTML-commented):
+[interview:completed]
+<!-- [interview:skipped] -->
+EOF
+if bash "$HOOK" --quiet --repo-root "$TEST_DIR/test8d" >/dev/null 2>&1; then
+  fail "expected exit 1 when [interview:skipped] alone is HTML-commented, got exit 0 (alternation regression)"
+else
+  rc=$?
+  if [ "$rc" = "1" ]; then
+    pass "exit 1 on standalone HTML-commented [interview:skipped] (alternation healthy)"
   else
     fail "expected exit 1, got $rc"
   fi

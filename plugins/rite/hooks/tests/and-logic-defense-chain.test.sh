@@ -3,15 +3,18 @@
 # チェーンを全体無効化する」) を新形式 (per-session file, schema_version=2) 上で verify。
 #
 # Issue #683 / parent #672 AC-LOCAL-3:
-#   - AND 論理 8 種防御層が新形式上で動作 (.rite-stop-guard-diag.log 相当の trace で verify)
+#   - AND 論理 7 種防御層が新形式上で動作 (.rite-stop-guard-diag.log 相当の trace で verify)
+#   - Layer 6 (Step 0 Immediate Bash) は parent-routing pattern 移行 (ADR docs/designs/parent-routing-unification.md)
+#     で撤去済。numbering gap (Layer 5 → Layer 7) は historical cross-references を維持するため意図的に保持。
 #
-# 8 種防御層:
+# 7 種防御層 (Layer 6 撤去、numbering gap を維持):
 #   1. declarative      : commands/issue/*.md prose で `--active true` literal を declare
 #   2. sentinel         : workflow-incident-emit.sh が WORKFLOW_INCIDENT=1 sentinel を emit
 #   3. Pre-check        : commands で state-read.sh --field phase 経由の pre-condition check
 #   4. whitelist        : phase-transition-whitelist.sh が source 可能で case arm を持つ
 #   5. Pre-flight       : preflight-check.sh が --command-id 引数を受け付け、compact_state を gate
-#   6. Step 0           : create.md の "Step 0 Immediate Bash" pattern (turn 境界回避)
+#   6. Step 0 (撤去済)  : parent-routing pattern 移行で create.md の "Step 0 Immediate Bash" pattern を撤去。
+#                         create-interview Pre-flight の存在は parent-routing-pattern-interim.test.sh が代替 pin する。
 #   7. 4-site 対称化    : `--active true` が 4 site 以上 (create.md / create-interview.md / start.md 系列) で symmetry
 #   8. case arm         : phase-transition-whitelist.sh の declare -gA テーブル + rite_phase_transition_allowed 関数
 #
@@ -195,20 +198,21 @@ else
   fail "Layer 5 runtime: normal state で preflight-check が block (rc=$rc)"
 fi
 
-# Layer 6 (Step 0 Immediate Bash) は parent-routing pattern 移行 (PR #926 PR-2 #920、
-# ADR docs/designs/parent-routing-unification.md) で撤去済。caller-side Step 0 が不要に
+# Layer 6 (Step 0 Immediate Bash) は parent-routing pattern 移行
+# (ADR docs/designs/parent-routing-unification.md) で撤去済。caller-side Step 0 が不要に
 # なったため、本 test では Layer 6 を保持しない。create-interview Pre-flight の存在は
-# `parent-routing-pattern-interim.test.sh` (PR-2 で先行導入) が代替 pin する。
+# `parent-routing-pattern-interim.test.sh` が代替 pin する。
 
 # --------------------------------------------------------------------------
-# Layer 7: 4-site 対称化 — --active true が 4 site 以上で symmetric
+# Layer 7: --active true minimal presence in commands/issue/
+# (元々の 4-site 対称化は Layer 6 撤去で本来の意味を失っており、現在は file 単位の存在 check)
 # --------------------------------------------------------------------------
-echo "Layer 7 (4-site 対称化): --active true が 4 site 以上で symmetric"
+echo "Layer 7 (--active true minimal presence): commands/issue/ 配下に 4 file 以上で出現"
 site_count=$(git -C "$REPO_ROOT" grep -lE '\-\-active true' plugins/rite/commands/issue/ 2>/dev/null | wc -l)
 if [ "$site_count" -ge 4 ]; then
   pass "Layer 7 evidence: --active true を含む commands/issue/ file が $site_count 件 (≥4)"
 else
-  fail "Layer 7: 4-site 対称化が崩れている ($site_count files)"
+  fail "Layer 7: --active true minimal presence が崩れている ($site_count files、≥4 期待 — parent-routing pattern 完了 PR-7 で本 layer 廃止予定)"
 fi
 
 # --------------------------------------------------------------------------
@@ -318,7 +322,7 @@ echo "  Layer 2 sentinel         : workflow-incident-emit.sh が WORKFLOW_INCIDE
 echo "  Layer 3 Pre-check        : state-read.sh --field phase pre-condition"
 echo "  Layer 4 whitelist        : phase-transition-whitelist.sh が source 可能"
 echo "  Layer 5 Pre-flight       : preflight-check.sh の compact_state gate"
-echo "  Layer 7 4-site 対称化    : --active true の 4-site symmetric distribution"
+echo "  Layer 7 minimal presence : --active true が commands/issue/ 配下に 4 file 以上で出現"
 echo "  Layer 8 case arm         : phase-transition-whitelist.sh の declare -gA dispatch"
 
 if [ "$FAIL" -gt 0 ]; then

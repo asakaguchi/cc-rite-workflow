@@ -2,7 +2,7 @@
 
 > **Source of Truth**: 本ファイルは `/rite:issue:create` ワークフロー orchestrator (`create.md`) の **Pre-check list (Issue #552)** の SoT である。Item 0 (routing dispatcher) と Item 1-3 (state checks) を集約し、2 種類の `grep -F` 呼び出し + ERE 注意書き・3 つの sentinel 形式・場面 (a) / (b) の評価意味分岐を 1 ファイルに閉じ込めることで `create.md` 本体の認知負荷を下げる。`create.md` Sub-skill Return Protocol セクションは本ファイルへ参照する。
 >
-> **抽出経緯**: Pre-check list の Item 0/1/2/3 は本来 4 種類の grep パターン (Issue #773 時点) と 4 sentinel token (`[interview:skipped]` / `[interview:completed]` / `[create:completed:{N}]` / `[CONTEXT] INTERVIEW_DONE=1`) + 場面 (a) / (b) で評価意味が反転する仕組みのため、`create.md` 本体に inline 展開すると LLM の一読理解を阻害していた。Issue #773 (#768 P1-3 / P3-9) で本 reference に抽出。Issue #920 PR-2 で `[CONTEXT] INTERVIEW_DONE=1` plain-text marker と HTML-comment form (`<!-- [interview:*] -->`) は廃止され、`[interview:*]` は bare bracket form (parent-routing pattern) に統一 → 現在は 2 回の `grep -F` 呼び出し + 3 sentinel 形式に簡素化。
+> **抽出経緯**: Pre-check list の Item 0/1/2/3 は grep パターン × sentinel 形式 × 場面 (a)/(b) 評価意味反転の組合せが多く、`create.md` 本体に inline 展開すると LLM の一読理解を阻害していたため本 reference に抽出 (Issue #773 / #768 P1-3 / P3-9)。現状: **2 回の `grep -F` 呼び出し + 3 sentinel 形式 + 場面 (a)/(b)**。`[CONTEXT] INTERVIEW_DONE=1` plain-text marker と HTML-comment form (`<!-- [interview:*] -->`) は parent-routing pattern 移行 (ADR `docs/designs/parent-routing-unification.md`) で廃止され、`[interview:*]` は bare bracket form に統一済。
 >
 > **Enforcement coupling**: protocol violation 時は `manual_fallback_adopted` workflow_incident sentinel が stderr に echo されて Phase 5.4.4.1 で post-hoc 検出される (AC-7)。historical: 旧 `stop-guard.sh` (撤去済み、commit `e2dfae0`) が場面 (b) で機械検証していたが、stop hook 撤去後は post-hoc workflow_incident 検出に責務が集約された。
 

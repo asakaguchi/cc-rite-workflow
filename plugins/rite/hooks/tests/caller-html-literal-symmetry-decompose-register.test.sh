@@ -46,13 +46,15 @@
 #   by replicating the change across both files. Do NOT relax this test —
 #   symmetry restoration is the correct fix.
 #
-# Historical note (PR-2 #926 / ADR docs/designs/parent-routing-unification.md):
+# Historical note (ADR docs/designs/parent-routing-unification.md):
 #   The prior `caller-html-literal-symmetry.test.sh` that guarded create-interview.md
-#   was retired in PR-2 along with the Layer 3a HTML literal it pinned (create-interview
+#   was retired along with the Layer 3a HTML literal it pinned (create-interview
 #   migrated to parent-routing pattern with bare bracket sentinel; caller HTML literal
-#   no longer exists). This test (decompose-register) remains active for PR-5, which
-#   will migrate create-register.md and create-decompose.md to parent-routing pattern
-#   and at that point this test will also be retired.
+#   no longer exists). This test (decompose-register) remains active until PR-7, when
+#   the cumulative invariant tests are deleted and parent-routing-pattern-uniformity.test.sh
+#   is introduced as the unified replacement. PR-5 migrates create-register.md and
+#   create-decompose.md to parent-routing pattern, but this test is preserved through
+#   PR-5 → PR-6 → PR-7 transition window per ADR §6.1.
 
 set -euo pipefail
 

@@ -189,22 +189,26 @@ if [ -n "$state_file" ] && [ -f "$state_file" ]; then
       --phase "create_interview" \
       --active true \
       --next "After rite:issue:create-interview returns: proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."; then
-    echo "[CONTEXT] CREATE_INTERVIEW_PRE_WRITE_FAILED=1" >&2
+    echo "[CONTEXT] CREATE_INTERVIEW_PRE_WRITE_PATCH_FAILED=1" >&2
     # 非 blocking: sub-skill 側 Pre-flight が `create_post_interview` を patch するため caller continuation は機能する。
     # ただし whitelist transition graph (`create_interview → create_post_interview`) の origin write が
     # 失敗しているため、workflow_incident sentinel を併発させて post-hoc 検出経路を保証する。
     bash {plugin_root}/hooks/workflow-incident-emit.sh \
         --type "manual_fallback_adopted" \
-        --details "create.md:phase-1-pre-write flow-state patch failed; sub-skill Pre-flight covers state" 2>/dev/null || true
+        --details "create.md:phase-1-pre-write flow-state patch failed; sub-skill Pre-flight covers state" \
+        --pr-number 0 \
+        || echo "WARNING: workflow-incident-emit.sh failed — manual_fallback_adopted sentinel emit incomplete (phase-1-pre-write patch path)" >&2
   fi
 else
   if ! bash {plugin_root}/hooks/flow-state-update.sh create \
       --phase "create_interview" --issue 0 --branch "" --pr 0 \
       --next "After rite:issue:create-interview returns: proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."; then
-    echo "[CONTEXT] CREATE_INTERVIEW_PRE_WRITE_FAILED=1" >&2
+    echo "[CONTEXT] CREATE_INTERVIEW_PRE_WRITE_CREATE_FAILED=1" >&2
     bash {plugin_root}/hooks/workflow-incident-emit.sh \
         --type "manual_fallback_adopted" \
-        --details "create.md:phase-1-pre-write flow-state create failed; sub-skill Pre-flight covers state" 2>/dev/null || true
+        --details "create.md:phase-1-pre-write flow-state create failed; sub-skill Pre-flight covers state" \
+        --pr-number 0 \
+        || echo "WARNING: workflow-incident-emit.sh failed — manual_fallback_adopted sentinel emit incomplete (phase-1-pre-write create path)" >&2
   fi
 fi
 ```
@@ -252,21 +256,25 @@ if [ -n "$state_file" ] && [ -f "$state_file" ]; then
       --phase "create_delegation" \
       --active true \
       --next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop."; then
-    echo "[CONTEXT] CREATE_DELEGATION_PRE_WRITE_FAILED=1" >&2
+    echo "[CONTEXT] CREATE_DELEGATION_PRE_WRITE_PATCH_FAILED=1" >&2
     # 非 blocking: terminal sub-skill (create-register/decompose) が `create_completed` を書く safety net あり。
     # whitelist transition (`create_post_interview → create_delegation`) origin write が失敗しているため incident sentinel を併発。
     bash {plugin_root}/hooks/workflow-incident-emit.sh \
         --type "manual_fallback_adopted" \
-        --details "create.md:phase-3-pre-write flow-state patch failed; terminal sub-skill covers state" 2>/dev/null || true
+        --details "create.md:phase-3-pre-write flow-state patch failed; terminal sub-skill covers state" \
+        --pr-number 0 \
+        || echo "WARNING: workflow-incident-emit.sh failed — manual_fallback_adopted sentinel emit incomplete (phase-3-pre-write patch path)" >&2
   fi
 else
   if ! bash {plugin_root}/hooks/flow-state-update.sh create \
       --phase "create_delegation" --issue 0 --branch "" --pr 0 \
       --next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop."; then
-    echo "[CONTEXT] CREATE_DELEGATION_PRE_WRITE_FAILED=1" >&2
+    echo "[CONTEXT] CREATE_DELEGATION_PRE_WRITE_CREATE_FAILED=1" >&2
     bash {plugin_root}/hooks/workflow-incident-emit.sh \
         --type "manual_fallback_adopted" \
-        --details "create.md:phase-3-pre-write flow-state create failed; terminal sub-skill covers state" 2>/dev/null || true
+        --details "create.md:phase-3-pre-write flow-state create failed; terminal sub-skill covers state" \
+        --pr-number 0 \
+        || echo "WARNING: workflow-incident-emit.sh failed — manual_fallback_adopted sentinel emit incomplete (phase-3-pre-write create path)" >&2
   fi
 fi
 ```

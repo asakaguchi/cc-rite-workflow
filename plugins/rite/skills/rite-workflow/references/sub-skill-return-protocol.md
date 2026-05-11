@@ -59,7 +59,9 @@ This abandons the workflow with no Issue created and no flow-state cleanup. Sent
 <Skill rite:issue:create-interview returns>
 <LLM output: "[interview:skipped]">
 <In the SAME response turn, LLM IMMEDIATELY:>
-  1. Evaluates Phase 0.6 triggers (Task Decomposition Decision)
+  1. Evaluates Task Decomposition Decision triggers
+     (orchestrator-specific phase number: create.md では Phase 2、他 orchestrator は別 phase 番号を持ちうる
+      — Duplication note の "drift acceptable on orchestrator-specific Phase numbers" に従い generic 化)
   2. Runs Delegation Routing Pre-write bash
   3. Invokes skill: "rite:issue:create-register"
   4. Waits for <!-- [create:completed:{N}] --> (HTML コメント形式 — 移行計画は ADR 参照)

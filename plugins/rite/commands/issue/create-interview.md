@@ -114,7 +114,7 @@ fi
 
 両 flag が同一 turn 内で観測された場合 (および PREFLIGHT_CREATE_FAILED 単独経路) は silent corrupt audit-trail よりも明示 error を優先する。transient FS pressure 等の稀なケースが対象で、通常運用では発火しない。
 
-> **注記 — halt 対象外の retained flag**: 本ファイル冒頭 bash block で emit される 6 種の retained flag のうち、`STATE_PATH_RESOLVE_FAILED=1` と `FLOW_STATE_PATH_RESOLVE_FAILED=1` は **halt 対象外**。両者は state 解決 helper 経路の失敗で diag_log 出力先のみ失う非致命的経路。後続の `flow-state-update.sh create/patch` は引数として `state_root` を受け取らず、subshell 内で `state-path-resolve.sh "$(pwd)"` を独立 resolve するため、本 Pre-flight 経路の helper failure は flow-state 書込み自体には伝播せず成功する (失敗時は別の retained flag `PREFLIGHT_PATCH_FAILED` / `PREFLIGHT_CREATE_FAILED` / `PREFLIGHT_CREATE_THEN_PATCH_FAILED` で halt 判定表 row 1-4 に流れる)。`[interview:error]` halt は state stuck at `create_interview` の audit-trail 破損経路 (上記 4 row) に限定する。
+> **注記 — halt 対象外の retained flag**: 本ファイルで emit される 6 種の retained flag (Pre-flight bash block で 5 種 + 末尾 Return Output bash block で 1 種 `INTERVIEW_RETURN_PATCH_FAILED`) のうち、`STATE_PATH_RESOLVE_FAILED=1` と `FLOW_STATE_PATH_RESOLVE_FAILED=1` は **halt 対象外**。両者は state 解決 helper 経路の失敗で diag_log 出力先のみ失う非致命的経路。後続の `flow-state-update.sh create/patch` は引数として `state_root` を受け取らず、subshell 内で `state-path-resolve.sh "$(pwd)"` を独立 resolve するため、本 Pre-flight 経路の helper failure は flow-state 書込み自体には伝播せず成功する (失敗時は別の retained flag `PREFLIGHT_PATCH_FAILED` / `PREFLIGHT_CREATE_FAILED` / `PREFLIGHT_CREATE_THEN_PATCH_FAILED` で halt 判定表 row 1-4 に流れる)。`[interview:error]` halt は state stuck at `create_interview` の audit-trail 破損経路 (上記 4 row) に限定する。
 
 > **二次防御 — LLM context grep が落ちる前提の defense-in-depth**: 本判定は LLM (Claude) が conversation context を grep して retained flag を観測することに依存する canonical な parent-routing pattern を採用している (`start.md` / `parent-routing.md` / `branch-setup.md` と同型)。LLM context grep が落ちる経路 (auto-compact / context truncation / LLM の不注意な早期 emit) に対する二次防御は以下に集約される:
 > 1. **caller-side halt rule の prose 明示** (`create.md` Sub-skill Return Protocol "Halt rule"、`references/pre-check-routing.md` Item 0 の `[interview:error] matched` 経路): caller も独立に halt 判定を持ち、sub-skill が `[interview:completed]` / `[interview:skipped]` を誤 emit しても workflow_incident sentinel + retained flag による post-hoc auto-register (Phase 5.4.4.1) で追跡される
@@ -359,6 +359,8 @@ This pattern is consumed by the orchestrator (`create.md`) to determine the next
 
 ## Caller Return Protocol
 
-Control **MUST** return to caller (`create.md`). Caller **MUST immediately** proceed to Phase 2 (Task Decomposition Decision) in the same response turn — no GitHub Issue has been created yet.
+Control **MUST** return to caller (`create.md`). For `[interview:completed]` / `[interview:skipped]`, caller **MUST immediately** proceed to Phase 2 (Task Decomposition Decision) in the same response turn — no GitHub Issue has been created yet.
 
-**→ Return to `create.md` and proceed to Phase 2 now. Do NOT stop.**
+For `[interview:error]`, caller **MUST** halt without entering Phase 2 (catastrophic Pre-flight failure — 上記 "`[interview:error]` halt 判定ルール" 表参照)。manual intervention を要求し、Issue 未作成のまま停止する。
+
+**→ For `[interview:completed]` / `[interview:skipped]`: return to `create.md` and proceed to Phase 2 now. Do NOT stop. For `[interview:error]`: halt and request manual intervention.**

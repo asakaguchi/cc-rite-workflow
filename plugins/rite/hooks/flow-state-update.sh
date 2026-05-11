@@ -32,8 +32,9 @@
 #                            silently ignored in create/increment modes for drift-symmetry with caller-side consistency).
 #                            Currently dead-code: stop-guard.sh removed in #675, no runtime reader exists outside
 #                            flow-state-update.sh / migrate-flow-state.sh itself (see tests/error-count-runtime-reference.test.sh).
-#                            Retained for residual callers (create.md Step 0/1, wiki/ingest.md, cleanup.md) and forward
-#                            compatibility if a runtime reader is reintroduced.
+#                            Retained for residual callers (wiki/ingest.md, cleanup.md) and forward
+#                            compatibility if a runtime reader is reintroduced. ADR `docs/designs/parent-routing-unification.md`
+#                            PR-2 で create.md Step 0/1 (Mandatory After Interview) は撤去済。
 #   --legacy-mode            Force legacy single-file path (`.rite-flow-state`) regardless of
 #                            rite-config.yml `flow_state.schema_version`. Used by migration script
 #                            (#2) and tooling that must read/write the pre-migration source. Without
@@ -110,7 +111,18 @@ _resolve_session_id() {
   if [[ -n "$provided_sid" ]]; then
     local validated
     local _resolve_sid_err
-    _resolve_sid_err=$(mktemp /tmp/rite-resolve-sid-err-XXXXXX 2>/dev/null) || _resolve_sid_err=""
+    # mktemp 失敗時の silent fallback を排除 (writer/reader 対称化 doctrine、verify-terminal-output.sh:145-153
+    # と同型)。stderr 退避が失われると helper internal error (jq missing / fork failure / PATH error)
+    # と UUID format 違反 (`ERROR: invalid session_id format`) を区別できず、開発者が誤った原因究明をする。
+    # /tmp inode 枯渇 / read-only fs は通常運用では発火しないが、発火時は fail-fast に倒して環境問題を
+    # 明示する。chmod 失敗の `_chmod_err` (L443) / `_chmod600_err` (L555) は best-effort 経路で silent
+    # fallback を許容するのとは性質が異なる (本 site は load-bearing な分類 fail-fast)。
+    if ! _resolve_sid_err=$(mktemp /tmp/rite-resolve-sid-err-XXXXXX 2>/dev/null); then
+      echo "ERROR: mktemp failed for _resolve_sid_err — cannot capture _resolve-session-id.sh stderr" >&2
+      echo "  hint: /tmp の inode 枯渇 / read-only filesystem / permission 拒否を確認してください" >&2
+      echo "  影響: UUID format 違反と helper internal error を区別できないため fail-fast します" >&2
+      exit 1
+    fi
     if validated=$(bash "$SCRIPT_DIR/_resolve-session-id.sh" "$provided_sid" 2>"${_resolve_sid_err:-/dev/null}"); then
       [ -n "$_resolve_sid_err" ] && rm -f "$_resolve_sid_err"
       echo "$validated"
@@ -737,10 +749,11 @@ case "$MODE" in
     # 現状の dead-code 状態: `stop-guard.sh` は #675 で撤去済で、本リポ内に `error_count` を runtime
     # 参照する reader は flow-state-update.sh / migrate-flow-state.sh 自身しか存在しない (機械検証:
     # `hooks/tests/error-count-runtime-reference.test.sh`)。したがって本 flag は production runtime
-    # 影響を持たず、create.md Step 0 / Step 1 / wiki/ingest.md / cleanup.md の residual caller は
-    # historical compatibility および将来 reader 再導入時の forward-compatible 装備として保持されている。
+    # 影響を持たず、wiki/ingest.md / cleanup.md の residual caller は historical compatibility および
+    # 将来 reader 再導入時の forward-compatible 装備として保持されている。
     # 詳細な経緯は `commands/issue/create-interview.md` 末尾 "Forward note" および ADR §3.1
-    # (`docs/designs/parent-routing-unification.md`) を参照。
+    # (`docs/designs/parent-routing-unification.md`) を参照。ADR PR-2 で create.md Step 0/1
+    # (Mandatory After Interview) は撤去済。
     if [[ "$PRESERVE_ERROR_COUNT" == "true" ]]; then
       JQ_FILTER='.previous_phase = (.phase // "") | .phase = $phase | .updated_at = $ts | .next_action = $next'
     else

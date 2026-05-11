@@ -180,7 +180,8 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# Check 3: create-interview.md [interview:*] HTML-comment form
+# Check 3: create-interview.md [interview:*] AC-3 non-regression
+# (bare bracket form post-PR-2 #920 / ADR docs/designs/parent-routing-unification.md)
 # -----------------------------------------------------------------------------
 CREATE_INTERVIEW="${REPO_ROOT}${CHECK_PATHS_PREFIX:+/${CHECK_PATHS_PREFIX}}/commands/issue/create-interview.md"
 

@@ -12,7 +12,13 @@ FAIL=0
 cleanup() {
   rm -rf "$TEST_DIR"
 }
-trap cleanup EXIT
+# verified-review L-2 (silent-failure-hunter) 対応: 4 signal trap で SIGINT/SIGTERM/SIGHUP
+# 中断時にも `$TEST_DIR` (mktemp -d) が確実に削除されるよう拡張。姉妹テスト
+# `and-logic-defense-chain.test.sh` (4 signal 対応済) と対称化する。
+trap 'rc=$?; cleanup; exit $rc' EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
 
 pass() {
   PASS=$((PASS + 1))

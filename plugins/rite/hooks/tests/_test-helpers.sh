@@ -118,37 +118,79 @@ assert() {
 }
 
 # Pattern presence assertion (ERE via grep -E).
-# File-existence check distinguishes "file missing" (grep exit 2) from "pattern absent" (grep exit 1).
+# verified-review L-1 / L-4 (silent-failure-hunter) 対応: 旧実装は
+#   1. file-not-found を pattern-absent と同じ fail() に流入していた (環境エラーと test 失敗の混同)
+#   2. grep stderr を取得せず、IO エラー (rc=2) を「pattern not found」(rc=1) と silent に融合させていた
+#      (NFS hiccup / antivirus lock / permission flip 等が「regression detected」と誤報告される)
+# 本修正で:
+#   - file-not-found は label に [FILE_NOT_FOUND] sentinel を付加し、downstream parser が
+#     環境問題と区別可能にする
+#   - grep stderr を tempfile に退避し、rc==2 (IO error) を独立検出して [GREP_IO_ERROR] sentinel
+#     付き fail として明示する (test 環境破綻を business-rule 失敗と区別する)
+# Source: POSIX grep exit code spec (https://pubs.opengroup.org/onlinepubs/9699919799/utilities/grep.html)
+#   0 = match found, 1 = no match, >=2 = IO/regex error
 assert_grep() {
   local label="$1"
   local file="$2"
   local pattern="$3"
   if [ ! -f "$file" ]; then
-    fail "$label (file not found: $file)"
+    fail "$label [FILE_NOT_FOUND] (file not found: $file)"
     return
   fi
-  if grep -qE "$pattern" "$file"; then
+  local _ag_err
+  _ag_err=$(mktemp /tmp/rite-assert-grep-err-XXXXXX 2>/dev/null) || _ag_err=""
+  if grep -qE "$pattern" "$file" 2>"${_ag_err:-/dev/null}"; then
     pass "$label"
   else
-    fail "$label (pattern not found in $file: $pattern)"
+    local _grep_rc=$?
+    if [ "$_grep_rc" -ge 2 ]; then
+      local _io_detail=""
+      if [ -n "$_ag_err" ] && [ -s "$_ag_err" ]; then
+        _io_detail=" ($(head -1 "$_ag_err"))"
+      fi
+      fail "$label [GREP_IO_ERROR rc=$_grep_rc] (grep IO/regex error in $file: $pattern)${_io_detail}"
+    else
+      fail "$label (pattern not found in $file: $pattern)"
+    fi
   fi
+  [ -n "$_ag_err" ] && rm -f "$_ag_err"
 }
 
 # Pattern absence assertion (ERE via grep -E).
-# File-existence check distinguishes "file missing" (grep exit 2) from "pattern absent" (grep exit 1).
+# 同じ L-1 / L-4 対応を適用。
 assert_not_grep() {
   local label="$1"
   local file="$2"
   local pattern="$3"
   if [ ! -f "$file" ]; then
-    fail "$label (file not found: $file)"
+    fail "$label [FILE_NOT_FOUND] (file not found: $file)"
     return
   fi
-  if grep -qE "$pattern" "$file"; then
+  local _ang_err
+  _ang_err=$(mktemp /tmp/rite-assert-not-grep-err-XXXXXX 2>/dev/null) || _ang_err=""
+  # assert_not_grep の semantics は「pattern が存在しない = pass」「pattern が存在する = fail」だが、
+  # IO エラーは「不明」として「pattern 不在として silent pass」させてはならない (旧実装 silent fall-through)。
+  # rc=2 (IO error) を独立検出してから rc=0 / rc=1 を判定する。
+  # `set -e` 下で grep rc=1 (no match) が関数 exit を発火する罠を回避するため、
+  # `if grep; then` パターンで rc 捕捉を独立させる。
+  local _grep_rc
+  if grep -qE "$pattern" "$file" 2>"${_ang_err:-/dev/null}"; then
+    _grep_rc=0
+  else
+    _grep_rc=$?
+  fi
+  if [ "$_grep_rc" -ge 2 ]; then
+    local _io_detail=""
+    if [ -n "$_ang_err" ] && [ -s "$_ang_err" ]; then
+      _io_detail=" ($(head -1 "$_ang_err"))"
+    fi
+    fail "$label [GREP_IO_ERROR rc=$_grep_rc] (grep IO/regex error in $file: $pattern)${_io_detail}"
+  elif [ "$_grep_rc" = "0" ]; then
     fail "$label (anti-pattern found in $file: $pattern)"
   else
     pass "$label"
   fi
+  [ -n "$_ang_err" ] && rm -f "$_ang_err"
 }
 
 # Print summary block and return non-zero when any assertion failed.

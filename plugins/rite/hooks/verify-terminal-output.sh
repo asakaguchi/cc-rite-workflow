@@ -47,10 +47,13 @@ fi
 
 usage() {
   cat <<'USAGE_EOF'
-Usage: verify-terminal-output.sh [--quiet] [--repo-root <path>]
+Usage: verify-terminal-output.sh [--quiet] [--strict] [--repo-root <path>]
 
 Options:
   --quiet                Suppress success output (failures still go to stderr)
+  --strict               Promote [VERIFY:WARNING] events (e.g. legacy "absolute
+                         last line" prose with bare sentinel) to hard fails.
+                         Default: WARNING-only (CI smoke trail via grep).
   --repo-root <path>     Override repository root (default: auto-detect via
                          git rev-parse --show-toplevel, fallback to plugin
                          parent directory for marketplace installs)
@@ -70,10 +73,12 @@ USAGE_EOF
 }
 
 QUIET=0
+STRICT=0
 REPO_ROOT_OVERRIDE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --quiet) QUIET=1; shift ;;
+    --strict) STRICT=1; shift ;;
     --repo-root)
       shift
       if [ $# -eq 0 ]; then
@@ -129,39 +134,51 @@ else
   if _git_root=$(git rev-parse --show-toplevel 2>"${_git_err:-/dev/null}"); then
     REPO_ROOT="$_git_root"
     CHECK_PATHS_PREFIX="plugins/rite"
-  elif _git_err_classify_rc=0; [ -n "$_git_err" ] && { grep -qE 'not a git repository|dubious ownership' "$_git_err"; _git_err_classify_rc=$?; [ "$_git_err_classify_rc" = "0" ]; }; then
-    # legitimate marketplace fallback (not in a git repo, or safe.directory violation).
-    # grep rc=0 のみ (match found) を fallback として採用。rc=2 (file I/O error / binary 異常) は
-    # 直後の `_git_err_classify_rc` 検査で fail-fast に倒す。
-    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-    CHECK_PATHS_PREFIX=""
-  elif [ -n "$_git_err" ] && [ "${_git_err_classify_rc:-0}" -ge 2 ]; then
-    # grep classification 自身が失敗 (permission denied / binary corruption / IO エラー)。
-    # 「分類不能 → fail-fast」に倒し、silent fallback を排除する (M-2 対応)。
-    echo "ERROR: failed to classify git stderr (grep rc=$_git_err_classify_rc) — refusing to silently choose between git-root and marketplace fallback" >&2
-    echo "  hint: grep binary / $_git_err の権限を確認してください" >&2
-    exit 1
-  elif [ -z "$_git_err" ]; then
-    # H-1 対応: mktemp 失敗 + git rev-parse 失敗の組合せ。
-    # 旧実装は「stderr empty → legitimate fallback」と誤分類して check を続行していたが、
-    # 実体は「stderr の中身を観測する手段を失ったため、エラー種別を区別できない」状態。
-    # marketplace fallback と permission denied / binary 不在 / corrupt index を silent に
-    # 融合させると observability を失い、load-bearing test の信頼性を傷つける。
-    # 「分類不能 → fail-fast」に倒して silent fallback を排除する。
-    echo "ERROR: cannot classify git error (mktemp failed earlier) — refusing to silently choose between git-root and marketplace fallback" >&2
-    echo "  hint: /tmp の inode 枯渇 / read-only filesystem / permission 拒否を解消してから再実行してください" >&2
-    exit 1
-  elif [ ! -s "$_git_err" ]; then
-    # stderr tempfile は作成できたが git stderr が空 (= git binary が silent に exit non-zero)。
-    # これも分類不能だが、mktemp 失敗とは区別して別エラーで fail-fast する。
-    echo "ERROR: git rev-parse --show-toplevel failed with empty stderr — unable to classify" >&2
-    echo "  hint: git binary version の互換性、または PATH 設定を確認してください" >&2
-    exit 1
   else
-    echo "ERROR: git rev-parse --show-toplevel failed unexpectedly:" >&2
-    head -3 "$_git_err" | sed 's/^/  /' >&2
-    echo "  hint: PATH に git binary があるか / .git directory の permission を確認してください" >&2
-    exit 1
+    # verified-review H-2 対応: 旧実装は `elif _git_err_classify_rc=0; [ -n "$_git_err" ] && { grep ...; }`
+    # の compound expression で「変数初期化 + 条件 + 副作用 + check」を 1 行に詰めており、`set -u` の
+    # `${_git_err_classify_rc:-0}` default を 1 つ外す refactor で unbound-variable crash する fragility が
+    # あった。state 機械 (grep classify rc) を if/elif の外で明示初期化し、`set -u` 下でも安全な
+    # 線形 state transition に書き換える。
+    #   classify_rc=2 (= unclassified): _git_err 不在 / 空 / grep IO エラー → fail-fast 経路
+    #   classify_rc=0 (= match found):  legitimate marketplace fallback 経路
+    #   classify_rc=1 (= no match):     非 marketplace fallback の git error → fail-fast 経路
+    _git_err_classify_rc=2
+    if [ -n "$_git_err" ] && [ -s "$_git_err" ]; then
+      if grep -qE 'not a git repository|dubious ownership' "$_git_err"; then
+        _git_err_classify_rc=0
+      else
+        _git_err_classify_rc=1
+      fi
+    fi
+    if [ "$_git_err_classify_rc" = "0" ]; then
+      # legitimate marketplace fallback (not in a git repo, or safe.directory violation).
+      REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+      CHECK_PATHS_PREFIX=""
+    elif [ -z "$_git_err" ]; then
+      # H-1 対応: mktemp 失敗 + git rev-parse 失敗の組合せ。
+      # 旧実装は「stderr empty → legitimate fallback」と誤分類して check を続行していたが、
+      # 実体は「stderr の中身を観測する手段を失ったため、エラー種別を区別できない」状態。
+      # marketplace fallback と permission denied / binary 不在 / corrupt index を silent に
+      # 融合させると observability を失い、load-bearing test の信頼性を傷つける。
+      # 「分類不能 → fail-fast」に倒して silent fallback を排除する。
+      echo "ERROR: cannot classify git error (mktemp failed earlier) — refusing to silently choose between git-root and marketplace fallback" >&2
+      echo "  hint: /tmp の inode 枯渇 / read-only filesystem / permission 拒否を解消してから再実行してください" >&2
+      exit 1
+    elif [ ! -s "$_git_err" ]; then
+      # stderr tempfile は作成できたが git stderr が空 (= git binary が silent に exit non-zero)。
+      # これも分類不能だが、mktemp 失敗とは区別して別エラーで fail-fast する。
+      echo "ERROR: git rev-parse --show-toplevel failed with empty stderr — unable to classify" >&2
+      echo "  hint: git binary version の互換性、または PATH 設定を確認してください" >&2
+      exit 1
+    else
+      # classify_rc=1 (no match): _git_err は非空かつ marketplace fallback 経路に該当しない。
+      # permission denied / corrupt .git / その他 git binary の不予期エラーとして fail-fast。
+      echo "ERROR: git rev-parse --show-toplevel failed unexpectedly:" >&2
+      head -3 "$_git_err" | sed 's/^/  /' >&2
+      echo "  hint: PATH に git binary があるか / .git directory の permission を確認してください" >&2
+      exit 1
+    fi
   fi
 fi
 
@@ -211,13 +228,16 @@ else
 
   # Drift guard: check that the prose no longer instructs "absolute last line"
   # with a bare sentinel. The phrase is now expected only when bound to the
-  # HTML-comment form. Emits WARNING on stderr regardless of --quiet so CI does
-  # not lose visibility. Not a fail because historical-note prose may legitimately
-  # match.
+  # HTML-comment form. Default mode emits WARNING on stderr (CI grep trail);
+  # --strict promotes to hard fail.
   if grep -nE '\[create:completed:\{[^}]+\}\][[:space:]]*MUST be the (absolute )?last line' "$CREATE_REGISTER" >/dev/null 2>&1; then
-    # CI grep-friendly sentinel prefix `[VERIFY:WARNING]` を併記して、--strict 等の
-    # downstream catch メカニズムが将来追加された際に機械検出可能にする。
-    echo "[VERIFY:WARNING] ${C_YEL}WARNING${C_RST}: create-register.md: legacy prose about bare-sentinel 'absolute last line' may still be present; review manually" >&2
+    if [ "$STRICT" = "1" ]; then
+      fail "create-register.md: legacy prose about bare-sentinel 'absolute last line' detected (--strict mode)"
+    else
+      # CI grep-friendly sentinel prefix `[VERIFY:WARNING]` を併記して、CI parser が
+      # downstream catch する経路と --strict promotion 経路の両方で機械検出可能にする。
+      echo "[VERIFY:WARNING] ${C_YEL}WARNING${C_RST}: create-register.md: legacy prose about bare-sentinel 'absolute last line' may still be present; review manually (use --strict to promote to fail)" >&2
+    fi
   fi
 fi
 
@@ -266,9 +286,14 @@ else
       fail "create-interview.md: missing [interview:${_sentinel}] string (AC-3 regression — bullet section was silently deleted)"
     fi
   done
-  # legacy OR-form: いずれか 1 つの sentinel 存在を pin (3 alternation の elements は historical fixture も含まれる)
+  # legacy OR-form: 上の completed / skipped 独立 grep を両方通過すれば本 OR 判定は数学的に redundant
+  # (両方存在すれば OR は必ず pass)。本 grep は両 site が **future edit で同時に弱体化される
+  # シナリオへの smoke-test guard** として残す: 例えば「completed と skipped を `[interview:done]`
+  # 単一値に統合」のような silent refactor で上 2 行が同時 pass のままになる経路を 3 alternation
+  # で minimum coverage として捕捉する。`error` は parent-routing pattern 移行前の historical
+  # fixture (`error` sentinel 不在版) を継続 verify するため alternation に維持する。
   if grep -qE '\[interview:(completed|skipped|error)\]' "$CREATE_INTERVIEW"; then
-    pass "create-interview.md: contains at least one [interview:*] sentinel (AC-3 legacy OR-form, fixture compatibility)"
+    pass "create-interview.md: contains at least one [interview:*] sentinel (AC-3 smoke-test guard, 3-alternation minimum coverage)"
   else
     fail "create-interview.md: missing all [interview:*] sentinels (AC-3 regression)"
   fi

@@ -32,8 +32,11 @@
 #                            silently ignored in create/increment modes for drift-symmetry with caller-side consistency).
 #                            Currently dead-code: stop-guard.sh removed in #675, no runtime reader exists outside
 #                            flow-state-update.sh / migrate-flow-state.sh itself (see tests/error-count-runtime-reference.test.sh).
-#                            Retained for residual callers (wiki/ingest.md, cleanup.md) and forward
-#                            compatibility if a runtime reader is reintroduced. ADR `docs/designs/parent-routing-unification.md`
+#                            Retained for forward-compatibility if a runtime reader is reintroduced.
+#                            Residual callers: wiki/ingest.md / cleanup.md still pass this flag, but their prose
+#                            describing the flag as load-bearing is itself out-of-date and will be rewritten to
+#                            "historical context" in PR-3 / PR-4 (see commands/issue/create-interview.md
+#                            "Forward note" for the canonical policy). ADR `docs/designs/parent-routing-unification.md`
 #                            PR-2 で create.md Step 0/1 (Mandatory After Interview) は撤去済。
 #   --legacy-mode            Force legacy single-file path (`.rite-flow-state`) regardless of
 #                            rite-config.yml `flow_state.schema_version`. Used by migration script
@@ -402,8 +405,16 @@ FLOW_STATE=$(_resolve_session_state_path "$EFFECTIVE_SCHEMA_VERSION" "$LEGACY_MO
 TMP_STATE=""
 _mkdir_err=""
 _jq_err=""
+# verified-review M-3 (silent-failure-hunter) 対応: _chmod_err / _chmod600_err / _ownership_jq_err も
+# atomic cleanup の対象に含める。これらは mktemp 〜 inline rm の短い lifetime だが、SIGINT/SIGTERM/SIGHUP
+# が mktemp 成功直後〜rm 到達前に届くと orphan として残る。`/tmp` inode 枯渇を防ぐため、本トラップで
+# 全 tempfile lifecycle を cover する。`${var:-}` で未代入時も safe (rm -f "" は idempotent no-op)。
+_chmod_err=""
+_chmod600_err=""
+_ownership_jq_err=""
 _rite_flow_state_atomic_cleanup() {
-  rm -f "${TMP_STATE:-}" "${_mkdir_err:-}" "${_jq_err:-}"
+  rm -f "${TMP_STATE:-}" "${_mkdir_err:-}" "${_jq_err:-}" \
+        "${_chmod_err:-}" "${_chmod600_err:-}" "${_ownership_jq_err:-}"
 }
 trap 'rc=$?; _rite_flow_state_atomic_cleanup; exit $rc' EXIT
 trap '_rite_flow_state_atomic_cleanup; exit 130' INT
@@ -684,8 +695,22 @@ case "$MODE" in
       # explicitly specified (#497). Without this, every create call that omits
       # --parent-issue would reset parent_issue_number to 0, erasing the value
       # persisted by Phase 2.4 Mandatory After.
+      #
+      # verified-review L-3 (silent-failure-hunter) 対応: 旧 `2>/dev/null || _existing_parent=0` は
+      # session-ownership block の jq sites と非対称な silent fallback だった。本 jq は parent
+      # tracking の load-bearing read で、jq 失敗時に silent に 0 倒すと別 session の parent linkage を
+      # silent に切る経路を持つ。WARNING + stderr-tempfile pattern (session-ownership block と対称)
+      # に統一する。`_existing_parent_err` も atomic cleanup の対象として再利用する _ownership_jq_err と同じ
+      # tempfile pool を流用 (trap は既に登録済み)。
       if [[ "$PARENT_ISSUE" -eq 0 ]]; then
-        _existing_parent=$(jq -r '.parent_issue_number // 0' "$FLOW_STATE" 2>/dev/null) || _existing_parent=0
+        _existing_parent_err=$(mktemp /tmp/rite-fs-parent-jq-err-XXXXXX 2>/dev/null) || _existing_parent_err=""
+        if ! _existing_parent=$(jq -r '.parent_issue_number // 0' "$FLOW_STATE" 2>"${_existing_parent_err:-/dev/null}"); then
+          echo "WARNING: parent_issue_number 抽出 jq 失敗 ($FLOW_STATE) — defaulting to 0 (parent linkage may silently drop)" >&2
+          [ -n "$_existing_parent_err" ] && [ -s "$_existing_parent_err" ] && head -1 "$_existing_parent_err" | sed 's/^/  /' >&2
+          _existing_parent=0
+        fi
+        [ -n "$_existing_parent_err" ] && rm -f "$_existing_parent_err"
+        _existing_parent_err=""
         if [[ "$_existing_parent" =~ ^[0-9]+$ ]] && [[ "$_existing_parent" -ne 0 ]]; then
           PARENT_ISSUE="$_existing_parent"
         fi

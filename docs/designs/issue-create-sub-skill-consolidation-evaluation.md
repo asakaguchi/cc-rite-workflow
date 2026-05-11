@@ -71,8 +71,8 @@ References (`commands/issue/references/`): 7 ファイル
 | AC-1 (1〜2 ファイル + 1〜2 reference で全体像把握) | 部分達成 — reference 1 本 (handoff contract) を slim 化、create.md 系 4 ファイルは構造維持 | 認知負荷を下げる方向で AC-1 に寄与 |
 | AC-2 (Phase 番号体系整数化) | 維持 (PR-E2 達成) | 本 PR で新規 0.x.y 追加なし |
 | AC-3 (AskUserQuestion 削減) | 本 PR scope 外 | PR-E3 で多くを処理済。コード経路に変更なし |
-| AC-4 (機能契約保持: Bypass block / Terminal Completion / 機械検証 / sentinel emit) | 達成 | bash literal 不変、`4-site-symmetry.test.sh` で機械検証 |
-| AC-5 (e2e test 3 経路 pass) | 部分達成 — `4-site-symmetry.test.sh` pass を本 PR で確認、e2e 3 経路 (Bug Fix preset / single Issue / XL decomposition) は別 PR で計測 | |
+| AC-4 (機能契約保持: Bypass block / Terminal Completion / 機械検証 / sentinel emit) | 達成 | bash literal 不変、`parent-routing-pattern-interim.test.sh` で機械検証 (旧 `4-site-symmetry.test.sh` は ADR PR-2 で retire 済、本 PR 範囲外の updates は ADR `docs/designs/parent-routing-unification.md` 参照) |
+| AC-5 (e2e test 3 経路 pass) | 部分達成 — `parent-routing-pattern-interim.test.sh` pass を本 PR で確認、e2e 3 経路 (Bug Fix preset / single Issue / XL decomposition) は別 PR で計測 | |
 
 ## 6. 採用方針の実装範囲
 

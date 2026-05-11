@@ -6,7 +6,7 @@
 #   create-decompose.md / create-register.md からも caller HTML literal が撤去されるタイミングで
 #   **テストファイル全体を削除する** こと。PR-5 マージ時のチェックリスト:
 #     1. plugins/rite/hooks/tests/caller-html-literal-symmetry-decompose-register.test.sh を削除
-#     2. plugins/rite/hooks/tests/run-all-tests.sh が個別 list していれば該当行も削除
+#     2. plugins/rite/hooks/tests/run-tests.sh (テストランナーが個別 list する形式に変わった場合は同等の場所) から該当行を削除
 #     3. plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md
 #        "廃止済 invariant test" list (line 94 付近) に本ファイル名を追記
 #     4. plugins/rite/hooks/tests/_test-helpers.sh の例示コメント (本ファイル名を例示している箇所)

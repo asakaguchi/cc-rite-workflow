@@ -65,7 +65,7 @@ create.md (orchestrator)
 
 **Halt rule**: `[interview:error]` が返された場合は `[interview:completed]` / `[interview:skipped]` と異なり **catastrophic Pre-flight failure** (state file 不在 / state stuck at `create_interview`、詳細は `references/pre-check-routing.md` Item 0 と `create-interview.md` "`[interview:error]` halt 判定ルール" 表参照) を意味する。Phase 2 への進入禁止、manual intervention を要求して halt する (Issue 未作成のまま停止)。
 
-> **Sentinel 形式**: `create-interview` は bare bracket (`[interview:*]`)、terminal sub-skills (`create-register` / `create-decompose`) は HTML-comment (`<!-- [create:completed:{N}] -->`) を emit する (移行ロードマップは ADR `docs/designs/parent-routing-unification.md` 参照)。両形式とも turn 境界ではなく continuation trigger として扱う。
+> **Sentinel 形式**: `create-interview` は bare bracket (`[interview:*]`)、terminal sub-skills (`create-register` / `create-decompose`) は HTML-comment (`<!-- [create:completed:{N}] -->`) を emit する (移行ロードマップは ADR `docs/designs/parent-routing-unification.md` 参照)。両形式とも turn 境界ではない。**dispatch semantics**: `[interview:completed]` / `[interview:skipped]` / `<!-- [create:completed:{N}] -->` は **continuation trigger** (上記 Correct-pattern 参照)、`[interview:error]` は **halt sentinel** (直前の Halt rule 参照、Phase 2 進入禁止)。同形式内でも sentinel 値ごとに dispatch 先が異なるため、re-read 時に Halt rule との関係を必ず確認すること。
 
 ## Arguments
 

@@ -71,6 +71,10 @@ if [ -n "$state_file" ] && [ -f "$state_file" ]; then
 else
   # 二段書き込み (cold start): create で create_interview を bootstrap → patch で create_post_interview。
   # rationale 詳細は本セクション末尾の "Why cold-start ... 二段書き込み" blockquote (canonical SoT) 参照。
+  # 注: 本 cold-start path の load-bearing 性は **末尾の "Note — `phase-transition-whitelist.sh` の現状
+  # runtime semantics"** で advisory と注釈されている。現状 runtime 影響は副次的 (caller-side / 手動 invocation
+  # 時の `previous_phase` log 整合性のみ) だが、将来 stricter gating が有効化された際に正規 path として
+  # 認識されるための future-proofing として cold-start 二段書き込みを採用する。
   if ! bash {plugin_root}/hooks/flow-state-update.sh create \
       --phase "create_interview" --issue 0 --branch "" --pr 0 \
       --next "rite:issue:create-interview Pre-flight bootstrapping cold-start state; will transition to create_post_interview immediately."; then
@@ -320,7 +324,7 @@ Interview Perspective → Target Sections の正規 mapping table は [`referenc
 >
 > **`--preserve-error-count` 撤去の rationale (ADR §3.1)**: parent-routing pattern では caller-side Mandatory After Interview Step 0/1 が廃止される。`stop-guard.sh` 撤去 (#675) 以降、`session-end.sh` / `preflight-check.sh` / `phase-transition-whitelist.sh` のいずれも `error_count` を runtime 参照しておらず、`error_count` の RE-ENTRY DETECTED + THRESHOLD bail-out path は production runtime では既に dead code 化している (機械検証: `hooks/tests/error-count-runtime-reference.test.sh`)。本 sub-skill 単独で `create_post_interview` を完結させる設計のため、同一 phase self-patch (Pre-flight + Return Output) で error_count が 0 にリセットされても production 影響なし。
 >
-> **Forward note**: `wiki/ingest.md` / `cleanup.md` は依然 `--preserve-error-count` を維持しており、両 site の prose は「RE-ENTRY DETECTED escalation + THRESHOLD bail-out を機能させるため」load-bearing として記述されている。一方で `hooks/tests/error-count-runtime-reference.test.sh` の機械検証では `production runtime には reader 不在` (dead code) と確認されている。表現の矛盾を整理すると: **production runtime での機能は不在だが、両 site の prose は historical context として保持され、`error_count` が runtime 復活した場合の forward-compatible 装備として残っている**。両 site の prose 更新 (load-bearing 主張削除 + historical context への置換) は PR-3/PR-4 (`wiki/ingest.md` / `cleanup.md` を parent-routing pattern に移行する PR) で実施予定。経過期間中に reader が `error_count` を runtime 復活させた瞬間に create-interview だけ reset 経路を持つ非対称が出現するリスクは `hooks/tests/error-count-runtime-reference.test.sh` の dead code 機械検証で防御している。
+> **Forward note**: `wiki/ingest.md` / `cleanup.md` の prose は依然 `--preserve-error-count` を「RE-ENTRY DETECTED escalation + THRESHOLD bail-out を機能させるため」load-bearing として記述しているが、**この prose 自体が out-of-date** である。`hooks/tests/error-count-runtime-reference.test.sh` の機械検証で確認した通り、`stop-guard.sh` 撤去 (#675) 以降 production runtime には `error_count` の reader が存在せず、両 site の `--preserve-error-count` は dead code である。両 site の prose は PR-3 (`wiki/ingest.md`) / PR-4 (`cleanup.md`) で historical context (forward-compatibility 装備) として書き換える。それまでの経過期間中、create-interview だけ同一 phase self-patch で reset 経路を持つ非対称が出現するリスクは `hooks/tests/error-count-runtime-reference.test.sh` の dead code 機械検証で防御している。
 
 Idempotent re-patch (the 🚨 MANDATORY Pre-flight at the head of this file already wrote `create_post_interview`; this re-patch refreshes timestamp / `next_action`):
 

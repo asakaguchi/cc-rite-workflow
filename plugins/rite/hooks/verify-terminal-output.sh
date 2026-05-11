@@ -11,9 +11,9 @@
 #   - plugins/rite/commands/issue/create-decompose.md  Phase 3.4 sentinel is
 #     documented as `<!-- [create:completed:{...}] -->` (HTML comment form)
 #   - plugins/rite/commands/issue/create-interview.md  AC-3 non-regression only
-#     (PR-2 #920 / ADR docs/designs/parent-routing-unification.md で
-#     `[interview:completed]` / `[interview:skipped]` の bare bracket form に
-#     移行済、AC-2/AC-6 HTML-wrap 必須化は撤去。raw string `[interview:`
+#     (ADR docs/designs/parent-routing-unification.md に従い
+#     `[interview:completed|skipped|error]` の bare bracket form に移行済、
+#     AC-2/AC-6 HTML-wrap 必須化は撤去。raw string `[interview:`
 #     presence のみ AC-3 で検証する)
 #
 # Non-regression (AC-3): the raw string `[create:completed:` / `[interview:`
@@ -54,8 +54,9 @@ Options:
 
 Verifies that Terminal Completion sections in create-register.md /
 create-decompose.md wrap sentinel markers in HTML comments (Issue #561
-AC-2 / AC-3 / AC-6). create-interview.md は PR-2 #920 で parent-routing
-pattern (bare bracket form) に移行済のため AC-3 non-regression のみ検証。
+AC-2 / AC-3 / AC-6). create-interview.md は parent-routing pattern
+(bare bracket form) に移行済のため AC-3 non-regression のみ検証。
+詳細は ADR docs/designs/parent-routing-unification.md を参照。
 
 Exit codes:
   0  all checks passed (or --help)
@@ -181,26 +182,25 @@ fi
 
 # -----------------------------------------------------------------------------
 # Check 3: create-interview.md [interview:*] AC-3 non-regression
-# (bare bracket form post-PR-2 #920 / ADR docs/designs/parent-routing-unification.md)
+# (bare bracket form; rationale: ADR docs/designs/parent-routing-unification.md)
 # -----------------------------------------------------------------------------
 CREATE_INTERVIEW="${REPO_ROOT}${CHECK_PATHS_PREFIX:+/${CHECK_PATHS_PREFIX}}/commands/issue/create-interview.md"
 
 if [ ! -f "$CREATE_INTERVIEW" ]; then
   fail "create-interview.md not found at $CREATE_INTERVIEW"
 else
-  # AC-3 non-regression — sentinel string presence (bare bracket form is now canonical
-  # post parent-routing pattern migration, ADR docs/designs/parent-routing-unification.md
-  # / PR #926 PR-2 #920).
-  if grep -qE '\[interview:(completed|skipped)\]' "$CREATE_INTERVIEW"; then
-    pass "create-interview.md: contains [interview:completed] / [interview:skipped] string (AC-3 non-regression)"
+  # AC-3 non-regression — bare bracket form sentinel string presence
+  # (completed / skipped / error — error is the catastrophic halt sentinel
+  # introduced by the parent-routing pattern; absence indicates regression).
+  if grep -qE '\[interview:(completed|skipped|error)\]' "$CREATE_INTERVIEW"; then
+    pass "create-interview.md: contains [interview:completed|skipped|error] string (AC-3 non-regression)"
   else
     fail "create-interview.md: missing [interview:*] string (AC-3 regression)"
   fi
 
   # Negative assertion — parent-routing pattern compliance check
-  # HTML-comment 形式 (`<!-- [interview:*] -->`) の partial revert を検出する。
-  # 本 check は uniformity test (`parent-routing-pattern-uniformity.test.sh`、PR-7 で
-  # 導入予定) が利用可能になるまでの interim coverage。
+  # HTML-comment 形式 (`<!-- [interview:*] -->`) の partial revert を検出する interim coverage
+  # (uniformity test 統合計画は ADR `docs/designs/parent-routing-unification.md` 参照)。
   #
   # regex scope: rationale prose 内 inline backtick literal (例: `<!-- [interview:*] -->` historical note) や
   # migration note 内で sentinel を quote する自然な編集パターンで誤発火する経路を遮断するため、

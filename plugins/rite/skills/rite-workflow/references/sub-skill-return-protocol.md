@@ -41,7 +41,7 @@ If the marker has **not** been output, you are NOT done — keep going in the sa
 
 ## Anti-pattern (what NOT to do)
 
-`create-interview` は parent-routing pattern (ADR `docs/designs/parent-routing-unification.md`) で **bare bracket form** `[interview:skipped]` / `[interview:completed]` を emit する (PR-2 #926 で HTML-comment form から移行)。`create-register` / `create-decompose` は依然 HTML-comment form `<!-- [create:completed:{N}] -->` を emit する (PR-5 で bare bracket 化予定の暫定形):
+`create-interview` は parent-routing pattern (ADR `docs/designs/parent-routing-unification.md`) で **bare bracket form** `[interview:skipped]` / `[interview:completed]` / `[interview:error]` を emit する。`create-register` / `create-decompose` は依然 HTML-comment form `<!-- [create:completed:{N}] -->` を emit する (移行ロードマップは ADR 参照):
 
 ```
 [WRONG]
@@ -62,7 +62,7 @@ This abandons the workflow with no Issue created and no flow-state cleanup. Sent
   1. Evaluates Phase 0.6 triggers (Task Decomposition Decision)
   2. Runs Delegation Routing Pre-write bash
   3. Invokes skill: "rite:issue:create-register"
-  4. Waits for <!-- [create:completed:{N}] --> (HTML コメント形式 — PR-5 で bare bracket 化予定)
+  4. Waits for <!-- [create:completed:{N}] --> (HTML コメント形式 — 移行計画は ADR 参照)
   5. Runs Mandatory After Delegation self-check
 <Orchestrator terminal completion reached. Turn may end.>
 ```
@@ -73,8 +73,8 @@ The contract is enforced across two active layers (Layer 2 was retired in #675).
 
 | Layer | Mechanism | File | Status |
 |-------|-----------|------|--------|
-| 1. Prompt contract | Anti-pattern / correct-pattern + "same response turn" warnings + Mandatory After orchestrator prose | `commands/issue/start.md` (Sub-skill Return Protocol Global), `commands/issue/create.md` (Sub-skill Return Protocol + Mandatory After Delegation — Mandatory After Interview は廃止済), `commands/pr/cleanup.md` (Mandatory After Wiki Ingest — PR-4 で parent-routing 移行予定), `commands/wiki/ingest.md` (Mandatory After Auto-Lint — PR-3 で parent-routing 移行予定), this reference | active |
-| 3. Caller-continuation hints (decomposed into 3 sub-layers 3a/3b/3c — see "3 layer canonical signaling pattern" blockquote below) | (3a) caller HTML hint with `<!-- caller: ... -->` prefix (issue creation paths only) immediately before the sub-skill's result pattern + (3b) plain-text Markdown blockquote reminder (`> ⏭ MUST continue (turn を閉じない): ...` 等の命令形) emitted by the sub-skill alongside the HTML hint + (3c) sub-skill HTML continuation comment with `<!-- continuation: ... -->` prefix (wiki ingest path only) that the caller greps | Defense-in-Depth sections in ~~`commands/issue/create-interview.md`~~ (廃止済 — parent-routing pattern), `commands/issue/create-register.md` (PR-5 で移行予定), `commands/issue/create-decompose.md` (PR-5 で移行予定), `commands/wiki/ingest.md` (PR-4 で移行予定); Phase 9.2 三点セット blockquote (Layer 3b imperative) in `commands/wiki/lint.md` | active |
+| 1. Prompt contract | Anti-pattern / correct-pattern + "same response turn" warnings + Mandatory After orchestrator prose | `commands/issue/start.md` (Sub-skill Return Protocol Global), `commands/issue/create.md` (Defense-in-Depth + Mandatory After Delegation), `commands/pr/cleanup.md` (Mandatory After Wiki Ingest), `commands/wiki/ingest.md` (Mandatory After Auto-Lint), this reference (移行ロードマップは ADR `docs/designs/parent-routing-unification.md` 参照) | active |
+| 3. Caller-continuation hints (decomposed into 3 sub-layers 3a/3b/3c — see "3 layer canonical signaling pattern" blockquote below) | (3a) caller HTML hint with `<!-- caller: ... -->` prefix (issue creation paths only) immediately before the sub-skill's result pattern + (3b) plain-text Markdown blockquote reminder (`> ⏭ MUST continue (turn を閉じない): ...` 等の命令形) emitted by the sub-skill alongside the HTML hint + (3c) sub-skill HTML continuation comment with `<!-- continuation: ... -->` prefix (wiki ingest path only) that the caller greps | Defense-in-Depth sections in `commands/issue/create-register.md`, `commands/issue/create-decompose.md`, `commands/wiki/ingest.md`; Phase 9.2 三点セット blockquote (Layer 3b imperative) in `commands/wiki/lint.md`。`commands/issue/create-interview.md` は parent-routing pattern 移行で本 layer 廃止済 (sub-skill 内製化、ADR 参照) | active |
 
 > **Layer numbering note**: Layer 2 (the former runtime hard gate via `hooks/stop-guard.sh`) was retired in #675. The numbering gap is intentional — `commands/wiki/ingest.md` and other documents that still use `Layer 2` as a grep-able marker do so to keep historical cross-references resolvable in-repo. See commit `e2dfae0` (or `git log -- plugins/rite/hooks/stop-guard.sh`) for the historical Layer 2 mechanism.
 
@@ -84,14 +84,14 @@ The LLM receives the continuation signal from two independent sources: the promp
 >
 > - **Layer 1 (orchestrator prompt contract)**:
 >   - `create.md` Mandatory After Delegation pre-section prose (`VERY FIRST cognitive action` variant)
->   - `pr/cleanup.md` Mandatory After Wiki Ingest Step 0 prose — PR-4 で parent-routing pattern に移行予定
->   - `wiki/ingest.md` Mandatory After Auto-Lint Step 0 prose — PR-3 で parent-routing pattern に移行予定
+>   - `pr/cleanup.md` Mandatory After Wiki Ingest Step 0 prose
+>   - `wiki/ingest.md` Mandatory After Auto-Lint Step 0 prose
 > - **Layer 3 (caller HTML hint + sub-skill continuation comment)**:
 >   - `wiki/ingest.md` Phase 9.1 continuation HTML comment (`<!-- continuation: ... -->`)
->   - `create-register.md` / `create-decompose.md` caller HTML hint (`<!-- caller: ... -->`) — PR-5 で bare bracket form + parent-routing pattern に移行予定
+>   - `create-register.md` / `create-decompose.md` caller HTML hint (`<!-- caller: ... -->`)
 > - **Layer 3b plain-text reminder** (`> ⏭ MUST continue (turn を閉じない): ...`): `wiki/lint.md` Phase 9.2 三点セット blockquote に適用 (旧 `> ⏭ 継続中: ...` 現状報告 → 命令形に recast、Issue #917)。
 >
-> **廃止済**: `create.md` Mandatory After Interview / `create-interview.md` caller HTML literal + Layer 3a/3b は ADR `docs/designs/parent-routing-unification.md` PR-2 で sub-skill 内製化済 (caller-side hint 不要)。撤去済 invariant test: `4-site-symmetry.test.sh` / `caller-html-literal-symmetry.test.sh` / `step0-immediate-bash-presence.test.sh` / `create-interview-responsibility-separation.test.sh`。Interim coverage は `hooks/tests/parent-routing-pattern-interim.test.sh` が担い、PR-7 で `parent-routing-pattern-uniformity.test.sh` に統合予定。本 SoT 自体は PR-8 で全面 rewrite 予定。
+> **廃止済**: `create.md` Mandatory After Interview / `create-interview.md` caller HTML literal + Layer 3a/3b は parent-routing pattern (ADR `docs/designs/parent-routing-unification.md`) で sub-skill 内製化済 (caller-side hint 不要)。撤去済 invariant test: `4-site-symmetry.test.sh` / `caller-html-literal-symmetry.test.sh` / `step0-immediate-bash-presence.test.sh` / `create-interview-responsibility-separation.test.sh`。Interim coverage は `hooks/tests/parent-routing-pattern-interim.test.sh` が担う (統合計画は ADR 参照)。
 
 ## Relationship to Workflow Incident Detection
 
@@ -101,9 +101,9 @@ When the contract is violated in practice — the user types `continue` to recov
 
 - `docs/SPEC.md` — "Sub-skill Return Auto-Continuation Contract" (canonical specification)
 - `commands/issue/start.md` — Sub-skill Return Protocol (Global) section
-- `commands/issue/create.md` — Sub-skill Return Protocol + anti/correct-pattern examples + Mandatory After Interview/Delegation (Issue #910 imperative strengthening)
+- `commands/issue/create.md` — Sub-skill Return Protocol + anti/correct-pattern examples + Mandatory After Delegation (Issue #910 imperative strengthening; Mandatory After Interview は parent-routing pattern 移行で廃止済)
 - `commands/pr/cleanup.md` — Mandatory After Wiki Ingest Step 0 (Issue #910 imperative strengthening)
-- `commands/issue/create-interview.md` — Defense-in-Depth + caller continuation comment
+- `commands/issue/create-interview.md` — Defense-in-Depth (Pre-flight + Return Output re-patch、parent-routing pattern — caller continuation comment は廃止済)
 - `commands/issue/create-register.md` — Terminal Completion + caller continuation comment
 - `commands/issue/create-decompose.md` — Terminal Completion (Normal path) + caller continuation comment
 - `commands/wiki/ingest.md` — Mandatory After Auto-Lint (Layer 1) + Phase 9.1 caller continuation HTML comment (Layer 3c)

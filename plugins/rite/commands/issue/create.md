@@ -45,11 +45,9 @@ create.md (orchestrator)
 <LLM ends turn. User sees "Cooked for 2m 0s" and must type `continue` manually.>
 ```
 
-これは **bug**。return tag は turn 境界ではなく hand-off signal。Mandatory After を即時実行せず Phase 2 へ進まないと workflow が abandoned になる。**注記**: 本 PR-2 #926 時点では `[interview:*]` は bare bracket、`[create:completed:N]` は HTML comment form と sentinel 形式が混在する暫定状態 (L70 blockquote 参照、PR-5 で統一予定)。両形式とも turn 境界ではなく continuation trigger として扱う必要がある。
+これは **bug**。return tag は turn 境界ではなく hand-off signal。Mandatory After を即時実行せず Phase 2 へ進まないと workflow が abandoned になる。`[interview:*]` (bare bracket) と `[create:completed:N]` (HTML comment) は形式が異なるが、両方とも turn 境界ではなく continuation trigger として扱う必要がある (sentinel 形式の詳細は本セクション末尾 blockquote 参照)。
 
 ### Correct-pattern (what to do)
-
-> **Phase number note (drift from protocol-doc duplicate is intentional)**: 本 example は `skills/rite-workflow/references/sub-skill-return-protocol.md` の Correct-pattern と意図的に複製されている (Duplication note 参照)。protocol-doc 側は orchestrator 横断の generic example として `Phase 0.6` 表記を使うが、本 file (`create.md`) では create.md 内の **実 Phase 番号 `Phase 2`** を使用する。この phase number drift は protocol-doc Duplication note の "drift acceptable on orchestrator-specific Phase numbers" 規定により許容されている。
 
 ```
 [CORRECT]
@@ -65,9 +63,9 @@ create.md (orchestrator)
 
 **Rule**: Treat `[interview:skipped]` / `[interview:completed]` as **continuation triggers**, not stopping points. Both terminal sub-skills emit `<!-- [create:completed:{N}] -->` as the unified completion marker. The only valid stop is after the user-visible `✅` completion message + next-steps block AND `<!-- [create:completed:{N}] -->` (terminal sub-skill が `create-register.md` Phase 3.4 / `create-decompose.md` Phase 3.4 で順序通り emit) が出力された後のみ。
 
-> **Contract phrases (AC-3)**: anti-pattern / correct-pattern 契約は以下 4 phrase を grep-verified で必ず含む: `anti-pattern`, `correct-pattern`, `same response turn`, `DO NOT stop`。書換禁止。manual verification: `for p in "anti-pattern" "correct-pattern" "same response turn" "DO NOT stop"; do grep -c "$p" plugins/rite/commands/issue/create.md; done` で全て ≥1。
+**Halt rule**: `[interview:error]` が返された場合は `[interview:completed]` / `[interview:skipped]` と異なり **catastrophic Pre-flight failure** (state file 不在 / state stuck at `create_interview`、詳細は `references/pre-check-routing.md` Item 0 と `create-interview.md` "`[interview:error]` halt 判定ルール" 表参照) を意味する。Phase 2 への進入禁止、manual intervention を要求して halt する (Issue 未作成のまま停止)。
 
-> **Sentinel 形式の暫定混在 (PR-2 #926 時点)**: `create-interview` は **bare bracket form** `[interview:completed]` / `[interview:skipped]` で return (parent-routing pattern 統一済、sub-skill 内 Defense-in-Depth で flow-state patch)。terminal sub-skills (`create-register` / `create-decompose`) は依然 **HTML comment form** `<!-- [create:completed:{N}] -->` で return (PR-5 で bare bracket `[create:completed:{N}]` 化予定)。本 PR-2 では sentinel 形式の混在を許容し、PR-5 で全形式の bare bracket 化を完了する設計。
+> **Sentinel 形式**: `create-interview` は bare bracket (`[interview:*]`)、terminal sub-skills (`create-register` / `create-decompose`) は HTML-comment (`<!-- [create:completed:{N}] -->`) を emit する (移行ロードマップは ADR `docs/designs/parent-routing-unification.md` 参照)。両形式とも turn 境界ではなく continuation trigger として扱う。
 
 ## Arguments
 
@@ -180,9 +178,12 @@ echo "$result"
 
 ```bash
 # state file path を解決 (schema_version=2: per-session、legacy: single-file)。
-# helper が空文字列なら create branch へ。
+# helper の stderr は diag log にリダイレクトして silent failure を可視化する
+# (create-interview.md Pre-flight と対称 — silent failure 可視化の defense-in-depth)。
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
-state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
+diag_log="${state_root:-/tmp}/.rite-flow-state-diag.log"
+mkdir -p "$(dirname "$diag_log")" 2>/dev/null || true
+state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>>"$diag_log") || state_file=""
 if [ -n "$state_file" ] && [ -f "$state_file" ]; then
   # Preserve existing fields (issue_number, branch, etc.) from caller (e.g., start.md)
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
@@ -215,7 +216,10 @@ fi
 
 Invoke `skill: "rite:issue:create-interview"`.
 
-After `rite:issue:create-interview` returns (result pattern `[interview:completed]` / `[interview:skipped]`), proceed to Phase 2 (Task Decomposition Decision). The sub-skill writes `create_post_interview` to flow state itself (parent-routing pattern, ADR `docs/designs/parent-routing-unification.md`); caller-side mandatory after section is no longer required.
+After `rite:issue:create-interview` returns, branch on the result pattern:
+
+- `[interview:completed]` / `[interview:skipped]` → proceed to Phase 2 (Task Decomposition Decision). The sub-skill writes `create_post_interview` to flow state itself (parent-routing pattern, ADR `docs/designs/parent-routing-unification.md`); caller-side mandatory after section is no longer required.
+- `[interview:error]` → **halt** without entering Phase 2. The sub-skill encountered a catastrophic Pre-flight failure (state file missing or state stuck at `create_interview`). Surface a clear error message to the user requesting manual intervention; do NOT proceed to Issue creation. See `references/pre-check-routing.md` Item 0 and `create-interview.md` "`[interview:error]` halt 判定ルール" table for the underlying conditions.
 
 ## Phase 2: Task Decomposition Decision
 
@@ -246,10 +250,11 @@ Phase 2 結果に基づき適切な sub-command に delegation。
 **Pre-write** (before invoking delegation sub-skill):
 
 ```bash
-# state file path を解決 (schema_version=2: per-session、legacy: single-file)。
-# helper が空文字列なら create branch へ。
+# state file path を解決 (Phase 1 Pre-write と同じ diag_log redirect pattern を使用)。
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
-state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
+diag_log="${state_root:-/tmp}/.rite-flow-state-diag.log"
+mkdir -p "$(dirname "$diag_log")" 2>/dev/null || true
+state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>>"$diag_log") || state_file=""
 if [ -n "$state_file" ] && [ -f "$state_file" ]; then
   # Preserve existing fields (issue_number, branch, etc.) from caller
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \

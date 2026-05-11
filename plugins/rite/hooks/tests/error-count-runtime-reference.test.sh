@@ -98,7 +98,9 @@ else
   fail "TC-1: hooks/ 配下に error_count の runtime reader が検出されました — '--preserve-error-count' の dead-code claim が破られています"
   echo "  Detected files:" >&2
   printf '%s\n' "$violations" | sed 's/^/    - /' >&2
-  echo "  対処: create-interview.md ADR §3.1 rationale の前提が崩れています。\n  (a) 当該 site の同 phase self-patch を '--preserve-error-count' 付きに戻す、または\n  (b) 新規 reader 側で error_count semantics を保護する設計を導入してください。" >&2
+  echo "  対処: create-interview.md ADR §3.1 rationale の前提が崩れています。" >&2
+  echo "    (a) 当該 site の同 phase self-patch を '--preserve-error-count' 付きに戻す、または" >&2
+  echo "    (b) 新規 reader 側で error_count semantics を保護する設計を導入してください。" >&2
 fi
 
 DRIFT_HINT="\

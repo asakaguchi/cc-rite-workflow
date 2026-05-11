@@ -162,7 +162,7 @@ This is appended to the report produced by Phase 4 irrespective of lint success/
 
 ## Phase 0.6: Terminal Output Structure Verification (v0.4.0 #561)
 
-Run the regression guard for `/rite:issue:create` terminal output structure. This check ensures that Terminal Completion sections in `create-register.md` / `create-decompose.md` emit the completion sentinel `[create:completed:{N}]` as an HTML comment wrapper so the user-visible final line is the `✅` completion message + next steps (Issue #561 AC-2, AC-3, AC-6)。`create-interview.md` は PR-2 #920 で parent-routing pattern (bare bracket form `[interview:completed]` / `[interview:skipped]`) に移行済のため AC-3 non-regression (raw string presence) のみ検証する。
+Run the regression guard for `/rite:issue:create` terminal output structure. This check ensures that Terminal Completion sections in `create-register.md` / `create-decompose.md` emit the completion sentinel `[create:completed:{N}]` as an HTML comment wrapper so the user-visible final line is the `✅` completion message + next steps (Issue #561 AC-2, AC-3, AC-6)。`create-interview.md` は parent-routing pattern (bare bracket form `[interview:completed|skipped|error]`) に移行済のため AC-3 non-regression (raw string presence) のみ検証する (ADR `docs/designs/parent-routing-unification.md` 参照)。
 
 **Rationale**: Prior regressions (Issues #525, #552, #561) showed that bare sentinel tokens as the absolute last line coupled the LLM's turn-boundary heuristic with the sentinel, causing premature `continue`-requiring stops. The HTML-comment form (`<!-- [create:completed:{N}] -->`) keeps the sentinel grep-matchable while hiding it from rendered Markdown output.
 

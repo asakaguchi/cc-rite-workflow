@@ -23,12 +23,8 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 **MUST run before any interview logic** (Phase 1 scope evaluation / Phase 1.1 deep-dive / return-output emission)。**not optional**、**interview scope に conditional でない** — Bug Fix / Chore preset (scope = "skip") でも実行:
 
 ```bash
-# Rationale 詳細は本セクション末尾の "Why cold-start ... 二段書き込み" blockquote 参照。
-# state-path-resolve.sh の rc を if ! 形式で捕捉し、helper failure (exit 非 0) を retained flag
-# + workflow_incident sentinel で可視化する。
-# silent /tmp fallback だと audit-trail fidelity が損なわれるため、失敗時は明示記録する。
-# mkdir -p は state-path-resolve 成功 + parent dir 未作成 (新 schema_version=2 per-session 等) の
-# ケースで redirect を成立させる目的。/tmp fallback 時の保護は /tmp 既存性に依存する別経路。
+# Rationale 詳細 (helper failure 可視化 / cold-start 二段書き込み) は本セクション末尾の
+# blockquote 群を参照。
 if ! state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh); then
   echo "[CONTEXT] STATE_PATH_RESOLVE_FAILED=1; reason=helper_exit_nonzero" >&2
   bash {plugin_root}/hooks/workflow-incident-emit.sh \
@@ -101,7 +97,7 @@ else
 fi
 ```
 
-**Why `create_post_interview` (not `create_interview_running`)**: caller (`create.md` Phase 1 Delegation to Interview Pre-write) は既に `create_interview` を書込済 (delegation in flight signal)。本 Pre-flight が **interview 実行前** に `create_post_interview` へ進めることで、normal completion / Bug Fix preset early exit / unexpected stop のいずれの exit point でも orchestrator が flow state の `.phase = create_post_interview` を読んで Phase 2 へ進む経路に切り替わる。`phase-transition-whitelist.sh` が `create_post_interview → create_delegation` を唯一の whitelisted forward transition として graph 定義するため、orchestrator は Phase 3 Delegation Routing を必ず実行する必要がある。
+**Why `create_post_interview` (not `create_interview_running`)**: caller (`create.md` Phase 1 Delegation to Interview Pre-write) は既に `create_interview` を書込済 (delegation in flight signal)。本 Pre-flight が **interview 実行前** に `create_post_interview` へ進めることで、normal completion / Bug Fix preset early exit / unexpected stop のいずれの exit point でも orchestrator が flow state の `.phase = create_post_interview` を読んで Phase 2 へ進む経路に切り替わる。`phase-transition-whitelist.sh` が `create_post_interview → create_delegation` を唯一の whitelisted forward transition として graph 定義するため、orchestrator は Phase 3 Delegation Routing を実行することが期待される (graph 自体は advisory; 詳細は次段注記参照)。
 
 **Why cold-start (state file 不在) 経路で create→patch 二段書き込み**: 直接 `create --phase create_post_interview` を書くと `previous_phase=""` (cold start) のまま `.phase = create_post_interview` が記録される。`phase-transition-whitelist.sh` の cold-start guard (`[ -z "$prev" ] && return 0` predicate) は単段 create でも runtime accept するため、機能的な runtime defeat は発生しない。ただし audit-trail fidelity (= 「conceptually `create_interview` を経由してから `create_post_interview` に進んだ」という履歴の semantic clarity) が失われ、将来 stricter gating (cold-start guard を厳格化、または conversation-context observer が `previous_phase` を読む下流処理) を有効化した際に正規 path として認識されない。caller 側 Pre-write 失敗時や手動 sub-skill invocation 時にこの cold-start 経路が踏まれるため、create で `create_interview` を bootstrap してから patch で `previous_phase=create_interview` を残す二段書き込みを採用する。
 
@@ -114,11 +110,11 @@ fi
 | `PREFLIGHT_CREATE_FAILED=1` | state file 不在 | cold-start で state file を bootstrap できず、Return Output re-patch は `--if-exists` で silent skip。最悪状態 (audit-trail 不在 + 後続 phase が cold-start path に永続誘導される) |
 | `PREFLIGHT_PATCH_FAILED=1` AND `INTERVIEW_RETURN_PATCH_FAILED=1` | state stuck at `create_interview` | caller 書込済の phase から進めず audit-trail 破損 |
 | `PREFLIGHT_CREATE_THEN_PATCH_FAILED=1` AND `INTERVIEW_RETURN_PATCH_FAILED=1` | state stuck at `create_interview` | cold-start で bootstrap 後に follow-up patch も Return Output re-patch も両失敗 |
-| `PREFLIGHT_CREATE_THEN_PATCH_FAILED=1` AND skip path (Phase 1.1 bypass) | state stuck at `create_interview` | Bug Fix / Chore preset では Return Output 経由しないため re-patch 機会なし |
+| `PREFLIGHT_CREATE_THEN_PATCH_FAILED=1` AND skip path (Phase 1.1 bypass) | state stuck at `create_interview` | Skip path も Return Output re-patch は走るが、cold-start bootstrap 失敗で state file 不在のまま `--if-exists` で silent skip するため `INTERVIEW_RETURN_PATCH_FAILED` retained flag が立たず捕捉不能 (skip path Return Output 必須化は本ファイル `Applying the Scope` / `Defense-in-Depth: Flow State Update (Before Return)` 参照) |
 
 両 flag が同一 turn 内で観測された場合 (および PREFLIGHT_CREATE_FAILED 単独経路) は silent corrupt audit-trail よりも明示 error を優先する。transient FS pressure 等の稀なケースが対象で、通常運用では発火しない。
 
-> **注記 — halt 対象外の retained flag**: 本ファイル冒頭 bash block で emit される 6 種の retained flag のうち、`STATE_PATH_RESOLVE_FAILED=1` と `FLOW_STATE_PATH_RESOLVE_FAILED=1` は **halt 対象外**。両者は `state_root`/`state_file` 解決時に `/tmp` fallback で diag log の出力先のみ失う非致命的経路で、Pre-flight patch/create 自体は `state_root="${state_root:-/tmp}"` の expansion で fallback 経路に流れて成功する。`[interview:error]` halt は state stuck at `create_interview` の audit-trail 破損経路 (上記 4 row) に限定する。
+> **注記 — halt 対象外の retained flag**: 本ファイル冒頭 bash block で emit される 6 種の retained flag のうち、`STATE_PATH_RESOLVE_FAILED=1` と `FLOW_STATE_PATH_RESOLVE_FAILED=1` は **halt 対象外**。両者は state 解決 helper 経路の失敗で diag_log 出力先のみ失う非致命的経路。後続の `flow-state-update.sh create/patch` は引数として `state_root` を受け取らず、subshell 内で `state-path-resolve.sh "$(pwd)"` を独立 resolve するため、本 Pre-flight 経路の helper failure は flow-state 書込み自体には伝播せず成功する (失敗時は別の retained flag `PREFLIGHT_PATCH_FAILED` / `PREFLIGHT_CREATE_FAILED` / `PREFLIGHT_CREATE_THEN_PATCH_FAILED` で halt 判定表 row 1-4 に流れる)。`[interview:error]` halt は state stuck at `create_interview` の audit-trail 破損経路 (上記 4 row) に限定する。
 
 > **二次防御 — LLM context grep が落ちる前提の defense-in-depth**: 本判定は LLM (Claude) が conversation context を grep して retained flag を観測することに依存する canonical な parent-routing pattern を採用している (`start.md` / `parent-routing.md` / `branch-setup.md` と同型)。LLM context grep が落ちる経路 (auto-compact / context truncation / LLM の不注意な早期 emit) に対する二次防御は以下に集約される:
 > 1. **caller-side halt rule の prose 明示** (`create.md` Sub-skill Return Protocol "Halt rule"、`references/pre-check-routing.md` Item 0 の `[interview:error] matched` 経路): caller も独立に halt 判定を持ち、sub-skill が `[interview:completed]` / `[interview:skipped]` を誤 emit しても workflow_incident sentinel + retained flag による post-hoc auto-register (Phase 5.4.4.1) で追跡される
@@ -127,7 +123,7 @@ fi
 >
 > 機械化 (bash 内 retained flag 集約) は parent-routing pattern 全体の非対称を生むため本 PR scope 外。tempfile 経由の collector pattern による完全機械化は future ADR / follow-up Issue で検討する。
 
-> **Known design debt — `workflow-incident-emit.sh --type` 粒度**: 本ファイル内の 6 sites (state-path-resolve / _resolve-flow-state-path / pre-flight patch / pre-flight cold-start create / pre-flight create-then-patch / Return Output) + `create.md` 内の 8 sites (Phase 1: state-path-resolve / _resolve-flow-state-path / patch / create + Phase 3 で同 4 site) = **合計 14 emit sites** がすべて `--type manual_fallback_adopted` に collapse する。失敗モードの分類は `--details` 自由テキストに退避され、`details` 例 (`create.md:phase-1-pre-write _resolve-flow-state-path.sh exit non-zero` / `create-interview.md:pre-flight patch failed; pre-return re-patch covers state` 等) を downstream auto-register / triage が機械分類するには `--details` 正規表現 parsing が必要で、`--type` enum 拡張時の coupled change cost と比べて trade-off となる。中期的には `--type parent_routing_pre_flight_failed` / `--type parent_routing_return_patch_failed` / `--type parent_routing_resolve_failed` 等の dedicated enum 値追加、または `--subtype` opaque arg 導入を検討 (要 `hooks/workflow-incident-emit.sh` の `--type` enum 拡張 + 全 emit site の coupled 更新)。本 PR では design debt として明示するのみ。
+> **Known design debt — `workflow-incident-emit.sh --type` 粒度**: 本ファイルおよび `create.md` の合計 14 emit sites がすべて `--type manual_fallback_adopted` に collapse し、失敗モードの分類は `--details` 自由テキスト parsing 依存となる。中期的には dedicated enum 値追加 (`parent_routing_pre_flight_failed` 等) または `--subtype` opaque arg 導入を検討。Follow-up は ADR `docs/designs/parent-routing-unification.md` §6.x で tracking。
 
 **Idempotence**: 単一 sub-skill invocation 内で複数回実行されても safe — patch mode は pre-update `.phase` から `previous_phase` を設定し、re-entry で `create_post_interview` のまま phase regression しない。
 

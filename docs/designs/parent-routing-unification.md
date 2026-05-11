@@ -224,7 +224,7 @@ PR-1 (本 ADR) → PR-8 の 8 PR で線形マージ。詳細は plan `~/.claude/
 | Layer 3a (caller HTML hint) | `create-interview.md` caller HTML literal (Step 0 bash embed)、`wiki/ingest.md` continuation HTML comment |
 | Layer 3b (plain-text reminder) | `> ⏭ MUST continue (turn を閉じない):` blockquote (create-interview / wiki/lint Phase 9.2) |
 | Layer 3c (sub-skill HTML sentinel) | `<!-- [foo:completed] -->` → bare bracket `[foo:completed]` |
-| Invariant test | `4-site-symmetry.test.sh` (135) / `caller-html-literal-symmetry.test.sh` (129) / `step0-immediate-bash-presence.test.sh` (455) / `create-interview-responsibility-separation.test.sh` (120) / `caller-html-literal-symmetry-decompose-register.test.sh` (229) (合計 **-1068 LoC** = PR-2..PR-7 累計撤去、`wc -l` 実測。**PR-2 単独は 4 件 -839 LoC** で残り 1 件 (`caller-html-literal-symmetry-decompose-register.test.sh` -229 LoC) は PR-5 で撤去予定) |
+| Invariant test | **PR-2 削除**: `4-site-symmetry.test.sh` (-135) / `caller-html-literal-symmetry.test.sh` (-129) / `step0-immediate-bash-presence.test.sh` (-455) / `create-interview-responsibility-separation.test.sh` (-120) = PR-2 累計 **-839 LoC**。**[PR-5] 削除予定 (本 PR では未削除)**: `caller-html-literal-symmetry-decompose-register.test.sh` (-229 LoC、現在は強化済で残存)。**合計 -1068 LoC** = PR-2..PR-7 累計撤去 (`wc -l` 実測) |
 
 **PR-7 計画上の議論ポイント** (責務分離 meta-invariant の再導入要否):
 

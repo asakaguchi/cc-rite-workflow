@@ -18,10 +18,10 @@
 #
 # Non-regression (AC-3): the raw string `[create:completed:` / `[interview:`
 # must still appear in each file so hook/grep contracts remain matchable.
-# I-4: create-interview.md の `[interview:` prefix は
-# `[interview:completed]` / `[interview:skipped]` / `[interview:error]` の 3 値を
-# 取る (Pre-flight failure 経路は `[interview:error]` halt sentinel として load-bearing)。
-# Check 3 の正規表現 `\[interview:(completed|skipped|error)\]` には全 3 値が含まれる。
+# create-interview.md の `[interview:` prefix は `[interview:completed]` /
+# `[interview:skipped]` / `[interview:error]` の 3 値を取る (Pre-flight failure 経路は
+# `[interview:error]` halt sentinel として load-bearing)。Check 3 の正規表現
+# `\[interview:(completed|skipped|error)\]` には全 3 値が含まれる。
 #
 # Exit codes:
 #   0  all checks passed
@@ -129,10 +129,18 @@ else
   if _git_root=$(git rev-parse --show-toplevel 2>"${_git_err:-/dev/null}"); then
     REPO_ROOT="$_git_root"
     CHECK_PATHS_PREFIX="plugins/rite"
-  elif [ -n "$_git_err" ] && grep -qE 'not a git repository|dubious ownership' "$_git_err" 2>/dev/null; then
-    # legitimate marketplace fallback (not in a git repo, or safe.directory violation)
+  elif _git_err_classify_rc=0; [ -n "$_git_err" ] && { grep -qE 'not a git repository|dubious ownership' "$_git_err"; _git_err_classify_rc=$?; [ "$_git_err_classify_rc" = "0" ]; }; then
+    # legitimate marketplace fallback (not in a git repo, or safe.directory violation).
+    # grep rc=0 のみ (match found) を fallback として採用。rc=2 (file I/O error / binary 異常) は
+    # 直後の `_git_err_classify_rc` 検査で fail-fast に倒す。
     REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
     CHECK_PATHS_PREFIX=""
+  elif [ -n "$_git_err" ] && [ "${_git_err_classify_rc:-0}" -ge 2 ]; then
+    # grep classification 自身が失敗 (permission denied / binary corruption / IO エラー)。
+    # 「分類不能 → fail-fast」に倒し、silent fallback を排除する (M-2 対応)。
+    echo "ERROR: failed to classify git stderr (grep rc=$_git_err_classify_rc) — refusing to silently choose between git-root and marketplace fallback" >&2
+    echo "  hint: grep binary / $_git_err の権限を確認してください" >&2
+    exit 1
   elif [ -z "$_git_err" ]; then
     # H-1 対応: mktemp 失敗 + git rev-parse 失敗の組合せ。
     # 旧実装は「stderr empty → legitimate fallback」と誤分類して check を続行していたが、
@@ -207,7 +215,9 @@ else
   # not lose visibility. Not a fail because historical-note prose may legitimately
   # match.
   if grep -nE '\[create:completed:\{[^}]+\}\][[:space:]]*MUST be the (absolute )?last line' "$CREATE_REGISTER" >/dev/null 2>&1; then
-    echo "${C_YEL}WARNING${C_RST}: create-register.md: legacy prose about bare-sentinel 'absolute last line' may still be present; review manually" >&2
+    # CI grep-friendly sentinel prefix `[VERIFY:WARNING]` を併記して、--strict 等の
+    # downstream catch メカニズムが将来追加された際に機械検出可能にする。
+    echo "[VERIFY:WARNING] ${C_YEL}WARNING${C_RST}: create-register.md: legacy prose about bare-sentinel 'absolute last line' may still be present; review manually" >&2
   fi
 fi
 

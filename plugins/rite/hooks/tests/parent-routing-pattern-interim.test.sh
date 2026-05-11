@@ -8,7 +8,7 @@
 #   pin 対象 (create-interview.md のみの interim 形態) は uniformity test の subset として吸収される。
 #   PR-7 マージ時のチェックリスト:
 #     1. plugins/rite/hooks/tests/parent-routing-pattern-interim.test.sh を削除
-#     2. plugins/rite/hooks/tests/run-all-tests.sh が個別 list していれば該当行も削除
+#     2. plugins/rite/hooks/tests/run-tests.sh (テストランナーが個別 list する形式に変わった場合は同等の場所) から該当行を削除
 #     3. ADR §6.1 / sub-skill-return-protocol.md 廃止済 invariant test list に本ファイル名を追記
 #     4. PR-7 統合計画 task list (ADR §6.1 PR-7 引き継ぎ箇所) の各 IMP-2 / IMP-3 / IMP-4 / IMP-5 / TQ-4 を確認
 #
@@ -129,6 +129,23 @@ assert_grep "TC-2b: create-interview.md に bare bracket '[interview:skipped]' b
 assert_grep "TC-2e: create-interview.md に bare bracket '[interview:error]' bullet (catastrophic halt sentinel)" \
   "$INTERVIEW_MD" \
   '^- \*\*Halt with error\*\*.*: `\[interview:error\]`'
+
+# TC-2e-1..TC-2e-4: halt 判定表 4 row の literal substring を独立に pin する。
+# TC-2e は bullet 存在のみ、TC-6i は 4 retained flag echo のみで、表 row の AND 条件組合せが
+# pin されていない silent regression を防ぐ (4 row のいずれかが silent 削除/組替された場合、
+# Bug Fix/Chore preset の halt 判定が抜ける silent regression を直接 catch)。
+assert_grep "TC-2e-1: create-interview.md halt 判定表 row 1 (PREFLIGHT_CREATE_FAILED 単独経路)" \
+  "$INTERVIEW_MD" \
+  '\| `PREFLIGHT_CREATE_FAILED=1` \|'
+assert_grep "TC-2e-2: create-interview.md halt 判定表 row 2 (PREFLIGHT_PATCH_FAILED AND INTERVIEW_RETURN_PATCH_FAILED)" \
+  "$INTERVIEW_MD" \
+  '\| `PREFLIGHT_PATCH_FAILED=1` AND `INTERVIEW_RETURN_PATCH_FAILED=1` \|'
+assert_grep "TC-2e-3: create-interview.md halt 判定表 row 3 (PREFLIGHT_CREATE_THEN_PATCH_FAILED AND INTERVIEW_RETURN_PATCH_FAILED)" \
+  "$INTERVIEW_MD" \
+  '\| `PREFLIGHT_CREATE_THEN_PATCH_FAILED=1` AND `INTERVIEW_RETURN_PATCH_FAILED=1` \|'
+assert_grep "TC-2e-4: create-interview.md halt 判定表 row 4 (PREFLIGHT_CREATE_THEN_PATCH_FAILED AND skip path)" \
+  "$INTERVIEW_MD" \
+  '\| `PREFLIGHT_CREATE_THEN_PATCH_FAILED=1` AND skip path'
 
 # TC-2f: Skip path での Defense-in-Depth re-patch 必須化 prose anchor の pin。
 # Bug Fix / Chore preset (scope=skip) 経路で本 re-patch を省略すると
@@ -391,6 +408,16 @@ else
     fail "TC-7a: create.md の '[interview:error] ... halt' prose が 2 site 未満 (実測=$interview_error_halt_count, 期待>=2 — Halt rule (Sub-skill Return Protocol section) または Phase 1 return branch ('[interview:error]' return-branch bullet) のいずれかが削除された可能性)"
   fi
 
+  # TC-7a-1: create.md halt rule の "manual intervention" / "Issue 未作成のまま停止" prose pin。
+  # TC-7a の count >= 2 だけでは prose の semantic 弱化 (例: `halt` → `skip Phase 2 silently` への
+  # 表現変更) を catch できないため、load-bearing phrase の存在を独立に pin する。両 phrase の
+  # いずれかが silent 削除されると halt rule の意味が user-visible error 省略経路に倒れる。
+  if grep -qE 'manual intervention' "$CREATE_MD" && grep -qE 'Issue 未作成のまま停止' "$CREATE_MD"; then
+    pass "TC-7a-1: create.md halt rule に 'manual intervention' AND 'Issue 未作成のまま停止' prose が存在 (silent semantic weakening 防止)"
+  else
+    fail "TC-7a-1: create.md halt rule の 'manual intervention' または 'Issue 未作成のまま停止' prose が欠落 (halt rule の semantic 弱化リスク)"
+  fi
+
   # pre-check-routing.md Item 0 dispatcher は `[interview:error]` matched 時の Phase 2 進入禁止経路を持つ。
   if grep -qE '\[interview:error\].*Phase 2' "$PRE_CHECK_ROUTING_MD"; then
     pass "TC-7b: pre-check-routing.md に '[interview:error] ... Phase 2' routing prose が存在 (Item 0 dispatcher の halt 経路の load-bearing pin)"
@@ -407,6 +434,16 @@ else
       fail "TC-7c: pre-check-routing.md に sentinel literal '$_sentinel' が見つからない (dispatcher grep target の silent 削除リスク)"
     fi
   done
+
+  # TC-7d: Positional 制約 note の load-bearing prose pin。
+  # dispatcher の runtime semantics ("fenced code block 内マッチを無視" + "直近 assistant turn 末尾優先")
+  # が silent 削除されると、anti-pattern example (`[WRONG] <LLM output: "[interview:skipped]">`) が
+  # dispatcher で誤発火し halt 経路ではなく continuation 経路に流れる silent semantic regression を起こす。
+  if grep -qE 'fenced code block.*無視' "$PRE_CHECK_ROUTING_MD"; then
+    pass "TC-7d: pre-check-routing.md に Positional 制約 note 'fenced code block 内マッチを無視' が存在 (dispatcher collision-safe matching の load-bearing prose pin)"
+  else
+    fail "TC-7d: pre-check-routing.md に Positional 制約 note 'fenced code block 内マッチを無視' が見つからない (anti-pattern example 誤発火リスク)"
+  fi
 fi
 
 DRIFT_HINT="\

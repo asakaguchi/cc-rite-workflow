@@ -29,7 +29,11 @@
 #   --if-exists              Only execute if .rite-flow-state exists (patch/increment mode)
 #   --session                Session UUID override (create mode; defaults to .rite-session-id)
 #   --preserve-error-count   Preserve existing .error_count during patch (same-phase self-patch; patch mode only;
-#                            silently ignored in create/increment modes for drift-symmetry with caller-side consistency)
+#                            silently ignored in create/increment modes for drift-symmetry with caller-side consistency).
+#                            Currently dead-code: stop-guard.sh removed in #675, no runtime reader exists outside
+#                            flow-state-update.sh / migrate-flow-state.sh itself (see tests/error-count-runtime-reference.test.sh).
+#                            Retained for residual callers (create.md Step 0/1, wiki/ingest.md, cleanup.md) and forward
+#                            compatibility if a runtime reader is reintroduced.
 #   --legacy-mode            Force legacy single-file path (`.rite-flow-state`) regardless of
 #                            rite-config.yml `flow_state.schema_version`. Used by migration script
 #                            (#2) and tooling that must read/write the pre-migration source. Without
@@ -105,13 +109,22 @@ _resolve_session_id() {
   local provided_sid="${1:-}"
   if [[ -n "$provided_sid" ]]; then
     local validated
-    if validated=$(bash "$SCRIPT_DIR/_resolve-session-id.sh" "$provided_sid" 2>/dev/null); then
+    local _resolve_sid_err
+    _resolve_sid_err=$(mktemp /tmp/rite-resolve-sid-err-XXXXXX 2>/dev/null) || _resolve_sid_err=""
+    if validated=$(bash "$SCRIPT_DIR/_resolve-session-id.sh" "$provided_sid" 2>"${_resolve_sid_err:-/dev/null}"); then
+      [ -n "$_resolve_sid_err" ] && rm -f "$_resolve_sid_err"
       echo "$validated"
       return 0
     fi
     # Reject malformed --session arg (non-UUID input could escape .rite/sessions/).
     # Fail-fast rather than legacy fallback: silent fallback would hide the spec
     # drift and let the caller think a per-session file was created.
+    # helper の stderr を退避し、UUID format 違反と helper internal error (jq missing /
+    # fork failure / PATH error 等) を区別できるよう詳細を表示する。
+    if [ -n "$_resolve_sid_err" ] && [ -s "$_resolve_sid_err" ]; then
+      head -3 "$_resolve_sid_err" | sed 's/^/  /' >&2
+    fi
+    [ -n "$_resolve_sid_err" ] && rm -f "$_resolve_sid_err"
     echo "ERROR: invalid session_id format: '$provided_sid' (expected UUID, RFC 4122 §4: 8-4-4-4-12 hex with hyphens, case-insensitive — \`_resolve-session-id.sh\` accepts [0-9a-fA-F])" >&2
     return 1
   fi
@@ -232,13 +245,18 @@ _resolve_session_state_path() {
       classification=""
     fi
     if [ -n "$_classify_err" ] && [ -s "$_classify_err" ]; then
-      # state-read.sh の `grep -E '^WARNING:|^  |^jq: ' "$_classify_err"` pass-through ブロック (reader)
-      # と writer/reader 対称化。`_resolve-cross-session-guard.sh` の `head -3 "$_jq_err"` ブロックが
-      # 出力する生 `jq:` parse error 行 (line/column 診断) を pass-through し cycle 15 F-03 の
-      # dead-observability 解消 intent を回復する。
-      # (cycle 48 F-03: hardcoded line refs `state-read.sh:140` / `_resolve-cross-session-guard.sh:173`
-      # を semantic anchor に置換 — drift 防止 doctrine cycle 38 F-04 と整合)
-      grep -E '^WARNING:|^  |^jq: ' "$_classify_err" >&2 2>/dev/null || true
+      # state-read.sh の同 pass-through ブロック (reader 側) と writer/reader 対称化。
+      # `_resolve-cross-session-guard.sh` の `head -3 "$_jq_err"` ブロックが出力する生 `jq:`
+      # parse error 行 (line/column 診断) を pass-through し、dead-observability を回避する。
+      # grep 自身の失敗 (binary 異常 / OOM 等) も classify err pass-through path で
+      # silent suppression しないよう、`|| true` を撤去し WARNING に昇格する。
+      if ! grep -E '^WARNING:|^  |^jq: ' "$_classify_err" >&2; then
+        local _grep_classify_rc=$?
+        if [ "$_grep_classify_rc" -ne 1 ]; then
+          # rc=1 は legitimate no-match。rc>=2 は grep binary error / file I/O error の兆候。
+          echo "WARNING: _classify_err pass-through grep failed (rc=$_grep_classify_rc) — diagnostic output may be incomplete" >&2
+        fi
+      fi
     fi
     [ -n "$_classify_err" ] && rm -f "$_classify_err"
     _classify_err=""
@@ -420,10 +438,17 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
   # 適用 (.rite-work-memory dir と同型)。multi-user CI runner / shared dev host で session metadata が
   # group-readable になる経路を防ぐ。chmod 失敗は best-effort skip (filesystem が ACL 非対応 / SELinux
   # 制約等で chmod 不能な環境でも flow-state 機能は維持する)。
-  # M-4 対応: chmod 失敗時も WARNING を 1 行 emit して observability を維持。
-  if ! chmod 700 "$_flow_state_dir" 2>/dev/null; then
+  # chmod 失敗時は WARNING + stderr 先頭行を pass-through し、busybox 環境 (ACL 非対応で
+  # 設計通り skip) か permission denied (defense-in-depth が外れる異常状態) を区別可能にする。
+  _chmod_err=$(mktemp /tmp/rite-fs-chmod-err-XXXXXX 2>/dev/null) || _chmod_err=""
+  if ! chmod 700 "$_flow_state_dir" 2>"${_chmod_err:-/dev/null}"; then
     echo "WARNING: chmod 700 failed: $_flow_state_dir (best-effort skip — defense-in-depth depth lost on non-POSIX/busybox env)" >&2
+    if [ -n "$_chmod_err" ] && [ -s "$_chmod_err" ]; then
+      head -1 "$_chmod_err" | sed 's/^/  /' >&2
+    fi
   fi
+  [ -n "$_chmod_err" ] && rm -f "$_chmod_err"
+  _chmod_err=""
   # cycle 48 F-01: 旧実装の `unset _mkdir_err` は trap cleanup の `${_mkdir_err:-}` で問題ないが、
   # writer/reader 対称化 doctrine に従い再代入で "" に戻す (state-read.sh の `_classify_err=""`
   # 再代入ブロック — _classify_err inline rm 直後の writer 対称化コメント箇所と同型)。
@@ -525,10 +550,17 @@ fi
 # multi-user CI runner / shared dev host で session_id・issue_number・branch・phase 等の metadata と
 # (将来) 機密値を含む可能性がある file が他ユーザーに読まれる経路を構造的に塞ぐ。chmod 失敗は
 # best-effort skip (cycle 41 F-14 と対称)。
-# M-4 対応: chmod 失敗時も WARNING を 1 行 emit して observability を維持。
-if ! chmod 600 "$TMP_STATE" 2>/dev/null; then
+# chmod 失敗時は WARNING + stderr 先頭行を pass-through し、busybox 環境 (ACL 非対応で
+# 設計通り skip) か permission denied (defense-in-depth が外れる異常状態) を区別可能にする。
+_chmod600_err=$(mktemp /tmp/rite-fs-chmod600-err-XXXXXX 2>/dev/null) || _chmod600_err=""
+if ! chmod 600 "$TMP_STATE" 2>"${_chmod600_err:-/dev/null}"; then
   echo "WARNING: chmod 600 failed: $TMP_STATE (best-effort skip — defense-in-depth depth lost on non-POSIX/busybox env)" >&2
+  if [ -n "$_chmod600_err" ] && [ -s "$_chmod600_err" ]; then
+    head -1 "$_chmod600_err" | sed 's/^/  /' >&2
+  fi
 fi
+[ -n "$_chmod600_err" ] && rm -f "$_chmod600_err"
+_chmod600_err=""
 
 # F-05 (#636 cycle 6): mv 失敗 diag を stop-guard.sh 側の log_diag 経路と対称化。
 # stderr だけだと caller が stderr を suppress した場合に永続痕跡が消える。
@@ -556,15 +588,35 @@ case "$MODE" in
     # block after arg parsing). The previous in-mode auto-read (#216) is folded
     # into the helper so patch/increment also benefit.
     # Session ownership: overwrite protection for active state owned by another session
+    # 各 jq/helper 失敗を stderr 退避して WARNING に昇格する。silent fallback (`|| _existing_active="false"`)
+    # は session ownership check を「無所有」扱いに silent 倒し、別 session の workflow を上書きする
+    # 経路を生む load-bearing logic のため、jq 失敗 (corrupt JSON / IO error) を可視化する。
     if [[ -n "$SESSION" && -f "$FLOW_STATE" ]]; then
-      _existing_active=$(jq -r '.active // false' "$FLOW_STATE" 2>/dev/null) || _existing_active="false"
+      _ownership_jq_err=$(mktemp /tmp/rite-fs-own-jq-err-XXXXXX 2>/dev/null) || _ownership_jq_err=""
+      if ! _existing_active=$(jq -r '.active // false' "$FLOW_STATE" 2>"${_ownership_jq_err:-/dev/null}"); then
+        echo "WARNING: session-ownership .active 抽出 jq 失敗 ($FLOW_STATE) — defaulting to false" >&2
+        [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -1 "$_ownership_jq_err" | sed 's/^/  /' >&2
+        _existing_active="false"
+      fi
       if [[ "$_existing_active" == "true" ]]; then
-        _existing_sid=$(get_state_session_id "$FLOW_STATE" 2>/dev/null) || _existing_sid=""
+        if ! _existing_sid=$(get_state_session_id "$FLOW_STATE" 2>"${_ownership_jq_err:-/dev/null}"); then
+          echo "WARNING: session-ownership session_id 抽出失敗 ($FLOW_STATE) — defaulting to empty" >&2
+          [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -1 "$_ownership_jq_err" | sed 's/^/  /' >&2
+          _existing_sid=""
+        fi
         if [[ -n "$_existing_sid" && "$_existing_sid" != "$SESSION" ]]; then
           # Different session owns the state — check staleness
-          _updated_at=$(jq -r '.updated_at // empty' "$FLOW_STATE" 2>/dev/null) || _updated_at=""
+          if ! _updated_at=$(jq -r '.updated_at // empty' "$FLOW_STATE" 2>"${_ownership_jq_err:-/dev/null}"); then
+            echo "WARNING: session-ownership .updated_at 抽出 jq 失敗 ($FLOW_STATE) — defaulting to empty (staleness check 不能)" >&2
+            [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -1 "$_ownership_jq_err" | sed 's/^/  /' >&2
+            _updated_at=""
+          fi
           if [[ -n "$_updated_at" ]]; then
-            _state_epoch=$(parse_iso8601_to_epoch "$_updated_at" 2>/dev/null) || _state_epoch=0
+            if ! _state_epoch=$(parse_iso8601_to_epoch "$_updated_at" 2>"${_ownership_jq_err:-/dev/null}"); then
+              echo "WARNING: session-ownership ISO8601 parse 失敗 ($_updated_at) — defaulting epoch=0 (stale 扱い)" >&2
+              [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -1 "$_ownership_jq_err" | sed 's/^/  /' >&2
+              _state_epoch=0
+            fi
             _now_epoch=$(date +%s)
             _diff=$((_now_epoch - _state_epoch))
             if [[ "$_diff" -le 7200 ]]; then
@@ -575,6 +627,8 @@ case "$MODE" in
           fi
         fi
       fi
+      [ -n "$_ownership_jq_err" ] && rm -f "$_ownership_jq_err"
+      _ownership_jq_err=""
     fi
     # Capture previous phase for whitelist-based transition verification (#490).
     # When the state file is absent, previous_phase is "" (legitimate cold start).
@@ -675,13 +729,18 @@ case "$MODE" in
     # Also capture the outgoing phase into previous_phase so stop-guard can verify the
     # transition whitelist (#490). Use the pre-update .phase value as previous_phase.
     #
-    # --preserve-error-count (verified-review cycle 3 F-01 / #636): patch mode のデフォルトは
-    # `.error_count = 0` でリセットする (phase transition は「進捗した」signal なのでエスカレーション
-    # counter をクリアするのが正しい)。ただし、create.md Step 0 / Step 1 のような **同一 phase への
-    # self-patch** (create_post_interview → create_post_interview) では error_count を保持しないと
-    # stop-guard.sh の RE-ENTRY DETECTED escalation + THRESHOLD=3 bail-out が永久に fire しない
-    # silent regression になる (cycle 3 で実測確認済み)。--preserve-error-count flag 指定時は
-    # `.error_count = 0` 条項を omit して既存値を保持する。
+    # --preserve-error-count: patch mode のデフォルトは `.error_count = 0` でリセットする
+    # (phase transition は「進捗した」signal なのでエスカレーション counter をクリアするのが正しい)。
+    # 同一 phase self-patch (例: create_post_interview → create_post_interview) で reset を回避したい
+    # caller 向けに、flag 指定時は `.error_count = 0` 条項を omit して既存値を保持する。
+    #
+    # 現状の dead-code 状態: `stop-guard.sh` は #675 で撤去済で、本リポ内に `error_count` を runtime
+    # 参照する reader は flow-state-update.sh / migrate-flow-state.sh 自身しか存在しない (機械検証:
+    # `hooks/tests/error-count-runtime-reference.test.sh`)。したがって本 flag は production runtime
+    # 影響を持たず、create.md Step 0 / Step 1 / wiki/ingest.md / cleanup.md の residual caller は
+    # historical compatibility および将来 reader 再導入時の forward-compatible 装備として保持されている。
+    # 詳細な経緯は `commands/issue/create-interview.md` 末尾 "Forward note" および ADR §3.1
+    # (`docs/designs/parent-routing-unification.md`) を参照。
     if [[ "$PRESERVE_ERROR_COUNT" == "true" ]]; then
       JQ_FILTER='.previous_phase = (.phase // "") | .phase = $phase | .updated_at = $ts | .next_action = $next'
     else

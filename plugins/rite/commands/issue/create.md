@@ -47,8 +47,6 @@ create.md (orchestrator)
 
 これは **bug**。return tag は turn 境界ではなく hand-off signal。同 response turn 内で Phase 2 (Task Decomposition Decision) へ進まないと workflow が abandoned になる。両形式 (詳細は本セクション末尾 "Sentinel 形式" blockquote) とも turn 境界ではなく continuation trigger として扱う必要がある。
 
-> **Note**: `Mandatory After Interview` セクションは parent-routing pattern 移行で削除済。残存する `Mandatory After Delegation` は terminal sub-skill (create-register / create-decompose) 直後のみ発火する別経路。
-
 ### Correct-pattern (what to do)
 
 ```

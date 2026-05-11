@@ -100,6 +100,11 @@ set -e
 if [ -s "$_grep_err" ]; then
   fail "TC-1: grep over $HOOKS_DIR emitted stderr (test cannot guarantee jq_field coverage — silent IO error)"
   head -5 "$_grep_err" | sed 's/^/  /' >&2
+  # IO error 検出時は fail-fast: 後続の violations 集計を続行すると `pass` も emit され
+  # downstream の log parser が pass/fail 二重出力で混乱する。
+  rm -f "$_grep_err"
+  print_summary "$(basename "$0")"
+  exit 1
 fi
 if [ -n "$jq_field_hits" ]; then
   while IFS= read -r f; do
@@ -119,6 +124,10 @@ set -e
 if [ -s "$_grep_err" ]; then
   fail "TC-1: grep over $HOOKS_DIR emitted stderr (test cannot guarantee bash_var coverage — silent IO error)"
   head -5 "$_grep_err" | sed 's/^/  /' >&2
+  # IO error 検出時は fail-fast (jq_field 経路と対称、pass/fail 二重出力を防ぐ)
+  rm -f "$_grep_err"
+  print_summary "$(basename "$0")"
+  exit 1
 fi
 if [ -n "$bash_var_hits" ]; then
   while IFS= read -r f; do

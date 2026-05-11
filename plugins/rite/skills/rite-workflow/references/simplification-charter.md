@@ -44,7 +44,7 @@ rite workflow 自体および rite workflow が生成する成果物（commit me
   - **上限**: セクション見出し / 本文ともに 0 件を原則とし、どうしても必要な場合は 1 ファイル 1 件まで
   - metavariable / regex (`Issue #N` / `Issue #[0-9]+` 等) として「禁止対象を明示する目的」での記述は許容
 - `Drift guard` / `DRIFT-CHECK ANCHOR` / `NFR-[0-9]+` 系の対称化契約の散文記述
-  - 対称化が必要な場合は **テストで担保**（例: `plugins/rite/hooks/tests/parent-routing-pattern-interim.test.sh` / `plugins/rite/hooks/tests/caller-html-literal-symmetry-decompose-register.test.sh`、移行ロードマップは ADR `docs/designs/parent-routing-unification.md` を参照）し、散文重複は書かない
+  - 対称化が必要な場合は **テストで担保**（例: `plugins/rite/hooks/tests/parent-routing-pattern-interim.test.sh` / `plugins/rite/hooks/tests/caller-html-literal-symmetry-decompose-register.test.sh` (後者は ADR PR-5 で retire 予定、移行ロードマップは ADR `docs/designs/parent-routing-unification.md` を参照)）し、散文重複は書かない
 - 「抽出経緯」「移管経緯」「Regression context」セクション
 - review cycle 番号付きの指摘記録（`cycle 3 F-NEW1` など）
 - `🚨` の濫用（**許容上限: 1 ファイル 5 occurrence、6 件以上は禁止**）

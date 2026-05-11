@@ -374,6 +374,33 @@ else
   fail "expected exit 0 on 'dubious ownership' fallback, got $rc"
 fi
 
+# Test 11: trap install symmetry (IMP-3 対応)
+# verify-terminal-output.sh の `_git_err` tempfile が EXIT/INT/TERM/HUP の全 signal で
+# cleanup されることを script 静的解析で確認する (signal injection は CI 上での再現困難なため
+# static pin で代替)。trap が片方の経路だけ silent 削除される regression を防ぐ。
+echo "Test 11: trap install symmetry (EXIT + INT + TERM + HUP all installed)"
+trap_count=0
+for _sig in EXIT INT TERM HUP; do
+  if grep -qE "trap[[:space:]].*${_sig}([[:space:]]|$)" "$HOOK"; then
+    trap_count=$((trap_count + 1))
+  fi
+done
+if [ "$trap_count" -ge 4 ]; then
+  pass "verify-terminal-output.sh installs trap for EXIT + INT + TERM + HUP (count=$trap_count)"
+else
+  fail "verify-terminal-output.sh missing trap for one or more signals (count=$trap_count, expected >= 4)"
+fi
+
+# Test 12: legacy prose WARNING の `[VERIFY:WARNING]` sentinel prefix pin (M-3 対応)
+# legacy prose 検出時に CI/downstream parser が grep-friendly に catch できるよう sentinel prefix
+# が付与されている必要がある。silent revert で sentinel が消えると WARNING の機械検出経路が失われる。
+echo "Test 12: legacy prose WARNING contains [VERIFY:WARNING] sentinel prefix (M-3)"
+if grep -qF '[VERIFY:WARNING]' "$HOOK"; then
+  pass "verify-terminal-output.sh emits [VERIFY:WARNING] sentinel for legacy prose detection"
+else
+  fail "verify-terminal-output.sh missing [VERIFY:WARNING] sentinel prefix (CI catch メカニズムが silent に消失)"
+fi
+
 # Summary
 echo ""
 echo "Results: PASS=$PASS FAIL=$FAIL"

@@ -278,7 +278,7 @@ patch_active() {
   if jq ".active = $value" "$file" > "${file}.tmp"; then
     # mv 失敗 (disk full / EXDEV / permission denied) を明示 handle。
     # `if ! cmd; then` の中で `$?` は `!` 演算後の値 (常に 0) のため rc 取得不可。
-    # flow-state-update.sh canonical mv pattern (`flow-state-update.sh:661-666`) と
+    # flow-state-update.sh の create mode 内 `mv "$TMP_STATE" "$FLOW_STATE"` block と
     # 同じく rc を表示せず失敗メッセージのみで fail-fast する。
     if ! mv "${file}.tmp" "$file"; then
       echo "ERROR: mv failed for $file (disk full / EXDEV / permission denied?)" >&2

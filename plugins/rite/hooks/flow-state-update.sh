@@ -401,7 +401,11 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
     # _log_flow_diag is defined later in the file; inline the diag write here
     # because we exit before reaching that definition's call sites.
     _diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
-    echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] flow_state_mkdir_failed path=$_flow_state_dir" >> "$_diag_file" 2>/dev/null || true
+    # M-4 対応 (PR #926 verified-review): diag log 書込み失敗を完全 silent にせず WARNING を 1 行 emit。
+    # 旧 `|| true` は disk full / permission denied で post-hoc audit-trail 検出経路が完全に途絶える。
+    if ! echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] flow_state_mkdir_failed path=$_flow_state_dir" >> "$_diag_file" 2>/dev/null; then
+      echo "WARNING: diag log append failed: $_diag_file (post-hoc audit-trail unavailable)" >&2
+    fi
     echo "ERROR: failed to create $_flow_state_dir (permission denied / disk full / parent is a regular file?)" >&2
     if [ -n "$_mkdir_err" ] && [ -s "$_mkdir_err" ]; then
       head -3 "$_mkdir_err" | sed 's/^/  /' >&2
@@ -416,7 +420,10 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
   # 適用 (.rite-work-memory dir と同型)。multi-user CI runner / shared dev host で session metadata が
   # group-readable になる経路を防ぐ。chmod 失敗は best-effort skip (filesystem が ACL 非対応 / SELinux
   # 制約等で chmod 不能な環境でも flow-state 機能は維持する)。
-  chmod 700 "$_flow_state_dir" 2>/dev/null || true
+  # M-4 対応 (PR #926 verified-review): chmod 失敗時も WARNING を 1 行 emit して observability を維持。
+  if ! chmod 700 "$_flow_state_dir" 2>/dev/null; then
+    echo "WARNING: chmod 700 failed: $_flow_state_dir (best-effort skip — defense-in-depth depth lost on non-POSIX/busybox env)" >&2
+  fi
   # cycle 48 F-01: 旧実装の `unset _mkdir_err` は trap cleanup の `${_mkdir_err:-}` で問題ないが、
   # writer/reader 対称化 doctrine に従い再代入で "" に戻す (state-read.sh の `_classify_err=""`
   # 再代入ブロック — _classify_err inline rm 直後の writer 対称化コメント箇所と同型)。
@@ -494,7 +501,10 @@ if ! TMP_STATE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null); then
   # diag log を書き込む。関数名 anchor で定義位置を semantic に参照する (cycle 43 F-02 で hardcoded
   # 行番号 L332 から関数名 anchor に置換)。
   _diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
-  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] tmp_state_mktemp_failed path=${FLOW_STATE}" >> "$_diag_file" 2>/dev/null || true
+  # M-4 対応 (PR #926 verified-review): diag log 書込み失敗を完全 silent にせず WARNING を 1 行 emit。
+  if ! echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] tmp_state_mktemp_failed path=${FLOW_STATE}" >> "$_diag_file" 2>/dev/null; then
+    echo "WARNING: diag log append failed: $_diag_file (post-hoc audit-trail unavailable for tmp_state_mktemp_failed)" >&2
+  fi
   unset _diag_file
   exit 1
 fi
@@ -515,7 +525,10 @@ fi
 # multi-user CI runner / shared dev host で session_id・issue_number・branch・phase 等の metadata と
 # (将来) 機密値を含む可能性がある file が他ユーザーに読まれる経路を構造的に塞ぐ。chmod 失敗は
 # best-effort skip (cycle 41 F-14 と対称)。
-chmod 600 "$TMP_STATE" 2>/dev/null || true
+# M-4 対応 (PR #926 verified-review): chmod 失敗時も WARNING を 1 行 emit して observability を維持。
+if ! chmod 600 "$TMP_STATE" 2>/dev/null; then
+  echo "WARNING: chmod 600 failed: $TMP_STATE (best-effort skip — defense-in-depth depth lost on non-POSIX/busybox env)" >&2
+fi
 
 # F-05 (#636 cycle 6): mv 失敗 diag を stop-guard.sh 側の log_diag 経路と対称化。
 # stderr だけだと caller が stderr を suppress した場合に永続痕跡が消える。

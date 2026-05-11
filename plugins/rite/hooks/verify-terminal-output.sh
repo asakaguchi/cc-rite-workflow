@@ -18,6 +18,10 @@
 #
 # Non-regression (AC-3): the raw string `[create:completed:` / `[interview:`
 # must still appear in each file so hook/grep contracts remain matchable.
+# I-4 PR #926 verified-review: create-interview.md の `[interview:` prefix は
+# `[interview:completed]` / `[interview:skipped]` / `[interview:error]` の 3 値を
+# 取る (Pre-flight failure 経路は `[interview:error]` halt sentinel として load-bearing)。
+# Check 3 の正規表現 `\[interview:(completed|skipped|error)\]` には全 3 値が含まれる。
 #
 # Exit codes:
 #   0  all checks passed
@@ -125,10 +129,22 @@ else
     # legitimate marketplace fallback (not in a git repo, or safe.directory violation)
     REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
     CHECK_PATHS_PREFIX=""
-  elif [ -z "$_git_err" ] || [ ! -s "$_git_err" ]; then
-    # mktemp failed or stderr empty — assume legitimate fallback (defensive)
-    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-    CHECK_PATHS_PREFIX=""
+  elif [ -z "$_git_err" ]; then
+    # H-1 対応 (PR #926 verified-review): mktemp 失敗 + git rev-parse 失敗の組合せ。
+    # 旧実装は「stderr empty → legitimate fallback」と誤分類して check を続行していたが、
+    # 実体は「stderr の中身を観測する手段を失ったため、エラー種別を区別できない」状態。
+    # marketplace fallback と permission denied / binary 不在 / corrupt index を silent に
+    # 融合させると observability を失い、load-bearing test の信頼性を傷つける。
+    # 「分類不能 → fail-fast」に倒して silent fallback を排除する。
+    echo "ERROR: cannot classify git error (mktemp failed earlier) — refusing to silently choose between git-root and marketplace fallback" >&2
+    echo "  hint: /tmp の inode 枯渇 / read-only filesystem / permission 拒否を解消してから再実行してください" >&2
+    exit 1
+  elif [ ! -s "$_git_err" ]; then
+    # stderr tempfile は作成できたが git stderr が空 (= git binary が silent に exit non-zero)。
+    # これも分類不能だが、mktemp 失敗とは区別して別エラーで fail-fast する。
+    echo "ERROR: git rev-parse --show-toplevel failed with empty stderr — unable to classify" >&2
+    echo "  hint: git binary version の互換性、または PATH 設定を確認してください" >&2
+    exit 1
   else
     echo "ERROR: git rev-parse --show-toplevel failed unexpectedly:" >&2
     head -3 "$_git_err" | sed 's/^/  /' >&2
@@ -220,13 +236,26 @@ CREATE_INTERVIEW="${REPO_ROOT}${CHECK_PATHS_PREFIX:+/${CHECK_PATHS_PREFIX}}/comm
 if [ ! -f "$CREATE_INTERVIEW" ]; then
   fail "create-interview.md not found at $CREATE_INTERVIEW"
 else
-  # AC-3 non-regression — bare bracket form sentinel string presence
-  # (completed / skipped / error — error is the catastrophic halt sentinel
-  # introduced by the parent-routing pattern; absence indicates regression).
+  # IMP-4 対応 (PR #926 verified-review): AC-3 non-regression を bullet sentinel と halt sentinel に分割。
+  # 旧実装 `grep -qE '\[interview:(completed|skipped|error)\]'` は OR 判定で 1 match で pass
+  # するため、halt-rule prose で `[interview:error]` が 6 回出現する状況では bullet
+  # `[interview:completed]` / `[interview:skipped]` を両方 silent 削除しても通過する false-positive
+  # risk を持っていた。本修正で `completed` / `skipped` 2 sentinel を独立 grep として必須化し、
+  # bullet section の silent 削除を防御する。`[interview:error]` は OR 経路 (どれか 1 つの sentinel
+  # 存在を要求する legacy regex) のまま残し、historical fixture 互換性を維持する
+  # (parent-routing pattern 移行前の minimal fixture では `error` sentinel を含まないため)。
+  for _sentinel in 'completed' 'skipped'; do
+    if grep -qE "\[interview:${_sentinel}\]" "$CREATE_INTERVIEW"; then
+      pass "create-interview.md: contains [interview:${_sentinel}] string (AC-3 non-regression, independent grep)"
+    else
+      fail "create-interview.md: missing [interview:${_sentinel}] string (AC-3 regression — bullet section was silently deleted)"
+    fi
+  done
+  # legacy OR-form: いずれか 1 つの sentinel 存在を pin (3 alternation の elements は historical fixture も含まれる)
   if grep -qE '\[interview:(completed|skipped|error)\]' "$CREATE_INTERVIEW"; then
-    pass "create-interview.md: contains [interview:completed|skipped|error] string (AC-3 non-regression)"
+    pass "create-interview.md: contains at least one [interview:*] sentinel (AC-3 legacy OR-form, fixture compatibility)"
   else
-    fail "create-interview.md: missing [interview:*] string (AC-3 regression)"
+    fail "create-interview.md: missing all [interview:*] sentinels (AC-3 regression)"
   fi
 
   # Negative assertion — parent-routing pattern compliance check

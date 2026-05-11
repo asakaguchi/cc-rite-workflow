@@ -67,8 +67,29 @@ violations=""
 #   - flow-state-update.sh (hooks/) / migrate-flow-state.sh (hooks/scripts/) は
 #     ALLOWLIST_REGEX で除外 (helper 自身)
 
+# M-5 対応 (PR #926 verified-review): grep stderr を tempfile に退避して silent IO エラーを検出。
+# 旧 `2>/dev/null` は grep -RIl が permission denied / broken symlink / IO error で読めないパスを
+# silent skip させ、load-bearing test invariant (dead-code claim) の保護を silent に失う経路があった。
+# stderr が空でなければ test を fail させて未保護領域を可視化する。
+#
+# 注: `set -euo pipefail` 下で grep rc=1 (no match) が script 早期 exit を引き起こすため、
+# `set +e` で一時的に disable して exit code を取得する。grep rc=2 (IO error) は stderr 非空判定で
+# 検出する (rc 1/2 を直接区別する必要がないため `|| true` ではなく明示的 set +e/set -e 形式)。
+_grep_err=$(mktemp /tmp/rite-error-count-grep-err-XXXXXX) || _grep_err=""
+
 # jq field access ('.error_count') の探索
-if jq_field_hits=$(grep -RIlE '\.error_count' "$HOOKS_DIR" --include='*.sh' --exclude-dir='tests' 2>/dev/null); then
+set +e
+if [ -n "$_grep_err" ]; then
+  jq_field_hits=$(grep -RIlE '\.error_count' "$HOOKS_DIR" --include='*.sh' --exclude-dir='tests' 2>"$_grep_err")
+else
+  jq_field_hits=$(grep -RIlE '\.error_count' "$HOOKS_DIR" --include='*.sh' --exclude-dir='tests' 2>/dev/null)
+fi
+set -e
+if [ -n "$_grep_err" ] && [ -s "$_grep_err" ]; then
+  fail "TC-1: grep over $HOOKS_DIR emitted stderr (test cannot guarantee jq_field coverage — silent IO error)"
+  head -5 "$_grep_err" | sed 's/^/  /' >&2
+fi
+if [ -n "$jq_field_hits" ]; then
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     if printf '%s\n' "$f" | grep -qE "$ALLOWLIST_REGEX"; then
@@ -79,7 +100,19 @@ if jq_field_hits=$(grep -RIlE '\.error_count' "$HOOKS_DIR" --include='*.sh' --ex
 fi
 
 # bash variable expansion ('$error_count' / '${error_count') の探索
-if bash_var_hits=$(grep -RIlE '\$\{?error_count\b' "$HOOKS_DIR" --include='*.sh' --exclude-dir='tests' 2>/dev/null); then
+[ -n "$_grep_err" ] && : > "$_grep_err"  # truncate before reuse
+set +e
+if [ -n "$_grep_err" ]; then
+  bash_var_hits=$(grep -RIlE '\$\{?error_count\b' "$HOOKS_DIR" --include='*.sh' --exclude-dir='tests' 2>"$_grep_err")
+else
+  bash_var_hits=$(grep -RIlE '\$\{?error_count\b' "$HOOKS_DIR" --include='*.sh' --exclude-dir='tests' 2>/dev/null)
+fi
+set -e
+if [ -n "$_grep_err" ] && [ -s "$_grep_err" ]; then
+  fail "TC-1: grep over $HOOKS_DIR emitted stderr (test cannot guarantee bash_var coverage — silent IO error)"
+  head -5 "$_grep_err" | sed 's/^/  /' >&2
+fi
+if [ -n "$bash_var_hits" ]; then
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     if printf '%s\n' "$f" | grep -qE "$ALLOWLIST_REGEX"; then
@@ -88,6 +121,7 @@ if bash_var_hits=$(grep -RIlE '\$\{?error_count\b' "$HOOKS_DIR" --include='*.sh'
     violations+="$f"$'\n'
   done <<< "$bash_var_hits"
 fi
+[ -n "$_grep_err" ] && rm -f "$_grep_err"
 
 # 重複除去
 violations=$(printf '%s' "$violations" | sort -u | sed '/^$/d')

@@ -190,8 +190,29 @@ if ! state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh); then
   state_root=""
 fi
 diag_log="${state_root:-/tmp}/.rite-flow-state-diag.log"
-mkdir -p "$(dirname "$diag_log")" 2>/dev/null || true
-state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>>"$diag_log") || state_file=""
+# H-2 対応 (PR #926 verified-review): create-interview.md L42 と完全対称化。
+# 旧 `mkdir -p ... 2>/dev/null || true` は silent fallback で `_resolve-flow-state-path.sh` の
+# redirect 失敗を握りつぶし cold-start branch に化ける経路を生む。WARNING を emit して可視化する。
+if ! mkdir -p "$(dirname "$diag_log")" 2>/dev/null; then
+  # L-2 対応 (PR #926 verified-review): create-interview.md と対称化。
+  # mkdir 失敗時に redirect 自体が失敗して helper が起動不能になる経路を防ぐため、
+  # diag_log を /dev/null に fallback して redirect が常に成立するようにする。
+  echo "WARNING: cannot create diag_log dir $(dirname "$diag_log") — diagnostic output redirected to /dev/null instead" >&2
+  diag_log="/dev/null"
+fi
+# H-3 対応 (PR #926 verified-review): create-interview.md L45-53 と完全対称化。
+# 旧 `... || state_file=""` は helper exit 非ゼロを silent 吸収し、create-interview.md 側で
+# halt 判定の根拠にしている FLOW_STATE_PATH_RESOLVE_FAILED retained flag が caller 側で立たない
+# 対称性破綻を生む。retained flag + workflow-incident-emit を加える。
+if ! state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>>"$diag_log"); then
+  echo "[CONTEXT] FLOW_STATE_PATH_RESOLVE_FAILED=1; reason=helper_exit_nonzero" >&2
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type "manual_fallback_adopted" \
+      --details "create.md:phase-1-pre-write _resolve-flow-state-path.sh exit non-zero" \
+      --pr-number 0 \
+      || echo "WARNING: workflow-incident-emit.sh failed — manual_fallback_adopted sentinel emit incomplete (phase-1-pre-write resolve fallback)" >&2
+  state_file=""
+fi
 if [ -n "$state_file" ] && [ -f "$state_file" ]; then
   # Preserve existing fields (issue_number, branch, etc.) from caller (e.g., start.md)
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
@@ -271,8 +292,24 @@ if ! state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh); then
   state_root=""
 fi
 diag_log="${state_root:-/tmp}/.rite-flow-state-diag.log"
-mkdir -p "$(dirname "$diag_log")" 2>/dev/null || true
-state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>>"$diag_log") || state_file=""
+# H-2 対応 (PR #926 verified-review): Phase 1 Pre-write と対称化。
+if ! mkdir -p "$(dirname "$diag_log")" 2>/dev/null; then
+  # L-2 対応 (PR #926 verified-review): create-interview.md と対称化。
+  # mkdir 失敗時に redirect 自体が失敗して helper が起動不能になる経路を防ぐため、
+  # diag_log を /dev/null に fallback して redirect が常に成立するようにする。
+  echo "WARNING: cannot create diag_log dir $(dirname "$diag_log") — diagnostic output redirected to /dev/null instead" >&2
+  diag_log="/dev/null"
+fi
+# H-3 対応 (PR #926 verified-review): Phase 1 Pre-write と対称化。
+if ! state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>>"$diag_log"); then
+  echo "[CONTEXT] FLOW_STATE_PATH_RESOLVE_FAILED=1; reason=helper_exit_nonzero" >&2
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type "manual_fallback_adopted" \
+      --details "create.md:phase-3-pre-write _resolve-flow-state-path.sh exit non-zero" \
+      --pr-number 0 \
+      || echo "WARNING: workflow-incident-emit.sh failed — manual_fallback_adopted sentinel emit incomplete (phase-3-pre-write resolve fallback)" >&2
+  state_file=""
+fi
 if [ -n "$state_file" ] && [ -f "$state_file" ]; then
   # Preserve existing fields (issue_number, branch, etc.) from caller
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \

@@ -235,6 +235,20 @@ PR-1 (本 ADR) → PR-8 の 8 PR で線形マージ。詳細は plan `~/.claude/
 
 PR-7 PR description / commit message にも本判断 ((a) を採用する場合は「責務分離 meta-invariant は parent-routing pattern 統一で自然消滅、再導入不要」と明記すること) を残す。
 
+**PR-7 task list 引き継ぎ** (PR #926 verified-review pr-test-analyzer IMP-1 対応 — Skip path 構造 pin):
+
+`parent-routing-pattern-interim.test.sh` TC-2f は現状 prose 文字列 (`skip path / standard path / limited path / full path のいずれも実行する`) の grep 1 件のみで Skip path 必須化を pin している。bash block (Return Output re-patch) が将来 `if [ "$scope" != "skip" ]; then ... fi` 等の conditional で gate された場合、prose は変更なく通過するため regression を catch できない。PR-7 で新設する `parent-routing-pattern-uniformity.test.sh` に以下を追加する:
+
+- Return Output re-patch bash block の **構造 pin** (awk-based、L324-345 領域を切り出して最も近い祖先 conditional が `if [ ! -f ... ]` 以外の case 文/scope 比較でないことを検証)
+- bash block 直前 H2 anchor (`## Defense-in-Depth: Flow State Update (Before Return)`) と bash block 間に許容されない conditional が挿入されていないこと
+
+加えて以下も PR-7 で対応する:
+- IMP-2: `parent-routing-pattern-interim.test.sh` TC-7a を `count >= 2` に強化し create.md L66 (Halt rule) + L230 (Phase 1 return branch) を独立 pin
+- IMP-3: TC-2 に `grep -cE '\-\-if-exists' "$INTERVIEW_MD" >= 3` を追加 (Pre-flight patch 2 + Return Output 1 の最低数)
+- IMP-4: `verify-terminal-output.sh` Check 3 の AC-3 OR 判定を 3 独立 grep に分割 (completed / skipped / error それぞれ必須化)
+- IMP-5: anti-pattern catalog を `references/parent-routing-anti-patterns.md` 等の SoT に集約
+- TQ-4: `and-logic-defense-chain.test.sh` Layer 7 撤去 (numbering gap 解消)
+
 ### 6.2 追加される layer
 
 | Layer | 追加対象 |

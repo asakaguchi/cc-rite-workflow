@@ -284,15 +284,46 @@ patch_active() {
   fi
 }
 
+# M-6 対応 (PR #926 verified-review): guard 自体の syntax error / set -u 違反等が silent skip
+# されないよう、stderr を tempfile に退避して exit code + stderr 空判定で異常終了を検知する。
+# 旧 `2>/dev/null` は guard が壊れて出力なしの場合と「正常 silent skip」を区別できなかった。
+_guard_stderr=$(mktemp /tmp/rite-and-logic-guard-err-XXXXXX) || _guard_stderr=""
+
 patch_active "$INV_F" false
 set +e
-out_false=$(echo "$HOOK_INPUT_BLOCKING" | (cd "$TD" && bash "$PRE_TOOL_GUARD" 2>/dev/null))
+if [ -n "$_guard_stderr" ]; then
+  out_false=$(echo "$HOOK_INPUT_BLOCKING" | (cd "$TD" && bash "$PRE_TOOL_GUARD" 2>"$_guard_stderr"))
+  guard_rc_false=$?
+else
+  out_false=$(echo "$HOOK_INPUT_BLOCKING" | (cd "$TD" && bash "$PRE_TOOL_GUARD" 2>/dev/null))
+  guard_rc_false=$?
+fi
 set -e
+if [ -n "$_guard_stderr" ] && [ -s "$_guard_stderr" ] && [ "$guard_rc_false" -ne 0 ] && [ -z "$out_false" ]; then
+  echo "ERROR: pre-tool-bash-guard.sh failed (rc=$guard_rc_false, active=false) — cannot evaluate AND-logic invariant" >&2
+  head -5 "$_guard_stderr" >&2
+  rm -f "$_guard_stderr"
+  exit 1
+fi
+[ -n "$_guard_stderr" ] && : > "$_guard_stderr"  # truncate for reuse
 
 patch_active "$INV_F" true
 set +e
-out_true=$(echo "$HOOK_INPUT_BLOCKING" | (cd "$TD" && bash "$PRE_TOOL_GUARD" 2>/dev/null))
+if [ -n "$_guard_stderr" ]; then
+  out_true=$(echo "$HOOK_INPUT_BLOCKING" | (cd "$TD" && bash "$PRE_TOOL_GUARD" 2>"$_guard_stderr"))
+  guard_rc_true=$?
+else
+  out_true=$(echo "$HOOK_INPUT_BLOCKING" | (cd "$TD" && bash "$PRE_TOOL_GUARD" 2>/dev/null))
+  guard_rc_true=$?
+fi
 set -e
+if [ -n "$_guard_stderr" ] && [ -s "$_guard_stderr" ] && [ "$guard_rc_true" -ne 0 ] && [ -z "$out_true" ]; then
+  echo "ERROR: pre-tool-bash-guard.sh failed (rc=$guard_rc_true, active=true) — cannot evaluate AND-logic invariant" >&2
+  head -5 "$_guard_stderr" >&2
+  rm -f "$_guard_stderr"
+  exit 1
+fi
+[ -n "$_guard_stderr" ] && rm -f "$_guard_stderr"
 
 # active=false: deny JSON が出力されない (silent skip = 防御層 no-op、Wiki #660 root cause 経路)
 if ! echo "$out_false" | grep -q '"permissionDecision":[[:space:]]*"deny"'; then

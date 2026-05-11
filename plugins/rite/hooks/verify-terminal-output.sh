@@ -201,10 +201,16 @@ else
   # HTML-comment 形式 (`<!-- [interview:*] -->`) の partial revert を検出する。
   # 本 check は uniformity test (`parent-routing-pattern-uniformity.test.sh`、PR-7 で
   # 導入予定) が利用可能になるまでの interim coverage。
-  if grep -qE '<!--[[:space:]]*\[interview:(completed|skipped)\]' "$CREATE_INTERVIEW"; then
-    fail "create-interview.md: HTML-commented [interview:*] sentinel detected — parent-routing pattern (bare bracket form) violation. PR-2 #920 / ADR docs/designs/parent-routing-unification.md に従い bare bracket form を維持してください"
+  #
+  # regex scope (F2 対応): bash fenced block 内 (`MUST NOT contain` 例示) と prose 内
+  # inline backtick literal (例: `<!-- [interview:*] -->` historical note) で誤発火する経路を遮断するため、
+  # 行頭 anchor + 行末 anchor で **独立行として現れる HTML-comment sentinel** のみを検出する。
+  # rationale prose / docstring / migration note 内で literal を quote する自然な編集パターンで
+  # false-positive 化することを避ける。
+  if grep -qE '^[[:space:]]*<!--[[:space:]]*\[interview:(completed|skipped)\][[:space:]]*-->[[:space:]]*$' "$CREATE_INTERVIEW"; then
+    fail "create-interview.md: HTML-commented [interview:*] sentinel detected as standalone line — parent-routing pattern (bare bracket form) violation. PR-2 #920 / ADR docs/designs/parent-routing-unification.md に従い bare bracket form を維持してください"
   else
-    pass "create-interview.md: no HTML-commented sentinel (parent-routing pattern compliant)"
+    pass "create-interview.md: no standalone HTML-commented sentinel line (parent-routing pattern compliant)"
   fi
 fi
 

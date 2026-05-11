@@ -30,7 +30,8 @@ fail() {
 #         {root}/skills/rite-workflow/references/workflow-identity.md
 setup_plugin_tree() {
   local repo_root="$1"
-  local html_comment="${2:-true}"  # when "false", use bare sentinel form (for regression test)
+  local html_comment="${2:-true}"  # when "false", use bare sentinel form for ALL files (Test 2 regression)
+  local interview_form="${3:-bare}"  # PR-2 #920 以降 create-interview は bare bracket form (parent-routing pattern)
   # When invoked with --repo-root, the script looks under {repo_root}/plugins/rite/
   local root="$repo_root/plugins/rite"
 
@@ -38,10 +39,21 @@ setup_plugin_tree() {
 
   if [ "$html_comment" = "true" ]; then
     local sentinel_create='<!-- [create:completed:{N}] -->'
-    local sentinel_interview='<!-- [interview:completed] --> / <!-- [interview:skipped] -->'
   else
     local sentinel_create='[create:completed:{N}]'
+  fi
+
+  # create-interview sentinel form は html_comment と独立。PR-2 #920 で bare bracket form に
+  # 移行済 (parent-routing pattern) のため、デフォルトは bare。"html" を渡せば旧形式 (Test 8
+  # negative assertion の positive case で利用)。
+  # verify-terminal-output.sh Check 3 の negative assertion は **独立行** の HTML-commented sentinel のみを
+  # 検出するため (F2 false-positive 防止)、Test 8 では fixture を独立行で書き込む。
+  if [ "$interview_form" = "html" ]; then
+    local sentinel_interview_html_block=$'<!-- [interview:completed] -->\n<!-- [interview:skipped] -->'
+    local sentinel_interview=""  # 旧形式は別途下で出力
+  else
     local sentinel_interview='[interview:completed] / [interview:skipped]'
+    local sentinel_interview_html_block=""
   fi
 
   cat > "$root/commands/issue/create-register.md" <<EOF
@@ -52,10 +64,19 @@ EOF
 # create-decompose
 Test fixture. Sentinel form: $sentinel_create
 EOF
-  cat > "$root/commands/issue/create-interview.md" <<EOF
+  if [ -n "$sentinel_interview_html_block" ]; then
+    # HTML-commented form を独立行として書き込む (Test 8 negative assertion 検証用)
+    cat > "$root/commands/issue/create-interview.md" <<EOF
+# create-interview
+Test fixture (HTML-commented form, intentional regression):
+$sentinel_interview_html_block
+EOF
+  else
+    cat > "$root/commands/issue/create-interview.md" <<EOF
 # create-interview
 Test fixture. Sentinel form: $sentinel_interview
 EOF
+  fi
   cat > "$root/skills/rite-workflow/SKILL.md" <<'EOF'
 # rite-workflow SKILL
 workflow は途中で止まらない
@@ -163,7 +184,7 @@ cat > "$TEST_DIR/test7/commands/issue/create-decompose.md" <<'EOF'
 EOF
 cat > "$TEST_DIR/test7/commands/issue/create-interview.md" <<'EOF'
 # interview
-<!-- [interview:completed] --> <!-- [interview:skipped] -->
+[interview:completed] [interview:skipped]
 EOF
 cat > "$TEST_DIR/test7/skills/rite-workflow/SKILL.md" <<'EOF'
 workflow は途中で止まらない
@@ -182,6 +203,22 @@ if (cd "$TEST_DIR/test7" && bash "$TEST_DIR/test7/hooks/verify-terminal-output.s
 else
   rc=$?
   fail "expected exit 0 on marketplace layout with valid fixtures, got $rc"
+fi
+
+# Test 8: regression — HTML-commented [interview:*] form (parent-routing pattern violation)
+# PR-2 #920 で create-interview は bare bracket form に移行済。HTML-commented form が混入したら
+# verify-terminal-output.sh Check 3 の negative assertion が exit 1 を返す必要がある。
+echo "Test 8: Regression — HTML-commented [interview:*] form should fail"
+setup_plugin_tree "$TEST_DIR/test8" "true" "html"
+if bash "$HOOK" --quiet --repo-root "$TEST_DIR/test8" >/dev/null 2>&1; then
+  fail "expected exit 1 when create-interview.md uses HTML-commented [interview:*] form, got exit 0"
+else
+  rc=$?
+  if [ "$rc" = "1" ]; then
+    pass "exit 1 on HTML-commented [interview:*] (parent-routing pattern violation detected)"
+  else
+    fail "expected exit 1, got $rc"
+  fi
 fi
 
 # Summary

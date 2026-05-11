@@ -24,9 +24,12 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 
 ```bash
 # state-path-resolve.sh + _resolve-flow-state-path.sh で per-session (schema_version=2)
-# / legacy 両形式に対応。state file 不在時は create branch (early-return path 保護)。
+# / legacy 両形式に対応。state file 不在時は二段書き込み (create→patch) で whitelist transition graph
+# (`create_interview → create_post_interview`) を維持する (early-return path 保護)。
+# helper の stderr は diag log にリダイレクトして silent failure を可視化する (F MEDIUM-2 対応):
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
-state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
+diag_log="${state_root:-/tmp}/.rite-flow-state-diag.log"
+state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>>"$diag_log") || state_file=""
 if [ -n "$state_file" ] && [ -f "$state_file" ]; then
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
       --phase "create_post_interview" \
@@ -35,17 +38,37 @@ if [ -n "$state_file" ] && [ -f "$state_file" ]; then
       --if-exists; then
     echo "[CONTEXT] PREFLIGHT_PATCH_FAILED=1" >&2
     # 非 blocking: pre-return re-patch + phase-transition-whitelist.sh の create_interview case arm が safety net。
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+        --type "manual_fallback_adopted" \
+        --details "create-interview.md:pre-flight patch failed; pre-return re-patch covers state" 2>/dev/null || true
   fi
 else
+  # 二段書き込み: cold start (previous_phase="") で create_interview を書いてから
+  # 合法 transition `create_interview → create_post_interview` で patch する。
+  # 直接 create_post_interview を書くと whitelist transition graph が defeat されるため避ける (F5 対応)。
   if ! bash {plugin_root}/hooks/flow-state-update.sh create \
-      --phase "create_post_interview" --issue 0 --branch "" --pr 0 \
-      --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 1/1.1 if applicable, then return to caller. Caller MUST proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."; then
+      --phase "create_interview" --issue 0 --branch "" --pr 0 \
+      --next "rite:issue:create-interview Pre-flight bootstrapping cold-start state; will transition to create_post_interview immediately."; then
     echo "[CONTEXT] PREFLIGHT_CREATE_FAILED=1" >&2
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+        --type "manual_fallback_adopted" \
+        --details "create-interview.md:pre-flight cold-start create failed; sub-skill cannot bootstrap state" 2>/dev/null || true
+  elif ! bash {plugin_root}/hooks/flow-state-update.sh patch \
+      --phase "create_post_interview" \
+      --active true \
+      --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 1/1.1 if applicable, then return to caller. Caller MUST proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
+      --if-exists; then
+    echo "[CONTEXT] PREFLIGHT_CREATE_THEN_PATCH_FAILED=1" >&2
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+        --type "manual_fallback_adopted" \
+        --details "create-interview.md:pre-flight create succeeded but follow-up patch failed; state stuck at create_interview" 2>/dev/null || true
   fi
 fi
 ```
 
 **Why `create_post_interview` (not `create_interview_running`)**: caller (`create.md` Phase 1 Delegation to Interview Pre-write) は既に `create_interview` を書込済 (delegation in flight signal)。本 Pre-flight が **interview 実行前** に `create_post_interview` へ進めることで、normal completion / Bug Fix preset early exit / unexpected stop のいずれの exit point でも orchestrator が flow state の `.phase = create_post_interview` を読んで Phase 2 へ進む経路に切り替わる。`phase-transition-whitelist.sh` が `create_post_interview → create_delegation` を唯一の whitelisted forward transition として graph 定義するため、orchestrator は Phase 3 Delegation Routing を必ず実行する必要がある。
+
+**Why cold-start (state file 不在) 経路で create→patch 二段書き込み**: 直接 `create --phase create_post_interview` を書くと `previous_phase=""` (cold start) のまま `.phase = create_post_interview` が記録され、whitelist transition graph (`create_interview → create_post_interview`) が **defeat** される (`phase-transition-whitelist.sh` の `[ -z "$prev" ] && return 0` で cold-start は accept されるが、後続 `create_post_interview → create_delegation` 等の transition check で `previous_phase` を `create_interview` として保持できない)。caller 側 Pre-write 失敗時や手動 sub-skill invocation 時にこの cold-start 経路が踏まれるため、create で `create_interview` を bootstrap してから patch で合法 transition を踏む二段書き込みが必要 (F5 対応、PR #926 verified-review)。
 
 **Idempotence**: 単一 sub-skill invocation 内で複数回実行されても safe — patch mode は pre-update `.phase` から `previous_phase` を設定し、re-entry で `create_post_interview` のまま phase regression しない。
 
@@ -237,6 +260,8 @@ Interview Perspective → Target Sections の正規 mapping table は [`referenc
 ## Defense-in-Depth: Flow State Update (Before Return)
 
 > **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `parent-routing.md`, `branch-setup.md`, `lint.md` Phase 4.0). Flow-state write は 🚨 MANDATORY Pre-flight (本ファイル冒頭) で interview scope に関係なく post-interview phase を記録済み。本セクションは pre-return idempotent re-patch として timestamp / `next_action` を refresh する。
+>
+> **`--preserve-error-count` 撤去の rationale (PR-2 #926 / ADR §3.1)**: parent-routing pattern では caller-side Mandatory After Interview Step 0/1 が廃止され、error_count escalation の RE-ENTRY DETECTED + THRESHOLD bail-out path も同時撤去される。本 sub-skill 単独で `create_post_interview` を完結させる設計のため、同一 phase self-patch (Pre-flight + Return Output) で error_count が 0 にリセットされても問題ない (旧 4-site symmetry test 撤去と整合)。`wiki/ingest.md` / `cleanup.md` は依然 `--preserve-error-count` を維持しているが、これは旧 caller-side step 0/1 paradigm の名残で、PR-3 / PR-4 の parent-routing 移行で同様に撤去予定。
 
 Idempotent re-patch (the 🚨 MANDATORY Pre-flight at the head of this file already wrote `create_post_interview`; this re-patch refreshes timestamp / `next_action`):
 
@@ -248,7 +273,11 @@ if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --if-exists; then
   echo "[CONTEXT] INTERVIEW_RETURN_PATCH_FAILED=1" >&2
   # 非 blocking: Pre-flight (head) で同 phase 書込済のため caller は正常動作可能。
-  # site 対称性のため Pre-flight と同じ wrap pattern を維持 (silent-failure-hunter 指摘対応)。
+  # 同 phase 自己 patch であり idempotent。`--if-exists` は file 不在を Pre-flight に委譲する safety net。
+  # retained flag だけでは post-hoc 検出経路がないため workflow_incident sentinel を併発させる (F6 対応):
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type "manual_fallback_adopted" \
+      --details "create-interview.md:return-output flow-state patch failed; Pre-flight write covers caller-side state" 2>/dev/null || true
 fi
 ```
 

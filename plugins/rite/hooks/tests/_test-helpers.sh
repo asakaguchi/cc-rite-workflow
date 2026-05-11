@@ -14,8 +14,8 @@
 #   `run-tests.sh` globs `*.test.sh`. A `_test-helpers.sh` filename is
 #   intentionally excluded so this helper is sourced only when callers
 #   `source` it explicitly. Each caller test still runs standalone
-#   (`bash caller-html-literal-symmetry-decompose-register.test.sh`)
-#   because it defines its own SCRIPT_DIR before sourcing this file.
+#   (`bash and-logic-defense-chain.test.sh`) because it defines its own
+#   SCRIPT_DIR before sourcing this file.
 #
 # Output convention (Issue #853):
 #   Scope: applies to tests that `source` this helper. Enumerate the current

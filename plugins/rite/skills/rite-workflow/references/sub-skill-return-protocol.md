@@ -74,7 +74,7 @@ The contract is enforced across two active layers (Layer 2 was retired in #675).
 
 | Layer | Mechanism | File | Status |
 |-------|-----------|------|--------|
-| 1. Prompt contract | Anti-pattern / correct-pattern + "same response turn" warnings + Mandatory After orchestrator prose | `commands/issue/start.md` (Sub-skill Return Protocol Global), `commands/issue/create.md` (Sub-skill Return Protocol + Mandatory After Interview/Delegation), `commands/pr/cleanup.md` (Mandatory After Wiki Ingest), `commands/wiki/ingest.md` (Mandatory After Auto-Lint), this reference | active |
+| 1. Prompt contract | Anti-pattern / correct-pattern + "same response turn" warnings + Mandatory After orchestrator prose | `commands/issue/start.md` (Sub-skill Return Protocol Global), `commands/issue/create.md` (Sub-skill Return Protocol + Mandatory After Delegation — Mandatory After Interview は PR-2 #926 で廃止), `commands/pr/cleanup.md` (Mandatory After Wiki Ingest), `commands/wiki/ingest.md` (Mandatory After Auto-Lint), this reference | active |
 | 3. Caller-continuation hints (decomposed into 3 sub-layers 3a/3b/3c — see "3 layer canonical signaling pattern" blockquote below) | (3a) caller HTML hint with `<!-- caller: ... -->` prefix (issue creation paths only) immediately before the sub-skill's result pattern + (3b) plain-text Markdown blockquote reminder (`> ⏭ MUST continue (turn を閉じない): ...` 等の命令形) emitted by the sub-skill alongside the HTML hint + (3c) sub-skill HTML continuation comment with `<!-- continuation: ... -->` prefix (wiki ingest path only) that the caller greps | Defense-in-Depth sections in `commands/issue/create-interview.md`, `commands/issue/create-register.md`, `commands/issue/create-decompose.md`, `commands/wiki/ingest.md`; Phase 9.2 三点セット blockquote (Layer 3b imperative) in `commands/wiki/lint.md` | active |
 
 > **Layer numbering note**: Layer 2 (the former runtime hard gate via `hooks/stop-guard.sh`) was retired in #675. The numbering gap is intentional — `commands/wiki/ingest.md` and other documents that still use `Layer 2` as a grep-able marker do so to keep historical cross-references resolvable in-repo. See commit `e2dfae0` (or `git log -- plugins/rite/hooks/stop-guard.sh`) for the historical Layer 2 mechanism.
@@ -83,7 +83,19 @@ The LLM receives the continuation signal from two independent sources: the promp
 
 > **⚠️ DEPRECATED — PR-2 #926 (ADR docs/designs/parent-routing-unification.md) で `create.md` Mandatory After Interview / `create-interview.md` Layer 3a/3b site は廃止済。本セクションは historical reference として残存。canonical な記述は L100 の Historical note を参照。PR-8 で全面 rewrite 予定**。
 >
-> **Scope note — Issue #910 / #917 imperative strengthening coverage (Layer 1 + Layer 3, 5 site canonical) — 本記述は PR-2 #926 マージ時点で部分的 stale**: The canonical imperative phrasing (`MUST execute as VERY FIRST tool call BEFORE any text output`, `DO NOT end the turn`, `DO NOT output any narrative text before this bash call`) is applied across two layers — **Layer 1 sites** (orchestrator prompt contract、~~`create.md` Mandatory After Interview Step 0 prose~~ ← PR-2 で廃止: ); `create.md` Mandatory After Delegation pre-section prose (`VERY FIRST cognitive action` variant), `pr/cleanup.md` Mandatory After Wiki Ingest Step 0 prose, `wiki/ingest.md` Mandatory After Auto-Lint Step 0 prose; **Layer 3 sites** (caller HTML hint + sub-skill continuation comment): ~~`create-interview.md` caller HTML literal + plain-text reminder~~ ← PR-2 で廃止: , `wiki/ingest.md` continuation HTML comment. Layer 3b plain-text reminder (`> ⏭ MUST continue (turn を閉じない): ...`) は `wiki/lint.md` Phase 9.2 三点セット blockquote にも適用 (旧 `> ⏭ 継続中: ...` 現状報告 → 命令形)。 The terminal sub-skills `create-register.md` and `create-decompose.md` retain older phrasing — PR-5 で parent-routing pattern に移行予定。 (Prose mentions of `stop-guard.sh` in `commands/pr/cleanup.md` and `commands/wiki/ingest.md` are stale post-#675; PR-3 / PR-4 で migration 時に整理予定。)
+> **Scope note — Issue #910 / #917 imperative strengthening coverage (Layer 1 + Layer 3, 5 site canonical) — 本記述は PR-2 #926 マージ時点で部分的 stale**: The canonical imperative phrasing (`MUST execute as VERY FIRST tool call BEFORE any text output`, `DO NOT end the turn`, `DO NOT output any narrative text before this bash call`) is applied across two layers:
+>
+> - **Layer 1 sites** (orchestrator prompt contract):
+>   - `create.md` Mandatory After Interview Step 0 prose — **PR-2 #926 で廃止** (parent-routing pattern 移行に伴い sub-skill 内製化)
+>   - `create.md` Mandatory After Delegation pre-section prose (`VERY FIRST cognitive action` variant)
+>   - `pr/cleanup.md` Mandatory After Wiki Ingest Step 0 prose
+>   - `wiki/ingest.md` Mandatory After Auto-Lint Step 0 prose
+> - **Layer 3 sites** (caller HTML hint + sub-skill continuation comment):
+>   - `create-interview.md` caller HTML literal + plain-text reminder — **PR-2 #926 で廃止** (caller-side hint 不要)
+>   - `wiki/ingest.md` continuation HTML comment
+> - Layer 3b plain-text reminder (`> ⏭ MUST continue (turn を閉じない): ...`) は `wiki/lint.md` Phase 9.2 三点セット blockquote にも適用 (旧 `> ⏭ 継続中: ...` 現状報告 → 命令形)。
+> - The terminal sub-skills `create-register.md` and `create-decompose.md` retain older phrasing — PR-5 で parent-routing pattern に移行予定。
+> - (Prose mentions of `stop-guard.sh` in `commands/pr/cleanup.md` and `commands/wiki/ingest.md` are stale post-#675; PR-3 / PR-4 で migration 時に整理予定。)
 
 > **Issue #917 historical context — 5th canonical site addition**: Pre-#917 baseline で `wiki/ingest.md` の Mandatory After Auto-Lint Layer 1 prose は意図的に canonical phrasing 適用対象外 (older `MUST execute in the SAME response turn` phrasing) のまま残置されていた (理由: `[lint:completed:auto]` return path の orchestrator 役割で簡素な return contract で十分という設計判断)。しかし PR #916 マージ直後の `/rite:pr:cleanup` 実機実行で、`rite:wiki:ingest` (caller) が `rite:wiki:lint --auto` return 後に Mandatory After Auto-Lint Step 0 を発火させず implicit stop する事象 (累積 27 回目) を直接観測。Issue #917 D-01 で「pre-#917 phrasing は不十分、5 site canonical 対称化が必要」と判定し、本 site を canonical に格上げ。これにより 4 site (`create.md` ×2 / `cleanup.md` / `ingest.md` continuation HTML comment) → 5 site (前 4 site + `ingest.md` Mandatory After Auto-Lint Step 0) に拡張。
 
@@ -103,8 +115,9 @@ The LLM receives the continuation signal from two independent sources: the promp
 >
 > - **撤去済 invariant test (PR-2 で削除)**: `4-site-symmetry.test.sh` / `caller-html-literal-symmetry.test.sh` / `step0-immediate-bash-presence.test.sh` / `create-interview-responsibility-separation.test.sh`
 > - **廃止済 sub-skill 内 site (PR-2 で削除)**: `create-interview.md` の caller HTML literal / Layer 3a / step0 site (parent-routing pattern では caller-side Step 0 不要)
-> - **残存対象 (後続 PR で移行予定)**:
->   - `wiki/ingest.md` continuation HTML comment / Mandatory After Auto-Lint Step 0 → PR-3 / PR-4
+> - **残存対象 (後続 PR で移行予定、ADR §6.1 参照)**:
+>   - `wiki/ingest.md` Mandatory After Auto-Lint Step 0 → PR-3
+>   - `wiki/ingest.md` Phase 9.1 continuation HTML comment → PR-4
 >   - `cleanup.md` Mandatory After Wiki Ingest Step 0 → PR-4
 >   - `create-register.md` / `create-decompose.md` Layer 3 sites → PR-5
 > - **代替 test**: `parent-routing-pattern-uniformity.test.sh` を PR-7 で導入予定

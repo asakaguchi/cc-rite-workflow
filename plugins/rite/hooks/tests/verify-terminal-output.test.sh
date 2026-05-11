@@ -47,7 +47,7 @@ setup_plugin_tree() {
   # 移行済 (parent-routing pattern) のため、デフォルトは bare。"html" を渡せば旧形式 (Test 8
   # negative assertion の positive case で利用)。
   # verify-terminal-output.sh Check 3 の negative assertion は **独立行** の HTML-commented sentinel のみを
-  # 検出するため (F2 false-positive 防止)、Test 8 では fixture を独立行で書き込む。
+  # 検出するため (false-positive 防止)、Test 8 では fixture を独立行で書き込む。
   if [ "$interview_form" = "html" ]; then
     local sentinel_interview_html_block=$'<!-- [interview:completed] -->\n<!-- [interview:skipped] -->'
     local sentinel_interview=""  # 旧形式は別途下で出力
@@ -221,10 +221,10 @@ else
   fi
 fi
 
-# Test 8b: F2 false-positive prevention — inline HTML-comment in prose should NOT trigger (CG-3 対応)
+# Test 8b: false-positive prevention — inline HTML-comment in prose should NOT trigger
 # rationale prose 内に inline HTML-comment 形式の sentinel literal が含まれていても、
 # verify-terminal-output.sh Check 3 の line-anchored regex (^...$) は match してはならない。
-echo "Test 8b: F2 false-positive prevention — inline HTML-comment in rationale prose"
+echo "Test 8b: false-positive prevention — inline HTML-comment in rationale prose"
 setup_plugin_tree "$TEST_DIR/test8b" "true" "bare"
 # bare bracket form で正常 setup された create-interview.md に inline HTML-comment を含む rationale 行を追加
 # 行頭/行末 anchor を持つ regex は inline 出現に match しないため、本 fixture では exit 0 を期待する
@@ -236,11 +236,11 @@ else
   fail "expected exit 0 on inline HTML-comment in prose, got $rc (line-anchored regex broke)"
 fi
 
-# Test 8c: F2 false-positive prevention — backtick-wrapped literal in rationale should NOT trigger (CG-3 対応)
-echo "Test 8c: F2 false-positive prevention — backtick-wrapped literal in migration note"
+# Test 8c: false-positive prevention — backtick-wrapped literal in rationale should NOT trigger
+echo "Test 8c: false-positive prevention — backtick-wrapped literal in migration note"
 setup_plugin_tree "$TEST_DIR/test8c" "true" "bare"
 # Migration note 等で sentinel を backtick で quote するのは自然な編集 pattern。
-# 行頭が backtick または space + backtick で始まるため、line-anchored regex は match しない。
+# 行頭が "Migration note:" 等の prose で始まるため、line-anchored regex (^[[:space:]]*<!--) は match しない。
 echo 'Migration note: `<!-- [interview:completed] -->` was the old form.' >> "$TEST_DIR/test8c/plugins/rite/commands/issue/create-interview.md"
 if bash "$HOOK" --quiet --repo-root "$TEST_DIR/test8c" >/dev/null 2>&1; then
   pass "exit 0 on backtick-wrapped HTML-comment literal in rationale prose"
@@ -249,10 +249,10 @@ else
   fail "expected exit 0 on backtick-wrapped literal, got $rc (line-anchored regex broke)"
 fi
 
-# Test 8d: skipped form alternation coverage — HTML-commented [interview:skipped] alone should also fail (TQ-1 対応)
+# Test 8d: skipped form alternation coverage — HTML-commented [interview:skipped] alone should also fail
 # Test 8 fixture では completed/skipped が連続行で書かれるため regex の (skipped) alternation 削除を catch できない。
 # skipped のみ独立行で配置することで alternation 健全性を pin する。
-echo "Test 8d: TQ-1 — HTML-commented [interview:skipped] alone should fail (alternation coverage)"
+echo "Test 8d: HTML-commented [interview:skipped] alone should fail (alternation coverage)"
 setup_plugin_tree "$TEST_DIR/test8d" "true" "bare"
 # bare form で setup した create-interview.md を skipped のみ HTML-comment 化に上書き
 cat > "$TEST_DIR/test8d/plugins/rite/commands/issue/create-interview.md" <<'EOF'
@@ -267,6 +267,28 @@ else
   rc=$?
   if [ "$rc" = "1" ]; then
     pass "exit 1 on standalone HTML-commented [interview:skipped] (alternation healthy)"
+  else
+    fail "expected exit 1, got $rc"
+  fi
+fi
+
+# Test 8e: completed form alternation coverage — HTML-commented [interview:completed] alone should also fail
+# Test 8d と対称。Test 8d (skipped alone) では regex の (completed) branch が削除されても通過してしまうため、
+# completed のみ独立行で HTML-comment 化した fixture を配置し、(completed) alternation の健全性を pin する。
+echo "Test 8e: HTML-commented [interview:completed] alone should fail (alternation symmetry with Test 8d)"
+setup_plugin_tree "$TEST_DIR/test8e" "true" "bare"
+cat > "$TEST_DIR/test8e/plugins/rite/commands/issue/create-interview.md" <<'EOF'
+# create-interview
+Test fixture (completed only HTML-commented):
+<!-- [interview:completed] -->
+[interview:skipped]
+EOF
+if bash "$HOOK" --quiet --repo-root "$TEST_DIR/test8e" >/dev/null 2>&1; then
+  fail "expected exit 1 when [interview:completed] alone is HTML-commented, got exit 0 (alternation regression)"
+else
+  rc=$?
+  if [ "$rc" = "1" ]; then
+    pass "exit 1 on standalone HTML-commented [interview:completed] (alternation symmetry healthy)"
   else
     fail "expected exit 1, got $rc"
   fi

@@ -23,15 +23,15 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 **MUST run before any interview logic** (Phase 1 scope evaluation / Phase 1.1 deep-dive / return-output emission)。**not optional**、**interview scope に conditional でない** — Bug Fix / Chore preset (scope = "skip") でも実行:
 
 ```bash
-# state-path-resolve.sh + _resolve-flow-state-path.sh で per-session (schema_version=2)
-# / legacy 両形式に対応。state file 不在時は二段書き込み (create→patch) で audit-trail fidelity を
-# 維持する (`previous_phase=create_interview` を残すことで、将来 stricter gating を有効化した際にも
-# 正規 path として認識される)。`phase-transition-whitelist.sh` line 376 の cold-start guard
-# (`[ -z "$prev" ] && return 0`) は単段 create でも runtime accept されるが、二段書き込みは
-# audit-trail の semantic clarity を保つために必要 (early-return path 保護)。
-# helper の stderr は diag log にリダイレクトして silent failure を可視化する:
+# state-path-resolve.sh + _resolve-flow-state-path.sh で per-session (schema_version=2) / legacy 両形式に対応。
+# state file 不在時は二段書き込み (create→patch) を採用 — rationale は本セクション末尾の
+# "Why cold-start ... 二段書き込み" blockquote を canonical SoT として参照 (重複記述回避)。
+# helper の stderr は diag log にリダイレクトして silent failure を可視化する。
+# parent dir が不在 (state_root 未作成 / state-path-resolve 失敗時に /tmp fallback) でも redirect が
+# 成立するよう mkdir -p で確保し、redirect 自体が失敗しても stderr は失わない設計。
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
 diag_log="${state_root:-/tmp}/.rite-flow-state-diag.log"
+mkdir -p "$(dirname "$diag_log")" 2>/dev/null || true
 state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>>"$diag_log") || state_file=""
 if [ -n "$state_file" ] && [ -f "$state_file" ]; then
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
@@ -41,8 +41,10 @@ if [ -n "$state_file" ] && [ -f "$state_file" ]; then
       --if-exists; then
     echo "[CONTEXT] PREFLIGHT_PATCH_FAILED=1" >&2
     # 非 blocking: pre-return re-patch + phase-transition-whitelist.sh の create_interview case arm が safety net。
-    # workflow-incident-emit.sh の stderr は terminal に残して silent failure を回避する。
-    # helper 失敗時は `|| { echo WARNING; }` で fallback (cleanup.md canonical pattern への完全移行は
+    # workflow-incident-emit.sh は **stdout** に `[CONTEXT] WORKFLOW_INCIDENT=1` を emit する
+    # (Phase 5.4.4.1 の post-hoc 検出は stdout grep)。helper 失敗時の `|| { echo WARNING; }` fallback は
+    # stderr に書かれるが、Claude Code の Bash tool は stdout/stderr 両方を context に取り込むため
+    # observability log としては成立する (cleanup.md canonical pattern への完全移行は
     # PR-3/4 で wiki/ingest.md / cleanup.md と同時実施予定)。
     bash {plugin_root}/hooks/workflow-incident-emit.sh \
         --type "manual_fallback_adopted" \
@@ -51,10 +53,8 @@ if [ -n "$state_file" ] && [ -f "$state_file" ]; then
         || echo "WARNING: workflow-incident-emit.sh failed — manual_fallback_adopted sentinel emit incomplete (pre-flight patch path)" >&2
   fi
 else
-  # 二段書き込み: cold start (previous_phase="") で create_interview を書いてから
-  # 合法 transition `create_interview → create_post_interview` で patch する。
-  # 直接 create_post_interview を書くと `previous_phase=""` のまま記録され audit-trail fidelity が失われる
-  # (将来 stricter gating を有効化した際に正規 path として認識されない)。
+  # 二段書き込み (cold start): create で create_interview を bootstrap → patch で create_post_interview。
+  # rationale 詳細は本セクション末尾の "Why cold-start ... 二段書き込み" blockquote (canonical SoT) 参照。
   if ! bash {plugin_root}/hooks/flow-state-update.sh create \
       --phase "create_interview" --issue 0 --branch "" --pr 0 \
       --next "rite:issue:create-interview Pre-flight bootstrapping cold-start state; will transition to create_post_interview immediately."; then
@@ -84,7 +84,13 @@ fi
 
 **Why `create_post_interview` (not `create_interview_running`)**: caller (`create.md` Phase 1 Delegation to Interview Pre-write) は既に `create_interview` を書込済 (delegation in flight signal)。本 Pre-flight が **interview 実行前** に `create_post_interview` へ進めることで、normal completion / Bug Fix preset early exit / unexpected stop のいずれの exit point でも orchestrator が flow state の `.phase = create_post_interview` を読んで Phase 2 へ進む経路に切り替わる。`phase-transition-whitelist.sh` が `create_post_interview → create_delegation` を唯一の whitelisted forward transition として graph 定義するため、orchestrator は Phase 3 Delegation Routing を必ず実行する必要がある。
 
-**Why cold-start (state file 不在) 経路で create→patch 二段書き込み**: 直接 `create --phase create_post_interview` を書くと `previous_phase=""` (cold start) のまま `.phase = create_post_interview` が記録される。`phase-transition-whitelist.sh` line 376 の cold-start guard (`[ -z "$prev" ] && return 0`) は単段 create でも runtime accept するため、機能的な runtime defeat は発生しない。ただし audit-trail fidelity (= 「conceptually `create_interview` を経由してから `create_post_interview` に進んだ」という履歴の semantic clarity) が失われ、将来 stricter gating (cold-start guard を厳格化、または conversation-context observer が `previous_phase` を読む下流処理) を有効化した際に正規 path として認識されない。caller 側 Pre-write 失敗時や手動 sub-skill invocation 時にこの cold-start 経路が踏まれるため、create で `create_interview` を bootstrap してから patch で `previous_phase=create_interview` を残す二段書き込みを採用する。
+**Why cold-start (state file 不在) 経路で create→patch 二段書き込み**: 直接 `create --phase create_post_interview` を書くと `previous_phase=""` (cold start) のまま `.phase = create_post_interview` が記録される。`phase-transition-whitelist.sh` の cold-start guard (`[ -z "$prev" ] && return 0` predicate) は単段 create でも runtime accept するため、機能的な runtime defeat は発生しない。ただし audit-trail fidelity (= 「conceptually `create_interview` を経由してから `create_post_interview` に進んだ」という履歴の semantic clarity) が失われ、将来 stricter gating (cold-start guard を厳格化、または conversation-context observer が `previous_phase` を読む下流処理) を有効化した際に正規 path として認識されない。caller 側 Pre-write 失敗時や手動 sub-skill invocation 時にこの cold-start 経路が踏まれるため、create で `create_interview` を bootstrap してから patch で `previous_phase=create_interview` を残す二段書き込みを採用する。
+
+> **Note — `phase-transition-whitelist.sh` の現状 runtime semantics**: `rite_phase_transition_allowed` は本リポ内で **runtime caller 0 件** (stop-guard.sh 撤去 #675 以降)。現在 graph (`_RITE_PHASE_TRANSITIONS`) は documentation + phase-name registry として機能し、transition の機械的 reject は行われない。本二段書き込み rationale (audit-trail fidelity) は「現状 advisory な graph が将来 reactivate された場合のための future-proofing」であり、現在の runtime 影響は副次的 (caller-side / 手動 invocation 時の `previous_phase` log 整合性のみ)。
+
+**Catastrophic dual-failure decision rule**: cold-start 経路で `create` 成功 + 後続 `patch` 失敗 (`[CONTEXT] PREFLIGHT_CREATE_THEN_PATCH_FAILED=1` emit) が発生し、かつ Return Output re-patch (本ファイル末尾) も `[CONTEXT] INTERVIEW_RETURN_PATCH_FAILED=1` を emit した場合、state は `create_interview` で停滞する (audit-trail 破損)。Bug Fix / Chore preset の skip path で Phase 1.1 をバイパスする最悪ケースで実際に発生しうる。両 retained flag が**同一 turn 内**で観測された場合、Claude は通常の `[interview:completed]` / `[interview:skipped]` ではなく `[interview:error]` を emit し、caller (`create.md`) に manual intervention を要求して halt すること (Phase 2 への進入禁止)。両 flag 同時発火は transient FS pressure かつ skip path の合致条件で稀な経路だが、silent corrupt audit-trail よりも明示 error を優先する。
+
+> **Known design debt — `workflow-incident-emit.sh --type` 粒度**: 本ファイル内の 4 つ + `create.md` 内の 4 つ、合計 8 emit sites がすべて `--type manual_fallback_adopted` に collapse する。失敗モードの分類は `--details` 自由テキストに退避され、downstream auto-register / triage が困難になる。中期的には `--type parent_routing_pre_flight_failed` / `--type parent_routing_return_patch_failed` 等の dedicated enum 値追加、または `--subtype` opaque arg 導入を検討 (要 `hooks/workflow-incident-emit.sh` の `--type` enum 拡張 + 全 emit site の coupled 更新)。本 PR では design debt として明示するのみ。
 
 **Idempotence**: 単一 sub-skill invocation 内で複数回実行されても safe — patch mode は pre-update `.phase` から `previous_phase` を設定し、re-entry で `create_post_interview` のまま phase regression しない。
 
@@ -306,6 +312,7 @@ After the flow-state update above, output the result pattern:
 
 - **Interview completed**: `[interview:completed]`
 - **Interview skipped** (XS / Bug Fix / Chore): `[interview:skipped]`
+- **Catastrophic dual-failure** (Pre-flight cold-start `create→patch` 両失敗 + Return Output re-patch も失敗): `[interview:error]` — caller は manual intervention を要求して halt する (詳細は前述 Pre-flight セクション末尾の "Catastrophic dual-failure decision rule" blockquote 参照)
 
 This pattern is consumed by the orchestrator (`create.md`) to determine the next action.
 

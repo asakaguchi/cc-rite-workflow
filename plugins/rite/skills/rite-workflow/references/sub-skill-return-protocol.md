@@ -80,47 +80,18 @@ The contract is enforced across two active layers (Layer 2 was retired in #675).
 
 The LLM receives the continuation signal from two independent sources: the prompt itself (Layer 1) and the **inline HTML comment + plain-text reminder + sub-skill HTML continuation comment** in the sub-skill output (Layer 3 = 3a + 3b + 3c の internal decomposition、下記 blockquote 参照)。The imperative strength of those two surfaces (Layer 1 と Layer 3 全体) is therefore load-bearing — see the blockquote below.
 
-> **⚠️ DEPRECATED — ADR `docs/designs/parent-routing-unification.md` で `create.md` Mandatory After Interview / `create-interview.md` Layer 3a/3b site は廃止済。本セクションは historical reference として残存。canonical な記述は本セクション末尾の "Historical note (parent-routing pattern migration)" blockquote を参照。PR-8 で全面 rewrite 予定**。
+> **Canonical imperative strengthening coverage (parent-routing pattern 移行中)**: load-bearing な phrasing (`MUST execute as VERY FIRST tool call BEFORE any text output`, `DO NOT end the turn`, `DO NOT output any narrative text before this bash call`) は以下の現役 site に適用される。stop-guard.sh (Layer 2) 撤去 (#675) 以降は Layer 1 (prompt contract) と Layer 3 (caller HTML hint / sub-skill continuation comment) のみが残り、LLM の turn-boundary heuristic 起因 implicit stop を完全には防げないため、**imperative 強度** が defense 強度を決定する (命令形 + 否定形重ねがけが natural stopping point を消去する経験的観測):
 >
-> **Scope note — Issue #910 / #917 imperative strengthening coverage (Layer 1 + Layer 3, 5 site canonical) — 本記述は PR-2 #926 マージ時点で部分的 stale**: The canonical imperative phrasing (`MUST execute as VERY FIRST tool call BEFORE any text output`, `DO NOT end the turn`, `DO NOT output any narrative text before this bash call`) is applied across two layers:
->
-> - **Layer 1 sites** (orchestrator prompt contract):
->   - `create.md` Mandatory After Interview Step 0 prose — **PR-2 #926 で廃止** (parent-routing pattern 移行に伴い sub-skill 内製化)
+> - **Layer 1 (orchestrator prompt contract)**:
 >   - `create.md` Mandatory After Delegation pre-section prose (`VERY FIRST cognitive action` variant)
->   - `pr/cleanup.md` Mandatory After Wiki Ingest Step 0 prose
->   - `wiki/ingest.md` Mandatory After Auto-Lint Step 0 prose
-> - **Layer 3 sites** (caller HTML hint + sub-skill continuation comment):
->   - `create-interview.md` caller HTML literal + plain-text reminder — **PR-2 #926 で廃止** (caller-side hint 不要)
->   - `wiki/ingest.md` continuation HTML comment
-> - Layer 3b plain-text reminder (`> ⏭ MUST continue (turn を閉じない): ...`) は `wiki/lint.md` Phase 9.2 三点セット blockquote にも適用 (旧 `> ⏭ 継続中: ...` 現状報告 → 命令形)。
-> - The terminal sub-skills `create-register.md` and `create-decompose.md` retain older phrasing — PR-5 で parent-routing pattern に移行予定。
-> - (Prose mentions of `stop-guard.sh` in `commands/pr/cleanup.md` and `commands/wiki/ingest.md` are stale post-#675; PR-3 / PR-4 で migration 時に整理予定。)
-
-> **Issue #917 historical context — 5th canonical site addition**: Pre-#917 baseline で `wiki/ingest.md` の Mandatory After Auto-Lint Layer 1 prose は意図的に canonical phrasing 適用対象外 (older `MUST execute in the SAME response turn` phrasing) のまま残置されていた (理由: `[lint:completed:auto]` return path の orchestrator 役割で簡素な return contract で十分という設計判断)。しかし PR #916 マージ直後の `/rite:pr:cleanup` 実機実行で、`rite:wiki:ingest` (caller) が `rite:wiki:lint --auto` return 後に Mandatory After Auto-Lint Step 0 を発火させず implicit stop する事象 (累積 27 回目) を直接観測。Issue #917 D-01 で「pre-#917 phrasing は不十分、5 site canonical 対称化が必要」と判定し、本 site を canonical に格上げ。これにより 4 site (`create.md` ×2 / `cleanup.md` / `ingest.md` continuation HTML comment) → 5 site (前 4 site + `ingest.md` Mandatory After Auto-Lint Step 0) に拡張。
-
-> **⚠️ Important — prompt-side defense alone is insufficient**: Issue #910 で実証された通り、Layer 2 (`stop-guard.sh`) の撤去 (#674/#675) 以降は hard gate が存在せず、Layer 1 (prompt contract) と Layer 3 (caller HTML hint = 3a + plain-text reminder = 3b + sub-skill HTML continuation = 3c の 3 sub-layer) のみが残った状態では LLM の turn-boundary heuristic 起因の implicit stop を完全には防げない。`/rite:pr:cleanup` 実行中の `rite:wiki:ingest` (内部で `rite:wiki:lint --auto` 呼出) lint return 後 / `/rite:issue:create` 実行中の `rite:issue:create-interview` `[interview:skipped]` return 後の双方で `Sautéed for 7m 40s` 等の implicit stop が観測されている。**Mitigation**: Layer 3 全体 (3a/3b/3c の 3 sub-layer 共通) の **imperative 強度** が defense 強度を決定する。`IMMEDIATELY` 単独ではなく `MUST execute as VERY FIRST tool call BEFORE any text output, narrative, or response generation` のような命令形 + 否定形重ねがけが implicit stop の確率を下げる経験的観測 (Issue #910 D-01)。`継続中` のような現状報告ではなく `MUST continue (turn を閉じない)` のような命令形が natural stopping point を消去する。
-
-> **3 layer canonical signaling pattern** (Issue #910 適用): caller HTML hint (Layer 3a) / sub-skill plain-text reminder (Layer 3b) / sub-skill HTML continuation comment (Layer 3c) の 3 sub-layer で **共通 intent** (命令形 / natural stopping point の消去) を反復することで、LLM が任意の path で return block を read しても turn-boundary heuristic が発火しない構造にする。Layer 3a/3b/3c は Layer 3 の **3 sub-layer** であり、上記 Defense-in-depth table の `Layer 3` の機構を internal に分解したもの。**phrasing kind は 2 種類に分類される** (3 sub-layer × 2 phrasing kind):
+>   - `pr/cleanup.md` Mandatory After Wiki Ingest Step 0 prose — PR-4 で parent-routing pattern に移行予定
+>   - `wiki/ingest.md` Mandatory After Auto-Lint Step 0 prose — PR-3 で parent-routing pattern に移行予定
+> - **Layer 3 (caller HTML hint + sub-skill continuation comment)**:
+>   - `wiki/ingest.md` Phase 9.1 continuation HTML comment (`<!-- continuation: ... -->`)
+>   - `create-register.md` / `create-decompose.md` caller HTML hint (`<!-- caller: ... -->`) — PR-5 で bare bracket form + parent-routing pattern に移行予定
+> - **Layer 3b plain-text reminder** (`> ⏭ MUST continue (turn を閉じない): ...`): `wiki/lint.md` Phase 9.2 三点セット blockquote に適用 (旧 `> ⏭ 継続中: ...` 現状報告 → 命令形に recast、Issue #917)。
 >
-> | sub-layer | emit 主体 / prefix | phrasing kind | 内容 |
-> |-----------|-------------------|--------------|------|
-> | 3a (caller HTML hint) | sub-skill 出力末尾の caller-targeted HTML comment / prefix `<!-- caller: ... -->` (issue creation paths: `create-interview.md` / `create-register.md` / `create-decompose.md`) | English canonical | `MUST execute as VERY FIRST tool call BEFORE any text output`、`DO NOT end the turn`、`DO NOT output any narrative text before this bash call` (caller 側の LLM が機械的に grep して読み取る経路) |
-> | 3b (sub-skill plain-text reminder) | sub-skill 出力本文の Markdown blockquote / 行頭 `> ⏭ MUST continue (turn を閉じない):` 形式 (`create-interview.md` 等) | Japanese imperative | `MUST continue (turn を閉じない)`、`停止禁止` 等 (user-facing 短縮形、簡潔さ優先) |
-> | 3c (sub-skill HTML continuation comment) | sub-skill 出力末尾の continuation-targeted HTML comment / prefix `<!-- continuation: ... -->` (wiki ingest path: `wiki/ingest.md`) | English canonical | 3a と同じ canonical full form (caller 側で grep して読み取る経路、prefix のみ 3a と区別) |
->
-> 3a/3b/3c の機構的差異は **HTML/plain-text の出力形式** と **prefix literal** (3a: `<!-- caller: -->` for issue creation paths / 3c: `<!-- continuation: -->` for wiki ingest path) で、両者とも sub-skill が emit して caller LLM が grep する経路は共通。共通の intent (命令形であること、現状報告 phrasing でないこと) を維持しつつ、phrasing は層別に最適化する設計。
->
-> **Historical note (parent-routing pattern migration — ADR `docs/designs/parent-routing-unification.md`)**:
->
-> - **撤去済 invariant test**: `4-site-symmetry.test.sh` / `caller-html-literal-symmetry.test.sh` / `step0-immediate-bash-presence.test.sh` / `create-interview-responsibility-separation.test.sh`
-> - **廃止済 sub-skill 内 site**: `create-interview.md` の caller HTML literal / Layer 3a / step0 site (parent-routing pattern では caller-side Step 0 不要)
-> - **残存対象 (後続 PR で移行予定、ADR Implementation Strategy table 参照)**:
->   - `wiki/ingest.md` Mandatory After Auto-Lint Step 0 → PR-3
->   - `wiki/ingest.md` Phase 9.1 continuation HTML comment → PR-4
->   - `cleanup.md` Mandatory After Wiki Ingest Step 0 → PR-4
->   - `create-register.md` / `create-decompose.md` Layer 3 sites → PR-5
-> - **代替 test**: `parent-routing-pattern-uniformity.test.sh` を PR-7 で導入予定
-> - **本 SoT の rewrite**: PR-8 で全面 rewrite 予定 (本セクションの 5 cross-orchestrator pin / 3 supplementary pin 記述は historical reference として残す)
+> **廃止済**: `create.md` Mandatory After Interview / `create-interview.md` caller HTML literal + Layer 3a/3b は ADR `docs/designs/parent-routing-unification.md` PR-2 で sub-skill 内製化済 (caller-side hint 不要)。撤去済 invariant test: `4-site-symmetry.test.sh` / `caller-html-literal-symmetry.test.sh` / `step0-immediate-bash-presence.test.sh` / `create-interview-responsibility-separation.test.sh`。Interim coverage は `hooks/tests/parent-routing-pattern-interim.test.sh` が担い、PR-7 で `parent-routing-pattern-uniformity.test.sh` に統合予定。本 SoT 自体は PR-8 で全面 rewrite 予定。
 
 ## Relationship to Workflow Incident Detection
 

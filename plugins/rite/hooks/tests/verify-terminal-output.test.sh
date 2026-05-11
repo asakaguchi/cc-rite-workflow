@@ -30,8 +30,15 @@ fail() {
 #         {root}/skills/rite-workflow/references/workflow-identity.md
 setup_plugin_tree() {
   local repo_root="$1"
-  local html_comment="${2:-true}"  # when "false", use bare sentinel form for ALL files (Test 2 regression)
-  local interview_form="${3:-bare}"  # PR-2 #920 以降 create-interview は bare bracket form (parent-routing pattern)
+  # create_completed_form: create-register / create-decompose の sentinel 形式 (HTML-comment or bare)。
+  # PR #926 verified-review M16 対応で旧 `html_comment` boolean を後方互換のまま意味を明文化:
+  #   "true"  → HTML-commented form (`<!-- [create:completed:{N}] -->`) — register/decompose 用、Test 1 happy path
+  #   "false" → bare sentinel form (`[create:completed:{N}]`) — register/decompose 用、Test 2 regression case
+  # create-interview は別途 `interview_form` で制御 (parent-routing pattern 後は独立)。
+  local html_comment="${2:-true}"
+  # PR-2 #920 以降 create-interview は bare bracket form (parent-routing pattern)。
+  # "html" を渡すと旧 HTML-commented form を fixture に書き込み Test 8 negative assertion を検証する。
+  local interview_form="${3:-bare}"
   # When invoked with --repo-root, the script looks under {repo_root}/plugins/rite/
   local root="$repo_root/plugins/rite"
 
@@ -208,6 +215,13 @@ fi
 # Test 8: regression — HTML-commented [interview:*] form (parent-routing pattern violation)
 # parent-routing pattern 移行で create-interview は bare bracket form に移行済。
 # HTML-commented form が混入したら verify-terminal-output.sh Check 3 の negative assertion が exit 1 を返す必要がある。
+#
+# Rationale (PR #926 verified-review M15 対応 — Test 8 regex に `error` を含めない理由):
+# verify-terminal-output.sh Check 3 の negative assertion regex (`^...<!-- [interview:(completed|skipped)] -->...$`)
+# は `[interview:error]` を意図的に regex 対象外にしている。`[interview:error]` は parent-routing pattern
+# と同時に新規導入された catastrophic halt sentinel で、historical HTML-comment form を持たない
+# (= revert 経路自体が存在しない) ため、negative assertion に含める必要がない。AC-3 non-regression (raw string presence)
+# 側では `[interview:(completed|skipped|error)]` の 3 alternation で error を含む点に注意。
 echo "Test 8: Regression — HTML-commented [interview:*] form should fail"
 setup_plugin_tree "$TEST_DIR/test8" "true" "html"
 if bash "$HOOK" --quiet --repo-root "$TEST_DIR/test8" >/dev/null 2>&1; then

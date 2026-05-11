@@ -226,6 +226,15 @@ PR-1 (本 ADR) → PR-8 の 8 PR で線形マージ。詳細は plan `~/.claude/
 | Layer 3c (sub-skill HTML sentinel) | `<!-- [foo:completed] -->` → bare bracket `[foo:completed]` |
 | Invariant test | `4-site-symmetry.test.sh` (135) / `caller-html-literal-symmetry.test.sh` (129) / `step0-immediate-bash-presence.test.sh` (455) / `create-interview-responsibility-separation.test.sh` (120) / `caller-html-literal-symmetry-decompose-register.test.sh` (229) (合計 **-1068 LoC**、`wc -l` 実測) |
 
+**PR-7 計画上の議論ポイント** (PR #926 verified-review C-1 / Important #3 対応 — 責務分離 meta-invariant の再導入要否):
+
+`create-interview-responsibility-separation.test.sh` (PR-2 で削除済) が pin していた「bash fenced block 内 vs prose 側の責務境界 (caller HTML literal SoT が bash block 内に混入していないこと)」は、parent-routing pattern 移行後では検証対象 (Caller Return Protocol section) 自体が消滅するため自然消滅で妥当。ただし PR-7 で新設する `parent-routing-pattern-uniformity.test.sh` 設計時に以下を判断する:
+
+- (a) 全 8 sub-skill が **責務分離なしの parent-routing pattern canonical form** に統一されている前提のため、責務分離 meta-invariant の再導入は **不要**
+- (b) 将来 SoT hub が新たに再導入された場合 (例: `sub-skill-return-protocol.md` に bash block embed が復活する経路) の保護網を別途設けるか、必要時点で個別 test 追加する方針とする
+
+PR-7 PR description / commit message にも本判断 ((a) を採用する場合は「責務分離 meta-invariant は parent-routing pattern 統一で自然消滅、再導入不要」と明記すること) を残す。
+
 ### 6.2 追加される layer
 
 | Layer | 追加対象 |

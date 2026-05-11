@@ -98,12 +98,31 @@ if [ -n "$REPO_ROOT_OVERRIDE" ]; then
   fi
   REPO_ROOT="$(cd "$REPO_ROOT_OVERRIDE" && pwd)"
   CHECK_PATHS_PREFIX="plugins/rite"
-elif REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null); then
-  CHECK_PATHS_PREFIX="plugins/rite"
 else
-  # Fallback: marketplace install (not in a git repo, or REPO_ROOT not discoverable)
-  REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-  CHECK_PATHS_PREFIX=""
+  # git rev-parse の error class を区別する (PR #926 verified-review Important #6 対応):
+  # stderr を一時ファイルに退避し、`not a git repository` / `dubious ownership` (= legitimate
+  # marketplace fallback 経路) のみ silent fallback を許容し、それ以外 (permission denied / git
+  # binary 不在 / その他予期しないエラー) は明示的に exit 1 で fail させる。
+  _git_err=$(mktemp /tmp/rite-verify-terminal-git-err-XXXXXX 2>/dev/null) || _git_err=""
+  if _git_root=$(git rev-parse --show-toplevel 2>"${_git_err:-/dev/null}"); then
+    REPO_ROOT="$_git_root"
+    CHECK_PATHS_PREFIX="plugins/rite"
+  elif [ -n "$_git_err" ] && grep -qE 'not a git repository|dubious ownership' "$_git_err" 2>/dev/null; then
+    # legitimate marketplace fallback (not in a git repo, or safe.directory violation)
+    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    CHECK_PATHS_PREFIX=""
+  elif [ -z "$_git_err" ] || [ ! -s "$_git_err" ]; then
+    # mktemp failed or stderr empty — assume legitimate fallback (defensive)
+    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    CHECK_PATHS_PREFIX=""
+  else
+    echo "ERROR: git rev-parse --show-toplevel failed unexpectedly:" >&2
+    head -3 "$_git_err" | sed 's/^/  /' >&2
+    echo "  hint: PATH に git binary があるか / .git directory の permission を確認してください" >&2
+    rm -f "$_git_err"
+    exit 1
+  fi
+  [ -n "$_git_err" ] && rm -f "$_git_err"
 fi
 
 FAILED=0
@@ -151,11 +170,12 @@ else
 
   # Drift guard: check that the prose no longer instructs "absolute last line"
   # with a bare sentinel. The phrase is now expected only when bound to the
-  # HTML-comment form. This is a soft check — warn, not fail — because the
-  # phrase may legitimately appear in historical-note or design-decision text.
+  # HTML-comment form. Soft check — warn on stderr regardless of --quiet
+  # (PR #926 verified-review M7 対応: CI で `--quiet` 時に invisible regression を防ぐため
+  # `info` から WARNING に格上げ。歴史的ノートで legitimate に出現するケースがあるため
+  # fail にはしない)。
   if grep -nE '\[create:completed:\{[^}]+\}\][[:space:]]*MUST be the (absolute )?last line' "$CREATE_REGISTER" >/dev/null 2>&1; then
-    # Matches legacy phrasing "[create:completed:{N}] MUST be the last line" without the <!-- --> wrapper.
-    info "create-register.md: legacy prose about bare-sentinel 'absolute last line' may still be present; review manually"
+    echo "${C_YEL}WARNING${C_RST}: create-register.md: legacy prose about bare-sentinel 'absolute last line' may still be present; review manually" >&2
   fi
 fi
 

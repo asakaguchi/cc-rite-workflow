@@ -36,7 +36,7 @@ create.md (orchestrator)
 
 ### Anti-pattern (what NOT to do)
 
-`rite:issue:create-interview` が `[interview:skipped]` / `[interview:completed]` (bare bracket、parent-routing pattern) を返した時:
+`rite:issue:create-interview` が `[interview:skipped]` / `[interview:completed]` を返した時 (sentinel 形式の canonical 定義は本セクション末尾 "Sentinel 形式" blockquote 参照):
 
 ```
 [WRONG]
@@ -45,7 +45,7 @@ create.md (orchestrator)
 <LLM ends turn. User sees "Cooked for 2m 0s" and must type `continue` manually.>
 ```
 
-これは **bug**。return tag は turn 境界ではなく hand-off signal。Mandatory After を即時実行せず Phase 2 へ進まないと workflow が abandoned になる。`[interview:*]` (bare bracket) と `[create:completed:N]` (HTML comment) は形式が異なるが、両方とも turn 境界ではなく continuation trigger として扱う必要がある (sentinel 形式の詳細は本セクション末尾 blockquote 参照)。
+これは **bug**。return tag は turn 境界ではなく hand-off signal。Mandatory After を即時実行せず Phase 2 へ進まないと workflow が abandoned になる。両形式 (詳細は本セクション末尾 "Sentinel 形式" blockquote) とも turn 境界ではなく continuation trigger として扱う必要がある。
 
 ### Correct-pattern (what to do)
 
@@ -178,9 +178,17 @@ echo "$result"
 
 ```bash
 # state file path を解決 (schema_version=2: per-session、legacy: single-file)。
-# helper の stderr は diag log にリダイレクトして silent failure を可視化する
-# (create-interview.md Pre-flight と対称 — silent failure 可視化の defense-in-depth)。
-state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
+# state-path-resolve.sh の rc を if ! 形式で捕捉し、helper failure を retained flag + workflow_incident で可視化する
+# (PR #926 verified-review Important #5 対応、create-interview.md Pre-flight と対称化)。
+if ! state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh); then
+  echo "[CONTEXT] STATE_PATH_RESOLVE_FAILED=1; reason=helper_exit_nonzero" >&2
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type "manual_fallback_adopted" \
+      --details "create.md:phase-1-pre-write state-path-resolve.sh exit non-zero; falling back to /tmp" \
+      --pr-number 0 \
+      || echo "WARNING: workflow-incident-emit.sh failed — manual_fallback_adopted sentinel emit incomplete (state-path-resolve fallback path, phase-1-pre-write)" >&2
+  state_root=""
+fi
 diag_log="${state_root:-/tmp}/.rite-flow-state-diag.log"
 mkdir -p "$(dirname "$diag_log")" 2>/dev/null || true
 state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>>"$diag_log") || state_file=""
@@ -251,7 +259,17 @@ Phase 2 結果に基づき適切な sub-command に delegation。
 
 ```bash
 # state file path を解決 (Phase 1 Pre-write と同じ diag_log redirect pattern を使用)。
-state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
+# state-path-resolve.sh の rc を if ! 形式で捕捉し、helper failure を retained flag + workflow_incident で可視化する
+# (PR #926 verified-review Important #5 対応、Phase 1 Pre-write と対称化)。
+if ! state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh); then
+  echo "[CONTEXT] STATE_PATH_RESOLVE_FAILED=1; reason=helper_exit_nonzero" >&2
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type "manual_fallback_adopted" \
+      --details "create.md:phase-3-pre-write state-path-resolve.sh exit non-zero; falling back to /tmp" \
+      --pr-number 0 \
+      || echo "WARNING: workflow-incident-emit.sh failed — manual_fallback_adopted sentinel emit incomplete (state-path-resolve fallback path, phase-3-pre-write)" >&2
+  state_root=""
+fi
 diag_log="${state_root:-/tmp}/.rite-flow-state-diag.log"
 mkdir -p "$(dirname "$diag_log")" 2>/dev/null || true
 state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>>"$diag_log") || state_file=""

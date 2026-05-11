@@ -437,6 +437,9 @@ case "$MODE" in
       exit 1
     fi
     if [[ "$IF_EXISTS" == true && ! -f "$FLOW_STATE" ]]; then
+      # PR #926 verified-review M6 対応: silent skip 時に INFO を stderr に emit して
+      # post-hoc event reconstruction を可能にする (旧 silent exit 0 は audit-trail を残さなかった)。
+      echo "INFO: --if-exists patch skipped (file not present): $FLOW_STATE" >&2
       exit 0
     fi
     ;;
@@ -457,6 +460,8 @@ case "$MODE" in
       exit 1
     fi
     if [[ "$IF_EXISTS" == true && ! -f "$FLOW_STATE" ]]; then
+      # PR #926 verified-review M6 対応: increment mode の --if-exists silent skip も INFO emit する。
+      echo "INFO: --if-exists increment skipped (file not present): $FLOW_STATE" >&2
       exit 0
     fi
     ;;

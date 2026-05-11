@@ -36,39 +36,38 @@ create.md (orchestrator)
 
 ### Anti-pattern (what NOT to do)
 
-`rite:issue:create-interview` が `<!-- [interview:skipped] -->` / `<!-- [interview:completed] -->` (HTML comment 形式) を返した時:
+`rite:issue:create-interview` が `[interview:skipped]` / `[interview:completed]` (bare bracket、parent-routing pattern) を返した時:
 
 ```
 [WRONG]
 <Skill rite:issue:create-interview returns>
-<LLM output: "<!-- [interview:skipped] -->">
+<LLM output: "[interview:skipped]">
 <LLM ends turn. User sees "Cooked for 2m 0s" and must type `continue` manually.>
 ```
 
-これは **bug**。return tag は turn 境界ではなく hand-off signal。HTML コメント wrapping でも LLM の turn-boundary heuristic が誤発火し得るため、Mandatory After を即時実行しないと workflow が abandoned になる。
+これは **bug**。return tag は turn 境界ではなく hand-off signal。Mandatory After を即時実行せず Phase 2 へ進まないと workflow が abandoned になる。
 
 ### Correct-pattern (what to do)
 
-> **Phase number note (drift from protocol-doc duplicate is intentional)**: 本 example は `skills/rite-workflow/references/sub-skill-return-protocol.md` の Correct-pattern と意図的に複製されている (Duplication note 参照)。protocol-doc 側は orchestrator 横断の generic example として `Phase 0.6` 表記を使うが、本 file (`create.md`) では create.md 内の **実 Phase 番号 `Phase 2`** を使用する。この phase number drift は protocol-doc Duplication note の "drift acceptable on orchestrator-specific Phase numbers" 規定により許容されている (F-25 cycle 4 LOW で再確認済)。
+> **Phase number note (drift from protocol-doc duplicate is intentional)**: 本 example は `skills/rite-workflow/references/sub-skill-return-protocol.md` の Correct-pattern と意図的に複製されている (Duplication note 参照)。protocol-doc 側は orchestrator 横断の generic example として `Phase 0.6` 表記を使うが、本 file (`create.md`) では create.md 内の **実 Phase 番号 `Phase 2`** を使用する。この phase number drift は protocol-doc Duplication note の "drift acceptable on orchestrator-specific Phase numbers" 規定により許容されている。
 
 ```
 [CORRECT]
 <Skill rite:issue:create-interview returns>
-<LLM output: "<!-- [interview:skipped] -->">
+<LLM output: "[interview:skipped]">
 <In the same response turn, LLM IMMEDIATELY:>
-  1. Runs the Pre-write bash for Phase 2 / Delegation Routing
-  2. Evaluates Phase 2 triggers
-  3. Runs the Delegation Routing Pre-write bash
-  4. Invokes skill: "rite:issue:create-register" (or create-decompose)
-  5. Waits for <!-- [create:completed:{N}] --> (HTML comment form)
-  6. Runs Mandatory After Delegation self-check
+  1. Evaluates Phase 2 triggers
+  2. Runs the Delegation Routing Pre-write bash
+  3. Invokes skill: "rite:issue:create-register" (or create-decompose)
+  4. Waits for <!-- [create:completed:{N}] --> (HTML comment form、PR-5 で bare bracket 化予定)
+  5. Runs Mandatory After Delegation self-check
 ```
 
-**Rule**: Treat `[interview:skipped]` / `[interview:completed]` as **continuation triggers**, not stopping points. Both terminal sub-skills emit `<!-- [create:completed:{N}] -->` as the unified completion marker. The only valid stop is after the user-visible `✅` completion message + next-steps block AND `<!-- [create:completed:{N}] -->` (terminal sub-skill が `create-register.md` Phase 3.4 / `create-decompose.md` Phase 3.4 で順序通り emit) が出力された後のみ。
+**Rule**: Treat `[interview:skipped]` / `[interview:completed]` as **continuation triggers**, not stopping points. Both terminal sub-skills emit `<!-- [create:completed:{N}] -->` (HTML comment form 暫定、PR-5 で bare bracket `[create:completed:{N}]` 化予定) as the unified completion marker. The only valid stop is after the user-visible `✅` completion message + next-steps block AND `<!-- [create:completed:{N}] -->` (terminal sub-skill が `create-register.md` Phase 3.4 / `create-decompose.md` Phase 3.4 で順序通り emit) が出力された後のみ。
 
 > **Contract phrases (AC-3)**: anti-pattern / correct-pattern 契約は以下 4 phrase を grep-verified で必ず含む: `anti-pattern`, `correct-pattern`, `same response turn`, `DO NOT stop`。書換禁止。manual verification: `for p in "anti-pattern" "correct-pattern" "same response turn" "DO NOT stop"; do grep -c "$p" plugins/rite/commands/issue/create.md; done` で全て ≥1。
 
-> Terminal sub-skills は flow-state deactivation + `✅` 完了メッセージ + `<!-- [create:completed:{N}] -->` を内製する。`create-interview.md` は post-phase (`create_post_interview`) に進めて return する (Defense-in-Depth)。
+> Sentinel 形式の暫定混在 (PR-2 #926 時点): `create-interview` は **bare bracket form** `[interview:completed]` / `[interview:skipped]` で return (parent-routing pattern 統一済)、terminal sub-skills (`create-register` / `create-decompose`) は依然 **HTML comment form** `<!-- [create:completed:{N}] -->` で return (PR-5 で bare bracket 化予定)。`create-interview.md` は post-phase (`create_post_interview`) に進めて return する (sub-skill 内 Defense-in-Depth で flow-state patch)。
 
 ## Arguments
 

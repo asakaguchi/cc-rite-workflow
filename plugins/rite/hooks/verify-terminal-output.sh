@@ -183,19 +183,14 @@ CREATE_INTERVIEW="${REPO_ROOT}${CHECK_PATHS_PREFIX:+/${CHECK_PATHS_PREFIX}}/comm
 if [ ! -f "$CREATE_INTERVIEW" ]; then
   fail "create-interview.md not found at $CREATE_INTERVIEW"
 else
-  # AC-3 non-regression
+  # AC-3 non-regression — sentinel string presence (bare bracket form is now canonical
+  # post parent-routing pattern migration, ADR docs/designs/parent-routing-unification.md
+  # / PR #926 PR-2 #920). HTML-comment wrapping is no longer required; both bare and
+  # HTML-wrapped forms match this regex.
   if grep -qE '\[interview:(completed|skipped)\]' "$CREATE_INTERVIEW"; then
     pass "create-interview.md: contains [interview:completed] / [interview:skipped] string (AC-3 non-regression)"
   else
     fail "create-interview.md: missing [interview:*] string (AC-3 regression)"
-  fi
-
-  # AC-2 / AC-6: at least one occurrence of the HTML-commented sentinel form
-  # must be present in the output examples.
-  if grep -qE '<!--[[:space:]]*\[interview:(completed|skipped)\]' "$CREATE_INTERVIEW"; then
-    pass "create-interview.md: [interview:*] wrapped in HTML comment form (AC-2 / AC-6)"
-  else
-    fail "create-interview.md: [interview:*] NOT wrapped in HTML comment form; expected <!-- [interview:skipped] --> / <!-- [interview:completed] -->"
   fi
 fi
 

@@ -14,8 +14,8 @@
 #   `run-tests.sh` globs `*.test.sh`. A `_test-helpers.sh` filename is
 #   intentionally excluded so this helper is sourced only when callers
 #   `source` it explicitly. Each caller test still runs standalone
-#   (`bash 4-site-symmetry.test.sh`) because it defines its own SCRIPT_DIR
-#   before sourcing this file.
+#   (`bash caller-html-literal-symmetry-decompose-register.test.sh`)
+#   because it defines its own SCRIPT_DIR before sourcing this file.
 #
 # Output convention (Issue #853):
 #   Scope: applies to tests that `source` this helper. Enumerate the current
@@ -155,7 +155,8 @@ assert_not_grep() {
 # When FAILED_NAMES is non-empty, lists them so callers don't need to duplicate
 # the "Failed assertions:" loop in every test file.
 # drift_hint_text (optional) is echoed verbatim after the failure list — used by
-# tests like 4-site-symmetry that point readers at canonical anchor docs.
+# tests that point readers at canonical anchor docs (e.g.
+# caller-html-literal-symmetry-decompose-register.test.sh).
 # Writes everything to stdout (see "Output convention" in the file header).
 print_summary() {
   local test_name="${1:-summary}"

@@ -196,15 +196,14 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Layer 6: Step 0 — create.md の "Step 0 Immediate Bash" pattern (turn 境界回避)
+# Layer 6: Step 0 (skipped — parent-routing pattern migration, PR #926 PR-2 #920)
 # --------------------------------------------------------------------------
-echo "Layer 6 (Step 0): create.md に Step 0 Immediate Bash pattern が存在"
-step0_count=$(git -C "$REPO_ROOT" grep -nE '(Step 0 Immediate Bash|Step 0:[[:space:]]*Immediate)' plugins/rite/commands/issue/create.md 2>/dev/null | wc -l)
-if [ "$step0_count" -gt 0 ]; then
-  pass "Layer 6 evidence: create.md に Step 0 Immediate Bash pattern が $step0_count 箇所"
-else
-  fail "Layer 6: Step 0 Immediate Bash pattern が create.md に存在しない"
-fi
+# parent-routing pattern (ADR docs/designs/parent-routing-unification.md) では
+# caller-side Step 0 Immediate Bash pattern は不要。sub-skill 自身が flow-state を
+# patch する設計のため、旧 Step 0 pattern は create.md から削除された。PR-7 で本
+# test ファイル自体を削除予定。
+echo "Layer 6 (Step 0): parent-routing pattern では caller-side Step 0 不要 (skipped)"
+pass "Layer 6: parent-routing pattern により Step 0 caller-side pattern は不要 (skip、PR-7 で test 削除予定)"
 
 # --------------------------------------------------------------------------
 # Layer 7: 4-site 対称化 — --active true が 4 site 以上で symmetric

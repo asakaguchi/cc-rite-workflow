@@ -46,13 +46,13 @@
 #   by replicating the change across both files. Do NOT relax this test —
 #   symmetry restoration is the correct fix.
 #
-# Relationship with `caller-html-literal-symmetry.test.sh`:
-#   That test guards 2 caller occurrences *within* a single file
-#   (create-interview.md, [interview:skipped] and [interview:completed]
-#   example blocks) and requires full byte equality.
-#   This test is *cross-file* and tolerates exactly one allowed
-#   semantic difference (` on the Normal path`). The two tests are
-#   complementary; neither subsumes the other.
+# Historical note (PR-2 #926 / ADR docs/designs/parent-routing-unification.md):
+#   The prior `caller-html-literal-symmetry.test.sh` that guarded create-interview.md
+#   was retired in PR-2 along with the Layer 3a HTML literal it pinned (create-interview
+#   migrated to parent-routing pattern with bare bracket sentinel; caller HTML literal
+#   no longer exists). This test (decompose-register) remains active for PR-5, which
+#   will migrate create-register.md and create-decompose.md to parent-routing pattern
+#   and at that point this test will also be retired.
 
 set -euo pipefail
 
@@ -106,8 +106,7 @@ for label in decompose register; do
   # Use mapfile + process substitution instead of `grep | head -1` to avoid
   # `set -o pipefail` aborting the script when grep finds 0 matches (exit 1).
   # The pipefail-induced abort would make the empty-string check below dead
-  # code and prevent subsequent phases from running. Same pattern as the
-  # sibling test caller-html-literal-symmetry.test.sh.
+  # code and prevent subsequent phases from running.
   mapfile -t _caller_lines < <(grep -F '<!-- caller:' "$target")
   caller_line="${_caller_lines[0]:-}"
   if [ -z "$caller_line" ]; then

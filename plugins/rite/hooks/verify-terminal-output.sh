@@ -127,7 +127,7 @@ else
   # marketplace fallback 経路) のみ silent fallback を許容し、それ以外 (permission denied / git
   # binary 不在 / その他予期しないエラー) は明示的に exit 1 で fail させる。
   if ! _git_err=$(mktemp /tmp/rite-verify-terminal-git-err-XXXXXX 2>/dev/null); then
-    echo "WARNING: mktemp failed; cannot capture git stderr — fallback decision will be heuristic" >&2
+    echo "WARNING: mktemp failed; cannot capture git stderr — git error class will be unclassifiable and script will fail-fast in the else branch" >&2
     echo "  hint: /tmp の inode 枯渇 / read-only filesystem / permission 拒否を確認してください" >&2
     _git_err=""
   fi
@@ -135,7 +135,7 @@ else
     REPO_ROOT="$_git_root"
     CHECK_PATHS_PREFIX="plugins/rite"
   else
-    # verified-review H-2 対応: 旧実装は `elif _git_err_classify_rc=0; [ -n "$_git_err" ] && { grep ...; }`
+    # 旧実装は `elif _git_err_classify_rc=0; [ -n "$_git_err" ] && { grep ...; }`
     # の compound expression で「変数初期化 + 条件 + 副作用 + check」を 1 行に詰めており、`set -u` の
     # `${_git_err_classify_rc:-0}` default を 1 つ外す refactor で unbound-variable crash する fragility が
     # あった。state 機械 (grep classify rc) を if/elif の外で明示初期化し、`set -u` 下でも安全な
@@ -192,11 +192,6 @@ fail() {
 pass() {
   [ "$QUIET" = "1" ] && return 0
   echo "${C_GRN}PASS${C_RST}: $1"
-}
-
-info() {
-  [ "$QUIET" = "1" ] && return 0
-  echo "${C_YEL}INFO${C_RST}: $1"
 }
 
 # -----------------------------------------------------------------------------

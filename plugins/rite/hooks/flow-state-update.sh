@@ -30,12 +30,14 @@
 #   --session                Session UUID override (create mode; defaults to .rite-session-id)
 #   --preserve-error-count   Preserve existing .error_count during patch (same-phase self-patch; patch mode only;
 #                            silently ignored in create/increment modes for drift-symmetry with caller-side consistency).
-#                            Currently dead-code: stop-guard.sh removed in #675, no runtime reader exists outside
-#                            flow-state-update.sh / migrate-flow-state.sh itself (see tests/error-count-runtime-reference.test.sh).
-#                            Retained for forward-compatibility if a runtime reader is reintroduced.
+#                            Currently no-op at production runtime: stop-guard.sh removed in #675, no reader that branches
+#                            on .error_count exists outside flow-state-update.sh / migrate-flow-state.sh themselves
+#                            (write-only reset in this file; see tests/error-count-runtime-reference.test.sh for the
+#                            mechanical proof that no external reader branches on the field).
+#                            Retained for forward-compatibility if a branching reader is reintroduced.
 #                            Residual callers: wiki/ingest.md / cleanup.md still pass this flag, but their prose
 #                            describing the flag as load-bearing is itself out-of-date and will be rewritten to
-#                            "historical context" in PR-3 / PR-4 (see commands/issue/create-interview.md
+#                            "historical context" in PR-3 / PR-4 (tracked via the follow-up cleanup Issue, see commands/issue/create-interview.md
 #                            "Forward note" for the canonical policy). ADR `docs/designs/parent-routing-unification.md`
 #                            PR-2 で create.md Step 0/1 (Mandatory After Interview) は撤去済。
 #   --legacy-mode            Force legacy single-file path (`.rite-flow-state`) regardless of
@@ -318,7 +320,9 @@ _resolve_session_state_path() {
 
 # --- Argument parsing ---
 MODE="${1:-}"
-shift 2>/dev/null || true
+# silent-failure-hunter L-4: `shift 2>/dev/null || true` を意図明示形式に変更。
+# 引数なしで呼ばれた場合 ($# == 0) は shift が失敗するため、`(( $# > 0 ))` で先に guard する。
+(( $# > 0 )) && shift
 
 PHASE=""
 ISSUE=0
@@ -405,16 +409,18 @@ FLOW_STATE=$(_resolve_session_state_path "$EFFECTIVE_SCHEMA_VERSION" "$LEGACY_MO
 TMP_STATE=""
 _mkdir_err=""
 _jq_err=""
-# verified-review M-3 (silent-failure-hunter) 対応: _chmod_err / _chmod600_err / _ownership_jq_err も
+# _chmod_err / _chmod600_err / _ownership_jq_err も
 # atomic cleanup の対象に含める。これらは mktemp 〜 inline rm の短い lifetime だが、SIGINT/SIGTERM/SIGHUP
 # が mktemp 成功直後〜rm 到達前に届くと orphan として残る。`/tmp` inode 枯渇を防ぐため、本トラップで
 # 全 tempfile lifecycle を cover する。`${var:-}` で未代入時も safe (rm -f "" は idempotent no-op)。
 _chmod_err=""
 _chmod600_err=""
 _ownership_jq_err=""
+_existing_parent_err=""
 _rite_flow_state_atomic_cleanup() {
   rm -f "${TMP_STATE:-}" "${_mkdir_err:-}" "${_jq_err:-}" \
-        "${_chmod_err:-}" "${_chmod600_err:-}" "${_ownership_jq_err:-}"
+        "${_chmod_err:-}" "${_chmod600_err:-}" "${_ownership_jq_err:-}" \
+        "${_existing_parent_err:-}"
 }
 trap 'rc=$?; _rite_flow_state_atomic_cleanup; exit $rc' EXIT
 trap '_rite_flow_state_atomic_cleanup; exit 130' INT
@@ -696,7 +702,7 @@ case "$MODE" in
       # --parent-issue would reset parent_issue_number to 0, erasing the value
       # persisted by Phase 2.4 Mandatory After.
       #
-      # verified-review L-3 (silent-failure-hunter) 対応: 旧 `2>/dev/null || _existing_parent=0` は
+      # 旧 `2>/dev/null || _existing_parent=0` は
       # session-ownership block の jq sites と非対称な silent fallback だった。本 jq は parent
       # tracking の load-bearing read で、jq 失敗時に silent に 0 倒すと別 session の parent linkage を
       # silent に切る経路を持つ。WARNING + stderr-tempfile pattern (session-ownership block と対称)

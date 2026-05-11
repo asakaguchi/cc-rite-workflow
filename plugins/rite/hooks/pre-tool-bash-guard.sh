@@ -198,6 +198,9 @@ if [ -z "$BLOCKED_PATTERN" ]; then
         # for create_* lifecycle phase names. Fall back to inline glob check when the helper
         # is unavailable (e.g., bash < 4.2 where phase-transition-whitelist.sh exits early).
         if [ "$STATE_ACTIVE" = "true" ]; then
+          # >>> DRIFT-CHECK ANCHOR: lifecycle_predicate_pattern_5 <<<
+          # phase-transition-whitelist.sh の lifecycle predicate を runtime 参照する箇所。
+          # create-interview.md などの docs はこの anchor 名で cite する (行番号 drift 回避)。
           if type rite_phase_is_create_lifecycle_in_progress >/dev/null 2>&1; then
             if rite_phase_is_create_lifecycle_in_progress "$STATE_PHASE"; then
               BLOCKED_PATTERN="create-lifecycle-direct-gh-issue"

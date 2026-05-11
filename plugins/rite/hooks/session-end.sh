@@ -84,6 +84,9 @@ if [ -f "$STATE_FILE" ]; then
     _state_active=$(jq -r '.active // false' "$STATE_FILE" 2>/dev/null) || _state_active="false"
     _lifecycle_unfinished_kind=""
     if [ "$_state_active" = "true" ]; then
+        # >>> DRIFT-CHECK ANCHOR: lifecycle_predicate_session_end_create <<<
+        # phase-transition-whitelist.sh の create lifecycle predicate を runtime 参照する箇所。
+        # create-interview.md などの docs はこの anchor 名で cite する (行番号 drift 回避)。
         if type rite_phase_is_create_lifecycle_in_progress >/dev/null 2>&1; then
             if rite_phase_is_create_lifecycle_in_progress "$_state_phase"; then
                 _lifecycle_unfinished_kind="create"
@@ -92,6 +95,8 @@ if [ -f "$STATE_FILE" ]; then
             _lifecycle_unfinished_kind="create"
         fi
         if [ -z "$_lifecycle_unfinished_kind" ]; then
+            # >>> DRIFT-CHECK ANCHOR: lifecycle_predicate_session_end_cleanup <<<
+            # 同上、cleanup lifecycle predicate の runtime 参照箇所。
             if type rite_phase_is_cleanup_lifecycle_in_progress >/dev/null 2>&1; then
                 if rite_phase_is_cleanup_lifecycle_in_progress "$_state_phase"; then
                     _lifecycle_unfinished_kind="cleanup"

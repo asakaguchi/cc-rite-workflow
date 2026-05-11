@@ -98,7 +98,14 @@ echo ""
 # Layer 1: declarative — commands/issue/*.md prose で --active true literal を declare
 # --------------------------------------------------------------------------
 echo "Layer 1 (declarative): commands で --active true literal が declare されている"
-declarative_count=$(git -C "$REPO_ROOT" grep -nE '\-\-active true' plugins/rite/commands/issue/ 2>/dev/null | wc -l)
+# 旧 `2>/dev/null` は git binary 不在 / repo corrupt / file lock を
+# 「count=0 → Layer 失敗」に silent に倒す。stderr-tempfile pattern に統一。
+_grep_err=$(mktemp /tmp/rite-andlogic-grep-err-XXXXXX 2>/dev/null) || _grep_err=""
+declarative_count=$(git -C "$REPO_ROOT" grep -nE '\-\-active true' plugins/rite/commands/issue/ 2>"${_grep_err:-/dev/null}" | wc -l)
+if [ -n "$_grep_err" ] && [ -s "$_grep_err" ]; then
+  echo "WARNING: Layer 1 git grep stderr 出力あり (test 環境 IO エラーの可能性): $(head -1 "$_grep_err")" >&2
+fi
+[ -n "$_grep_err" ] && rm -f "$_grep_err"
 if [ "$declarative_count" -gt 0 ]; then
   pass "Layer 1 evidence: --active true literal が commands/issue/ 内に $declarative_count 箇所 (declarative 層成立)"
 else
@@ -135,7 +142,13 @@ fi
 # Layer 3: Pre-check — commands で state-read.sh --field phase 経由の pre-condition
 # --------------------------------------------------------------------------
 echo "Layer 3 (Pre-check): commands で state-read.sh --field phase pre-condition check"
-precheck_count=$(git -C "$REPO_ROOT" grep -nE 'state-read\.sh --field phase' plugins/rite/commands/ 2>/dev/null | wc -l)
+# silent-failure-hunter M-4: stderr-tempfile pattern (Layer 1 と同型)
+_grep_err=$(mktemp /tmp/rite-andlogic-grep-err-XXXXXX 2>/dev/null) || _grep_err=""
+precheck_count=$(git -C "$REPO_ROOT" grep -nE 'state-read\.sh --field phase' plugins/rite/commands/ 2>"${_grep_err:-/dev/null}" | wc -l)
+if [ -n "$_grep_err" ] && [ -s "$_grep_err" ]; then
+  echo "WARNING: Layer 3 git grep stderr 出力あり: $(head -1 "$_grep_err")" >&2
+fi
+[ -n "$_grep_err" ] && rm -f "$_grep_err"
 if [ "$precheck_count" -gt 0 ]; then
   pass "Layer 3 evidence: state-read.sh --field phase 呼び出しが commands/ に $precheck_count 箇所"
 else
@@ -208,7 +221,13 @@ fi
 # (元々の 4-site 対称化は Layer 6 撤去で本来の意味を失っており、現在は file 単位の存在 check)
 # --------------------------------------------------------------------------
 echo "Layer 7 (--active true minimal presence): commands/issue/ 配下に 4 file 以上で出現"
-site_count=$(git -C "$REPO_ROOT" grep -lE '\-\-active true' plugins/rite/commands/issue/ 2>/dev/null | wc -l)
+# silent-failure-hunter M-4: stderr-tempfile pattern (Layer 1/3 と同型)
+_grep_err=$(mktemp /tmp/rite-andlogic-grep-err-XXXXXX 2>/dev/null) || _grep_err=""
+site_count=$(git -C "$REPO_ROOT" grep -lE '\-\-active true' plugins/rite/commands/issue/ 2>"${_grep_err:-/dev/null}" | wc -l)
+if [ -n "$_grep_err" ] && [ -s "$_grep_err" ]; then
+  echo "WARNING: Layer 7 git grep stderr 出力あり: $(head -1 "$_grep_err")" >&2
+fi
+[ -n "$_grep_err" ] && rm -f "$_grep_err"
 if [ "$site_count" -ge 4 ]; then
   pass "Layer 7 evidence: --active true を含む commands/issue/ file が $site_count 件 (≥4)"
 else
@@ -219,7 +238,13 @@ fi
 # Layer 8: case arm — phase-transition-whitelist.sh の declare -gA テーブル
 # --------------------------------------------------------------------------
 echo "Layer 8 (case arm): phase-transition-whitelist.sh の declare -gA + 関数 dispatch"
-case_arm_count=$(grep -E 'declare -gA _RITE_PHASE_TRANSITIONS' "$WHITELIST" 2>/dev/null | wc -l)
+# silent-failure-hunter M-4: stderr-tempfile pattern
+_grep_err=$(mktemp /tmp/rite-andlogic-grep-err-XXXXXX 2>/dev/null) || _grep_err=""
+case_arm_count=$(grep -E 'declare -gA _RITE_PHASE_TRANSITIONS' "$WHITELIST" 2>"${_grep_err:-/dev/null}" | wc -l)
+if [ -n "$_grep_err" ] && [ -s "$_grep_err" ]; then
+  echo "WARNING: Layer 8 grep stderr 出力あり: $(head -1 "$_grep_err")" >&2
+fi
+[ -n "$_grep_err" ] && rm -f "$_grep_err"
 if [ "$case_arm_count" -ge 1 ]; then
   pass "Layer 8 evidence: declare -gA _RITE_PHASE_TRANSITIONS が存在 ($case_arm_count 箇所)"
 else

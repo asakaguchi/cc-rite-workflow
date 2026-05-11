@@ -35,14 +35,17 @@ if ! state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh); then
   state_root=""
 fi
 diag_log="${state_root:-/tmp}/.rite-flow-state-diag.log"
-if ! mkdir -p "$(dirname "$diag_log")" 2>/dev/null; then
-  # mkdir 失敗時に redirect 自体が失敗して helper が
-  # 起動できなくなり、`FLOW_STATE_PATH_RESOLVE_FAILED=1` が `helper_exit_nonzero` 理由で立つが
-  # 実態は「redirect 失敗で helper 起動不能」となる診断ズレを解消する。diag_log を /dev/null
+# mkdir stderr を tempfile に捕捉して
+# kernel failure reason (Permission denied / No space left / Read-only fs 等) を WARNING に pass-through する。
+_diag_mkdir_err=$(mktemp /tmp/rite-diag-mkdir-err-XXXXXX 2>/dev/null) || _diag_mkdir_err=""
+if ! mkdir -p "$(dirname "$diag_log")" 2>"${_diag_mkdir_err:-/dev/null}"; then
+  # mkdir 失敗時に redirect 自体が失敗して helper が起動不能となる経路を防ぐため、diag_log を /dev/null
   # に fallback して redirect が常に成立するようにし、診断情報のみ失う形で helper は確実に起動する。
   echo "WARNING: cannot create diag_log dir $(dirname "$diag_log") — diagnostic output redirected to /dev/null instead" >&2
+  [ -n "$_diag_mkdir_err" ] && [ -s "$_diag_mkdir_err" ] && head -1 "$_diag_mkdir_err" | sed 's/^/  /' >&2
   diag_log="/dev/null"
 fi
+[ -n "$_diag_mkdir_err" ] && rm -f "$_diag_mkdir_err"
 if ! state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>>"$diag_log"); then
   echo "[CONTEXT] FLOW_STATE_PATH_RESOLVE_FAILED=1; reason=helper_exit_nonzero" >&2
   bash {plugin_root}/hooks/workflow-incident-emit.sh \
@@ -105,7 +108,7 @@ fi
 
 **Why cold-start (state file 不在) 経路で create→patch 二段書き込み**: 直接 `create --phase create_post_interview` を書くと `previous_phase=""` (cold start) のまま `.phase = create_post_interview` が記録される。`phase-transition-whitelist.sh` の cold-start guard (`[ -z "$prev" ] && return 0` predicate) は単段 create でも runtime accept するため、機能的な runtime defeat は発生しない。ただし audit-trail fidelity (= 「conceptually `create_interview` を経由してから `create_post_interview` に進んだ」という履歴の semantic clarity) が失われ、将来 stricter gating (cold-start guard を厳格化、または conversation-context observer が `previous_phase` を読む下流処理) を有効化した際に正規 path として認識されない。caller 側 Pre-write 失敗時や手動 sub-skill invocation 時にこの cold-start 経路が踏まれるため、create で `create_interview` を bootstrap してから patch で `previous_phase=create_interview` を残す二段書き込みを採用する。
 
-> **Note — `phase-transition-whitelist.sh` の現状 runtime semantics**: `rite_phase_transition_allowed` predicate **単体** は本リポ内で **runtime caller 0 件** (stop-guard.sh 撤去 #675 以降)。一方で **同じファイル** が export する `rite_phase_is_create_lifecycle_in_progress` / `rite_phase_is_cleanup_lifecycle_in_progress` は依然 runtime caller を持つ (`pre-tool-bash-guard.sh:201-202` の Pattern 5 / `session-end.sh:87-88, 95-96`)。したがって `_RITE_PHASE_TRANSITIONS` graph 自体は advisory (transition の機械的 reject は行われない) だが、graph 上の phase 名は lifecycle predicate の判定に load-bearing で参照される。**ファイル全体を documentation-only と推論せず**、phase 名や lifecycle 定義を削除する際は predicate caller への影響を必ず確認すること。本二段書き込み rationale (audit-trail fidelity) は「現状 advisory な transition graph が将来 reactivate された場合のための future-proofing」であり、現在の runtime 影響は副次的 (caller-side / 手動 invocation 時の `previous_phase` log 整合性のみ)。
+> **Note — `phase-transition-whitelist.sh` の現状 runtime semantics**: `rite_phase_transition_allowed` predicate **単体** は本リポ内で **runtime caller 0 件** (stop-guard.sh 撤去 #675 以降)。一方で **同じファイル** が export する `rite_phase_is_create_lifecycle_in_progress` / `rite_phase_is_cleanup_lifecycle_in_progress` は依然 runtime caller を持つ (`pre-tool-bash-guard.sh` の `DRIFT-CHECK ANCHOR: lifecycle_predicate_pattern_5` 箇所 / `session-end.sh` の `DRIFT-CHECK ANCHOR: lifecycle_predicate_session_end_create` および `lifecycle_predicate_session_end_cleanup` 箇所)。したがって `_RITE_PHASE_TRANSITIONS` graph 自体は advisory (transition の機械的 reject は行われない) だが、graph 上の phase 名は lifecycle predicate の判定に load-bearing で参照される。**ファイル全体を documentation-only と推論せず**、phase 名や lifecycle 定義を削除する際は predicate caller への影響を必ず確認すること。本二段書き込み rationale (audit-trail fidelity) は「現状 advisory な transition graph が将来 reactivate された場合のための future-proofing」であり、現在の runtime 影響は副次的 (caller-side / 手動 invocation 時の `previous_phase` log 整合性のみ)。
 
 **`[interview:error]` halt 判定ルール**: `.phase = create_post_interview` を確定できないまま sub-skill が終了する経路は audit-trail 破損または state 不在のため、Phase 2 進入禁止で halt する。**Return Output bash block (本ファイル末尾) は `--if-exists` で file 不在時 silent skip (exit 0、`flow-state-update.sh` の patch / increment mode 内 `IF_EXISTS && ! -f $FLOW_STATE` 分岐参照) する**ため、`INTERVIEW_RETURN_PATCH_FAILED` だけでは捕捉できない経路がある。Claude (本 sub-skill) は Return Output bash block 完了後、conversation context を grep して以下のいずれかが立っていれば `[interview:completed]` / `[interview:skipped]` ではなく `[interview:error]` を emit し、caller (`create.md`) に manual intervention を要求する:
 
@@ -127,7 +130,7 @@ fi
 >
 > 機械化 (bash 内 retained flag 集約) は parent-routing pattern 全体の非対称を生むため本 PR scope 外。tempfile 経由の collector pattern による完全機械化は future ADR / follow-up Issue で検討する。
 
-> **Known design debt — `workflow-incident-emit.sh --type` 粒度**: 本ファイルおよび `create.md` の合計 14 emit sites がすべて `--type manual_fallback_adopted` に collapse し、失敗モードの分類は `--details` 自由テキスト parsing 依存となる。中期的には dedicated enum 値追加 (`parent_routing_pre_flight_failed` 等) または `--subtype` opaque arg 導入を検討。Follow-up は ADR `docs/designs/parent-routing-unification.md` §6.x で tracking。
+> **Known design debt — `workflow-incident-emit.sh --type` 粒度**: 全 emit sites が `--type manual_fallback_adopted` に collapse する設計の改善は ADR `docs/designs/parent-routing-unification.md` §6.x で追跡。
 
 **Idempotence**: 単一 sub-skill invocation 内で複数回実行されても safe — patch mode は pre-update `.phase` から `previous_phase` を設定し、re-entry で `create_post_interview` のまま phase regression しない。
 

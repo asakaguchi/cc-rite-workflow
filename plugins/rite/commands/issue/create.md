@@ -193,13 +193,16 @@ diag_log="${state_root:-/tmp}/.rite-flow-state-diag.log"
 # create-interview.md mkdir block と対称化。
 # 旧 `mkdir -p ... 2>/dev/null || true` は silent fallback で `_resolve-flow-state-path.sh` の
 # redirect 失敗を握りつぶし cold-start branch に化ける経路を生む。WARNING を emit して可視化する。
-if ! mkdir -p "$(dirname "$diag_log")" 2>/dev/null; then
-  # create-interview.md と対称化。
-  # mkdir 失敗時に redirect 自体が失敗して helper が起動不能になる経路を防ぐため、
+# mkdir stderr を tempfile に捕捉して kernel failure reason を WARNING に pass-through する。
+_diag_mkdir_err=$(mktemp /tmp/rite-diag-mkdir-err-XXXXXX 2>/dev/null) || _diag_mkdir_err=""
+if ! mkdir -p "$(dirname "$diag_log")" 2>"${_diag_mkdir_err:-/dev/null}"; then
+  # create-interview.md と対称化。mkdir 失敗時に redirect 自体が失敗して helper が起動不能になる経路を防ぐため、
   # diag_log を /dev/null に fallback して redirect が常に成立するようにする。
   echo "WARNING: cannot create diag_log dir $(dirname "$diag_log") — diagnostic output redirected to /dev/null instead" >&2
+  [ -n "$_diag_mkdir_err" ] && [ -s "$_diag_mkdir_err" ] && head -1 "$_diag_mkdir_err" | sed 's/^/  /' >&2
   diag_log="/dev/null"
 fi
+[ -n "$_diag_mkdir_err" ] && rm -f "$_diag_mkdir_err"
 # create-interview.md の `_resolve-flow-state-path.sh` block と完全対称化 (構造参照化、旧 hardcoded 行番号は drift していた)。
 # 旧 `... || state_file=""` は helper exit 非ゼロを silent 吸収し、create-interview.md 側で
 # halt 判定の根拠にしている FLOW_STATE_PATH_RESOLVE_FAILED retained flag が caller 側で立たない
@@ -293,13 +296,16 @@ if ! state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh); then
 fi
 diag_log="${state_root:-/tmp}/.rite-flow-state-diag.log"
 # Phase 1 Pre-write と対称化。
-if ! mkdir -p "$(dirname "$diag_log")" 2>/dev/null; then
-  # create-interview.md と対称化。
-  # mkdir 失敗時に redirect 自体が失敗して helper が起動不能になる経路を防ぐため、
+# mkdir stderr を tempfile に捕捉して kernel failure reason を WARNING に pass-through する。
+_diag_mkdir_err=$(mktemp /tmp/rite-diag-mkdir-err-XXXXXX 2>/dev/null) || _diag_mkdir_err=""
+if ! mkdir -p "$(dirname "$diag_log")" 2>"${_diag_mkdir_err:-/dev/null}"; then
+  # create-interview.md と対称化。mkdir 失敗時に redirect 自体が失敗して helper が起動不能になる経路を防ぐため、
   # diag_log を /dev/null に fallback して redirect が常に成立するようにする。
   echo "WARNING: cannot create diag_log dir $(dirname "$diag_log") — diagnostic output redirected to /dev/null instead" >&2
+  [ -n "$_diag_mkdir_err" ] && [ -s "$_diag_mkdir_err" ] && head -1 "$_diag_mkdir_err" | sed 's/^/  /' >&2
   diag_log="/dev/null"
 fi
+[ -n "$_diag_mkdir_err" ] && rm -f "$_diag_mkdir_err"
 # Phase 1 Pre-write と対称化 (構造参照化、旧 hardcoded 行番号は drift していた)。
 if ! state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>>"$diag_log"); then
   echo "[CONTEXT] FLOW_STATE_PATH_RESOLVE_FAILED=1; reason=helper_exit_nonzero" >&2

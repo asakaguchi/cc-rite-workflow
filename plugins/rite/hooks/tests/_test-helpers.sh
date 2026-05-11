@@ -118,7 +118,8 @@ assert() {
 }
 
 # Pattern presence assertion (ERE via grep -E).
-# verified-review L-1 / L-4 (silent-failure-hunter) 対応: 旧実装は
+#
+# 旧実装は
 #   1. file-not-found を pattern-absent と同じ fail() に流入していた (環境エラーと test 失敗の混同)
 #   2. grep stderr を取得せず、IO エラー (rc=2) を「pattern not found」(rc=1) と silent に融合させていた
 #      (NFS hiccup / antivirus lock / permission flip 等が「regression detected」と誤報告される)
@@ -129,6 +130,13 @@ assert() {
 #     付き fail として明示する (test 環境破綻を business-rule 失敗と区別する)
 # Source: POSIX grep exit code spec (https://pubs.opengroup.org/onlinepubs/9699919799/utilities/grep.html)
 #   0 = match found, 1 = no match, >=2 = IO/regex error
+#
+# IO error / mktemp 失敗時の doctrine asymmetry note (pr-test-analyzer IMP-6 対応):
+#   - assert_grep / assert_not_grep: mktemp 失敗時は `fail "[MKTEMP_FAILED]"` で continue (test 全体は止めない)
+#   - error-count-runtime-reference.test.sh / parent-routing-pattern-interim.test.sh の `_grep_count_safe`:
+#     mktemp 失敗時は `exit 1` で fail-fast (test 全体を中止)
+#   両者の方針は意図的に異なる: helpers は test 全体の安全網として連続実行を続け、_grep_count_safe は
+#   load-bearing test invariant の保護を完全保証するため即時 abort する設計。混在を見て混乱しないこと。
 assert_grep() {
   local label="$1"
   local file="$2"
@@ -137,23 +145,35 @@ assert_grep() {
     fail "$label [FILE_NOT_FOUND] (file not found: $file)"
     return
   fi
+  # mktemp 失敗時は fail-fast (IMP-1 対応): 旧実装の silent fallback (`|| _ag_err=""`) は
+  # /tmp 制限環境で GREP_IO_ERROR sentinel を silent 無効化する。
+  # error-count-runtime-reference.test.sh:88-92 の canonical pattern と対称化。
   local _ag_err
-  _ag_err=$(mktemp /tmp/rite-assert-grep-err-XXXXXX 2>/dev/null) || _ag_err=""
-  if grep -qE "$pattern" "$file" 2>"${_ag_err:-/dev/null}"; then
+  if ! _ag_err=$(mktemp /tmp/rite-assert-grep-err-XXXXXX); then
+    fail "$label [MKTEMP_FAILED] (mktemp failed for grep stderr capture — /tmp inode exhaustion / read-only fs / permission denied)"
+    return
+  fi
+  # M-3 対応: assert_not_grep と同じ linear pattern で `local _grep_rc=$?` 同一行 declaration の
+  # bash local pitfall を回避。`local _grep_rc=$?` は同一行なら captures するが、
+  # 将来 refactor で分離すると `local` 自身の rc=0 が `$?` を上書きする (BashPitfalls)。
+  local _grep_rc
+  if grep -qE "$pattern" "$file" 2>"$_ag_err"; then
+    _grep_rc=0
+  else
+    _grep_rc=$?
+  fi
+  if [ "$_grep_rc" -ge 2 ]; then
+    local _io_detail=""
+    if [ -s "$_ag_err" ]; then
+      _io_detail=" ($(head -1 "$_ag_err"))"
+    fi
+    fail "$label [GREP_IO_ERROR rc=$_grep_rc] (grep IO/regex error in $file: $pattern)${_io_detail}"
+  elif [ "$_grep_rc" = "0" ]; then
     pass "$label"
   else
-    local _grep_rc=$?
-    if [ "$_grep_rc" -ge 2 ]; then
-      local _io_detail=""
-      if [ -n "$_ag_err" ] && [ -s "$_ag_err" ]; then
-        _io_detail=" ($(head -1 "$_ag_err"))"
-      fi
-      fail "$label [GREP_IO_ERROR rc=$_grep_rc] (grep IO/regex error in $file: $pattern)${_io_detail}"
-    else
-      fail "$label (pattern not found in $file: $pattern)"
-    fi
+    fail "$label (pattern not found in $file: $pattern)"
   fi
-  [ -n "$_ag_err" ] && rm -f "$_ag_err"
+  rm -f "$_ag_err"
 }
 
 # Pattern absence assertion (ERE via grep -E).
@@ -166,22 +186,23 @@ assert_not_grep() {
     fail "$label [FILE_NOT_FOUND] (file not found: $file)"
     return
   fi
+  # mktemp 失敗時は fail-fast (IMP-1 対応、assert_grep と対称)。
   local _ang_err
-  _ang_err=$(mktemp /tmp/rite-assert-not-grep-err-XXXXXX 2>/dev/null) || _ang_err=""
-  # assert_not_grep の semantics は「pattern が存在しない = pass」「pattern が存在する = fail」だが、
-  # IO エラーは「不明」として「pattern 不在として silent pass」させてはならない (旧実装 silent fall-through)。
-  # rc=2 (IO error) を独立検出してから rc=0 / rc=1 を判定する。
+  if ! _ang_err=$(mktemp /tmp/rite-assert-not-grep-err-XXXXXX); then
+    fail "$label [MKTEMP_FAILED] (mktemp failed for grep stderr capture — /tmp inode exhaustion / read-only fs / permission denied)"
+    return
+  fi
   # `set -e` 下で grep rc=1 (no match) が関数 exit を発火する罠を回避するため、
   # `if grep; then` パターンで rc 捕捉を独立させる。
   local _grep_rc
-  if grep -qE "$pattern" "$file" 2>"${_ang_err:-/dev/null}"; then
+  if grep -qE "$pattern" "$file" 2>"$_ang_err"; then
     _grep_rc=0
   else
     _grep_rc=$?
   fi
   if [ "$_grep_rc" -ge 2 ]; then
     local _io_detail=""
-    if [ -n "$_ang_err" ] && [ -s "$_ang_err" ]; then
+    if [ -s "$_ang_err" ]; then
       _io_detail=" ($(head -1 "$_ang_err"))"
     fi
     fail "$label [GREP_IO_ERROR rc=$_grep_rc] (grep IO/regex error in $file: $pattern)${_io_detail}"
@@ -190,7 +211,7 @@ assert_not_grep() {
   else
     pass "$label"
   fi
-  [ -n "$_ang_err" ] && rm -f "$_ang_err"
+  rm -f "$_ang_err"
 }
 
 # Print summary block and return non-zero when any assertion failed.

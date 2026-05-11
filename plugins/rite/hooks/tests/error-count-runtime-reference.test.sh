@@ -1,19 +1,22 @@
 #!/bin/bash
 # error-count-runtime-reference.test.sh
 #
-# Pins the dead-code claim that `--preserve-error-count` was removed from
-# `create-interview.md` because no runtime hook reads `.error_count` outside
-# of `flow-state-update.sh` / `migrate-flow-state.sh` themselves (stop-guard.sh
-# was retired in #675).
+# Pins the no-op claim that `--preserve-error-count` was removed from
+# `create-interview.md` because no hook **reads `.error_count` to branch on it**
+# outside of `flow-state-update.sh` / `migrate-flow-state.sh` themselves
+# (stop-guard.sh was retired in #675). Strictly speaking the field is still
+# **written** by flow-state-update.sh (reset to 0 on patch); the test guards
+# against the reintroduction of a **branching reader** that would make the
+# reset observable to runtime behaviour.
 #
 # Why this test exists:
 #   `commands/issue/create-interview.md` の ADR §3.1 rationale で
-#   `--preserve-error-count` 撤去の根拠を「production runtime に error_count
-#   reader が存在しない (grep 結果 0 件)」としている。これは documentation
-#   comment のみで保護されていないため、将来 `error_count` reader が再導入
-#   された場合に同 phase self-patch (Pre-flight + Return Output) で `error_count`
-#   が 0 にリセットされ silent な runtime gate defeat を引き起こす可能性が
-#   ある。本 test で「reader 不在」の invariant を機械的に保護する。
+#   `--preserve-error-count` 撤去の根拠を「production runtime に error_count を
+#   読んで分岐する reader が存在しない (grep 結果 0 件)」としている。これは
+#   documentation comment のみで保護されていないため、将来 `error_count` reader が
+#   再導入された場合に同 phase self-patch (Pre-flight + Return Output) で
+#   `error_count` が 0 にリセットされ silent な runtime gate defeat を引き起こす
+#   可能性がある。本 test で「分岐 reader 不在」の invariant を機械的に保護する。
 #
 # Scope:
 #   - 検証対象 directory: `plugins/rite/hooks/`

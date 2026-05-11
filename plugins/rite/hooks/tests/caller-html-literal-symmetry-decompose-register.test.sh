@@ -9,10 +9,10 @@
 #     2. plugins/rite/hooks/tests/run-tests.sh (テストランナーが個別 list する形式に変わった場合は同等の場所) から該当行を削除
 #     3. plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md
 #        "廃止済 invariant test" list (line 94 付近) に本ファイル名を追記
-#     4. plugins/rite/hooks/tests/_test-helpers.sh の例示コメント (本ファイル名を例示している箇所)
-#        を削除 (referenced file が消滅するため例示コメントも陳腐化する)
 #   PR-5 完了後に本ファイルが残ると、対象ファイル削除後に file-not-found exit 1 を出すが
 #   CI が個別 stderr を見ない場合 silent fail する経路があるため必ず削除する。
+#   (旧 item 4 「_test-helpers.sh の例示コメント削除」は本 PR で _test-helpers.sh が既に
+#    parent-routing-pattern-interim.test.sh を例示するよう更新済のため不要、pr-test-analyzer MIN-1 対応)
 #
 # Tests for caller HTML inline literal symmetry across the
 # Phase 3.4 Terminal Completion sections of create-decompose.md

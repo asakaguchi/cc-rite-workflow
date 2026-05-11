@@ -12,7 +12,7 @@ FAIL=0
 cleanup() {
   rm -rf "$TEST_DIR"
 }
-# verified-review L-2 (silent-failure-hunter) 対応: 4 signal trap で SIGINT/SIGTERM/SIGHUP
+# 4 signal trap で SIGINT/SIGTERM/SIGHUP
 # 中断時にも `$TEST_DIR` (mktemp -d) が確実に削除されるよう拡張。姉妹テスト
 # `and-logic-defense-chain.test.sh` (4 signal 対応済) と対称化する。
 trap 'rc=$?; cleanup; exit $rc' EXIT
@@ -336,7 +336,12 @@ fake_git_probe=$(PATH="$TEST_DIR/test9/bin:/usr/bin:/bin" git rev-parse --show-t
 if printf '%s' "$fake_git_probe" | grep -q 'simulated unexpected git error'; then
   :  # fake git 起動確認 OK
 else
-  fail "Test 9 pre-flight: fake git binary が起動しない (probe output: $fake_git_probe)"
+  # fake-git probe 失敗時に Test 9 を継続すると real git に fallback して
+  # silent false-positive pass する経路があるため fail-fast する (precondition check の対称化、Phase 1.5 と同型)。
+  echo "  ❌ Test 9 pre-flight: fake git binary が起動しない (probe output: $fake_git_probe)" >&2
+  echo "  原因候補: PATH ordering / chmod ビット消失 / shebang 解釈失敗" >&2
+  cleanup
+  exit 1
 fi
 # PATH=... を bash 直前に置くことで bash プロセス自身に PATH を渡す
 # (PATH=... cd ... は cd builtin にのみ PATH を設定する罠を回避)
@@ -373,10 +378,17 @@ cp "$HOOK" "$TEST_DIR/test10/hooks/verify-terminal-output.sh"
 mv "$TEST_DIR/test10/plugins/rite/commands" "$TEST_DIR/test10/"
 mv "$TEST_DIR/test10/plugins/rite/skills" "$TEST_DIR/test10/"
 rm -rf "$TEST_DIR/test10/plugins"
-if (cd "$TEST_DIR/test10" && PATH="$TEST_DIR/test10/bin:/usr/bin:/bin" bash "$TEST_DIR/test10/hooks/verify-terminal-output.sh" --quiet >/dev/null 2>&1); then
-  pass "exit 0 on 'dubious ownership' (legitimate marketplace fallback honored)"
+# --quiet で stdout/stderr を捨てると、Check 1-3 が
+# 実際に実行されたかを区別できない (silent path bug でも exit 0 になる経路がある)。
+# stdout を capture して Check の実行痕跡 (`PASS:` または既知の output) を grep する。
+test10_stdout=$(cd "$TEST_DIR/test10" && PATH="$TEST_DIR/test10/bin:/usr/bin:/bin" bash "$TEST_DIR/test10/hooks/verify-terminal-output.sh" 2>&1)
+test10_rc=$?
+if [ "$test10_rc" = "0" ] && printf '%s' "$test10_stdout" | grep -qE 'PASS|create-register|create-decompose'; then
+  pass "exit 0 on 'dubious ownership' AND Check 1-3 executed (marketplace fallback path verified, MIN-5)"
+elif [ "$test10_rc" = "0" ]; then
+  fail "exit 0 on 'dubious ownership' but no evidence of Check 1-3 execution (silent path bug suspected)"
 else
-  rc=$?
+  rc=$test10_rc
   fail "expected exit 0 on 'dubious ownership' fallback, got $rc"
 fi
 
@@ -387,7 +399,10 @@ fi
 echo "Test 11: trap install symmetry (EXIT + INT + TERM + HUP all installed)"
 trap_count=0
 for _sig in EXIT INT TERM HUP; do
-  if grep -qE "trap[[:space:]].*${_sig}([[:space:]]|$)" "$HOOK"; then
+  # comment 行を pre-filter で除外することで、
+  # コメント内の "trap EXIT cleanup is installed below" 等のドキュメンテーション言及を
+  # 誤検出して count を inflate する経路を防ぐ。
+  if grep -v '^[[:space:]]*#' "$HOOK" | grep -qE "trap[[:space:]].*${_sig}([[:space:]]|$)"; then
     trap_count=$((trap_count + 1))
   fi
 done

@@ -147,6 +147,17 @@ else
   outer_fail "TC-4.3: 'file not found' diagnostic missing in output"
 fi
 
+# TC-4.4 (pr-test-analyzer IMP-2 対応): structured sentinel prefix `[FILE_NOT_FOUND]` の存在を pin。
+# 旧 TC-4.3 は raw string `file not found` のみを検出していたため、将来「メッセージ文言の簡素化」refactor で
+# sentinel prefix `[FILE_NOT_FOUND]` を削除しても TC-4.3 は引き続き pass する false-negative があった。
+# 本 TC で sentinel prefix の存在を独立 pin する。`[GREP_IO_ERROR rc=N]` sentinel の test は real grep IO error 誘発が
+# 困難なため scope 外とし、本 helper file の inline コメント (Source: POSIX grep exit code spec) で文書化する。
+if echo "$missing_state" | grep -qF '[FILE_NOT_FOUND]'; then
+  outer_pass "TC-4.4: [FILE_NOT_FOUND] sentinel prefix is emitted (parseable contract maintained)"
+else
+  outer_fail "TC-4.4: [FILE_NOT_FOUND] sentinel prefix missing — downstream parser cannot distinguish env error from test failure"
+fi
+
 # === TC-5: print_summary return code ===
 echo
 echo "TC-5: print_summary return code"

@@ -323,7 +323,7 @@ echo "  Layer 2 sentinel         : workflow-incident-emit.sh が WORKFLOW_INCIDE
 echo "  Layer 3 Pre-check        : state-read.sh --field phase pre-condition"
 echo "  Layer 4 whitelist        : phase-transition-whitelist.sh が source 可能"
 echo "  Layer 5 Pre-flight       : preflight-check.sh の compact_state gate"
-echo "  Layer 6 Step 0           : create.md の Step 0 Immediate Bash"
+echo "  Layer 6 Step 0           : skipped (parent-routing pattern、PR-7 で test 削除予定)"
 echo "  Layer 7 4-site 対称化    : --active true の 4-site symmetric distribution"
 echo "  Layer 8 case arm         : phase-transition-whitelist.sh の declare -gA dispatch"
 

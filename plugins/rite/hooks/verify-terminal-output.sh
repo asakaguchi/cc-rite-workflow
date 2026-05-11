@@ -10,8 +10,11 @@
 #     documented as `<!-- [create:completed:{...}] -->` (HTML comment form)
 #   - plugins/rite/commands/issue/create-decompose.md  Phase 3.4 sentinel is
 #     documented as `<!-- [create:completed:{...}] -->` (HTML comment form)
-#   - plugins/rite/commands/issue/create-interview.md  Defense-in-Depth example
-#     outputs `<!-- [interview:skipped] -->` / `<!-- [interview:completed] -->`
+#   - plugins/rite/commands/issue/create-interview.md  AC-3 non-regression only
+#     (PR-2 #920 / ADR docs/designs/parent-routing-unification.md で
+#     `[interview:completed]` / `[interview:skipped]` の bare bracket form に
+#     移行済、AC-2/AC-6 HTML-wrap 必須化は撤去。raw string `[interview:`
+#     presence のみ AC-3 で検証する)
 #
 # Non-regression (AC-3): the raw string `[create:completed:` / `[interview:`
 # must still appear in each file so hook/grep contracts remain matchable.
@@ -50,8 +53,9 @@ Options:
   -h, --help             Show this help (exits 0)
 
 Verifies that Terminal Completion sections in create-register.md /
-create-decompose.md / create-interview.md wrap sentinel markers in HTML
-comments (Issue #561 AC-2 / AC-3 / AC-6).
+create-decompose.md wrap sentinel markers in HTML comments (Issue #561
+AC-2 / AC-3 / AC-6). create-interview.md は PR-2 #920 で parent-routing
+pattern (bare bracket form) に移行済のため AC-3 non-regression のみ検証。
 
 Exit codes:
   0  all checks passed (or --help)

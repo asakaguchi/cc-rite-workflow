@@ -12,6 +12,14 @@
 #     3. ADR §6.1 / sub-skill-return-protocol.md 廃止済 invariant test list に本ファイル名を追記
 #     4. PR-7 統合計画 task list (ADR §6.1 PR-7 引き継ぎ箇所) の各 IMP-2 / IMP-3 / IMP-4 / IMP-5 / TQ-4 を確認
 #
+#   ⚠️ PR-3 マージ時の事前更新 (pr-test-analyzer M-3 対応):
+#     lint.md Phase 9.2 三点セット blockquote が PR-3 で parent-routing pattern に移行するタイミングで、
+#     **本ファイル中の TC-5 全体を削除 or 更新** すること (TC-5a `>= 3` が PR-3 で fail に転じる)。PR-3 着手時の
+#     チェックリスト:
+#       a. TC-5 を一括削除する (lint.md 移行が完了し、blockquote が消滅するため pin 対象が消える)
+#       b. ADR §6.1 row 230 の "PR-3 撤去予定" 状態を "PR-3 撤去済" に更新
+#       c. 本ファイルが PR-7 まで残存することを前提に、TC-5 のみ削除 + 他 TC は維持する形で patch する
+#
 # Interim invariant test for the parent-routing pattern migration.
 # 移行ロードマップ・統合計画は ADR docs/designs/parent-routing-unification.md 参照。
 #
@@ -63,12 +71,30 @@ _grep_count_safe() {
   local _file="$2"
   local _pattern="$3"
   local _err
-  _err=$(mktemp /tmp/rite-grep-count-err-XXXXXX 2>/dev/null) || _err=""
+  # silent-failure-hunter M-6 (rationale only): test runner が `set +e` で各 TC を呼ぶと subshell の
+  # `exit 1` は parent の `$(...)` 代入 rc=非0 として propagate するが、`set -e` が off だと後続 TC に
+  # 進んでしまう懸念がある。本関数は本テスト先頭 `set -euo pipefail` (L30) で常に set -e 環境下で
+  # 呼ばれることを invariant としており、test runner が無効化する場合は本テスト全体の前提が崩れる
+  # ことが先に検出される (rc=2 detection は parent shell の set -e に依存)。
+  # 注: bash command substitution subshell の `$-` は errexit を反映しないことがあるため動的 check は
+  # 不安定。本 invariant は文書 (本コメント) で示すに留め、runtime check は行わない。
+  # silent-failure-hunter IMP-1: mktemp 失敗時の doctrine を `error-count-runtime-reference.test.sh:91-95`
+  # と統一する。旧 `|| _err=""` は silent degraded mode で、IO エラー時 (`/tmp` inode 枯渇 / read-only
+  # filesystem / permission 拒否) に診断情報を失わせていた。fail-fast に変更し、ロジック上は POSIX `:-`
+  # 演算子の暗黙挙動 (`_err=""` でも `2>"${_err:-/dev/null}"` が `/dev/null` に倒れる) に依存しない明確な
+  # 経路にする。
+  if ! _err=$(mktemp /tmp/rite-grep-count-err-XXXXXX 2>/dev/null); then
+    echo "  ❌ $_label [MKTEMP_FAILED] (cannot capture grep stderr — IO エラー時の診断情報を失うため fail-fast)" >&2
+    echo "    対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
+    exit 1
+  fi
   local _count
   local _rc
   # `set -e` 下で grep rc=1 (no match) 経路で関数全体が exit する罠を回避するため、
   # `if cmd; then :; else _rc=$?; fi` 形式で代入と rc 捕捉を独立させる。
   # `_count=$(cmd)` 単独代入は set -e 下で cmd 失敗 (rc!=0) → 代入 rc!=0 → 関数 exit するため。
+  # M-8: `_err` は本ブロック冒頭で mktemp fail-fast 済のため非空が invariant。`2>"$_err"` で直接渡せるが、
+  # 将来 `_err` を可変にする refactor を考慮して `${_err:-/dev/null}` defensive 形式を維持する。
   if _count=$(grep -cE "$_pattern" "$_file" 2>"${_err:-/dev/null}"); then
     _rc=0
   else
@@ -76,14 +102,16 @@ _grep_count_safe() {
   fi
   if [ "$_rc" -ge 2 ]; then
     local _detail=""
-    [ -n "$_err" ] && [ -s "$_err" ] && _detail=" ($(head -1 "$_err"))"
-    [ -n "$_err" ] && rm -f "$_err"
+    [ -s "$_err" ] && _detail=" ($(head -1 "$_err"))"
+    rm -f "$_err"
     echo "  ❌ $_label [GREP_IO_ERROR rc=$_rc] (grep IO/regex error in $_file: $_pattern)${_detail}" >&2
     exit 1
   fi
-  [ -n "$_err" ] && rm -f "$_err"
+  rm -f "$_err"
   # rc=0 (match found, count>0) と rc=1 (no match, count=0) は legitimate
   # ただし rc=1 の場合 `grep -c` は count=0 を stdout に出力するので _count は "0" になっている
+  # M-4: invariant 明示 — 将来 `grep -cE` を別実装に置換した場合の defense として `_count="${_count:-0}"`。
+  _count="${_count:-0}"
   printf '%s' "$_count"
 }
 
@@ -119,6 +147,33 @@ else
   fail "TC-1: create-interview.md の 'flow-state-update.sh patch' 出現回数が 3 ではない (実測=$interview_patch_count, 期待=3 厳格 — site 数が変化した場合は本 TC の閾値を意図的に更新してください)"
 fi
 
+# pr-test-analyzer I-3 部分緩和: 「Pre-flight section から 1 patch を削除して別 section に 1 patch を
+# 追加」のような silent reorganization (count==3 維持) を catch するため、Pre-flight section と
+# Defense-in-Depth section の **section 別 patch 数** を独立 awk range で pin する。
+# TC-1d/1e (section anchor 存在 pin) と組み合わせることで、section 構造 + section 内 patch 数の両方を
+# mechanical に保証する (旧 TC-1 単独の section 内 silent reorganization 検出不能を補完)。
+# PR-7 uniformity test では awk-based 構造 pin で完全カバーするが、本 interim test では heading anchor
+# 範囲の patch count 簡易 pin で部分緩和する。
+_preflight_section_patches=$(awk '
+  /^## 🚨 MANDATORY Pre-flight: Flow State Update/ { in_section=1; next }
+  in_section && /^## / && !/^## 🚨 MANDATORY Pre-flight/ { in_section=0; next }
+  in_section && /flow-state-update\.sh patch/ { c++ }
+  END { print c+0 }
+' "$INTERVIEW_MD" 2>/dev/null)
+_defense_section_patches=$(awk '
+  /^## Defense-in-Depth: Flow State Update \(Before Return\)/ { in_section=1; next }
+  in_section && /^## / && !/^## Defense-in-Depth: Flow State Update/ { in_section=0; next }
+  in_section && /flow-state-update\.sh patch/ { c++ }
+  END { print c+0 }
+' "$INTERVIEW_MD" 2>/dev/null)
+# Pre-flight section: 2 patch (if branch + cold-start elif branch) / Defense-in-Depth: 1 patch (Return Output re-patch)
+if [ "${_preflight_section_patches:-0}" -ge 2 ] && [ "${_defense_section_patches:-0}" -ge 1 ]; then
+  pass "TC-1c-2: section 別 patch count 健全 (Pre-flight section >= 2 [if + cold-start elif], Defense-in-Depth >= 1 [Return Output re-patch])"
+else
+  fail "TC-1c-2: section 別 patch count が崩壊 (Pre-flight=${_preflight_section_patches}, Defense-in-Depth=${_defense_section_patches}, 期待 Pre-flight >= 2 AND Defense-in-Depth >= 1 — section 内 silent reorganization のリスク)"
+fi
+unset _preflight_section_patches _defense_section_patches
+
 # create_post_interview phase が patch arg として現れることを pin
 assert_grep "TC-1b: create-interview.md に '--phase \"create_post_interview\"' が存在" \
   "$INTERVIEW_MD" \
@@ -134,6 +189,13 @@ assert_grep "TC-1b: create-interview.md に '--phase \"create_post_interview\"' 
 # awk で Pre-flight section の `else` 〜 `fi` ブロック範囲を切り出し、その範囲内で `create` invocation の
 # 1〜3 行下に `--phase "create_interview"` が現れることを検証する。bash backslash 続行で
 # create が複数行に分割されていても tolerate するため 3 行幅の lookahead を許す。
+# silent-failure-hunter M-5: awk の stderr を tempfile に退避し、busybox/gawk 差異や IO エラーで
+# 空文字列 ("MISSING" 誤判定) になる経路を fail-fast する。旧 `2>/dev/null` は本テスト全体の defensive
+# pattern (`_grep_count_safe` の rc=2 fail-fast) と非対称だった。
+_awk_err=$(mktemp /tmp/rite-awk-err-XXXXXX 2>/dev/null) || {
+  echo "  ❌ TC-1c-1 [MKTEMP_FAILED] awk stderr 退避用 tempfile の mktemp に失敗 — fail-fast" >&2
+  exit 1
+}
 _cold_start_check=$(awk '
   # Pre-flight section の `else` (== if-fi 構造の else 節開始) を検出して in_else=1
   # else 単独行 (front whitespace + else + end) を完全一致でマッチ
@@ -145,7 +207,14 @@ _cold_start_check=$(awk '
   # lookahead window 内で `--phase "create_interview"` (suffix `_post_` を除外) が現れたら found=1
   in_else && NR <= lookahead && /--phase[[:space:]]+"create_interview"[^_]/ { found=1; lookahead=0 }
   END { print (found ? "FOUND" : "MISSING") }
-' "$INTERVIEW_MD" 2>/dev/null)
+' "$INTERVIEW_MD" 2>"$_awk_err")
+if [ -s "$_awk_err" ]; then
+  echo "  ❌ TC-1c-1 [AWK_ERROR] awk が stderr 出力あり (busybox/gawk 差異 / IO error 等):" >&2
+  head -3 "$_awk_err" | sed 's/^/    /' >&2
+  rm -f "$_awk_err"
+  exit 1
+fi
+rm -f "$_awk_err"
 if [ "$_cold_start_check" = "FOUND" ]; then
   pass "TC-1c-1: create-interview.md cold-start branch (else block) 内に 'create + --phase \"create_interview\"' の sequence が存在 (audit-trail fidelity, awk range-based pin)"
 else
@@ -188,6 +257,11 @@ assert_grep "TC-2e: create-interview.md に bare bracket '[interview:error]' bul
 # TC-2e は bullet 存在のみ、TC-6i は 4 retained flag echo のみで、表 row の AND 条件組合せが
 # pin されていない silent regression を防ぐ (4 row のいずれかが silent 削除/組替された場合、
 # Bug Fix/Chore preset の halt 判定が抜ける silent regression を直接 catch)。
+# pr-test-analyzer M-4: 本 4 assertion は pipe-delimited table cell の literal 構造に tightly coupled で、
+# table の harmless な reformatting (列追加 / 表記揺れ / bullet list 化 等) でも全 4 件が同時 fail する
+# brittleness を持つ。PR-7 uniformity test では文字列 pattern を「flag 名 + AND token + flag 名」の
+# 同一行存在に loose 化する方針を採るが、本 interim test では rigid な literal pin を維持する
+# (本 PR 期間中の table reformatting は意図的にしか起きないため acceptable)。
 assert_grep "TC-2e-1: create-interview.md halt 判定表 row 1 (PREFLIGHT_CREATE_FAILED 単独経路)" \
   "$INTERVIEW_MD" \
   '\| `PREFLIGHT_CREATE_FAILED=1` \|'
@@ -437,7 +511,9 @@ fi
 # M-7 対応: silent failure pattern の variation を網羅的に検出。
 # 旧実装は `2>/dev/null || true` 単独しか catch しなかったが、`|| :` / `|| return 0` /
 # `|| { true; }` 等の equivalent silent fallback variation を全て検出するよう ERE alternation を拡張。
-_silent_failure_pattern='2>/dev/null[[:space:]]*\|\|[[:space:]]*(true|:|return[[:space:]]+0|\{[[:space:]]*true[[:space:]]*;?[[:space:]]*\})'
+# silent-failure-hunter M-7 (cycle 7): さらに `|| exit 0` / `|| (true)` / `|| { :; }` (空白なし) も
+# alternation に追加し、将来の equivalent silent failure pattern 導入も catch する。
+_silent_failure_pattern='2>/dev/null[[:space:]]*\|\|[[:space:]]*(true|:|return[[:space:]]+0|exit[[:space:]]+0|\([[:space:]]*true[[:space:]]*\)|\{[[:space:]]*:?[[:space:]]*true?[[:space:]]*;?[[:space:]]*\})'
 
 # anti-pattern revert detection: silent failure variation が workflow-incident-emit.sh と co-located で残っていないこと
 # grep -B1 -A1 では 5+ 行に渡る invocation block の
@@ -541,6 +617,16 @@ for _flag in PREFLIGHT_PATCH_FAILED PREFLIGHT_CREATE_FAILED PREFLIGHT_CREATE_THE
     pass "TC-6i: create-interview.md に '[CONTEXT] ${_flag}=1' echo が存在 (catastrophic dual-failure 判定の load-bearing input)"
   else
     fail "TC-6i: create-interview.md に '[CONTEXT] ${_flag}=1' echo が見つからない (flag rename / typo / 削除の可能性 — catastrophic dual-failure 判定が silent break する)"
+  fi
+done
+# pr-test-analyzer I-1: Pre-flight retained flag 6 個中、上記 4 個に加えて以下 2 個も pin する。
+# 非 halt diagnostic flag (`STATE_PATH_RESOLVE_FAILED` / `FLOW_STATE_PATH_RESOLVE_FAILED`) が消失すると
+# `manual_fallback_adopted` sentinel emit が silent break して observability が片肺化する。
+for _flag in STATE_PATH_RESOLVE_FAILED FLOW_STATE_PATH_RESOLVE_FAILED; do
+  if grep -qE "\\[CONTEXT\\] ${_flag}=1" "$INTERVIEW_MD"; then
+    pass "TC-6i: create-interview.md に '[CONTEXT] ${_flag}=1' echo が存在 (non-halt diagnostic flag、manual_fallback_adopted sentinel emit の load-bearing input)"
+  else
+    fail "TC-6i: create-interview.md に '[CONTEXT] ${_flag}=1' echo が見つからない (flag rename / typo / 削除 — observability silent break のリスク)"
   fi
 done
 for _flag in CREATE_INTERVIEW_PRE_WRITE_PATCH_FAILED CREATE_INTERVIEW_PRE_WRITE_CREATE_FAILED CREATE_DELEGATION_PRE_WRITE_PATCH_FAILED CREATE_DELEGATION_PRE_WRITE_CREATE_FAILED; do

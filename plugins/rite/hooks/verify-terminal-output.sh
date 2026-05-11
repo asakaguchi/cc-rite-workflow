@@ -106,6 +106,10 @@ done
 # 構造的非対称があったため、両経路共通の lifecycle に統一する。`--repo-root` 経路では
 # `_git_err=""` のまま cleanup は no-op で安全 (rm -f "" は idempotent)。
 _git_err=""
+# silent-failure-hunter M-3: 現状の cleanup 対象は `_git_err` のみ。Check 1-4 内で将来 tempfile
+# (例: `_jq_err` / `_diff_err`) を追加する場合、本関数の `rm -f` 引数に **必ず** 追加すること
+# (`flow-state-update.sh` の `_rite_flow_state_atomic_cleanup` と同型の拡張可能形式)。
+# 拡張漏れがあると SIGINT/SIGTERM/SIGHUP 中断時の orphan tempfile が `/tmp` に残留する。
 _rite_verify_terminal_cleanup() {
   rm -f "${_git_err:-}"
 }
@@ -143,6 +147,11 @@ else
     #   classify_rc=2 (= unclassified): _git_err 不在 / 空 / grep IO エラー → fail-fast 経路
     #   classify_rc=0 (= match found):  legitimate marketplace fallback 経路
     #   classify_rc=1 (= no match):     非 marketplace fallback の git error → fail-fast 経路
+    # code-reviewer cr-1: `_git_err_classify_rc=2` (= unclassified) は後続の if/elif で
+    # 直接判定する分岐を持たないが、`[ -z "$_git_err" ]` (空) / `[ ! -s "$_git_err" ]` (空ファイル) の
+    # 順序判定で間接的にカバーされる (空 = mktemp 失敗 → fail-fast、空ファイル = git stderr 空 → fail-fast)。
+    # state value 自体は dead だが、明示的に 2 を持っておくことで「初期値 = unclassified」の意図が
+    # 一目で分かり、将来 grep classify を拡張する際の baseline として load-bearing。
     _git_err_classify_rc=2
     if [ -n "$_git_err" ] && [ -s "$_git_err" ]; then
       if grep -qE 'not a git repository|dubious ownership' "$_git_err"; then
@@ -254,6 +263,18 @@ else
     pass "create-decompose.md: sentinel wrapped in HTML comment form (AC-2 / AC-6)"
   else
     fail "create-decompose.md: sentinel NOT wrapped in HTML comment form"
+  fi
+
+  # Drift guard: Check 1 と対称化。create-decompose.md (`:458`) にも create-register.md と同様の
+  # legacy "absolute last line" prose が存在するため、両 file で `--strict` promotion を対称適用する。
+  # `--strict` flag の usage 説明 ("[VERIFY:WARNING] events を hard fail に promote") は両 file の
+  # legacy prose 検出を対象とする契約だが、本 guard 不在では Check 2 のみ drift detection が片肺化していた。
+  if grep -nE '\[create:completed:\{[^}]+\}\][[:space:]]*MUST be the (absolute )?last line' "$CREATE_DECOMPOSE" >/dev/null 2>&1; then
+    if [ "$STRICT" = "1" ]; then
+      fail "create-decompose.md: legacy prose about bare-sentinel 'absolute last line' detected (--strict mode)"
+    else
+      echo "[VERIFY:WARNING] ${C_YEL}WARNING${C_RST}: create-decompose.md: legacy prose about bare-sentinel 'absolute last line' may still be present; review manually (use --strict to promote to fail)" >&2
+    fi
   fi
 fi
 

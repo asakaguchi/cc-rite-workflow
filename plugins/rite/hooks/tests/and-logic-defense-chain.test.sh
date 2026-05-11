@@ -15,7 +15,9 @@
 #   5. Pre-flight       : preflight-check.sh が --command-id 引数を受け付け、compact_state を gate
 #   6. Step 0 (撤去済)  : parent-routing pattern 移行で create.md の "Step 0 Immediate Bash" pattern を撤去。
 #                         create-interview Pre-flight の存在は parent-routing-pattern-interim.test.sh が代替 pin する。
-#   7. 4-site 対称化    : `--active true` が 4 site 以上 (create.md / create-interview.md / start.md 系列) で symmetry
+#   7. --active true minimal presence : `--active true` が commands/issue/ 配下に 4 file 以上で出現
+#                         (旧 "4-site 対称化"。Layer 6 撤去で本来の意味を失い、現在は file 単位の存在 check のみで
+#                         body L221 のラベル変更と整合。**PR-7 で本 layer 全廃予定**。comment-analyzer 9 / pr-test I-5 対応)
 #   8. case arm         : phase-transition-whitelist.sh の declare -gA テーブル + rite_phase_transition_allowed 関数
 #
 # 各 layer について以下を verify:
@@ -387,7 +389,14 @@ echo "  Layer 3 Pre-check        : state-read.sh --field phase pre-condition"
 echo "  Layer 4 whitelist        : phase-transition-whitelist.sh が source 可能"
 echo "  Layer 5 Pre-flight       : preflight-check.sh の compact_state gate"
 echo "  Layer 6 retired          : parent-routing pattern 移行で撤去 (ADR docs/designs/parent-routing-unification.md)"
+# pr-test-analyzer M-5: numbering gap 説明を summary 近くに inline pointer として追記する
+# (file 冒頭の説明だけでなく、Pass 報告を見た maintainer も Layer 5 → Layer 7 の skip を即座に
+# 理解できるようにする)。
+echo "  (Note: Layer 6 was retired in parent-routing pattern migration; numbering gap is intentional to preserve historical cross-references — see ADR §6.1)"
+# pr-test-analyzer I-5: Layer 7 は trivially satisfied で **PR-7 で本 layer 全廃予定**。本 layer 通過は
+# AND-logic invariant の証明力を失っており、cognitive cost のみが残る (Pass 報告を読む maintainer に明示)。
 echo "  Layer 7 minimal presence : --active true が commands/issue/ 配下に 4 file 以上で出現"
+echo "  (Note: Layer 7 is semantically vestigial after Layer 6 retirement — PR-7 で全廃予定、現状は file 単位の存在 check のみで AND-logic invariant への寄与なし)"
 echo "  Layer 8 case arm         : phase-transition-whitelist.sh の declare -gA dispatch"
 
 if [ "$FAIL" -gt 0 ]; then

@@ -157,6 +157,42 @@ else
   echo "    (b) 新規 reader 側で error_count semantics を保護する設計を導入してください。" >&2
 fi
 
+echo "=== TC-2: error_count writer (flow-state-update.sh) preservation ==="
+
+# pr-test-analyzer I-4: ADR §3.1 rationale (dead-code claim) は "field は writer に残る" 前提で
+# 「reader 不在のため reset 0 が runtime に影響しない」と論証している。writer 自体が silent に
+# 削除されると、schema 上の `.error_count` field が消えるか常に空文字になり、ADR の "writer 保持 +
+# reader 不在" 仮定が崩れて documented schema と runtime behavior が divergent になる documentation
+# drift を起こす。writer site が flow-state-update.sh に最低 1 箇所存在することを mechanical に保証する。
+FLOW_STATE_UPDATE_SH="$HOOKS_DIR/flow-state-update.sh"
+if [ ! -f "$FLOW_STATE_UPDATE_SH" ]; then
+  echo "  ❌ FLOW_STATE_UPDATE_SH NOT FOUND: $FLOW_STATE_UPDATE_SH" >&2
+  exit 1
+fi
+# `error_count: 0` (jq object literal) または `error_count=0` (bash assignment) または `"error_count": 0` (JSON) の
+# いずれかが少なくとも 1 箇所存在することを確認する。
+_grep_err2=$(mktemp /tmp/rite-fix-writer-grep-err-XXXXXX 2>/dev/null) || {
+  echo "  ❌ TC-2 [MKTEMP_FAILED] writer 検出用 stderr tempfile の mktemp に失敗" >&2
+  exit 1
+}
+set +e
+writer_count=$(grep -cE '("error_count"[[:space:]]*:[[:space:]]*0|error_count[[:space:]]*=[[:space:]]*0|error_count:[[:space:]]*0)' "$FLOW_STATE_UPDATE_SH" 2>"$_grep_err2")
+writer_rc=$?
+set -e
+if [ -s "$_grep_err2" ] || [ "$writer_rc" -ge 2 ]; then
+  fail "TC-2: writer 検出 grep が IO エラー (rc=$writer_rc) — silent regression 防止のため fail-fast"
+  head -3 "$_grep_err2" | sed 's/^/    /' >&2
+  rm -f "$_grep_err2"
+  print_summary "$(basename "$0")"
+  exit 1
+fi
+rm -f "$_grep_err2"
+if [ "${writer_count:-0}" -ge 1 ]; then
+  pass "TC-2: flow-state-update.sh に error_count writer (reset 0) が ${writer_count} 箇所存在 (ADR §3.1 dead-code claim の前提保持)"
+else
+  fail "TC-2: flow-state-update.sh に error_count writer が消失 (実測=${writer_count}, 期待 >= 1) — ADR §3.1 dead-code claim の前提 (writer 保持 + reader 不在) が崩れています。documentation drift のリスク。"
+fi
+
 DRIFT_HINT="\
 error_count runtime reader invariant が崩れています。
 本 test は create-interview.md ADR §3.1 で撤去された '--preserve-error-count' の

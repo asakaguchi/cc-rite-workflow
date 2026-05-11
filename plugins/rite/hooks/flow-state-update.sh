@@ -35,11 +35,10 @@
 #                            (write-only reset in this file; see tests/error-count-runtime-reference.test.sh for the
 #                            mechanical proof that no external reader branches on the field).
 #                            Retained for forward-compatibility if a branching reader is reintroduced.
-#                            Residual callers: wiki/ingest.md / cleanup.md still pass this flag, but their prose
-#                            describing the flag as load-bearing is itself out-of-date and will be rewritten to
-#                            "historical context" in PR-3 / PR-4 (tracked via the follow-up cleanup Issue, see commands/issue/create-interview.md
-#                            "Forward note" for the canonical policy). ADR `docs/designs/parent-routing-unification.md`
-#                            PR-2 で create.md Step 0/1 (Mandatory After Interview) は撤去済。
+#                            Residual callers: wiki/ingest.md / cleanup.md still pass this flag. ADR
+#                            `docs/designs/parent-routing-unification.md` Rollback Log で全 caller の
+#                            移行スケジュールを単一の真実の源として管理する (本 option help text には PR 番号や
+#                            個別 caller の移行計画を入れない — comment-analyzer 7 で historical drift を排除)。
 #   --legacy-mode            Force legacy single-file path (`.rite-flow-state`) regardless of
 #                            rite-config.yml `flow_state.schema_version`. Used by migration script
 #                            (#2) and tooling that must read/write the pre-migration source. Without
@@ -54,7 +53,22 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source session ownership helper for stale detection in create mode
-source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
+# silent-failure-hunter IMP-4: 旧 `2>/dev/null || true` は syntax error / permission denied /
+# missing file を完全 silent suppress していた。get_state_session_id / parse_iso8601_to_epoch が
+# 未定義になると、後続 L631 等の `if !` で `command not found` rc が間接 catch される一方、source
+# 失敗自体の原因 (deploy 不整合 / 構文エラー / permission denied) は完全に消える。
+# 本 PR で silent fallback を排除し、source 失敗時は WARNING + 詳細を stderr に emit する
+# (`_validate-helpers.sh` の DEFAULT_HELPERS 配列対象外なため、ここで explicit guard する)。
+_session_ownership_source_err=$(mktemp /tmp/rite-fs-source-err-XXXXXX 2>/dev/null) || _session_ownership_source_err=""
+if ! source "$SCRIPT_DIR/session-ownership.sh" 2>"${_session_ownership_source_err:-/dev/null}"; then
+  echo "WARNING: source session-ownership.sh が失敗しました — get_state_session_id / parse_iso8601_to_epoch が未定義になる可能性があります" >&2
+  if [ -n "$_session_ownership_source_err" ] && [ -s "$_session_ownership_source_err" ]; then
+    head -3 "$_session_ownership_source_err" | sed 's/^/  /' >&2
+  fi
+  echo "  対処: $SCRIPT_DIR/session-ownership.sh の存在 / 構文 / permission を確認してください" >&2
+  echo "  影響: session ownership check が無効化されますが、後続の jq invocation で間接 catch される" >&2
+fi
+[ -n "$_session_ownership_source_err" ] && rm -f "$_session_ownership_source_err"
 
 # Helper script existence check (verified-review cycle 34 F-09 / cycle 38 F-01 HIGH + F-09 MEDIUM):
 # 旧実装は state-path-resolve.sh のみ fail-fast 検査していたが、本 helper は以下の helper を `bash <missing>`
@@ -320,9 +334,12 @@ _resolve_session_state_path() {
 
 # --- Argument parsing ---
 MODE="${1:-}"
-# silent-failure-hunter L-4: `shift 2>/dev/null || true` を意図明示形式に変更。
-# 引数なしで呼ばれた場合 ($# == 0) は shift が失敗するため、`(( $# > 0 ))` で先に guard する。
-(( $# > 0 )) && shift
+# silent-failure-hunter M-1: 旧 `(( $# > 0 )) && shift` は `$#=0` の場合 `(( 0 > 0 ))` が rc=1 を
+# 返し、`set -e` 下で短絡評価では trap は発火しないが、本行が将来 `if` の条件外に出ると script 全体が
+# rc=1 で死ぬ fragility を残していた。`if-then-fi` 形式に変更して bash `(( ))` の rc 仕様への暗黙依存を解消。
+if [ $# -gt 0 ]; then
+  shift
+fi
 
 PHASE=""
 ISSUE=0
@@ -622,12 +639,18 @@ case "$MODE" in
     # 経路を生む load-bearing logic のため、jq 失敗 (corrupt JSON / IO error) を可視化する。
     if [[ -n "$SESSION" && -f "$FLOW_STATE" ]]; then
       _ownership_jq_err=$(mktemp /tmp/rite-fs-own-jq-err-XXXXXX 2>/dev/null) || _ownership_jq_err=""
+      # silent-failure-hunter IMP-3: 4 jq site で同一 tempfile を reuse するため、各 site の
+      # 直前で truncate して前 site の stale stderr が `head -1` 経由で誤誘導しないようにする
+      # (error-count-runtime-reference.test.sh:129 と同型 pattern)。後段 site の判定経路は前 site
+      # の進行 gate (`if [[ $_existing_active == "true" ]]`) で限定的だが、defense-in-depth で全 site truncate。
+      [ -n "$_ownership_jq_err" ] && : > "$_ownership_jq_err"
       if ! _existing_active=$(jq -r '.active // false' "$FLOW_STATE" 2>"${_ownership_jq_err:-/dev/null}"); then
         echo "WARNING: session-ownership .active 抽出 jq 失敗 ($FLOW_STATE) — defaulting to false" >&2
         [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -1 "$_ownership_jq_err" | sed 's/^/  /' >&2
         _existing_active="false"
       fi
       if [[ "$_existing_active" == "true" ]]; then
+        [ -n "$_ownership_jq_err" ] && : > "$_ownership_jq_err"  # IMP-3: truncate before reuse
         if ! _existing_sid=$(get_state_session_id "$FLOW_STATE" 2>"${_ownership_jq_err:-/dev/null}"); then
           echo "WARNING: session-ownership session_id 抽出失敗 ($FLOW_STATE) — defaulting to empty" >&2
           [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -1 "$_ownership_jq_err" | sed 's/^/  /' >&2
@@ -635,12 +658,14 @@ case "$MODE" in
         fi
         if [[ -n "$_existing_sid" && "$_existing_sid" != "$SESSION" ]]; then
           # Different session owns the state — check staleness
+          [ -n "$_ownership_jq_err" ] && : > "$_ownership_jq_err"  # IMP-3: truncate before reuse
           if ! _updated_at=$(jq -r '.updated_at // empty' "$FLOW_STATE" 2>"${_ownership_jq_err:-/dev/null}"); then
             echo "WARNING: session-ownership .updated_at 抽出 jq 失敗 ($FLOW_STATE) — defaulting to empty (staleness check 不能)" >&2
             [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -1 "$_ownership_jq_err" | sed 's/^/  /' >&2
             _updated_at=""
           fi
           if [[ -n "$_updated_at" ]]; then
+            [ -n "$_ownership_jq_err" ] && : > "$_ownership_jq_err"  # IMP-3: truncate before reuse
             if ! _state_epoch=$(parse_iso8601_to_epoch "$_updated_at" 2>"${_ownership_jq_err:-/dev/null}"); then
               echo "WARNING: session-ownership ISO8601 parse 失敗 ($_updated_at) — defaulting epoch=0 (stale 扱い)" >&2
               [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -1 "$_ownership_jq_err" | sed 's/^/  /' >&2

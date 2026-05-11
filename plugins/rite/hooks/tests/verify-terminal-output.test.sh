@@ -332,7 +332,9 @@ setup_plugin_tree "$TEST_DIR/test9" "true" "bare"
 # CI 環境差 (PATH ordering の差 / chmod ビット消失 / shebang 解釈失敗) で fake git が起動せず
 # real git に fallback して Test 9 が silent skip するリスクを排除する。
 # 期待: fake git は stderr に "simulated unexpected git error" を含む fatal メッセージを emit する。
-fake_git_probe=$(PATH="$TEST_DIR/test9/bin:/usr/bin:/bin" git rev-parse --show-toplevel 2>&1 || true)
+# pr-test-analyzer M-1: probe 側も append で統一する (bash 非標準パス環境で git binary が
+# /usr/bin / /bin にない実環境を想定した defense-in-depth)
+fake_git_probe=$(PATH="$TEST_DIR/test9/bin:$PATH" git rev-parse --show-toplevel 2>&1 || true)
 if printf '%s' "$fake_git_probe" | grep -q 'simulated unexpected git error'; then
   :  # fake git 起動確認 OK
 else
@@ -345,7 +347,10 @@ else
 fi
 # PATH=... を bash 直前に置くことで bash プロセス自身に PATH を渡す
 # (PATH=... cd ... は cd builtin にのみ PATH を設定する罠を回避)
-if (cd "$TEST_DIR/test9" && PATH="$TEST_DIR/test9/bin:/usr/bin:/bin" bash "$HOOK" --quiet >/dev/null 2>&1); then
+# pr-test-analyzer M-1: PATH を **append** で組み立てる (非標準 bash パス環境 = macOS の
+# /usr/local/bin/bash 等で `bash` 自体が見つからず Test 9/10 が起動しない経路を防ぐ。
+# probe 側 line 339 は既に append、本 hook invocation 側を統一)。
+if (cd "$TEST_DIR/test9" && PATH="$TEST_DIR/test9/bin:$PATH" bash "$HOOK" --quiet >/dev/null 2>&1); then
   fail "expected exit 1 when git rev-parse returns unexpected error class, got exit 0 (silent marketplace fallback regression)"
 else
   rc=$?
@@ -381,7 +386,8 @@ rm -rf "$TEST_DIR/test10/plugins"
 # --quiet で stdout/stderr を捨てると、Check 1-3 が
 # 実際に実行されたかを区別できない (silent path bug でも exit 0 になる経路がある)。
 # stdout を capture して Check の実行痕跡 (`PASS:` または既知の output) を grep する。
-test10_stdout=$(cd "$TEST_DIR/test10" && PATH="$TEST_DIR/test10/bin:/usr/bin:/bin" bash "$TEST_DIR/test10/hooks/verify-terminal-output.sh" 2>&1)
+# pr-test-analyzer M-1: PATH を append で組み立てる (Test 9 と同型化、bash 非標準パス環境対策)
+test10_stdout=$(cd "$TEST_DIR/test10" && PATH="$TEST_DIR/test10/bin:$PATH" bash "$TEST_DIR/test10/hooks/verify-terminal-output.sh" 2>&1)
 test10_rc=$?
 if [ "$test10_rc" = "0" ] && printf '%s' "$test10_stdout" | grep -qE 'PASS|create-register|create-decompose'; then
   pass "exit 0 on 'dubious ownership' AND Check 1-3 executed (marketplace fallback path verified, MIN-5)"
@@ -421,6 +427,91 @@ if grep -qF '[VERIFY:WARNING]' "$HOOK"; then
 else
   fail "verify-terminal-output.sh missing [VERIFY:WARNING] sentinel prefix (CI catch メカニズムが silent に消失)"
 fi
+
+# Test 13: --strict flag runtime promotion semantics (I-2 対応, verified-review Important)
+# 旧 Test 12 は `[VERIFY:WARNING]` literal の static grep のみで、`--strict` flag の runtime
+# promotion (default→WARNING / --strict→fail) は未検証だった。将来 `STRICT=0` hardcoded /
+# promotion branch unreachable などの regression が起きても Test 12 は trivially pass する
+# 構造的欠陥を埋める。Check 1 (create-register.md) と Check 2 (create-decompose.md) の両方で
+# 対称に検証する (本 PR で Check 2 にも drift guard を追加したため)。
+echo "Test 13: --strict flag runtime promotion (default WARNING vs --strict fail)"
+
+# Test 13a: Check 1 (create-register.md) で legacy prose 含む fixture を生成
+mkdir -p "$TEST_DIR/test13/plugins/rite/commands/issue" \
+         "$TEST_DIR/test13/plugins/rite/skills/rite-workflow/references"
+setup_plugin_tree "$TEST_DIR/test13" "true" "bare"
+# legacy "absolute last line" prose を create-register.md に追記する (drift guard の trigger 条件)。
+# regex `\[create:completed:\{[^}]+\}\][[:space:]]*MUST be the (absolute )?last line` に合わせて、
+# 「[create:completed:{N}]」literal の直後に空白 + `MUST be the absolute last line` を配置する
+# (backtick で囲まない素の literal — 実際の legacy prose 退化シナリオを正確に再現)
+cat >> "$TEST_DIR/test13/plugins/rite/commands/issue/create-register.md" <<'EOF'
+
+[create:completed:{N}] MUST be the absolute last line of Phase 3.4's output
+EOF
+
+# 13a-1: default (no --strict) → rc=0 かつ stderr に [VERIFY:WARNING] が出る
+# set -euo pipefail 下で rc!=0 を許容するため if-else 形式で実行 (Test 9 と同型)
+if test13a1_stderr=$(bash "$HOOK" --quiet --repo-root "$TEST_DIR/test13" 2>&1 >/dev/null); then
+  test13a1_rc=0
+else
+  test13a1_rc=$?
+fi
+if [ "$test13a1_rc" = "0" ] && printf '%s' "$test13a1_stderr" | grep -qF '[VERIFY:WARNING]'; then
+  pass "Test 13a-1: default mode で legacy prose を [VERIFY:WARNING] WARNING として emit、rc=0"
+else
+  fail "Test 13a-1: default mode で WARNING/rc=0 が期待通りでない (rc=$test13a1_rc, stderr=$test13a1_stderr)"
+fi
+
+# 13a-2: --strict → rc=1 (hard fail に promote)
+if test13a2_stderr=$(bash "$HOOK" --quiet --strict --repo-root "$TEST_DIR/test13" 2>&1 >/dev/null); then
+  test13a2_rc=0
+else
+  test13a2_rc=$?
+fi
+if [ "$test13a2_rc" = "1" ] && printf '%s' "$test13a2_stderr" | grep -qF 'FAIL'; then
+  pass "Test 13a-2: --strict mode で legacy prose を hard fail に promote、rc=1"
+else
+  fail "Test 13a-2: --strict mode で rc=1+FAIL が期待通りでない (rc=$test13a2_rc, stderr=$test13a2_stderr)"
+fi
+
+# Test 13b: Check 2 (create-decompose.md) でも対称に runtime test
+# 本 PR の verified-review Important 1 で Check 2 にも drift guard を追加したため、Check 1 と
+# 同じ runtime promotion 動作を pin する (drift guard 非対称が再発した場合に catch する)。
+rm -rf "$TEST_DIR/test13/plugins"
+mkdir -p "$TEST_DIR/test13/plugins/rite/commands/issue" \
+         "$TEST_DIR/test13/plugins/rite/skills/rite-workflow/references"
+setup_plugin_tree "$TEST_DIR/test13" "true" "bare"
+# legacy "absolute last line" prose を create-decompose.md に追記 (Test 13a と同じく素の literal で trigger)
+cat >> "$TEST_DIR/test13/plugins/rite/commands/issue/create-decompose.md" <<'EOF'
+
+[create:completed:{N}] MUST be the absolute last line of Phase 3.4's output
+EOF
+
+# 13b-1: default → rc=0 かつ stderr に [VERIFY:WARNING] が出る
+if test13b1_stderr=$(bash "$HOOK" --quiet --repo-root "$TEST_DIR/test13" 2>&1 >/dev/null); then
+  test13b1_rc=0
+else
+  test13b1_rc=$?
+fi
+if [ "$test13b1_rc" = "0" ] && printf '%s' "$test13b1_stderr" | grep -qF '[VERIFY:WARNING]'; then
+  pass "Test 13b-1: Check 2 default mode で legacy prose を [VERIFY:WARNING] WARNING として emit、rc=0 (本 PR で対称化)"
+else
+  fail "Test 13b-1: Check 2 default mode で WARNING/rc=0 が期待通りでない (rc=$test13b1_rc, stderr=$test13b1_stderr)"
+fi
+
+# 13b-2: --strict → rc=1
+if test13b2_stderr=$(bash "$HOOK" --quiet --strict --repo-root "$TEST_DIR/test13" 2>&1 >/dev/null); then
+  test13b2_rc=0
+else
+  test13b2_rc=$?
+fi
+if [ "$test13b2_rc" = "1" ] && printf '%s' "$test13b2_stderr" | grep -qF 'FAIL'; then
+  pass "Test 13b-2: Check 2 --strict mode で legacy prose を hard fail に promote、rc=1 (本 PR で対称化)"
+else
+  fail "Test 13b-2: Check 2 --strict mode で rc=1+FAIL が期待通りでない (rc=$test13b2_rc, stderr=$test13b2_stderr)"
+fi
+
+rm -rf "$TEST_DIR/test13/plugins"
 
 # Summary
 echo ""

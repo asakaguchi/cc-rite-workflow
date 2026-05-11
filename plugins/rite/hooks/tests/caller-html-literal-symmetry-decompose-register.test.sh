@@ -63,11 +63,11 @@
 #   The prior `caller-html-literal-symmetry.test.sh` that guarded create-interview.md
 #   was retired along with the Layer 3a HTML literal it pinned (create-interview
 #   migrated to parent-routing pattern with bare bracket sentinel; caller HTML literal
-#   no longer exists). This test (decompose-register) remains active until PR-7, when
-#   the cumulative invariant tests are deleted and parent-routing-pattern-uniformity.test.sh
-#   is introduced as the unified replacement. PR-5 migrates create-register.md and
-#   create-decompose.md to parent-routing pattern, but this test is preserved through
-#   PR-5 → PR-6 → PR-7 transition window per ADR §6.1.
+#   no longer exists). This test (decompose-register) **will be removed in PR-5** when
+#   create-register.md / create-decompose.md migrate to parent-routing pattern and the
+#   caller HTML literal they pin no longer exists (ADR §6.1 L233 と上記 L5-13 DELETION
+#   CHECKLIST と整合)。PR-6 / PR-7 まで残存させる旧記述は cycle 7 verified-review Important 3
+#   で削除済 (L5-13 DELETION CHECKLIST と ADR §6.1 が真の真実の源)。
 
 set -euo pipefail
 
@@ -99,6 +99,17 @@ for label in decompose register; do
   count=${count:-0}
   if [ "$count" -eq 1 ]; then
     pass "$label: expected 1 caller-comment line, found 1"
+  elif [ "$count" -eq 0 ]; then
+    # pr-test-analyzer M-2: count==0 は 2 つの可能性が混在する曖昧な状態:
+    #   (a) PR-5 で caller HTML literal が legitimately 削除済 → 本 test 自体を削除する必要がある
+    #   (b) 誤って literal が削除された → 修復が必要
+    # `parent-routing pattern` への移行 marker が target file に既に存在する場合は (a) と判定し、
+    # 「test 自体を削除すべき」のリマインダーを emit する (ADR §6.1 PR-5 deletion checklist と連携)。
+    if grep -qE 'parent-routing pattern' "$target"; then
+      fail "$label: caller-comment line not found AND target file has 'parent-routing pattern' marker — this test should be DELETED (see ADR §6.1 PR-5 deletion checklist 本ファイル冒頭 L1-15)"
+    else
+      fail "$label: expected exactly 1 caller-comment line, found 0 (accidental literal deletion suspected)"
+    fi
   else
     fail "$label: expected exactly 1 caller-comment line, found $count"
   fi

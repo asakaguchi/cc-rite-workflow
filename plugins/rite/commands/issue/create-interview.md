@@ -23,9 +23,8 @@ Execute the adaptive interview for Issue creation. This sub-command is invoked f
 **MUST run before any interview logic** (Phase 1 scope evaluation / Phase 1.1 deep-dive / return-output emission)。**not optional**、**interview scope に conditional でない** — Bug Fix / Chore preset (scope = "skip") でも実行:
 
 ```bash
-# 4 引数 symmetry (--phase / --active / --next / --preserve-error-count) は
-# plugins/rite/hooks/tests/4-site-symmetry.test.sh で test 担保。state-path-resolve.sh
-# + _resolve-flow-state-path.sh で per-session (schema_version=2) / legacy 両形式に対応。
+# state-path-resolve.sh + _resolve-flow-state-path.sh で per-session (schema_version=2)
+# / legacy 両形式に対応。state file 不在時は create branch (early-return path 保護)。
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
 state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
 if [ -n "$state_file" ] && [ -f "$state_file" ]; then
@@ -33,15 +32,14 @@ if [ -n "$state_file" ] && [ -f "$state_file" ]; then
       --phase "create_post_interview" \
       --active true \
       --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 1/1.1 if applicable, then return to caller. Caller MUST proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
-      --preserve-error-count; then
+      --if-exists; then
     echo "[CONTEXT] PREFLIGHT_PATCH_FAILED=1" >&2
-    # 非 blocking: create.md Step 0/Step 1 の redundant patch + phase-transition-whitelist.sh の create_interview case arm (pre-tool-bash-guard.sh / session-end.sh が source) が safety net。
+    # 非 blocking: pre-return re-patch + phase-transition-whitelist.sh の create_interview case arm が safety net。
   fi
 else
   if ! bash {plugin_root}/hooks/flow-state-update.sh create \
       --phase "create_post_interview" --issue 0 --branch "" --pr 0 \
-      --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 1/1.1 if applicable, then return to caller. Caller MUST proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
-      --preserve-error-count; then
+      --next "rite:issue:create-interview Pre-flight completed. Proceed to Phase 1/1.1 if applicable, then return to caller. Caller MUST proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."; then
     echo "[CONTEXT] PREFLIGHT_CREATE_FAILED=1" >&2
   fi
 fi
@@ -236,91 +234,31 @@ Interview Perspective → Target Sections の正規 mapping table は [`referenc
 
 ---
 
-## Return Output Format (Before Return)
+## Defense-in-Depth: Flow State Update (Before Return)
 
-> **Reference**: `start.md` の sub-skill defense-in-depth model (e.g., `lint.md` Phase 4.0, `review.md` Phase 8.0) に追従。flow-state write は 🚨 MANDATORY Pre-flight (本ファイル冒頭) で interview scope に関係なく post-interview phase を記録。本 re-patch は defense-in-depth second write として timestamp / `next_action` を refresh する。
+> **Reference**: This pattern follows `start.md`'s sub-skill defense-in-depth model (e.g., `parent-routing.md`, `branch-setup.md`, `lint.md` Phase 4.0). Flow-state write は 🚨 MANDATORY Pre-flight (本ファイル冒頭) で interview scope に関係なく post-interview phase を記録済み。本セクションは pre-return idempotent re-patch として timestamp / `next_action` を refresh する。
 
-Immediately before emitting the four-line return block, re-patch flow state (idempotent with Pre-flight write):
+Idempotent re-patch (the 🚨 MANDATORY Pre-flight at the head of this file already wrote `create_post_interview`; this re-patch refreshes timestamp / `next_action`):
 
 ```bash
-# 4 引数 symmetry (--phase / --active / --next / --preserve-error-count) は
-# plugins/rite/hooks/tests/4-site-symmetry.test.sh で test 担保。Pre-flight 後の同一 phase
-# self-patch のため file 存在は保証済み。
-state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
-state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
-if [ -n "$state_file" ] && [ -f "$state_file" ]; then
-  if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
-      --phase "create_post_interview" \
-      --active true \
-      --next "rite:issue:create-interview completed. Proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
-      --preserve-error-count; then
-    echo "[CONTEXT] INTERVIEW_RETURN_PATCH_FAILED=1" >&2
-    # 非 blocking: create.md Step 0/Step 1 の redundant patch が続行する。
-  fi
-fi
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "create_post_interview" \
+  --active true \
+  --next "rite:issue:create-interview completed. Proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
+  --if-exists
 ```
 
-> **Why patch mode only (no create fallback)**: Pre-flight が "file missing" branch (`create` mode) を処理済。本 section 到達時は flow state file 存在 + `.phase = create_post_interview` が保証済。ここで `create` 呼出は `previous_phase` を空文字列にリセットし `phase-transition-whitelist.sh` whitelist transition check を defeat する (`pre-tool-bash-guard.sh` / `session-end.sh` が source) ため不可。patch mode で transition chain を preserve する。
+After the flow-state update above, output the result pattern:
 
-After the flow-state update, output the result pattern. Caller-continuation reminder を **immediately before** result pattern に emit。Return block は **4 line** 構成: (1) `[CONTEXT] INTERVIEW_DONE=1` grep marker / (2) plain-text blockquote continuation reminder / (3) HTML-commented caller instructions / (4) HTML-commented result sentinel。全 4 行が sub-skill の **last visible lines**。
+- **Interview completed**: `[interview:completed]`
+- **Interview skipped** (XS / Bug Fix / Chore): `[interview:skipped]`
 
-> **Return block design rationale**:
-> - caller continuation hint を plain-text line + HTML comment の **dual form** で emit（HTML comment が rendering で strip される場合への defense）
-> - result pattern を HTML comment 化 (`<!-- [interview:skipped] -->`) — sentinel は grep-matchable (`grep -F '[interview:'`) のまま AC-3 保持し、user-visible terminal token としての sentinel 出力を抑止して LLM turn-boundary heuristic 起因の `continue` 要求 stop を防ぐ
-> - `[CONTEXT] INTERVIEW_DONE=1` marker を return block の **FIRST line** に追加（not last）— orchestrator Pre-check Item 0 と Mandatory After Interview Step 0 が consume する grep signal、HTML strip rendering でも検出可能な plain-text 形式
-
-**Output format example (interview skipped)**:
-
-```
-[CONTEXT] INTERVIEW_DONE=1; scope=skipped; next=phase_2
-> ⏭ MUST continue (turn を閉じない): Phase 2 → Phase 3 Delegation Routing → terminal sub-skill — Issue 未作成のため停止禁止。
-<!-- caller: MUST execute the following bash command as your VERY FIRST tool call BEFORE any text output, narrative, or response generation (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --active true --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 2. Do NOT stop.' --if-exists --preserve-error-count` IMMEDIATELY AFTER bash success, continue with Phase 2 (Task Decomposition Decision) in the SAME response turn. DO NOT end the turn. DO NOT output any narrative text before this bash call. No GitHub Issue has been created yet. -->
-<!-- [interview:skipped] -->
-```
-
-**Output format example (interview completed)**:
-
-```
-[CONTEXT] INTERVIEW_DONE=1; scope=completed; next=phase_2
-> ⏭ MUST continue (turn を閉じない): Phase 2 → Phase 3 Delegation Routing → terminal sub-skill — Issue 未作成のため停止禁止。
-<!-- caller: MUST execute the following bash command as your VERY FIRST tool call BEFORE any text output, narrative, or response generation (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase create_post_interview --active true --next 'Step 0 Immediate Bash Action fired; proceeding to Phase 2. Do NOT stop.' --if-exists --preserve-error-count` IMMEDIATELY AFTER bash success, continue with Phase 2 (Task Decomposition Decision) in the SAME response turn. DO NOT end the turn. DO NOT output any narrative text before this bash call. No GitHub Issue has been created yet. -->
-<!-- [interview:completed] -->
-```
-
-> **Plain-text form rationale**: 短く user-friendly な Markdown blockquote (`> ⏭ MUST continue (turn を閉じない):`) にすることで (a) rendered Markdown で視覚的に「停止禁止・継続必須」の文脈が明確、(b) HTML コメント (LLM 向け詳細) との責任分担が明確。詳細な caller 向け instruction は HTML コメント側に残し、plain-text 行は user 向けの短い imperative status indicator として機能する。user-visible な最終コンテンツは `⏭ MUST continue` blockquote となり、sentinel token は HTML コメント化されレンダリング時に不可視。`継続中` (現状報告) ではなく `MUST continue` (命令形) を採用するのは、Issue #910 で実証された「reminder 文言が現状報告的に解釈されると LLM の turn-boundary heuristic implicit stop を防げない」事象への対策。
-
-Result patterns (grep-matchable string inside HTML comment):
-
-- **Interview completed**: `<!-- [interview:completed] -->` (matches `grep -F '[interview:completed]'`)
-- **Interview skipped** (XS, Bug Fix, Chore): `<!-- [interview:skipped] -->` (matches `grep -F '[interview:skipped]'`)
-
-This pattern is consumed by the orchestrator (`create.md`) to determine the next action. The plain-text reminder is visible to both the LLM and the human user; the HTML comments hide the caller instructions and sentinel token from the user-visible rendered view while keeping them available to LLM-side grep / context inspection.
+This pattern is consumed by the orchestrator (`create.md`) to determine the next action.
 
 ---
 
 ## 🚨 Caller Return Protocol
 
-Sub-skill 完了 (interview finished or skipped) 時、control は **MUST** caller (`create.md`) へ戻る。caller は **同 response turn で MUST immediately** 🚨 Mandatory After Interview を実行し Phase 2 (Task Decomposition Decision) へ進む。
+Control **MUST** return to caller (`create.md`). Caller **MUST immediately** proceed to Phase 2 (Task Decomposition Decision) in the same response turn — no GitHub Issue has been created yet.
 
-**WARNING**: **GitHub Issue は未作成**。本セクションで停止すると deliverable なしで workflow 放棄。
-
-本セクションは marker 形式の SoT であり、かつ **複数 test の参照 hub** として機能する。本セクションが変更された場合、以下の test が drift detection として連動する:
-
-- **bash 引数 symmetry** ([`hooks/tests/4-site-symmetry.test.sh`](../../hooks/tests/4-site-symmetry.test.sh)): bash block 側コメント (🚨 MANDATORY Pre-flight / Return Output Format) で `flow-state-update.sh patch` の CLI 引数 (`--phase` / `--active` / `--next` / `--preserve-error-count`) の presence を 4 site 横断で pin する。
-- **caller HTML inline literal byte equality** ([`hooks/tests/caller-html-literal-symmetry.test.sh`](../../hooks/tests/caller-html-literal-symmetry.test.sh)): `[interview:skipped]` / `[interview:completed]` 2 example block 間の caller HTML inline literal が byte equal であることを担保する。
-- **責務分離 invariant** ([`hooks/tests/create-interview-responsibility-separation.test.sh`](../../hooks/tests/create-interview-responsibility-separation.test.sh)): bash block 側コメントは bash 引数 symmetry のみを inline 言及し、HTML literal symmetry は本セクションを single source として参照する責務分離を machine-verifiable に enforce する (bash block 内に `caller-html-literal-symmetry` reference が紛れ込んだ場合に lint failure として検出される)。
-
-> **Bullet list 化基準** (将来の symmetry / invariant test 追加時): 本 SoT 行が参照する test が **3 件以上** になった時点で、可読性のため inline 連結ではなく bullet list 形式で列挙する (本 list がその移行例)。test 追加時は (a) 本 bullet list に該当 test を追加し、(b) 当該 test ファイル冒頭コメントから本 SoT 行への back-reference を維持すること。**判断基準の根拠**: inline 連結は 2 test 程度までは許容されるが、3 test 以上になると 1 段落が約 280 字を超え、各 test の責務境界が読み取りづらくなるため (Issue #854)。
-
-**Output rules**:
-
-0. **FIRST**: `[CONTEXT] INTERVIEW_DONE=1; scope={skipped|completed}; next=phase_2` を **plain-text line** で出力（HTML-commented 不可）。位置規定:
-   - **0b (構造保証、canonical)**: Rules 0-1 の相対順序が **4-line return block** を pin する: Rule 0 (FIRST) → plain-text continuation reminder → HTML-commented caller instructions → Rule 1 (absolute LAST)。この 4-line invariant が canonical で、他の位置記述はここから導出
-   - **0a (絶対位置、0b から導出)**: 4-line block 構造より、本 marker は **4th-to-last visible line**（`<!-- [interview:*] -->` absolute-last sentinel の 3 行前）。各行が single-line である前提。Line 2/3 が multi-line 化した場合は 0b 4-line invariant が先に壊れるため両 Rule の joint update が必要
-   - **0c (目的)**: grep marker for orchestrator Pre-check Item 0 (routing dispatcher、本 site で active routing 発火) and for Mandatory After Step 0 bash block comment reference (informational — Step 0 は unconditional idempotent `flow-state-update.sh patch` であり marker 分岐なし、marker は documentation context); LLM turn-boundary heuristic 対策の defense-in-depth
-1. Result pattern を HTML comment (`<!-- [interview:completed] -->` / `<!-- [interview:skipped] -->`) で **absolute last line** に出力 (sentinel は grep-matchable だが user-visible でない)
-2. Bare `[interview:*]` 形式（HTML comment wrap なし）は **禁止**（user-visible terminal token として regressed）
-3. Result pattern の **後ろに narrative text を出さない**（`→ Return to create.md` 等）— LLM の natural stopping point を生む
-4. Caller は HTML comment 内の grep-matchable 文字列と plain-text `[CONTEXT] INTERVIEW_DONE=1` marker を grep で読取り、即 Phase 2 へ継続
-
-> **Caller responsibility note (Issue #910 — sub-skill 出力契約の対象外)**: 上記 **Rules 0-3** は本 sub-skill (`create-interview.md`) の出力に関する MUST/MUST NOT 制約 (主語 = 本 sub-skill)。**Rule 4** は subject = Caller の **Caller-side expectation** (本 sub-skill が caller に期待する後続動作の documentation であり、本 sub-skill の MUST/MUST NOT ではない — sub-skill 側 Output rules section に置いているのは emit される 4-line block の caller-side 解釈契約を文書化するため、文法的主語の違いにより本 note で明示的に分離する)。一方、**4-line invariant 単独では LLM turn-boundary heuristic 起因の implicit stop を完全に防がない** (Issue #910 で実証)。本 sub-skill が emit する return block の構造健全性は必要条件であって十分条件ではなく、**caller (`create.md`) 側**の 🚨 Mandatory After Interview Step 0 が sub-skill return 直後の **VERY FIRST tool call** として bash literal を fire することが MUST。Step 0 を text output / narrative より前に実行する責務は caller 側に存在し、本 sub-skill 側では caller HTML comment の imperative 強度 (`MUST execute as VERY FIRST tool call BEFORE any text output`) と plain-text reminder の命令形 (`MUST continue (turn を閉じない)`) で signaling する。phrasing 設計の rationale (`継続中` 不採用 / `MUST continue` 採用、命令形が implicit stop 確率を下げる経験的観測 Issue #910 D-01) は前述 **Plain-text form rationale** blockquote (Output format example 直下) を参照 (本 note と同 rationale を 2 重保持しないことで cycle 8 Asymmetric Fix Transcription を回避)。本 note は caller 側責務の記録であり、本 sub-skill の Output rules には含まない (主語が異なるため)。
+**→ Return to `create.md` and proceed to Phase 2 now. Do NOT stop.**

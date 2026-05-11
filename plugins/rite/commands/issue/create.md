@@ -167,10 +167,9 @@ echo "$result"
 |---|--------------|-----|
 | 1 | Phase 1 goal classification (Phase 0.1 から推定) | Phase 1.1 interview scope 決定で必要 |
 | 2 | Phase 1 Delegation to Interview (Pre-write + Skill 起動) | `create_interview` write がないと `phase-transition-whitelist.sh` の case arm が enforce できない (`pre-tool-bash-guard.sh` / `session-end.sh` が source) |
-| 3 | Mandatory After Interview | flow state を `create_post_interview` に進める |
-| 4 | Phase 2 | `create-register` vs `create-decompose` 選択 |
-| 5 | Phase 3 Delegation Routing (Pre-write + terminal sub-skill) | `create_delegation` を書き whitelist を進める |
-| 6 | Mandatory After Delegation | terminal `create_completed` の defense-in-depth |
+| 3 | Phase 2 | `create-interview` 後 (sub-skill 自身が `create_post_interview` を書く、parent-routing pattern) → `create-register` vs `create-decompose` 選択 |
+| 4 | Phase 3 Delegation Routing (Pre-write + terminal sub-skill) | `create_delegation` を書き whitelist を進める |
+| 5 | Mandatory After Delegation | terminal `create_completed` の defense-in-depth |
 
 **唯一の合法 path**: `rite:issue:create-register` または `rite:issue:create-decompose` Skill 起動経由でのみ Issue を作成する。`gh issue create` 直接呼出しは `pre-tool-bash-guard.sh` で block される。本 skip semantics は [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` の具体化 — 時間的制約や context 残量を理由にした step 省略は禁止。
 
@@ -200,45 +199,7 @@ fi
 
 Invoke `skill: "rite:issue:create-interview"`.
 
-**🚨 Immediate after interview returns**: result pattern (`[interview:completed]` / `[interview:skipped]` / `[CONTEXT] INTERVIEW_DONE=1`) を観測したら、応答を終了せず Mandatory After Interview の Step 0 を **同 turn 内連続実行する**。**MUST execute Step 0 bash literal as your VERY FIRST tool call BEFORE any text output, narrative, or response generation** — text output を先に出すと LLM の turn-boundary heuristic が誤発火し implicit stop の経路が開く (Issue #910 で実証)。
-
-### 🚨 Mandatory After Interview
-
-> **⚠️ 同 turn 内連続実行する (MUST execute in the SAME response turn)**: `[interview:*]` return tag は turn 境界ではなく継続トリガ — turn を閉じると workflow が停止し Issue は作成されない。No GitHub Issue has been created yet。flow state の `.phase = create_post_interview` (sub-skill 内製)。`phase-transition-whitelist.sh` の whitelist transition graph により、active の間は `create_delegation` (Phase 3 Delegation Routing Pre-write) または `create_completed` (terminal sub-skill) への transition のみが許可される — `pre-tool-bash-guard.sh` / `session-end.sh` が enforce 経路。
-
-**Step 0: Immediate Bash Action**: sub-skill return 直後の **VERY FIRST tool call** として実行 — `text output` / narrative / response generation よりも前に bash invocation を発行し、turn-boundary heuristic を bash invocation で 置換 する。Issue #910 D-01 の経験的観測: imperative 強度 (`MUST execute`, `VERY FIRST`, `BEFORE any text output`) が implicit stop の確率を下げる。失敗時は stderr に `[CONTEXT] STEP_0_PATCH_FAILED=1` retained flag を emit (非 blocking、Step 1 が idempotent patch として再試行):
-
-```bash
-# Re-affirm phase + refresh timestamp (idempotent with Step 1)。--if-exists は file 不在 skip
-# と patch 成功を両方 exit 0 で返すため STEP_0_PATCH_FAILED は真の失敗のみを区別する非 blocking flag。
-if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_post_interview" \
-    --active true \
-    --next "Step 0 Immediate Bash Action fired; proceeding to Phase 2. Do NOT stop." \
-    --if-exists \
-    --preserve-error-count; then
-  echo "[CONTEXT] STEP_0_PATCH_FAILED=1" >&2
-fi
-```
-
-**Step 1**: post-interview phase patch (atomic、idempotent with Step 0):
-
-```bash
-if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_post_interview" \
-    --active true \
-    --next "rite:issue:create-interview completed. Proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
-    --if-exists \
-    --preserve-error-count; then
-  echo "[CONTEXT] STEP_1_PATCH_FAILED=1" >&2
-fi
-```
-
-**Step 2**: Pre-check list を [`references/pre-check-routing.md`](./references/pre-check-routing.md) に従い実行。`NO` 項目があれば turn を閉じず Phase 2 へ継続。
-
-**Step 3**: **→ Proceed to Phase 2 (Task Decomposition Decision) now. Do NOT stop.**
-
-> **Continuation trigger reminder**: `[interview:*]` return tag は continuation trigger であり turn 境界ではない。implicit stop は protocol violation で `hooks/workflow-incident-emit.sh` ヘルパー経由で `workflow_incident` (`type=manual_fallback_adopted`) を emit する。
+After `rite:issue:create-interview` returns (result pattern `[interview:completed]` / `[interview:skipped]`), proceed to Phase 2 (Task Decomposition Decision). The sub-skill writes `create_post_interview` to flow state itself (parent-routing pattern, ADR `docs/designs/parent-routing-unification.md`); caller-side mandatory after section is no longer required.
 
 ## Phase 2: Task Decomposition Decision
 

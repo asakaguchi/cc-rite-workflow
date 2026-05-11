@@ -99,11 +99,25 @@ if [ -n "$REPO_ROOT_OVERRIDE" ]; then
   REPO_ROOT="$(cd "$REPO_ROOT_OVERRIDE" && pwd)"
   CHECK_PATHS_PREFIX="plugins/rite"
 else
-  # git rev-parse の error class を区別する (PR #926 verified-review Important #6 対応):
+  # git rev-parse の error class を区別する:
   # stderr を一時ファイルに退避し、`not a git repository` / `dubious ownership` (= legitimate
   # marketplace fallback 経路) のみ silent fallback を許容し、それ以外 (permission denied / git
   # binary 不在 / その他予期しないエラー) は明示的に exit 1 で fail させる。
-  _git_err=$(mktemp /tmp/rite-verify-terminal-git-err-XXXXXX 2>/dev/null) || _git_err=""
+  # trap 4 行で SIGINT / SIGTERM / SIGHUP 中断時の tempfile leak を防ぐ
+  # (flow-state-update.sh の canonical pattern と対称化)。
+  _git_err=""
+  _rite_verify_terminal_cleanup() {
+    rm -f "${_git_err:-}"
+  }
+  trap 'rc=$?; _rite_verify_terminal_cleanup; exit $rc' EXIT
+  trap '_rite_verify_terminal_cleanup; exit 130' INT
+  trap '_rite_verify_terminal_cleanup; exit 143' TERM
+  trap '_rite_verify_terminal_cleanup; exit 129' HUP
+  if ! _git_err=$(mktemp /tmp/rite-verify-terminal-git-err-XXXXXX 2>/dev/null); then
+    echo "WARNING: mktemp failed; cannot capture git stderr — fallback decision will be heuristic" >&2
+    echo "  hint: /tmp の inode 枯渇 / read-only filesystem / permission 拒否を確認してください" >&2
+    _git_err=""
+  fi
   if _git_root=$(git rev-parse --show-toplevel 2>"${_git_err:-/dev/null}"); then
     REPO_ROOT="$_git_root"
     CHECK_PATHS_PREFIX="plugins/rite"
@@ -119,10 +133,8 @@ else
     echo "ERROR: git rev-parse --show-toplevel failed unexpectedly:" >&2
     head -3 "$_git_err" | sed 's/^/  /' >&2
     echo "  hint: PATH に git binary があるか / .git directory の permission を確認してください" >&2
-    rm -f "$_git_err"
     exit 1
   fi
-  [ -n "$_git_err" ] && rm -f "$_git_err"
 fi
 
 FAILED=0
@@ -170,10 +182,9 @@ else
 
   # Drift guard: check that the prose no longer instructs "absolute last line"
   # with a bare sentinel. The phrase is now expected only when bound to the
-  # HTML-comment form. Soft check — warn on stderr regardless of --quiet
-  # (PR #926 verified-review M7 対応: CI で `--quiet` 時に invisible regression を防ぐため
-  # `info` から WARNING に格上げ。歴史的ノートで legitimate に出現するケースがあるため
-  # fail にはしない)。
+  # HTML-comment form. Emits WARNING on stderr regardless of --quiet so CI does
+  # not lose visibility. Not a fail because historical-note prose may legitimately
+  # match.
   if grep -nE '\[create:completed:\{[^}]+\}\][[:space:]]*MUST be the (absolute )?last line' "$CREATE_REGISTER" >/dev/null 2>&1; then
     echo "${C_YEL}WARNING${C_RST}: create-register.md: legacy prose about bare-sentinel 'absolute last line' may still be present; review manually" >&2
   fi

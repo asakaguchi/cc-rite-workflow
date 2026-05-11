@@ -179,7 +179,7 @@ echo "$result"
 ```bash
 # state file path を解決 (schema_version=2: per-session、legacy: single-file)。
 # state-path-resolve.sh の rc を if ! 形式で捕捉し、helper failure を retained flag + workflow_incident で可視化する
-# (PR #926 verified-review Important #5 対応、create-interview.md Pre-flight と対称化)。
+# (create-interview.md Pre-flight と対称化)。
 if ! state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh); then
   echo "[CONTEXT] STATE_PATH_RESOLVE_FAILED=1; reason=helper_exit_nonzero" >&2
   bash {plugin_root}/hooks/workflow-incident-emit.sh \
@@ -260,7 +260,7 @@ Phase 2 結果に基づき適切な sub-command に delegation。
 ```bash
 # state file path を解決 (Phase 1 Pre-write と同じ diag_log redirect pattern を使用)。
 # state-path-resolve.sh の rc を if ! 形式で捕捉し、helper failure を retained flag + workflow_incident で可視化する
-# (PR #926 verified-review Important #5 対応、Phase 1 Pre-write と対称化)。
+# (Phase 1 Pre-write と対称化)。
 if ! state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh); then
   echo "[CONTEXT] STATE_PATH_RESOLVE_FAILED=1; reason=helper_exit_nonzero" >&2
   bash {plugin_root}/hooks/workflow-incident-emit.sh \

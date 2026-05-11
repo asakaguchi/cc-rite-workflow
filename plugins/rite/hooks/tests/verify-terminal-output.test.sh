@@ -30,8 +30,7 @@ fail() {
 #         {root}/skills/rite-workflow/references/workflow-identity.md
 setup_plugin_tree() {
   local repo_root="$1"
-  # create_completed_form: create-register / create-decompose の sentinel 形式 (HTML-comment or bare)。
-  # PR #926 verified-review M16 対応で旧 `html_comment` boolean を後方互換のまま意味を明文化:
+  # html_comment: create-register / create-decompose の sentinel 形式選択。
   #   "true"  → HTML-commented form (`<!-- [create:completed:{N}] -->`) — register/decompose 用、Test 1 happy path
   #   "false" → bare sentinel form (`[create:completed:{N}]`) — register/decompose 用、Test 2 regression case
   # create-interview は別途 `interview_form` で制御 (parent-routing pattern 後は独立)。
@@ -216,7 +215,7 @@ fi
 # parent-routing pattern 移行で create-interview は bare bracket form に移行済。
 # HTML-commented form が混入したら verify-terminal-output.sh Check 3 の negative assertion が exit 1 を返す必要がある。
 #
-# Rationale (PR #926 verified-review M15 対応 — Test 8 regex に `error` を含めない理由):
+# Rationale — Test 8 regex に `error` を含めない理由:
 # verify-terminal-output.sh Check 3 の negative assertion regex (`^...<!-- [interview:(completed|skipped)] -->...$`)
 # は `[interview:error]` を意図的に regex 対象外にしている。`[interview:error]` は parent-routing pattern
 # と同時に新規導入された catastrophic halt sentinel で、historical HTML-comment form を持たない
@@ -306,6 +305,61 @@ else
   else
     fail "expected exit 1, got $rc"
   fi
+fi
+
+# Test 9: M6 path — unexpected git error class (not 'not a git repository' / 'dubious ownership')
+# verify-terminal-output.sh の else branch (exit 1) を pin する。
+# 偽の git binary を PATH の先頭に置き、git rev-parse が `fatal: ...` 等の予期しない error を
+# 返す経路で silent marketplace fallback に流れないことを runtime で検証する。
+echo "Test 9: unexpected git error class should exit 1 (M6 path runtime verification)"
+mkdir -p "$TEST_DIR/test9/bin"
+cat > "$TEST_DIR/test9/bin/git" <<'FAKEGIT_EOF'
+#!/bin/bash
+echo "fatal: simulated unexpected git error (permission denied / corrupt index / binary missing)" >&2
+exit 128
+FAKEGIT_EOF
+chmod +x "$TEST_DIR/test9/bin/git"
+setup_plugin_tree "$TEST_DIR/test9" "true" "bare"
+# PATH=... を bash 直前に置くことで bash プロセス自身に PATH を渡す
+# (PATH=... cd ... は cd builtin にのみ PATH を設定する罠を回避)
+if (cd "$TEST_DIR/test9" && PATH="$TEST_DIR/test9/bin:/usr/bin:/bin" bash "$HOOK" --quiet >/dev/null 2>&1); then
+  fail "expected exit 1 when git rev-parse returns unexpected error class, got exit 0 (silent marketplace fallback regression)"
+else
+  rc=$?
+  if [ "$rc" = "1" ]; then
+    pass "exit 1 on unexpected git error class (M6 path: fail-fast on non-marketplace git failures)"
+  else
+    fail "expected exit 1, got $rc"
+  fi
+fi
+
+# Test 10: M6 path — 'dubious ownership' fallback branch (positive case)
+# safe.directory 違反シミュレーション。偽の git binary が `fatal: detected dubious ownership` を
+# stderr に emit する場合、verify-terminal-output.sh は legitimate marketplace fallback として
+# SCRIPT_DIR/.. に切り替え、Check 1-3 を実行する経路を pin する。
+echo "Test 10: 'dubious ownership' should trigger marketplace fallback (positive case)"
+mkdir -p "$TEST_DIR/test10/bin"
+cat > "$TEST_DIR/test10/bin/git" <<'FAKEGIT_EOF'
+#!/bin/bash
+echo "fatal: detected dubious ownership in repository at '/some/path'" >&2
+exit 128
+FAKEGIT_EOF
+chmod +x "$TEST_DIR/test10/bin/git"
+setup_plugin_tree "$TEST_DIR/test10" "true" "bare"
+# Test 7 と同様、HOOK 自体を test10 plugin tree 内にもコピーする必要があるが、
+# HOOK は --repo-root なしで起動するため SCRIPT_DIR/.. fallback で test10 plugin tree を
+# 正しく解決する必要がある。HOOK script 自体を fixture 内に置いて invoke する。
+mkdir -p "$TEST_DIR/test10/hooks"
+cp "$HOOK" "$TEST_DIR/test10/hooks/verify-terminal-output.sh"
+# Test 7 と同様、fixture を plugins/rite ではなく test10 root 直下に置く (marketplace layout)
+mv "$TEST_DIR/test10/plugins/rite/commands" "$TEST_DIR/test10/"
+mv "$TEST_DIR/test10/plugins/rite/skills" "$TEST_DIR/test10/"
+rm -rf "$TEST_DIR/test10/plugins"
+if (cd "$TEST_DIR/test10" && PATH="$TEST_DIR/test10/bin:/usr/bin:/bin" bash "$TEST_DIR/test10/hooks/verify-terminal-output.sh" --quiet >/dev/null 2>&1); then
+  pass "exit 0 on 'dubious ownership' (legitimate marketplace fallback honored)"
+else
+  rc=$?
+  fail "expected exit 0 on 'dubious ownership' fallback, got $rc"
 fi
 
 # Summary

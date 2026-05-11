@@ -241,11 +241,15 @@ Interview Perspective → Target Sections の正規 mapping table は [`referenc
 Idempotent re-patch (the 🚨 MANDATORY Pre-flight at the head of this file already wrote `create_post_interview`; this re-patch refreshes timestamp / `next_action`):
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh patch \
-  --phase "create_post_interview" \
-  --active true \
-  --next "rite:issue:create-interview completed. Proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
-  --if-exists
+if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
+    --phase "create_post_interview" \
+    --active true \
+    --next "rite:issue:create-interview completed. Proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
+    --if-exists; then
+  echo "[CONTEXT] INTERVIEW_RETURN_PATCH_FAILED=1" >&2
+  # 非 blocking: Pre-flight (head) で同 phase 書込済のため caller は正常動作可能。
+  # site 対称性のため Pre-flight と同じ wrap pattern を維持 (silent-failure-hunter 指摘対応)。
+fi
 ```
 
 After the flow-state update above, output the result pattern:

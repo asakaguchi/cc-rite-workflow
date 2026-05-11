@@ -190,12 +190,21 @@ if [ ! -f "$CREATE_INTERVIEW" ]; then
 else
   # AC-3 non-regression — sentinel string presence (bare bracket form is now canonical
   # post parent-routing pattern migration, ADR docs/designs/parent-routing-unification.md
-  # / PR #926 PR-2 #920). HTML-comment wrapping is no longer required; both bare and
-  # HTML-wrapped forms match this regex.
+  # / PR #926 PR-2 #920).
   if grep -qE '\[interview:(completed|skipped)\]' "$CREATE_INTERVIEW"; then
     pass "create-interview.md: contains [interview:completed] / [interview:skipped] string (AC-3 non-regression)"
   else
     fail "create-interview.md: missing [interview:*] string (AC-3 regression)"
+  fi
+
+  # Negative assertion — parent-routing pattern compliance check (PR-2 #920 で導入)
+  # HTML-comment 形式 (`<!-- [interview:*] -->`) の partial revert を検出する。
+  # 本 check は uniformity test (`parent-routing-pattern-uniformity.test.sh`、PR-7 で
+  # 導入予定) が利用可能になるまでの interim coverage。
+  if grep -qE '<!--[[:space:]]*\[interview:(completed|skipped)\]' "$CREATE_INTERVIEW"; then
+    fail "create-interview.md: HTML-commented [interview:*] sentinel detected — parent-routing pattern (bare bracket form) violation. PR-2 #920 / ADR docs/designs/parent-routing-unification.md に従い bare bracket form を維持してください"
+  else
+    pass "create-interview.md: no HTML-commented sentinel (parent-routing pattern compliant)"
   fi
 fi
 

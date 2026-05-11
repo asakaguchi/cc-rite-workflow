@@ -196,14 +196,13 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Layer 6: Step 0 (skipped — parent-routing pattern migration, PR #926 PR-2 #920)
+# Layer 6: removed — parent-routing pattern migration (PR #926 PR-2 #920)
 # --------------------------------------------------------------------------
 # parent-routing pattern (ADR docs/designs/parent-routing-unification.md) では
 # caller-side Step 0 Immediate Bash pattern は不要。sub-skill 自身が flow-state を
-# patch する設計のため、旧 Step 0 pattern は create.md から削除された。PR-7 で本
-# test ファイル自体を削除予定。
-echo "Layer 6 (Step 0): parent-routing pattern では caller-side Step 0 不要 (skipped)"
-pass "Layer 6: parent-routing pattern により Step 0 caller-side pattern は不要 (skip、PR-7 で test 削除予定)"
+# patch する設計のため、旧 Step 0 pattern は create.md から削除された。Layer 6
+# 自体を本 PR で除去 (pass による偽装は AND-logic 防御層チェーンの assertion
+# 価値を損なうため)。PR-7 で本 test ファイル自体を削除予定。
 
 # --------------------------------------------------------------------------
 # Layer 7: 4-site 対称化 — --active true が 4 site 以上で symmetric
@@ -323,7 +322,7 @@ echo "  Layer 2 sentinel         : workflow-incident-emit.sh が WORKFLOW_INCIDE
 echo "  Layer 3 Pre-check        : state-read.sh --field phase pre-condition"
 echo "  Layer 4 whitelist        : phase-transition-whitelist.sh が source 可能"
 echo "  Layer 5 Pre-flight       : preflight-check.sh の compact_state gate"
-echo "  Layer 6 Step 0           : skipped (parent-routing pattern、PR-7 で test 削除予定)"
+echo "  Layer 6 Step 0           : removed (parent-routing pattern、PR-7 で test 削除予定)"
 echo "  Layer 7 4-site 対称化    : --active true の 4-site symmetric distribution"
 echo "  Layer 8 case arm         : phase-transition-whitelist.sh の declare -gA dispatch"
 

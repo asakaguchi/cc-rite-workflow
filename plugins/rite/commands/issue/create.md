@@ -59,15 +59,15 @@ create.md (orchestrator)
   1. Evaluates Phase 2 triggers
   2. Runs the Delegation Routing Pre-write bash
   3. Invokes skill: "rite:issue:create-register" (or create-decompose)
-  4. Waits for <!-- [create:completed:{N}] --> (HTML comment form、PR-5 で bare bracket 化予定)
+  4. Waits for <!-- [create:completed:{N}] -->
   5. Runs Mandatory After Delegation self-check
 ```
 
-**Rule**: Treat `[interview:skipped]` / `[interview:completed]` as **continuation triggers**, not stopping points. Both terminal sub-skills emit `<!-- [create:completed:{N}] -->` (HTML comment form 暫定、PR-5 で bare bracket `[create:completed:{N}]` 化予定) as the unified completion marker. The only valid stop is after the user-visible `✅` completion message + next-steps block AND `<!-- [create:completed:{N}] -->` (terminal sub-skill が `create-register.md` Phase 3.4 / `create-decompose.md` Phase 3.4 で順序通り emit) が出力された後のみ。
+**Rule**: Treat `[interview:skipped]` / `[interview:completed]` as **continuation triggers**, not stopping points. Both terminal sub-skills emit `<!-- [create:completed:{N}] -->` as the unified completion marker. The only valid stop is after the user-visible `✅` completion message + next-steps block AND `<!-- [create:completed:{N}] -->` (terminal sub-skill が `create-register.md` Phase 3.4 / `create-decompose.md` Phase 3.4 で順序通り emit) が出力された後のみ。
 
 > **Contract phrases (AC-3)**: anti-pattern / correct-pattern 契約は以下 4 phrase を grep-verified で必ず含む: `anti-pattern`, `correct-pattern`, `same response turn`, `DO NOT stop`。書換禁止。manual verification: `for p in "anti-pattern" "correct-pattern" "same response turn" "DO NOT stop"; do grep -c "$p" plugins/rite/commands/issue/create.md; done` で全て ≥1。
 
-> Sentinel 形式の暫定混在 (PR-2 #926 時点): `create-interview` は **bare bracket form** `[interview:completed]` / `[interview:skipped]` で return (parent-routing pattern 統一済)、terminal sub-skills (`create-register` / `create-decompose`) は依然 **HTML comment form** `<!-- [create:completed:{N}] -->` で return (PR-5 で bare bracket 化予定)。`create-interview.md` は post-phase (`create_post_interview`) に進めて return する (sub-skill 内 Defense-in-Depth で flow-state patch)。
+> **Sentinel 形式の暫定混在 (PR-2 #926 時点)**: `create-interview` は **bare bracket form** `[interview:completed]` / `[interview:skipped]` で return (parent-routing pattern 統一済、sub-skill 内 Defense-in-Depth で flow-state patch)。terminal sub-skills (`create-register` / `create-decompose`) は依然 **HTML comment form** `<!-- [create:completed:{N}] -->` で return (PR-5 で bare bracket `[create:completed:{N}]` 化予定)。本 PR-2 では sentinel 形式の混在を許容し、PR-5 で全形式の bare bracket 化を完了する設計。
 
 ## Arguments
 

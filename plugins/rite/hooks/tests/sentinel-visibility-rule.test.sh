@@ -90,14 +90,15 @@ assert_grep 'emit: non-blocking "|| true" guard pattern' \
   "$REF_EMIT" \
   'pr_number\} 2>/dev/null\) \|\| true'
 
-# F-04 fix: `|| true` orchestrator-direct guard を §A-§D 全 4 invocation point + §A 末尾の Step 1 形式で
-# 合計 7+ 個必須化。出現数下限 (>= 7) を assert することで、§A line 71 / §B line 83,92 / §C line 103 /
-# §D line 115,124 のいずれを削除しても test fail する保証を持たせる。
-ortho_or_true_count=$({ grep -oE -- '\|\| true' "$REF_EMIT" || true; } | wc -l | tr -d ' ')
-if [ "$ortho_or_true_count" -ge 7 ]; then
-  pass "emit: orchestrator-direct '|| true' guard count >= 7 (actual=$ortho_or_true_count)"
+# F-c2-3 (cycle 2): `|| true` 行末 only を grep して prose 参照を除外する。
+# 旧 `grep -oE -- '\|\| true'` は markdown 解説文 (`「|| true」 は必須` 等) もカウントしていた。
+# bash literal の `|| true` は行末で必ず終わるため `\|\| true$` で限定する。
+# 期待値: sub-skill emit pattern (1) + §A (1) + §B (2) + §C (1) + §D (2) = **7 個** (>= 6 で許容範囲)
+ortho_or_true_count=$({ grep -E -- '\|\| true$' "$REF_EMIT" || true; } | wc -l | tr -d ' ')
+if [ "$ortho_or_true_count" -ge 6 ]; then
+  pass "emit: orchestrator-direct '|| true' guard count >= 6 EOL-only (actual=$ortho_or_true_count, prose excluded)"
 else
-  fail "emit: orchestrator-direct '|| true' guard count >= 7 (actual=$ortho_or_true_count, expected >=7). §A-§D 範囲内の guard が削除された可能性"
+  fail "emit: orchestrator-direct '|| true' guard count >= 6 EOL-only (actual=$ortho_or_true_count, expected >=6). §A-§D 範囲内の bash guard が削除された可能性"
 fi
 
 assert_grep "emit: §A Phase 5.2 lint:aborted emit point" \
@@ -201,18 +202,21 @@ assert_grep "fingerprint: §4 split bash for 別 Issue として切り出す" \
   "$REF_FINGERPRINT" \
   '^## §4 — Split bash for .別 Issue として切り出す'
 
-# F-03 fix: 4-option AskUserQuestion の 4 選択肢を §3 section 内かつ table 行 (行頭 `|`) として必須化。
-# narrative reference (line 118 等) で pass する false negative を防ぐ。
-# section_3 = `^## §3` から次の `^## §4` までの範囲を抽出
-section_3=$(awk '/^## §3/,/^## §4/' "$REF_FINGERPRINT" 2>/dev/null)
+# F-c2-2 (cycle 2): §3 section 内には 4-option を行頭 `|` で含む **table が 2 つ** 存在する:
+#   (1) "| Option | Action |" header 配下の 4-option AskUserQuestion contract table (line 157-163)
+#   (2) "| Selection | Next |" header 配下の "Branching after user selection" table (line 165-171)
+# 旧 `awk '/^## §3/,/^## §4/'` + `grep '^\| {option}'` は両 table から match するため、
+# (1) を完全削除しても (2) の Branching table が残れば test PASS する false negative があった。
+# 修正: Option/Action header を起点に `^$` (空行) までを scope として抽出し、4-option contract table のみを検証する。
+section_3_options=$(awk '/^\| Option \| Action \|/,/^$/' "$REF_FINGERPRINT" 2>/dev/null)
 for option in "本 PR 内で再試行" \
               "別 Issue として切り出す" \
               "PR を取り下げる" \
               "手動レビューへエスカレーション"; do
-  if echo "$section_3" | grep -qE "^\| ${option}"; then
-    pass "fingerprint: §3 section table row contains \"${option}\" (section-scoped)"
+  if echo "$section_3_options" | grep -qE "^\| ${option}"; then
+    pass "fingerprint: §3 Option/Action table row contains \"${option}\" (option-table-scoped)"
   else
-    fail "fingerprint: §3 section table row missing \"${option}\". narrative 出現で false negative 化していた path を closed"
+    fail "fingerprint: §3 Option/Action table row missing \"${option}\". 4-option contract が削除された可能性 (Branching table とは別)"
   fi
 done
 

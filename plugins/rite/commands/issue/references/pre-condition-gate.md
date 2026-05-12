@@ -72,7 +72,7 @@ if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --d
 
 ### 共通禁止事項
 
-> **NG パターン**: `if ! curr=$(...); then rc=$?; ... fi` は bash 仕様上、`!` が pipeline 全体を反転するため `rc` には常に 0 が入る。 helper 起動失敗 (state-read.sh の exit 非 0) と pre-condition 失敗 (state-read.sh は exit 0 で値を返したが `curr` が期待値と不一致) を区別できなくなる。 **`if cmd; then :; else rc=$?; fi`** 形式を form A / B のいずれでも必ず使うこと。
+> **NG パターン**: `if ! curr=$(...); then rc=$?; ... fi` は bash 仕様上、「!」 が pipeline 全体を反転するため `rc` には常に 0 が入る。 helper 起動失敗 (state-read.sh の exit 非 0) と pre-condition 失敗 (state-read.sh は exit 0 で値を返したが `curr` が期待値と不一致) を区別できなくなる。 **`if cmd; then :; else rc=$?; fi`** 形式を form A / B のいずれでも必ず使うこと。
 
 > **capture を伴わない `if ! cmd; then ...`** (例: `if ! mapfile ...` / `if ! gh ...`) は本 guard の適用範囲外。capture と exit code を両方取る場合のみ if/else 形式が必須。
 
@@ -121,7 +121,7 @@ Pre-condition (phase / parent_issue_number) は **複数行 form (Form A)**、me
 ## アンチパターン
 
 1. **直接 `jq` で legacy state file を読む**: `cat .rite/flow-state.json | jq -r .phase` 形式は禁止。`state-read.sh` 経由のみ許可。
-2. **`!` 反転で capture**: `if ! val=$(cmd); then rc=$?; fi` は `rc` に常に 0 が入る。
+2. **「!」 反転で capture**: `if ! val=$(cmd); then rc=$?; fi` は `rc` に常に 0 が入る (bang inversion を pipeline 全体に適用するため)。
 3. **`.previous_phase` を expected と比較**: 1 hop 前を見るため normal entry で毎回 fail。
 4. **silent 0 降格**: `state-read.sh` 起動失敗時に `val=0` 等で fallback すると、`implementation_round=0` が「乖離なし」と誤分類される (silent partial corruption)。空文字列 `val=""` を保持し、METRICS_SKIPPED sentinel を別途 emit して下流 step を skip させる。
 5. **form の混同**: Pre-condition (`^if .*then$` で複数行 form を expect) を inline 1 行に圧縮すると TC-3 が fail。逆に inline 1 行 form (`if val=...; then :; else rc=$?` で 1 行 canonical を expect) を複数行に展開すると TC-6 が fail。site ごとの canonical form を保つこと。

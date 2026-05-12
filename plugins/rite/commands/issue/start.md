@@ -199,11 +199,10 @@ Invoke `skill: "rite:issue:parent-routing"`.
 
 ### 🚨 Mandatory After 1.5
 
-> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
+> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
-Do **NOT** stop after `rite:issue:parent-routing` returns. The parent routing sub-skill only performs detection — branch creation and implementation have NOT started yet.
-
-**Step 1**: Update flow state to post-parent-routing phase (atomic). The sub-skill has already updated to `phase1_5_post_parent` via its Defense-in-Depth section; this second write ensures stop-guard routes to the correct next branch:
+**Step 1**: Update flow state to post-parent-routing phase (atomic):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
@@ -232,11 +231,10 @@ Invoke `skill: "rite:issue:child-issue-selection"`.
 
 ### 🚨 Mandatory After 1.6
 
-> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
+> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
-Do **NOT** stop after `rite:issue:child-issue-selection` returns. Branch creation and implementation have NOT started yet.
-
-**Step 1**: Update flow state to post-child-selection phase (atomic). The sub-skill has already updated to `phase1_6_post_child` via its Defense-in-Depth section; this second write ensures stop-guard routes to the correct next branch:
+**Step 1**: Update flow state to post-child-selection phase (atomic):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
@@ -304,11 +302,10 @@ Invoke `skill: "rite:issue:branch-setup"`.
 
 ### 🚨 Mandatory After 2.3
 
-> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
+> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
-Do **NOT** stop after `rite:issue:branch-setup` returns. Projects status update and work memory initialization are still pending.
-
-**Step 1**: Update flow state to post-branch phase (atomic). The sub-skill has already updated to `phase2_post_branch` via its Defense-in-Depth section; this second write ensures stop-guard routes to the correct next branch:
+**Step 1**: Update flow state to post-branch phase (atomic):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
@@ -384,9 +381,8 @@ The script is the single source of truth for Projects Status updates. See [proje
 
 ### 🚨 Mandatory After 2.4
 
-> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
-
-Do **NOT** stop after the Projects Status update. Phase 2.5 (Iteration) and 2.6 (Work Memory) are still pending.
+> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
+> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
 **Step 1**: Update flow state to post-projects phase. If Phase 2.4.7 detected a parent Issue (`{parent_issue_number}` is non-empty and non-zero), persist it via `--parent-issue` so it survives context compaction and session restarts (#497):
 
@@ -424,6 +420,9 @@ Otherwise, execute the Module procedure: field info (2.5.1), current iteration d
 
 ### 🚨 Mandatory After 2.5
 
+> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
+> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
+
 **Step 1**: Update flow state to post-iteration phase:
 
 ```bash
@@ -452,9 +451,10 @@ Invoke `skill: "rite:issue:work-memory-init"`.
 
 ### 🚨 Mandatory After 2.6
 
-> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
+> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
-**Step 1**: Update flow state to post-work-memory phase (atomic). The sub-skill has already updated to `phase2_post_work_memory` via its Defense-in-Depth section; this second write ensures stop-guard routes to the correct next branch:
+**Step 1**: Update flow state to post-work-memory phase (atomic):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
@@ -477,23 +477,13 @@ fi
 
 > **Note**: `{plugin_root}` が未解決の場合は、[Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) に従い事前に解決すること。このコードブロックは Phase 4.1 よりも前に実行されるため、Phase 4.1 での解決に依存できない。相対パス `plugins/rite/hooks/` は、マーケットプレイスインストール環境ではスクリプトが見つからないため使用不可。
 
-**Step 3**: Do **NOT** stop after `rite:issue:work-memory-init` returns. **→ Proceed to Phase 3 now**.
+**Step 3**: **→ Proceed to Phase 3 now**.
 
 ## Phase 3: Implementation Plan
 
-**Pre-condition check** (#490 AC-5): Verify that Phase 2 completed in full. If the current `.phase` is not `phase2_post_work_memory`, the workflow has silently skipped one of Phase 2.4/2.5/2.6 — **abort with an ERROR** and return to the missing phase. `phase3_post_plan` is additionally accepted only for `/rite:resume` re-entry after Phase 3 already completed (not for normal first-entry).
-
-> **⚠️ Why `.phase`, not `.previous_phase`**: `flow-state-update.sh` `create` mode assigns the outgoing `.phase` value to `.previous_phase` (see `hooks/flow-state-update.sh` create branch). Therefore the **expected post-phase marker** appears in `.phase`, and `.previous_phase` holds the *predecessor*. Checking `.previous_phase` here would always compare against the phase *one step behind* the expected marker and would ERROR on every normal entry (prompt-engineer cycle-3 CRITICAL).
-
-> **⚠️ Why `state-read.sh`, not direct `jq` on the legacy state file**: When `flow_state.schema_version=2`, the active state is written to `.rite/sessions/{session_id}.flow-state`, while the legacy state file may retain another session's residue. Reading the legacy file inline returns stale residue (e.g., `phase5_post_stop_hook` from a prior session leaking into a fresh Phase 3 check). `state-read.sh` resolves the per-session file first and falls back to legacy only when per-session is absent.
+**Pre-condition check** (#490 AC-5): See [Pre-condition Gate](./references/pre-condition-gate.md). Expected `.phase`: `phase2_post_work_memory` (resume re-entry also accepts `phase3_post_plan`).
 
 ```bash
-# `if ! var=$(cmd); then rc=$?` パターンは bash 仕様上 `$?` が常に 0 になる (「!」 が pipeline 全体を反転し、
-# then 節は否定結果 = 0 を見るため)。capture と exit code を両方取る場合は `if cmd; then :; else rc=$?; fi`
-# の if/else 形式を使う。helper 起動失敗と pre-condition 失敗の区別を維持する不変条件。
-# capture を伴わない `if ! cmd; then ...` (例: mapfile / gh) は本ガードの適用範囲外。
-# 詳細な canonical 説明: _emit-cross-session-incident.sh、update_local_work_memory 関数の
-# `_phase` / `pr_num` / `loop_cnt` capture も同 pattern。
 if curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
   :
 else
@@ -502,7 +492,6 @@ else
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase3_pre_condition; rc=$rc" >&2
   exit 1
 fi
-# Accept phase3_post_plan only for /rite:resume re-entry (plan already completed in a prior session).
 if [ "$curr" != "phase2_post_work_memory" ] && [ "$curr" != "phase3_post_plan" ]; then
   echo "ERROR: Phase 3 pre-condition failed. .phase=$curr (expected: phase2_post_work_memory)" >&2
   echo "ACTION: Return to the missing Phase 2 step (2.4 Projects / 2.5 Iteration / 2.6 Work Memory) and execute its Pre-write + main procedure + Mandatory After before entering Phase 3." >&2
@@ -510,8 +499,6 @@ if [ "$curr" != "phase2_post_work_memory" ] && [ "$curr" != "phase3_post_plan" ]
   exit 1
 fi
 ```
-
-> **Enforcement note**: bash `exit 1` does NOT halt the LLM from proceeding. On ERROR output, the LLM MUST recognise the failure text and return to the named phase. Do NOT silently continue to the Pre-write below.
 
 **Pre-write** (before invoking `rite:issue:implementation-plan`): Update flow state so stop-guard can resume flow if interrupted:
 
@@ -528,11 +515,10 @@ Invoke `skill: "rite:issue:implementation-plan"`.
 
 ### 🚨 Mandatory After 3
 
-> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
+> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
-Do **NOT** stop after `rite:issue:implementation-plan` returns. Implementation has NOT started yet — the plan is just a plan.
-
-**Step 1**: Update flow state to post-plan phase (atomic). The sub-skill has already updated to `phase3_post_plan` via its Defense-in-Depth section; this second write ensures stop-guard routes to the correct next branch:
+**Step 1**: Update flow state to post-plan phase (atomic):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
@@ -707,6 +693,9 @@ Retain `workflow_incident_enabled` in conversation context. Phase 5.4.4.1 reads 
 
 ### 🚨 Mandatory After 5.0
 
+> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
+> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
+
 **Step 1**: Update flow state to post-stop-hook phase:
 
 ```bash
@@ -836,7 +825,8 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 
 ### 🚨 Mandatory After 5.2
 
-> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
+> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
 **Ignore** `/rite:lint` "Next steps" (standalone only). **Immediately** update flow state and execute 5.2.1.
 
@@ -989,7 +979,8 @@ bash {plugin_root}/hooks/workflow-incident-emit.sh --type manual_fallback_adopte
 
 ### 🚨 Mandatory After 5.3
 
-> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
+> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
 **Verify**: `[pr:created:{number}]`, number saved. Review has NOT started yet.
 
@@ -1183,7 +1174,8 @@ Invoke `skill: "rite:pr:review"`.
 
 #### 5.4.3 🚨 After Review
 
-> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
+> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
 **Verify**: Pattern confirmed, parsed.
 
@@ -1568,7 +1560,8 @@ It is also triggered when an `AskUserQuestion` fallback option that emits a sent
 
 #### 5.4.6 🚨 After Fix
 
-> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
+> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
 **Verify**: Pattern confirmed, parsed.
 
@@ -1662,7 +1655,8 @@ bash {plugin_root}/hooks/workflow-incident-emit.sh --type manual_fallback_adopte
 
 #### 5.5.0.1 🚨 Mandatory After 5.5
 
-> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
+> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
+> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
 **Verify**: `[ready:completed]` pattern confirmed. `rite:pr:ready` returned successfully. Status update, metrics recording, and completion report are still pending — these are the **primary deliverables** of the e2e flow that the user expects to see.
 
@@ -1694,11 +1688,9 @@ WM_SOURCE="ready" \
 
 #### 5.5.1 Update Issue Status to "In Review"
 
-**Pre-condition check** (#490 AC-5): Verify that Phase 5.5 (Ready) completed. The current `.phase` must be `phase5_post_ready` (the Mandatory After 5.5 marker). See the "Why `.phase`, not `.previous_phase`" explanation in Phase 3 pre-condition above. The pre-condition reads `.phase` via `state-read.sh` so per-session state is consulted instead of the legacy state file snapshot which may hold another session's residue.
+**Pre-condition check** (#490 AC-5): See [Pre-condition Gate](./references/pre-condition-gate.md). Expected `.phase`: `phase5_post_ready`.
 
 ```bash
-# `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
-# 両方取る場合は if/else 形式にする (capture-less `if ! cmd; then ...` は対象外)。
 if curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
   :
 else
@@ -1714,8 +1706,6 @@ if [ "$curr" != "phase5_post_ready" ]; then
   exit 1
 fi
 ```
-
-> **Enforcement note**: bash `exit 1` does NOT halt the LLM. On ERROR, the LLM MUST recognise the failure and return to Phase 5.5 rather than proceeding.
 
 **Pre-write**:
 
@@ -1755,6 +1745,9 @@ Inspect the script's stdout JSON:
 See [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) for the underlying API calls.
 
 ### 🚨 Mandatory After 5.5.1
+
+> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
+> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
 **Step 1**: Update flow state to post-status-in-review phase:
 
@@ -1974,6 +1967,9 @@ Present options via `AskUserQuestion`:
 
 ### 🚨 Mandatory After 5.5.2
 
+> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
+> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
+
 **Step 1**: Update flow state to post-metrics phase:
 
 ```bash
@@ -1989,13 +1985,9 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 > **Historical note (informational only — no action required)**: The `phase="completed", active: false` patch and `.rite-compact-state` cleanup were previously placed between Mandatory After 5.5.2 and this heading. That placement caused a **state flap** — the Phase 5.6 Pre-write (`create --phase phase5_completion`) re-activated the workflow and recorded `previous_phase="completed"`, which stop-guard then rejected as an invalid transition. The terminal state update now runs at the end of Phase 5.7 or, when no parent is identified, immediately after this Phase 5.6 — see the "Workflow Termination" block below. This note is purely historical context for future maintainers and contains no executable instructions.
 
-**Pre-condition check** (#490 AC-5): Verify that both Phase 5.5.1 (Status) and 5.5.2 (Metrics) completed. The current `.phase` must be `phase5_post_metrics` — the earlier `phase5_post_status_in_review` alternative was removed because it let Metrics silently skip (AC-5 violation). See the "Why `.phase`, not `.previous_phase`" explanation in Phase 3 pre-condition above. The pre-condition reads `.phase` via `state-read.sh` so per-session state is consulted instead of the legacy state file snapshot.
-
-If `metrics.enabled: false` in rite-config.yml, Phase 5.5.2 must still write the `phase5_post_metrics` marker (the phase body may short-circuit Steps 1-5 below, but the Mandatory After block must run unconditionally — see Phase 5.5.2 Skip Steps note).
+**Pre-condition check** (#490 AC-5): See [Pre-condition Gate](./references/pre-condition-gate.md). Expected `.phase`: `phase5_post_metrics`. When `metrics.enabled: false`, Phase 5.5.2 must still write the `phase5_post_metrics` marker via its Mandatory After block (body skip allowed; marker required).
 
 ```bash
-# `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
-# 両方取る場合は if/else 形式にする (capture-less `if ! cmd; then ...` は対象外)。
 if curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
   :
 else
@@ -2011,8 +2003,6 @@ if [ "$curr" != "phase5_post_metrics" ]; then
   exit 1
 fi
 ```
-
-> **Enforcement note** (prompt-engineer HIGH): bash `exit 1` does NOT stop the LLM from proceeding to the Pre-write block below. On ERROR, the LLM MUST recognise the failure text in stderr and return to the missing phase. Do NOT silently continue. The stop-guard whitelist (`["phase5_post_metrics"]="phase5_completion"`) will also reject any other source (e.g., `phase5_post_ready`, `phase5_post_status_in_review`) as a defense-in-depth layer.
 
 **Pre-write**:
 
@@ -2222,9 +2212,8 @@ Invoke `skill: "rite:issue:close", args: "{parent_issue_number}"`.
 
 ### 🚨 Mandatory After 5.7.2
 
-> See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global).
-
-Do **NOT** stop after `rite:issue:close` returns. Phase 5.7.3 (Next Child) and Workflow Termination are still pending.
+> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
+> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
 **Step 1**: Update flow state to post-parent-close phase:
 
@@ -2242,6 +2231,9 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 Display remaining children, guide `/rite:issue:start`. No auto-start.
 
 ### 🚨 Mandatory After 5.7
+
+> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
+> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
 **Step 1**: Update flow state to post-parent-completion phase. Use **patch mode** — patch preserves `previous_phase` automatically from the outgoing `.phase` field, whereas `create` mode would overwrite the entire state and risk tripping the session-ownership check (prompt-engineer cycle-2 MEDIUM #5):
 

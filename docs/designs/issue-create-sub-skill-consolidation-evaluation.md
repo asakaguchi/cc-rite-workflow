@@ -46,7 +46,7 @@ References (`commands/issue/references/`): 7 ファイル
 - charter 5 自問を `references/sub-skill-handoff-contract.md` (98 行) に適用すると、抽出経緯・historical site (4)・散文 DRIFT-CHECK ANCHOR・Wiki 経験則経緯記述・Issue/PR 番号本文引用が大量に削除候補となる
 - 機能契約 (4 必須引数 / `--if-exists` 非対称 / path 非対称) は保持しつつ、散文 SoT を ≤ 60 行に削減
 - caller (`create.md` / `create-interview.md`) の DRIFT-CHECK ANCHOR コメント・散文 blockquote も同基準で整理 (pair update で Asymmetric Fix Transcription 防止)
-- 機械検証は `hooks/tests/parent-routing-pattern-interim.test.sh` が継続担保 (旧 `4-site-symmetry.test.sh` は ADR `docs/designs/parent-routing-unification.md` PR-2 で retire 済)
+- 機械検証は `hooks/tests/4-site-symmetry.test.sh` が継続担保
 
 これにより、新規 contributor が読むべき reference の認知負荷が下がり、AC-1 達成度が向上する。
 
@@ -71,8 +71,8 @@ References (`commands/issue/references/`): 7 ファイル
 | AC-1 (1〜2 ファイル + 1〜2 reference で全体像把握) | 部分達成 — reference 1 本 (handoff contract) を slim 化、create.md 系 4 ファイルは構造維持 | 認知負荷を下げる方向で AC-1 に寄与 |
 | AC-2 (Phase 番号体系整数化) | 維持 (PR-E2 達成) | 本 PR で新規 0.x.y 追加なし |
 | AC-3 (AskUserQuestion 削減) | 本 PR scope 外 | PR-E3 で多くを処理済。コード経路に変更なし |
-| AC-4 (機能契約保持: Bypass block / Terminal Completion / 機械検証 / sentinel emit) | 達成 | bash literal 不変、`parent-routing-pattern-interim.test.sh` で機械検証 (旧 `4-site-symmetry.test.sh` は ADR PR-2 で retire 済、本 PR 範囲外の updates は ADR `docs/designs/parent-routing-unification.md` 参照) |
-| AC-5 (e2e test 3 経路 pass) | 部分達成 — `parent-routing-pattern-interim.test.sh` pass を本 PR で確認、e2e 3 経路 (Bug Fix preset / single Issue / XL decomposition) は別 PR で計測 | |
+| AC-4 (機能契約保持: Bypass block / Terminal Completion / 機械検証 / sentinel emit) | 達成 | bash literal 不変、`4-site-symmetry.test.sh` で機械検証 |
+| AC-5 (e2e test 3 経路 pass) | 部分達成 — `4-site-symmetry.test.sh` pass を本 PR で確認、e2e 3 経路 (Bug Fix preset / single Issue / XL decomposition) は別 PR で計測 | |
 
 ## 6. 採用方針の実装範囲
 
@@ -82,7 +82,7 @@ References (`commands/issue/references/`): 7 ファイル
 | S2 | `references/sub-skill-handoff-contract.md` 散文 slim 化 (98 → ≤ 60 行) |
 | S3 | `commands/issue/create.md` DRIFT-CHECK ANCHOR / 散文 blockquote 整理 |
 | S4 | `commands/issue/create-interview.md` 同上 (S3 と pair update) |
-| S5 | `hooks/tests/parent-routing-pattern-interim.test.sh` exit 0 を確認 (旧 `4-site-symmetry.test.sh` は ADR PR-2 で retire 済) |
+| S5 | `hooks/tests/4-site-symmetry.test.sh` exit 0 を確認 |
 | S6 | 本レポートに「実施した simplification」「残課題」追記 |
 | S7 | charter 5 自問 self-check を PR description に記載 |
 
@@ -91,7 +91,7 @@ References (`commands/issue/references/`): 7 ファイル
 | リスク | 緩和策 |
 |--------|--------|
 | Asymmetric Fix Transcription (Wiki 累積23回目) | S3/S4 は本 PR で未実施 (Section 8.3 参照)。caller 側 (create.md / create-interview.md) に handoff contract slim 化への追従が不要だったため (grep で 0 件確認済)、片肺更新リスクは実体化せず |
-| `--active true` の silent omit (Wiki: AND 論理防御層チェーン無効化) | bash literal 不変、`parent-routing-pattern-interim.test.sh` で create-interview の patch invocation 出現回数 ≥3 + `--if-exists` 出現を機械検証 (旧 `4-site-symmetry.test.sh` は ADR PR-2 で retire 済、`--preserve-error-count` は ADR §3.1 で撤去済) |
+| `--active true` / `--preserve-error-count` の silent omit (Wiki: AND 論理防御層チェーン無効化) | bash literal 不変、`4-site-symmetry.test.sh` で 4 引数の存在を機械検証 |
 | Markdown heading hierarchy skip (Wiki: PR #808-#809) | slim 化後の `## / ###` 連続性を目視確認 |
 | Protected 区域削除 (Wiki: 圧縮 AC は protected 区域から逆算) | 4 必須引数表 / `--if-exists` 非対称表 / path 非対称表は削除対象外 |
 
@@ -107,9 +107,10 @@ References (`commands/issue/references/`): 7 ファイル
 
 ### 8.2 機能契約保持の検証
 
-- `bash plugins/rite/hooks/tests/parent-routing-pattern-interim.test.sh` → exit 0 (旧 `4-site-symmetry.test.sh` PASS 8 / FAIL 0 は ADR PR-2 で retire 済の historical record)
-- 必須引数 (`--phase` / `--active` / `--next`) は `parent-routing-pattern-interim.test.sh` の TC-1 (`flow-state-update.sh patch` 出現回数 ≥3) + TC-6b-3/6b-4 (`--active` / `--next` count ≥ `create_patch_count`) で機械検証
-- *(verified-review I-14 #926: 旧版は `--preserve-error-count` を 4 必須引数と表記し、`create.md`/`create-interview.md` の flag count 表 (`--phase(8)` 等) を historical 値として残置していたが、本 PR で `--preserve-error-count` は両 caller から撤去済 (`error-count-runtime-reference.test.sh` の reader 不在 invariant で機械検証)、flag count も stale だったため削除)*
+- `bash plugins/rite/hooks/tests/4-site-symmetry.test.sh` → exit 0 (PASS 8 / FAIL 0)
+- 4 必須引数 (`--phase` / `--active` / `--next` / `--preserve-error-count`) が両 caller で grep -c >= 1 で機械検証
+- `create.md`: `--phase`(8) `--active`(6) `--next`(8) `--preserve-error-count`(2)
+- `create-interview.md`: `--phase`(5) `--active`(4) `--next`(5) `--preserve-error-count`(7)
 
 ### 8.3 計画逸脱
 
@@ -126,7 +127,7 @@ References (`commands/issue/references/`): 7 ファイル
 
 | # | 自問 | 本 PR での回答 |
 |---|------|--------------|
-| 1 | runtime に効くか? | handoff contract slim 化は機能契約 (4 必須引数 / `--if-exists` 非対称 / path 非対称) を保持しつつ散文記述のみ削減。`parent-routing-pattern-interim.test.sh` PASS で機能契約保持を機械検証 (旧 `4-site-symmetry.test.sh` は ADR PR-2 で retire 済) |
+| 1 | runtime に効くか? | handoff contract slim 化は機能契約 (4 必須引数 / `--if-exists` 非対称 / path 非対称) を保持しつつ散文記述のみ削減。`4-site-symmetry.test.sh` PASS で機能契約保持を機械検証 |
 | 2 | git log / commit message / close 済み Issue で代替できるか? | 削除した「抽出経緯」「historical site (4) 経緯」「Wiki 経験則経緯」は git log + close 済み Issue + 本評価レポートで代替 |
 | 3 | 「なぜこうなっているか」の説明か、「何をすべきか」か? | 削除対象は全て「なぜ」の説明 (経緯 / rationale / 歴史)。残した内容は全て「何をすべきか」(契約 / 表) |
 | 4 | 既に承認された判断を再確認しているか? | DRIFT-CHECK ANCHOR の散文重複は本 PR で削減 (semantic anchor pattern セクションに集約) |

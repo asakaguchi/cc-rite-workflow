@@ -912,7 +912,7 @@ if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
 fi
 ```
 
-> **Rationale**: caller (cleanup/review/fix/close) が implicit stop し `continue` 介入が必要となる症状の根本原因は、LLM が sub-skill return tag (`<!-- [lint:completed:auto] -->`) を turn 境界として誤認する turn-boundary heuristic の発火。Step 0 は **具体的な bash tool 呼び出し** を sub-skill return 直後の必須アクションとして挿入することで turn 境界シグナルを消去する。Step 0 / Step 1 は idempotent — この冗長性が防御機構である (cleanup.md Step 0/1 と同型、片側更新時は対称先も同時更新が必要)。`hooks/tests/parent-routing-pattern-interim.test.sh` TC-4 が本 site の imperative keyword + Step 0/1 二重 patch 構造 + continuation HTML literal を pin する。本 site の parent-routing pattern 移行計画は ADR `docs/designs/parent-routing-unification.md` 参照。
+> **Rationale**: caller (cleanup/review/fix/close) が implicit stop し `continue` 介入が必要となる症状の根本原因は、LLM が sub-skill return tag (`<!-- [lint:completed:auto] -->`) を turn 境界として誤認する turn-boundary heuristic の発火。Step 0 は **具体的な bash tool 呼び出し** を sub-skill return 直後の必須アクションとして挿入することで turn 境界シグナルを消去する。Step 0 / Step 1 は idempotent — この冗長性が防御機構である (cleanup.md Step 0/1 と同型、片側更新時は対称先も同時更新が必要、`hooks/tests/step0-immediate-bash-presence.test.sh` で対称性を pin)。
 
 **Step 1**: Update flow state to `ingest_post_lint` phase (idempotent re-patch)。Step 0 が既に書いた `ingest_post_lint` の timestamp / `next_action` を refresh する。2 重 patch design は transient failure 下でも Step 0 / Step 1 のいずれかが成功することを保証し、同時失敗時のみ `[CONTEXT] STEP_1_PATCH_FAILED=1` を retained flag として残す。`--preserve-error-count` は Step 0 と対称に付与 (RE-ENTRY DETECTED escalation + THRESHOLD bail-out を機能させるため):
 

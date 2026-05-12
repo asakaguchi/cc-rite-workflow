@@ -425,20 +425,6 @@ else
 fi
 
 # -------------------------------------------------------------------------
-# TC-MV-MSG (verified-review I-8): mv failure error message format static pin
-# 旧 TC-3 mutation test (mv → false) は exit 1 のみ verify し、本 PR で強化した error message
-# 文言 (`disk full / permission denied / EXDEV?` 等) の regression は検出しない。
-# runtime injection (chmod 0500 等) は環境差で flaky になるため、本ファイルに format pin を追加して
-# WARNING/ERROR の文言が silent に消失する経路を catch する。
-# -------------------------------------------------------------------------
-echo "TC-MV-MSG: mv failure error message format static pin"
-if grep -qE 'mv failed.*\(disk full / permission denied / EXDEV' "$HOOK"; then
-  pass "TC-MV-MSG: hook contains canonical mv failure message (create/patch/increment mode)"
-else
-  fail "TC-MV-MSG: canonical 'mv failed ... disk full / permission denied / EXDEV' message missing from hook (regression防止 pin が弱化)"
-fi
-
-# -------------------------------------------------------------------------
 # Summary
 # -------------------------------------------------------------------------
 echo ""

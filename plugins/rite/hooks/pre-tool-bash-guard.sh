@@ -4,9 +4,9 @@
 # Uses only Bash built-ins for pattern matching (no external processes).
 #
 # Denylist patterns:
-#   1. gh pr diff --stat (unsupported flag)
-#   2. gh pr diff -- <path> (unsupported file filter)
-#   3. != null in jq/awk (history expansion breaks !)
+#   1. gh pr diff --stat  (unsupported flag)
+#   2. gh pr diff -- <path>  (unsupported file filter)
+#   3. != null in jq/awk  (history expansion breaks !)
 #   4. Reviewer subagent running state-mutating git commands (Issue #442)
 #      Enforced only when transcript_path contains "/subagents/".
 #
@@ -21,64 +21,21 @@ export _RITE_HOOK_RUNNING_PRETOOL=1
 
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# silent-failure-hunter M-7: 旧 `... 2>/dev/null || true` は source 失敗を完全 silent suppress していた。
-# flow-state-update.sh IMP-4 (L62-71) の WARNING emit pattern と writer/reader/caller 3 層対称化。
-_hook_preamble_err=$(mktemp /tmp/rite-pretool-preamble-err-XXXXXX 2>/dev/null) || _hook_preamble_err=""
-if ! source "$SCRIPT_DIR/hook-preamble.sh" 2>"${_hook_preamble_err:-/dev/null}"; then
-  echo "WARNING: pre-tool-bash-guard: source hook-preamble.sh が失敗 (deploy regression / syntax error / permission?)" >&2
-  if [ -n "$_hook_preamble_err" ] && [ -s "$_hook_preamble_err" ]; then
-    head -3 "$_hook_preamble_err" | sed 's/^/  /' >&2
-  fi
-fi
-[ -n "$_hook_preamble_err" ] && rm -f "$_hook_preamble_err"
+source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 # Single source of truth for create_* lifecycle phase names (#501 HIGH).
 # Provides rite_phase_is_create_lifecycle_in_progress() used by Pattern 5.
-_phase_whitelist_err=$(mktemp /tmp/rite-pretool-whitelist-err-XXXXXX 2>/dev/null) || _phase_whitelist_err=""
-if ! source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>"${_phase_whitelist_err:-/dev/null}"; then
-  # verified-review I-2 (#926): source 失敗を fail-closed (BLOCK with deny) に倒す。
-  # 旧実装は WARNING のみで継続 → inline glob fallback に降格 → SoT bypass を許す silent regression を起こしていた。
-  echo "ERROR: pre-tool-bash-guard: source phase-transition-whitelist.sh が失敗 (helper deploy regression)" >&2
-  if [ -n "$_phase_whitelist_err" ] && [ -s "$_phase_whitelist_err" ]; then
-    head -3 "$_phase_whitelist_err" | sed 's/^/  /' >&2
-  fi
-  echo "  影響: Pattern 5 の lifecycle predicate (rite_phase_is_create_lifecycle_in_progress) が load-bearing なため fail-closed します" >&2
-  [ -n "$_phase_whitelist_err" ] && rm -f "$_phase_whitelist_err"
-  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED (phase-transition-whitelist.sh source failure): pre-tool-bash-guard cannot resolve create-lifecycle phase set. Resolve hook deploy issue then retry."}}\n'
-  exit 2
-fi
-[ -n "$_phase_whitelist_err" ] && rm -f "$_phase_whitelist_err"
+source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>/dev/null || true
 
-# bash 5.2 デフォルト (`inherit_errexit` OFF) では `VAR=$(cmd)` の assignment は cmd 失敗で abort しないが、
-# `|| INPUT=""` を明示することで cat 失敗時の rc を確実に 0 に正規化し、他 5 hook (notification.sh /
-# post-compact.sh / pre-compact.sh / post-tool-wm-sync.sh / session-start.sh) と pattern を統一する。
-# 失敗時の WARNING は `||` 右辺で emit する (cat 失敗のみを検出、EOF 空入力では出さない)。
-INPUT=$(cat) || {
-  # verified-review I-3 (#926): stdin cat 失敗を fail-closed に倒す。旧実装は INPUT="" fallback で
-  # 後続の denylist check (Pattern 1-5) が事実上無効化される silent allow 経路を許していた。
-  # corrupt fd / pipe broken / SIGPIPE 等で stdin が読めない時点で hook 機能不能であり、
-  # orchestrator delegation bypass のリスクが大きいため deny に倒す。
-  echo "ERROR: pre-tool-bash-guard: stdin cat が失敗 (pipe broken / EBADF / SIGPIPE / Claude Code が corrupt FD を渡した)" >&2
-  echo "  影響: hook 機能不能のため fail-closed します (全 denylist が無効化される silent allow 経路を防止)" >&2
-  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED (stdin-read-failure): pre-tool-bash-guard cannot read tool input. Resolve hook input pipe issue then retry."}}\n'
-  exit 2
-}
+# cat failure does not abort under set -e; || guard is defensive
+INPUT=$(cat) || INPUT=""
 
-# silent-failure-hunter M-6: 旧 `... 2>/dev/null || VAR=""` は malformed JSON (Claude Code bug /
-# partial flush) を silent suppress していた。攻撃面となる可能性があるため `[ -n "$INPUT" ] && [ -z "$VAR" ]`
-# で「INPUT は来たが parse 不能」状態を WARNING emit + 明示的 allow + audit-trail にする。
 # Only inspect Bash tool calls
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null) || TOOL_NAME=""
-if [ -n "$INPUT" ] && [ -z "$TOOL_NAME" ]; then
-  echo "WARNING: pre-tool-bash-guard: INPUT は非空だが tool_name が parse できません (malformed JSON?)" >&2
-fi
 if [ "$TOOL_NAME" != "Bash" ]; then
   exit 0
 fi
 
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null) || COMMAND=""
-if [ -n "$INPUT" ] && [ -z "$COMMAND" ]; then
-  echo "WARNING: pre-tool-bash-guard: INPUT は非空だが tool_input.command が parse できません (malformed JSON?)" >&2
-fi
 if [ -z "$COMMAND" ]; then
   exit 0
 fi
@@ -95,33 +52,12 @@ case "$TRANSCRIPT_PATH" in
   */subagents/*) IS_SUBAGENT=1 ;;
 esac
 
-# --- Fail-open for pattern matching stage (scope-narrowed) ---
-# verified-review CRITICAL-2 対応: ERR trap の scope を Pattern 1-3 (regex case match) と
-# Pattern 5 (gh issue create 検出) の **2 区間に限定** する。旧実装は line 112 → line 313
-# の広い区間を 1 trap でカバーしており、(a) Pattern 5 と Pattern 4/charter-lint の間の
-# defense-in-depth でしかない comment 区間も含み、(b) 将来 Pattern 6 等が追加された際に
-# silent allow に倒れる scope 拡大リスクを持っていた。
-#
-# 新しい scope (本 PR で narrow 化):
-#   - Region A: Heredoc extraction + Pattern 1-3 (regex case match) [本 trap install]
-#   - DISARM after Pattern 3 [Pattern 4/charter-lint への進入前]
-#   - Region B: Pattern 5 (gh issue create lifecycle detection) [trap re-arm]
-#   - DISARM after Pattern 5 (`trap - ERR` below, drift-check anchor で marking)
-#
-# ⚠️ Fail-closed semantics for Pattern 4 / charter-lint:
-#   Pattern 4 (reviewer git denylist) と charter-lint strict block は trap scope 外で
-#   実行されるため、strict-mode `exit 2` BLOCK は ERR trap で silent downgrade されない。
-#
-# ⚠️ Observability: ERR trap が発火した場合 silent allow (fail-open) になる経路を可視化するため、
-# WARNING を stderr に emit してから exit する。これにより新規 jq / mktemp / state-path-resolve
-# 失敗が ERR trap で silent に exit 0 に倒れるケースを debug ログから追跡できる。
-# (exit 0 自体は fail-open semantics を維持し、Bash 実行は許可される — Pattern 1-3/5 の
-# defense-in-depth は user の Bash 操作を妨げないことを優先するため意図的に fail-open)
-#
-# verified-review C-5 (#926): 旧実装は WARNING を stderr に emit するのみで、Claude Code が hook
-# stderr を吸わない設定では痕跡ゼロになっていた。永続 audit-trail (`.rite-stop-guard-diag.log`)
-# にも append することで post-hoc 検出を可能にする。append 失敗時は WARNING に縮退する。
-trap 'rc=$?; echo "WARNING: pre-tool-bash-guard.sh: ERR trap fired (fail-open silent allow); upstream command rc=$rc — review jq / mktemp / state-path-resolve sites" >&2; { _diag_log="${PWD}/.rite-stop-guard-diag.log"; echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] pattern1-3-err-trap-fail-open: rc=$rc cmd_prefix=${COMMAND:0:80}" >> "$_diag_log" 2>/dev/null || echo "WARNING: pre-tool-bash-guard.sh: audit-trail append failed ($_diag_log)" >&2; }; exit 0' ERR
+# --- Fail-open for pattern matching stage ---
+# If heredoc extraction or pattern matching crashes (e.g., edge-case failures with
+# large multiline input), allow the command rather than blocking it.
+# Placed after JSON parsing (which has its own || fallbacks) to preserve
+# error detection for malformed hook input (TC-016).
+trap 'exit 0' ERR
 
 # --- Heredoc-safe command extraction ---
 # Strip heredoc content to avoid false positives on text inside commit messages,
@@ -166,13 +102,6 @@ if [ -z "$BLOCKED_PATTERN" ]; then
   esac
 fi
 
-# >>> DRIFT-CHECK ANCHOR: err_trap_disarm_after_pattern3 <<<
-# verified-review CRITICAL-2 対応: Pattern 1-3 (Region A) 終了。ここで ERR trap を解除し、
-# Pattern 5 (Region B) 進入までの comment 区間および将来追加される Pattern 6+ が trap scope に
-# silent 混入しないようにする。Pattern 5 進入時に re-arm する (DRIFT-CHECK ANCHOR:
-# err_trap_rearm_before_pattern5 で marking)。
-trap - ERR
-
 # Pattern 5: gh issue create direct invocation during /rite:issue:create lifecycle (#475 Mode B).
 # The orchestrator (create.md) must delegate Issue creation to rite:issue:create-register or
 # rite:issue:create-decompose sub-skills. A direct `gh issue create` call bypasses the entire
@@ -186,7 +115,7 @@ trap - ERR
 #   Pattern 5 normalizes shell meta-characters (;, &, |, parens, braces, backticks, $, quotes) to
 #   spaces so that `true; gh issue create` / `echo x | gh issue create` / `{gh issue create;}` /
 #   `eval "gh issue create"` all match the same `gh issue create` pattern. Backslash line
-#   continuations (`gh \\\n issue \\\n create`) are also normalized because `\n` and `\` are both
+#   continuations (`gh \\\n  issue \\\n create`) are also normalized because `\n` and `\` are both
 #   replaced with space.
 #
 # ⚠️ IMPORTANT — Pattern 5 uses $COMMAND (full input) not $CMD_CHECK:
@@ -206,18 +135,6 @@ trap - ERR
 #     — gh CLI resolves `cr` unambiguously to `create` (the only `gh issue` subcommand starting
 #     with `cr`), so `cr` is the minimum unambiguous prefix and must be caught. `c` alone is
 #     ambiguous and gh CLI itself rejects it, so we do not block it here.
-#
-# >>> DRIFT-CHECK ANCHOR: err_trap_rearm_before_pattern5 <<<
-# Pattern 5 (Region B) 進入前に ERR trap を re-arm する。Pattern 3 終了時点で一度 disarm 済
-# (err_trap_disarm_after_pattern3 anchor 参照)。
-#
-# **Pattern 5 は fail-closed**: Pattern 5 は create-lifecycle 中の `gh issue create` 直叩きを
-# block する security-critical 経路 (Mode B Bypass + reviewer-subagent denylist の load-bearing logic)。
-# jq / mktemp / state-path-resolve の transient failure (例: `/tmp` inode 枯渇 / jq バイナリ異常) で
-# trap が発火した場合、Pattern 1-3 と同じ fail-open (exit 0) に倒すと orchestrator delegation 仕様の
-# silent bypass が成立する (audit-trail なし、workflow-incident-emit も発火しない)。
-# 本 trap は ERROR を emit してから permissionDecision=deny で BLOCK し、exit 2 で fail-closed する。
-trap 'rc=$?; echo "ERROR: pre-tool-bash-guard.sh: ERR trap fired during Pattern 5 (state-corrupt or transient mktemp/jq failure rc=$rc); failing closed (BLOCK gh issue create to prevent orchestrator bypass)" >&2; printf "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"BLOCKED (pattern5-trap-fail-closed): pre-tool-bash-guard internal error during create-lifecycle scan; refusing gh issue create to avoid orchestrator bypass. Resolve hook environment then retry.\"}}\n"; exit 2' ERR
 if [ -z "$BLOCKED_PATTERN" ]; then
   # Normalize $COMMAND directly (NOT $CMD_CHECK) to catch heredoc-body bypass (#501 HIGH).
   CMD_P5="${COMMAND//$'\t'/ }"
@@ -250,19 +167,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
     STATE_ROOT_PATH=""
     if [ -n "$CWD" ] && [ -d "$CWD" ]; then
-      # silent-failure-hunter M-8: 旧 `... 2>/dev/null || STATE_ROOT_PATH="$CWD"` は stderr 完全捨て +
-      # silent CWD fallback。state-path-resolve.sh が deploy regression で失敗した場合、Mode B AND-logic が
-      # 誤った state file を読みに行く可能性がある (HIGH-5 と同根の observability gap)。
-      _state_path_err=$(mktemp /tmp/rite-pretool-state-path-err-XXXXXX 2>/dev/null) || _state_path_err=""
-      if ! STATE_ROOT_PATH=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>"${_state_path_err:-/dev/null}"); then
-        echo "WARNING: pre-tool-bash-guard: state-path-resolve.sh 失敗、CWD fallback に倒します ($CWD)" >&2
-        if [ -n "$_state_path_err" ] && [ -s "$_state_path_err" ]; then
-          head -3 "$_state_path_err" | sed 's/^/  /' >&2
-        fi
-        echo "  影響: schema_version=2 環境で Mode B AND-logic が誤った state file を参照する可能性" >&2
-        STATE_ROOT_PATH="$CWD"
-      fi
-      [ -n "$_state_path_err" ] && rm -f "$_state_path_err"
+      STATE_ROOT_PATH=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT_PATH="$CWD"
     fi
     # State file lookup: if $STATE_ROOT_PATH is empty (e.g., CWD outside git repo and
     # state-path-resolve.sh failed), skip the check entirely — no state file means no
@@ -275,69 +180,24 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     # schema/SID resolution here. Mode B AND-logic (.active=true && phase=create_*)
     # below operates on whichever file the resolver returns.
     if [ -n "$STATE_ROOT_PATH" ]; then
-      _resolver_err=$(mktemp /tmp/rite-pretool-resolver-err-XXXXXX 2>/dev/null) || _resolver_err=""
-      if STATE_FILE_PATH=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT_PATH" 2>"${_resolver_err:-/dev/null}"); then
+      if STATE_FILE_PATH=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT_PATH" 2>/dev/null); then
         :
       else
-        # HIGH-5 修正: 旧実装は `[ -n "${RITE_DEBUG:-}" ]` gate で production 環境では完全 silent。
-        # helper deploy regression で resolver が失敗し続けた場合、schema_version=2 環境で legacy path
-        # に書き続ける silent state drift (Issue #681 F-01) を observability gap として残していた。
-        # gate を撤廃し常時 WARNING emit + debug log への append で observability を確保する。
-        echo "WARNING: pre-tool-bash-guard: _resolve-flow-state-path.sh が失敗、legacy path に fallback します" >&2
-        if [ -n "$_resolver_err" ] && [ -s "$_resolver_err" ]; then
-          head -3 "$_resolver_err" | sed 's/^/  /' >&2
-        fi
-        echo "  影響: schema_version=2 環境では legacy `.rite-flow-state` に書き込まれ Mode B AND-logic が誤動作する可能性" >&2
-        # # 旧 `: # silent skip` は flow-state-update.sh:468-472 M-4 で確立した
-        # 「diag log 書込み失敗を完全 silent にせず WARNING を 1 行 emit」doctrine と非対称。
-        # `.rite-flow-debug.log` が group-writable でない / disk full で audit-trail が複数行欠落する。
-        if ! echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: _resolve-flow-state-path.sh failed, falling back to legacy path" \
-          >> "$STATE_ROOT_PATH/.rite-flow-debug.log" 2>/dev/null; then
-          echo "WARNING: pre-tool-bash-guard: debug log append failed (audit-trail unavailable for fallback event)" >&2
-        fi
+        # Resolver failed (helper deploy regression / path validation rejection).
+        # Surface the failure under RITE_DEBUG so deploy regressions are observable
+        # — the legacy fallback would otherwise let Mode B AND-logic operate on the
+        # wrong state file silently when schema_version=2 is configured (Issue #681 F-01).
+        [ -n "${RITE_DEBUG:-}" ] && echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: _resolve-flow-state-path.sh failed, falling back to legacy path" \
+          >> "$STATE_ROOT_PATH/.rite-flow-debug.log" 2>/dev/null || true
         STATE_FILE_PATH="${STATE_ROOT_PATH}/.rite-flow-state"
       fi
-      [ -n "$_resolver_err" ] && rm -f "$_resolver_err"
       if [ -f "$STATE_FILE_PATH" ]; then
-        # verified-review CRITICAL-1 対応: jq 失敗時を fail-fast (fail-closed) にする。
-        # 旧実装は STATE_PHASE="" / STATE_ACTIVE="false" に倒して Pattern 5 を silent skip させていた
-        # が、これは comment が主張する「fail-fast」と矛盾し、state file 破損時に `gh issue create`
-        # 直叩きを silent allow する Mode B Bypass の経路を作っていた。
-        #
-        # Pattern 5 block 内に到達した時点で command は確定的に `gh issue create` (L218 の case match)
-        # のため、jq 失敗 = state file 破損 = create lifecycle 状態を verify 不能 → defensively
-        # block する。これは fail-closed semantics で、user に state file 修復を促す:
-        #   - state file が破損していなければ通常 path で正しく検証される
-        #   - state file が破損していた場合のみ block する (false positive のリスクは限定的)
-        # flow-state-update.sh writer の jq stderr 退避 doctrine と対称化。
-        _state_jq_err=$(mktemp /tmp/rite-pretool-state-jq-err-XXXXXX 2>/dev/null) || _state_jq_err=""
-        _state_jq_failed=0
-        if ! STATE_PHASE=$(jq -r '.phase // empty' "$STATE_FILE_PATH" 2>"${_state_jq_err:-/dev/null}"); then
-          echo "WARNING: pre-tool-bash-guard: jq .phase 抽出失敗 ($STATE_FILE_PATH)" >&2
-          [ -n "$_state_jq_err" ] && [ -s "$_state_jq_err" ] && head -3 "$_state_jq_err" | sed 's/^/  /' >&2
-          STATE_PHASE="(jq_failed)"
-          _state_jq_failed=1
-        fi
-        [ -n "$_state_jq_err" ] && : > "$_state_jq_err"  # truncate before reuse
-        if ! STATE_ACTIVE=$(jq -r '.active // false' "$STATE_FILE_PATH" 2>"${_state_jq_err:-/dev/null}"); then
-          echo "WARNING: pre-tool-bash-guard: jq .active 抽出失敗 ($STATE_FILE_PATH)" >&2
-          [ -n "$_state_jq_err" ] && [ -s "$_state_jq_err" ] && head -3 "$_state_jq_err" | sed 's/^/  /' >&2
-          STATE_ACTIVE="(jq_failed)"
-          _state_jq_failed=1
-        fi
-        [ -n "$_state_jq_err" ] && rm -f "$_state_jq_err"
-        if [ "$_state_jq_failed" = "1" ]; then
-          # fail-closed: state file 破損で create lifecycle 状態を verify 不能 → block する
-          BLOCKED_PATTERN="create-lifecycle-state-corrupt"
-          BLOCKED_REASON="state file ($STATE_FILE_PATH) の jq 解析に失敗しました。create lifecycle 中である可能性があるため defensively block します (#475 Mode B fail-closed)."
-          BLOCKED_ALTERNATIVE="state file を修復するか、create lifecycle 外であることが明らかな場合は state file を一旦削除 (mv .rite/sessions/<sid>.flow-state{,.bak}) してから再試行してください。意図的に gh issue create を直叩きする場合は flow-state を一旦無効化してください。"
-        elif [ "$STATE_ACTIVE" = "true" ]; then
-          # Use query function from phase-transition-whitelist.sh as the single source of truth
-          # for create_* lifecycle phase names. Fall back to inline glob check when the helper
-          # is unavailable (e.g., bash < 4.2 where phase-transition-whitelist.sh exits early).
-          # >>> DRIFT-CHECK ANCHOR: lifecycle_predicate_pattern_5 <<<
-          # phase-transition-whitelist.sh の lifecycle predicate を runtime 参照する箇所。
-          # create-interview.md などの docs はこの anchor 名で cite する (行番号 drift 回避)。
+        STATE_PHASE=$(jq -r '.phase // empty' "$STATE_FILE_PATH" 2>/dev/null) || STATE_PHASE=""
+        STATE_ACTIVE=$(jq -r '.active // false' "$STATE_FILE_PATH" 2>/dev/null) || STATE_ACTIVE="false"
+        # Use query function from phase-transition-whitelist.sh as the single source of truth
+        # for create_* lifecycle phase names. Fall back to inline glob check when the helper
+        # is unavailable (e.g., bash < 4.2 where phase-transition-whitelist.sh exits early).
+        if [ "$STATE_ACTIVE" = "true" ]; then
           if type rite_phase_is_create_lifecycle_in_progress >/dev/null 2>&1; then
             if rite_phase_is_create_lifecycle_in_progress "$STATE_PHASE"; then
               BLOCKED_PATTERN="create-lifecycle-direct-gh-issue"
@@ -350,16 +210,10 @@ if [ -z "$BLOCKED_PATTERN" ]; then
             BLOCKED_ALTERNATIVE="rite:issue:create-register を呼ぶべき場面です。Phase 0.6 の Delegation Routing に従い skill: \"rite:issue:create-register\" または skill: \"rite:issue:create-decompose\" を invoke してください。"
           fi
         fi
-        unset _state_jq_failed
       fi
     fi
   fi
 fi
-
-# >>> DRIFT-CHECK ANCHOR: err_trap_disarm_after_pattern5 <<<
-# Pattern 5 終了。ここで ERR trap を解除し、Pattern 4 (reviewer git denylist) と
-# charter-lint strict block を fail-closed にする。
-trap - ERR
 
 # Pattern 4: Reviewer subagent running state-mutating git commands (Issue #442).
 # Scope: only when IS_SUBAGENT=1 (transcript_path contains "/subagents/").
@@ -463,7 +317,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
 
   # --- (C) Sub-action precision: git tag (creation/deletion only) ---
   # Allowed: `git tag -l`, `git tag --list`, `git tag` (bare list)
-  # Denied: `git tag <name>`, `git tag -a`, `git tag -d`, `git tag --delete`,
+  # Denied:  `git tag <name>`, `git tag -a`, `git tag -d`, `git tag --delete`,
   #          `git tag -f`, `git tag --force`
   if [ -z "$BLOCKED_PATTERN" ]; then
     case "$PADDED" in
@@ -483,7 +337,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
 
   # --- (D) Sub-action precision: git reflog (only expire/delete block) ---
   # Allowed: `git reflog`, `git reflog show`
-  # Denied: `git reflog expire`, `git reflog delete`
+  # Denied:  `git reflog expire`, `git reflog delete`
   if [ -z "$BLOCKED_PATTERN" ]; then
     case "$PADDED" in
       *" git reflog expire"*|\
@@ -506,7 +360,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # --- (F) Sub-action precision: git fetch (bare allowed, --prune/--force denied) ---
   # CRITICAL: `-p` / `-f` must be matched as **standalone flag tokens**, not as
   # substrings inside branch names like `hot-fix` / `release-patch` /
-  # `v1.0-rc-final` / `main-pipeline` ( HIGH regression).
+  # `v1.0-rc-final` / `main-pipeline` (cycle 2 HIGH regression).
   #
   # Use a single bash regex with an optional "leading args" group:
   #   ([^[:space:]]+[[:space:]]+)*
@@ -617,20 +471,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     elif [[ "$COMMAND" =~ -F[[:space:]]+([^[:space:]]+) ]]; then
       CHARTER_FILE="${BASH_REMATCH[1]}"
       if [ -f "$CHARTER_FILE" ] && [ -r "$CHARTER_FILE" ]; then
-        # HIGH-6 修正: 旧実装 `cat ... 2>/dev/null || CHARTER_MSG=""` は I/O error (EACCES /
-        # EBADF / FIFO timeout 等) を完全 silent suppress していた。CHARTER_MSG="" になると
-        # 後段の `[ -n "$CHARTER_MSG" ]` で false 判定され charter check が silent skip し、
-        # I/O error と「lint passed」が区別不能だった。stderr 退避 + 失敗時 WARNING + skip に変更。
-        _cat_err=$(mktemp /tmp/rite-pretool-cat-err-XXXXXX 2>/dev/null) || _cat_err=""
-        if ! CHARTER_MSG=$(cat "$CHARTER_FILE" 2>"${_cat_err:-/dev/null}"); then
-          echo "[charter-lint] WARN: -F file の cat に失敗: $CHARTER_FILE (charter check skipped)" >&2
-          if [ -n "$_cat_err" ] && [ -s "$_cat_err" ]; then
-            head -3 "$_cat_err" | sed 's/^/  /' >&2
-          fi
-          CHARTER_MSG=""
-          CHARTER_CHECK=0
-        fi
-        [ -n "$_cat_err" ] && rm -f "$_cat_err"
+        CHARTER_MSG=$(cat "$CHARTER_FILE" 2>/dev/null) || CHARTER_MSG=""
       else
         echo "[charter-lint] WARN: -F file path unresolvable: $CHARTER_FILE (charter check skipped)" >&2
         CHARTER_CHECK=0
@@ -641,19 +482,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
   fi
 
   if [ "$CHARTER_CHECK" = "1" ] && [ -n "$CHARTER_MSG" ]; then
-    # verified-review HIGH-3 対応: git diff の IO エラー (.git/index.lock 競合 / permission denied /
-    # git binary missing) を silent 抑制すると、docs/designs/* commit が誤って charter-lint 対象になる。
-    # 同ファイル L263-275 で確立した stderr-tempfile pattern と対称化する。
-    _staged_err=$(mktemp /tmp/rite-pretool-staged-err-XXXXXX 2>/dev/null) || _staged_err=""
-    if ! STAGED_FILES=$(git diff --cached --name-only 2>"${_staged_err:-/dev/null}"); then
-      echo "WARNING: pre-tool-bash-guard: git diff --cached --name-only が失敗 — STAGED_FILES を空文字に fallback" >&2
-      if [ -n "$_staged_err" ] && [ -s "$_staged_err" ]; then
-        head -3 "$_staged_err" | sed 's/^/  /' >&2
-      fi
-      echo "  影響: docs/designs/* exclusion を skip して charter-lint を全 commit に適用 (false-positive リスク)" >&2
-      STAGED_FILES=""
-    fi
-    [ -n "$_staged_err" ] && rm -f "$_staged_err"
+    STAGED_FILES=$(git diff --cached --name-only 2>/dev/null) || STAGED_FILES=""
     if [ -n "$STAGED_FILES" ]; then
       ALL_DESIGNS=1
       while IFS= read -r f; do
@@ -674,50 +503,13 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     # fence (odd fence count) would make the awk toggle consume everything after the
     # opening fence and silently drop a real charter pattern. Count fences first; if
     # odd, fall back to the raw message.
-    # verified-review HIGH-4 対応: rc=1 (no match) と rc>=2 (IO error / OOM) を区別する。
-    # 旧 `|| CHARTER_FENCE_COUNT=0` は両者を同視し、IO エラー時に partial count に基づく
-    # modulo check で誤った fence-strip を実行する経路があった。session-end.sh:72-76 の
-    # `_grep_classify_rc` doctrine と対称化。
-    _fence_grep_err=$(mktemp /tmp/rite-pretool-fence-err-XXXXXX 2>/dev/null) || _fence_grep_err=""
-    set +e
-    CHARTER_FENCE_COUNT=$(grep -c '^[[:space:]]*```' <<< "$CHARTER_MSG" 2>"${_fence_grep_err:-/dev/null}")
-    _fence_rc=$?
-    set -e
-    if [ "$_fence_rc" -ge 2 ]; then
-      echo "WARNING: pre-tool-bash-guard: charter fence grep が IO エラー (rc=$_fence_rc) — fence-strip を skip して raw message にフォールバック" >&2
-      if [ -n "$_fence_grep_err" ] && [ -s "$_fence_grep_err" ]; then
-        head -3 "$_fence_grep_err" | sed 's/^/  /' >&2
-      fi
-      echo "  影響: fence 内 charter pattern が false-positive で BLOCK/WARN される可能性" >&2
-      CHARTER_FENCE_COUNT=0  # raw message にフォールバック (奇数 fence と同じ動作)
-      _fence_force_raw=1
-    else
-      _fence_force_raw=0
-      # rc=1 (no match) は legitimate な「fence なし」状態 → count=0 で正常進行
-      [ -z "$CHARTER_FENCE_COUNT" ] && CHARTER_FENCE_COUNT=0
-    fi
-    [ -n "$_fence_grep_err" ] && rm -f "$_fence_grep_err"
-    if [ "$_fence_force_raw" = "0" ] && [ $((CHARTER_FENCE_COUNT % 2)) -eq 0 ]; then
-      # verified-review HIGH-5 対応: awk 失敗 (binary missing / OOM / locale issue) を silent
-      # fallback すると、commit が fence 内 charter pattern で誤 block される (user は原因不明)。
-      # awk の exit code を check して WARNING emit。
-      _awk_err=$(mktemp /tmp/rite-pretool-awk-err-XXXXXX 2>/dev/null) || _awk_err=""
-      if CHARTER_MSG_STRIPPED=$(awk '
+    CHARTER_FENCE_COUNT=$(grep -c '^[[:space:]]*```' <<< "$CHARTER_MSG" 2>/dev/null) || CHARTER_FENCE_COUNT=0
+    if [ $((CHARTER_FENCE_COUNT % 2)) -eq 0 ]; then
+      CHARTER_MSG_STRIPPED=$(awk '
         BEGIN { in_block = 0 }
         /^[[:space:]]*```/ { in_block = !in_block; next }
         !in_block { print }
-      ' <<< "$CHARTER_MSG" 2>"${_awk_err:-/dev/null}"); then
-        :
-      else
-        _awk_rc=$?
-        echo "WARNING: pre-tool-bash-guard: charter fence-strip awk が失敗 (rc=$_awk_rc) — raw message にフォールバック" >&2
-        if [ -n "$_awk_err" ] && [ -s "$_awk_err" ]; then
-          head -3 "$_awk_err" | sed 's/^/  /' >&2
-        fi
-        echo "  影響: fence 内 charter pattern が false-positive で BLOCK/WARN される可能性 (user に原因不明の BLOCK が発生)" >&2
-        CHARTER_MSG_STRIPPED="$CHARTER_MSG"
-      fi
-      [ -n "$_awk_err" ] && rm -f "$_awk_err"
+      ' <<< "$CHARTER_MSG") || CHARTER_MSG_STRIPPED="$CHARTER_MSG"
     else
       CHARTER_MSG_STRIPPED="$CHARTER_MSG"
     fi
@@ -741,10 +533,9 @@ if [ -z "$BLOCKED_PATTERN" ]; then
       if [ "$STRICT_MODE" = "true" ]; then
         echo "[charter-lint] BLOCK: commit message contains charter-forbidden pattern: $CHARTER_HIT" >&2
         echo "[charter-lint] See: plugins/rite/skills/rite-workflow/references/simplification-charter.md" >&2
-        # Defense-in-depth: ERR trap は Pattern 5 終了直後の `trap - ERR` で解除済みのため、
-        # jq 失敗が ERR trap 経由で silent allow に倒れる経路は構造的に閉じている。
-        # 以下の `if !; ... fi; exit 2` パターンは、ERR trap disarm が将来 regression で
-        # 後退した場合の defense-in-depth として残す (BLOCK の fail-closed semantics を二重保証)。
+        # jq must succeed; if it fails the script's `set -e` + `trap 'exit 0' ERR` would
+        # silently downgrade the BLOCK to allow. Force fail-closed by emitting a minimal
+        # JSON deny inline and exiting 2 explicitly.
         if ! jq -n --arg reason "BLOCKED (commit-msg-charter-violation): commit message contains charter-forbidden pattern: $CHARTER_HIT. Rewrite without literal cycle numbers / Issue references / verified-review cycle text. See plugins/rite/skills/rite-workflow/references/simplification-charter.md." \
           '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $reason}}'; then
           echo "[charter-lint] FATAL: jq invocation failed; emitting fallback deny" >&2

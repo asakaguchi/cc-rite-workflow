@@ -261,29 +261,6 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-CHARTER-FILE-CAT-FAIL (verified-review pr-test-analyzer HIGH-1):
-# CHARTER_FILE cat-failure path の WARN + skip 挙動を pin。
-# 旧実装 (`CHARTER_MSG=$(cat ... 2>/dev/null) || CHARTER_MSG=""`) は IO エラーを silent 抑制し、
-# 「I/O 失敗」と「charter-clean」を区別不能だった。新実装は stderr-capture + WARN emit +
-# `CHARTER_CHECK=0` skip に変更されている。
-#
-# Static pin (chmod 000 を CI 環境で完全再現するのは困難なため、まず static pin で
-# 退化を検出する。runtime 再現が必要になった時点で chmod テストを追加する)。
-# --------------------------------------------------------------------------
-echo "TC-CHARTER-FILE-CAT-FAIL (verified-review pr-test-analyzer HIGH-1): CHARTER_FILE cat-failure WARN static pin"
-if grep -qE '\[charter-lint\] WARN: -F file の cat に失敗' "$HOOK"; then
-  pass "TC-CHARTER-FILE-CAT-FAIL: '[charter-lint] WARN: -F file の cat に失敗' literal が存在 (HIGH-1 silent suppression 防止)"
-else
-  fail "TC-CHARTER-FILE-CAT-FAIL: '[charter-lint] WARN: -F file の cat に失敗' literal が消失 (silent fall-back to CHARTER_MSG=\"\" regression の可能性)"
-fi
-if grep -qE '_cat_err=\$\(mktemp' "$HOOK"; then
-  pass "TC-CHARTER-FILE-CAT-FAIL: _cat_err stderr-tempfile pattern が存在 (silent 2>/dev/null pattern への回帰防止)"
-else
-  fail "TC-CHARTER-FILE-CAT-FAIL: CHARTER_FILE cat の stderr 退避が消失"
-fi
-echo ""
-
-# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results ==="

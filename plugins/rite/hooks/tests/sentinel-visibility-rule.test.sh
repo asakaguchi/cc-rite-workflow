@@ -90,21 +90,62 @@ assert_grep 'emit: non-blocking "|| true" guard pattern' \
   "$REF_EMIT" \
   'pr_number\} 2>/dev/null\) \|\| true'
 
+# F-04 fix: `|| true` orchestrator-direct guard を §A-§D 全 4 invocation point + §A 末尾の Step 1 形式で
+# 合計 7+ 個必須化。出現数下限 (>= 7) を assert することで、§A line 71 / §B line 83,92 / §C line 103 /
+# §D line 115,124 のいずれを削除しても test fail する保証を持たせる。
+ortho_or_true_count=$({ grep -oE -- '\|\| true' "$REF_EMIT" || true; } | wc -l | tr -d ' ')
+if [ "$ortho_or_true_count" -ge 7 ]; then
+  pass "emit: orchestrator-direct '|| true' guard count >= 7 (actual=$ortho_or_true_count)"
+else
+  fail "emit: orchestrator-direct '|| true' guard count >= 7 (actual=$ortho_or_true_count, expected >=7). §A-§D 範囲内の guard が削除された可能性"
+fi
+
 assert_grep "emit: §A Phase 5.2 lint:aborted emit point" \
   "$REF_EMIT" \
   '^### §A — Phase 5.2 .\[lint:aborted\]'
+
+# F-05 fix: §A 内に canonical bash literal が存在することを section-scoped で確認
+# §A section 範囲 (^### §A から次の ^### までの前) を awk で抽出し、type=manual_fallback_adopted を含むかを判定
+section_a=$(awk '/^### §A/,/^### §B/' "$REF_EMIT" 2>/dev/null)
+if echo "$section_a" | grep -q '\--type manual_fallback_adopted'; then
+  pass "emit: §A section body contains 'manual_fallback_adopted' type literal"
+else
+  fail "emit: §A section body lacks 'manual_fallback_adopted' type literal. heading 後の bash 本体が空または削除"
+fi
 
 assert_grep "emit: §B Phase 5.3 pr:create-failed emit point" \
   "$REF_EMIT" \
   '^### §B — Phase 5.3 .\[pr:create-failed\]'
 
+section_b=$(awk '/^### §B/,/^### §C/' "$REF_EMIT" 2>/dev/null)
+if echo "$section_b" | grep -q '\--type skill_load_failure'; then
+  pass "emit: §B section body contains 'skill_load_failure' type literal"
+else
+  fail "emit: §B section body lacks 'skill_load_failure' type literal"
+fi
+
 assert_grep "emit: §C Phase 5.4.4 fix:error emit point" \
   "$REF_EMIT" \
   '^### §C — Phase 5.4.4 .\[fix:error\]'
 
+section_c=$(awk '/^### §C/,/^### §D/' "$REF_EMIT" 2>/dev/null)
+if echo "$section_c" | grep -q '\--type manual_fallback_adopted'; then
+  pass "emit: §C section body contains 'manual_fallback_adopted' type literal"
+else
+  fail "emit: §C section body lacks 'manual_fallback_adopted' type literal"
+fi
+
 assert_grep "emit: §D Phase 5.5 ready:error emit point" \
   "$REF_EMIT" \
   '^### §D — Phase 5.5 .\[ready:error\]'
+
+# §D は次の `^## ` heading (5 caller mapping) までを範囲とする
+section_d=$(awk '/^### §D/,/^## /' "$REF_EMIT" 2>/dev/null)
+if echo "$section_d" | grep -q '\--type skill_load_failure'; then
+  pass "emit: §D section body contains 'skill_load_failure' type literal"
+else
+  fail "emit: §D section body lacks 'skill_load_failure' type literal"
+fi
 
 assert_grep "emit: 5 caller mapping table" \
   "$REF_EMIT" \
@@ -160,15 +201,26 @@ assert_grep "fingerprint: §4 split bash for 別 Issue として切り出す" \
   "$REF_FINGERPRINT" \
   '^## §4 — Split bash for .別 Issue として切り出す'
 
-# 4-option AskUserQuestion の 4 選択肢すべてが存在する
+# F-03 fix: 4-option AskUserQuestion の 4 選択肢を §3 section 内かつ table 行 (行頭 `|`) として必須化。
+# narrative reference (line 118 等) で pass する false negative を防ぐ。
+# section_3 = `^## §3` から次の `^## §4` までの範囲を抽出
+section_3=$(awk '/^## §3/,/^## §4/' "$REF_FINGERPRINT" 2>/dev/null)
 for option in "本 PR 内で再試行" \
               "別 Issue として切り出す" \
               "PR を取り下げる" \
               "手動レビューへエスカレーション"; do
-  assert_grep "fingerprint: 4-option contains \"$option\"" \
-    "$REF_FINGERPRINT" \
-    "$option"
+  if echo "$section_3" | grep -qE "^\| ${option}"; then
+    pass "fingerprint: §3 section table row contains \"${option}\" (section-scoped)"
+  else
+    fail "fingerprint: §3 section table row missing \"${option}\". narrative 出現で false negative 化していた path を closed"
+  fi
 done
+
+# F-01 drift guard: workflow-incident-detection.md に sub-skill emit canonical bash literal が
+# 再混入していないことを確認。SoT 二重定義を構造的に block する。
+assert_not_grep "detection: no duplicate sub-skill emit canonical literal (drift guard for F-01)" \
+  "$REF_DETECTION" \
+  'sentinel_line=\$\(bash \{plugin_root\}/hooks/workflow-incident-emit.sh'
 
 # === 4. start.md 本体側 anchor reference の存在 ===
 echo ""

@@ -30,7 +30,18 @@ unset _helper _src_err
 # (Under set -e, a missing jq would exit 127 at the first jq call, before
 # reaching -f; the comment describes the logical invariant, not the exit path.)
 # cat failure does not abort under set -e; || guard is defensive
-INPUT=$(cat) || INPUT=""
+# verified-review HIGH-1 対応: cat 失敗 (EBADF / SIGPIPE / FD 破損) を silent suppress すると
+# CWD が空文字に fallback され `[ -z "$CWD" ]` で exit 0 → state deactivation 経路が完全 skip
+# される (silent regression: .active=true のまま 2h stale で session-start defensive reset の
+# signal を消失させる)。failure を WARNING で可視化して原因不明の stale を防ぐ。
+INPUT=$(cat)
+_cat_rc=$?
+if [ "$_cat_rc" -ne 0 ]; then
+  echo "WARNING: session-end: stdin cat が失敗 (rc=$_cat_rc) — INPUT を空文字に fallback して exit 0" >&2
+  echo "  影響: state deactivation 経路 skip → .active=true 残留 → 次 session-start で defensive reset signal 消失" >&2
+  INPUT=""
+fi
+unset _cat_rc
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
@@ -204,20 +215,25 @@ WARN_MSG
     # 歴史的対称化: stop-guard.sh は #675 で撤去済、PID-suffix fallback は現役の慣行として残す。
     # 「全 tempfile lifecycle cover」doctrine: 本 if block 配下と後段の stale tempfile cleanup block
     # で生成される全 4 tempfile (_rm_err / _lock_rm_err / _find_err / TMP_FILE) を 1 trap で保護する。
+    # verified-review HIGH-2 対応: jq stderr 退避 tempfile を追加。旧実装は jq parse error が
+    # stderr (terminal) に直接出力されるか lost し、diagnostic 行/列番号が user の手に届かなかった。
+    # flow-state-update.sh:901-919 (patch-mode jq) の stderr-tempfile pattern と writer/reader 対称化。
     TMP_FILE=""
     _rm_err=""
     _lock_rm_err=""
     _find_err=""
+    _deactivate_jq_err=""
     _session_end_tmp_cleanup() {
-      rm -f "${TMP_FILE:-}" "${_rm_err:-}" "${_lock_rm_err:-}" "${_find_err:-}"
+      rm -f "${TMP_FILE:-}" "${_rm_err:-}" "${_lock_rm_err:-}" "${_find_err:-}" "${_deactivate_jq_err:-}"
     }
     trap 'rc=$?; _session_end_tmp_cleanup; exit $rc' EXIT
     trap '_session_end_tmp_cleanup; exit 130' INT
     trap '_session_end_tmp_cleanup; exit 143' TERM
     trap '_session_end_tmp_cleanup; exit 129' HUP
     TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
+    _deactivate_jq_err=$(mktemp /tmp/rite-session-end-deactivate-jq-err-XXXXXX 2>/dev/null) || _deactivate_jq_err=""
     if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-       '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE"; then
+       '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE" 2>"${_deactivate_jq_err:-/dev/null}"; then
         mv "$TMP_FILE" "$STATE_FILE"
     else
         # Intentionally not exit 1 here (unlike pre-compact.sh) — session-end
@@ -232,8 +248,15 @@ WARN_MSG
         # が残る。`${ISSUE_NUMBER:+ (Issue #$ISSUE_NUMBER)}` で issue 番号は
         # 解決できた場合のみ追記し、空の場合は `(Issue #...)` 部分そのものを省略する。
         echo "rite: session-end: failed to deactivate state file: $STATE_FILE${ISSUE_NUMBER:+ (Issue #$ISSUE_NUMBER)}" >&2
+        # verified-review HIGH-2 対応: jq stderr の先頭 3 行を pass-through して原因特定を可能にする
+        if [ -n "$_deactivate_jq_err" ] && [ -s "$_deactivate_jq_err" ]; then
+            head -3 "$_deactivate_jq_err" | sed 's/^/  /' >&2
+        fi
+        echo "  対処: state file の JSON 妥当性確認 / disk full / permission denied / EXDEV (mv) を確認" >&2
         rm -f "$TMP_FILE"
     fi
+    [ -n "$_deactivate_jq_err" ] && rm -f "$_deactivate_jq_err"
+    _deactivate_jq_err=""
 
     # AC-10 (Issue #680): clean up per-session flow-state file on session end.
     # Note: this block also runs after the jq deactivation `else` arm above —

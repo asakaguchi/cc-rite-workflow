@@ -87,7 +87,7 @@ parent-routing pattern (ADR `docs/designs/parent-routing-unification.md`) に統
 
 ## Defense-in-depth layers
 
-The contract is enforced across two active layers (Layer 2 was retired in #675). Violating any active layer is a bug:
+The contract is enforced across two active layers (Layer 2 was retired in #675). Sub-skill 別に適用 layer が異なる: `create-interview` は parent-routing pattern 移行 (PR-2) 済で **Layer 1 only** (Layer 3 撤去済、sub-skill が自前で flow-state patch を実行する内製化方式)、`create-register` / `create-decompose` / `wiki/ingest.md` は **Layer 1 + Layer 3 active** (PR-4 / PR-5 で順次撤去予定、ADR §6.1 参照)。Violating any active layer for the applicable sub-skill is a bug:
 
 | Layer | Mechanism | File | Status |
 |-------|-----------|------|--------|

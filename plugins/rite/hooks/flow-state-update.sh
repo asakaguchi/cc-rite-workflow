@@ -506,44 +506,11 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
   unset _flow_state_dir
 fi
 
-# >>> DRIFT-CHECK ANCHOR: flow_state_advisory_lock <<<
-# HIGH-1 race condition defense: 個人開発で並列 session 運用は実質ないが、resume /
-# cleanup / wiki ingest / sprint team-execute / dogfooding で同一 session_id を持つ
-# 複数プロセスが衝突する経路があるため、advisory lock (fd 9) を取得する。lock は
-# script exit 時に kernel が自動解放する (`exec 9>` で開いた fd の lifecycle = process)。
-# flock 不在環境 (busybox 等) では non-locking mode で best-effort 継続 (WARNING を emit
-# して silent skip を回避)。
-#
-# Position: mkdir block の後に置く理由は、新規 session で `.rite/sessions/` 親ディレクトリが
-# 不在の場合に `exec 9>` が ENOENT で失敗するため。FLOW_STATE 決定直後ではなく、parent dir
-# 作成後 (Validation の前) で lock を取得する。
-if command -v flock >/dev/null 2>&1; then
-  FLOW_STATE_LOCK_FILE="${FLOW_STATE}.lock"
-  # (#926):
-  # 旧実装は `exec 9>"$LOCK" 2>"${_lock_open_err:-/dev/null}"` で fd 9 と fd 2 の両方を redirect していた。
-  # `exec` (コマンドなし) は POSIX/Bash 仕様で current shell に redirection を適用するため、`2>...` が
-  # **親 shell の fd 2 を恒久 redirect** する副作用があり、後段の `rm -f "$_lock_open_err"` で error
-  # message が消失する silent failure を引き起こしていた (flow-state-update.test.sh で 2 件 FAIL の根本原因)。
-  # 修正: 親 shell の fd 9 を確実に開きたい以上、`exec 9>` の stderr 退避はそのままでは不可能。
-  # diagnostic 詳細を諦めて redirect を削除する (lock file open 失敗は permission denied / ENOSPC /
-  # ENOENT 等が主因で、kernel の error メッセージは fd 2 経由で stderr に直接出力される)。
-  # Source: bash(1) man page "REDIRECTION" / [Linux Journal: Bash Redirections Using Exec]
-  if exec 9>"$FLOW_STATE_LOCK_FILE"; then
-    if ! flock -w 30 9; then
-      echo "ERROR: flow-state advisory lock 取得に失敗しました (30s timeout): $FLOW_STATE_LOCK_FILE" >&2
-      echo "  対処: 別 session が同じ flow-state を更新中です。fuser/lsof で lock holder の PID を" >&2
-      echo "  特定し、停止後に lock file を削除してください (lock file 単独削除は fd lifecycle 内では無効)" >&2
-      exit 1
-    fi
-  else
-    echo "WARNING: lock file open に失敗 ($FLOW_STATE_LOCK_FILE)。non-locking mode で続行 (HIGH-1 race protection なし)" >&2
-    echo "  原因候補: permission denied / parent dir 不在 / disk full (kernel error は上記行直前に出力)" >&2
-  fi
-else
-  echo "WARNING: flock command 不在 (busybox 等)。non-locking mode で続行 (HIGH-1 race protection なし)" >&2
-fi
-
 # --- Validation ---
+# verified-review I-1 対応: --if-exists skip path で lock file を残さないため、
+# 先に validation を実行する。--if-exists で file 不在を検出した場合、lock 取得前に exit 0 する
+# (旧実装は flock 取得後に validation していたため、--if-exists skip で `.flow-state.lock` が
+# disk に残留し、`.rite/sessions/` に session 数分の lock file が累積していた)。
 case "$MODE" in
   create)
     if [[ -z "$PHASE" || -z "$NEXT" ]]; then
@@ -589,6 +556,46 @@ case "$MODE" in
     exit 1
     ;;
 esac
+
+# >>> DRIFT-CHECK ANCHOR: flow_state_advisory_lock <<<
+# HIGH-1 race condition defense: 個人開発で並列 session 運用は実質ないが、resume /
+# cleanup / wiki ingest / sprint team-execute / dogfooding で同一 session_id を持つ
+# 複数プロセスが衝突する経路があるため、advisory lock (fd 9) を取得する。lock は
+# script exit 時に kernel が自動解放する (`exec 9>` で開いた fd の lifecycle = process)。
+# flock 不在環境 (busybox 等) では non-locking mode で best-effort 継続 (WARNING を emit
+# して silent skip を回避)。
+#
+# Position (verified-review I-1 対応で変更): validation block の後に置く。--if-exists skip path で
+# lock file を作成しないようにするため、create / patch / increment の必須引数検証と --if-exists の
+# file 不在チェックが通った後 (= 実際に atomic write を実行する経路に限定) で lock を取得する。
+# 旧実装は mkdir block 直後で lock を取っていたため、--if-exists patch/increment の skip exit で
+# `.flow-state.lock` が disk に残留し、`.rite/sessions/` に session 数分の lock file が
+# 累積する disk-pollution の原因になっていた (code-reviewer I-1)。
+if command -v flock >/dev/null 2>&1; then
+  FLOW_STATE_LOCK_FILE="${FLOW_STATE}.lock"
+  # (#926):
+  # 旧実装は `exec 9>"$LOCK" 2>"${_lock_open_err:-/dev/null}"` で fd 9 と fd 2 の両方を redirect していた。
+  # `exec` (コマンドなし) は POSIX/Bash 仕様で current shell に redirection を適用するため、`2>...` が
+  # **親 shell の fd 2 を恒久 redirect** する副作用があり、後段の `rm -f "$_lock_open_err"` で error
+  # message が消失する silent failure を引き起こしていた (flow-state-update.test.sh で 2 件 FAIL の根本原因)。
+  # 修正: 親 shell の fd 9 を確実に開きたい以上、`exec 9>` の stderr 退避はそのままでは不可能。
+  # diagnostic 詳細を諦めて redirect を削除する (lock file open 失敗は permission denied / ENOSPC /
+  # ENOENT 等が主因で、kernel の error メッセージは fd 2 経由で stderr に直接出力される)。
+  # Source: bash(1) man page "REDIRECTION" / [Linux Journal: Bash Redirections Using Exec]
+  if exec 9>"$FLOW_STATE_LOCK_FILE"; then
+    if ! flock -w 30 9; then
+      echo "ERROR: flow-state advisory lock 取得に失敗しました (30s timeout): $FLOW_STATE_LOCK_FILE" >&2
+      echo "  対処: 別 session が同じ flow-state を更新中です。fuser/lsof で lock holder の PID を" >&2
+      echo "  特定し、停止後に lock file を削除してください (lock file 単独削除は fd lifecycle 内では無効)" >&2
+      exit 1
+    fi
+  else
+    echo "WARNING: lock file open に失敗 ($FLOW_STATE_LOCK_FILE)。non-locking mode で続行 (HIGH-1 race protection なし)" >&2
+    echo "  原因候補: permission denied / parent dir 不在 / disk full (kernel error は上記行直前に出力)" >&2
+  fi
+else
+  echo "WARNING: flock command 不在 (busybox 等)。non-locking mode で続行 (HIGH-1 race protection なし)" >&2
+fi
 
 # --- Atomic write ---
 # 旧実装は (a) PID-suffix

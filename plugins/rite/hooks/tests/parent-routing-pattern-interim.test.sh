@@ -506,6 +506,25 @@ else
   fail "TC-6b-2: create.md の 'flow-state-update.sh patch' invocation が 4 個未満 (実測=$create_patch_count, 期待>=4 — Phase 1 / Phase 3 Pre-write の patch block が silent 削除された可能性、workflow-incident-emit.sh fallback だけが残った half-migration regression リスク)"
 fi
 
+# TC-6b-3 / TC-6b-4 (verified-review pr-test-analyzer HIGH-3): create.md per-site `--active` / `--next` pin
+# 旧 4-site-symmetry.test.sh は create.md の各 patch site で `--phase / --active / --next / --preserve-error-count` を個別に pin していたが、
+# TC-6b-2 は file-level count のみで「site A が --active を落とし、site B が --active を 2 回付ける」regression を検出できない。
+# create.md 全体での --active flag (true / false) と --next 引数の出現数を patch 数と整合させることで、per-site 単位の symmetry を確保する。
+# 注: terminal phase の patch では `--active false` が使われるため、true/false 両方を count する。
+create_active_count=$(_grep_count_safe "create_active_count" "$CREATE_MD" '\-\-active (true|false)')
+if [ "$create_active_count" -ge "$create_patch_count" ]; then
+  pass "TC-6b-3: create.md の '--active true|false' 出現数 (実測=$create_active_count) が patch invocation 数 (=$create_patch_count) 以上 (per-site --active flag 維持)"
+else
+  fail "TC-6b-3: create.md の '--active true|false' 出現数が patch invocation 数より少ない (--active=$create_active_count vs patch=$create_patch_count, per-site flag drop の可能性 — deleted 4-site-symmetry.test.sh が pinning していた invariant)"
+fi
+
+create_next_count=$(_grep_count_safe "create_next_count" "$CREATE_MD" '\-\-next "')
+if [ "$create_next_count" -ge "$create_patch_count" ]; then
+  pass "TC-6b-4: create.md の '--next \"...\"' 出現数 (実測=$create_next_count) が patch invocation 数 (=$create_patch_count) 以上 (per-site --next flag 維持)"
+else
+  fail "TC-6b-4: create.md の '--next \"...\"' 出現数が patch invocation 数より少ない (--next=$create_next_count vs patch=$create_patch_count, per-site flag drop の可能性)"
+fi
+
 # fallback WARNING pattern: helper 失敗時に silent fall-through しないことを pin
 interview_warn_count=$(_grep_count_safe "interview_warn_count" "$INTERVIEW_MD" 'WARNING: workflow-incident-emit\.sh failed')
 if [ "$interview_warn_count" -ge 4 ]; then

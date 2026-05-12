@@ -184,7 +184,28 @@ _grep_err2=$(mktemp /tmp/rite-fix-writer-grep-err-XXXXXX 2>/dev/null) || {
   exit 1
 }
 set +e
-writer_count=$(grep -cE '("error_count"[[:space:]]*:[[:space:]]*0|error_count[[:space:]]*=[[:space:]]*0|error_count:[[:space:]]*0)' "$FLOW_STATE_UPDATE_SH" 2>"$_grep_err2")
+# verified-review I-3 対応: コメント行を除外して writer のみカウントする。
+# 旧 regex は flow-state-update.sh の explanatory comment
+# (`# --preserve-error-count: ... .error_count = 0`) も writer としてカウントしていた。
+# 実 writer は jq filter 内 1 箇所のみだが、>= 1 assertion で偶然通っていた。
+# 将来 writer が削除されてもコメントだけ残っていれば false-pass する経路を塞ぐ。
+# grep -v でコメント除外後に grep -c で count する 2 段 pipeline。
+# pipefail なし環境でも stderr append (>>) で IO エラーを集約。
+_grep_err2_filter=$(mktemp /tmp/rite-fix-writer-grep-filter-err-XXXXXX 2>/dev/null) || {
+  echo "  ❌ TC-2 [MKTEMP_FAILED] writer 検出 filter 用 stderr tempfile の mktemp に失敗" >&2
+  exit 1
+}
+filtered=$(grep -vE '^[[:space:]]*#' "$FLOW_STATE_UPDATE_SH" 2>"$_grep_err2_filter")
+filter_rc=$?
+if [ "$filter_rc" -ge 2 ] || [ -s "$_grep_err2_filter" ]; then
+  fail "TC-2: writer filter (コメント除外) grep が IO エラー (rc=$filter_rc)"
+  head -3 "$_grep_err2_filter" | sed 's/^/    /' >&2
+  rm -f "$_grep_err2_filter" "$_grep_err2"
+  print_summary "$(basename "$0")"
+  exit 1
+fi
+rm -f "$_grep_err2_filter"
+writer_count=$(printf '%s\n' "$filtered" | grep -cE '("error_count"[[:space:]]*:[[:space:]]*0|error_count[[:space:]]*=[[:space:]]*0|error_count:[[:space:]]*0)' 2>"$_grep_err2")
 writer_rc=$?
 set -e
 if [ -s "$_grep_err2" ] || [ "$writer_rc" -ge 2 ]; then

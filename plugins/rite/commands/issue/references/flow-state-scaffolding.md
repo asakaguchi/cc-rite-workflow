@@ -64,9 +64,11 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 この 5 引数構造は `plugins/rite/hooks/tests/start-md-charter.test.sh` の Symmetry assertion で機械検証されている。1 つでも欠けると test fail。
 
-## patch mode の例外 (Workflow Termination 直前)
+## patch mode の例外 (Workflow Termination 直前の 2 site)
 
-Mandatory After 5.7 (Parent Issue Completion 完了直後) のみ、`flow-state-update.sh` を **`create` ではなく `patch` mode** で呼び出す。3 引数 (`--phase` / `--active` / `--next`) の異形:
+`start.md` 内には **2 site** だけ `flow-state-update.sh` を **`create` ではなく `patch` mode** で呼び出す箇所がある: Mandatory After 5.7 (Parent Issue Completion 完了直後) と Workflow Termination block (terminal state へ遷移)。3 引数 (`--phase` / `--active` / `--next`) の異形を使う。両 site の bash literal を SoT として掲載する:
+
+### Form 1: Mandatory After 5.7 (`phase5_post_parent_completion` 完了マーカ)
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
@@ -74,25 +76,37 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
   --next "Phase 5.7 completed. Workflow finished. Do NOT stop before the completion handoff is displayed to the user."
 ```
 
-### なぜ patch mode か (Workflow Termination 直前のみ)
+### Form 2: Workflow Termination block (`completed` terminal state)
 
-| 属性 | `create` mode (通常 16 箇所) | `patch` mode (Mandatory After 5.7 のみ) |
-|------|------------------------------|------------------------------------------|
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase "completed" \
+  --next "none" --active false
+```
+
+> **使い分け**: Mandatory After 5.7 (Form 1) は parent close 直後の完了マーカ、Workflow Termination block (Form 2) は workflow 終了の terminal state 書き込み。両者は別 phase で順に発火する (5.7 → Termination)。Parent-skip 経路 (parent 不在で 5.7 を skip する場合) は Form 1 を経由せず直接 Form 2 を実行する。
+
+### なぜ patch mode か (Workflow Termination 直前の 2 site のみ)
+
+| 属性 | `create` mode (通常 17 sections / 32 bash literal) | `patch` mode (Workflow Termination 直前の 2 site) |
+|------|------------------------------------------------------|---------------------------------------------------|
 | `previous_phase` シフト | 旧 `.phase` を `.previous_phase` に書き込み | 旧 `.phase` をそのまま保持 |
 | `active` 制御 | 常に `active: true` | `--active false` で workflow 終了をマーク |
 | `--issue` / `--branch` / `--pr` | 必須 (5 引数) | 不要 (既存値を保持) |
-| 使用タイミング | 各 phase の post-marker 書き込み | Workflow Termination 直前の終了マーカー |
+| 使用タイミング | 各 phase の post-marker 書き込み | Workflow Termination 直前 (Form 1: 5.7 完了 / Form 2: terminal state) |
 | Symmetry test 対象 | YES (`start-md-charter.test.sh` で 5 引数検証) | NO (patch mode は Symmetry test の対象外) |
 
-### 5.7 patch mode が `create` mode 5 引数 contract に違反しない理由
+> **「通常 17 sections / 32 bash literal」の集計**: Mandatory After heading-anchor 数は **17 sections** (本 reference の「適用箇所」テーブル参照、h3 14 + h4 3)。bash code block 内の `flow-state-update.sh create` invocation 総数は **32 箇所** (`start-md-charter.test.sh` Symmetry assert 実行値)。後者は各 section が複数 create を持つ場合 (Pre-write + Mandatory After Step 1 等) を反映する。1 ファイル内で両単位が混在するため両方明示する。
 
-- `create` mode の 5 引数 contract は **「新規 phase marker を書き込む契機」専用**。Mandatory After 5.7 は workflow 終了の **terminal state** を書くため、phase progression としては「次の phase に進まず active を false にして session を閉じる」操作であり、create の semantics と異なる。
+### Workflow Termination 直前の 2 site が `create` mode 5 引数 contract に違反しない理由
+
+- `create` mode の 5 引数 contract は **「新規 phase marker を書き込む契機」専用**。Mandatory After 5.7 / Workflow Termination は workflow 終了の **terminal state** を書くため、phase progression としては「次の phase に進まず active を false にして session を閉じる」操作であり、create の semantics と異なる。
 - `patch` mode は既存 state file の一部 field のみを更新する preserving operation。`previous_phase` を維持することで、stop-guard whitelist が `phase5_post_parent_completion → phase5_post_parent_completion` のような無限ループ風遷移を誤検出しないようにする。
 - `Symmetry test` は `flow-state-update.sh create` invocation のみを対象とする (`start-md-charter.test.sh` Symmetry assert の awk regex で `create` literal にマッチする bash block のみ抽出)。patch mode は test の判定対象外であり、5 引数欠落 fail にはならない。
 
 ### LLM 向け注意
 
-Mandatory After 5.7 の bash literal を読んで「5 引数 contract 違反」と誤判定しないこと。本セクション (`patch mode の例外`) が異形を正規化し、 `start.md` 内 唯一の `patch` 呼び出し箇所 (Mandatory After 5.7 + Workflow Termination block) を SoT として認める。後続 PR で本体 `start.md` の rationale 散文 (`patch preserves previous_phase` 等) を完全削除する際は、本 reference の本セクションが LLM 向け唯一の説明源となる。
+Mandatory After 5.7 および Workflow Termination block の bash literal を読んで「5 引数 contract 違反」と誤判定しないこと。本セクション (`patch mode の例外`) が両 site の異形を SoT として正規化する。後続 PR で本体 `start.md` の rationale 散文 (`patch preserves previous_phase` 等) を完全削除する際は、本 reference の本セクションが LLM 向け唯一の説明源となる。
 
 ## stop-guard 通称と実体
 

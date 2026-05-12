@@ -54,4 +54,4 @@ cycle 3 で `session-start.sh` のみに `-not -name '.rite-flow-state.legacy.*'
 
 ## ソース
 
-- [PR #747 fix cycle 3 raw source](raw/fixes/20260430T031013Z-pr-747.md)
+- [PR #747 fix cycle 3 raw source](../../raw/fixes/20260430T031013Z-pr-747.md)

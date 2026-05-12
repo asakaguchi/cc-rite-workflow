@@ -98,6 +98,6 @@ Option B の hub 化が成功した後、後続 PR で hub 行に test reference
 
 ## ソース
 
-- [Issue #851 close retrospective (Option B hub 化採用の判断記録)](raw/retrospectives/20260506T040636Z-issue-851.md)
-- [PR #858 review (1-line minimal-diff doc PR で SoT 化を実装、0 blocking findings)](raw/reviews/20260506T035708Z-pr-858.md)
-- [PR #867 review (Issue #854: hub 行が 3+ test 参照に成長した時点で inline 連結から bullet list 化、両 reviewer 0 findings)](raw/reviews/20260506T135719Z-pr-867.md)
+- [Issue #851 close retrospective (Option B hub 化採用の判断記録)](../../raw/retrospectives/20260506T040636Z-issue-851.md)
+- [PR #858 review (1-line minimal-diff doc PR で SoT 化を実装、0 blocking findings)](../../raw/reviews/20260506T035708Z-pr-858.md)
+- [PR #867 review (Issue #854: hub 行が 3+ test 参照に成長した時点で inline 連結から bullet list 化、両 reviewer 0 findings)](../../raw/reviews/20260506T135719Z-pr-867.md)

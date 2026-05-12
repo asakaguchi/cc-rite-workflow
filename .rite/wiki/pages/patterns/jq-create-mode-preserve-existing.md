@@ -102,5 +102,5 @@ grep -rnE 'jq -n' --include='*.sh' --include='*.md' .
 
 ## ソース
 
-- [PR #545 fix (jq -n create mode リセット問題)](raw/fixes/20260416T122803Z-pr-545.md)
-- [PR #545 review (CRITICAL: parent_issue_number 上書き検出)](raw/reviews/20260416T122506Z-pr-545.md)
+- [PR #545 fix (jq -n create mode リセット問題)](../../raw/fixes/20260416T122803Z-pr-545.md)
+- [PR #545 review (CRITICAL: parent_issue_number 上書き検出)](../../raw/reviews/20260416T122506Z-pr-545.md)

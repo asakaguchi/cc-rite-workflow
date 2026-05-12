@@ -86,5 +86,5 @@ skip 経路では `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=...` のような sen
 
 ## ソース
 
-- [PR #529 fix cycle 1 (exit 2 semantic preservation)](raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md)
-- [PR #529 review (6-reviewer による exit code mismatch 検出)](raw/reviews/20260415T094007Z-pr-529.md)
+- [PR #529 fix cycle 1 (exit 2 semantic preservation)](../../raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md)
+- [PR #529 review (6-reviewer による exit code mismatch 検出)](../../raw/reviews/20260415T094007Z-pr-529.md)

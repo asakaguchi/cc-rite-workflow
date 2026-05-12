@@ -90,7 +90,7 @@ grep -nE 'mktemp[^|]*\|\|[[:space:]]*[a-z_]+=""' --include='*.sh' -r .
 
 ## ソース
 
-- [PR #548 cycle 1 fix (mktemp 失敗の silent 握り潰し禁止)](raw/fixes/20260416T165559Z-pr-548.md)
-- [PR #548 cycle 2 review (stderr suppression pattern の網羅検出)](raw/reviews/20260416T171008Z-pr-548.md)
-- [PR #550 cycle 1 fix (silent fallback 一般化: rev-parse / push target 誤診回避)](raw/fixes/20260416T202213Z-pr-550.md)
-- [PR #550 cycle 3 fix (asymmetric silent fallback の対称化)](raw/fixes/20260416T214823Z-pr-550.md)
+- [PR #548 cycle 1 fix (mktemp 失敗の silent 握り潰し禁止)](../../raw/fixes/20260416T165559Z-pr-548.md)
+- [PR #548 cycle 2 review (stderr suppression pattern の網羅検出)](../../raw/reviews/20260416T171008Z-pr-548.md)
+- [PR #550 cycle 1 fix (silent fallback 一般化: rev-parse / push target 誤診回避)](../../raw/fixes/20260416T202213Z-pr-550.md)
+- [PR #550 cycle 3 fix (asymmetric silent fallback の対称化)](../../raw/fixes/20260416T214823Z-pr-550.md)

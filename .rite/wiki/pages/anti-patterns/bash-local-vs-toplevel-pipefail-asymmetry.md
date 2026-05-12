@@ -92,6 +92,6 @@ assert_eq "$output" ""  # default 値が返る
 
 ## ソース
 
-- [PR #688 review results (cycle 1)](raw/reviews/20260426T231807Z-pr-688.md)
-- [PR #688 fix results (cycle 1)](raw/fixes/20260426T232316Z-pr-688.md)
-- [PR #688 fix results (cycle 3 — user scope expansion)](raw/fixes/20260426T233931Z-pr-688.md)
+- [PR #688 review results (cycle 1)](../../raw/reviews/20260426T231807Z-pr-688.md)
+- [PR #688 fix results (cycle 1)](../../raw/fixes/20260426T232316Z-pr-688.md)
+- [PR #688 fix results (cycle 3 — user scope expansion)](../../raw/fixes/20260426T233931Z-pr-688.md)

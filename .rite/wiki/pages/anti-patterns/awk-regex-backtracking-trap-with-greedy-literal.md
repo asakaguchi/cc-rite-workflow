@@ -88,6 +88,6 @@ PR #911 では reviewer 構成 `test + code-quality + error-handling` を全 3 c
 
 ## ソース
 
-- [PR #911 review cycle 1](raw/reviews/20260509T031148Z-pr-911.md)
-- [PR #911 review cycle 2](raw/reviews/20260509T032936Z-pr-911-cycle2.md)
-- [PR #911 cycle 2 fix](raw/fixes/20260509T033229Z-pr-911-cycle2-fix.md)
+- [PR #911 review cycle 1](../../raw/reviews/20260509T031148Z-pr-911.md)
+- [PR #911 review cycle 2](../../raw/reviews/20260509T032936Z-pr-911-cycle2.md)
+- [PR #911 cycle 2 fix](../../raw/fixes/20260509T033229Z-pr-911-cycle2-fix.md)

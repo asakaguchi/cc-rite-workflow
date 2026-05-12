@@ -198,7 +198,7 @@ if [ "$mandatory_count" -ge 17 ]; then
 fi
 ```
 
-暗黙ルールは drift 要因。`grep -nE '内訳|sync|同期更新'` で codified ルールの存在を grep 検証可能にすることで、改修者が「数値変更時の同期義務」を見落とす silent regression を構造的に防ぐ。本 codification は [Wiki page: 暗黙メンテナンスルールの明文化](../patterns/canonical-list-count-claim-drift-anchor.md) の単一ファイル版 sub-application として位置付ける。
+暗黙ルールは drift 要因。`grep -nE '内訳|sync|同期更新'` で codified ルールの存在を grep 検証可能にすることで、改修者が「数値変更時の同期義務」を見落とす silent regression を構造的に防ぐ。本 codification は「暗黙メンテナンスルールの明文化」pattern の単一ファイル版 sub-application として位置付ける。
 
 #### 副次的主張のファクト検証 (POSIX ERE empirical verification)
 

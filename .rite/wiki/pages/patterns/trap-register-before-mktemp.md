@@ -83,7 +83,7 @@ trap - EXIT INT TERM HUP
 
 ## ソース
 
-- [PR #529 cycle 3 fix (tempfile lifecycle 契約)](raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md)
-- [PR #548 cycle 1 fix (trap action リセット最小化)](raw/fixes/20260416T165559Z-pr-548.md)
-- [PR #548 cycle 4 fix (mktemp → trap race の複数箇所修正)](raw/fixes/20260416T180658Z-pr-548.md)
-- [PR #548 cycle 4 review (wiki-ingest-commit.sh worktree fast path で race 残存検出)](raw/reviews/20260416T180001Z-pr-548.md)
+- [PR #529 cycle 3 fix (tempfile lifecycle 契約)](../../raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md)
+- [PR #548 cycle 1 fix (trap action リセット最小化)](../../raw/fixes/20260416T165559Z-pr-548.md)
+- [PR #548 cycle 4 fix (mktemp → trap race の複数箇所修正)](../../raw/fixes/20260416T180658Z-pr-548.md)
+- [PR #548 cycle 4 review (wiki-ingest-commit.sh worktree fast path で race 残存検出)](../../raw/reviews/20260416T180001Z-pr-548.md)

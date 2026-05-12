@@ -105,10 +105,10 @@ production の sentinel emit failure 経路で operator に false `rc=0` を表�
 
 ## ソース
 
-- [PR #529 fix cycle 1 (rollback safety)](raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md)
-- [PR #529 cycle 3 fix (git diff --quiet 3 値区別)](raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md)
-- [PR #548 cycle 2 fix (if ! bash gotcha 網羅検出)](raw/fixes/20260416T172110Z-pr-548.md)
-- [PR #548 cycle 3 fix (init.md 対称位置検出)](raw/fixes/20260416T173607Z-pr-548-cycle3.md)
-- [PR #548 cycle 2 review (17 findings)](raw/reviews/20260416T171008Z-pr-548.md)
-- [PR #548 cycle 3 review (triple cross-validation)](raw/reviews/20260416T173035Z-pr-548.md)
-- [PR #688 cycle 36 review — self-referential 4 site 同時播種 (累積 13 回目)](raw/reviews/20260427T154519Z-pr-688.md)
+- [PR #529 fix cycle 1 (rollback safety)](../../raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md)
+- [PR #529 cycle 3 fix (git diff --quiet 3 値区別)](../../raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md)
+- [PR #548 cycle 2 fix (if ! bash gotcha 網羅検出)](../../raw/fixes/20260416T172110Z-pr-548.md)
+- [PR #548 cycle 3 fix (init.md 対称位置検出)](../../raw/fixes/20260416T173607Z-pr-548-cycle3.md)
+- [PR #548 cycle 2 review (17 findings)](../../raw/reviews/20260416T171008Z-pr-548.md)
+- [PR #548 cycle 3 review (triple cross-validation)](../../raw/reviews/20260416T173035Z-pr-548.md)
+- [PR #688 cycle 36 review — self-referential 4 site 同時播種 (累積 13 回目)](../../raw/reviews/20260427T154519Z-pr-688.md)

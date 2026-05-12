@@ -83,7 +83,7 @@ grep -rn 'parse_wiki_scalar()' plugins/rite/hooks/scripts/
 
 ## ソース
 
-- [PR #544 fix (git ls-tree duplication の DRY 解消)](raw/fixes/20260416T092207Z-pr-544.md)
-- [PR #548 cycle 4 fix (shared lib 抽出は Issue #549 で分離)](raw/fixes/20260416T180658Z-pr-548.md)
-- [PR #544 review (DRY violation 検出)](raw/reviews/20260416T091926Z-pr-544.md)
-- [PR #548 cycle 4 review (cross-script duplication 検出)](raw/reviews/20260416T180001Z-pr-548.md)
+- [PR #544 fix (git ls-tree duplication の DRY 解消)](../../raw/fixes/20260416T092207Z-pr-544.md)
+- [PR #548 cycle 4 fix (shared lib 抽出は Issue #549 で分離)](../../raw/fixes/20260416T180658Z-pr-548.md)
+- [PR #544 review (DRY violation 検出)](../../raw/reviews/20260416T091926Z-pr-544.md)
+- [PR #548 cycle 4 review (cross-script duplication 検出)](../../raw/reviews/20260416T180001Z-pr-548.md)

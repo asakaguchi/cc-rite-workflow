@@ -111,8 +111,8 @@ PR #799 で reviewer が canonical reference (`broken-ref-resolution.md`) の fa
 
 ## ソース
 
-- [PR #688 cycle 29 review results — empirical reproduction で初顕現 silent regression](raw/reviews/20260427T115727Z-pr-688.md)
-- [PR #688 cycle 30 fix results — empirical reproduction-driven fix](raw/fixes/20260427T120659Z-pr-688.md)
+- [PR #688 cycle 29 review results — empirical reproduction で初顕現 silent regression](../../raw/reviews/20260427T115727Z-pr-688.md)
+- [PR #688 cycle 30 fix results — empirical reproduction-driven fix](../../raw/fixes/20260427T120659Z-pr-688.md)
 - [PR #799 cycle 1 review (canonical reference factual claim 反証)](../../raw/reviews/20260503T181256Z-pr-799.md)
 - [PR #799 cycle 1 fix (realpath -m symlink 挙動 / prose 断定の grep 反証)](../../raw/fixes/20260503T181755Z-pr-799.md)
 - [PR #799 cycle 3 fix (Edge Case 表 factual error 訂正)](../../raw/fixes/20260503T182831Z-pr-799-cycle3.md)

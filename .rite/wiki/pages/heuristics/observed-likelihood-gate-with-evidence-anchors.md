@@ -105,8 +105,8 @@ reviewer 側 prompt template の改修と、Phase 5.3.0 mechanical gate の lite
 
 ## ソース
 
-- [PR #540 review (Observed Likelihood Gate 実装例、2 件降格)](raw/reviews/20260416T031452Z-pr-540.md)
-- [PR #548 cycle 3 review (triple cross-validation boost)](raw/reviews/20260416T173035Z-pr-548.md)
-- [PR #589 review (Hypothetical 降格軸の追加実証 — HIGH x2 → 推奨事項降格)](raw/reviews/20260419T043538Z-pr-589.md)
-- [PR #779 review (literal anchor 欠落で MEDIUM → 推奨事項降格、reviewer literal output contract の重要性実証)](raw/reviews/20260502T155859Z-pr-779.md)
-- [PR #834 review (11 findings 全降格 — cross-validation 合意でも literal anchor 欠落は補えない実証)](raw/reviews/20260505T095516Z-pr-834.md)
+- [PR #540 review (Observed Likelihood Gate 実装例、2 件降格)](../../raw/reviews/20260416T031452Z-pr-540.md)
+- [PR #548 cycle 3 review (triple cross-validation boost)](../../raw/reviews/20260416T173035Z-pr-548.md)
+- [PR #589 review (Hypothetical 降格軸の追加実証 — HIGH x2 → 推奨事項降格)](../../raw/reviews/20260419T043538Z-pr-589.md)
+- [PR #779 review (literal anchor 欠落で MEDIUM → 推奨事項降格、reviewer literal output contract の重要性実証)](../../raw/reviews/20260502T155859Z-pr-779.md)
+- [PR #834 review (11 findings 全降格 — cross-validation 合意でも literal anchor 欠落は補えない実証)](../../raw/reviews/20260505T095516Z-pr-834.md)

@@ -244,10 +244,10 @@ grep -qE '```[[:space:]]+$' "$M6_FIXTURE" \
 
 ## ソース
 
-- [PR #688 review results (cycle 3) — TC-10 false-positive 発見](raw/reviews/20260426T235945Z-pr-688.md)
-- [PR #688 fix results (cycle 4) — mutation testing による解消パターン](raw/fixes/20260427T000422Z-pr-688.md)
-- [PR #688 fix results (cycle 5) — TC-13 false-positive + 3 cycle 連続適用実績](raw/fixes/20260427T020357Z-pr-688.md)
-- [PR #688 cycle 42 review — bash command substitution trailing newline strip 仕様による false-positive 構造](raw/reviews/20260428T050216Z-pr-688.md)
-- [PR #688 cycle 42 fix — bytes-exact pin (`wc -c`) で trailing newline 規約の mutation 耐性を獲得](raw/fixes/20260428T051514Z-pr-688.md)
-- [PR #765 cycle 1 review — review test の identification power 不足 3 種 (Self-grep tautology / 件数判定片側 mutation 隠蔽 / Path filter coverage gap)](raw/reviews/20260502T095733Z-pr-765.md)
-- [PR #915 review — M6 fixture trailing whitespace の load-bearing 性検出 + pre-check による self-pin canonical 化](raw/reviews/20260509T071343Z-pr-915.md)
+- [PR #688 review results (cycle 3) — TC-10 false-positive 発見](../../raw/reviews/20260426T235945Z-pr-688.md)
+- [PR #688 fix results (cycle 4) — mutation testing による解消パターン](../../raw/fixes/20260427T000422Z-pr-688.md)
+- [PR #688 fix results (cycle 5) — TC-13 false-positive + 3 cycle 連続適用実績](../../raw/fixes/20260427T020357Z-pr-688.md)
+- [PR #688 cycle 42 review — bash command substitution trailing newline strip 仕様による false-positive 構造](../../raw/reviews/20260428T050216Z-pr-688.md)
+- [PR #688 cycle 42 fix — bytes-exact pin (`wc -c`) で trailing newline 規約の mutation 耐性を獲得](../../raw/fixes/20260428T051514Z-pr-688.md)
+- [PR #765 cycle 1 review — review test の identification power 不足 3 種 (Self-grep tautology / 件数判定片側 mutation 隠蔽 / Path filter coverage gap)](../../raw/reviews/20260502T095733Z-pr-765.md)
+- [PR #915 review — M6 fixture trailing whitespace の load-bearing 性検出 + pre-check による self-pin canonical 化](../../raw/reviews/20260509T071343Z-pr-915.md)

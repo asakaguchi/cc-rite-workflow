@@ -82,6 +82,6 @@ PR #636 cycle 3 fix で twin site contract verification という拡張パター
 
 ## ソース
 
-- [PR #623 review results (cycle 1)](raw/reviews/20260420T104328Z-pr-623.md)
-- [PR #623 fix results (cycle 1)](raw/fixes/20260420T105116Z-pr-623.md)
-- [PR #636 cycle 3 fix (twin site contract verification + --preserve-error-count flag)](raw/fixes/20260421T033138Z-pr-636-cycle-3.md)
+- [PR #623 review results (cycle 1)](../../raw/reviews/20260420T104328Z-pr-623.md)
+- [PR #623 fix results (cycle 1)](../../raw/fixes/20260420T105116Z-pr-623.md)
+- [PR #636 cycle 3 fix (twin site contract verification + --preserve-error-count flag)](../../raw/fixes/20260421T033138Z-pr-636-cycle-3.md)

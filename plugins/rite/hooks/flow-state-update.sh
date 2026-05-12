@@ -18,23 +18,35 @@
 #       --field implementation_round [--if-exists]
 #
 # Options:
-#   --phase Phase value (required for create/patch)
-#   --issue Issue number (create mode, default: 0)
-#   --branch Branch name (create mode, default: "")
-#   --pr PR number (create mode, default: 0)
-#   --parent-issue Parent Issue number (create mode, default: 0; patch mode: update only if specified)
-#   --next next_action text (required for create/patch)
-#   --active Active flag (create mode: default true; patch mode: update only if specified)
-#   --field Field name to increment (increment mode)
-#   --if-exists Only execute if .rite-flow-state exists (patch/increment mode)
-#   --session Session UUID override (create mode; defaults to .rite-session-id)
-#   --preserve-error-count Patch mode 限定: 既存 .error_count を保持。default は 0 にリセット。
-#                            (現状 no-op: stop-guard.sh 撤去後は branching reader が存在しないが、forward-compat
-#                            装備として保持。詳細は ADR `docs/designs/parent-routing-unification.md` Rollback Log)
-#   --legacy-mode Force legacy single-file path (`.rite-flow-state`) regardless of
-#                            rite-config.yml `flow_state.schema_version`. Used by migration script
-#                            (#2) and tooling that must read/write the pre-migration source. Without
-#                            this flag, schema_version=2 (default) writes to `.rite/sessions/{session_id}.flow-state`.
+#   --phase
+#       Phase value (required for create/patch)
+#   --issue
+#       Issue number (create mode, default: 0)
+#   --branch
+#       Branch name (create mode, default: "")
+#   --pr
+#       PR number (create mode, default: 0)
+#   --parent-issue
+#       Parent Issue number (create mode, default: 0; patch mode: update only if specified)
+#   --next
+#       next_action text (required for create/patch)
+#   --active
+#       Active flag (create mode: default true; patch mode: update only if specified)
+#   --field
+#       Field name to increment (increment mode)
+#   --if-exists
+#       Only execute if .rite-flow-state exists (patch/increment mode)
+#   --session
+#       Session UUID override (create mode; defaults to .rite-session-id)
+#   --preserve-error-count
+#       Patch mode 限定: 既存 .error_count を保持。default は 0 にリセット。
+#       (現状 no-op: stop-guard.sh 撤去後は branching reader が存在しないが、forward-compat
+#        装備として保持。詳細は ADR `docs/designs/parent-routing-unification.md` Rollback Log)
+#   --legacy-mode
+#       Force legacy single-file path (`.rite-flow-state`) regardless of
+#       rite-config.yml `flow_state.schema_version`. Used by migration script (#2) and
+#       tooling that must read/write the pre-migration source. Without this flag,
+#       schema_version=2 (default) writes to `.rite/sessions/{session_id}.flow-state`.
 #
 # Exit codes:
 #   0: Success
@@ -141,8 +153,20 @@ _resolve_session_id() {
       echo "  影響: UUID format 違反と helper internal error を区別できないため fail-fast します" >&2
       exit 1
     fi
+    # 関数内 signal-specific trap: parent atomic cleanup trap install 前の段階で実行されるため、
+    # SIGINT/SIGTERM/SIGHUP 受信時に `_resolve_sid_err` tempfile が orphan として `/tmp` に残る経路を
+    # 防ぐ。関数末尾で `trap - EXIT INT TERM HUP` で解除し、後続の atomic cleanup trap install を妨げない。
+    # canonical pattern: references/bash-trap-patterns.md#signal-specific-trap-template
+    _rite_resolve_sid_cleanup() {
+      rm -f "${_resolve_sid_err:-}"
+    }
+    trap 'rc=$?; _rite_resolve_sid_cleanup; exit $rc' EXIT
+    trap '_rite_resolve_sid_cleanup; exit 130' INT
+    trap '_rite_resolve_sid_cleanup; exit 143' TERM
+    trap '_rite_resolve_sid_cleanup; exit 129' HUP
     if validated=$(bash "$SCRIPT_DIR/_resolve-session-id.sh" "$provided_sid" 2>"${_resolve_sid_err:-/dev/null}"); then
       [ -n "$_resolve_sid_err" ] && rm -f "$_resolve_sid_err"
+      trap - EXIT INT TERM HUP
       echo "$validated"
       return 0
     fi
@@ -155,6 +179,7 @@ _resolve_session_id() {
       head -3 "$_resolve_sid_err" | sed 's/^/  /' >&2
     fi
     [ -n "$_resolve_sid_err" ] && rm -f "$_resolve_sid_err"
+    trap - EXIT INT TERM HUP
     echo "ERROR: invalid session_id format: '$provided_sid' (expected UUID, RFC 4122 §4: 8-4-4-4-12 hex with hyphens, case-insensitive — \`_resolve-session-id.sh\` accepts [0-9a-fA-F])" >&2
     return 1
   fi
@@ -331,9 +356,11 @@ _resolve_session_state_path() {
 
 # --- Argument parsing ---
 MODE="${1:-}"
-# silent-failure-hunter M-1: 旧 `(( $# > 0 )) && shift` は `$#=0` の場合 `(( 0 > 0 ))` が rc=1 を
-# 返し、`set -e` 下で短絡評価では trap は発火しないが、本行が将来 `if` の条件外に出ると script 全体が
-# rc=1 で死ぬ fragility を残していた。`if-then-fi` 形式に変更して bash `(( ))` の rc 仕様への暗黙依存を解消。
+# 旧 `(( $# > 0 )) && shift` は `$#=0` で `(( 0 > 0 ))` が rc=1 を返し、行末 rc=1 のまま続行する経路があった。
+# bash `&&` chain の中間失敗は `set -e` の発火対象外 (POSIX/bash manual: "the shell does not exit if the command
+# that fails is part of ... a && or || list" — `set -e` 自体が直接 kill する経路はない) だが、行末 rc=1 が
+# `pipefail` 下や caller の `if !` 判定で誤シグナルになる経路を完全には塞げない。`if-then-fi` 形式 (rc=0 保証) に
+# 書き換えて bash `(( ))` の rc 仕様への暗黙依存を解消する。
 if [ $# -gt 0 ]; then
   shift
 fi
@@ -590,11 +617,26 @@ if command -v flock >/dev/null 2>&1; then
       exit 1
     fi
   else
-    echo "WARNING: lock file open に失敗 ($FLOW_STATE_LOCK_FILE)。non-locking mode で続行 (HIGH-1 race protection なし)" >&2
-    echo "  原因候補: permission denied / parent dir 不在 / disk full (kernel error は上記行直前に出力)" >&2
+    # lock file open 失敗時のデフォルトは fail-fast。race protection は load-bearing で、silent disable は
+    # sprint team-execute / wiki ingest / dogfooding 経路で flow-state 破壊を再発させるリスクが大きい。
+    # 環境変数 RITE_ALLOW_UNLOCKED_FLOW_STATE=true で明示的に opt-out できる (best-effort 続行)。
+    if [ "${RITE_ALLOW_UNLOCKED_FLOW_STATE:-false}" = "true" ]; then
+      echo "WARNING: lock file open に失敗 ($FLOW_STATE_LOCK_FILE)。RITE_ALLOW_UNLOCKED_FLOW_STATE=true により non-locking mode で続行 (HIGH-1 race protection なし)" >&2
+      echo "  原因候補: permission denied / parent dir 不在 / disk full (kernel error は上記行直前に出力)" >&2
+    else
+      echo "ERROR: lock file open に失敗 ($FLOW_STATE_LOCK_FILE)。race protection なしでは続行できません" >&2
+      echo "  対処: $(dirname "$FLOW_STATE_LOCK_FILE") の permission / 容量を確認、または RITE_ALLOW_UNLOCKED_FLOW_STATE=true で opt-out" >&2
+      exit 1
+    fi
   fi
 else
-  echo "WARNING: flock command 不在 (busybox 等)。non-locking mode で続行 (HIGH-1 race protection なし)" >&2
+  if [ "${RITE_ALLOW_UNLOCKED_FLOW_STATE:-false}" = "true" ]; then
+    echo "WARNING: flock command 不在 (busybox 等)。RITE_ALLOW_UNLOCKED_FLOW_STATE=true により non-locking mode で続行" >&2
+  else
+    echo "ERROR: flock command 不在 (busybox 等)。race protection なしでは続行できません" >&2
+    echo "  対処: util-linux (flock) をインストール、または RITE_ALLOW_UNLOCKED_FLOW_STATE=true で opt-out" >&2
+    exit 1
+  fi
 fi
 
 # --- Atomic write ---
@@ -695,9 +737,13 @@ case "$MODE" in
       # の進行 gate (`if [[ $_existing_active == "true" ]]`) で限定的だが、defense-in-depth で全 site truncate。
       [ -n "$_ownership_jq_err" ] && : > "$_ownership_jq_err"
       if ! _existing_active=$(jq -r '.active // false' "$FLOW_STATE" 2>"${_ownership_jq_err:-/dev/null}"); then
-        echo "WARNING: session-ownership .active 抽出 jq 失敗 ($FLOW_STATE) — defaulting to false" >&2
+        echo "WARNING: session-ownership .active 抽出 jq 失敗 ($FLOW_STATE) — fail-safe で active=true として扱い ownership check を強制" >&2
         [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -3 "$_ownership_jq_err" | sed 's/^/  /' >&2
-        _existing_active="false"
+        # fail-safe `true` に倒す: jq 失敗で `false` 扱いにすると ownership check が skip され
+        # 別 session の state を silent 上書きする (state-read.sh / session-end.sh:127 の fail-safe `other`
+        # と writer/reader 対称化)。"true と倒し → ownership check 強制" の方が
+        # "false と倒し → 別 session 上書き" より安全。
+        _existing_active="true"
       fi
       if [[ "$_existing_active" == "true" ]]; then
         [ -n "$_ownership_jq_err" ] && : > "$_ownership_jq_err"  # IMP-3: truncate before reuse

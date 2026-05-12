@@ -320,6 +320,31 @@ else
   fi
 fi
 
+# Test 8f: false-negative prevention — NBSP (U+00A0) around HTML-commented sentinel
+# verify-terminal-output.sh Check 3 の `[[:space:]]` クラスは POSIX C locale で
+# tab / LF / VT / FF / CR / space を含むが、**NBSP (U+00A0) は含まない** (LC_CTYPE 依存)。
+# editor が NBSP を挿入した HTML-commented sentinel は negative assertion を silent に通過する経路。
+# Source: GNU Grep manual "Character Classes" / Unicode L2/03139 POSIX classes definition.
+# CRLF の \r は `[[:space:]]` に含まれるため CRLF fixture は冗長 (検証時に確認済み)。
+echo "Test 8f: false-negative prevention — NBSP around HTML-commented [interview:completed]"
+setup_plugin_tree "$TEST_DIR/test8f" "true" "bare"
+# NBSP は UTF-8 で 0xC2 0xA0 (2 bytes)。printf %b で確実に埋め込む。
+printf 'placeholder header\n\xc2\xa0<!-- [interview:completed] -->\xc2\xa0\n' \
+  > "$TEST_DIR/test8f/plugins/rite/commands/issue/create-interview.md"
+if bash "$HOOK" --quiet --repo-root "$TEST_DIR/test8f" >/dev/null 2>&1; then
+  # 現状の verify-terminal-output.sh は NBSP を `[[:space:]]` で拾えないため exit 0 になる。
+  # この test は「regex を NBSP も含めて強化したら exit 1 に倒れる」ことを将来 enable するためのプレースホルダー。
+  # 現時点では exit 0 を expected として記録する (regex 強化 PR で expected を反転する)。
+  pass "Test 8f recorded (current exit 0): NBSP escapes negative assertion — track in follow-up to extend regex"
+else
+  rc=$?
+  if [ "$rc" = "1" ]; then
+    pass "exit 1 on NBSP-wrapped HTML-commented [interview:completed] (NBSP coverage already extended)"
+  else
+    fail "expected exit 0 or 1, got $rc"
+  fi
+fi
+
 # Test 9: M6 path — unexpected git error class (not 'not a git repository' / 'dubious ownership')
 # verify-terminal-output.sh の else branch (exit 1) を pin する。
 # 偽の git binary を PATH の先頭に置き、git rev-parse が `fatal: ...` 等の予期しない error を

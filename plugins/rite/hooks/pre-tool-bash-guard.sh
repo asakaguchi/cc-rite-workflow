@@ -43,19 +43,15 @@ if ! source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>"${_phase_whitelist_er
 fi
 [ -n "$_phase_whitelist_err" ] && rm -f "$_phase_whitelist_err"
 
-# cat failure does not abort under set -e; || guard is defensive
-# verified-review HIGH-1 対応: cat 失敗 (EBADF / SIGPIPE / FD 破損) を silent suppress すると
-# Pattern 5 を含む denylist check が完全 skip され `gh issue create` silent allow に倒れる
-# (Claude Code が稀に corrupt FD を渡すケース等)。failure を WARNING で可視化する。
-INPUT=$(cat)
-_cat_rc=$?
-if [ "$_cat_rc" -ne 0 ]; then
-  echo "WARNING: pre-tool-bash-guard: stdin cat が失敗 (rc=$_cat_rc) — INPUT を空文字に fallback して continue" >&2
-  echo "  原因候補: pipe broken / EBADF / SIGPIPE / Claude Code が corrupt FD を渡した" >&2
+# bash 5.2 デフォルト (`inherit_errexit` OFF) では `VAR=$(cmd)` の assignment は cmd 失敗で abort しないが、
+# `|| INPUT=""` を明示することで cat 失敗時の rc を確実に 0 に正規化し、他 5 hook (notification.sh /
+# post-compact.sh / pre-compact.sh / post-tool-wm-sync.sh / session-start.sh) と pattern を統一する。
+# 失敗時の WARNING は `||` 右辺で emit する (cat 失敗のみを検出、EOF 空入力では出さない)。
+INPUT=$(cat) || {
+  echo "WARNING: pre-tool-bash-guard: stdin cat が失敗 (pipe broken / EBADF / SIGPIPE / Claude Code が corrupt FD を渡した) — INPUT を空文字に fallback して continue" >&2
   echo "  影響: 後段の denylist check (Pattern 1-5) が機能せず silent allow に倒れる経路に流れます" >&2
   INPUT=""
-fi
-unset _cat_rc
+}
 
 # silent-failure-hunter M-6: 旧 `... 2>/dev/null || VAR=""` は malformed JSON (Claude Code bug /
 # partial flush) を silent suppress していた。攻撃面となる可能性があるため `[ -n "$INPUT" ] && [ -z "$VAR" ]`
@@ -198,11 +194,16 @@ trap - ERR
 #     ambiguous and gh CLI itself rejects it, so we do not block it here.
 #
 # >>> DRIFT-CHECK ANCHOR: err_trap_rearm_before_pattern5 <<<
-# verified-review CRITICAL-2 対応: Pattern 5 (Region B) 進入前に ERR trap を re-arm する。
-# Pattern 3 終了時点で一度 disarm 済 (err_trap_disarm_after_pattern3 anchor 参照)。
-# Pattern 5 は jq / mktemp / state-path-resolve 等の edge-case 失敗経路があり、
-# 大量 multiline input / OOM 等で予期せぬ ERR を起こすケースに備えて再度 fail-open + WARNING emit を install する。
-trap 'echo "WARNING: pre-tool-bash-guard.sh: ERR trap fired (fail-open silent allow); upstream command rc=$? — review jq / mktemp / state-path-resolve sites" >&2; exit 0' ERR
+# Pattern 5 (Region B) 進入前に ERR trap を re-arm する。Pattern 3 終了時点で一度 disarm 済
+# (err_trap_disarm_after_pattern3 anchor 参照)。
+#
+# **Pattern 5 は fail-closed**: Pattern 5 は create-lifecycle 中の `gh issue create` 直叩きを
+# block する security-critical 経路 (Mode B Bypass + reviewer-subagent denylist の load-bearing logic)。
+# jq / mktemp / state-path-resolve の transient failure (例: `/tmp` inode 枯渇 / jq バイナリ異常) で
+# trap が発火した場合、Pattern 1-3 と同じ fail-open (exit 0) に倒すと orchestrator delegation 仕様の
+# silent bypass が成立する (audit-trail なし、workflow-incident-emit も発火しない)。
+# 本 trap は ERROR を emit してから permissionDecision=deny で BLOCK し、exit 2 で fail-closed する。
+trap 'rc=$?; echo "ERROR: pre-tool-bash-guard.sh: ERR trap fired during Pattern 5 (state-corrupt or transient mktemp/jq failure rc=$rc); failing closed (BLOCK gh issue create to prevent orchestrator bypass)" >&2; printf "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"BLOCKED (pattern5-trap-fail-closed): pre-tool-bash-guard internal error during create-lifecycle scan; refusing gh issue create to avoid orchestrator bypass. Resolve hook environment then retry.\"}}\n"; exit 2' ERR
 if [ -z "$BLOCKED_PATTERN" ]; then
   # Normalize $COMMAND directly (NOT $CMD_CHECK) to catch heredoc-body bypass (#501 HIGH).
   CMD_P5="${COMMAND//$'\t'/ }"

@@ -714,6 +714,17 @@ else
     fail "TC-7a-1: create.md halt rule の 'manual intervention' または 'Issue 未作成のまま停止' prose が欠落 (halt rule の semantic 弱化リスク)"
   fi
 
+  # TC-7a-2: halt rule body の action verb 存在を pin (`halt softly` 等への weak 表現変更検出)。
+  # TC-7a / TC-7a-1 は count / phrase 存在を pin するが、halt 自体の action (中断 / abort /
+  # exit non-zero) が「skip silently」「continue with warning」等に書き換えられても match する。
+  # `[interview:error]` halt 発火位置の周辺 10 行に action verb が存在することを確認する。
+  if awk '/\[interview:error\].*halt/ {flag=1; n=0; next} flag && n<10 {print; n++}' "$CREATE_MD" \
+       | grep -qE '(exit non-zero|abort|中断|workflow を停止|Issue 未作成のまま停止)'; then
+    pass "TC-7a-2: create.md halt rule 直後 10 行内に action verb (exit non-zero / abort / 中断 / 停止) が存在 (semantic weakening 防止)"
+  else
+    fail "TC-7a-2: create.md halt rule 直後 10 行内に action verb が見つからない (halt が skip / continue に弱化された可能性)"
+  fi
+
   # pre-check-routing.md Item 0 dispatcher は `[interview:error]` matched 時の Phase 2 進入禁止経路を持つ。
   if grep -qE '\[interview:error\].*Phase 2' "$PRE_CHECK_ROUTING_MD"; then
     pass "TC-7b: pre-check-routing.md に '[interview:error] ... Phase 2' routing prose が存在 (Item 0 dispatcher の halt 経路の load-bearing pin)"

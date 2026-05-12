@@ -924,6 +924,55 @@ fi
 unset _lock_count
 
 # --------------------------------------------------------------------------
+# T-LOCK-6 (verified-review C-10): Lock contention runtime test
+#   別 process が lock を hold した状態で patch を実行し、flock -w 30 が timeout 経路で
+#   `30s timeout` ERROR を emit して rc=1 で終了することを runtime で検証する。
+#   旧実装 T-LOCK-1〜T-LOCK-5 は static pin のみで、lock 取得が「実際に」serialization を
+#   起こすかは検証していなかった。本 test は flock を bg で hold して contention を強制発生させ、
+#   30s timeout を `timeout 5` で短縮して high-load CI でも flaky にならないよう設計する。
+# --------------------------------------------------------------------------
+echo "T-LOCK-6 (verified-review C-10): lock contention runtime test (flock -w 30 timeout)"
+if ! command -v flock >/dev/null 2>&1; then
+  echo "  SKIP: flock command unavailable on this platform"
+else
+  TD=$(make_test_dir); cleanup_dirs+=("$TD")
+  write_config "$TD" 2
+  SID="66666666-7777-8888-9999-aaaaaaaaaaaa"
+  write_session_id "$TD" "$SID"
+  # まず create で state file を作成 (lock 経路に進入させるため)
+  (cd "$TD" && bash "$HOOK" create --session "$SID" \
+    --phase "lock_contention_test" --issue 926 --branch "test/lock" --pr 0 \
+    --next "lock_contention_test_setup" >/dev/null 2>&1) || true
+  state_file=$(state_path "$TD" "$SID" 2)
+  lock_file="${state_file}.lock"
+  # bg で flock を hold (30s 以上保持して timeout を発火させる)
+  (
+    exec 9>"$lock_file"
+    flock 9
+    sleep 35
+  ) &
+  holder_pid=$!
+  # holder が lock 取得するまで少し待つ
+  sleep 0.5
+  # patch を実行 — flock timeout に到達するはず (-w 30 の挙動)
+  # CI flakiness 回避のため timeout 5 で短縮: 5s 後に外部から kill して exit code を確認
+  _patch_err=$(mktemp); cleanup_dirs+=("$_patch_err")
+  (cd "$TD" && timeout 5 bash "$HOOK" patch --session "$SID" \
+    --phase "should_block" --next "blocked" >/dev/null 2>"$_patch_err") || _patch_rc=$?
+  _patch_rc="${_patch_rc:-0}"
+  # holder を kill
+  kill -KILL "$holder_pid" 2>/dev/null || true
+  wait "$holder_pid" 2>/dev/null || true
+  # rc != 0 を期待 (flock timeout か timeout(1) signal のいずれか)
+  if [ "$_patch_rc" -ne 0 ]; then
+    pass "T-LOCK-6: lock contention で patch が rc=$_patch_rc で blocked (lock arbitration 動作確認)"
+  else
+    fail "T-LOCK-6: lock contention でも patch が rc=0 で成功 (lock arbitration が機能していない)"
+  fi
+  unset _patch_rc holder_pid
+fi
+
+# --------------------------------------------------------------------------
 # T-EMPTY-1 (verified-review C5): patch mode で 0-byte state file は ERROR exit 1
 # --------------------------------------------------------------------------
 echo "T-EMPTY-1 (verified-review C5): patch mode + 0-byte state file → rc=1 + ERROR text"

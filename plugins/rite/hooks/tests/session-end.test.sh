@@ -623,6 +623,15 @@ if printf '%s' "$stderr_jq" | grep -qF 'fake jq: simulated failure'; then
 else
   fail "Expected fake jq stderr in WARNING; got stderr: $stderr_jq"
 fi
+# TC-DEACTIVATE-FAIL-1 (verified-review I-9): deactivation failure 時の diagnostic hint pin
+# 旧 test は WARNING 主文の存在のみ verify していたが、本 PR 強化部分の hint 文
+# (`JSON 妥当性確認 / disk full / permission denied / EXDEV (mv)`) が silent に削除されても regression
+# を catch できなかった。`対処:` から始まる hint 行が 4 つの diagnostic keyword をすべて含むことを pin する。
+if printf '%s' "$stderr_jq" | grep -qE '対処:.*JSON 妥当性確認.*disk full.*permission denied.*EXDEV'; then
+  pass "TC-DEACTIVATE-FAIL-1: deactivation hint contains 4 diagnostic keywords (JSON / disk full / permission denied / EXDEV)"
+else
+  fail "TC-DEACTIVATE-FAIL-1: 対処 hint missing diagnostic keywords (JSON 妥当性確認 / disk full / permission denied / EXDEV); got stderr: $stderr_jq"
+fi
 echo ""
 
 # --------------------------------------------------------------------------

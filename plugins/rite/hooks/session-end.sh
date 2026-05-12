@@ -27,21 +27,15 @@ unset _helper _src_err
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
-# (Under set -e, a missing jq would exit 127 at the first jq call, before
-# reaching -f; the comment describes the logical invariant, not the exit path.)
-# cat failure does not abort under set -e; || guard is defensive
-# verified-review HIGH-1 対応: cat 失敗 (EBADF / SIGPIPE / FD 破損) を silent suppress すると
-# CWD が空文字に fallback され `[ -z "$CWD" ]` で exit 0 → state deactivation 経路が完全 skip
-# される (silent regression: .active=true のまま 2h stale で session-start defensive reset の
-# signal を消失させる)。failure を WARNING で可視化して原因不明の stale を防ぐ。
-INPUT=$(cat)
-_cat_rc=$?
-if [ "$_cat_rc" -ne 0 ]; then
-  echo "WARNING: session-end: stdin cat が失敗 (rc=$_cat_rc) — INPUT を空文字に fallback して exit 0" >&2
+# bash 5.2 デフォルト (`inherit_errexit` OFF) では `VAR=$(cmd)` の assignment は cmd 失敗で abort しないが、
+# `|| INPUT=""` を明示することで cat 失敗時の rc を確実に 0 に正規化し、他 5 hook (notification.sh /
+# post-compact.sh / pre-compact.sh / post-tool-wm-sync.sh / session-start.sh) と pattern を統一する。
+# 失敗時の WARNING は `||` 右辺で emit する (cat 失敗のみを検出、EOF 空入力では出さない)。
+INPUT=$(cat) || {
+  echo "WARNING: session-end: stdin cat が失敗 (pipe broken / EBADF / SIGPIPE) — INPUT を空文字に fallback して continue" >&2
   echo "  影響: state deactivation 経路 skip → .active=true 残留 → 次 session-start で defensive reset signal 消失" >&2
   INPUT=""
-fi
-unset _cat_rc
+}
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
@@ -93,11 +87,18 @@ fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 
 # Get current branch (stderr 退避 + WARNING emit、silent suppress を回避)
-# cd 失敗 (permission denied / 削除済 dir) と git 失敗 (corrupt .git / detached HEAD) を区別可能にする。
+# cd 失敗 (CWD 不在 / permission denied) と git 失敗 (corrupt .git / detached HEAD) を独立 if-else で区別する。
 # session-end は cleanup hook のため fail-fast せず WARNING + 続行 (Issue 番号 resolution 不能のみ)。
+# detached HEAD では `git branch --show-current` は rc=0 で空文字を返すため空 BRANCH と cd 失敗は別経路として扱う。
 _branch_err=$(mktemp /tmp/rite-session-end-branch-err-XXXXXX 2>/dev/null) || _branch_err=""
-if ! BRANCH=$(cd "$CWD" && git branch --show-current 2>"${_branch_err:-/dev/null}"); then
-  echo "WARNING: session-end: branch 取得失敗 (cd $CWD / git branch のいずれか)" >&2
+BRANCH=""
+if [ ! -d "$CWD" ]; then
+  echo "WARNING: session-end: CWD が存在しないかディレクトリではありません: $CWD" >&2
+elif ! (cd "$CWD" 2>"${_branch_err:-/dev/null}"); then
+  echo "WARNING: session-end: cd $CWD に失敗 (permission denied 等)" >&2
+  [ -n "$_branch_err" ] && [ -s "$_branch_err" ] && head -3 "$_branch_err" | sed 's/^/  /' >&2
+elif ! BRANCH=$(cd "$CWD" && git branch --show-current 2>"${_branch_err:-/dev/null}"); then
+  echo "WARNING: session-end: git branch --show-current に失敗 (corrupt .git / git 未初期化)" >&2
   [ -n "$_branch_err" ] && [ -s "$_branch_err" ] && head -3 "$_branch_err" | sed 's/^/  /' >&2
   BRANCH=""
 fi
@@ -223,18 +224,42 @@ WARN_MSG
     _lock_rm_err=""
     _find_err=""
     _deactivate_jq_err=""
+    _mv_err=""
+    _legacy_lock_rm_err=""
     _session_end_tmp_cleanup() {
-      rm -f "${TMP_FILE:-}" "${_rm_err:-}" "${_lock_rm_err:-}" "${_find_err:-}" "${_deactivate_jq_err:-}"
+      rm -f "${TMP_FILE:-}" "${_rm_err:-}" "${_lock_rm_err:-}" "${_find_err:-}" "${_deactivate_jq_err:-}" "${_mv_err:-}" "${_legacy_lock_rm_err:-}"
     }
     trap 'rc=$?; _session_end_tmp_cleanup; exit $rc' EXIT
     trap '_session_end_tmp_cleanup; exit 130' INT
     trap '_session_end_tmp_cleanup; exit 143' TERM
     trap '_session_end_tmp_cleanup; exit 129' HUP
-    TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
+    # mktemp 失敗時は PID-suffix fallback ではなく fail-safe (skip + WARNING) に倒す。
+    # flow-state-update.sh:601-606 で確立した「PID-suffix silent fallback は symlink race 攻撃面を増加」
+    # doctrine と対称化。session-end は cleanup hook のため fail-fast せず deactivation を skip して continue する。
+    if ! TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null); then
+        echo "WARNING: session-end: mktemp 失敗 ($STATE_FILE) — atomic write 不能のため deactivation を skip します" >&2
+        echo "  対処: $(dirname "$STATE_FILE") の容量 / permission を確認してください" >&2
+        TMP_FILE=""
+    fi
+    if [ -n "$TMP_FILE" ]; then
+        chmod 600 "$TMP_FILE" 2>/dev/null || :
+    fi
     _deactivate_jq_err=$(mktemp /tmp/rite-session-end-deactivate-jq-err-XXXXXX 2>/dev/null) || _deactivate_jq_err=""
-    if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+    if [ -n "$TMP_FILE" ] && jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
        '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE" 2>"${_deactivate_jq_err:-/dev/null}"; then
-        mv "$TMP_FILE" "$STATE_FILE"
+        # mv の rc / stderr を捕捉し、EXDEV / ENOSPC / permission denied 等を silent 化しない
+        # (flow-state-update.sh の writer/reader 対称化 doctrine と整合)
+        _mv_err=$(mktemp /tmp/rite-session-end-mv-err-XXXXXX 2>/dev/null) || _mv_err=""
+        if ! mv "$TMP_FILE" "$STATE_FILE" 2>"${_mv_err:-/dev/null}"; then
+            echo "rite: session-end: mv failed: $TMP_FILE -> $STATE_FILE (deactivate write lost)" >&2
+            if [ -n "$_mv_err" ] && [ -s "$_mv_err" ]; then
+                head -3 "$_mv_err" | sed 's/^/  /' >&2
+            fi
+            echo "  対処: disk full / permission denied / EXDEV / parent dir 削除済み を確認してください" >&2
+            rm -f "$TMP_FILE"
+        fi
+    elif [ -z "$TMP_FILE" ]; then
+        :  # mktemp 失敗時の skip 経路。WARNING は上で emit 済み。
     else
         # Intentionally not exit 1 here (unlike pre-compact.sh) — session-end
         # prioritizes cleanup over strict error propagation.
@@ -299,6 +324,19 @@ WARN_MSG
           fi
           [ -n "$_lock_rm_err" ] && rm -f "$_lock_rm_err"
         fi
+    elif [ "$STATE_FILE" = "$STATE_ROOT/.rite-flow-state" ] && [ -f "${STATE_FILE}.lock" ]; then
+        # legacy schema_version=1: per-session 経路と対称化して `.rite-flow-state.lock` も cleanup する。
+        # legacy file 自体は #680 の意図で保持するが、advisory lock file は 0 byte の inode 残骸でも
+        # 累積すると lint / CI で unexpected file 扱いされるため削除する (flow-state-update.sh が
+        # 作成した lock の lifecycle 補完)。
+        _legacy_lock_rm_err=$(mktemp /tmp/rite-session-end-legacy-lockrm-err-XXXXXX 2>/dev/null) || _legacy_lock_rm_err=""
+        if ! rm -f "${STATE_FILE}.lock" 2>"${_legacy_lock_rm_err:-/dev/null}"; then
+            echo "WARNING: session-end: legacy lock file の削除に失敗 (${STATE_FILE}.lock)" >&2
+            if [ -n "$_legacy_lock_rm_err" ] && [ -s "$_legacy_lock_rm_err" ]; then
+                head -3 "$_legacy_lock_rm_err" | sed 's/^/  /' >&2
+            fi
+        fi
+        [ -n "$_legacy_lock_rm_err" ] && rm -f "$_legacy_lock_rm_err"
     fi
 fi
 

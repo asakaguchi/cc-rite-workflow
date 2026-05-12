@@ -74,8 +74,8 @@ if [ -n "$state_file" ] && [ -f "$state_file" ]; then
 else
   # 二段書き込み (cold start): create で create_interview を bootstrap → patch で create_post_interview。
   # rationale 詳細は本セクション末尾の "Why cold-start ... 二段書き込み" blockquote (canonical SoT) 参照。
-  # 注: 本 cold-start path の load-bearing 性は **末尾の "Note — `phase-transition-whitelist.sh` の現状
-  # runtime semantics"** で advisory と注釈されている。現状 runtime 影響は副次的 (caller-side / 手動 invocation
+  # 注: 本 cold-start path の load-bearing 性は ADR `docs/designs/parent-routing-unification.md` §3.2
+  # (機序 hypothesis) で advisory と注釈されている。現状 runtime 影響は副次的 (caller-side / 手動 invocation
   # 時の `previous_phase` log 整合性のみ) だが、将来 stricter gating が有効化された際に正規 path として
   # 認識されるための future-proofing として cold-start 二段書き込みを採用する。
   if ! bash {plugin_root}/hooks/flow-state-update.sh create \
@@ -104,7 +104,7 @@ else
 fi
 ```
 
-**Why `create_post_interview` (not `create_interview_running`)**: caller (`create.md` Phase 1 Delegation to Interview Pre-write) は既に `create_interview` を書込済 (delegation in flight signal)。本 Pre-flight が **interview 実行前** に `create_post_interview` へ進めることで、normal completion / Bug Fix preset early exit / unexpected stop のいずれの exit point でも orchestrator が flow state の `.phase = create_post_interview` を読んで Phase 2 へ進む経路に切り替わる。`phase-transition-whitelist.sh` の lifecycle predicate (`rite_phase_is_create_lifecycle_in_progress`) は本 phase を create lifecycle in progress として認識し、`pre-tool-bash-guard.sh` / `session-end.sh` の caller がこの認識に基づいて runtime 制御を行う (graph 自体は advisory で機械的 reject は行わない — 詳細は次段注記参照)。
+**Why `create_post_interview` (not `create_interview_running`)**: caller (`create.md` Phase 1 Delegation to Interview Pre-write) は既に `create_interview` を書込済 (delegation in flight signal)。本 Pre-flight が **interview 実行前** に `create_post_interview` へ進めることで、normal completion / Bug Fix preset early exit / unexpected stop のいずれの exit point でも orchestrator が flow state の `.phase = create_post_interview` を読んで Phase 2 へ進む経路に切り替わる。`phase-transition-whitelist.sh` の lifecycle predicate (`rite_phase_is_create_lifecycle_in_progress`) は本 phase を create lifecycle in progress として認識し、`pre-tool-bash-guard.sh` / `session-end.sh` の caller がこの認識に基づいて runtime 制御を行う (graph 自体は advisory で機械的 reject は行わない — 詳細は ADR `docs/designs/parent-routing-unification.md` §3.2 参照)。
 
 **Why cold-start (state file 不在) 経路で create→patch 二段書き込み**: 単段 `create --phase create_post_interview` は runtime accept されるが、`previous_phase=""` (cold start) のまま記録され audit-trail fidelity (`create_interview` 経由の semantic clarity) が失われる。caller 側 Pre-write 失敗時や手動 sub-skill invocation 時にこの cold-start 経路が踏まれるため、create で `create_interview` を bootstrap してから patch で `previous_phase=create_interview` を残す。詳細な rationale (transition graph の future-proofing 設計判断) は ADR `docs/designs/parent-routing-unification.md` §3.1 参照。
 
@@ -121,7 +121,7 @@ halt 判定表の row 1〜4 のいずれかが該当する場合 (PREFLIGHT_CREA
 
 > **halt 対象外の retained flag**: `STATE_PATH_RESOLVE_FAILED=1` / `FLOW_STATE_PATH_RESOLVE_FAILED=1` は halt 対象外 (diag_log 出力先のみ失う非致命的経路、後続 `flow-state-update.sh` が独立 resolve する)。詳細は ADR §3.2。
 >
-> **二次防御 (LLM context grep が落ちる前提の defense-in-depth)**: (1) caller-side halt rule の prose 明示 (`create.md` Sub-skill Return Protocol、`references/pre-check-routing.md` Item 0)、(2) workflow_incident sentinel emit、(3) `tests/parent-routing-pattern-interim.test.sh` TC-7。完全機械化 (bash 内 retained flag 集約) は ADR §6.x で追跡。
+> **二次防御 (LLM context grep が落ちる前提の defense-in-depth)**: (1) caller-side halt rule の prose 明示 (`create.md` Sub-skill Return Protocol、`references/pre-check-routing.md` Item 0)、(2) workflow_incident sentinel emit、(3) `tests/parent-routing-pattern-interim.test.sh` TC-7。完全機械化 (bash 内 retained flag 集約) は ADR `docs/designs/parent-routing-unification.md` §6 (Consequences) の Future Work として追跡。
 
 **Idempotence**: 単一 sub-skill invocation 内で複数回実行されても safe — patch mode は pre-update `.phase` から `previous_phase` を設定し、re-entry で `create_post_interview` のまま phase regression しない。
 

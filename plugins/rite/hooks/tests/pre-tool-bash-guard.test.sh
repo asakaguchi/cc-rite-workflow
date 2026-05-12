@@ -1300,6 +1300,24 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-C8 (verified-review C-8): Pattern 5 entry ERR trap is **fail-closed** (BLOCK + exit 2)
+# Pattern 5 は create-lifecycle 中の `gh issue create` 直叩き block で security-critical。
+# transient mktemp / jq failure で trap 発火時に exit 0 (silent allow) に倒れると orchestrator
+# delegation 仕様の silent bypass が成立するため、Pattern 5 進入直前の trap re-arm は
+# permissionDecision=deny + exit 2 で fail-closed であること。
+# --------------------------------------------------------------------------
+echo "TC-C8: Pattern 5 ERR trap fail-closed semantics static pin"
+# Pattern 5 re-arm anchor の直後 5 行内に "failing closed" / "permissionDecision\":\"deny" / "exit 2" を期待
+if awk '/DRIFT-CHECK ANCHOR: err_trap_rearm_before_pattern5/ {flag=1; n=0; next} flag && n<5 {print; n++}' "$HOOK" \
+     | grep -qE 'failing closed|permissionDecision\\":\\"deny\\"' \
+     && awk '/DRIFT-CHECK ANCHOR: err_trap_rearm_before_pattern5/ {flag=1; n=0; next} flag && n<5 {print; n++}' "$HOOK" \
+        | grep -qE 'exit 2'; then
+  pass "TC-C8: Pattern 5 entry ERR trap has fail-closed semantics (deny + exit 2)"
+else
+  fail "TC-C8: Pattern 5 entry ERR trap drifted from fail-closed pattern (deny + exit 2 missing within 5 lines of rearm anchor)"
+fi
+
+# --------------------------------------------------------------------------
 # TC-HIGH-1 (verified-review SF HIGH-1): stdin cat failure WARNING
 # --------------------------------------------------------------------------
 echo "TC-HIGH-1 (verified-review HIGH-1): stdin cat failure WARNING static pin"

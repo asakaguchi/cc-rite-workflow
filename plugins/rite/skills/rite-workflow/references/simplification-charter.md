@@ -46,7 +46,7 @@ rite workflow 自体および rite workflow が生成する成果物（commit me
 - `Drift guard` / `DRIFT-CHECK ANCHOR` / `NFR-[0-9]+` 系の対称化契約の散文記述
   - 対称化が必要な場合は **テストで担保**（例: `plugins/rite/hooks/tests/` 配下の interim/uniformity invariant test）し、散文重複は書かない
 - 「抽出経緯」「移管経緯」「Regression context」セクション
-- review cycle 番号付きの指摘記録（` F-NEW1` など）
+- review cycle 番号付きの指摘記録（`cycle [0-9]+ F-NEW[0-9]+` のような literal 引用は本文に残さない）
 - `🚨` の濫用（**許容上限: 1 ファイル 5 occurrence、6 件以上は禁止**）
 
 ## 推奨パターン
@@ -60,7 +60,7 @@ rite workflow 自体および rite workflow が生成する成果物（commit me
 
 - **当該 PR 内で全て解消する**。次 PR に「対応経緯」として持ち越さない
 - 持ち越す場合は **新しい Issue を起票**し、対応経緯ではなく要件として書き直す
-- レビューラウンド数を ID 付きで記録しない（ /  /  などは git log で十分）
+- レビューラウンド数を ID 付きで記録しない（`cycle [0-9]+` のような literal は git log で十分）
 
 ## 自己観察
 

@@ -65,10 +65,41 @@ REQUIRED_ARGS=(
 )
 
 # Extract bash blocks containing `flow-state-update.sh create` and emit one
-# `null`-delimited record per block. Mirrors the awk pipeline in
-# `start-md-charter.test.sh::compute_symmetry_for()` to share the same
-# block-extraction semantics (indented fences, inline shell comment strip,
-# trailing whitespace fence end).
+# `null`-delimited record per block. Block-extraction semantics are
+# **partially aligned** with `start-md-charter.test.sh::compute_symmetry_for()`,
+# but the following 3 divergences are **intentional** and documented below.
+# In the future, refactoring `compute_symmetry_for()` into `_test-helpers.sh`
+# would let both tests share a single canonical implementation.
+#
+# Intentional divergences from `compute_symmetry_for()`:
+#
+#   1. Fence-open regex: `^[[:space:]]*```[[:space:]]*bash[[:space:]]*$` (strict, anchored)
+#      vs `compute_symmetry_for`: `^[[:space:]]*```bash` (lenient, info-string accepting).
+#      Intent: this test targets 4 specific caller files (implement.md /
+#      create.md / create-interview.md / cleanup.md) which all use plain
+#      ```bash without info-string suffixes. The strict form prevents false
+#      positives if a future caller introduces ```bash {info-string} (which
+#      may or may not warrant inclusion in symmetry check — re-evaluate at
+#      that time). If info-string callers become common, relax to match.
+#
+#   2. Multi-`create`-per-block flush logic: `compute_symmetry_for()` emits
+#      one record per `create` invocation (`if (in_create) printf ...`), but
+#      this test concatenates all lines in a fence block into a single record.
+#      Intent: SITES (4 caller files) currently have at most 1 `create` per
+#      fence block. If a future caller writes 2 creates in one fence block,
+#      this test would treat them as a single block (assertion still works:
+#      `--phase` etc. would appear at least once). When per-`create` granularity
+#      becomes necessary, port the flush logic from compute_symmetry_for.
+#
+#   3. Block content: this test stores stripped lines (post inline-comment-strip)
+#      vs `compute_symmetry_for` stores original `$0`. Intent: stripped lines
+#      simplify downstream `grep -qE` matching. The original-line preservation in
+#      compute_symmetry_for is needed for diagnostic output (which this test
+#      doesn't produce). When quoted `#` in --arg values appears in real callers
+#      (none currently), revisit this decision.
+#
+# When refactoring: extract `compute_symmetry_for()` into `_test-helpers.sh` and
+# parameterize the 3 divergences as function arguments. See Issue #899 / #896.
 extract_create_blocks() {
   local target="$1"
   awk '
@@ -84,8 +115,7 @@ extract_create_blocks() {
     }
     in_block {
       line=$0
-      # strip whitespace-preceded inline shell comment so `# ... create ...` does not
-      # contaminate the matcher (mirrors compute_symmetry_for finding #2)
+      # strip whitespace-preceded inline shell comment (intentional divergence #3 above)
       sub(/[[:space:]]+#.*$/, "", line)
       # skip pure shell comment lines
       if (line ~ /^[[:space:]]*#/) next
@@ -103,14 +133,15 @@ assert_block_has_arg() {
   return 1
 }
 
+# Note: pass/fail counts are tracked by the global FAIL/PASS counters in
+# `_test-helpers.sh` via the `pass`/`fail` functions. `print_summary` consumes
+# those globals — no local counter is needed in this driver.
 total_blocks=0
-total_failures=0
 
 for site in "${SITES[@]}"; do
   full_path="$REPO_ROOT/$site"
   if [ ! -f "$full_path" ]; then
     fail "${site}|FILE_NOT_FOUND"
-    total_failures=$((total_failures + 1))
     continue
   fi
 
@@ -131,14 +162,11 @@ for site in "${SITES[@]}"; do
     done
     if [ "$block_failures" -eq 0 ]; then
       pass "${site}|block#${block_id} all 5 args present"
-    else
-      total_failures=$((total_failures + 1))
     fi
   done < <(extract_create_blocks "$full_path")
 
   if [ "$any_block" -eq 0 ]; then
     fail "${site}|NO_CREATE_BLOCK_FOUND (regression — caller previously contained flow-state-update.sh create)"
-    total_failures=$((total_failures + 1))
   fi
 done
 

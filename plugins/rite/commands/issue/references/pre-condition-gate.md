@@ -41,9 +41,9 @@ Pre-condition check は **`state-read.sh` で `.phase` を読み、期待する 
 
 `state-read.sh` 起動失敗と pre-condition 失敗を**区別**するため、以下の if/else 形式を使う。 form は site の用途に応じて 2 種類を使い分ける。
 
-### Form A: 複数行 form (Pre-condition 用)
+### Form A: 複数行 form (Pre-condition + 値取得 用)
 
-Phase 3 / 5.5.1 / 5.6 の pre-condition check + Phase 5.7 parent close (`parent_issue_number` 取得) の **4 site** はこの form を使う。 `ERROR:` 行と `ACTION:` 行を後続 if 文で複数行に渡って出力するため、可読性のため複数行 form が canonical:
+Phase 3 / 5.5.1 / 5.6 の pre-condition check (3 site) + Phase 5.7 parent close (`parent_issue_number` 取得、pre-condition ではないが Form A canonical を共有する 1 site) の **start.md 内 4 箇所** はこの form を使う。 `ERROR:` 行と `ACTION:` 行を後続 if 文で複数行に渡って出力するため、可読性のため複数行 form が canonical:
 
 ```bash
 if curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
@@ -60,13 +60,15 @@ fi
 
 ### Form B: inline 1 行 form (metrics step 用)
 
-Phase 5.5.2 内 `implementation_round` 取得 (`plan_deviation_count` 算出) は単純な capture (失敗時 warning 出力 + 値 default 化) のため、1 行 form が canonical:
+Phase 5.5.2 内 `implementation_round` 取得 (`plan_deviation_count` 算出) は単純な capture (失敗時 warning 出力 + 値 default 化) のため、1 行 form が canonical。Form A と同様に **`[CONTEXT] STATE_READ_FAILED=1` sentinel を emit する**ことで downstream observability (cross-session-incident 集計 / workflow-incident-emit-protocol grep) に統一形式で通知する:
 
 ```bash
-if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "WARNING: state-read.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; val=""; fi
+if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_5_2_metrics; rc=$rc" >&2; echo "WARNING: state-read.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; val=""; fi
 ```
 
 `caller-markdown-block.test.sh` TC-6 は本 inline form を `if val=...; then :; else rc=$?` の 1 行 canonical で grep pin している (Issue #908 で確立)。
+
+> **Form A と Form B の sentinel emit 共通化**: 両 form ともに `[CONTEXT] STATE_READ_FAILED=1; phase={site}; rc=$rc` を必ず emit する。両者の唯一の差異は (a) **severity prefix** (Form A: `ERROR:` で `exit 1`、Form B: `WARNING:` で値 default 化して fall-through)、(b) **行展開** (Form A: 複数行 / Form B: 1 行) のみ。downstream observability tooling は単一 sentinel pattern (`STATE_READ_FAILED`) を grep するだけで Form A / B の両経路を捕捉できる。
 
 ### 共通禁止事項
 
@@ -76,11 +78,13 @@ if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --d
 
 ## Phase 別の期待値テーブル
 
-| Phase | Pre-condition expected `.phase` | Resume re-entry も accept する代替値 | Skip 検出時の指示 |
-|-------|--------------------------------|--------------------------------------|------------------|
-| **Phase 3** (implementation-plan) | `phase2_post_work_memory` | `phase3_post_plan` (`/rite:resume` re-entry) | Phase 2.4 / 2.5 / 2.6 の missing step に return |
-| **Phase 5.5.1** (Issue Status In Review) | `phase5_post_ready` | なし | Phase 5.5 (Ready for Review) に return |
-| **Phase 5.6** (Completion Report) | `phase5_post_metrics` | なし | Phase 5.5.1 (Status) / 5.5.2 (Metrics) に return |
+| Phase | Pre-condition expected `.phase` | Resume re-entry も accept する代替値 | 対応する whitelist edge | Skip 検出時の指示 |
+|-------|--------------------------------|--------------------------------------|-------------------------|------------------|
+| **Phase 3** (implementation-plan) | `phase2_post_work_memory` | `phase3_post_plan` (`/rite:resume` re-entry) | `phase2_post_work_memory → phase3_plan`、resume 経路は `phase3_post_plan → phase3_plan` | Phase 2.4 / 2.5 / 2.6 の missing step に return |
+| **Phase 5.5.1** (Issue Status In Review) | `phase5_post_ready` | なし | `phase5_post_ready → phase5_status_in_review` | Phase 5.5 (Ready for Review) に return |
+| **Phase 5.6** (Completion Report) | `phase5_post_metrics` | なし | `phase5_post_metrics → phase5_completion` | Phase 5.5.1 (Status) / 5.5.2 (Metrics) に return |
+
+> **Pre-condition と whitelist の二重防御**: 各 Pre-condition check は LLM 向け enforcement (本 reference 後段の "Enforcement note") で routing を駆動するが、 **`phase-transition-whitelist.sh` も独立に許可エッジを検証**する。例: Phase 5.6 の pre-condition が `phase5_post_status_in_review` 等を誤って受容しても、whitelist が `phase5_post_metrics → phase5_completion` 以外の source を reject するため、defense-in-depth として silent skip が阻止される。両層の整合性は `phase-transition-whitelist.sh` の許可エッジ定義を SoT として参照すること。
 
 ### Resume re-entry の `phase3_post_plan` 受容
 
@@ -100,9 +104,9 @@ bash の `exit 1` は **shell process を終わらせるだけで、Claude Code 
 
 これら 3 行は **LLM 向け enforcement** であり、シェル制御フローではなく LLM の routing 判断を駆動する。
 
-## 4 site canonical (capture pattern 共有)
+## 5 site canonical (capture pattern 共有)
 
-Pre-condition check (3 site) に加えて、以下 2 site も同一の `if val=$(cmd); then :; else rc=$?; fi` capture pattern を共有する:
+Pre-condition check (3 site) に加えて、以下 2 site も同一の `if val=$(cmd); then :; else rc=$?; fi` capture pattern を共有する (start.md 内合計 **5 site** が `state-read.sh` capture 共通形式)。 Form A (4 site: Pre-condition 3 + Phase 5.7 parent close) と Form B (1 site: Phase 5.5.2 metrics) の使い分けは上記 [Canonical capture pattern (2 forms)](#canonical-capture-pattern-2-forms) を参照:
 
 | Site | Field | 用途 |
 |------|-------|------|

@@ -1796,7 +1796,7 @@ Otherwise:
 # silent default 0 (= "no deviation") に降格せず、metrics output を skip する。
 # 注意: inline 1 行 form を維持 (caller-markdown-block.test.sh TC-6 が
 # `if val=...; then :; else rc=$?` の 1 行 canonical capture pattern を grep で pin する)。
-if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "WARNING: state-read.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; val=""; fi
+if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_5_2_metrics; rc=$rc" >&2; echo "WARNING: state-read.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; val=""; fi
 # numeric type validation (writer/reader/resume 3 layer 対称化 doctrine): 他 caller (Phase 5.7
 # parent_issue_number / implement.md parent_issue_number / pr/review.md loop_count /
 # resume.md parent_issue_number_raw) と同様に non-numeric 値を 0 に降格して partial corruption

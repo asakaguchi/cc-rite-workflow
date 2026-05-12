@@ -320,7 +320,7 @@ Interview Perspective → Target Sections の正規 mapping table は [`referenc
 >
 > **Forward note**: `wiki/ingest.md` / `cleanup.md` の prose は依然 `--preserve-error-count` を「RE-ENTRY DETECTED escalation + THRESHOLD bail-out を機能させるため」load-bearing として記述しているが、**この prose 自体が out-of-date** である。`hooks/tests/error-count-runtime-reference.test.sh` の機械検証で確認した通り、`stop-guard.sh` 撤去 (#675) 以降 production runtime には `error_count` の reader が存在せず、両 site の `--preserve-error-count` は dead code である。両 site の prose は parent-routing pattern 移行に伴って historical context (forward-compatibility 装備) として書き換えられる予定 (具体的な PR 番号・移行順序は ADR `docs/designs/parent-routing-unification.md` の §6.1 撤去予定表で単一の真実の源として管理する)。それまでの経過期間中、create-interview だけ同一 phase self-patch で reset 経路を持つ非対称が出現するリスクは `hooks/tests/error-count-runtime-reference.test.sh` の dead code 機械検証で防御している。
 
-Idempotent re-patch (the 🚨 MANDATORY Pre-flight at the head of this file already wrote `create_post_interview`; this re-patch refreshes timestamp / `next_action`):
+Idempotent re-patch (verified-review I-10 #926 で記述を厳密化: Pre-flight が **happy path で** `create_post_interview` を書き込み済みであり、本 re-patch は timestamp / `next_action` の refresh が主目的。`PREFLIGHT_*_FAILED` failure path では Pre-flight 書き込みが完了していないため、`--if-exists` skip 経路を経由して halt 判定表 row 1-4 で別途処理される。詳細は L113-118 の halt 判定表と L333-336 の `--if-exists` silent skip rationale を参照):
 
 ```bash
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \

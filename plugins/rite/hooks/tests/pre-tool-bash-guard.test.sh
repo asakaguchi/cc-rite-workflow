@@ -1307,24 +1307,30 @@ fi
 # permissionDecision=deny + exit 2 で fail-closed であること。
 # --------------------------------------------------------------------------
 echo "TC-C8: Pattern 5 ERR trap fail-closed semantics static pin"
-# Pattern 5 re-arm anchor の直後 5 行内に "failing closed" / "permissionDecision\":\"deny" / "exit 2" を期待
-if awk '/DRIFT-CHECK ANCHOR: err_trap_rearm_before_pattern5/ {flag=1; n=0; next} flag && n<5 {print; n++}' "$HOOK" \
+# Pattern 5 re-arm anchor の直後 15 行内に "failing closed" / "permissionDecision\":\"deny" / "exit 2" を期待
+# verified-review C-3 (#926): 旧実装は 5 行 window だったが、anchor (L196) から trap 行 (L206) までの間に
+# fail-closed rationale を説明する comment 区間 (L197-205) が挟まれているため、5 行 window では trap 行に
+# 到達できず false negative になっていた。15 行に拡大して trap 行を確実に捕捉する。
+if awk '/DRIFT-CHECK ANCHOR: err_trap_rearm_before_pattern5/ {flag=1; n=0; next} flag && n<15 {print; n++}' "$HOOK" \
      | grep -qE 'failing closed|permissionDecision\\":\\"deny\\"' \
-     && awk '/DRIFT-CHECK ANCHOR: err_trap_rearm_before_pattern5/ {flag=1; n=0; next} flag && n<5 {print; n++}' "$HOOK" \
+     && awk '/DRIFT-CHECK ANCHOR: err_trap_rearm_before_pattern5/ {flag=1; n=0; next} flag && n<15 {print; n++}' "$HOOK" \
         | grep -qE 'exit 2'; then
   pass "TC-C8: Pattern 5 entry ERR trap has fail-closed semantics (deny + exit 2)"
 else
-  fail "TC-C8: Pattern 5 entry ERR trap drifted from fail-closed pattern (deny + exit 2 missing within 5 lines of rearm anchor)"
+  fail "TC-C8: Pattern 5 entry ERR trap drifted from fail-closed pattern (deny + exit 2 missing within 15 lines of rearm anchor)"
 fi
 
 # --------------------------------------------------------------------------
-# TC-HIGH-1 (verified-review SF HIGH-1): stdin cat failure WARNING
+# TC-HIGH-1 (verified-review SF HIGH-1 + I-3): stdin cat failure → fail-closed
+# verified-review I-3 (#926): WARNING + INPUT="" fallback から ERROR + fail-closed (deny + exit 2) に変更。
+# pin 対象を ERROR + permissionDecision=deny + exit 2 の 3 要素に更新。
 # --------------------------------------------------------------------------
-echo "TC-HIGH-1 (verified-review HIGH-1): stdin cat failure WARNING static pin"
-if grep -qE 'WARNING: pre-tool-bash-guard: stdin cat が失敗' "$HOOK"; then
-  pass "TC-HIGH-1: pre-tool-bash-guard.sh has stdin cat failure WARNING (HIGH-1 silent regression 防止)"
+echo "TC-HIGH-1 (verified-review HIGH-1 + I-3): stdin cat failure fail-closed static pin"
+if grep -qE 'ERROR: pre-tool-bash-guard: stdin cat が失敗' "$HOOK" \
+   && grep -qE 'BLOCKED \(stdin-read-failure\)' "$HOOK"; then
+  pass "TC-HIGH-1: pre-tool-bash-guard.sh has stdin cat failure fail-closed (ERROR + deny + exit 2)"
 else
-  fail "TC-HIGH-1: pre-tool-bash-guard.sh から stdin cat failure WARNING が消失"
+  fail "TC-HIGH-1: pre-tool-bash-guard.sh の stdin cat failure fail-closed が消失/弱化"
 fi
 
 # --------------------------------------------------------------------------

@@ -35,11 +35,16 @@ fi
 # Provides rite_phase_is_create_lifecycle_in_progress() used by Pattern 5.
 _phase_whitelist_err=$(mktemp /tmp/rite-pretool-whitelist-err-XXXXXX 2>/dev/null) || _phase_whitelist_err=""
 if ! source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>"${_phase_whitelist_err:-/dev/null}"; then
-  echo "WARNING: pre-tool-bash-guard: source phase-transition-whitelist.sh が失敗 (helper deploy regression)" >&2
+  # verified-review I-2 (#926): source 失敗を fail-closed (BLOCK with deny) に倒す。
+  # 旧実装は WARNING のみで継続 → inline glob fallback に降格 → SoT bypass を許す silent regression を起こしていた。
+  echo "ERROR: pre-tool-bash-guard: source phase-transition-whitelist.sh が失敗 (helper deploy regression)" >&2
   if [ -n "$_phase_whitelist_err" ] && [ -s "$_phase_whitelist_err" ]; then
     head -3 "$_phase_whitelist_err" | sed 's/^/  /' >&2
   fi
-  echo "  影響: Pattern 5 の lifecycle predicate (rite_phase_is_create_lifecycle_in_progress) が inline glob fallback に倒れる" >&2
+  echo "  影響: Pattern 5 の lifecycle predicate (rite_phase_is_create_lifecycle_in_progress) が load-bearing なため fail-closed します" >&2
+  [ -n "$_phase_whitelist_err" ] && rm -f "$_phase_whitelist_err"
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED (phase-transition-whitelist.sh source failure): pre-tool-bash-guard cannot resolve create-lifecycle phase set. Resolve hook deploy issue then retry."}}\n'
+  exit 2
 fi
 [ -n "$_phase_whitelist_err" ] && rm -f "$_phase_whitelist_err"
 
@@ -48,9 +53,14 @@ fi
 # post-compact.sh / pre-compact.sh / post-tool-wm-sync.sh / session-start.sh) と pattern を統一する。
 # 失敗時の WARNING は `||` 右辺で emit する (cat 失敗のみを検出、EOF 空入力では出さない)。
 INPUT=$(cat) || {
-  echo "WARNING: pre-tool-bash-guard: stdin cat が失敗 (pipe broken / EBADF / SIGPIPE / Claude Code が corrupt FD を渡した) — INPUT を空文字に fallback して continue" >&2
-  echo "  影響: 後段の denylist check (Pattern 1-5) が機能せず silent allow に倒れる経路に流れます" >&2
-  INPUT=""
+  # verified-review I-3 (#926): stdin cat 失敗を fail-closed に倒す。旧実装は INPUT="" fallback で
+  # 後続の denylist check (Pattern 1-5) が事実上無効化される silent allow 経路を許していた。
+  # corrupt fd / pipe broken / SIGPIPE 等で stdin が読めない時点で hook 機能不能であり、
+  # orchestrator delegation bypass のリスクが大きいため deny に倒す。
+  echo "ERROR: pre-tool-bash-guard: stdin cat が失敗 (pipe broken / EBADF / SIGPIPE / Claude Code が corrupt FD を渡した)" >&2
+  echo "  影響: hook 機能不能のため fail-closed します (全 denylist が無効化される silent allow 経路を防止)" >&2
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED (stdin-read-failure): pre-tool-bash-guard cannot read tool input. Resolve hook input pipe issue then retry."}}\n'
+  exit 2
 }
 
 # silent-failure-hunter M-6: 旧 `... 2>/dev/null || VAR=""` は malformed JSON (Claude Code bug /
@@ -107,7 +117,11 @@ esac
 # 失敗が ERR trap で silent に exit 0 に倒れるケースを debug ログから追跡できる。
 # (exit 0 自体は fail-open semantics を維持し、Bash 実行は許可される — Pattern 1-3/5 の
 # defense-in-depth は user の Bash 操作を妨げないことを優先するため意図的に fail-open)
-trap 'echo "WARNING: pre-tool-bash-guard.sh: ERR trap fired (fail-open silent allow); upstream command rc=$? — review jq / mktemp / state-path-resolve sites" >&2; exit 0' ERR
+#
+# verified-review C-5 (#926): 旧実装は WARNING を stderr に emit するのみで、Claude Code が hook
+# stderr を吸わない設定では痕跡ゼロになっていた。永続 audit-trail (`.rite-stop-guard-diag.log`)
+# にも append することで post-hoc 検出を可能にする。append 失敗時は WARNING に縮退する。
+trap 'rc=$?; echo "WARNING: pre-tool-bash-guard.sh: ERR trap fired (fail-open silent allow); upstream command rc=$rc — review jq / mktemp / state-path-resolve sites" >&2; { _diag_log="${PWD}/.rite-stop-guard-diag.log"; echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] pattern1-3-err-trap-fail-open: rc=$rc cmd_prefix=${COMMAND:0:80}" >> "$_diag_log" 2>/dev/null || echo "WARNING: pre-tool-bash-guard.sh: audit-trail append failed ($_diag_log)" >&2; }; exit 0' ERR
 
 # --- Heredoc-safe command extraction ---
 # Strip heredoc content to avoid false positives on text inside commit messages,

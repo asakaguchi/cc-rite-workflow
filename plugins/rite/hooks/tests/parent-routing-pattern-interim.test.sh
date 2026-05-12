@@ -717,12 +717,15 @@ else
   # TC-7a-2: halt rule body の action verb 存在を pin (`halt softly` 等への weak 表現変更検出)。
   # TC-7a / TC-7a-1 は count / phrase 存在を pin するが、halt 自体の action (中断 / abort /
   # exit non-zero) が「skip silently」「continue with warning」等に書き換えられても match する。
-  # `[interview:error]` halt 発火位置の周辺 10 行に action verb が存在することを確認する。
-  if awk '/\[interview:error\].*halt/ {flag=1; n=0; next} flag && n<10 {print; n++}' "$CREATE_MD" \
-       | grep -qE '(exit non-zero|abort|中断|workflow を停止|Issue 未作成のまま停止)'; then
-    pass "TC-7a-2: create.md halt rule 直後 10 行内に action verb (exit non-zero / abort / 中断 / 停止) が存在 (semantic weakening 防止)"
+  # `[interview:error]` halt 発火 line + 後続 10 行 (合計 11 行) に action verb が存在することを確認する。
+  # verified-review C-2 (#926): 旧実装は match 行を `next` で skip していたが、create.md:66 では同一行内に
+  # action verb (`Issue 未作成のまま停止`) があるため、match 行も含める必要がある。
+  # action verb 集合に `manual intervention` も追加 (Halt rule の正規表現に含まれているため)。
+  if awk '/\[interview:error\].*halt/ {flag=1; n=0; print; next} flag && n<10 {print; n++}' "$CREATE_MD" \
+       | grep -qE '(exit non-zero|abort|中断|workflow を停止|Issue 未作成のまま停止|manual intervention)'; then
+    pass "TC-7a-2: create.md halt rule 行 + 直後 10 行内に action verb (exit non-zero / abort / 中断 / 停止 / manual intervention) が存在 (semantic weakening 防止)"
   else
-    fail "TC-7a-2: create.md halt rule 直後 10 行内に action verb が見つからない (halt が skip / continue に弱化された可能性)"
+    fail "TC-7a-2: create.md halt rule 行 + 直後 10 行内に action verb が見つからない (halt が skip / continue に弱化された可能性)"
   fi
 
   # pre-check-routing.md Item 0 dispatcher は `[interview:error]` matched 時の Phase 2 進入禁止経路を持つ。
@@ -752,6 +755,44 @@ else
     fail "TC-7d: pre-check-routing.md に Positional 制約 note 'fenced code block 内マッチを無視' が見つからない (anti-pattern example 誤発火リスク)"
   fi
 fi
+
+# ----------------------------------------------------------------------------
+# TC-8 (verified-review I-8 #926): `--preserve-error-count` invocation negative assertion
+# 旧 4-site-symmetry test 削除に伴い「`--preserve-error-count` flag が bash invocation で
+# 使われていない」を mechanical に pin する手段が失われていた。本 TC で negative assertion を追加し、
+# 誤って caller の `flow-state-update.sh` 呼び出しに flag が復活した時に即検出する。
+# 注: ADR §3.1 rationale 説明として prose 内に literal で出現する `--preserve-error-count` は許容する
+# (forward note としての historical context)。pin 対象は「bash invocation 行で `flow-state-update.sh`
+# または `$HOOK` の引数として使用される flag」のみ。
+# ----------------------------------------------------------------------------
+for _f in "$CREATE_MD" "$INTERVIEW_MD"; do
+  # bash invocation 行で flag が使われている場合のみ FAIL (rationale 引用は許容)
+  if grep -qE '(flow-state-update\.sh|\$HOOK).*--preserve-error-count' "$_f"; then
+    fail "TC-8: $(basename "$_f") の bash invocation に '--preserve-error-count' flag が残存 (ADR §3.1 で撤去済のはず、dead-code 復活リスク)"
+  else
+    pass "TC-8: $(basename "$_f") の bash invocation から '--preserve-error-count' flag が不在 (dead-code 不在を mechanical pin、rationale 引用は許容)"
+  fi
+done
+
+# ----------------------------------------------------------------------------
+# TC-9 (verified-review I-9 #926): cross-file matrix assertion for VERY FIRST + BEFORE
+# 旧 step0-immediate-bash-presence.test.sh の matrix-style 検証 (`VERY FIRST` + `BEFORE any text
+# output` を全 caller で同時 pin) が削除されたため、1 site だけ書き換えても他で pass する silent
+# loss path が残っていた。本 TC で cross-file matrix を簡潔に復元する。
+# 注: create-interview は parent-routing pattern 適用後 sub-skill であり「caller の Mandatory After
+# section」自体を持たないため pin 対象外。caller 側 4 sites (cleanup / ingest / create / register /
+# decompose) のみを matrix の対象とする。本 PR の scope では register/decompose を pin せず、
+# cleanup/ingest/create の 3 sites で対称性を確認する (PR-3 以降で register/decompose も
+# parent-routing 化された後、本 TC を拡張する想定)。
+# ----------------------------------------------------------------------------
+for _f in "$CLEANUP_MD" "$INGEST_MD" "$CREATE_MD"; do
+  _bn=$(basename "$_f")
+  if grep -qE 'VERY FIRST' "$_f" && grep -qE 'BEFORE any text output' "$_f"; then
+    pass "TC-9: $_bn に 'VERY FIRST' + 'BEFORE any text output' が同時存在 (cross-file matrix invariant)"
+  else
+    fail "TC-9: $_bn の 'VERY FIRST' または 'BEFORE any text output' が欠落 (cross-file matrix invariant 違反)"
+  fi
+done
 
 DRIFT_HINT="\
 parent-routing pattern interim invariant が崩れています。

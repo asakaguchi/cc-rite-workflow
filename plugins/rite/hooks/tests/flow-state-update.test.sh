@@ -51,6 +51,18 @@ write_session_id() {
   echo "$2" > "$1/.rite-session-id"
 }
 
+# Per-session state file path lookup (verified-review C-1 #926)
+# T-LOCK-6 などで `state_file=$(state_path "$TD" "$SID" 2)` 形式で使用される。
+# atomic-write.test.sh:99 と同じ実装。
+state_path() {
+  local d="$1" sid="$2" schema="${3:-2}"
+  if [ "$schema" = "2" ]; then
+    echo "$d/.rite/sessions/${sid}.flow-state"
+  else
+    echo "$d/.rite-flow-state"
+  fi
+}
+
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 

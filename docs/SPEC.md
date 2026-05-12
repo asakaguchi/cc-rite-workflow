@@ -1275,7 +1275,7 @@ Sourced (not executed) library that provides the canonical phase-transition grap
 
 Standalone check that validates Terminal Completion sections in `/rite:issue:create` sub-skills. Sentinel form requirements differ by sub-skill (parent-routing pattern 移行に伴う非対称性、ADR `docs/designs/parent-routing-unification.md` 参照):
 
-- **`create-register` / `create-decompose`** (Layer 1+3 active): sentinel markers must be wrapped in HTML comments (`<!-- [create:completed:{…}] -->`, `<!-- [create:skipped] -->`, etc.), so the user-visible final line remains the human-readable completion message rather than a bare sentinel token.
+- **`create-register` / `create-decompose`** (Layer 1+3 active): sentinel markers must be wrapped in HTML comments (`<!-- [create:completed:{N}] -->`), so the user-visible final line remains the human-readable completion message rather than a bare sentinel token. *(verified-review I-12 #926: 旧版は `<!-- [create:skipped] -->` を例示していたが、本リポに存在しない fabricated sentinel のため削除済み。実在する wrapped sentinel は `[create:completed:{N}]` のみ)*
 - **`create-interview`** (parent-routing pattern 適用済、PR-2): sentinel markers must use the **bare bracket form** (`[interview:completed]`, `[interview:skipped]`, `[interview:error]`)。HTML-comment 形式は Check 3 の negative assertion で **積極的に reject** される (script 反転、bare-bracket only enforce)。
 
 Non-regression contract: the raw string `[create:completed:` / `[interview:` must still appear in the file for grep-based hooks to keep matching.

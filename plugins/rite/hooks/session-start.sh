@@ -373,7 +373,17 @@ fi
 # (`.rite-flow-state.legacy.<timestamp>.<pid>.<random>`). Adding
 # `-not -name '.rite-flow-state.legacy.*'` keeps the migration backup as the
 # manual-recovery source of truth (#679, #747 cycle 4 CRITICAL).
+# verified-review C-4 (#926, 降格 Important): advisory lock file の cleanup を追加。
+# flow-state-update.sh が `${FLOW_STATE}.lock` を作成し、session が clean に終了しない
+# 経路 (Ctrl-C / SIGKILL / crash) では session-end.sh:317-326 の cleanup が走らず disk 残留。
+# legacy `.rite-flow-state.lock` と per-session `.rite/sessions/*.flow-state.lock` の両方を
+# stale cleanup 対象に追加 (-mmin +60 で十分古いものに限定し、活動中 session の lock 削除を避ける)。
 find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -not -name ".rite-flow-state.legacy.*" -type f -mmin +1 -delete 2>/dev/null || true
+# Stale lock file cleanup (legacy + per-session)
+find "$STATE_ROOT" -maxdepth 1 -name ".rite-flow-state.lock" -type f -mmin +60 -delete 2>/dev/null || true
+if [ -d "$STATE_ROOT/.rite/sessions" ]; then
+    find "$STATE_ROOT/.rite/sessions" -maxdepth 1 -name "*.flow-state.lock" -type f -mmin +60 -delete 2>/dev/null || true
+fi
 
 # Extract all fields in a single jq call for efficiency
 # cycle 11 MEDIUM F-04: unit separator \x1f (\037) を使用する理由。tab は POSIX IFS whitespace

@@ -242,7 +242,16 @@ WARN_MSG
         TMP_FILE=""
     fi
     if [ -n "$TMP_FILE" ]; then
-        chmod 600 "$TMP_FILE" 2>/dev/null || :
+        # verified-review I-4 (#926): chmod 600 silent failure を flow-state-update.sh の _chmod_err pattern と対称化。
+        # 旧 `chmod 600 ... 2>/dev/null || :` は permission denied / read-only fs を完全 silent suppress していた。
+        _chmod_err=$(mktemp /tmp/rite-session-end-chmod-err-XXXXXX 2>/dev/null) || _chmod_err=""
+        if ! chmod 600 "$TMP_FILE" 2>"${_chmod_err:-/dev/null}"; then
+            echo "WARNING: session-end: chmod 600 $TMP_FILE が失敗 — tmpfile が 644 等で残る可能性" >&2
+            if [ -n "$_chmod_err" ] && [ -s "$_chmod_err" ]; then
+                head -3 "$_chmod_err" | sed 's/^/  /' >&2
+            fi
+        fi
+        [ -n "$_chmod_err" ] && rm -f "$_chmod_err"
     fi
     _deactivate_jq_err=$(mktemp /tmp/rite-session-end-deactivate-jq-err-XXXXXX 2>/dev/null) || _deactivate_jq_err=""
     if [ -n "$TMP_FILE" ] && jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \

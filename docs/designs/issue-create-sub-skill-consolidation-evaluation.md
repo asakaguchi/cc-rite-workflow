@@ -91,7 +91,7 @@ References (`commands/issue/references/`): 7 ファイル
 | リスク | 緩和策 |
 |--------|--------|
 | Asymmetric Fix Transcription (Wiki 累積23回目) | S3/S4 は本 PR で未実施 (Section 8.3 参照)。caller 側 (create.md / create-interview.md) に handoff contract slim 化への追従が不要だったため (grep で 0 件確認済)、片肺更新リスクは実体化せず |
-| `--active true` / `--preserve-error-count` の silent omit (Wiki: AND 論理防御層チェーン無効化) | bash literal 不変、`parent-routing-pattern-interim.test.sh` で 4 引数の存在を機械検証 (旧 `4-site-symmetry.test.sh` は ADR PR-2 で retire 済) |
+| `--active true` の silent omit (Wiki: AND 論理防御層チェーン無効化) | bash literal 不変、`parent-routing-pattern-interim.test.sh` で create-interview の patch invocation 出現回数 ≥3 + `--if-exists` 出現を機械検証 (旧 `4-site-symmetry.test.sh` は ADR PR-2 で retire 済、`--preserve-error-count` は ADR §3.1 で撤去済) |
 | Markdown heading hierarchy skip (Wiki: PR #808-#809) | slim 化後の `## / ###` 連続性を目視確認 |
 | Protected 区域削除 (Wiki: 圧縮 AC は protected 区域から逆算) | 4 必須引数表 / `--if-exists` 非対称表 / path 非対称表は削除対象外 |
 
@@ -108,9 +108,8 @@ References (`commands/issue/references/`): 7 ファイル
 ### 8.2 機能契約保持の検証
 
 - `bash plugins/rite/hooks/tests/parent-routing-pattern-interim.test.sh` → exit 0 (旧 `4-site-symmetry.test.sh` PASS 8 / FAIL 0 は ADR PR-2 で retire 済の historical record)
-- 4 必須引数 (`--phase` / `--active` / `--next` / `--preserve-error-count`) が両 caller で grep -c >= 1 で機械検証
-- `create.md`: `--phase`(8) `--active`(6) `--next`(8) `--preserve-error-count`(2)
-- `create-interview.md`: `--phase`(5) `--active`(4) `--next`(5) `--preserve-error-count`(7)
+- 必須引数 (`--phase` / `--active` / `--next`) は `parent-routing-pattern-interim.test.sh` の TC-1 (`flow-state-update.sh patch` 出現回数 ≥3) + TC-6b-3/6b-4 (`--active` / `--next` count ≥ `create_patch_count`) で機械検証
+- *(verified-review I-14 #926: 旧版は `--preserve-error-count` を 4 必須引数と表記し、`create.md`/`create-interview.md` の flag count 表 (`--phase(8)` 等) を historical 値として残置していたが、本 PR で `--preserve-error-count` は両 caller から撤去済 (`error-count-runtime-reference.test.sh` の reader 不在 invariant で機械検証)、flag count も stale だったため削除)*
 
 ### 8.3 計画逸脱
 

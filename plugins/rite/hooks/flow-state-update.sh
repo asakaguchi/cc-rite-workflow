@@ -65,14 +65,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # (`_validate-helpers.sh` の DEFAULT_HELPERS 配列対象外なため、ここで explicit guard する)。
 _session_ownership_source_err=$(mktemp /tmp/rite-fs-source-err-XXXXXX 2>/dev/null) || _session_ownership_source_err=""
 if ! source "$SCRIPT_DIR/session-ownership.sh" 2>"${_session_ownership_source_err:-/dev/null}"; then
-  echo "WARNING: source session-ownership.sh が失敗しました — get_state_session_id / parse_iso8601_to_epoch が未定義になる可能性があります" >&2
+  echo "ERROR: source session-ownership.sh が失敗しました — get_state_session_id / parse_iso8601_to_epoch が未定義のままです" >&2
   if [ -n "$_session_ownership_source_err" ] && [ -s "$_session_ownership_source_err" ]; then
     head -3 "$_session_ownership_source_err" | sed 's/^/  /' >&2
   fi
   echo "  対処: $SCRIPT_DIR/session-ownership.sh の存在 / 構文 / permission を確認してください" >&2
-  echo "  影響: session ownership check が無効化されますが、後続の jq invocation で間接 catch される" >&2
+  echo "  影響: session ownership check が load-bearing なため fail-fast します (silent skip は cross-session state 上書きリスク)" >&2
+  [ -n "$_session_ownership_source_err" ] && rm -f "$_session_ownership_source_err"
+  exit 1
 fi
 [ -n "$_session_ownership_source_err" ] && rm -f "$_session_ownership_source_err"
+# verified-review I-1 (#926): source 成功でも helper 関数が定義されていない可能性に備えて type check で defense-in-depth
+if ! type get_state_session_id >/dev/null 2>&1 || ! type parse_iso8601_to_epoch >/dev/null 2>&1; then
+  echo "ERROR: session-ownership.sh は source 成功しましたが get_state_session_id / parse_iso8601_to_epoch が未定義です (helper deploy 不整合の可能性)" >&2
+  echo "  対処: $SCRIPT_DIR/session-ownership.sh の内容を確認してください" >&2
+  exit 1
+fi
 
 # Helper script existence check (/ HIGH + F-09 MEDIUM):
 # 旧実装は state-path-resolve.sh のみ fail-fast 検査していたが、本 helper は以下の helper を `bash <missing>`
@@ -735,7 +743,7 @@ case "$MODE" in
       # 直前で truncate して前 site の stale stderr が `head -1` 経由で誤誘導しないようにする
       # (`error-count-runtime-reference.test.sh` の `: > "$_err" # truncate before reuse` canonical pattern と同型、構造 anchor で参照)。後段 site の判定経路は前 site
       # の進行 gate (`if [[ $_existing_active == "true" ]]`) で限定的だが、defense-in-depth で全 site truncate。
-      [ -n "$_ownership_jq_err" ] && : > "$_ownership_jq_err"
+      [ -n "$_ownership_jq_err" ] && { : > "$_ownership_jq_err" 2>/dev/null || true; }  # I-7 (#926): fault-tolerant truncate
       if ! _existing_active=$(jq -r '.active // false' "$FLOW_STATE" 2>"${_ownership_jq_err:-/dev/null}"); then
         echo "WARNING: session-ownership .active 抽出 jq 失敗 ($FLOW_STATE) — fail-safe で active=true として扱い ownership check を強制" >&2
         [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -3 "$_ownership_jq_err" | sed 's/^/  /' >&2
@@ -746,7 +754,7 @@ case "$MODE" in
         _existing_active="true"
       fi
       if [[ "$_existing_active" == "true" ]]; then
-        [ -n "$_ownership_jq_err" ] && : > "$_ownership_jq_err"  # IMP-3: truncate before reuse
+        [ -n "$_ownership_jq_err" ] && { : > "$_ownership_jq_err" 2>/dev/null || true; }  # IMP-3 + I-7 (#926): truncate before reuse, fault-tolerant
         if ! _existing_sid=$(get_state_session_id "$FLOW_STATE" 2>"${_ownership_jq_err:-/dev/null}"); then
           echo "WARNING: session-ownership session_id 抽出失敗 ($FLOW_STATE) — defaulting to empty" >&2
           [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -3 "$_ownership_jq_err" | sed 's/^/  /' >&2
@@ -754,14 +762,14 @@ case "$MODE" in
         fi
         if [[ -n "$_existing_sid" && "$_existing_sid" != "$SESSION" ]]; then
           # Different session owns the state — check staleness
-          [ -n "$_ownership_jq_err" ] && : > "$_ownership_jq_err"  # IMP-3: truncate before reuse
+          [ -n "$_ownership_jq_err" ] && { : > "$_ownership_jq_err" 2>/dev/null || true; }  # IMP-3 + I-7 (#926): truncate before reuse, fault-tolerant
           if ! _updated_at=$(jq -r '.updated_at // empty' "$FLOW_STATE" 2>"${_ownership_jq_err:-/dev/null}"); then
             echo "WARNING: session-ownership .updated_at 抽出 jq 失敗 ($FLOW_STATE) — defaulting to empty (staleness check 不能)" >&2
             [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -3 "$_ownership_jq_err" | sed 's/^/  /' >&2
             _updated_at=""
           fi
           if [[ -n "$_updated_at" ]]; then
-            [ -n "$_ownership_jq_err" ] && : > "$_ownership_jq_err"  # IMP-3: truncate before reuse
+            [ -n "$_ownership_jq_err" ] && { : > "$_ownership_jq_err" 2>/dev/null || true; }  # IMP-3 + I-7 (#926): truncate before reuse, fault-tolerant
             if ! _state_epoch=$(parse_iso8601_to_epoch "$_updated_at" 2>"${_ownership_jq_err:-/dev/null}"); then
               echo "WARNING: session-ownership ISO8601 parse 失敗 ($_updated_at) — defaulting epoch=0 (stale 扱い)" >&2
               [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -3 "$_ownership_jq_err" | sed 's/^/  /' >&2

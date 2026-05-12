@@ -130,8 +130,8 @@ _resolve_session_id() {
   if [[ -n "$provided_sid" ]]; then
     local validated
     local _resolve_sid_err
-    # mktemp 失敗時の silent fallback を排除 (writer/reader 対称化 doctrine、verify-terminal-output.sh:145-153
-    # と同型)。stderr 退避が失われると helper internal error (jq missing / fork failure / PATH error)
+    # mktemp 失敗時の silent fallback を排除 (writer/reader 対称化 doctrine、`verify-terminal-output.sh` の
+    # `_git_err mktemp 失敗時 WARNING + fail-fast` pattern と同型、構造 anchor で参照)。stderr 退避が失われると helper internal error (jq missing / fork failure / PATH error)
     # と UUID format 違反 (`ERROR: invalid session_id format`) を区別できず、開発者が誤った原因究明をする。
     # /tmp inode 枯渇 / read-only fs は通常運用では発火しないが、発火時は fail-fast に倒して環境問題を
     # 明示する。chmod 失敗の `_chmod_err` (L443) / `_chmod600_err` (L555) は best-effort 経路で silent
@@ -501,6 +501,39 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
   unset _flow_state_dir
 fi
 
+# >>> DRIFT-CHECK ANCHOR: flow_state_advisory_lock <<<
+# HIGH-1 race condition defense: 個人開発で並列 session 運用は実質ないが、resume /
+# cleanup / wiki ingest / sprint team-execute / dogfooding で同一 session_id を持つ
+# 複数プロセスが衝突する経路があるため、advisory lock (fd 9) を取得する。lock は
+# script exit 時に kernel が自動解放する (`exec 9>` で開いた fd の lifecycle = process)。
+# flock 不在環境 (busybox 等) では non-locking mode で best-effort 継続 (WARNING を emit
+# して silent skip を回避)。
+#
+# Position: mkdir block の後に置く理由は、新規 session で `.rite/sessions/` 親ディレクトリが
+# 不在の場合に `exec 9>` が ENOENT で失敗するため。FLOW_STATE 決定直後ではなく、parent dir
+# 作成後 (Validation の前) で lock を取得する。
+if command -v flock >/dev/null 2>&1; then
+  FLOW_STATE_LOCK_FILE="${FLOW_STATE}.lock"
+  _lock_open_err=$(mktemp /tmp/rite-fs-lock-open-err-XXXXXX 2>/dev/null) || _lock_open_err=""
+  if exec 9>"$FLOW_STATE_LOCK_FILE" 2>"${_lock_open_err:-/dev/null}"; then
+    if ! flock -w 30 9; then
+      echo "ERROR: flow-state advisory lock 取得に失敗しました (30s timeout): $FLOW_STATE_LOCK_FILE" >&2
+      echo "  対処: 別 session が同じ flow-state を更新中です。完了を待つか手動で lock file を削除してください" >&2
+      [ -n "$_lock_open_err" ] && rm -f "$_lock_open_err"
+      exit 1
+    fi
+    [ -n "$_lock_open_err" ] && rm -f "$_lock_open_err"
+  else
+    echo "WARNING: lock file open に失敗 ($FLOW_STATE_LOCK_FILE)。non-locking mode で続行 (HIGH-1 race protection なし)" >&2
+    if [ -n "$_lock_open_err" ] && [ -s "$_lock_open_err" ]; then
+      head -3 "$_lock_open_err" | sed 's/^/  /' >&2
+    fi
+    [ -n "$_lock_open_err" ] && rm -f "$_lock_open_err"
+  fi
+else
+  echo "WARNING: flock command 不在 (busybox 等)。non-locking mode で続行 (HIGH-1 race protection なし)" >&2
+fi
+
 # --- Validation ---
 case "$MODE" in
   create)
@@ -641,7 +674,7 @@ case "$MODE" in
       _ownership_jq_err=$(mktemp /tmp/rite-fs-own-jq-err-XXXXXX 2>/dev/null) || _ownership_jq_err=""
       # silent-failure-hunter IMP-3: 4 jq site で同一 tempfile を reuse するため、各 site の
       # 直前で truncate して前 site の stale stderr が `head -1` 経由で誤誘導しないようにする
-      # (error-count-runtime-reference.test.sh:129 と同型 pattern)。後段 site の判定経路は前 site
+      # (`error-count-runtime-reference.test.sh` の `: > "$_err"  # truncate before reuse` canonical pattern と同型、構造 anchor で参照)。後段 site の判定経路は前 site
       # の進行 gate (`if [[ $_existing_active == "true" ]]`) で限定的だが、defense-in-depth で全 site truncate。
       [ -n "$_ownership_jq_err" ] && : > "$_ownership_jq_err"
       if ! _existing_active=$(jq -r '.active // false' "$FLOW_STATE" 2>"${_ownership_jq_err:-/dev/null}"); then
@@ -766,6 +799,11 @@ case "$MODE" in
     else
       _create_filter="$_create_base"
     fi
+    # HIGH-4 (writer/reader 対称化): create-mode atomic write jq の stderr を退避し、failure 時に
+    # 詳細を pass-through する。L391-394 で $ACTIVE allowlist 防御済みのため、parse error は実質
+    # 発生しにくいが、`$BRANCH` 等の動的値で予期せぬ制御文字が混入する経路への defense-in-depth として、
+    # PREV_PHASE 抽出 jq の `_jq_err` 退避 pattern と対称化する。
+    _create_write_jq_err=$(mktemp /tmp/rite-fs-create-write-jq-err-XXXXXX 2>/dev/null) || _create_write_jq_err=""
     if jq -n \
       --argjson active "$ACTIVE" \
       --argjson issue "$ISSUE" \
@@ -778,10 +816,11 @@ case "$MODE" in
       --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
       --arg sid "$SESSION" \
       "$_create_filter" \
-      > "$TMP_STATE"; then
+      > "$TMP_STATE" 2>"${_create_write_jq_err:-/dev/null}"; then
       if ! mv "$TMP_STATE" "$FLOW_STATE"; then
         _log_flow_diag "flow_state_mv_failed mode=create phase=$PHASE issue=$ISSUE"
         rm -f "$TMP_STATE"
+        [ -n "$_create_write_jq_err" ] && rm -f "$_create_write_jq_err"
         echo "ERROR: mv failed (create mode): $TMP_STATE -> $FLOW_STATE (disk full / permission denied / EXDEV?)" >&2
         exit 1
       fi
@@ -789,8 +828,13 @@ case "$MODE" in
       _log_flow_diag "flow_state_jq_failed mode=create phase=$PHASE issue=$ISSUE"
       rm -f "$TMP_STATE"
       echo "ERROR: jq create failed" >&2
+      if [ -n "$_create_write_jq_err" ] && [ -s "$_create_write_jq_err" ]; then
+        head -3 "$_create_write_jq_err" | sed 's/^/  /' >&2
+      fi
+      [ -n "$_create_write_jq_err" ] && rm -f "$_create_write_jq_err"
       exit 1
     fi
+    [ -n "$_create_write_jq_err" ] && rm -f "$_create_write_jq_err"
     ;;
   patch)
     # Build jq filter: always update phase, timestamp, next_action; conditionally update active.
@@ -833,11 +877,23 @@ case "$MODE" in
       JQ_FILTER="$JQ_FILTER | .session_id = \$session"
       JQ_ARGS+=(--arg session "$SESSION")
     fi
-    # 同対称: create mode の mv 失敗 diag コメント (mv 失敗 path 対称診断) を参照
-    if jq "${JQ_ARGS[@]}" -- "$JQ_FILTER" "$FLOW_STATE" > "$TMP_STATE"; then
+    # HIGH-2 (writer/reader 対称化 doctrine): create mode L697 の `[[ ! -s ]]` 空ファイル guard を
+    # patch mode にも適用。0-byte ファイルが残った場合 (race / 部分書き込み crash) に
+    # 「parse failed」一律文言で原因不明になる経路を塞ぐ。
+    if [[ ! -s "$FLOW_STATE" ]]; then
+      _log_flow_diag "flow_state_empty_file mode=patch phase=$PHASE"
+      echo "ERROR: flow-state file exists but is empty (patch mode): $FLOW_STATE" >&2
+      echo "  対処: 既存ファイルを削除してから create-mode で再初期化、または /rite:resume で復旧" >&2
+      exit 1
+    fi
+    # HIGH-3 (writer/reader 対称化 doctrine): patch-mode jq の stderr を退避し、failure 時に
+    # 詳細を pass-through する。create mode の `_jq_err` 退避 pattern と対称化。
+    _patch_jq_err=$(mktemp /tmp/rite-fs-patch-jq-err-XXXXXX 2>/dev/null) || _patch_jq_err=""
+    if jq "${JQ_ARGS[@]}" -- "$JQ_FILTER" "$FLOW_STATE" > "$TMP_STATE" 2>"${_patch_jq_err:-/dev/null}"; then
       if ! mv "$TMP_STATE" "$FLOW_STATE"; then
         _log_flow_diag "flow_state_mv_failed mode=patch phase=$PHASE"
         rm -f "$TMP_STATE"
+        [ -n "$_patch_jq_err" ] && rm -f "$_patch_jq_err"
         echo "ERROR: mv failed (patch mode): $TMP_STATE -> $FLOW_STATE (disk full / permission denied / EXDEV?)" >&2
         exit 1
       fi
@@ -845,17 +901,31 @@ case "$MODE" in
       _log_flow_diag "flow_state_jq_failed mode=patch phase=$PHASE"
       rm -f "$TMP_STATE"
       echo "ERROR: flow-state file parse failed (patch mode): $FLOW_STATE" >&2
+      if [ -n "$_patch_jq_err" ] && [ -s "$_patch_jq_err" ]; then
+        head -3 "$_patch_jq_err" | sed 's/^/  /' >&2
+      fi
+      [ -n "$_patch_jq_err" ] && rm -f "$_patch_jq_err"
       exit 1
     fi
+    [ -n "$_patch_jq_err" ] && rm -f "$_patch_jq_err"
     ;;
   increment)
-    # 同対称: create mode の mv 失敗 diag コメント (mv 失敗 path 対称診断) を参照
+    # HIGH-2 (writer/reader 対称化): increment mode にも空ファイル guard を適用。
+    if [[ ! -s "$FLOW_STATE" ]]; then
+      _log_flow_diag "flow_state_empty_file mode=increment field=$FIELD"
+      echo "ERROR: flow-state file exists but is empty (increment mode): $FLOW_STATE" >&2
+      echo "  対処: 既存ファイルを削除してから create-mode で再初期化、または /rite:resume で復旧" >&2
+      exit 1
+    fi
+    # HIGH-3 (writer/reader 対称化): increment-mode jq の stderr を退避。
+    _inc_jq_err=$(mktemp /tmp/rite-fs-inc-jq-err-XXXXXX 2>/dev/null) || _inc_jq_err=""
     if jq --arg field "$FIELD" \
        '.[$field] = ((.[$field] // 0) + 1)' \
-       "$FLOW_STATE" > "$TMP_STATE"; then
+       "$FLOW_STATE" > "$TMP_STATE" 2>"${_inc_jq_err:-/dev/null}"; then
       if ! mv "$TMP_STATE" "$FLOW_STATE"; then
         _log_flow_diag "flow_state_mv_failed mode=increment field=$FIELD"
         rm -f "$TMP_STATE"
+        [ -n "$_inc_jq_err" ] && rm -f "$_inc_jq_err"
         echo "ERROR: mv failed (increment mode): $TMP_STATE -> $FLOW_STATE (disk full / permission denied / EXDEV?)" >&2
         exit 1
       fi
@@ -863,7 +933,12 @@ case "$MODE" in
       _log_flow_diag "flow_state_jq_failed mode=increment field=$FIELD"
       rm -f "$TMP_STATE"
       echo "ERROR: flow-state file parse failed (increment mode): $FLOW_STATE" >&2
+      if [ -n "$_inc_jq_err" ] && [ -s "$_inc_jq_err" ]; then
+        head -3 "$_inc_jq_err" | sed 's/^/  /' >&2
+      fi
+      [ -n "$_inc_jq_err" ] && rm -f "$_inc_jq_err"
       exit 1
     fi
+    [ -n "$_inc_jq_err" ] && rm -f "$_inc_jq_err"
     ;;
 esac

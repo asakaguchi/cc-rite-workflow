@@ -229,6 +229,11 @@ fi
 # と同時に新規導入された catastrophic halt sentinel で、historical HTML-comment form を持たない
 # (= revert 経路自体が存在しない) ため、negative assertion に含める必要がない。AC-3 non-regression (raw string presence)
 # 側では `[interview:(completed|skipped|error)]` の 3 alternation で error を含む点に注意。
+#
+# Orthogonality (pr-test-analyzer IMP-4): `[interview:error]` の sentinel raw presence は本テストでは
+# Test 8 範囲外。`parent-routing-pattern-interim.test.sh` TC-7c (pre-check-routing.md 4 sentinel
+# dispatcher grep target pin) が 3 sentinel literal (`[interview:completed]` / `[interview:skipped]`
+# / `[interview:error]`) すべての存在を pin する。coverage 自体は split されているが既存。
 echo "Test 8: Regression — HTML-commented [interview:*] form should fail"
 setup_plugin_tree "$TEST_DIR/test8" "true" "html"
 if bash "$HOOK" --quiet --repo-root "$TEST_DIR/test8" >/dev/null 2>&1; then

@@ -21,21 +21,47 @@ export _RITE_HOOK_RUNNING_PRETOOL=1
 
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+# silent-failure-hunter M-7: 旧 `... 2>/dev/null || true` は source 失敗を完全 silent suppress していた。
+# flow-state-update.sh IMP-4 (L62-71) の WARNING emit pattern と writer/reader/caller 3 層対称化。
+_hook_preamble_err=$(mktemp /tmp/rite-pretool-preamble-err-XXXXXX 2>/dev/null) || _hook_preamble_err=""
+if ! source "$SCRIPT_DIR/hook-preamble.sh" 2>"${_hook_preamble_err:-/dev/null}"; then
+  echo "WARNING: pre-tool-bash-guard: source hook-preamble.sh が失敗 (deploy regression / syntax error / permission?)" >&2
+  if [ -n "$_hook_preamble_err" ] && [ -s "$_hook_preamble_err" ]; then
+    head -3 "$_hook_preamble_err" | sed 's/^/  /' >&2
+  fi
+fi
+[ -n "$_hook_preamble_err" ] && rm -f "$_hook_preamble_err"
 # Single source of truth for create_* lifecycle phase names (#501 HIGH).
 # Provides rite_phase_is_create_lifecycle_in_progress() used by Pattern 5.
-source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>/dev/null || true
+_phase_whitelist_err=$(mktemp /tmp/rite-pretool-whitelist-err-XXXXXX 2>/dev/null) || _phase_whitelist_err=""
+if ! source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>"${_phase_whitelist_err:-/dev/null}"; then
+  echo "WARNING: pre-tool-bash-guard: source phase-transition-whitelist.sh が失敗 (helper deploy regression)" >&2
+  if [ -n "$_phase_whitelist_err" ] && [ -s "$_phase_whitelist_err" ]; then
+    head -3 "$_phase_whitelist_err" | sed 's/^/  /' >&2
+  fi
+  echo "  影響: Pattern 5 の lifecycle predicate (rite_phase_is_create_lifecycle_in_progress) が inline glob fallback に倒れる" >&2
+fi
+[ -n "$_phase_whitelist_err" ] && rm -f "$_phase_whitelist_err"
 
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 
+# silent-failure-hunter M-6: 旧 `... 2>/dev/null || VAR=""` は malformed JSON (Claude Code bug /
+# partial flush) を silent suppress していた。攻撃面となる可能性があるため `[ -n "$INPUT" ] && [ -z "$VAR" ]`
+# で「INPUT は来たが parse 不能」状態を WARNING emit + 明示的 allow + audit-trail にする。
 # Only inspect Bash tool calls
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null) || TOOL_NAME=""
+if [ -n "$INPUT" ] && [ -z "$TOOL_NAME" ]; then
+  echo "WARNING: pre-tool-bash-guard: INPUT は非空だが tool_name が parse できません (malformed JSON?)" >&2
+fi
 if [ "$TOOL_NAME" != "Bash" ]; then
   exit 0
 fi
 
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null) || COMMAND=""
+if [ -n "$INPUT" ] && [ -z "$COMMAND" ]; then
+  echo "WARNING: pre-tool-bash-guard: INPUT は非空だが tool_input.command が parse できません (malformed JSON?)" >&2
+fi
 if [ -z "$COMMAND" ]; then
   exit 0
 fi
@@ -52,11 +78,21 @@ case "$TRANSCRIPT_PATH" in
   */subagents/*) IS_SUBAGENT=1 ;;
 esac
 
-# --- Fail-open for pattern matching stage ---
+# --- Fail-open for pattern matching stage (scope-limited) ---
 # If heredoc extraction or pattern matching crashes (e.g., edge-case failures with
 # large multiline input), allow the command rather than blocking it.
 # Placed after JSON parsing (which has its own || fallbacks) to preserve
 # error detection for malformed hook input (TC-016).
+#
+# ⚠️ Scope: ERR trap covers Pattern 1-3 (regex case match) and Pattern 5
+# (gh issue create lifecycle detection). It is **explicitly disarmed** after
+# Pattern 5 (`trap - ERR` below) so that Pattern 4 (reviewer git denylist)
+# and charter-lint strict block exit with fail-closed semantics. Without
+# this disarm, the strict-mode `exit 2` BLOCK at L539 could be silently
+# downgraded to exit 0 by any failing command in the trap scope (charter-lint
+# `if ! jq ... ; then printf fallback; fi; exit 2` defends against this for
+# the BLOCK path, but the disarm provides defense-in-depth for the entire
+# strict-mode branch).
 trap 'exit 0' ERR
 
 # --- Heredoc-safe command extraction ---
@@ -167,7 +203,19 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
     STATE_ROOT_PATH=""
     if [ -n "$CWD" ] && [ -d "$CWD" ]; then
-      STATE_ROOT_PATH=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT_PATH="$CWD"
+      # silent-failure-hunter M-8: 旧 `... 2>/dev/null || STATE_ROOT_PATH="$CWD"` は stderr 完全捨て +
+      # silent CWD fallback。state-path-resolve.sh が deploy regression で失敗した場合、Mode B AND-logic が
+      # 誤った state file を読みに行く可能性がある (HIGH-5 と同根の observability gap)。
+      _state_path_err=$(mktemp /tmp/rite-pretool-state-path-err-XXXXXX 2>/dev/null) || _state_path_err=""
+      if ! STATE_ROOT_PATH=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>"${_state_path_err:-/dev/null}"); then
+        echo "WARNING: pre-tool-bash-guard: state-path-resolve.sh 失敗、CWD fallback に倒します ($CWD)" >&2
+        if [ -n "$_state_path_err" ] && [ -s "$_state_path_err" ]; then
+          head -3 "$_state_path_err" | sed 's/^/  /' >&2
+        fi
+        echo "  影響: schema_version=2 環境で Mode B AND-logic が誤った state file を参照する可能性" >&2
+        STATE_ROOT_PATH="$CWD"
+      fi
+      [ -n "$_state_path_err" ] && rm -f "$_state_path_err"
     fi
     # State file lookup: if $STATE_ROOT_PATH is empty (e.g., CWD outside git repo and
     # state-path-resolve.sh failed), skip the check entirely — no state file means no
@@ -180,20 +228,44 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     # schema/SID resolution here. Mode B AND-logic (.active=true && phase=create_*)
     # below operates on whichever file the resolver returns.
     if [ -n "$STATE_ROOT_PATH" ]; then
-      if STATE_FILE_PATH=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT_PATH" 2>/dev/null); then
+      _resolver_err=$(mktemp /tmp/rite-pretool-resolver-err-XXXXXX 2>/dev/null) || _resolver_err=""
+      if STATE_FILE_PATH=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT_PATH" 2>"${_resolver_err:-/dev/null}"); then
         :
       else
-        # Resolver failed (helper deploy regression / path validation rejection).
-        # Surface the failure under RITE_DEBUG so deploy regressions are observable
-        # — the legacy fallback would otherwise let Mode B AND-logic operate on the
-        # wrong state file silently when schema_version=2 is configured (Issue #681 F-01).
-        [ -n "${RITE_DEBUG:-}" ] && echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: _resolve-flow-state-path.sh failed, falling back to legacy path" \
-          >> "$STATE_ROOT_PATH/.rite-flow-debug.log" 2>/dev/null || true
+        # HIGH-5 修正: 旧実装は `[ -n "${RITE_DEBUG:-}" ]` gate で production 環境では完全 silent。
+        # helper deploy regression で resolver が失敗し続けた場合、schema_version=2 環境で legacy path
+        # に書き続ける silent state drift (Issue #681 F-01) を observability gap として残していた。
+        # gate を撤廃し常時 WARNING emit + debug log への append で observability を確保する。
+        echo "WARNING: pre-tool-bash-guard: _resolve-flow-state-path.sh が失敗、legacy path に fallback します" >&2
+        if [ -n "$_resolver_err" ] && [ -s "$_resolver_err" ]; then
+          head -3 "$_resolver_err" | sed 's/^/  /' >&2
+        fi
+        echo "  影響: schema_version=2 環境では legacy `.rite-flow-state` に書き込まれ Mode B AND-logic が誤動作する可能性" >&2
+        # debug log への append は best-effort (audit-trail として残す)
+        if ! echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: _resolve-flow-state-path.sh failed, falling back to legacy path" \
+          >> "$STATE_ROOT_PATH/.rite-flow-debug.log" 2>/dev/null; then
+          : # debug log 書き込み失敗は WARNING 既出のため silent skip
+        fi
         STATE_FILE_PATH="${STATE_ROOT_PATH}/.rite-flow-state"
       fi
+      [ -n "$_resolver_err" ] && rm -f "$_resolver_err"
       if [ -f "$STATE_FILE_PATH" ]; then
-        STATE_PHASE=$(jq -r '.phase // empty' "$STATE_FILE_PATH" 2>/dev/null) || STATE_PHASE=""
-        STATE_ACTIVE=$(jq -r '.active // false' "$STATE_FILE_PATH" 2>/dev/null) || STATE_ACTIVE="false"
+        # silent failure 防止: 旧 `|| STATE_*=""` は jq 失敗時に Pattern 5 全体を silent skip させ、
+        # state file 破損時に `gh issue create` 直叩きを silent allow する経路を作っていた。
+        # flow-state-update.sh writer の jq stderr 退避 doctrine と対称化して fail-fast にする。
+        _state_jq_err=$(mktemp /tmp/rite-pretool-state-jq-err-XXXXXX 2>/dev/null) || _state_jq_err=""
+        if ! STATE_PHASE=$(jq -r '.phase // empty' "$STATE_FILE_PATH" 2>"${_state_jq_err:-/dev/null}"); then
+          echo "WARNING: pre-tool-bash-guard: jq .phase 抽出失敗 ($STATE_FILE_PATH)" >&2
+          [ -n "$_state_jq_err" ] && [ -s "$_state_jq_err" ] && head -3 "$_state_jq_err" | sed 's/^/  /' >&2
+          STATE_PHASE=""
+        fi
+        [ -n "$_state_jq_err" ] && : > "$_state_jq_err"  # truncate before reuse
+        if ! STATE_ACTIVE=$(jq -r '.active // false' "$STATE_FILE_PATH" 2>"${_state_jq_err:-/dev/null}"); then
+          echo "WARNING: pre-tool-bash-guard: jq .active 抽出失敗 ($STATE_FILE_PATH)" >&2
+          [ -n "$_state_jq_err" ] && [ -s "$_state_jq_err" ] && head -3 "$_state_jq_err" | sed 's/^/  /' >&2
+          STATE_ACTIVE="false"
+        fi
+        [ -n "$_state_jq_err" ] && rm -f "$_state_jq_err"
         # Use query function from phase-transition-whitelist.sh as the single source of truth
         # for create_* lifecycle phase names. Fall back to inline glob check when the helper
         # is unavailable (e.g., bash < 4.2 where phase-transition-whitelist.sh exits early).
@@ -217,6 +289,11 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     fi
   fi
 fi
+
+# >>> DRIFT-CHECK ANCHOR: err_trap_disarm_after_pattern5 <<<
+# Pattern 5 終了。ここで ERR trap を解除し、Pattern 4 (reviewer git denylist) と
+# charter-lint strict block を fail-closed にする。
+trap - ERR
 
 # Pattern 4: Reviewer subagent running state-mutating git commands (Issue #442).
 # Scope: only when IS_SUBAGENT=1 (transcript_path contains "/subagents/").
@@ -474,7 +551,20 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     elif [[ "$COMMAND" =~ -F[[:space:]]+([^[:space:]]+) ]]; then
       CHARTER_FILE="${BASH_REMATCH[1]}"
       if [ -f "$CHARTER_FILE" ] && [ -r "$CHARTER_FILE" ]; then
-        CHARTER_MSG=$(cat "$CHARTER_FILE" 2>/dev/null) || CHARTER_MSG=""
+        # HIGH-6 修正: 旧実装 `cat ... 2>/dev/null || CHARTER_MSG=""` は I/O error (EACCES /
+        # EBADF / FIFO timeout 等) を完全 silent suppress していた。CHARTER_MSG="" になると
+        # 後段の `[ -n "$CHARTER_MSG" ]` で false 判定され charter check が silent skip し、
+        # I/O error と「lint passed」が区別不能だった。stderr 退避 + 失敗時 WARNING + skip に変更。
+        _cat_err=$(mktemp /tmp/rite-pretool-cat-err-XXXXXX 2>/dev/null) || _cat_err=""
+        if ! CHARTER_MSG=$(cat "$CHARTER_FILE" 2>"${_cat_err:-/dev/null}"); then
+          echo "[charter-lint] WARN: -F file の cat に失敗: $CHARTER_FILE (charter check skipped)" >&2
+          if [ -n "$_cat_err" ] && [ -s "$_cat_err" ]; then
+            head -3 "$_cat_err" | sed 's/^/  /' >&2
+          fi
+          CHARTER_MSG=""
+          CHARTER_CHECK=0
+        fi
+        [ -n "$_cat_err" ] && rm -f "$_cat_err"
       else
         echo "[charter-lint] WARN: -F file path unresolvable: $CHARTER_FILE (charter check skipped)" >&2
         CHARTER_CHECK=0
@@ -536,9 +626,10 @@ if [ -z "$BLOCKED_PATTERN" ]; then
       if [ "$STRICT_MODE" = "true" ]; then
         echo "[charter-lint] BLOCK: commit message contains charter-forbidden pattern: $CHARTER_HIT" >&2
         echo "[charter-lint] See: plugins/rite/skills/rite-workflow/references/simplification-charter.md" >&2
-        # jq must succeed; if it fails the script's `set -e` + `trap 'exit 0' ERR` would
-        # silently downgrade the BLOCK to allow. Force fail-closed by emitting a minimal
-        # JSON deny inline and exiting 2 explicitly.
+        # Defense-in-depth: ERR trap は Pattern 5 終了直後の `trap - ERR` で解除済みのため、
+        # jq 失敗が ERR trap 経由で silent allow に倒れる経路は構造的に閉じている。
+        # 以下の `if !; ... fi; exit 2` パターンは、ERR trap disarm が将来 regression で
+        # 後退した場合の defense-in-depth として残す (BLOCK の fail-closed semantics を二重保証)。
         if ! jq -n --arg reason "BLOCKED (commit-msg-charter-violation): commit message contains charter-forbidden pattern: $CHARTER_HIT. Rewrite without literal cycle numbers / Issue references / verified-review cycle text. See plugins/rite/skills/rite-workflow/references/simplification-charter.md." \
           '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $reason}}'; then
           echo "[charter-lint] FATAL: jq invocation failed; emitting fallback deny" >&2

@@ -60,6 +60,13 @@ echo "=== TC-1: error_count runtime reader 不在の invariant ==="
 # Allowlist (本テスト自身および error_count を保持・migrate する責務を持つ helper):
 #   - flow-state-update.sh: error_count を保持する helper 自身 (writer / preserve 判定)
 #   - migrate-flow-state.sh: legacy schema → 新 schema migration の filter
+#
+# ⚠️ allowlist regex の suffix match 注意 (pr-test-analyzer IMP-2):
+# 本 regex は `(flow-state-update|migrate-flow-state)\.sh$` の suffix match のため、将来
+# `migrate-flow-state-v2.sh` / `migrate-flow-state-aggregator.sh` のような派生 helper を追加すると
+# silent に allowlist 内に slip-through する。これは現状 dead-code 想定 (call site 0) だが、
+# 派生 helper を意図的に対象外にしたい場合は本 regex を絶対 path match に変更すること
+# (例: `/flow-state-update\.sh$|/migrate-flow-state\.sh$`)。本 PR では現状の suffix match で十分。
 ALLOWLIST_REGEX='/(flow-state-update|migrate-flow-state)\.sh$'
 
 # 検索範囲: hooks/ 配下の .sh ファイル (本 test 自身 = tests/ 配下は除外)

@@ -46,7 +46,14 @@ _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
 _resolve_failed=0
 STATE_FILE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
 if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
-  grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
+  # silent-failure-hunter M-3: grep の rc=1 (no match) と rc>=2 (IO error) を区別する
+  # (flow-state-update.sh L284-290 の `_grep_classify_rc` pattern と writer/reader 対称化)。
+  # 旧 `|| true` は grep IO error も silent suppress していた。
+  grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2
+  _grep_classify_rc=$?
+  if [ "$_grep_classify_rc" -ge 2 ]; then
+    echo "WARNING: session-end: resolver stderr の grep が IO error で失敗 (rc=$_grep_classify_rc)" >&2
+  fi
 fi
 if [ "$_resolve_failed" -eq 1 ]; then
   STATE_FILE="$STATE_ROOT/.rite-flow-state"
@@ -67,7 +74,20 @@ fi
 if [ -f "$STATE_FILE" ]; then
     # Session ownership check (#173): only deactivate own/legacy/stale state.
     # Other session's fresh state (within 2h) must not be modified.
-    _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="own"
+    # silent-failure-hunter M-1: 旧 `... 2>/dev/null || _ownership="own"` は
+    # helper 関数定義漏れ / jq 失敗時に silent "own" 扱いで別 session の state を上書きする経路。
+    # flow-state-update.sh IMP-4 (L62-71) の WARNING emit pattern と対称化し、fail-safe `"other"`
+    # (= 触らずに残す) に倒す。"own と誤判定 → 他 session deactivate" より
+    # "other と倒し → 触らずに残す" の方が安全。
+    _ownership_err=$(mktemp /tmp/rite-session-end-ownership-err-XXXXXX 2>/dev/null) || _ownership_err=""
+    if ! _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>"${_ownership_err:-/dev/null}"); then
+      echo "WARNING: session-end: check_session_ownership 失敗 — fail-safe 'other' に倒します (state を触らない)" >&2
+      if [ -n "$_ownership_err" ] && [ -s "$_ownership_err" ]; then
+        head -3 "$_ownership_err" | sed 's/^/  /' >&2
+      fi
+      _ownership="other"
+    fi
+    [ -n "$_ownership_err" ] && rm -f "$_ownership_err"
     if [ "$_ownership" = "other" ]; then
         # Another session's active state — do not modify
         echo "rite: skipping deactivation (state belongs to another session)" >&2
@@ -80,8 +100,23 @@ if [ -f "$STATE_FILE" ]; then
     # how to recover. session-end always proceeds with deactivation regardless.
     # Phase classification is delegated to phase-transition-whitelist.sh helpers as the
     # single source of truth (#501 HIGH).
-    _state_phase=$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null) || _state_phase=""
-    _state_active=$(jq -r '.active // false' "$STATE_FILE" 2>/dev/null) || _state_active="false"
+    # silent-failure-hunter M-2: 旧 `... 2>/dev/null || _state_*=""/false` は corrupt JSON 時に
+    # silent fallback で lifecycle unfinished WARNING ブロックが skip され、ユーザーが
+    # 「create / cleanup lifecycle が未完了」の最終警告を受け取れずに session 終了する経路。
+    # flow-state-update.sh session-ownership block (L647-684) の WARNING emit pattern と対称化。
+    _state_jq_err=$(mktemp /tmp/rite-session-end-state-jq-err-XXXXXX 2>/dev/null) || _state_jq_err=""
+    if ! _state_phase=$(jq -r '.phase // empty' "$STATE_FILE" 2>"${_state_jq_err:-/dev/null}"); then
+      echo "WARNING: session-end: jq .phase 抽出失敗 ($STATE_FILE) — lifecycle unfinished warning が skip される可能性" >&2
+      [ -n "$_state_jq_err" ] && [ -s "$_state_jq_err" ] && head -3 "$_state_jq_err" | sed 's/^/  /' >&2
+      _state_phase=""
+    fi
+    [ -n "$_state_jq_err" ] && : > "$_state_jq_err"
+    if ! _state_active=$(jq -r '.active // false' "$STATE_FILE" 2>"${_state_jq_err:-/dev/null}"); then
+      echo "WARNING: session-end: jq .active 抽出失敗 ($STATE_FILE) — lifecycle unfinished warning が skip される可能性" >&2
+      [ -n "$_state_jq_err" ] && [ -s "$_state_jq_err" ] && head -3 "$_state_jq_err" | sed 's/^/  /' >&2
+      _state_active="false"
+    fi
+    [ -n "$_state_jq_err" ] && rm -f "$_state_jq_err"
     _lifecycle_unfinished_kind=""
     if [ "$_state_active" = "true" ]; then
         # >>> DRIFT-CHECK ANCHOR: lifecycle_predicate_session_end_create <<<
@@ -168,7 +203,18 @@ WARN_MSG
     # Stale-file cleanup (long-running sessions / crash leftovers) is out of scope
     # for this Issue per Issue #680 §4.3 (handled by a follow-up).
     if [[ "$STATE_FILE" == *"/.rite/sessions/"*".flow-state" ]] && [ -f "$STATE_FILE" ]; then
-        rm -f "$STATE_FILE" 2>/dev/null || true
+        # silent-failure-hunter M-4: 旧 `rm -f ... 2>/dev/null || true` は permission denied 等の
+        # rm 失敗を完全 silent suppress していた。per-session file が leak する経路を可視化する。
+        # stop-guard.sh 撤去 (#675) 以降、leak 検出機構は audit-trail に依存するため WARNING emit する。
+        _rm_err=$(mktemp /tmp/rite-session-end-rm-err-XXXXXX 2>/dev/null) || _rm_err=""
+        if ! rm -f "$STATE_FILE" 2>"${_rm_err:-/dev/null}"; then
+          echo "WARNING: session-end: per-session file の削除に失敗 ($STATE_FILE) — file leak の可能性" >&2
+          if [ -n "$_rm_err" ] && [ -s "$_rm_err" ]; then
+            head -3 "$_rm_err" | sed 's/^/  /' >&2
+          fi
+          echo "  対処: $STATE_FILE の permission / ownership を確認し、手動で削除してください" >&2
+        fi
+        [ -n "$_rm_err" ] && rm -f "$_rm_err"
     fi
 fi
 

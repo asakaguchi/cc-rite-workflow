@@ -77,7 +77,7 @@ parent-routing pattern (ADR `docs/designs/parent-routing-unification.md`) に統
 2. **Narrative ending**: `Caller Return Protocol` セクションで「caller は何をすべきか」を散文で記述。imperative phrasing (`MUST proceed to Self-check`, `BEFORE any text output`) を含む
 3. **Bare bracket sentinel** (turn 末尾): `[interview:completed]` / `[interview:skipped]` / `[interview:error]` を **独立行**として最終行に出力。HTML-comment wrapping (`<!-- ... -->`) は廃止
 
-**Canonical example**: `commands/issue/parent-routing.md` (lines 333-339) と `commands/issue/branch-setup.md` (lines 131-137) が byte-equivalent な canonical form を提供する。新規 sub-skill / 既存 sub-skill の本形式への移行時は ADR §3 + 上記 2 file を SoT として参照する。
+**Canonical example**: `commands/issue/parent-routing.md` の `## Defense-in-Depth: Flow State Update (Before Return)` セクション (bash patch block + bullet-list result + narrative ending) と `commands/issue/branch-setup.md` の同名セクションが byte-equivalent な canonical form を提供する。具体的な行範囲は ADR `docs/designs/parent-routing-unification.md` §3 (parent-routing.md:325-357 / branch-setup.md:123-153) を SoT として参照する。本ファイルでは H2 anchor 名で構造的に cite し、行番号 drift 耐性を維持する。新規 sub-skill / 既存 sub-skill の本形式への移行時は ADR §3 + 上記 2 file を SoT として参照する。
 
 **Layer 適用 mapping**:
 - Layer 1 (Mandatory After section in orchestrator): parent-routing pattern では sub-skill 自身が flow-state patch を実行するため、Mandatory After section 自体が不要になる経路 (sub-skill 内製化)

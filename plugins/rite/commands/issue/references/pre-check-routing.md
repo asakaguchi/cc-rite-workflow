@@ -8,7 +8,7 @@
 >
 > **Migration history**: `[CONTEXT] INTERVIEW_DONE=1` plain-text marker と HTML-comment form `<!-- [interview:*] -->` は parent-routing pattern 移行 (ADR `docs/designs/parent-routing-unification.md`) で廃止され、`[interview:*]` は bare bracket form に統一済。`[interview:error]` は catastrophic Pre-flight failure を表す halt sentinel として parent-routing pattern と同時に追加された (詳細は ADR 参照)。
 >
-> **Enforcement coupling**: protocol violation 時は `manual_fallback_adopted` workflow_incident sentinel が **stdout** に emit され (`workflow-incident-emit.sh:110,113` の `printf '[CONTEXT] WORKFLOW_INCIDENT=1; ...'`)、Claude Code Bash tool 経由で conversation context にマージされて Phase 5.4.4.1 で grep 検出される (AC-7)。historical: 旧 `stop-guard.sh` (撤去済み、commit `e2dfae0`) が場面 (b) で機械検証していたが、stop hook 撤去後は post-hoc workflow_incident 検出に責務が集約された。
+> **Enforcement coupling**: protocol violation 時は `manual_fallback_adopted` workflow_incident sentinel が **stdout** に emit され (`workflow-incident-emit.sh` 内の `printf '[CONTEXT] WORKFLOW_INCIDENT=1; ...'` 2 site、行番号 drift 回避のため literal で参照)、Claude Code Bash tool 経由で conversation context にマージされて Phase 5.4.4.1 で grep 検出される (AC-7)。historical: 旧 `stop-guard.sh` (撤去済み、commit `e2dfae0`) が場面 (b) で機械検証していたが、stop hook 撤去後は post-hoc workflow_incident 検出に責務が集約された。
 
 ## Evaluation context (2 場面で同じチェックリストを使う)
 
@@ -16,7 +16,7 @@
 |---|---|
 | まだワークフロー中途。`NO` は「次の継続ステップを実行すべき」を意味する | 終端到達確認。`NO` は **protocol violation** (工程を飛ばして停止しようとしている) |
 
-場面 (a) では Item 1-3 が `NO` でも正常 (まだ Issue 未作成段階)。場面 (b) では 4 項目すべて `YES` が turn 終了の必要条件。
+場面 (a) では Item 1-3 が `NO` でも正常 (まだ Issue 未作成段階)。場面 (b) では **Item 1-3 すべて** `YES` が turn 終了の必要条件 (Item 0 は routing dispatcher で YES/NO 集計には含まれない — L23/L36 と整合)。
 
 ## Procedure
 

@@ -17,7 +17,7 @@
 #                         create-interview Pre-flight の存在は parent-routing-pattern-interim.test.sh が代替 pin する。
 #   7. --active true minimal presence : `--active true` が commands/issue/ 配下に 4 file 以上で出現
 #                         (旧 "4-site 対称化"。Layer 6 撤去で本来の意味を失い、現在は file 単位の存在 check のみで
-#                         body L221 のラベル変更と整合。**PR-7 で本 layer 全廃予定**。comment-analyzer 9 / pr-test I-5 対応)
+#                         `echo "Layer 7 (--active true minimal presence): ..."` ラベル行と整合。**PR-7 で本 layer 全廃予定**)
 #   8. case arm         : phase-transition-whitelist.sh の declare -gA テーブル + rite_phase_transition_allowed 関数
 #
 # 各 layer について以下を verify:

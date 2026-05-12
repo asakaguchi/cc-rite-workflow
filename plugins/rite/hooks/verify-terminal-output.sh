@@ -136,6 +136,16 @@ else
     _git_err=""
   fi
   if _git_root=$(git rev-parse --show-toplevel 2>"${_git_err:-/dev/null}"); then
+    # silent-failure-hunter M-5 defense-in-depth: stdout に multi-line が混入する経路 (`safe.directory`
+    # 警告等の実装差) への対策として、先頭行のみを採用して trim する。さらに `[ -d ]` で directory
+    # 検証を追加し、誤った path を REPO_ROOT に設定しないようにする。
+    _git_root="${_git_root%%$'\n'*}"
+    if [ -z "$_git_root" ] || [ ! -d "$_git_root" ]; then
+      echo "ERROR: git rev-parse --show-toplevel が valid directory を返しませんでした: '$_git_root'" >&2
+      echo "  対処: git binary の出力に予期せぬ警告行が混入していないか確認してください" >&2
+      [ -n "$_git_err" ] && rm -f "$_git_err"
+      exit 1
+    fi
     REPO_ROOT="$_git_root"
     CHECK_PATHS_PREFIX="plugins/rite"
   else

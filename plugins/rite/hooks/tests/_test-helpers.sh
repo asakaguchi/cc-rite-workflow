@@ -70,16 +70,27 @@
 
 # Resolve PLUGIN_ROOT from the test's SCRIPT_DIR (tests/ is 2 levels below).
 # plugins/rite/hooks/tests/<test>.sh -> plugins/rite (2 up)
+#
+# silent-failure-hunter M-9: subshell `cd` 失敗時に caller's CWD が silent fallback として
+# pwd で出力される経路を排除。set -e は subshell 内では発動するが、command substitution
+# `$(_helpers_resolve_*)` の caller 側で rc が無視される invocation 形では「caller's CWD が
+# REPO_ROOT として silent 採用」される。explicit fail-fast に変更。
 _helpers_resolve_plugin_root() {
   local script_dir="${1:?script_dir required}"
-  (cd "$script_dir/../.." && pwd)
+  (cd "$script_dir/../.." 2>/dev/null && pwd) || {
+    echo "ERROR: _helpers_resolve_plugin_root: cannot resolve plugin_root from $script_dir" >&2
+    exit 1
+  }
 }
 
 # Resolve REPO_ROOT from the test's SCRIPT_DIR (tests/ is 4 levels below repo root).
 # plugins/rite/hooks/tests/<test>.sh -> repo root (4 up)
 _helpers_resolve_repo_root() {
   local script_dir="${1:?script_dir required}"
-  (cd "$script_dir/../../../.." && pwd)
+  (cd "$script_dir/../../../.." 2>/dev/null && pwd) || {
+    echo "ERROR: _helpers_resolve_repo_root: cannot resolve repo_root from $script_dir" >&2
+    exit 1
+  }
 }
 
 # Counters — declared here so callers can rely on them existing after `source`.
@@ -147,7 +158,7 @@ assert_grep() {
   fi
   # mktemp 失敗時は fail-fast (IMP-1 対応): 旧実装の silent fallback (`|| _ag_err=""`) は
   # /tmp 制限環境で GREP_IO_ERROR sentinel を silent 無効化する。
-  # error-count-runtime-reference.test.sh:88-92 の canonical pattern と対称化。
+  # error-count-runtime-reference.test.sh の `_mktemp + fail-fast` canonical pattern と対称化 (行番号 drift 回避のため構造 anchor で参照)。
   local _ag_err
   if ! _ag_err=$(mktemp /tmp/rite-assert-grep-err-XXXXXX); then
     fail "$label [MKTEMP_FAILED] (mktemp failed for grep stderr capture — /tmp inode exhaustion / read-only fs / permission denied)"

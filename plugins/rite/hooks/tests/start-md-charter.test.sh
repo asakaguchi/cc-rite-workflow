@@ -41,9 +41,10 @@
 #     - META_FIXTURES counter == 6 (drift 検出アンカー)
 #     - identification power の regression (mutation 実装が壊れた場合) を CI で機械検出
 #
-# Note (PR C 以降):
-#   `MUST execute in the SAME response turn` ≥ 30 / `DO NOT stop` ≥ 30 の追加 assert は
-#   PR C で 2 文 contract phrase が導入された後に別 PR で追加する。本 PR では実装しない。
+# Note (PR C 実装済み, Issue #899):
+#   `MUST execute in the SAME response turn` ≥ 17 / `DO NOT stop, do NOT re-invoke` ≥ 17 の
+#   下限 assert を PR C で有効化済み (Mandatory After heading 17 件 + 各 1 件導入による現状値を ratchet)。
+#   設計ドキュメント上の最終目標 ≥ 30 は Pre-write block への展開を含む後続 PR で引き上げる予定。
 
 set -euo pipefail
 
@@ -338,6 +339,29 @@ if [ "$mandatory_count" -ge 17 ]; then
   pass "Lower: \`Mandatory After\` heading-anchor count >= 17 (actual=$mandatory_count)"
 else
   fail "Lower: \`Mandatory After\` heading-anchor count >= 17 (actual=$mandatory_count, expected >=17)"
+fi
+
+# Issue #899 (PR C) で導入された 2 文 contract phrase の下限 assert。
+# 設計ドキュメント L52-53 では「標準化 phrase ≥ 30」と記述されているが、PR C 直接の射程では
+# Mandatory After heading 17 件 + 各 heading に 1 件ずつ 2 文 contract を導入したため、現状値は
+# `MUST execute in the SAME response turn` 17 / `DO NOT stop, do NOT re-invoke` 17 となる。
+# 30 件への引き上げは後続 PR (D/E/F/G1/G2/H) で Pre-write block へも phrase を展開してから別 PR で
+# 行う。本 PR ではまず 17 件 (= Mandatory After heading 数) を保護する ratchet 下限として pin する
+# (PR C 完了の現状値 ≤ 後続 PR の追加分、で削除のみを catch)。
+# 旧コメント (本ファイル冒頭 L45-46) の「PR C で 2 文 contract phrase が導入された後に別 PR で
+# 追加する」記述に従い、本 PR C で 17 ≥ assert を有効化する。
+must_execute_count=$({ grep -oE 'MUST execute in the SAME response turn' "$START_MD" || true; } | wc -l | tr -d ' ')
+if [ "$must_execute_count" -ge 17 ]; then
+  pass "Lower: \`MUST execute in the SAME response turn\` count >= 17 (actual=$must_execute_count)"
+else
+  fail "Lower: \`MUST execute in the SAME response turn\` count >= 17 (actual=$must_execute_count, expected >=17)"
+fi
+
+do_not_stop_count=$({ grep -oE 'DO NOT stop, do NOT re-invoke' "$START_MD" || true; } | wc -l | tr -d ' ')
+if [ "$do_not_stop_count" -ge 17 ]; then
+  pass "Lower: \`DO NOT stop, do NOT re-invoke\` count >= 17 (actual=$do_not_stop_count)"
+else
+  fail "Lower: \`DO NOT stop, do NOT re-invoke\` count >= 17 (actual=$do_not_stop_count, expected >=17)"
 fi
 
 # === 対称性 assert: flow-state-update.sh create の 5 引数 ===

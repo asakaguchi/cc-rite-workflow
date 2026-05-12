@@ -241,10 +241,13 @@ if [ -z "$BLOCKED_PATTERN" ]; then
           head -3 "$_resolver_err" | sed 's/^/  /' >&2
         fi
         echo "  影響: schema_version=2 環境では legacy `.rite-flow-state` に書き込まれ Mode B AND-logic が誤動作する可能性" >&2
-        # debug log への append は best-effort (audit-trail として残す)
+        # verified-review cycle 9 silent-failure-hunter I-6 (#926) 対応:
+        # 旧 `: # silent skip` は flow-state-update.sh:468-472 M-4 で確立した
+        # 「diag log 書込み失敗を完全 silent にせず WARNING を 1 行 emit」doctrine と非対称。
+        # `.rite-flow-debug.log` が group-writable でない / disk full で audit-trail が複数行欠落する。
         if ! echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: _resolve-flow-state-path.sh failed, falling back to legacy path" \
           >> "$STATE_ROOT_PATH/.rite-flow-debug.log" 2>/dev/null; then
-          : # debug log 書き込み失敗は WARNING 既出のため silent skip
+          echo "WARNING: pre-tool-bash-guard: debug log append failed (audit-trail unavailable for fallback event)" >&2
         fi
         STATE_FILE_PATH="${STATE_ROOT_PATH}/.rite-flow-state"
       fi

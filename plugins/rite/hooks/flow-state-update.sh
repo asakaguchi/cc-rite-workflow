@@ -434,10 +434,19 @@ _chmod_err=""
 _chmod600_err=""
 _ownership_jq_err=""
 _existing_parent_err=""
+# verified-review cycle 9 Critical C-2 (silent-failure-hunter, #926) 対応:
+# create/patch/increment mode 各々の jq stderr tempfile も atomic cleanup の対象に追加。
+# 旧実装は cycle 48 F-01 で 7 変数までしか cover せず、本 3 変数は mktemp 直後〜inline rm の race
+# window で SIGINT/SIGTERM/SIGHUP が届いた場合に orphan として `/tmp` に残留する設計欠陥があった
+# (doctrine 約束「全 tempfile lifecycle cover」との factual mismatch)。
+_create_write_jq_err=""
+_patch_jq_err=""
+_inc_jq_err=""
 _rite_flow_state_atomic_cleanup() {
   rm -f "${TMP_STATE:-}" "${_mkdir_err:-}" "${_jq_err:-}" \
         "${_chmod_err:-}" "${_chmod600_err:-}" "${_ownership_jq_err:-}" \
-        "${_existing_parent_err:-}"
+        "${_existing_parent_err:-}" "${_create_write_jq_err:-}" \
+        "${_patch_jq_err:-}" "${_inc_jq_err:-}"
 }
 trap 'rc=$?; _rite_flow_state_atomic_cleanup; exit $rc' EXIT
 trap '_rite_flow_state_atomic_cleanup; exit 130' INT
@@ -489,8 +498,10 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
   _chmod_err=$(mktemp /tmp/rite-fs-chmod-err-XXXXXX 2>/dev/null) || _chmod_err=""
   if ! chmod 700 "$_flow_state_dir" 2>"${_chmod_err:-/dev/null}"; then
     echo "WARNING: chmod 700 failed: $_flow_state_dir (best-effort skip — defense-in-depth depth lost on non-POSIX/busybox env)" >&2
+    # verified-review cycle 9 silent-failure-hunter M-7 (#926): head -1 → head -3 統一
+    # (ACL/SELinux 環境で kernel diagnostic が複数行になるケースを cover、他 site の head -3 doctrine に整合)
     if [ -n "$_chmod_err" ] && [ -s "$_chmod_err" ]; then
-      head -1 "$_chmod_err" | sed 's/^/  /' >&2
+      head -3 "$_chmod_err" | sed 's/^/  /' >&2
     fi
   fi
   [ -n "$_chmod_err" ] && rm -f "$_chmod_err"
@@ -514,21 +525,25 @@ fi
 # 作成後 (Validation の前) で lock を取得する。
 if command -v flock >/dev/null 2>&1; then
   FLOW_STATE_LOCK_FILE="${FLOW_STATE}.lock"
-  _lock_open_err=$(mktemp /tmp/rite-fs-lock-open-err-XXXXXX 2>/dev/null) || _lock_open_err=""
-  if exec 9>"$FLOW_STATE_LOCK_FILE" 2>"${_lock_open_err:-/dev/null}"; then
+  # verified-review cycle 9 Critical C-1 対応 (#926):
+  # 旧実装は `exec 9>"$LOCK" 2>"${_lock_open_err:-/dev/null}"` で fd 9 と fd 2 の両方を redirect していた。
+  # `exec` (コマンドなし) は POSIX/Bash 仕様で current shell に redirection を適用するため、`2>...` が
+  # **親 shell の fd 2 を恒久 redirect** する副作用があり、後段の `rm -f "$_lock_open_err"` で error
+  # message が消失する silent failure を引き起こしていた (flow-state-update.test.sh で 2 件 FAIL の根本原因)。
+  # 修正: 親 shell の fd 9 を確実に開きたい以上、`exec 9>` の stderr 退避はそのままでは不可能。
+  # diagnostic 詳細を諦めて redirect を削除する (lock file open 失敗は permission denied / ENOSPC /
+  # ENOENT 等が主因で、kernel の error メッセージは fd 2 経由で stderr に直接出力される)。
+  # Source: bash(1) man page "REDIRECTION" / [Linux Journal: Bash Redirections Using Exec]
+  if exec 9>"$FLOW_STATE_LOCK_FILE"; then
     if ! flock -w 30 9; then
       echo "ERROR: flow-state advisory lock 取得に失敗しました (30s timeout): $FLOW_STATE_LOCK_FILE" >&2
-      echo "  対処: 別 session が同じ flow-state を更新中です。完了を待つか手動で lock file を削除してください" >&2
-      [ -n "$_lock_open_err" ] && rm -f "$_lock_open_err"
+      echo "  対処: 別 session が同じ flow-state を更新中です。fuser/lsof で lock holder の PID を" >&2
+      echo "  特定し、停止後に lock file を削除してください (lock file 単独削除は fd lifecycle 内では無効)" >&2
       exit 1
     fi
-    [ -n "$_lock_open_err" ] && rm -f "$_lock_open_err"
   else
     echo "WARNING: lock file open に失敗 ($FLOW_STATE_LOCK_FILE)。non-locking mode で続行 (HIGH-1 race protection なし)" >&2
-    if [ -n "$_lock_open_err" ] && [ -s "$_lock_open_err" ]; then
-      head -3 "$_lock_open_err" | sed 's/^/  /' >&2
-    fi
-    [ -n "$_lock_open_err" ] && rm -f "$_lock_open_err"
+    echo "  原因候補: permission denied / parent dir 不在 / disk full (kernel error は上記行直前に出力)" >&2
   fi
 else
   echo "WARNING: flock command 不在 (busybox 等)。non-locking mode で続行 (HIGH-1 race protection なし)" >&2
@@ -634,8 +649,9 @@ fi
 _chmod600_err=$(mktemp /tmp/rite-fs-chmod600-err-XXXXXX 2>/dev/null) || _chmod600_err=""
 if ! chmod 600 "$TMP_STATE" 2>"${_chmod600_err:-/dev/null}"; then
   echo "WARNING: chmod 600 failed: $TMP_STATE (best-effort skip — defense-in-depth depth lost on non-POSIX/busybox env)" >&2
+  # verified-review cycle 9 silent-failure-hunter M-7 (#926): head -1 → head -3 統一 (M-7 と対称)
   if [ -n "$_chmod600_err" ] && [ -s "$_chmod600_err" ]; then
-    head -1 "$_chmod600_err" | sed 's/^/  /' >&2
+    head -3 "$_chmod600_err" | sed 's/^/  /' >&2
   fi
 fi
 [ -n "$_chmod600_err" ] && rm -f "$_chmod600_err"

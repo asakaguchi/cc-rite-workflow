@@ -608,7 +608,8 @@ assert_grep "TC-6h: create.md に Mandatory After Delegation の 'BEFORE any tex
 # を独立 grep (TC-6g + TC-6h の個別 grep) だけでは catch できない経路を補強する。
 # 1 行内の前後関係 (`MUST proceed to Self-check` … `VERY FIRST cognitive action` … `BEFORE` … `narrative`) を
 # 句結合で固定することで、片方の phrase が silent 弱化されたケースを catch する。
-# Source: create.md L359 の load-bearing prose で実証されている canonical phrasing。
+# Source: create.md の "MUST proceed to Self-check" load-bearing prose で実証されている canonical phrasing
+# (行番号は verified-review cycle 累積編集で drift するため structural anchor で参照、#926 comment-analyzer I-5)。
 assert_grep "TC-6h-2: create.md Mandatory After Delegation prose に 'MUST proceed to Self-check' … 'VERY FIRST cognitive action' … 'BEFORE' … 'narrative' の句結合が同一行に存在 (partial weakening detection)" \
   "$CREATE_MD" \
   'MUST proceed to Self-check.*VERY FIRST cognitive action.*BEFORE.*narrative'

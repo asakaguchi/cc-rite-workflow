@@ -9,10 +9,22 @@ export _RITE_HOOK_RUNNING_SESSIONEND=1
 
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
-source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
-# Single source of truth for create_* lifecycle phase names (#501 HIGH).
-source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>/dev/null || true
+# verified-review cycle 9 Critical C-1 (silent-failure-hunter, #926) 対応:
+# 旧実装 `source ... 2>/dev/null || true` 3 site は同 PR で pre-tool-bash-guard.sh / flow-state-update.sh
+# が WARNING emit + stderr-tempfile pattern に置換されたのに対し、session-end.sh のみ doctrine から exempt
+# だった。helper の deploy regression / syntax error 時に root cause が完全 silent に消えるため、
+# 同型の mktemp + WARNING + head -3 pattern に統一する。
+for _helper in hook-preamble.sh session-ownership.sh phase-transition-whitelist.sh; do
+  _src_err=$(mktemp /tmp/rite-session-end-src-err-XXXXXX 2>/dev/null) || _src_err=""
+  if ! source "$SCRIPT_DIR/$_helper" 2>"${_src_err:-/dev/null}"; then
+    echo "WARNING: session-end: source $_helper failed (deploy regression / syntax error / permission?)" >&2
+    if [ -n "$_src_err" ] && [ -s "$_src_err" ]; then
+      head -3 "$_src_err" | sed 's/^/  /' >&2
+    fi
+  fi
+  [ -n "$_src_err" ] && rm -f "$_src_err"
+done
+unset _helper _src_err
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
@@ -169,8 +181,15 @@ WARN_MSG
 
     # mktemp with PID-based fallback (consistent with stop-guard.sh)
     TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
-    # trap is inside this block: only active when STATE_FILE exists and TMP_FILE is created
-    trap 'rm -f "$TMP_FILE" 2>/dev/null' EXIT TERM INT
+    # verified-review cycle 9 silent-failure-hunter I-1 (#926) 対応:
+    # 旧 `trap 'rm -f ... 2>/dev/null' EXIT TERM INT` は HUP signal を含まず、SSH 切断 / terminal close
+    # 時に TMP_FILE が leak した。flow-state-update.sh:442-445 の 4-line signal-specific pattern と
+    # 対称化し、HUP も cover する。trap 内 rm の `2>/dev/null` も削除して permission denied 等を可視化。
+    _session_end_tmp_cleanup() { rm -f "${TMP_FILE:-}"; }
+    trap 'rc=$?; _session_end_tmp_cleanup; exit $rc' EXIT
+    trap '_session_end_tmp_cleanup; exit 130' INT
+    trap '_session_end_tmp_cleanup; exit 143' TERM
+    trap '_session_end_tmp_cleanup; exit 129' HUP
     if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
        '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE"; then
         mv "$TMP_FILE" "$STATE_FILE"
@@ -215,6 +234,22 @@ WARN_MSG
           echo "  対処: $STATE_FILE の permission / ownership を確認し、手動で削除してください" >&2
         fi
         [ -n "$_rm_err" ] && rm -f "$_rm_err"
+        # verified-review cycle 9 Important I-2 (code-reviewer, #926) 対応:
+        # flow-state-update.sh が advisory lock 用に作成する `${STATE_FILE}.lock` ファイルも同時に削除する。
+        # flock(2) は kernel advisory lock を fd lifecycle に紐付け process exit で auto release するが、
+        # lock ファイル自体は inode として disk に残留する (flock(2) man page で明示)。本 cleanup 経路で
+        # 削除しないと `.rite/sessions/` に session 数分の `.flow-state.lock` が累積する。
+        # Source: https://man7.org/linux/man-pages/man2/flock.2.html
+        if [ -f "${STATE_FILE}.lock" ]; then
+          _lock_rm_err=$(mktemp /tmp/rite-session-end-lockrm-err-XXXXXX 2>/dev/null) || _lock_rm_err=""
+          if ! rm -f "${STATE_FILE}.lock" 2>"${_lock_rm_err:-/dev/null}"; then
+            echo "WARNING: session-end: per-session lock file の削除に失敗 (${STATE_FILE}.lock) — accumulation risk" >&2
+            if [ -n "$_lock_rm_err" ] && [ -s "$_lock_rm_err" ]; then
+              head -3 "$_lock_rm_err" | sed 's/^/  /' >&2
+            fi
+          fi
+          [ -n "$_lock_rm_err" ] && rm -f "$_lock_rm_err"
+        fi
     fi
 fi
 
@@ -226,5 +261,16 @@ fi
 # Future hardening: extract into a shared helper to prevent one-sided regressions
 # (the cycle 3 fix to session-start.sh missed this hook, surfacing as cycle 4 CRITICAL).
 if [ -d "$CWD" ]; then
-    find "$CWD" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -not -name ".rite-flow-state.legacy.*" -type f -mmin +1 -delete 2>/dev/null || true
+    # verified-review cycle 9 silent-failure-hunter I-7 (#926) 対応:
+    # 旧 `find ... -delete 2>/dev/null || true` は permission denied / IO error を完全 silent suppress
+    # していた。stale tempfile cleanup が silent skip すると長期運用で disk 蓄積する。doctrine 統一の
+    # ため WARNING emit に変更 (M-4/M-7/M-8 pattern と対称化)。
+    _find_err=$(mktemp /tmp/rite-session-end-find-err-XXXXXX 2>/dev/null) || _find_err=""
+    if ! find "$CWD" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -not -name ".rite-flow-state.legacy.*" -type f -mmin +1 -delete 2>"${_find_err:-/dev/null}"; then
+        echo "WARNING: session-end: stale tempfile cleanup の find が失敗 ($CWD) — 蓄積の可能性" >&2
+        if [ -n "$_find_err" ] && [ -s "$_find_err" ]; then
+            head -3 "$_find_err" | sed 's/^/  /' >&2
+        fi
+    fi
+    [ -n "$_find_err" ] && rm -f "$_find_err"
 fi

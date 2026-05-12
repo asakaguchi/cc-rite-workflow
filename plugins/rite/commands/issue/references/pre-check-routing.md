@@ -16,7 +16,7 @@
 |---|---|
 | まだワークフロー中途。`NO` は「次の継続ステップを実行すべき」を意味する | 終端到達確認。`NO` は **protocol violation** (工程を飛ばして停止しようとしている) |
 
-場面 (a) では Item 1-3 が `NO` でも正常 (まだ Issue 未作成段階)。場面 (b) では **Item 1-3 すべて** `YES` が turn 終了の必要条件 (Item 0 は routing dispatcher で YES/NO 集計には含まれない — L23/L36 と整合)。
+場面 (a) では Item 1-3 が `NO` でも正常 (まだ Issue 未作成段階)。場面 (b) では **Item 1-3 すべて** `YES` が turn 終了の必要条件 (Item 0 は routing dispatcher で YES/NO 集計には含まれない — Procedure 節および Rule 節と整合、#926 comment-analyzer I-7)。
 
 ## Procedure
 

@@ -6,11 +6,11 @@
 # always the human-readable completion message, not a bare sentinel token.
 #
 # Enforced contract (per Issue #561 D-01 / #561 AC-2, AC-3, AC-6):
-#   - plugins/rite/commands/issue/create-register.md   Phase 3.4 sentinel is
+#   - plugins/rite/commands/issue/create-register.md Phase 3.4 sentinel is
 #     documented as `<!-- [create:completed:{...}] -->` (HTML comment form)
-#   - plugins/rite/commands/issue/create-decompose.md  Phase 3.4 sentinel is
+#   - plugins/rite/commands/issue/create-decompose.md Phase 3.4 sentinel is
 #     documented as `<!-- [create:completed:{...}] -->` (HTML comment form)
-#   - plugins/rite/commands/issue/create-interview.md  AC-3 non-regression only
+#   - plugins/rite/commands/issue/create-interview.md AC-3 non-regression only
 #     (ADR docs/designs/parent-routing-unification.md に従い
 #     `[interview:completed|skipped|error]` の bare bracket form に移行済、
 #     AC-2/AC-6 HTML-wrap 必須化は撤去。raw string `[interview:`
@@ -24,9 +24,9 @@
 # `\[interview:(completed|skipped|error)\]` には全 3 値が含まれる。
 #
 # Exit codes:
-#   0  all checks passed
-#   1  a check failed (details on stderr)
-#   2  usage error (unknown argument)
+#   0 all checks passed
+#   1 a check failed (details on stderr)
+#   2 usage error (unknown argument)
 
 set -euo pipefail
 
@@ -149,19 +149,10 @@ else
     REPO_ROOT="$_git_root"
     CHECK_PATHS_PREFIX="plugins/rite"
   else
-    # 旧実装は `elif _git_err_classify_rc=0; [ -n "$_git_err" ] && { grep ...; }`
-    # の compound expression で「変数初期化 + 条件 + 副作用 + check」を 1 行に詰めており、`set -u` の
-    # `${_git_err_classify_rc:-0}` default を 1 つ外す refactor で unbound-variable crash する fragility が
-    # あった。state 機械 (grep classify rc) を if/elif の外で明示初期化し、`set -u` 下でも安全な
-    # 線形 state transition に書き換える。
-    #   classify_rc=2 (= unclassified): _git_err 不在 / 空 / grep IO エラー → fail-fast 経路
-    #   classify_rc=0 (= match found):  legitimate marketplace fallback 経路
-    #   classify_rc=1 (= no match):     非 marketplace fallback の git error → fail-fast 経路
-    # code-reviewer cr-1: `_git_err_classify_rc=2` (= unclassified) は後続の if/elif で
-    # 直接判定する分岐を持たないが、`[ -z "$_git_err" ]` (空) / `[ ! -s "$_git_err" ]` (空ファイル) の
-    # 順序判定で間接的にカバーされる (空 = mktemp 失敗 → fail-fast、空ファイル = git stderr 空 → fail-fast)。
-    # state value 自体は dead だが、明示的に 2 を持っておくことで「初期値 = unclassified」の意図が
-    # 一目で分かり、将来 grep classify を拡張する際の baseline として load-bearing。
+    # grep classify state を if 外で明示初期化 (`set -u` 下での unbound-variable crash 回避)。
+    #   classify_rc=0 (= match found): legitimate marketplace fallback 経路
+    #   classify_rc=1 (= no match): 非 marketplace fallback の git error → fail-fast 経路
+    #   (初期値 ≠ 0 ならどの値でも fail-fast 経路に倒れるため、可読性のため 2 を採用)
     _git_err_classify_rc=2
     if [ -n "$_git_err" ] && [ -s "$_git_err" ]; then
       if grep -qE 'not a git repository|dubious ownership' "$_git_err"; then
@@ -305,6 +296,13 @@ else
   # bullet section の silent 削除を防御する。`[interview:error]` は OR 経路 (どれか 1 つの sentinel
   # 存在を要求する legacy regex) のまま残し、historical fixture 互換性を維持する
   # (parent-routing pattern 移行前の minimal fixture では `error` sentinel を含まないため)。
+  #
+  # ⚠️ Load-bearing pin: 本 Check は `[interview:completed]` / `[interview:skipped]` という raw
+  # string の存在を強制する。これらの sentinel 値を改名する refactor (例: `[interview:ok]` /
+  # `[interview:done]` への統一) を行う場合、本 grep の `_sentinel` ループの値と、Phase 2.5 ベース
+  # の dispatcher reference (`references/pre-check-routing.md` Item 0) を **必ず同時更新する** こと。
+  # 片方だけ変更すると AC-3 non-regression smoke-test guard が false-negative となり、bullet section
+  # の silent 削除を検知できなくなる。
   for _sentinel in 'completed' 'skipped'; do
     if grep -qE "\[interview:${_sentinel}\]" "$CREATE_INTERVIEW"; then
       pass "create-interview.md: contains [interview:${_sentinel}] string (AC-3 non-regression, independent grep)"

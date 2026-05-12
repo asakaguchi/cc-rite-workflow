@@ -66,7 +66,7 @@
 #   no longer exists). This test (decompose-register) **will be removed in PR-5** when
 #   create-register.md / create-decompose.md migrate to parent-routing pattern and the
 #   caller HTML literal they pin no longer exists (ADR §6.1 L233 と上記 L5-13 DELETION
-#   CHECKLIST と整合)。PR-6 / PR-7 まで残存させる旧記述は cycle 7 verified-review Important 3
+#   CHECKLIST と整合)。PR-6 / PR-7 まで残存させる旧記述は verified-review Important 3
 #   で削除済 (L5-13 DELETION CHECKLIST と ADR §6.1 が真の真実の源)。
 
 set -euo pipefail

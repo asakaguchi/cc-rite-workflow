@@ -60,13 +60,13 @@
 #
 # Provided functions:
 #   _helpers_resolve_plugin_root <script_dir>
-#   _helpers_resolve_repo_root   <script_dir>
-#   pass <label>                                 # writes to stdout
-#   fail <label>                                 # writes to stdout
-#   assert <label> <expected> <actual>           # writes to stdout (via pass/fail)
-#   assert_grep     <label> <file> <pattern>     # ERE, exits via fail() if not found
-#   assert_not_grep <label> <file> <pattern>     # ERE, exits via fail() if found
-#   print_summary [test_name] [drift_hint_text]  # writes to stdout, returns 1 if FAIL > 0
+#   _helpers_resolve_repo_root <script_dir>
+#   pass <label> # writes to stdout
+#   fail <label> # writes to stdout
+#   assert <label> <expected> <actual> # writes to stdout (via pass/fail)
+#   assert_grep <label> <file> <pattern> # ERE, exits via fail() if not found
+#   assert_not_grep <label> <file> <pattern> # ERE, exits via fail() if found
+#   print_summary [test_name] [drift_hint_text] # writes to stdout, returns 1 if FAIL > 0
 
 # Resolve PLUGIN_ROOT from the test's SCRIPT_DIR (tests/ is 2 levels below).
 # plugins/rite/hooks/tests/<test>.sh -> plugins/rite (2 up)

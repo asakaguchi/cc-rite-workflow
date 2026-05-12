@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Smoke + validation tests for hardcoded-line-number-check.sh
 #
-# Validates against synthetic fixtures derived from PR #661 cycle 2/3 incident
+# Validates against synthetic fixtures derived from /3 incident
 # (Issue #666). The literals exercised here are taken from commit 6760cc5 and
 # 03fe71f (cleanup.md:1674, create-interview.md:605) before they were
 # replaced with structural references.
@@ -192,7 +192,7 @@ assert "filter A: only P-A reported" "1" "$a_count"
 assert "filter A: P-B suppressed" "0" "$b_count"
 assert "filter A: P-C suppressed" "0" "$c_count"
 
-# --- Filter B/C symmetric tests (cycle 2 review recommendation) -------------
+# --- Filter B/C symmetric tests (recommendation) -------------
 out_b=$("$SCRIPT" --target "$FIX_MIX" --pattern B --repo-root "$TMPDIR_ROOT" 2>&1)
 b_a_count=$(grep -c '\[P-A\]' <<< "$out_b" || true)
 b_b_count=$(grep -c '\[P-B\]' <<< "$out_b" || true)

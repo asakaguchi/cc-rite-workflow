@@ -18,28 +18,20 @@
 #       --field implementation_round [--if-exists]
 #
 # Options:
-#   --phase                  Phase value (required for create/patch)
-#   --issue                  Issue number (create mode, default: 0)
-#   --branch                 Branch name (create mode, default: "")
-#   --pr                     PR number (create mode, default: 0)
-#   --parent-issue           Parent Issue number (create mode, default: 0; patch mode: update only if specified)
-#   --next                   next_action text (required for create/patch)
-#   --active                 Active flag (create mode: default true; patch mode: update only if specified)
-#   --field                  Field name to increment (increment mode)
-#   --if-exists              Only execute if .rite-flow-state exists (patch/increment mode)
-#   --session                Session UUID override (create mode; defaults to .rite-session-id)
-#   --preserve-error-count   Preserve existing .error_count during patch (same-phase self-patch; patch mode only;
-#                            silently ignored in create/increment modes for drift-symmetry with caller-side consistency).
-#                            Currently no-op at production runtime: stop-guard.sh removed in #675, no reader that branches
-#                            on .error_count exists outside flow-state-update.sh / migrate-flow-state.sh themselves
-#                            (write-only reset in this file; see tests/error-count-runtime-reference.test.sh for the
-#                            mechanical proof that no external reader branches on the field).
-#                            Retained for forward-compatibility if a branching reader is reintroduced.
-#                            Residual callers: wiki/ingest.md / cleanup.md still pass this flag. ADR
-#                            `docs/designs/parent-routing-unification.md` Rollback Log で全 caller の
-#                            移行スケジュールを単一の真実の源として管理する (本 option help text には PR 番号や
-#                            個別 caller の移行計画を入れない — comment-analyzer 7 で historical drift を排除)。
-#   --legacy-mode            Force legacy single-file path (`.rite-flow-state`) regardless of
+#   --phase Phase value (required for create/patch)
+#   --issue Issue number (create mode, default: 0)
+#   --branch Branch name (create mode, default: "")
+#   --pr PR number (create mode, default: 0)
+#   --parent-issue Parent Issue number (create mode, default: 0; patch mode: update only if specified)
+#   --next next_action text (required for create/patch)
+#   --active Active flag (create mode: default true; patch mode: update only if specified)
+#   --field Field name to increment (increment mode)
+#   --if-exists Only execute if .rite-flow-state exists (patch/increment mode)
+#   --session Session UUID override (create mode; defaults to .rite-session-id)
+#   --preserve-error-count Patch mode 限定: 既存 .error_count を保持。default は 0 にリセット。
+#                            (現状 no-op: stop-guard.sh 撤去後は branching reader が存在しないが、forward-compat
+#                            装備として保持。詳細は ADR `docs/designs/parent-routing-unification.md` Rollback Log)
+#   --legacy-mode Force legacy single-file path (`.rite-flow-state`) regardless of
 #                            rite-config.yml `flow_state.schema_version`. Used by migration script
 #                            (#2) and tooling that must read/write the pre-migration source. Without
 #                            this flag, schema_version=2 (default) writes to `.rite/sessions/{session_id}.flow-state`.
@@ -53,11 +45,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source session ownership helper for stale detection in create mode
-# silent-failure-hunter IMP-4: 旧 `2>/dev/null || true` は syntax error / permission denied /
-# missing file を完全 silent suppress していた。get_state_session_id / parse_iso8601_to_epoch が
-# 未定義になると、後続 L631 等の `if !` で `command not found` rc が間接 catch される一方、source
+# 旧 `2>/dev/null || true` は syntax error / permission denied / missing file を完全 silent suppress
+# していた。get_state_session_id / parse_iso8601_to_epoch が未定義になると、後続の
+# session-ownership block 内 jq invocation で `command not found` rc が間接 catch される一方、source
 # 失敗自体の原因 (deploy 不整合 / 構文エラー / permission denied) は完全に消える。
-# 本 PR で silent fallback を排除し、source 失敗時は WARNING + 詳細を stderr に emit する
+# silent fallback を排除し、source 失敗時は WARNING + 詳細を stderr に emit する
 # (`_validate-helpers.sh` の DEFAULT_HELPERS 配列対象外なため、ここで explicit guard する)。
 _session_ownership_source_err=$(mktemp /tmp/rite-fs-source-err-XXXXXX 2>/dev/null) || _session_ownership_source_err=""
 if ! source "$SCRIPT_DIR/session-ownership.sh" 2>"${_session_ownership_source_err:-/dev/null}"; then
@@ -70,10 +62,10 @@ if ! source "$SCRIPT_DIR/session-ownership.sh" 2>"${_session_ownership_source_er
 fi
 [ -n "$_session_ownership_source_err" ] && rm -f "$_session_ownership_source_err"
 
-# Helper script existence check (verified-review cycle 34 F-09 / cycle 38 F-01 HIGH + F-09 MEDIUM):
+# Helper script existence check (/ HIGH + F-09 MEDIUM):
 # 旧実装は state-path-resolve.sh のみ fail-fast 検査していたが、本 helper は以下の helper を `bash <missing>`
 # invocation 経路で direct + transitive に依存する。検査対象 list の Single Source of Truth は
-# `_validate-helpers.sh` 内の **DEFAULT_HELPERS 配列** (PR #688 cycle 13 F-01 で集約):
+# `_validate-helpers.sh` 内の **DEFAULT_HELPERS 配列** (で集約):
 #   - `state-path-resolve.sh` (STATE_ROOT 解決経路で direct invoke)
 #   - `_resolve-session-id.sh` (`_resolve_session_id` 関数内の direct invoke)
 #   - `_resolve-session-id-from-file.sh` (transitive 経由で `_resolve_session_state_path` 解決経路)
@@ -88,9 +80,9 @@ fi
 # `if`/`else`/`||` 文脈では非ブロッキング扱いとなり、silent fall-through 経路が散在する。Issue #687
 # (writer/reader 片肺更新型 silent regression) と同型の deploy regression を構造的に塞ぐため、依存する
 # 全 helper を upfront で fail-fast 検査する。state-read.sh の同型ブロックと writer/reader 対称化。
-# verified-review F-06 (MEDIUM) / PR #688 cycle 12 F-04 (MEDIUM): helper existence check の
+# / helper existence check の
 # **validation logic** を `_validate-helpers.sh` に集約。
-# PR #688 cycle 13 F-01 (HIGH): helper 名 list 自体も `_validate-helpers.sh` 内の DEFAULT_HELPERS
+# helper 名 list 自体も `_validate-helpers.sh` 内の DEFAULT_HELPERS
 # 配列に集約し、本 caller は引数 0 個 (script_dir のみ) で呼ぶ形に統一。state-read.sh と本ファイルの
 # helper-list 重複が構造的に解消され、helper 追加時は 1 ファイル更新のみで済む。
 if [ ! -x "$SCRIPT_DIR/_validate-helpers.sh" ]; then
@@ -102,10 +94,16 @@ fi
 bash "$SCRIPT_DIR/_validate-helpers.sh" "$SCRIPT_DIR" || exit $?
 
 # Resolve repository root
-# verified-review cycle 34 fix (F-07 MEDIUM): `2>/dev/null` を削除して stderr を pass-through し、
-# state-read.sh と writer/reader 対称化する (cycle 33 で reader 側のみ stderr 観測性優先方針に
-# 移行していた非対称を解消)。
-STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$(pwd)") || STATE_ROOT="$(pwd)"
+# stderr 退避 + WARNING emit (writer/reader 対称化 doctrine、silent fallback を排除)。
+# script が deploy regression / syntax error で失敗した場合、silent `pwd` fallback だと root cause が
+# 完全に失われる。`head -3` で kernel diagnostic を pass-through する。
+_state_root_err=$(mktemp /tmp/rite-fs-state-root-err-XXXXXX 2>/dev/null) || _state_root_err=""
+if ! STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$(pwd)" 2>"${_state_root_err:-/dev/null}"); then
+  echo "WARNING: flow-state-update: state-path-resolve.sh 失敗 — pwd fallback します" >&2
+  [ -n "$_state_root_err" ] && [ -s "$_state_root_err" ] && head -3 "$_state_root_err" | sed 's/^/  /' >&2
+  STATE_ROOT="$(pwd)"
+fi
+[ -n "$_state_root_err" ] && rm -f "$_state_root_err"
 LEGACY_FLOW_STATE="$STATE_ROOT/.rite-flow-state"
 
 # --- Multi-state helpers (#672 / #678) ---
@@ -118,11 +116,11 @@ LEGACY_FLOW_STATE="$STATE_ROOT/.rite-flow-state"
 # the file-read path AND the --session arg path. Validation parity prevents
 # path traversal via `--session "../foo"` (review #686 F-01).
 _resolve_session_id() {
-  # verified-review cycle 34 fix (F-01 CRITICAL): UUID validation を `_resolve-session-id.sh` 共通 helper
+  # UUID validation を `_resolve-session-id.sh` 共通 helper
   # に抽出。state-read.sh / flow-state-update.sh / resume-active-flag-restore.sh の 5 site で重複していた
   # RFC 4122 strict pattern を 1 箇所に集約し、将来の pattern tightening (variant bit check 等) を
   # 片肺更新 drift から守る。
-  # verified-review cycle 38 F-05 MEDIUM: 引数指定なし経路 (sid_file 読込 + tr + validation + fallback) を
+  # 引数指定なし経路 (sid_file 読込 + tr + validation + fallback) を
   # `_resolve-session-id-from-file.sh` 共通 helper に置換。state-read.sh / resume-active-flag-restore.sh と
   # writer/reader/resume 3 layer 対称化。--session arg 指定経路は writer 固有の fail-fast policy
   # (silent fallback で spec drift を隠さない) を維持する必要があるため、本関数内で明示処理を残す。
@@ -134,8 +132,9 @@ _resolve_session_id() {
     # `_git_err mktemp 失敗時 WARNING + fail-fast` pattern と同型、構造 anchor で参照)。stderr 退避が失われると helper internal error (jq missing / fork failure / PATH error)
     # と UUID format 違反 (`ERROR: invalid session_id format`) を区別できず、開発者が誤った原因究明をする。
     # /tmp inode 枯渇 / read-only fs は通常運用では発火しないが、発火時は fail-fast に倒して環境問題を
-    # 明示する。chmod 失敗の `_chmod_err` (L443) / `_chmod600_err` (L555) は best-effort 経路で silent
-    # fallback を許容するのとは性質が異なる (本 site は load-bearing な分類 fail-fast)。
+    # 明示する。chmod 失敗 (`_chmod_err` (dir-creation block 内 mktemp) / `_chmod600_err` (TMP_STATE
+    # chmod block 内 mktemp)) は best-effort 経路で silent fallback を許容するのとは性質が異なる
+    # (本 site は load-bearing な分類 fail-fast)。
     if ! _resolve_sid_err=$(mktemp /tmp/rite-resolve-sid-err-XXXXXX 2>/dev/null); then
       echo "ERROR: mktemp failed for _resolve_sid_err — cannot capture _resolve-session-id.sh stderr" >&2
       echo "  hint: /tmp の inode 枯渇 / read-only filesystem / permission 拒否を確認してください" >&2
@@ -166,9 +165,9 @@ _resolve_session_id() {
 # Returns "1" (legacy single-file) or "2" (per-session file).
 # Defaults to "1" on parse failure / absent / unrecognized value (safe fallback).
 #
-# PR #688 cycle 5 review (code-quality + error-handling 推奨): writer/reader で同一の
+# review (code-quality + error-handling 推奨): writer/reader で同一の
 # inline schema_version 解決 logic (cfg → section → grep → case) を持っていた drift リスクを
-# 排除するため、共通 helper `_resolve-schema-version.sh` に抽出済。Issue #687 AC-4 / cycle 3 で
+# 排除するため、共通 helper `_resolve-schema-version.sh` に抽出済。Issue #687 AC-4 / 
 # 確立した pipefail silent failure 対策 (`|| v=""`) も helper 内で吸収される。
 # 旧 inline 実装 (cfg / section / v 変数 + case 分岐) は helper 内に移動済み。
 _resolve_schema_version() {
@@ -178,16 +177,16 @@ _resolve_schema_version() {
 # Resolve flow-state file path based on (effective_schema_version, legacy_mode, session_id).
 # - When legacy_mode is "true", schema_version != "2", or session_id is empty -> legacy path
 # - Otherwise -> per-session new path
-# - Reader-symmetric legacy fallback with cross-session guard (PR #688 cycle 32 F-01/F-02 fix):
+# - Reader-symmetric legacy fallback with cross-session guard (fix):
 #   When schema_v=2 + valid sid + per-session ABSENT + legacy EXISTS (size > 0), fall back to legacy
 #   ONLY IF legacy.session_id matches the current sid OR legacy.session_id is empty/null.
 #   When legacy.session_id != current sid (cross-session residue), refuse to fall back to legacy
-#   (cycle 31 F-01 CRITICAL: cycle 30 simple fallback caused silent metadata corruption — issue_number
+#   (CRITICAL: simple fallback caused silent metadata corruption — issue_number
 #   / branch / pr_number from another session would silently leak into current session via jq per-field
 #   merge). Emit WORKFLOW_INCIDENT sentinel so caller can surface and let create-mode handle init.
-#   Size check (cycle 31 F-02 HIGH): writer must mirror reader-side state-read.sh's per-session resolver
+#   Size check : writer must mirror reader-side state-read.sh's per-session resolver
 #   `[ ! -s ]` guard so size-0 legacy (e.g., from `touch .rite-flow-state`) doesn't silently consume
-#   patch updates. (verified-review cycle 34 fix F-04 HIGH: hardcoded line-number 参照を semantic anchor に置換)
+#   patch updates. (fix F-04 HIGH: hardcoded line-number 参照を semantic anchor に置換)
 _resolve_session_state_path() {
   local sv="$1"
   local lm="$2"
@@ -198,28 +197,26 @@ _resolve_session_state_path() {
   fi
   local per_session_path="$STATE_ROOT/.rite/sessions/${sid}.flow-state"
   # Reader-symmetric fallback with cross-session guard + size check.
-  # `[ -s ]` ensures legacy is non-empty (cycle 31 F-02). Cross-session check below
+  # `[ -s ]` ensures legacy is non-empty . Cross-session check below
   # ensures we only adopt legacy if it belongs to current session or is sessionless legacy.
   if [ ! -f "$per_session_path" ] && [ -f "$LEGACY_FLOW_STATE" ] && [ -s "$LEGACY_FLOW_STATE" ]; then
-    # verified-review cycle 34 fix (F-02 HIGH): cross-session guard を `_resolve-cross-session-guard.sh`
+    # cross-session guard を `_resolve-cross-session-guard.sh`
     # 共通 helper に抽出。reader 側 (state-read.sh) と重複していた legacy.session_id 抽出 + 比較 +
     # corrupt 判定ロジックを 1 箇所に集約し、片肺更新 drift を構造的に防ぐ。
     local classification
-    # verified-review cycle 35 fix (F-02 CRITICAL): use 2>/dev/null instead of 2>&1.
+    # use 2>/dev/null instead of 2>&1.
     # The 2>&1 was merging helper's stderr (jq parse error text) into the classification
     # string, breaking `case "$classification" in corrupt:*) ...` matching and silently
     # routing to the defensive `*)` arm — suppressing the `legacy_state_corrupt` sentinel
-    # emit on the writer side. Helper now keeps stderr clean (cycle 35 fix in
+    # emit on the writer side. Helper now keeps stderr clean ( in
     # _resolve-cross-session-guard.sh), so 2>/dev/null is safe. Symmetric with state-read.sh's
-    # per-session resolver `case "$classification"` block (cycle 35 F-01 fix; cycle 38 propagation
-    # scan replaced hardcoded `state-read.sh:119` line reference with semantic anchor).
-    # PR #688 followup: cycle 41 review F-01 HIGH — helper の正当な WARNING (mktemp 失敗 WARNING) が
+    # per-session resolver `case "$classification"` block (fix; # scan replaced hardcoded `state-read.sh:119` line reference with semantic anchor).
+    # F-01 HIGH — helper の正当な WARNING (mktemp 失敗 WARNING) が
     # `2>/dev/null` で silent suppress される問題を修正 (state-read.sh と writer/reader 対称化)。
     #
-    # cycle 43 F-09 (MEDIUM) 対応: state-read.sh:142 と writer/reader 対称化。canonical pattern
-    # (`if ! ... then` + WARNING 3 行 + chmod 600) に統一。詳細は state-read.sh の cycle 43 F-09
-    # コメントを参照 (drift 防止のため両層で同一の修正を適用)。
-    # verified-review F-03 MEDIUM: _classify_err に signal-specific trap を追加 (state-read.sh と
+    # state-read.sh の cross-session guard mktemp block と writer/reader 対称化。canonical pattern
+    # (`if ! ... then` + WARNING 3 行 + chmod 600) に統一 (drift 防止のため両層で同一の修正を適用)。
+    # MEDIUM: _classify_err に signal-specific trap を追加 (state-read.sh と
     # writer/reader 対称化)。`_resolve_session_state_path` 関数内に閉じた scope で trap を install し、
     # mktemp 成功 〜 rm 完了の race window で SIGINT/SIGTERM/SIGHUP 中断時の orphan を防ぐ。
     #
@@ -242,7 +239,7 @@ _resolve_session_state_path() {
     # ならない — direct call では reset 有り版が reset なし版より悪い結果になる (parent + inner cleanup
     # 双方を消去) ことを経験的に確認済み。
     local _classify_err=""
-    # verified-review F-06 (LOW): cleanup 本体は Form A (`rm -f` 単一行) のため、
+    # cleanup 本体は Form A (`rm -f` 単一行) のため、
     # bash-trap-patterns.md「cleanup 関数の契約」節 Form A 規範では `return 0` 不要 (rm -f の rc=0 で十分)。
     # `_resolve-cross-session-guard.sh` の Form A cleanup と統一し、Form A 最小性 doctrine を維持する。
     _rite_flow_state_classify_cleanup() {
@@ -252,7 +249,7 @@ _resolve_session_state_path() {
     trap '_rite_flow_state_classify_cleanup; exit 130' INT
     trap '_rite_flow_state_classify_cleanup; exit 143' TERM
     trap '_rite_flow_state_classify_cleanup; exit 129' HUP
-    # verified-review (PR #688 cycle 15) F-05 (MEDIUM) 対応: writer/reader 対称化 doctrine 構造的破綻の解消。
+    # verified-review () F-05 (MEDIUM) 対応: writer/reader 対称化 doctrine 構造的破綻の解消。
     # 旧実装は `mktemp + WARNING 3 行 + chmod 600` を 6 行 inline で書き、`_mktemp-stderr-guard.sh` の
     # F-02 consolidation スコープから漏れていた。state-read.sh と byte-for-byte に重複していたため、
     # 将来 WARNING 文言や chmod 仕様を変更する際の片肺更新 drift リスクが残存していた。
@@ -375,7 +372,7 @@ done
 # --- Validate numeric/boolean argument values (defense-in-depth, Issue #688 F-10) ---
 # create mode の `--argjson` は値を JSON literal として parse するため、object literal
 # (`{"x":1}`) や string (`"foo"`) も受理されてしまう。increment mode の FIELD allowlist
-# (cycle 44 F-13) と対称な writer side validation として、数値/boolean 引数を allowlist で
+#  と対称な writer side validation として、数値/boolean 引数を allowlist で
 # 検証する。work-memory-update.sh の `_validate_numeric_yaml_value` と同型の defense-in-depth。
 # Issue title 等の dynamic 文字列が `--issue` に流入する経路があれば flow-state JSON 破壊で
 # stop-guard / phase-transition-whitelist hook の判定が壊れ workflow が hard abort する経路を防ぐ。
@@ -415,14 +412,14 @@ FLOW_STATE=$(_resolve_session_state_path "$EFFECTIVE_SCHEMA_VERSION" "$LEGACY_MO
 # `_log_flow_diag` (symmetric with mv-failure path) rather than being silently
 # suppressed (review #686 F-05).
 
-# cycle 48 F-01 (HIGH): writer/reader 対称化 doctrine (state-read.sh の `_rite_state_read_cleanup`
+# writer/reader 対称化 doctrine (state-read.sh の `_rite_state_read_cleanup`
 # 関数 — `rm -f "${_classify_err:-}" "${_jq_err:-}"` ブロックと同型) に従い、atomic-cleanup 関数を
 # 3 変数 (TMP_STATE / _mkdir_err / _jq_err) に拡張し、`_mkdir_err` (本ファイル前段の dir-creation
 # block 内 mktemp) と `_jq_err` (create mode の PREV_PHASE 抽出 jq stderr 用 mktemp) を含む全
 # tempfile の lifecycle を cover する位置に trap を前倒し配置する。旧実装の trap (atomic write
 # block 直前の TMP_STATE 専用 cleanup) は TMP_STATE のみ cleanup で、`_mkdir_err` / `_jq_err` の
 # mktemp 〜 rm 区間で SIGINT/SIGTERM/SIGHUP 到達時に orphan tempfile が leak する非対称があった
-# (verified-review F-01 HIGH)。canonical pattern「パス先行宣言 → trap 先行設定 → mktemp」を踏襲する。
+# (HIGH)。canonical pattern「パス先行宣言 → trap 先行設定 → mktemp」を踏襲する。
 TMP_STATE=""
 _mkdir_err=""
 _jq_err=""
@@ -434,9 +431,8 @@ _chmod_err=""
 _chmod600_err=""
 _ownership_jq_err=""
 _existing_parent_err=""
-# verified-review cycle 9 Critical C-2 (silent-failure-hunter, #926) 対応:
-# create/patch/increment mode 各々の jq stderr tempfile も atomic cleanup の対象に追加。
-# 旧実装は cycle 48 F-01 で 7 変数までしか cover せず、本 3 変数は mktemp 直後〜inline rm の race
+# # create/patch/increment mode 各々の jq stderr tempfile も atomic cleanup の対象に追加。
+# 旧実装は で 7 変数までしか cover せず、本 3 変数は mktemp 直後〜inline rm の race
 # window で SIGINT/SIGTERM/SIGHUP が届いた場合に orphan として `/tmp` に残留する設計欠陥があった
 # (doctrine 約束「全 tempfile lifecycle cover」との factual mismatch)。
 _create_write_jq_err=""
@@ -458,15 +454,13 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
   # Capture mkdir stderr so the kernel's specific failure reason
   # (`mkdir: cannot create directory '...': Not a directory` / `Permission denied` /
   # `No space left on device` 等) reaches the user instead of being suppressed
-  # to /dev/null (review #686 cycle 2 LOW). Symmetric with the create-mode
+  # to /dev/null (review #686 LOW). Symmetric with the create-mode
   # `_jq_err` capture pattern.
-  # PR #688 followup: cycle 41 review F-03 MEDIUM — mktemp 失敗時に WARNING emit。
-  # 旧実装 `2>/dev/null || _mkdir_err=""` は silent fallback で writer/reader 対称化
-  # doctrine と矛盾していた (reader 側 state-read.sh:256-261 は cycle 38 F-06 で
-  # 修正済み)。/tmp full / SELinux deny 環境で mkdir 失敗 line/column が失われる
-  # 二重 silent failure を防ぐ。
-  # F-02 (MEDIUM) consolidation: 共通 helper `_mktemp-stderr-guard.sh` 経由で
-  # Stderr emit + chmod 600 + path return を集約 (PR #688 cycle 9 F-02)。
+  # mktemp 失敗時に WARNING emit。旧実装 `2>/dev/null || _mkdir_err=""` は silent fallback で
+  # writer/reader 対称化 doctrine と矛盾していた (reader 側 state-read.sh の _mktemp-stderr-guard.sh
+  # invocation block は対応済み)。/tmp full / SELinux deny 環境で mkdir 失敗 line/column が失われる
+  # 二重 silent failure を防ぐ。共通 helper `_mktemp-stderr-guard.sh` 経由で Stderr emit + chmod 600
+  # + path return を集約。
   _mkdir_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
     "flow-state-update" "flow-state-mkdir-err" \
     "mkdir 失敗時の error 詳細が表示されません")
@@ -484,11 +478,11 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
       head -3 "$_mkdir_err" | sed 's/^/  /' >&2
     fi
     [ -n "$_mkdir_err" ] && rm -f "$_mkdir_err"
-    _mkdir_err=""  # cycle 48 F-01: trap による double-rm 防止
+    _mkdir_err=""  # trap による double-rm 防止
     exit 1
   fi
   [ -n "$_mkdir_err" ] && rm -f "$_mkdir_err"
-  _mkdir_err=""  # cycle 48 F-01: trap による double-rm 防止
+  _mkdir_err=""  # trap による double-rm 防止
   # F-09 (MEDIUM, security Hypothetical exception): .rite/sessions/ ディレクトリにも chmod 700 を
   # 適用 (.rite-work-memory dir と同型)。multi-user CI runner / shared dev host で session metadata が
   # group-readable になる経路を防ぐ。chmod 失敗は best-effort skip (filesystem が ACL 非対応 / SELinux
@@ -498,7 +492,7 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
   _chmod_err=$(mktemp /tmp/rite-fs-chmod-err-XXXXXX 2>/dev/null) || _chmod_err=""
   if ! chmod 700 "$_flow_state_dir" 2>"${_chmod_err:-/dev/null}"; then
     echo "WARNING: chmod 700 failed: $_flow_state_dir (best-effort skip — defense-in-depth depth lost on non-POSIX/busybox env)" >&2
-    # verified-review cycle 9 silent-failure-hunter M-7 (#926): head -1 → head -3 統一
+    # head -1 → head -3 統一
     # (ACL/SELinux 環境で kernel diagnostic が複数行になるケースを cover、他 site の head -3 doctrine に整合)
     if [ -n "$_chmod_err" ] && [ -s "$_chmod_err" ]; then
       head -3 "$_chmod_err" | sed 's/^/  /' >&2
@@ -506,7 +500,7 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
   fi
   [ -n "$_chmod_err" ] && rm -f "$_chmod_err"
   _chmod_err=""
-  # cycle 48 F-01: 旧実装の `unset _mkdir_err` は trap cleanup の `${_mkdir_err:-}` で問題ないが、
+  # 旧実装の `unset _mkdir_err` は trap cleanup の `${_mkdir_err:-}` で問題ないが、
   # writer/reader 対称化 doctrine に従い再代入で "" に戻す (state-read.sh の `_classify_err=""`
   # 再代入ブロック — _classify_err inline rm 直後の writer 対称化コメント箇所と同型)。
   unset _flow_state_dir
@@ -525,7 +519,7 @@ fi
 # 作成後 (Validation の前) で lock を取得する。
 if command -v flock >/dev/null 2>&1; then
   FLOW_STATE_LOCK_FILE="${FLOW_STATE}.lock"
-  # verified-review cycle 9 Critical C-1 対応 (#926):
+  # (#926):
   # 旧実装は `exec 9>"$LOCK" 2>"${_lock_open_err:-/dev/null}"` で fd 9 と fd 2 の両方を redirect していた。
   # `exec` (コマンドなし) は POSIX/Bash 仕様で current shell に redirection を適用するため、`2>...` が
   # **親 shell の fd 2 を恒久 redirect** する副作用があり、後段の `rm -f "$_lock_open_err"` で error
@@ -574,12 +568,11 @@ case "$MODE" in
       echo "ERROR: increment mode requires --field" >&2
       exit 1
     fi
-    # verified-review cycle 44 F-13 LOW (security Hypothetical exception):
-    # FIELD allowlist validation — state-read.sh:94 と writer/reader 対称化。
-    # 現 caller は commands/issue/start.md:748 で `implementation_round` をハードコードしているのみだが、
-    # FIELD は `_log_flow_diag "flow_state_jq_failed mode=increment field=$FIELD"` で .rite-stop-guard-diag.log
-    # に書き込まれるため、改行を含む FIELD で log 形式破壊が可能。helper API 単体としての defense-in-depth gap
-    # を埋めるため、識別子 (英数字 + _) のみ受理する。
+    # FIELD allowlist validation — state-read.sh の FIELD allowlist block と writer/reader 対称化。
+    # 現 caller は commands/issue/start.md の implementation_round 増分箇所で同名フィールドを
+    # ハードコードしているのみだが、FIELD は `_log_flow_diag "flow_state_jq_failed mode=increment field=$FIELD"`
+    # で .rite-stop-guard-diag.log に書き込まれるため、改行を含む FIELD で log 形式破壊が可能。
+    # helper API 単体としての defense-in-depth gap を埋めるため、識別子 (英数字 + _) のみ受理する。
     if ! [[ "$FIELD" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
       echo "ERROR: invalid field name: $FIELD" >&2
       echo "  field name must match ^[a-zA-Z_][a-zA-Z0-9_]*\$ (state-read.sh と対称化)" >&2
@@ -598,7 +591,7 @@ case "$MODE" in
 esac
 
 # --- Atomic write ---
-# PR #688 followup: cycle 41 review F-02/F-04 (HIGH/MEDIUM) — 旧実装は (a) PID-suffix
+# 旧実装は (a) PID-suffix
 # silent fallback で symlink race 攻撃面が増加し、(b) compound 単一行 trap が
 # canonical bash-trap-patterns.md 4-line signal-specific pattern と乖離していた。
 # 本 PR の writer/reader 対称化 doctrine と整合させるため、(1) mktemp 失敗時は
@@ -606,9 +599,9 @@ esac
 # SIGINT/SIGTERM/SIGHUP の POSIX exit code 130/143/129 を返す pattern に統一する。
 # canonical trap pattern: references/bash-trap-patterns.md#signal-specific-trap-template
 #
-# cycle 48 F-01 (HIGH): trap setup を本ファイルの dir-creation block 直前に前倒し済み。
+# trap setup を本ファイルの dir-creation block 直前に前倒し済み。
 # `_rite_flow_state_atomic_cleanup` は TMP_STATE / _mkdir_err / _jq_err の 3 変数を cover する。
-# 旧 cycle 43 F-02 (HIGH) で確立した「パス先行宣言 → trap 先行設定 → mktemp」順序の延長で、
+# 旧 で確立した「パス先行宣言 → trap 先行設定 → mktemp」順序の延長で、
 # `_mkdir_err` (dir-creation block 内 mktemp) と create-mode の `_jq_err` (PREV_PHASE 抽出 jq
 # stderr 用 mktemp) の race window も同 trap で構造的に保護する。本箇所では既に
 # declared/installed 済みの TMP_STATE への mktemp のみ実行する。
@@ -617,7 +610,7 @@ if ! TMP_STATE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null); then
   echo "ERROR: flow-state-update.sh: TMP_STATE の mktemp に失敗しました (atomic write 不能)" >&2
   echo "  対処: $(dirname "$FLOW_STATE") の容量 / permission / read-only filesystem を確認してください" >&2
   # _log_flow_diag 関数は本ブロックの後段 (この case 文の直後) で定義されるため、ここでは inline で
-  # diag log を書き込む。関数名 anchor で定義位置を semantic に参照する (cycle 43 F-02 で hardcoded
+  # diag log を書き込む。関数名 anchor で定義位置を semantic に参照する (で hardcoded
   # 行番号 L332 から関数名 anchor に置換)。
   _diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
   # M-4 対応: diag log 書込み失敗を完全 silent にせず WARNING を 1 行 emit。
@@ -628,9 +621,9 @@ if ! TMP_STATE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null); then
   exit 1
 fi
 
-# F-09 (MEDIUM, security Hypothetical exception) / PR #688 cycle 12 F-06 (LOW) 訂正:
+# F-09 (MEDIUM, security Hypothetical exception) / 訂正:
 # atomic-write tempfile に chmod 600 を **defense-in-depth として明示適用**。
-# **重要 — factual correction (cycle 12 F-06)**: 旧コメント「mktemp `${FLOW_STATE}.XXXXXX` で multi-user
+# **重要 — factual correction **: 旧コメント「mktemp `${FLOW_STATE}.XXXXXX` で multi-user
 # umask 022 環境では 644 で作成され」は GNU coreutils mktemp の実装と矛盾する factual error だった
 # (man mktemp coreutils:「The file is created with mode 0600」)。実機検証済み: `umask 022; mktemp
 # /tmp/test-XXXXXX` → mode 0600。したがって本 chmod 600 は **mktemp の OS デフォルト (600)** を冗長
@@ -643,13 +636,13 @@ fi
 # Source: man mktemp (coreutils): "The file is created with mode 0600"
 # multi-user CI runner / shared dev host で session_id・issue_number・branch・phase 等の metadata と
 # (将来) 機密値を含む可能性がある file が他ユーザーに読まれる経路を構造的に塞ぐ。chmod 失敗は
-# best-effort skip (cycle 41 F-14 と対称)。
+# best-effort skip (と対称)。
 # chmod 失敗時は WARNING + stderr 先頭行を pass-through し、busybox 環境 (ACL 非対応で
 # 設計通り skip) か permission denied (defense-in-depth が外れる異常状態) を区別可能にする。
 _chmod600_err=$(mktemp /tmp/rite-fs-chmod600-err-XXXXXX 2>/dev/null) || _chmod600_err=""
 if ! chmod 600 "$TMP_STATE" 2>"${_chmod600_err:-/dev/null}"; then
   echo "WARNING: chmod 600 failed: $TMP_STATE (best-effort skip — defense-in-depth depth lost on non-POSIX/busybox env)" >&2
-  # verified-review cycle 9 silent-failure-hunter M-7 (#926): head -1 → head -3 統一 (M-7 と対称)
+  # head -1 → head -3 統一 (M-7 と対称)
   if [ -n "$_chmod600_err" ] && [ -s "$_chmod600_err" ]; then
     head -3 "$_chmod600_err" | sed 's/^/  /' >&2
   fi
@@ -657,12 +650,13 @@ fi
 [ -n "$_chmod600_err" ] && rm -f "$_chmod600_err"
 _chmod600_err=""
 
-# F-05 (#636 cycle 6): mv 失敗 diag を stop-guard.sh 側の log_diag 経路と対称化。
-# stderr だけだと caller が stderr を suppress した場合に永続痕跡が消える。
-# 既存の .rite-stop-guard-diag.log を re-use (日付形式のみ揃える。ring buffer truncation は
-# stop-guard.sh 側 log_diag() の mapfile + ${_lines[@]: -50} に委譲する — 本関数は append only)。
-# (#636 cycle 12 F-01 対応: 旧 comment「ring buffer と日付形式を揃える」は mapfile truncation
-# を含まない実装と drift していたため修正。truncation は stop-guard.sh 次回起動時に発火する)
+# 永続 diag log: stderr 経由の WARNING に加えて audit-trail としてファイルに append する。
+# stderr だけだと caller が stderr を suppress した場合に痕跡が完全に消えるため、disk full /
+# permission denied を tolerate しつつ可視化する。
+# 注: log ファイル名 `.rite-stop-guard-diag.log` は撤去済 stop-guard.sh 時代の慣行を歴史的に踏襲
+# (rename は migration コスト > 命名整合性 のため見送り)。ring buffer truncation はかつて
+# stop-guard.sh 側で発火していたが #675 撤去後は append-only となり無限増殖する設計欠陥が残る
+# — 別 Issue で truncation ロジックを本関数 inline 化する必要あり。
 _log_flow_diag() {
   local diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
   # 他 2 site の WARNING emit pattern と対称化: diag log append 失敗 (disk full /
@@ -690,19 +684,19 @@ case "$MODE" in
       _ownership_jq_err=$(mktemp /tmp/rite-fs-own-jq-err-XXXXXX 2>/dev/null) || _ownership_jq_err=""
       # silent-failure-hunter IMP-3: 4 jq site で同一 tempfile を reuse するため、各 site の
       # 直前で truncate して前 site の stale stderr が `head -1` 経由で誤誘導しないようにする
-      # (`error-count-runtime-reference.test.sh` の `: > "$_err"  # truncate before reuse` canonical pattern と同型、構造 anchor で参照)。後段 site の判定経路は前 site
+      # (`error-count-runtime-reference.test.sh` の `: > "$_err" # truncate before reuse` canonical pattern と同型、構造 anchor で参照)。後段 site の判定経路は前 site
       # の進行 gate (`if [[ $_existing_active == "true" ]]`) で限定的だが、defense-in-depth で全 site truncate。
       [ -n "$_ownership_jq_err" ] && : > "$_ownership_jq_err"
       if ! _existing_active=$(jq -r '.active // false' "$FLOW_STATE" 2>"${_ownership_jq_err:-/dev/null}"); then
         echo "WARNING: session-ownership .active 抽出 jq 失敗 ($FLOW_STATE) — defaulting to false" >&2
-        [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -1 "$_ownership_jq_err" | sed 's/^/  /' >&2
+        [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -3 "$_ownership_jq_err" | sed 's/^/  /' >&2
         _existing_active="false"
       fi
       if [[ "$_existing_active" == "true" ]]; then
         [ -n "$_ownership_jq_err" ] && : > "$_ownership_jq_err"  # IMP-3: truncate before reuse
         if ! _existing_sid=$(get_state_session_id "$FLOW_STATE" 2>"${_ownership_jq_err:-/dev/null}"); then
           echo "WARNING: session-ownership session_id 抽出失敗 ($FLOW_STATE) — defaulting to empty" >&2
-          [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -1 "$_ownership_jq_err" | sed 's/^/  /' >&2
+          [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -3 "$_ownership_jq_err" | sed 's/^/  /' >&2
           _existing_sid=""
         fi
         if [[ -n "$_existing_sid" && "$_existing_sid" != "$SESSION" ]]; then
@@ -710,14 +704,14 @@ case "$MODE" in
           [ -n "$_ownership_jq_err" ] && : > "$_ownership_jq_err"  # IMP-3: truncate before reuse
           if ! _updated_at=$(jq -r '.updated_at // empty' "$FLOW_STATE" 2>"${_ownership_jq_err:-/dev/null}"); then
             echo "WARNING: session-ownership .updated_at 抽出 jq 失敗 ($FLOW_STATE) — defaulting to empty (staleness check 不能)" >&2
-            [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -1 "$_ownership_jq_err" | sed 's/^/  /' >&2
+            [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -3 "$_ownership_jq_err" | sed 's/^/  /' >&2
             _updated_at=""
           fi
           if [[ -n "$_updated_at" ]]; then
             [ -n "$_ownership_jq_err" ] && : > "$_ownership_jq_err"  # IMP-3: truncate before reuse
             if ! _state_epoch=$(parse_iso8601_to_epoch "$_updated_at" 2>"${_ownership_jq_err:-/dev/null}"); then
               echo "WARNING: session-ownership ISO8601 parse 失敗 ($_updated_at) — defaulting epoch=0 (stale 扱い)" >&2
-              [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -1 "$_ownership_jq_err" | sed 's/^/  /' >&2
+              [ -n "$_ownership_jq_err" ] && [ -s "$_ownership_jq_err" ] && head -3 "$_ownership_jq_err" | sed 's/^/  /' >&2
               _state_epoch=0
             fi
             _now_epoch=$(date +%s)
@@ -751,10 +745,9 @@ case "$MODE" in
       fi
       # Validate JSON parse; distinguish "missing .phase" (acceptable → "") from
       # "jq parse error" (corrupt state, must not silently fall back).
-      # PR #688 followup: cycle 41 review F-03 MEDIUM — mktemp 失敗時に WARNING emit
-      # (writer/reader 対称化、reader 側 state-read.sh:256-261 と統一)。
-      # F-02 (MEDIUM) consolidation: 共通 helper `_mktemp-stderr-guard.sh` 経由で
-      # Stderr emit + chmod 600 + path return を集約 (PR #688 cycle 9 F-02)。
+      # mktemp 失敗時に WARNING emit (writer/reader 対称化、reader 側 state-read.sh の
+      # _mktemp-stderr-guard.sh invocation block と統一)。
+      # 共通 helper `_mktemp-stderr-guard.sh` 経由で Stderr emit + chmod 600 + path return を集約。
       _jq_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
         "flow-state-update" "flow-state-jq-err" \
         "jq 失敗時の parse error 詳細が表示されません (caller は corrupt JSON を検知できますが原因 line/column が失われます)")
@@ -766,11 +759,11 @@ case "$MODE" in
         echo "  previous_phase cannot be preserved; failing fast to avoid silent cold-start." >&2
         echo "  対処: $FLOW_STATE を確認し、必要なら /rite:resume で復旧してください" >&2
         [ -n "$_jq_err" ] && rm -f "$_jq_err"
-        _jq_err=""  # cycle 48 F-01: trap による double-rm 防止
+        _jq_err=""  # trap による double-rm 防止
         exit 1
       fi
       [ -n "$_jq_err" ] && rm -f "$_jq_err"
-      _jq_err=""  # cycle 48 F-01: trap による double-rm 防止 (state-read.sh の `_classify_err=""` 再代入と同型)
+      _jq_err=""  # trap による double-rm 防止 (state-read.sh の `_classify_err=""` 再代入と同型)
       # Preserve parent_issue_number from existing state when --parent-issue is not
       # explicitly specified (#497). Without this, every create call that omits
       # --parent-issue would reset parent_issue_number to 0, erasing the value
@@ -786,7 +779,7 @@ case "$MODE" in
         _existing_parent_err=$(mktemp /tmp/rite-fs-parent-jq-err-XXXXXX 2>/dev/null) || _existing_parent_err=""
         if ! _existing_parent=$(jq -r '.parent_issue_number // 0' "$FLOW_STATE" 2>"${_existing_parent_err:-/dev/null}"); then
           echo "WARNING: parent_issue_number 抽出 jq 失敗 ($FLOW_STATE) — defaulting to 0 (parent linkage may silently drop)" >&2
-          [ -n "$_existing_parent_err" ] && [ -s "$_existing_parent_err" ] && head -1 "$_existing_parent_err" | sed 's/^/  /' >&2
+          [ -n "$_existing_parent_err" ] && [ -s "$_existing_parent_err" ] && head -3 "$_existing_parent_err" | sed 's/^/  /' >&2
           _existing_parent=0
         fi
         [ -n "$_existing_parent_err" ] && rm -f "$_existing_parent_err"
@@ -796,10 +789,11 @@ case "$MODE" in
         fi
       fi
     fi
-    # verified-review cycle 4 F-05 / #636: mv 失敗 path も stop-guard.sh の error_count atomic write 後 mv 失敗 path と対称に (line-number 参照を避ける理由は cycle 8 F-05 参照)
-    # 診断メッセージを出す。`set -euo pipefail` 下で mv 失敗は script を非 0 exit させるが、
-    # else branch は jq 失敗のみを surface するため、disk full / permission denied / EXDEV 等の
-    # mv 失敗要因が silent に握りつぶされる (silent failure-hunter 指摘)。patch / increment mode と対称化。
+    # mv 失敗 path も診断メッセージを出す (歴史的対称化: stop-guard.sh の error_count atomic write
+    # block と同型 pattern だったが、stop-guard.sh 自体は #675 で撤去済。本 mv 失敗 path は patch /
+    # increment mode の atomic write block と現役で対称)。
+    # `set -euo pipefail` 下で mv 失敗は script を非 0 exit させるが、else branch は jq 失敗のみを
+    # surface するため、disk full / permission denied / EXDEV 等の mv 失敗要因が silent に握りつぶされる。
     #
     # #678: schema_version=2 (Option A per-session file) では create object に schema_version: 2 を含め、
     # Migration 検出条件「schema_version キー無 or < 2」(design doc Migration 戦略) と整合させる。
@@ -884,17 +878,17 @@ case "$MODE" in
       JQ_FILTER="$JQ_FILTER | .parent_issue_number = (\$parent_issue_val | tonumber)"
       JQ_ARGS+=(--arg parent_issue_val "$PARENT_ISSUE")
     fi
-    # PR #688 cycle 6 (F-03 fix): patch mode で session_id を書き戻す経路を追加。
+    # patch mode で session_id を書き戻す経路を追加。
     # 旧 resume.md は legacy direct jq write で `.session_id = $sid` を atomic 更新していた
-    # (resume 時の所有権移転 semantics) が、cycle 5 で patch 経由化した際に session_id 書き戻しが
+    # (resume 時の所有権移転 semantics) が、 patch 経由化した際に session_id 書き戻しが
     # drop されていた。SESSION 変数は _resolve_session_id で resolve 済みなので、非空時に
     # patch filter に追加する (caller は自身の session が所有する flow-state を patch する設計のため安全)。
     if [[ -n "$SESSION" ]]; then
       JQ_FILTER="$JQ_FILTER | .session_id = \$session"
       JQ_ARGS+=(--arg session "$SESSION")
     fi
-    # HIGH-2 (writer/reader 対称化 doctrine): create mode L697 の `[[ ! -s ]]` 空ファイル guard を
-    # patch mode にも適用。0-byte ファイルが残った場合 (race / 部分書き込み crash) に
+    # writer/reader 対称化 doctrine: create mode の PREV_PHASE 抽出 block 内 `[[ ! -s ]]` 空ファイル
+    # guard を patch mode にも適用。0-byte ファイルが残った場合 (race / 部分書き込み crash) に
     # 「parse failed」一律文言で原因不明になる経路を塞ぐ。
     if [[ ! -s "$FLOW_STATE" ]]; then
       _log_flow_diag "flow_state_empty_file mode=patch phase=$PHASE"

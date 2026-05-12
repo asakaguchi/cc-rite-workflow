@@ -9,8 +9,7 @@ export _RITE_HOOK_RUNNING_SESSIONEND=1
 
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# verified-review cycle 9 Critical C-1 (silent-failure-hunter, #926) 対応:
-# 旧実装 `source ... 2>/dev/null || true` 3 site は同 PR で pre-tool-bash-guard.sh / flow-state-update.sh
+# # 旧実装 `source ... 2>/dev/null || true` 3 site は同 PR で pre-tool-bash-guard.sh / flow-state-update.sh
 # が WARNING emit + stderr-tempfile pattern に置換されたのに対し、session-end.sh のみ doctrine から exempt
 # だった。helper の deploy regression / syntax error 時に root cause が完全 silent に消えるため、
 # 同型の mktemp + WARNING + head -3 pattern に統一する。
@@ -39,7 +38,16 @@ fi
 
 # Resolve state file path using state-path-resolve.sh (consistent with other hooks)
 # SCRIPT_DIR already set in preamble block above
-STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
+# stderr 退避 + WARNING emit (pre-tool-bash-guard.sh / flow-state-update.sh の writer/reader 対称化
+# doctrine と整合): script が deploy regression / syntax error で失敗した場合、silent CWD fallback
+# だと root cause が完全に失われるため、WARNING + head -3 stderr pass-through で可視化する。
+_state_path_err=$(mktemp /tmp/rite-session-end-state-path-err-XXXXXX 2>/dev/null) || _state_path_err=""
+if ! STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>"${_state_path_err:-/dev/null}"); then
+  echo "WARNING: session-end: state-path-resolve.sh 失敗 — CWD fallback します ($CWD)" >&2
+  [ -n "$_state_path_err" ] && [ -s "$_state_path_err" ] && head -3 "$_state_path_err" | sed 's/^/  /' >&2
+  STATE_ROOT="$CWD"
+fi
+[ -n "$_state_path_err" ] && rm -f "$_state_path_err"
 
 # Resolve active flow-state file path (Issue #680).
 # Returns the per-session file when schema_version=2 with a valid SID; otherwise legacy.
@@ -73,8 +81,16 @@ if [ "$_resolve_failed" -eq 1 ]; then
 fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 
-# Get current branch
-BRANCH=$(cd "$CWD" && git branch --show-current 2>/dev/null || echo "")
+# Get current branch (stderr 退避 + WARNING emit、silent suppress を回避)
+# cd 失敗 (permission denied / 削除済 dir) と git 失敗 (corrupt .git / detached HEAD) を区別可能にする。
+# session-end は cleanup hook のため fail-fast せず WARNING + 続行 (Issue 番号 resolution 不能のみ)。
+_branch_err=$(mktemp /tmp/rite-session-end-branch-err-XXXXXX 2>/dev/null) || _branch_err=""
+if ! BRANCH=$(cd "$CWD" && git branch --show-current 2>"${_branch_err:-/dev/null}"); then
+  echo "WARNING: session-end: branch 取得失敗 (cd $CWD / git branch のいずれか)" >&2
+  [ -n "$_branch_err" ] && [ -s "$_branch_err" ] && head -3 "$_branch_err" | sed 's/^/  /' >&2
+  BRANCH=""
+fi
+[ -n "$_branch_err" ] && rm -f "$_branch_err"
 
 # Check if on a feature branch with Issue number
 if [[ "$BRANCH" =~ issue-([0-9]+) ]]; then
@@ -112,10 +128,11 @@ if [ -f "$STATE_FILE" ]; then
     # how to recover. session-end always proceeds with deactivation regardless.
     # Phase classification is delegated to phase-transition-whitelist.sh helpers as the
     # single source of truth (#501 HIGH).
-    # silent-failure-hunter M-2: 旧 `... 2>/dev/null || _state_*=""/false` は corrupt JSON 時に
-    # silent fallback で lifecycle unfinished WARNING ブロックが skip され、ユーザーが
-    # 「create / cleanup lifecycle が未完了」の最終警告を受け取れずに session 終了する経路。
-    # flow-state-update.sh session-ownership block (L647-684) の WARNING emit pattern と対称化。
+    # 旧 `... 2>/dev/null || _state_*=""/false` は corrupt JSON 時に silent fallback で
+    # lifecycle unfinished WARNING ブロックが skip され、ユーザーが「create / cleanup lifecycle が
+    # 未完了」の最終警告を受け取れずに session 終了する経路。flow-state-update.sh の session-ownership
+    # block (create mode 内 `if [[ -n "$SESSION" && -f "$FLOW_STATE" ]]` 配下の 4 jq site) の
+    # WARNING emit pattern と対称化。
     _state_jq_err=$(mktemp /tmp/rite-session-end-state-jq-err-XXXXXX 2>/dev/null) || _state_jq_err=""
     if ! _state_phase=$(jq -r '.phase // empty' "$STATE_FILE" 2>"${_state_jq_err:-/dev/null}"); then
       echo "WARNING: session-end: jq .phase 抽出失敗 ($STATE_FILE) — lifecycle unfinished warning が skip される可能性" >&2
@@ -179,17 +196,26 @@ WARN_MSG
             ;;
     esac
 
-    # mktemp with PID-based fallback (consistent with stop-guard.sh)
-    TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
-    # verified-review cycle 9 silent-failure-hunter I-1 (#926) 対応:
+    # canonical pattern: 「パス先行宣言 → trap 先行設定 → mktemp」順序で race window を排除
+    # (flow-state-update.sh の _rite_flow_state_atomic_cleanup block と同型 doctrine)。
     # 旧 `trap 'rm -f ... 2>/dev/null' EXIT TERM INT` は HUP signal を含まず、SSH 切断 / terminal close
-    # 時に TMP_FILE が leak した。flow-state-update.sh:442-445 の 4-line signal-specific pattern と
-    # 対称化し、HUP も cover する。trap 内 rm の `2>/dev/null` も削除して permission denied 等を可視化。
-    _session_end_tmp_cleanup() { rm -f "${TMP_FILE:-}"; }
+    # 時に TMP_FILE が leak した。4-line signal-specific pattern で HUP も cover し、trap 内 rm の
+    # `2>/dev/null` も削除して permission denied 等を可視化する。
+    # 歴史的対称化: stop-guard.sh は #675 で撤去済、PID-suffix fallback は現役の慣行として残す。
+    # 「全 tempfile lifecycle cover」doctrine: 本 if block 配下と後段の stale tempfile cleanup block
+    # で生成される全 4 tempfile (_rm_err / _lock_rm_err / _find_err / TMP_FILE) を 1 trap で保護する。
+    TMP_FILE=""
+    _rm_err=""
+    _lock_rm_err=""
+    _find_err=""
+    _session_end_tmp_cleanup() {
+      rm -f "${TMP_FILE:-}" "${_rm_err:-}" "${_lock_rm_err:-}" "${_find_err:-}"
+    }
     trap 'rc=$?; _session_end_tmp_cleanup; exit $rc' EXIT
     trap '_session_end_tmp_cleanup; exit 130' INT
     trap '_session_end_tmp_cleanup; exit 143' TERM
     trap '_session_end_tmp_cleanup; exit 129' HUP
+    TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
     if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
        '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE"; then
         mv "$TMP_FILE" "$STATE_FILE"
@@ -234,7 +260,7 @@ WARN_MSG
           echo "  対処: $STATE_FILE の permission / ownership を確認し、手動で削除してください" >&2
         fi
         [ -n "$_rm_err" ] && rm -f "$_rm_err"
-        # verified-review cycle 9 Important I-2 (code-reviewer, #926) 対応:
+        # Important I-2 (code-reviewer, #926) 対応:
         # flow-state-update.sh が advisory lock 用に作成する `${STATE_FILE}.lock` ファイルも同時に削除する。
         # flock(2) は kernel advisory lock を fd lifecycle に紐付け process exit で auto release するが、
         # lock ファイル自体は inode として disk に残留する (flock(2) man page で明示)。本 cleanup 経路で
@@ -256,13 +282,12 @@ fi
 # Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes).
 # Mirrors the same find command in session-start.sh (which is the canonical source).
 # `-not -name '.rite-flow-state.legacy.*'` excludes the migration backup so it
-# remains the manual-recovery source of truth (#679, #747 cycle 4 CRITICAL).
+# remains the manual-recovery source of truth (#679, #747 CRITICAL).
 # DRY note: this cleanup is duplicated across session-start.sh and session-end.sh.
 # Future hardening: extract into a shared helper to prevent one-sided regressions
-# (the cycle 3 fix to session-start.sh missed this hook, surfacing as cycle 4 CRITICAL).
+# (the to session-start.sh missed this hook, surfacing as CRITICAL).
 if [ -d "$CWD" ]; then
-    # verified-review cycle 9 silent-failure-hunter I-7 (#926) 対応:
-    # 旧 `find ... -delete 2>/dev/null || true` は permission denied / IO error を完全 silent suppress
+    # # 旧 `find ... -delete 2>/dev/null || true` は permission denied / IO error を完全 silent suppress
     # していた。stale tempfile cleanup が silent skip すると長期運用で disk 蓄積する。doctrine 統一の
     # ため WARNING emit に変更 (M-4/M-7/M-8 pattern と対称化)。
     _find_err=$(mktemp /tmp/rite-session-end-find-err-XXXXXX 2>/dev/null) || _find_err=""

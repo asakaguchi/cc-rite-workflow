@@ -4,9 +4,9 @@
 # Uses only Bash built-ins for pattern matching (no external processes).
 #
 # Denylist patterns:
-#   1. gh pr diff --stat  (unsupported flag)
-#   2. gh pr diff -- <path>  (unsupported file filter)
-#   3. != null in jq/awk  (history expansion breaks !)
+#   1. gh pr diff --stat (unsupported flag)
+#   2. gh pr diff -- <path> (unsupported file filter)
+#   3. != null in jq/awk (history expansion breaks !)
 #   4. Reviewer subagent running state-mutating git commands (Issue #442)
 #      Enforced only when transcript_path contains "/subagents/".
 #
@@ -87,13 +87,18 @@ esac
 # ⚠️ Scope: ERR trap covers Pattern 1-3 (regex case match) and Pattern 5
 # (gh issue create lifecycle detection). It is **explicitly disarmed** after
 # Pattern 5 (`trap - ERR` below) so that Pattern 4 (reviewer git denylist)
-# and charter-lint strict block exit with fail-closed semantics. Without
+# and charter-lint strict block exit with fail-closed semantics。Without
 # this disarm, the strict-mode `exit 2` BLOCK at L539 could be silently
 # downgraded to exit 0 by any failing command in the trap scope (charter-lint
 # `if ! jq ... ; then printf fallback; fi; exit 2` defends against this for
 # the BLOCK path, but the disarm provides defense-in-depth for the entire
 # strict-mode branch).
-trap 'exit 0' ERR
+#
+# ⚠️ Observability: ERR trap が発火した場合 silent allow になる経路を可視化するため、
+# WARNING を stderr に emit してから exit する。これにより新規 jq / mktemp / state-path-resolve
+# 失敗が ERR trap で silent に exit 0 に倒れるケースを debug ログから追跡できる。
+# (exit 0 自体は fail-open semantics を維持し、Bash 実行は許可される)
+trap 'echo "WARNING: pre-tool-bash-guard.sh: ERR trap fired (fail-open silent allow); upstream command rc=$? — review jq / mktemp / state-path-resolve sites" >&2; exit 0' ERR
 
 # --- Heredoc-safe command extraction ---
 # Strip heredoc content to avoid false positives on text inside commit messages,
@@ -151,7 +156,7 @@ fi
 #   Pattern 5 normalizes shell meta-characters (;, &, |, parens, braces, backticks, $, quotes) to
 #   spaces so that `true; gh issue create` / `echo x | gh issue create` / `{gh issue create;}` /
 #   `eval "gh issue create"` all match the same `gh issue create` pattern. Backslash line
-#   continuations (`gh \\\n  issue \\\n create`) are also normalized because `\n` and `\` are both
+#   continuations (`gh \\\n issue \\\n create`) are also normalized because `\n` and `\` are both
 #   replaced with space.
 #
 # ⚠️ IMPORTANT — Pattern 5 uses $COMMAND (full input) not $CMD_CHECK:
@@ -241,8 +246,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
           head -3 "$_resolver_err" | sed 's/^/  /' >&2
         fi
         echo "  影響: schema_version=2 環境では legacy `.rite-flow-state` に書き込まれ Mode B AND-logic が誤動作する可能性" >&2
-        # verified-review cycle 9 silent-failure-hunter I-6 (#926) 対応:
-        # 旧 `: # silent skip` は flow-state-update.sh:468-472 M-4 で確立した
+        # # 旧 `: # silent skip` は flow-state-update.sh:468-472 M-4 で確立した
         # 「diag log 書込み失敗を完全 silent にせず WARNING を 1 行 emit」doctrine と非対称。
         # `.rite-flow-debug.log` が group-writable でない / disk full で audit-trail が複数行欠落する。
         if ! echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: _resolve-flow-state-path.sh failed, falling back to legacy path" \
@@ -400,7 +404,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
 
   # --- (C) Sub-action precision: git tag (creation/deletion only) ---
   # Allowed: `git tag -l`, `git tag --list`, `git tag` (bare list)
-  # Denied:  `git tag <name>`, `git tag -a`, `git tag -d`, `git tag --delete`,
+  # Denied: `git tag <name>`, `git tag -a`, `git tag -d`, `git tag --delete`,
   #          `git tag -f`, `git tag --force`
   if [ -z "$BLOCKED_PATTERN" ]; then
     case "$PADDED" in
@@ -420,7 +424,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
 
   # --- (D) Sub-action precision: git reflog (only expire/delete block) ---
   # Allowed: `git reflog`, `git reflog show`
-  # Denied:  `git reflog expire`, `git reflog delete`
+  # Denied: `git reflog expire`, `git reflog delete`
   if [ -z "$BLOCKED_PATTERN" ]; then
     case "$PADDED" in
       *" git reflog expire"*|\
@@ -443,7 +447,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # --- (F) Sub-action precision: git fetch (bare allowed, --prune/--force denied) ---
   # CRITICAL: `-p` / `-f` must be matched as **standalone flag tokens**, not as
   # substrings inside branch names like `hot-fix` / `release-patch` /
-  # `v1.0-rc-final` / `main-pipeline` (cycle 2 HIGH regression).
+  # `v1.0-rc-final` / `main-pipeline` ( HIGH regression).
   #
   # Use a single bash regex with an optional "leading args" group:
   #   ([^[:space:]]+[[:space:]]+)*

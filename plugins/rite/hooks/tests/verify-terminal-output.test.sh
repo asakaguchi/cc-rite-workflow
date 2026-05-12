@@ -37,7 +37,7 @@ fail() {
 setup_plugin_tree() {
   local repo_root="$1"
   # html_comment: create-register / create-decompose の sentinel 形式選択。
-  #   "true"  → HTML-commented form (`<!-- [create:completed:{N}] -->`) — register/decompose 用、Test 1 happy path
+  #   "true" → HTML-commented form (`<!-- [create:completed:{N}] -->`) — register/decompose 用、Test 1 happy path
   #   "false" → bare sentinel form (`[create:completed:{N}]`) — register/decompose 用、Test 2 regression case
   # create-interview は別途 `interview_form` で制御 (parent-routing pattern 後は独立)。
   local html_comment="${2:-true}"

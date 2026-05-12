@@ -3,25 +3,25 @@
 # チェーンを全体無効化する」) を新形式 (per-session file, schema_version=2) 上で verify。
 #
 # Issue #683 / parent #672 AC-LOCAL-3:
-#   - AND 論理 7 種防御層が新形式上で動作 (.rite-stop-guard-diag.log 相当の trace で verify)
-#   - Layer 6 (Step 0 Immediate Bash) は parent-routing pattern 移行 (ADR docs/designs/parent-routing-unification.md)
-#     で撤去済。numbering gap (Layer 5 → Layer 7) は historical cross-references を維持するため意図的に保持。
+#   - AND 論理防御層が新形式上で動作 (.rite-stop-guard-diag.log 相当の trace で verify)
+#   - Layer 6 (Step 0 Immediate Bash) / Layer 7 (--active true minimal presence) は parent-routing
+#     pattern 移行 (ADR docs/designs/parent-routing-unification.md) で撤去済。numbering gap
+#     (Layer 5 → Layer 8) は historical cross-references を維持するため意図的に保持する。
 #
-# 7 種防御層 (Layer 6 撤去、numbering gap を維持):
-#   1. declarative      : commands/issue/*.md prose で `--active true` literal を declare
-#   2. sentinel         : workflow-incident-emit.sh が WORKFLOW_INCIDENT=1 sentinel を emit
-#   3. Pre-check        : commands で state-read.sh --field phase 経由の pre-condition check
-#   4. whitelist        : phase-transition-whitelist.sh が source 可能で case arm を持つ
-#   5. Pre-flight       : preflight-check.sh が --command-id 引数を受け付け、compact_state を gate
-#   6. Step 0 (撤去済)  : parent-routing pattern 移行で create.md の "Step 0 Immediate Bash" pattern を撤去。
+# 6 種防御層 (Layer 6 / Layer 7 撤去、numbering gap を維持):
+#   1. declarative : commands/issue/*.md prose で `--active true` literal を declare
+#   2. sentinel : workflow-incident-emit.sh が WORKFLOW_INCIDENT=1 sentinel を emit
+#   3. Pre-check : commands で state-read.sh --field phase 経由の pre-condition check
+#   4. whitelist : phase-transition-whitelist.sh が source 可能で case arm を持つ
+#   5. Pre-flight : preflight-check.sh が --command-id 引数を受け付け、compact_state を gate
+#   6. Step 0 (撤去済) : parent-routing pattern 移行で create.md の "Step 0 Immediate Bash" pattern を撤去。
 #                         create-interview Pre-flight の存在は parent-routing-pattern-interim.test.sh が代替 pin する。
-#   7. --active true minimal presence : `--active true` が commands/issue/ 配下に 4 file 以上で出現
-#                         (旧 "4-site 対称化"。Layer 6 撤去で本来の意味を失い、現在は file 単位の存在 check のみで
-#                         `echo "Layer 7 (--active true minimal presence): ..."` ラベル行と整合。**PR-7 で本 layer 全廃予定**)
-#   8. case arm         : phase-transition-whitelist.sh の declare -gA テーブル + rite_phase_transition_allowed 関数
+#   7. minimal presence (撤去済) : --active true site-level pin は parent-routing-pattern-interim.test.sh
+#                         TC-2h-2j で代替 pin される。
+#   8. case arm : phase-transition-whitelist.sh の declare -gA テーブル + rite_phase_transition_allowed 関数
 #
 # 各 layer について以下を verify:
-#   (a) Evidence Test  : layer の存在を grep / file existence で mechanical に検出
+#   (a) Evidence Test : layer の存在を grep / file existence で mechanical に検出
 #   (b) AND-logic Test : `.active=true` で fire / `.active=false` で silent skip という contract が成立
 #
 # Note (architecture drift since #660): stop-guard.sh は #674 で removal 済み。
@@ -219,22 +219,11 @@ fi
 # `parent-routing-pattern-interim.test.sh` が代替 pin する。
 
 # --------------------------------------------------------------------------
-# Layer 7: --active true minimal presence in commands/issue/
-# (元々の 4-site 対称化は Layer 6 撤去で本来の意味を失っており、現在は file 単位の存在 check)
-# --------------------------------------------------------------------------
-echo "Layer 7 (--active true minimal presence): commands/issue/ 配下に 4 file 以上で出現"
-# silent-failure-hunter M-4: stderr-tempfile pattern (Layer 1/3 と同型)
-_grep_err=$(mktemp /tmp/rite-andlogic-grep-err-XXXXXX 2>/dev/null) || _grep_err=""
-site_count=$(git -C "$REPO_ROOT" grep -lE '\-\-active true' plugins/rite/commands/issue/ 2>"${_grep_err:-/dev/null}" | wc -l)
-if [ -n "$_grep_err" ] && [ -s "$_grep_err" ]; then
-  echo "WARNING: Layer 7 git grep stderr 出力あり: $(head -1 "$_grep_err")" >&2
-fi
-[ -n "$_grep_err" ] && rm -f "$_grep_err"
-if [ "$site_count" -ge 4 ]; then
-  pass "Layer 7 evidence: --active true を含む commands/issue/ file が $site_count 件 (≥4)"
-else
-  fail "Layer 7: --active true minimal presence が崩れている ($site_count files、≥4 期待 — parent-routing pattern 完了 PR-7 で本 layer 廃止予定)"
-fi
+# Layer 7 (--active true minimal presence) は parent-routing pattern 移行 (ADR §6.1) で
+# AND-logic invariant への寄与を失い vestigial 化したため撤去。numbering gap (Layer 5 → Layer 8) は
+# Layer 6 / Layer 7 撤去の historical cross-reference を保持するため意図的に維持する。
+# create-interview / wiki-ingest / pr-cleanup 系の `--active true` 出現は
+# `parent-routing-pattern-interim.test.sh` の TC-2h-2j で site-level に pin される。
 
 # --------------------------------------------------------------------------
 # Layer 8: case arm — phase-transition-whitelist.sh の declare -gA テーブル
@@ -388,15 +377,7 @@ echo "  Layer 2 sentinel         : workflow-incident-emit.sh が WORKFLOW_INCIDE
 echo "  Layer 3 Pre-check        : state-read.sh --field phase pre-condition"
 echo "  Layer 4 whitelist        : phase-transition-whitelist.sh が source 可能"
 echo "  Layer 5 Pre-flight       : preflight-check.sh の compact_state gate"
-echo "  Layer 6 retired          : parent-routing pattern 移行で撤去 (ADR docs/designs/parent-routing-unification.md)"
-# pr-test-analyzer M-5: numbering gap 説明を summary 近くに inline pointer として追記する
-# (file 冒頭の説明だけでなく、Pass 報告を見た maintainer も Layer 5 → Layer 7 の skip を即座に
-# 理解できるようにする)。
-echo "  (Note: Layer 6 was retired in parent-routing pattern migration; numbering gap is intentional to preserve historical cross-references — see ADR §6.1)"
-# pr-test-analyzer I-5: Layer 7 は trivially satisfied で **PR-7 で本 layer 全廃予定**。本 layer 通過は
-# AND-logic invariant の証明力を失っており、cognitive cost のみが残る (Pass 報告を読む maintainer に明示)。
-echo "  Layer 7 minimal presence : --active true が commands/issue/ 配下に 4 file 以上で出現"
-echo "  (Note: Layer 7 is semantically vestigial after Layer 6 retirement — PR-7 で全廃予定、現状は file 単位の存在 check のみで AND-logic invariant への寄与なし)"
+echo "  Layer 6/7 retired        : parent-routing pattern 移行で撤去 (ADR §6.1; --active true site-level pin は parent-routing-pattern-interim.test.sh の TC-2h-2j で代替)"
 echo "  Layer 8 case arm         : phase-transition-whitelist.sh の declare -gA dispatch"
 
 if [ "$FAIL" -gt 0 ]; then

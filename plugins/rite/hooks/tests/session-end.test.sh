@@ -623,7 +623,95 @@ if printf '%s' "$stderr_jq" | grep -qF 'fake jq: simulated failure'; then
 else
   fail "Expected fake jq stderr in WARNING; got stderr: $stderr_jq"
 fi
+# TC-DEACTIVATE-FAIL-1 (verified-review I-9): deactivation failure 時の diagnostic hint pin
+# 旧 test は WARNING 主文の存在のみ verify していたが、本 PR 強化部分の hint 文
+# (`JSON 妥当性確認 / disk full / permission denied / EXDEV (mv)`) が silent に削除されても regression
+# を catch できなかった。`対処:` から始まる hint 行が 4 つの diagnostic keyword をすべて含むことを pin する。
+if printf '%s' "$stderr_jq" | grep -qE '対処:.*JSON 妥当性確認.*disk full.*permission denied.*EXDEV'; then
+  pass "TC-DEACTIVATE-FAIL-1: deactivation hint contains 4 diagnostic keywords (JSON / disk full / permission denied / EXDEV)"
+else
+  fail "TC-DEACTIVATE-FAIL-1: 対処 hint missing diagnostic keywords (JSON 妥当性確認 / disk full / permission denied / EXDEV); got stderr: $stderr_jq"
+fi
 echo ""
+
+# --------------------------------------------------------------------------
+# TC-LOCK-CLEANUP-1 (verified-review C4): .flow-state.lock cleanup
+# code-reviewer I-1 + pr-test-analyzer CRITICAL-2 — flow-state-update.sh が
+# advisory lock 用に作成する `${STATE_FILE}.lock` ファイルを session-end.sh が削除する
+# (削除しないと `.rite/sessions/` に session 数だけ .flow-state.lock が累積する)。
+# 静的 assertion + runtime fixture の両方で pin する。
+# --------------------------------------------------------------------------
+echo "TC-LOCK-CLEANUP-1 (verified-review C4): .flow-state.lock cleanup static + runtime test"
+
+# Static assertion: session-end.sh に lock cleanup ロジックが存在する
+hook_path="$HOOK"
+if grep -qE '\${STATE_FILE}\.lock' "$hook_path"; then
+  pass "session-end.sh has \${STATE_FILE}.lock cleanup logic (writer-reader symmetry 維持)"
+else
+  fail "session-end.sh から \${STATE_FILE}.lock cleanup が消失 (I-1 lock cleanup が revert された可能性)"
+fi
+# WARNING emit パスも static pin
+if grep -qE 'per-session lock file の削除に失敗' "$hook_path"; then
+  pass "session-end.sh has WARNING for lock file rm failure (silent suppression 防止)"
+else
+  fail "session-end.sh から lock cleanup WARNING が消失"
+fi
+
+# Runtime fixture: per-session state file + lock file を作成し、session-end が両方を削除することを確認
+# TC-680-A と同じ最小 fixture pattern を採用する (rite-config.yml + per-session state file のみ)
+dir_lock="$TEST_DIR/tc_lock_cleanup"
+mkdir -p "$dir_lock/.rite/sessions"
+sid_lock="bcdef012-3456-789a-bcde-f0123456789a"
+echo "$sid_lock" > "$dir_lock/.rite-session-id"
+cat > "$dir_lock/rite-config.yml" <<EOF
+flow_state:
+  schema_version: 2
+EOF
+per_session_lock_file="$dir_lock/.rite/sessions/${sid_lock}.flow-state"
+lock_file_lock="${per_session_lock_file}.lock"
+# state file と lock file の両方を作成 (lock file は実運用で flock が残すもの)
+echo '{"active": true, "phase": "phase_lock_test", "issue_number": 999, "branch": "feat/issue-999-locktest"}' > "$per_session_lock_file"
+touch "$lock_file_lock"
+
+# session-end.sh を実行 (TC-680-A と同じ run_hook helper を使う)
+run_hook "$dir_lock" >/dev/null || true
+
+if [ ! -f "$per_session_lock_file" ]; then
+  pass "session-end.sh: per-session state file が削除された"
+else
+  fail "per-session state file が削除されていない: $per_session_lock_file"
+fi
+if [ ! -f "$lock_file_lock" ]; then
+  pass "session-end.sh: per-session lock file (.flow-state.lock) が削除された (I-1 lock leak 防止)"
+else
+  fail "per-session lock file が削除されていない: $lock_file_lock (I-1 lock leak fix が revert された可能性)"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-CAT-FAIL-1 (verified-review SF HIGH-1): stdin cat failure WARNING
+# silent-failure-hunter HIGH-1 — INPUT=$(cat) || INPUT="" の silent suppress を防止する
+# WARNING emit が追加されていることを static pin。
+# --------------------------------------------------------------------------
+echo "TC-CAT-FAIL-1 (verified-review HIGH-1): stdin cat failure WARNING static pin"
+if grep -qE 'WARNING: session-end: stdin cat が失敗' "$HOOK"; then
+  pass "session-end.sh has stdin cat failure WARNING (HIGH-1 silent regression 防止)"
+else
+  fail "session-end.sh から stdin cat failure WARNING が消失 (HIGH-1 silent suppression が再発した可能性)"
+fi
+
+# --------------------------------------------------------------------------
+# TC-DEACTIVATE-JQ-STDERR-1 (verified-review SF HIGH-2): jq stderr 退避 pin
+# silent-failure-hunter HIGH-2 — deactivate jq に stderr 退避 tempfile が追加された
+# (旧実装は jq stderr が user terminal に直接出力されるか lost していた)。
+# --------------------------------------------------------------------------
+echo "TC-DEACTIVATE-JQ-STDERR-1 (verified-review HIGH-2): deactivate jq stderr 退避 static pin"
+if grep -qE '_deactivate_jq_err=\$\(mktemp' "$HOOK" \
+   && grep -qE '2>"\$\{_deactivate_jq_err' "$HOOK"; then
+  pass "session-end.sh has _deactivate_jq_err stderr-tempfile pattern (HIGH-2 writer/reader 対称化)"
+else
+  fail "session-end.sh の deactivate jq に stderr 退避が消失 (HIGH-2 doctrine が revert された可能性)"
+fi
 
 # --------------------------------------------------------------------------
 # Summary

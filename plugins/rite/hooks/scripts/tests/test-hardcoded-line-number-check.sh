@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Smoke + validation tests for hardcoded-line-number-check.sh
 #
-# Validates against synthetic fixtures derived from PR #661 cycle 2/3 incident
+# Validates against synthetic fixtures derived from /3 incident
 # (Issue #666). The literals exercised here are taken from commit 6760cc5 and
 # 03fe71f (cleanup.md:1674, create-interview.md:605) before they were
 # replaced with structural references.
@@ -166,7 +166,7 @@ cat > "$FIX_CLEAN" <<'EOF'
 # Clean structural references (no line numbers, no findings)
 
 - 本セクション直前の Output format example sections (`[interview:skipped]` / `[interview:completed]`) 内の caller HTML inline literal を参照。
-- create.md 🚨 Mandatory After Interview Step 0 直後の DRIFT-CHECK ANCHOR と pair 同期する。
+- create.md 🚨 Mandatory After Delegation Step 0 直後の DRIFT-CHECK ANCHOR と pair 同期する。
 - See [link](path/file.md#some-anchor) for the canonical reference.
 
 Edge cases:
@@ -192,7 +192,7 @@ assert "filter A: only P-A reported" "1" "$a_count"
 assert "filter A: P-B suppressed" "0" "$b_count"
 assert "filter A: P-C suppressed" "0" "$c_count"
 
-# --- Filter B/C symmetric tests (cycle 2 review recommendation) -------------
+# --- Filter B/C symmetric tests (recommendation) -------------
 out_b=$("$SCRIPT" --target "$FIX_MIX" --pattern B --repo-root "$TMPDIR_ROOT" 2>&1)
 b_a_count=$(grep -c '\[P-A\]' <<< "$out_b" || true)
 b_b_count=$(grep -c '\[P-B\]' <<< "$out_b" || true)

@@ -36,39 +36,36 @@ create.md (orchestrator)
 
 ### Anti-pattern (what NOT to do)
 
-`rite:issue:create-interview` が `<!-- [interview:skipped] -->` / `<!-- [interview:completed] -->` (HTML comment 形式) を返した時:
+`rite:issue:create-interview` が `[interview:skipped]` / `[interview:completed]` を返した時 (sentinel 形式の canonical 定義は本セクション末尾 "Sentinel 形式" blockquote 参照):
 
 ```
 [WRONG]
 <Skill rite:issue:create-interview returns>
-<LLM output: "<!-- [interview:skipped] -->">
+<LLM output: "[interview:skipped]">
 <LLM ends turn. User sees "Cooked for 2m 0s" and must type `continue` manually.>
 ```
 
-これは **bug**。return tag は turn 境界ではなく hand-off signal。HTML コメント wrapping でも LLM の turn-boundary heuristic が誤発火し得るため、Mandatory After を即時実行しないと workflow が abandoned になる。
+これは **bug**。return tag は turn 境界ではなく hand-off signal。同 response turn 内で Phase 2 (Task Decomposition Decision) へ進まないと workflow が abandoned になる。両形式 (詳細は本セクション末尾 "Sentinel 形式" blockquote) とも turn 境界ではなく continuation trigger として扱う必要がある。
 
 ### Correct-pattern (what to do)
-
-> **Phase number note (drift from protocol-doc duplicate is intentional)**: 本 example は `skills/rite-workflow/references/sub-skill-return-protocol.md` の Correct-pattern と意図的に複製されている (Duplication note 参照)。protocol-doc 側は orchestrator 横断の generic example として `Phase 0.6` 表記を使うが、本 file (`create.md`) では create.md 内の **実 Phase 番号 `Phase 2`** を使用する。この phase number drift は protocol-doc Duplication note の "drift acceptable on orchestrator-specific Phase numbers" 規定により許容されている (F-25 cycle 4 LOW で再確認済)。
 
 ```
 [CORRECT]
 <Skill rite:issue:create-interview returns>
-<LLM output: "<!-- [interview:skipped] -->">
+<LLM output: "[interview:skipped]">
 <In the same response turn, LLM IMMEDIATELY:>
-  1. Runs the Pre-write bash for Phase 2 / Delegation Routing
-  2. Evaluates Phase 2 triggers
-  3. Runs the Delegation Routing Pre-write bash
-  4. Invokes skill: "rite:issue:create-register" (or create-decompose)
-  5. Waits for <!-- [create:completed:{N}] --> (HTML comment form)
-  6. Runs Mandatory After Delegation self-check
+  1. Evaluates Phase 2 triggers
+  2. Runs the Delegation Routing Pre-write bash
+  3. Invokes skill: "rite:issue:create-register" (or create-decompose)
+  4. Waits for <!-- [create:completed:{N}] -->
+  5. Runs Mandatory After Delegation self-check
 ```
 
 **Rule**: Treat `[interview:skipped]` / `[interview:completed]` as **continuation triggers**, not stopping points. Both terminal sub-skills emit `<!-- [create:completed:{N}] -->` as the unified completion marker. The only valid stop is after the user-visible `✅` completion message + next-steps block AND `<!-- [create:completed:{N}] -->` (terminal sub-skill が `create-register.md` Phase 3.4 / `create-decompose.md` Phase 3.4 で順序通り emit) が出力された後のみ。
 
-> **Contract phrases (AC-3)**: anti-pattern / correct-pattern 契約は以下 4 phrase を grep-verified で必ず含む: `anti-pattern`, `correct-pattern`, `same response turn`, `DO NOT stop`。書換禁止。manual verification: `for p in "anti-pattern" "correct-pattern" "same response turn" "DO NOT stop"; do grep -c "$p" plugins/rite/commands/issue/create.md; done` で全て ≥1。
+**Halt rule**: `[interview:error]` が返された場合は `[interview:completed]` / `[interview:skipped]` と異なり **catastrophic Pre-flight failure** (state file 不在 / state stuck at `create_interview`、詳細は `references/pre-check-routing.md` Item 0 と `create-interview.md` "`[interview:error]` halt 判定ルール" 表参照) を意味する。Phase 2 への進入禁止、manual intervention を要求して halt する (Issue 未作成のまま停止)。
 
-> Terminal sub-skills は flow-state deactivation + `✅` 完了メッセージ + `<!-- [create:completed:{N}] -->` を内製する。`create-interview.md` は post-phase (`create_post_interview`) に進めて return する (Defense-in-Depth)。
+> **Sentinel 形式**: `create-interview` は bare bracket (`[interview:*]`)、terminal sub-skills (`create-register` / `create-decompose`) は HTML-comment (`<!-- [create:completed:{N}] -->`) を emit する (移行ロードマップは ADR `docs/designs/parent-routing-unification.md` 参照)。両形式とも turn 境界ではない。**dispatch semantics**: `[interview:completed]` / `[interview:skipped]` / `<!-- [create:completed:{N}] -->` は **continuation trigger** (上記 Correct-pattern 参照)、`[interview:error]` は **halt sentinel** (直前の Halt rule 参照、Phase 2 進入禁止)。同形式内でも sentinel 値ごとに dispatch 先が異なるため、re-read 時に Halt rule との関係を必ず確認すること。
 
 ## Arguments
 
@@ -167,10 +164,9 @@ echo "$result"
 |---|--------------|-----|
 | 1 | Phase 1 goal classification (Phase 0.1 から推定) | Phase 1.1 interview scope 決定で必要 |
 | 2 | Phase 1 Delegation to Interview (Pre-write + Skill 起動) | `create_interview` write がないと `phase-transition-whitelist.sh` の case arm が enforce できない (`pre-tool-bash-guard.sh` / `session-end.sh` が source) |
-| 3 | Mandatory After Interview | flow state を `create_post_interview` に進める |
-| 4 | Phase 2 | `create-register` vs `create-decompose` 選択 |
-| 5 | Phase 3 Delegation Routing (Pre-write + terminal sub-skill) | `create_delegation` を書き whitelist を進める |
-| 6 | Mandatory After Delegation | terminal `create_completed` の defense-in-depth |
+| 3 | Phase 2 | `create-register` (single Issue) vs `create-decompose` (XL 分解) のルーティング決定 (sub-skill が `create_post_interview` を書込済、parent-routing pattern) |
+| 4 | Phase 3 Delegation Routing (Pre-write + terminal sub-skill) | `create_delegation` を書き whitelist を進める |
+| 5 | Mandatory After Delegation | terminal `create_completed` の defense-in-depth |
 
 **唯一の合法 path**: `rite:issue:create-register` または `rite:issue:create-decompose` Skill 起動経由でのみ Issue を作成する。`gh issue create` 直接呼出しは `pre-tool-bash-guard.sh` で block される。本 skip semantics は [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` の具体化 — 時間的制約や context 残量を理由にした step 省略は禁止。
 
@@ -182,63 +178,80 @@ echo "$result"
 
 ```bash
 # state file path を解決 (schema_version=2: per-session、legacy: single-file)。
-# helper が空文字列なら create branch へ。
-state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
-state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
+# state-path-resolve.sh の rc を if ! 形式で捕捉し、helper failure を retained flag + workflow_incident で可視化する
+# (create-interview.md Pre-flight と対称化)。
+if ! state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh); then
+  echo "[CONTEXT] STATE_PATH_RESOLVE_FAILED=1; reason=helper_exit_nonzero" >&2
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type "manual_fallback_adopted" \
+      --details "create.md:phase-1-pre-write state-path-resolve.sh exit non-zero; falling back to /tmp" \
+      --pr-number 0 \
+      || echo "WARNING: workflow-incident-emit.sh failed — manual_fallback_adopted sentinel emit incomplete (state-path-resolve fallback path, phase-1-pre-write)" >&2
+  state_root=""
+fi
+diag_log="${state_root:-/tmp}/.rite-flow-state-diag.log"
+# create-interview.md mkdir block と対称化。
+# 旧 `mkdir -p ... 2>/dev/null || true` は silent fallback で `_resolve-flow-state-path.sh` の
+# redirect 失敗を握りつぶし cold-start branch に化ける経路を生む。WARNING を emit して可視化する。
+# mkdir stderr を tempfile に捕捉して kernel failure reason を WARNING に pass-through する。
+_diag_mkdir_err=$(mktemp /tmp/rite-diag-mkdir-err-XXXXXX 2>/dev/null) || _diag_mkdir_err=""
+if ! mkdir -p "$(dirname "$diag_log")" 2>"${_diag_mkdir_err:-/dev/null}"; then
+  # create-interview.md と対称化。mkdir 失敗時に redirect 自体が失敗して helper が起動不能になる経路を防ぐため、
+  # diag_log を /dev/null に fallback して redirect が常に成立するようにする。
+  echo "WARNING: cannot create diag_log dir $(dirname "$diag_log") — diagnostic output redirected to /dev/null instead" >&2
+  [ -n "$_diag_mkdir_err" ] && [ -s "$_diag_mkdir_err" ] && head -1 "$_diag_mkdir_err" | sed 's/^/  /' >&2
+  diag_log="/dev/null"
+fi
+[ -n "$_diag_mkdir_err" ] && rm -f "$_diag_mkdir_err"
+# create-interview.md の `_resolve-flow-state-path.sh` block と完全対称化 (構造参照化、旧 hardcoded 行番号は drift していた)。
+# 旧 `... || state_file=""` は helper exit 非ゼロを silent 吸収し、create-interview.md 側で
+# halt 判定の根拠にしている FLOW_STATE_PATH_RESOLVE_FAILED retained flag が caller 側で立たない
+# 対称性破綻を生む。retained flag + workflow-incident-emit を加える。
+if ! state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>>"$diag_log"); then
+  echo "[CONTEXT] FLOW_STATE_PATH_RESOLVE_FAILED=1; reason=helper_exit_nonzero" >&2
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type "manual_fallback_adopted" \
+      --details "create.md:phase-1-pre-write _resolve-flow-state-path.sh exit non-zero" \
+      --pr-number 0 \
+      || echo "WARNING: workflow-incident-emit.sh failed — manual_fallback_adopted sentinel emit incomplete (phase-1-pre-write resolve fallback)" >&2
+  state_file=""
+fi
 if [ -n "$state_file" ] && [ -f "$state_file" ]; then
   # Preserve existing fields (issue_number, branch, etc.) from caller (e.g., start.md)
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_interview" \
-    --active true \
-    --next "After rite:issue:create-interview returns: proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
+  if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
+      --phase "create_interview" \
+      --active true \
+      --next "After rite:issue:create-interview returns: proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."; then
+    echo "[CONTEXT] CREATE_INTERVIEW_PRE_WRITE_PATCH_FAILED=1" >&2
+    # 非 blocking: sub-skill 側 Pre-flight が `create_post_interview` を patch するため caller continuation は機能する。
+    # ただし whitelist transition graph (`create_interview → create_post_interview`) の origin write が
+    # 失敗しているため、workflow_incident sentinel を併発させて post-hoc 検出経路を保証する。
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+        --type "manual_fallback_adopted" \
+        --details "create.md:phase-1-pre-write flow-state patch failed; sub-skill Pre-flight covers state" \
+        --pr-number 0 \
+        || echo "WARNING: workflow-incident-emit.sh failed — manual_fallback_adopted sentinel emit incomplete (phase-1-pre-write patch path)" >&2
+  fi
 else
-  bash {plugin_root}/hooks/flow-state-update.sh create \
-    --phase "create_interview" --issue 0 --branch "" --pr 0 \
-    --next "After rite:issue:create-interview returns: proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
+  if ! bash {plugin_root}/hooks/flow-state-update.sh create \
+      --phase "create_interview" --issue 0 --branch "" --pr 0 \
+      --next "After rite:issue:create-interview returns: proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."; then
+    echo "[CONTEXT] CREATE_INTERVIEW_PRE_WRITE_CREATE_FAILED=1" >&2
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+        --type "manual_fallback_adopted" \
+        --details "create.md:phase-1-pre-write flow-state create failed; sub-skill Pre-flight covers state" \
+        --pr-number 0 \
+        || echo "WARNING: workflow-incident-emit.sh failed — manual_fallback_adopted sentinel emit incomplete (phase-1-pre-write create path)" >&2
+  fi
 fi
 ```
 
 Invoke `skill: "rite:issue:create-interview"`.
 
-**🚨 Immediate after interview returns**: result pattern (`[interview:completed]` / `[interview:skipped]` / `[CONTEXT] INTERVIEW_DONE=1`) を観測したら、応答を終了せず Mandatory After Interview の Step 0 を **同 turn 内連続実行する**。**MUST execute Step 0 bash literal as your VERY FIRST tool call BEFORE any text output, narrative, or response generation** — text output を先に出すと LLM の turn-boundary heuristic が誤発火し implicit stop の経路が開く (Issue #910 で実証)。
+After `rite:issue:create-interview` returns, branch on the result pattern:
 
-### 🚨 Mandatory After Interview
-
-> **⚠️ 同 turn 内連続実行する (MUST execute in the SAME response turn)**: `[interview:*]` return tag は turn 境界ではなく継続トリガ — turn を閉じると workflow が停止し Issue は作成されない。No GitHub Issue has been created yet。flow state の `.phase = create_post_interview` (sub-skill 内製)。`phase-transition-whitelist.sh` の whitelist transition graph により、active の間は `create_delegation` (Phase 3 Delegation Routing Pre-write) または `create_completed` (terminal sub-skill) への transition のみが許可される — `pre-tool-bash-guard.sh` / `session-end.sh` が enforce 経路。
-
-**Step 0: Immediate Bash Action**: sub-skill return 直後の **VERY FIRST tool call** として実行 — `text output` / narrative / response generation よりも前に bash invocation を発行し、turn-boundary heuristic を bash invocation で 置換 する。Issue #910 D-01 の経験的観測: imperative 強度 (`MUST execute`, `VERY FIRST`, `BEFORE any text output`) が implicit stop の確率を下げる。失敗時は stderr に `[CONTEXT] STEP_0_PATCH_FAILED=1` retained flag を emit (非 blocking、Step 1 が idempotent patch として再試行):
-
-```bash
-# Re-affirm phase + refresh timestamp (idempotent with Step 1)。--if-exists は file 不在 skip
-# と patch 成功を両方 exit 0 で返すため STEP_0_PATCH_FAILED は真の失敗のみを区別する非 blocking flag。
-if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_post_interview" \
-    --active true \
-    --next "Step 0 Immediate Bash Action fired; proceeding to Phase 2. Do NOT stop." \
-    --if-exists \
-    --preserve-error-count; then
-  echo "[CONTEXT] STEP_0_PATCH_FAILED=1" >&2
-fi
-```
-
-**Step 1**: post-interview phase patch (atomic、idempotent with Step 0):
-
-```bash
-if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_post_interview" \
-    --active true \
-    --next "rite:issue:create-interview completed. Proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
-    --if-exists \
-    --preserve-error-count; then
-  echo "[CONTEXT] STEP_1_PATCH_FAILED=1" >&2
-fi
-```
-
-**Step 2**: Pre-check list を [`references/pre-check-routing.md`](./references/pre-check-routing.md) に従い実行。`NO` 項目があれば turn を閉じず Phase 2 へ継続。
-
-**Step 3**: **→ Proceed to Phase 2 (Task Decomposition Decision) now. Do NOT stop.**
-
-> **Continuation trigger reminder**: `[interview:*]` return tag は continuation trigger であり turn 境界ではない。implicit stop は protocol violation で `hooks/workflow-incident-emit.sh` ヘルパー経由で `workflow_incident` (`type=manual_fallback_adopted`) を emit する。
+- `[interview:completed]` / `[interview:skipped]` → proceed to Phase 2 (Task Decomposition Decision). The sub-skill writes `create_post_interview` to flow state itself (parent-routing pattern, ADR `docs/designs/parent-routing-unification.md`); caller-side mandatory after section is no longer required.
+- `[interview:error]` → **halt** without entering Phase 2. The sub-skill encountered a catastrophic Pre-flight failure (state file missing or state stuck at `create_interview`). Surface a clear error message to the user requesting manual intervention; do NOT proceed to Issue creation. See `references/pre-check-routing.md` Item 0 and `create-interview.md` "`[interview:error]` halt 判定ルール" table for the underlying conditions.
 
 ## Phase 2: Task Decomposition Decision
 
@@ -269,20 +282,66 @@ Phase 2 結果に基づき適切な sub-command に delegation。
 **Pre-write** (before invoking delegation sub-skill):
 
 ```bash
-# state file path を解決 (schema_version=2: per-session、legacy: single-file)。
-# helper が空文字列なら create branch へ。
-state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
-state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
+# state file path を解決 (Phase 1 Pre-write と同じ diag_log redirect pattern を使用)。
+# state-path-resolve.sh の rc を if ! 形式で捕捉し、helper failure を retained flag + workflow_incident で可視化する
+# (Phase 1 Pre-write と対称化)。
+if ! state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh); then
+  echo "[CONTEXT] STATE_PATH_RESOLVE_FAILED=1; reason=helper_exit_nonzero" >&2
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type "manual_fallback_adopted" \
+      --details "create.md:phase-3-pre-write state-path-resolve.sh exit non-zero; falling back to /tmp" \
+      --pr-number 0 \
+      || echo "WARNING: workflow-incident-emit.sh failed — manual_fallback_adopted sentinel emit incomplete (state-path-resolve fallback path, phase-3-pre-write)" >&2
+  state_root=""
+fi
+diag_log="${state_root:-/tmp}/.rite-flow-state-diag.log"
+# Phase 1 Pre-write と対称化。
+# mkdir stderr を tempfile に捕捉して kernel failure reason を WARNING に pass-through する。
+_diag_mkdir_err=$(mktemp /tmp/rite-diag-mkdir-err-XXXXXX 2>/dev/null) || _diag_mkdir_err=""
+if ! mkdir -p "$(dirname "$diag_log")" 2>"${_diag_mkdir_err:-/dev/null}"; then
+  # create-interview.md と対称化。mkdir 失敗時に redirect 自体が失敗して helper が起動不能になる経路を防ぐため、
+  # diag_log を /dev/null に fallback して redirect が常に成立するようにする。
+  echo "WARNING: cannot create diag_log dir $(dirname "$diag_log") — diagnostic output redirected to /dev/null instead" >&2
+  [ -n "$_diag_mkdir_err" ] && [ -s "$_diag_mkdir_err" ] && head -1 "$_diag_mkdir_err" | sed 's/^/  /' >&2
+  diag_log="/dev/null"
+fi
+[ -n "$_diag_mkdir_err" ] && rm -f "$_diag_mkdir_err"
+# Phase 1 Pre-write と対称化 (構造参照化、旧 hardcoded 行番号は drift していた)。
+if ! state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>>"$diag_log"); then
+  echo "[CONTEXT] FLOW_STATE_PATH_RESOLVE_FAILED=1; reason=helper_exit_nonzero" >&2
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type "manual_fallback_adopted" \
+      --details "create.md:phase-3-pre-write _resolve-flow-state-path.sh exit non-zero" \
+      --pr-number 0 \
+      || echo "WARNING: workflow-incident-emit.sh failed — manual_fallback_adopted sentinel emit incomplete (phase-3-pre-write resolve fallback)" >&2
+  state_file=""
+fi
 if [ -n "$state_file" ] && [ -f "$state_file" ]; then
   # Preserve existing fields (issue_number, branch, etc.) from caller
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_delegation" \
-    --active true \
-    --next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop."
+  if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
+      --phase "create_delegation" \
+      --active true \
+      --next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop."; then
+    echo "[CONTEXT] CREATE_DELEGATION_PRE_WRITE_PATCH_FAILED=1" >&2
+    # 非 blocking: terminal sub-skill (create-register/decompose) が `create_completed` を書く safety net あり。
+    # whitelist transition (`create_post_interview → create_delegation`) origin write が失敗しているため incident sentinel を併発。
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+        --type "manual_fallback_adopted" \
+        --details "create.md:phase-3-pre-write flow-state patch failed; terminal sub-skill covers state" \
+        --pr-number 0 \
+        || echo "WARNING: workflow-incident-emit.sh failed — manual_fallback_adopted sentinel emit incomplete (phase-3-pre-write patch path)" >&2
+  fi
 else
-  bash {plugin_root}/hooks/flow-state-update.sh create \
-    --phase "create_delegation" --issue 0 --branch "" --pr 0 \
-    --next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop."
+  if ! bash {plugin_root}/hooks/flow-state-update.sh create \
+      --phase "create_delegation" --issue 0 --branch "" --pr 0 \
+      --next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop."; then
+    echo "[CONTEXT] CREATE_DELEGATION_PRE_WRITE_CREATE_FAILED=1" >&2
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+        --type "manual_fallback_adopted" \
+        --details "create.md:phase-3-pre-write flow-state create failed; terminal sub-skill covers state" \
+        --pr-number 0 \
+        || echo "WARNING: workflow-incident-emit.sh failed — manual_fallback_adopted sentinel emit incomplete (phase-3-pre-write create path)" >&2
+  fi
 fi
 ```
 

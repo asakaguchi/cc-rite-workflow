@@ -220,6 +220,8 @@ Wiki 初期化時にテンプレートを `.rite/wiki/` に展開します。
 | `{related_page_path}` | 関連ページへの **page-dir 相対パス**（Ingest 時）。新規 page 格納位置 `.rite/wiki/pages/{domain}/{slug}.md` の格納ディレクトリ `.rite/wiki/pages/{domain}/` を起点として resolve される。同ドメイン内は `./other.md` または `other.md`、別ドメインは `../{other_domain}/other.md` の形式で substitute する。`{source_ref}` (wiki-root 起点、template 側で `../../` prefix を hardcode) とは **起点が異なる** 点に注意。詳細は `plugins/rite/commands/wiki/ingest.md` Phase 5.3 の「設計意図 (#941 fix)」を参照 |
 | `{source_description}` | ソースの説明文（Ingest 時） |
 
+> **F-14 fix（関連ページなし時の操作契約）**: 確信ある関連ページが特定できない場合、`{related_page_title}` / `{related_page_path}` の両 placeholder への substitute は行わず、`## 関連ページ` セクション全体を Edit で `- （関連ページなし）` の平文 1 行に差し替える（空 placeholder のままにすると Markdown リンク `[]()` が破綻するため）。本契約の **canonical source** は `plugins/rite/commands/wiki/ingest.md` Phase 4.3「関連ページの特定」の "該当ページなし時の処理" 節。本 references 側は要約参照に留め、操作手順本体は canonical を参照すること（同一手順を複数 site に分散させない方針）。
+
 > **confidence フィールド**: page-template.md の `confidence: medium` はリテラル値であり `{confidence}` プレースホルダーではない。Write 後に Edit で Phase 4 の判定値 (`high` / `medium` / `low`) に置換する。
 
 ## Wiki 有効判定パターン

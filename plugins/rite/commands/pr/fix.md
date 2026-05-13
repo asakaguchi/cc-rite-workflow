@@ -3256,6 +3256,7 @@ git push
 After commit + push completes for the current fix cycle, run cleanup so reviewer-created `pr-{N}-cycle{X}` worktrees / branches do not accumulate across cycles. Reviewers run under READ-ONLY enforcement and cannot self-clean (`agents/_reviewer-base.md` § READ-ONLY Enforcement). Cleanup is non-blocking — its failure must not halt the workflow.
 
 ```bash
+# {plugin_root} はリテラル値で埋め込む (詳細は references/plugin-path-resolution.md)
 bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 ```
 

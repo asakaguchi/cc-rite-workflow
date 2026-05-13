@@ -18,10 +18,29 @@ CLEANUP="$SCRIPT_DIR/../scripts/pr-cycle-cleanup.sh"
 PASS=0
 FAIL=0
 
-if [ ! -x "$CLEANUP" ]; then
-  echo "ERROR: $CLEANUP not found or not executable" >&2
+if [ ! -f "$CLEANUP" ]; then
+  echo "ERROR: $CLEANUP not found" >&2
   exit 1
 fi
+
+# Track all temp repos created across tests so trap can clean them on
+# unexpected exit (set -e fire / SIGINT / SIGTERM / SIGHUP). Without this,
+# tests that fail mid-run leave /tmp/rite-pr-cleanup-test-* orphans.
+TEST_REPOS=()
+_cleanup_all_test_repos() {
+  local repo
+  for repo in "${TEST_REPOS[@]:-}"; do
+    [ -z "$repo" ] && continue
+    if [ -d "$repo" ]; then
+      chmod -R u+rwX "$repo" 2>/dev/null || true
+      rm -rf "$repo"
+    fi
+  done
+}
+trap '_cleanup_all_test_repos' EXIT
+trap '_cleanup_all_test_repos; exit 130' INT
+trap '_cleanup_all_test_repos; exit 143' TERM
+trap '_cleanup_all_test_repos; exit 129' HUP
 
 # -----------------------------------------------------------------------
 # Helpers
@@ -41,6 +60,7 @@ fail() {
 make_temp_repo() {
   local tmp
   tmp=$(mktemp -d /tmp/rite-pr-cleanup-test-XXXXXX)
+  TEST_REPOS+=("$tmp")
   (
     cd "$tmp"
     git init --quiet --initial-branch=main

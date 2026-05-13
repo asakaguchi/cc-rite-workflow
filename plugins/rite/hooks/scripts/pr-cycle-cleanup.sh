@@ -32,7 +32,10 @@ set -euo pipefail
 export GIT_TERMINAL_PROMPT=0
 
 DRY_RUN=0
-for arg in "$@"; do
+# bash 3.2 (macOS default) では `set -u` 配下で空 `$@` が unbound variable 扱いになる
+# 既知の挙動があるため、`${@:-}` で展開してガードする。
+for arg in "${@:-}"; do
+  [ -z "$arg" ] && continue
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
     *) echo "ERROR: unknown argument: $arg" >&2; exit 1 ;;
@@ -45,7 +48,11 @@ if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
 fi
 
 repo_root=$(git rev-parse --show-toplevel)
-cd "$repo_root"
+if [ -z "$repo_root" ]; then
+  echo "ERROR: empty repo_root (git rev-parse race / permission change の可能性)" >&2
+  exit 1
+fi
+cd -- "$repo_root"
 
 PATTERN='^pr-[0-9]+-cycle[0-9]+$'
 WIKI_WORKTREE_PATH=".rite/wiki-worktree"
@@ -60,7 +67,8 @@ errors=0
 # branch itself can be deleted (a branch checked out in a worktree cannot
 # be deleted with `git branch -D`).
 # -----------------------------------------------------------------------
-if wt_list=$(git worktree list --porcelain 2>/dev/null); then
+wt_list_err=$(mktemp /tmp/rite-pr-cycle-cleanup-wt-err-XXXXXX 2>/dev/null) || wt_list_err=""
+if wt_list=$(git worktree list --porcelain 2>"${wt_list_err:-/dev/null}"); then
   # Parse porcelain output: pair each `worktree <path>` with its `branch refs/heads/<name>`
   current_path=""
   while IFS= read -r line; do
@@ -78,7 +86,7 @@ if wt_list=$(git worktree list --porcelain 2>/dev/null); then
           current_path=""
           continue
         fi
-        if printf '%s' "$branch_name" | grep -E -q "$PATTERN"; then
+        if [[ "$branch_name" =~ ^pr-[0-9]+-cycle[0-9]+$ ]]; then
           if [ "$DRY_RUN" = "1" ]; then
             echo "[dry-run] would remove worktree: $current_path (branch=$branch_name)"
           else
@@ -97,11 +105,29 @@ if wt_list=$(git worktree list --porcelain 2>/dev/null); then
         ;;
     esac
   done <<< "$wt_list"
+else
+  wt_rc=$?
+  echo "WARNING: git worktree list --porcelain が失敗しました (rc=$wt_rc)" >&2
+  if [ -n "$wt_list_err" ] && [ -s "$wt_list_err" ]; then
+    head -3 "$wt_list_err" | sed 's/^/  /' >&2
+  fi
+  errors=$((errors + 1))
 fi
+[ -n "$wt_list_err" ] && rm -f "$wt_list_err"
 
 # Prune any dangling worktree metadata to keep `git worktree list` clean.
+# AC-3 (異常終了経路) の核心ロジックのため、失敗を silent に握り潰さず errors カウンタに加算する。
 if [ "$DRY_RUN" = "0" ]; then
-  git worktree prune 2>/dev/null || true
+  prune_err=$(mktemp /tmp/rite-pr-cycle-cleanup-prune-err-XXXXXX 2>/dev/null) || prune_err=""
+  if ! git worktree prune 2>"${prune_err:-/dev/null}"; then
+    prune_rc=$?
+    echo "WARNING: git worktree prune が失敗しました (rc=$prune_rc)" >&2
+    if [ -n "$prune_err" ] && [ -s "$prune_err" ]; then
+      head -3 "$prune_err" | sed 's/^/  /' >&2
+    fi
+    errors=$((errors + 1))
+  fi
+  [ -n "$prune_err" ] && rm -f "$prune_err"
 fi
 
 # -----------------------------------------------------------------------
@@ -109,10 +135,11 @@ fi
 # `git for-each-ref` is used instead of `git branch --list` because it
 # emits the bare ref name without leading whitespace/asterisks.
 # -----------------------------------------------------------------------
-if branches=$(git for-each-ref --format='%(refname:short)' refs/heads/ 2>/dev/null); then
+ref_err=$(mktemp /tmp/rite-pr-cycle-cleanup-ref-err-XXXXXX 2>/dev/null) || ref_err=""
+if branches=$(git for-each-ref --format='%(refname:short)' refs/heads/ 2>"${ref_err:-/dev/null}"); then
   while IFS= read -r br; do
     [ -z "$br" ] && continue
-    if printf '%s' "$br" | grep -E -q "$PATTERN"; then
+    if [[ "$br" =~ ^pr-[0-9]+-cycle[0-9]+$ ]]; then
       if [ "$DRY_RUN" = "1" ]; then
         echo "[dry-run] would delete branch: $br"
       else
@@ -125,7 +152,15 @@ if branches=$(git for-each-ref --format='%(refname:short)' refs/heads/ 2>/dev/nu
       fi
     fi
   done <<< "$branches"
+else
+  ref_rc=$?
+  echo "WARNING: git for-each-ref refs/heads/ が失敗しました (rc=$ref_rc)" >&2
+  if [ -n "$ref_err" ] && [ -s "$ref_err" ]; then
+    head -3 "$ref_err" | sed 's/^/  /' >&2
+  fi
+  errors=$((errors + 1))
 fi
+[ -n "$ref_err" ] && rm -f "$ref_err"
 
 # -----------------------------------------------------------------------
 # Status line

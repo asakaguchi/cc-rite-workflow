@@ -1035,6 +1035,7 @@ Reviewer subagents create transient inspection worktrees via `git worktree add` 
 Cleanup uses a strict regex `^pr-[0-9]+-cycle[0-9]+$` and explicitly skips `.rite/wiki-worktree`. It is non-blocking — failure must not halt the cleanup workflow.
 
 ```bash
+# {plugin_root} はリテラル値で埋め込む (詳細は references/plugin-path-resolution.md)
 bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 ```
 

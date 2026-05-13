@@ -26,4 +26,4 @@ confidence: medium
 
 ## ソース
 
-- [{source_description}]({source_ref})
+- [{source_description}](../../{source_ref})

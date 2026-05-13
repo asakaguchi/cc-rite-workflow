@@ -61,6 +61,20 @@ worktrees_removed=0
 branches_deleted=0
 errors=0
 
+# trap + cleanup パターン (canonical: references/bash-trap-patterns.md#signal-specific-trap-template)
+# 兄弟スクリプト (wiki-growth-check.sh / wiki-worktree-setup.sh 等) と統一する。
+# パス先行宣言 → trap 先行設定 → mktemp の順序で orphan race window を排除する。
+wt_list_err=""
+prune_err=""
+ref_err=""
+_rite_pr_cycle_cleanup() {
+  rm -f "${wt_list_err:-}" "${prune_err:-}" "${ref_err:-}"
+}
+trap 'rc=$?; _rite_pr_cycle_cleanup; exit $rc' EXIT
+trap '_rite_pr_cycle_cleanup; exit 130' INT
+trap '_rite_pr_cycle_cleanup; exit 143' TERM
+trap '_rite_pr_cycle_cleanup; exit 129' HUP
+
 # -----------------------------------------------------------------------
 # Step 1: Remove residual worktrees matching the pattern.
 # Worktrees holding a matching branch as HEAD must be removed BEFORE the
@@ -113,13 +127,17 @@ else
   fi
   errors=$((errors + 1))
 fi
-[ -n "$wt_list_err" ] && rm -f "$wt_list_err"
 
 # Prune any dangling worktree metadata to keep `git worktree list` clean.
 # AC-3 (異常終了経路) の核心ロジックのため、失敗を silent に握り潰さず errors カウンタに加算する。
 if [ "$DRY_RUN" = "0" ]; then
   prune_err=$(mktemp /tmp/rite-pr-cycle-cleanup-prune-err-XXXXXX 2>/dev/null) || prune_err=""
-  if ! git worktree prune 2>"${prune_err:-/dev/null}"; then
+  # bash の `if ! cmd; then rc=$?` は `!` 演算子が exit status を反転させるため
+  # then ブロック内の `$?` は常に 0 になる仕様。`if cmd; then :; else rc=$?; fi` 形式で
+  # 元コマンドの非ゼロ exit code を正しく取得する (兄弟スクリプト wt_list / ref と統一)。
+  if git worktree prune 2>"${prune_err:-/dev/null}"; then
+    :
+  else
     prune_rc=$?
     echo "WARNING: git worktree prune が失敗しました (rc=$prune_rc)" >&2
     if [ -n "$prune_err" ] && [ -s "$prune_err" ]; then
@@ -127,7 +145,6 @@ if [ "$DRY_RUN" = "0" ]; then
     fi
     errors=$((errors + 1))
   fi
-  [ -n "$prune_err" ] && rm -f "$prune_err"
 fi
 
 # -----------------------------------------------------------------------
@@ -160,7 +177,6 @@ else
   fi
   errors=$((errors + 1))
 fi
-[ -n "$ref_err" ] && rm -f "$ref_err"
 
 # -----------------------------------------------------------------------
 # Status line

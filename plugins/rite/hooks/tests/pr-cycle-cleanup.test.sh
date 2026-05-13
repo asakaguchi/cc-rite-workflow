@@ -152,12 +152,15 @@ TEST_REPO=$(make_temp_repo)
   # Simulate abnormal termination: directory deleted but worktree metadata + branch persist
   rm -rf .wt-orphan
 )
-( cd "$TEST_REPO" && bash "$CLEANUP" >/dev/null 2>&1 )
+# Capture stdout to verify the cleanup status line (asserts that `git worktree prune`
+# completed successfully, which is the AC-3 核心ロジック — branch deletion alone is
+# not sufficient evidence that the orphan worktree metadata was reclaimed).
+t03_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
 remaining=$(count_pr_cycle_branches "$TEST_REPO")
-if [ "$remaining" = "0" ]; then
-  pass "T-03: 異常終了後の orphan branch が削除された"
+if [ "$remaining" = "0" ] && echo "$t03_output" | grep -q 'status=cleaned'; then
+  pass "T-03: 異常終了後の orphan branch が削除され、status=cleaned が返った"
 else
-  fail "T-03: $remaining branch(es) remaining after recovery (expected 0)"
+  fail "T-03: remaining=$remaining (expected 0), status check failed. Output: $t03_output"
 fi
 cleanup_temp_repo "$TEST_REPO"
 

@@ -2,12 +2,14 @@
 title: "同一 placeholder を識別子と resolution-target で再利用すると path-resolution drift を生む"
 domain: "anti-patterns"
 created: "2026-05-13T00:00:00+00:00"
-updated: "2026-05-13T01:00:00+00:00"
+updated: "2026-05-13T11:55:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260512T235812Z-pr-939.md"
   - type: "reviews"
     ref: "raw/reviews/20260513T004127Z-pr-942.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260513T030502Z-pr-943.md"
 tags: []
 confidence: high
 ---
@@ -52,6 +54,27 @@ sources:
 ### Canonical fix の文書化 (PR #942)
 
 PR #939 の URL prefix 修正後、`plugins/rite/commands/wiki/ingest.md` L780 の F-15 fix 注釈は「両方とも **ファイル相対パス** を使用」と記述されたままで、読者が「placeholder 値そのものが `../../raw/...` を持つ」と誤読し本 anti-pattern を再導入する経路が残っていた。PR #942 で同 L780 直後に「設計意図」段落を追記し、「placeholder 値は wiki-root 相対 bare path / `../../` prefix は template リテラル側で hardcode (page-template.md L29 参照)」という設計分担を明文化した (2 行追記、0 findings 1 cycle 着地)。canonical fix の **コード修正** (PR #939) と **設計意図の文書化** (PR #942) が完了したことで、本 anti-pattern の再導入リスクは visual cue / implicit 推論レベルから明示宣言レベルへ縮小した。
+
+### 周辺 placeholder への対称化と起点規約の明示 (PR #943 / Issue #941)
+
+PR #939 review で tech-writer + code-quality reviewer が「他の placeholder (`{related_page_path}` 等) も同種問題を潜在している可能性」を LOW で指摘し Issue #941 として登録された。PR #943 で `{related_page_path}` の実起点を逆引き調査した結果、本 anti-pattern とは **異なる解 (page-dir 起点)** で既に機能していることが実測確認された:
+
+- 実 wiki page (`.rite/wiki/pages/anti-patterns/asymmetric-fix-transcription.md` 等多数) の `## 関連ページ` link は `./other.md` / `../{domain}/other.md` 形式の **page-dir 相対 path** で記述されており動作している
+- `{source_ref}` (wiki-root 起点 + template 側 `../../` prefix hardcode) と起点が異なる
+- broken_refs は現時点で発生していないため、page-template.md L25 の修正は不要
+
+しかし起点規約自体が ingest.md / wiki-patterns.md に未明示だったため、将来の ingest 実装で wiki-root 起点 path を出力する drift 経路は残存していた。PR #943 で ingest.md Phase 5.3 に `{related_page_path}` 用の「設計意図 (#941 fix)」blockquote (PR #942 と対称形式) を追加し、wiki-patterns.md L220 の placeholder 説明を「page-dir 相対パス」明示版に更新することで、両 placeholder の起点規約を明示分離して文書化した (3 行追加 / 1 行修正、両 reviewer 評価「可」で 0 findings 1 cycle 着地)。
+
+### 累積知識構築パターン
+
+`{source_ref}` 系列 (PR #939 / #940 修正 → PR #942 注釈) と `{related_page_path}` 系列 (PR #943 対称化) を通じ、本 anti-pattern への対策は以下の累積構造を持つ:
+
+1. **本 anti-pattern 識別** (PR #939): broken_refs 218 件の root cause として placeholder dual-use を特定
+2. **コード修正** (PR #939 / #940): template リテラル側に prefix を hardcode する canonical fix を適用
+3. **設計意図の文書化** (PR #942): canonical fix の根拠 (frontmatter 識別子 vs Markdown link URL の semantics 分離) を ingest.md に注釈追加
+4. **周辺 placeholder への対称化** (PR #943 / Issue #941): 別 placeholder (`{related_page_path}`) の起点規約を逆引き調査し、異なる解 (page-dir 起点) の場合も含めて 2 つの起点規約を明示分離
+
+「設計意図 (#XXX fix)」blockquote 形式を canonical として ingest.md Phase 5.3 に集約することで、将来の placeholder 追加時にも同型の起点規約明示を強制でき、本 anti-pattern の再導入リスクを構造的に縮小できる。
 
 ### Root Cause Analysis
 

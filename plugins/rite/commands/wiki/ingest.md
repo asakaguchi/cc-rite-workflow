@@ -780,6 +780,8 @@ fi
 > **`{source_ref}` のセマンティクス分離** (F-15 fix): page-template.md は frontmatter の `sources[].ref` と「## ソース」セクションのリンク URL の 2 箇所で `{source_ref}` を参照しますが、両方とも **ファイル相対パス** (例: `raw/reviews/20260413T...md`) を使用します。リンクの**表示テキスト**には `{source_description}` を使い、URL には `{source_ref}` を使うことで両者を分離してください。`wiki-ingest-trigger.sh` の frontmatter 内 `source_ref` フィールド (例: `pr-123`) は識別子であり、ここで参照される `{source_ref}` (ファイル相対パス) とは別物です。
 >
 > **設計意図** (#940 fix): `{source_ref}` placeholder の値は wiki-root 相対の bare path (例: `raw/reviews/foo.md`) のまま使用する。`## ソース` セクションのリンク URL には、新規 page 格納位置 `.rite/wiki/pages/{domain}/{slug}.md` から wiki root への 2 階層上昇を表す `../../` prefix を template リテラル側で hardcode する (page-template.md L29 参照)。placeholder 値自体に URL prefix を含めないことで、frontmatter `sources[].ref` (識別子目的) と Markdown link URL (resolution 対象) の semantics 分離を維持する。
+>
+> **設計意図** (#941 fix): `{related_page_path}` placeholder の値は **page-dir 相対** の path を substitute する (例: 同ドメイン内 `./other-page.md` または `other-page.md`、別ドメイン `../{domain}/other-page.md`)。新規 page 格納位置は `.rite/wiki/pages/{domain}/{slug}.md` であり、`## 関連ページ` セクションのリンク URL はその page-dir (`.rite/wiki/pages/{domain}/`) 起点で resolve される。`{source_ref}` (wiki-root 起点、template 側で `../../` prefix を hardcode) とは **起点が異なる** ため、`{related_page_path}` には template リテラル側で prefix を付けず、placeholder 値そのものに page-dir 相対 path を入れる方針を採る。Phase 4 で関連ページを特定する際は、対象ページの格納パスから新規 page 格納パスへの相対 path を計算して substitute する (実装サンプル: `.rite/wiki/pages/anti-patterns/asymmetric-fix-transcription.md` 等が `../heuristics/foo.md` / `./bar.md` 形式で記述されている)。
 
 ---
 

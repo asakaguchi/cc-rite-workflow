@@ -217,7 +217,7 @@ Wiki 初期化時にテンプレートを `.rite/wiki/` に展開します。
 | `{summary}` | ページ概要（1-2文、Ingest 時） |
 | `{details}` | 詳細説明（Ingest 時） |
 | `{related_page_title}` | 関連ページのタイトル（Ingest 時） |
-| `{related_page_path}` | 関連ページの相対パス（Ingest 時） |
+| `{related_page_path}` | 関連ページへの **page-dir 相対パス**（Ingest 時）。新規 page 格納位置 `.rite/wiki/pages/{domain}/{slug}.md` の格納ディレクトリ `.rite/wiki/pages/{domain}/` を起点として resolve される。同ドメイン内は `./other.md` または `other.md`、別ドメインは `../{other_domain}/other.md` の形式で substitute する。`{source_ref}` (wiki-root 起点、template 側で `../../` prefix を hardcode) とは **起点が異なる** 点に注意。詳細は `plugins/rite/commands/wiki/ingest.md` Phase 5.3 の「設計意図 (#941 fix)」を参照 |
 | `{source_description}` | ソースの説明文（Ingest 時） |
 
 > **confidence フィールド**: page-template.md の `confidence: medium` はリテラル値であり `{confidence}` プレースホルダーではない。Write 後に Edit で Phase 4 の判定値 (`high` / `medium` / `low`) に置換する。

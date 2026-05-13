@@ -312,8 +312,9 @@ assert_not_grep "start: no inline 'workflow-incident-emit.sh' bash literal (drif
 # 行となっており、上記旧行番号は git history (`git log -p plugins/rite/commands/issue/start.md`) で
 # 確認可能。Issue #937 cycle 1 で 4 種を pin、cycle 2 で §C / §D anchor reference の prose を
 # 抽象化した結果、cycle 1 で exclusion していた `rite:pr:fix error fallback` も start.md から
-# 消えた (現 start.md prose / references file に literal なし)。本 test は cycle 2 終了時点の
-# 状態に基づき 6 種すべてを pin する。
+# 消えた (現 start.md prose には 6 種すべての literal なし。canonical SoT としては
+# `references/workflow-incident-emit-pattern.md` §A-§D 配下の bash literal に保持されている)。
+# 本 test は cycle 2 終了時点の状態に基づき 6 種すべてを pin する (grep scope = $START_MD のみ)。
 #
 # 検証コマンド (Phase 1.2.0 Priority 0 grep と同形式で、$START_MD に当該 literal が存在しないことを
 # 機械的に確認できる):

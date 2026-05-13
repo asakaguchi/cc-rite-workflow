@@ -289,6 +289,34 @@ assert_grep "start: Invariants statement retained (non-blocking)" \
   "$START_MD" \
   'workflow MUST NOT halt'
 
+# === 6. start.md drift guard — inline emit literal must NOT reappear (#937) ===
+echo ""
+echo "--- 6. start.md drift guard (#937: inline emit literal block) ---"
+
+# F-#937 drift guard: orchestrator-direct emit canonical bash literal が start.md に再混入していないことを確認。
+# Issue #937 で start.md L743/949/955/1221/1247/1253 の 6 箇所 inline emit literal を
+# references/workflow-incident-emit-pattern.md §A-§D anchor 参照に圧縮した。
+# 将来の編集で `bash {plugin_root}/hooks/workflow-incident-emit.sh ...` literal が start.md
+# 本体に再混入すると SoT 1:1 分離契約が破れるため、ここで構造的に block する。
+assert_not_grep "start: no inline 'workflow-incident-emit.sh' bash literal (drift guard for #937)" \
+  "$START_MD" \
+  'bash \{plugin_root\}/hooks/workflow-incident-emit.sh'
+
+# 上記 assert_not_grep の補強: `--type` flag を伴う具体的 incident type の文字列も再混入していないこと。
+# 旧 inline literal の頻出文字列 ("rite:lint aborted by user" / "rite:pr:create returned create-failed"
+# / "rite:pr:create manual fallback" / "rite:pr:fix error fallback" / "rite:pr:ready returned error"
+# / "rite:pr:ready manual fallback") のうち bash literal 由来の 4 種を pin する。
+# 注: "rite:pr:fix error fallback" / "rite:pr:ready manual fallback" 等は §C/§D anchor reference の
+# 説明 prose にも `details=` として登場するため drift guard 対象外。
+for ghost_literal in "rite:lint aborted by user" \
+                     "rite:pr:create returned create-failed" \
+                     "rite:pr:create manual fallback" \
+                     "rite:pr:ready returned error"; do
+  assert_not_grep "start: no ghost literal '$ghost_literal' (drift guard for #937)" \
+    "$START_MD" \
+    "$ghost_literal"
+done
+
 # === Summary ===
 if ! print_summary "$(basename "$0")" \
   "PR D で抽出した 3 references の構造が破壊されています。圧縮を巻き戻して reference 内容を確認してください。"; then

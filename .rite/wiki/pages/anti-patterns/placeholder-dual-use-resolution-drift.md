@@ -2,12 +2,14 @@
 title: "同一 placeholder を識別子と resolution-target で再利用すると path-resolution drift を生む"
 domain: "anti-patterns"
 created: "2026-05-13T00:00:00+00:00"
-updated: "2026-05-13T00:00:00+00:00"
+updated: "2026-05-13T01:00:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260512T235812Z-pr-939.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260513T004127Z-pr-942.md"
 tags: []
-confidence: medium
+confidence: high
 ---
 
 # 同一 placeholder を識別子と resolution-target で再利用すると path-resolution drift を生む
@@ -47,6 +49,10 @@ sources:
 
 `{source_ref}` placeholder 自体は wiki-root 相対 bare path のまま維持され、URL prefix は template 側の責務として明示分離される。
 
+### Canonical fix の文書化 (PR #942)
+
+PR #939 の URL prefix 修正後、`plugins/rite/commands/wiki/ingest.md` L780 の F-15 fix 注釈は「両方とも **ファイル相対パス** を使用」と記述されたままで、読者が「placeholder 値そのものが `../../raw/...` を持つ」と誤読し本 anti-pattern を再導入する経路が残っていた。PR #942 で同 L780 直後に「設計意図」段落を追記し、「placeholder 値は wiki-root 相対 bare path / `../../` prefix は template リテラル側で hardcode (page-template.md L29 参照)」という設計分担を明文化した (2 行追記、0 findings 1 cycle 着地)。canonical fix の **コード修正** (PR #939) と **設計意図の文書化** (PR #942) が完了したことで、本 anti-pattern の再導入リスクは visual cue / implicit 推論レベルから明示宣言レベルへ縮小した。
+
 ### Root Cause Analysis
 
 `{source_ref}` という 1 つの placeholder トークンに 2 つの異なる semantics (識別子 vs resolution-target) を持たせると、片方の semantics 変更が他方に影響しないかを毎回確認する責務が implicit に発生する。レビュアー / 開発者は「placeholder 名が同じ」という visual cue から「同じ semantics」と誤推論しやすく、resolution 文脈の prefix 要件を見落とす。
@@ -69,3 +75,4 @@ sources:
 ## ソース
 
 - [PR #939 review results](../../raw/reviews/20260512T235812Z-pr-939.md)
+- [PR #942 review results](../../raw/reviews/20260513T004127Z-pr-942.md)

@@ -778,6 +778,8 @@ fi
 > **`{source_type}` から `manual` を削除** (F-15 fix): `wiki-ingest-trigger.sh` は `reviews|retrospectives|fixes` の 3 値のみを受理するため、本 placeholder で `manual` を許容すると drift 源になります。手動投入経路を導入する場合は trigger.sh 側のバリデーションも同時に拡張すること。
 >
 > **`{source_ref}` のセマンティクス分離** (F-15 fix): page-template.md は frontmatter の `sources[].ref` と「## ソース」セクションのリンク URL の 2 箇所で `{source_ref}` を参照しますが、両方とも **ファイル相対パス** (例: `raw/reviews/20260413T...md`) を使用します。リンクの**表示テキスト**には `{source_description}` を使い、URL には `{source_ref}` を使うことで両者を分離してください。`wiki-ingest-trigger.sh` の frontmatter 内 `source_ref` フィールド (例: `pr-123`) は識別子であり、ここで参照される `{source_ref}` (ファイル相対パス) とは別物です。
+>
+> **設計意図** (#940 fix): `{source_ref}` placeholder の値は wiki-root 相対の bare path (例: `raw/reviews/foo.md`) のまま使用する。`## ソース` セクションのリンク URL には、新規 page 格納位置 `.rite/wiki/pages/{domain}/{slug}.md` から wiki root への 2 階層上昇を表す `../../` prefix を template リテラル側で hardcode する (page-template.md L29 参照)。placeholder 値自体に URL prefix を含めないことで、frontmatter `sources[].ref` (識別子目的) と Markdown link URL (resolution 対象) の semantics 分離を維持する。
 
 ---
 

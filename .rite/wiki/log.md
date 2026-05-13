@@ -516,3 +516,4 @@
 | 2026-05-13T01:05:00+00:00 | ingest:update | pages/anti-patterns/placeholder-dual-use-resolution-drift.md | PR #942 — placeholder-dual-use-resolution-drift anti-pattern の canonical fix を `plugins/rite/commands/wiki/ingest.md` L780 F-15 注釈に文書化完了。confidence medium → high に昇格 (raw/reviews/20260513T004127Z-pr-942.md) |
 | 2026-05-13T01:10:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=128, broken_refs=19 |
 | 2026-05-13T04:59:31+00:00 | ingest:update | pages/anti-patterns/placeholder-dual-use-resolution-drift.md | PR #943 review results (Issue #941); source=raw/reviews/20260513T030502Z-pr-943.md |
+| 2026-05-13T05:01:26+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=128, broken_refs=1 |

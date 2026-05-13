@@ -289,6 +289,109 @@ assert_grep "start: Invariants statement retained (non-blocking)" \
   "$START_MD" \
   'workflow MUST NOT halt'
 
+# === 6. start.md drift guard — inline emit literal must NOT reappear (#937) ===
+echo ""
+echo "--- 6. start.md drift guard (#937: inline emit literal block) ---"
+
+# F-#937 drift guard: orchestrator-direct emit canonical bash literal が start.md に再混入していないことを確認。
+# Issue #937 で start.md L743/949/955/1221/1247/1253 の 6 箇所 inline emit literal を
+# references/workflow-incident-emit-pattern.md §A-§D anchor 参照に圧縮した。
+# 将来の編集で `bash {plugin_root}/hooks/workflow-incident-emit.sh ...` literal が start.md
+# 本体に再混入すると SoT 1:1 分離契約が破れるため、ここで構造的に block する。
+assert_not_grep "start: no inline 'workflow-incident-emit.sh' bash literal (drift guard for #937)" \
+  "$START_MD" \
+  'bash \{plugin_root\}/hooks/workflow-incident-emit.sh'
+
+# 上記 assert_not_grep の補強: 旧 inline emit literal に含まれていた具体的 details 文字列が
+# start.md に再混入していないかを pin する。drift guard target は **start.md 本体** (= grep scope の $START_MD)
+# であり、references/workflow-incident-emit-pattern.md の説明 prose や bash literal は対象外。
+#
+# 旧 inline literal は計 6 種類の details 文字列を含んでいた (compression **前** の start.md
+# L743 / L949 / L955 / L1221 / L1247 / L1253、compression commit d436e6b9 で削除済み)。
+# 現 start.md (post-compression、cycle 2 終了時点) では L742 / 944 / 1207 / 1232 が anchor reference
+# 行となっており、上記旧行番号は git history (`git log -p plugins/rite/commands/issue/start.md`) で
+# 確認可能。Issue #937 cycle 1 で 4 種を pin、cycle 2 で §C / §D anchor reference の prose を
+# 抽象化した結果、cycle 1 で exclusion していた `rite:pr:fix error fallback` も start.md から
+# 消えた (現 start.md prose には 6 種すべての literal なし。canonical SoT としては
+# `references/workflow-incident-emit-pattern.md` §A-§D 配下の bash literal に保持されている)。
+# 本 test は cycle 2 終了時点の状態に基づき 6 種すべてを pin する (grep scope = $START_MD のみ)。
+#
+# 検証コマンド (Phase 1.2.0 Priority 0 grep と同形式で、$START_MD に当該 literal が存在しないことを
+# 機械的に確認できる):
+#   grep -F 'rite:lint aborted by user'             plugins/rite/commands/issue/start.md → 0 hits
+#   grep -F 'rite:pr:create returned create-failed' plugins/rite/commands/issue/start.md → 0 hits
+#   grep -F 'rite:pr:create manual fallback'        plugins/rite/commands/issue/start.md → 0 hits
+#   grep -F 'rite:pr:fix error fallback'            plugins/rite/commands/issue/start.md → 0 hits
+#   grep -F 'rite:pr:ready returned error'          plugins/rite/commands/issue/start.md → 0 hits
+#   grep -F 'rite:pr:ready manual fallback'         plugins/rite/commands/issue/start.md → 0 hits
+#
+# 将来 §C / §D anchor reference に `details=...` example が再導入された場合、本 test の対応 pin が
+# 誤発火する。その際は (a) example を anchor reference 経由で参照に置換するか、(b) 該当 ghost literal を
+# exclusion に戻す (理由を明記) かを judgment する。
+for ghost_literal in "rite:lint aborted by user" \
+                     "rite:pr:create returned create-failed" \
+                     "rite:pr:create manual fallback" \
+                     "rite:pr:fix error fallback" \
+                     "rite:pr:ready returned error" \
+                     "rite:pr:ready manual fallback"; do
+  assert_not_grep "start: no ghost literal '$ghost_literal' (drift guard for #937)" \
+    "$START_MD" \
+    "$ghost_literal"
+done
+
+# === 7. start.md anchor 整合性検証 (Issue #948 cycle 1 HIGH F-#937-1 対応) ===
+echo ""
+echo "--- 7. start.md → emit-pattern.md anchor 整合性 (github-slugger 互換性) ---"
+
+# 背景: PR #948 cycle 1 で `#b--phase-53-pr-create-failed` (誤) を `#b--phase-53-prcreate-failed` (正)
+# に修正した。github-slugger v2 の仕様により、heading 内の `:` は **ハイフン置換なしで削除** される。
+# したがって `[pr:create-failed]` は `prcreate-failed` (連結) になり、`pr-create-failed` (ハイフン区切り) ではない。
+# 同種の drift を将来検出するため、本 test は (heading, expected_anchor) のペアを pin する。
+#
+# **検証戦略**: github-slugger を bash 上で実装するのは複雑で fragile (`§`, `—`, fullwidth, etc.
+# 多数の Unicode normalization rule がある)。代わりに以下 2 点を独立に assert する:
+#   (a) emit-pattern.md に各 heading が literal で存在する
+#   (b) start.md に対応する anchor reference が存在する
+# これにより node.js 不在環境でも動作し、anchor slug の drift (heading 更新時に anchor 未更新等)
+# を検出できる。anchor slug 自体の正確性は cycle 1 の手動検証 + reviewer による github-slugger 実証で担保。
+
+# (heading exact text, expected anchor in start.md) のペア定義
+# anchor 値は github-slugger v2 で実証済み (PR #948 cycle 1/2 verification 参照)。
+# pair format: "{heading_literal}|{expected_anchor}"
+#
+# §A-§D は本 PR で追加された h3 emit point anchor (4 個)、`## 不変条件` は cycle 1 修正で
+# response-text-inclusion 要件の anchor target として start.md L742/944/1207/1232 から 4 回参照される
+# h2 anchor。同一 PR diff で導入され同じ drift risk を持つため anchor_pairs に含める
+# (cycle 2 code-quality MEDIUM 指摘対応)。
+anchor_pairs=(
+  '### §A — Phase 5.2 `[lint:aborted]`|a--phase-52-lintaborted'
+  '### §B — Phase 5.3 `[pr:create-failed]`|b--phase-53-prcreate-failed'
+  '### §C — Phase 5.4.4 `[fix:error]`|c--phase-544-fixerror'
+  '### §D — Phase 5.5 `[ready:error]`|d--phase-55-readyerror'
+  '## 不変条件|不変条件'
+)
+
+for pair in "${anchor_pairs[@]}"; do
+  heading="${pair%%|*}"
+  anchor="${pair##*|}"
+
+  # (a) emit-pattern.md に heading が literal で存在
+  # heading は backtick / brackets / em-dash を含むため `grep -F` (fixed string) を使う
+  if grep -qF -- "$heading" "$REF_EMIT"; then
+    pass "anchor: emit-pattern.md contains heading: $heading"
+  else
+    fail "anchor: emit-pattern.md MISSING heading literal: $heading (heading が書き換えられた可能性)"
+  fi
+
+  # (b) start.md に対応 anchor が存在
+  # anchor は ASCII のみだが念のため `grep -F` で安全に
+  if grep -qF -- "workflow-incident-emit-pattern.md#${anchor}" "$START_MD"; then
+    pass "anchor: start.md references anchor #${anchor}"
+  else
+    fail "anchor: start.md MISSING anchor reference workflow-incident-emit-pattern.md#${anchor} (anchor drift の可能性 — heading を更新したら anchor も更新すること)"
+  fi
+done
+
 # === Summary ===
 if ! print_summary "$(basename "$0")" \
   "PR D で抽出した 3 references の構造が破壊されています。圧縮を巻き戻して reference 内容を確認してください。"; then

@@ -739,7 +739,7 @@ Invoke `skill: "rite:lint"` after 5.1.
 
 **Results**: `[lint:success/skipped]`→5.2.1→5.3, `[lint:error]`→fix→5.2, `[lint:aborted]`→**emit sentinel and proceed to 5.6** (#366).
 
-> **Emit canonical literal**: See [§A — Phase 5.2 `[lint:aborted]`](./references/workflow-incident-emit-pattern.md#a--phase-52-lintaborted) (SoT). `|| true` non-blocking guarantee (AC-10), `--pr-number 0` semantics, and the requirement to include the emitted sentinel line in the visible output text for Phase 5.4.4.1 grep detection are all documented there. Do NOT inline the bash literal here.
+> **Emit canonical literal**: See [§A — Phase 5.2 `[lint:aborted]`](./references/workflow-incident-emit-pattern.md#a--phase-52-lintaborted) (SoT) for the canonical bash literal and `|| true` non-blocking guarantee, plus the [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件) section for the response-text-inclusion requirement that Phase 5.4.4.1 grep detection depends on. `--pr-number 0` (no PR yet at lint time) is documented in §A. Do NOT inline the bash literal here.
 
 #### 5.2.0.1 Out-of-Scope Warnings
 
@@ -941,7 +941,7 @@ Invoke `skill: "rite:pr:create"`.
 
 **Patterns**: `[pr:created:{number}]`→extract number, proceed 5.4. `[pr:create-failed]`→**emit sentinel and ask user** (#366).
 
-> **Emit canonical literal**: See [§B — Phase 5.3 `[pr:create-failed]`](./references/workflow-incident-emit-pattern.md#b--phase-53-pr-create-failed) (SoT). The §B section documents both emit steps (Step 1 `skill_load_failure` + Step 2 `manual_fallback_adopted` after user selects 「Edit ツールで PR 作成して continue」 in the `AskUserQuestion`), `|| true` non-blocking guarantee, `--pr-number 0` semantics, and the requirement to include the emitted sentinel lines in the visible output text for Phase 5.4.4.1 grep detection. Do NOT inline the bash literals here.
+> **Emit canonical literal**: See [§B — Phase 5.3 `[pr:create-failed]`](./references/workflow-incident-emit-pattern.md#b--phase-53-prcreate-failed) (SoT) for both emit steps (Step 1 `skill_load_failure` + Step 2 `manual_fallback_adopted` after user selects 「Edit ツールで PR 作成して continue」 in the `AskUserQuestion`), `|| true` non-blocking guarantee, and `--pr-number 0` semantics. The response-text-inclusion requirement that Phase 5.4.4.1 grep detection depends on is documented in [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件). Do NOT inline the bash literals here.
 
 ### 🚨 Mandatory After 5.3
 
@@ -1204,7 +1204,7 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
 | `[fix:pushed-wm-stale]` | _(any)_ | **Work memory が stale です。手動介入が必要かを `AskUserQuestion` でユーザーに確認** (推奨: stale 警告ログを残した上で `skill: "rite:pr:review", args: "{pr_number}"` を起動して再レビューに進む / 中断して手動で work memory を修復する)。silent に `[fix:pushed]` 扱いしてはならない (fix.md Phase 8.1 caller semantics 参照)。 |
 | `[fix:issues-created:{n}]` | _(any)_ | **Invoke `skill: "rite:pr:review", args: "{pr_number}"`** via the Skill tool (re-review, Phase 5.4.1). |
 | `[fix:replied-only]` | _(any)_ | **→ Proceed to Phase 5.5** (Ready for Review). |
-| `[fix:error]` | _(any)_ | Ask the user how to proceed via `AskUserQuestion` with options: 「再試行」/「Edit ツールで手動 fallback (incident 記録)」/「Phase 5.6 にスキップ」/「terminate」. If user selects 「Edit ツールで手動 fallback」, **emit sentinel** per [§C — Phase 5.4.4 `[fix:error]`](./references/workflow-incident-emit-pattern.md#c--phase-544-fixerror) (SoT — `manual_fallback_adopted` type, `details="rite:pr:fix error fallback"`, `--pr-number {pr_number}`, non-blocking `\|\| true`) before proceeding (#366). The sentinel will be picked up by Phase 5.4.4.1 in the next cycle. Do NOT inline the bash literal here. |
+| `[fix:error]` | _(any)_ | Ask the user how to proceed via `AskUserQuestion` with options: 「再試行」/「Edit ツールで手動 fallback (incident 記録)」/「Phase 5.6 にスキップ」/「terminate」. If user selects 「Edit ツールで手動 fallback」, **emit sentinel** per [§C — Phase 5.4.4 `[fix:error]`](./references/workflow-incident-emit-pattern.md#c--phase-544-fixerror) (SoT). The response-text-inclusion requirement that Phase 5.4.4.1 grep detection depends on is documented in [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件). The sentinel will be picked up by Phase 5.4.4.1 in the next cycle. Do NOT inline the bash literal here. |
 
 > **禁止**: Edit ツールや Bash ツールでコードを直接修正してはならない。修正は必ず `skill: "rite:pr:fix"` を Skill ツールで呼び出して実行すること。再レビューは必ず `skill: "rite:pr:review"` を Skill ツールで呼び出すこと。
 
@@ -1229,7 +1229,7 @@ When loop completes, confirm via `AskUserQuestion`:
 
 **Results**: `[ready:completed]`→5.5.0.1→5.5.1→5.5.2→5.6. `[ready:error]`→**emit sentinel and ask user** (#366).
 
-> **Emit canonical literal**: See [§D — Phase 5.5 `[ready:error]`](./references/workflow-incident-emit-pattern.md#d--phase-55-readyerror) (SoT). The §D section documents both emit steps (Step 1 `skill_load_failure` + Step 2 `manual_fallback_adopted` after user selects 「Edit ツールで手動 Ready 化」 in the `AskUserQuestion`), `|| true` non-blocking guarantee, `--pr-number {pr_number}` semantics, and the requirement to include the emitted sentinel lines in the visible output text for Phase 5.4.4.1 grep detection. Do NOT inline the bash literals here.
+> **Emit canonical literal**: See [§D — Phase 5.5 `[ready:error]`](./references/workflow-incident-emit-pattern.md#d--phase-55-readyerror) (SoT) for both emit steps (Step 1 `skill_load_failure` + Step 2 `manual_fallback_adopted` after user selects 「Edit ツールで手動 Ready 化」 in the `AskUserQuestion`), `|| true` non-blocking guarantee, and `--pr-number {pr_number}` semantics. The response-text-inclusion requirement that Phase 5.4.4.1 grep detection depends on is documented in [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件). Do NOT inline the bash literals here.
 
 #### 5.5.0.1 🚨 Mandatory After 5.5
 

@@ -107,6 +107,14 @@ Determine the invocation source from the conversation context:
 
 ## Phase 1: Preparation
 
+### 1.0.0 PR Cycle Branch Cleanup (Pre-Review)
+
+Run at every review entry (both end-to-end and standalone) to recover from prior cycles that left residual `pr-{N}-cycle{X}` worktrees / branches. Reviewers run under READ-ONLY enforcement and cannot self-clean (`agents/_reviewer-base.md` § READ-ONLY Enforcement). Cleanup is non-blocking — its failure must not halt the review.
+
+```bash
+bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
+```
+
 **Placeholder legend:**
 - `{pr_number}`: PR number (obtained from argument or `gh pr view` result)
 - `{owner}`, `{repo}`: Repository information (obtained via `gh repo view --json owner,name`)

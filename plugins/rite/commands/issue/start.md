@@ -62,9 +62,7 @@ Execute phases sequentially. **Do NOT stop between phases unless the user explic
 | 2.6 (Work Memory) | `rite:issue:work-memory-init` | 3 | **No** |
 | 3 (Plan) | `rite:issue:implementation-plan` | 4 | **No** |
 | 4 (Guidance) | — | 5 or terminate | Yes (user choice) |
-| 5.0 (Stop Hook) | — | 5.1 | **No** |
-| 5.1 (Implement) | — | 5.2 (lint) | **No** |
-| 5.2 (Lint) | `rite:lint` | 5.2.1 | **No** |
+| 5.0-5.2.1 (Execute) | `rite:issue:start-execute` | 5.3 | **No** |
 | 5.3 (PR) | `rite:pr:create` | 5.4 | **No** |
 | 5.4.1 (Review) | `rite:pr:review` | 5.4.3→5.4.4 or 5.5 | **No** |
 | 5.4.4 (Fix) | `rite:pr:fix` | 5.4.6→5.4.1 or 5.5 | **No** |
@@ -579,7 +577,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 Invoke `skill: "rite:issue:start-execute"`.
 
-**Immediate after start-execute returns**: When `start-execute` outputs `<!-- [start:execute:completed] -->` sentinel and returns control, do **NOT** stop — **immediately** proceed to Mandatory After 5.0-5.2.1 below.
+**Immediate after start-execute returns**: When `start-execute` outputs `<!-- [start:execute:completed] -->` (success) or `<!-- [start:execute:aborted] -->` (abort — Phase 5.1.3 中止 or `[lint:aborted]`) sentinel and returns control, do **NOT** stop — **immediately** proceed to Mandatory After 5.0-5.2.1 below.
 
 ### 🚨 Mandatory After 5.0-5.2.1
 
@@ -592,16 +590,22 @@ Invoke `skill: "rite:issue:start-execute"`.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_execute" --issue {issue_number} --branch "{branch_name}" \
   --pr 0 \
-  --next "rite:issue:start-execute completed. Proceed to Phase 5.3 (PR creation). Do NOT stop."
+  --next "rite:issue:start-execute completed. Proceed to Phase 5.3 (PR creation) on [start:execute:completed]. Skip to Phase 5.6 on [start:execute:aborted]. Do NOT stop."
 ```
 
-**Step 2**: **→ Proceed to Phase 5.3 now**.
+**Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `start-execute` sub-skill — e.g., `[lint:aborted]` orchestrator-direct emit per §A, or by `lint.md` sub-skill via Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3 regardless of detection result.
+
+**Step 3 (Sentinel-based routing)**: Grep the recent conversation context for `<!-- [start:execute:completed] -->` or `<!-- [start:execute:aborted] -->`:
+
+- `[start:execute:completed]` detected → **→ Proceed to Phase 5.3 (PR creation) now**.
+- `[start:execute:aborted]` detected → **→ Skip to Phase 5.6 (Completion Report) now**. PR creation is intentionally skipped because the execute phase was aborted by user choice (5.1.3 Safety Check) or `[lint:aborted]`. The completion report MUST display the abort reason to the user.
+- Neither detected → fail-safe: treat as `[start:execute:completed]` (proceed to Phase 5.3); the sub-skill SHOULD always emit one of the two sentinels per its Return Output Format contract.
 
 ### 5.3 PR Creation
 
 Run [Preflight Protocol](#preflight-protocol) before creating PR.
 
-After 5.2.1, update flow state (atomic, see 5.1 step 3):
+After 5.2.1, update flow state (atomic):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
@@ -807,7 +811,7 @@ This phase runs **after every Skill invocation in Phase 5** at the following exp
 
 | Caller | Invocation point | Trigger |
 |--------|------------------|---------|
-| Phase 5.2 (lint) | Mandatory After 5.2 — Step 2 | Always after `[lint:*]` pattern |
+| Phase 5.0-5.2.1 (execute) | Mandatory After 5.0-5.2.1 — Step 2 | Always after `[start:execute:*]` pattern |
 | Phase 5.3 (pr:create) | Mandatory After 5.3 — between "Verify" and "Proceed to 5.4 now" | Always after `[pr:created:{N}]` or `[pr:create-failed]` |
 | Phase 5.4.3 (pr:review) | After Review — Step 3 | Always after `[review:*]` pattern |
 | Phase 5.4.6 (pr:fix) | After Fix — Step 3 | Always after `[fix:*]` pattern |

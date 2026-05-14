@@ -81,13 +81,18 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
 
   # Phase 5.1/5.2: implement + lint
   ["phase5_lint"]="phase5_post_lint"
+  # phase5_post_lint → phase5_pr は /rite:resume retry path 用 (resume.md sub-phase resume details table から
+  # phase5_post_lint phase で interrupted した場合の直接 Phase 5.3 進入を許容)。
+  # 新 PR F flow では phase5_post_execute 経由が正規路だが、legacy resume path を破壊しないため retain する。
   ["phase5_post_lint"]="phase5_pr phase5_lint phase5_post_execute"
 
   # /rite:issue:start-execute sub-skill (PR F #902)
   # start.md Phase 5.0-5.2.1 delegation: orchestrator writes phase5_execute_running before invoke,
-  # sub-skill writes phase5_post_execute when done. Orchestrator routes to phase5_pr after sentinel.
+  # sub-skill writes phase5_post_execute when done. Orchestrator routes to phase5_pr after
+  # [start:execute:completed] sentinel (success path), or to phase5_completion after
+  # [start:execute:aborted] sentinel (abort path — 5.1.3 中止 / [lint:aborted]).
   ["phase5_execute_running"]="phase5_stop_hook phase5_post_execute"
-  ["phase5_post_execute"]="phase5_pr"
+  ["phase5_post_execute"]="phase5_pr phase5_completion"
 
   # Phase 5.3: PR create
   # start.md Phase 5.3 Mandatory After transitions directly from phase5_pr to phase5_review

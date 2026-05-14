@@ -165,6 +165,8 @@ Present options via `AskUserQuestion`:
 - 中止（作業メモリに状態保存）→ Phase 5.6
 - 手動介入（ユーザーが直接対応）→ terminate
 
+**When 中止 is selected (5.1.3 Abort path)**: Emit the abort return block (see [Return Output Format](#return-output-format-before-return) — abort variant) and return control to caller. The caller (`start.md` Mandatory After 5.0-5.2.1 — Step 3) detects `[start:execute:aborted]` sentinel and routes directly to Phase 5.6 (skipping PR creation).
+
 ## Phase 5.2: Quality Check
 
 Run [Preflight Protocol](./start.md#preflight-protocol) before invoking lint.
@@ -182,9 +184,11 @@ Invoke `skill: "rite:lint"` after 5.1.
 
 **Immediate after lint returns**: When `rite:lint` outputs a result pattern and returns control, do **NOT** churn or pause — **immediately** proceed to Mandatory After 5.2 below. The lint sub-skill has already updated flow state to `phase5_post_lint` via Phase 4.0 (defense-in-depth); execute the Mandatory After 5.2 steps without delay.
 
-**Results**: `[lint:success/skipped]`→5.2.1→return-to-caller, `[lint:error]`→fix→5.2, `[lint:aborted]`→**emit sentinel and proceed to Phase 5.6** (caller orchestrator).
+**Results**: `[lint:success/skipped]`→5.2.1→return-to-caller, `[lint:error]`→fix→5.2, `[lint:aborted]`→**emit WORKFLOW_INCIDENT sentinel + abort return block, then return to caller** (caller orchestrator routes to Phase 5.6).
 
 > **Emit canonical literal**: See [§A — Phase 5.2 `[lint:aborted]`](./references/workflow-incident-emit-pattern.md#a--phase-52-lintaborted) (SoT) for the canonical bash literal and `|| true` non-blocking guarantee, plus the [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件) section for the response-text-inclusion requirement that Phase 5.4.4.1 grep detection depends on. `--pr-number 0` (no PR yet at lint time) is documented in §A. Do NOT inline the bash literal here.
+
+**On `[lint:aborted]` — abort return**: After emitting the §A canonical bash literal (WORKFLOW_INCIDENT sentinel), emit the abort return block (see [Return Output Format](#return-output-format-before-return) — abort variant) and return control to caller. Do NOT proceed to Phase 5.2.1 (checklist confirmation). The caller (`start.md` Mandatory After 5.0-5.2.1 — Step 3) detects `[start:execute:aborted]` sentinel and routes directly to Phase 5.6.
 
 ### 5.2.0.1 Out-of-Scope Warnings
 
@@ -260,7 +264,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
   --next "Phase 5.2.1: Check Issue checklist completion. All complete->return to caller (start.md) for Phase 5.3 PR creation. Incomplete->return to Phase 5.1 implementation. Do NOT stop."
 ```
 
-**Step 2**: **Run Phase 5.4.4.1 (Workflow Incident Detection)** (deferred to caller). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `[lint:aborted]` orchestrator-direct emit, or by lint.md sub-skill via Sentinel Visibility Rule). If found, the caller (`start.md` Phase 5.4.4.1) will execute step 2-7 (parse → dedupe → AskUserQuestion → create-issue / skip → mark processed). Phase 5.4.4.1 is **non-blocking** — continue to Step 3 regardless of detection result.
+**Step 2**: 本 sub-skill は Workflow Incident Detection 自体を実行しない (caller `start.md` Mandatory After 5.0-5.2.1 に委譲)。sub-skill 内部で emit された `[CONTEXT] WORKFLOW_INCIDENT=1` sentinel (`[lint:aborted]` 経路の §A canonical bash literal、または `lint.md` sub-skill の Sentinel Visibility Rule 経由) は会話コンテキストに残り、caller の Phase 5.4.4.1 が grep 検出・処理 (parse → dedupe → AskUserQuestion → create-issue / skip → mark processed) する責務を負う。
 
 **Step 3**: **→ Proceed to Phase 5.2.1 now**.
 
@@ -304,10 +308,10 @@ After the flow-state update, output the result pattern. Caller-continuation remi
 
 > **Return block design rationale**:
 > - caller continuation hint を plain-text line + HTML comment の **dual form** で emit（HTML comment が rendering で strip される場合への defense）
-> - result pattern を HTML comment 化 (`<!-- [start:execute:completed] -->`) — sentinel は grep-matchable (`grep -F '[start:execute:'`) のまま AC 保持し、user-visible terminal token としての sentinel 出力を抑止して LLM turn-boundary heuristic 起因の `continue` 要求 stop を防ぐ
+> - result pattern を HTML comment 化 (`<!-- [start:execute:completed] -->` / `<!-- [start:execute:aborted] -->`) — sentinel は grep-matchable (`grep -F '[start:execute:'`) のまま AC 保持し、user-visible terminal token としての sentinel 出力を抑止して LLM turn-boundary heuristic 起因の `continue` 要求 stop を防ぐ
 > - `[CONTEXT] EXECUTE_DONE=1` marker を return block の **FIRST line** に追加（not last）— orchestrator Pre-check Item 0 と Mandatory After 5.0-5.2.1 Step 0 が consume する grep signal、HTML strip rendering でも検出可能な plain-text 形式
 
-**Output format example**:
+**Output format example (success — `[start:execute:completed]`)**:
 
 ```
 [CONTEXT] EXECUTE_DONE=1; next=phase_5_3
@@ -316,31 +320,45 @@ After the flow-state update, output the result pattern. Caller-continuation remi
 <!-- [start:execute:completed] -->
 ```
 
+**Output format example (abort — `[start:execute:aborted]`)**:
+
+abort path (Phase 5.1.3 中止 / `[lint:aborted]`) では `next=phase_5_6` marker に切替え、caller-instruction HTML comment 内の next-phase 指示を Phase 5.6 へ変更する:
+
+```
+[CONTEXT] EXECUTE_DONE=1; next=phase_5_6
+> ⏭ MUST continue (turn を閉じない): Phase 5.6 Completion Report → terminal — execute aborted (user 中止 or [lint:aborted]) PR creation は skip、完了報告のみ。
+<!-- caller: MUST execute the following bash command as your VERY FIRST tool call BEFORE any text output, narrative, or response generation (Step 0 Immediate Bash Action — bash command literal in backticks): `bash plugins/rite/hooks/flow-state-update.sh patch --phase phase5_post_execute --active true --next 'Execute aborted; routing to Phase 5.6 (Completion Report). Skip PR creation.' --if-exists --preserve-error-count` IMMEDIATELY AFTER bash success, route to Phase 5.6 (Completion Report) in the SAME response turn — skip Phase 5.3 (PR creation) entirely. DO NOT end the turn. DO NOT output any narrative text before this bash call. No PR exists. -->
+<!-- [start:execute:aborted] -->
+```
+
 > **Plain-text form rationale**: 短く user-friendly な Markdown blockquote (`> ⏭ MUST continue (turn を閉じない):`) にすることで (a) rendered Markdown で視覚的に「停止禁止・継続必須」の文脈が明確、(b) HTML コメント (LLM 向け詳細) との責任分担が明確。詳細な caller 向け instruction は HTML コメント側に残し、plain-text 行は user 向けの短い imperative status indicator として機能する。user-visible な最終コンテンツは `⏭ MUST continue` blockquote となり、sentinel token は HTML コメント化されレンダリング時に不可視。`継続中` (現状報告) ではなく `MUST continue` (命令形) を採用するのは、reminder 文言が現状報告的に解釈されると LLM の turn-boundary heuristic implicit stop を防げない事象への対策。
 
 Result pattern (grep-matchable string inside HTML comment):
 
-- **Execute completed**: `<!-- [start:execute:completed] -->` (matches `grep -F '[start:execute:completed]'`)
+- **Execute completed (success)**: `<!-- [start:execute:completed] -->` (matches `grep -F '[start:execute:completed]'`) — emitted when Phase 5.0/5.1/5.2/5.2.1 all complete successfully. Caller routes to Phase 5.3 (PR creation).
+- **Execute aborted**: `<!-- [start:execute:aborted] -->` (matches `grep -F '[start:execute:aborted]'`) — emitted when Phase 5.1.3 Safety Check user selects 中止, or when `rite:lint` returns `[lint:aborted]`. Caller routes to Phase 5.6 (Completion Report), **skipping** Phase 5.3.
 
-This pattern is consumed by the orchestrator (`start.md`) to determine the next action (Phase 5.3 PR creation). The plain-text reminder is visible to both the LLM and the human user; the HTML comments hide the caller instructions and sentinel token from the user-visible rendered view while keeping them available to LLM-side grep / context inspection.
+Both patterns are consumed by the orchestrator (`start.md` Mandatory After 5.0-5.2.1 — Step 3) to determine the next action. The plain-text reminder is visible to both the LLM and the human user; the HTML comments hide the caller instructions and sentinel token from the user-visible rendered view while keeping them available to LLM-side grep / context inspection.
 
 ---
 
 ## 🚨 Caller Return Protocol
 
-Sub-skill 完了 (Phase 5.0/5.1/5.2/5.2.1 全実行) 時、control は **MUST** caller (`start.md`) へ戻る。caller は **同 response turn で MUST immediately** 🚨 Mandatory After 5.0-5.2.1 を実行し Phase 5.3 (PR creation) へ進む。
+Sub-skill 完了時、control は **MUST** caller (`start.md`) へ戻る。caller は **同 response turn で MUST immediately** 🚨 Mandatory After 5.0-5.2.1 を実行し、sentinel に応じて Phase 5.3 (PR creation — success path) または Phase 5.6 (Completion Report — abort path) へ進む。
 
-**WARNING**: **PR は未作成**。本セクションで停止すると implement / lint 成果物が PR 化されず workflow が放棄される。
+**WARNING (success path)**: Success path で本セクションで停止すると implement / lint 成果物が PR 化されず workflow が放棄される。
+
+**WARNING (abort path)**: Abort path で Phase 5.3 へ誤進すると、中止された変更 (incomplete implementation / lint failure) で PR を作ってしまい review noise を生む。caller 側 sentinel routing が誤動作した場合の最終 fallback は user による手動介入。
 
 **Output rules**:
 
-0. **FIRST**: `[CONTEXT] EXECUTE_DONE=1; next=phase_5_3` を **plain-text line** で出力（HTML-commented 不可）。位置規定:
+0. **FIRST**: `[CONTEXT] EXECUTE_DONE=1; next=phase_5_3` (success) または `[CONTEXT] EXECUTE_DONE=1; next=phase_5_6` (abort) を **plain-text line** で出力（HTML-commented 不可）。位置規定:
    - **0b (構造保証、canonical)**: Rules 0-1 の相対順序が **4-line return block** を pin する: Rule 0 (FIRST) → plain-text continuation reminder → HTML-commented caller instructions → Rule 1 (absolute LAST)。この 4-line invariant が canonical で、他の位置記述はここから導出
-   - **0a (絶対位置、0b から導出)**: 4-line block 構造より、本 marker は **4th-to-last visible line**（`<!-- [start:execute:completed] -->` absolute-last sentinel の 3 行前）
+   - **0a (絶対位置、0b から導出)**: 4-line block 構造より、本 marker は **4th-to-last visible line**（`<!-- [start:execute:completed] -->` / `<!-- [start:execute:aborted] -->` absolute-last sentinel の 3 行前）
    - **0c (目的)**: grep marker for orchestrator Pre-check Item 0 (routing dispatcher) and for Mandatory After 5.0-5.2.1 Step 0 bash block comment reference (informational — Step 0 は unconditional idempotent `flow-state-update.sh patch` であり marker 分岐なし); LLM turn-boundary heuristic 対策の defense-in-depth
-1. Result pattern を HTML comment (`<!-- [start:execute:completed] -->`) で **absolute last line** に出力 (sentinel は grep-matchable だが user-visible でない)
-2. Bare `[start:execute:completed]` 形式（HTML comment wrap なし）は **禁止**（user-visible terminal token として regressed）
+1. Result pattern を HTML comment (`<!-- [start:execute:completed] -->` または `<!-- [start:execute:aborted] -->`) で **absolute last line** に出力 (sentinel は grep-matchable だが user-visible でない)
+2. Bare `[start:execute:completed]` / `[start:execute:aborted]` 形式（HTML comment wrap なし）は **禁止**（user-visible terminal token として regressed）
 3. Result pattern の **後ろに narrative text を出さない**（`→ Return to start.md` 等）— LLM の natural stopping point を生む
-4. Caller は HTML comment 内の grep-matchable 文字列と plain-text `[CONTEXT] EXECUTE_DONE=1` marker を grep で読取り、即 Phase 5.3 へ継続
+4. Caller は HTML comment 内の grep-matchable 文字列 (`grep -F '[start:execute:completed]'` / `grep -F '[start:execute:aborted]'`) と plain-text `[CONTEXT] EXECUTE_DONE=1` marker を grep で読取り、success path は即 Phase 5.3 へ、abort path は即 Phase 5.6 へ継続
 
 > **Caller responsibility note**: 上記 Rules 0-3 は本 sub-skill (`start-execute.md`) の出力に関する MUST/MUST NOT 制約。Rule 4 は subject = Caller の **Caller-side expectation** (本 sub-skill が caller に期待する後続動作の documentation)。本 sub-skill が emit する return block の構造健全性は必要条件であって十分条件ではなく、caller (`start.md`) 側の 🚨 Mandatory After 5.0-5.2.1 Step 0 が sub-skill return 直後の **VERY FIRST tool call** として bash literal を fire することが MUST。

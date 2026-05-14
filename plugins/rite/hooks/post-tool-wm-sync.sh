@@ -130,7 +130,7 @@ _phase_detail=$(python3 "$SCRIPT_DIR/work-memory-parse.py" "$LOCAL_WM" 2>/dev/nu
 # Automatically run update-progress and update-plan-status when phase transitions
 # to a post-implementation phase (phase5_lint and beyond).
 case "$_phase" in
-  phase5_lint|phase5_post_lint|phase5_pr*|phase5_post_review|phase5_post_ready)
+  phase5_lint|phase5_post_lint|phase5_post_execute|phase5_pr*|phase5_post_review|phase5_post_ready)
     cd "$STATE_ROOT" || { log_debug "cd STATE_ROOT failed"; exit 0; }
 
     # Determine base branch from rite-config.yml (absolute path for consistency with other hooks)

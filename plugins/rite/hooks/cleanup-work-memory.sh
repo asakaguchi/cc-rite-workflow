@@ -95,7 +95,7 @@ if [ "$CLOSE_MODE" = false ]; then
         echo "WARNING: 削除失敗: $f" >&2
         failed_count=$((failed_count + 1))
       fi
-      rm -rf "${f}.lockdir" 2>/dev/null || true
+      rm -rf "${f}.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=cleanup_work_memory_wm_dir" >&2
     done
   fi
 
@@ -111,7 +111,7 @@ else
       failed_count=1
     fi
   fi
-  rm -rf "$WM_DIR/issue-${ISSUE_NUMBER}.md.lockdir" 2>/dev/null || true
+  rm -rf "$WM_DIR/issue-${ISSUE_NUMBER}.md.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=cleanup_work_memory_issue" >&2
 fi
 
 # Step 4: Verify and report

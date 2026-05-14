@@ -503,6 +503,17 @@ rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANU
 
 caller (`start.md`) と sub-skill (`start-finalize.md`) の二重 rm は defense-in-depth: sub-skill が success path で primary cleanup を担い、caller が abort path / interrupt path での idempotent fallback を担う。なお現状この sentinel は `WORKFLOW_INCIDENT=1` 形式ではないため Phase 5.4.4.1 detection 経路では consume されず、stderr observability のみ (将来 incident pattern への昇格 / preflight 拡張時の interception 点として将来利用される想定)。
 
+**Work memory lockdir 別系統 2 site 対称化マッピング** (Issue #964):
+
+`.rite-compact-state.lockdir` (global compact state) とは別系統で、work memory file (`.rite-work-memory/issue-*.md`) 単位の `.lockdir` cleanup が `cleanup-work-memory.sh` 内に 2 site 存在する。同形の `from=cleanup_work_memory_<scope>` discriminator で対称化されている。
+
+| 呼出元 | ファイル | `from=` discriminator |
+|-------|---------|----------------------|
+| Full cleanup mode per-file loop | `hooks/cleanup-work-memory.sh` Step 3 | `cleanup_work_memory_wm_dir` |
+| Close mode single-issue cleanup | `hooks/cleanup-work-memory.sh` close-mode | `cleanup_work_memory_issue` |
+
+両系列とも emit の目的は `pre-compact.sh acquire_wm_lock` 等が stale lockdir を取得して work memory sync を silent skip する potential risk への observable signal。`.rite-compact-state.lockdir` は global state ゆえ 4 site で対称化、work memory lockdir は per-issue scope ゆえ 2 site で完結する。
+
 ---
 
 ## Return Output Format (Before Return)

@@ -534,3 +534,4 @@
 | 2026-05-14T05:30:00+00:00 | ingest:skip | raw/fixes/20260514T050104Z-pr-951-cycle2.md | PR #951 cycle 2 fix (CRITICAL regression + HIGH propagation miss) — abort path routing と pre-condition gate の integrate 不足は asymmetric-fix-transcription PR #629 "contract-implementation path 対称性" sub-case として既存ページがカバー済み。新規パターンなし |
 | 2026-05-14T05:30:00+00:00 | ingest:skip | raw/fixes/20260514T050605Z-pr-951-cycle3.md | PR #951 cycle 3 fix (semantic 整合性復元) — 新規 column entry 追加時の周辺 prose 更新漏れは asymmetric-fix-transcription PR #688 "同一 doc 内 hook 列挙 multi-location drift" 系列でカバー済み。新規パターンなし |
 | 2026-05-14T05:30:00+00:00 | ingest:skip | raw/reviews/20260514T050731Z-pr-951-cycle4-final.md | PR #951 cycle 4 final re-review — 0 blocking findings (4 cycle 収束確認のみ)。cycle 1-3 で適用された既存パターン + 新規 success-only-sentinel-design ページの成功確認のため経験則化価値が薄い |
+| 2026-05-14T05:30:30+00:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=133, broken_refs=0 |

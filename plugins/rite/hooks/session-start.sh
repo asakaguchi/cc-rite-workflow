@@ -73,7 +73,7 @@ fi
 _cleanup_stale_compact() {
   if [ -f "$STATE_ROOT/.rite-compact-state" ]; then
     rm -f "$STATE_ROOT/.rite-compact-state" 2>/dev/null || true
-    rm -rf "$STATE_ROOT/.rite-compact-state.lockdir" 2>/dev/null || true
+    rm -rf "$STATE_ROOT/.rite-compact-state.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=session_start_cleanup" >&2
   fi
 }
 

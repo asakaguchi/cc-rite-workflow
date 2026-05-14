@@ -688,8 +688,14 @@ Invoke `skill: "rite:issue:start-finalize"`.
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "completed" --active false --next "none" \
   --if-exists --preserve-error-count
+# Defense-in-depth dual cleanup: start-finalize.md Workflow Termination Step 2 が
+# success path での primary cleanup を担う。本 idempotent rm は abort path /
+# interrupt path で sub-skill cleanup が skip された場合の最終 fallback。
+# regular file (`.rite-compact-state`) は permission denied 以外で失敗しないため silent skip。
+# lockdir (`.rite-compact-state.lockdir`) は shared filesystem 上の stale lock 等で失敗する
+# potential があるため emit する。`from=` discriminator で emit 元 (4 site 対称) を識別。
 rm -f .rite-compact-state 2>/dev/null || true
-rm -rf .rite-compact-state.lockdir 2>/dev/null || true
+rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=start_md_termination" >&2
 ```
 
 **Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `start-finalize` sub-skill — e.g., `[ready:error]` orchestrator-direct emit per §D, or by `ready.md` sub-skill via Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3 regardless of detection result.

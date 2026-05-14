@@ -83,7 +83,7 @@ if [ "$CLOSE_MODE" = false ]; then
 
   # Step 2: Clean up .rite-compact-state
   rm -f "$STATE_ROOT/.rite-compact-state" 2>/dev/null || true
-  rm -rf "$STATE_ROOT/.rite-compact-state.lockdir" 2>/dev/null || true
+  rm -rf "$STATE_ROOT/.rite-compact-state.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=cleanup_work_memory" >&2
 
   # Step 3: Delete ALL work memory files
   if [ -d "$WM_DIR" ]; then

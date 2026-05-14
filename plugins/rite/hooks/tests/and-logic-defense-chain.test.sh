@@ -177,12 +177,13 @@ fi
 # (将来 rite_phase_transition_allowed が runtime block 点として配線された場合に
 #  start-finalize.md 配下の Workflow Termination/Mandatory After 5.5/5.7 経路が
 #  silent regression を起こさないことを構造的に保証する)
+#
+# 非 terminal 遷移 (next != "completed") は rite_phase_transition_allowed の
+# array lookup を経由するため、whitelist entry の drift を検出できる。
 for finalize_edge in \
   "phase5_finalize_running:phase5_post_ready" \
   "phase5_finalize_running:phase5_completion" \
-  "phase5_finalize_running:completed" \
-  "phase5_post_metrics:phase5_completion" \
-  "phase5_completion:completed"; do
+  "phase5_post_metrics:phase5_completion"; do
   from="${finalize_edge%%:*}"
   to="${finalize_edge##*:}"
   set +e
@@ -207,6 +208,25 @@ for finalize_edge in \
     fail "Layer 4 runtime: ${from} → ${to} が allow されない (rc=$rc) — phase-transition-whitelist.sh の edge が drift した可能性"
   fi
 done
+unset from to finalize_edge
+
+# terminal target (next = "completed") は phase-transition-whitelist.sh の universal
+# shortcut (`[ "$next" = "completed" ] && return 0`) で迂回されるため、
+# rite_phase_transition_allowed の戻り値では whitelist entry の存否を検証できない
+# (`nonexistent_phase → completed` でも accept される forward-compat 設計)。
+# entry 削除 drift を検出するために declare -gA テーブルの文字列を直接 grep する。
+for terminal_pair in \
+  "phase5_finalize_running:completed" \
+  "phase5_completion:completed"; do
+  from="${terminal_pair%%:*}"
+  to="${terminal_pair##*:}"
+  if grep -qE "\\[\"${from}\"\\]=.*\\b${to}\\b" "$WHITELIST"; then
+    pass "Layer 4 structural: _RITE_PHASE_TRANSITIONS[\"${from}\"] に \"${to}\" entry が pin されている (#954 L-3 structural)"
+  else
+    fail "Layer 4 structural: _RITE_PHASE_TRANSITIONS[\"${from}\"] から \"${to}\" entry が drift した可能性 (universal shortcut で誤検出されないため structural grep で pin)"
+  fi
+done
+unset from to terminal_pair
 
 # --------------------------------------------------------------------------
 # Layer 5: Pre-flight — preflight-check.sh が --command-id を受け付け compact gate

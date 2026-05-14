@@ -48,7 +48,7 @@ Execute phases sequentially. **Do NOT stop between phases unless the user explic
 >
 > Every phase that writes to flow state is subject to the Pre-write + Mandatory After scaffolding contract (#490). Phases that only read state (0.x Detection, 1 Quality, 2.1/2.2 Branch-pattern detection, 4 User Guidance, 5.6.1 Incident Reporting, etc.) do not write markers and are therefore excluded from whitelist verification — they run inline and their transitions are verified indirectly by the surrounding write-phases. Every state-writing transition is tracked via flow state and verified by the stop-guard phase-transition whitelist (`plugins/rite/hooks/phase-transition-whitelist.sh`).
 >
-> The "Stop Allowed?" column marks whether the **user** may cancel at that phase (e.g., Phase 4 Guidance where the user chooses to work later, Phase 5.6/5.7 where the workflow naturally terminates after the completion handoff is displayed). Even for "Yes" rows, the scaffolding contract still applies — the user's stop action must be explicit, not a silent skip by the LLM.
+> The "Stop Allowed?" column marks whether the **user** may cancel at that phase (e.g., Phase 4 Guidance where the user chooses to work later, Phase 5.5-Termination where the workflow naturally terminates after the completion handoff is displayed — Phase 5.5/5.5.1/5.5.2/5.6/5.7/Workflow Termination はすべて start-finalize sub-skill 内)。Even for "Yes" rows, the scaffolding contract still applies — the user's stop action must be explicit, not a silent skip by the LLM.
 
 | Phase | Sub-skill Invoked | Next Phase | Stop Allowed? |
 |-------|-------------------|------------|---------------|
@@ -577,7 +577,7 @@ Invoke `skill: "rite:issue:start-execute"`.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_execute" --issue {issue_number} --branch "{branch_name}" \
   --pr 0 \
-  --next "rite:issue:start-execute completed. Proceed to Phase 5.3-5.4 (Publish Phase via rite:issue:start-publish) on [start:execute:completed]. Skip to Phase 5.6 on [start:execute:aborted]. Do NOT stop."
+  --next "rite:issue:start-execute completed. Proceed to Phase 5.3-5.4 (Publish Phase via rite:issue:start-publish) on [start:execute:completed]. Invoke rite:issue:start-finalize (abort context — PR 未作成のため pr=0 で delegation pre-write) on [start:execute:aborted]; sub-skill 内で abort entry を検出して Phase 5.5/5.5.1/5.5.2/5.7 を skip し直接 Phase 5.6 へ進む。 Do NOT stop."
 ```
 
 **Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `start-execute` sub-skill — e.g., `[lint:aborted]` orchestrator-direct emit per §A, or by `lint.md` sub-skill via Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3 regardless of detection result.
@@ -585,7 +585,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 **Step 3 (Sentinel-based routing)**: Grep the recent conversation context for `<!-- [start:execute:completed] -->` or `<!-- [start:execute:aborted] -->`:
 
 - `[start:execute:completed]` detected → **→ Proceed to Phase 5.3-5.4 (Publish Phase) now** (invoke `rite:issue:start-publish` sub-skill).
-- `[start:execute:aborted]` detected → **→ Skip to Phase 5.6 (Completion Report) now**. PR creation is intentionally skipped because the execute phase was aborted by user choice (5.1.3 Safety Check) or `[lint:aborted]`. The completion report MUST display the abort reason to the user.
+- `[start:execute:aborted]` detected → **→ Invoke `rite:issue:start-finalize` sub-skill (abort context) now**. Use Pre-write `--pr 0` to signal PR 未作成 状態; the sub-skill detects abort entry (`pr_number == 0` AND no prior `[pr:created:N]` sentinel) and skips Phase 5.5/5.5.1/5.5.2/5.7 entirely, proceeding directly to Phase 5.6 Completion Report. The completion report MUST display the abort reason ([lint:aborted] or 5.1.3 Safety Check user 中止) to the user.
 - Neither detected → fail-safe: treat as `[start:execute:completed]` (proceed to Phase 5.3-5.4); the sub-skill SHOULD always emit one of the two sentinels per its Return Output Format contract.
 
 ### 5.3-5.4 Publish Phase (delegated to start-publish sub-skill)
@@ -596,7 +596,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_publish_running" --issue {issue_number} --branch "{branch_name}" \
   --pr 0 \
-  --next "After rite:issue:start-publish returns: proceed to Phase 5.5 (Ready for Review) on [start:publish:completed]. Skip to Phase 5.6 (Completion Report) on [start:publish:aborted]. Do NOT stop."
+  --next "After rite:issue:start-publish returns: proceed to Phase 5.5-Termination (rite:issue:start-finalize) on [start:publish:completed]. Invoke rite:issue:start-finalize (abort context — pr exists but review-fix loop 未収束) on [start:publish:aborted]; sub-skill 内で abort entry を検出して Phase 5.5/5.5.1/5.5.2/5.7 を skip し直接 Phase 5.6 へ進む。 Do NOT stop."
 ```
 
 > **Module**: [Publish Phase](./start-publish.md) - Handles Phase 5.3 (PR creation via rite:pr:create), 5.4 (Review-Fix Loop with internal 5.4.1/5.4.1.0/5.4.4/5.4.6 routing, fingerprint cycling dispatcher).
@@ -616,7 +616,7 @@ Invoke `skill: "rite:issue:start-publish"`.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_publish" --issue {issue_number} --branch "{branch_name}" \
   --pr {pr_number} \
-  --next "rite:issue:start-publish completed. Proceed to Phase 5.5 (Ready for Review) on [start:publish:completed]. Skip to Phase 5.6 on [start:publish:aborted]. Do NOT stop."
+  --next "rite:issue:start-publish completed. Invoke rite:issue:start-finalize on [start:publish:completed] (success path) or [start:publish:aborted] (abort context — sub-skill 内で abort entry を検出して Phase 5.5/5.5.1/5.5.2/5.7 を skip し直接 Phase 5.6 へ進む)。 Do NOT stop."
 ```
 
 **Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `start-publish` sub-skill — e.g., `[pr:create-failed]` / `[fix:error]` orchestrator-direct emit per §B/§C, or by `pr/create.md` / `pr/review.md` / `pr/fix.md` sub-skill via Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3 regardless of detection result.
@@ -624,7 +624,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 **Step 3 (Sentinel-based routing)**: Grep the recent conversation context for `<!-- [start:publish:completed] -->` or `<!-- [start:publish:aborted] -->`:
 
 - `[start:publish:completed]` detected → **→ Proceed to Phase 5.5 (Ready for Review) now**.
-- `[start:publish:aborted]` detected → **→ Skip to Phase 5.6 (Completion Report) now**. Ready for Review is intentionally skipped because the publish phase was aborted by `[pr:create-failed]` (PR was never created) or `[fix:error]` user-terminate (review-fix loop did not converge). The completion report MUST display the abort reason to the user.
+- `[start:publish:aborted]` detected → **→ Invoke `rite:issue:start-finalize` sub-skill (abort context) now**. The sub-skill detects abort entry (`[start:publish:aborted]` sentinel grep / review-fix loop 未収束) and skips Phase 5.5/5.5.1/5.5.2/5.7 entirely, proceeding directly to Phase 5.6 Completion Report. The completion report MUST display the abort reason (`[pr:create-failed]` or `[fix:error]` user-terminate) to the user.
 - Neither detected → fail-safe: treat as `[start:publish:completed]` (proceed to Phase 5.5); the sub-skill SHOULD always emit one of the two sentinels per its Return Output Format contract.
 
 ### 5.4.4.1 Workflow Incident Detection (Contract Summary)

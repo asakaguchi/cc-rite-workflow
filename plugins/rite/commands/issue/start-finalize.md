@@ -12,11 +12,16 @@ Execute the finalize phase for an Issue. This sub-skill is invoked from `start.m
 **Prerequisites**: Phase 0-5.4 of `start.md` and `start-publish` sub-skill have completed. The following information is available in conversation context:
 - `{issue_number}` — target Issue number
 - `{branch_name}` — created/checked-out branch
-- `{pr_number}` — populated from Phase 5.3 `[pr:created:{N}]`
+- `{pr_number}` — populated from Phase 5.3 `[pr:created:{N}]` (success path) OR `0` (abort path — `[start:execute:aborted]` 経由で PR 未作成のまま invocation された場合)
 - `{plugin_root}` — resolved per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version)
-- `{owner}`, `{repo}` — from `gh repo view`
 - `{parent_issue_number}` — from flow-state via `state-read.sh` (Phase 5.7)
-- Review-fix loop converged (mergeable / replied-only)
+- Review-fix loop converged (mergeable / replied-only) **OR** abort context (`[start:execute:aborted]` / `[start:publish:aborted]` 経由 — Phase 5.5/5.5.1/5.5.2/5.7 を skip して直接 Phase 5.6 Completion Report へ進む)
+
+**Abort entry detection**: 本 sub-skill 起動直後、以下のいずれかが成立する場合は **abort entry** と判定し、Phase 5.5 AskUserQuestion / 5.5.1 / 5.5.2 / 5.7 を skip して **直接 Phase 5.6 Completion Report へ進む** (terminal state は caller の Mandatory After 5.5-Termination Step 1 が SoT として担う):
+1. `{pr_number}` が `0` (PR 未作成 — `[start:execute:aborted]` 経由)
+2. 会話履歴に `<!-- [start:execute:aborted] -->` または `<!-- [start:publish:aborted] -->` sentinel が直近の sub-skill return として存在する
+
+abort entry の場合、Phase 5.6 Completion Report の本文には abort 理由 (`[lint:aborted]` / 5.1.3 Safety Check user 中止 / `[pr:create-failed]` / `[fix:error]` user-terminate) を必ず明示する。
 
 ---
 
@@ -36,15 +41,17 @@ if [ -n "$state_file" ] && [ -f "$state_file" ]; then
   if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
       --phase "phase5_finalize_running" \
       --active true \
-      --next "rite:issue:start-finalize Pre-flight completed. Proceed to Phase 5.5 (Ready for Review) → 5.5.1 → 5.5.2 → 5.6 → 5.7 → Workflow Termination, then return to caller. Do NOT stop." \
+      --next "rite:issue:start-finalize Pre-flight completed. Success path: Phase 5.5 (Ready) → 5.5.1 → 5.5.2 → 5.6 → 5.7 → Workflow Termination. Abort entry path: skip Phase 5.5/5.5.1/5.5.2/5.7 and go directly to Phase 5.6 (Completion Report). Do NOT stop." \
       --preserve-error-count; then
     echo "[CONTEXT] PREFLIGHT_PATCH_FAILED=1" >&2
     # 非 blocking: start.md delegation pre-write が safety net。
+    # 注: Pre-flight 失敗自体は Phase 5.4.4.1 grep target の WORKFLOW_INCIDENT sentinel ではないが、
+    # caller の Mandatory After 5.5-Termination Step 1 idempotent patch が terminal を補填する。
   fi
 else
   if ! bash {plugin_root}/hooks/flow-state-update.sh create \
       --phase "phase5_finalize_running" --issue {issue_number} --branch "{branch_name}" --pr {pr_number} \
-      --next "rite:issue:start-finalize Pre-flight completed. Proceed to Phase 5.5 (Ready for Review) → 5.5.1 → 5.5.2 → 5.6 → 5.7 → Workflow Termination, then return to caller. Do NOT stop." \
+      --next "rite:issue:start-finalize Pre-flight completed. Success path: Phase 5.5 (Ready) → 5.5.1 → 5.5.2 → 5.6 → 5.7 → Workflow Termination. Abort entry path: skip Phase 5.5/5.5.1/5.5.2/5.7 and go directly to Phase 5.6. Do NOT stop." \
       --preserve-error-count; then
     echo "[CONTEXT] PREFLIGHT_CREATE_FAILED=1" >&2
   fi
@@ -58,6 +65,10 @@ fi
 ---
 
 ## Phase 5.5: Ready for Review
+
+**Abort-entry gate**: Pre-flight 完了後、Prerequisites section の「Abort entry detection」条件 (`{pr_number} == 0` OR 会話履歴に `[start:execute:aborted]` / `[start:publish:aborted]` sentinel) が成立する場合、Phase 5.5 AskUserQuestion / 5.5.0.1 / 5.5.1 / 5.5.2 を **すべて skip** し、直接 Phase 5.6 Completion Report へ進む。Phase 5.7 (parent close) も abort context では skip し、Workflow Termination も実行されず caller の Mandatory After 5.5-Termination Step 1 が terminal state SoT として担う。Phase 5.6 完了レポート本文には abort 理由を必ず明示する。
+
+success path (review-fix loop converged) では abort-entry gate を通過し、以下の通常 Phase 5.5 routing を実行する。
 
 > **⚠️ MANDATORY**: The following `AskUserQuestion` confirmation MUST be executed. Do NOT skip this step for context optimization or any other reason. The user must always confirm before changing the PR to Ready for review.
 
@@ -82,10 +93,11 @@ On user selecting "Ready for review", invoke `skill: "rite:pr:ready", args: "{pr
 
 > **Emit canonical literal**: See [§D — Phase 5.5 `[ready:error]`](./references/workflow-incident-emit-pattern.md#d--phase-55-readyerror) (SoT) for both emit steps (Step 1 `skill_load_failure` + Step 2 `manual_fallback_adopted` after user selects 「Edit ツールで手動 Ready 化」 in the `AskUserQuestion`), `|| true` non-blocking guarantee, and `--pr-number {pr_number}` semantics. The response-text-inclusion requirement that caller Phase 5.4.4.1 grep detection depends on is documented in [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件). Do NOT inline the bash literals here.
 
-**On `[ready:error]` — routing**: After emitting §D canonical literal, present `AskUserQuestion` (3 options: `再試行` / `Edit ツールで手動 Ready 化 (incident 記録)` / `terminate`):
+**On `[ready:error]` — routing**: After emitting §D canonical literal, present `AskUserQuestion` (4 options matching SoT in [§D](./references/workflow-incident-emit-pattern.md#d--phase-55-readyerror)): `再試行` / `Edit ツールで手動 Ready 化 (incident 記録)` / `Phase 5.6 へスキップ` / `terminate`:
 - **「再試行」**: re-invoke `rite:pr:ready` (loop within Phase 5.5).
 - **「Edit ツールで手動 Ready 化 (incident 記録)」**: emit §D Step 2 (`manual_fallback_adopted`), then proceed to 5.5.0.1 (treat as `[ready:completed]`).
-- **「terminate」**: emit `[start:finalize:aborted]` abort return block and return to caller. Workflow Termination is skipped — caller's Mandatory After patches terminal state.
+- **「Phase 5.6 へスキップ」**: emit `[start:finalize:aborted]` abort return block and return to caller. Phase 5.5.1/5.5.2/5.7 are skipped; Workflow Termination は実行されず、terminal state への遷移は caller の Mandatory After 5.5-Termination Step 1 が担う。
+- **「terminate」**: emit `[start:finalize:aborted]` abort return block and return to caller. Workflow Termination は実行されず、caller's Mandatory After 5.5-Termination Step 1 が terminal state への遷移を担う。
 
 ### 5.5.0.1 🚨 Mandatory After 5.5
 
@@ -220,9 +232,14 @@ if [ "$curr" != "phase5_post_metrics" ] && [ "$curr" != "phase5_finalize_running
   echo "⚠️ LLM MUST NOT proceed to Phase 5.6 Pre-write below. Re-invoke the missing phase first." >&2
   exit 1
 fi
-# Note: phase5_finalize_running は abort path (Draft 化 or [ready:error] terminate 経路で
-# Phase 5.5.1/5.5.2 を skip して直接 Phase 5.6 へ進むケース) を accept する。
-# success path は phase5_post_metrics 経由が正規路。
+# Note: phase5_finalize_running は以下 2 経路を accept する:
+#   (a) Draft path: Phase 5.5 で user が「ドラフトのまま完了」を選択し Phase 5.5.0.1/5.5.1/5.5.2
+#       を skip して直接 Phase 5.6 完了レポートへ進む success-path 内 routing。
+#   (b) Abort entry path: caller (start.md Mandatory After 5.0-5.2.1 / 5.3-5.4 Step 3) で
+#       `[start:execute:aborted]` / `[start:publish:aborted]` 検出時に Pre-write `--pr 0` 等で
+#       sub-skill を invoke し、本 sub-skill が Phase 5.5 Abort-entry gate で Phase 5.5/5.5.1/5.5.2
+#       を skip して直接 Phase 5.6 へ進む経路。
+# success path (Ready 化選択) は phase5_post_metrics 経由が正規路。
 ```
 
 **Pre-write**:
@@ -452,12 +469,13 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 > **Why this routing relies on Phase 5.7 emit, not state re-read**: Phase 5.7 が `parent_issue_number` の **single source of truth for the read** であり、本 Workflow Termination block は state を re-read しない。本 sub-skill 内の branching decision は Phase 5.7 の `[CONTEXT] PARENT_ISSUE=none` echo (LLM-level routing signal、会話履歴で観測可能) で駆動され、bash 変数経由ではない (Bash tool invocation は shell state を境界を跨いで共有しない)。
 
-**Step 1**: Update flow state to the terminal state (patch mode, preserves `previous_phase`):
+**Step 1**: Update flow state to the terminal state (patch mode, preserves `previous_phase`). Use `--if-exists --preserve-error-count` for safety — if the Pre-flight failed to create the state file (rare), this patch becomes a no-op rather than failing terminal:
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "completed" \
-  --next "none" --active false
+  --next "none" --active false \
+  --if-exists --preserve-error-count
 ```
 
 **Step 2**: Clean up `.rite-compact-state` to prevent stale blocked state from affecting the next session (#756):
@@ -473,23 +491,13 @@ rm -rf .rite-compact-state.lockdir 2>/dev/null || true
 
 ## Return Output Format (Before Return)
 
-> **Reference**: `start-execute.md` / `start-publish.md` Return Output Format と異なり、本 sub-skill は **workflow terminal**。flow-state の terminal write (`phase="completed", active=false`) は Workflow Termination section が既に実行済みのため、Return Output Format では state file への re-patch は **不要**。sentinel 出力のみで caller に handoff する。abort path では Workflow Termination をスキップして本 sub-skill 内で直接 `completed, active=false` を patch する (下記 abort 経路で実行)。
+> **Reference**: `start-execute.md` / `start-publish.md` Return Output Format と異なり、本 sub-skill は **workflow terminal**。
+>
+> **Success path**: Workflow Termination section が terminal write (`phase="completed", active=false`) + `.rite-compact-state` cleanup を実行済み。Return Output Format では state file への re-patch は **不要** で、sentinel 出力のみで caller に handoff する。
+>
+> **Abort path** (Phase 5.5 user selects 「More fixes」or `[ready:error]` → 「terminate」 or 「Phase 5.6 へスキップ」 で abort sentinel emit): Workflow Termination は実行されない (Phase 5.7 へ進まないため)。terminal state への遷移は **caller (`start.md` Mandatory After 5.5-Termination Step 1) の idempotent patch (`--if-exists --preserve-error-count`) が SoT として担う**。本 sub-skill 内に bash variable guard 経由の terminal write は配置しない (Claude Code の Bash tool は invocation 間で shell state を共有しないため `FINALIZE_ABORT=1` 経路は構造的に dead code になる)。
 
-> **Why no defense-in-depth re-patch here**: start-execute.md / start-publish.md は中間 sub-skill のため `phase5_post_execute` / `phase5_post_publish` への遷移を defense-in-depth で保証する必要があるが、start-finalize.md は terminal sub-skill で `completed` は既に書込済。再度 `completed` を patch する idempotent 操作は意味がなく、`phase5_post_finalize` 等の間接 phase は design doc SPEC-TECH-DECISIONS #3 で否定された (`[start:finalize:completed]` IS the terminal sentinel)。**Abort path のみ** Workflow Termination 未実行のため、abort 経路では本 section 直前に terminal `completed, active=false` を direct patch する (下記 bash block)。
-
-**Abort path terminal write** (only when abort path: Phase 5.5 user selects 「More fixes」or `[ready:error]` AskUserQuestion → 「terminate」):
-
-```bash
-# abort path のみ実行 — success path は Workflow Termination が既に terminal を書き込み済み
-# `phase5_finalize_running → completed` direct edge を whitelist が許可している (phase-transition-whitelist.sh)
-if [ "${FINALIZE_ABORT:-0}" = "1" ]; then
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "completed" \
-    --next "none" --active false
-  rm -f .rite-compact-state 2>/dev/null || true
-  rm -rf .rite-compact-state.lockdir 2>/dev/null || true
-fi
-```
+> **Why no defense-in-depth re-patch here**: start-execute.md / start-publish.md は中間 sub-skill のため `phase5_post_execute` / `phase5_post_publish` への遷移を defense-in-depth で保証する必要があるが、start-finalize.md は terminal sub-skill で success path では `completed` 書込済 / abort path では caller の idempotent patch が SoT。`phase5_post_finalize` 等の間接 phase は design doc SPEC-TECH-DECISIONS #3 で否定された (`[start:finalize:completed]` IS the terminal sentinel)。
 
 After the flow-state update, output the result pattern. Caller-continuation reminder を **immediately before** result pattern に emit。Return block は **4 line** 構成: (1) `[CONTEXT] FINALIZE_DONE=1` grep marker / (2) plain-text blockquote continuation reminder / (3) HTML-commented caller instructions / (4) HTML-commented result sentinel。全 4 行が sub-skill の **last visible lines**。
 
@@ -518,12 +526,12 @@ abort path (Phase 5.5 `[ready:error]` user-terminate or "More fixes" selection) 
 <!-- [start:finalize:aborted] -->
 ```
 
-> **Plain-text form rationale**: 短く user-friendly な Markdown blockquote (`> ⏭ MUST continue (turn を閉じない):`) にすることで (a) rendered Markdown で視覚的に「停止禁止・継続必須」の文脈が明確、(b) HTML コメント (LLM 向け詳細) との責任分担が明確。詳細な caller 向け instruction は HTML コメント側に残し、plain-text 行は user 向けの短い imperative status indicator として機能する。user-visible な最終コンテンツは `⏭ MUST continue` blockquote となり、sentinel token は HTML コメント化されレンダリング時に不可視。
+> **Plain-text form rationale**: 短く user-friendly な Markdown blockquote (`> ⏭ MUST continue (turn を閉じない):`) にすることで (a) rendered Markdown で視覚的に「停止禁止・継続必須」の文脈が明確、(b) HTML コメント (LLM 向け詳細) との責任分担が明確。詳細な caller 向け instruction は HTML コメント側に残し、plain-text 行は user 向けの短い imperative status indicator として機能する。user-visible な最終コンテンツは `⏭ MUST continue` blockquote となり、sentinel token は HTML コメント化されレンダリング時に不可視。`継続中` (現状報告) ではなく `MUST continue` (命令形) を採用するのは、reminder 文言が現状報告的に解釈されると LLM の turn-boundary heuristic implicit stop を防げない事象への対策。
 
 Result pattern (grep-matchable string inside HTML comment):
 
 - **Finalize completed (success)**: `<!-- [start:finalize:completed] -->` (matches `grep -F '[start:finalize:completed]'`) — emitted when Phase 5.5/5.5.1/5.5.2/5.6/5.7/Workflow Termination all complete successfully. This is the **workflow terminal sentinel**: caller does no further phase work.
-- **Finalize aborted**: `<!-- [start:finalize:aborted] -->` (matches `grep -F '[start:finalize:aborted]'`) — emitted when Phase 5.5 user selects 「More fixes」(continue iterating, skip Ready) or `[ready:error]` AskUserQuestion → 「terminate」. Workflow Termination Step 1 (terminal `completed` write) is still executed by the sub-skill so the workflow does not remain in a half-finalized state.
+- **Finalize aborted**: `<!-- [start:finalize:aborted] -->` (matches `grep -F '[start:finalize:aborted]'`) — emitted when Phase 5.5 user selects 「More fixes」(continue iterating, skip Ready) or `[ready:error]` AskUserQuestion → 「terminate」 / 「Phase 5.6 へスキップ」. Workflow Termination は実行されず、terminal state への遷移は caller (`start.md` Mandatory After 5.5-Termination Step 1) の idempotent patch (`--if-exists --preserve-error-count`) が SoT として担う。これにより半完了状態が残らない。
 
 Both patterns are consumed by the orchestrator (`start.md` Mandatory After 5.5-Termination) to determine the next action — but since this is the **workflow terminal sub-skill**, caller routing is limited to the post-state cleanup and completion handoff display.
 

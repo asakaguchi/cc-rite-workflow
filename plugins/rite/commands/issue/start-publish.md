@@ -21,7 +21,7 @@ Execute the publish phase for an Issue. This sub-skill is invoked from `start.md
 
 ## 🚨 MANDATORY Pre-flight: Flow State Update (MUST execute FIRST)
 
-> 本 Pre-flight は sub-skill の **先頭** で実行し publish scope に関係なく flow-state write を保証する。Return Output Format 到達前に LLM stop / context truncation / interrupt が発生した場合でも、`phase5_publish_running` phase + sub-skill 由来の `next_action` が必ず記録されるよう (caller の delegation pre-write を上書きせず timestamp / `next_action` を refresh)、sub-skill 先頭で Pre-flight write を保証する。`phase5_post_publish` への遷移は Return Output Format (line 318-) の re-patch が担う。
+> 本 Pre-flight は sub-skill の **先頭** で実行し publish scope に関係なく flow-state write を保証する。Return Output Format 到達前に LLM stop / context truncation / interrupt が発生した場合でも、`phase5_publish_running` phase + sub-skill 由来の `next_action` が必ず記録されるよう (caller の delegation pre-write を上書きせず timestamp / `next_action` を refresh)、sub-skill 先頭で Pre-flight write を保証する。`phase5_post_publish` への遷移は本 sub-skill 末尾の [Return Output Format](#return-output-format-before-return) section の re-patch が担う。
 
 **MUST run before any publish logic** (Phase 5.3 PR creation / Phase 5.4 review-fix loop / return-output emission)。**not optional**:
 
@@ -66,7 +66,7 @@ Run [Preflight Protocol](./start.md#preflight-protocol) before creating PR.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_pr" --issue {issue_number} --branch "{branch_name}" \
   --pr 0 \
-  --next "After rite:pr:create returns: [pr:created:{N}]->save pr_number, Phase 5.4 (review loop). [pr:create-failed]->ask user via AskUserQuestion (3 options: 再試行 / Edit ツールで PR 作成して continue / Phase 5.6 へ); 再試行 と continue は sub-skill 内 loop、Phase 5.6 へ のみ emit aborted sentinel and return to caller. Do NOT stop."
+  --next "After rite:pr:create returns: [pr:created:{N}]->save pr_number, Phase 5.4 (review loop). [pr:create-failed]->ask user via AskUserQuestion (3 options: 再試行 / Edit ツールで PR 作成して continue (incident 記録) / Phase 5.6 へ); 再試行 と continue は sub-skill 内 loop、Phase 5.6 へ のみ emit aborted sentinel and return to caller. Do NOT stop."
 ```
 
 > **Data Handoff**: When invoking `rite:pr:create`, include the Issue information retrieved in Phase 0.1 (`number`, `title`, `body`, `labels`) in the Skill prompt to avoid redundant `gh issue view` calls in the child command.
@@ -78,7 +78,7 @@ Invoke `skill: "rite:pr:create"`.
 **Patterns**:
 
 - `[pr:created:{number}]` → extract `{pr_number}`, proceed to Phase 5.4 (Review-Fix Loop).
-- `[pr:create-failed]` → **emit WORKFLOW_INCIDENT sentinel and ask user via `AskUserQuestion`** with 3 options (`再試行` / `Edit ツールで PR 作成して continue` / `Phase 5.6 へ`):
+- `[pr:create-failed]` → **emit WORKFLOW_INCIDENT sentinel and ask user via `AskUserQuestion`** with 3 options (`再試行` / `Edit ツールで PR 作成して continue (incident 記録)` / `Phase 5.6 へ`):
   - **「再試行」**: Phase 5.3 (rite:pr:create) を再呼出する (network blip / 一時的な auth エラー等の transient failure 回復用)。
   - **「Edit ツールで PR 作成して continue (incident 記録)」**: §B SoT Step 2 (`manual_fallback_adopted`) を emit し、ユーザーが手動で PR を作成した後 `{pr_number}` を context に確認してから Phase 5.4 (Review-Fix Loop) へ進む。
   - **「Phase 5.6 へ」**: emit `[start:publish:aborted]` and return to caller (caller routes to Phase 5.6)。
@@ -304,7 +304,7 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
 
 ## Return Output Format (Before Return)
 
-> **Reference**: `start-execute.md` Return Output Format と対称な設計。flow-state write は 🚨 MANDATORY Pre-flight (本ファイル冒頭) で publish scope に関係なく post-publish phase を記録。本 re-patch は defense-in-depth second write として timestamp / `next_action` を refresh する。
+> **Reference**: `start-execute.md` Return Output Format と対称な設計。flow-state write は 🚨 MANDATORY Pre-flight (本ファイル冒頭) で publish scope に関係なく `phase5_publish_running` phase + sub-skill 由来の `next_action` を記録。本 re-patch は defense-in-depth second write として `phase5_post_publish` への遷移と timestamp / `next_action` の refresh を担う。
 
 Immediately before emitting the four-line return block, re-patch flow state (idempotent with Pre-flight write):
 

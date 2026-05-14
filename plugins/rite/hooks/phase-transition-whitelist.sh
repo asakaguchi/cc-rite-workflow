@@ -109,7 +109,10 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   # start.md Phase 5.3 Mandatory After transitions directly from phase5_pr to phase5_review
   # (no intermediate phase5_post_pr write). Allow both the direct path and the legacy
   # post_pr marker for backward compat (devops cycle-2 CRITICAL).
-  ["phase5_pr"]="phase5_post_pr phase5_review"
+  # phase5_pr → phase5_post_publish は [pr:create-failed] abort path 用 (PR G1)。
+  # start-publish.md の Return Output Format Self-patch が previous_phase=phase5_pr のまま
+  # phase5_post_publish へ patch する経路を whitelist 化する (runtime BLOCKED 防止)。
+  ["phase5_pr"]="phase5_post_pr phase5_review phase5_post_publish"
   ["phase5_post_pr"]="phase5_review"
 
   # Phase 5.4: review-fix loop

@@ -2,8 +2,9 @@
 # sentinel-visibility-rule.test.sh — Workflow Incident Sentinel Visibility Rule の構造保護
 #
 # 本 test は PR D で抽出した 3 references (workflow-incident-detection.md /
-# workflow-incident-emit-pattern.md / fingerprint-cycling.md) と本体 start.md
-# 側の anchor reference が以下不変条件を満たすことを保証する:
+# workflow-incident-emit-pattern.md / fingerprint-cycling.md) と本体 start.md /
+# start-execute.md / start-publish.md (PR F/G1 抽出後の 3-way split) 側の anchor
+# reference が以下不変条件を満たすことを保証する:
 #
 # 1. workflow-incident-detection.md が Phase 5.4.4.1 Processing flow Step 1-7
 #    と Phase 5.0 Step 6 (workflow_incident.enabled parser) を含む
@@ -15,7 +16,10 @@
 # 4. 本体 start.md 側に 3 references への anchor reference が存在し、orchestrator
 #    が圧縮済み phase から正しい SoT に到達可能であること
 # 5. 本体 start.md 側に Detection scope table (7 sentinel type) と When to execute
-#    table (5 caller) が残されていること (これらは本体 contract として保持)
+#    table (3 caller — PR G1 で start-publish 抽出後、5.0-5.2.1 / 5.3-5.4 / 5.5.0.1)
+#    が残されていること (これらは本体 contract として保持)
+# 6. start-publish.md 内の rite:pr:* Skill invocation contract が破壊されていないこと
+#    (PR G1 で内部 routing が sub-skill 内に閉じた drift 防止)
 #
 # Run mode: 常時実行 (Charter assertion ではなく構造保護のため STRICT_CHARTER 不要)
 # Exit code: 不変条件違反時に non-zero
@@ -294,6 +298,26 @@ assert_grep "start: Skip condition retained" \
 assert_grep "start: Invariants statement retained (non-blocking)" \
   "$START_MD" \
   'workflow MUST NOT halt'
+
+# === 5.5. start-publish.md 内の rite:pr:* Skill invocation contract ===
+# PR G1 で Phase 5.3-5.4 が start-publish.md sub-skill 内に閉じたため、
+# start.md からは「Phase 5.4.3 (pr:review) / 5.4.6 (pr:fix) row」の assert が削除された。
+# 代わりに「start-publish.md 内に rite:pr:create / rite:pr:review / rite:pr:fix の Skill invocation が
+# 必ず存在する」ことを pin することで、内部 Skill 呼出が誤削除される drift を検出する。
+echo ""
+echo "--- 5.5. start-publish.md 内の rite:pr:* Skill invocation contract (PR G1) ---"
+
+assert_grep "start-publish: rite:pr:create skill invocation retained" \
+  "$START_PUBLISH_MD" \
+  'skill: "rite:pr:create"'
+
+assert_grep "start-publish: rite:pr:review skill invocation retained" \
+  "$START_PUBLISH_MD" \
+  'skill: "rite:pr:review"'
+
+assert_grep "start-publish: rite:pr:fix skill invocation retained" \
+  "$START_PUBLISH_MD" \
+  'skill: "rite:pr:fix"'
 
 # === 6. start.md drift guard — inline emit literal must NOT reappear (#937) ===
 echo ""

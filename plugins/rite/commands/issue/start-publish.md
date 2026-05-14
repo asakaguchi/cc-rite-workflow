@@ -21,7 +21,7 @@ Execute the publish phase for an Issue. This sub-skill is invoked from `start.md
 
 ## 🚨 MANDATORY Pre-flight: Flow State Update (MUST execute FIRST)
 
-> 本 Pre-flight は sub-skill の **先頭** で実行し publish scope に関係なく flow-state write を保証する。末尾配置だと Phase 5.3 PR create で早期 error return した場合に flow-state write が抜けるため、先頭配置が必須。
+> 本 Pre-flight は sub-skill の **先頭** で実行し publish scope に関係なく flow-state write を保証する。Return Output Format 到達前に LLM stop / context truncation / interrupt が発生した場合でも post-publish phase / next_action が記録されるよう、sub-skill 先頭で Pre-flight write を保証する (defense-in-depth: caller の delegation pre-write は upstream で先行書き込み済みだが、本 Pre-flight が timestamp と next_action を refresh する)。
 
 **MUST run before any publish logic** (Phase 5.3 PR creation / Phase 5.4 review-fix loop / return-output emission)。**not optional**:
 
@@ -50,7 +50,7 @@ else
 fi
 ```
 
-**Why `phase5_publish_running`**: caller (`start.md` Phase 5.3 Delegation Pre-write) は既に `phase5_publish_running` を書込済 (delegation in flight signal)。本 Pre-flight は patch mode で timestamp / `next_action` を refresh し、re-entry / interrupt 時にも sub-skill scope を識別できるようにする。`phase-transition-whitelist.sh` が `phase5_publish_running → phase5_pr` (forward) / `phase5_publish_running → phase5_post_publish` (terminal — abort) を whitelist 化する。
+**Why `phase5_publish_running`**: caller (`start.md` Phase 5.3-5.4 Delegation Pre-write) は既に `phase5_publish_running` を書込済 (delegation in flight signal)。本 Pre-flight は patch mode で timestamp / `next_action` を refresh し、re-entry / interrupt 時にも sub-skill scope を識別できるようにする。`phase-transition-whitelist.sh` が `phase5_publish_running → phase5_pr` (forward) / `phase5_publish_running → phase5_post_publish` (terminal) を whitelist 化する。success path は `phase5_publish_running → phase5_pr → ... → phase5_post_publish` の間接経路を辿り、direct edge `phase5_publish_running → phase5_post_publish` は sub-skill 早期 stop / abort 時の direct return path として使われる。
 
 **Idempotence**: 単一 sub-skill invocation 内で複数回実行されても safe — patch mode は pre-update `.phase` から `previous_phase` を設定し、re-entry で `phase5_publish_running` のまま phase regression しない。
 
@@ -78,11 +78,14 @@ Invoke `skill: "rite:pr:create"`.
 **Patterns**:
 
 - `[pr:created:{number}]` → extract `{pr_number}`, proceed to Phase 5.4 (Review-Fix Loop).
-- `[pr:create-failed]` → **emit WORKFLOW_INCIDENT sentinel + abort return block, then return to caller** (caller orchestrator routes to Phase 5.6).
+- `[pr:create-failed]` → **emit WORKFLOW_INCIDENT sentinel and ask user via `AskUserQuestion`** with 3 options (`再試行` / `Edit ツールで PR 作成して continue` / `Phase 5.6 へ`):
+  - **「再試行」**: Phase 5.3 (rite:pr:create) を再呼出する (network blip / 一時的な auth エラー等の transient failure 回復用)。
+  - **「Edit ツールで PR 作成して continue」**: §B SoT Step 2 (`manual_fallback_adopted`) を emit し、ユーザーが手動で PR を作成した後 `{pr_number}` を context に確認してから Phase 5.4 (Review-Fix Loop) へ進む。
+  - **「Phase 5.6 へ」**: emit `[start:publish:aborted]` and return to caller (caller routes to Phase 5.6)。
 
-> **Emit canonical literal**: See [§B — Phase 5.3 `[pr:create-failed]`](./references/workflow-incident-emit-pattern.md#b--phase-53-prcreate-failed) (SoT) for both emit steps (Step 1 `skill_load_failure` + Step 2 `manual_fallback_adopted` after user selects 「Edit ツールで PR 作成して continue」 in the `AskUserQuestion`), `|| true` non-blocking guarantee, and `--pr-number 0` semantics. The response-text-inclusion requirement that Phase 5.4.4.1 grep detection depends on is documented in [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件). Do NOT inline the bash literals here.
+> **Emit canonical literal**: See [§B — Phase 5.3 `[pr:create-failed]`](./references/workflow-incident-emit-pattern.md#b--phase-53-prcreate-failed) (SoT) for both emit steps (Step 1 `skill_load_failure` is emitted **before** the AskUserQuestion; Step 2 `manual_fallback_adopted` is emitted **only when** user selects 「Edit ツールで PR 作成して continue」), `|| true` non-blocking guarantee, and `--pr-number 0` semantics. The response-text-inclusion requirement that Phase 5.4.4.1 grep detection depends on is documented in [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件). Do NOT inline the bash literals here.
 
-**On `[pr:create-failed]` — abort return**: After emitting the §B canonical bash literal (WORKFLOW_INCIDENT sentinel), emit the abort return block (see [Return Output Format](#return-output-format-before-return) — abort variant) and return control to caller. Do NOT proceed to Phase 5.4. The caller (`start.md` Mandatory After 5.3 Delegation — Step 3) detects `[start:publish:aborted]` sentinel and routes directly to Phase 5.6.
+**On `[pr:create-failed]` — abort routing**: After the AskUserQuestion completes, route per the user's selection: 再試行 → re-invoke `rite:pr:create` (loop within Phase 5.3) / continue → §B Step 2 emit + Phase 5.4 progression / Phase 5.6 へ → emit `[start:publish:aborted]` abort return block (see [Return Output Format](#return-output-format-before-return) — abort variant) and return control to caller. Only the 「Phase 5.6 へ」 path triggers the abort return; the other two paths continue within the sub-skill scope. The caller (`start.md` Mandatory After 5.3-5.4 — Step 3) detects `[start:publish:aborted]` sentinel and routes directly to Phase 5.6.
 
 ---
 
@@ -202,7 +205,7 @@ After the review result is received, verify that the review was properly execute
 
 4. **When `reviewer_sections >= 1`**: Review quality verified. Proceed to Step 3.
 
-**Step 3**: 本 sub-skill は Workflow Incident Detection 自体を実行しない (caller `start.md` Mandatory After 5.3 Delegation に委譲)。sub-skill 内部で emit された `[CONTEXT] WORKFLOW_INCIDENT=1` sentinel (`[pr:create-failed]` / `[fix:error]` 経路の §B/§C canonical bash literal、または `review.md` sub-skill の Sentinel Visibility Rule 経由) は会話コンテキストに残り、caller の Phase 5.4.4.1 が grep 検出・処理 (parse → dedupe → AskUserQuestion → create-issue / skip → mark processed) する責務を負う。
+**Step 3**: 本 sub-skill は Workflow Incident Detection 自体を実行しない (caller `start.md` Mandatory After 5.3-5.4 に委譲)。sub-skill 内部で emit された `[CONTEXT] WORKFLOW_INCIDENT=1` sentinel (`[pr:create-failed]` / `[fix:error]` 経路の §B/§C canonical bash literal、または `review.md` sub-skill の Sentinel Visibility Rule 経由) は会話コンテキストに残り、caller の Phase 5.4.4.1 が grep 検出・処理 (parse → dedupe → AskUserQuestion → create-issue / skip → mark processed) する責務を負う。
 
 **Step 3.1 (Quality Signal 3 & 4 Detection)**: After review returns, detect Quality Signal 3 (cross-validation disagreement) and Signal 4 (reviewer self-degraded).
 
@@ -277,7 +280,7 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
   2>/dev/null || true
 ```
 
-**Step 3**: 本 sub-skill は Workflow Incident Detection 自体を実行しない (caller `start.md` Mandatory After 5.3 Delegation に委譲)。
+**Step 3**: 本 sub-skill は Workflow Incident Detection 自体を実行しない (caller `start.md` Mandatory After 5.3-5.4 に委譲)。
 
 > **Note (v0.4.0 #557)**: The review-fix loop has no cycle-count-based hard limit. Non-convergence is detected exclusively via the four quality signals (see `commands/pr/references/fix-relaxation-rules.md#four-quality-signals-for-escalation`):
 > 1. Fingerprint cycling → Phase 5.4.1.0 (before every re-review)
@@ -293,7 +296,7 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
 | `[fix:pushed-wm-stale]` | **Work memory が stale です。手動介入が必要かを `AskUserQuestion` でユーザーに確認** (推奨: stale 警告ログを残した上で `skill: "rite:pr:review", args: "{pr_number}"` を起動して再レビューに進む / 中断して手動で work memory を修復する)。silent に `[fix:pushed]` 扱いしてはならない (fix.md Phase 8.1 caller semantics 参照)。 |
 | `[fix:issues-created:{n}]` | **Invoke `skill: "rite:pr:review", args: "{pr_number}"`** via the Skill tool (re-review, Phase 5.4.1). |
 | `[fix:replied-only]` | **→ Emit `[start:publish:completed]` and return to caller** (caller routes to Phase 5.5 Ready for Review). |
-| `[fix:error]` | Ask the user how to proceed via `AskUserQuestion` with options: 「再試行」/「Edit ツールで手動 fallback (incident 記録)」/「Phase 5.6 にスキップ」/「terminate」. If user selects 「Edit ツールで手動 fallback」, **emit sentinel** per [§C — Phase 5.4.4 `[fix:error]`](./references/workflow-incident-emit-pattern.md#c--phase-544-fixerror) (SoT) then emit `[start:publish:aborted]` and return to caller (caller routes to Phase 5.6). If user selects 「Phase 5.6 にスキップ」 or 「terminate」, emit `[start:publish:aborted]` and return to caller. The response-text-inclusion requirement that Phase 5.4.4.1 grep detection depends on is documented in [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件). Do NOT inline the bash literal here. |
+| `[fix:error]` | Ask the user how to proceed via `AskUserQuestion` with 4 options and execute the corresponding action: <br>**「再試行」**: Phase 5.4.4 に戻り `skill: "rite:pr:fix"` を再呼出 (fix.md 内の error 詳細を踏まえて再試行)。<br>**「Edit ツールで手動 fallback (incident 記録)」**: **emit sentinel** per [§C — Phase 5.4.4 `[fix:error]`](./references/workflow-incident-emit-pattern.md#c--phase-544-fixerror) (SoT) then emit `[start:publish:aborted]` and return to caller (caller routes to Phase 5.6)。<br>**「Phase 5.6 にスキップ」**: emit `[start:publish:aborted]` and return to caller (caller routes to Phase 5.6)。<br>**「terminate」**: emit `[start:publish:aborted]` and return to caller (caller routes to Phase 5.6)。The response-text-inclusion requirement that Phase 5.4.4.1 grep detection depends on is documented in [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件). Do NOT inline the bash literal here. |
 
 > **禁止**: Edit ツールや Bash ツールでコードを直接修正してはならない。修正は必ず `skill: "rite:pr:fix"` を Skill ツールで呼び出して実行すること。再レビューは必ず `skill: "rite:pr:review"` を Skill ツールで呼び出すこと。
 
@@ -318,7 +321,7 @@ if [ -n "$state_file" ] && [ -f "$state_file" ]; then
       --next "rite:issue:start-publish completed. Proceed to Phase 5.5 (Ready for Review). Do NOT stop." \
       --preserve-error-count; then
     echo "[CONTEXT] PUBLISH_RETURN_PATCH_FAILED=1" >&2
-    # 非 blocking: start.md Mandatory After 5.3 Delegation の redundant patch が続行する。
+    # 非 blocking: start.md Mandatory After 5.3-5.4 の redundant patch が続行する。
   fi
 fi
 ```
@@ -330,7 +333,7 @@ After the flow-state update, output the result pattern. Caller-continuation remi
 > **Return block design rationale**:
 > - caller continuation hint を plain-text line + HTML comment の **dual form** で emit（HTML comment が rendering で strip される場合への defense）
 > - result pattern を HTML comment 化 (`<!-- [start:publish:completed] -->` / `<!-- [start:publish:aborted] -->`) — sentinel は grep-matchable (`grep -F '[start:publish:'`) のまま AC 保持し、user-visible terminal token としての sentinel 出力を抑止して LLM turn-boundary heuristic 起因の `continue` 要求 stop を防ぐ
-> - `[CONTEXT] PUBLISH_DONE=1` marker を return block の **FIRST line** に追加（not last）— orchestrator Pre-check Item 0 と Mandatory After 5.3 Delegation Step 0 が consume する grep signal、HTML strip rendering でも検出可能な plain-text 形式
+> - `[CONTEXT] PUBLISH_DONE=1` marker を return block の **FIRST line** に追加（not last）— orchestrator Pre-check Item 0 と Mandatory After 5.3-5.4 Step 0 が consume する grep signal、HTML strip rendering でも検出可能な plain-text 形式
 
 **Output format example (success — `[start:publish:completed]`)**:
 
@@ -359,13 +362,13 @@ Result pattern (grep-matchable string inside HTML comment):
 - **Publish completed (success)**: `<!-- [start:publish:completed] -->` (matches `grep -F '[start:publish:completed]'`) — emitted when review-fix loop converges via `[review:mergeable]` or `[fix:replied-only]`. Caller routes to Phase 5.5 (Ready for Review).
 - **Publish aborted**: `<!-- [start:publish:aborted] -->` (matches `grep -F '[start:publish:aborted]'`) — emitted when `rite:pr:create` returns `[pr:create-failed]`, or when `rite:pr:fix` returns `[fix:error]` and user selects 「Phase 5.6 にスキップ」/「Edit ツールで手動 fallback」/「terminate」. Caller routes to Phase 5.6 (Completion Report), **skipping** Phase 5.5.
 
-Both patterns are consumed by the orchestrator (`start.md` Mandatory After 5.3 Delegation — Step 3) to determine the next action.
+Both patterns are consumed by the orchestrator (`start.md` Mandatory After 5.3-5.4 — Step 3) to determine the next action.
 
 ---
 
 ## 🚨 Caller Return Protocol
 
-Sub-skill 完了時、control は **MUST** caller (`start.md`) へ戻る。caller は **同 response turn で MUST immediately** 🚨 Mandatory After 5.3 Delegation を実行し、sentinel に応じて Phase 5.5 (Ready for Review — success path) または Phase 5.6 (Completion Report — abort path) へ進む。
+Sub-skill 完了時、control は **MUST** caller (`start.md`) へ戻る。caller は **同 response turn で MUST immediately** 🚨 Mandatory After 5.3-5.4 を実行し、sentinel に応じて Phase 5.5 (Ready for Review — success path) または Phase 5.6 (Completion Report — abort path) へ進む。
 
 **WARNING (success path)**: Success path で本セクションで停止すると Ready for Review 化されず PR が draft のまま放置される。
 
@@ -376,10 +379,10 @@ Sub-skill 完了時、control は **MUST** caller (`start.md`) へ戻る。calle
 0. **FIRST**: `[CONTEXT] PUBLISH_DONE=1; next=phase_5_5` (success) または `[CONTEXT] PUBLISH_DONE=1; next=phase_5_6` (abort) を **plain-text line** で出力（HTML-commented 不可）。位置規定:
    - **0b (構造保証、canonical)**: Rules 0-1 の相対順序が **4-line return block** を pin する: Rule 0 (FIRST) → plain-text continuation reminder → HTML-commented caller instructions → Rule 1 (absolute LAST)。この 4-line invariant が canonical で、他の位置記述はここから導出
    - **0a (絶対位置、0b から導出)**: 4-line block 構造より、本 marker は **4th-to-last visible line**（`<!-- [start:publish:completed] -->` / `<!-- [start:publish:aborted] -->` absolute-last sentinel の 3 行前）
-   - **0c (目的)**: grep marker for orchestrator Pre-check Item 0 (routing dispatcher) and for Mandatory After 5.3 Delegation Step 0 bash block comment reference (informational — Step 0 は unconditional idempotent `flow-state-update.sh patch` であり marker 分岐なし); LLM turn-boundary heuristic 対策の defense-in-depth
+   - **0c (目的)**: grep marker for orchestrator Pre-check Item 0 (routing dispatcher) and for Mandatory After 5.3-5.4 Step 0 bash block comment reference (informational — Step 0 は unconditional idempotent `flow-state-update.sh patch` であり marker 分岐なし); LLM turn-boundary heuristic 対策の defense-in-depth
 1. Result pattern を HTML comment (`<!-- [start:publish:completed] -->` または `<!-- [start:publish:aborted] -->`) で **absolute last line** に出力 (sentinel は grep-matchable だが user-visible でない)
 2. Bare `[start:publish:completed]` / `[start:publish:aborted]` 形式（HTML comment wrap なし）は **禁止**（user-visible terminal token として regressed）
 3. Result pattern の **後ろに narrative text を出さない**（`→ Return to start.md` 等）— LLM の natural stopping point を生む
 4. Caller は HTML comment 内の grep-matchable 文字列 (`grep -F '[start:publish:completed]'` / `grep -F '[start:publish:aborted]'`) と plain-text `[CONTEXT] PUBLISH_DONE=1` marker を grep で読取り、success path は即 Phase 5.5 へ、abort path は即 Phase 5.6 へ継続
 
-> **Caller responsibility note**: 上記 Rules 0-3 は本 sub-skill (`start-publish.md`) の出力に関する MUST/MUST NOT 制約。Rule 4 は subject = Caller の **Caller-side expectation** (本 sub-skill が caller に期待する後続動作の documentation)。本 sub-skill が emit する return block の構造健全性は必要条件であって十分条件ではなく、caller (`start.md`) 側の 🚨 Mandatory After 5.3 Delegation Step 0 が sub-skill return 直後の **VERY FIRST tool call** として bash literal を fire することが MUST。
+> **Caller responsibility note**: 上記 Rules 0-3 は本 sub-skill (`start-publish.md`) の出力に関する MUST/MUST NOT 制約。Rule 4 は subject = Caller の **Caller-side expectation** (本 sub-skill が caller に期待する後続動作の documentation)。本 sub-skill が emit する return block の構造健全性は必要条件であって十分条件ではなく、caller (`start.md`) 側の 🚨 Mandatory After 5.3-5.4 Step 0 が sub-skill return 直後の **VERY FIRST tool call** として bash literal を fire することが MUST。

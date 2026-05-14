@@ -512,7 +512,7 @@ caller (`start.md`) と sub-skill (`start-finalize.md`) の二重 rm は defense
 | Full cleanup mode per-file loop | `hooks/cleanup-work-memory.sh` Step 3 | `cleanup_work_memory_wm_dir` |
 | Close mode single-issue cleanup | `hooks/cleanup-work-memory.sh` close-mode | `cleanup_work_memory_issue` |
 
-両系列とも emit の目的は `pre-compact.sh acquire_wm_lock` 等が stale lockdir を取得して work memory sync を silent skip する potential risk への observable signal。`.rite-compact-state.lockdir` は global state ゆえ 4 site で対称化、work memory lockdir は per-issue scope ゆえ 2 site で完結する。
+両系列とも emit の目的は `work-memory-update.sh:153 acquire_wm_lock "$lockdir"` (per-issue work memory `.lockdir` を取得、`$lockdir="${local_wm}.lockdir"`) 等が stale lockdir を取得して work memory sync を silent skip する potential risk への observable signal。global state の `.rite-compact-state.lockdir` 系列 (`pre-compact.sh:82` で取得) とは consumer が異なる別系列であり、`.rite-compact-state.lockdir` は global state ゆえ 4 site で対称化、work memory lockdir は per-issue scope ゆえ 2 site で完結する。
 
 ---
 

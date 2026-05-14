@@ -27,6 +27,11 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 
 START_MD="$REPO_ROOT/plugins/rite/commands/issue/start.md"
+# PR F (#902) extracted Phase 5.0-5.2.1 (incl. §A Phase 5.2 `[lint:aborted]` anchor reference)
+# into start-execute.md. The §A anchor now legitimately lives in start-execute.md, while
+# §B-§D and `## 不変条件` remain in start.md (Phase 5.3/5.4.4/5.5 references). Anchor
+# drift check scans both files.
+START_EXECUTE_MD="$REPO_ROOT/plugins/rite/commands/issue/start-execute.md"
 REF_DETECTION="$REPO_ROOT/plugins/rite/commands/issue/references/workflow-incident-detection.md"
 REF_EMIT="$REPO_ROOT/plugins/rite/commands/issue/references/workflow-incident-emit-pattern.md"
 REF_FINGERPRINT="$REPO_ROOT/plugins/rite/commands/issue/references/fingerprint-cycling.md"
@@ -383,12 +388,15 @@ for pair in "${anchor_pairs[@]}"; do
     fail "anchor: emit-pattern.md MISSING heading literal: $heading (heading が書き換えられた可能性)"
   fi
 
-  # (b) start.md に対応 anchor が存在
+  # (b) start.md または start-execute.md に対応 anchor が存在
+  # PR F (#902) で §A Phase 5.2 reference は start-execute.md へ移動。他 (§B-§D, 不変条件)
+  # は start.md に残置。drift guard は両方をスキャン。
   # anchor は ASCII のみだが念のため `grep -F` で安全に
-  if grep -qF -- "workflow-incident-emit-pattern.md#${anchor}" "$START_MD"; then
-    pass "anchor: start.md references anchor #${anchor}"
+  if grep -qF -- "workflow-incident-emit-pattern.md#${anchor}" "$START_MD" \
+    || grep -qF -- "workflow-incident-emit-pattern.md#${anchor}" "$START_EXECUTE_MD"; then
+    pass "anchor: start.md/start-execute.md references anchor #${anchor}"
   else
-    fail "anchor: start.md MISSING anchor reference workflow-incident-emit-pattern.md#${anchor} (anchor drift の可能性 — heading を更新したら anchor も更新すること)"
+    fail "anchor: start.md/start-execute.md MISSING anchor reference workflow-incident-emit-pattern.md#${anchor} (anchor drift の可能性 — heading を更新したら anchor も更新すること)"
   fi
 done
 

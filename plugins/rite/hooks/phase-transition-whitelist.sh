@@ -71,8 +71,9 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   # Do NOT allow direct phase3_post_plan → phase5_lint (would silently skip Stop Hook verification).
   # phase3_post_plan → phase3_plan is accepted for /rite:resume retry after plan was already
   # completed in a prior session (code-quality cycle-3 MEDIUM).
+  # phase3_post_plan → phase5_execute_running is the new delegation entry point (PR F #902).
   ["phase3_plan"]="phase3_post_plan"
-  ["phase3_post_plan"]="phase5_stop_hook phase3_plan"
+  ["phase3_post_plan"]="phase5_stop_hook phase5_execute_running phase3_plan"
 
   # Phase 5.0: stop-hook verification
   ["phase5_stop_hook"]="phase5_post_stop_hook"
@@ -80,7 +81,13 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
 
   # Phase 5.1/5.2: implement + lint
   ["phase5_lint"]="phase5_post_lint"
-  ["phase5_post_lint"]="phase5_pr phase5_lint"
+  ["phase5_post_lint"]="phase5_pr phase5_lint phase5_post_execute"
+
+  # /rite:issue:start-execute sub-skill (PR F #902)
+  # start.md Phase 5.0-5.2.1 delegation: orchestrator writes phase5_execute_running before invoke,
+  # sub-skill writes phase5_post_execute when done. Orchestrator routes to phase5_pr after sentinel.
+  ["phase5_execute_running"]="phase5_stop_hook phase5_post_execute"
+  ["phase5_post_execute"]="phase5_pr"
 
   # Phase 5.3: PR create
   # start.md Phase 5.3 Mandatory After transitions directly from phase5_pr to phase5_review

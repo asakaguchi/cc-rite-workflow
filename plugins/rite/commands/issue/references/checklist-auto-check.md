@@ -41,7 +41,7 @@ When incomplete checklist items are detected, evaluate each item's fulfillment s
 
 3. **Update Issue body**: If any items are newly marked as satisfied, update the Issue body via `gh issue edit`:
 
-   Follow the "Checkbox Update" pattern in [gh-cli-patterns.md](../../../references/gh-cli-patterns.md#safe-checklist-operation-patterns). Use Python for safe `- [ ]` → `- [x]` replacement (do NOT use `sed`).
+   Follow the "Checkbox Update" pattern in [gh-cli-patterns.md](../../../references/gh-cli-patterns.md#safe-checklist-operation-patterns). Use Read+Write tools for safe `- [ ]` → `- [x]` replacement (do NOT use `sed`).
 
    ```bash
    # Step 1: Retrieve current body and validate

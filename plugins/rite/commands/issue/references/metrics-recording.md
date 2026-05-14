@@ -35,7 +35,7 @@ canonical capture pattern を維持し `caller-markdown-block.test.sh` G-03 meta
 # silent default 0 (= "no deviation") に降格せず、metrics output を skip する。
 # 注意: inline 1 行 form を維持 (caller-markdown-block.test.sh TC-6 が
 # `if val=...; then :; else rc=$?` の 1 行 canonical capture pattern を grep で pin する)。
-if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_5_2_metrics; rc=$rc" >&2; echo "WARNING: state-read.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; val=""; fi
+if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_5_2_metrics; rc=$rc" >&2; echo "WARNING: state-read.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; echo "RESUME_HINT: state-read.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2; val=""; fi
 # numeric type validation (writer/reader/resume 3 layer 対称化 doctrine): 他 caller (Phase 5.7
 # parent_issue_number / implement.md parent_issue_number / pr/review.md loop_count /
 # resume.md parent_issue_number_raw) と同様に non-numeric 値を 0 に降格して partial corruption

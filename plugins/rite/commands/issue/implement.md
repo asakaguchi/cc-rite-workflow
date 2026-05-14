@@ -871,6 +871,7 @@ else
   rc=$?
   echo "ERROR: state-read.sh failed (rc=$rc) for --field parent_issue_number in Phase 5.1.2" >&2
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_1_2_parent_issue; rc=$rc" >&2
+  echo "RESUME_HINT: state-read.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2
   exit 1
 fi
 # non-numeric injection 経路を遮断

@@ -265,8 +265,8 @@ if parent_issue_number_raw=$(bash {plugin_root}/hooks/state-read.sh --field pare
 else
   rc=$?
   echo "ERROR: state-read.sh failed (rc=$rc) reading parent_issue_number" >&2
-  echo "  対処: helper の存在 (ls -l {plugin_root}/hooks/state-read.sh) と executable bit (chmod +x) を確認" >&2
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=resume_phase_2_1_parent_issue_display; rc=$rc" >&2
+  echo "RESUME_HINT: state-read.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2
   exit 1
 fi
 

@@ -143,6 +143,7 @@ else
   rc=$?
   echo "ERROR: state-read.sh failed (rc=$rc) for --field phase in Phase 5.5.1 pre-condition" >&2
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_5_1_pre_condition; rc=$rc" >&2
+  echo "RESUME_HINT: state-read.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2
   exit 1
 fi
 if [ "$curr" != "phase5_post_ready" ]; then
@@ -224,6 +225,7 @@ else
   rc=$?
   echo "ERROR: state-read.sh failed (rc=$rc) for --field phase in Phase 5.6 pre-condition" >&2
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_6_pre_condition; rc=$rc" >&2
+  echo "RESUME_HINT: state-read.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2
   exit 1
 fi
 if [ "$curr" != "phase5_post_metrics" ] && [ "$curr" != "phase5_finalize_running" ]; then
@@ -365,6 +367,7 @@ else
   rc=$?
   echo "ERROR: state-read.sh failed (rc=$rc) for --field parent_issue_number in Phase 5.7" >&2
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_7_parent_issue; rc=$rc" >&2
+  echo "RESUME_HINT: state-read.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2
   exit 1
 fi
 # state-read.sh は jq の `// $default` で null/false → default 置換するが値の型は validate しない。
@@ -451,7 +454,7 @@ Display remaining children, guide `/rite:issue:start`. No auto-start.
 > See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
 > MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
-**Step 1**: Update flow state to post-parent-completion phase. Use **patch mode** — patch preserves `previous_phase` automatically from the outgoing `.phase` field, whereas `create` mode would overwrite the entire state and risk tripping the session-ownership check:
+**Step 1**: Update flow state to post-parent-completion phase using **patch mode** with `--active true`。workflow は次の Workflow Termination Step 1 (terminal patch) まで active であり続けるべきで、ここで `active=false` を先行設定すると、stop-guard / preflight 検査がこの中間状態を terminal と誤認して次の terminal patch を阻害する risk がある。`create` mode を使う代替案は `previous_phase` を毎回 overwrite するため、phase-transition-whitelist の整合性が破れる risk があり選択しない。
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
@@ -482,10 +485,12 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 ```bash
 rm -f .rite-compact-state 2>/dev/null || true
-rm -rf .rite-compact-state.lockdir 2>/dev/null || true
+rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1" >&2
 ```
 
-**Note**: This cleanup is non-blocking. Failure to delete is silently ignored.
+**Note**: Cleanup は non-blocking。`.rite-compact-state` の削除失敗は silent skip (regular file の rm -f はほぼ permission denied のみで、次セッションでは上書き作成されるため)。
+
+`.rite-compact-state.lockdir` の削除失敗 (shared filesystem 上の stale lock 等) は `[CONTEXT] LOCKDIR_CLEANUP_FAILED=1` を stderr へ emit する。`session-start.sh` startup 時 hook で自動 cleanup する safety net はあるが、それまでの間に `pre-compact.sh acquire_wm_lock` が同 lockdir を取得しようとして work memory sync を silent skip する potential risk があるため observable signal を残す目的。なお現状この sentinel は `WORKFLOW_INCIDENT=1` 形式ではないため Phase 5.4.4.1 detection 経路では consume されず、stderr observability のみ (将来 incident pattern への昇格 / preflight 拡張時の interception 点として将来利用される想定)。
 
 ---
 

@@ -647,7 +647,7 @@ Invoke `skill: "rite:pr:create"`.
 
 Run [Preflight Protocol](#preflight-protocol) before each review cycle.
 
-Update flow state (atomic, see 5.1 step 3):
+Update flow state (atomic):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
@@ -1041,12 +1041,15 @@ else
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_6_pre_condition; rc=$rc" >&2
   exit 1
 fi
-if [ "$curr" != "phase5_post_metrics" ]; then
-  echo "ERROR: Phase 5.6 pre-condition failed. .phase=$curr (expected: phase5_post_metrics)" >&2
+if [ "$curr" != "phase5_post_metrics" ] && [ "$curr" != "phase5_post_execute" ]; then
+  echo "ERROR: Phase 5.6 pre-condition failed. .phase=$curr (expected: phase5_post_metrics or phase5_post_execute for abort path)" >&2
   echo "ACTION: Return to the missing phase (5.5.1 Status Update → 5.5.2 Metrics) and execute each Pre-write + main procedure + Mandatory After before entering Phase 5.6." >&2
   echo "⚠️ LLM MUST NOT proceed to Phase 5.6 Pre-write below. Re-invoke the missing phase first." >&2
   exit 1
 fi
+# Note: phase5_post_execute は abort path (start-execute.md が [start:execute:aborted] sentinel
+# emit 後に Phase 5.6 へ直接 skip する経路、Workflow Termination 用) を accept する。
+# success path は phase5_post_metrics 経由が正規路。
 ```
 
 **Pre-write**:

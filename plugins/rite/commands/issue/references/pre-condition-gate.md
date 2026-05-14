@@ -86,7 +86,7 @@ if <var>=$(bash {plugin_root}/hooks/state-read.sh --field <field> --default <def
 |-------|--------------------------------|--------------------------------------|-------------------------|------------------|
 | **Phase 3** (implementation-plan) | `phase2_post_work_memory` | `phase3_post_plan` (`/rite:resume` re-entry) | `phase2_post_work_memory → phase3_plan`、resume 経路は `phase3_post_plan → phase3_plan` | Phase 2.4 / 2.5 / 2.6 の missing step に return |
 | **Phase 5.5.1** (Issue Status In Review) | `phase5_post_ready` | なし | `phase5_post_ready → phase5_status_in_review` | Phase 5.5 (Ready for Review) に return |
-| **Phase 5.6** (Completion Report) | `phase5_post_metrics` | なし | `phase5_post_metrics → phase5_completion` | Phase 5.5.1 (Status) / 5.5.2 (Metrics) に return |
+| **Phase 5.6** (Completion Report) | `phase5_post_metrics` (success path) | `phase5_post_execute` (abort path、Issue #902 PR F) | `phase5_post_metrics → phase5_completion` / `phase5_post_execute → phase5_completion` | success: Phase 5.5.1 (Status) / 5.5.2 (Metrics) に return / abort: start-execute.md sentinel-based routing 経由 |
 
 > **Pre-condition と whitelist の二重防御**: 各 Pre-condition check は LLM 向け enforcement (本 reference 後段の "Enforcement note") で routing を駆動するが、 **`phase-transition-whitelist.sh` も独立に許可エッジを検証**する。例: Phase 5.6 の pre-condition が `phase5_post_status_in_review` 等を誤って受容しても、whitelist が `phase5_post_metrics → phase5_completion` 以外の source を reject するため、defense-in-depth として silent skip が阻止される。両層の整合性は `phase-transition-whitelist.sh` の許可エッジ定義を SoT として参照すること。
 

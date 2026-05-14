@@ -485,12 +485,23 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 ```bash
 rm -f .rite-compact-state 2>/dev/null || true
-rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1" >&2
+rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=start_finalize_termination" >&2
 ```
 
 **Note**: Cleanup は non-blocking。`.rite-compact-state` の削除失敗は silent skip (regular file の rm -f はほぼ permission denied のみで、次セッションでは上書き作成されるため)。
 
-`.rite-compact-state.lockdir` の削除失敗 (shared filesystem 上の stale lock 等) は `[CONTEXT] LOCKDIR_CLEANUP_FAILED=1` を stderr へ emit する。`session-start.sh` startup 時 hook で自動 cleanup する safety net はあるが、それまでの間に `pre-compact.sh acquire_wm_lock` が同 lockdir を取得しようとして work memory sync を silent skip する potential risk があるため observable signal を残す目的。なお現状この sentinel は `WORKFLOW_INCIDENT=1` 形式ではないため Phase 5.4.4.1 detection 経路では consume されず、stderr observability のみ (将来 incident pattern への昇格 / preflight 拡張時の interception 点として将来利用される想定)。
+`.rite-compact-state.lockdir` の削除失敗 (shared filesystem 上の stale lock 等) は `[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=<discriminator>` を stderr へ emit する。`from=` discriminator で emit 元を識別し、4 site (`start_md_termination` / `start_finalize_termination` / `session_start_cleanup` / `cleanup_work_memory`) で対称化されている。`session-start.sh` startup 時 hook で自動 cleanup する safety net はあるが、それまでの間に `pre-compact.sh acquire_wm_lock` が同 lockdir を取得しようとして work memory sync を silent skip する potential risk があるため observable signal を残す目的。
+
+**4 site 対称化マッピング** (Issue #957):
+
+| 呼出元 | ファイル | `from=` discriminator |
+|-------|---------|----------------------|
+| Workflow Termination (success path) | `start-finalize.md` Step 2 | `start_finalize_termination` |
+| Mandatory After 5.5-Termination (caller idempotent) | `start.md` Step 1 | `start_md_termination` |
+| Startup cleanup (stale state) | `hooks/session-start.sh` `_cleanup_stale_compact` | `session_start_cleanup` |
+| Close mode cleanup | `hooks/cleanup-work-memory.sh` Step 2 | `cleanup_work_memory` |
+
+caller (`start.md`) と sub-skill (`start-finalize.md`) の二重 rm は defense-in-depth: sub-skill が success path で primary cleanup を担い、caller が abort path / interrupt path での idempotent fallback を担う。なお現状この sentinel は `WORKFLOW_INCIDENT=1` 形式ではないため Phase 5.4.4.1 detection 経路では consume されず、stderr observability のみ (将来 incident pattern への昇格 / preflight 拡張時の interception 点として将来利用される想定)。
 
 ---
 

@@ -542,3 +542,4 @@
 | 2026-05-14T22:07:30Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=133, broken_refs=19 |
 | 2026-05-14T22:35:34Z | ingest:update | pages/heuristics/small-symmetric-pr-sibling-site-grep-review.md | PR #967 (Issue #964) fix: cycle 1 で prompt-engineer reviewer が note 内 lockdir consumer 引用の scope 不正確 (global state vs per-issue) を独立検出、cycle 2 で 1-line wording fix により FIXED (raw/fixes/20260514T223534Z-pr-967.md) |
 | 2026-05-14T22:40:21Z | ingest:update | pages/heuristics/small-symmetric-pr-sibling-site-grep-review.md | PR #967 (Issue #964) review cycle 2 mergeable: 2-site work memory lockdir 別系統対称化 (+13/-3, 2 files) を follow-up evidence として追加。PR #963 cycle 1 scope 外推奨の自然消化パターンと note 引用 consumer scope 一致 sub 技法を実証 (raw/reviews/20260514T224021Z-pr-967.md) |
+| 2026-05-14T23:36:52Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=133, broken_refs=19 |

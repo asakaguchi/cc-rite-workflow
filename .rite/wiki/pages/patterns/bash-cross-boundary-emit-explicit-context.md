@@ -2,12 +2,14 @@
 title: "Bash tool 境界を跨ぐ値は [CONTEXT] sentinel として明示 emit する"
 domain: "patterns"
 created: "2026-04-30T01:58:00+00:00"
-updated: "2026-04-30T01:58:00+00:00"
+updated: "2026-05-14T17:55:00+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260430T014425Z-pr-688.md"
   - type: "fixes"
     ref: "raw/fixes/20260429T141610Z-pr-688.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260514T082816Z-pr-953.md"
 tags: []
 confidence: high
 ---
@@ -36,6 +38,10 @@ PR #688 cycle 49 H-1 の例: Phase 5.5.2 metrics block で `plan_deviation_count
 - block 内コメントが「partial corruption / silent skip 防止」を主張する場合、success 経路と failure 経路の両方に [CONTEXT] emit が存在することを 1 PR で grep evidence として確認
 - 累積対策 PR の review-fix loop では、block 内コメントの主張と実装の対称性を `## comment claim ↔ block emit` の checklist として審査項目化する
 
+### Sub-pattern: sub-skill 内 bash 変数 guard は常に false
+
+PR #953 (Issue #904, /rite:issue:start sub-skill 抽出 G2) で 3 reviewer 独立検出の CRITICAL: sub-skill 内に `FINALIZE_ABORT` のような bash 変数を unset/set して abort 判定の guard とする実装は、Claude Code が sub-skill 内の Bash tool 呼び出しを別 invocation として扱うため変数が常に空 (=false 評価) となる構造的 dead code になる。caller→sub-skill→caller の往復で guard を有効化したい場合、bash 変数ではなく `[CONTEXT] KEY=VALUE` sentinel として stdout/stderr に emit し、caller 側で grep 検出する canonical pattern に従う必要がある。新規 sub-skill 抽出 refactor の review 観点として「sub-skill 境界を跨ぐ guard 変数が bash 変数か CONTEXT sentinel か」を必須項目化する。
+
 ## 関連ページ
 
 - [散文で宣言した設計は対応する実装契約がなければ機能しない](../anti-patterns/prose-design-without-backing-implementation.md)
@@ -44,3 +50,4 @@ PR #688 cycle 49 H-1 の例: Phase 5.5.2 metrics block で `plan_deviation_count
 
 - [PR #688 fix 記録 (cycle 49 H-1 self-defeating defense 修正)](../../raw/fixes/20260429T141610Z-pr-688.md)
 - [PR #688 fix 記録 (4 件 fix + 17 件 umbrella issue 化)](../../raw/fixes/20260430T014425Z-pr-688.md)
+- [PR #953 review 記録 (sub-skill 内 bash 変数 guard が常に false の CRITICAL 検出)](../../raw/reviews/20260514T082816Z-pr-953.md)

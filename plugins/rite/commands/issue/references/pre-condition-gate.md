@@ -1,8 +1,8 @@
 # Pre-condition Gate — `state-read.sh` fail-fast Pattern SoT
 
-> **Source of Truth**: 本ファイルは `/rite:issue:start` ワークフローにおける **pre-condition check (#490 AC-5)** の `state-read.sh` fail-fast pattern の SoT である。`start.md` の Phase 3 / Phase 5.5.1 / Phase 5.6 の pre-condition block、および Phase 5.5.2 内 metrics step (`plan_deviation_count` 取得) と Phase 5.7 (`parent_issue_number` 取得) で同型の capture pattern を共有する。本 reference は **5 site で重複していた if/else capture pattern**、 **`.phase` vs `.previous_phase` の使い分け根拠**、 **`state-read.sh` を使う理由 (per-session vs legacy state file)** を 1 ファイルに集約する。
+> **Source of Truth**: 本ファイルは `/rite:issue:start` ワークフローにおける **pre-condition check (#490 AC-5)** の `state-read.sh` fail-fast pattern の SoT である。`start.md` の Phase 3 / Phase 5.5.1 / Phase 5.6 の pre-condition block、Phase 5.5.2 内 metrics step (`plan_deviation_count` 取得、Issue #901 PR E で `commands/issue/references/metrics-recording.md` へ SoT 移管済み) と Phase 5.7 (`parent_issue_number` 取得) で同型の capture pattern を共有する。本 reference は **`/rite:issue:start` workflow 全体で合計 5 site (start.md 内 4 site + metrics-recording.md 1 site) で重複していた if/else capture pattern**、 **`.phase` vs `.previous_phase` の使い分け根拠**、 **`state-read.sh` を使う理由 (per-session vs legacy state file)** を 1 ファイルに集約する。
 >
-> **抽出経緯**: `start.md` の Pre-condition check 3 箇所 (Phase 3: L484-540 / Phase 5.5.1: L1697-1758 / Phase 5.6: L1992-2050、合計約 178 行) が同型の散文 + bash block で書かれていた。加えて Phase 5.5.2 内 metrics step の `plan_deviation_count` 取得 (L1795-1840) と Phase 5.7 の `parent_issue_number` 取得もまた同一 capture pattern を inline で再掲していた。Issue #899 (PR C — #896 親 Issue) で本 reference に集約し、各 caller は anchor reference + 5 引数 bash literal のみに圧縮する。
+> **抽出経緯**: `start.md` の Pre-condition check 3 箇所 (Phase 3 / Phase 5.5.1 / Phase 5.6 — 合計約 178 行) が同型の散文 + bash block で書かれていた。加えて Phase 5.5.2 内 metrics step の `plan_deviation_count` 取得 (Issue #901 PR E で `metrics-recording.md` へ SoT 移管) と Phase 5.7 の `parent_issue_number` 取得もまた同一 capture pattern を inline で再掲していた。Issue #899 (PR C — #896 親 Issue) で本 reference に集約し、各 caller は anchor reference + 5 引数 bash literal のみに圧縮する。Issue #901 PR E で Phase 5.5.2 を `metrics-recording.md` へ抽出した結果、5 site のうち 4 site が start.md、1 site が metrics-recording.md に分散した。
 
 ## なぜ pre-condition check が必要か (#490 AC-5)
 
@@ -60,13 +60,17 @@ fi
 
 ### Form B: inline 1 行 form (metrics step 用)
 
-Phase 5.5.2 内 `implementation_round` 取得 (`plan_deviation_count` 算出) は単純な capture (失敗時 warning 出力 + 値 default 化) のため、1 行 form が canonical。Form A と同様に **`[CONTEXT] STATE_READ_FAILED=1` sentinel を emit する**ことで downstream observability (cross-session-incident 集計 / workflow-incident-emit-protocol grep) に統一形式で通知する:
+Phase 5.5.2 内 `implementation_round` 取得 (`plan_deviation_count` 算出) は単純な capture (失敗時 warning 出力 + 値 default 化) のため、1 行 form が canonical。Form A と同様に **`[CONTEXT] STATE_READ_FAILED=1` sentinel を emit する**ことで downstream observability (cross-session-incident 集計 / workflow-incident-emit-protocol grep) に統一形式で通知する。
 
-```bash
-if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_5_2_metrics; rc=$rc" >&2; echo "WARNING: state-read.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; val=""; fi
+**Form B の構造 (pseudo-code)**:
+
+```
+if <var>=$(bash {plugin_root}/hooks/state-read.sh --field <field> --default <default_value>); then :; else rc=$?; echo "[CONTEXT] STATE_READ_FAILED=1; phase=<site_phase>; rc=$rc" >&2; echo "WARNING: state-read.sh failed (rc=$rc) — <metric_name> skipped" >&2; <var>=""; fi
 ```
 
-`caller-markdown-block.test.sh` TC-6 は本 inline form を `if val=...; then :; else rc=$?` の 1 行 canonical で grep pin している (Issue #908 で確立)。
+実 caller (`commands/issue/references/metrics-recording.md` Step 1) では `<var>=val`、`<field>=implementation_round`、`<default_value>=0`、`<site_phase>=phase5_5_2_metrics`、`<metric_name>=metrics for plan_deviation_count` で展開される。
+
+`caller-markdown-block.test.sh` TC-6 は metrics-recording.md の実 caller を `if val=...; then :; else rc=$?` の 1 行 canonical で grep pin している (Issue #908 で確立、Issue #901 PR E で対象を `START_MD → METRICS_RECORDING_MD` に切替)。本 reference の Form B 例 (上記 pseudo-code) は **field 名を placeholder 化することで literal 重複を解消** している (Issue #901 PR E で適用、Wiki PR #936 経験則「SoT 一本化」遵守)。
 
 > **Form A と Form B の sentinel emit 共通化**: 両 form ともに `[CONTEXT] STATE_READ_FAILED=1; phase={site}; rc=$rc` を必ず emit する。両者の唯一の差異は (a) **severity prefix** (Form A: `ERROR:` で `exit 1`、Form B: `WARNING:` で値 default 化して fall-through)、(b) **行展開** (Form A: 複数行 / Form B: 1 行) のみ。downstream observability tooling は単一 sentinel pattern (`STATE_READ_FAILED`) を grep するだけで Form A / B の両経路を捕捉できる。
 
@@ -106,15 +110,15 @@ bash の `exit 1` は **shell process を終わらせるだけで、Claude Code 
 
 ## 5 site canonical (capture pattern 共有)
 
-Pre-condition check (3 site) に加えて、以下 2 site も同一の `if val=$(cmd); then :; else rc=$?; fi` capture pattern を共有する (start.md 内合計 **5 site** が `state-read.sh` capture 共通形式)。 Form A (4 site: Pre-condition 3 + Phase 5.7 parent close) と Form B (1 site: Phase 5.5.2 metrics) の使い分けは上記 [Canonical capture pattern (2 forms)](#canonical-capture-pattern-2-forms) を参照:
+Pre-condition check (3 site) に加えて、以下 2 site も同一の `if val=$(cmd); then :; else rc=$?; fi` capture pattern を共有する (`/rite:issue:start` workflow 全体で合計 **5 site** が `state-read.sh` capture 共通形式 — start.md 内 4 site + `commands/issue/references/metrics-recording.md` 1 site)。 Form A (4 site: Pre-condition 3 + Phase 5.7 parent close) と Form B (1 site: Phase 5.5.2 metrics) の使い分けは上記 [Canonical capture pattern (2 forms)](#canonical-capture-pattern-2-forms) を参照:
 
-| Site | Field | 用途 |
-|------|-------|------|
-| Phase 3 pre-condition | `phase` | Phase 2 完了確認 |
-| Phase 5.5.1 pre-condition | `phase` | Phase 5.5 完了確認 |
-| Phase 5.6 pre-condition | `phase` | Phase 5.5.2 完了確認 |
-| Phase 5.5.2 Metrics Step 1 | `implementation_round` | `plan_deviation_count` 算出 (non-numeric は 0 降格、空文字列は METRICS_SKIPPED sentinel emit) |
-| Phase 5.7 parent close | `parent_issue_number` | parent Issue の auto-close 判定 (non-numeric は 0 降格 = "no parent" 扱い) |
+| Site | 所在ファイル | Field | 用途 |
+|------|-------------|-------|------|
+| Phase 3 pre-condition | `commands/issue/start.md` | `phase` | Phase 2 完了確認 |
+| Phase 5.5.1 pre-condition | `commands/issue/start.md` | `phase` | Phase 5.5 完了確認 |
+| Phase 5.6 pre-condition | `commands/issue/start.md` | `phase` | Phase 5.5.2 完了確認 |
+| Phase 5.5.2 Metrics Step 1 | `commands/issue/references/metrics-recording.md` (Issue #901 PR E で SoT 移管) | `implementation_round` | `plan_deviation_count` 算出 (non-numeric は 0 降格、空文字列は METRICS_SKIPPED sentinel emit) |
+| Phase 5.7 parent close | `commands/issue/start.md` | `parent_issue_number` | parent Issue の auto-close 判定 (non-numeric は 0 降格 = "no parent" 扱い) |
 
 Pre-condition (phase / parent_issue_number) は **複数行 form (Form A)**、metrics step (implementation_round) は **inline 1 行 form (Form B)** を使う。 numeric type validation (非数値 → 0 降格) は metrics / parent_issue_number 等の数値 field で同型対応する: writer / reader / resume の 3 layer 対称化 doctrine (詳細は `implement.md` / `pr/review.md` / `resume.md` の同 pattern site を参照)。
 

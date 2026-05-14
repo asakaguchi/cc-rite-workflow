@@ -62,9 +62,7 @@ Execute phases sequentially. **Do NOT stop between phases unless the user explic
 | 2.6 (Work Memory) | `rite:issue:work-memory-init` | 3 | **No** |
 | 3 (Plan) | `rite:issue:implementation-plan` | 4 | **No** |
 | 4 (Guidance) | — | 5 or terminate | Yes (user choice) |
-| 5.0 (Stop Hook) | — | 5.1 | **No** |
-| 5.1 (Implement) | — | 5.2 (lint) | **No** |
-| 5.2 (Lint) | `rite:lint` | 5.2.1 | **No** |
+| 5.0-5.2.1 (Execute) | `rite:issue:start-execute` | 5.3 | **No** |
 | 5.3 (PR) | `rite:pr:create` | 5.4 | **No** |
 | 5.4.1 (Review) | `rite:pr:review` | 5.4.3→5.4.4 or 5.5 | **No** |
 | 5.4.4 (Fix) | `rite:pr:fix` | 5.4.6→5.4.1 or 5.5 | **No** |
@@ -564,228 +562,50 @@ If exit code is `1` (blocked), stop execution and display the preflight output. 
 
 Invocation: `skill: "rite:lint"` or `skill: "rite:pr:review", args: "67"`
 
-### 5.0 Stop Hook Verification
+### 5.0-5.2.1 Execute Phase (delegated to start-execute sub-skill)
 
-**Pre-write** (before executing stop-hook verification):
+**Pre-write** (before invoking `rite:issue:start-execute`):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_stop_hook" --issue {issue_number} --branch "{branch_name}" \
+  --phase "phase5_execute_running" --issue {issue_number} --branch "{branch_name}" \
   --pr 0 \
-  --next "Execute Phase 5.0 (Stop Hook Verification). Skipping to Phase 5.1/5.2 without verifying the stop-guard hook is PROHIBITED. Do NOT stop."
+  --next "After rite:issue:start-execute returns: proceed to Phase 5.3 (PR creation). Do NOT stop."
 ```
 
-Before entering the end-to-end flow, verify that the stop-guard hook is active to prevent flow interruptions when sub-skills return.
+> **Module**: [Execute Phase](./start-execute.md) - Handles Phase 5.0 (Stop Hook Verification), 5.1 (Implementation invoking implement.md), 5.2 (Lint via rite:lint), 5.2.1 (Checklist Confirmation).
 
-**Step 1**: Resolve `{plugin_root}` (if not already resolved in Phase 4.1) per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version).
+Invoke `skill: "rite:issue:start-execute"`.
 
-**Step 2**: Check if `{plugin_root}/hooks/hooks.json` exists.
+**Immediate after start-execute returns**: When `start-execute` outputs `<!-- [start:execute:completed] -->` (success) or `<!-- [start:execute:aborted] -->` (abort — Phase 5.1.3 中止 or `[lint:aborted]`) sentinel and returns control, do **NOT** stop — **immediately** proceed to Mandatory After 5.0-5.2.1 below.
 
-- If **hooks.json exists** (native hook management): hooks are managed by Claude Code's plugin system via `${CLAUDE_PLUGIN_ROOT}`. No `settings.local.json` registration is needed. Optionally clean up stale rite hooks from `settings.local.json` if present (same cleanup logic as [init.md Phase 4.5.0.2](../init.md)). **Skip Step 3** and proceed to Step 4.
-- If **hooks.json does not exist**: Proceed to Step 3 (legacy registration).
-
-**Step 3** (legacy fallback — only when hooks.json does not exist):
-
-Read `.claude/settings.local.json` with Read tool. Check if `.hooks.Stop` exists and contains a command matching `bash {plugin_root}/hooks/stop-guard.sh` (full path match to avoid stale path false positives).
-
-If stop-guard.sh is NOT registered (missing or stale path), register all rite hooks by merging the following into `.claude/settings.local.json` (preserve existing non-rite hooks and all other top-level keys like `permissions`):
-
-| Hook Event | Command | Matcher |
-|------------|---------|---------|
-| Stop | `bash {plugin_root}/hooks/stop-guard.sh` | `""` |
-| PreCompact | `bash {plugin_root}/hooks/pre-compact.sh` | `""` |
-| PostCompact | `bash {plugin_root}/hooks/post-compact.sh` | `""` |
-| SessionStart | `bash {plugin_root}/hooks/session-start.sh` | `""` |
-| SessionEnd | `bash {plugin_root}/hooks/session-end.sh` | `""` |
-| PreToolUse | `bash {plugin_root}/hooks/pre-tool-bash-guard.sh` | `"Bash"` |
-| PostToolUse | `bash {plugin_root}/hooks/post-tool-wm-sync.sh` | `"Bash"` |
-
-Each hook entry uses the format: `{"matcher": "", "hooks": [{"type": "command", "command": "bash {plugin_root}/hooks/{script}"}]}`. For hooks with `"Bash"` matcher, use `{"matcher": "Bash", ...}`. See [init.md Phase 4.5.2](../init.md) for full reference.
-
-**Step 4**: Ensure scripts are executable:
-
-```bash
-chmod +x {plugin_root}/hooks/stop-guard.sh {plugin_root}/hooks/pre-compact.sh {plugin_root}/hooks/post-compact.sh {plugin_root}/hooks/session-start.sh {plugin_root}/hooks/session-end.sh {plugin_root}/hooks/pre-tool-bash-guard.sh {plugin_root}/hooks/post-tool-wm-sync.sh 2>/dev/null || true
-```
-
-If `chmod` fails, display `⚠️ Hook scripts may not be executable. Flow may require manual continuation after sub-skill returns.` If hook registration fails (e.g., file permission error), display the same warning and continue — Mandatory After instructions provide textual fallback.
-
-**Step 5**: Update version marker after hook registration:
-
-```bash
-VERSION=$(jq -r '.version' "{plugin_root}/.claude-plugin/plugin.json" 2>/dev/null)
-if [ -n "$VERSION" ] && [ "$VERSION" != "null" ]; then
-  echo "$VERSION" > "$STATE_ROOT/.rite-initialized-version"
-fi
-```
-
-**Step 6**: Read `workflow_incident.enabled` from `rite-config.yml` and cache for the rest of Phase 5. Default to `true` when the section is absent.
-
-> **Reference**: [Workflow Incident Detection](./references/workflow-incident-detection.md#phase-50-step-6--workflow_incidentenabled-parser) for the canonical `sed -n` section-range parser bash literal, normalization rules (case-insensitive, `yes`/`no`/`1`/`0` variants), and the rationale for replacing the previous `grep -A3` implementation.
-
-Retain `workflow_incident_enabled` in conversation context. Phase 5.4.4.1 reads this value and skips its entire processing if `false`.
-
-### 🚨 Mandatory After 5.0
+### 🚨 Mandatory After 5.0-5.2.1
 
 > See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
 > MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
-**Step 1**: Update flow state to post-stop-hook phase:
+**Step 1**: Update flow state to post-execute phase (atomic):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_post_stop_hook" --issue {issue_number} --branch "{branch_name}" \
+  --phase "phase5_post_execute" --issue {issue_number} --branch "{branch_name}" \
   --pr 0 \
-  --next "Phase 5.0 completed (stop-guard verified, workflow_incident_enabled cached). Proceed to Phase 5.1 (Implementation). Do NOT stop."
+  --next "rite:issue:start-execute completed. Proceed to Phase 5.3 (PR creation) on [start:execute:completed]. Skip to Phase 5.6 on [start:execute:aborted]. Do NOT stop."
 ```
 
-**Step 2**: **→ Proceed to Phase 5.1 now**.
+**Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `start-execute` sub-skill — e.g., `[lint:aborted]` orchestrator-direct emit per §A, or by `lint.md` sub-skill via Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3 regardless of detection result.
 
-### 5.1 Implementation
+**Step 3 (Sentinel-based routing)**: Grep the recent conversation context for `<!-- [start:execute:completed] -->` or `<!-- [start:execute:aborted] -->`:
 
-Run [Preflight Protocol](#preflight-protocol) before starting implementation.
-
-> **Module**: [Implementation Guidance](./implement.md) - Follow Phase 3 plan. Handles: Read/Edit/Bash, parallel (5.1.0), commit message (5.1.1), checklist update (5.1.1.1), parent progress (5.1.2), flow state updates, mandatory `rite:lint` invocation.
-
-Skipping lint risks merging code that violates project quality standards, creating technical debt that compounds across subsequent Issues.
-**Critical**: After 5.1.1, **immediately** invoke `rite:lint`. Do NOT stop.
-
-#### 5.1.3 Safety Check (Implementation Rounds)
-
-> **Reference**: [Execution Metrics](../../references/execution-metrics.md#safety-thresholds)
-
-Read `safety.max_implementation_rounds` from rite-config.yml (default: 20). Track implementation round count in flow state via the `implementation_round` field (incremented each time Phase 5.1 is re-entered from 5.2.1 checklist failure).
-
-**Round count tracking**: When re-entering Phase 5.1, update flow state atomically:
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh increment --field "implementation_round"
-```
-
-**When round count exceeds limit**:
-
-```
-⚠️ 安全装置が発動しました
-原因: max_implementation_rounds 超過 ({current_round} > {limit})
-```
-
-Present options via `AskUserQuestion`:
-- 続行（制限を引き上げ）
-- 中止（作業メモリに状態保存）→ Phase 5.6
-- 手動介入（ユーザーが直接対応）→ terminate
-
-### 5.2 Quality Check
-
-Run [Preflight Protocol](#preflight-protocol) before invoking lint.
-
-**Pre-check** (defense-in-depth): Always update flow state before invoking lint to ensure the stop-guard has correct phase and fresh timestamp. This unconditional write prevents stale state from causing intermittent flow stops (fixes #666):
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_lint" --issue {issue_number} --branch "{branch_name}" \
-  --pr 0 \
-  --next "After rite:lint returns: [lint:success/skipped]->Phase 5.2.1 (checklist). [lint:error]->fix and re-invoke. [lint:aborted]->Phase 5.6. Do NOT stop."
-```
-
-Invoke `skill: "rite:lint"` after 5.1.
-
-**Immediate after lint returns**: When `rite:lint` outputs a result pattern and returns control, do **NOT** churn or pause — **immediately** proceed to Mandatory After 5.2 below. The lint sub-skill has already updated flow state to `phase5_post_lint` via Phase 4.0 (defense-in-depth, #716); execute the Mandatory After 5.2 steps without delay.
-
-**Results**: `[lint:success/skipped]`→5.2.1→5.3, `[lint:error]`→fix→5.2, `[lint:aborted]`→**emit sentinel and proceed to 5.6** (#366).
-
-> **Emit canonical literal**: See [§A — Phase 5.2 `[lint:aborted]`](./references/workflow-incident-emit-pattern.md#a--phase-52-lintaborted) (SoT) for the canonical bash literal and `|| true` non-blocking guarantee, plus the [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件) section for the response-text-inclusion requirement that Phase 5.4.4.1 grep detection depends on. `--pr-number 0` (no PR yet at lint time) is documented in §A. Do NOT inline the bash literal here.
-
-#### 5.2.0.1 Out-of-Scope Warnings
-
-> **Reference**: [Issue Creation with Projects Integration](../../references/issue-create-with-projects.md)
-
-Auto-register lint warnings outside change scope as Issues. Determine via `git diff --unified=0 HEAD` + AI judgment. Group by file, create via the common script (Status: Todo, Priority: Medium, Complexity: S). On failure, add to PR "Known Issues".
-
-**Per-Issue procedure** (execute for each grouped warning):
-
-```bash
-tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
-
-cat <<'BODY_EOF' > "$tmpfile"
-{warning_body}
-BODY_EOF
-
-if [ ! -s "$tmpfile" ]; then
-  echo "ERROR: Issue body is empty" >&2
-  exit 1
-fi
-
-result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
-  --arg title "{type}: {summary}" \
-  --arg body_file "$tmpfile" \
-  --argjson projects_enabled {projects_enabled} \
-  --argjson project_number {project_number} \
-  --arg owner "{owner}" \
-  --arg priority "Medium" \
-  --arg complexity "S" \
-  '{
-    issue: { title: $title, body_file: $body_file },
-    projects: {
-      enabled: $projects_enabled,
-      project_number: $project_number,
-      owner: $owner,
-      status: "Todo",
-      priority: $priority,
-      complexity: $complexity,
-      iteration: { mode: "none" }
-    },
-    options: { source: "lint", non_blocking_projects: true }
-  }'
-)")
-
-if [ -z "$result" ]; then
-  echo "ERROR: create-issue-with-projects.sh returned empty result" >&2
-  exit 1
-fi
-new_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
-new_issue_number=$(printf '%s' "$result" | jq -r '.issue_number')
-project_reg=$(printf '%s' "$result" | jq -r '.project_registration')
-printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w"; done
-```
-
-**On script failure** (`issue_url` is empty): Skip and add to PR "Known Issues" section.
-
-**Embed in PR context**: Ignored errors/skip status retained before 5.3 invocation for PR body "Known Issues" section (`lint エラーが未解決（{error_count}件）...`). See `/rite:lint` "Clarification of responsibilities".
-
-### 🚨 Mandatory After 5.2
-
-> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
-> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
-
-**Ignore** `/rite:lint` "Next steps" (standalone only). **Immediately** update flow state and execute 5.2.1.
-
-**Step 1**: Update flow state to post-lint phase (atomic). This second write (after the Phase 5.2 pre-check write) transitions from `phase5_lint` to `phase5_post_lint`, ensuring stop-guard routes to checklist confirmation rather than re-invoking lint:
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_post_lint" --issue {issue_number} --branch "{branch_name}" \
-  --pr 0 \
-  --next "Phase 5.2.1: Check Issue checklist completion. All complete->Phase 5.3 PR creation (invoke rite:pr:create). Incomplete->return to Phase 5.1 implementation. Do NOT stop."
-```
-
-**Step 2**: **Run Phase 5.4.4.1 (Workflow Incident Detection)**. Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `[lint:aborted]` orchestrator-direct emit, or by lint.md sub-skill via Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7 (parse → dedupe → AskUserQuestion → create-issue / skip → mark processed). If no sentinel found, skip silently. Phase 5.4.4.1 is **non-blocking** — continue to Step 3 regardless of detection result.
-
-**Step 3**: **→ Proceed to 5.2.1 now**.
-
-### 5.2.1 Checklist Confirmation
-
-> **Module**: [Checklist Auto-Check](./references/checklist-auto-check.md) — Phase 5.2.1 (grep ベースの完了確認) + Phase 5.2.1.1 (Auto-Check Evaluation: evidence collection / per-item assessment / Issue body update / re-check / uncertain handling) の SoT。
-
-**Owner**: `/rite:issue:start` after `/rite:lint` returns. **Condition**: Execute only if checklist retained in Phase 3.6. **Purpose**: Block PR until all items complete.
-
-Execute the Module procedure: grep `- [ ]` pattern (Phase 5.2.1) → if `≥1` incomplete, run Auto-Check Evaluation (Phase 5.2.1.1) → re-check → all complete → Phase 5.3, otherwise return to Phase 5.1. **Mandatory**, cannot skip.
+- `[start:execute:completed]` detected → **→ Proceed to Phase 5.3 (PR creation) now**.
+- `[start:execute:aborted]` detected → **→ Skip to Phase 5.6 (Completion Report) now**. PR creation is intentionally skipped because the execute phase was aborted by user choice (5.1.3 Safety Check) or `[lint:aborted]`. The completion report MUST display the abort reason to the user.
+- Neither detected → fail-safe: treat as `[start:execute:completed]` (proceed to Phase 5.3); the sub-skill SHOULD always emit one of the two sentinels per its Return Output Format contract.
 
 ### 5.3 PR Creation
 
 Run [Preflight Protocol](#preflight-protocol) before creating PR.
 
-After 5.2.1, update flow state (atomic, see 5.1 step 3):
+After 5.2.1, update flow state (atomic):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
@@ -827,7 +647,7 @@ Invoke `skill: "rite:pr:create"`.
 
 Run [Preflight Protocol](#preflight-protocol) before each review cycle.
 
-Update flow state (atomic, see 5.1 step 3):
+Update flow state (atomic):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
@@ -991,7 +811,7 @@ This phase runs **after every Skill invocation in Phase 5** at the following exp
 
 | Caller | Invocation point | Trigger |
 |--------|------------------|---------|
-| Phase 5.2 (lint) | Mandatory After 5.2 — Step 2 | Always after `[lint:*]` pattern |
+| Phase 5.0-5.2.1 (execute) | Mandatory After 5.0-5.2.1 — Step 2 | Always after `[start:execute:*]` pattern |
 | Phase 5.3 (pr:create) | Mandatory After 5.3 — between "Verify" and "Proceed to 5.4 now" | Always after `[pr:created:{N}]` or `[pr:create-failed]` |
 | Phase 5.4.3 (pr:review) | After Review — Step 3 | Always after `[review:*]` pattern |
 | Phase 5.4.6 (pr:fix) | After Fix — Step 3 | Always after `[fix:*]` pattern |
@@ -1221,12 +1041,15 @@ else
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_6_pre_condition; rc=$rc" >&2
   exit 1
 fi
-if [ "$curr" != "phase5_post_metrics" ]; then
-  echo "ERROR: Phase 5.6 pre-condition failed. .phase=$curr (expected: phase5_post_metrics)" >&2
+if [ "$curr" != "phase5_post_metrics" ] && [ "$curr" != "phase5_post_execute" ]; then
+  echo "ERROR: Phase 5.6 pre-condition failed. .phase=$curr (expected: phase5_post_metrics or phase5_post_execute for abort path)" >&2
   echo "ACTION: Return to the missing phase (5.5.1 Status Update → 5.5.2 Metrics) and execute each Pre-write + main procedure + Mandatory After before entering Phase 5.6." >&2
   echo "⚠️ LLM MUST NOT proceed to Phase 5.6 Pre-write below. Re-invoke the missing phase first." >&2
   exit 1
 fi
+# Note: phase5_post_execute は abort path (start-execute.md が [start:execute:aborted] sentinel
+# emit 後に Phase 5.6 へ直接 skip する経路、Workflow Termination 用) を accept する。
+# success path は phase5_post_metrics 経由が正規路。
 ```
 
 **Pre-write**:

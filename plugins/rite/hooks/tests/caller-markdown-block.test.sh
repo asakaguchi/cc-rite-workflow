@@ -248,8 +248,9 @@ echo "TC-7: G-04 — RESUME_HINT bit-identical drift detection (Issue #956)"
 PRECONDITION_GATE_MD="$COMMANDS_DIR/issue/references/pre-condition-gate.md"
 
 # 引用符 (double-quote " または backtick `) で囲まれた RESUME_HINT 本文を抽出する helper。
-# Form A (`  echo "..."`) / Form B (`; echo "..." >&2;`) / prose backtick (line 114 `RESUME_HINT: ...`) の
-# 3 形式すべてに対応する (PR #959 cycle 1 で line 114 backtick が drift detection 対象外だった指摘に対応)。
+# Form A (`  echo "..."`) / Form B (`; echo "..." >&2;`) / prose backtick (§Enforcement note Branch II 項目 3 `RESUME_HINT: ...`) の
+# 3 形式すべてに対応する (PR #959 cycle 1 で Branch II 項目 3 prose backtick が drift detection 対象外だった指摘に対応)。
+# 注: hardcoded 行番号は新セクション追加時の shift で容易に stale 化するため section-relative 参照を採用 (Issue #960 MEDIUM-1 対応)。
 # Stage 1 (本 helper): 引用符込みで全形式を捕捉。Stage 2 (_strip_outer_quote): 外側引用符を除去して
 # bit-identical 比較する。
 extract_resume_hint_body() {
@@ -274,19 +275,19 @@ else
   pass "TC-7.0: SoT 文字列が pre-condition-gate.md から抽出できた"
 fi
 
-# pre-condition-gate.md 自身: SoT 内部 (Form A + Form B + line 114 backtick prose の 3 occurrence) が
+# pre-condition-gate.md 自身: SoT 内部 (Form A + Form B + §Enforcement note Branch II 項目 3 backtick prose の 3 occurrence) が
 # drift していないことを assert。Stage 2 で外側引用符を除去してから unique 数をカウントすることで、
 # 「外側 quote は異なるが本文は同一」のケースを 1 種類として正しく集計する。
 gate_bodies_raw=$(extract_resume_hint_body "$PRECONDITION_GATE_MD")
 gate_bodies_stripped=$(printf '%s\n' "$gate_bodies_raw" | _strip_outer_quote)
 gate_unique=$(printf '%s\n' "$gate_bodies_stripped" | sort -u | wc -l | tr -d ' ')
-assert "TC-7.0b: pre-condition-gate.md 内 RESUME_HINT 本文が 1 種類 (Form A + Form B + line 114 backtick prose を含む 3 occurrence で drift なし)" "1" "$gate_unique"
+assert "TC-7.0b: pre-condition-gate.md 内 RESUME_HINT 本文が 1 種類 (Form A + Form B + §Enforcement note Branch II 項目 3 backtick prose を含む 3 occurrence で drift なし)" "1" "$gate_unique"
 
 # pre-condition-gate.md 内 RESUME_HINT 占有数の機械検証。
-# Form A (line 55 double-quote) + Form B (line 69 double-quote) + line 114 backtick prose = 3 occurrence。
+# Form A canonical block (double-quote) + Form B inline form (double-quote) + §Enforcement note Branch II 項目 3 backtick prose = 3 occurrence。
 # 占有数を pin することで、将来 SoT 拡張や撤回時に drift を即座に検出できる。
 gate_occurrence_count=$(printf '%s\n' "$gate_bodies_raw" | grep -c . || true)
-assert "TC-7.0c: pre-condition-gate.md 内 RESUME_HINT 占有数 (3 occurrence: Form A + Form B + line 114 backtick prose)" "3" "$gate_occurrence_count"
+assert "TC-7.0c: pre-condition-gate.md 内 RESUME_HINT 占有数 (3 occurrence: Form A + Form B + §Enforcement note Branch II 項目 3 backtick prose)" "3" "$gate_occurrence_count"
 
 # 各 caller の RESUME_HINT 本文を SoT と bit-identical 比較
 # CQ-HIGH-2 対応: grep の 2 段階分離 (count 確認と drift 検出を独立化) で
@@ -299,7 +300,7 @@ assert_caller_match() {
   local label="$1"
   local file="$2"
   local expected_count="$3"
-  local bodies_raw count drift_count=0 drift_report=""
+  local bodies_raw count drift_count=0 drift_report="" body_stripped
   bodies_raw=$(extract_resume_hint_body "$file" || true)
   # count: wc -l で簡素化 (bodies_raw が空なら 0 とする)
   if [ -z "$bodies_raw" ]; then
@@ -316,7 +317,6 @@ assert_caller_match() {
   while IFS= read -r body_raw; do
     idx=$((idx + 1))
     [ -z "$body_raw" ] && continue
-    local body_stripped
     body_stripped=$(printf '%s' "$body_raw" | _strip_outer_quote)
     if [ "$body_stripped" != "$sot_body" ]; then
       drift_count=$((drift_count + 1))
@@ -342,7 +342,7 @@ assert_caller_match "TC-7.5: resume.md (Phase 2.1 parent_issue_number_raw) RESUM
 assert_caller_match "TC-7.6: metrics-recording.md (Phase 5.5.2 Form B implementation_round) RESUME_HINT が SoT bit-identical" "$METRICS_RECORDING_MD" 1
 
 # Resume.md の「対処: helper の存在」legacy 形式が完全に消失していること (Issue #956 AC-3)
-assert_not_grep "TC-7.8: resume.md から「対処: helper の存在」legacy 形式が消失している (Issue #956 AC-3)" \
+assert_not_grep "TC-7.7: resume.md から「対処: helper の存在」legacy 形式が消失している (Issue #956 AC-3)" \
   "$RESUME_MD" \
   '対処: helper の存在'
 

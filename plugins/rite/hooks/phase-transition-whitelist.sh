@@ -92,23 +92,39 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   # [start:execute:completed] sentinel (success path), or to phase5_completion after
   # [start:execute:aborted] sentinel (abort path — 5.1.3 中止 / [lint:aborted]).
   ["phase5_execute_running"]="phase5_stop_hook phase5_post_execute"
-  ["phase5_post_execute"]="phase5_pr phase5_completion"
+
+  # /rite:issue:start-publish sub-skill (PR G1 #903)
+  # start.md Phase 5.3/5.4 delegation: orchestrator writes phase5_publish_running before invoke,
+  # sub-skill writes phase5_post_publish when done. Orchestrator routes to phase5_ready /
+  # phase5_post_ready after [start:publish:completed] sentinel (success path — mergeable or
+  # replied-only), or to phase5_completion after [start:publish:aborted] sentinel (abort path —
+  # pr:create-failed / fix:error user-terminate).
+  # phase5_post_execute (PR F terminal) → phase5_publish_running (PR G1 delegation entry) を
+  # 新規 edge として許容する。
+  ["phase5_post_execute"]="phase5_pr phase5_publish_running phase5_completion"
+  ["phase5_publish_running"]="phase5_pr phase5_post_publish"
+  ["phase5_post_publish"]="phase5_ready phase5_post_ready phase5_ready_error phase5_completion"
 
   # Phase 5.3: PR create
   # start.md Phase 5.3 Mandatory After transitions directly from phase5_pr to phase5_review
   # (no intermediate phase5_post_pr write). Allow both the direct path and the legacy
   # post_pr marker for backward compat (devops cycle-2 CRITICAL).
-  ["phase5_pr"]="phase5_post_pr phase5_review"
+  # phase5_pr → phase5_post_publish は [pr:create-failed] abort path 用 (PR G1)。
+  # start-publish.md の Return Output Format Self-patch が previous_phase=phase5_pr のまま
+  # phase5_post_publish へ patch する経路を whitelist 化する (runtime BLOCKED 防止)。
+  ["phase5_pr"]="phase5_post_pr phase5_review phase5_post_publish"
   ["phase5_post_pr"]="phase5_review"
 
   # Phase 5.4: review-fix loop
   # `rite:pr:ready` defense-in-depth directly writes phase5_post_ready from phase5_post_review /
   # phase5_post_fix, bypassing phase5_ready. Allow that transition to avoid invalid-transition
   # blocks on the mergeable path (devops-reviewer CRITICAL #1).
+  # phase5_post_review / phase5_post_fix → phase5_post_publish は start-publish sub-skill 終端
+  # (sub-skill が review-fix loop の最終 internal phase から caller-write の post_publish へ抜ける) edge (PR G1 #903)。
   ["phase5_review"]="phase5_post_review"
-  ["phase5_post_review"]="phase5_fix phase5_ready phase5_post_ready phase5_ready_error"
+  ["phase5_post_review"]="phase5_fix phase5_ready phase5_post_ready phase5_ready_error phase5_post_publish"
   ["phase5_fix"]="phase5_post_fix"
-  ["phase5_post_fix"]="phase5_review phase5_ready phase5_post_ready phase5_ready_error"
+  ["phase5_post_fix"]="phase5_review phase5_ready phase5_post_ready phase5_ready_error phase5_post_publish"
 
   # Phase 5.5: ready → status → metrics → completion
   # phase5_ready_error is a terminal error state emitted by ready.md Phase 3.1 when skill errors.

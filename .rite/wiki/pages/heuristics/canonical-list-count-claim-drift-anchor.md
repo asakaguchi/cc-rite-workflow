@@ -2,7 +2,7 @@
 title: "新規 exit 1 経路 / sentinel type 追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する"
 domain: "heuristics"
 created: "2026-04-18T12:50:00+00:00"
-updated: "2026-05-04T03:30:00+00:00"
+updated: "2026-05-14T01:25:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T123408Z-pr-579.md"
@@ -30,6 +30,10 @@ sources:
     ref: "raw/reviews/20260504T013212Z-pr-800-cycle2.md"
   - type: "fixes"
     ref: "raw/fixes/20260504T012717Z-pr-800.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260514T010100Z-pr-950.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260514T010559Z-pr-950.md"
 tags: []
 confidence: high
 ---
@@ -131,6 +135,15 @@ PR #800 cycle 1 で reviewer (prompt-engineer) が MEDIUM finding として「PR
 
 PR #800 では本対策で cycle 2 reviewer (prompt-engineer + code-quality) が cross-validation で全 3 site の drift なしを確認、cycle 4 で mergeable 達成。
 
+### 拡張: refactor 対象外 reference 内の "site count" stale 化 (PR #950 で実証)
+
+PR #950 (Issue #901, start.md Phase 5.5.2 / 5.2.1 / 2.4 を 3 references に抽出) cycle 1 review で 2 reviewer (prompt-engineer + code-quality) が独立に同一の MEDIUM finding を検出: refactor で SoT を新規 references に移管した結果、refactor **対象外** の既存 reference `pre-condition-gate.md` 内に書かれていた「site count」(本体側 callsite 数を absolute 言及していた箇所) が stale 化した。
+
+- **検出経路**: 2 reviewer cross-validation で独立に同一箇所を検出 (high-confidence)
+- **失敗モード**: SoT 移管 PR は新規 reference 側の整合性に注意が向くため、移管対象外 reference 内の「N callsite」「N 箇所」のような absolute claim が忘れられる
+- **canonical 拡張**: 本ページの規範は「**新 SoT 宣言時、本体 + 全 references 横断で「site count」「N 箇所」絶対参照を検索し、移管対象外 reference 内の stale claim も同時更新する**」までスコープを拡張する。`grep -rn 'N callsite\|N 箇所\|N 個所' commands/issue/references/` で検出可能
+- **scope 内対応の判断**: PR #950 では本 drift を本 PR scope 内で fix (cycle 1) し cycle 2 で 0 blocking findings 達成。fixable な微細 drift は別 Issue 化せず本 PR で対応する PR #599 cycle 3 の方針と一致
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -152,3 +165,5 @@ PR #800 では本対策で cycle 2 reviewer (prompt-engineer + code-quality) が
 - [PR #756 cycle 4 fix (header caller list を 6+ caller に拡張 + TC enforce 強化)](../../raw/fixes/20260501T020145Z-pr-756.md)
 - [PR #800 cycle 2 review (cross-file 数値 commitment drift 全 3 site 整合 verify)](../../raw/reviews/20260504T013212Z-pr-800-cycle2.md)
 - [PR #800 cycle 1 fix (`12 → 4 (上限 ≤ 5)` 統合形式での数値 commitment 集約)](../../raw/fixes/20260504T012717Z-pr-800.md)
+- [PR #950 review (refactor 対象外 reference 内の site count stale 化を 2 reviewer cross-validation で検出)](../../raw/reviews/20260514T010100Z-pr-950.md)
+- [PR #950 cycle 1 fix (pre-condition-gate.md 内の stale site count を SoT 移管と同 cycle で同期更新)](../../raw/fixes/20260514T010559Z-pr-950.md)

@@ -28,10 +28,14 @@ REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 
 START_MD="$REPO_ROOT/plugins/rite/commands/issue/start.md"
 # PR F (#902) extracted Phase 5.0-5.2.1 (incl. §A Phase 5.2 `[lint:aborted]` anchor reference)
-# into start-execute.md. The §A anchor now legitimately lives in start-execute.md, while
-# §B-§D and `## 不変条件` remain in start.md (Phase 5.3/5.4.4/5.5 references). Anchor
-# drift check scans both files.
+# into start-execute.md. PR G1 (#903) extracted Phase 5.3/5.4 (incl. §B Phase 5.3 `[pr:create-failed]`
+# / §C Phase 5.4.4 `[fix:error]` anchor references) into start-publish.md. The anchor ownership is:
+#   §A → start-execute.md
+#   §B / §C → start-publish.md
+#   §D + `## 不変条件` → start.md (Phase 5.5 stays in start.md)
+# Anchor drift check scans the owner file per anchor.
 START_EXECUTE_MD="$REPO_ROOT/plugins/rite/commands/issue/start-execute.md"
+START_PUBLISH_MD="$REPO_ROOT/plugins/rite/commands/issue/start-publish.md"
 REF_DETECTION="$REPO_ROOT/plugins/rite/commands/issue/references/workflow-incident-detection.md"
 REF_EMIT="$REPO_ROOT/plugins/rite/commands/issue/references/workflow-incident-emit-pattern.md"
 REF_FINGERPRINT="$REPO_ROOT/plugins/rite/commands/issue/references/fingerprint-cycling.md"
@@ -264,25 +268,19 @@ for sentinel_type in "skill_load_failure" \
     "\`$sentinel_type\`"
 done
 
-# When to execute 5-caller table 行が本体に残されている
+# When to execute 3-caller table 行が本体に残されている
 # PR F #951 F-05 fix: Phase 5.2 (lint) row が Mandatory After 5.0-5.2.1 統合により
 # 「Phase 5.0-5.2.1 (execute) | Mandatory After 5.0-5.2.1 — Step 2」へ変更された。
-# 新 delegation design (start.md → start-execute.md sub-skill) を反映する。
+# PR G1 #903 fix: Phase 5.3 / 5.4.3 / 5.4.6 rows が start-publish sub-skill 抽出により
+# 「Phase 5.3-5.4 (publish) | Mandatory After 5.3-5.4」へ統合された。internal pr:create /
+# pr:review / pr:fix 呼出は start-publish 内に閉じ、orchestrator 視点では 3 boundary。
 assert_grep "start: When to execute table — Phase 5.0-5.2.1 execute row" \
   "$START_MD" \
   'Phase 5\.0-5\.2\.1 \(execute\).*Mandatory After 5\.0-5\.2\.1'
 
-assert_grep "start: When to execute table — Phase 5.3 pr:create row" \
+assert_grep "start: When to execute table — Phase 5.3-5.4 publish row" \
   "$START_MD" \
-  'Phase 5\.3 \(pr:create\).*Mandatory After 5\.3'
-
-assert_grep "start: When to execute table — Phase 5.4.3 pr:review row" \
-  "$START_MD" \
-  'Phase 5\.4\.3 \(pr:review\).*After Review'
-
-assert_grep "start: When to execute table — Phase 5.4.6 pr:fix row" \
-  "$START_MD" \
-  'Phase 5\.4\.6 \(pr:fix\).*After Fix'
+  'Phase 5\.3-5\.4 \(publish\).*Mandatory After 5\.3-5\.4'
 
 assert_grep "start: When to execute table — Phase 5.5.0.1 pr:ready row" \
   "$START_MD" \
@@ -386,8 +384,8 @@ echo "--- 7. start.md → emit-pattern.md anchor 整合性 (github-slugger 互�
 # 妨げないため)。
 anchor_pairs=(
   '### §A — Phase 5.2 `[lint:aborted]`|a--phase-52-lintaborted|start-execute'
-  '### §B — Phase 5.3 `[pr:create-failed]`|b--phase-53-prcreate-failed|start'
-  '### §C — Phase 5.4.4 `[fix:error]`|c--phase-544-fixerror|start'
+  '### §B — Phase 5.3 `[pr:create-failed]`|b--phase-53-prcreate-failed|start-publish'
+  '### §C — Phase 5.4.4 `[fix:error]`|c--phase-544-fixerror|start-publish'
   '### §D — Phase 5.5 `[ready:error]`|d--phase-55-readyerror|start'
   '## 不変条件|不変条件|start'
 )
@@ -419,8 +417,12 @@ for pair in "${anchor_pairs[@]}"; do
       owner_file="$START_EXECUTE_MD"
       owner_label="start-execute.md"
       ;;
+    start-publish)
+      owner_file="$START_PUBLISH_MD"
+      owner_label="start-publish.md"
+      ;;
     *)
-      fail "anchor: unknown owner '$owner' in anchor_pairs (must be 'start' or 'start-execute')"
+      fail "anchor: unknown owner '$owner' in anchor_pairs (must be 'start', 'start-execute', or 'start-publish')"
       continue
       ;;
   esac

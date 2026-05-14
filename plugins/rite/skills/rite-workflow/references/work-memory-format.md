@@ -462,7 +462,7 @@ bash {plugin_root}/hooks/preflight-check.sh --command-id "/rite:{command}" --cwd
 |----------|---------|-------------------|
 | **Write** | `pr/create`, `pr/review`, `pr/ready`, `pr/cleanup`†, `pr/fix`, `issue/close`, `issue/update`, `issue/implement`, `issue/work-memory-init`, `lint` | Read + Write (via `local-wm-update.sh`) |
 | **Read** | `issue/branch-setup`, `issue/implementation-plan`, `sprint/execute`, `sprint/team-execute` | Read only |
-| **Preflight only** | `issue/create`, `issue/list`, `issue/edit`, `issue/parent-routing`, `issue/child-issue-selection`, `issue/start-execute`, `workflow`, `getting-started`, `sprint/list`, `sprint/current`, `sprint/plan`, `skill/suggest`, `template/reset`, `init` | None |
+| **Preflight only** | `issue/create`, `issue/list`, `issue/edit`, `issue/parent-routing`, `issue/child-issue-selection`, `issue/start-execute`, `issue/start-publish`, `workflow`, `getting-started`, `sprint/list`, `sprint/current`, `sprint/plan`, `skill/suggest`, `template/reset`, `init` | None |
 | **Orchestrator** | `issue/start`, `resume` | Managed by flow state (these commands orchestrate other commands; they do not directly read/write local WM but control flow via flow state) |
 
 † `pr/cleanup` updates Issue comment directly in Phase 4.5 (final archival record) because local WM file is deleted earlier in Phase 3.

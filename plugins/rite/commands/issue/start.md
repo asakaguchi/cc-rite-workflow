@@ -62,10 +62,8 @@ Execute phases sequentially. **Do NOT stop between phases unless the user explic
 | 2.6 (Work Memory) | `rite:issue:work-memory-init` | 3 | **No** |
 | 3 (Plan) | `rite:issue:implementation-plan` | 4 | **No** |
 | 4 (Guidance) | — | 5 or terminate | Yes (user choice) |
-| 5.0-5.2.1 (Execute) | `rite:issue:start-execute` | 5.3 | **No** |
-| 5.3 (PR) | `rite:pr:create` | 5.4 | **No** |
-| 5.4.1 (Review) | `rite:pr:review` | 5.4.3→5.4.4 or 5.5 | **No** |
-| 5.4.4 (Fix) | `rite:pr:fix` | 5.4.6→5.4.1 or 5.5 | **No** |
+| 5.0-5.2.1 (Execute) | `rite:issue:start-execute` | 5.3-5.4 or 5.6 | **No** |
+| 5.3-5.4 (Publish) | `rite:issue:start-publish` | 5.5 or 5.6 | **No** |
 | 5.5 (Ready) | `rite:pr:ready` | 5.5.0.1→5.5.1 | **No** |
 | 5.5.1 (Status In Review) | — | 5.5.2 | **No** |
 | 5.5.2 (Metrics) | — | 5.6 | **No** |
@@ -531,15 +529,10 @@ The e2e flow must minimize context consumption to complete within a single sessi
 ### Flow
 
 ```
-5.0 Stop Hook 確認 → 5.1
-5.1 実装・コミット・プッシュ → 5.1.3 安全チェック → rite:lint
-5.2 品質チェック → 5.2.1
-5.2.1 チェックリスト完了確認 → 全完了なら 5.3 / 未完了なら 5.1
-5.3 PR 作成 → 5.4
-5.4 レビュー・修正ループ:
-  5.4.1 rite:pr:review → [mergeable]→5.5 / [fix-needed]→fix→5.4.1
-  (5.4.2-5.4.3 review routing/after, 5.4.5-5.4.6 fix routing/after)
-  5.4.4 rite:pr:fix → [pushed]→5.4.1 / [pushed-wm-stale]→AskUserQuestion→5.4.1 (WM stale 警告) / [issues-created]→5.4.1 / [replied-only]→5.5 / [error]→処理
+5.0-5.2.1 rite:issue:start-execute (sub-skill: Stop Hook + 実装 + lint + checklist)
+  → [start:execute:completed]→5.3-5.4 / [start:execute:aborted]→5.6
+5.3-5.4 rite:issue:start-publish (sub-skill: PR create + review-fix loop)
+  → [start:publish:completed]→5.5 / [start:publish:aborted]→5.6
 5.5 Ready for Review 確認 → rite:pr:ready → [ready:completed]→5.5.0.1→5.5.1 Status 更新 → 5.5.2
 5.5.2 メトリクス記録 → 5.6
 5.6 完了報告
@@ -570,7 +563,7 @@ Invocation: `skill: "rite:lint"` or `skill: "rite:pr:review", args: "67"`
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_execute_running" --issue {issue_number} --branch "{branch_name}" \
   --pr 0 \
-  --next "After rite:issue:start-execute returns: proceed to Phase 5.3 (PR creation). Do NOT stop."
+  --next "After rite:issue:start-execute returns: proceed to Phase 5.3-5.4 (Publish Phase) via rite:issue:start-publish. Do NOT stop."
 ```
 
 > **Module**: [Execute Phase](./start-execute.md) - Handles Phase 5.0 (Stop Hook Verification), 5.1 (Implementation invoking implement.md), 5.2 (Lint via rite:lint), 5.2.1 (Checklist Confirmation).
@@ -590,206 +583,59 @@ Invoke `skill: "rite:issue:start-execute"`.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_execute" --issue {issue_number} --branch "{branch_name}" \
   --pr 0 \
-  --next "rite:issue:start-execute completed. Proceed to Phase 5.3 (PR creation) on [start:execute:completed]. Skip to Phase 5.6 on [start:execute:aborted]. Do NOT stop."
+  --next "rite:issue:start-execute completed. Proceed to Phase 5.3-5.4 (Publish Phase via rite:issue:start-publish) on [start:execute:completed]. Skip to Phase 5.6 on [start:execute:aborted]. Do NOT stop."
 ```
 
 **Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `start-execute` sub-skill — e.g., `[lint:aborted]` orchestrator-direct emit per §A, or by `lint.md` sub-skill via Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3 regardless of detection result.
 
 **Step 3 (Sentinel-based routing)**: Grep the recent conversation context for `<!-- [start:execute:completed] -->` or `<!-- [start:execute:aborted] -->`:
 
-- `[start:execute:completed]` detected → **→ Proceed to Phase 5.3 (PR creation) now**.
+- `[start:execute:completed]` detected → **→ Proceed to Phase 5.3-5.4 (Publish Phase) now** (invoke `rite:issue:start-publish` sub-skill).
 - `[start:execute:aborted]` detected → **→ Skip to Phase 5.6 (Completion Report) now**. PR creation is intentionally skipped because the execute phase was aborted by user choice (5.1.3 Safety Check) or `[lint:aborted]`. The completion report MUST display the abort reason to the user.
-- Neither detected → fail-safe: treat as `[start:execute:completed]` (proceed to Phase 5.3); the sub-skill SHOULD always emit one of the two sentinels per its Return Output Format contract.
+- Neither detected → fail-safe: treat as `[start:execute:completed]` (proceed to Phase 5.3-5.4); the sub-skill SHOULD always emit one of the two sentinels per its Return Output Format contract.
 
-### 5.3 PR Creation
+### 5.3-5.4 Publish Phase (delegated to start-publish sub-skill)
 
-Run [Preflight Protocol](#preflight-protocol) before creating PR.
-
-After 5.2.1, update flow state (atomic):
+**Pre-write** (before invoking `rite:issue:start-publish`):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_pr" --issue {issue_number} --branch "{branch_name}" \
+  --phase "phase5_publish_running" --issue {issue_number} --branch "{branch_name}" \
   --pr 0 \
-  --next "After rite:pr:create returns: [pr:created:{N}]->save pr_number, Phase 5.4 (review loop). [pr:create-failed]->Phase 5.6. Do NOT stop."
+  --next "After rite:issue:start-publish returns: proceed to Phase 5.5 (Ready for Review) on [start:publish:completed]. Skip to Phase 5.6 (Completion Report) on [start:publish:aborted]. Do NOT stop."
 ```
 
-> **Data Handoff**: When invoking `rite:pr:create`, include the Issue information retrieved in Phase 0.1 (`number`, `title`, `body`, `labels`) in the Skill prompt to avoid redundant `gh issue view` calls in the child command.
+> **Module**: [Publish Phase](./start-publish.md) - Handles Phase 5.3 (PR creation via rite:pr:create), 5.4 (Review-Fix Loop with internal 5.4.1/5.4.1.0/5.4.4/5.4.6 routing, fingerprint cycling dispatcher).
 
-Invoke `skill: "rite:pr:create"`.
+Invoke `skill: "rite:issue:start-publish"`.
 
-**Immediate after pr:create returns**: When `rite:pr:create` outputs a result pattern (`[pr:created:{N}]` or `[pr:create-failed]`) and returns control, do **NOT** churn or pause — **immediately** proceed to Mandatory After 5.3 below. The review-fix loop has NOT started yet — you MUST continue to Phase 5.4.
+**Immediate after start-publish returns**: When `start-publish` outputs `<!-- [start:publish:completed] -->` (success — review-fix loop converged via `[review:mergeable]` or `[fix:replied-only]`) or `<!-- [start:publish:aborted] -->` (abort — `[pr:create-failed]` or `[fix:error]` user-terminate) sentinel and returns control, do **NOT** stop — **immediately** proceed to Mandatory After 5.3-5.4 below.
 
-**Patterns**: `[pr:created:{number}]`→extract number, proceed 5.4. `[pr:create-failed]`→**emit sentinel and ask user** (#366).
-
-> **Emit canonical literal**: See [§B — Phase 5.3 `[pr:create-failed]`](./references/workflow-incident-emit-pattern.md#b--phase-53-prcreate-failed) (SoT) for both emit steps (Step 1 `skill_load_failure` + Step 2 `manual_fallback_adopted` after user selects 「Edit ツールで PR 作成して continue」 in the `AskUserQuestion`), `|| true` non-blocking guarantee, and `--pr-number 0` semantics. The response-text-inclusion requirement that Phase 5.4.4.1 grep detection depends on is documented in [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件). Do NOT inline the bash literals here.
-
-### 🚨 Mandatory After 5.3
+### 🚨 Mandatory After 5.3-5.4
 
 > See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
 > MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
-**Verify**: `[pr:created:{number}]`, number saved. Review has NOT started yet.
-
-**Run Phase 5.4.4.1 (Workflow Incident Detection)**. Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `[pr:create-failed]` orchestrator-direct emit, or by pr/create.md sub-skill if applicable). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue regardless of detection result.
-
-**→ Proceed to 5.4 now**.
-
-### 5.4 Review-Fix Loop
-
-`/rite:issue:start` orchestrates the review-fix loop.
-
-**Local work memory sync rule**: At each phase transition within the review-fix loop (5.4.1, 5.4.3, 5.4.4, 5.4.6), after updating flow state, also sync phase to the local work memory file (`.rite-work-memory/issue-{n}.md`). Use the self-resolving wrapper `local-wm-update.sh` with appropriate `WM_*` env vars. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands) for the recommended pattern.
-
-**Issue comment backup sync rule**: After each review cycle completes (at 5.4.3 and 5.4.6), sync local work memory to the Issue comment as a backup. Use the existing `gh api` PATCH pattern from `fix.md` Phase 4.5.2. This ensures the Issue comment reflects the latest phase for recovery after context compaction.
-
-#### 5.4.1 Review
-
-Run [Preflight Protocol](#preflight-protocol) before each review cycle.
-
-Update flow state (atomic):
+**Step 1**: Update flow state to post-publish phase (atomic):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_review" --issue {issue_number} --branch "{branch_name}" \
+  --phase "phase5_post_publish" --issue {issue_number} --branch "{branch_name}" \
   --pr {pr_number} \
-  --next "After rite:pr:review returns: [review:mergeable]->Phase 5.5. [review:fix-needed:{N}]->Phase 5.4.4. Do NOT stop."
+  --next "rite:issue:start-publish completed. Proceed to Phase 5.5 (Ready for Review) on [start:publish:completed]. Skip to Phase 5.6 on [start:publish:aborted]. Do NOT stop."
 ```
 
-> **Note**: `{pr_number}` in the `--arg next` is a document placeholder that Claude replaces with the actual PR number at execution time (same as `--argjson pr {pr_number}` above). The `{N}` in result patterns refers to a count value returned by the sub-skill.
+**Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `start-publish` sub-skill — e.g., `[pr:create-failed]` / `[fix:error]` orchestrator-direct emit per §B/§C, or by `pr/create.md` / `pr/review.md` / `pr/fix.md` sub-skill via Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3 regardless of detection result.
 
-> **Data Handoff**: When invoking `rite:pr:review`, the PR number is passed as an argument. Issue information from Phase 0.1 is available in work memory (loaded by `rite:pr:review` Phase 0), avoiding additional `gh issue view` calls.
+**Step 3 (Sentinel-based routing)**: Grep the recent conversation context for `<!-- [start:publish:completed] -->` or `<!-- [start:publish:aborted] -->`:
 
-##### 5.4.1.0 Fingerprint Cycling Detection
+- `[start:publish:completed]` detected → **→ Proceed to Phase 5.5 (Ready for Review) now**.
+- `[start:publish:aborted]` detected → **→ Skip to Phase 5.6 (Completion Report) now**. Ready for Review is intentionally skipped because the publish phase was aborted by `[pr:create-failed]` (PR was never created) or `[fix:error]` user-terminate (review-fix loop did not converge). The completion report MUST display the abort reason to the user.
+- Neither detected → fail-safe: treat as `[start:publish:completed]` (proceed to Phase 5.5); the sub-skill SHOULD always emit one of the two sentinels per its Return Output Format contract.
 
-When `review.loop.convergence_monitoring` is enabled (default: `true`) and a prior `📜 rite レビュー結果` comment exists on the PR, compute finding fingerprints and detect the "same-finding cycling" quality signal (Signal 1 of 4).
+### 5.4.4.1 Workflow Incident Detection (Contract Summary)
 
-> **Reference**: [Fingerprint Cycling Detection](./references/fingerprint-cycling.md) for the full procedure — Step 1 (fetch 2 most recent review comments via `gh api --paginate --slurp`), Step 2 (fingerprint specification + similarity matching + portable SHA-1 helper), Step 3 (fingerprint-set intersection signal), Step 4 (escalate via the **common 4-option `AskUserQuestion`** shared with Quality Signal 3 / 4), and Step 5 (proceed to `rite:pr:review` invocation when routing is "本 PR 内で再試行" or "別 Issue として切り出す").
-
-When Step 4 routes to `rite:pr:review` invocation, invoke `skill: "rite:pr:review"` from here.
-
-**Immediate after review returns**: When `rite:pr:review` outputs a result pattern and returns control, do **NOT** churn or pause — **immediately** proceed to 5.4.3 After Review below. The review sub-skill has already updated flow state to `phase5_post_review` via Phase 8.0 (defense-in-depth, #719); execute the 5.4.3 steps without delay.
-
-#### 5.4.2 Review Patterns
-
-`[review:mergeable]`→5.5, `[review:fix-needed:{n}]`→5.4.4.
-
-#### 5.4.3 🚨 After Review
-
-> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
-> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
-
-**Verify**: Pattern confirmed, parsed.
-
-**Step 1**: Update flow state to post-review phase (atomic). This second write (after the Phase 5.4.1 pre-write) transitions from `phase5_review` to `phase5_post_review`, ensuring stop-guard routes to the correct next branch rather than repeatedly blocking and incrementing `error_count` (fixes #719):
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_post_review" --issue {issue_number} --branch "{branch_name}" \
-  --pr {pr_number} \
-  --next "rite:pr:review completed. Check recent result pattern in context: [review:mergeable]->Phase 5.5 (ready). [review:fix-needed:{N}]->Phase 5.4.4 (fix). Do NOT stop."
-```
-
-**Step 2**: Sync to local work memory:
-
-```bash
-WM_SOURCE="review" \
-  WM_PHASE="phase5_post_review" \
-  WM_PHASE_DETAIL="レビュー完了" \
-  WM_NEXT_ACTION="レビュー結果に基づき次アクションを実行" \
-  WM_BODY_TEXT="Post-review sync." \
-  WM_ISSUE_NUMBER="{issue_number}" \
-  WM_READ_FROM_FLOW_STATE="true" \
-  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
-```
-
-**Step 2.5**: Sync local work memory to Issue comment (backup):
-
-> **Reference**: Uses `issue-comment-wm-sync.sh` which handles owner/repo resolution internally, backup creation, safety checks, and PATCH atomically (#204).
-
-```bash
-# ⚠️ このパターンは 5.4.6 (After Fix) と同一構造。変更時は両方を更新すること
-bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
-  --issue {issue_number} \
-  --transform update-phase \
-  --phase "phase5_post_review" --phase-detail "レビュー完了" \
-  2>/dev/null || true
-```
-
-**Step 2.8: Review Quality Verification (defense-in-depth)**
-
-After the review result is received, verify that the review was properly executed with sub-agents by checking the PR comment structure:
-
-1. Retrieve the latest review comment:
-   ```bash
-   latest_review=$(gh api repos/{owner}/{repo}/issues/{pr_number}/comments \
-     --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | last | .body')
-   ```
-
-2. Check for per-reviewer sections (`#### ` under `### 全指摘事項`):
-   ```bash
-   has_reviewer_sections=$(echo "$latest_review" | grep -c '^#### ' || true)
-   echo "reviewer_sections=$has_reviewer_sections"
-   ```
-
-3. **When `reviewer_sections == 0`**: The review was performed inline without sub-agents (rubber-stamp review detected).
-
-   **Circuit breaker guard** (check FIRST, before re-invoke): If this is already a re-invoked review cycle (i.e., Step 2.8 has already triggered a re-invoke earlier in this conversation turn), do NOT re-invoke again. Instead, display the fallback message and proceed to Step 3:
-
-   ```
-   ⚠️ 再試行後もサブエージェント未使用のレビューが検出されました。
-   現在のレビュー結果をそのまま使用して続行します。
-   ```
-
-   **Note**: Track re-invocation in conversation context, NOT via flow state fields (flow-state fields are destroyed by `create` mode in Phase 5.4.3 Step 1). The LLM executing this step retains conversation history and can determine whether it already performed a Step 2.8 re-invoke in the current review cycle.
-
-   **Re-invoke** (only when circuit breaker guard passes — first occurrence):
-
-   ```
-   ⚠️ レビュー品質検証: サブエージェント未使用のレビューを検出しました。
-   PR コメントにレビュアー別セクション（#### {Reviewer Type}）が含まれていません。
-   サブエージェントによるフルレビューを再実行します。
-   ```
-
-   Invoke `skill: "rite:pr:review", args: "{pr_number}"`. This re-invocation counts as a new review cycle and is allowed **at most once** per review cycle.
-
-4. **When `reviewer_sections >= 1`**: Review quality verified. Proceed to Step 3.
-
-**Step 3 (Workflow Incident Detection)**: Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by the review.md sub-skill (per Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3.1 regardless of detection result.
-
-**Step 3.1 (Quality Signal 3 & 4 Detection)**: After review returns, detect Quality Signal 3 (cross-validation disagreement) and Signal 4 (reviewer self-degraded).
-
-> **Reference**: [Fingerprint Cycling Detection §2](./references/fingerprint-cycling.md#2--phase-543-step-31-quality-signal-3--4-detection) for the canonical marker list (`[CONTEXT] QUALITY_SIGNAL=3_cross_validation_disagreement` for Signal 3, `### Reviewer self-assessment` + `Status: degraded` for Signal 4), the detection bash for Signal 4, and the **common 4-option `AskUserQuestion`** shared with Phase 5.4.1.0 Signal 1. When neither signal fires, proceed directly to Step 4.
-
-**Step 4**: Based on the review result pattern from `rite:pr:review`, execute the corresponding action **immediately**. Do **NOT** use the Edit tool to fix code directly — always invoke the appropriate Skill tool.
-
-| Result Pattern | Action |
-|----------------|--------|
-| `[review:mergeable]` | **→ Proceed to Phase 5.5** (Ready for Review). Skip fix entirely. |
-| `[review:fix-needed:{n}]` | **Invoke `skill: "rite:pr:fix"`** via the Skill tool (Phase 5.4.4). After it returns, proceed to After Fix (5.4.6). |
-
-> **禁止**: Edit ツールや Bash ツールでコードを直接修正してはならない。修正は必ず `skill: "rite:pr:fix"` を Skill ツールで呼び出して実行すること。
-
-#### 5.4.4 Fix
-
-Update flow state (atomic):
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_fix" --issue {issue_number} --branch "{branch_name}" \
-  --pr {pr_number} \
-  --next "After rite:pr:fix returns: [fix:pushed]->Phase 5.4.1 (re-review). [fix:pushed-wm-stale]->Phase 5.4.1 with WM stale warning (AskUserQuestion). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. [fix:error]->ask user. Do NOT stop."
-```
-
-> **Data Handoff**: When invoking `rite:pr:fix`, PR number and review results are passed via work memory. Issue information from Phase 0.1 is available in work memory, avoiding redundant `gh issue view` calls.
-
-Invoke `skill: "rite:pr:fix"`.
-
-**Immediate after fix returns**: When `rite:pr:fix` outputs a result pattern (`[fix:pushed]`, `[fix:pushed-wm-stale]`, `[fix:issues-created:{N}]`, `[fix:replied-only]`, or `[fix:error]`) and returns control, do **NOT** churn or pause — **immediately** proceed to 5.4.6 After Fix below. The fix sub-skill has already updated flow state to `phase5_post_fix` via its defense-in-depth mechanism (fixes #709); execute the 5.4.6 steps without delay.
-
-#### 5.4.4.1 Workflow Incident Detection
-
-> **Reference**: This section detects **workflow blockers** (Skill load failure, hook abnormal exit, manual fallback adoption, Wiki ingest skip / failure, Gitignore drift) and auto-registers them as Issues to prevent silent loss. See [docs/SPEC.md](../../../../docs/SPEC.md#workflow-incident-detection) and [Workflow Incident Detection](./references/workflow-incident-detection.md) for the full specification.
+> **Reference**: This section documents the **本体 contract** for workflow incident detection. The detailed Step 1-7 processing flow lives in [Workflow Incident Detection](./references/workflow-incident-detection.md); emit pattern canonical bash literals live in [Workflow Incident Emit Pattern](./references/workflow-incident-emit-pattern.md); fingerprint cycling / Quality Signal 3 & 4 detail lives in [Fingerprint Cycling Detection](./references/fingerprint-cycling.md). The orchestrator (`/rite:issue:start`) invokes detection at three boundaries (Mandatory After 5.0-5.2.1 / 5.3-5.4 / 5.5 — see "When to execute" table below).
 
 **Detection scope** — recognised sentinel `type` values:
 
@@ -803,91 +649,21 @@ Invoke `skill: "rite:pr:fix"`.
 | `wiki_ingest_push_failed` | review/fix/close Phase X.X.W when `wiki-ingest-commit.sh` exits 4 — commit landed locally on the wiki branch but origin push failed | AskUserQuestion → register Issue / skip — recommended to **register**. Manual recovery: `git push origin wiki` |
 | `gitignore_drift` | `/rite:lint` Phase 3.9 when `gitignore-health-check.sh` detects missing `.rite/wiki/` rule (last-line-of-defense) | AskUserQuestion → register Issue / skip — recommended to **register**. Manual recovery: restore `.rite/wiki/` to `.gitignore` |
 
-The processing flow applies uniformly to all seven types — there is no per-type branching beyond the table above. See [Workflow Incident Detection](./references/workflow-incident-detection.md) for the complete Step 1-7 procedure (sentinel detection / parse / dedupe / AskUserQuestion / Issue creation bash literal / context-local list management), the **Workflow Incident Sentinel Visibility Rule** for sub-skill emit pattern, and the [Workflow Incident Emit Pattern](./references/workflow-incident-emit-pattern.md) for orchestrator-direct emit invocations (Phase 5.2 / 5.3 / 5.4.4 / 5.5).
-
 **When to execute** (explicit routing):
 
-This phase runs **after every Skill invocation in Phase 5** at the following explicit invocation points:
+This phase runs **after every Skill invocation in Phase 5** at the following explicit invocation points. With PR F/G1 sub-skill extraction, the orchestrator's Skill boundaries are 3 — `start-execute` (5.0-5.2.1) / `start-publish` (5.3-5.4) / `pr:ready` (5.5). Internal `pr:create` / `pr:review` / `pr:fix` invocations happen inside `start-publish` and are detected by the same context-grep at the publish delegation boundary.
 
 | Caller | Invocation point | Trigger |
 |--------|------------------|---------|
 | Phase 5.0-5.2.1 (execute) | Mandatory After 5.0-5.2.1 — Step 2 | Always after `[start:execute:*]` pattern |
-| Phase 5.3 (pr:create) | Mandatory After 5.3 — between "Verify" and "Proceed to 5.4 now" | Always after `[pr:created:{N}]` or `[pr:create-failed]` |
-| Phase 5.4.3 (pr:review) | After Review — Step 3 | Always after `[review:*]` pattern |
-| Phase 5.4.6 (pr:fix) | After Fix — Step 3 | Always after `[fix:*]` pattern |
+| Phase 5.3-5.4 (publish) | Mandatory After 5.3-5.4 — Step 2 | Always after `[start:publish:*]` pattern (covers internal `[pr:created:{N}]` / `[pr:create-failed]` / `[review:*]` / `[fix:*]` emits via context grep) |
 | Phase 5.5.0.1 (pr:ready) | Mandatory After 5.5 — Step 3 | Always after `[ready:*]` pattern |
 
-Each Mandatory After section MUST include a **"Run Phase 5.4.4.1 detection"** step that directs the orchestrator to grep the recent conversation context for sentinel lines BEFORE proceeding to the next phase. It is also triggered when an `AskUserQuestion` fallback option that emits a sentinel (e.g., "manual fallback") is selected.
+Each Mandatory After section MUST include a **"Run Phase 5.4.4.1 detection"** step that directs the orchestrator to grep the recent conversation context for sentinel lines BEFORE proceeding to the next phase.
 
-**Skip condition**: If `workflow_incident.enabled: false` is set in `rite-config.yml`, skip this entire phase. Read the value once at Phase 5.0 and cache for the rest of the flow.
+**Skip condition**: If `workflow_incident.enabled: false` is set in `rite-config.yml`, skip this entire phase. Read the value once at Phase 5.0 (delegated to `start-execute`) and cache for the rest of the flow.
 
 **Invariants**: Issue creation failure is non-blocking (workflow MUST NOT halt). The codepath is independent of Phase 7 (Issue creation from review recommendations). Default-on behavior: when `workflow_incident:` section is absent from `rite-config.yml`, treat as `enabled: true`.
-
-#### 5.4.5 Fix Patterns
-
-`[fix:pushed]`→5.4.1. `[fix:pushed-wm-stale]`→AskUserQuestion (WM stale warning)→5.4.1. `[fix:issues-created:{n}]`→5.4.1. `[fix:replied-only]`→5.5. `[fix:error]`→error, ask user.
-
-#### 5.4.6 🚨 After Fix
-
-> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
-> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
-
-**Verify**: Pattern confirmed, parsed.
-
-**Step 1**: Update flow state to post-fix phase (atomic). This second write (after the Phase 5.4.4 pre-write) transitions from `phase5_fix` to `phase5_post_fix`, ensuring stop-guard routes to the correct next branch rather than repeatedly blocking and incrementing `error_count` (fixes #709):
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_post_fix" --issue {issue_number} --branch "{branch_name}" \
-  --pr {pr_number} \
-  --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]->Phase 5.4.1 (re-review). [fix:pushed-wm-stale]->Phase 5.4.1 with WM stale warning (AskUserQuestion). [fix:issues-created]->Phase 5.4.1. [fix:replied-only]->Phase 5.5. Do NOT stop."
-```
-
-**Step 2**: Sync to local work memory:
-
-```bash
-WM_SOURCE="fix" \
-  WM_PHASE="phase5_post_fix" \
-  WM_PHASE_DETAIL="修正完了" \
-  WM_NEXT_ACTION="修正結果に基づき次アクションを実行" \
-  WM_BODY_TEXT="Post-fix sync." \
-  WM_ISSUE_NUMBER="{issue_number}" \
-  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
-```
-
-**Step 2.5**: Sync local work memory to Issue comment (backup):
-
-> **Reference**: Uses `issue-comment-wm-sync.sh` which handles owner/repo resolution internally, backup creation, safety checks, and PATCH atomically (#204).
-
-```bash
-# ⚠️ このパターンは 5.4.3 (After Review) と同一構造。変更時は両方を更新すること
-bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
-  --issue {issue_number} \
-  --transform update-phase \
-  --phase "phase5_post_fix" --phase-detail "修正完了" \
-  2>/dev/null || true
-```
-
-**Step 3 (Workflow Incident Detection)**: Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by the fix.md sub-skill (per Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 4 regardless of detection result.
-
-> **Note (v0.4.0 #557)**: The former Step 3.5 (Review-Fix Loop Hard Limit Check) was removed. The review-fix loop no longer has a cycle-count-based hard limit. Non-convergence is now detected exclusively via the four quality signals (see `commands/pr/references/fix-relaxation-rules.md#four-quality-signals-for-escalation`):
-> 1. Fingerprint cycling → Phase 5.4.1.0 (before every re-review)
-> 2. Root-cause-missing fix → `fix.md` Phase 3.2.1 (before every commit)
-> 3. Cross-validation disagreement → `review.md` Phase 5.2 + debate (during every review)
-> 4. Finding quality gate failure → `_reviewer-base.md` Finding Quality Guardrail (during every reviewer run)
-> **Design intent (#557 D-02)**: There is intentionally no cycle-count safety limit. The 4 quality signals are the sole termination mechanism; if they fire correctly, convergence on 0 findings is reached, and if they don't, the user is escalated via `AskUserQuestion` and chooses manually. Hardening this with an additional iteration counter would reintroduce the cycle-count-based degradation that #557 explicitly removed.
-
-**Step 4**: Based on the fix result pattern from `rite:pr:fix` **and** the preceding review result pattern, execute the corresponding action **immediately**. Do **NOT** use the Edit tool to fix code directly — always invoke the appropriate Skill tool.
-
-| Fix Result Pattern | Preceding Review Pattern | Action |
-|--------------------|--------------------------|--------|
-| `[fix:pushed]` | _(any)_ | **Invoke `skill: "rite:pr:review", args: "{pr_number}"`** via the Skill tool (re-review, Phase 5.4.1). |
-| `[fix:pushed-wm-stale]` | _(any)_ | **Work memory が stale です。手動介入が必要かを `AskUserQuestion` でユーザーに確認** (推奨: stale 警告ログを残した上で `skill: "rite:pr:review", args: "{pr_number}"` を起動して再レビューに進む / 中断して手動で work memory を修復する)。silent に `[fix:pushed]` 扱いしてはならない (fix.md Phase 8.1 caller semantics 参照)。 |
-| `[fix:issues-created:{n}]` | _(any)_ | **Invoke `skill: "rite:pr:review", args: "{pr_number}"`** via the Skill tool (re-review, Phase 5.4.1). |
-| `[fix:replied-only]` | _(any)_ | **→ Proceed to Phase 5.5** (Ready for Review). |
-| `[fix:error]` | _(any)_ | Ask the user how to proceed via `AskUserQuestion` with options: 「再試行」/「Edit ツールで手動 fallback (incident 記録)」/「Phase 5.6 にスキップ」/「terminate」. If user selects 「Edit ツールで手動 fallback」, **emit sentinel** per [§C — Phase 5.4.4 `[fix:error]`](./references/workflow-incident-emit-pattern.md#c--phase-544-fixerror) (SoT). The response-text-inclusion requirement that Phase 5.4.4.1 grep detection depends on is documented in [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件). The sentinel will be picked up by Phase 5.4.4.1 in the next cycle. Do NOT inline the bash literal here. |
-
-> **禁止**: Edit ツールや Bash ツールでコードを直接修正してはならない。修正は必ず `skill: "rite:pr:fix"` を Skill ツールで呼び出して実行すること。再レビューは必ず `skill: "rite:pr:review"` を Skill ツールで呼び出すこと。
 
 ### 5.5 Ready for Review
 
@@ -1041,15 +817,15 @@ else
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_6_pre_condition; rc=$rc" >&2
   exit 1
 fi
-if [ "$curr" != "phase5_post_metrics" ] && [ "$curr" != "phase5_post_execute" ]; then
-  echo "ERROR: Phase 5.6 pre-condition failed. .phase=$curr (expected: phase5_post_metrics or phase5_post_execute for abort path)" >&2
+if [ "$curr" != "phase5_post_metrics" ] && [ "$curr" != "phase5_post_execute" ] && [ "$curr" != "phase5_post_publish" ]; then
+  echo "ERROR: Phase 5.6 pre-condition failed. .phase=$curr (expected: phase5_post_metrics or phase5_post_execute/phase5_post_publish for abort path)" >&2
   echo "ACTION: Return to the missing phase (5.5.1 Status Update → 5.5.2 Metrics) and execute each Pre-write + main procedure + Mandatory After before entering Phase 5.6." >&2
   echo "⚠️ LLM MUST NOT proceed to Phase 5.6 Pre-write below. Re-invoke the missing phase first." >&2
   exit 1
 fi
-# Note: phase5_post_execute は abort path (start-execute.md が [start:execute:aborted] sentinel
-# emit 後に Phase 5.6 へ直接 skip する経路、Workflow Termination 用) を accept する。
-# success path は phase5_post_metrics 経由が正規路。
+# Note: phase5_post_execute / phase5_post_publish は abort path (start-execute.md が [start:execute:aborted]
+# または start-publish.md が [start:publish:aborted] sentinel emit 後に Phase 5.6 へ直接 skip する経路、
+# Workflow Termination 用) を accept する。success path は phase5_post_metrics 経由が正規路。
 ```
 
 **Pre-write**:

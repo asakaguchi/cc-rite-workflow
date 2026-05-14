@@ -2,10 +2,12 @@
 title: "極小対称化 PR は sibling site Grep 照合で短時間・高確信レビューできる"
 domain: "heuristics"
 created: "2026-04-19T06:45:00Z"
-updated: "2026-04-19T06:45:00Z"
+updated: "2026-05-14T22:06:47Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260419T062330Z-pr-592.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260514T182616Z-pr-963.md"
 tags: []
 confidence: high
 ---
@@ -42,6 +44,8 @@ confidence: high
 - sibling 数が 5 以上になる場合は Grep 照合の読み込み量が増え、単純 diff レビューとの境界が曖昧になる。併用を検討する。
 - idiom が意図的な非対称性 (例: `separate_branch` と `same_branch` で実装契約が異なる) を含む場合、構造的差分を「対称化すべきか意図的か」の二段階で分類する必要がある。
 
+**PR #963 累積 evidence (4-site `from=` discriminator pattern)**: 小規模 refactor PR (+22/-5, 4 files) で 0 blocking finding 1 cycle 着地。`LOCKDIR_CLEANUP_FAILED=1` emit の片肺問題を `from={start_md_termination,start_finalize_termination,session_start_cleanup,cleanup_work_memory}` という 4 値 discriminator で対称化した PR。3 reviewer (prompt-engineer / code-quality / error-handling) 全員が承認、推奨事項 LOW 3 + scope 外候補 MEDIUM 2 のみ。本ページの手順 (sibling site grep + 構造的差分照合 + counter 宣言検証) が hint:specific-assertion-pin で適用された case study であり、4 hit grep + 1 hit Note 内列挙の expected 数も PR 本文で事前宣言された。さらに「pre-existing drift (4-site-symmetry.test.sh の scope mismatch)」と「隣接 site (cleanup-work-memory.sh の per-file lockdir) の非対称」を **scope 外推奨事項 / 別 Issue 候補** として残す sub 技法 (本ページ既存記述) が複数 reviewer から独立に挙がり triple cross-validation された。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -51,3 +55,4 @@ confidence: high
 ## ソース
 
 - [PR #592 review results](../../raw/reviews/20260419T062330Z-pr-592.md)
+- [PR #963 review results](../../raw/reviews/20260514T182616Z-pr-963.md)

@@ -232,6 +232,81 @@ assert_not_grep "TC-6.4: start.md に implementation_round inline form が再 in
   "$START_MD" \
   'if val=\$\(bash \{plugin_root\}/hooks/state-read\.sh --field implementation_round'
 
+# === Test 7: G-04 — RESUME_HINT bit-identical drift detection (Issue #956) ===
+# Background: PR #955 (Issue #954) で start-finalize.md 3 site に 207 文字の `RESUME_HINT:` echo を
+# 追加した際、pre-condition-gate.md で 5 site canonical として規定されていたにも関わらず、他 4 site
+# (start.md Phase 3 / implement.md Phase 5.1.2 / review.md Phase 5.3.8 / metrics-recording.md
+# Phase 5.5.2) への対称化が漏れていた (PR #955 cycle 2 code-quality reviewer H-3/H-4 検出)。
+# Issue #956 で pre-condition-gate.md Form A / Form B canonical block に `RESUME_HINT:` echo を SoT
+# として SoT 化し、全 8 site (5 site canonical + 3 site 外延 = implement.md / review.md / resume.md)
+# が bit-identical な本文を mirror する契約に拡張した。本 TC は引用符内の文字列が SoT と完全一致
+# することを grep + 文字列比較で機械検証し、誤字 / synonym 置換 / 文末 punctuation drift / 追加・
+# 削除等の片肺修正を即座に CI fail で検出する。
+echo ""
+echo "TC-7: G-04 — RESUME_HINT bit-identical drift detection (Issue #956)"
+
+PRECONDITION_GATE_MD="$COMMANDS_DIR/issue/references/pre-condition-gate.md"
+
+# 引用符内の RESUME_HINT 本文 (`"RESUME_HINT: ..."`) を抽出する helper。
+# Form A (`  echo "..."`) と Form B (`; echo "..." >&2;`) の両形式で同一 pattern を抽出可能。
+extract_resume_hint_body() {
+  grep -oE '"RESUME_HINT: state-read.sh が異常 exit[^"]*"' "$1"
+}
+
+# SoT: pre-condition-gate.md Form A canonical block の最初の RESUME_HINT echo を SoT とする
+sot_body=$(extract_resume_hint_body "$PRECONDITION_GATE_MD" | head -1)
+if [ -z "$sot_body" ]; then
+  fail "TC-7.0: SoT 文字列が pre-condition-gate.md から抽出できない (Form A canonical block の RESUME_HINT echo が見つからない)"
+else
+  pass "TC-7.0: SoT 文字列が pre-condition-gate.md から抽出できた"
+fi
+
+# pre-condition-gate.md 自身: SoT 内部 (Form A + Form B + 補足説明) が drift していないことを assert
+gate_bodies=$(extract_resume_hint_body "$PRECONDITION_GATE_MD")
+gate_unique=$(printf '%s\n' "$gate_bodies" | sort -u | wc -l | tr -d ' ')
+assert "TC-7.0b: pre-condition-gate.md 内 RESUME_HINT 本文が 1 種類 (SoT 内 drift なし)" "1" "$gate_unique"
+
+# 各 caller の RESUME_HINT 本文を SoT と bit-identical 比較
+assert_caller_match() {
+  local label="$1"
+  local file="$2"
+  local expected_count="$3"
+  local bodies count drift_found=0 drift_line=""
+  bodies=$(extract_resume_hint_body "$file" || true)
+  count=$(printf '%s\n' "$bodies" | grep -c '"RESUME_HINT:' || true)
+  if [ "$count" != "$expected_count" ]; then
+    fail "$label (RESUME_HINT 本文数 expected=$expected_count, actual=$count)"
+    return
+  fi
+  while IFS= read -r body; do
+    [ -z "$body" ] && continue
+    if [ "$body" != "$sot_body" ]; then
+      drift_found=1
+      drift_line="$body"
+      break
+    fi
+  done <<< "$bodies"
+  if [ "$drift_found" = "1" ]; then
+    fail "$label (drift detected: actual=$drift_line, expected=$sot_body)"
+  else
+    pass "$label"
+  fi
+}
+
+# 8 caller site の RESUME_HINT 本文が全て SoT と bit-identical を assert
+# 注: 件数の真実の源は本 TC の expected_count 引数。caller 数変更時はここを更新する。
+assert_caller_match "TC-7.1: start.md (Phase 3 pre-condition) RESUME_HINT が SoT bit-identical" "$START_MD" 1
+assert_caller_match "TC-7.2: start-finalize.md (Phase 5.5.1/5.6/5.7) 3 site が SoT bit-identical" "$START_FINALIZE_MD" 3
+assert_caller_match "TC-7.3: implement.md (Phase 5.1.2 parent_issue_number) RESUME_HINT が SoT bit-identical" "$IMPLEMENT_MD" 1
+assert_caller_match "TC-7.4: review.md (Phase 5.3.8 loop_count) RESUME_HINT が SoT bit-identical" "$REVIEW_MD" 1
+assert_caller_match "TC-7.5: resume.md (Phase 2.1 parent_issue_number_raw) RESUME_HINT が SoT bit-identical" "$RESUME_MD" 1
+assert_caller_match "TC-7.6: metrics-recording.md (Phase 5.5.2 Form B implementation_round) RESUME_HINT が SoT bit-identical" "$METRICS_RECORDING_MD" 1
+
+# Resume.md の「対処: helper の存在」legacy 形式が完全に消失していること (Issue #956 AC-3)
+assert_not_grep "TC-7.7: resume.md から「対処: helper の存在」legacy 形式が消失している (Issue #956 AC-3)" \
+  "$RESUME_MD" \
+  '対処: helper の存在'
+
 # === Summary ===
 if ! print_summary "$(basename "$0")"; then
   exit 1

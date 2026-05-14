@@ -200,6 +200,32 @@ else
 fi
 
 # -----------------------------------------------------------------------------
+# Check 3.5: start-finalize.md `[start:finalize:*]` HTML-comment form (PR G2 #904)
+# -----------------------------------------------------------------------------
+START_FINALIZE="${REPO_ROOT}${CHECK_PATHS_PREFIX:+/${CHECK_PATHS_PREFIX}}/commands/issue/start-finalize.md"
+
+if [ ! -f "$START_FINALIZE" ]; then
+  fail "start-finalize.md not found at $START_FINALIZE"
+else
+  # AC-3 non-regression: the raw sentinel string must still be present for grep contracts.
+  if grep -qE '\[start:finalize:(completed|aborted)\]' "$START_FINALIZE"; then
+    pass "start-finalize.md: contains [start:finalize:completed] / [start:finalize:aborted] string (AC-3 non-regression)"
+  else
+    fail "start-finalize.md: missing [start:finalize:*] string (AC-3 regression)"
+  fi
+
+  # AC-2 / AC-6: HTML-comment wrapped form must be present so the user-visible terminal
+  # line is the human-readable completion handoff, not a bare sentinel token. This is
+  # critical because [start:finalize:completed] is the workflow terminal sentinel —
+  # if it leaks as a bare line, the user sees a sentinel token as the final output.
+  if grep -qE '<!--[[:space:]]*\[start:finalize:(completed|aborted)\]' "$START_FINALIZE"; then
+    pass "start-finalize.md: [start:finalize:*] wrapped in HTML comment form (AC-2 / AC-6)"
+  else
+    fail "start-finalize.md: [start:finalize:*] NOT wrapped in HTML comment form; expected <!-- [start:finalize:completed] --> / <!-- [start:finalize:aborted] -->"
+  fi
+fi
+
+# -----------------------------------------------------------------------------
 # Check 4: SKILL.md / workflow-identity.md identity entries
 # -----------------------------------------------------------------------------
 SKILL_MD="${REPO_ROOT}${CHECK_PATHS_PREFIX:+/${CHECK_PATHS_PREFIX}}/skills/rite-workflow/SKILL.md"

@@ -103,7 +103,26 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   # 新規 edge として許容する。
   ["phase5_post_execute"]="phase5_pr phase5_publish_running phase5_completion"
   ["phase5_publish_running"]="phase5_pr phase5_post_publish"
-  ["phase5_post_publish"]="phase5_ready phase5_post_ready phase5_ready_error phase5_completion"
+  # phase5_post_publish (PR G1 terminal) → phase5_finalize_running (PR G2 delegation entry) を
+  # 新規 edge として追加 (PR G2 #904)。
+  ["phase5_post_publish"]="phase5_ready phase5_post_ready phase5_ready_error phase5_completion phase5_finalize_running"
+
+  # /rite:issue:start-finalize sub-skill (PR G2 #904)
+  # start.md Phase 5.5-Termination delegation: orchestrator writes phase5_finalize_running
+  # before invoke, sub-skill writes terminal `completed` via Workflow Termination when done.
+  # Workflow terminal sentinel is [start:finalize:completed] (no further phase work) or
+  # [start:finalize:aborted] (Phase 5.5 user selects 「More fixes」/「Phase 5.6 へスキップ」/
+  # [ready:error] terminate, or abort entry from [start:execute:aborted] / [start:publish:aborted]).
+  # success path: phase5_finalize_running → phase5_post_ready (rite:pr:ready defense-in-depth
+  #   direct write, skipping phase5_ready middle phase) → phase5_status_in_review →
+  #   phase5_post_status_in_review → phase5_metrics → phase5_post_metrics → phase5_completion →
+  #   phase5_parent_completion → phase5_post_parent_completion → completed
+  # abort path: phase5_finalize_running → phase5_completion → completed (abort entry skips Phase
+  #   5.5/5.5.1/5.5.2/5.7 and goes directly to Phase 5.6 / Workflow Termination)
+  # phase5_ready_error: rite:pr:ready error path written by ready.md Phase 3.1.
+  # Note: no separate phase5_post_finalize indirection — [start:finalize:completed] IS the
+  # workflow terminal sentinel per design doc SPEC-TECH-DECISIONS #3.
+  ["phase5_finalize_running"]="phase5_ready phase5_post_ready phase5_ready_error phase5_completion completed"
 
   # Phase 5.3: PR create
   # start.md Phase 5.3 Mandatory After transitions directly from phase5_pr to phase5_review

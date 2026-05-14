@@ -39,9 +39,11 @@ setup_plugin_tree() {
   if [ "$html_comment" = "true" ]; then
     local sentinel_create='<!-- [create:completed:{N}] -->'
     local sentinel_interview='<!-- [interview:completed] --> / <!-- [interview:skipped] -->'
+    local sentinel_finalize='<!-- [start:finalize:completed] --> / <!-- [start:finalize:aborted] -->'
   else
     local sentinel_create='[create:completed:{N}]'
     local sentinel_interview='[interview:completed] / [interview:skipped]'
+    local sentinel_finalize='[start:finalize:completed] / [start:finalize:aborted]'
   fi
 
   cat > "$root/commands/issue/create-register.md" <<EOF
@@ -55,6 +57,10 @@ EOF
   cat > "$root/commands/issue/create-interview.md" <<EOF
 # create-interview
 Test fixture. Sentinel form: $sentinel_interview
+EOF
+  cat > "$root/commands/issue/start-finalize.md" <<EOF
+# start-finalize
+Test fixture. Sentinel form: $sentinel_finalize
 EOF
   cat > "$root/skills/rite-workflow/SKILL.md" <<'EOF'
 # rite-workflow SKILL
@@ -164,6 +170,10 @@ EOF
 cat > "$TEST_DIR/test7/commands/issue/create-interview.md" <<'EOF'
 # interview
 <!-- [interview:completed] --> <!-- [interview:skipped] -->
+EOF
+cat > "$TEST_DIR/test7/commands/issue/start-finalize.md" <<'EOF'
+# finalize
+<!-- [start:finalize:completed] --> <!-- [start:finalize:aborted] -->
 EOF
 cat > "$TEST_DIR/test7/skills/rite-workflow/SKILL.md" <<'EOF'
 workflow は途中で止まらない

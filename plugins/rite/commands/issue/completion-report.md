@@ -1,6 +1,6 @@
 # Completion Report (Phase 5.6)
 
-> **Source**: Extracted from `start.md` Phase 5.6. This file is the source of truth for the completion report procedure.
+> **Source**: Extracted from `start-finalize.md` Phase 5.6 (originally in `start.md` before PR G2 #904 moved Phase 5.5-Termination to the start-finalize sub-skill). This file is the source of truth for the completion report procedure.
 
 Execute the following steps **in order**. Do NOT skip any step. Always base your output on the template file read in Step 1 (or the inline fallback below if the Read tool fails).
 
@@ -44,11 +44,11 @@ Output the substituted template as your response. First determine which case app
 
 **Step 3.5 — Append Wiki ingest 状況 section (Issue #524 AC-5)**:
 
-**Output ordering** (must match `start.md` Phase 5.6.2 ordering note): After outputting the case-specific sections (項目テーブル + フェーズ進捗 + 次のステップ), **always** append the "Wiki ingest 状況" table **before** the Phase 5.6.1 (Workflow Incident Reporting) section. The runtime sequence is: standard completion sections → Phase 5.6.2 (Wiki ingest 状況, this Step 3.5) → Phase 5.6.1 (workflow incidents). The section numbers in `start.md` reflect introduction order (#366 first, #524 second) and are intentionally NOT in execution order.
+**Output ordering** (must match `start-finalize.md` Phase 5.6.2 ordering note): After outputting the case-specific sections (項目テーブル + フェーズ進捗 + 次のステップ), **always** append the "Wiki ingest 状況" table **before** the Phase 5.6.1 (Workflow Incident Reporting) section. The runtime sequence is: standard completion sections → Phase 5.6.2 (Wiki ingest 状況, this Step 3.5) → Phase 5.6.1 (workflow incidents). The section numbers in `start.md` reflect introduction order (#366 first, #524 second) and are intentionally NOT in execution order.
 
-The "Wiki ingest 状況" table is generated per `start.md` Phase 5.6.2 by aggregating `[CONTEXT] WIKI_INGEST_DONE/SKIPPED/FAILED=1` lines from the conversation context. This section is mandatory in both Case A and Case B and is **never** skipped — the absence of any signal is itself a reportable state (silent-skip detection).
+The "Wiki ingest 状況" table is generated per `start-finalize.md` Phase 5.6.2 by aggregating `[CONTEXT] WIKI_INGEST_DONE/SKIPPED/FAILED=1` lines from the conversation context. This section is mandatory in both Case A and Case B and is **never** skipped — the absence of any signal is itself a reportable state (silent-skip detection).
 
-See `start.md` Phase 5.6.2 for the full procedure (signal aggregation, output table format, conditional warnings).
+See `start-finalize.md` Phase 5.6.2 for the full procedure (signal aggregation, output table format, conditional warnings).
 
 **Step 4 — Self-verification**:
 

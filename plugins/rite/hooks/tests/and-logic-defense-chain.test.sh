@@ -173,6 +173,41 @@ else
   fail "Layer 4 runtime: whitelist 関数が機能しない (rc=$rc)"
 fi
 
+# Issue #954 L-3: sub-skill terminal phase の transition 整合性
+# (将来 rite_phase_transition_allowed が runtime block 点として配線された場合に
+#  start-finalize.md 配下の Workflow Termination/Mandatory After 5.5/5.7 経路が
+#  silent regression を起こさないことを構造的に保証する)
+for finalize_edge in \
+  "phase5_finalize_running:phase5_post_ready" \
+  "phase5_finalize_running:phase5_completion" \
+  "phase5_finalize_running:completed" \
+  "phase5_post_metrics:phase5_completion" \
+  "phase5_completion:completed"; do
+  from="${finalize_edge%%:*}"
+  to="${finalize_edge##*:}"
+  set +e
+  (
+    set +u
+    source "$WHITELIST"
+    if declare -f rite_phase_transition_allowed >/dev/null 2>&1; then
+      if rite_phase_transition_allowed "$from" "$to"; then
+        exit 0
+      else
+        exit 1
+      fi
+    else
+      exit 2
+    fi
+  )
+  rc=$?
+  set -e
+  if [ "$rc" -eq 0 ]; then
+    pass "Layer 4 runtime: rite_phase_transition_allowed が ${from} → ${to} を allow (#954 L-3)"
+  else
+    fail "Layer 4 runtime: ${from} → ${to} が allow されない (rc=$rc) — phase-transition-whitelist.sh の edge が drift した可能性"
+  fi
+done
+
 # --------------------------------------------------------------------------
 # Layer 5: Pre-flight — preflight-check.sh が --command-id を受け付け compact gate
 # --------------------------------------------------------------------------

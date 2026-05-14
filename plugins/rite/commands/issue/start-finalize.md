@@ -143,6 +143,7 @@ else
   rc=$?
   echo "ERROR: state-read.sh failed (rc=$rc) for --field phase in Phase 5.5.1 pre-condition" >&2
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_5_1_pre_condition; rc=$rc" >&2
+  echo "RESUME_HINT: .rite/sessions/*.flow-state が読めない/壊れている可能性があります。ファイル存在 (ls -la .rite/sessions/) と JSON 妥当性 (jq . で parse 可能) を確認し、必要なら /rite:resume で再開、または当該 .flow-state を退避して /rite:issue:start を再実行してください。" >&2
   exit 1
 fi
 if [ "$curr" != "phase5_post_ready" ]; then
@@ -224,6 +225,7 @@ else
   rc=$?
   echo "ERROR: state-read.sh failed (rc=$rc) for --field phase in Phase 5.6 pre-condition" >&2
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_6_pre_condition; rc=$rc" >&2
+  echo "RESUME_HINT: .rite/sessions/*.flow-state が読めない/壊れている可能性があります。ファイル存在 (ls -la .rite/sessions/) と JSON 妥当性 (jq . で parse 可能) を確認し、必要なら /rite:resume で再開、または当該 .flow-state を退避して /rite:issue:start を再実行してください。" >&2
   exit 1
 fi
 if [ "$curr" != "phase5_post_metrics" ] && [ "$curr" != "phase5_finalize_running" ]; then
@@ -365,6 +367,7 @@ else
   rc=$?
   echo "ERROR: state-read.sh failed (rc=$rc) for --field parent_issue_number in Phase 5.7" >&2
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_7_parent_issue; rc=$rc" >&2
+  echo "RESUME_HINT: .rite/sessions/*.flow-state が読めない/壊れている可能性があります。ファイル存在 (ls -la .rite/sessions/) と JSON 妥当性 (jq . で parse 可能) を確認し、必要なら /rite:resume で再開、または当該 .flow-state を退避して /rite:issue:start を再実行してください。" >&2
   exit 1
 fi
 # state-read.sh は jq の `// $default` で null/false → default 置換するが値の型は validate しない。
@@ -451,7 +454,7 @@ Display remaining children, guide `/rite:issue:start`. No auto-start.
 > See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
 > MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
-**Step 1**: Update flow state to post-parent-completion phase. Use **patch mode** — patch preserves `previous_phase` automatically from the outgoing `.phase` field, whereas `create` mode would overwrite the entire state and risk tripping the session-ownership check:
+**Step 1**: Update flow state to post-parent-completion phase. Use **patch mode** with `--active true` — workflow は次の Workflow Termination Step 1 (terminal patch) まで active であるべきで、ここで `active=false` を設定すると session-ownership 検査が次の terminal patch を「外部セッションからの書込み」と誤発火させる。`create` mode は `previous_phase` を毎回 overwrite するため、phase-transition-whitelist の整合性が破れる risk があり、ここでは `patch` mode を使う。
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
@@ -482,10 +485,10 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 ```bash
 rm -f .rite-compact-state 2>/dev/null || true
-rm -rf .rite-compact-state.lockdir 2>/dev/null || true
+rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1" >&2
 ```
 
-**Note**: This cleanup is non-blocking. Failure to delete is silently ignored.
+**Note**: Cleanup is non-blocking. `.rite-compact-state` の削除失敗は silent skip (regular file の rm -f はほぼ permission denied のみで、次セッションでは上書き作成されるため). `.rite-compact-state.lockdir` の削除失敗 (shared filesystem 上の stale lock など) は `[CONTEXT] LOCKDIR_CLEANUP_FAILED=1` を stderr へ emit し、次セッションへ signal を残す (lockdir 残留は次回 preflight で停止する potential risk のため observable にする)。
 
 ---
 

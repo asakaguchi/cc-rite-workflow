@@ -325,6 +325,18 @@ assert_grep "start-publish: rite:pr:fix skill invocation retained" \
   "$START_PUBLISH_MD" \
   'skill: "rite:pr:fix"'
 
+# start-execute.md drift guard: inline workflow-incident-emit.sh literal が再混入しないこと
+# (Issue #954 L-1: 3 sub-skill 間で ownership 契約の structural integrity を均一化する)
+assert_not_grep "start-execute: no inline 'workflow-incident-emit.sh' bash literal (drift guard)" \
+  "$START_EXECUTE_MD" \
+  'bash \{plugin_root\}/hooks/workflow-incident-emit.sh'
+
+# start-publish.md drift guard: inline workflow-incident-emit.sh literal が再混入しないこと
+# (Issue #954 L-1: 3 sub-skill 間で ownership 契約の structural integrity を均一化する)
+assert_not_grep "start-publish: no inline 'workflow-incident-emit.sh' bash literal (drift guard)" \
+  "$START_PUBLISH_MD" \
+  'bash \{plugin_root\}/hooks/workflow-incident-emit.sh'
+
 # === 5.6. start-finalize.md 内の rite:pr:ready / rite:issue:close Skill invocation contract (PR G2) ===
 # PR G2 で Phase 5.5/5.7 が start-finalize.md sub-skill 内に閉じたため、
 # start.md からは「Phase 5.5 (pr:ready) row」「5.7.2 (rite:issue:close)」の assert が削除された。
@@ -345,6 +357,18 @@ assert_grep "start-finalize: rite:issue:close skill invocation retained" \
 assert_not_grep "start-finalize: no inline 'workflow-incident-emit.sh' bash literal (drift guard)" \
   "$START_FINALIZE_MD" \
   'bash \{plugin_root\}/hooks/workflow-incident-emit.sh'
+
+# start-finalize.md sentinel HTML-comment form の直接 pin (Issue #954 L-2)
+# verify-terminal-output.sh Check 3.5 + verify-terminal-output.test.sh fixture 経由で
+# 間接的に検証されているが、本 Section 5.6 に直接 pin assert を追加することで、
+# Skill invocation pin と同じ section 内で workflow terminal sentinel の structural integrity を一望できる。
+assert_grep "start-finalize: <!-- [start:finalize:completed] --> sentinel HTML-comment form retained" \
+  "$START_FINALIZE_MD" \
+  '<!-- \[start:finalize:completed\] -->'
+
+assert_grep "start-finalize: <!-- [start:finalize:aborted] --> sentinel HTML-comment form retained" \
+  "$START_FINALIZE_MD" \
+  '<!-- \[start:finalize:aborted\] -->'
 
 # === 6. start.md drift guard — inline emit literal must NOT reappear (#937) ===
 echo ""

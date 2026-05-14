@@ -327,57 +327,11 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
   --next "Execute Phase 2.4 (Projects Status → In Progress). Skipping to Phase 2.5/2.6/3 without running Projects update is PROHIBITED. Do NOT stop."
 ```
 
-> **Module**: [Projects Integration](../../references/projects-integration.md#24-github-projects-status-update). Runtime execution delegates to `plugins/rite/scripts/projects-status-update.sh`, which is the single source of truth for Projects Status updates across Phase 2.4, 5.5.1, and 5.7.2. `projects-integration.md` §2.4 documents the underlying API calls for reference and debugging, but callers MUST NOT re-inline those bash blocks here — always delegate to the script.
-<!-- Do not re-inline Step 2-3. -->
+> **Module**: [Projects Status Update Callsites](./references/projects-status-update-callsites.md#callsite-1--phase-24-issue-status--in-progress) — Phase 2.4 / 5.5.1 / 5.7.2 共通 delegation の bash literal SoT (Callsite 1 = Phase 2.4)。Runtime execution delegates to `plugins/rite/scripts/projects-status-update.sh`. API レベル動作仕様は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) を参照。
 
+> **Issue #513 regression guard**: Step 3 (Parent Issue Status Update via 3-method detection) は本 Module 内 Callsite 1 Step 3 に SoT として移管。inline `trackedInIssues`-only simplification (Issue #513 incident で AC-1 失敗を引き起こした anti-pattern) への revert は禁止。詳細な 3-method procedure と regression guard 全文は Module を参照。`parent-child-sync-static.test.sh` Group 4 が両ファイル ([projects-integration.md#247](../../references/projects-integration.md#247-parent-issue-status-update-for-child-issues) リンク + Issue #513 literal) を pin する。
 
-
-**Step 1** — Read config and emit a skip marker on stdout (the LLM reads the marker, not a bash variable; shell state does not persist across Bash tool invocations):
-
-```bash
-projects_enabled=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' rite-config.yml 2>/dev/null)
-project_number=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' rite-config.yml 2>/dev/null)
-project_owner=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    owner:/{gsub(/"/,"",$2); print $2; exit}' rite-config.yml 2>/dev/null)
-if [ "$projects_enabled" != "true" ]; then
-  echo "[CONTEXT] PHASE_2_4_STATE=skip; reason=projects_disabled"
-else
-  echo "[CONTEXT] PHASE_2_4_STATE=execute; project_number=$project_number owner=$project_owner"
-fi
-```
-
-**LLM routing rule** (prompt-engineer CRITICAL — Bash tool shell state does not persist): the LLM reads the `[CONTEXT] PHASE_2_4_STATE=` marker from the bash block's stdout in the conversation context:
-
-| `PHASE_2_4_STATE` value | LLM action |
-|------------------------|-----------|
-| `skip` | Skip Step 2 and Step 3 below. Go directly to Mandatory After 2.4. The post-projects marker is still written so the two whitelist transitions (`phase2_post_branch → phase2_projects` and `phase2_projects → phase2_post_projects`) stay valid (the skip is recorded, not silent). |
-| `execute` | Proceed to Step 2-3 using the emitted `project_number` / `owner` values. |
-
-Do NOT rely on a bash variable (`SKIP_2_4=1`) that persists only within a single Bash tool call — each `echo`/`gh api` in the following steps is a separate invocation and the variable is lost. The `[CONTEXT]` marker travels via the conversation context and is authoritative.
-
-**Step 2** — Update Issue Status to "In Progress" via the shared script:
-
-```bash
-bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
-  --argjson issue {issue_number} \
-  --arg owner "{owner}" \
-  --arg repo "{repo}" \
-  --argjson project_number {project_number} \
-  --arg status "In Progress" \
-  --argjson auto_add true \
-  --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
-```
-
-The script executes: GraphQL `projectItems` query → auto-add if not registered → `field-list` retrieval → Status `item-edit`. Inspect its stdout JSON:
-
-- `.result == "updated"` → success.
-- `.result == "skipped_not_in_project"` or `"failed"` → display `.warnings[]` and continue (non-blocking). The scaffolding-failure itself is recorded by stop-guard via the whitelist on the next transition attempt.
-
-The script is the single source of truth for Projects Status updates. See [projects-integration.md §2.4.2-2.4.5](../../references/projects-integration.md#242-check-issue-project-registration-status) for API-level documentation.
-
-**Step 3** — Parent Issue Status Update (2.4.7): **always execute** this substep regardless of whether the current Issue was identified as a parent in Phase 0.3 (Phase 0.3 detects children, not parents). **Execute the full 3-method detection and Status update procedure from [projects-integration.md §2.4.7](../../references/projects-integration.md#247-parent-issue-status-update-for-child-issues)** (Method 1: `## 親 Issue` body meta PRIMARY → Method 2: Sub-Issues API → Method 3: tasklist search → 2.4.7.2 Retrieve → 2.4.7.3 Status Condition → 2.4.7.4 Update). When all three methods fail, the referenced procedure emits a debug log and skips silently — this is the normal path for standalone Issues (AC-4).
-
-> **Regression guard** (Issue #513 regression guard): Do NOT replace this delegation with an inline simplification (e.g., querying only `trackedInIssues` or only one detection method). Past incident (Issue #513): a `trackedInIssues`-only inline version in this file caused AC-1 failure in repositories that manage parent-child links via body tasklist and `## 親 Issue` meta rather than GitHub's native Sub-Issues feature. `parent-child-sync-static.test.sh` pins this literal to prevent silent re-introduction.
+Execute the Module procedure: Callsite 1 Step 1 (config read + skip marker emit) → Callsite 1 Step 2 (Status In Progress update) → Callsite 1 Step 3 (parent Issue Status update via 3-method detection)。On `[CONTEXT] PHASE_2_4_STATE=skip`, skip Step 2-3 but still execute Mandatory After 2.4 unconditionally。
 
 ### 🚨 Mandatory After 2.4
 
@@ -821,104 +775,11 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 ### 5.2.1 Checklist Confirmation
 
+> **Module**: [Checklist Auto-Check](./references/checklist-auto-check.md) — Phase 5.2.1 (grep ベースの完了確認) + Phase 5.2.1.1 (Auto-Check Evaluation: evidence collection / per-item assessment / Issue body update / re-check / uncertain handling) の SoT。
+
 **Owner**: `/rite:issue:start` after `/rite:lint` returns. **Condition**: Execute only if checklist retained in Phase 3.6. **Purpose**: Block PR until all items complete.
 
-Use `grep -E` (not `-P`). Pattern per [gh-cli-patterns.md](../../references/gh-cli-patterns.md#safe-checklist-operation-patterns).
-
-```bash
-issue_body=$(gh issue view {issue_number} --json body --jq '.body')
-[ -z "$issue_body" ] && echo "ERROR: Issue body の取得に失敗" >&2 && exit 1
-echo "$issue_body" | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+' || true
-echo "$issue_body" | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+' | grep -c '^- \[ \] ' || true
-```
-
-**Determine**: `grep -c` output `0`→all complete→5.3. `≥1`→incomplete→proceed to 5.2.1.1 (auto-check). Empty body→retry 5.1. **Mandatory**, cannot skip.
-
-#### 5.2.1.1 Auto-Check Evaluation
-
-When incomplete checklist items are detected, evaluate each item's fulfillment status based on the current implementation state before returning to Phase 5.1.
-
-**Purpose**: Prevent infinite loops where implementation is complete but Definition of Done checklist items remain unchecked because no process updates them to `- [x]`.
-
-**Evaluation procedure**:
-
-1. **Collect evidence**: Use `git diff origin/{base_branch}...HEAD --name-only` and `git log --oneline origin/{base_branch}...HEAD` to understand what was implemented.
-
-2. **Evaluate each incomplete item**: For each `- [ ]` item, assess whether the item is satisfied based on the implementation evidence:
-
-   | Assessment | Criteria | Action |
-   |-----------|----------|--------|
-   | **Satisfied** | Implementation evidence clearly fulfills the item | Mark as `- [x]` |
-   | **Not satisfied** | No evidence of fulfillment, or clearly incomplete | Keep as `- [ ]` |
-   | **Uncertain** | Cannot confidently determine | Present to user via `AskUserQuestion` |
-
-3. **Update Issue body**: If any items are newly marked as satisfied, update the Issue body via `gh issue edit`:
-
-   Follow the "Checkbox Update" pattern in [gh-cli-patterns.md](../../references/gh-cli-patterns.md#safe-checklist-operation-patterns). Use Python for safe `- [ ]` → `- [x]` replacement (do NOT use `sed`).
-
-   ```bash
-   # Step 1: Retrieve current body and validate
-   tmpfile_read=$(mktemp)
-   tmpfile_write=$(mktemp)
-   trap 'rm -f "$tmpfile_read" "$tmpfile_write"' EXIT
-   gh issue view {issue_number} --json body --jq '.body' > "$tmpfile_read"
-
-   if [ ! -s "$tmpfile_read" ]; then
-     echo "ERROR: Issue body の取得に失敗" >&2
-     exit 1
-   fi
-
-   # Output paths for subsequent Read/Write tool calls
-   echo "tmpfile_read=$tmpfile_read"
-   echo "tmpfile_write=$tmpfile_write"
-   ```
-
-   Then use the Read tool to read `$tmpfile_read` (the path output above), apply `- [ ]` → `- [x]` replacements for satisfied items using the Write tool to `$tmpfile_write`, and apply:
-
-   **Note**: Shell variables do not carry over between Bash tool calls. Use the literal paths output by `echo "tmpfile_read=..."` in Step 1 directly in the command below.
-
-   ```bash
-   # Replace with actual paths from Step 1 output (e.g., /tmp/tmp.XXXXXXXXXX)
-   tmpfile_write="/tmp/tmp.XXXXXXXXXX"  # ← Step 1 の出力値に置換
-
-   if [ ! -s "$tmpfile_write" ]; then
-     echo "ERROR: Updated content is empty" >&2
-     exit 1
-   fi
-
-   gh issue edit {issue_number} --body-file "$tmpfile_write"
-   ```
-
-4. **Re-check**: After updating, re-run the checklist check:
-
-   ```bash
-   issue_body=$(gh issue view {issue_number} --json body --jq '.body')
-   [ -z "$issue_body" ] && echo "ERROR: Issue body の取得に失敗" >&2 && exit 1
-   echo "$issue_body" | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+' | grep -c '^- \[ \] ' || true
-   ```
-
-   - `0` (all complete) → Proceed to Phase 5.3
-   - `≥1` (still incomplete) → Display remaining incomplete items and return to Phase 5.1
-   - Empty body → retry Phase 5.1
-
-**User confirmation for uncertain items**:
-
-When items are assessed as "Uncertain", use `AskUserQuestion`:
-
-```
-以下のチェックリスト項目の充足状態を確認してください:
-
-- [ ] {item_text}
-
-オプション:
-- 充足済みとしてチェック（推奨）: この項目を完了とマークします
-- 未充足: Phase 5.1 に戻って対応します
-```
-
-**Constraints**:
-- Already checked items (`- [x]`) are never modified (AC-3 non-regression)
-- Issue reference items (`- [ ] #XX`) are excluded from evaluation (parent-child tracking)
-- Auto-check is executed **at most once per 5.2.1 invocation** to prevent evaluation loops
+Execute the Module procedure: grep `- [ ]` pattern (Phase 5.2.1) → if `≥1` incomplete, run Auto-Check Evaluation (Phase 5.2.1.1) → re-check → all complete → Phase 5.3, otherwise return to Phase 5.1. **Mandatory**, cannot skip.
 
 ### 5.3 PR Creation
 
@@ -1294,33 +1155,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
   --next "Execute Phase 5.5.1 (Issue Status → In Review). Skipping to Phase 5.5.2/5.6 without running the Status update is PROHIBITED. Do NOT stop."
 ```
 
-**Owner**: `/rite:issue:start` (defense-in-depth — `rite:pr:ready` Phase 4 also attempts this, but may not execute reliably within e2e flow).
-
-**Note**: Delegates to `plugins/rite/scripts/projects-status-update.sh`. `ready.md` Phase 4.2 も同じく `projects-status-update.sh` delegate に統一済み。本 Phase 5.5.1 は defense-in-depth の二重実行であり、ready.md 失敗時の補完として機能する。
-
-Skip if `projects.enabled: false` in rite-config.yml. Otherwise invoke the shared script to transition the Issue Status to **In Review**:
-
-```bash
-bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
-  --argjson issue {issue_number} \
-  --arg owner "{owner}" \
-  --arg repo "{repo}" \
-  --argjson project_number {project_number} \
-  --arg status "In Review" \
-  --argjson auto_add false \
-  --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
-```
-
-`auto_add: false` because at this point the Issue is already registered in the Project (Phase 2.4 auto-added it if missing).
-
-Inspect the script's stdout JSON:
-
-- `.result == "updated"` → success.
-- `.result == "skipped_not_in_project"` → display `警告: Issue #{issue_number} は Project に登録されていません` and continue (non-blocking).
-- `.result == "failed"` → display `.warnings[]` and continue (non-blocking).
-
-See [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) for the underlying API calls.
+> **Module**: [Projects Status Update Callsites](./references/projects-status-update-callsites.md#callsite-2--phase-551-issue-status--in-review) — Callsite 2 (Phase 5.5.1) bash literal SoT。Skip if `projects.enabled: false` in rite-config.yml. Otherwise execute the Module procedure (Status update to "In Review", `auto_add: false` since Phase 2.4 already auto-added if missing). Defense-in-depth — `rite:pr:ready` Phase 4 also attempts this, but may not execute reliably within e2e flow. API レベル動作は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) を参照。
 
 ### 🚨 Mandatory After 5.5.1
 
@@ -1349,199 +1184,11 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
   --next "Execute Phase 5.5.2 (Metrics Recording). Skipping to Phase 5.6 without running metrics is PROHIBITED. Do NOT stop."
 ```
 
-> **Reference**: [Execution Metrics](../../references/execution-metrics.md)
+> **Reference**: [Execution Metrics](../../references/execution-metrics.md). **Module**: [Metrics Recording](./references/metrics-recording.md) — Phase 5.5.2 全体 (Step 1-5 + `implementation_round` inline metrics capture + METRICS_SKIPPED 経路 + heredoc PATCH 本体) の SoT。
 
-**Skip Steps note** (referenced by Phase 5.6 pre-condition): When `metrics.enabled: false` in rite-config.yml, skip Steps 1-5 below **but unconditionally execute Mandatory After 5.5.2**. The `phase5_post_metrics` marker is required for Phase 5.6 pre-condition to pass. Skipping the Mandatory After would leave `.phase = phase5_post_status_in_review` and trip the Phase 5.6 ERROR gate (prompt-engineer cycle-4 HIGH / code-quality cycle-4 MEDIUM).
+**Skip Steps note** (referenced by Phase 5.6 pre-condition): When `metrics.enabled: false` in rite-config.yml, skip Steps 1-5 (per Module) **but unconditionally execute Mandatory After 5.5.2**. The `phase5_post_metrics` marker is required for Phase 5.6 pre-condition to pass. Skipping the Mandatory After would leave `.phase = phase5_post_status_in_review` and trip the Phase 5.6 ERROR gate.
 
-Otherwise:
-
-**Step 1**: Collect metrics from the current workflow execution:
-
-| Metric | Source | How to Obtain |
-|--------|--------|---------------|
-| `plan_deviation_rate` | Issue body checklist items (Phase 3.6) vs completed items | `planned_steps` = total checklist items added in Phase 3.6. `actual_steps` = checked items at completion. Formula: `abs(actual - planned) / planned * 100`. If `planned = 0`, set judgment to `skip` |
-| `test_pass_rate` | From Phase 5.2 lint results | 100% if tests passed or no tests configured |
-| `review_critical_high` | Phase 5.4 review results | Count of CRITICAL+HIGH findings from the last `📜 rite レビュー結果` PR comment |
-| `review_fix_loops` | PR comments | Count `📜 rite レビュー結果` comments on the PR: `gh api repos/{owner}/{repo}/issues/{pr_number}/comments --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | length'` |
-| `plan_deviation_count` | flow-state | Read `implementation_round` field (set by Phase 5.1.3) via `state-read.sh`. **Use the same fail-fast pattern documented at the Phase 3 pre-condition** (canonical `if cmd; then :; else rc=$?; fi` form). state-read.sh launch failure 時は metrics output を skip し、silent に `"0"` 扱い (= "no deviation" の誤分類) しないこと。per-session state を参照 (legacy state file snapshot ではない)。Phase 5.1 への re-entry 数 (checklist failure 由来) を計測。詳細な bash literal は本ファイル Phase 3 pre-condition の bash block を参照 |
-
-> **Note**: bash literal は table cell 内に埋め込まず、独立 code block として下に分離している。これは LLM が table を読んで値を提示する際に、cell 内 literal を正規の Bash tool 呼び出しと誤認するリスクを避けるため。table cell 内の prose は Phase 3 pre-condition への semantic reference にとどめる。
-
-**`plan_deviation_count` 取得 bash block** (canonical capture pattern を維持し caller-markdown-block.test.sh G-03 metatest が pass することを保証):
-
-```bash
-# canonical fail-fast pattern (Phase 3 pre-condition と同型): state-read.sh 起動失敗時は
-# silent default 0 (= "no deviation") に降格せず、metrics output を skip する。
-# 注意: inline 1 行 form を維持 (caller-markdown-block.test.sh TC-6 が
-# `if val=...; then :; else rc=$?` の 1 行 canonical capture pattern を grep で pin する)。
-if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_5_2_metrics; rc=$rc" >&2; echo "WARNING: state-read.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; val=""; fi
-# numeric type validation (writer/reader/resume 3 layer 対称化 doctrine): 他 caller (Phase 5.7
-# parent_issue_number / implement.md parent_issue_number / pr/review.md loop_count /
-# resume.md parent_issue_number_raw) と同様に non-numeric 値を 0 に降格して partial corruption
-# (`| 計画逸脱回数 | abc回 |` 等) を防ぐ。空文字列 (state-read.sh 失敗) は下記 if-z で別途
-# METRICS_SKIPPED 経路へ流すため、ここでは非空かつ非数値のみ 0 に降格する。
-case "$val" in
-  '') ;;
-  *[!0-9]*)
-    echo "WARNING: implementation_round is not numeric ('$val'), defaulting to 0 (partial corruption 防止)" >&2
-    val=0
-    ;;
-esac
-plan_deviation_count="$val"
-# state-read.sh 失敗時 (`val=""`) は METRICS_SKIPPED sentinel を emit し、後続 Step 2/3/4
-# (threshold evaluation + failure classification + PATCH heredoc generation) を skip させる。
-# silent に空文字列 `{plan_deviation_count}` substitute が下流 heredoc (Phase 5.5.2 完了レポート)
-# に流入し `| 計画逸脱回数 | 回 | ...` の partial corruption が発生する経路
-# を遮断する。Claude は本 sentinel を会話履歴で grep し、検出時は **Phase 5.5.2 metrics body 生成を skip** すること
-# (= metrics PATCH を実行せず、ただし Mandatory After 5.5.2 の `phase5_post_metrics` marker は必ず書き込み、Phase 5.6 へ進む)。
-#
-# 成功経路では PLAN_DEVIATION_COUNT sentinel を emit し、Claude が会話履歴を grep して
-# Step 4 heredoc の `{plan_deviation_count}` placeholder に literal substitute する。シェル変数
-# `$plan_deviation_count` は Bash tool 境界で消失するため、stdout/stderr に明示的に emit しない限り
-# Claude は値を読み取れない。同型の cross-boundary state transfer は resume.md Phase 2.1 Step 1
-# / start.md Phase 5.7 で確立済みの canonical pattern。
-#
-# Emit channel policy: cross-boundary state transfer の sentinel は **stdout / stderr のいずれでも会話コンテキストに記録される**。
-# Claude Code の Bash tool は stdout/stderr 両方を会話コンテキストに取り込む仕様のため、emit channel の
-# 統一は機能要件ではない。本箇所は METRICS_SKIPPED と PLAN_DEVIATION_COUNT を一貫して stderr に emit する
-# (両者を観測値ストリームとして揃える設計選択)。PARENT_ISSUE / PARENT_ISSUE_DISPLAY は stdout 側で emit する
-# 既存の canonical pattern を維持しつつ、本箇所の stderr 採用は **observability ログ専用ストリームを stderr に集約する** 一貫性のための設計選択。
-if [ -z "$val" ]; then
-  echo "[CONTEXT] METRICS_SKIPPED=1; reason=state_read_failed" >&2
-else
-  echo "[CONTEXT] PLAN_DEVIATION_COUNT=$plan_deviation_count" >&2
-fi
-```
-
-**Claude への指示 (METRICS_SKIPPED 検出時の挙動)**: 上記 bash block 実行後、stderr に `[CONTEXT] METRICS_SKIPPED=1; reason=state_read_failed` が emit された場合、Claude は **Step 2 (threshold evaluation)、Step 3 (failure classification)、Step 4 (PATCH heredoc generation) の 3 step すべてを skip** し、`Phase 5.5.2: state-read.sh 失敗のため metrics 更新を skip しました (manual intervention で次回計測してください)` を stderr に出力する。その後、**Mandatory After 5.5.2 (`flow-state-update.sh create --phase phase5_post_metrics` の marker 書き込み) を unconditional に実行してから Phase 5.6 へ進む** (AC-5 により body skip 時も marker 書き込みは必須。これを skip すると Phase 5.6 pre-condition `expected: phase5_post_metrics` で hard abort する)。Phase 5.5.2 の実 heading 構造は Step 1=collect / Step 2=threshold / Step 3=failure classification / **Step 4=Append metrics section to work memory (= heredoc PATCH 本体)** / Step 5=repeated failure であり、Step 4 が PATCH heredoc 本体のため、Step 4 を skip 対象に含めないと空 placeholder の partial corruption が再発する self-defeating defense になる。
-
-**Step 2**: Evaluate thresholds.
-
-Read `metrics.baseline_issues` from rite-config.yml (default: 3).
-
-**Step 2a**: Count completed Issues with metrics. Search the 10 most recently closed Issues for work memory comments containing `📊 メトリクス`:
-
-```bash
-# 直近の closed Issue 番号を取得（最大10件）
-recent_issues=$(gh api "repos/{owner}/{repo}/issues?state=closed&per_page=10&sort=updated&direction=desc" --jq '.[].number')
-
-# 各 Issue のメトリクスセクションを検索
-for issue_num in $recent_issues; do
-  metrics=$(gh api "repos/{owner}/{repo}/issues/${issue_num}/comments" \
-    --jq '[.[] | select(.body | contains("📊 メトリクス"))] | last | .body' 2>/dev/null)
-  if [ -n "$metrics" ] && [ "$metrics" != "null" ]; then
-    echo "FOUND:${issue_num}"
-  fi
-done
-```
-
-**Step 2b**: Determine baseline status:
-
-- **Baseline period** (completed Issues with metrics < `baseline_issues`): Set all judgments to `skip`. Display: `📊 Baseline 収集中 ({n}/{baseline_issues}) — 閾値判定はスキップします`
-- **Post-baseline**: Proceed to Step 2c
-
-**Step 2c**: Evaluate thresholds (post-baseline only):
-
-1. **Per-Issue thresholds** (from Step 1 values): `plan_deviation_rate <= 30`, `test_pass_rate == 100`, `review_fix_loops <= 3`. Set `pass` or `warn`.
-2. **MA thresholds**: Parse `📊 メトリクス` sections from the 5 most recent completed Issues (found in Step 2a). Extract each metric value, calculate the moving average, and compare against `baseline_ma5 * improvement_factor`. Set `pass`, `warn`, or `skip` (if fewer than `baseline_issues` completed).
-
-**Step 3**: Determine failure classification.
-
-If any threshold is `warn`: classify each violation per the [Metric-to-Failure-Class Mapping](../../references/execution-metrics.md#metric-to-failure-class-mapping) table. Select primary failure class (most frequent; tie-break: last occurring).
-
-**Step 4**: Append metrics section to work memory.
-
-Update the Issue work memory comment by appending the metrics table per [Execution Metrics recording format](../../references/execution-metrics.md#recording-format).
-
-> **Reference**: Apply [Work Memory Update Safety Patterns](../../references/gh-cli-patterns.md#work-memory-update-safety-patterns).
-
-```bash
-# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること（クロスプロセス変数参照を防止）
-# comment_data の取得・追記内容の heredoc 定義・PATCH を分割すると変数が失われる
-comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
-comment_id=$(echo "$comment_data" | jq -r '.id // empty')
-current_body=$(echo "$comment_data" | jq -r '.body // empty')
-
-if [ -z "$comment_id" ]; then
-  # comment not found: skip metrics recording entirely (non-fatal; metrics are optional)
-  echo "ERROR: Work memory comment not found. Skipping metrics recording." >&2
-  exit 0
-fi
-
-# 1. Backup before update
-backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
-printf '%s' "$current_body" > "$backup_file"
-
-if [[ -z "$current_body" ]]; then
-  echo "ERROR: Updated body is empty or too short. Aborting PATCH." >&2
-  echo "Backup saved at: $backup_file" >&2
-  exit 1
-fi
-
-# 2. Append metrics section
-tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
-printf '%s\n\n' "$current_body" > "$tmpfile"
-# ⚠️ 以下の heredoc 内の {…} プレースホルダーを Step 1-3 の実測値で置換してから実行すること
-cat >> "$tmpfile" << 'METRICS_EOF'
-### 📊 メトリクス
-
-| メトリクス | 値 | 閾値 | 判定 |
-|-----------|-----|------|------|
-| 計画乖離率 | {plan_deviation_rate}% | ≤30% | {judgment} |
-| テスト通過率 | {test_pass_rate}% | 100% | {judgment} |
-| レビュー指摘(CRITICAL+HIGH) | {review_critical_high}件 | MA5≤{threshold} | {judgment} |
-| review-fixループ | {review_fix_loops}回 | ≤3 | {judgment} |
-| 計画逸脱回数 | {plan_deviation_count}回 | MA5≤{threshold} | {judgment} |
-
-**Baseline**: {baseline_status}
-**失敗分類**: {primary_failure_class} ({corrective_action_pointer})
-METRICS_EOF
-
-# 3. Empty body guard
-if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
-  echo "ERROR: Updated body is empty or too short. Aborting PATCH." >&2
-  echo "Backup saved at: $backup_file" >&2
-  exit 1
-fi
-
-# 4. Header validation
-if grep -q -- '📜 rite 作業メモリ' "$tmpfile"; then
-  : # Header present, proceed
-else
-  echo "ERROR: Updated body missing work memory header. Restoring from backup." >&2
-  cp "$backup_file" "$tmpfile"
-  exit 1
-fi
-
-# 5. PATCH
-jq -n --rawfile body "$tmpfile" '{"body": $body}' \
-  | gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
-    -X PATCH --input -
-patch_status=$?
-if [[ "${patch_status:-1}" -ne 0 ]]; then
-  echo "ERROR: PATCH failed (exit code: $patch_status). Backup saved at: $backup_file" >&2
-  exit 1
-fi
-```
-
-**Placeholder descriptions**: `{plan_deviation_rate}`, `{test_pass_rate}`, `{review_critical_high}`, `{review_fix_loops}`, `{plan_deviation_count}` are the values collected in Step 1. **`{plan_deviation_count}` の source**: Step 1 bash block の stderr に emit される `[CONTEXT] PLAN_DEVIATION_COUNT=<N>` 行を Claude が会話履歴で first-match で grep し、`<N>` 部分を literal substitute する (state-read.sh 失敗時は `[CONTEXT] METRICS_SKIPPED=1` が代わりに emit され、本 heredoc 全体が skip される — 上記「Claude への指示 (METRICS_SKIPPED 検出時の挙動)」段落を参照)。`{judgment}` is `pass`/`warn`/`skip` from Step 2. `{threshold}` is the MA5 threshold. `{baseline_status}`, `{primary_failure_class}`, `{corrective_action_pointer}` are from Steps 2-3. Before executing this bash block, replace all `{...}` placeholders in the heredoc body with actual values computed in Steps 1-3. The heredoc uses a single-quoted delimiter (`'METRICS_EOF'`) so shell variables are NOT expanded; Claude must substitute the placeholder text directly in the template before passing it to the Bash tool.
-
-**Step 5**: Check repeated failure (if `safety.auto_stop_on_repeated_failure: true`).
-
-If the same primary failure class has occurred `safety.repeated_failure_threshold` times consecutively (across recent Issues), trigger fail-closed:
-
-```
-⚠️ 安全装置が発動しました（繰り返し失敗検出）
-分類: {failure_class} が {count} 回連続
-是正アクション: {corrective_action_pointer}
-```
-
-Present options via `AskUserQuestion`:
-- 続行（制限を引き上げ）→ Proceed to 5.6
-- 中止（作業メモリに状態保存）→ Phase 5.6
-- 手動介入（ユーザーが直接対応）→ terminate
+Otherwise: execute the Module procedure (Step 1 collect → Step 2 thresholds → Step 3 failure classification → Step 4 PATCH → Step 5 repeated failure check). On `[CONTEXT] METRICS_SKIPPED=1` sentinel emission (state-read.sh failure), skip Steps 2-4 but still execute Mandatory After 5.5.2 unconditionally (per Module's "Claude への指示" section).
 
 ### 🚨 Mandatory After 5.5.2
 
@@ -1747,27 +1394,9 @@ Use [Basic Query](../../references/epic-detection.md#basic-query). All `CLOSED`�
 
 Confirm via `AskUserQuestion`. If "No", display message and proceed to 5.7.3 (no auto-close). If yes, update Projects Status to "Done" and then close the Issue.
 
-Skip Step 1 if `projects.enabled: false` in rite-config.yml. Otherwise:
+**Step 1**: Update parent Issue Status to "Done".
 
-**Step 1**: Update parent Issue Status to "Done" via the shared script:
-
-```bash
-bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
-  --argjson issue {parent_issue_number} \
-  --arg owner "{owner}" \
-  --arg repo "{repo}" \
-  --argjson project_number {project_number} \
-  --arg status "Done" \
-  --argjson auto_add false \
-  --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
-```
-
-Inspect the script's stdout JSON:
-
-- `.result == "updated"` → success.
-- `.result == "skipped_not_in_project"` → display `警告: Issue #{parent_issue_number} は Project に登録されていません` and proceed to Step 2 (non-blocking).
-- `.result == "failed"` → display `.warnings[]` and proceed to Step 2 (non-blocking).
+> **Module**: [Projects Status Update Callsites](./references/projects-status-update-callsites.md#callsite-3--phase-572-parent-issue-status--done) — Callsite 3 (Phase 5.7.2) bash literal SoT。Skip if `projects.enabled: false` in rite-config.yml. Otherwise execute the Module procedure (Status update to "Done" for `{parent_issue_number}`, `auto_add: false` for parent Issue). On `skipped_not_in_project` / `failed` result, display `.warnings[]` and proceed to Step 2 (non-blocking).
 
 **Step 2**: Close the parent Issue via `/rite:issue:close` Skill invocation.
 

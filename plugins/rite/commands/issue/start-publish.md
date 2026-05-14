@@ -21,7 +21,7 @@ Execute the publish phase for an Issue. This sub-skill is invoked from `start.md
 
 ## 🚨 MANDATORY Pre-flight: Flow State Update (MUST execute FIRST)
 
-> 本 Pre-flight は sub-skill の **先頭** で実行し publish scope に関係なく flow-state write を保証する。Return Output Format 到達前に LLM stop / context truncation / interrupt が発生した場合でも post-publish phase / next_action が記録されるよう、sub-skill 先頭で Pre-flight write を保証する (defense-in-depth: caller の delegation pre-write は upstream で先行書き込み済みだが、本 Pre-flight が timestamp と next_action を refresh する)。
+> 本 Pre-flight は sub-skill の **先頭** で実行し publish scope に関係なく flow-state write を保証する。Return Output Format 到達前に LLM stop / context truncation / interrupt が発生した場合でも、`phase5_publish_running` phase + sub-skill 由来の `next_action` が必ず記録されるよう (caller の delegation pre-write を上書きせず timestamp / `next_action` を refresh)、sub-skill 先頭で Pre-flight write を保証する。`phase5_post_publish` への遷移は Return Output Format (line 318-) の re-patch が担う。
 
 **MUST run before any publish logic** (Phase 5.3 PR creation / Phase 5.4 review-fix loop / return-output emission)。**not optional**:
 
@@ -66,7 +66,7 @@ Run [Preflight Protocol](./start.md#preflight-protocol) before creating PR.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_pr" --issue {issue_number} --branch "{branch_name}" \
   --pr 0 \
-  --next "After rite:pr:create returns: [pr:created:{N}]->save pr_number, Phase 5.4 (review loop). [pr:create-failed]->emit aborted sentinel and return to caller (start.md routes to Phase 5.6). Do NOT stop."
+  --next "After rite:pr:create returns: [pr:created:{N}]->save pr_number, Phase 5.4 (review loop). [pr:create-failed]->ask user via AskUserQuestion (3 options: 再試行 / Edit ツールで PR 作成して continue / Phase 5.6 へ); 再試行 と continue は sub-skill 内 loop、Phase 5.6 へ のみ emit aborted sentinel and return to caller. Do NOT stop."
 ```
 
 > **Data Handoff**: When invoking `rite:pr:create`, include the Issue information retrieved in Phase 0.1 (`number`, `title`, `body`, `labels`) in the Skill prompt to avoid redundant `gh issue view` calls in the child command.
@@ -80,7 +80,7 @@ Invoke `skill: "rite:pr:create"`.
 - `[pr:created:{number}]` → extract `{pr_number}`, proceed to Phase 5.4 (Review-Fix Loop).
 - `[pr:create-failed]` → **emit WORKFLOW_INCIDENT sentinel and ask user via `AskUserQuestion`** with 3 options (`再試行` / `Edit ツールで PR 作成して continue` / `Phase 5.6 へ`):
   - **「再試行」**: Phase 5.3 (rite:pr:create) を再呼出する (network blip / 一時的な auth エラー等の transient failure 回復用)。
-  - **「Edit ツールで PR 作成して continue」**: §B SoT Step 2 (`manual_fallback_adopted`) を emit し、ユーザーが手動で PR を作成した後 `{pr_number}` を context に確認してから Phase 5.4 (Review-Fix Loop) へ進む。
+  - **「Edit ツールで PR 作成して continue (incident 記録)」**: §B SoT Step 2 (`manual_fallback_adopted`) を emit し、ユーザーが手動で PR を作成した後 `{pr_number}` を context に確認してから Phase 5.4 (Review-Fix Loop) へ進む。
   - **「Phase 5.6 へ」**: emit `[start:publish:aborted]` and return to caller (caller routes to Phase 5.6)。
 
 > **Emit canonical literal**: See [§B — Phase 5.3 `[pr:create-failed]`](./references/workflow-incident-emit-pattern.md#b--phase-53-prcreate-failed) (SoT) for both emit steps (Step 1 `skill_load_failure` is emitted **before** the AskUserQuestion; Step 2 `manual_fallback_adopted` is emitted **only when** user selects 「Edit ツールで PR 作成して continue」), `|| true` non-blocking guarantee, and `--pr-number 0` semantics. The response-text-inclusion requirement that Phase 5.4.4.1 grep detection depends on is documented in [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件). Do NOT inline the bash literals here.
@@ -360,7 +360,7 @@ abort path (Phase 5.3 `[pr:create-failed]` / Phase 5.4.6 `[fix:error]` user-term
 Result pattern (grep-matchable string inside HTML comment):
 
 - **Publish completed (success)**: `<!-- [start:publish:completed] -->` (matches `grep -F '[start:publish:completed]'`) — emitted when review-fix loop converges via `[review:mergeable]` or `[fix:replied-only]`. Caller routes to Phase 5.5 (Ready for Review).
-- **Publish aborted**: `<!-- [start:publish:aborted] -->` (matches `grep -F '[start:publish:aborted]'`) — emitted when `rite:pr:create` returns `[pr:create-failed]`, or when `rite:pr:fix` returns `[fix:error]` and user selects 「Phase 5.6 にスキップ」/「Edit ツールで手動 fallback」/「terminate」. Caller routes to Phase 5.6 (Completion Report), **skipping** Phase 5.5.
+- **Publish aborted**: `<!-- [start:publish:aborted] -->` (matches `grep -F '[start:publish:aborted]'`) — emitted when `rite:pr:create` returns `[pr:create-failed]` **and user selects 「Phase 5.6 へ」** (3-option AskUserQuestion 経由、「再試行」「Edit ツールで PR 作成して continue (incident 記録)」 を選択した場合は abort されず sub-skill 内 loop 継続)、または `rite:pr:fix` returns `[fix:error]` and user selects 「Phase 5.6 にスキップ」/「Edit ツールで手動 fallback (incident 記録)」/「terminate」. Caller routes to Phase 5.6 (Completion Report), **skipping** Phase 5.5.
 
 Both patterns are consumed by the orchestrator (`start.md` Mandatory After 5.3-5.4 — Step 3) to determine the next action.
 

@@ -33,13 +33,17 @@ REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 START_MD="$REPO_ROOT/plugins/rite/commands/issue/start.md"
 # PR F (#902) extracted Phase 5.0-5.2.1 (incl. §A Phase 5.2 `[lint:aborted]` anchor reference)
 # into start-execute.md. PR G1 (#903) extracted Phase 5.3/5.4 (incl. §B Phase 5.3 `[pr:create-failed]`
-# / §C Phase 5.4.4 `[fix:error]` anchor references) into start-publish.md. The anchor ownership is:
+# / §C Phase 5.4.4 `[fix:error]` anchor references) into start-publish.md. PR G2 (#904) extracted
+# Phase 5.5-Termination (incl. §D Phase 5.5 `[ready:error]` anchor reference) into start-finalize.md.
+# The anchor ownership is:
 #   §A → start-execute.md
 #   §B / §C → start-publish.md
-#   §D + `## 不変条件` → start.md (Phase 5.5 stays in start.md)
+#   §D → start-finalize.md (Phase 5.5 moved to start-finalize.md in PR G2)
+#   `## 不変条件` → start.md (本体 contract retains generic reference to emit-pattern.md#不変条件)
 # Anchor drift check scans the owner file per anchor.
 START_EXECUTE_MD="$REPO_ROOT/plugins/rite/commands/issue/start-execute.md"
 START_PUBLISH_MD="$REPO_ROOT/plugins/rite/commands/issue/start-publish.md"
+START_FINALIZE_MD="$REPO_ROOT/plugins/rite/commands/issue/start-finalize.md"
 REF_DETECTION="$REPO_ROOT/plugins/rite/commands/issue/references/workflow-incident-detection.md"
 REF_EMIT="$REPO_ROOT/plugins/rite/commands/issue/references/workflow-incident-emit-pattern.md"
 REF_FINGERPRINT="$REPO_ROOT/plugins/rite/commands/issue/references/fingerprint-cycling.md"
@@ -278,6 +282,8 @@ done
 # PR G1 #903 fix: Phase 5.3 / 5.4.3 / 5.4.6 rows が start-publish sub-skill 抽出により
 # 「Phase 5.3-5.4 (publish) | Mandatory After 5.3-5.4」へ統合された。internal pr:create /
 # pr:review / pr:fix 呼出は start-publish 内に閉じ、orchestrator 視点では 3 boundary。
+# PR G2 #904 fix: Phase 5.5.0.1 (pr:ready) row が start-finalize sub-skill 抽出により
+# 「Phase 5.5-Termination (finalize) | Mandatory After 5.5-Termination」へ変更。
 assert_grep "start: When to execute table — Phase 5.0-5.2.1 execute row" \
   "$START_MD" \
   'Phase 5\.0-5\.2\.1 \(execute\).*Mandatory After 5\.0-5\.2\.1'
@@ -286,9 +292,9 @@ assert_grep "start: When to execute table — Phase 5.3-5.4 publish row" \
   "$START_MD" \
   'Phase 5\.3-5\.4 \(publish\).*Mandatory After 5\.3-5\.4'
 
-assert_grep "start: When to execute table — Phase 5.5.0.1 pr:ready row" \
+assert_grep "start: When to execute table — Phase 5.5-Termination finalize row" \
   "$START_MD" \
-  'Phase 5\.5\.0\.1 \(pr:ready\).*Mandatory After 5\.5'
+  'Phase 5\.5-Termination \(finalize\).*Mandatory After 5\.5-Termination'
 
 # Skip condition + Invariants が本体に残されている (本体 contract)
 assert_grep "start: Skip condition retained" \
@@ -318,6 +324,27 @@ assert_grep "start-publish: rite:pr:review skill invocation retained" \
 assert_grep "start-publish: rite:pr:fix skill invocation retained" \
   "$START_PUBLISH_MD" \
   'skill: "rite:pr:fix"'
+
+# === 5.6. start-finalize.md 内の rite:pr:ready / rite:issue:close Skill invocation contract (PR G2) ===
+# PR G2 で Phase 5.5/5.7 が start-finalize.md sub-skill 内に閉じたため、
+# start.md からは「Phase 5.5 (pr:ready) row」「5.7.2 (rite:issue:close)」の assert が削除された。
+# 代わりに「start-finalize.md 内に rite:pr:ready / rite:issue:close の Skill invocation が
+# 必ず存在する」ことを pin することで、内部 Skill 呼出が誤削除される drift を検出する。
+echo ""
+echo "--- 5.6. start-finalize.md 内の rite:pr:ready / rite:issue:close Skill invocation contract (PR G2) ---"
+
+assert_grep "start-finalize: rite:pr:ready skill invocation retained" \
+  "$START_FINALIZE_MD" \
+  'skill: "rite:pr:ready"'
+
+assert_grep "start-finalize: rite:issue:close skill invocation retained" \
+  "$START_FINALIZE_MD" \
+  'skill: "rite:issue:close"'
+
+# start-finalize.md drift guard: inline workflow-incident-emit.sh literal が再混入しないこと
+assert_not_grep "start-finalize: no inline 'workflow-incident-emit.sh' bash literal (drift guard)" \
+  "$START_FINALIZE_MD" \
+  'bash \{plugin_root\}/hooks/workflow-incident-emit.sh'
 
 # === 6. start.md drift guard — inline emit literal must NOT reappear (#937) ===
 echo ""
@@ -410,7 +437,7 @@ anchor_pairs=(
   '### §A — Phase 5.2 `[lint:aborted]`|a--phase-52-lintaborted|start-execute'
   '### §B — Phase 5.3 `[pr:create-failed]`|b--phase-53-prcreate-failed|start-publish'
   '### §C — Phase 5.4.4 `[fix:error]`|c--phase-544-fixerror|start-publish'
-  '### §D — Phase 5.5 `[ready:error]`|d--phase-55-readyerror|start'
+  '### §D — Phase 5.5 `[ready:error]`|d--phase-55-readyerror|start-finalize'
   '## 不変条件|不変条件|start'
 )
 
@@ -428,10 +455,11 @@ for pair in "${anchor_pairs[@]}"; do
     fail "anchor: emit-pattern.md MISSING heading literal: $heading (heading が書き換えられた可能性)"
   fi
 
-  # (b) owner file に対応 anchor が存在することを検証 (PR F #902 ownership 契約):
+  # (b) owner file に対応 anchor が存在することを検証 (PR F/G1/G2 #902/#903/#904 ownership 契約):
   #   - §A → start-execute.md
-  #   - §B-§D + 不変条件 → start.md
-  # owner='start' なら $START_MD のみ、owner='start-execute' なら $START_EXECUTE_MD のみを grep。
+  #   - §B / §C → start-publish.md
+  #   - §D → start-finalize.md
+  #   - `## 不変条件` → start.md (本体 contract 内 generic reference)
   case "$owner" in
     start)
       owner_file="$START_MD"
@@ -445,8 +473,12 @@ for pair in "${anchor_pairs[@]}"; do
       owner_file="$START_PUBLISH_MD"
       owner_label="start-publish.md"
       ;;
+    start-finalize)
+      owner_file="$START_FINALIZE_MD"
+      owner_label="start-finalize.md"
+      ;;
     *)
-      fail "anchor: unknown owner '$owner' in anchor_pairs (must be 'start', 'start-execute', or 'start-publish')"
+      fail "anchor: unknown owner '$owner' in anchor_pairs (must be 'start', 'start-execute', 'start-publish', or 'start-finalize')"
       continue
       ;;
   esac

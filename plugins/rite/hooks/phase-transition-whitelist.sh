@@ -103,7 +103,21 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   # 新規 edge として許容する。
   ["phase5_post_execute"]="phase5_pr phase5_publish_running phase5_completion"
   ["phase5_publish_running"]="phase5_pr phase5_post_publish"
-  ["phase5_post_publish"]="phase5_ready phase5_post_ready phase5_ready_error phase5_completion"
+  # phase5_post_publish (PR G1 terminal) → phase5_finalize_running (PR G2 delegation entry) を
+  # 新規 edge として追加 (PR G2 #904)。
+  ["phase5_post_publish"]="phase5_ready phase5_post_ready phase5_ready_error phase5_completion phase5_finalize_running"
+
+  # /rite:issue:start-finalize sub-skill (PR G2 #904)
+  # start.md Phase 5.5-Termination delegation: orchestrator writes phase5_finalize_running
+  # before invoke, sub-skill writes terminal `completed` via Workflow Termination when done.
+  # Workflow terminal sentinel is [start:finalize:completed] (no further phase work) or
+  # [start:finalize:aborted] (Phase 5.5 user selects 「More fixes」or [ready:error] terminate).
+  # success path: phase5_finalize_running → phase5_ready → ... → phase5_completion →
+  #   phase5_parent_completion → phase5_post_parent_completion → completed
+  # abort path: phase5_finalize_running → completed (direct via terminal patch on abort)
+  # Note: no separate phase5_post_finalize indirection — [start:finalize:completed] IS the
+  # workflow terminal sentinel per design doc SPEC-TECH-DECISIONS #3.
+  ["phase5_finalize_running"]="phase5_ready phase5_completion completed"
 
   # Phase 5.3: PR create
   # start.md Phase 5.3 Mandatory After transitions directly from phase5_pr to phase5_review

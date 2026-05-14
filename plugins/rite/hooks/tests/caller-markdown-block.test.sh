@@ -48,6 +48,8 @@ PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 COMMANDS_DIR="$PLUGIN_ROOT/commands"
 
 START_MD="$COMMANDS_DIR/issue/start.md"
+# PR G2 #904: Phase 5.5.1 / 5.6 / 5.7 caller bash block を start-finalize.md sub-skill へ SoT 移管
+START_FINALIZE_MD="$COMMANDS_DIR/issue/start-finalize.md"
 IMPLEMENT_MD="$COMMANDS_DIR/issue/implement.md"
 REVIEW_MD="$COMMANDS_DIR/pr/review.md"
 RESUME_MD="$COMMANDS_DIR/resume.md"
@@ -57,13 +59,19 @@ METRICS_RECORDING_MD="$COMMANDS_DIR/issue/references/metrics-recording.md"
 # === Test 1: caller bash block の存在確認 (regression 対策の前提) ===
 echo "TC-1: state-read.sh 呼出 caller bash block の存在確認"
 
-# start.md は 4 箇所 (Phase 3 / 5.5.1 / 5.6 / 5.7 Workflow Termination)
+# start.md は 1 箇所 (Phase 3 のみ残存)
 # cycle 43 F-12 LOW 対応: Phase 5.5.2 の plan_deviation_count metric capture を table cell から
 # 別 bash code block へ分離した結果、caller 数が 4 → 5 に増えた。
 # Issue #901 PR E: Phase 5.5.2 implementation_round inline 形式を metrics-recording.md へ SoT 移管
 # した結果、start.md の caller 数が 5 → 4 に減った (TC-1.5 で metrics-recording.md の 1 箇所を別途検証)。
+# PR G2 #904: Phase 5.5.1 / 5.6 / 5.7 caller を start-finalize.md へ SoT 移管した結果、
+# start.md の caller 数が 4 → 1 に減った (TC-1.6 で start-finalize.md の 3 箇所を別途検証)。
 start_count=$(grep -cE '^if [a-z_]+=\$\(bash \{plugin_root\}/hooks/state-read\.sh' "$START_MD" || true)
-assert "TC-1.1: start.md の caller bash block は 4 箇所" "4" "$start_count"
+assert "TC-1.1: start.md の caller bash block は 1 箇所" "1" "$start_count"
+
+# start-finalize.md は 3 箇所 (Phase 5.5.1 / 5.6 / 5.7) — PR G2 #904 で SoT 移管
+start_finalize_count=$(grep -cE '^if [a-z_]+=\$\(bash \{plugin_root\}/hooks/state-read\.sh' "$START_FINALIZE_MD" || true)
+assert "TC-1.6: start-finalize.md の caller bash block は 3 箇所" "3" "$start_finalize_count"
 
 # implement.md は 1 箇所
 implement_count=$(grep -cE '^if [a-z_]+=\$\(bash \{plugin_root\}/hooks/state-read\.sh' "$IMPLEMENT_MD" || true)
@@ -109,9 +117,13 @@ echo ""
 echo "TC-3: G-02 — canonical \`if cmd; then :; else rc=\$?; fi\` pattern の存在確認"
 
 # canonical 直後 (else 節) に `rc=$?` を持つこと
-# (start.md は phase / parent_issue_number で 4 箇所すべて、implement.md は 1 箇所、review.md は 1 箇所)
+# (start.md は phase で 1 箇所、start-finalize.md は 3 箇所、implement.md は 1 箇所、review.md は 1 箇所)
+# PR G2 #904: parent_issue_number caller を start-finalize.md へ SoT 移管した結果、start.md は 1 箇所に
 start_canonical=$(grep -cE 'if [a-z_]+=\$\(bash \{plugin_root\}/hooks/state-read\.sh.*then$' "$START_MD" || true)
-assert "TC-3.1: start.md の canonical pattern (4 箇所) が存続" "4" "$start_canonical"
+assert "TC-3.1: start.md の canonical pattern (1 箇所) が存続" "1" "$start_canonical"
+
+start_finalize_canonical=$(grep -cE 'if [a-z_]+=\$\(bash \{plugin_root\}/hooks/state-read\.sh.*then$' "$START_FINALIZE_MD" || true)
+assert "TC-3.1b: start-finalize.md の canonical pattern (3 箇所) が存続" "3" "$start_finalize_canonical"
 
 implement_canonical=$(grep -cE 'if [a-z_]+=\$\(bash \{plugin_root\}/hooks/state-read\.sh.*then$' "$IMPLEMENT_MD" || true)
 assert "TC-3.2: implement.md の canonical pattern (1 箇所) が存続" "1" "$implement_canonical"
@@ -144,9 +156,9 @@ assert_2line_validation() {
   fi
 }
 
-# start.md Phase 5.7: parent_issue_number
-assert_2line_validation "TC-4.1: start.md に parent_issue_number の type validation pattern が存在" \
-  "$START_MD" "parent_issue_number"
+# start-finalize.md Phase 5.7: parent_issue_number (PR G2 #904 で start.md から SoT 移管)
+assert_2line_validation "TC-4.1: start-finalize.md に parent_issue_number の type validation pattern が存在" \
+  "$START_FINALIZE_MD" "parent_issue_number"
 
 # implement.md Phase 5.1.2: parent_issue_number
 assert_2line_validation "TC-4.2: implement.md に parent_issue_number の type validation pattern が存在" \
@@ -168,8 +180,8 @@ assert_2line_validation "TC-4.4: resume.md に parent_issue_number_raw の type 
 echo ""
 echo "TC-5: type validation の default 値 pin (numeric field は 0 に降格)"
 
-assert_grep "TC-5.1: start.md の parent_issue_number validation が default 0 に降格する" \
-  "$START_MD" \
+assert_grep "TC-5.1: start-finalize.md の parent_issue_number validation が default 0 に降格する" \
+  "$START_FINALIZE_MD" \
   'parent_issue_number=0'
 
 assert_grep "TC-5.2: implement.md の parent_issue_number validation が default 0 に降格する" \

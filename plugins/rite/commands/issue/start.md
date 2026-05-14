@@ -62,13 +62,9 @@ Execute phases sequentially. **Do NOT stop between phases unless the user explic
 | 2.6 (Work Memory) | `rite:issue:work-memory-init` | 3 | **No** |
 | 3 (Plan) | `rite:issue:implementation-plan` | 4 | **No** |
 | 4 (Guidance) | — | 5 or terminate | Yes (user choice) |
-| 5.0-5.2.1 (Execute) | `rite:issue:start-execute` | 5.3-5.4 or 5.6 | **No** |
-| 5.3-5.4 (Publish) | `rite:issue:start-publish` | 5.5 or 5.6 | **No** |
-| 5.5 (Ready) | `rite:pr:ready` | 5.5.0.1→5.5.1 | **No** |
-| 5.5.1 (Status In Review) | — | 5.5.2 | **No** |
-| 5.5.2 (Metrics) | — | 5.6 | **No** |
-| 5.6 (Report) | — | 5.7 or Workflow Termination | Yes (only after completion handoff is displayed) |
-| 5.7 (Parent Completion) | — | Workflow Termination | Yes (only after completion handoff is displayed) |
+| 5.0-5.2.1 (Execute) | `rite:issue:start-execute` | 5.3-5.4 or 5.5-Termination | **No** |
+| 5.3-5.4 (Publish) | `rite:issue:start-publish` | 5.5-Termination | **No** |
+| 5.5-Termination (Finalize) | `rite:issue:start-finalize` | Workflow Termination | Yes (only after completion handoff is displayed) |
 
 ---
 
@@ -530,13 +526,11 @@ The e2e flow must minimize context consumption to complete within a single sessi
 
 ```
 5.0-5.2.1 rite:issue:start-execute (sub-skill: Stop Hook + 実装 + lint + checklist)
-  → [start:execute:completed]→5.3-5.4 / [start:execute:aborted]→5.6
+  → [start:execute:completed]→5.3-5.4 / [start:execute:aborted]→5.5-Termination
 5.3-5.4 rite:issue:start-publish (sub-skill: PR create + review-fix loop)
-  → [start:publish:completed]→5.5 / [start:publish:aborted]→5.6
-5.5 Ready for Review 確認 → rite:pr:ready → [ready:completed]→5.5.0.1→5.5.1 Status 更新 → 5.5.2
-5.5.2 メトリクス記録 → 5.6
-5.6 完了報告
-5.7 親 Issue 完了処理
+  → [start:publish:completed]→5.5-Termination / [start:publish:aborted]→5.5-Termination
+5.5-Termination rite:issue:start-finalize (sub-skill: ready + status + metrics + completion + parent close + termination)
+  → [start:finalize:completed] (workflow 終端) / [start:finalize:aborted] (User-terminate during finalize)
 ```
 
 ### Preflight Protocol
@@ -635,7 +629,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 ### 5.4.4.1 Workflow Incident Detection (Contract Summary)
 
-> **Reference**: This section documents the **本体 contract** for workflow incident detection. The detailed Step 1-7 processing flow lives in [Workflow Incident Detection](./references/workflow-incident-detection.md); emit pattern canonical bash literals live in [Workflow Incident Emit Pattern](./references/workflow-incident-emit-pattern.md); fingerprint cycling / Quality Signal 3 & 4 detail lives in [Fingerprint Cycling Detection](./references/fingerprint-cycling.md). The orchestrator (`/rite:issue:start`) invokes detection at three boundaries (Mandatory After 5.0-5.2.1 / 5.3-5.4 / 5.5 — see "When to execute" table below).
+> **Reference**: This section documents the **本体 contract** for workflow incident detection. The detailed Step 1-7 processing flow lives in [Workflow Incident Detection](./references/workflow-incident-detection.md); emit pattern canonical bash literals live in [Workflow Incident Emit Pattern](./references/workflow-incident-emit-pattern.md) (the response-text-inclusion requirement that grep detection below depends on is documented in [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件)); fingerprint cycling / Quality Signal 3 & 4 detail lives in [Fingerprint Cycling Detection](./references/fingerprint-cycling.md). The orchestrator (`/rite:issue:start`) invokes detection at three boundaries (Mandatory After 5.0-5.2.1 / 5.3-5.4 / 5.5-Termination — see "When to execute" table below).
 
 **Detection scope** — recognised sentinel `type` values:
 
@@ -651,13 +645,13 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 **When to execute** (explicit routing):
 
-This phase runs **after every Skill invocation in Phase 5** at the following explicit invocation points. With PR F/G1 sub-skill extraction, the orchestrator's Skill boundaries are 3 — `start-execute` (5.0-5.2.1) / `start-publish` (5.3-5.4) / `pr:ready` (5.5). Internal `pr:create` / `pr:review` / `pr:fix` invocations happen inside `start-publish` and are detected by the same context-grep at the publish delegation boundary.
+This phase runs **after every Skill invocation in Phase 5** at the following explicit invocation points. With PR F/G1/G2 sub-skill extraction, the orchestrator's Skill boundaries are 3 — `start-execute` (5.0-5.2.1) / `start-publish` (5.3-5.4) / `start-finalize` (5.5-Termination). Internal `pr:create` / `pr:review` / `pr:fix` invocations happen inside `start-publish` and are detected by the same context-grep at the publish delegation boundary. Internal `pr:ready` / `issue:close` invocations happen inside `start-finalize` and are detected at the finalize delegation boundary.
 
 | Caller | Invocation point | Trigger |
 |--------|------------------|---------|
 | Phase 5.0-5.2.1 (execute) | Mandatory After 5.0-5.2.1 — Step 2 | Always after `[start:execute:*]` pattern |
 | Phase 5.3-5.4 (publish) | Mandatory After 5.3-5.4 — Step 2 | Always after `[start:publish:*]` pattern (covers internal `[pr:created:{N}]` / `[pr:create-failed]` / `[review:*]` / `[fix:*]` emits via context grep) |
-| Phase 5.5.0.1 (pr:ready) | Mandatory After 5.5 — Step 3 | Always after `[ready:*]` pattern |
+| Phase 5.5-Termination (finalize) | Mandatory After 5.5-Termination — Step 2 | Always after `[start:finalize:*]` pattern (covers internal `[ready:*]` emit via context grep) |
 
 Each Mandatory After section MUST include a **"Run Phase 5.4.4.1 detection"** step that directs the orchestrator to grep the recent conversation context for sentinel lines BEFORE proceeding to the next phase.
 
@@ -665,416 +659,45 @@ Each Mandatory After section MUST include a **"Run Phase 5.4.4.1 detection"** st
 
 **Invariants**: Issue creation failure is non-blocking (workflow MUST NOT halt). The codepath is independent of Phase 7 (Issue creation from review recommendations). Default-on behavior: when `workflow_incident:` section is absent from `rite-config.yml`, treat as `enabled: true`.
 
-### 5.5 Ready for Review
+### 5.5-Termination Finalize Phase (delegated to start-finalize sub-skill)
 
-> **⚠️ MANDATORY**: The following `AskUserQuestion` confirmation MUST be executed. Do NOT skip this step for context optimization or any other reason. The user must always confirm before changing the PR to Ready for review.
+**Pre-write** (before invoking `rite:issue:start-finalize`):
 
-When loop completes, confirm via `AskUserQuestion`:
-
-```
-レビューが完了しました（一気通貫フロー）
-総合評価: {assessment}
-指摘件数: {total_findings}
-オプション: Ready for review に変更（推奨）/ ドラフトのまま完了 / 追加の修正を行う
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase "phase5_finalize_running" --issue {issue_number} --branch "{branch_name}" \
+  --pr {pr_number} \
+  --next "After rite:issue:start-finalize returns: workflow terminates (terminal state already written by sub-skill). Caller MUST output completion handoff message. Do NOT stop."
 ```
 
-> **Data Handoff**: When invoking `rite:pr:ready`, PR number is passed as an argument. Issue information from Phase 0.1 is available in work memory (loaded by `rite:pr:ready` Phase 0), avoiding redundant `gh issue view` calls.
+> **Module**: [Finalize Phase](./start-finalize.md) - Handles Phase 5.5 (Ready for Review via `rite:pr:ready`), 5.5.1 (Issue Status In Review), 5.5.2 (Metrics Recording), 5.6 (Completion Report incl. 5.6.1 Workflow Incident Reporting + 5.6.2 Wiki Ingest Status Reporting), 5.7 (Parent Issue Completion via `rite:issue:close`), Workflow Termination.
 
-**Ready**→invoke `rite:pr:ready`→5.5.1. **Draft**→5.6. **More fixes**→terminate.
+Invoke `skill: "rite:issue:start-finalize"`.
 
-**Immediate after ready returns**: When `rite:pr:ready` outputs `[ready:completed]` and returns control, do **NOT** churn or pause — **immediately** proceed to 5.5.0.1 Mandatory After 5.5 below. The ready sub-skill has already updated flow state to `phase5_post_ready` via Phase 4.6 (defense-in-depth, fixes #17); execute the 5.5.0.1 steps without delay. The completion report (Phase 5.6) has NOT been output yet — `ready.md` intentionally skips it in e2e flow. You MUST continue to Phase 5.5.1, 5.5.2, and 5.6.
+**Immediate after start-finalize returns**: When `start-finalize` outputs `<!-- [start:finalize:completed] -->` (success — workflow terminated normally) or `<!-- [start:finalize:aborted] -->` (abort — Phase 5.5 user selects 「More fixes」or `[ready:error]` user-terminate) sentinel and returns control, do **NOT** stop — **immediately** proceed to Mandatory After 5.5-Termination below.
 
-**Results**: `[ready:completed]`→5.5.0.1→5.5.1→5.5.2→5.6. `[ready:error]`→**emit sentinel and ask user** (#366).
-
-> **Emit canonical literal**: See [§D — Phase 5.5 `[ready:error]`](./references/workflow-incident-emit-pattern.md#d--phase-55-readyerror) (SoT) for both emit steps (Step 1 `skill_load_failure` + Step 2 `manual_fallback_adopted` after user selects 「Edit ツールで手動 Ready 化」 in the `AskUserQuestion`), `|| true` non-blocking guarantee, and `--pr-number {pr_number}` semantics. The response-text-inclusion requirement that Phase 5.4.4.1 grep detection depends on is documented in [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件). Do NOT inline the bash literals here.
-
-#### 5.5.0.1 🚨 Mandatory After 5.5
+### 🚨 Mandatory After 5.5-Termination
 
 > See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
 > MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
-**Verify**: `[ready:completed]` pattern confirmed. `rite:pr:ready` returned successfully. Status update, metrics recording, and completion report are still pending — these are the **primary deliverables** of the e2e flow that the user expects to see.
-
-**Step 1**: Update flow state to post-ready phase (atomic). This write transitions from `phase5_post_review`/`phase5_post_fix` to `phase5_post_ready`, ensuring stop-guard routes to Status update rather than re-invoking ready (fixes #781):
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_post_ready" --issue {issue_number} --branch "{branch_name}" \
-  --pr {pr_number} \
-  --next "Phase 5.5.1: Update Issue Status to In Review, then Phase 5.5.2 metrics, then Phase 5.6 completion report. Do NOT stop."
-```
-
-**Step 2**: Sync to local work memory:
-
-```bash
-WM_SOURCE="ready" \
-  WM_PHASE="phase5_post_ready" \
-  WM_PHASE_DETAIL="Ready処理後" \
-  WM_NEXT_ACTION="Issue Status を In Review に更新後、メトリクス記録、完了レポートを実行" \
-  WM_BODY_TEXT="Post-ready sync." \
-  WM_ISSUE_NUMBER="{issue_number}" \
-  WM_READ_FROM_FLOW_STATE="true" \
-  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
-```
-
-**Step 3 (Workflow Incident Detection)**: Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines emitted by `[ready:error]` orchestrator-direct emit. If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 4 regardless of detection result.
-
-**Step 4**: **→ Proceed to 5.5.1 now**.
-
-#### 5.5.1 Update Issue Status to "In Review"
-
-**Pre-condition check** (#490 AC-5): See [Pre-condition Gate](./references/pre-condition-gate.md). Expected `.phase`: `phase5_post_ready`.
-
-```bash
-if curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
-  :
-else
-  rc=$?
-  echo "ERROR: state-read.sh failed (rc=$rc) for --field phase in Phase 5.5.1 pre-condition" >&2
-  echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_5_1_pre_condition; rc=$rc" >&2
-  exit 1
-fi
-if [ "$curr" != "phase5_post_ready" ]; then
-  echo "ERROR: Phase 5.5.1 pre-condition failed. .phase=$curr (expected: phase5_post_ready)" >&2
-  echo "ACTION: Return to Phase 5.5 (Ready for Review) and execute its Pre-write + rite:pr:ready invocation + Mandatory After 5.5 before entering Phase 5.5.1." >&2
-  echo "⚠️ LLM MUST NOT proceed to Phase 5.5.1 Pre-write below. Re-invoke Phase 5.5 first." >&2
-  exit 1
-fi
-```
-
-**Pre-write**:
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_status_in_review" --issue {issue_number} --branch "{branch_name}" \
-  --pr {pr_number} \
-  --next "Execute Phase 5.5.1 (Issue Status → In Review). Skipping to Phase 5.5.2/5.6 without running the Status update is PROHIBITED. Do NOT stop."
-```
-
-> **Module**: [Projects Status Update Callsites](./references/projects-status-update-callsites.md#callsite-2--phase-551-issue-status--in-review) — Callsite 2 (Phase 5.5.1) bash literal SoT。Skip if `projects.enabled: false` in rite-config.yml. Otherwise execute the Module procedure (Status update to "In Review", `auto_add: false` since Phase 2.4 already auto-added if missing). Defense-in-depth — `rite:pr:ready` Phase 4 also attempts this, but may not execute reliably within e2e flow. API レベル動作は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) を参照。
-
-### 🚨 Mandatory After 5.5.1
-
-> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
-> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
-
-**Step 1**: Update flow state to post-status-in-review phase:
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_post_status_in_review" --issue {issue_number} --branch "{branch_name}" \
-  --pr {pr_number} \
-  --next "Phase 5.5.1 completed (Issue Status → In Review). Proceed to Phase 5.5.2 (Metrics Recording). Do NOT stop."
-```
-
-**Step 2**: **→ Proceed to Phase 5.5.2 now**.
-
-### 5.5.2 Metrics Recording
-
-**Pre-write**:
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_metrics" --issue {issue_number} --branch "{branch_name}" \
-  --pr {pr_number} \
-  --next "Execute Phase 5.5.2 (Metrics Recording). Skipping to Phase 5.6 without running metrics is PROHIBITED. Do NOT stop."
-```
-
-> **Reference**: [Execution Metrics](../../references/execution-metrics.md). **Module**: [Metrics Recording](./references/metrics-recording.md) — Phase 5.5.2 全体 (Step 1-5 + `implementation_round` inline metrics capture + METRICS_SKIPPED 経路 + heredoc PATCH 本体) の SoT。
-
-**Skip Steps note** (referenced by Phase 5.6 pre-condition): When `metrics.enabled: false` in rite-config.yml, skip Steps 1-5 (per Module) **but unconditionally execute Mandatory After 5.5.2**. The `phase5_post_metrics` marker is required for Phase 5.6 pre-condition to pass. Skipping the Mandatory After would leave `.phase = phase5_post_status_in_review` and trip the Phase 5.6 ERROR gate.
-
-Otherwise: execute the Module procedure (Step 1 collect → Step 2 thresholds → Step 3 failure classification → Step 4 PATCH → Step 5 repeated failure check). On `[CONTEXT] METRICS_SKIPPED=1` sentinel emission (state-read.sh failure), skip Steps 2-4 but still execute Mandatory After 5.5.2 unconditionally (per Module's "Claude への指示" section).
-
-### 🚨 Mandatory After 5.5.2
-
-> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
-> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
-
-**Step 1**: Update flow state to post-metrics phase:
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_post_metrics" --issue {issue_number} --branch "{branch_name}" \
-  --pr {pr_number} \
-  --next "Phase 5.5.2 completed (metrics recorded). Proceed to Phase 5.6 (Completion Report). Do NOT stop."
-```
-
-**Step 2**: **→ Proceed to Phase 5.6 now**.
-
-### 5.6 Completion Report
-
-> **Historical note (informational only — no action required)**: The `phase="completed", active: false` patch and `.rite-compact-state` cleanup were previously placed between Mandatory After 5.5.2 and this heading. That placement caused a **state flap** — the Phase 5.6 Pre-write (`create --phase phase5_completion`) re-activated the workflow and recorded `previous_phase="completed"`, which stop-guard then rejected as an invalid transition. The terminal state update now runs at the end of Phase 5.7 or, when no parent is identified, immediately after this Phase 5.6 — see the "Workflow Termination" block below. This note is purely historical context for future maintainers and contains no executable instructions.
-
-**Pre-condition check** (#490 AC-5): See [Pre-condition Gate](./references/pre-condition-gate.md). Expected `.phase`: `phase5_post_metrics`. When `metrics.enabled: false`, Phase 5.5.2 must still write the `phase5_post_metrics` marker via its Mandatory After block (body skip allowed; marker required).
-
-```bash
-if curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
-  :
-else
-  rc=$?
-  echo "ERROR: state-read.sh failed (rc=$rc) for --field phase in Phase 5.6 pre-condition" >&2
-  echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_6_pre_condition; rc=$rc" >&2
-  exit 1
-fi
-if [ "$curr" != "phase5_post_metrics" ] && [ "$curr" != "phase5_post_execute" ] && [ "$curr" != "phase5_post_publish" ]; then
-  echo "ERROR: Phase 5.6 pre-condition failed. .phase=$curr (expected: phase5_post_metrics or phase5_post_execute/phase5_post_publish for abort path)" >&2
-  echo "ACTION: Return to the missing phase (5.5.1 Status Update → 5.5.2 Metrics) and execute each Pre-write + main procedure + Mandatory After before entering Phase 5.6." >&2
-  echo "⚠️ LLM MUST NOT proceed to Phase 5.6 Pre-write below. Re-invoke the missing phase first." >&2
-  exit 1
-fi
-# Note: phase5_post_execute / phase5_post_publish は abort path (start-execute.md が [start:execute:aborted]
-# または start-publish.md が [start:publish:aborted] sentinel emit 後に Phase 5.6 へ直接 skip する経路、
-# Workflow Termination 用) を accept する。success path は phase5_post_metrics 経由が正規路。
-```
-
-**Pre-write**:
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_completion" --issue {issue_number} --branch "{branch_name}" \
-  --pr {pr_number} \
-  --next "Execute Phase 5.6 (Completion Report). Determine parent_issue_number routing in Phase 5.7 (\"Parent Issue Completion\"). If parent_issue_number is non-zero, proceed to Phase 5.7; otherwise jump directly to the Workflow Termination block (bypass 5.7). Do NOT stop."
-```
-
-> **Note**: `--next` 文字列に `state-read.sh` 等の helper 名や bash literal を埋め込まない。Phase 5.7 の actual caller (本ファイル末尾の `Parent Issue Completion` ブロック) と semantic 重複し、LLM が「state-read.sh を呼べ」と解釈する hallucination 経路を作る (caller 2 重起動 silent regression の根)。Phase 5.7 への semantic anchor reference のみを残すこと。
-
-> See [completion-report.md](./completion-report.md) for the full procedure (template read, placeholder substitution, output cases, self-verification, and inline fallbacks).
-
-#### 5.6.1 Workflow Incident Reporting (#366)
-
-> **Output ordering** (must match `completion-report.md` Step 3.5): Phase 5.6.1 is appended **after Phase 5.6.2 (Wiki Ingest Status Reporting)**, not directly after the standard completion report sections. The runtime sequence is: standard completion sections → Phase 5.6.2 (Wiki ingest 状況) → Phase 5.6.1 (workflow incidents). The section numbers (5.6.1 / 5.6.2) reflect introduction order (#366 first, #524 second) and are intentionally NOT in execution order — see Phase 5.6.2 ordering note for the canonical execution order.
-
-After Phase 5.6.2 (Wiki Ingest Status Reporting) is appended, append a "未処理 incident" section listing any workflow incidents that were skipped (user chose "skip" in Phase 5.4.4.1) or whose Issue creation failed (`create-issue-with-projects.sh` returned empty).
-
-**Source**: The context-local `workflow_incident_skipped` list maintained by Phase 5.4.4.1. Each entry is `{type, details, root_cause_hint, iteration_id}`.
-
-**Output format** (only when the list is non-empty):
-
-```markdown
-### ⚠️ 未処理の workflow incident
-
-| # | Type | Details | Root cause hint | iteration_id |
-|---|------|---------|-----------------|--------------|
-| 1 | {type} | {details} | {root_cause_hint or "(none)"} | {iteration_id} |
-
-> これらの incident は workflow 実行中に検出されましたが、Issue として登録されませんでした (user skipped or registration failed)。手動で `/rite:issue:create` で記録することを推奨します。
-```
-
-**When the list is empty**: Skip this section entirely (do not display "no incidents" placeholder — minimize output).
-
-**Also report registered incidents** when `workflow_incident_registered` list is non-empty (auto-registered Issues from Phase 5.4.4.1 step 6):
-
-```markdown
-### ✅ 自動登録された workflow incident
-
-| # | Issue | Type | Details |
-|---|-------|------|---------|
-| 1 | #{new_issue_number} | {type} | {details} |
-```
-
-#### 5.6.2 Wiki Ingest Status Reporting (#524)
-
-> **Source of truth**: `[CONTEXT] WIKI_INGEST_DONE=1` / `WIKI_INGEST_SKIPPED=1; reason=...` / `WIKI_INGEST_FAILED=1; reason=...` / `WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4` lines emitted by `pr/review.md` Phase 6.5.W.2, `pr/fix.md` Phase 4.6.W.2, and `issue/close.md` Phase 4.4.W.2 throughout this `/rite:issue:start` invocation. These lines flow into the orchestrator's conversation context the same way Phase 5.4.4.1 sentinels do.
-
-> **Output ordering** (must match `completion-report.md` Step 3.5): This section is appended **immediately after the case-specific sections (項目テーブル + フェーズ進捗 + 次のステップ)** of the completion report, **before** the workflow incident sections (5.6.1). Both 5.6.2 and 5.6.1 then together form the trailing report sections. The `completion-report.md` Step 4 self-verification checklist confirms the presence of the `### 📚 Wiki ingest 状況` heading.
-
-Append a "Wiki ingest 状況" section so the user can confirm at a glance whether the Experience Wiki growth path actually executed during this Issue. This addresses Issue #524 AC-5 — the regression where Phase X.X.W was silently skipped and the user had no visibility into the missing growth.
-
-**Step 1 — Aggregate signals from conversation context**:
-
-Scan the recent conversation context for these patterns (the same context the Phase 5.4.4.1 grep operates on):
-
-| Pattern | Counter |
-|---------|---------|
-| `[CONTEXT] WIKI_INGEST_DONE=1; ...` | `done_count` (number of successful trigger + ingest cycles in this Issue) |
-| `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=disabled` | `skipped_disabled_count` |
-| `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=auto_ingest_off` | `skipped_auto_off_count` |
-| `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing` | `skipped_commit_branch_missing_count` (`wiki-ingest-commit.sh` exited 2 because the wiki branch does not exist locally — treated as a legitimate skip separate from `wiki.enabled=false`/`auto_ingest=false`) |
-| `[CONTEXT] WIKI_INGEST_FAILED=1; reason=commit_rc_*` or `reason=trigger_exit_*` | `failed_count` (all `commit_rc_*` values fold into `failed_count` — `commit_rc_3` = git stash/checkout/commit failure, `commit_rc_5+` = future exit codes. Only `commit_rc_4` is segregated into `push_failed_count` below because it represents the commit-landed-push-failed sub-case) |
-| `[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4` | `push_failed_count` (`wiki-ingest-commit.sh` exited 4 — commit landed on local wiki branch but origin push failed. Local branch diverges from origin. Manual recovery: `git push origin wiki`) |
-
-Also retrieve the current wiki branch state (best-effort — never block on this):
-
-```bash
-wiki_branch=$(awk '/^wiki:/{h=1;next} h && /^[[:space:]]+branch_name:/{print;exit}' rite-config.yml 2>/dev/null \
-  | sed 's/[[:space:]]#.*//' | sed 's/.*branch_name:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
-[ -z "$wiki_branch" ] && wiki_branch="wiki"
-last_wiki_commit=""
-if git rev-parse --verify "$wiki_branch" >/dev/null 2>&1; then
-  last_wiki_commit=$(git log -1 --format='%aI' "$wiki_branch" 2>/dev/null)
-elif git rev-parse --verify "origin/$wiki_branch" >/dev/null 2>&1; then
-  last_wiki_commit=$(git log -1 --format='%aI' "origin/$wiki_branch" 2>/dev/null)
-fi
-# 空文字列で emit (Step 2 template の `{last_wiki_commit or "(wiki branch 未作成)"}` で日本語 fallback を render する)
-echo "[CONTEXT] WIKI_LAST_COMMIT=${last_wiki_commit:-}"
-```
-
-**Step 2 — Output format** (always render, even when all counters are 0 — the absence is itself a signal worth reporting per AC-5):
-
-```markdown
-### 📚 Wiki ingest 状況
-
-| シグナル | 件数 |
-|----------|------|
-| ✅ DONE (trigger + ingest 完了) | {done_count} |
-| ⚠️ SKIPPED (disabled) | {skipped_disabled_count} |
-| ⚠️ SKIPPED (auto_ingest_off) | {skipped_auto_off_count} |
-| ⚠️ SKIPPED (commit_branch_missing) | {skipped_commit_branch_missing_count} |
-| ❌ FAILED (trigger / commit エラー) | {failed_count} |
-| ❌ PUSH_FAILED (commit は成功、push が失敗) | {push_failed_count} |
-
-- **wiki branch 最終 commit**: {last_wiki_commit or "(wiki branch 未作成)"}
-```
-
-**Step 3 — Conditional warnings** (append below the table only when applicable):
-
-| Condition | Warning to append |
-|-----------|------------------|
-| `done_count == 0` AND `skipped_disabled_count == 0` AND `skipped_auto_off_count == 0` AND `skipped_commit_branch_missing_count == 0` AND `failed_count == 0` AND `push_failed_count == 0` | `> ⚠️ Phase X.X.W が一度も実行されていません。silent skip の可能性があります。/rite:wiki:ingest を手動実行するか、Phase 5.4.4.1 の sentinel を確認してください。` |
-| `failed_count >= 1` | `> ❌ Wiki ingest trigger が {failed_count} 回失敗しました。Phase 5.4.4.1 で workflow incident として登録されているか確認してください。` |
-| `push_failed_count >= 1` | `> ❌ wiki-ingest-commit.sh が commit 成功後の push に {push_failed_count} 回失敗しました。local wiki branch に commit は保持されています。Phase 5.4.4.1 で wiki_ingest_push_failed incident として登録されているか確認してください。手動 recovery: \`git push origin wiki\` を実行してください。` |
-| `skipped_disabled_count >= 1` | `> ℹ️ wiki.enabled=false により Wiki 機能全体が無効化されています。意図的でない場合は rite-config.yml を確認してください。` |
-| `skipped_auto_off_count >= 1` | `> ℹ️ wiki.auto_ingest が無効化されています。意図的でない場合は rite-config.yml を確認してください。` |
-| `skipped_commit_branch_missing_count >= 1` | `> ℹ️ wiki-ingest-commit.sh が wiki ブランチ未作成により skip されました（{skipped_commit_branch_missing_count} 件）。/rite:wiki:init を実行するか、git fetch origin wiki を実行してください。` |
-| `done_count >= 1` AND no failures | `> ✅ Wiki branch が成長しました（{done_count} cycle 分の raw source が ingest されました）。` |
-
-> **Skip condition**: This section is **NEVER** skipped. AC-5 requires it to always be present in the completion report so the user has a definitive answer about whether the Wiki grew during this Issue.
-
-### 5.7 Parent Issue Completion
-
-**Condition**: `parent_issue_number` is non-zero in flow-state. Read deterministically via `state-read.sh` so per-session state is consulted instead of the legacy state file snapshot:
-
-```bash
-# `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
-# 両方取る場合は if/else 形式にする (capture-less `if ! cmd; then ...` は対象外)。
-if parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0); then
-  :
-else
-  rc=$?
-  echo "ERROR: state-read.sh failed (rc=$rc) for --field parent_issue_number in Phase 5.7" >&2
-  echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_7_parent_issue; rc=$rc" >&2
-  exit 1
-fi
-# state-read.sh は jq の `// $default` で null/false → default 置換するが値の型は validate しない。
-# 攻撃者が `.rite/sessions/*.flow-state` を書き換えて parent_issue_number に non-numeric
-# (例: "true" / "../etc") を注入した場合、後続の `gh` 呼び出し (`gh issue close $parent_issue_number`)
-# に literal が流入する経路がある。numeric pattern check で fail-safe に default 0 (parent なし扱い)
-# に降格する。
-case "$parent_issue_number" in
-  ''|*[!0-9]*)
-    echo "WARNING: parent_issue_number is not numeric ('$parent_issue_number'), defaulting to 0 (no parent)" >&2
-    parent_issue_number=0
-    ;;
-esac
-if [ "$parent_issue_number" -eq 0 ] 2>/dev/null; then
-  echo "[CONTEXT] PARENT_ISSUE=none — skip Phase 5.7, proceed to Workflow Termination"
-else
-  echo "[CONTEXT] PARENT_ISSUE=$parent_issue_number — execute Phase 5.7"
-fi
-```
-
-Execute after 5.6. When `PARENT_ISSUE=none`, skip directly to Workflow Termination block.
-
-**Pre-write** (only when a parent was identified — otherwise skip directly to terminate):
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_parent_completion" --issue {issue_number} --branch "{branch_name}" \
-  --pr {pr_number} \
-  --next "Execute Phase 5.7 (Parent Issue Completion). Ending the workflow without processing the parent is PROHIBITED when a parent was identified. Do NOT stop."
-```
-
-#### 5.7.1 Child Check
-
-Use [Basic Query](../../references/epic-detection.md#basic-query). All `CLOSED`→5.7.2. Some `OPEN`→5.7.3.
-
-#### 5.7.2 Auto-Close
-
-Confirm via `AskUserQuestion`. If "No", display message and proceed to 5.7.3 (no auto-close). If yes, update Projects Status to "Done" and then close the Issue.
-
-**Step 1**: Update parent Issue Status to "Done".
-
-> **Module**: [Projects Status Update Callsites](./references/projects-status-update-callsites.md#callsite-3--phase-572-parent-issue-status--done) — Callsite 3 (Phase 5.7.2) bash literal SoT。Skip if `projects.enabled: false` in rite-config.yml. Otherwise execute the Module procedure (Status update to "Done" for `{parent_issue_number}`, `auto_add: false` for parent Issue). On `skipped_not_in_project` / `failed` result, display `.warnings[]` and proceed to Step 2 (non-blocking).
-
-**Step 2**: Close the parent Issue via `/rite:issue:close` Skill invocation.
-
-> **Why Skill invoke (not `gh issue close`)**: `close.md` Phase 4.4.W.2 で Wiki raw source の蓄積（`wiki-ingest-commit.sh`）が発火する。直接 `gh issue close` を実行すると close.md を経由しないため、Wiki 経路が 100% silent skip になる。
-
-**Pre-write** (before invoking `rite:issue:close`): Update flow state so stop-guard can resume flow if interrupted:
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_parent_close" --issue {issue_number} --branch "{branch_name}" \
-  --pr {pr_number} \
-  --next "After rite:issue:close returns: proceed to Mandatory After 5.7.2, then 5.7.3 (Next Child). Do NOT stop."
-```
-
-Invoke `skill: "rite:issue:close", args: "{parent_issue_number}"`.
-
-> **Note**: `close.md` receives `{parent_issue_number}` as its `{issue_number}` argument. Phase 4.1 executes `gh issue close`, Phase 4.4.W triggers Wiki ingest. The close.md `AskUserQuestion` (Phase 3) will present options to the user — since the user already confirmed "Close parent Issue" in Phase 5.7.2's own `AskUserQuestion`, they should select the manual close option when prompted by close.md.
-
-> **Note**: `close.md` does NOT output a machine-readable result pattern (unlike `[review:mergeable]` etc.). When it returns control, immediately proceed to Mandatory After 5.7.2.
-
-### 🚨 Mandatory After 5.7.2
-
-> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
-> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
-
-**Step 1**: Update flow state to post-parent-close phase:
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_post_parent_close" --issue {issue_number} --branch "{branch_name}" \
-  --pr {pr_number} \
-  --next "rite:issue:close completed. Proceed to 5.7.3 (Next Child display). Do NOT stop."
-```
-
-**Step 2**: **→ Proceed to 5.7.3** (display remaining children if any).
-
-#### 5.7.3 Next Child
-
-Display remaining children, guide `/rite:issue:start`. No auto-start.
-
-### 🚨 Mandatory After 5.7
-
-> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
-> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
-
-**Step 1**: Update flow state to post-parent-completion phase. Use **patch mode** — patch preserves `previous_phase` automatically from the outgoing `.phase` field, whereas `create` mode would overwrite the entire state and risk tripping the session-ownership check (prompt-engineer cycle-2 MEDIUM #5):
+**Step 1**: Idempotent terminal state confirmation. Workflow terminal state (`phase="completed", active=false`) is already written by the sub-skill (Workflow Termination block in `start-finalize.md` for success path, or the abort-path terminal write in its Return Output Format for abort path). Re-patch idempotently to refresh timestamp and guard against the rare case where sub-skill terminal write was skipped due to interrupt:
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
-  --phase "phase5_post_parent_completion" --active false \
-  --next "Phase 5.7 completed. Workflow finished. Do NOT stop before the completion handoff is displayed to the user."
-```
-
-**Step 2**: Workflow terminates normally. Proceed to the "Workflow Termination" block below.
-
-### Workflow Termination
-
-> **Placement**: This block runs **after** Phase 5.7 completes **or after Phase 5.6** when no parent Issue was identified in Phase 1.6 / 2.4.7 (the Phase 5.7 skip branch). Both paths converge here so the terminal `phase="completed", active: false` state is set exactly once, with `previous_phase` pointing at a whitelist-valid source (`phase5_post_parent_completion` or `phase5_completion`).
-
-**Parent-skip routing**: When `parent_issue_number` is `0` in flow-state (determined in Phase 5.7 via `state-read.sh`), Phase 5.7 is skipped entirely. In that case, jump from the end of Phase 5.6 directly to this block (bypassing 5.7.1-5.7.3 and Mandatory After 5.7) — do **not** leave the workflow in `phase5_completion, active: true`, which would cause the next stop attempt to block indefinitely.
-
-> **Why this routing relies on Phase 5.7 emit, not state re-read**: Phase 5.7 が `parent_issue_number` の **single source of truth for the read** であり、本 Workflow Termination block は state を re-read しない。orchestrator の branching decision は Phase 5.7 の `[CONTEXT] PARENT_ISSUE=none` echo (LLM-level routing signal、会話履歴で観測可能) で駆動され、bash 変数経由ではない (Bash tool invocation は shell state を境界を跨いで共有しない)。
-
-**Step 1**: Update flow state to the terminal state (patch mode, preserves `previous_phase`):
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh patch \
-  --phase "completed" \
-  --next "none" --active false
-```
-
-**Step 2**: Clean up `.rite-compact-state` to prevent stale blocked state from affecting the next session (#756):
-
-```bash
+  --phase "completed" --active false --next "none" \
+  --if-exists --preserve-error-count
 rm -f .rite-compact-state 2>/dev/null || true
 rm -rf .rite-compact-state.lockdir 2>/dev/null || true
 ```
 
-**Note**: This cleanup is non-blocking. Failure to delete is silently ignored.
+**Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `start-finalize` sub-skill — e.g., `[ready:error]` orchestrator-direct emit per §D, or by `ready.md` sub-skill via Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3 regardless of detection result.
+
+**Step 3 (Sentinel-based completion handoff)**: Grep the recent conversation context for `<!-- [start:finalize:completed] -->` or `<!-- [start:finalize:aborted] -->` and display a short user-facing completion handoff message:
+
+- `[start:finalize:completed]` detected → workflow terminated normally. The completion report was output by the sub-skill (Phase 5.6). Display a short user-facing confirmation summarizing PR URL, Issue URL, and next-step guidance (e.g., 「✅ Issue #{N} の作業が完了しました。 PR: {url}」).
+- `[start:finalize:aborted]` detected → workflow aborted during finalize. Display a short abort summary explaining the abort reason (Phase 5.5 user-terminate during ready confirmation or `[ready:error]` AskUserQuestion → terminate) and next-step guidance (e.g., 「⚠️ Phase 5.5 で中断されました。 PR: {url} は draft のままです」).
+- Neither detected → fail-safe: treat as `[start:finalize:completed]` (display normal completion); the sub-skill SHOULD always emit one of the two sentinels per its Return Output Format contract.
 
 ## Interruption/Resumption
 

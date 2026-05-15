@@ -18,9 +18,9 @@ Phase 番号取扱方針: エントリは機能名レベルで変更を記述し
 
 ### 追加
 
-- `/rite:lint` Phase 3.14 を追加 — `gh issue create` 直接呼び出しの guard (#958)
-  - Issue #669 AC-3 の static guard を、元の 2 ファイル (`commands/issue/start.md` + `commands/issue/parent-routing.md`) から `plugins/rite/commands/**/*.md` 全体に拡張。`scripts/check-no-direct-gh-issue-create.sh` に `--all` モードを新設し、スクリプト自身の配置から解決した repository root 配下の command / sub-skill markdown を自動で列挙して既存の検出ロジック (fenced-code / blockquote / Markdown comment / inline backtick 除外) を再利用する。
-  - `/rite:lint` Phase 3.14 は lint 実行ごとに `--all` でスクリプトを呼び出し、検出結果は **warning 扱い** で記録 (`[lint:success]` を変えない)。既存 Phase 3.5-3.13 と同じポリシー。`[lint:error]` 化は意図的に保留し、ルールを段階的に enforce する。
+- `/rite:lint` に `gh issue create` 直接呼び出しの guard を追加 (#958)
+  - Issue #669 AC-3 の static guard を、元の 2 ファイル (`commands/issue/start.md` + `commands/issue/parent-routing.md`) から `plugins/rite/commands/**/*.md` 全体に拡張。`scripts/check-no-direct-gh-issue-create.sh` に `--all` モードを新設し、`git rev-parse --show-toplevel` (`--repo-root DIR` override 対応、sibling lint script と同一パターン) で解決した repository root 配下の command / sub-skill markdown を自動で列挙して既存の検出ロジック (fenced-code / blockquote / Markdown comment / inline backtick 除外) を再利用する。
+  - `/rite:lint` は lint 実行ごとに新 check を呼び出し、検出結果は **warning 扱い** で記録 (`[lint:success]` を変えない)。既存の plugin-specific Phase 3.x check と同じポリシー。`[lint:error]` 化は意図的に保留し、ルールを段階的に enforce する。新 check は Phase 4 reporting (appendix + summary-row + closing enumeration) にも統合され、standalone / E2E 双方の lint 出力で warning が contributor に届く。
   - 背景: Issue #954 cycle 1 review (PR #955) で scope-creep の follow-up Issue #956 / #957 が `gh issue create` 直接呼び出しで作成され、GitHub Projects 未登録のまま放置 → `gh project item-add` + 各フィールドの `item-edit` による手動 recovery を要した。本 lint guard により今後は merge 前に regression が surface し、`scripts/create-issue-with-projects.sh` 経由への誘導が機械的に効く。
   - テストスコープ: TC-011 (`--all` clean baseline) と TC-012 (`--all` planted regression detection) を追加し、`plugins/rite/scripts/tests/check-no-direct-gh-issue-create.test.sh` は 13 assertion 構成に。`references/issue-create-with-projects.md` の Static Guard 節は両モード (明示ファイルリスト / `--all`) を併記するよう更新。
   - 後方互換性: 既存の明示ファイルリスト呼び出しは無変更で動作し、引数なし呼び出しは従来通り exit 2 (usage error)。`--all` は opt-in。

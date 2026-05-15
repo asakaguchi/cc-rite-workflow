@@ -691,9 +691,9 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 # Defense-in-depth dual cleanup: start-finalize.md Workflow Termination Step 2 が
 # success path での primary cleanup を担う。本 idempotent rm は abort path /
 # interrupt path で sub-skill cleanup が skip された場合の最終 fallback。
-# regular file (`.rite-compact-state`) は permission denied 以外で失敗しないため silent skip。
+# regular file (`.rite-compact-state`) はほぼ permission denied のみで失敗するため silent skip (rare 失敗時は次セッションで上書き作成されて自己治癒)。
 # lockdir (`.rite-compact-state.lockdir`) は shared filesystem 上の stale lock 等で失敗する
-# potential があるため emit する。`from=` discriminator で emit 元 (4 site 対称) を識別。
+# potential があるため emit する。`from=` discriminator で emit 元 (4 site 対称) を識別 (対称化マッピング表は start-finalize.md `4 site 対称化マッピング` 表 参照)。
 rm -f .rite-compact-state 2>/dev/null || true
 rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=start_md_termination" >&2
 ```

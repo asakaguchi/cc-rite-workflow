@@ -88,20 +88,18 @@ STATE_PR=$(jq -r '.pr_number // 0' "$STATE_FILE_PATH" 2>/dev/null) || STATE_PR="
 [ "$STATE_PR" = "0" ] || exit 0
 
 # Read workflow_incident.enabled (default true — opt-out semantics).
-# `awk` based extraction is consistent with other rite hooks (see wiki check in implementation-plan.md).
+# Canonical SoT: see workflow-incident-detection.md "Canonical bash literal" section.
+# `sentinel-visibility-rule.test.sh` pins the canonical `sed -n + grep + sed + tr` chain
+# across all sites that read this key; deviation triggers drift detection.
 WORKFLOW_INCIDENT_ENABLED="true"
 if [ -f "$CWD/rite-config.yml" ]; then
-  raw=$(awk '
-    /^workflow_incident:/ { in_section=1; next }
-    /^[a-zA-Z]/ { in_section=0 }
-    in_section && /^[[:space:]]+enabled:/ { print; exit }
-  ' "$CWD/rite-config.yml" 2>/dev/null || true)
-  if [ -n "$raw" ]; then
-    value=$(printf '%s\n' "$raw" | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
-    case "$value" in
-      false|no|0) WORKFLOW_INCIDENT_ENABLED="false" ;;
-    esac
-  fi
+  workflow_incident_enabled=$(sed -n '/^workflow_incident:/,/^[a-zA-Z]/p' "$CWD/rite-config.yml" 2>/dev/null \
+    | grep -E '^[[:space:]]+enabled:' | head -1 | sed 's/#.*//' \
+    | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]')
+  value=$(printf '%s' "$workflow_incident_enabled" | tr -d '"'"'"'' | tr '[:upper:]' '[:lower:]')
+  case "$value" in
+    false|no|0) WORKFLOW_INCIDENT_ENABLED="false" ;;
+  esac
 fi
 
 # Emit workflow_incident sentinel via stderr (AC-4).

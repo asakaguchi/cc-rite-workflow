@@ -4,7 +4,7 @@ Mapping information for phase details. Used in work memory session information.
 
 ## Phase Detail Mapping
 
-Issue #896 series (PR A-H) で `/rite:issue:start` は再設計され、Phase 5 は `start-execute` / `start-publish` / `start-finalize` の 3 sub-skill に分割された。本 mapping は work memory `フェーズ詳細` 欄の表示文字列を定義する。
+`/rite:issue:start` Phase 5 は `start-execute` / `start-publish` / `start-finalize` の 3 sub-skill に分割されている。本 mapping は work memory `フェーズ詳細` 欄の表示文字列を定義する。
 
 ### Phase 1.5 / 1.6 (Parent Routing)
 
@@ -44,6 +44,7 @@ Issue #896 series (PR A-H) で `/rite:issue:start` は再設計され、Phase 5 
 
 | Phase | Phase Detail | Owner |
 |-------|-------------|-------|
+| `phase5_implementation` | 実装作業中 (legacy — sub-skill 分割前の旧 phase 名。`/rite:resume` 互換 / 旧 state file 互換のため認識する。新規実装は `phase5_execute_running` を使う) | legacy alias for phase5_execute_running |
 | `phase5_execute_running` | start-execute 実行中 | orchestrator delegation pre-write |
 | `phase5_stop_hook` | Stop Hook 検証中 | start-execute Phase 5.0 |
 | `phase5_post_stop_hook` | Stop Hook 検証完了 | start-execute |

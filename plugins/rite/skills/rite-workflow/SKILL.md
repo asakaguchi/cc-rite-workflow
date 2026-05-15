@@ -144,7 +144,7 @@ See [references/work-memory-format.md](./references/work-memory-format.md) for w
 
 When an orchestrator command (e.g., `/rite:issue:start`, `/rite:issue:create`) invokes a sub-skill via the Skill tool, the LLM **MUST** continue in the same response turn after the sub-skill returns. The return tag is a continuation trigger, not a turn boundary — stopping prematurely abandons the workflow before the terminal completion marker is output.
 
-**`/rite:issue:start` の Phase 5 sub-skill chain** (Issue #896 series で再設計、PR F/G1/G2/H で完成):
+**`/rite:issue:start` の Phase 5 sub-skill chain**:
 
 - **Phase 5.0-5.2.1**: `rite:issue:start-execute` — Stop Hook 検証 / 実装 / lint / checklist 確認
 - **Phase 5.3-5.4**: `rite:issue:start-publish` — PR 作成 / review-fix loop

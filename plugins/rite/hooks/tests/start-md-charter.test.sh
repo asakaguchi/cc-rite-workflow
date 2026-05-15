@@ -330,14 +330,18 @@ else
   fail "Upper: \`🚨\` count <= 10 (actual=$bell_count, expected <=10)"
 fi
 
-# PR H (#905) 追加: 本体 line 数 ≤ 700 assert (parent Issue #896 目標 「600-700 行」 を pin)。
+# PR H (#905) 追加: 本体 line 数 ≤ 720 assert (parent Issue #896 目標 「600-700 行」 + 20 行 margin)。
 # sub-skill 分割完了後の正常な start.md line 数を保護する upper bound (削除のみを catch
 # する従来 lower bound と対称な、追加のみを catch する upper bound)。
+# margin 20 行は code-quality reviewer F-07 finding 「閾値 700 + 実値 698 で余裕 2 行は tight」
+# への対応 (minor edit で即 ratchet 触発する摩擦を緩和)。
+# 720 超過時は sub-skill (start-execute / start-publish / start-finalize) への migration を検討する
+# forcing function として機能する。
 line_count=$(wc -l < "$START_MD" | tr -d ' ')
-if [ "$line_count" -le 700 ]; then
-  pass "Upper: start.md 本体 line 数 <= 700 (actual=$line_count)"
+if [ "$line_count" -le 720 ]; then
+  pass "Upper: start.md 本体 line 数 <= 720 (actual=$line_count)"
 else
-  fail "Upper: start.md 本体 line 数 <= 700 (actual=$line_count, expected <=700)"
+  fail "Upper: start.md 本体 line 数 <= 720 (actual=$line_count, expected <=720, target ≤700; sub-skill 化を検討)"
 fi
 
 # === 下限 assert: 現状値の保護 (aggregated across start*.md) ===
@@ -391,33 +395,41 @@ else
   fail "Lower (aggregated): \`DO NOT stop, do NOT re-invoke\` count >= 17 (actual=$do_not_stop_count, expected >=17)"
 fi
 
-# === 対称性 assert: flow-state-update.sh create の 5 引数 ===
+# === 対称性 assert: flow-state-update.sh create の 5 引数 (aggregated across start*.md) ===
 # Issue #914: Symmetry pipeline は `compute_symmetry_for()` 関数に抽出済み。
 # 本体 assert と meta-test (mutation fixture) で同一 logic を共有し、識別力を保証する。
+# PR H (#905) F-04 対応: lower bound と同じく aggregated 化 (start*.md 4 ファイル横断)。
+# 旧実装は $START_MD のみ Symmetry check していたため、sub-skill 内 21 invocations の 5-arg drift が
+# CI 緑のまま通過する blind spot があった (HIGH finding by code-quality-reviewer)。
 echo ""
-echo "--- Symmetry (flow-state-update.sh create 5-arg invariant) ---"
+echo "--- Symmetry (flow-state-update.sh create 5-arg invariant, aggregated across start*.md) ---"
 
-symmetry_output=$(compute_symmetry_for "$START_MD")
-metrics=$(printf '%s\n' "$symmetry_output" | tail -1)
-diag=$(printf '%s\n' "$symmetry_output" | sed '$d')
-[ -n "$diag" ] && printf '%s\n' "$diag"
-total="${metrics%%|*}"
-asymmetric="${metrics##*|}"
+total_agg=0
+asymmetric_agg=0
+for f in "$START_MD" "$START_EXECUTE_MD" "$START_PUBLISH_MD" "$START_FINALIZE_MD"; do
+  [ -f "$f" ] || continue
+  out=$(compute_symmetry_for "$f")
+  m=$(printf '%s\n' "$out" | tail -1)
+  d=$(printf '%s\n' "$out" | sed '$d')
+  [ -n "$d" ] && printf '%s\n' "$d"
+  t="${m%%|*}"
+  a="${m##*|}"
+  total_agg=$((total_agg + t))
+  asymmetric_agg=$((asymmetric_agg + a))
+done
 
-if [ "$asymmetric" -eq 0 ]; then
-  pass "Symmetry: all ${total} \`flow-state-update.sh create\` invocations have 5 args (--phase/--issue/--branch/--pr/--next)"
+if [ "$asymmetric_agg" -eq 0 ]; then
+  pass "Symmetry: all ${total_agg} aggregated \`flow-state-update.sh create\` invocations have 5 args (start*.md 4 files)"
 else
-  fail "Symmetry: ${asymmetric}/${total} invocations missing required args"
+  fail "Symmetry: ${asymmetric_agg}/${total_agg} aggregated invocations missing required args"
 fi
 
-# Issue #908 finding 3: total=0 (= 1 つも `flow-state-update.sh create` を含む bash block が無い) でも
-# 上の `pass` が成功扱いになる false-positive を防ぐ。後続 PR で誤って create 呼び出しを全削除した場合の
-# regression 検出能力を保護する下限 (`-ge 1`)。具体的な現状値 (32 等) を pin すると後続 slim PR の
-# 正当な減少と衝突するため、「呼び出しが消滅していないこと」のみを保護する。
-if [ "$total" -ge 1 ]; then
-  pass "Symmetry-bound: \`flow-state-update.sh create\` invocations >= 1 (actual=$total)"
+# Issue #908 finding 3 (拡張): aggregated total=0 を catch する下限 assert。
+# 後続 PR で誤って create 呼び出しを全削除した場合の regression 検出能力を保護する。
+if [ "$total_agg" -ge 1 ]; then
+  pass "Symmetry-bound (aggregated): \`flow-state-update.sh create\` invocations >= 1 (actual=$total_agg across start*.md)"
 else
-  fail "Symmetry-bound: \`flow-state-update.sh create\` invocations >= 1 (actual=$total, expected >=1)"
+  fail "Symmetry-bound (aggregated): \`flow-state-update.sh create\` invocations >= 1 (actual=$total_agg, expected >=1)"
 fi
 
 # === Summary ===

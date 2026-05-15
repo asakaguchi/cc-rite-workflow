@@ -57,34 +57,24 @@ fi
 
 echo
 echo "=== --phase usage extraction (orchestrator markdown) ==="
-# orchestrator markdown 群から `--phase <name>` パターンを抽出
-# 対象ファイル: start*.md / implement.md / resume.md / create*.md / cleanup.md / wiki/*.md
-ORCHESTRATOR_FILES=(
-  "$COMMANDS_DIR/issue/start.md"
-  "$COMMANDS_DIR/issue/start-execute.md"
-  "$COMMANDS_DIR/issue/start-publish.md"
-  "$COMMANDS_DIR/issue/start-finalize.md"
-  "$COMMANDS_DIR/issue/implement.md"
-  "$COMMANDS_DIR/issue/create.md"
-  "$COMMANDS_DIR/issue/create-interview.md"
-  "$COMMANDS_DIR/issue/create-decompose.md"
-  "$COMMANDS_DIR/issue/create-register.md"
-  "$COMMANDS_DIR/resume.md"
-  "$COMMANDS_DIR/issue/close.md"
-  "$COMMANDS_DIR/pr/cleanup.md"
-  "$COMMANDS_DIR/pr/ready.md"
-  "$COMMANDS_DIR/pr/create.md"
-  "$COMMANDS_DIR/pr/review.md"
-  "$COMMANDS_DIR/pr/fix.md"
-  "$COMMANDS_DIR/wiki/ingest.md"
-  "$COMMANDS_DIR/lint.md"
-)
+# PR H (#905) F-03 対応: 動的展開 + sub-skill / reference を含む全 .md を scan。
+# 旧実装は ORCHESTRATOR_FILES 配列で 18 ファイルを hardcode していたが、`--phase` を使用する
+# 7 ファイル (branch-setup.md, child-issue-selection.md, implementation-plan.md, parent-routing.md,
+# references/flow-state-scaffolding.md, references/metrics-recording.md, work-memory-init.md) が
+# enumeration 漏れで silent drift のリスクがあった (code-quality-reviewer HIGH finding F-03)。
+# find で commands/ 全 .md を動的展開し、test ファイル自身は除外する。
+mapfile -t ORCHESTRATOR_FILES < <(find "$COMMANDS_DIR" -name '*.md' -type f | sort)
+echo "  orchestrator files (dynamic): ${#ORCHESTRATOR_FILES[@]}"
 
 # 各 file から `--phase "name"` または `--phase name` を抽出。quoted/unquoted 両対応。
 # 注: grep -oE -- で `--phase` を pattern として安全に扱う。
 mapfile -t used_keys < <(
   for f in "${ORCHESTRATOR_FILES[@]}"; do
-    [ -f "$f" ] && grep -hoE -- '--phase[[:space:]]+"?[a-z0-9_]+' "$f" || true
+    # F-15 finding 対応: `&& B || C` の precedence pitfall を回避するため 2 行形式に分離。
+    # 旧形式 `[ -f "$f" ] && grep ... "$f" || true` は grep が exit 2 (IO error) で
+    # 失敗した場合も silent 化するため、`[ -f ] || continue` の早期 skip 形式に変更。
+    [ -f "$f" ] || continue
+    grep -hoE -- '--phase[[:space:]]+"?[a-z0-9_]+' "$f" || true
   done | sed 's/--phase[[:space:]]*"\?//' | sort -u
 )
 used_count="${#used_keys[@]}"

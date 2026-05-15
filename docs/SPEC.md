@@ -156,16 +156,16 @@ rite-workflow/
 │   │   ├── close.md         # /rite:issue:close
 │   │   ├── edit.md          # /rite:issue:edit
 │   │   ├── recall.md        # /rite:issue:recall
+│   │   ├── start-execute.md          # Sub-skill: /rite:issue:start Phase 5.0-5.2.1 (Stop Hook / Implementation / Lint / Checklist)
+│   │   ├── start-publish.md          # Sub-skill: /rite:issue:start Phase 5.3-5.4 (PR creation / review-fix loop)
+│   │   ├── start-finalize.md         # Sub-skill: /rite:issue:start Phase 5.5-Termination (Ready / Status / metrics / completion / parent close)
 │   │   ├── implement.md              # Sub-skill: implementation phase
 │   │   ├── implementation-plan.md    # Sub-skill: plan generation
 │   │   ├── completion-report.md      # Sub-skill: completion report format
 │   │   ├── branch-setup.md           # Sub-skill: branch creation
 │   │   ├── child-issue-selection.md  # Sub-skill: parent-child routing
 │   │   ├── parent-routing.md         # Sub-skill: parent Issue detection
-│   │   ├── work-memory-init.md       # Sub-skill: work memory initialization
-│   │   ├── start-execute.md          # Sub-skill: Phase 5.0-5.2.1 (Stop Hook / Implementation / Lint / Checklist) — Issue #896 series PR F
-│   │   ├── start-publish.md          # Sub-skill: Phase 5.3-5.4 (PR creation / review-fix loop) — Issue #896 series PR G1
-│   │   └── start-finalize.md         # Sub-skill: Phase 5.5-Termination (Ready / Status / metrics / completion / parent close) — Issue #896 series PR G2
+│   │   └── work-memory-init.md       # Sub-skill: work memory initialization
 │   ├── pr/
 │   │   ├── create.md        # /rite:pr:create
 │   │   ├── ready.md         # /rite:pr:ready

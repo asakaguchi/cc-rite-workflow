@@ -486,7 +486,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 The e2e flow must minimize context consumption. Each sub-skill has an **E2E Output Minimization** section.
 
-> **⚠️ Output minimization ≠ step omission**: 中間テキストを削減することであり、**phase / step / MUST 処理を skip することではない**。context 枯渇時の正規経路は `/clear` + `/rite:resume`。Identity 仕様: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` / `quality_over_expediency` を参照。
+> **⚠️ Output minimization ≠ step omission**: 中間テキストを削減することであり、**phase / step / MUST 処理を skip することではない**。時間・context を理由とした step 省略の誘惑は強いが、それは identity 違反。context 枯渇時の正規経路は `/clear` + `/rite:resume`。Identity 仕様: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` / `quality_over_expediency` を参照。
 
 **Orchestrator rules** (apply throughout Phase 5):
 

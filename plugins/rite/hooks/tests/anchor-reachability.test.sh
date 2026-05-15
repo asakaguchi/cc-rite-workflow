@@ -41,13 +41,15 @@ START_FILES=(
 echo "=== anchor extraction ==="
 
 # 全 start*.md から `[text](./<path>)` 形式の link を抽出
+# `set -euo pipefail` 配下では grep の 0 マッチ (exit 1) が pipeline abort を起こすため、
+# 各 grep に `|| true` を付与して pipefail abort を防ぐ (F-12 finding 対応)。
 all_refs=()
 for f in "${START_FILES[@]}"; do
   if [ ! -f "$f" ]; then
     echo "  ❌ FILE NOT FOUND: $f" >&2
     exit 1
   fi
-  mapfile -t refs < <(grep -hoE '\[[^]]+\]\(\./[^)]+\)' "$f" | grep -oE '\([^)]+\)' | sed 's/[()]//g' | sort -u)
+  mapfile -t refs < <({ grep -hoE '\[[^]]+\]\(\./[^)]+\)' "$f" || true; } | { grep -oE '\([^)]+\)' || true; } | sed 's/[()]//g' | sort -u)
   for r in "${refs[@]}"; do
     [ -z "$r" ] && continue
     all_refs+=("$r")

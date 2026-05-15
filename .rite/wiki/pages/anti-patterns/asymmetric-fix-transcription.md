@@ -2,8 +2,10 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-15T15:05:00+09:00"
+updated: "2026-05-16T03:50:00+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260515T184722Z-pr-984.md"
   - type: "reviews"
     ref: "raw/reviews/20260515T054955Z-pr-973.md"
   - type: "reviews"
@@ -600,6 +602,14 @@ PR #946 (Issue #944 — ingest.md Phase 4 への新規 sub-step 4.3 追加) は 
 
 **累積 27 回目の独自観点**: (1) **Wiki 経験則ベース PR 自体が経験則の自己再現を起こす**再帰的 anti-pattern を実測、(2) **canonical source 宣言 + precedence rule が cycle 2 reviewer の severity 差 (PARTIAL vs FIXED) を gap ≤ 1 に収束させる効力** を観測、(3) **sibling sync 契約 (両端からの相互参照) は Option A (両側修正) と Option B (hub 化) の中間形態** として位置づけ可能 — hub を作らずとも sibling 双方の意図的同期を可視化することで drift を抑制する第 3 の選択肢。
 
+### Strict-mode caller variant の新規 subsection 追加 + drift detection test pin による構造的予防 (PR #984、累積 30 回目)
+
+PR #984 (Issue #978 — `workflow-incident-detection.md` SoT に Strict-mode caller variant subsection を追加 + `sentinel-visibility-rule.test.sh` に 3 assertion を追加) は、PR #975 cycle 6 で error-handling reviewer が検出した MINOR スコープ外指摘 (`set -euo pipefail` 配下の strict-mode caller が canonical literal を copy-paste すると `tr -d '[:space:]'` の grep no-match で silent abort する経路) への **defense-in-depth PR** として実施され、4 reviewer (prompt-engineer / test / error-handling / code-quality) が **1 cycle で 0 finding 承認** で merge 完了した。
+
+**実測 evidence**: (1) **SoT (`workflow-incident-detection.md`) に新規 subsection `### Strict-mode caller variant` を追加** することで variant の存在を documentation 層で可視化 (新 subsection は canonical との 1 文字差分 `tr -d '[:space:]' || true` を明示)、(2) **test (`sentinel-visibility-rule.test.sh`) Section 1.1 に 3 assertion を追加** することで「SoT 側 variant subsection 不在 / variant に `|| true` 欠落 / implementation (`stop-create-interview-block.sh`) 側に `|| true` 欠落」の 3 通りの drift を pin、(3) **PR #973 (累積 29 回目)** で確立された「Issue 本文に対象箇所を line 番号付き明示 + 機械検証 step (grep + test PASS) を含める」設計対策と組み合わせることで cycle 1 / 0 findings convergence を再現。
+
+**累積 30 回目の独自観点**: (1) **「新規 subsection 追加 + test pin」は SoT ↔ implementation 2-site 対称性を保証する構造的予防の典型** であり、Option A (両側修正) / Option B (hub 化) / sibling sync 契約 (累積 27 回目) と並ぶ第 4 の選択肢として位置づけ可能、(2) **scope 外指摘 (前 PR の reviewer MINOR) を後続 Issue 化 + defense-in-depth PR として完遂する shrinking-cycle pattern** が機能していることを実測 — review-fix loop の scope 外指摘は捨てずに Issue 化することで累積 evidence pattern を成長させる、(3) **1 cycle 0 finding convergence は successful prevention pattern の典型** で、PR #973 (累積 29 回目) → PR #984 (累積 30 回目) と「Issue 本文 line 番号明示 + 機械検証 step」 design が連続 2 回 reproducibility を示した。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -688,3 +698,4 @@ PR #946 (Issue #944 — ingest.md Phase 4 への新規 sub-step 4.3 追加) は 
 - [PR #946 cycle 2 re-review (1 cycle convergence: 7 findings → 0 blocking。canonical source 宣言が precedence rule で severity gap を 1 以下に収束させる効力を実証、Wiki 経験則「Asymmetric Fix Transcription」と「DRIFT-CHECK ANCHOR は semantic name 参照で記述する」を 1 PR で実証)](../../raw/reviews/20260513T063128Z-pr-946-cycle2.md)
 - [PR #949 fix (累積 28 回目、fix-induced regression を 2 cycle で実測: 残置 pr-{N}-cycle{X} ブランチ cleanup PR (Issue #919) の cycle 1 で 8 findings 全件対応した stderr 退避パターン導入 `if ! cmd; then rc=$?` が cycle 2 で `rc` 常時 0 化 bash 仕様罠として cross-validated MEDIUM 再検出。silent failure 経路閉塞のための defensive patch そのものが新規 silent regression を生む再帰 anti-pattern。`!` 演算子 + `$?` 相互作用 / signal-specific trap canonical 準拠の Pattern Consistency / inline hint relative path drift (`references/` → `../../references/`) の 3 サブパターンが同一 PR 内で並行発火。設計対策: `if cmd; then :; else rc=$?; fi` の else 句版を canonical とし、`!` 反転句版を禁止形式として codebase の他 bash helper 群と統一する patterns-and-anti-patterns 拡張)](../../raw/fixes/20260513T185709Z-pr-949.md)
 - [PR #973 review (累積 29 回目 構造的予防の実証: 4-site scope drift fix で Issue 本文に対象箇所を line 番号付き明示 + 検証 step (grep + `4-site-symmetry.test.sh` PASS) を含めることで、cycle 1 / 0 findings 収束を達成。code-quality reviewer は `diff <(sed -n ...)` で SoT (start-finalize.md) との byte-level 同型を独立検証。設計対策の有効性: Issue 本文の対象箇所明示 (4 sites の file:line) + 機械検証 step (grep + test PASS) を Issue creation phase で要求することで、後続実装での片肺更新 risk を構造的に消去できる)](../../raw/reviews/20260515T054955Z-pr-973.md)
+- [PR #984 review (累積 30 回目 構造的予防の実証: Strict-mode caller variant subsection を SoT (`workflow-incident-detection.md`) に新規追加 + `sentinel-visibility-rule.test.sh` Section 1.1 に 3 assertion を追加することで「SoT 側 variant 不在 / variant に `|| true` 欠落 / implementation 側 `|| true` 欠落」の 3 種 drift を pin。4 reviewer (prompt-engineer / test / error-handling / code-quality) 全員 0 finding で 1 cycle merge。前 PR の reviewer MINOR scope 外指摘を後続 Issue 化 + defense-in-depth PR として完遂する shrinking-cycle pattern を実証し、PR #973 (累積 29 回目) の「Issue 本文 line 番号明示 + 機械検証 step」 design の連続 2 回 reproducibility を実測)](../../raw/reviews/20260515T184722Z-pr-984.md)

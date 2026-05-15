@@ -12,17 +12,40 @@
 #
 # Usage:
 #   check-no-direct-gh-issue-create.sh <file.md> [<file.md> ...]
+#   check-no-direct-gh-issue-create.sh --all
+#
+#   --all expands to every `plugins/rite/commands/**/*.md` file under the
+#   repository root (resolved from the script's own location). Use this from
+#   /rite:lint Phase 3.14 to enforce the guard across all command/sub-skill
+#   files in a single invocation. Additional files can be appended after --all.
 #
 # Exit codes:
 #   0 - No violations
 #   1 - One or more violations found (printed to stderr with file:line:content)
-#   2 - Usage error (no arguments / file not found)
+#   2 - Usage error (no arguments / file not found / --all expansion empty)
 
 set -euo pipefail
 
 if [ $# -eq 0 ]; then
-  echo "Usage: $0 <file.md> [<file.md> ...]" >&2
+  echo "Usage: $0 [--all | <file.md> [<file.md> ...]]" >&2
   exit 2
+fi
+
+if [ "$1" = "--all" ]; then
+  shift
+  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+  COMMANDS_DIR="$REPO_ROOT/plugins/rite/commands"
+  if [ ! -d "$COMMANDS_DIR" ]; then
+    echo "ERROR: --all mode: commands directory not found: $COMMANDS_DIR" >&2
+    exit 2
+  fi
+  mapfile -t auto_files < <(find "$COMMANDS_DIR" -type f -name '*.md' | sort)
+  if [ ${#auto_files[@]} -eq 0 ]; then
+    echo "ERROR: --all mode: no *.md files found under $COMMANDS_DIR" >&2
+    exit 2
+  fi
+  set -- "${auto_files[@]}" "$@"
 fi
 
 violations=0

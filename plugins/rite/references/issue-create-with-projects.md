@@ -225,17 +225,23 @@ Issue #669 strengthens the script so that **Projects registration failures are n
    - MUST: stderr surfaces root cause
    - MUST NOT: failures are not confined to the warnings array under exit code 0
 
-### Static Guard for Direct `gh issue create` Invocations (#669 AC-3)
+### Static Guard for Direct `gh issue create` Invocations (#669 AC-3 / #958)
 
-`plugins/rite/scripts/check-no-direct-gh-issue-create.sh` provides a mechanical check: every Issue creation path in `/rite:issue:start` and the parent-routing module must go through this script. Run it against any new orchestrator/sub-skill files:
+`plugins/rite/scripts/check-no-direct-gh-issue-create.sh` provides a mechanical check: every Issue creation path under `plugins/rite/commands/**/*.md` must go through this script. Two invocation modes are supported:
 
 ```bash
+# Mode 1: explicit file list (original #669 form)
 bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh \
   plugins/rite/commands/issue/start.md \
   plugins/rite/commands/issue/parent-routing.md
+
+# Mode 2: --all auto-expansion (#958)
+# Scans every plugins/rite/commands/**/*.md file under the resolved repository root.
+# Used by /rite:lint Phase 3.14 to enforce the guard across every command/sub-skill.
+bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh --all
 ```
 
-Exit 0 = no violations. Exit 1 = direct `gh issue create -...` / `gh issue create $...` / `gh issue create "..."` / `gh issue create '...'` invocation found (after stripping fenced code blocks, blockquotes, Markdown comments, and inline backticks). Tests live at `plugins/rite/scripts/tests/check-no-direct-gh-issue-create.test.sh` and include positive, negative, and false-positive-avoidance cases (TC-001 through TC-010).
+Exit 0 = no violations. Exit 1 = direct `gh issue create -...` / `gh issue create $...` / `gh issue create "..."` / `gh issue create '...'` invocation found (after stripping fenced code blocks, blockquotes, Markdown comments, and inline backticks). Exit 2 = usage error (no arguments, missing file, or `--all` expansion empty / commands directory absent). Tests live at `plugins/rite/scripts/tests/check-no-direct-gh-issue-create.test.sh` and include positive, negative, false-positive-avoidance, and `--all` mode cases (TC-001 through TC-012). `/rite:lint` Phase 3.14 invokes the script with `--all` on every lint run and records findings as warning-level (does not change `[lint:success]`); see [lint.md Phase 3.14](../commands/lint.md#314-plugin-specific-checks-direct-gh-issue-create-invocation--issue-958) for the lint integration details.
 
 ---
 

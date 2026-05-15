@@ -847,6 +847,47 @@ fi
 - `comment_line_ref_finding_count`: Extract from `comment_line_ref_output` by matching `==> Total comment-line-ref findings: N` (regex: `/Total comment-line-ref findings: (\d+)/`). If no match found, default to 0
 - `comment_line_ref_output`: Script output (truncated if >50 lines)
 
+### 3.14 Plugin-specific Checks (Direct gh issue create Invocation) — Issue #958
+
+Execute the direct `gh issue create` invocation guard to detect Issue creation paths in `plugins/rite/commands/**/*.md` that bypass the `create-issue-with-projects.sh` helper. This complements the Issue #669 AC-3 guard by extending its enforcement scope from the original two files (`commands/issue/start.md` + `commands/issue/parent-routing.md`) to every command/sub-skill markdown file. The original incident (#958) showed that fix-loop scope-creep Issue creation (e.g., `pr/review.md` Phase 5.4 paths invoked at orchestration time) could regress to direct `gh issue create` shortcuts, leaving Issues unregistered in GitHub Projects. See the script header at `plugins/rite/scripts/check-no-direct-gh-issue-create.sh` for the exact detection pattern and false-positive avoidance rules (fenced code blocks, blockquotes, single-line and multi-line Markdown comments, inline backtick spans).
+
+Detected pattern (after stripping fenced code blocks / blockquotes / Markdown comments / inline backticks):
+
+- `gh issue create [-$"\047]` — literal `gh issue create ` followed by `-` (option flag), `$` (shell variable), `"` (double-quoted argument), or `'` (single-quoted argument)
+
+Exclusions handled by the script: fenced code blocks (``` and ~~~), blockquote lines (`> ...`), Markdown comments (`<!-- ... -->` single-line and multi-line), inline backtick spans (`` `...` ``).
+
+**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
+
+**Skip condition**: Script file does not exist (e.g., marketplace install without scripts directory).
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/scripts/check-no-direct-gh-issue-create.sh ]; then
+  direct_gh_issue_output=$(bash {plugin_root}/scripts/check-no-direct-gh-issue-create.sh --all 2>&1)
+  direct_gh_issue_exit_code=$?
+else
+  direct_gh_issue_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `direct_gh_issue_status` | Action |
+|-----------|--------------------------|--------|
+| 0 | `success` | No direct invocations — continue to Phase 4 |
+| 1 | `warning` | Direct invocation detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| 2 | `error` | Invocation error (usage error / missing commands directory / empty `--all` expansion) — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Direct `gh issue create` invocation check results are treated as **warnings**, not errors — same policy as Phase 3.5 / 3.6 / 3.7 / 3.8 / 3.9 / 3.10 / 3.11 / 3.12 / 3.13 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). Issue #958 specifies warning-level non-blocking behaviour so the helper-script guideline can be enforced progressively without gating CI; the structural enforcement (every command/sub-skill must call `create-issue-with-projects.sh`) is the long-term goal, and warning-level surfacing on each lint run is sufficient to redirect contributors to the helper before merge.
+
+**Record direct gh issue create check results** for Phase 4 reporting:
+- `direct_gh_issue_status`: `success` / `warning` / `error` / `skipped`
+- `direct_gh_issue_finding_count`: Extract from `direct_gh_issue_output` by matching the line `Total files with violations: N` (regex: `/Total files with violations: (\d+)/`). If no match found, default to 0
+- `direct_gh_issue_output`: Script output (truncated if >50 lines)
+
 ---
 
 ## Phase 4: Report Results

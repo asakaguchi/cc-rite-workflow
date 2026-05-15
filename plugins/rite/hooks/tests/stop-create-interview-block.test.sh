@@ -6,7 +6,7 @@
 # Back-stop behavior tests (not direct Issue AC mapping):
 #   - gate-match → exit 2 + ACTION (TC-1, TC-9)
 #   - gate-mismatch / recursion guard / non-Stop → exit 0 (TC-2..TC-6, TC-8)
-#   - workflow_incident.enabled=false respected (TC-7)
+#   - workflow_incident.enabled=false respected (TC-7 variant matrix)
 # Note: Issue AC-1/AC-2/AC-5 are orchestrator-side e2e concerns, out of hook test scope.
 # Note: AC-3 (structural invariants) covered by 4-site-symmetry.test.sh et al.
 # Note: AC-6 (charter violation grep) covered separately.
@@ -192,20 +192,39 @@ assert_eq "TC-6.1: exit code 0 (allow)" "0" "$rc"
 assert_eq "TC-6.2: no stderr output" "" "$STDERR"
 rm -rf "$SBX"; cleanup_dirs=("${cleanup_dirs[@]/$SBX}")
 
-# ---- TC-7: workflow_incident.enabled=false → block but skip sentinel emission ----
-echo "TC-7: workflow_incident.enabled=false → exit 2 but no sentinel emitted"
-SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
-write_flow_state "$SBX" "create_post_interview" "true" "0"
-cat > "$SBX/rite-config.yml" <<'YAML'
+# ---- TC-7: workflow_incident.enabled variant matrix → all opt-out forms block + skip sentinel ----
+# Canonical SoT (workflow-incident-detection.md) accepts 6+ syntactic variants of falsy values
+# (`false` / `no` / `0`, case-insensitive, with/without quotes, with trailing comment). The hook
+# parser (stop-create-interview-block.sh:103-111) implements quote stripping + case-folding +
+# case branch. This loop pins all variants so future parser refactors cannot silently degrade
+# any form to default-on (cycle 4 LOW finding — Issue #979).
+echo "TC-7: workflow_incident.enabled variant matrix (7 syntactic forms) → exit 2 + no sentinel"
+
+TC7_VARIANTS=(
+  "false"
+  "FALSE"
+  '"false"'
+  "'false'"
+  "no"
+  "0"
+  "false # trailing comment"
+)
+
+for variant in "${TC7_VARIANTS[@]}"; do
+  echo "  variant: enabled: $variant"
+  SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+  write_flow_state "$SBX" "create_post_interview" "true" "0"
+  cat > "$SBX/rite-config.yml" <<YAML
 workflow_incident:
-  enabled: false
+  enabled: $variant
 YAML
-payload=$(build_stop_payload "$SBX" false)
-run_hook "$SBX" "$payload"; rc=$HOOK_RC
-assert_eq "TC-7.1: exit code 2 (block respected)" "2" "$rc"
-assert_contains "TC-7.2: ACTION still shown" "Issue #920" "$STDERR"
-assert_not_contains "TC-7.3: workflow_incident sentinel NOT emitted (opt-out respected)" "WORKFLOW_INCIDENT=1" "$STDERR"
-rm -rf "$SBX"; cleanup_dirs=("${cleanup_dirs[@]/$SBX}")
+  payload=$(build_stop_payload "$SBX" false)
+  run_hook "$SBX" "$payload"; rc=$HOOK_RC
+  assert_eq "TC-7.1 [enabled: $variant]: exit code 2 (block respected)" "2" "$rc"
+  assert_contains "TC-7.2 [enabled: $variant]: ACTION still shown" "Issue #920" "$STDERR"
+  assert_not_contains "TC-7.3 [enabled: $variant]: workflow_incident sentinel NOT emitted (opt-out respected)" "WORKFLOW_INCIDENT=1" "$STDERR"
+  rm -rf "$SBX"; cleanup_dirs=("${cleanup_dirs[@]/$SBX}")
+done
 
 # ---- TC-8: non-Stop event → allow (other hooks are out of scope) ----
 echo "TC-8: hook_event_name=PreToolUse → exit 0 (scope check)"

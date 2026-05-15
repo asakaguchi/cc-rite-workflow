@@ -553,3 +553,4 @@
 | 2026-05-15T11:50:27+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=133, broken_refs=19 |
 | 2026-05-15T15:05:00+09:00 | ingest:create | pages/heuristics/pattern-unification-over-wiki-rigor.md | PR #973 review (raw/reviews/20260515T054955Z-pr-973.md) — follow-up PR で Wiki 経験則違反でも統一を優先する meta-heuristic |
 | 2026-05-15T15:05:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #973 review (raw/reviews/20260515T054955Z-pr-973.md) — 累積 29 回目: Issue 本文の対象箇所明示 + 検証 step で 0 findings 1 cycle 収束を実証 |
+| 2026-05-15T15:10:00+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=132, broken_refs=19 |

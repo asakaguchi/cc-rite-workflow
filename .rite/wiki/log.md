@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-05-15T14:30:00+09:00 | ingest:skip | raw/reviews/20260515T051808Z-pr-972.md | PR #972 review (0 findings, 1 cycle mergeable): start.md L694 hedge + L696 SoT pointer 追加 (+2/-2 行) の clean canonical application。既存 `pages/anti-patterns/asymmetric-fix-transcription.md` (start.md ↔ start-finalize.md 対称化 fix) と `pages/patterns/drift-check-anchor-semantic-name.md` (`4 site 対称化マッピング` heading の semantic name 参照) を textbook 通りに適用しただけで、新規 sub-pattern / variant / empirical observation の累積価値なし。両 reviewer (prompt-engineer / code-quality) が cross-file invariant (4 site discriminator literal 一致 / SoT heading exact match) を Grep で独立確認し 0 findings 着地。原 PR #963 cycle 1 LOW 3 件への follow-up |
 | 2026-05-06T20:35:00+09:00 | ingest:skip | raw/reviews/20260506T105501Z-pr-866.md | PR #866 cycle 1 review (1 MEDIUM + 1 LOW): convention SoT 設置時の覆盖範囲明示不足 / runner 仕様への依存。既存 `pages/anti-patterns/asymmetric-fix-transcription.md` の sub-pattern (累積対策 PR の覆盖範囲明示漏れ) で十分カバー済み、新規経験則化価値が薄いため skip |
 | 2026-05-06T20:35:00+09:00 | ingest:skip | raw/reviews/20260506T110313Z-pr-866-cycle2.md | PR #866 cycle 2 review (1 MEDIUM + 1 LOW): convention 自身と scope 内既存コードの day-one 違反。新規 convention 文書化 PR の典型 fractal pattern で `asymmetric-fix-transcription.md` 既収録、新規価値なし |
 | 2026-05-06T20:35:00+09:00 | ingest:skip | raw/reviews/20260506T110759Z-pr-866-cycle3.md | PR #866 cycle 3 review (mergeable, 0 findings): 3 cycle で 12→2→0 収束パターン。fingerprint cycling 不発、累積 fix-introduced regression なしのため新規経験則化不要 |

@@ -7,6 +7,8 @@ set -euo pipefail
 # Notifications are best-effort; exit gracefully if jq is not available
 command -v jq >/dev/null 2>&1 || exit 0
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Read CWD from stdin JSON (consistent with other hooks).
 # CWD is provided by the Claude Code runtime and is already an absolute path;
 # realpath normalization is unnecessary and would add a portability concern.
@@ -17,7 +19,13 @@ if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
     exit 0
 fi
 
-CONFIG_FILE="$CWD/rite-config.yml"
+# Resolve project root (git root anchored). Matches session-start.sh /
+# _resolve-schema-version.sh / post-tool-wm-sync.sh convention; `$CWD` based
+# lookup would silently miss rite-config.yml when Claude Code is launched from
+# a subdirectory (Issue #976).
+STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
+
+CONFIG_FILE="$STATE_ROOT/rite-config.yml"
 if [ ! -f "$CONFIG_FILE" ]; then
     exit 0
 fi

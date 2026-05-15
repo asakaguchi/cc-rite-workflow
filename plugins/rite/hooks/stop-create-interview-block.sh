@@ -95,8 +95,13 @@ STATE_PR=$(jq -r '.pr_number // 0' "$STATE_FILE_PATH" 2>/dev/null) || STATE_PR="
 # exit 0 even when the gate condition matches. `|| true` keeps the chain compatible
 # with strict-mode contexts (no-match → empty result → default-on fallback).
 WORKFLOW_INCIDENT_ENABLED="true"
-if [ -f "$CWD/rite-config.yml" ]; then
-  workflow_incident_enabled=$(sed -n '/^workflow_incident:/,/^[a-zA-Z]/p' "$CWD/rite-config.yml" 2>/dev/null \
+# `$STATE_ROOT_PATH/rite-config.yml` is the canonical project-config path resolved
+# via state-path-resolve.sh (git root anchored). Matches session-start.sh /
+# _resolve-schema-version.sh / post-tool-wm-sync.sh convention; `$CWD` based
+# lookup would silently miss the opt-out when Claude Code is launched from a
+# subdirectory (Issue #976).
+if [ -f "$STATE_ROOT_PATH/rite-config.yml" ]; then
+  workflow_incident_enabled=$(sed -n '/^workflow_incident:/,/^[a-zA-Z]/p' "$STATE_ROOT_PATH/rite-config.yml" 2>/dev/null \
     | grep -E '^[[:space:]]+enabled:' | head -1 | sed 's/#.*//' \
     | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]' || true)
   value=$(printf '%s' "$workflow_incident_enabled" | tr -d '"'"'"'' | tr '[:upper:]' '[:lower:]')

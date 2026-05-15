@@ -273,17 +273,21 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-013 (#958 cycle 2): --repo-root happy path
-# Validates that --repo-root DIR override accepts a valid directory and the
-# --all expansion uses it as the repository root.
+# TC-013 (#958 cycle 2): --repo-root override is CWD-independent
+# Validates that --repo-root DIR override allows the script to resolve the
+# repository root even when invoked from outside the repo (e.g., /tmp). This
+# explicitly guards the CWD-independence that the cycle-2 refactor (move from
+# SCRIPT_DIR/../../.. hardcode to git rev-parse --show-toplevel + --repo-root
+# override) achieved — without this TC, F-09 could silently regress if the
+# default resolution path changed back to a CWD-dependent form.
 # --------------------------------------------------------------------------
-echo "TC-013: --all --repo-root <valid> → exit 0 (#958 cycle 2)"
+echo "TC-013: --all --repo-root <valid> from /tmp → exit 0 (#958 cycle 2)"
 rc=0
-output=$(bash "$TARGET" --all --repo-root "$REPO_ROOT" 2>&1) || rc=$?
+output=$(cd /tmp && bash "$TARGET" --all --repo-root "$REPO_ROOT" 2>&1) || rc=$?
 if [ "$rc" -eq 0 ]; then
-  pass "--all --repo-root <valid>: exit 0"
+  pass "--all --repo-root <valid> from /tmp: CWD-independent, exit 0"
 else
-  fail "Expected exit 0 with valid --repo-root, got rc=$rc, output='$output'"
+  fail "Expected exit 0 with --repo-root from /tmp, got rc=$rc, output='$output'"
 fi
 
 # --------------------------------------------------------------------------

@@ -44,6 +44,29 @@ Retain `workflow_incident_enabled` in conversation context. Phase 5.4.4.1 reads 
 
 > **Note on non-blocking / dedupe behavior**: The implementation always behaves as non-blocking (registration failure does not halt the workflow) and deduplicates incidents per session (same type is only prompted once). Only `enabled` is a configurable key.
 
+### Strict-mode caller variant
+
+`set -euo pipefail` + ERR trap を有効化した caller (hook 等) は、上記 Canonical bash literal を **そのまま** copy-paste すると silent regression を再発する経路がある。`workflow_incident:` section が `rite-config.yml` に存在しない場合、`grep -E '^[[:space:]]+enabled:'` が no-match で exit 1 を返し、pipefail で pipeline 全体が exit 1 になる。`$(...)` substitution 経由で assignment 文の exit code が non-zero となり、ERR trap が発火して silent exit する経路を生む。
+
+PR #975 cycle 2 CRITICAL では `plugins/rite/hooks/stop-create-interview-block.sh` の `workflow_incident.enabled` parser がまさにこの経路で発火し、Stop hook が user-facing ACTION message を表示せず exit する regression を発生させた。canonical (上記) は default 想定で動作するが、`set -euo pipefail` + ERR trap caller では assignment 末尾 pipeline に `|| true` を追加した以下 variant を使用すること:
+
+```bash
+# Canonical との差分: `tr -d '[:space:]')` → `tr -d '[:space:]' || true)`
+# `|| true` を assignment subshell 内の pipeline 末尾に置くことで、
+# grep の no-match 時 pipefail 伝播を遮断する (ERR trap 起因の silent exit を防ぐ)。
+workflow_incident_enabled=$(sed -n '/^workflow_incident:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
+  | grep -E '^[[:space:]]+enabled:' | head -1 | sed 's/#.*//' \
+  | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]' || true)
+workflow_incident_enabled=$(echo "$workflow_incident_enabled" | tr '[:upper:]' '[:lower:]')
+case "$workflow_incident_enabled" in
+  true|yes|1)  workflow_incident_enabled="true" ;;
+  false|no|0)  workflow_incident_enabled="false" ;;
+  *) workflow_incident_enabled="true" ;;  # 不明値 / 空 → default-on
+esac
+```
+
+> **Drift detection contract**: `plugins/rite/hooks/tests/sentinel-visibility-rule.test.sh` Section 1.1 は (a) 本 subsection heading の存在、(b) variant bash literal (`tr -d '[:space:]' || true`) の存在、(c) strict-mode caller (`stop-create-interview-block.sh`) が `|| true` guard を保持していること、の 3 点を assert する。将来の refactor で hook 側 `|| true` を誤って削除する drift を機械検出し、SoT (本 ref) ↔ implementation (hook) の 2 site 対称性を保証する (Issue #978)。
+
 ## Phase 5.4.4.1 — Workflow Incident Detection
 
 ### Sentinel `type` の意味

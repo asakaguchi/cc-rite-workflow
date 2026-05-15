@@ -50,6 +50,10 @@ COMMANDS_DIR="$PLUGIN_ROOT/commands"
 START_MD="$COMMANDS_DIR/issue/start.md"
 # PR G2 #904: Phase 5.5.1 / 5.6 / 5.7 caller bash block を start-finalize.md sub-skill へ SoT 移管
 START_FINALIZE_MD="$COMMANDS_DIR/issue/start-finalize.md"
+# PR H (#905): start-execute / start-publish の state-read.sh caller 0 件を pin
+# (両 sub-skill は phase の write のみで read は不要。drift guard として 0 を確認)
+START_EXECUTE_MD="$COMMANDS_DIR/issue/start-execute.md"
+START_PUBLISH_MD="$COMMANDS_DIR/issue/start-publish.md"
 IMPLEMENT_MD="$COMMANDS_DIR/issue/implement.md"
 REVIEW_MD="$COMMANDS_DIR/pr/review.md"
 RESUME_MD="$COMMANDS_DIR/resume.md"
@@ -89,6 +93,15 @@ assert "TC-1.4: resume.md の caller bash block は 1 箇所" "1" "$resume_count
 # implementation_round inline form は本 reference の Step 1 セクション内に唯一存在)
 metrics_count=$(grep -cE '^if [a-z_]+=\$\(bash \{plugin_root\}/hooks/state-read\.sh' "$METRICS_RECORDING_MD" || true)
 assert "TC-1.5: metrics-recording.md の caller bash block は 1 箇所" "1" "$metrics_count"
+
+# PR H (#905): start-execute / start-publish は state-read.sh の caller を持たない (write のみ)。
+# zero-caller pin として 0 を assert することで、誤って sub-skill 内に state-read.sh caller が
+# 再 inline 化されないことを保護する (Asymmetric Fix Transcription / SoT 移管後の drift guard)。
+start_execute_count=$(grep -cE '^if [a-z_]+=\$\(bash \{plugin_root\}/hooks/state-read\.sh' "$START_EXECUTE_MD" || true)
+assert "TC-1.7: start-execute.md の caller bash block は 0 箇所 (PR H zero-caller pin)" "0" "$start_execute_count"
+
+start_publish_count=$(grep -cE '^if [a-z_]+=\$\(bash \{plugin_root\}/hooks/state-read\.sh' "$START_PUBLISH_MD" || true)
+assert "TC-1.8: start-publish.md の caller bash block は 0 箇所 (PR H zero-caller pin)" "0" "$start_publish_count"
 
 # === Test 2: G-02 — `if !` anti-pattern revert 検出 ===
 # cycle 35 F-04 で empirical に bash spec 違反と判明した形式が caller markdown に revert されないこと。

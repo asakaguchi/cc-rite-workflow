@@ -152,6 +152,9 @@ rite-workflow/
 │   │   ├── create-decompose.md       # Sub-skill: Issue decomposition
 │   │   ├── create-register.md        # Sub-skill: single-Issue registration
 │   │   ├── start.md         # /rite:issue:start (end-to-end)
+│   │   ├── start-execute.md          # Sub-skill: /rite:issue:start Phase 5.0-5.2.1 (Stop Hook / Implementation / Lint / Checklist)
+│   │   ├── start-publish.md          # Sub-skill: /rite:issue:start Phase 5.3-5.4 (PR creation / review-fix loop)
+│   │   ├── start-finalize.md         # Sub-skill: /rite:issue:start Phase 5.5-Termination (Ready / Status / metrics / completion / parent close)
 │   │   ├── update.md        # /rite:issue:update
 │   │   ├── close.md         # /rite:issue:close
 │   │   ├── edit.md          # /rite:issue:edit

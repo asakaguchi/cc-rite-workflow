@@ -144,6 +144,14 @@ See [references/work-memory-format.md](./references/work-memory-format.md) for w
 
 When an orchestrator command (e.g., `/rite:issue:start`, `/rite:issue:create`) invokes a sub-skill via the Skill tool, the LLM **MUST** continue in the same response turn after the sub-skill returns. The return tag is a continuation trigger, not a turn boundary — stopping prematurely abandons the workflow before the terminal completion marker is output.
 
+**`/rite:issue:start` の Phase 5 sub-skill chain**:
+
+- **Phase 5.0-5.2.1**: `rite:issue:start-execute` — Stop Hook 検証 / 実装 / lint / checklist 確認
+- **Phase 5.3-5.4**: `rite:issue:start-publish` — PR 作成 / review-fix loop
+- **Phase 5.5-Termination**: `rite:issue:start-finalize` — Ready / Status / metrics / completion / parent close / workflow termination
+
+各 sub-skill は `<!-- [start:execute:completed|aborted] -->` / `<!-- [start:publish:completed|aborted] -->` / `<!-- [start:finalize:completed|aborted] -->` の HTML-commented sentinel を emit し、orchestrator の Mandatory After 5.0-5.2.1 / 5.3-5.4 / 5.5-Termination が context grep で sentinel-based routing を行う。
+
 See [references/sub-skill-return-protocol.md](./references/sub-skill-return-protocol.md) for the full contract, anti-pattern / correct-pattern examples, and the three defense-in-depth layers (prompt / flow-state / caller-continuation hint). The canonical specification lives in `docs/SPEC.md` "Sub-skill Return Auto-Continuation Contract" section.
 
 ## AI Coding Principles (Summary)

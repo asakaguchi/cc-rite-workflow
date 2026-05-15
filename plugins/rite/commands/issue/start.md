@@ -43,12 +43,12 @@ Execute phases sequentially. **Do NOT stop between phases unless the user explic
 
 ## Phase Flow Quick Reference
 
-> Stopping between phases leaves the workflow in an inconsistent state (e.g., branch created but no PR), requiring manual recovery via `/rite:resume`.
-> **CRITICAL**: After every sub-skill invocation returns, **immediately** proceed to the next phase. Do NOT stop, do NOT re-invoke the completed skill.
+> Stopping between phases leaves the workflow in an inconsistent state (e.g., branch created but no PR), requiring `/rite:resume`.
+> **CRITICAL**: After every sub-skill invocation returns, **immediately** proceed to the next phase. Do NOT stop, do NOT re-invoke.
 >
-> Every phase that writes to flow state is subject to the Pre-write + Mandatory After scaffolding contract (#490). Phases that only read state (0.x Detection, 1 Quality, 2.1/2.2 Branch-pattern detection, 4 User Guidance, 5.6.1 Incident Reporting, etc.) do not write markers and are therefore excluded from whitelist verification — they run inline and their transitions are verified indirectly by the surrounding write-phases. Every state-writing transition is tracked via flow state and verified by the stop-guard phase-transition whitelist (`plugins/rite/hooks/phase-transition-whitelist.sh`).
+> State-writing phases follow the Pre-write + Mandatory After scaffolding contract (#490) and are verified by the stop-guard phase-transition whitelist (`plugins/rite/hooks/phase-transition-whitelist.sh`). Read-only phases (0.x Detection, 1 Quality, 2.1/2.2 Branch detection, 4 Guidance, 5.6.1 Incident Reporting) run inline.
 >
-> The "Stop Allowed?" column marks whether the **user** may cancel at that phase (e.g., Phase 4 Guidance where the user chooses to work later, Phase 5.5-Termination where the workflow naturally terminates after the completion handoff is displayed — Phase 5.5/5.5.1/5.5.2/5.6/5.7/Workflow Termination はすべて start-finalize sub-skill 内)。Even for "Yes" rows, the scaffolding contract still applies — the user's stop action must be explicit, not a silent skip by the LLM.
+> "Stop Allowed?" marks whether the **user** may cancel at that phase (Phase 4 / 5.5-Termination; the latter is inside `start-finalize`). Even for "Yes" rows the scaffolding contract still applies — stop must be explicit.
 
 | Phase | Sub-skill Invoked | Next Phase | Stop Allowed? |
 |-------|-------------------|------------|---------------|
@@ -70,18 +70,16 @@ Execute phases sequentially. **Do NOT stop between phases unless the user explic
 
 ## Sub-skill Return Protocol (Global)
 
-> **CRITICAL — AUTOMATIC CONTINUATION REQUIREMENT**: This is the single most important rule in this document. When a sub-skill returns, you MUST continue responding in the same turn. Ending your response after a sub-skill returns is a **bug** that forces the user to type "continue" manually.
-
-This protocol applies to **every** sub-skill invocation in this document. Each Mandatory After section enforces it at specific transition points.
+> **CRITICAL — AUTOMATIC CONTINUATION REQUIREMENT**: When a sub-skill returns, you MUST continue responding in the same turn. Ending here is a **bug** that forces the user to type "continue" manually. Applies to **every** sub-skill invocation; each Mandatory After section enforces it.
 
 **When a sub-skill outputs a result pattern (e.g., `[review:mergeable]`, `[fix:pushed]`, `[pr:created:123]`) and returns control to you:**
 
-1. **DO NOT end your response.** You are still in the middle of the e2e flow. Ending your response here is equivalent to crashing mid-workflow.
-2. **DO NOT re-invoke the completed skill.** It already finished. Re-invoking wastes time and may cause errors.
-3. **IMMEDIATELY** locate the Mandatory After section for the current phase and execute its steps — starting with the flow state update, then proceeding to the next phase.
+1. **DO NOT end your response.** Ending mid-flow = crashing mid-workflow.
+2. **DO NOT re-invoke the completed skill.** It already finished.
+3. **IMMEDIATELY** locate the Mandatory After section for the current phase and execute its steps — flow state update, then next phase.
 4. If the stop-guard hook blocks a stop attempt (exit 2), follow the `ACTION:` instructions in its stderr message.
 
-**Self-check**: After every sub-skill returns, ask yourself: "Have I output the completion report (Phase 5.6)?" If not, you are NOT done — keep going.
+**Self-check**: After every sub-skill returns, ask: "Have I output the completion report (Phase 5.6)?" If not, keep going.
 
 ---
 
@@ -104,7 +102,7 @@ This protocol applies to **every** sub-skill invocation in this document. Each M
 | `{default_branch}` | `gh repo view --json defaultBranchRef` (Phase 2.3.2.3 only) |
 | `{project_number}` | `github.projects.project_number` in `rite-config.yml` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
-| `{parent_issue_number}` | Write: Phase 1.6 / Phase 2.4 で flow-state に書き込み (`flow-state-update.sh create/patch`)。Read: [Phase 5.1.2 (implement.md)](./implement.md) / Phase 5.7 で `state-read.sh` 経由 (per-session state)。Workflow Termination は Phase 5.7 の `[CONTEXT] PARENT_ISSUE=...` emit を LLM-routing signal として使い state を re-read しない。歴史的経緯と fix context は [`references/state-read-evolution.md`](../../references/state-read-evolution.md) を参照 |
+| `{parent_issue_number}` | Write: Phase 1.6 / Phase 2.4 で flow-state に書き込み。Read: Phase 5.1.2 (implement.md) / Phase 5.7 で `state-read.sh` 経由 (per-session)。歴史的経緯は [`state-read-evolution.md`](../../references/state-read-evolution.md) を参照 |
 
 ---
 
@@ -247,17 +245,11 @@ Follow `rite-config.yml` pattern `{type}/issue-{number}-{slug}`. Type from label
 
 ### 2.2 Existing Branch Check
 
+> **DO NOT** use exit code (`&&`, `||`, `$?`) to determine branch existence. `git branch --list` always returns exit code 0 regardless of match. **判定**: `local_match`/`remote_match` の **出力文字列の空チェック**。
+
 ```bash
 local_match=$(git branch --list "{branch_name}")
 remote_match=$(git branch -r --list "origin/{branch_name}")
-```
-
-> **DO NOT** use exit code (`&&`, `||`, `$?`) to determine branch existence. `git branch --list` always returns exit code 0 regardless of whether a match is found.
-
-**Determination**: If `local_match` or `remote_match` is non-empty, the branch exists.
-
-```bash
-# 判定ロジック（出力文字列の空チェック）
 if [ -n "$local_match" ] || [ -n "$remote_match" ]; then
   echo "BRANCH_EXISTS"
 else
@@ -330,7 +322,7 @@ Execute the Module procedure: Callsite 1 Step 1 (config read + skip marker emit)
 > See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
 > MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
 
-**Step 1**: Update flow state to post-projects phase. If Phase 2.4.7 detected a parent Issue (`{parent_issue_number}` is non-empty and non-zero), persist it via `--parent-issue` so it survives context compaction and session restarts (#497):
+**Step 1**: Update flow state to post-projects phase。親検出時は `--parent-issue` で persist し context compaction/session restart に耐える (#497):
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
@@ -339,9 +331,9 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
   --next "Phase 2.4 completed. Proceed to Phase 2.5 (Iteration) if iteration.enabled, else Phase 2.6 (Work Memory). Do NOT stop."
 ```
 
-> **Note**: When Phase 2.4.7 detected no parent (standalone Issue), `{parent_issue_number}` is `0` (the default). The `--parent-issue 0` is harmless and explicitly records that no parent was found.
+> **Note**: 親不検出時は `{parent_issue_number}=0` (デフォルト)。`--parent-issue 0` は harmless で「親なし」を明示記録。
 
-**Step 2**: **→ Proceed to Phase 2.5 now**. Phase 2.5 handles its own skip conditions internally (iteration disabled / projects disabled) — do NOT skip Phase 2.5 at this level (prompt-engineer cycle-2 MEDIUM #3). The Phase 2.5 Pre-write + Mandatory After blocks always run so `phase2_post_iteration` is recorded even when the assignment body is skipped.
+**Step 2**: **→ Proceed to Phase 2.5 now**. Phase 2.5 は内部で skip 条件 (iteration disabled / projects disabled) を処理するため本 step で skip しない。Pre-write + Mandatory After は常に実行され `phase2_post_iteration` を記録する。
 
 ### 2.5 Iteration Assignment
 
@@ -421,7 +413,7 @@ if [ ! -f ".rite-work-memory/issue-{issue_number}.md" ]; then
 fi
 ```
 
-> **Note**: `{plugin_root}` が未解決の場合は、[Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) に従い事前に解決すること。このコードブロックは Phase 4.1 よりも前に実行されるため、Phase 4.1 での解決に依存できない。相対パス `plugins/rite/hooks/` は、マーケットプレイスインストール環境ではスクリプトが見つからないため使用不可。
+> **Note**: `{plugin_root}` は Phase 4.1 より前に実行されるため、[Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) に従い事前解決必須。相対パス `plugins/rite/hooks/` はマーケットプレイス環境で解決失敗のため不可。
 
 **Step 3**: **→ Proceed to Phase 3 now**.
 
@@ -480,19 +472,11 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 ## Phase 4: Work Start Guidance
 
-### 4.1 Completion Report
+**4.1 Completion Report**: Read `{plugin_root}/templates/completion-report.md` with Read tool. Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version). Use "Work start format (for Phase 4.1)" section as-is. Fallback: inline equivalent (Issue info, branch, progress table).
 
-Read `{plugin_root}/templates/completion-report.md` with Read tool. Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version). Use "Work start format (for Phase 4.1)" section as-is. Fallback: inline equivalent (Issue info, branch, progress table).
+**4.2 Project-Specific Guidance**: Based on `project.type` in rite-config.yml — webapp→Frontend/backend/DB areas, library→Breaking changes/API impact, cli→Command interface/compatibility, documentation→Structure/links, generic→none.
 
-### 4.2 Project-Specific Guidance
-
-Based on `project.type` in rite-config.yml: webapp→Frontend/backend/DB areas, library→Breaking changes/API impact, cli→Command interface/compatibility, documentation→Structure/links, generic→none.
-
-### 4.3 Continuation
-
-Use `AskUserQuestion`: `作業の準備が整いました。どうしますか？ オプション: 実装を開始する（推奨）/ 後で作業する`
-
-Start→Phase 5 (end-to-end). Later→terminate, resume via Phase 2.2.
+**4.3 Continuation**: `AskUserQuestion`: `作業の準備が整いました。どうしますか？ オプション: 実装を開始する（推奨）/ 後で作業する`. Start→Phase 5. Later→terminate, resume via Phase 2.2.
 
 ---
 
@@ -500,11 +484,9 @@ Start→Phase 5 (end-to-end). Later→terminate, resume via Phase 2.2.
 
 ### Context Budget & Output Minimization (#80)
 
-The e2e flow must minimize context consumption to complete within a single session. Each sub-skill has an **E2E Output Minimization** section that reduces output when called from this flow.
+The e2e flow must minimize context consumption. Each sub-skill has an **E2E Output Minimization** section.
 
-> **⚠️ Output minimization ≠ step omission**: "minimize output" とは中間テキストの冗長な説明を削減することであり、**phase / step / MUST 処理を skip することではない**。時間・context を理由にワークフロー step を省略する誘惑は強いが、それは identity 違反である。context が実際に枯渇した場合の正規経路は `/clear` + `/rite:resume` であり、LLM が自己判断で step を短縮・省略する経路は存在しない。
->
-> **Identity reference**: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` / `quality_over_expediency` principle を参照。
+> **⚠️ Output minimization ≠ step omission**: 中間テキストを削減することであり、**phase / step / MUST 処理を skip することではない**。時間・context を理由とした step 省略の誘惑は強いが、それは identity 違反。context 枯渇時の正規経路は `/clear` + `/rite:resume`。Identity 仕様: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` / `quality_over_expediency` を参照。
 
 **Orchestrator rules** (apply throughout Phase 5):
 
@@ -578,16 +560,16 @@ Invoke `skill: "rite:issue:start-execute"`.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_execute" --issue {issue_number} --branch "{branch_name}" \
   --pr 0 \
-  --next "rite:issue:start-execute completed. Proceed to Phase 5.3-5.4 (Publish Phase via rite:issue:start-publish) on [start:execute:completed]. Invoke rite:issue:start-finalize (abort context — PR 未作成のため pr=0 で delegation pre-write) on [start:execute:aborted]; sub-skill 内で abort entry を検出して Phase 5.5/5.5.1/5.5.2/5.7 を skip し直接 Phase 5.6 へ進む。 Do NOT stop."
+  --next "rite:issue:start-execute completed. [start:execute:completed]→Phase 5.3-5.4 via rite:issue:start-publish。[start:execute:aborted]→rite:issue:start-finalize (abort context, pr=0); sub-skill 内で abort entry 検出し Phase 5.5/5.5.1/5.5.2/5.7 を skip し直接 Phase 5.6 へ。Do NOT stop."
 ```
 
-**Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `start-execute` sub-skill — e.g., `[lint:aborted]` orchestrator-direct emit per §A, or by `lint.md` sub-skill via Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3 regardless of detection result.
+**Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1。Grep `[CONTEXT] WORKFLOW_INCIDENT=1` (emit by `start-execute` `[lint:aborted]` §A or `lint.md` sub-skill)。検出時 step 2-7 を実行。**non-blocking** — Step 3 へ継続。
 
-**Step 3 (Sentinel-based routing)**: Grep the recent conversation context for `<!-- [start:execute:completed] -->` or `<!-- [start:execute:aborted] -->`:
+**Step 3 (Sentinel-based routing)**: Grep for `<!-- [start:execute:completed] -->` or `<!-- [start:execute:aborted] -->`:
 
-- `[start:execute:completed]` detected → **→ Proceed to Phase 5.3-5.4 (Publish Phase) now** (invoke `rite:issue:start-publish` sub-skill).
-- `[start:execute:aborted]` detected → **→ Invoke `rite:issue:start-finalize` sub-skill (abort context) now**. Use Pre-write `--pr 0` to signal PR 未作成 状態; the sub-skill detects abort entry (`pr_number == 0` AND no prior `[pr:created:N]` sentinel) and skips Phase 5.5/5.5.1/5.5.2/5.7 entirely, proceeding directly to Phase 5.6 Completion Report. The completion report MUST display the abort reason ([lint:aborted] or 5.1.3 Safety Check user 中止) to the user.
-- Neither detected → fail-safe: treat as `[start:execute:completed]` (proceed to Phase 5.3-5.4); the sub-skill SHOULD always emit one of the two sentinels per its Return Output Format contract.
+- `[start:execute:completed]` → **→ Phase 5.3-5.4 (Publish via `rite:issue:start-publish`) now**.
+- `[start:execute:aborted]` → **→ Invoke `rite:issue:start-finalize` (abort context, `--pr 0`) now**。sub-skill が abort entry (`pr_number == 0` AND no prior `[pr:created:N]`) を検出し Phase 5.5/5.5.1/5.5.2/5.7 を skip、Phase 5.6 Completion Report へ。Report は abort reason ([lint:aborted] / 5.1.3 user 中止) を表示。
+- Neither → fail-safe: completed 扱い (Phase 5.3-5.4 へ); sub-skill は Return Output Format に従い必ず片方の sentinel を emit する。
 
 ### 5.3-5.4 Publish Phase (delegated to start-publish sub-skill)
 
@@ -617,20 +599,20 @@ Invoke `skill: "rite:issue:start-publish"`.
 bash {plugin_root}/hooks/flow-state-update.sh create \
   --phase "phase5_post_publish" --issue {issue_number} --branch "{branch_name}" \
   --pr {pr_number} \
-  --next "rite:issue:start-publish completed. Invoke rite:issue:start-finalize on [start:publish:completed] (success path) or [start:publish:aborted] (abort context — sub-skill 内で abort entry を検出して Phase 5.5/5.5.1/5.5.2/5.7 を skip し直接 Phase 5.6 へ進む)。 Do NOT stop."
+  --next "rite:issue:start-publish completed. [start:publish:completed]/[start:publish:aborted] いずれも rite:issue:start-finalize を invoke。abort path は sub-skill 内で Phase 5.5/5.5.1/5.5.2/5.7 を skip し直接 Phase 5.6 へ。Do NOT stop."
 ```
 
-**Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `start-publish` sub-skill — e.g., `[pr:create-failed]` / `[fix:error]` orchestrator-direct emit per §B/§C, or by `pr/create.md` / `pr/review.md` / `pr/fix.md` sub-skill via Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3 regardless of detection result.
+**Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1。Grep `[CONTEXT] WORKFLOW_INCIDENT=1` (emit by `start-publish` `[pr:create-failed]` / `[fix:error]` §B/§C or pr/* sub-skills)。検出時 step 2-7。**non-blocking**。
 
-**Step 3 (Sentinel-based routing)**: Grep the recent conversation context for `<!-- [start:publish:completed] -->` or `<!-- [start:publish:aborted] -->`:
+**Step 3 (Sentinel-based routing)**: Grep for `<!-- [start:publish:completed] -->` or `<!-- [start:publish:aborted] -->`:
 
-- `[start:publish:completed]` detected → **→ Proceed to Phase 5.5 (Ready for Review) now**.
-- `[start:publish:aborted]` detected → **→ Invoke `rite:issue:start-finalize` sub-skill (abort context) now**. The sub-skill detects abort entry (`[start:publish:aborted]` sentinel grep / review-fix loop 未収束) and skips Phase 5.5/5.5.1/5.5.2/5.7 entirely, proceeding directly to Phase 5.6 Completion Report. The completion report MUST display the abort reason (`[pr:create-failed]` or `[fix:error]` user-terminate) to the user.
-- Neither detected → fail-safe: treat as `[start:publish:completed]` (proceed to Phase 5.5); the sub-skill SHOULD always emit one of the two sentinels per its Return Output Format contract.
+- `[start:publish:completed]` → **→ Phase 5.5 (Ready for Review) now**.
+- `[start:publish:aborted]` → **→ Invoke `rite:issue:start-finalize` (abort context) now**。sub-skill が abort entry を検出し Phase 5.5/5.5.1/5.5.2/5.7 を skip、Phase 5.6 Completion Report へ。Report は abort reason (`[pr:create-failed]` / `[fix:error]` user-terminate) を表示。
+- Neither → fail-safe: completed 扱い (Phase 5.5 へ); sub-skill は Return Output Format に従い必ず片方を emit する。
 
 ### 5.4.4.1 Workflow Incident Detection (Contract Summary)
 
-> **Reference**: This section documents the **本体 contract** for workflow incident detection. The detailed Step 1-7 processing flow lives in [Workflow Incident Detection](./references/workflow-incident-detection.md); emit pattern canonical bash literals live in [Workflow Incident Emit Pattern](./references/workflow-incident-emit-pattern.md) (the response-text-inclusion requirement that grep detection below depends on is documented in [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件)); fingerprint cycling / Quality Signal 3 & 4 detail lives in [Fingerprint Cycling Detection](./references/fingerprint-cycling.md). The orchestrator (`/rite:issue:start`) invokes detection at three boundaries (Mandatory After 5.0-5.2.1 / 5.3-5.4 / 5.5-Termination — see "When to execute" table below).
+> **Reference**: 本 contract の Step 1-7 詳細は [Workflow Incident Detection](./references/workflow-incident-detection.md); emit pattern canonical bash literal は [Workflow Incident Emit Pattern](./references/workflow-incident-emit-pattern.md) (response-text-inclusion requirement は [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件)); fingerprint cycling / Quality Signal 3 & 4 は [Fingerprint Cycling Detection](./references/fingerprint-cycling.md) を参照。Orchestrator は Mandatory After 5.0-5.2.1 / 5.3-5.4 / 5.5-Termination の 3 boundary で本 detection を invoke する。
 
 **Detection scope** — recognised sentinel `type` values:
 
@@ -639,14 +621,12 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 | `skill_load_failure` | Orchestrator post-condition check | AskUserQuestion → register Issue / skip |
 | `hook_abnormal_exit` | Skill internal failure paths | AskUserQuestion → register Issue / skip |
 | `manual_fallback_adopted` | Orchestrator fallback prompts | AskUserQuestion → register Issue / skip |
-| `wiki_ingest_skipped` | review/fix/close Phase X.X.W when `wiki.enabled=false` / `wiki.auto_ingest=false`, **OR** `wiki-ingest-commit.sh` exits 2 (wiki branch missing locally — fresh clone) | AskUserQuestion → register Issue / skip. Two sub-cases — see reference §1 for `commit_branch_missing` sub-case routing |
-| `wiki_ingest_failed` | review/fix/close Phase X.X.W when `wiki-ingest-trigger.sh` exits non-zero / non-2, **OR** `wiki-ingest-commit.sh` exits non-0/2/4 (git stash/checkout/commit failure) | AskUserQuestion → register Issue / skip — recommended to register |
-| `wiki_ingest_push_failed` | review/fix/close Phase X.X.W when `wiki-ingest-commit.sh` exits 4 — commit landed locally on the wiki branch but origin push failed | AskUserQuestion → register Issue / skip — recommended to **register**. Manual recovery: `git push origin wiki` |
-| `gitignore_drift` | `/rite:lint` Phase 3.9 when `gitignore-health-check.sh` detects missing `.rite/wiki/` rule (last-line-of-defense) | AskUserQuestion → register Issue / skip — recommended to **register**. Manual recovery: restore `.rite/wiki/` to `.gitignore` |
+| `wiki_ingest_skipped` | review/fix/close Phase X.X.W で `wiki.enabled=false` / `wiki.auto_ingest=false`、**または** `wiki-ingest-commit.sh` exit 2 (wiki branch 不在 — fresh clone) | AskUserQuestion → register Issue / skip。Sub-case 詳細は reference §1 |
+| `wiki_ingest_failed` | `wiki-ingest-trigger.sh` exit non-zero / non-2、**または** `wiki-ingest-commit.sh` exit non-0/2/4 (git stash/checkout/commit 失敗) | AskUserQuestion → register Issue / skip — register 推奨 |
+| `wiki_ingest_push_failed` | `wiki-ingest-commit.sh` exit 4 — commit は local wiki branch に landed、origin push 失敗 | register 推奨。Manual recovery: `git push origin wiki` |
+| `gitignore_drift` | `/rite:lint` Phase 3.9 で `gitignore-health-check.sh` が `.rite/wiki/` 不在を検出 (last-line-of-defense) | register 推奨。Manual recovery: restore `.rite/wiki/` to `.gitignore` |
 
 **When to execute** (explicit routing):
-
-This phase runs **after every Skill invocation in Phase 5** at the following explicit invocation points. With PR F/G1/G2 sub-skill extraction, the orchestrator's Skill boundaries are 3 — `start-execute` (5.0-5.2.1) / `start-publish` (5.3-5.4) / `start-finalize` (5.5-Termination). Internal `pr:create` / `pr:review` / `pr:fix` invocations happen inside `start-publish` and are detected by the same context-grep at the publish delegation boundary. Internal `pr:ready` / `issue:close` invocations happen inside `start-finalize` and are detected at the finalize delegation boundary.
 
 | Caller | Invocation point | Trigger |
 |--------|------------------|---------|
@@ -654,11 +634,9 @@ This phase runs **after every Skill invocation in Phase 5** at the following exp
 | Phase 5.3-5.4 (publish) | Mandatory After 5.3-5.4 — Step 2 | Always after `[start:publish:*]` pattern (covers internal `[pr:created:{N}]` / `[pr:create-failed]` / `[review:*]` / `[fix:*]` emits via context grep) |
 | Phase 5.5-Termination (finalize) | Mandatory After 5.5-Termination — Step 2 | Always after `[start:finalize:*]` pattern (covers internal `[ready:*]` emit via context grep) |
 
-Each Mandatory After section MUST include a **"Run Phase 5.4.4.1 detection"** step that directs the orchestrator to grep the recent conversation context for sentinel lines BEFORE proceeding to the next phase.
+**Skip condition**: If `workflow_incident.enabled: false` で本 phase 全体を skip。値は Phase 5.0 (start-execute) で 1 回読込み cache。
 
-**Skip condition**: If `workflow_incident.enabled: false` is set in `rite-config.yml`, skip this entire phase. Read the value once at Phase 5.0 (delegated to `start-execute`) and cache for the rest of the flow.
-
-**Invariants**: Issue creation failure is non-blocking (workflow MUST NOT halt). The codepath is independent of Phase 7 (Issue creation from review recommendations). Default-on behavior: when `workflow_incident:` section is absent from `rite-config.yml`, treat as `enabled: true`.
+**Invariants**: Issue creation 失敗は non-blocking (workflow MUST NOT halt)。Default-on: `workflow_incident:` section absent → `enabled: true` 扱い。
 
 ### 5.5-Termination Finalize Phase (delegated to start-finalize sub-skill)
 
@@ -688,23 +666,20 @@ Invoke `skill: "rite:issue:start-finalize"`.
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "completed" --active false --next "none" \
   --if-exists --preserve-error-count
-# Defense-in-depth dual cleanup: start-finalize.md Workflow Termination Step 2 が
-# success path での primary cleanup を担う。本 idempotent rm は abort path /
-# interrupt path で sub-skill cleanup が skip された場合の最終 fallback。
-# regular file (`.rite-compact-state`) はほぼ permission denied のみで失敗するため silent skip (rare 失敗時は次セッションで上書き作成されて自己治癒)。
-# lockdir (`.rite-compact-state.lockdir`) は shared filesystem 上の stale lock 等で失敗する
-# potential があるため emit する。`from=` discriminator で emit 元 (4 site 対称) を識別 (対称化マッピング表は start-finalize.md `4 site 対称化マッピング` 表 参照)。
+# Defense-in-depth dual cleanup: start-finalize.md Workflow Termination Step 2 が success path
+# primary cleanup を担う。本 idempotent rm は abort/interrupt path での fallback。
+# lockdir は stale lock 失敗の potential があるため失敗を emit (4 site 対称、`from=` で識別)。
 rm -f .rite-compact-state 2>/dev/null || true
 rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=start_md_termination" >&2
 ```
 
-**Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1 (Workflow Incident Detection). Grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines (emitted by `start-finalize` sub-skill — e.g., `[ready:error]` orchestrator-direct emit per §D, or by `ready.md` sub-skill via Sentinel Visibility Rule). If found, execute Phase 5.4.4.1 step 2-7. Phase 5.4.4.1 is **non-blocking** — continue to Step 3 regardless of detection result.
+**Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1。Grep `[CONTEXT] WORKFLOW_INCIDENT=1` (emit by `start-finalize` `[ready:error]` §D or `ready.md` sub-skill)。検出時 step 2-7。**non-blocking**。
 
-**Step 3 (Sentinel-based completion handoff)**: Grep the recent conversation context for `<!-- [start:finalize:completed] -->` or `<!-- [start:finalize:aborted] -->` and display a short user-facing completion handoff message:
+**Step 3 (Sentinel-based completion handoff)**: Grep for `<!-- [start:finalize:completed] -->` or `<!-- [start:finalize:aborted] -->`:
 
-- `[start:finalize:completed]` detected → workflow terminated normally. The completion report was output by the sub-skill (Phase 5.6). Display a short user-facing confirmation summarizing PR URL, Issue URL, and next-step guidance (e.g., 「✅ Issue #{N} の作業が完了しました。 PR: {url}」).
-- `[start:finalize:aborted]` detected → workflow aborted during finalize. Display a short abort summary explaining the abort reason (Phase 5.5 user-terminate during ready confirmation or `[ready:error]` AskUserQuestion → terminate) and next-step guidance (e.g., 「⚠️ Phase 5.5 で中断されました。 PR: {url} は draft のままです」).
-- Neither detected → fail-safe: treat as `[start:finalize:completed]` (display normal completion); the sub-skill SHOULD always emit one of the two sentinels per its Return Output Format contract.
+- `[start:finalize:completed]` → workflow terminated normally。Display short confirmation (e.g., 「✅ Issue #{N} の作業が完了しました。 PR: {url}」)。
+- `[start:finalize:aborted]` → display abort summary (Phase 5.5 user-terminate / `[ready:error]`) と next-step (e.g., 「⚠️ Phase 5.5 で中断されました。 PR: {url} は draft のままです」)。
+- Neither → fail-safe: completed 扱いで normal completion 表示; sub-skill は Return Output Format に従い必ず片方を emit する。
 
 ## Interruption/Resumption
 
@@ -716,15 +691,7 @@ rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANU
 
 ## Standalone Usage
 
-Auto-invoked in end-to-end, usable standalone:
-
-| Command | Standalone Use |
-|---------|---------------|
-| `/rite:issue:update` | Progress recording, handover |
-| `/rite:lint` | Quality check |
-| `/rite:pr:create` | PR without Issue, from existing branch |
-| `/rite:pr:review` | Existing PR, others' PRs |
-| `/rite:pr:fix` | Resume feedback |
+E2E で自動呼び出しの sub-command 群も単独実行可能: `/rite:issue:update` (progress / handover) / `/rite:lint` (quality check) / `/rite:pr:create` (PR without Issue) / `/rite:pr:review` (existing PR) / `/rite:pr:fix` (resume feedback)。
 
 ## Error Handling
 

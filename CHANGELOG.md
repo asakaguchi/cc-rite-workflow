@@ -17,6 +17,23 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
 
 ## [Unreleased]
 
+### Changed
+
+- Completed `/rite:issue:start` redesign series (Issue #896, PR A through PR H — #905 wrap-up)
+  - **Sub-skill 分割完了**: Phase 5 を 3 sub-skill chain (`rite:issue:start-execute` / `rite:issue:start-publish` / `rite:issue:start-finalize`) に分割。本体 `start.md` を Simplification Charter (`≤ 700` ratchet target) を満たす状態に slim 化 (実値 698 行)。
+  - **Test 強化** (#905):
+    - `start-md-charter.test.sh`: 本体 line 数 `≤ 720` (target `≤ 700`) assert を追加 (margin 20 行を確保し minor edit での ratchet 触発摩擦を緩和、720 超過時は sub-skill 化を促す forcing function として機能)。Charter 違反パターン上限 / 現状値下限を sub-skill 分割後に recalibrate (Issue #N `≤ 3` で Issue #513 regression guard の reasoning prose を保護、🚨 `≤ 10` で section heading 数を pin、aggregated 下限を start*.md 4 ファイル横断で計測)。Symmetry check (`flow-state-update.sh create` 5-arg invariant) も start*.md 4 ファイル aggregated に拡張 (sub-skill 内 invocations の 5-arg drift blind spot を解消)。
+    - `caller-html-literal-symmetry.test.sh`: start-execute / start-publish / start-finalize 各 sub-skill の 2 caller HTML literal の structural element symmetry (shared `--phase` / `--active` / `--if-exists` / `--preserve-error-count`) と paired distinction を検証。
+    - `caller-markdown-block.test.sh`: start-execute / start-publish に state-read.sh caller が 0 件であることを zero-caller pin として追加 (SoT 移管後の drift guard)。
+    - 新規 `asymmetric-whitelist.test.sh`: `_RITE_PHASE_TRANSITIONS` の whitelist key と orchestrator markdown の `--phase` 使用を `comm -23` で対称性検証。orphan key を検出 (documented dead key exceptions: phase5_post_pr / phase5_ready は legacy backward-compat として除外)。
+    - 新規 `anchor-reachability.test.sh`: start*.md 内の全 relative reference (`[...](./...)`) が `test -e` で実在することを検証。dangling reference (refactor で link 先が移動 / 削除される regression) を防ぐ。
+  - **ドキュメント同期**:
+    - `plugins/rite/skills/rite-workflow/SKILL.md`: Sub-skill Return Auto-Continuation Contract セクションに Phase 5 sub-skill chain (start-execute / start-publish / start-finalize) の構造説明を追加。
+    - `plugins/rite/skills/rite-workflow/references/phase-mapping.md`: Phase 5 sub-phase transition 図を新 phase 名 (phase5_execute_running / phase5_publish_running / phase5_finalize_running 等) に全面改訂。Phase 1.5 / 1.6 / Phase 2 細分化 phase / Phase 3 細分化 phase も table 化。
+    - `docs/SPEC.md`: Plugin Structure 節に `start-execute.md` / `start-publish.md` / `start-finalize.md` を sub-skill ファイルとして追記。
+    - i18n: sub-skills は `[CONTEXT]` marker / HTML-commented sentinel のみ emit するため、新規 user-visible message key は不要。既存 `issue_start_*` キーは `start.md` 所有のまま維持。
+  - **e2e 検証**: 本リポジトリ上で `/rite:issue:start 905` を Phase 0 から Workflow Termination まで完走 (start-execute / start-publish / start-finalize の 3 sub-skill chain を経て Phase 5.7 parent close + Workflow Termination まで実行)、resume / compact / interrupt の各シナリオは新規 test (asymmetric-whitelist / anchor-reachability) と既存 test (caller-markdown-block / start-md-charter) で構造的に担保。
+
 ### Added
 
 - Added direct `gh issue create` invocation guard to `/rite:lint` (#958)

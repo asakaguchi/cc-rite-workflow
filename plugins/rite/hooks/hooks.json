@@ -75,6 +75,17 @@
         ],
         "matcher": "Edit|Write|MultiEdit"
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/stop-create-interview-block.sh",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

@@ -240,6 +240,8 @@ fi
 
 > **Continuation trigger reminder**: `[interview:*]` return tag は continuation trigger であり turn 境界ではない。implicit stop は protocol violation で `hooks/workflow-incident-emit.sh` ヘルパー経由で `workflow_incident` (`type=manual_fallback_adopted`) を emit する。
 
+> **Machine-enforced back-stop (Issue #920)**: prompt-side defense (Step 0 + Step 1 + caller HTML + 4-line return block) は LLM turn-boundary heuristic を完全には抑止できない (累積系列で実証)。Stop event hook [`hooks/stop-create-interview-block.sh`](../../hooks/stop-create-interview-block.sh) が back-stop として動作し、`phase=create_post_interview` && `active=true` && `pr_number=0` の implicit stop を `exit 2` で block する。block 時は stderr に Step 0 idempotent patch literal と `workflow_incident` (`type=manual_fallback_adopted`) sentinel が emit され、resume 経路が user/LLM に提示される。back-stop は最後の防御層であり、prompt-side defense が機能した場合は発火しない。
+
 ## Phase 2: Task Decomposition Decision
 
 **Purpose**: 粗粒度 Issue を検出し分解要否を決定。

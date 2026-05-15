@@ -304,6 +304,8 @@ Sub-skill 完了 (interview finished or skipped) 時、control は **MUST** call
 
 **WARNING**: **GitHub Issue は未作成**。本セクションで停止すると deliverable なしで workflow 放棄。
 
+> **Machine-enforced back-stop (Issue #920)**: 4-line return block invariant と caller HTML literal は prompt-side defense として必要だが十分ではない (累積系列で実証)。Stop event hook [`hooks/stop-create-interview-block.sh`](../../hooks/stop-create-interview-block.sh) が back-stop として `phase=create_post_interview` && `active=true` && `pr_number=0` の implicit stop を `exit 2` で block し、stderr に Step 0 idempotent patch literal と `workflow_incident` (`type=manual_fallback_adopted`) sentinel を emit する。本 sub-skill の Return Output Format Before Return patch (`--phase create_post_interview --active true`) が back-stop の gate condition を成立させる前提条件として機能する。
+
 本セクションは marker 形式の SoT であり、かつ **複数 test の参照 hub** として機能する。本セクションが変更された場合、以下の test が drift detection として連動する:
 
 - **bash 引数 symmetry** ([`hooks/tests/4-site-symmetry.test.sh`](../../hooks/tests/4-site-symmetry.test.sh)): bash block 側コメント (🚨 MANDATORY Pre-flight / Return Output Format) で `flow-state-update.sh patch` の CLI 引数 (`--phase` / `--active` / `--next` / `--preserve-error-count`) の presence を 4 site 横断で pin する。

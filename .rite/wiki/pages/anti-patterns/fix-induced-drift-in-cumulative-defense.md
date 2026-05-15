@@ -2,7 +2,7 @@
 title: "累積対策 PR の review-fix loop で fix 自体が drift を導入する"
 domain: "anti-patterns"
 created: "2026-04-21T10:35:00+00:00"
-updated: "2026-05-15T01:10:00+09:00"
+updated: "2026-05-15T10:30:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260421T024947Z-pr-636.md"
@@ -94,7 +94,9 @@ sources:
     ref: "raw/reviews/20260502T103134Z-pr-765-cycle2.md"
   - type: "reviews"
     ref: "raw/reviews/20260514T160500Z-pr-961.md"
-tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain", "review-attention-bias-blind-spot", "anchor-specificity-retreat", "doc-precision-regression-cascade", "self-referential-prevention-violation", "section-relative-prevention-success"]
+  - type: "reviews"
+    ref: "raw/reviews/20260515T001207Z-pr-968.md"
+tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain", "review-attention-bias-blind-spot", "anchor-specificity-retreat", "doc-precision-regression-cascade", "self-referential-prevention-violation", "section-relative-prevention-success", "successive-prevention-replication"]
 confidence: high
 ---
 
@@ -511,3 +513,30 @@ PR #921 cycle 1 (累積 26 回目) で `cycle [0-9]+` space-only regex の hyphe
 | 1 cycle 0 findings 収束 + 推奨事項 N 件 scope-out | 累積対策 PR で全 reviewer 即時 mergeable 合意 + scope-out 推奨事項のみ | 構造的予防策が機能している indicator。「fix 自体が drift を導入する」failure mode から離脱した signal として記録し、収束した予防パターンの canonical 化を進める |
 
 **本ページに記録する意義**: 累積対策 PR の failure mode を観察するだけでなく、success case も同じページに記録することで「**予防策が機能した実例の累積**」を蓄積し、将来の累積対策 PR で参照可能な canonical pattern として活用する。
+
+### PR #968 (Issue #962、累積 28 回目、1 cycle 0 findings 収束) — successful prevention pattern の連続再現
+
+PR #968 (Issue #962 = PR #961 review で 3 reviewer が独立指摘した 4 件の LOW recommendation 対称化 follow-up) は **PR #961 の successful prevention pattern を連続再現** し、1 cycle 0 findings で収束。2 reviewer (prompt-engineer / test) の独立並列レビューで両者「マージ可 / 指摘事項: 0 件」、推奨事項 2 件は scope-irrelevant (bullet 分割提案 / 集約 declare 変数数の将来監視) として scope-out。
+
+#### Cycle trajectory
+
+```
+cycle 1 (0 findings, 2 reviewer 全員「マージ可」合意) → mergeable
+```
+
+#### 連続再現が示す convergence robustness
+
+PR #961 (累積 27 回目) が「構造的予防 PR の successful application 実例」を初めて記録したのに対し、PR #968 はその直接の follow-up として「**deferred LOW 対称化 follow-up でも同じ 1 cycle 0 findings 収束を再現する**」ことを実証。「構造的予防 PR の successful prevention pattern」が以下の 2 ケースで連続再現したことから、convergence signal の robustness が増した:
+
+| PR | 累積回数 | 対象 | findings | reviewer 合意 |
+|----|---------|------|---------|-------------|
+| PR #961 | 27 回目 | PR #959 cycle 2 で deferred された MEDIUM 2 + LOW 2 = 4 件 | 0 | 3 reviewer 全員 mergeable |
+| PR #968 | 28 回目 | PR #961 review で 3 reviewer 独立指摘の LOW 4 件 | 0 | 2 reviewer 全員 mergeable |
+
+#### Pattern doctrine の連続再現データ
+
+「構造的予防 PR の deferred LOW follow-up は 1 cycle 0 findings 収束を再現する」doctrine が **2 連続 (PR #961 → PR #968) で empirical 確認**。これは PR #765 (累積 17 回目) で観測された「Self-violation cascade と Doc precision regression chain」(2 cycle 20→20 open) と対照的で、**section-relative reference replacement / contract addition / minimal-scope assertion 統合 declare** といった構造的予防策が累積対策 PR の review-fix loop fractal pattern から構造的に離脱する条件を示唆。
+
+#### Successful prevention case の signal 拡張
+
+PR #961 で追加した「1 cycle 0 findings 収束 + 推奨事項 N 件 scope-out」signal に加え、PR #968 から **「直前 PR で deferred された scope-out 推奨事項を follow-up PR で対称化整理した case で連続再現する」** sub-signal を追加。これは「累積対策 → deferred LOW follow-up → 連続再現」の 3 段階 sequence が構造的予防の canonical pattern として運用可能であることを示す empirical evidence。

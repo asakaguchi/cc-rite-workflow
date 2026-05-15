@@ -548,3 +548,4 @@
 | 2026-05-15T10:05:00+09:00 | ingest:create | pages/anti-patterns/scope-drift-fix-overclaim-substitution.md | PR #969 cycle 1 review (raw/reviews/20260515T005613Z-pr-969.md) — overclaim substitution pattern |
 | 2026-05-15T10:05:00+09:00 | ingest:update | pages/anti-patterns/scope-drift-fix-overclaim-substitution.md | PR #969 fix results (raw/fixes/20260515T005734Z-pr-969.md) — 統合済み (sources[] 配列追記) |
 | 2026-05-15T10:05:00+09:00 | ingest:update | pages/anti-patterns/scope-drift-fix-overclaim-substitution.md | PR #969 cycle 2 review (raw/reviews/20260515T010126Z-pr-969.md) — convergence success case 統合 |
+| 2026-05-15T11:50:27+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=133, broken_refs=19 |

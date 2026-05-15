@@ -16,6 +16,15 @@ Phase 番号取扱方針: エントリは機能名レベルで変更を記述し
 
 ## [Unreleased]
 
+### 追加
+
+- `/rite:issue:create` の implicit stop 対策として新規 Stop event hook `hooks/stop-create-interview-block.sh` を追加 (#920、累積系列 #910 / #917 / #634 / #651 / #622 / #552 / #687)
+  - 4-line return block invariant (`[CONTEXT] INTERVIEW_DONE=1` marker + plain-text continuation reminder + caller HTML comment + sentinel HTML comment) は LLM turn-boundary heuristic 由来の implicit stop に対する **必要条件** だが **十分条件ではない**。新 Stop hook は flow-state が `phase=create_post_interview` && `active=true` && `pr_number=0` (interview return 直後で Issue 未作成) に一致した時のみ `Stop` event を block し、stderr に Step 0 idempotent patch literal を含む ACTION message と `workflow_incident` (`type=manual_fallback_adopted`) sentinel を emit する。
+  - Allow path (`exit 0`): `stop_hook_active=true` (再帰防止)、flow-state file 不在、phase 不一致、`active=false`、`pr_number != 0`、non-Stop event。Hook は implicit-stop の正確な risk boundary でのみ発火し、`workflow_incident.enabled: false` opt-out 設定を尊重する (block 自体は実行)。
+  - `hooks/hooks.json` に `Stop` event handler として登録 (timeout 10s)。
+  - 新規 `hooks/tests/stop-create-interview-block.test.sh` (8 TC、21 assertion) で動作を pin: gate 一致 → exit 2 + ACTION + sentinel / phase 不一致・active=false・pr_number≠0・stop_hook_active・state file 不在・non-Stop event → exit 0 / `workflow_incident.enabled=false` → block 尊重・sentinel emit 抑止。
+  - `commands/issue/create.md` 🚨 Mandatory After Interview と `commands/issue/create-interview.md` 🚨 Caller Return Protocol の両方に back-stop の存在を最終防御層として記載。既存 3 invariant test (`4-site-symmetry`、`caller-html-literal-symmetry`、`create-interview-responsibility-separation`) は引き続き pass (8 + 44 + 3 assertion) — 4-line return block と caller HTML literal の構造変更なし。
+
 ### 変更
 
 - `/rite:issue:start` 再設計シリーズ完了 (Issue #896、PR A 〜 PR H — #905 wrap-up)

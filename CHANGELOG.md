@@ -17,6 +17,15 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
 
 ## [Unreleased]
 
+### Added
+
+- New Stop event hook `hooks/stop-create-interview-block.sh` as a machine-enforced back-stop for `/rite:issue:create` implicit stop (#920, cumulative series #910 / #917 / #634 / #651 / #622 / #552 / #687)
+  - The 4-line return block invariant (`[CONTEXT] INTERVIEW_DONE=1` marker + plain-text continuation reminder + caller HTML comment + sentinel HTML comment) is a necessary but not sufficient condition for preventing LLM turn-boundary heuristic implicit stops. The new Stop hook blocks `Stop` events when flow-state matches `phase=create_post_interview` && `active=true` && `pr_number=0` (interview returned but no Issue created yet), emitting an ACTION message with the idempotent Step 0 patch literal and a `workflow_incident` (`type=manual_fallback_adopted`) sentinel via stderr.
+  - Allow paths (`exit 0`): `stop_hook_active=true` (recursion guard), flow-state file absent, phase mismatch, `active=false`, `pr_number != 0`, non-Stop hook events. The hook fires only at the exact implicit-stop risk boundary and respects `workflow_incident.enabled: false` opt-out for sentinel emission (block itself still fires).
+  - Registered in `hooks/hooks.json` as a `Stop` event handler (timeout 10s).
+  - Pinned by new `hooks/tests/stop-create-interview-block.test.sh` (8 TC, 21 assertions): gate match → exit 2 + ACTION + sentinel; phase mismatch / active=false / pr_number≠0 / stop_hook_active / state-file absent / non-Stop event → exit 0 allow; `workflow_incident.enabled=false` → block respected, sentinel suppressed.
+  - `commands/issue/create.md` 🚨 Mandatory After Interview and `commands/issue/create-interview.md` 🚨 Caller Return Protocol both document the back-stop as the last defense layer. Existing 3 invariant tests (`4-site-symmetry`, `caller-html-literal-symmetry`, `create-interview-responsibility-separation`) remain pass (8 + 44 + 3 assertions) — no structural changes to the 4-line return block or caller HTML literal.
+
 ### Changed
 
 - Completed `/rite:issue:start` redesign series (Issue #896, PR A through PR H — #905 wrap-up)

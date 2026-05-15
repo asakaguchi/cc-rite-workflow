@@ -240,7 +240,7 @@ fi
 # --------------------------------------------------------------------------
 echo "TC-011: --all mode → exit 0 on clean baseline (#958)"
 rc=0
-output=$(bash "$TARGET" --all 2>&1) || rc=$?
+output=$(bash "$TARGET" --all --repo-root "$REPO_ROOT" 2>&1) || rc=$?
 if [ "$rc" -eq 0 ]; then
   pass "--all mode: clean commands/ baseline → exit 0"
 else
@@ -263,13 +263,55 @@ cat > "$planted_file" <<'EOF'
 bash example: gh issue create --title "x" --body "y"
 EOF
 rc=0
-output=$(bash "$TARGET" --all 2>&1) || rc=$?
+output=$(bash "$TARGET" --all --repo-root "$REPO_ROOT" 2>&1) || rc=$?
 cleanup_planted
 trap cleanup EXIT
 if [ "$rc" -eq 1 ] && echo "$output" | grep -q "__tc012_violation_fixture__.md"; then
   pass "--all mode: planted regression detected → exit 1 with fixture path"
 else
   fail "Expected exit 1 with planted fixture path, got rc=$rc, output='$output'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-013 (#958 cycle 2): --repo-root happy path
+# Validates that --repo-root DIR override accepts a valid directory and the
+# --all expansion uses it as the repository root.
+# --------------------------------------------------------------------------
+echo "TC-013: --all --repo-root <valid> → exit 0 (#958 cycle 2)"
+rc=0
+output=$(bash "$TARGET" --all --repo-root "$REPO_ROOT" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "--all --repo-root <valid>: exit 0"
+else
+  fail "Expected exit 0 with valid --repo-root, got rc=$rc, output='$output'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-014 (#958 cycle 2): --repo-root missing argument
+# Validates that --repo-root without a following argument fails with exit 2
+# and a clear error message.
+# --------------------------------------------------------------------------
+echo "TC-014: --all --repo-root (missing arg) → exit 2 (#958 cycle 2)"
+rc=0
+output=$(bash "$TARGET" --all --repo-root 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && echo "$output" | grep -q "requires a directory argument"; then
+  pass "--all --repo-root <missing>: exit 2 + clear error message"
+else
+  fail "Expected exit 2 with 'requires a directory argument', got rc=$rc, output='$output'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-015 (#958 cycle 2): --repo-root with non-existent directory
+# Validates that --repo-root pointing to a non-existent directory fails with
+# exit 2 and the recovery guidance message.
+# --------------------------------------------------------------------------
+echo "TC-015: --all --repo-root /nonexistent → exit 2 (#958 cycle 2)"
+rc=0
+output=$(bash "$TARGET" --all --repo-root "/nonexistent/path/__rite_tc015__" 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && echo "$output" | grep -q "repository root not found"; then
+  pass "--all --repo-root <nonexistent>: exit 2 + recovery guidance"
+else
+  fail "Expected exit 2 with 'repository root not found', got rc=$rc, output='$output'"
 fi
 
 echo ""

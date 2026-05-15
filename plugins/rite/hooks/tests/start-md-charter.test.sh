@@ -14,13 +14,14 @@
 #   後続 slim PR (B-H) で削減するまで CI red 化を避けるため STRICT_CHARTER=1 opt-in で gate する。
 #
 # Assertions:
-#   上限 (Charter 違反パターン上限):
-#     - `Issue #[0-9]+` ≤ 1   metavariable `Issue #N` は数字でないため自動除外
+#   上限 (Charter 違反パターン上限) — PR H (#905) で recalibrate:
+#     - `Issue #[0-9]+` ≤ 3   metavariable `Issue #N` は数字でないため自動除外
 #     - `cycle [0-9]+`  ≤ 1
-#     - `🚨`            ≤ 5
-#   下限 (現状値の保護):
+#     - `🚨`            ≤ 10
+#     - 本体 line 数      ≤ 720 (target ≤ 700; sub-skill 化を検討する forcing function)
+#   下限 (aggregated across start*.md 4 ファイル横断):
 #     - `AskUserQuestion` ≥ 30
-#     - `Mandatory After` heading-anchor (h3+h4) ≥ 17 (実測: h3 14 + h4 3)
+#     - `Mandatory After` heading-anchor (h3+h4) ≥ 17
 #   対称性:
 #     - `flow-state-update.sh create` 各呼び出しが
 #       --phase / --issue / --branch / --pr / --next の 5 種すべてを含む
@@ -434,6 +435,6 @@ fi
 
 # === Summary ===
 if ! print_summary "$(basename "$0")" \
-  "PR H (#905) で recalibration 完了 (Issue #N <=3 / 🚨 <=10 / line <=700 / aggregated 下限 across start*.md)。STRICT_CHARTER=1 での fail は ratchet として設計されています。"; then
+  "PR H (#905) で recalibration 完了 (Issue #N <=3 / 🚨 <=10 / line <=720 (target ≤700) / aggregated 下限 across start*.md)。STRICT_CHARTER=1 での fail は ratchet として設計されています。"; then
   exit 1
 fi

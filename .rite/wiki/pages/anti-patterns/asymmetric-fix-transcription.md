@@ -2,8 +2,10 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-14T01:45:00+09:00"
+updated: "2026-05-15T15:05:00+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260515T054955Z-pr-973.md"
   - type: "reviews"
     ref: "raw/reviews/20260505T170709Z-pr-846.md"
   - type: "reviews"
@@ -685,3 +687,4 @@ PR #946 (Issue #944 — ingest.md Phase 4 への新規 sub-step 4.3 追加) は 
 - [PR #946 fix (4 finding 全件対応: GFM 番号付きリスト分断の解消 / canonical source 宣言の明示 / 意図的重複の visibility 注釈 sibling sync 契約 / placeholder pair value source 対称化を新規 4.3 内で sub-section として導入)](../../raw/fixes/20260513T060844Z-pr-946.md)
 - [PR #946 cycle 2 re-review (1 cycle convergence: 7 findings → 0 blocking。canonical source 宣言が precedence rule で severity gap を 1 以下に収束させる効力を実証、Wiki 経験則「Asymmetric Fix Transcription」と「DRIFT-CHECK ANCHOR は semantic name 参照で記述する」を 1 PR で実証)](../../raw/reviews/20260513T063128Z-pr-946-cycle2.md)
 - [PR #949 fix (累積 28 回目、fix-induced regression を 2 cycle で実測: 残置 pr-{N}-cycle{X} ブランチ cleanup PR (Issue #919) の cycle 1 で 8 findings 全件対応した stderr 退避パターン導入 `if ! cmd; then rc=$?` が cycle 2 で `rc` 常時 0 化 bash 仕様罠として cross-validated MEDIUM 再検出。silent failure 経路閉塞のための defensive patch そのものが新規 silent regression を生む再帰 anti-pattern。`!` 演算子 + `$?` 相互作用 / signal-specific trap canonical 準拠の Pattern Consistency / inline hint relative path drift (`references/` → `../../references/`) の 3 サブパターンが同一 PR 内で並行発火。設計対策: `if cmd; then :; else rc=$?; fi` の else 句版を canonical とし、`!` 反転句版を禁止形式として codebase の他 bash helper 群と統一する patterns-and-anti-patterns 拡張)](../../raw/fixes/20260513T185709Z-pr-949.md)
+- [PR #973 review (累積 29 回目 構造的予防の実証: 4-site scope drift fix で Issue 本文に対象箇所を line 番号付き明示 + 検証 step (grep + `4-site-symmetry.test.sh` PASS) を含めることで、cycle 1 / 0 findings 収束を達成。code-quality reviewer は `diff <(sed -n ...)` で SoT (start-finalize.md) との byte-level 同型を独立検証。設計対策の有効性: Issue 本文の対象箇所明示 (4 sites の file:line) + 機械検証 step (grep + test PASS) を Issue creation phase で要求することで、後続実装での片肺更新 risk を構造的に消去できる)](../../raw/reviews/20260515T054955Z-pr-973.md)

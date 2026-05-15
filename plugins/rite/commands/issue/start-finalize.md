@@ -32,9 +32,12 @@ abort entry の場合、Phase 5.6 Completion Report の本文には abort 理由
 **MUST run before any finalize logic** (Phase 5.5 ready / 5.5.1 status / 5.5.2 metrics / 5.6 completion / 5.7 parent close / Workflow Termination / return-output emission)。**not optional**:
 
 ```bash
-# 4 引数 symmetry (--phase / --active / --next / --preserve-error-count) は
-# plugins/rite/hooks/tests/4-site-symmetry.test.sh で test 担保。state-path-resolve.sh
-# + _resolve-flow-state-path.sh で per-session (schema_version=2) / legacy 両形式に対応。
+# 4 引数 (--phase / --active / --next / --preserve-error-count) は本 sub-skill での
+# Pre-flight pattern (同 pattern は他 sub-skill / create-interview workflow でも使用される
+# 共有 pattern)。plugins/rite/hooks/tests/4-site-symmetry.test.sh は create-interview
+# workflow (create.md / create-interview.md) 専用で本 sub-skill は対象外。
+# state-path-resolve.sh + _resolve-flow-state-path.sh で per-session (schema_version=2) /
+# legacy 両形式に対応。
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
 state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
 if [ -n "$state_file" ] && [ -f "$state_file" ]; then

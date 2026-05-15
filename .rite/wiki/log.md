@@ -545,3 +545,6 @@
 | 2026-05-14T23:36:52Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=133, broken_refs=19 |
 | 2026-05-15T10:30:00+09:00 | ingest:update | pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md | PR #968 (Issue #962、累積 28 回目): PR #961 review で 3 reviewer 独立指摘の LOW 4 件 (section-relative 表記統一 / `local idx=0` 集約 declare / `body_raw` local 宣言 / contract 文 formatting 注記) 対称化 follow-up。2 reviewer (prompt-engineer / test) 全員即時 mergeable 合意で 1 cycle 0 findings 収束。successful prevention pattern が PR #961 → #968 で連続再現 (raw/reviews/20260515T001207Z-pr-968.md) |
 | 2026-05-15T00:32:34Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=133, broken_refs=19 |
+| 2026-05-15T10:05:00+09:00 | ingest:create | pages/anti-patterns/scope-drift-fix-overclaim-substitution.md | PR #969 cycle 1 review (raw/reviews/20260515T005613Z-pr-969.md) — overclaim substitution pattern |
+| 2026-05-15T10:05:00+09:00 | ingest:update | pages/anti-patterns/scope-drift-fix-overclaim-substitution.md | PR #969 fix results (raw/fixes/20260515T005734Z-pr-969.md) — 統合済み (sources[] 配列追記) |
+| 2026-05-15T10:05:00+09:00 | ingest:update | pages/anti-patterns/scope-drift-fix-overclaim-substitution.md | PR #969 cycle 2 review (raw/reviews/20260515T010126Z-pr-969.md) — convergence success case 統合 |

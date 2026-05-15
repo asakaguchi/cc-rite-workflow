@@ -96,9 +96,10 @@
 | [GFM 番号付きリスト分断: 連番途中に block 要素を挟むと新規リストとして render される](pages/anti-patterns/gfm-numbered-list-break-by-block-elements.md) | anti-patterns | GFM で `1. ... N.` 連番リストの items 間に table / paragraph / 強調 paragraph などの block 要素を挟むと、後続 item が新規リスト (`1.` から再採番) として render され、論理的連続性が表示上分断される。canonical fix は (a) item を 1 行形式に圧縮するか (b) 補足情報を別 h4 sub-heading に独立化する 2 通り。PR #946 cycle 1 で prompt-engineer + code-quality reviewer が独立検出 (HIGH cross-validated)、cycle 2 で 0 blocking findings に収束。 | 2026-05-13T06:43:41Z | high |
 | [同一手順が複数 site に分散する場合は片方を canonical source と宣言する](pages/patterns/canonical-source-declaration-for-multi-site-procedure.md) | patterns | 同一の placeholder 値生成手順 / 規約 / 設計判断が文書内の複数 site に分散する場合、片方を「canonical source」と明示宣言し他方を summary / cross-reference に位置付ける。precedence rule (矛盾発生時は canonical を優先) を本文に書くことで、cycle 2 reviewer 評価で severity 差 (PARTIAL vs FIXED) が出ても severity gap ≤ 1 で agreement に収束し silent drift にならない。PR #946 cycle 1 → 2 で 1 cycle convergence の効力を実証。PR #947 で 3 cycle convergence 事例として 3 つの sub-pattern を追加: (1) Multi-canonical per file (同一ファイル内に scope の異なる canonical が legitimate に共存する — Phase 4.3 = 値決定手順 canonical / Phase 5.3 = 動作契約 canonical)、(2) Citation 3 段階分離 (宣言場所 / 概念階層宣言 / 実体行を区別して citation)、(3) 3 cycle 着地パターンの収束条件 (cross-file + multi-canonical の組み合わせは収束 cycle 数が増える、cycle 2 で「症状を治す」ではなく「構造で root cause を恒久的に消す」修正を入れる)。 | 2026-05-13T08:55:00+00:00 | high |
 | [Success-only Sentinel Design — sub-skill abort path sentinel 未定義](pages/anti-patterns/success-only-sentinel-design.md) | anti-patterns | sub-skill 切出し時に success path 用 HTML sentinel のみを定義し、abort path / error path 用 sentinel を未定義のまま残す anti-pattern。caller orchestrator が 3 経路を grep-able に区別できず implicit stop / 誤 routing が発生する。PR #951 (`/rite:issue:start-execute` 切出し) cycle 1 で CRITICAL 検出。canonical fix は success / abort / error 3 経路すべてに sentinel を定義し caller routing dispatcher で排他的に grep すること。 | 2026-05-14T05:30:00+00:00 | medium |
+| [Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む)](pages/anti-patterns/scope-drift-fix-overclaim-substitution.md) | anti-patterns | scope drift / virtual claim を「scope を限定する正確な表現」に置換する fix で、置換後の言い換えに別種の overclaim 語彙 (`固有 (unique to)` / `専用 (specific to)` / `全て` / `必ず` 等の絶対化語彙) を持ち込むリスク。所有格 (`の`) / 限定形容 (`での`、`に関する`) のみを使い、絶対化を含意する語彙を意図的に回避する。並列性が明示できる場合は共有 pattern であることを括弧書きで補足する。PR #969 cycle 1 で code-quality reviewer が Confidence 80 で検出 → cycle 2 で 0 findings 収束 (Issue #965 sister of `asymmetric-fix-transcription`)。 | 2026-05-15T10:05:00+09:00 | high |
 
 ## 統計
 
-- 総ページ数: 90
-- ドメイン別: patterns=35, heuristics=25, anti-patterns=30
-- 最終更新: 2026-05-14T05:30:00+00:00
+- 総ページ数: 91
+- ドメイン別: patterns=35, heuristics=25, anti-patterns=31
+- 最終更新: 2026-05-15T10:05:00+09:00

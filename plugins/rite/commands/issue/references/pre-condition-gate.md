@@ -124,7 +124,7 @@ bash の `exit 1` は **shell process を終わらせるだけで、Claude Code 
 - これらの echo は **LLM 向け enforcement** であり、シェル制御フローではなく LLM の routing 判断を駆動する
 - **Branch I と Branch II は disjoint** — Pre-condition mismatch は state-read.sh が exit 0 で値を返した後の比較失敗、Launch failure は state-read.sh 自体の exit 非 0 で、同一実行内で両方が発火することはない (Form A の bash literal でも `else rc=$?; ...` branch が先に `exit 1` するため `if [ "$curr" != "..." ]` ブロックに到達しない)
 - RESUME_HINT 本文は **Form A / Form B / 全 caller で bit-identical** とし、`caller-markdown-block.test.sh` TC-7 が SoT (本 reference) と全 caller の同一性を **grep + 文字列等値比較** で機械検証する
-- RESUME_HINT 本文に **literal backtick (\`) と literal double-quote (")** を含めてはならない (Issue #960 MEDIUM-2 で明示化)。`caller-markdown-block.test.sh` の `extract_resume_hint_body` helper は本文を `["\`]RESUME_HINT: ...[^"\`]*["\`]` 形式の正規表現で抽出するため、本文に literal backtick / double-quote が含まれると `[^"\`]*` 否定文字クラスが本文の途中で切れて drift 検出が誤判定する (false positive または false negative)。本文内で path / 変数を参照する場合は `\$PLUGIN_ROOT` のような escape 形式に統一し、inline code (\` 囲み) や引用 (" 囲み) は使わない
+- RESUME_HINT 本文に **literal backtick (\`) と literal double-quote (")** を含めてはならない (Issue #960 MEDIUM-2 で明示化)。`caller-markdown-block.test.sh` の `extract_resume_hint_body` helper は本文を `["\`]RESUME_HINT: ...[^"\`]*["\`]` 形式の正規表現で抽出するため、本文に literal backtick / double-quote が含まれると `[^"\`]*` 否定文字クラスが本文の途中で切れて drift 検出が誤判定する (false positive または false negative)。本文内で path / 変数を参照する場合は `\$PLUGIN_ROOT` のような escape 形式に統一し、inline code (\` 囲み) や引用 (" 囲み) は使わない (本契約は RESUME_HINT echo の本文 = 実行時 stderr に出力される文字列に対する制約であり、本 markdown 文書内の説明的 inline-code formatting は対象外 — Issue #962 LOW-4)
 
 ## 5 site canonical (capture pattern 共有)
 

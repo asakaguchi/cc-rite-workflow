@@ -12,17 +12,70 @@
 #
 # Usage:
 #   check-no-direct-gh-issue-create.sh <file.md> [<file.md> ...]
+#   check-no-direct-gh-issue-create.sh --all [--repo-root DIR]
+#
+#   --all expands to every `plugins/rite/commands/**/*.md` file under the
+#   resolved repository root. Use this from /rite:lint Phase 3.14 to enforce
+#   the guard across all command/sub-skill files in a single invocation.
+#   Additional files can be appended after --all.
+#
+#   --repo-root DIR overrides the repository root resolution (default:
+#   `git rev-parse --show-toplevel`, falling back to `pwd`). Sibling lint
+#   scripts (plugins/rite/hooks/scripts/*-check.sh) use the same pattern.
 #
 # Exit codes:
 #   0 - No violations
 #   1 - One or more violations found (printed to stderr with file:line:content)
-#   2 - Usage error (no arguments / file not found)
+#   2 - Usage error (no arguments / file not found / --all expansion empty / invalid --repo-root)
 
 set -euo pipefail
 
 if [ $# -eq 0 ]; then
-  echo "Usage: $0 <file.md> [<file.md> ...]" >&2
+  echo "Usage: $0 [--all [--repo-root DIR] | <file.md> [<file.md> ...]]" >&2
   exit 2
+fi
+
+REPO_ROOT=""
+if [ "$1" = "--all" ]; then
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --repo-root)
+        shift
+        if [ $# -eq 0 ]; then
+          echo "ERROR: --repo-root requires a directory argument" >&2
+          exit 2
+        fi
+        REPO_ROOT="$1"
+        shift
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+  if [ -z "$REPO_ROOT" ]; then
+    REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  fi
+  if [ ! -d "$REPO_ROOT" ]; then
+    echo "ERROR: --all mode: repository root not found: $REPO_ROOT" >&2
+    echo "  Likely cause: invoked outside the rite plugin repo (e.g. marketplace install)" >&2
+    echo "  Recovery: run from the rite plugin source tree, or pass --repo-root DIR explicitly" >&2
+    exit 2
+  fi
+  COMMANDS_DIR="$REPO_ROOT/plugins/rite/commands"
+  if [ ! -d "$COMMANDS_DIR" ]; then
+    echo "ERROR: --all mode: commands directory not found: $COMMANDS_DIR" >&2
+    echo "  Likely cause: invoked outside the rite plugin repo (e.g. marketplace install)" >&2
+    echo "  Recovery: run from the rite plugin source tree, or pass --repo-root DIR explicitly" >&2
+    exit 2
+  fi
+  mapfile -t auto_files < <(find "$COMMANDS_DIR" -type f -name '*.md' | sort)
+  if [ ${#auto_files[@]} -eq 0 ]; then
+    echo "ERROR: --all mode: no *.md files found under $COMMANDS_DIR" >&2
+    exit 2
+  fi
+  set -- "${auto_files[@]}" "$@"
 fi
 
 violations=0

@@ -232,6 +232,92 @@ else
   fail "AC-3 violated in production files: rc=$rc, output='$output'"
 fi
 
+# --------------------------------------------------------------------------
+# TC-011 (#958): --all mode expands to every commands/**/*.md
+# Validates that --all auto-discovers command files via the script's own
+# path resolution and runs the guard on each. The current repository must
+# pass with exit 0 (baseline: no violations anywhere in commands/).
+# --------------------------------------------------------------------------
+echo "TC-011: --all mode → exit 0 on clean baseline (#958)"
+rc=0
+output=$(bash "$TARGET" --all --repo-root "$REPO_ROOT" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "--all mode: clean commands/ baseline → exit 0"
+else
+  fail "Expected exit 0 from --all on clean baseline, got rc=$rc, output='$output'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-012 (#958): --all mode detects regressions across commands/
+# Plants a temporary violation file inside commands/ (under a name unlikely
+# to collide), runs --all, then cleans up. The script must surface the
+# violation regardless of which subdirectory it lives in.
+# --------------------------------------------------------------------------
+echo "TC-012: --all mode → exit 1 when a regression is planted (#958)"
+planted_file="$REPO_ROOT/plugins/rite/commands/__tc012_violation_fixture__.md"
+cleanup_planted() { rm -f "$planted_file"; }
+trap 'cleanup; cleanup_planted' EXIT
+cat > "$planted_file" <<'EOF'
+# Synthetic violation fixture for TC-012
+
+bash example: gh issue create --title "x" --body "y"
+EOF
+rc=0
+output=$(bash "$TARGET" --all --repo-root "$REPO_ROOT" 2>&1) || rc=$?
+cleanup_planted
+trap cleanup EXIT
+if [ "$rc" -eq 1 ] && echo "$output" | grep -q "__tc012_violation_fixture__.md"; then
+  pass "--all mode: planted regression detected → exit 1 with fixture path"
+else
+  fail "Expected exit 1 with planted fixture path, got rc=$rc, output='$output'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-013 (#958 cycle 2): --repo-root override is CWD-independent
+# Validates that --repo-root DIR override allows the script to resolve the
+# repository root even when invoked from outside the repo (e.g., /tmp). This
+# explicitly guards the CWD-independence that the cycle-2 refactor (move from
+# SCRIPT_DIR/../../.. hardcode to git rev-parse --show-toplevel + --repo-root
+# override) achieved — without this TC, F-09 could silently regress if the
+# default resolution path changed back to a CWD-dependent form.
+# --------------------------------------------------------------------------
+echo "TC-013: --all --repo-root <valid> from /tmp → exit 0 (#958 cycle 2)"
+rc=0
+output=$(cd /tmp && bash "$TARGET" --all --repo-root "$REPO_ROOT" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "--all --repo-root <valid> from /tmp: CWD-independent, exit 0"
+else
+  fail "Expected exit 0 with --repo-root from /tmp, got rc=$rc, output='$output'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-014 (#958 cycle 2): --repo-root missing argument
+# Validates that --repo-root without a following argument fails with exit 2
+# and a clear error message.
+# --------------------------------------------------------------------------
+echo "TC-014: --all --repo-root (missing arg) → exit 2 (#958 cycle 2)"
+rc=0
+output=$(bash "$TARGET" --all --repo-root 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && echo "$output" | grep -q "requires a directory argument"; then
+  pass "--all --repo-root <missing>: exit 2 + clear error message"
+else
+  fail "Expected exit 2 with 'requires a directory argument', got rc=$rc, output='$output'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-015 (#958 cycle 2): --repo-root with non-existent directory
+# Validates that --repo-root pointing to a non-existent directory fails with
+# exit 2 and the recovery guidance message.
+# --------------------------------------------------------------------------
+echo "TC-015: --all --repo-root /nonexistent → exit 2 (#958 cycle 2)"
+rc=0
+output=$(bash "$TARGET" --all --repo-root "/nonexistent/path/__rite_tc015__" 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && echo "$output" | grep -q "repository root not found"; then
+  pass "--all --repo-root <nonexistent>: exit 2 + recovery guidance"
+else
+  fail "Expected exit 2 with 'repository root not found', got rc=$rc, output='$output'"
+fi
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ $FAIL -gt 0 ]; then

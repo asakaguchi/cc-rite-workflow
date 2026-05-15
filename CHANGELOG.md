@@ -17,6 +17,15 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
 
 ## [Unreleased]
 
+### Added
+
+- Added direct `gh issue create` invocation guard to `/rite:lint` (#958)
+  - Extended Issue #669 AC-3 static guard from the original two files (`commands/issue/start.md` + `commands/issue/parent-routing.md`) to every `plugins/rite/commands/**/*.md` via a new `--all` mode on `scripts/check-no-direct-gh-issue-create.sh`. `--all` auto-discovers command/sub-skill markdown under the resolved repository root (`git rev-parse --show-toplevel` with `--repo-root DIR` override, matching the sibling lint scripts) and reuses the existing fenced-code / blockquote / Markdown-comment / inline-backtick exclusion rules.
+  - `/rite:lint` runs the new check on every lint run and records findings as warning-level (does not change `[lint:success]`), matching the policy of the other plugin-specific Phase 3.x checks. Severity escalation to `[lint:error]` is intentionally deferred to keep development unblocked while the rule is enforced progressively. The new check is also wired into Phase 4 reporting (appendix + summary-row + closing enumeration) so warnings reach contributors via both standalone and E2E lint output.
+  - Background: Issue #954 cycle 1 review (PR #955) created scope-creep follow-up Issues #956 / #957 via direct `gh issue create`, leaving them unregistered in GitHub Projects and requiring manual recovery (`gh project item-add` + per-field `item-edit` calls). The lint guard now surfaces such regressions before merge so contributors are redirected to `scripts/create-issue-with-projects.sh`.
+  - Test scope: added TC-011 (`--all` clean baseline), TC-012 (`--all` planted regression detection), and TC-013/TC-014/TC-015 (`--repo-root` flag coverage: happy path from `/tmp` for CWD-independence verification, missing-argument exit 2, non-existent directory exit 2) — 16 assertions in `plugins/rite/scripts/tests/check-no-direct-gh-issue-create.test.sh`. `references/issue-create-with-projects.md` Static Guard section updated to document both invocation modes (explicit file list / `--all`) and the `--repo-root` override.
+  - Backward compatibility preserved: the original explicit-file invocation continues to work; no-arg invocation still exits 2 (usage error). `--all` is opt-in.
+
 ### Fixed
 
 - Mitigated cross-orchestrator return-block implicit stop regression (#910)

@@ -26,9 +26,12 @@ Execute the publish phase for an Issue. This sub-skill is invoked from `start.md
 **MUST run before any publish logic** (Phase 5.3 PR creation / Phase 5.4 review-fix loop / return-output emission)。**not optional**:
 
 ```bash
-# 4 引数 symmetry (--phase / --active / --next / --preserve-error-count) は
-# plugins/rite/hooks/tests/4-site-symmetry.test.sh で test 担保。state-path-resolve.sh
-# + _resolve-flow-state-path.sh で per-session (schema_version=2) / legacy 両形式に対応。
+# 4 引数 (--phase / --active / --next / --preserve-error-count) は本 sub-skill での
+# Pre-flight pattern (同 pattern は他 sub-skill / create-interview workflow でも使用される
+# 共有 pattern)。plugins/rite/hooks/tests/4-site-symmetry.test.sh は create-interview
+# workflow (create.md / create-interview.md) 専用で本 sub-skill は対象外。
+# state-path-resolve.sh + _resolve-flow-state-path.sh で per-session (schema_version=2) /
+# legacy 両形式に対応。
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
 state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
 if [ -n "$state_file" ] && [ -f "$state_file" ]; then
@@ -309,9 +312,9 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
 Immediately before emitting the four-line return block, re-patch flow state (idempotent with Pre-flight write):
 
 ```bash
-# 4 引数 symmetry (--phase / --active / --next / --preserve-error-count) は
-# plugins/rite/hooks/tests/4-site-symmetry.test.sh で test 担保。Pre-flight 後の
-# self-patch のため file 存在は保証済み。
+# 4 引数 (--phase / --active / --next / --preserve-error-count) は本 sub-skill での
+# Pre-flight pattern (共有 pattern)。Pre-flight 後の self-patch のため file 存在は保証済み。
+# 4-site-symmetry.test.sh は create-interview workflow 専用で本 sub-skill は対象外。
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
 state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
 if [ -n "$state_file" ] && [ -f "$state_file" ]; then

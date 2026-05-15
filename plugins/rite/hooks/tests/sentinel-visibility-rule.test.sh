@@ -95,6 +95,35 @@ assert_grep "detection: Default-on behavior invariant" \
   "$REF_DETECTION" \
   '^### Default-on behavior'
 
+# === 1.1 Strict-mode caller variant (Issue #978) ===
+# PR #975 cycle 2 CRITICAL で stop-create-interview-block.sh の workflow_incident.enabled parser が
+# strict-mode (set -euo pipefail + ERR trap) 下で grep no-match → pipefail → ERR trap → silent exit
+# 経路を踏んだため、hook 側で pipeline 末尾に `|| true` を追加して strict-mode 対応した。
+# Issue #978 で SoT 側 (workflow-incident-detection.md) にも同等の guidance を併記し、
+# 将来別の strict-mode caller が canonical をそのまま copy-paste して同じ罠を踏まないよう構造的に予防。
+# 本 section は (a) SoT 側 subsection の存在、(b) SoT 側 variant bash literal の存在、
+# (c) hook 側 `|| true` guard の保持、の 3 点を assert し SoT ↔ implementation の対称性を保証する。
+echo ""
+echo "--- 1.1 Strict-mode caller variant (Issue #978) ---"
+
+assert_grep "detection: Strict-mode caller variant subsection heading" \
+  "$REF_DETECTION" \
+  '^### Strict-mode caller variant'
+
+# variant bash literal は assignment 末尾の `tr -d '[:space:]' || true)` 形式
+# (canonical は `tr -d '[:space:]')` で `|| true` なし、その差分が strict-mode 対応の本体)
+assert_grep "detection: Strict-mode variant adds '|| true' to assignment pipeline" \
+  "$REF_DETECTION" \
+  "tr -d '\[:space:\]' \|\| true"
+
+# Hook-side drift detection: stop-create-interview-block.sh が `|| true` guard を保持していること
+# 将来 hook 側で `|| true` が削除される drift を機械検出する (Issue #978 対応案 2)
+HOOK_STOP_CREATE_INTERVIEW="$REPO_ROOT/plugins/rite/hooks/stop-create-interview-block.sh"
+
+assert_grep "detection: stop-create-interview-block.sh retains '|| true' guard (Issue #978 drift detection)" \
+  "$HOOK_STOP_CREATE_INTERVIEW" \
+  "tr -d '\[:space:\]' \|\| true"
+
 # === 2. workflow-incident-emit-pattern.md の必須コンテンツ ===
 echo ""
 echo "--- 2. workflow-incident-emit-pattern.md ---"

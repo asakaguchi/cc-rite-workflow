@@ -214,6 +214,29 @@ assert_eq "TC-8.1: exit code 0 (non-Stop allow)" "0" "$rc"
 assert_eq "TC-8.2: no stderr output" "" "$STDERR"
 rm -rf "$SBX"; cleanup_dirs=("${cleanup_dirs[@]/$SBX}")
 
+# ---- TC-9: rite-config.yml exists but workflow_incident section absent → block + emit ----
+# Regression guard for cycle 2 CRITICAL #1 (Issue #920 verified-review):
+# canonical parser (sed | grep | sed | tr) under `set -euo pipefail` + `trap 'exit 0' ERR`
+# requires `|| true` to absorb grep no-match (exit 1) → pipefail → ERR trap → silent exit 0.
+# Default rite install ships rite-config.yml without `workflow_incident:` section, so this
+# code path is the most common production scenario.
+echo "TC-9: rite-config.yml without workflow_incident section → exit 2 + sentinel (regression guard)"
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+write_flow_state "$SBX" "create_post_interview" "true" "0"
+cat > "$SBX/rite-config.yml" <<'YAML'
+project:
+  type: generic
+github:
+  projects:
+    enabled: true
+YAML
+payload=$(build_stop_payload "$SBX" false)
+run_hook "$SBX" "$payload"; rc=$HOOK_RC
+assert_eq "TC-9.1: exit code 2 (block, not silently allowed)" "2" "$rc"
+assert_contains "TC-9.2: ACTION shown" "Issue #920" "$STDERR"
+assert_contains "TC-9.3: workflow_incident sentinel emitted (default-on respected)" "WORKFLOW_INCIDENT=1" "$STDERR"
+rm -rf "$SBX"; cleanup_dirs=("${cleanup_dirs[@]/$SBX}")
+
 echo ""
 echo "================================="
 echo "PASS: $PASS / FAIL: $FAIL"

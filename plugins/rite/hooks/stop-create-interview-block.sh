@@ -89,13 +89,16 @@ STATE_PR=$(jq -r '.pr_number // 0' "$STATE_FILE_PATH" 2>/dev/null) || STATE_PR="
 
 # Read workflow_incident.enabled (default true — opt-out semantics).
 # Canonical SoT: see workflow-incident-detection.md "Canonical bash literal" section.
-# `sentinel-visibility-rule.test.sh` pins the canonical `sed -n + grep + sed + tr` chain
-# across all sites that read this key; deviation triggers drift detection.
+# The canonical chain assumes `set -e` is not strict — under our `set -euo pipefail`
+# + `trap 'exit 0' ERR` (fail-open), `grep -E` returning exit 1 on no-match would
+# propagate via pipefail and trip the ERR trap, silently aborting the hook with
+# exit 0 even when the gate condition matches. `|| true` keeps the chain compatible
+# with strict-mode contexts (no-match → empty result → default-on fallback).
 WORKFLOW_INCIDENT_ENABLED="true"
 if [ -f "$CWD/rite-config.yml" ]; then
   workflow_incident_enabled=$(sed -n '/^workflow_incident:/,/^[a-zA-Z]/p' "$CWD/rite-config.yml" 2>/dev/null \
     | grep -E '^[[:space:]]+enabled:' | head -1 | sed 's/#.*//' \
-    | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]')
+    | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]' || true)
   value=$(printf '%s' "$workflow_incident_enabled" | tr -d '"'"'"'' | tr '[:upper:]' '[:lower:]')
   case "$value" in
     false|no|0) WORKFLOW_INCIDENT_ENABLED="false" ;;

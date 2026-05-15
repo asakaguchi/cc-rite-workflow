@@ -1,12 +1,15 @@
 #!/bin/bash
 # Tests for hooks/stop-create-interview-block.sh — Stop event hook (#920).
 #
-# Covers Issue #920 acceptance criteria:
-#   AC-1 — gate condition (phase=create_post_interview + active=true + pr_number=0)
-#          triggers exit 2 + ACTION message + manual_fallback_adopted sentinel
-#   AC-2 — ACTION message contains the idempotent Step 0 patch literal for resume
-#   AC-4 — manual_fallback_adopted workflow_incident sentinel is emitted via stderr
-#   AC-5 — exit 0 (allow Stop) for gate-mismatched states
+# Primary AC coverage:
+#   AC-4 (Issue #920) — implicit stop detection emits workflow_incident sentinel
+# Back-stop behavior tests (not direct Issue AC mapping):
+#   - gate-match → exit 2 + ACTION (TC-1, TC-9)
+#   - gate-mismatch / recursion guard / non-Stop → exit 0 (TC-2..TC-6, TC-8)
+#   - workflow_incident.enabled=false respected (TC-7)
+# Note: Issue AC-1/AC-2/AC-5 are orchestrator-side e2e concerns, out of hook test scope.
+# Note: AC-3 (structural invariants) covered by 4-site-symmetry.test.sh et al.
+# Note: AC-6 (charter violation grep) covered separately.
 #
 # Usage: bash plugins/rite/hooks/tests/stop-create-interview-block.test.sh
 set -euo pipefail

@@ -162,7 +162,10 @@ rite-workflow/
 │   │   ├── branch-setup.md           # Sub-skill: branch creation
 │   │   ├── child-issue-selection.md  # Sub-skill: parent-child routing
 │   │   ├── parent-routing.md         # Sub-skill: parent Issue detection
-│   │   └── work-memory-init.md       # Sub-skill: work memory initialization
+│   │   ├── work-memory-init.md       # Sub-skill: work memory initialization
+│   │   ├── start-execute.md          # Sub-skill: Phase 5.0-5.2.1 (Stop Hook / Implementation / Lint / Checklist) — Issue #896 series PR F
+│   │   ├── start-publish.md          # Sub-skill: Phase 5.3-5.4 (PR creation / review-fix loop) — Issue #896 series PR G1
+│   │   └── start-finalize.md         # Sub-skill: Phase 5.5-Termination (Ready / Status / metrics / completion / parent close) — Issue #896 series PR G2
 │   ├── pr/
 │   │   ├── create.md        # /rite:pr:create
 │   │   ├── ready.md         # /rite:pr:ready

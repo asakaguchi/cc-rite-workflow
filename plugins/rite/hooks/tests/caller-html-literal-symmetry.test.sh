@@ -114,12 +114,94 @@ else
   fail "no caller-comment line extracted; cannot verify required elements"
 fi
 
+# === PR H (#905): start sub-skill 拡張 ===
+# start-execute / start-publish / start-finalize 各 sub-skill は paired (completed/aborted)
+# 2 caller HTML literal を持つ (create-interview.md とは異なり byte-equal ではなく
+# semantic-paired)。両 literal は以下の structural element を共有しなければならない:
+#   - 同一 `--phase <name>` (sub-skill 固有: phase5_post_execute / phase5_post_publish / completed)
+#   - `--active <true|false>` (sub-skill 固有)
+#   - `--if-exists`
+#   - `--preserve-error-count`
+#   - `bash plugins/rite/hooks/flow-state-update.sh patch`
+# 異なる element:
+#   - `--next 'message'` (completed/aborted で異なる narrative)
+#   - bash command 後の human-readable 説明文
+#
+# When this test fails: 2 caller literal の structural element drift。restore symmetry
+# by replicating shared elements across both example blocks; do NOT relax this test.
+
+echo
+echo "=== PR H (#905): start sub-skill paired caller HTML literal symmetry ==="
+
+# sub-skill 別の expected shared elements (paired completed/aborted で共通)。
+# 仕様: phase5_post_execute → start-execute、phase5_post_publish → start-publish、
+#       completed → start-finalize (ともに `--active false` の terminal cleanup)。
+START_SUB_SKILLS=(
+  "start-execute.md|phase5_post_execute|true"
+  "start-publish.md|phase5_post_publish|true"
+  "start-finalize.md|completed|false"
+)
+
+for entry in "${START_SUB_SKILLS[@]}"; do
+  IFS='|' read -r fname expected_phase expected_active <<<"$entry"
+  target_file="$REPO_ROOT/plugins/rite/commands/issue/$fname"
+  if [ ! -f "$target_file" ]; then
+    fail "PR H: $fname not found at $target_file"
+    continue
+  fi
+
+  echo
+  echo "--- $fname ---"
+
+  # 1. caller 行数: 各 sub-skill exactly 2 (paired completed/aborted)
+  c_count=$(grep -cF '<!-- caller:' "$target_file" 2>/dev/null || true)
+  c_count=${c_count:-0}
+  if [ "$c_count" -eq 2 ]; then
+    pass "$fname: caller-comment lines = 2 (paired completed/aborted)"
+  else
+    fail "$fname: expected exactly 2 caller-comment lines, found $c_count"
+    continue
+  fi
+
+  # 2. 各 caller literal の shared structural element 確認
+  mapfile -t lines < <(grep -F '<!-- caller:' "$target_file")
+  shared_elements=(
+    "bash plugins/rite/hooks/flow-state-update.sh patch"
+    "--phase $expected_phase"
+    "--active $expected_active"
+    "--if-exists"
+    "--preserve-error-count"
+  )
+  for line_idx in 0 1; do
+    line_label="line $((line_idx + 1))"
+    for needle in "${shared_elements[@]}"; do
+      if [[ "${lines[$line_idx]}" == *"$needle"* ]]; then
+        pass "$fname $line_label contains shared element: $needle"
+      else
+        fail "$fname $line_label missing shared element: $needle"
+      fi
+    done
+  done
+
+  # 3. 2 literal が paired distinction を持つこと: 行全体として byte-equal でない。
+  # 注: start-execute / start-publish は `--next 'message'` 文字列が異なる。
+  # start-finalize は `--next none` (terminal idempotent write) が両者で同一だが、
+  # narrative ("completion handoff" vs "abort handoff") が異なる contract。
+  # よって line 全体の byte-equality を否定することで paired distinction を validate する
+  # (create-interview.md の byte-equal contract と対称的な inverse の関係)。
+  if [ "${lines[0]}" != "${lines[1]}" ]; then
+    pass "$fname: 2 caller literals are NOT byte-identical (paired completed/aborted distinction preserved)"
+  else
+    fail "$fname: 2 caller literals are byte-identical — paired completed/aborted distinction lost"
+  fi
+done
+
 DRIFT_HINT='⚠️ caller HTML inline literal symmetry drift detected.
-   The 2 example output blocks in create-interview.md
-   ([interview:skipped] and [interview:completed]) must contain
-   an identical <!-- caller: ... --> line. Restore symmetry by
-   replicating the change across both example blocks.
-   Do NOT relax this test.'
+   create-interview.md: 2 example output blocks must be byte-identical.
+   start-{execute,publish,finalize}.md: 2 paired caller literals must
+   share structural elements (--phase / --active / --if-exists /
+   --preserve-error-count / bash command) but differ in --next messages.
+   Restore symmetry by replicating shared elements; do NOT relax this test.'
 
 if ! print_summary "$(basename "$0")" "$DRIFT_HINT"; then
   exit 1

@@ -284,9 +284,8 @@ cat > "$SBX/rite-config.yml" <<'YAML'
 workflow_incident:
   enabled: false
 YAML
-# Build payload with CWD pointing at $SBX/sub (subdirectory of git root)
-payload=$(jq -n --arg cwd "$SBX/sub" \
-  '{hook_event_name: "Stop", cwd: $cwd, transcript_path: "/tmp/x.jsonl", session_id: "test", stop_hook_active: false}')
+# build_stop_payload で CWD=$SBX/sub を指定 (TC-1〜TC-7 と同じ helper 経由パターン)
+payload=$(build_stop_payload "$SBX/sub" false)
 run_hook "$SBX" "$payload"; rc=$HOOK_RC
 assert_eq "TC-10.1: exit code 2 (flow-state walkup OK → gate fires)" "2" "$rc"
 assert_contains "TC-10.2: ACTION still shown despite subdir CWD" "Issue #920" "$STDERR"

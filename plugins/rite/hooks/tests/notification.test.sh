@@ -298,19 +298,26 @@ echo ""
 echo "TC-016: Subdirectory CWD invocation → walkup resolves project-root rite-config.yml"
 dir016="$TEST_DIR/tc016"
 mkdir -p "$dir016/sub"
-(
+# Setup error は test failure と区別する (`|| true` で setup 失敗を呑むと、walkup 不能化と
+# 同じ「empty output / exit 0」症状になり F-02 で指摘された false-negative を再導入する)。
+# make_sandbox (stop-create-interview-block.test.sh) と同じ fail-fast 構造を採用。
+if ! (
   cd "$dir016"
   git init -q 2>/dev/null
   echo a > a && git add a 2>/dev/null
   git -c user.email=t@test.local -c user.name=test commit -q -m init 2>/dev/null
-) || true
-touch "$dir016/rite-config.yml"
-
-output=$(run_hook "$dir016/sub" "pr_created")
-if echo "$output" | grep -q "Notification for PR created"; then
-  pass "Subdirectory CWD → walkup found project-root rite-config.yml → echo emitted"
+); then
+  echo "ERROR: TC-016 sandbox git init failed in $dir016" >&2
+  skip "TC-016 (sandbox setup failed — setup error は test failure と区別)"
 else
-  fail "Expected 'Notification for PR created' from subdir CWD, got: '$output'"
+  touch "$dir016/rite-config.yml"
+
+  output=$(run_hook "$dir016/sub" "pr_created")
+  if echo "$output" | grep -q "Notification for PR created"; then
+    pass "Subdirectory CWD → walkup found project-root rite-config.yml → echo emitted"
+  else
+    fail "Expected 'Notification for PR created' from subdir CWD, got: '$output'"
+  fi
 fi
 echo ""
 

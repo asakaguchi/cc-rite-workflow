@@ -561,3 +561,4 @@
 | 2026-05-15T15:05:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #973 review (raw/reviews/20260515T054955Z-pr-973.md) — 累積 29 回目: Issue 本文の対象箇所明示 + 検証 step で 0 findings 1 cycle 収束を実証 |
 | 2026-05-15T15:10:00+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=132, broken_refs=19 |
 | 2026-05-16T01:25:00+00:00 | ingest:skip | raw/reviews/20260516T011901Z-pr-988.md | PR #988 (Issue #981) — 1 cycle 0 findings mergeable で着地した PR review summary。「Asymmetric Fix Transcription 防止」既存経験則 (pages/anti-patterns/asymmetric-fix-transcription.md) + 「事前 Wiki query injection の効果」既存経験則の連続適用事例にあたり、新規経験則として抽出すべき独立知見はない (累積適用 evidence は対応 pages 側 sources[] に未追記 — 今後の評価で必要なら拡張) |
+| 2026-05-16T01:30:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=133, broken_refs=19 |

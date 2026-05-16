@@ -258,12 +258,74 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   CMD_NORMALIZED="${CMD_NORMALIZED//\}/ }"
   CMD_NORMALIZED="${CMD_NORMALIZED//\`/ }"
   CMD_NORMALIZED="${CMD_NORMALIZED//\$/ }"
+  # Absolute-path / explicit-invocation bypass guard (Issue #995 cycle 1):
+  # Pattern 4 全体は `*" git <verb> "*` glob に依存するため、`git` を直接呼び出さない
+  # 形式 (絶対パス指定 `/usr/bin/git checkout`、`command git checkout`、`exec git checkout`、
+  # backslash-escaped `\git checkout` 等) は match せず bypass 可能であった
+  # (security-reviewer empirical confirmation)。これらを ` git ` に正規化することで
+  # 既存 (A)〜(G) sub-block の glob を改変せずに防御範囲を拡大する。
+  #   - `/usr/bin/git` / `/opt/homebrew/bin/git` 等の絶対パス → ` git`
+  #   - `command git` / `exec git` / `builtin git` (builtin は構文 invalid だが safety) → ` git`
+  #   - `\git` (backslash-escaped) → ` git`
+  # 注意: alias / function 経由 (`alias gg='git'` 後に `gg checkout`) は本 hook では検出不能。
+  # 一次防御は agent prompt + Layer 3 post-condition gate に委ねる。
+  CMD_NORMALIZED="${CMD_NORMALIZED//\/git/ git}"
+  CMD_NORMALIZED="${CMD_NORMALIZED//\\git/ git}"
+  CMD_NORMALIZED="${CMD_NORMALIZED// command git/ git}"
+  CMD_NORMALIZED="${CMD_NORMALIZED// exec git/ git}"
+  CMD_NORMALIZED="${CMD_NORMALIZED// builtin git/ git}"
+  # 注: quote 正規化 (`"` / `'` → space) は false positive 過剰 (TC-061 `echo "git checkout"`
+  # のような log 出力経路を阻害) のため採用せず、代わりに quote-shell 経路 (`eval` / `sh -c` /
+  # `bash -c` / `zsh -c`) を別 sub-block で明示 block する設計に統一 (Issue #995 cycle 3)。
   # Collapse multiple spaces into one.
   while [[ "$CMD_NORMALIZED" == *"  "* ]]; do
     CMD_NORMALIZED="${CMD_NORMALIZED//  / }"
   done
 
+  # Git global flag normalization (Issue #995 cycle 3 / security-reviewer):
+  # `git -C <dir> checkout -b` / `git --git-dir=<X> checkout -b` 等の global flag が介在する
+  # 形式は case glob `*" git checkout "*` および token-loop `[[ " git worktree add " ]]` に
+  # match しないため Pattern (A)〜(G) を bypass する。global flag 群を ` git ` に圧縮することで
+  # 後続の sub-block 全体が flag-presence に関わらず一律に match できる。
+  # value-taking global flags (`-C <dir>` / `--git-dir <X>` / `--work-tree <X>` / `--exec-path <X>` /
+  # `--namespace <X>` / `-c <name=value>` / `--config-env <X>`): bash regex で extract + replace、
+  # `=` attached 形式 (`--git-dir=<X>` 等) も同じ正規化に含める。
+  while [[ " $CMD_NORMALIZED " =~ \ git\ (-C|--git-dir|--work-tree|--exec-path|--namespace|-c|--config-env)(=[^[:space:]]+|[[:space:]]+[^[:space:]]+)\  ]]; do
+    # ${BASH_REMATCH[0]} は ` git <flag><attached-or-spaced-value> ` を含む。これを ` git ` に置換。
+    _matched="${BASH_REMATCH[0]}"
+    CMD_NORMALIZED="${CMD_NORMALIZED/${_matched# }/git }"
+  done
+  # no-value global flags (`--bare` / `--no-pager` / `--paginate` 等): match して ` git ` に圧縮。
+  while [[ " $CMD_NORMALIZED " =~ \ git\ (--bare|--no-replace-objects|--paginate|--no-pager|--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--info-path|--man-path|--html-path)\  ]]; do
+    _matched="${BASH_REMATCH[0]}"
+    CMD_NORMALIZED="${CMD_NORMALIZED/${_matched# }/git }"
+  done
+  # Re-collapse spaces after global-flag normalization.
+  while [[ "$CMD_NORMALIZED" == *"  "* ]]; do
+    CMD_NORMALIZED="${CMD_NORMALIZED//  / }"
+  done
+
   PADDED=" $CMD_NORMALIZED "
+
+  # --- (Z) Quote-shell bypass guard (Issue #995 cycle 3) ---
+  # `eval` / `sh -c` / `bash -c` / `zsh -c` 経由で git command を実行する経路は、
+  # quote 内の content が (A)-(G) glob と word-boundary を共有しないため bypass 可能だった
+  # (security-reviewer cycle 2 empirical 発見: `eval "git checkout -b evil"` 等)。
+  # reviewer subagent が `eval` / shell `-c` を実行する legitimate な理由はほぼない
+  # (read-only な script 実行は `bash <script>` で十分) ため、これらの shell-wrapper を直接 block する。
+  # 注: `bash <script.sh>` (引数 1 個目が `-c` でない) は allow し続ける必要があるため、`-c` flag の
+  # 直前トークンが shell 名であるパターンのみを block する。
+  case "$PADDED" in
+    *" eval "*|\
+    *" sh -c "*|\
+    *" bash -c "*|\
+    *" zsh -c "*|\
+    *" ksh -c "*|\
+    *" dash -c "*|\
+    *" fish -c "*)
+      BLOCKED_PATTERN="reviewer-state-mutating-git"
+      ;;
+  esac
 
   # --- (A) Always-deny verbs (no read-only sub-action exists) ---
   case "$PADDED" in
@@ -347,14 +409,81 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     esac
   fi
 
-  # --- (E) Sub-action precision: git worktree remove/prune only ---
+  # --- (E) Sub-action precision: git worktree remove/prune/move + add-with-new-branch ---
+  # Allowed: `git worktree list`, `git worktree add --detach <path> <ref>`,
+  #          `git worktree add <path> <existing-branch>` (2 positional args: path + existing ref)
+  # Denied:  `git worktree remove`, `git worktree prune`, `git worktree move`,
+  #          `git worktree add -b <newbranch> ...` (any position) / `-B`, attached forms
+  #          `-bNAME` / `-b=NAME` / `--new-branch=NAME`, bare `git worktree add <path>` (1 positional
+  #          arg only — Git auto-creates a new named branch matching basename(path)).
+  #
+  # Issue #995: PR #994 cycle 3 で reviewer subagent が `pr-994-test` という新規 named branch を
+  # `git checkout -b` で作成 → mutation 検証 → `git checkout develop` の遷移を行い、parent session
+  # の working tree を develop のクリーン状態に置換した結果、後続の `/rite:pr:fix` が PR ブランチを
+  # 見失う事故が発生。`git checkout` 系は (A) Always-deny で既に block されるが、`git worktree add -b`
+  # 経由の named branch 作成は (E) で許可されていたため、structural gap として本サブブロックで補強。
+  #
+  # Cycle 1 fix (security/test reviewer indications): `add -b` の glob は末尾スペース要求で
+  # `add -bNAME` / `add -b=NAME` / `add --track -b NAME` (中間 flag) / `add /tmp/d -b newbr HEAD`
+  # (positional 後置) をすべて bypass していたため、token loop で `-b/-B` を flag として識別する
+  # 経路に統一する (case glob は first-line defense として残置)。
   if [ -z "$BLOCKED_PATTERN" ]; then
     case "$PADDED" in
       *" git worktree remove"*|\
-      *" git worktree prune"*)
+      *" git worktree prune"*|\
+      *" git worktree move"*)
         BLOCKED_PATTERN="reviewer-state-mutating-git"
         ;;
     esac
+  fi
+  # Token-loop based detection for `git worktree add` forms — covers all bypass paths:
+  #   - bare `add <path>` (1 positional arg, no --detach) → leak
+  #   - any token equal to `-b` / `-B` / `--new-branch` / `--force-new-branch` / `--orphan` → leak
+  #     (regardless of where it appears in args)
+  #   - attached forms `-bNAME` / `-BNAME` / `-b=NAME` / `--new-branch=NAME` /
+  #     `--force-new-branch=NAME` / `--orphan=NAME` → leak
+  # Allowed:
+  #   - `--detach` flag present (token equal to `--detach` or attached form `--detach=...`
+  #     which is not a real git option but harmless to recognize)
+  #   - 2+ positional args (path + existing branch/ref) AND no new-branch flag
+  if [ -z "$BLOCKED_PATTERN" ]; then
+    if [[ "$PADDED" =~ " git worktree add " ]]; then
+      WT_ARGS="${PADDED##* git worktree add }"
+      WT_ARGS="${WT_ARGS% }"
+      WT_POSITIONAL_COUNT=0
+      WT_HAS_DETACH=0
+      WT_NEW_BRANCH_FLAG=0
+      for tok in $WT_ARGS; do
+        case "$tok" in
+          --detach|--detach=*)
+            WT_HAS_DETACH=1
+            ;;
+          -b|-B|--new-branch|--force-new-branch|--orphan)
+            # standalone new-branch flag (next token is the branch name)
+            WT_NEW_BRANCH_FLAG=1
+            ;;
+          -b*|-B*|--new-branch=*|--force-new-branch=*|--orphan=*)
+            # attached form: `-bNAME` / `-BNAME` / `-b=NAME` / long-form `=NAME`
+            # Note: `-b*` glob also catches `-b` alone (handled above by exact-match first
+            # branch in case statement, but bash case falls through in order — first match wins,
+            # so the standalone variant is matched before this attached-form branch).
+            WT_NEW_BRANCH_FLAG=1
+            ;;
+          -*)
+            : ;;  # other flag (--track / --quiet / --guess-remote etc.), skip
+          *)
+            WT_POSITIONAL_COUNT=$((WT_POSITIONAL_COUNT + 1)) ;;
+        esac
+      done
+      # Deny logic:
+      #   (a) new-branch flag present at any position → leak (regardless of --detach)
+      #   (b) positional_count <= 1 AND no --detach → bare `add <path>`, auto-creates branch → leak
+      if [ "$WT_NEW_BRANCH_FLAG" -eq 1 ]; then
+        BLOCKED_PATTERN="reviewer-state-mutating-git"
+      elif [ "$WT_POSITIONAL_COUNT" -le 1 ] && [ "$WT_HAS_DETACH" -eq 0 ]; then
+        BLOCKED_PATTERN="reviewer-state-mutating-git"
+      fi
+    fi
   fi
 
   # --- (F) Sub-action precision: git fetch (bare allowed, --prune/--force denied) ---

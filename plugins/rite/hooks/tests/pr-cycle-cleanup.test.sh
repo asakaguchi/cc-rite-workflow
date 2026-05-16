@@ -203,6 +203,84 @@ fi
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
+# T-04b: Issue #995 — reviewer variation branches (`pr-N-test` /
+# `pr-N-experiment` / `pr-N-mutation` / `pr-N-verify` / `pr-N-check` /
+# `pr-N-sandbox`) are cleaned up alongside `pr-N-cycleX`.
+# Suffix variations (e.g. `pr-994-testing-suite`) must still survive.
+# -----------------------------------------------------------------------
+echo "T-04b: Issue #995 reviewer variation branches"
+TEST_REPO=$(make_temp_repo)
+(
+  cd "$TEST_REPO"
+  # Match — should be deleted (Issue #995 reviewer variation suffixes)
+  git branch pr-994-test main
+  git branch pr-995-experiment main
+  git branch pr-996-mutation main
+  git branch pr-997-verify main
+  git branch pr-998-check main
+  git branch pr-999-sandbox main
+  # Non-matches — must survive
+  git branch pr-994-testing-suite main             # suffix continuation
+  git branch pr-994-testfile main                  # not exact-match
+  git branch feature/pr-994-test main              # prefix
+  git branch pr-994-experimental main              # suffix continuation
+)
+( cd "$TEST_REPO" && bash "$CLEANUP" >/dev/null 2>&1 )
+
+# Verify all 6 reviewer variation branches are gone
+matched_remaining=$(cd "$TEST_REPO" && git for-each-ref --format='%(refname:short)' refs/heads/ \
+  | { grep -cE '^pr-99[4-9]-(test|experiment|mutation|verify|check|sandbox)$' || true; })
+# Verify the 4 non-matching branches survived (+ main = 5)
+survivors=$(cd "$TEST_REPO" && git for-each-ref --format='%(refname:short)' refs/heads/ \
+  | { grep -v -E '^main$' || true; } | wc -l | tr -d ' ')
+
+if [ "$matched_remaining" = "0" ] && [ "$survivors" = "4" ]; then
+  pass "T-04b: 6/6 reviewer variations deleted, 4/4 non-matching branches survived"
+else
+  fail "T-04b: matched_remaining=$matched_remaining (expect 0), survivors=$survivors (expect 4)"
+  ( cd "$TEST_REPO" && git for-each-ref --format='%(refname:short)' refs/heads/ ) | sed 's/^/    surviving: /'
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-04c: Issue #995 cycle 1 — worktree-loop の regex sync を独立検証
+# (test-reviewer 指摘: T-04b は bare branch のみで worktree-loop の regex が
+# desync しても PASS する。worktree シナリオを追加し、worktree + branch のセット leak が
+# cleanup されることを確認する)
+# -----------------------------------------------------------------------
+echo "T-04c: Issue #995 reviewer variation worktrees + branches (worktree-loop regex sync)"
+TEST_REPO=$(make_temp_repo)
+(
+  cd "$TEST_REPO"
+  # Match — should be cleaned up via worktree-loop (worktree first, then branch)
+  git worktree add --quiet -b pr-994-test .wt-test main >/dev/null 2>&1
+  git worktree add --quiet -b pr-995-experiment .wt-exp main >/dev/null 2>&1
+  git worktree add --quiet -b pr-996-cycle1 .wt-cyc main >/dev/null 2>&1
+  # Non-match worktree — must survive (suffix continuation in branch name)
+  git worktree add --quiet -b pr-994-experimental .wt-survive main >/dev/null 2>&1
+)
+( cd "$TEST_REPO" && bash "$CLEANUP" >/dev/null 2>&1 )
+
+# Verify the 3 reviewer-variation/cycle worktrees + branches are gone
+matched_wt=$(cd "$TEST_REPO" && git worktree list --porcelain 2>/dev/null \
+  | { grep -E '^branch refs/heads/pr-9(94|95|96)-(test|experiment|cycle1)$' || true; } | wc -l | tr -d ' ')
+matched_br=$(cd "$TEST_REPO" && git for-each-ref --format='%(refname:short)' refs/heads/ \
+  | { grep -cE '^pr-9(94|95|96)-(test|experiment|cycle1)$' || true; })
+
+# Verify the non-matching worktree + branch survived
+survivor_wt=$(cd "$TEST_REPO" && git worktree list --porcelain 2>/dev/null \
+  | { grep -F 'branch refs/heads/pr-994-experimental' || true; } | wc -l | tr -d ' ')
+
+if [ "$matched_wt" = "0" ] && [ "$matched_br" = "0" ] && [ "$survivor_wt" = "1" ]; then
+  pass "T-04c: 3/3 reviewer-variation worktrees+branches cleaned, 1/1 non-match worktree survived"
+else
+  fail "T-04c: matched_wt=$matched_wt (expect 0), matched_br=$matched_br (expect 0), survivor_wt=$survivor_wt (expect 1)"
+  ( cd "$TEST_REPO" && git worktree list ) | sed 's/^/    worktree: /'
+  ( cd "$TEST_REPO" && git for-each-ref --format='%(refname:short)' refs/heads/ ) | sed 's/^/    branch: /'
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
 # T-05: Idempotent — re-running on a clean repo is a no-op
 # -----------------------------------------------------------------------
 echo "T-05: idempotent (no-op when nothing matches)"

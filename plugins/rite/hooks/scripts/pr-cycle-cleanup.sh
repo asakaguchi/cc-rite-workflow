@@ -2,14 +2,29 @@
 # rite workflow - PR review-fix cycle branch cleanup (idempotent)
 #
 # Responsibility: remove residual `pr-{N}-cycle{X}` worktrees and branches
-# that leak after reviewer subagent `git worktree add` invocations. The
-# reviewer's READ-ONLY contract forbids `git worktree remove` / `git branch -D`,
-# so cleanup MUST run from the orchestrator side.
+# that leak after reviewer subagent `git worktree add` invocations, plus
+# `pr-{N}-{test,experiment,mutation,verify,check,sandbox}` variations that
+# reviewers create for verification experiments (Issue #995). The reviewer's
+# READ-ONLY contract forbids `git worktree remove` / `git branch -D`, so
+# cleanup MUST run from the orchestrator side.
 #
-# Strict regex `^pr-[0-9]+-cycle[0-9]+$` protects unrelated branches
-# (e.g. `pr-918-cycle4-feature`, `feature/pr-918-cycle4`) from accidental
-# deletion. The wiki worktree (`.rite/wiki-worktree`) is excluded
-# unconditionally — see commands/pr/cleanup.md §2.6.
+# Strict regex `^pr-[0-9]+-(cycle[0-9]+|test|experiment|mutation|verify|check|sandbox)$`
+# protects unrelated branches (e.g. `pr-918-cycle4-feature`,
+# `feature/pr-918-cycle4`, `pr-994-testing-suite`) from accidental deletion
+# by requiring an **exact-match suffix** rather than a substring. The wiki
+# worktree (`.rite/wiki-worktree`) is excluded unconditionally — see
+# commands/pr/cleanup.md §2.6.
+#
+# Variation history:
+#   - `cycle{N}`: orchestrator-created (`/rite:pr:review` cycle worktrees)
+#   - `test` / `experiment` / `mutation` / `verify` / `check` / `sandbox`:
+#     reviewer-subagent verification experiments. Observed in Issue #995
+#     (PR #994 cycle 3 review where a reviewer created `pr-994-test`).
+#     The reviewer's READ-ONLY contract is enforced primarily by
+#     `pre-tool-bash-guard.sh` Pattern 4 (PreToolUse hook block), and these
+#     names should normally never be created. This regex serves as the
+#     defense-in-depth sweep for cases where the hook fails to fire
+#     (e.g., transcript_path subagent detection edge case).
 #
 # Usage:
 #   bash pr-cycle-cleanup.sh [--dry-run]
@@ -54,8 +69,11 @@ if [ -z "$repo_root" ]; then
 fi
 cd -- "$repo_root"
 
-PATTERN='^pr-[0-9]+-cycle[0-9]+$'
-WIKI_WORKTREE_PATH=".rite/wiki-worktree"
+# Single source of truth (cycle 1 fix): `PATTERN` 変数を [[ =~ $PATTERN ]] で
+# 直接参照することで、worktree-loop と branch-loop の 2 箇所で literal regex を
+# duplicate していた drift リスクを解消する (`readonly` で immutable 化)。
+readonly PATTERN='^pr-[0-9]+-(cycle[0-9]+|test|experiment|mutation|verify|check|sandbox)$'
+readonly WIKI_WORKTREE_PATH=".rite/wiki-worktree"
 
 worktrees_removed=0
 branches_deleted=0
@@ -100,7 +118,7 @@ if wt_list=$(git worktree list --porcelain 2>"${wt_list_err:-/dev/null}"); then
           current_path=""
           continue
         fi
-        if [[ "$branch_name" =~ ^pr-[0-9]+-cycle[0-9]+$ ]]; then
+        if [[ "$branch_name" =~ $PATTERN ]]; then
           if [ "$DRY_RUN" = "1" ]; then
             echo "[dry-run] would remove worktree: $current_path (branch=$branch_name)"
           else
@@ -156,7 +174,7 @@ ref_err=$(mktemp /tmp/rite-pr-cycle-cleanup-ref-err-XXXXXX 2>/dev/null) || ref_e
 if branches=$(git for-each-ref --format='%(refname:short)' refs/heads/ 2>"${ref_err:-/dev/null}"); then
   while IFS= read -r br; do
     [ -z "$br" ] && continue
-    if [[ "$br" =~ ^pr-[0-9]+-cycle[0-9]+$ ]]; then
+    if [[ "$br" =~ $PATTERN ]]; then
       if [ "$DRY_RUN" = "1" ]; then
         echo "[dry-run] would delete branch: $br"
       else

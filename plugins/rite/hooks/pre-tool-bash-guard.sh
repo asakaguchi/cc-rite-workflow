@@ -67,8 +67,8 @@ fi
 # upgrade to an allow-list check (e.g. `*-reviewer` glob) here. Tier 3 env vars
 # share the same risk — see BLOCKED_ALTERNATIVE recovery text for `unset` guidance.
 #
-# Both jq lookups read $INPUT in a single invocation to halve subprocess fork
-# overhead on the PreToolUse hot path.
+# All three field extractions share a single jq invocation; the original
+# three-jq layout would triple subprocess fork overhead on the PreToolUse hot path.
 JQ_OUT=$(echo "$INPUT" | jq -r '[(.transcript_path // ""), (.subagent_type | strings // ""), (.agent_type | strings // "")] | @tsv' 2>/dev/null) || JQ_OUT=$'\t\t'
 TRANSCRIPT_PATH=$(printf '%s' "$JQ_OUT" | cut -f1)
 INPUT_SUBAGENT_TYPE=$(printf '%s' "$JQ_OUT" | cut -f2)

@@ -98,9 +98,10 @@
 | [Success-only Sentinel Design — sub-skill abort path sentinel 未定義](pages/anti-patterns/success-only-sentinel-design.md) | anti-patterns | sub-skill 切出し時に success path 用 HTML sentinel のみを定義し、abort path / error path 用 sentinel を未定義のまま残す anti-pattern。caller orchestrator が 3 経路を grep-able に区別できず implicit stop / 誤 routing が発生する。PR #951 (`/rite:issue:start-execute` 切出し) cycle 1 で CRITICAL 検出。canonical fix は success / abort / error 3 経路すべてに sentinel を定義し caller routing dispatcher で排他的に grep すること。 | 2026-05-14T05:30:00+00:00 | medium |
 | [Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む)](pages/anti-patterns/scope-drift-fix-overclaim-substitution.md) | anti-patterns | scope drift / virtual claim を「scope を限定する正確な表現」に置換する fix で、置換後の言い換えに別種の overclaim 語彙 (`固有 (unique to)` / `専用 (specific to)` / `全て` / `必ず` 等の絶対化語彙) を持ち込むリスク。所有格 (`の`) / 限定形容 (`での`、`に関する`) のみを使い、絶対化を含意する語彙を意図的に回避する。並列性が明示できる場合は共有 pattern であることを括弧書きで補足する。PR #969 cycle 1 で code-quality reviewer が Confidence 80 で検出 → cycle 2 で 0 findings 収束 (Issue #965 sister of `asymmetric-fix-transcription`)。 | 2026-05-15T10:05:00+09:00 | high |
 | [Pattern 統一 follow-up PR では Wiki 経験則違反でも統一を優先する](pages/heuristics/pattern-unification-over-wiki-rigor.md) | heuristics | 過去 PR で merge 済みのパターンとの統一を目的とする follow-up PR では、Wiki 経験則違反 (overclaim 語彙等) であってもパターン統一を優先し、改善は別 Issue で追跡する。Issue 本文の明示的目的 + SoT との byte-level 同型 + test SCOPE 自身の declaration が判定根拠。PR #973 (Issue #970) で実測、2 reviewer 合意で 0 findings 収束。 | 2026-05-15T15:05:00+09:00 | medium |
+| [Bash 配列の slash-deletion は要素を空文字列に置換するだけで削除しない](pages/anti-patterns/bash-array-slash-deletion-empty-replacement.md) | anti-patterns | `cleanup_dirs=("${arr[@]/$target}")` 形式の bash パラメータ展開は各要素内の `pattern` 一致部分を空文字列に置換するだけで配列スロットを削除しない。trap 等の cleanup ループが `[ -n "$d" ]` filter で空要素を skip する設計だと「機能的には安全」に見えるが、反復ごとに空要素が累積し配列サイズが test cycle と比例して肥大する silent failure。完全削除を保証する明示的再構築 helper (`for d in "${arr[@]:-}"; do [ -n "$d" ] && [ "$d" != "$target" ] && new+=("$d"); done` + `${#new[@]}` 分岐) で `set -u` 安全に対応。PR #991 (Issue #986) で 10 反復後 10 → 0 累積を実測、shellcheck カスタムルール / CI grep で `[@]/$` ban する構造的予防が推奨。 | 2026-05-16T13:30:00+09:00 | high |
 
 ## 統計
 
-- 総ページ数: 92
-- ドメイン別: patterns=35, heuristics=26, anti-patterns=31
-- 最終更新: 2026-05-15T15:05:00+09:00
+- 総ページ数: 93
+- ドメイン別: patterns=35, heuristics=26, anti-patterns=32
+- 最終更新: 2026-05-16T13:30:00+09:00

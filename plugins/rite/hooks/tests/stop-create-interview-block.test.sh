@@ -6,7 +6,7 @@
 # Back-stop behavior tests (not direct Issue AC mapping):
 #   - gate-match → exit 2 + ACTION (TC-1, TC-9)
 #   - gate-mismatch / recursion guard / non-Stop → exit 0 (TC-2..TC-6, TC-8)
-#   - workflow_incident.enabled=false respected (TC-7 variant matrix)
+#   - workflow_incident.enabled variant matrix (TC-7 falsy / TC-11 truthy)
 # Note: Issue AC-1/AC-2/AC-5 are orchestrator-side e2e concerns, out of hook test scope.
 # Note: AC-3 (structural invariants) covered by 4-site-symmetry.test.sh et al.
 # Note: AC-6 (charter violation grep) covered separately.
@@ -308,6 +308,40 @@ assert_eq "TC-10.1: exit code 2 (flow-state walkup OK → gate fires)" "2" "$rc"
 assert_contains "TC-10.2: ACTION still shown despite subdir CWD" "Issue #920" "$STDERR"
 assert_not_contains "TC-10.3: workflow_incident sentinel NOT emitted (rite-config.yml walkup OK → opt-out respected)" "WORKFLOW_INCIDENT=1" "$STDERR"
 rm -rf "$SBX"; _remove_from_cleanup_dirs "$SBX"
+
+# ---- TC-11: workflow_incident.enabled truthy variant matrix → default-on 同等動作 ----
+# Canonical SoT (workflow-incident-detection.md) defines `true|yes|1)` branch alongside
+# `false|no|0)` / `*)` 3 branches. The hook parser (stop-create-interview-block.sh:108-110)
+# currently implements only `false|no|0)` branch — truthy variants fall through to the
+# default `WORKFLOW_INCIDENT_ENABLED="true"` (line 97), so behavior is default-on.
+# This loop pins all 5 truthy variants so a future refactor that adds an explicit
+# `true|yes|1)` branch cannot silently break any variant's default-on semantics
+# (Issue #987 — TC-10 番号は PR #989 で subdirectory walkup test に取得済のため TC-11 へ renumber)。
+echo "TC-11: workflow_incident.enabled truthy variant matrix (5 syntactic forms) → exit 2 + sentinel"
+
+TC11_TRUTHY_VARIANTS=(
+  "true"
+  "TRUE"
+  '"true"'
+  "yes"
+  "1"
+)
+
+for variant in "${TC11_TRUTHY_VARIANTS[@]}"; do
+  echo "  variant: enabled: $variant"
+  SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+  write_flow_state "$SBX" "create_post_interview" "true" "0"
+  cat > "$SBX/rite-config.yml" <<YAML
+workflow_incident:
+  enabled: $variant
+YAML
+  payload=$(build_stop_payload "$SBX" false)
+  run_hook "$SBX" "$payload"; rc=$HOOK_RC
+  assert_eq "TC-11.1 [enabled: $variant]: exit code 2 (block fires)" "2" "$rc"
+  assert_contains "TC-11.2 [enabled: $variant]: ACTION shown" "Issue #920" "$STDERR"
+  assert_contains "TC-11.3 [enabled: $variant]: workflow_incident sentinel emitted (default-on respected)" "WORKFLOW_INCIDENT=1" "$STDERR"
+  rm -rf "$SBX"; _remove_from_cleanup_dirs "$SBX"
+done
 
 echo ""
 echo "================================="

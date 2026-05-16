@@ -100,14 +100,17 @@ fi
 
 echo ""
 echo "[T-9e] Documented flags present in source"
-assert_file_contains "$WATCHDOG_SH" -- '--dry-run' \
-  "Script source documents --dry-run flag"
-assert_file_contains "$WATCHDOG_SH" -- '--reconcile' \
-  "Script source documents --reconcile flag"
-assert_file_contains "$WATCHDOG_SH" -- '--limit' \
-  "Script source documents --limit flag"
-assert_file_contains "$WATCHDOG_SH" -- '--quiet' \
-  "Script source documents --quiet flag"
+# Issue #1003 review F-03 修正: 旧コードは `assert_file_contains $SH -- '--flag' "desc"` 形式で、
+# `--` が pattern として固定されて trivially match していた。canonical 3-arg signature に揃えるため、
+# pattern は `\-\-{flag}\)` (case 句の閉じ括弧で固定) として cmd-line parse logic 自体を pin する。
+assert_file_contains "$WATCHDOG_SH" '\-\-dry-run\)' \
+  "Script case clause handles --dry-run flag"
+assert_file_contains "$WATCHDOG_SH" '\-\-reconcile\)' \
+  "Script case clause handles --reconcile flag"
+assert_file_contains "$WATCHDOG_SH" '\-\-limit\)' \
+  "Script case clause handles --limit flag"
+assert_file_contains "$WATCHDOG_SH" '\-\-quiet\)' \
+  "Script case clause handles --quiet flag"
 # Issue #1003 AC-9 marker
 assert_file_contains "$WATCHDOG_SH" 'Issue #1003 AC-9' \
   "Script header references Issue #1003 AC-9"

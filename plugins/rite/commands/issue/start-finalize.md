@@ -15,6 +15,7 @@ Execute the finalize phase for an Issue. This sub-skill is invoked from `start.m
 - `{pr_number}` — populated from Phase 5.3 `[pr:created:{N}]` (success path) OR `0` (abort path — `[start:execute:aborted]` 経由で PR 未作成のまま invocation された場合)
 - `{plugin_root}` — resolved per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version)
 - `{parent_issue_number}` — from flow-state via `state-read.sh` (Phase 5.7)
+- `{owner}`, `{repo}` — retrieved via `gh repo view --json owner,name` in `start.md` Phase 0 (Placeholder Legend) and passed through the orchestrator context (used in Workflow Termination Step 0 GraphQL query). Issue #1003 review F-02 で文書化追加。
 - Review-fix loop converged (mergeable / replied-only) **OR** abort context (`[start:execute:aborted]` / `[start:publish:aborted]` 経由 — Phase 5.5/5.5.1/5.5.2/5.7 を skip して直接 Phase 5.6 Completion Report へ進む)
 
 **Abort entry detection**: 本 sub-skill 起動直後、以下のいずれかが成立する場合は **abort entry** と判定し、Phase 5.5 AskUserQuestion / 5.5.1 / 5.5.2 / 5.7 を skip して **直接 Phase 5.6 Completion Report へ進む** (terminal state は caller の Mandatory After 5.5-Termination Step 1 が SoT として担う):
@@ -507,9 +508,25 @@ if [ "{pr_number}" != "0" ] && [ -n "{pr_number}" ]; then
   PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' rite-config.yml 2>/dev/null)
   PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' rite-config.yml 2>/dev/null)
   if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ]; then
-    PR_IS_DRAFT=$(gh pr view {pr_number} --json isDraft --jq '.isDraft // null' 2>/dev/null) || PR_IS_DRAFT=""
+    # Issue #1003 review F-07: gh API failure を silent fall-through せず incident emit する。
+    # gh stderr を tempfile capture し、失敗時 (exit != 0) に gh_api_failure_at_final_fallback
+    # root_cause_hint で sentinel を emit。Wiki 経験則 silent_omit_disables_defense_chain 対策。
+    pr_view_err=$(mktemp /tmp/rite-finalize-step0-pr-err-XXXXXX 2>/dev/null) || pr_view_err=""
+    gql_err=$(mktemp /tmp/rite-finalize-step0-gql-err-XXXXXX 2>/dev/null) || gql_err=""
+    trap 'rm -f "${pr_view_err:-}" "${gql_err:-}"' EXIT
+    if PR_IS_DRAFT=$(gh pr view {pr_number} --json isDraft --jq '.isDraft // null' 2>"${pr_view_err:-/dev/null}"); then
+      :
+    else
+      gh_pr_rc=$?
+      bash {plugin_root}/hooks/workflow-incident-emit.sh \
+        --type projects_status_in_review_missing \
+        --details "Issue #{issue_number} Workflow Termination Step 0: gh pr view {pr_number} failed (rc=$gh_pr_rc, stderr=$(head -c 200 "${pr_view_err:-/dev/null}" 2>/dev/null))" \
+        --root-cause-hint "gh_api_failure_at_final_fallback" \
+        --pr-number {pr_number} >&2 || true
+      PR_IS_DRAFT=""
+    fi
     if [ "$PR_IS_DRAFT" = "false" ]; then
-      CURRENT_STATUS=$(gh api graphql -f query='
+      if CURRENT_STATUS=$(gh api graphql -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
     issue(number: $number) {
@@ -528,9 +545,19 @@ query($owner: String!, $repo: String!, $number: Int!) {
       }
     }
   }
-}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number} 2>/dev/null \
-        | jq -r --argjson pn "$PROJECT_NUMBER" \
-          '[.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>/dev/null) || CURRENT_STATUS=""
+}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number} 2>"${gql_err:-/dev/null}" \
+          | jq -r --argjson pn "$PROJECT_NUMBER" \
+            '[.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>/dev/null); then
+        :
+      else
+        gh_gql_rc=$?
+        bash {plugin_root}/hooks/workflow-incident-emit.sh \
+          --type projects_status_in_review_missing \
+          --details "Issue #{issue_number} Workflow Termination Step 0: gh api graphql failed (rc=$gh_gql_rc, stderr=$(head -c 200 "${gql_err:-/dev/null}" 2>/dev/null))" \
+          --root-cause-hint "gh_api_failure_at_final_fallback" \
+          --pr-number {pr_number} >&2 || true
+        CURRENT_STATUS=""
+      fi
       if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ]; then
         echo "[rite] ⚠️ Workflow Termination: Issue #{issue_number} PR=#{pr_number} isDraft=false Status=\"$CURRENT_STATUS\" (expected In Review) — emitting projects_status_in_review_missing sentinel" >&2
         bash {plugin_root}/hooks/workflow-incident-emit.sh \
@@ -540,11 +567,14 @@ query($owner: String!, $repo: String!, $number: Int!) {
           --pr-number {pr_number} >&2 || true
       fi
     fi
+    [ -n "$pr_view_err" ] && rm -f "$pr_view_err"
+    [ -n "$gql_err" ] && rm -f "$gql_err"
+    trap - EXIT
   fi
 fi
 ```
 
-**Step 0 non-blocking 保証**: 検知ロジックは best-effort で、`gh` 呼び出し失敗・jq parse 失敗はすべて silent fall-through。Workflow Termination 自体は Step 1 に必ず到達する。
+**Step 0 non-blocking 保証**: 検知ロジックは best-effort で、jq parse 失敗は silent fall-through するが、**gh API 自体の失敗は `gh_api_failure_at_final_fallback` root_cause_hint で incident sentinel を emit する** (Issue #1003 review F-07 対応)。Workflow Termination 自体は Step 1 に必ず到達する。silent fall-through で最終 fallback 層が消失する経路は Wiki 経験則 `silent_omit_disables_defense_chain` に該当するため、本 PR で incident emit 経路を追加。
 
 **Step 1**: Update flow state to the terminal state (patch mode, preserves `previous_phase`). Use `--if-exists --preserve-error-count` for safety — if the Pre-flight failed to create the state file (rare), this patch becomes a no-op rather than failing terminal:
 

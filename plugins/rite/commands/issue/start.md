@@ -625,6 +625,8 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 | `wiki_ingest_failed` | `wiki-ingest-trigger.sh` exit non-zero / non-2、**または** `wiki-ingest-commit.sh` exit non-0/2/4 (git stash/checkout/commit 失敗) | AskUserQuestion → register Issue / skip — register 推奨 |
 | `wiki_ingest_push_failed` | `wiki-ingest-commit.sh` exit 4 — commit は local wiki branch に landed、origin push 失敗 | register 推奨。Manual recovery: `git push origin wiki` |
 | `gitignore_drift` | `/rite:lint` Phase 3.9 で `gitignore-health-check.sh` が `.rite/wiki/` 不在を検出 (last-line-of-defense) | register 推奨。Manual recovery: restore `.rite/wiki/` to `.gitignore` |
+| `projects_status_update_failed` | `pr/ready.md` Phase 4.2.1 / `start-finalize.md` Phase 5.5.1 / `references/projects-status-update-callsites.md` Common contract item 5 経由で `projects-status-update.sh` が `failed` / `skipped_not_in_project` を返した場合 (Issue #1003 AC-4 silent skip 禁止 contract) | AskUserQuestion → register Issue / skip — register 推奨 (Status 滞留の原因調査が必要) |
+| `projects_status_in_review_missing` | `start-finalize.md` Workflow Termination Step 0 / `start.md` Mandatory After 5.5-Termination Step 1.5 / `post-compact.sh` reconciliation 失敗時に PR Ready 化済 (`isDraft=false`) かつ Issue Status が `In Review` でない不整合を検出 (Issue #1003 AC-7/AC-8 多層観測 contract) | AskUserQuestion → register Issue / skip — register 推奨 (defense-in-depth 失敗の兆候) |
 
 **When to execute** (explicit routing):
 
@@ -676,14 +678,15 @@ rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANU
 **Step 1.5 (Issue #1003 AC-8 — caller-side In Review log missing detection)**: success path では sub-skill `start-finalize.md` Workflow Termination Step 0 が primary 検知を担うが、abort path (`[start:finalize:aborted]`) では sub-skill の Workflow Termination 自体が走らないため、caller 側で同等の defense-in-depth 検知を実行する。`[ready:error]` user-terminate のように "Ready 化試行 → 失敗 → terminate" 経路で Status が `In Progress` のまま放置される事象を最終 fallback で surface する。
 
 ```bash
-# Defense-in-depth: caller-side In Review 遷移ログ欠落検知 (abort path のみ実行、success path は sub-skill が SoT)
-# success path では既に sub-skill Workflow Termination Step 0 で同 logic が走っているため、
-# 重複 emit を避けるため `<!-- [start:finalize:aborted] -->` sentinel 検出時のみ実行する。
-# (success path で重複 emit になっても Phase 5.4.4.1 dedup で問題ないが、無用な gh API call は避ける)
-if grep -qF '[start:finalize:aborted]' <<<"$(history 2>/dev/null || true)" 2>/dev/null \
-   || true; then  # bash history grep は環境依存のため、より signally なヒューリスティクスとして
-                  # {pr_number} が non-zero (PR 作成済) かつ abort 経路を辿った場合に検知する。
-  if [ "{pr_number}" != "0" ] && [ -n "{pr_number}" ]; then
+# Defense-in-depth: caller-side In Review 遷移ログ欠落検知
+# success path / abort path 両方で実行される。success path では sub-skill (start-finalize.md
+# Workflow Termination Step 0) が primary 検知を担い、本 caller-side check は 2 段目の冗長
+# 防御として機能する。重複 emit になっても Phase 5.4.4.1 dedup で吸収されるため副作用なし。
+# 旧実装は `if grep ... <<<"$(history...)" || true; then` 形式で abort path 限定を試みたが、
+# `|| true` により条件式が常に true 評価される dead control flow + bash history は
+# non-interactive subprocess で空のため grep も never match という二重バグだった。
+# 真に必要なガードは pr_number が non-zero (PR 作成済) のみ — Issue #1003 review F-01 で指摘。
+if [ "{pr_number}" != "0" ] && [ -n "{pr_number}" ]; then
     PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' rite-config.yml 2>/dev/null)
     PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' rite-config.yml 2>/dev/null)
     if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ]; then

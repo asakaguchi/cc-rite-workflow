@@ -201,7 +201,7 @@ assert_eq "TC-6.2: no stderr output" "" "$STDERR"
 rm -rf "$SBX"; _remove_from_cleanup_dirs "$SBX"
 
 # ---- TC-7: workflow_incident.enabled variant matrix → all opt-out forms block + skip sentinel ----
-# Canonical SoT (workflow-incident-detection.md) accepts 6+ syntactic variants of falsy values
+# Canonical SoT (workflow-incident-detection.md) accepts 7 syntactic variants of falsy values
 # (`false` / `no` / `0`, case-insensitive, with/without quotes, with trailing comment). The hook
 # parser (stop-create-interview-block.sh:103-111) implements quote stripping + case-folding +
 # case branch. This loop pins all variants so future parser refactors cannot silently degrade

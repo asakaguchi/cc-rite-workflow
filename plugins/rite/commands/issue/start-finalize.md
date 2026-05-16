@@ -168,6 +168,27 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 > **Module**: [Projects Status Update Callsites](./references/projects-status-update-callsites.md#callsite-2--phase-551-issue-status--in-review) — Callsite 2 (Phase 5.5.1) bash literal SoT。Skip if `projects.enabled: false` in rite-config.yml. Otherwise execute the Module procedure (Status update to "In Review", `auto_add: false` since Phase 2.4 already auto-added if missing). Defense-in-depth — `rite:pr:ready` Phase 4 also attempts this, but may not execute reliably within e2e flow. API レベル動作は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) を参照。
 
+> **Issue #1003 AC-4 — silent skip 禁止 contract (defense-in-depth)**: Module の Callsite 2 が返す `.result` が `"skipped_not_in_project"` または `"failed"` の場合、Module 規定の `.warnings[]` stderr surface に **加えて** `workflow-incident-emit.sh` で sentinel を emit すること。本 Phase 5.5.1 は `rite:pr:ready` Phase 4.2 の defense-in-depth であり、両 callsite で silent skip を禁止することで OR ロジック多重防御を構成する (Wiki 経験則 `silent_omit_disables_defense_chain` への対策)。
+>
+> ```bash
+> case "$status_result" in
+>   skipped_not_in_project)
+>     bash {plugin_root}/hooks/workflow-incident-emit.sh \
+>       --type projects_status_update_failed \
+>       --details "Issue #{issue_number} skipped_not_in_project at start-finalize.md Phase 5.5.1 (In Review defense-in-depth)" \
+>       --root-cause-hint "issue_not_registered_in_project_at_phase_5_5_1" \
+>       --pr-number {pr_number} >&2 || true ;;
+>   failed)
+>     bash {plugin_root}/hooks/workflow-incident-emit.sh \
+>       --type projects_status_update_failed \
+>       --details "Issue #{issue_number} projects-status-update.sh failed at start-finalize.md Phase 5.5.1 (In Review defense-in-depth)" \
+>       --root-cause-hint "gh_api_or_graphql_failure_at_phase_5_5_1" \
+>       --pr-number {pr_number} >&2 || true ;;
+> esac
+> ```
+>
+> emit 自体は `|| true` で non-blocking。caller Phase 5.4.4.1 の grep 検出経路で Issue として auto-register される。
+
 ### 🚨 Mandatory After 5.5.1
 
 > See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
@@ -474,6 +495,56 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 **Parent-skip routing**: When `parent_issue_number` is `0` in flow-state (determined in Phase 5.7 via `state-read.sh`), Phase 5.7 is skipped entirely. In that case, jump from the end of Phase 5.6 directly to this block (bypassing 5.7.1-5.7.3 and Mandatory After 5.7) — do **not** leave the workflow in `phase5_completion, active: true`, which would cause the next stop attempt to block indefinitely.
 
 > **Why this routing relies on Phase 5.7 emit, not state re-read**: Phase 5.7 が `parent_issue_number` の **single source of truth for the read** であり、本 Workflow Termination block は state を re-read しない。本 sub-skill 内の branching decision は Phase 5.7 の `[CONTEXT] PARENT_ISSUE=none` echo (LLM-level routing signal、会話履歴で観測可能) で駆動され、bash 変数経由ではない (Bash tool invocation は shell state を境界を跨いで共有しない)。
+
+### Step 0: In Review 遷移ログ欠落検知 (Issue #1003 AC-8)
+
+terminal patch (Step 1) 直前に、PR が Ready 化されているにもかかわらず Issue Status が `In Review` に到達していない場合は warning incident sentinel を emit する。これは Phase 5.5 (`rite:pr:ready`) + Phase 5.5.1 (defense-in-depth) の両方が silent skip / silent fail した場合の **最終 fallback** として機能する (Wiki 経験則 `silent_omit_disables_defense_chain` に対する第三の防御層)。
+
+**条件**: `{pr_number}` が non-zero (success path で PR 作成済) かつ `projects.enabled: true`。abort path (`{pr_number}=0`) では skip。
+
+```bash
+if [ "{pr_number}" != "0" ] && [ -n "{pr_number}" ]; then
+  PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' rite-config.yml 2>/dev/null)
+  PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' rite-config.yml 2>/dev/null)
+  if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ]; then
+    PR_IS_DRAFT=$(gh pr view {pr_number} --json isDraft --jq '.isDraft // null' 2>/dev/null) || PR_IS_DRAFT=""
+    if [ "$PR_IS_DRAFT" = "false" ]; then
+      CURRENT_STATUS=$(gh api graphql -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      projectItems(first: 10) {
+        nodes {
+          project { number }
+          fieldValues(first: 20) {
+            nodes {
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                field { ... on ProjectV2SingleSelectField { name } }
+                name
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number} 2>/dev/null \
+        | jq -r --argjson pn "$PROJECT_NUMBER" \
+          '[.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>/dev/null) || CURRENT_STATUS=""
+      if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ]; then
+        echo "[rite] ⚠️ Workflow Termination: Issue #{issue_number} PR=#{pr_number} isDraft=false Status=\"$CURRENT_STATUS\" (expected In Review) — emitting projects_status_in_review_missing sentinel" >&2
+        bash {plugin_root}/hooks/workflow-incident-emit.sh \
+          --type projects_status_in_review_missing \
+          --details "Issue #{issue_number} at Workflow Termination: PR=#{pr_number} isDraft=false Status=$CURRENT_STATUS (expected In Review). Phase 5.5/5.5.1 both silent-skip suspected." \
+          --root-cause-hint "phase_5_5_and_5_5_1_silent_skip" \
+          --pr-number {pr_number} >&2 || true
+      fi
+    fi
+  fi
+fi
+```
+
+**Step 0 non-blocking 保証**: 検知ロジックは best-effort で、`gh` 呼び出し失敗・jq parse 失敗はすべて silent fall-through。Workflow Termination 自体は Step 1 に必ず到達する。
 
 **Step 1**: Update flow state to the terminal state (patch mode, preserves `previous_phase`). Use `--if-exists --preserve-error-count` for safety — if the Pre-flight failed to create the state file (rare), this patch becomes a no-op rather than failing terminal:
 

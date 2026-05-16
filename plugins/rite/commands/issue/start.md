@@ -673,7 +673,59 @@ rm -f .rite-compact-state 2>/dev/null || true
 rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=start_md_termination" >&2
 ```
 
-**Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1。Grep `[CONTEXT] WORKFLOW_INCIDENT=1` (emit by `start-finalize` `[ready:error]` §D or `ready.md` sub-skill)。検出時 step 2-7。**non-blocking**。
+**Step 1.5 (Issue #1003 AC-8 — caller-side In Review log missing detection)**: success path では sub-skill `start-finalize.md` Workflow Termination Step 0 が primary 検知を担うが、abort path (`[start:finalize:aborted]`) では sub-skill の Workflow Termination 自体が走らないため、caller 側で同等の defense-in-depth 検知を実行する。`[ready:error]` user-terminate のように "Ready 化試行 → 失敗 → terminate" 経路で Status が `In Progress` のまま放置される事象を最終 fallback で surface する。
+
+```bash
+# Defense-in-depth: caller-side In Review 遷移ログ欠落検知 (abort path のみ実行、success path は sub-skill が SoT)
+# success path では既に sub-skill Workflow Termination Step 0 で同 logic が走っているため、
+# 重複 emit を避けるため `<!-- [start:finalize:aborted] -->` sentinel 検出時のみ実行する。
+# (success path で重複 emit になっても Phase 5.4.4.1 dedup で問題ないが、無用な gh API call は避ける)
+if grep -qF '[start:finalize:aborted]' <<<"$(history 2>/dev/null || true)" 2>/dev/null \
+   || true; then  # bash history grep は環境依存のため、より signally なヒューリスティクスとして
+                  # {pr_number} が non-zero (PR 作成済) かつ abort 経路を辿った場合に検知する。
+  if [ "{pr_number}" != "0" ] && [ -n "{pr_number}" ]; then
+    PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' rite-config.yml 2>/dev/null)
+    PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' rite-config.yml 2>/dev/null)
+    if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ]; then
+      PR_IS_DRAFT=$(gh pr view {pr_number} --json isDraft --jq '.isDraft // null' 2>/dev/null) || PR_IS_DRAFT=""
+      if [ "$PR_IS_DRAFT" = "false" ]; then
+        CURRENT_STATUS=$(gh api graphql -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      projectItems(first: 10) {
+        nodes {
+          project { number }
+          fieldValues(first: 20) {
+            nodes {
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                field { ... on ProjectV2SingleSelectField { name } }
+                name
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number} 2>/dev/null \
+          | jq -r --argjson pn "$PROJECT_NUMBER" \
+            '[.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>/dev/null) || CURRENT_STATUS=""
+        if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ]; then
+          echo "[rite] ⚠️ caller-side defense-in-depth: Issue #{issue_number} PR=#{pr_number} isDraft=false Status=\"$CURRENT_STATUS\" — emitting projects_status_in_review_missing (in_review_missing) sentinel" >&2
+          bash {plugin_root}/hooks/workflow-incident-emit.sh \
+            --type projects_status_in_review_missing \
+            --details "Issue #{issue_number} at Mandatory After 5.5-Termination (caller defense-in-depth): PR=#{pr_number} isDraft=false Status=$CURRENT_STATUS (expected In Review). Abort path or sub-skill Termination skip suspected." \
+            --root-cause-hint "abort_path_or_subskill_termination_skip" \
+            --pr-number {pr_number} >&2 || true
+        fi
+      fi
+    fi
+  fi
+fi
+```
+
+**Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1。Grep `[CONTEXT] WORKFLOW_INCIDENT=1` (emit by `start-finalize` `[ready:error]` §D or `ready.md` sub-skill, or Step 1.5 above の `projects_status_in_review_missing`)。検出時 step 2-7。**non-blocking**。
 
 **Step 3 (Sentinel-based completion handoff)**: Grep for `<!-- [start:finalize:completed] -->` or `<!-- [start:finalize:aborted] -->`:
 

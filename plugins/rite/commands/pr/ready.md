@@ -428,13 +428,15 @@ bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
 
 Inspect the script's stdout JSON and route by `.result`:
 
-| `.result` | User-visible action |
-|-----------|--------------------|
-| `"updated"` | Display `Projects Status を "In Review" に更新しました` and proceed to Phase 4.6 |
-| `"skipped_not_in_project"` | Display `警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします` and proceed to Phase 4.6 |
-| `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "In Review" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "In Review" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <in_review_option_id> を実行してください。` and proceed to Phase 4.6 |
+| `.result` | User-visible action | Workflow incident emit |
+|-----------|--------------------|------------------------|
+| `"updated"` | Display `Projects Status を "In Review" に更新しました` and proceed to Phase 4.6 | — (success path) |
+| `"skipped_not_in_project"` | Display `警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします` and proceed to Phase 4.6 | **MUST emit** `projects_status_update_failed` sentinel via `workflow-incident-emit.sh` (silent skip 禁止 — Issue #1003 AC-4) |
+| `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "In Review" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "In Review" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <in_review_option_id> を実行してください。` and proceed to Phase 4.6 | **MUST emit** `projects_status_update_failed` sentinel via `workflow-incident-emit.sh` (silent skip 禁止 — Issue #1003 AC-4) |
 
 **All result branches are non-blocking** — the ready-for-review transition is already complete (Phase 3 `gh pr ready` succeeded); a Status update issue MUST NOT abort the workflow.
+
+> **Incident emit MUST (Issue #1003 AC-4)**: 旧仕様では `skipped_not_in_project` / `failed` の両経路で **silent skip** していたため、observation log がどこにも残らず、user が手動確認するまで Status が `In Progress` に滞留する事象 (Issue #1003) が発生していた。本契約により、両経路は必ず `workflow-incident-emit.sh --type projects_status_update_failed` で sentinel を emit し、caller (`start.md` Phase 5.4.4.1) の grep 検出経路で Issue として auto-register される。incident emit 自体は `|| true` で non-blocking とし、emit 失敗は workflow を halt させない (#366 contract に準拠)。
 
 > **Bash 実装 minimal skeleton (delegate-only 経路の標準形)**:
 >
@@ -446,14 +448,26 @@ Inspect the script's stdout JSON and route by `.result`:
 >   updated)
 >     echo "Projects Status を \"In Review\" に更新しました" ;;
 >   skipped_not_in_project)
->     echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします" >&2 ;;
+>     echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします" >&2
+>     # Issue #1003 AC-4: silent skip 禁止 — workflow_incident sentinel を emit
+>     bash {plugin_root}/hooks/workflow-incident-emit.sh \
+>       --type projects_status_update_failed \
+>       --details "Issue #{issue_number} skipped_not_in_project at ready.md Phase 4.2 (In Review transition)" \
+>       --root-cause-hint "issue_not_registered_in_project_at_ready_time" \
+>       --pr-number {pr_number} >&2 || true ;;
 >   failed|*)
 >     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
->     echo "警告: Projects Status の \"In Review\" への更新に失敗しました。手動回復: gh project item-edit ..." >&2 ;;
+>     echo "警告: Projects Status の \"In Review\" への更新に失敗しました。手動回復: gh project item-edit ..." >&2
+>     # Issue #1003 AC-4: silent skip 禁止 — workflow_incident sentinel を emit
+>     bash {plugin_root}/hooks/workflow-incident-emit.sh \
+>       --type projects_status_update_failed \
+>       --details "Issue #{issue_number} projects-status-update.sh failed at ready.md Phase 4.2 (In Review transition)" \
+>       --root-cause-hint "gh_api_or_graphql_failure_at_ready_time" \
+>       --pr-number {pr_number} >&2 || true ;;
 > esac
 > ```
 >
-> 上記が delegate-only 経路 (close + summary 不要) の標準パターン。`.warnings[]` の stderr surface 実装を忘れると AC-2 (失敗時 warning surface) が LLM 実行揺らぎで silent skip するため必ず含めること。
+> 上記が delegate-only 経路 (close + summary 不要) の標準パターン。`.warnings[]` の stderr surface 実装を忘れると AC-2 (失敗時 warning surface) が LLM 実行揺らぎで silent skip するため必ず含めること。**Issue #1003 AC-4**: `skipped_not_in_project` / `failed` の両経路で `workflow-incident-emit.sh` 呼び出しを **MUST** 含めること。emit 自体は `|| true` で non-blocking。
 >
 > **完全形 (state machine + signal-specific trap + tempfile + Step 3 inconsistency summary)** が必要な場合 (parent Issue close と Status update の片方失敗を可視化する unified block) は `commands/issue/close.md` Phase 4.6.3 を参照すること。
 

@@ -16,8 +16,11 @@
 2. **Delegate to `projects-status-update.sh`** via `bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n ...)"` (single source of truth for Projects Status updates)
 3. **Inspect script stdout JSON**: `.result == "updated"` → success / `.result == "skipped_not_in_project"` or `"failed"` → display `.warnings[]` and continue (non-blocking)
 4. **DO NOT inline GraphQL queries** — past incident (Issue #513) caused AC-1 failure when `trackedInIssues`-only inline simplification was introduced; `parent-child-sync-static.test.sh` Group 4 pins this regression guard
+5. **MUST emit `workflow_incident` sentinel on `skipped_not_in_project` / `failed` (Issue #1003 AC-4)** — silent skip を禁止。すべての callsite (Phase 2.4 / 5.5.1 / 5.7.2) で `.result` が `"skipped_not_in_project"` または `"failed"` の場合は **必ず** `bash {plugin_root}/hooks/workflow-incident-emit.sh --type projects_status_update_failed --details "..." --pr-number <pr>` で sentinel を emit する。emit 自体は `|| true` で non-blocking。caller (`start.md` Phase 5.4.4.1) の grep 検出経路で Issue として auto-register される。silent skip により observability が失われた事象 (Issue #1003) を防ぐ。
 
 詳細な API レベル動作 (GraphQL projectItems query / auto-add / field-list / item-edit) は [`projects-integration.md §2.4.2-2.4.5`](../../../references/projects-integration.md#242-check-issue-project-registration-status) を参照。
+
+> **Issue #1003 AC-4 適用範囲**: Phase 2.4 (In Progress) は通常 `auto_add: true` で skipped_not_in_project が発火しにくいが、failed 経路は他 callsite と同様に emit MUST。Phase 5.5.1 (In Review) と 5.7.2 (Done) は `auto_add: false` のため skipped_not_in_project が発生しやすく、ここが本契約の主対象。emit 漏れの最終 fallback は `start-finalize.md` Workflow Termination Step 0 (Issue #1003 AC-8) の状態 query 経路で surface される。
 
 ## Callsite 1 — Phase 2.4 (Issue Status → In Progress)
 

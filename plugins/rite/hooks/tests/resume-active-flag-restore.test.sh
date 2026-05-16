@@ -32,6 +32,14 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 HELPER="$PLUGIN_ROOT/hooks/resume-active-flag-restore.sh"
 FLOW_STATE_UPDATE="$PLUGIN_ROOT/hooks/flow-state-update.sh"
 
+# Issue #990 cycle 2 F-01: source make_sandbox from common helper.
+# This file's prior inline make_sandbox() (default no-option git-init+commit) was a
+# functionally-identical duplicate of the helper's `make_sandbox` default invocation.
+# assert_eq / assert_contains below are preserved inline because they have a custom
+# label/expected/actual signature distinct from the helper's `assert` 3-arg form.
+# shellcheck source=./_test-helpers.sh
+source "$SCRIPT_DIR/_test-helpers.sh"
+
 if [ ! -x "$HELPER" ]; then
   echo "ERROR: resume-active-flag-restore.sh missing or not executable: $HELPER" >&2
   exit 1
@@ -45,6 +53,8 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
+# Reset counters after `source` (helper initialises PASS=FAIL=0 / FAILED_NAMES=() on source;
+# this is a no-op duplicate kept here for clarity that this test owns its counters).
 PASS=0
 FAIL=0
 FAILED_NAMES=()
@@ -92,26 +102,6 @@ assert_contains() {
     FAIL=$((FAIL+1))
     FAILED_NAMES+=("$name")
   fi
-}
-
-make_sandbox() {
-  local d sandbox_err
-  d=$(mktemp -d) || { echo "ERROR: mktemp -d failed" >&2; exit 1; }
-  sandbox_err=$(mktemp /tmp/rite-resume-sandbox-err-XXXXXX) || sandbox_err="/dev/null"
-  if ! (
-    cd "$d"
-    git init -q 2>"$sandbox_err"
-    echo a > a && git add a 2>>"$sandbox_err"
-    git -c user.email=t@test.local -c user.name=test commit -q -m init 2>>"$sandbox_err"
-  ); then
-    echo "ERROR: make_sandbox: git init/commit failed in $d" >&2
-    [ "$sandbox_err" != "/dev/null" ] && [ -s "$sandbox_err" ] && head -5 "$sandbox_err" | sed 's/^/  /' >&2
-    rm -rf "$d"
-    [ "$sandbox_err" != "/dev/null" ] && rm -f "$sandbox_err"
-    exit 1
-  fi
-  [ "$sandbox_err" != "/dev/null" ] && rm -f "$sandbox_err"
-  echo "$d"
 }
 
 write_config_v2() {

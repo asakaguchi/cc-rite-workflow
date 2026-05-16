@@ -243,19 +243,46 @@ else
 fi
 rm -rf "$sbx_soft"
 
-# F-03: TC-9.2 — failure path: --soft の存在意義 (git 失敗時に exit ではなく return 1) を pin。
-# PATH=/dev/null で git unreachable 化し、make_sandbox --soft が rc=1 で返る (subshell が
-# exit せず caller が `if !` で受けられる) ことを assert する。
-# 注意: bash builtin (cd, mktemp は core utility) は PATH 不要だが、git は PATH 探索される。
-# `command -v git` が無効化されることで `git init` が "command not found" になる。
+# TC-9.2 — failure path: --soft の存在意義 (infrastructure 失敗時に exit ではなく return 1) を pin。
+# Cycle 2 F-05 修正: 旧コメントは「git 失敗時に return 1」と主張していたが、`mktemp` は GNU coreutils
+# の外部コマンド (bash builtin ではない) のため、`PATH=/dev/null` 下では `mktemp -d` (helper line 216
+# 相当) が先に失敗し soft-fail return が発火する。git init/commit 失敗の soft-fail branch (helper
+# line 245 相当) は untested のまま。TC-9.3 で git 失敗 path を別途 pin する。
 # `|| rc=$?` 形式: set -e の下で非ゼロ exit が abort を起こさないよう短絡。
 rc_soft_fail=0
 bash -c "source '$HELPERS'; PATH=/dev/null make_sandbox --soft 2>/dev/null" || rc_soft_fail=$?
 if [ "$rc_soft_fail" = "1" ]; then
-  outer_pass "TC-9.2: make_sandbox --soft returns rc=1 on git failure (does NOT exit)"
+  outer_pass "TC-9.2: make_sandbox --soft returns rc=1 on mktemp failure (does NOT exit)"
 else
-  outer_fail "TC-9.2: expected rc=1 (soft-fail), got rc=$rc_soft_fail"
+  outer_fail "TC-9.2: expected rc=1 (soft-fail on mktemp failure), got rc=$rc_soft_fail"
 fi
+
+# Cycle 2 F-05: TC-9.3 — failure path: git unreachable but mktemp reachable。
+# mktemp は本物を残し git のみ shim で無効化することで、helper の git init/commit 失敗 branch
+# (subshell 内 `git init -q 2>"$sandbox_err"` 失敗 → 外側 if ! で soft-fail return) を実際に exercise する。
+# Mutation で該当 branch の `return 1` を `exit 1` に書き換えると caller が `if !` で受けられず
+# subshell ごと exit するため、本テストは「git failure → soft-fail return contract」を直接 pin する。
+tc93_dir=$(mktemp -d)
+trap "rm -rf '$tc93_dir'" EXIT  # one-shot best-effort (再 trap)
+# real mktemp into shim PATH; only `git` is invalidated by creating a non-executable stub.
+ln -sf "$(command -v mktemp)" "$tc93_dir/mktemp"
+# git invalidator: an executable file that always exits non-zero so `git init` 失敗を再現する。
+# PATH に shim dir を置くことで本物の git ($(command -v git)) より優先される。
+cat > "$tc93_dir/git" <<'GIT_SHIM_EOF'
+#!/bin/sh
+echo "ERROR: git shim invoked (TC-9.3 force-failure)" >&2
+exit 127
+GIT_SHIM_EOF
+chmod +x "$tc93_dir/git"
+rc_git_fail=0
+bash -c "source '$HELPERS'; PATH='$tc93_dir':/usr/bin:/bin make_sandbox --soft 2>/dev/null" || rc_git_fail=$?
+if [ "$rc_git_fail" = "1" ]; then
+  outer_pass "TC-9.3: make_sandbox --soft returns rc=1 on git failure (does NOT exit)"
+else
+  outer_fail "TC-9.3: expected rc=1 (soft-fail on git failure), got rc=$rc_git_fail"
+fi
+rm -rf "$tc93_dir"
+trap 'rm -f "$tmpfile"' EXIT  # 既存 trap (line 111) を restore
 
 # === TC-10: make_sandbox unknown option → return 2 ===
 echo
@@ -284,6 +311,25 @@ else
   outer_fail "TC-11.1: make_plain_sandbox unexpected layout at '$sbx_plain'"
 fi
 rm -rf "$sbx_plain"
+
+# Cycle 2 F-03: TC-11.2 / TC-11.3 — API symmetry with make_sandbox.
+# `make_plain_sandbox` exposes the same --soft / option-parse contract; pin both contracts here
+# (parallels TC-9.2 / TC-10.1 for make_sandbox).
+sbx_plain_soft=$(bash -c "source '$HELPERS'; make_plain_sandbox --soft")
+if [ -d "$sbx_plain_soft" ] && [ ! -e "$sbx_plain_soft/.git" ]; then
+  outer_pass "TC-11.2: make_plain_sandbox --soft returns a working sandbox on success path"
+else
+  outer_fail "TC-11.2: make_plain_sandbox --soft unexpected layout at '$sbx_plain_soft'"
+fi
+rm -rf "$sbx_plain_soft"
+
+rc_plain_bogus=0
+bash -c "source '$HELPERS'; make_plain_sandbox --bogus 2>/dev/null" || rc_plain_bogus=$?
+if [ "$rc_plain_bogus" = "2" ]; then
+  outer_pass "TC-11.3: make_plain_sandbox --bogus returns rc=2 (option parse error)"
+else
+  outer_fail "TC-11.3: expected rc=2 for unknown option, got rc=$rc_plain_bogus"
+fi
 
 # === Summary ===
 echo

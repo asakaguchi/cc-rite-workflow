@@ -68,7 +68,7 @@
 #   assert_not_grep <label> <file> <pattern>     # ERE, exits via fail() if found
 #   print_summary [test_name] [drift_hint_text]  # writes to stdout, returns 1 if FAIL > 0
 #   make_sandbox       [--branch <name>] [--soft]   # git-init+commit sandbox, echoes path
-#   make_plain_sandbox                              # bare mktemp -d sandbox, echoes path
+#   make_plain_sandbox [--soft]                     # bare mktemp -d sandbox, echoes path
 
 # Resolve PLUGIN_ROOT from the test's SCRIPT_DIR (tests/ is 2 levels below).
 # plugins/rite/hooks/tests/<test>.sh -> plugins/rite (2 up)

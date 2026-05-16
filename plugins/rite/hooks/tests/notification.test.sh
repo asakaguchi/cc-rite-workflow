@@ -27,7 +27,15 @@ cleanup() {
   # set -e で TC-016 が abort しても rm -rf が走らず leak する。常に cleanup する。
   [ -n "${dir016:-}" ] && rm -rf "$dir016"
 }
+# Cycle 2 F-02: signal-specific trap quartet to match sister tests (state-read.test.sh /
+# stop-create-interview-block.test.sh / work-memory-update.test.sh / _resolve-cross-session-guard.test.sh /
+# resume-active-flag-restore.test.sh / _resolve-session-id-from-file.test.sh / _validate-helpers.test.sh).
+# Without INT/TERM/HUP, Ctrl-C during interactive debug leaks dir016 (which lives under /tmp via
+# mktemp -d, NOT under $TEST_DIR) as an orphan git repo.
 trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
 
 pass() {
   PASS=$((PASS + 1))

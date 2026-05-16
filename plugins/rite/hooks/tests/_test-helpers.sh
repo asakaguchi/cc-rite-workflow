@@ -67,6 +67,8 @@
 #   assert_grep     <label> <file> <pattern>     # ERE, exits via fail() if not found
 #   assert_not_grep <label> <file> <pattern>     # ERE, exits via fail() if found
 #   print_summary [test_name] [drift_hint_text]  # writes to stdout, returns 1 if FAIL > 0
+#   make_sandbox       [--branch <name>] [--soft]   # git-init+commit sandbox, echoes path
+#   make_plain_sandbox                              # bare mktemp -d sandbox, echoes path
 
 # Resolve PLUGIN_ROOT from the test's SCRIPT_DIR (tests/ is 2 levels below).
 # plugins/rite/hooks/tests/<test>.sh -> plugins/rite (2 up)
@@ -149,6 +151,111 @@ assert_not_grep() {
   else
     pass "$label"
   fi
+}
+
+# make_sandbox — git-init + initial-commit sandbox (Issue #990).
+#
+# Consolidates the inline `make_sandbox()` definitions previously duplicated in
+# stop-create-interview-block.test.sh, state-read.test.sh, work-memory-update.test.sh
+# (with `--branch` for the `fix/issue-687-test` branch parsing test) and
+# notification.test.sh TC-016 (with `--soft` for the setup-failure-skip path).
+#
+# Options:
+#   --branch <name>  git init -b <name>; fall back to plain `git init` if -b is
+#                    unsupported (older git pre-2.28).
+#   --soft           Return non-zero on git-init/commit failure (caller decides
+#                    whether to `skip` or treat as test failure). Default behavior
+#                    is hard-fail (echo ERROR + exit 1) — used by tests where a
+#                    broken sandbox indicates an infrastructure problem that must
+#                    halt the run.
+#
+# Output:
+#   stdout : sandbox path (one line) on success.
+#   stderr : ERROR line(s) on failure, plus up to 5 lines of git's own stderr
+#            to aid CI debugging when git config issues break sandbox setup.
+#
+# Caller patterns (the helper does NOT push to cleanup_dirs — callers do):
+#   SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+#   SBX=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX")
+#   if ! SBX=$(make_sandbox --soft); then skip "TC-N (sandbox setup failed)"; fi
+make_sandbox() {
+  local branch_arg=""
+  local soft_fail=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --branch)
+        if [ $# -lt 2 ] || [ -z "$2" ]; then
+          echo "ERROR: make_sandbox: --branch requires a non-empty argument" >&2
+          return 2
+        fi
+        branch_arg="$2"
+        shift 2
+        ;;
+      --soft)
+        soft_fail=1
+        shift
+        ;;
+      *)
+        echo "ERROR: make_sandbox: unknown option '$1'" >&2
+        return 2
+        ;;
+    esac
+  done
+
+  local d sandbox_err
+  d=$(mktemp -d) || {
+    echo "ERROR: make_sandbox: mktemp -d failed" >&2
+    [ "$soft_fail" -eq 1 ] && return 1
+    exit 1
+  }
+  sandbox_err=$(mktemp /tmp/rite-sandbox-err-XXXXXX 2>/dev/null) || sandbox_err="/dev/null"
+
+  if ! (
+    cd "$d" || exit 1
+    if [ -n "$branch_arg" ]; then
+      # Pre-2.28 git lacks `-b`; fall back to plain init + checkout to ensure
+      # the requested branch name is the active HEAD regardless of git version.
+      if ! git init -q -b "$branch_arg" 2>"$sandbox_err"; then
+        git init -q 2>>"$sandbox_err"
+        git checkout -q -b "$branch_arg" 2>>"$sandbox_err" || true
+      fi
+    else
+      git init -q 2>"$sandbox_err"
+    fi
+    echo a > a && git add a 2>>"$sandbox_err"
+    git -c user.email=t@test.local -c user.name=test commit -q -m init 2>>"$sandbox_err"
+  ); then
+    echo "ERROR: make_sandbox: git init/commit failed in $d" >&2
+    [ "$sandbox_err" != "/dev/null" ] && [ -s "$sandbox_err" ] && head -5 "$sandbox_err" | sed 's/^/  /' >&2
+    rm -rf "$d"
+    [ "$sandbox_err" != "/dev/null" ] && rm -f "$sandbox_err"
+    [ "$soft_fail" -eq 1 ] && return 1
+    exit 1
+  fi
+  [ "$sandbox_err" != "/dev/null" ] && rm -f "$sandbox_err"
+  echo "$d"
+}
+
+# make_plain_sandbox — bare `mktemp -d` sandbox (no git init), echoes path.
+#
+# Consolidates the no-git sandbox helpers previously duplicated in
+# _validate-helpers.test.sh and _resolve-session-id-from-file.test.sh.
+# The helper does NOT push to cleanup_dirs — callers do — to match the
+# `make_sandbox` convention (single uniform caller pattern across tests).
+#
+# Output:
+#   stdout : sandbox path (one line) on success.
+#   stderr : ERROR line on mktemp failure.
+#
+# Caller pattern:
+#   sbx=$(make_plain_sandbox); cleanup_dirs+=("$sbx")
+make_plain_sandbox() {
+  local d
+  d=$(mktemp -d) || {
+    echo "ERROR: make_plain_sandbox: mktemp -d failed" >&2
+    exit 1
+  }
+  echo "$d"
 }
 
 # Print summary block and return non-zero when any assertion failed.

@@ -28,6 +28,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOKS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 HELPER="$HOOKS_DIR/_validate-helpers.sh"
 
+# Issue #990: source common helpers for make_plain_sandbox.
+# This file's prior `make_sandbox` was a no-git variant that also pushed to
+# cleanup_dirs and populated DEFAULT_HELPERS_LIST entries; we now build on
+# make_plain_sandbox and keep the helper-placement step in a renamed wrapper
+# (setup_validate_sandbox) to avoid clashing with the git-init `make_sandbox`
+# provided by _test-helpers.sh.
+# shellcheck source=./_test-helpers.sh
+source "$SCRIPT_DIR/_test-helpers.sh"
+
 PASS=0
 FAIL=0
 cleanup_dirs=()
@@ -86,9 +95,12 @@ if [ "${#DEFAULT_HELPERS_LIST[@]}" -eq 0 ]; then
   exit 1
 fi
 
-make_sandbox() {
+# Issue #990: build on make_plain_sandbox from _test-helpers.sh and keep the
+# helper-placement step here (this file's domain-specific setup).
+# Renamed to avoid shadowing the helper's git-init `make_sandbox`.
+setup_validate_sandbox() {
   local sbx
-  sbx=$(mktemp -d)
+  sbx=$(make_plain_sandbox)
   cleanup_dirs+=("$sbx")
   # 検査対象 helper 群を sandbox に配置 (executable)
   for h in "${DEFAULT_HELPERS_LIST[@]}"; do
@@ -108,7 +120,7 @@ assert_match "TC-1.2: ERROR mentions 'at least 1 argument'" "at least 1 argument
 # ================================================================
 echo "TC-2 (NEW API): 引数 1 個 (script_dir のみ) で DEFAULT_HELPERS を使用 — exit 0"
 # ================================================================
-sbx=$(make_sandbox)
+sbx=$(setup_validate_sandbox)
 out=$(bash "$HELPER" "$sbx" 2>&1) && rc=0 || rc=$?
 assert_eq "TC-2.1: exit code is 0 (DEFAULT_HELPERS 使用、全 helper 存在)" "0" "$rc"
 assert_eq "TC-2.2: stdout/stderr is silent" "" "$out"
@@ -116,7 +128,7 @@ assert_eq "TC-2.2: stdout/stderr is silent" "" "$out"
 # ================================================================
 echo "TC-3 (legacy API, backward compat): 明示 list で全 helper 存在 → exit 0 silent"
 # ================================================================
-sbx=$(make_sandbox)
+sbx=$(setup_validate_sandbox)
 out=$(bash "$HELPER" "$sbx" \
   state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
   _resolve-schema-version.sh _resolve-cross-session-guard.sh \
@@ -127,7 +139,7 @@ assert_eq "TC-3.2: stdout/stderr is silent" "" "$out"
 # ================================================================
 echo "TC-4 (legacy API): 1 helper missing (chmod -x) で exit 1 + ERROR"
 # ================================================================
-sbx=$(make_sandbox)
+sbx=$(setup_validate_sandbox)
 chmod -x "$sbx/_mktemp-stderr-guard.sh"
 out=$(bash "$HELPER" "$sbx" \
   state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
@@ -147,7 +159,7 @@ assert_match "TC-5.2: ERROR mentions helper basename" "state-path-resolve.sh" "$
 # ================================================================
 echo "TC-6 (legacy API): 複数 helper missing で最初の missing で fail-fast (順序保証)"
 # ================================================================
-sbx=$(make_sandbox)
+sbx=$(setup_validate_sandbox)
 chmod -x "$sbx/_resolve-session-id.sh"
 chmod -x "$sbx/_emit-cross-session-incident.sh"
 out=$(bash "$HELPER" "$sbx" \
@@ -161,7 +173,7 @@ assert_match "TC-6.2: ERROR mentions FIRST missing helper (順序保証)" "_reso
 # ================================================================
 echo "TC-7 (NEW API): DEFAULT_HELPERS 経路で 1 helper missing → exit 1 + ERROR"
 # ================================================================
-sbx=$(make_sandbox)
+sbx=$(setup_validate_sandbox)
 chmod -x "$sbx/_resolve-cross-session-guard.sh"
 # 引数なし (script_dir のみ) で DEFAULT_HELPERS を使用
 out=$(bash "$HELPER" "$sbx" 2>&1) && rc=0 || rc=$?
@@ -175,7 +187,7 @@ echo "TC-8 (NEW API): DEFAULT_HELPERS 配列の全 entry すべてが検査さ�
 # DEFAULT_HELPERS 配列の completeness を verify する (Issue #687 root cause と
 # 同型の片肺更新 drift を防ぐための structural invariant 検証)
 for missing_helper in "${DEFAULT_HELPERS_LIST[@]}"; do
-  sbx=$(make_sandbox)
+  sbx=$(setup_validate_sandbox)
   chmod -x "$sbx/$missing_helper"
   out=$(bash "$HELPER" "$sbx" 2>&1) && rc=0 || rc=$?
   if [ "$rc" = "1" ] && [[ "$out" == *"$missing_helper"* ]]; then

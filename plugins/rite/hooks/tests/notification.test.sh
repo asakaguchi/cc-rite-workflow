@@ -11,6 +11,13 @@ PASS=0
 FAIL=0
 SKIP=0
 
+# Issue #990: source common helpers for make_sandbox.
+# pass/fail/skip below intentionally override the helper-provided versions
+# (this file uses `PASS:`/`FAIL:`/`SKIP:` prefixed labels and tracks SKIP,
+# neither of which the helper covers).
+# shellcheck source=./_test-helpers.sh
+source "$SCRIPT_DIR/_test-helpers.sh"
+
 # Note: notification.sh has best-effort exit handling (exits 0 if jq is missing)
 # so jq is not strictly required for the hook, but tests verify behavior with it
 
@@ -296,20 +303,15 @@ echo ""
 # still emit "Notification for PR created" because walkup found the config; a regression
 # would yield empty output (exit 0 without echo).
 echo "TC-016: Subdirectory CWD invocation → walkup resolves project-root rite-config.yml"
-dir016="$TEST_DIR/tc016"
-mkdir -p "$dir016/sub"
-# Setup error は test failure と区別する (`|| true` で setup 失敗を呑むと、walkup 不能化と
-# 同じ「empty output / exit 0」症状になり F-02 で指摘された false-negative を再導入する)。
-# make_sandbox (stop-create-interview-block.test.sh) と同じ fail-fast 構造を採用。
-if ! (
-  cd "$dir016"
-  git init -q 2>/dev/null
-  echo a > a && git add a 2>/dev/null
-  git -c user.email=t@test.local -c user.name=test commit -q -m init 2>/dev/null
-); then
-  echo "ERROR: TC-016 sandbox git init failed in $dir016" >&2
+# Issue #990: replaced inline sandbox setup with `make_sandbox --soft` from
+# _test-helpers.sh. Setup error は test failure と区別する (skip path) -- helper の
+# --soft return preserves that. The helper's mktemp -d is independent of
+# TEST_DIR; we clean it up explicitly on the success path since it is not
+# under TEST_DIR's trap-managed cleanup.
+if ! dir016=$(make_sandbox --soft); then
   skip "TC-016 (sandbox setup failed — setup error は test failure と区別)"
 else
+  mkdir -p "$dir016/sub"
   touch "$dir016/rite-config.yml"
 
   output=$(run_hook "$dir016/sub" "pr_created")
@@ -318,6 +320,7 @@ else
   else
     fail "Expected 'Notification for PR created' from subdir CWD, got: '$output'"
   fi
+  rm -rf "$dir016"
 fi
 echo ""
 

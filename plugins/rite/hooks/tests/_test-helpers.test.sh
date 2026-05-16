@@ -176,6 +176,74 @@ else
   outer_fail "TC-6.1: drift hint not found in: $summary_output"
 fi
 
+# === TC-7: make_sandbox basic (Issue #990) ===
+echo
+echo "TC-7: make_sandbox default invocation → git-init + commit"
+
+sbx_default=$(bash -c "source '$HELPERS'; make_sandbox")
+if [ -d "$sbx_default" ] && [ -d "$sbx_default/.git" ]; then
+  outer_pass "TC-7.1: make_sandbox returns an existing path with a .git directory"
+else
+  outer_fail "TC-7.1: make_sandbox path '$sbx_default' missing .git or directory"
+fi
+
+# Initial commit reachable via `git log` (any non-zero output proves commit landed).
+log_output=$(cd "$sbx_default" 2>/dev/null && git log --oneline 2>/dev/null || true)
+if [ -n "$log_output" ]; then
+  outer_pass "TC-7.2: make_sandbox produced an initial commit (git log non-empty)"
+else
+  outer_fail "TC-7.2: make_sandbox did not produce an initial commit (git log empty)"
+fi
+rm -rf "$sbx_default"
+
+# === TC-8: make_sandbox --branch ===
+echo
+echo "TC-8: make_sandbox --branch <name> → HEAD on requested branch"
+
+sbx_branch=$(bash -c "source '$HELPERS'; make_sandbox --branch fix/issue-687-test")
+head_branch=$(cd "$sbx_branch" 2>/dev/null && git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+if [ "$head_branch" = "fix/issue-687-test" ]; then
+  outer_pass "TC-8.1: HEAD is on the requested branch (fix/issue-687-test)"
+else
+  outer_fail "TC-8.1: expected HEAD on fix/issue-687-test, got '$head_branch'"
+fi
+rm -rf "$sbx_branch"
+
+# === TC-9: make_sandbox --soft (success path) ===
+echo
+echo "TC-9: make_sandbox --soft → still returns a sandbox on success path"
+
+# Success path: --soft must not change the success-side contract.
+sbx_soft=$(bash -c "source '$HELPERS'; make_sandbox --soft")
+if [ -d "$sbx_soft/.git" ]; then
+  outer_pass "TC-9.1: make_sandbox --soft returns a working sandbox on success path"
+else
+  outer_fail "TC-9.1: make_sandbox --soft missing .git (path: '$sbx_soft')"
+fi
+rm -rf "$sbx_soft"
+
+# === TC-10: make_sandbox unknown option → exit 2 ===
+echo
+echo "TC-10: make_sandbox unknown option rejected"
+
+if bash -c "source '$HELPERS'; make_sandbox --bogus 2>/dev/null"; then
+  outer_fail "TC-10.1: make_sandbox accepted --bogus (expected non-zero exit)"
+else
+  outer_pass "TC-10.1: make_sandbox rejects unknown options"
+fi
+
+# === TC-11: make_plain_sandbox ===
+echo
+echo "TC-11: make_plain_sandbox → bare mktemp -d (no .git)"
+
+sbx_plain=$(bash -c "source '$HELPERS'; make_plain_sandbox")
+if [ -d "$sbx_plain" ] && [ ! -e "$sbx_plain/.git" ]; then
+  outer_pass "TC-11.1: make_plain_sandbox returns a bare directory without .git"
+else
+  outer_fail "TC-11.1: make_plain_sandbox unexpected layout at '$sbx_plain'"
+fi
+rm -rf "$sbx_plain"
+
 # === Summary ===
 echo
 echo "─── $(basename "$0") summary ──────────────────────"

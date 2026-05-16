@@ -40,17 +40,46 @@ if [ -z "$COMMAND" ]; then
   exit 0
 fi
 
-# Reviewer subagent detection (Issue #442).
+# Reviewer subagent detection (Issue #442, extended in Issue #998).
 # Claude Code routes subagent sessions to jsonl files under a "subagents/"
 # directory inside the project transcript root; the main session does not.
 # When the PreToolUse hook runs inside a subagent, transcript_path therefore
 # contains the "/subagents/" path component. Pattern 4 below uses this as a
 # heuristic to scope state-mutating git denylist checks to reviewer contexts.
+#
+# Three-tier detection (Issue #998 — future-proofing against SDK convention drift):
+#   Tier 1 (primary):  transcript_path glob `*/subagents/*` — current Claude Code
+#                      convention (Issue #442). Most reliable signal today.
+#   Tier 2 (fallback): hook input JSON `subagent_type` / `agent_type` field —
+#                      reserved for future SDK schemas that surface subagent
+#                      identity in the hook envelope rather than the path.
+#                      Any non-empty value triggers IS_SUBAGENT=1 (presence-only
+#                      check; specific values like `code-reviewer` are not
+#                      enumerated because the SDK has not finalized the schema).
+#   Tier 3 (fallback): environment variables CLAUDE_SUBAGENT_TYPE / CLAUDE_AGENT_TYPE —
+#                      catch-all if a future SDK exposes subagent context via
+#                      env vars before updating the hook input schema. Presence-only.
+#
+# If a future SDK release changes transcript_path conventions, Tiers 2 & 3 keep
+# Pattern 4 functional rather than silently disabling enforcement (false negative).
+# Tier 3 inherits the parent process environment, which is the standard contract
+# for hook subprocesses.
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null) || TRANSCRIPT_PATH=""
 IS_SUBAGENT=0
 case "$TRANSCRIPT_PATH" in
   */subagents/*) IS_SUBAGENT=1 ;;
 esac
+if [ "$IS_SUBAGENT" = "0" ]; then
+  SUBAGENT_TYPE=$(echo "$INPUT" | jq -r '.subagent_type // .agent_type // empty' 2>/dev/null) || SUBAGENT_TYPE=""
+  if [ -n "$SUBAGENT_TYPE" ]; then
+    IS_SUBAGENT=1
+  fi
+fi
+if [ "$IS_SUBAGENT" = "0" ]; then
+  if [ -n "${CLAUDE_SUBAGENT_TYPE:-}" ] || [ -n "${CLAUDE_AGENT_TYPE:-}" ]; then
+    IS_SUBAGENT=1
+  fi
+fi
 
 # --- Fail-open for pattern matching stage ---
 # If heredoc extraction or pattern matching crashes (e.g., edge-case failures with
@@ -267,8 +296,17 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   #   - `/usr/bin/git` / `/opt/homebrew/bin/git` 等の絶対パス → ` git`
   #   - `command git` / `exec git` / `builtin git` (builtin は構文 invalid だが safety) → ` git`
   #   - `\git` (backslash-escaped) → ` git`
-  # 注意: alias / function 経由 (`alias gg='git'` 後に `gg checkout`) は本 hook では検出不能。
-  # 一次防御は agent prompt + Layer 3 post-condition gate に委ねる。
+  # Acknowledged residual gap: alias / shell function indirection.
+  #   `alias gg='git'; gg checkout -b evil` や `my_git() { command git "$@"; }; my_git checkout`
+  #   は parent shell の alias / function 解決後に `gg` / `my_git` という独立トークンとして
+  #   渡るため、本 hook の静的 glob では `git` を識別不能。bash の `type` 解決を hook 内で
+  #   再現する選択肢は overhead が大きく、誤判定（user-defined function が `git` を呼ばないケース）
+  #   も避けられない。
+  #
+  # 設計判断 (documentation-only): Layer 2 の責務はあくまで「静的 token として `git` を含む
+  # コマンド」をスコープとし、alias / function indirection は二次防御 (agent prompt 規約) と
+  # 三次防御 (Layer 3 post-condition state-verify gate) に委ねる。本 limitation は
+  # security-reviewer cycle 2 (PR #997) で documented limitation として ack 済み。
   CMD_NORMALIZED="${CMD_NORMALIZED//\/git/ git}"
   CMD_NORMALIZED="${CMD_NORMALIZED//\\git/ git}"
   CMD_NORMALIZED="${CMD_NORMALIZED// command git/ git}"

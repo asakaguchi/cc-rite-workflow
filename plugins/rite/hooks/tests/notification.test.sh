@@ -284,6 +284,37 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-016: Subdirectory invocation → git root walkup resolves rite-config.yml
+# --------------------------------------------------------------------------
+# Regression guard for Issue #976 (PR #980): notification.sh MUST use state-path-resolve.sh
+# (git rev-parse --show-toplevel) to walk up from CWD to the project root when looking up
+# rite-config.yml. A revert to `$CWD`-based lookup would cause the config to be silently
+# missing when Claude Code launches the hook from a subdirectory, breaking notifications.
+#
+# This test creates a git-init'd sandbox with rite-config.yml at the project root and a
+# nested `sub/` directory. The hook receives CWD=$SBX/sub via stdin JSON. The hook MUST
+# still emit "Notification for PR created" because walkup found the config; a regression
+# would yield empty output (exit 0 without echo).
+echo "TC-016: Subdirectory CWD invocation → walkup resolves project-root rite-config.yml"
+dir016="$TEST_DIR/tc016"
+mkdir -p "$dir016/sub"
+(
+  cd "$dir016"
+  git init -q 2>/dev/null
+  echo a > a && git add a 2>/dev/null
+  git -c user.email=t@test.local -c user.name=test commit -q -m init 2>/dev/null
+) || true
+touch "$dir016/rite-config.yml"
+
+output=$(run_hook "$dir016/sub" "pr_created")
+if echo "$output" | grep -q "Notification for PR created"; then
+  pass "Subdirectory CWD → walkup found project-root rite-config.yml → echo emitted"
+else
+  fail "Expected 'Notification for PR created' from subdir CWD, got: '$output'"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed, $SKIP skipped ==="

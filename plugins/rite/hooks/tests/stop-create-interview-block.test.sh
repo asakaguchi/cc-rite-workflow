@@ -259,6 +259,40 @@ assert_contains "TC-9.2: ACTION shown" "Issue #920" "$STDERR"
 assert_contains "TC-9.3: workflow_incident sentinel emitted (default-on respected)" "WORKFLOW_INCIDENT=1" "$STDERR"
 rm -rf "$SBX"; cleanup_dirs=("${cleanup_dirs[@]/$SBX}")
 
+# ---- TC-10: subdirectory invocation → git root walkup resolves rite-config.yml + flow-state ----
+# Regression guard for Issue #976 (PR #980): when Claude Code runs Stop hook with CWD set to a
+# subdirectory of the project root, the hook MUST walk up via state-path-resolve.sh
+# (git rev-parse --show-toplevel) to find rite-config.yml and .rite-flow-state at the project
+# root. A revert to `$CWD`-based lookup would cause both files to be missing → hook silently
+# exits 0 (no block) and the opt-out semantics break.
+#
+# This test pins TWO orthogonal walkup-dependent behaviors:
+#   1. flow-state walkup: $SBX/.rite-flow-state resolved from CWD=$SBX/sub → gate fires (exit 2)
+#   2. rite-config.yml walkup: $SBX/rite-config.yml resolved from CWD=$SBX/sub → opt-out
+#      respected (no WORKFLOW_INCIDENT=1 sentinel)
+#
+# Issue #982 attached the literal `if ! grep -q "WORKFLOW_INCIDENT=1"` as a proposal, but
+# without flow-state setup that single assertion silently passes when the hook exits 0 due
+# to flow-state walkup failure (Test pin protection theater anti-pattern). The 3-axis pin
+# below (exit 2 + ACTION + no sentinel) gives discriminating power across both regression
+# modes.
+echo "TC-10: subdirectory CWD invocation → walkup resolves project-root config + flow-state"
+SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
+mkdir -p "$SBX/sub"
+write_flow_state "$SBX" "create_post_interview" "true" "0"
+cat > "$SBX/rite-config.yml" <<'YAML'
+workflow_incident:
+  enabled: false
+YAML
+# Build payload with CWD pointing at $SBX/sub (subdirectory of git root)
+payload=$(jq -n --arg cwd "$SBX/sub" \
+  '{hook_event_name: "Stop", cwd: $cwd, transcript_path: "/tmp/x.jsonl", session_id: "test", stop_hook_active: false}')
+run_hook "$SBX" "$payload"; rc=$HOOK_RC
+assert_eq "TC-10.1: exit code 2 (flow-state walkup OK → gate fires)" "2" "$rc"
+assert_contains "TC-10.2: ACTION still shown despite subdir CWD" "Issue #920" "$STDERR"
+assert_not_contains "TC-10.3: workflow_incident sentinel NOT emitted (rite-config.yml walkup OK → opt-out respected)" "WORKFLOW_INCIDENT=1" "$STDERR"
+rm -rf "$SBX"; cleanup_dirs=("${cleanup_dirs[@]/$SBX}")
+
 echo ""
 echo "================================="
 echo "PASS: $PASS / FAIL: $FAIL"

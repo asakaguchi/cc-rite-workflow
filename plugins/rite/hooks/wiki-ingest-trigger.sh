@@ -44,6 +44,16 @@
 #   - The script does NOT do any LLM work — it is a pure file-writing utility.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Resolve project root (git root anchored). Matches session-start.sh /
+# _resolve-schema-version.sh / notification.sh / stop-create-interview-block.sh
+# convention; `$PWD`-based rite-config.yml lookup would silently miss the
+# config file when this script is invoked from a subdirectory (Issue #976).
+# This script is a CLI tool (not a Claude Code hook), so $PWD is used in place
+# of the stdin-supplied CWD that hook scripts receive.
+STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$PWD" 2>/dev/null) || STATE_ROOT="$PWD"
+
 TYPE=""
 SOURCE_REF=""
 CONTENT_FILE=""
@@ -196,10 +206,11 @@ if [[ ! -s "$CONTENT_FILE" ]]; then
   exit 1
 fi
 
-# --- Wiki enable check (best-effort: only checks rite-config.yml in CWD) ---
-# This guard is intentionally lenient: when rite-config.yml is absent, we
-# proceed and let /rite:wiki:ingest handle the strict validation later. The
-# trigger only refuses when wiki.enabled is explicitly false.
+# --- Wiki enable check (best-effort: checks rite-config.yml at STATE_ROOT) ---
+# STATE_ROOT is resolved via state-path-resolve.sh at script entry (git-root
+# anchored). When rite-config.yml is absent, we proceed and let /rite:wiki:ingest
+# handle the strict validation later. The trigger only refuses when wiki.enabled
+# is explicitly false.
 #
 # F-01 fix: avoid `set -euo pipefail` × `grep no-match` silent abort.
 # When `wiki:` section or `enabled:` key is missing, grep returns exit 1, which
@@ -217,12 +228,12 @@ fi
 # lib/wiki-config.sh が canonical 定義。lib 化済みの script
 # (wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh) は source して
 # 同一実装を共有するため、上記 3 箇所を lib に統合する場合は別 Issue で追跡すること。
-if [[ -f "rite-config.yml" ]]; then
+if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
   # cycle 9 MEDIUM fix: sed/awk の stderr を tempfile に捕捉 (silent swallow 禁止)。
   # 旧実装 `2>/dev/null || wiki_section=""` は grep no-match だけでなく sed/awk の構文エラー /
   # binary 破損 / IO エラーも silent に空扱いし、Wiki enable check が誤動作する経路を持っていた。
   _yaml_err=$(mktemp /tmp/rite-wiki-trigger-yaml-err-XXXXXX 2>/dev/null) || _yaml_err=""
-  if wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>"${_yaml_err:-/dev/null}"); then
+  if wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$STATE_ROOT/rite-config.yml" 2>"${_yaml_err:-/dev/null}"); then
     :  # success (sed no-match は exit 0 なので legitimate)
   else
     _sed_rc=$?

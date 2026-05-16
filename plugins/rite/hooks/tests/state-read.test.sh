@@ -27,9 +27,11 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-PASS=0
-FAIL=0
-FAILED_NAMES=()
+# Issue #990: source common helpers for make_sandbox.
+# The helper resets PASS/FAIL/FAILED_NAMES on source, matching the prior
+# manual reset behavior below.
+# shellcheck source=./_test-helpers.sh
+source "$SCRIPT_DIR/_test-helpers.sh"
 
 # Signal trap (EXIT/INT/TERM/HUP) で sandbox / 個別 file の leak を防ぐ。
 # 実装は Form B (portability variant、return 0 必須) — 詳細は bash-trap-patterns.md "cleanup 関数の契約" 節 Form B 参照
@@ -65,28 +67,10 @@ assert_eq() {
   fi
 }
 
-# Each test uses its own sandbox so failures don't pollute siblings.
-# git failure は silent suppression せず fail-fast (CI で git config 由来の問題で sandbox が
-# 破損すると state-path-resolve.sh が cwd fallback して偶発的 silent regression を起こすため)。
-make_sandbox() {
-  local d sandbox_err
-  d=$(mktemp -d) || { echo "ERROR: make_sandbox: mktemp -d failed" >&2; exit 1; }
-  sandbox_err=$(mktemp /tmp/rite-sandbox-err-XXXXXX) || sandbox_err="/dev/null"
-  if ! (
-    cd "$d"
-    git init -q 2>"$sandbox_err"
-    echo a > a && git add a 2>>"$sandbox_err"
-    git -c user.email=t@test.local -c user.name=test commit -q -m init 2>>"$sandbox_err"
-  ); then
-    echo "ERROR: make_sandbox: git init/commit failed in $d" >&2
-    [ "$sandbox_err" != "/dev/null" ] && [ -s "$sandbox_err" ] && head -5 "$sandbox_err" | sed 's/^/  /' >&2
-    rm -rf "$d"
-    [ "$sandbox_err" != "/dev/null" ] && rm -f "$sandbox_err"
-    exit 1
-  fi
-  [ "$sandbox_err" != "/dev/null" ] && rm -f "$sandbox_err"
-  echo "$d"
-}
+# Issue #990: make_sandbox is now provided by _test-helpers.sh (sourced above).
+# Behavior preserved: hard-fail on git init/commit failure with up to 5 lines
+# of captured git stderr emitted to aid CI debugging (state-path-resolve.sh
+# silent-fallback would otherwise hide sandbox corruption symptoms).
 
 write_config_v2() {
   local d="$1"

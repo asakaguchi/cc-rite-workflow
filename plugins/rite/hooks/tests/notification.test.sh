@@ -11,13 +11,31 @@ PASS=0
 FAIL=0
 SKIP=0
 
+# Issue #990: source common helpers for make_sandbox.
+# pass/fail/skip below intentionally override the helper-provided versions
+# (this file uses `PASS:`/`FAIL:`/`SKIP:` prefixed labels and tracks SKIP,
+# neither of which the helper covers).
+# shellcheck source=./_test-helpers.sh
+source "$SCRIPT_DIR/_test-helpers.sh"
+
 # Note: notification.sh has best-effort exit handling (exits 0 if jq is missing)
 # so jq is not strictly required for the hook, but tests verify behavior with it
 
 cleanup() {
   rm -rf "$TEST_DIR"
+  # F-05: TC-016 が make_sandbox --soft で作る sandbox は TEST_DIR 配下に無いため、
+  # set -e で TC-016 が abort しても rm -rf が走らず leak する。常に cleanup する。
+  [ -n "${dir016:-}" ] && rm -rf "$dir016"
 }
+# Cycle 2 F-02: signal-specific trap quartet to match sister tests (state-read.test.sh /
+# stop-create-interview-block.test.sh / work-memory-update.test.sh / _resolve-cross-session-guard.test.sh /
+# resume-active-flag-restore.test.sh / _resolve-session-id-from-file.test.sh / _validate-helpers.test.sh).
+# Without INT/TERM/HUP, Ctrl-C during interactive debug leaks dir016 (which lives under /tmp via
+# mktemp -d, NOT under $TEST_DIR) as an orphan git repo.
 trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
 
 pass() {
   PASS=$((PASS + 1))
@@ -296,20 +314,19 @@ echo ""
 # still emit "Notification for PR created" because walkup found the config; a regression
 # would yield empty output (exit 0 without echo).
 echo "TC-016: Subdirectory CWD invocation → walkup resolves project-root rite-config.yml"
-dir016="$TEST_DIR/tc016"
-mkdir -p "$dir016/sub"
-# Setup error は test failure と区別する (`|| true` で setup 失敗を呑むと、walkup 不能化と
-# 同じ「empty output / exit 0」症状になり F-02 で指摘された false-negative を再導入する)。
-# make_sandbox (stop-create-interview-block.test.sh) と同じ fail-fast 構造を採用。
-if ! (
-  cd "$dir016"
-  git init -q 2>/dev/null
-  echo a > a && git add a 2>/dev/null
-  git -c user.email=t@test.local -c user.name=test commit -q -m init 2>/dev/null
-); then
-  echo "ERROR: TC-016 sandbox git init failed in $dir016" >&2
+# Issue #990: replaced inline sandbox setup with `make_sandbox --soft` from
+# _test-helpers.sh. Setup error は test failure と区別する (skip path) -- helper の
+# --soft return preserves that. The helper's mktemp -d puts dir016 under /tmp
+# (independent of TEST_DIR), but cleanup() (lines 24-30) now handles dir016
+# alongside TEST_DIR for every signal in the EXIT/INT/TERM/HUP quartet, so
+# no explicit rm -rf is needed on the test body's success/failure paths.
+if ! dir016=$(make_sandbox --soft); then
   skip "TC-016 (sandbox setup failed — setup error は test failure と区別)"
 else
+  # Issue #990 cycle 2 F-05 + cycle 3 F-02: dir016 は cleanup() trap (lines 24-30) が
+  # EXIT/INT/TERM/HUP の全 signal で cleanup する。明示的な rm -rf は不要 (signal trap
+  # quartet で完全カバー、sister test 規約と一貫)。
+  mkdir -p "$dir016/sub"
   touch "$dir016/rite-config.yml"
 
   output=$(run_hook "$dir016/sub" "pr_created")

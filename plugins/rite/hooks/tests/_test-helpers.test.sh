@@ -176,6 +176,215 @@ else
   outer_fail "TC-6.1: drift hint not found in: $summary_output"
 fi
 
+# === TC-7: make_sandbox basic (Issue #990) ===
+echo
+echo "TC-7: make_sandbox default invocation → git-init + commit"
+
+sbx_default=$(bash -c "source '$HELPERS'; make_sandbox")
+if [ -d "$sbx_default" ] && [ -d "$sbx_default/.git" ]; then
+  outer_pass "TC-7.1: make_sandbox returns an existing path with a .git directory"
+else
+  outer_fail "TC-7.1: make_sandbox path '$sbx_default' missing .git or directory"
+fi
+
+# Initial commit reachable via `git log` (any non-zero output proves commit landed).
+log_output=$(cd "$sbx_default" 2>/dev/null && git log --oneline 2>/dev/null || true)
+if [ -n "$log_output" ]; then
+  outer_pass "TC-7.2: make_sandbox produced an initial commit (git log non-empty)"
+else
+  outer_fail "TC-7.2: make_sandbox did not produce an initial commit (git log empty)"
+fi
+rm -rf "$sbx_default"
+
+# === TC-8: make_sandbox --branch ===
+echo
+echo "TC-8: make_sandbox --branch <name> → HEAD on requested branch"
+
+sbx_branch=$(bash -c "source '$HELPERS'; make_sandbox --branch fix/issue-687-test")
+head_branch=$(cd "$sbx_branch" 2>/dev/null && git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+if [ "$head_branch" = "fix/issue-687-test" ]; then
+  outer_pass "TC-8.1: HEAD is on the requested branch (fix/issue-687-test)"
+else
+  outer_fail "TC-8.1: expected HEAD on fix/issue-687-test, got '$head_branch'"
+fi
+rm -rf "$sbx_branch"
+
+# F-08: TC-8.2 / TC-8.3 — option-parse error variants (return 2).
+# Pins the explicit `if [ $# -lt 2 ] || [ -z "$2" ]` guard so a regression that
+# changes `shift 2` to `shift` (and silently accepts `--branch` with no value)
+# is caught.
+# `|| rc=$?` 形式: set -e の下で非ゼロ exit が abort を起こさないよう短絡。
+rc_empty=0
+bash -c "source '$HELPERS'; make_sandbox --branch '' 2>/dev/null" || rc_empty=$?
+if [ "$rc_empty" = "2" ]; then
+  outer_pass "TC-8.2: --branch \"\" returns rc=2 (option parse error)"
+else
+  outer_fail "TC-8.2: expected rc=2 for --branch \"\", got rc=$rc_empty"
+fi
+
+rc_missing=0
+bash -c "source '$HELPERS'; make_sandbox --branch 2>/dev/null" || rc_missing=$?
+if [ "$rc_missing" = "2" ]; then
+  outer_pass "TC-8.3: --branch with no argument returns rc=2 (option parse error)"
+else
+  outer_fail "TC-8.3: expected rc=2 for --branch with no argument, got rc=$rc_missing"
+fi
+
+# === TC-9: make_sandbox --soft ===
+echo
+echo "TC-9: make_sandbox --soft → success returns sandbox, failure returns rc=1 (no exit)"
+
+# Success path: --soft must not change the success-side contract.
+sbx_soft=$(bash -c "source '$HELPERS'; make_sandbox --soft")
+if [ -d "$sbx_soft/.git" ]; then
+  outer_pass "TC-9.1: make_sandbox --soft returns a working sandbox on success path"
+else
+  outer_fail "TC-9.1: make_sandbox --soft missing .git (path: '$sbx_soft')"
+fi
+rm -rf "$sbx_soft"
+
+# TC-9.2 — failure path: --soft の存在意義 (infrastructure 失敗時に exit ではなく return 1) を pin。
+# Cycle 2 F-05 修正: 旧コメントは「git 失敗時に return 1」と主張していたが、`mktemp` は GNU coreutils
+# の外部コマンド (bash builtin ではない) のため、`PATH=/dev/null` 下では `mktemp -d` (helper line 216
+# 相当) が先に失敗し soft-fail return が発火する。git init/commit 失敗の soft-fail branch (helper
+# line 245 相当) は untested のまま。TC-9.3 で git 失敗 path を別途 pin する。
+# `|| rc=$?` 形式: set -e の下で非ゼロ exit が abort を起こさないよう短絡。
+rc_soft_fail=0
+bash -c "source '$HELPERS'; PATH=/dev/null make_sandbox --soft 2>/dev/null" || rc_soft_fail=$?
+if [ "$rc_soft_fail" = "1" ]; then
+  outer_pass "TC-9.2: make_sandbox --soft returns rc=1 on mktemp failure (does NOT exit)"
+else
+  outer_fail "TC-9.2: expected rc=1 (soft-fail on mktemp failure), got rc=$rc_soft_fail"
+fi
+
+# TC-9.3 — failure path: git unreachable but mktemp reachable。
+# git shim 経由で git init/commit を強制失敗させ、helper の soft-fail return branch
+# (subshell 内 `git init -q ...` 失敗 → 外側 if ! で `return 1`) を実際に exercise する。
+#
+# Cycle 3 F-03 (claim 縮小): 旧コメントは「mutation で return 1 → exit 1 に書き換えると test が
+# 失敗する」と主張していたが、production caller (TC-016 等) はすべて `$(make_sandbox --soft)` の
+# command substitution 経由で呼び出すため、`return 1` も `exit 1` も subshell rc=1 として観測され
+# 区別不能。本テストの契約は「git failure → 親に rc=1 が伝わり caller が `if !` で受けられる」
+# ことに縮小する (return/exit semantic 区別は本契約の本質ではない)。
+#
+# Cycle 3 F-05/F-07 (trap quartet): 既存の line 111 `trap 'rm -f "$tmpfile"' EXIT` を破壊せず、
+# tc93_dir cleanup を加算した結合 trap を signal quartet 全 (EXIT/INT/TERM/HUP) に設定する。
+# Cycle 3 F-08 (command -v guard): `command -v mktemp` empty で broken symlink を作る silent
+# failure 経路を fail-fast guard で塞ぐ。
+# Cycle 3 F-09 (stderr verify): git shim ERROR を tempfile に capture し shim 実行を assert する
+# (PATH ordering 退行で real git が解決される regression を構造的に検出可能化)。
+# Cycle 3 F-10 (rm -rf check): cleanup は trap 経由で確実に実行されるため、明示 rm -rf は不要。
+tc93_dir=$(mktemp -d) || { echo "FATAL: TC-9.3 mktemp -d failed" >&2; exit 1; }
+# 既存 line 111 trap (`trap 'rm -f "$tmpfile"' EXIT`) を破壊せず、tc93_dir cleanup を加算 + quartet 化。
+trap 'rm -rf "$tc93_dir"; rm -f "$tmpfile"' EXIT
+trap 'rm -rf "$tc93_dir"; rm -f "$tmpfile"; exit 130' INT
+trap 'rm -rf "$tc93_dir"; rm -f "$tmpfile"; exit 143' TERM
+trap 'rm -rf "$tc93_dir"; rm -f "$tmpfile"; exit 129' HUP
+
+# command -v mktemp guard (F-08): empty 結果 (mktemp 不在環境) で broken symlink を作る silent
+# failure を防ぐ。empty なら fail-fast。
+mktemp_path=$(command -v mktemp || true)
+if [ -z "$mktemp_path" ]; then
+  echo "FATAL: TC-9.3 requires mktemp on PATH but command -v mktemp returned empty" >&2
+  exit 1
+fi
+ln -sf "$mktemp_path" "$tc93_dir/mktemp"
+
+# git invalidator: PATH に置いた shim が本物の git より優先される。
+cat > "$tc93_dir/git" <<'GIT_SHIM_EOF'
+#!/bin/sh
+echo "ERROR: git shim invoked (TC-9.3 force-failure)" >&2
+exit 127
+GIT_SHIM_EOF
+chmod +x "$tc93_dir/git"
+
+# F-09: shim invocation を観測可能にするため stderr を tempfile に capture (2>/dev/null では
+# PATH ordering 退行を構造的に検出できない)。
+shim_stderr="$tc93_dir/shim-stderr.log"
+rc_git_fail=0
+bash -c "source '$HELPERS'; PATH='$tc93_dir':/usr/bin:/bin make_sandbox --soft" \
+  2>"$shim_stderr" || rc_git_fail=$?
+
+if [ "$rc_git_fail" = "1" ]; then
+  outer_pass "TC-9.3: make_sandbox --soft returns rc=1 on git failure (soft-fail contract)"
+else
+  outer_fail "TC-9.3: expected rc=1 (soft-fail on git failure), got rc=$rc_git_fail"
+fi
+
+# F-09: shim が実際に invoke されたことを assert (PATH ordering 退行検出)。
+if grep -q "git shim invoked" "$shim_stderr"; then
+  outer_pass "TC-9.3.shim: git shim was invoked (PATH ordering correct)"
+else
+  outer_fail "TC-9.3.shim: git shim was NOT invoked — PATH ordering may have changed (stderr: $(head -3 "$shim_stderr"))"
+fi
+
+# Restore trap to original (line 111) form for the remaining TCs.
+# tc93_dir は本 block 後に不要 (assertion 完了) のため EXIT までは trap chain で保持しても問題なし、
+# ただし後続 TC で tc93_dir 参照は発生しないため EXIT trap を simple form に戻して理解しやすくする。
+rm -rf "$tc93_dir"
+trap 'rm -f "$tmpfile"' EXIT
+trap - INT TERM HUP
+
+# === TC-10: make_sandbox unknown option → return 2 ===
+echo
+echo "TC-10: make_sandbox unknown option → return 2 (option parse error)"
+
+# F-06: rc=2 specific assertion. The previous test only verified non-zero exit,
+# which would not catch a regression that changes `return 2` to `return 1` (the
+# soft-fail code) or `exit 1` (hard-fail). Pin the specific contract.
+# `|| rc=$?` 形式: set -e の下で非ゼロ exit が abort を起こさないよう短絡。
+rc_bogus=0
+bash -c "source '$HELPERS'; make_sandbox --bogus 2>/dev/null" || rc_bogus=$?
+if [ "$rc_bogus" = "2" ]; then
+  outer_pass "TC-10.1: make_sandbox --bogus returns rc=2 (option parse error)"
+else
+  outer_fail "TC-10.1: expected rc=2 for unknown option, got rc=$rc_bogus"
+fi
+
+# === TC-11: make_plain_sandbox ===
+echo
+echo "TC-11: make_plain_sandbox → bare mktemp -d (no .git)"
+
+sbx_plain=$(bash -c "source '$HELPERS'; make_plain_sandbox")
+if [ -d "$sbx_plain" ] && [ ! -e "$sbx_plain/.git" ]; then
+  outer_pass "TC-11.1: make_plain_sandbox returns a bare directory without .git"
+else
+  outer_fail "TC-11.1: make_plain_sandbox unexpected layout at '$sbx_plain'"
+fi
+rm -rf "$sbx_plain"
+
+# Cycle 2 F-03: TC-11.2 / TC-11.3 — API symmetry with make_sandbox.
+# `make_plain_sandbox` exposes the same --soft / option-parse contract; pin both contracts here
+# (parallels TC-9.2 / TC-10.1 for make_sandbox).
+sbx_plain_soft=$(bash -c "source '$HELPERS'; make_plain_sandbox --soft")
+if [ -d "$sbx_plain_soft" ] && [ ! -e "$sbx_plain_soft/.git" ]; then
+  outer_pass "TC-11.2: make_plain_sandbox --soft returns a working sandbox on success path"
+else
+  outer_fail "TC-11.2: make_plain_sandbox --soft unexpected layout at '$sbx_plain_soft'"
+fi
+rm -rf "$sbx_plain_soft"
+
+rc_plain_bogus=0
+bash -c "source '$HELPERS'; make_plain_sandbox --bogus 2>/dev/null" || rc_plain_bogus=$?
+if [ "$rc_plain_bogus" = "2" ]; then
+  outer_pass "TC-11.3: make_plain_sandbox --bogus returns rc=2 (option parse error)"
+else
+  outer_fail "TC-11.3: expected rc=2 for unknown option, got rc=$rc_plain_bogus"
+fi
+
+# Cycle 3 F-04: TC-11.4 — make_plain_sandbox --soft failure path (TC-9.2 と対称)。
+# make_plain_sandbox の --soft contract は make_sandbox と同型 (mktemp 失敗時に exit ではなく
+# rc=1 で return)。Mutation で `[ "$soft_fail" -eq 1 ] && return 1` を `exit 1` に書き換えると
+# このテストが失敗する保証は (return/exit semantic の説明は TC-9.3 と同じ理由で subshell 経由
+# のため部分的) が、少なくとも mktemp failure → rc=1 contract を pin する。
+rc_plain_soft_fail=0
+bash -c "source '$HELPERS'; PATH=/dev/null make_plain_sandbox --soft 2>/dev/null" || rc_plain_soft_fail=$?
+if [ "$rc_plain_soft_fail" = "1" ]; then
+  outer_pass "TC-11.4: make_plain_sandbox --soft returns rc=1 on mktemp failure"
+else
+  outer_fail "TC-11.4: expected rc=1 (soft-fail on mktemp failure), got rc=$rc_plain_soft_fail"
+fi
+
 # === Summary ===
 echo
 echo "─── $(basename "$0") summary ──────────────────────"

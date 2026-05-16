@@ -26,9 +26,12 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-PASS=0
-FAIL=0
-FAILED_NAMES=()
+# Issue #990: source common helpers for make_sandbox.
+# The helper resets PASS/FAIL/FAILED_NAMES on source, so any pre-existing
+# counter state is implicitly cleared here (which matches the prior
+# line-29-31 manual reset behavior).
+# shellcheck source=./_test-helpers.sh
+source "$SCRIPT_DIR/_test-helpers.sh"
 
 cleanup_dirs=()
 _stop_hook_test_cleanup() {
@@ -100,18 +103,6 @@ assert_not_contains() {
     echo "  ✅ $name"
     PASS=$((PASS+1))
   fi
-}
-
-make_sandbox() {
-  local d
-  d=$(mktemp -d) || { echo "ERROR: make_sandbox: mktemp -d failed" >&2; exit 1; }
-  (
-    cd "$d"
-    git init -q 2>/dev/null
-    echo a > a && git add a 2>/dev/null
-    git -c user.email=t@test.local -c user.name=test commit -q -m init 2>/dev/null
-  ) || { echo "ERROR: make_sandbox: git init failed in $d" >&2; rm -rf "$d"; exit 1; }
-  echo "$d"
 }
 
 write_flow_state() {

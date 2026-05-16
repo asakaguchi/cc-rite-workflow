@@ -77,14 +77,13 @@ cd -  # parent repo に戻る (HEAD 変更なし、stash なし)
 | `cp file file.bak` → file 変更 → test → `mv file.bak file` (parent working tree 内) | 同上 (parent working tree の file 変更自体が禁止 — `Edit`/`Write` tool レベル違反でもある) |
 | `git checkout HEAD~1 -- file` → test → `git checkout HEAD -- file` | `git show HEAD~1:file` で blob を取得し、worktree 内で適用 |
 
-**Invariant**: Reviewer subagent が exit する時点で **以下のすべて**が true であること:
+**Invariant**: Reviewer subagent が exit する時点で **以下のすべて**が true であること。各 invariant は `commands/pr/review.md` Phase 5.0.A 経由で `post-review-state-verify.sh` により automatic check される (state vector は branch / stash count / branch list の 3 軸 — working tree の差分判定は `git status --porcelain` hash の cost が高く、本 PR では未 enforce):
 
-1. `git branch --show-current` の値が reviewer 起動時と同一
-2. `git status` の差分が reviewer 起動時と同一 (新規 untracked file が `/tmp/rite-review-mutation-*` 経由でなく parent working tree に出現していない)
-3. `git stash list` の長さが reviewer 起動時と同一
-4. `git branch --list` の出力が reviewer 起動時と同一 (新規 named branch が leak していない)
+1. `git branch --show-current` の値が reviewer 起動時と同一 (state vector axis 1: branch、`--original-branch` で check)
+2. `git stash list` の長さが reviewer 起動時と同一 (state vector axis 2: stash count、`--original-stash-count` で check)
+3. `git branch --list` の出力が reviewer 起動時と同一 (state vector axis 3: branch_list hash、`--original-branch-list-hash` で check — 新規 named branch leak 検出)
 
-これらの invariant 違反は orchestrator 側 (`commands/pr/review.md` Phase 9 post-review state verification) で post-condition check され、drift 検出時は WARNING + automatic recovery (`git checkout <original_branch>`) + `workflow_incident_emit.sh --type manual_fallback_adopted` が発火する。
+これらの invariant 違反は orchestrator 側 (`commands/pr/review.md` Phase 5.0.A post-review state verification) で post-condition check され、drift 検出時は WARNING + (branch drift のみ) automatic recovery (`git checkout <original_branch>`) + `workflow-incident-emit.sh --type manual_fallback_adopted` が発火する。stash/branch_list drift は内容を失うリスク回避のため auto-recover せず manual action を案内する。
 
 ## Reviewer Mindset
 

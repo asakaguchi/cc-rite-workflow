@@ -748,12 +748,63 @@ assert_subagent_deny "subagent worktree move blocked" \
 
 # --------------------------------------------------------------------------
 # TC-057j: Issue #995 reproduction — git checkout -b <new-branch> from subagent
-# (既存 Pattern (A) Always-deny で block されるはずだが、Issue #995 の reproduction
-# として明示テストを追加し、regression lock とする)
+# Pattern (A) Always-deny の deny verb `git checkout` で block されることを期待
+# (Pattern (E) ではない)。reason 文字列に `reviewer-state-mutating-git` が含まれる
+# ことは assert_subagent_deny helper が確認する。
 # --------------------------------------------------------------------------
 echo "TC-057j: subagent + 'git checkout -b pr-994-test' (Issue #995 reproduction) → deny"
 assert_subagent_deny "subagent git checkout -b new-branch blocked (Issue #995)" \
   "git checkout -b pr-994-test"
+
+# --------------------------------------------------------------------------
+# TC-057k〜057p: Pattern (E) bypass 経路の cycle 1 fix
+# (test-reviewer / security-reviewer 指摘で実機検証された bypass 経路)
+# --------------------------------------------------------------------------
+
+# -b attached form (no space): `-bNAME`
+echo "TC-057k: subagent + 'git worktree add -bpr-994-test /tmp/d HEAD' → deny (attached, no space)"
+assert_subagent_deny "subagent worktree add -bNAME (no space) blocked" \
+  "git worktree add -bpr-994-test /tmp/d HEAD"
+
+# -b attached form with `=`: `-b=NAME`
+echo "TC-057l: subagent + 'git worktree add -b=evil /tmp/d HEAD' → deny (attached '=' form)"
+assert_subagent_deny "subagent worktree add -b=NAME (attached =) blocked" \
+  "git worktree add -b=evil /tmp/d HEAD"
+
+# --new-branch=NAME (long-form attached)
+echo "TC-057m: subagent + 'git worktree add --new-branch=evil /tmp/d HEAD' → deny"
+assert_subagent_deny "subagent worktree add --new-branch=NAME blocked" \
+  "git worktree add --new-branch=evil /tmp/d HEAD"
+
+# Intermediate flag: `--track -b NAME`
+echo "TC-057n: subagent + 'git worktree add --track -b newbr /tmp/d origin/main' → deny (intermediate -b)"
+assert_subagent_deny "subagent worktree add --track -b blocked (intermediate flag)" \
+  "git worktree add --track -b newbr /tmp/d origin/main"
+
+# Positional postfix: `add /tmp/d -b newbr HEAD`
+echo "TC-057o: subagent + 'git worktree add /tmp/d -b newbr HEAD' → deny (path-then-b postfix)"
+assert_subagent_deny "subagent worktree add path-then-b blocked" \
+  "git worktree add /tmp/d -b newbr HEAD"
+
+# Absolute path bypass: `/usr/bin/git checkout -b ...`
+echo "TC-057p: subagent + '/usr/bin/git checkout -b pr-994-test' → deny (absolute path bypass)"
+assert_subagent_deny "subagent /usr/bin/git checkout -b blocked (absolute path bypass)" \
+  "/usr/bin/git checkout -b pr-994-test"
+
+# `command git` bypass
+echo "TC-057q: subagent + 'command git checkout -b foo' → deny (command builtin bypass)"
+assert_subagent_deny "subagent 'command git checkout -b' blocked" \
+  "command git checkout -b foo"
+
+# Backslash-escaped: `\git checkout`
+echo "TC-057r: subagent + '\\\\git checkout -b foo' → deny (backslash-escaped bypass)"
+assert_subagent_deny "subagent '\\\\git checkout -b' blocked (backslash-escape bypass)" \
+  '\git checkout -b foo'
+
+# --orphan flag for git worktree add (creates new orphan branch)
+echo "TC-057s: subagent + 'git worktree add --orphan newbr /tmp/d' → deny (orphan branch creation)"
+assert_subagent_deny "subagent worktree add --orphan blocked" \
+  "git worktree add --orphan newbr /tmp/d"
 
 # --------------------------------------------------------------------------
 # TC-058: git fetch (bare) allowed, --prune denied

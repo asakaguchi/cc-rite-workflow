@@ -69,8 +69,11 @@ if [ -z "$repo_root" ]; then
 fi
 cd -- "$repo_root"
 
-PATTERN='^pr-[0-9]+-(cycle[0-9]+|test|experiment|mutation|verify|check|sandbox)$'
-WIKI_WORKTREE_PATH=".rite/wiki-worktree"
+# Single source of truth (cycle 1 fix): `PATTERN` 変数を [[ =~ $PATTERN ]] で
+# 直接参照することで、worktree-loop と branch-loop の 2 箇所で literal regex を
+# duplicate していた drift リスクを解消する (`readonly` で immutable 化)。
+readonly PATTERN='^pr-[0-9]+-(cycle[0-9]+|test|experiment|mutation|verify|check|sandbox)$'
+readonly WIKI_WORKTREE_PATH=".rite/wiki-worktree"
 
 worktrees_removed=0
 branches_deleted=0
@@ -115,7 +118,7 @@ if wt_list=$(git worktree list --porcelain 2>"${wt_list_err:-/dev/null}"); then
           current_path=""
           continue
         fi
-        if [[ "$branch_name" =~ ^pr-[0-9]+-(cycle[0-9]+|test|experiment|mutation|verify|check|sandbox)$ ]]; then
+        if [[ "$branch_name" =~ $PATTERN ]]; then
           if [ "$DRY_RUN" = "1" ]; then
             echo "[dry-run] would remove worktree: $current_path (branch=$branch_name)"
           else
@@ -171,7 +174,7 @@ ref_err=$(mktemp /tmp/rite-pr-cycle-cleanup-ref-err-XXXXXX 2>/dev/null) || ref_e
 if branches=$(git for-each-ref --format='%(refname:short)' refs/heads/ 2>"${ref_err:-/dev/null}"); then
   while IFS= read -r br; do
     [ -z "$br" ] && continue
-    if [[ "$br" =~ ^pr-[0-9]+-(cycle[0-9]+|test|experiment|mutation|verify|check|sandbox)$ ]]; then
+    if [[ "$br" =~ $PATTERN ]]; then
       if [ "$DRY_RUN" = "1" ]; then
         echo "[dry-run] would delete branch: $br"
       else

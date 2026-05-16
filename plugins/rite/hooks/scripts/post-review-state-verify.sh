@@ -74,21 +74,65 @@ if [ -z "$ORIGINAL_BRANCH" ]; then
   exit 2
 fi
 
+# --- ORIGINAL_BRANCH の charset validation (security-reviewer cycle 1 fix) ---
+# `git checkout` に `--orphan=evil` 等の option-like 値が渡って recovery 経路自身が
+# branch leak を起こす経路を防ぐ。git branch 名として valid な ASCII allowlist のみ受理:
+#   - 英数字 / `_` / `-` / `.` / `/` (refs/heads/foo/bar 階層)
+#   - `DETACHED:` prefix (Phase 4.0.A の detached HEAD sentinel、+ short hash 7-40 chars)
+case "$ORIGINAL_BRANCH" in
+  DETACHED:*)
+    # detached HEAD sentinel — branch drift check は skip し、stash/branch_list のみ評価
+    ;;
+  --*|-=*|*=*|*$'\n'*|*$'\r'*|*$'\t'*)
+    echo "ERROR: --original-branch contains disallowed characters (option-like prefix, '=' or control char): '$ORIGINAL_BRANCH'" >&2
+    exit 2
+    ;;
+esac
+case "$ORIGINAL_BRANCH" in
+  *[!A-Za-z0-9._/+:-]*)
+    # allowlist: 英数字 + `.` + `_` + `-` + `/` + `+` + `:` (DETACHED: 用)
+    echo "ERROR: --original-branch contains characters outside the allowed charset: '$ORIGINAL_BRANCH'" >&2
+    exit 2
+    ;;
+esac
+
 # --- 現在の state を取得 ---
+# md5sum portability: Linux では md5sum、macOS では shasum を fallback として使う。
+# どちらも stdout 先頭 token が hash であるため awk で抽出可能。
+_hash_cmd=""
+if command -v md5sum >/dev/null 2>&1; then
+  _hash_cmd="md5sum"
+elif command -v shasum >/dev/null 2>&1; then
+  _hash_cmd="shasum"
+fi
+
 current_branch=$(git branch --show-current 2>/dev/null || echo "")
 current_stash_count=$(git stash list 2>/dev/null | wc -l | tr -d ' ')
-current_branch_list_hash=$(git branch --list 2>/dev/null | sort | md5sum 2>/dev/null | awk '{print $1}')
+if [ -n "$_hash_cmd" ]; then
+  current_branch_list_hash=$(git branch --list 2>/dev/null | sort | "$_hash_cmd" 2>/dev/null | awk '{print $1}')
+else
+  current_branch_list_hash=""
+fi
 
 # --- Drift detection ---
 drift_detected="false"
 drift_type=""
 drift_detail=""
 
-if [ "$current_branch" != "$ORIGINAL_BRANCH" ]; then
-  drift_detected="true"
-  drift_type="branch"
-  drift_detail="from=$ORIGINAL_BRANCH; to=$current_branch"
-fi
+# Branch drift: detached HEAD sentinel (DETACHED:<hash>) は branch drift check を skip し、
+# stash / branch_list のみ評価する (detached HEAD で起動した場合は branch を持たないため、
+# branch 一致 check 自体が意味を持たない)。
+case "$ORIGINAL_BRANCH" in
+  DETACHED:*)
+    : ;;  # skip branch drift
+  *)
+    if [ "$current_branch" != "$ORIGINAL_BRANCH" ]; then
+      drift_detected="true"
+      drift_type="branch"
+      drift_detail="from=$ORIGINAL_BRANCH; to=$current_branch"
+    fi
+    ;;
+esac
 
 if [ "$drift_detected" = "false" ] && [ -n "$ORIGINAL_STASH_COUNT" ] && [ "$current_stash_count" != "$ORIGINAL_STASH_COUNT" ]; then
   drift_detected="true"
@@ -96,7 +140,12 @@ if [ "$drift_detected" = "false" ] && [ -n "$ORIGINAL_STASH_COUNT" ] && [ "$curr
   drift_detail="from_count=$ORIGINAL_STASH_COUNT; to_count=$current_stash_count"
 fi
 
-if [ "$drift_detected" = "false" ] && [ -n "$ORIGINAL_BRANCH_LIST_HASH" ] && [ "$current_branch_list_hash" != "$ORIGINAL_BRANCH_LIST_HASH" ]; then
+# branch_list_hash check: 両側に hash 値がある場合のみ比較する。
+# 空文字列 (hash コマンド非利用 or hash 計算失敗) は比較不可として skip し、silent false-negative を防ぐ。
+if [ "$drift_detected" = "false" ] \
+   && [ -n "$ORIGINAL_BRANCH_LIST_HASH" ] \
+   && [ -n "$current_branch_list_hash" ] \
+   && [ "$current_branch_list_hash" != "$ORIGINAL_BRANCH_LIST_HASH" ]; then
   drift_detected="true"
   drift_type="branch_list"
   drift_detail="reviewer leaked named branch(es); compare 'git branch --list' before/after"
@@ -117,13 +166,16 @@ recovered="false"
 recovery_error=""
 
 if [ "$AUTO_RECOVER" = "true" ] && [ "$drift_type" = "branch" ]; then
-  echo "  recovery: attempting 'git checkout $ORIGINAL_BRANCH'..." >&2
-  if checkout_output=$(git checkout "$ORIGINAL_BRANCH" 2>&1); then
+  # `refs/heads/<name>` 経由で明示参照することで `git checkout <option-like-value>` の
+  # option injection 経路 (security-reviewer empirical 検証で `--orphan=evil` で branch leak
+  # 再現) を遮断する。ORIGINAL_BRANCH は冒頭の charset validation 通過済だが、defense-in-depth
+  # で refs/heads/ prefix を付与し、`git checkout` の flag 解釈経路を確実に閉じる。
+  echo "  recovery: attempting 'git checkout refs/heads/$ORIGINAL_BRANCH'..." >&2
+  if checkout_output=$(git checkout "refs/heads/$ORIGINAL_BRANCH" 2>&1); then
     recovered="true"
     echo "  recovery: succeeded" >&2
   else
-    recovery_error="git checkout failed: $checkout_output"
-    echo "  recovery: FAILED — $recovery_error" >&2
+    echo "  recovery: FAILED — git checkout error: $checkout_output" >&2
     echo "  manual action: run 'git checkout $ORIGINAL_BRANCH' to restore the working tree" >&2
   fi
 fi

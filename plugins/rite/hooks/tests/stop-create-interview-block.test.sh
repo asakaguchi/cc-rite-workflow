@@ -43,6 +43,23 @@ trap '_stop_hook_test_cleanup; exit 130' INT
 trap '_stop_hook_test_cleanup; exit 143' TERM
 trap '_stop_hook_test_cleanup; exit 129' HUP
 
+# Issue #986: slash-deletion (`${cleanup_dirs[@]/$target}`) は要素を削除せず空文字列に
+# 置換するため、TC 反復ごとに配列が単調増加する。本 helper は対象要素を完全に取り除き、
+# 残った空要素 (過去の slash-deletion 残骸を含む) も同時にクリアする。
+_remove_from_cleanup_dirs() {
+  local target="$1"
+  local d
+  local new=()
+  for d in "${cleanup_dirs[@]:-}"; do
+    [ -n "$d" ] && [ "$d" != "$target" ] && new+=("$d")
+  done
+  if [ ${#new[@]} -gt 0 ]; then
+    cleanup_dirs=("${new[@]}")
+  else
+    cleanup_dirs=()
+  fi
+}
+
 assert_eq() {
   local name="$1" expected="$2" actual="$3"
   if [ "$expected" = "$actual" ]; then
@@ -140,7 +157,7 @@ assert_contains "TC-1.3: stderr contains Step 0 patch literal" "flow-state-updat
 assert_contains "TC-1.4: stderr contains --if-exists --preserve-error-count" "--if-exists --preserve-error-count" "$STDERR"
 assert_contains "TC-1.5: workflow_incident sentinel emitted" "WORKFLOW_INCIDENT=1" "$STDERR"
 assert_contains "TC-1.6: incident type is manual_fallback_adopted" "type=manual_fallback_adopted" "$STDERR"
-rm -rf "$SBX"; cleanup_dirs=("${cleanup_dirs[@]/$SBX}")
+rm -rf "$SBX"; _remove_from_cleanup_dirs "$SBX"
 
 # ---- TC-2: phase mismatch (create_interview, not yet at post_interview) → allow ----
 echo "TC-2: phase=create_interview → exit 0 (gate mismatch)"
@@ -150,7 +167,7 @@ payload=$(build_stop_payload "$SBX" false)
 run_hook "$SBX" "$payload"; rc=$HOOK_RC
 assert_eq "TC-2.1: exit code 0 (allow)" "0" "$rc"
 assert_eq "TC-2.2: no stderr output" "" "$STDERR"
-rm -rf "$SBX"; cleanup_dirs=("${cleanup_dirs[@]/$SBX}")
+rm -rf "$SBX"; _remove_from_cleanup_dirs "$SBX"
 
 # ---- TC-3: active=false → allow (terminal or paused workflow) ----
 echo "TC-3: active=false → exit 0 (terminal/paused)"
@@ -160,7 +177,7 @@ payload=$(build_stop_payload "$SBX" false)
 run_hook "$SBX" "$payload"; rc=$HOOK_RC
 assert_eq "TC-3.1: exit code 0 (allow)" "0" "$rc"
 assert_eq "TC-3.2: no stderr output" "" "$STDERR"
-rm -rf "$SBX"; cleanup_dirs=("${cleanup_dirs[@]/$SBX}")
+rm -rf "$SBX"; _remove_from_cleanup_dirs "$SBX"
 
 # ---- TC-4: pr_number != 0 (Issue already created, gate mismatch) → allow ----
 echo "TC-4: pr_number=123 → exit 0 (Issue already exists)"
@@ -170,7 +187,7 @@ payload=$(build_stop_payload "$SBX" false)
 run_hook "$SBX" "$payload"; rc=$HOOK_RC
 assert_eq "TC-4.1: exit code 0 (allow)" "0" "$rc"
 assert_eq "TC-4.2: no stderr output" "" "$STDERR"
-rm -rf "$SBX"; cleanup_dirs=("${cleanup_dirs[@]/$SBX}")
+rm -rf "$SBX"; _remove_from_cleanup_dirs "$SBX"
 
 # ---- TC-5: stop_hook_active=true (recursion guard) → allow ----
 echo "TC-5: stop_hook_active=true → exit 0 (recursion guard)"
@@ -180,7 +197,7 @@ payload=$(build_stop_payload "$SBX" true)
 run_hook "$SBX" "$payload"; rc=$HOOK_RC
 assert_eq "TC-5.1: exit code 0 (recursion guard allow)" "0" "$rc"
 assert_eq "TC-5.2: no stderr output" "" "$STDERR"
-rm -rf "$SBX"; cleanup_dirs=("${cleanup_dirs[@]/$SBX}")
+rm -rf "$SBX"; _remove_from_cleanup_dirs "$SBX"
 
 # ---- TC-6: flow-state file absent → allow ----
 echo "TC-6: flow-state file absent → exit 0 (no workflow active)"
@@ -190,7 +207,7 @@ payload=$(build_stop_payload "$SBX" false)
 run_hook "$SBX" "$payload"; rc=$HOOK_RC
 assert_eq "TC-6.1: exit code 0 (allow)" "0" "$rc"
 assert_eq "TC-6.2: no stderr output" "" "$STDERR"
-rm -rf "$SBX"; cleanup_dirs=("${cleanup_dirs[@]/$SBX}")
+rm -rf "$SBX"; _remove_from_cleanup_dirs "$SBX"
 
 # ---- TC-7: workflow_incident.enabled variant matrix → all opt-out forms block + skip sentinel ----
 # Canonical SoT (workflow-incident-detection.md) accepts 6+ syntactic variants of falsy values
@@ -223,7 +240,7 @@ YAML
   assert_eq "TC-7.1 [enabled: $variant]: exit code 2 (block respected)" "2" "$rc"
   assert_contains "TC-7.2 [enabled: $variant]: ACTION still shown" "Issue #920" "$STDERR"
   assert_not_contains "TC-7.3 [enabled: $variant]: workflow_incident sentinel NOT emitted (opt-out respected)" "WORKFLOW_INCIDENT=1" "$STDERR"
-  rm -rf "$SBX"; cleanup_dirs=("${cleanup_dirs[@]/$SBX}")
+  rm -rf "$SBX"; _remove_from_cleanup_dirs "$SBX"
 done
 
 # ---- TC-8: non-Stop event → allow (other hooks are out of scope) ----
@@ -234,7 +251,7 @@ payload=$(jq -n --arg cwd "$SBX" '{hook_event_name: "PreToolUse", cwd: $cwd, too
 run_hook "$SBX" "$payload"; rc=$HOOK_RC
 assert_eq "TC-8.1: exit code 0 (non-Stop allow)" "0" "$rc"
 assert_eq "TC-8.2: no stderr output" "" "$STDERR"
-rm -rf "$SBX"; cleanup_dirs=("${cleanup_dirs[@]/$SBX}")
+rm -rf "$SBX"; _remove_from_cleanup_dirs "$SBX"
 
 # ---- TC-9: rite-config.yml exists but workflow_incident section absent → block + emit ----
 # Regression guard for cycle 2 CRITICAL #1 (Issue #920 verified-review):
@@ -257,7 +274,7 @@ run_hook "$SBX" "$payload"; rc=$HOOK_RC
 assert_eq "TC-9.1: exit code 2 (block, not silently allowed)" "2" "$rc"
 assert_contains "TC-9.2: ACTION shown" "Issue #920" "$STDERR"
 assert_contains "TC-9.3: workflow_incident sentinel emitted (default-on respected)" "WORKFLOW_INCIDENT=1" "$STDERR"
-rm -rf "$SBX"; cleanup_dirs=("${cleanup_dirs[@]/$SBX}")
+rm -rf "$SBX"; _remove_from_cleanup_dirs "$SBX"
 
 # ---- TC-10: subdirectory invocation → git root walkup resolves rite-config.yml + flow-state ----
 # Regression guard for Issue #976 (PR #980): when Claude Code runs Stop hook with CWD set to a
@@ -290,7 +307,7 @@ run_hook "$SBX" "$payload"; rc=$HOOK_RC
 assert_eq "TC-10.1: exit code 2 (flow-state walkup OK → gate fires)" "2" "$rc"
 assert_contains "TC-10.2: ACTION still shown despite subdir CWD" "Issue #920" "$STDERR"
 assert_not_contains "TC-10.3: workflow_incident sentinel NOT emitted (rite-config.yml walkup OK → opt-out respected)" "WORKFLOW_INCIDENT=1" "$STDERR"
-rm -rf "$SBX"; cleanup_dirs=("${cleanup_dirs[@]/$SBX}")
+rm -rf "$SBX"; _remove_from_cleanup_dirs "$SBX"
 
 echo ""
 echo "================================="

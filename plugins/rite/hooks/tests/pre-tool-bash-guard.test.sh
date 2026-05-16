@@ -1423,6 +1423,52 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-113d-input-numeric: subagent_type: 123 (non-string numeric) → Tier 2 fires NOT
+#   `(.subagent_type | strings // "")` filter が numeric 値を空文字に正規化することを検証。
+#   `| strings` filter を `// empty` 等に縮退する mutation を kill する coverage。
+# --------------------------------------------------------------------------
+echo "TC-113d-input-numeric: subagent_type=123 → Tier 2 does not fire (numeric rejected by | strings)"
+rc=0
+tc113d_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: 123}')
+output=$(run_guard_clean_env "$tc113d_input") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-113d numeric subagent_type does not trigger Tier 2 (| strings filter rejects non-string)"
+else
+  fail "TC-113d expected allow, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-113e-input-array: subagent_type: [...] (non-string array) → Tier 2 fires NOT
+#   `(.subagent_type | strings // "")` filter が array 値を空文字に正規化することを検証。
+# --------------------------------------------------------------------------
+echo "TC-113e-input-array: subagent_type=[...] → Tier 2 does not fire (array rejected by | strings)"
+rc=0
+tc113e_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: ["code-reviewer", "security"]}')
+output=$(run_guard_clean_env "$tc113e_input") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-113e array subagent_type does not trigger Tier 2 (| strings filter rejects non-string)"
+else
+  fail "TC-113e expected allow, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-113f-input-object: subagent_type: {...} (non-string object) → Tier 2 fires NOT
+#   `(.subagent_type | strings // "")` filter が object 値を空文字に正規化することを検証。
+# --------------------------------------------------------------------------
+echo "TC-113f-input-object: subagent_type={...} → Tier 2 does not fire (object rejected by | strings)"
+rc=0
+tc113f_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: {name: "code-reviewer", level: 1}}')
+output=$(run_guard_clean_env "$tc113f_input") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-113f object subagent_type does not trigger Tier 2 (| strings filter rejects non-string)"
+else
+  fail "TC-113f expected allow, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # TC-114: CLAUDE_SUBAGENT_TYPE env var set → Tier 3 deny
 #   CLAUDE_AGENT_TYPE を host から明示 unset し SUBAGENT 単独経路を検証
 # --------------------------------------------------------------------------

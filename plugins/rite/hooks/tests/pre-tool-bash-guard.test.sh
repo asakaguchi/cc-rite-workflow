@@ -807,6 +807,57 @@ assert_subagent_deny "subagent worktree add --orphan blocked" \
   "git worktree add --orphan newbr /tmp/d"
 
 # --------------------------------------------------------------------------
+# TC-057t〜057z: Issue #995 cycle 3 — quote bypass + git global flag bypass
+# (security-reviewer cycle 2 で empirical 発見した pre-existing limitation。
+# Pattern 4 を quote 正規化 + global flag 正規化で structural に閉じる)
+# --------------------------------------------------------------------------
+
+# Quote bypass — Pattern 5 は既に `"` / `'` を正規化しているが Pattern 4 は非対称だった
+echo "TC-057t: subagent + 'eval \"git checkout -b evil\"' → deny (eval quote bypass)"
+assert_subagent_deny "subagent eval-quoted git checkout -b blocked" \
+  'eval "git checkout -b evil"'
+
+echo "TC-057u: subagent + 'sh -c \"git checkout -b evil\"' → deny (sh -c quote bypass)"
+assert_subagent_deny "subagent sh -c quoted git checkout -b blocked" \
+  'sh -c "git checkout -b evil"'
+
+echo "TC-057v: subagent + 'bash -c \"git checkout -b evil\"' → deny (bash -c quote bypass)"
+assert_subagent_deny "subagent bash -c quoted git checkout -b blocked" \
+  'bash -c "git checkout -b evil"'
+
+# git global flag bypass — `-C` / `--git-dir` / `--work-tree` 経由で verb を後置すると bypass
+echo "TC-057w: subagent + 'git -C /tmp checkout -b evil' → deny (-C global flag bypass)"
+assert_subagent_deny "subagent git -C <dir> checkout -b blocked" \
+  "git -C /tmp checkout -b evil"
+
+echo "TC-057x: subagent + 'git --git-dir=/tmp/.git checkout -b evil' → deny (--git-dir attached)"
+assert_subagent_deny "subagent git --git-dir=X checkout -b blocked" \
+  "git --git-dir=/tmp/.git checkout -b evil"
+
+echo "TC-057y: subagent + 'git --work-tree /tmp checkout -b evil' → deny (--work-tree spaced)"
+assert_subagent_deny "subagent git --work-tree X checkout -b blocked" \
+  "git --work-tree /tmp checkout -b evil"
+
+echo "TC-057z: subagent + 'git -C /tmp worktree add -b evil .wt HEAD' → deny (-C with worktree add)"
+assert_subagent_deny "subagent git -C <dir> worktree add -b blocked" \
+  "git -C /tmp worktree add -b evil .wt HEAD"
+
+# Combined: quote + global flag double bypass
+echo "TC-057aa: subagent + 'eval \"git -C /tmp checkout -b evil\"' → deny (combined bypass)"
+assert_subagent_deny "subagent eval-quoted git -C checkout -b blocked (combined)" \
+  'eval "git -C /tmp checkout -b evil"'
+
+# Non-regression: bare flag `--bare` should still allow read-only verbs
+echo "TC-057ab: subagent + 'git --bare log --oneline' → allow (--bare with read-only verb)"
+assert_subagent_allow "subagent git --bare log allowed (--bare with read-only verb)" \
+  "git --bare log --oneline"
+
+# Non-regression: `git -C` with read-only verb should allow
+echo "TC-057ac: subagent + 'git -C /tmp log --oneline' → allow (-C with read-only verb)"
+assert_subagent_allow "subagent git -C log allowed (-C with read-only verb)" \
+  "git -C /tmp log --oneline"
+
+# --------------------------------------------------------------------------
 # TC-058: git fetch (bare) allowed, --prune denied
 # --------------------------------------------------------------------------
 echo "TC-058a: subagent + 'git fetch origin' (bare) → allow"

@@ -274,12 +274,58 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   CMD_NORMALIZED="${CMD_NORMALIZED// command git/ git}"
   CMD_NORMALIZED="${CMD_NORMALIZED// exec git/ git}"
   CMD_NORMALIZED="${CMD_NORMALIZED// builtin git/ git}"
+  # 注: quote 正規化 (`"` / `'` → space) は false positive 過剰 (TC-061 `echo "git checkout"`
+  # のような log 出力経路を阻害) のため採用せず、代わりに quote-shell 経路 (`eval` / `sh -c` /
+  # `bash -c` / `zsh -c`) を別 sub-block で明示 block する設計に統一 (Issue #995 cycle 3)。
   # Collapse multiple spaces into one.
   while [[ "$CMD_NORMALIZED" == *"  "* ]]; do
     CMD_NORMALIZED="${CMD_NORMALIZED//  / }"
   done
 
+  # Git global flag normalization (Issue #995 cycle 3 / security-reviewer):
+  # `git -C <dir> checkout -b` / `git --git-dir=<X> checkout -b` 等の global flag が介在する
+  # 形式は case glob `*" git checkout "*` および token-loop `[[ " git worktree add " ]]` に
+  # match しないため Pattern (A)〜(G) を bypass する。global flag 群を ` git ` に圧縮することで
+  # 後続の sub-block 全体が flag-presence に関わらず一律に match できる。
+  # value-taking global flags (`-C <dir>` / `--git-dir <X>` / `--work-tree <X>` / `--exec-path <X>` /
+  # `--namespace <X>` / `-c <name=value>` / `--config-env <X>`): bash regex で extract + replace、
+  # `=` attached 形式 (`--git-dir=<X>` 等) も同じ正規化に含める。
+  while [[ " $CMD_NORMALIZED " =~ \ git\ (-C|--git-dir|--work-tree|--exec-path|--namespace|-c|--config-env)(=[^[:space:]]+|[[:space:]]+[^[:space:]]+)\  ]]; do
+    # ${BASH_REMATCH[0]} は ` git <flag><attached-or-spaced-value> ` を含む。これを ` git ` に置換。
+    _matched="${BASH_REMATCH[0]}"
+    CMD_NORMALIZED="${CMD_NORMALIZED/${_matched# }/git }"
+  done
+  # no-value global flags (`--bare` / `--no-pager` / `--paginate` 等): match して ` git ` に圧縮。
+  while [[ " $CMD_NORMALIZED " =~ \ git\ (--bare|--no-replace-objects|--paginate|--no-pager|--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--info-path|--man-path|--html-path)\  ]]; do
+    _matched="${BASH_REMATCH[0]}"
+    CMD_NORMALIZED="${CMD_NORMALIZED/${_matched# }/git }"
+  done
+  # Re-collapse spaces after global-flag normalization.
+  while [[ "$CMD_NORMALIZED" == *"  "* ]]; do
+    CMD_NORMALIZED="${CMD_NORMALIZED//  / }"
+  done
+
   PADDED=" $CMD_NORMALIZED "
+
+  # --- (Z) Quote-shell bypass guard (Issue #995 cycle 3) ---
+  # `eval` / `sh -c` / `bash -c` / `zsh -c` 経由で git command を実行する経路は、
+  # quote 内の content が (A)-(G) glob と word-boundary を共有しないため bypass 可能だった
+  # (security-reviewer cycle 2 empirical 発見: `eval "git checkout -b evil"` 等)。
+  # reviewer subagent が `eval` / shell `-c` を実行する legitimate な理由はほぼない
+  # (read-only な script 実行は `bash <script>` で十分) ため、これらの shell-wrapper を直接 block する。
+  # 注: `bash <script.sh>` (引数 1 個目が `-c` でない) は allow し続ける必要があるため、`-c` flag の
+  # 直前トークンが shell 名であるパターンのみを block する。
+  case "$PADDED" in
+    *" eval "*|\
+    *" sh -c "*|\
+    *" bash -c "*|\
+    *" zsh -c "*|\
+    *" ksh -c "*|\
+    *" dash -c "*|\
+    *" fish -c "*)
+      BLOCKED_PATTERN="reviewer-state-mutating-git"
+      ;;
+  esac
 
   # --- (A) Always-deny verbs (no read-only sub-action exists) ---
   case "$PADDED" in

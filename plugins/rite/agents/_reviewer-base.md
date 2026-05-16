@@ -43,6 +43,49 @@ Reviewer subagents **may** use the following read-only commands for evidence gat
 
 **Rationale**: The `[READ-ONLY RULE]` is not just a tool-level (`Edit`/`Write`) restriction — it is a **state-level** guarantee. A reviewer that runs `git checkout develop -- path/to/file` silently pollutes the parent session's index, which later surfaces as a "ghost diff" the parent session cannot attribute. Always compare blobs via `git show <ref>:<file>` or `git diff <ref> -- <file>` instead. 同様に、`git stash` は「undo すれば戻る」ように見えるが、stash entry の作成自体が parent session の working tree をクリアし、並列レビュアー間で race を起こす。`git add` / `git reset` も index を汚染し、後続の `/rite:pr:fix` が diff を誤認する根本原因になる。`git fetch --prune` は remote-tracking branch を削除するため、後続の `git diff origin/<branch>` が「unknown revision」で壊れる silent regression を引き起こす。
 
+### Mutation experiments and verification (worktree-only)
+
+Reviewer が **mutation testing / verification experiment** (例: 「ある line を `return 1` から `exit 1` に変えたら test が失敗するか」「helper を inline 展開したら sibling test が落ちるか」) を実行する必要がある場合、**parent repo の working tree / branch を絶対に変更してはならない**。正規経路は以下の **worktree-only mutation pattern** に限定される。
+
+**Rationale**: PR #994 cycle 3 で reviewer subagent が「mutation 検証」のために `pr-994-test` という新規 named branch を作成し、`git checkout pr-994-test` → file 変更 → `git checkout develop` という遷移を行った結果、parent session の working tree が `develop` のクリーン状態に置き換わり、後続の `/rite:pr:fix` が PR ブランチ (`refactor/issue-990-test-helpers-consolidation`) を見失った (Issue #995)。prose レベルの「禁止」だけでは LLM agent は mutation 検証の必要性を過大評価して bypass する傾向があるため、**正規経路を明示**し、`hooks/pre-tool-bash-guard.sh` の structural enforcement と組み合わせて多層防御する。
+
+**正規パターン (detached HEAD / 既存 branch)**:
+
+```bash
+# 1. detached HEAD でテンポラリ worktree を作成 (named branch を leak させない)
+mutation_dir=$(mktemp -d -t rite-review-mutation-XXXXXX)
+git worktree add --detach "$mutation_dir" HEAD  # または特定の ref
+
+# 2. mutation を適用 (parent repo は完全に無影響)
+cd "$mutation_dir"
+# ファイル編集 → test 実行 → 結果観測
+sed -i 's/return 1/exit 1/' some-file.sh
+bash hooks/tests/some.test.sh
+cd -  # parent repo に戻る (HEAD 変更なし、stash なし)
+
+# 3. cleanup (reviewer は `git worktree remove` を実行禁止のため、
+#    orchestrator 側の hooks/scripts/pr-cycle-cleanup.sh が回収する。
+#    worktree path は `/tmp/rite-review-mutation-*` 命名で識別可能)
+```
+
+**禁止パターン (parent working tree を mutate する一切の経路)**:
+
+| 禁止経路 | 代替 (worktree-only pattern) |
+|---------|-----------------------------|
+| `git checkout -b pr-N-test` → file 変更 → `git checkout <orig>` | `git worktree add --detach $(mktemp -d -t rite-review-mutation-XXXXXX) HEAD` |
+| `git stash` → file 変更 → test → `git stash pop` | 同上 (stash は禁止) |
+| `cp file file.bak` → file 変更 → test → `mv file.bak file` (parent working tree 内) | 同上 (parent working tree の file 変更自体が禁止 — `Edit`/`Write` tool レベル違反でもある) |
+| `git checkout HEAD~1 -- file` → test → `git checkout HEAD -- file` | `git show HEAD~1:file` で blob を取得し、worktree 内で適用 |
+
+**Invariant**: Reviewer subagent が exit する時点で **以下のすべて**が true であること:
+
+1. `git branch --show-current` の値が reviewer 起動時と同一
+2. `git status` の差分が reviewer 起動時と同一 (新規 untracked file が `/tmp/rite-review-mutation-*` 経由でなく parent working tree に出現していない)
+3. `git stash list` の長さが reviewer 起動時と同一
+4. `git branch --list` の出力が reviewer 起動時と同一 (新規 named branch が leak していない)
+
+これらの invariant 違反は orchestrator 側 (`commands/pr/review.md` Phase 9 post-review state verification) で post-condition check され、drift 検出時は WARNING + automatic recovery (`git checkout <original_branch>`) + `workflow_incident_emit.sh --type manual_fallback_adopted` が発火する。
+
 ## Reviewer Mindset
 
 All reviewers MUST adopt these principles:

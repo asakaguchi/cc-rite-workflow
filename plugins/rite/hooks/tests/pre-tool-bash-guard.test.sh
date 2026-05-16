@@ -717,6 +717,45 @@ echo "TC-057c: subagent + 'git branch --force feat' → deny"
 assert_subagent_deny "subagent git branch --force blocked" "git branch --force feat"
 
 # --------------------------------------------------------------------------
+# TC-057d〜057h: Issue #995 — git worktree add new-ref-leak forms denied,
+# proper --detach / existing-branch forms allowed.
+# 既存 (E) では `git worktree remove/prune` のみ block していたため、reviewer が
+# `git worktree add -b <newbranch>` 経由で新規 named branch を leak できた gap を補完。
+# --------------------------------------------------------------------------
+echo "TC-057d: subagent + 'git worktree add -b pr-994-test /tmp/d HEAD' → deny (new branch leak)"
+assert_subagent_deny "subagent worktree add -b new-branch blocked" \
+  "git worktree add -b pr-994-test /tmp/d HEAD"
+
+echo "TC-057e: subagent + 'git worktree add --new-branch foo /tmp/d HEAD' → deny (long-form)"
+assert_subagent_deny "subagent worktree add --new-branch blocked" \
+  "git worktree add --new-branch foo /tmp/d HEAD"
+
+echo "TC-057f: subagent + 'git worktree add /tmp/d' (1 positional, auto-creates branch) → deny"
+assert_subagent_deny "subagent bare worktree add (auto-branch) blocked" \
+  "git worktree add /tmp/d"
+
+echo "TC-057g: subagent + 'git worktree add --detach /tmp/d HEAD' → allow (no ref leak)"
+assert_subagent_allow "subagent worktree add --detach allowed" \
+  "git worktree add --detach /tmp/d HEAD"
+
+echo "TC-057h: subagent + 'git worktree add /tmp/d develop' (existing branch) → allow"
+assert_subagent_allow "subagent worktree add existing-branch allowed" \
+  "git worktree add /tmp/d develop"
+
+echo "TC-057i: subagent + 'git worktree move /tmp/a /tmp/b' → deny"
+assert_subagent_deny "subagent worktree move blocked" \
+  "git worktree move /tmp/a /tmp/b"
+
+# --------------------------------------------------------------------------
+# TC-057j: Issue #995 reproduction — git checkout -b <new-branch> from subagent
+# (既存 Pattern (A) Always-deny で block されるはずだが、Issue #995 の reproduction
+# として明示テストを追加し、regression lock とする)
+# --------------------------------------------------------------------------
+echo "TC-057j: subagent + 'git checkout -b pr-994-test' (Issue #995 reproduction) → deny"
+assert_subagent_deny "subagent git checkout -b new-branch blocked (Issue #995)" \
+  "git checkout -b pr-994-test"
+
+# --------------------------------------------------------------------------
 # TC-058: git fetch (bare) allowed, --prune denied
 # --------------------------------------------------------------------------
 echo "TC-058a: subagent + 'git fetch origin' (bare) → allow"

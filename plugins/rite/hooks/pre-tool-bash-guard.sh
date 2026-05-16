@@ -347,14 +347,64 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     esac
   fi
 
-  # --- (E) Sub-action precision: git worktree remove/prune only ---
+  # --- (E) Sub-action precision: git worktree remove/prune/move + add-with-new-branch ---
+  # Allowed: `git worktree list`, `git worktree add --detach <path> <ref>`,
+  #          `git worktree add <path> <existing-branch>` (2 positional args: path + existing ref)
+  # Denied:  `git worktree remove`, `git worktree prune`, `git worktree move`,
+  #          `git worktree add -b <newbranch> <path>` / `--new-branch <newbranch>` (new ref leak),
+  #          bare `git worktree add <path>` (1 positional arg only — Git auto-creates a new
+  #          named branch matching basename(path), which leaks ref state into the parent repo
+  #          and cannot be cleaned up by the reviewer since `git worktree remove` is also denied
+  #          on this line). The reviewer must use `--detach` or supply an existing branch.
+  #
+  # Issue #995: PR #994 cycle 3 で reviewer subagent が `pr-994-test` という新規 named branch を
+  # `git checkout -b` で作成 → mutation 検証 → `git checkout develop` の遷移を行い、parent session
+  # の working tree を develop のクリーン状態に置換した結果、後続の `/rite:pr:fix` が PR ブランチを
+  # 見失う事故が発生。`git checkout` 系は (A) Always-deny で既に block されるが、`git worktree add -b`
+  # 経由の named branch 作成は (E) で許可されていたため、structural gap として本サブブロックで補強。
   if [ -z "$BLOCKED_PATTERN" ]; then
     case "$PADDED" in
       *" git worktree remove"*|\
-      *" git worktree prune"*)
+      *" git worktree prune"*|\
+      *" git worktree move"*|\
+      *" git worktree add -b "*|\
+      *" git worktree add -B "*|\
+      *" git worktree add --new-branch"*|\
+      *" git worktree add --force-new-branch"*)
         BLOCKED_PATTERN="reviewer-state-mutating-git"
         ;;
     esac
+  fi
+  # Bare `git worktree add <path>` (1 positional arg, auto-creates named branch).
+  # Allowed forms (2 positional args after `add`):
+  #   - `git worktree add <path> <existing-branch-or-ref>`
+  #   - `git worktree add --detach <path> <ref>`
+  # Denied form (1 positional arg after `add`, no `--detach`):
+  #   - `git worktree add <path>`  → Git auto-creates branch matching basename(path) → leak
+  if [ -z "$BLOCKED_PATTERN" ]; then
+    if [[ "$PADDED" =~ " git worktree add " ]]; then
+      # Extract everything after " git worktree add " up to next shell boundary marker.
+      # Strip --detach (long-form only — `-d` collides with other commands' `-d` semantics)
+      # and other flag-only tokens that don't consume positional args, then count remaining
+      # non-flag tokens.
+      WT_ARGS="${PADDED##* git worktree add }"
+      # Drop trailing collapsed-space terminator if PADDED has trailing " ".
+      WT_ARGS="${WT_ARGS% }"
+      # Tokenize and count non-flag positional args (tokens not starting with `-`).
+      WT_POSITIONAL_COUNT=0
+      WT_HAS_DETACH=0
+      for tok in $WT_ARGS; do
+        case "$tok" in
+          --detach) WT_HAS_DETACH=1 ;;
+          -*) : ;;  # other flag, skip
+          *) WT_POSITIONAL_COUNT=$((WT_POSITIONAL_COUNT + 1)) ;;
+        esac
+      done
+      # Deny if: positional_count <= 1 AND no --detach (i.e., `git worktree add <path>` alone)
+      if [ "$WT_POSITIONAL_COUNT" -le 1 ] && [ "$WT_HAS_DETACH" -eq 0 ]; then
+        BLOCKED_PATTERN="reviewer-state-mutating-git"
+      fi
+    fi
   fi
 
   # --- (F) Sub-action precision: git fetch (bare allowed, --prune/--force denied) ---

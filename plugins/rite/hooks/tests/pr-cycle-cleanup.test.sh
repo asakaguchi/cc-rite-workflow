@@ -203,6 +203,46 @@ fi
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
+# T-04b: Issue #995 — reviewer variation branches (`pr-N-test` /
+# `pr-N-experiment` / `pr-N-mutation` / `pr-N-verify` / `pr-N-check` /
+# `pr-N-sandbox`) are cleaned up alongside `pr-N-cycleX`.
+# Suffix variations (e.g. `pr-994-testing-suite`) must still survive.
+# -----------------------------------------------------------------------
+echo "T-04b: Issue #995 reviewer variation branches"
+TEST_REPO=$(make_temp_repo)
+(
+  cd "$TEST_REPO"
+  # Match — should be deleted (Issue #995 reviewer variation suffixes)
+  git branch pr-994-test main
+  git branch pr-995-experiment main
+  git branch pr-996-mutation main
+  git branch pr-997-verify main
+  git branch pr-998-check main
+  git branch pr-999-sandbox main
+  # Non-matches — must survive
+  git branch pr-994-testing-suite main             # suffix continuation
+  git branch pr-994-testfile main                  # not exact-match
+  git branch feature/pr-994-test main              # prefix
+  git branch pr-994-experimental main              # suffix continuation
+)
+( cd "$TEST_REPO" && bash "$CLEANUP" >/dev/null 2>&1 )
+
+# Verify all 6 reviewer variation branches are gone
+matched_remaining=$(cd "$TEST_REPO" && git for-each-ref --format='%(refname:short)' refs/heads/ \
+  | { grep -cE '^pr-99[4-9]-(test|experiment|mutation|verify|check|sandbox)$' || true; })
+# Verify the 4 non-matching branches survived (+ main = 5)
+survivors=$(cd "$TEST_REPO" && git for-each-ref --format='%(refname:short)' refs/heads/ \
+  | { grep -v -E '^main$' || true; } | wc -l | tr -d ' ')
+
+if [ "$matched_remaining" = "0" ] && [ "$survivors" = "4" ]; then
+  pass "T-04b: 6/6 reviewer variations deleted, 4/4 non-matching branches survived"
+else
+  fail "T-04b: matched_remaining=$matched_remaining (expect 0), survivors=$survivors (expect 4)"
+  ( cd "$TEST_REPO" && git for-each-ref --format='%(refname:short)' refs/heads/ ) | sed 's/^/    surviving: /'
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
 # T-05: Idempotent — re-running on a clean repo is a no-op
 # -----------------------------------------------------------------------
 echo "T-05: idempotent (no-op when nothing matches)"

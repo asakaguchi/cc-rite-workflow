@@ -2,8 +2,10 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-16T03:50:00+09:00"
+updated: "2026-05-16T14:55:00+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260516T055016Z-pr-992.md"
   - type: "reviews"
     ref: "raw/reviews/20260515T184722Z-pr-984.md"
   - type: "reviews"
@@ -610,6 +612,12 @@ PR #984 (Issue #978 — `workflow-incident-detection.md` SoT に Strict-mode cal
 
 **累積 30 回目の独自観点**: (1) **「新規 subsection 追加 + test pin」は SoT ↔ implementation 2-site 対称性を保証する構造的予防の典型** であり、Option A (両側修正) / Option B (hub 化) / sibling sync 契約 (累積 27 回目) と並ぶ第 4 の選択肢として位置づけ可能、(2) **scope 外指摘 (前 PR の reviewer MINOR) を後続 Issue 化 + defense-in-depth PR として完遂する shrinking-cycle pattern** が機能していることを実測 — review-fix loop の scope 外指摘は捨てずに Issue 化することで累積 evidence pattern を成長させる、(3) **1 cycle 0 finding convergence は successful prevention pattern の典型** で、PR #973 (累積 29 回目) → PR #984 (累積 30 回目) と「Issue 本文 line 番号明示 + 機械検証 step」 design が連続 2 回 reproducibility を示した。
 
+### Test 対称化の 2 cycle convergence (PR #992、累積 31 回目)
+
+PR #992 (Issue #987 — `stop-create-interview-block.test.sh` に `workflow_incident.enabled` の **truthy variant matrix** TC-11 を追加し、既存 TC-7 (falsy variant matrix) と対称化) は、cycle 1 で test-reviewer + code-quality-reviewer から 4 findings (HIGH × 1: 5 variants vs TC-7 の 7 variants gap = まさに本ページが扱う Asymmetric Fix Transcription そのもの、MEDIUM × 1: naming `TC11_TRUTHY_VARIANTS` vs `TC7_VARIANTS`、LOW × 2: hardcoded line refs / assertion message duplication) を独立検出 → cycle 1 fix で TC-11 を 5 → 7 variants 拡張 + rename to `TC11_VARIANTS` + symbol-based references + assertion message 差別化 を一括適用 → cycle 2 で 両 reviewer 独立に「7 entries 確認」「symmetry 完全」を文書化し 0 finding mergeable で 2-cycle convergence。
+
+**累積 31 回目の独自観点**: (1) **自己再現 (self-application) の典型** — 「Asymmetric Fix Transcription 予防」の経験則を蓄積した repository で test 追加 PR がまさに同 anti-pattern (片肺 5 variants) を踏み、cycle 1 review で 2 reviewer 独立検出 → cycle 2 で対称化 done と、本 anti-pattern の dominant failure mode が **wiki 経験則 application 直後にも再発する** ことを実測、(2) **review-fix loop は適用された経験則の独立検証として機能** — cycle 1 fix で「7 variants 完全対称化」を実施した後、cycle 2 で reviewer 2 名が独立に「7 entries 確認」「mutation testing perspective: case arm に inversion bug を入れれば全 variant で TC-11.3 が FAIL」を verification し、test pin の identification power を empirical 検証、(3) **「successful prevention pattern の連続再現」が PR #968 → #973 → #984 → #992 と 4 PR 連続** (累積 28 → 29 → 30 → 31) に成長し、shrinking-cycle observation の reproducibility evidence を累積。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -699,3 +707,4 @@ PR #984 (Issue #978 — `workflow-incident-detection.md` SoT に Strict-mode cal
 - [PR #949 fix (累積 28 回目、fix-induced regression を 2 cycle で実測: 残置 pr-{N}-cycle{X} ブランチ cleanup PR (Issue #919) の cycle 1 で 8 findings 全件対応した stderr 退避パターン導入 `if ! cmd; then rc=$?` が cycle 2 で `rc` 常時 0 化 bash 仕様罠として cross-validated MEDIUM 再検出。silent failure 経路閉塞のための defensive patch そのものが新規 silent regression を生む再帰 anti-pattern。`!` 演算子 + `$?` 相互作用 / signal-specific trap canonical 準拠の Pattern Consistency / inline hint relative path drift (`references/` → `../../references/`) の 3 サブパターンが同一 PR 内で並行発火。設計対策: `if cmd; then :; else rc=$?; fi` の else 句版を canonical とし、`!` 反転句版を禁止形式として codebase の他 bash helper 群と統一する patterns-and-anti-patterns 拡張)](../../raw/fixes/20260513T185709Z-pr-949.md)
 - [PR #973 review (累積 29 回目 構造的予防の実証: 4-site scope drift fix で Issue 本文に対象箇所を line 番号付き明示 + 検証 step (grep + `4-site-symmetry.test.sh` PASS) を含めることで、cycle 1 / 0 findings 収束を達成。code-quality reviewer は `diff <(sed -n ...)` で SoT (start-finalize.md) との byte-level 同型を独立検証。設計対策の有効性: Issue 本文の対象箇所明示 (4 sites の file:line) + 機械検証 step (grep + test PASS) を Issue creation phase で要求することで、後続実装での片肺更新 risk を構造的に消去できる)](../../raw/reviews/20260515T054955Z-pr-973.md)
 - [PR #984 review (累積 30 回目 構造的予防の実証: Strict-mode caller variant subsection を SoT (`workflow-incident-detection.md`) に新規追加 + `sentinel-visibility-rule.test.sh` Section 1.1 に 3 assertion を追加することで「SoT 側 variant 不在 / variant に `|| true` 欠落 / implementation 側 `|| true` 欠落」の 3 種 drift を pin。4 reviewer (prompt-engineer / test / error-handling / code-quality) 全員 0 finding で 1 cycle merge。前 PR の reviewer MINOR scope 外指摘を後続 Issue 化 + defense-in-depth PR として完遂する shrinking-cycle pattern を実証し、PR #973 (累積 29 回目) の「Issue 本文 line 番号明示 + 機械検証 step」 design の連続 2 回 reproducibility を実測)](../../raw/reviews/20260515T184722Z-pr-984.md)
+- [PR #992 review (累積 31 回目 self-application 事例: TC-11 truthy variant matrix 追加 PR で cycle 1 で test-reviewer + code-quality-reviewer から 4 findings (HIGH = 5 vs 7 variants gap、MEDIUM = naming、LOW × 2 = hardcoded refs / message duplication) 独立検出 → cycle 1 fix で 7 variants 拡張 + rename + symbol-based refs + message 差別化を一括適用 → cycle 2 で両 reviewer 独立に "7 entries 確認" "symmetry 完全" を verify し 0 finding mergeable で 2-cycle convergence。Wiki 経験則を蓄積した repository でも test 追加 PR がまさに本 anti-pattern を踏む self-application が再発、successful prevention pattern の連続再現が PR #968 → #973 → #984 → #992 の 4 PR 連続 (累積 28 → 29 → 30 → 31) に成長)](../../raw/reviews/20260516T055016Z-pr-992.md)

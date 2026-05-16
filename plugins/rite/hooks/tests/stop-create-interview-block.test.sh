@@ -311,23 +311,26 @@ rm -rf "$SBX"; _remove_from_cleanup_dirs "$SBX"
 
 # ---- TC-11: workflow_incident.enabled truthy variant matrix → default-on 同等動作 ----
 # Canonical SoT (workflow-incident-detection.md) defines `true|yes|1)` branch alongside
-# `false|no|0)` / `*)` 3 branches. The hook parser (stop-create-interview-block.sh:108-110)
-# currently implements only `false|no|0)` branch — truthy variants fall through to the
-# default `WORKFLOW_INCIDENT_ENABLED="true"` (line 97), so behavior is default-on.
-# This loop pins all 5 truthy variants so a future refactor that adds an explicit
-# `true|yes|1)` branch cannot silently break any variant's default-on semantics
+# `false|no|0)` / `*)` 3 branches. The hook parser implements only the `false|no|0)`
+# case arm; truthy variants fall through to the default-on initialization (line where
+# `WORKFLOW_INCIDENT_ENABLED="true"` is assigned, immediately before the `if [ -f .../rite-config.yml ]`
+# block) and behavior matches default-on. This loop pins all 7 truthy variants in TC-7
+# symmetry so a future refactor that adds an explicit `true|yes|1)` case arm cannot
+# silently break any variant's default-on semantics
 # (Issue #987 — TC-10 番号は PR #989 で subdirectory walkup test に取得済のため TC-11 へ renumber)。
-echo "TC-11: workflow_incident.enabled truthy variant matrix (5 syntactic forms) → exit 2 + sentinel"
+echo "TC-11: workflow_incident.enabled truthy variant matrix (7 syntactic forms) → exit 2 + sentinel"
 
-TC11_TRUTHY_VARIANTS=(
+TC11_VARIANTS=(
   "true"
   "TRUE"
   '"true"'
+  "'true'"
   "yes"
   "1"
+  "true # trailing comment"
 )
 
-for variant in "${TC11_TRUTHY_VARIANTS[@]}"; do
+for variant in "${TC11_VARIANTS[@]}"; do
   echo "  variant: enabled: $variant"
   SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
   write_flow_state "$SBX" "create_post_interview" "true" "0"
@@ -339,7 +342,7 @@ YAML
   run_hook "$SBX" "$payload"; rc=$HOOK_RC
   assert_eq "TC-11.1 [enabled: $variant]: exit code 2 (block fires)" "2" "$rc"
   assert_contains "TC-11.2 [enabled: $variant]: ACTION shown" "Issue #920" "$STDERR"
-  assert_contains "TC-11.3 [enabled: $variant]: workflow_incident sentinel emitted (default-on respected)" "WORKFLOW_INCIDENT=1" "$STDERR"
+  assert_contains "TC-11.3 [enabled: $variant]: workflow_incident sentinel emitted (truthy variant → default-on)" "WORKFLOW_INCIDENT=1" "$STDERR"
   rm -rf "$SBX"; _remove_from_cleanup_dirs "$SBX"
 done
 

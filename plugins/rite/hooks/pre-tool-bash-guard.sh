@@ -305,8 +305,9 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   #
   # 設計判断 (documentation-only): Layer 2 の責務はあくまで「静的 token として `git` を含む
   # コマンド」をスコープとし、alias / function indirection は二次防御 (agent prompt 規約) と
-  # 三次防御 (Layer 3 post-condition state-verify gate) に委ねる。本 limitation は
-  # security-reviewer cycle 2 (PR #997) で documented limitation として ack 済み。
+  # 三次防御 (Layer 3 post-condition state-verify gate) に委ねる。三層防御の構造を維持する
+  # 設計判断であり、Layer 2 を fail-closed にしようとすると overhead と false positive の
+  # コストが正味の defense gain を上回ると判定した。
   CMD_NORMALIZED="${CMD_NORMALIZED//\/git/ git}"
   CMD_NORMALIZED="${CMD_NORMALIZED//\\git/ git}"
   CMD_NORMALIZED="${CMD_NORMALIZED// command git/ git}"

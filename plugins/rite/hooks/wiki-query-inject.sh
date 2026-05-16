@@ -44,6 +44,16 @@
 #     + summary, weighted by confidence (high=1.5, medium=1.0, low=0.5).
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Resolve project root (git root anchored). Matches session-start.sh /
+# _resolve-schema-version.sh / notification.sh / stop-create-interview-block.sh
+# convention; `$PWD`-based rite-config.yml lookup would silently miss the
+# config file when this script is invoked from a subdirectory (Issue #976).
+# This script is a CLI tool (not a Claude Code hook), so $PWD is used in place
+# of the stdin-supplied CWD that hook scripts receive.
+STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$PWD" 2>/dev/null) || STATE_ROOT="$PWD"
+
 # Tempfile paths declared up front, trap set up before any mktemp, cleanup on
 # both normal exit and signal termination. Mirrors the repo convention used in
 # commands/pr/review.md Phase 2.2.1 and commands/pr/fix.md Phase 4.5.2 so that
@@ -154,13 +164,13 @@ esac
 # on grep no-match (exit 0), but surface legitimate IO errors as a WARNING
 # before falling through.
 wiki_section=""
-if [[ -f "rite-config.yml" ]]; then
+if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
   if ! _yaml_err=$(mktemp /tmp/rite-wiki-query-yaml-err-XXXXXX); then
     echo "WARNING: mktemp failed for YAML stderr capture; falling back to /dev/null" >&2
     echo "  対処: /tmp の permission / read-only / inode 枯渇を確認してください" >&2
     _yaml_err=""
   fi
-  if wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>"${_yaml_err:-/dev/null}"); then
+  if wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$STATE_ROOT/rite-config.yml" 2>"${_yaml_err:-/dev/null}"); then
     :  # success (sed no-match still returns 0)
   else
     _sed_rc=$?

@@ -316,14 +316,16 @@ echo ""
 echo "TC-016: Subdirectory CWD invocation → walkup resolves project-root rite-config.yml"
 # Issue #990: replaced inline sandbox setup with `make_sandbox --soft` from
 # _test-helpers.sh. Setup error は test failure と区別する (skip path) -- helper の
-# --soft return preserves that. The helper's mktemp -d is independent of
-# TEST_DIR; we clean it up explicitly on the success path since it is not
-# under TEST_DIR's trap-managed cleanup.
+# --soft return preserves that. The helper's mktemp -d puts dir016 under /tmp
+# (independent of TEST_DIR), but cleanup() (lines 24-30) now handles dir016
+# alongside TEST_DIR for every signal in the EXIT/INT/TERM/HUP quartet, so
+# no explicit rm -rf is needed on the test body's success/failure paths.
 if ! dir016=$(make_sandbox --soft); then
   skip "TC-016 (sandbox setup failed — setup error は test failure と区別)"
 else
-  # F-05: dir016 は cleanup() trap が EXIT 時に cleanup する (TEST_DIR と同様)。
-  # set -e で abort しても trap が発火し /tmp の leak を防ぐ。明示的な rm -rf は不要。
+  # Issue #990 cycle 2 F-05 + cycle 3 F-02: dir016 は cleanup() trap (lines 24-30) が
+  # EXIT/INT/TERM/HUP の全 signal で cleanup する。明示的な rm -rf は不要 (signal trap
+  # quartet で完全カバー、sister test 規約と一貫)。
   mkdir -p "$dir016/sub"
   touch "$dir016/rite-config.yml"
 

@@ -566,3 +566,4 @@
 | 2026-05-16T03:32:00+00:00 | ingest:update | pages/anti-patterns/canonical-helper-bypass.md | PR #989 cycle 2 review (raw/reviews/20260516T032759Z-pr-989.md) — 修正検証 raw。`build_stop_payload` 経由化で sibling symmetry 復元、blocking 0 件で 1 cycle 収束。sources[] への accumulating evidence 追加。 |
 | 2026-05-16T03:34:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=131, broken_refs=19 |
 | 2026-05-16T04:30:00+00:00 | ingest:create | pages/anti-patterns/bash-array-slash-deletion-empty-replacement.md | PR #991 review (raw/reviews/20260516T041304Z-pr-991.md) — bash 配列の slash-deletion (`${arr[@]/$target}`) が要素削除でなく空文字列置換であることに起因する silent failure を新規 anti-pattern として記録。Issue #986 / PR #991 で 10 反復後 10 → 0 累積を実測、helper 関数化 + `set -u` 安全な `${#new[@]}` 分岐 pattern を canonical fix として確立。 |
+| 2026-05-16T04:37:20+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=2, unregistered_raw=137, broken_refs=0 |

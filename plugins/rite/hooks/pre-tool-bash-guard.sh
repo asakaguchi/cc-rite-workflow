@@ -47,31 +47,38 @@ fi
 # contains the "/subagents/" path component. Pattern 4 below uses this as a
 # heuristic to scope state-mutating git denylist checks to reviewer contexts.
 #
-# Three-tier detection (Issue #998 — future-proofing against SDK convention drift):
+# Three-tier detection (future-proofing against SDK convention drift):
 #   Tier 1 (primary):  transcript_path glob `*/subagents/*` — current Claude Code
-#                      convention (Issue #442). Most reliable signal today.
+#                      convention. Most reliable signal today.
 #   Tier 2 (fallback): hook input JSON `subagent_type` / `agent_type` field —
 #                      reserved for future SDK schemas that surface subagent
 #                      identity in the hook envelope rather than the path.
-#                      Any non-empty value triggers IS_SUBAGENT=1 (presence-only
-#                      check; specific values like `code-reviewer` are not
-#                      enumerated because the SDK has not finalized the schema).
+#                      Presence-only check on STRING values; numeric/array/object
+#                      values are rejected via `| strings` filter to avoid jq's
+#                      `//` operator treating only null/false as falsy.
 #   Tier 3 (fallback): environment variables CLAUDE_SUBAGENT_TYPE / CLAUDE_AGENT_TYPE —
 #                      catch-all if a future SDK exposes subagent context via
 #                      env vars before updating the hook input schema. Presence-only.
 #
-# If a future SDK release changes transcript_path conventions, Tiers 2 & 3 keep
-# Pattern 4 functional rather than silently disabling enforcement (false negative).
-# Tier 3 inherits the parent process environment, which is the standard contract
-# for hook subprocesses.
-TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null) || TRANSCRIPT_PATH=""
+# Forward-compatibility caveat: presence-only check fires on any non-empty string.
+# If a future SDK starts emitting `subagent_type: "main"` / `"none"` / `"null"`
+# sentinel values on main-session hooks, every main-session git command in this
+# block would be blocked (false positive). When such a convention appears,
+# upgrade to an allow-list check (e.g. `*-reviewer` glob) here. Tier 3 env vars
+# share the same risk — see BLOCKED_ALTERNATIVE recovery text for `unset` guidance.
+#
+# Both jq lookups read $INPUT in a single invocation to halve subprocess fork
+# overhead on the PreToolUse hot path.
+JQ_OUT=$(echo "$INPUT" | jq -r '[(.transcript_path // ""), (.subagent_type | strings // ""), (.agent_type | strings // "")] | @tsv' 2>/dev/null) || JQ_OUT=$'\t\t'
+TRANSCRIPT_PATH=$(printf '%s' "$JQ_OUT" | cut -f1)
+INPUT_SUBAGENT_TYPE=$(printf '%s' "$JQ_OUT" | cut -f2)
+INPUT_AGENT_TYPE=$(printf '%s' "$JQ_OUT" | cut -f3)
 IS_SUBAGENT=0
 case "$TRANSCRIPT_PATH" in
   */subagents/*) IS_SUBAGENT=1 ;;
 esac
 if [ "$IS_SUBAGENT" = "0" ]; then
-  SUBAGENT_TYPE=$(echo "$INPUT" | jq -r '.subagent_type // .agent_type // empty' 2>/dev/null) || SUBAGENT_TYPE=""
-  if [ -n "$SUBAGENT_TYPE" ]; then
+  if [ -n "$INPUT_SUBAGENT_TYPE" ] || [ -n "$INPUT_AGENT_TYPE" ]; then
     IS_SUBAGENT=1
   fi
 fi
@@ -296,18 +303,10 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   #   - `/usr/bin/git` / `/opt/homebrew/bin/git` 等の絶対パス → ` git`
   #   - `command git` / `exec git` / `builtin git` (builtin は構文 invalid だが safety) → ` git`
   #   - `\git` (backslash-escaped) → ` git`
-  # Acknowledged residual gap: alias / shell function indirection.
-  #   `alias gg='git'; gg checkout -b evil` や `my_git() { command git "$@"; }; my_git checkout`
-  #   は parent shell の alias / function 解決後に `gg` / `my_git` という独立トークンとして
-  #   渡るため、本 hook の静的 glob では `git` を識別不能。bash の `type` 解決を hook 内で
-  #   再現する選択肢は overhead が大きく、誤判定（user-defined function が `git` を呼ばないケース）
-  #   も避けられない。
-  #
-  # 設計判断 (documentation-only): Layer 2 の責務はあくまで「静的 token として `git` を含む
-  # コマンド」をスコープとし、alias / function indirection は二次防御 (agent prompt 規約) と
-  # 三次防御 (Layer 3 post-condition state-verify gate) に委ねる。三層防御の構造を維持する
-  # 設計判断であり、Layer 2 を fail-closed にしようとすると overhead と false positive の
-  # コストが正味の defense gain を上回ると判定した。
+  # Residual gap: alias / function indirection (`alias gg='git'`, `my_git() { ... }`)
+  # は parent shell 解決後の独立トークンとして渡るため、本 hook の静的 glob では検出不能。
+  # Layer 2 の責務は「静的 token として `git` を含むコマンド」に限定し、一次防御は agent prompt、
+  # 三次防御は Layer 3 post-condition state-verify gate に委ねる三層構造を維持する。
   CMD_NORMALIZED="${CMD_NORMALIZED//\/git/ git}"
   CMD_NORMALIZED="${CMD_NORMALIZED//\\git/ git}"
   CMD_NORMALIZED="${CMD_NORMALIZED// command git/ git}"
@@ -581,7 +580,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
 
   if [ -n "$BLOCKED_PATTERN" ]; then
     BLOCKED_REASON="Reviewer subagents must not mutate the working tree, index, or refs. State-changing git commands (checkout/reset/add/stash push/restore/commit/push/merge/rebase/cherry-pick/revert/tag -a -d -f/clean/gc/branch -D --delete/update-ref/symbolic-ref/am/apply/mv/notes/config/remote/bisect/filter-branch/replace/reflog expire/worktree remove/fetch --prune/--force/etc.) are forbidden inside reviewer contexts."
-    BLOCKED_ALTERNATIVE="Use read-only alternatives: 'git show <ref>:<file>' to read a blob, 'git diff <ref> -- <file>' to compare, 'git worktree add <path> <ref>' to inspect a different ref in an isolated directory, 'git tag -l' / 'git stash list' / 'git reflog' / 'git branch --list' for display-only queries, or bare 'git fetch' (without --prune/--force) for ref sync. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the full list."
+    BLOCKED_ALTERNATIVE="Use read-only alternatives: 'git show <ref>:<file>' to read a blob, 'git diff <ref> -- <file>' to compare, 'git worktree add <path> <ref>' to inspect a different ref in an isolated directory, 'git tag -l' / 'git stash list' / 'git reflog' / 'git branch --list' for display-only queries, or bare 'git fetch' (without --prune/--force) for ref sync. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the full list. If this block fires on a main session (not a reviewer subagent), check whether CLAUDE_SUBAGENT_TYPE / CLAUDE_AGENT_TYPE env vars are accidentally set; recover with: unset CLAUDE_SUBAGENT_TYPE CLAUDE_AGENT_TYPE"
   fi
 fi
 

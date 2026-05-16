@@ -23,6 +23,9 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 
 cleanup() {
   rm -rf "$TEST_DIR"
+  # F-05: TC-016 が make_sandbox --soft で作る sandbox は TEST_DIR 配下に無いため、
+  # set -e で TC-016 が abort しても rm -rf が走らず leak する。常に cleanup する。
+  [ -n "${dir016:-}" ] && rm -rf "$dir016"
 }
 trap cleanup EXIT
 
@@ -311,6 +314,8 @@ echo "TC-016: Subdirectory CWD invocation → walkup resolves project-root rite-
 if ! dir016=$(make_sandbox --soft); then
   skip "TC-016 (sandbox setup failed — setup error は test failure と区別)"
 else
+  # F-05: dir016 は cleanup() trap が EXIT 時に cleanup する (TEST_DIR と同様)。
+  # set -e で abort しても trap が発火し /tmp の leak を防ぐ。明示的な rm -rf は不要。
   mkdir -p "$dir016/sub"
   touch "$dir016/rite-config.yml"
 
@@ -320,7 +325,6 @@ else
   else
     fail "Expected 'Notification for PR created' from subdir CWD, got: '$output'"
   fi
-  rm -rf "$dir016"
 fi
 echo ""
 

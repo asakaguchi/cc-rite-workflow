@@ -209,9 +209,30 @@ else
 fi
 rm -rf "$sbx_branch"
 
-# === TC-9: make_sandbox --soft (success path) ===
+# F-08: TC-8.2 / TC-8.3 — option-parse error variants (return 2).
+# Pins the explicit `if [ $# -lt 2 ] || [ -z "$2" ]` guard so a regression that
+# changes `shift 2` to `shift` (and silently accepts `--branch` with no value)
+# is caught.
+# `|| rc=$?` 形式: set -e の下で非ゼロ exit が abort を起こさないよう短絡。
+rc_empty=0
+bash -c "source '$HELPERS'; make_sandbox --branch '' 2>/dev/null" || rc_empty=$?
+if [ "$rc_empty" = "2" ]; then
+  outer_pass "TC-8.2: --branch \"\" returns rc=2 (option parse error)"
+else
+  outer_fail "TC-8.2: expected rc=2 for --branch \"\", got rc=$rc_empty"
+fi
+
+rc_missing=0
+bash -c "source '$HELPERS'; make_sandbox --branch 2>/dev/null" || rc_missing=$?
+if [ "$rc_missing" = "2" ]; then
+  outer_pass "TC-8.3: --branch with no argument returns rc=2 (option parse error)"
+else
+  outer_fail "TC-8.3: expected rc=2 for --branch with no argument, got rc=$rc_missing"
+fi
+
+# === TC-9: make_sandbox --soft ===
 echo
-echo "TC-9: make_sandbox --soft → still returns a sandbox on success path"
+echo "TC-9: make_sandbox --soft → success returns sandbox, failure returns rc=1 (no exit)"
 
 # Success path: --soft must not change the success-side contract.
 sbx_soft=$(bash -c "source '$HELPERS'; make_sandbox --soft")
@@ -222,14 +243,34 @@ else
 fi
 rm -rf "$sbx_soft"
 
-# === TC-10: make_sandbox unknown option → exit 2 ===
-echo
-echo "TC-10: make_sandbox unknown option rejected"
-
-if bash -c "source '$HELPERS'; make_sandbox --bogus 2>/dev/null"; then
-  outer_fail "TC-10.1: make_sandbox accepted --bogus (expected non-zero exit)"
+# F-03: TC-9.2 — failure path: --soft の存在意義 (git 失敗時に exit ではなく return 1) を pin。
+# PATH=/dev/null で git unreachable 化し、make_sandbox --soft が rc=1 で返る (subshell が
+# exit せず caller が `if !` で受けられる) ことを assert する。
+# 注意: bash builtin (cd, mktemp は core utility) は PATH 不要だが、git は PATH 探索される。
+# `command -v git` が無効化されることで `git init` が "command not found" になる。
+# `|| rc=$?` 形式: set -e の下で非ゼロ exit が abort を起こさないよう短絡。
+rc_soft_fail=0
+bash -c "source '$HELPERS'; PATH=/dev/null make_sandbox --soft 2>/dev/null" || rc_soft_fail=$?
+if [ "$rc_soft_fail" = "1" ]; then
+  outer_pass "TC-9.2: make_sandbox --soft returns rc=1 on git failure (does NOT exit)"
 else
-  outer_pass "TC-10.1: make_sandbox rejects unknown options"
+  outer_fail "TC-9.2: expected rc=1 (soft-fail), got rc=$rc_soft_fail"
+fi
+
+# === TC-10: make_sandbox unknown option → return 2 ===
+echo
+echo "TC-10: make_sandbox unknown option → return 2 (option parse error)"
+
+# F-06: rc=2 specific assertion. The previous test only verified non-zero exit,
+# which would not catch a regression that changes `return 2` to `return 1` (the
+# soft-fail code) or `exit 1` (hard-fail). Pin the specific contract.
+# `|| rc=$?` 形式: set -e の下で非ゼロ exit が abort を起こさないよう短絡。
+rc_bogus=0
+bash -c "source '$HELPERS'; make_sandbox --bogus 2>/dev/null" || rc_bogus=$?
+if [ "$rc_bogus" = "2" ]; then
+  outer_pass "TC-10.1: make_sandbox --bogus returns rc=2 (option parse error)"
+else
+  outer_fail "TC-10.1: expected rc=2 for unknown option, got rc=$rc_bogus"
 fi
 
 # === TC-11: make_plain_sandbox ===

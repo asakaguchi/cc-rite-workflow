@@ -174,10 +174,20 @@ assert_not_grep() {
 #   stderr : ERROR line(s) on failure, plus up to 5 lines of git's own stderr
 #            to aid CI debugging when git config issues break sandbox setup.
 #
+# Exit code semantics:
+#   exit 1   — hard-fail (default): mktemp -d or git init/commit failure halts the run.
+#   return 1 — soft-fail (--soft):  same failures, but caller decides skip vs. test failure.
+#   return 2 — option parse error:  unknown option or --branch without a non-empty argument.
+#
 # Caller patterns (the helper does NOT push to cleanup_dirs — callers do):
 #   SBX=$(make_sandbox); cleanup_dirs+=("$SBX")
 #   SBX=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX")
 #   if ! SBX=$(make_sandbox --soft); then skip "TC-N (sandbox setup failed)"; fi
+#
+# Note: $(make_sandbox) runs in a command substitution subshell — any cleanup_dirs
+# push performed inside a wrapper that is itself called via $(...) stays local to
+# that subshell and is lost in the parent. Callers MUST push to cleanup_dirs from
+# the parent shell (the assignment line, not inside the wrapper).
 make_sandbox() {
   local branch_arg=""
   local soft_fail=0
@@ -208,7 +218,10 @@ make_sandbox() {
     [ "$soft_fail" -eq 1 ] && return 1
     exit 1
   }
-  sandbox_err=$(mktemp /tmp/rite-sandbox-err-XXXXXX 2>/dev/null) || sandbox_err="/dev/null"
+  sandbox_err=$(mktemp /tmp/rite-sandbox-err-XXXXXX 2>/dev/null) || {
+    echo "WARNING: make_sandbox: mktemp /tmp/rite-sandbox-err-XXXXXX failed; diagnostic capture disabled (git stderr will not be surfaced on failure)" >&2
+    sandbox_err="/dev/null"
+  }
 
   if ! (
     cd "$d" || exit 1
@@ -216,8 +229,8 @@ make_sandbox() {
       # Pre-2.28 git lacks `-b`; fall back to plain init + checkout to ensure
       # the requested branch name is the active HEAD regardless of git version.
       if ! git init -q -b "$branch_arg" 2>"$sandbox_err"; then
-        git init -q 2>>"$sandbox_err"
-        git checkout -q -b "$branch_arg" 2>>"$sandbox_err" || true
+        git init -q 2>>"$sandbox_err" || exit 1
+        git checkout -q -b "$branch_arg" 2>>"$sandbox_err" || exit 1
       fi
     else
       git init -q 2>"$sandbox_err"
@@ -243,16 +256,42 @@ make_sandbox() {
 # The helper does NOT push to cleanup_dirs — callers do — to match the
 # `make_sandbox` convention (single uniform caller pattern across tests).
 #
+# Options:
+#   --soft  Return non-zero on mktemp failure (caller decides whether to `skip`
+#           or treat as test failure). Default behavior is hard-fail (echo ERROR
+#           + exit 1). Mirrors `make_sandbox` for API symmetry.
+#
 # Output:
 #   stdout : sandbox path (one line) on success.
 #   stderr : ERROR line on mktemp failure.
 #
+# Exit code semantics:
+#   exit 1   — hard-fail (default): mktemp -d failure halts the run.
+#   return 1 — soft-fail (--soft):  same failure, but caller decides skip vs. test failure.
+#   return 2 — option parse error:  unknown option.
+#
 # Caller pattern:
 #   sbx=$(make_plain_sandbox); cleanup_dirs+=("$sbx")
+#   if ! sbx=$(make_plain_sandbox --soft); then skip "TC-N (sandbox setup failed)"; fi
 make_plain_sandbox() {
+  local soft_fail=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --soft)
+        soft_fail=1
+        shift
+        ;;
+      *)
+        echo "ERROR: make_plain_sandbox: unknown option '$1'" >&2
+        return 2
+        ;;
+    esac
+  done
+
   local d
   d=$(mktemp -d) || {
     echo "ERROR: make_plain_sandbox: mktemp -d failed" >&2
+    [ "$soft_fail" -eq 1 ] && return 1
     exit 1
   }
   echo "$d"

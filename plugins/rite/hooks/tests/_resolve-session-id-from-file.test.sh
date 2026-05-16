@@ -72,19 +72,19 @@ assert_match() {
   fi
 }
 
-# Issue #990: thin wrapper preserving the auto-cleanup-push convention used
-# throughout this file's tests; built on make_plain_sandbox from _test-helpers.sh.
+# Issue #990: thin wrapper built on make_plain_sandbox from _test-helpers.sh.
+# IMPORTANT: This wrapper does NOT push to cleanup_dirs — callers MUST push
+# from the parent shell (after capturing $(setup_session_id_sandbox)) because
+# any push performed inside $(...) is lost in the command-substitution subshell.
+# This matches the helper's documented caller convention (see _test-helpers.sh).
 setup_session_id_sandbox() {
-  local sbx
-  sbx=$(make_plain_sandbox)
-  cleanup_dirs+=("$sbx")
-  printf '%s' "$sbx"
+  make_plain_sandbox
 }
 
 # ================================================================
 echo "TC-1: 正常 path + valid UUID file → exit 0 + UUID stdout (lowercase)"
 # ================================================================
-sbx=$(setup_session_id_sandbox)
+sbx=$(setup_session_id_sandbox); cleanup_dirs+=("$sbx")
 echo "550e8400-e29b-41d4-a716-446655440000" > "$sbx/.rite-session-id"
 out=$(bash "$HELPER" "$sbx" 2>&1) && rc=0 || rc=$?
 assert_eq "TC-1.1: exit code is 0" "0" "$rc"
@@ -93,7 +93,7 @@ assert_eq "TC-1.2: stdout is the validated UUID" "550e8400-e29b-41d4-a716-446655
 # ================================================================
 echo "TC-2: 正常 path + .rite-session-id 不在 → exit 0 + empty stdout"
 # ================================================================
-sbx=$(setup_session_id_sandbox)
+sbx=$(setup_session_id_sandbox); cleanup_dirs+=("$sbx")
 out=$(bash "$HELPER" "$sbx" 2>&1) && rc=0 || rc=$?
 assert_eq "TC-2.1: exit code is 0" "0" "$rc"
 assert_eq "TC-2.2: stdout is empty (file absent → graceful)" "" "$out"
@@ -101,7 +101,7 @@ assert_eq "TC-2.2: stdout is empty (file absent → graceful)" "" "$out"
 # ================================================================
 echo "TC-3: 正常 path + invalid UUID content → exit 0 + empty stdout"
 # ================================================================
-sbx=$(setup_session_id_sandbox)
+sbx=$(setup_session_id_sandbox); cleanup_dirs+=("$sbx")
 echo "not-a-valid-uuid" > "$sbx/.rite-session-id"
 out=$(bash "$HELPER" "$sbx" 2>&1) && rc=0 || rc=$?
 assert_eq "TC-3.1: exit code is 0 (graceful fallback)" "0" "$rc"
@@ -110,7 +110,7 @@ assert_eq "TC-3.2: stdout is empty (validation 失敗 → empty)" "" "$out"
 # ================================================================
 echo "TC-4: 正常 path + empty file → exit 0 + empty stdout"
 # ================================================================
-sbx=$(setup_session_id_sandbox)
+sbx=$(setup_session_id_sandbox); cleanup_dirs+=("$sbx")
 : > "$sbx/.rite-session-id"
 out=$(bash "$HELPER" "$sbx" 2>&1) && rc=0 || rc=$?
 assert_eq "TC-4.1: exit code is 0" "0" "$rc"
@@ -119,7 +119,8 @@ assert_eq "TC-4.2: stdout is empty" "" "$out"
 # ================================================================
 echo "TC-5: STATE_ROOT に path traversal (../foo) → exit 1 + ERROR"
 # ================================================================
-out=$(bash "$HELPER" "$(setup_session_id_sandbox)/../foo" 2>&1) && rc=0 || rc=$?
+sbx=$(setup_session_id_sandbox); cleanup_dirs+=("$sbx")
+out=$(bash "$HELPER" "$sbx/../foo" 2>&1) && rc=0 || rc=$?
 assert_eq "TC-5.1: exit code is 1" "1" "$rc"
 assert_match "TC-5.2: ERROR mentions 'unsafe traversal or shell metacharacter'" "unsafe traversal or shell metacharacter" "$out"
 
@@ -159,7 +160,7 @@ assert_match "TC-9.2: ERROR mentions usage" "usage" "$out"
 # ================================================================
 echo "TC-10: 正常 path + .rite-session-id が whitespace のみ → exit 0 + empty"
 # ================================================================
-sbx=$(setup_session_id_sandbox)
+sbx=$(setup_session_id_sandbox); cleanup_dirs+=("$sbx")
 printf '   \t\n   ' > "$sbx/.rite-session-id"
 out=$(bash "$HELPER" "$sbx" 2>&1) && rc=0 || rc=$?
 assert_eq "TC-10.1: exit code is 0 (whitespace strip → empty raw → fallback)" "0" "$rc"
@@ -171,7 +172,7 @@ echo "TC-11 (NEW API verification): UPPERCASE UUID input → lowercase normalize
 # _resolve-session-id.sh が cycle 44 F-10 で導入した case-insensitive accept + lowercase
 # normalize の transitive 動作を helper 経由で verify する (caller 経由の indirect カバレッジ
 # を補強する direct test)。
-sbx=$(setup_session_id_sandbox)
+sbx=$(setup_session_id_sandbox); cleanup_dirs+=("$sbx")
 echo "550E8400-E29B-41D4-A716-446655440000" > "$sbx/.rite-session-id"
 out=$(bash "$HELPER" "$sbx" 2>&1) && rc=0 || rc=$?
 assert_eq "TC-11.1: exit code is 0" "0" "$rc"

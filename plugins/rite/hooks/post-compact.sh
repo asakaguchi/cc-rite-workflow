@@ -129,6 +129,69 @@ if acquire_wm_lock "$LOCKDIR"; then
   release_wm_lock "$LOCKDIR"
 fi
 
+# --- Issue #1003 AC-2/AC-7: PR Ready/Status mismatch reconciliation safety net ---
+# When workflow active + PR exists + PR is Ready (isDraft=false) + Status != In Review,
+# attempt reconciliation by re-invoking projects-status-update.sh. Emit incident sentinel
+# on failure so silent Status mismatch never persists past compaction (Issue #1003 root cause:
+# observability gap when Phase 4.2 / 5.5.1 silently skips).
+#
+# Best-effort: all `gh` calls have `|| true` and `2>/dev/null` to avoid blocking the
+# normal post-compact recovery path.
+if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
+  PLUGIN_ROOT_PC="$(dirname "$SCRIPT_DIR")"
+  PR_IS_DRAFT=$(cd "$STATE_ROOT" 2>/dev/null && gh pr view "$PR" --json isDraft --jq '.isDraft // null' 2>/dev/null) || PR_IS_DRAFT=""
+  if [ "$PR_IS_DRAFT" = "false" ]; then
+    REPO_INFO=$(cd "$STATE_ROOT" 2>/dev/null && gh repo view --json owner,name 2>/dev/null) || REPO_INFO=""
+    REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>/dev/null) || REPO_OWNER=""
+    REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>/dev/null) || REPO_NAME=""
+    PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || PROJECTS_ENABLED=""
+    PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || PROJECT_NUMBER=""
+    if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ] && [ -n "$REPO_OWNER" ] && [ -n "$REPO_NAME" ] && [ "$ISSUE" != "unknown" ]; then
+      CURRENT_STATUS=$(cd "$STATE_ROOT" 2>/dev/null && gh api graphql -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      projectItems(first: 10) {
+        nodes {
+          project { number }
+          fieldValues(first: 20) {
+            nodes {
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                field { ... on ProjectV2SingleSelectField { name } }
+                name
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}' -f owner="$REPO_OWNER" -f repo="$REPO_NAME" -F number="$ISSUE" 2>/dev/null \
+        | jq -r --argjson pn "$PROJECT_NUMBER" \
+          '[.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>/dev/null) || CURRENT_STATUS=""
+      if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ]; then
+        echo "[rite] ⚠️ post-compact mismatch detected: Issue #$ISSUE PR=#$PR isDraft=false Status=\"$CURRENT_STATUS\" (expected In Review)" >&2
+        RECONCILE_RESULT=$(cd "$STATE_ROOT" 2>/dev/null && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$(jq -n \
+          --argjson issue "$ISSUE" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
+          --argjson project_number "$PROJECT_NUMBER" --arg status "In Review" \
+          --argjson auto_add false --argjson non_blocking true \
+          '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>/dev/null) || RECONCILE_RESULT=""
+        RECONCILE_STATUS=$(printf '%s' "$RECONCILE_RESULT" | jq -r '.result // "failed"' 2>/dev/null) || RECONCILE_STATUS="failed"
+        if [ "$RECONCILE_STATUS" = "updated" ]; then
+          echo "[rite] ✅ post-compact reconciliation succeeded: Issue #$ISSUE Status → In Review" >&2
+        else
+          echo "[rite] ❌ post-compact reconciliation failed (result=$RECONCILE_STATUS)" >&2
+          bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+            --type projects_status_in_review_missing \
+            --details "Issue #$ISSUE post-compact reconciliation failed (PR=#$PR isDraft=false Status=$CURRENT_STATUS reconcile_result=$RECONCILE_STATUS)" \
+            --root-cause-hint "post_compact_reconciliation_failed" \
+            --pr-number "$PR" >&2 || true
+        fi
+      fi
+    fi
+  fi
+fi
+
 # --- stderr: user-facing notification ---
 echo "[rite] compact 後の自動復帰を実行中 (Issue #${ISSUE}, Phase: ${PHASE})" >&2
 

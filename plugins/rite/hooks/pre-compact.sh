@@ -153,7 +153,11 @@ if acquire_wm_lock "$LOCKDIR"; then
     fi
 
     # Delegate to shared helper (runs in subshell to isolate cd)
-    (
+    # Issue #1003 AC-7/AC-8 observability: emit snapshot diag log so analysts can correlate
+    # pre-compact write timing with subsequent post-compact phase. Without this, the
+    # `create_delegation` snapshot fixation hypothesis is unverifiable (no record of which
+    # phase value was captured at compact time).
+    if (
       cd "$STATE_ROOT" || exit 1
       WM_ISSUE_NUMBER="$ACTIVE_ISSUE" \
       WM_SKIP_LOCK="true" \
@@ -166,7 +170,13 @@ if acquire_wm_lock "$LOCKDIR"; then
       WM_PR_NUMBER="$PR_NUM" \
       WM_LOOP_COUNT="$LOOP_CNT" \
         update_local_work_memory
-    ) || echo "rite: pre-compact: work memory update failed (exit $?)" >&2
+    ); then
+      echo "[CONTEXT] PRE_COMPACT_SNAPSHOT_RECORDED=1; issue=$ACTIVE_ISSUE; phase=$PHASE; pr=$PR_NUM; ts=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >&2
+    else
+      _wm_rc=$?
+      echo "rite: pre-compact: work memory update failed (exit $_wm_rc)" >&2
+      echo "[CONTEXT] PRE_COMPACT_SNAPSHOT_FAILED=1; issue=$ACTIVE_ISSUE; phase=$PHASE; pr=$PR_NUM; rc=$_wm_rc; reason=update_local_work_memory_failed" >&2
+    fi
   fi
 
   release_wm_lock "$LOCKDIR"

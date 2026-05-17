@@ -3,6 +3,12 @@
 # Usage: bash plugins/rite/hooks/tests/pre-tool-bash-guard.test.sh
 set -euo pipefail
 
+# Issue #998: Tier 3 (env var) subagent detection を導入したため、host 環境に
+# CLAUDE_SUBAGENT_TYPE / CLAUDE_AGENT_TYPE が export されていると既存の
+# main-session allow テスト (TC-022 stderr branch / TC-023 / TC-028 / TC-062 等) が
+# Tier 3 経路で誤って deny 判定され flake する。全テストで一律遮断する。
+unset CLAUDE_SUBAGENT_TYPE CLAUDE_AGENT_TYPE
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$SCRIPT_DIR/../pre-tool-bash-guard.sh"
 PASS=0
@@ -1343,6 +1349,205 @@ else
   fail "TC-PRE-GUARD-PER-SESSION-2 expected allow, got decision=$decision"
 fi
 rm -rf "$tmpdir"
+
+# --------------------------------------------------------------------------
+# subagent detection fallback (input JSON field + environment variable)
+#
+# Tier 2 (input JSON subagent_type / agent_type field) と Tier 3 (CLAUDE_SUBAGENT_TYPE /
+# CLAUDE_AGENT_TYPE 環境変数) が transcript_path 不在/規約変更時の future-proofing として
+# 機能することを確認する。既存 transcript_path 経路 (Tier 1) との独立性も担保する。
+#
+# テストでは host 環境からの env var leakage を遮断するため `env -u CLAUDE_SUBAGENT_TYPE
+# -u CLAUDE_AGENT_TYPE` で囲み、Tier 2 単独 / Tier 3 単独動作を独立に検証する。
+# Tier 3 env var leakage 遮断のため、`run_guard_raw` とは env scope が異なる別 helper
+# として `run_guard_clean_env` を定義する (TC-114 / TC-114b の env var SET 経路も引数で
+# 表現可能にしている)。
+# --------------------------------------------------------------------------
+
+# alias of MAIN_TRANSCRIPT (L397) — Tier 2/3 セクションを self-contained に保つため局所定義
+MAIN_TRANSCRIPT_TC113="$MAIN_TRANSCRIPT"
+
+# Helper: run hook with raw JSON input + clean env (Tier 3 env vars unset)
+#   Optional 引数: $2 / $3 に `NAME=value` 形式を渡すと、env -u で unset した後に SET する
+#   (TC-114 / TC-114b の Tier 3 env var 経路を helper 経由で表現可能にする)。
+run_guard_clean_env() {
+  local raw_input="$1"
+  local set1="${2:-}"
+  local set2="${3:-}"
+  local rc=0
+  local output
+  # env(1) は引数順序で処理する: `-u X` で X を unset した直後の `X=val` は最終的に
+  # X=val として export される。${var:+...} expansion により空引数を env に渡さない。
+  output=$(env -u CLAUDE_SUBAGENT_TYPE -u CLAUDE_AGENT_TYPE ${set1:+"$set1"} ${set2:+"$set2"} bash -c 'echo "$1" | bash "$2" 2>"$3"' _ "$raw_input" "$HOOK" "$STDERR_FILE") || rc=$?
+  echo "$output"
+  return $rc
+}
+
+# --------------------------------------------------------------------------
+# TC-113: subagent_type field set → Tier 2 deny (git checkout blocked)
+# --------------------------------------------------------------------------
+echo "TC-113: input JSON subagent_type field → Tier 2 deny"
+rc=0
+tc113_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: "code-reviewer"}')
+output=$(run_guard_clean_env "$tc113_input") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+stderr_log=$(cat "$STDERR_FILE")
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-113 subagent_type field triggers Tier 2 fallback"
+else
+  fail "TC-113 expected deny, got decision=$decision reason=$reason"
+fi
+if [[ "$stderr_log" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-113 stderr block log recorded"
+else
+  fail "TC-113 expected stderr block log, got: $stderr_log"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-113b: agent_type field set (subagent_type 不在) → Tier 2 deny
+#   実装が `.subagent_type // .agent_type` の OR 経路を持つことを検証 (silent breakage 防止)
+# --------------------------------------------------------------------------
+echo "TC-113b: agent_type field set → Tier 2 deny"
+rc=0
+tc113b_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, agent_type: "code-reviewer"}')
+output=$(run_guard_clean_env "$tc113b_input") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+stderr_log=$(cat "$STDERR_FILE")
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-113b agent_type field triggers Tier 2 fallback (OR with subagent_type)"
+else
+  fail "TC-113b expected deny, got decision=$decision reason=$reason"
+fi
+if [[ "$stderr_log" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-113b stderr block log recorded"
+else
+  fail "TC-113b expected stderr block log, got: $stderr_log"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-113c: subagent_type: "" (空文字列) → Tier 2 fires NOT (main session 扱い)
+#   `| strings` filter + `[ -n "" ]` false により presence-only check が空文字を弾く挙動を検証
+# --------------------------------------------------------------------------
+echo "TC-113c: subagent_type=\"\" → Tier 2 does not fire (main session)"
+rc=0
+tc113c_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: ""}')
+output=$(run_guard_clean_env "$tc113c_input") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-113c empty subagent_type does not trigger Tier 2 (main session preserved)"
+else
+  fail "TC-113c expected allow, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-113d: subagent_type=123 (non-string numeric) → Tier 2 fires NOT
+#   `(.subagent_type | strings // "")` filter が numeric 値を空文字に正規化することを検証。
+#   `| strings` filter を `// empty` 等に縮退する mutation を kill する coverage。
+# --------------------------------------------------------------------------
+echo "TC-113d: subagent_type=123 → Tier 2 does not fire (numeric rejected by | strings)"
+rc=0
+tc113d_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: 123}')
+output=$(run_guard_clean_env "$tc113d_input") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-113d numeric subagent_type does not trigger Tier 2 (| strings filter rejects non-string)"
+else
+  fail "TC-113d expected allow, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-113e: subagent_type=[...] (non-string array) → Tier 2 fires NOT
+#   `(.subagent_type | strings // "")` filter が array 値を空文字に正規化することを検証。
+# --------------------------------------------------------------------------
+echo "TC-113e: subagent_type=[...] → Tier 2 does not fire (array rejected by | strings)"
+rc=0
+tc113e_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: ["code-reviewer", "security"]}')
+output=$(run_guard_clean_env "$tc113e_input") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-113e array subagent_type does not trigger Tier 2 (| strings filter rejects non-string)"
+else
+  fail "TC-113e expected allow, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-113f: subagent_type={...} (non-string object) → Tier 2 fires NOT
+#   `(.subagent_type | strings // "")` filter が object 値を空文字に正規化することを検証。
+# --------------------------------------------------------------------------
+echo "TC-113f: subagent_type={...} → Tier 2 does not fire (object rejected by | strings)"
+rc=0
+tc113f_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: {name: "code-reviewer", level: 1}}')
+output=$(run_guard_clean_env "$tc113f_input") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-113f object subagent_type does not trigger Tier 2 (| strings filter rejects non-string)"
+else
+  fail "TC-113f expected allow, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-114: CLAUDE_SUBAGENT_TYPE env var set → Tier 3 deny
+#   run_guard_clean_env の第 2 引数で SUBAGENT 単独経路を検証 (helper 経由 = DRY)
+# --------------------------------------------------------------------------
+echo "TC-114: CLAUDE_SUBAGENT_TYPE env var → Tier 3 deny"
+rc=0
+tc114_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git reset --hard HEAD"}, cwd: "/tmp", transcript_path: $tp}')
+output=$(run_guard_clean_env "$tc114_input" "CLAUDE_SUBAGENT_TYPE=code-reviewer") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+stderr_log=$(cat "$STDERR_FILE")
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-114 CLAUDE_SUBAGENT_TYPE triggers Tier 3 fallback"
+else
+  fail "TC-114 expected deny via env var, got decision=$decision reason=$reason"
+fi
+if [[ "$stderr_log" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-114 stderr block log recorded"
+else
+  fail "TC-114 expected stderr block log, got: $stderr_log"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-114b: CLAUDE_AGENT_TYPE env var single (SUBAGENT unset) → Tier 3 deny
+#   実装 `[ -n "${CLAUDE_SUBAGENT_TYPE:-}" ] || [ -n "${CLAUDE_AGENT_TYPE:-}" ]` の OR 経路検証
+# --------------------------------------------------------------------------
+echo "TC-114b: CLAUDE_AGENT_TYPE env var → Tier 3 deny"
+rc=0
+tc114b_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git reset --hard HEAD"}, cwd: "/tmp", transcript_path: $tp}')
+output=$(run_guard_clean_env "$tc114b_input" "CLAUDE_AGENT_TYPE=code-reviewer") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+stderr_log=$(cat "$STDERR_FILE")
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-114b CLAUDE_AGENT_TYPE triggers Tier 3 fallback (OR with CLAUDE_SUBAGENT_TYPE)"
+else
+  fail "TC-114b expected deny via env var, got decision=$decision reason=$reason"
+fi
+if [[ "$stderr_log" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-114b stderr block log recorded"
+else
+  fail "TC-114b expected stderr block log, got: $stderr_log"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-115: All three tiers unset → main session, git checkout allowed (regression guard)
+# --------------------------------------------------------------------------
+echo "TC-115: 3 tiers unset → main session allowed (regression guard)"
+rc=0
+tc115_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp}')
+output=$(run_guard_clean_env "$tc115_input") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-115 main session git checkout allowed (Tier 2/3 no false positives)"
+else
+  fail "TC-115 expected allow, got rc=$rc output=$output"
+fi
+echo ""
 
 # --------------------------------------------------------------------------
 # Summary

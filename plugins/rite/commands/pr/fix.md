@@ -795,9 +795,10 @@ if [ -z "$review_source" ]; then
     # mktemp 失敗時も WARNING を emit (cleanup.md Phase 2.5 / Phase 6.1.a と対称化)。
     # 旧実装は `|| find_err=""` で silent fallback し、find の IO エラー詳細を失う経路があった。
     if ! find_err=$(mktemp /tmp/rite-fix-find-err-XXXXXX); then
-      echo "WARNING: find stderr 退避用 tempfile の mktemp に失敗しました。find の IO エラー詳細は失われます" >&2
+      mktemp_find_err_rc=$?
+      echo "WARNING: find stderr 退避用 tempfile の mktemp に失敗しました (rc=$mktemp_find_err_rc)。find の IO エラー詳細は失われます" >&2
       echo "  対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
-      echo "[CONTEXT] REVIEW_SOURCE_FIND_FAILED=1; reason=mktemp_failure_find_err" >&2
+      echo "[CONTEXT] REVIEW_SOURCE_FIND_FAILED=1; reason=mktemp_failure_find_err; rc=$mktemp_find_err_rc" >&2
       find_err=""
     fi
 
@@ -1738,7 +1739,7 @@ exit 1
 | `pr_comment_commit_sha_mismatch` | Priority 3 の PR コメント Raw JSON の `commit_sha` が現 HEAD と不一致 (stale detection、WARNING のみで continue) |
 | `jq_error_on_commit_sha` | Priority 0/2/3 の `.commit_sha` 抽出 jq が IO/binary エラーで失敗 (I-4 対応。stale detection 無効化を silent にしない。`priority=0|2|3` として retained flag に付記される) |
 | `local_file_find_io_error` | Priority 2 の `find .rite/review-results/` が IO エラーで failed (L-3 対応) |
-| `mktemp_failure_find_err` | Priority 2 の find stderr 退避用 tempfile の mktemp が失敗 (C-5 対応、cleanup.md Phase 2.5 と対称) |
+| `mktemp_failure_find_err` | Priority 2 の find stderr 退避用 tempfile の mktemp が失敗 (C-5 対応、cleanup.md Phase 2.5 と対称)。silent skip 防止のため WARNING + retained flag を必ず emit する (rc 付き、Issue #1025 対応) |
 | `latest_file_stat_failure` | Priority 2 で find が見つけた `latest_file` が `-f` check で脱落 (M-4 対応、permission denied / symlink 破壊) |
 | `state_file_read_io_error` | Phase 1.2.0 Priority 1 の retry state file `cat` が IO エラーで失敗 (I-1 対応、hard gate を safe side に倒すため `retry_current=999`) |
 | `happy_path_rm_failure` | Phase 1.2.0 happy path の retry state file 削除が失敗 (I-2 対応、cleanup.md Phase 2.5 と対称) |

@@ -616,19 +616,21 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 **Detection scope** — recognised sentinel `type` values:
 
-> **Note**: 本 table は **user-facing recommended action がある type 限定** で列挙する。`workflow-incident-emit.sh` の allowlist には他の type (`cross_session_takeover_refused` / `legacy_state_corrupt` 等) も含まれており、emit 可能な全 type の単一源は allowlist (case 句) を参照すること。
+> **Note**: 本 table は **user-facing recommended action がある 8 type 限定** で列挙する (Issue #1003 AC-4 / AC-7 / AC-8 で導入された Projects 系 2 type を含む)。`workflow-incident-emit.sh` の allowlist (case 句) には他の type (`cross_session_takeover_refused` / `legacy_state_corrupt`) も含まれているが user-facing action がないため本 table では割愛する。emit 可能な全 type の単一源は allowlist case 句 (cycle 8 C7-F20/C7-F22 対応で本 table と同期 maintenance)。
+>
+> **Source 列の凡例** (cycle 8 C7-F21 対応): 「**Emit site**」は `workflow-incident-emit.sh` が呼ばれるコード上の正確な場所、「**Contract SoT**」は emit 規約 (silent skip 禁止 / details に注入する root cause 等) が宣言された reference doc を指す。両者は orthogonal で、emit 発火源は Emit site のみ。
 
-| Type | Source | Default action when detected |
-|------|--------|------------------------------|
-| `skill_load_failure` | Orchestrator post-condition check | AskUserQuestion → register Issue / skip |
-| `hook_abnormal_exit` | Skill internal failure paths | AskUserQuestion → register Issue / skip |
-| `manual_fallback_adopted` | Orchestrator fallback prompts | AskUserQuestion → register Issue / skip |
-| `wiki_ingest_skipped` | review/fix/close Phase X.X.W で `wiki.enabled=false` / `wiki.auto_ingest=false`、**または** `wiki-ingest-commit.sh` exit 2 (wiki branch 不在 — fresh clone) | AskUserQuestion → register Issue / skip。Sub-case 詳細は reference §1 |
-| `wiki_ingest_failed` | `wiki-ingest-trigger.sh` exit non-zero / non-2、**または** `wiki-ingest-commit.sh` exit non-0/2/4 (git stash/checkout/commit 失敗) | AskUserQuestion → register Issue / skip — register 推奨 |
-| `wiki_ingest_push_failed` | `wiki-ingest-commit.sh` exit 4 — commit は local wiki branch に landed、origin push 失敗 | register 推奨。Manual recovery: `git push origin wiki` |
-| `gitignore_drift` | `/rite:lint` Phase 3.9 で `gitignore-health-check.sh` が `.rite/wiki/` 不在を検出 (last-line-of-defense) | register 推奨。Manual recovery: restore `.rite/wiki/` to `.gitignore` |
-| `projects_status_update_failed` | `pr/ready.md` Phase 4.2 / `start-finalize.md` Phase 5.5.1 / `references/projects-status-update-callsites.md` Common contract item 5 経由で `projects-status-update.sh` が `failed` / `skipped_not_in_project` を返した場合 (Issue #1003 AC-4 silent skip 禁止 contract) | AskUserQuestion → register Issue / skip — register 推奨 (Status 滞留の原因調査が必要) |
-| `projects_status_in_review_missing` | `start-finalize.md` Workflow Termination Step 0 / `start.md` Mandatory After 5.5-Termination Step 1.5 / `post-compact.sh` reconciliation 失敗時に PR Ready 化済 (`isDraft=false`) かつ Issue Status が `In Review` でない不整合を検出 (Issue #1003 AC-7/AC-8 多層観測 contract) | AskUserQuestion → register Issue / skip — register 推奨 (defense-in-depth 失敗の兆候) |
+| Type | Emit site | Contract SoT | Default action when detected |
+|------|-----------|-------------|------------------------------|
+| `skill_load_failure` | Orchestrator post-condition check | [workflow-incident-emit-pattern.md](./references/workflow-incident-emit-pattern.md) | AskUserQuestion → register Issue / skip |
+| `hook_abnormal_exit` | Skill internal failure paths | [workflow-incident-emit-pattern.md](./references/workflow-incident-emit-pattern.md) | AskUserQuestion → register Issue / skip |
+| `manual_fallback_adopted` | Orchestrator fallback prompts | [workflow-incident-emit-pattern.md](./references/workflow-incident-emit-pattern.md) | AskUserQuestion → register Issue / skip |
+| `wiki_ingest_skipped` | review/fix/close Phase X.X.W で `wiki.enabled=false` / `wiki.auto_ingest=false`、**または** `wiki-ingest-commit.sh` exit 2 (wiki branch 不在 — fresh clone) | [workflow-incident-detection.md](./references/workflow-incident-detection.md) §1 (sub-case 詳細) | AskUserQuestion → register Issue / skip |
+| `wiki_ingest_failed` | `wiki-ingest-trigger.sh` exit non-zero / non-2、**または** `wiki-ingest-commit.sh` exit non-0/2/4 (git stash/checkout/commit 失敗) | [workflow-incident-detection.md](./references/workflow-incident-detection.md) | AskUserQuestion → register Issue / skip — register 推奨 |
+| `wiki_ingest_push_failed` | `wiki-ingest-commit.sh` exit 4 — commit は local wiki branch に landed、origin push 失敗 | [workflow-incident-detection.md](./references/workflow-incident-detection.md) | register 推奨。Manual recovery: `git push origin wiki` |
+| `gitignore_drift` | `/rite:lint` Phase 3.9 で `gitignore-health-check.sh` が `.rite/wiki/` 不在を検出 (last-line-of-defense) | [workflow-incident-detection.md](./references/workflow-incident-detection.md) | register 推奨。Manual recovery: restore `.rite/wiki/` to `.gitignore` |
+| `projects_status_update_failed` | `pr/ready.md` Phase 4.2 / `start-finalize.md` Phase 5.5.1 で `projects-status-update.sh` が `failed` / `skipped_not_in_project` を返した場合 | [projects-status-update-callsites.md](./references/projects-status-update-callsites.md) Common contract item 5 (Issue #1003 AC-4 silent skip 禁止 contract) | AskUserQuestion → register Issue / skip — register 推奨 (Status 滞留の原因調査が必要) |
+| `projects_status_in_review_missing` | `start-finalize.md` Workflow Termination Step 0 / `start.md` Mandatory After 5.5-Termination Step 1.5 / `post-compact.sh` reconciliation 失敗時に PR Ready 化済 (`isDraft=false`) かつ Issue Status が `In Review` でない不整合を検出 | Issue #1003 AC-7/AC-8 多層観測 contract | AskUserQuestion → register Issue / skip — register 推奨 (defense-in-depth 失敗の兆候) |
 
 **When to execute** (explicit routing):
 
@@ -677,7 +679,7 @@ rm -f .rite-compact-state 2>/dev/null || true
 rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=start_md_termination" >&2
 ```
 
-**Step 1.5 (Issue #1003 AC-8 — caller-side In Review log missing detection)**: success path では sub-skill `start-finalize.md` Workflow Termination Step 0 が primary 検知を担うが、abort path (`[start:finalize:aborted]`) では sub-skill の Workflow Termination 自体が走らないため、caller 側で同等の defense-in-depth 検知を実行する。**実際に catch する scenario**: abort entry detection 経由で sub-skill が Workflow Termination Step 0 を skip した success-like path (PR は既に Ready 化済 `isDraft=false` だが finalize が abort 入口で停止) で Status が `In Progress` のまま放置される事象を最終 fallback で surface する。なお `[ready:error]` user-terminate 経路は `gh pr ready` 自体が失敗するため PR は draft のままで本 Step 1.5 の `isDraft=false` gating を通過しない (Status 滞留は別の経路 — `projects_status_update_failed` sentinel — で検出される)。
+**Step 1.5 (Issue #1003 AC-8 — caller-side In Review log missing detection)**: success path では sub-skill `start-finalize.md` Workflow Termination Step 0 が primary 検知を担うが、abort path (`[start:finalize:aborted]`) では sub-skill の Workflow Termination 自体が走らないため、caller 側で同等の defense-in-depth 検知を実行する。**実際に catch する scenario**: abort entry detection 経由で sub-skill が Workflow Termination Step 0 を skip した success-like path (PR は既に Ready 化済 `isDraft=false` だが finalize が abort 入口で停止) で Status が `In Progress` のまま放置される事象を最終 fallback で surface する。`[ready:error]` 経路は emit subpath によって挙動が異なる: (a) `gh pr ready` API 自体の失敗 → PR は draft のまま (`isDraft=true`) で本 Step 1.5 の `isDraft=false` gating を通過しない / (b) `gh pr ready` 成功後の post-processing 失敗 (例: Phase 4.2 `projects-status-update.sh` の skip/fail) → PR は既に Ready 化済 (`isDraft=false`) で本 Step 1.5 が surface 対象となる / (c) その他の sub-skill 内で `[ready:error]` 化された経路でも (b) と同様に `isDraft=false` 状態がありうるため、断定的に "PR は draft のまま" とは言えない (Status 滞留は本 sentinel または `projects_status_update_failed` sentinel のいずれかで検出される)。詳細な `[ready:error]` 全 emit 経路は [pr/ready.md](../pr/ready.md) を参照。
 
 ```bash
 # Defense-in-depth caller-side check: PR 作成済 (pr_number != 0) かつ projects 有効化されている場合のみ
@@ -692,44 +694,80 @@ rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANU
 # 共通 helper (`plugins/rite/hooks/check-ac8-status-mismatch.sh` 等) への抽出は別 Issue 推奨 (本 PR scope 外)。
 # 短期的には docstring / 関数名 / log prefix のいずれかを変更した場合、両 site を同時更新すること。
 (
+  # cycle 8 C7-F11 対応: `{pr_number}` placeholder substitute 検証。
+  # orchestrator が placeholder を substitute せずに literal `{pr_number}` を残した場合、
+  # 後段の `workflow-incident-emit.sh --pr-number {pr_number}` は `^[0-9]+$` regex 違反で
+  # silent fail (`>&2 || true` で握りつぶし) し、AC-8 検知自体が無音 skip される。
+  # case 文で literal placeholder / empty を fail-fast 検出し observable に。
+  case "{pr_number}" in
+    ''|'{pr_number}')
+      echo "[rite] ⚠️ Step 1.5: {pr_number} placeholder が未 substitute (literal='{pr_number}') — AC-8 検知を skip" >&2
+      exit 0 ;;
+  esac
   if [ "{pr_number}" != "0" ] && [ -n "{pr_number}" ]; then
     PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' rite-config.yml 2>/dev/null)
     PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' rite-config.yml 2>/dev/null)
     if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ]; then
       set -o pipefail
       pr_view_err=""
+      repo_view_owner_err=""
+      repo_view_name_err=""
       gql_err=""
       jq_err=""
-      _step15_cleanup() { rm -f "${pr_view_err:-}" "${gql_err:-}" "${jq_err:-}"; }
+      _step15_cleanup() {
+        rm -f "${pr_view_err:-}" "${repo_view_owner_err:-}" "${repo_view_name_err:-}" \
+              "${gql_err:-}" "${jq_err:-}"
+      }
       trap 'rc=$?; _step15_cleanup; exit $rc' EXIT
       trap '_step15_cleanup; exit 130' INT
       trap '_step15_cleanup; exit 143' TERM
       trap '_step15_cleanup; exit 129' HUP
       pr_view_err=$(mktemp /tmp/rite-step15-pr-err-XXXXXX) || pr_view_err=""
+      repo_view_owner_err=$(mktemp /tmp/rite-step15-repo-owner-err-XXXXXX) || repo_view_owner_err=""
+      repo_view_name_err=$(mktemp /tmp/rite-step15-repo-name-err-XXXXXX) || repo_view_name_err=""
       gql_err=$(mktemp /tmp/rite-step15-gql-err-XXXXXX) || gql_err=""
       jq_err=$(mktemp /tmp/rite-step15-jq-err-XXXXXX) || jq_err=""
+
+      # cycle 8 C7-F05 対応: cascade emit guard。`_owner_repo_ok` flag で後段 graphql / sentinel emit を
+      # skip させ、`projects_status_in_review_missing` の 3 連続 sentinel emit (owner / name / graphql)
+      # を回避する。最初の失敗で sentinel emit 後、後段は flag check で silent skip (dead branch)。
+      _owner_repo_ok=1
 
       # {owner}/{repo} を sub-shell 内で local 取得する (cycle 3 F-01 対応)。
       # Placeholder Legend は宣言のみで Phase 0/0.1/0.2/0.3/1/2 に explicit retrieval phase
       # が存在せず、orchestrator LLM の ad-hoc 取得に依存していた。sub-shell scope 内完結に変更することで
       # orchestrator 状態への依存を排除し、未取得時の AC-8 core 検知 silent skip 経路を遮断する。
-      if ! _owner=$(gh repo view --json owner --jq '.owner.login' 2>/dev/null) || [ -z "$_owner" ]; then
-        echo "[rite] ⚠️ Step 1.5: gh repo view --json owner に失敗 — AC-8 検知を skip" >&2
+      # cycle 8 C7-F01 対応: stderr を tempfile capture して details に注入し、auth / rate-limit /
+      # network / permission の root cause attribution を可能にする (4-site 対称化)。
+      if ! _owner=$(gh repo view --json owner --jq '.owner.login' 2>"${repo_view_owner_err:-/dev/null}") || [ -z "$_owner" ]; then
+        repo_owner_err_oneline=$(head -c 200 "${repo_view_owner_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+        echo "[rite] ⚠️ Step 1.5: gh repo view --json owner に失敗 (stderr=$repo_owner_err_oneline) — AC-8 検知を skip" >&2
         bash {plugin_root}/hooks/workflow-incident-emit.sh \
           --type projects_status_in_review_missing \
-          --details "Issue #{issue_number} caller-side Step 1.5: gh repo view --json owner failed (AC-8 detection skipped)" \
+          --details "Issue #{issue_number} caller-side Step 1.5: gh repo view --json owner failed (stderr=$repo_owner_err_oneline)" \
           --root-cause-hint "gh_repo_view_owner_failed" \
           --pr-number {pr_number} >&2 || true
         _owner=""
+        _owner_repo_ok=0
       fi
-      if ! _repo=$(gh repo view --json name --jq '.name' 2>/dev/null) || [ -z "$_repo" ]; then
-        echo "[rite] ⚠️ Step 1.5: gh repo view --json name に失敗 — AC-8 検知を skip" >&2
-        bash {plugin_root}/hooks/workflow-incident-emit.sh \
-          --type projects_status_in_review_missing \
-          --details "Issue #{issue_number} caller-side Step 1.5: gh repo view --json name failed (AC-8 detection skipped)" \
-          --root-cause-hint "gh_repo_view_name_failed" \
-          --pr-number {pr_number} >&2 || true
-        _repo=""
+      if [ "$_owner_repo_ok" = "1" ]; then
+        if ! _repo=$(gh repo view --json name --jq '.name' 2>"${repo_view_name_err:-/dev/null}") || [ -z "$_repo" ]; then
+          repo_name_err_oneline=$(head -c 200 "${repo_view_name_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+          echo "[rite] ⚠️ Step 1.5: gh repo view --json name に失敗 (stderr=$repo_name_err_oneline) — AC-8 検知を skip" >&2
+          bash {plugin_root}/hooks/workflow-incident-emit.sh \
+            --type projects_status_in_review_missing \
+            --details "Issue #{issue_number} caller-side Step 1.5: gh repo view --json name failed (stderr=$repo_name_err_oneline)" \
+            --root-cause-hint "gh_repo_view_name_failed" \
+            --pr-number {pr_number} >&2 || true
+          _repo=""
+          _owner_repo_ok=0
+        fi
+      fi
+
+      if [ "$_owner_repo_ok" != "1" ]; then
+        # cycle 8 C7-F05: _owner/_repo 取得失敗で cascade emit を抑止。
+        # 後段 gh pr view / gh api graphql は実行しても CURRENT_STATUS が取得不能で意味がないため early exit。
+        exit 0
       fi
 
       if PR_IS_DRAFT=$(gh pr view {pr_number} --json isDraft --jq '.isDraft // null' 2>"${pr_view_err:-/dev/null}"); then

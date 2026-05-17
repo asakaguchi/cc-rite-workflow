@@ -112,12 +112,15 @@ fi
 # path 先行宣言 → trap 先行設定 → mktemp の順序で race window を排除する。
 # loop 内 gql_err は毎 iteration mktemp + 末尾 rm の現行構造を維持しつつ、signal 経路では
 # 本 trap が一括 cleanup する (defense-in-depth)。
-gh_err=""
+# cycle 8 C7-F13 対応: gh repo view と gh pr list で別 tempfile (repo_view_err / pr_list_err) を
+# 用意し、前者の non-fatal warning を後者の redirect で truncate して消失させない。
+repo_view_err=""
+pr_list_err=""
 gql_err=""
 jq_err=""
 reconcile_err=""
 _rite_watchdog_cleanup() {
-  rm -f "${gh_err:-}" "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}"
+  rm -f "${repo_view_err:-}" "${pr_list_err:-}" "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}"
 }
 trap 'rc=$?; _rite_watchdog_cleanup; exit $rc' EXIT
 trap '_rite_watchdog_cleanup; exit 130' INT
@@ -125,31 +128,38 @@ trap '_rite_watchdog_cleanup; exit 143' TERM
 trap '_rite_watchdog_cleanup; exit 129' HUP
 
 # --- Repo info ---
-# stderr capture して失敗時の原因 (auth / rate limit / network) を可視化する。
-gh_err=$(mktemp /tmp/rite-watchdog-gh-err-XXXXXX) || gh_err=""
-if ! REPO_INFO=$(gh repo view --json owner,name 2>"${gh_err:-/dev/null}"); then
+# cycle 8 C7-F01/C7-F13 対応: gh repo view stderr を専用 tempfile (repo_view_err) に capture し、
+# 4-site (post-compact / watchdog / start.md / start-finalize.md) で対称化する。
+repo_view_err=$(mktemp /tmp/rite-watchdog-repo-err-XXXXXX) || repo_view_err=""
+if ! REPO_INFO=$(gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
   echo "ERROR: gh repo view failed" >&2
-  if [ -n "$gh_err" ] && [ -s "$gh_err" ]; then
-    head -5 "$gh_err" | sed 's/^/  /' >&2
+  if [ -n "$repo_view_err" ] && [ -s "$repo_view_err" ]; then
+    head -5 "$repo_view_err" | sed 's/^/  /' >&2
   fi
   echo "  対処: gh auth status / network 接続を確認してください" >&2
-  [ -n "$gh_err" ] && rm -f "$gh_err"
   exit 1
 fi
-REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login')
-REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name')
+# cycle 8 C7-F02 対応: jq の `// empty` fallback + 明示 fail で `set -euo pipefail` 下の silent abort を防ぐ。
+# 旧実装は `jq -r '.owner.login'` で auth-scope 縮退時に `null` 文字列代入されるか jq exit 5 で
+# 診断情報破棄。新実装は空文字列で fail-fast し、stderr に root cause を出力する。
+REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>/dev/null) || REPO_OWNER=""
+REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>/dev/null) || REPO_NAME=""
+if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
+  echo "ERROR: failed to parse owner/name from gh repo view (owner='$REPO_OWNER' name='$REPO_NAME')" >&2
+  echo "  対処: gh auth refresh で scope を更新するか、PAT の repo permission を確認してください" >&2
+  exit 1
+fi
 
 # --- Scan OPEN, non-draft PRs ---
-if ! PR_LIST=$(gh pr list --state open --limit "$LIMIT" --json number,isDraft,body,headRefName 2>"${gh_err:-/dev/null}"); then
+pr_list_err=$(mktemp /tmp/rite-watchdog-pr-list-err-XXXXXX) || pr_list_err=""
+if ! PR_LIST=$(gh pr list --state open --limit "$LIMIT" --json number,isDraft,body,headRefName 2>"${pr_list_err:-/dev/null}"); then
   echo "ERROR: gh pr list failed" >&2
-  if [ -n "$gh_err" ] && [ -s "$gh_err" ]; then
-    head -5 "$gh_err" | sed 's/^/  /' >&2
+  if [ -n "$pr_list_err" ] && [ -s "$pr_list_err" ]; then
+    head -5 "$pr_list_err" | sed 's/^/  /' >&2
   fi
   echo "  対処: gh auth status / network 接続 / repository 権限を確認してください" >&2
-  [ -n "$gh_err" ] && rm -f "$gh_err"
   exit 1
 fi
-[ -n "$gh_err" ] && rm -f "$gh_err"
 
 PRS_SCANNED=0
 MISMATCHES=()
@@ -181,6 +191,8 @@ while IFS= read -r pr_entry; do
   # post-compact.sh / start.md Step 1.5 / start-finalize.md Step 0 と対称に gh / jq の stderr を区別。
   gql_err=$(mktemp /tmp/rite-watchdog-gql-err-XXXXXX) || gql_err=""
   jq_err=$(mktemp /tmp/rite-watchdog-jq-err-XXXXXX) || jq_err=""
+  # cycle 8 C7-F15 対応: inner `set -o pipefail` は line 38 の outer 設定で既に有効だが、defense-in-depth
+  # として明示し、将来 sub-shell 単独テスト時の挙動 (sub-shell が options を継承) を保証する。
   if ! current_status=$(set -o pipefail; gh api graphql -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -214,6 +226,10 @@ query($owner: String!, $repo: String!, $number: Int!) {
   fi
   [ -n "$gql_err" ] && rm -f "$gql_err"
   [ -n "$jq_err" ] && rm -f "$jq_err"
+  # cycle 8 C7-F12 対応: loop iteration 末尾で変数を reset し、trap で stale path への再 rm を回避する。
+  # reconcile_err (line 244) と対称化。idempotent な rm でも symmetry 維持で意図的に reset する。
+  gql_err=""
+  jq_err=""
 
   if [ "$current_status" = "In Progress" ]; then
     reconcile_result="not_attempted"

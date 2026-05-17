@@ -135,8 +135,10 @@ fi
 # on failure so silent Status mismatch never persists past compaction (Issue #1003 root cause:
 # observability gap when Phase 4.2 / 5.5.1 silently skips).
 #
-# Best-effort: all `gh` calls have `|| true` and `2>/dev/null` to avoid blocking the
-# normal post-compact recovery path.
+# Stderr policy: `gh pr view` / `gh api graphql` / `projects-status-update.sh` の stderr は
+# tempfile capture して incident details に含める。`gh repo view` も cycle 8 で stderr capture
+# 対応済 (C7-F01: auth / rate-limit / network / permission の区別)。`jq` stderr は
+# C7-F04 cycle 8 で `jq_owner_err` / `jq_name_err` capture 化済。
 if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
   PLUGIN_ROOT_PC="$(dirname "$SCRIPT_DIR")"
   # Sub-shell + pipefail + signal-specific trap で start-finalize.md Step 0 と対称化する。
@@ -145,19 +147,41 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
   (
     set -o pipefail
     pr_view_err=""
+    repo_view_err=""
+    jq_owner_err=""
+    jq_name_err=""
     gql_err=""
     jq_err=""
     reconcile_err=""
-    _pc_cleanup() { rm -f "${pr_view_err:-}" "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}"; }
+    _pc_cleanup() {
+      rm -f "${pr_view_err:-}" "${repo_view_err:-}" \
+            "${jq_owner_err:-}" "${jq_name_err:-}" \
+            "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}"
+    }
     trap 'rc=$?; _pc_cleanup; exit $rc' EXIT
     trap '_pc_cleanup; exit 130' INT
     trap '_pc_cleanup; exit 143' TERM
     trap '_pc_cleanup; exit 129' HUP
     pr_view_err=$(mktemp /tmp/rite-pc-pr-err-XXXXXX) || pr_view_err=""
+    repo_view_err=$(mktemp /tmp/rite-pc-repo-err-XXXXXX) || repo_view_err=""
+    jq_owner_err=$(mktemp /tmp/rite-pc-jq-owner-err-XXXXXX) || jq_owner_err=""
+    jq_name_err=$(mktemp /tmp/rite-pc-jq-name-err-XXXXXX) || jq_name_err=""
     gql_err=$(mktemp /tmp/rite-pc-gql-err-XXXXXX) || gql_err=""
     jq_err=$(mktemp /tmp/rite-pc-jq-err-XXXXXX) || jq_err=""
 
-    if PR_IS_DRAFT=$(cd "$STATE_ROOT" 2>/dev/null && gh pr view "$PR" --json isDraft --jq '.isDraft // null' 2>"${pr_view_err:-/dev/null}"); then
+    # cycle 8 C7-F09: STATE_ROOT 不可達時の cd 短絡を early-emit branch で扱う。
+    # 旧実装は `cd "$STATE_ROOT" 2>/dev/null && gh pr view ...` で STATE_ROOT inaccessible 時に
+    # cd 失敗→gh pr view 未実行で `gh_pr_view_failed` 誤分類していた (実原因は state_root_inaccessible)。
+    if [ ! -d "$STATE_ROOT" ]; then
+      bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+        --type projects_status_in_review_missing \
+        --details "Issue #$ISSUE post-compact: STATE_ROOT inaccessible ($STATE_ROOT) — gh pr view skipped" \
+        --root-cause-hint "state_root_inaccessible" \
+        --pr-number "$PR" >&2 || true
+      exit 0
+    fi
+
+    if PR_IS_DRAFT=$(cd "$STATE_ROOT" && gh pr view "$PR" --json isDraft --jq '.isDraft // null' 2>"${pr_view_err:-/dev/null}"); then
       :
     else
       pr_rc=$?
@@ -171,23 +195,49 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     fi
 
     if [ "$PR_IS_DRAFT" = "false" ]; then
-      REPO_INFO=$(cd "$STATE_ROOT" 2>/dev/null && gh repo view --json owner,name 2>/dev/null) || REPO_INFO=""
-      REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>/dev/null) || REPO_OWNER=""
-      REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>/dev/null) || REPO_NAME=""
+      # cycle 8 C7-F01: gh repo view stderr を tempfile capture して root cause attribution を可能にする。
+      # 4-site 対称化 (post-compact / watchdog / start.md Step 1.5 / start-finalize.md Step 0)。
+      if REPO_INFO=$(cd "$STATE_ROOT" && gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
+        :
+      else
+        repo_rc=$?
+        repo_err_oneline=$(head -c 200 "${repo_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+        REPO_INFO=""
+      fi
+      # cycle 8 C7-F04: jq stderr を独立 capture し、parse 失敗 (gh 成功だが JSON 破損 / null field)
+      # の根本原因を C6-F09 emit の details に注入する。
+      REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>"${jq_owner_err:-/dev/null}") || REPO_OWNER=""
+      REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>"${jq_name_err:-/dev/null}") || REPO_NAME=""
       PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || PROJECTS_ENABLED=""
       PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || PROJECT_NUMBER=""
-      # cycle 6 C6-F09 対応: gh repo view 失敗時の silent skip を防止する。
-      # `REPO_INFO=""` 設定で gate 全体が silent 無音 skip される経路 (4 site 中ここだけ defense chain 欠落)
-      # を、start.md Step 1.5 / start-finalize.md Step 0 と対称に sentinel emit させる。
-      if [ "$PROJECTS_ENABLED" = "true" ] && [ -z "$REPO_INFO" ]; then
-        echo "[rite] ⚠️ post-compact: gh repo view failed — reconciliation safety net unavailable" >&2
-        bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
-          --type projects_status_in_review_missing \
-          --details "Issue #$ISSUE post-compact: gh repo view failed (reconciliation safety net unavailable)" \
-          --root-cause-hint "post_compact_gh_repo_view_failed" \
-          --pr-number "$PR" >&2 || true
+      # cycle 8 C7-F05: cascade emit guard。_owner_repo_ok flag で後段 graphql 経路を skip する
+      # (silent_omit_disables_defense_chain への 2-stage 防御: emit 後の dead branch 抑止)。
+      _owner_repo_ok=1
+      # cycle 6 C6-F09 + cycle 8 C7-F03/C7-F04 対応: gh repo view 失敗 OR jq parse 結果が空の場合に
+      # silent skip を防止する。gate を `-z REPO_INFO` から `-z REPO_OWNER || -z REPO_NAME` へ拡張し、
+      # null field 返却 (auth-scope 縮退) 経路も覆う。
+      if [ "$PROJECTS_ENABLED" = "true" ] && { [ -z "$REPO_INFO" ] || [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; }; then
+        echo "[rite] ⚠️ post-compact: gh repo view failed or parse empty — reconciliation safety net unavailable" >&2
+        _owner_repo_ok=0
+        jq_owner_err_oneline=""
+        jq_name_err_oneline=""
+        [ -n "${jq_owner_err:-}" ] && [ -s "$jq_owner_err" ] && jq_owner_err_oneline=$(head -c 200 "$jq_owner_err" | tr '\n' ' ')
+        [ -n "${jq_name_err:-}" ] && [ -s "$jq_name_err" ] && jq_name_err_oneline=$(head -c 200 "$jq_name_err" | tr '\n' ' ')
+        if [ -z "$REPO_INFO" ]; then
+          bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+            --type projects_status_in_review_missing \
+            --details "Issue #$ISSUE post-compact: gh repo view failed (rc=${repo_rc:-NA}, stderr=${repo_err_oneline:-NA})" \
+            --root-cause-hint "post_compact_gh_repo_view_failed" \
+            --pr-number "$PR" >&2 || true
+        else
+          bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+            --type projects_status_in_review_missing \
+            --details "Issue #$ISSUE post-compact: gh repo view returned null fields (owner=$REPO_OWNER name=$REPO_NAME jq_owner_stderr=$jq_owner_err_oneline jq_name_stderr=$jq_name_err_oneline)" \
+            --root-cause-hint "post_compact_gh_repo_view_returned_null" \
+            --pr-number "$PR" >&2 || true
+        fi
       fi
-      if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ] && [ -n "$REPO_OWNER" ] && [ -n "$REPO_NAME" ] && [ "$ISSUE" != "unknown" ]; then
+      if [ "$_owner_repo_ok" = "1" ] && [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ] && [ -n "$REPO_OWNER" ] && [ -n "$REPO_NAME" ] && [ "$ISSUE" != "unknown" ]; then
         if CURRENT_STATUS=$(cd "$STATE_ROOT" 2>/dev/null && gh api graphql -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -225,40 +275,26 @@ query($owner: String!, $repo: String!, $number: Int!) {
 
         if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ]; then
           echo "[rite] ⚠️ post-compact mismatch detected: Issue #$ISSUE PR=#$PR isDraft=false Status=\"$CURRENT_STATUS\" (expected In Review)" >&2
-          # STATE_ROOT 存在 guard を冒頭に追加し、cd 失敗を silent 化しない (cycle 3 F-10 対応)。
-          # STATE_ROOT 削除 / permission 変更時の rare path でも root cause を明示する。
-          if [ ! -d "$STATE_ROOT" ]; then
-            echo "[rite] ❌ post-compact reconciliation: STATE_ROOT inaccessible ($STATE_ROOT)" >&2
+          # cycle 8 C7-F09 / C7-F14 対応: STATE_ROOT 存在 guard は sub-shell 冒頭に移動済 (state_root_inaccessible
+          # で early emit + exit 0)、本 reconciliation 試行ブロックは STATE_ROOT 存在前提で reconcile を直接実行する。
+          reconcile_err=$(mktemp /tmp/rite-pc-reconcile-err-XXXXXX) || reconcile_err=""
+          RECONCILE_RESULT=$(cd "$STATE_ROOT" && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$(jq -n \
+            --argjson issue "$ISSUE" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
+            --argjson project_number "$PROJECT_NUMBER" --arg status "In Review" \
+            --argjson auto_add false --argjson non_blocking true \
+            '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || RECONCILE_RESULT=""
+          RECONCILE_STATUS=$(printf '%s' "$RECONCILE_RESULT" | jq -r '.result // "failed"' 2>/dev/null) || RECONCILE_STATUS="failed"
+          if [ "$RECONCILE_STATUS" = "updated" ]; then
+            echo "[rite] ✅ post-compact reconciliation succeeded: Issue #$ISSUE Status → In Review" >&2
+          else
+            echo "[rite] ❌ post-compact reconciliation failed (result=$RECONCILE_STATUS)" >&2
+            reconcile_err_oneline=$(head -c 200 "${reconcile_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
             bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
               --type projects_status_in_review_missing \
-              --details "Issue #$ISSUE post-compact reconciliation: STATE_ROOT inaccessible ($STATE_ROOT)" \
-              --root-cause-hint "state_root_inaccessible" \
+              --details "Issue #$ISSUE post-compact reconciliation failed (PR=#$PR isDraft=false Status=$CURRENT_STATUS reconcile_result=$RECONCILE_STATUS stderr=$reconcile_err_oneline)" \
+              --root-cause-hint "post_compact_reconciliation_failed" \
               --pr-number "$PR" >&2 || true
-            # cycle 6 C6-F08 対応: STATE_ROOT inaccessible 分岐の dead variable assignment を削除。
-            # 以前は RECONCILE_STATUS / RECONCILE_RESULT / reconcile_err を代入していたが、
-            # incident emit 完了済みかつ if-else 分岐で本 branch を抜けた後は参照されないため削除。
-            # reconcile_err は sub-shell 冒頭で空文字列宣言済みのため二重代入不要。
-          else
-            # reconcile script の stderr を tempfile capture し、失敗時 details に含める
-            reconcile_err=$(mktemp /tmp/rite-pc-reconcile-err-XXXXXX) || reconcile_err=""
-            RECONCILE_RESULT=$(cd "$STATE_ROOT" && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$(jq -n \
-              --argjson issue "$ISSUE" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
-              --argjson project_number "$PROJECT_NUMBER" --arg status "In Review" \
-              --argjson auto_add false --argjson non_blocking true \
-              '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || RECONCILE_RESULT=""
-            RECONCILE_STATUS=$(printf '%s' "$RECONCILE_RESULT" | jq -r '.result // "failed"' 2>/dev/null) || RECONCILE_STATUS="failed"
-            if [ "$RECONCILE_STATUS" = "updated" ]; then
-              echo "[rite] ✅ post-compact reconciliation succeeded: Issue #$ISSUE Status → In Review" >&2
-            else
-              echo "[rite] ❌ post-compact reconciliation failed (result=$RECONCILE_STATUS)" >&2
-              reconcile_err_oneline=$(head -c 200 "${reconcile_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
-              bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
-                --type projects_status_in_review_missing \
-                --details "Issue #$ISSUE post-compact reconciliation failed (PR=#$PR isDraft=false Status=$CURRENT_STATUS reconcile_result=$RECONCILE_STATUS stderr=$reconcile_err_oneline)" \
-                --root-cause-hint "post_compact_reconciliation_failed" \
-                --pr-number "$PR" >&2 || true
-            fi
-          fi  # STATE_ROOT guard end
+          fi
         fi
       fi
     fi

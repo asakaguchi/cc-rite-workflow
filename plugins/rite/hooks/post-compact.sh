@@ -224,25 +224,25 @@ query($owner: String!, $repo: String!, $number: Int!) {
             RECONCILE_RESULT=""
             reconcile_err=""
           else
-          # reconcile script の stderr を tempfile capture し、失敗時 details に含める
-          reconcile_err=$(mktemp /tmp/rite-pc-reconcile-err-XXXXXX) || reconcile_err=""
-          RECONCILE_RESULT=$(cd "$STATE_ROOT" && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$(jq -n \
-            --argjson issue "$ISSUE" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
-            --argjson project_number "$PROJECT_NUMBER" --arg status "In Review" \
-            --argjson auto_add false --argjson non_blocking true \
-            '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || RECONCILE_RESULT=""
-          RECONCILE_STATUS=$(printf '%s' "$RECONCILE_RESULT" | jq -r '.result // "failed"' 2>/dev/null) || RECONCILE_STATUS="failed"
-          if [ "$RECONCILE_STATUS" = "updated" ]; then
-            echo "[rite] ✅ post-compact reconciliation succeeded: Issue #$ISSUE Status → In Review" >&2
-          else
-            echo "[rite] ❌ post-compact reconciliation failed (result=$RECONCILE_STATUS)" >&2
-            reconcile_err_oneline=$(head -c 200 "${reconcile_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
-            bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
-              --type projects_status_in_review_missing \
-              --details "Issue #$ISSUE post-compact reconciliation failed (PR=#$PR isDraft=false Status=$CURRENT_STATUS reconcile_result=$RECONCILE_STATUS stderr=$reconcile_err_oneline)" \
-              --root-cause-hint "post_compact_reconciliation_failed" \
-              --pr-number "$PR" >&2 || true
-          fi
+            # reconcile script の stderr を tempfile capture し、失敗時 details に含める
+            reconcile_err=$(mktemp /tmp/rite-pc-reconcile-err-XXXXXX) || reconcile_err=""
+            RECONCILE_RESULT=$(cd "$STATE_ROOT" && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$(jq -n \
+              --argjson issue "$ISSUE" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
+              --argjson project_number "$PROJECT_NUMBER" --arg status "In Review" \
+              --argjson auto_add false --argjson non_blocking true \
+              '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || RECONCILE_RESULT=""
+            RECONCILE_STATUS=$(printf '%s' "$RECONCILE_RESULT" | jq -r '.result // "failed"' 2>/dev/null) || RECONCILE_STATUS="failed"
+            if [ "$RECONCILE_STATUS" = "updated" ]; then
+              echo "[rite] ✅ post-compact reconciliation succeeded: Issue #$ISSUE Status → In Review" >&2
+            else
+              echo "[rite] ❌ post-compact reconciliation failed (result=$RECONCILE_STATUS)" >&2
+              reconcile_err_oneline=$(head -c 200 "${reconcile_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+              bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+                --type projects_status_in_review_missing \
+                --details "Issue #$ISSUE post-compact reconciliation failed (PR=#$PR isDraft=false Status=$CURRENT_STATUS reconcile_result=$RECONCILE_STATUS stderr=$reconcile_err_oneline)" \
+                --root-cause-hint "post_compact_reconciliation_failed" \
+                --pr-number "$PR" >&2 || true
+            fi
           fi  # STATE_ROOT guard end
         fi
       fi

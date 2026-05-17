@@ -15,7 +15,7 @@ Execute the finalize phase for an Issue. This sub-skill is invoked from `start.m
 - `{pr_number}` — populated from Phase 5.3 `[pr:created:{N}]` (success path) OR `0` (abort path — `[start:execute:aborted]` 経由で PR 未作成のまま invocation された場合)
 - `{plugin_root}` — resolved per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version)
 - `{parent_issue_number}` — from flow-state via `state-read.sh` (Phase 5.7)
-- `{owner}`, `{repo}` — retrieved via `gh repo view --json owner,name` in `start.md` Phase 0 (Placeholder Legend) and passed through the orchestrator context (used in Workflow Termination Step 0 GraphQL query).
+- `{owner}`, `{repo}` — **本 sub-skill scope では Prerequisites として上流伝播不要**。Workflow Termination Step 0 / Phase 5.5.1 内の `gh api graphql` 呼び出しはいずれも sub-shell 内で `gh repo view --json owner --jq '.owner.login'` / `--json name --jq '.name'` を直接実行して `$_owner` / `$_repo` に local 束縛する設計のため、orchestrator context への placeholder 上書きには依存しない (silent skip 経路の遮断目的)。本項目は Placeholder Legend の宣言性維持と将来他 phase での再利用に備えて残す。
 - Review-fix loop converged (mergeable / replied-only) **OR** abort context (`[start:execute:aborted]` / `[start:publish:aborted]` 経由 — Phase 5.5/5.5.1/5.5.2/5.7 を skip して直接 Phase 5.6 Completion Report へ進む)
 
 **Abort entry detection**: 本 sub-skill 起動直後、以下のいずれかが成立する場合は **abort entry** と判定し、Phase 5.5 AskUserQuestion / 5.5.1 / 5.5.2 / 5.7 を skip して **直接 Phase 5.6 Completion Report へ進む** (terminal state は caller の Mandatory After 5.5-Termination Step 1 が SoT として担う):

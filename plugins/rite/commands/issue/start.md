@@ -691,6 +691,7 @@ rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANU
       set -o pipefail
       pr_view_err=""
       gql_err=""
+      jq_err=""
       _step15_cleanup() { rm -f "${pr_view_err:-}" "${gql_err:-}" "${jq_err:-}"; }
       trap 'rc=$?; _step15_cleanup; exit $rc' EXIT
       trap '_step15_cleanup; exit 130' INT

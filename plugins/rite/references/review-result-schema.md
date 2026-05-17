@@ -20,23 +20,23 @@
 
 <a id="schema-version-sot"></a>
 
-現行スキーマバージョン: **1.0.0**
+現行スキーマバージョン: **1.1.0**
 
-**受理される値**: `"1.0.0"` (canonical) および legacy エイリアス `"1.0"` (semver `MAJOR.MINOR` のみ)。両者は semantic 差なく完全等価で、legacy `"1.0"` は v2.0 まで受理される (新規生成は禁止: `/rite:pr:review` Phase 6.1.a は `"1.0.0"` のみ出力)。詳細経緯は CHANGELOG を参照。
+**受理される値** (読取側): `"1.0.0"` (canonical 1.0) / legacy エイリアス `"1.0"` (semver `MAJOR.MINOR` のみ、1.0.0 と semantic 等価、v2.0 まで受理) / `"1.1.0"` (canonical 1.1) の **3 値**。`"1.0.0"` / `"1.0"` で受信した JSON は `findings[].scope` / `findings[].pre_existing` フィールドが欠落しているため、read 側で severity ベースの default mapping を適用する (詳細は [後方互換性 (schema 1.0 ↔ 1.1.0)](#後方互換性-schema-10--110) 参照)。詳細経緯は CHANGELOG を参照。
 
-**検証箇所の同期義務** (verified-review cycle 8 L-4 対応で本セクションを SoT 化、cycle 10 I-E 対応で read/write 非対称を明示):
+**検証箇所の同期義務** (verified-review cycle 8 L-4 対応で本セクションを SoT 化、cycle 10 I-E 対応で read/write 非対称を明示、Issue #1016 対応で 1.1.0 を accept list に追加):
 
-**読取側 (legacy エイリアス `"1.0"` 受理義務、3 箇所で完全同期)**:
+**読取側 (3 値受理義務、3 箇所で完全同期)**:
 
 - `fix.md` Phase 1.2.0 Priority 0 (`--review-file` case 文)
 - `fix.md` Phase 1.2.0 Priority 2 (local file case 文)
 - `fix.md` Phase 1.2.0 Priority 3 (PR comment Raw JSON case 文)
 
-上記 3 箇所の `case "$schema_version" in "1.0.0"|"1.0")` は常に同じ accept list を持つ。将来 `"1.1.0"` 追加 / legacy `"1.0"` 廃止時は 3 箇所を同時更新すること。
+上記 3 箇所の `case "$schema_version" in "1.0.0"|"1.0"|"1.1.0")` は常に同じ accept list を持つ。将来 `"1.2.0"` 追加 / legacy `"1.0"` 廃止時は 3 箇所を同時更新すること。
 
 **書込側 (canonical 値のみ出力、同期義務なし)**:
 
-- `review.md` Phase 6.1.a — canonical `"1.0.0"` のみを出力する。case 文は存在せず、post-condition jq validation は `schema_version | type == "string" and length > 0` の型チェックのみで値の同期対象外 (読取側 accept list と独立に進化してよい)
+- `review.md` Phase 6.1.a — 現時点では canonical `"1.0.0"` のみを出力する。`"1.1.0"` への canonical write bump は **Sub-Issue #1017** (`_reviewer-base` への Scope Assignment 責務追加) のスコープ。reviewer が scope / pre_existing を出力できるようになった時点で本ドキュメントの書込側 canonical を `"1.1.0"` に bump する。case 文は存在せず、post-condition jq validation は `schema_version | type == "string" and length > 0` の型チェックのみで値の同期対象外 (読取側 accept list と独立に進化してよい)
 
 本セクションが Single Source of Truth であり、読取側 3 箇所の accept list を本ドキュメントと同一に保つ義務がある。現時点では `plugins/rite/hooks/scripts/distributed-fix-drift-check.sh` / `doc-heavy-patterns-drift-check.sh` は schema_version / accept list の drift を自動検出しない (enforcement 未実装)。将来の drift-check 拡張で schema_version enum を自動検証する計画。それまでは本ドキュメントを変更した際に手動で 3 箇所を同期させること。
 
@@ -52,7 +52,7 @@
 
 ```json
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "pr_number": 123,
   "timestamp": "2026-04-11T12:34:56+09:00",
   "commit_sha": "abc1234",
@@ -63,6 +63,8 @@
       "reviewer": "code-quality-reviewer",
       "category": "code_quality",
       "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": false,
       "file": "path/to/file.ts",
       "line": 42,
       "description": "エラーハンドリングが不足",
@@ -74,11 +76,28 @@
       "reviewer": "security-reviewer",
       "category": "security",
       "severity": "MEDIUM",
+      "scope": "nit-noted",
+      "pre_existing": true,
+      "nit_reason": "本 PR の責務範囲外の既存設定ファイル整形 — 単発修正で完了する localized 改善",
       "file": "path/to/config.ts",
       "line": null,
       "description": "ファイル全体への指摘 (行非依存)",
       "suggestion": "設定ファイルヘッダにコンテキスト説明を追加",
-      "status": "open"
+      "status": "acknowledged"
+    },
+    {
+      "id": "F-03",
+      "reviewer": "code-quality-reviewer",
+      "category": "code_quality",
+      "severity": "LOW",
+      "scope": "follow-up",
+      "pre_existing": false,
+      "original_severity": "MEDIUM",
+      "file": "path/to/utils.ts",
+      "line": 100,
+      "description": "Refactoring候補 — 動作には影響しない",
+      "suggestion": "別 PR で対応",
+      "status": "deferred"
     }
   ]
 }
@@ -105,11 +124,15 @@
 | `reviewer` | string | ✅ | レビュアー種別 (例: `code-quality-reviewer`, `security-reviewer`, `tech-writer-reviewer`)。**参照整合性**: 値は `plugins/rite/agents/*-reviewer.md` の basename (拡張子を除く) と一致する。`plugins/rite/skills/reviewers/*.md` はカテゴリ説明 Markdown であり reviewer 識別子としては使わない (接尾辞 `-reviewer` なし)。新 reviewer を追加する際は agents/ 側のファイル追加と合わせて本ドキュメントにも追記すること (現時点では drift-check による自動検証は未実装、手動同期)。 |
 | `category` | string | ✅ | カテゴリ (例: `code_quality`, `security`, `performance`, `error_handling`) |
 | `severity` | **enum** (string) | ✅ | 重要度。**受理値**: `"CRITICAL"` / `"HIGH"` / `"MEDIUM"` / `"LOW-MEDIUM"` / `"LOW"` の 5 値のみ (LOW-MEDIUM は `severity-levels.md` Severity Levels 表で正式定義された first-class severity で、`COMMENT_QUALITY` 軸の独自ジャーゴン濫用 等の bounded blast radius 違反に使う)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=severity_unknown_value; value=<val>` を stderr 出力し、該当 finding を `MEDIUM` にフォールバック (silent skip は禁止)。外部ツール出力の別名は下記「severity 別名マッピング表」に従って read 側で正規化してから本 enum に落とす |
+| `scope` | **enum** (string) | ✅ (1.1.0+) | 指摘の scope 分類 (Issue #1016 で 1.1.0 から追加)。**受理値**: `"current-pr"` (本 PR で修正必須) / `"follow-up"` (本 PR では対応せず別 Issue として deferred) / `"nit-noted"` (情報共有のみ、修正不要 — `acknowledged` で受け流し) の 3 値。1.0 / 1.0.0 JSON では本フィールドは欠落しているため、read 側で severity ベースの default mapping を適用する (詳細は [後方互換性](#後方互換性-schema-10--110))。Cross-field invariant #4 (CRITICAL/HIGH × nit-noted FAIL) / #5 (pre_existing=false × nit-noted auto-correct) を参照 |
+| `pre_existing` | bool | ✅ (1.1.0+) | 当該 finding の triggering condition が本 PR の diff 適用前から存在していたか (Issue #1016 で 1.1.0 から追加)。`true` = pre-existing (本 PR で混入していない) / `false` = 本 PR で新規導入。判定は revert test (reviewer が当該 diff を mentally revert して finding が依然成立するかを確認) ベース。1.0 / 1.0.0 JSON では本フィールドは欠落しているため、Cross-field invariant #5 は read 側ではトリガしない (詳細は [後方互換性](#後方互換性-schema-10--110)) |
+| `original_severity` | string | (任意、1.1.0+) | severity 自己降格 (reviewer が CRITICAL 判定後 PR scope 不適合と判断し scope=follow-up や nit-noted へ送る際に severity を MEDIUM 等へ降格) 時の元値を保持。**自己降格 trace 用途のみ**で、cross-field invariant 評価には使わない。omit 可 (1.0 / 1.0.0 互換、降格していない finding には不要)。値の domain は `severity` enum 5 値と同じ |
+| `nit_reason` | string | (条件付き必須、1.1.0+) | `severity == "MEDIUM"` ∧ `scope == "nit-noted"` の組み合わせ時は **必須**。それ以外は omit 可。MEDIUM 級の指摘を「nit として受け流す」判断には bounded blast radius (localized で単発修正で完了する) の根拠が必要なため、reviewer に明示的に reason を記載させて auditability を担保する |
 | `file` | string | ✅ | 対象ファイルのリポジトリルート相対パス (絶対パス禁止、`..` による親ディレクトリ参照禁止) |
 | `line` | integer \| null | ✅ | 対象行番号 (正の整数 >= 1)、または `null` (行非依存指摘の sentinel)。負数は無効 (read 側での挙動は未定義)。cycle 10 S-4 対応で旧「`0` を行非依存 sentinel として扱う」設計から `null` 許容に変更。severity_map 構築時は `line == null` を `"anchor"` key に正規化して同一ファイル複数指摘の key 衝突を防ぐ (fix.md Phase 1.2.0 severity_map 構築参照)。**後方互換**: 読取側は `line: 0` を引き続き legacy sentinel として受理し、`null` と同じ扱いにする |
 | `description` | string | ✅ | 指摘内容 |
 | `suggestion` | string | ✅ | 推奨対応 |
-| `status` | **enum** (string) | ✅ | 対応状態。**受理値**: `"open"` / `"fixed"` / `"replied"` / `"deferred"` の 4 値。現行実装では `/rite:pr:review` Phase 6.1.a は常に `"open"` を出力する (将来の state machine 拡張で `/rite:pr:fix` 完了時に `"fixed"` 等を書き戻す slot を予約)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=status_unknown_value; value=<val>` を stderr 出力する |
+| `status` | **enum** (string) | ✅ | 対応状態。**受理値**: `"open"` / `"fixed"` / `"replied"` / `"deferred"` / `"acknowledged"` の **5 値** (Issue #1016 で 1.1.0 から `acknowledged` を追加、`scope == "nit-noted"` の finding を「修正せず受け流した」trace 用)。現行実装では `/rite:pr:review` Phase 6.1.a は常に `"open"` を出力する (将来の state machine 拡張で `/rite:pr:fix` 完了時に `"fixed"` / `"acknowledged"` 等を書き戻す slot を予約)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=status_unknown_value; value=<val>` を stderr 出力する |
 
 ### severity 別名マッピング表
 
@@ -136,6 +159,69 @@
 1. **ファイル名 ↔ JSON `pr_number` 同期**: `.rite/review-results/{pr_number}-{timestamp}.json` の `{pr_number}` prefix と JSON 内 `.pr_number` の値は必ず一致する。不一致時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=pr_number_mismatch` を emit して legacy parser fallthrough。手動でファイルを rename した場合のみ発火しうる。
 2. **`overall_assessment == "mergeable"` ∧ CRITICAL/HIGH open finding 存在禁止**: `overall_assessment` が `"mergeable"` のとき、`findings[]` に `severity ∈ {"CRITICAL", "HIGH"}` かつ `status == "open"` の要素が含まれてはならない。違反時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=mergeable_has_open_blockers` を emit して legacy parser fallthrough (手書き JSON で fix ループを silent に 0 件脱出させる bypass を防ぐ)。
 3. **ファイル名 timestamp ↔ JSON `timestamp` 同期**: `{timestamp}` prefix (JST `YYYYMMDDHHMMSS`) と JSON 内 `.timestamp` (ISO 8601) は同一瞬間を指す。ただし本不変条件は read 側で検証せず (ファイル rename 時にしか破綻しえないため)、write 側が Phase 6.1.a で一度に生成することで担保する。
+4. **`severity ∈ {CRITICAL, HIGH}` ∧ `scope == "nit-noted"` 禁止** (Issue #1016 で 1.1.0 から追加 / **FAIL invariant**): blocker (CRITICAL/HIGH) 級の指摘は「修正不要の nit」として受け流すことができない。違反時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason={priority_prefix}_critical_high_scope_nit_noted` を emit して **legacy parser fallthrough** (invariant #2 と同じ FAIL routing)。canonical jq expression: `[.findings[] | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length == 0`。reviewer が CRITICAL を nit に降格させたい場合は severity を MEDIUM/LOW へ自己降格し、`original_severity` フィールドに元値を保持すること。本 invariant は 1.1.0 JSON にのみ適用される (1.0/1.0.0 では `scope` フィールドが欠落しているため後方互換 default mapping 経由で評価)。
+5. **`pre_existing == false` ∧ `scope == "nit-noted"` 禁止** (Issue #1016 で 1.1.0 から追加 / **WARNING + auto-correct invariant**): 本 PR で **新規に導入された** finding (`pre_existing == false`) を「修正不要の nit」として受け流すことは、本 PR の責任範囲内の問題を silent に放置することを意味するため禁止。違反時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1; reason=pre_existing_false_scope_nit_noted; count={n}` を emit し、該当 finding の `scope` を **自動で `"current-pr"` に書き換え** (auto-correct) して severity_map 構築を続行する。canonical jq mutation: `(.findings[] | select(.pre_existing == false and .scope == "nit-noted") | .scope) |= "current-pr"`。本 invariant は **#4 と異なり FAIL ではなく auto-correct** のため、JSON read 全体を fallthrough させない。1.0/1.0.0 JSON では `pre_existing` フィールドが欠落しているため本 invariant は発火しない (default mapping は scope を severity ベースで補完するのみで、`pre_existing` は補完しない)。
+
+## 後方互換性 (schema 1.0 ↔ 1.1.0)
+
+<a id="後方互換性-schema-10--110"></a>
+
+1.1.0 で導入された `findings[].scope` / `findings[].pre_existing` フィールドは 1.0 / 1.0.0 JSON には欠落しているため、read 側 (`fix.md` Phase 1.2.0) は schema_version が `"1.0.0"` または `"1.0"` の場合、以下の default mapping を適用する。
+
+### scope の default mapping
+
+`findings[].scope` が欠落している場合、`findings[].severity` から以下のルールで補完する:
+
+| severity | default scope |
+|----------|--------------|
+| `CRITICAL` | `current-pr` |
+| `HIGH` | `current-pr` |
+| `MEDIUM` | `current-pr` |
+| `LOW-MEDIUM` | `nit-noted` |
+| `LOW` | `nit-noted` |
+
+canonical jq expression (1.0/1.0.0 受信時に適用):
+
+```
+.findings |= map(
+  if has("scope") then .
+  else .scope = (
+    if .severity == "CRITICAL" or .severity == "HIGH" or .severity == "MEDIUM" then "current-pr"
+    else "nit-noted"
+    end
+  )
+  end
+)
+```
+
+### pre_existing の default mapping (適用しない)
+
+`findings[].pre_existing` が欠落している場合、**default mapping は適用しない** (フィールドを欠落させたまま保持する)。これは:
+
+- `pre_existing` の判定には revert test (reviewer による mental revert) が必要で、severity 等の他フィールドから機械的に推論できない
+- 欠落のままにすることで Cross-field invariant #5 (`pre_existing == false × scope == nit-noted`) が **発火しない** (`null != false`)
+- 1.0/1.0.0 JSON で生成された finding は invariant #5 の auto-correct 対象外となり、後方互換が保たれる
+
+### REVIEW_SOURCE_SCOPE_DEFAULTED emit
+
+scope を補完した finding が 1 件以上ある場合、read 側は以下の `[CONTEXT]` flag を stderr に emit する:
+
+```
+[CONTEXT] REVIEW_SOURCE_SCOPE_DEFAULTED=1; reason=scope_omitted_in_v1_0; count={n}; schema_version={value}
+```
+
+- `count`: scope を default mapping で補完した finding 数
+- `schema_version`: 受信した JSON の schema_version (`"1.0.0"` または `"1.0"`)
+- `reason`: 常に `scope_omitted_in_v1_0`
+
+emit の目的は observability — 「どの review-result file が 1.0 schema 由来で default mapping を被ったか」を fix workflow / debug log で trace 可能にする。1.1.0 JSON では本 flag は emit されない。
+
+### Cross-field invariants と後方互換の相互作用
+
+- **invariant #4** (CRITICAL/HIGH × nit-noted FAIL): 1.0/1.0.0 では CRITICAL/HIGH → `current-pr` に default mapping されるため、invariant #4 は **発火しない** (規約的に違反不可能な状態)
+- **invariant #5** (pre_existing=false × nit-noted auto-correct): 1.0/1.0.0 では `pre_existing` が欠落 (`null`) のため、invariant #5 は **発火しない**
+
+つまり 1.0/1.0.0 JSON は read 後の severity_map 構築段階で invariant #4/#5 を確定的に pass する。これは「1.0 互換性を保ったまま 1.1.0 invariants を追加する」設計判断 — 既存 PR で生成された 1.0 JSON を re-read しても新規 invariant 違反で fallthrough しないことを保証する。
 
 ## PR コメント形式 (opt-in)
 
@@ -162,7 +248,7 @@
 
 ```json
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "pr_number": 123,
   "timestamp": "2026-04-11T12:34:56+09:00",
   "commit_sha": "abc1234",
@@ -173,6 +259,8 @@
       "reviewer": "code-quality-reviewer",
       "category": "code_quality",
       "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": false,
       "file": "path/to/file.ts",
       "line": 42,
       "description": "エラーハンドリングが不足",

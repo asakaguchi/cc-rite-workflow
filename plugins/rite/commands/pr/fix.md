@@ -488,8 +488,15 @@ find_err=""
 jq_val_err_p0=""
 jq_val_err_p2=""
 norm_tmp=""
+# Issue #1026: norm_tmp hand-off 後の path を保持する registry variable。
+# hand-off 完了時 `norm_tmp=""` で trap 対象から外す既存 semantic を維持しつつ、
+# downstream (severity_map build 等) が `review_source_path` 経由で参照を終えた後の
+# block 終了タイミング (EXIT/INT/TERM/HUP) で本変数経由で必ず削除されるようにし、
+# `/tmp/rite-fix-normalized-XXXXXX` orphan を解消する。
+handed_off_norm_tmp=""
 _rite_fix_p120_cleanup() {
-  rm -f "${find_err:-}" "${jq_val_err_p0:-}" "${jq_val_err_p2:-}" "${norm_tmp:-}"
+  rm -f "${find_err:-}" "${jq_val_err_p0:-}" "${jq_val_err_p2:-}" "${norm_tmp:-}" \
+        "${handed_off_norm_tmp:-}"
 }
 trap 'rc=$?; _rite_fix_p120_cleanup; exit $rc' EXIT
 trap '_rite_fix_p120_cleanup; exit 130' INT
@@ -1142,7 +1149,11 @@ if [ "$review_source" = "local_file" ] || [ "$review_source" = "explicit_file" ]
         fi
         review_source_path="$norm_tmp"
         # hand-off 完了: 下流の severity_map 構築が review_source_path 経由で参照するため、
-        # trap cleanup 対象から外す (二重 rm 回避 + downstream 参照保護)
+        # trap cleanup 対象から外す (二重 rm 回避 + downstream 参照保護)。
+        # Issue #1026: hand-off pattern 統一 — block 終了時 (EXIT/INT/TERM/HUP) に trap で
+        # `/tmp/rite-fix-normalized-XXXXXX` を必ず削除するため、`handed_off_norm_tmp` に path を保持する
+        # (severity_map build 完了後、bash block 終了の trap EXIT で削除される)。
+        handed_off_norm_tmp="$norm_tmp"
         norm_tmp=""
       else
         rm -f "$norm_tmp"

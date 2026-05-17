@@ -797,7 +797,7 @@ if [ -z "$review_source" ]; then
     # `if norm_tmp=$(mktemp ...); then ... else mktemp_norm_rc=$?; fi` 構造) と semantic 同期)。
     # 構造: bash の `!` 否定 pipeline では then 節内 $? が常に 0 になるため、SoT と同じ
     # `if cmd; then :; else rc=$?; fi` 形式を採用する。mktemp の native stderr は SoT (norm_tmp) と
-    # 揃えて `2>/dev/null` で抑制する (fix.md 内 24/25 site と pattern 一致)。
+    # 揃えて `2>/dev/null` で抑制する (本ファイル内の他 mktemp capture site と同じ pattern)。
     if find_err=$(mktemp /tmp/rite-fix-find-err-XXXXXX 2>/dev/null); then
       : # mktemp 成功 — find_err は valid path
     else

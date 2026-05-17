@@ -311,13 +311,18 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # `/git` substring 全置換の boundary 設計 (Issue #999 LOW follow-up):
   # 本 line は `/git` を ` git` に置換するため `/home/user/.config/git/config` のような
   # path 構成要素も置換対象になる (例: `grep -r foo /home/user/.config/git/config` →
-  # `grep -r foo /home/user/.config git/config`)。現状の (A)〜(G) deny case-glob は
-  # `*" git <verb> "*` 形式で **後続スペース必須** のため、path 由来で生成される `git/config`
-  # のように `/` が続くトークンは match せず false positive は発生しない。
-  # 将来、Always-deny verb の新規追加で末尾境界条件を緩める (e.g., `*" git <verb>"*` で
-  # trailing space を省略する) 設計変更を行う場合は、本正規化を `/git ` (後続スペース必須:
-  # `${CMD_NORMALIZED//\/git / git }`) に変更して token boundary を保ち、false positive 混入を
-  # 構造的に塞ぐこと。
+  # `grep -r foo /home/user/.config git/config`)。実装上、現状 false positive は発生しないが、
+  # その根拠はサブブロックごとに異なる:
+  #   - (A) Always-deny verbs (line 381 以降) の case-glob は `*" git <verb> "*` 形式で
+  #     trailing space 必須 のため、path 由来 `git/<X>` トークンは match しない
+  #   - (B) stash sub-action / (C) tag / (D) reflog / (E) worktree / (G) branch --delete 等の
+  #     後続 sub-block は `*" git <verb>"*` 形式 (trailing space 省略) を採用しているが、
+  #     path 由来トークンは `/` が verb 境界を崩して `git/<X>` 形となり、deny glob が要求する
+  #     連続 token `git <verb>` のシーケンスに到達しないため別経路で safe
+  # 将来 (A) Always-deny に新規 verb を追加し末尾境界条件を緩める (e.g., trailing space を省略
+  # する) 設計変更を行う場合は、本正規化を `/git ` (後続スペース必須:
+  # `${CMD_NORMALIZED//\/git / git }`) に変更して token boundary を保つこと。(B)-(G) を変更
+  # する場合も path 由来トークンとの衝突を再検証する必要がある。
   CMD_NORMALIZED="${CMD_NORMALIZED//\/git/ git}"
   CMD_NORMALIZED="${CMD_NORMALIZED//\\git/ git}"
   CMD_NORMALIZED="${CMD_NORMALIZED// command git/ git}"

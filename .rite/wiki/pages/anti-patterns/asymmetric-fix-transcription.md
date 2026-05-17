@@ -2,8 +2,14 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-18T03:35:00+09:00"
+updated: "2026-05-17T22:44:27Z"
 sources:
+  - type: "fixes"
+    ref: "raw/fixes/20260517T221628Z-pr-1032.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260517T222302Z-pr-1032.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260517T222829Z-pr-1032.md"
   - type: "reviews"
     ref: "raw/reviews/20260517T183407Z-pr-1028.md"
   - type: "reviews"
@@ -642,6 +648,25 @@ PR #1028 (Issue #1024 — `plugins/rite/commands/pr/fix.md` Phase 1.2.0 Block 1/
 
 **累積 33 回目の独自観点**: (1) **Recursive recurrence の発火条件を実測** — cycle 1 fix で「対称化のための fix」(hardcoded line ref → grep anchor) を実装した時点で、anchor literal 自体が新たな drift surface になる経路が観測された。「fix の対称化レイヤーごと (anchor literal / citation literal) の byte 一致検証契約」が未確立だと、Asymmetric Fix Transcription が **fix サイクル内部で再帰的に発火する** mode が成立する、(2) **Structural solution: anchor/context separation** — anchor (機械的 grep される literal、最短形) を context (human-readable description、隣接コメント行) と構造的に分離することで、anchor 内に context が混入する経路を消去する。これにより anchor 改変リスクと citation との drift リスクを切り離せる。この pattern は将来の `fix.md` 内の他 anchor (例: `severity_map build (local_file/explicit_file only — referenced by pr_comment state transitions note) ===` のような parenthetical 付き長 anchor) にも適用候補があり、Issue #1030 として **anchor 命名規約 reference の作成** を別 Issue 化した、(3) **3-cycle 収束パターンの予測可能性** — cycle 1 (3 findings: 初回検出) → cycle 2 (1 finding: fix-induced regression) → cycle 3 (0 findings: structural resolution) の収束は、Wiki 経験則「累積対策 PR の review-fix loop で fix 自体が drift を導入する」(`fix-induced-drift-in-cumulative-defense.md`) と同形であり、self-application を伴う設計改修 PR の典型的収束軌跡として再現性を持つ。
 
+### Bash semantics 版 recursive recurrence chain と三層対称化義務 (PR #1032、累積 34 回目)
+
+PR #1032 (Issue #1025 — `plugins/rite/commands/pr/fix.md` L797-L802 の `mktemp_failure_find_err` 経路を PR #1023 で導入された新 SoT (L1147-L1150 `mktemp_failure_norm_tmp`) と format 同期する小規模 refactor) は、PR #1028 (累積 33 回目) の **recursive recurrence in fix layer** doctrine の **bash semantics 版実例** を 3-cycle 連鎖で実測した事例。各 cycle で異なる drift class が surface し、cycle 4 で両 reviewer 0 findings 合意に到達:
+
+- **Cycle 1 (CRITICAL — bash 言語仕様罠)**: format 同期目的の SoT-aligned refactor で `|| find_err=""` silent fallback を WARNING-emit 構造に書き換える際、新 SoT (L1147-L1150) の `if cmd; then ... else $?` 構造ではなく `if ! cmd; then rc=$?` 形式で実装。bash の `!` 演算子が exit status を boolean 反転するため `then` 節内 `$?` が常に 0 となり、production sentinel emit failure 経路で operator に false `rc=0` を表示する silent regression を新規導入。reviewer 2 名 (prompt-engineer / code-quality) が cross-validation 一致で CRITICAL 検出
+- **Cycle 2 (MEDIUM — fix-introduced documentation drift + LOW — 対称化漏れ)**: cycle 1 fix で bash structural fix を適用と同時に「コメント精密化」と銘打って hardcoded absolute line-number reference (`L1147-L1150 (mktemp_failure_norm_tmp)`) を comment 内に埋め込んだ結果、実際の SoT 位置 (L1122-L1156) と乖離。両 reviewer cross-validation で MEDIUM 検出。加えて prompt-engineer が L799 mktemp invocation に `2>/dev/null` が欠落しており fix.md 内 24/25 サイトで唯一の非対称となっている点を独立検出 (LOW)
+- **Cycle 3 (MEDIUM — numeric counter drift の先回り対応)**: cycle 2 fix で semantic anchor 化を decision として宣言したにも関わらず、同じ comment block 内に新たな numeric counter (`fix.md 内 24/25 site と pattern 一致`) を追加。cycle 4 で MEDIUM (counter drift) として再検出される予定だった経路を本 fix で先回り対応し、相対 semantic 表現 (`他の ... と同じ pattern`) に置換
+- **Cycle 4 (mergeable — 0 findings)**: 両 reviewer (prompt-engineer / code-quality) 独立に 0 findings 評価、3-cycle 収束完了
+
+**累積 34 回目の独自観点**:
+
+(1) **PR #1028 doctrine の bash semantics 版実証** — 累積 33 回目で確立された「fix サイクル内部で再帰的に発火する recursive recurrence mode」が **bash 言語仕様** layer でも同形で発火することを実測。anchor literal / citation literal の byte 一致検証契約 (累積 33 回目) は doc layer の事例だったが、本 PR #1032 は同じ recursive recurrence pattern が **runtime semantics** (bash の `!` 演算子と `$?` の相互作用)、**documentation pointer** (hardcoded line-number reference)、**numeric counter** (`N/M sites` 形式の prose count) の 3 layer 横断で連続発火することを示した。
+
+(2) **三層対称化義務 (format token symmetry / bash structure symmetry / runtime semantics symmetry) の確立** — 「SoT と semantic 同期」を comment で明示宣言した瞬間、その同期義務は (a) WARNING wording / CONTEXT emit format / quoting style 等の **format token** layer、(b) `if cmd; then ... else $?` 等の **bash 構造** layer、(c) `!` 演算子の boolean 反転による rc capture 動作等の **runtime semantics** layer の 3 layer すべてを完全対称化する責務へ拡張される。部分対称化は後続 cycle で必ず surface する (cycle 1 で format 同期したが bash 構造が非対称 → cycle 2 で documentation pointer drift → cycle 3 で numeric counter drift と段階的に surface)。本 doctrine は新 SoT を rebrand する小規模 refactor PR で特に重要 (大規模変更では cycle 1 で全層 review されるが、format 同期 claim の小規模 PR は reviewer 注意が runtime semantics 層に届きにくい)。
+
+(3) **3-cycle 累積予防 PR の収束 cycle 数の empirical evidence 拡張** — PR #1028 (累積 33 回目) の 3-cycle 構造的収束に続き、本 PR #1032 も **shrinking cycle count (3 → 2 → 1 → 0 findings)** で 4 cycle で収束。「recursive recurrence in fix layer は 1 cycle の構造的単純さに関わらず 3 cycle 連鎖で発火するが、各 cycle で発火する drift class は異なる」「cycle ごとに drift class を semantic anchor に置換していくことで shrinking cycle で収束する」empirical pattern が 2 連続 (累積 33 → 34 回目) で再現。`accumulated-pr-three-cycle-convergence.md` (PR #1011 の 3-cycle 収束) と同 pattern の bash semantics 版として、3-cycle convergence の reproducibility evidence を heuristics 層と anti-patterns 層の両方で蓄積。
+
+(4) **Comment 内 numeric reference の 2 段階 drift 防御契約** — cycle 2 で hardcoded line-number reference を grep anchor / semantic identifier に置換した直後、cycle 3 で別 class の numeric reference (`N/M sites` 形式の prose counter) が同じ comment block に新規導入された。**「numeric reference の drift 源は line-number だけではない」** 観点を追加: hardcoded line-number → semantic anchor 化 (1 段階目) に加え、prose counter (`N/M sites` / `24/25 サイトで唯一の非対称`) → 相対 semantic 表現 (`他の X と同じ pattern` / `この経路を含めた全 X site で対称`) 化 (2 段階目) の **2 段階置換** が necessary。1 段階目だけでは同じ class の別 token が新規 introduce される経路がある (本 PR cycle 2 → cycle 3 で実測)。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -738,3 +763,6 @@ PR #1028 (Issue #1024 — `plugins/rite/commands/pr/fix.md` Phase 1.2.0 Block 1/
 - [PR #1028 cycle 2 review (recursive recurrence の実測: cycle 1 fix で導入した anchor `# === Phase 1.2.0 Selection logic block end (Block 1, referenced by Block 2 continuity note) ===` が note 内 citation `# === Phase 1.2.0 Selection logic block end ===` と byte 不一致。cross-validated MEDIUM × 1 として再検出。「fix の対称化レイヤーごとの byte 一致検証契約」の必要性を実測)](../../raw/reviews/20260517T182209Z-pr-1028.md)
 - [PR #1028 cycle 2 fix (Structural solution の確立: anchor を最短 literal `# === Phase 1.2.0 Selection logic block end ===` に短縮、context (`Block 1, referenced by Block 2 continuity note`) を隣接コメント行 (`# (Block 1, ...)`) に分離。Anchor は「機械的 grep される literal」として最短形、説明情報は隣接 comment に置く役割分離 contract を新規確立)](../../raw/fixes/20260517T182401Z-pr-1028.md)
 - [PR #1028 cycle 3 review (累積 33 回目の収束: 両 reviewer (prompt-engineer / code-quality) 独立に「anchor literal byte-for-byte match 確認」「技術主張正確性確認」「Issue #1024 仕様準拠」を verify し 0 findings 評価。3-cycle 収束パターン (cycle 1 検出 → cycle 2 fix-induced regression → cycle 3 structural resolution) の予測可能性を実証。Issue #1029 (continuity note bullet 化) / Issue #1030 (anchor 命名規約 reference 作成) を別 Issue 化、anchor/context separation pattern の他 anchor への展開を follow-up として残す)](../../raw/reviews/20260517T183407Z-pr-1028.md)
+- [PR #1032 cycle 1 fix (累積 34 回目の起点: bash semantics 版 recursive recurrence chain の cycle 1 — format 同期目的の SoT-aligned refactor で `|| find_err=""` silent fallback を WARNING-emit 構造に書き換える際、新 SoT (L1147-L1150 `if cmd; then ... else $?`) ではなく `if ! cmd; then rc=$?` 形式で実装し bash `!` 演算子の boolean 反転による rc 常時 0 化 silent regression を新規導入。reviewer 2 名 cross-validation 一致で CRITICAL 検出。**format token symmetry / bash structure symmetry / runtime semantics symmetry の三層対称化義務** doctrine を確立)](../../raw/fixes/20260517T221628Z-pr-1032.md)
+- [PR #1032 cycle 2 fix (累積 34 回目の fix-induced regression cycle 2 — cycle 1 fix で bash structural fix を適用すると同時に「コメント精密化」と銘打って hardcoded absolute line-number reference (`L1147-L1150`) を comment 内に埋め込んだ結果、実際の SoT 位置 (L1122-L1156) と乖離。両 reviewer cross-validation で MEDIUM 検出 + L799 mktemp に `2>/dev/null` 欠落の 24/25 サイト対称化漏れ LOW を独立検出)](../../raw/fixes/20260517T222302Z-pr-1032.md)
+- [PR #1032 cycle 3 fix (累積 34 回目の numeric counter drift 先回り対応 cycle 3 — cycle 2 で hardcoded line-number → semantic anchor 化を decision として宣言したにも関わらず、同じ comment block に新たな numeric counter (`fix.md 内 24/25 site と pattern 一致`) を追加する第 2 段階 drift を本 fix で先回り対応し相対 semantic 表現 (`他の ... と同じ pattern`) に置換。**Comment 内 numeric reference の 2 段階 drift 防御契約** を確立)](../../raw/fixes/20260517T222829Z-pr-1032.md)

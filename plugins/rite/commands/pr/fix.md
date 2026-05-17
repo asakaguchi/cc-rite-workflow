@@ -1066,7 +1066,8 @@ case "${review_source:-}" in
     ;;
 esac
 
-# === Phase 1.2.0 Selection logic block end (Block 1, referenced by Block 2 continuity note) ===
+# (Block 1, referenced by Block 2 continuity note)
+# === Phase 1.2.0 Selection logic block end ===
 set +o pipefail
 ```
 

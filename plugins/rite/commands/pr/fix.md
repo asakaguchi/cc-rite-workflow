@@ -487,8 +487,9 @@ esac
 find_err=""
 jq_val_err_p0=""
 jq_val_err_p2=""
+norm_tmp=""
 _rite_fix_p120_cleanup() {
-  rm -f "${find_err:-}" "${jq_val_err_p0:-}" "${jq_val_err_p2:-}"
+  rm -f "${find_err:-}" "${jq_val_err_p0:-}" "${jq_val_err_p2:-}" "${norm_tmp:-}"
 }
 trap 'rc=$?; _rite_fix_p120_cleanup; exit $rc' EXIT
 trap '_rite_fix_p120_cleanup; exit 130' INT
@@ -536,6 +537,20 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
     echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=mergeable_has_open_blockers" >&2
     review_source="fallback"
     review_source_path=""
+  elif ! jq -e '
+    [.findings[]? | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length == 0
+  ' "$review_file_path" >/dev/null 2>&1; then
+    # Cross-field invariant #4 (Issue #1016, review-result-schema.md):
+    # severity ∈ {CRITICAL, HIGH} ∧ scope == "nit-noted" は禁止 (blocker を nit に降格できない)。
+    # 違反時は fallback 経路に route (invariant #2 と同じ FAIL routing)。
+    # 1.0/1.0.0 JSON では .scope が欠落しているため `null == "nit-noted"` は false、本 check は
+    # 規約的に発火しない (後方互換)。reviewer が CRITICAL を nit に降格させたい場合は severity を
+    # MEDIUM/LOW へ自己降格し、original_severity フィールドに元値を保持すること。
+    violation_count=$(jq '[.findings[]? | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length' "$review_file_path" 2>/dev/null || echo "?")
+    echo "エラー: --review-file の cross-field invariant #4 違反: severity ∈ {CRITICAL, HIGH} で scope=\"nit-noted\" の finding が $violation_count 件存在します" >&2
+    echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=explicit_file_critical_high_scope_nit_noted; count=$violation_count" >&2
+    review_source="fallback"
+    review_source_path=""
   elif ! jq -e '.overall_assessment == "mergeable" or .overall_assessment == "fix-needed"' "$review_file_path" >/dev/null 2>&1; then
     # overall_assessment enum validation (review-result-schema.md)
     oa_val=$(jq -r '.overall_assessment // "(null)"' "$review_file_path" 2>/dev/null)
@@ -559,7 +574,13 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
       schema_version="unknown"
     fi
     case "$schema_version" in
-      "1.0.0"|"1.0")
+      "1.0.0"|"1.0"|"1.1.0")
+        # Issue #1016: schema 1.1.0 を accept list に追加。
+        # 1.0/1.0.0 受信時は後段の Phase 1.2.0.s に近接した default mapping ステップで
+        # findings[].scope の severity ベース補完を実施する (review-result-schema.md
+        # 後方互換性セクション参照)。本 case 内では schema_version をブロックレベルで
+        # 受理するだけで、scope 補完は severity_map 構築の直前に集中させる。
+        #
         # commit_sha stale detection (verified-review silent-failure C-1)
         # schema で `commit_sha` が required field として記録されているため、現 HEAD との比較で
         # stale file を検出する。mismatch 時は Priority 4 Interactive Fallback へ routing する
@@ -896,6 +917,18 @@ if [ -z "$review_source" ]; then
         echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=local_file_cross_field_invariant_violated" >&2
         review_source="pr_comment"
         review_source_path=""
+      elif ! jq -e '
+        [.findings[]? | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length == 0
+      ' "$latest_file" >/dev/null 2>&1; then
+        # Cross-field invariant #4 (Issue #1016, review-result-schema.md):
+        # severity ∈ {CRITICAL, HIGH} ∧ scope == "nit-noted" は禁止。
+        # corrupt rename はしない (データは構造的に valid、ビジネスルール違反のみ)。
+        # 1.0/1.0.0 JSON では .scope が欠落しているため本 check は規約的に発火しない (後方互換)。
+        violation_count=$(jq '[.findings[]? | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length' "$latest_file" 2>/dev/null || echo "?")
+        echo "WARNING: $latest_file の cross-field invariant #4 違反 (severity ∈ {CRITICAL, HIGH} で scope=\"nit-noted\" の finding が $violation_count 件)。Priority 3 に routing します。" >&2
+        echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=local_file_critical_high_scope_nit_noted; count=$violation_count" >&2
+        review_source="pr_comment"
+        review_source_path=""
       elif ! jq -e '.overall_assessment == "mergeable" or .overall_assessment == "fix-needed"' "$latest_file" >/dev/null 2>&1; then
         # overall_assessment enum validation (review-result-schema.md)
         oa_val=$(jq -r '.overall_assessment // "(null)"' "$latest_file" 2>/dev/null)
@@ -918,7 +951,11 @@ if [ -z "$review_source" ]; then
           schema_version="unknown"
         fi
         case "$schema_version" in
-          "1.0.0"|"1.0")
+          "1.0.0"|"1.0"|"1.1.0")
+            # Issue #1016: schema 1.1.0 を accept list に追加 (Priority 2 case 文)。
+            # Priority 0/2/3 の 3 sites を symmetric に保つ (review-result-schema.md
+            # Schema Version SoT セクションの「読取側 (3 値受理義務、3 箇所で完全同期)」契約)。
+            #
             # commit_sha stale detection (verified-review silent-failure C-1)
             # Priority 2 は lexicographic 最新ファイルを機械的に選ぶため、古い commit に対する
             # review 結果を silent に使用するリスクがある。現 HEAD と比較し、mismatch 時は Priority 3
@@ -1048,6 +1085,68 @@ set +o pipefail
 # Source: jq manual (https://jqlang.github.io/jq/manual/) — from_entries duplicate key behavior
 # === severity_map build (local_file/explicit_file only — referenced by pr_comment state transitions note) ===
 if [ "$review_source" = "local_file" ] || [ "$review_source" = "explicit_file" ]; then
+  # Issue #1016: schema 1.1.0 後方互換 normalization (scope default mapping + invariant #5 auto-correct)。
+  # 本 step は file-based path 用 (Priority 0/2 共通)。Priority 3 (pr_comment, raw_json string) には
+  # 別途 string-based 版が後段の Phase 1.2.0.s に近接して実装されている (同 logic の鏡像)。
+  #
+  # 動作:
+  # (a) schema_version == "1.0"|"1.0.0" の場合、findings[] に欠落している scope を severity から
+  #     default mapping (CRITICAL/HIGH/MEDIUM → current-pr、LOW-MEDIUM/LOW → nit-noted) で補完。
+  #     1 件以上補完したら [CONTEXT] REVIEW_SOURCE_SCOPE_DEFAULTED=1 を emit。
+  # (b) invariant #5: pre_existing == false ∧ scope == "nit-noted" の finding を検出。
+  #     1 件以上あれば WARNING + [CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1 を emit し、
+  #     scope を current-pr に自動書き換え。
+  # (c) (a) または (b) で mutation が発生した場合のみ、normalized tempfile に書き出し、
+  #     review_source_path を tempfile path に差し替えて downstream で参照させる。
+  # (d) 後方互換: invariant #5 は pre_existing フィールドが存在する 1.1.0 JSON のみで発火する
+  #     (1.0/1.0.0 では default mapping は scope を補完するのみで pre_existing は補完しない)。
+  norm_sv=$(jq -r '.schema_version // "unknown"' "$review_source_path" 2>/dev/null || echo "unknown")
+  norm_defaulted_count=0
+  norm_corrected_count=0
+  case "$norm_sv" in
+    "1.0.0"|"1.0")
+      norm_defaulted_count=$(jq '[.findings[]? | select(has("scope") | not)] | length' "$review_source_path" 2>/dev/null || echo 0)
+      ;;
+  esac
+  norm_corrected_count=$(jq '[.findings[]? | select(.pre_existing == false and .scope == "nit-noted")] | length' "$review_source_path" 2>/dev/null || echo 0)
+  if [ "${norm_defaulted_count:-0}" -gt 0 ] || [ "${norm_corrected_count:-0}" -gt 0 ]; then
+    if norm_tmp=$(mktemp /tmp/rite-fix-normalized-XXXXXX 2>/dev/null); then
+      if jq '
+        .findings |= map(
+          (if has("scope") then . else .scope = (
+            if .severity == "CRITICAL" or .severity == "HIGH" or .severity == "MEDIUM" then "current-pr"
+            else "nit-noted"
+            end
+          ) end)
+          | (if .pre_existing == false and .scope == "nit-noted" then .scope = "current-pr" else . end)
+        )
+      ' "$review_source_path" > "$norm_tmp" 2>/dev/null; then
+        if [ "${norm_defaulted_count:-0}" -gt 0 ]; then
+          echo "WARNING: $norm_defaulted_count findings の scope を schema 1.0 後方互換で severity-based default mapping により補完しました" >&2
+          echo "[CONTEXT] REVIEW_SOURCE_SCOPE_DEFAULTED=1; reason=scope_omitted_in_v1_0; count=$norm_defaulted_count; schema_version=$norm_sv" >&2
+        fi
+        if [ "${norm_corrected_count:-0}" -gt 0 ]; then
+          echo "WARNING: $norm_corrected_count findings が invariant #5 違反 (pre_existing=false × scope=nit-noted) のため scope を current-pr に auto-correct しました" >&2
+          echo "[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1; reason=pre_existing_false_scope_nit_noted; count=$norm_corrected_count" >&2
+        fi
+        review_source_path="$norm_tmp"
+        # hand-off 完了: 下流の severity_map 構築が review_source_path 経由で参照するため、
+        # trap cleanup 対象から外す (二重 rm 回避 + downstream 参照保護)
+        norm_tmp=""
+      else
+        rm -f "$norm_tmp"
+        norm_tmp=""
+        echo "WARNING: schema 1.1.0 normalization jq が失敗 — 原 JSON のまま続行します" >&2
+        echo "[CONTEXT] REVIEW_SOURCE_NORMALIZATION_FAILED=1; reason=jq_mutation_failed" >&2
+      fi
+    else
+      mktemp_norm_rc=$?
+      echo "WARNING: schema 1.1.0 normalization 用 mktemp が失敗しました (rc=$mktemp_norm_rc) — 原 JSON のまま続行します" >&2
+      echo "  対処: /tmp の容量 / inode 枯渇 / read-only filesystem / permission denied を確認してください" >&2
+      echo "[CONTEXT] REVIEW_SOURCE_NORMALIZATION_FAILED=1; reason=mktemp_failure_norm_tmp; rc=$mktemp_norm_rc" >&2
+    fi
+  fi
+
   # verified-review H-1/H-2 対応: jq の exit code を明示捕捉する。
   # 旧実装 `duplicate_keys=$(jq ...)` / `severity_map_json=$(jq -c ...)` は exit code を一切
   # check せず、jq バイナリ異常 / OOM / TOCTOU (別プロセスが file を rm / truncate) で
@@ -1239,6 +1338,16 @@ elif ! printf '%s' "$raw_json" | jq -e '
   # Priority 0/2 と対称に独立 elif で分離し、reason code を区別する。
   echo "WARNING: PR コメント内の Raw JSON が cross-field invariant に違反しています (mergeable だが open な CRITICAL/HIGH finding あり)。legacy parser に fallthrough します。" >&2
   echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=pr_comment_cross_field_invariant_violated" >&2
+elif ! printf '%s' "$raw_json" | jq -e '
+  [.findings[]? | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length == 0
+' >/dev/null 2>&1; then
+  # Cross-field invariant #4 (Issue #1016, review-result-schema.md):
+  # severity ∈ {CRITICAL, HIGH} ∧ scope == "nit-noted" は禁止。
+  # Priority 0/2 と対称に独立 elif で分離し、reason code を区別する。
+  # 1.0/1.0.0 JSON では .scope が欠落しているため本 check は規約的に発火しない (後方互換)。
+  violation_count=$(printf '%s' "$raw_json" | jq '[.findings[]? | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length' 2>/dev/null || echo "?")
+  echo "WARNING: PR コメント内の Raw JSON が cross-field invariant #4 に違反しています (severity ∈ {CRITICAL, HIGH} で scope=\"nit-noted\" の finding が $violation_count 件)。legacy parser に fallthrough します。" >&2
+  echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=pr_comment_critical_high_scope_nit_noted; count=$violation_count" >&2
 elif ! printf '%s' "$raw_json" | jq -e '.overall_assessment == "mergeable" or .overall_assessment == "fix-needed"' >/dev/null 2>&1; then
   # overall_assessment enum validation (review-result-schema.md)
   oa_val=$(printf '%s' "$raw_json" | jq -r '.overall_assessment // "(null)"' 2>/dev/null)
@@ -1260,7 +1369,11 @@ else
     schema_version="unknown"
   fi
   case "$schema_version" in
-    "1.0.0"|"1.0")
+    "1.0.0"|"1.0"|"1.1.0")
+      # Issue #1016: schema 1.1.0 を accept list に追加 (Priority 3 case 文)。
+      # Priority 0/2/3 の 3 sites を symmetric に保つ (review-result-schema.md
+      # Schema Version SoT セクションの「読取側 (3 値受理義務、3 箇所で完全同期)」契約)。
+      #
       # commit_sha stale detection (verified-review silent-failure C-1)
       # Priority 3 Raw JSON も Priority 0/2 と同じ guard を適用する。
       # mismatch 時は WARNING のみで continue する (PR コメントは最新の push 後に投稿される
@@ -1289,6 +1402,52 @@ else
         echo "  対処: /rite:pr:review を再実行して PR コメントを更新してください。" >&2
         echo "[CONTEXT] REVIEW_SOURCE_STALE=1; reason=pr_comment_commit_sha_mismatch; json_sha=$json_commit_sha; head_sha=$head_sha" >&2
       fi
+      # Issue #1016: schema 1.1.0 後方互換 normalization (scope default mapping + invariant #5 auto-correct)。
+      # 本 step は Priority 3 (pr_comment, raw_json string) 用。Priority 0/2 (file-based) は
+      # 前段の severity_map build block で同 logic の鏡像を実装している。
+      #
+      # 動作:
+      # (a) schema_version == "1.0"|"1.0.0" の場合、findings[] に欠落している scope を severity から
+      #     default mapping (CRITICAL/HIGH/MEDIUM → current-pr、LOW-MEDIUM/LOW → nit-noted) で補完。
+      #     1 件以上補完したら [CONTEXT] REVIEW_SOURCE_SCOPE_DEFAULTED=1 を emit。
+      # (b) invariant #5: pre_existing == false ∧ scope == "nit-noted" の finding を検出。
+      #     1 件以上あれば WARNING + [CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1 を emit し、
+      #     scope を current-pr に自動書き換え。
+      # (c) (a) または (b) で mutation が発生した場合のみ raw_json を mutated 版に差し替える。
+      norm_defaulted_count_p3=0
+      norm_corrected_count_p3=0
+      case "$schema_version" in
+        "1.0.0"|"1.0")
+          norm_defaulted_count_p3=$(printf '%s' "$raw_json" | jq '[.findings[]? | select(has("scope") | not)] | length' 2>/dev/null || echo 0)
+          ;;
+      esac
+      norm_corrected_count_p3=$(printf '%s' "$raw_json" | jq '[.findings[]? | select(.pre_existing == false and .scope == "nit-noted")] | length' 2>/dev/null || echo 0)
+      if [ "${norm_defaulted_count_p3:-0}" -gt 0 ] || [ "${norm_corrected_count_p3:-0}" -gt 0 ]; then
+        if normalized_raw_json=$(printf '%s' "$raw_json" | jq -c '
+          .findings |= map(
+            (if has("scope") then . else .scope = (
+              if .severity == "CRITICAL" or .severity == "HIGH" or .severity == "MEDIUM" then "current-pr"
+              else "nit-noted"
+              end
+            ) end)
+            | (if .pre_existing == false and .scope == "nit-noted" then .scope = "current-pr" else . end)
+          )
+        ' 2>/dev/null); then
+          if [ "${norm_defaulted_count_p3:-0}" -gt 0 ]; then
+            echo "WARNING: $norm_defaulted_count_p3 findings の scope を schema 1.0 後方互換で severity-based default mapping により補完しました" >&2
+            echo "[CONTEXT] REVIEW_SOURCE_SCOPE_DEFAULTED=1; reason=scope_omitted_in_v1_0; count=$norm_defaulted_count_p3; schema_version=$schema_version" >&2
+          fi
+          if [ "${norm_corrected_count_p3:-0}" -gt 0 ]; then
+            echo "WARNING: $norm_corrected_count_p3 findings が invariant #5 違反 (pre_existing=false × scope=nit-noted) のため scope を current-pr に auto-correct しました" >&2
+            echo "[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1; reason=pre_existing_false_scope_nit_noted; count=$norm_corrected_count_p3" >&2
+          fi
+          raw_json="$normalized_raw_json"
+        else
+          echo "WARNING: schema 1.1.0 normalization jq が失敗 — 原 Raw JSON のまま続行します" >&2
+          echo "[CONTEXT] REVIEW_SOURCE_NORMALIZATION_FAILED=1; reason=jq_mutation_failed" >&2
+        fi
+      fi
+
       # jq exit code を明示捕捉する。
       # 旧実装は `severity_map_json=$(printf | jq -c ...)` で jq の exit code を一切 check せず、
       # 失敗時は severity_map_json="" のまま後段に流れ「0 件で正常終了」に見える silent regression
@@ -1536,17 +1695,20 @@ exit 1
 | `explicit_file_parse` | `--review-file` で指定されたファイルが valid JSON ではない (Priority 0, triggers fallback) |
 | `explicit_file_schema_required_fields_missing` | `--review-file` で指定されたファイルが parse 可能だが必須フィールド (schema_version / pr_number / findings[] 配列型) が欠落 (Priority 0, triggers fallback) |
 | `mergeable_has_open_blockers` | Priority 0 で指定されたファイルの cross-field invariant 違反: `overall_assessment=="mergeable"` だが CRITICAL/HIGH かつ status==open の finding が存在 (Priority 0, `REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag, triggers fallback) |
+| `explicit_file_critical_high_scope_nit_noted` | Priority 0 で指定されたファイルの cross-field invariant #4 違反 (Issue #1016): `severity ∈ {CRITICAL, HIGH}` × `scope == "nit-noted"` の finding が存在 (Priority 0, `REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag, triggers fallback) |
 | `overall_assessment_unknown_value` | Priority 0/2/3 で `overall_assessment` が受理値 (`mergeable` / `fix-needed`) 以外 (review-result-schema.md enum 違反、`REVIEW_SOURCE_ENUM_UNKNOWN` flag。P0: fallback、P2: Priority 3 routing、P3: legacy parser fallthrough) |
 | `explicit_file_schema_version_unknown` | `--review-file` で指定されたファイルの schema_version が未知 (Priority 0, triggers fallback) |
 | `local_file_json_parse_failure` | Priority 2 で選ばれた最新 local file が `jq empty` で syntax invalid (Priority 3 pr_comment へ routing) |
 | `local_file_schema_required_fields_missing` | Priority 2 で選ばれた最新 local file が parse 可能だが必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落 (Priority 3 pr_comment へ routing) |
 | `local_file_cross_field_invariant_violated` | Priority 2 で選ばれた最新 local file の cross-field invariant 違反: `overall_assessment=="mergeable"` だが CRITICAL/HIGH かつ status==open の finding が存在 (Priority 3 pr_comment へ routing、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
+| `local_file_critical_high_scope_nit_noted` | Priority 2 で選ばれた最新 local file の cross-field invariant #4 違反 (Issue #1016): `severity ∈ {CRITICAL, HIGH}` × `scope == "nit-noted"` の finding が存在 (Priority 3 pr_comment へ routing、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
 | `sort_or_mapfile_failure` | Priority 2 の `find ... | sort -r` pipeline が process substitution 内で失敗 (OOM / IO エラー、`REVIEW_SOURCE_FIND_FAILED` flag) |
 | `local_file_schema_version_unknown` | Priority 2 で選ばれた最新 local file の schema_version が未知 (Priority 3 pr_comment へ routing) |
 | `pr_comment_raw_json_parse_failure` | Priority 3 で取得した PR コメント Raw JSON が `jq empty` で syntax invalid (legacy Markdown parser へ fallthrough) |
 | `pr_comment_raw_json_awk_failed` | Priority 3 で PR コメントからの Raw JSON 抽出 awk が失敗 (rc 非 0、`REVIEW_SOURCE_PARSE_FAILED` flag、legacy Markdown parser へ fallthrough) |
 | `pr_comment_schema_required_fields_missing` | Priority 3 で取得した PR コメント Raw JSON が parse 可能だが必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落 (legacy Markdown parser へ fallthrough) |
 | `pr_comment_cross_field_invariant_violated` | Priority 3 で取得した PR コメント Raw JSON の cross-field invariant 違反: `overall_assessment=="mergeable"` だが CRITICAL/HIGH かつ status==open の finding が存在 (legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
+| `pr_comment_critical_high_scope_nit_noted` | Priority 3 で取得した PR コメント Raw JSON の cross-field invariant #4 違反 (Issue #1016): `severity ∈ {CRITICAL, HIGH}` × `scope == "nit-noted"` の finding が存在 (legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
 | `pr_comment_schema_version_unknown` | Priority 3 で取得した PR コメント Raw JSON の schema_version が未知 (legacy Markdown parser へ fallthrough) |
 | `user_file_path_retries` | Interactive fallback の「ファイルパス指定」が 3 回連続で失敗 (terminate with `[fix:error]`) |
 | `user_cancelled` | Interactive fallback で「中止」option が選択された (Phase 8.1 評価順 1 で `[fix:error]` に昇格) |
@@ -1583,8 +1745,12 @@ exit 1
 | `pr_comment_tempfile_read_io_error` | Priority 3 で `pr_comment_body_file` の cat が IO エラーで失敗 (permission 変更 / NFS timeout / TOCTOU truncate) |
 | `review_file_path_placeholder_residue` | Priority 0 で `review_file_path="{review_file_path_from_phase_1_0_1}"` placeholder が literal substitute されていない (fail-fast) |
 | `pr_number_placeholder_residue` | Phase 1.2.0 冒頭の `pr_number="{pr_number}"` literal substitute が忘れられ、数値以外 (空文字 / placeholder 残留) のまま bash block に入った (cleanup.md Phase 2.5 / review.md Phase 6.1.a と対称化、`[fix:error]` 昇格) |
+| `scope_omitted_in_v1_0` | Issue #1016: schema 1.0/1.0.0 受信時に findings[].scope が欠落しているため severity ベースの default mapping で補完した (`REVIEW_SOURCE_SCOPE_DEFAULTED` flag、非ブロッキング、observability のみ) |
+| `pre_existing_false_scope_nit_noted` | Issue #1016: cross-field invariant #5 違反 — `pre_existing == false` × `scope == "nit-noted"` の finding を検出し、scope を `current-pr` に auto-correct した (`REVIEW_SOURCE_AUTO_CORRECTED` flag、非ブロッキング、auto-correct + observability) |
+| `jq_mutation_failed` | Issue #1016: schema 1.1.0 normalization (default mapping + invariant #5 auto-correct) を行う jq mutation が失敗 (`REVIEW_SOURCE_NORMALIZATION_FAILED` flag、非ブロッキング、原 JSON のまま続行) |
+| `mktemp_failure_norm_tmp` | Issue #1016: schema 1.1.0 normalization 用 tempfile (`/tmp/rite-fix-normalized-XXXXXX`) の mktemp が失敗 (disk full / inode 枯渇 / read-only filesystem / permission denied、`REVIEW_SOURCE_NORMALIZATION_FAILED` flag、非ブロッキング、原 JSON のまま続行)。silent skip 防止のため WARNING + retained flag を必ず emit する (PR #1023 review F-01 対応) |
 
-**Eval-order enumeration** (for Pattern-5 drift check): 本 enumeration は Pattern-5 drift check の **唯一の入力源** であり、上の Phase 1.2.0 / 1.2.0.1 reason 表と必ず同期させること。reason を追加・削除する際は表と本 enumeration の両方を同時に更新する。emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `explicit_file_not_found` / `explicit_file_parse` / `explicit_file_schema_required_fields_missing` / `mergeable_has_open_blockers` / `overall_assessment_unknown_value` / `explicit_file_schema_version_unknown` / `priority1_decision_unset` / `priority1_decision_invalid` / `priority1_receipt_missing` / `priority1_receipt_invalid` / `priority1_receipt_inconsistent` / `sort_or_mapfile_failure` / `local_file_json_parse_failure` / `local_file_schema_required_fields_missing` / `local_file_cross_field_invariant_violated` / `local_file_schema_version_unknown` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_schema_version_unknown` / `user_file_path_retries` / `user_cancelled` / `state_dir_mkdir_failed` / `state_file_write_failed` / `state_file_read_io_error_gate` / `review_source_unset_post_chain` / `review_source_invalid_post_chain` / `invalid_pr_number_at_happy_cleanup` / `hard_gate_rm_failure` / `success_cleanup_rm_failure` / `user_cancel_rm_failure` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `explicit_file_commit_sha_mismatch` / `local_file_commit_sha_mismatch` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `local_file_find_io_error` / `mktemp_failure_find_err` / `latest_file_stat_failure` / `state_file_read_io_error` / `happy_path_rm_failure` / `retry_re_entry` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `review_file_path_placeholder_residue`)
+**Eval-order enumeration** (for Pattern-5 drift check): 本 enumeration は Pattern-5 drift check の **唯一の入力源** であり、上の Phase 1.2.0 / 1.2.0.1 reason 表と必ず同期させること。reason を追加・削除する際は表と本 enumeration の両方を同時に更新する。emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `explicit_file_not_found` / `explicit_file_parse` / `explicit_file_schema_required_fields_missing` / `mergeable_has_open_blockers` / `explicit_file_critical_high_scope_nit_noted` / `overall_assessment_unknown_value` / `explicit_file_schema_version_unknown` / `priority1_decision_unset` / `priority1_decision_invalid` / `priority1_receipt_missing` / `priority1_receipt_invalid` / `priority1_receipt_inconsistent` / `sort_or_mapfile_failure` / `local_file_json_parse_failure` / `local_file_schema_required_fields_missing` / `local_file_cross_field_invariant_violated` / `local_file_critical_high_scope_nit_noted` / `local_file_schema_version_unknown` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_file_path_retries` / `user_cancelled` / `state_dir_mkdir_failed` / `state_file_write_failed` / `state_file_read_io_error_gate` / `review_source_unset_post_chain` / `review_source_invalid_post_chain` / `invalid_pr_number_at_happy_cleanup` / `hard_gate_rm_failure` / `success_cleanup_rm_failure` / `user_cancel_rm_failure` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `explicit_file_commit_sha_mismatch` / `local_file_commit_sha_mismatch` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `local_file_find_io_error` / `mktemp_failure_find_err` / `latest_file_stat_failure` / `state_file_read_io_error` / `happy_path_rm_failure` / `retry_re_entry` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `review_file_path_placeholder_residue` / `scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `mktemp_failure_norm_tmp`)
 
 #### Legacy Branching (PR Comment Path Only)
 

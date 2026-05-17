@@ -1885,8 +1885,10 @@ Phase 4.0.A で記録した `ORIG_BR` / `ORIG_SC` / `ORIG_BLH` をリテラル s
 # {orig_br} / {orig_sc} / {orig_blh} は Phase 4.0.A の出力値をリテラル substitute する。
 # Placeholder 残留 fail-fast gate (Phase 6.1.b と同 pattern): {orig_br} が `{orig_br}` のまま残ったまま
 # 渡されると verifier が non-empty 文字列として branch 比較し silent false-positive cascade を起こすため、
-# 形状検査で {...} 残留を絶対早期 reject する。Phase 4.0.A 起動時に detached HEAD で ORIG_BR=""
-# だった legitimate 経路 (orchestrator が worktree --detach で起動した場合) は空文字列のまま通過する。
+# 形状検査で {...} 残留を絶対早期 reject する。Phase 4.0.A 起動時に detached HEAD だった
+# legitimate 経路 (orchestrator が worktree --detach で起動した場合) は Phase 4.0.A の line
+# 1401-1404 で `DETACHED:<short-hash>` sentinel に変換済みのため、本 case 文には常に非空文字列
+# として到達する (verify script 側で `DETACHED:*` は branch drift check を skip する経路)。
 case "{orig_br}" in
   "{"*"}")
     echo "ERROR: Phase 5.0.A の {orig_br} placeholder が literal substitute されていません (値: '{orig_br}'). Phase 4.0.A 未実行 / Bash tool 間変数の引き継ぎ失敗の可能性。" >&2

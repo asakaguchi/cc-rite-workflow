@@ -307,6 +307,24 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # は parent shell 解決後の独立トークンとして渡るため、本 hook の静的 glob では検出不能。
   # Layer 2 の責務は「静的 token として `git` を含むコマンド」に限定し、一次防御は agent prompt、
   # 三次防御は Layer 3 post-condition state-verify gate に委ねる三層構造を維持する。
+  #
+  # `/git` substring 全置換の boundary 設計 (Issue #999 LOW follow-up):
+  # 本 line は `/git` を ` git` に置換するため `/home/user/.config/git/config` のような
+  # path 構成要素も置換対象になる (例: `grep -r foo /home/user/.config/git/config` →
+  # `grep -r foo /home/user/.config git/config`)。実装上、現状 false positive は発生しない。
+  # 主要因 (全サブブロック共通): path 由来トークンは置換後 ` git/<X>` 形 (前 boundary に leading
+  # space、`/` で verb 境界が崩れる) となり、(A)〜(G) すべての deny glob (trailing space 必須形 /
+  # 省略形いずれも) が要求する連続 token `git <verb>` シーケンスに到達しないため別経路で safe。
+  # 補強要因 (サブブロック別の trailing space): (A) Always-deny verbs の case-glob は
+  # `*" git <verb> "*` 形式で trailing space 必須 (verb 末尾の token boundary も二重に保護)。
+  # (B) stash / (C) tag / (D) reflog の case-glob、および (E) worktree の case-glob (remove/move/
+  # prune 等) は `*" git <verb>"*` 形式で trailing space 省略。(E) worktree の token-loop
+  # precondition (`add` 等) は ` git worktree add ` で trailing space 必須。(G) branch は混在で、
+  # 短形式 (`-D` / `-d` / `-f` / `-m` / `-M` / `-c` / `-C` 等) は trailing space あり、long-form
+  # (`--delete` / `--force` / `--move` / `--copy` 等) は trailing space 省略。
+  # 将来、本正規化を `/git ` (後続スペース必須: `${CMD_NORMALIZED//\/git / git }`) に変更すべき
+  # ケース: (A) Always-deny に新規 verb を追加し末尾境界条件を緩める設計変更時。(B)-(G) を変更
+  # する場合も path 由来トークンとの衝突を再検証する必要がある。
   CMD_NORMALIZED="${CMD_NORMALIZED//\/git/ git}"
   CMD_NORMALIZED="${CMD_NORMALIZED//\\git/ git}"
   CMD_NORMALIZED="${CMD_NORMALIZED// command git/ git}"

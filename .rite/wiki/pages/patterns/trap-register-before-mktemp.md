@@ -2,7 +2,7 @@
 title: "trap 登録 → mktemp の順序で tempfile lifecycle を守る"
 domain: "patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-16T19:37:16Z"
+updated: "2026-05-17T23:40:00Z"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md"
@@ -12,7 +12,9 @@ sources:
     ref: "raw/fixes/20260416T180658Z-pr-548.md"
   - type: "reviews"
     ref: "raw/reviews/20260416T180001Z-pr-548.md"
-tags: ["bash", "tempfile", "trap", "cleanup", "lifecycle"]
+  - type: "reviews"
+    ref: "raw/reviews/20260517T231929Z-pr-1033.md"
+tags: ["bash", "tempfile", "trap", "cleanup", "lifecycle", "hand-off"]
 confidence: high
 ---
 
@@ -76,6 +78,52 @@ trap - EXIT INT TERM HUP
 
 `trap - EXIT INT TERM HUP` は**他の** trap も無効化する副作用を持つ。tempfile 削除直後に `var=""` で空文字代入して cleanup を no-op 化してから `trap -` を呼ぶか、そもそも signal 別 handler の重複を避ける設計にする。
 
+### Hand-off registry pattern (scope 外への hand-off 後も cleanup を保つ)
+
+tempfile を同一 bash block 内で downstream に hand-off (例: `review_source_path="$norm_tmp"; norm_tmp=""`) すると、元変数 `norm_tmp` は cleanup 対象から外れる (意図的: downstream が path を参照中のため早期削除を防ぐ)。しかし block 終了時にも cleanup されないと `/tmp/rite-fix-normalized-XXXXXX` 等が orphan として残る。canonical solution は **cleanup function 内に「hand-off registry variable」を追加** し、hand-off 時に元 path を registry に保存して enclosing trap で削除する:
+
+```bash
+# ❌ NG: hand-off 後 norm_tmp は cleanup されず orphan
+norm_tmp=""
+_cleanup() { rm -f "${norm_tmp:-}"; }
+trap '_cleanup' EXIT INT TERM HUP
+norm_tmp=$(mktemp /tmp/rite-fix-normalized-XXXXXX) || norm_tmp=""
+# ... normalize 処理 ...
+review_source_path="$norm_tmp"
+norm_tmp=""  # downstream 参照保護のため空クリア → trap が rm を呼んでも no-op
+# ... downstream が $review_source_path を参照 ...
+# block 終了 → trap は norm_tmp="" を rm するだけで /tmp/rite-fix-normalized-* は orphan
+```
+
+```bash
+# ✅ OK: hand-off registry variable を cleanup function に追加
+norm_tmp=""
+handed_off_norm_tmp=""                                    # 1. hand-off registry 宣言
+_cleanup() {
+  rm -f "${norm_tmp:-}"
+  [ -n "${handed_off_norm_tmp:-}" ] && rm -f "$handed_off_norm_tmp"  # 2. registry も削除対象
+}
+trap '_cleanup' EXIT
+trap '_cleanup; exit 130' INT
+trap '_cleanup; exit 143' TERM
+trap '_cleanup; exit 129' HUP
+norm_tmp=$(mktemp /tmp/rite-fix-normalized-XXXXXX) || norm_tmp=""
+# ... normalize 処理 ...
+review_source_path="$norm_tmp"
+handed_off_norm_tmp="$norm_tmp"  # 3. hand-off 時に path を registry へ保存
+norm_tmp=""                       # 4. 元変数クリア (downstream 参照保護 + 二重 rm 回避)
+# ... downstream が $review_source_path を参照 ...
+# block 終了 → trap が $handed_off_norm_tmp を確実に rm
+```
+
+ポイント:
+- **既存 trap 機構の再利用**: 新規 cleanup block を追加せず、cleanup function に変数を 1 つ足すだけの最小拡張
+- **`${var:-}` parameter expansion**: `set -u` 下でも安全
+- **二重 rm 回避**: 元変数 `norm_tmp=""` クリアで `rm -f "${norm_tmp:-}"` を no-op 化、`handed_off_norm_tmp` のみが実 path を保持
+- **同一 bash block 内で完結**: bash session 境界を跨ぐ追加機構 (PR-specific wildcard cleanup 等) は不要
+
+このパターンは「tempfile を作る人」と「使う人」が同一 bash block 内に居る限り適用可能。block を跨ぐ場合は別の戦略 (caller 側で wildcard cleanup 等) が必要。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](anti-patterns/asymmetric-fix-transcription.md)
@@ -87,3 +135,4 @@ trap - EXIT INT TERM HUP
 - [PR #548 cycle 1 fix (trap action リセット最小化)](../../raw/fixes/20260416T165559Z-pr-548.md)
 - [PR #548 cycle 4 fix (mktemp → trap race の複数箇所修正)](../../raw/fixes/20260416T180658Z-pr-548.md)
 - [PR #548 cycle 4 review (wiki-ingest-commit.sh worktree fast path で race 残存検出)](../../raw/reviews/20260416T180001Z-pr-548.md)
+- [PR #1033 review (hand-off registry pattern で `/tmp/rite-fix-normalized-*` orphan 解消)](../../raw/reviews/20260517T231929Z-pr-1033.md)

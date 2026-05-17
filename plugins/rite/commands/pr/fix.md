@@ -1075,6 +1075,8 @@ set +o pipefail
 
 **On Priority 2 success**: Skip the existing "Target Comment Fast Path" and "Broad Comment Retrieval" sub-sections below. Parse the JSON file per [review-result-schema.md](../../references/review-result-schema.md#json-schema) and construct `severity_map` directly from `findings[]`:
 
+> **block continuity note**: 本 block は Phase 1.2.0 Selection logic block (Block 1, L427-1070) と **同一 Bash tool invocation 内で連続実行する前提**で設計されている。`$review_source` / `$review_source_path` 等のシェル変数は Block 1 で設定された値を継承する。Block 2 を別 Bash invocation で実行すると `$review_source=""` となり下記 `if [ "$review_source" = "local_file" ] || [ "$review_source" = "explicit_file" ]` 条件を満たさず、normalization step (schema 1.0 後方互換 + invariant #5 auto-correct) が silent skip する経路が成立する。L425 の `pipefail scope note` と同じ scope 制約が適用される。将来の merge/split リファクタでも本前提を維持し、Block 1/Block 2 を分離する場合は変数 hand-off を明示的に実装すること。
+
 ```bash
 # Build severity_map from JSON findings array (schema_version 検証は Selection logic 内で既に完了済み)
 #

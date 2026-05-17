@@ -50,7 +50,26 @@ while [ $# -gt 0 ]; do
     --limit)     LIMIT="$2"; shift 2 ;;
     --quiet)     QUIET=true; shift ;;
     -h|--help)
-      sed -n '3,/^set -euo/p' "$0" | sed -n 's/^# \?//p' | head -n -1
+      # here-doc usage で BSD head 互換性問題 (head -n -1) を回避
+      cat <<'USAGE_EOF'
+watchdog-status-mismatch.sh - Status Mismatch Watchdog (Issue #1003 AC-9)
+
+Scans repository Issues that are linked to OPEN, Ready-for-review PRs (isDraft=false)
+and detects ones whose GitHub Projects Status is still "In Progress" — the symptom
+of the Issue #1003 silent-skip bug. Outputs JSON to stdout and a warning summary to
+stderr. Optionally attempts reconciliation when --reconcile is passed.
+
+Usage:
+  bash watchdog-status-mismatch.sh [options]
+
+Options:
+  --dry-run         Report only; do not reconcile (default)
+  --reconcile      Attempt to update mismatched Issue Status → "In Review" via
+                   projects-status-update.sh. Failures are logged but never block.
+  --limit N        Maximum PRs to scan (default: 50)
+  --quiet          Suppress stderr warnings (JSON output still produced)
+  -h, --help       Show usage
+USAGE_EOF
       exit 0 ;;
     *)
       echo "ERROR: Unknown option: $1" >&2
@@ -89,18 +108,31 @@ if [ "$PROJECTS_ENABLED" != "true" ] || [ -z "$PROJECT_NUMBER" ]; then
 fi
 
 # --- Repo info ---
-REPO_INFO=$(gh repo view --json owner,name 2>/dev/null) || {
+# stderr capture して失敗時の原因 (auth / rate limit / network) を可視化する。
+gh_err=$(mktemp /tmp/rite-watchdog-gh-err-XXXXXX) || gh_err=""
+if ! REPO_INFO=$(gh repo view --json owner,name 2>"${gh_err:-/dev/null}"); then
   echo "ERROR: gh repo view failed" >&2
+  if [ -n "$gh_err" ] && [ -s "$gh_err" ]; then
+    head -5 "$gh_err" | sed 's/^/  /' >&2
+  fi
+  echo "  対処: gh auth status / network 接続を確認してください" >&2
+  [ -n "$gh_err" ] && rm -f "$gh_err"
   exit 1
-}
+fi
 REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login')
 REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name')
 
 # --- Scan OPEN, non-draft PRs ---
-PR_LIST=$(gh pr list --state open --limit "$LIMIT" --json number,isDraft,body,headRefName 2>/dev/null) || {
+if ! PR_LIST=$(gh pr list --state open --limit "$LIMIT" --json number,isDraft,body,headRefName 2>"${gh_err:-/dev/null}"); then
   echo "ERROR: gh pr list failed" >&2
+  if [ -n "$gh_err" ] && [ -s "$gh_err" ]; then
+    head -5 "$gh_err" | sed 's/^/  /' >&2
+  fi
+  echo "  対処: gh auth status / network 接続 / repository 権限を確認してください" >&2
+  [ -n "$gh_err" ] && rm -f "$gh_err"
   exit 1
-}
+fi
+[ -n "$gh_err" ] && rm -f "$gh_err"
 
 PRS_SCANNED=0
 MISMATCHES=()
@@ -127,8 +159,9 @@ while IFS= read -r pr_entry; do
     continue  # No linked Issue
   fi
 
-  # Query Issue's current Status in the Project
-  current_status=$(gh api graphql -f query='
+  # Query Issue's current Status in the Project (gh failure を stderr capture して silent skip 防止)
+  gql_err=$(mktemp /tmp/rite-watchdog-gql-err-XXXXXX) || gql_err=""
+  if ! current_status=$(set -o pipefail; gh api graphql -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
     issue(number: $number) {
@@ -147,9 +180,17 @@ query($owner: String!, $repo: String!, $number: Int!) {
       }
     }
   }
-}' -f owner="$REPO_OWNER" -f repo="$REPO_NAME" -F number="$issue_number" 2>/dev/null \
-    | jq -r --argjson pn "$PROJECT_NUMBER" \
-      '[.data.repository.issue.projectItems.nodes[]? | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>/dev/null) || current_status=""
+}' -f owner="$REPO_OWNER" -f repo="$REPO_NAME" -F number="$issue_number" 2>"${gql_err:-/dev/null}" \
+      | jq -r --argjson pn "$PROJECT_NUMBER" \
+        '[.data.repository.issue.projectItems.nodes[]? | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>/dev/null); then
+    # gh / jq pipeline 失敗 — silent skip せず warnings に記録 (debug 可能性向上)
+    if [ "$QUIET" != "true" ] && [ -n "$gql_err" ] && [ -s "$gql_err" ]; then
+      gql_err_oneline=$(head -c 200 "$gql_err" | tr '\n' ' ')
+      echo "[watchdog] ⚠️ gh api graphql failed for Issue #$issue_number: $gql_err_oneline" >&2
+    fi
+    current_status=""
+  fi
+  [ -n "$gql_err" ] && rm -f "$gql_err"
 
   if [ "$current_status" = "In Progress" ]; then
     reconcile_result="not_attempted"

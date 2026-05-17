@@ -57,9 +57,7 @@ assert_file_contains "$POST_COMPACT_SH" 'projects-status-update\.sh' \
 # Verify the call passes status_name="In Review" in jq -n input JSON
 assert_file_contains "$POST_COMPACT_SH" 'status_name:\$status' \
   "post-compact.sh passes status_name in jq -n input JSON"
-# Issue #1003 review F-04 修正: 旧コードは `assert_file_contains $SH -- '--arg status "In Review"'`
-# で `--` が pattern に固定され trivially match。canonical 3-arg signature に揃え、ダッシュを含む
-# 部分を ERE escape (`\-\-arg`) でリテラル match させる。
+# ERE escape (`\-\-arg`) でリテラル match させ、`--` を pattern token として誤認させない。
 assert_file_contains "$POST_COMPACT_SH" '\-\-arg status "In Review"' \
   "post-compact.sh reconcile target is In Review"
 

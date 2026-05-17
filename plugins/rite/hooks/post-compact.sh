@@ -139,15 +139,43 @@ fi
 # normal post-compact recovery path.
 if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
   PLUGIN_ROOT_PC="$(dirname "$SCRIPT_DIR")"
-  PR_IS_DRAFT=$(cd "$STATE_ROOT" 2>/dev/null && gh pr view "$PR" --json isDraft --jq '.isDraft // null' 2>/dev/null) || PR_IS_DRAFT=""
-  if [ "$PR_IS_DRAFT" = "false" ]; then
-    REPO_INFO=$(cd "$STATE_ROOT" 2>/dev/null && gh repo view --json owner,name 2>/dev/null) || REPO_INFO=""
-    REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>/dev/null) || REPO_OWNER=""
-    REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>/dev/null) || REPO_NAME=""
-    PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || PROJECTS_ENABLED=""
-    PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || PROJECT_NUMBER=""
-    if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ] && [ -n "$REPO_OWNER" ] && [ -n "$REPO_NAME" ] && [ "$ISSUE" != "unknown" ]; then
-      CURRENT_STATUS=$(cd "$STATE_ROOT" 2>/dev/null && gh api graphql -f query='
+  # Sub-shell + pipefail + signal-specific trap で start-finalize.md Step 0 と対称化する。
+  # gh API 失敗時に silent fall-through せず incident emit する (F-07 Asymmetric Fix 対策)。
+  # reconcile script の stderr も capture し、incident details に含める。
+  (
+    set -o pipefail
+    pr_view_err=""
+    gql_err=""
+    reconcile_err=""
+    _pc_cleanup() { rm -f "${pr_view_err:-}" "${gql_err:-}" "${reconcile_err:-}"; }
+    trap 'rc=$?; _pc_cleanup; exit $rc' EXIT
+    trap '_pc_cleanup; exit 130' INT
+    trap '_pc_cleanup; exit 143' TERM
+    trap '_pc_cleanup; exit 129' HUP
+    pr_view_err=$(mktemp /tmp/rite-pc-pr-err-XXXXXX) || pr_view_err=""
+    gql_err=$(mktemp /tmp/rite-pc-gql-err-XXXXXX) || gql_err=""
+
+    if PR_IS_DRAFT=$(cd "$STATE_ROOT" 2>/dev/null && gh pr view "$PR" --json isDraft --jq '.isDraft // null' 2>"${pr_view_err:-/dev/null}"); then
+      :
+    else
+      pr_rc=$?
+      pr_err_oneline=$(head -c 200 "${pr_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+      bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+        --type projects_status_in_review_missing \
+        --details "Issue #$ISSUE post-compact: gh pr view failed (rc=$pr_rc, stderr=$pr_err_oneline)" \
+        --root-cause-hint "post_compact_gh_pr_view_failed" \
+        --pr-number "$PR" >&2 || true
+      PR_IS_DRAFT=""
+    fi
+
+    if [ "$PR_IS_DRAFT" = "false" ]; then
+      REPO_INFO=$(cd "$STATE_ROOT" 2>/dev/null && gh repo view --json owner,name 2>/dev/null) || REPO_INFO=""
+      REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>/dev/null) || REPO_OWNER=""
+      REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>/dev/null) || REPO_NAME=""
+      PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || PROJECTS_ENABLED=""
+      PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || PROJECT_NUMBER=""
+      if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ] && [ -n "$REPO_OWNER" ] && [ -n "$REPO_NAME" ] && [ "$ISSUE" != "unknown" ]; then
+        if CURRENT_STATUS=$(cd "$STATE_ROOT" 2>/dev/null && gh api graphql -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
     issue(number: $number) {
@@ -166,30 +194,46 @@ query($owner: String!, $repo: String!, $number: Int!) {
       }
     }
   }
-}' -f owner="$REPO_OWNER" -f repo="$REPO_NAME" -F number="$ISSUE" 2>/dev/null \
-        | jq -r --argjson pn "$PROJECT_NUMBER" \
-          '[.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>/dev/null) || CURRENT_STATUS=""
-      if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ]; then
-        echo "[rite] ⚠️ post-compact mismatch detected: Issue #$ISSUE PR=#$PR isDraft=false Status=\"$CURRENT_STATUS\" (expected In Review)" >&2
-        RECONCILE_RESULT=$(cd "$STATE_ROOT" 2>/dev/null && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$(jq -n \
-          --argjson issue "$ISSUE" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
-          --argjson project_number "$PROJECT_NUMBER" --arg status "In Review" \
-          --argjson auto_add false --argjson non_blocking true \
-          '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>/dev/null) || RECONCILE_RESULT=""
-        RECONCILE_STATUS=$(printf '%s' "$RECONCILE_RESULT" | jq -r '.result // "failed"' 2>/dev/null) || RECONCILE_STATUS="failed"
-        if [ "$RECONCILE_STATUS" = "updated" ]; then
-          echo "[rite] ✅ post-compact reconciliation succeeded: Issue #$ISSUE Status → In Review" >&2
+}' -f owner="$REPO_OWNER" -f repo="$REPO_NAME" -F number="$ISSUE" 2>"${gql_err:-/dev/null}" \
+          | jq -r --argjson pn "$PROJECT_NUMBER" \
+            '[.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>/dev/null); then
+          :
         else
-          echo "[rite] ❌ post-compact reconciliation failed (result=$RECONCILE_STATUS)" >&2
+          gql_rc=$?
+          gql_err_oneline=$(head -c 200 "${gql_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
           bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
             --type projects_status_in_review_missing \
-            --details "Issue #$ISSUE post-compact reconciliation failed (PR=#$PR isDraft=false Status=$CURRENT_STATUS reconcile_result=$RECONCILE_STATUS)" \
-            --root-cause-hint "post_compact_reconciliation_failed" \
+            --details "Issue #$ISSUE post-compact: gh api graphql failed (rc=$gql_rc, stderr=$gql_err_oneline)" \
+            --root-cause-hint "post_compact_gh_api_failed" \
             --pr-number "$PR" >&2 || true
+          CURRENT_STATUS=""
+        fi
+
+        if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ]; then
+          echo "[rite] ⚠️ post-compact mismatch detected: Issue #$ISSUE PR=#$PR isDraft=false Status=\"$CURRENT_STATUS\" (expected In Review)" >&2
+          # reconcile script の stderr を tempfile capture し、失敗時 details に含める
+          reconcile_err=$(mktemp /tmp/rite-pc-reconcile-err-XXXXXX) || reconcile_err=""
+          RECONCILE_RESULT=$(cd "$STATE_ROOT" 2>/dev/null && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$(jq -n \
+            --argjson issue "$ISSUE" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
+            --argjson project_number "$PROJECT_NUMBER" --arg status "In Review" \
+            --argjson auto_add false --argjson non_blocking true \
+            '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || RECONCILE_RESULT=""
+          RECONCILE_STATUS=$(printf '%s' "$RECONCILE_RESULT" | jq -r '.result // "failed"' 2>/dev/null) || RECONCILE_STATUS="failed"
+          if [ "$RECONCILE_STATUS" = "updated" ]; then
+            echo "[rite] ✅ post-compact reconciliation succeeded: Issue #$ISSUE Status → In Review" >&2
+          else
+            echo "[rite] ❌ post-compact reconciliation failed (result=$RECONCILE_STATUS)" >&2
+            reconcile_err_oneline=$(head -c 200 "${reconcile_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+            bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+              --type projects_status_in_review_missing \
+              --details "Issue #$ISSUE post-compact reconciliation failed (PR=#$PR isDraft=false Status=$CURRENT_STATUS reconcile_result=$RECONCILE_STATUS stderr=$reconcile_err_oneline)" \
+              --root-cause-hint "post_compact_reconciliation_failed" \
+              --pr-number "$PR" >&2 || true
+          fi
         fi
       fi
     fi
-  fi
+  )
 fi
 
 # --- stderr: user-facing notification ---

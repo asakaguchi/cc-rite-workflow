@@ -129,6 +129,194 @@ if acquire_wm_lock "$LOCKDIR"; then
   release_wm_lock "$LOCKDIR"
 fi
 
+# --- Issue #1003 AC-2/AC-7: PR Ready/Status mismatch reconciliation safety net ---
+# When workflow active + PR exists + PR is Ready (isDraft=false) + Status != In Review,
+# attempt reconciliation by re-invoking projects-status-update.sh. Emit incident sentinel
+# on failure so silent Status mismatch never persists past compaction (Issue #1003 root cause:
+# observability gap when Phase 4.2 / 5.5.1 silently skips).
+#
+# Stderr policy: `gh pr view` / `gh api graphql` / `projects-status-update.sh` の stderr は
+# tempfile capture して incident details に含める。`gh repo view` も cycle 8 で stderr capture
+# 対応済 (C7-F01: auth / rate-limit / network / permission の区別)。`jq` stderr は
+# C7-F04 cycle 8 で `jq_owner_err` / `jq_name_err` capture 化済。
+if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
+  PLUGIN_ROOT_PC="$(dirname "$SCRIPT_DIR")"
+  # Sub-shell + pipefail + signal-specific trap で start-finalize.md Step 0 と対称化する。
+  # gh API 失敗時に silent fall-through せず incident emit する (F-07 Asymmetric Fix 対策)。
+  # reconcile script の stderr も capture し、incident details に含める。
+  (
+    set -o pipefail
+    pr_view_err=""
+    repo_view_err=""
+    jq_owner_err=""
+    jq_name_err=""
+    gql_err=""
+    jq_err=""
+    reconcile_err=""
+    _pc_cleanup() {
+      rm -f "${pr_view_err:-}" "${repo_view_err:-}" \
+            "${jq_owner_err:-}" "${jq_name_err:-}" \
+            "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}"
+    }
+    trap 'rc=$?; _pc_cleanup; exit $rc' EXIT
+    trap '_pc_cleanup; exit 130' INT
+    trap '_pc_cleanup; exit 143' TERM
+    trap '_pc_cleanup; exit 129' HUP
+    pr_view_err=$(mktemp /tmp/rite-pc-pr-err-XXXXXX) || pr_view_err=""
+    repo_view_err=$(mktemp /tmp/rite-pc-repo-err-XXXXXX) || repo_view_err=""
+    jq_owner_err=$(mktemp /tmp/rite-pc-jq-owner-err-XXXXXX) || jq_owner_err=""
+    jq_name_err=$(mktemp /tmp/rite-pc-jq-name-err-XXXXXX) || jq_name_err=""
+    gql_err=$(mktemp /tmp/rite-pc-gql-err-XXXXXX) || gql_err=""
+    jq_err=$(mktemp /tmp/rite-pc-jq-err-XXXXXX) || jq_err=""
+
+    # cycle 8 C7-F09: STATE_ROOT 不可達時の cd 短絡を early-emit branch で扱う。
+    # 旧実装は `cd "$STATE_ROOT" 2>/dev/null && gh pr view ...` で STATE_ROOT inaccessible 時に
+    # cd 失敗 (stderr silent suppress) → gh pr view 未実行で `gh_pr_view_failed` 誤分類していた
+    # (実原因は state_root_inaccessible)。
+    # cycle 10 F-04 対応: L184/200/241/281 の `cd ... 2>/dev/null` から 2>/dev/null を削除し、
+    # TOCTOU race (L175 check 後の permission 変更 / unmount) 時に cd 失敗の stderr を捕捉可能にした。
+    if [ ! -d "$STATE_ROOT" ]; then
+      bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+        --type projects_status_in_review_missing \
+        --details "Issue #$ISSUE post-compact: STATE_ROOT inaccessible ($STATE_ROOT) — gh pr view skipped" \
+        --root-cause-hint "state_root_inaccessible" \
+        --pr-number "$PR" >&2 || true
+      exit 0
+    fi
+
+    if PR_IS_DRAFT=$(cd "$STATE_ROOT" && gh pr view "$PR" --json isDraft --jq '.isDraft // null' 2>"${pr_view_err:-/dev/null}"); then
+      :
+    else
+      pr_rc=$?
+      pr_err_oneline=$(head -c 200 "${pr_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+      # cycle 10 F-12 対応: PR が close/merge/delete されている legitimate な終了状態と
+      # auth/network/permission failure を区別する。前者は false positive で、caller Phase 5.4.4.1
+      # で偽 Issue を auto-register する経路を防ぐため別 hint で emit する。
+      if printf '%s' "$pr_err_oneline" | grep -qiE 'no.*pull request found|could not resolve.*pull request|not found'; then
+        pr_root_cause="pr_deleted_or_inaccessible"
+      else
+        pr_root_cause="post_compact_gh_pr_view_failed"
+      fi
+      bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+        --type projects_status_in_review_missing \
+        --details "Issue #$ISSUE post-compact: gh pr view failed (rc=$pr_rc, stderr=$pr_err_oneline)" \
+        --root-cause-hint "$pr_root_cause" \
+        --pr-number "$PR" >&2 || true
+      PR_IS_DRAFT=""
+    fi
+
+    if [ "$PR_IS_DRAFT" = "false" ]; then
+      # cycle 8 C7-F01: gh repo view stderr を tempfile capture して root cause attribution を可能にする。
+      # 4-site 対称化 (post-compact / watchdog / start.md Step 1.5 / start-finalize.md Step 0)。
+      if REPO_INFO=$(cd "$STATE_ROOT" && gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
+        :
+      else
+        repo_rc=$?
+        repo_err_oneline=$(head -c 200 "${repo_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+        REPO_INFO=""
+      fi
+      # cycle 8 C7-F04: jq stderr を独立 capture し、parse 失敗 (gh 成功だが JSON 破損 / null field)
+      # の根本原因を C6-F09 emit の details に注入する。
+      REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>"${jq_owner_err:-/dev/null}") || REPO_OWNER=""
+      REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>"${jq_name_err:-/dev/null}") || REPO_NAME=""
+      PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || PROJECTS_ENABLED=""
+      PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || PROJECT_NUMBER=""
+      # cycle 8 C7-F05: cascade emit guard。_owner_repo_ok flag で後段 graphql 経路を skip する
+      # (silent_omit_disables_defense_chain への 2-stage 防御: emit 後の dead branch 抑止)。
+      _owner_repo_ok=1
+      # cycle 6 C6-F09 + cycle 8 C7-F03/C7-F04 対応: gh repo view 失敗 OR jq parse 結果が空の場合に
+      # silent skip を防止する。gate を `-z REPO_INFO` から `-z REPO_OWNER || -z REPO_NAME` へ拡張し、
+      # null field 返却 (auth-scope 縮退) 経路も覆う。
+      if [ "$PROJECTS_ENABLED" = "true" ] && { [ -z "$REPO_INFO" ] || [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; }; then
+        echo "[rite] ⚠️ post-compact: gh repo view failed or parse empty — reconciliation safety net unavailable" >&2
+        _owner_repo_ok=0
+        jq_owner_err_oneline=""
+        jq_name_err_oneline=""
+        [ -n "${jq_owner_err:-}" ] && [ -s "$jq_owner_err" ] && jq_owner_err_oneline=$(head -c 200 "$jq_owner_err" | tr '\n' ' ')
+        [ -n "${jq_name_err:-}" ] && [ -s "$jq_name_err" ] && jq_name_err_oneline=$(head -c 200 "$jq_name_err" | tr '\n' ' ')
+        if [ -z "$REPO_INFO" ]; then
+          bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+            --type projects_status_in_review_missing \
+            --details "Issue #$ISSUE post-compact: gh repo view failed (rc=${repo_rc:-NA}, stderr=${repo_err_oneline:-NA})" \
+            --root-cause-hint "post_compact_gh_repo_view_failed" \
+            --pr-number "$PR" >&2 || true
+        else
+          bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+            --type projects_status_in_review_missing \
+            --details "Issue #$ISSUE post-compact: gh repo view returned null fields (owner=$REPO_OWNER name=$REPO_NAME jq_owner_stderr=$jq_owner_err_oneline jq_name_stderr=$jq_name_err_oneline)" \
+            --root-cause-hint "post_compact_gh_repo_view_returned_null" \
+            --pr-number "$PR" >&2 || true
+        fi
+        # cycle 10 F-17 対応: cascade emit guard の semantic を start.md / start-finalize.md と対称化。
+        # 旧実装は `_owner_repo_ok=0` set のみで後段に flow を続行し、L251 の長大な条件式で guard する
+        # 別パターンだった (3 site で semantic 不一致、guard 漏れ regression のリスク)。start.md L725 /
+        # start-finalize.md L548 の `if [ "$_owner_repo_ok" != "1" ]; then exit 0; fi` と対称化する。
+        exit 0
+      fi
+      if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ] && [ -n "$REPO_OWNER" ] && [ -n "$REPO_NAME" ] && [ "$ISSUE" != "unknown" ]; then
+        if CURRENT_STATUS=$(cd "$STATE_ROOT" && gh api graphql -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      projectItems(first: 10) {
+        nodes {
+          project { number }
+          fieldValues(first: 20) {
+            nodes {
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                field { ... on ProjectV2SingleSelectField { name } }
+                name
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}' -f owner="$REPO_OWNER" -f repo="$REPO_NAME" -F number="$ISSUE" 2>"${gql_err:-/dev/null}" \
+          | jq -r --argjson pn "$PROJECT_NUMBER" \
+            '[.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>"${jq_err:-/dev/null}"); then
+          :
+        else
+          gql_rc=$?
+          gql_err_oneline=$(head -c 200 "${gql_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+          jq_err_oneline=$(head -c 200 "${jq_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+          bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+            --type projects_status_in_review_missing \
+            --details "Issue #$ISSUE post-compact: gh api graphql failed (rc=$gql_rc, gh_stderr=$gql_err_oneline, jq_stderr=$jq_err_oneline)" \
+            --root-cause-hint "post_compact_gh_api_failed" \
+            --pr-number "$PR" >&2 || true
+          CURRENT_STATUS=""
+        fi
+
+        if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ]; then
+          echo "[rite] ⚠️ post-compact mismatch detected: Issue #$ISSUE PR=#$PR isDraft=false Status=\"$CURRENT_STATUS\" (expected In Review)" >&2
+          # cycle 8 C7-F09 / C7-F14 対応: STATE_ROOT 存在 guard は sub-shell 冒頭に移動済 (state_root_inaccessible
+          # で early emit + exit 0)、本 reconciliation 試行ブロックは STATE_ROOT 存在前提で reconcile を直接実行する。
+          reconcile_err=$(mktemp /tmp/rite-pc-reconcile-err-XXXXXX) || reconcile_err=""
+          RECONCILE_RESULT=$(cd "$STATE_ROOT" && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$(jq -n \
+            --argjson issue "$ISSUE" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
+            --argjson project_number "$PROJECT_NUMBER" --arg status "In Review" \
+            --argjson auto_add false --argjson non_blocking true \
+            '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || RECONCILE_RESULT=""
+          RECONCILE_STATUS=$(printf '%s' "$RECONCILE_RESULT" | jq -r '.result // "failed"' 2>/dev/null) || RECONCILE_STATUS="failed"
+          if [ "$RECONCILE_STATUS" = "updated" ]; then
+            echo "[rite] ✅ post-compact reconciliation succeeded: Issue #$ISSUE Status → In Review" >&2
+          else
+            echo "[rite] ❌ post-compact reconciliation failed (result=$RECONCILE_STATUS)" >&2
+            reconcile_err_oneline=$(head -c 200 "${reconcile_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+            bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+              --type projects_status_in_review_missing \
+              --details "Issue #$ISSUE post-compact reconciliation failed (PR=#$PR isDraft=false Status=$CURRENT_STATUS reconcile_result=$RECONCILE_STATUS stderr=$reconcile_err_oneline)" \
+              --root-cause-hint "post_compact_reconciliation_failed" \
+              --pr-number "$PR" >&2 || true
+          fi
+        fi
+      fi
+    fi
+  )
+fi
+
 # --- stderr: user-facing notification ---
 echo "[rite] compact 後の自動復帰を実行中 (Issue #${ISSUE}, Phase: ${PHASE})" >&2
 

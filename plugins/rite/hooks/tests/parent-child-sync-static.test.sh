@@ -187,6 +187,77 @@ assert_file_contains "$START_MD" 'Issue #513 regression guard' \
   "Regression guard comment is present (prevents re-introduction)"
 
 echo ""
+echo "[Group 5] Issue #1003 AC-4/AC-8: silent skip 禁止 contract (incident emit guards)"
+CALLSITES_MD="$REPO_ROOT/plugins/rite/commands/issue/references/projects-status-update-callsites.md"
+READY_MD="$REPO_ROOT/plugins/rite/commands/pr/ready.md"
+FINALIZE_MD="$REPO_ROOT/plugins/rite/commands/issue/start-finalize.md"
+WIE_SH="$REPO_ROOT/plugins/rite/hooks/workflow-incident-emit.sh"
+POST_COMPACT_SH="$REPO_ROOT/plugins/rite/hooks/post-compact.sh"
+WATCHDOG_SH="$REPO_ROOT/plugins/rite/scripts/watchdog-status-mismatch.sh"
+
+for f in "$CALLSITES_MD" "$READY_MD" "$FINALIZE_MD" "$WIE_SH" "$POST_COMPACT_SH" "$WATCHDOG_SH"; do
+  if [ ! -f "$f" ]; then
+    echo "ERROR: required Issue #1003 file not found: $f" >&2
+    exit 1
+  fi
+done
+
+# (5a) workflow-incident-emit.sh allowlist contains the new types
+assert_file_contains "$WIE_SH" 'projects_status_update_failed\|projects_status_in_review_missing' \
+  "workflow-incident-emit.sh case allowlist contains projects_status_update_failed / projects_status_in_review_missing"
+
+# (5b) Common contract codifies the emit MUST
+assert_file_contains "$CALLSITES_MD" 'Issue #1003 AC-4' \
+  "callsites.md Common contract references Issue #1003 AC-4"
+assert_file_contains "$CALLSITES_MD" 'workflow-incident-emit\.sh' \
+  "callsites.md Common contract names workflow-incident-emit.sh"
+
+# (5c) ready.md Phase 4.2 emits incident sentinel on failed/skipped
+assert_file_contains "$READY_MD" 'workflow-incident-emit\.sh.*projects_status_update_failed' \
+  "ready.md Phase 4.2 invokes workflow-incident-emit.sh with projects_status_update_failed"
+
+# (5d) start-finalize.md Phase 5.5.1 defense-in-depth emit
+assert_file_contains "$FINALIZE_MD" 'projects_status_update_failed' \
+  "start-finalize.md Phase 5.5.1 emits projects_status_update_failed sentinel (defense-in-depth)"
+# (5e) start-finalize.md Workflow Termination warning emit (AC-8)
+assert_file_contains "$FINALIZE_MD" 'projects_status_in_review_missing' \
+  "start-finalize.md Workflow Termination emits projects_status_in_review_missing (AC-8)"
+
+# (5f) start.md caller-side defense-in-depth (AC-8)
+assert_file_contains "$START_MD" 'projects_status_in_review_missing' \
+  "start.md Mandatory After 5.5-Termination emits projects_status_in_review_missing (caller defense-in-depth)"
+
+# (5g) post-compact.sh reconciliation safety net (AC-2/AC-7)
+assert_file_contains "$POST_COMPACT_SH" 'post-compact reconciliation' \
+  "post-compact.sh has reconciliation safety net (AC-2/AC-7)"
+assert_file_contains "$POST_COMPACT_SH" 'projects_status_in_review_missing' \
+  "post-compact.sh emits projects_status_in_review_missing on reconcile failure"
+
+# (5h) watchdog script exists and is executable
+# Group 5 では watchdog の file existence のみを check する。詳細 assertion (CLI flag / sentinel 等)
+# は watchdog-status-mismatch.test.sh (T-9 系) に集約されており、Group 5 の同様 check は
+# T-9a と意図的に重複させる。両 test は独立 CI で実行されるため、片方変更時の同期負担は許容範囲。
+if [ ! -x "$WATCHDOG_SH" ]; then
+  FAIL=$((FAIL + 1))
+  FAILURES+=("watchdog-status-mismatch.sh is not executable (AC-9)")
+  echo "  ✗ watchdog-status-mismatch.sh is not executable" >&2
+else
+  PASS=$((PASS + 1))
+  echo "  ✓ watchdog-status-mismatch.sh is executable"
+fi
+# pattern を case 句閉じ括弧 `)` で pin することで JSON docstring 内の `"reconciled"` field 名への
+# false-positive (cycle 6 で検出) を排除。`'\-\-dry-run\)'` と `'\-\-reconcile\)'` の 2 行に分割し、
+# T-9e と同形式に揃える (CLI flag 削除時に確実に test が落ちる regression guard を確保)。
+assert_file_contains "$WATCHDOG_SH" '\-\-dry-run\)' \
+  "watchdog has --dry-run case clause (AC-9)"
+assert_file_contains "$WATCHDOG_SH" '\-\-reconcile\)' \
+  "watchdog has --reconcile case clause (AC-9)"
+
+# (5i) Issue #513 regression guard preserved: callsites.md still pins literal 3-method delegation
+assert_file_contains "$CALLSITES_MD" 'Issue #513 regression guard' \
+  "Regression guard: Issue #513 literal pin retained (AC-6 non-regression)"
+
+echo ""
 echo "==============================="
 echo "Results: $PASS passed, $FAIL failed"
 if [ "$FAIL" -gt 0 ]; then

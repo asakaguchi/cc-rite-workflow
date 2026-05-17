@@ -19,6 +19,7 @@
 #                        skill_load_failure | hook_abnormal_exit | manual_fallback_adopted
 #                        | wiki_ingest_skipped | wiki_ingest_failed | wiki_ingest_push_failed
 #                        | gitignore_drift | cross_session_takeover_refused | legacy_state_corrupt
+#                        | projects_status_update_failed | projects_status_in_review_missing
 #   --details          one-line incident description (required)
 #   --root-cause-hint  optional cause hypothesis (omitted from output if empty)
 #   --pr-number        PR number for iteration_id (defaults to 0 when not yet created)
@@ -77,8 +78,9 @@ case "$TYPE" in
   wiki_ingest_skipped|wiki_ingest_failed|wiki_ingest_push_failed) ;;
   gitignore_drift) ;;
   cross_session_takeover_refused|legacy_state_corrupt) ;;
+  projects_status_update_failed|projects_status_in_review_missing) ;;
   *)
-    echo "ERROR: Invalid --type: $TYPE (expected: skill_load_failure | hook_abnormal_exit | manual_fallback_adopted | wiki_ingest_skipped | wiki_ingest_failed | wiki_ingest_push_failed | gitignore_drift | cross_session_takeover_refused | legacy_state_corrupt)" >&2
+    echo "ERROR: Invalid --type: $TYPE (expected: skill_load_failure | hook_abnormal_exit | manual_fallback_adopted | wiki_ingest_skipped | wiki_ingest_failed | wiki_ingest_push_failed | gitignore_drift | cross_session_takeover_refused | legacy_state_corrupt | projects_status_update_failed | projects_status_in_review_missing)" >&2
     exit 1
     ;;
 esac

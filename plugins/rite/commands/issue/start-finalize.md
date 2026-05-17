@@ -15,6 +15,7 @@ Execute the finalize phase for an Issue. This sub-skill is invoked from `start.m
 - `{pr_number}` — populated from Phase 5.3 `[pr:created:{N}]` (success path) OR `0` (abort path — `[start:execute:aborted]` 経由で PR 未作成のまま invocation された場合)
 - `{plugin_root}` — resolved per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version)
 - `{parent_issue_number}` — from flow-state via `state-read.sh` (Phase 5.7)
+- `{owner}`, `{repo}` *(Workflow Termination Step 0 では sub-shell 内取得 / Phase 5.5.1 では orchestrator substitute)* — **Workflow Termination Step 0** では sub-shell 内で `gh repo view --json owner --jq '.owner.login'` / `--json name --jq '.name'` を直接実行して `$_owner` / `$_repo` に local 束縛する (silent skip 経路の遮断目的、orchestrator 状態に依存しない)。**Phase 5.5.1 は `projects-status-update.sh` への delegation 経路** で、`{owner}`/`{repo}` placeholder は orchestrator が substitute する (callsites.md SoT に従う)。本項目は Placeholder Legend の宣言性維持と将来他 phase での再利用に備えて残す。
 - Review-fix loop converged (mergeable / replied-only) **OR** abort context (`[start:execute:aborted]` / `[start:publish:aborted]` 経由 — Phase 5.5/5.5.1/5.5.2/5.7 を skip して直接 Phase 5.6 Completion Report へ進む)
 
 **Abort entry detection**: 本 sub-skill 起動直後、以下のいずれかが成立する場合は **abort entry** と判定し、Phase 5.5 AskUserQuestion / 5.5.1 / 5.5.2 / 5.7 を skip して **直接 Phase 5.6 Completion Report へ進む** (terminal state は caller の Mandatory After 5.5-Termination Step 1 が SoT として担う):
@@ -167,6 +168,35 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 ```
 
 > **Module**: [Projects Status Update Callsites](./references/projects-status-update-callsites.md#callsite-2--phase-551-issue-status--in-review) — Callsite 2 (Phase 5.5.1) bash literal SoT。Skip if `projects.enabled: false` in rite-config.yml. Otherwise execute the Module procedure (Status update to "In Review", `auto_add: false` since Phase 2.4 already auto-added if missing). Defense-in-depth — `rite:pr:ready` Phase 4 also attempts this, but may not execute reliably within e2e flow. API レベル動作は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) を参照。
+
+> **Issue #1003 AC-4 — silent skip 禁止 contract (defense-in-depth)**: Module の Callsite 2 が返す `.result` が `"skipped_not_in_project"` または `"failed"` の場合、Module 規定の `.warnings[]` stderr surface に **加えて** `workflow-incident-emit.sh` で sentinel を emit すること。本 Phase 5.5.1 は `rite:pr:ready` Phase 4.2 の defense-in-depth であり、両 callsite で silent skip を禁止することで OR ロジック多重防御を構成する (Wiki 経験則 `silent_omit_disables_defense_chain` への対策)。
+>
+> **`$status_result` 変数の setup**: 下記 emit case 句は `$status_result` を参照するが、その上流 `status_json=$(...)` / `status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"')` の **実定義は `pr/ready.md` Phase 4.2 minimal skeleton の "Bash 実装 minimal skeleton (delegate-only 経路の標準形)" blockquote のみ**。`projects-status-update-callsites.md` Callsite 2 (`## Callsite 2 — Phase 5.5.1 (Issue Status → In Review)` セクション内 bash literal block) は raw delegation 構造 (bash literal + jq) のみを提供し、結果の capture / parse は caller (本 Phase 5.5.1 / ready.md Phase 4.2) で inline 実装する。本 emit case 句はその capture/parse setup ブロックの直後に append される前提で読むこと。cycle 10 F-13 対応で hard-coded line number (旧 `L444-446` / `L86-96` / `L447-467`) を section anchor 参照に置換 (drift 防止)。
+>
+> ```bash
+> # cycle 10 F-01 対応 (cycle 8 C7-F19 で `failed|*)` catchall 追加時に `updated)` arm の
+> # コピー漏れで導入された CRITICAL bug の修正): `updated)` arm を冒頭に追加し、Status update 成功時
+> # (status_result=updated) を no-op で消費させる。ready.md Phase 4.2 minimal skeleton (L447-467)
+> # の 3-arm 構造 (updated / skipped_not_in_project / failed|*) と完全対称化。
+> case "$status_result" in
+>   updated)
+>     : ;;
+>   skipped_not_in_project)
+>     bash {plugin_root}/hooks/workflow-incident-emit.sh \
+>       --type projects_status_update_failed \
+>       --details "Issue #{issue_number} skipped_not_in_project at start-finalize.md Phase 5.5.1 (In Review defense-in-depth)" \
+>       --root-cause-hint "issue_not_registered_in_project_at_phase_5_5_1" \
+>       --pr-number {pr_number} >&2 || true ;;
+>   failed|*)
+>     bash {plugin_root}/hooks/workflow-incident-emit.sh \
+>       --type projects_status_update_failed \
+>       --details "Issue #{issue_number} projects-status-update.sh failed or returned unrecognized result ($status_result) at start-finalize.md Phase 5.5.1 (In Review defense-in-depth)" \
+>       --root-cause-hint "gh_api_or_graphql_failure_at_phase_5_5_1" \
+>       --pr-number {pr_number} >&2 || true ;;
+> esac
+> ```
+>
+> emit 自体は `|| true` で non-blocking。caller Phase 5.4.4.1 の grep 検出経路で Issue として auto-register される。
 
 ### 🚨 Mandatory After 5.5.1
 
@@ -474,6 +504,196 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 **Parent-skip routing**: When `parent_issue_number` is `0` in flow-state (determined in Phase 5.7 via `state-read.sh`), Phase 5.7 is skipped entirely. In that case, jump from the end of Phase 5.6 directly to this block (bypassing 5.7.1-5.7.3 and Mandatory After 5.7) — do **not** leave the workflow in `phase5_completion, active: true`, which would cause the next stop attempt to block indefinitely.
 
 > **Why this routing relies on Phase 5.7 emit, not state re-read**: Phase 5.7 が `parent_issue_number` の **single source of truth for the read** であり、本 Workflow Termination block は state を re-read しない。本 sub-skill 内の branching decision は Phase 5.7 の `[CONTEXT] PARENT_ISSUE=none` echo (LLM-level routing signal、会話履歴で観測可能) で駆動され、bash 変数経由ではない (Bash tool invocation は shell state を境界を跨いで共有しない)。
+
+### Step 0: In Review 遷移ログ欠落検知 (Issue #1003 AC-8)
+
+terminal patch (Step 1) 直前に、PR が Ready 化されているにもかかわらず Issue Status が `In Review` に到達していない場合は warning incident sentinel を emit する。これは Phase 5.5 (`rite:pr:ready`) + Phase 5.5.1 (defense-in-depth) の両方が silent skip / silent fail した場合の **最終 fallback** として機能する (Wiki 経験則 `silent_omit_disables_defense_chain` に対する第三の防御層)。
+
+**条件**: `{pr_number}` が non-zero (success path で PR 作成済) かつ `projects.enabled: true`。abort path (`{pr_number}=0`) では skip。
+
+```bash
+# Sub-shell でラップして trap を block scope に閉じる (trap leak 防止)。
+# block 全体で `set -o pipefail` を有効化することで、`gh api graphql | jq` pipeline の
+# gh 失敗時に jq の exit が dominant にならず gh の rc を捕捉できるようにする。
+# path-declare → trap → mktemp の順序で race window を排除する。
+# stderr の改行を空白化して sentinel grep の後続行 pick up を防ぐ。
+#
+# `set -e` / `set -u` は意図的に有効化しない: AC-8 検知は non-blocking 要件 (失敗時 silent
+# fall-through を許容、ただし sentinel emit は必須) のため `set -e` 有効化すると trap 内 cleanup が中断する経路がある。
+# `set -u` は `${var:-}` パターンの可読性のため不採用 (`set -o pipefail` のみ enable し pipe 失敗を捕捉)。
+#
+# Note (cycle 10 F-14, symmetry with start.md Mandatory After 5.5-Termination Step 1.5):
+# 本 block と start.md Step 1.5 (約 100 行) は AC-8 検知ロジックの literal duplication を持つ。
+# 差分は tempfile prefix (`/tmp/rite-finalize-step0-*` vs `/tmp/rite-step15-*`)、
+# 関数名 (`_finalize_step0_cleanup` vs `_step15_cleanup`)、log message prefix
+# (`Workflow Termination Step 0` vs `Step 1.5`)、および **意図的な `--root-cause-hint` 値の差**:
+#   - start-finalize.md = `gh_api_failure_at_final_fallback` (last-resort layer)
+#   - start.md = `gh_api_failure_at_caller_defense` (caller-side defense layer)
+# この hint 値差は observability で「どの defense layer が失敗したか」を識別するため**意図的に異なる**。
+# 片側を更新する際にもう片側を「揃えるべきか/保持すべきか」を判断する際、hint 値だけは揃えないこと。
+# 共通 helper (`plugins/rite/hooks/check-ac8-status-mismatch.sh` 等) への抽出は別 Issue 推奨 (本 PR scope 外)。
+# 短期的には docstring / 関数名 / log prefix のいずれかを変更した場合、両 site を同時更新すること。
+(
+  # cycle 8 C7-F11 対応: `{pr_number}` placeholder substitute 検証。
+  # orchestrator が placeholder を substitute せずに literal `{pr_number}` を残した場合、
+  # 後段の `workflow-incident-emit.sh --pr-number {pr_number}` は `^[0-9]+$` regex 違反で
+  # silent fail (`>&2 || true` で握りつぶし) し、AC-8 検知自体が無音 skip される。
+  # case 文で literal placeholder / empty を fail-fast 検出し observable に。
+  case "{pr_number}" in
+    ''|'{pr_number}')
+      echo "[rite] ⚠️ Workflow Termination Step 0: {pr_number} placeholder が未 substitute (literal='{pr_number}') — AC-8 検知を skip" >&2
+      exit 0 ;;
+  esac
+  # cycle 10 F-02 対応: `{issue_number}` placeholder substitute 検証 (`{pr_number}` と対称、Step 1.5 と同型)。
+  case "{issue_number}" in
+    ''|'{issue_number}')
+      echo "[rite] ⚠️ Workflow Termination Step 0: {issue_number} placeholder が未 substitute (literal='{issue_number}') — AC-8 検知を skip" >&2
+      exit 0 ;;
+  esac
+  if [ "{pr_number}" != "0" ] && [ -n "{pr_number}" ]; then
+    PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' rite-config.yml 2>/dev/null)
+    PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' rite-config.yml 2>/dev/null)
+    if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ]; then
+      set -o pipefail
+      pr_view_err=""
+      repo_view_owner_err=""
+      repo_view_name_err=""
+      gql_err=""
+      jq_err=""
+      _finalize_step0_cleanup() {
+        rm -f "${pr_view_err:-}" "${repo_view_owner_err:-}" "${repo_view_name_err:-}" \
+              "${gql_err:-}" "${jq_err:-}"
+      }
+      trap 'rc=$?; _finalize_step0_cleanup; exit $rc' EXIT
+      trap '_finalize_step0_cleanup; exit 130' INT
+      trap '_finalize_step0_cleanup; exit 143' TERM
+      trap '_finalize_step0_cleanup; exit 129' HUP
+      pr_view_err=$(mktemp /tmp/rite-finalize-step0-pr-err-XXXXXX) || pr_view_err=""
+      repo_view_owner_err=$(mktemp /tmp/rite-finalize-step0-repo-owner-err-XXXXXX) || repo_view_owner_err=""
+      repo_view_name_err=$(mktemp /tmp/rite-finalize-step0-repo-name-err-XXXXXX) || repo_view_name_err=""
+      gql_err=$(mktemp /tmp/rite-finalize-step0-gql-err-XXXXXX) || gql_err=""
+      jq_err=$(mktemp /tmp/rite-finalize-step0-jq-err-XXXXXX) || jq_err=""
+
+      # cycle 8 C7-F05 対応: cascade emit guard。`_owner_repo_ok` flag で後段 graphql / sentinel emit を
+      # skip させ、`projects_status_in_review_missing` の 3 連続 sentinel emit (owner / name / graphql)
+      # を回避する。
+      _owner_repo_ok=1
+
+      # {owner}/{repo} を sub-shell 内で local 取得する (cycle 3 F-01 対応)。
+      # 上流 start.md の Placeholder Legend は宣言のみで Phase 0/0.1/0.2/0.3/1/2 に explicit retrieval phase
+      # が存在せず、orchestrator LLM の ad-hoc 取得に依存していた。sub-shell scope 内完結に変更することで
+      # orchestrator 状態への依存を排除し、未取得時の AC-8 core 検知 silent skip 経路を遮断する。
+      # gh repo view 失敗時は incident emit して exit (sub-shell scope なので outer は影響を受けない)。
+      # cycle 8 C7-F01: stderr を tempfile capture して details に注入し、root cause attribution を強化。
+      if ! _owner=$(gh repo view --json owner --jq '.owner.login' 2>"${repo_view_owner_err:-/dev/null}") || [ -z "$_owner" ]; then
+        repo_owner_err_oneline=$(head -c 200 "${repo_view_owner_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+        echo "[rite] ⚠️ Workflow Termination Step 0: gh repo view --json owner に失敗 (stderr=$repo_owner_err_oneline) — AC-8 検知を skip" >&2
+        bash {plugin_root}/hooks/workflow-incident-emit.sh \
+          --type projects_status_in_review_missing \
+          --details "Issue #{issue_number} Workflow Termination Step 0: gh repo view --json owner failed (stderr=$repo_owner_err_oneline)" \
+          --root-cause-hint "gh_repo_view_owner_failed" \
+          --pr-number {pr_number} >&2 || true
+        _owner=""
+        _owner_repo_ok=0
+      fi
+      if [ "$_owner_repo_ok" = "1" ]; then
+        if ! _repo=$(gh repo view --json name --jq '.name' 2>"${repo_view_name_err:-/dev/null}") || [ -z "$_repo" ]; then
+          repo_name_err_oneline=$(head -c 200 "${repo_view_name_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+          echo "[rite] ⚠️ Workflow Termination Step 0: gh repo view --json name に失敗 (stderr=$repo_name_err_oneline) — AC-8 検知を skip" >&2
+          bash {plugin_root}/hooks/workflow-incident-emit.sh \
+            --type projects_status_in_review_missing \
+            --details "Issue #{issue_number} Workflow Termination Step 0: gh repo view --json name failed (stderr=$repo_name_err_oneline)" \
+            --root-cause-hint "gh_repo_view_name_failed" \
+            --pr-number {pr_number} >&2 || true
+          _repo=""
+          _owner_repo_ok=0
+        fi
+      fi
+
+      if [ "$_owner_repo_ok" != "1" ]; then
+        # cycle 8 C7-F05: _owner/_repo 取得失敗で後段の gh pr view / gh api graphql を skip。
+        # _owner/_repo 空のまま gh api graphql に渡すと placeholder 失敗で `gh_api_failure_at_final_fallback`
+        # を更に emit (3 連続 sentinel) してしまうため、cascade emit を early exit で抑止する。
+        exit 0
+      fi
+
+      if PR_IS_DRAFT=$(gh pr view {pr_number} --json isDraft --jq '.isDraft // null' 2>"${pr_view_err:-/dev/null}"); then
+        :
+      else
+        gh_pr_rc=$?
+        pr_err_oneline=$(head -c 200 "${pr_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+        bash {plugin_root}/hooks/workflow-incident-emit.sh \
+          --type projects_status_in_review_missing \
+          --details "Issue #{issue_number} Workflow Termination Step 0: gh pr view {pr_number} failed (rc=$gh_pr_rc, stderr=$pr_err_oneline)" \
+          --root-cause-hint "gh_api_failure_at_final_fallback" \
+          --pr-number {pr_number} >&2 || true
+        PR_IS_DRAFT=""
+      fi
+
+      if [ "$PR_IS_DRAFT" = "false" ]; then
+        # pipefail 下で gh api graphql | jq pipeline の前段失敗を捕捉する
+        if CURRENT_STATUS=$(gh api graphql -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      projectItems(first: 10) {
+        nodes {
+          project { number }
+          fieldValues(first: 20) {
+            nodes {
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                field { ... on ProjectV2SingleSelectField { name } }
+                name
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}' -f owner="$_owner" -f repo="$_repo" -F number={issue_number} 2>"${gql_err:-/dev/null}" \
+            | jq -r --argjson pn "$PROJECT_NUMBER" \
+              '[.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>"${jq_err:-/dev/null}"); then
+          :
+        else
+          gh_gql_rc=$?
+          # gh と jq の stderr を別 capture することで、pipefail で sub-shell が non-zero になった場合の
+          # root cause attribution を正確化する。両方を details に併記して
+          # 「gh 失敗か jq 失敗か」を後追い debug 可能にする (cycle 3 F-09 で対応)。
+          gql_err_oneline=""
+          jq_err_oneline=""
+          [ -n "${gql_err:-}" ] && [ -s "$gql_err" ] && gql_err_oneline=$(head -c 200 "$gql_err" | tr '\n' ' ')
+          [ -n "${jq_err:-}" ] && [ -s "$jq_err" ] && jq_err_oneline=$(head -c 200 "$jq_err" | tr '\n' ' ')
+          bash {plugin_root}/hooks/workflow-incident-emit.sh \
+            --type projects_status_in_review_missing \
+            --details "Issue #{issue_number} Workflow Termination Step 0: pipeline failed (rc=$gh_gql_rc, gh_stderr=$gql_err_oneline, jq_stderr=$jq_err_oneline)" \
+            --root-cause-hint "gh_api_failure_at_final_fallback" \
+            --pr-number {pr_number} >&2 || true
+          CURRENT_STATUS=""
+        fi
+
+        # cycle 8 C7-F16 (4-site stderr capture style meta-note):
+        # 4 site (post-compact.sh / watchdog / start.md Step 1.5 / 本 Step 0) は stderr capture
+        # 形式に意図的な asymmetry を持つ。post-compact / watchdog は scratch-style (`"${var:-/dev/null}"`
+        # fallback で path 不在時は /dev/null 経由)、start.md / 本 Step 0 は existence-guard style
+        # (`[ -n "$var" ] && [ -s "$var" ]` で path 存在を check してから head)。両者は機能的に等価で、
+        # tempfile 作成失敗時の挙動 (fallback to /dev/null vs guard で skip) のみ異なる。
+        # 統一は 4 site の literal duplication と canonical helper 抽出を要し別 Issue 推奨 (本 PR scope 外)。
+        if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ]; then
+          echo "[rite] ⚠️ Workflow Termination: Issue #{issue_number} PR=#{pr_number} isDraft=false Status=\"$CURRENT_STATUS\" (expected In Review) — emitting projects_status_in_review_missing sentinel" >&2
+          bash {plugin_root}/hooks/workflow-incident-emit.sh \
+            --type projects_status_in_review_missing \
+            --details "Issue #{issue_number} at Workflow Termination: PR=#{pr_number} isDraft=false Status=$CURRENT_STATUS (expected In Review). Phase 5.5/5.5.1 both silent-skip suspected." \
+            --root-cause-hint "phase_5_5_and_5_5_1_silent_skip" \
+            --pr-number {pr_number} >&2 || true
+        fi
+      fi
+    fi
+  fi
+)
+```
+
+**Step 0 non-blocking 保証**: 検知ロジックは best-effort で、**gh API 自体の失敗は `gh_api_failure_at_final_fallback` root_cause_hint で incident sentinel を emit する**。Workflow Termination 自体は Step 1 に必ず到達する。cycle 10 F-11 対応で「jq parse 失敗は silent fall-through する」記述は撤廃済 — jq stderr (`jq_err` tempfile) が non-empty かつ pipeline 失敗時は `gh_stderr` と独立 capture して details に注入される (上記 bash literal 内 `[ -n "${jq_err:-}" ] && [ -s "$jq_err" ] && jq_err_oneline=...` 参照)。silent fall-through で最終 fallback 層が消失する経路は Wiki 経験則 `silent_omit_disables_defense_chain` に該当する。
 
 **Step 1**: Update flow state to the terminal state (patch mode, preserves `previous_phase`). Use `--if-exists --preserve-error-count` for safety — if the Pre-flight failed to create the state file (rare), this patch becomes a no-op rather than failing terminal:
 

@@ -383,9 +383,37 @@ assert_grep "start-finalize: rite:issue:close skill invocation retained" \
   'skill: "rite:issue:close"'
 
 # start-finalize.md drift guard: inline workflow-incident-emit.sh literal が再混入しないこと
-assert_not_grep "start-finalize: no inline 'workflow-incident-emit.sh' bash literal (drift guard)" \
-  "$START_FINALIZE_MD" \
-  'bash \{plugin_root\}/hooks/workflow-incident-emit.sh'
+# Issue #1003 (cycle 8/10) で AC-4/AC-8 検知の inline emit を追加したため、whitelist 化:
+#   - 許可: --type projects_status_update_failed (AC-4 Phase 5.5.1 defense-in-depth)
+#   - 許可: --type projects_status_in_review_missing (AC-8 Workflow Termination Step 0)
+#   - 禁止: --type skill_load_failure / manual_fallback_adopted 等 (#937 で extraction 済み)
+# bash literal + 直後 1-3 行の --type 引数を awk で抽出し whitelist 照合する。
+non_whitelist_emit=$(awk '
+  /bash \{plugin_root\}\/hooks\/workflow-incident-emit\.sh/ {
+    in_block=1; line_no=NR; block_buf=$0; next
+  }
+  in_block {
+    block_buf=block_buf "\n" $0
+    if (/--type[ \t]+[a-z_]+/) {
+      match($0, /--type[ \t]+[a-z_]+/)
+      type_arg=substr($0, RSTART+7, RLENGTH-7)
+      gsub(/^[ \t]+/, "", type_arg)
+      if (type_arg !~ /^projects_status_(update_failed|in_review_missing)$/) {
+        print "LINE " line_no ": non-whitelist type=" type_arg
+      }
+      in_block=0; block_buf=""
+    } else if (NR - line_no >= 5) {
+      print "LINE " line_no ": no --type argument found within 5 lines"
+      in_block=0; block_buf=""
+    }
+  }
+' "$START_FINALIZE_MD")
+if [ -n "$non_whitelist_emit" ]; then
+  fail "start-finalize: non-whitelisted inline 'workflow-incident-emit.sh' emit found"
+  printf '%s\n' "$non_whitelist_emit" | sed 's/^/    /' >&2
+else
+  pass "start-finalize: no non-whitelisted inline 'workflow-incident-emit.sh' emit (drift guard, whitelist: projects_status_*)"
+fi
 
 # start-finalize.md sentinel HTML-comment form の直接 pin (Issue #954 L-2)
 # verify-terminal-output.sh Check 3.5 + verify-terminal-output.test.sh fixture 経由で
@@ -408,9 +436,36 @@ echo "--- 6. start.md drift guard (#937: inline emit literal block) ---"
 # references/workflow-incident-emit-pattern.md §A-§D anchor 参照に圧縮した。
 # 将来の編集で `bash {plugin_root}/hooks/workflow-incident-emit.sh ...` literal が start.md
 # 本体に再混入すると SoT 1:1 分離契約が破れるため、ここで構造的に block する。
-assert_not_grep "start: no inline 'workflow-incident-emit.sh' bash literal (drift guard for #937)" \
-  "$START_MD" \
-  'bash \{plugin_root\}/hooks/workflow-incident-emit.sh'
+#
+# Issue #1003 (cycle 8/10) で AC-8 検知の inline emit を Step 1.5 に追加したため、whitelist 化:
+#   - 許可: --type projects_status_in_review_missing (AC-8 caller-side defense-in-depth Step 1.5)
+#   - 禁止: --type skill_load_failure / manual_fallback_adopted 等 (#937 で extraction 済み)
+non_whitelist_emit_start=$(awk '
+  /bash \{plugin_root\}\/hooks\/workflow-incident-emit\.sh/ {
+    in_block=1; line_no=NR; block_buf=$0; next
+  }
+  in_block {
+    block_buf=block_buf "\n" $0
+    if (/--type[ \t]+[a-z_]+/) {
+      match($0, /--type[ \t]+[a-z_]+/)
+      type_arg=substr($0, RSTART+7, RLENGTH-7)
+      gsub(/^[ \t]+/, "", type_arg)
+      if (type_arg !~ /^projects_status_(update_failed|in_review_missing)$/) {
+        print "LINE " line_no ": non-whitelist type=" type_arg
+      }
+      in_block=0; block_buf=""
+    } else if (NR - line_no >= 5) {
+      print "LINE " line_no ": no --type argument found within 5 lines"
+      in_block=0; block_buf=""
+    }
+  }
+' "$START_MD")
+if [ -n "$non_whitelist_emit_start" ]; then
+  fail "start: non-whitelisted inline 'workflow-incident-emit.sh' emit found (drift guard for #937)"
+  printf '%s\n' "$non_whitelist_emit_start" | sed 's/^/    /' >&2
+else
+  pass "start: no non-whitelisted inline 'workflow-incident-emit.sh' emit (drift guard for #937, whitelist: projects_status_*)"
+fi
 
 # 上記 assert_not_grep の補強: 旧 inline emit literal に含まれていた具体的 details 文字列が
 # start.md に再混入していないかを pin する。drift guard target は **start.md 本体** (= grep scope の $START_MD)

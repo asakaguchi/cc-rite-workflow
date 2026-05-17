@@ -71,7 +71,7 @@ esac
 
 ### Sentinel `type` の意味
 
-本体側 (`start.md`) は 7 sentinel type の Detection scope table を保持する。本 reference は各 type のソースと recommended action を再掲しない (本体テーブルが SoT)。検出ロジックは type に対して uniform であり、per-type branching は table を超えて存在しない。
+本体側 (`start.md`) は sentinel type の Detection scope table を保持する。本 reference は各 type のソースと recommended action を再掲しない (本体テーブルが SoT)。検出ロジックは type に対して uniform であり、per-type branching は table を超えて存在しない。
 
 ### Sub-case routing note for `wiki_ingest_skipped`
 

@@ -146,14 +146,16 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     set -o pipefail
     pr_view_err=""
     gql_err=""
+    jq_err=""
     reconcile_err=""
-    _pc_cleanup() { rm -f "${pr_view_err:-}" "${gql_err:-}" "${reconcile_err:-}"; }
+    _pc_cleanup() { rm -f "${pr_view_err:-}" "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}"; }
     trap 'rc=$?; _pc_cleanup; exit $rc' EXIT
     trap '_pc_cleanup; exit 130' INT
     trap '_pc_cleanup; exit 143' TERM
     trap '_pc_cleanup; exit 129' HUP
     pr_view_err=$(mktemp /tmp/rite-pc-pr-err-XXXXXX) || pr_view_err=""
     gql_err=$(mktemp /tmp/rite-pc-gql-err-XXXXXX) || gql_err=""
+    jq_err=$(mktemp /tmp/rite-pc-jq-err-XXXXXX) || jq_err=""
 
     if PR_IS_DRAFT=$(cd "$STATE_ROOT" 2>/dev/null && gh pr view "$PR" --json isDraft --jq '.isDraft // null' 2>"${pr_view_err:-/dev/null}"); then
       :
@@ -174,6 +176,17 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>/dev/null) || REPO_NAME=""
       PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || PROJECTS_ENABLED=""
       PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || PROJECT_NUMBER=""
+      # cycle 6 C6-F09 対応: gh repo view 失敗時の silent skip を防止する。
+      # `REPO_INFO=""` 設定で gate 全体が silent 無音 skip される経路 (4 site 中ここだけ defense chain 欠落)
+      # を、start.md Step 1.5 / start-finalize.md Step 0 と対称に sentinel emit させる。
+      if [ "$PROJECTS_ENABLED" = "true" ] && [ -z "$REPO_INFO" ]; then
+        echo "[rite] ⚠️ post-compact: gh repo view failed — reconciliation safety net unavailable" >&2
+        bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+          --type projects_status_in_review_missing \
+          --details "Issue #$ISSUE post-compact: gh repo view failed (reconciliation safety net unavailable)" \
+          --root-cause-hint "post_compact_gh_repo_view_failed" \
+          --pr-number "$PR" >&2 || true
+      fi
       if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ] && [ -n "$REPO_OWNER" ] && [ -n "$REPO_NAME" ] && [ "$ISSUE" != "unknown" ]; then
         if CURRENT_STATUS=$(cd "$STATE_ROOT" 2>/dev/null && gh api graphql -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
@@ -196,14 +209,15 @@ query($owner: String!, $repo: String!, $number: Int!) {
   }
 }' -f owner="$REPO_OWNER" -f repo="$REPO_NAME" -F number="$ISSUE" 2>"${gql_err:-/dev/null}" \
           | jq -r --argjson pn "$PROJECT_NUMBER" \
-            '[.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>/dev/null); then
+            '[.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>"${jq_err:-/dev/null}"); then
           :
         else
           gql_rc=$?
           gql_err_oneline=$(head -c 200 "${gql_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+          jq_err_oneline=$(head -c 200 "${jq_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
           bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
             --type projects_status_in_review_missing \
-            --details "Issue #$ISSUE post-compact: gh api graphql failed (rc=$gql_rc, stderr=$gql_err_oneline)" \
+            --details "Issue #$ISSUE post-compact: gh api graphql failed (rc=$gql_rc, gh_stderr=$gql_err_oneline, jq_stderr=$jq_err_oneline)" \
             --root-cause-hint "post_compact_gh_api_failed" \
             --pr-number "$PR" >&2 || true
           CURRENT_STATUS=""
@@ -220,9 +234,10 @@ query($owner: String!, $repo: String!, $number: Int!) {
               --details "Issue #$ISSUE post-compact reconciliation: STATE_ROOT inaccessible ($STATE_ROOT)" \
               --root-cause-hint "state_root_inaccessible" \
               --pr-number "$PR" >&2 || true
-            RECONCILE_STATUS="failed"
-            RECONCILE_RESULT=""
-            reconcile_err=""
+            # cycle 6 C6-F08 対応: STATE_ROOT inaccessible 分岐の dead variable assignment を削除。
+            # 以前は RECONCILE_STATUS / RECONCILE_RESULT / reconcile_err を代入していたが、
+            # incident emit 完了済みかつ if-else 分岐で本 branch を抜けた後は参照されないため削除。
+            # reconcile_err は sub-shell 冒頭で空文字列宣言済みのため二重代入不要。
           else
             # reconcile script の stderr を tempfile capture し、失敗時 details に含める
             reconcile_err=$(mktemp /tmp/rite-pc-reconcile-err-XXXXXX) || reconcile_err=""

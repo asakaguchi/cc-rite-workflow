@@ -616,6 +616,8 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 **Detection scope** — recognised sentinel `type` values:
 
+> **Note**: 本 table は **user-facing recommended action がある type 限定** で列挙する。`workflow-incident-emit.sh` の allowlist には他の type (`cross_session_takeover_refused` / `legacy_state_corrupt` 等) も含まれており、emit 可能な全 type の単一源は allowlist (case 句) を参照すること。
+
 | Type | Source | Default action when detected |
 |------|--------|------------------------------|
 | `skill_load_failure` | Orchestrator post-condition check | AskUserQuestion → register Issue / skip |
@@ -675,7 +677,7 @@ rm -f .rite-compact-state 2>/dev/null || true
 rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=start_md_termination" >&2
 ```
 
-**Step 1.5 (Issue #1003 AC-8 — caller-side In Review log missing detection)**: success path では sub-skill `start-finalize.md` Workflow Termination Step 0 が primary 検知を担うが、abort path (`[start:finalize:aborted]`) では sub-skill の Workflow Termination 自体が走らないため、caller 側で同等の defense-in-depth 検知を実行する。`[ready:error]` user-terminate のように "Ready 化試行 → 失敗 → terminate" 経路で Status が `In Progress` のまま放置される事象を最終 fallback で surface する。
+**Step 1.5 (Issue #1003 AC-8 — caller-side In Review log missing detection)**: success path では sub-skill `start-finalize.md` Workflow Termination Step 0 が primary 検知を担うが、abort path (`[start:finalize:aborted]`) では sub-skill の Workflow Termination 自体が走らないため、caller 側で同等の defense-in-depth 検知を実行する。**実際に catch する scenario**: abort entry detection 経由で sub-skill が Workflow Termination Step 0 を skip した success-like path (PR は既に Ready 化済 `isDraft=false` だが finalize が abort 入口で停止) で Status が `In Progress` のまま放置される事象を最終 fallback で surface する。なお `[ready:error]` user-terminate 経路は `gh pr ready` 自体が失敗するため PR は draft のままで本 Step 1.5 の `isDraft=false` gating を通過しない (Status 滞留は別の経路 — `projects_status_update_failed` sentinel — で検出される)。
 
 ```bash
 # Defense-in-depth caller-side check: PR 作成済 (pr_number != 0) かつ projects 有効化されている場合のみ
@@ -683,6 +685,12 @@ rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANU
 # 担い、本 caller-side check は 2 段目の冗長防御として機能する。重複 emit は Phase 5.4.4.1 dedup で吸収。
 # sub-shell + pipefail + signal-specific trap で start-finalize.md Step 0 と対称化し、gh API 失敗を
 # silent fall-through せず incident emit する。
+#
+# Note (cycle 6 C6-F10): 本 block と start-finalize.md Step 0 (約 100 行) は AC-8 検知ロジックの
+# literal duplication を持つ。差分は tempfile prefix (`/tmp/rite-step15-*` vs `/tmp/rite-finalize-step0-*`)、
+# 関数名 (`_step15_cleanup` vs `_finalize_step0_cleanup`)、`--root-cause-hint` 値、log message prefix のみ。
+# 共通 helper (`plugins/rite/hooks/check-ac8-status-mismatch.sh` 等) への抽出は別 Issue 推奨 (本 PR scope 外)。
+# 短期的には docstring / 関数名 / log prefix のいずれかを変更した場合、両 site を同時更新すること。
 (
   if [ "{pr_number}" != "0" ] && [ -n "{pr_number}" ]; then
     PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' rite-config.yml 2>/dev/null)

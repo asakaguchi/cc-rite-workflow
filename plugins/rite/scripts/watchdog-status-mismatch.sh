@@ -114,9 +114,10 @@ fi
 # 本 trap が一括 cleanup する (defense-in-depth)。
 gh_err=""
 gql_err=""
+jq_err=""
 reconcile_err=""
 _rite_watchdog_cleanup() {
-  rm -f "${gh_err:-}" "${gql_err:-}" "${reconcile_err:-}"
+  rm -f "${gh_err:-}" "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}"
 }
 trap 'rc=$?; _rite_watchdog_cleanup; exit $rc' EXIT
 trap '_rite_watchdog_cleanup; exit 130' INT
@@ -176,7 +177,10 @@ while IFS= read -r pr_entry; do
   fi
 
   # Query Issue's current Status in the Project (gh failure を stderr capture して silent skip 防止)
+  # cycle 6 C6-F02 対応: jq の stderr も独立 capture し、4-site symmetry contract を完遂する。
+  # post-compact.sh / start.md Step 1.5 / start-finalize.md Step 0 と対称に gh / jq の stderr を区別。
   gql_err=$(mktemp /tmp/rite-watchdog-gql-err-XXXXXX) || gql_err=""
+  jq_err=$(mktemp /tmp/rite-watchdog-jq-err-XXXXXX) || jq_err=""
   if ! current_status=$(set -o pipefail; gh api graphql -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -198,15 +202,18 @@ query($owner: String!, $repo: String!, $number: Int!) {
   }
 }' -f owner="$REPO_OWNER" -f repo="$REPO_NAME" -F number="$issue_number" 2>"${gql_err:-/dev/null}" \
       | jq -r --argjson pn "$PROJECT_NUMBER" \
-        '[.data.repository.issue.projectItems.nodes[]? | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>/dev/null); then
+        '[.data.repository.issue.projectItems.nodes[]? | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>"${jq_err:-/dev/null}"); then
     # gh / jq pipeline 失敗 — silent skip せず warnings に記録 (debug 可能性向上)
-    if [ "$QUIET" != "true" ] && [ -n "$gql_err" ] && [ -s "$gql_err" ]; then
-      gql_err_oneline=$(head -c 200 "$gql_err" | tr '\n' ' ')
-      echo "[watchdog] ⚠️ gh api graphql failed for Issue #$issue_number: $gql_err_oneline" >&2
+    # 4-site stderr root cause attribution: gh_stderr と jq_stderr を独立表示
+    if [ "$QUIET" != "true" ]; then
+      gql_err_oneline=$(head -c 200 "${gql_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+      jq_err_oneline=$(head -c 200 "${jq_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+      echo "[watchdog] ⚠️ gh api graphql or jq failed for Issue #$issue_number (gh_stderr=$gql_err_oneline, jq_stderr=$jq_err_oneline)" >&2
     fi
     current_status=""
   fi
   [ -n "$gql_err" ] && rm -f "$gql_err"
+  [ -n "$jq_err" ] && rm -f "$jq_err"
 
   if [ "$current_status" = "In Progress" ]; then
     reconcile_result="not_attempted"

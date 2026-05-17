@@ -234,6 +234,9 @@ assert_file_contains "$POST_COMPACT_SH" 'projects_status_in_review_missing' \
   "post-compact.sh emits projects_status_in_review_missing on reconcile failure"
 
 # (5h) watchdog script exists and is executable
+# Group 5 では watchdog の file existence のみを check する。詳細 assertion (CLI flag / sentinel 等)
+# は watchdog-status-mismatch.test.sh (T-9 系) に集約されており、Group 5 の同様 check は
+# T-9a と意図的に重複させる。両 test は独立 CI で実行されるため、片方変更時の同期負担は許容範囲。
 if [ ! -x "$WATCHDOG_SH" ]; then
   FAIL=$((FAIL + 1))
   FAILURES+=("watchdog-status-mismatch.sh is not executable (AC-9)")
@@ -242,8 +245,13 @@ else
   PASS=$((PASS + 1))
   echo "  ✓ watchdog-status-mismatch.sh is executable"
 fi
-assert_file_contains "$WATCHDOG_SH" '"reconcile|--dry-run"' \
-  "watchdog has --dry-run/--reconcile mode toggle (AC-9)"
+# pattern を case 句閉じ括弧 `)` で pin することで JSON docstring 内の `"reconciled"` field 名への
+# false-positive (cycle 6 で検出) を排除。`'\-\-dry-run\)'` と `'\-\-reconcile\)'` の 2 行に分割し、
+# T-9e と同形式に揃える (CLI flag 削除時に確実に test が落ちる regression guard を確保)。
+assert_file_contains "$WATCHDOG_SH" '\-\-dry-run\)' \
+  "watchdog has --dry-run case clause (AC-9)"
+assert_file_contains "$WATCHDOG_SH" '\-\-reconcile\)' \
+  "watchdog has --reconcile case clause (AC-9)"
 
 # (5i) Issue #513 regression guard preserved: callsites.md still pins literal 3-method delegation
 assert_file_contains "$CALLSITES_MD" 'Issue #513 regression guard' \

@@ -212,8 +212,11 @@ if [ -n "$incident_script" ]; then
 fi
 
 # --- JSON summary ---
-printf '{"drift":true,"type":"%s","detail":"%s","recovered":%s}\n' \
-  "$drift_type" "$drift_detail" "$recovered"
+# `drift_detail` / `drift_type` は他 hook script 由来の長文メッセージを内包する可能性があるため、
+# printf で JSON value に直接埋め込むのではなく jq で escape する (Issue #999 LOW follow-up)。
+# `recovered` は "true"/"false" 文字列を JSON boolean に変換する。
+jq -nc --arg t "$drift_type" --arg d "$drift_detail" --arg r "$recovered" \
+  '{drift: true, type: $t, detail: $d, recovered: ($r == "true")}'
 
 # Exit code: recovered=true → 0、recovered=false → 1 (manual intervention required)
 if [ "$recovered" = "true" ] || [ "$drift_type" = "stash" ] || [ "$drift_type" = "branch_list" ]; then

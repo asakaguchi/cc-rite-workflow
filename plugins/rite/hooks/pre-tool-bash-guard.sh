@@ -307,6 +307,17 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # は parent shell 解決後の独立トークンとして渡るため、本 hook の静的 glob では検出不能。
   # Layer 2 の責務は「静的 token として `git` を含むコマンド」に限定し、一次防御は agent prompt、
   # 三次防御は Layer 3 post-condition state-verify gate に委ねる三層構造を維持する。
+  #
+  # `/git` substring 全置換の boundary 設計 (Issue #999 LOW follow-up):
+  # 本 line は `/git` を ` git` に置換するため `/home/user/.config/git/config` のような
+  # path 構成要素も置換対象になる (例: `grep -r foo /home/user/.config/git/config` →
+  # `grep -r foo /home/user/.config git/config`)。現状の (A)〜(G) deny case-glob は
+  # `*" git <verb> "*` 形式で **後続スペース必須** のため、path 由来で生成される `git/config`
+  # のように `/` が続くトークンは match せず false positive は発生しない。
+  # 将来、Always-deny verb の新規追加で末尾境界条件を緩める (e.g., `*" git <verb>"*` で
+  # trailing space を省略する) 設計変更を行う場合は、本正規化を `/git ` (後続スペース必須:
+  # `${CMD_NORMALIZED//\/git / git }`) に変更して token boundary を保ち、false positive 混入を
+  # 構造的に塞ぐこと。
   CMD_NORMALIZED="${CMD_NORMALIZED//\/git/ git}"
   CMD_NORMALIZED="${CMD_NORMALIZED//\\git/ git}"
   CMD_NORMALIZED="${CMD_NORMALIZED// command git/ git}"

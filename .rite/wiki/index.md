@@ -100,9 +100,10 @@
 | [Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む)](pages/anti-patterns/scope-drift-fix-overclaim-substitution.md) | anti-patterns | scope drift / virtual claim を「scope を限定する正確な表現」に置換する fix で、置換後の言い換えに別種の overclaim 語彙 (`固有 (unique to)` / `専用 (specific to)` / `全て` / `必ず` 等の絶対化語彙) を持ち込むリスク。所有格 (`の`) / 限定形容 (`での`、`に関する`) のみを使い、絶対化を含意する語彙を意図的に回避する。並列性が明示できる場合は共有 pattern であることを括弧書きで補足する。PR #969 cycle 1 で code-quality reviewer が Confidence 80 で検出 → cycle 2 で 0 findings 収束 (Issue #965 sister of `asymmetric-fix-transcription`)。 | 2026-05-15T10:05:00+09:00 | high |
 | [Pattern 統一 follow-up PR では Wiki 経験則違反でも統一を優先する](pages/heuristics/pattern-unification-over-wiki-rigor.md) | heuristics | 過去 PR で merge 済みのパターンとの統一を目的とする follow-up PR では、Wiki 経験則違反 (overclaim 語彙等) であってもパターン統一を優先し、改善は別 Issue で追跡する。Issue 本文の明示的目的 + SoT との byte-level 同型 + test SCOPE 自身の declaration が判定根拠。PR #973 (Issue #970) で実測、2 reviewer 合意で 0 findings 収束。 | 2026-05-15T15:05:00+09:00 | medium |
 | [Bash 配列の slash-deletion は要素を空文字列に置換するだけで削除しない](pages/anti-patterns/bash-array-slash-deletion-empty-replacement.md) | anti-patterns | `cleanup_dirs=("${arr[@]/$target}")` 形式の bash パラメータ展開は各要素内の `pattern` 一致部分を空文字列に置換するだけで配列スロットを削除しない。trap 等の cleanup ループが `[ -n "$d" ]` filter で空要素を skip する設計だと「機能的には安全」に見えるが、反復ごとに空要素が累積し配列サイズが test cycle と比例して肥大する silent failure。完全削除を保証する明示的再構築 helper (`for d in "${arr[@]:-}"; do [ -n "$d" ] && [ "$d" != "$target" ] && new+=("$d"); done` + `${#new[@]}` 分岐) で `set -u` 安全に対応。PR #991 (Issue #986) で 10 反復後 10 → 0 累積を実測、shellcheck カスタムルール / CI grep で `[@]/$` ban する構造的予防が推奨。 | 2026-05-16T13:30:00+09:00 | high |
+| [累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable](pages/heuristics/accumulated-pr-three-cycle-convergence.md) | heuristics | PR #997 cycle 2 LOW follow-up が 3 cycle で収束した実例。cycle 1 で 2 reviewer 独立指摘が HIGH に boost、cycle 1 fix で minor drift 導入、cycle 2 で 2 階層 (主要因/補強要因) に書き直し、cycle 3 で 0 findings 収束。 | 2026-05-17T13:40:00Z | high |
 
 ## 統計
 
-- 総ページ数: 94
-- ドメイン別: patterns=36, heuristics=26, anti-patterns=32
-- 最終更新: 2026-05-17T09:08:26Z
+- 総ページ数: 95
+- ドメイン別: patterns=36, heuristics=27, anti-patterns=32
+- 最終更新: 2026-05-17T13:40:00Z

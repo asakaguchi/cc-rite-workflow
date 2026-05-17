@@ -577,3 +577,7 @@
 | 2026-05-17T09:08:26Z | ingest:skip | raw/reviews/20260516T155437Z-pr-1001.md | PR #1001 cycle 2 review (1 LOW-MEDIUM coverage gap のみ、3-tier subagent detection の jq filter mutation kill 強化)。既存 mutation-testing-test-fidelity の連続適用事例にあたり、新規経験則として抽出すべき独立知見はない。 |
 | 2026-05-17T09:08:26Z | ingest:skip | raw/fixes/20260516T160010Z-pr-1001.md | PR #1001 cycle 2 fix (test 側のみの拡張で TC-113d/e/f を追加、jq filter mutation kill)。新規経験則として抽出すべき独立知見はない (mutation-testing-test-fidelity への accumulating evidence 未追加 — 今後の評価で必要なら拡張)。 |
 | 2026-05-17T09:15:46Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=2, unregistered_raw=139, broken_refs=18 |
+| 2026-05-17T13:44:17Z | ingest:create | pages/heuristics/accumulated-pr-three-cycle-convergence.md | PR #1011 3-cycle 収束記録 (3 raw sources merged into single page: cycle 1 + cycle 2 review + retrospective) |
+| 2026-05-17T13:44:17Z | ingest:merged | raw/reviews/20260517T133901Z-pr-1011-cycle-1.md | merged into pages/heuristics/accumulated-pr-three-cycle-convergence.md as source |
+| 2026-05-17T13:44:17Z | ingest:merged | raw/reviews/20260517T133937Z-pr-1011-cycle-2.md | merged into pages/heuristics/accumulated-pr-three-cycle-convergence.md as source |
+| 2026-05-17T13:44:17Z | ingest:merged | raw/retrospectives/20260517T133937Z-pr-1011-retro.md | merged into pages/heuristics/accumulated-pr-three-cycle-convergence.md as source |

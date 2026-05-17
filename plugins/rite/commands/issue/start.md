@@ -691,13 +691,37 @@ rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANU
       set -o pipefail
       pr_view_err=""
       gql_err=""
-      _step15_cleanup() { rm -f "${pr_view_err:-}" "${gql_err:-}"; }
+      _step15_cleanup() { rm -f "${pr_view_err:-}" "${gql_err:-}" "${jq_err:-}"; }
       trap 'rc=$?; _step15_cleanup; exit $rc' EXIT
       trap '_step15_cleanup; exit 130' INT
       trap '_step15_cleanup; exit 143' TERM
       trap '_step15_cleanup; exit 129' HUP
       pr_view_err=$(mktemp /tmp/rite-step15-pr-err-XXXXXX) || pr_view_err=""
       gql_err=$(mktemp /tmp/rite-step15-gql-err-XXXXXX) || gql_err=""
+      jq_err=$(mktemp /tmp/rite-step15-jq-err-XXXXXX) || jq_err=""
+
+      # {owner}/{repo} を sub-shell 内で local 取得する (cycle 3 F-01 対応)。
+      # Placeholder Legend は宣言のみで Phase 0/0.1/0.2/0.3/1/2 に explicit retrieval phase
+      # が存在せず、orchestrator LLM の ad-hoc 取得に依存していた。sub-shell scope 内完結に変更することで
+      # orchestrator 状態への依存を排除し、未取得時の AC-8 core 検知 silent skip 経路を遮断する。
+      if ! _owner=$(gh repo view --json owner --jq '.owner.login' 2>/dev/null) || [ -z "$_owner" ]; then
+        echo "[rite] ⚠️ Step 1.5: gh repo view --json owner に失敗 — AC-8 検知を skip" >&2
+        bash {plugin_root}/hooks/workflow-incident-emit.sh \
+          --type projects_status_in_review_missing \
+          --details "Issue #{issue_number} caller-side Step 1.5: gh repo view --json owner failed (AC-8 detection skipped)" \
+          --root-cause-hint "gh_repo_view_owner_failed" \
+          --pr-number {pr_number} >&2 || true
+        _owner=""
+      fi
+      if ! _repo=$(gh repo view --json name --jq '.name' 2>/dev/null) || [ -z "$_repo" ]; then
+        echo "[rite] ⚠️ Step 1.5: gh repo view --json name に失敗 — AC-8 検知を skip" >&2
+        bash {plugin_root}/hooks/workflow-incident-emit.sh \
+          --type projects_status_in_review_missing \
+          --details "Issue #{issue_number} caller-side Step 1.5: gh repo view --json name failed (AC-8 detection skipped)" \
+          --root-cause-hint "gh_repo_view_name_failed" \
+          --pr-number {pr_number} >&2 || true
+        _repo=""
+      fi
 
       if PR_IS_DRAFT=$(gh pr view {pr_number} --json isDraft --jq '.isDraft // null' 2>"${pr_view_err:-/dev/null}"); then
         :
@@ -732,16 +756,20 @@ query($owner: String!, $repo: String!, $number: Int!) {
       }
     }
   }
-}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number} 2>"${gql_err:-/dev/null}" \
+}' -f owner="$_owner" -f repo="$_repo" -F number={issue_number} 2>"${gql_err:-/dev/null}" \
             | jq -r --argjson pn "$PROJECT_NUMBER" \
-              '[.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>/dev/null); then
+              '[.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>"${jq_err:-/dev/null}"); then
           :
         else
           gh_gql_rc=$?
-          gql_err_oneline=$(head -c 200 "${gql_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+          # gh と jq の stderr を別 capture することで root cause attribution を正確化する (cycle 3 F-09 同根)
+          gql_err_oneline=""
+          jq_err_oneline=""
+          [ -n "${gql_err:-}" ] && [ -s "$gql_err" ] && gql_err_oneline=$(head -c 200 "$gql_err" | tr '\n' ' ')
+          [ -n "${jq_err:-}" ] && [ -s "$jq_err" ] && jq_err_oneline=$(head -c 200 "$jq_err" | tr '\n' ' ')
           bash {plugin_root}/hooks/workflow-incident-emit.sh \
             --type projects_status_in_review_missing \
-            --details "Issue #{issue_number} caller-side Step 1.5: gh api graphql failed (rc=$gh_gql_rc, stderr=$gql_err_oneline)" \
+            --details "Issue #{issue_number} caller-side Step 1.5: pipeline failed (rc=$gh_gql_rc, gh_stderr=$gql_err_oneline, jq_stderr=$jq_err_oneline)" \
             --root-cause-hint "gh_api_failure_at_caller_defense" \
             --pr-number {pr_number} >&2 || true
           CURRENT_STATUS=""

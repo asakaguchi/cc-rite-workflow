@@ -211,9 +211,22 @@ query($owner: String!, $repo: String!, $number: Int!) {
 
         if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ]; then
           echo "[rite] ⚠️ post-compact mismatch detected: Issue #$ISSUE PR=#$PR isDraft=false Status=\"$CURRENT_STATUS\" (expected In Review)" >&2
+          # STATE_ROOT 存在 guard を冒頭に追加し、cd 失敗を silent 化しない (cycle 3 F-10 対応)。
+          # STATE_ROOT 削除 / permission 変更時の rare path でも root cause を明示する。
+          if [ ! -d "$STATE_ROOT" ]; then
+            echo "[rite] ❌ post-compact reconciliation: STATE_ROOT inaccessible ($STATE_ROOT)" >&2
+            bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+              --type projects_status_in_review_missing \
+              --details "Issue #$ISSUE post-compact reconciliation: STATE_ROOT inaccessible ($STATE_ROOT)" \
+              --root-cause-hint "state_root_inaccessible" \
+              --pr-number "$PR" >&2 || true
+            RECONCILE_STATUS="failed"
+            RECONCILE_RESULT=""
+            reconcile_err=""
+          else
           # reconcile script の stderr を tempfile capture し、失敗時 details に含める
           reconcile_err=$(mktemp /tmp/rite-pc-reconcile-err-XXXXXX) || reconcile_err=""
-          RECONCILE_RESULT=$(cd "$STATE_ROOT" 2>/dev/null && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$(jq -n \
+          RECONCILE_RESULT=$(cd "$STATE_ROOT" && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$(jq -n \
             --argjson issue "$ISSUE" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
             --argjson project_number "$PROJECT_NUMBER" --arg status "In Review" \
             --argjson auto_add false --argjson non_blocking true \
@@ -230,6 +243,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
               --root-cause-hint "post_compact_reconciliation_failed" \
               --pr-number "$PR" >&2 || true
           fi
+          fi  # STATE_ROOT guard end
         fi
       fi
     fi

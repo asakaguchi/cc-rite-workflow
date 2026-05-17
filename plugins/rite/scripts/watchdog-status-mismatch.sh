@@ -107,6 +107,22 @@ if [ "$PROJECTS_ENABLED" != "true" ] || [ -z "$PROJECT_NUMBER" ]; then
   exit 0
 fi
 
+# --- Trap setup: tempfile orphan 防止 (EXIT/INT/TERM/HUP) ---
+# canonical pattern: hooks/post-compact.sh / start.md Step 1.5 / start-finalize.md Step 0 と対称化。
+# path 先行宣言 → trap 先行設定 → mktemp の順序で race window を排除する。
+# loop 内 gql_err は毎 iteration mktemp + 末尾 rm の現行構造を維持しつつ、signal 経路では
+# 本 trap が一括 cleanup する (defense-in-depth)。
+gh_err=""
+gql_err=""
+reconcile_err=""
+_rite_watchdog_cleanup() {
+  rm -f "${gh_err:-}" "${gql_err:-}" "${reconcile_err:-}"
+}
+trap 'rc=$?; _rite_watchdog_cleanup; exit $rc' EXIT
+trap '_rite_watchdog_cleanup; exit 130' INT
+trap '_rite_watchdog_cleanup; exit 143' TERM
+trap '_rite_watchdog_cleanup; exit 129' HUP
+
 # --- Repo info ---
 # stderr capture して失敗時の原因 (auth / rate limit / network) を可視化する。
 gh_err=$(mktemp /tmp/rite-watchdog-gh-err-XXXXXX) || gh_err=""
@@ -194,22 +210,36 @@ query($owner: String!, $repo: String!, $number: Int!) {
 
   if [ "$current_status" = "In Progress" ]; then
     reconcile_result="not_attempted"
+    reconcile_stderr_oneline=""
     if [ "$RECONCILE" = "true" ]; then
+      # stderr を tempfile に退避して失敗時の原因 (auth / rate limit / partial failure) を可視化する。
+      # 他 3-site (post-compact.sh / start.md / start-finalize.md) と対称化された stderr capture 契約。
+      # silent suppress (2>/dev/null) では RECONCILE_FAILURES non-zero 時に user は失敗原因を knowing できない。
+      reconcile_err=$(mktemp /tmp/rite-watchdog-reconcile-err-XXXXXX) || reconcile_err=""
       reconcile_json=$(bash "$PLUGIN_ROOT/scripts/projects-status-update.sh" "$(jq -n \
         --argjson issue "$issue_number" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
         --argjson project_number "$PROJECT_NUMBER" --arg status "In Review" \
         --argjson auto_add false --argjson non_blocking true \
-        '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>/dev/null) || reconcile_json=""
+        '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || reconcile_json=""
       reconcile_result=$(printf '%s' "$reconcile_json" | jq -r '.result // "failed"' 2>/dev/null) || reconcile_result="failed"
       if [ "$reconcile_result" = "updated" ]; then
         RECONCILED=$((RECONCILED + 1))
       else
         RECONCILE_FAILURES=$((RECONCILE_FAILURES + 1))
+        if [ -n "$reconcile_err" ] && [ -s "$reconcile_err" ]; then
+          reconcile_stderr_oneline=$(head -c 200 "$reconcile_err" | tr '\n' ' ')
+          if [ "$QUIET" != "true" ]; then
+            echo "[watchdog] ⚠️ reconcile failed for Issue #$issue_number: $reconcile_stderr_oneline" >&2
+          fi
+        fi
       fi
+      [ -n "$reconcile_err" ] && rm -f "$reconcile_err"
+      reconcile_err=""
     fi
     MISMATCHES+=("$(jq -n --argjson pr "$pr_number" --argjson issue "$issue_number" \
       --arg status "$current_status" --arg recon "$reconcile_result" \
-      '{pr_number:$pr, issue_number:$issue, current_status:$status, reconcile_result:$recon}')")
+      --arg recon_stderr "$reconcile_stderr_oneline" \
+      '{pr_number:$pr, issue_number:$issue, current_status:$status, reconcile_result:$recon, reconcile_stderr:$recon_stderr}')")
     if [ "$QUIET" != "true" ]; then
       echo "[watchdog] ⚠️ mismatch: PR=#$pr_number isDraft=false → Issue #$issue_number Status=\"$current_status\" (expected In Review)" >&2
     fi

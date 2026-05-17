@@ -171,7 +171,10 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
 
     # cycle 8 C7-F09: STATE_ROOT 不可達時の cd 短絡を early-emit branch で扱う。
     # 旧実装は `cd "$STATE_ROOT" 2>/dev/null && gh pr view ...` で STATE_ROOT inaccessible 時に
-    # cd 失敗→gh pr view 未実行で `gh_pr_view_failed` 誤分類していた (実原因は state_root_inaccessible)。
+    # cd 失敗 (stderr silent suppress) → gh pr view 未実行で `gh_pr_view_failed` 誤分類していた
+    # (実原因は state_root_inaccessible)。
+    # cycle 10 F-04 対応: L184/200/241/281 の `cd ... 2>/dev/null` から 2>/dev/null を削除し、
+    # TOCTOU race (L175 check 後の permission 変更 / unmount) 時に cd 失敗の stderr を捕捉可能にした。
     if [ ! -d "$STATE_ROOT" ]; then
       bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
         --type projects_status_in_review_missing \
@@ -186,10 +189,18 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     else
       pr_rc=$?
       pr_err_oneline=$(head -c 200 "${pr_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+      # cycle 10 F-12 対応: PR が close/merge/delete されている legitimate な終了状態と
+      # auth/network/permission failure を区別する。前者は false positive で、caller Phase 5.4.4.1
+      # で偽 Issue を auto-register する経路を防ぐため別 hint で emit する。
+      if printf '%s' "$pr_err_oneline" | grep -qiE 'no.*pull request found|could not resolve.*pull request|not found'; then
+        pr_root_cause="pr_deleted_or_inaccessible"
+      else
+        pr_root_cause="post_compact_gh_pr_view_failed"
+      fi
       bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
         --type projects_status_in_review_missing \
         --details "Issue #$ISSUE post-compact: gh pr view failed (rc=$pr_rc, stderr=$pr_err_oneline)" \
-        --root-cause-hint "post_compact_gh_pr_view_failed" \
+        --root-cause-hint "$pr_root_cause" \
         --pr-number "$PR" >&2 || true
       PR_IS_DRAFT=""
     fi
@@ -236,9 +247,14 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
             --root-cause-hint "post_compact_gh_repo_view_returned_null" \
             --pr-number "$PR" >&2 || true
         fi
+        # cycle 10 F-17 対応: cascade emit guard の semantic を start.md / start-finalize.md と対称化。
+        # 旧実装は `_owner_repo_ok=0` set のみで後段に flow を続行し、L251 の長大な条件式で guard する
+        # 別パターンだった (3 site で semantic 不一致、guard 漏れ regression のリスク)。start.md L725 /
+        # start-finalize.md L548 の `if [ "$_owner_repo_ok" != "1" ]; then exit 0; fi` と対称化する。
+        exit 0
       fi
-      if [ "$_owner_repo_ok" = "1" ] && [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ] && [ -n "$REPO_OWNER" ] && [ -n "$REPO_NAME" ] && [ "$ISSUE" != "unknown" ]; then
-        if CURRENT_STATUS=$(cd "$STATE_ROOT" 2>/dev/null && gh api graphql -f query='
+      if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ] && [ -n "$REPO_OWNER" ] && [ -n "$REPO_NAME" ] && [ "$ISSUE" != "unknown" ]; then
+        if CURRENT_STATUS=$(cd "$STATE_ROOT" && gh api graphql -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
     issue(number: $number) {

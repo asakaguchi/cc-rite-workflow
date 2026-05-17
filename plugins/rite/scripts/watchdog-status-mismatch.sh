@@ -166,11 +166,29 @@ MISMATCHES=()
 RECONCILED=0
 RECONCILE_FAILURES=0
 
+# cycle 10 F-10 対応: process substitution の exit code は親に伝播しないため、
+# jq 失敗時 (PR_LIST malformed) に loop body が 0 回実行され silent success (`exit 0`) する経路を防ぐ。
+# pre-check として jq 'length' で PR_LIST の有効性を検証する。
+pr_count_check=$(printf '%s' "$PR_LIST" | jq 'length' 2>/dev/null) || pr_count_check=""
+if [ -z "$pr_count_check" ]; then
+  echo "ERROR: PR_LIST が valid JSON ではないか jq バイナリ異常です (silent loop skip 防止)" >&2
+  echo "  対処: gh pr list の出力と jq バージョンを確認してください" >&2
+  exit 1
+fi
+
 while IFS= read -r pr_entry; do
-  pr_number=$(printf '%s' "$pr_entry" | jq -r '.number')
-  is_draft=$(printf '%s' "$pr_entry" | jq -r '.isDraft')
-  pr_body=$(printf '%s' "$pr_entry" | jq -r '.body // empty')
-  head_ref=$(printf '%s' "$pr_entry" | jq -r '.headRefName // empty')
+  # cycle 10 F-09 対応: jq 失敗時の error handling を追加 (set -euo pipefail 下で script 全体が
+  # abort し PR scan が完全停止する fragility を排除)。失敗 entry は continue で skip し warnings に記録。
+  pr_number=$(printf '%s' "$pr_entry" | jq -r '.number' 2>/dev/null) || pr_number=""
+  is_draft=$(printf '%s' "$pr_entry" | jq -r '.isDraft' 2>/dev/null) || is_draft=""
+  pr_body=$(printf '%s' "$pr_entry" | jq -r '.body // empty' 2>/dev/null) || pr_body=""
+  head_ref=$(printf '%s' "$pr_entry" | jq -r '.headRefName // empty' 2>/dev/null) || head_ref=""
+  if [ -z "$pr_number" ] || [ -z "$is_draft" ]; then
+    if [ "$QUIET" != "true" ]; then
+      echo "[watchdog] ⚠️ jq parse failed for PR entry, skipping (pr_entry preview: $(printf '%s' "$pr_entry" | head -c 80))" >&2
+    fi
+    continue
+  fi
   PRS_SCANNED=$((PRS_SCANNED + 1))
 
   if [ "$is_draft" != "false" ]; then

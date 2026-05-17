@@ -616,7 +616,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 **Detection scope** — recognised sentinel `type` values:
 
-> **Note**: 本 table は **user-facing recommended action がある 8 type 限定** で列挙する (Issue #1003 AC-4 / AC-7 / AC-8 で導入された Projects 系 2 type を含む)。`workflow-incident-emit.sh` の allowlist (case 句) には他の type (`cross_session_takeover_refused` / `legacy_state_corrupt`) も含まれているが user-facing action がないため本 table では割愛する。emit 可能な全 type の単一源は allowlist case 句 (cycle 8 C7-F20/C7-F22 対応で本 table と同期 maintenance)。
+> **Note**: 本 table は **user-facing recommended action がある type 限定** で列挙する (Issue #1003 AC-4 / AC-7 / AC-8 で導入された Projects 系 2 type を含む)。`workflow-incident-emit.sh` の allowlist (case 句) には他の type (`cross_session_takeover_refused` / `legacy_state_corrupt`) も含まれているが user-facing action がないため本 table では割愛する。emit 可能な全 type の単一源は allowlist case 句 (本 table と allowlist case 句の同期 maintenance は cycle 8 C7-F20/C7-F22 / cycle 10 F-05 対応で確立)。
 >
 > **Source 列の凡例** (cycle 8 C7-F21 対応): 「**Emit site**」は `workflow-incident-emit.sh` が呼ばれるコード上の正確な場所、「**Contract SoT**」は emit 規約 (silent skip 禁止 / details に注入する root cause 等) が宣言された reference doc を指す。両者は orthogonal で、emit 発火源は Emit site のみ。
 
@@ -630,7 +630,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 | `wiki_ingest_push_failed` | `wiki-ingest-commit.sh` exit 4 — commit は local wiki branch に landed、origin push 失敗 | [workflow-incident-detection.md](./references/workflow-incident-detection.md) | register 推奨。Manual recovery: `git push origin wiki` |
 | `gitignore_drift` | `/rite:lint` Phase 3.9 で `gitignore-health-check.sh` が `.rite/wiki/` 不在を検出 (last-line-of-defense) | [workflow-incident-detection.md](./references/workflow-incident-detection.md) | register 推奨。Manual recovery: restore `.rite/wiki/` to `.gitignore` |
 | `projects_status_update_failed` | `pr/ready.md` Phase 4.2 / `start-finalize.md` Phase 5.5.1 で `projects-status-update.sh` が `failed` / `skipped_not_in_project` を返した場合 | [projects-status-update-callsites.md](./references/projects-status-update-callsites.md) Common contract item 5 (Issue #1003 AC-4 silent skip 禁止 contract) | AskUserQuestion → register Issue / skip — register 推奨 (Status 滞留の原因調査が必要) |
-| `projects_status_in_review_missing` | `start-finalize.md` Workflow Termination Step 0 / `start.md` Mandatory After 5.5-Termination Step 1.5 / `post-compact.sh` reconciliation 失敗時に PR Ready 化済 (`isDraft=false`) かつ Issue Status が `In Review` でない不整合を検出 | Issue #1003 AC-7/AC-8 多層観測 contract | AskUserQuestion → register Issue / skip — register 推奨 (defense-in-depth 失敗の兆候) |
+| `projects_status_in_review_missing` | `start-finalize.md` Workflow Termination Step 0 / `start.md` Mandatory After 5.5-Termination Step 1.5 / `post-compact.sh` reconciliation 失敗時に PR Ready 化済 (`isDraft=false`) かつ Issue Status が `In Review` でない不整合を検出 | [workflow-incident-detection.md](./references/workflow-incident-detection.md) (Issue #1003 AC-7/AC-8 多層観測 contract) | AskUserQuestion → register Issue / skip — register 推奨 (defense-in-depth 失敗の兆候) |
 
 **When to execute** (explicit routing):
 
@@ -688,9 +688,19 @@ rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANU
 # sub-shell + pipefail + signal-specific trap で start-finalize.md Step 0 と対称化し、gh API 失敗を
 # silent fall-through せず incident emit する。
 #
-# Note (cycle 6 C6-F10): 本 block と start-finalize.md Step 0 (約 100 行) は AC-8 検知ロジックの
-# literal duplication を持つ。差分は tempfile prefix (`/tmp/rite-step15-*` vs `/tmp/rite-finalize-step0-*`)、
-# 関数名 (`_step15_cleanup` vs `_finalize_step0_cleanup`)、`--root-cause-hint` 値、log message prefix のみ。
+# `set -e` / `set -u` は意図的に有効化しない: AC-8 検知は non-blocking 要件 (失敗時 silent
+# fall-through を許容、ただし sentinel emit は必須) のため `set -e` 有効化すると trap 内 cleanup が中断する経路がある。
+# `set -u` は `${var:-}` パターンの可読性のため不採用 (`set -o pipefail` のみ enable し pipe 失敗を捕捉)。
+#
+# Note (cycle 10 F-14, symmetry with start-finalize.md Workflow Termination Step 0):
+# 本 block と start-finalize.md Step 0 (約 100 行) は AC-8 検知ロジックの literal duplication を持つ。
+# 差分は tempfile prefix (`/tmp/rite-step15-*` vs `/tmp/rite-finalize-step0-*`)、
+# 関数名 (`_step15_cleanup` vs `_finalize_step0_cleanup`)、log message prefix
+# (`Step 1.5` vs `Workflow Termination Step 0`)、および **意図的な `--root-cause-hint` 値の差**:
+#   - start.md = `gh_api_failure_at_caller_defense` (caller-side defense layer)
+#   - start-finalize.md = `gh_api_failure_at_final_fallback` (last-resort layer)
+# この hint 値差は observability で「どの defense layer が失敗したか」を識別するため**意図的に異なる**。
+# 片側を更新する際にもう片側を「揃えるべきか/保持すべきか」を判断する際、hint 値だけは揃えないこと。
 # 共通 helper (`plugins/rite/hooks/check-ac8-status-mismatch.sh` 等) への抽出は別 Issue 推奨 (本 PR scope 外)。
 # 短期的には docstring / 関数名 / log prefix のいずれかを変更した場合、両 site を同時更新すること。
 (
@@ -702,6 +712,15 @@ rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANU
   case "{pr_number}" in
     ''|'{pr_number}')
       echo "[rite] ⚠️ Step 1.5: {pr_number} placeholder が未 substitute (literal='{pr_number}') — AC-8 検知を skip" >&2
+      exit 0 ;;
+  esac
+  # cycle 10 F-02 対応: `{issue_number}` placeholder substitute 検証 (`{pr_number}` と対称)。
+  # 未 substitute の場合、後段 `gh api graphql ... -F number={issue_number}` が GraphQL Int! 違反で
+  # fail し、`gh_api_failure_at_caller_defense` で誤分類される。さらに `--details "Issue #{issue_number}..."`
+  # が literal を文字列に注入し incident search-by-issue-number が不能になる。
+  case "{issue_number}" in
+    ''|'{issue_number}')
+      echo "[rite] ⚠️ Step 1.5: {issue_number} placeholder が未 substitute (literal='{issue_number}') — AC-8 検知を skip" >&2
       exit 0 ;;
   esac
   if [ "{pr_number}" != "0" ] && [ -n "{pr_number}" ]; then

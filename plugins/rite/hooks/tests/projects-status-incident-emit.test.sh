@@ -130,6 +130,19 @@ else
 fi
 
 echo ""
+echo "[T-04e] start-finalize.md Phase 5.5.1 case logical completeness (cycle 10 F-01 / F-07)"
+# Regression guard for cycle 9 CRITICAL bug: start-finalize.md case "$status_result" was missing
+# `updated)` arm, causing success path (status_result=updated) to fall-through to failed|*) catchall
+# and emit false-positive projects_status_update_failed sentinel.
+# Verify all 3 arms (updated / skipped_not_in_project / failed|*) are present in the case block.
+assert_file_contains "$FINALIZE_MD" 'updated\)' \
+  "start-finalize.md Phase 5.5.1 case has updated) arm (cycle 10 F-01 regression guard)"
+assert_file_contains "$FINALIZE_MD" 'skipped_not_in_project\)' \
+  "start-finalize.md Phase 5.5.1 case has skipped_not_in_project) arm"
+assert_file_contains "$FINALIZE_MD" 'failed\|\*\)' \
+  "start-finalize.md Phase 5.5.1 case has failed|*) catchall"
+
+echo ""
 echo "==============================="
 echo "Results: $PASS passed, $FAIL failed"
 if [ "$FAIL" -gt 0 ]; then

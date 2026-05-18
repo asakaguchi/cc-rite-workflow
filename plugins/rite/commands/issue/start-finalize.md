@@ -351,7 +351,9 @@ The following phrases are **PROHIBITED** in the completion report:
 - 「全て scope 外」 (sweeping categorical claim without individual disposition)
 - 「scope 外 follow-up」 (count-only without Issue numbers or per-item rationale)
 
-If the LLM is tempted to write any of these phrases, the LLM MUST instead render the Step 2 disposition table with explicit counts and details. Aggregate labels are detectable by Phase 5.4.4.1 grep on the completion report output as a regression signal.
+If the LLM is tempted to write any of these phrases, the LLM MUST instead render the Step 2 disposition table with explicit counts and details. 
+
+> **Enforcement layer (Issue #1042 review cycle 2 F-15 対応)**: 本 prohibition は **LLM-level prose enforcement** であり、Phase 5.4.4.1 (workflow incident detection) は `[CONTEXT] WORKFLOW_INCIDENT=1` sentinel のみ grep するため、aggregate label 自体への mechanical grep gate は本 release では未実装。検出は (a) `commands/issue/completion-report.md` Step 4 Self-verification checklist の「No aggregate labels appear anywhere in the report」(LLM 自己 check)、(b) PR review-fix loop の reviewer 検出 (PR #1043 dogfooding 経路で実証済み)、(c) 将来的に `commands/issue/completion-report.md` Step 3.4 末尾に grep gate を追加する follow-up Issue で defense-in-depth 強化 — の 3 層で構成される。mechanical grep gate は follow-up Issue として追跡する (本 PR scope 外)。
 
 **Skip condition**: When `recommendation_items` is empty (no recommendations from any reviewer cycle), output `_推奨事項なし_` as a single-line subsection placeholder. This is the only valid "zero recommendations" representation — aggregate labels remain prohibited even when count is 0.
 

@@ -1942,7 +1942,11 @@ printf '%s\n' "$result_json"
 
 Task results are retained in conversation context with internal format (reviewer_type, assessment, findings: severity/file_line/description/recommendation).
 
-**Recommendation collection for Issue candidates**: In addition to findings, also extract items from each reviewer's "### 推奨事項" section that contain any of the following keywords: `別 Issue`, `別Issueで対応`, `スコープ外`, `out of scope`, `separate issue`. Retain these as `recommendation_issue_candidates` in the conversation context (reviewer_type, content, file_line if mentioned). These are NOT findings — they do not affect the assessment, finding counts, or merge decision. They are collected solely for Phase 5.4 report inclusion and Phase 7 Issue candidate extraction.
+**Recommendation collection for Issue candidates (legacy keyword-based path)**:
+
+> **⚠️ Historical note (Issue #1042 review cycle 2 F-02 二重定義 解消)**: 本 field (`recommendation_issue_candidates`) は **legacy keyword-based 抽出経路**として残存している。Issue #1042 で classification-based 抽出 (下記 `recommendation_items`) に移行したため、本経路は**後方互換**目的のみで保持する。新規実装では下記 `recommendation_items` を参照し、Phase 7.1 Source B 抽出も classification base で行う (本 field の値は使用しない)。
+
+In addition to findings, also extract items from each reviewer's "### 推奨事項" section that contain any of the following keywords: `別 Issue`, `別Issueで対応`, `スコープ外`, `out of scope`, `separate issue`. Retain these as `recommendation_issue_candidates` in the conversation context (reviewer_type, content, file_line if mentioned). These are NOT findings — they do not affect the assessment, finding counts, or merge decision. They are collected solely for legacy Phase 5.4 report inclusion (新規パスは下記 `recommendation_items` ベース)。
 
 **Recommendation classification extraction (Issue #1042)**: For **every** item in the "### 推奨事項" section (regardless of `別 Issue` keyword match), extract the `分類: <actionable|design_confirmation|boundary>` marker that reviewers MUST emit per Phase 4.5 template. Retain as `recommendation_items` in the conversation context with the following schema:
 
@@ -4365,7 +4369,7 @@ Confirm the next action with `AskUserQuestion`. See Phase 1.4 for the AskUserQue
 
 ## Phase 7: Automatic Issue Creation
 
-> **⚠️ aggregate label 禁止 (Issue #1042)**: 本 Phase は推奨事項を **各 item ごとに classification (actionable / design_confirmation / boundary) を伴った形で処理する**。「推奨 N 件」「follow-up 候補 N 件」のような件数のみの aggregate 報告で本 Phase を pass させる経路は **禁止**。Phase 7.7 post-condition gate により、`recommendation_issue_candidates >= 1` 検出時に Phase 7.2 `AskUserQuestion` が起動していなければ `[review:mergeable]` / `[review:fix-needed:{n}]` の result emit は block される。
+> **⚠️ aggregate label 禁止 (Issue #1042)**: 本 Phase は推奨事項を **各 item ごとに classification (actionable / design_confirmation / boundary) を伴った形で処理する**。「推奨 N 件」「follow-up 候補 N 件」のような件数のみの aggregate 報告で本 Phase を pass させる経路は **禁止**。Phase 7.7 post-condition gate により、`candidate_count >= 1` (Phase 7.1 Source A + Source B 合算) 検出時に Phase 7.2 `AskUserQuestion` が起動していなければ `[review:mergeable]` / `[review:fix-needed:{n}]` の result emit は block される。
 
 ### 7.1 Extract Separate Issue Candidates
 
@@ -4374,6 +4378,13 @@ Extract candidates from **two sources**:
 **Source A — Findings (指摘事項)**: Extract findings meeting: Severity MEDIUM+ AND contains keywords (`スコープ外`, `別 Issue`, `out of scope`, `separate issue`, etc.)
 
 **Source B — Recommendations (推奨事項)**: Extract items from `recommendation_items` (Phase 5.1 で収集) with `classification == "actionable"` OR `classification == "boundary"`. `design_confirmation` 分類の item は **本 Source B から除外** (reviewer 自身が「対応不要」と結論しており Issue 化対象外)。なお Phase 5.4 "推奨事項" テーブルの "別 Issue 候補" 列の ✅ は本判定結果を視覚化したもの。
+
+**`candidate_count` assignment (Issue #1042 review cycle 2 F-02 対応)**:
+
+Phase 7.1 deduplication 完了後、Source A + Source B 合算の最終 candidate 数を `candidate_count` として会話コンテキストに保持する。本値は:
+- Phase 7.2 sentinel emit (`[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}` の `{N}`) に literal substitute される
+- Phase 7.7 post-condition gate / Phase 8.0.2 cross-reference の trigger 条件 (`candidate_count >= 1`) で参照される
+- Phase 5.1 legacy field `recommendation_issue_candidates` (Source B subset) とは別概念 — 混同回避規約 (本 phase および Phase 7.7 / 8.0.2 では `candidate_count` を一貫使用) に従う
 
 > **Note on pre-existing issues**: Pre-existing issues (problems that existed before this PR's diff) are NOT collected as Phase 7 Issue candidates. The reviewer's scope judgment rule excludes them from findings entirely. If a reviewer noted them in the "調査推奨" section of the integrated report (Phase 5), the user may optionally run `/rite:investigate {file}` separately — this is not auto-Issue-ified.
 
@@ -4554,9 +4565,9 @@ Post Issue list to PR comment (`mktemp` + `--body-file`). Output completion repo
 
 ### 7.7 Post-condition Gate — Recommendation Disposition Enforcement (Issue #1042)
 
-> **Purpose**: Prevent the LLM from outputting `[review:mergeable]` / `[review:fix-needed:{n}]` (Phase 8.1) without having executed Phase 7.2 (`AskUserQuestion` for recommendation_issue_candidates), when 1+ candidates were extracted in Phase 7.1. This is the **mechanical gate** demanded by Issue #1042 to replace prose-only enforcement that allowed silent skip.
+> **Purpose**: Prevent the LLM from outputting `[review:mergeable]` / `[review:fix-needed:{n}]` (Phase 8.1) without having executed Phase 7.2 (`AskUserQuestion` for Phase 7.1 candidate_count), when 1+ candidates were extracted in Phase 7.1. This is the **mechanical gate** demanded by Issue #1042 to replace prose-only enforcement that allowed silent skip.
 
-**Execution condition**: Always execute when Phase 7 was entered (i.e., `recommendation_issue_candidates >= 1` was true after Phase 7.1 deduplication). Skip silently when Phase 7.1 yielded 0 candidates (Phase 7.2 is legitimately not invoked).
+**Execution condition**: Always execute when Phase 7 was entered (i.e., `candidate_count >= 1` (Phase 7.1 Source A + Source B 合算、post-deduplication) was true). Skip silently when Phase 7.1 yielded 0 candidates (Phase 7.2 is legitimately not invoked).
 
 **Step 1 — Determine candidate count**:
 
@@ -4583,13 +4594,13 @@ Where `{N}` MUST be a positive integer matching the candidate count from Step 1,
 | Latest sentinel found with `candidates >= 1` AND iteration_id matches current cycle | Gate passes — proceed to Phase 8.0 (Defense-in-Depth State Update) |
 | Latest sentinel NOT found AND candidate_count >= 1 | **ERROR**: Phase 7.2 was skipped in current cycle. Execute the ACTION below |
 | Latest sentinel found but iteration_id is **stale** (matches cycle N-1, not current cycle N) | **ERROR**: Phase 7.2 was skipped in current cycle (cycle N-1 sentinel false-positive avoided). Execute the ACTION below |
-| Sentinel found but `candidates == 0` | Defensive observation: Phase 7.1 / 7.2 count mismatch (e.g., dedup edge case). Display WARNING and proceed (non-blocking, gate passes); the discrepancy is observability-only. Phase 7.2 line 4378 で 0 candidates の Phase 7 skip 規約が成立しているため、本行は通常到達不能 dead branch だが defense-in-depth として残す |
+| Sentinel found but `candidates == 0` | Defensive observation: Phase 7.1 / 7.2 count mismatch (e.g., dedup edge case). Display WARNING and proceed (non-blocking, gate passes); the discrepancy is observability-only. Phase 7.2-7.3 の "If 0 candidates: Skip Phase 7" 規約が成立しているため、本行は通常到達不能 dead branch だが defense-in-depth として残す |
 
 **On ERROR** (sentinel not found, candidates >= 1):
 
 ```
 ERROR: Phase 7.7 post-condition gate failed (Issue #1042).
-recommendation_issue_candidates = {N} (>= 1) but no [CONTEXT] PHASE_7_ASKUSER_INVOKED sentinel found.
+candidate_count = {N} (>= 1) but no [CONTEXT] PHASE_7_ASKUSER_INVOKED sentinel found.
 This means Phase 7.2 (AskUserQuestion) was NOT executed — silent skip of recommendation disposition.
 ACTION: Return to Phase 7.2, emit the sentinel, invoke AskUserQuestion for each candidate, then re-enter Phase 7.7.
 ⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until Phase 7.2 has been executed and the sentinel is emitted.

@@ -4917,9 +4917,12 @@ trap 'rm -f "${commit_err:-}" "${emit_err:-}"' EXIT INT TERM HUP
 # principle for the wiki commit path.
 #
 # 構造: bash の 「!」否定 pipeline では then 節内 $? が常に 0 になるため、
-# L808 (find_err) / L1163 (mktemp_norm_rc) と同じ
+# L811 (mktemp_find_err_rc capture, reason=mktemp_failure_find_err) /
+# L1165 (mktemp_norm_rc capture, reason=mktemp_failure_norm_tmp) と同じ
 # `if cmd; then :; else rc=$?; fi` 形式を採用し、`mktemp_commit_err_rc=$?` を
 # else 先頭で capture する (Issue #1031: 3-site 対称化)。
+# sentinel format は SoT (L814, L1168) と同じ `details=...; rc=$<var>_rc` の
+# semicolon-separated 独立 field 形式に揃える。
 if commit_err=$(mktemp /tmp/rite-wiki-commit-err-XXXXXX 2>/dev/null); then
   : # mktemp 成功 — commit_err は valid path
 else
@@ -4927,7 +4930,7 @@ else
   echo "WARNING: mktemp failed for wiki-ingest-commit stderr capture (rc=$mktemp_commit_err_rc) — script stderr will be suppressed" >&2
   echo "  hint: check /tmp permission / disk space / inode exhaustion" >&2
   fallback_iter="{pr_number}-$(date +%s)"
-  fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=mktemp failed for commit_err in pr/fix.md Phase 4.6.W.2 (rc=$mktemp_commit_err_rc); iteration_id=$fallback_iter"
+  fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=mktemp failed for commit_err in pr/fix.md Phase 4.6.W.2; rc=$mktemp_commit_err_rc; iteration_id=$fallback_iter"
   echo "$fallback_sentinel"
   echo "$fallback_sentinel" >&2
   commit_err="/dev/null"

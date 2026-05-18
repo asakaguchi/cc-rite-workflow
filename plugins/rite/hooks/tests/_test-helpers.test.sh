@@ -385,6 +385,83 @@ else
   outer_fail "TC-11.4: expected rc=1 (soft-fail on mktemp failure), got rc=$rc_plain_soft_fail"
 fi
 
+# === TC-12: assert_grep_in_section (Issue #1047) ===
+echo
+echo "TC-12: assert_grep_in_section"
+
+# TC-12 fixture: 3 sections (h3 start anchor + h2 end anchor mirrors T-2/T-3/T-4 usage pattern)
+tc12_fixture=$(mktemp)
+trap 'rm -f "$tc12_fixture" "$tmpfile"' EXIT
+cat > "$tc12_fixture" <<'FIXTURE_EOF'
+## Top heading
+
+### Subsection Alpha
+alpha-keyword
+alpha-only
+
+### Subsection Beta
+beta-keyword
+beta-only
+
+## Next top heading
+gamma-keyword
+FIXTURE_EOF
+
+# TC-12.1: matching pattern within bounded section → PASS
+# start: h3 heading (Alpha), end: h2 heading boundary (won't match the start line itself)
+grep_in_section_state=$(bash -c "
+  source '$HELPERS'
+  assert_grep_in_section 'match-in-alpha' '$tc12_fixture' '^### Subsection Alpha\$' '^## [^#]' 'alpha-keyword' >/dev/null
+  echo \"PASS=\$PASS FAIL=\$FAIL\"
+")
+gp=$(echo "$grep_in_section_state" | grep -oE 'PASS=[0-9]+' | cut -d= -f2)
+gf=$(echo "$grep_in_section_state" | grep -oE 'FAIL=[0-9]+' | cut -d= -f2)
+if [ "$gp" = "1" ] && [ "$gf" = "0" ]; then
+  outer_pass "TC-12.1: assert_grep_in_section matches pattern within bounded section"
+else
+  outer_fail "TC-12.1: expected PASS=1 FAIL=0 got PASS=$gp FAIL=$gf"
+fi
+
+# TC-12.2: pattern outside section (in Beta) when scoped to Alpha → FAIL with section bounds diagnostic
+# Note: the awk range terminates at the next h3 (Beta) line by also matching `^### ` boundary
+out_of_scope_state=$(bash -c "
+  source '$HELPERS'
+  assert_grep_in_section 'beta-from-alpha' '$tc12_fixture' '^### Subsection Alpha\$' '^### Subsection B' 'beta-only' 2>&1
+  echo \"FAIL=\$FAIL\"
+")
+oof=$(echo "$out_of_scope_state" | grep -oE 'FAIL=[0-9]+' | tail -1 | cut -d= -f2)
+if [ "$oof" = "1" ] && echo "$out_of_scope_state" | grep -q 'pattern not found in section'; then
+  outer_pass "TC-12.2: pattern outside section fails with section-bound diagnostic"
+else
+  outer_fail "TC-12.2: expected FAIL=1 + 'pattern not found in section' diagnostic, got '$out_of_scope_state'"
+fi
+
+# TC-12.3: file not found → FAIL with file diagnostic
+missing_file_state=$(bash -c "
+  source '$HELPERS'
+  assert_grep_in_section 'missing-section' '/nonexistent/xyz' '## Anything' '^## ' 'pattern' 2>&1
+  echo \"FAIL=\$FAIL\"
+")
+mff=$(echo "$missing_file_state" | grep -oE 'FAIL=[0-9]+' | tail -1 | cut -d= -f2)
+if [ "$mff" = "1" ] && echo "$missing_file_state" | grep -q 'file not found'; then
+  outer_pass "TC-12.3: file-not-found path emits diagnostic and increments FAIL"
+else
+  outer_fail "TC-12.3: expected FAIL=1 + 'file not found' got '$missing_file_state'"
+fi
+
+# TC-12.4: empty section (start_pattern matches no line) → FAIL with empty-section diagnostic
+empty_section_state=$(bash -c "
+  source '$HELPERS'
+  assert_grep_in_section 'never-matches' '$tc12_fixture' '^### Never Appears In Fixture$' '^## ' 'anything' 2>&1
+  echo \"FAIL=\$FAIL\"
+")
+ess=$(echo "$empty_section_state" | grep -oE 'FAIL=[0-9]+' | tail -1 | cut -d= -f2)
+if [ "$ess" = "1" ] && echo "$empty_section_state" | grep -q 'empty section'; then
+  outer_pass "TC-12.4: empty section distinguished from pattern-not-found with explicit diagnostic"
+else
+  outer_fail "TC-12.4: expected FAIL=1 + 'empty section' diagnostic, got '$empty_section_state'"
+fi
+
 # === Summary ===
 echo
 echo "─── $(basename "$0") summary ──────────────────────"

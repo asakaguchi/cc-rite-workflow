@@ -66,6 +66,8 @@
 #   assert <label> <expected> <actual>           # writes to stdout (via pass/fail)
 #   assert_grep     <label> <file> <pattern>     # ERE, exits via fail() if not found
 #   assert_not_grep <label> <file> <pattern>     # ERE, exits via fail() if found
+#   assert_grep_in_section <label> <file> <start_pattern> <end_pattern> <grep_pattern>
+#                                                # extract awk-range section + ERE grep with self-cleanup
 #   print_summary [test_name] [drift_hint_text]  # writes to stdout, returns 1 if FAIL > 0
 #   make_sandbox       [--branch <name>] [--soft]   # git-init+commit sandbox, echoes path
 #   make_plain_sandbox [--soft]                     # bare mktemp -d sandbox, echoes path
@@ -151,6 +153,75 @@ assert_not_grep() {
   else
     pass "$label"
   fi
+}
+
+# Section-scoped pattern presence assertion (Issue #1047).
+# Extracts an awk address-range section ([start_pattern, end_pattern]) from `file`
+# into a private tempfile, runs `grep -qE grep_pattern` against it, then self-cleans.
+#
+# Consolidates the boilerplate previously duplicated in T-2/T-3/T-4:
+#   section_file=$(mktemp)
+#   trap 'rm -f "$section_file"' EXIT
+#   awk '/start/, /end/' "$file" > "$section_file"
+#   assert_grep "label" "$section_file" "pattern"
+#
+# What is consolidated: section tempfile lifecycle (mktemp + cleanup) and the
+# awk range extraction. What is NOT consolidated: callers managing their own
+# tempfiles for non-section uses still need their own mktemp + trap.
+#
+# Patterns are passed to awk via `-v` variables (not interpolated into the awk
+# program text) so caller-supplied strings cannot inject awk syntax.
+#
+# Failure modes (each falls through to fail() with diagnostic context):
+#   - file not found          → "file not found: <file>"
+#   - mktemp failure          → "mktemp failed" (infrastructure error to stderr)
+#   - awk extraction failure  → "awk extraction failed" (rc, syntax / IO error to stderr)
+#   - empty section           → "empty section: start_pattern matched no line"
+#                               (distinguishable from "pattern not found in section")
+#   - pattern not in section  → "pattern not found in section [<start>..<end>] of <file>: <pattern>"
+#
+# Caller pattern:
+#   assert_grep_in_section "T-2 reviewer ref" "$BASE_FILE" \
+#     '^### Hypothetical Exception カテゴリの nit-noted 禁止$' \
+#     '^##[^#]' \
+#     "security\\.md|security-reviewer"
+assert_grep_in_section() {
+  local label="$1"
+  local file="$2"
+  local start_pattern="$3"
+  local end_pattern="$4"
+  local grep_pattern="$5"
+  if [ ! -f "$file" ]; then
+    fail "$label (file not found: $file)"
+    return
+  fi
+  local section_file
+  if ! section_file=$(mktemp); then
+    echo "ERROR: assert_grep_in_section: mktemp failed" >&2
+    fail "$label (mktemp failed)"
+    return
+  fi
+  local awk_err
+  if ! awk -v start="$start_pattern" -v end="$end_pattern" \
+       '$0 ~ start, $0 ~ end' "$file" > "$section_file" 2>"$section_file.err"; then
+    awk_err=$(head -3 "$section_file.err" 2>/dev/null)
+    echo "ERROR: assert_grep_in_section: awk extraction failed (file=$file start=$start_pattern end=$end_pattern): $awk_err" >&2
+    fail "$label (awk extraction failed)"
+    rm -f "$section_file" "$section_file.err"
+    return
+  fi
+  rm -f "$section_file.err"
+  if [ ! -s "$section_file" ]; then
+    fail "$label (empty section: start_pattern [$start_pattern] matched no line in $file — section heading drift?)"
+    rm -f "$section_file"
+    return
+  fi
+  if grep -qE "$grep_pattern" "$section_file"; then
+    pass "$label"
+  else
+    fail "$label (pattern not found in section [$start_pattern..$end_pattern] of $file: $grep_pattern)"
+  fi
+  rm -f "$section_file"
 }
 
 # make_sandbox — git-init + initial-commit sandbox (Issue #990).

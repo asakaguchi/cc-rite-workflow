@@ -15,10 +15,6 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 BASE_FILE="$REPO_ROOT/plugins/rite/agents/_reviewer-base.md"
 
-# section-scoped check のための tempfile
-guardrail_section_file=$(mktemp)
-trap 'rm -f "$guardrail_section_file"' EXIT
-
 # 1. Finding Quality Guardrail に Scope self-degradation chain Category が存在
 assert_grep "_reviewer-base.md: 'Scope self-degradation chain' or 'scope 自己降格' Guardrail category" \
   "$BASE_FILE" \
@@ -30,9 +26,10 @@ assert_grep "_reviewer-base.md: double-degrade (severity + scope) chain example"
   '二重 degrade|severity.*scope.*degrade|severity.*降格.*scope.*降格|CRITICAL.*MEDIUM.*nit-noted'
 
 # 3. Finding Quality Guardrail Filter categories テーブルに Category #5 (Scope self-degradation) が存在
-awk '/## Finding Quality Guardrail/,/^## [^F]/' "$BASE_FILE" > "$guardrail_section_file"
-assert_grep "Finding Quality Guardrail filter table: Category #5 (Scope self-degradation chain)" \
-  "$guardrail_section_file" \
+assert_grep_in_section "Finding Quality Guardrail filter table: Category #5 (Scope self-degradation chain)" \
+  "$BASE_FILE" \
+  '## Finding Quality Guardrail' \
+  '^## [^F]' \
   '\| 5 \|.*[Ss]cope|\| 5 \|.*scope 自己降格'
 
 # 4. original_severity フィールド (schema 1.1.0) への参照があるか (修正方針の根拠)

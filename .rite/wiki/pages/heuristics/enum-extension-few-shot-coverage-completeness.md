@@ -1,0 +1,70 @@
+---
+title: "Enum 拡張時は few-shot example で全 enum 値の使用例を網羅する (calibration coverage gap 防止)"
+domain: "heuristics"
+created: "2026-05-18T15:50:00+09:00"
+updated: "2026-05-18T15:50:00+09:00"
+sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260518T062827Z-pr-1039.md"
+tags: ["enum-extension", "few-shot-calibration", "reviewer-skill-sot", "coverage-gap", "scope-column", "severity-levels"]
+confidence: medium
+---
+
+# Enum 拡張時は few-shot example で全 enum 値の使用例を網羅する (calibration coverage gap 防止)
+
+## 概要
+
+LLM agent が参照する calibration source (few-shot example / output template) に新規 enum 値を導入する際、**全 enum 値の使用例を 1 件以上含める**こと。一部の値だけ example を作ると、agent が未掲載の値の使い方を学習できず、出力時に silent drop / 誤分類する経路を生む。`severity-extension-closed-loop-verification` が扱う「実装層 6 段階 (read/write/parse/measure)」と直交する **calibration 層**の網羅性を担保する heuristic。
+
+## 詳細
+
+### 発生事例 (PR #1037/#1039 — scope 列 5 列化と few-shot example の coverage gap)
+
+Issue #1016 で reviewer findings table に `scope` 列を追加 (schema 1.1.0、enum 3 値: `current-pr` / `follow-up` / `nit-noted`)。PR #1037/#1039 では `plugins/rite/skills/reviewers/references/finding-examples.md` の 6 few-shot example を 4 列→5 列に同期したが、**6 example すべてに `current-pr` scope を埋込み**、`follow-up` / `nit-noted` の使用例は導入されなかった。
+
+| Calibration source | Few-shot example | Enum 値の coverage |
+|--------------------|------------------|-------------------|
+| `finding-examples.md` (6 example) | Example 1 (HIGH/security) → `current-pr` | ❌ `follow-up` example 0 件 |
+| | Example 2 (HIGH/perf) → `current-pr` | ❌ `nit-noted` example 0 件 |
+| | Example 3 (MEDIUM/prompt) → `current-pr` | |
+| | Weak Example 1 (HIGH) → `current-pr` | |
+| | Improved version (HIGH) → `current-pr` | |
+| | Borderline (LOW) → `current-pr` | (本来は `nit-noted` がデフォルトの可能性あり — strict reading で指摘) |
+
+PR #1039 code-quality reviewer 指摘 (推奨事項): 「6 つの finding 例すべてが `current-pr` を使用し、`follow-up` / `nit-noted` の使用例が皆無。Few-shot calibration の観点では、`Scope Assignment Flowchart` が 3 値を定義している以上、各値について 1 例ずつ Few-shot を持たせると LLM の scope assignment 精度が向上する可能性がある」
+
+### 既存ページとの差分
+
+- `severity-extension-closed-loop-verification.md` は severity 等級 (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) 拡張時の **実装層 6 段階** (reviewer guidance / write spec / JSON schema / read parser / extract regex / measure dict) の verify を扱う
+- 本 heuristic はその直交軸として **calibration source の coverage 層** を扱う。実装層をすべて通しても calibration が古い enum 値だけしか持たないと agent が新規値を学習せず、silent fallback で旧値に rounding する経路が残る
+
+### 適用範囲
+
+| Enum 種類 | Calibration source | Coverage を担保すべき場所 |
+|----------|---------------------|----------------------|
+| severity (Severity Levels) | reviewer skill files / `_reviewer-base.md` Output Format example | 各等級 1 件以上の finding example |
+| scope (Scope Assignment) | `finding-examples.md` few-shot 例 | `current-pr` / `follow-up` / `nit-noted` 各 1 件以上 |
+| status (review-result-schema) | reviewer template / fix.md case 例 | `open` / `fixed` / `replied` / `deferred` 各 1 件以上 (将来 status 書き戻しが実装される際) |
+| 他の単純 enum | template / few-shot 例の全箇所 | 全 enum 値 1 件以上 |
+
+### Coverage 検証 heuristic
+
+新規 enum 値導入 PR の **acceptance criteria 候補** として以下を追加すること:
+
+```
+- [ ] few-shot example で全 enum 値 ({v1}, {v2}, {v3}) が 1 件以上使用されている
+- [ ] enum 値の選定根拠 (Assignment Flowchart / Decision Matrix) が calibration source からリンク可能
+- [ ] 各 example の severity × enum 組み合わせが forbidden cell matrix に抵触していない
+```
+
+### 不採用の選択肢 (scope 外)
+
+PR #1039 の scope では「全 enum 値の few-shot 追加」は **本 PR の scope 外** (`current-pr` への 5 列形式統一が主目的) として follow-up Issue 候補に降格された。これは「機械的同期 → 設計改善は別 PR」という scope discipline (本 PR は drift 解消のみ、calibration enhancement は別途) を保つための判断であり、本 heuristic は次回の calibration enhancement Issue 起票時に適用する。
+
+## 関連ページ
+
+- [Severity 等級拡張は read/write/parse/measure の closed-loop 6 段階を verify する](../heuristics/severity-extension-closed-loop-verification.md)
+
+## ソース
+
+- [PR #1039 review results](../../raw/reviews/20260518T062827Z-pr-1039.md)

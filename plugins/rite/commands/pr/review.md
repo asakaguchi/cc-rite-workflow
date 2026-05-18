@@ -1942,13 +1942,9 @@ printf '%s\n' "$result_json"
 
 Task results are retained in conversation context with internal format (reviewer_type, assessment, findings: severity/file_line/description/recommendation).
 
-**Recommendation collection for Issue candidates (legacy keyword-based path)**:
+**Recommendation classification extraction (Issue #1042 canonical path)**:
 
-> **⚠️ Historical note (Issue #1042 review cycle 2 F-02 二重定義 解消)**: 本 field (`recommendation_issue_candidates`) は **legacy keyword-based 抽出経路**として残存している。Issue #1042 で classification-based 抽出 (下記 `recommendation_items`) に移行したため、本経路は**後方互換**目的のみで保持する。新規実装では下記 `recommendation_items` を参照し、Phase 7.1 Source B 抽出も classification base で行う (本 field の値は使用しない)。
-
-In addition to findings, also extract items from each reviewer's "### 推奨事項" section that contain any of the following keywords: `別 Issue`, `別Issueで対応`, `スコープ外`, `out of scope`, `separate issue`. Retain these as `recommendation_issue_candidates` in the conversation context (reviewer_type, content, file_line if mentioned). These are NOT findings — they do not affect the assessment, finding counts, or merge decision. They are collected solely for legacy Phase 5.4 report inclusion (新規パスは下記 `recommendation_items` ベース)。
-
-**Recommendation classification extraction (Issue #1042)**: For **every** item in the "### 推奨事項" section (regardless of `別 Issue` keyword match), extract the `分類: <actionable|design_confirmation|boundary>` marker that reviewers MUST emit per Phase 4.5 template. Retain as `recommendation_items` in the conversation context with the following schema:
+For **every** item in the "### 推奨事項" section (regardless of `別 Issue` keyword match), extract the `分類: <actionable|design_confirmation|boundary>` marker that reviewers MUST emit per Phase 4.5 template. Retain as `recommendation_items` in the conversation context with the following schema:
 
 ```json
 {
@@ -1962,13 +1958,12 @@ In addition to findings, also extract items from each reviewer's "### 推奨事�
 
 **Default classification rule**: When a reviewer omits the `分類:` marker for an item, assign `design_confirmation` as the default (reflects the most conservative interpretation — no action required, observation only). Log a `[CONTEXT] RECOMMENDATION_CLASSIFICATION_MISSING=1; reviewer={type}; default_applied=design_confirmation` line to make the omission observable for future reviewer-template improvements.
 
-**Classification × Issue candidate relationship**:
+**Field naming convention** (Issue #1042 review cycle 4 — legacy field 削除済):
 
-- **`recommendation_items`** (本 PR で新設): Phase 5.1 が全 reviewer 推奨事項を classification 付きで集約した list (全 item を保持、Source B extraction 前段の元データ)
-- **`recommendation_issue_candidates`** (legacy field, Phase 5.1 で既存): `recommendation_items` の subset で `classification == "actionable"` の item のみ。`classification == "boundary"` の item は Phase 7.2 user approval 後に Issue 化対象に加わるため、本 field は Phase 7.1 進入時点では actionable のみを含む
-- **`candidate_count`** (Phase 7.7 / Phase 8.0.2 で使用、Issue #1042 review F-02 / F-11 対応): Phase 7.1 が Source A (findings + scope-out keyword) と Source B (`recommendation_issue_candidates` actionable + Phase 7.2 で user approved boundary) を **合算 + deduplication した最終件数**。Phase 7.7 post-condition gate と Phase 8.0.2 cross-reference はこの値を参照する。Phase 5.1 `recommendation_issue_candidates` (legacy Source B subset) を直接参照しない (混同による silent skip 防止)
+- **`recommendation_items`** (本 PR で新設、canonical data): Phase 5.1 が全 reviewer 推奨事項を classification 付きで集約した list (全 item を保持、Source B extraction の元データ)
+- **`candidate_count`** (Phase 7.1 で算出、Phase 7.7 / Phase 8.0.2 で参照): Phase 7.1 が Source A (findings + scope-out keyword) と Source B (`recommendation_items` の `classification ∈ {actionable, boundary}` filter + Phase 7.2 user approval 結果による boundary 採否決定) を **合算 + deduplication した最終件数**。Phase 7.7 post-condition gate と Phase 8.0.2 cross-reference はこの値を参照する
 
-> **混同回避規約**: 本 PR 以降、Phase 7.7 / 8.0.2 では `candidate_count` を一貫して使用する。`recommendation_issue_candidates` という field 名は Phase 5.1 の Source B 抽出ロジックでのみ使用し、Phase 7 以降の gate / report 文脈には登場させない。
+> **Note (Issue #1042 review cycle 4)**: 旧仕様で記述されていた legacy field `recommendation_issue_candidates` (keyword-based subset / classification-based subset の二重定義経路) は本 cycle で完全削除した。consumer は存在せず (scripts/ hooks/ への grep 0 hit、Phase 5.4 推奨事項 table も `recommendation_items` を直接参照していた)、historical context が必要な場合は git history (commit `5aae26e3` 以前) を参照すること。
 
 **Investigation suggestion collection**: Extract items from each reviewer's "### 調査推奨" section. Retain these as `investigation_suggestions` in the conversation context (reviewer_type, file, concern_description, notes). These are NOT findings and NOT Issue candidates — they do not affect the assessment, finding counts, or merge decision, and are never auto-Issue-ified by Phase 7. They are collected solely for Phase 5.4 "調査推奨" section rendering so the user may optionally run `/rite:investigate {file}` afterwards. A reviewer writing nothing in this section is the common case (blocking-worthy issues should go into findings, out-of-scope recommendations with Issue keywords into 推奨事項).
 
@@ -4384,7 +4379,6 @@ Extract candidates from **two sources**:
 Phase 7.1 deduplication 完了後、Source A + Source B 合算の最終 candidate 数を `candidate_count` として会話コンテキストに保持する。本値は:
 - Phase 7.2 sentinel emit (`[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}` の `{N}`) に literal substitute される
 - Phase 7.7 post-condition gate / Phase 8.0.2 cross-reference の trigger 条件 (`candidate_count >= 1`) で参照される
-- Phase 5.1 legacy field `recommendation_issue_candidates` (Source B subset) とは別概念 — 混同回避規約 (本 phase および Phase 7.7 / 8.0.2 では `candidate_count` を一貫使用) に従う
 
 > **Note on pre-existing issues**: Pre-existing issues (problems that existed before this PR's diff) are NOT collected as Phase 7 Issue candidates. The reviewer's scope judgment rule excludes them from findings entirely. If a reviewer noted them in the "調査推奨" section of the integrated report (Phase 5), the user may optionally run `/rite:investigate {file}` separately — this is not auto-Issue-ified.
 
@@ -4573,7 +4567,7 @@ Post Issue list to PR comment (`mktemp` + `--body-file`). Output completion repo
 
 Read **Phase 7.1 candidate_count** (post-deduplication, Source A findings + Source B recommendation_items where classification == "actionable" OR "boundary"). If `0`, **skip Phase 7.7 entirely** and proceed to Phase 8.0 (Defense-in-Depth State Update).
 
-> **Naming note (Issue #1042 review F-02 / F-11 対応)**: 本 gate は Phase 7.1 で抽出した **Source A+B 合算** の candidate count を参照する。`recommendation_issue_candidates` (Phase 5.1 legacy field、Source B subset) **ではない**。Phase 5.1 Source B 抽出と Phase 7.1 candidate 抽出は別概念であり、本 gate は Phase 7.1 結果に基づいて発火する。混同を避けるため、本 phase および Phase 8.0.2 では `candidate_count` を一貫して使用する。
+> **Naming note (Issue #1042 review F-02)**: 本 gate は Phase 7.1 で抽出した **Source A+B 合算** の `candidate_count` を参照する (legacy field は cycle 4 で削除済み、Phase 5.1 の Field naming convention note 参照)。Phase 5.1 Source B 抽出 (`recommendation_items` filter) と Phase 7.1 candidate 抽出は別概念であり、本 gate は Phase 7.1 結果に基づいて発火する。
 
 **Step 2 — Grep sentinel from conversation context (latest iteration_id)**:
 

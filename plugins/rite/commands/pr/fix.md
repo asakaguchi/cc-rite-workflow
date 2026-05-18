@@ -4917,14 +4917,14 @@ trap 'rm -f "${commit_err:-}" "${emit_err:-}"' EXIT INT TERM HUP
 # principle for the wiki commit path.
 #
 # 構造: bash の 「!」否定 pipeline では then 節内 $? が常に 0 になるため、
-# L811 (mktemp_find_err_rc capture, reason=mktemp_failure_find_err) /
-# L1165 (mktemp_norm_rc capture, reason=mktemp_failure_norm_tmp) と同じ
+# 同ファイル内 SoT block (mktemp_failure_find_err / mktemp_failure_norm_tmp) と同じ
 # `if cmd; then :; else rc=$?; fi` 形式を採用し、`mktemp_commit_err_rc=$?` を
 # else 先頭で capture する (Issue #1031: 3-site 対称化)。
-# sentinel format は peer fallback_sentinel (L4968/4992/5013) と同じ canonical
-# WORKFLOW_INCIDENT schema (3 semicolon invariant) に従い、rc は details= 値内に
-# space-separated で embed する (canonical schema は workflow-incident-emit.sh
-# L112-116 で定義、TC-009 sep_count=3 で enforce)。
+# sentinel format は同ファイル内 peer fallback_sentinel (wiki_ingest_skipped /
+# wiki_ingest_push_failed / wiki_ingest_failed) と同じ canonical WORKFLOW_INCIDENT
+# schema (3 semicolon invariant) に従い、rc は details= 値内に space-separated で
+# embed する (canonical schema は workflow-incident-emit.sh で定義、
+# workflow-incident-emit.test.sh TC-009 sep_count=3 で enforce)。
 if commit_err=$(mktemp /tmp/rite-wiki-commit-err-XXXXXX 2>/dev/null); then
   : # mktemp 成功 — commit_err は valid path
 else

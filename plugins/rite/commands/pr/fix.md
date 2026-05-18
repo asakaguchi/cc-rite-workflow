@@ -1099,7 +1099,7 @@ set +o pipefail
 
 > **block continuity note**: 本 block は Phase 1.2.0 Selection logic block と **同一 Bash tool invocation 内で連続実行する前提**で設計されている。詳細:
 >
-> 1. **anchor & 連結指示**: Selection logic block は上記 `pipefail scope note` blockquote 直下の bash block で、末尾は `# === Phase 1.2.0 Selection logic block end ===` grep anchor で marking。Claude は本 block を独立した Bash 呼び出しとして発行せず、Selection logic block の末尾に本 block の bash 内容を連結して単一の Bash tool invocation として実行すること (fenced 区切りは Claude が論理的に併合する)。**bullet ラベルが「anchor」のみだと behavior-critical な連結指示が情報メタデータに紛れて Claude が読み飛ばすリスクがあるため、ラベルを `anchor & 連結指示` に拡張して MUST-DO 命令の存在を可視化している。**
+> 1. **anchor & 連結指示**: Selection logic block は上記 `pipefail scope note` blockquote 直下の bash block で、末尾は `# === Phase 1.2.0 Selection logic block end ===` grep anchor で marking。Claude は本 block を独立した Bash 呼び出しとして発行せず、**Selection logic block の末尾に本 block の bash 内容を連結して単一の Bash tool invocation として実行すること** (fenced 区切りは Claude が論理的に併合する)
 > 2. **継承変数**: `$review_source` / `$review_source_path` 等のシェル変数は Selection logic block で設定された値を継承する
 > 3. **silent-skip 経路**: 別 invocation で実行すると `$review_source=""` となり下記 `if [ "$review_source" = "local_file" ] || [ "$review_source" = "explicit_file" ]` 条件を満たさず、normalization step (schema 1.0 後方互換 + invariant #5 auto-correct) が silent skip する経路が成立する
 > 4. **observability marker**: Selection logic block 末尾近くの `[CONTEXT] REVIEW_SOURCE=...` stderr emit は本 invocation 統合運用時の **observability marker** として機能する

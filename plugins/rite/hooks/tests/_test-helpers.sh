@@ -174,8 +174,10 @@ assert_not_grep() {
 #
 # Failure modes (each falls through to fail() with diagnostic context):
 #   - file not found          → "file not found: <file>"
-#   - mktemp -d failure       → "mktemp failed" (infrastructure error to stderr)
-#   - empty section           → reported as pattern-not-found with section bounds
+#   - mktemp failure          → "mktemp failed" (infrastructure error to stderr)
+#   - awk extraction failure  → "awk extraction failed" (rc, syntax / IO error to stderr)
+#   - empty section           → "empty section: start_pattern matched no line"
+#                               (distinguishable from "pattern not found in section")
 #   - pattern not in section  → "pattern not found in section [<start>..<end>] of <file>: <pattern>"
 #
 # Caller pattern:
@@ -199,7 +201,21 @@ assert_grep_in_section() {
     fail "$label (mktemp failed)"
     return
   fi
-  awk -v start="$start_pattern" -v end="$end_pattern" '$0 ~ start, $0 ~ end' "$file" > "$section_file"
+  local awk_err
+  if ! awk -v start="$start_pattern" -v end="$end_pattern" \
+       '$0 ~ start, $0 ~ end' "$file" > "$section_file" 2>"$section_file.err"; then
+    awk_err=$(head -3 "$section_file.err" 2>/dev/null)
+    echo "ERROR: assert_grep_in_section: awk extraction failed (file=$file start=$start_pattern end=$end_pattern): $awk_err" >&2
+    fail "$label (awk extraction failed)"
+    rm -f "$section_file" "$section_file.err"
+    return
+  fi
+  rm -f "$section_file.err"
+  if [ ! -s "$section_file" ]; then
+    fail "$label (empty section: start_pattern [$start_pattern] matched no line in $file — section heading drift?)"
+    rm -f "$section_file"
+    return
+  fi
   if grep -qE "$grep_pattern" "$section_file"; then
     pass "$label"
   else

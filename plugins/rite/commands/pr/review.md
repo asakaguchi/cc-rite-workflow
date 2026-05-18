@@ -1958,7 +1958,13 @@ Task results are retained in conversation context with internal format (reviewer
 
 **Default classification rule**: When a reviewer omits the `分類:` marker for an item, assign `design_confirmation` as the default (reflects the most conservative interpretation — no action required, observation only). Log a `[CONTEXT] RECOMMENDATION_CLASSIFICATION_MISSING=1; reviewer={type}; default_applied=design_confirmation` line to make the omission observable for future reviewer-template improvements.
 
-**Classification × Issue candidate relationship**: `recommendation_issue_candidates` (legacy field) is a subset of `recommendation_items` filtered by `classification == "actionable"` OR (`classification == "boundary"` AND user explicitly approves in Phase 7.2). Both fields are retained — the legacy field is used by Phase 7.1 Source B extraction; the new field is used by Phase 7.7 post-condition gate and Phase 5.6.3 (start-finalize.md) disposition reporting.
+**Classification × Issue candidate relationship**:
+
+- **`recommendation_items`** (本 PR で新設): Phase 5.1 が全 reviewer 推奨事項を classification 付きで集約した list (全 item を保持、Source B extraction 前段の元データ)
+- **`recommendation_issue_candidates`** (legacy field, Phase 5.1 で既存): `recommendation_items` の subset で `classification == "actionable"` の item のみ。`classification == "boundary"` の item は Phase 7.2 user approval 後に Issue 化対象に加わるため、本 field は Phase 7.1 進入時点では actionable のみを含む
+- **`candidate_count`** (Phase 7.7 / Phase 8.0.2 で使用、Issue #1042 review F-02 / F-11 対応): Phase 7.1 が Source A (findings + scope-out keyword) と Source B (`recommendation_issue_candidates` actionable + Phase 7.2 で user approved boundary) を **合算 + deduplication した最終件数**。Phase 7.7 post-condition gate と Phase 8.0.2 cross-reference はこの値を参照する。Phase 5.1 `recommendation_issue_candidates` (legacy Source B subset) を直接参照しない (混同による silent skip 防止)
+
+> **混同回避規約**: 本 PR 以降、Phase 7.7 / 8.0.2 では `candidate_count` を一貫して使用する。`recommendation_issue_candidates` という field 名は Phase 5.1 の Source B 抽出ロジックでのみ使用し、Phase 7 以降の gate / report 文脈には登場させない。
 
 **Investigation suggestion collection**: Extract items from each reviewer's "### 調査推奨" section. Retain these as `investigation_suggestions` in the conversation context (reviewer_type, file, concern_description, notes). These are NOT findings and NOT Issue candidates — they do not affect the assessment, finding counts, or merge decision, and are never auto-Issue-ified by Phase 7. They are collected solely for Phase 5.4 "調査推奨" section rendering so the user may optionally run `/rite:investigate {file}` afterwards. A reviewer writing nothing in this section is the common case (blocking-worthy issues should go into findings, out-of-scope recommendations with Issue keywords into 推奨事項).
 
@@ -4382,10 +4388,14 @@ If 0 candidates: Skip Phase 7 (and **skip Phase 7.7 post-condition gate** — se
 Immediately before invoking `AskUserQuestion`, emit the following sentinel to the conversation context so Phase 7.7 post-condition gate can mechanically verify that Phase 7.2 was executed:
 
 ```bash
-echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates=${candidate_count}" >&2
+# LLM (Claude) は以下を Bash tool で実行する前に literal 置換すること:
+#   - {N} → Phase 7.1 で抽出した candidate 総数 (Source A + Source B、dedup 後の正整数)
+#   - {iteration_id} → Phase 7.1 で生成した一意 ID (例: pr_number-$(date +%s) 形式)
+# Bash 変数 (${candidate_count} 等) は Bash tool 呼び出し間で継承されないため使用不可
+echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iteration_id}" >&2
 ```
 
-Where `${candidate_count}` is the total count of candidates extracted in Phase 7.1 (Source A + Source B, post-deduplication). This sentinel is consumed by Phase 7.7 (post-condition gate) and Phase 8.0.2 (gate reference) to verify that the LLM did NOT skip Phase 7.2 when `recommendation_issue_candidates >= 1`. The sentinel MUST be emitted on stderr (not stdout) and MUST be in the response text (Phase 5.4.4.1 Sentinel Visibility Rule).
+Where `{N}` is the total count of candidates extracted in Phase 7.1 (Source A + Source B, post-deduplication). `{iteration_id}` is a unique identifier per review cycle (recommended format: `${pr_number}-$(date +%s)`) so cycle 2 of a review-fix loop does NOT false-positive match cycle 1's sentinel. This sentinel is consumed by Phase 7.7 (post-condition gate) and Phase 8.0.2 (gate reference) to verify that the LLM did NOT skip Phase 7.2 when `candidate_count >= 1`. The sentinel MUST be emitted on stderr (not stdout) and MUST be included in the response text (Phase 5.4.4.1 Sentinel Visibility Rule — `[CONTEXT] WORKFLOW_INCIDENT=1` 経路と同 pattern; stderr emit は Bash tool が transcript に取り込んで会話コンテキストに自動載せるが、grep 検出は response text 内の literal を直接参照するため LLM が response 内にも verbatim で含めることが SHOULD レベルの defensive practice として推奨される)。
 
 **AskUserQuestion prompt text**:
 
@@ -4550,25 +4560,30 @@ Post Issue list to PR comment (`mktemp` + `--body-file`). Output completion repo
 
 **Step 1 — Determine candidate count**:
 
-Read `recommendation_issue_candidates` count (post-deduplication, after Phase 7.1). If `0`, **skip Phase 7.7 entirely** and proceed to Phase 8.0 (Defense-in-Depth State Update).
+Read **Phase 7.1 candidate_count** (post-deduplication, Source A findings + Source B recommendation_items where classification == "actionable" OR "boundary"). If `0`, **skip Phase 7.7 entirely** and proceed to Phase 8.0 (Defense-in-Depth State Update).
 
-**Step 2 — Grep sentinel from conversation context**:
+> **Naming note (Issue #1042 review F-02 / F-11 対応)**: 本 gate は Phase 7.1 で抽出した **Source A+B 合算** の candidate count を参照する。`recommendation_issue_candidates` (Phase 5.1 legacy field、Source B subset) **ではない**。Phase 5.1 Source B 抽出と Phase 7.1 candidate 抽出は別概念であり、本 gate は Phase 7.1 結果に基づいて発火する。混同を避けるため、本 phase および Phase 8.0.2 では `candidate_count` を一貫して使用する。
+
+**Step 2 — Grep sentinel from conversation context (latest iteration_id)**:
 
 Search the conversation context (Phase 7.2 emit site) for the following sentinel pattern:
 
 ```
-[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}
+[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={ID}
 ```
 
-Where `{N}` MUST be a positive integer matching the candidate count from Step 1.
+Where `{N}` MUST be a positive integer matching the candidate count from Step 1, and `{ID}` is the iteration identifier emitted in Phase 7.2.
+
+**Latest iteration selection (Issue #1042 review F-04 対応)**: review-fix loop の cycle 2+ で同一 conversation に複数の `PHASE_7_ASKUSER_INVOKED` sentinel が存在しうる。Phase 7.7 grep は **最大 iteration_id (epoch_seconds が最大のもの) を持つ行を採用** すること。これにより cycle 2 が cycle 1 の stale sentinel に false-positive match して silent pass する経路を遮断する (canonical Phase 2.2.1 `code_quality_coreviewer_add_reason` の iteration_id 規約と同型)。
 
 **Step 3 — Routing**:
 
 | Condition | Action |
 |-----------|--------|
-| Sentinel found with `candidates >= 1` | Gate passes — proceed to Phase 8.0 (Defense-in-Depth State Update) |
-| Sentinel NOT found AND candidates >= 1 | **ERROR**: Phase 7.2 was skipped. Execute the ACTION below |
-| Sentinel found but `candidates == 0` | Anomaly — likely a Phase 7.1 / Phase 7.2 count mismatch. Display WARNING and proceed (non-blocking, gate passes); the discrepancy is observability-only |
+| Latest sentinel found with `candidates >= 1` AND iteration_id matches current cycle | Gate passes — proceed to Phase 8.0 (Defense-in-Depth State Update) |
+| Latest sentinel NOT found AND candidate_count >= 1 | **ERROR**: Phase 7.2 was skipped in current cycle. Execute the ACTION below |
+| Latest sentinel found but iteration_id is **stale** (matches cycle N-1, not current cycle N) | **ERROR**: Phase 7.2 was skipped in current cycle (cycle N-1 sentinel false-positive avoided). Execute the ACTION below |
+| Sentinel found but `candidates == 0` | Defensive observation: Phase 7.1 / 7.2 count mismatch (e.g., dedup edge case). Display WARNING and proceed (non-blocking, gate passes); the discrepancy is observability-only. Phase 7.2 line 4378 で 0 candidates の Phase 7 skip 規約が成立しているため、本行は通常到達不能 dead branch だが defense-in-depth として残す |
 
 **On ERROR** (sentinel not found, candidates >= 1):
 
@@ -4697,21 +4712,36 @@ ACTION: Return to Phase 6.5.W and execute the Wiki Ingest Trigger before outputt
 
 ### 8.0.2 Phase 7 Post-condition Gate Reference (Issue #1042)
 
-> **Purpose**: Cross-reference the Phase 7.7 Post-condition Gate so the result-emit boundary (Phase 8.1) is protected by both Wiki ingest gate (8.0.1) and recommendation disposition gate (Phase 7.7). Both gates fire **before** Phase 8.1 result emit. This section is an explicit reminder; the actual gate logic lives in Phase 7.7.
+> **Purpose**: Cross-reference the Phase 7.7 Post-condition Gate so the result-emit boundary (Phase 8.1) is protected by both Wiki ingest gate (8.0.1) and recommendation disposition gate (Phase 7.7). Both gates fire **before** Phase 8.1 result emit. This section is **sentinel-presence based defense-in-depth** — Phase 8.0.1 と同じ「sentinel 検出方式」で routing し、Phase 7.7 execution の有無に依存しない。
 
-**Condition**: Execute only when Phase 7 was entered (i.e., recommendation_issue_candidates >= 1). When Phase 7 was skipped (0 candidates), this gate is also legitimately skipped.
+**Condition**: Execute when `candidate_count >= 1` (Phase 7.1 で抽出した Source A + Source B 合算)。`candidate_count == 0` の場合は Phase 7 自体が skip されており本 gate も legitimately skipped。
 
-**Check**: Verify that Phase 7.7 (Post-condition Gate — Recommendation Disposition Enforcement) was executed successfully and the `[CONTEXT] PHASE_7_ASKUSER_INVOKED=1` sentinel is present in the conversation context.
+**Check**: Search the conversation context for the latest `[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={ID}` sentinel (iteration_id 最大の行を採用、Phase 7.7 Step 2 と同型の selection logic)。
 
-**Routing**:
+**Routing** (Phase 8.0.1 と完全に対称 — sentinel presence ベース、ERROR was emitted ベースではない):
 
 | Condition | Action |
 |-----------|--------|
-| Phase 7 was skipped (0 candidates) | Gate passes — proceed to Phase 8.1 |
-| Phase 7.7 ERROR was emitted | Phase 8.1 result emit is blocked — return to Phase 7.2 |
-| `PHASE_7_ASKUSER_INVOKED` sentinel found | Gate passes — proceed to Phase 8.1 |
+| `candidate_count == 0` (Phase 7 skipped) | Gate passes — proceed to Phase 8.1 |
+| Latest sentinel found with `candidates >= 1` AND iteration_id matches current cycle | Gate passes — proceed to Phase 8.1 |
+| Latest sentinel NOT found AND `candidate_count >= 1` | **ERROR**: Phase 7 entire procedure (7.1-7.7) was skipped. Execute ACTION below |
+| Latest sentinel found but iteration_id is stale (cycle N-1, not current cycle N) | **ERROR**: Phase 7 was skipped in current cycle. Execute ACTION below |
 
-> **Why this duplication of Phase 7.7**: Phase 7.7 lives within Phase 7 procedure block; Phase 8.0.2 makes the gate visible at the result-emit boundary (Phase 8.1), symmetric with Phase 8.0.1 (W Phase gate). This dual placement is a defense-in-depth pattern — LLM that skips Phase 7 entirely is caught by the orchestrator's grep on `recommendation_issue_candidates >= 1` (Phase 8.0.2 entry condition) even if Phase 7.7 never executed.
+**On ERROR** (sentinel absent or stale, `candidate_count >= 1`):
+
+```
+ERROR: Phase 8.0.2 Phase 7 Post-condition Gate failed (Issue #1042 silent skip detection).
+candidate_count = {N} (>= 1) but no current-cycle [CONTEXT] PHASE_7_ASKUSER_INVOKED sentinel found.
+This means Phase 7 (entire procedure 7.1 candidate extraction → 7.2 AskUserQuestion → 7.7 gate) was NOT executed in the current review cycle.
+ACTION: Return to Phase 7.1, extract candidates, invoke AskUserQuestion (Phase 7.2), emit sentinel, then re-enter Phase 8.0.
+⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until Phase 7 has been executed for the current cycle.
+```
+
+> **Why this is not duplication**: Phase 7.7 と Phase 8.0.2 は両方とも sentinel presence を check するが、**catch する failure mode が異なる**:
+> - **Phase 7.7**: Phase 7.1 → 7.2 → 7.7 の sequence で 7.7 が呼ばれた場合に、7.2 sentinel emit を verify (Phase 7 procedure 内部の integrity check)
+> - **Phase 8.0.2**: Phase 7 entire procedure (7.1-7.7) が skip された場合の最終 fallback。`candidate_count >= 1` は Phase 7.1 candidate extraction の **trigger 条件** であり、これが満たされている時点で「Phase 7 が走るはずだった」と判定可能。Phase 7.7 が ERROR を emit していなくても (Phase 7.7 自体が呼ばれていない silent skip 経路でも) catch する
+>
+> この dual placement は Phase 8.0.1 W Phase gate と完全に対称的で、result-emit boundary における defense-in-depth pattern を構成する。
 
 ### 8.1 Output Pattern (Return Control to Caller)
 

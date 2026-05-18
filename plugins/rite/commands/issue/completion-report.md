@@ -161,6 +161,15 @@ If any check fails, re-read the template and regenerate.
 | PR 作成 | ⏳ | - |
 | セルフレビュー | ⏳ | - |
 
+### 推奨事項 disposition
+
+_推奨事項なし_
+
+<!-- Case B = PR 未作成 = review 未実行のため `_推奨事項なし_` 固定。
+     Step 4 self-verification checklist の "### 推奨事項 disposition heading 存在" を満たすため
+     heading + 内容を必ず出力する。aggregate label (「推奨 N 件」「全て scope 外」等) は禁止。
+     canonical 禁止 phrase list は start-finalize.md Phase 5.6.3 Step 3 を SoT として参照。 -->
+
 ### 次のステップ
 
 1. `/rite:pr:create` で PR を作成

@@ -2,7 +2,7 @@
 title: "DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）"
 domain: "patterns"
 created: "2026-04-18T12:50:00+00:00"
-updated: "2026-05-09T06:30:00Z"
+updated: "2026-05-18T04:00:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T122454Z-pr-579.md"
@@ -46,6 +46,14 @@ sources:
     ref: "raw/fixes/20260501T025722Z-pr-756.md"
   - type: "reviews"
     ref: "raw/reviews/20260509T053632Z-pr-913.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260518T024436Z-pr-1035.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260518T024749Z-pr-1035.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260518T032735Z-pr-1035.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260518T035931Z-pr-1035.md"
 tags: []
 confidence: high
 ---
@@ -319,8 +327,21 @@ PR #913 (Issue #912 — `start-md-charter.test.sh` の latent edge case 2 件対
 
 本事例は本ページ「禁止対象 6 種表記」table の `L[0-9]+(-[0-9]+)?` (#2 bracket short form) に該当する。PR description 内の literal line-number は changed-files の grep 対象外 (`hardcoded-line-number-check.sh` の scan 対象は `*.md` の本文系で PR body は対象外) のため、6 種表記の **scan scope** を「コード本文 / 設計メモ / 関連 PR description のクロス参照ブロック」へ拡張する余地が改めて確認された (REC: PR template に line-ref pre-flight self-check を組み込む)。
 
+### Partial symbolic anchor 採用が新規追加で drift 再発 (PR #1035 cycle 1→3 での evidence)
+
+PR #1035 cycle 1 fix で symbolic anchor 化を **partial** に適用したが、cycle 3 で peer 参照を新規追加する際に literal 行番号で記述した。結果として「既存 anchor は symbolic / 新規 anchor は hardcoded」の混在状態が成立し、cycle 3 で line drift が再発 (累積 N 回目の同型再発)。
+
+教訓:
+
+1. **partial adoption は中途半端な drift 防御**: 一部だけ symbolic anchor 化しても、新規追加サイトが line-number で書かれれば drift class は閉じない
+2. **新規参照追加時こそ canonical 確認が必要**: 既存方針 (line-number 禁止) を **新規** anchor も遵守しているか、追加 commit 前に grep で機械検証する
+3. **symbolic anchor 化 = 行番号 drift 経路の構造的閉塞**: cycle 3 fix で 6 ファイル全 line cite を symbolic name に置換することで「partial adoption の罠」を消去 → cycle 4 で 0 findings に収束
+
+cycle 1 → 3 の 2 度同型再発は、本ページの **canonical scope 拡張版** が必要だった signal: 「**既存 anchor 群への新規追加** は既存方針との conformance を新規 anchor 自身が満たす必要がある」という partial adoption の罠を明示化すべき。
+
 ## 関連ページ
 
+- [Peer pattern の drift 判定は canonical schema 不変条件で cross-check する](./canonical-schema-invariant-peer-cross-check.md)
 - [LLM substitute placeholder は bash residue gate で fail-fast 化する](./placeholder-residue-gate-bash-fail-fast.md)
 - [canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する](./canonical-reference-sample-code-strict-sync.md)
 - [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](./drift-check-anchor-prose-code-sync.md)
@@ -350,3 +371,7 @@ PR #913 (Issue #912 — `start-md-charter.test.sh` の latent edge case 2 件対
 - [PR #756 cycle 4 review (approximation 接尾辞 `~` 付き line-number reference HIGH 検出)](../../raw/reviews/20260501T024847Z-pr-756.md)
 - [PR #756 cycle 5 fix (5 箇所削除 + 6 種目 approximation 接尾辞の lint 自動化提案)](../../raw/fixes/20260501T025722Z-pr-756.md)
 - [PR #913 review (Issue #912 — Same-file sync 経験則 PR 自身の line-ref drift meta-self-undercut)](../../raw/reviews/20260509T053632Z-pr-913.md)
+- [PR #1035 review (line anchor drift + sentinel format drift の 2 種同時検出)](../../raw/reviews/20260518T024436Z-pr-1035.md)
+- [PR #1035 fix cycle 1 (line anchor を opener から capture 行に修正 + symbolic name 併記)](../../raw/fixes/20260518T024749Z-pr-1035.md)
+- [PR #1035 fix cycle 3 (symbolic anchor 化で 6 ファイル全 line cite 撤廃 → 4-cycle 収束)](../../raw/fixes/20260518T032735Z-pr-1035.md)
+- [PR #1035 review cycle 4 converged (symbolic anchor 化で line drift class 終結 + 0 findings)](../../raw/reviews/20260518T035931Z-pr-1035.md)

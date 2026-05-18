@@ -42,6 +42,20 @@ Output the substituted template as your response. First determine which case app
 2. **フェーズ進捗テーブル** (6 rows: completed phases ✅, incomplete phases ⏳)
 3. **次のステップ** (3 items, using the content from the template read in Step 1)
 
+**Step 3.4 — Append Recommendation Disposition section (Issue #1042 AC-3)**:
+
+> **Output ordering** (must match `start-finalize.md` Phase 5.6.3 ordering note): After outputting フェーズ進捗 (Step 3) but **before** 次のステップ, **always** append the "推奨事項 disposition" subsection. This applies to both Case A and Case B.
+
+The "推奨事項 disposition" subsection is generated per `start-finalize.md` Phase 5.6.3 by aggregating `recommendation_items` from the latest review cycle conversation context. The subsection breaks down the recommendations into three classification rows (actionable / boundary / design_confirmation) with explicit counts and details.
+
+**Output rules**:
+
+- When `recommendation_items` is non-empty (any classification count >= 1): render the full 3-row table per `templates/completion-report.md` 「推奨事項 disposition」 section.
+- When `recommendation_items` is empty (all counts == 0): render `_推奨事項なし_` as the only content of the subsection.
+- **PROHIBITED**: aggregate labels (「推奨 N 件」「follow-up 候補 N 件」「全て scope 外」「scope 外 follow-up」). See `start-finalize.md` Phase 5.6.3 Step 3 for the canonical prohibition list and rationale.
+
+See `start-finalize.md` Phase 5.6.3 for the full procedure (classification aggregation, output table format, prohibition enforcement).
+
 **Step 3.5 — Append Wiki ingest 状況 section (Issue #524 AC-5)**:
 
 **Output ordering** (must match `start-finalize.md` Phase 5.6.2 ordering note): After outputting the case-specific sections (項目テーブル + フェーズ進捗 + 次のステップ), **always** append the "Wiki ingest 状況" table **before** the Phase 5.6.1 (Workflow Incident Reporting) section. The runtime sequence is: standard completion sections → Phase 5.6.2 (Wiki ingest 状況, this Step 3.5) → Phase 5.6.1 (workflow incidents). The section numbers in `start.md` reflect introduction order (#366 first, #524 second) and are intentionally NOT in execution order.
@@ -58,6 +72,8 @@ For **Case A** (PR created):
 - [ ] `## 完了報告` heading
 - [ ] 項目テーブル with exactly **7** data rows
 - [ ] `### フェーズ進捗` heading with exactly 6 data rows
+- [ ] `### 推奨事項 disposition` heading (from Step 3.4, Issue #1042 AC-3) — either full 3-row table OR `_推奨事項なし_` line
+- [ ] No aggregate labels (「推奨 N 件」「follow-up 候補」「全て scope 外」) appear anywhere in the report
 - [ ] `### 次のステップ` heading with exactly 3 numbered items
 - [ ] `### 📚 Wiki ingest 状況` heading with signal table (from Step 3.5, Issue #524 AC-5 — never skipped)
 
@@ -65,6 +81,8 @@ For **Case B** (PR not created):
 - [ ] `## 完了報告` heading
 - [ ] 項目テーブル with exactly **5** data rows
 - [ ] `### フェーズ進捗` heading with exactly 6 data rows (with ⏳ for incomplete phases)
+- [ ] `### 推奨事項 disposition` heading (from Step 3.4, Issue #1042 AC-3) — either full 3-row table OR `_推奨事項なし_` line
+- [ ] No aggregate labels (「推奨 N 件」「follow-up 候補」「全て scope 外」) appear anywhere in the report
 - [ ] `### 次のステップ` heading with exactly 3 numbered items
 - [ ] `### 📚 Wiki ingest 状況` heading with signal table (from Step 3.5, Issue #524 AC-5 — never skipped)
 
@@ -102,6 +120,16 @@ If any check fails, re-read the template and regenerate.
 | PR 作成 | ✅ | #{pr_number} |
 | セルフレビュー | ✅ | {review_result} |
 
+### 推奨事項 disposition (Issue #1042)
+
+| 分類 | 件数 | 詳細 |
+|------|------|------|
+| actionable (Issue 化済) | {actionable_count} | {actionable_issues} |
+| boundary (user 判断) | {boundary_count} | {boundary_details} |
+| design_confirmation (観察のみ) | {design_confirmation_count} | {design_confirmation_details} |
+
+<!-- 全件 0 件の場合は上記テーブルを `_推奨事項なし_` に置き換える。aggregate label (「推奨 N 件」「全て scope 外」) は禁止。 -->
+
 ### 次のステップ
 
 1. レビュアーに PR レビューを依頼
@@ -132,6 +160,15 @@ If any check fails, re-read the template and regenerate.
 | 品質チェック | ⏳ | 未実施 |
 | PR 作成 | ⏳ | - |
 | セルフレビュー | ⏳ | - |
+
+### 推奨事項 disposition
+
+_推奨事項なし_
+
+<!-- Case B = PR 未作成 = review 未実行のため `_推奨事項なし_` 固定。
+     Step 4 self-verification checklist の "### 推奨事項 disposition heading 存在" を満たすため
+     heading + 内容を必ず出力する。aggregate label (「推奨 N 件」「全て scope 外」等) は禁止。
+     canonical 禁止 phrase list は start-finalize.md Phase 5.6.3 Step 3 を SoT として参照。 -->
 
 ### 次のステップ
 

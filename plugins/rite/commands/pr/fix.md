@@ -1085,7 +1085,13 @@ esac
 set +o pipefail
 ```
 
-**`review_source` state transitions within pr_comment path**: `review_source="pr_comment"` に設定された後、Priority 3 処理 (下記 awk block) で (a) Raw JSON 抽出に成功した場合は `review_source` は `pr_comment` のまま維持、(b) Raw JSON が無い / schema_unknown で legacy Markdown parser に fallthrough した場合も `pr_comment` のまま。つまり Priority 3 内部での format (new / legacy) 切り替えは `review_source` では表現せず、後続 Phase は両 format を同じ code path で処理する。`review_source_path=""` は Priority 3 が PR コメント (in-memory data) を参照することを示すマーカーで、`"$review_source_path"` を読もうとする後続 code は Priority 3 で実行されない (下記 Phase 1.2.0 の `=== severity_map build (local_file/explicit_file only ...) ===` grep anchor でマーキングされた bash block の `if` 条件で local_file / explicit_file のみに限定済み。grep anchor 参照は行番号変動への耐性を確保するため)。
+**`review_source` state transitions within pr_comment path**: `review_source="pr_comment"` に設定された後、Priority 3 処理 (下記 awk block) における state 遷移と意味論は以下の通り:
+
+> 1. **Raw JSON 抽出成功**: `review_source` は `pr_comment` のまま維持
+> 2. **Raw JSON なし / schema_unknown で legacy Markdown parser に fallthrough**: 同じく `pr_comment` のまま維持
+> 3. **format 切り替えの表現方法**: Priority 3 内部での format (new / legacy) 切り替えは `review_source` では表現しない。つまり後続 Phase は両 format を同じ code path で処理する
+> 4. **`review_source_path=""` の意味**: Priority 3 が PR コメント (in-memory data) を参照することを示すマーカー
+> 5. **後続 code が Priority 3 で実行されない仕組み**: `"$review_source_path"` を読もうとする後続 code は Priority 3 で実行されない (下記 Phase 1.2.0 の `=== severity_map build (local_file/explicit_file only ...) ===` grep anchor でマーキングされた bash block の `if` 条件で local_file / explicit_file のみに限定済み。grep anchor 参照は行番号変動への耐性を確保するため)
 
 **On Priority 0 failure** (explicit file missing/invalid/schema_unknown): `review_source="fallback"` triggers Phase 1.2.0.1 interactive fallback. Do NOT fall through to Priority 1-3 silently when `--review-file` was explicitly requested but unusable — the user's intent was to use that specific file.
 
@@ -1093,7 +1099,7 @@ set +o pipefail
 
 > **block continuity note**: 本 block は Phase 1.2.0 Selection logic block と **同一 Bash tool invocation 内で連続実行する前提**で設計されている。詳細:
 >
-> 1. **anchor**: Selection logic block は上記 `pipefail scope note` blockquote 直下の bash block で、末尾は `# === Phase 1.2.0 Selection logic block end ===` grep anchor で marking。Claude は本 block を独立した Bash 呼び出しとして発行せず、Selection logic block の末尾に本 block の bash 内容を連結して単一の Bash tool invocation として実行すること (fenced 区切りは Claude が論理的に併合する)
+> 1. **anchor & 連結指示**: Selection logic block は上記 `pipefail scope note` blockquote 直下の bash block で、末尾は `# === Phase 1.2.0 Selection logic block end ===` grep anchor で marking。Claude は本 block を独立した Bash 呼び出しとして発行せず、Selection logic block の末尾に本 block の bash 内容を連結して単一の Bash tool invocation として実行すること (fenced 区切りは Claude が論理的に併合する)。**bullet ラベルが「anchor」のみだと behavior-critical な連結指示が情報メタデータに紛れて Claude が読み飛ばすリスクがあるため、ラベルを `anchor & 連結指示` に拡張して MUST-DO 命令の存在を可視化している。**
 > 2. **継承変数**: `$review_source` / `$review_source_path` 等のシェル変数は Selection logic block で設定された値を継承する
 > 3. **silent-skip 経路**: 別 invocation で実行すると `$review_source=""` となり下記 `if [ "$review_source" = "local_file" ] || [ "$review_source" = "explicit_file" ]` 条件を満たさず、normalization step (schema 1.0 後方互換 + invariant #5 auto-correct) が silent skip する経路が成立する
 > 4. **observability marker**: Selection logic block 末尾近くの `[CONTEXT] REVIEW_SOURCE=...` stderr emit は本 invocation 統合運用時の **observability marker** として機能する

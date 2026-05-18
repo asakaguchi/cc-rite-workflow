@@ -20,21 +20,17 @@ SEVERITY_FILE="$REPO_ROOT/plugins/rite/references/severity-levels.md"
 # 「nit-noted を禁止する」という制約を、SEVERITY_FILE は「scope 軸の許容/禁止 matrix」を主題とする。
 # テストは両方の正確な heading を独立に literal match で検証する。
 
-# section-scoped check のための tempfile を準備
-base_section_file=$(mktemp)
-severity_section_file=$(mktemp)
-trap 'rm -f "$base_section_file" "$severity_section_file"' EXIT
-
 # 1. _reviewer-base.md の Hypothetical Exception 4 reviewer nit-noted 禁止節 (literal heading 固定)
 assert_grep "_reviewer-base.md: '### Hypothetical Exception カテゴリの nit-noted 禁止' heading" \
   "$BASE_FILE" \
   '^### Hypothetical Exception カテゴリの nit-noted 禁止$'
 
 # 2. 4 reviewer 名がすべて _reviewer-base.md の該当節に登場
-awk '/^### Hypothetical Exception カテゴリの nit-noted 禁止$/,/^##[^#]/' "$BASE_FILE" > "$base_section_file"
 for r in security database devops dependencies; do
-  assert_grep "_reviewer-base.md Hypothetical Exception section: $r reviewer reference" \
-    "$base_section_file" \
+  assert_grep_in_section "_reviewer-base.md Hypothetical Exception section: $r reviewer reference" \
+    "$BASE_FILE" \
+    '^### Hypothetical Exception カテゴリの nit-noted 禁止$' \
+    '^##[^#]' \
     "${r}\\.md|${r}-reviewer|\`${r}\`"
 done
 
@@ -44,10 +40,11 @@ assert_grep "severity-levels.md: '### Hypothetical Exception カテゴリの sco
   '^### Hypothetical Exception カテゴリの scope 制約$'
 
 # 4. 4 reviewer 名と nit-noted 禁止記述が severity-levels.md に列挙
-awk '/^### Hypothetical Exception カテゴリの scope 制約$/,/^##[^#]/' "$SEVERITY_FILE" > "$severity_section_file"
 for r in security database devops dependencies; do
-  assert_grep "severity-levels.md scope 制約 section: $r reviewer reference" \
-    "$severity_section_file" \
+  assert_grep_in_section "severity-levels.md scope 制約 section: $r reviewer reference" \
+    "$SEVERITY_FILE" \
+    '^### Hypothetical Exception カテゴリの scope 制約$' \
+    '^##[^#]' \
     "${r}\\.md|${r}-reviewer|\`${r}\`"
 done
 

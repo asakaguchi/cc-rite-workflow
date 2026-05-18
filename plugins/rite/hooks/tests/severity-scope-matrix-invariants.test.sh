@@ -18,46 +18,49 @@ REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 SEVERITY_FILE="$REPO_ROOT/plugins/rite/references/severity-levels.md"
 SCHEMA_FILE="$REPO_ROOT/plugins/rite/references/review-result-schema.md"
 
-# section-scoped check のための tempfile
-matrix_section_file=$(mktemp)
-cross_field_section_file=$(mktemp)
-trap 'rm -f "$matrix_section_file" "$cross_field_section_file"' EXIT
-
 # 1. severity-levels.md に Severity × Scope Matrix 節が存在
 assert_grep "severity-levels.md: Severity × Scope Matrix section heading" \
   "$SEVERITY_FILE" \
   '^## Severity × Scope Matrix|Severity × Scope Matrix'
 
 # 2. matrix 節内に 5 severity 等級が列挙
-awk '/Severity × Scope Matrix/,/^## [^S]/' "$SEVERITY_FILE" > "$matrix_section_file"
 for sev in "CRITICAL" "HIGH" "MEDIUM" "LOW-MEDIUM" "LOW"; do
-  assert_grep "matrix section: severity '$sev' listed" \
-    "$matrix_section_file" \
+  assert_grep_in_section "matrix section: severity '$sev' listed" \
+    "$SEVERITY_FILE" \
+    'Severity × Scope Matrix' \
+    '^## [^S]' \
     "\\*\\*${sev}\\*\\*"
 done
 
 # 3. 禁止セル CRITICAL × follow-up / nit-noted が記述
-assert_grep "matrix section: CRITICAL × follow-up/nit-noted 禁止 cell" \
-  "$matrix_section_file" \
+assert_grep_in_section "matrix section: CRITICAL × follow-up/nit-noted 禁止 cell" \
+  "$SEVERITY_FILE" \
+  'Severity × Scope Matrix' \
+  '^## [^S]' \
   'CRITICAL.*`follow-up`.*`nit-noted`|follow-up.*nit-noted.*CRITICAL'
 
 # 4. 禁止セル HIGH × nit-noted が記述
-assert_grep "matrix section: HIGH × nit-noted 禁止 cell" \
-  "$matrix_section_file" \
+assert_grep_in_section "matrix section: HIGH × nit-noted 禁止 cell" \
+  "$SEVERITY_FILE" \
+  'Severity × Scope Matrix' \
+  '^## [^S]' \
   'HIGH.*`nit-noted`'
 
 # 5. 禁止セル LOW × follow-up が記述
-assert_grep "matrix section: LOW × follow-up 禁止 cell" \
-  "$matrix_section_file" \
+assert_grep_in_section "matrix section: LOW × follow-up 禁止 cell" \
+  "$SEVERITY_FILE" \
+  'Severity × Scope Matrix' \
+  '^## [^S]' \
   'LOW.*`follow-up`|`follow-up`.*LOW'
 
 # 6. schema 1.1.0 Cross-field invariant #4 (CRITICAL/HIGH × nit-noted FAIL) の本体定義を確認
 #    Cross-field invariants セクション内に絞った section-scoped grep で、
 #    L127 等の forward-pointer 記述による false-pass を排除する。
 #    番号付き定義 "4. **`severity ∈ {CRITICAL, HIGH}` ∧ `scope == \"nit-noted\"` 禁止**" を anchor とする。
-awk '/^### Cross-field invariants/,/^## /' "$SCHEMA_FILE" > "$cross_field_section_file"
-assert_grep "schema 1.1.0 Cross-field invariants: item #4 body definition (CRITICAL/HIGH × nit-noted FAIL)" \
-  "$cross_field_section_file" \
+assert_grep_in_section "schema 1.1.0 Cross-field invariants: item #4 body definition (CRITICAL/HIGH × nit-noted FAIL)" \
+  "$SCHEMA_FILE" \
+  '^### Cross-field invariants' \
+  '^## ' \
   '^4\.[[:space:]]+\*\*.*severity.*CRITICAL.*HIGH.*scope.*nit-noted.*禁止'
 
 # 7. jq invariant 実行: 禁止セル CRITICAL × nit-noted を含む JSON が FAIL する

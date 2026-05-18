@@ -4123,13 +4123,21 @@ trap 'rm -f "${commit_err:-}" "${emit_err:-}"' EXIT INT TERM HUP
 # Emit an explicit
 # sentinel via workflow-incident-emit.sh so Phase 5.4.4.1 treats mktemp
 # failure itself as a workflow incident.
-if ! commit_err=$(mktemp /tmp/rite-wiki-commit-err-XXXXXX 2>/dev/null); then
-  echo "WARNING: mktemp failed for wiki-ingest-commit stderr capture — script stderr will be suppressed" >&2
+#
+# 構造: bash の 「!」否定 pipeline では then 節内 $? が常に 0 になるため、
+# fix.md L808 (find_err) / L1163 (mktemp_norm_rc) と同じ
+# `if cmd; then :; else rc=$?; fi` 形式を採用し、`mktemp_commit_err_rc=$?` を
+# else 先頭で capture する (Issue #1031: 3-site 対称化)。
+if commit_err=$(mktemp /tmp/rite-wiki-commit-err-XXXXXX 2>/dev/null); then
+  : # mktemp 成功 — commit_err は valid path
+else
+  mktemp_commit_err_rc=$?
+  echo "WARNING: mktemp failed for wiki-ingest-commit stderr capture (rc=$mktemp_commit_err_rc) — script stderr will be suppressed" >&2
   echo "  hint: check /tmp permission / disk space / inode exhaustion" >&2
   # Emit a hook_abnormal_exit sentinel directly (workflow-incident-emit.sh
   # may itself be unable to create tempfiles, so fall back to inline).
   fallback_iter="{pr_number}-$(date +%s)"
-  fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=mktemp failed for commit_err in pr/review.md Phase 6.5.W.2; iteration_id=$fallback_iter"
+  fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=mktemp failed for commit_err in pr/review.md Phase 6.5.W.2 (rc=$mktemp_commit_err_rc); iteration_id=$fallback_iter"
   echo "$fallback_sentinel"
   echo "$fallback_sentinel" >&2
   commit_err="/dev/null"

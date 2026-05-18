@@ -238,9 +238,9 @@ emit の目的は observability — 「どの review-result file が 1.0 schema 
 #### code-quality-reviewer
 - **評価**: 要修正
 
-| 重要度 | ファイル:行 | 内容 | 推奨対応 |
-|--------|------------|------|----------|
-| HIGH | path/to/file.ts:42 | エラーハンドリングが不足 | try-catch を追加 |
+| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|--------|----------|------------|------|----------|
+| HIGH | current-pr | path/to/file.ts:42 | エラーハンドリングが不足 | try-catch を追加 |
 
 ---
 

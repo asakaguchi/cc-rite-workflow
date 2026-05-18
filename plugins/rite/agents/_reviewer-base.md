@@ -129,7 +129,7 @@ Before including a finding in the issues table, assign an internal confidence sc
 - 60-79: The issue is plausible but you haven't verified all assumptions
 - <60: Speculation or stylistic preference without project-specific justification
 
-**Important**: The confidence score is an internal decision aid. Do NOT add a confidence column to the output table. The table structure `| 重要度 | ファイル:行 | 内容 | 推奨対応 |` must remain unchanged for fix.md parser compatibility.
+**Important**: The confidence score is an internal decision aid. Do NOT add a confidence column to the output table. The table structure `| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |` (schema 1.1.0+, 5 columns including the `scope` column added in Issue #1016) must remain stable for fix.md parser compatibility — adding extra columns beyond this 5-column structure is prohibited. The `scope` column accepts the 3 enum values defined in `references/review-result-schema.md`: `current-pr` / `follow-up` / `nit-noted`. See [Scope Assignment Flowchart](#scope-assignment-flowchart) for the assignment procedure.
 
 The default confidence threshold is 80. This value is also recorded in `review.confidence_threshold` in `rite-config.yml` for reference.
 
@@ -192,6 +192,66 @@ The following patterns are typical Hypothetical claims that MUST be downgraded (
 - "race condition の可能性がある" — without showing two concurrent paths that actually reach the shared state
 - "メモリリークするかもしれない" — without showing a long-running entrypoint that exercises the leak
 - "悪意あるユーザーが ... できる" — without an entrypoint exposing the surface (this is exception-category-eligible if `security.md` is the reviewer)
+
+## Scope Assignment Flowchart
+
+> **Reference**: scope enum 定義と Cross-field invariants は [`review-result-schema.md` §findings.scope](../references/review-result-schema.md) を参照 (Issue #1016 で schema 1.1.0 から導入)。severity × scope の禁止セルは [`severity-levels.md` §Severity × Scope Matrix](../references/severity-levels.md#severity--scope-matrix) を参照。
+
+各 finding には **重要度 (severity)** とは独立に **スコープ (scope)** を assign する。scope は 3 値 enum:
+
+| スコープ値 | 意味 | 典型的用法 |
+|----------|------|----------|
+| `current-pr` | 本 PR で修正必須 | 本 PR の diff が直接導入した bug / 機能欠陥 / 仕様違反 |
+| `follow-up` | 本 PR では deferred、別 Issue として後続対応 | revert test pass (本 PR diff 由来) かつ scope 外の改善 / 巨大な refactor 要求 |
+| `nit-noted` | 情報共有のみ、修正不要 (`acknowledged` で受け流し) | 好み寄りの提案 / bounded blast radius の localized 問題 |
+
+### 判定順序 (revert test 優先)
+
+scope の決定は **必ず以下の順序** で行う。順序逆転は finding scope の誤分類を生む。
+
+```
+1. Revert test (必須最初に実行 — Necessary conditions §3 参照)
+   ├─ Revert test FAIL (本 PR diff が原因でない pre-existing) → finding 自体を破棄 (本 PR scope 外)
+   └─ Revert test PASS (本 PR diff 由来) → step 2 へ
+
+2. Severity ベースのデフォルト assignment
+   ├─ CRITICAL → デフォルト `current-pr` 強制 (許容: `current-pr` のみ; `follow-up` / `nit-noted` 禁止)
+   ├─ HIGH → デフォルト `current-pr` (許容: `current-pr` / `follow-up` — 本 PR scope 外 deferred として `follow-up` 可、ただし `nit-noted` は禁止)
+   ├─ MEDIUM → デフォルト `current-pr` (許容: `current-pr` / `follow-up` / `nit-noted`; LOW-MEDIUM 寄り case のみ nit-noted へ降格可能、`nit_reason` 必須)
+   ├─ LOW-MEDIUM → デフォルト `nit-noted` (許容: 全 3 値; 1 行修正で完了する localized 問題なら current-pr、本 PR scope 外の改善なら follow-up)
+   └─ LOW → デフォルト `nit-noted` (許容: `current-pr` (本 PR が文体修正のみの場合) / `nit-noted`; `follow-up` は禁止)
+
+3. Finding Quality Guardrail 通過後の自己降格 check
+   └─ reviewer 自身が「好み寄り (bikeshedding)」と認める場合のみ `nit-noted` へ降格 (severity 自己降格との二重 degrade は scope 自己降格パターンとして Guardrail で警告)
+```
+
+### Severity × Scope 禁止セル (FAIL invariant 該当のみ抜粋)
+
+以下の組み合わせは **schema 1.1.0 cross-field invariant #4 で FAIL** (jq invariant で機械的阻止)。reviewer は本セルに該当する finding を **絶対に出力してはならない**:
+
+| Severity | 禁止 scope (FAIL invariant) | 理由 |
+|----------|---------------------------|------|
+| CRITICAL | `follow-up` / `nit-noted` | blocker 級の指摘を deferred / 受け流しできない |
+| HIGH | `nit-noted` | 同上 (`follow-up` は許容 — 本 PR 外の deferred は可) |
+
+> **Note**: 上記は **FAIL invariant 該当の禁止セルのみ** を抜粋。これに加えて **LOW × `follow-up`** (jq invariant 非該当だが意味論的禁止: LOW 級は本 PR で修正するか nit として受け流すかの二択、別 Issue 化は冗長) も禁止セルに含まれる。**LOW × follow-up を含む完全な matrix** は [`severity-levels.md` §Severity × Scope Matrix](../references/severity-levels.md#severity--scope-matrix) を参照。
+
+### Hypothetical Exception カテゴリの nit-noted 禁止
+
+[Hypothetical Exception Categories](../references/severity-levels.md#hypothetical-exception-categories) に該当する **4 reviewer** (`security` / `database` / `devops` / `dependencies`) は **scope=`nit-noted` の出力を全 severity 帯で禁止** する。理由は以下:
+
+| Reviewer | nit-noted 禁止の根拠 |
+|----------|---------------------|
+| `security.md` | 攻撃者が「いつ exploit を demonstrate するか選ぶ」性質上、nit (修正不要) として受け流すと CRITICAL リスクが silent に蓄積する。`acknowledged` 経路で見落とすことを阻止 |
+| `database.md` | migration は production で 1 回しか実行されない。「nit」として受け流した destructive migration が後続 PR で取り返しのつかない state にする可能性 |
+| `devops.md` | deploy / rollback / infra path は exercise 頻度が低い。「nit」受け流しが本番障害時に silent failure として顕在化 |
+| `dependencies.md` | CVE / supply chain / license は「いつ起きるか」が攻撃者依存。nit 化は許容できないリスクモデル |
+
+**実装契機** (本 PR scope 外、後続 Sub-Issue (#1018) で実施予定): 4 agent ファイル (`security-reviewer.md` / `database-reviewer.md` / `devops-reviewer.md` / `dependencies-reviewer.md` — agent file naming) または対応 skill ファイル (`security.md` / `database.md` / `devops.md` / `dependencies.md` — skill file naming、`plugins/rite/skills/reviewers/` 配下) に `scope == "nit-noted"` の出力を禁止する記述を追加し、Sub-Issue (#1018 = M2 scope=nit-noted 受け流し経路) の hook 層で機械的に reject する (CRITICAL/HIGH × nit-noted の FAIL invariant と同質の防衛層)。**本 PR (#1017) では本 reference のみを記述し、4 reviewer ファイル本体への記述追加と hook enforcement は #1018 で行う**。reviewer が「nit として受け流したい」と判断した finding は、本 4 reviewer では `follow-up` (別 Issue 化) または `current-pr` (本 PR で修正) のいずれかに必ず assign し直すこと。
+
+### Likelihood-Evidence との関係
+
+scope 値は Likelihood (Observed / Demonstrable / Hypothetical) とは **独立軸** であり、Hypothetical Exception カテゴリは Likelihood 軸の例外であって scope 軸の例外ではない。scope=`nit-noted` への降格は 4 例外 reviewer であっても許容されない。
 
 ## Comment Quality Finding Gate
 
@@ -312,6 +372,7 @@ This guardrail implements Quality Signal 4 of the four review-fix loop quality s
 | 2 | **Defensive code suggestion** | "念のため null check を追加", "想定外の値に備えて default を返す", "型的に到達不可能な else に throw を追加" | Filter **unless** the reviewer identifies a concrete call site that can reach the undefended branch. Suggestions based on "just in case" without a demonstrable call path → filter |
 | 3 | **Hypothetical without entry point** | "もし悪意あるユーザーが ... できたら", "もし race condition が起きたら" | Already governed by Observed Likelihood Gate; here this guardrail adds a belt-and-suspenders filter. If the finding has no `Likelihood-Evidence:` line and the reviewer is not in an Exception Category → filter |
 | 4 | **Style-only without rule** | "コメント文体を揃える", "ファイル末尾改行", "import 並び替え" unless enforced by a configured linter | Filter |
+| 5 | **Scope self-degradation chain** | reviewer が CRITICAL/HIGH と判定した finding を severity 自己降格 (CRITICAL → MEDIUM) と同時に scope 自己降格 (current-pr → nit-noted) させる二重 degrade パターン。例: CRITICAL → MEDIUM (severity 降格) + current-pr → nit-noted (scope 降格) の連鎖。本来の severity を保ったまま `original_severity` フィールドに記録すべき (schema 1.1.0 `findings[].original_severity` 参照) | Filter **and** warn the reviewer to either: (a) keep the original severity and use `current-pr` / `follow-up` scope, or (b) downgrade only severity (LOW-MEDIUM などへ) keeping `current-pr` scope. **CRITICAL/HIGH を本 Category #5 で filter した場合、reviewer は強制的に [Reviewer self-degradation → Signal 4](#reviewer-self-degradation--signal-4) の `Status: degraded` を emit すること** (Signal 4 強制発火 — silent suppression 防止)。二重 degrade は finding を silent suppression する経路となり review-fix loop の収束を阻害するため、本 Filter は完全消去ではなく **warn + escalation** を意図する設計上の対称性を担保する |
 
 ### Why these are filtered
 
@@ -360,18 +421,20 @@ Output using this format with evaluation (可/条件付き/要修正), findings 
 ### 所見
 {所見}
 ### 指摘事項
-| 重要度 | ファイル:行 | 内容 | 推奨対応 |
-|--------|------------|------|----------|
-| {SEVERITY} | {file:line} | {issue} | {recommendation} |
+| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|--------|----------|------------|------|----------|
+| {SEVERITY} | {SCOPE} | {file:line} | {issue} | {recommendation} |
 ```
 
 ### Column Structure Rules
 
 | Column | Structure | Description |
 |--------|-----------|-------------|
+| **重要度** | enum | `CRITICAL` / `HIGH` / `MEDIUM` / `LOW-MEDIUM` / `LOW` — Impact 軸（[Severity Levels](../references/severity-levels.md) 参照） |
+| **スコープ** | enum | `current-pr` / `follow-up` / `nit-noted` — 指摘の scope 分類。値の決定は [Scope Assignment Flowchart](#scope-assignment-flowchart) に従う。schema 1.1.0+ (Issue #1016) |
 | **内容** | WHAT + WHY | 何が問題か（1文目）→ なぜそれが問題か（2文目: 影響、リスク、既存パターンとの比較） |
 | **推奨対応** | FIX + EXAMPLE | 具体的な修正方法 → インラインコード例（コード変更が伴う場合） |
 
 WHY が省略された findings は修正エージェントの判断精度を下げる。WHAT のみで WHY が自明な場合でも、影響範囲や既存コードとの比較を含めること。
 
-See [Severity Levels](../references/severity-levels.md) for common severity definitions and evaluation flowchart.
+See [Severity Levels](../references/severity-levels.md) for common severity definitions and the [Severity × Scope Matrix](../references/severity-levels.md#severity--scope-matrix) for allowed/forbidden combinations.

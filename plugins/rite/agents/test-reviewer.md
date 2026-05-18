@@ -77,8 +77,8 @@ Read `plugins/rite/agents/_reviewer-base.md` for format specification.
 ### 所見
 テストの信頼性に問題があります。また、重要な機能のカバレッジが不足しています。
 ### 指摘事項
-| 重要度 | ファイル:行 | 内容 | 推奨対応 |
-|--------|------------|------|----------|
-| CRITICAL | src/services/user.test.ts:42 | テストにアサーションがなく、実装が壊れても常にパスする。CI でのリグレッション検出が機能しない false positive テスト | アサーション追加: `expect(result).toEqual({ id: 1, name: 'test' })` |
-| HIGH | src/utils/calc.ts:15 | `calculateTotal` は金額計算の中核関数だがテストが存在しない。`calc.test.ts` は他の関数のテストのみ | ユニットテスト追加: `expect(calculateTotal([100, 200])).toBe(300)` と境界値テスト |
+| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|--------|----------|------------|------|----------|
+| CRITICAL | current-pr | src/services/user.test.ts:42 | テストにアサーションがなく、実装が壊れても常にパスする。CI でのリグレッション検出が機能しない false positive テスト | アサーション追加: `expect(result).toEqual({ id: 1, name: 'test' })` |
+| HIGH | current-pr | src/utils/calc.ts:15 | `calculateTotal` は金額計算の中核関数だがテストが存在しない。`calc.test.ts` は他の関数のテストのみ | ユニットテスト追加: `expect(calculateTotal([100, 200])).toBe(300)` と境界値テスト |
 ```

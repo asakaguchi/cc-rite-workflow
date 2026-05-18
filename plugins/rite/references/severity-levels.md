@@ -108,6 +108,53 @@ All other reviewers MUST apply the matrix above and downgrade Hypothetical findi
 
 > **Note — 3 ゲート運用への forward-pointer**: 指摘事項化の必要条件は impact + likelihood の 2 軸に加えて **revert test を含む 3 ゲート** を同時充足することが求められます。revert test の運用手順は [`agents/_reviewer-base.md` "Necessary conditions for inclusion in 指摘事項"](../agents/_reviewer-base.md#necessary-conditions-for-inclusion-in-指摘事項) を参照してください。本ファイル (severity-levels.md) は impact + likelihood の 2 軸定義に特化しており、revert test の定義は意図的に `_reviewer-base.md` に集約されています。
 
+## Severity × Scope Matrix
+
+> **Reference**: scope enum 定義と Cross-field invariants は [`review-result-schema.md` §findings.scope](./review-result-schema.md) を参照 (Issue #1016 で schema 1.1.0 から追加)。scope assign 手順の SoT は [`_reviewer-base.md` §Scope Assignment Flowchart](../agents/_reviewer-base.md#scope-assignment-flowchart)。
+
+各 finding は Impact 軸 (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) に加えて **scope 軸 (current-pr / follow-up / nit-noted)** を持つ。両軸の許容組み合わせは以下のマトリクスで定義する。
+
+| Severity | デフォルト scope | 許容 scope | 禁止 scope |
+|---|---|---|---|
+| **CRITICAL** | `current-pr` | `current-pr` のみ | `follow-up` / `nit-noted` |
+| **HIGH** | `current-pr` | `current-pr` / `follow-up` | `nit-noted` |
+| **MEDIUM** | `current-pr` | `current-pr` / `follow-up` / `nit-noted` (LOW-MEDIUM 寄り case のみ、`nit_reason` 必須) | — |
+| **LOW-MEDIUM** | `nit-noted` | 全 3 値 | — |
+| **LOW** | `nit-noted` | `current-pr` (本 PR が文体修正のみの場合) / `nit-noted` | `follow-up` |
+
+### 禁止セルの根拠
+
+| 禁止セル | 根拠 | Cross-field invariant |
+|---------|------|----------------------|
+| **CRITICAL × follow-up** | CRITICAL 級の脆弱性 / 機能崩壊を別 Issue として deferred することは silent risk accumulation。CRITICAL は必ず本 PR で修正必須 | (本ファイル独自) |
+| **CRITICAL × nit-noted** | 同上に加えて「修正不要の nit」として受け流すことは更に重大。schema 1.1.0 invariant #4 で **FAIL invariant** として jq 阻止 | [review-result-schema §Cross-field invariants #4](./review-result-schema.md) |
+| **HIGH × nit-noted** | HIGH 級の重大度を nit として受け流すことは review-fix loop の信頼性を毀損。schema 1.1.0 invariant #4 で **FAIL invariant** として jq 阻止 | [review-result-schema §Cross-field invariants #4](./review-result-schema.md) |
+| **LOW × follow-up** | LOW 級は本 PR で修正するか nit として受け流すかの二択。別 Issue を切るほどの blast radius がないため follow-up は冗長 | (本ファイル独自) |
+
+### 自動 default mapping (schema 1.0 後方互換)
+
+schema 1.0 / 1.0.0 の review-results JSON は `scope` フィールドを持たないため、read 側で severity ベースの default mapping を適用する:
+
+| Severity | Default scope (schema 1.0 read 時) |
+|----------|-----------------------------------|
+| CRITICAL / HIGH | `current-pr` |
+| MEDIUM | `current-pr` |
+| LOW-MEDIUM | `nit-noted` |
+| LOW | `nit-noted` |
+
+詳細な jq 表現と `[CONTEXT] REVIEW_SOURCE_SCOPE_DEFAULTED=1` emit ルールは [`review-result-schema.md` §後方互換性](./review-result-schema.md) を参照。
+
+### Hypothetical Exception カテゴリの scope 制約
+
+[Hypothetical Exception Categories](#hypothetical-exception-categories) に該当する 4 reviewer (`security` / `database` / `devops` / `dependencies`) は、Likelihood 軸の例外であって scope 軸の例外ではない。**全 severity 帯で scope=`nit-noted` の出力を禁止** する (詳細は [`_reviewer-base.md` §Scope Assignment Flowchart](../agents/_reviewer-base.md#hypothetical-exception-カテゴリの-nit-noted-禁止) を参照)。
+
+| Reviewer | scope=`nit-noted` | 許容 scope |
+|----------|------------------|----------|
+| `security.md` | ❌ 禁止 | `current-pr` / `follow-up` |
+| `database.md` | ❌ 禁止 | `current-pr` / `follow-up` |
+| `devops.md` | ❌ 禁止 | `current-pr` / `follow-up` |
+| `dependencies.md` | ❌ 禁止 | `current-pr` / `follow-up` |
+
 ## Evaluation Criteria
 
 Determine evaluation following this flowchart (after applying the Impact × Likelihood matrix):

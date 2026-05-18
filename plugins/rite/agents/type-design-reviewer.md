@@ -78,8 +78,8 @@ Read `plugins/rite/agents/_reviewer-base.md` for format specification.
 ### 所見
 型設計にカプセル化の不備と不変条件の表現不足が検出されました。
 ### 指摘事項
-| 重要度 | ファイル:行 | 内容 | 推奨対応 |
-|--------|------------|------|----------|
-| HIGH | src/types/user.ts:10 | `status: string` で定義されているが、実際には `"active" \| "inactive" \| "deleted"` の3値のみ。`Grep "status ===" src/` で12箇所の文字列比較が確認され、タイポによる不正値混入リスクがある | Union type に変更: `status: "active" \| "inactive" \| "deleted"` でコンパイル時に不正値を排除 |
-| HIGH | src/models/config.ts:25 | `Config` クラスの `settings` フィールドが `public` で直接変更可能。`validate()` メソッドが存在するがバイパス可能であり、不正な設定状態を許容する | `private` + getter に変更: `private _settings: Settings; get settings(): Readonly<Settings> { return this._settings; }` |
+| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|--------|----------|------------|------|----------|
+| HIGH | current-pr | src/types/user.ts:10 | `status: string` で定義されているが、実際には `"active" \| "inactive" \| "deleted"` の3値のみ。`Grep "status ===" src/` で12箇所の文字列比較が確認され、タイポによる不正値混入リスクがある | Union type に変更: `status: "active" \| "inactive" \| "deleted"` でコンパイル時に不正値を排除 |
+| HIGH | current-pr | src/models/config.ts:25 | `Config` クラスの `settings` フィールドが `public` で直接変更可能。`validate()` メソッドが存在するがバイパス可能であり、不正な設定状態を許容する | `private` + getter に変更: `private _settings: Settings; get settings(): Readonly<Settings> { return this._settings; }` |
 ```

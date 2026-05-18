@@ -78,8 +78,8 @@ Read `plugins/rite/agents/_reviewer-base.md` for format specification.
 ### 所見
 CI/CD パイプラインにコマンドインジェクションのリスクがあります。また、Docker イメージの再現性が不十分です。
 ### 指摘事項
-| 重要度 | ファイル:行 | 内容 | 推奨対応 |
-|--------|------------|------|----------|
-| CRITICAL | .github/workflows/deploy.yml:15 | `${{ github.event.pull_request.body }}` を run ステップ内で直接使用しており、PR 本文に任意のシェルコマンドを埋め込むコマンドインジェクションが可能。GitHub Security Lab GHSL-2023-097 に該当 | 環境変数経由で参照: `env: PR_BODY: ${{ github.event.pull_request.body }}` として `"$PR_BODY"` で使用 |
-| HIGH | Dockerfile:1 | `node:latest` はビルドごとにバージョンが変わり再現性がない。他の Dockerfile（`api/Dockerfile:1`）では固定バージョンを使用済み | 固定バージョンに変更: `FROM node:20.10.0-alpine` |
+| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|--------|----------|------------|------|----------|
+| CRITICAL | current-pr | .github/workflows/deploy.yml:15 | `${{ github.event.pull_request.body }}` を run ステップ内で直接使用しており、PR 本文に任意のシェルコマンドを埋め込むコマンドインジェクションが可能。GitHub Security Lab GHSL-2023-097 に該当 | 環境変数経由で参照: `env: PR_BODY: ${{ github.event.pull_request.body }}` として `"$PR_BODY"` で使用 |
+| HIGH | current-pr | Dockerfile:1 | `node:latest` はビルドごとにバージョンが変わり再現性がない。他の Dockerfile（`api/Dockerfile:1`）では固定バージョンを使用済み | 固定バージョンに変更: `FROM node:20.10.0-alpine` |
 ```

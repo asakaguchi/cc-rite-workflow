@@ -2,8 +2,12 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-17T22:44:27Z"
+updated: "2026-05-18T09:00:00Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260518T075850Z-pr-1043.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260518T084056Z-pr-1043-cycle4-mergeable.md"
   - type: "fixes"
     ref: "raw/fixes/20260517T221628Z-pr-1032.md"
   - type: "fixes"
@@ -201,6 +205,8 @@ confidence: high
 ## 概要
 
 fix を 1 箇所に適用したとき、同じパターンを持つ「対称位置」（ペア/トリオの兄弟スクリプト、同型 idiom の別 phase、相互参照の Phase 番号等）に同じ fix を伝播させ忘れる failure mode。次サイクルの review で片割れが「新規」findings として浮上し、収束サイクル数を膨張させる。
+
+> **PR #1043 (Issue #1042、累積 35 回目相当、4 cycle 構造的収束)**: aggregate-recommendation-label-evasion anti-pattern を解消する meta-PR でありながら、対策コード自身が同 anti-pattern を再現した self-referential failure mode を実測。「禁止 phrase 列挙」を canonical (start-finalize.md の 4 phrase) と subset (他 7 file の 2-3 phrase) の **8 箇所で drift** させた。Self-violation cascade × Recursive Recurrence in Fix Layer × Sentinel Visibility Rule × Self-meta drift (legacy `recommendation_issue_candidates` vs 新 `candidate_count` の semantic 不一致) の 4 軸が並行発火。cycle 1-3 で「deprecate + 残置」戦略を採用したことで textual contradiction が連続 3 回再発、cycle 4 で legacy field を **完全削除** することで構造的閉塞を実現し 0 findings 到達。詳細な戦略対比は [Legacy field の「deprecate + 残置」よりも「完全削除」が構造的閉塞を実現する](../heuristics/complete-deletion-over-deprecation-for-structural-closure.md) を参照。
 
 ## 詳細
 
@@ -766,3 +772,5 @@ PR #1032 (Issue #1025 — `plugins/rite/commands/pr/fix.md` L797-L802 の `mktem
 - [PR #1032 cycle 1 fix (累積 34 回目の起点: bash semantics 版 recursive recurrence chain の cycle 1 — format 同期目的の SoT-aligned refactor で `|| find_err=""` silent fallback を WARNING-emit 構造に書き換える際、新 SoT (L1147-L1150 `if cmd; then ... else $?`) ではなく `if ! cmd; then rc=$?` 形式で実装し bash `!` 演算子の boolean 反転による rc 常時 0 化 silent regression を新規導入。reviewer 2 名 cross-validation 一致で CRITICAL 検出。**format token symmetry / bash structure symmetry / runtime semantics symmetry の三層対称化義務** doctrine を確立)](../../raw/fixes/20260517T221628Z-pr-1032.md)
 - [PR #1032 cycle 2 fix (累積 34 回目の fix-induced regression cycle 2 — cycle 1 fix で bash structural fix を適用すると同時に「コメント精密化」と銘打って hardcoded absolute line-number reference (`L1147-L1150`) を comment 内に埋め込んだ結果、実際の SoT 位置 (L1122-L1156) と乖離。両 reviewer cross-validation で MEDIUM 検出 + L799 mktemp に `2>/dev/null` 欠落の 24/25 サイト対称化漏れ LOW を独立検出)](../../raw/fixes/20260517T222302Z-pr-1032.md)
 - [PR #1032 cycle 3 fix (累積 34 回目の numeric counter drift 先回り対応 cycle 3 — cycle 2 で hardcoded line-number → semantic anchor 化を decision として宣言したにも関わらず、同じ comment block に新たな numeric counter (`fix.md 内 24/25 site と pattern 一致`) を追加する第 2 段階 drift を本 fix で先回り対応し相対 semantic 表現 (`他の ... と同じ pattern`) に置換。**Comment 内 numeric reference の 2 段階 drift 防御契約** を確立)](../../raw/fixes/20260517T222829Z-pr-1032.md)
+- [PR #1043 cycle 1 review (累積 35 回目相当の起点: aggregate-recommendation-label-evasion 対策 meta-PR が「禁止 phrase 列挙」を canonical 4 phrase / subset 2-3 phrase で 8 箇所 drift させた self-referential failure mode。Sentinel Visibility Rule violation (CRITICAL: `${candidate_count}` 変数未定義経路) と Self-meta drift (legacy `recommendation_issue_candidates` vs 新 `candidate_count` の semantic 不一致による sentinel emit と gate condition の混在) を含む 4 軸並行発火)](../../raw/reviews/20260518T075850Z-pr-1043.md)
+- [PR #1043 cycle 4 mergeable + 4 cycle dogfooding lessons (累積 35 回目相当の構造的収束: cycle 1-3 で「deprecate + 残置」戦略 (legacy field 温存) を採用したことで Recursive Recurrence in Fix Layer が連続 3 回再発、cycle 4 で legacy field 完全削除 + disambiguation note 簡素化により構造的閉塞を実現。全 findings 18→14→4→0 / CRITICAL+HIGH 7→3→2→0 の shrinking-cycle。**「完全削除」が「deprecate + 残置」より構造的閉塞を実現する** heuristic を確立、累積対策 PR で fix-induced drift cascade を断ち切る canonical strategy として canonical 化 [Legacy field の「deprecate + 残置」よりも「完全削除」が構造的閉塞を実現する](../heuristics/complete-deletion-over-deprecation-for-structural-closure.md))](../../raw/reviews/20260518T084056Z-pr-1043-cycle4-mergeable.md)

@@ -2,8 +2,12 @@
 title: "累積対策 PR の review-fix loop で fix 自体が drift を導入する"
 domain: "anti-patterns"
 created: "2026-04-21T10:35:00+00:00"
-updated: "2026-05-17T09:08:26Z"
+updated: "2026-05-18T09:00:00Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260518T084056Z-pr-1043-cycle4-mergeable.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260518T075850Z-pr-1043.md"
   - type: "reviews"
     ref: "raw/reviews/20260516T055016Z-pr-992.md"
   - type: "reviews"
@@ -600,3 +604,29 @@ PR #1004 の観察から、本ページの failure mode 群に追加:
 #### PR #1004 cycle 3 fix で確立した stderr root cause attribution パターン
 
 cycle 3 fix で start.md Step 1.5 / start-finalize.md Step 0 が `gh` と `jq` の stderr を独立 tempfile に分離し pipeline 失敗時の details に `gh_stderr=` と `jq_stderr=` を併記する canonical 実装を導入。これは observability gap (F-08/F-09/F-10) の 3 件を構造的に解消する正しい方向性で、[Embedded markdown bash block の observability 三要素](../patterns/embedded-bash-block-observability-trio.md) として独立ページに切り出した。
+
+### PR #1043 (Issue #1042 = 累積 35 回目相当) — Self-violation cascade 連続 3 回再発 と「完全削除」戦略への転換
+
+PR #1043 は aggregate-recommendation-label-evasion anti-pattern を解消する meta-PR でありながら、対策コード自身が Self-violation cascade を **連続 3 回再発** させた 4 cycle 構造的収束事例。本ページの [PR #765 (Issue #691) Self-violation cascade 観察](#) の延長線上で「累積対策 PR が解決対象の anti-pattern を fix 自身で再現する」cascade chain の最長記録更新。
+
+#### Convergence pattern (shrinking-cycle)
+
+全 findings 集計では `18 → 14 → 4 → 0`、CRITICAL+HIGH のみで `7 → 3 → 2 → 0` の 4 cycle 収束。cycle 1-3 では各 cycle の fix が次 cycle で同型 anti-pattern として再検出される [Recursive Recurrence in Fix Layer](./asymmetric-fix-transcription.md) が連続発火、cycle 4 で構造的解消戦略への転換により即座に 0 finding 収束。
+
+| Cycle | Strategy | Reviewer 検出 | Failure mode |
+|-------|----------|---------------|------------|
+| 1 → 2 | 「混同回避規約」を立てた同 commit が同章内で 4 ヶ所違反 | Asymmetric Fix Transcription 8 箇所 drift / Sentinel Visibility Rule violation (CRITICAL: `${candidate_count}` 未定義 + sentinel iteration_id 欠落) | Strategy A 採用直後 self-violation |
+| 2 → 3 | F-15 factually false claim 修正 + F-02 二重定義「部分解消」 | さらに新規 false claim 導入 + 二重定義の subset 解消にとどまる | Partial fix 再帰再発 |
+| 3 → 4 | Legacy field 完全削除 + disambiguation note 簡素化への**構造的解消戦略**転換 | 0 findings | Structural closure achieved |
+
+#### Failure mode 6 (新規記録): Self-violation cascade × Recursive Recurrence × Self-meta drift 4 軸並行発火
+
+PR #1043 の観察から、本ページの failure mode 群に追加:
+
+| 追加 failure mode | 観測 | 累積回数で初観測 | escalate 先 |
+|-----------------|------|-----------------|------------|
+| Self-violation cascade 連続 3 回再発 + 「deprecate + 残置」戦略の限界 | 1 PR 内で Self-violation cascade × Recursive Recurrence in Fix Layer × Sentinel Visibility Rule violation × Self-meta drift (legacy field vs 新 field の semantic 不一致) の 4 軸が並行発火、cycle 1-3 で連続再発、cycle 4 で「legacy 完全削除 + disambiguation note 簡素化」の構造的閉塞戦略への転換が必要 | 累積 35 回目相当 (PR #1043 cycle 1-4) | (a) cycle 3 で同型 finding 再発時に「deprecate → delete」への戦略転換を AskUserQuestion で提案、(b) Legacy field 温存戦略採用時の移行計画 (deletion target cycle / deletion PR Issue 番号) を本文に明記、(c) 詳細は [Legacy field の「deprecate + 残置」よりも「完全削除」が構造的閉塞を実現する](../heuristics/complete-deletion-over-deprecation-for-structural-closure.md) を参照 |
+
+#### Dogfooding evidence — Mechanical gate の必要性を逆説的に実証
+
+PR #1043 は `/rite:pr:review` Phase 7 の AskUserQuestion 起動を **prose enforcement only から mechanical gate に強化** する meta-PR でもあった。cycle 1-3 で「deprecate + 残置」戦略により self-violation cascade を 3 回連続で踏んだ実測は、本 PR の前提仮定 ("prose enforcement only では silent skip が必ず発生する") を逆説的に裏付ける dogfooding 観察となった。**累積対策 PR が解決対象の anti-pattern を fix 自身で再現する経験は、その mechanical gate の必要性の最も強い証拠** である。本観察は本ページの canonical 対策 4 施策 (3 点セット / twin site / sibling symmetry / opt-in flag) に「**5. 構造的閉塞戦略 (= 対称化対象そのものを消滅させる)**」を 5 つ目の canonical mitigation として追加する根拠を提供する。

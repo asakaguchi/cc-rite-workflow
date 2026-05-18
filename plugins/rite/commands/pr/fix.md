@@ -4954,7 +4954,7 @@ else
       else
         # HIGH #3 — fallback_sentinel emit (trigger Step 3 と対称).
         fallback_iter="{pr_number}-$(date +%s)"
-        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_skipped wiki_ingest_commit_rc=2; iteration_id=$fallback_iter"
+        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_skipped commit_rc=2; iteration_id=$fallback_iter"
         echo "$fallback_sentinel"
         echo "$fallback_sentinel" >&2
         echo "WARNING: workflow-incident-emit.sh (wiki_ingest_skipped) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
@@ -4963,7 +4963,7 @@ else
       ;;
     4)
       # CRITICAL #1: commit landed locally, push failed. Emit dedicated sentinel.
-      echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=wiki_ingest_commit_rc_4; exit_code=$wiki_ingest_commit_rc"
+      echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; exit_code=$wiki_ingest_commit_rc"
       if [ -n "${commit_out:-}" ]; then
         echo "$commit_out"
       fi
@@ -4978,7 +4978,7 @@ else
         fi
       else
         fallback_iter="{pr_number}-$(date +%s)"
-        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_push_failed wiki_ingest_commit_rc=4; iteration_id=$fallback_iter"
+        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_push_failed commit_rc=4; iteration_id=$fallback_iter"
         echo "$fallback_sentinel"
         echo "$fallback_sentinel" >&2
         echo "WARNING: workflow-incident-emit.sh (wiki_ingest_push_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
@@ -4986,7 +4986,7 @@ else
       fi
       ;;
     *)
-      echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=wiki_ingest_commit_rc_$wiki_ingest_commit_rc; exit_code=$wiki_ingest_commit_rc"
+      echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=commit_rc_$wiki_ingest_commit_rc; exit_code=$wiki_ingest_commit_rc"
       emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
       if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
           --type wiki_ingest_failed \
@@ -4999,7 +4999,7 @@ else
       else
         # HIGH #3 — fallback_sentinel emit (trigger Step 3 と対称).
         fallback_iter="{pr_number}-$(date +%s)"
-        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_failed wiki_ingest_commit_rc=$wiki_ingest_commit_rc; iteration_id=$fallback_iter"
+        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_failed commit_rc=$wiki_ingest_commit_rc; iteration_id=$fallback_iter"
         echo "$fallback_sentinel"
         echo "$fallback_sentinel" >&2
         echo "WARNING: workflow-incident-emit.sh (wiki_ingest_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2

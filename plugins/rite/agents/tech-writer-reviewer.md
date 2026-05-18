@@ -109,8 +109,8 @@ Read `plugins/rite/agents/_reviewer-base.md` for format specification.
 ### 所見
 ドキュメントに技術的な不正確さがあります。また、リンク切れが存在します。
 ### 指摘事項
-| 重要度 | ファイル:行 | 内容 | 推奨対応 |
-|--------|------------|------|----------|
-| CRITICAL | README.md:45 | `[API Reference](./reference.md)` のリンク先 `reference.md` が存在しない（`Glob "reference.md"` でマッチなし）。ユーザーが API ドキュメントにアクセスできない | 正しいパスに修正: `[API Reference](./api-reference.md)`（`Glob` で `api-reference.md` を確認済み） |
-| HIGH | docs/api.md:18 | `createClient()` は v2.0 で `initializeClient()` にリネームされているが、ドキュメントが更新されていない。`Grep "createClient" src/` でソースコード内に使用箇所なし | 関数名を更新: `createClient()` → `initializeClient()` |
+| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|--------|----------|------------|------|----------|
+| CRITICAL | current-pr | README.md:45 | `[API Reference](./reference.md)` のリンク先 `reference.md` が存在しない（`Glob "reference.md"` でマッチなし）。ユーザーが API ドキュメントにアクセスできない | 正しいパスに修正: `[API Reference](./api-reference.md)`（`Glob` で `api-reference.md` を確認済み） |
+| HIGH | current-pr | docs/api.md:18 | `createClient()` は v2.0 で `initializeClient()` にリネームされているが、ドキュメントが更新されていない。`Grep "createClient" src/` でソースコード内に使用箇所なし | 関数名を更新: `createClient()` → `initializeClient()` |
 ```

@@ -2684,17 +2684,19 @@ The rite review result comment (output format of `/rite:pr:review`) has the foll
 #### {Reviewer Type}
 - **評価**: {可 / 条件付き / 要修正}
 
-| 重要度 | ファイル:行 | 内容 | 推奨対応 |
-|--------|------------|------|----------|
-| CRITICAL | src/auth.ts:42 | エラーハンドリングが不足 | try-catch を追加 |
+| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|--------|----------|------------|------|----------|
+| CRITICAL | current-pr | src/auth.ts:42 | エラーハンドリングが不足 | try-catch を追加 |
 ```
 
-**Parsing algorithm:**
+**Parsing algorithm (schema 1.1.0, 5-column format):**
 
 1. Identify the `### 全指摘事項` section from the comment body
 2. Iterate through each reviewer section delimited by `#### {Reviewer Type}`
 3. Parse the table rows within each section (split by `|`)
-4. Extract severity (column 1), file:line (column 2), content (column 3), recommended action (column 4)
+4. Determine column count by header row to support both schema 1.0 (4-column) and 1.1.0 (5-column):
+   - **5-column (schema 1.1.0)**: severity (column 1), **scope (column 2)**, file:line (column 3), content (column 4), recommended action (column 5)
+   - **4-column (schema 1.0 backward compat)**: severity (column 1), file:line (column 2), content (column 3), recommended action (column 4) — `scope` is back-filled from severity using the default mapping in [`severity-levels.md` §Severity × Scope Matrix > 自動 default mapping](../../references/severity-levels.md#severity--scope-matrix)
 5. Retain as `severity_map` (consolidating findings from all reviewers):
    ```
    severity_map = {
@@ -2705,7 +2707,7 @@ The rite review result comment (output format of `/rite:pr:review`) has the foll
    }
    ```
 
-**Note**: When multiple reviewers have flagged the same file:line, adopt the highest severity (CRITICAL > HIGH > MEDIUM > LOW-MEDIUM > LOW).
+**Note**: When multiple reviewers have flagged the same file:line, adopt the highest severity (CRITICAL > HIGH > MEDIUM > LOW-MEDIUM > LOW). The `scope` column is consumed downstream by `/rite:pr:fix` Phase 2 (M2 nit-noted 受け流し経路 — Issue #1018) to determine acknowledge vs. fix-required handling.
 
 **When rite review results are not found:**
 

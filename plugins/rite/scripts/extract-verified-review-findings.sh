@@ -39,13 +39,17 @@
 # 抽出ロジック:
 #   1. session log の各 jsonl 行を読み、type=user の tool_result.content と
 #      type=assistant の content[].text を全文走査
-#   2. markdown 表 row `| {SEVERITY} | {file:line} | {reviewer} | {description} |`
-#      を正規表現で抽出 (SEVERITY = CRITICAL|HIGH|MEDIUM|LOW-MEDIUM|LOW)
+#   2. markdown 表 row を正規表現で抽出 (SEVERITY = CRITICAL|HIGH|MEDIUM|LOW-MEDIUM|LOW)。
 #      可読性のため長い alternative (LOW-MEDIUM) を LOW より先に置くが、`\s*\|` anchor の
 #      backtracking により順序非依存で正しくマッチする (LOW を先に置いても LOW-MEDIUM の
 #      入力で LOW match → 後続 `\s*\|` 不一致 → 別 alternative へ backtrack で LOW-MEDIUM
 #      match に成功する)。順序は perf 最適化目的
-#   3. 4 column variant のみサポート (3/5 column variant は v0 では未対応)
+#   3. 4 column (schema 1.0) と 5 column (schema 1.1.0 — Issue #1016 で scope 列追加) を
+#      両対応:
+#        schema 1.0: `| {SEVERITY} | {file:line} | {reviewer} | {description} |`
+#        schema 1.1.0: `| {SEVERITY} | {scope} | {file:line} | {reviewer} | {description} |`
+#      scope 列は `(current-pr|follow-up|nit-noted)` の 3 値 enum。optional group として
+#      regex に組み込み、4-col input では None になる。3 column variant は未対応
 #   4. 同一 raw_row が複数回出現する場合 (ハンドオフで再掲) は dedupe
 #   5. cycle 番号は session 内に出現する直近の「Cycle N」「サイクル N」表記から
 #      ヒューリスティックで推定する (session を跨ぐと衝突する可能性あり)
@@ -182,9 +186,12 @@ to_date      = sys.argv[4] or None
 min_size     = int(sys.argv[5])  # bash 側で必ず set されている (二重デフォルト解消)
 out_path     = sys.argv[6] or None
 
-# Markdown 表 row pattern: | SEV | col2 | col3 | col4 | (4 columns)
+# Markdown 表 row pattern: schema 1.0 (4 columns) and schema 1.1.0 (5 columns with scope)
+# Both supported via optional scope group (group 2). Issue #1016 schema 1.1.0 introduced scope.
+#   4-col: | SEV | file_line | col4 | col5 |       → groups (1, None, 3, 4, 5)
+#   5-col: | SEV | scope | file_line | col4 | col5 | → groups (1, 2, 3, 4, 5)
 ROW_RE = re.compile(
-    r'^\|\s*(CRITICAL|HIGH|MEDIUM|LOW-MEDIUM|LOW)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|',
+    r'^\|\s*(CRITICAL|HIGH|MEDIUM|LOW-MEDIUM|LOW)\s*\|(?:\s*(current-pr|follow-up|nit-noted)\s*\|)?\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|',
     re.MULTILINE,
 )
 # Cycle 推定 (大文字小文字無視で "Cycle N" / "サイクル N")
@@ -363,9 +370,12 @@ def process_session(path):
                         current_cycle = 0  # fail-safe: ヒューリスティック失敗時は unknown
                 for m in ROW_RE.finditer(text):
                     severity = m.group(1)
-                    file_line = m.group(2).strip()
-                    col3 = m.group(3).strip()
-                    col4 = m.group(4).strip()
+                    # schema 1.1.0: group 2 is scope (current-pr|follow-up|nit-noted) when 5-col,
+                    # None when 4-col (schema 1.0 backward compat).
+                    scope = m.group(2) or ""
+                    file_line = m.group(3).strip()
+                    col4 = m.group(4).strip()  # was col3 in v0 — reviewer-or-description column
+                    col5 = m.group(5).strip()  # was col4 in v0 — description fallback
 
                     # 除外: documentation example
                     if any(p in file_line for p in DOC_EXAMPLE_PATHS):
@@ -381,23 +391,26 @@ def process_session(path):
                         continue
 
                     raw_row = m.group(0)
-                    # dedup key: severity + file_line + col3 + cycle (cycle で再発を保持)
-                    dedupe_key = (severity, file_line[:120], col3[:100], current_cycle)
+                    # dedup key: severity + file_line + col4 + cycle (cycle で再発を保持)
+                    # scope は dedup key に含めない (同一 finding が cycle 間で scope 自己降格された
+                    # 場合に別 finding 扱いとなるのを避けるため)
+                    dedupe_key = (severity, file_line[:120], col4[:100], current_cycle)
                     if dedupe_key in seen_keys:
                         continue
                     seen_keys.add(dedupe_key)
 
                     # reviewer / description 列の振り分け (allow-list ベース)
-                    if is_reviewer_column(col3):
-                        reviewer = col3
-                        description = col4
+                    if is_reviewer_column(col4):
+                        reviewer = col4
+                        description = col5
                     else:
                         reviewer = ""
-                        description = col3
+                        description = col4
 
                     results.append({
                         "cycle": current_cycle,
                         "severity": severity,
+                        "scope": scope,
                         "file_line": file_line,
                         "reviewer": reviewer,
                         "description": description,

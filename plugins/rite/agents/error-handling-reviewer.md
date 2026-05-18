@@ -200,8 +200,8 @@ Read `plugins/rite/agents/_reviewer-base.md` for format specification.
 ### 所見
 エラーハンドリングにサイレント失敗パターンが検出されました。エラーが握りつぶされており、障害時の診断が困難です。
 ### 指摘事項
-| 重要度 | ファイル:行 | 内容 | 推奨対応 |
-|--------|------------|------|----------|
-| CRITICAL | src/services/payment.ts:65 | `catch(e) {}` で決済エラーを完全に握りつぶしており、決済失敗時にユーザーへの通知もログも残らない。`order.ts:40` ではエラーログ + ユーザー通知を実装済み | エラーログとユーザー通知を追加: `catch(e) { logger.error('Payment failed', { userId, amount, error: e }); throw new PaymentError('決済処理に失敗しました', { cause: e }); }` |
-| HIGH | src/utils/config.ts:22 | `JSON.parse(data)` の失敗時に `return {}` で空オブジェクトを返すが、呼び出し元は有効な設定データが返されることを前提としている。パース失敗が伝播せず不正な動作の原因になる | エラーを伝播させるか、明示的にログ出力: `catch(e) { logger.warn('Config parse failed, using defaults', { error: e }); return DEFAULT_CONFIG; }` |
+| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|--------|----------|------------|------|----------|
+| CRITICAL | current-pr | src/services/payment.ts:65 | `catch(e) {}` で決済エラーを完全に握りつぶしており、決済失敗時にユーザーへの通知もログも残らない。`order.ts:40` ではエラーログ + ユーザー通知を実装済み | エラーログとユーザー通知を追加: `catch(e) { logger.error('Payment failed', { userId, amount, error: e }); throw new PaymentError('決済処理に失敗しました', { cause: e }); }` |
+| HIGH | current-pr | src/utils/config.ts:22 | `JSON.parse(data)` の失敗時に `return {}` で空オブジェクトを返すが、呼び出し元は有効な設定データが返されることを前提としている。パース失敗が伝播せず不正な動作の原因になる | エラーを伝播させるか、明示的にログ出力: `catch(e) { logger.warn('Config parse failed, using defaults', { error: e }); return DEFAULT_CONFIG; }` |
 ```

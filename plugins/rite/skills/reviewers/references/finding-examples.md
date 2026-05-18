@@ -16,9 +16,9 @@ All reviewers share these Few-shot examples to calibrate finding quality. Use th
 
 **Finding:**
 
-| Severity | File:Line | Issue | Recommendation |
-|----------|-----------|-------|----------------|
-| HIGH | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation. Other endpoints (`auth.ts:30`) use `zod` schema validation. This is a system boundary where external input enters the application. | Add `zod` schema validation consistent with the existing pattern in `auth.ts`. Example: `const schema = z.object({ email: z.string().email() })` |
+| Severity | Scope | File:Line | Issue | Recommendation |
+|----------|-------|-----------|-------|----------------|
+| HIGH | current-pr | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation. Other endpoints (`auth.ts:30`) use `zod` schema validation. This is a system boundary where external input enters the application. | Add `zod` schema validation consistent with the existing pattern in `auth.ts`. Example: `const schema = z.object({ email: z.string().email() })` |
 
 **Why this is a good finding:** Concrete evidence (specific file/line), investigation with tool usage, comparison with existing patterns, actionable recommendation.
 
@@ -33,9 +33,9 @@ All reviewers share these Few-shot examples to calibrate finding quality. Use th
 
 **Finding:**
 
-| Severity | File:Line | Issue | Recommendation |
-|----------|-----------|-------|----------------|
-| HIGH | `src/services/project.ts:120-125` | N+1 query: `db.query()` is called inside a loop iterating over `projects` (up to 100 items per pagination default). Existing code (`task.ts:80`) already uses `WHERE project_id IN (...)` batch pattern. | Replace the loop with a single `WHERE project_id IN (...)` query, following the pattern in `task.ts:80`. |
+| Severity | Scope | File:Line | Issue | Recommendation |
+|----------|-------|-----------|-------|----------------|
+| HIGH | current-pr | `src/services/project.ts:120-125` | N+1 query: `db.query()` is called inside a loop iterating over `projects` (up to 100 items per pagination default). Existing code (`task.ts:80`) already uses `WHERE project_id IN (...)` batch pattern. | Replace the loop with a single `WHERE project_id IN (...)` query, following the pattern in `task.ts:80`. |
 
 **Why this is a good finding:** Quantified impact (up to 100 queries), existing pattern reference for the fix, clear before/after recommendation.
 
@@ -51,9 +51,9 @@ All reviewers share these Few-shot examples to calibrate finding quality. Use th
 
 **Finding:**
 
-| Severity | File:Line | Issue | Recommendation |
-|----------|-----------|-------|----------------|
-| MEDIUM | `commands/pr/review.md:45,120` | Contradictory instructions: line 45 says "report all potential issues, even if uncertain" while line 120 says "only report findings with concrete evidence." This contradicts SKILL.md's "No Hypothetical Concerns" principle. Agents receiving these instructions will produce inconsistent output. | Remove line 45 or scope it to a specific context (e.g., security-only). Align with SKILL.md's established "concrete evidence only" principle. |
+| Severity | Scope | File:Line | Issue | Recommendation |
+|----------|-------|-----------|-------|----------------|
+| MEDIUM | current-pr | `commands/pr/review.md:45,120` | Contradictory instructions: line 45 says "report all potential issues, even if uncertain" while line 120 says "only report findings with concrete evidence." This contradicts SKILL.md's "No Hypothetical Concerns" principle. Agents receiving these instructions will produce inconsistent output. | Remove line 45 or scope it to a specific context (e.g., security-only). Align with SKILL.md's established "concrete evidence only" principle. |
 
 **Why this is a good finding:** Identified a real contradiction by cross-referencing multiple documents, explained the downstream impact on agent behavior, provided specific resolution options.
 
@@ -63,17 +63,17 @@ These findings have real issues but lack the WHY or EXAMPLE that makes them acti
 
 ### Weak Example 1: Missing WHY
 
-| Severity | File:Line | Issue | Recommendation |
-|----------|-----------|-------|----------------|
-| HIGH | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation. | Add validation. |
+| Severity | Scope | File:Line | Issue | Recommendation |
+|----------|-------|-----------|-------|----------------|
+| HIGH | current-pr | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation. | Add validation. |
 
 **Problem:** The Issue column states WHAT is wrong but not WHY it matters. The fix agent cannot prioritize or verify the fix without understanding the risk (e.g., SQL injection? Data integrity? System boundary violation?). The Recommendation lacks a concrete EXAMPLE.
 
 **Improved version:**
 
-| Severity | File:Line | Issue | Recommendation |
-|----------|-----------|-------|----------------|
-| HIGH | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation. This is a system boundary where external input enters the application, and other endpoints (`auth.ts:30`) validate with `zod`. | Add `zod` schema validation consistent with `auth.ts`. Example: `const schema = z.object({ email: z.string().email() })` |
+| Severity | Scope | File:Line | Issue | Recommendation |
+|----------|-------|-----------|-------|----------------|
+| HIGH | current-pr | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation. This is a system boundary where external input enters the application, and other endpoints (`auth.ts:30`) validate with `zod`. | Add `zod` schema validation consistent with `auth.ts`. Example: `const schema = z.object({ email: z.string().email() })` |
 
 **Why the improved version is better:** The WHY ("system boundary where external input enters") tells the fix agent the severity class (injection risk, not just missing validation). The EXAMPLE (`z.object(...)`) gives a concrete code pattern to follow, reducing fix-review loop iterations.
 
@@ -143,9 +143,9 @@ These findings have real issues but lack the WHY or EXAMPLE that makes them acti
 
 **Decision: Report as LOW.**
 
-| Severity | File:Line | Issue | Recommendation |
-|----------|-----------|-------|----------------|
-| LOW | `src/services/payment.ts:80` | Bare `catch (e) { throw e }` in payment processing loses local context (user ID, payment amount). While error propagation works, debugging production issues will be harder without this context. Note: 3 other services follow the same pattern — this finding applies to the changed code only per scope policy. | Wrap the rethrow: `throw new Error(\`Payment ${paymentId} for user ${userId} failed: ${e.message}\`)`. Consider addressing the pattern in other services via a separate Issue. |
+| Severity | Scope | File:Line | Issue | Recommendation |
+|----------|-------|-----------|-------|----------------|
+| LOW | current-pr | `src/services/payment.ts:80` | Bare `catch (e) { throw e }` in payment processing loses local context (user ID, payment amount). While error propagation works, debugging production issues will be harder without this context. Note: 3 other services follow the same pattern — this finding applies to the changed code only per scope policy. | Wrap the rethrow: `throw new Error(\`Payment ${paymentId} for user ${userId} failed: ${e.message}\`)`. Consider addressing the pattern in other services via a separate Issue. |
 
 **Why this is borderline:** The code works correctly today. The improvement is about observability, not correctness. The existing pattern in 3 other services suggests this may be an accepted trade-off. However, for payment processing (a critical path), the debugging benefit justifies a LOW finding. A MEDIUM would be too aggressive given the working status and existing pattern.
 

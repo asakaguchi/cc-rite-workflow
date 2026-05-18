@@ -101,9 +101,10 @@
 | [Pattern 統一 follow-up PR では Wiki 経験則違反でも統一を優先する](pages/heuristics/pattern-unification-over-wiki-rigor.md) | heuristics | 過去 PR で merge 済みのパターンとの統一を目的とする follow-up PR では、Wiki 経験則違反 (overclaim 語彙等) であってもパターン統一を優先し、改善は別 Issue で追跡する。Issue 本文の明示的目的 + SoT との byte-level 同型 + test SCOPE 自身の declaration が判定根拠。PR #973 (Issue #970) で実測、2 reviewer 合意で 0 findings 収束。 | 2026-05-15T15:05:00+09:00 | medium |
 | [Bash 配列の slash-deletion は要素を空文字列に置換するだけで削除しない](pages/anti-patterns/bash-array-slash-deletion-empty-replacement.md) | anti-patterns | `cleanup_dirs=("${arr[@]/$target}")` 形式の bash パラメータ展開は各要素内の `pattern` 一致部分を空文字列に置換するだけで配列スロットを削除しない。trap 等の cleanup ループが `[ -n "$d" ]` filter で空要素を skip する設計だと「機能的には安全」に見えるが、反復ごとに空要素が累積し配列サイズが test cycle と比例して肥大する silent failure。完全削除を保証する明示的再構築 helper (`for d in "${arr[@]:-}"; do [ -n "$d" ] && [ "$d" != "$target" ] && new+=("$d"); done` + `${#new[@]}` 分岐) で `set -u` 安全に対応。PR #991 (Issue #986) で 10 反復後 10 → 0 累積を実測、shellcheck カスタムルール / CI grep で `[@]/$` ban する構造的予防が推奨。 | 2026-05-16T13:30:00+09:00 | high |
 | [累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable](pages/heuristics/accumulated-pr-three-cycle-convergence.md) | heuristics | PR #997 cycle 2 LOW follow-up が 3 cycle で収束した実例。cycle 1 で 2 reviewer 独立指摘が HIGH に boost、cycle 1 fix で minor drift 導入、cycle 2 で 2 階層 (主要因/補強要因) に書き直し、cycle 3 で 0 findings 収束。PR #1032 (Issue #1025) で bash semantics 版 3-cycle 連鎖収束 (drift class 横断: bash 言語仕様 → documentation pointer → numeric counter) を 2 連続再現事例として追加、shrinking cycle count 規則と「PR の規模ではなく新 SoT との対称化責務の層数が 3-cycle 連鎖の発火条件」観点を確立。 | 2026-05-17T22:44:27Z | high |
+| [Variable Rename が Sentinel Literal Contract を汚染する](pages/anti-patterns/variable-rename-contaminates-sentinel-literal-contract.md) | anti-patterns | bash 変数 rename refactor の際、downstream parser (cross-file aggregation) が grep する sentinel emit の literal token (`reason=...` / `details=...`) を変数名の延長として書き換えてしまい、sibling sites が legacy 形式を維持している間 aggregation contract が破綻する silent regression。変数 disambiguation は `${var}` interpolation 部分のみで達成し、emit の固定 literal は contract として保持する。PR #1034 (Issue #1027) cycle 1 で code-quality + error-handling 2 reviewer が独立に CRITICAL × 2 + HIGH × 3 (5 site 同根) を検出、cycle 2 fix で全 FIXED → cycle 2 review で 0 findings 収束。 | 2026-05-18T00:34:00Z | high |
 
 ## 統計
 
-- 総ページ数: 95
-- ドメイン別: patterns=36, heuristics=27, anti-patterns=32
-- 最終更新: 2026-05-17T13:40:00Z
+- 総ページ数: 96
+- ドメイン別: patterns=36, heuristics=27, anti-patterns=33
+- 最終更新: 2026-05-18T00:34:00Z

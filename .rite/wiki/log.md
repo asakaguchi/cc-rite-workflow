@@ -617,3 +617,4 @@
 
 | 2026-05-18T21:45:50+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=155, broken_refs=0 |
 | 2026-05-18T23:30:00+09:00 | ingest:skip | raw/reviews/20260518T131836Z-pr-1046.md | PR #1046 (Issue #1038) refactor(tests) review — 0 blocking findings, code-quality + test reviewer 2 名いずれも APPROVE。Severity 全 0。主観点は既存知見の確認 (Pattern consistency refactor、BRE→ERE、tempfile section-scoped assertion 置換、jq → assert 置換) で新規経験則の抽出対象なしと判断し skip。 |
+| 2026-05-18T23:35:00+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=1, missing_concept=0, unregistered_raw=156, broken_refs=0 |

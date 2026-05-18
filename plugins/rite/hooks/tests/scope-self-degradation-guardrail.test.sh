@@ -10,42 +10,36 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+# shellcheck source=_test-helpers.sh
+source "$SCRIPT_DIR/_test-helpers.sh"
+REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 BASE_FILE="$REPO_ROOT/plugins/rite/agents/_reviewer-base.md"
 
-fail_count=0
-fail_messages=()
+# section-scoped check のための tempfile
+guardrail_section_file=$(mktemp)
+trap 'rm -f "$guardrail_section_file"' EXIT
 
 # 1. Finding Quality Guardrail に Scope self-degradation chain Category が存在
-if ! grep -q "Scope self-degradation chain\|scope 自己降格" "$BASE_FILE"; then
-  fail_count=$((fail_count + 1))
-  fail_messages+=("FAIL: _reviewer-base.md missing 'Scope self-degradation chain' Guardrail category")
-fi
+assert_grep "_reviewer-base.md: 'Scope self-degradation chain' or 'scope 自己降格' Guardrail category" \
+  "$BASE_FILE" \
+  'Scope self-degradation chain|scope 自己降格'
 
 # 2. 二重 degrade パターン (severity 降格 + scope 降格 の連鎖) の記述
-if ! grep -qE "二重 degrade|severity.*scope.*degrade|severity.*降格.*scope.*降格|CRITICAL.*MEDIUM.*nit-noted" "$BASE_FILE"; then
-  fail_count=$((fail_count + 1))
-  fail_messages+=("FAIL: _reviewer-base.md missing double-degrade (severity + scope) chain example")
-fi
+assert_grep "_reviewer-base.md: double-degrade (severity + scope) chain example" \
+  "$BASE_FILE" \
+  '二重 degrade|severity.*scope.*degrade|severity.*降格.*scope.*降格|CRITICAL.*MEDIUM.*nit-noted'
 
-# 3. Finding Quality Guardrail Filter categories テーブルに Category #5 (Scope self-degradation) が
-#    存在する (テーブル内で 5 行目以降に scope 関連 entry がある)
-guardrail_section=$(awk '/## Finding Quality Guardrail/,/^## [^F]/' "$BASE_FILE")
-if ! printf '%s\n' "$guardrail_section" | grep -qE '\| 5 \|.*[Ss]cope|\| 5 \|.*scope 自己降格'; then
-  fail_count=$((fail_count + 1))
-  fail_messages+=("FAIL: Finding Quality Guardrail filter table missing Category #5 (Scope self-degradation chain)")
-fi
+# 3. Finding Quality Guardrail Filter categories テーブルに Category #5 (Scope self-degradation) が存在
+awk '/## Finding Quality Guardrail/,/^## [^F]/' "$BASE_FILE" > "$guardrail_section_file"
+assert_grep "Finding Quality Guardrail filter table: Category #5 (Scope self-degradation chain)" \
+  "$guardrail_section_file" \
+  '\| 5 \|.*[Ss]cope|\| 5 \|.*scope 自己降格'
 
 # 4. original_severity フィールド (schema 1.1.0) への参照があるか (修正方針の根拠)
-if ! grep -q 'original_severity' "$BASE_FILE"; then
-  fail_count=$((fail_count + 1))
-  fail_messages+=("FAIL: _reviewer-base.md missing reference to original_severity field (schema 1.1.0 trace)")
-fi
+assert_grep "_reviewer-base.md: original_severity field reference (schema 1.1.0 trace)" \
+  "$BASE_FILE" \
+  'original_severity'
 
-if [ "$fail_count" -gt 0 ]; then
-  printf '%s\n' "${fail_messages[@]}" >&2
-  echo "FAILED: $fail_count assertion(s) failed" >&2
+if ! print_summary "$(basename "$0")"; then
   exit 1
 fi
-
-echo "PASS: scope-self-degradation-guardrail (Finding Quality Guardrail extended for scope self-degradation chain)"

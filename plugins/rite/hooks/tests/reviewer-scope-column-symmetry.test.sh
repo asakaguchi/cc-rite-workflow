@@ -9,27 +9,21 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+# shellcheck source=_test-helpers.sh
+source "$SCRIPT_DIR/_test-helpers.sh"
+REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 AGENTS_DIR="$REPO_ROOT/plugins/rite/agents"
 
-fail_count=0
-fail_messages=()
-
-# 1. _reviewer-base.md に 5 列ヘッダーが存在することを確認
+# 1. _reviewer-base.md に 5 列ヘッダーが存在する
 base_file="$AGENTS_DIR/_reviewer-base.md"
-if [ ! -f "$base_file" ]; then
-  fail_count=$((fail_count + 1))
-  fail_messages+=("FAIL: $base_file not found")
-elif ! grep -q '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' "$base_file"; then
-  fail_count=$((fail_count + 1))
-  fail_messages+=("FAIL: _reviewer-base.md does not contain 5-column header (重要度|スコープ|ファイル:行|内容|推奨対応)")
-fi
+assert_grep "_reviewer-base.md: 5-column header (重要度|スコープ|ファイル:行|内容|推奨対応)" \
+  "$base_file" \
+  '\| 重要度 \| スコープ \| ファイル:行 \| 内容 \| 推奨対応 \|'
 
-# 2. _reviewer-base.md の旧 4 列ヘッダーがどこかに残存していないか
-if grep -qE '\| 重要度 \| ファイル:行 \| 内容 \| 推奨対応 \|' "$base_file"; then
-  fail_count=$((fail_count + 1))
-  fail_messages+=("FAIL: _reviewer-base.md still contains 4-column header (drift)")
-fi
+# 2. _reviewer-base.md の旧 4 列ヘッダーがどこかに残存していないこと
+assert_not_grep "_reviewer-base.md: 4-column header drift (must not exist)" \
+  "$base_file" \
+  '\| 重要度 \| ファイル:行 \| 内容 \| 推奨対応 \|'
 
 # 3. 13 reviewer agent の example 表が 5 列か
 reviewers=(
@@ -50,25 +44,14 @@ reviewers=(
 
 for r in "${reviewers[@]}"; do
   f="$AGENTS_DIR/$r.md"
-  if [ ! -f "$f" ]; then
-    fail_count=$((fail_count + 1))
-    fail_messages+=("FAIL: $r.md not found")
-    continue
-  fi
-  if ! grep -q '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' "$f"; then
-    fail_count=$((fail_count + 1))
-    fail_messages+=("FAIL: $r.md missing 5-column header")
-  fi
-  if grep -qE '\| 重要度 \| ファイル:行 \| 内容 \| 推奨対応 \|' "$f"; then
-    fail_count=$((fail_count + 1))
-    fail_messages+=("FAIL: $r.md still has 4-column header (drift)")
-  fi
+  assert_grep "$r.md: 5-column header present" \
+    "$f" \
+    '\| 重要度 \| スコープ \| ファイル:行 \| 内容 \| 推奨対応 \|'
+  assert_not_grep "$r.md: 4-column header drift (must not exist)" \
+    "$f" \
+    '\| 重要度 \| ファイル:行 \| 内容 \| 推奨対応 \|'
 done
 
-if [ "$fail_count" -gt 0 ]; then
-  printf '%s\n' "${fail_messages[@]}" >&2
-  echo "FAILED: $fail_count assertion(s) failed" >&2
+if ! print_summary "$(basename "$0")"; then
   exit 1
 fi
-
-echo "PASS: reviewer-scope-column-symmetry (13 reviewers + base have 5-column scope header)"

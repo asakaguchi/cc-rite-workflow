@@ -599,8 +599,8 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
         if json_commit_sha=$(jq -r '.commit_sha // empty' "$review_file_path" 2>"${json_commit_sha_err:-/dev/null}"); then
           : # jq 成功 (空 or 非空)
         else
-          jq_rc=$?
-          echo "WARNING: --review-file の commit_sha 抽出で jq が失敗 (rc=$jq_rc)" >&2
+          jq_p0_commit_sha_rc=$?
+          echo "WARNING: --review-file の commit_sha 抽出で jq が失敗 (rc=$jq_p0_commit_sha_rc)" >&2
           [ -n "$json_commit_sha_err" ] && [ -s "$json_commit_sha_err" ] && head -3 "$json_commit_sha_err" | sed 's/^/  /' >&2
           echo "[CONTEXT] REVIEW_SOURCE_STALE_CHECK_FAILED=1; reason=jq_error_on_commit_sha; priority=0" >&2
           json_commit_sha=""
@@ -675,8 +675,8 @@ if [ -z "$review_source" ]; then
         *) retry_current=$retry_raw ;;
       esac
     else
-      cat_rc=$?
-      echo "WARNING: retry state file の読取に失敗 (rc=$cat_rc, path=$retry_state_file)" >&2
+      cat_retry_state_rc=$?
+      echo "WARNING: retry state file の読取に失敗 (rc=$cat_retry_state_rc, path=$retry_state_file)" >&2
       if [ -n "$cat_err" ] && [ -s "$cat_err" ]; then
         head -3 "$cat_err" | sed 's/^/  /' >&2
       fi
@@ -884,8 +884,8 @@ if [ -z "$review_source" ]; then
           echo "  corrupted file をリネームしました: ${latest_file}${corrupt_suffix}" >&2
           echo "  対処: 内容を確認後、手動で削除するか新しい review を生成してください" >&2
         else
-          mv_rc=$?
-          echo "  WARNING: corrupted file の rename に失敗 (rc=$mv_rc)。次回 fix で同じ WARNING が再発します" >&2
+          mv_corrupt_jq_rc=$?
+          echo "  WARNING: corrupted file の rename に失敗 (rc=$mv_corrupt_jq_rc)。次回 fix で同じ WARNING が再発します" >&2
           if [ -n "$mv_err" ] && [ -s "$mv_err" ]; then
             echo "    詳細 (mv stderr):" >&2
             head -3 "$mv_err" | sed 's/^/      /' >&2
@@ -910,8 +910,8 @@ if [ -z "$review_source" ]; then
         if mv "$latest_file" "${latest_file}${corrupt_suffix}" 2>"${mv_err:-/dev/null}"; then
           echo "  schema-invalid file をリネームしました: ${latest_file}${corrupt_suffix}" >&2
         else
-          mv_rc=$?
-          echo "  WARNING: schema-invalid file の rename に失敗 (rc=$mv_rc)。次回 fix で同じ WARNING が再発します" >&2
+          mv_corrupt_schema_rc=$?
+          echo "  WARNING: schema-invalid file の rename に失敗 (rc=$mv_corrupt_schema_rc)。次回 fix で同じ WARNING が再発します" >&2
           if [ -n "$mv_err" ] && [ -s "$mv_err" ]; then
             head -3 "$mv_err" | sed 's/^/    /' >&2
           fi
@@ -980,8 +980,8 @@ if [ -z "$review_source" ]; then
             if json_commit_sha=$(jq -r '.commit_sha // empty' "$latest_file" 2>"${json_commit_sha_err:-/dev/null}"); then
               :
             else
-              jq_rc=$?
-              echo "WARNING: $latest_file の commit_sha 抽出で jq が失敗 (rc=$jq_rc)" >&2
+              jq_p2_commit_sha_rc=$?
+              echo "WARNING: $latest_file の commit_sha 抽出で jq が失敗 (rc=$jq_p2_commit_sha_rc)" >&2
               [ -n "$json_commit_sha_err" ] && [ -s "$json_commit_sha_err" ] && head -3 "$json_commit_sha_err" | sed 's/^/  /' >&2
               echo "[CONTEXT] REVIEW_SOURCE_STALE_CHECK_FAILED=1; reason=jq_error_on_commit_sha; priority=2" >&2
               json_commit_sha=""
@@ -1262,12 +1262,12 @@ if [ -f "$pr_comment_body_file" ]; then
   if pr_review_comment_body=$(cat "$pr_comment_body_file" 2>"${cat_err:-/dev/null}"); then
     :
   else
-    cat_rc=$?
-    echo "WARNING: pr_comment_body_file の cat が失敗しました (rc=$cat_rc): $pr_comment_body_file" >&2
+    cat_pr_comment_body_rc=$?
+    echo "WARNING: pr_comment_body_file の cat が失敗しました (rc=$cat_pr_comment_body_rc): $pr_comment_body_file" >&2
     [ -n "$cat_err" ] && [ -s "$cat_err" ] && head -3 "$cat_err" | sed 's/^/  /' >&2
     echo "  原因候補: permission 変更 / NFS timeout / TOCTOU truncate" >&2
     echo "  legacy Markdown parser に fallthrough します" >&2
-    echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_tempfile_read_io_error; rc=$cat_rc" >&2
+    echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_tempfile_read_io_error; rc=$cat_pr_comment_body_rc" >&2
     pr_review_comment_body=""
   fi
   [ -n "$cat_err" ] && rm -f "$cat_err"
@@ -1320,14 +1320,14 @@ raw_json=$(awk '
     }
   }
 ' <<< "$pr_review_comment_body")
-awk_rc=$?
+awk_pr_comment_raw_json_rc=$?
 # awk exit code を明示検査。
 # awk OOM / binary 異常で空出力が「Raw JSON section なし (legacy format)」と区別不能になり、
 # legacy parser が新形式コメントを garble する silent regression を防ぐ。
-if [ "$awk_rc" -ne 0 ]; then
-  echo "WARNING: PR コメントからの Raw JSON 抽出 awk が失敗 (rc=$awk_rc)" >&2
+if [ "$awk_pr_comment_raw_json_rc" -ne 0 ]; then
+  echo "WARNING: PR コメントからの Raw JSON 抽出 awk が失敗 (rc=$awk_pr_comment_raw_json_rc)" >&2
   echo "  原因候補: awk バイナリ異常 / OOM (lines[] 配列が大きすぎ) / SIGPIPE" >&2
-  echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_raw_json_awk_failed; rc=$awk_rc" >&2
+  echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_raw_json_awk_failed; rc=$awk_pr_comment_raw_json_rc" >&2
   raw_json=""
 fi
 
@@ -1405,8 +1405,8 @@ else
       if json_commit_sha=$(printf '%s' "$raw_json" | jq -r '.commit_sha // empty' 2>"${json_commit_sha_err:-/dev/null}"); then
         :
       else
-        jq_rc=$?
-        echo "WARNING: PR コメント内 Raw JSON の commit_sha 抽出で jq が失敗 (rc=$jq_rc)" >&2
+        jq_p3_commit_sha_rc=$?
+        echo "WARNING: PR コメント内 Raw JSON の commit_sha 抽出で jq が失敗 (rc=$jq_p3_commit_sha_rc)" >&2
         [ -n "$json_commit_sha_err" ] && [ -s "$json_commit_sha_err" ] && head -3 "$json_commit_sha_err" | sed 's/^/  /' >&2
         echo "[CONTEXT] REVIEW_SOURCE_STALE_CHECK_FAILED=1; reason=jq_error_on_commit_sha; priority=3" >&2
         json_commit_sha=""
@@ -1624,8 +1624,8 @@ if [ -f "$state_file" ]; then
       ''|*[!0-9]*) current=0 ;;
     esac
   else
-    cat_rc=$?
-    echo "ERROR: retry state file の読取に失敗 (rc=$cat_rc)" >&2
+    cat_p1201_state_rc=$?
+    echo "ERROR: retry state file の読取に失敗 (rc=$cat_p1201_state_rc)" >&2
     if [ -n "$cat_err" ] && [ -s "$cat_err" ]; then
       echo "  詳細 (cat stderr):" >&2
       head -3 "$cat_err" | sed 's/^/  /' >&2
@@ -4098,16 +4098,16 @@ if [[ -z "$issue_number" ]] && [ "$wm_emit_done" = "0" ]; then
     issue_number=$(printf '%s\n' "$branch_name" | sed -n 's/.*issue-\([0-9][0-9]*\).*/\1/p')
     # ブランチ名にも issue-N パターンがない場合は issue_number は空のまま (下流で WM_UPDATE_FAILED emit)
   else
-    branch_rc=$?
+    branch_show_current_rc=$?
     # pr_body_grep_io_error と同根: H-2 修正で fail-fast から soft failure に統一
     # (exit 1 は Claude のフロー制御にならず Phase 8.1 の [fix:pushed-wm-stale] 経路に
     # 流れるため、retained flag のみ emit してコミット済み fix を保護する)
-    echo "ERROR: branch 名取得 (git branch --show-current) が IO/権限エラーで失敗しました (rc=$branch_rc)" >&2
+    echo "ERROR: branch 名取得 (git branch --show-current) が IO/権限エラーで失敗しました (rc=$branch_show_current_rc)" >&2
     echo "詳細 (stderr 先頭 5 行):" >&2
     head -5 "$branch_grep_err" | sed 's/^/  /' >&2
     echo "  対処: 環境の git バイナリと権限、cwd が git repo であることを確認後、再実行してください" >&2
     echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
-    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=branch_grep_io_error; rc=$branch_rc" >&2
+    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=branch_grep_io_error; rc=$branch_show_current_rc" >&2
     # exit 1 を削除: soft failure として retained flag のみ emit
     # wm_emit_done=1 により下流の retained flag block が skip される (M-4 対応: 2 回 emit 防止)
     wm_emit_done=1
@@ -4363,13 +4363,13 @@ if [[ -n "$comment_id" ]]; then
         base_branch_first_line=$(printf '%s' "$base_branch_raw" | head -1)
         # 同上の `if ! cmd; then rc=$?` パターン bash バグ修正
         base_branch_extracted=$(printf '%s' "$base_branch_first_line" | sed 's/.*base:\s*"\?\([^"]*\)"\?/\1/' 2>"$sed_err")
-        sed_rc=$?
-        if [ "$sed_rc" -ne 0 ]; then
-          echo "ERROR: base_branch の sed 抽出が IO/binary エラーで失敗しました (rc=$sed_rc)" >&2
+        sed_extract_base_branch_rc=$?
+        if [ "$sed_extract_base_branch_rc" -ne 0 ]; then
+          echo "ERROR: base_branch の sed 抽出が IO/binary エラーで失敗しました (rc=$sed_extract_base_branch_rc)" >&2
           echo "  詳細: $(cat "$sed_err")" >&2
           echo "  対処: 環境の sed バイナリと権限を確認後、再実行してください" >&2
           echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-          echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=sed_extract_base_branch_failed; rc=$sed_rc; issue_number={issue_number}" >&2
+          echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=sed_extract_base_branch_failed; rc=$sed_extract_base_branch_rc; issue_number={issue_number}" >&2
           rm -f "$sed_err" "$base_branch_grep_err"
           exit 1
         fi
@@ -4924,7 +4924,7 @@ if ! commit_err=$(mktemp /tmp/rite-wiki-commit-err-XXXXXX 2>/dev/null); then
   echo "$fallback_sentinel" >&2
   commit_err="/dev/null"
 fi
-commit_rc=0
+wiki_ingest_commit_rc=0
 if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh 2>"${commit_err}"); then
   # Success — the script prints exactly one status line to stdout, e.g.
   #   [wiki-ingest-commit] committed=1; branch=wiki; head=<sha>; push=ok
@@ -4932,16 +4932,16 @@ if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh 2>"${comm
   echo "$commit_out"
   echo "[CONTEXT] WIKI_INGEST_DONE=1; pr={pr_number}; type=fixes"
 else
-  commit_rc=$?
+  wiki_ingest_commit_rc=$?
   if [ "$commit_err" != "/dev/null" ] && [ -s "$commit_err" ]; then
     head -5 "$commit_err" | sed 's/^/  /' >&2
   fi
   # exit 2 は legitimate skip (wiki disabled / wiki branch missing).
   # exit 4 = commit landed but push failed; emit dedicated
   # wiki_ingest_push_failed sentinel.
-  case "$commit_rc" in
+  case "$wiki_ingest_commit_rc" in
     2)
-      echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing; exit_code=$commit_rc"
+      echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing; exit_code=$wiki_ingest_commit_rc"
       emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
       if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
           --type wiki_ingest_skipped \
@@ -4963,7 +4963,7 @@ else
       ;;
     4)
       # CRITICAL #1: commit landed locally, push failed. Emit dedicated sentinel.
-      echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; exit_code=$commit_rc"
+      echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; exit_code=$wiki_ingest_commit_rc"
       if [ -n "${commit_out:-}" ]; then
         echo "$commit_out"
       fi
@@ -4986,11 +4986,11 @@ else
       fi
       ;;
     *)
-      echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=commit_rc_$commit_rc; exit_code=$commit_rc"
+      echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=commit_rc_$wiki_ingest_commit_rc; exit_code=$wiki_ingest_commit_rc"
       emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
       if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
           --type wiki_ingest_failed \
-          --details "wiki-ingest-commit.sh exited $commit_rc during pr/fix.md Phase 4.6.W.2" \
+          --details "wiki-ingest-commit.sh exited $wiki_ingest_commit_rc during pr/fix.md Phase 4.6.W.2" \
           --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
         if [ -n "$sentinel_line" ]; then
           echo "$sentinel_line"
@@ -4999,7 +4999,7 @@ else
       else
         # HIGH #3 — fallback_sentinel emit (trigger Step 3 と対称).
         fallback_iter="{pr_number}-$(date +%s)"
-        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_failed commit_rc=$commit_rc; iteration_id=$fallback_iter"
+        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_failed commit_rc=$wiki_ingest_commit_rc; iteration_id=$fallback_iter"
         echo "$fallback_sentinel"
         echo "$fallback_sentinel" >&2
         echo "WARNING: workflow-incident-emit.sh (wiki_ingest_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
@@ -5130,7 +5130,7 @@ hook_err=$(mktemp /tmp/rite-fix-hook-err-XXXXXX) || {
   hook_err=""
 }
 if [ -n "$hook_err" ]; then
-  # 旧 `if ! cmd; then hook_rc=$?` パターンは bash 仕様上 `$?` が常に 0 を返す。
+  # 旧 `if ! cmd; then hook_wm_update_rc=$?` パターンは bash 仕様上 `$?` が常に 0 を返す。
   # `if cmd; then :; else rc=$?; fi` の else 節形式に切り替えて hook 自身の exit code を正しく取得する。
   if WM_SOURCE="fix" \
       WM_PHASE="phase5_post_fix" \
@@ -5141,16 +5141,16 @@ if [ -n "$hook_err" ]; then
       bash {plugin_root}/hooks/local-wm-update.sh 2>"$hook_err"; then
     : # success
   else
-    hook_rc=$?
+    hook_wm_update_rc=$?
     # exact phrase pattern を採用する (旧 `lock|contention|busy` は permission denied /
     # device busy / resource busy 等を silent suppress する欠陥パターン。
     # canonical helper を common-error-handling.md#hook-lock-contention-classification-canonical で定義)
     if grep -qiE '(file is locked|lock contention|resource busy)' "$hook_err"; then
       # lock failure (best-effort skip 該当): WARNING のみで継続
-      echo "WARNING: local work memory lock contention (best-effort skip, rc=$hook_rc)" >&2
+      echo "WARNING: local work memory lock contention (best-effort skip, rc=$hook_wm_update_rc)" >&2
     else
       # 非 lock failure: hook 自体の障害 (script 不在 / permission / syntax / internal error)
-      echo "WARNING: local work memory update hook failed (non-lock failure, rc=$hook_rc):" >&2
+      echo "WARNING: local work memory update hook failed (non-lock failure, rc=$hook_wm_update_rc):" >&2
       head -5 "$hook_err" | sed 's/^/  /' >&2
       echo "  対処: hooks/local-wm-update.sh の存在 / 実行権限 / 内容を確認してください" >&2
       echo "  影響: local .rite-work-memory/issue-*.md が GitHub comment 側と一時的に不整合になる (E2E flow は続行)" >&2

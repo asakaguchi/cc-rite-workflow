@@ -215,25 +215,26 @@ scope の決定は **必ず以下の順序** で行う。順序逆転は finding
    └─ Revert test PASS (本 PR diff 由来) → step 2 へ
 
 2. Severity ベースのデフォルト assignment
-   ├─ CRITICAL / HIGH → デフォルト `current-pr` 強制 (severity × scope 禁止セルにより降格不可)
-   ├─ MEDIUM → デフォルト `current-pr` (LOW-MEDIUM 寄り case のみ nit-noted へ降格可能、`nit_reason` 必須)
-   ├─ LOW-MEDIUM → デフォルト `nit-noted` (現 PR 中で 1 行修正で完了する localized 問題なら current-pr も可)
-   └─ LOW → デフォルト `nit-noted` (本 PR が文体修正のみの場合 current-pr も可、follow-up は禁止)
+   ├─ CRITICAL → デフォルト `current-pr` 強制 (許容: `current-pr` のみ; `follow-up` / `nit-noted` 禁止)
+   ├─ HIGH → デフォルト `current-pr` (許容: `current-pr` / `follow-up` — 本 PR scope 外 deferred として `follow-up` 可、ただし `nit-noted` は禁止)
+   ├─ MEDIUM → デフォルト `current-pr` (許容: `current-pr` / `follow-up` / `nit-noted`; LOW-MEDIUM 寄り case のみ nit-noted へ降格可能、`nit_reason` 必須)
+   ├─ LOW-MEDIUM → デフォルト `nit-noted` (許容: 全 3 値; 1 行修正で完了する localized 問題なら current-pr、本 PR scope 外の改善なら follow-up)
+   └─ LOW → デフォルト `nit-noted` (許容: `current-pr` (本 PR が文体修正のみの場合) / `nit-noted`; `follow-up` は禁止)
 
 3. Finding Quality Guardrail 通過後の自己降格 check
    └─ reviewer 自身が「好み寄り (bikeshedding)」と認める場合のみ `nit-noted` へ降格 (severity 自己降格との二重 degrade は scope 自己降格パターンとして Guardrail で警告)
 ```
 
-### Severity × Scope 禁止セル (FAIL invariant)
+### Severity × Scope 禁止セル (FAIL invariant 該当のみ抜粋)
 
-以下の組み合わせは **schema 1.1.0 cross-field invariant #4 で FAIL** (jq invariant で阻止)。reviewer は本セルに該当する finding を **絶対に出力してはならない**:
+以下の組み合わせは **schema 1.1.0 cross-field invariant #4 で FAIL** (jq invariant で機械的阻止)。reviewer は本セルに該当する finding を **絶対に出力してはならない**:
 
-| Severity | 禁止 scope | 理由 |
-|----------|----------|------|
+| Severity | 禁止 scope (FAIL invariant) | 理由 |
+|----------|---------------------------|------|
 | CRITICAL | `follow-up` / `nit-noted` | blocker 級の指摘を deferred / 受け流しできない |
 | HIGH | `nit-noted` | 同上 (`follow-up` は許容 — 本 PR 外の deferred は可) |
 
-完全な matrix は [`severity-levels.md` §Severity × Scope Matrix](../references/severity-levels.md#severity--scope-matrix) を参照。
+> **Note**: 上記は **FAIL invariant 該当の禁止セルのみ** を抜粋。これに加えて **LOW × `follow-up`** (jq invariant 非該当だが意味論的禁止: LOW 級は本 PR で修正するか nit として受け流すかの二択、別 Issue 化は冗長) も禁止セルに含まれる。**LOW × follow-up を含む完全な matrix** は [`severity-levels.md` §Severity × Scope Matrix](../references/severity-levels.md#severity--scope-matrix) を参照。
 
 ### Hypothetical Exception カテゴリの nit-noted 禁止
 
@@ -246,7 +247,7 @@ scope の決定は **必ず以下の順序** で行う。順序逆転は finding
 | `devops.md` | deploy / rollback / infra path は exercise 頻度が低い。「nit」受け流しが本番障害時に silent failure として顕在化 |
 | `dependencies.md` | CVE / supply chain / license は「いつ起きるか」が攻撃者依存。nit 化は許容できないリスクモデル |
 
-**実装契機**: 4 reviewer agent ファイル (`security-reviewer.md` / `database-reviewer.md` / `devops-reviewer.md` / `dependencies-reviewer.md`) に `scope == "nit-noted"` の出力を禁止する記述を追加し、後続の Sub-Issue (#1018 = M2 scope=nit-noted 受け流し経路) の hook 層で機械的に reject する (CRITICAL/HIGH × nit-noted の FAIL invariant と同質の防衛層)。reviewer が「nit として受け流したい」と判断した finding は、本 4 reviewer では `follow-up` (別 Issue 化) または `current-pr` (本 PR で修正) のいずれかに必ず assign し直すこと。
+**実装契機** (本 PR scope 外、後続 Sub-Issue (#1018) で実施予定): 4 agent ファイル (`security-reviewer.md` / `database-reviewer.md` / `devops-reviewer.md` / `dependencies-reviewer.md` — agent file naming) または対応 skill ファイル (`security.md` / `database.md` / `devops.md` / `dependencies.md` — skill file naming、`plugins/rite/skills/reviewers/` 配下) に `scope == "nit-noted"` の出力を禁止する記述を追加し、Sub-Issue (#1018 = M2 scope=nit-noted 受け流し経路) の hook 層で機械的に reject する (CRITICAL/HIGH × nit-noted の FAIL invariant と同質の防衛層)。**本 PR (#1017) では本 reference のみを記述し、4 reviewer ファイル本体への記述追加と hook enforcement は #1018 で行う**。reviewer が「nit として受け流したい」と判断した finding は、本 4 reviewer では `follow-up` (別 Issue 化) または `current-pr` (本 PR で修正) のいずれかに必ず assign し直すこと。
 
 ### Likelihood-Evidence との関係
 
@@ -371,7 +372,7 @@ This guardrail implements Quality Signal 4 of the four review-fix loop quality s
 | 2 | **Defensive code suggestion** | "念のため null check を追加", "想定外の値に備えて default を返す", "型的に到達不可能な else に throw を追加" | Filter **unless** the reviewer identifies a concrete call site that can reach the undefended branch. Suggestions based on "just in case" without a demonstrable call path → filter |
 | 3 | **Hypothetical without entry point** | "もし悪意あるユーザーが ... できたら", "もし race condition が起きたら" | Already governed by Observed Likelihood Gate; here this guardrail adds a belt-and-suspenders filter. If the finding has no `Likelihood-Evidence:` line and the reviewer is not in an Exception Category → filter |
 | 4 | **Style-only without rule** | "コメント文体を揃える", "ファイル末尾改行", "import 並び替え" unless enforced by a configured linter | Filter |
-| 5 | **Scope self-degradation chain** | reviewer が CRITICAL/HIGH と判定した finding を severity 自己降格 (CRITICAL → MEDIUM) と同時に scope 自己降格 (current-pr → nit-noted) させる二重 degrade パターン。例: CRITICAL → MEDIUM (severity 降格) + current-pr → nit-noted (scope 降格) の連鎖。本来の severity を保ったまま `original_severity` フィールドに記録すべき (schema 1.1.0 `findings[].original_severity` 参照) | Filter **and** warn the reviewer to either: (a) keep the original severity and use `current-pr` / `follow-up` scope, or (b) downgrade only severity (LOW-MEDIUM などへ) keeping `current-pr` scope. 二重 degrade は finding を silent suppression する経路となり review-fix loop の収束を阻害する |
+| 5 | **Scope self-degradation chain** | reviewer が CRITICAL/HIGH と判定した finding を severity 自己降格 (CRITICAL → MEDIUM) と同時に scope 自己降格 (current-pr → nit-noted) させる二重 degrade パターン。例: CRITICAL → MEDIUM (severity 降格) + current-pr → nit-noted (scope 降格) の連鎖。本来の severity を保ったまま `original_severity` フィールドに記録すべき (schema 1.1.0 `findings[].original_severity` 参照) | Filter **and** warn the reviewer to either: (a) keep the original severity and use `current-pr` / `follow-up` scope, or (b) downgrade only severity (LOW-MEDIUM などへ) keeping `current-pr` scope. **CRITICAL/HIGH を本 Category #5 で filter した場合、reviewer は強制的に [Reviewer self-degradation → Signal 4](#reviewer-self-degradation--signal-4) の `Status: degraded` を emit すること** (Signal 4 強制発火 — silent suppression 防止)。二重 degrade は finding を silent suppression する経路となり review-fix loop の収束を阻害するため、本 Filter は完全消去ではなく **warn + escalation** を意図する設計上の対称性を担保する |
 
 ### Why these are filtered
 

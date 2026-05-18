@@ -2696,7 +2696,7 @@ The rite review result comment (output format of `/rite:pr:review`) has the foll
 3. Parse the table rows within each section (split by `|`)
 4. Determine column count by header row to support both schema 1.0 (4-column) and 1.1.0 (5-column):
    - **5-column (schema 1.1.0)**: severity (column 1), **scope (column 2)**, file:line (column 3), content (column 4), recommended action (column 5)
-   - **4-column (schema 1.0 backward compat)**: severity (column 1), file:line (column 2), content (column 3), recommended action (column 4) — `scope` is back-filled from severity using the default mapping in [`severity-levels.md` §Severity × Scope Matrix > 自動 default mapping](../../references/severity-levels.md#severity--scope-matrix)
+   - **4-column (schema 1.0 backward compat)**: severity (column 1), file:line (column 2), content (column 3), recommended action (column 4) — `scope` is back-filled from severity using the default mapping in [`severity-levels.md` §自動 default mapping](../../references/severity-levels.md#自動-default-mapping-schema-10-後方互換)
 5. Retain as `severity_map` (consolidating findings from all reviewers):
    ```
    severity_map = {

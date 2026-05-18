@@ -70,7 +70,9 @@
 #     **bare alias (suffix なしの略称、例: `tech-writer`, `code-quality`) は
 #     description 内自然語と誤マッチするため追加しないこと。canonical 形式
 #     (`-reviewer` / `-hunter` / `-analyzer` suffix) のみを allow-list に含める**
-#   - dedup key は (severity, file_line[:120], col3[:100], cycle) のタプル。
+#   - dedup key は (severity, file_line[:120], col4[:100], cycle) のタプル。
+#     scope (m.group(2)) は dedup key に含めない (同一 finding が cycle 間で scope 自己降格された場合に
+#     別 finding 扱いとなるのを避けるため)。
 #     再発 finding (異なる cycle で同一指摘が再出現) は cycle が key に含まれる
 #     ため dedup されず保持される (Phase D 用途では再発も重要 signal)
 
@@ -256,7 +258,7 @@ def collect_text(node):
     return bag
 
 def is_reviewer_column(text):
-    """col3 が reviewer 列か description 列かを allow-list で判定。
+    """reviewer/description 列を allow-list で判定する (列番号非依存)。
     `prompt-engineer` のような description 内の自然語による誤マッチを防ぐため、
     `engineer` 単独ではマッチさせず、必ず reviewer suffix (`-reviewer`) または
     既知の reviewer 略称 (`silent-failure-hunter` 等) を必須とする。"""

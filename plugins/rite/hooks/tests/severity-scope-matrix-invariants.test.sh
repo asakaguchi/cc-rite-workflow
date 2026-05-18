@@ -52,10 +52,14 @@ if ! printf '%s\n' "$matrix_section" | grep -qE "LOW.*\`follow-up\`|\`follow-up\
   fail_messages+=("FAIL: matrix section missing LOW × follow-up 禁止 cell")
 fi
 
-# 6. schema 1.1.0 Cross-field invariant #4 (CRITICAL/HIGH × nit-noted FAIL) と整合
-if ! grep -q 'severity ∈ {CRITICAL, HIGH}.*scope.*"nit-noted".*禁止\|severity.*CRITICAL.*HIGH.*nit-noted.*FAIL' "$SCHEMA_FILE"; then
+# 6. schema 1.1.0 Cross-field invariant #4 (CRITICAL/HIGH × nit-noted FAIL) の本体定義を確認
+#    Cross-field invariants セクション内に絞った section-scoped grep で、
+#    L127 等の forward-pointer 記述による false-pass を排除する。
+#    番号付き定義 "4. **`severity ∈ {CRITICAL, HIGH}` ∧ `scope == \"nit-noted\"` 禁止**" を anchor とする。
+cross_field_section=$(awk '/^### Cross-field invariants/,/^## /' "$SCHEMA_FILE")
+if ! printf '%s\n' "$cross_field_section" | grep -qE '^4\.\s+\*\*.*severity.*CRITICAL.*HIGH.*scope.*nit-noted.*禁止'; then
   fail_count=$((fail_count + 1))
-  fail_messages+=("FAIL: schema 1.1.0 missing Cross-field invariant #4 (CRITICAL/HIGH × nit-noted FAIL)")
+  fail_messages+=("FAIL: schema 1.1.0 Cross-field invariants section missing item #4 body definition (CRITICAL/HIGH × nit-noted FAIL invariant)")
 fi
 
 # 7. jq invariant 実行: 禁止セル CRITICAL × nit-noted を含む JSON が FAIL する

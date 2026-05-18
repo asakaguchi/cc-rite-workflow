@@ -2,8 +2,12 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-18T09:00:00Z"
+updated: "2026-05-18T17:30:00Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260518T161338Z-pr-1049.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260518T164053Z-pr-1049.md"
   - type: "reviews"
     ref: "raw/reviews/20260518T075850Z-pr-1043.md"
   - type: "reviews"
@@ -673,6 +677,25 @@ PR #1032 (Issue #1025 — `plugins/rite/commands/pr/fix.md` L797-L802 の `mktem
 
 (4) **Comment 内 numeric reference の 2 段階 drift 防御契約** — cycle 2 で hardcoded line-number reference を grep anchor / semantic identifier に置換した直後、cycle 3 で別 class の numeric reference (`N/M sites` 形式の prose counter) が同じ comment block に新規導入された。**「numeric reference の drift 源は line-number だけではない」** 観点を追加: hardcoded line-number → semantic anchor 化 (1 段階目) に加え、prose counter (`N/M sites` / `24/25 サイトで唯一の非対称`) → 相対 semantic 表現 (`他の X と同じ pattern` / `この経路を含めた全 X site で対称`) 化 (2 段階目) の **2 段階置換** が necessary。1 段階目だけでは同じ class の別 token が新規 introduce される経路がある (本 PR cycle 2 → cycle 3 で実測)。
 
+### Helper file 内 test coverage 対称性 contract (PR #1049 cycle 1-2、累積 36 回目)
+
+PR #1049 (Issue #1047 — `plugins/rite/hooks/tests/_test-helpers.sh` への新規 `assert_grep_in_section` helper 追加 + 3 caller test ファイル T-2/T-3/T-4 の API 移行) は、Asymmetric Fix Transcription の **新 scope** として **「同一 helper file 内の他関数全てが self-test を持つのに、新規追加 helper のみ self-test 欠落」** という test coverage symmetry contract の欠如を、3 reviewer 独立合意 HIGH で実測した事例。1 cycle で structural fix が収束:
+
+- **Cycle 1 (HIGH × 1, MEDIUM × 1, LOW × 1)**: test-reviewer / code-quality-reviewer / error-handling-reviewer の 3 reviewer が独立検出。
+  - **HIGH (3 reviewer 合意 — helper test coverage 対称性欠落)**: `_test-helpers.sh` 内の既存 helper (`assert_grep` / `assert_not_grep` / `make_sandbox` / `make_plain_sandbox` 等) は **全て self-test (`_test-helpers.test.sh`) を持つ**のに、新規追加 `assert_grep_in_section` のみ self-test 欠落のまま merge 直前。helper 追加 PR の **同 helper file 内 test coverage 対称性** が pre-condition gate として明文化されておらず、3 reviewer が independent grep で「sibling helpers 全件に対応 TC が存在する」事実を確認して cross-validated detection に到達。
+  - **MEDIUM (awk silent swallow による 5 failure mode 混同)**: helper 内部の `awk '/start/, /end/' "$file" > "$section_file"` 経路で awk の exit code を捕捉せず、syntax error / IO error / pattern not found / empty range が **すべて空 section file** に縮退し、後続の `assert_grep` が「pattern not found」を返す。これにより operator から見た 5 failure mode (file-missing / mktemp-fail / awk-fail / empty-section / pattern-not-found) が **診断不能なまま単一エラーメッセージに収束** する silent fallback パターン。Wiki 経験則「[mktemp 失敗は silent 握り潰さず WARNING を可視化する](../patterns/mktemp-failure-surface-warning.md)」と同型の「成功経路と区別不能な silent fallback」class で、本 PR で awk 経路に一般化拡張された。
+  - **LOW (2 reviewer — docstring-実装 drift)**: helper docstring 内 `mktemp -d` typo (実装は `mktemp` でディレクトリ不要)、`self-cleans on EXIT` overstatement (実装は trap chain で正確には reload-safe ではない)。1 文字違い / 言葉の overstatement は通常の review 注意散漫 zone で取り逃しが起きやすい。
+- **Cycle 1 fix (TC-12 self-test 追加 + awk WARNING 構造 + docstring sync)**: `if !` で awk wrap + stderr tempfile 退避 + `[ ! -s ]` 空 section guard の **3 点セット** で 5 failure mode を診断レベルで区別可能化。docstring は実装と byte 同期化。
+- **Cycle 2 mergeable (0 finding 1 cycle convergence)**: test / code-quality / error-handling の 3 reviewer 独立に「TC-12 が helper sibling 群と対称配置」「awk 5 failure mode が WARNING 経路で診断可能」「docstring drift 解消」を verify、推奨事項 3 件 (boundary 2 + actionable 1) はすべて scope 外として user 取り下げ。
+
+**累積 36 回目の独自観点**:
+
+(1) **Helper file 内 test coverage 対称性は pre-condition gate として確立すべき contract** — 既存の Asymmetric Fix Transcription 適用範囲 (符号化、commit message、symbol enumeration、4-site sweep 等) に加え、**「test fixture / test helper の新規追加時、同 file 内 sibling 全件と test coverage 構造の対称性を持つこと」** を独立した contract layer として識別。本 contract は 3 reviewer の cross-validation で initial detection に到達した HIGH 事例として強い再現性指標を持ち、helper 追加 PR の **Issue 本文 / PR description の checklist** に「sibling helper 全件の self-test 存在を grep で verify 済」を明示要求することで構造的予防可能。
+
+(2) **「成功経路と区別不能な silent fallback」class の awk 経路への一般化** — Wiki 経験則「[mktemp 失敗は silent 握り潰さず WARNING を可視化する](../patterns/mktemp-failure-surface-warning.md)」が PR #548 / PR #550 で確立した「rc 失敗を silent 握り潰さず WARNING で surface する」原則は、mktemp / git rev-parse / rm に続き awk 経路にも適用可能であることを本 PR cycle 1 fix で実測。`if ! awk ... > "$tmpfile" 2>"$awk_err"; then WARNING + head awk_err + [CONTEXT]; tmpfile=""; fi` + 空 section guard の 3 点セットが canonical pattern として確立。同 class の他 silent fallback 経路 (sed / cut / sort 等) でも同じ pattern が適用可能で、helper layer での「awk/sed/cut 等の text manipulation 失敗を silent 握り潰さない」原則として一般化される。
+
+(3) **3 reviewer cross-validation での HIGH initial detection の再現性** — 累積 30 回目 (PR #984) で「4 reviewer 全員 0 finding 1 cycle merge」、累積 31 回目 (PR #992) で「test + code-quality reviewer の HIGH cross-validation」など、複数 reviewer の独立検出が高 severity finding の confidence boost を生む pattern が累積 36 回目でも再現。本 PR の HIGH は test / code-quality / error-handling の **3 reviewer 並列レビューで全員 grep evidence 付き独立検出** に到達したため、helper test coverage 対称性は仮説段階を超えて contract layer に昇格する根拠を持つ。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -774,3 +797,6 @@ PR #1032 (Issue #1025 — `plugins/rite/commands/pr/fix.md` L797-L802 の `mktem
 - [PR #1032 cycle 3 fix (累積 34 回目の numeric counter drift 先回り対応 cycle 3 — cycle 2 で hardcoded line-number → semantic anchor 化を decision として宣言したにも関わらず、同じ comment block に新たな numeric counter (`fix.md 内 24/25 site と pattern 一致`) を追加する第 2 段階 drift を本 fix で先回り対応し相対 semantic 表現 (`他の ... と同じ pattern`) に置換。**Comment 内 numeric reference の 2 段階 drift 防御契約** を確立)](../../raw/fixes/20260517T222829Z-pr-1032.md)
 - [PR #1043 cycle 1 review (累積 35 回目相当の起点: aggregate-recommendation-label-evasion 対策 meta-PR が「禁止 phrase 列挙」を canonical 4 phrase / subset 2-3 phrase で 8 箇所 drift させた self-referential failure mode。Sentinel Visibility Rule violation (CRITICAL: `${candidate_count}` 変数未定義経路) と Self-meta drift (legacy `recommendation_issue_candidates` vs 新 `candidate_count` の semantic 不一致による sentinel emit と gate condition の混在) を含む 4 軸並行発火)](../../raw/reviews/20260518T075850Z-pr-1043.md)
 - [PR #1043 cycle 4 mergeable + 4 cycle dogfooding lessons (累積 35 回目相当の構造的収束: cycle 1-3 で「deprecate + 残置」戦略 (legacy field 温存) を採用したことで Recursive Recurrence in Fix Layer が連続 3 回再発、cycle 4 で legacy field 完全削除 + disambiguation note 簡素化により構造的閉塞を実現。全 findings 18→14→4→0 / CRITICAL+HIGH 7→3→2→0 の shrinking-cycle。**「完全削除」が「deprecate + 残置」より構造的閉塞を実現する** heuristic を確立、累積対策 PR で fix-induced drift cascade を断ち切る canonical strategy として canonical 化 [Legacy field の「deprecate + 残置」よりも「完全削除」が構造的閉塞を実現する](../heuristics/complete-deletion-over-deprecation-for-structural-closure.md))](../../raw/reviews/20260518T084056Z-pr-1043-cycle4-mergeable.md)
+- [PR #1049 cycle 1 review (累積 36 回目の起点: `_test-helpers.sh` への新規 `assert_grep_in_section` helper 追加 PR で **同一 helper file 内の sibling helper 全件が self-test を持つのに新規 helper のみ self-test 欠落** を test / code-quality / error-handling の 3 reviewer 独立合意 HIGH で検出。helper test coverage 対称性 contract が pre-condition gate として欠落していたことを実測。加えて MEDIUM (awk silent swallow による 5 failure mode 混同) + LOW (docstring-実装 drift 2 reviewer) が並行発火)](../../raw/reviews/20260518T161338Z-pr-1049.md)
+- [PR #1049 cycle 1 fix (TC-12 self-test 追加で helper sibling 対称性 contract を満たし、`if !` awk wrap + stderr tempfile 退避 + `[ ! -s ]` 空 section guard の 3 点セットで 5 failure mode を診断レベルで区別可能化、docstring を実装と byte 同期。Wiki 経験則「[mktemp 失敗は silent 握り潰さず WARNING を可視化する](../patterns/mktemp-failure-surface-warning.md)」の awk 経路への一般化を実装、3 reviewer 全員 verify で 0 finding mergeable に到達)](../../raw/fixes/20260518T164053Z-pr-1049.md)
+- [PR #1049 cycle 2 re-review (累積 36 回目の 1 cycle convergence: test / code-quality / error-handling 3 reviewer 並列 re-review で全件 FIXED 判定 (CRITICAL/HIGH/MEDIUM 0 件)、推奨事項 3 件 (boundary 2 + actionable 1) は scope 外として user 取り下げ。error-handling reviewer による「自身の MEDIUM 指摘の FIXED verification」が review-fix-verify 3-cycle 標準 pattern に従って収束)](../../raw/reviews/20260518T165729Z-pr-1049-cycle2.md)

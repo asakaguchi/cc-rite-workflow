@@ -57,6 +57,42 @@ All reviewers share these Few-shot examples to calibrate finding quality. Use th
 
 **Why this is a good finding:** Identified a real contradiction by cross-referencing multiple documents, explained the downstream impact on agent behavior, provided specific resolution options.
 
+### Example 4: Code Quality — Pre-existing Duplication Outside PR Scope (follow-up)
+
+**Investigation process:**
+
+1. Reviewed diff: new helper `formatOrderSummary()` added in `src/services/order.ts:200`
+2. While reading the surrounding file, noticed three sibling helpers (`formatLineItems()` at `:80`, `formatTaxBreakdown()` at `:120`, `formatShippingDetails()` at `:160`) duplicate the same currency-parsing block (5 lines each, identical logic)
+3. Verified the duplication is **pre-existing**: `git blame` shows these three helpers landed in unrelated PRs months ago, untouched by the current diff
+4. Checked whether the PR's new helper introduces a 4th copy: it does NOT — the new code uses a shared `Money` helper from `src/utils/money.ts:30`
+5. Assessed extraction effort: a proper DRY refactor would touch all three sibling functions, require new unit tests, and likely conflict with two other in-flight PRs that edit the same file (`gh pr list --state open --search "order.ts"` shows #1234 and #1240)
+
+**Finding:**
+
+| Severity | Scope | File:Line | Issue | Recommendation |
+|----------|-------|-----------|-------|----------------|
+| MEDIUM | follow-up | `src/services/order.ts:80,120,160` | Three sibling helpers (`formatLineItems`, `formatTaxBreakdown`, `formatShippingDetails`) duplicate the same 5-line currency-parsing block. The current PR's new helper already uses the shared `Money` utility (`src/utils/money.ts:30`) and does NOT add a 4th copy, so the duplication is pre-existing and not introduced by this PR. Refactoring would touch 3 functions, require new tests, and conflict with in-flight PRs (#1234, #1240). | Track as a separate Issue: extract the currency-parsing block into `src/utils/money.ts` and migrate the three sibling helpers. Coordinate with #1234 / #1240 to avoid merge conflicts. |
+
+**Why this is a good finding:** The duplication is real and worth tracking (3 sibling sites, identical logic), but the scope of a proper fix exceeds the current PR's diff and would create coordination overhead with two other open PRs. Reporting as `follow-up` honors the Severity × Scope Matrix rule that MEDIUM-class refactor opportunities outside the current diff belong in a separate Issue rather than being deferred silently. The investigation explicitly verifies the duplication is pre-existing and that the current PR does NOT add a 4th copy — this rules out the alternative reading that the PR introduced the problem (which would have made it `current-pr`).
+
+### Example 5: Frontend — Localized Style Inconsistency (nit-noted)
+
+**Investigation process:**
+
+1. Reviewed diff: three new React components added under `src/components/dashboard/`
+2. Noticed style prop inconsistency: `Card.tsx:18` uses `style={{ padding: 12 }}` (numeric, React treats as `px`) while the sibling `Panel.tsx:22` (added in the same PR) uses `style={{ padding: '12px' }}` (string with explicit unit)
+3. Verified rendered output is identical: React's style prop converts numeric values to px for known properties — no behavioral difference
+4. Checked codebase convention: `Grep "style=\\{\\{" src/components/` returns 47 matches with mixed usage — 28 numeric, 19 string. No linting rule enforces either form
+5. Assessed impact: bounded to the two adjacent component files in this PR; no runtime, accessibility, or maintainability cost beyond the visual inconsistency in the source
+
+**Finding:**
+
+| Severity | Scope | File:Line | Issue | Recommendation |
+|----------|-------|-----------|-------|----------------|
+| LOW | nit-noted | `src/components/dashboard/Card.tsx:18`, `Panel.tsx:22` | Style prop unit inconsistency within the same PR: `Card.tsx` uses `padding: 12` (numeric) while `Panel.tsx` uses `padding: '12px'` (string). Both produce identical output. The codebase has no linting rule on this and shows mixed usage (28 numeric vs 19 string across 47 sites). | No action required for this PR. If a future refactor adopts a project-wide convention (e.g., always-numeric for px values), unify both sites at that time. |
+
+**Why this is a good finding:** The inconsistency is real and localized to two sibling files in the same PR, but the blast radius is bounded (no runtime / accessibility / maintainability cost) and the codebase already has long-standing mixed usage with no project convention. Reporting as `nit-noted` honors the Severity × Scope Matrix rule that LOW-class style preferences with bounded blast radius are information sharing only, not actionable for this PR. The investigation rules out a stronger classification: there is no project-wide convention to enforce (would make it `current-pr`), the fix doesn't unlock a useful follow-up Issue (LOW × `follow-up` is a prohibited cell), and the impact is not zero (so it earns a mention rather than being dropped silently). The frontend reviewer is used deliberately — the four Hypothetical Exception reviewers (`security` / `database` / `devops` / `dependencies`) are prohibited from emitting `scope=nit-noted` at any severity.
+
 ## Weak Findings (Improve Before Reporting)
 
 These findings have real issues but lack the WHY or EXAMPLE that makes them actionable for the fix agent.

@@ -13,6 +13,9 @@
 #   3. if-wrap drift            — `cat <<'EOF' > "$tmpfile"` not wrapped by `if !`
 #   4. anchor drift             — markdown `[text](path#anchor)` resolving to non-existent heading
 #   5. eval-table list drift    — evaluation-order table parenthesized list vs emit
+#   6. review-result schema_version drift — `.rite/review-results/*.json` whose
+#      `.schema_version` is outside the accept list (delegates to
+#       `review-schema-version-check.sh`; Issue #1021)
 #
 # Usage:
 #   distributed-fix-drift-check.sh [--all] [--target FILE]... [--pattern N]
@@ -42,7 +45,7 @@ Usage: distributed-fix-drift-check.sh [options]
 Options:
   --all              Check the default target set (fix.md, review.md, tech-writer.md)
   --target FILE      Check FILE (repeatable). Path relative to repo root.
-  --pattern N        Only run pattern N (1-5). Default: all patterns.
+  --pattern N        Only run pattern N (1-6). Default: all patterns.
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
   --quiet            Suppress per-finding output (still exit non-zero on drift)
   -h, --help         Show this help
@@ -98,13 +101,26 @@ if [ "${#TARGETS[@]}" -gt 0 ]; then
 fi
 
 if [ "${#TARGETS[@]}" -eq 0 ]; then
-  echo "ERROR: no targets specified (use --all or --target FILE)" >&2
-  usage >&2
-  exit 2
+  # Pattern 6 (review-result JSON drift) scans .rite/review-results/ on its own
+  # and does not consume the TARGETS list. Allow `--pattern 6` without targets.
+  if [ "$PATTERN_FILTER" != "6" ]; then
+    echo "ERROR: no targets specified (use --all or --target FILE)" >&2
+    usage >&2
+    exit 2
+  fi
 fi
 
 DRIFT_COUNT_FILE="$(mktemp)" || { echo "ERROR: mktemp failed" >&2; exit 2; }
-trap 'rm -f "$DRIFT_COUNT_FILE"' EXIT
+# Pattern 6 (Issue #1021) で使用する stderr capture tempfile を script-level で宣言し、
+# 統合 trap で signal interrupt 時の orphan を防ぐ (F-08)。
+PATTERN6_STDERR=""
+_drift_check_cleanup() {
+  rm -f "${DRIFT_COUNT_FILE:-}" "${PATTERN6_STDERR:-}"
+}
+trap 'rc=$?; _drift_check_cleanup; exit $rc' EXIT
+trap '_drift_check_cleanup; exit 130' INT
+trap '_drift_check_cleanup; exit 143' TERM
+trap '_drift_check_cleanup; exit 129' HUP
 echo 0 > "$DRIFT_COUNT_FILE"
 report() {
   # report PATTERN FILE LINE MESSAGE
@@ -295,6 +311,51 @@ for file in "${TARGETS[@]}"; do
   run_pattern 4 && check_pattern_4 "$file"
   run_pattern 5 && check_pattern_5 "$file"
 done
+
+# ----- Pattern 6: review-result schema_version drift (Issue #1021) -----------
+# Delegates to review-schema-version-check.sh, which checks .rite/review-results/*.json
+# against the accept list ("1.0.0" / "1.0" / "1.1.0"). Runs once per invocation
+# (independent of the TARGETS loop above, since the JSON files are scanned by
+# the delegate). Captures stderr to surface drift details via report().
+#
+# Issue #1021 F-03/F-08 fix: delegate を 1 回のみ invoke し (旧実装は --quiet + verbose
+# の 2 回 invoke で I/O 2 倍化)、`|| true` で exit code を握りつぶす代わりに rc を明示
+# capture して unexpected exit code を log に残す。`PATTERN6_STDERR` は script-level
+# 変数で trap (上記) が EXIT/INT/TERM/HUP 全てで cleanup する。
+check_pattern_6() {
+  local checker_script="$REPO_ROOT/plugins/rite/hooks/scripts/review-schema-version-check.sh"
+  if [ ! -x "$checker_script" ]; then
+    log "Pattern 6 skipped: review-schema-version-check.sh not found / not executable"
+    return 0
+  fi
+  PATTERN6_STDERR=$(mktemp) || { log "Pattern 6 skipped: mktemp failed"; return 0; }
+  local rc=0
+  # 1 回のみ invoke: --quiet なしで stderr に drift 行を出力させ、後段で parse する。
+  bash "$checker_script" --all --repo-root "$REPO_ROOT" 2>"$PATTERN6_STDERR" || rc=$?
+  if [ "$rc" -eq 1 ]; then
+    # rc=1: drift detected. stderr の `[CONTEXT] REVIEW_SCHEMA_VERSION_DRIFT=1` 行を parse。
+    while IFS= read -r drift_line; do
+      [ -z "$drift_line" ] && continue
+      # Extract file path from `file=...; schema_version=...` for cleaner reporting
+      drift_file=$(printf '%s' "$drift_line" | sed -nE 's/.*file=([^;]+); schema_version=.*/\1/p')
+      drift_ver=$(printf '%s'  "$drift_line" | sed -nE 's/.*schema_version=(.+)$/\1/p')
+      if [ -n "$drift_file" ]; then
+        report 6 "$drift_file" 0 "schema_version='$drift_ver' outside accept list (1.0.0 / 1.0 / 1.1.0)"
+      fi
+    done < <(grep -E '^\[CONTEXT\] REVIEW_SCHEMA_VERSION_DRIFT=1' "$PATTERN6_STDERR")
+  elif [ "$rc" -ne 0 ]; then
+    # rc != 0/1 (delegate invocation error / jq missing 等): silent に握りつぶさず log + stderr 内容を表示
+    log "Pattern 6 delegate exited with unexpected code $rc; check delegate diagnostics:"
+    if [ -s "$PATTERN6_STDERR" ]; then
+      head -5 "$PATTERN6_STDERR" | sed 's/^/    /' >&2
+    fi
+  fi
+  # trap が cleanup を保証するが、明示 reset で次回 invocation 時の stale 参照を防ぐ
+  rm -f "$PATTERN6_STDERR"
+  PATTERN6_STDERR=""
+}
+
+run_pattern 6 && check_pattern_6
 
 DRIFT_COUNT=$(<"$DRIFT_COUNT_FILE")
 if [ "$DRIFT_COUNT" -gt 0 ]; then

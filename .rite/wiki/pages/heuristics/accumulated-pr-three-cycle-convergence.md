@@ -2,8 +2,10 @@
 title: "累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable"
 domain: "heuristics"
 created: "2026-05-17T13:40:00Z"
-updated: "2026-05-18T17:30:00Z"
+updated: "2026-05-19T17:45:00Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260519T164439Z-pr-1064-cycle2.md"
   - type: "reviews"
     ref: "raw/reviews/20260518T165729Z-pr-1049-cycle2.md"
   - type: "reviews"
@@ -88,9 +90,25 @@ PR #1049 (`_test-helpers.sh` への新規 `assert_grep_in_section` helper 追加
 3. **3 reviewer 並列レビュー × 1 cycle 収束の reproducibility 候補** — 累積 30 回目 (PR #984、4 reviewer 全員 0 finding 1 cycle merge) と本 PR #1049 (3 reviewer 並列で HIGH cross-validated → 1 cycle 構造的解消) が **「複数 reviewer 並列レビューが initial detection の完全性を上げ、fix の structural anchor 確立を促進する」** 共通 mechanism を示唆。3-cycle 連鎖の前提となる「cycle 1 fix の不完全性」が、reviewer cross-validation depth で抑制される経路を支持する empirical evidence。
 4. **Reviewer 自身による FIXED verification の standard pattern** — error-handling reviewer が cycle 1 で MEDIUM (awk silent swallow) を指摘し、cycle 2 で同 reviewer 自身が「5 failure mode を診断レベルで区別可能化された」と FIXED verification するパターンは、`fix-verification-requires-natural-workflow-firing.md` の reviewer ownership pattern と整合。「指摘した reviewer が次サイクルで verify する」契約は、PR #1049 のような 1-cycle 収束 PR でも standard pattern として再現されることを実測。
 
+### PR #1064 (Issue #1021): 14 → 0/1-nit-noted への mass batch fix 1-cycle convergence
+
+PR #1064 (`migrate-review-state-to-1.1.sh` + `review-schema-version-check.sh` + `scope-enum-check.test.sh` の 3 artifacts 追加 + `distributed-fix-drift-check.sh` への Pattern 6 統合) は、本ページが記録してきた 1-cycle convergence pattern の **mass batch fix 版**。cycle 1 で 4 reviewer 並列レビューにより 14 findings (CRITICAL × 2 / HIGH × 4 / MEDIUM × 6 / LOW × 2) が検出され、cycle 1 fix で 14 件全件を一括 structural fix → cycle 2 re-review で 1-nit-noted (LOW-MEDIUM、scope=`nit-noted` で non-blocking) + 2 recommendations のみという 1-cycle 収束を実測:
+
+- **Cycle 1 (14 findings)**: code-quality / error-handling / test / security の 4 reviewer 並列レビュー。CRITICAL × 2 は spec-vs-spec 矛盾 (Issue body vs schema doc canonical の `pre_existing` フィールド取扱い) + `mktemp` failure 時の silent regression。HIGH × 4 は signal trap pattern (INT/TERM/HUP) の覆損 + `_helpers_resolve_repo_root` helper non-use + `set -e / set -uo pipefail` 不整合 + 3-emit DRY violation。MEDIUM × 6 は test-quality (mktemp safety / negative case / cleanup / helpers / stderr capture) と Single-invocation refactor (delegate を 2 回呼ぶ pattern)。
+- **Cycle 1 fix (14 件全件 structural fix)**: spec-vs-spec は schema doc canonical 優先で `pre_existing` 削除 (参照: `[[spec-vs-spec-canonical-priority]]`)。Test-quality 6 件は一括 batch resolution。DRY refactor で 3-emit pattern を helper 1 つに集約。Signal trap は INT/TERM/HUP の 4 行 trap で orphan tempfile leak を防止。
+- **Cycle 2 re-review (1-nit-noted + 2 recommendations)**: 同 4 reviewer マージ可判定。残った LOW-MEDIUM (1 件) は `_orphan_tmps` 空配列 expansion (cleanup guard で masked 済みのため non-blocking、scope=`nit-noted` の Issue #1019 M5 受け流し経路で対応)。2 recommendations は design_confirmation + boundary (defense-in-depth pattern 助言、scope 外)。
+
+**PR #1011 / #1032 / #1049 との対比による新観点**:
+
+1. **mass batch fix における 1-cycle convergence の reproducibility**: PR #1049 (3 findings) が 1-cycle 収束の下限事例だったのに対し、PR #1064 (14 findings) は **mass batch fix でも 1-cycle 収束が成立する** 上限事例。14 件の独立 findings が単一 cycle で structural fix されたのは、各 finding が独立した structural anchor (test mktemp pattern / signal trap pattern / DRY helper / single-invocation pattern) で解消可能な分割可能性を持っていたため。
+2. **4 reviewer 並列レビュー × cross-validation の cumulative effect**: code-quality / error-handling / test / security の 4 reviewer 並列構成は PR #984 (4 reviewer 全員 0 finding 1-cycle merge) の構成と同じ。本 PR では initial detection で 14 finding を発掘 (大量) → fix の structural anchor 確立で 1-cycle 収束、という pattern を再現。**reviewer 数の増加は initial detection の completeness を向上させ、fix の structural anchor 化を促進する** という仮説を強化。
+3. **scope=`nit-noted` の Issue #1019 M5 受け流し経路が初めて real-world で発火**: cycle 2 で残った LOW-MEDIUM 1 件は `nit-noted` scope 割当て + `accept (認知のみ)` 選択で revocable に accept 永続化されることが期待される (Phase 2.1.A fingerprint suppression、本 Epic #1015 M5 設計)。本 PR はこの経路が初めて real-world cycle で発火するエッジ事例。
+4. **`spec-vs-spec-canonical-priority` heuristic との連動**: 本 PR cycle 1 の CRITICAL × 1 (Issue body vs schema doc canonical) は `[[spec-vs-spec-canonical-priority]]` の origin 事例。本ページは convergence pattern (cycle 数の reproducibility)、対称ページは canonical priority resolution の意思決定原則 — 同一 PR から相補的な 2 つの heuristic が抽出されたことは Wiki 経験則の coverage が深化している evidence。
+
 ## 関連ページ
 
-- （関連ページなし）
+- [Spec-vs-spec 矛盾は canonical SoT 表記のある側を優先する](../heuristics/spec-vs-spec-canonical-priority.md)
+- [Fix verification requires natural workflow firing](../heuristics/fix-verification-requires-natural-workflow-firing.md)
 
 ## ソース
 
@@ -99,3 +117,4 @@ PR #1049 (`_test-helpers.sh` への新規 `assert_grep_in_section` helper 追加
 - [PR #1011 cycle 2 review (1 LOW + 1 informational)](../../raw/reviews/20260517T133937Z-pr-1011-cycle-2.md)
 - [PR #1032 cycle 4 review (mergeable — bash semantics 版 3-cycle 連鎖収束、cycle 4 で両 reviewer 0 findings 合意、drift class 横断 (bash 言語仕様 → documentation pointer → numeric counter) でも 4 cycle で収束する 2 連続再現事例)](../../raw/reviews/20260517T223309Z-pr-1032.md)
 - [PR #1049 cycle 2 re-review (mergeable — 1-cycle convergence の下限事例、3 reviewer 並列レビューで HIGH cross-validated → cycle 1 fix で structural resolution → cycle 2 で 0 finding mergeable。3-cycle 連鎖の対極として 1-cycle 収束が成立する 3 条件 (structural clarity / cycle 1 fix semantic 完全性 / reviewer cross-validation depth) を実測)](../../raw/reviews/20260518T165729Z-pr-1049-cycle2.md)
+- [PR #1064 cycle 2 re-review (mergeable — 14-finding mass batch fix の 1-cycle convergence 上限事例、4 reviewer 並列で 14 findings → cycle 1 一括 structural fix → cycle 2 で 1-nit-noted (Issue #1019 M5 受け流し経路) + 2 recommendations のみ。`spec-vs-spec-canonical-priority` heuristic の origin 事例と連動)](../../raw/reviews/20260519T164439Z-pr-1064-cycle2.md)

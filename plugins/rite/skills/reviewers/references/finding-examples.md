@@ -18,7 +18,7 @@ All reviewers share these Few-shot examples to calibrate finding quality. Use th
 
 | Severity | Scope | File:Line | Issue | Recommendation |
 |----------|-------|-----------|-------|----------------|
-| HIGH | current-pr | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation. Other endpoints (`auth.ts:30`) use `zod` schema validation. This is a system boundary where external input enters the application. | Add `zod` schema validation consistent with the existing pattern in `auth.ts`. Example: `const schema = z.object({ email: z.string().email() })` |
+| HIGH | current-pr | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation. Other endpoints (`auth.ts:30`) use `zod` schema validation. This is a system boundary where external input enters the application.<br>Likelihood-Evidence: new_call_site src/routes/users.ts:45 (本 PR で追加) | Add `zod` schema validation consistent with the existing pattern in `auth.ts`. Example: `const schema = z.object({ email: z.string().email() })` |
 
 **Why this is a good finding:** Concrete evidence (specific file/line), investigation with tool usage, comparison with existing patterns, actionable recommendation.
 
@@ -35,7 +35,7 @@ All reviewers share these Few-shot examples to calibrate finding quality. Use th
 
 | Severity | Scope | File:Line | Issue | Recommendation |
 |----------|-------|-----------|-------|----------------|
-| HIGH | current-pr | `src/services/project.ts:120-125` | N+1 query: `db.query()` is called inside a loop iterating over `projects` (up to 100 items per pagination default). Existing code (`task.ts:80`) already uses `WHERE project_id IN (...)` batch pattern. | Replace the loop with a single `WHERE project_id IN (...)` query, following the pattern in `task.ts:80`. |
+| HIGH | current-pr | `src/services/project.ts:120-125` | N+1 query: `db.query()` is called inside a loop iterating over `projects` (up to 100 items per pagination default). Existing code (`task.ts:80`) already uses `WHERE project_id IN (...)` batch pattern.<br>Likelihood-Evidence: new_call_site src/services/project.ts:120-125 (本 PR で追加) | Replace the loop with a single `WHERE project_id IN (...)` query, following the pattern in `task.ts:80`. |
 
 **Why this is a good finding:** Quantified impact (up to 100 queries), existing pattern reference for the fix, clear before/after recommendation.
 
@@ -53,7 +53,7 @@ All reviewers share these Few-shot examples to calibrate finding quality. Use th
 
 | Severity | Scope | File:Line | Issue | Recommendation |
 |----------|-------|-----------|-------|----------------|
-| MEDIUM | current-pr | `commands/pr/review.md:45,120` | Contradictory instructions: line 45 says "report all potential issues, even if uncertain" while line 120 says "only report findings with concrete evidence." This contradicts SKILL.md's "No Hypothetical Concerns" principle. Agents receiving these instructions will produce inconsistent output. | Remove line 45 or scope it to a specific context (e.g., security-only). Align with SKILL.md's established "concrete evidence only" principle. |
+| MEDIUM | current-pr | `commands/pr/review.md:45,120` | Contradictory instructions: line 45 says "report all potential issues, even if uncertain" while line 120 says "only report findings with concrete evidence." This contradicts SKILL.md's "No Hypothetical Concerns" principle. Agents receiving these instructions will produce inconsistent output.<br>Likelihood-Evidence: new_call_site commands/pr/review.md:45,120 (本 PR で追加) | Remove line 45 or scope it to a specific context (e.g., security-only). Align with SKILL.md's established "concrete evidence only" principle. |
 
 **Why this is a good finding:** Identified a real contradiction by cross-referencing multiple documents, explained the downstream impact on agent behavior, provided specific resolution options.
 
@@ -71,7 +71,7 @@ All reviewers share these Few-shot examples to calibrate finding quality. Use th
 
 | Severity | Scope | File:Line | Issue | Recommendation |
 |----------|-------|-----------|-------|----------------|
-| MEDIUM | follow-up | `src/services/order.ts:80,120,160` | Three sibling helpers (`formatLineItems`, `formatTaxBreakdown`, `formatShippingDetails`) duplicate the same 5-line currency-parsing block. The current PR's new helper already uses the shared `Money` utility (`src/utils/money.ts:30`) and does NOT add a 4th copy, so the duplication is pre-existing and not introduced by this PR. Refactoring would touch 3 functions, require new tests, and conflict with in-flight PRs (#1234, #1240). | Track as a separate Issue: extract the currency-parsing block into `src/utils/money.ts` (following the existing `Money` utility pattern at `src/utils/money.ts:30`) and migrate the three sibling helpers. Coordinate with #1234 / #1240 to avoid merge conflicts. Example signature: `parseCurrency(raw: string): Money`. The three call sites then collapse from 5-line inline blocks to single-line calls: `const amount = parseCurrency(rawValue)`. |
+| MEDIUM | follow-up | `src/services/order.ts:80,120,160` | Three sibling helpers (`formatLineItems`, `formatTaxBreakdown`, `formatShippingDetails`) duplicate the same 5-line currency-parsing block. The current PR's new helper already uses the shared `Money` utility (`src/utils/money.ts:30`) and does NOT add a 4th copy, so the duplication is pre-existing and not introduced by this PR. Refactoring would touch 3 functions, require new tests, and conflict with in-flight PRs (#1234, #1240).<br>Likelihood-Evidence: existing_call_site src/services/order.ts:80,120,160 | Track as a separate Issue: extract the currency-parsing block into `src/utils/money.ts` (following the existing `Money` utility pattern at `src/utils/money.ts:30`) and migrate the three sibling helpers. Coordinate with #1234 / #1240 to avoid merge conflicts. Example signature: `parseCurrency(raw: string): Money`. The three call sites then collapse from 5-line inline blocks to single-line calls: `const amount = parseCurrency(rawValue)`. |
 
 **Why this is a good finding:** The duplication is real and worth tracking (3 sibling sites, identical logic), but the scope of a proper fix exceeds the current PR's diff and would create coordination overhead with two other open PRs. Reporting as `follow-up` honors the Severity × Scope Matrix rule that MEDIUM-class refactor opportunities outside the current diff belong in a separate Issue rather than being deferred silently. The investigation explicitly verifies the duplication is pre-existing and that the current PR does NOT add a 4th copy — this rules out the alternative reading that the PR introduced the problem (which would have made it `current-pr`).
 
@@ -89,7 +89,7 @@ All reviewers share these Few-shot examples to calibrate finding quality. Use th
 
 | Severity | Scope | File:Line | Issue | Recommendation |
 |----------|-------|-----------|-------|----------------|
-| LOW | nit-noted | `src/components/dashboard/Card.tsx:18`, `src/components/dashboard/Panel.tsx:22` | Style prop unit inconsistency within the same PR: `Card.tsx` uses `padding: 12` (numeric) while `Panel.tsx` uses `padding: '12px'` (string). Both produce identical output. The codebase has no linting rule on this and shows mixed usage (28 numeric vs 19 string across 47 sites). | No action required for this PR. If a future refactor adopts a project-wide convention (e.g., always-numeric for px values), unify both sites at that time. |
+| LOW | nit-noted | `src/components/dashboard/Card.tsx:18`, `src/components/dashboard/Panel.tsx:22` | Style prop unit inconsistency within the same PR: `Card.tsx` uses `padding: 12` (numeric) while `Panel.tsx` uses `padding: '12px'` (string). Both produce identical output. The codebase has no linting rule on this and shows mixed usage (28 numeric vs 19 string across 47 sites).<br>Likelihood-Evidence: new_call_site src/components/dashboard/Card.tsx:18, src/components/dashboard/Panel.tsx:22 (本 PR で追加) | No action required for this PR. If a future refactor adopts a project-wide convention (e.g., always-numeric for px values), unify both sites at that time. |
 
 **Why this is a good finding:** The inconsistency is real and localized to two sibling files in the same PR, but the blast radius is bounded (no runtime / accessibility / maintainability cost) and the codebase already has long-standing mixed usage with no project convention. Reporting as `nit-noted` honors the Severity × Scope Matrix rule that LOW-class style preferences with bounded blast radius are information sharing only, not actionable for this PR. The investigation rules out a stronger classification: there is no project-wide convention to enforce (would make it `current-pr`), the fix doesn't unlock a useful follow-up Issue (LOW × `follow-up` is a prohibited cell), and the impact is not zero (so it earns a mention rather than being dropped silently). The frontend reviewer is used deliberately — the four Hypothetical Exception reviewers (`security` / `database` / `devops` / `dependencies`) are prohibited from emitting `scope=nit-noted` at any severity.
 
@@ -101,7 +101,7 @@ These findings have real issues but lack the WHY or EXAMPLE that makes them acti
 
 | Severity | Scope | File:Line | Issue | Recommendation |
 |----------|-------|-----------|-------|----------------|
-| HIGH | current-pr | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation. | Add validation. |
+| HIGH | current-pr | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation.<br>Likelihood-Evidence: new_call_site src/routes/users.ts:45 (本 PR で追加) | Add validation. |
 
 **Problem:** The Issue column states WHAT is wrong but not WHY it matters. The fix agent cannot prioritize or verify the fix without understanding the risk (e.g., SQL injection? Data integrity? System boundary violation?). The Recommendation lacks a concrete EXAMPLE.
 
@@ -109,7 +109,7 @@ These findings have real issues but lack the WHY or EXAMPLE that makes them acti
 
 | Severity | Scope | File:Line | Issue | Recommendation |
 |----------|-------|-----------|-------|----------------|
-| HIGH | current-pr | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation. This is a system boundary where external input enters the application, and other endpoints (`auth.ts:30`) validate with `zod`. | Add `zod` schema validation consistent with `auth.ts`. Example: `const schema = z.object({ email: z.string().email() })` |
+| HIGH | current-pr | `src/routes/users.ts:45` | `req.body.email` is passed directly to `db.query()` without validation. This is a system boundary where external input enters the application, and other endpoints (`auth.ts:30`) validate with `zod`.<br>Likelihood-Evidence: new_call_site src/routes/users.ts:45 (本 PR で追加) | Add `zod` schema validation consistent with `auth.ts`. Example: `const schema = z.object({ email: z.string().email() })` |
 
 **Why the improved version is better:** The WHY ("system boundary where external input enters") tells the fix agent the severity class (injection risk, not just missing validation). The EXAMPLE (`z.object(...)`) gives a concrete code pattern to follow, reducing fix-review loop iterations.
 
@@ -181,7 +181,7 @@ These findings have real issues but lack the WHY or EXAMPLE that makes them acti
 
 | Severity | Scope | File:Line | Issue | Recommendation |
 |----------|-------|-----------|-------|----------------|
-| LOW | current-pr | `src/services/payment.ts:80` | Bare `catch (e) { throw e }` in payment processing loses local context (user ID, payment amount). While error propagation works, debugging production issues will be harder without this context. Note: 3 other services follow the same pattern — this finding applies to the changed code only per scope policy. | Wrap the rethrow: `throw new Error(\`Payment ${paymentId} for user ${userId} failed: ${e.message}\`)`. Consider addressing the pattern in other services via a separate Issue. |
+| LOW | current-pr | `src/services/payment.ts:80` | Bare `catch (e) { throw e }` in payment processing loses local context (user ID, payment amount). While error propagation works, debugging production issues will be harder without this context. Note: 3 other services follow the same pattern — this finding applies to the changed code only per scope policy.<br>Likelihood-Evidence: new_call_site src/services/payment.ts:80 (本 PR で追加) | Wrap the rethrow: `throw new Error(\`Payment ${paymentId} for user ${userId} failed: ${e.message}\`)`. Consider addressing the pattern in other services via a separate Issue. |
 
 **Why this is borderline:** The code works correctly today. The improvement is about observability, not correctness. The existing pattern in 3 other services suggests this may be an accepted trade-off. However, for payment processing (a critical path), the debugging benefit justifies a LOW finding. A MEDIUM would be too aggressive given the working status and existing pattern.
 

@@ -1006,7 +1006,9 @@ fi
 # accepted-fingerprints state file 削除。specific path 完全一致 (wildcard 禁止)。
 # fix.md Phase 2.1.A (Issue #1019 M5) で `accept (認知のみ)` 選択時に fingerprint を永続化したファイル。
 # `{pr_number}` suffix で PR ごとに完全分離されているため specific path で削除する。
-# 既存 state_file / cycle_state_file 削除パターン (stderr tempfile + 詳細ログ) と対称化した error handling。
+# 既存 matched_files / state_file 削除パターン (stderr tempfile + 詳細ログ、block 末尾の inline rm 省略を含む)
+# と対称化した error handling。stderr tempfile の cleanup は centralized `_rite_cleanup_p25_cleanup`
+# 関数が EXIT trap 経由で回収する。
 accepted_fingerprints_file=".rite/state/accepted-fingerprints-${pr_number}.txt"
 if [ -f "$accepted_fingerprints_file" ]; then
   accepted_fingerprints_rm_err=$(mktemp /tmp/rite-cleanup-accepted-fp-rm-err-XXXXXX 2>/dev/null) || {

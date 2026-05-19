@@ -13,6 +13,9 @@
 #   3. if-wrap drift            — `cat <<'EOF' > "$tmpfile"` not wrapped by `if !`
 #   4. anchor drift             — markdown `[text](path#anchor)` resolving to non-existent heading
 #   5. eval-table list drift    — evaluation-order table parenthesized list vs emit
+#   6. review-result schema_version drift — `.rite/review-results/*.json` whose
+#      `.schema_version` is outside the accept list (delegates to
+#       `review-schema-version-check.sh`; Issue #1021)
 #
 # Usage:
 #   distributed-fix-drift-check.sh [--all] [--target FILE]... [--pattern N]
@@ -42,7 +45,7 @@ Usage: distributed-fix-drift-check.sh [options]
 Options:
   --all              Check the default target set (fix.md, review.md, tech-writer.md)
   --target FILE      Check FILE (repeatable). Path relative to repo root.
-  --pattern N        Only run pattern N (1-5). Default: all patterns.
+  --pattern N        Only run pattern N (1-6). Default: all patterns.
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
   --quiet            Suppress per-finding output (still exit non-zero on drift)
   -h, --help         Show this help
@@ -98,9 +101,13 @@ if [ "${#TARGETS[@]}" -gt 0 ]; then
 fi
 
 if [ "${#TARGETS[@]}" -eq 0 ]; then
-  echo "ERROR: no targets specified (use --all or --target FILE)" >&2
-  usage >&2
-  exit 2
+  # Pattern 6 (review-result JSON drift) scans .rite/review-results/ on its own
+  # and does not consume the TARGETS list. Allow `--pattern 6` without targets.
+  if [ "$PATTERN_FILTER" != "6" ]; then
+    echo "ERROR: no targets specified (use --all or --target FILE)" >&2
+    usage >&2
+    exit 2
+  fi
 fi
 
 DRIFT_COUNT_FILE="$(mktemp)" || { echo "ERROR: mktemp failed" >&2; exit 2; }
@@ -295,6 +302,42 @@ for file in "${TARGETS[@]}"; do
   run_pattern 4 && check_pattern_4 "$file"
   run_pattern 5 && check_pattern_5 "$file"
 done
+
+# ----- Pattern 6: review-result schema_version drift (Issue #1021) -----------
+# Delegates to review-schema-version-check.sh, which checks .rite/review-results/*.json
+# against the accept list ("1.0.0" / "1.0" / "1.1.0"). Runs once per invocation
+# (independent of the TARGETS loop above, since the JSON files are scanned by
+# the delegate). Captures stderr to surface drift details via report().
+check_pattern_6() {
+  local checker_script="$REPO_ROOT/plugins/rite/hooks/scripts/review-schema-version-check.sh"
+  if [ ! -x "$checker_script" ]; then
+    log "Pattern 6 skipped: review-schema-version-check.sh not found / not executable"
+    return 0
+  fi
+  local stderr_capture
+  stderr_capture=$(mktemp) || { log "Pattern 6 skipped: mktemp failed"; return 0; }
+  local rc=0
+  bash "$checker_script" --all --repo-root "$REPO_ROOT" --quiet 2>"$stderr_capture" || rc=$?
+  if [ "$rc" -eq 1 ]; then
+    # Re-run without --quiet to surface drift details in our own report stream.
+    # The delegate emits one `[CONTEXT] REVIEW_SCHEMA_VERSION_DRIFT=1; file=...; schema_version=...` line per drift.
+    bash "$checker_script" --all --repo-root "$REPO_ROOT" 2>>"$stderr_capture" || true
+    while IFS= read -r drift_line; do
+      [ -z "$drift_line" ] && continue
+      # Extract file path from `file=...; schema_version=...` for cleaner reporting
+      drift_file=$(printf '%s' "$drift_line" | sed -nE 's/.*file=([^;]+); schema_version=.*/\1/p')
+      drift_ver=$(printf '%s'  "$drift_line" | sed -nE 's/.*schema_version=(.+)$/\1/p')
+      if [ -n "$drift_file" ]; then
+        report 6 "$drift_file" 0 "schema_version='$drift_ver' outside accept list (1.0.0 / 1.0 / 1.1.0)"
+      fi
+    done < <(grep -E '^\[CONTEXT\] REVIEW_SCHEMA_VERSION_DRIFT=1' "$stderr_capture" 2>/dev/null)
+  elif [ "$rc" -ne 0 ]; then
+    log "Pattern 6 delegate exited with unexpected code $rc; skipping"
+  fi
+  rm -f "$stderr_capture"
+}
+
+run_pattern 6 && check_pattern_6
 
 DRIFT_COUNT=$(<"$DRIFT_COUNT_FILE")
 if [ "$DRIFT_COUNT" -gt 0 ]; then

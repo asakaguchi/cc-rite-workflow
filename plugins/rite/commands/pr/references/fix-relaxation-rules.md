@@ -23,7 +23,7 @@ Findings are classified by **severity × scope**. Scope was added in schema 1.1.
 | LOW-MEDIUM | current-pr / follow-up | Blocking | Must fix |
 | LOW-MEDIUM | nit-noted | **blocking 対象外** | Reply-only via Phase 2.4 `nit-noted-reply` |
 | LOW | current-pr | Blocking — but auto-demoted to nit-noted when `review.scope_assignment.auto_demote_low: true` (default) | Demote then reply-only; opt-out with `auto_demote_low: false` keeps blocking |
-| LOW | follow-up | Blocking | Must fix |
+| LOW | follow-up | **禁止セル** (SoT: [`severity-levels.md` §Severity × Scope Matrix](../../../references/severity-levels.md#severity--scope-matrix)) | LOW × follow-up は意味論的禁止 (LOW は本 PR で修正するか nit として受け流すかの二択、別 Issue 化は冗長)。reviewer 側で reject される — fix loop には到達しない |
 | LOW | nit-noted | **blocking 対象外** | Reply-only via Phase 2.4 `nit-noted-reply` |
 
 > **scope=nit-noted は blocking 対象外**: 上表で「blocking 対象外」の行は (a) `/rite:pr:fix` Phase 1.3 で「nit (認知のみ)」セクションに分類、(b) Phase 1.4 で auto-select 対象から除外、(c) Phase 2.1 を skip して Phase 2.4 へ直行、(d) Phase 4.3.1 別 Issue 化候補からも完全除外、(e) Phase 4.6 サマリで `acknowledged_nit_count` として独立カウントされる。`/rite:pr:review` Phase 5.3 評価では `overall_assessment` に影響せず、mergeable 判定 countdown 対象からも除外される (詳細は [`assessment-rules.md`](./assessment-rules.md) §5.3.1 / §5.3.3 参照)。

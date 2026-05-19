@@ -1555,6 +1555,8 @@ else
       else
         p3_jq_scmap_rc=$?
         echo "WARNING: PR コメント内 Raw JSON からの scope_map 構築 jq が失敗しました (rc=$p3_jq_scmap_rc) — scope-based routing が無効化されます" >&2
+        # jq stderr 抽出 (Priority 0/2 経路 + Priority 3 severity_map と対称化、code-quality reviewer 指摘対応)
+        [ -n "$p3_jq_err" ] && [ -s "$p3_jq_err" ] && head -3 "$p3_jq_err" | sed 's/^/  /' >&2
         echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_scope_map_build_failed; rc=$p3_jq_scmap_rc" >&2
         scope_map_json="{}"
       fi
@@ -3282,20 +3284,91 @@ nit、認知済 (scope=nit-noted, Issue #1018 M2 受け流し経路)
 
 **Counter accumulation**:
 
-各成功投稿で `acknowledged_nit_count` counter を +1 する (Phase 4.6 サマリで使用):
+各成功投稿で `acknowledged_nit_count` counter を +1 する (Phase 4.6 サマリで使用)。本サブステップは **単一 Bash tool invocation** で実行され、`pr_number` placeholder の literal substitution、defense-in-depth truncate、既投稿 ID set 生成、per-finding loop、append までを 1 block に集約する:
 
 ```bash
-# acknowledged_nit_count tempfile (Phase 4.6 で wc -l で件数取得)
-nit_count_file="/tmp/rite-fix-acknowledged-nit-{pr_number}.txt"
-# 投稿成功した comment_id を append (重複防止のため成功時のみ)
-echo "$comment_id" >> "$nit_count_file"
+# Phase 2.4.N nit-noted-reply 全体 (Issue #1018 M2 受け流し経路)
+# 単一 Bash tool invocation で完結させる (shell state は invocation 間で継承されないため)
+
+# Step 1: pr_number placeholder の literal substitution + numeric gate (Phase 6.1.a 等と対称)
+pr_number="{pr_number}"
+case "$pr_number" in
+  ''|*[!0-9]*)
+    echo "ERROR: Phase 2.4.N の pr_number が literal substitute されていません (値: '$pr_number')" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=pr_number_placeholder_residue" >&2
+    exit 1
+    ;;
+esac
+
+# Step 2: acknowledged_nit_count tempfile の defense-in-depth truncate
+# confidence-override tempfile と同型 (H-1 修正パターン): 前セッション異常終了 (SIGINT/SIGTERM/SIGHUP)
+# 等で stale データが残った場合、本 truncate で clean state を保証する
+nit_count_file="/tmp/rite-fix-acknowledged-nit-${pr_number}.txt"
+: > "$nit_count_file" 2>/dev/null || echo "WARNING: nit_count_file の truncate に失敗しました ($nit_count_file)" >&2
+
+# Step 3: 既投稿 reply の comment_id set を生成 (冪等性 — Replied-only respect)
+# 本 PR の既存 review comment から body に literal "nit、認知済 (scope=nit-noted" を含むものを抽出
+# in_reply_to を取って既存 reply 対象の元 comment_id set を作る (gh api PR review comments)
+already_replied_ids=$(gh api "repos/{owner}/{repo}/pulls/${pr_number}/comments" \
+  --jq '[.[] | select(.body | contains("nit、認知済 (scope=nit-noted")) | .in_reply_to_id] | unique | .[]' \
+  2>/dev/null || echo "")
+
+# Step 4: scope_map_json から scope=="nit-noted" の finding を per-finding loop で処理
+# nit_noted_findings は Phase 1.3 で classified された finding 一覧で、各要素は {comment_id, file, line, body} を持つ
+# Claude が会話コンテキストから iteration する (bash 配列として渡せないため LLM responsibility)
+# 以下は per-finding template (Claude は finding ごとに本 bash block を生成・実行する):
+
+for_each_nit_noted_finding() {
+  local comment_id="$1"
+  local original_body_preview="$2"
+
+  # 既投稿 skip check (Replied-only respect doctrine)
+  if printf '%s\n' "$already_replied_ids" | grep -qx "$comment_id"; then
+    echo "[CONTEXT] NIT_NOTED_REPLY_SKIPPED=1; reason=already_replied; comment_id=$comment_id" >&2
+    return 0
+  fi
+
+  # Step 4a: reply body 構築 (固定文言 + 元コメント preview)
+  local reply_tmpfile
+  reply_tmpfile=$(mktemp /tmp/rite-fix-nit-reply-${pr_number}-${comment_id}-XXXXXX.md) || {
+    echo "[CONTEXT] NIT_NOTED_REPLY_FAILED=1; comment_id=$comment_id; reason=mktemp_failed" >&2
+    return 1
+  }
+  cat > "$reply_tmpfile" <<EOF
+nit、認知済 (scope=nit-noted, Issue #1018 M2 受け流し経路)
+
+> ${original_body_preview}
+
+このご指摘は scope=nit-noted の informational 指摘として認識しました。本 PR での修正は行わず、別 Issue 化もしません (受け流し経路)。
+EOF
+
+  # Step 4b: gh api POST で reply 投稿
+  if jq -n --rawfile body "$reply_tmpfile" --argjson in_reply_to "$comment_id" \
+       '{"body": $body, "in_reply_to": $in_reply_to}' \
+     | gh api "repos/{owner}/{repo}/pulls/${pr_number}/comments" -X POST --input - >/dev/null 2>&1; then
+    # Step 4c: 成功時のみ comment_id を nit_count_file に append (Phase 4.6 で wc -l 集計)
+    echo "$comment_id" >> "$nit_count_file"
+    rm -f "$reply_tmpfile"
+    return 0
+  else
+    echo "[CONTEXT] NIT_NOTED_REPLY_FAILED=1; comment_id=$comment_id; reason=gh_api_post_failure" >&2
+    rm -f "$reply_tmpfile"
+    return 1
+  fi
+}
+
+# Claude は scope_map_json の nit-noted エントリを iterate して上記関数を呼ぶ:
+# for each (comment_id, body_preview) in nit_noted_findings:
+#   for_each_nit_noted_finding "$comment_id" "$body_preview"
 ```
 
 **Loop termination**:
 
 - すべての nit-noted finding を処理し終えたら本サブステップ終了
 - 投稿失敗 (gh api POST 失敗 / rate limit / network error) は `[CONTEXT] NIT_NOTED_REPLY_FAILED=1; comment_id=$comment_id; reason=...` を emit し、当該 finding は skip して次へ進む (non-blocking、`acknowledged_nit_count` 集計対象外)
-- すべての投稿が完了したら Phase 4.3 へ進む (本 sub-step では commit を行わない、reply のみ)
+- すべての投稿が完了したら次の Phase へ進む:
+  - **nit-only PR** (`acknowledged_nit_count == total_count` かつ non-nit findings 0 件): Phase 3 (commit) を skip し Phase 4.2 / 4.3 へ直行 (working tree への変更ゼロのため commit 不要)
+  - **mixed PR** (nit-noted + non-nit findings 混在): non-nit findings は通常通り Phase 2.2/2.3 経由で Phase 3 (commit) → Phase 4.3 へ進む。nit-noted reply は parallel に投稿済の状態で commit に embed される
 
 **Why no commit**:
 
@@ -4904,7 +4977,7 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 | Field | Description | Calculation |
 |-------|-------------|-------------|
 | `全指摘: {total_count}件` | Total number of findings | Number of review comment findings retrieved in Phase 1 |
-| `対応した指摘: {count}件` | Number of findings addressed | `fix_count + reply_count + skip_count` |
+| `対応した指摘: {count}件` | Number of findings addressed | `fix_count + reply_count + skip_count + acknowledged_nit_count` (Issue #1018 M2: nit-noted reply 投稿も「対応」に含めることで、nit-only PR でも `全指摘 == 対応指摘` 条件を満たし AC-1 の 2 cycle 即収束を達成する) |
 | `Confidence override (policy bypass): {N}件` | Number of findings imported via Confidence policy override | Phase 1.2 best-effort parse で「Confidence 70 のままバイパス」を選択した finding 数 (Confidence 80+ ゲート invariant の policy override 追跡義務)。0 件でも常時表示 |
 | `レビューソース: {review_source} (...)` | Provenance of the review findings consumed by this fix run | Phase 1.2.0 Priority chain で決定された `review_source` 値 (schema.md Priority 1 emit 義務の provenance 契約を Phase 4.6 で履行)。展開ルールは Phase 4.5.3 の `{review_source}` / `{review_source_path_display}` 表を参照 |
 
@@ -5479,7 +5552,8 @@ Phase 8.1 の output pattern emit 直後に、fix ループ全体で使用して
 # /tmp/rite-fix-pr-comment-{pr_number}.txt の正常時 cleanup)。Fast Path 経路では存在しないため
 # silent no-op となる。
 rm -f "/tmp/rite-fix-confidence-override-{pr_number}.txt" \
-      "/tmp/rite-fix-pr-comment-{pr_number}.txt"
+      "/tmp/rite-fix-pr-comment-{pr_number}.txt" \
+      "/tmp/rite-fix-acknowledged-nit-{pr_number}.txt"
 ```
 
 **Work memory backup_file cleanup** (累積汚染防止 / C1 で恒久 no-op 修正):
@@ -5528,12 +5602,13 @@ For standalone execution, Phase 8 is not executed. The completion report from Ph
 Standalone 実行では Phase 8 が skip されるため、Phase 4.6 の completion report 出力**直後**に明示的な cleanup bash block を実行して confidence_override tempfile を削除する。これを忘れると `/tmp/rite-fix-confidence-override-{pr_number}.txt` が orphan として永続残留し、次回同 PR 実行時に `touch` ではなく `: >` truncate を入れていても、何らかの経路で truncate 呼び出しが skip された場合に stale データが混入するリスクがある (defense-in-depth)。
 
 ```bash
-# Phase 8.2 Standalone 経路: confidence_override + pr-comment tempfile の明示的 cleanup
+# Phase 8.2 Standalone 経路: confidence_override + pr-comment + acknowledged-nit tempfile の明示的 cleanup
 # 実行タイミング: Phase 4.6 の completion report を表示した直後
 # {pr_number} は Claude が Phase 1.0 の parse 結果で事前置換済み
-# pr-comment tempfile も追加
+# pr-comment tempfile + acknowledged-nit tempfile (Issue #1018 M2) も追加
 rm -f "/tmp/rite-fix-confidence-override-{pr_number}.txt" \
-      "/tmp/rite-fix-pr-comment-{pr_number}.txt"
+      "/tmp/rite-fix-pr-comment-{pr_number}.txt" \
+      "/tmp/rite-fix-acknowledged-nit-{pr_number}.txt"
 ```
 
 **Idempotency**: override tempfile が作成されなかった経路 (confidence override 発動なし) では `rm -f` は silent no-op となり安全。

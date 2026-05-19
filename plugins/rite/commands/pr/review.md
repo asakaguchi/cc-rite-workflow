@@ -2121,7 +2121,7 @@ fingerprint = sha1(normalize(file_path) + ":" + category + ":" + normalize(messa
 **per-finding fingerprint 計算 bash block** (fix.md Phase 2.1.A Step 3 と bit-exact 対称、Claude は finding ごとに本 block を呼び出す):
 
 ```bash
-# Phase 5.1.2.A Step 2 per-finding fingerprint 計算
+# Phase 5.1.2.A Step 2 per-finding fingerprint 計算 + 即時 emit (Step 2/3 統合)
 # fix.md Phase 2.1.A Step 3 と bit-exact 一致を保証する canonical block
 # Claude は finding ごとに以下の placeholder を literal substitute する:
 #   - {file}: findings[].file
@@ -2130,18 +2130,33 @@ fingerprint = sha1(normalize(file_path) + ":" + category + ":" + normalize(messa
 #   - {finding_id}: findings[].id (例: F-01)
 #   - {original_severity}: findings[].severity (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW)
 #   - {pr_number}: Phase 1.0 正規化値
+#
+# 設計上の重要事項 (Step 2 と Step 3 の統合理由):
+# Claude Code Bash tool は呼び出し間で shell 変数を保持しないため、Step 3 を独立 bash
+# block にすると `$fingerprint` / `$finding_id` / `$original_severity` が undefined になり
+# emit が空値出力になる。本 block では match 検出 + 即時 emit を同一 invocation 内で完結させる。
+
+# {pr_number} placeholder 残留 fail-fast (Step 1 と対称、per-finding 呼出でも安全)
+pr_number="{pr_number}"
+case "$pr_number" in
+  ''|*[!0-9]*)
+    echo "WARNING: Phase 5.1.2.A Step 2 の pr_number が literal substitute されていません (値: '$pr_number') — fingerprint 比較を skip します" >&2
+    echo "[CONTEXT] FINGERPRINT_COMPUTE_FAILED=1; reason=pr_number_placeholder_residue; file={file}" >&2
+    exit 0  # non-blocking: 当該 finding は suppression なしで通常 finding として処理される
+    ;;
+esac
 
 # Step 1 と Step 2 は別 Bash tool invocation の可能性があるため、accepted_fingerprints を
 # 本 block 内で再読込する (cross-call shell 変数依存破綻を防ぐ)。state file 不在 / 空時は
 # 空文字列で early-exit し、grep -qFx は no-match となるため suppression branch には流れない。
-state_file=".rite/state/accepted-fingerprints-{pr_number}.txt"
+state_file=".rite/state/accepted-fingerprints-${pr_number}.txt"
 if [ -f "$state_file" ] && [ -s "$state_file" ]; then
   accepted_fingerprints=$(cat "$state_file" 2>/dev/null || echo "")
 else
   accepted_fingerprints=""
 fi
 
-# Step 2 早期 exit: accepted_fingerprints が空なら suppression 候補ゼロ確定のため bash block 終了
+# 早期 exit: accepted_fingerprints が空なら suppression 候補ゼロ確定のため bash block 終了
 # (defense-in-depth、空 input 時の grep -qFx 動作は仕様上 false だが明示 guard で意図を可視化)
 if [ -z "$accepted_fingerprints" ]; then
   : # nothing to compare — suppression mapping は空、次 finding へ
@@ -2161,11 +2176,15 @@ else
     fingerprint=""
   fi
 
-  # accepted_fingerprints 集合との比較 (match の場合は suppressed_findings に append、emit は Step 3 で行う)
+  # accepted_fingerprints 集合との比較 + 即時 emit (match 時のみ)
+  # Step 2 と Step 3 を同一 bash block 内に統合することで `$fingerprint` の scope を保ち、
+  # cross-call shell var 問題を回避する。重複 emit は本 if branch が 1 finding につき最大 1 回
+  # 実行される仕様で防止 (per-finding loop の単一実行が暗黙の重複防止)。
   if [ -n "$fingerprint" ] && printf '%s\n' "$accepted_fingerprints" | grep -qFx "$fingerprint"; then
-    # suppressed_findings に append (Claude が会話コンテキストで管理)
-    # NOTE: retained flag emit は Step 3 で一元化する (本 block では emit しない、重複防止)
-    :
+    # placeholder ({finding_id} / {original_severity}) は Claude が literal substitute する。
+    # $fingerprint は bash 変数として同一 block 内で参照する。
+    echo "[CONTEXT] FINDING_SUPPRESSED_BY_ACCEPT=1; finding_id={finding_id}; original_severity={original_severity}; fingerprint=$fingerprint" >&2
+    # suppressed_findings リストに append (Claude が会話コンテキストで管理、Phase 6.1.a JSON 除外時に参照)
   fi
 fi
 ```
@@ -2177,14 +2196,17 @@ fi
 - `suppressed_findings`: 次 cycle suppression 対象 (JSON output から除外、Markdown output には残す)
 - `non_suppressed_findings`: 通常 finding (JSON / Markdown 両方に含める)
 
-**Step 3: Emit `FINDING_SUPPRESSED_BY_ACCEPT` per suppressed finding**
+**Step 3: Emit `FINDING_SUPPRESSED_BY_ACCEPT` (Step 2 内で実行済み)**
 
-各 suppressed finding について、retained flag を emit:
+各 suppressed finding の retained flag emit は **Step 2 bash block 内の match branch で同一 invocation 内で実行される**。これにより `$fingerprint` の bash 変数 scope が保たれ、cross-Bash-call shell var 破綻を構造的に回避する。独立した Step 3 bash block は存在しない (cycle 4 で Step 2/3 を統合済み)。
 
-```bash
-# per finding (Claude が iterate して emit)
-echo "[CONTEXT] FINDING_SUPPRESSED_BY_ACCEPT=1; finding_id=$finding_id; original_severity=$original_severity; fingerprint=$fingerprint" >&2
+emit 形式 (Step 2 line で実装):
 ```
+[CONTEXT] FINDING_SUPPRESSED_BY_ACCEPT=1; finding_id={finding_id}; original_severity={original_severity}; fingerprint=$fingerprint
+```
+
+- `{finding_id}` / `{original_severity}`: Claude が finding ごとに literal substitute
+- `$fingerprint`: Step 2 内で計算された bash 変数 (同一 invocation 内のため scope 保持)
 
 **Markdown / JSON output 取扱の非対称契約**:
 

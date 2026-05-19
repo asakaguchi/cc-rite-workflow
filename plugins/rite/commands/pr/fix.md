@@ -3098,38 +3098,86 @@ Prompt for skip reason:
 
 **Owner**: Phase 2.1 内の `accept (認知のみ)` 選択時 sub-flow。**Trigger**: ユーザーが Phase 2.1 で「accept (認知のみ)」を選択した finding。**Purpose**: 「reviewer の指摘は理解したが本 PR では修正せず、別 Issue 化もしない」決着を `acknowledged` 状態として記録し、次 cycle で同一 finding が再出現しても fingerprint で自動 suppression する受け流し経路 (M5 の核)。
 
-**accept 選択時の処理 (3 つを同期実行)**:
+**accept 選択時の処理 (4 つを同期実行)**:
 
-1. **finding state の override**:
+1. **accept reason 入力 (任意、AskUserQuestion)**: 「accept 理由を入力してください (省略可)」を AskUserQuestion で表示し、入力値を `accept_reason` として retain。省略時は空文字列。Phase 3.2 commit trailer の `reason` 欄に展開される
+2. **finding state の override**:
    - `status = "acknowledged"` を設定
    - `scope` を `nit-noted` に override (元 scope は `original_scope` として retain — reply 文言で参照)
-2. **reply 投稿**: Phase 2.4 既存 reply 機構を再利用し、固定文言で投稿:
+3. **reply 投稿**: Phase 2.4 既存 reply 機構を再利用し、固定文言で投稿:
    ```
-   accepted, will not be fixed in this PR. (reviewer scope: {original_scope}; user decision: accept)
+   accepted, will not be fixed in this PR. (reviewer scope: {original_scope}; user decision: accept{reason_suffix})
    ```
-3. **accept fingerprint 永続化**: `.rite/state/accepted-fingerprints-{pr_number}.txt` に当該 finding の fingerprint を append (詳細は下記 bash block)
+   `{reason_suffix}` は `accept_reason` が非空なら `; reason: {accept_reason}`、空なら空文字列
+4. **accept fingerprint 永続化**: `.rite/state/accepted-fingerprints-{pr_number}.txt` に当該 finding の fingerprint を append (詳細は下記 bash block)
 
-**fingerprint 計算式**: [fingerprint-cycling.md](../issue/references/fingerprint-cycling.md) と同方式 — `sha1(normalize(file_path) + ":" + category + ":" + normalize(message))`。`normalize` は trim + lowercase + collapse-whitespace。
+**fingerprint 計算式 (Phase 2.1.A 独自仕様、cycling formula と意図的に分離)**:
+
+```
+fingerprint = sha1(normalize(file_path) + ":" + category + ":" + normalize(message))
+```
+
+- `normalize(file_path)`: `./` prefix のみ collapse (case-sensitive filesystem 保護のため lowercase 化・空白除去はしない)
+- `category`: review-result-schema.md の `findings[].category` フィールド値 (例: `code_quality`)
+- `normalize(message)`: trim + whitespace collapse (lowercase + 行番号除去等は行わない)
+
+> **⚠️ 注意 — fingerprint-cycling.md の cycling formula とは別目的・別仕様**: [fingerprint-cycling.md](../issue/references/fingerprint-cycling.md) Step 2 で定義される formula は **review cycle 跨ぎの同一 finding 検出 (Quality Signal 1)** が目的で、`category = reviewer-identity:severity` 形式と identifier mask を含む aggressive normalize を採用する。一方本 Phase 2.1.A の formula は **同 PR 内 accept finding の self-suppression** が目的で、(a) review.md Phase 5.1.2.A と bit-exact 一致する必要がある (内部完結ループ)、(b) Markdown audit log の human readability のため identifier mask しない、(c) case-sensitive path を保護する simplified normalize を採用する。両 formula は同じ SHA-1 算法を共有するが、normalize step は異なる。本仕様で互換性は不要 (fix.md persist と review.md compare は両方とも本 simplified formula を使うため、内部一致は保証される)。設計合意は Issue #1019 review cycle 1 で確認済 — cycling formula への統一は不要 (異なる use case)。
+
+**Placeholder data flow** (`{file}` / `{line}` / `{category}` / `{description}` の取得元):
+
+| Placeholder | 取得元 | Phase 1.2.0 構築有無 |
+|-------------|--------|---------------------|
+| `{file}` | `findings[].file` (schema 1.1.0) | Phase 1.2.0 で `severity_map` key (`file:line`) 経由でアクセス可能。Claude は finding context から直接置換 |
+| `{line}` | `findings[].line` (`integer \| null`、null は anchor sentinel) | 同上 |
+| `{category}` | `findings[].category` (schema 1.1.0、例: `code_quality`) | Phase 1.2.0 では `category_map` 未構築 — Claude は会話コンテキストの finding object から直接置換する責務を持つ |
+| `{description}` | `findings[].description` | 同上 |
+| `{pr_number}` | Phase 1.0 正規化値 | bash block 冒頭で literal substitute |
+
+**`{line}` が null の場合**: `Acknowledged-finding:` commit trailer / `[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED` retained flag emit / fingerprint normalize すべてで `null` literal を避け、`anchor` sentinel (Phase 1.2.0 severity_map key 規約と統一) に正規化する。
 
 **accept 永続化 bash block** (per accepted finding、単一 Bash tool invocation 内で実行 — `{file}` / `{line}` / `{category}` / `{description}` / `{pr_number}` は Claude が事前 substitute):
 
 ```bash
 # Phase 2.1.A accept fingerprint 永続化 (Issue #1019 M5)
 # canonical trap pattern は references/bash-trap-patterns.md#signal-specific-trap-template 参照
+# (rationale: パス先行宣言 → trap 先行設定 → mktemp の順序、signal 別 exit code、関数契約)
+
+# Step 1: placeholder の literal substitution + numeric/empty gate
 pr_number="{pr_number}"
 case "$pr_number" in
   ''|*[!0-9]*)
     echo "ERROR: Phase 2.1.A の pr_number が literal substitute されていません (値: '$pr_number')" >&2
     echo "[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1; reason=pr_number_placeholder_residue" >&2
-    exit 0  # non-blocking: accept 自体は Phase 2.4 reply 投稿で済んでおり、永続化失敗でも fix loop は続行
+    exit 1  # fix.md 内 8 site の placeholder gate と対称化 (Phase 2.4.N 等と blocking 統一)
     ;;
 esac
+file_path="{file}"
+line_no="{line}"
+category="{category}"
+description="{description}"
+# line=null → anchor sentinel に正規化 (Phase 1.2.0 severity_map key 規約と統一)
+case "$line_no" in
+  ''|null|0) line_no="anchor" ;;
+esac
 
-# fingerprint 計算 (sha1: file:category:message を normalize)
-# normalize_str: trim + lowercase + collapse whitespace
-norm_file=$(printf '%s' "{file}" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
-norm_cat=$(printf '%s' "{category}" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
-norm_msg=$(printf '%s' "{description}" | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//' | tr '[:upper:]' '[:lower:]')
+# Step 2: パス先行宣言 → cleanup 関数定義 → 4 行 trap 設置 → mktemp の順 (canonical pattern)
+tmpfile=""
+state_dir=".rite/state"
+state_file="${state_dir}/accepted-fingerprints-${pr_number}.txt"
+_rite_fix_phase21A_cleanup() {
+  rm -f "${tmpfile:-}"
+}
+trap 'rc=$?; _rite_fix_phase21A_cleanup; exit $rc' EXIT
+trap '_rite_fix_phase21A_cleanup; exit 130' INT
+trap '_rite_fix_phase21A_cleanup; exit 143' TERM
+trap '_rite_fix_phase21A_cleanup; exit 129' HUP
+
+# Step 3: fingerprint 計算 (Phase 2.1.A 独自 simplified normalize — cycling formula と分離)
+# normalize(file_path): `./` prefix のみ collapse、case-sensitive path 保護のため lowercase 化しない
+# normalize(message): trim + whitespace collapse、identifier mask しない (audit log の human readability 重視)
+norm_file=$(printf '%s' "$file_path" | sed 's@^\./@@')
+norm_cat="$category"
+norm_msg=$(printf '%s' "$description" | tr -s '[:space:]' ' ' | sed 's/^ *//;s/ *$//')
 
 # portable SHA-1 helper (BSD shasum / GNU sha1sum 両対応)
 if command -v sha1sum >/dev/null 2>&1; then
@@ -3139,43 +3187,39 @@ elif command -v shasum >/dev/null 2>&1; then
 else
   echo "WARNING: sha1sum / shasum が見つかりません — fingerprint 永続化を skip します" >&2
   echo "[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1; reason=sha1_helper_missing" >&2
-  exit 0
+  exit 0  # non-blocking: accept reply 投稿は完了済、suppression は諦めるだけ
 fi
 
-# state directory + file (defense-in-depth mkdir)
-state_dir=".rite/state"
-mkdir -p "$state_dir" 2>/dev/null || {
+# Step 4: state directory + tempfile
+if ! mkdir -p "$state_dir" 2>/dev/null; then
   echo "WARNING: .rite/state/ ディレクトリ作成に失敗しました — fingerprint 永続化を skip します" >&2
   echo "[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1; reason=mkdir_failed" >&2
   exit 0
-}
-state_file="${state_dir}/accepted-fingerprints-${pr_number}.txt"
+fi
 
-# idempotent append: 重複 fingerprint を排除した状態で書き出す (sort -u)
-tmpfile=$(mktemp /tmp/rite-fix-accept-fp-${pr_number}-XXXXXX) || {
+if ! tmpfile=$(mktemp /tmp/rite-fix-accept-fp-${pr_number}-XXXXXX 2>/dev/null); then
   echo "[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1; reason=mktemp_failed" >&2
   exit 0
-}
-trap 'rc=$?; rm -f "$tmpfile"; exit $rc' EXIT
-trap 'rm -f "$tmpfile"; exit 130' INT
-trap 'rm -f "$tmpfile"; exit 143' TERM
-trap 'rm -f "$tmpfile"; exit 129' HUP
+fi
 
-# 既存 state file + 新 fingerprint を unique で書き出す
+# Step 5: idempotent append (sort -u で重複排除) + atomic mv
 { [ -f "$state_file" ] && cat "$state_file"; printf '%s\n' "$fingerprint"; } | sort -u > "$tmpfile"
 if ! mv "$tmpfile" "$state_file" 2>/dev/null; then
   echo "WARNING: accepted-fingerprints state file の atomic mv に失敗しました ($state_file)" >&2
   echo "[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1; reason=mv_failed" >&2
   exit 0
 fi
+tmpfile=""  # mv 成功後は trap cleanup 対象から外す (二重 rm 回避)
 
-# 成功時 retained flag
-echo "[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1; fingerprint=$fingerprint; pr=$pr_number; file={file}; line={line}" >&2
+# Step 6: 成功時 retained flag (bash 変数経由で placeholder 残留を防ぐ)
+echo "[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1; fingerprint=$fingerprint; pr=$pr_number; file=$file_path; line=$line_no" >&2
 
-# accept ≥5 件警告 (AC-4 — 同一 PR 内で accept 件数 ≥5 で reviewer 精度を疑うべき warning emit)
-accept_count=$(wc -l < "$state_file" 2>/dev/null || echo 0)
+# Step 7: accept ≥5 件警告 (AC-4)
+# wc -l 出力に platform 依存の空白が含まれるため tr -d で剥がす (BSD wc は 先頭に空白を付ける)
+accept_count=$(wc -l < "$state_file" 2>/dev/null | tr -d '[:space:]')
+case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac
 if [ "$accept_count" -ge 5 ]; then
-  echo "⚠️ WARNING: 本 PR で accept (認知のみ) 件数が 5 件以上 (${accept_count} 件) に達しました。reviewer の精度を疑うべき水準です。" >&2
+  echo "⚠️ WARNING: 本 PR で accept (認知のみ) 累計件数が 5 件以上 (${accept_count} 件) に達しました。reviewer の精度を疑うべき水準です。" >&2
   echo "  対処: reviewer agent の prompt / scope assignment / pattern check ロジックを見直すか、本 PR を別 Issue に分割することを検討してください。" >&2
   echo "[CONTEXT] ACCEPT_LIMIT_EXCEEDED=1; pr=$pr_number; accept_count=$accept_count" >&2
 fi
@@ -3679,8 +3723,8 @@ Acknowledged-finding: F-NN (file:line) — reason
 ```
 
 - `F-NN`: review-result-schema.md の `findings[].id` (例: `F-01`、100 件以上は `F-100`)
-- `file:line`: 当該 finding の対象ファイル:行 (Phase 2.1 で表示されたもの)
-- `reason`: ユーザーが accept 選択時に入力した reason、または「user decision: accept (no reason given)」(reason 入力 UI が省略された場合)
+- `file:line`: 当該 finding の対象ファイル:行 (Phase 2.1 で表示されたもの)。**`line == null` (anchor finding) の場合は `(file:anchor)` 表記** に正規化する (Phase 2.1.A bash block の line_no 正規化と統一)
+- `reason`: Phase 2.1.A Step 1 で取得した `accept_reason` (非空時)、または `user decision: accept (no reason given)` (accept_reason が空の場合) のいずれか。書式例は下記参照
 
 **反復生成ルール**:
 
@@ -3708,7 +3752,7 @@ fix(review): {description}
 
 {action_lines (when commit.contextual: true)}
 
-{acknowledged_finding_lines (Issue #1019 M5 — accept finding が 1 件以上ある場合のみ非空)}
+{acknowledged_finding_lines (Issue #1019 M5 — 展開ルール: accept finding 0 件 → 完全省略 (前後 blank line も削除、conventional commits lint の連続空行 fail を防ぐ)。1 件以上 → 各 `Acknowledged-finding:` 行を `\n` 区切りで連結、末尾改行なし)}
 
 {trailer}
 
@@ -5121,8 +5165,8 @@ PR #{number} のレビュー指摘対応を完了しました
 - 修正: {fix_count}件
 - 返信: {reply_count}件
 - スキップ → 別 Issue 化: {skip_count}件
-- nit 認知 (scope=nit-noted、reply-only): {acknowledged_nit_count}件
-- accept 認知 (user decision、Issue #1019 M5): {accept_count}件{accept_warning_suffix}
+- nit 認知 (scope=nit-noted、reply-only、本 cycle): {acknowledged_nit_count}件
+- accept 認知 (user decision、Issue #1019 M5、Issue 完了まで累計): {accept_count}件{accept_warning_suffix}
 コミット: {commit_sha}
 プッシュ: 完了 / 未実行
 別 Issue 作成: {issue_count}件

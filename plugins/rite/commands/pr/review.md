@@ -2077,7 +2077,7 @@ When verification mode AND `allow_new_findings_in_unchanged_code == false`: Chec
 
 **Pre-condition**:
 - Phase 1.0 で `pr_number` が確定済
-- Phase 5.1 で findings (severity / file / line / category / description) が conversation context に retain 済
+- Phase 5.1 で findings (severity / file / line / description) が `severity_map` / `scope_map` 経由で conversation context に retain 済。**`category` の取得**: Phase 5.1 default retention には含まれないため、本 Phase 5.1.2.A 内で findings JSON (Phase 5.4 統合レポート構築過程で参照可能) から per-finding に lookup する責務を持つ (file-based path / explicit_file / local_file / pr_comment Raw JSON のいずれの review_source でも `findings[].category` フィールドは schema 1.1.0 で必須のため必ず存在する)
 
 **Step 1: Read accepted-fingerprints state file**
 
@@ -2105,7 +2105,17 @@ esac
 
 **Step 2: Compute fingerprint for each finding + mark suppressed**
 
-各 finding について [fingerprint-cycling.md](../issue/references/fingerprint-cycling.md) と同方式の SHA-1 fingerprint を計算 (`sha1(normalize(file_path) + ":" + category + ":" + normalize(message))`)。`normalize` は trim + lowercase + collapse-whitespace。
+各 finding について **fix.md Phase 2.1.A の simplified formula と bit-exact 一致** する SHA-1 fingerprint を計算する:
+
+```
+fingerprint = sha1(normalize(file_path) + ":" + category + ":" + normalize(message))
+```
+
+- `normalize(file_path)`: `./` prefix のみ collapse (`sed 's@^\./@@'`)。case-sensitive path 保護のため lowercase / 空白除去はしない
+- `category`: schema の `findings[].category` 値 (例: `code_quality`)
+- `normalize(message)`: trim + whitespace collapse (`tr -s '[:space:]' ' '` + 前後 space 除去)。identifier mask / 行番号除去は行わない
+
+> **⚠️ fingerprint-cycling.md cycling formula とは別仕様**: [fingerprint-cycling.md](../issue/references/fingerprint-cycling.md) Step 2 で定義される formula は **review cycle 跨ぎの同一 finding 検出 (Quality Signal 1)** が目的で、`category = reviewer-identity:severity` と identifier mask を含む aggressive normalize を採用する。一方本 Phase 5.1.2.A の formula は **fix.md Phase 2.1.A の persist 値との内部一致** が目的で、両者の bit-exact 一致を保証するため独自の simplified formula を採用する (Issue #1019 review cycle 1 で設計合意済)。本仕様で cycling formula 互換性は不要。
 
 `accepted_fingerprints` (sorted unique fingerprint list) に含まれる fingerprint を持つ finding を「suppressed」として **`suppressed_findings` リスト** (`finding_id` / `original_severity` / `fingerprint` の 3 フィールド) に分類する。Conversation context に retain:
 

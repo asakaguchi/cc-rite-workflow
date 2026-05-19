@@ -462,6 +462,56 @@ else
   outer_fail "TC-12.4: expected FAIL=1 + 'empty section' diagnostic, got '$empty_section_state'"
 fi
 
+# === TC-13: assert_file_exists_or_fail (Issue #1051) ===
+echo
+echo "TC-13: assert_file_exists_or_fail"
+
+# TC-13.1: file present → PASS=0 FAIL=0 RC=0 (silent guard — NOT an assertion).
+# The helper is a pre-condition guard, not a positive assertion: on success it
+# must remain silent so it does not inflate the PASS count of the assertions
+# it protects (the real assertions invoked after `|| continue` own the PASS
+# accounting). The caller's `|| continue` only depends on RC=0.
+tc13_existing=$(mktemp)
+trap 'rm -f "$tc13_existing" "$tc12_fixture" "$tmpfile"' EXIT
+printf 'present\n' > "$tc13_existing"
+
+present_state=$(bash -c "
+  source '$HELPERS'
+  if assert_file_exists_or_fail 'present-file' '$tc13_existing' >/dev/null; then
+    rc=0
+  else
+    rc=\$?
+  fi
+  echo \"PASS=\$PASS FAIL=\$FAIL RC=\$rc\"
+")
+pp=$(echo "$present_state" | grep -oE 'PASS=[0-9]+' | cut -d= -f2)
+pf=$(echo "$present_state" | grep -oE 'FAIL=[0-9]+' | cut -d= -f2)
+prc=$(echo "$present_state" | grep -oE 'RC=[0-9]+' | cut -d= -f2)
+if [ "$pp" = "0" ] && [ "$pf" = "0" ] && [ "$prc" = "0" ]; then
+  outer_pass "TC-13.1: existing file → PASS=0 FAIL=0 RC=0 (silent guard, caller proceeds)"
+else
+  outer_fail "TC-13.1: expected PASS=0 FAIL=0 RC=0 got PASS=$pp FAIL=$pf RC=$prc"
+fi
+
+# TC-13.2: file missing → FAIL=1, helper returns 1, "file not found" diagnostic emitted
+missing_state=$(bash -c "
+  source '$HELPERS'
+  if assert_file_exists_or_fail 'missing-file' '/nonexistent/path/xyz' 2>&1; then
+    rc=0
+  else
+    rc=\$?
+  fi
+  echo \"PASS=\$PASS FAIL=\$FAIL RC=\$rc\"
+")
+mp=$(echo "$missing_state" | grep -oE 'PASS=[0-9]+' | tail -1 | cut -d= -f2)
+mf=$(echo "$missing_state" | grep -oE 'FAIL=[0-9]+' | tail -1 | cut -d= -f2)
+mrc=$(echo "$missing_state" | grep -oE 'RC=[0-9]+' | tail -1 | cut -d= -f2)
+if [ "$mp" = "0" ] && [ "$mf" = "1" ] && [ "$mrc" = "1" ] && echo "$missing_state" | grep -q 'file not found'; then
+  outer_pass "TC-13.2: missing file → FAIL=1 RC=1 + 'file not found' diagnostic (caller skips via || continue)"
+else
+  outer_fail "TC-13.2: expected PASS=0 FAIL=1 RC=1 + diagnostic, got PASS=$mp FAIL=$mf RC=$mrc state='$missing_state'"
+fi
+
 # === Summary ===
 echo
 echo "─── $(basename "$0") summary ──────────────────────"

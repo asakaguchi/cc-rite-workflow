@@ -44,14 +44,12 @@ reviewers=(
 
 for r in "${reviewers[@]}"; do
   f="$AGENTS_DIR/$r.md"
-  # File-existence guard (Issue #1048): assert_grep / assert_not_grep はそれぞれ独立に
-  # ファイル不在チェックを行うため、不在時には 1 reviewer = 2 fail message に膨張する。
-  # 原本 (PR #1046 refactor 前) の「1 reviewer = 1 fail」挙動を回復するため、loop の
-  # 先頭で存在確認し、不在なら 1 件 fail して後続 assertion を skip する。
-  if [ ! -f "$f" ]; then
-    fail "$r.md (file not found: $f)"
-    continue
-  fi
+  # File-existence guard (Issue #1048 → Issue #1051): assert_grep / assert_not_grep は
+  # それぞれ独立にファイル不在チェックを行うため、不在時には 1 reviewer = 2 fail message
+  # に膨張する。assert_file_exists_or_fail で 1 件 fail + caller の `|| continue` で
+  # 後続 assertion を skip し、原本の「1 reviewer = 1 fail」挙動を維持する
+  # (Issue #1051 で _test-helpers.sh 側に共通化済)。
+  assert_file_exists_or_fail "$r.md" "$f" || continue
   assert_grep "$r.md: 5-column header present" \
     "$f" \
     '\| 重要度 \| スコープ \| ファイル:行 \| 内容 \| 推奨対応 \|'

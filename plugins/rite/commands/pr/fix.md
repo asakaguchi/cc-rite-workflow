@@ -3343,16 +3343,23 @@ nit、認知済 (scope=nit-noted, Issue #1018 M2 受け流し経路)
 EOF
 
   # Step 4b: gh api POST で reply 投稿
+  # pipefail を local scope で有効化 (Phase 2.4 既存 reply 機構 L3238-3242 と対称):
+  # jq 段の失敗が gh api の成功で silent 吸収される regression を防ぐ
+  local _saved_pipefail
+  _saved_pipefail=$(set +o | grep pipefail || echo "set +o pipefail")
+  set -o pipefail
   if jq -n --rawfile body "$reply_tmpfile" --argjson in_reply_to "$comment_id" \
        '{"body": $body, "in_reply_to": $in_reply_to}' \
      | gh api "repos/{owner}/{repo}/pulls/${pr_number}/comments" -X POST --input - >/dev/null 2>&1; then
     # Step 4c: 成功時のみ comment_id を nit_count_file に append (Phase 4.6 で wc -l 集計)
     echo "$comment_id" >> "$nit_count_file"
     rm -f "$reply_tmpfile"
+    eval "$_saved_pipefail"
     return 0
   else
     echo "[CONTEXT] NIT_NOTED_REPLY_FAILED=1; comment_id=$comment_id; reason=gh_api_post_failure" >&2
     rm -f "$reply_tmpfile"
+    eval "$_saved_pipefail"
     return 1
   fi
 }
@@ -3373,6 +3380,20 @@ EOF
 **Why no commit**:
 
 nit-noted は「修正不要の informational 指摘」のため code 変更 (Edit/Write) も commit も発生しない。git working tree への変更ゼロで `acknowledged` 状態のみ更新する受け流し経路。これにより M2 の AC-1 (合成 nit-only PR で 2 cycle 即収束、Issue 化 0) が satisfy される。
+
+#### Phase 2.4.N reasons (NIT_NOTED_REPLY_* retained flags)
+
+Phase 2.4.N が emit する `[CONTEXT] NIT_NOTED_REPLY_*` retained flag の reason 値 (Phase 1.2.0 reason 表とは別の observability namespace):
+
+| Flag | reason | Description |
+|------|--------|-------------|
+| `NIT_NOTED_REPLY_SKIPPED` | `already_replied` | 既に `nit、認知済 (scope=nit-noted` を含む reply が当該 comment に投稿済 (冪等性 — Replied-only respect)。`acknowledged_nit_count` 集計対象外 |
+| `NIT_NOTED_REPLY_FAILED` | `mktemp_failed` | reply body 用 tempfile (`/tmp/rite-fix-nit-reply-${pr_number}-${comment_id}-XXXXXX.md`) の mktemp が失敗 (disk full / inode 枯渇 / permission denied)。non-blocking、当該 finding は skip して次へ進む |
+| `NIT_NOTED_REPLY_FAILED` | `gh_api_post_failure` | `jq -n --rawfile body | gh api POST` の pipe が pipefail で exit 非ゼロ (network / auth / rate-limit / `in_reply_to` 不正値)。non-blocking、当該 finding は skip して次へ進む |
+
+**Eval-order enumeration** (Phase 2.4.N 独立 namespace、Phase 1.2.0 enumeration とは別): emit reasons sequence = (`already_replied` / `mktemp_failed` / `gh_api_post_failure`)
+
+これらの reason は Phase 1.2.0 の `FIX_FALLBACK_FAILED` / `REVIEW_SOURCE_*` 系列とは独立した namespace で、`/rite:issue:start` 側の Phase 5.4 review-fix 判定では情報提示のみに使われる (Phase 4.6 の `acknowledged_nit_count > 0` を超える詳細 routing には参加しない)。
 
 ---
 

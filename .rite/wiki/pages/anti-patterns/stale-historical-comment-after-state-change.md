@@ -1,0 +1,115 @@
+---
+title: "状態変化後も未来形 / 旧値前提のインラインコメントが残置する (stale historical comment drift)"
+domain: "anti-patterns"
+created: "2026-05-19T20:10:23Z"
+updated: "2026-05-19T20:10:23Z"
+sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260519T195007Z-pr-1065.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260519T195734Z-pr-1065-cycle2.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260519T195351Z-pr-1065.md"
+tags: [config-bump, inline-comment, drift, rollout-strategy, order-emphasis-consistency]
+confidence: high
+---
+
+# 状態変化後も未来形 / 旧値前提のインラインコメントが残置する (stale historical comment drift)
+
+## 概要
+
+config 値の bump (例: `enabled: false → true`) や AC の完了マーク (`⏳ 実行予定 → ✅ 実行済`) など状態を変更する commit で、**同一行 / 近傍のインラインコメント** が旧値や未来形 (`default: false` / `... 後に true 化予定`) のまま残置する drift。LLM / reviewer は値そのものは確認するが付随するインラインコメントの語法 (時制 / 旧値表記) は対象外として読み飛ばすため、merge 後の reader が「PR HEAD と書かれている内容が矛盾」する状態に直面する。PR #1065 で `scope_assignment.enabled: false → true` bump と AC-5 完了マークの両方で同症状が観測され、cycle 1 で 7 件 finding の Order-Emphasis Consistency 違反として検出。
+
+## 詳細
+
+### 観測された症状 (PR #1065)
+
+PR #1065 の `rite-config.yml` AC-5 bump で `scope_assignment.enabled: false → true` を変更した際、同一行末尾のコメントが状態変化を反映しないまま残置:
+
+```yaml
+# Before bump (旧 HEAD)
+enabled: false           # scope-based routing 全体の opt-in/out (default: false、Issue #1020 で初期導入)
+
+# After bump (新 HEAD) — drift 状態
+enabled: true            # scope-based routing 全体の opt-in/out (default: false、Issue #1020 で初期導入)
+                         #                                       ^^^^^^^^^^^^^^^^
+                         #                                       現値 true に対して非対称
+```
+
+同時に PR description の AC-5 状態表記が:
+
+```diff
+- AC-5: 検証完了後、`scope_assignment.enabled: true` bump (本 Sub-Issue 内の最後の commit)  ⏳ 実行予定
+```
+
+のまま、bump 完了 commit が landed 後も `⏳ 実行予定` 表記が残置していた。
+
+### 失敗 mode
+
+- LLM / reviewer の attention は **値そのもの** (`true` / `false`、`✅` / `⏳`) に向き、付随インラインコメント / status emoji の語法整合性は scope 外として読み飛ばす
+- diff 上は「1 行変更」に見えるが意味的には「値変更 + コメント整合性更新 + status 表記更新」の 3 site 修正が必要
+- rollout strategy / migration plan を rite-config.yml や CHANGELOG にコメントで残す慣習があると、状態遷移を経た後も「将来計画」表記が残り future-tense として読まれる drift が累積
+
+### canonical 対策
+
+#### Pattern 1: 値変更時の同一行コメント sweep
+
+config bump / AC マーク更新時は値変更と**同一 commit** で:
+
+1. 同一行末尾のインラインコメント (`# default: false`) の語法を新値に合わせて更新
+2. 直上 / 直下数行のコメントブロック (rollout strategy 等) の時制を完了形に書き換え
+3. PR description / commit body の AC 状態表記 (`⏳ → ✅`) を完了マークに更新
+
+#### Pattern 2: commit SHA embed で「実行済」を明示する
+
+「完了マーク」だけだと将来の読み手が「いつ完了したか」「どこで実行されたか」を遡れない。**完了の証跡として commit SHA を embed** することで Order-Emphasis Consistency を強化:
+
+```diff
+- AC-5: 検証完了後、enabled: true bump  ⏳ 実行予定
++ AC-5: ✅ 実行済 (commit 7412b2f9 で bump 完了)
+```
+
+reader は commit SHA から `git show 7412b2f9` で実物を確認でき、completion claim と実装の対応が grep evidence として確立する。
+
+#### Pattern 3: rollout strategy comment は時制を「観察主体」に reframe
+
+将来計画を残したい場合は「未来形」ではなく「過去-現在パース可能な観察主体」で記述:
+
+```diff
+- # ロールアウト戦略: 初期 false で導入 → 動作検証後に develop merge 時点で同一 PR 内の別 commit で true へ bump
++ # ロールアウト履歴: 初期 false で導入 → #1022 検証 pass 後 (commit 7412b2f9) に true へ bump
+```
+
+「予定」「予定」を「履歴」「実施」に置き換えることで、PR cycle 完了後も時制が drift しない。
+
+### 検出シグナル
+
+以下のパターンが diff に現れたら本 anti-pattern の警戒対象:
+
+- config 値変更 (`true ↔ false`、`enabled ↔ disabled`、`auto ↔ manual` 等の boolean / enum flip)
+- AC マーク変更 (`⏳ → ✅`、`未着手 → 実装中 → 完了` 等)
+- バージョン bump (`0.x → 1.0`)
+- いずれも同一行 / 近傍 (±5 行) にインラインコメント / status 注釈が存在する
+
+3 条件が揃った diff では reviewer が「値 + コメント + 状態表記の 3 site 整合性」を grep verify するチェックリスト項目を追加することで decisive に防御可能。
+
+### 関連 anti-pattern との区別
+
+| pattern | scope | 検出 timing |
+|---------|-------|------------|
+| **Stale historical comment drift** (本 page) | 状態変化後にコメント / 表記が旧値のまま残置 | review / fix 時 |
+| [Design doc current HEAD verification](../heuristics/design-doc-current-head-verification.md) | design doc が現 HEAD の component を grep verify せず stale 参照 | design 時 |
+| [Asymmetric Fix Transcription](asymmetric-fix-transcription.md) | 同種パターンの multi-location drift | fix 時 |
+
+本 page は「同一 commit 内で値とコメントの整合性が崩れる drift」に focus。複数ファイル / 複数 site への伝播漏れは Asymmetric Fix Transcription、design doc 全体の stale 参照は Design doc current HEAD verification。
+
+## 関連ページ
+
+- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](./asymmetric-fix-transcription.md)
+- [Design doc は現 HEAD の SoT (registration / writer-reader grep) を verify してから書く](../heuristics/design-doc-current-head-verification.md)
+
+## ソース
+
+- [PR #1065 review results](../../raw/reviews/20260519T195007Z-pr-1065.md)
+- [PR #1065 review cycle 2](../../raw/reviews/20260519T195734Z-pr-1065-cycle2.md)
+- [PR #1065 fix results](../../raw/fixes/20260519T195351Z-pr-1065.md)

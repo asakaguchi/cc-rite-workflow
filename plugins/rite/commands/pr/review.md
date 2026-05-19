@@ -2071,6 +2071,162 @@ When verification mode AND `allow_new_findings_in_unchanged_code == false`: Chec
 
 **例外**: この stability_concern 分類は、Phase 4.5.1 の verification テンプレート（Part 2: リグレッションチェック）由来の指摘にのみ適用される。Phase 4.5 の通常テンプレート（フルレビュー）由来の指摘には適用しない。フルレビュー由来の指摘は 5.1.1 に従い、重要度に関わらず blocking とする。
 
+#### 5.1.2.A Accepted Fingerprint Suppression (Issue #1019 M5)
+
+**Owner**: Phase 5.1 finding collection 完了直後。**Condition**: 常に実行 (state file 不在時は skip)。**Purpose**: 前 cycle で `/rite:pr:fix` Phase 2.1 で `accept (認知のみ)` を選択した finding (status: `acknowledged`) が同 PR の次 review cycle で再出現した場合、JSON output からは削除し Markdown output には audit log として残す。これにより decision-replay 系の同一 finding 再出現を断つ (M5 の核)。
+
+**Pre-condition**:
+- Phase 1.0 で `pr_number` が確定済
+- Phase 5.1 で findings (severity / file / line / description) が `severity_map` / `scope_map` 経由で conversation context に retain 済。**`category` の取得**: Phase 5.1 default retention map (`severity_map` / `scope_map`) には含まれないため、本 Phase 5.1.2.A 内で **Phase 5.1 で Task tool 結果として retain された findings 集合** (schema 1.1.0 必須フィールド `findings[].category` を含む) から per-finding に lookup する責務を持つ。Phase 5.1 retain 直後から有効 (Phase 5.4 統合レポート生成を待たない)。file-based path / explicit_file / local_file / pr_comment Raw JSON のいずれの review_source でも `findings[].category` は schema 1.1.0 で必須のため必ず存在する
+
+**Step 1: Read accepted-fingerprints state file**
+
+```bash
+# Phase 5.1.2.A: accepted-fingerprints 読込 (Issue #1019 M5)
+pr_number="{pr_number}"
+case "$pr_number" in
+  ''|*[!0-9]*)
+    echo "WARNING: Phase 5.1.2.A の pr_number が literal substitute されていません (値: '$pr_number')。suppression を skip します" >&2
+    accepted_fingerprints=""
+    ;;
+  *)
+    state_file=".rite/state/accepted-fingerprints-${pr_number}.txt"
+    if [ -f "$state_file" ] && [ -s "$state_file" ]; then
+      accepted_fingerprints=$(cat "$state_file" 2>/dev/null || echo "")
+      # accept_count は fix.md Phase 2.1.A Step 7 と bit-exact 対称: wc -l + tr -d + numeric validation
+      # (grep -c は 0 行マッチで rc=1 を返し fallback `echo 0` が "0\n0" corruption を起こすため不採用)
+      accept_count=$(wc -l < "$state_file" 2>/dev/null | tr -d '[:space:]')
+      case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac
+      echo "[CONTEXT] ACCEPTED_FINGERPRINTS_LOADED=1; pr=$pr_number; count=$accept_count" >&2
+    else
+      accepted_fingerprints=""
+      echo "[CONTEXT] ACCEPTED_FINGERPRINTS_LOADED=0; pr=$pr_number; reason=no_state_file" >&2
+    fi
+    ;;
+esac
+```
+
+**Step 2: Compute fingerprint for each finding + mark suppressed**
+
+各 finding について **fix.md Phase 2.1.A の simplified formula と bit-exact 一致** する SHA-1 fingerprint を計算する。SHA-1 は LLM が semantic に emulate できない算法のため、必ず下記の bash block で per-finding に計算すること (LLM 推測による hash 値の手動構築は禁止):
+
+```
+fingerprint = sha1(normalize(file_path) + ":" + category + ":" + normalize(message))
+```
+
+- `normalize(file_path)`: `./` prefix のみ collapse (`sed 's@^\./@@'`)。case-sensitive path 保護のため lowercase / 空白除去はしない
+- `category`: schema の `findings[].category` 値 (例: `code_quality`)
+- `normalize(message)`: trim + whitespace collapse (`tr -s '[:space:]' ' '` + 前後 space 除去)。identifier mask / 行番号除去は行わない
+
+**per-finding fingerprint 計算 bash block** (fix.md Phase 2.1.A Step 3 と bit-exact 対称、Claude は finding ごとに本 block を呼び出す):
+
+```bash
+# Phase 5.1.2.A Step 2 per-finding fingerprint 計算 + 即時 emit (Step 2/3 統合)
+# fix.md Phase 2.1.A Step 3 と bit-exact 一致を保証する canonical block
+# Claude は finding ごとに以下の placeholder を literal substitute する:
+#   - {file}: findings[].file
+#   - {category}: findings[].category
+#   - {description}: findings[].description (前後の空白は trim 対象)
+#   - {finding_id}: findings[].id (例: F-01)
+#   - {original_severity}: findings[].severity (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW)
+#   - {pr_number}: Phase 1.0 正規化値
+#
+# 設計上の重要事項 (Step 2 と Step 3 の統合理由):
+# Claude Code Bash tool は呼び出し間で shell 変数を保持しないため、Step 3 を独立 bash
+# block にすると `$fingerprint` / `$finding_id` / `$original_severity` が undefined になり
+# emit が空値出力になる。本 block では match 検出 + 即時 emit を同一 invocation 内で完結させる。
+
+# {pr_number} placeholder 残留 fail-fast (Step 1 と対称、per-finding 呼出でも安全)
+pr_number="{pr_number}"
+case "$pr_number" in
+  ''|*[!0-9]*)
+    echo "WARNING: Phase 5.1.2.A Step 2 の pr_number が literal substitute されていません (値: '$pr_number') — fingerprint 比較を skip します" >&2
+    echo "[CONTEXT] FINGERPRINT_COMPUTE_FAILED=1; reason=pr_number_placeholder_residue; file={file}" >&2
+    exit 0  # non-blocking: 当該 finding は suppression なしで通常 finding として処理される
+    ;;
+esac
+
+# Step 1 と Step 2 は別 Bash tool invocation の可能性があるため、accepted_fingerprints を
+# 本 block 内で再読込する (cross-call shell 変数依存破綻を防ぐ)。state file 不在 / 空時は
+# 空文字列で early-exit し、grep -qFx は no-match となるため suppression branch には流れない。
+state_file=".rite/state/accepted-fingerprints-${pr_number}.txt"
+if [ -f "$state_file" ] && [ -s "$state_file" ]; then
+  accepted_fingerprints=$(cat "$state_file" 2>/dev/null || echo "")
+else
+  accepted_fingerprints=""
+fi
+
+# 早期 exit: accepted_fingerprints が空なら suppression 候補ゼロ確定のため bash block 終了
+# (defense-in-depth、空 input 時の grep -qFx 動作は仕様上 false だが明示 guard で意図を可視化)
+if [ -z "$accepted_fingerprints" ]; then
+  : # nothing to compare — suppression mapping は空、次 finding へ
+else
+  norm_file=$(printf '%s' "{file}" | sed 's@^\./@@')
+  norm_cat="{category}"
+  norm_msg=$(printf '%s' "{description}" | tr -s '[:space:]' ' ' | sed 's/^ *//;s/ *$//')
+
+  # portable SHA-1 helper (fix.md Phase 2.1.A Step 3 と同型)
+  if command -v sha1sum >/dev/null 2>&1; then
+    fingerprint=$(printf '%s:%s:%s' "$norm_file" "$norm_cat" "$norm_msg" | sha1sum | awk '{print $1}')
+  elif command -v shasum >/dev/null 2>&1; then
+    fingerprint=$(printf '%s:%s:%s' "$norm_file" "$norm_cat" "$norm_msg" | shasum -a 1 | awk '{print $1}')
+  else
+    echo "WARNING: sha1sum / shasum が見つかりません — fingerprint 比較を skip します" >&2
+    echo "[CONTEXT] FINGERPRINT_COMPUTE_FAILED=1; reason=sha1_helper_missing; file={file}" >&2
+    fingerprint=""
+  fi
+
+  # accepted_fingerprints 集合との比較 + 即時 emit (match 時のみ)
+  # Step 2 と Step 3 を同一 bash block 内に統合することで `$fingerprint` の scope を保ち、
+  # cross-call shell var 問題を回避する。重複 emit は本 if branch が 1 finding につき最大 1 回
+  # 実行される仕様で防止 (per-finding loop の単一実行が暗黙の重複防止)。
+  if [ -n "$fingerprint" ] && printf '%s\n' "$accepted_fingerprints" | grep -qFx "$fingerprint"; then
+    # placeholder ({finding_id} / {original_severity}) は Claude が literal substitute する。
+    # $fingerprint は bash 変数として同一 block 内で参照する。
+    echo "[CONTEXT] FINDING_SUPPRESSED_BY_ACCEPT=1; finding_id={finding_id}; original_severity={original_severity}; fingerprint=$fingerprint" >&2
+    # suppressed_findings リストに append (Claude が会話コンテキストで管理、Phase 6.1.a JSON 除外時に参照)
+  fi
+fi
+```
+
+> **⚠️ fingerprint-cycling.md cycling formula とは別仕様**: [fingerprint-cycling.md](../issue/references/fingerprint-cycling.md) Step 2 で定義される formula は **review cycle 跨ぎの同一 finding 検出 (Quality Signal 1)** が目的で、`category = reviewer-identity:severity` と identifier mask を含む aggressive normalize を採用する。一方本 Phase 5.1.2.A の formula は **fix.md Phase 2.1.A の persist 値との内部一致** が目的で、両者の bit-exact 一致を保証するため独自の simplified formula を採用する (Issue #1019 review cycle 1 で設計合意済)。本仕様で cycling formula 互換性は不要。drift 防止のため上記 bash block は fix.md Phase 2.1.A Step 3 の `norm_file=` / `norm_cat=` / `norm_msg=` / sha1_helper 部分と bit-exact 一致させること (変更時は両所同時更新)。
+
+`accepted_fingerprints` (sorted unique fingerprint list) に含まれる fingerprint を持つ finding を「suppressed」として **`suppressed_findings` リスト** (`finding_id` / `original_severity` / `fingerprint` の 3 フィールド) に分類する。Conversation context に retain:
+
+- `suppressed_findings`: 次 cycle suppression 対象 (JSON output から除外、Markdown output には残す)
+- `non_suppressed_findings`: 通常 finding (JSON / Markdown 両方に含める)
+
+**Step 3: Emit `FINDING_SUPPRESSED_BY_ACCEPT` (Step 2 内で実行済み)**
+
+各 suppressed finding の retained flag emit は **Step 2 bash block 内の match branch で同一 invocation 内で実行される**。これにより `$fingerprint` の bash 変数 scope が保たれ、cross-Bash-call shell var 破綻を構造的に回避する。独立した Step 3 bash block は存在しない (cycle 4 で Step 2/3 を統合済み)。
+
+emit 形式 (Step 2 line で実装):
+```
+[CONTEXT] FINDING_SUPPRESSED_BY_ACCEPT=1; finding_id={finding_id}; original_severity={original_severity}; fingerprint=$fingerprint
+```
+
+- `{finding_id}` / `{original_severity}`: Claude が finding ごとに literal substitute
+- `$fingerprint`: Step 2 内で計算された bash 変数 (同一 invocation 内のため scope 保持)
+
+**Markdown / JSON output 取扱の非対称契約**:
+
+| Output | suppressed findings の扱い |
+|--------|--------------------------|
+| **Markdown** (Phase 5.4 統合レポート / Phase 6.1.b PR コメント) | **残す** (audit log) — finding 表に通常通り表示。`内容` 列末尾に `(acknowledged — suppressed from JSON by Issue #1019 M5)` 注記を付与 |
+| **JSON** (Phase 6.1.a local file / Phase 6.1.b Raw JSON 埋込) | **削除** — `findings[]` 配列から除外。`/rite:pr:fix` Phase 1.2.0 が参照するのは JSON 側のため、accepted finding は次 cycle で fix loop に entered しない |
+
+**Phase 6.1.a JSON 生成への接続**: Claude が `{review_result_json_heredoc_body}` を生成する際、`suppressed_findings` リストに含まれる finding は `findings[]` 配列から **除外** する。Markdown 側 (Phase 5.4) は `non_suppressed_findings` + `suppressed_findings` の和集合で生成 (audit log 用)。
+
+**Revocability**: `.rite/state/accepted-fingerprints-{pr_number}.txt` を手動削除すれば、次 review cycle で当該 fingerprint の finding が再出現した際に suppression が解除され、通常通り JSON output に含まれる。`fix.md` Phase 2.1.A の AC-5 revocability ドキュメントを参照。
+
+**Retained flag namespace** (Phase 5.1.2.A 独立):
+
+| Flag | Description |
+|------|-------------|
+| `ACCEPTED_FINGERPRINTS_LOADED=1; pr=N; count=M` | state file 読込成功 (suppression 対象 M 件) |
+| `ACCEPTED_FINGERPRINTS_LOADED=0; pr=N; reason=...` | state file 不在 / pr_number 不正 (suppression skip、通常 review) |
+| `FINDING_SUPPRESSED_BY_ACCEPT=1; finding_id=F-NN; original_severity=...; fingerprint=...` | 個別 finding suppression marker (per finding emit、audit log + observability) |
+
 #### 5.1.3 Doc-Heavy PR Mode Post-Condition Check
 
 **Execution condition**: `{doc_heavy_pr} == true` (set in Phase 1.2.7) AND tech-writer is in the reviewer set.
@@ -2979,6 +3135,7 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
 
 **Claude substitution requirements**:
 - `{review_result_json_heredoc_body}`: Claude が review-result-schema.md に従って JSON 本文を生成し、下記 `RITE_JSON_EOF` heredoc に literal substitute する。**⚠️ Heredoc quoting note**: `<<'RITE_JSON_EOF'` は single-quoted delimiter のため shell expansion (変数展開・command substitution) は完全抑制される。`{review_result_json_heredoc_body}` placeholder は **bash 実行時の動的展開ではなく Claude が bash block 生成時に literal 文字列として置換**する必要がある。literal 置換忘れは bash 実行時に literal `{review_result_json_heredoc_body}` がそのまま JSON ファイルに書き込まれ、Phase 6.1.a 内の `jq empty` post-condition check で fail-fast 検出される (defense-in-depth)。
+  - **Issue #1019 M5 — Accepted Fingerprint Suppression 契約**: Phase 5.1.2.A で識別された `suppressed_findings` (前 cycle で `accept (認知のみ)` 選択された finding が再出現) は、本 JSON 本文の `findings[]` 配列から **除外** する。Markdown 側 (Phase 5.4 統合レポート / Phase 6.1.b PR コメント本文) には audit log として残すが、JSON output (本 phase / Phase 6.1.b Raw JSON section) には含めない。これにより `/rite:pr:fix` が JSON を読み込んだ際、accepted finding は fix loop に entered せず、decision-replay 系の同一 finding 再出現が断たれる。除外は finding 単位 (`F-NN`) で行い、各除外について Phase 5.1.2.A Step 3 で `[CONTEXT] FINDING_SUPPRESSED_BY_ACCEPT=1; finding_id=...; original_severity=...; fingerprint=...` を emit 済 (本 phase で重複 emit は不要)。
 - `{pr_number}`: Phase 1.0 で正規化済み。bash block 冒頭で `pr_number="{pr_number}"` の literal substitution を行い、以後は bash 変数 `${pr_number}` として参照する (Claude placeholder と bash 変数展開の混在を避ける)。
 - Required JSON fields: `schema_version: "1.0.0"`, `pr_number`, `timestamp` (`$iso_timestamp` で生成された ISO 8601 JST 値を使用), `commit_sha`, `overall_assessment` (`mergeable` / `fix-needed`), `findings[]`. Each finding の必須フィールドは以下の通り — 完全なスキーマは [review-result-schema.md](../../references/review-result-schema.md#json-schema) を真実の源として参照すること:
   - `id`: **`F-NN` 形式、最小 2 桁ゼロパディング可変長連番** (正規表現 `^F-[0-9]{2,}$`)。99 件以下は `F-01`〜`F-99`、100 件以上は `F-100` 等に成長する。

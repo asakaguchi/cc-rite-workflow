@@ -66,7 +66,7 @@
 #   assert <label> <expected> <actual>           # writes to stdout (via pass/fail)
 #   assert_grep     <label> <file> <pattern>     # ERE, exits via fail() if not found
 #   assert_not_grep <label> <file> <pattern>     # ERE, exits via fail() if found
-#   assert_file_exists_or_fail <label> <file>    # 1-fail file-existence guard for assertion-pair loops
+#   assert_file_exists_or_fail <label> <file>    # pre-condition guard (1 fail per missing file, caller skips via || continue)
 #   assert_grep_in_section <label> <file> <start_pattern> <end_pattern> <grep_pattern>
 #                                                # extract awk-range section + ERE grep with self-cleanup
 #   print_summary [test_name] [drift_hint_text]  # writes to stdout, returns 1 if FAIL > 0

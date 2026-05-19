@@ -2,10 +2,12 @@
 title: "Enum 拡張時は few-shot example で全 enum 値の使用例を網羅する (calibration coverage gap 防止)"
 domain: "heuristics"
 created: "2026-05-18T15:50:00+09:00"
-updated: "2026-05-18T15:50:00+09:00"
+updated: "2026-05-19T07:10:29Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260518T062827Z-pr-1039.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260519T065513Z-pr-1056.md"
 tags: ["enum-extension", "few-shot-calibration", "reviewer-skill-sot", "coverage-gap", "scope-column", "severity-levels"]
 confidence: medium
 ---
@@ -61,6 +63,15 @@ PR #1039 code-quality reviewer 指摘 (推奨事項): 「6 つの finding 例す
 
 PR #1039 の scope では「全 enum 値の few-shot 追加」は **本 PR の scope 外** (`current-pr` への 5 列形式統一が主目的) として follow-up Issue 候補に降格された。これは「機械的同期 → 設計改善は別 PR」という scope discipline (本 PR は drift 解消のみ、calibration enhancement は別途) を保つための判断であり、本 heuristic は次回の calibration enhancement Issue 起票時に適用する。
 
+### Successful prevention case の累積実証 (PR #1041/#1056)
+
+PR #1039 の follow-up として起票された Issue #1041 で、本 heuristic を直接 acceptance criteria に転記し、PR #1056 (`docs(reviewer): finding-examples.md の few-shot に follow-up / nit-noted scope の使用例を追加`) で 2 example を追加 (Example 4: MEDIUM × `follow-up`、Example 5: LOW × `nit-noted`)。0 blocking finding / 1 cycle 即時 mergeable で収束し、本 heuristic が「直前 PR で記録 → 翌 PR で適用 → 想定通り収束」という最短経路の **successful prevention case** を実測した。
+
+同時に PR #1056 review で観察された sub-pattern:
+
+- **Calibration source の再帰的品質要請** (self-referential quality): calibration source は **理想形** を示すべきで、Weak Example で批判した failure mode を good example が繰り返してはならない。PR #1056 review では「Weak Example 1 で EXAMPLE 欠落を批判している file 自身が新規 Example 4 で同じ failure mode を踏みかけた」観察が行われ、本 heuristic を適用する enum 拡張 PR では「new example が同 file 内の Weak Example で批判される failure mode を含まない」ことも併せて verify すべき (recursion 防止)。
+- **non-Hypothetical-Exception reviewer 選定の明示記載**: forbidden cell matrix を伴う enum (severity × scope 等) で example を作る際、reviewer-type × enum 値の許容組合せが forbidden cell に該当する場合は「なぜこの reviewer-type を選んだか」を example 内に明示的に記述する (例: `"frontend reviewer is used deliberately — the four Hypothetical Exception reviewers (security/database/devops/dependencies) are prohibited from emitting scope=nit-noted"`)。LLM 学習で許容組合せを decisive に伝達する canonical pattern。
+
 ## 関連ページ
 
 - [Severity 等級拡張は read/write/parse/measure の closed-loop 6 段階を verify する](../heuristics/severity-extension-closed-loop-verification.md)
@@ -68,3 +79,4 @@ PR #1039 の scope では「全 enum 値の few-shot 追加」は **本 PR の s
 ## ソース
 
 - [PR #1039 review results](../../raw/reviews/20260518T062827Z-pr-1039.md)
+- [PR #1056 review results](../../raw/reviews/20260519T065513Z-pr-1056.md)

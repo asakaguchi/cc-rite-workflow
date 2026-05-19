@@ -27,7 +27,25 @@
 #   0 — migration completed (including no-op / dry-run / empty target set)
 #   1 — migration failed (atomic write or jq parse error on a file)
 
+# `-e` を意図的に省略する: 個別ファイルの jq parse 失敗で全体停止させず、
+# FAILED_FILES 配列に集約してから末尾で exit 1 する設計 (post-review-state-verify.sh:40
+# と同パターン)。pipefail は維持して pipeline 失敗を捕捉する。
 set -uo pipefail
+
+# --- Signal-specific trap setup ---
+# canonical pattern: references/bash-trap-patterns.md#signal-specific-trap-template
+# SIGINT/SIGTERM/SIGHUP で中断時に per-file mktemp tempfile (`${file}.XXXXXX`) を残さない。
+# 配列で trap action を管理し、migrate_file 内で `_orphan_tmps+=("$tmp")` を追加する。
+declare -a _orphan_tmps=()
+_migrate_cleanup() {
+  for t in "${_orphan_tmps[@]:-}"; do
+    [ -n "$t" ] && [ -e "$t" ] && rm -f "$t"
+  done
+}
+trap 'rc=$?; _migrate_cleanup; exit $rc' EXIT
+trap '_migrate_cleanup; exit 130' INT
+trap '_migrate_cleanup; exit 143' TERM
+trap '_migrate_cleanup; exit 129' HUP
 
 # --- Argument parsing ---
 DRY_RUN=false
@@ -65,15 +83,24 @@ DEFAULT_SCOPE_FILTER='
 
 # --- Migration filter: only fills missing fields (idempotent) ---
 # Outer guard: if schema_version already "1.1.0", emit unchanged.
-# Otherwise: bump schema_version to "1.1.0", and per-finding fill scope /
-# pre_existing only when absent (has(...) guard preserves explicit values).
+# Otherwise: bump schema_version to "1.1.0", and per-finding fill scope only
+# when absent (has(...) guard preserves explicit values).
+#
+# pre_existing は default mapping を **適用しない** (フィールドを欠落させたまま保持)。
+# review-result-schema.md §後方互換性 (line 197-203) が canonical SoT:
+#   - revert test (reviewer による mental revert) なしに severity 等から推論不可
+#   - 欠落のままで Cross-field invariant #5 (pre_existing=false × scope=nit-noted) が
+#     発火しない (`null != false`)
+#   - 1.0/1.0.0 JSON の finding は invariant #5 auto-correct 対象外となり後方互換が保たれる
+# 旧実装は `.pre_existing = false` を初期化していたが、これは migrated LOW finding を
+# scope=nit-noted + pre_existing=false の組合せにし、read 側 invariant #5 で scope を
+# current-pr に書き換えてしまう後方互換破壊だった (Issue #1021 review F-01)。
 MIGRATE_FILTER='
   if (.schema_version // "") == "1.1.0" then .
   else
     .schema_version = "1.1.0"
     | .findings |= map(
         (if has("scope") then . else .scope = ('"$DEFAULT_SCOPE_FILTER"') end)
-        | (if has("pre_existing") then . else .pre_existing = false end)
       )
   end
 '
@@ -113,7 +140,7 @@ migrate_file() {
   esac
 
   if [ "$DRY_RUN" = "true" ]; then
-    echo "[rite] dry-run: would migrate $file (schema_version='$parsed_ver' → 1.1.0)"
+    echo "[rite] dry-run: would migrate $file (schema_version='$parsed_ver' → 1.1.0)" >&2
     MIGRATED_COUNT=$((MIGRATED_COUNT + 1))
     return
   fi
@@ -125,6 +152,9 @@ migrate_file() {
     FAILED_FILES+=("$file")
     return
   }
+  # Signal-aware orphan tracking (Issue #1021 F-07): SIGINT/SIGTERM/SIGHUP で
+  # 中断時に `${file}.XXXXXX` が `.rite/review-results/` 直下に残らないよう trap 配列に登録。
+  _orphan_tmps+=("$tmp")
 
   if ! jq "$MIGRATE_FILTER" "$file" > "$tmp" 2>/dev/null; then
     echo "[rite] ERROR: jq migration filter failed for $file" >&2
@@ -145,9 +175,17 @@ migrate_file() {
   if ! mv "$tmp" "$file"; then
     echo "[rite] ERROR: atomic mv failed for $file (tmp=$tmp left behind for inspection)" >&2
     FAILED_COUNT=$((FAILED_COUNT + 1))
-    FAILED_FILES+=("$file")
+    FAILED_FILES+=("$file (tmp=$tmp)")
     return
   fi
+  # mv 成功後: orphan 配列から該当 tmp を除外 (二重 rm 回避 / failure 時の inspection 用に preserve)
+  # 配列から要素を削除する portable な方法: tmp が一致する要素のみ skip して新配列を作る
+  declare -a _new_orphans=()
+  for t in "${_orphan_tmps[@]:-}"; do
+    [ "$t" = "$tmp" ] || _new_orphans+=("$t")
+  done
+  _orphan_tmps=("${_new_orphans[@]:-}")
+  unset _new_orphans
 
   echo "[rite] migrated: $file ($parsed_ver → 1.1.0)" >&2
   MIGRATED_COUNT=$((MIGRATED_COUNT + 1))
@@ -185,7 +223,7 @@ if [ -d "$REVIEW_DIR" ]; then
       state_file="$STATE_DIR/accepted-fingerprints-${pr}.txt"
       if [ ! -f "$state_file" ]; then
         if [ "$DRY_RUN" = "true" ]; then
-          echo "[rite] dry-run: would initialize empty $state_file"
+          echo "[rite] dry-run: would initialize empty $state_file" >&2
         else
           : > "$state_file" || {
             echo "[rite] WARNING: failed to initialize $state_file" >&2

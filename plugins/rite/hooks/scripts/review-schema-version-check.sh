@@ -119,16 +119,24 @@ is_in_accept_list() {
   return 1
 }
 
+# Emit drift marker (DRY helper — Issue #1021 F-11):
+# 3 drift reason (missing file / invalid JSON / version mismatch) で同形式の
+# `[CONTEXT] REVIEW_SCHEMA_VERSION_DRIFT=1; file=...; schema_version=...` を emit する。
+emit_drift() {
+  local f="$1"
+  local v="$2"
+  [ "$QUIET" -eq 0 ] && echo "[CONTEXT] REVIEW_SCHEMA_VERSION_DRIFT=1; file=$f; schema_version=$v" >&2
+  DRIFT_COUNT=$((DRIFT_COUNT + 1))
+}
+
 for file in "${TARGETS[@]}"; do
   if [ ! -f "$file" ]; then
-    [ "$QUIET" -eq 0 ] && echo "[CONTEXT] REVIEW_SCHEMA_VERSION_DRIFT=1; file=$file; schema_version=__missing_file__" >&2
-    DRIFT_COUNT=$((DRIFT_COUNT + 1))
+    emit_drift "$file" "__missing_file__"
     continue
   fi
 
   if ! jq empty "$file" 2>/dev/null; then
-    [ "$QUIET" -eq 0 ] && echo "[CONTEXT] REVIEW_SCHEMA_VERSION_DRIFT=1; file=$file; schema_version=__invalid_json__" >&2
-    DRIFT_COUNT=$((DRIFT_COUNT + 1))
+    emit_drift "$file" "__invalid_json__"
     continue
   fi
 
@@ -138,8 +146,7 @@ for file in "${TARGETS[@]}"; do
     continue
   fi
 
-  [ "$QUIET" -eq 0 ] && echo "[CONTEXT] REVIEW_SCHEMA_VERSION_DRIFT=1; file=$file; schema_version=$version" >&2
-  DRIFT_COUNT=$((DRIFT_COUNT + 1))
+  emit_drift "$file" "$version"
 done
 
 if [ "$DRIFT_COUNT" -gt 0 ]; then

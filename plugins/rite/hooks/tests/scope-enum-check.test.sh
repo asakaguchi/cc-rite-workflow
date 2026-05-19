@@ -3,19 +3,23 @@
 # Issue #1021 (Epic #1015 — schema 1.0 → 1.1.0 evolution).
 #
 # Test cases (AC-4):
-#   T-1: basic — scope ∈ {current-pr, follow-up, nit-noted} valid
-#   T-2: CRITICAL × nit-noted FAIL invariant (review-result-schema invariant #4)
+#   T-1: basic — scope ∈ {current-pr, follow-up, nit-noted} valid (+MEDIUM × nit-noted negative)
+#   T-2: CRITICAL × nit-noted / HIGH × nit-noted FAIL invariant (review-result-schema invariant #4)
+#        + MEDIUM × nit-noted negative case (selector が CRITICAL/HIGH 限定であることを fix)
 #   T-3: LOW × current-pr → migration default mapping demotes to nit-noted
 #        (migrate-review-state-to-1.1.sh fills scope from severity when scope absent;
 #         LOW severity yields nit-noted per default-mapping table)
 #   T-4: pre_existing=false × nit-noted auto-correct (invariant #5)
+#        — schema-level contract test (canonical jq mutation の動作のみを assert する。
+#         fix.md Phase 1.2.0 の read-side integration は本 test で検証しない。
+#         read-side との bit-exact 一致は別 E2E test の責務 [follow-up scope])
 #
 # Usage: bash plugins/rite/hooks/tests/scope-enum-check.test.sh
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 MIGRATE_SCRIPT="$REPO_ROOT/plugins/rite/scripts/migrate-review-state-to-1.1.sh"
 
 # Sanity: required tooling
@@ -28,9 +32,22 @@ if [ ! -x "$MIGRATE_SCRIPT" ]; then
   exit 2
 fi
 
-# Per-test sandbox
+# Sandbox + cleanup_dirs array for proper trap-based cleanup (Issue #1021 F-06)
+# Use specific path tracking instead of relying on $sandbox single rm -rf.
+declare -a cleanup_dirs=()
+_test_cleanup() {
+  local d
+  for d in "${cleanup_dirs[@]:-}"; do
+    [ -n "$d" ] && [ -d "$d" ] && rm -rf "$d"
+  done
+}
+trap '_test_cleanup' EXIT
+trap '_test_cleanup; exit 130' INT
+trap '_test_cleanup; exit 143' TERM
+trap '_test_cleanup; exit 129' HUP
+
 sandbox=$(mktemp -d) || { echo "ERROR: mktemp failed" >&2; exit 2; }
-trap 'rm -rf "$sandbox"' EXIT
+cleanup_dirs+=("$sandbox")
 
 mkdir -p "$sandbox/.rite/review-results"
 mkdir -p "$sandbox/.rite/state"
@@ -60,6 +77,7 @@ assert "T-1 all scope values are valid enum members" "0" "$T1_INVALID_SCOPE_COUN
 
 # ------------------------------------------------------------------
 # T-2: CRITICAL/HIGH × nit-noted FAIL invariant (#4)
+#      + MEDIUM × nit-noted negative case (Issue #1021 F-04 — symmetry with T-4)
 # ------------------------------------------------------------------
 echo "=== T-2: CRITICAL × nit-noted FAIL invariant ==="
 T2_FILE="$sandbox/T2.json"
@@ -78,7 +96,6 @@ EOF
 
 # Canonical jq from schema doc invariant #4:
 T2_VIOLATIONS=$(jq '[.findings[] | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length' "$T2_FILE")
-# Expect at least 1 violation detected for FAIL invariant
 if [ "$T2_VIOLATIONS" -ge 1 ]; then
   pass "T-2 invariant #4 detects CRITICAL × nit-noted (violations=$T2_VIOLATIONS)"
 else
@@ -95,13 +112,22 @@ else
   fail "T-2 invariant #4 missed HIGH × nit-noted (violations=$T2B_VIOLATIONS, expected ≥ 1)"
 fi
 
+# Negative case: MEDIUM × nit-noted should NOT trigger (Issue #1021 F-04)
+# selector が CRITICAL/HIGH 限定であることを verify。selector が将来 MEDIUM を含むよう
+# 誤って変更されても検出できるようにする (T-4 の pre_existing=true negative pair と対称)。
+T2C_FILE="$sandbox/T2c.json"
+jq '.findings[0].severity = "MEDIUM"' "$T2_FILE" > "$T2C_FILE"
+T2C_VIOLATIONS=$(jq '[.findings[] | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length' "$T2C_FILE")
+assert "T-2 invariant #4 does NOT fire on MEDIUM × nit-noted" "0" "$T2C_VIOLATIONS"
+
 # ------------------------------------------------------------------
 # T-3: LOW × current-pr → migration default mapping demotes to nit-noted
-#      (input is 1.0 JSON without scope field; migration fills scope from
-#       severity; LOW → nit-noted per schema default-mapping table)
+#      Input is 1.0 JSON without scope field; migration fills scope from severity;
+#      LOW → nit-noted per schema default-mapping table.
 # ------------------------------------------------------------------
 echo "=== T-3: LOW default mapping → nit-noted ==="
-T3_DIR=$(mktemp -d) || { fail "T-3 mktemp failed"; }
+T3_DIR=$(mktemp -d) || { echo "ERROR: T-3 mktemp -d failed" >&2; exit 2; }
+cleanup_dirs+=("$T3_DIR")
 mkdir -p "$T3_DIR/.rite/review-results"
 
 # 1.0 JSON (no scope, no pre_existing) with LOW finding
@@ -118,27 +144,57 @@ cat > "$T3_DIR/.rite/review-results/300-20260101000000.json" <<'EOF'
 }
 EOF
 
-REPO_ROOT="$T3_DIR" bash "$MIGRATE_SCRIPT" >/dev/null 2>&1
-T3_RC=$?
-if [ "$T3_RC" -ne 0 ]; then
-  fail "T-3 migration script exit code (expected 0, got $T3_RC)"
+# Capture stderr for diagnostic purposes (Issue #1021 F-14)
+T3_STDERR=$(mktemp /tmp/rite-scope-enum-t3-stderr-XXXXXX) || { fail "T-3 stderr tmpfile mktemp failed"; T3_STDERR=""; }
+T3_RC=0
+if [ -n "$T3_STDERR" ]; then
+  REPO_ROOT="$T3_DIR" bash "$MIGRATE_SCRIPT" >/dev/null 2>"$T3_STDERR"
+  T3_RC=$?
+else
+  REPO_ROOT="$T3_DIR" bash "$MIGRATE_SCRIPT" >/dev/null 2>&1
+  T3_RC=$?
 fi
 
-T3_SCOPE=$(jq -r '.findings[0].scope' "$T3_DIR/.rite/review-results/300-20260101000000.json" 2>/dev/null) || T3_SCOPE="<error>"
-assert "T-3 LOW finding scope after migration" "nit-noted" "$T3_SCOPE"
+# Issue #1021 F-05: migration failure 時は後続 assert を short-circuit する
+if [ "$T3_RC" -ne 0 ]; then
+  if [ -n "$T3_STDERR" ] && [ -s "$T3_STDERR" ]; then
+    fail "T-3 migration script exit code (expected 0, got $T3_RC). stderr: $(head -5 "$T3_STDERR" | tr '\n' ' ')"
+  else
+    fail "T-3 migration script exit code (expected 0, got $T3_RC)"
+  fi
+else
+  T3_SCOPE=$(jq -r '.findings[0].scope' "$T3_DIR/.rite/review-results/300-20260101000000.json" 2>/dev/null) || T3_SCOPE="<error>"
+  assert "T-3 LOW finding scope after migration" "nit-noted" "$T3_SCOPE"
 
-T3_VER=$(jq -r '.schema_version' "$T3_DIR/.rite/review-results/300-20260101000000.json" 2>/dev/null) || T3_VER="<error>"
-assert "T-3 schema_version bumped to 1.1.0" "1.1.0" "$T3_VER"
+  T3_VER=$(jq -r '.schema_version' "$T3_DIR/.rite/review-results/300-20260101000000.json" 2>/dev/null) || T3_VER="<error>"
+  assert "T-3 schema_version bumped to 1.1.0" "1.1.0" "$T3_VER"
 
-T3_PE=$(jq -r '.findings[0].pre_existing' "$T3_DIR/.rite/review-results/300-20260101000000.json" 2>/dev/null) || T3_PE="<error>"
-assert "T-3 pre_existing initialized to false" "false" "$T3_PE"
+  # Issue #1021 F-01: migration script は pre_existing=false 初期化を行わない (schema doc canonical)。
+  # field 不在 (`null`) を期待する。jq の `// "<absent>"` で field 不在を sentinel 化して assert。
+  T3_PE=$(jq -r '.findings[0] | if has("pre_existing") then (.pre_existing | tostring) else "<absent>" end' \
+    "$T3_DIR/.rite/review-results/300-20260101000000.json" 2>/dev/null) || T3_PE="<error>"
+  assert "T-3 pre_existing field NOT added (schema doc canonical default mapping = 適用しない)" "<absent>" "$T3_PE"
 
-rm -rf "$T3_DIR"
+  # accepted-fingerprints state file 初期化も verify (Issue #1021 F-06 related — migration の完全性)
+  T3_STATE_FILE="$T3_DIR/.rite/state/accepted-fingerprints-300.txt"
+  if [ -f "$T3_STATE_FILE" ]; then
+    pass "T-3 accepted-fingerprints state file initialized for PR #300"
+  else
+    fail "T-3 accepted-fingerprints state file NOT created: $T3_STATE_FILE"
+  fi
+fi
+[ -n "$T3_STDERR" ] && rm -f "$T3_STDERR"
 
 # ------------------------------------------------------------------
 # T-4: pre_existing=false × nit-noted auto-correct (invariant #5)
+#      — schema-level contract test for canonical jq mutation
 # ------------------------------------------------------------------
-echo "=== T-4: pre_existing=false × nit-noted auto-correct ==="
+echo "=== T-4: pre_existing=false × nit-noted auto-correct (schema-level contract test) ==="
+# Schema-level contract test: This test verifies the canonical jq expression from
+# review-result-schema.md invariant #5 in isolation. It does NOT verify the actual
+# read-side integration in fix.md Phase 1.2.0. If fix.md ever drifts from this
+# canonical jq expression, T-4 alone would not catch it — that bit-exact alignment
+# is the responsibility of a separate E2E test (follow-up scope, Issue #1021 F-12).
 T4_FILE="$sandbox/T4.json"
 cat > "$T4_FILE" <<'EOF'
 {

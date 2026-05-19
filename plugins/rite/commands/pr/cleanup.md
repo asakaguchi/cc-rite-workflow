@@ -830,15 +830,16 @@ git push origin --delete {branch_name}
 
 ### 2.5 Delete Review Result Local Files and Fix State Files <!-- AC-7 -->
 
-> **Acceptance Criteria anchor (AC-7)**: PR マージ時に 5 カテゴリの PR-specific local artifacts を削除する: (1) `.rite/review-results/{pr_number}-*.json` wildcard 固定 prefix、(2) `.rite/review-results/{pr_number}-*.json.corrupt-*` corrupt rename ファイル、(3) `.rite/state/fix-fallback-retry-{pr_number}.count` specific path、(4) `.rite/fix-cycle-state/{pr_number}.json` specific path、(5) `.rite/fix-cycle-state.json` legacy 単一ファイル specific path。他 PR ファイルを誤削除しない。
+> **Acceptance Criteria anchor (AC-7)**: PR マージ時に 6 カテゴリの PR-specific local artifacts を削除する: (1) `.rite/review-results/{pr_number}-*.json` wildcard 固定 prefix、(2) `.rite/review-results/{pr_number}-*.json.corrupt-*` corrupt rename ファイル、(3) `.rite/state/fix-fallback-retry-{pr_number}.count` specific path、(4) `.rite/fix-cycle-state/{pr_number}.json` specific path、(5) `.rite/fix-cycle-state.json` legacy 単一ファイル specific path、(6) `.rite/state/accepted-fingerprints-{pr_number}.txt` specific path (Issue #1019 M5 で導入された accept 永続化ファイル、`{pr_number}` suffix で PR ごとに分離)。他 PR ファイルを誤削除しない。
 
-Delete five categories of PR-specific local artifacts associated with the merged PR:
+Delete six categories of PR-specific local artifacts associated with the merged PR:
 
 1. **Review result files**: `.rite/review-results/{pr_number}-*.json` — see [review-result-schema.md](../../references/review-result-schema.md#クリーンアップ) for the contract
 2. **Corrupted review result files**: `.rite/review-results/{pr_number}-*.json.corrupt-*` — `.gitignore` 対象 orphan を防ぐため fix.md Phase 1.2.0 Priority 2 の corrupt rename を回収
 3. **Fix retry state file**: `.rite/state/fix-fallback-retry-{pr_number}.count`
 4. **Fix-cycle state file**: `.rite/fix-cycle-state/{pr_number}.json` — specific path 完全一致 (wildcard 禁止、収束エンジンが fix サイクルごとに記録する状態ファイル)
 5. **Legacy fix-cycle state file**: `.rite/fix-cycle-state.json` — workspace 直下に生成された単一ファイル形式の残骸。specific path 完全一致 (wildcard 禁止)、`.gitignore` エントリと併置で defense-in-depth
+6. **Accepted fingerprints state file**: `.rite/state/accepted-fingerprints-{pr_number}.txt` — fix.md Phase 2.1.A (Issue #1019 M5) で `accept (認知のみ)` 選択時に fingerprint を永続化したファイル。`{pr_number}` suffix で PR ごとに完全分離されているため specific path 完全一致 (wildcard 禁止) で削除する。PR merge 後は再 surface 不要 (revocability も PR-scope)
 
 **Safety constraints**:
 
@@ -849,14 +850,15 @@ Delete five categories of PR-specific local artifacts associated with the merged
 > **scope note**: 本 bash block は単一 Bash tool invocation 内で閉じる前提で trap は block 外に伝播しない。block 末尾の trap restore は不要。
 
 ```bash
-# 4 ブロック (matched_files / state_file / cycle_state / legacy_cycle_state) ごとに独立した
-# stderr 退避 tempfile を持たせ、非対称再利用による詳細ログ喪失を防ぐ。
+# 5 ブロック (matched_files / state_file / cycle_state / legacy_cycle_state / accepted_fingerprints)
+# ごとに独立した stderr 退避 tempfile を持たせ、非対称再利用による詳細ログ喪失を防ぐ。
 matched_files_rm_err=""
 state_file_rm_err=""
 cycle_state_rm_err=""
 legacy_cycle_state_rm_err=""
+accepted_fingerprints_rm_err=""
 _rite_cleanup_p25_cleanup() {
-  rm -f "${matched_files_rm_err:-}" "${state_file_rm_err:-}" "${cycle_state_rm_err:-}" "${legacy_cycle_state_rm_err:-}"
+  rm -f "${matched_files_rm_err:-}" "${state_file_rm_err:-}" "${cycle_state_rm_err:-}" "${legacy_cycle_state_rm_err:-}" "${accepted_fingerprints_rm_err:-}"
 }
 trap 'rc=$?; _rite_cleanup_p25_cleanup; exit $rc' EXIT
 trap '_rite_cleanup_p25_cleanup; exit 130' INT
@@ -892,7 +894,8 @@ if [ -d "$review_results_dir" ]; then
   done
   if [ ${#matched_files[@]} -gt 0 ]; then
     # rm の stderr を独立 tempfile に退避し失敗時に可視化する (silent failure 禁止)。
-    # mktemp 構文は Phase 2.5 内 4 ブロックで `mktemp ... 2>/dev/null) || { ... }` 形式に統一。
+    # mktemp 構文は Phase 2.5 内 5 ブロック (matched_files / state_file / cycle_state /
+    # legacy_cycle_state / accepted_fingerprints) で `mktemp ... 2>/dev/null) || { ... }` 形式に統一。
     matched_files_rm_err=$(mktemp /tmp/rite-cleanup-matched-rm-err-XXXXXX 2>/dev/null) || {
       echo "WARNING: matched_files rm stderr 退避用 tempfile の mktemp に失敗しました。rm の stderr 詳細は失われます" >&2
       echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=mktemp_failure_rm_err; pr=${pr_number}" >&2
@@ -1000,7 +1003,34 @@ if [ -f "$legacy_cycle_state_file" ]; then
   [ -n "$legacy_cycle_state_rm_err" ] && rm -f "$legacy_cycle_state_rm_err"
 fi
 
-# cleanup 関数が EXIT で stderr tempfile 4 種を削除する。block 末尾で cleanup を先に実行し
+# accepted-fingerprints state file 削除。specific path 完全一致 (wildcard 禁止)。
+# fix.md Phase 2.1.A (Issue #1019 M5) で `accept (認知のみ)` 選択時に fingerprint を永続化したファイル。
+# `{pr_number}` suffix で PR ごとに完全分離されているため specific path で削除する。
+# 既存 matched_files / state_file 削除パターン (stderr tempfile + 詳細ログ、block 末尾の inline rm 省略を含む)
+# と対称化した error handling。stderr tempfile の cleanup は centralized `_rite_cleanup_p25_cleanup`
+# 関数が EXIT trap 経由で回収する。
+accepted_fingerprints_file=".rite/state/accepted-fingerprints-${pr_number}.txt"
+if [ -f "$accepted_fingerprints_file" ]; then
+  accepted_fingerprints_rm_err=$(mktemp /tmp/rite-cleanup-accepted-fp-rm-err-XXXXXX 2>/dev/null) || {
+    echo "WARNING: accepted-fingerprints rm stderr 退避用 tempfile の mktemp に失敗しました。rm の stderr 詳細は失われます" >&2
+    echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=mktemp_failure_rm_err_accepted_fingerprints; pr=${pr_number}" >&2
+    echo "  対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
+    accepted_fingerprints_rm_err=""
+  }
+  if rm -f "$accepted_fingerprints_file" 2>"${accepted_fingerprints_rm_err:-/dev/null}"; then
+    echo "✅ accepted-fingerprints state file を削除しました: $accepted_fingerprints_file" >&2
+  else
+    rm_accepted_rc=$?
+    echo "WARNING: accepted-fingerprints state file の削除に失敗 (PR #${pr_number}, rc=$rm_accepted_rc): $accepted_fingerprints_file" >&2
+    if [ -n "$accepted_fingerprints_rm_err" ] && [ -s "$accepted_fingerprints_rm_err" ]; then
+      head -5 "$accepted_fingerprints_rm_err" | sed 's/^/  /' >&2
+    fi
+    echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=accepted_fingerprints_rm_failure; pr=${pr_number}" >&2
+    echo "  対処: permission denied / read-only filesystem / disk I/O エラーのいずれかを確認してください" >&2
+  fi
+fi
+
+# cleanup 関数が EXIT で stderr tempfile 5 種を削除する。block 末尾で cleanup を先に実行し
 # その後 trap reset することで block 外への伝播を遮断する (順序: 解除→cleanup だと解除〜
 # cleanup 間のシグナルで未実行になる、defense-in-depth)。
 _rite_cleanup_p25_cleanup
@@ -1354,7 +1384,7 @@ When `REVIEW_CLEANUP_PARTIAL_FAILURE` is `1`, append the following after the che
 
 ```
 ⚠️ レビュー結果ファイルの削除が完了しませんでした (reason: {reason})。
-手動で確認してください: ls -la .rite/review-results/{pr_number}-* .rite/state/fix-fallback-retry-{pr_number}.count
+手動で確認してください: ls -la .rite/review-results/{pr_number}-* .rite/state/fix-fallback-retry-{pr_number}.count .rite/fix-cycle-state/{pr_number}.json .rite/fix-cycle-state.json .rite/state/accepted-fingerprints-{pr_number}.txt
 ```
 
 **Projects Status update result display rules:**

@@ -2127,26 +2127,46 @@ fingerprint = sha1(normalize(file_path) + ":" + category + ":" + normalize(messa
 #   - {file}: findings[].file
 #   - {category}: findings[].category
 #   - {description}: findings[].description (前後の空白は trim 対象)
+#   - {finding_id}: findings[].id (例: F-01)
+#   - {original_severity}: findings[].severity (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW)
+#   - {pr_number}: Phase 1.0 正規化値
 
-norm_file=$(printf '%s' "{file}" | sed 's@^\./@@')
-norm_cat="{category}"
-norm_msg=$(printf '%s' "{description}" | tr -s '[:space:]' ' ' | sed 's/^ *//;s/ *$//')
-
-# portable SHA-1 helper (fix.md Phase 2.1.A Step 3 と同型)
-if command -v sha1sum >/dev/null 2>&1; then
-  fingerprint=$(printf '%s:%s:%s' "$norm_file" "$norm_cat" "$norm_msg" | sha1sum | awk '{print $1}')
-elif command -v shasum >/dev/null 2>&1; then
-  fingerprint=$(printf '%s:%s:%s' "$norm_file" "$norm_cat" "$norm_msg" | shasum -a 1 | awk '{print $1}')
+# Step 1 と Step 2 は別 Bash tool invocation の可能性があるため、accepted_fingerprints を
+# 本 block 内で再読込する (cross-call shell 変数依存破綻を防ぐ)。state file 不在 / 空時は
+# 空文字列で early-exit し、grep -qFx は no-match となるため suppression branch には流れない。
+state_file=".rite/state/accepted-fingerprints-{pr_number}.txt"
+if [ -f "$state_file" ] && [ -s "$state_file" ]; then
+  accepted_fingerprints=$(cat "$state_file" 2>/dev/null || echo "")
 else
-  echo "WARNING: sha1sum / shasum が見つかりません — fingerprint 比較を skip します" >&2
-  echo "[CONTEXT] FINGERPRINT_COMPUTE_FAILED=1; reason=sha1_helper_missing; file={file}" >&2
-  fingerprint=""
+  accepted_fingerprints=""
 fi
 
-# accepted_fingerprints 集合との比較
-if [ -n "$fingerprint" ] && printf '%s\n' "$accepted_fingerprints" | grep -qFx "$fingerprint"; then
-  echo "[CONTEXT] FINDING_SUPPRESSED_BY_ACCEPT=1; finding_id={finding_id}; original_severity={severity}; fingerprint=$fingerprint" >&2
-  # suppressed_findings に append (Claude が会話コンテキストで管理)
+# Step 2 早期 exit: accepted_fingerprints が空なら suppression 候補ゼロ確定のため bash block 終了
+# (defense-in-depth、空 input 時の grep -qFx 動作は仕様上 false だが明示 guard で意図を可視化)
+if [ -z "$accepted_fingerprints" ]; then
+  : # nothing to compare — suppression mapping は空、次 finding へ
+else
+  norm_file=$(printf '%s' "{file}" | sed 's@^\./@@')
+  norm_cat="{category}"
+  norm_msg=$(printf '%s' "{description}" | tr -s '[:space:]' ' ' | sed 's/^ *//;s/ *$//')
+
+  # portable SHA-1 helper (fix.md Phase 2.1.A Step 3 と同型)
+  if command -v sha1sum >/dev/null 2>&1; then
+    fingerprint=$(printf '%s:%s:%s' "$norm_file" "$norm_cat" "$norm_msg" | sha1sum | awk '{print $1}')
+  elif command -v shasum >/dev/null 2>&1; then
+    fingerprint=$(printf '%s:%s:%s' "$norm_file" "$norm_cat" "$norm_msg" | shasum -a 1 | awk '{print $1}')
+  else
+    echo "WARNING: sha1sum / shasum が見つかりません — fingerprint 比較を skip します" >&2
+    echo "[CONTEXT] FINGERPRINT_COMPUTE_FAILED=1; reason=sha1_helper_missing; file={file}" >&2
+    fingerprint=""
+  fi
+
+  # accepted_fingerprints 集合との比較 (match の場合は suppressed_findings に append、emit は Step 3 で行う)
+  if [ -n "$fingerprint" ] && printf '%s\n' "$accepted_fingerprints" | grep -qFx "$fingerprint"; then
+    # suppressed_findings に append (Claude が会話コンテキストで管理)
+    # NOTE: retained flag emit は Step 3 で一元化する (本 block では emit しない、重複防止)
+    :
+  fi
 fi
 ```
 

@@ -3100,7 +3100,7 @@ Prompt for skip reason:
 
 **accept 選択時の処理 (4 つを同期実行)**:
 
-1. **accept reason 入力 (任意、AskUserQuestion)**: 以下の 2 択を AskUserQuestion で提示する (Phase 2.1 `スキップ` の reason 入力と同型の option-based 構造):
+1. **accept reason 入力 (任意、AskUserQuestion)**: Phase 2.1 `スキップ` の reason 入力と**同様に Other 経由で自由記入を許容する option-based 構造**で以下 2 択を提示する (option 数や label は スキップ pattern と必ずしも同型である必要はなく、Other-based 自由記入 pattern を踏襲):
    - **「理由を入力 (Other で自由記入)」**: ユーザーが Other 選択時に free-text を入力 → `accept_reason` として retain
    - **「reason なしで accept」**: `accept_reason = ""` (空文字列、デフォルト)
    入力値は Phase 3.2 commit trailer の `reason` 欄に展開される (`accept_reason` が空なら `user decision: accept (no reason given)`、非空なら `{accept_reason}; user decision: accept`)

@@ -100,7 +100,12 @@ review:
   scope_assignment:
     # Issue #1018 M2 — scope=nit-noted 受け流し経路設定。reviewer が schema 1.1.0 で出力する
     # findings[].scope に基づく fix loop routing 制御。
-    auto_demote_low: true    # LOW × current-pr の finding を fix.md Phase 1.2.0 で自動的に nit-noted へ降格 (default: true)。false で opt-out した場合は LOW × current-pr が通常通り blocking 扱いで fix loop に流れる
+    # Issue #1020 — feature flag scaffolding。`enabled: false` で scope-based routing 全体を opt-out
+    # し、fix.md は schema 1.0 互換動作 (severity-based default mapping のみ) にフォールバックする。
+    # ロールアウト戦略: 初期 false で導入 → 動作検証後に develop merge 時点で同一 PR 内の別 commit
+    # で true へ bump。
+    enabled: false           # scope-based routing 全体の opt-in/out (default: false、Issue #1020 で初期導入)
+    auto_demote_low: true    # LOW × current-pr の finding を fix.md Phase 1.2.0 で自動的に nit-noted へ降格 (default: true)。false で opt-out した場合は LOW × current-pr が通常通り blocking 扱いで fix loop に流れる。`enabled: false` の場合は本キーは effectively false 扱い (将来の runtime gating で wiring 予定)
   doc_heavy:
     enabled: true                   # Doc-Heavy PR 検出 / Override
     lines_ratio_threshold: 0.6      # doc_lines / total_diff_lines の閾値

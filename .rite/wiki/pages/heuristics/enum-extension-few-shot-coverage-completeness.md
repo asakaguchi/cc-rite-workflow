@@ -2,13 +2,15 @@
 title: "Enum 拡張時は few-shot example で全 enum 値の使用例を網羅する (calibration coverage gap 防止)"
 domain: "heuristics"
 created: "2026-05-18T15:50:00+09:00"
-updated: "2026-05-19T07:10:29Z"
+updated: "2026-05-19T08:00:33Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260518T062827Z-pr-1039.md"
   - type: "reviews"
     ref: "raw/reviews/20260519T065513Z-pr-1056.md"
-tags: ["enum-extension", "few-shot-calibration", "reviewer-skill-sot", "coverage-gap", "scope-column", "severity-levels"]
+  - type: "reviews"
+    ref: "raw/reviews/20260519T073950Z-pr-1059.md"
+tags: ["enum-extension", "few-shot-calibration", "reviewer-skill-sot", "coverage-gap", "scope-column", "severity-levels", "recommendation-column-consistency"]
 confidence: medium
 ---
 
@@ -72,6 +74,16 @@ PR #1039 の follow-up として起票された Issue #1041 で、本 heuristic 
 - **Calibration source の再帰的品質要請** (self-referential quality): calibration source は **理想形** を示すべきで、Weak Example で批判した failure mode を good example が繰り返してはならない。PR #1056 review では「Weak Example 1 で EXAMPLE 欠落を批判している file 自身が新規 Example 4 で同じ failure mode を踏みかけた」観察が行われ、本 heuristic を適用する enum 拡張 PR では「new example が同 file 内の Weak Example で批判される failure mode を含まない」ことも併せて verify すべき (recursion 防止)。
 - **non-Hypothetical-Exception reviewer 選定の明示記載**: forbidden cell matrix を伴う enum (severity × scope 等) で example を作る際、reviewer-type × enum 値の許容組合せが forbidden cell に該当する場合は「なぜこの reviewer-type を選んだか」を example 内に明示的に記述する (例: `"frontend reviewer is used deliberately — the four Hypothetical Exception reviewers (security/database/devops/dependencies) are prohibited from emitting scope=nit-noted"`)。LLM 学習で許容組合せを decisive に伝達する canonical pattern。
 
+### PR #1059 (self-referential consistency completion via concrete code snippet)
+
+PR #1056 review で 2 reviewer (prompt-engineer / code-quality) が独立に「Example 4 Recommendation 列は散文のみで終わっており、Example 1 (`z.object({ email: z.string().email() })`) / Example 2 (`WHERE project_id IN (...)`) のような concrete code snippet が欠落」と検出し、Issue #1057 に follow-up として起票。PR #1059 で 1 行差分の minimal-diff doc PR (Example 4 Recommendation 列に `parseCurrency(raw: string): Money` API シグネチャと `const amount = parseCurrency(rawValue)` call-site collapse 例を追記) を実装、0 blocking finding / 1 cycle 即時 mergeable で収束した。
+
+本サイクルで確認された追加観察:
+
+- **Self-referential consistency completion の最小実装単位**: calibration source 内の「style 不整合」(本件では Recommendation 列の prose vs inline-code 混在) は **1 行差分** で完全に解消可能なケースがあり、scope 列 / severity 列のような構造変更を伴わない doc PR では 1 cycle 収束が定常状態となる (PR #1056 → #1059 で連続実測)。
+- **LOW × nit-noted finding を介した self-referential failure mode 検出 → 修正 → 0-finding 完了の 1 サイクル**: PR #1059 cycle 1 では 1 件の LOW × nit-noted (`src/utils/money.ts` 言及が抽出先と pattern reference で重複) が検出されたが reviewer 自身が「対応不要」「Example 2 の `task.ts:80` 重複 pattern に倣っている」と明記したため [Reviewer 自身が「対応不要」と明記する LOW finding は replied-only として尊重し fix loop で再発火させない](./respect-reviewer-no-action-recommendation.md) に従い replied-only で処理、loop 再発火なし。
+- **Successful prevention case の連続再現**: PR #1037/#1039 (heuristic 記録) → PR #1056 (follow-up 適用、2 examples 追加) → PR #1059 (self-referential consistency 完成、concrete code snippet 追記) の 3 PR 連鎖は、本 heuristic が「直前 PR で記録 → 翌 PR で部分適用 → 翌々 PR で完全適用」という段階的 application path も観測可能であることを示す。各段階で 0 blocking / 1 cycle 収束。
+
 ## 関連ページ
 
 - [Severity 等級拡張は read/write/parse/measure の closed-loop 6 段階を verify する](../heuristics/severity-extension-closed-loop-verification.md)
@@ -80,3 +92,4 @@ PR #1039 の follow-up として起票された Issue #1041 で、本 heuristic 
 
 - [PR #1039 review results](../../raw/reviews/20260518T062827Z-pr-1039.md)
 - [PR #1056 review results](../../raw/reviews/20260519T065513Z-pr-1056.md)
+- [PR #1059 review results](../../raw/reviews/20260519T073950Z-pr-1059.md)

@@ -1118,6 +1118,7 @@ set +o pipefail
 # === severity_map build (local_file/explicit_file only — referenced by pr_comment state transitions note) ===
 if [ "$review_source" = "local_file" ] || [ "$review_source" = "explicit_file" ]; then
   # Issue #1016: schema 1.1.0 後方互換 normalization (scope default mapping + invariant #5 auto-correct)。
+  # Issue #1018 (M2): auto_demote_low 適用 (LOW × current-pr → nit-noted)。
   # 本 step は file-based path 用 (Priority 0/2 共通)。Priority 3 (pr_comment, raw_json string) には
   # 別途 string-based 版が後段の Phase 1.2.0.s に近接して実装されている (同 logic の鏡像)。
   #
@@ -1128,22 +1129,34 @@ if [ "$review_source" = "local_file" ] || [ "$review_source" = "explicit_file" ]
   # (b) invariant #5: pre_existing == false ∧ scope == "nit-noted" の finding を検出。
   #     1 件以上あれば WARNING + [CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1 を emit し、
   #     scope を current-pr に自動書き換え。
-  # (c) (a) または (b) で mutation が発生した場合のみ、normalized tempfile に書き出し、
+  # (c) (a) または (b) または (e) で mutation が発生した場合のみ、normalized tempfile に書き出し、
   #     review_source_path を tempfile path に差し替えて downstream で参照させる。
   # (d) 後方互換: invariant #5 は pre_existing フィールドが存在する 1.1.0 JSON のみで発火する
   #     (1.0/1.0.0 では default mapping は scope を補完するのみで pre_existing は補完しない)。
+  # (e) Issue #1018 M2: review.scope_assignment.auto_demote_low (default true) が true の場合、
+  #     severity == "LOW" ∧ scope == "current-pr" の finding の scope を "nit-noted" に降格する。
+  #     1 件以上降格したら WARNING + [CONTEXT] REVIEW_SOURCE_AUTO_DEMOTED_LOW=1 を emit。
+  #     auto_demote_low: false で opt-out 可能 (LOW × current-pr が通常通り blocking として fix loop に流れる)。
   norm_sv=$(jq -r '.schema_version // "unknown"' "$review_source_path" 2>/dev/null || echo "unknown")
   norm_defaulted_count=0
   norm_corrected_count=0
+  norm_demoted_low_count=0
+  # auto_demote_low config 読込 (Issue #1018 M2)。section absent → default true。
+  auto_demote_low=$(awk '/^review:/{r=1;next} r && /^  scope_assignment:/{s=1;next} s && /^    auto_demote_low:/{print $2; exit}' rite-config.yml 2>/dev/null | tr -d '"' | tr -d "'" | tr '[:upper:]' '[:lower:]')
+  case "$auto_demote_low" in false|no|0) auto_demote_low=false ;; *) auto_demote_low=true ;; esac
   case "$norm_sv" in
     "1.0.0"|"1.0")
       norm_defaulted_count=$(jq '[.findings[]? | select(has("scope") | not)] | length' "$review_source_path" 2>/dev/null || echo 0)
       ;;
   esac
   norm_corrected_count=$(jq '[.findings[]? | select(.pre_existing == false and .scope == "nit-noted")] | length' "$review_source_path" 2>/dev/null || echo 0)
-  if [ "${norm_defaulted_count:-0}" -gt 0 ] || [ "${norm_corrected_count:-0}" -gt 0 ]; then
+  if [ "$auto_demote_low" = "true" ]; then
+    norm_demoted_low_count=$(jq '[.findings[]? | select(.severity == "LOW" and .scope == "current-pr")] | length' "$review_source_path" 2>/dev/null || echo 0)
+  fi
+  if [ "${norm_defaulted_count:-0}" -gt 0 ] || [ "${norm_corrected_count:-0}" -gt 0 ] || [ "${norm_demoted_low_count:-0}" -gt 0 ]; then
     if norm_tmp=$(mktemp /tmp/rite-fix-normalized-XXXXXX 2>/dev/null); then
-      if jq '
+      # auto_demote_low jq filter: bash 変数を jq 引数で渡し、jq 内で動的判定
+      if jq --arg demote_low "$auto_demote_low" '
         .findings |= map(
           (if has("scope") then . else .scope = (
             if .severity == "CRITICAL" or .severity == "HIGH" or .severity == "MEDIUM" then "current-pr"
@@ -1151,6 +1164,7 @@ if [ "$review_source" = "local_file" ] || [ "$review_source" = "explicit_file" ]
             end
           ) end)
           | (if .pre_existing == false and .scope == "nit-noted" then .scope = "current-pr" else . end)
+          | (if $demote_low == "true" and .severity == "LOW" and .scope == "current-pr" then .scope = "nit-noted" else . end)
         )
       ' "$review_source_path" > "$norm_tmp" 2>/dev/null; then
         if [ "${norm_defaulted_count:-0}" -gt 0 ]; then
@@ -1160,6 +1174,10 @@ if [ "$review_source" = "local_file" ] || [ "$review_source" = "explicit_file" ]
         if [ "${norm_corrected_count:-0}" -gt 0 ]; then
           echo "WARNING: $norm_corrected_count findings が invariant #5 違反 (pre_existing=false × scope=nit-noted) のため scope を current-pr に auto-correct しました" >&2
           echo "[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1; reason=pre_existing_false_scope_nit_noted; count=$norm_corrected_count" >&2
+        fi
+        if [ "${norm_demoted_low_count:-0}" -gt 0 ]; then
+          echo "WARNING: $norm_demoted_low_count findings (LOW × current-pr) を Issue #1018 M2 auto_demote_low により scope=nit-noted に降格しました" >&2
+          echo "[CONTEXT] REVIEW_SOURCE_AUTO_DEMOTED_LOW=1; reason=low_current_pr_demoted_to_nit_noted; count=$norm_demoted_low_count" >&2
         fi
         review_source_path="$norm_tmp"
         # hand-off 完了: 下流の severity_map 構築が review_source_path 経由で参照するため、
@@ -1225,6 +1243,21 @@ if [ "$review_source" = "local_file" ] || [ "$review_source" = "explicit_file" ]
     [ -n "$jq_err" ] && rm -f "$jq_err"
     echo "[fix:error]"
     exit 1
+  fi
+  # Issue #1018 M2: scope_map を severity_map と並行構築。
+  # findings[].scope は schema 1.1.0 で導入され、1.0/1.0.0 JSON では Phase 1.2.0 normalization 段階で
+  # severity-based default mapping により補完済み (上記 (a))。本 step では normalization 後の
+  # review_source_path から scope を file:line key で map 化する。
+  # 後段の Phase 1.3 (classification) / Phase 1.4 (display) / Phase 2.1 (entry routing) / Phase 4.3.1
+  # (Issue 化 exclusion) / Phase 4.6 (acknowledged_nit_count 計算) で参照される。
+  if scope_map_json=$(jq -c '[.findings[] | {key: (.file + ":" + (if .line == null or .line == 0 then "anchor" else (.line | tostring) end)), value: .scope}] | from_entries' "$review_source_path" 2>"${jq_err:-/dev/null}"); then
+    :
+  else
+    jq_scmap_rc=$?
+    echo "WARNING: scope_map 構築用 jq が失敗しました (rc=$jq_scmap_rc) — scope-based routing が無効化されます (legacy blocking 扱い)" >&2
+    [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=scope_map_build_failed; rc=$jq_scmap_rc" >&2
+    scope_map_json="{}"
   fi
   [ -n "$jq_err" ] && rm -f "$jq_err"
 fi
@@ -1439,6 +1472,7 @@ else
         echo "[CONTEXT] REVIEW_SOURCE_STALE=1; reason=pr_comment_commit_sha_mismatch; json_sha=$json_commit_sha; head_sha=$head_sha" >&2
       fi
       # Issue #1016: schema 1.1.0 後方互換 normalization (scope default mapping + invariant #5 auto-correct)。
+      # Issue #1018 (M2): auto_demote_low 適用 (LOW × current-pr → nit-noted)。
       # 本 step は Priority 3 (pr_comment, raw_json string) 用。Priority 0/2 (file-based) は
       # 前段の severity_map build block で同 logic の鏡像を実装している。
       #
@@ -1449,17 +1483,26 @@ else
       # (b) invariant #5: pre_existing == false ∧ scope == "nit-noted" の finding を検出。
       #     1 件以上あれば WARNING + [CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1 を emit し、
       #     scope を current-pr に自動書き換え。
-      # (c) (a) または (b) で mutation が発生した場合のみ raw_json を mutated 版に差し替える。
+      # (c) (a) または (b) または (e) で mutation が発生した場合のみ raw_json を mutated 版に差し替える。
+      # (e) Issue #1018 M2: auto_demote_low (default true) で severity == "LOW" ∧ scope == "current-pr"
+      #     の finding scope を "nit-noted" に降格。auto_demote_low: false で opt-out 可。
       norm_defaulted_count_p3=0
       norm_corrected_count_p3=0
+      norm_demoted_low_count_p3=0
+      # auto_demote_low config 読込 (Priority 0/2 経路と対称、Issue #1018 M2)
+      auto_demote_low_p3=$(awk '/^review:/{r=1;next} r && /^  scope_assignment:/{s=1;next} s && /^    auto_demote_low:/{print $2; exit}' rite-config.yml 2>/dev/null | tr -d '"' | tr -d "'" | tr '[:upper:]' '[:lower:]')
+      case "$auto_demote_low_p3" in false|no|0) auto_demote_low_p3=false ;; *) auto_demote_low_p3=true ;; esac
       case "$schema_version" in
         "1.0.0"|"1.0")
           norm_defaulted_count_p3=$(printf '%s' "$raw_json" | jq '[.findings[]? | select(has("scope") | not)] | length' 2>/dev/null || echo 0)
           ;;
       esac
       norm_corrected_count_p3=$(printf '%s' "$raw_json" | jq '[.findings[]? | select(.pre_existing == false and .scope == "nit-noted")] | length' 2>/dev/null || echo 0)
-      if [ "${norm_defaulted_count_p3:-0}" -gt 0 ] || [ "${norm_corrected_count_p3:-0}" -gt 0 ]; then
-        if normalized_raw_json=$(printf '%s' "$raw_json" | jq -c '
+      if [ "$auto_demote_low_p3" = "true" ]; then
+        norm_demoted_low_count_p3=$(printf '%s' "$raw_json" | jq '[.findings[]? | select(.severity == "LOW" and .scope == "current-pr")] | length' 2>/dev/null || echo 0)
+      fi
+      if [ "${norm_defaulted_count_p3:-0}" -gt 0 ] || [ "${norm_corrected_count_p3:-0}" -gt 0 ] || [ "${norm_demoted_low_count_p3:-0}" -gt 0 ]; then
+        if normalized_raw_json=$(printf '%s' "$raw_json" | jq --arg demote_low "$auto_demote_low_p3" -c '
           .findings |= map(
             (if has("scope") then . else .scope = (
               if .severity == "CRITICAL" or .severity == "HIGH" or .severity == "MEDIUM" then "current-pr"
@@ -1467,6 +1510,7 @@ else
               end
             ) end)
             | (if .pre_existing == false and .scope == "nit-noted" then .scope = "current-pr" else . end)
+            | (if $demote_low == "true" and .severity == "LOW" and .scope == "current-pr" then .scope = "nit-noted" else . end)
           )
         ' 2>/dev/null); then
           if [ "${norm_defaulted_count_p3:-0}" -gt 0 ]; then
@@ -1476,6 +1520,10 @@ else
           if [ "${norm_corrected_count_p3:-0}" -gt 0 ]; then
             echo "WARNING: $norm_corrected_count_p3 findings が invariant #5 違反 (pre_existing=false × scope=nit-noted) のため scope を current-pr に auto-correct しました" >&2
             echo "[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1; reason=pre_existing_false_scope_nit_noted; count=$norm_corrected_count_p3" >&2
+          fi
+          if [ "${norm_demoted_low_count_p3:-0}" -gt 0 ]; then
+            echo "WARNING: $norm_demoted_low_count_p3 findings (LOW × current-pr) を Issue #1018 M2 auto_demote_low により scope=nit-noted に降格しました" >&2
+            echo "[CONTEXT] REVIEW_SOURCE_AUTO_DEMOTED_LOW=1; reason=low_current_pr_demoted_to_nit_noted; count=$norm_demoted_low_count_p3" >&2
           fi
           raw_json="$normalized_raw_json"
         else
@@ -1500,6 +1548,15 @@ else
         echo "  legacy Markdown table parser に fallthrough します (review_source は pr_comment のまま)" >&2
         echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_severity_map_build_failed; rc=$p3_jq_rc" >&2
         severity_map_json=""  # 明示的に空文字にして後段 legacy parser が起動する
+      fi
+      # Issue #1018 M2: scope_map_json を severity_map_json と並行構築 (Priority 0/2 と対称)
+      if scope_map_json=$(printf '%s' "$raw_json" | jq -c '[.findings[] | {key: (.file + ":" + (if .line == null or .line == 0 then "anchor" else (.line | tostring) end)), value: .scope}] | from_entries' 2>"${p3_jq_err:-/dev/null}"); then
+        :
+      else
+        p3_jq_scmap_rc=$?
+        echo "WARNING: PR コメント内 Raw JSON からの scope_map 構築 jq が失敗しました (rc=$p3_jq_scmap_rc) — scope-based routing が無効化されます" >&2
+        echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_scope_map_build_failed; rc=$p3_jq_scmap_rc" >&2
+        scope_map_json="{}"
       fi
       [ -n "$p3_jq_err" ] && rm -f "$p3_jq_err"
       ;;
@@ -2731,14 +2788,15 @@ When no rite review results exist in PR comments (manual review only, or `/rite:
 
 ### 1.3 Classify Comments
 
-Perform severity-based classification using the `severity_map` obtained in Phase 1.2.1.
+Perform classification using `severity_map` AND `scope_map` (Issue #1018 M2). The scope_map enables `nit-noted` findings to be routed away from the blocking fix loop into the reply-only acknowledge track.
 
 **Classification table:**
 
 | Classification | Criteria | Action |
 |---------------|----------|--------|
-| **Required fix** | CRITICAL/HIGH | Must fix |
-| **Needs fix** | MEDIUM/LOW-MEDIUM/LOW | Fix or separate Issue (action required) |
+| **Required fix** | severity ∈ {CRITICAL, HIGH} AND scope ∈ {current-pr, follow-up} | Must fix |
+| **Needs fix** | severity ∈ {MEDIUM, LOW-MEDIUM, LOW} AND scope ∈ {current-pr, follow-up} | Fix or separate Issue (action required) |
+| **nit (認知のみ)** | scope == "nit-noted" (Issue #1018 M2) | Reply-only via Phase 2.4 `nit-noted-reply`; NOT a fix target |
 | **External review** | Findings from human reviewers | Action required |
 | **Resolved** | Resolved threads | - |
 
@@ -2747,10 +2805,13 @@ Perform severity-based classification using the `severity_map` obtained in Phase
 1. Thread is resolved (`isResolved: true`) -> Resolved (processing complete)
 2. Contains only `LGTM`, `+1`, `👍`, etc. -> Informational (no action needed)
 3. Check if the finding's file:line exists in `severity_map`
-4. If it exists, classify based on severity:
-   - `CRITICAL` or `HIGH` -> Required fix
-   - `MEDIUM` or `LOW` -> Needs fix
+4. If it exists, look up the corresponding entry in `scope_map`:
+   - **`scope == "nit-noted"` (Issue #1018 M2)** -> **nit (認知のみ)**; route directly to Phase 2.4 `nit-noted-reply` (skip Phase 2.1 selection, skip Phase 4.3.1 別 Issue 化候補)
+   - `scope ∈ {current-pr, follow-up}` AND severity ∈ {CRITICAL, HIGH} -> Required fix
+   - `scope ∈ {current-pr, follow-up}` AND severity ∈ {MEDIUM, LOW-MEDIUM, LOW} -> Needs fix
 5. Unresolved comments not in `severity_map` -> External review
+
+> **`scope_map` 欠落時の fallback**: `scope_map_json` が空 ({}) または finding 未登録の場合、scope は schema 1.0 互換の severity-based default mapping (CRITICAL/HIGH/MEDIUM → current-pr、LOW-MEDIUM/LOW → nit-noted) で補完される (Phase 1.2.0 normalization 段階で処理済み)。Phase 1.3 では map lookup 失敗時は **`current-pr` 扱い** (blocking 側に倒す safe default) として処理する。
 
 **Mapping method with `severity_map`:**
 
@@ -2799,6 +2860,16 @@ PR #{number} のレビューコメント
 | # | 重要度 | ファイル | 行 | 指摘内容 | レビュアー |
 |---|--------|----------|-----|----------|------------|
 | 1 | {severity} | {path} | {line} | {body_preview} | @{user} |
+
+### nit (認知のみ) ({nit_noted_count}件)
+<!-- Issue #1018 M2: scope == "nit-noted" の finding はサマリ表示のみ。
+     Phase 2.1 auto-select 対象から除外され、Phase 2.4 nit-noted-reply で「nit、認知済」reply を投稿する。
+     Phase 4.3.1 別 Issue 化候補からも完全除外、Phase 4.6 サマリで acknowledged_nit_count として独立カウント。 -->
+| # | 重要度 | スコープ | ファイル | 行 | 指摘内容 | レビュアー |
+|---|--------|----------|----------|-----|----------|------------|
+| 1 | {severity} | nit-noted | {path} | {line} | {body_preview} | @{user} |
+
+> **nit (認知のみ) セクションの扱い**: 上記 {nit_noted_count} 件は scope=nit-noted の informational 指摘。fix loop の修正対象ではなく、Phase 2.4 nit-noted-reply で「nit、認知済」reply を自動投稿して acknowledge する受け流し経路 (Issue #1018 M2)。「すべての指摘に対応」「CRITICAL/HIGH のみ対応」「特定の指摘を選択」のいずれを選んでも、本セクションの finding は手動選択 UI には表示されず、Phase 2.4 で自動 reply される。
 
 ### 外部レビュー({count}件)
 | # | ファイル | 行 | 内容 | レビュアー |
@@ -2935,7 +3006,20 @@ rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
 
 ### 2.1 Confirm Fix Approach
 
-Confirm the fix approach for each finding:
+**Entry routing — scope=nit-noted skip (Issue #1018 M2)**:
+
+各 finding を Phase 2.1 で処理する前に `scope_map` を look up し、**`scope == "nit-noted"` の finding は Phase 2.1 を完全に skip して Phase 2.4 `nit-noted-reply` サブステップに直行する**。これは Issue #1018 M2 受け流し経路の核となる routing 分岐:
+
+1. scope_map[file:line] を look up
+2. `scope == "nit-noted"` → Phase 2.1 (本セクション) を skip、Phase 2.4 `nit-noted-reply` サブステップで「nit、認知済」reply を 1 件投稿
+3. `scope ∈ {current-pr, follow-up}` または scope 未登録 (legacy / fallback) → 本セクション以降を通常通り実行
+4. nit-noted skip 経路では「コードを修正する / 説明・返信のみ / スキップ（後で対応）」の選択 UI は **表示しない** (ユーザー判断不要)。reply の冪等性は Phase 2.4 サブステップ内で comment ID 単位で管理される
+
+> **Why skip Phase 2.1**: scope=nit-noted は reviewer が「informational only、修正不要」と明示判定した finding。ユーザーに 3 択を迫ると判断疲労を生む (Plan Phase 5.5 / 欠陥 B「認知したが対処しない決着が存在しない」への対処)。Phase 2.4 で「nit、認知済」reply のみ自動投稿し、commit や別 Issue 化を一切行わない受け流し経路となる。
+
+---
+
+Confirm the fix approach for each finding (only for findings whose scope is NOT `nit-noted`):
 
 ```
 指摘 #{n}: {file}:{line}
@@ -3165,6 +3249,54 @@ set +o pipefail
 ```
 
 **Implementation note for Claude**: When Claude generates commands, write the reply content to a temporary file via `mktemp` + HEREDOC, then use `jq -n --rawfile body "$tmpfile"` to safely construct the JSON payload. Use the REST API numeric ID directly for `$comment_id` via `--argjson`. `jq --rawfile` reads the file as a raw string and handles all JSON escaping automatically.
+
+### 2.4.N nit-noted-reply (Issue #1018 M2 受け流し経路)
+
+**Owner**: `/rite:pr:fix` Phase 2.4 内サブステップ。**Trigger**: Phase 2.1 entry routing で `scope == "nit-noted"` と判定された finding 群すべてに対し、本サブステップで「nit、認知済」reply を per-finding で投稿する。**Purpose**: scope=nit-noted finding を「PR コメント返信のみで決着、Issue 化しない」受け流し経路として `acknowledged` 状態化する。
+
+**Pre-condition**:
+- Phase 1.2.0 で `scope_map_json` が構築済 (空 `{}` も含む)
+- Phase 1.3 Classification で `nit (認知のみ)` セクションに分類された finding 群が `nit_noted_findings` として retain されている
+- Phase 1.4 Display で `{nit_noted_count}` が決定済
+
+**Loop body** (per nit-noted finding):
+
+各 finding について Phase 2.4 既存の reply 機構 (上記 bash block) を **再利用** し、`{reply_body}` を以下の固定文言で置き換えて投稿する:
+
+```
+nit、認知済 (scope=nit-noted, Issue #1018 M2 受け流し経路)
+
+> {original_comment_preview}
+
+このご指摘は scope=nit-noted の informational 指摘として認識しました。本 PR での修正は行わず、別 Issue 化もしません (受け流し経路)。
+```
+
+**冪等性 (Replied-only respect)**:
+
+- 同一 `comment_id` に対する同一 cycle 内での重複 reply は禁止 (Wiki 経験則「Replied-only respect」)
+- 既に「nit、認知済」reply が投稿済みのコメント (本 PR の `gh api repos/{owner}/{repo}/pulls/{pr_number}/comments` レスポンスで `body` に literal `nit、認知済 (scope=nit-noted` を含むものが検出された場合) は **skip**
+- 並列 cycle (review-fix loop の N 回目で同一 nit が再指摘された場合) も同様に skip し、`[CONTEXT] NIT_NOTED_REPLY_SKIPPED=1; reason=already_replied; comment_id=$comment_id` を emit
+
+**Counter accumulation**:
+
+各成功投稿で `acknowledged_nit_count` counter を +1 する (Phase 4.6 サマリで使用):
+
+```bash
+# acknowledged_nit_count tempfile (Phase 4.6 で wc -l で件数取得)
+nit_count_file="/tmp/rite-fix-acknowledged-nit-{pr_number}.txt"
+# 投稿成功した comment_id を append (重複防止のため成功時のみ)
+echo "$comment_id" >> "$nit_count_file"
+```
+
+**Loop termination**:
+
+- すべての nit-noted finding を処理し終えたら本サブステップ終了
+- 投稿失敗 (gh api POST 失敗 / rate limit / network error) は `[CONTEXT] NIT_NOTED_REPLY_FAILED=1; comment_id=$comment_id; reason=...` を emit し、当該 finding は skip して次へ進む (non-blocking、`acknowledged_nit_count` 集計対象外)
+- すべての投稿が完了したら Phase 4.3 へ進む (本 sub-step では commit を行わない、reply のみ)
+
+**Why no commit**:
+
+nit-noted は「修正不要の informational 指摘」のため code 変更 (Edit/Write) も commit も発生しない。git working tree への変更ゼロで `acknowledged` 状態のみ更新する受け流し経路。これにより M2 の AC-1 (合成 nit-only PR で 2 cycle 即収束、Issue 化 0) が satisfy される。
 
 ---
 
@@ -3598,13 +3730,24 @@ fi
 
 #### 4.3.1 Collect Separate Issue Candidates
 
-Collect **all** of the following findings as separate Issue candidates:
+Collect findings as separate Issue candidates with the following filter (Issue #1018 M2 exclusion applied):
 
 | Condition | Description |
 |-----------|-------------|
 | **Manual skip** | "スキップ（後で対応）" was selected in Phase 2.1 |
 
-**Note**: Collect all skipped findings regardless of severity or skip reason. This guarantees no unaddressed findings remain.
+**Issue #1018 M2 exclusion — scope=nit-noted は完全除外**:
+
+scope=nit-noted の finding は本 collection から **完全除外** する。これは M2 受け流し経路の核となる契約 (`scope=nit-noted finding は PR コメント返信のみで決着、Issue 化しない`):
+
+1. `scope_map` を look up し、`scope == "nit-noted"` の finding は候補リストから drop
+2. Phase 2.1 が skip された (entry routing で nit-noted skip された) finding は手動 skip 扱いされない (Phase 2.1 自体が実行されなかったため)
+3. `manual_skip_reason` が記録されていても scope=nit-noted の finding は候補化しない (二重防御)
+4. 結果として、scope=nit-noted finding は Phase 2.4 `nit-noted-reply` で reply 投稿のみされ、別 Issue 化候補にも fix commit 対象にもならない
+
+> **Filter 順序**: (a) scope=nit-noted exclusion (Issue #1018 M2) → (b) manual skip collection。順序逆転は scope=nit-noted finding が「Phase 2.1 で skip された finding」として誤って候補化される silent regression を生むため、必ず (a) を先に適用する。
+
+**Note**: scope ∈ {current-pr, follow-up} の finding のうち skip された全件を collect する (severity / skip reason 不問)。これにより unaddressed findings が残らないことを保証する。scope=nit-noted は本フィルタの対象外。
 
 #### 4.3.2 When No Candidates Exist
 
@@ -4720,6 +4863,7 @@ PR #{number} のレビュー指摘対応を完了しました
 - 修正: {fix_count}件
 - 返信: {reply_count}件
 - スキップ → 別 Issue 化: {skip_count}件
+- nit 認知 (scope=nit-noted、reply-only): {acknowledged_nit_count}件
 コミット: {commit_sha}
 プッシュ: 完了 / 未実行
 別 Issue 作成: {issue_count}件
@@ -4731,6 +4875,17 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 - 追加の指摘があれば再度 `/rite:pr:fix` を実行
 - すべて承認されたら `/rite:pr:ready` でマージ準備
 ```
+
+**`{acknowledged_nit_count}` の展開ルール** (Issue #1018 M2 受け流し経路の summary):
+
+| 状況 | `{acknowledged_nit_count}` |
+|------|----------------------------|
+| Phase 2.4.N nit-noted-reply で 0 件投稿 (scope=nit-noted finding なし、または全件 already_replied skip) | `0` |
+| Phase 2.4.N nit-noted-reply で N 件投稿成功 | `{N}` |
+
+**読み出し方法**: `nit_count_file="/tmp/rite-fix-acknowledged-nit-{pr_number}.txt"` の行数を `wc -l < "$nit_count_file"` で取得する (Phase 2.4.N で各成功投稿で `echo "$comment_id" >> "$nit_count_file"` により append されている)。tempfile 不在の場合は `0` を表示。Phase 8.1 cleanup で本 tempfile も削除する。
+
+**重要**: `acknowledged_nit_count == 0` の場合でも本行は省略せず常に表示する (M2 受け流し経路の動作観測のため、ゼロ件であることを明示)。本 metric は `/rite:pr:review` Phase 5.3 評価では使われない (nit-noted は `overall_assessment` に影響せず、mergeable 判定の countdown 対象外 — [`assessment-rules.md`](./references/assessment-rules.md) §5.3.1 参照)。fix loop 内で `acknowledged_nit_count > 0` の場合、`プッシュ: 未実行` かつ `別 Issue 作成: 0件` かつ `全指摘 == 対応指摘` であれば re-review はトリガーされず、本 cycle で finalize する (AC-1: nit-only PR の 2 cycle 即収束)。
 
 **`{confidence_override_count}` / `{confidence_override_files_suffix}` の展開ルール** (Confidence policy override の追跡可視化):
 

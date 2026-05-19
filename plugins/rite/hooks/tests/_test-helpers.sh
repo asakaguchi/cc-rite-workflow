@@ -66,6 +66,7 @@
 #   assert <label> <expected> <actual>           # writes to stdout (via pass/fail)
 #   assert_grep     <label> <file> <pattern>     # ERE, exits via fail() if not found
 #   assert_not_grep <label> <file> <pattern>     # ERE, exits via fail() if found
+#   assert_file_exists_or_fail <label> <file>    # 1-fail file-existence guard for assertion-pair loops
 #   assert_grep_in_section <label> <file> <start_pattern> <end_pattern> <grep_pattern>
 #                                                # extract awk-range section + ERE grep with self-cleanup
 #   print_summary [test_name] [drift_hint_text]  # writes to stdout, returns 1 if FAIL > 0
@@ -153,6 +154,36 @@ assert_not_grep() {
   else
     pass "$label"
   fi
+}
+
+# File-existence pre-condition guard for assertion-pair loops (Issue #1051).
+#
+# Consolidates the inline `[ ! -f "$f" ] && fail ... && continue` boilerplate
+# previously inlined in callers that run multiple assertions against the same
+# file inside a loop. Without this guard the standalone assert_grep / assert_not_grep
+# file-existence checks each emit their own fail() when the file is absent,
+# inflating one missing file into N fails (one per assertion pair).
+#
+# Caller pattern (the helper writes the failure marker via fail() and returns
+# non-zero so the caller can `|| continue` to skip the subsequent assertions):
+#   for r in "${reviewers[@]}"; do
+#     f="$AGENTS_DIR/$r.md"
+#     assert_file_exists_or_fail "$r.md" "$f" || continue
+#     assert_grep     "..." "$f" 'pattern1'
+#     assert_not_grep "..." "$f" 'pattern2'
+#   done
+#
+# Return code semantics (consumed by caller `|| continue`):
+#   0 — file exists, caller proceeds with the subsequent assertions
+#   1 — file is missing, fail() was already invoked, caller should skip
+assert_file_exists_or_fail() {
+  local label="$1"
+  local file="$2"
+  if [ ! -f "$file" ]; then
+    fail "$label (file not found: $file)"
+    return 1
+  fi
+  return 0
 }
 
 # Section-scoped pattern presence assertion (Issue #1047).

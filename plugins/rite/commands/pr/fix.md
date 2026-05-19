@@ -3100,7 +3100,10 @@ Prompt for skip reason:
 
 **accept 選択時の処理 (4 つを同期実行)**:
 
-1. **accept reason 入力 (任意、AskUserQuestion)**: 「accept 理由を入力してください (省略可)」を AskUserQuestion で表示し、入力値を `accept_reason` として retain。省略時は空文字列。Phase 3.2 commit trailer の `reason` 欄に展開される
+1. **accept reason 入力 (任意、AskUserQuestion)**: 以下の 2 択を AskUserQuestion で提示する (Phase 2.1 `スキップ` の reason 入力と同型の option-based 構造):
+   - **「理由を入力 (Other で自由記入)」**: ユーザーが Other 選択時に free-text を入力 → `accept_reason` として retain
+   - **「reason なしで accept」**: `accept_reason = ""` (空文字列、デフォルト)
+   入力値は Phase 3.2 commit trailer の `reason` 欄に展開される (`accept_reason` が空なら `user decision: accept (no reason given)`、非空なら `{accept_reason}; user decision: accept`)
 2. **finding state の override**:
    - `status = "acknowledged"` を設定
    - `scope` を `nit-noted` に override (元 scope は `original_scope` として retain — reply 文言で参照)
@@ -3235,7 +3238,7 @@ fi
 
 | Flag | reason | Description |
 |------|--------|-------------|
-| `ACCEPT_FINGERPRINT_PERSISTED` | (success marker) | fingerprint state file への append が成功。`fingerprint=<sha1>; pr=<num>; file=<path>; line=<num>` を含む |
+| `ACCEPT_FINGERPRINT_PERSISTED` | (success marker) | fingerprint state file への append が成功。`fingerprint=<sha1>; pr=<num>; file=<path>; line=<num\|anchor>` を含む (`line` は null/0/空 のとき `anchor` sentinel に正規化される。Phase 2.1.A bash block の line_no 正規化と統一) |
 | `ACCEPT_FINGERPRINT_PERSIST_FAILED` | `pr_number_placeholder_residue` | `pr_number` placeholder が literal substitute されていない (空文字 / placeholder 残留 / 非数値) |
 | `ACCEPT_FINGERPRINT_PERSIST_FAILED` | `sha1_helper_missing` | sha1sum / shasum のいずれも環境に存在しない (極稀、CI 環境異常) |
 | `ACCEPT_FINGERPRINT_PERSIST_FAILED` | `mkdir_failed` | `.rite/state/` directory 作成失敗 (permission denied / read-only filesystem) |
@@ -5187,7 +5190,7 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 | 1〜4 件 | `{N}` | 空文字列 |
 | 5 件以上 (≥5 警告発火、AC-4) | `{N}` | ` ⚠️ reviewer の精度を疑うべき水準` |
 
-**読み出し方法**: `wc -l < ".rite/state/accepted-fingerprints-{pr_number}.txt"` で取得 (Phase 2.1.A bash block で append された unique fingerprint 行数)。ファイル不在時は `0` を表示。state file は cycle を跨いで永続化される (Issue 完了まで保持) ため、本 cycle で新規 accept が 0 件でも累積件数が表示される。
+**読み出し方法**: `wc -l < ".rite/state/accepted-fingerprints-{pr_number}.txt" 2>/dev/null | tr -d '[:space:]'` で取得し、`case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac` で数値正規化する (BSD wc は出力先頭に空白を付ける platform 依存問題を回避、Phase 2.1.A Step 7 と bit-exact 対称)。ファイル不在時 / 空ファイル時は `0`。state file は cycle を跨いで永続化される (Issue 完了まで保持) ため、本 cycle で新規 accept が 0 件でも累積件数が表示される。
 
 **`acknowledged_nit_count` との関係**: 両者は **独立したカウンタ**。`acknowledged_nit_count` は reviewer の scope 判定 (`scope == "nit-noted"`) で reply-only 経路に流れた finding 数 (Phase 2.4.N)、`accept_count` は user が Phase 2.1 で「accept (認知のみ)」を選択した finding 数 (Phase 2.1.A)。両方とも最終的に `status == "acknowledged"` になるが、エントリ経路 (reviewer 判定 vs user 判定) と永続化方法 (Phase 2.4.N tempfile vs `.rite/state/accepted-fingerprints-*.txt`) が異なる。
 

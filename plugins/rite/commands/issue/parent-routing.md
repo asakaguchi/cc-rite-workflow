@@ -350,21 +350,12 @@ if [ "$close_status" -eq 0 ]; then
           --root-cause-hint "issue_not_registered_in_project_at_parent_auto_close" \
           --pr-number 0 >&2 || true
         ;;
-      failed)
+      failed|*)
         [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
-        echo "⚠️ Projects Status の Done 更新に失敗しました。手動で更新してください。" >&2
+        echo "⚠️ Projects Status の Done 更新に失敗しました ($status_result)。手動で更新してください。" >&2
         bash {plugin_root}/hooks/workflow-incident-emit.sh \
           --type projects_status_update_failed \
-          --details "Issue #{issue_number} parent auto-close (Phase 1.5.5): projects-status-update.sh returned failed" \
-          --root-cause-hint "gh_api_or_graphql_failure_at_parent_auto_close" \
-          --pr-number 0 >&2 || true
-        ;;
-      *)
-        [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
-        echo "⚠️ Projects Status の Done 更新で未知の結果を受信しました ($status_result)。手動で確認してください。" >&2
-        bash {plugin_root}/hooks/workflow-incident-emit.sh \
-          --type projects_status_update_failed \
-          --details "Issue #{issue_number} parent auto-close (Phase 1.5.5): projects-status-update.sh returned unknown value: $status_result" \
+          --details "Issue #{issue_number} parent auto-close (Phase 1.5.5): projects-status-update.sh returned failed or unrecognized result ($status_result)" \
           --root-cause-hint "gh_api_or_graphql_failure_at_parent_auto_close" \
           --pr-number 0 >&2 || true
         ;;

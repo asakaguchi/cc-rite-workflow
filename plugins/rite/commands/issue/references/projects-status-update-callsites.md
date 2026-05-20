@@ -175,7 +175,7 @@ Inspect the script's stdout JSON:
 - `.result == "skipped_not_in_project"` → display `警告: Issue #{issue_number} は Project に登録されていません` and continue (non-blocking). Emit `workflow_incident` sentinel.
 - `.result == "failed"` → display `.warnings[]` and continue (non-blocking). Emit `workflow_incident` sentinel.
 
-**Step 4** — Emit `workflow_incident` sentinel on `skipped_not_in_project` / `failed` (Common contract Item 5 / Issue #1003 AC-4). sibling Callsite 2/3 (`pr/ready.md` Phase 4.2 / `start-finalize.md` Phase 5.5.1 / 5.7.2) と observability 対称性を保つため `--root-cause-hint` を必ず付与する。`failed` arm は `failed|*)` combined (sibling callsite 群 — `close.md` Phase 1.3.2 / Phase 4.6.3 minimal skeleton、`start-finalize.md` Phase 5.5.1、`ready.md` Phase 4.2、`archive-procedures.md` 2 site と統一) で unknown schema 値も `details` 列に `$status_result` として embed する:
+**Step 4** — Emit `workflow_incident` sentinel on `skipped_not_in_project` / `failed` (Common contract Item 5 / Issue #1003 AC-4). sibling Callsite 2/3 (`pr/ready.md` Phase 4.2 / `start-finalize.md` Phase 5.5.1 / 5.7.2) と observability 対称性を保つため `--root-cause-hint` を必ず付与する。`failed` arm は `failed|*)` combined (sibling callsite 群 — `close.md` Phase 1.3.2 / Phase 4.2 minimal skeleton、`start-finalize.md` Phase 5.5.1、`ready.md` Phase 4.2、`archive-procedures.md` 2 site と統一。Phase 4.6.3 は full state machine で `failed)`/`*)` 分離だが minimal skeleton ではないため列挙から除外) で unknown schema 値も `details` 列に `$status_result` として embed する:
 
 ```bash
 # skipped_not_in_project arm

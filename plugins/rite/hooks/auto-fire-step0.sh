@@ -25,15 +25,21 @@
 #   - plugins/rite/commands/pr/cleanup.md Mandatory After Wiki Ingest
 #   - plugins/rite/commands/wiki/ingest.md Mandatory After Auto-Lint
 
+# `-e` is omitted intentionally: this hook uses explicit `|| exit 0` guards to
+# treat every non-fatal anomaly as silent skip (irrelevant invocation, missing
+# state, jq failure on a non-target invocation). Enabling `set -e` would cause
+# those `|| exit 0` guards to short-circuit unintended early exits via the
+# preceding command's failure, breaking the non-blocking contract.
 set -uo pipefail
 
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 
-# Recursion guard.
-[ -z "${_RITE_AUTO_FIRE_STEP0_RUNNING:-}" ] || exit 0
-export _RITE_AUTO_FIRE_STEP0_RUNNING=1
+# Recursion guard (canonical `_RITE_HOOK_RUNNING_<NAME>` naming — kept symmetric
+# with post-tool-wm-sync.sh / session-start.sh / pre-tool-bash-guard.sh etc.).
+[ -z "${_RITE_HOOK_RUNNING_AUTOFIRESTEP0:-}" ] || exit 0
+export _RITE_HOOK_RUNNING_AUTOFIRESTEP0=1
 
 # Read input from stdin (PostToolUse JSON: tool_name, tool_input, cwd, session_id, ...).
 INPUT=$(cat 2>/dev/null) || INPUT=""
@@ -60,8 +66,37 @@ else
 fi
 [ -f "$FLOW_STATE" ] || exit 0
 
-CURRENT_PHASE=$(jq -r '.phase // empty' "$FLOW_STATE" 2>/dev/null) || exit 0
-ACTIVE=$(jq -r '.active // false' "$FLOW_STATE" 2>/dev/null) || exit 0
+# flow-state read with explicit IO error observability. jq returning non-zero
+# here is NOT a "non-target invocation" — the flow-state file exists but is
+# corrupt or unreadable (file system error / mid-write race / disk corruption).
+# Emit a retained flag so the failure is observable rather than silently
+# routed to the non-Skill exit-0 path.
+jq_phase_err=$(mktemp /tmp/rite-auto-fire-jq-phase-err-XXXXXX 2>/dev/null) || jq_phase_err=""
+if CURRENT_PHASE=$(jq -r '.phase // empty' "$FLOW_STATE" 2>"${jq_phase_err:-/dev/null}"); then
+  :
+else
+  jq_phase_rc=$?
+  err_summary=""
+  [ -n "$jq_phase_err" ] && [ -s "$jq_phase_err" ] && err_summary=$(head -c 200 "$jq_phase_err" | tr '\n' ' ')
+  echo "[CONTEXT] AUTO_FIRE_STEP0_STATE_READ_FAILED=1; file=$FLOW_STATE; field=phase; rc=$jq_phase_rc; stderr=$err_summary" >&2
+  [ -n "$jq_phase_err" ] && rm -f "$jq_phase_err"
+  exit 0
+fi
+[ -n "$jq_phase_err" ] && rm -f "$jq_phase_err"
+
+jq_active_err=$(mktemp /tmp/rite-auto-fire-jq-active-err-XXXXXX 2>/dev/null) || jq_active_err=""
+if ACTIVE=$(jq -r '.active // false' "$FLOW_STATE" 2>"${jq_active_err:-/dev/null}"); then
+  :
+else
+  jq_active_rc=$?
+  err_summary=""
+  [ -n "$jq_active_err" ] && [ -s "$jq_active_err" ] && err_summary=$(head -c 200 "$jq_active_err" | tr '\n' ' ')
+  echo "[CONTEXT] AUTO_FIRE_STEP0_STATE_READ_FAILED=1; file=$FLOW_STATE; field=active; rc=$jq_active_rc; stderr=$err_summary" >&2
+  [ -n "$jq_active_err" ] && rm -f "$jq_active_err"
+  exit 0
+fi
+[ -n "$jq_active_err" ] && rm -f "$jq_active_err"
+
 [ "$ACTIVE" = "true" ] || exit 0
 [ -n "$CURRENT_PHASE" ] || exit 0
 
@@ -143,13 +178,32 @@ fi
 # hookSpecificOutput.additionalContext (Claude Code official JSON output).
 ADDITIONAL_CONTEXT="[auto-fire-step0] Hook detected return from sub-skill (caller: ${CALLER_NAME}). Flow state has been auto-patched to '${POST_PHASE}'. You MUST continue immediately with the caller's next phase -- do NOT emit stop_reason: end_turn. The sub-skill return is NOT a turn boundary."
 
-jq -n \
-  --arg ctx "$ADDITIONAL_CONTEXT" \
-  '{
-    "hookSpecificOutput": {
-      "hookEventName": "PostToolUse",
-      "additionalContext": $ctx
-    }
-  }' 2>/dev/null || true
+# Emit JSON via jq with explicit failure observability + minimal printf
+# fallback. jq absence / OOM / binary failure must NOT silently drop the
+# continuation signal — emit a retained flag and degraded JSON so Layer 4
+# still surfaces the "do not stop" hint via a best-effort printf path.
+jq_emit_err=$(mktemp /tmp/rite-auto-fire-jq-emit-err-XXXXXX 2>/dev/null) || jq_emit_err=""
+if jq -n --arg ctx "$ADDITIONAL_CONTEXT" \
+    '{
+      "hookSpecificOutput": {
+        "hookEventName": "PostToolUse",
+        "additionalContext": $ctx
+      }
+    }' 2>"${jq_emit_err:-/dev/null}"; then
+  :
+else
+  jq_emit_rc=$?
+  err_summary=""
+  [ -n "$jq_emit_err" ] && [ -s "$jq_emit_err" ] && err_summary=$(head -c 200 "$jq_emit_err" | tr '\n' ' ')
+  echo "[CONTEXT] AUTO_FIRE_STEP0_JSON_EMIT_FAILED=1; caller=$CALLER_NAME; phase=$POST_PHASE; rc=$jq_emit_rc; stderr=$err_summary" >&2
+  # Minimal printf fallback so the LLM still receives the additionalContext
+  # signal even when jq is unavailable. Escape `"` and `\` in the message
+  # to avoid breaking JSON; the static message has neither so a plain
+  # substitution suffices. Backtick / `$` are not escaped because the
+  # message is a fixed literal without shell expansion in the JSON body.
+  fallback_ctx=$(printf '%s' "$ADDITIONAL_CONTEXT" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  printf '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"%s"}}\n' "$fallback_ctx"
+fi
+[ -n "$jq_emit_err" ] && rm -f "$jq_emit_err"
 
 exit 0

@@ -130,17 +130,32 @@ else
 fi
 
 echo ""
-echo "[T-04e] start-finalize.md Phase 5.5.1 case logical completeness (cycle 10 F-01 / F-07)"
+echo "[T-04e] start-finalize.md & ready.md case logical completeness (cycle 10 F-01 / F-07 / Issue #1009)"
 # Regression guard for cycle 9 CRITICAL bug: start-finalize.md case "$status_result" was missing
 # `updated)` arm, causing success path (status_result=updated) to fall-through to failed|*) catchall
 # and emit false-positive projects_status_update_failed sentinel.
-# Verify all 3 arms (updated / skipped_not_in_project / failed|*) are present in the case block.
-assert_file_contains "$FINALIZE_MD" 'updated\)' \
-  "start-finalize.md Phase 5.5.1 case has updated) arm (cycle 10 F-01 regression guard)"
-assert_file_contains "$FINALIZE_MD" 'skipped_not_in_project\)' \
-  "start-finalize.md Phase 5.5.1 case has skipped_not_in_project) arm"
-assert_file_contains "$FINALIZE_MD" 'failed\|\*\)' \
-  "start-finalize.md Phase 5.5.1 case has failed|*) catchall"
+#
+# Issue #1009: previous patterns 'updated\)' / 'skipped_not_in_project\)' / 'failed\|\*\)' matched
+# docstring occurrences (e.g., `(status_result=updated)`) as false-positives — pattern hit 4 sites in
+# start-finalize.md (3 docstring + 1 actual case arm), so deleting the actual case arm would still
+# leave the test passing via docstring matches. Anchor patterns at blockquote-prefix + whitespace
+# (`^>[[:space:]]+`) to pin **case arms only** (case arms live inside `> ` blockquote bash blocks
+# in both files). Cross-file coverage: assert symmetric 3-arm structure in **both** start-finalize.md
+# (Phase 5.5.1) and ready.md (Phase 4.2 minimal skeleton) per Wiki cross-file-cross-site-coverage
+# canonical (PR #1066). Mutation-verified: deleting any case arm now fails the corresponding assert
+# (was silent-pass before this fix).
+assert_file_contains "$FINALIZE_MD" '^>[[:space:]]+updated\)' \
+  "start-finalize.md Phase 5.5.1 case arm: updated) (anchored, cycle 10 F-01 / Issue #1009 regression guard)"
+assert_file_contains "$FINALIZE_MD" '^>[[:space:]]+skipped_not_in_project\)' \
+  "start-finalize.md Phase 5.5.1 case arm: skipped_not_in_project) (anchored)"
+assert_file_contains "$FINALIZE_MD" '^>[[:space:]]+failed\|\*\)' \
+  "start-finalize.md Phase 5.5.1 case arm: failed|*) catchall (anchored)"
+assert_file_contains "$READY_MD" '^>[[:space:]]+updated\)' \
+  "ready.md Phase 4.2 case arm: updated) (anchored, Issue #1009 cross-file symmetric coverage)"
+assert_file_contains "$READY_MD" '^>[[:space:]]+skipped_not_in_project\)' \
+  "ready.md Phase 4.2 case arm: skipped_not_in_project) (anchored)"
+assert_file_contains "$READY_MD" '^>[[:space:]]+failed\|\*\)' \
+  "ready.md Phase 4.2 case arm: failed|*) catchall (anchored)"
 
 echo ""
 echo "==============================="

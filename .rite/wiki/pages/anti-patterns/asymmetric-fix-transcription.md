@@ -2,8 +2,12 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-19T12:30:00Z"
+updated: "2026-05-20T10:27:06Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260520T101636Z-pr-1071-cycle-5-mergeable.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260520T085821Z-pr-1071-cycle-1.md"
   - type: "reviews"
     ref: "raw/reviews/20260518T161338Z-pr-1049.md"
   - type: "fixes"
@@ -718,6 +722,28 @@ PR #1062 (Issue #1019 — Phase 2.1 accept 選択肢追加 + accepted-fingerprin
 (2) **SoT 同期は 2 段階契約** — 「document レベルの formula 一致」と「実装レベルの bash bit-exact 一致」は別の概念。前者は両 file の prose に同じ formula が書かれているだけで満たされるが、後者は LLM が推測で hash を生成しない reproducibility を要求する。本 PR では cycle 2 で document 整合だけ満たした結果 cycle 3 で CRITICAL 再発、bash 実装追加で初めて構造的解消。
 
 (3) **同一 PR 内 4 軸並行発火の structural blind spot** — fix-induced regression と異なり、本 PR は initial implementation 段階で 4 軸 (doc-only 契約 / inline trap / mktemp 順序 / exit code) が同時 drift していた。これらは reviewer-side でなく **作者-side の self-check pattern coverage 欠如** が起点で、新 site 実装時の「sibling 全件と bash 実装パターン一致を grep で verify」を pre-commit checklist 化することで構造的予防可能。
+
+### Sibling Pattern Dominance と SoT 散文 count drift / bash escape byte-exact (PR #1071 cycle 1-5、累積 38 回目)
+
+PR #1071 (Issue #1070 — `parent-routing.md` Phase 1.5.5 auto-close 後の Projects Status を Done に更新) は 5 cycle (5→4→2→1→0) の shrinking convergence で Asymmetric Fix Transcription の 3 新 sub-pattern を実測した。
+
+- **Cycle 1 (CRITICAL × 3 + HIGH × 1 + MEDIUM × 1)**: 新規 Callsite 4 を `projects-status-update-callsites.md` に追記した際、SoT 宣言 (3 callsite → 4 callsite) と同一ファイル内 4 箇所 (H1, intro 散文, caller note, 関連 list) の count が drift。加えて sibling callsite (Phase 2.4 / 5.5.1 / 5.7.2) は `--root-cause-hint` を必須付与しているのに新規 Callsite 4 (Phase 1.5.5) のみ omit する pattern divergence。`workflow_incident` emit の reach 観点 (Phase 5.4.4.1 grep が PR review-fix loop 内動作で Phase 1.5.5 workflow 終了経路に届かない) の observability 注釈不足。
+- **Cycle 2 (MEDIUM × 3 + LOW × 1)**: cycle 1 fix で `case` 分岐を `failed)` / `*)` の 2-arm split で実装したが、sibling 5 callsite (Phase 2.4 / 5.5.1 / 5.7.2 / Callsite 4 / cleanup.md 経路) は全て `failed|*)` combined 1-arm pattern。state-machine justification がない場合 sibling 5+ site のパターンが split より dominant — LLM が「コードの可読性向上」目的で independent に creative split を導入すると同一 PR 内で逆方向に pattern symmetry を破壊する。
+- **Cycle 3 (LOW × 2)**: cycle 2 fix で「sibling 5 callsite」と SoT に記述したが、実測 sibling は 4 site で「5」prose は inaccurate count claim drift。さらに SoT bash literal の `\$status_result` (escape 済) と実装の `$status_result` (escape なし) が byte-exact 不一致で、copy-paste 想定の SoT 契約が壊れていた。
+- **Cycle 4 (LOW × 1)**: cycle 3 fix で close.md Phase 4.6.3 (full state machine、tempfile + 一体化 inconsistency summary) を SoT として参照したが、対称化対象は Phase 4.2 (minimal skeleton、delegate-only) と意味論層が異なり混同。**完全形 reference の選択ミス** で sub-skill-level 抽象度の異なる siblings を「同型」とみなす blind spot。
+- **Cycle 5 mergeable (0 findings)**: 4 cycle 連続で「直前 cycle fix が新 site の drift を introduce → cycle N+1 で smaller-scale finding として検出」の shrinking trajectory で structurally 収束。
+
+**累積 38 回目の独自観点**:
+
+(1) **Sibling Pattern Dominance — 5+ sibling site の dominant pattern の優先度** — 新 site 実装時、対称位置の sibling が **5+ site 同型 pattern** で確立している場合、その pattern は LLM の creative variant (「コードの可読性向上」目的の split / merge / reorder) より dominant。state-machine justification (例: ロールバック点が分岐ごとに異なる) がない限り sibling pattern と byte-exact 一致させること。本 PR cycle 2 は「`failed)` と `*)` を分けた方が `failed` を明示できて可読性が高い」という LLM judgment が sibling 5 site の `failed|*)` combined pattern を反逆方向に破壊した実測。canonical 対策: 新 site bash 実装時に「`grep -F '<pattern>' <sibling files>` で sibling pattern count を確認 → 5+ 同型なら byte-exact 一致を pre-condition gate 化」を pre-commit checklist 化する。
+
+(2) **SoT 散文の数値 prose count drift** — 「sibling N callsite」のような数値 prose は対象が増減する度に drift 源になる。本 PR cycle 3 は cycle 2 fix で「sibling 5 callsite」と書いたが実測 4 site の inaccuracy。canonical 対策: 数値 prose は (a) 列挙先 Phase 番号の具体列挙 (`Phase 2.4 / 5.5.1 / 5.7.2 / Callsite 4`) に置き換える、または (b) 該当 site 全件を anchor 化して `grep -c '<anchor>'` で機械的に count される formula に置換する。ただし列挙先の Phase 番号自体が drift しない精度が pre-condition (PR の rename / phase 番号 reorder 耐性が必要)。`canonical-list-count-claim-drift-anchor.md` (累積防御 anchor + lint pattern 拡張) と同 class の string-vs-numeric drift で、anchor 化が canonical resolution。
+
+(3) **SoT bash literal の byte-exact 一致契約** — SoT bash block は copy-paste 想定で実装と byte-exact 一致が必要。本 PR cycle 3 は `\$status_result` (SoT で escape 済) vs `$status_result` (実装で escape なし) の 1 byte 差異を LOW として検出。`\$` (literal `$` の bash escape) vs `$` (variable expansion) は意味論的に異なるが、Markdown 上の見た目では同じ「`$`」として読み流される silent drift 源。canonical 対策: SoT bash block を実装側に copy-paste した時点で diff (`git diff --no-index <sot.md> <impl.md>`) で byte-exact verify、あるいは SoT を `bash` code block 中の `<<EOF` heredoc + escape-free 表記に統一して escape 解釈 ambiguity を排除する。
+
+(4) **完全形 reference vs minimal skeleton reference の意味論層混同** — cycle 3 fix で sibling reference として close.md Phase 4.6.3 (full state machine、tempfile + 一体化 inconsistency summary) を選択したが、本 PR Phase 1.5.5 の bash 実装は delegate-only minimal skeleton 抽象度であり Phase 4.6.3 とは scope が異なる。canonical 対策: sibling reference 選択時に「対象 site と抽象度 (full / minimal / delegate-only) が一致する sibling を選ぶ」を pre-condition 化。同一 file 内に複数の抽象度 reference がある場合は「**完全形が必要な場合は X、minimal skeleton で良い場合は Y**」のような明示的な navigation note を SoT に追加。
+
+(5) **Shrinking convergence trajectory の連続再現** — 累積 33 (PR #1028 3-cycle 18→3→0) / 累積 34 (PR #1032 4-cycle) / 累積 35 (PR #1043 4-cycle 18→14→4→0) / 累積 36 (PR #1049 2-cycle 3→0) / 累積 37 (PR #1062 4-cycle 18→6→3→3→0) に続き本 PR (5-cycle 5→4→2→1→0) で 6 連続の shrinking trajectory 再現。「**fix の対称化レイヤーごとの byte-exact 一致検証契約が未確立だと、recursive recurrence in fix layer が 2-5 cycle の shrinking pattern で発火し、各 cycle で drift class が細粒度化する**」mode が累積 38 回目で再観測。`accumulated-pr-three-cycle-convergence.md` (3-cycle 収束 baseline) は 4-5 cycle 拡張形態として再分類が必要。
 
 ## 関連ページ
 

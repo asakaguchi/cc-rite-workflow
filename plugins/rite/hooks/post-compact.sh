@@ -194,14 +194,14 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       # caller Phase 5.4.4.1 で偽 Issue を auto-register する経路を防ぐため別 hint で emit する。
       # regex は `pull\s*request` で空白あり/なし両対応 (CamelCase 連結も classic 表現も catch)。
       if printf '%s' "$pr_err_oneline" | grep -qiE 'could not resolve.*pull\s*request|no.*pull\s*request found'; then
-        pr_root_cause="pr_deleted_or_inaccessible"
+        pr_root_cause_hint="pr_deleted_or_inaccessible"
       else
-        pr_root_cause="post_compact_gh_pr_view_failed"
+        pr_root_cause_hint="post_compact_gh_pr_view_failed"
       fi
       bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
         --type projects_status_in_review_missing \
         --details "Issue #$ISSUE post-compact: gh pr view failed (rc=$pr_rc, stderr=$pr_err_oneline)" \
-        --root-cause-hint "$pr_root_cause" \
+        --root-cause-hint "$pr_root_cause_hint" \
         --pr-number "$PR" >&2 || true
       PR_IS_DRAFT=""
     fi

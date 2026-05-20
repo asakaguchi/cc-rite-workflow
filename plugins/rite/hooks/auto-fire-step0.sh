@@ -71,7 +71,10 @@ fi
 # corrupt or unreadable (file system error / mid-write race / disk corruption).
 # Emit a retained flag so the failure is observable rather than silently
 # routed to the non-Skill exit-0 path.
-jq_phase_err=$(mktemp /tmp/rite-auto-fire-jq-phase-err-XXXXXX 2>/dev/null) || jq_phase_err=""
+jq_phase_err=$(mktemp /tmp/rite-auto-fire-jq-phase-err-XXXXXX 2>/dev/null) || {
+  jq_phase_err=""
+  echo "[CONTEXT] AUTO_FIRE_STEP0_MKTEMP_FAILED=1; field=jq_phase_err" >&2
+}
 if CURRENT_PHASE=$(jq -r '.phase // empty' "$FLOW_STATE" 2>"${jq_phase_err:-/dev/null}"); then
   :
 else
@@ -84,7 +87,10 @@ else
 fi
 [ -n "$jq_phase_err" ] && rm -f "$jq_phase_err"
 
-jq_active_err=$(mktemp /tmp/rite-auto-fire-jq-active-err-XXXXXX 2>/dev/null) || jq_active_err=""
+jq_active_err=$(mktemp /tmp/rite-auto-fire-jq-active-err-XXXXXX 2>/dev/null) || {
+  jq_active_err=""
+  echo "[CONTEXT] AUTO_FIRE_STEP0_MKTEMP_FAILED=1; field=jq_active_err" >&2
+}
 if ACTIVE=$(jq -r '.active // false' "$FLOW_STATE" 2>"${jq_active_err:-/dev/null}"); then
   :
 else
@@ -164,25 +170,39 @@ esac
 # on `$(pwd)`, so we MUST cd into $CWD (PostToolUse hook receives the user's cwd
 # but is itself executed with the harness's cwd) before invoking. Use a
 # sub-shell to keep the cd local.
-if ! (
+patch_rc=0
+if (
   cd "$CWD" && bash "$SCRIPT_DIR/flow-state-update.sh" patch \
       --phase "$POST_PHASE" \
       --active true \
       --next "$NEXT_ACTION" \
       --if-exists --preserve-error-count
 ) >&2; then
-  echo "[CONTEXT] AUTO_FIRE_STEP0_PATCH_FAILED=1; caller=$CALLER_NAME; phase=$POST_PHASE" >&2
+  patch_rc=0
+else
+  patch_rc=$?
+  echo "[CONTEXT] AUTO_FIRE_STEP0_PATCH_FAILED=1; caller=$CALLER_NAME; phase=$POST_PHASE; rc=$patch_rc" >&2
 fi
 
 # Inject context into the next LLM turn input via
 # hookSpecificOutput.additionalContext (Claude Code official JSON output).
-ADDITIONAL_CONTEXT="[auto-fire-step0] Hook detected return from sub-skill (caller: ${CALLER_NAME}). Flow state has been auto-patched to '${POST_PHASE}'. You MUST continue immediately with the caller's next phase -- do NOT emit stop_reason: end_turn. The sub-skill return is NOT a turn boundary."
+# Branch the message on patch_rc so that patch failure does NOT silently inject
+# a false "patched" claim into the LLM context — the LLM must know to fall back
+# to the caller's Mandatory After Step 0 Immediate Bash Action for recovery.
+if [ "$patch_rc" = "0" ]; then
+  ADDITIONAL_CONTEXT="[auto-fire-step0] Hook detected return from sub-skill (caller: ${CALLER_NAME}). Flow state has been auto-patched to '${POST_PHASE}'. You MUST continue immediately with the caller's next phase -- do NOT emit stop_reason: end_turn. The sub-skill return is NOT a turn boundary."
+else
+  ADDITIONAL_CONTEXT="[auto-fire-step0] Hook detected return from sub-skill (caller: ${CALLER_NAME}) and attempted to auto-patch flow state to '${POST_PHASE}', but the patch sub-process failed (rc=${patch_rc}; see stderr AUTO_FIRE_STEP0_PATCH_FAILED for diagnostic). You MUST execute the caller's Mandatory After Step 0 Immediate Bash Action now to recover the flow-state transition. Do NOT emit stop_reason: end_turn -- the sub-skill return is NOT a turn boundary."
+fi
 
 # Emit JSON via jq with explicit failure observability + minimal printf
 # fallback. jq absence / OOM / binary failure must NOT silently drop the
 # continuation signal — emit a retained flag and degraded JSON so Layer 4
 # still surfaces the "do not stop" hint via a best-effort printf path.
-jq_emit_err=$(mktemp /tmp/rite-auto-fire-jq-emit-err-XXXXXX 2>/dev/null) || jq_emit_err=""
+jq_emit_err=$(mktemp /tmp/rite-auto-fire-jq-emit-err-XXXXXX 2>/dev/null) || {
+  jq_emit_err=""
+  echo "[CONTEXT] AUTO_FIRE_STEP0_MKTEMP_FAILED=1; field=jq_emit_err" >&2
+}
 if jq -n --arg ctx "$ADDITIONAL_CONTEXT" \
     '{
       "hookSpecificOutput": {

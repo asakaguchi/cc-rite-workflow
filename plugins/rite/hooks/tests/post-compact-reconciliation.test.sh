@@ -88,25 +88,34 @@ echo "[T-2/7f] 3-site PR delete vs auth/network 判別 regex (post-compact.sh / 
 # 3-site 対称化 verification: gh CLI 実出力 `Could not resolve to a PullRequest` (CamelCase 連結) に
 # マッチする regex を 3 site 全てで literal pin する。drift が起きても全 site の test が同時に fail する。
 #
-# Single Source of Truth: 期待 regex を変数で 1 度だけ定義し、(a) literal pin、(b) positive case、
-# (c) negative case の 3 箇所で同じ値を参照する。source の regex が拡張された場合に literal pin が
-# fail することで drift を検出する設計。L99/L130/L150 で同じ EXPECTED_REGEX を再利用する。
+# Single Source of Truth (logical regex 単位):
+# EXPECTED_REGEX 変数は **同一の logical regex を異なる 2 つの escape level で表現する 2 site** で
+# 再利用される: (b) positive case / (c) negative case の `grep -qiE "$EXPECTED_REGEX"` で
+# runtime 実行時の入力 string が match するかを verify。
+# (a) literal pin (下記 assert_file_contains 呼び出し) は file 内に書かれた source regex の literal bytes
+# を match するための別 escape pattern (`\\s\*` 等で grep -E に literal `\` + literal `s` + literal `*`
+# を要求) を必要とするため、EXPECTED_REGEX 変数を参照できない。同じ logical regex を異なる escape level で
+# 表現しており、source の regex 変更時は literal pin assertion が必ず fail することで drift を検出する設計。
 EXPECTED_REGEX='could not resolve.*pull\s*request|no.*pull\s*request found'
 
-# assert_file_contains に渡す pattern について (保守者向け):
-# - pattern は single-quote で書く (bash 展開なし)、内側の `\.` `\*` `\|` は backslash + 文字として
-#   そのまま grep -E に渡る
-# - grep -E ERE: `\.` `\*` `\|` はそれぞれ literal `.` `*` `|` を要求 (escape ありで literal 化)
-# - `\s` は GNU grep の拡張 character class で「whitespace 1 文字」、`\\s\*` は `\s` の後に literal `*`
-# - ファイル内に源 regex (`could not resolve.*pull\s*request|no.*pull\s*request found`) が
-#   そのままの literal 文字列として書かれていることを verify するための pattern
+# assert_file_contains に渡す pattern について (保守者向け、bytes 単位で説明):
+# - pattern は single-quote で書く (bash 展開なし)、内側の bytes はそのまま grep -E に渡る
+# - grep -E ERE における escape semantics:
+#   - `\.` = literal `.` を要求 (escape ありで meta `.` の literal 化)
+#   - `\*` = literal `*` を要求 (escape ありで meta `*` の literal 化)
+#   - `\|` = literal `|` を要求 (escape ありで meta `|` の literal 化)
+#   - `\s` = GNU grep の拡張 character class で whitespace 1 文字に match
+# - pattern 内の `\\s\*` (4 bytes: `\` `s` `*` `*` ではなく `\\` で 1 backslash) は、source file 内に
+#   書かれた literal 3-char sequence `\` `s` `*` (合計 3 chars) を match することを要求する pattern
+# - すなわち、source 側に `\s*` という文字列 (regex として GNU grep で whitespace 0 回以上を意味する)
+#   がそのまま記述されていることを verify するための pattern
 for site in "$POST_COMPACT_SH" "$START_MD" "$START_FINALIZE_MD"; do
   site_basename=$(basename "$site")
   assert_file_contains "$site" 'could not resolve\.\*pull\\s\*request\|no\.\*pull\\s\*request found' \
     "$site_basename has space-less PullRequest variant regex (3-site symmetry)"
   # 旧 regex の literal フォーマット (元の 3 alternative、`not found` 単体含む固定順序) を fixed-string
-  # match で detect。alternative の順序を入れ替えた variant は detect しない設計 (3-site literal pin が
-  # drift gate として機能するため、site 側の regex 変更は L99 assertion で必ず fail する)。
+  # match で detect。alternative の順序を入れ替えた variant は detect しない設計 (上記 literal pin
+  # assertion が drift gate として機能するため、site 側の regex 変更は literal pin で必ず fail する)。
   if grep -qF "'no.*pull request found|could not resolve.*pull request|not found'" "$site"; then
     FAIL=$((FAIL + 1))
     FAILURES+=("$site_basename still contains old overbroad regex with 'not found' alternative")
@@ -119,7 +128,7 @@ done
 
 # === positive test cases (削除済み PR として正しく分類されるべき出力) ===
 # regex は `-i` flag で大文字小文字無視するため、大文字小文字混在 fixture も追加 (`-i` 削除 regression 防止)
-# EXPECTED_REGEX を参照することで source/test/inline 検証の 3 箇所同期を保つ。
+# EXPECTED_REGEX (上で定義) を参照することで positive case と negative case で同一 regex を使用。
 for fixture in \
     "Could not resolve to a PullRequest with the number of 999999999." \
     "Could not resolve to a Pull Request with the number of 999999999." \

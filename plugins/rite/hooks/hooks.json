@@ -74,6 +74,16 @@
           }
         ],
         "matcher": "Edit|Write|MultiEdit"
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/auto-fire-step0.sh",
+            "timeout": 10
+          }
+        ],
+        "matcher": "Skill"
       }
     ],
     "Stop": [

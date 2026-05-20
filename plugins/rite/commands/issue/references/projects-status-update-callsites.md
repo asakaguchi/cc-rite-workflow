@@ -1,8 +1,8 @@
 # Projects Status Update — 3 Callsite Delegation SoT
 
-> **Source of Truth**: 本ファイルは `/rite:issue:start` 内で `plugins/rite/scripts/projects-status-update.sh` を invoke する **3 callsite (Phase 2.4 / 5.5.1 / 5.7.2) の bash literal SoT** である。`start.md` 本体の各 callsite は本ファイルへ semantic 参照する anchor stub のみ保持する。
+> **Source of Truth**: 本ファイルは `/rite:issue:start` 内で `plugins/rite/scripts/projects-status-update.sh` を invoke する **4 callsite (Phase 2.4 / 5.5.1 / 5.7.2 / 1.5.5) の bash literal SoT** である。`start.md` 本体および sub-skill (`parent-routing.md`) の各 callsite は本ファイルへ semantic 参照する anchor stub のみ保持する。
 >
-> **抽出経緯**: 3 callsite はすべて同一の `bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n ...)"` 構造を持つが、`status_name` (In Progress / In Review / Done) と `auto_add` フラグ (true / false) のみ異なる。bash literal を 1 reference に集約することで drift を防止し、本体の認知負荷を下げる。Issue #901 (PR E — #896 親 Issue) で抽出。
+> **抽出経緯**: 4 callsite はすべて同一の `bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n ...)"` 構造を持つが、`status_name` (In Progress / In Review / Done) と `auto_add` フラグ (true / false) のみ異なる。bash literal を 1 reference に集約することで drift を防止し、本体の認知負荷を下げる。Issue #901 (PR E — #896 親 Issue) で 3 callsite を抽出。Issue #1070 で Callsite 4 (Phase 1.5.5 Parent Auto-Close → Done) を追加。
 >
 > **API レベル仕様 SoT との役割分担**: `references/projects-integration.md` §2.4 は GraphQL projectItems / item-add / field-list / item-edit の **API 動作仕様** SoT。本ファイルは **caller bash literal** の SoT。両 reference は補完関係 (semantically orthogonal、重複契約なし)。
 >
@@ -26,6 +26,7 @@
 > - **Callsite 1 (Phase 2.4 In Progress)**: 本 SoT の bash literal には emit 例なし。`start.md` Phase 2.4 caller 側で `.result` が `failed` の場合に emit を inline 記述する責務がある。通常 `auto_add: true` で `skipped_not_in_project` は発火しにくいため failed 経路が主対象。
 > - **Callsite 2 (Phase 5.5.1 In Review)**: `start-finalize.md` Phase 5.5.1 (defense-in-depth) と `pr/ready.md` Phase 4.2 (primary) の両 caller で emit を実装済み。`auto_add: false` のため `skipped_not_in_project` が発生しやすく、本契約の主対象。
 > - **Callsite 3 (Phase 5.7.2 Done)**: 本 SoT の bash literal には emit 例なし。`start-finalize.md` Phase 5.7.2 caller および `close.md` Phase 4.6.3 (`status update` 経由) の caller 側で emit を inline 記述する責務がある。`auto_add: false` のため `skipped_not_in_project` が発生しやすい。
+> - **Callsite 4 (Phase 1.5.5 Parent Auto-Close → Done)**: `parent-routing.md` Phase 1.5.5 caller 側で emit を実装済み (Issue #1070 で追加)。`auto_add: true` のため通常 `skipped_not_in_project` は発火しにくいが、Projects API 失敗 (5xx / 認証エラー等) で `failed` 経路が発火する場合に sentinel を emit する。
 > - **最終 fallback**: emit 漏れがあった場合の最終 fallback は `start-finalize.md` Workflow Termination Step 0 (Issue #1003 AC-8) の状態 query 経路で surface される。
 
 ## Callsite 1 — Phase 2.4 (Issue Status → In Progress)
@@ -133,13 +134,70 @@ Inspect the script's stdout JSON:
 
 **Step 2** (Phase 5.7.2 specific): Close the parent Issue via `/rite:issue:close` Skill invocation — see `start.md` Phase 5.7.2 本体の Step 2 invocation block。本 reference は Step 1 (Status update) の bash literal SoT のみ提供する。
 
-## 差分 summary (3 callsite 比較)
+## Callsite 4 — Phase 1.5.5 (Parent Auto-Close → Done)
+
+**Owner**: `/rite:issue:start` (via `parent-routing.md` Phase 1.5.5 sub-skill — auto-close path when all child Issues are CLOSED).
+
+**Note**: `parent-routing.md` Phase 1.5.5 で「親 Issue をクローズする」が選択され `gh issue close` が成功した場合に呼ばれる。`auto_add: true` のため Projects 未登録の親 Epic でも自動追加 + Done 設定が行われる (`pr/cleanup.md` の通常 PR merge 経路 — Issue #658 で対応済 — とは異なる auto-close 経路を埋める)。
+
+**Step 1** — Verify `gh issue close` succeeded; skip Status update if it failed (parent still OPEN — Done would be inconsistent):
+
+```bash
+gh issue close {issue_number} --comment "すべての子 Issue が完了したため、自動クローズします。"
+close_status=$?
+```
+
+**Step 2** — Skip the Status update block if `projects.enabled: false`:
+
+```bash
+projects_enabled=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' rite-config.yml 2>/dev/null)
+```
+
+**Step 3** — Invoke the shared script to transition the Issue Status to **Done** (only when `close_status -eq 0` and `projects_enabled = true`):
+
+```bash
+bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+  --argjson issue {issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg status "Done" \
+  --argjson auto_add true \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
+```
+
+`auto_add: true` because the parent Epic may not always be registered in the Project (defensive against unregistered parents). The script internally executes the GraphQL `projectItems` query → auto-add if missing → `field-list` → Status `item-edit`.
+
+Inspect the script's stdout JSON:
+
+- `.result == "updated"` → success.
+- `.result == "skipped_not_in_project"` → display `警告: Issue #{issue_number} は Project に登録されていません` and continue (non-blocking). Emit `workflow_incident` sentinel.
+- `.result == "failed"` → display `.warnings[]` and continue (non-blocking). Emit `workflow_incident` sentinel.
+
+**Step 4** — Emit `workflow_incident` sentinel on `skipped_not_in_project` / `failed` (Common contract Item 5 / Issue #1003 AC-4):
+
+```bash
+bash {plugin_root}/hooks/workflow-incident-emit.sh \
+  --type projects_status_update_failed \
+  --details "Issue #{issue_number} parent auto-close (Phase 1.5.5): projects-status-update.sh returned <result>" \
+  --pr-number 0 >&2 || true
+```
+
+`--pr-number 0` because Phase 1.5.5 runs before any PR is created in the workflow.
+
+**Constraint** — Projects update failure MUST NOT roll back the `gh issue close` itself. The parent Issue remains CLOSED even when Status update fails (non-blocking design).
+
+See [projects-integration.md §2.4](../../../references/projects-integration.md#24-github-projects-status-update) for the underlying API calls.
+
+## 差分 summary (4 callsite 比較)
 
 | Callsite | `status` | `auto_add` | `--argjson issue` 引数 | 補足 |
 |----------|----------|------------|------------------------|------|
 | Phase 2.4 | `In Progress` | `true` | `{issue_number}` | 当該 Issue 自身。未登録なら auto-add (true) |
 | Phase 5.5.1 | `In Review` | `false` | `{issue_number}` | 既に Phase 2.4 で auto-add 済みのため `false` |
 | Phase 5.7.2 | `Done` | `false` | `{parent_issue_number}` | 親 Issue 対象。auto-add 不要 |
+| Phase 1.5.5 | `Done` | `true` | `{issue_number}` | 親 Epic auto-close 経路。未登録に備え auto-add (true) |
 
 ## 関連
 

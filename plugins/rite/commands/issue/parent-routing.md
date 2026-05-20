@@ -316,8 +316,50 @@ Issue #{number} のすべての子 Issue が完了しています。
 
 **When "Close parent Issue" is selected:**
 
+> **Module**: [Projects Status Update Callsites](./references/projects-status-update-callsites.md#callsite-4--phase-155-parent-auto-close--done) — Callsite 4 (Phase 1.5.5) の bash literal SoT を参照。`gh issue close` 成功後に `projects-status-update.sh` を `status_name="Done"` / `auto_add=true` / `non_blocking=true` で呼び出す。Common contract Item 5 (Issue #1003 AC-4 silent skip 禁止) に従い `.result` が `skipped_not_in_project` / `failed` の場合は `workflow-incident-emit.sh --type projects_status_update_failed` で sentinel を emit する。
+
 ```bash
 gh issue close {issue_number} --comment "すべての子 Issue が完了したため、自動クローズします。"
+close_status=$?
+
+# Projects Status → Done (non-blocking).
+# Skip if gh issue close failed (parent still OPEN — Done would be inconsistent).
+if [ "$close_status" -eq 0 ]; then
+  projects_enabled=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' rite-config.yml 2>/dev/null)
+  if [ "$projects_enabled" = "true" ]; then
+    status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+      --argjson issue {issue_number} \
+      --arg owner "{owner}" \
+      --arg repo "{repo}" \
+      --argjson project_number {project_number} \
+      --arg status "Done" \
+      --argjson auto_add true \
+      --argjson non_blocking true \
+      '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')") || status_json=""
+    status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+    status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+    case "$status_result" in
+      updated)
+        echo "Projects Status を \"Done\" に更新しました"
+        ;;
+      skipped_not_in_project)
+        echo "⚠️ Issue #{issue_number} は Project に登録されていません。手動で Projects ボード上で Status を Done に更新してください。" >&2
+        bash {plugin_root}/hooks/workflow-incident-emit.sh \
+          --type projects_status_update_failed \
+          --details "Issue #{issue_number} parent auto-close (Phase 1.5.5): projects-status-update.sh returned skipped_not_in_project" \
+          --pr-number 0 >&2 || true
+        ;;
+      failed|*)
+        [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
+        echo "⚠️ Projects Status の Done 更新に失敗しました。手動で更新してください。" >&2
+        bash {plugin_root}/hooks/workflow-incident-emit.sh \
+          --type projects_status_update_failed \
+          --details "Issue #{issue_number} parent auto-close (Phase 1.5.5): projects-status-update.sh returned $status_result" \
+          --pr-number 0 >&2 || true
+        ;;
+    esac
+  fi
+fi
 ```
 
 ---

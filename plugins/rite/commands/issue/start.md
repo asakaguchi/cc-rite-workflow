@@ -794,10 +794,12 @@ rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANU
       else
         gh_pr_rc=$?
         pr_err_oneline=$(head -c 200 "${pr_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
-        # Issue #1008 cycle 11 F-01 4-site 対称化: post-compact.sh と同様に、PR が close/merge/delete されている
-        # legitimate な終了状態と auth/network/permission failure を区別する。前者は false positive で、
+        # 3-site 対称化 (post-compact.sh / start-finalize.md Step 0 と同じ判別ロジック): PR が close/merge/delete
+        # されている legitimate な終了状態 (gh CLI 実出力 `Could not resolve to a PullRequest` の CamelCase
+        # 連結 stderr) と auth/network/permission failure を区別する。前者は false positive のため、
         # caller Phase 5.4.4.1 で偽 Issue を auto-register する経路を防ぐため別 hint で emit する。
-        # gh CLI 実出力は `Could not resolve to a PullRequest` (CamelCase 連結) のため `pull\s*request` で空白なし変種に対応。
+        # 注: watchdog-status-mismatch.sh は `gh pr list` 経路で本 regex 適用外 (PR 一括 listing で
+        # `Could not resolve` は発生しない)。
         if printf '%s' "$pr_err_oneline" | grep -qiE 'could not resolve.*pull\s*request|no.*pull\s*request found'; then
           pr_root_cause_hint="pr_deleted_or_inaccessible"
         else

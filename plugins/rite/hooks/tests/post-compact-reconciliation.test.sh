@@ -105,10 +105,11 @@ EXPECTED_REGEX='could not resolve.*pull\s*request|no.*pull\s*request found'
 #   - `\*` = literal `*` を要求 (escape ありで meta `*` の literal 化)
 #   - `\|` = literal `|` を要求 (escape ありで meta `|` の literal 化)
 #   - `\s` = GNU grep の拡張 character class で whitespace 1 文字に match
-# - pattern 内の `\\s\*` (4 bytes: `\` `s` `*` `*` ではなく `\\` で 1 backslash) は、source file 内に
-#   書かれた literal 3-char sequence `\` `s` `*` (合計 3 chars) を match することを要求する pattern
-# - すなわち、source 側に `\s*` という文字列 (regex として GNU grep で whitespace 0 回以上を意味する)
-#   がそのまま記述されていることを verify するための pattern
+# - pattern 内の `\\s\*` (single-quote 後の 5 bytes: `\` `\` `s` `\` `*` — bash single-quote は escape
+#   処理しないため `\\` は literal 2 backslashes、`\*` は literal `\` + `*`) は、grep -E ERE 評価で
+#   literal `\` + literal `s` + literal `*` の 3-char target を要求する pattern となる。
+# - すなわち、source 側に literal 3-char sequence `\s*` (合計 3 chars: backslash + s + asterisk、これは
+#   regex として GNU grep で whitespace 0 回以上を意味する) がそのまま記述されていることを verify する
 for site in "$POST_COMPACT_SH" "$START_MD" "$START_FINALIZE_MD"; do
   site_basename=$(basename "$site")
   assert_file_contains "$site" 'could not resolve\.\*pull\\s\*request\|no\.\*pull\\s\*request found' \

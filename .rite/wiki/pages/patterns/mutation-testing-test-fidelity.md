@@ -2,7 +2,7 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-05-09T09:10:00Z"
+updated: "2026-05-20T03:11:31Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260426T235945Z-pr-688.md"
@@ -18,7 +18,11 @@ sources:
     ref: "raw/reviews/20260502T095733Z-pr-765.md"
   - type: "reviews"
     ref: "raw/reviews/20260509T071343Z-pr-915.md"
-tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin"]
+  - type: "reviews"
+    ref: "raw/reviews/20260520T011841Z-pr-1066.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260520T022118Z-pr-1066-cycle1.md"
+tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage"]
 confidence: high
 ---
 
@@ -236,11 +240,76 @@ grep -qE '```[[:space:]]+$' "$M6_FIXTURE" \
 
 本 pattern は適用 5 の 3 種 dead code 化 pattern (Self-grep tautology / 件数判定片側 mutation 隠蔽 / Path filter coverage gap) と同じく、**fixture の真正性を mutation testing から守る canonical 防御** の系統。
 
+### 適用 7: Regex alternation / quantifier semantic の per-branch positive coverage (PR #1066 で実証)
+
+PR #1066 cycle 11 で 2 種の regex per-branch coverage gap が cross-validated として検出され、本 pattern を **regex alternation / quantifier semantic** 軸へ拡張する canonical 事例になった。本拡張は適用 5 の「Pattern 5-B 件数判定の片側 mutation 隠蔽」と同型構造 (per-branch coverage gap) を、対象が grep -c 閾値ではなく **regex の構造単位 (alternation の各 branch / quantifier の各 semantic)** に変えた sub-pattern。
+
+#### Pattern 7-A: Regex alternation の片側 positive coverage 欠落
+
+regex の alternation (`A|B|C`) は各 branch 独立に matching するため、test の positive case は **全 branch に対して個別に配置** する必要がある。1 branch のみの positive coverage は他 branch を実質 dead range にする。
+
+```bash
+# 反面教材 (PR #1066 初版 test)
+regex='could not resolve.*pull\s*request\|no.*pull\s*request found'
+# Positive test: `could not resolve to a PullRequest` だけ
+echo "could not resolve to a PullRequest" | grep -qE "$regex"  # PASS
+
+# Mutation: `no.*pull request found` alternative を別 literal に置換
+regex='could not resolve.*pull\s*request\|DIFFERENT_LITERAL'
+# Positive test 全 PASS (no.*pull request found branch の positive case が無いため)
+```
+
+→ `no.*pull request found` alternative を別 literal に置換しても全 test PASS → 実質 dead range。
+
+#### Pattern 7-B: Regex quantifier semantic の per-case coverage
+
+regex quantifier (`\s*` / `\s+` / `?` / `*` / `+`) は 0 / 1 / N 回マッチを semantic に表現する。test の positive case は **quantifier semantic の境界値 (0 回 / 1 回 / N 回)** ごとに配置する必要がある。1 境界値のみの coverage は他境界値で発生する quantifier 置換 regression を catch できない。
+
+```bash
+# 反面教材 (PR #1066 初版 test)
+regex='could not resolve.*pull\s*request'
+# Positive test: `PullRequest` (空白なし、0 回) だけ
+echo "could not resolve to a PullRequest" | grep -qE "$regex"  # PASS
+
+# Mutation: `\s*` (0 回以上) を `\s+` (1 回以上) に置換
+regex='could not resolve.*pull\s+request'
+# Positive test の `PullRequest` は `\s+` でマッチしないため FAIL するが、空白あり case
+# (`Pull Request`) の positive coverage が欠落していると quantifier semantic の境界値テスト
+# として `\s*` ↔ `\s+` の差分を decisive 検出できない (空白なし側 1 case のみで 0 回境界
+# しか pin できない)
+```
+
+→ `\s*` (0+) を `\s+` (1+) に置換すると空白なし case が FAIL するが、**空白あり case の positive coverage を持たないと quantifier semantic 全体の境界値テスト** (0 回 / 1 回両方) として decisive ではない。境界値の両端を positive で pin することで quantifier mutation を both direction で catch する。
+
+#### Canonical 対策
+
+PR #1066 fix (cycle 1) では positive 6 + negative 6 case で alternation 各 branch と quantifier 各 semantic を網羅:
+
+| Case | Coverage |
+|------|---------|
+| `Could not resolve to a PullRequest` (空白なし) | quantifier 0 回境界 |
+| `Could not resolve to a Pull Request` (空白あり) | quantifier 1 回境界 |
+| `GraphQL: Could not resolve to a PullRequest ... (repository.pullRequest)` | 実 gh stderr 形式 (regression 実装互換性) |
+| `no pull request found` | alternation `no.*pull request found` branch positive |
+| `no PullRequest found` | alternation × quantifier 0 回 cross coverage |
+| 大文字小文字混在 case | `-i` flag 削除 regression 検出 |
+
+#### 防止策
+
+1. **regex alternation の各 alternative に positive test を独立配置**: 1 case で複数 alternative を担保する設計は mutation 耐性 0。alternation hit 数を `grep -oE | wc -l` で counter として assert すると alternative 個別の覆遺漏れも検出できる
+2. **regex quantifier の各 semantic 境界に positive test を配置**: `\s*` なら 0 回 / 1 回 / N 回、`?` なら 0 回 / 1 回、`*` なら 0 回 / 1 回 / N 回、`+` なら 1 回 / N 回。境界値テストで quantifier 置換 mutation (`\s*` → `\s+` / `?` → `+` 等) を catch
+3. **regex flag (`-i` / `-E` / `-P`) の存在を assert する独立 case**: flag 削除 mutation を catch するため flag 必須の test fixture (例: 大文字混在) を持つ独立 case を 1 つ以上配置
+4. **negative case でも alternative 境界を確認**: alternation の各 branch がマッチしてはいけない counter case (例: `pull request` 単独で `could not resolve` 前置なしのもの) を配置し、branch 拡張 mutation (alternation 追加) を catch
+5. **mutation script に regex 専用 mutator を追加**: alternation の各 branch を 1 つずつ別 literal に置換、quantifier (`\*`, `\+`, `?`, `\s*`, `\s+`) を相互に置換するスクリプトを mutation-test.sh に追加し、新規 regex test PR で必須実行
+
+本 sub-pattern は適用 5 の 3 種 dead code 化 pattern (Self-grep tautology / 件数判定片側 mutation 隠蔽 / Path filter coverage gap) と並列し、**regex 構造 (alternation / quantifier / flag) を test 真正性 mutation で守る canonical 防御** の系統として位置付ける。
+
 ## 関連ページ
 
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
 - [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](../anti-patterns/test-pin-protection-theater.md)
 - [HINT-specific 文言 pin で case arm 削除 regression を検知する](../patterns/hint-specific-assertion-pin.md)
+- [Enum 拡張時の few-shot coverage completeness](../heuristics/enum-extension-few-shot-coverage-completeness.md)
 
 ## ソース
 
@@ -251,3 +320,5 @@ grep -qE '```[[:space:]]+$' "$M6_FIXTURE" \
 - [PR #688 cycle 42 fix — bytes-exact pin (`wc -c`) で trailing newline 規約の mutation 耐性を獲得](../../raw/fixes/20260428T051514Z-pr-688.md)
 - [PR #765 cycle 1 review — review test の identification power 不足 3 種 (Self-grep tautology / 件数判定片側 mutation 隠蔽 / Path filter coverage gap)](../../raw/reviews/20260502T095733Z-pr-765.md)
 - [PR #915 review — M6 fixture trailing whitespace の load-bearing 性検出 + pre-check による self-pin canonical 化](../../raw/reviews/20260509T071343Z-pr-915.md)
+- [PR #1066 review — regex alternation の片側 positive coverage 欠落 + quantifier `\s*` semantic 片側のみテスト (2 種 cross-validated HIGH)](../../raw/reviews/20260520T011841Z-pr-1066.md)
+- [PR #1066 cycle 1 fix — alternation 各 branch + quantifier 境界値 + flag 必須 case + 大文字小文字混在 case で positive 6 + negative 6 に拡張](../../raw/fixes/20260520T022118Z-pr-1066-cycle1.md)

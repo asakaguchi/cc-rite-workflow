@@ -2,7 +2,7 @@
 title: "Cleanup refactor は reasoning prose を保持し review-history journal のみ削除する"
 domain: "heuristics"
 created: "2026-05-07T04:15:00+00:00"
-updated: "2026-05-10T23:36:54+00:00"
+updated: "2026-05-20T03:11:31+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260506T190517Z-pr-877.md"
@@ -38,7 +38,11 @@ sources:
     ref: "raw/reviews/20260510T113017Z-pr-921.md"
   - type: "reviews"
     ref: "raw/reviews/20260510T232242Z-pr-921.md"
-tags: [refactor, cleanup, charter, simplification, pre-commit-gate]
+  - type: "reviews"
+    ref: "raw/reviews/20260520T011841Z-pr-1066.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260520T022118Z-pr-1066-cycle1.md"
+tags: [refactor, cleanup, charter, simplification, pre-commit-gate, new-pr-self-trap]
 confidence: high
 ---
 
@@ -188,9 +192,42 @@ canonical 対策の拡張: pre-commit baseline grep に「**削除対象 phrase 
 
 累計 159 件削除 / 13 PR (Phase B 開始) で **12 PR (1 cycle) + 1 PR (2 cycle for doctrine extension)** の sibling 比率に更新。`commands/*.md` への適用 (references/ 配下から本体 commands/ への scope 拡張) は本 PR が初 PR となり、本体 command file は test pin 密度が references/ より高いため doctrine 拡張が surface した。
 
+### PR #1066 で逆方向 sub-pattern: 新規 PR comment writing が self-applying lint に self-trap (preventive direction)
+
+本経験則の主軸は「既存の journal narration を cleanup 削除する」(remediation direction) だが、PR #1066 で **逆方向の sub-pattern** が顕在化した: charter で禁止された journal phrase (`cycle N F-N で導入` 等) を、cleanup ではなく **新規 PR の本文や code comment に書いて project 自身の lint (`comment-journal-check.sh`) に self-apply で hit する self-trap** (preventive direction の missing application)。
+
+#### 失敗の構造 (PR #1066 で実測)
+
+PR #1066 では post-compact.sh:195 周辺に「`cycle 11 F-01 で導入された regex を gh CLI 実出力に対応`」のような journal narration を含むコメントを新規追加した。reviewer cross-validation で project の `comment-journal-check.sh` P4 regex (`cycle [0-9]+ F-[0-9]+ で(導入|確立|集約)`) にヒットすることが LOW 検出として surface した。
+
+#### 中核原則の双方向適用
+
+本ページの中核原則「**reasoning は残し journal は削除する**」は cleanup PR だけでなく、**新規 PR の comment 作成時にも preventive に適用する**:
+
+1. **既存 journal の cleanup** (remediation): 過去 PR で書かれた `cycle N F-N 対応` を機械削除する (本ページ既存の主軸)
+2. **新規 PR の自己抑制** (preventive): 新規 PR で書く comment / commit body / PR description に journal phrase を最初から書かない
+
+両方向は **同じ regulator** (charter + `comment-journal-check.sh` lint) を介して接続される。新規 PR で書かれた journal は次の cleanup cycle で削除対象になる「将来の負債」であり、self-applying lint が PR 内で検出することで負債の発生を構造的に防止する。
+
+#### Canonical 対策
+
+1. **PR pre-commit gate で comment-journal-check.sh を必ず通す**: 既存経験則 + lint rule の組み合わせは self-apply 経路で検出可能だが、PR 作者が手動で gate を実行する習慣がなければ silent regression として merge される
+2. **新規 comment の書き方範例** (PR #1066 fix で実装):
+   - **Before** (journal narration): `cycle 11 F-01 で導入された regex を gh CLI 実出力に対応` (cycle 番号 / finding ID を引用、charter 違反)
+   - **After** (reasoning prose only): `gh CLI 実出力に対応するための regex` (reasoning prose のみ、cycle / finding ID 引用を削除)
+3. **fix での書き換え技法**: `cycle N F-Y で導入された X を Y のため Z` → `Y のため Z にする` (HOW IT GOT THERE = cycle 引用 を削除し、WHY = reasoning prose を残す)
+
+#### 経験則の自己強化ループ
+
+本 sub-pattern は経験則の自己強化ループの正常動作: **既存経験則 → lint rule → 新規 PR への self-apply → 違反を機械検出 → fix で経験則準拠の wording に修正 → 経験則が新規 PR にも実効的に作用する**。本 PR (1066) では fix (cycle 1) で comment journal 整理を実施し、reasoning prose を保持しつつ journal narration のみ削除した。本 fix の体感は本ページの 3 分類 (inline parenthetical / bash literal comment / prose blockquote) と完全一致し、新規 PR への preventive application が cleanup PR と **同じ削除単位 doctrine** で動作することが追加実証された。
+
+本 sub-pattern は本ページの累積 sibling PR (cleanup direction、13 PR) と並列に **preventive direction の累積実証 1 例目** として記録され、将来 preventive direction の sibling PR が複数蓄積した時点で「`comment-journal-check.sh` pre-commit gate 必須化」を canonical 化する根拠 evidence になる。
+
 ## 関連ページ
 
 - [既存ページなし — 本ページが本テーマの初出](#)
+- [Reviewer rule 自身を編集する PR は self-application false positive を verify する](./self-applying-reviewer-rule-false-positive.md)
+- [Fix 修正コメント自身が canonical convention を破る self-drift](../anti-patterns/fix-comment-self-drift.md)
 
 ## ソース
 
@@ -210,3 +247,5 @@ canonical 対策の拡張: pre-commit baseline grep に「**削除対象 phrase 
 - [PR #894 review results](../../raw/reviews/20260508T141025Z-pr-894.md)
 - [PR #921 cycle 1 review (1 CRITICAL test breakage + 2 MEDIUM、test-pinned anchor string sub-class の起点)](../../raw/reviews/20260510T113017Z-pr-921.md)
 - [PR #921 final review (両 reviewer 0 findings、doctrine 拡張後の機械削除 PR 1 cycle 着地 + 推奨事項 2 件 scope 外)](../../raw/reviews/20260510T232242Z-pr-921.md)
+- [PR #1066 review (preventive direction sub-pattern: 新規 PR comment が self-applying comment-journal-check.sh P4 regex に self-trap、LOW 検出)](../../raw/reviews/20260520T011841Z-pr-1066.md)
+- [PR #1066 cycle 1 fix (reasoning prose を保持し journal narration `cycle N F-N で導入` のみ削除する 3 分類 doctrine を新規 PR comment に preventive 適用)](../../raw/fixes/20260520T022118Z-pr-1066-cycle1.md)

@@ -1,4 +1,4 @@
-# Projects Status Update — 3 Callsite Delegation SoT
+# Projects Status Update — 4 Callsite Delegation SoT
 
 > **Source of Truth**: 本ファイルは `/rite:issue:start` 内で `plugins/rite/scripts/projects-status-update.sh` を invoke する **4 callsite (Phase 2.4 / 5.5.1 / 5.7.2 / 1.5.5) の bash literal SoT** である。`start.md` 本体および sub-skill (`parent-routing.md`) の各 callsite は本ファイルへ semantic 参照する anchor stub のみ保持する。
 >
@@ -6,7 +6,7 @@
 >
 > **API レベル仕様 SoT との役割分担**: `references/projects-integration.md` §2.4 は GraphQL projectItems / item-add / field-list / item-edit の **API 動作仕様** SoT。本ファイルは **caller bash literal** の SoT。両 reference は補完関係 (semantically orthogonal、重複契約なし)。
 >
-> **caller**: `start.md` の 3 sites (Phase 2.4 / 5.5.1 / 5.7.2) すべてが本 reference の対応セクションへ delegate する。
+> **caller**: `start.md` の 3 sites (Phase 2.4 / 5.5.1 / 5.7.2) と sub-skill `parent-routing.md` の 1 site (Phase 1.5.5) すべてが本 reference の対応セクションへ delegate する。
 
 ## Common contract
 
@@ -175,16 +175,27 @@ Inspect the script's stdout JSON:
 - `.result == "skipped_not_in_project"` → display `警告: Issue #{issue_number} は Project に登録されていません` and continue (non-blocking). Emit `workflow_incident` sentinel.
 - `.result == "failed"` → display `.warnings[]` and continue (non-blocking). Emit `workflow_incident` sentinel.
 
-**Step 4** — Emit `workflow_incident` sentinel on `skipped_not_in_project` / `failed` (Common contract Item 5 / Issue #1003 AC-4):
+**Step 4** — Emit `workflow_incident` sentinel on `skipped_not_in_project` / `failed` (Common contract Item 5 / Issue #1003 AC-4). sibling Callsite 2/3 (`pr/ready.md` Phase 4.2 / `start-finalize.md` Phase 5.5.1 / 5.7.2) と observability 対称性を保つため `--root-cause-hint` を必ず付与する:
 
 ```bash
+# skipped_not_in_project arm
 bash {plugin_root}/hooks/workflow-incident-emit.sh \
   --type projects_status_update_failed \
-  --details "Issue #{issue_number} parent auto-close (Phase 1.5.5): projects-status-update.sh returned <result>" \
+  --details "Issue #{issue_number} parent auto-close (Phase 1.5.5): projects-status-update.sh returned skipped_not_in_project" \
+  --root-cause-hint "issue_not_registered_in_project_at_parent_auto_close" \
+  --pr-number 0 >&2 || true
+
+# failed arm
+bash {plugin_root}/hooks/workflow-incident-emit.sh \
+  --type projects_status_update_failed \
+  --details "Issue #{issue_number} parent auto-close (Phase 1.5.5): projects-status-update.sh returned failed" \
+  --root-cause-hint "gh_api_or_graphql_failure_at_parent_auto_close" \
   --pr-number 0 >&2 || true
 ```
 
 `--pr-number 0` because Phase 1.5.5 runs before any PR is created in the workflow.
+
+> **Observability reach note (Issue #1070 review F-05)**: Phase 1.5.5 は **PR 作成前** に実行されるため、本 emit した sentinel は `start.md` Phase 5.4.4.1 grep 検出経路 (PR review-fix loop 内で動作) には **乗らない**。emit は observability log として stderr / conversation context に残り後追い debug に使えるが、auto-Issue-register 経路には乗らない (workflow 終了経路)。sibling Callsite 2/3 とは observability reach のレベルが異なる点に留意。
 
 **Constraint** — Projects update failure MUST NOT roll back the `gh issue close` itself. The parent Issue remains CLOSED even when Status update fails (non-blocking design).
 
@@ -202,5 +213,5 @@ See [projects-integration.md §2.4](../../../references/projects-integration.md#
 ## 関連
 
 - [`../../../references/projects-integration.md`](../../../references/projects-integration.md#24-github-projects-status-update) — API レベル動作仕様 SoT (GraphQL queries / item-add / field-list / item-edit)
-- `plugins/rite/scripts/projects-status-update.sh` — Single source of truth (delegated by all 3 callsites)
+- `plugins/rite/scripts/projects-status-update.sh` — Single source of truth (delegated by all 4 callsites)
 - `plugins/rite/hooks/tests/parent-child-sync-static.test.sh` Group 4 — `Issue #513 regression guard` literal pin (本 reference の Callsite 1 Step 3 が grep 対象)

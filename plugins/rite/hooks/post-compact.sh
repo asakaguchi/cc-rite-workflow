@@ -189,10 +189,12 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     else
       pr_rc=$?
       pr_err_oneline=$(head -c 200 "${pr_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
-      # cycle 10 F-12 対応: PR が close/merge/delete されている legitimate な終了状態と
+      # cycle 10 F-12 対応 (Issue #1008 cycle 11 F-01 で regex fix): PR が close/merge/delete されている legitimate な終了状態と
       # auth/network/permission failure を区別する。前者は false positive で、caller Phase 5.4.4.1
       # で偽 Issue を auto-register する経路を防ぐため別 hint で emit する。
-      if printf '%s' "$pr_err_oneline" | grep -qiE 'no.*pull request found|could not resolve.*pull request|not found'; then
+      # gh CLI 実出力は `Could not resolve to a PullRequest with the number of N.` (CamelCase 連結) のため
+      # `pull\s*request` で空白なし変種も対応。`not found` alternative は overbroad のため削除。
+      if printf '%s' "$pr_err_oneline" | grep -qiE 'could not resolve.*pull\s*request|no.*pull\s*request found'; then
         pr_root_cause="pr_deleted_or_inaccessible"
       else
         pr_root_cause="post_compact_gh_pr_view_failed"

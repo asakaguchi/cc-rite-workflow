@@ -82,6 +82,43 @@ else
 fi
 
 echo ""
+echo "[T-2/7f] post-compact.sh F-12 regex matches gh CLI actual output (Issue #1008)"
+# Regex literal pin: cycle 11 F-01 で導入された空白なし変種対応 regex を verify
+# gh CLI 実出力 `Could not resolve to a PullRequest` (CamelCase 連結) にマッチする regex は
+# `pull\s*request` で空白あり/なし両対応であること
+assert_file_contains "$POST_COMPACT_SH" 'could not resolve\.\*pull\\s\*request\|no\.\*pull\\s\*request found' \
+  "post-compact.sh has F-12 regex with \\s* for space-less PullRequest variant (Issue #1008)"
+# overbroad な `not found` alternative が削除されていることを verify
+if grep -qF "'no.*pull request found|could not resolve.*pull request|not found'" "$POST_COMPACT_SH"; then
+  FAIL=$((FAIL + 1))
+  FAILURES+=("post-compact.sh still contains old overbroad regex with 'not found' alternative")
+  echo "  ✗ post-compact.sh old regex (with 'not found') removed" >&2
+else
+  PASS=$((PASS + 1))
+  echo "  ✓ post-compact.sh old regex (with 'not found') removed"
+fi
+# 実出力でのマッチ動作確認 (regex を実行して semantics を verify)
+gh_actual_output="Could not resolve to a PullRequest with the number of 999999999."
+if printf '%s' "$gh_actual_output" | grep -qiE 'could not resolve.*pull\s*request|no.*pull\s*request found'; then
+  PASS=$((PASS + 1))
+  echo "  ✓ regex matches gh CLI actual output 'Could not resolve to a PullRequest' (classifies as pr_deleted_or_inaccessible)"
+else
+  FAIL=$((FAIL + 1))
+  FAILURES+=("regex does not match gh CLI actual output 'Could not resolve to a PullRequest'")
+  echo "  ✗ regex does not match gh CLI actual output" >&2
+fi
+# network error 等の other failure が pr_deleted_or_inaccessible に誤分類されないこと
+network_err="network error: timeout"
+if printf '%s' "$network_err" | grep -qiE 'could not resolve.*pull\s*request|no.*pull\s*request found'; then
+  FAIL=$((FAIL + 1))
+  FAILURES+=("regex incorrectly matches network error 'network error: timeout' (false positive)")
+  echo "  ✗ regex incorrectly matches network error (false positive)" >&2
+else
+  PASS=$((PASS + 1))
+  echo "  ✓ regex does not match network error (classifies as post_compact_gh_pr_view_failed)"
+fi
+
+echo ""
 echo "[T-2/7e] pre-compact.sh emits snapshot diag log"
 assert_file_contains "$PRE_COMPACT_SH" 'PRE_COMPACT_SNAPSHOT_RECORDED=1' \
   "pre-compact.sh emits PRE_COMPACT_SNAPSHOT_RECORDED=1 sentinel on success"

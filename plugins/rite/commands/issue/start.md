@@ -794,10 +794,19 @@ rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANU
       else
         gh_pr_rc=$?
         pr_err_oneline=$(head -c 200 "${pr_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+        # Issue #1008 cycle 11 F-01 4-site 対称化: post-compact.sh と同様に、PR が close/merge/delete されている
+        # legitimate な終了状態と auth/network/permission failure を区別する。前者は false positive で、
+        # caller Phase 5.4.4.1 で偽 Issue を auto-register する経路を防ぐため別 hint で emit する。
+        # gh CLI 実出力は `Could not resolve to a PullRequest` (CamelCase 連結) のため `pull\s*request` で空白なし変種に対応。
+        if printf '%s' "$pr_err_oneline" | grep -qiE 'could not resolve.*pull\s*request|no.*pull\s*request found'; then
+          pr_root_cause_hint="pr_deleted_or_inaccessible"
+        else
+          pr_root_cause_hint="gh_api_failure_at_caller_defense"
+        fi
         bash {plugin_root}/hooks/workflow-incident-emit.sh \
           --type projects_status_in_review_missing \
           --details "Issue #{issue_number} caller-side Step 1.5: gh pr view {pr_number} failed (rc=$gh_pr_rc, stderr=$pr_err_oneline)" \
-          --root-cause-hint "gh_api_failure_at_caller_defense" \
+          --root-cause-hint "$pr_root_cause_hint" \
           --pr-number {pr_number} >&2 || true
         PR_IS_DRAFT=""
       fi

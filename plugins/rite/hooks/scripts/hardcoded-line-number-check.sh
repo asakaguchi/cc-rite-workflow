@@ -8,8 +8,9 @@
 #
 # Motivated by PR #661 cycle 2/3 incident (Issue #666):
 #   Cycle 2 propagation scan was limited to the `(line N, M)` form, so
-#   create-interview.md:605 prose form drifts (`本セクション直前の line 588 / 597`,
+#   旧 create-interview.md:605 prose form drifts (`本セクション直前の line 588 / 597`,
 #   `create.md:580 / create-interview.md:22`) escaped detection until cycle 3.
+#   Historical example — create-interview.md was deleted in PR #1079 flat workflow consolidation.
 #
 # Detected patterns:
 #   P-A  Parenthesized form              `(line N)` / `(line N, M)` / `(line N, M, K)`

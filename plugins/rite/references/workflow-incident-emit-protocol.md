@@ -4,7 +4,7 @@ Common emit protocol for workflow incident sentinels, referenced by **actual emi
 
 Centralizes the bash snippet, Sentinel Visibility Rule, and non-blocking guarantees to prevent drift across emit sites.
 
-> **Reference**: See `start.md` Phase 5.4.4.1 "Workflow Incident Sentinel Visibility Rule" for the full orchestrator-side specification.
+> **Reference**: See `start.md` ステップ 8.5 "Workflow Incident Sentinel Visibility Rule" for the full orchestrator-side specification.
 
 ## Scope
 
@@ -82,7 +82,7 @@ if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
     echo "$sentinel_line" >&2      # defense-in-depth: stderr (human debug)
   fi
 else
-  # workflow-incident-emit.sh failed → emit canonical fallback so Phase 5.4.4.1 still detects
+  # workflow-incident-emit.sh failed → emit canonical fallback so ステップ 8.5 still detects
   fallback_iter="{pr_number}-$(date +%s)"
   fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=...; iteration_id=$fallback_iter"
   echo "$fallback_sentinel"

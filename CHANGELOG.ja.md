@@ -18,7 +18,7 @@ Phase 番号取扱方針: エントリは機能名レベルで変更を記述し
 
 ### 変更
 
-- **Flat workflow 統合** (#1079) — `/rite:issue:start` と `/rite:issue:create` を単一ファイルの flat workflow に再設計。3 sub-skill chain (start 系: `start-execute` / `start-publish` / `start-finalize`、create 系: `create-interview` / `create-register` / `create-decompose`) と 12 個の周辺 sub-skill ファイル (`parent-routing`, `child-issue-selection`, `branch-setup`, `work-memory-init`, `implementation-plan`, `completion-report`) を `commands/issue/start.md` / `commands/issue/create.md` に統合。途中停止時の復帰経路は `/rite:resume` (`commands/resume.md` Phase 3.2 の phase→step 表) に一本化。累積純削減: 約 6,300 行。
+- **Flat workflow 統合** (#1079) — `/rite:issue:start` と `/rite:issue:create` を単一ファイルの flat workflow に再設計。合計 12 個の sub-skill ファイル (sub-skill chain 6: start 系の `start-execute` / `start-publish` / `start-finalize` + create 系の `create-interview` / `create-register` / `create-decompose`、周辺 sub-skill 6: `parent-routing`, `child-issue-selection`, `branch-setup`, `work-memory-init`, `implementation-plan`, `completion-report`) を `commands/issue/start.md` / `commands/issue/create.md` に統合。途中停止時の復帰経路は `/rite:resume` (`commands/resume.md` Phase 3.2 の phase→step 表) に一本化。PR #1079 単独 diff: **+1,524 / -11,659 (純削減 -10,135 行)**。Unreleased 内 transitional add (#920 系列) を相殺後の累積純削減: 約 6,300 行。
 
 ### 削除
 

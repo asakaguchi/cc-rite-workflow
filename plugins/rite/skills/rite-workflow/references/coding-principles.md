@@ -227,7 +227,7 @@ Issue の内容に矛盾があります:
 この計画で進めますか？
 ```
 
-**Note**: For the full plan template including the "参考実装" section, see [implementation-plan.md](../../../commands/issue/implementation-plan.md) Phase 3.3.
+**Note**: For the full plan template including the "参考実装" section, see [`commands/issue/start.md`](../../../commands/issue/start.md) ステップ 3 (実装計画) — PR #1079 で旧 `implementation-plan.md` Phase 3.3 を start.md に統合。
 
 ---
 

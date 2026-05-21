@@ -19,7 +19,7 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
 
 ### Changed
 
-- **Flat workflow consolidation** (#1079) — Re-designed `/rite:issue:start` and `/rite:issue:create` as single-file flat workflows. Sub-skill chain (`start-execute` / `start-publish` / `start-finalize` for start; `create-interview` / `create-register` / `create-decompose` for create) along with 12 sub-skill files (`parent-routing`, `child-issue-selection`, `branch-setup`, `work-memory-init`, `implementation-plan`, `completion-report`) were merged into `commands/issue/start.md` and `commands/issue/create.md`. Recovery from mid-flow stops now uses `/rite:resume` exclusively (`commands/resume.md` Phase 3.2 phase→step routing table). Cumulative net deletion: ~6,300 lines.
+- **Flat workflow consolidation** (#1079) — Re-designed `/rite:issue:start` and `/rite:issue:create` as single-file flat workflows. 12 sub-skill files total were consolidated: 6 sub-skill chain files (`start-execute` / `start-publish` / `start-finalize` for start; `create-interview` / `create-register` / `create-decompose` for create) plus 6 peripheral sub-skill files (`parent-routing`, `child-issue-selection`, `branch-setup`, `work-memory-init`, `implementation-plan`, `completion-report`) were merged into `commands/issue/start.md` and `commands/issue/create.md`. Recovery from mid-flow stops now uses `/rite:resume` exclusively (`commands/resume.md` Phase 3.2 phase→step routing table). PR #1079 single-diff: **+1,524 / -11,659 (net -10,135 lines)**. Cumulative net deletion after offsetting Unreleased transitional adds (#920 series): ~6,300 lines.
 
 ### Removed
 

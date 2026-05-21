@@ -26,7 +26,7 @@ When this command is executed, run the following phases in order.
 
 ## Sub-skill Return Protocol
 
-> **Reference**: See `start.md` [Sub-skill Return Protocol (Global)](../issue/start.md#sub-skill-return-protocol-global) and `create.md` [Sub-skill Return Protocol](../issue/create.md#sub-skill-return-protocol) for the canonical contract. Same rules apply: DO NOT end your response after `rite:wiki:ingest` returns, DO NOT re-invoke the completed skill, and IMMEDIATELY proceed to Mandatory After Wiki Ingest in the **same response turn**.
+> **Reference**: Canonical Sub-skill Return contract は [`skills/rite-workflow/references/sub-skill-return-protocol.md`](../../skills/rite-workflow/references/sub-skill-return-protocol.md) (PR #1079 で Retired) と [`skills/rite-workflow/SKILL.md`](../../skills/rite-workflow/SKILL.md) "Sub-skill Return — Flat Workflow" セクションを参照。**Mandatory After Wiki Ingest は本 cleanup.md ファイル固有の contract** (start.md / create.md の flat workflow が削除した「sub-skill chain return」rule とは独立)。Same rules apply: DO NOT end your response after `rite:wiki:ingest` returns, DO NOT re-invoke the completed skill, and IMMEDIATELY proceed to Mandatory After Wiki Ingest in the **same response turn**.
 
 ### Routing dispatcher (MUST execute step-by-step)
 
@@ -43,7 +43,7 @@ After any sub-skill return, output two HTML-comment evidence lines (bare bracket
 
 The **correct-pattern**: in the same response turn, immediately (1) run Mandatory After Wiki Ingest Pre-write (`cleanup_post_ingest`); (2) output Phase 5.1 Cleanup Result Summary; (3) output Phase 5.2 Guidance for Next Steps with **inline `<!-- [cleanup:completed] -->` HTML sentinel at the trailing position of the final list item** (not on an independent line); (4) Phase 5.3 Step 1 deactivates flow state (`cleanup_completed`, `active: false`) and the turn closes — DO NOT stop earlier. Ending the turn after `rite:wiki:ingest` returns abandons the cleanup workflow mid-flight, leaves Phase 5 unexecuted, and leaves the flow state non-terminal.
 
-**Completion marker**: `[cleanup:completed]` is emitted as an HTML comment (`<!-- [cleanup:completed] -->`) inline at the trailing position of Phase 5.2's final list item — keeps the marker grep-matchable (`grep -F '[cleanup:completed]'`) while making `クリーンアップが完了しました` the user-visible final content. `stop-guard.sh` blocks premature `end_turn` during `cleanup` / `cleanup_pre_ingest` / `cleanup_post_ingest` and emits `manual_fallback_adopted` for `start.md` Phase 5.4.4.1 (Workflow Incident Detection) consumer.
+**Completion marker**: `[cleanup:completed]` is emitted as an HTML comment (`<!-- [cleanup:completed] -->`) inline at the trailing position of Phase 5.2's final list item — keeps the marker grep-matchable (`grep -F '[cleanup:completed]'`) while making `クリーンアップが完了しました` the user-visible final content. `stop-guard.sh` blocks premature `end_turn` during `cleanup` / `cleanup_pre_ingest` / `cleanup_post_ingest` and emits `manual_fallback_adopted` for `start.md` ステップ 8.5 (Workflow Incident Detection) consumer.
 
 ---
 
@@ -306,7 +306,7 @@ gh issue view {issue_number} --json body --jq '.body'
 
 **1.6.5.2 Detect Incomplete Checklist Items**
 
-抽出されたチェックリストから `- [ ]` 項目を検出 (除外パターン: `- [ ] #XX` 親子 Tasklist)。検出件数が **5 件以上** の場合は primary path (`implement.md` Phase 5.1.1.1 per-task / `checklist-auto-check.md` Phase 5.2.1.1 Auto-Check) の機能不全を示唆するため `workflow_incident` sentinel (`type=manual_fallback_adopted`, `--root-cause-hint=checklist_mass_remaining_at_cleanup`) を non-blocking で emit する。emit は cleanup session の stderr に observability log として記録される。`/rite:pr:cleanup` workflow には Phase 5.4.4.1 detector が存在しないため (workflow-incident-detection.md caller 表は lint/pr:create/pr:review/pr:fix/pr:ready の 5 caller のみ)、本 sentinel は cleanup 内で自動 Issue 化されない。手動 triage が必要な場合は stderr ログを確認すること:
+抽出されたチェックリストから `- [ ]` 項目を検出 (除外パターン: `- [ ] #XX` 親子 Tasklist)。検出件数が **5 件以上** の場合は primary path (`implement.md` Phase 5.1.1.1 per-task / `checklist-auto-check.md` Phase 5.2.1.1 Auto-Check) の機能不全を示唆するため `workflow_incident` sentinel (`type=manual_fallback_adopted`, `--root-cause-hint=checklist_mass_remaining_at_cleanup`) を non-blocking で emit する。emit は cleanup session の stderr に observability log として記録される。`/rite:pr:cleanup` workflow には ステップ 8.5 detector が存在しないため (workflow-incident-detection.md caller 表は lint/pr:create/pr:review/pr:fix/pr:ready の 5 caller のみ)、本 sentinel は cleanup 内で自動 Issue 化されない。手動 triage が必要な場合は stderr ログを確認すること:
 
 ```bash
 incomplete_count=$(gh issue view {issue_number} --json body --jq '.body' \

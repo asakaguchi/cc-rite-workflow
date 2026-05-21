@@ -94,6 +94,50 @@ assert_in_start "state-read.sh invocation (Resume Dispatch ステップ 0)" 'sta
 assert_in_start "RESUME_DISPATCH context marker" 'RESUME_DISPATCH='
 
 echo ""
+echo "=== Multi-site lower bound (II-2 PR #1079 verified-review) ==="
+# 同一 sentinel が複数 phase で emit される場合、wildcard 1-hit pass で
+# silent deletion を見逃す問題に対する aggregated lower-bound assertion。
+# start-md-charter.test.sh と同じ pattern を採用 (count_aggregated ≥ N)。
+
+# WORKFLOW_INCIDENT emit は複数 phase (lint default / pr_create_failed / git push / projects_*) で
+# 8+ 箇所登場するはず。1 箇所未満になったら多くの incident emit 経路が消えた signal。
+wf_incident_count=$(grep -cE 'workflow-incident-emit\.sh' "$START_MD" || true)
+if [ "$wf_incident_count" -ge 8 ]; then
+  pass "WORKFLOW_INCIDENT emit lower bound (>=8, got $wf_incident_count)"
+else
+  fail "WORKFLOW_INCIDENT emit lower bound failed (expected >=8, got $wf_incident_count) — silent deletion risk"
+fi
+
+# projects_status_update_failed は 8.3 (skipped + failed arms) + 8.4 (skipped + failed arms) で 4+ 箇所
+proj_status_count=$(grep -cE 'projects_status_update_failed' "$START_MD" || true)
+if [ "$proj_status_count" -ge 2 ]; then
+  pass "projects_status_update_failed lower bound (>=2, got $proj_status_count)"
+else
+  fail "projects_status_update_failed lower bound failed (expected >=2, got $proj_status_count)"
+fi
+
+# skill_load_failure は lint default / pr:create default / pr:review default / pr:fix default / pr:ready default
+# の最低 5 site で emit されるはず (H-4 改修後)
+skill_load_count=$(grep -cE 'skill_load_failure' "$START_MD" || true)
+if [ "$skill_load_count" -ge 3 ]; then
+  pass "skill_load_failure multi-site lower bound (>=3, got $skill_load_count)"
+else
+  fail "skill_load_failure multi-site lower bound failed (expected >=3, got $skill_load_count) — non-lint phase default handlers may have been removed"
+fi
+
+echo ""
+echo "=== 9-phase Resume Dispatch routing table rows (II-5 PR #1079 verified-review) ==="
+# Resume Dispatch table の各 phase 行が start.md に存在することを assert。
+# 行ごとに `phase=<name>` が table 内に登場するはず。
+for phase in init branch plan implement lint pr review fix completed; do
+  if grep -qE "phase=$phase\b" "$START_MD"; then
+    pass "Resume Dispatch row for phase=$phase exists"
+  else
+    fail "Resume Dispatch row for phase=$phase is missing (routing table drift)"
+  fi
+done
+
+echo ""
 if ! print_summary "$(basename "$0")" "start.md の sentinel set を変更した場合、caller (sprint:execute / resume) の grep pattern も同時に更新する責務がある。本 test の expected_set を縮退させる前に caller 側との符号を必ず確認すること。"; then
   exit 1
 fi

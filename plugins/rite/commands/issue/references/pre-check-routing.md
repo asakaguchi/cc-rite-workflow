@@ -1,10 +1,12 @@
 # Pre-check List — Sub-skill Return Routing & Turn Termination Gate
 
+> **Status (PR #1079 flat workflow consolidation)**: 本 reference の Item 0 (routing dispatcher) の `[interview:*]` / `[create:completed:N]` / `[CONTEXT] INTERVIEW_DONE=1` 経路は旧 sub-skill chain 設計 (`create.md` → `create-interview.md` → `create-register.md` / `create-decompose.md`) を前提とした記述。PR #1079 で `create.md` は flat workflow に統合され、interview phase は create.md 内 inline で実行されるため、本 reference の sub-skill return routing は **active caller なし** の historical context となった。Issue #552 の 4 grep pattern 設計 (`grep -F` / `grep -E` / character-class 警告 / sentinel 形式) は将来の sub-skill 再導入時の参照として保持する。
+>
 > **Source of Truth**: 本ファイルは `/rite:issue:create` ワークフロー orchestrator (`create.md`) の **Pre-check list (Issue #552)** の SoT である。Item 0 (routing dispatcher) と Item 1-3 (state checks) を集約し、4 種類の grep パターン・3 つの sentinel 形式・場面 (a) / (b) の評価意味分岐を 1 ファイルに閉じ込めることで `create.md` 本体の認知負荷を下げる。`create.md` Sub-skill Return Protocol セクションは本ファイルへ参照する。
 >
 > **抽出経緯**: Pre-check list の Item 0/1/2/3 は 4 種類の grep パターン (`grep -F` / `grep -E` / character-class 誤解釈警告) と 3 つの sentinel 形式 (`[interview:skipped]` / `[interview:completed]` / `[create:completed:{N}]` / `[CONTEXT] INTERVIEW_DONE=1`) + 場面 (a) / (b) で評価意味が反転する仕組みのため、`create.md` 本体に inline 展開すると LLM の一読理解を阻害していた。Issue #773 (#768 P1-3 / P3-9) で本 reference に抽出。
 >
-> **Enforcement coupling**: protocol violation 時は `manual_fallback_adopted` workflow_incident sentinel が stderr に echo されて Phase 5.4.4.1 で post-hoc 検出される (AC-7)。historical: 旧 `stop-guard.sh` (撤去済み、commit `e2dfae0`) が場面 (b) で機械検証していたが、stop hook 撤去後は post-hoc workflow_incident 検出に責務が集約された。
+> **Enforcement coupling**: protocol violation 時は `manual_fallback_adopted` workflow_incident sentinel が stderr に echo されて ステップ 8.5 で post-hoc 検出される (AC-7)。historical: 旧 `stop-guard.sh` (撤去済み、commit `e2dfae0`) が場面 (b) で機械検証していたが、stop hook 撤去後は post-hoc workflow_incident 検出に責務が集約された。
 
 ## Evaluation context (2 場面で同じチェックリストを使う)
 

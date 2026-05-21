@@ -12,12 +12,12 @@ Referenced from:
 - `commands/pr/fix.md` Phase 4.3.4 Step 2
 - `commands/pr/review.md` Phase 7.4.2
 - `commands/pr/create.md` Phase 2.5.5
-- `commands/issue/create-register.md` Phase 3.2 (Issue Body Generation and Creation)
 - `commands/pr/cleanup.md` Phase 1.7.3.2
-- `commands/issue/parent-routing.md` Phase 1.5.4.5
-- `commands/issue/start.md` Phase 5.2.0.1
-- `commands/issue/create-decompose.md` Phase 3.3 (parent Issue creation in XL decomposition)
-- `commands/issue/create-decompose.md` Phase 3.3 (Sub-Issue bulk creation in XL decomposition)
+- `commands/issue/create.md` ステップ 4.3 (Single Issue creation, PR #1079 で旧 `create-register.md` Phase 3.2 を統合)
+- `commands/issue/create.md` ステップ 5.3 (parent Issue creation in XL decomposition, PR #1079 で旧 `create-decompose.md` Phase 3.3 を統合)
+- `commands/issue/create.md` ステップ 5.4 (Sub-Issue bulk creation in XL decomposition, PR #1079 で旧 `create-decompose.md` Phase 3.3 を統合)
+- `commands/issue/start.md` ステップ 8.5 (Workflow Incident Detection の auto-Issue 起票経路, PR #1079 で旧 Phase 5.2.0.1 を統合)
+- 旧 caller (PR #1079 で削除): `parent-routing.md` Phase 1.5.4.5
 
 Related documents:
 - [projects-integration.md](./projects-integration.md) - Existing Issue Status update / Iteration assignment (this document covers new Issue creation with Projects registration)
@@ -172,24 +172,22 @@ Each caller determines Priority using its own logic before passing it to the scr
 |---------|----------------|--------|
 | Incomplete tasks from merged PR | Medium | Default for remaining work |
 
-### parent-routing.md (Phase 1.5.4): Inherited from Parent
+### create.md ステップ 5.3-5.4 (XL Decomposition, PR #1079 で旧 `create-decompose.md` Phase 3.3 を統合)
 
 | Context | Issue Priority | Reason |
 |---------|----------------|--------|
-| Child Issue creation | Inherited from parent | Use parent's Priority value |
+| Parent Issue creation (ステップ 5.3 — Create the Parent Issue) | Determined in interview phase (旧 `create-register.md` Phase 3.1 Priority Estimation を `create.md` に統合) | Use Priority value decided during Issue creation |
+| Sub-Issue bulk creation (ステップ 5.4 — Bulk Creation of Sub-Issues) | Inherited from parent | Use parent Issue's Priority value |
 
-### create-decompose.md (Phase 3.3): XL Decomposition
-
-| Context | Issue Priority | Reason |
-|---------|----------------|--------|
-| Parent Issue creation (Phase 3.3 — Create the Parent Issue) | Determined in `create-register.md` Phase 3.1 (Priority Estimation) | Use Priority value decided during Issue creation |
-| Sub-Issue bulk creation (Phase 3.3 — Bulk Creation of Sub-Issues) | Inherited from parent | Use parent Issue's Priority value |
-
-### start.md (Phase 5.2.0.1): Lint Warnings
+### start.md ステップ 8.5 (Workflow Incident Detection — Lint Warnings 等, PR #1079 で旧 Phase 5.2.0.1 を統合)
 
 | Context | Issue Priority | Reason |
 |---------|----------------|--------|
-| Out-of-scope lint warnings | Medium | Default for lint findings |
+| Out-of-scope lint warnings / workflow incidents | Medium | Default for lint findings and workflow incident tracking Issues |
+
+### 旧 caller (PR #1079 で削除)
+
+- `parent-routing.md` Phase 1.5.4 (Child Issue creation, Inherited from Parent) — flat 化に伴い child issue 自動作成経路自体が廃止された
 
 ---
 
@@ -233,7 +231,7 @@ Issue #669 strengthens the script so that **Projects registration failures are n
 # Mode 1: explicit file list (original #669 form)
 bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh \
   plugins/rite/commands/issue/start.md \
-  plugins/rite/commands/issue/parent-routing.md
+  plugins/rite/commands/issue/create.md
 
 # Mode 2: --all auto-expansion (#958)
 # Scans every plugins/rite/commands/**/*.md file under the resolved repository root.

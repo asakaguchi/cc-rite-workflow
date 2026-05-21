@@ -1,8 +1,8 @@
 # Slug Generation — Pre-generation Rules + Translation Guidelines
 
-> **Source of Truth**: 本ファイルは `/rite:issue:create` workflow における **Issue slug 生成** の正規定義 SoT である。Tentative slug pre-generation (Phase 0.1.3) と確認済み slug の context retention rule を集約する。`create.md` Phase 0.1.3 / `create-decompose.md` Phase 0.7.2 / `create-interview.md` / `create-register.md` からは本 reference へ semantic 参照する。
+> **Source of Truth**: 本ファイルは `/rite:issue:create` workflow における **Issue slug 生成** の正規定義 SoT である。Tentative slug pre-generation と確認済み slug の context retention rule を集約する。caller は `commands/issue/create.md` のみ (PR #1079 で旧 `create-decompose.md` Phase 0.7.2 / `create-interview.md` / `create-register.md` を flat workflow に統合)。create.md からは本 reference へ semantic 参照する。
 >
-> **抽出経緯**: Issue #773 (#768 P1-3 PR 5/8) で `create.md` Phase 0.1.3 の slug 生成ルール・翻訳ガイドライン・context retention rule を本 reference に集約。元ファイルには見出しと redirect notice のみ stub 残置（歴史的アンカー保持 + caller 内ナビゲーション維持）。caller の機能リンクは本ファイルのアンカー (`#slug-generation-rules` / `#translation-guidelines` / `#context-retention`) へ書き換え済み。
+> **抽出経緯**: Issue #773 (#768 P1-3 PR 5/8) で `create.md` の slug 生成ルール・翻訳ガイドライン・context retention rule を本 reference に集約。PR #1079 で旧 sub-skill ファイルは削除されたため、現在は `create.md` 本体のみが caller。caller の機能リンクは本ファイルのアンカー (`#slug-generation-rules` / `#translation-guidelines` / `#context-retention`)。
 
 ## Purpose
 

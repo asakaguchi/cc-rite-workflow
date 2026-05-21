@@ -115,7 +115,7 @@ raw source は `/rite:pr:review`（Phase 6.5.W.2）、`/rite:pr:fix`（Phase 4.6
 2. **wiki.auto_ingest を確認**: `wiki.auto_ingest: true` になっているか（`false` だと raw 蓄積のトリガーが無効化される）
 3. **wiki branch の存在を確認**: `git branch -a | grep wiki` で wiki branch が存在するか。存在しない場合は `/rite:wiki:init` を実行するか `git fetch origin wiki:wiki` を実行
 4. **Phase X.X.W の sentinel を確認**: 完了レポートの `### 📚 Wiki ingest 状況` セクションで `SKIPPED` や `FAILED` のカウントを確認
-5. **workflow incident を確認**: `[CONTEXT] WIKI_INGEST_SKIPPED=1` や `WIKI_INGEST_FAILED=1` が Phase 5.4.4.1 で検出・報告されているか
+5. **workflow incident を確認**: `[CONTEXT] WIKI_INGEST_SKIPPED=1` や `WIKI_INGEST_FAILED=1` が ステップ 8.5 で検出・報告されているか
 
 ### raw は増えているがページが増えない場合
 

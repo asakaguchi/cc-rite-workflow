@@ -24,7 +24,9 @@
 #   --tmpfile-read    Path to temp file with original body (apply mode)
 #   --tmpfile-write   Path to temp file with updated body (apply mode)
 #   --original-length Original body length in bytes (apply mode)
-#   --parent          Use this flag to indicate parent Issue update (changes error to WARNING)
+#   --parent          Indicate parent Issue update (accepted for backward compatibility — current
+#                     err_level is WARNING for all callers; flag is reserved for future severity
+#                     differentiation between parent / non-parent body updates)
 #   --diff-check      Verify a change was actually made (skip apply if identical)
 #
 # Exit codes:
@@ -61,10 +63,12 @@ if [[ -z "$ISSUE" ]]; then
   exit 1
 fi
 
+# err_level is currently WARNING for all callers (parent / non-parent both use WARNING because
+# body update failures are non-blocking in both contexts: checklist append for the working Issue
+# and Sub-Issues section append for the parent Issue). The --parent flag is preserved in the
+# arg parser for future severity differentiation, but does not change behavior today (PR #1079
+# review: TI-1 dead-branch removed).
 err_level="WARNING"
-if [[ "$IS_PARENT" == false ]]; then
-  err_level="WARNING"
-fi
 
 case "$MODE" in
   fetch)

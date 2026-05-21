@@ -148,6 +148,16 @@ WARN_MSG
         # が残る。`${ISSUE_NUMBER:+ (Issue #$ISSUE_NUMBER)}` で issue 番号は
         # 解決できた場合のみ追記し、空の場合は `(Issue #...)` 部分そのものを省略する。
         echo "rite: session-end: failed to deactivate state file: $STATE_FILE${ISSUE_NUMBER:+ (Issue #$ISSUE_NUMBER)}" >&2
+        # PR #1079 review M-4 対応: WARNING に加えて WORKFLOW_INCIDENT を emit。次の session-start
+        # 防衛 reset が読み取って recovery action を選択できるよう、observability を確保する。
+        # emit 自体は session-end のクリーンアップ責務を阻害しないよう `|| true` で non-blocking。
+        if [ -x "$SCRIPT_DIR/workflow-incident-emit.sh" ]; then
+            bash "$SCRIPT_DIR/workflow-incident-emit.sh" \
+                --type session_end_deactivate_failed \
+                --details "session-end could not write .active=false to $STATE_FILE${ISSUE_NUMBER:+ (Issue #$ISSUE_NUMBER)}" \
+                --root-cause-hint "jq_failure_or_state_file_write_error" \
+                --pr-number 0 >&2 || true
+        fi
         rm -f "$TMP_FILE"
     fi
 

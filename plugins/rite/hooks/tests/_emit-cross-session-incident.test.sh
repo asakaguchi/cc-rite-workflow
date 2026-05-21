@@ -164,7 +164,7 @@ assert_match "TC-5.3: WARNING records type for fallback audit" "type=cross_sessi
 # `[CONTEXT] WORKFLOW_INCIDENT=1; type=...; details=...; root_cause_hint=...; iteration_id=...` の
 # emit を assert する。旧実装は WARNING 行のみ確認しており、helper の fallback emit ブロックが
 # silent regress (`exit 0` のみに巻き戻される / sentinel format が壊される) しても TC-5 が pass
-# する false-positive 経路があった。Phase 5.4.4.1 orchestrator detection が break する CRITICAL gap
+# する false-positive 経路があった。ステップ 8.5 orchestrator detection が break する CRITICAL gap
 # を test 側で守る。
 assert_match "TC-5.4: fallback sentinel emitted (F-04)" "[CONTEXT] WORKFLOW_INCIDENT=1" "$out"
 assert_match "TC-5.5: fallback sentinel has type field (F-04)" "type=cross_session_takeover_refused" "$out"

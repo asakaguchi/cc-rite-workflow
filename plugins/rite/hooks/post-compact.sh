@@ -141,7 +141,8 @@ fi
 # C7-F04 cycle 8 で `jq_owner_err` / `jq_name_err` capture 化済。
 if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
   PLUGIN_ROOT_PC="$(dirname "$SCRIPT_DIR")"
-  # Sub-shell + pipefail + signal-specific trap で start-finalize.md Step 0 と対称化する。
+  # Sub-shell + pipefail + signal-specific trap pattern (PR #1079 で start-finalize.md は削除済;
+  # 現在の対称化対象は post-compact + watchdog-status-mismatch の 2 site)。
   # gh API 失敗時に silent fall-through せず incident emit する (F-07 Asymmetric Fix 対策)。
   # reconcile script の stderr も capture し、incident details に含める。
   (
@@ -191,7 +192,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       pr_err_oneline=$(head -c 200 "${pr_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
       # PR が close/merge/delete されている legitimate な終了状態 (gh CLI 実出力 `Could not resolve to a PullRequest`
       # の CamelCase 連結 stderr) と auth/network/permission failure を区別する。前者は false positive のため、
-      # caller Phase 5.4.4.1 で偽 Issue を auto-register する経路を防ぐため別 hint で emit する。
+      # caller ステップ 8.5 で偽 Issue を auto-register する経路を防ぐため別 hint で emit する。
       # regex は `pull\s*request` で空白あり/なし両対応 (CamelCase 連結も classic 表現も catch)。
       if printf '%s' "$pr_err_oneline" | grep -qiE 'could not resolve.*pull\s*request|no.*pull\s*request found'; then
         pr_root_cause_hint="pr_deleted_or_inaccessible"
@@ -208,7 +209,9 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
 
     if [ "$PR_IS_DRAFT" = "false" ]; then
       # cycle 8 C7-F01: gh repo view stderr を tempfile capture して root cause attribution を可能にする。
-      # 4-site 対称化 (post-compact / watchdog / start.md Step 1.5 / start-finalize.md Step 0)。
+      # 旧: 4-site 対称化 (post-compact / watchdog / start.md Step 1.5 / start-finalize.md Step 0)
+      # 現: 2-site 対称化 (post-compact / watchdog-status-mismatch)。PR #1079 で start.md Step 1.5 と
+      # start-finalize.md は削除/統合され、現在は post-compact と watchdog の 2 site のみが本 pattern を維持。
       if REPO_INFO=$(cd "$STATE_ROOT" && gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
         :
       else
@@ -248,10 +251,9 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
             --root-cause-hint "post_compact_gh_repo_view_returned_null" \
             --pr-number "$PR" >&2 || true
         fi
-        # cycle 10 F-17 対応: cascade emit guard の semantic を start.md / start-finalize.md と対称化。
-        # 旧実装は `_owner_repo_ok=0` set のみで後段に flow を続行し、L251 の長大な条件式で guard する
-        # 別パターンだった (3 site で semantic 不一致、guard 漏れ regression のリスク)。start.md L725 /
-        # start-finalize.md L548 の `if [ "$_owner_repo_ok" != "1" ]; then exit 0; fi` と対称化する。
+        # cycle 10 F-17 対応: cascade emit guard の semantic として `if _owner_repo_ok != "1"; then exit 0; fi`
+        # と等価な `exit 0` を直書きする。PR #1079 で start.md Step 1.5 と start-finalize.md は削除/統合された
+        # ため、本 pattern は post-compact 内部に完結した guard となっている (旧 3 site symmetry は historical)。
         exit 0
       fi
       if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ] && [ -n "$REPO_OWNER" ] && [ -n "$REPO_NAME" ] && [ "$ISSUE" != "unknown" ]; then

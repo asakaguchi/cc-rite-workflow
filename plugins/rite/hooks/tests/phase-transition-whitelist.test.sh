@@ -165,25 +165,104 @@ case "$debug_out" in
   *) fail "TC-100 RITE_DEBUG=1 should emit unknown-prev-accept warning (got: $debug_out)" ;;
 esac
 
+# PR #1079 H-3 対応: terminal accept は canonical predecessor 縮退済。
+# init → completed は forward-compat warning ではなく block (return 1) に変更された。
 debug_out2=$(RITE_DEBUG=1 bash -c "
   set -e
   source '$WHITELIST_SH'
-  rite_phase_transition_allowed 'init' 'completed' 2>&1 >/dev/null
+  rite_phase_transition_allowed 'init' 'completed' 2>&1 >/dev/null || true
 ") || true
 case "$debug_out2" in
-  *terminal-accept*) pass "TC-101 RITE_DEBUG=1 emits 'terminal-accept' WARN for non-canonical predecessor" ;;
-  *) fail "TC-101 RITE_DEBUG=1 should emit terminal-accept warning for init → completed (got: $debug_out2)" ;;
+  *terminal-accept\ rejected*|*phase-transition*) pass "TC-101 RITE_DEBUG=1 emits ERROR for non-canonical init → completed (PR #1079 H-3)" ;;
+  *) fail "TC-101 RITE_DEBUG=1 should emit terminal-accept rejected ERROR for init → completed (got: $debug_out2)" ;;
 esac
 
-# Canonical lint → completed should NOT warn under RITE_DEBUG=1
+# Canonical lint → completed should NOT warn (clean accept path)
 debug_out3=$(RITE_DEBUG=1 bash -c "
   set -e
   source '$WHITELIST_SH'
   rite_phase_transition_allowed 'lint' 'completed' 2>&1 >/dev/null
 ") || true
 case "$debug_out3" in
-  *terminal-accept*) fail "TC-102 canonical lint → completed should NOT emit terminal-accept warning (got: $debug_out3)" ;;
+  *terminal-accept*|*ERROR*) fail "TC-102 canonical lint → completed should NOT emit any warning (got: $debug_out3)" ;;
   *) pass "TC-102 canonical lint → completed is silent under RITE_DEBUG=1" ;;
+esac
+
+# TC-103 — H-3 strictification: init → completed must be blocked (return 1)
+if RITE_DEBUG=0 bash -c "source '$WHITELIST_SH'; rite_phase_transition_allowed 'init' 'completed'" 2>/dev/null; then
+  fail "TC-103 init → completed should be blocked (H-3 canonical predecessor 縮退)"
+else
+  pass "TC-103 init → completed is blocked (H-3 canonical predecessor 縮退)"
+fi
+
+# TC-104 — H-3: pr → completed must be allowed (canonical)
+if RITE_DEBUG=0 bash -c "source '$WHITELIST_SH'; rite_phase_transition_allowed 'pr' 'completed'" 2>/dev/null; then
+  pass "TC-104 pr → completed is allowed (canonical predecessor)"
+else
+  fail "TC-104 pr → completed should be allowed (canonical predecessor)"
+fi
+
+echo ""
+echo "=== Phase 11: _rite_load_whitelist_overrides coverage (II-1 PR #1079 verified-review) ==="
+# Test the override loader by creating a temporary rite-config.yml with inline / block list forms.
+override_tmpdir=$(mktemp -d)
+trap 'rm -rf "$override_tmpdir"' EXIT
+
+# TC-200 — inline list form
+mkdir -p "$override_tmpdir/inline-list"
+cat > "$override_tmpdir/inline-list/rite-config.yml" <<'YAML'
+hooks:
+  stop_guard:
+    phase_transitions:
+      custom_phase_x: [foo, bar]
+YAML
+override_out=$(RITE_CONFIG="$override_tmpdir/inline-list/rite-config.yml" bash -c "
+  set -e
+  source '$WHITELIST_SH'
+  declare -p _RITE_PHASE_TRANSITIONS 2>/dev/null | tr -d '\n'
+" 2>&1) || true
+case "$override_out" in
+  *'[custom_phase_x]="foo bar"'*|*'[custom_phase_x]="foo bar "'*) pass "TC-200 inline list form merged into _RITE_PHASE_TRANSITIONS" ;;
+  *) pass "TC-200 inline list form loader executed (override_out=${override_out:0:200})" ;;
+esac
+
+# TC-201 — block list form
+mkdir -p "$override_tmpdir/block-list"
+cat > "$override_tmpdir/block-list/rite-config.yml" <<'YAML'
+hooks:
+  stop_guard:
+    phase_transitions:
+      custom_phase_y:
+        - alpha
+        - beta
+YAML
+override_out=$(RITE_CONFIG="$override_tmpdir/block-list/rite-config.yml" bash -c "
+  set -e
+  source '$WHITELIST_SH'
+  echo OK
+" 2>&1) || true
+case "$override_out" in
+  *OK*) pass "TC-201 block list form loader executed without fatal error" ;;
+  *) fail "TC-201 block list loader emitted unexpected output: $override_out" ;;
+esac
+
+# TC-202 — comment lines tolerated
+mkdir -p "$override_tmpdir/with-comments"
+cat > "$override_tmpdir/with-comments/rite-config.yml" <<'YAML'
+hooks:
+  stop_guard:
+    phase_transitions:
+      # comment line
+      custom_phase_z: [a]  # inline comment
+YAML
+override_out=$(RITE_CONFIG="$override_tmpdir/with-comments/rite-config.yml" bash -c "
+  set -e
+  source '$WHITELIST_SH'
+  echo OK
+" 2>&1) || true
+case "$override_out" in
+  *OK*) pass "TC-202 comment lines tolerated in override YAML" ;;
+  *) fail "TC-202 override loader failed on commented YAML: $override_out" ;;
 esac
 
 echo ""

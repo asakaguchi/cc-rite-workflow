@@ -38,7 +38,7 @@ This command has two invocation cases: standalone execution and being called fro
 
 | Caller | Output Pattern | Subsequent Action |
 |-----------|-------------|---------------|
-| `/rite:issue:start` (end-to-end flow) | Output (required) | `/rite:issue:start` calls `rite:pr:create` after executing Phase 5.2.1 |
+| `/rite:issue:start` (end-to-end flow) | Output (required) | `/rite:issue:start` calls `rite:pr:create` after executing ステップ 4.4 (PR #1079 で旧 Phase 5.2.1 を統合) |
 | Standalone execution | Output (required) | Display "next steps" guidance |
 
 **Determination method**: Claude determines the caller from conversation context:
@@ -56,7 +56,7 @@ This command has two invocation cases: standalone execution and being called fro
 - `[lint:error]` - lint errors detected
 - `[lint:aborted]` - user aborted
 
-> **Important (flow continuation responsibility)**: When executed within the end-to-end flow, **this command does NOT directly call `rite:pr:create`; it returns control to the caller `/rite:issue:start`**. `/rite:issue:start` calls `rite:pr:create` after executing Phase 5.2.1 (checklist confirmation).
+> **Important (flow continuation responsibility)**: When executed within the end-to-end flow, **this command does NOT directly call `rite:pr:create`; it returns control to the caller `/rite:issue:start`**. `/rite:issue:start` calls `rite:pr:create` after executing ステップ 4.4 (checklist completion confirmation, PR #1079 で旧 Phase 5.2.1 を統合).
 
 ---
 
@@ -262,7 +262,7 @@ When lint is skipped, output the completion message in the following format:
 ```
 
 > If `/rite:lint` continues to PR creation directly, it bypasses the checklist confirmation (5.2.1) in the caller, potentially creating a PR with incomplete tasks.
-> **CRITICAL**: When called from `/rite:issue:start`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:issue:start` after Phase 5.2.1 is complete.
+> **CRITICAL**: When called from `/rite:issue:start`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:issue:start` after ステップ 4.4 (checklist confirmation) is complete (PR #1079 で旧 Phase 5.2.1 を統合).
 
 **Meaning of output patterns:**
 - `[lint:skipped]`: Used by `/rite:issue:start` Phase 5.2 to detect this pattern and decide to proceed to 5.3 (PR creation)
@@ -635,7 +635,7 @@ fi
 | Exit Code | `gitignore_health_status` | Action |
 |-----------|---------------------------|--------|
 | 0 | `success` | `.rite/wiki/` rule healthy (or legitimate no-op: wiki disabled / `rite-config.yml` absent — script handled internally and returned 0 with `findings: 0`) — continue to Phase 4 |
-| 1 | `warning` | Drift detected — record as **warning** (does NOT cause `[lint:error]`). A `[CONTEXT] WORKFLOW_INCIDENT=1; type=gitignore_drift; ...` sentinel is also emitted on stdout so Phase 5.4.4.1 can auto-register a tracking Issue. Display findings and allow flow to continue |
+| 1 | `warning` | Drift detected — record as **warning** (does NOT cause `[lint:error]`). A `[CONTEXT] WORKFLOW_INCIDENT=1; type=gitignore_drift; ...` sentinel is also emitted on stdout so ステップ 8.5 can auto-register a tracking Issue. Display findings and allow flow to continue |
 | 2 | `error` | Invocation error (not in git repo, `git check-ignore` failure, `same_branch` 戦略で probe file 作成不能 — read-only filesystem / permission denied / disk full 等) — record as warning, display error message |
 | -1 | `skipped` | Script not found (marketplace install without `hooks/scripts/`) — skip silently |
 
@@ -944,7 +944,7 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the flo
 {wiki_growth_output}
 ```
 
-**Gitignore health check appendix (Issue #567)** (both standalone and E2E): When `gitignore_health_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth / terminal-output. When status is `warning` (exit 1, drift detected), the appendix output includes both the stderr WARNING and the `[CONTEXT] WORKFLOW_INCIDENT=1; type=gitignore_drift; ...` sentinel from stdout (merged via `2>&1` at invocation) so the sentinel reaches the orchestrator's conversation context where Phase 5.4.4.1 grep detects it. When status is `error` (exit 2, invocation failure), the script exits before sentinel emit so the appendix contains only the stderr ERROR diagnostic:
+**Gitignore health check appendix (Issue #567)** (both standalone and E2E): When `gitignore_health_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth / terminal-output. When status is `warning` (exit 1, drift detected), the appendix output includes both the stderr WARNING and the `[CONTEXT] WORKFLOW_INCIDENT=1; type=gitignore_drift; ...` sentinel from stdout (merged via `2>&1` at invocation) so the sentinel reaches the orchestrator's conversation context where ステップ 8.5 grep detects it. When status is `error` (exit 2, invocation failure), the script exits before sentinel emit so the appendix contains only the stderr ERROR diagnostic:
 
 ```
 ⚠️ Gitignore health check: {gitignore_health_finding_count} findings detected ({gitignore_health_status}, non-blocking)
@@ -990,7 +990,7 @@ These appendices do NOT change the result pattern — `[lint:success]` remains t
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 
-> **CRITICAL**: When called from `/rite:issue:start`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:issue:start` after Phase 5.2.1 is complete.
+> **CRITICAL**: When called from `/rite:issue:start`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:issue:start` after ステップ 4.4 (checklist confirmation) is complete (PR #1079 で旧 Phase 5.2.1 を統合).
 
 **Note**: `[lint:success]` is an output pattern used by `/rite:issue:start` Phase 5.2 to determine the lint result.
 
@@ -1289,22 +1289,22 @@ Continue the end-to-end flow based on the output pattern from Phase 4.
 
 | Output Pattern | Action in End-to-End Flow |
 |-------------|---------------------------|
-| `[lint:success]` | `/rite:lint` execution completes, and the caller `/rite:issue:start` executes Phase 5.2.1 (checklist completion confirmation) |
-| `[lint:skipped]` | `/rite:lint` execution completes, and the caller `/rite:issue:start` executes Phase 5.2.1 (checklist completion confirmation) |
+| `[lint:success]` | `/rite:lint` execution completes, and the caller `/rite:issue:start` executes ステップ 4.4 (checklist completion confirmation, PR #1079 で旧 Phase 5.2.1 を統合) |
+| `[lint:skipped]` | `/rite:lint` execution completes, and the caller `/rite:issue:start` executes ステップ 4.4 (checklist completion confirmation, PR #1079 で旧 Phase 5.2.1 を統合) |
 | `[lint:error]` | After fixing errors, run lint again (return to Phase 3) |
 | `[lint:aborted]` | Flow ends (execution of `/rite:issue:start` also ends) |
 
-**Note**: During standalone execution (when the user directly executes `/rite:lint`), the Phase 5.2.1 checklist confirmation is **not executed**. Checklist confirmation is a feature only executed within the `/rite:issue:start` end-to-end flow; standalone lint execution ends without flow continuation.
+**Note**: During standalone execution (when the user directly executes `/rite:lint`), the ステップ 4.4 checklist confirmation (PR #1079 で旧 Phase 5.2.1 を統合) is **not executed**. Checklist confirmation is a feature only executed within the `/rite:issue:start` end-to-end flow; standalone lint execution ends without flow continuation.
 
 ### 5.2 Processing After `/rite:lint` Completion
 
 When `[lint:success]` or `[lint:skipped]` is output:
 
-**`/rite:lint` execution completes**, and Claude executes `/rite:issue:start` Phase 5.2.1 (checklist completion confirmation). After that, it calls `rite:pr:create`.
+**`/rite:lint` execution completes**, and Claude executes `/rite:issue:start` ステップ 4.4 (checklist completion confirmation, PR #1079 で旧 Phase 5.2.1 を統合). After that, it calls `rite:pr:create`.
 
 **Important**:
 - `/rite:lint` does **NOT directly call** `rite:pr:create`
-- The caller `/rite:issue:start` performs checklist completion confirmation in Phase 5.2.1
+- The caller `/rite:issue:start` performs checklist completion confirmation in ステップ 4.4 (PR #1079 で旧 Phase 5.2.1 を統合)
 - After all checklist items are complete, `/rite:issue:start` calls `rite:pr:create`
 
 **Design intent**:

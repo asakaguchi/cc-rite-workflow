@@ -1,7 +1,7 @@
 #!/bin/bash
 # rite workflow - Workflow Incident Sentinel Emitter (#366)
 #
-# Generates a sentinel pattern that the orchestrator (start.md Phase 5.4.4.1)
+# Generates a sentinel pattern that the orchestrator (start.md ステップ 8.5)
 # detects via context grep to auto-register workflow incidents as Issues.
 #
 # Sentinel format (root_cause_hint is optional and entirely omitted when empty):
@@ -34,7 +34,7 @@
 #
 # Notes:
 #   - Output goes to stdout by default so the line is captured into the
-#     orchestrator's conversation context where Phase 5.4.4.1 grep detects it.
+#     orchestrator's conversation context where ステップ 8.5 grep detects it.
 #     **Caller-side stderr redirect is permitted** (verified-review cycle 38 F-07 fix):
 #     hooks like `_emit-cross-session-incident.sh` route the sentinel via stderr
 #     (`bash workflow-incident-emit.sh ... >&2`) when the caller chain prefers
@@ -92,7 +92,7 @@ fi
 
 # --- Sentinel construction ---
 # Strip control characters and semicolons from free-text fields so the single-line
-# sentinel format stays parseable by Phase 5.4.4.1's grep.
+# sentinel format stays parseable by ステップ 8.5's grep.
 #
 # `tr -d '[:cntrl:]'` strips all control characters (newline / CR / tab / BEL / DEL etc.)
 # to match `_emit-cross-session-incident.sh` fallback path's superset behavior

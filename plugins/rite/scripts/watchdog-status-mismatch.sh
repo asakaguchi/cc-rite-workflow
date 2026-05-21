@@ -108,7 +108,7 @@ if [ "$PROJECTS_ENABLED" != "true" ] || [ -z "$PROJECT_NUMBER" ]; then
 fi
 
 # --- Trap setup: tempfile orphan 防止 (EXIT/INT/TERM/HUP) ---
-# canonical pattern: hooks/post-compact.sh / start.md Step 1.5 / start-finalize.md Step 0 と対称化。
+# canonical pattern: hooks/post-compact.sh と対称化 (PR #1079 で start.md Step 1.5 / start-finalize.md Step 0 は削除/統合済 — 旧 4 site を 2 site に縮退)。
 # path 先行宣言 → trap 先行設定 → mktemp の順序で race window を排除する。
 # loop 内 gql_err は毎 iteration mktemp + 末尾 rm の現行構造を維持しつつ、signal 経路では
 # 本 trap が一括 cleanup する (defense-in-depth)。
@@ -129,7 +129,7 @@ trap '_rite_watchdog_cleanup; exit 129' HUP
 
 # --- Repo info ---
 # cycle 8 C7-F01/C7-F13 対応: gh repo view stderr を専用 tempfile (repo_view_err) に capture し、
-# 4-site (post-compact / watchdog / start.md / start-finalize.md) で対称化する。
+# 2-site (post-compact / watchdog) で対称化 (PR #1079 で start.md / start-finalize.md 経路は削除/統合済)する。
 repo_view_err=$(mktemp /tmp/rite-watchdog-repo-err-XXXXXX) || repo_view_err=""
 if ! REPO_INFO=$(gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
   echo "ERROR: gh repo view failed" >&2
@@ -206,7 +206,7 @@ while IFS= read -r pr_entry; do
 
   # Query Issue's current Status in the Project (gh failure を stderr capture して silent skip 防止)
   # cycle 6 C6-F02 対応: jq の stderr も独立 capture し、4-site symmetry contract を完遂する。
-  # post-compact.sh / start.md Step 1.5 / start-finalize.md Step 0 と対称に gh / jq の stderr を区別。
+  # post-compact.sh と対称に (PR #1079 で start.md Step 1.5 / start-finalize.md Step 0 は削除/統合済) gh / jq の stderr を区別。
   gql_err=$(mktemp /tmp/rite-watchdog-gql-err-XXXXXX) || gql_err=""
   jq_err=$(mktemp /tmp/rite-watchdog-jq-err-XXXXXX) || jq_err=""
   # cycle 8 C7-F15 対応: inner `set -o pipefail` は line 38 の outer 設定で既に有効だが、defense-in-depth
@@ -254,7 +254,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
     reconcile_stderr_oneline=""
     if [ "$RECONCILE" = "true" ]; then
       # stderr を tempfile に退避して失敗時の原因 (auth / rate limit / partial failure) を可視化する。
-      # 他 3-site (post-compact.sh / start.md / start-finalize.md) と対称化された stderr capture 契約。
+      # 他 1-site (post-compact.sh) と対称化された (PR #1079 で start.md / start-finalize.md 経路は削除/統合済) stderr capture 契約。
       # silent suppress (2>/dev/null) では RECONCILE_FAILURES non-zero 時に user は失敗原因を knowing できない。
       reconcile_err=$(mktemp /tmp/rite-watchdog-reconcile-err-XXXXXX) || reconcile_err=""
       reconcile_json=$(bash "$PLUGIN_ROOT/scripts/projects-status-update.sh" "$(jq -n \

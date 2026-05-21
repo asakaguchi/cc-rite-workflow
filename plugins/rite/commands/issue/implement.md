@@ -413,7 +413,7 @@ After completing each implementation step, re-evaluate the remaining steps befor
 
    **When threshold exceeded**:
    1. **Discover Oracle and re-decompose**: Follow [Bottleneck Detection Reference](../../references/bottleneck-detection.md) — discover Oracle (Priority 1→2→3), then re-decompose step into sub-steps `S{n}.1`, `S{n}.2`, etc.
-   2. **Update plan**: Insert sub-steps into the dependency graph, replacing the original step. Update the implementation plan in work memory per [3.5.1 Mid-Implementation Replanning](./implementation-plan.md#351-mid-implementation-replanning-triggered-by-bottleneck-detection)
+   2. **Update plan**: Insert sub-steps into the dependency graph, replacing the original step. Update the implementation plan in work memory per [Mid-Implementation Replanning (bottleneck-detection)](../../references/bottleneck-detection.md) — PR #1079 で旧 `implementation-plan.md#351-mid-implementation-replanning-triggered-by-bottleneck-detection` を bottleneck-detection.md に移管
    3. **Display and record**: Use the bottleneck display format (see below). Add entry to work memory "ボトルネック検出ログ" section at next bulk update (commit time)
    4. **Continue**: Execute the first sub-step (`S{n}.1`) — do NOT re-evaluate the parent step
 

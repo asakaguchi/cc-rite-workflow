@@ -123,7 +123,7 @@ case "$bang_rc" in
 esac
 ```
 
-> **On exit 1 from this bash block**: The bash block exits before any `pr/ready.md` result pattern (`[ready:completed]` / `[ready:error]`) is emitted, so the orchestrator (`/rite:issue:start` Phase 5.5) treats this as a missing-result-pattern Skill invocation — the post-condition check at start.md emits a `skill_load_failure` sentinel via Phase 5.4.4.1 (Workflow Incident Detection) — **NOT** a `[ready:error]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a separate stderr-only diagnostic in a different format than the canonical `[CONTEXT] WORKFLOW_INCIDENT=1; type=...; iteration_id=...` token used by Phase 5.4.4.1 grep, so it does NOT auto-register; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no sentinel is emitted at all (the failure is expected and the user fixes the code).
+> **On exit 1 from this bash block**: The bash block exits before any `pr/ready.md` result pattern (`[ready:completed]` / `[ready:error]`) is emitted, so the orchestrator (`/rite:issue:start` Phase 5.5) treats this as a missing-result-pattern Skill invocation — the post-condition check at start.md emits a `skill_load_failure` sentinel via ステップ 8.5 (Workflow Incident Detection) — **NOT** a `[ready:error]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a separate stderr-only diagnostic in a different format than the canonical `[CONTEXT] WORKFLOW_INCIDENT=1; type=...; iteration_id=...` token used by ステップ 8.5 grep, so it does NOT auto-register; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no sentinel is emitted at all (the failure is expected and the user fixes the code).
 
 ### 1.1 Check Arguments
 
@@ -436,7 +436,7 @@ Inspect the script's stdout JSON and route by `.result`:
 
 **All result branches are non-blocking** — the ready-for-review transition is already complete (Phase 3 `gh pr ready` succeeded); a Status update issue MUST NOT abort the workflow.
 
-> **Incident emit MUST (Issue #1003 AC-4)**: 旧仕様では `skipped_not_in_project` / `failed` の両経路で **silent skip** していたため、observation log がどこにも残らず、user が手動確認するまで Status が `In Progress` に滞留する事象 (Issue #1003) が発生していた。本契約により、両経路は必ず `workflow-incident-emit.sh --type projects_status_update_failed` で sentinel を emit し、caller (`start.md` Phase 5.4.4.1) の grep 検出経路で Issue として auto-register される。incident emit 自体は `|| true` で non-blocking とし、emit 失敗は workflow を halt させない (#366 contract に準拠)。
+> **Incident emit MUST (Issue #1003 AC-4)**: 旧仕様では `skipped_not_in_project` / `failed` の両経路で **silent skip** していたため、observation log がどこにも残らず、user が手動確認するまで Status が `In Progress` に滞留する事象 (Issue #1003) が発生していた。本契約により、両経路は必ず `workflow-incident-emit.sh --type projects_status_update_failed` で sentinel を emit し、caller (`start.md` ステップ 8.5) の grep 検出経路で Issue として auto-register される。incident emit 自体は `|| true` で non-blocking とし、emit 失敗は workflow を halt させない (#366 contract に準拠)。
 
 > **Bash 実装 minimal skeleton (delegate-only 経路の標準形)**:
 >

@@ -5349,7 +5349,7 @@ fi
 
 **Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are captured in `trigger_exit` and do not halt the workflow. The LLM reads `trigger_exit` from stdout and skips Phase 4.6.W.2 when it is non-zero. Ingest failure does not block the fix workflow.
 
-**Step 3 — Failure sentinel emit (Issue #524)**: When `trigger_exit != 0` AND `trigger_exit != 2` (exit 2 = Wiki disabled/uninitialized = legitimate skip already covered by Step 1), emit the `wiki_ingest_failed` sentinel so Phase 5.4.4.1 can register the incident:
+**Step 3 — Failure sentinel emit (Issue #524)**: When `trigger_exit != 0` AND `trigger_exit != 2` (exit 2 = Wiki disabled/uninitialized = legitimate skip already covered by Step 1), emit the `wiki_ingest_failed` sentinel so ステップ 8.5 can register the incident:
 
 ```bash
 if [ "$trigger_exit" -ne 0 ] && [ "$trigger_exit" -ne 2 ]; then

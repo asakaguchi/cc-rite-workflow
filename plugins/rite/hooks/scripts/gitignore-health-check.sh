@@ -25,7 +25,7 @@
 #       up regardless of outcome via the signal-specific trap below.
 #
 # On drift, emit a `gitignore_drift` workflow incident sentinel on stdout so
-# Phase 5.4.4.1 in start.md can auto-register a tracking Issue.
+# ステップ 8.5 in start.md can auto-register a tracking Issue.
 #
 # Issue #567 — `.gitignore` silent-leak regression guard.
 # Companion to:

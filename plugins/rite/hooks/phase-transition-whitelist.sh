@@ -94,10 +94,14 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   # (ingest_post_lint) → Phase 9.1 Step 3 terminal patch (ingest_completed, active=false).
   # Caller 経由時は caller Mandatory After Wiki Ingest が caller phase
   # (cleanup_post_ingest) に書き戻す ring 構造。単独実行時は --if-exists により flow-state
-  # 不在なら no-op。stop-guard.sh の ingest_pre_lint / ingest_post_lint case arm が
-  # end_turn を block し manual_fallback_adopted sentinel を emit する。
+  # 不在なら no-op。
+  #
+  # **Historical (PR #675 で stop-guard.sh は削除済)**: 旧 `stop-guard.sh` の ingest_pre_lint /
+  # ingest_post_lint case arm が end_turn を block し manual_fallback_adopted sentinel を emit する
+  # 設計だった。現在は本 phase-transition-whitelist の許可遷移定義 + ingest.md 🚨 Mandatory After
+  # Auto-Lint section の 2 site で symmetry を担う (旧 3 site から 2 site に縮退)。
   # DRIFT-CHECK ANCHOR (semantic): ingest.md 🚨 Mandatory After Auto-Lint section と
-  # stop-guard.sh ingest_* case arm とで 3 site 対称。いずれかを変更する際は 3 site 同時確認。
+  # 本 whitelist 定義の ingest_* phase 遷移とで 2 site 対称。いずれかを変更する際は両 site 同時確認。
   #
   # Edge rationale (PR #624 cycle 1 F6 対応):
   # - `ingest_pre_lint → ingest_post_lint`: 正規経路 (lint return 後 Mandatory After Step 1 で patch)
@@ -298,21 +302,27 @@ rite_phase_transition_allowed() {
   [ -z "$prev" ] && return 0
   [ "$prev" = "$next" ] && return 0
 
-  # Terminal phase acceptance (forward-compat). RITE_DEBUG=1 のときは prev → terminal の
-  # 出処を stderr に WARNING ログとして残し、protocol violation の観測性を改善する。
+  # Terminal phase acceptance (PR #1079 で forward-compat から canonical predecessor 縮退に変更).
+  # 旧仕様は prev → terminal を unconditional allow にして、init → completed のような workflow skip
+  # も silent に通過させていた (silent-failure-hunter H-3)。本実装は canonical predecessor 集合に
+  # 一致する場合のみ accept、それ以外は WORKFLOW_INCIDENT として記録のうえ block する。
+  # forward-compat が必要な場合は STRICT_PHASE_TRANSITIONS 環境変数で挙動を切り替える設計余地を残す。
   if [ "$next" = "completed" ] || [ "$next" = "cleanup_completed" ] || [ "$next" = "ingest_completed" ]; then
-    if [ "${RITE_DEBUG:-0}" = "1" ]; then
-      # check whether $prev is one of the canonical terminal predecessors. If not, emit WARNING.
-      case "$next:$prev" in
-        completed:lint|completed:pr|completed:review|completed:fix) ;;  # canonical
-        cleanup_completed:cleanup_post_ingest|cleanup_completed:cleanup_pre_ingest) ;;
-        ingest_completed:ingest_pre_lint|ingest_completed:ingest_post_lint) ;;
-        *)
-          echo "[RITE_DEBUG] terminal-accept: prev='$prev' → next='$next' is outside the canonical predecessor set (forward-compat allow)" >&2
-          ;;
-      esac
-    fi
-    return 0
+    case "$next:$prev" in
+      completed:lint|completed:pr|completed:review|completed:fix) return 0 ;;  # canonical
+      cleanup_completed:cleanup_post_ingest|cleanup_completed:cleanup_pre_ingest) return 0 ;;
+      ingest_completed:ingest_pre_lint|ingest_completed:ingest_post_lint) return 0 ;;
+      *)
+        # protocol violation — workflow skip (e.g. init → completed) を block する。RITE_DEBUG=1 では
+        # stderr に詳細 WARNING、それ以外でも端的な ERROR を残し、観測経路を確保する。
+        if [ "${RITE_DEBUG:-0}" = "1" ]; then
+          echo "[rite] ERROR terminal-accept rejected: prev='$prev' → next='$next' is outside the canonical predecessor set; protocol violation" >&2
+        else
+          echo "[rite] ERROR phase-transition: '$prev' → '$next' (terminal) outside canonical set" >&2
+        fi
+        return 1
+        ;;
+    esac
   fi
 
   local allowed="${_RITE_PHASE_TRANSITIONS[$prev]:-}"

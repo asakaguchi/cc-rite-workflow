@@ -261,18 +261,18 @@ When lint is skipped, output the completion message in the following format:
 {i18n:lint_flow_continue}
 ```
 
-> If `/rite:lint` continues to PR creation directly, it bypasses the checklist confirmation (5.2.1) in the caller, potentially creating a PR with incomplete tasks.
+> If `/rite:lint` continues to PR creation directly, it bypasses the checklist confirmation in the caller, potentially creating a PR with incomplete tasks.
 > **CRITICAL**: When called from `/rite:issue:start`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:issue:start` after ステップ 4.4 (checklist confirmation) is complete (PR #1079 で旧 Phase 5.2.1 を統合).
 
 **Meaning of output patterns:**
-- `[lint:skipped]`: Used by `/rite:issue:start` Phase 5.2 to detect this pattern and decide to proceed to 5.3 (PR creation)
+- `[lint:skipped]`: Used by `/rite:issue:start` ステップ 4.4 (PR #1079 で旧 Phase 5.2 を統合) to detect this pattern and decide to proceed to ステップ 5 (PR creation)
 - `[lint:success]`: When lint completed successfully (output in Phase 4.1)
 - `[lint:error]`: When lint detected errors (output in Phase 4.2)
 - `[lint:aborted]`: When the user selected "Abort"
 
 **Clarification of responsibilities:**
 
-Reflecting the lint skip in the PR body is the responsibility of `/rite:issue:start` Phase 5.3:
+Reflecting the lint skip in the PR body is the responsibility of `/rite:issue:start` ステップ 5 (PR #1079 で旧 Phase 5.3 を統合):
 1. `/rite:lint` only outputs the above output patterns
 2. When `/rite:issue:start` detects `[lint:skipped]`, it prepares the PR body template before calling `/rite:pr:create`
 3. The "Known Issues" section of the PR body includes the following:
@@ -442,7 +442,7 @@ Execute test commands as part of quality check when configured.
 
 **Note**: When the `verification` section does not exist in `rite-config.yml`, treat defaults as enabled (`run_tests_before_pr: true`). The test execution condition still requires `commands.test` to be set.
 
-**Duplicate execution avoidance**: When called from the `/rite:issue:start` end-to-end flow and tests were already run and passed in `implement.md` Phase 5.1.0.6 (test results available in conversation context), skip duplicate test execution and reuse previous results.
+**Duplicate execution avoidance**: When called from the `/rite:issue:start` end-to-end flow and tests were already run and passed in `implement.md` ステップ 3 (test execution; PR #1079 で旧 Phase 5.1.0.6 を統合; test results available in conversation context), skip duplicate test execution and reuse previous results.
 
 When skipped, no output needed (silent skip).
 
@@ -992,7 +992,7 @@ These appendices do NOT change the result pattern — `[lint:success]` remains t
 
 > **CRITICAL**: When called from `/rite:issue:start`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:issue:start` after ステップ 4.4 (checklist confirmation) is complete (PR #1079 で旧 Phase 5.2.1 を統合).
 
-**Note**: `[lint:success]` is an output pattern used by `/rite:issue:start` Phase 5.2 to determine the lint result.
+**Note**: `[lint:success]` is an output pattern used by `/rite:issue:start` ステップ 4.4 (PR #1079 で旧 Phase 5.2 を統合) to determine the lint result.
 
 ### 4.2 When Issues Found
 
@@ -1002,7 +1002,7 @@ These appendices do NOT change the result pattern — `[lint:success]` remains t
 {first 10 lines of lint_output}
 ```
 
-> **Context savings**: In e2e flow, omit fix suggestions (the caller returns to Phase 5.1 for fixes). Only include first 10 lines of lint output to identify the issue category.
+> **Context savings**: In e2e flow, omit fix suggestions (the caller returns to ステップ 3 implementation for fixes; PR #1079 で旧 Phase 5.1 を統合). Only include first 10 lines of lint output to identify the issue category.
 
 **Standalone execution:**
 ```
@@ -1018,7 +1018,7 @@ These appendices do NOT change the result pattern — `[lint:success]` remains t
 {i18n:lint_fix_suggestions}:
 ```
 
-**Note**: `[lint:error]` is an output pattern used by `/rite:issue:start` Phase 5.2 to determine the lint result.
+**Note**: `[lint:error]` is an output pattern used by `/rite:issue:start` ステップ 4.4 (PR #1079 で旧 Phase 5.2 を統合) to determine the lint result.
 
 **Presenting fix suggestions:**
 
@@ -1309,7 +1309,7 @@ When `[lint:success]` or `[lint:skipped]` is output:
 
 **Design intent**:
 - Guard function to prevent proceeding to PR creation until all Issue checklist items are complete (Issue #398)
-- If there are incomplete items, return to Phase 5.1 to continue implementation
+- If there are incomplete items, return to ステップ 3 (implementation; PR #1079 で旧 Phase 5.1 を統合) to continue implementation
 
 ### 5.3 Standalone Execution Behavior
 

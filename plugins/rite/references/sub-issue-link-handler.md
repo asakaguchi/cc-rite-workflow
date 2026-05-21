@@ -21,7 +21,7 @@ GitHub Sub-issues API で親 Issue と子 Issue を紐付けた結果 (`link_sta
 
 ## Variant A: basic (カウンタなし)
 
-単発の子 Issue を紐付け、失敗集計を行わないケース。PR #1079 までは `/rite:issue:parent-routing` の child creation path で使われていた (現在は flat 化で削除)。現状は主に Variant B (counting) の方が `commands/issue/create.md` ステップ 5.4 で使われる。
+単発の子 Issue を紐付け、失敗集計を行わないケース。PR #1079 までは `parent-routing.md` sub-skill (`/rite:issue:start` 内部) の child creation path で使われていた (現在は flat 化で sub-skill 自体が削除)。現状は主に Variant B (counting) の方が `commands/issue/create.md` ステップ 5.4 で使われる。
 
 ```bash
 case "$link_status" in

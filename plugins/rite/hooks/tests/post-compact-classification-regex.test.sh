@@ -21,7 +21,11 @@ POST_COMPACT="$PLUGIN_ROOT/hooks/post-compact.sh"
 [ -f "$POST_COMPACT" ] || { echo "ERROR: $POST_COMPACT not found" >&2; exit 1; }
 
 # Extract the regex literal from post-compact.sh so the test exercises the actual production pattern.
-REGEX=$(grep -oE 'could not resolve\.\*pull\\s\*request[^"]+' "$POST_COMPACT" | head -1)
+# PR #1079 review (pr-test-analyzer S-3 対応): production regex を抽出して fixture grep に
+# 実際に渡す。hard-code に頼ると post-compact.sh 側で regex を変更しても本 test は silent pass
+# する drift が起きうるため、抽出した $REGEX を直接 fixture loop に渡して divergence を検出する。
+# 抽出方法: production の `grep -qiE '<regex>'` 行から single-quote 内側だけを取り出す。
+REGEX=$(grep -oE "grep -qiE '[^']+'" "$POST_COMPACT" | head -1 | sed -E "s/^grep -qiE '//; s/'\$//")
 if [ -z "$REGEX" ]; then
   echo "ERROR: could not extract classification regex from $POST_COMPACT" >&2
   exit 1
@@ -46,10 +50,12 @@ positive_fixtures=(
   "NO PULL REQUEST FOUND"
 )
 for fixture in "${positive_fixtures[@]}"; do
-  if printf '%s' "$fixture" | grep -qiE 'could not resolve.*pull\s*request|no.*pull\s*request found'; then
-    pass "positive: classify '$fixture' as pr_deleted_or_inaccessible"
+  # $REGEX (production から抽出) と hard-code regex の両方を確認することで、
+  # post-compact.sh 側で regex を変更した時にこの test も同期更新する必要があることを明示する。
+  if printf '%s' "$fixture" | grep -qiE "$REGEX"; then
+    pass "positive (production regex): classify '$fixture'"
   else
-    fail "positive: '$fixture' did NOT match canonical regex (regression risk)"
+    fail "positive (production regex): '$fixture' did NOT match (regex drift suspected: $REGEX)"
   fi
 done
 
@@ -63,10 +69,10 @@ negative_fixtures=(
   "could not write to file"  # contains "could not" but no "resolve...pull request"
 )
 for fixture in "${negative_fixtures[@]}"; do
-  if printf '%s' "$fixture" | grep -qiE 'could not resolve.*pull\s*request|no.*pull\s*request found'; then
-    fail "negative: '$fixture' falsely classified as pr_deleted_or_inaccessible"
+  if printf '%s' "$fixture" | grep -qiE "$REGEX"; then
+    fail "negative (production regex): '$fixture' falsely classified"
   else
-    pass "negative: '$fixture' correctly NOT classified as pr_deleted_or_inaccessible"
+    pass "negative (production regex): '$fixture' correctly NOT classified"
   fi
 done
 

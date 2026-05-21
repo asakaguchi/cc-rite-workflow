@@ -74,12 +74,22 @@ case "$MODE" in
   fetch)
     tmpfile_read=$(mktemp)
     tmpfile_write=$(mktemp)
-    trap 'rm -f "$tmpfile_read" "$tmpfile_write"' EXIT
+    tmpfile_err=$(mktemp)
+    trap 'rm -f "$tmpfile_read" "$tmpfile_write" "$tmpfile_err"' EXIT
 
-    gh issue view "$ISSUE" --json body --jq '.body' > "$tmpfile_read"
+    # gh API 失敗 (auth / network / 404) と「body が本当に空」を区別するため、stderr を捕捉する。
+    # set -e 下で gh が non-zero exit すると trap が走り tmpfile leak を防ぐ。
+    if ! gh issue view "$ISSUE" --json body --jq '.body' >"$tmpfile_read" 2>"$tmpfile_err"; then
+      rc=$?
+      err_snippet=$(head -c 500 "$tmpfile_err" 2>/dev/null | tr -d '\r' || echo "")
+      echo "${err_level}: gh issue view 失敗 (rc=$rc): ${err_snippet}" >&2
+      echo "fetch_failure_reason=gh_view_failed"
+      exit 0
+    fi
 
     if [ ! -s "$tmpfile_read" ]; then
-      echo "${err_level}: Issue body の取得に失敗。更新をスキップします" >&2
+      echo "${err_level}: Issue body が空。更新をスキップします" >&2
+      echo "fetch_failure_reason=body_empty"
       exit 0
     fi
 
@@ -88,7 +98,9 @@ case "$MODE" in
     echo "tmpfile_read=$tmpfile_read"
     echo "tmpfile_write=$tmpfile_write"
 
-    # Disable trap so files persist for Step 2/3
+    # err tmpfile は fetch 内で完結するため、persist は read/write のみ。
+    rm -f "$tmpfile_err"
+    # Disable trap so read/write files persist for Step 2/3
     trap - EXIT
     ;;
 
@@ -121,7 +133,19 @@ case "$MODE" in
       fi
     fi
 
-    gh issue edit "$ISSUE" --body-file "$TMPFILE_WRITE"
+    # gh issue edit 失敗を silent に通さない: stderr を捕捉して呼び出し元に root cause を渡し、
+    # 失敗時も tmpfile を必ず clean up する。本 script は non-blocking 設計 (err_level=WARNING)
+    # のため、API 失敗時も exit 0 を返す (呼び出し元の workflow を止めない)。
+    apply_err=$(mktemp)
+    trap 'rm -f "$apply_err"' EXIT
+    if ! gh issue edit "$ISSUE" --body-file "$TMPFILE_WRITE" 2>"$apply_err"; then
+      rc=$?
+      err_snippet=$(head -c 500 "$apply_err" 2>/dev/null | tr -d '\r' || echo "")
+      echo "${err_level}: gh issue edit 失敗 (rc=$rc): ${err_snippet}" >&2
+      echo "apply_failure_reason=gh_edit_failed"
+      rm -f "$TMPFILE_READ" "$TMPFILE_WRITE"
+      exit 0
+    fi
 
     rm -f "$TMPFILE_READ" "$TMPFILE_WRITE"
     ;;

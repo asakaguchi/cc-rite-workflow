@@ -120,13 +120,13 @@ gh project item-edit --project-id {project_id} --id {item_id} --field-id {status
 
 #### 2.4.7.1 Parent Issue Detection
 
-Detect the parent Issue of the current (child) Issue. **Three methods are tried in order (OR combination); the first successful result wins.** This ordering is critical: `## 親 Issue` body meta is placed PRIMARY because it is the most reliable source in repositories that use `/rite:issue:create-decompose` (which writes this section to every child), and it requires no dependency on GitHub's native Sub-Issues feature.
+Detect the parent Issue of the current (child) Issue. **Three methods are tried in order (OR combination); the first successful result wins.** This ordering is critical: `## 親 Issue` body meta is placed PRIMARY because it is the most reliable source in repositories that use `/rite:issue:create` (Decompose Path, PR #1079 で flat 化; writes this section to every child), and it requires no dependency on GitHub's native Sub-Issues feature.
 
 > **Consistency requirement (Issue #513)**: The same 3-method OR detection **structure** MUST be used in `close.md` Phase 4.5.1 — i.e., the same three method ordering (body meta → Sub-Issues API → tasklist search), the same OR combination semantics, and the same `[DEBUG] parent not detected` emission on total failure. **Context-dependent parameters MAY differ** between the two sites where the surrounding workflow demands it; specifically, Method 3's `--state` filter is `open` here (start side — closed parents do not need In Progress promotion) and `all` in close.md Phase 4.5.1 (close side — the closing Issue's parent may itself already be closed). These differences are intentional and are not drift. If the detection method ordering or OR semantics diverge between start and close, silent-skip regressions (e.g., the #115/#381/#15 incidents) reappear.
 
 **Method 1: `## 親 Issue` body meta (PRIMARY)**
 
-Read the current (child) Issue body and search for the `## 親 Issue` section. This section is written by `/rite:issue:create-decompose` when child Issues are created from a parent. Format:
+Read the current (child) Issue body and search for the `## 親 Issue` section. This section is written by `/rite:issue:create` (Decompose Path, PR #1079 で flat 化) when child Issues are created from a parent. Format:
 
 ```
 ## 親 Issue

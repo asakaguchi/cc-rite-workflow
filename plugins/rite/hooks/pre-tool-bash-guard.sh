@@ -24,7 +24,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 # Single source of truth for create_* lifecycle phase names (#501 HIGH).
 # Provides rite_phase_is_create_lifecycle_in_progress() used by Pattern 5.
-source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>/dev/null || true
+# whitelist 自身が bash < 4.2 警告を出すが、parser-level syntax error の場合に
+# silent fail にならないよう warning を出す (PR #1079 review: silent-failure-hunter C-2 対応)。
+source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>/dev/null \
+  || echo "[rite] WARNING: phase-transition-whitelist.sh source failed in pre-tool-bash-guard.sh; Pattern 5 lifecycle detection disabled" >&2
 
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
@@ -88,11 +91,15 @@ if [ "$IS_SUBAGENT" = "0" ]; then
   fi
 fi
 
-# --- Fail-open for pattern matching stage ---
-# If heredoc extraction or pattern matching crashes (e.g., edge-case failures with
-# large multiline input), allow the command rather than blocking it.
+# --- Fail-open for heredoc extraction + Pattern 1-3 matching ---
+# If heredoc extraction or simple pattern matching crashes (e.g., edge-case
+# failures with large multiline input), allow the command rather than blocking it.
 # Placed after JSON parsing (which has its own || fallbacks) to preserve
 # error detection for malformed hook input (TC-016).
+#
+# PR #1079 review (silent-failure-hunter I-4 対応): trap scope を Patterns 1-3 に
+# 限定する。Pattern 5 はもっと複雑な state-file 操作を行うため、Pattern 5 開始時に
+# trap を解除し、jq 失敗等は明示的な `|| STATE_PHASE=""` で個別フォールバックする。
 trap 'exit 0' ERR
 
 # --- Heredoc-safe command extraction ---
@@ -175,6 +182,10 @@ fi
 #     with `cr`), so `cr` is the minimum unambiguous prefix and must be caught. `c` alone is
 #     ambiguous and gh CLI itself rejects it, so we do not block it here.
 if [ -z "$BLOCKED_PATTERN" ]; then
+  # Pattern 5 は state file 操作 (jq / 各種 fallback) を含む。fail-open ERR trap は
+  # ここで解除し、jq 失敗等は個別の `|| STATE_PHASE=""` 等で明示的に処理する。
+  # (PR #1079 review: silent-failure-hunter I-4 対応)
+  trap - ERR
   # Normalize $COMMAND directly (NOT $CMD_CHECK) to catch heredoc-body bypass (#501 HIGH).
   CMD_P5="${COMMAND//$'\t'/ }"
   CMD_P5="${CMD_P5//$'\n'/ }"

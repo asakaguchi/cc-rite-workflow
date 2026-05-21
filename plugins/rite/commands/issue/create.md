@@ -325,7 +325,12 @@ failed_count=0
 link_failures=0
 created_numbers=()
 expected_sub_count={sub_count}
-sub_labels_json=$(printf '%s' "{labels_csv}" | jq -R 'split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))')
+# jq failure (malformed CSV / 改行混入) で labels が silent に空配列になるのを防ぐ。
+# 失敗時は空配列を明示し WARNING を出す (PR #1079 review: silent-failure-hunter I-2 対応)。
+sub_labels_json=$(printf '%s' "{labels_csv}" | jq -R 'split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))' 2>/dev/null) || {
+  echo "WARNING: labels_csv の jq パースに失敗。labels を空で続行: {labels_csv}" >&2
+  sub_labels_json="[]"
+}
 
 i=0
 {REPEAT_FOR_EACH_SUB_ISSUE}
@@ -378,8 +383,13 @@ else
       # を返す契約のため、bash exit code ではなく JSON stdout の `.status` を inspect すること。
       # ⚠️ DRIFT 警告: 本 case 文を編集する際は SoT `references/sub-issue-link-handler.md`
       # Variant B を同時に更新する責務がある。
+      # link-sub-issue.sh は通常 JSON を stdout に返す (非 blocking failure 時も status="failed")。
+      # fatal exit 時のみ fallback JSON を構築する。stderr に `"` が混入しても破綻しないよう
+      # jq -n --arg で安全にエスケープする (PR #1079 review: code-reviewer Important #4 対応)。
       link_result=$(bash {plugin_root}/scripts/link-sub-issue.sh \
-          "{owner}" "{repo}" "$parent_issue_number" "$sub_number" 2>&1) || link_result="{\"status\":\"failed\",\"message\":\"link-sub-issue.sh fatal exit\",\"warnings\":[\"$link_result\"]}"
+          "{owner}" "{repo}" "$parent_issue_number" "$sub_number" 2>&1) || link_result=$(jq -n \
+            --arg err "$link_result" \
+            '{status:"failed",message:"link-sub-issue.sh fatal exit",warnings:[$err]}')
       link_status=$(printf '%s' "$link_result" | jq -r '.status // "failed"' 2>/dev/null || echo "failed")
       link_msg=$(printf '%s' "$link_result" | jq -r '.message // ""' 2>/dev/null || echo "")
       case "$link_status" in
@@ -413,6 +423,20 @@ if [ "$created_count" -eq 0 ] && [ "$expected_sub_count" -gt 0 ]; then
   bash {plugin_root}/hooks/workflow-incident-emit.sh \
     --type sub_issue_zero_iteration_loop \
     --details "Expected $expected_sub_count Sub-Issues but created 0 (placeholder expansion or shell loop failure). parent=#$parent_issue_number" \
+    --pr-number 0 || true
+fi
+
+# ============================================================
+# loop-abort sanity check (PR #1079 review: silent-failure-hunter I-2 対応)
+# created + failed が expected と一致しない場合、ループ途中で予期せぬ shell error
+# (set -e upstream / jq crash / shell signal 等) が起きて iteration が抜けた可能性がある。
+# 観測可能化のために incident を emit する。
+# ============================================================
+loop_processed=$((created_count + failed_count))
+if [ "$loop_processed" -ne "$expected_sub_count" ] && [ "$expected_sub_count" -gt 0 ]; then
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type sub_issue_loop_abort \
+    --details "Loop processed $loop_processed of $expected_sub_count expected Sub-Issues (created=$created_count, failed=$failed_count). Possible mid-loop abort. parent=#$parent_issue_number" \
     --pr-number 0 || true
 fi
 

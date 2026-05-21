@@ -61,13 +61,41 @@ echo "=== Phase 3: post-compact.sh reconciliation emit literal ==="
 assert_grep "post-compact.sh emits projects_status_in_review_missing" "$POST_COMPACT" "projects_status_in_review_missing"
 
 echo "=== Phase 4: workflow-incident-emit.sh accepts canonical types ==="
-# emit script のヘルプ / case 文に各 type が現れる (ホワイトリスト or accept)
-for type in projects_status_update_failed projects_status_in_review_missing git_push_failed pr_create_failed skill_load_failure issue_body_fetch_failed body_shrinkage_guard_tripped sub_issue_zero_iteration_loop; do
-  if grep -qF "$type" "$EMIT_SH" "$START_MD" "$CREATE_MD" 2>/dev/null; then
-    pass "type '$type' is referenced in emit.sh / start.md / create.md"
+# PR #1079 review (pr-test-analyzer II-5 対応): union grep をやめ、type ごとに
+# 「実際に emit している site (start.md / create.md / hooks/*.sh) で grep ヒットする」
+# ことを assert する。コメント上の言及だけで pass する偽陽性を防ぐ。
+# expected_sites: 各 type が出現すべき file path のホワイトリスト (1 件以上)
+declare -A INCIDENT_EXPECTED_SITES=(
+  [projects_status_update_failed]="$START_MD $READY_MD"
+  [projects_status_in_review_missing]="$POST_COMPACT"
+  [git_push_failed]="$START_MD"
+  [pr_create_failed]="$START_MD"
+  [skill_load_failure]="$START_MD"
+  [issue_body_fetch_failed]="$START_MD $CREATE_MD"
+  [body_shrinkage_guard_tripped]="$START_MD $CREATE_MD"
+  [sub_issue_zero_iteration_loop]="$CREATE_MD"
+  [sub_issue_loop_abort]="$CREATE_MD"
+)
+
+for type in "${!INCIDENT_EXPECTED_SITES[@]}"; do
+  expected_paths="${INCIDENT_EXPECTED_SITES[$type]}"
+  found_in=""
+  missing_from=""
+  for path in $expected_paths; do
+    if grep -qF "$type" "$path" 2>/dev/null; then
+      found_in="${found_in} $(basename "$path")"
+    else
+      missing_from="${missing_from} $(basename "$path")"
+    fi
+  done
+  if [ -z "$missing_from" ]; then
+    pass "type '$type' emitted at all expected sites:${found_in}"
   else
-    fail "type '$type' is not referenced in emit.sh / start.md / create.md (orphan type registration?)"
+    fail "type '$type' missing from expected emit site(s):${missing_from} (found in:${found_in:- none})"
   fi
 done
+
+# Cross-check: emit.sh が type 名を不当に受理しない / 文字列リテラルとして列挙していない
+# ことは別 test の範疇。本 test の責務は caller-side の callsite coverage のみ。
 
 print_summary "$(basename "$0")" "Caller-specific WORKFLOW_INCIDENT emit literals must remain in their respective callers. If you remove or rename an emit type, update both this test and the consuming start.md ステップ 8.5 Workflow Incident Detection table."

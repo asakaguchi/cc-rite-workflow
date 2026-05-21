@@ -99,4 +99,63 @@ rc=0
 bash "$TARGET" unknown_mode --issue 999 >/dev/null 2>&1 || rc=$?
 assert_exit "TC-13 unknown mode → exit 1" 1 "$rc"
 
-print_summary "$(basename "$0")" "If you weaken or remove the 50% shrinkage guard / empty-write rejection / missing-args check in issue-body-safe-update.sh, body truncation regressions become silent. Keep the guards intact and update the test if the guards intentionally change."
+echo "=== Phase 7: apply mode happy-path with mock gh (PR #1079 verified-review pr-test-analyzer II-4) ==="
+# 既存 TC は全 negative path (missing args / empty / shrinkage / diff-check)。apply mode の
+# 正常系 (gh issue edit が呼ばれる) はテストされていなかった。inline mock gh shim を使って
+# 「gh issue edit が --body-file 引数で呼ばれる」「成功時 exit 0 + tmpfile cleanup」
+# 「gh 失敗時 exit 0 (non-blocking) + stderr WARNING + tmpfile cleanup」を pin する。
+mock_bin=$(mktemp -d)
+trap_orig=""
+cat > "$mock_bin/gh" <<'MOCK_OK'
+#!/bin/bash
+# Inline mock: log invocation to MOCK_LOG, succeed exit 0.
+echo "gh $*" >> "${MOCK_LOG:-/dev/null}"
+exit 0
+MOCK_OK
+chmod +x "$mock_bin/gh"
+
+tmp_read=$(mktemp)
+tmp_write=$(mktemp)
+mock_log=$(mktemp)
+# 200/250 byte 確定で書き込む (urandom + tr -dc 'a-z' は output が短くなる risk があるので避ける)
+printf 'a%.0s' $(seq 1 200) > "$tmp_read"
+printf 'b%.0s' $(seq 1 250) > "$tmp_write"
+rc=0
+out=$(PATH="$mock_bin:$PATH" MOCK_LOG="$mock_log" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
+assert_exit "TC-14 apply happy-path → exit 0" 0 "$rc"
+if grep -q 'issue edit 999 --body-file' "$mock_log"; then
+  pass "TC-15 apply called gh issue edit with --body-file"
+else
+  fail "TC-15 mock gh log missing 'issue edit ... --body-file': $(cat "$mock_log")"
+fi
+[ ! -f "$tmp_read" ] && pass "TC-16 apply happy-path cleaned tmpfile-read" || fail "TC-16 tmpfile-read leak"
+[ ! -f "$tmp_write" ] && pass "TC-17 apply happy-path cleaned tmpfile-write" || fail "TC-17 tmpfile-write leak"
+rm -f "$mock_log"
+
+# TC-18-20: gh issue edit failure path (exit !=0 + stderr captured)
+cat > "$mock_bin/gh" <<'MOCK_FAIL'
+#!/bin/bash
+# Inline mock: fail with stderr message ("rate limit" 等を模擬)
+echo "HTTP 403: API rate limit exceeded for user" >&2
+exit 1
+MOCK_FAIL
+chmod +x "$mock_bin/gh"
+
+tmp_read=$(mktemp)
+tmp_write=$(mktemp)
+printf 'a%.0s' $(seq 1 200) > "$tmp_read"
+printf 'b%.0s' $(seq 1 250) > "$tmp_write"
+rc=0
+out=$(PATH="$mock_bin:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
+assert_exit "TC-18 apply gh failure → exit 0 (non-blocking)" 0 "$rc"
+if printf '%s' "$out" | grep -q 'gh issue edit 失敗.*rate limit\|apply_failure_reason=gh_edit_failed'; then
+  pass "TC-19 apply gh failure emits WARNING with root cause + failure reason"
+else
+  fail "TC-19 apply gh failure WARNING missing in output: $out"
+fi
+[ ! -f "$tmp_read" ] && pass "TC-20 apply gh failure cleaned tmpfile-read" || fail "TC-20 tmpfile-read leak after gh failure"
+[ ! -f "$tmp_write" ] && pass "TC-21 apply gh failure cleaned tmpfile-write" || fail "TC-21 tmpfile-write leak after gh failure"
+
+rm -rf "$mock_bin"
+
+print_summary "$(basename "$0")" "If you weaken or remove the 50% shrinkage guard / empty-write rejection / missing-args check / gh-edit error capture in issue-body-safe-update.sh, body truncation or silent auth-failure regressions become invisible. Keep the guards intact and update the test if the guards intentionally change."

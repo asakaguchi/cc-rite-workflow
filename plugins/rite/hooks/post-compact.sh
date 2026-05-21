@@ -108,7 +108,9 @@ cleanup() {
   # `_resolve_err` の synchronous rm は trap install より前で実行される (resolver 直後)
   # ため、ここで cleanup() に含める必要はない (dead code)。trap が発火する時点では既に
   # 削除済みで no-op となる。trap install 前の race window は同期 rm 自身でカバーされる。
-  rm -f "$TMP_COMPACT" 2>/dev/null
+  # PR #1079 review (silent-failure-hunter M-2): disk full / readonly fs / inode 不足 で
+  # rm が失敗した場合に WARNING を出す。trap 内 fatal exit はしない (cleanup の責務範囲外)。
+  rm -f "$TMP_COMPACT" 2>/dev/null || echo "[rite] WARNING: post-compact cleanup: failed to remove $TMP_COMPACT (disk full / readonly fs / permission?)" >&2
   release_wm_lock "$LOCKDIR"
 }
 trap cleanup EXIT TERM INT
@@ -163,12 +165,17 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     trap '_pc_cleanup; exit 130' INT
     trap '_pc_cleanup; exit 143' TERM
     trap '_pc_cleanup; exit 129' HUP
-    pr_view_err=$(mktemp /tmp/rite-pc-pr-err-XXXXXX) || pr_view_err=""
-    repo_view_err=$(mktemp /tmp/rite-pc-repo-err-XXXXXX) || repo_view_err=""
-    jq_owner_err=$(mktemp /tmp/rite-pc-jq-owner-err-XXXXXX) || jq_owner_err=""
-    jq_name_err=$(mktemp /tmp/rite-pc-jq-name-err-XXXXXX) || jq_name_err=""
-    gql_err=$(mktemp /tmp/rite-pc-gql-err-XXXXXX) || gql_err=""
-    jq_err=$(mktemp /tmp/rite-pc-jq-err-XXXXXX) || jq_err=""
+    # PR #1079 review (silent-failure-hunter I-3 対応): mktemp 失敗時 (disk full / inode 不足 /
+    # /tmp 書き込み不可) は stderr capture が `/dev/null` 経路に流れ、auth/rate-limit/permission
+    # 等の root cause が消失する。stderr_capture_disabled フラグを立てて incident details に
+    # 含め、保守側で「stderr が空」と「stderr capture 自体が無効」を区別可能にする。
+    stderr_capture_disabled=0
+    pr_view_err=$(mktemp /tmp/rite-pc-pr-err-XXXXXX) || { pr_view_err=""; stderr_capture_disabled=1; echo "[rite] WARNING: post-compact: mktemp failed for pr_view_err; gh pr view stderr will not be captured" >&2; }
+    repo_view_err=$(mktemp /tmp/rite-pc-repo-err-XXXXXX) || { repo_view_err=""; stderr_capture_disabled=1; echo "[rite] WARNING: post-compact: mktemp failed for repo_view_err; gh repo view stderr will not be captured" >&2; }
+    jq_owner_err=$(mktemp /tmp/rite-pc-jq-owner-err-XXXXXX) || { jq_owner_err=""; stderr_capture_disabled=1; }
+    jq_name_err=$(mktemp /tmp/rite-pc-jq-name-err-XXXXXX) || { jq_name_err=""; stderr_capture_disabled=1; }
+    gql_err=$(mktemp /tmp/rite-pc-gql-err-XXXXXX) || { gql_err=""; stderr_capture_disabled=1; }
+    jq_err=$(mktemp /tmp/rite-pc-jq-err-XXXXXX) || { jq_err=""; stderr_capture_disabled=1; }
 
     # cycle 8 C7-F09: STATE_ROOT 不可達時の cd 短絡を early-emit branch で扱う。
     # 旧実装は `cd "$STATE_ROOT" 2>/dev/null && gh pr view ...` で STATE_ROOT inaccessible 時に
@@ -199,9 +206,11 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       else
         pr_root_cause_hint="post_compact_gh_pr_view_failed"
       fi
+      stderr_flag=""
+      [ "$stderr_capture_disabled" = "1" ] && stderr_flag=" stderr_capture=disabled"
       bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
         --type projects_status_in_review_missing \
-        --details "Issue #$ISSUE post-compact: gh pr view failed (rc=$pr_rc, stderr=$pr_err_oneline)" \
+        --details "Issue #$ISSUE post-compact: gh pr view failed (rc=$pr_rc, stderr=$pr_err_oneline${stderr_flag})" \
         --root-cause-hint "$pr_root_cause_hint" \
         --pr-number "$PR" >&2 || true
       PR_IS_DRAFT=""

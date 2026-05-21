@@ -926,8 +926,9 @@ if [ -n "$method_a_err" ]; then
 fi
 
 # --- Method B: Parent body `## Sub-Issues` section parse (fallback) ---
-# Note: "Sub-Issues" here is the literal heading text that /rite:issue:create-decompose writes
-# into parent bodies. It is not the GitHub Sub-Issues feature. Method B only parses body markdown.
+# Note: "Sub-Issues" here is the literal heading text that /rite:issue:create (Decompose Path,
+# PR #1079 で flat 化) writes into parent bodies. It is not the GitHub Sub-Issues feature.
+# Method B only parses body markdown.
 method_a_length=$(printf '%s' "${children_json:-[]}" | jq 'length' 2>/dev/null || echo 0)
 if [ -z "$children_json" ] || [ "$method_a_length" -eq 0 ]; then
   echo "[DEBUG] falling back to Method B (parent body '## Sub-Issues' section parse)"

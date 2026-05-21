@@ -1,6 +1,6 @@
-# Sub-skill Return Auto-Continuation Contract (Retired)
+# Sub-skill Return Auto-Continuation Contract
 
-> **Status (PR #1079 +)**: This reference and the Layer 1/3/4 defense-in-depth model
+> **Status: Retired (PR #1079 +)**: This reference and the Layer 1/3/4 defense-in-depth model
 > it described are **retired**. The implicit-stop defense layer (3 hooks:
 > `auto-fire-step0.sh`, `stop-create-interview-block.sh`, `verify-terminal-output.sh`)
 > and the 12 sub-skill files (`start-execute`, `start-publish`, `start-finalize`,

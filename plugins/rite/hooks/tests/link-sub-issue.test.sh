@@ -50,10 +50,28 @@ else
   fail "TC-03 missing 4th positional arg silently passed"
 fi
 
-echo "=== Phase 3: create.md Variant B JSON fallback escape ==="
-# `|| link_result="{...}"` の JSON が valid な escape を持つこと
+echo "=== Phase 3: create.md Variant B JSON fallback safety ==="
+# PR #1079 review (code-reviewer Important #4 対応): 旧手書き JSON 構築は quote escape で
+# 破綻するリスクがあったため、`jq -n --arg err "$link_result" ...` パターンに統一済み。
+# 本 assert は: (a) "link-sub-issue.sh fatal exit" message が残っている (b) jq -n パターンで
+# 構築されている (c) `jq -n` で実際に生成した JSON が parse 可能。
 assert_grep "create.md Variant B fallback has JSON status=failed" "$CREATE_MD" 'link-sub-issue\.sh fatal exit'
-assert_grep "create.md Variant B fallback emits link_result with escaped JSON" "$CREATE_MD" "link_result=\"\{.*status"
+assert_grep "create.md Variant B fallback builds JSON via jq -n" "$CREATE_MD" 'link_result=.\(jq -n'
+
+# Runtime sanity: the fallback pattern's output JSON must parse via jq.
+# Simulate the fallback locally with a stderr containing tricky characters.
+trick_err='gh: "Could not resolve" to PullRequest with "id"='
+fallback_json=$(jq -n --arg err "$trick_err" '{status:"failed",message:"link-sub-issue.sh fatal exit",warnings:[$err]}')
+if printf '%s' "$fallback_json" | jq -e . >/dev/null 2>&1; then
+  pass "TC-04 fallback JSON via jq -n parses cleanly even with quoted stderr"
+else
+  fail "TC-04 fallback JSON failed to parse: $fallback_json"
+fi
+if [ "$(printf '%s' "$fallback_json" | jq -r '.status')" = "failed" ]; then
+  pass "TC-05 fallback JSON has status=failed"
+else
+  fail "TC-05 fallback JSON missing status=failed: $fallback_json"
+fi
 
 echo "=== Phase 4: handler reference enumerates active caller (create.md) ==="
 assert_grep "sub-issue-link-handler.md references active caller create.md" "$HANDLER_REF" "create\.md.*ステップ 5\.4"

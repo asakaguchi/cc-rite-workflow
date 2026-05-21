@@ -1,6 +1,6 @@
 # Interview Perspectives Template
 
-This template defines the 6 interview perspectives used by the Deep-Dive Interview step in `commands/issue/create.md` ステップ 1 (PR #1079 で flat 化、旧 `create-interview.md` Phase 0.5 から移管).
+This template defines the 6 interview perspectives used by the Deep-Dive Interview step in `commands/issue/create.md` ステップ 1.
 
 ## Perspective Scope Table
 

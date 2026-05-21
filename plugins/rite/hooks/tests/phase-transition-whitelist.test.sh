@@ -266,6 +266,37 @@ case "$override_out" in
 esac
 
 echo ""
+echo "=== Phase 12: Additional transition coverage (PR #1079 verified-review pr-test-analyzer II-1/II-2/II-3) ==="
+# 既存 TC は happy path 中心。fix → pr / lint → review / non-init terminal block の 3 種を補完する。
+
+# TC-300 — fix → pr (fix 後に review を経ずに PR 直行できる canonical 経路)
+assert_allowed "TC-300 fix → pr (fix サイクル後の re-PR)" "fix" "pr"
+
+# TC-301 — lint → review (lint skip 経路で review に直行できる alternate canonical)
+assert_allowed "TC-301 lint → review (lint skip ルート)" "lint" "review"
+
+# TC-302 — plan → completed must be blocked (H-3 canonical predecessor 縮退、init 以外も同じ block)
+if RITE_DEBUG=0 bash -c "source '$WHITELIST_SH'; rite_phase_transition_allowed 'plan' 'completed'" 2>/dev/null; then
+  fail "TC-302 plan → completed should be blocked (non-canonical predecessor)"
+else
+  pass "TC-302 plan → completed is blocked (non-canonical predecessor)"
+fi
+
+# TC-303 — branch → completed must be blocked (同上)
+if RITE_DEBUG=0 bash -c "source '$WHITELIST_SH'; rite_phase_transition_allowed 'branch' 'completed'" 2>/dev/null; then
+  fail "TC-303 branch → completed should be blocked (non-canonical predecessor)"
+else
+  pass "TC-303 branch → completed is blocked (non-canonical predecessor)"
+fi
+
+# TC-304 — implement → completed must be blocked (同上、lint / pr / review / fix のみが canonical)
+if RITE_DEBUG=0 bash -c "source '$WHITELIST_SH'; rite_phase_transition_allowed 'implement' 'completed'" 2>/dev/null; then
+  fail "TC-304 implement → completed should be blocked (non-canonical predecessor)"
+else
+  pass "TC-304 implement → completed is blocked (non-canonical predecessor)"
+fi
+
+echo ""
 if ! print_summary "$(basename "$0")" "phase-transition-whitelist.sh の transition decision logic に変更を加えた場合、本 test を同時に更新すること"; then
   exit 1
 fi

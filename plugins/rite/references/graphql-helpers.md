@@ -483,8 +483,8 @@ GitHub の Sub-issues feature を使って、Issue 間の親子関係を API レ
 
 ### When to Use
 
-- `/rite:issue:create-decompose` の bulk create 後に各 Sub-Issue を親に紐付ける
-- `/rite:issue:start` Phase 1.5 (parent-routing) の child creation path で新規子 Issue を親に紐付ける
+- `/rite:issue:create` (Decompose Path, PR #1079 で flat 化) の bulk create 後に各 Sub-Issue を親に紐付ける
+- `/rite:issue:start` の child creation path で新規子 Issue を親に紐付ける (PR #1079 までは旧 `parent-routing.md` sub-skill が担当; flat 化後は start.md 本体に統合)
 - 既存 Issue の body メタのみで API 未紐付けな状態を後付けで補修する（`backfill-sub-issues.sh`）
 
 ### Helper Script: `link-sub-issue.sh`

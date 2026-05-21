@@ -24,6 +24,13 @@
 #       phase_transitions:
 #         <phase>: [<next1>, <next2>]
 #
+# ⚠️ NOTE on `stop_guard:` key naming (PR #1079 review: comment-analyzer I-1):
+#   このキー名は #675 以前の `stop-guard.sh` (retire 済) からの継承で残置している。
+#   現在 phase-transition の override 機構を利用するのは本ファイル (`phase-transition-whitelist.sh`)
+#   と少数の caller hook のみで、`stop-guard.sh` 自体は撤去されている。新規キー名への
+#   rename は project の rite-config.yml に破壊的変更を強いるため見送り (forward-compat
+#   のためキー名は固定)。読者の混乱を避ける目的でここに明記する。
+#
 # Override semantics: MERGE — listed targets are APPENDED to the baked-in
 # whitelist for that phase (allowing projects to add custom transitions
 # without losing the defaults).
@@ -32,12 +39,15 @@
 [ -n "${_RITE_PHASE_TRANSITION_LOADED:-}" ] && return 0
 _RITE_PHASE_TRANSITION_LOADED=1
 
-# Bash 4.2+ required for `declare -gA`. Older bash (e.g., macOS default 3.2)
-# would abort with a syntax error on the associative-array literal below, and the
-# stop-guard source would silently fail-open. Bail out gracefully so that
-# stop-guard can detect the missing `rite_phase_transition_allowed` function and
-# log a diagnostic instead of silently disabling the whitelist.
+# Bash 4.2+ required for `declare -gA`. Older bash (e.g., macOS default 3.2,
+# pinned by Apple's GPLv3 licensing constraints) would abort with a syntax error
+# on the associative-array literal below. We bail out gracefully so callers can
+# detect the missing `rite_phase_transition_allowed` function and route around
+# the disabled whitelist. ただし silent return は macOS 開発者環境で「whitelist が
+# 効いていない」事実を不可視にするため、stderr に 1 行 WARNING を出してから return する
+# (PR #1079 review: silent fail-open silent-failure-hunter C-2 対応)。
 if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 2))); then
+  echo "[rite] WARNING: phase-transition-whitelist disabled (requires bash >= 4.2, found ${BASH_VERSION:-unknown}). macOS users running default bash 3.2 will not get phase transition validation. Upgrade bash via Homebrew or use the bundled hooks with a newer shell." >&2
   return 0
 fi
 
@@ -140,7 +150,13 @@ _rite_load_whitelist_overrides() {
   # hid override misconfiguration from users — the opposite of #490's intent
   # (error-handling-reviewer CRITICAL).
   local block awk_err
-  awk_err=$(mktemp /tmp/rite-phase-transition-awk-err-XXXXXX 2>/dev/null) || awk_err=""
+  # PR #1079 review (silent-failure-hunter I-6 対応): mktemp 失敗時、awk stderr は
+  # /dev/null へ流れて override parse failure の root cause が消える。
+  # 失敗を一度 stderr に通知する (silent drop を防ぐ)。
+  awk_err=$(mktemp /tmp/rite-phase-transition-awk-err-XXXXXX 2>/dev/null) || {
+    awk_err=""
+    echo "WARNING: phase-transition-whitelist: mktemp failed for awk stderr capture; override parse errors will not be diagnosable" >&2
+  }
   block=$(awk '
     BEGIN { in_hooks=0; in_sg=0; in_pt=0; pt_indent=-1 }
     /^hooks:[[:space:]]*(#.*)?$/ { in_hooks=1; next }
@@ -233,10 +249,17 @@ _rite_load_whitelist_overrides() {
       fi
     else
       # Unrecognized line — emit a debug trace so users can diagnose silent drops
-      # (error-handling IMPORTANT).
+      # (error-handling IMPORTANT). PR #1079 review (silent-failure-hunter M-3):
+      # RITE_DEBUG 無しでも skip 行数を集計し、loop 終了後に 1 行 summary を出す。
+      _rite_pt_skip_count=$((${_rite_pt_skip_count:-0} + 1))
       [ -n "${RITE_DEBUG:-}" ] && echo "[rite debug] override parse skipped line: $trimmed" >&2
     fi
   done <<< "$block"
+
+  if [ "${_rite_pt_skip_count:-0}" -gt 0 ] && [ -z "${RITE_DEBUG:-}" ]; then
+    echo "WARNING: phase-transition-whitelist: ${_rite_pt_skip_count} override lines skipped (set RITE_DEBUG=1 for details): $config_file" >&2
+  fi
+  unset _rite_pt_skip_count
 
   # Flush any trailing block list
   if [ -n "$current_key" ] && [ -n "$current_targets" ]; then

@@ -141,6 +141,8 @@ Run [Preflight Protocol](./start.md#preflight-protocol) before starting implemen
 
 > **Module**: [Implementation Guidance](./implement.md) - Follow Phase 3 plan. Handles: Read/Edit/Bash, parallel (5.1.0), commit message (5.1.1), checklist update (5.1.1.1), parent progress (5.1.2), flow state updates, mandatory `rite:lint` invocation.
 
+> **Issue body checklist update**: `implement.md` Phase 5.1.1.1 が per-task update を強制 (SoT)。大量残存は `checklist-auto-check.md` Phase 5.2.1.1 Step 0 / `cleanup.md` Phase 1.6.5.2 で警告される。
+
 Skipping lint risks merging code that violates project quality standards, creating technical debt that compounds across subsequent Issues.
 **Critical**: After 5.1.1, **immediately** invoke `rite:lint`. Do NOT stop.
 

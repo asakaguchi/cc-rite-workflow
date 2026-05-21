@@ -29,6 +29,39 @@ When incomplete checklist items are detected, evaluate each item's fulfillment s
 
 ### Evaluation procedure
 
+**Step 0: Mass-residual warning (≥5 incomplete items)** — Before evaluation, count incomplete items (excluding parent-child Tasklist `- [ ] #XX` entries) and surface a Root Cause investigation prompt when the count meets the mass-residual threshold (5 件以上):
+
+```bash
+issue_body=$(gh issue view {issue_number} --json body --jq '.body')
+[ -z "$issue_body" ] && echo "WARNING: Step 0 Issue body 取得失敗 — mass-residual 検出を skip" >&2 && incomplete_count=0
+incomplete_count=${incomplete_count:-$(echo "$issue_body" | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+' | grep -c '^- \[ \] ' || true)}
+echo "incomplete_count=$incomplete_count"
+if [ "${incomplete_count:-0}" -ge 5 ]; then
+  echo "⚠️ Phase 5.2.1.1 Step 0: Issue 本文に 5 件以上の未完了チェックリスト項目が残存しています (${incomplete_count} 件)。"
+  echo "   Root Cause として以下が考えられます:"
+  echo "   - Phase 5.1.1.1 (implement.md) の per-task checklist 更新が trigger されていない"
+  echo "   - 実装が Definition of Done を完全充足していない"
+  echo "   - チェックリスト項目テキストと実装内容の対応付けが Auto-Check で unreliable と判定された"
+  echo "   ACTION REQUIRED: 下記 AskUserQuestion で Root Cause を選択してから Step 1 に進むこと"
+fi
+```
+
+**MUST**: `incomplete_count >= 5` の場合、Step 1 (Collect evidence) に進む前に **必ず以下の `AskUserQuestion` を発火させる**。bash 出力 + warning だけで Step 1 へ直行することは禁止 (silent fall-through 防止)。`{incomplete_count}` placeholder は上記 bash block の `incomplete_count` 出力値を substitute する:
+
+```
+警告: Issue 本文に 5 件以上の未完了チェックリスト項目が残存しています ({incomplete_count} 件)
+
+このまま Auto-Check Evaluation を続行すると一括判定で誤検知のリスクがあります。
+Root Cause を調査しますか?
+
+オプション:
+- Root Cause を調査してから Auto-Check (推奨): Phase 5.1 に戻り per-task 更新漏れの根本原因を特定してから再評価
+- このまま Auto-Check Evaluation を続行: 既存パスで一括評価 (実装が確実に完了している場合)
+- 手動でチェックリスト確認: workflow を中断しユーザーが Issue body を手動更新
+```
+
+「Root Cause 調査」→ Phase 5.1 に戻る (`implement.md` Phase 5.1.1.1 を per-task で再実行)。「そのまま Auto-Check」→ Step 1 へ続行。「手動確認」→ workflow 中断、ユーザー手動更新後 `/rite:issue:start {N}` で再開を案内。`incomplete_count < 5` の場合は本 Step を skip し Step 1 へ直接遷移する。
+
 1. **Collect evidence**: Use `git diff origin/{base_branch}...HEAD --name-only` and `git log --oneline origin/{base_branch}...HEAD` to understand what was implemented.
 
 2. **Evaluate each incomplete item**: For each `- [ ]` item, assess whether the item is satisfied based on the implementation evidence:

@@ -292,6 +292,8 @@ If incomplete tasks are found, prompt with `AskUserQuestion`:
 
 In addition to checking the work memory, also check the checklist in the Issue body.
 
+> **責務 — safety net (例外残存項目の救済)**: 本 Phase は Issue 実装中の `/rite:issue:start` Phase 5.1.1.1 (`implement.md` per-task checklist 更新) および Phase 5.2.1.1 (Auto-Check Evaluation) を **passthrough した例外残存項目** を merge 後に拾う **safety net** として位置付ける。primary update path は実装中の per-task update であり、本 Phase は最終 fallback。大量検出時は primary path の機能不全を示唆するため Phase 1.6.5.2 で `workflow_incident` sentinel を emit し observability を確保する。
+
 **1.6.5.1 Extract Checklist**
 
 Phase 1.5 で取得済みの Issue body からチェックリストを抽出する (再取得不要):
@@ -304,7 +306,21 @@ gh issue view {issue_number} --json body --jq '.body'
 
 **1.6.5.2 Detect Incomplete Checklist Items**
 
-抽出されたチェックリストから `- [ ]` 項目を検出。未完了項目が存在する場合 `AskUserQuestion`:
+抽出されたチェックリストから `- [ ]` 項目を検出 (除外パターン: `- [ ] #XX` 親子 Tasklist)。検出件数が **5 件以上** の場合は primary path (`implement.md` Phase 5.1.1.1 per-task / `checklist-auto-check.md` Phase 5.2.1.1 Auto-Check) の機能不全を示唆するため `workflow_incident` sentinel (`type=manual_fallback_adopted`, `--root-cause-hint=checklist_mass_remaining_at_cleanup`) を non-blocking で emit する。emit は cleanup session の stderr に observability log として記録される。`/rite:pr:cleanup` workflow には Phase 5.4.4.1 detector が存在しないため (workflow-incident-detection.md caller 表は lint/pr:create/pr:review/pr:fix/pr:ready の 5 caller のみ)、本 sentinel は cleanup 内で自動 Issue 化されない。手動 triage が必要な場合は stderr ログを確認すること:
+
+```bash
+incomplete_count=$(gh issue view {issue_number} --json body --jq '.body' \
+  | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+' | grep -c '^- \[ \] ' || true)
+if [ "${incomplete_count:-0}" -ge 5 ]; then
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type manual_fallback_adopted \
+    --details "Issue #{issue_number} cleanup Phase 1.6.5.2 mass-residual detection: ${incomplete_count} incomplete checklist items at cleanup time (threshold: 5). Primary update path (implement.md Phase 5.1.1.1 per-task / checklist-auto-check.md Phase 5.2.1.1 Auto-Check) appears to have malfunctioned." \
+    --root-cause-hint "checklist_mass_remaining_at_cleanup" \
+    --pr-number {pr_number} >&2 || true
+fi
+```
+
+未完了項目が存在する場合 `AskUserQuestion`:
 
 ```
 警告: Issue 本文に未完了のチェック項目があります

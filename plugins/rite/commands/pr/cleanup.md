@@ -292,7 +292,7 @@ If incomplete tasks are found, prompt with `AskUserQuestion`:
 
 In addition to checking the work memory, also check the checklist in the Issue body.
 
-> **責務 — safety net (例外残存項目の救済)**: 本 Phase は Issue 実装中の `/rite:issue:start` Phase 5.1.1.1 (`implement.md` per-task checklist 更新) および Phase 5.2.1 (Auto-Check Evaluation) を **passthrough した例外残存項目** を merge 後に拾う **safety net** として位置付ける。primary update path は実装中の per-task update であり、本 Phase は最終 fallback。大量検出 (≥5 件) は primary path の機能不全を示唆するため Phase 1.6.5.2 で `workflow_incident` sentinel を emit し observability を確保する (Issue #1077 §4.4 MUST AC-3、3 site (start-execute.md / checklist-auto-check.md / cleanup.md) threshold=5 対称化)。
+> **責務 — safety net (例外残存項目の救済)**: 本 Phase は Issue 実装中の `/rite:issue:start` Phase 5.1.1.1 (`implement.md` per-task checklist 更新) および Phase 5.2.1 (Auto-Check Evaluation) を **passthrough した例外残存項目** を merge 後に拾う **safety net** として位置付ける。primary update path は実装中の per-task update であり、本 Phase は最終 fallback。大量検出時は primary path の機能不全を示唆するため Phase 1.6.5.2 で `workflow_incident` sentinel を emit し observability を確保する。
 
 **1.6.5.1 Extract Checklist**
 
@@ -306,7 +306,7 @@ gh issue view {issue_number} --json body --jq '.body'
 
 **1.6.5.2 Detect Incomplete Checklist Items**
 
-抽出されたチェックリストから `- [ ]` 項目を検出 (除外パターン: `- [ ] #XX` 親子 Tasklist)。検出件数が **5 件以上** (Issue #1077 §4.4 MUST AC-3 threshold、3 site 対称) の場合は primary path (`implement.md` Phase 5.1.1.1 per-task / `checklist-auto-check.md` Phase 5.2.1) の機能不全を示唆するため `workflow_incident` sentinel (`type=manual_fallback_adopted`, `--root-cause-hint=checklist_mass_remaining_at_cleanup`) を non-blocking で emit する。emit は observability log として記録され、後続の Phase 5.4.4.1 grep 検出経路で Issue auto-register 候補に surface する:
+抽出されたチェックリストから `- [ ]` 項目を検出 (除外パターン: `- [ ] #XX` 親子 Tasklist)。検出件数が **5 件以上** の場合は primary path (`implement.md` Phase 5.1.1.1 per-task / `checklist-auto-check.md` Phase 5.2.1) の機能不全を示唆するため `workflow_incident` sentinel (`type=manual_fallback_adopted`, `--root-cause-hint=checklist_mass_remaining_at_cleanup`) を non-blocking で emit する。emit は cleanup session の stderr に observability log として記録される。`/rite:pr:cleanup` workflow には Phase 5.4.4.1 detector が存在しないため (workflow-incident-detection.md caller 表は lint/pr:create/pr:review/pr:fix/pr:ready/issue:start 系のみ)、本 sentinel は cleanup 内で自動 Issue 化されない。手動 triage が必要な場合は stderr ログを確認すること:
 
 ```bash
 incomplete_count=$(gh issue view {issue_number} --json body --jq '.body' \

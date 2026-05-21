@@ -29,11 +29,12 @@ When incomplete checklist items are detected, evaluate each item's fulfillment s
 
 ### Evaluation procedure
 
-**Step 0: Mass-residual warning (≥5 incomplete items)** — Before evaluation, count incomplete items (excluding parent-child Tasklist `- [ ] #XX` entries) and surface a Root Cause investigation prompt when the count meets the mass-residual threshold. Threshold = **5** (symmetric with `cleanup.md` Phase 1.6.5.2 mass-detection `workflow_incident` emit; Issue #1077 §4.4 MUST AC-2):
+**Step 0: Mass-residual warning (≥5 incomplete items)** — Before evaluation, count incomplete items (excluding parent-child Tasklist `- [ ] #XX` entries) and surface a Root Cause investigation prompt when the count meets the mass-residual threshold (5 件以上):
 
 ```bash
 issue_body=$(gh issue view {issue_number} --json body --jq '.body')
-incomplete_count=$(printf '%s' "$issue_body" | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+' | grep -c '^- \[ \] ' || true)
+[ -z "$issue_body" ] && echo "WARNING: Step 0 Issue body 取得失敗 — mass-residual 検出を skip" >&2 && incomplete_count=0
+incomplete_count=${incomplete_count:-$(echo "$issue_body" | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+' | grep -c '^- \[ \] ' || true)}
 echo "incomplete_count=$incomplete_count"
 if [ "${incomplete_count:-0}" -ge 5 ]; then
   echo "⚠️ Phase 5.2.1: Issue 本文に 5 件以上の未完了チェックリスト項目が残存しています (${incomplete_count} 件)。"
@@ -41,10 +42,11 @@ if [ "${incomplete_count:-0}" -ge 5 ]; then
   echo "   - Phase 5.1.1.1 (implement.md) の per-task checklist 更新が trigger されていない"
   echo "   - 実装が Definition of Done を完全充足していない"
   echo "   - チェックリスト項目テキストと実装内容の対応付けが Auto-Check で unreliable と判定された"
+  echo "   ACTION REQUIRED: 下記 AskUserQuestion で Root Cause を選択してから Step 1 に進むこと"
 fi
 ```
 
-When `incomplete_count >= 5`, present `AskUserQuestion` for Root Cause investigation:
+**MUST**: `incomplete_count >= 5` の場合、Step 1 (Collect evidence) に進む前に **必ず以下の `AskUserQuestion` を発火させる**。bash 出力 + warning だけで Step 1 へ直行することは禁止 (silent fall-through 防止)。`{incomplete_count}` placeholder は上記 bash block の `incomplete_count` 出力値を substitute する:
 
 ```
 警告: Issue 本文に 5 件以上の未完了チェックリスト項目が残存しています ({incomplete_count} 件)

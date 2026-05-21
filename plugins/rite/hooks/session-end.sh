@@ -107,9 +107,10 @@ if [ -f "$STATE_FILE" ]; then
         create)
             cat >&2 <<WARN_MSG
 ⚠️  rite: /rite:issue:create lifecycle was not completed (phase=$_state_phase).
-    No GitHub Issue was created. The sub-skill delegation flow
-    (create-interview → 0.6 → create-register/create-decompose) did not reach completion.
-    Re-run /rite:issue:create or use /rite:resume to recover.
+    Legacy create_* phase が残った state file を検出しました。PR #1079 で flat 化された
+    新 /rite:issue:create は terminal phase=completed のみを書き込むため、create_* phase
+    が残っているのは旧 sub-skill chain 時代のセッションです。/rite:resume または
+    /rite:issue:create の再実行で回復できます。
 WARN_MSG
             ;;
         cleanup)

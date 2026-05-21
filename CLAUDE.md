@@ -9,10 +9,8 @@ Claude Code Rite Workflow - Claude Code 用 Issue ドリブン開発ワークフ
 plugins/rite/.claude-plugin/       # プラグイン固有メタデータ（plugin.json）
 plugins/rite/
 ├── commands/         # スキルから呼び出される実行手順書（Markdown）
-│   ├── issue/        #   メイン (list, create, start, update, close, edit, recall) +
-│   │                 #   サブスキル (create-{interview,decompose,register}, implement,
-│   │                 #   implementation-plan, completion-report, branch-setup,
-│   │                 #   parent-routing, child-issue-selection, work-memory-init)
+│   ├── issue/        #   メイン (list, create, start, update, close, edit, recall, implement) +
+│   │                 #   references/ (PR #1079 で flat 化 — create/start は単一 file 内に統合済)
 │   ├── pr/           #   メイン (create, ready, review, fix, cleanup) +
 │   │                 #   references/ (fact-check, internal-consistency, fix-relaxation-rules,
 │   │                 #   assessment-rules, reviewer-fallbacks, bash-trap-patterns 等)
@@ -33,9 +31,9 @@ plugins/rite/
 ├── references/       # gh CLI パターン、GraphQL、severity-levels、investigation-protocol、
 │                     # wiki-patterns、workflow-incident-emit-protocol、review-result-schema 等
 ├── scripts/          # Projects 統合 Issue 作成、Sub-Issue リンク、レビュー結果抽出・計測 等
-├── hooks/            # Claude Code ライフサイクルフック（session / compact / stop-guard /
+├── hooks/            # Claude Code ライフサイクルフック（session / compact /
 │   │                 # preflight / pre-tool-bash-guard / post-tool-wm-sync /
-│   │                 # phase-transition-whitelist / verify-terminal-output /
+│   │                 # phase-transition-whitelist /
 │   │                 # wiki-ingest-trigger / wiki-query-inject / workflow-incident-emit /
 │   │                 # session-ownership / hook-preamble 等）+ hooks.json
 │   ├── scripts/      #   Wiki commit / worktree / backlink / gitignore-health check 等のヘルパー

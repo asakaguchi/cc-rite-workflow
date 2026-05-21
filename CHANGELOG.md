@@ -17,9 +17,22 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
 
 ## [Unreleased]
 
+### Changed
+
+- **Flat workflow consolidation** (#1079) — Re-designed `/rite:issue:start` and `/rite:issue:create` as single-file flat workflows. Sub-skill chain (`start-execute` / `start-publish` / `start-finalize` for start; `create-interview` / `create-register` / `create-decompose` for create) along with 12 sub-skill files (`parent-routing`, `child-issue-selection`, `branch-setup`, `work-memory-init`, `implementation-plan`, `completion-report`) were merged into `commands/issue/start.md` and `commands/issue/create.md`. Recovery from mid-flow stops now uses `/rite:resume` exclusively (`commands/resume.md` Phase 3.2 phase→step routing table). Cumulative net deletion: ~6,300 lines.
+
+### Removed
+
+- **Implicit-stop defense layer 3 hooks** removed in #1079: `auto-fire-step0.sh` (229L PostToolUse Skill hook), `stop-create-interview-block.sh` (149L Stop event hook), `verify-terminal-output.sh` (265L lint Phase 0.6 sentinel verifier). The defense was found to cause both the symptom ("止まる") and the inability to fix it ("修正できない"). Replaced by the simpler "ユーザーが `/rite:resume` で復帰する" philosophy.
+- 17 orphan hook tests removed in #1079 (4 tests directly named after deleted hooks + 13 tests structurally tied to the deleted sub-skill chain). New tests for the flat workflow will be added in follow-up.
+
+### Added (pre-#1079 history — superseded by flat workflow consolidation)
+
+> 以下の "Added" / "Fixed" / "Changed" エントリ群は #1079 で statement-level に超えられた transitional state を記録する。stop-create-interview-block.sh は Unreleased 内で Added → Removed したため出荷されない。read 順序: 本セクション (pre-#1079) を歴史的経緯として参照し、 **canonical Unreleased state は上記 #1079 セクション**を SoT とすること。
+
 ### Added
 
-- New Stop event hook `hooks/stop-create-interview-block.sh` as a machine-enforced back-stop for `/rite:issue:create` implicit stop (#920, cumulative series #910 / #917 / #634 / #651 / #622 / #552 / #687)
+- New Stop event hook `hooks/stop-create-interview-block.sh` as a machine-enforced back-stop for `/rite:issue:create` implicit stop (#920, cumulative series #910 / #917 / #634 / #651 / #622 / #552 / #687) — **removed in #1079 before release**
   - The 4-line return block invariant (`[CONTEXT] INTERVIEW_DONE=1` marker + plain-text continuation reminder + caller HTML comment + sentinel HTML comment) is a necessary but not sufficient condition for preventing LLM turn-boundary heuristic implicit stops. The new Stop hook blocks `Stop` events when flow-state matches `phase=create_post_interview` && `active=true` && `pr_number=0` (interview returned but no Issue created yet), emitting an ACTION message with the idempotent Step 0 patch literal and a `workflow_incident` (`type=manual_fallback_adopted`) sentinel via stderr.
   - Allow paths (`exit 0`): `stop_hook_active=true` (recursion guard), flow-state file absent, phase mismatch, `active=false`, `pr_number != 0`, non-Stop hook events. The hook fires only at the exact implicit-stop risk boundary and respects `workflow_incident.enabled: false` opt-out for sentinel emission (block itself still fires).
   - Registered in `hooks/hooks.json` as a `Stop` event handler (timeout 10s).

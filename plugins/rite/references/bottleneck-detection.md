@@ -223,7 +223,7 @@ Record in work memory at the next bulk update point (typically at commit time, p
 | Component | Integration |
 |-----------|-------------|
 | `implement.md` 5.1.0.5 | Bottleneck check added to adaptive re-evaluation checkpoint |
-| `implementation-plan.md` 3.5.1 | Mid-replanning: re-insert sub-steps into plan and work memory |
+| `start.md` ステップ 3 | Mid-replanning: re-insert sub-steps into plan and work memory (PR #1079 で flat 化、旧 `implementation-plan.md` から移管) |
 | `coding-principles.md` `reference_discovery` | Oracle discovery reuses the same search patterns |
 | `execution-metrics.md` `plan_deviation_count` | Each re-decomposition counts as a plan deviation |
 | `work-memory-format.md` | New "ボトルネック検出ログ" section added |
@@ -233,7 +233,7 @@ Record in work memory at the next bulk update point (typically at commit time, p
 ## Related
 
 - [Implementation Guidance](../commands/issue/implement.md) - 5.1.0.5 Adaptive Re-evaluation
-- [Implementation Plan](../commands/issue/implementation-plan.md) - 3.2.1 Reference Implementation Discovery
+- [Issue Start (flat workflow)](../commands/issue/start.md) ステップ 3 — 実装計画 (PR #1079 で `implementation-plan.md` から移管)
 - [AI Coding Principles](../skills/rite-workflow/references/coding-principles.md) - `reference_discovery` principle
 - [Execution Metrics](./execution-metrics.md) - `plan_deviation_count` metric
 - [Work Memory Format](../skills/rite-workflow/references/work-memory-format.md) - "ボトルネック検出ログ" section format

@@ -1,12 +1,12 @@
 # Sub-Issue Link Handler Reference
 
-`plugins/rite/scripts/link-sub-issue.sh` から返される `link_status` を処理するための正典スニペット。`/rite:issue:create-decompose` と `/rite:issue:parent-routing` が共通で使用する。
+`plugins/rite/scripts/link-sub-issue.sh` から返される `link_status` を処理するための正典スニペット。
 
 ## 目的
 
-GitHub Sub-issues API で親 Issue と子 Issue を紐付けた結果 (`link_status`) をハンドルするロジックは、従来 `create-decompose.md` と `parent-routing.md` の2ヶ所に同一 inline 重複していた。片方を修正したときにもう片方の同期を忘れる drift リスクがあったため、ハンドラー本体を本ファイルに一元化する。
+GitHub Sub-issues API で親 Issue と子 Issue を紐付けた結果 (`link_status`) をハンドルするロジック。PR #1079 で `/rite:issue:create` が flat 化される前は `create-decompose.md` と `parent-routing.md` の 2 ヶ所に inline 重複していたが、現在は `commands/issue/create.md` ステップ 5.4 (Decompose Path bulk create loop) のみが使用する。
 
-呼び出し元は周辺ロジック（単発実行 vs ループ実行、失敗カウンタ集計の有無）に応じて、以下の2 variant のうち該当するものを inline で展開する。
+呼び出し元は周辺ロジック（単発実行 vs ループ実行、失敗カウンタ集計の有無）に応じて、以下の 2 variant のうち該当するものを inline で展開する。
 
 ## 前提
 
@@ -21,7 +21,7 @@ GitHub Sub-issues API で親 Issue と子 Issue を紐付けた結果 (`link_sta
 
 ## Variant A: basic (カウンタなし)
 
-単発の子 Issue を紐付け、失敗集計を行わないケース。`/rite:issue:parent-routing` の child creation path（1件ずつ loop で呼び出されるが、全件失敗の集計は行わない）で使用する。
+単発の子 Issue を紐付け、失敗集計を行わないケース。PR #1079 までは `/rite:issue:parent-routing` の child creation path で使われていた (現在は flat 化で削除)。現状は主に Variant B (counting) の方が `commands/issue/create.md` ステップ 5.4 で使われる。
 
 ```bash
 case "$link_status" in
@@ -42,7 +42,7 @@ esac
 
 ## Variant B: counting (失敗カウンタあり)
 
-複数の子 Issue を loop で紐付け、全件失敗 / 部分失敗を別レイヤで検出するケース。`/rite:issue:create-decompose` Phase 3.3 (Sub-Issues API Linkage) で使用する。呼び出し元は loop の前に `link_failures=0` で初期化しておくこと。
+複数の子 Issue を loop で紐付け、全件失敗 / 部分失敗を別レイヤで検出するケース。`commands/issue/create.md` ステップ 5.4 (Decompose Path bulk create loop、PR #1079 で `create-decompose.md` Phase 3.3 から移管) で使用する。呼び出し元は loop の前に `link_failures=0` で初期化しておくこと。
 
 ```bash
 case "$link_status" in
@@ -70,7 +70,7 @@ esac
 呼び出し元が variant を選ぶ際も、以下の制約は必ず保持すること。Variant を増やす場合もここを書き換えないこと。
 
 - **Issue #514 MUST NOT — unknown status silent 通過禁止**: `*` ブランチで stderr 警告を必ず出すこと。`case` の `*)` を省略したり、無視したり、ログレベルを落としたりしてはならない。Sub-issues API が将来新しい status 値を追加した場合の早期検出に依存している制約である。
-- **Non-blocking**: 本ハンドラーは `exit 1` / `return 1` を行わない。AC-4 / AC-5 に従い、Sub-issues API linkage の失敗は警告出力のみで後続処理を継続する（`Parent Issue: #N` body meta と Tasklist が fallback として残る）。全件失敗時の ERROR 級警告は **Variant B 呼び出し元** の集計ロジック (`link_failures` aggregate) 側で扱う責務で、本ハンドラーの責務ではない。**Variant A 呼び出し元** は全件失敗集計を行わない（個別 failure の stderr 警告のみに依存する）。例: `parent-routing.md` の child creation path は単一 child を 1 件ずつ処理するため本 variant を採用する。
+- **Non-blocking**: 本ハンドラーは `exit 1` / `return 1` を行わない。AC-4 / AC-5 に従い、Sub-issues API linkage の失敗は警告出力のみで後続処理を継続する（`Parent Issue: #N` body meta と Tasklist が fallback として残る）。全件失敗時の ERROR 級警告は **Variant B 呼び出し元** の集計ロジック (`link_failures` aggregate) 側で扱う責務で、本ハンドラーの責務ではない。Variant A は単発処理用 (PR #1079 で削除された parent-routing 時代の遺物で、現在は active caller なし)。
 - **Stdout vs stderr**: 成功メッセージは stdout (`echo "✅ ..."`)、警告は stderr (`... >&2`) に出力する。パイプで後段処理を行う呼び出し元が警告を通常出力と混同しないためのルール。
 
 ## Caller Responsibility
@@ -89,8 +89,7 @@ esac
 
 inline 展開のため、本 reference を修正する際は以下 **すべての caller** を同時に更新する責務がある:
 
-- `commands/issue/create-decompose.md` Phase 3.3 (Sub-Issues API Linkage) (Variant B 利用)
-- `commands/issue/parent-routing.md` child creation path (Variant A 利用)
+- `commands/issue/create.md` ステップ 5.4 — Decompose Path bulk create loop (Variant B 利用、PR #1079 で `create-decompose.md` / `parent-routing.md` を flat 化した結果の単一 caller)
 
 各 command ファイル内には「⚠️ DRIFT 警告」コメントが配置されており、修正時に同期すべきファイル一覧を明示している。新規 caller を追加する際は本セクションと当該コメント両方を更新すること。
 

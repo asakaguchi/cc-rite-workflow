@@ -139,13 +139,16 @@ if [ -z "$BLOCKED_PATTERN" ]; then
 fi
 
 # Pattern 5: gh issue create direct invocation during /rite:issue:create lifecycle (#475 Mode B).
-# The orchestrator (create.md) must delegate Issue creation to rite:issue:create-register or
-# rite:issue:create-decompose sub-skills. A direct `gh issue create` call bypasses the entire
-# sub-skill delegation protocol, flow-state tracking, and Projects integration.
+# The orchestrator (create.md) MUST delegate Issue creation to
+# `scripts/create-issue-with-projects.sh` (Projects 統合 + label/status field 設定を 1 ステップで
+# 実行)。直接 `gh issue create` を実行すると Projects 登録と field 設定が抜け落ちる。
 #
-# Detection: .rite-flow-state must exist AND be active AND the phase must be create_interview /
-# create_post_interview / create_delegation / create_post_delegation (i.e., create lifecycle is
-# in progress but not yet terminated by create_completed).
+# PR #1079 で create.md を flat workflow に統合した結果、新規 state file は terminal の
+# `phase=completed` のみを書き、中間 `create_*` phase は出現しない。本 Pattern は legacy
+# state file (旧 sub-skill chain 時代の `create_interview` / `create_post_interview` /
+# `create_delegation` / `create_post_delegation`) が残った環境のみで trigger する forward-compat
+# 防御として残置。静的な防御は `scripts/check-no-direct-gh-issue-create.sh` (Phase 3.14 lint)
+# が担う。
 #
 # Bypass prevention — Pattern 5 normalization:
 #   Pattern 5 normalizes shell meta-characters (;, &, |, parens, braces, backticks, $, quotes) to
@@ -242,8 +245,8 @@ if [ -z "$BLOCKED_PATTERN" ]; then
             BLOCKED_PATTERN="create-lifecycle-direct-gh-issue"
           fi
           if [ "$BLOCKED_PATTERN" = "create-lifecycle-direct-gh-issue" ]; then
-            BLOCKED_REASON="/rite:issue:create lifecycle 中 (phase=$STATE_PHASE) に gh issue create を直接実行することは禁止されています (#475 Mode B)."
-            BLOCKED_ALTERNATIVE="rite:issue:create-register を呼ぶべき場面です。Phase 0.6 の Delegation Routing に従い skill: \"rite:issue:create-register\" または skill: \"rite:issue:create-decompose\" を invoke してください。"
+            BLOCKED_REASON="/rite:issue:create lifecycle 中 (phase=$STATE_PHASE) に gh issue create を直接実行することは禁止されています (#475 Mode B / #1079 forward-compat for legacy state)."
+            BLOCKED_ALTERNATIVE="Projects 統合 + label/status 設定のため、bash {plugin_root}/scripts/create-issue-with-projects.sh --title ... --body ... --project-number ... を使用してください (create.md ステップ 4.3 / 5.3 / 5.4 参照)。"
           fi
         fi
       fi

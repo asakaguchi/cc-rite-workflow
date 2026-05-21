@@ -16,9 +16,20 @@ Phase 番号取扱方針: エントリは機能名レベルで変更を記述し
 
 ## [Unreleased]
 
-### 追加
+### 変更
 
-- `/rite:issue:create` の implicit stop 対策として新規 Stop event hook `hooks/stop-create-interview-block.sh` を追加 (#920、累積系列 #910 / #917 / #634 / #651 / #622 / #552 / #687)
+- **Flat workflow 統合** (#1079) — `/rite:issue:start` と `/rite:issue:create` を単一ファイルの flat workflow に再設計。3 sub-skill chain (start 系: `start-execute` / `start-publish` / `start-finalize`、create 系: `create-interview` / `create-register` / `create-decompose`) と 12 個の周辺 sub-skill ファイル (`parent-routing`, `child-issue-selection`, `branch-setup`, `work-memory-init`, `implementation-plan`, `completion-report`) を `commands/issue/start.md` / `commands/issue/create.md` に統合。途中停止時の復帰経路は `/rite:resume` (`commands/resume.md` Phase 3.2 の phase→step 表) に一本化。累積純削減: 約 6,300 行。
+
+### 削除
+
+- **implicit-stop 対策層 3 hook** を #1079 で撤去: `auto-fire-step0.sh` (229L PostToolUse Skill hook)、`stop-create-interview-block.sh` (149L Stop event hook)、`verify-terminal-output.sh` (265L lint Phase 0.6 sentinel verifier)。本防御層は「止まる原因」と「修正できない原因」の両方になっていたため、よりシンプルな「ユーザーが `/rite:resume` で復帰する」哲学に置き換えた。
+- 旧 sub-skill chain アーキテクチャに紐付いた orphan hook test 17 件を #1079 で削除 (削除済み hook 名を直接持つ 4 件 + アーキテクチャ依存の 13 件)。flat workflow 向け新規テストは follow-up で追加予定。
+
+### 追加 (pre-#1079 履歴 — flat workflow 統合により superseded)
+
+> 以下の "追加" / "修正" / "変更" エントリ群は #1079 で statement-level に超えられた transitional state を記録する。`stop-create-interview-block.sh` は Unreleased 内で 追加 → 削除 したため出荷されない。読む順序: 本セクション (pre-#1079) を歴史的経緯として参照し、**canonical Unreleased state は上記 #1079 セクション**を SoT とすること。
+
+- `/rite:issue:create` の implicit stop 対策として新規 Stop event hook `hooks/stop-create-interview-block.sh` を追加 (#920、累積系列 #910 / #917 / #634 / #651 / #622 / #552 / #687) — **#1079 で release 前に削除**
   - 4-line return block invariant (`[CONTEXT] INTERVIEW_DONE=1` marker + plain-text continuation reminder + caller HTML comment + sentinel HTML comment) は LLM turn-boundary heuristic 由来の implicit stop に対する **必要条件** だが **十分条件ではない**。新 Stop hook は flow-state が `phase=create_post_interview` && `active=true` && `pr_number=0` (interview return 直後で Issue 未作成) に一致した時のみ `Stop` event を block し、stderr に Step 0 idempotent patch literal を含む ACTION message と `workflow_incident` (`type=manual_fallback_adopted`) sentinel を emit する。
   - Allow path (`exit 0`): `stop_hook_active=true` (再帰防止)、flow-state file 不在、phase 不一致、`active=false`、`pr_number != 0`、non-Stop event。Hook は implicit-stop の正確な risk boundary でのみ発火し、`workflow_incident.enabled: false` opt-out 設定を尊重する (block 自体は実行)。
   - `hooks/hooks.json` に `Stop` event handler として登録 (timeout 10s)。

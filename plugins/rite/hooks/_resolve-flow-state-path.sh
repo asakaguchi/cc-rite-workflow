@@ -60,8 +60,8 @@
 #
 #   Command-level callers (silent fall-through to empty state_file via `|| state_file=""`):
 #     - plugins/rite/commands/issue/create.md
-#     - plugins/rite/commands/issue/create-interview.md
 #     - plugins/rite/commands/pr/cleanup.md
+#   (PR #1079 で create-interview.md は create.md に統合済)
 #
 #   New callers MUST follow the caller contract above. When adding a new
 #   caller, append it under the appropriate category here AND update the

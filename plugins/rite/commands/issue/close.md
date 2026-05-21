@@ -647,7 +647,7 @@ Detect the parent Issue via **three methods tried in order (OR combination)**. T
 
 **Method 1: `## 親 Issue` body meta (PRIMARY)**
 
-Read the closing Issue body and search for the `## 親 Issue` section written by `/rite:issue:create-decompose`.
+Read the closing Issue body and search for the `## 親 Issue` section written by `/rite:issue:create` (Decompose Path、PR #1079 で flat 化).
 
 ```
 ## 親 Issue
@@ -860,7 +860,7 @@ Retrieve the parent's child Issues via **two methods (OR combination, Method A �
 
 **Design notes** (Issue #517 review fixes — cycles 1 + 2):
 
-- **Method A uses the `trackedIssues` field (Tasklists API), NOT the Sub-Issues API**: `trackedIssues` resolves the parent→children relationship via GitHub's Tasklists feature (which parses the body `- [ ] #N` section) — this is intentional because the repo uses `/rite:issue:create-decompose` to write body tasklists. The newer GitHub Sub-Issues API uses a separate `subIssues` field and requires the `GraphQL-Features: sub_issues` header. This block does not call `subIssues` — the header is omitted to avoid misleading the reader. See `epic-detection.md` for the `trackedIssues` vs `subIssues` distinction.
+- **Method A uses the `trackedIssues` field (Tasklists API), NOT the Sub-Issues API**: `trackedIssues` resolves the parent→children relationship via GitHub's Tasklists feature (which parses the body `- [ ] #N` section) — this is intentional because the repo uses `/rite:issue:create` (Decompose Path、PR #1079 で flat 化) to write body tasklists. The newer GitHub Sub-Issues API uses a separate `subIssues` field and requires the `GraphQL-Features: sub_issues` header. This block does not call `subIssues` — the header is omitted to avoid misleading the reader. See `epic-detection.md` for the `trackedIssues` vs `subIssues` distinction.
 - **Method A stderr is captured, not suppressed**: Previous `2>/dev/null` silently downgraded auth / network / permission errors to "empty result", which is the silent-skip anti-pattern Issue #513 aims to eliminate. Instead, stderr is captured to a tempfile and surfaced in debug logs on failure.
 - **Method A → Method B fallback is an explicit bash conditional**: branches on `jq length` of Method A's result rather than relying on prose.
 - **Method B uses a per-child loop, not an LLM-generated alias query**: deterministic, fully auditable, O(N) API calls for small N.

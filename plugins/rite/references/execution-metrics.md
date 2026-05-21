@@ -70,7 +70,7 @@ After 3 Issues are collected:
 
 | Classification | Definition | Required Corrective Action |
 |---------------|------------|---------------------------|
-| `plan_miss` | Implementation plan assumptions were incorrect | Add pattern to [`implementation-plan.md`](../commands/issue/implementation-plan.md) plan generation |
+| `plan_miss` | Implementation plan assumptions were incorrect | Add pattern to [`start.md`](../commands/issue/start.md) ステップ 3 (実装計画、PR #1079 で `implementation-plan.md` から移管) plan generation |
 | `impl_miss` | Code implementation error, test failure | Add test cases + record failure pattern in [`coding-principles.md`](../skills/rite-workflow/references/coding-principles.md) |
 | `eval_miss` | Review false positive/negative | Update reviewer skill checklist |
 

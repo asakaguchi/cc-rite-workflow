@@ -28,6 +28,8 @@ Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → 
 | `{base_branch}` | `branch.base` in `rite-config.yml`（default: `main`） |
 | `{branch_name}` | ステップ 2 で生成 |
 | `{pr_number}` | ステップ 6 の `[pr:created:N]` から抽出 |
+| `{project_number}` | `rite-config.yml` の `github.projects.project_number`（Projects enabled 時のみ） |
+| `{parent_issue_number}` | ステップ 1.2 で検出した親 Issue 番号（親 detection 時のみ） |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 
 ---
@@ -151,14 +153,23 @@ develop_err=$(gh issue develop {issue_number} --branch "{branch_name}" 2>&1) || 
 
 ### 2.4 GitHub Projects Status 更新
 
-`rite-config.yml` の `github.projects.enabled: true` の場合のみ実行。`projects-status-update.sh` に委譲:
+`rite-config.yml` の `github.projects.enabled: true` の場合のみ実行。`projects-status-update.sh` に委譲（実 interface は JSON 単一引数。canonical SoT: [`projects-status-update-callsites.md`](./references/projects-status-update-callsites.md)）。失敗時は warning + continue（non-blocking）:
 
 ```bash
-bash {plugin_root}/scripts/projects-status-update.sh \
-  --issue {issue_number} --status "In Progress" --owner {owner} --project {project_number}
+if ! status_err=$(bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+    --argjson issue {issue_number} \
+    --arg owner "{owner}" \
+    --arg repo "{repo}" \
+    --argjson project_number {project_number} \
+    --arg status "In Progress" \
+    --argjson auto_add true \
+    --argjson non_blocking true \
+    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>&1); then
+  echo "WARNING: Projects Status 更新失敗 (non-blocking): $status_err" >&2
+fi
 ```
 
-親 Issue が存在する場合は親も同様に `In Progress` に更新。失敗時は warning を出して continue（non-blocking）。
+親 Issue が存在する場合 (ステップ 1.2 で検出) は親も同様に `In Progress` に更新（`{issue_number}` を `{parent_issue_number}` に差し替え、同じ JSON pattern を再実行）。失敗時は warning + continue。
 
 ### 2.5 Iteration 割り当て（任意）
 
@@ -488,11 +499,20 @@ AskUserQuestion で「PR を Ready for review に変更する / Draft のまま 
 
 ### 8.3 Projects Status In Review
 
-`rite-config.yml.github.projects.enabled: true` の場合:
+`rite-config.yml.github.projects.enabled: true` の場合。canonical JSON pattern（[`projects-status-update-callsites.md`](./references/projects-status-update-callsites.md) Callsite 2 と同形）:
 
 ```bash
-bash {plugin_root}/scripts/projects-status-update.sh \
-  --issue {issue_number} --status "In Review" --owner {owner} --project {project_number}
+if ! status_err=$(bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+    --argjson issue {issue_number} \
+    --arg owner "{owner}" \
+    --arg repo "{repo}" \
+    --argjson project_number {project_number} \
+    --arg status "In Review" \
+    --argjson auto_add false \
+    --argjson non_blocking true \
+    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>&1); then
+  echo "WARNING: Projects Status In Review 更新失敗 (non-blocking): $status_err" >&2
+fi
 ```
 
 ### 8.4 親 Issue の完結判定
@@ -521,8 +541,15 @@ if ! close_err=$(gh issue close {parent_issue_number} \
   echo "WARNING: gh issue close failed for parent #{parent_issue_number}: $close_err" >&2
 fi
 
-if ! status_err=$(bash {plugin_root}/scripts/projects-status-update.sh \
-    --issue {parent_issue_number} --status "Done" --owner {owner} --project {project_number} 2>&1); then
+if ! status_err=$(bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+    --argjson issue {parent_issue_number} \
+    --arg owner "{owner}" \
+    --arg repo "{repo}" \
+    --argjson project_number {project_number} \
+    --arg status "Done" \
+    --argjson auto_add false \
+    --argjson non_blocking true \
+    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>&1); then
   echo "WARNING: parent Projects Status 更新失敗 (Issue closed=$([ -z \"$close_err\" ] && echo yes || echo no)): $status_err" >&2
 fi
 ```

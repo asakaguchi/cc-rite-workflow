@@ -318,11 +318,12 @@ parent_issue_number=$(printf '%s' "$parent_result" | jq -r '.issue_number // emp
 
 ### 5.4 Sub-Issue 一括作成
 
-各 Sub-Issue を順次作成し、親 Issue にリンクする（`link-sub-issue.sh` は positional 4 引数: canonical SoT [`sub-issue-link-handler.md`](../../../references/sub-issue-link-handler.md)）。per-iter で失敗を吸収しつつ実作成数を集計する。`tmpdir` はステップ 5.3 で確保済み:
+各 Sub-Issue を順次作成し、親 Issue にリンクする（`link-sub-issue.sh` は positional 4 引数: canonical SoT [`sub-issue-link-handler.md`](../../references/sub-issue-link-handler.md)）。per-iter で失敗を吸収しつつ実作成数を集計する。`tmpdir` はステップ 5.3 で確保済み:
 
 ```bash
 created_count=0
 failed_count=0
+link_failures=0
 created_numbers=()
 sub_labels_json=$(printf '%s' "{labels_csv}" | jq -R 'split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))')
 
@@ -376,19 +377,40 @@ SUB_BODY_EOF
     continue
   fi
 
-  if ! link_err=$(bash {plugin_root}/scripts/link-sub-issue.sh \
-      "{owner}" "{repo}" "$parent_issue_number" "$sub_number" 2>&1); then
-    echo "WARNING: link Sub-Issue #$sub_number → parent #$parent_issue_number failed: $link_err" >&2
-  fi
+  # Sub-issues API linkage — canonical SoT [`sub-issue-link-handler.md`](../../references/sub-issue-link-handler.md)
+  # Variant B (counting). link-sub-issue.sh は非 blocking failure 時に exit 0 + status="failed"
+  # を返す契約のため、bash exit code ではなく JSON stdout の `.status` を inspect すること。
+  # ⚠️ DRIFT 警告: 本 case 文を編集する際は SoT `references/sub-issue-link-handler.md`
+  # Variant B を同時に更新する責務がある。
+  link_result=$(bash {plugin_root}/scripts/link-sub-issue.sh \
+      "{owner}" "{repo}" "$parent_issue_number" "$sub_number" 2>&1) || link_result="{\"status\":\"failed\",\"message\":\"link-sub-issue.sh fatal exit\",\"warnings\":[\"$link_result\"]}"
+  link_status=$(printf '%s' "$link_result" | jq -r '.status // "failed"' 2>/dev/null || echo "failed")
+  link_msg=$(printf '%s' "$link_result" | jq -r '.message // ""' 2>/dev/null || echo "")
+  case "$link_status" in
+    ok|already-linked)
+      echo "✅ $link_msg"
+      ;;
+    failed)
+      printf '%s' "$link_result" | jq -r '.warnings[]?' 2>/dev/null \
+        | while read -r w; do echo "⚠️ $w" >&2; done
+      echo "⚠️ Sub-issues API linkage failed for #$sub_number; body meta fallback in place" >&2
+      link_failures=$((link_failures + 1))
+      ;;
+    *)
+      # 未知 status を silent 通過させない (Issue #514 MUST NOT)
+      echo "⚠️ Unexpected link status '$link_status' for #$sub_number (msg: $link_msg)" >&2
+      link_failures=$((link_failures + 1))
+      ;;
+  esac
 
   created_numbers+=("$sub_number")
   created_count=$((created_count + 1))
 done
 
-echo "[CONTEXT] SUB_ISSUE_RESULT created=$created_count failed=$failed_count" >&2
+echo "[CONTEXT] SUB_ISSUE_RESULT created=$created_count failed=$failed_count link_failures=$link_failures" >&2
 ```
 
-ステップ 5.6 の完了レポートでは `created_count` と `failed_count` を正直に反映する。
+ステップ 5.6 の完了レポートでは `created_count` / `failed_count` / `link_failures` を正直に反映する（`link_failures > 0` の場合は親-子リンクが欠落している Sub-Issue があるため、ユーザーに手動 link 復旧を促す）。
 
 ### 5.5 親 Issue body 更新
 
@@ -408,12 +430,14 @@ if [ -n "$fetch_output" ]; then
   tmpfile_read=$(printf '%s\n' "$fetch_output" | grep '^tmpfile_read=' | cut -d= -f2-)
   tmpfile_write=$(printf '%s\n' "$fetch_output" | grep '^tmpfile_write=' | cut -d= -f2-)
   original_length=$(printf '%s\n' "$fetch_output" | grep '^original_length=' | cut -d= -f2-)
-  bash {plugin_root}/hooks/issue-body-safe-update.sh apply \
-    --issue {parent_issue_number} \
-    --tmpfile-read "$tmpfile_read" \
-    --tmpfile-write "$tmpfile_write" \
-    --original-length "$original_length" \
-    --parent
+  if ! apply_err=$(bash {plugin_root}/hooks/issue-body-safe-update.sh apply \
+      --issue {parent_issue_number} \
+      --tmpfile-read "$tmpfile_read" \
+      --tmpfile-write "$tmpfile_write" \
+      --original-length "$original_length" \
+      --parent 2>&1); then
+    echo "WARNING: 親 Issue body の更新に失敗 (Sub-Issues セクションの追記が skip された可能性): ${apply_err:0:500}" >&2
+  fi
 fi
 ```
 
@@ -433,6 +457,15 @@ fi
 ### 次のアクション
 - `/rite:issue:start {first_sub_issue}` で最初の Sub-Issue から作業を開始
 - `/rite:issue:list` で全 Sub-Issue 一覧を確認
+```
+
+`link_failures > 0` の場合は上記レポート末尾に以下を併記し、ユーザーに復旧を促す:
+
+```markdown
+### ⚠️ Sub-issues API リンク失敗 ({link_failures} 件)
+- 親 #{parent_issue_number} ←→ 子 #{sub_X_number} の link 確立に失敗した Sub-Issue があります（API 失敗 / rate limit / token scope 等）
+- 親 Issue body の Tasklist と `## 親 Issue` body meta は fallback として残っています
+- 復旧: `bash {plugin_root}/scripts/link-sub-issue.sh {owner} {repo} {parent_issue_number} {sub_X_number}` を該当 Sub-Issue ごとに手動再実行してください
 ```
 
 ステップ 6 へ。

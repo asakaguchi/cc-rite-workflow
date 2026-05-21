@@ -151,7 +151,7 @@ AskUserQuestion で Issue の以下を確認/補完する:
 `create-issue-with-projects.sh` に委譲（Issue 作成 + Projects へ追加 + status / priority / complexity フィールド設定を 1 ステップで実行）:
 
 ```bash
-bash {plugin_root}/scripts/create-issue-with-projects.sh \
+result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh \
   --title "{title}" \
   --body "{body}" \
   --labels "{labels_csv}" \
@@ -159,10 +159,22 @@ bash {plugin_root}/scripts/create-issue-with-projects.sh \
   --complexity "{complexity}" \
   --status "Todo" \
   --project-number {project_number} \
-  --owner {owner}
-```
+  --owner {owner}) || {
+  echo "ERROR: create-issue-with-projects.sh failed (exit $?)" >&2
+  exit 1
+}
 
-出力から `{issue_number}` を抽出。
+[ -z "$result" ] && { echo "ERROR: create-issue-with-projects.sh returned empty result" >&2; exit 1; }
+
+issue_number=$(printf '%s' "$result" | jq -r '.issue_number // empty')
+[ -z "$issue_number" ] && { echo "ERROR: result に issue_number が含まれていません: $result" >&2; exit 1; }
+
+project_reg=$(printf '%s' "$result" | jq -r '.project_registration // "unknown"')
+if [ "$project_reg" = "failed" ]; then
+  echo "WARNING: Issue #$issue_number は作成されましたが Projects 登録に失敗しました" >&2
+  # AskUserQuestion で「手動で Projects 登録 / retry / skip して続行」を選択
+fi
+```
 
 ### 4.4 完了レポート
 
@@ -244,11 +256,15 @@ bash {plugin_root}/scripts/create-issue-with-projects.sh \
 
 ### 5.4 Sub-Issue 一括作成
 
-各 Sub-Issue を順次作成し、親 Issue にリンクする:
+各 Sub-Issue を順次作成し、親 Issue にリンクする。per-iter で失敗を吸収しつつ実作成数を集計する:
 
 ```bash
+created_count=0
+failed_count=0
+created_numbers=()
+
 for sub in $sub_issues; do
-  sub_number=$(bash {plugin_root}/scripts/create-issue-with-projects.sh \
+  sub_result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh \
     --title "{sub_title}" \
     --body "{sub_body}" \
     --labels "{labels_csv}" \
@@ -257,25 +273,58 @@ for sub in $sub_issues; do
     --status "Todo" \
     --project-number {project_number} \
     --owner {owner} \
-    --parent-issue {parent_issue_number} \
-    | jq -r .issue_number)
+    --parent-issue {parent_issue_number} 2>&1) || {
+    echo "WARNING: Sub-Issue '{sub_title}' の作成に失敗: $sub_result" >&2
+    failed_count=$((failed_count + 1))
+    continue
+  }
 
-  bash {plugin_root}/scripts/link-sub-issue.sh \
-    --parent {parent_issue_number} --child $sub_number
+  sub_number=$(printf '%s' "$sub_result" | jq -r '.issue_number // empty')
+  if [ -z "$sub_number" ] || [ "$sub_number" = "null" ]; then
+    echo "WARNING: Sub-Issue '{sub_title}' の result に issue_number 無し: $sub_result" >&2
+    failed_count=$((failed_count + 1))
+    continue
+  fi
+
+  if ! link_err=$(bash {plugin_root}/scripts/link-sub-issue.sh \
+      --parent {parent_issue_number} --child "$sub_number" 2>&1); then
+    echo "WARNING: link Sub-Issue #$sub_number → parent #{parent_issue_number} failed: $link_err" >&2
+  fi
+
+  created_numbers+=("$sub_number")
+  created_count=$((created_count + 1))
 done
+
+echo "[CONTEXT] SUB_ISSUE_RESULT created=$created_count failed=$failed_count" >&2
 ```
+
+ステップ 5.6 の完了レポートでは `created_count` と `failed_count` を正直に反映する。
 
 ### 5.5 親 Issue body 更新
 
-Sub-Issue 一覧を親 Issue body に追記:
+Sub-Issue 一覧を親 Issue body に追記。`issue-body-safe-update.sh` の 3-step pattern で内側 fetch 失敗時の body truncation を防ぐ:
 
 ```bash
-gh issue edit {parent_issue_number} --body "$(gh issue view {parent_issue_number} --json body --jq .body)
+# Step 1: fetch
+fetch_output=$(bash {plugin_root}/hooks/issue-body-safe-update.sh fetch --issue {parent_issue_number} --parent) || {
+  echo "WARNING: 親 Issue body の取得に失敗。Sub-Issues セクションの追記を skip します" >&2
+  fetch_output=""
+}
 
-## Sub-Issues
-- [ ] #{sub_1_number} {sub_1_title}
-- [ ] #{sub_2_number} {sub_2_title}
-- [ ] #{sub_3_number} {sub_3_title}"
+# Step 2: LLM が tmpfile_read を読み、Sub-Issues セクション追記版を tmpfile_write に書く
+
+# Step 3: apply
+if [ -n "$fetch_output" ]; then
+  tmpfile_read=$(printf '%s\n' "$fetch_output" | grep '^tmpfile_read=' | cut -d= -f2-)
+  tmpfile_write=$(printf '%s\n' "$fetch_output" | grep '^tmpfile_write=' | cut -d= -f2-)
+  original_length=$(printf '%s\n' "$fetch_output" | grep '^original_length=' | cut -d= -f2-)
+  bash {plugin_root}/hooks/issue-body-safe-update.sh apply \
+    --issue {parent_issue_number} \
+    --tmpfile-read "$tmpfile_read" \
+    --tmpfile-write "$tmpfile_write" \
+    --original-length "$original_length" \
+    --parent
+fi
 ```
 
 ### 5.6 完了レポート
@@ -319,7 +368,7 @@ create.md は作業 phase ではなく Issue 作成のみなので、flow-state 
 - 各ステップで止まっても Issue が作成されていなければ、ユーザーは同じ入力で `/rite:issue:create` を再実行できる
 - Issue 作成後（`{issue_number}` 確定後）はその Issue を起点に作業を進められる（重複作成を避けるためステップ 2 の重複検出が活きる）
 - AskUserQuestion で「中止」が選ばれた場合のみ workflow 終了
-- sentinel emit / sub-skill return protocol / Mandatory After scaffolding は廃止
+- bash command 失敗時は stderr に `WARNING` または `ERROR` プレフィックスを残し、復旧不能なケースのみ workflow を停止する
 
 ---
 

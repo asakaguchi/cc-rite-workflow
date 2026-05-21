@@ -297,13 +297,33 @@ rite_phase_transition_allowed() {
   # semantic clarity.
   [ -z "$prev" ] && return 0
   [ "$prev" = "$next" ] && return 0
-  [ "$next" = "completed" ] && return 0
-  [ "$next" = "cleanup_completed" ] && return 0
-  [ "$next" = "ingest_completed" ] && return 0
+
+  # Terminal phase acceptance (forward-compat). RITE_DEBUG=1 のときは prev → terminal の
+  # 出処を stderr に WARNING ログとして残し、protocol violation の観測性を改善する。
+  if [ "$next" = "completed" ] || [ "$next" = "cleanup_completed" ] || [ "$next" = "ingest_completed" ]; then
+    if [ "${RITE_DEBUG:-0}" = "1" ]; then
+      # check whether $prev is one of the canonical terminal predecessors. If not, emit WARNING.
+      case "$next:$prev" in
+        completed:lint|completed:pr|completed:review|completed:fix) ;;  # canonical
+        cleanup_completed:cleanup_post_ingest|cleanup_completed:cleanup_pre_ingest) ;;
+        ingest_completed:ingest_pre_lint|ingest_completed:ingest_post_lint) ;;
+        *)
+          echo "[RITE_DEBUG] terminal-accept: prev='$prev' → next='$next' is outside the canonical predecessor set (forward-compat allow)" >&2
+          ;;
+      esac
+    fi
+    return 0
+  fi
 
   local allowed="${_RITE_PHASE_TRANSITIONS[$prev]:-}"
-  # Unknown prev phase → accept (forward compat)
-  [ -z "$allowed" ] && ! rite_phase_is_known "$prev" && return 0
+  # Unknown prev phase → accept (forward compat).
+  # RITE_DEBUG=1 のときは観測性のため stderr に WARNING を残す (SF-7)。
+  if [ -z "$allowed" ] && ! rite_phase_is_known "$prev"; then
+    if [ "${RITE_DEBUG:-0}" = "1" ]; then
+      echo "[RITE_DEBUG] unknown-prev-accept: prev='$prev' (not in _RITE_PHASE_TRANSITIONS) → next='$next' (forward-compat allow)" >&2
+    fi
+    return 0
+  fi
 
   local val
   for val in $allowed; do

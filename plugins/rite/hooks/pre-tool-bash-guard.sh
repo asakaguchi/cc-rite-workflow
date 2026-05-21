@@ -246,7 +246,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
           fi
           if [ "$BLOCKED_PATTERN" = "create-lifecycle-direct-gh-issue" ]; then
             BLOCKED_REASON="/rite:issue:create lifecycle 中 (phase=$STATE_PHASE) に gh issue create を直接実行することは禁止されています (#475 Mode B / #1079 forward-compat for legacy state)."
-            BLOCKED_ALTERNATIVE="Projects 統合 + label/status 設定のため、bash {plugin_root}/scripts/create-issue-with-projects.sh --title ... --body ... --project-number ... を使用してください (create.md ステップ 4.3 / 5.3 / 5.4 参照)。"
+            BLOCKED_ALTERNATIVE="Projects 統合 + label/status 設定のため、bash {plugin_root}/scripts/create-issue-with-projects.sh \"\$(jq -n --arg title ... --arg body_file ... --argjson labels ... --argjson projects ... '{issue:{title:\$title,body_file:\$body_file,labels:\$labels},projects:\$projects}')\" の canonical JSON pattern で呼び出してください (create.md ステップ 4.3 / 5.4 および references/issue-create-with-projects.md 参照)。"
           fi
         fi
       fi

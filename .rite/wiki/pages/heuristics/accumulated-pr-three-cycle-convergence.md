@@ -2,8 +2,12 @@
 title: "累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable"
 domain: "heuristics"
 created: "2026-05-17T13:40:00Z"
-updated: "2026-05-19T17:45:00Z"
+updated: "2026-05-21T08:45:00Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260521T083746Z-pr-1078.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260521T073426Z-pr-1078.md"
   - type: "reviews"
     ref: "raw/reviews/20260519T164439Z-pr-1064-cycle2.md"
   - type: "reviews"
@@ -105,6 +109,23 @@ PR #1064 (`migrate-review-state-to-1.1.sh` + `review-schema-version-check.sh` + 
 3. **scope=`nit-noted` の Issue #1019 M5 受け流し経路が初めて real-world で発火**: cycle 2 で残った LOW-MEDIUM 1 件は `nit-noted` scope 割当て + `accept (認知のみ)` 選択で revocable に accept 永続化されることが期待される (Phase 2.1.A fingerprint suppression、本 Epic #1015 M5 設計)。本 PR はこの経路が初めて real-world cycle で発火するエッジ事例。
 4. **`spec-vs-spec-canonical-priority` heuristic との連動**: 本 PR cycle 1 の CRITICAL × 1 (Issue body vs schema doc canonical) は `[[spec-vs-spec-canonical-priority]]` の origin 事例。本ページは convergence pattern (cycle 数の reproducibility)、対称ページは canonical priority resolution の意思決定原則 — 同一 PR から相補的な 2 つの heuristic が抽出されたことは Wiki 経験則の coverage が深化している evidence。
 
+### PR #1078 (Issue #1077): 5-cycle shrinking convergence with reviewer disagreement resolution
+
+PR #1078 (`start-execute.md` / `checklist-auto-check.md` / `cleanup.md` の 3 site に threshold=5 mass-residual warning + workflow_incident emit を導入) は、本ページが記録してきた 3-cycle / 1-cycle convergence pattern の **5-cycle 拡張版** 事例。13 findings を **8 → 3 → 2 → 1 → 0** の完全 shrinking trajectory で 5 cycle 収束:
+
+- **Cycle 1 (8 findings: 1 CRITICAL / 3 HIGH / 2 MEDIUM / 1 LOW / 1 follow-up)**: prompt-engineer + code-quality 2 reviewer。CRITICAL は Phase 5.4.4.1 detector 不在主張 prose の誤記、HIGH ×3 は Simplification Charter Issue #N 引用残存 (cross-validated)、printf vs echo 非対称、Step 0 → AskUserQuestion silent fall-through、MEDIUM ×2 は reminder 冗長性 + empty-body guard 欠落、LOW ×1 placeholder hint
+- **Cycle 2 (3 LOW)**: cycle 1 fix が phase number 表記 drift (`Phase 5.2.1` vs `5.2.1.1`) と caller list 表記揺れを導入 (Wiki 経験則「recursive recurrence in fix layer」の発火)。3 sites L295/L309/L317 中 1 site のみ訂正で 2 sites 取り残し
+- **Cycle 3 (2 LOW)**: cycle 2 fix が L309 のみ訂正、対称位置 L295/L317 を見落とし (`Asymmetric Fix Transcription` の発火)
+- **Cycle 4 (1 LOW + reviewer disagreement, Quality Signal 3)**: cycle 3 fix で L295/L317 訂正後、code-quality は「L309 vs L317 の `5.2.1` (umbrella) vs `5.2.1.1` (sub-phase) は意図的使い分け」と承認、prompt-engineer は「L309/L317 一致性のため両方 5.2.1.1 にすべき」と主張。コミット者は後者採用
+- **Cycle 5 (0 findings mergeable)**: 両 reviewer 独立承認、5-cycle で完全収束
+
+**PR #1011 / #1032 / #1049 / #1064 との対比による新観点**:
+
+1. **5-cycle convergence は 3-cycle 連鎖 + 2 cycle 拡張で成立する**: PR #1011 (3 cycle) / PR #1032 (4 cycle) が「上限」とされていたが、本 PR は drift class が cycle ごとに細粒度化する経路 (phase number umbrella vs sub-phase の 3 site 対称化が cycle 2/3/4 で順次 surface) で **5 cycle に拡張** された。`recursive recurrence in fix layer` の発火上限は drift class の **layer 数** (本 PR では 3 site × 2 layer = 6 sub-drift) で決まる empirical 観点を支持
+2. **Reviewer disagreement (Quality Signal 3) が legitimate な合意形成 path として機能**: cycle 4 の reviewer disagreement は debate phase 未起動でコミット者判断による 1 reviewer 採用 → cycle 5 で両 reviewer 承認という解決経路を辿った。`umbrella vs sub-phase 使い分け` という設計レベルの argument は debate よりも実装による証明 (cycle 5 で両 reviewer 承認) のほうが効率的という観察
+3. **Shrinking trajectory 8 → 3 → 2 → 1 → 0 は initial detection completeness の指標**: cycle 1 で 8 findings 検出は 2 reviewer 並列の最大検出力。各 cycle で半減未満 (8→3 で 5/8 削減、3→2 で 2/3 維持、2→1 で 1/2 削減) のシリアル shrinking は、各 cycle fix が partial structural anchor 化 (`Asymmetric Fix Transcription` の sub-pattern 段階解消) を意味する
+4. **Wiki 経験則の自己実証**: 本 PR の review-fix loop 自体が `accumulated-pr-three-cycle-convergence` / `asymmetric-fix-transcription` / `fix-induced-drift-in-cumulative-defense` / `phase-number-structural-symmetry` の 4 既存 Wiki 経験則の **実測再現**。Wiki 経験則がワークフロー自身の品質改善に feed back する self-reinforcing loop が cycle 5 で完結
+
 ## 関連ページ
 
 - [Spec-vs-spec 矛盾は canonical SoT 表記のある側を優先する](../heuristics/spec-vs-spec-canonical-priority.md)
@@ -118,3 +139,5 @@ PR #1064 (`migrate-review-state-to-1.1.sh` + `review-schema-version-check.sh` + 
 - [PR #1032 cycle 4 review (mergeable — bash semantics 版 3-cycle 連鎖収束、cycle 4 で両 reviewer 0 findings 合意、drift class 横断 (bash 言語仕様 → documentation pointer → numeric counter) でも 4 cycle で収束する 2 連続再現事例)](../../raw/reviews/20260517T223309Z-pr-1032.md)
 - [PR #1049 cycle 2 re-review (mergeable — 1-cycle convergence の下限事例、3 reviewer 並列レビューで HIGH cross-validated → cycle 1 fix で structural resolution → cycle 2 で 0 finding mergeable。3-cycle 連鎖の対極として 1-cycle 収束が成立する 3 条件 (structural clarity / cycle 1 fix semantic 完全性 / reviewer cross-validation depth) を実測)](../../raw/reviews/20260518T165729Z-pr-1049-cycle2.md)
 - [PR #1064 cycle 2 re-review (mergeable — 14-finding mass batch fix の 1-cycle convergence 上限事例、4 reviewer 並列で 14 findings → cycle 1 一括 structural fix → cycle 2 で 1-nit-noted (Issue #1019 M5 受け流し経路) + 2 recommendations のみ。`spec-vs-spec-canonical-priority` heuristic の origin 事例と連動)](../../raw/reviews/20260519T164439Z-pr-1064-cycle2.md)
+- [PR #1078 cycle 5 mergeable (5-cycle shrinking convergence、13 findings を 8→3→2→1→0 で収束、cycle 4 reviewer disagreement (Quality Signal 3) を実装による合意形成で解消、Wiki 経験則 4 件の self-reinforcing 実測再現)](../../raw/reviews/20260521T083746Z-pr-1078.md)
+- [PR #1078 cycle 1 fix patterns (累積 13 findings の 7 件 batch fix、cycle 1 で Simplification Charter cross-validated 違反検出、printf vs echo 同一 SoT 内 style consistency、Step 0 → AskUserQuestion silent fall-through 防止 MUST 句強化、Phase 5.4.4.1 detector 不在主張の prose 誤記訂正の 4 fix pattern)](../../raw/fixes/20260521T073426Z-pr-1078.md)

@@ -93,14 +93,9 @@ echo "=== orphan detection (whitelist key NOT in --phase usage) ==="
 # 現在のコードパスでは write されないことが意図された marker。removal は別 PR scope
 # (whitelist 簡素化 PR 候補) で扱う。本テストでは exception list として通過させる。
 DEAD_KEY_EXCEPTIONS=(
-  # phase5_post_pr: legacy ratchet marker。start.md Phase 5.3 は phase5_pr → phase5_review
-  # に直接遷移し、間接 phase5_post_pr は書かない。whitelist `["phase5_pr"]="phase5_post_pr phase5_review ..."`
-  # と `["phase5_post_pr"]="phase5_review"` は legacy backward-compat として保持 (devops cycle-2 CRITICAL)。
-  "phase5_post_pr"
-  # phase5_ready: legacy intermediate phase。rite:pr:ready Phase 4 defense-in-depth で
-  # phase5_post_review/phase5_post_fix → phase5_post_ready 直接書込 (phase5_ready skip)。
-  # whitelist target 列挙は意図的に残存 (start-finalize.md L64 の documented design comment)。
-  "phase5_ready"
+  # PR #1079 で whitelist を flat workflow phase 名のみに整理したため、現状は documented
+  # exception 不要。将来 backward-compat marker を追加する場合はここに entry + rationale を
+  # 記載すること。
 )
 
 # comm -23 で A (whitelist) にあって B (used) に無い key を検出

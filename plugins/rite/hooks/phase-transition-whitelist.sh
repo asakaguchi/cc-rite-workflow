@@ -1,9 +1,17 @@
 #!/bin/bash
-# rite workflow - Phase Transition Whitelist (#490)
+# rite workflow - Phase Transition Whitelist (#490 / refactored in #1079)
 #
-# Provides the canonical phase-transition graph used by stop-guard.sh and
-# other orchestration helpers to detect silent phase-skipping bugs in
+# Provides the canonical phase-transition graph used by pre-tool-bash-guard.sh
+# and other orchestration helpers to detect silent phase-skipping bugs in
 # /rite:issue:start end-to-end flow.
+#
+# PR #1079 で /rite:issue:start を flat single-file workflow へ統合した際に、
+# 旧 sub-skill chain (start-execute / start-publish / start-finalize) と
+# 多数の中間 phase (phase5_*_running / phase5_post_* / phase5_stop_hook 等)
+# は退役。本 whitelist は新 9 phase (init / branch / plan / implement /
+# lint / pr / review / fix / completed) に対応する。legacy phase 名は
+# rite_phase_transition_allowed() の fail-open path で accept される
+# (forward-compat) ため、旧 state file の resume 経路を破壊しない。
 #
 # This file is designed to be SOURCED, not executed directly. After sourcing:
 #   - `rite_phase_transition_allowed <prev> <next>` — returns 0 if allowed, 1 otherwise
@@ -36,163 +44,30 @@ fi
 # Baked-in whitelist. Each entry maps a phase to the phases it may transition to.
 # Empty string ("") is accepted as a synthetic "workflow start" predecessor for
 # any phase, since /rite:issue:start begins with no prior state.
+#
+# PR #1079: /rite:issue:start を flat single-file workflow へ統合。9 phase
+# (init / branch / plan / implement / lint / pr / review / fix / completed)
+# は start.md のステップ番号と 1:1 対応する。/rite:resume の routing は
+# commands/resume.md Phase 3.2 表が SoT。legacy phase 名 (phase5_* /
+# phase1_* / phase2_* / phase3_*) は fail-open で accept される
+# (forward-compat) ため、旧 state file からの遷移は警告無しで通過する。
 declare -gA _RITE_PHASE_TRANSITIONS=(
-  # Phase 1 → Phase 1.5/1.6/2
-  ["phase1_5_parent"]="phase1_5_post_parent"
-  ["phase1_5_post_parent"]="phase1_6_child phase2_branch phase3_plan"
-  ["phase1_6_child"]="phase1_6_post_child"
-  ["phase1_6_post_child"]="phase2_branch phase3_plan"
-
-  # Phase 2: branch → projects → iteration → work memory → plan
-  # Since cycle-3 MEDIUM #3 fix, every 2.x phase always writes its post-marker
-  # (skip is signalled via the `[CONTEXT] PHASE_2_4_STATE=skip` marker and is recorded
-  # as a whitelist-valid transition). Direct phase2_post_branch → phase2_work_memory
-  # and phase2_post_projects → phase2_work_memory paths were removed because they
-  # bypass the iteration-phase chain (prompt-engineer cycle-3 MEDIUM).
-  #
-  # Resume/Recognized-Patterns skip edges (#498):
-  # When /rite:resume detects an existing branch (Phase 2.2) or Phase 2.2.1
-  # Recognized Patterns selects a non-Issue-numbered branch, Phases 2.3-2.6
-  # are skipped entirely. The workflow jumps directly to Phase 3 (plan), so
-  # every Phase 2 intermediate state must be allowed to transition to phase3_plan.
-  # Similarly, Phase 1.5/1.6 post-markers must reach phase3_plan when
-  # Recognized Patterns triggers before Phase 2.3.
-  ["phase2_branch"]="phase2_post_branch phase3_plan"
-  ["phase2_post_branch"]="phase2_projects phase3_plan"
-  ["phase2_projects"]="phase2_post_projects phase3_plan"
-  ["phase2_post_projects"]="phase2_iteration phase3_plan"
-  ["phase2_iteration"]="phase2_post_iteration phase3_plan"
-  ["phase2_post_iteration"]="phase2_work_memory phase3_plan"
-  ["phase2_work_memory"]="phase2_post_work_memory phase3_plan"
-  ["phase2_post_work_memory"]="phase3_plan"
-
-  # Phase 3: implementation plan
-  # Phase 5.0 (Stop Hook Verification) is mandatory — transition MUST go through phase5_stop_hook.
-  # Do NOT allow direct phase3_post_plan → phase5_lint (would silently skip Stop Hook verification).
-  # phase3_post_plan → phase3_plan is accepted for /rite:resume retry after plan was already
-  # completed in a prior session (code-quality cycle-3 MEDIUM).
-  # phase3_post_plan → phase5_execute_running is the new delegation entry point (PR F #902).
-  ["phase3_plan"]="phase3_post_plan"
-  ["phase3_post_plan"]="phase5_stop_hook phase5_execute_running phase3_plan"
-
-  # Phase 5.0: stop-hook verification
-  ["phase5_stop_hook"]="phase5_post_stop_hook"
-  ["phase5_post_stop_hook"]="phase5_lint"
-
-  # Phase 5.1/5.2: implement + lint
-  ["phase5_lint"]="phase5_post_lint"
-  # phase5_post_lint → phase5_pr は /rite:resume retry path 用 (resume.md sub-phase resume details table から
-  # phase5_post_lint phase で interrupted した場合の直接 Phase 5.3 進入を許容)。
-  # 新 PR F flow では phase5_post_execute 経由が正規路だが、legacy resume path を破壊しないため retain する。
-  ["phase5_post_lint"]="phase5_pr phase5_lint phase5_post_execute"
-
-  # /rite:issue:start-execute sub-skill (PR F #902)
-  # start.md Phase 5.0-5.2.1 delegation: orchestrator writes phase5_execute_running before invoke,
-  # sub-skill writes phase5_post_execute when done. Orchestrator routes to phase5_pr after
-  # [start:execute:completed] sentinel (success path), or to phase5_completion after
-  # [start:execute:aborted] sentinel (abort path — 5.1.3 中止 / [lint:aborted]).
-  ["phase5_execute_running"]="phase5_stop_hook phase5_post_execute"
-
-  # /rite:issue:start-publish sub-skill (PR G1 #903)
-  # start.md Phase 5.3/5.4 delegation: orchestrator writes phase5_publish_running before invoke,
-  # sub-skill writes phase5_post_publish when done. Orchestrator routes to phase5_ready /
-  # phase5_post_ready after [start:publish:completed] sentinel (success path — mergeable or
-  # replied-only), or to phase5_completion after [start:publish:aborted] sentinel (abort path —
-  # pr:create-failed / fix:error user-terminate).
-  # phase5_post_execute (PR F terminal) → phase5_publish_running (PR G1 delegation entry) を
-  # 新規 edge として許容する。
-  ["phase5_post_execute"]="phase5_pr phase5_publish_running phase5_completion"
-  ["phase5_publish_running"]="phase5_pr phase5_post_publish"
-  # phase5_post_publish (PR G1 terminal) → phase5_finalize_running (PR G2 delegation entry) を
-  # 新規 edge として追加 (PR G2 #904)。
-  ["phase5_post_publish"]="phase5_ready phase5_post_ready phase5_ready_error phase5_completion phase5_finalize_running"
-
-  # /rite:issue:start-finalize sub-skill (PR G2 #904)
-  # start.md Phase 5.5-Termination delegation: orchestrator writes phase5_finalize_running
-  # before invoke, sub-skill writes terminal `completed` via Workflow Termination when done.
-  # Workflow terminal sentinel is [start:finalize:completed] (no further phase work) or
-  # [start:finalize:aborted] (Phase 5.5 user selects 「More fixes」/「Phase 5.6 へスキップ」/
-  # [ready:error] terminate, or abort entry from [start:execute:aborted] / [start:publish:aborted]).
-  # success path: phase5_finalize_running → phase5_post_ready (rite:pr:ready defense-in-depth
-  #   direct write, skipping phase5_ready middle phase) → phase5_status_in_review →
-  #   phase5_post_status_in_review → phase5_metrics → phase5_post_metrics → phase5_completion →
-  #   phase5_parent_completion → phase5_post_parent_completion → completed
-  # abort path: phase5_finalize_running → phase5_completion → completed (abort entry skips Phase
-  #   5.5/5.5.1/5.5.2/5.7 and goes directly to Phase 5.6 / Workflow Termination)
-  # phase5_ready_error: rite:pr:ready error path written by ready.md Phase 3.1.
-  # Note: no separate phase5_post_finalize indirection — [start:finalize:completed] IS the
-  # workflow terminal sentinel per design doc SPEC-TECH-DECISIONS #3.
-  ["phase5_finalize_running"]="phase5_ready phase5_post_ready phase5_ready_error phase5_completion completed"
-
-  # Phase 5.3: PR create
-  # start.md Phase 5.3 Mandatory After transitions directly from phase5_pr to phase5_review
-  # (no intermediate phase5_post_pr write). Allow both the direct path and the legacy
-  # post_pr marker for backward compat (devops cycle-2 CRITICAL).
-  # phase5_pr → phase5_post_publish は [pr:create-failed] abort path 用 (PR G1)。
-  # start-publish.md の Return Output Format Self-patch が previous_phase=phase5_pr のまま
-  # phase5_post_publish へ patch する経路を whitelist 化する (runtime BLOCKED 防止)。
-  ["phase5_pr"]="phase5_post_pr phase5_review phase5_post_publish"
-  ["phase5_post_pr"]="phase5_review"
-
-  # Phase 5.4: review-fix loop
-  # `rite:pr:ready` defense-in-depth directly writes phase5_post_ready from phase5_post_review /
-  # phase5_post_fix, bypassing phase5_ready. Allow that transition to avoid invalid-transition
-  # blocks on the mergeable path (devops-reviewer CRITICAL #1).
-  # phase5_post_review / phase5_post_fix → phase5_post_publish は start-publish sub-skill 終端
-  # (sub-skill が review-fix loop の最終 internal phase から caller-write の post_publish へ抜ける) edge (PR G1 #903)。
-  ["phase5_review"]="phase5_post_review"
-  ["phase5_post_review"]="phase5_fix phase5_ready phase5_post_ready phase5_ready_error phase5_post_publish"
-  ["phase5_fix"]="phase5_post_fix"
-  ["phase5_post_fix"]="phase5_review phase5_ready phase5_post_ready phase5_ready_error phase5_post_publish"
-
-  # Phase 5.5: ready → status → metrics → completion
-  # phase5_ready_error is a terminal error state emitted by ready.md Phase 3.1 when skill errors.
-  # (旧コメントは "Phase 4.5" と stale 記述だった。実際の emit 点は develop baseline 時点から
-  #  ready.md `### 3.1 Execute gh pr ready` 内であり、本コメントはその事実を反映する訂正である。
-  #  Issue #659 の renumber は Phase 4.5 削除/4.2 統合に限定されており、Phase 3.1 emit は不変)
-  # (devops-reviewer HIGH #5). Allow error → post_ready and error → completed transitions so the
-  # workflow can recover via user choice (retry / manual / terminate).
-  ["phase5_ready"]="phase5_post_ready phase5_ready_error"
-  ["phase5_ready_error"]="phase5_post_ready completed"
-  ["phase5_post_ready"]="phase5_status_in_review"
-  ["phase5_status_in_review"]="phase5_post_status_in_review"
-  ["phase5_post_status_in_review"]="phase5_metrics"
-  ["phase5_metrics"]="phase5_post_metrics"
-  # phase5_post_metrics → phase5_completion is the single valid path. The legacy
-  # "completed" direct edge was removed after the Post-completion block moved to
-  # Workflow Termination (prompt-engineer cycle-2 MEDIUM #1).
-  ["phase5_post_metrics"]="phase5_completion"
-
-  # Phase 5.6 / 5.7: completion + parent completion + parent close (via rite:issue:close)
-  # "completed" is a terminal state reachable from multiple phases (post_metrics, completion,
-  # parent_completion, post_parent_completion). The Post-completion block historically patched
-  # phase="completed" directly after phase5_post_metrics, so we accept the direct transition
-  # (prompt-engineer + devops CRITICAL #2).
-  # Phase 5.7.2 now invokes rite:issue:close as a sub-skill (Issue #534), adding
-  # phase5_parent_close / phase5_post_parent_close to the transition chain.
-  ["phase5_completion"]="phase5_parent_completion completed"
-  ["phase5_parent_completion"]="phase5_parent_close phase5_post_parent_completion"
-  ["phase5_parent_close"]="phase5_post_parent_close"
-  ["phase5_post_parent_close"]="phase5_post_parent_completion"
-  ["phase5_post_parent_completion"]="completed"
-
-  # Terminal: "completed" MAY re-enter phase5_completion only in /rite:resume scenarios.
-  # Under normal flow, transitions out of "completed" are rejected by rite_phase_transition_allowed
-  # (terminal state). The empty-value listing below keeps the name known as a source for
-  # rite_phase_is_known().
+  # /rite:issue:start (flat workflow, PR #1079 +)
+  # 各 step は前 step の phase からの遷移を受理する。/rite:resume が中断
+  # 復帰経路として「同 phase → 同 phase」を書く場合も accept する
+  # (rite_phase_transition_allowed の `[ "$prev" = "$next" ]` 短絡で対応)。
+  ["init"]="branch plan"
+  ["branch"]="plan implement"
+  ["plan"]="implement lint"
+  ["implement"]="lint pr"
+  ["lint"]="pr review completed"
+  ["pr"]="review completed"
+  ["review"]="fix pr completed"
+  ["fix"]="review pr completed"
   ["completed"]=""
-
-  # /rite:issue:create lifecycle (#475).
-  # Orchestrator (create.md) writes create_interview → create_post_interview → create_delegation,
-  # and terminal sub-skills (create-register/create-decompose) write create_completed.
-  # Registering these in the whitelist enables stop-guard invalid-transition detection
-  # when the orchestrator silently skips sub-skill delegation (Mode B) or misroutes flow.
-  # create_completed is already treated as a universal terminal in rite_phase_transition_allowed().
-  ["create_interview"]="create_post_interview"
-  ["create_post_interview"]="create_delegation create_interview"
-  ["create_delegation"]="create_post_delegation create_completed"
-  ["create_post_delegation"]="create_completed"
-  ["create_completed"]=""
+  # create.md は flat 化後 terminal state を `completed` (start.md と同じ) で書き込むため、
+  # 旧 `create_completed` は whitelist から削除済。session-end.sh / pre-tool-bash-guard.sh
+  # の `create_*` lifecycle 検出は legacy state file 残置用 (forward-compat)。
 
   # /rite:pr:cleanup lifecycle (#604).
   # cleanup.md Phase 4 (wiki-auto-ingest) → Phase 5 (Completion Report) 多層防御で導入。
@@ -423,7 +298,6 @@ rite_phase_transition_allowed() {
   [ -z "$prev" ] && return 0
   [ "$prev" = "$next" ] && return 0
   [ "$next" = "completed" ] && return 0
-  [ "$next" = "create_completed" ] && return 0
   [ "$next" = "cleanup_completed" ] && return 0
   [ "$next" = "ingest_completed" ] && return 0
 

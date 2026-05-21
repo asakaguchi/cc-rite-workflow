@@ -187,27 +187,21 @@ Extract phase information from the work memory comment:
 - ブランチ: `/\*\*ブランチ\*\*: (.+)/`
 - 最終更新: `/\*\*最終更新\*\*: (.+)/`
 
-**Phase detail mapping:**
+**Phase detail mapping (flat workflow, PR #1079 +):**
 
-| フェーズ | フェーズ詳細 |
-|---------|------------|
-| `phase0` | Epic/Sub-Issues 判定 |
-| `phase1` | 品質検証 |
-| `phase2` | ブランチ作成・準備 |
-| `phase3` | 実装計画生成 |
-| `phase4` | 作業開始準備 |
-| `phase5_implementation` | 実装作業中 |
-| `phase5_lint` | 品質チェック中 |
-| `phase5_post_lint` | チェックリスト確認中 |
-| `phase5_execute_running` | 実行 phase 中 (Stop Hook → Implementation → Lint → Checklist) |
-| `phase5_post_execute` | PR 作成準備中 |
-| `phase5_pr` | PR 作成中 |
-| `phase5_review` | レビュー中 |
-| `phase5_post_review` | レビュー後処理 |
-| `phase5_fix` | レビュー修正中 |
-| `phase5_post_fix` | レビュー修正後処理 |
-| `phase5_post_ready` | Ready 処理後 |
-| `completed` | 完了 |
+| フェーズ | フェーズ詳細 | start.md step |
+|---------|------------|---------------|
+| `init` | Issue 取得・親子判定 | 1 |
+| `branch` | ブランチ作成 | 2 |
+| `plan` | 実装計画生成 | 3 |
+| `implement` | 実装作業中 | 4 |
+| `lint` | 品質チェック中 | 5 |
+| `pr` | PR 作成中 | 6 |
+| `review` | レビュー中 | 7.1 |
+| `fix` | レビュー修正中 | 7.2 |
+| `completed` | 完了 | — |
+
+(legacy `phase0` / `phase1*` / `phase2*` / `phase3*` / `phase4` / `phase5_*` は 3.2 節 Legacy compatibility 表で routing する)
 
 ### 1.4 Validate Phase Information
 
@@ -486,31 +480,25 @@ After switching to the correct branch, display a summary of what has changed sin
 
 Execute command-specific resume processing based on the `コマンド` and `フェーズ` values from the work memory. The mapping is defined in the tables below for each command type.
 
-#### For rite:issue:start
+#### For rite:issue:start (flat workflow, PR #1079 +)
 
-| Interrupted phase | Resume action |
-|-------------------|---------------|
-| `phase0` | Resume from Phase 1 (Quality verification) |
-| `phase1` | Resume from Phase 2 (Work preparation) |
-| `phase2` | Resume from Phase 3 (Implementation plan generation) |
-| `phase3` | Resume from Phase 4 (Work start guidance) |
-| `phase4` | Resume from Phase 5 (End-to-end execution) |
-| `phase5_implementation` | Continue implementation work |
-| `phase5_lint` | Resume from lint |
-| `phase5_post_lint` | Resume from checklist confirmation |
-| `phase5_execute_running` | Resume from Phase 5.0-5.2.1 (Execute sub-skill) |
-| `phase5_post_execute` | Resume from Phase 5.0-5.2.1 (Execute sub-skill) |
-| `phase5_pr` | Resume from PR creation |
-| `phase5_review` | Resume from review |
-| `phase5_post_review` | Execute Phase 5.4.2 review result routing, then proceed to fix or completion |
-| `phase5_fix` | Continue review fix work |
-| `phase5_post_fix` | Execute Phase 5.4.5 fix result routing, then proceed to re-review or completion |
-| `phase5_post_ready` | Resume from Phase 5.5.1 (Issue Status update to "In Review") |
-| `completed` | Issue already completed — display status and offer next actions |
+`/rite:issue:start` は flat single-file workflow に統合済み。phase 名は `commands/issue/start.md` のステップ番号と 1:1 対応する 9 種:
+
+| Interrupted phase | Resume action | start.md step |
+|-------------------|---------------|---------------|
+| `init` | Resume from ステップ 1 (Issue 取得・親子判定) | 1 |
+| `branch` | Resume from ステップ 2 (ブランチ作成) | 2 |
+| `plan` | Resume from ステップ 3 (実装計画生成) | 3 |
+| `implement` | Continue implementation work from ステップ 4 (refer to implementation plan in work memory and continue from incomplete checklist items) | 4 |
+| `lint` | Resume from ステップ 5 (invoke `/rite:lint` via Skill tool) | 5 |
+| `pr` | Resume from ステップ 6 (invoke `/rite:pr:create` via Skill tool) | 6 |
+| `review` | Resume from ステップ 7.1 (invoke `/rite:pr:review` via Skill tool, then route on `[review:*]` pattern) | 7.1 |
+| `fix` | Resume from ステップ 7.2 (invoke `/rite:pr:fix` via Skill tool, then route on `[fix:*]` pattern) | 7.2 |
+| `completed` | Issue already completed — display status and offer next actions | — |
 
 #### 3.2.1 Resume Execution
 
-`/rite:resume` detects the phase value from work memory and invokes the corresponding command via the Skill tool:
+`/rite:resume` detects the phase value from flow state and invokes `rite:issue:start` via the Skill tool:
 
 ```
 Skill ツール呼び出し:
@@ -518,23 +506,23 @@ Skill ツール呼び出し:
   args: "{issue_number}"
 ```
 
-Each command checks work memory at the start of its own execution, and if present, resumes processing from the recorded phase.
+`start.md` は冒頭で flow state を読み、上表の Resume action 行に従って対応ステップから再開する。
 
-**phase5_* sub-phase resume details:**
+#### Legacy phase 名 (pre-#1079) compatibility
 
-| Sub-phase | Specific resume action |
-|-----------|----------------------|
-| `phase5_implementation` | Refer to the implementation plan in work memory and continue from incomplete tasks |
-| `phase5_lint` | Invoke `/rite:lint` via the Skill tool |
-| `phase5_post_lint` | Execute Phase 5.2.1 checklist confirmation, then proceed to PR creation |
-| `phase5_execute_running` | Invoke `rite:issue:start-execute` via Skill tool |
-| `phase5_post_execute` | Invoke `rite:issue:start-execute` via Skill tool |
-| `phase5_pr` | Invoke `/rite:pr:create` via the Skill tool |
-| `phase5_review` | Invoke `/rite:pr:review` via the Skill tool |
-| `phase5_post_review` | Execute Phase 5.4.2 review result routing (check review pattern in work memory context) |
-| `phase5_fix` | Invoke `/rite:pr:fix` via the Skill tool |
-| `phase5_post_fix` | Invoke `/rite:pr:fix` via the Skill tool (will detect completion and output pattern) |
-| `phase5_post_ready` | Execute Phase 5.5.1 Issue Status update to "In Review", then proceed to Phase 5.5.2 metrics and Phase 5.6 completion |
+旧 sub-skill chain アーキテクチャで使われていた phase 名が残った state file に対しては、以下の compat 表で routing する。新規 state file は flat workflow phase 名のみを書き込む:
+
+| Legacy phase | Compat routing |
+|-------------|----------------|
+| `phase0` / `phase1` / `phase2` / `phase3` / `phase4` / `phase5_implementation` / `phase5_stop_hook` / `phase5_post_stop_hook` / `phase5_execute_running` / `phase5_post_execute` | Resume from ステップ 4 (implement) — implementation context が最も近い |
+| `phase5_lint` / `phase5_post_lint` | Resume from ステップ 5 (lint) |
+| `phase5_publish_running` / `phase5_pr` | Resume from ステップ 6 (pr) |
+| `phase5_review` / `phase5_post_review` | Resume from ステップ 7.1 (review) |
+| `phase5_fix` / `phase5_post_fix` | Resume from ステップ 7.2 (fix) |
+| `phase5_finalize_running` / `phase5_post_ready` / `phase5_status_in_review` / `phase5_metrics` / `phase5_completion` / `phase5_parent_close` / `phase5_post_parent_completion` | Resume from ステップ 8 (ready / status / metrics / parent close を実態に応じて選択) |
+| `phase1_5_parent` / `phase1_5_post_parent` / `phase1_6_child` / `phase1_6_post_child` | Resume from ステップ 1 (init — 親子判定をやり直す) |
+| `phase2_*` | Resume from ステップ 2 (branch) |
+| `phase3_*` | Resume from ステップ 3 (plan) |
 
 #### For rite:issue:create
 

@@ -306,7 +306,7 @@ gh issue view {issue_number} --json body --jq '.body'
 
 **1.6.5.2 Detect Incomplete Checklist Items**
 
-抽出されたチェックリストから `- [ ]` 項目を検出 (除外パターン: `- [ ] #XX` 親子 Tasklist)。検出件数が **5 件以上** の場合は primary path (`implement.md` Phase 5.1.1.1 per-task / `checklist-auto-check.md` Phase 5.2.1) の機能不全を示唆するため `workflow_incident` sentinel (`type=manual_fallback_adopted`, `--root-cause-hint=checklist_mass_remaining_at_cleanup`) を non-blocking で emit する。emit は cleanup session の stderr に observability log として記録される。`/rite:pr:cleanup` workflow には Phase 5.4.4.1 detector が存在しないため (workflow-incident-detection.md caller 表は lint/pr:create/pr:review/pr:fix/pr:ready の 5 caller のみ)、本 sentinel は cleanup 内で自動 Issue 化されない。手動 triage が必要な場合は stderr ログを確認すること:
+抽出されたチェックリストから `- [ ]` 項目を検出 (除外パターン: `- [ ] #XX` 親子 Tasklist)。検出件数が **5 件以上** の場合は primary path (`implement.md` Phase 5.1.1.1 per-task / `checklist-auto-check.md` Phase 5.2.1.1 Auto-Check) の機能不全を示唆するため `workflow_incident` sentinel (`type=manual_fallback_adopted`, `--root-cause-hint=checklist_mass_remaining_at_cleanup`) を non-blocking で emit する。emit は cleanup session の stderr に observability log として記録される。`/rite:pr:cleanup` workflow には Phase 5.4.4.1 detector が存在しないため (workflow-incident-detection.md caller 表は lint/pr:create/pr:review/pr:fix/pr:ready の 5 caller のみ)、本 sentinel は cleanup 内で自動 Issue 化されない。手動 triage が必要な場合は stderr ログを確認すること:
 
 ```bash
 incomplete_count=$(gh issue view {issue_number} --json body --jq '.body' \

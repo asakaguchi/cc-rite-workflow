@@ -48,7 +48,7 @@ Retain `workflow_incident_enabled` in conversation context. Phase 5.4.4.1 reads 
 
 `set -euo pipefail` + ERR trap を有効化した caller (hook 等) は、上記 Canonical bash literal を **そのまま** copy-paste すると silent regression を再発する経路がある。`workflow_incident:` section が `rite-config.yml` に存在しない場合、`grep -E '^[[:space:]]+enabled:'` が no-match で exit 1 を返し、pipefail で pipeline 全体が exit 1 になる。`$(...)` substitution 経由で assignment 文の exit code が non-zero となり、ERR trap が発火して silent exit する経路を生む。
 
-PR #975 cycle 2 CRITICAL では `plugins/rite/hooks/stop-create-interview-block.sh` の `workflow_incident.enabled` parser がまさにこの経路で発火し、Stop hook が user-facing ACTION message を表示せず exit する regression を発生させた。canonical (上記) は default 想定で動作するが、`set -euo pipefail` + ERR trap caller では assignment 末尾 pipeline に `|| true` を追加した以下 variant を使用すること:
+PR #975 cycle 2 CRITICAL では当時 hooks/ 配下に存在した `stop-create-interview-block.sh` (#1079 で撤去済) の `workflow_incident.enabled` parser がまさにこの経路で発火し、Stop hook が user-facing ACTION message を表示せず exit する regression を発生させた。当該 hook は撤去済だが、他の `set -euo pipefail` + ERR trap caller (session-end.sh / pre-tool-bash-guard.sh 等) でも同じ pipefail 経路が再現しうる。canonical (上記) は default 想定で動作するが、strict-mode caller では assignment 末尾 pipeline に `|| true` を追加した以下 variant を使用すること:
 
 ```bash
 # Canonical との差分: `tr -d '[:space:]')` → `tr -d '[:space:]' || true)`
@@ -65,7 +65,7 @@ case "$workflow_incident_enabled" in
 esac
 ```
 
-> **Drift detection contract**: `plugins/rite/hooks/tests/sentinel-visibility-rule.test.sh` Section 1.1 は (a) 本 subsection heading の存在、(b) variant bash literal (`tr -d '[:space:]' || true`) の存在、(c) strict-mode caller (`stop-create-interview-block.sh`) が `|| true` guard を保持していること、の 3 点を assert する。将来の refactor で hook 側 `|| true` を誤って削除する drift を機械検出し、SoT (本 ref) ↔ implementation (hook) の 2 site 対称性を保証する (Issue #978)。
+> **Drift detection contract — retired in #1079**: `stop-create-interview-block.sh` と `sentinel-visibility-rule.test.sh` は #1079 で撤去されたため、本 subsection の 3 点 assert (heading 存在 / variant bash literal `tr -d '[:space:]' || true` / strict-mode caller の `|| true` guard 保持) は無効化された。新規 strict-mode caller を追加する場合は、本 reference の variant pattern を採用すること自体は依然として canonical な書き方として有効である (Issue #978 は historical record として保持)。
 
 ## Phase 5.4.4.1 — Workflow Incident Detection
 

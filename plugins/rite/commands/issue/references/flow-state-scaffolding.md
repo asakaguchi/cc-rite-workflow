@@ -25,9 +25,9 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 | `--pr` | int | PR 番号。ステップ 6 前は `0` (まだ PR 未作成のため) |
 | `--next` | string | 次行動の natural language hint。`/rite:resume` が LLM に渡す continuation 指示 |
 
-## Pre-write の役割
+## Phase-boundary write の役割
 
-各ステップ冒頭の Pre-write block は、**作業開始前**に flow state を更新する。目的:
+各ステップ末尾の write block は、**当該ステップの完了直後**（= 次ステップ開始前）に flow state を更新する。本 SoT では従来「Pre-write」と呼称していたが、実装上は post-step / phase-boundary write が正確な記述。目的:
 
 1. **`/rite:resume` の復帰経路保証**: コンテキスト消失 / セッション中断時、書き込まれた `phase` / `issue` / `branch` / `pr` / `next` フィールドを `/rite:resume` が読み取り、`commands/resume.md` Phase 3.2 表で対応する step に復帰する。
 2. **next フィールドによる継続指示**: `next` 文字列は「中断時の次行動」を natural language で記述し、LLM が `/rite:resume` 経由で復帰した際の routing hint として機能する。
@@ -46,19 +46,21 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 ## 適用箇所 (start.md flat workflow)
 
-| Step | Phase 名 | Pre-write 位置 |
-|------|---------|---------------|
-| 1 | `init` | ステップ 1.4 |
-| 2 | `branch` | ステップ 2.6 |
-| 3 | `plan` | ステップ 3.6 |
-| 4 | `implement` | ステップ 4.3 |
-| 5 | `lint` | ステップ 5.0 |
-| 6 | `pr` | ステップ 6.0 |
-| 7.1 | `review` | ステップ 7.1.0 |
-| 7.2 | `fix` | ステップ 7.2.0 |
+| Step | Phase 名 | Phase-boundary write 位置 (実 start.md 行) |
+|------|---------|--------------------------------------------|
+| 1 | `init` | ステップ 1.5 |
+| 2 | `branch` | ステップ 2.7 |
+| 3 | `plan` | ステップ 3.7 |
+| 4 | `implement` | ステップ 4.5 |
+| 5 | `lint` | ステップ 5.2 |
+| 6 | `pr` | ステップ 6.3 |
+| 7.1 | `review` | ステップ 7.4 |
+| 7.2 | `fix` | ステップ 7.4 |
 | 8 | `completed` (patch) | ステップ 8.6 |
 
 (step 名 / phase 名は `commands/issue/start.md` を参照。`commands/resume.md` Phase 3.2 表が phase → step の正規 mapping)
+
+> **位置のセマンティクス**: 表の write 位置は「当該 phase 名を `create` mode で書き込む sub-step」を指し、その実行時点ではすでに当該 phase の作業（lint 実行 / PR 作成 / review 実行など）が完了している。`/rite:resume` から復帰する際、書き込まれた phase は **その次のステップ**（`resume.md` Phase 3.2 表の Resume action 行）への routing キーとして使われる。
 
 ## アンチパターン
 

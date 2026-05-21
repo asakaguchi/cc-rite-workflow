@@ -197,7 +197,7 @@ The rite workflow auto-detects **workflow blockers** (Skill load failure, hook a
 
 **Architecture**:
 1. Each skill (`rite:lint`, `rite:pr:fix`, `rite:pr:review`) emits a sentinel via `plugins/rite/hooks/workflow-incident-emit.sh` when an internal failure path is taken.
-2. The orchestrator (`/rite:issue:start` Phase 5.4.4.1) detects sentinels via context grep, presents `AskUserQuestion` for confirmation, and calls `create-issue-with-projects.sh` to register the incident with `Status: Todo / Priority: High / Complexity: S`.
+2. The orchestrator (`/rite:issue:start`, flat workflow steps ステップ 5〜7) detects sentinels via context grep, presents `AskUserQuestion` for confirmation, and calls `create-issue-with-projects.sh` to register the incident with `Status: Todo / Priority: High / Complexity: S`.
 3. Same-session duplicate types are suppressed (1 incident per type per session).
 4. Failure to register is non-blocking — the workflow continues regardless.
 

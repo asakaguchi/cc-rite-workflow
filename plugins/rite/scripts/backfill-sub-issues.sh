@@ -5,8 +5,7 @@
 # establishes the API relation using `link-sub-issue.sh`.
 #
 # Intended for one-shot remediation of pre-existing Issues created
-# before the mandatory linkage was wired into create-decompose / parent-routing
-# (Issue #514).
+# before the mandatory linkage was wired into the create workflow.
 #
 # Usage:
 #   bash backfill-sub-issues.sh <owner> <repo> [child_number ...]

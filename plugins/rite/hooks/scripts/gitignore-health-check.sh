@@ -212,9 +212,8 @@ fi
 if [ "$check_ignore_rc" -ge 2 ]; then
   echo "WARNING: gitignore-health-check: git check-ignore failed (rc=$check_ignore_rc) — skipping separate_branch verify" >&2
   [ -n "$check_ignore_err" ] && [ -s "$check_ignore_err" ] && head -3 "$check_ignore_err" | sed 's/^/  /' >&2
-  # PR #1079 review (silent-failure-hunter M-2 対応): findings 行を `0` ではなく `unknown` に
-  # することで lint 集計 script が「健全」と誤判定する経路を防ぐ。exit 2 は invocation error の
-  # signal として保持する。
+  # Report "unknown" (not "0") so lint aggregators don't mistake an invocation
+  # failure for a clean run. exit 2 still signals invocation error to callers.
   echo "==> Total gitignore-health-check findings: unknown (verification failed)"
   exit 2
 fi
@@ -314,10 +313,9 @@ if [ "$findings" -gt 0 ]; then
   emit_script="$_SCRIPT_DIR/../workflow-incident-emit.sh"
   if [ -f "$emit_script" ]; then
     # Emit to stdout so the sentinel reaches the orchestrator's conversation context.
-    # `|| true` preserves non-blocking contract (emit failure must not halt lint).
-    # PR #1079 review (silent-failure-hunter L-2 対応): || true で emit 失敗を完全 silent suppress
-    # していた経路に WARNING を残す。"emit_script not found" の WARNING は別 arm で扱われているが、
-    # "呼べたが exit 非ゼロ" は本 arm でも観測可能化する。
+    # Non-blocking contract: emit failure must not halt lint, but surface a WARNING
+    # so a silently-broken emit script doesn't go unnoticed ("script not found" is
+    # handled in a separate arm; this covers "ran but exited non-zero").
     bash "$emit_script" \
       --type gitignore_drift \
       --details "gitignore health check: .rite/wiki/ rule drift detected (strategy=$branch_strategy)" \

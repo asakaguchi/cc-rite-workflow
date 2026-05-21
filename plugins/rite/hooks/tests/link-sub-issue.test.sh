@@ -1,14 +1,13 @@
 #!/bin/bash
-# link-sub-issue.test.sh — CG-4 (PR #1079 verified-review)
+# link-sub-issue.test.sh
 #
-# Purpose:
-#   `scripts/link-sub-issue.sh` の static invariant を pin する。実際の gh CLI 呼び出しは
-#   mock していないため runtime path は cover しないが、placeholder rejection (引数に
-#   `{owner}` / `{repo}` 等が残ったまま渡されたら fail-fast)、引数数 validation、
-#   JSON output skeleton の存在を確認する。
+# Pin static invariants of `scripts/link-sub-issue.sh`: placeholder rejection
+# (an unsubstituted `{owner}` / `{repo}` must fail-fast rather than silently
+# call the gh API with a literal placeholder), arg-count validation, and the
+# JSON output skeleton shape. Runtime gh calls are not mocked here.
 #
-# Caller-side: create.md ステップ 5.4 で Variant B JSON fallback (`|| link_result="{...}"`)
-# が JSON valid なエスケープを残しているかも確認する。
+# Caller side: also verify create.md's Variant B JSON fallback keeps a
+# JSON-valid escape so the caller can parse the fallback result.
 
 set -euo pipefail
 
@@ -51,10 +50,10 @@ else
 fi
 
 echo "=== Phase 3: create.md Variant B JSON fallback safety ==="
-# PR #1079 review (code-reviewer Important #4 対応): 旧手書き JSON 構築は quote escape で
-# 破綻するリスクがあったため、`jq -n --arg err "$link_result" ...` パターンに統一済み。
-# 本 assert は: (a) "link-sub-issue.sh fatal exit" message が残っている (b) jq -n パターンで
-# 構築されている (c) `jq -n` で実際に生成した JSON が parse 可能。
+# Hand-built JSON in the fallback path was historically prone to quote-escape
+# breakage; the canonical `jq -n --arg err "$link_result" ...` form prevents that.
+# Assert (a) the "fatal exit" message is preserved, (b) construction goes through
+# `jq -n`, (c) the produced JSON actually parses.
 assert_grep "create.md Variant B fallback has JSON status=failed" "$CREATE_MD" 'link-sub-issue\.sh fatal exit'
 assert_grep "create.md Variant B fallback builds JSON via jq -n" "$CREATE_MD" 'link_result=.\(jq -n'
 

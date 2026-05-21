@@ -5,7 +5,7 @@ description: マルチレビュアー PR レビューを実行
 # /rite:pr:review
 
 ## Contract
-**Input**: PR number (or auto-detected from current branch), flow state with `phase: phase5_review` (e2e flow)
+**Input**: PR number (or auto-detected from current branch), flow state with `phase: review` (flat workflow, written by `start.md` ステップ 7.1) or `phase: phase5_review` (legacy, written by this sub-skill itself — both names coexist until sub-skill writes are migrated in a later PR)
 **Output**: `[review:mergeable]` | `[review:fix-needed:{n}]`
 
 Analyze PR changes and dynamically load expert skills to perform a multi-reviewer review.

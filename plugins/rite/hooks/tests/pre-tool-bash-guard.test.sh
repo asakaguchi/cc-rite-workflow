@@ -1550,6 +1550,26 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# Pattern 5 trap scope guardrails. Re-widening the ERR trap or muting the
+# fallback WARNING would silently let create-lifecycle gh issue commands
+# bypass detection — pin both literals so a refactor catches the regression.
+# --------------------------------------------------------------------------
+echo "TC-200: Pattern 5 entry releases ERR trap (trap - ERR)"
+if grep -qE 'trap - ERR' "$HOOK"; then
+  pass "TC-200 trap - ERR is present in pre-tool-bash-guard.sh (Pattern 5 trap scope reduction maintained)"
+else
+  fail "TC-200 trap - ERR absent — Pattern 5 will inherit Patterns 1-3 trap (silent fail-open regression)"
+fi
+
+echo "TC-201: Pattern 5 resolver fallback emits unconditional WARNING"
+if grep -qE 'pre-tool-bash-guard.*_resolve-flow-state-path.sh failed|Pattern 5 detection falling back to legacy path' "$HOOK"; then
+  pass "TC-201 unconditional WARNING wired for Pattern 5 resolver fallback"
+else
+  fail "TC-201 unconditional WARNING absent — Pattern 5 fallback would silently use wrong state file"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

@@ -1,16 +1,11 @@
 #!/bin/bash
-# step0-imperative-phrasing-cleanup-ingest.test.sh — CG-6 (PR #1079 verified-review)
+# step0-imperative-phrasing-cleanup-ingest.test.sh
 #
-# Purpose:
-#   旧 step0-immediate-bash-presence.test.sh (PR #1079 で削除) のうち、cleanup.md と
-#   wiki/ingest.md に残された Step 0 imperative phrasing を守るサブセットを復元する。
-#   削除済 create-interview.md / create.md 関連の TC は本 test から除外する。
-#
-#   cleanup.md L1319 / L1331 と wiki/ingest.md L922 / L953 / L1216 は load-bearing な
-#   Step 0 immediate bash phrasing。Issue #910 / #917 で導入された強い命令形 (VERY FIRST tool
-#   call / MUST execute / BEFORE any text output / DO NOT end the turn / DO NOT output any
-#   narrative) が silent に弱化された場合 (例: 後続 PR で文章 refactor 時)、implicit stop
-#   regression が再発するため CI で pin する。
+# cleanup.md and wiki/ingest.md rely on load-bearing imperative phrasing in
+# their Step 0 sections (`VERY FIRST tool call`, `MUST execute`, `BEFORE any
+# text output`, `DO NOT end the turn`, `DO NOT output any narrative`). If a
+# future prose refactor softens these directives, the implicit-stop regression
+# they prevent will return silently — pin the literals here.
 #
 # Coverage:
 #   - cleanup.md "Mandatory After Wiki Ingest" Step 0 imperative phrasing 5 要素

@@ -46,13 +46,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Resolve project root (git root anchored). Matches session-start.sh /
-# _resolve-schema-version.sh / notification.sh convention (peer
-# `stop-create-interview-block.sh` was retired in PR #1079);
-# `$PWD`-based rite-config.yml lookup would silently miss the
-# config file when this script is invoked from a subdirectory (Issue #976).
-# This script is a CLI tool (not a Claude Code hook), so $PWD is used in place
-# of the stdin-supplied CWD that hook scripts receive.
+# Resolve project root (git root anchored) — matches the session-start.sh /
+# _resolve-schema-version.sh / notification.sh convention. Without this anchor,
+# a `$PWD`-based rite-config.yml lookup would silently miss the config when the
+# script runs from a subdirectory. CLI tool (not a hook), so $PWD takes the
+# place of the stdin-supplied CWD that hook scripts receive.
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$PWD" 2>/dev/null) || STATE_ROOT="$PWD"
 
 TYPE=""
@@ -218,27 +216,25 @@ fi
 # under pipefail aborts the entire script. We split the pipeline into stages and
 # explicitly tolerate empty results so missing keys lenient-fall-through to "not false".
 #
-# Note — YAML パースロジック同期: Issue #549 で canonical 実装が
-# `hooks/scripts/lib/wiki-config.sh` の `parse_wiki_scalar()` / `validate_wiki_branch_name()`
-# に集約された。本スクリプト / wiki-growth-check.sh / commands/wiki/ingest.md Phase 1.1 の
-# 3 箇所は lib 化対象外のまま残存しているため、lib 側の parse 契約を変更する場合は以下の
-# 残存 3 箇所と動作を同期すること:
-#   1. 本スクリプト (wiki-ingest-trigger.sh) — lenient (false/no/0 のみ reject)
-#   2. hooks/scripts/wiki-growth-check.sh — lenient (layer 3 growth stall 検出用)
-#   3. commands/wiki/ingest.md Phase 1.1 — strict 4 分岐 (page integration 用)
-# lib/wiki-config.sh が canonical 定義。lib 化済みの script
-# (wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh) は source して
-# 同一実装を共有するため、上記 3 箇所を lib に統合する場合は別 Issue で追跡すること。
+# YAML parse logic sync: the canonical implementation lives in
+# `hooks/scripts/lib/wiki-config.sh` (`parse_wiki_scalar()` / `validate_wiki_branch_name()`).
+# Three sites still re-implement YAML parsing inline and must be kept in sync
+# when the lib's parse contract changes:
+#   1. this script (wiki-ingest-trigger.sh) — lenient (only false/no/0 reject)
+#   2. hooks/scripts/wiki-growth-check.sh — lenient (layer 3 growth stall detection)
+#   3. commands/wiki/ingest.md Phase 1.1 — strict 4-way branch (page integration)
+# The lib-using scripts (wiki-ingest-commit.sh / wiki-worktree-commit.sh /
+# wiki-worktree-setup.sh) source the canonical implementation directly.
 if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
-  # cycle 9 MEDIUM fix: sed/awk の stderr を tempfile に捕捉 (silent swallow 禁止)。
-  # 旧実装 `2>/dev/null || wiki_section=""` は grep no-match だけでなく sed/awk の構文エラー /
-  # binary 破損 / IO エラーも silent に空扱いし、Wiki enable check が誤動作する経路を持っていた。
+  # Capture sed/awk stderr to a tempfile so syntax errors / binary corruption /
+  # IO errors don't get conflated with "no match". The old `2>/dev/null || ...=""`
+  # pattern silently treated all of those as "section absent" — leading the
+  # Wiki enable check to misfire.
   _yaml_err=$(mktemp /tmp/rite-wiki-trigger-yaml-err-XXXXXX 2>/dev/null) || _yaml_err=""
-  # PR #1079 review (silent-failure-hunter M-4 対応): parse failure 時は安全側に倒して
-  # exit 2 (Wiki disabled 扱い) で staging を止める。lenient fallback で staging を継続すると、
-  # 意図的に wiki.enabled: false にしているユーザの config 破損で raw source が漏れて
-  # develop に commit される silent policy violation 経路があった (Issue #564 で .gitignore
-  # last-line-defense を入れた背景と同じ)。
+  # Fail closed on parse failure (exit 2 = treat as Wiki disabled). A lenient
+  # fallback that continued staging would let a corrupted config quietly leak
+  # raw sources to develop even when the user set wiki.enabled: false on purpose
+  # — same threat model the .gitignore last-line-defense addresses.
   if wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$STATE_ROOT/rite-config.yml" 2>"${_yaml_err:-/dev/null}"); then
     :  # success (sed no-match は exit 0 なので legitimate)
   else
@@ -264,9 +260,21 @@ if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
   [ -n "$_yaml_err" ] && rm -f "$_yaml_err"
   wiki_enabled=""
   if [[ -n "$wiki_enabled_line" ]]; then
-    # cycle 3 fix (F-23): YAML 仕様上 inline コメントの直前にスペースが必須。
-    # `true#comment` (スペースなし) は値の一部であり、`sed 's/#.*//'` は誤動作する。
-    wiki_enabled=$(printf '%s' "$wiki_enabled_line" | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'\''' | tr '[:upper:]' '[:lower:]')
+    # YAML requires whitespace before inline comments; `true#comment` is a value,
+    # not a commented `true`. The first sed strips comments with that in mind.
+    # Wrap the whole pipe in a conditional: under pipefail+set -e, a midstream
+    # failure (locale, SIGPIPE, tr class differences) would abort and the user's
+    # `wiki.enabled: false` setting would be silently treated as enabled.
+    if ! wiki_enabled=$(printf '%s' "$wiki_enabled_line" \
+        | sed 's/[[:space:]]#.*//' \
+        | sed 's/.*enabled:[[:space:]]*//' \
+        | tr -d '[:space:]"'\''' \
+        | tr '[:upper:]' '[:lower:]' 2>/dev/null); then
+      _enabled_rc=$?
+      echo "ERROR: wiki.enabled 値の正規化が失敗 (rc=$_enabled_rc) — sed/tr pipeline" >&2
+      echo "  safe-default: staging を中止します (silent policy-violation 防止)" >&2
+      exit 2
+    fi
   fi
   case "$wiki_enabled" in
     false|no|0)

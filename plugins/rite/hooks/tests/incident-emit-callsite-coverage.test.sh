@@ -1,24 +1,12 @@
 #!/bin/bash
-# incident-emit-callsite-coverage.test.sh — CG-1 (PR #1079 verified-review re-port)
+# incident-emit-callsite-coverage.test.sh
 #
-# Purpose:
-#   旧 projects-status-incident-emit.test.sh (PR #1079 で削除) のカバレッジを flat
-#   workflow 用に復元する。WORKFLOW_INCIDENT emit のうち、`projects_status_update_failed`
-#   / `projects_status_in_review_missing` 等 caller-specific type は、対応 caller の
-#   markdown / shell に必ず存在しなければならない。
-#
-#   `start-md-sentinel-coverage.test.sh` の generic `workflow-incident-emit.sh --type`
-#   一致 assert は wildcard で通過するため、type-by-phase の対応をピンする必要がある。
-#
-# Coverage:
-#   - start.md ステップ 8.3 / 8.4 に `projects_status_update_failed` emit が 1+ 存在
-#   - pr/ready.md Phase 4.2 に `projects_status_update_failed` emit が存在
-#   - post-compact.sh に `projects_status_in_review_missing` emit が存在
-#   - start.md の git push 失敗時に `git_push_failed` emit が存在
-#   - start.md の PR 作成失敗時に `pr_create_failed` emit が存在 (bash block 内)
-#   - start.md の lint sentinel drop に対する `skill_load_failure` emit が存在
-#   - workflow-incident-emit.sh が `projects_status_update_failed` / `projects_status_in_review_missing`
-#     / `git_push_failed` / `pr_create_failed` / `skill_load_failure` 等の type を accept する
+# Each WORKFLOW_INCIDENT type must (a) be emitted from at least one caller and
+# (b) be accepted by workflow-incident-emit.sh's case allowlist. A generic
+# wildcard match elsewhere passes on mere prose mentions, so this test pins
+# the type→caller correspondence explicitly. Two failure modes it guards:
+#   - emit removed from caller, allowlist still includes type (orphan allowlist)
+#   - caller emits a type, allowlist never gets it added (silent runtime reject)
 
 set -euo pipefail
 
@@ -30,9 +18,10 @@ START_MD="$PLUGIN_ROOT/commands/issue/start.md"
 CREATE_MD="$PLUGIN_ROOT/commands/issue/create.md"
 READY_MD="$PLUGIN_ROOT/commands/pr/ready.md"
 POST_COMPACT="$PLUGIN_ROOT/hooks/post-compact.sh"
+SESSION_END="$PLUGIN_ROOT/hooks/session-end.sh"
 EMIT_SH="$PLUGIN_ROOT/hooks/workflow-incident-emit.sh"
 
-for f in "$START_MD" "$CREATE_MD" "$READY_MD" "$POST_COMPACT" "$EMIT_SH"; do
+for f in "$START_MD" "$CREATE_MD" "$READY_MD" "$POST_COMPACT" "$SESSION_END" "$EMIT_SH"; do
   [ -f "$f" ] || { echo "ERROR: required file not found: $f" >&2; exit 1; }
 done
 
@@ -61,10 +50,9 @@ echo "=== Phase 3: post-compact.sh reconciliation emit literal ==="
 assert_grep "post-compact.sh emits projects_status_in_review_missing" "$POST_COMPACT" "projects_status_in_review_missing"
 
 echo "=== Phase 4: workflow-incident-emit.sh accepts canonical types ==="
-# PR #1079 review (pr-test-analyzer II-5 対応): union grep をやめ、type ごとに
-# 「実際に emit している site (start.md / create.md / hooks/*.sh) で grep ヒットする」
-# ことを assert する。コメント上の言及だけで pass する偽陽性を防ぐ。
-# expected_sites: 各 type が出現すべき file path のホワイトリスト (1 件以上)
+# Pin per-type emit sites so a removed emit at the caller (e.g. someone deletes
+# `--type parent_close_failed` from start.md) fails the test loudly. A union grep
+# would pass on mere prose mentions of the type name — false positive.
 declare -A INCIDENT_EXPECTED_SITES=(
   [projects_status_update_failed]="$START_MD $READY_MD"
   [projects_status_in_review_missing]="$POST_COMPACT"
@@ -75,6 +63,11 @@ declare -A INCIDENT_EXPECTED_SITES=(
   [body_shrinkage_guard_tripped]="$START_MD $CREATE_MD"
   [sub_issue_zero_iteration_loop]="$CREATE_MD"
   [sub_issue_loop_abort]="$CREATE_MD"
+  [issue_branch_link_failed]="$START_MD"
+  [local_wm_update_lock_failed]="$START_MD"
+  [parent_close_failed]="$START_MD"
+  [session_end_deactivate_failed]="$SESSION_END"
+  [state_root_toctou_race]="$POST_COMPACT"
 )
 
 for type in "${!INCIDENT_EXPECTED_SITES[@]}"; do
@@ -96,10 +89,10 @@ for type in "${!INCIDENT_EXPECTED_SITES[@]}"; do
 done
 
 echo "=== Phase 5: workflow-incident-emit.sh runtime accept for each callsite type ==="
-# PR #1079 verified-review round 3 対応: callsite が呼ぶ type を emit.sh の case allowlist
-# が runtime で実際に accept する (exit 0 を返す) ことを実機実行で確認する。
-# Phase 4 の static grep は callsite 側の存在のみを見るため、emit.sh 側の case 文 drift を
-# 検出できない。本 Phase は cycle-time が短い (~10 emit × 数十 ms) ので統合してよい。
+# Static grep at Phase 4 sees only the caller side; it cannot detect drift in
+# emit.sh's case allowlist (caller writes a new type, allowlist never gets it
+# added → silent reject at runtime). Run each type through emit.sh to verify
+# both sides agree.
 for type in "${!INCIDENT_EXPECTED_SITES[@]}"; do
   if bash "$EMIT_SH" --type "$type" --details "runtime accept test" --pr-number 0 >/dev/null 2>&1; then
     pass "emit.sh accepts type '$type' at runtime (exit 0)"

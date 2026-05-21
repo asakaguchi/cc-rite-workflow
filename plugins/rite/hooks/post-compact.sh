@@ -24,15 +24,11 @@ fi
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
 COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
-# Resolve active flow-state file path (Issue #680).
-# Returns the per-session file when schema_version=2 with a valid SID; otherwise legacy.
-#
-# Issue #749: stderr pass-through for diagnostic visibility, via canonical helper
-# `_mktemp-stderr-guard.sh`. 詳細は session-start.sh の同パターンを参照。
-# filter は state-read.sh cross-session guard の 3-pattern を `^ERROR:` で
-# superset 化した 4-pattern 拡張版 (resolver self-validation の ERROR: を捕捉)。
-# success arm でも tempfile を inspect して helper graceful-degrade 経路の WARNING
-# を silent drop しないようにする。
+# Resolve the active flow-state file: per-session for schema_version=2 with a
+# valid SID, otherwise legacy. Stderr is captured via the canonical
+# _mktemp-stderr-guard.sh helper (see session-start.sh for the same pattern)
+# so resolver WARNING/ERROR lines don't get silently dropped — even on the
+# success arm, where helper graceful-degrade paths still emit diagnostics.
 _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "post-compact" \
   "resolve-flow-state-err" \
@@ -40,8 +36,20 @@ _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
 # Single-pass branch (filter runs once regardless of resolver exit status).
 _resolve_failed=0
 FLOW_STATE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
+# Mirror of session-end.sh resolver stderr handler. The grep pins accepted prefixes;
+# any new resolver prefix (INFO:/DIAG:/...) would silently drop without the counter.
 if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
-  grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
+  if [ -n "${RITE_DEBUG:-}" ]; then
+    cat "$_resolve_err" >&2
+  else
+    _pc_resolve_err_total=$(wc -l < "$_resolve_err" 2>/dev/null | tr -d ' ')
+    _pc_resolve_err_kept=$(grep -cE '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" 2>/dev/null) || _pc_resolve_err_kept=0
+    grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
+    _pc_resolve_err_dropped=$((${_pc_resolve_err_total:-0} - ${_pc_resolve_err_kept:-0}))
+    if [ "${_pc_resolve_err_dropped:-0}" -gt 0 ]; then
+      echo "[rite] WARNING: post-compact: ${_pc_resolve_err_dropped} resolver stderr lines filtered (use RITE_DEBUG=1 for full output)" >&2
+    fi
+  fi
 fi
 if [ "$_resolve_failed" -eq 1 ]; then
   FLOW_STATE="$STATE_ROOT/.rite-flow-state"
@@ -82,9 +90,9 @@ fi
 source "$SCRIPT_DIR/work-memory-lock.sh"
 
 # --- Read flow state ---
-# cycle 11 CRITICAL F-01: IFS=$'\t' + @tsv は POSIX whitespace collapse により next_action=""
-# のとき全フィールドが左 shift し、PR 欄に branch 名が混入する silent データ汚染を起こす。
-# stop-guard.sh cycle 10 F-01 と同じ修正を適用 — unit separator \x1f で empty field を preserve。
+# IFS=$'\t' + @tsv collapses empty fields under POSIX whitespace rules: an empty
+# next_action shifts every subsequent column left, contaminating the PR field with
+# the branch name. The unit separator \x1f preserves empty fields safely.
 FLOW_DATA=$(jq -r '[
   (.issue_number // "unknown" | tostring),
   (.phase // "unknown"),
@@ -108,8 +116,9 @@ cleanup() {
   # `_resolve_err` の synchronous rm は trap install より前で実行される (resolver 直後)
   # ため、ここで cleanup() に含める必要はない (dead code)。trap が発火する時点では既に
   # 削除済みで no-op となる。trap install 前の race window は同期 rm 自身でカバーされる。
-  # PR #1079 review (silent-failure-hunter M-2): disk full / readonly fs / inode 不足 で
-  # rm が失敗した場合に WARNING を出す。trap 内 fatal exit はしない (cleanup の責務範囲外)。
+  # Surface rm failure (disk full / readonly fs / inode shortage) as a WARNING.
+  # Trap cleanup must not fatal-exit on this — it would mask the underlying
+  # failure being cleaned up after.
   rm -f "$TMP_COMPACT" 2>/dev/null || echo "[rite] WARNING: post-compact cleanup: failed to remove $TMP_COMPACT (disk full / readonly fs / permission?)" >&2
   release_wm_lock "$LOCKDIR"
 }
@@ -131,22 +140,21 @@ if acquire_wm_lock "$LOCKDIR"; then
   release_wm_lock "$LOCKDIR"
 fi
 
-# --- Issue #1003 AC-2/AC-7: PR Ready/Status mismatch reconciliation safety net ---
+# --- PR Ready/Status mismatch reconciliation safety net ---
 # When workflow active + PR exists + PR is Ready (isDraft=false) + Status != In Review,
-# attempt reconciliation by re-invoking projects-status-update.sh. Emit incident sentinel
-# on failure so silent Status mismatch never persists past compaction (Issue #1003 root cause:
-# observability gap when Phase 4.2 / 5.5.1 silently skips).
+# attempt reconciliation by re-invoking projects-status-update.sh. Emit an incident
+# sentinel on failure so a silent Status mismatch never persists past compaction.
 #
-# Stderr policy: `gh pr view` / `gh api graphql` / `projects-status-update.sh` の stderr は
-# tempfile capture して incident details に含める。`gh repo view` も cycle 8 で stderr capture
-# 対応済 (C7-F01: auth / rate-limit / network / permission の区別)。`jq` stderr は
-# C7-F04 cycle 8 で `jq_owner_err` / `jq_name_err` capture 化済。
+# Stderr policy: every gh / jq / projects-status-update.sh invocation in this block
+# captures stderr to its own tempfile so the resulting incident can distinguish
+# auth / rate-limit / network / permission / JSON-parse failures instead of
+# reporting a generic "command failed".
 if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
   PLUGIN_ROOT_PC="$(dirname "$SCRIPT_DIR")"
-  # Sub-shell + pipefail + signal-specific trap pattern (PR #1079 で start-finalize.md は削除済;
-  # 現在の対称化対象は post-compact + watchdog-status-mismatch の 2 site)。
-  # gh API 失敗時に silent fall-through せず incident emit する (F-07 Asymmetric Fix 対策)。
-  # reconcile script の stderr も capture し、incident details に含める。
+  # Sub-shell + pipefail + signal-specific trap pattern, paired with the
+  # watchdog-status-mismatch hook. Capture the reconcile script's stderr so a
+  # gh API failure surfaces as an incident with root cause rather than a silent
+  # fall-through.
   (
     set -o pipefail
     pr_view_err=""
@@ -165,10 +173,10 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     trap '_pc_cleanup; exit 130' INT
     trap '_pc_cleanup; exit 143' TERM
     trap '_pc_cleanup; exit 129' HUP
-    # PR #1079 review (silent-failure-hunter I-3 対応): mktemp 失敗時 (disk full / inode 不足 /
-    # /tmp 書き込み不可) は stderr capture が `/dev/null` 経路に流れ、auth/rate-limit/permission
-    # 等の root cause が消失する。stderr_capture_disabled フラグを立てて incident details に
-    # 含め、保守側で「stderr が空」と「stderr capture 自体が無効」を区別可能にする。
+    # When mktemp fails (disk full / inode shortage / /tmp readonly), gh's stderr
+    # would silently route to /dev/null and the root cause (auth/rate-limit/
+    # permission) would vanish from the incident. Tag the failure so the incident
+    # can distinguish "gh returned no stderr" from "we couldn't capture it".
     stderr_capture_disabled=0
     pr_view_err=$(mktemp /tmp/rite-pc-pr-err-XXXXXX) || { pr_view_err=""; stderr_capture_disabled=1; echo "[rite] WARNING: post-compact: mktemp failed for pr_view_err; gh pr view stderr will not be captured" >&2; }
     repo_view_err=$(mktemp /tmp/rite-pc-repo-err-XXXXXX) || { repo_view_err=""; stderr_capture_disabled=1; echo "[rite] WARNING: post-compact: mktemp failed for repo_view_err; gh repo view stderr will not be captured" >&2; }
@@ -177,12 +185,10 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     gql_err=$(mktemp /tmp/rite-pc-gql-err-XXXXXX) || { gql_err=""; stderr_capture_disabled=1; }
     jq_err=$(mktemp /tmp/rite-pc-jq-err-XXXXXX) || { jq_err=""; stderr_capture_disabled=1; }
 
-    # cycle 8 C7-F09: STATE_ROOT 不可達時の cd 短絡を early-emit branch で扱う。
-    # 旧実装は `cd "$STATE_ROOT" 2>/dev/null && gh pr view ...` で STATE_ROOT inaccessible 時に
-    # cd 失敗 (stderr silent suppress) → gh pr view 未実行で `gh_pr_view_failed` 誤分類していた
-    # (実原因は state_root_inaccessible)。
-    # cycle 10 F-04 対応: L184/200/241/281 の `cd ... 2>/dev/null` から 2>/dev/null を削除し、
-    # TOCTOU race (L175 check 後の permission 変更 / unmount) 時に cd 失敗の stderr を捕捉可能にした。
+    # Test STATE_ROOT existence up front and emit state_root_inaccessible
+    # directly. If we instead chained `cd ... 2>/dev/null && gh pr view ...`,
+    # a cd failure would silently lose its stderr and the gh command would
+    # never run — leaving the incident misattributed to gh.
     if [ ! -d "$STATE_ROOT" ]; then
       bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
         --type projects_status_in_review_missing \
@@ -191,6 +197,28 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
         --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (state_root_inaccessible); incident may not be recorded — investigate emit.sh case allowlist drift" >&2
       exit 0
     fi
+
+    # In `cd ... && gh pr view ... 2>FILE`, the redirect attaches to gh only;
+    # cd failures (TOCTOU race after the existence check above) leak no stderr
+    # and get misclassified as gh failures. Running cd in its own statement
+    # lets us emit state_root_toctou_race separately — different root cause,
+    # different remediation.
+    _cd_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
+      "post-compact" \
+      "cd-toctou-err" \
+      "cd failure stderr cannot be distinguished from gh failure without this capture") || _cd_err=""
+    if ! (cd "$STATE_ROOT") 2>"${_cd_err:-/dev/null}"; then
+      _cd_rc=$?
+      _cd_err_oneline=$(head -c 200 "${_cd_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+      bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+        --type projects_status_in_review_missing \
+        --details "Issue #$ISSUE post-compact: cd STATE_ROOT failed after existence check (rc=$_cd_rc, stderr=$_cd_err_oneline) — TOCTOU race" \
+        --root-cause-hint "state_root_toctou_race" \
+        --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for state_root_toctou_race; incident may not be recorded" >&2
+      [ -n "$_cd_err" ] && rm -f "$_cd_err"
+      exit 0
+    fi
+    [ -n "$_cd_err" ] && rm -f "$_cd_err"
 
     if PR_IS_DRAFT=$(cd "$STATE_ROOT" && gh pr view "$PR" --json isDraft --jq '.isDraft // null' 2>"${pr_view_err:-/dev/null}"); then
       :
@@ -217,10 +245,11 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     fi
 
     if [ "$PR_IS_DRAFT" = "false" ]; then
-      # cycle 8 C7-F01: gh repo view stderr を tempfile capture して root cause attribution を可能にする。
-      # 旧: 4-site 対称化 (post-compact / watchdog / start.md Step 1.5 / start-finalize.md Step 0)
-      # 現: 2-site 対称化 (post-compact / watchdog-status-mismatch)。PR #1079 で start.md Step 1.5 と
-      # start-finalize.md は削除/統合され、現在は post-compact と watchdog の 2 site のみが本 pattern を維持。
+      # Capture gh repo view stderr so failures get attributed to auth/network/
+      # permission rather than misclassified as missing data. This pattern is
+      # paired with watchdog-status-mismatch; if those two sites diverge in error
+      # capture, the same root cause produces asymmetric incident details and
+      # becomes harder to diagnose.
       if REPO_INFO=$(cd "$STATE_ROOT" && gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
         :
       else
@@ -228,13 +257,12 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
         repo_err_oneline=$(head -c 200 "${repo_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
         REPO_INFO=""
       fi
-      # cycle 8 C7-F04: jq stderr を独立 capture し、parse 失敗 (gh 成功だが JSON 破損 / null field)
-      # の根本原因を C6-F09 emit の details に注入する。
+      # Capture jq stderr separately so JSON parse failure (gh succeeded but JSON
+      # is corrupt or a field is null) gets attributed in the incident details.
       REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>"${jq_owner_err:-/dev/null}") || REPO_OWNER=""
       REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>"${jq_name_err:-/dev/null}") || REPO_NAME=""
-      # PR #1079 review (silent-failure-hunter H-1 対応): rite-config.yml parse 失敗時に awk stderr を
-      # tempfile に capture して WARNING を出す。完全 silent な空文字フォールバックは、Projects 連携が
-      # 壊れていてもユーザに伝わらない経路を作るため。stderr_capture_disabled (mktemp 失敗) も honor。
+      # Capture awk stderr for rite-config.yml parsing. A silent empty fallback
+      # here would let broken Projects integration go unnoticed by the user.
       awk_pe_err=""
       awk_pn_err=""
       awk_pe_err=$(mktemp /tmp/rite-pc-awk-pe-err-XXXXXX) || { awk_pe_err=""; stderr_capture_disabled=1; }
@@ -248,12 +276,14 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
         echo "[rite] WARNING: post-compact: awk parse of projects.project_number failed: $(head -c 200 "$awk_pn_err" | tr '\n' ' ')" >&2
       fi
       rm -f "${awk_pe_err:-}" "${awk_pn_err:-}"
-      # cycle 8 C7-F05: cascade emit guard。_owner_repo_ok flag で後段 graphql 経路を skip する
-      # (silent_omit_disables_defense_chain への 2-stage 防御: emit 後の dead branch 抑止)。
+      # Cascade emit guard: once we emit the upstream repo failure, downstream
+      # graphql attempts would just produce a second (duplicated, less specific)
+      # incident. _owner_repo_ok=0 short-circuits them.
       _owner_repo_ok=1
-      # cycle 6 C6-F09 + cycle 8 C7-F03/C7-F04 対応: gh repo view 失敗 OR jq parse 結果が空の場合に
-      # silent skip を防止する。gate を `-z REPO_INFO` から `-z REPO_OWNER || -z REPO_NAME` へ拡張し、
-      # null field 返却 (auth-scope 縮退) 経路も覆う。
+      # Trip on either an empty REPO_INFO or null-valued owner/name fields.
+      # The latter covers gh's auth-scope-degraded path where the call succeeds
+      # but returns nulls — silently treating that as "no project" would skip
+      # reconciliation entirely.
       if [ "$PROJECTS_ENABLED" = "true" ] && { [ -z "$REPO_INFO" ] || [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; }; then
         echo "[rite] ⚠️ post-compact: gh repo view failed or parse empty — reconciliation safety net unavailable" >&2
         _owner_repo_ok=0
@@ -274,9 +304,9 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
             --root-cause-hint "post_compact_gh_repo_view_returned_null" \
             --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (gh_repo_view_returned_null); incident may not be recorded" >&2
         fi
-        # cycle 10 F-17 対応: cascade emit guard の semantic として `if _owner_repo_ok != "1"; then exit 0; fi`
-        # と等価な `exit 0` を直書きする。PR #1079 で start.md Step 1.5 と start-finalize.md は削除/統合された
-        # ため、本 pattern は post-compact 内部に完結した guard となっている (旧 3 site symmetry は historical)。
+        # Equivalent to `if _owner_repo_ok != "1"; then exit 0; fi`. Exit
+        # directly so we cannot accidentally fall through into the graphql path
+        # below and double-emit a less specific incident.
         exit 0
       fi
       if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ] && [ -n "$REPO_OWNER" ] && [ -n "$REPO_NAME" ] && [ "$ISSUE" != "unknown" ]; then
@@ -317,8 +347,9 @@ query($owner: String!, $repo: String!, $number: Int!) {
 
         if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ]; then
           echo "[rite] ⚠️ post-compact mismatch detected: Issue #$ISSUE PR=#$PR isDraft=false Status=\"$CURRENT_STATUS\" (expected In Review)" >&2
-          # cycle 8 C7-F09 / C7-F14 対応: STATE_ROOT 存在 guard は sub-shell 冒頭に移動済 (state_root_inaccessible
-          # で early emit + exit 0)、本 reconciliation 試行ブロックは STATE_ROOT 存在前提で reconcile を直接実行する。
+          # STATE_ROOT existence is already enforced at the top of the sub-shell
+          # (early state_root_inaccessible emit + exit 0), so this reconciliation
+          # block can call reconcile directly without re-checking.
           reconcile_err=$(mktemp /tmp/rite-pc-reconcile-err-XXXXXX) || reconcile_err=""
           RECONCILE_RESULT=$(cd "$STATE_ROOT" && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$(jq -n \
             --argjson issue "$ISSUE" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \

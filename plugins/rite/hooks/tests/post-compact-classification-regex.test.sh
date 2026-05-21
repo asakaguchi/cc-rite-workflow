@@ -1,15 +1,15 @@
 #!/bin/bash
-# post-compact-classification-regex.test.sh — CG-5 (PR #1079 verified-review re-port)
+# post-compact-classification-regex.test.sh
 #
-# Purpose:
-#   旧 post-compact-reconciliation.test.sh (PR #1079 で削除) の中核 regex fixture test
-#   を flat workflow 用に復元する。post-compact.sh は gh CLI 出力を分類して
-#   `pr_deleted_or_inaccessible` (false-positive 抑止) vs `gh_api_failure_*` を判別する。
+# Pin the gh-output classification regex in post-compact.sh that distinguishes
+# `pr_deleted_or_inaccessible` (a legitimate end-state, should NOT produce an
+# incident) from `gh_api_failure_*` (a real auth/network/permission failure).
 #
-#   分類 regex: `could not resolve.*pull\s*request|no.*pull\s*request found`
+#   regex: `could not resolve.*pull\s*request|no.*pull\s*request found`
 #
-#   regex を弱める / 取り除く / case-sensitive にすると、close/merge 済 PR への post-compact
-#   reconciliation が偽 incident を量産する regression (cycle 6 で発覚) が再発する。
+# Weakening, removing, or making this regex case-sensitive lets every closed
+# or merged PR trigger a false reconciliation incident — historically a high-
+# volume noise source.
 
 set -euo pipefail
 
@@ -20,11 +20,10 @@ POST_COMPACT="$PLUGIN_ROOT/hooks/post-compact.sh"
 
 [ -f "$POST_COMPACT" ] || { echo "ERROR: $POST_COMPACT not found" >&2; exit 1; }
 
-# Extract the regex literal from post-compact.sh so the test exercises the actual production pattern.
-# PR #1079 review (pr-test-analyzer S-3 対応): production regex を抽出して fixture grep に
-# 実際に渡す。hard-code に頼ると post-compact.sh 側で regex を変更しても本 test は silent pass
-# する drift が起きうるため、抽出した $REGEX を直接 fixture loop に渡して divergence を検出する。
-# 抽出方法: production の `grep -qiE '<regex>'` 行から single-quote 内側だけを取り出す。
+# Extract the regex from post-compact.sh and run fixtures against the literal —
+# hard-coding it in the test would let post-compact.sh's regex drift silently
+# without breaking the assertion. Pull the pattern from the production
+# `grep -qiE '<regex>'` line by capturing the single-quoted contents.
 REGEX=$(grep -oE "grep -qiE '[^']+'" "$POST_COMPACT" | head -1 | sed -E "s/^grep -qiE '//; s/'\$//")
 if [ -z "$REGEX" ]; then
   echo "ERROR: could not extract classification regex from $POST_COMPACT" >&2
@@ -77,23 +76,23 @@ for fixture in "${negative_fixtures[@]}"; do
 done
 
 echo ""
-echo "=== Phase 4: reconciliation invocation structure (PR #1079 verified-review II-2) ==="
-# PR #1079 review (pr-test-analyzer H-2 対応): 旧 post-compact-reconciliation.test.sh が pin
-# していた reconciliation invocation の構造的特徴を本 test に集約する。post-compact.sh L268-326
-# の reconciliation block が事故で消失 / 引数 drift / mismatch log 削除されても CI が緑のまま
-# 通過する穴を埋める。Issue #1003 AC-2/AC-7 safety net 保護。
+echo "=== Phase 4: reconciliation invocation structure ==="
+# Pin the structural features of the reconciliation block. If the block is
+# accidentally deleted, the arguments drift, or the mismatch log line is
+# removed, CI would otherwise stay green while the PR Ready/Status safety
+# net silently goes missing.
 assert_grep "reconciliation invokes projects-status-update.sh" "$POST_COMPACT" "projects-status-update\.sh"
 assert_grep "reconciliation passes status_name:\$status via jq -n" "$POST_COMPACT" 'status_name:\$status'
 assert_grep "reconciliation specifies 'In Review' as target status" "$POST_COMPACT" '"In Review"'
 assert_grep "reconciliation failure emits post_compact_reconciliation_failed root-cause hint" "$POST_COMPACT" "post_compact_reconciliation_failed"
 assert_grep "post-compact mismatch detected log literal exists" "$POST_COMPACT" "post-compact mismatch detected"
 
-# bash -n syntax check: PR #1079 でリファクタした script の syntax が CI で守られていないと、
-# quote 不整合 / heredoc 終端漏れが session 起動失敗まで気付けなくなる。
+# bash -n syntax check catches quote/heredoc breakage at test time, before it
+# surfaces as a runtime session-start failure.
 if bash -n "$POST_COMPACT" 2>/dev/null; then
   pass "post-compact.sh passes bash -n syntax check"
 else
   fail "post-compact.sh has syntax errors (bash -n failed)"
 fi
 
-print_summary "$(basename "$0")" "If you change the classification regex in post-compact.sh, update both this test fixtures and the regex literal. Weakening (removing \\s* / requiring literal space / removing -i flag) causes the cycle-6 false-positive regression for close/merge-deleted PRs."
+print_summary "$(basename "$0")" "If you change the classification regex in post-compact.sh, update both the fixtures here and the regex literal. Weakening it (removing \\s* / requiring literal space / dropping -i) re-opens the false-positive incident flood for close/merge-deleted PRs."

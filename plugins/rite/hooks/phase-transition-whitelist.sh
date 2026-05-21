@@ -1,17 +1,12 @@
 #!/bin/bash
-# rite workflow - Phase Transition Whitelist (#490 / refactored in #1079)
+# rite workflow - Phase Transition Whitelist
 #
 # Provides the canonical phase-transition graph used by pre-tool-bash-guard.sh
-# and other orchestration helpers to detect silent phase-skipping bugs in
-# /rite:issue:start end-to-end flow.
-#
-# PR #1079 で /rite:issue:start を flat single-file workflow へ統合した際に、
-# 旧 sub-skill chain (start-execute / start-publish / start-finalize) と
-# 多数の中間 phase (phase5_*_running / phase5_post_* / phase5_stop_hook 等)
-# は退役。本 whitelist は新 9 phase (init / branch / plan / implement /
-# lint / pr / review / fix / completed) に対応する。legacy phase 名は
-# rite_phase_transition_allowed() の fail-open path で accept される
-# (forward-compat) ため、旧 state file の resume 経路を破壊しない。
+# and other orchestration helpers to detect silent phase-skipping bugs in the
+# /rite:issue:start end-to-end flow. The flat workflow uses 9 phases (init /
+# branch / plan / implement / lint / pr / review / fix / completed); legacy
+# phase names from earlier sub-skill chains are accepted via the fail-open
+# path so existing state files can still be resumed.
 #
 # This file is designed to be SOURCED, not executed directly. After sourcing:
 #   - `rite_phase_transition_allowed <prev> <next>` — returns 0 if allowed, 1 otherwise
@@ -24,48 +19,36 @@
 #       phase_transitions:
 #         <phase>: [<next1>, <next2>]
 #
-# ⚠️ NOTE on `stop_guard:` key naming (PR #1079 review: comment-analyzer I-1):
-#   このキー名は #675 以前の `stop-guard.sh` (retire 済) からの継承で残置している。
-#   現在 phase-transition の override 機構を利用するのは本ファイル (`phase-transition-whitelist.sh`)
-#   と少数の caller hook のみで、`stop-guard.sh` 自体は撤去されている。新規キー名への
-#   rename は project の rite-config.yml に破壊的変更を強いるため見送り (forward-compat
-#   のためキー名は固定)。読者の混乱を避ける目的でここに明記する。
+# ⚠️ The `stop_guard:` key name is preserved verbatim for backward compatibility
+# with existing project rite-config.yml files — the original stop-guard.sh has
+# been retired but renaming the config key would be a breaking change.
 #
 # Override semantics: MERGE — listed targets are APPENDED to the baked-in
-# whitelist for that phase (allowing projects to add custom transitions
-# without losing the defaults).
+# whitelist for that phase (so projects can add custom transitions without
+# losing the defaults).
 
 # Guard against double-loading when multiple scripts source this file.
 [ -n "${_RITE_PHASE_TRANSITION_LOADED:-}" ] && return 0
 _RITE_PHASE_TRANSITION_LOADED=1
 
-# Bash 4.2+ required for `declare -gA`. Older bash (e.g., macOS default 3.2,
-# pinned by Apple's GPLv3 licensing constraints) would abort with a syntax error
-# on the associative-array literal below. We bail out gracefully so callers can
-# detect the missing `rite_phase_transition_allowed` function and route around
-# the disabled whitelist. ただし silent return は macOS 開発者環境で「whitelist が
-# 効いていない」事実を不可視にするため、stderr に 1 行 WARNING を出してから return する
-# (PR #1079 review: silent fail-open silent-failure-hunter C-2 対応)。
+# Bash 4.2+ required for `declare -gA`. Older bash (macOS default 3.2, pinned
+# by Apple's GPLv3 constraints) would abort with a syntax error on the
+# associative-array literal below. Emit a WARNING and return gracefully so
+# callers can detect the missing function and route around the disabled
+# whitelist; a silent return would hide the macOS fail-open from developers.
 if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 2))); then
   echo "[rite] WARNING: phase-transition-whitelist disabled (requires bash >= 4.2, found ${BASH_VERSION:-unknown}). macOS users running default bash 3.2 will not get phase transition validation. Upgrade bash via Homebrew or use the bundled hooks with a newer shell." >&2
   return 0
 fi
 
-# Baked-in whitelist. Each entry maps a phase to the phases it may transition to.
-# Empty string ("") is accepted as a synthetic "workflow start" predecessor for
-# any phase, since /rite:issue:start begins with no prior state.
-#
-# PR #1079: /rite:issue:start を flat single-file workflow へ統合。9 phase
-# (init / branch / plan / implement / lint / pr / review / fix / completed)
-# は start.md のステップ番号と 1:1 対応する。/rite:resume の routing は
-# commands/resume.md Phase 3.2 表が SoT。legacy phase 名 (phase5_* /
-# phase1_* / phase2_* / phase3_*) は fail-open で accept される
-# (forward-compat) ため、旧 state file からの遷移は警告無しで通過する。
+# Baked-in whitelist. Each entry maps a phase to the phases it may transition
+# to. Empty string ("") is accepted as a synthetic "workflow start" predecessor
+# for any phase, since /rite:issue:start begins with no prior state. Each step
+# also accepts "same phase → same phase" so /rite:resume can rewrite the
+# current phase without tripping the guard (handled by the
+# `[ "$prev" = "$next" ]` short-circuit in rite_phase_transition_allowed).
+# The canonical phase→step routing is documented in commands/resume.md Phase 3.2.
 declare -gA _RITE_PHASE_TRANSITIONS=(
-  # /rite:issue:start (flat workflow, PR #1079 +)
-  # 各 step は前 step の phase からの遷移を受理する。/rite:resume が中断
-  # 復帰経路として「同 phase → 同 phase」を書く場合も accept する
-  # (rite_phase_transition_allowed の `[ "$prev" = "$next" ]` 短絡で対応)。
   ["init"]="branch plan"
   ["branch"]="plan implement"
   ["plan"]="implement lint"
@@ -113,13 +96,13 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   # DRIFT-CHECK ANCHOR (semantic): ingest.md 🚨 Mandatory After Auto-Lint section と
   # 本 whitelist 定義の ingest_* phase 遷移とで 2 site 対称。いずれかを変更する際は両 site 同時確認。
   #
-  # Edge rationale (PR #624 cycle 1 F6 対応):
-  # - `ingest_pre_lint → ingest_post_lint`: 正規経路 (lint return 後 Mandatory After Step 1 で patch)
-  # - `ingest_pre_lint → ingest_completed`: **defense-in-depth edge for Step 1 WARNING fallback only**
-  #   正規経路ではない。Mandatory After Step 1 patch が失敗 (WARNING 続行) した場合でも、Phase 9.1
-  #   Step 3 の terminal patch で ingest_completed に直接遷移できるよう許容するための防御 edge。
-  # - `ingest_pre_lint → cleanup_post_ingest`: defense-in-depth edge for Mandatory After Step 1 and
-  #   Phase 9.1 Step 3 both failing — caller Mandatory After が直接 caller phase に書き戻す経路。
+  # Edge rationale:
+  # - `ingest_pre_lint → ingest_post_lint`: canonical path (Mandatory After Step 1 patch after lint returns)
+  # - `ingest_pre_lint → ingest_completed`: defense-in-depth edge for the Step 1 WARNING fallback only.
+  #   If Mandatory After Step 1 patch silently fails (WARNING + continue), Phase 9.1 Step 3's terminal
+  #   patch can still transition directly to ingest_completed without tripping the guard.
+  # - `ingest_pre_lint → cleanup_post_ingest`: defense-in-depth edge for both Mandatory After Step 1
+  #   AND Phase 9.1 Step 3 failing — lets the caller's Mandatory After write the caller phase back.
   ["ingest_pre_lint"]="ingest_post_lint ingest_completed cleanup_post_ingest"
   ["ingest_post_lint"]="ingest_completed cleanup_post_ingest"
   ["ingest_completed"]="cleanup_post_ingest"
@@ -150,9 +133,9 @@ _rite_load_whitelist_overrides() {
   # hid override misconfiguration from users — the opposite of #490's intent
   # (error-handling-reviewer CRITICAL).
   local block awk_err
-  # PR #1079 review (silent-failure-hunter I-6 対応): mktemp 失敗時、awk stderr は
-  # /dev/null へ流れて override parse failure の root cause が消える。
-  # 失敗を一度 stderr に通知する (silent drop を防ぐ)。
+  # When mktemp fails, awk stderr routes to /dev/null and the override-parse
+  # root cause vanishes. Surface the mktemp failure once so users can debug
+  # disk/inode issues instead of silently skipped overrides.
   awk_err=$(mktemp /tmp/rite-phase-transition-awk-err-XXXXXX 2>/dev/null) || {
     awk_err=""
     echo "WARNING: phase-transition-whitelist: mktemp failed for awk stderr capture; override parse errors will not be diagnosable" >&2
@@ -199,6 +182,10 @@ _rite_load_whitelist_overrides() {
   #   (2) block list:   phase_x:\n  - a\n  - b
   local current_key=""
   local current_targets=""
+  # Reset here rather than only via the trailing `unset`: early returns
+  # (awk failure, empty block) skip the unset, and a residual count from a
+  # prior source-and-call would inflate the next WARNING.
+  _rite_pt_skip_count=0
   while IFS= read -r line; do
     [ -z "$line" ] && continue
     # Strip leading whitespace
@@ -248,9 +235,10 @@ _rite_load_whitelist_overrides() {
         fi
       fi
     else
-      # Unrecognized line — emit a debug trace so users can diagnose silent drops
-      # (error-handling IMPORTANT). PR #1079 review (silent-failure-hunter M-3):
-      # RITE_DEBUG 無しでも skip 行数を集計し、loop 終了後に 1 行 summary を出す。
+      # Unrecognized line: count it so we can summarize once after the loop
+      # (even without RITE_DEBUG, the user needs a single signal that lines
+      # were dropped — silent drops on misconfigured overrides were the
+      # original failure mode).
       _rite_pt_skip_count=$((${_rite_pt_skip_count:-0} + 1))
       [ -n "${RITE_DEBUG:-}" ] && echo "[rite debug] override parse skipped line: $trimmed" >&2
     fi
@@ -325,26 +313,23 @@ rite_phase_transition_allowed() {
   [ -z "$prev" ] && return 0
   [ "$prev" = "$next" ] && return 0
 
-  # Terminal phase acceptance (PR #1079 で forward-compat から canonical predecessor 縮退に変更).
-  # 旧仕様は prev → terminal を unconditional allow にして、init → completed のような workflow skip
-  # も silent に通過させていた (silent-failure-hunter H-3)。本実装は canonical predecessor 集合に
-  # 一致する場合のみ accept、それ以外は WORKFLOW_INCIDENT として記録のうえ block する。
-  # forward-compat が必要な場合は STRICT_PHASE_TRANSITIONS 環境変数で挙動を切り替える設計余地を残す。
+  # Terminal phase acceptance: only the canonical predecessor set is accepted.
+  # An unconditional `prev → terminal` allow would let a workflow skip (e.g.
+  # init → completed) pass silently, defeating the whole point of the whitelist.
   if [ "$next" = "completed" ] || [ "$next" = "cleanup_completed" ] || [ "$next" = "ingest_completed" ]; then
     case "$next:$prev" in
-      completed:lint|completed:pr|completed:review|completed:fix) return 0 ;;  # canonical
+      completed:lint|completed:pr|completed:review|completed:fix) return 0 ;;
       cleanup_completed:cleanup_post_ingest|cleanup_completed:cleanup_pre_ingest) return 0 ;;
       ingest_completed:ingest_pre_lint|ingest_completed:ingest_post_lint) return 0 ;;
-      # Forward-compat (PR #1079 review: silent-failure-hunter C-1 対応):
-      # 削除済 legacy phase (create_* / start_* / phase[0-9]* / phase5_*) から canonical terminal
-      # への遷移を accept する。これらは旧 sub-skill chain 時代の state file 由来で、現行
-      # create.md / start.md は書き込まないが、PR #1079 取り込み前に中断したユーザが /rite:resume
-      # で復帰する経路で legitimate に発生する。docstring L13-14 の forward-compat 約束 (旧 state
-      # file の resume 経路を破壊しない) を守るためのワイルドカード arm。
+      # Forward-compat arm: legacy phase names from earlier sub-skill chains
+      # (create_* / start_* / phase[0-9]* / phase5_*) are accepted when /rite:resume
+      # picks up a state file written before the flat workflow consolidation.
+      # Without this, resuming pre-existing in-flight workflows would be blocked.
       completed:create_*|completed:start_*|completed:phase[0-9]*|completed:phase[0-9]_*) return 0 ;;
       *)
-        # protocol violation — workflow skip (e.g. init → completed) を block する。RITE_DEBUG=1 では
-        # stderr に詳細 WARNING、それ以外でも端的な ERROR を残し、観測経路を確保する。
+        # Block protocol violations (e.g. init → completed) and surface them on
+        # stderr — silent rejection would be indistinguishable from "guard not
+        # running" during incident triage.
         if [ "${RITE_DEBUG:-0}" = "1" ]; then
           echo "[rite] ERROR terminal-accept rejected: prev='$prev' → next='$next' is outside the canonical predecessor set; protocol violation" >&2
         else
@@ -356,11 +341,10 @@ rite_phase_transition_allowed() {
   fi
 
   local allowed="${_RITE_PHASE_TRANSITIONS[$prev]:-}"
-  # Unknown prev phase → accept (forward compat).
-  # PR #1079 review (silent-failure-hunter H-2 対応): 1 hook 実行に 1 回だけ INFO を残し、
-  # terminal-accept reject 経路 (L341-345) と観測性を対称化する。重複抑止カウンタは
-  # 関数スコープではなく hook プロセススコープで持つため、global flag を使う。RITE_DEBUG=1
-  # のときは詳細な WARNING も併せて出す (旧挙動を継承)。
+  # Unknown prev phase → accept (forward compat) but emit an INFO once per
+  # hook process so the forward-compat path remains observable. A global flag
+  # suppresses duplicates within the same process; subsequent hook invocations
+  # will re-emit so persistent drift is still visible across executions.
   if [ -z "$allowed" ] && ! rite_phase_is_known "$prev"; then
     if [ -z "${_RITE_UNKNOWN_PREV_INFO_EMITTED:-}" ]; then
       echo "[rite] INFO phase-transition: unknown-prev forward-compat allow (prev='$prev' → next='$next'); future drift will be silent within this hook execution" >&2
@@ -426,13 +410,14 @@ rite_phase_is_create_lifecycle_in_progress() {
 # session ends mid-cleanup (the wiki ingest never ran, or Phase 5 completion
 # report was never emitted).
 #
-# Issue #618 (PR #624 cycle 1 F5 observability regression fix): ring 経由時に caller
-# (cleanup) phase が `ingest_pre_lint` / `ingest_post_lint` に一時上書きされる transient 期間中に
-# session が終了すると、本 helper が false を返し WARN_MSG が emit されない observability regression
-# が発生する (cleanup lifecycle 未完了なのに気付けない)。ring の中間 phase も cleanup-in-progress
-# として検出する設計とし、single-session `/rite:wiki:ingest` 実行時は session-end 側で別途
-# flow-state.active=false を参照して誤検出を避ける (flow-state 不在時は helper に到達しない)。
-# Note: `ingest_completed` は含めない — terminal state (active=false) であり「未完了」に該当しない。
+# Ring transition observability: during the cleanup → ingest_pre_lint → ingest_post_lint
+# loop, the caller phase is temporarily overwritten. If the session ends mid-loop,
+# the helper must still report cleanup-in-progress so session-end.sh emits a
+# WARN_MSG — otherwise an incomplete cleanup lifecycle goes unnoticed. Standalone
+# `/rite:wiki:ingest` invocations avoid false-positive WARN_MSG by reading
+# flow-state.active=false separately in session-end.sh.
+# Note: `ingest_completed` is intentionally excluded — it's the terminal state
+# (active=false) and does not qualify as "in progress".
 rite_phase_is_cleanup_lifecycle_in_progress() {
   local phase="$1"
   case "$phase" in
@@ -446,9 +431,9 @@ rite_phase_is_cleanup_lifecycle_in_progress() {
 }
 
 # Optional: auto-load overrides when RITE_CONFIG env var points to a config file.
-# PR #1079 review (silent-failure-hunter M-3 対応): _rite_load_whitelist_overrides の rc を
-# 捨てると awk parse 失敗時 (config 破損) でも override 機構の一部が機能していないまま
-# session が続く observability gap が発生する。失敗時は明示的に WARNING を残す。
+# Surface partial loader failure (awk parse error on a corrupt config) so the
+# user knows their custom transitions aren't taking effect — silently falling
+# back to built-in defaults would leave an undiagnosable observability gap.
 if [ -n "${RITE_CONFIG:-}" ]; then
   _rite_load_whitelist_overrides "$RITE_CONFIG" || echo "[rite] WARNING: phase-transition-whitelist: rite-config override load partially failed; using built-in defaults" >&2
 fi

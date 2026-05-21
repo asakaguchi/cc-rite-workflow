@@ -1,5 +1,7 @@
 # `/rite:issue:create` ワークフロー全面改善 — PDF Skill ガイド + Claude Code 公式仕様準拠
 
+> **Status: superseded**. 本 design doc が想定していた sub-skill アーキテクチャ (`create-interview` / `create-decompose` / `create-register`) は flat single-file workflow (`create.md` ステップ 1-6) に統合され retire された。歴史的設計判断の参照用として残置。
+
 <!-- Section ID: SPEC-OVERVIEW -->
 ## 概要
 

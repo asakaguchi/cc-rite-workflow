@@ -22,10 +22,10 @@ export _RITE_HOOK_RUNNING_PRETOOL=1
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
-# Single source of truth for create_* lifecycle phase names (#501 HIGH).
-# Provides rite_phase_is_create_lifecycle_in_progress() used by Pattern 5.
-# whitelist 自身が bash < 4.2 警告を出すが、parser-level syntax error の場合に
-# silent fail にならないよう warning を出す (PR #1079 review: silent-failure-hunter C-2 対応)。
+# Single source of truth for create_* lifecycle phase names. Provides
+# rite_phase_is_create_lifecycle_in_progress() used by Pattern 5. The whitelist
+# itself warns on bash < 4.2, but a parser-level syntax error would otherwise
+# silently disable Pattern 5 — surface it instead.
 source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>/dev/null \
   || echo "[rite] WARNING: phase-transition-whitelist.sh source failed in pre-tool-bash-guard.sh; Pattern 5 lifecycle detection disabled" >&2
 
@@ -97,9 +97,9 @@ fi
 # Placed after JSON parsing (which has its own || fallbacks) to preserve
 # error detection for malformed hook input (TC-016).
 #
-# PR #1079 review (silent-failure-hunter I-4 対応): trap scope を Patterns 1-3 に
-# 限定する。Pattern 5 はもっと複雑な state-file 操作を行うため、Pattern 5 開始時に
-# trap を解除し、jq 失敗等は明示的な `|| STATE_PHASE=""` で個別フォールバックする。
+# Scope this trap to Patterns 1-3 only. Pattern 5 does complex state-file ops
+# and needs explicit per-call fallbacks (`|| STATE_PHASE=""` etc.) instead of
+# a blanket fail-open — see the matching `trap - ERR` below.
 trap 'exit 0' ERR
 
 # --- Heredoc-safe command extraction ---
@@ -182,9 +182,9 @@ fi
 #     with `cr`), so `cr` is the minimum unambiguous prefix and must be caught. `c` alone is
 #     ambiguous and gh CLI itself rejects it, so we do not block it here.
 if [ -z "$BLOCKED_PATTERN" ]; then
-  # Pattern 5 は state file 操作 (jq / 各種 fallback) を含む。fail-open ERR trap は
-  # ここで解除し、jq 失敗等は個別の `|| STATE_PHASE=""` 等で明示的に処理する。
-  # (PR #1079 review: silent-failure-hunter I-4 対応)
+  # Pattern 5 owns its own per-call fallbacks (`|| STATE_PHASE=""` etc.).
+  # Release the Patterns 1-3 fail-open ERR trap so jq/state-read failures
+  # cannot silently turn into "allow" by accident.
   trap - ERR
   # Normalize $COMMAND directly (NOT $CMD_CHECK) to catch heredoc-body bypass (#501 HIGH).
   CMD_P5="${COMMAND//$'\t'/ }"
@@ -234,12 +234,11 @@ if [ -z "$BLOCKED_PATTERN" ]; then
         :
       else
         # Resolver failed (helper deploy regression / path validation rejection).
-        # Surface the failure under RITE_DEBUG so deploy regressions are observable
-        # — the legacy fallback would otherwise let Mode B AND-logic operate on the
-        # wrong state file silently when schema_version=2 is configured (Issue #681 F-01).
-        # PR #1079 review (silent-failure-hunter M-5 対応): 2>/dev/null で debug log 書き込み失敗
-        # を完全 silent 化していた。RITE_DEBUG ユーザが debug log 自体の存在に気付けない
-        # (disk full / permission denied) ため、書き込み失敗時は stderr に出す。
+        # Without this unconditional WARNING, a broken resolver on schema_version=2
+        # would silently route Pattern 5 detection to the wrong state file — Mode B
+        # AND-logic against the legacy file always evaluates false, silently
+        # bypassing the guard.
+        echo "[rite] WARNING: pre-tool-bash-guard: _resolve-flow-state-path.sh failed; Pattern 5 detection falling back to legacy path ($STATE_ROOT_PATH/.rite-flow-state)" >&2
         [ -n "${RITE_DEBUG:-}" ] && {
           echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: _resolve-flow-state-path.sh failed, falling back to legacy path" \
             >> "$STATE_ROOT_PATH/.rite-flow-debug.log" \
@@ -687,18 +686,27 @@ if [ -z "$BLOCKED_PATTERN" ]; then
   fi
 
   if [ "$CHARTER_CHECK" = "1" ] && [ -n "$CHARTER_MSG" ]; then
-    STAGED_FILES=$(git diff --cached --name-only 2>/dev/null) || STAGED_FILES=""
-    if [ -n "$STAGED_FILES" ]; then
-      ALL_DESIGNS=1
-      while IFS= read -r f; do
-        [ -z "$f" ] && continue
-        case "$f" in
-          docs/designs/*) ;;
-          *) ALL_DESIGNS=0; break ;;
-        esac
-      done <<< "$STAGED_FILES"
-      if [ "$ALL_DESIGNS" = "1" ]; then
-        CHARTER_CHECK=0
+    # When CWD is not a git work tree, `git diff --cached` returns empty silently
+    # and the loop below would treat that as "all design files" and skip charter
+    # lint — a silent fail-open. Detect the repo-less case explicitly so the
+    # skip is loud (charter lint must be opt-out, not opt-out-by-accident).
+    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      echo "[charter-lint] ERROR: CWD is not inside a git work tree (charter check explicitly skipped — review hook harness)" >&2
+      CHARTER_CHECK=0
+    else
+      STAGED_FILES=$(git diff --cached --name-only 2>/dev/null) || STAGED_FILES=""
+      if [ -n "$STAGED_FILES" ]; then
+        ALL_DESIGNS=1
+        while IFS= read -r f; do
+          [ -z "$f" ] && continue
+          case "$f" in
+            docs/designs/*) ;;
+            *) ALL_DESIGNS=0; break ;;
+          esac
+        done <<< "$STAGED_FILES"
+        if [ "$ALL_DESIGNS" = "1" ]; then
+          CHARTER_CHECK=0
+        fi
       fi
     fi
   fi

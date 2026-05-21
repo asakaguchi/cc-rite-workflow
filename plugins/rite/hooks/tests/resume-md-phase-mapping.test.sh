@@ -1,22 +1,16 @@
 #!/bin/bash
-# resume-md-phase-mapping.test.sh — CG-B (PR #1079 verified-review)
+# resume-md-phase-mapping.test.sh
 #
-# Purpose:
-#   `commands/resume.md` Phase 3.2 の phase → step mapping table が
-#   `phase-transition-whitelist.sh` の `_RITE_PHASE_TRANSITIONS` と
-#   `rite_phase_is_known` で実際に解決可能であることを静的に検証する。
+# `commands/resume.md` Phase 3.2 is the routing SoT for /rite:resume. A typo,
+# a stale row, or a forgotten new-phase entry would silently route the user to
+# the wrong step. Pin three invariants statically:
 #
-#   resume.md は `/rite:resume` の routing SoT。typo (`phase5_fixx` 等)、
-#   stale row、新規 phase の row 追加忘れは静かに `/rite:resume` を誤 step に
-#   ジャンプさせる。本 test は以下の 3 不変条件を assert する:
+#   (a) every flat-workflow phase row resolves via `rite_phase_is_known`
+#   (b) every phase in `_RITE_PHASE_TRANSITIONS` has a corresponding row
+#   (c) legacy compat rows point to step numbers in the 1-8 range
 #
-#     (a) flat workflow 9 phase 行が `rite_phase_is_known` を通る
-#     (b) `_RITE_PHASE_TRANSITIONS` に含まれる全 phase が resume.md に row を持つ
-#     (c) legacy compat 行の target step 番号は 1-8 の範囲に収まる
-#
-# When this test fails:
-#   - resume.md の Phase 3.2 表 / legacy compat 表 を修正
-#   - 新 phase 追加時は (a)(b) が両立するよう resume.md と whitelist を同期更新
+# When this fails: fix the Phase 3.2 / legacy compat tables. When adding a
+# phase, update resume.md and the whitelist together so (a) and (b) stay aligned.
 
 set -euo pipefail
 

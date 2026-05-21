@@ -254,7 +254,12 @@ while [ "$attempt" -lt "$MAX_RETRIES" ]; do
       final_err="$gql_errors"
       if is_retryable_error "$final_err" && [ "$attempt" -lt "$MAX_RETRIES" ]; then
         add_warning "addSubIssue retry $attempt/$MAX_RETRIES after error: ${final_err:0:120}"
-        sleep "$delay"
+        # A non-zero sleep return likely means SIGINT — bail out so the final
+        # warning reads as "user-cancelled" instead of "auth/rate-limit failure".
+        if ! sleep "$delay"; then
+          add_warning "addSubIssue retry interrupted (sleep returned non-zero, likely SIGINT)"
+          break
+        fi
         delay=$((delay * 2))
         continue
       fi
@@ -271,7 +276,10 @@ while [ "$attempt" -lt "$MAX_RETRIES" ]; do
   fi
   if is_retryable_error "$final_err" && [ "$attempt" -lt "$MAX_RETRIES" ]; then
     add_warning "addSubIssue retry $attempt/$MAX_RETRIES after error: ${final_err:0:120}"
-    sleep "$delay"
+    if ! sleep "$delay"; then
+      add_warning "addSubIssue retry interrupted (sleep returned non-zero, likely SIGINT)"
+      break
+    fi
     delay=$((delay * 2))
     continue
   fi

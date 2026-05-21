@@ -597,7 +597,7 @@ From the implementation just completed, extract user-facing identifiers that may
 | Renamed / added / removed commands | `/rite:issue:start`, slash-command names |
 | Renamed / added / removed config keys | `rite-config.yml` keys (`branch.base`, `wiki.enabled`) |
 | Renamed / added / removed file paths | Section file paths a user copies into their project |
-| Renamed / added / removed phase / workflow names | `Phase 5.4`, `review-fix loop` |
+| Renamed / added / removed phase / workflow names | `start.md ステップ 7.2`, `review-fix loop` |
 | Renamed / added / removed public function / hook names | hook script names, exported helpers |
 
 Use the work memory's `決定事項・メモ` and the diff itself as the source. Skip identifiers that are clearly internal.

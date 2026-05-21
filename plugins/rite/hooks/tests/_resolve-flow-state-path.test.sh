@@ -247,7 +247,7 @@ elif [ "$header_lines" -gt 70 ]; then
   # against false PASS via accidental keyword appearances in code body.
   # Upper bound bumped from 50 → 70 when the caller list expanded to include
   # non-lifecycle hook callers (post-tool-wm-sync.sh, pre-tool-bash-guard.sh)
-  # and command-level callers (create.md, cleanup.md — create-interview.md was deleted in PR #1079 flat workflow consolidation).
+  # and command-level callers (create.md, cleanup.md).
   fail "Header section sanity check failed: extracted $header_lines lines (expected < 70). End marker '# Why this exists' may have been removed/renamed"
 else
   contract_failed=0

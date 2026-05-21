@@ -5,7 +5,7 @@ description: レビュー指摘への対応を支援
 # /rite:pr:fix
 
 ## Contract
-**Input**: PR number, review findings from `/rite:pr:review`, flow state with `phase: phase5_fix` (e2e flow)
+**Input**: PR number, review findings from `/rite:pr:review`, flow state with `phase: fix` (flat workflow, written by `start.md` ステップ 7.2) or `phase: phase5_fix` (legacy, written by this sub-skill itself — both names coexist until sub-skill writes are migrated in a later PR)
 **Output**: `[fix:pushed]` | `[fix:pushed-wm-stale]` | `[fix:issues-created:{n}]` | `[fix:replied-only]` | `[fix:error]`
 
 Retrieve and organize PR review comments to efficiently assist with addressing review feedback

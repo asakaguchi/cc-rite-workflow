@@ -1,19 +1,15 @@
 #!/bin/bash
-# parent-child-sync-static.test.sh — CG-2 (PR #1079 verified-review re-port)
+# parent-child-sync-static.test.sh
 #
-# Purpose:
-#   旧 parent-child-sync-static.test.sh (PR #1079 で削除、271 行) のうち、Issue #513
-#   の regression guard を flat workflow 用に簡易版として復元する。Issue #513 は
-#   親子 Issue の trackedIssues-only inline simplification で AC-1 違反を起こした
-#   incident で、関連する 3 method 検出 (body meta / GraphQL / tasklist) の全在を
-#   ピンしないと static 検出ができない。
+# Parent/child Issue closure relies on detecting the relationship via three
+# methods (body meta, GraphQL trackedIssues, tasklist). A past inline
+# simplification that kept only trackedIssues silently broke parent-close
+# when child Issues used the other two methods. Pin the static invariants:
 #
-#   本 test は中核の static invariant のみを検査する:
-#   - close.md Phase 4.5.1 は 3 method (Method 1/2/3) すべてを保持
-#   - close.md Phase 4.6 の auto-close 経路の skeleton (P460_DECISION) が残る
-#   - start.md ステップ 8.4 (PR #1079 で旧 close 経路を統合) で trackedIssues query が
-#     使われている (`Query trackedInIssues` inline simplification の regression 防止)
-#   - projects-integration.md §2.4.7 の 3 method 解説が残る
+#   - close.md Phase 4.5.1 keeps all three Method 1/2/3 blocks
+#   - close.md Phase 4.6 keeps the auto-close skeleton (P460_DECISION)
+#   - start.md ステップ 8.4 uses the trackedIssues query
+#   - projects-integration.md §2.4.7 documents all three methods
 
 set -euo pipefail
 

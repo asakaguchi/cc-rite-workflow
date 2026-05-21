@@ -895,6 +895,82 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# Safe-default exit 2 on config parse failure (chmod 000 / awk error). A lenient
+# fallback here would silently treat the user's `wiki.enabled: false` as enabled
+# and leak raw sources — the whole reason for the strict exit 2 contract.
+# --------------------------------------------------------------------------
+
+echo "[TC-043] chmod 000 rite-config.yml → sed extraction fail → exit 2"
+dir43=$(mktemp -d /tmp/rite-wiki-test-tc043-XXXXXX)
+cat > "$dir43/rite-config.yml" <<EOF
+wiki:
+  enabled: true
+EOF
+chmod 000 "$dir43/rite-config.yml"
+echo "content for tc043" > "$dir43/content.md"
+( cd "$dir43" && bash "$HOOK" --type reviews --source-ref pr-tc043 --content-file content.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+chmod 644 "$dir43/rite-config.yml" 2>/dev/null || true
+if [ "$rc" -ne 2 ]; then
+  fail "TC-043 expected exit 2 (safe-default), got rc=$rc, stderr=$(cat "$dir43/err.log" 2>/dev/null)"
+elif ! grep -qE 'sed|ERROR|safe-default' "$dir43/err.log" 2>/dev/null; then
+  fail "TC-043 exit 2 returned but ERROR/safe-default message missing from stderr"
+elif [ -d "$dir43/.rite/wiki/raw/reviews" ] && [ "$(find "$dir43/.rite/wiki/raw/reviews" -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')" -ne 0 ]; then
+  fail "TC-043 raw source created despite safe-default exit (silent policy violation)"
+else
+  pass "TC-043 chmod 000 → exit 2 + ERROR message + raw not created"
+fi
+rm -rf "$dir43"
+echo ""
+
+echo "[TC-044] binary garbage in wiki section → awk fail → exit 2"
+dir44=$(mktemp -d /tmp/rite-wiki-test-tc044-XXXXXX)
+# NUL byte handling differs by platform, so this case may pass-through the
+# tr/sed pipeline. Either outcome is acceptable as long as raw is not silently
+# created when the parser bails: that is the invariant the assertion enforces.
+printf 'wiki:\n  enabled: \x00bogus\n' > "$dir44/rite-config.yml"
+echo "content for tc044" > "$dir44/content.md"
+( cd "$dir44" && bash "$HOOK" --type reviews --source-ref pr-tc044 --content-file content.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+# Acceptable outcomes:
+#   - exit 2 (parse failure detected → safe-default)
+#   - exit 0 (NUL stripped successfully and enabled resolved to non-false)
+# Unacceptable: silent staging of raw under partial parse failure with no ERROR.
+if [ "$rc" -eq 2 ]; then
+  pass "TC-044 NUL-injected wiki section → exit 2 (safe-default)"
+elif [ "$rc" -eq 0 ]; then
+  # Confirm raw was actually created and not silently dropped
+  if [ "$(find "$dir44/.rite/wiki/raw/reviews" -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')" -ge 1 ]; then
+    pass "TC-044 NUL stripped by tr / sed; raw created normally (exit 0)"
+  else
+    fail "TC-044 exit 0 but no raw created — silent drop suspected"
+  fi
+else
+  fail "TC-044 unexpected rc=$rc, stderr=$(cat "$dir44/err.log" 2>/dev/null)"
+fi
+rm -rf "$dir44"
+echo ""
+
+echo "[TC-045] wiki.enabled normalization happy path (negative control)"
+dir45=$(mktemp -d /tmp/rite-wiki-test-tc045-XXXXXX)
+# Negative control: ensure the strict guards above don't accidentally break
+# the success path. A regression here would mean the safe-default became
+# fail-closed for valid configs too.
+cat > "$dir45/rite-config.yml" <<EOF
+wiki:
+  enabled: true
+EOF
+echo "content for tc045" > "$dir45/content.md"
+( cd "$dir45" && bash "$HOOK" --type reviews --source-ref pr-tc045 --content-file content.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ "$rc" -ne 0 ]; then
+  fail "TC-045 happy path failed (rc=$rc) — wiki.enabled: true should succeed"
+elif [ "$(find "$dir45/.rite/wiki/raw/reviews" -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')" -lt 1 ]; then
+  fail "TC-045 happy path succeeded but no raw was created"
+else
+  pass "TC-045 happy path (wiki.enabled: true) creates raw normally — negative control for #2 guard"
+fi
+rm -rf "$dir45"
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

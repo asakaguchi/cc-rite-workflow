@@ -626,6 +626,46 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# Observability wiring guardrails. These literals must stay in the source:
+# losing the deactivate-failure type means the next session-start has no
+# defensive-reset signal; losing the per-session rm WARNING means cleanup
+# failures vanish; losing the resolver filter + counter means new helper
+# stderr prefixes get silently dropped.
+# --------------------------------------------------------------------------
+SESSION_END_SCRIPT="$SCRIPT_DIR/../session-end.sh"
+
+echo "[TC-022] session_end_deactivate_failed literal exists in production script"
+if grep -q 'session_end_deactivate_failed' "$SESSION_END_SCRIPT"; then
+  pass "TC-022 session_end_deactivate_failed type present in session-end.sh emit site"
+else
+  fail "TC-022 session_end_deactivate_failed type missing from session-end.sh"
+fi
+echo ""
+
+echo "[TC-023] per-session rm failure WARNING text present in production script"
+if grep -qE 'failed to remove per-session state file|per-session.*rm.*WARNING' "$SESSION_END_SCRIPT"; then
+  pass "TC-023 per-session rm failure WARNING is wired in session-end.sh"
+else
+  fail "TC-023 per-session rm failure WARNING absent"
+fi
+echo ""
+
+echo "[TC-024] resolver stderr filter + drop counter wiring present"
+# Functional behavior cannot be injected here (session-end.sh resolves
+# SCRIPT_DIR from its own path), so pin the literal wiring instead.
+if grep -qE '_resolve_err_dropped|resolver stderr lines filtered' "$SESSION_END_SCRIPT"; then
+  pass "TC-024 resolver stderr filter + drop counter wiring present"
+else
+  fail "TC-024 resolver stderr filter / drop counter wiring absent"
+fi
+if grep -qE 'RITE_DEBUG.*cat .*_resolve_err|if \[ -n "\$\{RITE_DEBUG:-\}" \]' "$SESSION_END_SCRIPT"; then
+  pass "TC-025 RITE_DEBUG bypass branch present in resolver stderr handler"
+else
+  fail "TC-025 RITE_DEBUG bypass branch absent"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

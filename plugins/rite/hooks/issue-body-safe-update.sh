@@ -41,10 +41,10 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _EMIT_SH="$_SCRIPT_DIR/workflow-incident-emit.sh"
 
 # Helper: emit issue_body_fetch_failed sentinel via workflow-incident-emit.sh.
-# PR #1079 review (silent-failure-hunter H-4 対応): 旧実装は stdout に
-# `fetch_failure_reason=` / `apply_failure_reason=` を書いて caller が parse する設計だったが、
-# caller (create.md / start.md) が解析する保証がなく永続的失敗が silent に流れた。失敗時は
-# 直接 sentinel emit して `.rite/incidents/` に痕跡を残し、ステップ 8.5 grep が拾えるようにする。
+# Caller-side parsing of `fetch_failure_reason=` / `apply_failure_reason=` stdout
+# is not guaranteed in every code path, so persistent body-update failures can
+# slip through silently. Emit a sentinel into `.rite/incidents/` directly so the
+# orchestrator's workflow-incident-detection grep always picks it up.
 _emit_body_update_incident() {
   local reason="$1" rc="$2" stderr_snippet="$3"
   if [ -x "$_EMIT_SH" ]; then
@@ -53,6 +53,12 @@ _emit_body_update_incident() {
       --details "Issue #$ISSUE issue-body-safe-update.sh $MODE failed: reason=$reason rc=$rc stderr=$stderr_snippet" \
       --root-cause-hint "$reason" \
       --pr-number 0 >&2 || echo "[rite] WARNING: issue-body-safe-update: workflow-incident-emit.sh exited non-zero (reason=$reason); incident may not be recorded" >&2
+  else
+    # Fallback for partial installs / stripped exec permission. Without this,
+    # the incident would vanish entirely in degraded deployments where the
+    # emit script is missing — and incident observability is the whole point
+    # of this helper.
+    echo "[rite][incident] type=issue_body_fetch_failed root_cause_hint=$reason rc=$rc details=Issue #${ISSUE:-unknown} issue-body-safe-update.sh ${MODE:-unknown} failed (workflow-incident-emit.sh not executable at $_EMIT_SH; using fallback sentinel) stderr=$stderr_snippet" >&2
   fi
 }
 
@@ -85,18 +91,38 @@ if [[ -z "$ISSUE" ]]; then
   exit 1
 fi
 
-# err_level is currently WARNING for all callers (parent / non-parent both use WARNING because
-# body update failures are non-blocking in both contexts: checklist append for the working Issue
-# and Sub-Issues section append for the parent Issue). The --parent flag is preserved in the
-# arg parser for future severity differentiation, but does not change behavior today (PR #1079
-# review: TI-1 dead-branch removed).
+# All callers (parent / non-parent) treat body-update failures as non-blocking:
+# checklist append for the working Issue and Sub-Issues section append for the
+# parent are both fail-soft. The --parent flag is preserved in the arg parser
+# for future severity differentiation but currently has no behavioral effect.
 err_level="WARNING"
 
 case "$MODE" in
   fetch)
-    tmpfile_read=$(mktemp)
-    tmpfile_write=$(mktemp)
-    tmpfile_err=$(mktemp)
+    # The script's non-blocking contract requires exit 0 on transient failure,
+    # but unguarded mktemp under `set -euo pipefail` would abort silently when
+    # /tmp is exhausted. Surface mktemp failure as a normal fetch_failure_reason
+    # so the caller can branch on it instead of getting a mute exit.
+    tmpfile_read=$(mktemp /tmp/rite-issue-body-read-XXXXXX) || {
+      echo "${err_level}: issue-body-safe-update fetch: mktemp tmpfile_read failed (disk full / inode / permission?)" >&2
+      echo "fetch_failure_reason=mktemp_failed"
+      _emit_body_update_incident "mktemp_failed" "1" "tmpfile_read mktemp failed"
+      exit 0
+    }
+    tmpfile_write=$(mktemp /tmp/rite-issue-body-write-XXXXXX) || {
+      echo "${err_level}: issue-body-safe-update fetch: mktemp tmpfile_write failed" >&2
+      echo "fetch_failure_reason=mktemp_failed"
+      _emit_body_update_incident "mktemp_failed" "1" "tmpfile_write mktemp failed"
+      rm -f "$tmpfile_read"
+      exit 0
+    }
+    tmpfile_err=$(mktemp /tmp/rite-issue-body-err-XXXXXX) || {
+      echo "${err_level}: issue-body-safe-update fetch: mktemp tmpfile_err failed" >&2
+      echo "fetch_failure_reason=mktemp_failed"
+      _emit_body_update_incident "mktemp_failed" "1" "tmpfile_err mktemp failed"
+      rm -f "$tmpfile_read" "$tmpfile_write"
+      exit 0
+    }
     trap 'rm -f "$tmpfile_read" "$tmpfile_write" "$tmpfile_err"' EXIT
 
     # gh API 失敗 (auth / network / 404) と「body が本当に空」を区別するため、stderr を捕捉する。
@@ -156,14 +182,19 @@ case "$MODE" in
       fi
     fi
 
-    # gh issue edit 失敗を silent に通さない: stderr を捕捉して呼び出し元に root cause を渡し、
-    # 失敗時も tmpfile を必ず clean up する。本 script は non-blocking 設計 (err_level=WARNING)
-    # のため、API 失敗時も exit 0 を返す (呼び出し元の workflow を止めない)。
-    apply_err=$(mktemp)
-    trap 'rm -f "$apply_err"' EXIT
-    if ! gh issue edit "$ISSUE" --body-file "$TMPFILE_WRITE" 2>"$apply_err"; then
+    # Capture gh issue edit stderr so failures (auth / network / 404) can be
+    # attributed in the incident rather than reported as "API failed, reason
+    # unknown". The script is non-blocking, so mktemp failure degrades to
+    # "no stderr capture" rather than aborting the caller's workflow.
+    apply_err=$(mktemp /tmp/rite-issue-body-apply-err-XXXXXX) || {
+      echo "${err_level}: issue-body-safe-update apply: mktemp apply_err failed; stderr capture disabled" >&2
+      _emit_body_update_incident "mktemp_failed" "1" "apply_err mktemp failed"
+      apply_err=""
+    }
+    trap 'rm -f "$apply_err" 2>/dev/null || true' EXIT
+    if ! gh issue edit "$ISSUE" --body-file "$TMPFILE_WRITE" 2>"${apply_err:-/dev/null}"; then
       rc=$?
-      err_snippet=$(head -c 500 "$apply_err" 2>/dev/null | tr -d '\r' || echo "")
+      err_snippet=$(head -c 500 "${apply_err:-/dev/null}" 2>/dev/null | tr -d '\r' || echo "")
       echo "${err_level}: gh issue edit 失敗 (rc=$rc): ${err_snippet}" >&2
       echo "apply_failure_reason=gh_edit_failed"
       _emit_body_update_incident "gh_edit_failed" "$rc" "$err_snippet"

@@ -519,7 +519,7 @@ Skill ツール呼び出し:
 | `phase5_publish_running` / `phase5_pr` | Resume from ステップ 6 (pr) |
 | `phase5_review` / `phase5_post_review` | Resume from ステップ 7.1 (review) |
 | `phase5_fix` / `phase5_post_fix` | Resume from ステップ 7.2 (fix) |
-| `phase5_finalize_running` / `phase5_post_ready` / `phase5_status_in_review` / `phase5_metrics` / `phase5_completion` / `phase5_parent_close` / `phase5_post_parent_completion` | Resume from ステップ 8 (ready / status / metrics / parent close を実態に応じて選択) |
+| `phase5_finalize_running` / `phase5_post_ready` / `phase5_ready_error` / `phase5_status_in_review` / `phase5_metrics` / `phase5_completion` / `phase5_parent_close` / `phase5_post_parent_completion` | Resume from ステップ 8 (ready / status / metrics / parent close を実態に応じて選択) |
 | `phase1_5_parent` / `phase1_5_post_parent` / `phase1_6_child` / `phase1_6_post_child` | Resume from ステップ 1 (init — 親子判定をやり直す) |
 | `phase2_*` | Resume from ステップ 2 (branch) |
 | `phase3_*` | Resume from ステップ 3 (plan) |

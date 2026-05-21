@@ -442,7 +442,7 @@ Execute test commands as part of quality check when configured.
 
 **Note**: When the `verification` section does not exist in `rite-config.yml`, treat defaults as enabled (`run_tests_before_pr: true`). The test execution condition still requires `commands.test` to be set.
 
-**Duplicate execution avoidance**: When called from the `/rite:issue:start` end-to-end flow and tests were already run and passed in `implement.md` ステップ 3 (test execution; PR #1079 で旧 Phase 5.1.0.6 を統合; test results available in conversation context), skip duplicate test execution and reuse previous results.
+**Duplicate execution avoidance**: When called from the `/rite:issue:start` end-to-end flow and tests were already run and passed in `implement.md` Phase 5.1.0.6 (Test Verification Gate — implement.md retains its own internal phase numbering; test results available in conversation context), skip duplicate test execution and reuse previous results.
 
 When skipped, no output needed (silent skip).
 

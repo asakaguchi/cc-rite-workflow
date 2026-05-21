@@ -1704,8 +1704,8 @@ The current implementation always behaves as non-blocking (registration failure 
 | AC-4 | Same-type dedupe | `workflow_incident_processed_types` context-local set |
 | AC-5 | Hook abnormal exit detection | `workflow-incident-emit.sh --type hook_abnormal_exit` from skill failure paths |
 | AC-6 | Manual fallback detection | Orchestrator fallback prompt options emit `--type manual_fallback_adopted` |
-| AC-7 | Default-on | Phase 5.0 Step 6 reads config with default `true` when absent |
-| AC-8 | Opt-out | `workflow_incident.enabled: false` skips Phase 5.4.4.1 entirely |
+| AC-7 | Default-on | Config readonly load (start.md ステップ 1.4) reads config with default `true` when absent |
+| AC-8 | Opt-out | `workflow_incident.enabled: false` skips workflow incident detection (start.md ステップ 8.5) entirely |
 | AC-9 | Phase 7 non-interference | Independent codepath; only `create-issue-with-projects.sh` shared |
 | AC-10 | Non-blocking on registration failure | `non_blocking_projects: true` + warning to stderr + workflow continues |
 
@@ -1815,7 +1815,7 @@ The contract ends only when the orchestrator's terminal completion marker has be
 
 | Orchestrator | Terminal marker |
 |-------------|----------------|
-| `/rite:issue:start` | Phase 5.6 completion report + Workflow Termination block |
+| `/rite:issue:start` | ステップ 8.6 completion report + Workflow Termination block |
 | `/rite:issue:create` | `<!-- [create:completed:{N}] -->` (HTML-comment wrap form per #561) preceded by user-visible `✅ Issue #{N} を作成しました: {url}` and next-step guidance |
 
 ### Phase-aware continuation hints (#525)
@@ -1832,7 +1832,7 @@ These hints are **best-effort**: the primary enforcement is the prompt contract 
 
 ### Optional sentinel: `auto_continuation_failed` (MAY)
 
-When the contract is violated in practice — i.e., the user types `continue` to recover — the orchestrator **MAY** emit the `auto_continuation_failed` sentinel via `plugins/rite/hooks/workflow-incident-emit.sh` so the incident is auto-registered as an Issue via Phase 5.4.4.1 (Workflow Incident Detection).
+When the contract is violated in practice — i.e., the user types `continue` to recover — the orchestrator **MAY** emit the `auto_continuation_failed` sentinel via `plugins/rite/hooks/workflow-incident-emit.sh` so the incident is auto-registered as an Issue via start.md ステップ 8.5 (Workflow Incident Detection).
 
 This sentinel is classified as **MAY** rather than **MUST** because:
 

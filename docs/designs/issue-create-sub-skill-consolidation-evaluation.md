@@ -1,5 +1,7 @@
 # /rite:issue:create sub-skill 統合可能性評価
 
+> **Status: superseded**. 本評価ドキュメントの結論 (sub-skill 統合) は実施済みで、`create-interview` / `create-decompose` / `create-register` は `create.md` (flat) に統合された。歴史的設計判断の参照用として残置。
+
 ## 1. 背景
 
 `/rite:issue:create` ゼロベース再設計 (Phase E) の段階的リファクタとして、`create.md` 本体と 3 sub-skill (`create-interview.md` / `create-decompose.md` / `create-register.md`) の統合可能性を評価する。

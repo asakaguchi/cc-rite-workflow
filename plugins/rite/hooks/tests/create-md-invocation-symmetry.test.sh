@@ -1,24 +1,22 @@
 #!/bin/bash
-# create-md-invocation-symmetry.test.sh — CG-A (PR #1079 verified-review)
+# create-md-invocation-symmetry.test.sh
 #
-# Purpose:
-#   `commands/issue/create.md` の `create-issue-with-projects.sh` callsite が、
-#   canonical JSON pattern (`"$(jq -n ...)"` 単一引数) で呼ばれていることを静的に
-#   検証する。flag-style (`--title --body --labels ...`) への regress は runtime
-#   fatal exit でしか検出できないため、PR #1079 commit 29d179bd で修正された
-#   バグの再発を test レベルで防衛する。
+# Every `create-issue-with-projects.sh` callsite in `commands/issue/create.md`
+# must use the canonical JSON pattern (single `"$(jq -n ...)"` argument). The
+# flag-style alternative (`--title --body --labels ...`) is not supported by
+# the script and would only surface at runtime as a fatal exit when a user
+# actually creates an Issue — too late to catch in review.
 #
 # Coverage:
-#   - 全 `create-issue-with-projects.sh` 呼び出しが `"$(jq -n` 続く形式である
-#   - flag-style な `--title` / `--body` / `--labels` を `create-issue-with-projects.sh`
-#     と同じ行に持たない (近傍 5 行内に出現しない)
-#   - SoT (references/issue-create-with-projects.md) で示される canonical pattern
-#     と整合する callsite 数 (>= 3: single create, parent create, sub-issue loop)
+#   - every `create-issue-with-projects.sh` call is followed by `"$(jq -n`
+#   - no flag-style `--title` / `--body` / `--labels` appears within 5 lines
+#     of a `create-issue-with-projects.sh` invocation
+#   - the callsite count matches the SoT (`references/issue-create-with-projects.md`):
+#     at least 3 sites (single create, parent create, sub-issue loop)
 #
-# When this test fails:
-#   PR #1079 で修正した「flag-style 呼び出しでの runtime fatal exit」が再発した
-#   可能性がある。create.md を SoT (references/issue-create-with-projects.md) と
-#   照合し、canonical JSON pattern に修正すること。
+# When this test fails: a flag-style invocation has likely been introduced.
+# Cross-reference `references/issue-create-with-projects.md` for the canonical
+# JSON pattern and fix create.md to match.
 
 set -euo pipefail
 

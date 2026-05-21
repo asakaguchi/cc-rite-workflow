@@ -93,8 +93,11 @@ case "$TYPE" in
   sub_issue_zero_iteration_loop|sub_issue_loop_abort) ;;
   # Session lifecycle (session-end.sh)
   session_end_deactivate_failed) ;;
+  # Distinct from gh_pr_view_failed: STATE_ROOT vanished between existence check
+  # and cd (unmount, chmod, deletion) — different root cause, different remediation.
+  state_root_toctou_race) ;;
   *)
-    echo "ERROR: Invalid --type: $TYPE (expected: skill_load_failure | hook_abnormal_exit | manual_fallback_adopted | wiki_ingest_skipped | wiki_ingest_failed | wiki_ingest_push_failed | gitignore_drift | cross_session_takeover_refused | legacy_state_corrupt | projects_status_update_failed | projects_status_in_review_missing | issue_branch_link_failed | local_wm_update_lock_failed | body_shrinkage_guard_tripped | issue_body_fetch_failed | git_push_failed | pr_create_failed | parent_close_failed | sub_issue_zero_iteration_loop | sub_issue_loop_abort | session_end_deactivate_failed)" >&2
+    echo "ERROR: Invalid --type: $TYPE (expected: skill_load_failure | hook_abnormal_exit | manual_fallback_adopted | wiki_ingest_skipped | wiki_ingest_failed | wiki_ingest_push_failed | gitignore_drift | cross_session_takeover_refused | legacy_state_corrupt | projects_status_update_failed | projects_status_in_review_missing | issue_branch_link_failed | local_wm_update_lock_failed | body_shrinkage_guard_tripped | issue_body_fetch_failed | git_push_failed | pr_create_failed | parent_close_failed | sub_issue_zero_iteration_loop | sub_issue_loop_abort | session_end_deactivate_failed | state_root_toctou_race)" >&2
     exit 1
     ;;
 esac
@@ -119,7 +122,9 @@ sanitize() {
 DETAILS_SANITIZED=$(sanitize "$DETAILS")
 HINT_SANITIZED=$(sanitize "$ROOT_CAUSE_HINT")
 
-EPOCH=$(date +%s)
+# A date failure (broken PATH, missing busybox) would abort the emit itself,
+# and the caller's `|| true` would then erase the incident sentinel entirely.
+EPOCH=$(date +%s 2>/dev/null) || EPOCH="0"
 ITERATION_ID="${PR_NUMBER}-${EPOCH}"
 
 if [[ -n "$HINT_SANITIZED" ]]; then

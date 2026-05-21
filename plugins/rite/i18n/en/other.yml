@@ -229,7 +229,7 @@ messages:
   lint_skipped: "Lint was skipped."
   lint_skip_reason: "Reason: Lint command not detected"
   lint_skip_next_step: "Create PR with `/rite:pr:create` if needed"
-  lint_flow_continue: "🔄 **Flow continues**: The caller `/rite:issue:start` will execute Phase 5.2.1 (checklist confirmation)"
+  lint_flow_continue: "🔄 **Flow continues**: The caller `/rite:issue:start` will execute Step 4.4 (checklist confirmation)"
   lint_command_prompt: "Enter the lint command to use (e.g., npm run lint, ruff check .)"
   lint_command_other: "Enter other command (select Other)"
   lint_check_path_correct: "Verify the path is correct"

@@ -1,5 +1,7 @@
 # Anthropic ハーネス設計記事の知見を rite workflow に取り入れる
 
+> **Status: superseded**. 本 design doc 内で参照される `implementation-plan.md` / `start-execute.md` / `start-publish.md` / `start-finalize.md` 等の sub-skill は flat workflow (`start.md` / `create.md`) に統合され削除済み。歴史的設計判断の参照用として残置。実装ステータス表内の sub-skill 名は統合前の構造を反映する。
+
 ## 実装ステータス
 
 | # | 改善領域 | ステータス | Issue |

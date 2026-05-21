@@ -1,28 +1,24 @@
 #!/bin/bash
-# phase-transition-whitelist.test.sh — CG-1 (PR #1079 verified-review)
+# phase-transition-whitelist.test.sh
 #
-# Purpose:
-#   `phase-transition-whitelist.sh` の決定ロジック (rite_phase_transition_allowed /
-#   rite_phase_is_known / rite_phase_expected_next) を直接 source して happy path
-#   と negative path の挙動を pin する unit test。
-#
-#   `asymmetric-whitelist.test.sh` は静的 grep で orchestrator markdown との対称性
-#   のみを検出する。本 test は transition logic の正確性 (typo / 新 phase 追加忘れ /
-#   terminal accept の forward-compat 範囲) を assert することで、PR #1079 の flat
-#   workflow 9 phase が将来 refactor でも壊れないようにする防衛線。
+# Source `phase-transition-whitelist.sh` directly and pin its decision logic
+# (rite_phase_transition_allowed / rite_phase_is_known / rite_phase_expected_next).
+# Companion to `asymmetric-whitelist.test.sh`: that one detects symmetry drift
+# between orchestrator markdown and the whitelist via static grep; this one
+# guards against typos, missing phase additions, and over-broad terminal-accept
+# forward-compat rules.
 #
 # Coverage areas:
-#   1. Happy path: 新 flat workflow 9 phase の正規遷移
-#   2. Negative path: phase skip / 不正遷移は block される
-#   3. Legacy forward-compat: unknown prev は accept される (fail-open)
-#   4. Terminal accept: completed / cleanup_completed / ingest_completed は accept
-#   5. rite_phase_is_known: 既知 phase 名の判定
-#   6. Cleanup / Ingest lifecycle: 既存の create_* / cleanup_* / ingest_* リング
+#   1. Happy path: canonical transitions through the 9 flat-workflow phases
+#   2. Negative path: phase skips and invalid transitions are blocked
+#   3. Legacy forward-compat: unknown prev phases are accepted (fail-open)
+#   4. Terminal accept: completed / cleanup_completed / ingest_completed
+#   5. rite_phase_is_known: known phase name predicate
+#   6. Cleanup / Ingest lifecycle: existing create_* / cleanup_* / ingest_* rings
 #
-# When this test fails:
-#   whitelist 配列 (_RITE_PHASE_TRANSITIONS) を修正する場合、本 test も同時に更新する。
-#   transition logic の意図的変更時は assert 行を実装に追従させ、意図せざる変更時は
-#   実装側を巻き戻す。
+# When this test fails: update both the assertion and the whitelist together.
+# Intentional logic changes should land as paired diffs; unintentional ones
+# mean the implementation regressed and should be reverted.
 
 set -euo pipefail
 
@@ -165,15 +161,15 @@ case "$debug_out" in
   *) fail "TC-100 RITE_DEBUG=1 should emit unknown-prev-accept warning (got: $debug_out)" ;;
 esac
 
-# PR #1079 H-3 対応: terminal accept は canonical predecessor 縮退済。
-# init → completed は forward-compat warning ではなく block (return 1) に変更された。
+# Terminal accept is restricted to canonical predecessors; init → completed
+# must be blocked (return 1) and emit an ERROR rather than silently passing.
 debug_out2=$(RITE_DEBUG=1 bash -c "
   set -e
   source '$WHITELIST_SH'
   rite_phase_transition_allowed 'init' 'completed' 2>&1 >/dev/null || true
 ") || true
 case "$debug_out2" in
-  *terminal-accept\ rejected*|*phase-transition*) pass "TC-101 RITE_DEBUG=1 emits ERROR for non-canonical init → completed (PR #1079 H-3)" ;;
+  *terminal-accept\ rejected*|*phase-transition*) pass "TC-101 RITE_DEBUG=1 emits ERROR for non-canonical init → completed" ;;
   *) fail "TC-101 RITE_DEBUG=1 should emit terminal-accept rejected ERROR for init → completed (got: $debug_out2)" ;;
 esac
 
@@ -203,7 +199,7 @@ else
 fi
 
 echo ""
-echo "=== Phase 11: _rite_load_whitelist_overrides coverage (II-1 PR #1079 verified-review) ==="
+echo "=== Phase 11: _rite_load_whitelist_overrides coverage ==="
 # Test the override loader by creating a temporary rite-config.yml with inline / block list forms.
 override_tmpdir=$(mktemp -d)
 trap 'rm -rf "$override_tmpdir"' EXIT
@@ -223,7 +219,9 @@ override_out=$(RITE_CONFIG="$override_tmpdir/inline-list/rite-config.yml" bash -
 " 2>&1) || true
 case "$override_out" in
   *'[custom_phase_x]="foo bar"'*|*'[custom_phase_x]="foo bar "'*) pass "TC-200 inline list form merged into _RITE_PHASE_TRANSITIONS" ;;
-  *) pass "TC-200 inline list form loader executed (override_out=${override_out:0:200})" ;;
+  # A fall-through `pass` would let "loader didn't crash" silently regress the
+  # merge semantics. Fail loudly so the assertion has real teeth.
+  *) fail "TC-200 expected '[custom_phase_x]=\"foo bar\"' in override output but loader produced: ${override_out:0:200}" ;;
 esac
 
 # TC-201 — block list form
@@ -266,7 +264,7 @@ case "$override_out" in
 esac
 
 echo ""
-echo "=== Phase 12: Additional transition coverage (PR #1079 verified-review pr-test-analyzer II-1/II-2/II-3) ==="
+echo "=== Phase 12: Additional transition coverage ==="
 # 既存 TC は happy path 中心。fix → pr / lint → review / non-init terminal block の 3 種を補完する。
 
 # TC-300 — fix → pr (fix 後に review を経ずに PR 直行できる canonical 経路)

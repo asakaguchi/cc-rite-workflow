@@ -1,5 +1,7 @@
 # refactor(rite): /rite:issue:start を再設計 — ハイブリッド方針で 9 PR 段階的 slim・Phase 5 分割
 
+> **Status: superseded**. 本 design doc が想定していた sub-skill アーキテクチャ (`start-execute` / `start-publish` / `start-finalize`、および Phase 5.x の分割) は flat single-file workflow (`start.md` ステップ 1-8) に統合され retire された。歴史的設計判断の参照用として残置。
+
 <!-- Section ID: SPEC-OVERVIEW -->
 ## 概要
 

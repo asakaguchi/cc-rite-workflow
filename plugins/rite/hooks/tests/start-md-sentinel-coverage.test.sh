@@ -1,15 +1,12 @@
 #!/bin/bash
-# start-md-sentinel-coverage.test.sh — CG-2 (PR #1079 verified-review)
+# start-md-sentinel-coverage.test.sh
 #
-# Purpose:
-#   `commands/issue/start.md` の flat workflow が caller (例: /rite:sprint:execute、
-#   /rite:resume) に対して emit する sentinel pattern の全集合が start.md 内に
-#   最低 1 回登場することを grep で assert する。
-#
-#   PR #1079 で sub-skill chain が撤去された結果、sentinel pattern は start.md
-#   単一ファイル + invoke 先 skill (lint / pr:create / pr:review / pr:fix / pr:ready) の
-#   出力の組み合わせで構成される。start.md がドキュメントするはずの「戻り値パターン」が
-#   静的に欠落すると、caller 側の grep pattern と silent drift する。
+# Every sentinel pattern that `commands/issue/start.md` emits to its callers
+# (/rite:sprint:execute, /rite:resume, etc.) must appear at least once inside
+# start.md itself. The sentinel set lives across start.md plus the sub-skills
+# it invokes (lint / pr:create / pr:review / pr:fix / pr:ready); if start.md's
+# documented "return patterns" silently lose a literal, caller-side grep
+# patterns drift out of sync and detection breaks without an obvious failure.
 #
 # Coverage areas:
 #   1. lint sentinel: [lint:success|skipped|error|aborted] (新 [lint:aborted] 含む)
@@ -35,7 +32,7 @@ PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 START_MD="$PLUGIN_ROOT/commands/issue/start.md"
 
 assert_file_exists_or_fail "start.md exists" "$START_MD" || {
-  print_summary "$(basename "$0")" "start.md missing — PR #1079 retired this file?"
+  print_summary "$(basename "$0")" "start.md missing — was the file retired or renamed?"
   exit 1
 }
 
@@ -52,7 +49,7 @@ echo "=== lint sentinel set ==="
 assert_in_start "lint:success literal" '\[lint:success\]'
 assert_in_start "lint:skipped literal" '\[lint:skipped\]'
 assert_in_start "lint:error literal" '\[lint:error\]'
-assert_in_start "lint:aborted literal (PR #1079 fix(issue/start) added)" '\[lint:aborted\]'
+assert_in_start "lint:aborted literal" '\[lint:aborted\]'
 
 echo ""
 echo "=== pr:create sentinel set ==="
@@ -94,13 +91,12 @@ assert_in_start "state-read.sh invocation (Resume Dispatch ステップ 0)" 'sta
 assert_in_start "RESUME_DISPATCH context marker" 'RESUME_DISPATCH='
 
 echo ""
-echo "=== Multi-site lower bound (II-2 PR #1079 verified-review) ==="
-# 同一 sentinel が複数 phase で emit される場合、wildcard 1-hit pass で
-# silent deletion を見逃す問題に対する aggregated lower-bound assertion。
-# start-md-charter.test.sh と同じ pattern を採用 (count_aggregated ≥ N)。
-
-# WORKFLOW_INCIDENT emit は複数 phase (lint default / pr_create_failed / git push / projects_*) で
-# 8+ 箇所登場するはず。1 箇所未満になったら多くの incident emit 経路が消えた signal。
+echo "=== Multi-site lower bound ==="
+# A wildcard 1-hit grep would let silent deletions through when the same sentinel
+# is emitted from multiple phases. Aggregated lower-bound counts (count >= N)
+# catch the case where most emit sites disappear but one literal remains.
+# WORKFLOW_INCIDENT spans lint / pr_create_failed / git push / projects_* phases —
+# at least 8 occurrences are expected.
 wf_incident_count=$(grep -cE 'workflow-incident-emit\.sh' "$START_MD" || true)
 if [ "$wf_incident_count" -ge 8 ]; then
   pass "WORKFLOW_INCIDENT emit lower bound (>=8, got $wf_incident_count)"
@@ -126,7 +122,7 @@ else
 fi
 
 echo ""
-echo "=== 9-phase Resume Dispatch routing table rows (II-5 PR #1079 verified-review) ==="
+echo "=== 9-phase Resume Dispatch routing table rows ==="
 # Resume Dispatch table の各 phase 行が start.md に存在することを assert。
 # 行ごとに `phase=<name>` が table 内に登場するはず。
 for phase in init branch plan implement lint pr review fix completed; do
@@ -138,12 +134,10 @@ for phase in init branch plan implement lint pr review fix completed; do
 done
 
 echo ""
-echo "=== 5-arg symmetry for flow-state-update.sh create (PR #1079 verified-review II-1) ==="
-# PR #1079 review (pr-test-analyzer H-1 対応): 旧 start-md-charter.test.sh の
-# compute_symmetry_for() が守っていた「start.md / create.md 内のすべての `flow-state-update.sh create`
-# 呼び出しが `--phase --issue --branch --pr --next` の 5 種を含む」対称性を本 test で復元する。
-# Aggregated symmetry は flat 化により start.md + create.md の 2 ファイル単位で十分。
-# 引数 drift は phase routing と resume を直接破壊するため、CI gate として保護する。
+echo "=== 5-arg symmetry for flow-state-update.sh create ==="
+# Every `flow-state-update.sh create` invocation across start.md + create.md must
+# include all 5 args: --phase / --issue / --branch / --pr / --next. Argument drift
+# breaks phase routing and resume; CI must catch the divergence early.
 CREATE_MD="$PLUGIN_ROOT/commands/issue/create.md"
 for f in "$START_MD" "$CREATE_MD"; do
   [ -f "$f" ] || { echo "ERROR: required file not found: $f" >&2; exit 1; }

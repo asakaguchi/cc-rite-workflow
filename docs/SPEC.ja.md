@@ -1813,8 +1813,8 @@ workflow_incident:
 | AC-4 | 同 type 重複制御 | `workflow_incident_processed_types` context-local set |
 | AC-5 | hook 異常終了の検出 | `workflow-incident-emit.sh --type hook_abnormal_exit` (skill failure path から) |
 | AC-6 | 手動 fallback 採用検出 | Orchestrator fallback prompt option が `--type manual_fallback_adopted` を emit |
-| AC-7 | default-on | Phase 5.0 Step 6 で config 読み込み (未記載時は `true`) |
-| AC-8 | opt-out | `workflow_incident.enabled: false` で Phase 5.4.4.1 を完全 skip |
+| AC-7 | default-on | Config readonly load (start.md ステップ 1.4) で config 読み込み (未記載時は `true`) |
+| AC-8 | opt-out | `workflow_incident.enabled: false` で workflow incident detection (start.md ステップ 8.5) を完全 skip |
 | AC-9 | Phase 7 との非干渉 | 独立 codepath; `create-issue-with-projects.sh` のみ共有 |
 | AC-10 | 登録失敗時 non-blocking | `non_blocking_projects: true` + stderr warning + workflow 続行 |
 

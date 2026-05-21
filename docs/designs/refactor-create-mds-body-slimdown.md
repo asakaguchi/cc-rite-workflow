@@ -1,5 +1,7 @@
 # [Umbrella] refactor(create): create-interview/decompose/register.md 本体スリム化
 
+> **Status: superseded**. 本 design doc が対象としていた 3 sub-skill (`create-interview.md` / `create-decompose.md` / `create-register.md`) は `create.md` に flat 統合され削除済み。本 umbrella の slimdown 目標は flat workflow への統合で達成され、design doc 自体は retire された。歴史的設計判断の参照用として残置。
+
 <!-- Section ID: SPEC-OVERVIEW -->
 ## 概要
 

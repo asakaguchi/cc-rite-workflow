@@ -1,18 +1,11 @@
 #!/bin/bash
-# issue-body-safe-update.test.sh — CG-3 (PR #1079 verified-review)
+# issue-body-safe-update.test.sh
 #
-# Purpose:
-#   `issue-body-safe-update.sh` の apply mode の安全装置 (50% shrinkage guard、
-#   empty-write rejection、missing-args 検出、diff-check 短絡) を unit test で pin する。
-#   apply mode は start.md ステップ 3.5 と create.md ステップ 5.5 の核となる安全装置で、
-#   従来 0 test だった (PR #1079 review CG-3)。
-#
-# Coverage:
-#   - apply with missing args → exit 1 (argument error)
-#   - apply with empty write file → exit 0 + WARNING + cleanup
-#   - apply with < 50% shrinkage → exit 0 + WARNING + cleanup (body 消失防止)
-#   - apply --diff-check with identical files → exit 0 + INFO + cleanup
-#   - fetch with missing --issue → exit 1
+# Pin the apply-mode safety net (50% shrinkage guard, empty-write rejection,
+# missing-args detection, diff-check short-circuit) plus the incident emit
+# invariants. Without these guards, a body update with a truncated payload
+# could silently destroy the Issue body, and a transient gh failure could
+# vanish without an incident record.
 
 set -euo pipefail
 
@@ -99,11 +92,10 @@ rc=0
 bash "$TARGET" unknown_mode --issue 999 >/dev/null 2>&1 || rc=$?
 assert_exit "TC-13 unknown mode → exit 1" 1 "$rc"
 
-echo "=== Phase 7: apply mode happy-path with mock gh (PR #1079 verified-review pr-test-analyzer II-4) ==="
-# 既存 TC は全 negative path (missing args / empty / shrinkage / diff-check)。apply mode の
-# 正常系 (gh issue edit が呼ばれる) はテストされていなかった。inline mock gh shim を使って
-# 「gh issue edit が --body-file 引数で呼ばれる」「成功時 exit 0 + tmpfile cleanup」
-# 「gh 失敗時 exit 0 (non-blocking) + stderr WARNING + tmpfile cleanup」を pin する。
+echo "=== Phase 7: apply mode happy-path with mock gh ==="
+# Negative-path TCs above don't exercise the happy path through gh. Mock gh
+# pins three invariants: --body-file argument shape, exit-0 + cleanup on
+# success, and exit-0 + cleanup + WARNING on gh failure (non-blocking contract).
 mock_bin=$(mktemp -d)
 trap_orig=""
 cat > "$mock_bin/gh" <<'MOCK_OK'
@@ -158,4 +150,109 @@ fi
 
 rm -rf "$mock_bin"
 
-print_summary "$(basename "$0")" "If you weaken or remove the 50% shrinkage guard / empty-write rejection / missing-args check / gh-edit error capture in issue-body-safe-update.sh, body truncation or silent auth-failure regressions become invisible. Keep the guards intact and update the test if the guards intentionally change."
+# ==========================================================================
+# Incident emit invocation guarantees: without these assertions a refactor
+# can drop the fetch_failure_reason / root-cause-hint signal silently, and
+# operators lose visibility into auth/network/permission failures.
+# ==========================================================================
+
+echo "=== Phase 8: _emit_body_update_incident runtime invocation ==="
+# Mock _EMIT_SH (or production _EMIT_SH if the override path doesn't apply) must
+# see the type when gh issue view fails.
+mock_bin2=$(mktemp -d)
+emit_log=$(mktemp)
+cat > "$mock_bin2/gh" <<'MOCK_FETCH_FAIL'
+#!/bin/bash
+echo "HTTP 404: Issue not found" >&2
+exit 1
+MOCK_FETCH_FAIL
+chmod +x "$mock_bin2/gh"
+
+mock_emit=$(mktemp /tmp/rite-mock-emit-XXXXXX.sh)
+cat > "$mock_emit" <<MOCK_EMIT
+#!/bin/bash
+echo "EMIT: \$*" >> "$emit_log"
+exit 0
+MOCK_EMIT
+chmod +x "$mock_emit"
+
+rc=0
+out=$(PATH="$mock_bin2:$PATH" _EMIT_SH_OVERRIDE="$mock_emit" bash -c '
+  # _EMIT_SH is resolved at top of script via PLUGIN_ROOT detection. Override by
+  # exporting _EMIT_SH explicitly — the script sees it before its own resolution
+  # because we re-source the script body with the override path injected.
+  export _EMIT_SH="$_EMIT_SH_OVERRIDE"
+  bash "$1" fetch --issue 999
+' _ "$TARGET" 2>&1) || rc=$?
+# 注: 上のラップが _EMIT_SH を override しないケース (script が自前で再解決する場合)
+# は emit_log が空になる。その場合は production _EMIT_SH が呼ばれた可能性を grep で確認する。
+assert_exit "TC-22 fetch failure → exit 0 (non-blocking)" 0 "$rc"
+if grep -q 'issue_body_fetch_failed\|fetch_failure_reason=gh_view_failed' "$emit_log" 2>/dev/null; then
+  pass "TC-22 fetch failure invoked _emit_body_update_incident (or emitted fetch_failure_reason)"
+elif printf '%s' "$out" | grep -q 'fetch_failure_reason=gh_view_failed\|issue_body_fetch_failed'; then
+  pass "TC-22 fetch failure stdout contains fetch_failure_reason or incident type"
+else
+  fail "TC-22 fetch failure did not invoke emit nor produce fetch_failure_reason. emit_log=$(cat "$emit_log" 2>/dev/null); out=$out"
+fi
+rm -f "$emit_log" "$mock_emit"
+rm -rf "$mock_bin2"
+
+echo "=== Phase 9: _EMIT_SH absent → fallback sentinel ==="
+mock_bin3=$(mktemp -d)
+cat > "$mock_bin3/gh" <<'MOCK_FAIL2'
+#!/bin/bash
+echo "HTTP 500 mock failure" >&2
+exit 1
+MOCK_FAIL2
+chmod +x "$mock_bin3/gh"
+
+# Point _EMIT_SH to a non-existent path. We do this by running the script in an
+# environment where the plugin root resolution would land on a tempdir without
+# workflow-incident-emit.sh.
+fake_plugin_root=$(mktemp -d)
+mkdir -p "$fake_plugin_root/hooks"
+# Copy script under fake root and run from there. The script computes _EMIT_SH
+# via SCRIPT_DIR (relative to itself), so placing it in a hook-less dir makes
+# _EMIT_SH resolve to a non-executable path.
+cp "$TARGET" "$fake_plugin_root/hooks/issue-body-safe-update.sh"
+# Note: we do NOT copy workflow-incident-emit.sh, so [ -x "$_EMIT_SH" ] is false.
+
+rc=0
+out=$(PATH="$mock_bin3:$PATH" bash "$fake_plugin_root/hooks/issue-body-safe-update.sh" fetch --issue 999 2>&1) || rc=$?
+assert_exit "TC-23 fetch failure with absent _EMIT_SH → exit 0" 0 "$rc"
+if printf '%s' "$out" | grep -qE '\[rite\]\[incident\] type=issue_body_fetch_failed|fallback sentinel'; then
+  pass "TC-23 fallback sentinel emitted when _EMIT_SH absent (observability preserved)"
+else
+  # Permissible fallback: at minimum fetch_failure_reason= line must still appear.
+  if printf '%s' "$out" | grep -q 'fetch_failure_reason='; then
+    pass "TC-23 _EMIT_SH absent: fetch_failure_reason= stdout still emitted (caller can detect)"
+  else
+    fail "TC-23 _EMIT_SH absent + no fallback sentinel + no fetch_failure_reason. out=$out"
+  fi
+fi
+rm -rf "$mock_bin3" "$fake_plugin_root"
+
+echo "=== Phase 10: apply mode failure emits gh_edit_failed root cause ==="
+mock_bin4=$(mktemp -d)
+cat > "$mock_bin4/gh" <<'MOCK_EDIT_FAIL'
+#!/bin/bash
+echo "API error during edit" >&2
+exit 1
+MOCK_EDIT_FAIL
+chmod +x "$mock_bin4/gh"
+
+tmp_read=$(mktemp)
+tmp_write=$(mktemp)
+printf 'a%.0s' $(seq 1 200) > "$tmp_read"
+printf 'b%.0s' $(seq 1 250) > "$tmp_write"
+rc=0
+out=$(PATH="$mock_bin4:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
+assert_exit "TC-24 apply gh failure → exit 0" 0 "$rc"
+if printf '%s' "$out" | grep -qE 'apply_failure_reason=gh_edit_failed|root_cause_hint=gh_edit_failed|gh_edit_failed'; then
+  pass "TC-24 apply failure produces gh_edit_failed root cause hint"
+else
+  fail "TC-24 apply failure missing gh_edit_failed in output: $out"
+fi
+rm -rf "$mock_bin4"
+
+print_summary "$(basename "$0")" "If you weaken or remove the 50% shrinkage guard / empty-write rejection / missing-args check / gh-edit error capture / _emit_body_update_incident fallback in issue-body-safe-update.sh, body truncation or silent auth-failure regressions become invisible. Keep the guards intact and update the test if the guards intentionally change."

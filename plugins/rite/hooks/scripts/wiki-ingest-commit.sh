@@ -29,10 +29,9 @@
 # correctly continues its prose contract afterwards.
 #
 # Scope boundary: this script commits raw sources only. It does NOT run
-# the LLM-driven page integration (Phase 4 / Phase 5.0 steps 3-6 of
-# ingest.md). Wiki page integration remains the responsibility of the
-# /rite:wiki:ingest Skill and can be executed at a later time, either
-# automatically or manually. The split enforces a clean separation:
+# the LLM-driven page integration — that is owned by the /rite:wiki:ingest
+# Skill and can be executed later, manually or automatically. The split
+# enforces a clean separation:
 #
 #   (1) raw source capture       — wiki-ingest-trigger.sh (file writer)
 #   (2) raw source commit path   — THIS script (shell, deterministic)

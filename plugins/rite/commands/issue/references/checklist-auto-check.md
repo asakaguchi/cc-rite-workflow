@@ -37,7 +37,7 @@ issue_body=$(gh issue view {issue_number} --json body --jq '.body')
 incomplete_count=${incomplete_count:-$(echo "$issue_body" | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+' | grep -c '^- \[ \] ' || true)}
 echo "incomplete_count=$incomplete_count"
 if [ "${incomplete_count:-0}" -ge 5 ]; then
-  echo "⚠️ Phase 5.2.1: Issue 本文に 5 件以上の未完了チェックリスト項目が残存しています (${incomplete_count} 件)。"
+  echo "⚠️ Phase 5.2.1.1 Step 0: Issue 本文に 5 件以上の未完了チェックリスト項目が残存しています (${incomplete_count} 件)。"
   echo "   Root Cause として以下が考えられます:"
   echo "   - Phase 5.1.1.1 (implement.md) の per-task checklist 更新が trigger されていない"
   echo "   - 実装が Definition of Done を完全充足していない"

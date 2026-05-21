@@ -141,6 +141,8 @@ Run [Preflight Protocol](./start.md#preflight-protocol) before starting implemen
 
 > **Module**: [Implementation Guidance](./implement.md) - Follow Phase 3 plan. Handles: Read/Edit/Bash, parallel (5.1.0), commit message (5.1.1), checklist update (5.1.1.1), parent progress (5.1.2), flow state updates, mandatory `rite:lint` invocation.
 
+> **Issue body checklist — per-task update obligation**: `implement.md` Phase 5.1.1.1 is the SoT for Issue body checklist updates. The orchestrator MUST surface this obligation: as each Definition-of-Done / acceptance-criteria item is satisfied during implementation, the corresponding `- [ ]` line in the Issue body MUST be updated to `- [x]` via the `issue-body-safe-update.sh` 3-step pattern (NOT only at the final commit). Skipping per-task updates causes mass-residual `- [ ]` detection in cleanup Phase 1.6.5 / start-execute Phase 5.2.1, which is now surfaced as a warning when the threshold (5) is exceeded. Parent-child Tasklist entries (`- [ ] #XX`) remain excluded from this obligation.
+
 Skipping lint risks merging code that violates project quality standards, creating technical debt that compounds across subsequent Issues.
 **Critical**: After 5.1.1, **immediately** invoke `rite:lint`. Do NOT stop.
 

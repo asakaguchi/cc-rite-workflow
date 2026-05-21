@@ -34,6 +34,42 @@ Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → 
 
 ---
 
+## ステップ 0: Resume Dispatch（`/rite:resume` から呼ばれた場合のジャンプ）
+
+セッション開始時に flow-state を読み、`/rite:resume` 経由の再開かどうかを判定する。新規セッション (state file 不在) の場合は何もせずステップ 1 に進む:
+
+```bash
+resume_phase=$(bash {plugin_root}/hooks/state-read.sh --field phase --default "" 2>/dev/null || echo "")
+resume_issue=$(bash {plugin_root}/hooks/state-read.sh --field issue_number --default "" 2>/dev/null || echo "")
+resume_active=$(bash {plugin_root}/hooks/state-read.sh --field active --default "false" 2>/dev/null || echo "false")
+
+if [ -n "$resume_phase" ] && [ "$resume_active" = "true" ] && [ "$resume_issue" = "{issue_number}" ]; then
+  echo "[CONTEXT] RESUME_DISPATCH=1; phase=$resume_phase; issue=$resume_issue"
+else
+  echo "[CONTEXT] RESUME_DISPATCH=0; reason=fresh_or_mismatched_session (phase='$resume_phase' active='$resume_active' issue='$resume_issue' arg='{issue_number}')"
+fi
+```
+
+**LLM routing rule** (Bash tool shell state は次の Bash 呼び出しでリセットされるため `[CONTEXT] RESUME_DISPATCH=` marker を会話コンテキストから読む):
+
+| `RESUME_DISPATCH` value + `phase` | LLM action |
+|---|---|
+| `0` | 新規セッション or 別 Issue。ステップ 1 (Issue 情報取得) から通常開始 |
+| `1` + `phase=init` | ステップ 1.5 の `flow-state-update.sh create` をやり直すためステップ 1 から再実行 (idempotent) |
+| `1` + `phase=branch` | ステップ 2 (ブランチ作成) から再開。既存ブランチがあれば `git switch` で復帰 |
+| `1` + `phase=plan` | ステップ 3 (実装計画) から再開。既存の Issue body 実装ステップを再読込 |
+| `1` + `phase=implement` | ステップ 4 (実装) を継続。Issue body の checklist 未完項目から続行 |
+| `1` + `phase=lint` | ステップ 5 (lint 再実行)。既に lint 完了済みなら 5.2 flow-state は overwrite される |
+| `1` + `phase=pr` | ステップ 6 (PR 作成) から再開。既に PR 番号が state にあればステップ 7 へジャンプ |
+| `1` + `phase=review` | ステップ 7.1 (review 再実行) |
+| `1` + `phase=fix` | ステップ 7.2 (fix 再実行) |
+| `1` + `phase=completed` | Issue は既に完結。AskUserQuestion で「新規作業として再開 / 中止」を提示 |
+| `1` + `phase=<legacy>` (`phase5_*` 等) | `commands/resume.md` Phase 3.2 Legacy compatibility 表に従って対応ステップへジャンプ |
+
+`active=false` または `issue_number` が引数と異なる場合は、別 Issue の state が残っているだけなので新規セッション扱い (ステップ 1 から開始)。state file は新 phase 書き込み時に `previous_phase` がシフトされるため、誤った overwrite は発生しない。
+
+---
+
 ## ステップ 1: 準備（Issue 取得・親判定・品質評価）
 
 ### 1.1 Issue 情報取得
@@ -144,19 +180,26 @@ else
 fi
 ```
 
-Issue にブランチを関連付け (失敗しても workflow は続行するが、stderr に WARNING を残す):
+Issue にブランチを関連付け (失敗しても workflow は続行するが、stderr に WARNING + `workflow_incident` sentinel を emit):
 
 ```bash
-develop_err=$(gh issue develop {issue_number} --branch "{branch_name}" 2>&1) || \
-  echo "WARNING: Issue→branch link failed (GitHub UI Development パネルが空のまま): $develop_err" >&2
+if ! develop_err=$(gh issue develop {issue_number} --branch "{branch_name}" 2>&1); then
+  develop_err_short="${develop_err:0:500}"
+  echo "WARNING: Issue→branch link failed (GitHub UI Development パネルが空のまま): $develop_err_short" >&2
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type issue_branch_link_failed \
+    --details "Issue #{issue_number} ← branch {branch_name}: $develop_err_short" \
+    --root-cause-hint "gh_cli_or_permission_failure" \
+    --pr-number 0 >&2 || true
+fi
 ```
 
 ### 2.4 GitHub Projects Status 更新
 
-`rite-config.yml` の `github.projects.enabled: true` の場合のみ実行。`projects-status-update.sh` に委譲（実 interface は JSON 単一引数。canonical SoT: [`projects-status-update-callsites.md`](./references/projects-status-update-callsites.md)）。失敗時は warning + continue（non-blocking）:
+`rite-config.yml` の `github.projects.enabled: true` の場合のみ実行。`projects-status-update.sh` に委譲（実 interface は JSON 単一引数。canonical SoT: [`projects-status-update-callsites.md`](./references/projects-status-update-callsites.md)）。スクリプトは非 blocking failure 時に **exit 0 + `.result == "failed"` / `"skipped_not_in_project"`** を返すため、bash exit code ではなく JSON stdout `.result` を inspect すること（Common contract §3-§5、MUST emit `workflow_incident` sentinel）:
 
 ```bash
-if ! status_err=$(bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+status_result=$(bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
     --argjson issue {issue_number} \
     --arg owner "{owner}" \
     --arg repo "{repo}" \
@@ -164,12 +207,30 @@ if ! status_err=$(bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n 
     --arg status "In Progress" \
     --argjson auto_add true \
     --argjson non_blocking true \
-    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>&1); then
-  echo "WARNING: Projects Status 更新失敗 (non-blocking): $status_err" >&2
-fi
+    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>&1) || status_result="{\"result\":\"failed\",\"warnings\":[\"projects-status-update.sh fatal exit\"]}"
+status_value=$(printf '%s' "$status_result" | jq -r '.result // "failed"' 2>/dev/null || echo "failed")
+case "$status_value" in
+  updated) ;;
+  skipped_not_in_project)
+    echo "WARNING: Issue #{issue_number} は Project に未登録 (Callsite 1)" >&2
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type projects_status_update_failed \
+      --details "Issue #{issue_number} Phase 2.4 (In Progress): projects-status-update.sh returned skipped_not_in_project" \
+      --root-cause-hint "issue_not_registered_in_project" \
+      --pr-number 0 >&2 || true
+    ;;
+  failed|*)
+    printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null | while read -r w; do echo "WARNING: $w" >&2; done
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type projects_status_update_failed \
+      --details "Issue #{issue_number} Phase 2.4 (In Progress): projects-status-update.sh returned $status_value" \
+      --root-cause-hint "gh_api_or_graphql_failure" \
+      --pr-number 0 >&2 || true
+    ;;
+esac
 ```
 
-親 Issue が存在する場合 (ステップ 1.2 で検出) は親も同様に `In Progress` に更新（`{issue_number}` を `{parent_issue_number}` に差し替え、同じ JSON pattern を再実行）。失敗時は warning + continue。
+親 Issue が存在する場合 (ステップ 1.2 で検出) は親も同様に `In Progress` に更新（`{issue_number}` を `{parent_issue_number}` に差し替え、同じ JSON pattern + 上記 `.result` inspection を再実行）。
 
 ### 2.5 Iteration 割り当て（任意）
 
@@ -269,11 +330,13 @@ if [ -n "$fetch_output" ]; then
   tmpfile_read=$(printf '%s\n' "$fetch_output" | grep '^tmpfile_read=' | cut -d= -f2-)
   tmpfile_write=$(printf '%s\n' "$fetch_output" | grep '^tmpfile_write=' | cut -d= -f2-)
   original_length=$(printf '%s\n' "$fetch_output" | grep '^original_length=' | cut -d= -f2-)
-  bash {plugin_root}/hooks/issue-body-safe-update.sh apply \
-    --issue {issue_number} \
-    --tmpfile-read "$tmpfile_read" \
-    --tmpfile-write "$tmpfile_write" \
-    --original-length "$original_length"
+  if ! apply_err=$(bash {plugin_root}/hooks/issue-body-safe-update.sh apply \
+      --issue {issue_number} \
+      --tmpfile-read "$tmpfile_read" \
+      --tmpfile-write "$tmpfile_write" \
+      --original-length "$original_length" 2>&1); then
+    echo "WARNING: Issue body の更新に失敗 (checklist 反映が skip された可能性): ${apply_err:0:500}" >&2
+  fi
 fi
 ```
 
@@ -393,6 +456,15 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 - `[lint:skipped]` → ステップ 6 へ (`commands.lint` 未設定 / drift 警告のみ等)
 - `[lint:error]` → AskUserQuestion で「修正して再実行 / 強制続行 / 中止」を選択
 - `[lint:aborted]` → user 起因の中止。ステップ 8.5 (完了レポート) に直接遷移し、abort context を含めて workflow 終了。PR 作成はスキップ
+- **default (上記 4 sentinel いずれも観測されない)** → `rite:lint` skill の load 失敗 / Skill ツール timeout / context 削減で sentinel 行が drop した可能性。`[lint:success]` 扱いで silent recovery してはならない。以下を実行:
+  ```bash
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type skill_load_failure \
+    --details "rite:lint invocation returned no recognizable sentinel ([lint:success|skipped|error|aborted])" \
+    --root-cause-hint "skill_loader_or_context_drop" \
+    --pr-number 0 >&2 || true
+  ```
+  そのうえで AskUserQuestion で「再試行 / 強制続行 (リスク承知) / 中止」を提示する。default 観測の事実を WORKFLOW_INCIDENT として記録し、5.4.4.1 検出経路で Issue 化されるようにする。
 
 「修正して再実行」の場合は LLM が修正を実装してコミット → 再度 `skill: "rite:lint"`。
 
@@ -410,14 +482,24 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 ### 6.1 push
 
+push 失敗時は `exit 1` で bash を停止し、workflow fallthrough を防ぐ（後続の `gh pr create` が「No commits between branches」で奇怪な失敗をするのを回避）。retry / 手動継続 / 中止の判断は LLM が AskUserQuestion で行い、ユーザー選択後に再実行する:
+
 ```bash
 if ! push_err=$(git push -u origin "{branch_name}" 2>&1); then
-  echo "ERROR: git push failed: $push_err" >&2
-  # AskUserQuestion で「retry / 手動 push 完了後に続行 / 中止」を選択
-  # 「中止」選択時は WORKFLOW_INCIDENT を emit してから終了
-  echo "[CONTEXT] WORKFLOW_INCIDENT=1; type=git_push_failed; iteration_id=$(date +%s); details=$push_err" >&2
+  push_err_short="${push_err:0:500}"
+  echo "ERROR: git push failed: $push_err_short" >&2
+  echo "[CONTEXT] WORKFLOW_INCIDENT=1; type=git_push_failed; iteration_id=$(date +%s); details=$push_err_short" >&2
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type git_push_failed \
+    --details "$push_err_short" \
+    --root-cause-hint "auth_expiry_or_pre_receive_reject_or_network" \
+    --pr-number 0 >&2 || true
+  echo "[CONTEXT] PHASE_6_1_STATE=push_failed; LLM must AskUserQuestion: retry / 手動 push 完了後に続行 / 中止" >&2
+  exit 1
 fi
 ```
+
+LLM はこの bash block の exit 1 を観測したら、AskUserQuestion で「再試行 / 手動 push 完了後に続行 / 中止」を提示する。続行選択時はステップ 6.2 から再開、中止選択時は WORKFLOW_INCIDENT がすでに emit されているので workflow を終了する。
 
 ### 6.2 PR 作成
 
@@ -499,10 +581,10 @@ AskUserQuestion で「PR を Ready for review に変更する / Draft のまま 
 
 ### 8.3 Projects Status In Review
 
-`rite-config.yml.github.projects.enabled: true` の場合。canonical JSON pattern（[`projects-status-update-callsites.md`](./references/projects-status-update-callsites.md) Callsite 2 と同形）:
+`rite-config.yml.github.projects.enabled: true` の場合。canonical JSON pattern（[`projects-status-update-callsites.md`](./references/projects-status-update-callsites.md) Callsite 2 と同形）。`.result` inspection + `workflow_incident` emit を Common contract §5 に従って実行:
 
 ```bash
-if ! status_err=$(bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+status_result=$(bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
     --argjson issue {issue_number} \
     --arg owner "{owner}" \
     --arg repo "{repo}" \
@@ -510,9 +592,27 @@ if ! status_err=$(bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n 
     --arg status "In Review" \
     --argjson auto_add false \
     --argjson non_blocking true \
-    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>&1); then
-  echo "WARNING: Projects Status In Review 更新失敗 (non-blocking): $status_err" >&2
-fi
+    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>&1) || status_result="{\"result\":\"failed\",\"warnings\":[\"projects-status-update.sh fatal exit\"]}"
+status_value=$(printf '%s' "$status_result" | jq -r '.result // "failed"' 2>/dev/null || echo "failed")
+case "$status_value" in
+  updated) ;;
+  skipped_not_in_project)
+    echo "WARNING: Issue #{issue_number} は Project に未登録 (Callsite 2)" >&2
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type projects_status_update_failed \
+      --details "Issue #{issue_number} Phase 5.5.1 (In Review): projects-status-update.sh returned skipped_not_in_project" \
+      --root-cause-hint "issue_not_registered_in_project_at_in_review" \
+      --pr-number {pr_number} >&2 || true
+    ;;
+  failed|*)
+    printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null | while read -r w; do echo "WARNING: $w" >&2; done
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type projects_status_update_failed \
+      --details "Issue #{issue_number} Phase 5.5.1 (In Review): projects-status-update.sh returned $status_value" \
+      --root-cause-hint "gh_api_or_graphql_failure_at_in_review" \
+      --pr-number {pr_number} >&2 || true
+    ;;
+esac
 ```
 
 ### 8.4 親 Issue の完結判定
@@ -536,12 +636,22 @@ gh api graphql -f owner={owner} -f repo={repo} -F number={parent_issue_number} -
 すべての子 Issue (上記出力の各 node) が `state: "CLOSED"` なら AskUserQuestion で「親 Issue を完了とする / そのまま」を選択。完了選択時 (両 command を実行、片方失敗時も warning + continue で非ブロッキング):
 
 ```bash
-if ! close_err=$(gh issue close {parent_issue_number} \
+# Step 1: gh issue close — exit code を別変数で捕捉（stderr/stdout は close_err、成功時も URL が含まれるため空判定は不可）
+if close_err=$(gh issue close {parent_issue_number} \
     --comment "すべての子 Issue が完了したため、親 Issue を完了します。" 2>&1); then
-  echo "WARNING: gh issue close failed for parent #{parent_issue_number}: $close_err" >&2
+  close_rc=0
+else
+  close_rc=$?
+  echo "WARNING: gh issue close failed for parent #{parent_issue_number} (rc=$close_rc): $close_err" >&2
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type parent_close_failed \
+    --details "Parent #{parent_issue_number} auto-close (Phase 5.7.2): gh issue close exit $close_rc" \
+    --root-cause-hint "gh_cli_or_permission_failure" \
+    --pr-number {pr_number} >&2 || true
 fi
 
-if ! status_err=$(bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+# Step 2: Projects Status → Done — `.result` inspection + workflow_incident emit (Callsite 3 / Common contract §5)
+status_result=$(bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
     --argjson issue {parent_issue_number} \
     --arg owner "{owner}" \
     --arg repo "{repo}" \
@@ -549,9 +659,27 @@ if ! status_err=$(bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n 
     --arg status "Done" \
     --argjson auto_add false \
     --argjson non_blocking true \
-    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>&1); then
-  echo "WARNING: parent Projects Status 更新失敗 (Issue closed=$([ -z \"$close_err\" ] && echo yes || echo no)): $status_err" >&2
-fi
+    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>&1) || status_result="{\"result\":\"failed\",\"warnings\":[\"projects-status-update.sh fatal exit\"]}"
+status_value=$(printf '%s' "$status_result" | jq -r '.result // "failed"' 2>/dev/null || echo "failed")
+case "$status_value" in
+  updated) ;;
+  skipped_not_in_project)
+    echo "WARNING: parent Issue #{parent_issue_number} は Project に未登録 (Callsite 3, gh issue close rc=$close_rc)" >&2
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type projects_status_update_failed \
+      --details "Parent #{parent_issue_number} Phase 5.7.2 (Done): projects-status-update.sh returned skipped_not_in_project (gh issue close rc=$close_rc)" \
+      --root-cause-hint "parent_not_registered_in_project" \
+      --pr-number {pr_number} >&2 || true
+    ;;
+  failed|*)
+    printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null | while read -r w; do echo "WARNING: $w" >&2; done
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type projects_status_update_failed \
+      --details "Parent #{parent_issue_number} Phase 5.7.2 (Done): projects-status-update.sh returned $status_value (gh issue close rc=$close_rc)" \
+      --root-cause-hint "gh_api_or_graphql_failure_at_parent_done" \
+      --pr-number {pr_number} >&2 || true
+    ;;
+esac
 ```
 
 ### 8.5 完了レポート出力

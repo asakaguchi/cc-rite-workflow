@@ -6,16 +6,16 @@
 
 ## 位置づけ
 
-`create-register.md` Phase 2.2 における Implementation Contract format の生成は以下の 6 step で構成される:
+`commands/issue/create.md` ステップ 4 (Single Issue path) / ステップ 5 (Decompose path) における Implementation Contract format の生成は以下の 6 step で構成される:
 
 | Step | 役割 | SoT |
 |------|------|-----|
 | Step 1 | Apply Complexity Gate (MUST/SHOULD/OMIT 判定) | [`complexity-gate.md`](./complexity-gate.md) |
 | **Step 2** | **Select Type Core Section (Section 3)** | **本 reference** |
 | **Step 3** | **Map Interview Results to Sections (Section 1-9)** | **本 reference** |
-| Step 4 | Generate Acceptance Criteria (AC 生成順序 / writing rules) | `create-register.md` 本体 |
-| Step 5 | Generate Test Specification Table | `create-register.md` 本体 |
-| Step 6 | Output Validation Checklist | `create-register.md` 本体 |
+| Step 4 | Generate Acceptance Criteria (AC 生成順序 / writing rules) | `commands/issue/create.md` ステップ 4 (Single) / ステップ 5 (Decompose) |
+| Step 5 | Generate Test Specification Table | `commands/issue/create.md` 本体 |
+| Step 6 | Output Validation Checklist | `commands/issue/create.md` 本体 |
 
 本 reference は **Step 2 (Type → Section 3 mapping) と Step 3 (Interview → Section 1-9 mapping)** の正規定義を集約する。Section 1-9 の **template 定義** (各 Section の markdown skeleton) は [`templates/issue/template-structure.md`](../../../templates/issue/template-structure.md) を参照すること。
 
@@ -54,7 +54,7 @@ Phase 1.2 で確定した Type に基づき、Section 3 として include する
 | Chore | Operational Context | [`3-Chore: Operational Context`](../../../templates/issue/template-structure.md#3-chore-operational-context) |
 | Docs | Documentation Target | [`3-Docs: Documentation Target`](../../../templates/issue/template-structure.md#3-docs-documentation-target) |
 
-**Type 判定の優先順位**: Labels > title keywords > body content analysis (`create-register.md` Phase 1.2 参照)。
+**Type 判定の優先順位**: Labels > title keywords > body content analysis (`commands/issue/create.md` ステップ 4 の Type 判定セクション参照)。
 
 ## Step 3: Interview Perspective → Target Sections Mapping
 

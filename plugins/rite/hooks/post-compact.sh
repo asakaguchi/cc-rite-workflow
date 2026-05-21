@@ -188,7 +188,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
         --type projects_status_in_review_missing \
         --details "Issue #$ISSUE post-compact: STATE_ROOT inaccessible ($STATE_ROOT) — gh pr view skipped" \
         --root-cause-hint "state_root_inaccessible" \
-        --pr-number "$PR" >&2 || true
+        --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (state_root_inaccessible); incident may not be recorded — investigate emit.sh case allowlist drift" >&2
       exit 0
     fi
 
@@ -212,7 +212,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
         --type projects_status_in_review_missing \
         --details "Issue #$ISSUE post-compact: gh pr view failed (rc=$pr_rc, stderr=$pr_err_oneline${stderr_flag})" \
         --root-cause-hint "$pr_root_cause_hint" \
-        --pr-number "$PR" >&2 || true
+        --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (gh_pr_view_failed); incident may not be recorded" >&2
       PR_IS_DRAFT=""
     fi
 
@@ -232,8 +232,22 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       # の根本原因を C6-F09 emit の details に注入する。
       REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>"${jq_owner_err:-/dev/null}") || REPO_OWNER=""
       REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>"${jq_name_err:-/dev/null}") || REPO_NAME=""
-      PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || PROJECTS_ENABLED=""
-      PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || PROJECT_NUMBER=""
+      # PR #1079 review (silent-failure-hunter H-1 対応): rite-config.yml parse 失敗時に awk stderr を
+      # tempfile に capture して WARNING を出す。完全 silent な空文字フォールバックは、Projects 連携が
+      # 壊れていてもユーザに伝わらない経路を作るため。stderr_capture_disabled (mktemp 失敗) も honor。
+      awk_pe_err=""
+      awk_pn_err=""
+      awk_pe_err=$(mktemp /tmp/rite-pc-awk-pe-err-XXXXXX) || { awk_pe_err=""; stderr_capture_disabled=1; }
+      awk_pn_err=$(mktemp /tmp/rite-pc-awk-pn-err-XXXXXX) || { awk_pn_err=""; stderr_capture_disabled=1; }
+      PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>"${awk_pe_err:-/dev/null}") || PROJECTS_ENABLED=""
+      PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>"${awk_pn_err:-/dev/null}") || PROJECT_NUMBER=""
+      if [ -n "${awk_pe_err:-}" ] && [ -s "$awk_pe_err" ]; then
+        echo "[rite] WARNING: post-compact: awk parse of projects.enabled failed: $(head -c 200 "$awk_pe_err" | tr '\n' ' ')" >&2
+      fi
+      if [ -n "${awk_pn_err:-}" ] && [ -s "$awk_pn_err" ]; then
+        echo "[rite] WARNING: post-compact: awk parse of projects.project_number failed: $(head -c 200 "$awk_pn_err" | tr '\n' ' ')" >&2
+      fi
+      rm -f "${awk_pe_err:-}" "${awk_pn_err:-}"
       # cycle 8 C7-F05: cascade emit guard。_owner_repo_ok flag で後段 graphql 経路を skip する
       # (silent_omit_disables_defense_chain への 2-stage 防御: emit 後の dead branch 抑止)。
       _owner_repo_ok=1
@@ -252,13 +266,13 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
             --type projects_status_in_review_missing \
             --details "Issue #$ISSUE post-compact: gh repo view failed (rc=${repo_rc:-NA}, stderr=${repo_err_oneline:-NA})" \
             --root-cause-hint "post_compact_gh_repo_view_failed" \
-            --pr-number "$PR" >&2 || true
+            --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (gh_repo_view_failed); incident may not be recorded" >&2
         else
           bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
             --type projects_status_in_review_missing \
             --details "Issue #$ISSUE post-compact: gh repo view returned null fields (owner=$REPO_OWNER name=$REPO_NAME jq_owner_stderr=$jq_owner_err_oneline jq_name_stderr=$jq_name_err_oneline)" \
             --root-cause-hint "post_compact_gh_repo_view_returned_null" \
-            --pr-number "$PR" >&2 || true
+            --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (gh_repo_view_returned_null); incident may not be recorded" >&2
         fi
         # cycle 10 F-17 対応: cascade emit guard の semantic として `if _owner_repo_ok != "1"; then exit 0; fi`
         # と等価な `exit 0` を直書きする。PR #1079 で start.md Step 1.5 と start-finalize.md は削除/統合された
@@ -297,7 +311,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
             --type projects_status_in_review_missing \
             --details "Issue #$ISSUE post-compact: gh api graphql failed (rc=$gql_rc, gh_stderr=$gql_err_oneline, jq_stderr=$jq_err_oneline)" \
             --root-cause-hint "post_compact_gh_api_failed" \
-            --pr-number "$PR" >&2 || true
+            --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (gh_api_failed); incident may not be recorded" >&2
           CURRENT_STATUS=""
         fi
 
@@ -321,7 +335,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
               --type projects_status_in_review_missing \
               --details "Issue #$ISSUE post-compact reconciliation failed (PR=#$PR isDraft=false Status=$CURRENT_STATUS reconcile_result=$RECONCILE_STATUS stderr=$reconcile_err_oneline)" \
               --root-cause-hint "post_compact_reconciliation_failed" \
-              --pr-number "$PR" >&2 || true
+              --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (reconciliation_failed); incident may not be recorded" >&2
           fi
         fi
       fi

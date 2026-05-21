@@ -192,7 +192,10 @@ WARN_MSG
     # Stale-file cleanup (long-running sessions / crash leftovers) is out of scope
     # for this Issue per Issue #680 §4.3 (handled by a follow-up).
     if [[ "$STATE_FILE" == *"/.rite/sessions/"*".flow-state" ]] && [ -f "$STATE_FILE" ]; then
-        rm -f "$STATE_FILE" 2>/dev/null || true
+        # PR #1079 review (silent-failure-hunter M-6 対応): rm 失敗を完全 silent 化していた。
+        # readonly fs / permission denied で削除に失敗すると次セッションで stale state を読む
+        # 可能性があるため、失敗時は WARNING を残す。
+        rm -f "$STATE_FILE" 2>/dev/null || echo "[rite] WARNING: session-end: failed to remove per-session state file: $STATE_FILE" >&2
     fi
 fi
 

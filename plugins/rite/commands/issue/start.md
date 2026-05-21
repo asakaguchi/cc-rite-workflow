@@ -11,7 +11,7 @@ description: Issue の作業を開始（ブランチ作成 → 実装 → PR →
 
 Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → PR → レビュー/修正 → Ready & 完結」を一気通貫で実行する。
 
-**途中で止まったらユーザーは `/rite:resume` で flow-state.json に記録された phase から再開する**。
+**途中で止まったらユーザーは `/rite:resume` で flow-state ファイル (`.rite/sessions/{session_id}.flow-state` / legacy `.rite-flow-state` の fallback) に記録された phase から再開する**。
 
 ## Arguments
 
@@ -512,7 +512,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 - `[lint:success]` → ステップ 6 へ
 - `[lint:skipped]` → ステップ 6 へ (`commands.lint` 未設定 / drift 警告のみ等)
 - `[lint:error]` → AskUserQuestion で「修正して再実行 / 強制続行 / 中止」を選択
-- `[lint:aborted]` → user 起因の中止。ステップ 8.5 (完了レポート) に直接遷移し、abort context を含めて workflow 終了。PR 作成はスキップ
+- `[lint:aborted]` → user 起因の中止。ステップ 8.5 (Workflow Incident Detection) を skip してステップ 8.6 (完了レポート) に直接遷移し、abort context を含めて workflow 終了。PR 作成はスキップ
 - **default (上記 4 sentinel いずれも観測されない)** → `rite:lint` skill の load 失敗 / Skill ツール timeout / context 削減で sentinel 行が drop した可能性。`[lint:success]` 扱いで silent recovery してはならない。以下を実行:
   ```bash
   bash {plugin_root}/hooks/workflow-incident-emit.sh \
@@ -521,7 +521,7 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
     --root-cause-hint "skill_loader_or_context_drop" \
     --pr-number 0 >&2 || true
   ```
-  そのうえで AskUserQuestion で「再試行 / 強制続行 (リスク承知) / 中止」を提示する。default 観測の事実は上記 `workflow-incident-emit.sh` 呼び出しで `.rite/incidents/` に記録され、ステップ 8.5 (完了レポート前) で sentinel を grep して Todo Issue を自動起票する経路で surface される。**「強制続行」を選んだ場合**は `lint_skipped_due_to_sentinel_drop=true` を flow-state に記録し (ステップ 5.2 の `flow-state-update.sh patch` 時に `--meta lint_skipped_due_to_sentinel_drop=true` を付与)、ステップ 6 の PR 作成時に PR body 冒頭に「⚠️ Lint sentinel was dropped; this PR has NOT been lint-verified」を自動挿入する。
+  そのうえで AskUserQuestion で「再試行 / 強制続行 (リスク承知) / 中止」を提示する。default 観測の事実は上記 `workflow-incident-emit.sh` 呼び出しで `.rite/incidents/` に記録され、ステップ 8.5 (Workflow Incident Detection、完了レポート出力前) で sentinel を grep して Todo Issue を自動起票する経路で surface される。**「強制続行」を選んだ場合**はステップ 6 の PR 作成時に PR body 冒頭に「⚠️ Lint sentinel was dropped; this PR has NOT been lint-verified」を自動挿入する。flow-state への追加 meta 記録は行わない (flow-state-update.sh は `--meta` を受理しないため。代わりに `.rite/incidents/` の sentinel が監査痕跡として機能する)。
 
 「修正して再実行」の場合は LLM が修正を実装してコミット → 再度 `skill: "rite:lint"`。
 
@@ -589,6 +589,13 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 ### 7.1 review
 
+> **Pre-invoke flow-state update (MANDATORY)**: skill 呼び出し直前に必ず実行する。
+> ```bash
+> bash {plugin_root}/hooks/flow-state-update.sh create \
+>   --phase review --issue {issue_number} --branch "{branch_name}" --pr {pr_number} \
+>   --next "fix or ready 判定"
+> ```
+
 `skill: "rite:pr:review", args: "{pr_number}"` を invoke。
 
 戻り値パターン:
@@ -598,6 +605,13 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 - **default (上記 2 sentinel いずれも観測されない)** → `rite:pr:review` skill の load 失敗 / sentinel drop。silent continue してはならない。`workflow-incident-emit.sh --type skill_load_failure --details "rite:pr:review returned no recognizable sentinel ([review:mergeable|fix-needed:N])" --root-cause-hint "skill_loader_or_context_drop" --pr-number {pr_number}` を emit のうえ AskUserQuestion で「再試行 / 強制続行 (リスク承知) / 中止」を提示。
 
 ### 7.2 fix
+
+> **Pre-invoke flow-state update (MANDATORY)**: skill 呼び出し直前に必ず実行する。
+> ```bash
+> bash {plugin_root}/hooks/flow-state-update.sh create \
+>   --phase fix --issue {issue_number} --branch "{branch_name}" --pr {pr_number} \
+>   --next "再レビュー or ready 判定"
+> ```
 
 `skill: "rite:pr:fix", args: "{pr_number}"` を invoke。
 
@@ -614,17 +628,9 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 7.1 ↔ 7.2 のループが 5 回に達したら AskUserQuestion で「続行 / 中止」を選択。
 
-### 7.4 flow-state 更新
+### 7.4 flow-state 更新パターン
 
-review / fix の各 invoke 前に:
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase review --issue {issue_number} --branch "{branch_name}" --pr {pr_number} \
-  --next "fix or ready 判定"
-```
-
-または `--phase fix`。
+ステップ 7.1 / 7.2 の各冒頭に inline 展開した Pre-invoke flow-state update がこの phase の canonical site。本セクションは記録目的で、`--phase review` / `--phase fix` のいずれかを selected step に応じて書き込む。
 
 ---
 
@@ -794,7 +800,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 ## エラー時の方針
 
-- どのステップで止まっても `flow-state.json` に `phase` が記録されているので、ユーザーは `/rite:resume` で対応ステップから再開できる (`commands/resume.md` Phase 3.2 の phase→step 表を参照)
+- どのステップで止まっても flow-state ファイル (`.rite/sessions/{session_id}.flow-state` / legacy `.rite-flow-state` fallback) に `phase` が記録されているので、ユーザーは `/rite:resume` で対応ステップから再開できる (`commands/resume.md` Phase 3.2 の phase→step 表を参照)
 - 各ステップは「Bash 実行 → 結果確認 → 次へ」のフラットな逐次フロー
 - AskUserQuestion で明示的に「中止」が選ばれた場合のみ workflow 終了
 - bash command 失敗時は stderr に `WARNING` または `ERROR` プレフィックスを残し、復旧不能なケースのみ workflow を停止する

@@ -234,24 +234,31 @@ if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
   # 旧実装 `2>/dev/null || wiki_section=""` は grep no-match だけでなく sed/awk の構文エラー /
   # binary 破損 / IO エラーも silent に空扱いし、Wiki enable check が誤動作する経路を持っていた。
   _yaml_err=$(mktemp /tmp/rite-wiki-trigger-yaml-err-XXXXXX 2>/dev/null) || _yaml_err=""
+  # PR #1079 review (silent-failure-hunter M-4 対応): parse failure 時は安全側に倒して
+  # exit 2 (Wiki disabled 扱い) で staging を止める。lenient fallback で staging を継続すると、
+  # 意図的に wiki.enabled: false にしているユーザの config 破損で raw source が漏れて
+  # develop に commit される silent policy violation 経路があった (Issue #564 で .gitignore
+  # last-line-defense を入れた背景と同じ)。
   if wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$STATE_ROOT/rite-config.yml" 2>"${_yaml_err:-/dev/null}"); then
     :  # success (sed no-match は exit 0 なので legitimate)
   else
     _sed_rc=$?
-    echo "WARNING: sed による rite-config.yml wiki セクション抽出が失敗 (rc=$_sed_rc)" >&2
+    echo "ERROR: sed による rite-config.yml wiki セクション抽出が失敗 (rc=$_sed_rc)" >&2
     [ -n "$_yaml_err" ] && [ -s "$_yaml_err" ] && head -3 "$_yaml_err" | sed 's/^/  /' >&2
-    echo "  lenient fallback: wiki セクションを空として扱い、enable check を継続します" >&2
-    wiki_section=""
+    echo "  safe-default: config parse 失敗のため staging を中止します (silent policy-violation 防止)" >&2
+    [ -n "$_yaml_err" ] && rm -f "$_yaml_err"
+    exit 2
   fi
   wiki_enabled_line=""
   if [[ -n "$wiki_section" ]]; then
     # awk -- skip non-matches gracefully (exit 0 even with no output)
     if ! wiki_enabled_line=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' 2>"${_yaml_err:-/dev/null}"); then
       _awk_rc=$?
-      echo "WARNING: awk による wiki.enabled 行抽出が失敗 (rc=$_awk_rc)" >&2
+      echo "ERROR: awk による wiki.enabled 行抽出が失敗 (rc=$_awk_rc)" >&2
       [ -n "$_yaml_err" ] && [ -s "$_yaml_err" ] && head -3 "$_yaml_err" | sed 's/^/  /' >&2
-      echo "  lenient fallback: wiki.enabled を未設定として扱います" >&2
-      wiki_enabled_line=""
+      echo "  safe-default: awk parse 失敗のため staging を中止します (silent policy-violation 防止)" >&2
+      [ -n "$_yaml_err" ] && rm -f "$_yaml_err"
+      exit 2
     fi
   fi
   [ -n "$_yaml_err" ] && rm -f "$_yaml_err"

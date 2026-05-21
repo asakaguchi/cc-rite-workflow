@@ -152,7 +152,7 @@ mv "$TMP_WM" "$LOCAL_WM"
 
 | Issue Comment Field | Schema v1 Field | Default |
 |---------------------|-----------------|---------|
-| `- **フェーズ**: {value}` | `phase` | `"phase5_implementation"` |
+| `- **フェーズ**: {value}` | `phase` | `"implement"` (legacy: `"phase5_implementation"`) |
 | `- **フェーズ詳細**: {value}` | `phase_detail` | `"実装作業中"` |
 | `- **ブランチ**: {value}` | `branch` | `git branch --show-current` |
 | `### 次のステップ` → `- **コマンド**: {value}` | `next_action` | `""` |
@@ -526,12 +526,15 @@ Skill ツール呼び出し:
 
 #### For rite:issue:create
 
-| Interrupted phase | Resume action |
-|-------------------|---------------|
-| `phase0` | Resume from Phase 0 (Task decomposition decision) |
-| `phase0_decompose` | Resume from Phase 0 decomposition processing |
-| `phase1` | Resume from Phase 1 (Issue creation) |
-| `phase2` | Resume from Phase 2 (Projects addition) |
+> **Note (PR #1079)**: PR #1079 で `/rite:issue:create` は flat workflow に統合され、**中間 phase を flow-state に書き込まない設計**になった。`create.md` は terminal な `phase=completed` のみを書き、Issue 作成・Projects 追加が完了するまでは flow-state を更新しない。途中中断した場合、ユーザは中断時の同じ入力で `/rite:issue:create` を再実行するのが canonical な復帰経路となる (idempotent: 既に作成済みの Issue は重複作成されないことが Phase 1.5 親子検出で担保されている)。
+>
+> 旧 sub-skill chain 時代 (PR #1079 以前) に書き込まれた以下の legacy phase 名は forward-compat 経路で受理されるが、新規セッションでは出現しない:
+> - `phase0` (Task decomposition decision)
+> - `phase0_decompose` (Decomposition processing)
+> - `phase1` (Issue creation)
+> - `phase2` (Projects addition)
+>
+> これらの legacy phase が flow-state に残存している場合、`/rite:issue:create` を再実行することで terminal `completed` まで進む。
 
 #### For rite:pr:create
 

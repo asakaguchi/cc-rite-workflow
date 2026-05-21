@@ -54,7 +54,7 @@ fi
 | Phase 5.3.8 loop_count | `commands/pr/review.md` | `loop_count` | finding attribution の review loop count 判定 |
 | Phase 2.1 parent_issue_number_raw | `commands/resume.md` | `parent_issue_number` | resume 時の親 Issue display 整形 |
 
-(旧 5 site canonical のうち 4 site は start-finalize.md / start.md Phase 3 削除に伴い消失)
+(旧 5 site canonical のうち 4 site は start-finalize.md / 旧 start.md Phase 3 削除に伴い消失。新 start.md では「ステップ N」体系に再構成されており、旧 Phase 3 番号には対応しない)
 
 ## 関連
 

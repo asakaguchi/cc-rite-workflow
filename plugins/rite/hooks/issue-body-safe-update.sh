@@ -34,6 +34,28 @@
 #   1: Argument error
 set -euo pipefail
 
+# Resolve plugin root so callers don't have to pass it. workflow-incident-emit.sh sits next to
+# this file under plugins/rite/hooks/. We follow the same resolution pattern used by
+# wiki-ingest-trigger.sh / wiki-query-inject.sh / session-end.sh.
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_EMIT_SH="$_SCRIPT_DIR/workflow-incident-emit.sh"
+
+# Helper: emit issue_body_fetch_failed sentinel via workflow-incident-emit.sh.
+# PR #1079 review (silent-failure-hunter H-4 対応): 旧実装は stdout に
+# `fetch_failure_reason=` / `apply_failure_reason=` を書いて caller が parse する設計だったが、
+# caller (create.md / start.md) が解析する保証がなく永続的失敗が silent に流れた。失敗時は
+# 直接 sentinel emit して `.rite/incidents/` に痕跡を残し、ステップ 8.5 grep が拾えるようにする。
+_emit_body_update_incident() {
+  local reason="$1" rc="$2" stderr_snippet="$3"
+  if [ -x "$_EMIT_SH" ]; then
+    bash "$_EMIT_SH" \
+      --type issue_body_fetch_failed \
+      --details "Issue #$ISSUE issue-body-safe-update.sh $MODE failed: reason=$reason rc=$rc stderr=$stderr_snippet" \
+      --root-cause-hint "$reason" \
+      --pr-number 0 >&2 || echo "[rite] WARNING: issue-body-safe-update: workflow-incident-emit.sh exited non-zero (reason=$reason); incident may not be recorded" >&2
+  fi
+}
+
 # --- Argument parsing ---
 MODE="${1:-}"
 shift 2>/dev/null || true
@@ -84,6 +106,7 @@ case "$MODE" in
       err_snippet=$(head -c 500 "$tmpfile_err" 2>/dev/null | tr -d '\r' || echo "")
       echo "${err_level}: gh issue view 失敗 (rc=$rc): ${err_snippet}" >&2
       echo "fetch_failure_reason=gh_view_failed"
+      _emit_body_update_incident "gh_view_failed" "$rc" "$err_snippet"
       exit 0
     fi
 
@@ -143,6 +166,7 @@ case "$MODE" in
       err_snippet=$(head -c 500 "$apply_err" 2>/dev/null | tr -d '\r' || echo "")
       echo "${err_level}: gh issue edit 失敗 (rc=$rc): ${err_snippet}" >&2
       echo "apply_failure_reason=gh_edit_failed"
+      _emit_body_update_incident "gh_edit_failed" "$rc" "$err_snippet"
       rm -f "$TMPFILE_READ" "$TMPFILE_WRITE"
       exit 0
     fi

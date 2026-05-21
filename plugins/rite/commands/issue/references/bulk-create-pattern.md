@@ -8,18 +8,18 @@
 
 ## 位置づけ
 
-`create-decompose.md` Phase 0.9 (Bulk Sub-Issue Creation) は以下の 6 step で構成される:
+`commands/issue/create.md` ステップ 5.3-5.4 (Bulk Sub-Issue Creation, PR #1079 で旧 `create-decompose.md` Phase 0.9 を flat 化統合) は以下の 6 step で構成される:
 
 | Step | 役割 | SoT |
 |------|------|-----|
-| Phase 0.9.1 | Create the Parent Issue | `create-decompose.md` 本体 (作成 bash literal) + 本 reference ([Parent Issue body structure](#parent-issue-body-structure) — Issue #806 で移動) |
-| **Phase 0.9.2** | **Bulk Creation of Sub-Issues** (Pre-amble + Per-Sub-Issue body) | **本 reference** |
-| Phase 0.9.3 | Add Tasklist to Parent Issue | `create-decompose.md` 本体 |
-| Phase 0.9.4 | Sub-Issues API Linkage (Mandatory) | `create-decompose.md` 本体 + [`graphql-helpers.md`](../../../references/graphql-helpers.md#addsubissue-helper) |
-| Phase 0.9.5 | Projects Registration | `create-decompose.md` 本体 |
-| Phase 0.9.6 | Completion Report | `create-decompose.md` 本体 |
+| ステップ 5.3 | Create the Parent Issue | `commands/issue/create.md` 本体 (作成 bash literal) + 本 reference ([Parent Issue body structure](#parent-issue-body-structure)) |
+| **ステップ 5.4 (Pre-amble + Per-Sub-Issue body)** | **Bulk Creation of Sub-Issues** | **本 reference** |
+| ステップ 5.4 (continuation: Add Tasklist) | Add Tasklist to Parent Issue | `commands/issue/create.md` 本体 |
+| ステップ 5.4 (continuation: Sub-Issues Linkage) | Sub-Issues API Linkage (Mandatory) | `commands/issue/create.md` 本体 + [`graphql-helpers.md`](../../../references/graphql-helpers.md#addsubissue-helper) |
+| ステップ 5.4 (continuation: Projects Registration) | Projects Registration | `commands/issue/create.md` 本体 |
+| ステップ 5.5 | Completion Report | `commands/issue/create.md` 本体 |
 
-本 reference は **Phase 0.9.2 (Pre-amble + Per-Sub-Issue body の連結 bash literal)** の正規定義を集約する。
+本 reference は **ステップ 5.4 (Pre-amble + Per-Sub-Issue body の連結 bash literal)** の正規定義を集約する。
 
 ## なぜ単一 Bash invocation が要件か (AC-1 enforcement boundary)
 
@@ -271,4 +271,4 @@ for issue_num in "${SUB_ISSUE_NUMBERS[@]}"; do
 done
 ```
 
-`create-decompose.md` 本体の AC-1 critical 警告で何度繰り返されているように、この single-Bash-invocation 要件は **本コマンドにおける silent-skip リスク最大の箇所** である。
+`commands/issue/create.md` ステップ 5.4 (旧 `create-decompose.md` Phase 0.9.2 が flat 化統合された箇所) の AC-1 critical 警告で何度繰り返されているように、この single-Bash-invocation 要件は **本コマンドにおける silent-skip リスク最大の箇所** である。

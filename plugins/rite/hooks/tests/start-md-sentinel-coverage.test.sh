@@ -138,6 +138,79 @@ for phase in init branch plan implement lint pr review fix completed; do
 done
 
 echo ""
+echo "=== 5-arg symmetry for flow-state-update.sh create (PR #1079 verified-review II-1) ==="
+# PR #1079 review (pr-test-analyzer H-1 対応): 旧 start-md-charter.test.sh の
+# compute_symmetry_for() が守っていた「start.md / create.md 内のすべての `flow-state-update.sh create`
+# 呼び出しが `--phase --issue --branch --pr --next` の 5 種を含む」対称性を本 test で復元する。
+# Aggregated symmetry は flat 化により start.md + create.md の 2 ファイル単位で十分。
+# 引数 drift は phase routing と resume を直接破壊するため、CI gate として保護する。
+CREATE_MD="$PLUGIN_ROOT/commands/issue/create.md"
+for f in "$START_MD" "$CREATE_MD"; do
+  [ -f "$f" ] || { echo "ERROR: required file not found: $f" >&2; exit 1; }
+done
+
+# awk で `flow-state-update.sh create` を含む multi-line invocation を抽出 (連続行 + 末尾の `\`)。
+# 抽出した塊ごとに 5 種類の flag が登場するか検査する。
+check_symmetry_5arg() {
+  local file="$1"
+  local fname; fname="$(basename "$file")"
+  # bash fenced code block (` ```bash ... ``` `) 内に限定して `flow-state-update.sh create` invocation を抽出する。
+  # markdown 表内のテキスト (例: 表セルでの言及) を誤検出しないため、in_bash フラグを使う。
+  # multi-line bash invocation (行末 `\` で継続) は 1 record として concat する。
+  awk '
+    /^```bash$/ { in_bash=1; next }
+    /^```$/    { in_bash=0; next }
+    in_bash && /flow-state-update\.sh create/ {
+      block = $0
+      while (match(block, /\\$/)) {
+        if ((getline next_line) <= 0) break
+        block = block " " next_line
+      }
+      print block
+      print "---END---"
+    }
+  ' "$file" | awk -v fname="$fname" -v pass_token="✅" -v fail_token="❌" '
+    BEGIN { block_count=0; ok=0 }
+    /^---END---$/ {
+      block_count++
+      missing = ""
+      if (block !~ /--phase[[:space:]]/)  missing = missing " --phase"
+      if (block !~ /--issue[[:space:]]/)  missing = missing " --issue"
+      if (block !~ /--branch[[:space:]]/) missing = missing " --branch"
+      if (block !~ /--pr[[:space:]]/)     missing = missing " --pr"
+      if (block !~ /--next[[:space:]]/)   missing = missing " --next"
+      if (missing != "") {
+        printf "  %s 5-arg symmetry violation in %s block #%d (missing:%s)\n  block: %s\n", fail_token, fname, block_count, missing, block
+        ok = 1
+      }
+      block = ""
+      next
+    }
+    { block = (block == "" ? $0 : block " " $0) }
+    END {
+      if (block_count == 0) {
+        printf "  (no flow-state-update.sh create invocations in %s — skipping)\n", fname
+      } else if (ok == 0) {
+        printf "  %s %s: all %d flow-state-update.sh create invocations carry --phase/--issue/--branch/--pr/--next\n", pass_token, fname, block_count
+      }
+      exit ok
+    }
+  '
+}
+
+if check_symmetry_5arg "$START_MD"; then
+  pass "5-arg symmetry: start.md flow-state-update.sh create invocations"
+else
+  fail "5-arg symmetry: start.md has invocations missing required flags (see awk output above)"
+fi
+
+if check_symmetry_5arg "$CREATE_MD"; then
+  pass "5-arg symmetry: create.md flow-state-update.sh create invocations"
+else
+  fail "5-arg symmetry: create.md has invocations missing required flags (see awk output above)"
+fi
+
+echo ""
 if ! print_summary "$(basename "$0")" "start.md の sentinel set を変更した場合、caller (sprint:execute / resume) の grep pattern も同時に更新する責務がある。本 test の expected_set を縮退させる前に caller 側との符号を必ず確認すること。"; then
   exit 1
 fi

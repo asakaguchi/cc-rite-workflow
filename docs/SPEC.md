@@ -134,6 +134,8 @@ Todo → In Progress → In Review → Done
 
 ## Plugin Structure
 
+> **Status (PR #1079)**: Flat workflow refactor — 12 sub-skill files under `commands/issue/` and 3 implicit-stop guard hooks (`auto-fire-step0.sh`, `verify-terminal-output.sh`, `stop-create-interview-block.sh`) were removed in PR #1079. The /rite:issue:start and /rite:issue:create lifecycles are now single-file flat workflows. Sections referencing those retired components have been historicized but kept for migration context.
+
 ```
 rite-workflow/
 ├── .claude-plugin/
@@ -147,25 +149,18 @@ rite-workflow/
 │   ├── resume.md            # /rite:resume
 │   ├── issue/
 │   │   ├── list.md          # /rite:issue:list
-│   │   ├── create.md        # /rite:issue:create
-│   │   ├── create-interview.md       # Sub-skill: interview phase
-│   │   ├── create-decompose.md       # Sub-skill: Issue decomposition
-│   │   ├── create-register.md        # Sub-skill: single-Issue registration
-│   │   ├── start.md         # /rite:issue:start (end-to-end)
-│   │   ├── start-execute.md          # Sub-skill: /rite:issue:start Phase 5.0-5.2.1 (Stop Hook / Implementation / Lint / Checklist)
-│   │   ├── start-publish.md          # Sub-skill: /rite:issue:start Phase 5.3-5.4 (PR creation / review-fix loop)
-│   │   ├── start-finalize.md         # Sub-skill: /rite:issue:start Phase 5.5-Termination (Ready / Status / metrics / completion / parent close)
+│   │   ├── create.md        # /rite:issue:create (flat workflow, PR #1079 +)
+│   │   ├── start.md         # /rite:issue:start (flat workflow, PR #1079 +)
 │   │   ├── update.md        # /rite:issue:update
 │   │   ├── close.md         # /rite:issue:close
 │   │   ├── edit.md          # /rite:issue:edit
 │   │   ├── recall.md        # /rite:issue:recall
 │   │   ├── implement.md              # Sub-skill: implementation phase
-│   │   ├── implementation-plan.md    # Sub-skill: plan generation
-│   │   ├── completion-report.md      # Sub-skill: completion report format
-│   │   ├── branch-setup.md           # Sub-skill: branch creation
-│   │   ├── child-issue-selection.md  # Sub-skill: parent-child routing
-│   │   ├── parent-routing.md         # Sub-skill: parent Issue detection
-│   │   └── work-memory-init.md       # Sub-skill: work memory initialization
+│   │   └── references/      # Edge cases, complexity gates, bulk-create patterns
+│   │   # Historical (removed in PR #1079): create-interview.md / create-decompose.md /
+│   │   # create-register.md / start-execute.md / start-publish.md / start-finalize.md /
+│   │   # implementation-plan.md / completion-report.md / branch-setup.md /
+│   │   # child-issue-selection.md / parent-routing.md / work-memory-init.md
 │   ├── pr/
 │   │   ├── create.md        # /rite:pr:create
 │   │   ├── ready.md         # /rite:pr:ready
@@ -233,10 +228,11 @@ rite-workflow/
 │   ├── hooks.json           # Hook registration manifest
 │   ├── session-start.sh / session-end.sh / session-ownership.sh
 │   ├── pre-compact.sh / post-compact.sh                  # #133
-│   ├── stop-guard.sh / preflight-check.sh
+│   ├── preflight-check.sh
 │   ├── pre-tool-bash-guard.sh / post-tool-wm-sync.sh
 │   ├── phase-transition-whitelist.sh                     # Phase transition guard
-│   ├── verify-terminal-output.sh
+│   # Historical (removed in PR #1079): stop-guard.sh, verify-terminal-output.sh,
+│   # auto-fire-step0.sh, stop-create-interview-block.sh
 │   ├── hook-preamble.sh / state-path-resolve.sh          # Shared helpers
 │   ├── flow-state-update.sh / local-wm-update.sh
 │   ├── work-memory-lock.sh / work-memory-update.sh / work-memory-parse.py
@@ -1274,11 +1270,9 @@ Sourced (not executed) library that provides the canonical phase-transition grap
 
 **Override merging:** Projects can extend (not overwrite) the whitelist via `hooks.stop_guard.phase_transitions.<phase>: [<next1>, …]` in `rite-config.yml`. (The config key name retains the historical `stop_guard` prefix for backwards compatibility with existing user configs even though the Stop hook was removed; the value is now consumed by the orchestrator-level phase-transition checks.) Bash 4.2+ is required for `declare -gA`; older bash aborts gracefully so the consuming caller can fail-open.
 
-### Verify Terminal Output (`verify-terminal-output.sh`) (#561)
+### Verify Terminal Output (retired in PR #1079)
 
-Standalone check that validates Terminal Completion sections in `/rite:issue:create` sub-skills wrap sentinel markers in HTML comments (`<!-- [create:completed:{…}] -->`, `<!-- [interview:skipped] -->`, etc.), so the user-visible final line remains the human-readable completion message rather than a bare sentinel token. Non-regression contract: the raw string `[create:completed:` / `[interview:` must still appear in the file for grep-based hooks to keep matching.
-
-**Exit codes:** `0` all checks passed / `1` check failed (details on stderr) / `2` usage error.
+> **Status: Retired (PR #1079)**. Standalone check `verify-terminal-output.sh` (#561) was removed when `/rite:issue:create` was flattened into a single file. The Terminal Completion HTML-comment wrap contract is still required (`<!-- [create:completed:{…}] -->`), but enforcement now lives inline in `commands/issue/create.md` ステップ 4.6 / ステップ 5.5 and is exercised via `start-md-sentinel-coverage.test.sh` / `create-md-invocation-symmetry.test.sh` rather than a standalone hook.
 
 ### Session Ownership (`session-ownership.sh`) (#174–#179)
 
@@ -1484,7 +1478,6 @@ A test framework for ensuring Hook script quality. Located in `plugins/rite/hook
 | `post-tool-wm-sync.sh` | Work memory auto-recovery after Bash tool calls |
 | `session-start.sh` / `session-end.sh` | Session lifecycle + ownership transitions |
 | `work-memory-lock.sh` | Lock acquire/release + stale detection |
-| `verify-terminal-output.sh` | Terminal Completion sentinel HTML-comment wrap (#561) |
 | `wiki-ingest-trigger.sh` | Raw-source write contract |
 | `workflow-incident-emit.sh` | Sentinel emit format + `--type` whitelist |
 | `parent-child-sync-static` | Parent/child Issue state synchronization |
@@ -1800,13 +1793,13 @@ Violating this contract leaves the workflow partially executed: no Issue created
 |-------|-----------|------------|
 | **1. Prompt contract** | Anti-pattern / correct-pattern examples + "same response turn" / "DO NOT stop" phrases in orchestrator documentation + Mandatory After orchestrator prose | `commands/issue/start.md` Sub-skill Return Protocol (Global), `commands/issue/create.md` Sub-skill Return Protocol + Mandatory After Interview/Delegation, `commands/pr/cleanup.md` Mandatory After Wiki Ingest, `commands/wiki/ingest.md` Mandatory After Auto-Lint, `plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md` |
 | ~~**2. Flow state hard gate**~~ (retired in #675) | (Historical) Sub-skills write `*_post_*` phase markers with `active: true` before return; `stop-guard.sh` blocked stop attempts until terminal phase. The Stop hook was removed in PR #675; flow-state still records phase markers for observability but no longer enforces stops. | (historical: `hooks/stop-guard.sh`) |
-| **3. Caller-continuation hints** (decomposed into 3 sub-layers 3a/3b/3c — see `sub-skill-return-protocol.md` "3 layer canonical signaling pattern" blockquote) | Plain-text reminder + HTML comment immediately before the sub-skill's result pattern. The plain-text line renders in user-facing output; the HTML comment is visible to the LLM via conversation context but does NOT render in Markdown. Dual form ensures robustness against rendering modes that strip comments (#552). | Defense-in-Depth sections in `commands/issue/create-interview.md`, `commands/issue/create-register.md`, `commands/issue/create-decompose.md`, `commands/wiki/ingest.md` (Issue #910 imperative 強度は `create-interview.md` と `wiki/ingest.md` のみに適用、`create-register.md` / `create-decompose.md` は older phrasing を retain — see `sub-skill-return-protocol.md` Scope note for the rationale) |
+| **3. Caller-continuation hints** (decomposed into 3 sub-layers 3a/3b/3c — see `sub-skill-return-protocol.md` "3 layer canonical signaling pattern" blockquote) | Plain-text reminder + HTML comment immediately before the sub-skill's result pattern. The plain-text line renders in user-facing output; the HTML comment is visible to the LLM via conversation context but does NOT render in Markdown. Dual form ensures robustness against rendering modes that strip comments (#552). | Defense-in-Depth sections in `commands/issue/create.md` (flat workflow ステップ 4.6 / 5.5), `commands/wiki/ingest.md`, `commands/pr/cleanup.md`. (Historical: `create-interview.md` / `create-register.md` / `create-decompose.md` の旧 caller hint は PR #1079 で create.md に統合) |
 | **4a. Pre-check list (#552)** | 4-item self-check the orchestrator runs before ending any response turn: (a) `[create:completed:{N}]` output? (b) `✅ Issue #{N} を作成しました` shown? (c) `.rite-flow-state` deactivated? (d) last sub-skill tag handled as continuation trigger? A single `NO` means the workflow is mid-flight. Renamed from "Layer 4" to "Layer 4a" by Issue #923 to avoid numbering collision with the new mechanical enforcement layer (4b below). | `commands/issue/create.md` "Pre-check list" section |
-| **4b. Completion message (#552)** | Terminal sub-skills emit an explicit `✅ Issue #{N} を作成しました: {url}` line **before** the `<!-- [create:completed:{N}] -->` sentinel (HTML-comment wrap form, #561). The sentinel remains grep-matchable for tooling (AC-4 backward compat) but is no longer the absolute last visible line. Renamed from "Layer 5" to "Layer 4b" by Issue #923 (4a/4b grouping reflects that both are orchestrator-side completion reinforcements from #552). | `commands/issue/create-register.md` Phase 4.2, `commands/issue/create-decompose.md` Phase 1.0.2 |
-| **4. Mechanical enforcement (Issue #923)** | PostToolUse hook `plugins/rite/hooks/auto-fire-step0.sh` (matcher `Skill`) fires after sub-skill Skill tool completion. When the pre-invocation `.phase` is `ingest_pre_lint` / `cleanup_pre_ingest`, the hook (a) patches flow-state to the corresponding `*_post_*` phase (idempotent with caller's Mandatory After Step 0 via `--if-exists --preserve-error-count`) and (b) injects `hookSpecificOutput.additionalContext` into the next LLM turn input. Addresses the limit documented in Wiki experiential knowledge (declarative enforcement cannot fully suppress LLM `stop_reason: end_turn`). Opt-out: `rite-config.yml` `workflow.auto_fire_step0.enabled: false`. | `plugins/rite/hooks/auto-fire-step0.sh`, `plugins/rite/hooks/hooks.json` PostToolUse Skill matcher entry |
-| ~~**6. stop-guard incident emit**~~ (retired in #675) | (Historical) When `stop-guard.sh` blocked an implicit stop, it emitted a `manual_fallback_adopted` workflow_incident sentinel via `workflow-incident-emit.sh` for post-hoc visibility. With the Stop hook removed in PR #675, incident emit is now driven by Phase 5.4.4.1 post-hoc detection rather than a runtime hook. | (historical: `hooks/stop-guard.sh`) |
+| **4b. Completion message (#552)** | Terminal completion emits an explicit `✅ Issue #{N} を作成しました: {url}` line **before** the `<!-- [create:completed:{N}] -->` sentinel (HTML-comment wrap form, #561). The sentinel remains grep-matchable for tooling (AC-4 backward compat) but is no longer the absolute last visible line. Renamed from "Layer 5" to "Layer 4b" by Issue #923 (4a/4b grouping reflects that both are orchestrator-side completion reinforcements from #552). | `commands/issue/create.md` ステップ 4.6 (Single Issue Terminal Completion) / ステップ 5.5 (Decompose Terminal Completion) |
+| ~~**4. Mechanical enforcement (Issue #923)**~~ (retired in PR #1079) | (Historical) PostToolUse hook `auto-fire-step0.sh` (matcher `Skill`) fired after sub-skill Skill tool completion to patch `*_post_*` flow-state phases and inject continuation context. The mechanical enforcement layer was removed in PR #1079 along with the implicit-stop guard layer; recovery now relies on `/rite:resume` rather than a runtime continuation hook. | (historical: `hooks/auto-fire-step0.sh`) |
+| ~~**6. stop-guard incident emit**~~ (retired in #675) | (Historical) When `stop-guard.sh` blocked an implicit stop, it emitted a `manual_fallback_adopted` workflow_incident sentinel via `workflow-incident-emit.sh` for post-hoc visibility. With the Stop hook removed in PR #675, incident emit is now driven by post-hoc detection rather than a runtime hook. | (historical: `hooks/stop-guard.sh`) |
 
-The three **primary active layers** are the prompt contract (Layer 1), the caller HTML hint (Layer 3), and the mechanical enforcement hook (Layer 4 — Issue #923); these constitute the active enforcement against implicit stop. The **orchestrator-side reinforcements** (Layer 4a pre-check list, Layer 4b completion message) are supplementary self-checks added in #552 and are not part of the implicit-stop defense per se — they verify that the orchestrator reached terminal completion before ending the turn. Layers 2 and 6 are retired (#675) and shown above only as historical context. Weakening any active layer (e.g., relaxing Layer 1 imperative phrasing without compensating at Layer 3) re-opens the original #525 failure mode. Issue #910 added the Layer 3 sub-layer decomposition (3a/3b/3c) and tightened the imperative phrasing across Layer 1 + a subset of Layer 3 sites (specifically `create-interview.md` caller HTML literal + plain-text reminder, and `wiki/ingest.md` continuation HTML comment; the terminal sub-skills `create-register.md` / `create-decompose.md` retain older phrasing — see `sub-skill-return-protocol.md` Scope note for the per-site rationale) after dogfooding revealed the LLM turn-boundary heuristic still fires post-#675. Issue #923 added Layer 4 (mechanical enforcement via PostToolUse hook) as a complement to Layer 1 + 3, reflecting the Wiki experiential observation that declarative enforcement alone cannot fully suppress `stop_reason: end_turn`. See `plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md` "Defense-in-depth layers" for the canonical layer table.
+The remaining **primary active layers** are the prompt contract (Layer 1), the caller HTML hint (Layer 3), and the orchestrator-side reinforcements (Layer 4a pre-check list, Layer 4b completion message). Layers 2 and 6 are retired (#675), Layer 4 (mechanical enforcement) is retired (#1079); they are shown above only as historical context. Weakening any active layer (e.g., relaxing Layer 1 imperative phrasing without compensating at Layer 3) re-opens the original #525 failure mode. PR #1079 traded the mechanical enforcement layer for a simpler "user runs `/rite:resume` to recover" philosophy, accepting that occasional implicit stops will surface to the user; the trade-off was deemed favorable because the mechanical enforcement layer was itself a frequent failure source (auto-fire-step0.sh state mutations were hard to recover from when wrong).
 
 ### Contract specification
 
@@ -1831,9 +1824,9 @@ The contract ends only when the orchestrator's terminal completion marker has be
 
 | Active phase | Hint content |
 |-------------|-------------|
-| `create_post_interview` | "Sub-skill rite:issue:create-interview returned. The return tag is a CONTINUATION TRIGGER, not a turn boundary. Immediately run Phase 0.6 → Delegation Routing Pre-write → invoke rite:issue:create-register (or create-decompose) in the SAME response turn." |
-| `create_delegation` | "Delegation sub-skill is in-flight. When it returns `[create:completed:{N}]`, run Mandatory After Delegation self-check in the SAME response turn. DO NOT stop before the completion marker is output." |
-| `create_post_delegation` | "Terminal sub-skill returned without `[create:completed:{N}]` (defense-in-depth path). Run Mandatory After Delegation Step 2 (deactivate flow state) and Step 3 (output next-steps) in the SAME response turn to force the workflow into the terminal state." |
+| ~~`create_post_interview`~~ (retired in PR #1079) | (Historical) "Sub-skill rite:issue:create-interview returned. The return tag is a CONTINUATION TRIGGER, not a turn boundary. Immediately run Phase 0.6 → Delegation Routing Pre-write → invoke rite:issue:create-register (or create-decompose) in the SAME response turn." (PR #1079 で create.md に flat 統合済、本 phase は flow-state に書かれない) |
+| ~~`create_delegation`~~ (retired in PR #1079) | (Historical) Delegation phase は PR #1079 で create.md 内部に統合された |
+| ~~`create_post_delegation`~~ (retired in PR #1079) | (Historical) Same as above |
 
 These hints are **best-effort**: the primary enforcement is the prompt contract (Layer 1) — the orchestrator's 🚨 Mandatory After scaffolding ensures the workflow does not end mid-flight regardless of any runtime hook layer.
 
@@ -1859,7 +1852,7 @@ The sentinel would integrate with the existing Phase 5.4.4.1 detection flow (sam
 | AC | Description |
 |----|-------------|
 | AC-1 | bug fix preset で `/rite:issue:create` が end-to-end で `[create:completed:{N}]` まで自動完了する（利用者の `continue` 介入なし） |
-| AC-2 | M complexity 以上で interview 完了後に同 turn 内で `create-register` が発火する |
+| AC-2 (PR #1079 で意味変更) | M complexity 以上で flat create.md が同 turn 内で Single Issue → ステップ 4 (Heuristics + 出力) を実行する (旧: interview 完了後に create-register sub-skill が発火する) |
 | AC-3 | `create.md` の Sub-skill Return Protocol セクションに "anti-pattern" / "correct-pattern" / "same response turn" / "DO NOT stop" の 4 phrase が全て含まれる |
 | AC-4 | `auto_continuation_failed` sentinel 実装時、Phase 5.4.4.1 detection で観測可能（MAY — 本 Issue スコープ外） |
 | AC-5 | Terminal Completion pattern (`[create:completed:{N}]` + `.rite-flow-state active: false`) が引き続き動作する (non-regression) |

@@ -95,7 +95,24 @@ for type in "${!INCIDENT_EXPECTED_SITES[@]}"; do
   fi
 done
 
-# Cross-check: emit.sh が type 名を不当に受理しない / 文字列リテラルとして列挙していない
-# ことは別 test の範疇。本 test の責務は caller-side の callsite coverage のみ。
+echo "=== Phase 5: workflow-incident-emit.sh runtime accept for each callsite type ==="
+# PR #1079 verified-review round 3 対応: callsite が呼ぶ type を emit.sh の case allowlist
+# が runtime で実際に accept する (exit 0 を返す) ことを実機実行で確認する。
+# Phase 4 の static grep は callsite 側の存在のみを見るため、emit.sh 側の case 文 drift を
+# 検出できない。本 Phase は cycle-time が短い (~10 emit × 数十 ms) ので統合してよい。
+for type in "${!INCIDENT_EXPECTED_SITES[@]}"; do
+  if bash "$EMIT_SH" --type "$type" --details "runtime accept test" --pr-number 0 >/dev/null 2>&1; then
+    pass "emit.sh accepts type '$type' at runtime (exit 0)"
+  else
+    fail "emit.sh rejects type '$type' at runtime — case allowlist drift detected"
+  fi
+done
+
+# Negative case: 未登録 type が rejected されることを担保する (whitelist の意味喪失を検出)
+if bash "$EMIT_SH" --type "definitely_not_a_real_type" --details test --pr-number 0 >/dev/null 2>&1; then
+  fail "emit.sh accepts unknown type — whitelist no longer functions as guard"
+else
+  pass "emit.sh rejects unknown type (whitelist functions as guard)"
+fi
 
 print_summary "$(basename "$0")" "Caller-specific WORKFLOW_INCIDENT emit literals must remain in their respective callers. If you remove or rename an emit type, update both this test and the consuming start.md ステップ 8.5 Workflow Incident Detection table."

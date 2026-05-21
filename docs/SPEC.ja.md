@@ -133,6 +133,8 @@ Todo → In Progress → In Review → Done
 
 ## プラグイン構造
 
+> **Status (PR #1079)**: flat workflow リファクタ — `commands/issue/` 配下の 12 sub-skill ファイルと implicit-stop ガード 3 hook (`auto-fire-step0.sh` / `verify-terminal-output.sh` / `stop-create-interview-block.sh`) は PR #1079 で削除。`/rite:issue:start` と `/rite:issue:create` は単一ファイル flat workflow に統合された。本文書中の retired コンポーネントを参照する箇所は historical 表記で残置している。
+
 ```
 rite-workflow/
 ├── .claude-plugin/
@@ -146,22 +148,18 @@ rite-workflow/
 │   ├── resume.md            # /rite:resume
 │   ├── issue/
 │   │   ├── list.md          # /rite:issue:list
-│   │   ├── create.md        # /rite:issue:create
-│   │   ├── create-interview.md       # サブスキル: インタビュー phase
-│   │   ├── create-decompose.md       # サブスキル: Issue 分解
-│   │   ├── create-register.md        # サブスキル: 単一 Issue 登録
-│   │   ├── start.md         # /rite:issue:start (一気通貫)
+│   │   ├── create.md        # /rite:issue:create (flat workflow, PR #1079 +)
+│   │   ├── start.md         # /rite:issue:start (flat workflow, PR #1079 +)
 │   │   ├── update.md        # /rite:issue:update
 │   │   ├── close.md         # /rite:issue:close
 │   │   ├── edit.md          # /rite:issue:edit
 │   │   ├── recall.md        # /rite:issue:recall
 │   │   ├── implement.md              # サブスキル: 実装フェーズ
-│   │   ├── implementation-plan.md    # サブスキル: 実装計画生成
-│   │   ├── completion-report.md      # サブスキル: 完了報告フォーマット
-│   │   ├── branch-setup.md           # サブスキル: ブランチ作成
-│   │   ├── child-issue-selection.md  # サブスキル: 親子 Issue ルーティング
-│   │   ├── parent-routing.md         # サブスキル: 親 Issue 検出
-│   │   └── work-memory-init.md       # サブスキル: 作業メモリ初期化
+│   │   └── references/      # エッジケース / complexity gate / bulk-create pattern
+│   │   # Historical (PR #1079 で削除): create-interview / create-decompose /
+│   │   # create-register / start-execute / start-publish / start-finalize /
+│   │   # implementation-plan / completion-report / branch-setup /
+│   │   # child-issue-selection / parent-routing / work-memory-init
 │   ├── pr/
 │   │   ├── create.md        # /rite:pr:create
 │   │   ├── ready.md         # /rite:pr:ready
@@ -229,10 +227,11 @@ rite-workflow/
 │   ├── hooks.json           # Hook 登録マニフェスト
 │   ├── session-start.sh / session-end.sh / session-ownership.sh
 │   ├── pre-compact.sh / post-compact.sh                  # #133
-│   ├── stop-guard.sh / preflight-check.sh
+│   ├── preflight-check.sh
 │   ├── pre-tool-bash-guard.sh / post-tool-wm-sync.sh
 │   ├── phase-transition-whitelist.sh                     # Phase 遷移ガード
-│   ├── verify-terminal-output.sh
+│   # Historical (PR #1079 で削除): stop-guard.sh / verify-terminal-output.sh /
+│   # auto-fire-step0.sh / stop-create-interview-block.sh
 │   ├── hook-preamble.sh / state-path-resolve.sh          # 共通ヘルパー
 │   ├── flow-state-update.sh / local-wm-update.sh
 │   ├── work-memory-lock.sh / work-memory-update.sh / work-memory-parse.py
@@ -1288,28 +1287,17 @@ SessionEnd
 >
 > **注:** PreToolUse と PostToolUse は Claude Code のツール呼び出しごとに発火する。PreCommand/PostCommand は廃止され、代わりにコマンド実行前の Preflight チェックシステムに統合された。
 
-### Stop Guard（`stop-guard.sh`）
+### Stop Guard（retired in PR #675）
 
-アクティブな rite ワークフローセッション中に Claude が停止するのを防止する。
+> **Status: Retired (PR #675)**. 旧 `stop-guard.sh` は Stop event hook として登録され、アクティブな rite ワークフロー中の implicit stop をブロックしていた。PR #675 で Stop hook 自体が廃止され、現在は `phase-transition-whitelist.sh` の事前チェック + 各 orchestrator の `🚨 Mandatory After ...` テキスト契約 + `pre-tool-bash-guard.sh` の事前ガードに役割を分散している。
 
-**動作:**
+旧仕様の概要（historical context）:
 
-1. 作業ディレクトリの `.rite-flow-state` を読み取る（ファイルが存在しない場合は停止を許可）
-2. `active` が `true` でなければ停止を許可する
-3. 最終更新が 1 時間以内の場合、停止をブロックする
-4. ワークフローが古くなっている場合（最終更新から 1 時間超過）、停止を許可する（放棄されたとみなす）
+1. 作業ディレクトリの `.rite-flow-state` を読み取り、`active=true` かつ phase が継続必須なら exit 2 で stop をブロックしていた
+2. `error_count` を tracking して、5 回を超えると loop 判定で stop を許可していた
+3. クロスプラットフォーム ISO 8601 パーサで `updated_at` を判定していた
 
-**タイムスタンプのパース（クロスプラットフォーム対応）:**
-
-`updated_at`（ISO 8601 形式）のパースにフォールバックチェーンを使用し、macOS/Linux 両環境をサポートする:
-
-| 優先度 | 方法 | プラットフォーム | 備考 |
-|--------|------|----------------|------|
-| 1 | `date -d`（GNU） | Linux | `+09:00` 形式のタイムゾーンを直接パース |
-| 2 | `date -j -f`（BSD） | macOS | `sed` で `+09:00` → `+0900` に変換後パース |
-| 3 | `echo 0`（フォールバック） | 全環境 | `STATE_TS=0` となり `AGE ≈ 現在のエポック秒`（>> 3600）で停止を許可 |
-
-**ブロック時のレスポンス:**
+**ブロック時のレスポンス（旧仕様）:**
 
 停止をブロックする場合、exit code 2 で終了し、継続メッセージを stderr に出力する。Claude Code は exit 2 を「停止阻止 + stderr をアシスタントにフィード」と解釈する:
 
@@ -1436,7 +1424,7 @@ WM_SOURCE="implement" WM_PHASE="phase5_lint" \
 
 ### Phase Transition Whitelist（`phase-transition-whitelist.sh`）(#490)
 
-`stop-guard.sh` などのオーケストレーション系ヘルパーが参照する phase 遷移の canonical graph を提供する sourced ライブラリ（直接実行ではない）。`/rite:issue:start` の一気通貫フローで発生していた silent な phase-skipping を、ブロック可能なイベントに変えるためのもの。
+`pre-tool-bash-guard.sh` などのオーケストレーション系ヘルパーが参照する phase 遷移の canonical graph を提供する sourced ライブラリ（直接実行ではない）。`/rite:issue:start` の一気通貫フローで発生していた silent な phase-skipping を、ブロック可能なイベントに変えるためのもの (PR #675 までは `stop-guard.sh` も主要 caller だったが、Stop hook 廃止後は事前ガード経路のみで使用)。
 
 **提供する関数（source 後に利用可）:**
 
@@ -1446,17 +1434,15 @@ WM_SOURCE="implement" WM_PHASE="phase5_lint" \
 | `rite_phase_expected_next <phase>` | 有効な次 phase を空白区切りで出力 |
 | `rite_phase_is_known <phase>` | phase 名が既知であれば 0 |
 
-**オーバーライドのマージ:** `rite-config.yml` の `hooks.stop_guard.phase_transitions.<phase>: [<next1>, …]` でプロジェクト固有の遷移を**追加**できる（上書きではない）。`declare -gA` のため Bash 4.2+ が必要で、古い bash では graceful にバイパス（stop-guard は fail-open）。
+**オーバーライドのマージ:** `rite-config.yml` の `hooks.stop_guard.phase_transitions.<phase>: [<next1>, …]` でプロジェクト固有の遷移を**追加**できる（上書きではない、設定キー名は historical 互換のため `stop_guard` prefix を保持）。`declare -gA` のため Bash 4.2+ が必要で、古い bash では graceful にバイパス（fail-open）。
 
-### Verify Terminal Output（`verify-terminal-output.sh`）(#561)
+### Verify Terminal Output (retired in PR #1079)
 
-`/rite:issue:create` サブスキルの Terminal Completion セクションで sentinel marker が HTML コメントで wrap されている（`<!-- [create:completed:{…}] -->`, `<!-- [interview:skipped] -->` など）ことを検証するスタンドアロンチェック。ユーザーに見える最終行が sentinel そのものではなく人間向け完了メッセージになることを保証する。非回帰契約: grep ベースの hook 契約を維持するため、raw な `[create:completed:` / `[interview:` 文字列は各ファイルに残っている必要がある。
-
-**Exit codes:** `0` 全チェック通過 / `1` チェック失敗（詳細は stderr） / `2` usage error。
+> **Status: Retired (PR #1079)**. 旧 `verify-terminal-output.sh` (#561) は `/rite:issue:create` サブスキルの Terminal Completion HTML コメント wrap を検証するスタンドアロン script だった。`/rite:issue:create` を flat workflow へ統合した PR #1079 で削除。HTML コメント wrap 契約自体は維持されており、`commands/issue/create.md` ステップ 4.6 / ステップ 5.5 に直接記述され、`start-md-sentinel-coverage.test.sh` / `create-md-invocation-symmetry.test.sh` でテスト保護される。
 
 ### Session Ownership（`session-ownership.sh`）(#174–#179)
 
-マルチセッション競合防止のために `session-start.sh` / `session-end.sh` / `stop-guard.sh` / `post-tool-wm-sync.sh` / `pre-compact.sh` / `post-compact.sh` から source される共有ライブラリ。
+マルチセッション競合防止のために `session-start.sh` / `session-end.sh` / `post-tool-wm-sync.sh` / `pre-compact.sh` / `flow-state-update.sh` 等から source される共有ライブラリ (`stop-guard.sh` は PR #675 で撤去済)。
 
 **提供する関数:**
 
@@ -1486,7 +1472,7 @@ Phase X.X.W の契約と、raw source の commit + push を実際に行う `wiki
 
 `[CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; (root_cause_hint=<hint>; )?iteration_id=<pr>-<epoch>` 形式の sentinel 1 行を emit する。`/rite:issue:start` Phase 5.4.4.1 が context grep で検出し、workflow blocker を Issue として自動登録する。
 
-**`--type` で指定可能な値:** `skill_load_failure` / `hook_abnormal_exit` / `manual_fallback_adopted` / `wiki_ingest_skipped` (#524) / `wiki_ingest_failed` (#524) / `wiki_ingest_push_failed` (#555) / `gitignore_drift` (#567)。
+**`--type` で指定可能な値:** `skill_load_failure` / `hook_abnormal_exit` / `manual_fallback_adopted` / `wiki_ingest_skipped` (#524) / `wiki_ingest_failed` (#524) / `wiki_ingest_push_failed` (#555) / `gitignore_drift` (#567) / `cross_session_takeover_refused` / `legacy_state_corrupt` / `projects_status_update_failed` / `projects_status_in_review_missing` / `issue_branch_link_failed` / `local_wm_update_lock_failed` / `body_shrinkage_guard_tripped` / `issue_body_fetch_failed` / `git_push_failed` / `pr_create_failed` / `parent_close_failed` / `sub_issue_zero_iteration_loop` / `sub_issue_loop_abort` / `session_end_deactivate_failed` (PR #1079)。
 
 検出・重複排除・登録プロトコルの詳細は [Workflow Incident Detection](#workflow-incident-detection) 参照。
 
@@ -1594,7 +1580,6 @@ Hook スクリプトの品質を保証するためのテストフレームワー
 
 | スクリプト | テスト内容 |
 |-----------|-----------|
-| `stop-guard.sh` | 各フェーズでの停止ブロック/許可判定（`stop-guard-cleanup`, `stop-guard-ingest` も含む） |
 | `preflight-check.sh` | compact 状態別のコマンドブロック |
 | `post-compact.sh` | recovery context の出力、`.rite-compact-state` の自己修復 |
 | `pre-compact.sh` | compact 前の状態キャプチャ |
@@ -1602,7 +1587,6 @@ Hook スクリプトの品質を保証するためのテストフレームワー
 | `post-tool-wm-sync.sh` | Bash ツール呼び出し後の作業メモリ自動復旧 |
 | `session-start.sh` / `session-end.sh` | セッションライフサイクル + ownership 遷移 |
 | `work-memory-lock.sh` | ロック取得・解放 + stale 検出 |
-| `verify-terminal-output.sh` | Terminal Completion sentinel の HTML コメント wrap (#561) |
 | `wiki-ingest-trigger.sh` | raw-source 書き出し契約 |
 | `workflow-incident-emit.sh` | sentinel 出力形式 + `--type` whitelist |
 | `parent-child-sync-static` | 親子 Issue 状態同期 |

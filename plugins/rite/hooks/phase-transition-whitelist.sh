@@ -335,6 +335,13 @@ rite_phase_transition_allowed() {
       completed:lint|completed:pr|completed:review|completed:fix) return 0 ;;  # canonical
       cleanup_completed:cleanup_post_ingest|cleanup_completed:cleanup_pre_ingest) return 0 ;;
       ingest_completed:ingest_pre_lint|ingest_completed:ingest_post_lint) return 0 ;;
+      # Forward-compat (PR #1079 review: silent-failure-hunter C-1 対応):
+      # 削除済 legacy phase (create_* / start_* / phase[0-9]* / phase5_*) から canonical terminal
+      # への遷移を accept する。これらは旧 sub-skill chain 時代の state file 由来で、現行
+      # create.md / start.md は書き込まないが、PR #1079 取り込み前に中断したユーザが /rite:resume
+      # で復帰する経路で legitimate に発生する。docstring L13-14 の forward-compat 約束 (旧 state
+      # file の resume 経路を破壊しない) を守るためのワイルドカード arm。
+      completed:create_*|completed:start_*|completed:phase[0-9]*|completed:phase[0-9]_*) return 0 ;;
       *)
         # protocol violation — workflow skip (e.g. init → completed) を block する。RITE_DEBUG=1 では
         # stderr に詳細 WARNING、それ以外でも端的な ERROR を残し、観測経路を確保する。
@@ -350,8 +357,15 @@ rite_phase_transition_allowed() {
 
   local allowed="${_RITE_PHASE_TRANSITIONS[$prev]:-}"
   # Unknown prev phase → accept (forward compat).
-  # RITE_DEBUG=1 のときは観測性のため stderr に WARNING を残す (SF-7)。
+  # PR #1079 review (silent-failure-hunter H-2 対応): 1 hook 実行に 1 回だけ INFO を残し、
+  # terminal-accept reject 経路 (L341-345) と観測性を対称化する。重複抑止カウンタは
+  # 関数スコープではなく hook プロセススコープで持つため、global flag を使う。RITE_DEBUG=1
+  # のときは詳細な WARNING も併せて出す (旧挙動を継承)。
   if [ -z "$allowed" ] && ! rite_phase_is_known "$prev"; then
+    if [ -z "${_RITE_UNKNOWN_PREV_INFO_EMITTED:-}" ]; then
+      echo "[rite] INFO phase-transition: unknown-prev forward-compat allow (prev='$prev' → next='$next'); future drift will be silent within this hook execution" >&2
+      _RITE_UNKNOWN_PREV_INFO_EMITTED=1
+    fi
     if [ "${RITE_DEBUG:-0}" = "1" ]; then
       echo "[RITE_DEBUG] unknown-prev-accept: prev='$prev' (not in _RITE_PHASE_TRANSITIONS) → next='$next' (forward-compat allow)" >&2
     fi
@@ -432,6 +446,9 @@ rite_phase_is_cleanup_lifecycle_in_progress() {
 }
 
 # Optional: auto-load overrides when RITE_CONFIG env var points to a config file.
+# PR #1079 review (silent-failure-hunter M-3 対応): _rite_load_whitelist_overrides の rc を
+# 捨てると awk parse 失敗時 (config 破損) でも override 機構の一部が機能していないまま
+# session が続く observability gap が発生する。失敗時は明示的に WARNING を残す。
 if [ -n "${RITE_CONFIG:-}" ]; then
-  _rite_load_whitelist_overrides "$RITE_CONFIG"
+  _rite_load_whitelist_overrides "$RITE_CONFIG" || echo "[rite] WARNING: phase-transition-whitelist: rite-config override load partially failed; using built-in defaults" >&2
 fi

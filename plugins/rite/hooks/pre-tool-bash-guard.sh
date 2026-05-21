@@ -237,8 +237,14 @@ if [ -z "$BLOCKED_PATTERN" ]; then
         # Surface the failure under RITE_DEBUG so deploy regressions are observable
         # — the legacy fallback would otherwise let Mode B AND-logic operate on the
         # wrong state file silently when schema_version=2 is configured (Issue #681 F-01).
-        [ -n "${RITE_DEBUG:-}" ] && echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: _resolve-flow-state-path.sh failed, falling back to legacy path" \
-          >> "$STATE_ROOT_PATH/.rite-flow-debug.log" 2>/dev/null || true
+        # PR #1079 review (silent-failure-hunter M-5 対応): 2>/dev/null で debug log 書き込み失敗
+        # を完全 silent 化していた。RITE_DEBUG ユーザが debug log 自体の存在に気付けない
+        # (disk full / permission denied) ため、書き込み失敗時は stderr に出す。
+        [ -n "${RITE_DEBUG:-}" ] && {
+          echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: _resolve-flow-state-path.sh failed, falling back to legacy path" \
+            >> "$STATE_ROOT_PATH/.rite-flow-debug.log" \
+            || echo "[rite] WARNING: pre-tool-bash-guard: failed to write debug log to $STATE_ROOT_PATH/.rite-flow-debug.log (disk full / permission denied?)" >&2
+        } || true
         STATE_FILE_PATH="${STATE_ROOT_PATH}/.rite-flow-state"
       fi
       if [ -f "$STATE_FILE_PATH" ]; then

@@ -76,4 +76,24 @@ for fixture in "${negative_fixtures[@]}"; do
   fi
 done
 
+echo ""
+echo "=== Phase 4: reconciliation invocation structure (PR #1079 verified-review II-2) ==="
+# PR #1079 review (pr-test-analyzer H-2 対応): 旧 post-compact-reconciliation.test.sh が pin
+# していた reconciliation invocation の構造的特徴を本 test に集約する。post-compact.sh L268-326
+# の reconciliation block が事故で消失 / 引数 drift / mismatch log 削除されても CI が緑のまま
+# 通過する穴を埋める。Issue #1003 AC-2/AC-7 safety net 保護。
+assert_grep "reconciliation invokes projects-status-update.sh" "$POST_COMPACT" "projects-status-update\.sh"
+assert_grep "reconciliation passes status_name:\$status via jq -n" "$POST_COMPACT" 'status_name:\$status'
+assert_grep "reconciliation specifies 'In Review' as target status" "$POST_COMPACT" '"In Review"'
+assert_grep "reconciliation failure emits post_compact_reconciliation_failed root-cause hint" "$POST_COMPACT" "post_compact_reconciliation_failed"
+assert_grep "post-compact mismatch detected log literal exists" "$POST_COMPACT" "post-compact mismatch detected"
+
+# bash -n syntax check: PR #1079 でリファクタした script の syntax が CI で守られていないと、
+# quote 不整合 / heredoc 終端漏れが session 起動失敗まで気付けなくなる。
+if bash -n "$POST_COMPACT" 2>/dev/null; then
+  pass "post-compact.sh passes bash -n syntax check"
+else
+  fail "post-compact.sh has syntax errors (bash -n failed)"
+fi
+
 print_summary "$(basename "$0")" "If you change the classification regex in post-compact.sh, update both this test fixtures and the regex literal. Weakening (removing \\s* / requiring literal space / removing -i flag) causes the cycle-6 false-positive regression for close/merge-deleted PRs."

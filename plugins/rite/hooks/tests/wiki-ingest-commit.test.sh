@@ -3,9 +3,10 @@
 # Usage: bash plugins/rite/hooks/tests/wiki-ingest-commit.test.sh
 #
 # Full behavioral coverage requires a real wiki-branch git environment which is
-# expensive to set up in CI. These static pins protect the same_branch strategy
-# from silent regressions of the stderr capture symmetry that the separate_branch
-# strategy already enforces via dump_git_err.
+# expensive to set up in CI. These static pins narrow protection to the
+# same_branch path's `_sb_dump` stderr helper only — the separate_branch path's
+# `dump_git_err` invocations are not yet pinned here (a future addition can
+# extend coverage when the cost/benefit shifts).
 
 set -euo pipefail
 

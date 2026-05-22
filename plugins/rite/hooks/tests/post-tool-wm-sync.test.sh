@@ -412,10 +412,14 @@ exit 17
 SHIM
 chmod +x "$shim_dir014/python3"
 stderr014=$(echo "{\"tool_name\": \"Bash\", \"cwd\": \"$dir014\"}" | PATH="$shim_dir014:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
-if printf '%s' "$stderr014" | grep -qE 'post-tool-wm-sync: phase_detail 取得失敗 \(rc=17'; then
-  pass "TC-014: python3 failure surfaces WARNING with rc=17"
+# Anchor the rc value with both `\)` close-paren and the `phase 名に縮退` fallback
+# message so a future regression that emits `rc=17890` or that drops the
+# fallback prose alone cannot silently satisfy a bare `rc=17` match.
+if printf '%s' "$stderr014" | grep -qE 'post-tool-wm-sync: phase_detail 取得失敗 \(rc=17\)' \
+   && printf '%s' "$stderr014" | grep -qE 'phase 名に縮退'; then
+  pass "TC-014: python3 failure surfaces WARNING with rc=17 and fallback semantic"
 else
-  fail "TC-014: expected 'phase_detail 取得失敗 (rc=17' in stderr — got: $stderr014"
+  fail "TC-014: expected 'phase_detail 取得失敗 (rc=17)' + 'phase 名に縮退' in stderr — got: $stderr014"
 fi
 echo ""
 

@@ -276,6 +276,20 @@ if [ "$mut_count" -eq 3 ]; then
     fail "TC-3.1b: create mutation → state mutated despite mv→false — phase=$current_phase"
   fi
 
+  # Pin that the WARNING carries a non-zero rc — a regression that swallows the
+  # rc (e.g. reverts to `if ! mv; then _rc=$?`) would still satisfy TC-3.1b but
+  # fail this assertion.
+  if printf '%s' "$mut_out" | grep -qE 'ERROR: mv failed.*create.*rc=[1-9]'; then
+    pass "TC-3.1c: create mutation stderr WARNING carries real rc (rc=[1-9])"
+  else
+    fail "TC-3.1c: create mutation stderr WARNING missing rc=[1-9] (rc collapsed to 0 = bash-! antipattern returned)"
+  fi
+  if [ -f "$TD/.rite-flow-state-diag.log" ] && grep -qE 'flow_state_mv_failed mode=create .*rc=[1-9]' "$TD/.rite-flow-state-diag.log"; then
+    pass "TC-3.1d: create mutation diag log records mode=create rc=[1-9]"
+  else
+    fail "TC-3.1d: diag log missing 'flow_state_mv_failed mode=create rc=[1-9]'"
+  fi
+
   # ---------- TC-3.2: patch mode mutation (F-05) ----------
   # patch mode の mv も mutation で fail することを mode 独立に確認する。
   # patch は既存 state の更新なので、baseline は同じ mut_state_file を流用。
@@ -297,6 +311,17 @@ if [ "$mut_count" -eq 3 ]; then
     fail "TC-3.2b: patch mutation → state mutated despite mv→false — phase=$current_phase"
   fi
 
+  if printf '%s' "$mut_out" | grep -qE 'ERROR: mv failed.*patch.*rc=[1-9]'; then
+    pass "TC-3.2c: patch mutation stderr WARNING carries real rc (rc=[1-9])"
+  else
+    fail "TC-3.2c: patch mutation stderr WARNING missing rc=[1-9]"
+  fi
+  if grep -qE 'flow_state_mv_failed mode=patch .*rc=[1-9]' "$TD/.rite-flow-state-diag.log" 2>/dev/null; then
+    pass "TC-3.2d: patch mutation diag log records mode=patch rc=[1-9]"
+  else
+    fail "TC-3.2d: diag log missing 'flow_state_mv_failed mode=patch rc=[1-9]'"
+  fi
+
   # ---------- TC-3.3: increment mode mutation (F-05) ----------
   # increment mode は loop_count 等の counter 増分。同様に mutation で fail を確認。
   mut_rc=0
@@ -315,6 +340,17 @@ if [ "$mut_count" -eq 3 ]; then
     pass "TC-3.3b: increment mutation → state file unchanged (phase=$current_phase, hash matches)"
   else
     fail "TC-3.3b: increment mutation → state mutated despite mv→false — phase=$current_phase"
+  fi
+
+  if printf '%s' "$mut_out" | grep -qE 'ERROR: mv failed.*increment.*rc=[1-9]'; then
+    pass "TC-3.3c: increment mutation stderr WARNING carries real rc (rc=[1-9])"
+  else
+    fail "TC-3.3c: increment mutation stderr WARNING missing rc=[1-9]"
+  fi
+  if grep -qE 'flow_state_mv_failed mode=increment .*rc=[1-9]' "$TD/.rite-flow-state-diag.log" 2>/dev/null; then
+    pass "TC-3.3d: increment mutation diag log records mode=increment rc=[1-9]"
+  else
+    fail "TC-3.3d: diag log missing 'flow_state_mv_failed mode=increment rc=[1-9]'"
   fi
 
   # ---------- TC-3.4: counter-positive — production hook全 mode 成功 ----------

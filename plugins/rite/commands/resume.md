@@ -480,9 +480,9 @@ After switching to the correct branch, display a summary of what has changed sin
 
 Execute command-specific resume processing based on the `コマンド` and `フェーズ` values from the work memory. The mapping is defined in the tables below for each command type.
 
-#### For rite:issue:start (flat workflow, PR #1079 +)
+#### For rite:issue:start (flat workflow)
 
-`/rite:issue:start` は flat single-file workflow に統合済み。phase 名は `commands/issue/start.md` のステップ番号と 1:1 対応する 9 種:
+`/rite:issue:start` は flat single-file workflow に統合済み。phase 名は `commands/issue/start.md` のステップ番号と 1:1 対応する 11 種 (init/branch/plan/implement/lint/pr/review/fix/ready/ready_error/completed):
 
 | Interrupted phase | Resume action | start.md step |
 |-------------------|---------------|---------------|

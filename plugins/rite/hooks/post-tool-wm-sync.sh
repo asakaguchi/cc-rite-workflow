@@ -237,7 +237,16 @@ esac
 if [ "$_phase_sync_ok" = "1" ]; then
   _tmp_fs=$(mktemp "${FLOW_STATE}.tmp.XXXXXX" 2>/dev/null) || _tmp_fs="${FLOW_STATE}.tmp.$$.${RANDOM}"
   if jq --arg p "$_phase" '.last_synced_phase = $p' "$FLOW_STATE" > "$_tmp_fs" 2>/dev/null; then
-    mv "$_tmp_fs" "$FLOW_STATE"
+    # Silent mv failure would leave last_synced_phase un-advanced; the next
+    # invocation would then re-run every transformer for this phase, masking
+    # the underlying mv error.
+    if mv "$_tmp_fs" "$FLOW_STATE"; then
+      :
+    else
+      _mv_rc=$?
+      rm -f "$_tmp_fs"
+      echo "rite: post-tool-wm-sync: mv last_synced_phase failed (rc=$_mv_rc, EXDEV / EACCES?)" >&2
+    fi
   else
     rm -f "$_tmp_fs"
   fi

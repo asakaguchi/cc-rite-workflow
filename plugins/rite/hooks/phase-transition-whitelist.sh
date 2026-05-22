@@ -70,9 +70,11 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   ["fix"]="review pr completed"
   ["completed"]=""
 
-  # `ready` is the post-Ready success state written by /rite:pr:ready Phase 5.X.
-  # Terminal arms only — once Ready succeeds the caller proceeds to start.md
-  # ステップ 8.3-8.6 which writes `completed`.
+  # `ready` is the post-Ready success state written by /rite:pr:ready. Allowed
+  # exits: success → completed (normal finalize via start.md ステップ 8.3-8.6),
+  # or fallback → ready_error if a downstream failure rolls back the Ready
+  # transition mid-flight. Both arms terminate the workflow; ready_error is the
+  # recovery-eligible terminal so /rite:resume can pick it up.
   ["ready"]="completed ready_error"
 
   # `ready_error` is an intermediate failure state written by /rite:pr:ready

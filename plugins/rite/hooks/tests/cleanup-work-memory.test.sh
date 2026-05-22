@@ -98,6 +98,35 @@ else
 fi
 echo ""
 
+# ─── TC-003: mv failure path emits rc-carrying WARNING ───────────
+# The Step 1 mv site uses an if/else form with rc capture and _mv_err head -3
+# dump. A regression that drops the dump line or reverts to bash-! antipattern
+# would still PASS TC-001/002 because they only check side-effects, not the
+# WARNING content. PATH-shim mv to force failure with a known rc.
+echo "TC-003: Step 1 mv mutation emits WARNING with real rc"
+dir003="$TEST_DIR/tc003"
+mkdir -p "$dir003/.rite-work-memory"
+echo '{"active":true,"issue_number":44,"phase":"completed","branch":"feat/issue-44"}' > "$dir003/.rite-flow-state"
+mkdir -p "$dir003/bin"
+cat > "$dir003/bin/mv" <<'MV_SHIM'
+#!/bin/bash
+# Fail only when targeting the flow-state file; let other mv calls succeed
+for arg in "$@"; do
+  case "$arg" in
+    *.rite-flow-state) exit 17 ;;
+  esac
+done
+exec /bin/mv "$@"
+MV_SHIM
+chmod +x "$dir003/bin/mv"
+stderr003=$(cd "$dir003" && PATH="$dir003/bin:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
+if printf '%s' "$stderr003" | grep -qE '\.rite-flow-state の更新に失敗しました \(mv rc=[1-9][0-9]*\)'; then
+  pass "TC-003: Step 1 mv WARNING carries real rc"
+else
+  fail "TC-003: Step 1 mv WARNING missing or rc collapsed (a bash-! regression would emit rc=0). stderr: $stderr003"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

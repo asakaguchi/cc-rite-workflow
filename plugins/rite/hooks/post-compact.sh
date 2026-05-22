@@ -137,8 +137,16 @@ if acquire_wm_lock "$LOCKDIR"; then
     --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
     '{compact_state: $state, compact_state_set_at: $ts}' \
     > "$TMP_COMPACT" 2>/dev/null; then
-    mv "$TMP_COMPACT" "$COMPACT_STATE"
-    TMP_COMPACT=""
+    # Bare mv would leave compact_state stuck at "recovering" on EXDEV/EACCES,
+    # which would misroute the next session into resume-mode forever.
+    if mv "$TMP_COMPACT" "$COMPACT_STATE"; then
+      TMP_COMPACT=""
+    else
+      _mv_rc=$?
+      rm -f "$TMP_COMPACT"
+      TMP_COMPACT=""
+      echo "rite: post-compact: mv compact_state failed (rc=$_mv_rc, EXDEV / EACCES / parent dir missing?)" >&2
+    fi
   else
     rm -f "$TMP_COMPACT"
     TMP_COMPACT=""

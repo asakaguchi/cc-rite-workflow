@@ -41,7 +41,7 @@ source "$WHITELIST_SH"
 FLAT_PHASES=(init branch plan implement lint pr review fix ready ready_error completed)
 
 # ──────────────────────────────────────────────────────────────────────
-# (a) Phase 3.2 主表に 9 phase 全てが row を持つ
+# (a) Phase 3.2 主表に 11 phase 全てが row を持つ
 # ──────────────────────────────────────────────────────────────────────
 for phase in "${FLAT_PHASES[@]}"; do
   # 行頭 `| \`<phase>\` |` を緩く拾う (空白許容)
@@ -53,7 +53,7 @@ for phase in "${FLAT_PHASES[@]}"; do
 done
 
 # ──────────────────────────────────────────────────────────────────────
-# (b) 9 phase 全てが rite_phase_is_known を通る
+# (b) 11 phase 全てが rite_phase_is_known を通る
 # ──────────────────────────────────────────────────────────────────────
 for phase in "${FLAT_PHASES[@]}"; do
   if rite_phase_is_known "$phase"; then

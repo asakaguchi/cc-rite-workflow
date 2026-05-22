@@ -877,6 +877,24 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-EXTRACT-SID-WARNING — malformed stdin JSON exercises the unsuppressed
+# extract_session_id stderr path. If a future refactor re-introduces
+# `2>/dev/null` (or routes through a helper that swallows stderr), the
+# production-safety signal disappears and this assertion fires.
+# --------------------------------------------------------------------------
+echo "TC-EXTRACT-SID-WARNING: malformed stdin → extract_session_id WARNING reaches caller stderr"
+dir_sid="$TEST_DIR/tc-sid-warning"
+mkdir -p "$dir_sid"
+sid_stderr=$(mktemp "$TEST_DIR/stderr.sid.XXXXXX")
+echo '{"cwd":"'"$dir_sid"'","session_id":"not-json-{{","extra":' | bash "$HOOK" >/dev/null 2>"$sid_stderr" || true
+if grep -qE 'extract_session_id|jq parse failed' "$sid_stderr"; then
+  pass "TC-EXTRACT-SID-WARNING: corrupt stdin surfaces session-id WARNING on stderr"
+else
+  fail "TC-EXTRACT-SID-WARNING: no WARNING reached caller stderr — silent classification possible. stderr: $(cat "$sid_stderr")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

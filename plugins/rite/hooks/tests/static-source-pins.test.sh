@@ -23,44 +23,42 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 
 echo "=== Phase 1: if-not capture-and-read-rc antipattern absent in hooks ==="
-# The bug shape is specifically `if ! var=$(cmd); then ... _rc=$?` — the bash
-# `!` operator zeros $? in the then-branch, so any rc captured there is always
-# 0 and the WARNING that includes `rc=$_rc` lies to triagers. Plain
-# `if ! var=$(...); then echo "static WARNING"; exit 0; fi` is acceptable
-# because it does not claim to know the rc.
+# Two variants of the same antipattern:
+#   Form A: `if ! var=$(cmd); then _rc=$?; ...`   (capture form)
+#   Form B: `if ! cmd args...; then echo "...rc=$?"`   (direct-command form)
+# Both leak: bash `!` flips status to 0/1 before $? is read, so any rc consulted
+# inside the then-branch is the negated status — never the real EXDEV/EACCES/
+# SIGPIPE/parse-error rc. Plain `if ! cmd; then echo "static WARNING"; fi`
+# without `$?` is acceptable because it makes no rc claim.
 #
-# Detection: scan each file for `if !  <var>=$(...)`, then check whether the
-# matching then-branch (next 8 lines, bounded by `^[[:space:]]*fi$`) contains
-# `=\$?` — the actual capture site. Emits one fail() per violation with the
-# line number, so reviewers can see exactly where the bug shape regressed.
-antipattern_files=(
-  "$PLUGIN_ROOT/hooks/cleanup-work-memory.sh"
-  "$PLUGIN_ROOT/hooks/issue-comment-wm-sync.sh"
-  "$PLUGIN_ROOT/hooks/notification.sh"
-  "$PLUGIN_ROOT/hooks/post-tool-wm-sync.sh"
-  "$PLUGIN_ROOT/hooks/session-ownership.sh"
-  "$PLUGIN_ROOT/hooks/wiki-ingest-trigger.sh"
-  "$PLUGIN_ROOT/hooks/wiki-query-inject.sh"
-  "$PLUGIN_ROOT/hooks/work-memory-update.sh"
-  "$PLUGIN_ROOT/hooks/flow-state-update.sh"
-  "$PLUGIN_ROOT/hooks/pre-compact.sh"
-)
+# Detection: scan each file for `if ! <anything>` open, then in the matching
+# then-branch (bounded by `^[[:space:]]*fi$`) look for any `$?` reference.
+# Emits one fail() per violation with the line number.
+#
+# Files are enumerated dynamically from hooks/*.sh so a newly added hook is
+# defended on day one without a manual allowlist update.
+antipattern_files=()
+while IFS= read -r f; do
+  antipattern_files+=("$f")
+done < <(find "$PLUGIN_ROOT/hooks" -maxdepth 1 -type f -name "*.sh" | sort)
+if [ ${#antipattern_files[@]} -eq 0 ]; then
+  fail "no hook scripts found under $PLUGIN_ROOT/hooks — enumeration broken"
+fi
 for f in "${antipattern_files[@]}"; do
   rel="${f#$PLUGIN_ROOT/}"
-  assert_file_exists_or_fail "$rel exists" "$f" || continue
   violations=$(awk '
-    /^[[:space:]]*if ![[:space:]]+[A-Za-z_][A-Za-z0-9_]*=\$\(/ {
+    /^[[:space:]]*if ![[:space:]]+/ {
       start_line=NR
       in_then=1
       next
     }
     in_then && /^[[:space:]]*fi[[:space:]]*$/ { in_then=0; next }
-    in_then && /=\$\?/ { print start_line ":" NR; in_then=0 }
+    in_then && /\$\?/ { print start_line ":" NR; in_then=0 }
   ' "$f")
   if [ -z "$violations" ]; then
-    pass "no if-not capture-and-read-rc antipattern in $rel"
+    pass "no if-not read-\$?-after-bang antipattern in $rel"
   else
-    fail "if-not capture-and-read-rc antipattern present in $rel (start:rc_capture lines: $violations)"
+    fail "if-not read-\$?-after-bang antipattern present in \"$rel\" (start:rc_capture lines: $violations)"
   fi
 done
 

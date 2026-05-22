@@ -1330,9 +1330,9 @@ trap - EXIT INT TERM HUP
 
 ```bash
 # --preserve-error-count: patch モードはデフォルトで .error_count = 0 にリセット
-#   するため、未指定だと RE-ENTRY 累積カウントが orchestrator prose
-#   (cleanup.md / wiki/ingest.md の re-entry detection + resume.md の threshold gate)
-#   から unreachable になる。
+#   する。現状 `.error_count` を読む production reader は存在せず half-legacy
+#   schema slot だが、Step 0/Step 1 の idempotent re-patch ペアで future reader
+#   再導入時の累積カウントを失わないよう preserve しておく。
 # --if-exists: flow state file 不在時は silent skip (defense-in-depth)。
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "cleanup_post_ingest" --active true \

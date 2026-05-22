@@ -88,7 +88,16 @@ if acquire_wm_lock "$LOCKDIR"; then
   if [ -f "$FLOW_STATE" ]; then
     TMP_FILE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null) || TMP_FILE="${FLOW_STATE}.tmp.$$"
     if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" '.updated_at = $ts' "$FLOW_STATE" > "$TMP_FILE"; then
-      mv "$TMP_FILE" "$FLOW_STATE"
+      # Bare mv would silently orphan TMP_FILE on EXDEV/EACCES/ENOSPC and leave
+      # the heartbeat unbumped. Capturing rc lets triagers tell cross-fs from
+      # permission/space exhaustion.
+      if mv "$TMP_FILE" "$FLOW_STATE"; then
+        :
+      else
+        _mv_rc=$?
+        rm -f "$TMP_FILE"
+        echo "rite: pre-compact: mv flow-state updated_at failed (rc=$_mv_rc, EXDEV cross-fs / EACCES / ENOSPC?)" >&2
+      fi
     else
       rm -f "$TMP_FILE"
     fi
@@ -134,10 +143,14 @@ if acquire_wm_lock "$LOCKDIR"; then
     if mv "$TMP_COMPACT" "$COMPACT_STATE"; then
       TMP_COMPACT=""
       # chmod failure here would leave compact_state world-readable; surface the
-      # rc so triagers can distinguish "EPERM on read-only fs" from "EACCES on
-      # foreign-owned file" instead of seeing a silent permission slip.
-      if ! chmod 600 "$COMPACT_STATE"; then
-        echo "rite: pre-compact: chmod 600 $COMPACT_STATE failed (rc=$?)" >&2
+      # rc so triagers can distinguish EPERM (read-only fs) from EACCES
+      # (foreign-owned file). `if ! cmd; then ...$?` would collapse rc to the
+      # negated status (always 0/1), hiding the real errno.
+      if chmod 600 "$COMPACT_STATE"; then
+        :
+      else
+        _chmod_rc=$?
+        echo "rite: pre-compact: chmod 600 $COMPACT_STATE failed (rc=$_chmod_rc)" >&2
       fi
     else
       _mv_rc=$?

@@ -673,6 +673,55 @@ else
 fi
 echo ""
 
+# --------------------------------------------------------------------------
+# TC-FLOW-MV-FAIL / TC-COMPACT-MV-FAIL / TC-CHMOD-FAIL — exercise the round-9
+# mv / chmod if/else branches by overriding mv and chmod through PATH. A
+# bash-! antipattern regression would collapse rc to 0/1 and these assertions
+# would fail.
+# --------------------------------------------------------------------------
+echo "TC-FLOW-MV-FAIL: PATH-shimmed mv exits non-zero — flow-state mv WARNING must carry rc"
+shim_dir="$TEST_DIR/shim-mv-only"
+mkdir -p "$shim_dir"
+cat > "$shim_dir/mv" <<'SHIM'
+#!/bin/bash
+exit 7
+SHIM
+chmod +x "$shim_dir/mv"
+dir_mvfail="$TEST_DIR/tc-mv-fail"
+mkdir -p "$dir_mvfail"
+echo '{"active":true,"phase":"implement","updated_at":"2026-01-01T00:00:00+00:00"}' > "$dir_mvfail/.rite-flow-state"
+stderr_mvfail=$(echo "{\"cwd\": \"$dir_mvfail\"}" | PATH="$shim_dir:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
+if printf '%s' "$stderr_mvfail" | grep -qE 'mv flow-state updated_at failed \(rc=[1-9][0-9]*'; then
+  pass "TC-FLOW-MV-FAIL: flow-state mv WARNING carries real rc (≥1)"
+else
+  fail "TC-FLOW-MV-FAIL: missing rc-carrying WARNING (bash-! antipattern would collapse to rc=0). stderr: $stderr_mvfail"
+fi
+if printf '%s' "$stderr_mvfail" | grep -qE 'mv compact state failed \(rc=[1-9][0-9]*'; then
+  pass "TC-COMPACT-MV-FAIL: compact_state mv WARNING carries real rc"
+else
+  fail "TC-COMPACT-MV-FAIL: missing rc-carrying WARNING. stderr: $stderr_mvfail"
+fi
+
+echo "TC-CHMOD-FAIL: PATH-shimmed chmod exits non-zero — chmod WARNING must carry rc (rc=0 would mean bash-! regression)"
+shim_chmod_dir="$TEST_DIR/shim-chmod-only"
+mkdir -p "$shim_chmod_dir"
+# mv must succeed for control to reach chmod, so only shim chmod.
+cat > "$shim_chmod_dir/chmod" <<'SHIM'
+#!/bin/bash
+exit 13
+SHIM
+chmod +x "$shim_chmod_dir/chmod"
+dir_chmod="$TEST_DIR/tc-chmod-fail"
+mkdir -p "$dir_chmod"
+echo '{"active":true,"phase":"implement","updated_at":"2026-01-01T00:00:00+00:00"}' > "$dir_chmod/.rite-flow-state"
+stderr_chmod=$(echo "{\"cwd\": \"$dir_chmod\"}" | PATH="$shim_chmod_dir:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
+if printf '%s' "$stderr_chmod" | grep -qE 'chmod 600 .* failed \(rc=13\)'; then
+  pass "TC-CHMOD-FAIL: chmod WARNING carries the real rc (13), not bash-! collapsed value"
+else
+  fail "TC-CHMOD-FAIL: chmod WARNING missing or rc collapsed. stderr: $stderr_chmod"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed, $SKIP skipped ==="
 if [ "$FAIL" -gt 0 ]; then

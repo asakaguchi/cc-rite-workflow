@@ -459,6 +459,25 @@ else
   fail "TC-CREATE-LIFECYCLE-LEGACY create_completed wrongly classified as in-progress"
 fi
 
+# TC-DEFAULT-BLOCK-ERROR — non-terminal allowed-set rejection must surface an
+# ERROR on stderr in default mode (RITE_DEBUG=0). Without this, a regression
+# that re-gates the emit under RITE_DEBUG would let production blocks return
+# silently — the exact bug class round 8 removed. Existing TC-103 / TC-302
+# discard stderr; this TC captures it and asserts the production-side literal.
+_block_err=$(mktemp)
+if RITE_DEBUG=0 bash -c "source '$WHITELIST_SH'; rite_phase_transition_allowed 'branch' 'review'" 2>"$_block_err"; then
+  fail "TC-DEFAULT-BLOCK-ERROR branch → review should be blocked"
+else
+  pass "TC-DEFAULT-BLOCK-ERROR branch → review blocked"
+fi
+if grep -qE "^\[rite\] ERROR phase-transition: 'branch' → 'review' blocked" "$_block_err" 2>/dev/null; then
+  pass "TC-DEFAULT-BLOCK-ERROR stderr carries production ERROR diagnostic in default mode"
+else
+  pass_or_fail=fail
+  fail "TC-DEFAULT-BLOCK-ERROR stderr missing default-mode ERROR (regression would re-gate this under RITE_DEBUG): $(cat "$_block_err")"
+fi
+rm -f "$_block_err"
+
 echo ""
 echo "=== Phase 12: Additional transition coverage ==="
 # 既存 TC は happy path 中心。fix → pr / lint → review / non-init terminal block の 3 種を補完する。

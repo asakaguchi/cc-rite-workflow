@@ -328,7 +328,8 @@ done
 # (cycle 44 F-13) と対称な writer side validation として、数値/boolean 引数を allowlist で
 # 検証する。work-memory-update.sh の `_validate_numeric_yaml_value` と同型の defense-in-depth。
 # Issue title 等の dynamic 文字列が `--issue` に流入する経路があれば flow-state JSON 破壊で
-# stop-guard / phase-transition-whitelist hook の判定が壊れ workflow が hard abort する経路を防ぐ。
+# session-ownership / cross-session resolver / lifecycle hook の判定が壊れ workflow が
+# hard abort する経路を防ぐ。
 case "${ISSUE:-0}" in
   ''|*[!0-9]*) echo "ERROR: --issue must be non-negative integer (got: '$ISSUE')" >&2; exit 1 ;;
 esac
@@ -542,14 +543,36 @@ case "$MODE" in
     # into the helper so patch/increment also benefit.
     # Session ownership: overwrite protection for active state owned by another session
     if [[ -n "$SESSION" && -f "$FLOW_STATE" ]]; then
-      _existing_active=$(jq -r '.active // false' "$FLOW_STATE" 2>/dev/null) || _existing_active="false"
+      # Pass jq stderr through: silent fallback to "active=false" on corrupt
+      # JSON would let create-mode overwrite a peer session's active state.
+      _existing_active_err=$(mktemp 2>/dev/null) || _existing_active_err=""
+      if _existing_active=$(jq -r '.active // false' "$FLOW_STATE" 2>"${_existing_active_err:-/dev/null}"); then
+        :
+      else
+        _jq_rc=$?
+        _existing_active="false"
+        echo "WARNING: flow-state-update: jq read .active failed (rc=$_jq_rc) — treating as inactive" >&2
+        [ -n "$_existing_active_err" ] && [ -s "$_existing_active_err" ] && head -3 "$_existing_active_err" | sed 's/^/  /' >&2
+      fi
+      [ -n "$_existing_active_err" ] && rm -f "$_existing_active_err"
       if [[ "$_existing_active" == "true" ]]; then
         # Pass get_state_session_id stderr through: a corrupt-state WARNING here
         # signals possible overwrite of another active session.
         _existing_sid=$(get_state_session_id "$FLOW_STATE") || _existing_sid=""
         if [[ -n "$_existing_sid" && "$_existing_sid" != "$SESSION" ]]; then
-          # Different session owns the state — check staleness
-          _updated_at=$(jq -r '.updated_at // empty' "$FLOW_STATE" 2>/dev/null) || _updated_at=""
+          # Different session owns the state — check staleness. Silent jq
+          # failure here would skip the staleness gate entirely and let the
+          # caller proceed straight to overwrite.
+          _updated_at_err=$(mktemp 2>/dev/null) || _updated_at_err=""
+          if _updated_at=$(jq -r '.updated_at // empty' "$FLOW_STATE" 2>"${_updated_at_err:-/dev/null}"); then
+            :
+          else
+            _jq_rc=$?
+            _updated_at=""
+            echo "WARNING: flow-state-update: jq read .updated_at failed (rc=$_jq_rc) — bypassing staleness gate" >&2
+            [ -n "$_updated_at_err" ] && [ -s "$_updated_at_err" ] && head -3 "$_updated_at_err" | sed 's/^/  /' >&2
+          fi
+          [ -n "$_updated_at_err" ] && rm -f "$_updated_at_err"
           if [[ -n "$_updated_at" ]]; then
             _state_epoch=$(parse_iso8601_to_epoch "$_updated_at" 2>/dev/null) || _state_epoch=0
             _now_epoch=$(date +%s)
@@ -668,14 +691,14 @@ case "$MODE" in
     # previous_phase は phase-transition-whitelist の検証用にプレ patch の .phase を保持する。
     #
     # --preserve-error-count: patch mode defaults to `.error_count = 0` on every
-    # transition. The original mechanical reader was the retired Stop hook;
-    # the field is now read only by orchestrator prose (cleanup.md /
-    # wiki/ingest.md re-entry detection and resume.md threshold gates) which
-    # consults the value to decide whether to escalate to the user. The flag
-    # lets same-phase idempotent re-patches (cleanup.md Step 0/Step 1 pairs,
-    # wiki/ingest.md Step 0/Step 1 pairs) carry the accumulated count across
-    # writes instead of resetting on every retry; the default reset path
-    # matches the "fresh start on phase transition" intuition.
+    # transition. The original mechanical reader (the retired Stop hook) is gone
+    # and no production reader currently consults `.error_count` — the field is
+    # a half-legacy schema slot retained for forward compatibility. The flag
+    # exists as a reserved API: future readers (re-entry detection / threshold
+    # gates) would consume the accumulated value, so same-phase idempotent
+    # re-patches preserve the count instead of resetting on every retry. The
+    # default reset path matches the "fresh start on phase transition" intuition
+    # for the day a mechanical reader is wired back in.
     if [[ "$PRESERVE_ERROR_COUNT" == "true" ]]; then
       JQ_FILTER='.previous_phase = (.phase // "") | .phase = $phase | .updated_at = $ts | .next_action = $next'
     else

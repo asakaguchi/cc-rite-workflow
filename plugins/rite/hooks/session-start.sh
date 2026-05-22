@@ -198,7 +198,16 @@ with open(out_path, "w") as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
     f.write("\n")
 ' "$_settings_local" "$_repair_tmp" 2>/dev/null; then
-        mv "$_repair_tmp" "$_settings_local" 2>/dev/null && _auto_cleaned=true
+        # Silent mv failure would leave _auto_cleaned=false and the rite hook
+        # config would re-fire repair on every session start without surfacing
+        # why. Capture rc so the user sees EACCES vs ENOSPC vs EROFS.
+        if mv "$_repair_tmp" "$_settings_local"; then
+          _auto_cleaned=true
+        else
+          _mv_rc=$?
+          rm -f "$_repair_tmp" 2>/dev/null
+          echo "rite: session-start: mv settings.local.json repair failed (rc=$_mv_rc)" >&2
+        fi
       else
         rm -f "$_repair_tmp" 2>/dev/null
       fi
@@ -303,10 +312,11 @@ fi
 #
 # When the state is owned by another active session (check_session_ownership
 # returns "other"), skip the reset — overwriting another session's active state
-# would clobber its in-flight work memory and trip stop-guard whitelist
-# violations on its next phase transition. For "own" / "legacy" / "stale" /
-# fail-safe paths, proceed with reset (crash-recovery and backward-compat take
-# priority over multi-instance protection).
+# would clobber its in-flight work memory: the peer session would see an
+# externally mutated .active=false flag and either silently advance past its
+# in-flight phase or fall through to create-mode init on the next hook fire.
+# For "own" / "legacy" / "stale" / fail-safe paths, proceed with reset
+# (crash-recovery and backward-compat take priority over multi-instance protection).
 #
 # Regression note (#558): a prior commit moved the check_session_ownership call
 # inside an RITE_DEBUG block as a "performance" optimization, silently disabling
@@ -343,7 +353,16 @@ _reset_active_state() {
   _tmp=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || _tmp="${STATE_FILE}.tmp.$$"
   if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
      '.active = false | .updated_at = $ts' "$STATE_FILE" > "$_tmp" 2>/dev/null; then
-    mv "$_tmp" "$STATE_FILE"
+    # Silent mv failure leaves .active=true with no signal to the user, who
+    # then sees a permanent "another session is active" block on subsequent
+    # /rite:resume.
+    if mv "$_tmp" "$STATE_FILE"; then
+      :
+    else
+      _mv_rc=$?
+      rm -f "$_tmp" 2>/dev/null
+      echo "rite: session-start: mv defensive reset failed (rc=$_mv_rc, EXDEV / EACCES?)" >&2
+    fi
   else
     rm -f "$_tmp" 2>/dev/null
   fi

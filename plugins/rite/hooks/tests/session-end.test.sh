@@ -730,6 +730,34 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-MV-FAIL — mv failure must surface a rc-carrying WARNING.
+# SessionEnd stderr is not propagated to the next session's context, so this
+# guard pins the production-side WARNING (and the diag-log persistence path
+# when _log_flow_diag is available) so future triagers can reconstruct why
+# `.active=true` was left behind.
+# --------------------------------------------------------------------------
+echo "TC-MV-FAIL: mv shim → SessionEnd WARNING must carry rc"
+dir_mvfail="$TEST_DIR/tc-mv-fail"
+mkdir -p "$dir_mvfail"
+echo '{"active":true,"phase":"implement","issue_number":99,"branch":"feat/issue-99","updated_at":"2026-01-01T00:00:00+00:00"}' > "$dir_mvfail/.rite-flow-state"
+shim_mv="$TEST_DIR/shim-mv-end"
+mkdir -p "$shim_mv"
+cat > "$shim_mv/mv" <<'MV_SHIM'
+#!/bin/bash
+exit 19
+MV_SHIM
+chmod +x "$shim_mv/mv"
+mvfail_stderr=$(mktemp)
+echo "{\"cwd\": \"$dir_mvfail\"}" | PATH="$shim_mv:$PATH" bash "$HOOK" >/dev/null 2>"$mvfail_stderr" || true
+if grep -qE 'session-end: mv deactivation state failed \(rc=19\)' "$mvfail_stderr"; then
+  pass "TC-MV-FAIL: WARNING carries the real mv rc (19), not bash-! collapsed value"
+else
+  fail "TC-MV-FAIL: WARNING missing or rc collapsed. stderr: $(cat "$mvfail_stderr")"
+fi
+rm -f "$mvfail_stderr"
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

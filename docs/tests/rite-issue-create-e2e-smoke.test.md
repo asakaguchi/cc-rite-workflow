@@ -56,7 +56,7 @@
 
 | 症状 | 確認先 |
 |------|--------|
-| `[interview:skipped]` 後に turn が終了 | `.rite-flow-state` が `create_post_interview` で active:true のまま残存 → stop-guard が block していたか診断 log `.rite-stop-guard-diag.log` で確認 |
+| `[interview:skipped]` 後に turn が終了 | `.rite-flow-state` が `create_post_interview` で active:true のまま残存。`.rite-flow-state-diag.log` の `flow_state_*` 行を確認し、続いて `start.md ステップ 8.5 retrospective scan` が `manual_fallback_adopted` を拾ったか会話コンテキストを grep |
 | `✅ Issue #{N}` が出力されない | `create-register.md` Phase 4.2 の完了メッセージセクションが最新版か確認 |
 | `[create:completed:{N}]` が最終行でない | `create-register.md` Phase 4.3 以降の出力順序確認 |
 
@@ -109,85 +109,57 @@ grep -rn '\[create:completed:' plugins/ docs/ 2>/dev/null
 - 全ての出現箇所で `[create:completed:{数字}]` または `[create:completed:{N}]` のプレースホルダー形式
 - 形式変更 (例: `[create:done:...]` / `[issue:created:...]` 等) が存在しない
 
-## シナリオ 4: AC-7 stop-guard incident emit 検証（3 phase 網羅）
+## シナリオ 4: AC-7 retrospective scan による `manual_fallback_adopted` 検出
 
-**AC-7 を検証する（manual の stop attempt を 3 phase (`create_post_interview` / `create_delegation` / `create_post_delegation`) それぞれで再現）**
+**AC-7 を検証する（implicit stop が起きた場合に次セッションが retrospective scan で sentinel を拾えるか）**
 
-AC-7 は 3 つの phase いずれでも emit されることを要求するため、以下 Scenario 4a/4b/4c を全て実施する。各 Scenario で flow-state を手動生成せず、`flow-state-update.sh` 経由で公式 schema に合わせることで regression を防ぐ。
+flat workflow への移行後、Stop hook による exit-2 block は廃止された。AC-7 の責務は `start.md ステップ 8.5 retrospective scan` が次セッションの会話コンテキストを grep して `manual_fallback_adopted` 系 sentinel を検出し tracking Issue を auto-register する経路に移行している。
 
 ### 共通前提
 
-flow-state は以下のいずれかの方法で正しい schema (`active`, `issue_number`, `branch`, `phase`, `previous_phase`, `pr_number`, `parent_issue_number`, `next_action`, `updated_at`, `session_id`, `last_synced_phase`) が生成される:
+flow-state は `flow-state-update.sh` 経由で生成する (手動作成は schema drift の原因となる):
 
-- **推奨**: `bash plugins/rite/hooks/flow-state-update.sh create --phase {phase} --issue 0 --branch "" --pr 0 --next "test"`
-- **手動作成する場合**: 実 schema (11 フィールド) をすべて含める必要がある。不足フィールドがあると `phase-transition-whitelist.sh` / `jq` の parse で fail するか silent skip される
+- 推奨: `bash plugins/rite/hooks/flow-state-update.sh create --phase {phase} --issue 0 --branch "" --pr 0 --next "test"`
 
-### Scenario 4a: `create_post_interview` phase
+### Scenario 4a: implicit stop シミュレート
 
-1. flow-state を初期化:
-   ```bash
-   bash plugins/rite/hooks/flow-state-update.sh create \
-     --phase "create_post_interview" --issue 0 --branch "" --pr 0 \
-     --next "Proceed to Phase 0.6 (Task Decomposition Decision)"
-   ```
-2. Claude Code で `/clear` → 空のメッセージで stop 試行
-3. 期待: stop-guard が exit 2 で block、`manual_fallback_adopted` sentinel が stderr に echo される
+1. flow-state を `create_post_interview` で初期化 (上記コマンド)
+2. Claude Code で `/clear` → `/rite:issue:start <N>` を再実行し、前セッションの implicit stop を模した state を残したまま再開
+3. start.md ステップ 8.5 retrospective scan が `manual_fallback_adopted` キーワードを会話コンテキストから検出し、tracking Issue を auto-register することを確認
 
-### Scenario 4b: `create_delegation` phase
+### 期待される動作
 
-1. flow-state を遷移:
-   ```bash
-   bash plugins/rite/hooks/flow-state-update.sh patch \
-     --phase "create_delegation" \
-     --next "Wait for sub-skill (create-register or create-decompose) to output completion report"
-   ```
-2. stop 試行 → 上記と同様に sentinel が stderr に echo されることを確認
-
-### Scenario 4c: `create_post_delegation` phase
-
-1. flow-state を遷移:
-   ```bash
-   bash plugins/rite/hooks/flow-state-update.sh patch \
-     --phase "create_post_delegation" \
-     --next "Sub-skill completed. Deactivate flow state and output next steps."
-   ```
-2. stop 試行 → 同様に sentinel が stderr に echo されることを確認
-
-### 期待される動作（全 Scenario 共通）
-
-- stop-guard が exit 2 で block し、WORKFLOW_HINT を含むメッセージを stderr に出力
-- `workflow-incident-emit.sh` から capture した `[CONTEXT] WORKFLOW_INCIDENT=1; type=manual_fallback_adopted; ...` sentinel line が stderr に echo される（stop-hook stderr は Claude Code の exit-2 契約で assistant にフィードされる）
-- diag log (`.rite-flow-state-diag.log`) に `incident_emit type=manual_fallback_adopted rc=0 sentinel_captured=1 phase={phase}` が記録される
+- `start.md ステップ 8.5` 実行中に `manual_fallback_adopted` を含む sentinel が前セッション会話に存在する場合、tracking Issue が GitHub に作成される
+- `.rite-flow-state-diag.log` に `flow_state_*` 行が記録され、phase transition の経過が監査可能
+- `phase-transition-whitelist.sh` の `rite_phase_is_create_lifecycle_in_progress` 等の predicate が legacy create_* phase を正しく detect する (test-suite で覆われる契約)
 
 ### 検証コマンド
 
 ```bash
-# 1. diag log で emit 成否を確認（sentinel_captured=1 なら成功、=0 なら helper 呼び出し失敗）
-tail -10 .rite-flow-state-diag.log | grep incident_emit
+# 1. diag log で flow-state 操作の rc/エラーを確認
+tail -20 .rite-flow-state-diag.log
 
-# 2. stderr 出力で sentinel line を確認 (現行実装では .rite/workflow-incidents/ ディレクトリは作成されない。
-#    sentinel は stderr のみで届く — stop-guard が exit 2 で stderr を assistant にフィードした後、
-#    Phase 5.4.4.1 が会話コンテキストを grep して検出する仕組み)
-# 実行後、Claude Code 側の会話コンテキスト (assistant response) に sentinel が現れることを目視確認
+# 2. 前セッション会話の grep
+# Claude Code の会話履歴 (assistant response の保存先) から sentinel を grep
+# manual_fallback_adopted / [interview:skipped] / [create:completed:*] 等の sentinel literal を確認
 ```
 
 ### 失敗時の確認項目
 
 | 症状 | 確認先 |
 |------|--------|
-| sentinel_captured=0 の log が残る | `plugins/rite/hooks/workflow-incident-emit.sh` の実行権限 / shebang / 構文を確認 |
-| diag log に `incident_emit` 行が全く残らない | `WORKFLOW_INCIDENT_TYPE` が set されていない = `WORKFLOW_HINT` が空 → 該当 phase が case 分岐に含まれているか確認 |
-| stderr に sentinel が現れない | stop-guard.sh で stdout ではなく stderr への echo リダイレクトが正しいか確認 (`>&2`) |
+| retrospective scan が sentinel を取り逃す | `start.md ステップ 8.5` の grep パターンが現行 sentinel literal を網羅しているか確認 |
+| diag log に flow-state 行が全く残らない | `flow-state-update.sh` の write path で mv/jq が silent fail していないか — round 9 で全 mv site に rc capture + WARNING が入った |
+| `rite_phase_is_create_lifecycle_in_progress` が legacy phase を取り逃す | `phase-transition-whitelist.test.sh` TC-CREATE-LIFECYCLE-LEGACY が PASS しているか確認 |
 
 ## 回帰検出のトリガー
 
 以下の修正 PR 後に本 smoke test を最低 1 回実施すること:
 
 - `plugins/rite/commands/issue/create.md`
-- `plugins/rite/commands/issue/create-interview.md`
-- `plugins/rite/commands/issue/create-register.md`
-- `plugins/rite/commands/issue/create-decompose.md`
-- `plugins/rite/hooks/stop-guard.sh`
+- `plugins/rite/commands/issue/start.md` (ステップ 8.5 retrospective scan)
+- `plugins/rite/hooks/phase-transition-whitelist.sh`
+- `plugins/rite/hooks/flow-state-update.sh`
 
 ## 実施記録テンプレート
 

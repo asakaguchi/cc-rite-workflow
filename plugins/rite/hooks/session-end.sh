@@ -161,7 +161,20 @@ WARN_MSG
     trap 'rm -f "$TMP_FILE" 2>/dev/null' EXIT TERM INT
     if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
        '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE"; then
-        mv "$TMP_FILE" "$STATE_FILE"
+        # SessionEnd stderr does not propagate to the next session's context,
+        # so a silent mv failure here would leave .active=true and block the
+        # next session from creating its own state. Persist the failure to the
+        # diag log via _log_flow_diag if available, then fall through.
+        if mv "$TMP_FILE" "$STATE_FILE"; then
+          :
+        else
+          _mv_rc=$?
+          rm -f "$TMP_FILE"
+          if command -v _log_flow_diag >/dev/null 2>&1; then
+            _log_flow_diag "session_end_mv_failed rc=$_mv_rc state=$STATE_FILE"
+          fi
+          echo "rite: session-end: mv deactivation state failed (rc=$_mv_rc)" >&2
+        fi
     else
         # SessionEnd stderr is not captured into the next session's conversation
         # context, so a workflow-incident emit here cannot be picked up by the

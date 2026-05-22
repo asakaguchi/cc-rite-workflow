@@ -145,7 +145,7 @@ tail -20 .rite-flow-state-diag.log
 | 症状 | 確認先 |
 |------|--------|
 | retrospective scan が sentinel を取り逃す | `start.md ステップ 8.5` の grep パターンが現行 sentinel literal を網羅しているか確認 |
-| diag log に flow-state 行が全く残らない | `flow-state-update.sh` の write path で mv/jq が silent fail していないか — round 9 で全 mv site に rc capture + WARNING が入った |
+| diag log に flow-state 行が全く残らない | `flow-state-update.sh` の write path で mv/jq が silent fail していないか — 全 mv site で rc capture + WARNING が出ている前提で、欠落がないか確認する |
 | `rite_phase_is_create_lifecycle_in_progress` が legacy phase を取り逃す | `phase-transition-whitelist.test.sh` TC-CREATE-LIFECYCLE-LEGACY が PASS しているか確認 |
 
 ## 回帰検出のトリガー

@@ -259,10 +259,9 @@ assert_grep_in_section() {
 # make_sandbox — git-init + initial-commit sandbox (Issue #990).
 #
 # Consolidates the inline `make_sandbox()` definitions previously duplicated in
-# state-read.test.sh, work-memory-update.test.sh (with `--branch` for the
-# `fix/issue-687-test` branch parsing test), notification.test.sh TC-016 (with
-# `--soft` for the setup-failure-skip path), and the now-retired
-# stop-create-interview-block.test.sh (deleted in PR #1079).
+# state-read.test.sh, work-memory-update.test.sh (with `--branch` for branch
+# parsing scenarios), and notification.test.sh TC-016 (with `--soft` for the
+# setup-failure-skip path).
 #
 # Options:
 #   --branch <name>  git init -b <name>; fall back to plain `git init` if -b is

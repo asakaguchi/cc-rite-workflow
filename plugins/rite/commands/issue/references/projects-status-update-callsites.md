@@ -2,11 +2,6 @@
 
 > **Source of Truth**: 本ファイルは `/rite:issue:start` 内で `plugins/rite/scripts/projects-status-update.sh` を invoke する **3 callsite (ステップ 2.4 / 8.3 / 8.4) の bash literal SoT** である。`start.md` 本体の各 callsite は本ファイルへ semantic 参照する anchor stub のみ保持する。
 >
-> **抽出経緯**: callsite はすべて同一の `bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n ...)"` 構造を持つが、`status_name` (In Progress / In Review / Done) と `auto_add` フラグ (true / false) のみ異なる。bash literal を 1 reference に集約することで drift を防止し、本体の認知負荷を下げる。Issue #901 (PR E — #896 親 Issue) で 3 callsite を抽出。Issue #1070 で Callsite 4 (旧 Phase 1.5.5 — Parent Auto-Close → Done with `auto_add: true`) を追加したが、PR #1079 で `parent-routing.md` が `commands/issue/start.md` ステップ 8.4 に統合されたため、Callsite 4 は ステップ 8.4 内 (`gh issue close` 直後の Projects → Done 更新) に吸収済み。
->
-> **API レベル仕様 SoT との役割分担**: `references/projects-integration.md` §2.4 は GraphQL projectItems / item-add / field-list / item-edit の **API 動作仕様** SoT。本ファイルは **caller bash literal** の SoT。両 reference は補完関係 (semantically orthogonal、重複契約なし)。
->
-> **caller**: `commands/issue/start.md` の 3 sites (ステップ 2.4 / 8.3 / 8.4) すべてが本 reference の対応セクションへ delegate する。旧 caller (`start-finalize.md` / `parent-routing.md`) は PR #1079 で `start.md` flat workflow に統合済 (削除)。
 
 ## Common contract
 
@@ -22,7 +17,7 @@
 
 詳細な API レベル動作 (GraphQL projectItems query / auto-add / field-list / item-edit) は [`projects-integration.md §2.4.2-2.4.5`](../../../references/projects-integration.md#242-check-issue-project-registration-status) を参照。
 
-> **Issue #1003 AC-4 適用範囲と Callsite ごとの emit 実装責務** (PR #1079 flat workflow 移行後):
+> **Issue #1003 AC-4 適用範囲と Callsite ごとの emit 実装責務** (flat workflow 移行後):
 > - **Callsite 1 (ステップ 2.4 In Progress)**: 本 SoT の bash literal には emit 例なし。`start.md` ステップ 2.4 caller 側で `.result` が `failed` の場合に emit を inline 記述する責務がある。通常 `auto_add: true` で `skipped_not_in_project` は発火しにくいため failed 経路が主対象。
 > - **Callsite 2 (ステップ 8.3 In Review)**: `start.md` ステップ 8.3 (defense-in-depth) と `pr/ready.md` Phase 4.2 (primary) の両 caller で emit を実装済み。`auto_add: false` のため `skipped_not_in_project` が発生しやすく、本契約の主対象。
 > - **Callsite 3 (ステップ 8.4 Done — Parent Issue auto-close)**: `start.md` ステップ 8.4 caller および `close.md` Phase 4.6.3 (`status update` 経由) の caller 側で emit を inline 記述する責務がある。`auto_add: false` のため `skipped_not_in_project` が発生しやすい。旧 Callsite 4 (Parent Auto-Close → Done, auto_add: true) は本 Callsite 3 に統合済 — `start.md` ステップ 8.4 内で `gh issue close` 直後に `auto_add: false` で Status 更新を行う pattern に統一されている (将来 auto_add: true 経路が必要になった場合は本 SoT に section を再追加)。
@@ -33,13 +28,13 @@
 **Step 1** — Read config and emit a skip marker on stdout (the LLM reads the marker, not a bash variable; shell state does not persist across Bash tool invocations):
 
 ```bash
-projects_enabled=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' rite-config.yml 2>/dev/null)
-project_number=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' rite-config.yml 2>/dev/null)
-project_owner=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    owner:/{gsub(/"/,"",$2); print $2; exit}' rite-config.yml 2>/dev/null)
+projects_enabled=$(awk '/^github:/{h=1;next} h && /^ projects:/{p=1;next} p && /^ enabled:/{print $2; exit}' rite-config.yml 2>/dev/null)
+project_number=$(awk '/^github:/{h=1;next} h && /^ projects:/{p=1;next} p && /^ project_number:/{print $2; exit}' rite-config.yml 2>/dev/null)
+project_owner=$(awk '/^github:/{h=1;next} h && /^ projects:/{p=1;next} p && /^ owner:/{gsub(/"/,"",$2); print $2; exit}' rite-config.yml 2>/dev/null)
 if [ "$projects_enabled" != "true" ]; then
-  echo "[CONTEXT] PHASE_2_4_STATE=skip; reason=projects_disabled"
+ echo "[CONTEXT] PHASE_2_4_STATE=skip; reason=projects_disabled"
 else
-  echo "[CONTEXT] PHASE_2_4_STATE=execute; project_number=$project_number owner=$project_owner"
+ echo "[CONTEXT] PHASE_2_4_STATE=execute; project_number=$project_number owner=$project_owner"
 fi
 ```
 
@@ -56,14 +51,14 @@ Do NOT rely on a bash variable (`SKIP_2_4=1`) that persists only within a single
 
 ```bash
 bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
-  --argjson issue {issue_number} \
-  --arg owner "{owner}" \
-  --arg repo "{repo}" \
-  --argjson project_number {project_number} \
-  --arg status "In Progress" \
-  --argjson auto_add true \
-  --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
+ --argjson issue {issue_number} \
+ --arg owner "{owner}" \
+ --arg repo "{repo}" \
+ --argjson project_number {project_number} \
+ --arg status "In Progress" \
+ --argjson auto_add true \
+ --argjson non_blocking true \
+ '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
 ```
 
 The script executes: GraphQL `projectItems` query → auto-add if not registered → `field-list` retrieval → Status `item-edit`. Inspect its stdout JSON:
@@ -87,14 +82,14 @@ Skip if `projects.enabled: false` in rite-config.yml. Otherwise invoke the share
 
 ```bash
 bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
-  --argjson issue {issue_number} \
-  --arg owner "{owner}" \
-  --arg repo "{repo}" \
-  --argjson project_number {project_number} \
-  --arg status "In Review" \
-  --argjson auto_add false \
-  --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
+ --argjson issue {issue_number} \
+ --arg owner "{owner}" \
+ --arg repo "{repo}" \
+ --argjson project_number {project_number} \
+ --arg status "In Review" \
+ --argjson auto_add false \
+ --argjson non_blocking true \
+ '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
 ```
 
 `auto_add: false` because at this point the Issue is already registered in the Project (ステップ 2.4 auto-added it if missing).
@@ -115,14 +110,14 @@ Skip if `projects.enabled: false` in rite-config.yml. Otherwise:
 
 ```bash
 bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
-  --argjson issue {parent_issue_number} \
-  --arg owner "{owner}" \
-  --arg repo "{repo}" \
-  --argjson project_number {project_number} \
-  --arg status "Done" \
-  --argjson auto_add false \
-  --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
+ --argjson issue {parent_issue_number} \
+ --arg owner "{owner}" \
+ --arg repo "{repo}" \
+ --argjson project_number {project_number} \
+ --arg status "Done" \
+ --argjson auto_add false \
+ --argjson non_blocking true \
+ '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
 ```
 
 Inspect the script's stdout JSON:
@@ -135,7 +130,7 @@ Inspect the script's stdout JSON:
 
 ## Callsite 4 — Historical (Parent Auto-Close → Done, auto_add: true)
 
-> **Status: Historical (PR #1079 で削除)**: 旧 caller `parent-routing.md` Phase 1.5.5 (auto-close → Done with `auto_add: true`) は PR #1079 で `commands/issue/start.md` ステップ 8.4 に統合された。新 ステップ 8.4 は `gh issue close` 直後に `auto_add: false` で Status → Done を更新するため、本 Callsite (auto_add: true 経路) は active caller を持たない。
+> **Status: Historical (retired)**: 旧 caller `parent-routing.md` Phase 1.5.5 (auto-close → Done with `auto_add: true`) は `commands/issue/start.md` ステップ 8.4 に統合された。新 ステップ 8.4 は `gh issue close` 直後に `auto_add: false` で Status → Done を更新するため、本 Callsite (auto_add: true 経路) は active caller を持たない。
 >
 > 本セクションは将来 `auto_add: true` 経路が再導入された場合の参照用に保持する (例: 親 Epic が Projects 未登録のまま自動 Done 化したい場合)。再導入時には Callsite 3 と独立した emit 経路として復活させる。
 >
@@ -150,7 +145,7 @@ See [projects-integration.md §2.4](../../../references/projects-integration.md#
 | ステップ 2.4 | `In Progress` | `true` | `{issue_number}` | 当該 Issue 自身。未登録なら auto-add (true) |
 | ステップ 8.3 | `In Review` | `false` | `{issue_number}` | 既に ステップ 2.4 で auto-add 済みのため `false` |
 | ステップ 8.4 | `Done` | `false` | `{parent_issue_number}` | 親 Issue 対象。auto-add 不要 |
-| Callsite 4 (Historical) | `Done` | `true` | `{issue_number}` | 親 Epic auto-close 経路 (PR #1079 で削除 — 詳細は上記 Callsite 4 — Historical セクション) |
+| Callsite 4 (Historical) | `Done` | `true` | `{issue_number}` | 親 Epic auto-close 経路 (retired) |
 
 ## 関連
 

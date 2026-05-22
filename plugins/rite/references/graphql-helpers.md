@@ -42,19 +42,19 @@ OWNER_TYPE=$(gh api "users/{owner}" --jq '.type' 2>/dev/null || echo "Organizati
 ```bash
 # Switch query based on detection result
 if [ "$OWNER_TYPE" = "User" ]; then
-  gh api graphql -f query='
-    query($owner: String!, $number: Int!) {
-      user(login: $owner) {
-        projectV2(number: $number) { id }
-      }
-    }' -f owner="$OWNER" -F number="$PROJECT_NUMBER"
+ gh api graphql -f query='
+ query($owner: String!, $number: Int!) {
+ user(login: $owner) {
+ projectV2(number: $number) { id }
+ }
+ }' -f owner="$OWNER" -F number="$PROJECT_NUMBER"
 else
-  gh api graphql -f query='
-    query($owner: String!, $number: Int!) {
-      organization(login: $owner) {
-        projectV2(number: $number) { id }
-      }
-    }' -f owner="$OWNER" -F number="$PROJECT_NUMBER"
+ gh api graphql -f query='
+ query($owner: String!, $number: Int!) {
+ organization(login: $owner) {
+ projectV2(number: $number) { id }
+ }
+ }' -f owner="$OWNER" -F number="$PROJECT_NUMBER"
 fi
 ```
 
@@ -68,12 +68,12 @@ Retrieve Node ID from Project number.
 
 ```graphql
 query($owner: String!, $number: Int!) {
-  user(login: $owner) {
-    projectV2(number: $number) {
-      id
-      title
-    }
-  }
+ user(login: $owner) {
+ projectV2(number: $number) {
+ id
+ title
+ }
+ }
 }
 ```
 
@@ -81,12 +81,12 @@ query($owner: String!, $number: Int!) {
 
 ```graphql
 query($owner: String!, $number: Int!) {
-  organization(login: $owner) {
-    projectV2(number: $number) {
-      id
-      title
-    }
-  }
+ organization(login: $owner) {
+ projectV2(number: $number) {
+ id
+ title
+ }
+ }
 }
 ```
 
@@ -100,26 +100,26 @@ Retrieve Iteration field and its configuration from a Project.
 
 ```graphql
 query($projectId: ID!) {
-  node(id: $projectId) {
-    ... on ProjectV2 {
-      fields(first: 20) {
-        nodes {
-          ... on ProjectV2IterationField {
-            id
-            name
-            configuration {
-              iterations {
-                id
-                title
-                startDate
-                duration
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+ node(id: $projectId) {
+ ... on ProjectV2 {
+ fields(first: 20) {
+ nodes {
+ ... on ProjectV2IterationField {
+ id
+ name
+ configuration {
+ iterations {
+ id
+ title
+ startDate
+ duration
+ }
+ }
+ }
+ }
+ }
+ }
+ }
 }
 ```
 
@@ -131,19 +131,19 @@ TODAY=$(date +%Y-%m-%d)
 
 # Check each Iteration
 # jq processing flow:
-#   1. Select fields with configuration from fields.nodes[]
-#   2. For each iteration, calculate start date and end date (start date + duration days)
-#   3. Check if today falls within that period
-#   4. Get the matching iteration's id
+# 1. Select fields with configuration from fields.nodes[]
+# 2. For each iteration, calculate start date and end date (start date + duration days)
+# 3. Check if today falls within that period
+# 4. Get the matching iteration's id
 CURRENT_ITERATION=$(echo "$ITERATION_FIELD" | jq -r --arg today "$TODAY" '
-  .data.node.fields.nodes[]
-  | select(.configuration)
-  | .configuration.iterations[]
-  | select(
-      .startDate <= $today and
-      (.startDate | strptime("%Y-%m-%d") | mktime + (.duration * 86400) | strftime("%Y-%m-%d")) > $today
-    )
-  | .id
+ .data.node.fields.nodes[]
+ | select(.configuration)
+ | .configuration.iterations[]
+ | select(
+ .startDate <= $today and
+ (.startDate | strptime("%Y-%m-%d") | mktime + (.duration * 86400) | strftime("%Y-%m-%d")) > $today
+ )
+ | .id
 ' | head -1)
 ```
 
@@ -155,35 +155,35 @@ CURRENT_ITERATION=$(echo "$ITERATION_FIELD" | jq -r --arg today "$TODAY" '
 
 ```graphql
 query($projectId: ID!, $fieldId: ID!, $iterationId: String!) {
-  node(id: $projectId) {
-    ... on ProjectV2 {
-      items(first: 100, filter: {
-        field: { fieldId: $fieldId, iterationId: $iterationId }
-      }) {
-        totalCount
-        nodes {
-          id
-          content {
-            ... on Issue {
-              number
-              title
-              state
-              labels(first: 5) { nodes { name } }
-              assignees(first: 3) { nodes { login } }
-            }
-          }
-          fieldValues(first: 10) {
-            nodes {
-              ... on ProjectV2ItemFieldSingleSelectValue {
-                name
-                field { ... on ProjectV2SingleSelectField { name } }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+ node(id: $projectId) {
+ ... on ProjectV2 {
+ items(first: 100, filter: {
+ field: { fieldId: $fieldId, iterationId: $iterationId }
+ }) {
+ totalCount
+ nodes {
+ id
+ content {
+ ... on Issue {
+ number
+ title
+ state
+ labels(first: 5) { nodes { name } }
+ assignees(first: 3) { nodes { login } }
+ }
+ }
+ fieldValues(first: 10) {
+ nodes {
+ ... on ProjectV2ItemFieldSingleSelectValue {
+ name
+ field { ... on ProjectV2SingleSelectField { name } }
+ }
+ }
+ }
+ }
+ }
+ }
+ }
 }
 ```
 
@@ -193,33 +193,33 @@ Retrieve items not assigned to any Iteration:
 
 ```graphql
 query($projectId: ID!) {
-  node(id: $projectId) {
-    ... on ProjectV2 {
-      items(first: 100) {
-        nodes {
-          id
-          content {
-            ... on Issue {
-              number
-              title
-              state
-            }
-          }
-          fieldValues(first: 10) {
-            nodes {
-              ... on ProjectV2ItemFieldIterationValue {
-                iterationId
-              }
-              ... on ProjectV2ItemFieldSingleSelectValue {
-                name
-                field { ... on ProjectV2SingleSelectField { name } }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+ node(id: $projectId) {
+ ... on ProjectV2 {
+ items(first: 100) {
+ nodes {
+ id
+ content {
+ ... on Issue {
+ number
+ title
+ state
+ }
+ }
+ fieldValues(first: 10) {
+ nodes {
+ ... on ProjectV2ItemFieldIterationValue {
+ iterationId
+ }
+ ... on ProjectV2ItemFieldSingleSelectValue {
+ name
+ field { ... on ProjectV2SingleSelectField { name } }
+ }
+ }
+ }
+ }
+ }
+ }
+ }
 }
 ```
 
@@ -233,16 +233,16 @@ Assign an Issue to a specific Iteration.
 
 ```graphql
 mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $iterationId: String!) {
-  updateProjectV2ItemFieldValue(
-    input: {
-      projectId: $projectId
-      itemId: $itemId
-      fieldId: $fieldId
-      value: { iterationId: $iterationId }
-    }
-  ) {
-    projectV2Item { id }
-  }
+ updateProjectV2ItemFieldValue(
+ input: {
+ projectId: $projectId
+ itemId: $itemId
+ fieldId: $fieldId
+ value: { iterationId: $iterationId }
+ }
+ ) {
+ projectV2Item { id }
+ }
 }
 ```
 
@@ -262,9 +262,9 @@ PR creation fails when:
 # ✅ REQUIRED: Verify commits exist before PR creation
 COMMIT_COUNT=$(git rev-list --count {base_branch}..HEAD 2>/dev/null || echo "0")
 if [ "$COMMIT_COUNT" = "0" ]; then
-  echo "ERROR: No commits between {base_branch} and current branch" >&2
-  echo "Create at least one commit before attempting PR creation" >&2
-  exit 1
+ echo "ERROR: No commits between {base_branch} and current branch" >&2
+ echo "Create at least one commit before attempting PR creation" >&2
+ exit 1
 fi
 echo "Found $COMMIT_COUNT commit(s) to include in PR"
 ```
@@ -276,9 +276,9 @@ echo "Found $COMMIT_COUNT commit(s) to include in PR"
 BRANCH_NAME=$(git branch --show-current)
 REMOTE_REF=$(git ls-remote --heads origin "$BRANCH_NAME" 2>/dev/null)
 if [ -z "$REMOTE_REF" ]; then
-  echo "ERROR: Branch '$BRANCH_NAME' not found on remote" >&2
-  echo "Run 'git push -u origin $BRANCH_NAME' first" >&2
-  exit 1
+ echo "ERROR: Branch '$BRANCH_NAME' not found on remote" >&2
+ echo "Run 'git push -u origin $BRANCH_NAME' first" >&2
+ exit 1
 fi
 ```
 
@@ -294,18 +294,18 @@ BASE_BRANCH="{base_branch}"
 # Check 1: Commits exist
 COMMIT_COUNT=$(git rev-list --count "$BASE_BRANCH".."$BRANCH_NAME" 2>/dev/null || echo "0")
 if [ "$COMMIT_COUNT" = "0" ]; then
-  echo "ERROR: No commits between $BASE_BRANCH and $BRANCH_NAME" >&2
-  exit 1
+ echo "ERROR: No commits between $BASE_BRANCH and $BRANCH_NAME" >&2
+ exit 1
 fi
 
 # Check 2: Branch is pushed
 REMOTE_REF=$(git ls-remote --heads origin "$BRANCH_NAME" 2>/dev/null)
 if [ -z "$REMOTE_REF" ]; then
-  echo "ERROR: Branch '$BRANCH_NAME' not found on remote. Pushing..." >&2
-  git push -u origin "$BRANCH_NAME" || {
-    echo "ERROR: Failed to push branch" >&2
-    exit 1
-  }
+ echo "ERROR: Branch '$BRANCH_NAME' not found on remote. Pushing..." >&2
+ git push -u origin "$BRANCH_NAME" || {
+ echo "ERROR: Failed to push branch" >&2
+ exit 1
+ }
 fi
 
 echo "Pre-PR checks passed: $COMMIT_COUNT commit(s), branch on remote"
@@ -331,11 +331,11 @@ echo "Pre-PR checks passed: $COMMIT_COUNT commit(s), branch on remote"
 ```bash
 # 🚫 PROHIBITED: -f passes raw string, special chars cause UNKNOWN_CHAR
 gh api graphql -f query='
-  mutation($body: String!) {
-    addComment(input: {subjectId: $id, body: $body}) {
-      commentEdge { node { id } }
-    }
-  }
+ mutation($body: String!) {
+ addComment(input: {subjectId: $id, body: $body}) {
+ commentEdge { node { id } }
+ }
+ }
 ' -f body="## Title\n\n- item with | pipe"
 # → Error: UNKNOWN_CHAR
 ```
@@ -364,22 +364,22 @@ BODY_EOF
 # Deliver GraphQL query via heredoc to avoid ! history expansion
 cat <<'QUERY_EOF' > "$queryfile"
 mutation($id: ID!, $body: String!) {
-  addComment(input: {subjectId: $id, body: $body}) {
-    commentEdge { node { id } }
-  }
+ addComment(input: {subjectId: $id, body: $body}) {
+ commentEdge { node { id } }
+ }
 }
 QUERY_EOF
 
 # Construct the full GraphQL request payload with jq
 jq -n --rawfile body "$tmpfile" --rawfile query "$queryfile" \
-  --arg id "$SUBJECT_ID" \
-  '{
-    query: $query,
-    variables: {
-      id: $id,
-      body: $body
-    }
-  }' | gh api graphql --input -
+ --arg id "$SUBJECT_ID" \
+ '{
+ query: $query,
+ variables: {
+ id: $id,
+ body: $body
+ }
+ }' | gh api graphql --input -
 ```
 
 **Why this works:**
@@ -397,12 +397,12 @@ GraphQL queries containing 「!」 (e.g., 「String!」, 「ID!」) are vulnerab
 # Bash interprets ! as history expansion trigger, corrupting String!, ID!, etc.
 # → Expected VAR_SIGN, actual: UNKNOWN_CHAR at [line, col]
 # PREVENTION: Deliver queries via heredoc (<<'EOF') or file input.
-#             Never rely on -f query='...' for queries containing !.
+# Never rely on -f query='...' for queries containing !.
 
 # Problem 2: Smart/curly quotes (less common)
 # Unicode smart quotes (" ") are not valid GraphQL syntax.
 # PREVENTION: Always type quotes manually; if UNKNOWN_CHAR occurs, check for
-#             invisible Unicode characters in the query string.
+# invisible Unicode characters in the query string.
 ```
 
 See [gh-cli-error-catalog.md Category 6](./gh-cli-error-catalog.md#category-6-graphql-variable-encoding-error--2-sessions) for root cause analysis.
@@ -450,9 +450,9 @@ gh api graphql -f query='...' -f body="## Title\n| col | col |"
 ```bash
 # Fallback example when Project operation fails
 PROJECT_ID=$(get_project_id "$OWNER" "$PROJECT_NUMBER") || {
-  echo "WARNING: Failed to access Project API"
-  echo "Issue will be created, but Projects integration will be skipped"
-  SKIP_PROJECT=true
+ echo "WARNING: Failed to access Project API"
+ echo "Issue will be created, but Projects integration will be skipped"
+ SKIP_PROJECT=true
 }
 
 # Create Issue (without Projects operation)
@@ -464,14 +464,14 @@ trap 'rm -f "$tmpfile"' EXIT
 # printf '%s\n' is safer than echo for preserving special characters.
 printf '%s\n' "$BODY" > "$tmpfile"
 if [ ! -s "$tmpfile" ]; then
-  echo "ERROR: body is empty" >&2
-  exit 1
+ echo "ERROR: body is empty" >&2
+ exit 1
 fi
 gh issue create --title "$TITLE" --body-file "$tmpfile"
 
 # Projects operation (skippable)
 if [ "$SKIP_PROJECT" != "true" ]; then
-  gh project item-add "$PROJECT_NUMBER" --owner "$OWNER" --url "$ISSUE_URL"
+ gh project item-add "$PROJECT_NUMBER" --owner "$OWNER" --url "$ISSUE_URL"
 fi
 ```
 
@@ -483,8 +483,8 @@ GitHub の Sub-issues feature を使って、Issue 間の親子関係を API レ
 
 ### When to Use
 
-- `/rite:issue:create` (Decompose Path, PR #1079 で flat 化) の bulk create 後に各 Sub-Issue を親に紐付ける
-- `/rite:issue:start` の child creation path で新規子 Issue を親に紐付ける (PR #1079 までは旧 `parent-routing.md` sub-skill が担当; flat 化後は start.md 本体に統合)
+- `/rite:issue:create` (Decompose Path, flat workflow) の bulk create 後に各 Sub-Issue を親に紐付ける
+- `/rite:issue:start` の child creation path で新規子 Issue を親に紐付ける (旧 `parent-routing.md` sub-skill が担当; flat 化後は start.md 本体に統合)
 - 既存 Issue の body メタのみで API 未紐付けな状態を後付けで補修する（`backfill-sub-issues.sh`）
 
 ### Helper Script: `link-sub-issue.sh`
@@ -499,12 +499,12 @@ bash plugins/rite/scripts/link-sub-issue.sh <owner> <repo> <parent_number> <chil
 result=$(bash plugins/rite/scripts/link-sub-issue.sh "B16B1RD" "cc-rite-workflow" 514 600)
 status=$(printf '%s' "$result" | jq -r '.status')
 case "$status" in
-  ok|already-linked)
-    printf '%s' "$result" | jq -r '.message'
-    ;;
-  failed)
-    printf '%s' "$result" | jq -r '.warnings[]' | while read -r w; do echo "⚠️ $w" >&2; done
-    ;;
+ ok|already-linked)
+ printf '%s' "$result" | jq -r '.message'
+ ;;
+ failed)
+ printf '%s' "$result" | jq -r '.warnings[]' | while read -r w; do echo "⚠️ $w" >&2; done
+ ;;
 esac
 ```
 
@@ -512,11 +512,11 @@ esac
 
 ```json
 {
-  "status": "ok | already-linked | failed",
-  "parent": 514,
-  "child": 600,
-  "message": "linked #600 as sub-issue of #514",
-  "warnings": []
+ "status": "ok | already-linked | failed",
+ "parent": 514,
+ "child": 600,
+ "message": "linked #600 as sub-issue of #514",
+ "warnings": []
 }
 ```
 
@@ -529,18 +529,18 @@ The helper internally executes the following two-step flow:
 ```graphql
 # Step 1: Resolve node IDs
 query($owner: String!, $repo: String!, $parent: Int!, $child: Int!) {
-  repository(owner: $owner, name: $repo) {
-    parent: issue(number: $parent) { id }
-    child: issue(number: $child) { id }
-  }
+ repository(owner: $owner, name: $repo) {
+ parent: issue(number: $parent) { id }
+ child: issue(number: $child) { id }
+ }
 }
 
 # Step 2: Establish parent-child relation
 mutation($parentId: ID!, $childId: ID!) {
-  addSubIssue(input: { issueId: $parentId, subIssueId: $childId }) {
-    issue { id number }
-    subIssue { id number }
-  }
+ addSubIssue(input: { issueId: $parentId, subIssueId: $childId }) {
+ issue { id number }
+ subIssue { id number }
+ }
 }
 ```
 
@@ -551,11 +551,11 @@ After linkage, verify with the following query:
 ```bash
 gh api graphql -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    issue(number: $number) {
-      subIssues(first: 50) { nodes { number title state } }
-    }
-  }
+ repository(owner: $owner, name: $repo) {
+ issue(number: $number) {
+ subIssues(first: 50) { nodes { number title state } }
+ }
+ }
 }' -f owner="{owner}" -f repo="{repo}" -F number={parent_number}
 ```
 
@@ -585,8 +585,8 @@ REST remains a documented fallback if GraphQL becomes unavailable, but no curren
 ## Related Documents
 
 - [gh CLI Patterns](./gh-cli-patterns.md) - Frequently used gh command patterns
-  - [Prohibited Patterns (Error Categories 1-7)](./gh-cli-patterns.md#prohibited-patterns-error-categories-1-7) - All prohibited gh CLI patterns
-  - [Safe Issue/PR Body Updates](./gh-cli-patterns.md#safe-issuepr-body-updates) - 3-layer defense pattern for body updates
-  - [Safe Comment Updates](./gh-cli-patterns.md#safe-comment-updates-gh-api-patch) - jq --rawfile pattern for comment PATCH
+ - [Prohibited Patterns (Error Categories 1-7)](./gh-cli-patterns.md#prohibited-patterns-error-categories-1-7) - All prohibited gh CLI patterns
+ - [Safe Issue/PR Body Updates](./gh-cli-patterns.md#safe-issuepr-body-updates) - 3-layer defense pattern for body updates
+ - [Safe Comment Updates](./gh-cli-patterns.md#safe-comment-updates-gh-api-patch) - jq --rawfile pattern for comment PATCH
 - [rite-workflow SKILL.md](../skills/rite-workflow/SKILL.md) - Workflow skill definition
 - [reviewers SKILL.md](../skills/reviewers/SKILL.md) - Reviewer skill definition

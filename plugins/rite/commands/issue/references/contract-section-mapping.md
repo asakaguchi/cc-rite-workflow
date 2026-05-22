@@ -1,8 +1,7 @@
 # Implementation Contract Section Mapping — Interview → Section 1-9
 
-> **Source of Truth**: 本ファイルは `/rite:issue:create` ワークフローにおける Issue Body 生成時の **Implementation Contract Section 1-9 への mapping** の SoT である。caller は `commands/issue/create.md` のみ (PR #1079 で旧 `create-register.md` Phase 2.2 Step 2-3 と旧 `create-decompose.md` Phase 0.7.3 cancel path の mapping 参照を `create.md` 本体に flat 化統合)。create.md からは本 reference へ semantic 参照する。
+> **Source of Truth**: 本ファイルは `/rite:issue:create` ワークフローにおける Issue Body 生成時の **Implementation Contract Section 1-9 への mapping** の SoT である。caller は `commands/issue/create.md` のみ (the flat-workflow refactor で旧 `create-register.md` Phase 2.2 Step 2-3 と旧 `create-decompose.md` Phase 0.7.3 cancel path の mapping 参照を `create.md` 本体に flat 化統合)。create.md からは本 reference へ semantic 参照する。
 >
-> **抽出経緯**: Type → Section 3 mapping table・Interview Perspective → Target Sections mapping table・Section inclusion rules table の 3 つの mapping 表が旧 `create-register.md` Phase 2.2 Step 2-3 に集約されていた状況を、Issue #773 (#768 P1-3) PR 7/8 で本 reference に集約。PR #1079 で旧 sub-skill ファイルは削除されたため、AC 生成 / Test 仕様 / Output Validation Step は現在 `create.md` 本体に維持。
 
 ## 位置づけ
 

@@ -221,7 +221,7 @@ fi
 # This is the regression check: if a future change introduces a direct call,
 # this TC fails immediately.
 # --------------------------------------------------------------------------
-echo "TC-010: AC-3 baseline — start.md must pass (PR #1079 で parent-routing.md は削除済、baseline を start.md のみに縮退)"
+echo "TC-010: AC-3 baseline — start.md must pass (single baseline file after parent-routing consolidation)"
 rc=0
 output=$(bash "$TARGET" \
   "$REPO_ROOT/plugins/rite/commands/issue/start.md" 2>&1) || rc=$?

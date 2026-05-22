@@ -99,12 +99,12 @@ done
 # ──────────────────────────────────────────────────────────────────────
 # (c) legacy compat 行の target step 番号は 1-8 の範囲に収まる
 # ──────────────────────────────────────────────────────────────────────
-# 「Legacy phase 名 (pre-#1079) compatibility」セクション内の行から
+# 「Legacy phase 名 (sub-skill chain era) compatibility」セクション内の行から
 # `Resume from ステップ N` を抽出して 1-8 の範囲を検証する。
 in_legacy=0
 invalid_steps=""
 while IFS= read -r line; do
-  if [[ "$line" == *"Legacy phase 名 (pre-#1079) compatibility"* ]]; then
+  if [[ "$line" == *"Legacy phase 名 (sub-skill chain era) compatibility"* ]]; then
     in_legacy=1
     continue
   fi

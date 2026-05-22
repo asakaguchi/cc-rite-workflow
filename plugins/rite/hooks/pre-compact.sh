@@ -137,9 +137,19 @@ if acquire_wm_lock "$LOCKDIR"; then
     ACTIVE_ISSUE="null"
   fi
 
-  # If no active issue in flow state, try branch name
+  # If no active issue in flow state, try branch name. Capture git stderr so
+  # corrupt .git / permission denied / missing git binary surface a WARNING
+  # instead of leaving the pre-compact snapshot without branch information.
   if [ "$ACTIVE_ISSUE" = "null" ]; then
-    BRANCH=$(cd "$CWD" && git branch --show-current 2>/dev/null || echo "")
+    _pc_br_err=$(mktemp 2>/dev/null) || _pc_br_err=""
+    _pc_br_rc=0
+    BRANCH=$(cd "$CWD" && git branch --show-current 2>"${_pc_br_err:-/dev/null}") || _pc_br_rc=$?
+    if [ "$_pc_br_rc" -ne 0 ]; then
+      echo "[rite] WARNING: pre-compact: git branch --show-current 失敗 (rc=$_pc_br_rc)" >&2
+      [ -n "$_pc_br_err" ] && [ -s "$_pc_br_err" ] && head -3 "$_pc_br_err" | sed 's/^/  /' >&2
+      BRANCH=""
+    fi
+    [ -n "$_pc_br_err" ] && rm -f "$_pc_br_err"
     if [[ "$BRANCH" =~ issue-([0-9]+) ]]; then
       ACTIVE_ISSUE="${BASH_REMATCH[1]}"
     fi

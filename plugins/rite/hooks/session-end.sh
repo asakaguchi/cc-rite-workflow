@@ -75,8 +75,18 @@ if [ "$_resolve_failed" -eq 1 ]; then
 fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 
-# Get current branch
-BRANCH=$(cd "$CWD" && git branch --show-current 2>/dev/null || echo "")
+# Get current branch. Capture git stderr so that corrupt .git / permission denied
+# / missing git binary surface a WARNING instead of collapsing into an empty
+# BRANCH (which would silently hide the issue number from the session summary).
+_br_err=$(mktemp 2>/dev/null) || _br_err=""
+_br_rc=0
+BRANCH=$(cd "$CWD" && git branch --show-current 2>"${_br_err:-/dev/null}") || _br_rc=$?
+if [ "$_br_rc" -ne 0 ]; then
+  echo "[rite] WARNING: session-end: git branch --show-current 失敗 (rc=$_br_rc — corrupt .git / permission denied / git unavailable の可能性)" >&2
+  [ -n "$_br_err" ] && [ -s "$_br_err" ] && head -3 "$_br_err" | sed 's/^/  /' >&2
+  BRANCH=""
+fi
+[ -n "$_br_err" ] && rm -f "$_br_err"
 
 # Default-init ISSUE_NUMBER so `${ISSUE_NUMBER:+...}` expansions later in the
 # script don't trip `set -u` when the branch is not an issue branch.

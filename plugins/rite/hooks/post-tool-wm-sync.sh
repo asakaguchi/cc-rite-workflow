@@ -91,7 +91,8 @@ if [ ! -f "$LOCAL_WM" ]; then
   }
   export WM_PLUGIN_ROOT="${WM_PLUGIN_ROOT:-$(dirname "$SCRIPT_DIR")}"
 
-  # cycle 12 HIGH F-01: unit separator 統一 (L33 と同じ理由)
+  # Unit separator (\x1f) keeps an empty .next_action from being collapsed by
+  # IFS (tab/space would let read shift later fields into earlier columns).
   _wm_data=$(jq -r '[(.phase // "unknown"), (.next_action // "")] | join("\u001f")' "$FLOW_STATE" 2>/dev/null) || _wm_data=$'unknown\x1f'
   IFS=$'\x1f' read -r phase next_action <<< "$_wm_data"
 

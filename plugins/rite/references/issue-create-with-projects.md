@@ -38,8 +38,8 @@ cat <<'BODY_EOF' > "$tmpfile"
 BODY_EOF
 
 if [ ! -s "$tmpfile" ]; then
-  echo "ERROR: Issue body is empty" >&2
-  exit 1
+ echo "ERROR: Issue body is empty" >&2
+ exit 1
 fi
 ```
 
@@ -47,30 +47,30 @@ fi
 
 ```bash
 result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
-  --arg title "{title}" \
-  --arg body_file "$tmpfile" \
-  --argjson labels '["label1"]' \
-  --argjson enabled true \
-  --argjson project_number 2 \
-  --arg owner "B16B1RD" \
-  --arg status "Todo" \
-  --arg priority "Medium" \
-  --arg complexity "S" \
-  --arg iter_mode "none" \
-  --arg source "pr_review" \
-  '{
-    issue: { title: $title, body_file: $body_file, labels: $labels },
-    projects: {
-      enabled: $enabled,
-      project_number: $project_number,
-      owner: $owner,
-      status: $status,
-      priority: $priority,
-      complexity: $complexity,
-      iteration: { mode: $iter_mode }
-    },
-    options: { source: $source, non_blocking_projects: true }
-  }'
+ --arg title "{title}" \
+ --arg body_file "$tmpfile" \
+ --argjson labels '["label1"]' \
+ --argjson enabled true \
+ --argjson project_number 2 \
+ --arg owner "B16B1RD" \
+ --arg status "Todo" \
+ --arg priority "Medium" \
+ --arg complexity "S" \
+ --arg iter_mode "none" \
+ --arg source "pr_review" \
+ '{
+ issue: { title: $title, body_file: $body_file, labels: $labels },
+ projects: {
+ enabled: $enabled,
+ project_number: $project_number,
+ owner: $owner,
+ status: $status,
+ priority: $priority,
+ complexity: $complexity,
+ iteration: { mode: $iter_mode }
+ },
+ options: { source: $source, non_blocking_projects: true }
+ }'
 )")
 ```
 
@@ -81,8 +81,8 @@ result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
 ```bash
 # Check if the script succeeded (result may be empty if the script crashed)
 if [ -z "$result" ]; then
-  echo "ERROR: Script returned no output" >&2
-  # handle error...
+ echo "ERROR: Script returned no output" >&2
+ # handle error...
 fi
 
 issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
@@ -97,23 +97,23 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 
 ```yaml
 issue:
-  title: string              # Issue title (required)
-  body_file: string          # Path to tmpfile with body markdown (optional)
-  labels: [string]           # Labels to apply (optional)
-  assignees: [string]        # Assignees (optional)
+ title: string # Issue title (required)
+ body_file: string # Path to tmpfile with body markdown (optional)
+ labels: [string] # Labels to apply (optional)
+ assignees: [string] # Assignees (optional)
 projects:
-  enabled: true|false        # From rite-config.yml github.projects.enabled
-  project_number: number     # From rite-config.yml github.projects.project_number
-  owner: string              # From rite-config.yml github.projects.owner
-  status: "Todo"             # Default: "Todo"
-  priority: "High|Medium|Low"  # Determined by caller
-  complexity: "XS|S|M|L|XL"   # Determined by caller
-  iteration:
-    mode: "none|auto"        # Default: "none". "auto" assigns to current iteration
-    field_name: "Sprint"     # Default: "Sprint"
+ enabled: true|false # From rite-config.yml github.projects.enabled
+ project_number: number # From rite-config.yml github.projects.project_number
+ owner: string # From rite-config.yml github.projects.owner
+ status: "Todo" # Default: "Todo"
+ priority: "High|Medium|Low" # Determined by caller
+ complexity: "XS|S|M|L|XL" # Determined by caller
+ iteration:
+ mode: "none|auto" # Default: "none". "auto" assigns to current iteration
+ field_name: "Sprint" # Default: "Sprint"
 options:
-  source: string             # Caller identifier (pr_review|pr_fix|pr_create|cleanup|lint|interactive|parent_routing|xl_decomposition)
-  non_blocking_projects: true  # Default: true. Projects failure doesn't block Issue creation
+ source: string # Caller identifier (pr_review|pr_fix|pr_create|cleanup|lint|interactive|parent_routing|xl_decomposition)
+ non_blocking_projects: true # Default: true. Projects failure doesn't block Issue creation
 ```
 
 ---
@@ -122,12 +122,12 @@ options:
 
 ```json
 {
-  "issue_url": "https://github.com/.../issues/123",
-  "issue_number": 123,
-  "project_id": "PVT_...",
-  "item_id": "PVTI_...",
-  "project_registration": "skipped|ok|partial|failed",
-  "warnings": ["string"]
+ "issue_url": "https://github.com/.../issues/123",
+ "issue_number": 123,
+ "project_id": "PVT_...",
+ "item_id": "PVTI_...",
+ "project_registration": "skipped|ok|partial|failed",
+ "warnings": ["string"]
 }
 ```
 
@@ -171,7 +171,7 @@ Each caller determines Priority using its own logic before passing it to the scr
 |---------|----------------|--------|
 | Incomplete tasks from merged PR | Medium | Default for remaining work |
 
-### create.md ステップ 5.3-5.4 (XL Decomposition, PR #1079 で旧 `create-decompose.md` Phase 3.3 を統合)
+### create.md ステップ 5.3-5.4 (XL Decomposition, 旧 `create-decompose.md` Phase 3.3 を flat workflow に統合)
 
 | Context | Issue Priority | Reason |
 |---------|----------------|--------|
@@ -184,7 +184,7 @@ Each caller determines Priority using its own logic before passing it to the scr
 |---------|----------------|--------|
 | Out-of-scope lint warnings / workflow incidents | Medium | Default for lint findings and workflow incident tracking Issues |
 
-### 旧 caller (PR #1079 で削除)
+### 旧 caller (retired)
 
 - `parent-routing.md` Phase 1.5.4 (Child Issue creation, Inherited from Parent) — flat 化に伴い child issue 自動作成経路自体が廃止された
 
@@ -219,8 +219,8 @@ Issue #669 strengthens the script so that **Projects registration failures are n
 
 1. **stderr emit on every registration failure** — `add_warning_with_stderr` writes `ERROR: Projects registration failed: <reason>` to stderr in addition to appending to the warnings array. The early `enabled=false` skip path uses plain `add_warning` so it stays silent (intentional skip, not failure).
 2. **3-attempt exponential backoff on transient API errors** — `gh project item-add`, all GraphQL queries (`fields`, `items`, mutations), and `gh project item-edit` are wrapped in `retry_with_backoff 3 ...` (sleeps `RETRY_DELAY * 2^(n-1)` seconds — defaults to 1s, 2s between attempts; tests set `RETRY_DELAY=0`). This satisfies the MUST 2 / MUST NOT 2 requirements:
-   - MUST: stderr surfaces root cause
-   - MUST NOT: failures are not confined to the warnings array under exit code 0
+ - MUST: stderr surfaces root cause
+ - MUST NOT: failures are not confined to the warnings array under exit code 0
 
 ### Static Guard for Direct `gh issue create` Invocations (#669 AC-3 / #958)
 
@@ -229,8 +229,8 @@ Issue #669 strengthens the script so that **Projects registration failures are n
 ```bash
 # Mode 1: explicit file list (original #669 form)
 bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh \
-  plugins/rite/commands/issue/start.md \
-  plugins/rite/commands/issue/create.md
+ plugins/rite/commands/issue/start.md \
+ plugins/rite/commands/issue/create.md
 
 # Mode 2: --all auto-expansion (#958)
 # Scans every plugins/rite/commands/**/*.md file under the resolved repository root.

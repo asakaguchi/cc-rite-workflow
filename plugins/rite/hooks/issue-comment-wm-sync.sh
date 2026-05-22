@@ -396,7 +396,17 @@ fi
 backup_file="/tmp/rite-wm-backup-${ISSUE}-$(date +%s).md"
 trap 'rm -f "$body_tmp" "$updated_tmp" "$py_err_tmp"' EXIT
 
-current_body=$(gh api "repos/${OWNER_REPO}/issues/comments/${COMMENT_ID}" --jq '.body // empty' 2>/dev/null) || current_body=""
+# Capture gh stderr so that auth expiry / rate limit / 404 / network failure are
+# distinguishable in the operator log instead of collapsing into an empty body.
+_cb_err=$(mktemp 2>/dev/null) || _cb_err=""
+_cb_rc=0
+current_body=$(gh api "repos/${OWNER_REPO}/issues/comments/${COMMENT_ID}" --jq '.body // empty' 2>"${_cb_err:-/dev/null}") || _cb_rc=$?
+if [ "$_cb_rc" -ne 0 ]; then
+  echo "[rite] WARNING: issue-comment-wm-sync: comment body 取得 gh api 失敗 (rc=$_cb_rc — auth/rate/network/404 系)" >&2
+  [ -n "$_cb_err" ] && [ -s "$_cb_err" ] && head -3 "$_cb_err" | sed 's/^/  /' >&2
+  current_body=""
+fi
+[ -n "$_cb_err" ] && rm -f "$_cb_err"
 
 if [ -z "$current_body" ]; then
   echo "WARNING: Could not retrieve comment body. Skipping update." >&2

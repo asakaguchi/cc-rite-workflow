@@ -78,29 +78,42 @@ _cleanup_stale_compact() {
   fi
 }
 
+# Read a single top-level YAML key from a config file. Captures awk stderr so that
+# permission denied / missing awk / malformed file surfaces a WARNING instead of
+# silently degrading to "schema is up to date" and skipping the migration prompt.
+_rite_read_yaml_key() {
+  local _key="$1" _file="$2" _label="$3"
+  local _err="" _rc=0 _val=""
+  _err=$(mktemp 2>/dev/null) || _err=""
+  _val=$(set -o pipefail; awk -v k="^${_key}:" '$0 ~ k {print $2}' "$_file" 2>"${_err:-/dev/null}" | tr -d '[:space:]"') || _rc=$?
+  if [ "$_rc" -ne 0 ]; then
+    echo "[rite] WARNING: session-start: ${_label} 読み取り失敗 (rc=$_rc) — ${_file}" >&2
+    [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | sed 's/^/  /' >&2
+  fi
+  [ -n "$_err" ] && rm -f "$_err"
+  printf '%s' "$_val"
+}
+
 if [ "$SOURCE" = "startup" ]; then
-  # --- Schema version check (#284) ---
+  # --- Schema version check ---
   _rite_config="$STATE_ROOT/rite-config.yml"
   if [ -f "$_rite_config" ]; then
-    # Read schema_version from project config (missing or non-numeric = v1)
-    _current_sv=$(awk '/^schema_version:/{print $2}' "$_rite_config" 2>/dev/null | tr -d '[:space:]"')
+    _current_sv=$(_rite_read_yaml_key schema_version "$_rite_config" "schema_version (project)")
     if [ -z "$_current_sv" ] || ! [[ "$_current_sv" =~ ^[0-9]+$ ]]; then
       _current_sv=1
     fi
 
-    # Read schema_version from template config (missing = v1 fallback)
     _template_config="$SCRIPT_DIR/../templates/config/rite-config.yml"
     _latest_sv=1
     if [ -f "$_template_config" ]; then
-      _latest_sv=$(awk '/^schema_version:/{print $2}' "$_template_config" 2>/dev/null | tr -d '[:space:]"')
+      _latest_sv=$(_rite_read_yaml_key schema_version "$_template_config" "schema_version (template)")
       if [ -z "$_latest_sv" ] || ! [[ "$_latest_sv" =~ ^[0-9]+$ ]]; then
         _latest_sv=1
       fi
     fi
 
     if [ "$_current_sv" -lt "$_latest_sv" ]; then
-      # i18n: read language from rite-config.yml (auto -> detect from locale)
-      _sv_lang=$(awk '/^language:/{print $2}' "$_rite_config" 2>/dev/null | tr -d '[:space:]"')
+      _sv_lang=$(_rite_read_yaml_key language "$_rite_config" "language")
       if [ "$_sv_lang" = "auto" ] || [ -z "$_sv_lang" ]; then
         # Detect from LANG environment variable (e.g., ja_JP.UTF-8 -> ja)
         case "${LANG:-}" in
@@ -149,7 +162,7 @@ if [ "$SOURCE" = "startup" ]; then
     _lang="en"
     _rite_config="$STATE_ROOT/rite-config.yml"
     if [ -f "$_rite_config" ]; then
-      _cfg_lang=$(awk '/^language:/{print $2}' "$_rite_config" 2>/dev/null | tr -d '[:space:]')
+      _cfg_lang=$(_rite_read_yaml_key language "$_rite_config" "language (cleanup)")
       [ -n "$_cfg_lang" ] && _lang="$_cfg_lang"
     fi
 
@@ -455,15 +468,21 @@ find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite
 # fails → ACTIVE=false → exit 0). This fallback handles the unlikely case where
 # the file becomes corrupt between the two jq reads (e.g., race condition,
 # partial write). It is not reachable by normal unit tests.
+_tsv_err=$(mktemp 2>/dev/null) || _tsv_err=""
+_tsv_rc=0
 _tsv_output=$(jq -r '[
   (.issue_number // "" | tostring),
   (.phase // "unknown"),
   (.next_action // "unknown"),
   (.loop_count // 0 | tostring)
-] | join("\u001f")' "$STATE_FILE" 2>/dev/null) || {
+] | join("\u001f")' "$STATE_FILE" 2>"${_tsv_err:-/dev/null}") || _tsv_rc=$?
+if [ "$_tsv_rc" -ne 0 ]; then
   echo "rite: Warning - state file contains invalid JSON. Use /rite:resume to recover." >&2
+  [ -n "$_tsv_err" ] && [ -s "$_tsv_err" ] && head -3 "$_tsv_err" | sed 's/^/  /' >&2
+  [ -n "$_tsv_err" ] && rm -f "$_tsv_err"
   exit 0
-}
+fi
+[ -n "$_tsv_err" ] && rm -f "$_tsv_err"
 IFS=$'\x1f' read -r ISSUE PHASE NEXT LOOP <<< "$_tsv_output"
 
 # Validate that critical fields are not null/empty

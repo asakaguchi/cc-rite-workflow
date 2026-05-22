@@ -82,11 +82,10 @@ if ! [[ "$PARENT_NUMBER" =~ ^[0-9]+$ ]] || ! [[ "$CHILD_NUMBER" =~ ^[0-9]+$ ]]; 
 fi
 
 # Reject unsubstituted Markdown placeholders (e.g. literal "{owner}" / "{repo}" /
-# "{parent_issue_number}"). Caller commands such as `commands/issue/create.md` ステップ 5.4
-# (PR #1079 flat workflow consolidation で旧 create-decompose.md / parent-routing.md から統合)
-# are documented as Markdown templates whose `{name}` tokens
-# Claude must substitute with real values before running bash. Without this
-# guard, a forgotten substitution would surface much later as an opaque
+# "{parent_issue_number}"). Caller commands such as `commands/issue/create.md`
+# document this script as a Markdown template whose `{name}` tokens Claude must
+# substitute with real values before running bash. Without this guard, a
+# forgotten substitution would surface much later as an opaque
 # "Could not resolve to a Repository" GraphQL error after every parent/child
 # resolution attempt fails. Fail-fast here so the issue is unambiguous.
 #

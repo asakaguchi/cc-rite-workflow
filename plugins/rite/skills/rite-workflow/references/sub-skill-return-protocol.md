@@ -1,13 +1,13 @@
 # Sub-skill Return Auto-Continuation Contract
 
-> **Status: Retired (PR #1079 +)**: This reference and the Layer 1/3/4 defense-in-depth model
+> **Status: Retired**: This reference and the Layer 1/3/4 defense-in-depth model
 > it described are **retired**. The implicit-stop defense layer (3 hooks:
 > `auto-fire-step0.sh`, `stop-create-interview-block.sh`, `verify-terminal-output.sh`)
 > and the 12 sub-skill files (`start-execute`, `start-publish`, `start-finalize`,
 > `create-interview`, `create-register`, `create-decompose`,
 > `implementation-plan`, `parent-routing`, `child-issue-selection`,
 > `branch-setup`, `work-memory-init`, `completion-report`) were removed in
-> PR #1079.
+> flat workflow consolidation.
 >
 > `/rite:issue:start` and `/rite:issue:create` are now single flat workflows.
 > When the LLM stops mid-flow, recovery is via `/rite:resume` — read

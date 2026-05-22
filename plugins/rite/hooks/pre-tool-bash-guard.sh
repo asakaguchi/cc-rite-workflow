@@ -7,7 +7,7 @@
 #   1. gh pr diff --stat  (unsupported flag)
 #   2. gh pr diff -- <path>  (unsupported file filter)
 #   3. != null in jq/awk  (history expansion breaks !)
-#   4. Reviewer subagent running state-mutating git commands (Issue #442)
+#   4. Reviewer subagent running state-mutating git commands
 #      Enforced only when transcript_path contains "/subagents/".
 #
 # Exit behavior:
@@ -43,7 +43,7 @@ if [ -z "$COMMAND" ]; then
   exit 0
 fi
 
-# Reviewer subagent detection (Issue #442, extended in Issue #998).
+# Reviewer subagent detection.
 # Claude Code routes subagent sessions to jsonl files under a "subagents/"
 # directory inside the project transcript root; the main session does not.
 # When the PreToolUse hook runs inside a subagent, transcript_path therefore
@@ -101,21 +101,17 @@ if [ "$IS_SUBAGENT" = "0" ]; then
   fi
 fi
 
-# --- Fail-open for heredoc extraction + Pattern 1-3 matching ---
-# If heredoc extraction or simple pattern matching crashes (e.g., edge-case
-# failures with large multiline input), allow the command rather than blocking it.
-# Placed after JSON parsing (which has its own || fallbacks) to preserve
-# error detection for malformed hook input.
+# Fail-open ERR trap for Patterns 1-3: if heredoc extraction or simple pattern
+# matching crashes on edge-case input, allow the command rather than blocking it.
+# Pattern 5 needs explicit per-call fallbacks for complex state-file ops and
+# releases this trap (`trap - ERR`) before its own logic.
 #
-# Scope this trap to Patterns 1-3 only. Pattern 5 does complex state-file ops
-# and needs explicit per-call fallbacks (`|| STATE_PHASE=""` etc.) instead of
-# a blanket fail-open — see the matching `trap - ERR` below.
+# Side effect: a subtle bash builtin failure or heredoc extraction crash will
+# silently downgrade a would-be deny to allow. Under RITE_DEBUG the fail-open
+# fires a debug-log line so the trip can be traced after the fact.
 #
-# ERR trap で `exit 0` (= allow) するため、bash builtin の subtle bug や heredoc
-# extraction の意図せぬ crash が起きると、deny されるべきコマンドが silent に
-# allow に降格する経路がある。RITE_DEBUG 時は fail-open 発火を debug log に
-# 記録して、後追いトリアージを可能にする。
-trap '_rite_btg_pattern13_fail_open' ERR
+# Function defined before the trap registration so that the trap target always
+# exists when ERR fires.
 _rite_btg_pattern13_fail_open() {
   if [ -n "${RITE_DEBUG:-}" ]; then
     printf '[%s] pre-tool-bash-guard: Pattern 1-3 ERR trap fired — command allowed via fail-open\n' \
@@ -124,6 +120,7 @@ _rite_btg_pattern13_fail_open() {
   fi
   exit 0
 }
+trap '_rite_btg_pattern13_fail_open' ERR
 
 # --- Heredoc-safe command extraction ---
 # Strip heredoc content to avoid false positives on text inside commit messages,
@@ -171,12 +168,12 @@ if [ -z "$BLOCKED_PATTERN" ]; then
   esac
 fi
 
-# Pattern 5: gh issue create direct invocation during /rite:issue:create lifecycle (#475 Mode B).
+# Pattern 5: gh issue create direct invocation during /rite:issue:create lifecycle.
 # The orchestrator (create.md) MUST delegate Issue creation to
 # `scripts/create-issue-with-projects.sh` (Projects 統合 + label/status field 設定を 1 ステップで
 # 実行)。直接 `gh issue create` を実行すると Projects 登録と field 設定が抜け落ちる。
 #
-# PR #1079 で create.md を flat workflow に統合した結果、新規 state file は terminal の
+# create.md は flat workflow に統合されており、新規 state file は terminal の
 # `phase=completed` のみを書き、中間 `create_*` phase は出現しない。本 Pattern は legacy
 # state file (旧 sub-skill chain 時代の `create_interview` / `create_post_interview` /
 # `create_delegation` / `create_post_delegation`) が残った環境のみで trigger する forward-compat
@@ -249,7 +246,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     # state-path-resolve.sh failed), skip the check entirely — no state file means no
     # create lifecycle to enforce, which is the documented "allow" path.
     #
-    # Per-session state path resolution (Issue #681): _resolve-flow-state-path.sh
+    # Per-session state path resolution: _resolve-flow-state-path.sh
     # returns the per-session file (`<root>/.rite/sessions/<session_id>.flow-state`)
     # when schema_version=2 with a valid SID, or the legacy `.rite-flow-state` path
     # otherwise. This keeps Pattern 5 working under both schemas without inlining
@@ -364,12 +361,11 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   CMD_NORMALIZED="${CMD_NORMALIZED//\}/ }"
   CMD_NORMALIZED="${CMD_NORMALIZED//\`/ }"
   CMD_NORMALIZED="${CMD_NORMALIZED//\$/ }"
-  # Absolute-path / explicit-invocation bypass guard (Issue #995 cycle 1):
+  # Absolute-path / explicit-invocation bypass guard:
   # Pattern 4 全体は `*" git <verb> "*` glob に依存するため、`git` を直接呼び出さない
   # 形式 (絶対パス指定 `/usr/bin/git checkout`、`command git checkout`、`exec git checkout`、
-  # backslash-escaped `\git checkout` 等) は match せず bypass 可能であった
-  # (security-reviewer empirical confirmation)。これらを ` git ` に正規化することで
-  # 既存 (A)〜(G) sub-block の glob を改変せずに防御範囲を拡大する。
+  # backslash-escaped `\git checkout` 等) は match せず bypass 可能になる。これらを ` git ` に
+  # 正規化することで既存 (A)〜(G) sub-block の glob を改変せずに防御範囲を拡大する。
   #   - `/usr/bin/git` / `/opt/homebrew/bin/git` 等の絶対パス → ` git`
   #   - `command git` / `exec git` / `builtin git` (builtin は構文 invalid だが safety) → ` git`
   #   - `\git` (backslash-escaped) → ` git`
@@ -378,7 +374,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # Layer 2 の責務は「静的 token として `git` を含むコマンド」に限定し、一次防御は agent prompt、
   # 三次防御は Layer 3 post-condition state-verify gate に委ねる三層構造を維持する。
   #
-  # `/git` substring 全置換の boundary 設計 (Issue #999 LOW follow-up):
+  # `/git` substring 全置換の boundary 設計:
   # 本 line は `/git` を ` git` に置換するため `/home/user/.config/git/config` のような
   # path 構成要素も置換対象になる (例: `grep -r foo /home/user/.config/git/config` →
   # `grep -r foo /home/user/.config git/config`)。実装上、現状 false positive は発生しない。
@@ -402,29 +398,38 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   CMD_NORMALIZED="${CMD_NORMALIZED// builtin git/ git}"
   # 注: quote 正規化 (`"` / `'` → space) は false positive 過剰 (TC-061 `echo "git checkout"`
   # のような log 出力経路を阻害) のため採用せず、代わりに quote-shell 経路 (`eval` / `sh -c` /
-  # `bash -c` / `zsh -c`) を別 sub-block で明示 block する設計に統一 (Issue #995 cycle 3)。
+  # `bash -c` / `zsh -c`) を別 sub-block で明示 block する設計に統一。
   # Collapse multiple spaces into one.
   while [[ "$CMD_NORMALIZED" == *"  "* ]]; do
     CMD_NORMALIZED="${CMD_NORMALIZED//  / }"
   done
 
-  # Git global flag normalization (Issue #995 cycle 3 / security-reviewer):
-  # `git -C <dir> checkout -b` / `git --git-dir=<X> checkout -b` 等の global flag が介在する
-  # 形式は case glob `*" git checkout "*` および token-loop `[[ " git worktree add " ]]` に
-  # match しないため Pattern (A)〜(G) を bypass する。global flag 群を ` git ` に圧縮することで
-  # 後続の sub-block 全体が flag-presence に関わらず一律に match できる。
-  # value-taking global flags (`-C <dir>` / `--git-dir <X>` / `--work-tree <X>` / `--exec-path <X>` /
-  # `--namespace <X>` / `-c <name=value>` / `--config-env <X>`): bash regex で extract + replace、
-  # `=` attached 形式 (`--git-dir=<X>` 等) も同じ正規化に含める。
+  # Git global flag normalization:
+  # `git -C <dir> checkout -b` / `git --git-dir=<X> checkout -b` 等の global flag が介在する形式は
+  # 後続の case glob `*" git checkout "*` / token-loop `[[ " git worktree add " ]]` に match せず
+  # Pattern (A)〜(G) を bypass する。global flag 群を ` git ` に圧縮することで、後続の sub-block 全体が
+  # flag-presence に関わらず一律に match できる。
+  #
+  # The substitution `${CMD_NORMALIZED/$_lit/git }` interprets $_lit as a glob pattern (bash
+  # parameter-expansion semantics), so a `-C <dir>` value containing `*` / `?` / `[` would be
+  # treated as a wildcard and could either overmatch or fail to match. Escape those metacharacters
+  # before substituting to keep the normalization literal regardless of input content.
+  _escape_glob_meta() {
+    local s="$1"
+    s="${s//\*/\\*}"
+    s="${s//\?/\\?}"
+    s="${s//\[/\\[}"
+    printf '%s' "$s"
+  }
   while [[ " $CMD_NORMALIZED " =~ \ git\ (-C|--git-dir|--work-tree|--exec-path|--namespace|-c|--config-env)(=[^[:space:]]+|[[:space:]]+[^[:space:]]+)\  ]]; do
-    # ${BASH_REMATCH[0]} は ` git <flag><attached-or-spaced-value> ` を含む。これを ` git ` に置換。
     _matched="${BASH_REMATCH[0]}"
-    CMD_NORMALIZED="${CMD_NORMALIZED/${_matched# }/git }"
+    _lit=$(_escape_glob_meta "${_matched# }")
+    CMD_NORMALIZED="${CMD_NORMALIZED/$_lit/git }"
   done
-  # no-value global flags (`--bare` / `--no-pager` / `--paginate` 等): match して ` git ` に圧縮。
   while [[ " $CMD_NORMALIZED " =~ \ git\ (--bare|--no-replace-objects|--paginate|--no-pager|--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--info-path|--man-path|--html-path)\  ]]; do
     _matched="${BASH_REMATCH[0]}"
-    CMD_NORMALIZED="${CMD_NORMALIZED/${_matched# }/git }"
+    _lit=$(_escape_glob_meta "${_matched# }")
+    CMD_NORMALIZED="${CMD_NORMALIZED/$_lit/git }"
   done
   # Re-collapse spaces after global-flag normalization.
   while [[ "$CMD_NORMALIZED" == *"  "* ]]; do
@@ -433,10 +438,10 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
 
   PADDED=" $CMD_NORMALIZED "
 
-  # --- (Z) Quote-shell bypass guard (Issue #995 cycle 3) ---
+  # --- (Z) Quote-shell bypass guard ---
   # `eval` / `sh -c` / `bash -c` / `zsh -c` 経由で git command を実行する経路は、
-  # quote 内の content が (A)-(G) glob と word-boundary を共有しないため bypass 可能だった
-  # (security-reviewer cycle 2 empirical 発見: `eval "git checkout -b evil"` 等)。
+  # quote 内の content が (A)-(G) glob と word-boundary を共有しないため bypass 可能。
+  # 例: `eval "git checkout -b evil"` は (A) Always-deny に match しない。
   # reviewer subagent が `eval` / shell `-c` を実行する legitimate な理由はほぼない
   # (read-only な script 実行は `bash <script>` で十分) ため、これらの shell-wrapper を直接 block する。
   # 注: `bash <script.sh>` (引数 1 個目が `-c` でない) は allow し続ける必要があるため、`-c` flag の
@@ -543,16 +548,16 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   #          `-bNAME` / `-b=NAME` / `--new-branch=NAME`, bare `git worktree add <path>` (1 positional
   #          arg only — Git auto-creates a new named branch matching basename(path)).
   #
-  # Issue #995: PR #994 cycle 3 で reviewer subagent が `pr-994-test` という新規 named branch を
-  # `git checkout -b` で作成 → mutation 検証 → `git checkout develop` の遷移を行い、parent session
-  # の working tree を develop のクリーン状態に置換した結果、後続の `/rite:pr:fix` が PR ブランチを
-  # 見失う事故が発生。`git checkout` 系は (A) Always-deny で既に block されるが、`git worktree add -b`
-  # 経由の named branch 作成は (E) で許可されていたため、structural gap として本サブブロックで補強。
+  # Failure mode: a reviewer subagent creates a new named branch via `git worktree add -b`,
+  # then runs `git checkout` to traverse states, replacing the parent session's working tree
+  # with a clean reference. `git checkout` is already blocked by (A) Always-deny, but
+  # `git worktree add -b` had been permitted by (E), leaving a structural gap that this
+  # sub-block closes.
   #
-  # Cycle 1 fix (security/test reviewer indications): `add -b` の glob は末尾スペース要求で
-  # `add -bNAME` / `add -b=NAME` / `add --track -b NAME` (中間 flag) / `add /tmp/d -b newbr HEAD`
-  # (positional 後置) をすべて bypass していたため、token loop で `-b/-B` を flag として識別する
-  # 経路に統一する (case glob は first-line defense として残置)。
+  # Initial `add -b ` glob required a trailing space and silently passed forms like
+  # `add -bNAME`, `add -b=NAME`, `add --track -b NAME` (mid-flag), and `add /tmp/d -b newbr HEAD`
+  # (positional after path). The token loop below identifies `-b` / `-B` as standalone flag
+  # tokens, with the case glob retained as a first-line defense.
   if [ -z "$BLOCKED_PATTERN" ]; then
     case "$PADDED" in
       *" git worktree remove"*|\
@@ -615,7 +620,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # --- (F) Sub-action precision: git fetch (bare allowed, --prune/--force denied) ---
   # CRITICAL: `-p` / `-f` must be matched as **standalone flag tokens**, not as
   # substrings inside branch names like `hot-fix` / `release-patch` /
-  # `v1.0-rc-final` / `main-pipeline` (cycle 2 HIGH regression).
+  # `v1.0-rc-final` / `main-pipeline`.
   #
   # Use a single bash regex with an optional "leading args" group:
   #   ([^[:space:]]+[[:space:]]+)*
@@ -826,13 +831,20 @@ CMD_SUMMARY="${COMMAND:0:80}"
 CMD_SUMMARY="${CMD_SUMMARY//\"/\\\"}"
 echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] bash-guard: BLOCKED pattern=$BLOCKED_PATTERN cmd=\"$CMD_SUMMARY\"" >&2
 
-# Deny with reason and alternative
-jq -n \
-  --arg reason "BLOCKED ($BLOCKED_PATTERN): $BLOCKED_REASON $BLOCKED_ALTERNATIVE" \
-  '{
+# Deny with reason and alternative. jq is required to emit the final permission
+# payload; an intermittent jq failure here would silently downgrade the deny to
+# allow because the Patterns 1-3 ERR trap is no longer active (Pattern 5 released
+# it). Fall back to a literal JSON envelope + exit 2 so the deny is fail-closed.
+_deny_reason="BLOCKED ($BLOCKED_PATTERN): $BLOCKED_REASON $BLOCKED_ALTERNATIVE"
+if ! jq -n --arg reason "$_deny_reason" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
       permissionDecisionReason: $reason
     }
-  }'
+  }'; then
+  _deny_reason_escaped="${_deny_reason//\\/\\\\}"
+  _deny_reason_escaped="${_deny_reason_escaped//\"/\\\"}"
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$_deny_reason_escaped"
+  exit 2
+fi

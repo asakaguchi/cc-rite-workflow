@@ -4,7 +4,7 @@ Mapping information for phase details. Used in work memory session information.
 
 ## Phase Detail Mapping
 
-`/rite:issue:start` は PR #1079 で flat single-file workflow に統合された (旧 3 sub-skill chain `start-execute` / `start-publish` / `start-finalize` は retire)。本 mapping は work memory `フェーズ詳細` 欄および `flow-state.json` の `phase` field の表示文字列を定義する。
+`/rite:issue:start` は flat single-file workflow に統合された (旧 3 sub-skill chain `start-execute` / `start-publish` / `start-finalize` は retire)。本 mapping は work memory `フェーズ詳細` 欄および `flow-state.json` の `phase` field の表示文字列を定義する。
 
 ### `/rite:issue:create` (flat workflow)
 
@@ -56,4 +56,4 @@ Work memory session information section:
 
 - [Session Detection](./session-detection.md) - Auto-detection at session start
 - [Work Memory Format](./work-memory-format.md) - Work memory format
-- [Sub-skill Return Auto-Continuation Contract (Retired)](./sub-skill-return-protocol.md) - PR #1079 migration map
+- [Sub-skill Return Auto-Continuation Contract (Retired)](./sub-skill-return-protocol.md) - migration map

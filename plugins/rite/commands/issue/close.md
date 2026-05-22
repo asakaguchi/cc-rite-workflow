@@ -69,14 +69,14 @@ Invoke the shared script to transition the Issue Status to **Done**:
 
 ```bash
 bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
-  --argjson issue {issue_number} \
-  --arg owner "{owner}" \
-  --arg repo "{repo}" \
-  --argjson project_number {project_number} \
-  --arg status "Done" \
-  --argjson auto_add false \
-  --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
+ --argjson issue {issue_number} \
+ --arg owner "{owner}" \
+ --arg repo "{repo}" \
+ --argjson project_number {project_number} \
+ --arg status "Done" \
+ --argjson auto_add false \
+ --argjson non_blocking true \
+ '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
 ```
 
 `auto_add: false` because the Issue is already CLOSED at this point — auto-adding a closed Issue is unexpected and would mask a configuration drift. The script internally executes the GraphQL `projectItems` query → `gh project field-list` → `gh project item-edit` triple in a single fail-fast pipeline.
@@ -100,13 +100,13 @@ Inspect the script's stdout JSON and route by `.result`:
 > status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
 > status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
 > case "$status_result" in
->   updated)
->     echo "Projects Status を \"Done\" に更新しました" ;;
->   skipped_not_in_project)
->     echo "警告: Issue #{issue_number} は Project に登録されていません" >&2 ;;
->   failed|*)
->     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
->     echo "警告: Projects Status の \"Done\" への更新に失敗しました。手動回復: gh project item-edit ..." >&2 ;;
+> updated)
+> echo "Projects Status を \"Done\" に更新しました" ;;
+> skipped_not_in_project)
+> echo "警告: Issue #{issue_number} は Project に登録されていません" >&2 ;;
+> failed|*)
+> [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/ warning: /' >&2
+> echo "警告: Projects Status の \"Done\" への更新に失敗しました。手動回復: gh project item-edit ..." >&2 ;;
 > esac
 > ```
 >
@@ -211,7 +211,7 @@ If a linked PR is in open state:
 
 {i18n:issue_close_linked_prs}:
 - #{pr_number}: {pr_title} (Open)
-  URL: {pr_url}
+ URL: {pr_url}
 
 {i18n:issue_close_recommended_action}:
 1. PR をレビュー・マージ
@@ -262,14 +262,14 @@ Skip Phase 4.2 if `github.projects.enabled: false` in `rite-config.yml` and proc
 
 ```bash
 bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
-  --argjson issue {issue_number} \
-  --arg owner "{owner}" \
-  --arg repo "{repo}" \
-  --argjson project_number {project_number} \
-  --arg status "Done" \
-  --argjson auto_add false \
-  --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
+ --argjson issue {issue_number} \
+ --arg owner "{owner}" \
+ --arg repo "{repo}" \
+ --argjson project_number {project_number} \
+ --arg status "Done" \
+ --argjson auto_add false \
+ --argjson non_blocking true \
+ '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
 ```
 
 `auto_add: false` because by close time the Issue is already registered in the Project (start.md Phase 2.4 auto-added it if missing). The script internally executes the GraphQL `projectItems` query → `gh project field-list` → `gh project item-edit` triple in a single fail-fast pipeline.
@@ -293,13 +293,13 @@ Inspect the script's stdout JSON and route by `.result`:
 > status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
 > status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
 > case "$status_result" in
->   updated)
->     echo "Projects Status を \"Done\" に更新しました" ;;
->   skipped_not_in_project)
->     echo "警告: Issue #{issue_number} は Project に登録されていません" >&2 ;;
->   failed|*)
->     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
->     echo "警告: Projects Status の \"Done\" への更新に失敗しました。手動回復: gh project item-edit ..." >&2 ;;
+> updated)
+> echo "Projects Status を \"Done\" に更新しました" ;;
+> skipped_not_in_project)
+> echo "警告: Issue #{issue_number} は Project に登録されていません" >&2 ;;
+> failed|*)
+> [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/ warning: /' >&2
+> echo "警告: Projects Status の \"Done\" への更新に失敗しました。手動回復: gh project item-edit ..." >&2 ;;
 > esac
 > ```
 >
@@ -315,12 +315,12 @@ Before deletion in Phase 5, record the completion state in local work memory:
 
 ```bash
 WM_SOURCE="close" \
-  WM_PHASE="completed" \
-  WM_PHASE_DETAIL="Issue クローズ完了" \
-  WM_NEXT_ACTION="なし" \
-  WM_BODY_TEXT="Issue closed." \
-  WM_ISSUE_NUMBER="{issue_number}" \
-  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
+ WM_PHASE="completed" \
+ WM_PHASE_DETAIL="Issue クローズ完了" \
+ WM_NEXT_ACTION="なし" \
+ WM_BODY_TEXT="Issue closed." \
+ WM_ISSUE_NUMBER="{issue_number}" \
+ bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort. The file will be deleted in Phase 5 regardless.
@@ -356,15 +356,15 @@ After completing the Issue close actions, trigger Wiki Ingest to capture retrosp
 wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
 wiki_enabled=""
 if [[ -n "$wiki_section" ]]; then
-  wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
-    | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+ wiki_enabled=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
+ | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
 fi
 auto_ingest=""
 if [[ -n "$wiki_section" ]]; then
-  auto_ingest=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_ingest:/ { print; exit }' \
-    | sed 's/[[:space:]]#.*//' | sed 's/.*auto_ingest:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+ auto_ingest=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_ingest:/ { print; exit }' \
+ | sed 's/[[:space:]]#.*//' | sed 's/.*auto_ingest:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
 fi
-case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="true" ;; esac  # #483: opt-out default
+case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="true" ;; esac # #483: opt-out default
 case "$auto_ingest" in true|yes|1) auto_ingest="true" ;; *) auto_ingest="false" ;; esac
 echo "wiki_enabled=$wiki_enabled auto_ingest=$auto_ingest"
 ```
@@ -373,38 +373,38 @@ If `wiki_enabled=false` or `auto_ingest=false`, **emit a skip status line + sent
 
 ```bash
 if [ "$wiki_enabled" = "false" ]; then
-  reason="disabled"
+ reason="disabled"
 elif [ "$auto_ingest" = "false" ]; then
-  reason="auto_ingest_off"
+ reason="auto_ingest_off"
 else
-  reason=""
+ reason=""
 fi
 if [ -n "$reason" ]; then
-  echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=$reason"
-  emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
-  trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
-  # close.md は PR が scope に存在しないため、workflow-incident-emit.sh には
-  # literal `0` を渡す (Phase 4.4.W.2 と同じ pattern で対称性を維持)。
-  # 旧実装 `emit_pr_number="${pr_number:-0}"` は Bash tool 呼出境界で `$pr_number` が
-  # unset のため常に 0 に resolve される dead code だった (PR #529 cycle 2 HIGH #2)。
-  if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
-      --type wiki_ingest_skipped \
-      --details "close Phase 4.4.W skipped: $reason" \
-      --pr-number 0 2>"${emit_err:-/dev/null}"); then
-    if [ -n "$sentinel_line" ]; then
-      echo "$sentinel_line"
-      echo "$sentinel_line" >&2
-    fi
-  else
-    fallback_iter="{issue_number}-$(date +%s)"
-    fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_skipped reason=$reason; iteration_id=$fallback_iter"
-    echo "$fallback_sentinel"
-    echo "$fallback_sentinel" >&2
-    echo "WARNING: workflow-incident-emit.sh (wiki_ingest_skipped) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
-    [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
-  fi
-  [ -n "$emit_err" ] && rm -f "$emit_err"
-  trap - EXIT INT TERM HUP
+ echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=$reason"
+ emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+ trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
+ # close.md は PR が scope に存在しないため、workflow-incident-emit.sh には
+ # literal `0` を渡す (Phase 4.4.W.2 と同じ pattern で対称性を維持)。
+ # 旧実装 `emit_pr_number="${pr_number:-0}"` は Bash tool 呼出境界で `$pr_number` が
+ # unset のため常に 0 に resolve される dead code だった。
+ if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+ --type wiki_ingest_skipped \
+ --details "close Phase 4.4.W skipped: $reason" \
+ --pr-number 0 2>"${emit_err:-/dev/null}"); then
+ if [ -n "$sentinel_line" ]; then
+ echo "$sentinel_line"
+ echo "$sentinel_line" >&2
+ fi
+ else
+ fallback_iter="{issue_number}-$(date +%s)"
+ fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_skipped reason=$reason; iteration_id=$fallback_iter"
+ echo "$fallback_sentinel"
+ echo "$fallback_sentinel" >&2
+ echo "WARNING: workflow-incident-emit.sh (wiki_ingest_skipped) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
+ [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/ /' >&2
+ fi
+ [ -n "$emit_err" ] && rm -f "$emit_err"
+ trap - EXIT INT TERM HUP
 fi
 ```
 
@@ -435,23 +435,23 @@ cat <<'RETRO_EOF' > "$tmpfile"
 RETRO_EOF
 
 bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
-  --type retrospectives \
-  --source-ref "issue-{issue_number}" \
-  --content-file "$tmpfile" \
-  --issue-number {issue_number} \
-  --title "Issue #{issue_number} close retrospective" \
-  2>"$trigger_stderr"
+ --type retrospectives \
+ --source-ref "issue-{issue_number}" \
+ --content-file "$tmpfile" \
+ --issue-number {issue_number} \
+ --title "Issue #{issue_number} close retrospective" \
+ 2>"$trigger_stderr"
 trigger_exit=$?
 echo "trigger_exit=$trigger_exit"
 if [ "$trigger_exit" -ne 0 ] && [ "$trigger_stderr" != "/dev/null" ] && [ -s "$trigger_stderr" ]; then
-  # UTF-8 multi-byte 境界を safe にする (head -c 500 で切れた invalid sequence を drop)
-  # (F-09 対応) iconv 不在環境 (Alpine 等) では LC_ALL=C tr で ASCII-only fallback
-  if command -v iconv >/dev/null 2>&1; then
-    _wiki_err_snippet=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500 | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)
-  else
-    _wiki_err_snippet=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500 | LC_ALL=C tr -cd '\11\12\15\40-\176')
-  fi
-  echo "[CONTEXT] WIKI_TRIGGER_STDERR=${_wiki_err_snippet}" >&2
+ # UTF-8 multi-byte 境界を safe にする (head -c 500 で切れた invalid sequence を drop)
+ # (F-09 対応) iconv 不在環境 (Alpine 等) では LC_ALL=C tr で ASCII-only fallback
+ if command -v iconv >/dev/null 2>&1; then
+ _wiki_err_snippet=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500 | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)
+ else
+ _wiki_err_snippet=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500 | LC_ALL=C tr -cd '\11\12\15\40-\176')
+ fi
+ echo "[CONTEXT] WIKI_TRIGGER_STDERR=${_wiki_err_snippet}" >&2
 fi
 ```
 
@@ -461,28 +461,28 @@ fi
 
 ```bash
 if [ "$trigger_exit" -ne 0 ] && [ "$trigger_exit" -ne 2 ]; then
-  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_$trigger_exit; exit_code=$trigger_exit"
-  emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
-  trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
-  # literal `--pr-number 0` (close.md は PR が scope 外、Phase 4.4.W.2 / Step 1 と対称)
-  if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
-      --type wiki_ingest_failed \
-      --details "wiki-ingest-trigger.sh exited $trigger_exit during issue/close.md Phase 4.4.W" \
-      --pr-number 0 2>"${emit_err:-/dev/null}"); then
-    if [ -n "$sentinel_line" ]; then
-      echo "$sentinel_line"
-      echo "$sentinel_line" >&2
-    fi
-  else
-    fallback_iter="{issue_number}-$(date +%s)"
-    fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_failed trigger_exit=$trigger_exit; iteration_id=$fallback_iter"
-    echo "$fallback_sentinel"
-    echo "$fallback_sentinel" >&2
-    echo "WARNING: workflow-incident-emit.sh (wiki_ingest_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
-    [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
-  fi
-  [ -n "$emit_err" ] && rm -f "$emit_err"
-  trap - EXIT INT TERM HUP
+ echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_$trigger_exit; exit_code=$trigger_exit"
+ emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+ trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
+ # literal `--pr-number 0` (close.md は PR が scope 外、Phase 4.4.W.2 / Step 1 と対称)
+ if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+ --type wiki_ingest_failed \
+ --details "wiki-ingest-trigger.sh exited $trigger_exit during issue/close.md Phase 4.4.W" \
+ --pr-number 0 2>"${emit_err:-/dev/null}"); then
+ if [ -n "$sentinel_line" ]; then
+ echo "$sentinel_line"
+ echo "$sentinel_line" >&2
+ fi
+ else
+ fallback_iter="{issue_number}-$(date +%s)"
+ fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_failed trigger_exit=$trigger_exit; iteration_id=$fallback_iter"
+ echo "$fallback_sentinel"
+ echo "$fallback_sentinel" >&2
+ echo "WARNING: workflow-incident-emit.sh (wiki_ingest_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
+ [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/ /' >&2
+ fi
+ [ -n "$emit_err" ] && rm -f "$emit_err"
+ trap - EXIT INT TERM HUP
 fi
 ```
 
@@ -525,16 +525,16 @@ trap 'rm -f "${commit_err:-}" "${emit_err:-}"' EXIT INT TERM HUP
 # workflow-incident-emit.sh で定義、workflow-incident-emit.test.sh TC-009
 # sep_count=3 で enforce)。
 if commit_err=$(mktemp /tmp/rite-wiki-commit-err-XXXXXX 2>/dev/null); then
-  : # mktemp 成功 — commit_err は valid path
+ : # mktemp 成功 — commit_err は valid path
 else
-  mktemp_commit_err_rc=$?
-  echo "WARNING: mktemp failed for wiki-ingest-commit stderr capture (rc=$mktemp_commit_err_rc) — script stderr will be suppressed" >&2
-  echo "  hint: check /tmp permission / disk space / inode exhaustion" >&2
-  fallback_iter="{issue_number}-$(date +%s)"
-  fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=mktemp failed for commit_err in issue/close.md Phase 4.4.W.2 rc=$mktemp_commit_err_rc; iteration_id=$fallback_iter"
-  echo "$fallback_sentinel"
-  echo "$fallback_sentinel" >&2
-  commit_err="/dev/null"
+ mktemp_commit_err_rc=$?
+ echo "WARNING: mktemp failed for wiki-ingest-commit stderr capture (rc=$mktemp_commit_err_rc) — script stderr will be suppressed" >&2
+ echo " hint: check /tmp permission / disk space / inode exhaustion" >&2
+ fallback_iter="{issue_number}-$(date +%s)"
+ fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=mktemp failed for commit_err in issue/close.md Phase 4.4.W.2 rc=$mktemp_commit_err_rc; iteration_id=$fallback_iter"
+ echo "$fallback_sentinel"
+ echo "$fallback_sentinel" >&2
+ commit_err="/dev/null"
 fi
 commit_rc=0
 # LOW #9 / #10 — issue/close.md では PR 番号が scope に存在しないため、
@@ -543,84 +543,84 @@ commit_rc=0
 # unset のため常に 0 に resolve される dead code だった。3 ファイル対称を保ち、
 # review.md / fix.md と同じ literal substitution 方式に統一する。)
 if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh 2>"${commit_err}"); then
-  echo "$commit_out"
-  echo "[CONTEXT] WIKI_INGEST_DONE=1; issue={issue_number}; type=retrospectives"
+ echo "$commit_out"
+ echo "[CONTEXT] WIKI_INGEST_DONE=1; issue={issue_number}; type=retrospectives"
 else
-  commit_rc=$?
-  if [ "$commit_err" != "/dev/null" ] && [ -s "$commit_err" ]; then
-    head -5 "$commit_err" | sed 's/^/  /' >&2
-  fi
-  # MEDIUM #5 — exit 2 は legitimate skip (wiki disabled / wiki branch missing).
-  # verified-review cycle 4 CRITICAL #1 — exit 4 = commit landed locally
-  # but origin push failed; emit dedicated wiki_ingest_push_failed sentinel.
-  case "$commit_rc" in
-    2)
-      echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing; exit_code=$commit_rc"
-      emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
-      if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
-          --type wiki_ingest_skipped \
-          --details "wiki-ingest-commit.sh exited 2 (wiki branch missing / disabled) during issue/close.md Phase 4.4.W.2" \
-          --pr-number 0 2>"${emit_err:-/dev/null}"); then
-        if [ -n "$sentinel_line" ]; then
-          echo "$sentinel_line"
-          echo "$sentinel_line" >&2
-        fi
-      else
-        # HIGH #3 — fallback_sentinel emit (trigger Step 3 と対称).
-        fallback_iter="{issue_number}-$(date +%s)"
-        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_skipped commit_rc=2; iteration_id=$fallback_iter"
-        echo "$fallback_sentinel"
-        echo "$fallback_sentinel" >&2
-        echo "WARNING: workflow-incident-emit.sh (wiki_ingest_skipped) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
-        [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
-      fi
-      ;;
-    4)
-      # CRITICAL #1: commit landed locally, push failed. Emit dedicated sentinel.
-      echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; exit_code=$commit_rc"
-      if [ -n "${commit_out:-}" ]; then
-        echo "$commit_out"
-      fi
-      emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
-      if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
-          --type wiki_ingest_push_failed \
-          --details "wiki-ingest-commit.sh exited 4 (commit landed locally, push failed) during issue/close.md Phase 4.4.W.2" \
-          --pr-number 0 2>"${emit_err:-/dev/null}"); then
-        if [ -n "$sentinel_line" ]; then
-          echo "$sentinel_line"
-          echo "$sentinel_line" >&2
-        fi
-      else
-        fallback_iter="{issue_number}-$(date +%s)"
-        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_push_failed commit_rc=4; iteration_id=$fallback_iter"
-        echo "$fallback_sentinel"
-        echo "$fallback_sentinel" >&2
-        echo "WARNING: workflow-incident-emit.sh (wiki_ingest_push_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
-        [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
-      fi
-      ;;
-    *)
-      echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=commit_rc_$commit_rc; exit_code=$commit_rc"
-      emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
-      if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
-          --type wiki_ingest_failed \
-          --details "wiki-ingest-commit.sh exited $commit_rc during issue/close.md Phase 4.4.W.2" \
-          --pr-number 0 2>"${emit_err:-/dev/null}"); then
-        if [ -n "$sentinel_line" ]; then
-          echo "$sentinel_line"
-          echo "$sentinel_line" >&2
-        fi
-      else
-        # HIGH #3 — fallback_sentinel emit (trigger Step 3 と対称).
-        fallback_iter="{issue_number}-$(date +%s)"
-        fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_failed commit_rc=$commit_rc; iteration_id=$fallback_iter"
-        echo "$fallback_sentinel"
-        echo "$fallback_sentinel" >&2
-        echo "WARNING: workflow-incident-emit.sh (wiki_ingest_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
-        [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
-      fi
-      ;;
-  esac
+ commit_rc=$?
+ if [ "$commit_err" != "/dev/null" ] && [ -s "$commit_err" ]; then
+ head -5 "$commit_err" | sed 's/^/ /' >&2
+ fi
+ # MEDIUM #5 — exit 2 は legitimate skip (wiki disabled / wiki branch missing).
+ # exit 4 = commit landed locally
+ # but origin push failed; emit dedicated wiki_ingest_push_failed sentinel.
+ case "$commit_rc" in
+ 2)
+ echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing; exit_code=$commit_rc"
+ emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+ if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+ --type wiki_ingest_skipped \
+ --details "wiki-ingest-commit.sh exited 2 (wiki branch missing / disabled) during issue/close.md Phase 4.4.W.2" \
+ --pr-number 0 2>"${emit_err:-/dev/null}"); then
+ if [ -n "$sentinel_line" ]; then
+ echo "$sentinel_line"
+ echo "$sentinel_line" >&2
+ fi
+ else
+ # HIGH #3 — fallback_sentinel emit (trigger Step 3 と対称).
+ fallback_iter="{issue_number}-$(date +%s)"
+ fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_skipped commit_rc=2; iteration_id=$fallback_iter"
+ echo "$fallback_sentinel"
+ echo "$fallback_sentinel" >&2
+ echo "WARNING: workflow-incident-emit.sh (wiki_ingest_skipped) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
+ [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/ /' >&2
+ fi
+ ;;
+ 4)
+ # CRITICAL #1: commit landed locally, push failed. Emit dedicated sentinel.
+ echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; exit_code=$commit_rc"
+ if [ -n "${commit_out:-}" ]; then
+ echo "$commit_out"
+ fi
+ emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+ if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+ --type wiki_ingest_push_failed \
+ --details "wiki-ingest-commit.sh exited 4 (commit landed locally, push failed) during issue/close.md Phase 4.4.W.2" \
+ --pr-number 0 2>"${emit_err:-/dev/null}"); then
+ if [ -n "$sentinel_line" ]; then
+ echo "$sentinel_line"
+ echo "$sentinel_line" >&2
+ fi
+ else
+ fallback_iter="{issue_number}-$(date +%s)"
+ fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_push_failed commit_rc=4; iteration_id=$fallback_iter"
+ echo "$fallback_sentinel"
+ echo "$fallback_sentinel" >&2
+ echo "WARNING: workflow-incident-emit.sh (wiki_ingest_push_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
+ [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/ /' >&2
+ fi
+ ;;
+ *)
+ echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=commit_rc_$commit_rc; exit_code=$commit_rc"
+ emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
+ if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
+ --type wiki_ingest_failed \
+ --details "wiki-ingest-commit.sh exited $commit_rc during issue/close.md Phase 4.4.W.2" \
+ --pr-number 0 2>"${emit_err:-/dev/null}"); then
+ if [ -n "$sentinel_line" ]; then
+ echo "$sentinel_line"
+ echo "$sentinel_line" >&2
+ fi
+ else
+ # HIGH #3 — fallback_sentinel emit (trigger Step 3 と対称).
+ fallback_iter="{issue_number}-$(date +%s)"
+ fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_failed commit_rc=$commit_rc; iteration_id=$fallback_iter"
+ echo "$fallback_sentinel"
+ echo "$fallback_sentinel" >&2
+ echo "WARNING: workflow-incident-emit.sh (wiki_ingest_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
+ [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/ /' >&2
+ fi
+ ;;
+ esac
 fi
 [ "$commit_err" != "/dev/null" ] && rm -f "$commit_err"
 commit_err=""
@@ -647,7 +647,7 @@ Detect the parent Issue via **three methods tried in order (OR combination)**. T
 
 **Method 1: `## 親 Issue` body meta (PRIMARY)**
 
-Read the closing Issue body and search for the `## 親 Issue` section written by `/rite:issue:create` (Decompose Path、PR #1079 で flat 化).
+Read the closing Issue body and search for the `## 親 Issue` section written by `/rite:issue:create` (Decompose Path、flat workflow).
 
 ```
 ## 親 Issue
@@ -671,13 +671,13 @@ If Method 1 returned empty, query GitHub's native Sub-Issues feature:
 ```bash
 parent_number=$(gh api graphql -H "GraphQL-Features: sub_issues" -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    issue(number: $number) {
-      parent { number }
-    }
-  }
+ repository(owner: $owner, name: $repo) {
+ issue(number: $number) {
+ parent { number }
+ }
+ }
 }' -f owner="{owner}" -f repo="{repo}" -F number={issue_number} \
-  --jq '.data.repository.issue.parent.number // empty')
+ --jq '.data.repository.issue.parent.number // empty')
 echo "method2_parent=${parent_number:-none}"
 ```
 
@@ -739,11 +739,11 @@ Write the updated body to `$tmpfile_write` (the path from Step 1 output) using t
 
 ```bash
 bash {plugin_root}/hooks/issue-body-safe-update.sh apply \
-  --issue {parent_number} \
-  --tmpfile-read "$tmpfile_read" \
-  --tmpfile-write "$tmpfile_write" \
-  --original-length "$original_length" \
-  --parent --diff-check
+ --issue {parent_number} \
+ --tmpfile-read "$tmpfile_read" \
+ --tmpfile-write "$tmpfile_write" \
+ --original-length "$original_length" \
+ --parent --diff-check
 ```
 
 If the script exits with 0, the update succeeded (or was skipped by `--diff-check` if no changes were needed). If non-zero, display a warning and proceed to Phase 5.
@@ -774,7 +774,7 @@ Design principle (Issue #517 cycle 2 review fix): this bash block follows the sa
 # ============================================================================
 # Phase 4.6.0: Idempotency check (parent already closed → no-op)
 # ============================================================================
-set -uo pipefail  # strict mode (fail on undefined vars + preserve pipeline failure code)
+set -uo pipefail # strict mode (fail on undefined vars + preserve pipeline failure code)
 
 parent_number="{parent_number}"
 
@@ -788,22 +788,22 @@ parent_number="{parent_number}"
 # This case statement surfaces the routing bug explicitly instead of silently
 # degrading into the retrieval-failure path.
 case "$parent_number" in
-  ''|'{parent_number}')
-    echo "[DEBUG] p460: parent_number is empty or unsubstituted literal ('$parent_number') — Phase 4.6 should not have been entered. Aborting Phase 4.6 (caller routing bug)." >&2
-    echo "[CONTEXT] P460_DECISION=skip_routing_bug"
-    exit 0
-    ;;
-  *[!0-9]*)
-    echo "[DEBUG] p460: parent_number is not numeric ('$parent_number') — Phase 4.6 should not have been entered. Aborting Phase 4.6." >&2
-    echo "[CONTEXT] P460_DECISION=skip_routing_bug"
-    exit 0
-    ;;
+ ''|'{parent_number}')
+ echo "[DEBUG] p460: parent_number is empty or unsubstituted literal ('$parent_number') — Phase 4.6 should not have been entered. Aborting Phase 4.6 (caller routing bug)." >&2
+ echo "[CONTEXT] P460_DECISION=skip_routing_bug"
+ exit 0
+ ;;
+ *[!0-9]*)
+ echo "[DEBUG] p460: parent_number is not numeric ('$parent_number') — Phase 4.6 should not have been entered. Aborting Phase 4.6." >&2
+ echo "[CONTEXT] P460_DECISION=skip_routing_bug"
+ exit 0
+ ;;
 esac
 
 parent_state=""
 p460_err=""
 _rite_close_p460_cleanup() {
-  rm -f "${p460_err:-}"
+ rm -f "${p460_err:-}"
 }
 trap 'rc=$?; _rite_close_p460_cleanup; exit $rc' EXIT
 trap '_rite_close_p460_cleanup; exit 130' INT
@@ -813,35 +813,35 @@ trap '_rite_close_p460_cleanup; exit 129' HUP
 # Capture stderr to tempfile (not /dev/null) so auth / network failures surface.
 # `mktemp` with no arguments respects $TMPDIR (honoring macOS /var/folders, CI overrides, etc.)
 if ! p460_err=$(mktemp 2>/dev/null); then
-  echo "[DEBUG] p460: mktemp failed — stderr from gh issue view will not be captured" >&2
-  p460_err=""
+ echo "[DEBUG] p460: mktemp failed — stderr from gh issue view will not be captured" >&2
+ p460_err=""
 fi
 
 if parent_state=$(gh issue view "$parent_number" --json state --jq '.state' 2>"${p460_err:-/dev/null}"); then
-  echo "parent_state=$parent_state"
+ echo "parent_state=$parent_state"
 else
-  p460_rc=$?
-  parent_state=""
-  echo "[DEBUG] p460: gh issue view failed (rc=$p460_rc)" >&2
-  if [ -n "$p460_err" ] && [ -s "$p460_err" ]; then
-    head -3 "$p460_err" | sed 's/^/  p460 stderr: /' >&2
-  fi
+ p460_rc=$?
+ parent_state=""
+ echo "[DEBUG] p460: gh issue view failed (rc=$p460_rc)" >&2
+ if [ -n "$p460_err" ] && [ -s "$p460_err" ]; then
+ head -3 "$p460_err" | sed 's/^/ p460 stderr: /' >&2
+ fi
 fi
 
 if [ -n "$p460_err" ]; then
-  rm -f "$p460_err"
-  p460_err=""
+ rm -f "$p460_err"
+ p460_err=""
 fi
 
 # Emit branch decision sentinel (machine-readable) for LLM routing.
 if [ -z "$parent_state" ]; then
-  echo "警告: 親 Issue #${parent_number} の state 取得に失敗しました。親の自動クローズ判定をスキップします。" >&2
-  echo "[CONTEXT] P460_DECISION=skip_retrieval_failed"
+ echo "警告: 親 Issue #${parent_number} の state 取得に失敗しました。親の自動クローズ判定をスキップします。" >&2
+ echo "[CONTEXT] P460_DECISION=skip_retrieval_failed"
 elif [ "$parent_state" = "CLOSED" ]; then
-  echo "[DEBUG] parent #${parent_number} already closed — skipping Phase 4.6 (close-side idempotency, extends AC-6 principle)"
-  echo "[CONTEXT] P460_DECISION=skip_already_closed"
+ echo "[DEBUG] parent #${parent_number} already closed — skipping Phase 4.6 (close-side idempotency, extends AC-6 principle)"
+ echo "[CONTEXT] P460_DECISION=skip_already_closed"
 else
-  echo "[CONTEXT] P460_DECISION=proceed_to_enumeration"
+ echo "[CONTEXT] P460_DECISION=proceed_to_enumeration"
 fi
 ```
 
@@ -860,7 +860,7 @@ Retrieve the parent's child Issues via **two methods (OR combination, Method A �
 
 **Design notes** (Issue #517 review fixes — cycles 1 + 2):
 
-- **Method A uses the `trackedIssues` field (Tasklists API), NOT the Sub-Issues API**: `trackedIssues` resolves the parent→children relationship via GitHub's Tasklists feature (which parses the body `- [ ] #N` section) — this is intentional because the repo uses `/rite:issue:create` (Decompose Path、PR #1079 で flat 化) to write body tasklists. The newer GitHub Sub-Issues API uses a separate `subIssues` field and requires the `GraphQL-Features: sub_issues` header. This block does not call `subIssues` — the header is omitted to avoid misleading the reader. See `epic-detection.md` for the `trackedIssues` vs `subIssues` distinction.
+- **Method A uses the `trackedIssues` field (Tasklists API), NOT the Sub-Issues API**: `trackedIssues` resolves the parent→children relationship via GitHub's Tasklists feature (which parses the body `- [ ] #N` section) — this is intentional because the repo uses `/rite:issue:create` (Decompose Path、flat workflow) to write body tasklists. The newer GitHub Sub-Issues API uses a separate `subIssues` field and requires the `GraphQL-Features: sub_issues` header. This block does not call `subIssues` — the header is omitted to avoid misleading the reader. See `epic-detection.md` for the `trackedIssues` vs `subIssues` distinction.
 - **Method A stderr is captured, not suppressed**: Previous `2>/dev/null` silently downgraded auth / network / permission errors to "empty result", which is the silent-skip anti-pattern Issue #513 aims to eliminate. Instead, stderr is captured to a tempfile and surfaced in debug logs on failure.
 - **Method A → Method B fallback is an explicit bash conditional**: branches on `jq length` of Method A's result rather than relying on prose.
 - **Method B uses a per-child loop, not an LLM-generated alias query**: deterministic, fully auditable, O(N) API calls for small N.
@@ -880,7 +880,7 @@ repo="{repo}"
 children_json=""
 method_a_err=""
 _rite_close_p461_cleanup() {
-  rm -f "${method_a_err:-}"
+ rm -f "${method_a_err:-}"
 }
 trap 'rc=$?; _rite_close_p461_cleanup; exit $rc' EXIT
 trap '_rite_close_p461_cleanup; exit 130' INT
@@ -892,107 +892,107 @@ trap '_rite_close_p461_cleanup; exit 129' HUP
 # Note: trackedIssues is the Tasklists feature (the body `- [ ] #N` parser); the `GraphQL-Features: sub_issues`
 # header is NOT used here because it targets the separate `subIssues` field. See epic-detection.md.
 if ! method_a_err=$(mktemp 2>/dev/null); then
-  echo "[DEBUG] p461: mktemp failed for method_a_err — method_a stderr will not be captured" >&2
-  method_a_err=""
+ echo "[DEBUG] p461: mktemp failed for method_a_err — method_a stderr will not be captured" >&2
+ method_a_err=""
 fi
 
 method_a_rc=0
 if method_a_raw=$(gh api graphql -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    issue(number: $number) {
-      trackedIssues(first: 100) {
-        nodes { number state }
-      }
-    }
-  }
+ repository(owner: $owner, name: $repo) {
+ issue(number: $number) {
+ trackedIssues(first: 100) {
+ nodes { number state }
+ }
+ }
+ }
 }' -f owner="$owner" -f repo="$repo" -F number="$parent_number" \
-  --jq '[.data.repository.issue.trackedIssues.nodes[]? | {number: .number, state: .state}]' \
-  2>"${method_a_err:-/dev/null}"); then
-  children_json="$method_a_raw"
-  method_a_count=$(printf '%s' "$children_json" | jq 'length' 2>/dev/null || echo 0)
-  echo "[DEBUG] method_a succeeded: ${method_a_count} children via trackedIssues (Tasklists API)"
+ --jq '[.data.repository.issue.trackedIssues.nodes[]? | {number: .number, state: .state}]' \
+ 2>"${method_a_err:-/dev/null}"); then
+ children_json="$method_a_raw"
+ method_a_count=$(printf '%s' "$children_json" | jq 'length' 2>/dev/null || echo 0)
+ echo "[DEBUG] method_a succeeded: ${method_a_count} children via trackedIssues (Tasklists API)"
 else
-  method_a_rc=$?
-  echo "[DEBUG] method_a failed (rc=$method_a_rc) — Tasklists API unavailable, will try Method B"
-  if [ -n "$method_a_err" ] && [ -s "$method_a_err" ]; then
-    head -3 "$method_a_err" | sed 's/^/  method_a stderr: /' >&2
-  fi
-  children_json=""
+ method_a_rc=$?
+ echo "[DEBUG] method_a failed (rc=$method_a_rc) — Tasklists API unavailable, will try Method B"
+ if [ -n "$method_a_err" ] && [ -s "$method_a_err" ]; then
+ head -3 "$method_a_err" | sed 's/^/ method_a stderr: /' >&2
+ fi
+ children_json=""
 fi
 if [ -n "$method_a_err" ]; then
-  rm -f "$method_a_err"
-  method_a_err=""
+ rm -f "$method_a_err"
+ method_a_err=""
 fi
 
 # --- Method B: Parent body `## Sub-Issues` section parse (fallback) ---
 # Note: "Sub-Issues" here is the literal heading text that /rite:issue:create (Decompose Path,
-# PR #1079 で flat 化) writes into parent bodies. It is not the GitHub Sub-Issues feature.
+# flat workflow) writes into parent bodies. It is not the GitHub Sub-Issues feature.
 # Method B only parses body markdown.
 method_a_length=$(printf '%s' "${children_json:-[]}" | jq 'length' 2>/dev/null || echo 0)
 if [ -z "$children_json" ] || [ "$method_a_length" -eq 0 ]; then
-  echo "[DEBUG] falling back to Method B (parent body '## Sub-Issues' section parse)"
-  parent_body=$(gh issue view "$parent_number" --json body --jq '.body' 2>/dev/null || echo "")
-  if [ -z "$parent_body" ]; then
-    echo "[DEBUG] method_b: failed to fetch parent body"
-    children_json="[]"
-  else
-    # Extract child numbers from `- [ ] #N` / `- [x] #N` lines under a `## Sub-Issues` (exact) heading.
-    # The `/^## Sub-Issues$/` anchor prevents false matches against headings like `## Sub-Issues-Extended`.
-    child_numbers=$(awk '/^## Sub-Issues$/{flag=1;next} /^## /{flag=0} flag && /^- \[[ xX]\] #[0-9]+/{print}' <<< "$parent_body" | grep -oE '#[0-9]+' | tr -d '#')
-    echo "[DEBUG] method_b child_numbers=${child_numbers:-none}"
+ echo "[DEBUG] falling back to Method B (parent body '## Sub-Issues' section parse)"
+ parent_body=$(gh issue view "$parent_number" --json body --jq '.body' 2>/dev/null || echo "")
+ if [ -z "$parent_body" ]; then
+ echo "[DEBUG] method_b: failed to fetch parent body"
+ children_json="[]"
+ else
+ # Extract child numbers from `- [ ] #N` / `- [x] #N` lines under a `## Sub-Issues` (exact) heading.
+ # The `/^## Sub-Issues$/` anchor prevents false matches against headings like `## Sub-Issues-Extended`.
+ child_numbers=$(awk '/^## Sub-Issues$/{flag=1;next} /^## /{flag=0} flag && /^- \[[ xX]\] #[0-9]+/{print}' <<< "$parent_body" | grep -oE '#[0-9]+' | tr -d '#')
+ echo "[DEBUG] method_b child_numbers=${child_numbers:-none}"
 
-    if [ -z "$child_numbers" ]; then
-      children_json="[]"
-    else
-      # Deterministic per-child loop (O(N) API calls, N typically small).
-      # Build JSON array by iterating and appending state per child.
-      children_json="["
-      first=1
-      for n in $child_numbers; do
-        child_state=$(gh issue view "$n" --json state --jq '.state' 2>/dev/null || echo "")
-        if [ -z "$child_state" ]; then
-          echo "[DEBUG] method_b: failed to fetch state for #$n (treating as OPEN to block auto-close — fail-closed)" >&2
-          child_state="OPEN"
-        fi
-        if [ "$first" -eq 1 ]; then
-          first=0
-        else
-          children_json+=","
-        fi
-        children_json+="{\"number\":$n,\"state\":\"$child_state\"}"
-      done
-      children_json+="]"
-    fi
-  fi
+ if [ -z "$child_numbers" ]; then
+ children_json="[]"
+ else
+ # Deterministic per-child loop (O(N) API calls, N typically small).
+ # Build JSON array by iterating and appending state per child.
+ children_json="["
+ first=1
+ for n in $child_numbers; do
+ child_state=$(gh issue view "$n" --json state --jq '.state' 2>/dev/null || echo "")
+ if [ -z "$child_state" ]; then
+ echo "[DEBUG] method_b: failed to fetch state for #$n (treating as OPEN to block auto-close — fail-closed)" >&2
+ child_state="OPEN"
+ fi
+ if [ "$first" -eq 1 ]; then
+ first=0
+ else
+ children_json+=","
+ fi
+ children_json+="{\"number\":$n,\"state\":\"$child_state\"}"
+ done
+ children_json+="]"
+ fi
+ fi
 fi
 
 # --- all_closed determination ---
 # Empty array is treated as "cannot auto-close" (safe default — no children detected).
 final_length=$(printf '%s' "$children_json" | jq 'length' 2>/dev/null || echo 0)
 if [ "$final_length" -eq 0 ]; then
-  all_closed="false"
-  open_count="0"
-  echo "[DEBUG] children_json is empty after both methods — cannot determine all_closed (skipping auto-close)"
+ all_closed="false"
+ open_count="0"
+ echo "[DEBUG] children_json is empty after both methods — cannot determine all_closed (skipping auto-close)"
 else
-  if ! all_closed=$(printf '%s' "$children_json" | jq -r 'all(.[]; .state == "CLOSED") | tostring' 2>/dev/null); then
-    echo "[DEBUG] jq all_closed evaluation failed — treating as false (fail-closed)" >&2
-    all_closed="false"
-  fi
-  if ! open_count=$(printf '%s' "$children_json" | jq -r '[.[] | select(.state != "CLOSED")] | length' 2>/dev/null); then
-    echo "[DEBUG] jq open_count evaluation failed — defaulting to 0" >&2
-    open_count="0"
-  fi
+ if ! all_closed=$(printf '%s' "$children_json" | jq -r 'all(.[]; .state == "CLOSED") | tostring' 2>/dev/null); then
+ echo "[DEBUG] jq all_closed evaluation failed — treating as false (fail-closed)" >&2
+ all_closed="false"
+ fi
+ if ! open_count=$(printf '%s' "$children_json" | jq -r '[.[] | select(.state != "CLOSED")] | length' 2>/dev/null); then
+ echo "[DEBUG] jq open_count evaluation failed — defaulting to 0" >&2
+ open_count="0"
+ fi
 fi
 echo "all_closed=$all_closed open_count=$open_count children_total=$final_length"
 
 # --- Branch decision sentinel for LLM routing ---
 if [ "$final_length" -eq 0 ]; then
-  echo "[CONTEXT] P461_DECISION=skip_empty_children"
+ echo "[CONTEXT] P461_DECISION=skip_empty_children"
 elif [ "$all_closed" = "true" ]; then
-  echo "[CONTEXT] P461_DECISION=proceed_to_confirmation"
+ echo "[CONTEXT] P461_DECISION=proceed_to_confirmation"
 else
-  echo "[CONTEXT] P461_DECISION=skip_open_children; open_count=$open_count"
+ echo "[CONTEXT] P461_DECISION=skip_open_children; open_count=$open_count"
 fi
 ```
 
@@ -1046,29 +1046,29 @@ set -uo pipefail
 parent_number="{parent_number}"
 owner="{owner}"
 repo="{repo}"
-projects_enabled="{projects_enabled}"  # "true" or "false" from rite-config.yml
-project_number="{project_number}"      # integer from rite-config.yml
-issue_number="{issue_number}"          # the child Issue that triggered this close
+projects_enabled="{projects_enabled}" # "true" or "false" from rite-config.yml
+project_number="{project_number}" # integer from rite-config.yml
+issue_number="{issue_number}" # the child Issue that triggered this close
 
-status_update_result="projects_disabled"  # success | not_registered | update_failed | projects_disabled
-                                          # 初期値は "projects_disabled" (= 「処理未到達 = projects_disabled として扱う」safe-side 既定値)。
-                                          # 後段の `if [ "$projects_enabled" = "true" ]` 分岐で必ず別値に上書きされるが、将来 early-exit
-                                          # 経路が混入した場合でも Step 3 case の `success:projects_disabled` が整合性 OK 判定を出す経路に倒す
-                                          # (旧初期値 "skipped" は case 文に該当ラベルが無く silent fall-through の risk があった、Issue #658 cycle 2 F-02 修正)。
-status_warning_lines=""         # captured .warnings[] from the script for Step 3 surface
-issue_close_result="pending"    # success | failed | pending
+status_update_result="projects_disabled" # success | not_registered | update_failed | projects_disabled
+ # 初期値は "projects_disabled" (= 「処理未到達 = projects_disabled として扱う」safe-side 既定値)。
+ # 後段の `if [ "$projects_enabled" = "true" ]` 分岐で必ず別値に上書きされるが、将来 early-exit
+ # 経路が混入した場合でも Step 3 case の `success:projects_disabled` が整合性 OK 判定を出す経路に倒す
+ # (旧初期値 "skipped" は case 文に該当ラベルが無く silent fall-through の risk があった)。
+status_warning_lines="" # captured .warnings[] from the script for Step 3 surface
+issue_close_result="pending" # success | failed | pending
 
 # --- stderr capture tempfiles ---
 # p463_err_close: gh issue close stderr 退避
 # p463_err_status: projects-status-update.sh script invocation stderr 退避
-#   (Issue #659 F-03: 旧実装は `2>/dev/null` で script 起動側 stderr を完全廃棄していた。
-#    script 内部の gh stderr は `.warnings[]` で surface されるが、script 外部エラー
-#    (jq 不在 / bash syntax / mktemp 失敗 / `{plugin_root}` 置換漏れ) は stderr 直書きのため
-#    `2>/dev/null` で完全消失していた)
+# (Issue #659 F-03: 旧実装は `2>/dev/null` で script 起動側 stderr を完全廃棄していた。
+# script 内部の gh stderr は `.warnings[]` で surface されるが、script 外部エラー
+# (jq 不在 / bash syntax / mktemp 失敗 / `{plugin_root}` 置換漏れ) は stderr 直書きのため
+# `2>/dev/null` で完全消失していた)
 p463_err_close=""
 p463_err_status=""
 _rite_close_p463_cleanup() {
-  rm -f "${p463_err_close:-}" "${p463_err_status:-}"
+ rm -f "${p463_err_close:-}" "${p463_err_status:-}"
 }
 trap 'rc=$?; _rite_close_p463_cleanup; exit $rc' EXIT
 trap '_rite_close_p463_cleanup; exit 130' INT
@@ -1076,93 +1076,93 @@ trap '_rite_close_p463_cleanup; exit 143' TERM
 trap '_rite_close_p463_cleanup; exit 129' HUP
 
 _mktemp_or_warn() {
-  local label="$1"
-  local tmp
-  if tmp=$(mktemp 2>/dev/null); then
-    printf '%s' "$tmp"
-  else
-    echo "[DEBUG] p463 ${label}: mktemp failed — stderr from gh call will not be captured" >&2
-    printf ''
-  fi
+ local label="$1"
+ local tmp
+ if tmp=$(mktemp 2>/dev/null); then
+ printf '%s' "$tmp"
+ else
+ echo "[DEBUG] p463 ${label}: mktemp failed — stderr from gh call will not be captured" >&2
+ printf ''
+ fi
 }
 
 # --- Step 1: Update parent's Projects Status via shared script ---
 if [ "$projects_enabled" = "true" ]; then
-  status_json_args=$(jq -n \
-    --argjson issue "$parent_number" \
-    --arg owner "$owner" \
-    --arg repo "$repo" \
-    --argjson project_number "$project_number" \
-    --arg status "Done" \
-    --argjson auto_add false \
-    --argjson non_blocking true \
-    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
-  # script の stderr を tempfile に退避し、JSON 出力前死亡時 (jq 不在 / mktemp 失敗 / `{plugin_root}`
-  # 置換漏れ等) の原因を Step 3 inconsistency summary に surface できるようにする (Issue #659 F-03)
-  p463_err_status=$(_mktemp_or_warn "Step 1 invocation")
-  status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args" 2>"${p463_err_status:-/dev/null}") || status_json=""
-  status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null || echo "failed")
-  status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
-  # 失敗時の recovery one-liner で実値埋め込みするため、script JSON から 4 ID を抽出する。
-  # projects-status-update.sh は失敗時にも .item_id / .project_id / .status_field_id / .option_id を
-  # 含めて emit する (output_result() 仕様、scripts/projects-status-update.sh §27-35)。
-  # 部分パイプライン失敗時 (例: gh project item-edit のみ失敗) では 4 ID 全て populated されるため
-  # copy-paste-ready な recovery command を Step 3 で構築できる。空値時は placeholder template に fallback。
-  script_item_id=$(printf '%s' "$status_json" | jq -r '.item_id // empty' 2>/dev/null)
-  script_project_id=$(printf '%s' "$status_json" | jq -r '.project_id // empty' 2>/dev/null)
-  script_status_field_id=$(printf '%s' "$status_json" | jq -r '.status_field_id // empty' 2>/dev/null)
-  script_option_id=$(printf '%s' "$status_json" | jq -r '.option_id // empty' 2>/dev/null)
+ status_json_args=$(jq -n \
+ --argjson issue "$parent_number" \
+ --arg owner "$owner" \
+ --arg repo "$repo" \
+ --argjson project_number "$project_number" \
+ --arg status "Done" \
+ --argjson auto_add false \
+ --argjson non_blocking true \
+ '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+ # script の stderr を tempfile に退避し、JSON 出力前死亡時 (jq 不在 / mktemp 失敗 / `{plugin_root}`
+ # 置換漏れ等) の原因を Step 3 inconsistency summary に surface できるようにする (Issue #659 F-03)
+ p463_err_status=$(_mktemp_or_warn "Step 1 invocation")
+ status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args" 2>"${p463_err_status:-/dev/null}") || status_json=""
+ status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null || echo "failed")
+ status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+ # 失敗時の recovery one-liner で実値埋め込みするため、script JSON から 4 ID を抽出する。
+ # projects-status-update.sh は失敗時にも .item_id / .project_id / .status_field_id / .option_id を
+ # 含めて emit する (output_result() 仕様、scripts/projects-status-update.sh §27-35)。
+ # 部分パイプライン失敗時 (例: gh project item-edit のみ失敗) では 4 ID 全て populated されるため
+ # copy-paste-ready な recovery command を Step 3 で構築できる。空値時は placeholder template に fallback。
+ script_item_id=$(printf '%s' "$status_json" | jq -r '.item_id // empty' 2>/dev/null)
+ script_project_id=$(printf '%s' "$status_json" | jq -r '.project_id // empty' 2>/dev/null)
+ script_status_field_id=$(printf '%s' "$status_json" | jq -r '.status_field_id // empty' 2>/dev/null)
+ script_option_id=$(printf '%s' "$status_json" | jq -r '.option_id // empty' 2>/dev/null)
 
-  # script が JSON を吐く前に死んだ場合 (status_json="") は status_warning_lines も空のため、
-  # 退避した stderr を warning_lines に注入して Step 3 で surface する
-  if [ -z "$status_json" ] && [ -n "$p463_err_status" ] && [ -s "$p463_err_status" ]; then
-    status_warning_lines=$(printf 'script invocation died before JSON emit: %s' "$(head -5 "$p463_err_status")")
-  fi
+ # script が JSON を吐く前に死んだ場合 (status_json="") は status_warning_lines も空のため、
+ # 退避した stderr を warning_lines に注入して Step 3 で surface する
+ if [ -z "$status_json" ] && [ -n "$p463_err_status" ] && [ -s "$p463_err_status" ]; then
+ status_warning_lines=$(printf 'script invocation died before JSON emit: %s' "$(head -5 "$p463_err_status")")
+ fi
 
-  case "$status_result" in
-    updated)
-      status_update_result="success"
-      echo "親 Issue #${parent_number} の Status を 'Done' に更新しました"
-      ;;
-    skipped_not_in_project)
-      status_update_result="not_registered"
-      echo "警告: 親 Issue #${parent_number} は Project #${project_number} に登録されていません。Status 更新をスキップします。" >&2
-      ;;
-    failed)
-      status_update_result="update_failed"
-      echo "警告: 親 Issue #${parent_number} の Status 更新に失敗しました。後続の gh issue close は続行します。" >&2
-      if [ -n "$status_warning_lines" ]; then
-        printf '%s\n' "$status_warning_lines" | sed 's/^/  p463 Step 1 warning: /' >&2
-      fi
-      ;;
-    *)
-      # 未知の .result 値 (script の schema 拡張で `not_eligible` / `rate_limited` 等が将来追加された場合)
-      # silent miscategorization を防ぐため [DEBUG] 内部 trace を出してから update_failed 扱いにする
-      # codebase convention: [DEBUG] = 内部 trace / observability、警告: = user-actionable warning
-      status_update_result="update_failed"
-      echo "[DEBUG] projects-status-update.sh から未知の .result='$status_result' を受信しました。update_failed として扱います" >&2
-      echo "警告: 親 Issue #${parent_number} の Status 更新に失敗しました。後続の gh issue close は続行します。" >&2
-      if [ -n "$status_warning_lines" ]; then
-        printf '%s\n' "$status_warning_lines" | sed 's/^/  p463 Step 1 warning: /' >&2
-      fi
-      ;;
-  esac
+ case "$status_result" in
+ updated)
+ status_update_result="success"
+ echo "親 Issue #${parent_number} の Status を 'Done' に更新しました"
+ ;;
+ skipped_not_in_project)
+ status_update_result="not_registered"
+ echo "警告: 親 Issue #${parent_number} は Project #${project_number} に登録されていません。Status 更新をスキップします。" >&2
+ ;;
+ failed)
+ status_update_result="update_failed"
+ echo "警告: 親 Issue #${parent_number} の Status 更新に失敗しました。後続の gh issue close は続行します。" >&2
+ if [ -n "$status_warning_lines" ]; then
+ printf '%s\n' "$status_warning_lines" | sed 's/^/ p463 Step 1 warning: /' >&2
+ fi
+ ;;
+ *)
+ # 未知の .result 値 (script の schema 拡張で `not_eligible` / `rate_limited` 等が将来追加された場合)
+ # silent miscategorization を防ぐため [DEBUG] 内部 trace を出してから update_failed 扱いにする
+ # codebase convention: [DEBUG] = 内部 trace / observability、警告: = user-actionable warning
+ status_update_result="update_failed"
+ echo "[DEBUG] projects-status-update.sh から未知の .result='$status_result' を受信しました。update_failed として扱います" >&2
+ echo "警告: 親 Issue #${parent_number} の Status 更新に失敗しました。後続の gh issue close は続行します。" >&2
+ if [ -n "$status_warning_lines" ]; then
+ printf '%s\n' "$status_warning_lines" | sed 's/^/ p463 Step 1 warning: /' >&2
+ fi
+ ;;
+ esac
 else
-  status_update_result="projects_disabled"
+ status_update_result="projects_disabled"
 fi
 
 # --- Step 2: Close the parent Issue ---
 p463_err_close=$(_mktemp_or_warn "Step 2")
 if gh issue close "$parent_number" --comment "子 Issue がすべて完了したため、自動クローズします。(/rite:issue:close 経由、Issue #${issue_number} の close をトリガー)" >/dev/null 2>"${p463_err_close:-/dev/null}"; then
-  issue_close_result="success"
-  echo "親 Issue #${parent_number} を自動クローズしました"
+ issue_close_result="success"
+ echo "親 Issue #${parent_number} を自動クローズしました"
 else
-  p463_close_rc=$?
-  issue_close_result="failed"
-  echo "警告: 親 Issue #${parent_number} のクローズに失敗しました (rc=$p463_close_rc)。手動でクローズしてください: gh issue close ${parent_number}" >&2
-  if [ -n "$p463_err_close" ] && [ -s "$p463_err_close" ]; then
-    head -5 "$p463_err_close" | sed 's/^/  p463 Step 2 stderr: /' >&2
-  fi
+ p463_close_rc=$?
+ issue_close_result="failed"
+ echo "警告: 親 Issue #${parent_number} のクローズに失敗しました (rc=$p463_close_rc)。手動でクローズしてください: gh issue close ${parent_number}" >&2
+ if [ -n "$p463_err_close" ] && [ -s "$p463_err_close" ]; then
+ head -5 "$p463_err_close" | sed 's/^/ p463 Step 2 stderr: /' >&2
+ fi
 fi
 
 # --- Step 3: State inconsistency summary (MUST always emit — silent data corruption prevention) ---
@@ -1171,52 +1171,52 @@ fi
 # updated / skipped_not_in_project / failed への合流に揃えた)。
 echo ""
 echo "=== 親 Issue #${parent_number} 処理結果 ==="
-echo "  Issue close:   $issue_close_result"
-echo "  Status update: $status_update_result"
+echo " Issue close: $issue_close_result"
+echo " Status update: $status_update_result"
 
 case "${issue_close_result}:${status_update_result}" in
-  "success:success"|"success:projects_disabled"|"success:not_registered")
-    echo "  状態: 整合性 OK"
-    ;;
-  "success:update_failed")
-    echo ""
-    echo "⚠️  state 不整合: 親 Issue は CLOSED ですが Projects Status が Done に更新されていません。"
-    # case `*)` 経路で update_failed に倒した場合、scrollback に頼らず由来情報を summary 内に残す
-    # (status_result は Step 1 内で capture 済みで preserved。"failed" 値は legitimate な script.result なので除外)
-    if [ -n "${status_result:-}" ] && [ "$status_result" != "failed" ] && [ "$status_result" != "updated" ] && [ "$status_result" != "skipped_not_in_project" ]; then
-      echo "    (Note: 未知の .result='$status_result' を受信したため update_failed として処理 — script schema 拡張可能性)"
-    fi
-    # Step 1 で抽出した 4 ID が全て populated されていれば copy-paste-ready な recovery command を出す
-    # (script は失敗時にも .item_id / .project_id / .status_field_id / .option_id を emit するため、
-    #  例えば gh project item-edit のみ失敗の経路では 4 ID 全て揃って実用的な復旧コマンドが生成できる)。
-    # いずれかが欠落している場合 (script が ID 解決前に死んだ等) は placeholder + 診断コマンドに fallback。
-    if [ -n "${script_item_id:-}" ] && [ -n "${script_project_id:-}" ] \
-       && [ -n "${script_status_field_id:-}" ] && [ -n "${script_option_id:-}" ]; then
-      echo "    復旧コマンド: gh project item-edit --project-id ${script_project_id} --id ${script_item_id} --field-id ${script_status_field_id} --single-select-option-id ${script_option_id}"
-    else
-      echo "    手動更新の例: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id>"
-      echo "    診断コマンド: gh project field-list ${project_number} --owner ${owner} --format json (Status field の id と 'Done' option の id を確認)"
-    fi
-    echo "    またはブラウザで https://github.com/${owner}/${repo}/issues/${parent_number} の Projects サイドバーから手動更新" >&2
-    ;;
-  "failed:success")
-    echo ""
-    echo "⚠️  state 不整合: Projects Status は Done ですが親 Issue が OPEN のままです。"
-    echo "    復旧コマンド: gh issue close ${parent_number}" >&2
-    ;;
-  "failed:projects_disabled")
-    echo ""
-    echo "⚠️  親 Issue のクローズに失敗しました (Projects 機能は config で無効化されているため Status 更新は対象外)。手動でクローズしてください: gh issue close ${parent_number}" >&2
-    ;;
-  "failed:not_registered")
-    echo ""
-    echo "⚠️  親 Issue のクローズに失敗しました (親 Issue は Project に未登録、config は enabled)。手動でクローズしてください: gh issue close ${parent_number}" >&2
-    echo "    Project に追加すべきか確認: gh project item-add ${project_number} --owner ${owner} --url https://github.com/${owner}/${repo}/issues/${parent_number}" >&2
-    ;;
-  "failed:"*)
-    echo ""
-    echo "⚠️  親 Issue の処理が両方失敗しました (Issue close / Status update)。手動対応が必要です: gh issue close ${parent_number}" >&2
-    ;;
+ "success:success"|"success:projects_disabled"|"success:not_registered")
+ echo " 状態: 整合性 OK"
+ ;;
+ "success:update_failed")
+ echo ""
+ echo "⚠️ state 不整合: 親 Issue は CLOSED ですが Projects Status が Done に更新されていません。"
+ # case `*)` 経路で update_failed に倒した場合、scrollback に頼らず由来情報を summary 内に残す
+ # (status_result は Step 1 内で capture 済みで preserved。"failed" 値は legitimate な script.result なので除外)
+ if [ -n "${status_result:-}" ] && [ "$status_result" != "failed" ] && [ "$status_result" != "updated" ] && [ "$status_result" != "skipped_not_in_project" ]; then
+ echo " (Note: 未知の .result='$status_result' を受信したため update_failed として処理 — script schema 拡張可能性)"
+ fi
+ # Step 1 で抽出した 4 ID が全て populated されていれば copy-paste-ready な recovery command を出す
+ # (script は失敗時にも .item_id / .project_id / .status_field_id / .option_id を emit するため、
+ # 例えば gh project item-edit のみ失敗の経路では 4 ID 全て揃って実用的な復旧コマンドが生成できる)。
+ # いずれかが欠落している場合 (script が ID 解決前に死んだ等) は placeholder + 診断コマンドに fallback。
+ if [ -n "${script_item_id:-}" ] && [ -n "${script_project_id:-}" ] \
+ && [ -n "${script_status_field_id:-}" ] && [ -n "${script_option_id:-}" ]; then
+ echo " 復旧コマンド: gh project item-edit --project-id ${script_project_id} --id ${script_item_id} --field-id ${script_status_field_id} --single-select-option-id ${script_option_id}"
+ else
+ echo " 手動更新の例: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id>"
+ echo " 診断コマンド: gh project field-list ${project_number} --owner ${owner} --format json (Status field の id と 'Done' option の id を確認)"
+ fi
+ echo " またはブラウザで https://github.com/${owner}/${repo}/issues/${parent_number} の Projects サイドバーから手動更新" >&2
+ ;;
+ "failed:success")
+ echo ""
+ echo "⚠️ state 不整合: Projects Status は Done ですが親 Issue が OPEN のままです。"
+ echo " 復旧コマンド: gh issue close ${parent_number}" >&2
+ ;;
+ "failed:projects_disabled")
+ echo ""
+ echo "⚠️ 親 Issue のクローズに失敗しました (Projects 機能は config で無効化されているため Status 更新は対象外)。手動でクローズしてください: gh issue close ${parent_number}" >&2
+ ;;
+ "failed:not_registered")
+ echo ""
+ echo "⚠️ 親 Issue のクローズに失敗しました (親 Issue は Project に未登録、config は enabled)。手動でクローズしてください: gh issue close ${parent_number}" >&2
+ echo " Project に追加すべきか確認: gh project item-add ${project_number} --owner ${owner} --url https://github.com/${owner}/${repo}/issues/${parent_number}" >&2
+ ;;
+ "failed:"*)
+ echo ""
+ echo "⚠️ 親 Issue の処理が両方失敗しました (Issue close / Status update)。手動対応が必要です: gh issue close ${parent_number}" >&2
+ ;;
 esac
 ```
 

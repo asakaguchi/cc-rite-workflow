@@ -111,9 +111,9 @@ assert_not_grep "wiki/ingest.md error_count rationale does not name phase-transi
 
 echo ""
 echo "=== Phase 4: bang-backtick hook wired into init.md downstream sections ==="
-# Round 7 added the hook to the detection table but missed the registration JSON
-# template and chmod line. Pin all three sites so the next half-application is
-# caught at test time.
+# A prior partial application registered the hook in the detection table but
+# missed the JSON template and chmod line. Pin all three sites so future
+# half-applications are caught at test time.
 INIT_MD="$PLUGIN_ROOT/commands/init.md"
 assert_file_exists_or_fail "init.md exists" "$INIT_MD" || exit 1
 assert_grep "init.md detection table lists bang-backtick (matcher Edit|Write|MultiEdit)" \

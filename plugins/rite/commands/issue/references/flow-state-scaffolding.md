@@ -1,8 +1,8 @@
-# Flow State Scaffolding — Pre-write 契約 SoT (PR #1079 +)
+# Flow State Scaffolding — Pre-write 契約 SoT
 
 > **Source of Truth**: 本ファイルは `/rite:issue:start` ワークフローにおける **`flow-state-update.sh create` の Pre-write 契約**の SoT である。`start.md` の各ステップ冒頭 Pre-write block は本ファイルへ semantic 参照する。
 >
-> **PR #1079 変更点**: 旧 sub-skill chain (`parent-routing` / `child-issue-selection` / `branch-setup` / `work-memory-init` / `implementation-plan` の Defense-in-Depth 1 回目書き込み + orchestrator の 2 回目 atomic 書き込み) は retire。flat workflow では各ステップが Pre-write 1 回のみを実行する。
+> **変更点**: 旧 sub-skill chain (`parent-routing` / `child-issue-selection` / `branch-setup` / `work-memory-init` / `implementation-plan` の Defense-in-Depth 1 回目書き込み + orchestrator の 2 回目 atomic 書き込み) は retire。flat workflow では各ステップが Pre-write 1 回のみを実行する。
 
 ## 5 引数 canonical literal
 
@@ -10,11 +10,11 @@
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "{phase_name}" \
-  --issue {issue_number} \
-  --branch "{branch_name}" \
-  --pr {pr_number} \
-  --next "{next_action_hint}"
+ --phase "{phase_name}" \
+ --issue {issue_number} \
+ --branch "{branch_name}" \
+ --pr {pr_number} \
+ --next "{next_action_hint}"
 ```
 
 | 引数 | 型 | 意味 |
@@ -38,8 +38,8 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
-  --phase completed --active false --next "none" \
-  --if-exists --preserve-error-count
+ --phase completed --active false --next "none" \
+ --if-exists --preserve-error-count
 ```
 
 `create` mode は新規 phase marker 専用で、`previous_phase` をシフトする。terminal state は phase progression ではないため preserving operation の `patch` を使う。`--if-exists` で state file 不在時の no-op、`--preserve-error-count` で過去 review-fix loop の error count を保持する。
@@ -71,7 +71,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 - [`pre-condition-gate.md`](./pre-condition-gate.md) — pre-condition の `state-read.sh` fail-fast pattern
 - `plugins/rite/hooks/flow-state-update.sh` — `create` / `patch` / `increment` modes の実装
-- `plugins/rite/hooks/phase-transition-whitelist.sh` — 遷移許可定義 (PR #1079 で flat phase 群を反映)
+- `plugins/rite/hooks/phase-transition-whitelist.sh` — 遷移許可定義 (flat phase 群を反映)
 - `plugins/rite/hooks/state-read.sh` — per-session flow-state 読み出し
 - `plugins/rite/commands/resume.md` Phase 3.2 — phase → step routing 表
-- [Sub-skill Return Auto-Continuation Contract (Retired)](../../../skills/rite-workflow/references/sub-skill-return-protocol.md) — PR #1079 retirement note
+- [Sub-skill Return Auto-Continuation Contract (Retired)](../../../skills/rite-workflow/references/sub-skill-return-protocol.md) — retirement note

@@ -1,8 +1,7 @@
 # Complexity Gate — Tentative Complexity Estimation + Heuristics Scoring
 
-> **Source of Truth**: 本ファイルは `/rite:issue:create` workflow における **複雑度判定 (XS/S/M/L/XL)** の正規定義 SoT である。Tentative Complexity Estimation (interview 中の暫定推定) と Complexity Heuristics Scoring (Issue 化時の最終決定) の 2 段階を集約する。caller は `commands/issue/create.md` のみ (PR #1079 で旧 `create-interview.md` Phase 0.4.1 / `create-register.md` Phase 1.1 を `create.md` ステップ 2 / ステップ 4 に flat 化統合)。create.md からは本 reference へ semantic 参照する。
+> **Source of Truth**: 本ファイルは `/rite:issue:create` workflow における **複雑度判定 (XS/S/M/L/XL)** の正規定義 SoT である。Tentative Complexity Estimation (interview 中の暫定推定) と Complexity Heuristics Scoring (Issue 化時の最終決定) の 2 段階を集約する。caller は `commands/issue/create.md` のみ (the flat-workflow refactor で旧 `create-interview.md` Phase 0.4.1 / `create-register.md` Phase 1.1 を `create.md` ステップ 2 / ステップ 4 に flat 化統合)。create.md からは本 reference へ semantic 参照する。
 >
-> **抽出経緯**: Issue #773 (#768 P1-3 PR 4/8) で旧 `create-interview.md` Phase 0.4.1 内 "Tentative Complexity Estimation" subsection と旧 `create-register.md` Phase 1.1 全体を本 reference に集約。PR #1079 で旧 sub-skill ファイルは削除されたため、現在は `create.md` 本体が caller。caller の機能リンクは本ファイルのアンカー (`#tentative-complexity-estimation` / `#complexity-heuristics-scoring` / `#final-complexity-decision-rules`)。
 
 ## Tentative Complexity Estimation
 

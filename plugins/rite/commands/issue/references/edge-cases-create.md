@@ -1,8 +1,7 @@
 # Edge Cases — `/rite:issue:create` Workflow
 
-> **Source of Truth**: 本ファイルは `/rite:issue:create` workflow の 4 つの Edge Case (EDGE-2 / EDGE-3 / EDGE-4 / EDGE-5) の正規定義 SoT である。caller は `commands/issue/create.md` のみ (PR #1079 で旧 sub-skill chain `create-interview.md` / `create-decompose.md` / `create-register.md` を flat workflow に統合)。create.md からは本 reference へ semantic 参照する。
+> **Source of Truth**: 本ファイルは `/rite:issue:create` workflow の 4 つの Edge Case (EDGE-2 / EDGE-3 / EDGE-4 / EDGE-5) の正規定義 SoT である。caller は `commands/issue/create.md` のみ (the flat-workflow refactor で旧 sub-skill chain `create-interview.md` / `create-decompose.md` / `create-register.md` を flat workflow に統合)。create.md からは本 reference へ semantic 参照する。
 >
-> **抽出経緯**: Issue #773 (#768 P1-3 PR 3/8) で `create.md` 内の EDGE-3 / EDGE-4 と旧 `create-interview.md` 内の EDGE-2 / EDGE-5 を本 reference に集約。元ファイルには見出しと redirect notice のみ stub 残置 (歴史的アンカー保持 + caller 内ナビゲーション維持) だったが、PR #1079 で旧 sub-skill ファイルは削除されたため、現在は `create.md` 本体に caller が集約されている。
 
 ## EDGE-2: Re-entry After Exit Confirmation
 

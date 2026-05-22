@@ -1,10 +1,10 @@
 #!/bin/bash
-# check-no-direct-gh-issue-create.sh (#669)
+# check-no-direct-gh-issue-create.sh
 # Static guard: ensure target files do not contain direct `gh issue create`
-# invocations. Enforces AC-3 — all Issue creation paths (originally
-# /rite:issue:start + parent-routing; PR #1079 で flat 化後は
-# commands/issue/create.md と pr/review.md / pr/fix.md の follow-up Issue 作成
-# 経路を含む) must go through create-issue-with-projects.sh.
+# invocations. All Issue creation paths (`/rite:issue:create` plus follow-up
+# Issue creation in `pr/review.md` / `pr/fix.md`) must go through
+# `create-issue-with-projects.sh` so that Projects integration and field
+# population are not silently dropped.
 #
 # The guard skips:
 #   - Lines inside fenced code blocks (``` or ~~~)

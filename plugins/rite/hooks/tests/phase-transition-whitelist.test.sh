@@ -460,10 +460,10 @@ else
 fi
 
 # TC-DEFAULT-BLOCK-ERROR — non-terminal allowed-set rejection must surface an
-# ERROR on stderr in default mode (RITE_DEBUG=0). Without this, a regression
-# that re-gates the emit under RITE_DEBUG would let production blocks return
-# silently — the exact bug class round 8 removed. Existing TC-103 / TC-302
-# discard stderr; this TC captures it and asserts the production-side literal.
+# ERROR on stderr in default mode (RITE_DEBUG=0). Re-gating the emit under
+# RITE_DEBUG would let production blocks return silently with no operator
+# visibility; this TC captures stderr and asserts the production-side literal
+# so that regression is caught at test time.
 _block_err=$(mktemp)
 if RITE_DEBUG=0 bash -c "source '$WHITELIST_SH'; rite_phase_transition_allowed 'branch' 'review'" 2>"$_block_err"; then
   fail "TC-DEFAULT-BLOCK-ERROR branch → review should be blocked"

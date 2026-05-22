@@ -142,11 +142,11 @@ See [references/phase-mapping.md](./references/phase-mapping.md) for phase list.
 
 See [references/work-memory-format.md](./references/work-memory-format.md) for work memory format.
 
-## Sub-skill Return — Flat Workflow (PR #1079 +)
+## Sub-skill Return — Flat Workflow
 
-`/rite:issue:start` / `/rite:issue:create` は **flat single-file workflow** に統合済み。Phase 5 を 3 sub-skill (`start-execute` / `start-publish` / `start-finalize`) に分割していた構造、および対応する HTML-commented sentinel ベースの routing は PR #1079 で retire した。
+`/rite:issue:start` / `/rite:issue:create` は **flat single-file workflow** に統合されている。Phase 5 を 3 sub-skill (`start-execute` / `start-publish` / `start-finalize`) に分割していた構造、および対応する HTML-commented sentinel ベースの routing は撤去済み。
 
-LLM が途中で停止した場合の正規復帰経路は `/rite:resume` (`commands/resume.md` Phase 3.2 の phase→step 表に従う)。implicit-stop 対策の hook 群 (`auto-fire-step0.sh` / `stop-create-interview-block.sh` / `verify-terminal-output.sh`) は同 PR で撤去。
+LLM が途中で停止した場合の正規復帰経路は `/rite:resume` (`commands/resume.md` Phase 3.2 の phase→step 表に従う)。implicit-stop 対策の hook 群 (`auto-fire-step0.sh` / `stop-create-interview-block.sh` / `verify-terminal-output.sh`) も撤去済み。
 
 flat workflow から呼び出される sub-skill は `rite:lint` / `rite:pr:create` / `rite:pr:review` / `rite:pr:fix` / `rite:pr:ready` のみで、各々が 1 種類の sentinel pattern (`[lint:*]` / `[pr:created:N]` / `[review:*]` / `[fix:*]` / `[ready:completed]`) を emit する。orchestrator はその pattern を直接 grep で routing する。
 

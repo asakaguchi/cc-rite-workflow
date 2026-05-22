@@ -25,7 +25,7 @@
 #       up regardless of outcome via the signal-specific trap below.
 #
 # On drift, emit a `gitignore_drift` workflow incident sentinel on stdout so
-# Phase 5.4.4.1 in start.md can auto-register a tracking Issue.
+# ステップ 8.5 in start.md can auto-register a tracking Issue.
 #
 # Issue #567 — `.gitignore` silent-leak regression guard.
 # Companion to:
@@ -212,7 +212,9 @@ fi
 if [ "$check_ignore_rc" -ge 2 ]; then
   echo "WARNING: gitignore-health-check: git check-ignore failed (rc=$check_ignore_rc) — skipping separate_branch verify" >&2
   [ -n "$check_ignore_err" ] && [ -s "$check_ignore_err" ] && head -3 "$check_ignore_err" | sed 's/^/  /' >&2
-  echo "==> Total gitignore-health-check findings: 0"
+  # Report "unknown" (not "0") so lint aggregators don't mistake an invocation
+  # failure for a clean run. exit 2 still signals invocation error to callers.
+  echo "==> Total gitignore-health-check findings: unknown (verification failed)"
   exit 2
 fi
 
@@ -311,14 +313,26 @@ if [ "$findings" -gt 0 ]; then
   emit_script="$_SCRIPT_DIR/../workflow-incident-emit.sh"
   if [ -f "$emit_script" ]; then
     # Emit to stdout so the sentinel reaches the orchestrator's conversation context.
-    # `|| true` preserves non-blocking contract (emit failure must not halt lint).
+    # Non-blocking contract: emit failure must not halt lint, but surface a WARNING
+    # so a silently-broken emit script doesn't go unnoticed ("script not found" is
+    # handled in a separate arm; this covers "ran but exited non-zero").
     bash "$emit_script" \
       --type gitignore_drift \
       --details "gitignore health check: .rite/wiki/ rule drift detected (strategy=$branch_strategy)" \
       --root-cause-hint "PR may have removed .rite/wiki/ exclusion or negation from .gitignore" \
-      --pr-number 0 || true
+      --pr-number 0 || echo "WARNING: gitignore-health-check: workflow-incident-emit.sh exited non-zero for gitignore_drift; incident may not be recorded" >&2
   else
-    echo "WARNING: gitignore-health-check: workflow-incident-emit.sh not found at $emit_script — sentinel not emitted" >&2
+    # Inline the canonical sentinel so degraded deployments (partial install,
+    # chmod -x) still surface drift to the orchestrator's grep — otherwise the
+    # detection becomes silent the moment the emit script isn't reachable.
+    _gd_details="gitignore health check: .rite/wiki/ rule drift detected (strategy=$branch_strategy; emit script absent at $emit_script)"
+    _gd_details=$(printf '%s' "$_gd_details" | tr -d '[:cntrl:]' | tr ';' ',')
+    _gd_hint="PR may have removed .rite/wiki/ exclusion or negation from .gitignore"
+    _gd_hint=$(printf '%s' "$_gd_hint" | tr -d '[:cntrl:]' | tr ';' ',')
+    _gd_epoch=$(date +%s 2>/dev/null) || _gd_epoch=0
+    printf '[CONTEXT] WORKFLOW_INCIDENT=1; type=gitignore_drift; details=%s; root_cause_hint=%s; iteration_id=0-%s\n' \
+      "$_gd_details" "$_gd_hint" "$_gd_epoch"
+    echo "WARNING: gitignore-health-check: workflow-incident-emit.sh not found at $emit_script — emitted canonical sentinel inline" >&2
   fi
   echo "==> Total gitignore-health-check findings: $findings"
   exit 1

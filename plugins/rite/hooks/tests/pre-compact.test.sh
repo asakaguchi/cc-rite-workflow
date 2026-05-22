@@ -126,7 +126,7 @@ else
 fi
 echo ""
 
-# --- TC-004: Timestamp is parseable by stop-guard.sh date chain ---
+# --- TC-004: Timestamp must remain parseable by GNU date ---
 echo "TC-004: Timestamp is parseable by GNU date -d"
 dir004="$TEST_DIR/tc004"
 mkdir -p "$dir004"
@@ -644,6 +644,101 @@ if [ -n "$updated_at_after" ]; then
   pass "Legacy fallback path was loaded (.updated_at present after pre-compact)"
 else
   fail "Expected .updated_at in legacy state file; got: '$updated_at_after'"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-ACTIVE-PARSE-WARNING — corrupt .rite-flow-state must surface a WARNING
+# explaining the snapshot is skipped. A silent `2>/dev/null` here would let a
+# recovery path proceed with a missing workflow snapshot and no diagnostic.
+# --------------------------------------------------------------------------
+echo "TC-ACTIVE-PARSE-WARNING: corrupt .rite-flow-state → 'workflow snapshot will be skipped' WARNING"
+dir_active_parse="$TEST_DIR/tc-active-parse"
+mkdir -p "$dir_active_parse"
+# Valid JSON-prefix that fails when jq tries to extract .active
+printf '{ not json' > "$dir_active_parse/.rite-flow-state"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.active-parse.XXXXXX")"
+echo "{\"cwd\": \"$dir_active_parse\"}" \
+  | bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
+stderr_ap="$(cat "$LAST_STDERR_FILE")"
+if printf '%s' "$stderr_ap" | grep -qF 'workflow snapshot will be skipped'; then
+  pass "TC-ACTIVE-PARSE-WARNING: corrupt flow-state .active parse surfaces 'workflow snapshot will be skipped' WARNING"
+else
+  fail "TC-ACTIVE-PARSE-WARNING: WARNING missing — recovery may silently lose workflow snapshot. stderr: $stderr_ap"
+fi
+if printf '%s' "$stderr_ap" | grep -qE 'jq rc=[0-9]+'; then
+  pass "TC-ACTIVE-PARSE-WARNING: WARNING carries jq rc so triagers can distinguish failure modes"
+else
+  fail "TC-ACTIVE-PARSE-WARNING: WARNING missing rc capture — silent-failure regression"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-FLOW-MV-FAIL / TC-COMPACT-MV-FAIL / TC-CHMOD-FAIL — exercise the round-9
+# mv / chmod if/else branches by overriding mv and chmod through PATH. A
+# bash-! antipattern regression would collapse rc to 0/1 and these assertions
+# would fail.
+# --------------------------------------------------------------------------
+echo "TC-FLOW-MV-FAIL: PATH-shimmed mv exits non-zero — flow-state mv WARNING must carry rc"
+shim_dir="$TEST_DIR/shim-mv-only"
+mkdir -p "$shim_dir"
+cat > "$shim_dir/mv" <<'SHIM'
+#!/bin/bash
+exit 7
+SHIM
+chmod +x "$shim_dir/mv"
+dir_mvfail="$TEST_DIR/tc-mv-fail"
+mkdir -p "$dir_mvfail"
+echo '{"active":true,"phase":"implement","updated_at":"2026-01-01T00:00:00+00:00"}' > "$dir_mvfail/.rite-flow-state"
+stderr_mvfail=$(echo "{\"cwd\": \"$dir_mvfail\"}" | PATH="$shim_dir:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
+if printf '%s' "$stderr_mvfail" | grep -qE 'mv flow-state updated_at failed \(rc=[1-9][0-9]*'; then
+  pass "TC-FLOW-MV-FAIL: flow-state mv WARNING carries real rc (≥1)"
+else
+  fail "TC-FLOW-MV-FAIL: missing rc-carrying WARNING (bash-! antipattern would collapse to rc=0). stderr: $stderr_mvfail"
+fi
+if printf '%s' "$stderr_mvfail" | grep -qE 'mv compact state failed \(rc=[1-9][0-9]*'; then
+  pass "TC-COMPACT-MV-FAIL: compact_state mv WARNING carries real rc"
+else
+  fail "TC-COMPACT-MV-FAIL: missing rc-carrying WARNING. stderr: $stderr_mvfail"
+fi
+
+echo "TC-CHMOD-FAIL: PATH-shimmed chmod exits non-zero — chmod WARNING must carry rc (rc=0 would mean bash-! regression)"
+shim_chmod_dir="$TEST_DIR/shim-chmod-only"
+mkdir -p "$shim_chmod_dir"
+# mv must succeed for control to reach chmod, so only shim chmod.
+cat > "$shim_chmod_dir/chmod" <<'SHIM'
+#!/bin/bash
+exit 13
+SHIM
+chmod +x "$shim_chmod_dir/chmod"
+dir_chmod="$TEST_DIR/tc-chmod-fail"
+mkdir -p "$dir_chmod"
+echo '{"active":true,"phase":"implement","updated_at":"2026-01-01T00:00:00+00:00"}' > "$dir_chmod/.rite-flow-state"
+stderr_chmod=$(echo "{\"cwd\": \"$dir_chmod\"}" | PATH="$shim_chmod_dir:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
+if printf '%s' "$stderr_chmod" | grep -qE 'chmod 600 .* failed \(rc=13\)'; then
+  pass "TC-CHMOD-FAIL: chmod WARNING carries the real rc (13), not bash-! collapsed value"
+else
+  fail "TC-CHMOD-FAIL: chmod WARNING missing or rc collapsed. stderr: $stderr_chmod"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-SENTINEL-PIN: pre-compact emits exact CONTEXT sentinel literals
+# --------------------------------------------------------------------------
+# These two sentinels are observability-only — no runtime consumer parses
+# them — so a silent rename would never surface as a test failure elsewhere.
+# Pin the literal strings here so triagers can trust grep against the diag
+# log regardless of future refactors.
+echo "TC-SENTINEL-PIN: PRE_COMPACT_SNAPSHOT_(RECORDED|FAILED) are emitted, not just present"
+HOOK_SRC="$(dirname "$HOOK")/pre-compact.sh"
+# Anchor the match to a line that begins with `echo` (after optional leading
+# whitespace) so demotion to a comment, doc string, or never-executed branch
+# cannot satisfy a bare literal grep.
+if grep -qE '^[[:space:]]*echo .*PRE_COMPACT_SNAPSHOT_RECORDED=1' "$HOOK_SRC" \
+   && grep -qE '^[[:space:]]*echo .*PRE_COMPACT_SNAPSHOT_FAILED=1' "$HOOK_SRC"; then
+  pass "TC-SENTINEL-PIN: both sentinels emitted from echo lines"
+else
+  fail "TC-SENTINEL-PIN: one or both sentinels are not emitted (renamed, commented, or moved) in $HOOK_SRC"
 fi
 echo ""
 

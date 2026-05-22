@@ -52,7 +52,7 @@ chore: maintenance
 plugins/rite/
 ├── commands/         # Slash command execution procedures (Markdown)
 │   ├── issue/        #   Issue operations (start, create, list, edit, close, update, implement, ...)
-│   │   └── completion-report.md  # Completion report format (extracted from start.md)
+│   │   └── references/  # Edge-case rules, complexity gates, bulk-create patterns
 │   ├── pr/           #   PR operations (create, review, fix, ready, cleanup)
 │   │   └── references/  # Assessment rules, archive procedures
 │   ├── sprint/       #   Sprint operations (plan, list, current, execute, team-execute)

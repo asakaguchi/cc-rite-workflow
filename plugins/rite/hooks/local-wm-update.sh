@@ -11,7 +11,7 @@
 # callers wrap this script with `2>/dev/null || true` (best-effort).
 #
 # Usage (env vars as command prefix):
-#   WM_SOURCE="implement" WM_PHASE="phase5_lint" \
+#   WM_SOURCE="implement" WM_PHASE="lint" \
 #     WM_PHASE_DETAIL="品質チェック準備" \
 #     WM_NEXT_ACTION="rite:lint を実行" \
 #     WM_BODY_TEXT="Post-implementation." \

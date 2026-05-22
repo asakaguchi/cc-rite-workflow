@@ -1,14 +1,27 @@
-# Checklist Auto-Check — Phase 5.2.1 + 5.2.1.1 SoT
+# Checklist Auto-Check — orphan reference
 
-> **Source of Truth**: 本ファイルは `/rite:issue:start` Phase 5.2.1 (Checklist Confirmation) および Phase 5.2.1.1 (Auto-Check Evaluation) の **bash literal + 評価ロジック の SoT** である。`start.md` 本体の Phase 5.2.1 / 5.2.1.1 は本ファイルへ semantic 参照する anchor stub のみ保持する。
+> **Status: Orphan (no active caller).** Earlier versions of `/rite:issue:start`
+> consumed this file as the SoT for the post-lint checklist confirmation. After
+> the flat workflow consolidation `start.md` removed that step, and the inline
+> safety-net in `commands/pr/cleanup.md` reimplemented the logic directly
+> rather than delegating to this reference. `commands/pr/cleanup.md` does
+> mention this filename in error-message strings (so audit logs continue to
+> name the historical SoT), but it does NOT execute the bash literal defined
+> below.
 >
-> **抽出経緯**: `start.md` Phase 5.2.1 + 5.2.1.1 は ~100 行で、Issue body checklist の grep 確認 + auto-check evaluation + uncertain handling + re-check の 4 layer logic を 1 reference に集約することで、本体の認知負荷を下げる。Issue #901 (PR E — #896 親 Issue) で抽出。
+> **Retained because**: the bash literal and the four-layer evaluation rubric
+> documented here are the most thorough record of how checklist confirmation
+> was originally designed. A future re-introduction of the gate (either back
+> into start.md or as a dedicated sub-skill) should start from this file
+> rather than re-deriving the patterns.
 >
-> **caller**: `start.md` Phase 5.2.1 (唯一の caller、`/rite:lint` returns 直後に呼び出される)。
+> Section headings below still use the historical `Phase 5.2.1 / 5.2.1.1`
+> numbering for traceability with the original design discussion; treat them
+> as historical labels, not pointers to current start.md sections.
 
-## Phase 5.2.1: Checklist Confirmation
+## Checklist Confirmation
 
-**Owner**: `/rite:issue:start` after `/rite:lint` returns. **Condition**: Execute only if checklist retained in Phase 3.6. **Purpose**: Block PR until all items complete.
+**Owner**: `/rite:pr:cleanup` safety-net. **Condition**: PR merge 後の checklist 残存確認。**Purpose**: incomplete checklist が merged PR に残っていないか auditor として警告する。
 
 Use `grep -E` (not `-P`). Pattern per [gh-cli-patterns.md](../../../references/gh-cli-patterns.md#safe-checklist-operation-patterns).
 

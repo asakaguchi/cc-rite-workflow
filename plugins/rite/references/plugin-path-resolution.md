@@ -96,7 +96,7 @@ This is consistent with `hooks.json` using `${CLAUDE_PLUGIN_ROOT}`, an environme
 Use `{plugin_root}` as a placeholder in file paths throughout command files:
 
 ```
-Read: {plugin_root}/templates/completion-report.md
+Read: {plugin_root}/templates/issue/default.md
 Read: {plugin_root}/agents/{reviewer_type}-reviewer.md
 ```
 

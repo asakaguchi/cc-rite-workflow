@@ -247,7 +247,7 @@ elif [ "$header_lines" -gt 70 ]; then
   # against false PASS via accidental keyword appearances in code body.
   # Upper bound bumped from 50 → 70 when the caller list expanded to include
   # non-lifecycle hook callers (post-tool-wm-sync.sh, pre-tool-bash-guard.sh)
-  # and command-level callers (create.md, create-interview.md, cleanup.md).
+  # and command-level callers (create.md, cleanup.md).
   fail "Header section sanity check failed: extracted $header_lines lines (expected < 70). End marker '# Why this exists' may have been removed/renamed"
 else
   contract_failed=0
@@ -258,7 +258,7 @@ else
   for keyword in 'Caller contract' 'check_session_ownership' 'Current callers' \
                  'session-start.sh' 'session-end.sh' 'pre-compact.sh' 'post-compact.sh' \
                  'post-tool-wm-sync.sh' 'pre-tool-bash-guard.sh' \
-                 'create.md' 'create-interview.md' 'cleanup.md'; do
+                 'create.md' 'cleanup.md'; do
     if ! printf '%s' "$header_block" | grep -qF "$keyword"; then
       fail "Header section missing required keyword: '$keyword'"
       contract_failed=1

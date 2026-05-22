@@ -7,68 +7,9 @@ description: |
 
 # /rite:issue:create
 
-Create a new Issue and add it to GitHub Projects.
+新規 Issue を作成し、GitHub Projects に登録する。重複検出・親 Issue 候補検出・XL 自動分解を含む。
 
-> 生成する Issue body / commit message は [Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md) に従う（過去 PR / cycle 番号の本文引用を避け、経緯は git log に任せる）。
-
-## Happy Path & Architecture
-
-1. **Phase 0**: ユーザ入力から What/Why/Where を抽出 + 静的処理 (slug 生成 / 類似 Issue 検索 / quick confirmation)
-2. **Phase 1 (`rite:issue:create-interview`)**: 適応的インタビュー (Bug Fix/Chore は skip)
-3. **Phase 2**: XL 判定 (大規模なら自動分解)
-4. **Phase 3 (`rite:issue:create-register` または `rite:issue:create-decompose`)**: Issue 作成
-5. ✅ Issue #N 作成完了
-
-```
-create.md (orchestrator)
-├── create-interview.md   ← Phase 1 + 1.1 (Adaptive Interview + Deep-Dive)
-├── create-decompose.md   ← Phase 3 (Decompose path: Spec + Decompose + Bulk Create + Terminal Completion)
-└── create-register.md    ← Phase 3 (Single Issue path: Classify + Confirm + Create + Terminal Completion)
-```
-
-**Responsibility split**: `create.md` = Issue specification + duplicate detection + Issue creation + Projects registration (Phase 0-3)。`start.md` = Issue quality validation + parent Issue detection + branch creation + work start (Phase 0-5)。`implementation-plan.md` = detailed step-by-step plan (Phase 3)。`create.md` Phase 0.4 = Similar Issue Search、`start.md` Phase 0.3 = Parent Issue Auto-Detection (異なる責務)。
-
-**CRITICAL**: After every sub-skill returns, **immediately** proceed to the next phase. Do NOT stop until the Issue is created and `<!-- [create:completed:{N}] -->` is emitted.
-
-## Sub-skill Return Protocol
-
-> sub-skill 戻り値の判定は [`references/pre-check-routing.md`](./references/pre-check-routing.md) を参照。場面 (b) (turn 終了直前) では Item 1-3 すべて `YES` が必要。`Has [create:completed:{N}] been output?` の self-check alias を含む詳細は同 reference 参照。
-
-### Anti-pattern (what NOT to do)
-
-`rite:issue:create-interview` が `<!-- [interview:skipped] -->` / `<!-- [interview:completed] -->` (HTML comment 形式) を返した時:
-
-```
-[WRONG]
-<Skill rite:issue:create-interview returns>
-<LLM output: "<!-- [interview:skipped] -->">
-<LLM ends turn. User sees "Cooked for 2m 0s" and must type `continue` manually.>
-```
-
-これは **bug**。return tag は turn 境界ではなく hand-off signal。HTML コメント wrapping でも LLM の turn-boundary heuristic が誤発火し得るため、Mandatory After を即時実行しないと workflow が abandoned になる。
-
-### Correct-pattern (what to do)
-
-> **Phase number note (drift from protocol-doc duplicate is intentional)**: 本 example は `skills/rite-workflow/references/sub-skill-return-protocol.md` の Correct-pattern と意図的に複製されている (Duplication note 参照)。protocol-doc 側は orchestrator 横断の generic example として `Phase 0.6` 表記を使うが、本 file (`create.md`) では create.md 内の **実 Phase 番号 `Phase 2`** を使用する。この phase number drift は protocol-doc Duplication note の "drift acceptable on orchestrator-specific Phase numbers" 規定により許容されている (F-25 cycle 4 LOW で再確認済)。
-
-```
-[CORRECT]
-<Skill rite:issue:create-interview returns>
-<LLM output: "<!-- [interview:skipped] -->">
-<In the same response turn, LLM IMMEDIATELY:>
-  1. Runs the Pre-write bash for Phase 2 / Delegation Routing
-  2. Evaluates Phase 2 triggers
-  3. Runs the Delegation Routing Pre-write bash
-  4. Invokes skill: "rite:issue:create-register" (or create-decompose)
-  5. Waits for <!-- [create:completed:{N}] --> (HTML comment form)
-  6. Runs Mandatory After Delegation self-check
-```
-
-**Rule**: Treat `[interview:skipped]` / `[interview:completed]` as **continuation triggers**, not stopping points. Both terminal sub-skills emit `<!-- [create:completed:{N}] -->` as the unified completion marker. The only valid stop is after the user-visible `✅` completion message + next-steps block AND `<!-- [create:completed:{N}] -->` (terminal sub-skill が `create-register.md` Phase 3.4 / `create-decompose.md` Phase 3.4 で順序通り emit) が出力された後のみ。
-
-> **Contract phrases (AC-3)**: anti-pattern / correct-pattern 契約は以下 4 phrase を grep-verified で必ず含む: `anti-pattern`, `correct-pattern`, `same response turn`, `DO NOT stop`。書換禁止。manual verification: `for p in "anti-pattern" "correct-pattern" "same response turn" "DO NOT stop"; do grep -c "$p" plugins/rite/commands/issue/create.md; done` で全て ≥1。
-
-> Terminal sub-skills は flow-state deactivation + `✅` 完了メッセージ + `<!-- [create:completed:{N}] -->` を内製する。`create-interview.md` は post-phase (`create_post_interview`) に進めて return する (Defense-in-Depth)。
+**途中で止まったらユーザーは `/rite:resume` で再開する**。
 
 ## Arguments
 
@@ -76,279 +17,569 @@ create.md (orchestrator)
 |----------|-------------|
 | `<title or description>` | Issue title or description (required) |
 
-## Preparation: Retrieve Project Settings
+## Placeholder Legend
 
-**Repository**: `gh repo view --json owner,name`
+| Placeholder | Source |
+|-------------|--------|
+| `{owner}`, `{repo}` | `gh repo view --json owner,name` |
+| `{project_number}` | `rite-config.yml` の `github.projects.project_number` |
+| `{language}` | `rite-config.yml` の `language`（`ja` / `en` / `auto`、未設定 `auto`） |
+| `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 
-### Language-Aware Template Selection
+---
 
-`rite-config.yml` の `language` (`ja` / `en` / `auto`、未設定 `auto`) を Phase 0.3 / 0.4 / 0.5 / 2.2 の AskUserQuestion テンプレート言語選択に使用 (Phase 1.1 Deep-Dive Interview は Japanese-only)。
+## ステップ 1: 入力解析と前提取得
 
-`auto` は CJK 文字を検出して Japanese を選択 (default Japanese)。
-
-単一 AskUserQuestion 内で言語混在禁止。
-
-**Project**: `rite-config.yml` の `github.projects.project_number` を最優先。未設定なら `gh api graphql` で `repository.projectsV2(first:10){ nodes{ id number title } }` を取得し、リポジトリ名と一致するもの / 最も関連するものを選択。Project が見つからない場合は警告し Projects 追加を skip。
-
-## Phase 0: Preconditions
-
-> **🚫 MUST NOT (Bypass prohibition)**: 本セクションから `[create:completed:{N}]` までの間、orchestrator は (1) `gh issue create` を直接呼ぶ (2) `rite:issue:create-interview` 起動を skip する (3) Phase 1 / Phase 2 / Phase 3 を 1 ステップに collapse する のいずれも禁止 (`pre-tool-bash-guard.sh` hook で実行時 block)。
-
-### 0.1 Extract Information from User Input
-
-#### EDGE-4: Short Input Handling
-
-詳細は [`references/edge-cases-create.md#edge-4-short-input-handling`](./references/edge-cases-create.md#edge-4-short-input-handling) を参照。Phase 0.1 開始前に short input (Unicode < 10 chars) を検出し、AskUserQuestion で詳細を要求するか既存 Issue を参照するかを分岐させるロジックを定義する。
-
-ユーザ入力から以下を抽出: **What** (何をするか) / **Why** (なぜ必要か) / **Where** (変更対象) / **Scope** (影響範囲) / **Constraints** (制約)。例: "Add login feature" / "For user authentication" / "Under src/auth/" / "Frontend and backend" / "Maintain compatibility with existing API"。
-
-### 0.2 Slug Pre-generation
-
-詳細は [`references/slug-generation.md`](./references/slug-generation.md) を参照 ([Slug Generation Rules](./references/slug-generation.md#slug-generation-rules) / [Translation Guidelines](./references/slug-generation.md#translation-guidelines) / [Context Retention](./references/slug-generation.md#context-retention))。生成した slug は `{tentative_slug}` として context に保持し Phase 3 (decompose path) で再利用する。
-
-### 0.3 Parent Issue Pre-detection
-
-**Purpose**: 大型タスク (sub-Issue 分解候補) を Phase 2 より前に検出。単一焦点の小規模変更明示時は skip → Phase 0.4 へ direct。
-
-**Detection heuristics** (any → confirmation): 複数の distinct change ("Add auth, logging, and caching" 等) / scope keywords ("全体的に" / "across all" / "multiple files" / "一括") / rough complexity ≥ L / umbrella-epic language ("プロジェクト" / "epic" / "umbrella" / "phase")。
-
-**Confirmation** (`AskUserQuestion`、language-aware): 「Sub-Issue に分解すべき大型タスクですか? / Is this a large task that should be decomposed?」
-
-| Selection | Action |
-|-----------|--------|
-| はい、分解 / Yes, decompose | Phase 0.4-0.5 を skip、Phase 2 へ direct (`force_decompose: true`、Phase 2.1/2.2 confirmation も skip し Phase 3 (decompose path) へ) |
-| いいえ、単一 / No, single | context flag `decomposition_decision_finalized: true` を保持し、Phase 0.4 へ通常進行 (Phase 2.2 confirmation は本 flag により skip される) |
-
-**⚠️ Phase 0.4 skip notice**: 「はい、分解」時は Phase 0.4 (重複検出) を skip — 大型タスクは exact duplicate が稀で、Phase 3 の sub-Issue 個別作成時に重複検出される。重複懸念があれば「いいえ」を選択。
-
-**Context flag `decomposition_decision_finalized`**: Phase 0.3 で user が「いいえ、単一」を明示選択した時点で、分解要否の判断は確定済み。Phase 2.2 で同じ問いを再発火させない (charter 5 自問 #4「既に承認された判断を再確認しない」)。本 flag は Phase 1 で tentative complexity が XL に上昇したケースでも保持され、Phase 2.2 は skip される (Phase 0.3 の user 明示選択を尊重)。
-
-**Retention mechanism**: 本 flag は **conversation context** 内で保持される (flow-state file には persist しない)。`create.md` Phase 0.3 → Phase 1 → Phase 2.2 → Phase 3 handoff は同一セッション内の一気通貫実行を前提としているため、`/clear` で context が破棄された場合 flag は失われる (再開時は通常 path が走り、Phase 2.2 で再確認が発生する)。これは意図的設計 (`/clear` 後は user の判断状況が変わっている可能性があり、再確認が安全な default)。
-
-### 0.4 Search for Similar Issues
-
-**Purpose**: 重複検出 / context gathering / extension 候補検出 (parent Issue 検出は `start.md` 担当)。
+### 1.1 リポジトリと Project 設定取得
 
 ```bash
-# Extract 2-3 keywords from user input (stop word 除去, Japanese は as-is)
-result=$(gh issue list --search "is:open {keywords}" --limit 10 --json number,title,labels)
+gh repo view --json owner,name
+```
+
+Project 番号は `rite-config.yml` の `github.projects.project_number` を最優先。未設定なら `gh api graphql` でリポジトリの `projectsV2(first:10)` を取得して最も関連するものを選択。Project が見つからない場合は warning + Projects 追加を skip。
+
+### 1.2 言語設定
+
+`rite-config.yml` の `language`（`ja` / `en` / `auto`、未設定 `auto`） に従い AskUserQuestion を表示する。`auto` は CJK 文字を検出して Japanese を選択（default Japanese）。
+
+### 1.3 入力から What / Why / Where 抽出
+
+ユーザー入力から:
+
+- **What**: 何をするか
+- **Why**: なぜ必要か
+- **Where**: 変更対象（ファイル / モジュール / 機能領域）
+- **Scope**: 影響範囲
+- **Constraints**: 制約・前提
+
+を抽出する。Short input（10 文字未満）の場合は AskUserQuestion で詳細を要求する。
+
+### 1.4 slug 生成
+
+title を lowercase、空白を `-` に置換、30 字以内で slug を生成。日本語タイトルは関連英単語に翻訳して slug 化。
+
+---
+
+## ステップ 2: 重複検出
+
+### 2.1 類似 Issue 検索
+
+```bash
+result=$(gh issue list --search "is:open <keywords>" --limit 10 --json number,title,labels)
 [ "$(echo "$result" | jq 'length')" -eq 0 ] && \
   result=$(gh issue list --state all --limit 10 --json number,title,labels)
-echo "$result"
 ```
 
-**Relevance scoring** (top 5): title 類似度 (high) → label 一致 (medium) → 更新日時 (low) → state OPEN > CLOSED (low)。
+keywords は What から 2-3 語抽出（stop word 除去、日本語は as-is）。
 
-**Branching** (language-aware AskUserQuestion):
+### 2.2 候補の評価
 
-| 候補数 | Options |
-|--------|---------|
-| 0 件 | Phase 0.5 へ direct |
-| 1 件 | (a) #{number} の拡張 → Phase 0.5 + body に `Extends: #{number}` 追記 / (b) 既存 Issue を使用 → terminate + `/rite:issue:start {number}` 提案 / (c) 関連なし → Phase 0.5 |
-| 2+ 件 | (a) #{number_1} の拡張 / (b) 別 Issue 番号入力 (follow-up: "start" or "extension") / (c) 関連なし → Phase 0.5 |
+title 類似度 / label 一致 / 更新日時 / state（OPEN > CLOSED）で top 5 を選定。
 
-### 0.5 Quick Confirmation
+### 2.3 分岐
 
-**Purpose**: Phase 0.1 で得た What/Why/Where のうち欠落分のみ補完 (再確認は不要)。
+| 候補数 | Options（AskUserQuestion） |
+|--------|---------------------------|
+| 0 件 | 次ステップへ |
+| 1 件 | (a) #{number} の拡張 → body に `Extends: #{number}` 追記 / (b) 既存 Issue を使用 → 終了 + `/rite:issue:start {number}` 提案 / (c) 関連なし |
+| 2+ 件 | (a) #{番号} の拡張 / (b) 別 Issue 番号入力 / (c) 関連なし |
 
-| Phase 0.1 Result | Phase 0.5 Action |
-|------------------|------------------|
-| What/Why/Where 全て明確 | Skip → Goal classification へ |
-| What 明確、Why or Where 不足 | 不足要素のみ単一 AskUserQuestion で確認 |
-| What 不足 | Goal clarification を full asking |
+---
 
-**Goal classification** (常に決定、Phase 1 adaptive interview depth 決定用): AskUserQuestion (language-aware) で 新機能 / バグ修正 / ドキュメント / リファクタリング / その他。Phase 0.1 から推定可能なら ask 不要。完了条件は [Termination Logic > Phase 0.5 Completion Criteria](#phase-05-completion-criteria) を参照。
+## ステップ 3: 規模判定と親 Issue 候補検出
 
-### 0.6 Skip Semantics (Mode B Defense)
+### 3.1 規模ヒューリスティック
 
-> **READ THIS EVERY TIME Phase 0.5 is skipped.** Phase 0.5 confirmation の skip は **user-facing dialog の skip のみ**。以下は MUST execute:
+以下のいずれかに該当すれば **大型タスク候補**（分解推奨）:
 
-| # | MUST execute | Why |
-|---|--------------|-----|
-| 1 | Phase 1 goal classification (Phase 0.1 から推定) | Phase 1.1 interview scope 決定で必要 |
-| 2 | Phase 1 Delegation to Interview (Pre-write + Skill 起動) | `create_interview` write がないと `phase-transition-whitelist.sh` の case arm が enforce できない (`pre-tool-bash-guard.sh` / `session-end.sh` が source) |
-| 3 | Mandatory After Interview | flow state を `create_post_interview` に進める |
-| 4 | Phase 2 | `create-register` vs `create-decompose` 選択 |
-| 5 | Phase 3 Delegation Routing (Pre-write + terminal sub-skill) | `create_delegation` を書き whitelist を進める |
-| 6 | Mandatory After Delegation | terminal `create_completed` の defense-in-depth |
+1. 複数の distinct change を含む（"Add auth, logging, and caching" 等）
+2. Scope keywords を含む（"全体的に" / "across all" / "multiple files" / "一括" 等）
+3. Complexity ≥ L（推定）
+4. Umbrella/epic 表現を含む（"プロジェクト" / "epic" / "umbrella" / "phase"）
 
-**唯一の合法 path**: `rite:issue:create-register` または `rite:issue:create-decompose` Skill 起動経由でのみ Issue を作成する。`gh issue create` 直接呼出しは `pre-tool-bash-guard.sh` で block される。本 skip semantics は [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` の具体化 — 時間的制約や context 残量を理由にした step 省略は禁止。
+該当しない場合は **単一 Issue**として扱い、ステップ 4 へ。
 
-## Phase 1: Delegation to Interview
+### 3.2 分解確認
 
-> Phase 0 の Bypass prohibition は本セクション以降も継続適用。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) で解決。
+該当時は AskUserQuestion で「Sub-Issue に分解する（推奨） / 単一 Issue として作成 / 中止」を選択。
 
-**Pre-write** (before invoking interview sub-skill):
+- **分解**: ステップ 5 へ（Sub-Issue 分解パス）
+- **単一**: ステップ 4 へ（単一 Issue パス）
+- **中止**: workflow 終了
+
+---
+
+## ステップ 4: 単一 Issue 作成（Single Issue Path）
+
+### 4.1 Issue 情報の最終確認
+
+AskUserQuestion で Issue の以下を確認/補完する:
+
+- title（slug ベース）
+- type（feat / fix / docs / refactor / chore）
+- priority（High / Medium / Low）
+- complexity（XS / S / M / L / XL）
+- labels（推測されたもの + 追加）
+
+### 4.2 Issue Body 生成
+
+`templates/issue/default.md` のテンプレートに沿って body を生成する:
+
+```markdown
+## What
+{what}
+
+## Why
+{why}
+
+## Where
+{where}
+
+## Acceptance Criteria
+- [ ] AC-1: {ac1}
+- [ ] AC-2: {ac2}
+
+## Implementation Notes
+{notes_if_any}
+
+## Out of Scope
+- {out_of_scope_if_any}
+```
+
+### 4.3 Issue 作成 + Projects 登録
+
+`create-issue-with-projects.sh` に委譲（Issue 作成 + Projects 追加 + status / priority / complexity 設定を 1 ステップで実行）。実 interface は JSON 単一引数 + body は tmpfile 経由（canonical SoT: [`issue-create-with-projects.md`](../../references/issue-create-with-projects.md)）:
 
 ```bash
-# state file path を解決 (schema_version=2: per-session、legacy: single-file)。
-# helper が空文字列なら create branch へ。
-state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
-state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
-if [ -n "$state_file" ] && [ -f "$state_file" ]; then
-  # Preserve existing fields (issue_number, branch, etc.) from caller (e.g., start.md)
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_interview" \
-    --active true \
-    --next "After rite:issue:create-interview returns: proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
+# body を tmpfile に書く (LLM が {body} 部分を実 markdown に展開してから heredoc に流す)
+tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"' EXIT
+cat > "$tmpfile" <<'ISSUE_BODY_EOF'
+{body}
+ISSUE_BODY_EOF
+
+[ -s "$tmpfile" ] || { echo "ERROR: Issue body is empty" >&2; exit 1; }
+
+# {labels_csv} (例: "bug,fix") を JSON array に変換 (空 CSV は空配列)
+labels_json=$(printf '%s' "{labels_csv}" | jq -R 'split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))')
+
+result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+  --arg title "{title}" \
+  --arg body_file "$tmpfile" \
+  --argjson labels "$labels_json" \
+  --argjson enabled true \
+  --argjson project_number {project_number} \
+  --arg owner "{owner}" \
+  --arg status "Todo" \
+  --arg priority "{priority}" \
+  --arg complexity "{complexity}" \
+  --arg iter_mode "none" \
+  --arg source "interactive" \
+  '{
+    issue: { title: $title, body_file: $body_file, labels: $labels },
+    projects: {
+      enabled: $enabled,
+      project_number: $project_number,
+      owner: $owner,
+      status: $status,
+      priority: $priority,
+      complexity: $complexity,
+      iteration: { mode: $iter_mode }
+    },
+    options: { source: $source, non_blocking_projects: true }
+  }')") || {
+  echo "ERROR: create-issue-with-projects.sh failed (exit $?)" >&2
+  exit 1
+}
+
+[ -z "$result" ] && { echo "ERROR: create-issue-with-projects.sh returned empty result" >&2; exit 1; }
+
+issue_number=$(printf '%s' "$result" | jq -r '.issue_number // empty')
+[ -z "$issue_number" ] && { echo "ERROR: result に issue_number が含まれていません: $result" >&2; exit 1; }
+
+project_reg=$(printf '%s' "$result" | jq -r '.project_registration // "unknown"')
+if [ "$project_reg" = "failed" ]; then
+  echo "WARNING: Issue #$issue_number は作成されましたが Projects 登録に失敗しました" >&2
+  # AskUserQuestion で「手動で Projects 登録 / retry / skip して続行」を選択
+fi
+```
+
+### 4.4 完了レポート
+
+完了レポートの最終行は `<!-- [create:completed:{issue_number}] -->` HTML コメント sentinel とし、user-visible な末端は `✅ ...` 完了メッセージで終わる。sentinel は hook / grep 契約のため必須だが、HTML コメント化することでユーザーに「完了したのか途中なのか」の判別を阻害しない。
+
+```markdown
+✅ Issue #{issue_number} を作成しました
+
+| 項目 | 内容 |
+|------|------|
+| Title | {title} |
+| Type | {type} |
+| Priority | {priority} |
+| Complexity | {complexity} |
+| URL | {issue_url} |
+
+### 次のアクション
+- `/rite:issue:start {issue_number}` で作業を開始
+- または `/rite:pr:create` で Issue なしで PR を作成
+
+<!-- [create:completed:{issue_number}] -->
+```
+
+ステップ 6（共通完結処理）へ。
+
+---
+
+## ステップ 5: Sub-Issue 分解（Decompose Path）
+
+### 5.1 仕様書生成
+
+大型 Issue から「設計仕様書」を生成する。以下のセクションを含む:
+
+```markdown
+## 1. 目的（Goal）
+{why}
+
+## 2. スコープ
+- In scope: {in_scope}
+- Out of scope: {out_of_scope}
+
+## 3. 受入基準
+- AC-1: {ac1}
+- AC-2: {ac2}
+
+## 4. 設計方針
+{design_approach}
+
+## 5. Sub-Issue 構成
+1. Sub-1: {sub_1_title}（complexity: {sub_1_complexity}）
+2. Sub-2: {sub_2_title}（complexity: {sub_2_complexity}）
+...
+
+## 6. 依存関係
+- Sub-2 は Sub-1 完了後
+- Sub-3 は独立
+
+## 7. リスク・考慮事項
+{risks}
+```
+
+### 5.2 ユーザー確認
+
+AskUserQuestion で「この分解で進める / 分解を修正 / 中止」を選択。修正の場合は仕様書を再提示。
+
+### 5.3 + 5.4 + 5.5 Step 1: 親 Issue 作成 + Sub-Issue 一括作成 + fetch（単一 bash block）
+
+> **⚠️ CRITICAL — Bash tool invocation 境界**: 本セクションの bash code block は **単一の Bash tool invocation で連続実行する**。`tmpdir` / `parent_issue_number` / `created_count` 等のシェル変数は Bash 呼び出しを跨ぐと消失する (Claude Code Bash tool は呼び出しごとに新シェルプロセス)。LLM は本 block を分割実行してはならない。次の Step 2 (LLM 編集) と Step 3 (apply) は CONTEXT marker 経由で値を受け渡す。
+>
+> Sub-Issue ループの placeholder protocol: `{sub_count}` / `{REPEAT_FOR_EACH_SUB_ISSUE}` ... `{END_REPEAT}` の間を、LLM が反復回数だけ実値展開して bash literal を生成する。`{sub_N_title}` `{sub_N_body}` `{sub_N_complexity}` を各反復で実値置換。
+
+```bash
+# ============================================================
+# Step 5.3 親 Issue 作成
+# ============================================================
+tmpdir=$(mktemp -d -t rite-create-XXXXXX)
+# Centralize cleanup via trap so every exit path (success, error, SIGINT, SIGTERM)
+# removes the tmpdir. Per-branch `rm -rf` calls in early-exit arms are easy to
+# forget and leak the tmpdir on signal-interrupt.
+trap 'rm -rf "$tmpdir"' EXIT INT TERM
+parent_tmpfile="$tmpdir/parent_body.md"
+cat > "$parent_tmpfile" <<'PARENT_BODY_EOF'
+{spec_document}
+PARENT_BODY_EOF
+
+[ -s "$parent_tmpfile" ] || { echo "ERROR: parent Issue body is empty" >&2; rm -rf "$tmpdir"; exit 1; }
+
+labels_json=$(printf '%s' "epic,{labels_csv}" | jq -R 'split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))')
+
+parent_result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+  --arg title "{parent_title}" \
+  --arg body_file "$parent_tmpfile" \
+  --argjson labels "$labels_json" \
+  --argjson enabled true \
+  --argjson project_number {project_number} \
+  --arg owner "{owner}" \
+  --arg status "Todo" \
+  --arg priority "{priority}" \
+  --arg complexity "XL" \
+  --arg iter_mode "none" \
+  --arg source "xl_decomposition" \
+  '{
+    issue: { title: $title, body_file: $body_file, labels: $labels },
+    projects: {
+      enabled: $enabled,
+      project_number: $project_number,
+      owner: $owner,
+      status: $status,
+      priority: $priority,
+      complexity: $complexity,
+      iteration: { mode: $iter_mode }
+    },
+    options: { source: $source, non_blocking_projects: true }
+  }')") || {
+  echo "ERROR: 親 Issue 作成失敗" >&2
+  rm -rf "$tmpdir"
+  exit 1
+}
+
+parent_issue_number=$(printf '%s' "$parent_result" | jq -r '.issue_number // empty')
+[ -z "$parent_issue_number" ] && { echo "ERROR: 親 Issue の issue_number 取得失敗: $parent_result" >&2; rm -rf "$tmpdir"; exit 1; }
+
+# ============================================================
+# Step 5.4 Sub-Issue 一括作成
+# ============================================================
+created_count=0
+failed_count=0
+link_failures=0
+created_numbers=()
+expected_sub_count={sub_count}
+# Surface jq parse failure (malformed CSV / embedded newline) instead of
+# silently falling back to an empty labels array — a silent empty would
+# strip the user's intended labels without any visible signal.
+sub_labels_json=$(printf '%s' "{labels_csv}" | jq -R 'split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))' 2>/dev/null) || {
+  echo "WARNING: labels_csv の jq パースに失敗。labels を空で続行: {labels_csv}" >&2
+  sub_labels_json="[]"
+}
+
+i=0
+{REPEAT_FOR_EACH_SUB_ISSUE}
+i=$((i + 1))
+sub_tmpfile="$tmpdir/sub_${i}_body.md"
+cat > "$sub_tmpfile" <<'SUB_BODY_EOF'
+{sub_N_body}
+SUB_BODY_EOF
+if [ ! -s "$sub_tmpfile" ]; then
+  echo "WARNING: Sub-Issue '{sub_N_title}' body が空、skip" >&2
+  failed_count=$((failed_count + 1))
 else
-  bash {plugin_root}/hooks/flow-state-update.sh create \
-    --phase "create_interview" --issue 0 --branch "" --pr 0 \
-    --next "After rite:issue:create-interview returns: proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop."
+  sub_result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+      --arg title "{sub_N_title}" \
+      --arg body_file "$sub_tmpfile" \
+      --argjson labels "$sub_labels_json" \
+      --argjson enabled true \
+      --argjson project_number {project_number} \
+      --arg owner "{owner}" \
+      --arg status "Todo" \
+      --arg priority "{priority}" \
+      --arg complexity "{sub_N_complexity}" \
+      --arg iter_mode "none" \
+      --arg source "xl_decomposition" \
+      '{
+        issue: { title: $title, body_file: $body_file, labels: $labels },
+        projects: {
+          enabled: $enabled,
+          project_number: $project_number,
+          owner: $owner,
+          status: $status,
+          priority: $priority,
+          complexity: $complexity,
+          iteration: { mode: $iter_mode }
+        },
+        options: { source: $source, non_blocking_projects: true }
+      }')" 2>&1)
+  create_rc=$?
+  if [ $create_rc -ne 0 ]; then
+    echo "WARNING: Sub-Issue '{sub_N_title}' の作成に失敗: $sub_result" >&2
+    failed_count=$((failed_count + 1))
+  else
+    sub_number=$(printf '%s' "$sub_result" | jq -r '.issue_number // empty')
+    if [ -z "$sub_number" ] || [ "$sub_number" = "null" ]; then
+      echo "WARNING: Sub-Issue '{sub_N_title}' の result に issue_number 無し: $sub_result" >&2
+      failed_count=$((failed_count + 1))
+    else
+      # Sub-issues API linkage — canonical SoT [`sub-issue-link-handler.md`](../../references/sub-issue-link-handler.md)
+      # Variant B (counting). link-sub-issue.sh は非 blocking failure 時に exit 0 + status="failed"
+      # を返す契約のため、bash exit code ではなく JSON stdout の `.status` を inspect すること。
+      # ⚠️ DRIFT 警告: 本 case 文を編集する際は SoT `references/sub-issue-link-handler.md`
+      # Variant B を同時に更新する責務がある。
+      # link-sub-issue.sh normally returns JSON on stdout (status="failed" for
+      # non-blocking failures). Only construct fallback JSON on fatal exit.
+      # Build it via `jq -n --arg` so embedded `"` in stderr cannot break the
+      # JSON the caller will parse.
+      link_result=$(bash {plugin_root}/scripts/link-sub-issue.sh \
+          "{owner}" "{repo}" "$parent_issue_number" "$sub_number" 2>&1) || link_result=$(jq -n \
+            --arg err "$link_result" \
+            '{status:"failed",message:"link-sub-issue.sh fatal exit",warnings:[$err]}')
+      link_status=$(printf '%s' "$link_result" | jq -r '.status // "failed"' 2>/dev/null || echo "failed")
+      link_msg=$(printf '%s' "$link_result" | jq -r '.message // ""' 2>/dev/null || echo "")
+      case "$link_status" in
+        ok|already-linked)
+          echo "✅ $link_msg"
+          ;;
+        failed)
+          printf '%s' "$link_result" | jq -r '.warnings[]?' 2>/dev/null \
+            | while read -r w; do echo "⚠️ $w" >&2; done
+          echo "⚠️ Sub-issues API linkage failed for #$sub_number; body meta fallback in place" >&2
+          link_failures=$((link_failures + 1))
+          ;;
+        *)
+          # 未知 status を silent 通過させない (Issue #514 MUST NOT)
+          echo "⚠️ Unexpected link status '$link_status' for #$sub_number (msg: $link_msg)" >&2
+          link_failures=$((link_failures + 1))
+          ;;
+      esac
+
+      created_numbers+=("$sub_number")
+      created_count=$((created_count + 1))
+    fi
+  fi
 fi
+{END_REPEAT}
+
+# ============================================================
+# zero-iteration guard (silent placeholder expansion failure 検出)
+# ============================================================
+if [ "$created_count" -eq 0 ] && [ "$expected_sub_count" -gt 0 ]; then
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type sub_issue_zero_iteration_loop \
+    --details "Expected $expected_sub_count Sub-Issues but created 0 (placeholder expansion or shell loop failure). parent=#$parent_issue_number" \
+    --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+fi
+
+# ============================================================
+# Loop-abort sanity check: if created+failed != expected, the loop dropped
+# iterations to an unexpected shell error (set -e upstream, jq crash, signal),
+# and the partial state would otherwise go silently missing from the report.
+# ============================================================
+loop_processed=$((created_count + failed_count))
+if [ "$loop_processed" -ne "$expected_sub_count" ] && [ "$expected_sub_count" -gt 0 ]; then
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type sub_issue_loop_abort \
+    --details "Loop processed $loop_processed of $expected_sub_count expected Sub-Issues (created=$created_count, failed=$failed_count). Possible mid-loop abort. parent=#$parent_issue_number" \
+    --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+fi
+
+# ============================================================
+# Step 5.5 Step 1: fetch (親 Issue body の取得)
+# ============================================================
+fetch_output=$(bash {plugin_root}/hooks/issue-body-safe-update.sh fetch --issue "$parent_issue_number" --parent 2>&1) || fetch_output=""
+
+# ============================================================
+# CONTEXT markers — 後続 Step 2 (LLM 編集) と Step 3 (apply) に値を受け渡す
+# ============================================================
+echo "[CONTEXT] PARENT_ISSUE_NUMBER=$parent_issue_number"
+echo "[CONTEXT] SUB_ISSUE_RESULT created=$created_count failed=$failed_count link_failures=$link_failures"
+echo "[CONTEXT] SUB_ISSUE_NUMBERS=${created_numbers[*]}"
+# tmpfile_read=, tmpfile_write=, original_length= は fetch_output に含まれる
+printf '%s\n' "$fetch_output"
 ```
 
-Invoke `skill: "rite:issue:create-interview"`.
+> **シェル変数の受け渡し**: 上記 block 内では `tmpdir` / `parent_issue_number` / `created_count` 等が連続して使われる。Step 5.5 Step 2-3 では Block 外に出るため、`[CONTEXT] PARENT_ISSUE_NUMBER=N` と fetch_output 内の `tmpfile_read=...` 等を marker として LLM が literal 置換する。
 
-**🚨 Immediate after interview returns**: result pattern (`[interview:completed]` / `[interview:skipped]` / `[CONTEXT] INTERVIEW_DONE=1`) を観測したら、応答を終了せず Mandatory After Interview の Step 0 を **同 turn 内連続実行する**。**MUST execute Step 0 bash literal as your VERY FIRST tool call BEFORE any text output, narrative, or response generation** — text output を先に出すと LLM の turn-boundary heuristic が誤発火し implicit stop の経路が開く (Issue #910 で実証)。
+### 5.5 Step 2: LLM 編集
 
-### 🚨 Mandatory After Interview
+LLM は以下を実行する:
+1. CONTEXT marker (`PARENT_ISSUE_NUMBER`, `SUB_ISSUE_NUMBERS`) を直前の bash 出力から読み取る
+2. `tmpfile_read` の内容を Read tool で取得し、Sub-Issues セクション追記版を `tmpfile_write` へ Write tool で書く
 
-> **⚠️ 同 turn 内連続実行する (MUST execute in the SAME response turn)**: `[interview:*]` return tag は turn 境界ではなく継続トリガ — turn を閉じると workflow が停止し Issue は作成されない。No GitHub Issue has been created yet。flow state の `.phase = create_post_interview` (sub-skill 内製)。`phase-transition-whitelist.sh` の whitelist transition graph により、active の間は `create_delegation` (Phase 3 Delegation Routing Pre-write) または `create_completed` (terminal sub-skill) への transition のみが許可される — `pre-tool-bash-guard.sh` / `session-end.sh` が enforce 経路。
+### 5.5 Step 3: apply（別 bash block）
 
-**Step 0: Immediate Bash Action**: sub-skill return 直後の **VERY FIRST tool call** として実行 — `text output` / narrative / response generation よりも前に bash invocation を発行し、turn-boundary heuristic を bash invocation で 置換 する。Issue #910 D-01 の経験的観測: imperative 強度 (`MUST execute`, `VERY FIRST`, `BEFORE any text output`) が implicit stop の確率を下げる。失敗時は stderr に `[CONTEXT] STEP_0_PATCH_FAILED=1` retained flag を emit (非 blocking、Step 1 が idempotent patch として再試行):
-
-```bash
-# Re-affirm phase + refresh timestamp (idempotent with Step 1)。--if-exists は file 不在 skip
-# と patch 成功を両方 exit 0 で返すため STEP_0_PATCH_FAILED は真の失敗のみを区別する非 blocking flag。
-if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_post_interview" \
-    --active true \
-    --next "Step 0 Immediate Bash Action fired; proceeding to Phase 2. Do NOT stop." \
-    --if-exists \
-    --preserve-error-count; then
-  echo "[CONTEXT] STEP_0_PATCH_FAILED=1" >&2
-fi
-```
-
-**Step 1**: post-interview phase patch (atomic、idempotent with Step 0):
+> 以下の bash block 内 `{PARENT_ISSUE_NUMBER}`, `{TMPFILE_READ}`, `{TMPFILE_WRITE}`, `{ORIGINAL_LENGTH}` は LLM が直前の CONTEXT marker から literal 置換する。
 
 ```bash
-if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_post_interview" \
-    --active true \
-    --next "rite:issue:create-interview completed. Proceed to Phase 2 (Task Decomposition Decision). Issue has NOT been created yet. Do NOT stop." \
-    --if-exists \
-    --preserve-error-count; then
-  echo "[CONTEXT] STEP_1_PATCH_FAILED=1" >&2
-fi
-```
-
-**Step 2**: Pre-check list を [`references/pre-check-routing.md`](./references/pre-check-routing.md) に従い実行。`NO` 項目があれば turn を閉じず Phase 2 へ継続。
-
-**Step 3**: **→ Proceed to Phase 2 (Task Decomposition Decision) now. Do NOT stop.**
-
-> **Continuation trigger reminder**: `[interview:*]` return tag は continuation trigger であり turn 境界ではない。implicit stop は protocol violation で `hooks/workflow-incident-emit.sh` ヘルパー経由で `workflow_incident` (`type=manual_fallback_adopted`) を emit する。
-
-> **Machine-enforced back-stop (Issue #920)**: prompt-side defense (Step 0 + Step 1 + caller HTML + 4-line return block) は LLM turn-boundary heuristic を完全には抑止できない (累積系列で実証)。Stop event hook [`hooks/stop-create-interview-block.sh`](../../hooks/stop-create-interview-block.sh) が back-stop として動作し、`phase=create_post_interview` && `active=true` && `pr_number=0` の implicit stop を `exit 2` で block する。block 時は stderr に Step 0 idempotent patch literal と `workflow_incident` (`type=manual_fallback_adopted`) sentinel が emit され、resume 経路が user/LLM に提示される。back-stop は最後の防御層であり、prompt-side defense が機能した場合は発火しない。
-
-## Phase 2: Task Decomposition Decision
-
-**Purpose**: 粗粒度 Issue を検出し分解要否を決定。
-
-### 2.1 Decomposition Trigger Evaluation
-
-**Fast path**: Phase 0.3 で `force_decompose: true` なら trigger 評価と 2.2 confirmation を skip し直接 `rite:issue:create-decompose` へ。
-
-**通常 path** — 以下 **全条件** で decomposition: (1) tentative complexity = XL (Phase 1 で確定) AND (2) comprehensive expressions 含有 ("system / platform / app 開発 / 全面 renewal / 基盤構築" 等 broad scope。"~kinou tsuika / ~gamen jissou / ~shuusei" 等 limited scope は除外)。曖昧な "wo tsukuru" 単独は除外、deliverable type 明示時のみ。複数 domain (auth + payment + notification 等) を跨ぐ場合は patterns に関わらず検討。XL でも scope 明確で単一 PR 完結なら不要。
-
-### 2.2 Decomposition Confirmation
-
-**Fast-path** (`decomposition_decision_finalized: true`): Phase 0.3 で user が「いいえ、単一」を明示選択していた場合、本 confirmation を skip して single Issue path (Phase 3 register) へ進む。skip notice として「Phase 0.3 の選択 (`いいえ、単一`) に従い Phase 2.2 確認を skip しました」を表示する。Phase 1 で tentative complexity が XL に上昇したケースでも user の明示選択を尊重する (charter 5 自問 #4「既に承認された判断を再確認しない」適用)。
-
-**通常 path** (Phase 0.3 を skip した / Phase 0.3 で「いいえ」を選んでいない場合): `AskUserQuestion` で「Sub-Issue に分解する（推奨） / 単一 Issue として作成」を確認 (language-aware)。詳細 routing は [Termination Logic > Phase 2 Decomposition Decision Termination](#phase-2-decomposition-decision-termination) を参照。
-
-**「単一 Issue として作成」時の context carryover**: Phase 1.1 interview 結果は [`references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping`](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) 経由で Implementation Contract Section 1-9 に mapping。What/Why/Where → Section 1/2、tentative complexity XL → Phase 3 (Single Issue path) で最終確定 (cancel 時も XL 記録)、Out-of-scope → Section 2 (Out of Scope) / Section 1 (Non-goal)。
-
-#### EDGE-3: Interview Result Reflection Rules
-
-詳細は [`references/edge-cases-create.md#edge-3-interview-result-reflection-rules`](./references/edge-cases-create.md#edge-3-interview-result-reflection-rules) を参照。Phase 1.1 status と Phase 0.3 早期分解 cancel パスの組み合わせに応じて Implementation Contract sections に何を populate すべきかを規定する (Complexity Gate compliance / `（推定）` marking / `<!-- 情報未収集 -->` placeholder)。
-
-## Phase 3: Delegation Routing
-
-Phase 2 結果に基づき適切な sub-command に delegation。
-
-**Pre-write** (before invoking delegation sub-skill):
-
-```bash
-# state file path を解決 (schema_version=2: per-session、legacy: single-file)。
-# helper が空文字列なら create branch へ。
-state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
-state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
-if [ -n "$state_file" ] && [ -f "$state_file" ]; then
-  # Preserve existing fields (issue_number, branch, etc.) from caller
-  bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "create_delegation" \
-    --active true \
-    --next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop."
+# helper 内で safety guard / API 失敗を WORKFLOW_INCIDENT として直接 emit するため、
+# orchestrator 側は stderr を観測するだけに留め、tmpfile パス未取得のときのみ
+# fetch_failed を発火する責務を残す。
+if [ -n "{TMPFILE_READ}" ] && [ -n "{TMPFILE_WRITE}" ]; then
+  apply_err=$(bash {plugin_root}/hooks/issue-body-safe-update.sh apply \
+    --issue {PARENT_ISSUE_NUMBER} \
+    --tmpfile-read "{TMPFILE_READ}" \
+    --tmpfile-write "{TMPFILE_WRITE}" \
+    --original-length "{ORIGINAL_LENGTH}" \
+    --parent 2>&1) || true
+  if [ -n "$apply_err" ]; then
+    if [ "${#apply_err}" -gt 500 ]; then
+      apply_err_short="${apply_err:0:500}...truncated(${#apply_err})"
+    else
+      apply_err_short="$apply_err"
+    fi
+    echo "WARNING: 親 Issue body の更新で診断メッセージ: $apply_err_short" >&2
+  fi
 else
-  bash {plugin_root}/hooks/flow-state-update.sh create \
-    --phase "create_delegation" --issue 0 --branch "" --pr 0 \
-    --next "Wait for sub-skill (create-register or create-decompose) to output completion report (Issue URL). Issue has NOT been created yet. Do NOT stop."
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type issue_body_fetch_failed \
+    --details "Parent #{PARENT_ISSUE_NUMBER}: fetch did not return tmpfile paths (gh issue view 失敗 or 空 body)" \
+    --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
 fi
 ```
 
-| Phase 2 Selection | Sub-skill |
-|---------------------|-----------|
-| 分解 | `skill: "rite:issue:create-decompose"` |
-| 単一 (or trigger 非該当) | `skill: "rite:issue:create-register"` |
+### 5.6 完了レポート
 
-**Context handoff to `create-register`** (Phase 0.3 path で Phase 0.4-0.5 skip 時):
+Decompose path も完了レポートの最終行は `<!-- [create:completed:{parent_issue_number}] -->` HTML コメント sentinel で終わる。Single Issue path と同じく、sentinel は hook / grep 契約のため必須で、HTML コメント化することで user-visible な末端は `✅ ...` 完了メッセージとなる。`link_failures > 0` 時の警告ブロックは sentinel より前に挿入する。
 
-| Context | Source | Phase 0.3 path 時 |
-|---------|--------|---------------------|
-| What/Why/Where | Phase 0.1 | 常に available |
-| Goal classification | Phase 0.5 | **N/A** — `create-register` Phase 3 が Phase 0.1 から推定 |
-| Tentative complexity | Phase 1 | **N/A** — `create-register` Phase 3 が XL baseline + Heuristics Scoring で finalize |
-| Interview results | Phase 1.1 | **N/A** — EDGE-3 row 4 適用 (MUST sections に placeholder) |
-| Tentative slug | [Phase 0.2](./references/slug-generation.md) | 常に available |
-| `phases_skipped` flag | Phase 0.3 | `"0.4-0.5"` (Phase 0.3 早期分解時) または `null` |
-| `decomposition_decision_finalized` flag | Phase 0.3 | `true` (Phase 0.3 で「いいえ、単一」明示選択時) または `null`。Phase 0.3 fast-path 由来であることを示す traceability context として handoff (詳細・retention 仕様は Phase 0.3 の Retention mechanism 段落参照、`create-register` 側 path 認識への影響なし) |
+```markdown
+✅ Issue #{parent_issue_number} を分解して {sub_count} 件の Sub-Issue を作成しました
 
-**🚨 Immediate after delegation returns**: sub-skill が `<!-- [create:completed:{N}] -->` (HTML comment 形式) を出力したら同 turn 内で Mandatory After Delegation を実行。**MUST proceed to Self-check as your VERY FIRST cognitive action BEFORE any text output or narrative** — sub-skill return 直後の text generation を抑制し、Self-check 結果に応じて Normal path (terminal state 既達 → Steps 1-3 を no-op で skip) または異常経路 (Steps 1-3 で terminal state に強制遷移) のいずれかへ進む。Step 4 (terminal gate) は両経路共通で常に実行。Self-check は cognitive 判定行為であり tool call ではないため、canonical scheme `**VERY FIRST tool call** = bash literal 実行` とは独立した phrasing (`**VERY FIRST cognitive action**`) を採用する (Issue #910 で実証された implicit stop 対策)。
+### 親 Issue
+- #{parent_issue_number} {parent_title}
 
-### 🚨 Mandatory After Delegation (Defense-in-Depth)
+### Sub-Issues
+- #{sub_1_number} {sub_1_title}（complexity: {sub_1_complexity}）
+- #{sub_2_number} {sub_2_title}（complexity: {sub_2_complexity}）
+- ...
 
-> **⚠️ 同 turn 内連続実行する (MUST execute in the SAME response turn)**: terminal sub-skill (`create-register.md`, `create-decompose.md`) は通常 `<!-- [create:completed:{N}] -->` + `create_completed` / `active: false` を内製出力する (Terminal Completion pattern、HTML comment 形式 — Issue #561 整合)。本セクションは欠落時の defense-in-depth recovery path。
+### 次のアクション
+- `/rite:issue:start {first_sub_issue}` で最初の Sub-Issue から作業を開始
+- `/rite:issue:list` で全 Sub-Issue 一覧を確認
 
-**Self-check**: `<!-- [create:completed:{N}] -->` が出力済みか? **Yes** (Normal path) → terminal state 既達、Steps 1-3 は **no-op で skip** (Step 1 は retrograde transition になる)、Step 4 へ進む。**No** (異常経路) → Steps 1-3 が critical、terminal state に強制遷移、Step 4 へ進む。Step 4 (terminal gate) は両経路共通で常に実行される唯一の合流点。
+<!-- [create:completed:{parent_issue_number}] -->
+```
 
-**Step 1** (異常経路のみ):
+`link_failures > 0` の場合は完了メッセージと sentinel の間に以下を併記し、ユーザーに復旧を促す:
+
+```markdown
+### ⚠️ Sub-issues API リンク失敗 ({link_failures} 件)
+- 親 #{parent_issue_number} ←→ 子 #{sub_X_number} の link 確立に失敗した Sub-Issue があります（API 失敗 / rate limit / token scope 等）
+- 親 Issue body の Tasklist と `## 親 Issue` body meta は fallback として残っています
+- 復旧: `bash {plugin_root}/scripts/link-sub-issue.sh {owner} {repo} {parent_issue_number} {sub_X_number}` を該当 Sub-Issue ごとに手動再実行してください
+```
+
+ステップ 6 へ。
+
+---
+
+## ステップ 6: 共通完結処理
+
+### 6.1 flow-state 完結
+
+`--preserve-error-count` はこの patch で `.error_count` を 0 にリセットせず保持する general flag。現時点で `.error_count` を読む reader は無いが、再導入時の累積カウントが意図せずリセットされないよう reserved API として保持する。
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
-  --phase "create_post_delegation" \
-  --active true \
-  --next "Sub-skill completed. Deactivate flow state and output next steps. Do NOT stop."
+  --phase completed --active false --next "none" \
+  --if-exists --preserve-error-count 2>/dev/null || true
 ```
 
-**Step 2** (異常経路のみ、idempotent):
+create.md は作業 phase ではなく Issue 作成のみなので、flow-state は必ずしも必要ない（`patch --if-exists` で file 不在時は no-op）。
 
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh patch \
-  --phase "create_completed" \
-  --next "none" --active false
-```
+---
 
-**Step 3** (異常経路のみ、defense-in-depth fallback): sub-skill 完了メッセージ欠落時に出力:
+## エラー時の方針
 
-- **Register**: `✅ Issue #{number} を作成しました` + 次ステップ (`/rite:issue:start {number}` / `/rite:pr:create`) + `<!-- [create:completed:{number}] -->`
-- **Decompose**: `✅ Issue #{parent_number} を分解して {count} 件の Sub-Issue を作成しました` + 次ステップ (`/rite:issue:start #{first_sub_issue}` / `/rite:issue:list`) + `<!-- [create:completed:{first_sub_issue}] -->`
+- 各ステップで止まっても Issue が作成されていなければ、ユーザーは同じ入力で `/rite:issue:create` を再実行できる
+- Issue 作成後（`{issue_number}` 確定後）はその Issue を起点に作業を進められる（重複作成を避けるためステップ 2 の重複検出が活きる）
+- AskUserQuestion で「中止」が選ばれた場合のみ workflow 終了
+- bash command 失敗時は stderr に `WARNING` または `ERROR` プレフィックスを残し、復旧不能なケースのみ workflow を停止する
 
-Concrete output 例は `create-register.md` Phase 3.4 / `create-decompose.md` Phase 3.4。HTML コメント sentinel は grep-matchable を維持しつつ user-visible 末尾を `✅` メッセージに固定。
+---
 
-**Step 4 (terminal gate)**: Pre-check list を場面 (b) mode で再実行 — Item 1-3 全 `YES` なら停止可、`NO` 残存時は manual 停止して `hooks/workflow-incident-emit.sh` ヘルパー経由で `workflow_incident` を emit。
+## E2E Output Minimization
 
-## Termination Logic
+ステップ間の出力は最小限に。各ステップは:
 
-### Phase 0.5 Completion Criteria
+- 開始時に 1 行 status（「ステップ N: 〜」）
+- bash / AskUserQuestion の結果
+- 完了時の最終レポート（ステップ 4.4 / 5.6）
 
-What / Why / Where がすべて clear なら完了。不足があれば clarifying questions を発行 (Phase 0.5 templates 参照)。
+中間説明・サマリ・guidance text は省略する。
 
-### Phase 2 Decomposition Decision Termination
+## Standalone Usage
 
-| User Selection / Path | Next Phase |
-|----------------------|------------|
-| (fast-path) Phase 0.3 で「いいえ、単一」明示選択 → Phase 2.2 skip | `skill: "rite:issue:create-register"` (`decomposition_decision_finalized: true` 経由、interview 結果 → Implementation Contract sections は下記 single Issue 行と同 mapping) |
-| Sub-Issue に分解する（推奨） | `skill: "rite:issue:create-decompose"` |
-| 単一 Issue として作成 | `skill: "rite:issue:create-register"` (interview 結果 → Implementation Contract sections は [`references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping`](./references/contract-section-mapping.md#step-3-interview-perspective--target-sections-mapping) で mapping) |
+`/rite:issue:create` 単独で動作する。Issue 作成後に作業を開始するには `/rite:issue:start {issue_number}` を実行する。
+
+## Error Handling
+
+- `gh repo view` 失敗 → エラー、認証確認を案内
+- Projects 未設定 → warning、Projects 追加を skip
+- Issue 作成失敗 → AskUserQuestion で「再試行 / 手動作成 / 中止」
+- 親-子リンク失敗 → warning、後で手動リンクを案内

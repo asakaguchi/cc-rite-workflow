@@ -227,7 +227,7 @@ Issue の内容に矛盾があります:
 この計画で進めますか？
 ```
 
-**Note**: For the full plan template including the "参考実装" section, see [implementation-plan.md](../../../commands/issue/implementation-plan.md) Phase 3.3.
+**Note**: For the full plan template including the "参考実装" section, see [`commands/issue/start.md`](../../../commands/issue/start.md) ステップ 3 (実装計画) — 旧 `implementation-plan.md` Phase 3.3 は start.md に統合。
 
 ---
 
@@ -310,9 +310,9 @@ git symbolic-ref ... || git remote show origin ... || echo "main"
 
 ✅ Good: Explicit error with guidance
 git symbolic-ref ... || {
-  echo "エラー: デフォルトブランチを検出できません"
-  echo "rite-config.yml で branch.base を設定してください"
-  exit 1
+ echo "エラー: デフォルトブランチを検出できません"
+ echo "rite-config.yml で branch.base を設定してください"
+ exit 1
 }
 
 ❌ Bad: Scope silently changes
@@ -321,9 +321,9 @@ git diff origin/develop...HEAD || git diff HEAD || lint entire project
 
 ✅ Good: Fail and explain
 git diff origin/develop...HEAD || git diff develop...HEAD || {
-  echo "エラー: 変更ファイルを特定できません"
-  echo "明示的にパスを指定してください: /rite:lint <path>"
-  exit 1
+ echo "エラー: 変更ファイルを特定できません"
+ echo "明示的にパスを指定してください: /rite:lint <path>"
+ exit 1
 }
 ```
 
@@ -470,12 +470,12 @@ These conventions apply to authoring Markdown files loaded by the Claude Code Sk
 
 ```text
 NG pattern (demonstration — do not write this in prose):
-  backtick + bang + closing backtick (bang-backtick adjacency, no trailing token)
+ backtick + bang + closing backtick (bang-backtick adjacency, no trailing token)
 
 OK patterns:
-  `if ! cmd`
-  `if ! ...`
-  `if ! command -v foo`
+ `if ! cmd`
+ `if ! ...`
+ `if ! command -v foo`
 ```
 
 **Rules**:

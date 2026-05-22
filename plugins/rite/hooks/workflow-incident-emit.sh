@@ -1,7 +1,7 @@
 #!/bin/bash
 # rite workflow - Workflow Incident Sentinel Emitter (#366)
 #
-# Generates a sentinel pattern that the orchestrator (start.md Phase 5.4.4.1)
+# Generates a sentinel pattern that the orchestrator (start.md ステップ 8.5)
 # detects via context grep to auto-register workflow incidents as Issues.
 #
 # Sentinel format (root_cause_hint is optional and entirely omitted when empty):
@@ -20,6 +20,11 @@
 #                        | wiki_ingest_skipped | wiki_ingest_failed | wiki_ingest_push_failed
 #                        | gitignore_drift | cross_session_takeover_refused | legacy_state_corrupt
 #                        | projects_status_update_failed | projects_status_in_review_missing
+#                        | issue_branch_link_failed | local_wm_update_lock_failed
+#                        | body_shrinkage_guard_tripped | issue_body_fetch_failed
+#                        | git_push_failed | pr_create_failed | parent_close_failed
+#                        | sub_issue_zero_iteration_loop | sub_issue_loop_abort
+#                        | state_root_toctou_race
 #   --details          one-line incident description (required)
 #   --root-cause-hint  optional cause hypothesis (omitted from output if empty)
 #   --pr-number        PR number for iteration_id (defaults to 0 when not yet created)
@@ -34,7 +39,7 @@
 #
 # Notes:
 #   - Output goes to stdout by default so the line is captured into the
-#     orchestrator's conversation context where Phase 5.4.4.1 grep detects it.
+#     orchestrator's conversation context where ステップ 8.5 grep detects it.
 #     **Caller-side stderr redirect is permitted** (verified-review cycle 38 F-07 fix):
 #     hooks like `_emit-cross-session-incident.sh` route the sentinel via stderr
 #     (`bash workflow-incident-emit.sh ... >&2`) when the caller chain prefers
@@ -79,8 +84,18 @@ case "$TYPE" in
   gitignore_drift) ;;
   cross_session_takeover_refused|legacy_state_corrupt) ;;
   projects_status_update_failed|projects_status_in_review_missing) ;;
+  # Issue / branch lifecycle (start.md ステップ 1-3, create.md ステップ 5)
+  issue_branch_link_failed|local_wm_update_lock_failed) ;;
+  body_shrinkage_guard_tripped|issue_body_fetch_failed) ;;
+  # PR lifecycle (start.md ステップ 6-8)
+  git_push_failed|pr_create_failed|parent_close_failed) ;;
+  # Sub-Issue bulk creation (create.md ステップ 5.3-5.4)
+  sub_issue_zero_iteration_loop|sub_issue_loop_abort) ;;
+  # Distinct from gh_pr_view_failed: STATE_ROOT vanished between existence check
+  # and cd (unmount, chmod, deletion) — different root cause, different remediation.
+  state_root_toctou_race) ;;
   *)
-    echo "ERROR: Invalid --type: $TYPE (expected: skill_load_failure | hook_abnormal_exit | manual_fallback_adopted | wiki_ingest_skipped | wiki_ingest_failed | wiki_ingest_push_failed | gitignore_drift | cross_session_takeover_refused | legacy_state_corrupt | projects_status_update_failed | projects_status_in_review_missing)" >&2
+    echo "ERROR: Invalid --type: $TYPE (expected: skill_load_failure | hook_abnormal_exit | manual_fallback_adopted | wiki_ingest_skipped | wiki_ingest_failed | wiki_ingest_push_failed | gitignore_drift | cross_session_takeover_refused | legacy_state_corrupt | projects_status_update_failed | projects_status_in_review_missing | issue_branch_link_failed | local_wm_update_lock_failed | body_shrinkage_guard_tripped | issue_body_fetch_failed | git_push_failed | pr_create_failed | parent_close_failed | sub_issue_zero_iteration_loop | sub_issue_loop_abort | state_root_toctou_race)" >&2
     exit 1
     ;;
 esac
@@ -92,7 +107,7 @@ fi
 
 # --- Sentinel construction ---
 # Strip control characters and semicolons from free-text fields so the single-line
-# sentinel format stays parseable by Phase 5.4.4.1's grep.
+# sentinel format stays parseable by ステップ 8.5's grep.
 #
 # `tr -d '[:cntrl:]'` strips all control characters (newline / CR / tab / BEL / DEL etc.)
 # to match `_emit-cross-session-incident.sh` fallback path's superset behavior
@@ -105,7 +120,10 @@ sanitize() {
 DETAILS_SANITIZED=$(sanitize "$DETAILS")
 HINT_SANITIZED=$(sanitize "$ROOT_CAUSE_HINT")
 
-EPOCH=$(date +%s)
+# A date failure (broken PATH, missing busybox) would abort the emit itself,
+# and the caller's `|| true` would then erase the incident sentinel entirely.
+# Surface the degraded path so triagers know the iteration_id timestamp is fake.
+EPOCH=$(date +%s 2>/dev/null) || { EPOCH="0"; echo "[rite] WARNING: workflow-incident-emit: date failed; iteration_id epoch=0 (timestamp will read 1970-01-01 in triage)" >&2; }
 ITERATION_ID="${PR_NUMBER}-${EPOCH}"
 
 if [[ -n "$HINT_SANITIZED" ]]; then

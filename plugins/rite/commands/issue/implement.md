@@ -8,7 +8,7 @@ This module handles the actual implementation work, commits, pushes, and checkli
 
 ## 5.1 Implementation Work
 
-Perform actual implementation work following the implementation plan approved in Phase 3.
+Perform actual implementation work following the implementation plan approved in `start.md` ステップ 3 (実装計画).
 
 > **Reference**: Apply the Phase 5.1 checklist from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
 > In particular, check `simplicity_enforcement`, `scope_discipline`, and `dead_code_hygiene`.
@@ -134,7 +134,7 @@ Record baseline exit code. Existing failures are logged but do not block.
 
 **Step 2: Extract acceptance criteria**
 
-Extract from Issue body (use body from Phase 0.1). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。スケルトン生成をスキップします`, record skip stub in work memory, and skip to 5.1.0.
+Extract from Issue body (use body from `start.md` ステップ 1.1 Issue 情報取得, retained in conversation context). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。スケルトン生成をスキップします`, record skip stub in work memory, and skip to 5.1.0.
 
 **Heading match rules**: Match any of the following headings (case-insensitive, level 2 `##`):
 
@@ -196,7 +196,7 @@ Execute parallel implementation when **all** of the following conditions are met
 
 **Independent task determination:**
 
-Analyze the "files to change" from the implementation plan (Phase 3) and determine independence using the following criteria:
+Analyze the "files to change" from the implementation plan (`start.md` ステップ 3) and determine independence using the following criteria:
 
 | Criterion | Determined as Independent | Determined as Dependent |
 |-----------|--------------------------|------------------------|
@@ -327,7 +327,7 @@ Use sequential implementation when: `parallel.enabled: false`, complexity S or b
 
 After completing each implementation step, re-evaluate the remaining steps before proceeding to the next one. This follows the "tackle the next most obvious problem" strategy from autonomous agent patterns.
 
-**When to execute**: After every step completion when the plan uses the dependency graph format (Phase 3.3 table with `depends_on` column). Skip if the plan was skipped in Phase 3.4 or if the plan lacks a `depends_on` column (pre-existing numbered list format).
+**When to execute**: After every step completion when the plan uses the dependency graph format (`start.md` ステップ 3.3 plan table with `depends_on` column). Skip if the plan was skipped at `start.md` ステップ 3.4 user confirmation, or if the plan lacks a `depends_on` column (pre-existing numbered list format).
 
 **Relationship with parallel implementation (5.1.0.1-5.1.0.4)**: When parallel implementation is active, execute the re-evaluation checkpoint **after each parallel batch completes** (not after each individual parallel task). The batch completion triggers dependency state update, and newly unblocked steps are candidates for the next parallel batch.
 
@@ -413,7 +413,7 @@ After completing each implementation step, re-evaluate the remaining steps befor
 
    **When threshold exceeded**:
    1. **Discover Oracle and re-decompose**: Follow [Bottleneck Detection Reference](../../references/bottleneck-detection.md) — discover Oracle (Priority 1→2→3), then re-decompose step into sub-steps `S{n}.1`, `S{n}.2`, etc.
-   2. **Update plan**: Insert sub-steps into the dependency graph, replacing the original step. Update the implementation plan in work memory per [3.5.1 Mid-Implementation Replanning](./implementation-plan.md#351-mid-implementation-replanning-triggered-by-bottleneck-detection)
+   2. **Update plan**: Insert sub-steps into the dependency graph, replacing the original step. Update the implementation plan in work memory per [Step Re-decomposition Procedure](../../references/bottleneck-detection.md#step-re-decomposition-procedure)
    3. **Display and record**: Use the bottleneck display format (see below). Add entry to work memory "ボトルネック検出ログ" section at next bulk update (commit time)
    4. **Continue**: Execute the first sub-step (`S{n}.1`) — do NOT re-evaluate the parent step
 
@@ -539,7 +539,7 @@ The section extends from the matched heading to the next `##` heading or end of 
 - `verification.acceptance_criteria_check` is `false`
 - Issue body does not contain an acceptance criteria section (none of the above headings found)
 
-**Issue body retrieval**: Use the Issue body already obtained in Phase 0.1 (retained in conversation context). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。受入条件チェックをスキップします` and skip to 5.1.0.7 (then 5.1.1).
+**Issue body retrieval**: Use the Issue body already obtained at `start.md` ステップ 1.1 Issue 情報取得 (retained in conversation context). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。受入条件チェックをスキップします` and skip to 5.1.0.7 (then 5.1.1).
 
 **Check procedure:**
 
@@ -597,7 +597,7 @@ From the implementation just completed, extract user-facing identifiers that may
 | Renamed / added / removed commands | `/rite:issue:start`, slash-command names |
 | Renamed / added / removed config keys | `rite-config.yml` keys (`branch.base`, `wiki.enabled`) |
 | Renamed / added / removed file paths | Section file paths a user copies into their project |
-| Renamed / added / removed phase / workflow names | `Phase 5.4`, `review-fix loop` |
+| Renamed / added / removed phase / workflow names | `start.md ステップ 7.2`, `review-fix loop` |
 | Renamed / added / removed public function / hook names | hook script names, exported helpers |
 
 Use the work memory's `決定事項・メモ` and the diff itself as the source. Skip identifiers that are clearly internal.
@@ -733,7 +733,7 @@ git push -u origin {branch_name}
 
 #### 5.1.1.1 Issue Body Checklist Update
 
-**Execution condition**: Execute only when Issue body checklist was extracted and retained in Phase 3.6.
+**Execution condition**: Execute only when Issue body checklist was extracted and retained at `start.md` ステップ 3.5 (Issue Body Checklist 更新).
 
 **Update as each task is completed**. Immediately update the Issue body checklist as implementation, test, and documentation tasks are completed.
 
@@ -848,7 +848,7 @@ Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../
 
 ```bash
 WM_SOURCE="implement" \
-  WM_PHASE="phase5_lint" \
+  WM_PHASE="lint" \
   WM_PHASE_DETAIL="品質チェック準備" \
   WM_NEXT_ACTION="rite:lint を実行" \
   WM_BODY_TEXT="Post-implementation. Proceeding to lint." \
@@ -869,8 +869,8 @@ if parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_i
   :
 else
   rc=$?
-  echo "ERROR: state-read.sh failed (rc=$rc) for --field parent_issue_number in Phase 5.1.2" >&2
-  echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_1_2_parent_issue; rc=$rc" >&2
+  echo "ERROR: state-read.sh failed (rc=$rc) reading parent_issue_number for parent progress sync" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=parent_progress_sync; rc=$rc" >&2
   echo "RESUME_HINT: state-read.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2
   exit 1
 fi
@@ -966,7 +966,7 @@ Record progress in a comment on the parent Issue (completed child Issues, progre
 
 **5.1.2.3 Remaining Child Issues Check**
 
-Check the state of remaining child Issues with `trackedIssues` and calculate `remaining_count`. Full child Issue completion check is performed in Phase 5.7.
+Check the state of remaining child Issues with `trackedIssues` and calculate `remaining_count`. Full child Issue completion check is performed in start.md ステップ 8.4 (parent close judgement).
 
 **After 5.1.1 commit/push completion:**
 
@@ -975,15 +975,15 @@ Check the state of remaining child Issues with `trackedIssues` and calculate `re
 3. **Update local work memory** (`.rite-work-memory/issue-{n}.md`) — see 5.1.1.3 above
 4. **CRITICAL: Initialize flow state and invoke lint** (atomic pair - MUST execute both):
 
-   > **Note**: All flow state writes use `flow-state-update.sh` which handles atomic write (PID-based temp file + `mv`) internally to prevent race conditions with concurrent hook shell processes (stop-guard, pre-compact).
+   > **Note**: All flow state writes use `flow-state-update.sh` which handles atomic write (PID-based temp file + `mv`) internally to prevent race conditions with concurrent hook shell processes (e.g. pre-compact, post-compact, session-start, session-end, post-tool-wm-sync, cleanup-work-memory).
 
    **4a**: Create state file:
 
    ```bash
    bash {plugin_root}/hooks/flow-state-update.sh create \
-     --phase "phase5_lint" --issue {issue_number} --branch "{branch_name}" \
+     --phase "lint" --issue {issue_number} --branch "{branch_name}" \
      --pr 0 \
-     --next "After rite:lint returns: [lint:success/skipped]->Phase 5.2.1 (checklist). [lint:error]->fix and re-invoke. [lint:aborted]->Phase 5.6. Do NOT stop."
+     --next "After rite:lint returns: [lint:success/skipped]->start.md ステップ 6 (PR creation). [lint:error]->fix and re-invoke. [lint:aborted]->start.md ステップ 8.6 (completion report). Do NOT stop."
    ```
 
    **4b**: **Immediately** invoke `rite:lint` via Skill tool (following the flow continuation principle, stopping is prohibited)

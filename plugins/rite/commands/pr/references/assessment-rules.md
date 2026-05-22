@@ -144,7 +144,7 @@ Return: total_findings (if >0, `/rite:pr:fix` required), evaluation, review_mode
 
 **Red important constraint:**
 
-The caller (`/rite:issue:start` Phase 5.5) **mechanically** invokes `/rite:pr:fix` when `total_findings > 0` or `evaluation != "マージ可"`, **regardless of AI judgment**.
+The caller (`/rite:issue:start` ステップ 7 review-fix loop) **mechanically** invokes `/rite:pr:fix` when `total_findings > 0` or `evaluation != "マージ可"`, **regardless of AI judgment**.
 
 The following decisions MUST NOT be made by `/rite:pr:review`:
 - "The findings are minor, so no action is needed"

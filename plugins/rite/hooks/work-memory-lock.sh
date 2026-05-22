@@ -25,12 +25,25 @@ acquire_wm_lock() {
     if [ "$i" -ge "$timeout" ]; then
       # Stale lock detection: check mtime > threshold
       if [ -d "$lockdir" ]; then
-        local lock_mtime lock_age
-        lock_mtime=$(stat -c %Y "$lockdir" 2>/dev/null || stat -f %m "$lockdir" 2>/dev/null)
+        local lock_mtime lock_age stat_err
+        stat_err=$(mktemp 2>/dev/null) || stat_err=""
+        # GNU and BSD stat have different flags; try GNU first, fall through to BSD.
+        # Both failing on the same call means staleness cannot be computed —
+        # surface a WARNING because a permanent stat failure (BusyBox / NFS path
+        # / chmod 000) would otherwise look indistinguishable from "fresh lock".
+        # Note: bash truncates `$file` on each `2>` redirection, so when both
+        # stats fail (e.g., BusyBox without either flag), only the second
+        # stat's stderr remains in `stat_err`. The first stat's "illegal option"
+        # message is overwritten — usually fine because the second stat's
+        # error is enough to diagnose "stat broken on this platform".
+        lock_mtime=$(stat -c %Y "$lockdir" 2>"${stat_err:-/dev/null}" || stat -f %m "$lockdir" 2>"${stat_err:-/dev/null}")
         if [ -z "$lock_mtime" ] || [ "$lock_mtime" = "0" ]; then
-          # stat failed on both platforms — cannot determine age, skip stale detection
+          echo "[rite] WARNING: acquire_wm_lock: stat failed on $lockdir — staleness undetectable, treating as fresh lock" >&2
+          [ -n "$stat_err" ] && [ -s "$stat_err" ] && head -3 "$stat_err" | sed 's/^/  /' >&2
+          [ -n "$stat_err" ] && rm -f "$stat_err"
           return 1
         fi
+        [ -n "$stat_err" ] && rm -f "$stat_err"
         lock_age=$(( $(date +%s) - lock_mtime ))
         if [ "$lock_age" -gt "$WM_LOCK_STALE_THRESHOLD" ]; then
           # Check PID file: if process is still alive, lock is not stale.

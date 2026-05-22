@@ -221,11 +221,10 @@ fi
 # This is the regression check: if a future change introduces a direct call,
 # this TC fails immediately.
 # --------------------------------------------------------------------------
-echo "TC-010: AC-3 baseline — start.md and parent-routing.md must pass"
+echo "TC-010: AC-3 baseline — start.md must pass (single baseline file after parent-routing consolidation)"
 rc=0
 output=$(bash "$TARGET" \
-  "$REPO_ROOT/plugins/rite/commands/issue/start.md" \
-  "$REPO_ROOT/plugins/rite/commands/issue/parent-routing.md" 2>&1) || rc=$?
+  "$REPO_ROOT/plugins/rite/commands/issue/start.md" 2>&1) || rc=$?
 if [ "$rc" -eq 0 ]; then
   pass "AC-3 baseline: in-scope files have 0 direct gh issue create invocations"
 else

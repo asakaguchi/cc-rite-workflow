@@ -82,10 +82,10 @@ if ! [[ "$PARENT_NUMBER" =~ ^[0-9]+$ ]] || ! [[ "$CHILD_NUMBER" =~ ^[0-9]+$ ]]; 
 fi
 
 # Reject unsubstituted Markdown placeholders (e.g. literal "{owner}" / "{repo}" /
-# "{parent_issue_number}"). Caller commands such as create-decompose.md and
-# parent-routing.md are documented as Markdown templates whose `{name}` tokens
-# Claude must substitute with real values before running bash. Without this
-# guard, a forgotten substitution would surface much later as an opaque
+# "{parent_issue_number}"). Caller commands such as `commands/issue/create.md`
+# document this script as a Markdown template whose `{name}` tokens Claude must
+# substitute with real values before running bash. Without this guard, a
+# forgotten substitution would surface much later as an opaque
 # "Could not resolve to a Repository" GraphQL error after every parent/child
 # resolution attempt fails. Fail-fast here so the issue is unambiguous.
 #
@@ -253,7 +253,12 @@ while [ "$attempt" -lt "$MAX_RETRIES" ]; do
       final_err="$gql_errors"
       if is_retryable_error "$final_err" && [ "$attempt" -lt "$MAX_RETRIES" ]; then
         add_warning "addSubIssue retry $attempt/$MAX_RETRIES after error: ${final_err:0:120}"
-        sleep "$delay"
+        # A non-zero sleep return likely means SIGINT — bail out so the final
+        # warning reads as "user-cancelled" instead of "auth/rate-limit failure".
+        if ! sleep "$delay"; then
+          add_warning "addSubIssue retry interrupted (sleep returned non-zero, likely SIGINT)"
+          break
+        fi
         delay=$((delay * 2))
         continue
       fi
@@ -270,7 +275,10 @@ while [ "$attempt" -lt "$MAX_RETRIES" ]; do
   fi
   if is_retryable_error "$final_err" && [ "$attempt" -lt "$MAX_RETRIES" ]; then
     add_warning "addSubIssue retry $attempt/$MAX_RETRIES after error: ${final_err:0:120}"
-    sleep "$delay"
+    if ! sleep "$delay"; then
+      add_warning "addSubIssue retry interrupted (sleep returned non-zero, likely SIGINT)"
+      break
+    fi
     delay=$((delay * 2))
     continue
   fi

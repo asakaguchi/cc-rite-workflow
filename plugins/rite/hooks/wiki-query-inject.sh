@@ -47,11 +47,11 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Resolve project root (git root anchored). Matches session-start.sh /
-# _resolve-schema-version.sh / notification.sh / stop-create-interview-block.sh
-# convention; `$PWD`-based rite-config.yml lookup would silently miss the
-# config file when this script is invoked from a subdirectory (Issue #976).
-# This script is a CLI tool (not a Claude Code hook), so $PWD is used in place
-# of the stdin-supplied CWD that hook scripts receive.
+# _resolve-schema-version.sh / notification.sh convention. `$PWD`-based
+# rite-config.yml lookup would silently miss the config file when this script
+# is invoked from a subdirectory. This script is a CLI tool (not a Claude Code
+# hook), so $PWD is used in place of the stdin-supplied CWD that hook scripts
+# receive.
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$PWD" 2>/dev/null) || STATE_ROOT="$PWD"
 
 # Tempfile paths declared up front, trap set up before any mktemp, cleanup on
@@ -289,7 +289,12 @@ if [[ "$branch_strategy" == "separate_branch" ]]; then
     echo "WARNING: mktemp failed for index.md stderr capture; falling back to /dev/null" >&2
     _index_err=""
   fi
-  if ! index_content=$(git show "${ref}:.rite/wiki/index.md" 2>"${_index_err:-/dev/null}"); then
+  # `if ! var=$(git show ...)` collapses the exit status to 0 inside the
+  # then-branch (POSIX `!`), masking the real git rc (128 = ref absent,
+  # 129 = object corrupt). if/else preserves the diagnostic rc.
+  if index_content=$(git show "${ref}:.rite/wiki/index.md" 2>"${_index_err:-/dev/null}"); then
+    :
+  else
     _index_rc=$?
     echo "WARNING: cannot read index.md from ref '$ref' (git show rc=$_index_rc)" >&2
     [ -n "$_index_err" ] && [ -s "$_index_err" ] && head -3 "$_index_err" | sed 's/^/  /' >&2
@@ -349,9 +354,9 @@ rows=$(printf '%s\n' "$index_content" | awk -F'|' '
     }
 
     if (path == "") next  # skip malformed rows
-    # cycle 11 HIGH F-02: unit separator \x1f (\037) を使用。tab では POSIX whitespace collapse
-    # により summary="" 等の empty field で下流の `IFS=$'\t' read` が confidence / updated を
-    # 入れ替える render corruption を起こす (stop-guard.sh cycle 10 F-01 と同型)。
+    # Unit separator (\x1f) prevents POSIX whitespace collapse: tab + summary=""
+    # would let downstream `IFS=$'\t' read` swap confidence / updated columns,
+    # rendering wrong metadata next to each Wiki entry.
     printf "%s\037%s\037%s\037%s\037%s\037%s\n", title, path, domain, summary, updated, confidence
   }
   /^## / && in_table == 1 { in_table=0 }

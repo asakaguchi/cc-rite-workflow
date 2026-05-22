@@ -108,12 +108,14 @@ if [ "$PROJECTS_ENABLED" != "true" ] || [ -z "$PROJECT_NUMBER" ]; then
 fi
 
 # --- Trap setup: tempfile orphan 防止 (EXIT/INT/TERM/HUP) ---
-# canonical pattern: hooks/post-compact.sh / start.md Step 1.5 / start-finalize.md Step 0 と対称化。
+# stderr-capture symmetry contract: this script and hooks/post-compact.sh form
+# the 2-site set for gh/jq stderr discrimination. Update both together if the
+# set changes.
 # path 先行宣言 → trap 先行設定 → mktemp の順序で race window を排除する。
 # loop 内 gql_err は毎 iteration mktemp + 末尾 rm の現行構造を維持しつつ、signal 経路では
 # 本 trap が一括 cleanup する (defense-in-depth)。
-# cycle 8 C7-F13 対応: gh repo view と gh pr list で別 tempfile (repo_view_err / pr_list_err) を
-# 用意し、前者の non-fatal warning を後者の redirect で truncate して消失させない。
+# gh repo view と gh pr list は別 tempfile (repo_view_err / pr_list_err) に分けて capture し、
+# 前者の non-fatal warning が後者の redirect で truncate されないようにする。
 repo_view_err=""
 pr_list_err=""
 gql_err=""
@@ -128,8 +130,8 @@ trap '_rite_watchdog_cleanup; exit 143' TERM
 trap '_rite_watchdog_cleanup; exit 129' HUP
 
 # --- Repo info ---
-# cycle 8 C7-F01/C7-F13 対応: gh repo view stderr を専用 tempfile (repo_view_err) に capture し、
-# 4-site (post-compact / watchdog / start.md / start-finalize.md) で対称化する。
+# gh repo view stderr is captured into a dedicated tempfile (repo_view_err) so
+# the discrimination matches the 2-site contract declared above.
 repo_view_err=$(mktemp /tmp/rite-watchdog-repo-err-XXXXXX) || repo_view_err=""
 if ! REPO_INFO=$(gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
   echo "ERROR: gh repo view failed" >&2
@@ -204,13 +206,12 @@ while IFS= read -r pr_entry; do
     continue  # No linked Issue
   fi
 
-  # Query Issue's current Status in the Project (gh failure を stderr capture して silent skip 防止)
-  # cycle 6 C6-F02 対応: jq の stderr も独立 capture し、4-site symmetry contract を完遂する。
-  # post-compact.sh / start.md Step 1.5 / start-finalize.md Step 0 と対称に gh / jq の stderr を区別。
+  # Query Issue's current Status in the Project. Capture gh and jq stderr into
+  # independent tempfiles so a failed pipeline can be triaged by side (gh vs jq).
   gql_err=$(mktemp /tmp/rite-watchdog-gql-err-XXXXXX) || gql_err=""
   jq_err=$(mktemp /tmp/rite-watchdog-jq-err-XXXXXX) || jq_err=""
-  # cycle 8 C7-F15 対応: inner `set -o pipefail` は line 38 の outer 設定で既に有効だが、defense-in-depth
-  # として明示し、将来 sub-shell 単独テスト時の挙動 (sub-shell が options を継承) を保証する。
+  # Inner `set -o pipefail` mirrors the outer setting; making it explicit keeps
+  # the inheritance contract obvious when this block is run in a sub-shell.
   if ! current_status=$(set -o pipefail; gh api graphql -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -244,8 +245,8 @@ query($owner: String!, $repo: String!, $number: Int!) {
   fi
   [ -n "$gql_err" ] && rm -f "$gql_err"
   [ -n "$jq_err" ] && rm -f "$jq_err"
-  # cycle 8 C7-F12 対応: loop iteration 末尾で変数を reset し、trap で stale path への再 rm を回避する。
-  # reconcile_err (line 244) と対称化。idempotent な rm でも symmetry 維持で意図的に reset する。
+  # Reset path variables after rm so the trap (signal cleanup) does not attempt
+  # a second rm on the now-stale path.
   gql_err=""
   jq_err=""
 
@@ -254,8 +255,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
     reconcile_stderr_oneline=""
     if [ "$RECONCILE" = "true" ]; then
       # stderr を tempfile に退避して失敗時の原因 (auth / rate limit / partial failure) を可視化する。
-      # 他 3-site (post-compact.sh / start.md / start-finalize.md) と対称化された stderr capture 契約。
-      # silent suppress (2>/dev/null) では RECONCILE_FAILURES non-zero 時に user は失敗原因を knowing できない。
+      # silent suppress (2>/dev/null) では RECONCILE_FAILURES non-zero 時に user が失敗原因を triage できない。
       reconcile_err=$(mktemp /tmp/rite-watchdog-reconcile-err-XXXXXX) || reconcile_err=""
       reconcile_json=$(bash "$PLUGIN_ROOT/scripts/projects-status-update.sh" "$(jq -n \
         --argjson issue "$issue_number" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \

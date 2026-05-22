@@ -152,7 +152,7 @@ mv "$TMP_WM" "$LOCAL_WM"
 
 | Issue Comment Field | Schema v1 Field | Default |
 |---------------------|-----------------|---------|
-| `- **フェーズ**: {value}` | `phase` | `"phase5_implementation"` |
+| `- **フェーズ**: {value}` | `phase` | `"implement"` (legacy: `"phase5_implementation"`) |
 | `- **フェーズ詳細**: {value}` | `phase_detail` | `"実装作業中"` |
 | `- **ブランチ**: {value}` | `branch` | `git branch --show-current` |
 | `### 次のステップ` → `- **コマンド**: {value}` | `next_action` | `""` |
@@ -187,27 +187,23 @@ Extract phase information from the work memory comment:
 - ブランチ: `/\*\*ブランチ\*\*: (.+)/`
 - 最終更新: `/\*\*最終更新\*\*: (.+)/`
 
-**Phase detail mapping:**
+**Phase detail mapping (flat workflow):**
 
-| フェーズ | フェーズ詳細 |
-|---------|------------|
-| `phase0` | Epic/Sub-Issues 判定 |
-| `phase1` | 品質検証 |
-| `phase2` | ブランチ作成・準備 |
-| `phase3` | 実装計画生成 |
-| `phase4` | 作業開始準備 |
-| `phase5_implementation` | 実装作業中 |
-| `phase5_lint` | 品質チェック中 |
-| `phase5_post_lint` | チェックリスト確認中 |
-| `phase5_execute_running` | 実行 phase 中 (Stop Hook → Implementation → Lint → Checklist) |
-| `phase5_post_execute` | PR 作成準備中 |
-| `phase5_pr` | PR 作成中 |
-| `phase5_review` | レビュー中 |
-| `phase5_post_review` | レビュー後処理 |
-| `phase5_fix` | レビュー修正中 |
-| `phase5_post_fix` | レビュー修正後処理 |
-| `phase5_post_ready` | Ready 処理後 |
-| `completed` | 完了 |
+| フェーズ | フェーズ詳細 | start.md step |
+|---------|------------|---------------|
+| `init` | Issue 取得・親子判定 | 1 |
+| `branch` | ブランチ作成 | 2 |
+| `plan` | 実装計画生成 | 3 |
+| `implement` | 実装作業中 | 4 |
+| `lint` | 品質チェック中 | 5 |
+| `pr` | PR 作成中 | 6 |
+| `review` | レビュー中 | 7.1 |
+| `fix` | レビュー修正中 | 7.2 |
+| `ready` | Ready 成功 (Projects Status In Review → 親 Issue 完結待ち) | 8.3 |
+| `ready_error` | Ready 失敗 (PR は作成済み、Ready 遷移のみ再試行) | 8.2 |
+| `completed` | 完了 | — |
+
+(legacy `phase0` / `phase1*` / `phase2*` / `phase3*` / `phase4` / `phase5_*` は 3.2 節 Legacy compatibility 表で routing する)
 
 ### 1.4 Validate Phase Information
 
@@ -270,10 +266,8 @@ else
   exit 1
 fi
 
-# 数値 fail-fast gate (writer/reader/resume 3 layer 対称化 doctrine): state file 改竄 / silent regression
-# 経路で non-numeric が混入した場合に WARNING を emit してから 0 に降格する。silent default 0 にすると
-# 他 caller (start.md Phase 5.7 / implement.md Phase 5.1.2 / pr/review.md Phase 5.3.8) と observability
-# が非対称になり、3 layer 対称化が破れる。
+# state file が non-numeric を含む場合に silent default で 0 に降格させると、改竄 / write race の
+# 兆候を握り潰すため、降格前に WARNING を emit して operator triage 可能にする。
 case "$parent_issue_number_raw" in
   ''|*[!0-9]*)
     echo "WARNING: parent_issue_number_raw is not numeric ('$parent_issue_number_raw'), defaulting to 0 (display なし)" >&2
@@ -288,13 +282,9 @@ else
   parent_issue_display="#${parent_issue_number_raw}"
 fi
 
-# verified-review F11-01 (CRITICAL): Bash tool 境界を越えた cross-boundary state transfer
-# (start.md Phase 5.7 / implement.md Phase 5.1.2 で確立された canonical pattern と統一)。
-# シェル変数 $parent_issue_display は次の Bash invocation には継承されないため、Step 2 の
-# display block で {parent_issue_display} placeholder を Claude が literal substitute するための
-# observable signal として stdout に echo する (start.md の Phase 5.7 (Parent Issue Completion)
-# / Workflow Termination "Why this routing relies on Phase 5.7 emit, not state re-read"
-# blockquote で確立された SoT 原則と整合)。
+# シェル変数 $parent_issue_display は次の Bash invocation には継承されないため、stdout の
+# [CONTEXT] 行として echo し、後続 Bash block で Claude が literal substitute できる
+# observable signal にする (state re-read だと Bash 境界後に再 lookup が必要で経路が増える)。
 echo "[CONTEXT] PARENT_ISSUE_DISPLAY=$parent_issue_display"
 ```
 
@@ -367,30 +357,18 @@ fi
 
 ### 3.0.1 Restore Flow State Active Flag
 
-Ensure flow-state has `active: true` so the prompt-side `Sub-skill Return Protocol` (in invoked commands like `rite:issue:start` / `rite:issue:implement`) can detect "in-flight" workflows and resume Pre-write/Mandatory After scaffolding. Without this, the resumed sub-skill sees `active: false` (or missing state) and treats the run as a fresh start, skipping recovery scaffolding (root cause of Issue #79's resume-session variant).
+Ensure flow-state has `active: true` so the prompt-side `Sub-skill Return Protocol` (in invoked commands like `rite:issue:start` / `rite:issue:implement`) can detect "in-flight" workflows and resume Pre-write/Mandatory After scaffolding. Without this, the resumed sub-skill sees `active: false` (or missing state) and treats the run as a fresh start, skipping recovery scaffolding.
 
-**Note (PR #675 で stop-guard.sh は撤去済み)**: 本 phase の以前の実装は撤去済みの `stop-guard.sh` hook が `Stop` イベントで `active: true` を見て premature stop を block する前提で書かれていたが、現在の defense は **prompt-side のみ** に集約されている。撤去後の defense 体系の整理は Decision Log D-03 で別 Issue 化されている (PR #688)。
+**Note**: The previous design relied on the now-removed `stop-guard.sh` hook checking `active: true` on the `Stop` event to block premature stops. The current defense lives entirely in prompt-side scaffolding.
 
 ```bash
-# PR #688 cycle 5 review (prompt-engineer 調査推奨): legacy state file への直接 jq write を
-# `flow-state-update.sh patch` 経由に変更。schema_version=2 環境 (multi-state) でも per-session file
-# が正しく更新され、AC-4 の write 側 path も統一される。
-#
-# PR #688 cycle 6 fix (F-01 CRITICAL + F-02 HIGH): patch mode は `--phase` / `--next` が必須引数のため、
-# self-patch 形式に変更する。state-read.sh で **現在の** phase/next_action を読み取り、それを
-# patch filter に渡すことで「他フィールドは保持しつつ active のみ true に戻す」semantics を維持する。
-# 旧 cycle 5 実装は --phase/--next 不在で flow-state-update.sh が exit 1 silent regression し、
-# `--if-exists` が file 不在 path しかカバーしないため Issue #79 の resume-session variant を再導入していた。
-# `--if-exists` で flow-state file (legacy or per-session) が存在する場合のみ patch する
-# (不在時は invoked command が create mode で初期化するため no-op)。
-# Note: flow-state-update.sh patch mode は --active 以外に --session を取り、updated_at を自動 set
-# する。`error_count = 0` のリセットは patch mode の default 挙動 (preserve-error-count 未指定時) で
-# 旧実装と同等にカバーされる。
-# PR #688 cycle 18 fix (F-03 MEDIUM): bash block を helper script に抽出。
-# resume-active-flag-restore.test.sh の TC-1.2 / TC-3.2 が tautology (test 自身が `[ -z ]` を計算し
-# その結果を assert) になっていた問題を解消するため、Phase 3.0.1 のロジック全体を helper に
-# 移し、test が helper の exit code と side effect を直接検証できるようにする。
-# 詳細は plugins/rite/hooks/resume-active-flag-restore.sh の冒頭コメントを参照。
+# legacy state file への直接 jq write ではなく `flow-state-update.sh patch` を経由することで、
+# schema_version=2 環境 (multi-state) でも per-session file が正しく更新される。
+# patch mode は `--phase` / `--next` を必須引数として取るため、self-patch 形式で
+# state-read.sh から現在値を読み込み、「他フィールドは保持しつつ active のみ true に戻す」
+# semantics を維持する。`--if-exists` を付けることで flow-state file (legacy or per-session)
+# が存在する場合のみ patch し、不在時は invoked command が create mode で初期化する。
+# 実体は helper script へ抽出済み: plugins/rite/hooks/resume-active-flag-restore.sh
 if ! bash {plugin_root}/hooks/resume-active-flag-restore.sh "{plugin_root}"; then
   echo "ERROR: failed to restore active flag, abort resume" >&2
   exit 1
@@ -399,7 +377,7 @@ fi
 
 **If flow-state does not exist**: The invoked command (e.g., `rite:issue:start`) will create it via `flow-state-update.sh create` in its own phases, so no action is needed here. The actual no-state handling lives in `hooks/resume-active-flag-restore.sh` — it reads `curr_phase` via `state-read.sh --field phase --default ""` and skips the `flow-state-update.sh patch` invocation entirely when `state-read.sh` returns an empty string, deferring to the invoked command's create-mode initialization.
 
-**Canonical enumeration of paths where `state-read.sh` returns the DEFAULT (empty string)** (verified-review cycle 35 F-08 → cycle 36 F-02/F-08 fix — extended from 4 to 7 paths to match implementation reality in `hooks/state-read.sh`. cycle 36 F-02/F-08 fix: line-number citations replaced with semantic anchor references per Wiki 経験則 "DRIFT-CHECK ANCHOR は semantic name 参照で記述する — line 番号禁止" — line numbers drift on minor insertion, semantic case label names do not):
+**Canonical enumeration of paths where `state-read.sh` returns the DEFAULT (empty string)** (matches the `case` labels in `hooks/state-read.sh`; references are by semantic anchor name, not line number, because line numbers drift on minor insertion):
 
 1. per-session **and** legacy files **both** absent (conjunctive — under schema_version=2, single-file absence alone does not trigger an empty result because state-read.sh falls back to legacy when per-session is absent)
 2. file is present but `phase` is null / missing (jq's `// $default` operator returns DEFAULT for null AND missing keys; `phase` is a string field so `false` does not occur in practice — see the boolean field caveat comment block in `state-read.sh` adjacent to its `// $default` operator usage)
@@ -407,9 +385,9 @@ fi
 4. file is empty (size 0) or corrupt JSON
 5. **schema_version=2 + valid sid + per-session absent + legacy present + legacy.session_id is a *foreign* session** (`foreign:*` classification) — reader's `foreign:*` case branch in `state-read.sh` emits `cross_session_takeover_refused` sentinel and returns DEFAULT
 6. **schema_version=2 + valid sid + per-session absent + legacy present + legacy.session_id jq parse fails** (`corrupt:*` classification) — reader's `corrupt:*` case branch in `state-read.sh` emits `legacy_state_corrupt` sentinel and returns DEFAULT
-7. **schema_version=2 + valid sid + per-session absent + legacy present + legacy.session_id is JSON-parseable but fails UUID validation** (`invalid_uuid:*` classification, cycle 36 F-16 added) — reader's `invalid_uuid:*` case branch in `state-read.sh` emits `legacy_state_corrupt` sentinel with `root_cause_hint=legacy_session_id_failed_uuid_validation_tampered_or_legacy_schema` and returns DEFAULT
+7. **schema_version=2 + valid sid + per-session absent + legacy present + legacy.session_id is JSON-parseable but fails UUID validation** (`invalid_uuid:*` classification) — reader's `invalid_uuid:*` case branch in `state-read.sh` emits `legacy_state_corrupt` sentinel with `root_cause_hint=legacy_session_id_failed_uuid_validation_tampered_or_legacy_schema` and returns DEFAULT
 
-The `--if-exists` flag passed to `flow-state-update.sh patch` inside the helper provides a defense-in-depth no-op safety net for the case where both per-session and legacy are absent at write time. Note that PR #688 cycle 30 F-01 fix added reader-symmetric legacy fallback to `_resolve_session_state_path` (in `flow-state-update.sh`), and PR #688 cycle 32 added a cross-session guard to that fallback. Under schema_version=2 + valid sid + per-session absent + legacy present + legacy.session_id matches current sid (or is empty/null), the writer routes to legacy and restores active=true. When legacy.session_id belongs to another session, the writer refuses takeover and emits `[CONTEXT] WORKFLOW_INCIDENT=1; type=cross_session_takeover_refused`, routing the helper to per-session path (which silent-skips with `--if-exists`, deferring to create-mode init). This eliminates both the cycle 22-29 AC-4 silent skip regression and the cycle 30 cross-session metadata corruption regression.
+The `--if-exists` flag passed to `flow-state-update.sh patch` inside the helper provides a defense-in-depth no-op safety net for the case where both per-session and legacy are absent at write time. `_resolve_session_state_path` (in `flow-state-update.sh`) carries a reader-symmetric legacy fallback with a cross-session guard: under schema_version=2 + valid sid + per-session absent + legacy present + legacy.session_id matches current sid (or is empty/null), the writer routes to legacy and restores active=true. When legacy.session_id belongs to another session, the writer refuses takeover and emits `[CONTEXT] WORKFLOW_INCIDENT=1; type=cross_session_takeover_refused`, routing the helper to per-session path (which silent-skips with `--if-exists`, deferring to create-mode init).
 
 ### 3.1 Switch Branch
 
@@ -486,31 +464,27 @@ After switching to the correct branch, display a summary of what has changed sin
 
 Execute command-specific resume processing based on the `コマンド` and `フェーズ` values from the work memory. The mapping is defined in the tables below for each command type.
 
-#### For rite:issue:start
+#### For rite:issue:start (flat workflow)
 
-| Interrupted phase | Resume action |
-|-------------------|---------------|
-| `phase0` | Resume from Phase 1 (Quality verification) |
-| `phase1` | Resume from Phase 2 (Work preparation) |
-| `phase2` | Resume from Phase 3 (Implementation plan generation) |
-| `phase3` | Resume from Phase 4 (Work start guidance) |
-| `phase4` | Resume from Phase 5 (End-to-end execution) |
-| `phase5_implementation` | Continue implementation work |
-| `phase5_lint` | Resume from lint |
-| `phase5_post_lint` | Resume from checklist confirmation |
-| `phase5_execute_running` | Resume from Phase 5.0-5.2.1 (Execute sub-skill) |
-| `phase5_post_execute` | Resume from Phase 5.0-5.2.1 (Execute sub-skill) |
-| `phase5_pr` | Resume from PR creation |
-| `phase5_review` | Resume from review |
-| `phase5_post_review` | Execute Phase 5.4.2 review result routing, then proceed to fix or completion |
-| `phase5_fix` | Continue review fix work |
-| `phase5_post_fix` | Execute Phase 5.4.5 fix result routing, then proceed to re-review or completion |
-| `phase5_post_ready` | Resume from Phase 5.5.1 (Issue Status update to "In Review") |
-| `completed` | Issue already completed — display status and offer next actions |
+`/rite:issue:start` は flat single-file workflow に統合済み。phase 名は `commands/issue/start.md` のステップ番号と 1:1 対応する 11 種 (init/branch/plan/implement/lint/pr/review/fix/ready/ready_error/completed):
+
+| Interrupted phase | Resume action | start.md step |
+|-------------------|---------------|---------------|
+| `init` | Resume from ステップ 1 (Issue 取得・親子判定) | 1 |
+| `branch` | Resume from ステップ 2 (ブランチ作成) | 2 |
+| `plan` | Resume from ステップ 3 (実装計画生成) | 3 |
+| `implement` | Continue implementation work from ステップ 4 (refer to implementation plan in work memory and continue from incomplete checklist items) | 4 |
+| `lint` | Resume from ステップ 5 (invoke `/rite:lint` via Skill tool) | 5 |
+| `pr` | Resume from ステップ 6 (invoke `/rite:pr:create` via Skill tool) | 6 |
+| `review` | Resume from ステップ 7.1 (invoke `/rite:pr:review` via Skill tool, then route on `[review:*]` pattern) | 7.1 |
+| `fix` | Resume from ステップ 7.2 (invoke `/rite:pr:fix` via Skill tool, then route on `[fix:*]` pattern) | 7.2 |
+| `ready` | Resume from ステップ 8.3 (Projects Status In Review → 親 Issue 完結判定 → 完了レポート; `/rite:pr:ready` は既に成功している) | 8.3 |
+| `ready_error` | Resume from ステップ 8 (Ready & 完結 — retry the Ready transition or finalise; do NOT re-invoke `/rite:pr:create`, the PR already exists) | 8 |
+| `completed` | Issue already completed — display status and offer next actions | — |
 
 #### 3.2.1 Resume Execution
 
-`/rite:resume` detects the phase value from work memory and invokes the corresponding command via the Skill tool:
+`/rite:resume` detects the phase value from flow state and invokes `rite:issue:start` via the Skill tool:
 
 ```
 Skill ツール呼び出し:
@@ -518,32 +492,35 @@ Skill ツール呼び出し:
   args: "{issue_number}"
 ```
 
-Each command checks work memory at the start of its own execution, and if present, resumes processing from the recorded phase.
+`start.md` は冒頭で flow state を読み、上表の Resume action 行に従って対応ステップから再開する。
 
-**phase5_* sub-phase resume details:**
+#### Legacy phase 名 (sub-skill chain era) compatibility
 
-| Sub-phase | Specific resume action |
-|-----------|----------------------|
-| `phase5_implementation` | Refer to the implementation plan in work memory and continue from incomplete tasks |
-| `phase5_lint` | Invoke `/rite:lint` via the Skill tool |
-| `phase5_post_lint` | Execute Phase 5.2.1 checklist confirmation, then proceed to PR creation |
-| `phase5_execute_running` | Invoke `rite:issue:start-execute` via Skill tool |
-| `phase5_post_execute` | Invoke `rite:issue:start-execute` via Skill tool |
-| `phase5_pr` | Invoke `/rite:pr:create` via the Skill tool |
-| `phase5_review` | Invoke `/rite:pr:review` via the Skill tool |
-| `phase5_post_review` | Execute Phase 5.4.2 review result routing (check review pattern in work memory context) |
-| `phase5_fix` | Invoke `/rite:pr:fix` via the Skill tool |
-| `phase5_post_fix` | Invoke `/rite:pr:fix` via the Skill tool (will detect completion and output pattern) |
-| `phase5_post_ready` | Execute Phase 5.5.1 Issue Status update to "In Review", then proceed to Phase 5.5.2 metrics and Phase 5.6 completion |
+旧 sub-skill chain アーキテクチャで使われていた phase 名が残った state file に対しては、以下の compat 表で routing する。新規 state file は flat workflow phase 名のみを書き込む:
+
+| Legacy phase | Compat routing |
+|-------------|----------------|
+| `phase0` / `phase1` / `phase2` / `phase3` / `phase4` / `phase5_implementation` / `phase5_stop_hook` / `phase5_post_stop_hook` / `phase5_execute_running` / `phase5_post_execute` | Resume from ステップ 4 (implement) — implementation context が最も近い |
+| `phase5_lint` / `phase5_post_lint` | Resume from ステップ 5 (lint) |
+| `phase5_publish_running` / `phase5_pr` | Resume from ステップ 6 (pr) |
+| `phase5_review` / `phase5_post_review` | Resume from ステップ 7.1 (review) |
+| `phase5_fix` / `phase5_post_fix` | Resume from ステップ 7.2 (fix) |
+| `phase5_finalize_running` / `phase5_post_ready` / `phase5_ready_error` / `phase5_status_in_review` / `phase5_metrics` / `phase5_completion` / `phase5_parent_close` / `phase5_post_parent_completion` | Resume from ステップ 8 (ready / status / metrics / parent close を実態に応じて選択) |
+| `phase1_5_parent` / `phase1_5_post_parent` / `phase1_6_child` / `phase1_6_post_child` | Resume from ステップ 1 (init — 親子判定をやり直す) |
+| `phase2_*` | Resume from ステップ 2 (branch) |
+| `phase3_*` | Resume from ステップ 3 (plan) |
 
 #### For rite:issue:create
 
-| Interrupted phase | Resume action |
-|-------------------|---------------|
-| `phase0` | Resume from Phase 0 (Task decomposition decision) |
-| `phase0_decompose` | Resume from Phase 0 decomposition processing |
-| `phase1` | Resume from Phase 1 (Issue creation) |
-| `phase2` | Resume from Phase 2 (Projects addition) |
+> **Note**: `/rite:issue:create` は flat workflow に統合されており、**中間 phase を flow-state に書き込まない設計**になっている。`create.md` は terminal な `phase=completed` のみを書き、Issue 作成・Projects 追加が完了するまでは flow-state を更新しない。途中中断した場合、ユーザは中断時の同じ入力で `/rite:issue:create` を再実行するのが canonical な復帰経路となる (idempotent: 既に作成済みの Issue は重複作成されないことが Phase 1.5 親子検出で担保されている)。
+>
+> 旧 sub-skill chain 時代に書き込まれた以下の legacy phase 名は forward-compat 経路で受理されるが、新規セッションでは出現しない:
+> - `phase0` (Task decomposition decision)
+> - `phase0_decompose` (Decomposition processing)
+> - `phase1` (Issue creation)
+> - `phase2` (Projects addition)
+>
+> これらの legacy phase が flow-state に残存している場合、`/rite:issue:create` を再実行することで terminal `completed` まで進む。
 
 #### For rite:pr:create
 

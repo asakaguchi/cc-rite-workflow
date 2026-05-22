@@ -12,7 +12,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 # Single source of truth for create_* lifecycle phase names (#501 HIGH).
-source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>/dev/null || true
+# 2>/dev/null は parser-level syntax error の場合のみ silent skip するため。
+# whitelist 自身が bash < 4.2 警告を出すため、source 失敗時の追加警告は不要。
+# fail-open 自体は session-end の主処理 (state 保存) を止めない設計 (#675 retire 後の方針)。
+source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>/dev/null \
+  || echo "[rite] WARNING: phase-transition-whitelist.sh source failed in session-end.sh; phase validation disabled for this session" >&2
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
@@ -29,15 +33,11 @@ fi
 # SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
-# Resolve active flow-state file path (Issue #680).
-# Returns the per-session file when schema_version=2 with a valid SID; otherwise legacy.
-#
-# Issue #749: stderr pass-through for diagnostic visibility, via canonical helper
-# `_mktemp-stderr-guard.sh`. 詳細は session-start.sh の同パターンを参照。
-# filter は state-read.sh cross-session guard の 3-pattern を `^ERROR:` で
-# superset 化した 4-pattern 拡張版 (resolver self-validation の ERROR: を捕捉)。
-# success arm でも tempfile を inspect して helper graceful-degrade 経路の WARNING
-# を silent drop しないようにする。
+# Resolve the active flow-state file: per-session for schema_version=2 with a
+# valid SID, otherwise legacy. Stderr is captured via the canonical
+# _mktemp-stderr-guard.sh helper (see session-start.sh for the same pattern) so
+# resolver WARNING/ERROR lines don't get silently dropped — even on the success
+# arm, where helper graceful-degrade paths still emit diagnostics.
 _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "session-end" \
   "resolve-flow-state-err" \
@@ -46,7 +46,28 @@ _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
 _resolve_failed=0
 STATE_FILE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
 if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
-  grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
+  # Mirror of post-compact.sh resolver stderr handler. The grep below accepts only
+  # WARNING:/ERROR:/jq:/indented continuation lines; any new prefix the resolver
+  # adds (INFO:/DIAG:/Notice:/...) would be silently dropped without the counter.
+  # RITE_DEBUG bypasses filtering entirely for triage.
+  if [ -n "${RITE_DEBUG:-}" ]; then
+    cat "$_resolve_err" >&2
+  else
+    # Use `grep -c ''` (matches every line, ignores trailing-newline differences)
+    # so the total agrees with the filter `grep -c` below. `wc -l` undercounts
+    # files without a trailing newline and would let `_resolve_err_dropped`
+    # go negative when every line matches the keep-filter.
+    _resolve_err_total=$(grep -c '' "$_resolve_err" 2>/dev/null) || _resolve_err_total=0
+    # `$(cmd || echo 0)` is unsafe here: grep -c on no-match writes "0" to stdout
+    # AND exits 1, so the `|| echo 0` appends a second "0" and the arithmetic
+    # evaluation below explodes. Assignment + `|| var=0` keeps the value clean.
+    _resolve_err_kept=$(grep -cE '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" 2>/dev/null) || _resolve_err_kept=0
+    grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
+    _resolve_err_dropped=$((${_resolve_err_total:-0} - ${_resolve_err_kept:-0}))
+    if [ "${_resolve_err_dropped:-0}" -gt 0 ]; then
+      echo "[rite] WARNING: ${_resolve_err_dropped} resolver stderr lines filtered (use RITE_DEBUG=1 for full output)" >&2
+    fi
+  fi
 fi
 if [ "$_resolve_failed" -eq 1 ]; then
   STATE_FILE="$STATE_ROOT/.rite-flow-state"
@@ -54,10 +75,22 @@ if [ "$_resolve_failed" -eq 1 ]; then
 fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 
-# Get current branch
-BRANCH=$(cd "$CWD" && git branch --show-current 2>/dev/null || echo "")
+# Get current branch. Capture git stderr so that corrupt .git / permission denied
+# / missing git binary surface a WARNING instead of collapsing into an empty
+# BRANCH (which would silently hide the issue number from the session summary).
+_br_err=$(mktemp 2>/dev/null) || _br_err=""
+_br_rc=0
+BRANCH=$(cd "$CWD" && git branch --show-current 2>"${_br_err:-/dev/null}") || _br_rc=$?
+if [ "$_br_rc" -ne 0 ]; then
+  echo "[rite] WARNING: session-end: git branch --show-current 失敗 (rc=$_br_rc — corrupt .git / permission denied / git unavailable の可能性)" >&2
+  [ -n "$_br_err" ] && [ -s "$_br_err" ] && head -3 "$_br_err" | sed 's/^/  /' >&2
+  BRANCH=""
+fi
+[ -n "$_br_err" ] && rm -f "$_br_err"
 
-# Check if on a feature branch with Issue number
+# Default-init ISSUE_NUMBER so `${ISSUE_NUMBER:+...}` expansions later in the
+# script don't trip `set -u` when the branch is not an issue branch.
+ISSUE_NUMBER=""
 if [[ "$BRANCH" =~ issue-([0-9]+) ]]; then
     ISSUE_NUMBER="${BASH_REMATCH[1]}"
     echo "rite: Saving final state for Issue #$ISSUE_NUMBER"
@@ -67,7 +100,10 @@ fi
 if [ -f "$STATE_FILE" ]; then
     # Session ownership check (#173): only deactivate own/legacy/stale state.
     # Other session's fresh state (within 2h) must not be modified.
-    _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="own"
+    # See pre-compact.sh: caller-side `2>/dev/null` would mute the corrupt-
+    # state WARNING that exists to flag state-overwrite risk against another
+    # active session.
+    _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE") || _ownership="own"
     if [ "$_ownership" = "other" ]; then
         # Another session's active state — do not modify
         echo "rite: skipping deactivation (state belongs to another session)" >&2
@@ -80,8 +116,23 @@ if [ -f "$STATE_FILE" ]; then
     # how to recover. session-end always proceeds with deactivation regardless.
     # Phase classification is delegated to phase-transition-whitelist.sh helpers as the
     # single source of truth (#501 HIGH).
-    _state_phase=$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null) || _state_phase=""
-    _state_active=$(jq -r '.active // false' "$STATE_FILE" 2>/dev/null) || _state_active="false"
+    # corrupt JSON を silent 流すと lifecycle WARN_MSG が空 phase で抑制され、user は
+    # create_*/cleanup_* の中断を知らないまま次セッションへ進む。stderr を capture して
+    # operator が原因にたどり着けるようにする。
+    _lifecycle_phase_err=$(mktemp 2>/dev/null) || _lifecycle_phase_err=""
+    _state_phase=$(jq -r '.phase // empty' "$STATE_FILE" 2>"${_lifecycle_phase_err:-/dev/null}") || _state_phase=""
+    if [ -n "$_lifecycle_phase_err" ] && [ -s "$_lifecycle_phase_err" ]; then
+        echo "rite: session-end: WARNING: jq parse of .phase failed (STATE_FILE may be corrupt) — lifecycle WARN suppressed" >&2
+        head -3 "$_lifecycle_phase_err" | sed 's/^/  /' >&2
+    fi
+    [ -n "$_lifecycle_phase_err" ] && rm -f "$_lifecycle_phase_err"
+    _lifecycle_active_err=$(mktemp 2>/dev/null) || _lifecycle_active_err=""
+    _state_active=$(jq -r '.active // false' "$STATE_FILE" 2>"${_lifecycle_active_err:-/dev/null}") || _state_active="false"
+    if [ -n "$_lifecycle_active_err" ] && [ -s "$_lifecycle_active_err" ]; then
+        echo "rite: session-end: WARNING: jq parse of .active failed (STATE_FILE may be corrupt)" >&2
+        head -3 "$_lifecycle_active_err" | sed 's/^/  /' >&2
+    fi
+    [ -n "$_lifecycle_active_err" ] && rm -f "$_lifecycle_active_err"
     _lifecycle_unfinished_kind=""
     if [ "$_state_active" = "true" ]; then
         if type rite_phase_is_create_lifecycle_in_progress >/dev/null 2>&1; then
@@ -107,9 +158,10 @@ if [ -f "$STATE_FILE" ]; then
         create)
             cat >&2 <<WARN_MSG
 ⚠️  rite: /rite:issue:create lifecycle was not completed (phase=$_state_phase).
-    No GitHub Issue was created. The sub-skill delegation flow
-    (create-interview → 0.6 → create-register/create-decompose) did not reach completion.
-    Re-run /rite:issue:create or use /rite:resume to recover.
+    `create_*` phase は legacy sub-skill chain 時代の遺物で、現在の flat workflow は
+    terminal phase=completed のみを書き込みます。この state file が残っているのは
+    旧形式のセッションが中断したまま終わったことを意味します。
+    /rite:resume または /rite:issue:create の再実行で回復できます。
 WARN_MSG
             ;;
         cleanup)
@@ -127,28 +179,42 @@ WARN_MSG
             ;;
     esac
 
-    # mktemp with PID-based fallback (consistent with stop-guard.sh)
+    # PID-based fallback so a broken mktemp (e.g. /tmp readonly) still produces
+    # a unique sibling path instead of clobbering the state file via a fixed name.
     TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
     # trap is inside this block: only active when STATE_FILE exists and TMP_FILE is created
     trap 'rm -f "$TMP_FILE" 2>/dev/null' EXIT TERM INT
+    # SessionEnd stderr は次セッションの会話 context に流入しない経路があるため、jq / mv 失敗を
+    # workflow-incident-emit に乗せても orchestrator から grep されない。代替として diag log に
+    # 持続化することで、次回 session-start の defensive reset が cause を surface できる。
+    _deact_jq_err=$(mktemp 2>/dev/null) || _deact_jq_err=""
     if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-       '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE"; then
-        mv "$TMP_FILE" "$STATE_FILE"
+       '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE" 2>"${_deact_jq_err:-/dev/null}"; then
+        _deact_mv_err=$(mktemp 2>/dev/null) || _deact_mv_err=""
+        if mv "$TMP_FILE" "$STATE_FILE" 2>"${_deact_mv_err:-/dev/null}"; then
+          :
+        else
+          _mv_rc=$?
+          rm -f "$TMP_FILE"
+          if command -v _log_flow_diag >/dev/null 2>&1; then
+            _log_flow_diag "session_end_mv_failed rc=$_mv_rc state=$STATE_FILE"
+          fi
+          echo "rite: session-end: mv deactivation state failed (rc=$_mv_rc)" >&2
+          [ -n "$_deact_mv_err" ] && [ -s "$_deact_mv_err" ] && head -3 "$_deact_mv_err" | sed 's/^/  /' >&2
+        fi
+        [ -n "$_deact_mv_err" ] && rm -f "$_deact_mv_err"
     else
-        # Intentionally not exit 1 here (unlike pre-compact.sh) — session-end
-        # prioritizes cleanup over strict error propagation.
-        # Issue #749: emit WARNING so the user knows the deactivate failed
-        # (mirrors pre-compact.sh diagnostic line-prefix `rite: <hook>: ...`).
-        # Without this, .active=false silently fails to be written and the
-        # next session-start defensive reset has no signal that recovery is
-        # needed (#475 / #608 follow-up).
-        # WARNING に state_file path を含めることで、Issue 番号が解決できない
-        # 経路 (detached HEAD / non-issue branch / git 未初期化) でも debug 情報
-        # が残る。`${ISSUE_NUMBER:+ (Issue #$ISSUE_NUMBER)}` で issue 番号は
-        # 解決できた場合のみ追記し、空の場合は `(Issue #...)` 部分そのものを省略する。
-        echo "rite: session-end: failed to deactivate state file: $STATE_FILE${ISSUE_NUMBER:+ (Issue #$ISSUE_NUMBER)}" >&2
+        _deact_jq_rc=$?
+        if command -v _log_flow_diag >/dev/null 2>&1; then
+            _log_flow_diag "session_end_jq_failed rc=$_deact_jq_rc state=$STATE_FILE"
+        fi
+        # state_file path を WARNING に含めることで、Issue 番号が解決できない経路 (detached HEAD /
+        # non-issue branch / git 未初期化) でも debug 情報を残せる。
+        echo "rite: session-end: WARNING: failed to deactivate state file (jq rc=$_deact_jq_rc): $STATE_FILE${ISSUE_NUMBER:+ (Issue #$ISSUE_NUMBER)}" >&2
+        [ -n "$_deact_jq_err" ] && [ -s "$_deact_jq_err" ] && head -3 "$_deact_jq_err" | sed 's/^/  /' >&2
         rm -f "$TMP_FILE"
     fi
+    [ -n "$_deact_jq_err" ] && rm -f "$_deact_jq_err"
 
     # AC-10 (Issue #680): clean up per-session flow-state file on session end.
     # Note: this block also runs after the jq deactivation `else` arm above —
@@ -163,17 +229,19 @@ WARN_MSG
     # Stale-file cleanup (long-running sessions / crash leftovers) is out of scope
     # for this Issue per Issue #680 §4.3 (handled by a follow-up).
     if [[ "$STATE_FILE" == *"/.rite/sessions/"*".flow-state" ]] && [ -f "$STATE_FILE" ]; then
-        rm -f "$STATE_FILE" 2>/dev/null || true
+        # Surface rm failure (readonly fs / permission denied) so the next
+        # session doesn't silently read stale state.
+        rm -f "$STATE_FILE" 2>/dev/null || echo "[rite] WARNING: session-end: failed to remove per-session state file: $STATE_FILE" >&2
     fi
 fi
 
 # Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes).
-# Mirrors the same find command in session-start.sh (which is the canonical source).
+# Mirrors the same find command in session-start.sh (the canonical source).
 # `-not -name '.rite-flow-state.legacy.*'` excludes the migration backup so it
-# remains the manual-recovery source of truth (#679, #747 cycle 4 CRITICAL).
-# DRY note: this cleanup is duplicated across session-start.sh and session-end.sh.
-# Future hardening: extract into a shared helper to prevent one-sided regressions
-# (the cycle 3 fix to session-start.sh missed this hook, surfacing as cycle 4 CRITICAL).
+# remains the manual-recovery source of truth.
+# DRY caveat: this cleanup is duplicated across session-start.sh and session-end.sh.
+# If you change one, change the other — past fixes to one-side-only have produced
+# CRITICAL regressions.
 if [ -d "$CWD" ]; then
     find "$CWD" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -not -name ".rite-flow-state.legacy.*" -type f -mmin +1 -delete 2>/dev/null || true
 fi

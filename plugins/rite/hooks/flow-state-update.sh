@@ -6,19 +6,23 @@
 # Usage:
 #   Create mode (full object with jq -n):
 #     bash plugins/rite/hooks/flow-state-update.sh create \
-#       --phase phase5_lint --issue 42 --branch "feat/issue-42-test" \
-#       --pr 0 --next "Proceed to Phase 5.2.1." [--active true]
+#       --phase lint --issue 42 --branch "feat/issue-42-test" \
+#       --pr 0 --next "Proceed to ステップ 6 (PR creation)." [--active true]
 #
 #   Patch mode (update fields in existing file):
 #     bash plugins/rite/hooks/flow-state-update.sh patch \
-#       --phase phase5_post_lint --next "Proceed to next phase." [--active true] [--if-exists] [--preserve-error-count]
+#       --phase pr --next "Proceed to ステップ 7 (review/fix)." [--active true] [--if-exists] [--preserve-error-count]
 #
 #   Increment mode (increment a numeric field):
 #     bash plugins/rite/hooks/flow-state-update.sh increment \
 #       --field implementation_round [--if-exists]
 #
 # Options:
-#   --phase                  Phase value (required for create/patch)
+#   --phase                  Phase value (required for create/patch). Flat enum:
+#                            init / branch / plan / implement / lint / pr /
+#                            review / fix / ready / ready_error / completed
+#                            (plus cleanup_* and ingest_* lifecycle phases —
+#                            see phase-transition-whitelist.sh for the full graph)
 #   --issue                  Issue number (create mode, default: 0)
 #   --branch                 Branch name (create mode, default: "")
 #   --pr                     PR number (create mode, default: 0)
@@ -324,7 +328,8 @@ done
 # (cycle 44 F-13) と対称な writer side validation として、数値/boolean 引数を allowlist で
 # 検証する。work-memory-update.sh の `_validate_numeric_yaml_value` と同型の defense-in-depth。
 # Issue title 等の dynamic 文字列が `--issue` に流入する経路があれば flow-state JSON 破壊で
-# stop-guard / phase-transition-whitelist hook の判定が壊れ workflow が hard abort する経路を防ぐ。
+# session-ownership / cross-session resolver / lifecycle hook の判定が壊れ workflow が
+# hard abort する経路を防ぐ。
 case "${ISSUE:-0}" in
   ''|*[!0-9]*) echo "ERROR: --issue must be non-negative integer (got: '$ISSUE')" >&2; exit 1 ;;
 esac
@@ -357,23 +362,31 @@ FLOW_STATE=$(_resolve_session_state_path "$EFFECTIVE_SCHEMA_VERSION" "$LEGACY_MO
 # Ensure parent directory exists for the new format. The path-based check below
 # is the single source of truth — `_resolve_session_state_path` already encodes
 # the (schema_version, legacy_mode, session_id) decision, so we just compare the
-# resolved path to the legacy fallback (review #686 F-04). Failures surface via
-# `_log_flow_diag` (symmetric with mv-failure path) rather than being silently
-# suppressed (review #686 F-05).
+# resolved path to the legacy fallback. Failures surface via `_log_flow_diag`
+# (symmetric with mv-failure path) rather than being silently suppressed.
 
-# cycle 48 F-01 (HIGH): writer/reader 対称化 doctrine (state-read.sh の `_rite_state_read_cleanup`
-# 関数 — `rm -f "${_classify_err:-}" "${_jq_err:-}"` ブロックと同型) に従い、atomic-cleanup 関数を
-# 3 変数 (TMP_STATE / _mkdir_err / _jq_err) に拡張し、`_mkdir_err` (本ファイル前段の dir-creation
-# block 内 mktemp) と `_jq_err` (create mode の PREV_PHASE 抽出 jq stderr 用 mktemp) を含む全
-# tempfile の lifecycle を cover する位置に trap を前倒し配置する。旧実装の trap (atomic write
-# block 直前の TMP_STATE 専用 cleanup) は TMP_STATE のみ cleanup で、`_mkdir_err` / `_jq_err` の
-# mktemp 〜 rm 区間で SIGINT/SIGTERM/SIGHUP 到達時に orphan tempfile が leak する非対称があった
-# (verified-review F-01 HIGH)。canonical pattern「パス先行宣言 → trap 先行設定 → mktemp」を踏襲する。
+# Atomic-cleanup trap covers the full tempfile lifecycle (mktemp → rm) for every
+# stderr capture and atomic-write site below. Variables are pre-declared so a
+# SIGINT/SIGTERM/SIGHUP arriving inside the mktemp→rm window does not leak
+# orphan files into the user's TMPDIR. Pattern: declare → trap → mktemp.
+# (Symmetric with state-read.sh `_rite_state_read_cleanup`.)
 TMP_STATE=""
 _mkdir_err=""
 _jq_err=""
+# Stderr tempfiles in the create-mode session-ownership block.
+_existing_active_err=""
+_updated_at_err=""
+# Per-mode jq + mv stderr tempfiles (create / patch / increment write paths).
+_create_mv_err=""
+_patch_jq_err=""
+_patch_mv_err=""
+_incr_jq_err=""
+_incr_mv_err=""
 _rite_flow_state_atomic_cleanup() {
-  rm -f "${TMP_STATE:-}" "${_mkdir_err:-}" "${_jq_err:-}"
+  rm -f "${TMP_STATE:-}" "${_mkdir_err:-}" "${_jq_err:-}" \
+        "${_existing_active_err:-}" "${_updated_at_err:-}" \
+        "${_create_mv_err:-}" "${_patch_jq_err:-}" "${_patch_mv_err:-}" \
+        "${_incr_jq_err:-}" "${_incr_mv_err:-}"
 }
 trap 'rc=$?; _rite_flow_state_atomic_cleanup; exit $rc' EXIT
 trap '_rite_flow_state_atomic_cleanup; exit 130' INT
@@ -400,7 +413,7 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
   if ! mkdir -p "$_flow_state_dir" 2>"${_mkdir_err:-/dev/null}"; then
     # _log_flow_diag is defined later in the file; inline the diag write here
     # because we exit before reaching that definition's call sites.
-    _diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
+    _diag_file="$STATE_ROOT/.rite-flow-state-diag.log"
     echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] flow_state_mkdir_failed path=$_flow_state_dir" >> "$_diag_file" 2>/dev/null || true
     echo "ERROR: failed to create $_flow_state_dir (permission denied / disk full / parent is a regular file?)" >&2
     if [ -n "$_mkdir_err" ] && [ -s "$_mkdir_err" ]; then
@@ -445,12 +458,12 @@ case "$MODE" in
       echo "ERROR: increment mode requires --field" >&2
       exit 1
     fi
-    # verified-review cycle 44 F-13 LOW (security Hypothetical exception):
-    # FIELD allowlist validation — state-read.sh:94 と writer/reader 対称化。
-    # 現 caller は commands/issue/start.md:748 で `implementation_round` をハードコードしているのみだが、
-    # FIELD は `_log_flow_diag "flow_state_jq_failed mode=increment field=$FIELD"` で .rite-stop-guard-diag.log
-    # に書き込まれるため、改行を含む FIELD で log 形式破壊が可能。helper API 単体としての defense-in-depth gap
-    # を埋めるため、識別子 (英数字 + _) のみ受理する。
+    # FIELD allowlist validation — state-read.sh と writer/reader 対称化。
+    # Current callers hardcode `implementation_round`, but FIELD is appended
+    # to the diag log via `_log_flow_diag "flow_state_jq_failed mode=increment
+    # field=$FIELD"`; an embedded newline would break the diag-log line format
+    # used by triage greps. Restrict to identifier syntax (letters + digits +
+    # underscore) so the diag log line shape stays predictable.
     if ! [[ "$FIELD" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
       echo "ERROR: invalid field name: $FIELD" >&2
       echo "  field name must match ^[a-zA-Z_][a-zA-Z0-9_]*\$ (state-read.sh と対称化)" >&2
@@ -488,7 +501,7 @@ if ! TMP_STATE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null); then
   # _log_flow_diag 関数は本ブロックの後段 (この case 文の直後) で定義されるため、ここでは inline で
   # diag log を書き込む。関数名 anchor で定義位置を semantic に参照する (cycle 43 F-02 で hardcoded
   # 行番号 L332 から関数名 anchor に置換)。
-  _diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
+  _diag_file="$STATE_ROOT/.rite-flow-state-diag.log"
   echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] tmp_state_mktemp_failed path=${FLOW_STATE}" >> "$_diag_file" 2>/dev/null || true
   unset _diag_file
   exit 1
@@ -512,15 +525,19 @@ fi
 # best-effort skip (cycle 41 F-14 と対称)。
 chmod 600 "$TMP_STATE" 2>/dev/null || true
 
-# F-05 (#636 cycle 6): mv 失敗 diag を stop-guard.sh 側の log_diag 経路と対称化。
-# stderr だけだと caller が stderr を suppress した場合に永続痕跡が消える。
-# 既存の .rite-stop-guard-diag.log を re-use (日付形式のみ揃える。ring buffer truncation は
-# stop-guard.sh 側 log_diag() の mapfile + ${_lines[@]: -50} に委譲する — 本関数は append only)。
-# (#636 cycle 12 F-01 対応: 旧 comment「ring buffer と日付形式を揃える」は mapfile truncation
-# を含まない実装と drift していたため修正。truncation は stop-guard.sh 次回起動時に発火する)
+# Persistent diag log: stderr alone is lost when callers suppress stderr, but
+# flow-state mv failures are exactly the cases triagers need to see post-hoc.
+# Ring-buffer the file in-process (last 50 lines kept) so the log never grows
+# unbounded — historically a separate hook owned truncation but no longer
+# exists, so append-only would now leak.
 _log_flow_diag() {
-  local diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
-  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $1" >> "$diag_file" 2>/dev/null || true
+  local diag_file="$STATE_ROOT/.rite-flow-state-diag.log"
+  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $1" >> "$diag_file" 2>/dev/null || return 0
+  if [ -f "$diag_file" ]; then
+    local _trimmed
+    _trimmed=$(tail -n 50 "$diag_file" 2>/dev/null) || return 0
+    printf '%s\n' "$_trimmed" > "$diag_file" 2>/dev/null || true
+  fi
 }
 
 case "$MODE" in
@@ -534,12 +551,36 @@ case "$MODE" in
     # into the helper so patch/increment also benefit.
     # Session ownership: overwrite protection for active state owned by another session
     if [[ -n "$SESSION" && -f "$FLOW_STATE" ]]; then
-      _existing_active=$(jq -r '.active // false' "$FLOW_STATE" 2>/dev/null) || _existing_active="false"
+      # Pass jq stderr through: silent fallback to "active=false" on corrupt
+      # JSON would let create-mode overwrite a peer session's active state.
+      _existing_active_err=$(mktemp 2>/dev/null) || _existing_active_err=""
+      if _existing_active=$(jq -r '.active // false' "$FLOW_STATE" 2>"${_existing_active_err:-/dev/null}"); then
+        :
+      else
+        _jq_rc=$?
+        _existing_active="false"
+        echo "WARNING: flow-state-update: jq read .active failed (rc=$_jq_rc) — treating as inactive" >&2
+        [ -n "$_existing_active_err" ] && [ -s "$_existing_active_err" ] && head -3 "$_existing_active_err" | sed 's/^/  /' >&2
+      fi
+      [ -n "$_existing_active_err" ] && rm -f "$_existing_active_err"
       if [[ "$_existing_active" == "true" ]]; then
-        _existing_sid=$(get_state_session_id "$FLOW_STATE" 2>/dev/null) || _existing_sid=""
+        # Pass get_state_session_id stderr through: a corrupt-state WARNING here
+        # signals possible overwrite of another active session.
+        _existing_sid=$(get_state_session_id "$FLOW_STATE") || _existing_sid=""
         if [[ -n "$_existing_sid" && "$_existing_sid" != "$SESSION" ]]; then
-          # Different session owns the state — check staleness
-          _updated_at=$(jq -r '.updated_at // empty' "$FLOW_STATE" 2>/dev/null) || _updated_at=""
+          # Different session owns the state — check staleness. Silent jq
+          # failure here would skip the staleness gate entirely and let the
+          # caller proceed straight to overwrite.
+          _updated_at_err=$(mktemp 2>/dev/null) || _updated_at_err=""
+          if _updated_at=$(jq -r '.updated_at // empty' "$FLOW_STATE" 2>"${_updated_at_err:-/dev/null}"); then
+            :
+          else
+            _jq_rc=$?
+            _updated_at=""
+            echo "WARNING: flow-state-update: jq read .updated_at failed (rc=$_jq_rc) — bypassing staleness gate" >&2
+            [ -n "$_updated_at_err" ] && [ -s "$_updated_at_err" ] && head -3 "$_updated_at_err" | sed 's/^/  /' >&2
+          fi
+          [ -n "$_updated_at_err" ] && rm -f "$_updated_at_err"
           if [[ -n "$_updated_at" ]]; then
             _state_epoch=$(parse_iso8601_to_epoch "$_updated_at" 2>/dev/null) || _state_epoch=0
             _now_epoch=$(date +%s)
@@ -602,12 +643,12 @@ case "$MODE" in
         fi
       fi
     fi
-    # verified-review cycle 4 F-05 / #636: mv 失敗 path も stop-guard.sh の error_count atomic write 後 mv 失敗 path と対称に (line-number 参照を避ける理由は cycle 8 F-05 参照)
-    # 診断メッセージを出す。`set -euo pipefail` 下で mv 失敗は script を非 0 exit させるが、
-    # else branch は jq 失敗のみを surface するため、disk full / permission denied / EXDEV 等の
-    # mv 失敗要因が silent に握りつぶされる (silent failure-hunter 指摘)。patch / increment mode と対称化。
+    # `set -euo pipefail` 下では mv 失敗が script を非 0 exit させるものの、jq 失敗の
+    # else 分岐は出るが mv 失敗の原因 (disk full / permission denied / EXDEV) は
+    # diagnostic 経路がないと silent に消える。patch / increment mode と同じ
+    # _log_flow_diag を介して post-hoc 診断可能にする。
     #
-    # #678: schema_version=2 (Option A per-session file) では create object に schema_version: 2 を含め、
+    # schema_version=2 (per-session file) では create object に schema_version: 2 を含め、
     # Migration 検出条件「schema_version キー無 or < 2」(design doc Migration 戦略) と整合させる。
     # legacy mode では schema_version field を含めず、旧形式 reader (#3-#5 移行前の hook 群) との
     # bytewise 互換を保つ。
@@ -634,12 +675,22 @@ case "$MODE" in
       --arg sid "$SESSION" \
       "$_create_filter" \
       > "$TMP_STATE"; then
-      if ! mv "$TMP_STATE" "$FLOW_STATE"; then
-        _log_flow_diag "flow_state_mv_failed mode=create phase=$PHASE issue=$ISSUE"
+      # if/else over `if !` preserves the real mv rc; the bash `!` operator
+      # zeros $? in its then-branch, so capturing rc via `_rc=$?` after
+      # `if ! mv ...` would always show 0 and lose EXDEV/EACCES diagnosis.
+      _create_mv_err=$(mktemp 2>/dev/null) || _create_mv_err=""
+      if mv "$TMP_STATE" "$FLOW_STATE" 2>"${_create_mv_err:-/dev/null}"; then
+        :
+      else
+        _mv_rc=$?
+        _log_flow_diag "flow_state_mv_failed mode=create phase=$PHASE issue=$ISSUE rc=$_mv_rc"
         rm -f "$TMP_STATE"
-        echo "ERROR: mv failed (create mode): $TMP_STATE -> $FLOW_STATE (disk full / permission denied / EXDEV?)" >&2
+        echo "ERROR: mv failed (create mode, rc=$_mv_rc): $TMP_STATE -> $FLOW_STATE" >&2
+        [ -n "$_create_mv_err" ] && [ -s "$_create_mv_err" ] && head -3 "$_create_mv_err" | sed 's/^/  /' >&2
+        [ -n "$_create_mv_err" ] && rm -f "$_create_mv_err"
         exit 1
       fi
+      [ -n "$_create_mv_err" ] && rm -f "$_create_mv_err"
     else
       _log_flow_diag "flow_state_jq_failed mode=create phase=$PHASE issue=$ISSUE"
       rm -f "$TMP_STATE"
@@ -649,16 +700,17 @@ case "$MODE" in
     ;;
   patch)
     # Build jq filter: always update phase, timestamp, next_action; conditionally update active.
-    # Also capture the outgoing phase into previous_phase so stop-guard can verify the
-    # transition whitelist (#490). Use the pre-update .phase value as previous_phase.
+    # previous_phase は phase-transition-whitelist の検証用にプレ patch の .phase を保持する。
     #
-    # --preserve-error-count (verified-review cycle 3 F-01 / #636): patch mode のデフォルトは
-    # `.error_count = 0` でリセットする (phase transition は「進捗した」signal なのでエスカレーション
-    # counter をクリアするのが正しい)。ただし、create.md Step 0 / Step 1 のような **同一 phase への
-    # self-patch** (create_post_interview → create_post_interview) では error_count を保持しないと
-    # stop-guard.sh の RE-ENTRY DETECTED escalation + THRESHOLD=3 bail-out が永久に fire しない
-    # silent regression になる (cycle 3 で実測確認済み)。--preserve-error-count flag 指定時は
-    # `.error_count = 0` 条項を omit して既存値を保持する。
+    # --preserve-error-count: patch mode defaults to `.error_count = 0` on every
+    # transition. The original mechanical reader (the retired Stop hook) is gone
+    # and no production reader currently consults `.error_count` — the field is
+    # a half-legacy schema slot retained for forward compatibility. The flag
+    # exists as a reserved API: future readers (re-entry detection / threshold
+    # gates) would consume the accumulated value, so same-phase idempotent
+    # re-patches preserve the count instead of resetting on every retry. The
+    # default reset path matches the "fresh start on phase transition" intuition
+    # for the day a mechanical reader is wired back in.
     if [[ "$PRESERVE_ERROR_COUNT" == "true" ]]; then
       JQ_FILTER='.previous_phase = (.phase // "") | .phase = $phase | .updated_at = $ts | .next_action = $next'
     else
@@ -673,46 +725,70 @@ case "$MODE" in
       JQ_FILTER="$JQ_FILTER | .parent_issue_number = (\$parent_issue_val | tonumber)"
       JQ_ARGS+=(--arg parent_issue_val "$PARENT_ISSUE")
     fi
-    # PR #688 cycle 6 (F-03 fix): patch mode で session_id を書き戻す経路を追加。
-    # 旧 resume.md は legacy direct jq write で `.session_id = $sid` を atomic 更新していた
-    # (resume 時の所有権移転 semantics) が、cycle 5 で patch 経由化した際に session_id 書き戻しが
-    # drop されていた。SESSION 変数は _resolve_session_id で resolve 済みなので、非空時に
-    # patch filter に追加する (caller は自身の session が所有する flow-state を patch する設計のため安全)。
+    # patch mode で session_id を書き戻すのは resume 時の所有権移転 semantics を保つため。
+    # caller が自身の session で resolve した SESSION 値で .session_id を上書きしないと、
+    # 別 session から /rite:resume された flow-state が peer-owned 扱いのまま残り、以降の
+    # patch が session-ownership block で reject される経路ができる。
     if [[ -n "$SESSION" ]]; then
       JQ_FILTER="$JQ_FILTER | .session_id = \$session"
       JQ_ARGS+=(--arg session "$SESSION")
     fi
-    # 同対称: create mode の mv 失敗 diag コメント (mv 失敗 path 対称診断) を参照
-    if jq "${JQ_ARGS[@]}" -- "$JQ_FILTER" "$FLOW_STATE" > "$TMP_STATE"; then
-      if ! mv "$TMP_STATE" "$FLOW_STATE"; then
-        _log_flow_diag "flow_state_mv_failed mode=patch phase=$PHASE"
+    # create mode と対称化: jq stderr を capture し、parse error の line/column を operator が
+    # triage できるようにする。silent fall-through は corrupt JSON の原因究明を不能にする。
+    _patch_jq_err=$(mktemp 2>/dev/null) || _patch_jq_err=""
+    if jq "${JQ_ARGS[@]}" -- "$JQ_FILTER" "$FLOW_STATE" > "$TMP_STATE" 2>"${_patch_jq_err:-/dev/null}"; then
+      _patch_mv_err=$(mktemp 2>/dev/null) || _patch_mv_err=""
+      if mv "$TMP_STATE" "$FLOW_STATE" 2>"${_patch_mv_err:-/dev/null}"; then
+        :
+      else
+        _mv_rc=$?
+        _log_flow_diag "flow_state_mv_failed mode=patch phase=$PHASE rc=$_mv_rc"
         rm -f "$TMP_STATE"
-        echo "ERROR: mv failed (patch mode): $TMP_STATE -> $FLOW_STATE (disk full / permission denied / EXDEV?)" >&2
+        [ -n "$_patch_jq_err" ] && rm -f "$_patch_jq_err"
+        echo "ERROR: mv failed (patch mode, rc=$_mv_rc): $TMP_STATE -> $FLOW_STATE" >&2
+        [ -n "$_patch_mv_err" ] && [ -s "$_patch_mv_err" ] && head -3 "$_patch_mv_err" | sed 's/^/  /' >&2
+        [ -n "$_patch_mv_err" ] && rm -f "$_patch_mv_err"
         exit 1
       fi
+      [ -n "$_patch_mv_err" ] && rm -f "$_patch_mv_err"
     else
       _log_flow_diag "flow_state_jq_failed mode=patch phase=$PHASE"
-      rm -f "$TMP_STATE"
       echo "ERROR: flow-state file parse failed (patch mode): $FLOW_STATE" >&2
+      [ -n "$_patch_jq_err" ] && [ -s "$_patch_jq_err" ] && head -3 "$_patch_jq_err" | sed 's/^/  /' >&2
+      rm -f "$TMP_STATE"
+      [ -n "$_patch_jq_err" ] && rm -f "$_patch_jq_err"
       exit 1
     fi
+    [ -n "$_patch_jq_err" ] && rm -f "$_patch_jq_err"
     ;;
   increment)
-    # 同対称: create mode の mv 失敗 diag コメント (mv 失敗 path 対称診断) を参照
+    # patch mode と同じ stderr capture pattern を適用する (silent jq 失敗で root cause が失われる経路の対称化)。
+    _incr_jq_err=$(mktemp 2>/dev/null) || _incr_jq_err=""
     if jq --arg field "$FIELD" \
        '.[$field] = ((.[$field] // 0) + 1)' \
-       "$FLOW_STATE" > "$TMP_STATE"; then
-      if ! mv "$TMP_STATE" "$FLOW_STATE"; then
-        _log_flow_diag "flow_state_mv_failed mode=increment field=$FIELD"
+       "$FLOW_STATE" > "$TMP_STATE" 2>"${_incr_jq_err:-/dev/null}"; then
+      _incr_mv_err=$(mktemp 2>/dev/null) || _incr_mv_err=""
+      if mv "$TMP_STATE" "$FLOW_STATE" 2>"${_incr_mv_err:-/dev/null}"; then
+        :
+      else
+        _mv_rc=$?
+        _log_flow_diag "flow_state_mv_failed mode=increment field=$FIELD rc=$_mv_rc"
         rm -f "$TMP_STATE"
-        echo "ERROR: mv failed (increment mode): $TMP_STATE -> $FLOW_STATE (disk full / permission denied / EXDEV?)" >&2
+        [ -n "$_incr_jq_err" ] && rm -f "$_incr_jq_err"
+        echo "ERROR: mv failed (increment mode, rc=$_mv_rc): $TMP_STATE -> $FLOW_STATE" >&2
+        [ -n "$_incr_mv_err" ] && [ -s "$_incr_mv_err" ] && head -3 "$_incr_mv_err" | sed 's/^/  /' >&2
+        [ -n "$_incr_mv_err" ] && rm -f "$_incr_mv_err"
         exit 1
       fi
+      [ -n "$_incr_mv_err" ] && rm -f "$_incr_mv_err"
     else
       _log_flow_diag "flow_state_jq_failed mode=increment field=$FIELD"
-      rm -f "$TMP_STATE"
       echo "ERROR: flow-state file parse failed (increment mode): $FLOW_STATE" >&2
+      [ -n "$_incr_jq_err" ] && [ -s "$_incr_jq_err" ] && head -3 "$_incr_jq_err" | sed 's/^/  /' >&2
+      rm -f "$TMP_STATE"
+      [ -n "$_incr_jq_err" ] && rm -f "$_incr_jq_err"
       exit 1
     fi
+    [ -n "$_incr_jq_err" ] && rm -f "$_incr_jq_err"
     ;;
 esac

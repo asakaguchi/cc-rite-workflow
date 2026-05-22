@@ -281,10 +281,20 @@ fi
 [ -n "$jq_err" ] && rm -f "$jq_err"
 jq_err=""
 
-if ! mv "$TMP_NEW" "$NEW_FILE" 2>/dev/null; then
-  echo "[rite] ERROR: migration step 3 (atomic mv $TMP_NEW → $NEW_FILE) failed — legacy state preserved at $LEGACY_FILE" >&2
+mv_err=$(mktemp 2>/dev/null) || mv_err=""
+if mv "$TMP_NEW" "$NEW_FILE" 2>"${mv_err:-/dev/null}"; then
+  :
+else
+  mv_rc=$?
+  echo "[rite] ERROR: migration step 3 (atomic mv $TMP_NEW → $NEW_FILE) failed (rc=$mv_rc, EXDEV/EACCES/ENOSPC?) — legacy state preserved at $LEGACY_FILE" >&2
+  if [ -n "$mv_err" ] && [ -s "$mv_err" ]; then
+    head -3 "$mv_err" | sed 's/^/  /' >&2
+  fi
+  [ -n "$mv_err" ] && rm -f "$mv_err"
   exit 1
 fi
+[ -n "$mv_err" ] && rm -f "$mv_err"
+mv_err=""
 TMP_NEW=""  # disarm trap cleanup — file is now committed under its final name
 
 # Track NEW_FILE so step 4 failure can route through the same trap-managed
@@ -303,11 +313,20 @@ NEW_FILE_COMMITTED=false
 # flow-state-update.sh's atomic-write block, which `chmod 600` the tempfile
 # before mv. Best-effort: skip on filesystems without permission bit support.
 chmod 600 "$LEGACY_FILE" 2>/dev/null || true
-if ! mv "$LEGACY_FILE" "$BACKUP_FILE" 2>/dev/null; then
-  echo "[rite] ERROR: migration step 4 (rename $LEGACY_FILE → $BACKUP_FILE) failed — new-format file removed, legacy state preserved" >&2
-  # Roll back the new-format file via trap cleanup (NEW_FILE_COMMITTED still false).
+mv_err=$(mktemp 2>/dev/null) || mv_err=""
+if mv "$LEGACY_FILE" "$BACKUP_FILE" 2>"${mv_err:-/dev/null}"; then
+  :
+else
+  mv_rc=$?
+  echo "[rite] ERROR: migration step 4 (rename $LEGACY_FILE → $BACKUP_FILE) failed (rc=$mv_rc, EXDEV/EACCES/ENOSPC?) — new-format file removed, legacy state preserved" >&2
+  if [ -n "$mv_err" ] && [ -s "$mv_err" ]; then
+    head -3 "$mv_err" | sed 's/^/  /' >&2
+  fi
+  [ -n "$mv_err" ] && rm -f "$mv_err"
+  # NEW_FILE_COMMITTED still false — trap cleanup rolls back the new-format file.
   exit 1
 fi
+[ -n "$mv_err" ] && rm -f "$mv_err"
 
 # Step 4 succeeded — disarm the new-format rollback so subsequent signals
 # don't delete a committed file.

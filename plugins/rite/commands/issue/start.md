@@ -1,87 +1,17 @@
 ---
-description: Issue の作業を開始（ブランチ作成 → 実装 → PR 作成まで一気通貫）
+description: Issue の作業を開始（ブランチ作成 → 実装 → PR → レビュー → 完結）
 ---
 
 # /rite:issue:start
 
-> **Charter**: This command and its `references/` are subject to the [Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述・cycle 番号引用・重複 confirmation は書かない。
-
 ## Contract
-**Input**: Issue number (required), optionally a flow state record from a previous interrupted session
-**Output**: `## 完了報告` (completion report with Issue/PR details and phase progress table)
 
-End-to-end Issue workflow: branch → implementation → quality check → PR → review/fix loop.
+**Input**: Issue number (required)
+**Output**: `## 完了報告`（Issue/PR の詳細と進捗テーブル）
 
-**Flow:** Branch setup → plan → implementation → `/rite:lint` → `/rite:pr:create` → `/rite:pr:review` + `/rite:pr:fix` loop. Skills output machine-readable patterns; `/rite:issue:start` orchestrates next actions. See Phase 5.
+Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → PR → レビュー/修正 → Ready & 完結」を一気通貫で実行する。
 
----
-
-## Responsibility Matrix
-
-This table clarifies responsibility boundaries between `start.md`, `create.md`, and `implementation-plan.md`.
-
-| Responsibility | `start.md` | `create.md` | `implementation-plan.md` |
-|----------------|:----------:|:-----------:|:------------------------:|
-| **Issue quality validation** | ✅ Primary (Phase 1) | — | — |
-| **Parent Issue detection** | ✅ Phase 0.3 | — | — |
-| **Duplicate detection** | — | ✅ Phase 0.3 | — |
-| **Issue specification (What/Why/Where)** | — | ✅ Primary (Phase 0-0.7) | — |
-| **Specification document generation** | — | ✅ Phase 0.7 (high-level design) | — |
-| **Detailed implementation plan (How)** | — | — | ✅ Phase 3 (step-by-step) |
-| **Branch creation + work start** | ✅ Phase 2-5 | — | — |
-| **Issue creation + Projects registration** | — | ✅ Phase 2 | — |
-
-**Key distinction — Phase 0.3 overlap resolution:**
-- `start.md` Phase 0.3: **Parent Issue Auto-Detection** — trackedIssues, body tasklist, label-based parent detection
-- `create.md` Phase 0.3: **Similar Issue Search** — duplicate detection, context gathering, extension opportunity detection
-
----
-
-Execute phases sequentially. **Do NOT stop between phases unless the user explicitly selects a "cancel" or "later" option.**
-
----
-
-## Phase Flow Quick Reference
-
-> Stopping between phases leaves the workflow in an inconsistent state (e.g., branch created but no PR), requiring `/rite:resume`.
-> **CRITICAL**: After every sub-skill invocation returns, **immediately** proceed to the next phase. Do NOT stop, do NOT re-invoke.
->
-> State-writing phases follow the Pre-write + Mandatory After scaffolding contract (#490) and are verified by the stop-guard phase-transition whitelist (`plugins/rite/hooks/phase-transition-whitelist.sh`). Read-only phases (0.x Detection, 1 Quality, 2.1/2.2 Branch detection, 4 Guidance, 5.6.1 Incident Reporting) run inline.
->
-> "Stop Allowed?" marks whether the **user** may cancel at that phase (Phase 4 / 5.5-Termination; the latter is inside `start-finalize`). Even for "Yes" rows the scaffolding contract still applies — stop must be explicit.
-
-| Phase | Sub-skill Invoked | Next Phase | Stop Allowed? |
-|-------|-------------------|------------|---------------|
-| 0 (Detection) | — | 1 | No |
-| 1 (Quality) | — | 1.5 | No |
-| 1.5 (Parent Routing) | `rite:issue:parent-routing` | 1.6 or 2 | **No** |
-| 1.6 (Child Selection) | `rite:issue:child-issue-selection` | 2 | **No** |
-| 2.3 (Branch) | `rite:issue:branch-setup` | 2.4 | **No** |
-| 2.4 (Projects Status) | — | 2.5 or 2.6 | **No** |
-| 2.5 (Iteration) | — | 2.6 | **No** |
-| 2.6 (Work Memory) | `rite:issue:work-memory-init` | 3 | **No** |
-| 3 (Plan) | `rite:issue:implementation-plan` | 4 | **No** |
-| 4 (Guidance) | — | 5 or terminate | Yes (user choice) |
-| 5.0-5.2.1 (Execute) | `rite:issue:start-execute` | 5.3-5.4 or 5.5-Termination | **No** |
-| 5.3-5.4 (Publish) | `rite:issue:start-publish` | 5.5-Termination | **No** |
-| 5.5-Termination (Finalize) | `rite:issue:start-finalize` | Workflow Termination | Yes (only after completion handoff is displayed) |
-
----
-
-## Sub-skill Return Protocol (Global)
-
-> **CRITICAL — AUTOMATIC CONTINUATION REQUIREMENT**: When a sub-skill returns, you MUST continue responding in the same turn. Ending here is a **bug** that forces the user to type "continue" manually. Applies to **every** sub-skill invocation; each Mandatory After section enforces it.
-
-**When a sub-skill outputs a result pattern (e.g., `[review:mergeable]`, `[fix:pushed]`, `[pr:created:123]`) and returns control to you:**
-
-1. **DO NOT end your response.** Ending mid-flow = crashing mid-workflow.
-2. **DO NOT re-invoke the completed skill.** It already finished.
-3. **IMMEDIATELY** locate the Mandatory After section for the current phase and execute its steps — flow state update, then next phase.
-4. If the stop-guard hook blocks a stop attempt (exit 2), follow the `ACTION:` instructions in its stderr message.
-
-**Self-check**: After every sub-skill returns, ask: "Have I output the completion report (Phase 5.6)?" If not, keep going.
-
----
+**途中で止まったらユーザーは `/rite:resume` で flow-state ファイル (`.rite/sessions/{session_id}.flow-state` / legacy `.rite-flow-state` の fallback) に記録された phase から再開する**。
 
 ## Arguments
 
@@ -89,803 +19,832 @@ Execute phases sequentially. **Do NOT stop between phases unless the user explic
 |----------|-------------|
 | `<issue_number>` | Issue number to start working on (required) |
 
----
-
 ## Placeholder Legend
 
 | Placeholder | Source |
 |-------------|--------|
-| `{issue_number}` | From the argument |
-| `{owner}`, `{repo}` | `gh repo view --json owner,name` (retrieve before Phase 0.1) |
-| `{base_branch}` | `branch.base` in `rite-config.yml` (default: `main`). Phase 2.3.1 |
-| `{fallback_branch}` | Phase 2.3.2.3 only (`main` preferred, else default branch) |
-| `{default_branch}` | `gh repo view --json defaultBranchRef` (Phase 2.3.2.3 only) |
-| `{project_number}` | `github.projects.project_number` in `rite-config.yml` |
+| `{issue_number}` | 引数 |
+| `{owner}`, `{repo}` | `gh repo view --json owner,name` |
+| `{base_branch}` | `branch.base` in `rite-config.yml`（default: `main`） |
+| `{branch_name}` | ステップ 2 で生成 |
+| `{pr_number}` | ステップ 6 の `[pr:created:N]` から抽出 |
+| `{project_number}` | `rite-config.yml` の `github.projects.project_number`（Projects enabled 時のみ） |
+| `{parent_issue_number}` | ステップ 1.2 で検出した親 Issue 番号（親 detection 時のみ） |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
-| `{parent_issue_number}` | Write: Phase 1.6 / Phase 2.4 で flow-state に書き込み。Read: Phase 5.1.2 (implement.md) / Phase 5.7 で `state-read.sh` 経由 (per-session)。歴史的経緯は [`state-read-evolution.md`](../../references/state-read-evolution.md) を参照 |
 
 ---
 
-## Phase 0: Epic/Sub-Issues Detection
+## ステップ 0: Resume Dispatch（`/rite:resume` から呼ばれた場合のジャンプ）
 
-### 0.1 Fetch Issue Information
+セッション開始時に flow-state を読み、`/rite:resume` 経由の再開かどうかを判定する。新規セッション (state file 不在) の場合は何もせずステップ 1 に進む:
+
+```bash
+resume_phase=$(bash {plugin_root}/hooks/state-read.sh --field phase --default "" 2>/dev/null || echo "")
+resume_issue=$(bash {plugin_root}/hooks/state-read.sh --field issue_number --default "" 2>/dev/null || echo "")
+# state-read.sh の boolean field は `--default ""` で読むのが推奨 (ヘッダ documented contract)。
+# `--default "false"` は missing と stored false の区別を失うため使わない (`pr/ready.md` Phase 2.1 と同形)。
+resume_active=$(bash {plugin_root}/hooks/state-read.sh --field active --default "" 2>/dev/null || echo "")
+
+if [ -n "$resume_phase" ] && [ "$resume_active" = "true" ] && [ "$resume_issue" = "{issue_number}" ]; then
+  echo "[CONTEXT] RESUME_DISPATCH=1; phase=$resume_phase; issue=$resume_issue"
+else
+  echo "[CONTEXT] RESUME_DISPATCH=0; reason=fresh_or_mismatched_session (phase='$resume_phase' active='$resume_active' issue='$resume_issue' arg='{issue_number}')"
+fi
+```
+
+**LLM routing rule** (Bash tool shell state は次の Bash 呼び出しでリセットされるため `[CONTEXT] RESUME_DISPATCH=` marker を会話コンテキストから読む):
+
+| `RESUME_DISPATCH` value + `phase` | LLM action |
+|---|---|
+| `0` | 新規セッション or 別 Issue。ステップ 1 (Issue 情報取得) から通常開始 |
+| `1` + `phase=init` | ステップ 1.5 の `flow-state-update.sh create` をやり直すためステップ 1 から再実行 (idempotent) |
+| `1` + `phase=branch` | ステップ 2 (ブランチ作成) から再開。既存ブランチがあれば `git switch` で復帰 |
+| `1` + `phase=plan` | ステップ 3 (実装計画) から再開。既存の Issue body 実装ステップを再読込 |
+| `1` + `phase=implement` | ステップ 4 (実装) を継続。Issue body の checklist 未完項目から続行 |
+| `1` + `phase=lint` | ステップ 5 (lint 再実行)。既に lint 完了済みなら ステップ 5.2 (flow-state 更新) は overwrite される |
+| `1` + `phase=pr` | ステップ 6 (PR 作成) から再開。既に PR 番号が state にあればステップ 7 へジャンプ |
+| `1` + `phase=review` | ステップ 7.1 (review 再実行) |
+| `1` + `phase=fix` | ステップ 7.2 (fix 再実行) |
+| `1` + `phase=ready` | ステップ 8.3 から再開 (Ready は完了済 — Projects Status In Review → 親判定 → 完了レポート) |
+| `1` + `phase=ready_error` | ステップ 8 (Ready & 完結) から再開。PR は既に存在するため `/rite:pr:create` は呼ばない |
+| `1` + `phase=completed` | Issue は既に完結。AskUserQuestion で「新規作業として再開 / 中止」を提示 |
+| `1` + `phase=<legacy>` (`phase5_*` 等) | `commands/resume.md` Phase 3.2 Legacy compatibility 表に従って対応ステップへジャンプ |
+
+`active=false` または `issue_number` が引数と異なる場合は、別 Issue の state が残っているだけなので新規セッション扱い (ステップ 1 から開始)。state file は新 phase 書き込み時に `previous_phase` がシフトされるため、誤った overwrite は発生しない。
+
+---
+
+## ステップ 1: 準備（Issue 取得・親判定・品質評価）
+
+### 1.1 Issue 情報取得
 
 ```bash
 gh issue view {issue_number} --json number,title,body,state,labels,milestone,projectItems
 ```
 
-### 0.2 Milestone Check
+State が `closed` の場合は AskUserQuestion で「再オープンして作業 / 中止」を選択。
 
-If Milestone associated, display: `この Issue は Milestone "{milestone_name}" に含まれています。Milestone には他に {count} 件の Issue があります。この Issue から作業を開始しますか？`
+### 1.2 親 Issue 検出
 
-### 0.3 Parent Issue Auto-Detection
+以下のいずれかに該当すれば親 Issue として扱う:
 
-> **Reference**: [Epic/Parent Issue Detection](../../references/epic-detection.md) for complete logic/queries.
+1. `trackedIssues.nodes` が空でない（GraphQL）
+2. Body に `- [ ] #NN` 形式のタスクリストがある
+3. ラベルに `epic` / `parent` / `umbrella` のいずれか
 
-Determine parent Issue via: (1) trackedIssues API (GraphQL), (2) Body tasklist (`- [ ] #XX`), (3) Labels (`epic`/`parent`/`umbrella`). If **any** match, it's a parent (OR).
-
-Follow [Complete Detection Flow](../../references/epic-detection.md#complete-detection-flow) with [Basic Query](../../references/epic-detection.md#basic-query).
-
-**Save context**: `is_parent_issue` (true/false), `has_sub_issues`, `parent_issue_reason` (trackedIssues/tasklist/label:{name}/null). Retain `trackedIssues.nodes` for Phase 1.5/1.6.
-
-**Display when children exist**:
+```bash
+gh api graphql -f query='
+  query($owner:String!, $repo:String!, $number:Int!) {
+    repository(owner:$owner, name:$repo) {
+      issue(number:$number) {
+        trackedIssues(first:50) { nodes { number title state } }
+      }
+    }
+  }' -f owner={owner} -f repo={repo} -F number={issue_number}
 ```
-この Issue には {count} 件の子 Issue があります:
-| # | タイトル | 状態 |
-| #{number} | {title} | {state} |
+
+親 Issue の場合は AskUserQuestion で「子 Issue を選んで作業 / この親 Issue 自体に対して作業 / 中止」を提示し、選択により分岐:
+
+- **子 Issue 選択**: trackedIssues から open かつ未着手のものを優先順位順（priority: High > Medium > Low、complexity: XS > S > M > L > XL）に並べ、AskUserQuestion で 1 件選択。選択後は `{issue_number}` を子の番号に置換してステップ 1.1 から再実行。
+- **親 Issue 自体**: そのまま続行（実装が親 Issue body で完結する場合）。
+- **中止**: workflow 終了。
+
+### 1.3 Issue 品質評価
+
+| Score | 条件 |
+|-------|------|
+| A | What / Why / Where / Scope すべて記載 |
+| B | What / Why 明確、Where/Scope 推測可能 |
+| C | What のみ明確、詳細不足 |
+| D | Body 20 単語未満、または What/Why/Where すべて不明 |
+
+C/D の場合は AskUserQuestion で「既存情報で開始 / Issue を編集してから再実行 / 中止」を選択。
+
+### 1.4 設定読込 (language)
+
+`rite-config.yml` の `language` field を取得。後続ステップ (4.2 コミット例) で使う。Bash tool は invocation 境界でシェル変数を失うため、CONTEXT marker として stdout に emit し、LLM はステップ 4.2 で marker から literal 置換する:
+
+```bash
+language=$(awk -F: '/^language:[[:space:]]*/ {sub(/^[[:space:]]+/, "", $2); gsub(/["'"'"'\r]/, "", $2); print $2; exit}' rite-config.yml 2>/dev/null)
+awk_rc=$?
+if [ $awk_rc -ne 0 ]; then
+  echo "WARNING: rite-config.yml の language field 取得 awk が rc=$awk_rc で失敗。default 'ja' を使用します" >&2
+fi
+[ -z "$language" ] && language="ja"  # default
+echo "[CONTEXT] WORKFLOW_LANGUAGE=$language"
 ```
 
-Phase 0.3 detects only; selection in Phase 1.5.
+> ステップ 4.2 (コミット例) では、上記 `[CONTEXT] WORKFLOW_LANGUAGE=` marker から literal で `language` 値を読み取り、テンプレ分岐 (`ja` / `en` 等) を選択する。`$language` を bash 変数として参照すると invocation 境界で失われるため必ず marker 経由を使うこと。
+
+### 1.5 flow-state 初期化
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase init --issue {issue_number} --branch "" --pr 0 \
+  --next "ブランチ作成へ進む"
+```
 
 ---
 
-## Phase 1: Issue Quality Validation
+## ステップ 2: ブランチと Projects
 
-> **Reference**: Apply `confusion_management` from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
+### 2.1 ブランチ名生成
 
-### 1.1 Quality Score
+`rite-config.yml` の `branch.pattern`（default: `{type}/issue-{number}-{slug}`）に従う。
 
-| Score | Conditions |
-|-------|------------|
-| **A** | What/Why/Where/Scope all specified |
-| **B** | What/Why clear, Where/Scope inferable |
-| **C** | Only What clear, details lacking |
-| **D** | <20 words body OR What/Why/Where all unclear |
+- **type**: labels / title から推定（`bug`/`bugfix` → `fix`、`docs` → `docs`、`refactor` → `refactor`、`chore`/`maintenance` → `chore`、それ以外 → `feat`）
+- **slug**: title を lowercase、空白を `-` に置換、30 字以内
 
-### 1.2 Check Items
-
-What (required), Why/Where/Scope/Acceptance (recommended).
-
-### 1.3 Score C/D Handling
-
-Use `AskUserQuestion`:
-```
-Issue #{number} の情報を補完してください。
-現在の情報: {title}, {body_preview}
-不足: {missing_items}
-質問: この Issue で具体的に何を達成しますか？
-オプション: 既存の情報で作業開始（自分で判断）/ 情報を追加してから開始 / Issue を編集してから再度実行
-```
-
----
-
-## Phase 1.5: Parent Issue Routing
-
-Execute after Phase 1.1-1.3.
-
-**Pre-write** (before invoking `rite:issue:parent-routing`): Update flow state so stop-guard can resume flow if interrupted:
-
-```bash
-# branch is empty here — not yet created; populated after rite:issue:branch-setup completes in Phase 2.3
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase1_5_parent" --issue {issue_number} --branch "" \
-  --pr 0 \
-  --next "After rite:issue:parent-routing returns: proceed to Phase 1.6 (child issue selection) if applicable, then Phase 2. Do NOT stop."
-```
-
-> **Module**: [Parent Issue Routing](./parent-routing.md) - Handles: detection (1.5.1), child state/Projects retrieval (1.5.2-1.5.3), decomposition (1.5.4.1-1.5.4.6), auto-close (1.5.5).
-
-Invoke `skill: "rite:issue:parent-routing"`.
-
-### 🚨 Mandatory After 1.5
-
-> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
-> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
-
-**Step 1**: Update flow state to post-parent-routing phase (atomic):
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase1_5_post_parent" --issue {issue_number} --branch "" \
-  --pr 0 \
-  --next "rite:issue:parent-routing completed. Proceed to Phase 1.6 (child issue selection) if applicable, then Phase 2. Do NOT stop."
-```
-
-**Step 2**: **→ Proceed to Phase 1.6 (if child issues exist) or Phase 2 now**.
-
-## Phase 1.6: Child Issue Selection
-
-**Pre-write** (before invoking `rite:issue:child-issue-selection`): Update flow state so stop-guard can resume flow if interrupted:
-
-```bash
-# branch is empty here — not yet created; populated after rite:issue:branch-setup completes in Phase 2.3
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase1_6_child" --issue {issue_number} --branch "" \
-  --pr 0 \
-  --next "After rite:issue:child-issue-selection returns: proceed to Phase 2 (work preparation). Do NOT stop."
-```
-
-> **Module**: [Child Issue Selection](./child-issue-selection.md) - Automatic child selection with priority logic, dependencies, user confirmation.
-
-Invoke `skill: "rite:issue:child-issue-selection"`.
-
-### 🚨 Mandatory After 1.6
-
-> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
-> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
-
-**Step 1**: Update flow state to post-child-selection phase (atomic):
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase1_6_post_child" --issue {issue_number} --branch "" \
-  --pr 0 \
-  --next "rite:issue:child-issue-selection completed. Proceed to Phase 2 (work preparation). Do NOT stop."
-```
-
-**Step 2**: **→ Proceed to Phase 2 now**.
-
----
-
-## Phase 2: Work Preparation
-
-### 2.1 Branch Name Generation
-
-Follow `rite-config.yml` pattern `{type}/issue-{number}-{slug}`. Type from labels/title: `bug`/`bugfix`→`fix`, `docs`→`docs`, `refactor`→`refactor`, `chore`/`maintenance`→`chore`, else→`feat`. Slug: lowercase title, spaces→hyphens, max 30 chars.
-
-### 2.2 Existing Branch Check
-
-> **DO NOT** use exit code (`&&`, `||`, `$?`) to determine branch existence. `git branch --list` always returns exit code 0 regardless of match. **判定**: `local_match`/`remote_match` の **出力文字列の空チェック**。
+### 2.2 既存ブランチチェック
 
 ```bash
 local_match=$(git branch --list "{branch_name}")
 remote_match=$(git branch -r --list "origin/{branch_name}")
 if [ -n "$local_match" ] || [ -n "$remote_match" ]; then
   echo "BRANCH_EXISTS"
+fi
+```
+
+> **注意**: `git branch --list` は常に exit 0 を返すので、出力文字列の空チェックで判定する。
+
+存在する場合は AskUserQuestion で「既存ブランチに切り替え / 別名で作成（サフィックス追加） / 中止」を選択。
+
+### 2.3 ブランチ作成
+
+`{base_branch}` から派生して作成。`{base_branch}` がリモートにのみ存在する場合は `origin/{base_branch}` から派生。
+
+```bash
+fetch_err=$(git fetch origin {base_branch} 2>&1) || \
+  echo "WARNING: git fetch origin {base_branch} failed (stale local ref で進む可能性あり): $fetch_err" >&2
+
+if git rev-parse --verify "{base_branch}" >/dev/null 2>&1; then
+  git switch -c "{branch_name}" "{base_branch}"
+elif git rev-parse --verify "origin/{base_branch}" >/dev/null 2>&1; then
+  git switch -c "{branch_name}" "origin/{base_branch}"
 else
-  echo "BRANCH_NOT_FOUND"
+  default_branch=$(gh repo view --json defaultBranchRef --jq .defaultBranchRef.name)
+  if [ -z "$default_branch" ]; then
+    echo "ERROR: 'gh repo view' で default branch を解決できませんでした。'gh auth status' を確認してください" >&2
+    exit 1
+  fi
+  git switch -c "{branch_name}" "origin/${default_branch}"
 fi
 ```
 
-If exists: `ブランチ {branch_name} は既に存在します。オプション: 既存ブランチに切り替え / 別名でブランチを作成（サフィックス追加）/ キャンセル`
-
-#### 2.2.1 Recognized Patterns
-
-If `branch.recognized_patterns` in rite-config.yml, detect non-Issue-numbered branches. Execute 2.2.1 only after 2.2 finds nothing.
-
-**Pattern→regex**: `{n}`→`[0-9]+`, `{category}`/`{description}`→`[a-z0-9-]+`, `{locale}`→`[a-z]{2}(-[a-z]{2})?`, `{date}`→`[0-9-]+`, `{*}`→`.+`. Add `^...$` anchors.
-
-**On match**: Display `既存ブランチ {branch_name} を検出しました。（パターン: {matched_pattern}）このブランチは Issue 番号を含まないため、Issue #{issue_number} との紐付けは手動で行う必要があります。オプション: このブランチで作業を開始（Issue との紐付けなし）/ 標準パターンで新しいブランチを作成 / キャンセル`
-
-Skip Phase 2.4/2.5/2.6 (no Issue number). User manually links. Phase 3+ normal.
-
-### 2.3 Branch Creation
-
-**Pre-write** (before invoking `rite:issue:branch-setup`): Update flow state so stop-guard can resume flow if interrupted:
+Issue にブランチを関連付け (失敗しても workflow は続行するが、stderr に WARNING + `workflow_incident` sentinel を emit):
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase2_branch" --issue {issue_number} --branch "{branch_name}" \
-  --pr 0 \
-  --next "After rite:issue:branch-setup returns: proceed to Phase 2.4 (Projects Status update to In Progress). Do NOT stop."
-```
-
-> **Module**: [Branch Setup](./branch-setup.md) - Creates branch from `branch.base`, handles fallback when base doesn't exist.
-
-Invoke `skill: "rite:issue:branch-setup"`.
-
-### 🚨 Mandatory After 2.3
-
-> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
-> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
-
-**Step 1**: Update flow state to post-branch phase (atomic):
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase2_post_branch" --issue {issue_number} --branch "{branch_name}" \
-  --pr 0 \
-  --next "rite:issue:branch-setup completed. Proceed to Phase 2.4 (Projects Status update to In Progress). Do NOT stop."
-```
-
-**Step 2**: **→ Proceed to Phase 2.4 now**.
-
-### 2.4 GitHub Projects Status Update
-
-**Pre-write** (before executing Projects Status update): Update flow state so stop-guard can resume flow if interrupted:
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase2_projects" --issue {issue_number} --branch "{branch_name}" \
-  --pr 0 \
-  --next "Execute Phase 2.4 (Projects Status → In Progress). Skipping to Phase 2.5/2.6/3 without running Projects update is PROHIBITED. Do NOT stop."
-```
-
-> **Module**: [Projects Status Update Callsites](./references/projects-status-update-callsites.md#callsite-1--phase-24-issue-status--in-progress) — Phase 2.4 / 5.5.1 / 5.7.2 共通 delegation の bash literal SoT (Callsite 1 = Phase 2.4)。Runtime execution delegates to `plugins/rite/scripts/projects-status-update.sh`. API レベル動作仕様は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) を参照。
-
-> **Issue #513 regression guard**: Step 3 (Parent Issue Status Update via 3-method detection) は本 Module 内 Callsite 1 Step 3 に SoT として移管。inline `trackedInIssues`-only simplification (Issue #513 incident で AC-1 失敗を引き起こした anti-pattern) への revert は禁止。詳細な 3-method procedure と regression guard 全文は Module を参照。`parent-child-sync-static.test.sh` Group 4 が両ファイル ([projects-integration.md#247](../../references/projects-integration.md#247-parent-issue-status-update-for-child-issues) リンク + Issue #513 literal) を pin する。
-
-Execute the Module procedure: Callsite 1 Step 1 (config read + skip marker emit) → Callsite 1 Step 2 (Status In Progress update) → Callsite 1 Step 3 (parent Issue Status update via 3-method detection)。On `[CONTEXT] PHASE_2_4_STATE=skip`, skip Step 2-3 but still execute Mandatory After 2.4 unconditionally。
-
-### 🚨 Mandatory After 2.4
-
-> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
-> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
-
-**Step 1**: Update flow state to post-projects phase。親検出時は `--parent-issue` で persist し context compaction/session restart に耐える (#497):
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase2_post_projects" --issue {issue_number} --branch "{branch_name}" \
-  --pr 0 --parent-issue {parent_issue_number} \
-  --next "Phase 2.4 completed. Proceed to Phase 2.5 (Iteration) if iteration.enabled, else Phase 2.6 (Work Memory). Do NOT stop."
-```
-
-> **Note**: 親不検出時は `{parent_issue_number}=0` (デフォルト)。`--parent-issue 0` は harmless で「親なし」を明示記録。
-
-**Step 2**: **→ Proceed to Phase 2.5 now**. Phase 2.5 は内部で skip 条件 (iteration disabled / projects disabled) を処理するため本 step で skip しない。Pre-write + Mandatory After は常に実行され `phase2_post_iteration` を記録する。
-
-### 2.5 Iteration Assignment
-
-**Pre-write** (before executing Iteration assignment):
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase2_iteration" --issue {issue_number} --branch "{branch_name}" \
-  --pr 0 \
-  --next "Execute Phase 2.5 (Iteration assignment). Skipping to Phase 2.6/3 without running Iteration assignment is PROHIBITED when iteration.enabled. Do NOT stop."
-```
-
-> **Module**: [Projects Integration](../../references/projects-integration.md#25-iteration-assignment-optional)
-
-**Skip conditions** — if any of the following are true, skip the Module procedure and go directly to Mandatory After 2.5:
-
-- `projects.enabled: false` in rite-config.yml
-- `iteration.enabled: false` in rite-config.yml
-- `iteration.auto_assign: false` in rite-config.yml
-
-Otherwise, execute the Module procedure: field info (2.5.1), current iteration determination (2.5.2), assignment (2.5.3), result/warning (2.5.4). On any failure, display warning and continue (non-blocking).
-
-### 🚨 Mandatory After 2.5
-
-> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
-> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
-
-**Step 1**: Update flow state to post-iteration phase:
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase2_post_iteration" --issue {issue_number} --branch "{branch_name}" \
-  --pr 0 \
-  --next "Phase 2.5 completed (or skipped). Proceed to Phase 2.6 (Work Memory initialization). Do NOT stop."
-```
-
-**Step 2**: **→ Proceed to Phase 2.6 now**.
-
-### 2.6 Work Memory Initialization
-
-**Pre-write** (before invoking `rite:issue:work-memory-init`): Update flow state so stop-guard can resume flow if interrupted:
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase2_work_memory" --issue {issue_number} --branch "{branch_name}" \
-  --pr 0 \
-  --next "After rite:issue:work-memory-init returns: proceed to Phase 3 (implementation plan). Do NOT stop."
-```
-
-> **Module**: [Work Memory Initialization](./work-memory-init.md) - Initializes Issue comment with progress summary, confirmation items, session info. Format: [Work Memory Format](../../skills/rite-workflow/references/work-memory-format.md).
-
-Invoke `skill: "rite:issue:work-memory-init"`.
-
-### 🚨 Mandatory After 2.6
-
-> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
-> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
-
-**Step 1**: Update flow state to post-work-memory phase (atomic):
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase2_post_work_memory" --issue {issue_number} --branch "{branch_name}" \
-  --pr 0 \
-  --next "rite:issue:work-memory-init completed. Proceed to Phase 3 (implementation plan). Do NOT stop."
-```
-
-**Step 2**: Defense-in-depth: verify local work memory was created. If the sub-skill skipped it, create via fallback:
-
-```bash
-if [ ! -f ".rite-work-memory/issue-{issue_number}.md" ]; then
-  WM_SOURCE="init" WM_PHASE="phase2" WM_PHASE_DETAIL="ブランチ作成・準備" \
-    WM_NEXT_ACTION="実装計画を生成" \
-    WM_BODY_TEXT="Work memory initialized (fallback). Issue #{issue_number} の作業を開始しました。" \
-    WM_ISSUE_NUMBER="{issue_number}" \
-    bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
+if ! develop_err=$(gh issue develop {issue_number} --branch "{branch_name}" 2>&1); then
+  # Strip control characters before truncation. gh error messages occasionally
+  # contain binary bytes; allowing them through could break JSON details
+  # serialization or trigger unintended terminal escape sequences downstream.
+  develop_err_short=$(printf '%s' "$develop_err" | tr -d '\000-\010\013\014\016-\037' | head -c 500)
+  echo "WARNING: Issue→branch link failed (GitHub UI Development パネルが空のまま): $develop_err_short" >&2
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type issue_branch_link_failed \
+    --details "Issue #{issue_number} ← branch {branch_name}: $develop_err_short" \
+    --root-cause-hint "gh_cli_or_permission_failure" \
+    --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
 fi
 ```
 
-> **Note**: `{plugin_root}` は Phase 4.1 より前に実行されるため、[Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) に従い事前解決必須。相対パス `plugins/rite/hooks/` はマーケットプレイス環境で解決失敗のため不可。
+### 2.4 GitHub Projects Status 更新
 
-**Step 3**: **→ Proceed to Phase 3 now**.
-
-## Phase 3: Implementation Plan
-
-**Pre-condition check** (#490 AC-5): See [Pre-condition Gate](./references/pre-condition-gate.md). Expected `.phase`: `phase2_post_work_memory` (resume re-entry also accepts `phase3_post_plan`).
+`rite-config.yml` の `github.projects.enabled: true` の場合のみ実行。`projects-status-update.sh` に委譲（実 interface は JSON 単一引数。canonical SoT: [`projects-status-update-callsites.md`](./references/projects-status-update-callsites.md)）。スクリプトは非 blocking failure 時に **exit 0 + `.result == "failed"` / `"skipped_not_in_project"`** を返すため、bash exit code ではなく JSON stdout `.result` を inspect すること（Common contract §3-§5、MUST emit `workflow_incident` sentinel）:
 
 ```bash
-if curr=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
-  :
-else
-  rc=$?
-  echo "ERROR: state-read.sh failed (rc=$rc) for --field phase in Phase 3 pre-condition" >&2
-  echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase3_pre_condition; rc=$rc" >&2
-  echo "RESUME_HINT: state-read.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2
-  exit 1
-fi
-if [ "$curr" != "phase2_post_work_memory" ] && [ "$curr" != "phase3_post_plan" ]; then
-  echo "ERROR: Phase 3 pre-condition failed. .phase=$curr (expected: phase2_post_work_memory)" >&2
-  echo "ACTION: Return to the missing Phase 2 step (2.4 Projects / 2.5 Iteration / 2.6 Work Memory) and execute its Pre-write + main procedure + Mandatory After before entering Phase 3." >&2
-  echo "⚠️ LLM MUST NOT proceed to Phase 3 Pre-write below. Re-invoke the missing phase first." >&2
-  exit 1
-fi
+status_result=$(bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+    --argjson issue {issue_number} \
+    --arg owner "{owner}" \
+    --arg repo "{repo}" \
+    --argjson project_number {project_number} \
+    --arg status "In Progress" \
+    --argjson auto_add true \
+    --argjson non_blocking true \
+    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>&1) || status_result="{\"result\":\"failed\",\"warnings\":[\"projects-status-update.sh fatal exit\"]}"
+status_value=$(printf '%s' "$status_result" | jq -r '.result // "failed"' 2>/dev/null || echo "failed")
+case "$status_value" in
+  updated) ;;
+  skipped_not_in_project)
+    echo "WARNING: Issue #{issue_number} は Project に未登録 (Callsite 1)" >&2
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type projects_status_update_failed \
+      --details "Issue #{issue_number} ステップ 2.4 (In Progress): projects-status-update.sh returned skipped_not_in_project" \
+      --root-cause-hint "issue_not_registered_in_project" \
+      --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+    ;;
+  failed|*)
+    printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null | while read -r w; do echo "WARNING: $w" >&2; done
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type projects_status_update_failed \
+      --details "Issue #{issue_number} ステップ 2.4 (In Progress): projects-status-update.sh returned $status_value" \
+      --root-cause-hint "gh_api_or_graphql_failure" \
+      --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+    ;;
+esac
 ```
 
-**Pre-write** (before invoking `rite:issue:implementation-plan`): Update flow state so stop-guard can resume flow if interrupted:
+親 Issue が存在する場合 (ステップ 1.2 で検出) は親も同様に `In Progress` に更新（`{issue_number}` を `{parent_issue_number}` に差し替え、同じ JSON pattern + 上記 `.result` inspection を再実行）。
+
+### 2.5 Iteration 割り当て（任意）
+
+`rite-config.yml` の `iteration.enabled: true` かつ `iteration.auto_assign: true` の場合のみ実行。現在の iteration を取得して assign。失敗時は warning + continue。
+
+### 2.6 Work Memory 初期化
+
+> `local-wm-update.sh` は best-effort (exit 1=skip / exit 2=lock 失敗)。script header の SoT 契約に従い `2>/dev/null || true` で wrap する。
+
+```bash
+WM_SOURCE="init" WM_PHASE="branch" WM_PHASE_DETAIL="ブランチ作成・準備" \
+  WM_NEXT_ACTION="実装計画を生成" \
+  WM_BODY_TEXT="Issue #{issue_number} の作業を開始しました。" \
+  WM_ISSUE_NUMBER="{issue_number}" \
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/tmp/rite-wm-err-$$.log
+wm_rc=$?
+if [ $wm_rc -eq 2 ]; then
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type local_wm_update_lock_failed \
+    --details "local-wm-update.sh exit 2 (lock failure). stderr: $(head -c 200 /tmp/rite-wm-err-$$.log 2>/dev/null | tr '\n' ' ')" \
+    --root-cause-hint "concurrent_session_lock_contention" \
+    --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+fi
+rm -f /tmp/rite-wm-err-$$.log
+true
+```
+
+Issue コメントへの同期は post-tool-wm-sync hook が自動で行う。
+
+### 2.7 flow-state 更新
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase3_plan" --issue {issue_number} --branch "{branch_name}" \
-  --pr 0 \
-  --next "After rite:issue:implementation-plan returns: proceed to Phase 4 (work start guidance). Do NOT stop."
+  --phase branch --issue {issue_number} --branch "{branch_name}" --pr 0 \
+  --next "実装計画を生成"
 ```
-
-> **Module**: [Implementation Plan Generation](./implementation-plan.md) - Analyzes Issue, identifies files, generates plan, gets user confirmation, records to work memory, updates Issue body checklist.
-
-Invoke `skill: "rite:issue:implementation-plan"`.
-
-### 🚨 Mandatory After 3
-
-> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
-> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
-
-**Step 1**: Update flow state to post-plan phase (atomic):
-
-```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase3_post_plan" --issue {issue_number} --branch "{branch_name}" \
-  --pr 0 \
-  --next "rite:issue:implementation-plan completed. Proceed to Phase 4 (work start guidance). Do NOT stop."
-```
-
-**Step 2**: **→ Proceed to Phase 4 now**.
 
 ---
 
-## Phase 4: Work Start Guidance
+## ステップ 3: 実装計画
 
-**4.1 Completion Report**: Read `{plugin_root}/templates/completion-report.md` with Read tool. Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version). Use "Work start format (for Phase 4.1)" section as-is. Fallback: inline equivalent (Issue info, branch, progress table).
+### 3.1 Issue 内容分析
 
-**4.2 Project-Specific Guidance**: Based on `project.type` in rite-config.yml — webapp→Frontend/backend/DB areas, library→Breaking changes/API impact, cli→Command interface/compatibility, documentation→Structure/links, generic→none.
+ステップ 1.1 で取得した body / labels / title から:
 
-**4.3 Continuation**: `AskUserQuestion`: `作業の準備が整いました。どうしますか？ オプション: 実装を開始する（推奨）/ 後で作業する`. Start→Phase 5. Later→terminate, resume via Phase 2.2.
+- 達成すべき outcome（What）
+- 制約・前提（Where）
+- 受入基準（Acceptance Criteria）
+
+を抽出する。
+
+### 3.2 変更対象ファイルの特定
+
+Issue body や関連リンクから推測される変更対象ファイル候補を grep / Glob で探索:
+
+```bash
+grep -rln "<keyword from issue>" --include="*.{ext}" .
+```
+
+### 3.3 実装計画生成
+
+以下の構造で計画を生成する:
+
+```markdown
+## 実装計画
+
+### 変更対象ファイル
+- `path/to/file1.ext` — 変更理由
+- `path/to/file2.ext` — 変更理由
+
+### 実装ステップ
+1. ステップ 1: 〜
+2. ステップ 2: 〜
+3. ステップ 3: 〜
+
+### 受入基準マッピング
+- AC-1 → ステップ 1, 2
+- AC-2 → ステップ 3
+
+### 注意点
+- 〜
+```
+
+### 3.4 ユーザー確認
+
+AskUserQuestion で「この計画で進める / 計画を修正 / 中止」を選択。
+
+「修正」の場合は計画を AskUserQuestion で再提示して合意を取る。
+
+### 3.5 Issue Body Checklist 更新
+
+Issue body に実装ステップを `- [ ]` 形式で追記/更新する。`issue-body-safe-update.sh` の 3-step pattern (fetch → 編集 → apply) を使い、内側 `gh issue view` 失敗時の body truncation を防ぐ:
+
+```bash
+# Step 1: fetch
+fetch_output=$(bash {plugin_root}/hooks/issue-body-safe-update.sh fetch --issue {issue_number} 2>&1) || fetch_output=""
+# fetch_output 内の tmpfile_read= / tmpfile_write= / original_length= は LLM が
+# 直後の Step 2 で読み取り、Step 3 の bash block 内に literal 置換する。
+# fetch 失敗時 (script 自体の非ゼロ exit、または stdout に tmpfile_read= を含まない) は
+# Step 3 で WORKFLOW_INCIDENT を emit する。
+printf '%s\n' "$fetch_output"
+```
+
+fetch 成功時は `tmpfile_read` / `tmpfile_write` / `original_length` が stdout に出力される。LLM は `tmpfile_read` を Read し、`## 実装ステップ` セクションを追加/更新した body を `tmpfile_write` に Write する。Step 3 では LLM が直前の bash 出力から `{TMPFILE_READ}` / `{TMPFILE_WRITE}` / `{ORIGINAL_LENGTH}` を literal 置換する:
+
+```bash
+# Step 3: apply (LLM が tmpfile_write を書いた後)
+# apply mode は safety guard (空 write / 50% 未満 shrinkage / gh edit 失敗 / diff IO エラー) を
+# helper 内で WORKFLOW_INCIDENT として直接 emit するため、orchestrator 側で追加 emit せず
+# stderr を観測するのみに留める。caller の if-not 分岐は dead code になるため if-else を
+# 平坦化し、tmpfile 受け取り失敗時 (fetch が tmpfile パスを返さなかった) のみ fetch_failed を
+# 発火する責務を残す。
+if [ -n "{TMPFILE_READ}" ] && [ -n "{TMPFILE_WRITE}" ]; then
+  apply_err=$(bash {plugin_root}/hooks/issue-body-safe-update.sh apply \
+    --issue {issue_number} \
+    --tmpfile-read "{TMPFILE_READ}" \
+    --tmpfile-write "{TMPFILE_WRITE}" \
+    --original-length "{ORIGINAL_LENGTH}" 2>&1) || true
+  if [ -n "$apply_err" ]; then
+    if [ "${#apply_err}" -gt 500 ]; then
+      apply_err_short="${apply_err:0:500}...truncated(${#apply_err})"
+    else
+      apply_err_short="$apply_err"
+    fi
+    echo "WARNING: Issue body の更新で診断メッセージ: $apply_err_short" >&2
+  fi
+else
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type issue_body_fetch_failed \
+    --details "Issue #{issue_number}: fetch did not return tmpfile paths (gh issue view 失敗 or 空 body)" \
+    --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+fi
+```
+
+### 3.6 Work Memory 更新
+
+work memory に計画を保存 (best-effort):
+
+```bash
+WM_SOURCE="plan" WM_PHASE="plan" WM_PHASE_DETAIL="実装計画作成完了" \
+  WM_NEXT_ACTION="実装を開始" \
+  WM_BODY_TEXT="実装計画を生成しました。{steps_count} ステップで進めます。" \
+  WM_ISSUE_NUMBER="{issue_number}" \
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/tmp/rite-wm-err-$$.log
+wm_rc=$?
+if [ $wm_rc -eq 2 ]; then
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type local_wm_update_lock_failed \
+    --details "local-wm-update.sh exit 2 (lock failure). stderr: $(head -c 200 /tmp/rite-wm-err-$$.log 2>/dev/null | tr '\n' ' ')" \
+    --root-cause-hint "concurrent_session_lock_contention" \
+    --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+fi
+rm -f /tmp/rite-wm-err-$$.log
+true
+```
+
+### 3.7 flow-state 更新
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh create \
+  --phase plan --issue {issue_number} --branch "{branch_name}" --pr 0 \
+  --next "実装に着手"
+```
 
 ---
 
-## Phase 5: End-to-End Execution
+## ステップ 4: 実装
 
-### Context Budget & Output Minimization (#80)
+### 4.1 実装作業
 
-The e2e flow must minimize context consumption. Each sub-skill has an **E2E Output Minimization** section.
+計画のステップに沿ってコード変更を実施する。各ステップ完了ごとに:
 
-> **⚠️ Output minimization ≠ step omission**: 中間テキストを削減することであり、**phase / step / MUST 処理を skip することではない**。時間・context を理由とした step 省略の誘惑は強いが、それは identity 違反。context 枯渇時の正規経路は `/clear` + `/rite:resume`。Identity 仕様: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` / `quality_over_expediency` を参照。
+1. 変更内容を確認（`git diff`）
+2. conventional commits 規約でコミット:
+   - `feat:` 新機能
+   - `fix:` バグ修正
+   - `docs:` ドキュメント
+   - `refactor:` リファクタ
+   - `chore:` 雑務
+3. work memory のチェックリストを更新
 
-**Orchestrator rules** (apply throughout Phase 5):
+### 4.2 コミット例
 
-1. **Minimize intermediate text output**: Between tool calls, output only essential status updates (1-2 lines max). Skip explanations, summaries, and guidance text that the user doesn't need during automated flow.
-2. **Trust result patterns**: When a sub-skill returns a result pattern (e.g., `[lint:success]`), do NOT re-summarize what happened. Immediately proceed to the next phase.
-3. **Avoid redundant reads**: Information from Phase 0.1 (Issue details) is retained in context. Do NOT re-fetch Issue body, title, or labels in later phases.
-4. **Batch bash operations**: Combine related bash commands into single tool calls where possible. Examples: `flow-state-update.sh create ... && WM_SOURCE=... bash local-wm-update.sh` (flow-state + work memory sync in one call), `gh api graphql ... && gh project item-edit ...` (Projects query + update in one call).
-
-**Sub-skill output expectations** (e2e flow):
-
-| Sub-skill | Expected Output | Max Lines |
-|-----------|-----------------|-----------|
-| `rite:lint` | `[lint:success/error]` + 1-line summary | 2 |
-| `rite:pr:create` | `[pr:created:{n}]` + PR URL | 2 |
-| `rite:pr:review` | `[review:mergeable]` or `[review:fix-needed:{n}]` etc. | 2 |
-| `rite:pr:fix` | `[fix:{result}]` + change summary | 2 |
-| `rite:pr:ready` | `[ready:completed]` | 1 | <!-- ready.md の出力は元々1行程度のため E2E Output Minimization セクション不要 -->
-
-### Flow
-
-```
-5.0-5.2.1 rite:issue:start-execute (sub-skill: Stop Hook + 実装 + lint + checklist)
-  → [start:execute:completed]→5.3-5.4 / [start:execute:aborted]→5.5-Termination
-5.3-5.4 rite:issue:start-publish (sub-skill: PR create + review-fix loop)
-  → [start:publish:completed]→5.5-Termination / [start:publish:aborted]→5.5-Termination
-5.5-Termination rite:issue:start-finalize (sub-skill: ready + status + metrics + completion + parent close + termination)
-  → [start:finalize:completed] (workflow 終端) / [start:finalize:aborted] (User-terminate during finalize)
-```
-
-### Preflight Protocol
-
-Each major Phase 5 sub-phase runs a preflight check before execution. The check detects compact-blocked state and prevents execution when recovery is needed:
+`language=ja` の場合:
 
 ```bash
-bash {plugin_root}/hooks/preflight-check.sh --command-id "/rite:issue:start" --cwd "$(pwd)"
+git add <changed-files>
+git commit -m "$(cat <<'EOF'
+feat(scope): ステップ 1 の outcome 一文
+
+詳細な変更内容と why を 1-2 文で。
+
+Refs: #{issue_number}
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+EOF
+)"
 ```
 
-If exit code is `1` (blocked), stop execution and display the preflight output. Do NOT proceed.
-
-**Orchestration**: `/rite:issue:start` controls all. Skills output patterns: lint (`[lint:success/skipped/error/aborted]`), create (`[pr:created:{n}/create-failed]`), review (`[review:mergeable/fix-needed:{n}]`), fix (`[fix:pushed/issues-created/replied-only/error]`), ready (`[ready:completed/error]`).
-
-**Sub-skill return protocol**: See [Sub-skill Return Protocol (Global)](#sub-skill-return-protocol-global). Each Mandatory After section below enforces it at specific transition points.
-
-Invocation: `skill: "rite:lint"` or `skill: "rite:pr:review", args: "67"`
-
-### 5.0-5.2.1 Execute Phase (delegated to start-execute sub-skill)
-
-**Pre-write** (before invoking `rite:issue:start-execute`):
+`language=en` の場合は subject + body を英語で:
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_execute_running" --issue {issue_number} --branch "{branch_name}" \
-  --pr 0 \
-  --next "After rite:issue:start-execute returns: proceed to Phase 5.3-5.4 (Publish Phase) via rite:issue:start-publish. Do NOT stop."
+git commit -m "$(cat <<'EOF'
+feat(scope): one-line outcome of step 1
+
+1-2 sentences describing what changed and why.
+
+Refs: #{issue_number}
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+EOF
+)"
 ```
 
-> **Module**: [Execute Phase](./start-execute.md) - Handles Phase 5.0 (Stop Hook Verification), 5.1 (Implementation invoking implement.md), 5.2 (Lint via rite:lint), 5.2.1 (Checklist Confirmation).
+LLM はステップ 1.4 で stdout に emit された `[CONTEXT] WORKFLOW_LANGUAGE=<value>` marker を直前の conversation context から読み取り、`ja` / `en` のいずれかをテンプレ分岐に literal 置換する。Bash 変数 `$language` は invocation 境界を越えると失われるため、ここでは shell 変数ではなく marker 経由で値を取得すること。
 
-Invoke `skill: "rite:issue:start-execute"`.
+### 4.3 Work Memory 更新
 
-**Immediate after start-execute returns**: When `start-execute` outputs `<!-- [start:execute:completed] -->` (success) or `<!-- [start:execute:aborted] -->` (abort — Phase 5.1.3 中止 or `[lint:aborted]`) sentinel and returns control, do **NOT** stop — **immediately** proceed to Mandatory After 5.0-5.2.1 below.
-
-### 🚨 Mandatory After 5.0-5.2.1
-
-> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
-> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
-
-**Step 1**: Update flow state to post-execute phase (atomic):
+各コミット後に進捗を work memory に反映 (best-effort):
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_post_execute" --issue {issue_number} --branch "{branch_name}" \
-  --pr 0 \
-  --next "rite:issue:start-execute completed. [start:execute:completed]→Phase 5.3-5.4 via rite:issue:start-publish。[start:execute:aborted]→rite:issue:start-finalize (abort context, pr=0); sub-skill 内で abort entry 検出し Phase 5.5/5.5.1/5.5.2/5.7 を skip し直接 Phase 5.6 へ。Do NOT stop."
+WM_SOURCE="implement" WM_PHASE="implement" WM_PHASE_DETAIL="ステップ {N} 完了" \
+  WM_NEXT_ACTION="次ステップ or 品質チェック" \
+  WM_BODY_TEXT="ステップ {N}: {what} を実装しました。" \
+  WM_ISSUE_NUMBER="{issue_number}" \
+  bash {plugin_root}/hooks/local-wm-update.sh 2>/tmp/rite-wm-err-$$.log
+wm_rc=$?
+if [ $wm_rc -eq 2 ]; then
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type local_wm_update_lock_failed \
+    --details "local-wm-update.sh exit 2 (lock failure). stderr: $(head -c 200 /tmp/rite-wm-err-$$.log 2>/dev/null | tr '\n' ' ')" \
+    --root-cause-hint "concurrent_session_lock_contention" \
+    --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+fi
+rm -f /tmp/rite-wm-err-$$.log
+true
 ```
 
-**Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1。Grep `[CONTEXT] WORKFLOW_INCIDENT=1` (emit by `start-execute` `[lint:aborted]` §A or `lint.md` sub-skill)。検出時 step 2-7 を実行。**non-blocking** — Step 3 へ継続。
+### 4.4 すべてのステップ完了確認
 
-**Step 3 (Sentinel-based routing)**: Grep for `<!-- [start:execute:completed] -->` or `<!-- [start:execute:aborted] -->`:
+すべてのステップを完了したら、変更ファイル一覧と Issue body のチェックリスト更新を確認。Sub-Issue Tasklist (`- [ ] #123 title`) は実装ステップではないため除外する:
 
-- `[start:execute:completed]` → **→ Phase 5.3-5.4 (Publish via `rite:issue:start-publish`) now**.
-- `[start:execute:aborted]` → **→ Invoke `rite:issue:start-finalize` (abort context, `--pr 0`) now**。sub-skill が abort entry (`pr_number == 0` AND no prior `[pr:created:N]`) を検出し Phase 5.5/5.5.1/5.5.2/5.7 を skip、Phase 5.6 Completion Report へ。Report は abort reason ([lint:aborted] / 5.1.3 user 中止) を表示。
-- Neither → fail-safe: completed 扱い (Phase 5.3-5.4 へ); sub-skill は Return Output Format に従い必ず片方の sentinel を emit する。
+```bash
+gh issue view {issue_number} --json body --jq .body | grep "^- \[ \]" | grep -v "^- \[ \] #"
+```
 
-### 5.3-5.4 Publish Phase (delegated to start-publish sub-skill)
+未完了項目がある場合は AskUserQuestion で「実装を続ける / 残項目を別 Issue に分離して PR へ / 中止」を選択。
 
-**Pre-write** (before invoking `rite:issue:start-publish`):
+### 4.5 flow-state 更新
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_publish_running" --issue {issue_number} --branch "{branch_name}" \
-  --pr 0 \
-  --next "After rite:issue:start-publish returns: proceed to Phase 5.5-Termination (rite:issue:start-finalize) on [start:publish:completed]. Invoke rite:issue:start-finalize (abort context — pr exists but review-fix loop 未収束) on [start:publish:aborted]; sub-skill 内で abort entry を検出して Phase 5.5/5.5.1/5.5.2/5.7 を skip し直接 Phase 5.6 へ進む。 Do NOT stop."
+  --phase implement --issue {issue_number} --branch "{branch_name}" --pr 0 \
+  --next "品質チェック (rite:lint)"
 ```
 
-> **Module**: [Publish Phase](./start-publish.md) - Handles Phase 5.3 (PR creation via rite:pr:create), 5.4 (Review-Fix Loop with internal 5.4.1/5.4.1.0/5.4.4/5.4.6 routing, fingerprint cycling dispatcher).
+---
 
-Invoke `skill: "rite:issue:start-publish"`.
+## ステップ 5: 品質チェック
 
-**Immediate after start-publish returns**: When `start-publish` outputs `<!-- [start:publish:completed] -->` (success — review-fix loop converged via `[review:mergeable]` or `[fix:replied-only]`) or `<!-- [start:publish:aborted] -->` (abort — `[pr:create-failed]` or `[fix:error]` user-terminate) sentinel and returns control, do **NOT** stop — **immediately** proceed to Mandatory After 5.3-5.4 below.
+### 5.1 lint 実行
 
-### 🚨 Mandatory After 5.3-5.4
+`skill: "rite:lint"` を invoke する。
 
-> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
-> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
+戻り値パターン:
 
-**Step 1**: Update flow state to post-publish phase (atomic):
+- `[lint:success]` → ステップ 6 へ
+- `[lint:skipped]` → ステップ 6 へ (`commands.lint` 未設定 / drift 警告のみ等)
+- `[lint:error]` → AskUserQuestion で「修正して再実行 / 強制続行 / 中止」を選択
+- `[lint:aborted]` → user 起因の中止。ステップ 8.5 (Workflow Incident Detection) を skip してステップ 8.6 (完了レポート) に直接遷移し、abort context を含めて workflow 終了。PR 作成はスキップ
+- **default (上記 4 sentinel いずれも観測されない)** → `rite:lint` skill の load 失敗 / Skill ツール timeout / context 削減で sentinel 行が drop した可能性。`[lint:success]` 扱いで silent recovery してはならない。以下を実行:
+  ```bash
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type skill_load_failure \
+    --details "rite:lint invocation returned no recognizable sentinel ([lint:success|skipped|error|aborted])" \
+    --root-cause-hint "skill_loader_or_context_drop" \
+    --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+  ```
+  そのうえで AskUserQuestion で「再試行 / 強制続行 (リスク承知) / 中止」を提示する。default 観測の事実は上記 `workflow-incident-emit.sh` 呼び出しで `.rite/incidents/` に記録され、ステップ 8.5 (Workflow Incident Detection、完了レポート出力前) で sentinel を grep して Todo Issue を自動起票する経路で surface される。**「強制続行」を選んだ場合**はステップ 6 の PR 作成時に PR body 冒頭に「⚠️ Lint sentinel was dropped; this PR has NOT been lint-verified」を自動挿入する。flow-state への追加 meta 記録は行わない (flow-state-update.sh は `--meta` を受理しないため。代わりに `.rite/incidents/` の sentinel が監査痕跡として機能する)。
+
+「修正して再実行」の場合は LLM が修正を実装してコミット → 再度 `skill: "rite:lint"`。
+
+### 5.2 flow-state 更新
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_post_publish" --issue {issue_number} --branch "{branch_name}" \
-  --pr {pr_number} \
-  --next "rite:issue:start-publish completed. [start:publish:completed]/[start:publish:aborted] いずれも rite:issue:start-finalize を invoke。abort path は sub-skill 内で Phase 5.5/5.5.1/5.5.2/5.7 を skip し直接 Phase 5.6 へ。Do NOT stop."
+  --phase lint --issue {issue_number} --branch "{branch_name}" --pr 0 \
+  --next "PR 作成"
 ```
 
-**Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1。Grep `[CONTEXT] WORKFLOW_INCIDENT=1` (emit by `start-publish` `[pr:create-failed]` / `[fix:error]` §B/§C or pr/* sub-skills)。検出時 step 2-7。**non-blocking**。
+---
 
-**Step 3 (Sentinel-based routing)**: Grep for `<!-- [start:publish:completed] -->` or `<!-- [start:publish:aborted] -->`:
+## ステップ 6: PR 作成
 
-- `[start:publish:completed]` → **→ Phase 5.5 (Ready for Review) now**.
-- `[start:publish:aborted]` → **→ Invoke `rite:issue:start-finalize` (abort context) now**。sub-skill が abort entry を検出し Phase 5.5/5.5.1/5.5.2/5.7 を skip、Phase 5.6 Completion Report へ。Report は abort reason (`[pr:create-failed]` / `[fix:error]` user-terminate) を表示。
-- Neither → fail-safe: completed 扱い (Phase 5.5 へ); sub-skill は Return Output Format に従い必ず片方を emit する。
+### 6.1 push
 
-### 5.4.4.1 Workflow Incident Detection (Contract Summary)
+push 失敗時は `exit 1` で bash を停止し、workflow fallthrough を防ぐ（後続の `gh pr create` が「No commits between branches」で奇怪な失敗をするのを回避）。retry / 手動継続 / 中止の判断は LLM が AskUserQuestion で行い、ユーザー選択後に再実行する:
 
-> **Reference**: 本 contract の Step 1-7 詳細は [Workflow Incident Detection](./references/workflow-incident-detection.md); emit pattern canonical bash literal は [Workflow Incident Emit Pattern](./references/workflow-incident-emit-pattern.md) (response-text-inclusion requirement は [§不変条件](./references/workflow-incident-emit-pattern.md#不変条件)); fingerprint cycling / Quality Signal 3 & 4 は [Fingerprint Cycling Detection](./references/fingerprint-cycling.md) を参照。Orchestrator は Mandatory After 5.0-5.2.1 / 5.3-5.4 / 5.5-Termination の 3 boundary で本 detection を invoke する。
+```bash
+if ! push_err=$(git push -u origin "{branch_name}" 2>&1); then
+  push_err_short="${push_err:0:500}"
+  echo "ERROR: git push failed: $push_err_short" >&2
+  # helper produces the canonical sentinel (sanitized free-text + `<pr>-<epoch>`
+  # iteration_id); an inline `[CONTEXT] WORKFLOW_INCIDENT=1` emit would skip
+  # sanitization and use a different iteration_id format, so dedup at ステップ
+  # 8.5 would see two distinct incidents for one push failure.
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type git_push_failed \
+    --details "$push_err_short" \
+    --root-cause-hint "auth_expiry_or_pre_receive_reject_or_network" \
+    --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+  echo "[CONTEXT] PHASE_6_1_STATE=push_failed; LLM must AskUserQuestion: retry / 手動 push 完了後に続行 / 中止" >&2
+  exit 1
+fi
+```
 
-**Detection scope** — recognised sentinel `type` values:
+LLM はこの bash block の exit 1 を観測したら、AskUserQuestion で「再試行 / 手動 push 完了後に続行 / 中止」を提示する。続行選択時はステップ 6.2 から再開、中止選択時は WORKFLOW_INCIDENT がすでに emit されているので workflow を終了する。
 
-> **Note**: 本 table は **user-facing recommended action がある type 限定** で列挙する (Issue #1003 AC-4 / AC-7 / AC-8 で導入された Projects 系 2 type を含む)。`workflow-incident-emit.sh` の allowlist (case 句) には他の type (`cross_session_takeover_refused` / `legacy_state_corrupt`) も含まれているが user-facing action がないため本 table では割愛する。emit 可能な全 type の単一源は allowlist case 句 (本 table と allowlist case 句の同期 maintenance は cycle 8 C7-F20/C7-F22 / cycle 10 F-05 対応で確立)。
->
-> **Source 列の凡例** (cycle 8 C7-F21 対応): 「**Emit site**」は `workflow-incident-emit.sh` が呼ばれるコード上の正確な場所、「**Contract SoT**」は emit 規約 (silent skip 禁止 / details に注入する root cause 等) が宣言された reference doc を指す。両者は orthogonal で、emit 発火源は Emit site のみ。
+### 6.2 PR 作成
 
-| Type | Emit site | Contract SoT | Default action when detected |
-|------|-----------|-------------|------------------------------|
-| `skill_load_failure` | Orchestrator post-condition check | [workflow-incident-emit-pattern.md](./references/workflow-incident-emit-pattern.md) | AskUserQuestion → register Issue / skip |
-| `hook_abnormal_exit` | Skill internal failure paths | [workflow-incident-emit-pattern.md](./references/workflow-incident-emit-pattern.md) | AskUserQuestion → register Issue / skip |
-| `manual_fallback_adopted` | Orchestrator fallback prompts | [workflow-incident-emit-pattern.md](./references/workflow-incident-emit-pattern.md) | AskUserQuestion → register Issue / skip |
-| `wiki_ingest_skipped` | review/fix/close Phase X.X.W で `wiki.enabled=false` / `wiki.auto_ingest=false`、**または** `wiki-ingest-commit.sh` exit 2 (wiki branch 不在 — fresh clone) | [workflow-incident-detection.md](./references/workflow-incident-detection.md) §1 (sub-case 詳細) | AskUserQuestion → register Issue / skip |
-| `wiki_ingest_failed` | `wiki-ingest-trigger.sh` exit non-zero / non-2、**または** `wiki-ingest-commit.sh` exit non-0/2/4 (git stash/checkout/commit 失敗) | [workflow-incident-detection.md](./references/workflow-incident-detection.md) | AskUserQuestion → register Issue / skip — register 推奨 |
-| `wiki_ingest_push_failed` | `wiki-ingest-commit.sh` exit 4 — commit は local wiki branch に landed、origin push 失敗 | [workflow-incident-detection.md](./references/workflow-incident-detection.md) | register 推奨。Manual recovery: `git push origin wiki` |
-| `gitignore_drift` | `/rite:lint` Phase 3.9 で `gitignore-health-check.sh` が `.rite/wiki/` 不在を検出 (last-line-of-defense) | [workflow-incident-detection.md](./references/workflow-incident-detection.md) | register 推奨。Manual recovery: restore `.rite/wiki/` to `.gitignore` |
-| `projects_status_update_failed` | `pr/ready.md` Phase 4.2 / `start-finalize.md` Phase 5.5.1 で `projects-status-update.sh` が `failed` / `skipped_not_in_project` を返した場合 | [projects-status-update-callsites.md](./references/projects-status-update-callsites.md) Common contract item 5 (Issue #1003 AC-4 silent skip 禁止 contract) | AskUserQuestion → register Issue / skip — register 推奨 (Status 滞留の原因調査が必要) |
-| `projects_status_in_review_missing` | `start-finalize.md` Workflow Termination Step 0 / `start.md` Mandatory After 5.5-Termination Step 1.5 / `post-compact.sh` reconciliation 失敗時に PR Ready 化済 (`isDraft=false`) かつ Issue Status が `In Review` でない不整合を検出 | [workflow-incident-detection.md](./references/workflow-incident-detection.md) (Issue #1003 AC-7/AC-8 多層観測 contract) | AskUserQuestion → register Issue / skip — register 推奨 (defense-in-depth 失敗の兆候) |
+`skill: "rite:pr:create"` を invoke。
 
-**When to execute** (explicit routing):
+戻り値パターン:
 
-| Caller | Invocation point | Trigger |
-|--------|------------------|---------|
-| Phase 5.0-5.2.1 (execute) | Mandatory After 5.0-5.2.1 — Step 2 | Always after `[start:execute:*]` pattern |
-| Phase 5.3-5.4 (publish) | Mandatory After 5.3-5.4 — Step 2 | Always after `[start:publish:*]` pattern (covers internal `[pr:created:{N}]` / `[pr:create-failed]` / `[review:*]` / `[fix:*]` emits via context grep) |
-| Phase 5.5-Termination (finalize) | Mandatory After 5.5-Termination — Step 2 | Always after `[start:finalize:*]` pattern (covers internal `[ready:*]` emit via context grep) |
+- `[pr:created:N]` → `{pr_number}` を抽出してステップ 7 へ。**この sentinel は `rite:pr:create` の出力に含まれており、本 conversation context に残るため、上位 caller (`/rite:sprint:execute` 等) から grep 可能**
+- `[pr:create-failed]` → AskUserQuestion で「手動作成して PR 番号を入力 / 再試行 / 中止」。さらに WORKFLOW_INCIDENT を bash block で emit:
+  ```bash
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type pr_create_failed \
+    --details "{short_reason from rite:pr:create return}" \
+    --root-cause-hint "skill_invocation_or_gh_pr_create_failure" \
+    --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+  ```
+- **default (上記 2 sentinel いずれも観測されない)** → `rite:pr:create` skill の load 失敗 / sentinel drop の可能性。`[pr:created:N]` 扱いで silent continue してはならない。`workflow-incident-emit.sh --type skill_load_failure --details "rite:pr:create returned no recognizable sentinel"` を emit のうえ AskUserQuestion で「手動作成して PR 番号を入力 / 再試行 / 中止」を提示する。
 
-**Skip condition**: If `workflow_incident.enabled: false` で本 phase 全体を skip。値は Phase 5.0 (start-execute) で 1 回読込み cache。
-
-**Invariants**: Issue creation 失敗は non-blocking (workflow MUST NOT halt)。Default-on: `workflow_incident:` section absent → `enabled: true` 扱い。
-
-### 5.5-Termination Finalize Phase (delegated to start-finalize sub-skill)
-
-**Pre-write** (before invoking `rite:issue:start-finalize`):
+### 6.3 flow-state 更新
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh create \
-  --phase "phase5_finalize_running" --issue {issue_number} --branch "{branch_name}" \
-  --pr {pr_number} \
-  --next "After rite:issue:start-finalize returns: workflow terminates (terminal state already written by sub-skill). Caller MUST output completion handoff message. Do NOT stop."
+  --phase pr --issue {issue_number} --branch "{branch_name}" --pr {pr_number} \
+  --next "レビュー/修正ループ"
 ```
 
-> **Module**: [Finalize Phase](./start-finalize.md) - Handles Phase 5.5 (Ready for Review via `rite:pr:ready`), 5.5.1 (Issue Status In Review), 5.5.2 (Metrics Recording), 5.6 (Completion Report incl. 5.6.1 Workflow Incident Reporting + 5.6.2 Wiki Ingest Status Reporting), 5.7 (Parent Issue Completion via `rite:issue:close`), Workflow Termination.
+---
 
-Invoke `skill: "rite:issue:start-finalize"`.
+## ステップ 7: レビュー/修正ループ
 
-**Immediate after start-finalize returns**: When `start-finalize` outputs `<!-- [start:finalize:completed] -->` (success — workflow terminated normally) or `<!-- [start:finalize:aborted] -->` (abort — Phase 5.5 user selects 「More fixes」or `[ready:error]` user-terminate) sentinel and returns control, do **NOT** stop — **immediately** proceed to Mandatory After 5.5-Termination below.
+### 7.1 review
 
-### 🚨 Mandatory After 5.5-Termination
+> **Pre-invoke flow-state update (MANDATORY)**: skill 呼び出し直前に必ず実行する。
+> ```bash
+> bash {plugin_root}/hooks/flow-state-update.sh create \
+>   --phase review --issue {issue_number} --branch "{branch_name}" --pr {pr_number} \
+>   --next "fix or ready 判定"
+> ```
 
-> See [Flow State Scaffolding](./references/flow-state-scaffolding.md).
-> MUST execute in the SAME response turn. DO NOT stop, do NOT re-invoke.
+`skill: "rite:pr:review", args: "{pr_number}"` を invoke。
 
-**Step 1**: Idempotent terminal state confirmation. Workflow terminal state (`phase="completed", active=false`) is already written by the sub-skill (Workflow Termination block in `start-finalize.md` for success path, or the abort-path terminal write in its Return Output Format for abort path). Re-patch idempotently to refresh timestamp and guard against the rare case where sub-skill terminal write was skipped due to interrupt:
+戻り値パターン:
+
+- `[review:mergeable]` → ステップ 8 へ
+- `[review:fix-needed:N]` → ステップ 7.2 へ
+- **default (上記 2 sentinel いずれも観測されない)** → `rite:pr:review` skill の load 失敗 / sentinel drop。silent continue してはならない。`workflow-incident-emit.sh --type skill_load_failure --details "rite:pr:review returned no recognizable sentinel ([review:mergeable|fix-needed:N])" --root-cause-hint "skill_loader_or_context_drop" --pr-number {pr_number}` を emit のうえ AskUserQuestion で「再試行 / 強制続行 (リスク承知) / 中止」を提示。
+
+### 7.2 fix
+
+> **Pre-invoke flow-state update (MANDATORY)**: skill 呼び出し直前に必ず実行する。
+> ```bash
+> bash {plugin_root}/hooks/flow-state-update.sh create \
+>   --phase fix --issue {issue_number} --branch "{branch_name}" --pr {pr_number} \
+>   --next "再レビュー or ready 判定"
+> ```
+
+`skill: "rite:pr:fix", args: "{pr_number}"` を invoke。
+
+戻り値パターン:
+
+- `[fix:pushed]` → ステップ 7.1 へ戻る（再レビュー）
+- `[fix:pushed-wm-stale]` → AskUserQuestion で「stale work-memory のまま re-review (推奨) / wm を refresh してから re-review / 中止」を選択。stale context のまま review すると review が古い情報に基づく可能性があることをユーザーに明示する
+- `[fix:issues-created:N]` → fix 中に新規 Issue が N 件作成された (scope-creep finding 抽出など)。完了レポートに作成 Issue 番号を含めてからステップ 7.1 へ戻る
+- `[fix:replied-only]` → fix iteration は LLM 修正なしでレビュー返信のみで完結 (push 未実施)。AskUserQuestion で「ステップ 8 (Ready 化) へ進む / 追加の修正を依頼 / 中止」を提示し、merge OK の判断はユーザーに委ねる
+- `[fix:error]` → AskUserQuestion で「手動修正してから再レビュー / 中止」
+- **default (上記 5 sentinel いずれも観測されない)** → `rite:pr:fix` skill の load 失敗 / sentinel drop。silent continue してはならない。`workflow-incident-emit.sh --type skill_load_failure --details "rite:pr:fix returned no recognizable sentinel ([fix:pushed|pushed-wm-stale|issues-created:N|replied-only|error])" --root-cause-hint "skill_loader_or_context_drop" --pr-number {pr_number}` を emit のうえ AskUserQuestion で「再試行 / 強制続行 (リスク承知) / 中止」を提示。
+
+### 7.3 ループ上限
+
+7.1 ↔ 7.2 のループが 5 回に達したら AskUserQuestion で「続行 / 中止」を選択。
+
+### 7.4 flow-state 更新パターン
+
+ステップ 7.1 / 7.2 の各冒頭に inline 展開した Pre-invoke flow-state update がこの phase の canonical site。本セクションは記録目的で、`--phase review` / `--phase fix` のいずれかを selected step に応じて書き込む。
+
+---
+
+## ステップ 8: Ready & 完結
+
+### 8.1 Ready 化確認
+
+AskUserQuestion で「PR を Ready for review に変更する / Draft のまま / 中止」を選択。
+
+### 8.2 Ready 化
+
+`skill: "rite:pr:ready", args: "{pr_number}"` を invoke。
+
+戻り値パターン:
+
+- `[ready:completed]` → ステップ 8.3 へ
+- `[ready:error]` → AskUserQuestion で「手動 Ready 化 / 中止」
+- **default (上記 2 sentinel いずれも観測されない)** → `rite:pr:ready` skill の load 失敗 / sentinel drop。silent continue してはならない。`workflow-incident-emit.sh --type skill_load_failure --details "rite:pr:ready returned no recognizable sentinel ([ready:completed|error])" --root-cause-hint "skill_loader_or_context_drop" --pr-number {pr_number}` を emit のうえ AskUserQuestion で「再試行 / 強制続行 (リスク承知) / 中止」を提示。
+
+### 8.3 Projects Status In Review
+
+`rite-config.yml.github.projects.enabled: true` の場合。canonical JSON pattern（[`projects-status-update-callsites.md`](./references/projects-status-update-callsites.md) Callsite 2 と同形）。`.result` inspection + `workflow_incident` emit を Common contract §5 に従って実行:
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh patch \
-  --phase "completed" --active false --next "none" \
-  --if-exists --preserve-error-count
-# Defense-in-depth dual cleanup: start-finalize.md Workflow Termination Step 2 が success path
-# primary cleanup を担う。本 idempotent rm は abort/interrupt path での fallback。
-# lockdir は stale lock 失敗の potential があるため失敗を emit (4 site 対称、`from=` で識別)。
-rm -f .rite-compact-state 2>/dev/null || true
-rm -rf .rite-compact-state.lockdir 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=start_md_termination" >&2
+status_result=$(bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+    --argjson issue {issue_number} \
+    --arg owner "{owner}" \
+    --arg repo "{repo}" \
+    --argjson project_number {project_number} \
+    --arg status "In Review" \
+    --argjson auto_add false \
+    --argjson non_blocking true \
+    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>&1) || status_result="{\"result\":\"failed\",\"warnings\":[\"projects-status-update.sh fatal exit\"]}"
+status_value=$(printf '%s' "$status_result" | jq -r '.result // "failed"' 2>/dev/null || echo "failed")
+case "$status_value" in
+  updated) ;;
+  skipped_not_in_project)
+    echo "WARNING: Issue #{issue_number} は Project に未登録 (Callsite 2)" >&2
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type projects_status_update_failed \
+      --details "Issue #{issue_number} ステップ 8.3 (In Review): projects-status-update.sh returned skipped_not_in_project" \
+      --root-cause-hint "issue_not_registered_in_project_at_in_review" \
+      --pr-number {pr_number} >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+    ;;
+  failed|*)
+    printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null | while read -r w; do echo "WARNING: $w" >&2; done
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type projects_status_update_failed \
+      --details "Issue #{issue_number} ステップ 8.3 (In Review): projects-status-update.sh returned $status_value" \
+      --root-cause-hint "gh_api_or_graphql_failure_at_in_review" \
+      --pr-number {pr_number} >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+    ;;
+esac
 ```
 
-**Step 1.5 (Issue #1003 AC-8 — caller-side In Review log missing detection)**: success path では sub-skill `start-finalize.md` Workflow Termination Step 0 が primary 検知を担うが、abort path (`[start:finalize:aborted]`) では sub-skill の Workflow Termination 自体が走らないため、caller 側で同等の defense-in-depth 検知を実行する。**実際に catch する scenario**: abort entry detection 経由で sub-skill が Workflow Termination Step 0 を skip した success-like path (PR は既に Ready 化済 `isDraft=false` だが finalize が abort 入口で停止) で Status が `In Progress` のまま放置される事象を最終 fallback で surface する。`[ready:error]` 経路は emit subpath によって挙動が異なる: (a) `gh pr ready` API 自体の失敗 → PR は draft のまま (`isDraft=true`) で本 Step 1.5 の `isDraft=false` gating を通過しない / (b) `gh pr ready` 成功後の post-processing 失敗 (例: Phase 4.2 `projects-status-update.sh` の skip/fail) → PR は既に Ready 化済 (`isDraft=false`) で本 Step 1.5 が surface 対象となる / (c) その他の sub-skill 内で `[ready:error]` 化された経路でも (b) と同様に `isDraft=false` 状態がありうるため、断定的に "PR は draft のまま" とは言えない (Status 滞留は本 sentinel または `projects_status_update_failed` sentinel のいずれかで検出される)。詳細な `[ready:error]` 全 emit 経路は [pr/ready.md](../pr/ready.md) を参照。
+### 8.4 親 Issue の完結判定
+
+ステップ 1.2 で親 Issue を検出していた場合、親の trackedIssues 状態を再確認:
 
 ```bash
-# Defense-in-depth caller-side check: PR 作成済 (pr_number != 0) かつ projects 有効化されている場合のみ
-# Status mismatch を check し、sub-skill (start-finalize.md Workflow Termination Step 0) が primary 検知を
-# 担い、本 caller-side check は 2 段目の冗長防御として機能する。重複 emit は Phase 5.4.4.1 dedup で吸収。
-# sub-shell + pipefail + signal-specific trap で start-finalize.md Step 0 と対称化し、gh API 失敗を
-# silent fall-through せず incident emit する。
-#
-# `set -e` / `set -u` は意図的に有効化しない: AC-8 検知は non-blocking 要件 (失敗時 silent
-# fall-through を許容、ただし sentinel emit は必須) のため `set -e` 有効化すると trap 内 cleanup が中断する経路がある。
-# `set -u` は `${var:-}` パターンの可読性のため不採用 (`set -o pipefail` のみ enable し pipe 失敗を捕捉)。
-#
-# Note (cycle 10 F-14, symmetry with start-finalize.md Workflow Termination Step 0):
-# 本 block と start-finalize.md Step 0 (約 100 行) は AC-8 検知ロジックの literal duplication を持つ。
-# 差分は tempfile prefix (`/tmp/rite-step15-*` vs `/tmp/rite-finalize-step0-*`)、
-# 関数名 (`_step15_cleanup` vs `_finalize_step0_cleanup`)、log message prefix
-# (`Step 1.5` vs `Workflow Termination Step 0`)、および **意図的な `--root-cause-hint` 値の差**:
-#   - start.md = `gh_api_failure_at_caller_defense` (caller-side defense layer)
-#   - start-finalize.md = `gh_api_failure_at_final_fallback` (last-resort layer)
-# この hint 値差は observability で「どの defense layer が失敗したか」を識別するため**意図的に異なる**。
-# 片側を更新する際にもう片側を「揃えるべきか/保持すべきか」を判断する際、hint 値だけは揃えないこと。
-# 共通 helper (`plugins/rite/hooks/check-ac8-status-mismatch.sh` 等) への抽出は別 Issue 推奨 (本 PR scope 外)。
-# 短期的には docstring / 関数名 / log prefix のいずれかを変更した場合、両 site を同時更新すること。
-(
-  # cycle 8 C7-F11 対応: `{pr_number}` placeholder substitute 検証。
-  # orchestrator が placeholder を substitute せずに literal `{pr_number}` を残した場合、
-  # 後段の `workflow-incident-emit.sh --pr-number {pr_number}` は `^[0-9]+$` regex 違反で
-  # silent fail (`>&2 || true` で握りつぶし) し、AC-8 検知自体が無音 skip される。
-  # case 文で literal placeholder / empty を fail-fast 検出し observable に。
-  case "{pr_number}" in
-    ''|'{pr_number}')
-      echo "[rite] ⚠️ Step 1.5: {pr_number} placeholder が未 substitute (literal='{pr_number}') — AC-8 検知を skip" >&2
-      exit 0 ;;
-  esac
-  # cycle 10 F-02 対応: `{issue_number}` placeholder substitute 検証 (`{pr_number}` と対称)。
-  # 未 substitute の場合、後段 `gh api graphql ... -F number={issue_number}` が GraphQL Int! 違反で
-  # fail し、`gh_api_failure_at_caller_defense` で誤分類される。さらに `--details "Issue #{issue_number}..."`
-  # が literal を文字列に注入し incident search-by-issue-number が不能になる。
-  case "{issue_number}" in
-    ''|'{issue_number}')
-      echo "[rite] ⚠️ Step 1.5: {issue_number} placeholder が未 substitute (literal='{issue_number}') — AC-8 検知を skip" >&2
-      exit 0 ;;
-  esac
-  if [ "{pr_number}" != "0" ] && [ -n "{pr_number}" ]; then
-    PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' rite-config.yml 2>/dev/null)
-    PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' rite-config.yml 2>/dev/null)
-    if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ]; then
-      set -o pipefail
-      pr_view_err=""
-      repo_view_owner_err=""
-      repo_view_name_err=""
-      gql_err=""
-      jq_err=""
-      _step15_cleanup() {
-        rm -f "${pr_view_err:-}" "${repo_view_owner_err:-}" "${repo_view_name_err:-}" \
-              "${gql_err:-}" "${jq_err:-}"
-      }
-      trap 'rc=$?; _step15_cleanup; exit $rc' EXIT
-      trap '_step15_cleanup; exit 130' INT
-      trap '_step15_cleanup; exit 143' TERM
-      trap '_step15_cleanup; exit 129' HUP
-      pr_view_err=$(mktemp /tmp/rite-step15-pr-err-XXXXXX) || pr_view_err=""
-      repo_view_owner_err=$(mktemp /tmp/rite-step15-repo-owner-err-XXXXXX) || repo_view_owner_err=""
-      repo_view_name_err=$(mktemp /tmp/rite-step15-repo-name-err-XXXXXX) || repo_view_name_err=""
-      gql_err=$(mktemp /tmp/rite-step15-gql-err-XXXXXX) || gql_err=""
-      jq_err=$(mktemp /tmp/rite-step15-jq-err-XXXXXX) || jq_err=""
-
-      # cycle 8 C7-F05 対応: cascade emit guard。`_owner_repo_ok` flag で後段 graphql / sentinel emit を
-      # skip させ、`projects_status_in_review_missing` の 3 連続 sentinel emit (owner / name / graphql)
-      # を回避する。最初の失敗で sentinel emit 後、後段は flag check で silent skip (dead branch)。
-      _owner_repo_ok=1
-
-      # {owner}/{repo} を sub-shell 内で local 取得する (cycle 3 F-01 対応)。
-      # Placeholder Legend は宣言のみで Phase 0/0.1/0.2/0.3/1/2 に explicit retrieval phase
-      # が存在せず、orchestrator LLM の ad-hoc 取得に依存していた。sub-shell scope 内完結に変更することで
-      # orchestrator 状態への依存を排除し、未取得時の AC-8 core 検知 silent skip 経路を遮断する。
-      # cycle 8 C7-F01 対応: stderr を tempfile capture して details に注入し、auth / rate-limit /
-      # network / permission の root cause attribution を可能にする (4-site 対称化)。
-      if ! _owner=$(gh repo view --json owner --jq '.owner.login' 2>"${repo_view_owner_err:-/dev/null}") || [ -z "$_owner" ]; then
-        repo_owner_err_oneline=$(head -c 200 "${repo_view_owner_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
-        echo "[rite] ⚠️ Step 1.5: gh repo view --json owner に失敗 (stderr=$repo_owner_err_oneline) — AC-8 検知を skip" >&2
-        bash {plugin_root}/hooks/workflow-incident-emit.sh \
-          --type projects_status_in_review_missing \
-          --details "Issue #{issue_number} caller-side Step 1.5: gh repo view --json owner failed (stderr=$repo_owner_err_oneline)" \
-          --root-cause-hint "gh_repo_view_owner_failed" \
-          --pr-number {pr_number} >&2 || true
-        _owner=""
-        _owner_repo_ok=0
-      fi
-      if [ "$_owner_repo_ok" = "1" ]; then
-        if ! _repo=$(gh repo view --json name --jq '.name' 2>"${repo_view_name_err:-/dev/null}") || [ -z "$_repo" ]; then
-          repo_name_err_oneline=$(head -c 200 "${repo_view_name_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
-          echo "[rite] ⚠️ Step 1.5: gh repo view --json name に失敗 (stderr=$repo_name_err_oneline) — AC-8 検知を skip" >&2
-          bash {plugin_root}/hooks/workflow-incident-emit.sh \
-            --type projects_status_in_review_missing \
-            --details "Issue #{issue_number} caller-side Step 1.5: gh repo view --json name failed (stderr=$repo_name_err_oneline)" \
-            --root-cause-hint "gh_repo_view_name_failed" \
-            --pr-number {pr_number} >&2 || true
-          _repo=""
-          _owner_repo_ok=0
-        fi
-      fi
-
-      if [ "$_owner_repo_ok" != "1" ]; then
-        # cycle 8 C7-F05: _owner/_repo 取得失敗で cascade emit を抑止。
-        # 後段 gh pr view / gh api graphql は実行しても CURRENT_STATUS が取得不能で意味がないため early exit。
-        exit 0
-      fi
-
-      if PR_IS_DRAFT=$(gh pr view {pr_number} --json isDraft --jq '.isDraft // null' 2>"${pr_view_err:-/dev/null}"); then
-        :
-      else
-        gh_pr_rc=$?
-        pr_err_oneline=$(head -c 200 "${pr_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
-        # 3-site 対称化 (post-compact.sh / start-finalize.md Step 0 と同じ判別ロジック): PR が close/merge/delete
-        # されている legitimate な終了状態 (gh CLI 実出力 `Could not resolve to a PullRequest` の CamelCase
-        # 連結 stderr) と auth/network/permission failure を区別する。前者は false positive のため、
-        # caller Phase 5.4.4.1 で偽 Issue を auto-register する経路を防ぐため別 hint で emit する。
-        # 注: watchdog-status-mismatch.sh は `gh pr list` 経路で本 regex 適用外 (PR 一括 listing で
-        # `Could not resolve` は発生しない)。
-        if printf '%s' "$pr_err_oneline" | grep -qiE 'could not resolve.*pull\s*request|no.*pull\s*request found'; then
-          pr_root_cause_hint="pr_deleted_or_inaccessible"
-        else
-          pr_root_cause_hint="gh_api_failure_at_caller_defense"
-        fi
-        bash {plugin_root}/hooks/workflow-incident-emit.sh \
-          --type projects_status_in_review_missing \
-          --details "Issue #{issue_number} caller-side Step 1.5: gh pr view {pr_number} failed (rc=$gh_pr_rc, stderr=$pr_err_oneline)" \
-          --root-cause-hint "$pr_root_cause_hint" \
-          --pr-number {pr_number} >&2 || true
-        PR_IS_DRAFT=""
-      fi
-
-      if [ "$PR_IS_DRAFT" = "false" ]; then
-        if CURRENT_STATUS=$(gh api graphql -f query='
-query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    issue(number: $number) {
-      projectItems(first: 10) {
-        nodes {
-          project { number }
-          fieldValues(first: 20) {
-            nodes {
-              ... on ProjectV2ItemFieldSingleSelectValue {
-                field { ... on ProjectV2SingleSelectField { name } }
-                name
-              }
-            }
-          }
+gh api graphql -f owner={owner} -f repo={repo} -F number={parent_issue_number} -f query='
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) {
+        trackedIssues(first: 100) {
+          nodes { number state }
+          totalCount
         }
       }
     }
-  }
-}' -f owner="$_owner" -f repo="$_repo" -F number={issue_number} 2>"${gql_err:-/dev/null}" \
-            | jq -r --argjson pn "$PROJECT_NUMBER" \
-              '[.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn) | .fieldValues.nodes[] | select(.field.name == "Status") | .name][0] // empty' 2>"${jq_err:-/dev/null}"); then
-          :
-        else
-          gh_gql_rc=$?
-          # gh と jq の stderr を別 capture することで root cause attribution を正確化する (cycle 3 F-09 同根)
-          gql_err_oneline=""
-          jq_err_oneline=""
-          [ -n "${gql_err:-}" ] && [ -s "$gql_err" ] && gql_err_oneline=$(head -c 200 "$gql_err" | tr '\n' ' ')
-          [ -n "${jq_err:-}" ] && [ -s "$jq_err" ] && jq_err_oneline=$(head -c 200 "$jq_err" | tr '\n' ' ')
-          bash {plugin_root}/hooks/workflow-incident-emit.sh \
-            --type projects_status_in_review_missing \
-            --details "Issue #{issue_number} caller-side Step 1.5: pipeline failed (rc=$gh_gql_rc, gh_stderr=$gql_err_oneline, jq_stderr=$jq_err_oneline)" \
-            --root-cause-hint "gh_api_failure_at_caller_defense" \
-            --pr-number {pr_number} >&2 || true
-          CURRENT_STATUS=""
-        fi
-
-        if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ]; then
-          echo "[rite] ⚠️ caller-side defense-in-depth: Issue #{issue_number} PR=#{pr_number} isDraft=false Status=\"$CURRENT_STATUS\" — emitting projects_status_in_review_missing sentinel" >&2
-          bash {plugin_root}/hooks/workflow-incident-emit.sh \
-            --type projects_status_in_review_missing \
-            --details "Issue #{issue_number} at Mandatory After 5.5-Termination (caller defense-in-depth): PR=#{pr_number} isDraft=false Status=$CURRENT_STATUS (expected In Review). Abort path or sub-skill Termination skip suspected." \
-            --root-cause-hint "abort_path_or_subskill_termination_skip" \
-            --pr-number {pr_number} >&2 || true
-        fi
-      fi
-    fi
-  fi
-)
+  }' --jq '.data.repository.issue.trackedIssues.nodes'
 ```
 
-**Step 2 (Workflow Incident Detection)**: Run Phase 5.4.4.1。Grep `[CONTEXT] WORKFLOW_INCIDENT=1` (emit by `start-finalize` `[ready:error]` §D or `ready.md` sub-skill, or Step 1.5 above の `projects_status_in_review_missing`)。検出時 step 2-7。**non-blocking**。
+すべての子 Issue (上記出力の各 node) が `state: "CLOSED"` なら AskUserQuestion で「親 Issue を完了とする / そのまま」を選択。完了選択時 (両 command を実行、片方失敗時も warning + continue で非ブロッキング):
 
-**Step 3 (Sentinel-based completion handoff)**: Grep for `<!-- [start:finalize:completed] -->` or `<!-- [start:finalize:aborted] -->`:
+```bash
+# Step 1: gh issue close — exit code を別変数で捕捉（stderr/stdout は close_err、成功時も URL が含まれるため空判定は不可）
+if close_err=$(gh issue close {parent_issue_number} \
+    --comment "すべての子 Issue が完了したため、親 Issue を完了します。" 2>&1); then
+  close_rc=0
+else
+  close_rc=$?
+  echo "WARNING: gh issue close failed for parent #{parent_issue_number} (rc=$close_rc): $close_err" >&2
+  bash {plugin_root}/hooks/workflow-incident-emit.sh \
+    --type parent_close_failed \
+    --details "Parent #{parent_issue_number} auto-close (ステップ 8.4 Done): gh issue close exit $close_rc" \
+    --root-cause-hint "gh_cli_or_permission_failure" \
+    --pr-number {pr_number} >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+fi
 
-- `[start:finalize:completed]` → workflow terminated normally。Display short confirmation (e.g., 「✅ Issue #{N} の作業が完了しました。 PR: {url}」)。
-- `[start:finalize:aborted]` → display abort summary (Phase 5.5 user-terminate / `[ready:error]`) と next-step (e.g., 「⚠️ Phase 5.5 で中断されました。 PR: {url} は draft のままです」)。
-- Neither → fail-safe: completed 扱いで normal completion 表示; sub-skill は Return Output Format に従い必ず片方を emit する。
+# Step 2: Projects Status → Done — `.result` inspection + workflow_incident emit (Callsite 3 / Common contract §5)
+status_result=$(bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+    --argjson issue {parent_issue_number} \
+    --arg owner "{owner}" \
+    --arg repo "{repo}" \
+    --argjson project_number {project_number} \
+    --arg status "Done" \
+    --argjson auto_add false \
+    --argjson non_blocking true \
+    '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>&1) || status_result="{\"result\":\"failed\",\"warnings\":[\"projects-status-update.sh fatal exit\"]}"
+status_value=$(printf '%s' "$status_result" | jq -r '.result // "failed"' 2>/dev/null || echo "failed")
+case "$status_value" in
+  updated) ;;
+  skipped_not_in_project)
+    echo "WARNING: parent Issue #{parent_issue_number} は Project に未登録 (Callsite 3, gh issue close rc=$close_rc)" >&2
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type projects_status_update_failed \
+      --details "Parent #{parent_issue_number} ステップ 8.4 (Done): projects-status-update.sh returned skipped_not_in_project (gh issue close rc=$close_rc)" \
+      --root-cause-hint "parent_not_registered_in_project" \
+      --pr-number {pr_number} >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+    ;;
+  failed|*)
+    printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null | while read -r w; do echo "WARNING: $w" >&2; done
+    bash {plugin_root}/hooks/workflow-incident-emit.sh \
+      --type projects_status_update_failed \
+      --details "Parent #{parent_issue_number} ステップ 8.4 (Done): projects-status-update.sh returned $status_value (gh issue close rc=$close_rc)" \
+      --root-cause-hint "gh_api_or_graphql_failure_at_parent_done" \
+      --pr-number {pr_number} >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+    ;;
+esac
+```
 
-## Interruption/Resumption
+### 8.5 Workflow Incident Detection
 
-**Retention**: Branch (Git), work memory (Issue comment), Status (Projects), plan (work memory).
+完了レポート出力前に、直近 conversation context から `[CONTEXT] WORKFLOW_INCIDENT=1` sentinel を grep し、検出された各 incident について AskUserQuestion で Todo Issue 化の可否を確認する。詳細仕様は [`references/workflow-incident-detection.md`](./references/workflow-incident-detection.md) (SoT) を参照。
 
-**Resume** via `/rite:issue:start {number}`: Phase 2.2 detects branch. "Switch"→skip 2.3/2.4/2.5/2.6→Phase 3 (show plan)→continue from work memory. On resume, the Phase 3 pre-condition accepts `.phase=phase3_post_plan` (already-completed plan) in addition to `phase2_post_work_memory` — the `phase3_post_plan → phase3_plan` whitelist entry covers the retry edge.
+要約手順:
+1. 直近 conversation context を grep: `[CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; iteration_id=<pr>-<epoch>; details=<details>` 形式の sentinel 行を抽出
+2. `iteration_id` で dedupe (同 epoch 内の重複 emit を除外)
+3. 検出件数が 0 → ステップ 8.6 へ進む
+4. 検出件数が 1+ → 各 incident について AskUserQuestion で「Todo Issue を作成 / skip / 中止」を提示
+5. 「作成」選択時は `create-issue-with-projects.sh` で Todo Issue 起票 (type / details / root-cause-hint を body へ)
+6. 完了後、ステップ 8.6 (完了レポート) で incident summary を併記
 
-**If PR exists**: After 2.2, check `gh pr list --head {branch_name}`. OPEN→`rite:pr:review`, MERGED→`rite:pr:cleanup`, CLOSED→confirm (reopen/new/cancel).
+### 8.6 完了レポート出力
+
+```markdown
+## 完了報告
+
+| 項目 | 内容 |
+|------|------|
+| Issue | #{issue_number} {title} |
+| ブランチ | `{branch_name}` |
+| PR | #{pr_number} {pr_url} |
+| 状態 | Ready for review |
+
+### 実装ステップ
+- [x] ステップ 1: 〜
+- [x] ステップ 2: 〜
+- [x] ステップ 3: 〜
+
+### 次のアクション
+- レビュー後、`/rite:pr:fix {pr_number}` で再対応 or merge 後 `/rite:pr:cleanup` でクリーンアップ
+```
+
+> ステップ 8.5 で incident が検出されていた場合は、上記レポート末尾に `### Workflow Incidents` セクションを併記し、起票した Todo Issue 番号 / skip した件数を列挙する。
+
+### 8.7 flow-state 完結
+
+`--preserve-error-count` はこの patch で `.error_count` を 0 にリセットせず保持する general flag。現時点で `.error_count` を読む reader は無いが、再導入時の累積カウントが意図せずリセットされないよう reserved API として保持する。
+
+```bash
+bash {plugin_root}/hooks/flow-state-update.sh patch \
+  --phase completed --active false --next "none" \
+  --if-exists --preserve-error-count
+```
+
+---
+
+## エラー時の方針
+
+- どのステップで止まっても flow-state ファイル (`.rite/sessions/{session_id}.flow-state` / legacy `.rite-flow-state` fallback) に `phase` が記録されているので、ユーザーは `/rite:resume` で対応ステップから再開できる (`commands/resume.md` Phase 3.2 の phase→step 表を参照)
+- 各ステップは「Bash 実行 → 結果確認 → 次へ」のフラットな逐次フロー
+- AskUserQuestion で明示的に「中止」が選ばれた場合のみ workflow 終了
+- bash command 失敗時は stderr に `WARNING` または `ERROR` プレフィックスを残し、復旧不能なケースのみ workflow を停止する
+
+## E2E Output Minimization
+
+ステップ間の出力は最小限に。各ステップは:
+
+- 開始時に 1 行 status（「ステップ N: 〜」）
+- bash / skill invoke の結果
+- 完了時に sentinel pattern（外部 API 的に有用なもののみ: `[lint:*]`, `[pr:created:N]`, `[review:*]`, `[fix:*]`, `[ready:completed]`）
+
+中間説明・サマリ・guidance text は省略する。
+
+## Interruption / Resumption
+
+- ブランチ・work memory・Projects Status・実装計画は途中状態でも保持される
+- 中断時は `/rite:resume {issue_number}` で復帰
+- phase → step mapping は `commands/resume.md` Phase 3.2 表が SoT (例: `phase=plan` で中断 → ステップ 3 から再開、`phase=fix` で中断 → ステップ 7.2 から)
 
 ## Standalone Usage
 
-E2E で自動呼び出しの sub-command 群も単独実行可能: `/rite:issue:update` (progress / handover) / `/rite:lint` (quality check) / `/rite:pr:create` (PR without Issue) / `/rite:pr:review` (existing PR) / `/rite:pr:fix` (resume feedback)。
+各 skill は単独でも呼び出せる:
+
+- `/rite:lint` — 品質チェック
+- `/rite:pr:create` — Issue なしで PR 作成
+- `/rite:pr:review {pr_number}` — 既存 PR のレビュー
+- `/rite:pr:fix {pr_number}` — レビューフィードバックへの対応
+- `/rite:pr:ready {pr_number}` — Draft → Ready 化
+- `/rite:pr:cleanup {pr_number}` — merge 後のクリーンアップ (完了レポートで次アクションとして案内する)
 
 ## Error Handling
 
-Issue not found→error, prompt `gh issue list`. Closed→confirm reopen/cancel. Branch fail→check `git status`. Projects unconfigured→warn, skip. API error→retry 3x (exponential backoff), skip Projects. See [GraphQL Helpers](../../references/graphql-helpers.md#error-handling).
+- Issue not found → エラー表示、`gh issue list` を提案
+- Closed Issue → AskUserQuestion で reopen / cancel
+- ブランチ作成失敗 → `git status` で状態確認
+- Projects 未設定 → warning 表示、skip
+- API エラー → 3 回まで指数バックオフでリトライ、それでも失敗なら skip
+
+詳細は [GraphQL Helpers](../../references/graphql-helpers.md#error-handling) を参照。

@@ -5,7 +5,7 @@ description: レビュー指摘への対応を支援
 # /rite:pr:fix
 
 ## Contract
-**Input**: PR number, review findings from `/rite:pr:review`, flow state with `phase: phase5_fix` (e2e flow)
+**Input**: PR number, review findings from `/rite:pr:review`, flow state with `phase: fix` (written by `start.md` ステップ 7.2) or `phase: phase5_fix` (legacy compat — this sub-skill still patches the old name so resume from an interrupted earlier session keeps working until every writer migrates off the legacy name)
 **Output**: `[fix:pushed]` | `[fix:pushed-wm-stale]` | `[fix:issues-created:{n}]` | `[fix:replied-only]` | `[fix:error]`
 
 Retrieve and organize PR review comments to efficiently assist with addressing review feedback
@@ -166,7 +166,7 @@ fi
 
 ## Phase 1: Retrieve and Organize Review Comments
 
-> **Note (v0.4.0 #557)**: The cycle-count-based convergence strategy loader (formerly Phase 0.4) was fully removed. The review-fix loop now exits only when findings == 0; non-convergence is detected via 4 quality signals (see `commands/issue/start.md` Phase 5.4 and `commands/pr/references/fix-relaxation-rules.md`). All findings are treated uniformly regardless of severity.
+> **Note**: The cycle-count-based convergence strategy loader (formerly Phase 0.4) was fully removed in v0.4.0. The review-fix loop now exits only when findings == 0; non-convergence is detected via 4 quality signals (see `commands/issue/start.md` ステップ 7 and `commands/pr/references/fix-relaxation-rules.md`). All findings are treated uniformly regardless of severity.
 
 ### 1.0 Argument Parsing (Pre-flight)
 
@@ -3559,7 +3559,7 @@ Phase 2.4.N が emit する `[CONTEXT] NIT_NOTED_REPLY_*` retained flag の reas
 
 **Eval-order enumeration** (Phase 2.4.N 独立 namespace、Phase 1.2.0 enumeration とは別): emit reasons sequence = (`already_replied` / `mktemp_failed` / `gh_api_post_failure`)
 
-これらの reason は Phase 1.2.0 の `FIX_FALLBACK_FAILED` / `REVIEW_SOURCE_*` 系列とは独立した namespace で、`/rite:issue:start` 側の Phase 5.4 review-fix 判定では情報提示のみに使われる (Phase 4.6 の `acknowledged_nit_count > 0` を超える詳細 routing には参加しない)。
+これらの reason は Phase 1.2.0 の `FIX_FALLBACK_FAILED` / `REVIEW_SOURCE_*` 系列とは独立した namespace で、`/rite:issue:start` 側の ステップ 7 review-fix 判定では情報提示のみに使われる (Phase 4.6 の `acknowledged_nit_count > 0` を超える詳細 routing には参加しない)。
 
 ---
 
@@ -5236,7 +5236,7 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 
 After outputting the completion report, trigger Wiki Ingest to capture fix patterns as experiential knowledge.
 
-> **⚠️ E2E Mandatory (Issue #524 — silent-skip 防止層 1)**: Phase 4.6.W and 4.6.W.2 are **NEVER** skipped under the E2E Output Minimization rule. The "Phase 4-7 output minimization" applies only to display verbosity for fix completion reporting — it does **NOT** authorize skipping the Wiki ingest pipeline. Even when called from `/rite:issue:start` Phase 5.4.4 with `[fix:pushed]`, this section MUST execute (subject only to the configuration-based skip in Step 1 below). Skipping silently is the regression that Issue #524 explicitly fixes.
+> **⚠️ E2E Mandatory (silent-skip 防止層 1)**: Phase 4.6.W and 4.6.W.2 are **NEVER** skipped under the E2E Output Minimization rule. The "Phase 4-7 output minimization" applies only to display verbosity for fix completion reporting — it does **NOT** authorize skipping the Wiki ingest pipeline. Even when called from `/rite:issue:start` ステップ 7 (review-fix loop) with `[fix:pushed]`, this section MUST execute (subject only to the configuration-based skip in Step 1 below). Skipping silently re-opens the silent Wiki ingest skip regression that this layer exists to prevent.
 
 **Condition**: Execute only when `wiki.enabled: true` AND `wiki.auto_ingest: true` in `rite-config.yml`. Configuration-based skip is the **only** legitimate skip path — it MUST emit a `WIKI_INGEST_SKIPPED=1` status line and `wiki_ingest_skipped` sentinel so the caller can detect and report (see Phase 4.6.W.3 below).
 
@@ -5349,7 +5349,7 @@ fi
 
 **Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are captured in `trigger_exit` and do not halt the workflow. The LLM reads `trigger_exit` from stdout and skips Phase 4.6.W.2 when it is non-zero. Ingest failure does not block the fix workflow.
 
-**Step 3 — Failure sentinel emit (Issue #524)**: When `trigger_exit != 0` AND `trigger_exit != 2` (exit 2 = Wiki disabled/uninitialized = legitimate skip already covered by Step 1), emit the `wiki_ingest_failed` sentinel so Phase 5.4.4.1 can register the incident:
+**Step 3 — Failure sentinel emit (Issue #524)**: When `trigger_exit != 0` AND `trigger_exit != 2` (exit 2 = Wiki disabled/uninitialized = legitimate skip already covered by Step 1), emit the `wiki_ingest_failed` sentinel so ステップ 8.5 can register the incident:
 
 ```bash
 if [ "$trigger_exit" -ne 0 ] && [ "$trigger_exit" -ne 2 ]; then
@@ -5602,17 +5602,17 @@ ACTION: Return to Phase 4.6.W and execute the Wiki Ingest Trigger before outputt
 ⚠️ LLM MUST NOT output [fix:pushed] or any other result pattern until Phase 4.6.W has been executed.
 ```
 
-> **Enforcement note**: This gate is a prose instruction — `exit 1` in bash does NOT halt the LLM. The LLM MUST recognise the ERROR text and return to Phase 4.6.W. Note that the stop-guard whitelist (`phase-transition-whitelist.sh`) validates phase name transitions only and does NOT check for W Phase sentinel presence. This gate is therefore the **sole** defense layer against W Phase skip.
+> **Enforcement note**: This gate is a prose instruction — `exit 1` in bash does NOT halt the LLM. The LLM MUST recognise the ERROR text and return to Phase 4.6.W. Note that the phase transition whitelist (`phase-transition-whitelist.sh`) validates phase name transitions only and does NOT check for W Phase sentinel presence. This gate is therefore the **sole** defense layer against W Phase skip.
 
 ### 8.1 Output Pattern (Return Control to Caller)
 
-Before outputting the pattern, update flow state to `phase5_post_fix` (defense-in-depth, fixes #709). This prevents stop-guard `error_count` from accumulating when the flow continues after this skill returns:
+The `phase5_post_fix` flow-state write below keeps in-flight state files consistent with what older versions expected, so a `/rite:resume` started against a partially-migrated state still classifies correctly:
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase "phase5_post_fix" \
   --active true \
-  --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]->Phase 5.4.1 (FULL re-review — スコープ縮退禁止、/rite:pr:review と同等のフルレビューを実行). [fix:pushed-wm-stale]->Phase 5.4.1 (FULL re-review after AskUserQuestion — スコープ縮退禁止) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:issues-created]->Phase 5.4.1 (FULL re-review — スコープ縮退禁止、/rite:pr:review と同等のフルレビューを実行). [fix:replied-only]->Phase 5.5. Do NOT stop." \
+  --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]->start.md ステップ 7.1 (FULL re-review — スコープ縮退禁止、/rite:pr:review と同等のフルレビューを実行). [fix:pushed-wm-stale]->start.md ステップ 7.1 (FULL re-review after AskUserQuestion — スコープ縮退禁止) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:issues-created]->start.md ステップ 7.1 (FULL re-review — スコープ縮退禁止、/rite:pr:review と同等のフルレビューを実行). [fix:replied-only]->start.md ステップ 8 (Ready & 完結). Do NOT stop." \
   --if-exists
 ```
 

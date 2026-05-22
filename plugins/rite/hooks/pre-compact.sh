@@ -72,7 +72,11 @@ trap cleanup EXIT TERM INT
 # Session ownership check (#173): skip state updates for other session's state.
 # Must run before lock to avoid holding the lock while doing nothing.
 if [ -f "$FLOW_STATE" ]; then
-  _ownership=$(check_session_ownership "$INPUT" "$FLOW_STATE" 2>/dev/null) || _ownership="own"
+  # Pass-through helper stderr so corrupt-state WARNINGs reach triage; the
+  # helper's WARNING messages exist specifically to flag state-overwrite risk
+  # against another active session, and a caller-side `2>/dev/null` would
+  # silently negate them.
+  _ownership=$(check_session_ownership "$INPUT" "$FLOW_STATE") || _ownership="own"
   if [ "$_ownership" = "other" ]; then
     exit 0
   fi
@@ -83,18 +87,49 @@ if acquire_wm_lock "$LOCKDIR"; then
   # Update .rite-flow-state timestamp (inside lock for atomicity)
   if [ -f "$FLOW_STATE" ]; then
     TMP_FILE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null) || TMP_FILE="${FLOW_STATE}.tmp.$$"
-    if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" '.updated_at = $ts' "$FLOW_STATE" > "$TMP_FILE"; then
-      mv "$TMP_FILE" "$FLOW_STATE"
+    # heartbeat (.updated_at) を silent に失敗させると session-ownership の staleness 検出
+    # (2h threshold) が peer session に上書き許可を出す経路を作るため、jq の stderr を capture
+    # して WARNING を出す。silent fallback は同居 session 上書きと作業ロストに直結する。
+    _heartbeat_err=$(mktemp 2>/dev/null) || _heartbeat_err=""
+    if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" '.updated_at = $ts' "$FLOW_STATE" > "$TMP_FILE" 2>"${_heartbeat_err:-/dev/null}"; then
+      # Bare mv would silently orphan TMP_FILE and leave the heartbeat unbumped,
+      # which lets session-ownership staleness gate misclassify this session as
+      # stale and authorize a peer overwrite. Capture stderr so errno detail
+      # (EXDEV / EACCES / ENOSPC / EROFS / SELinux deny) surfaces in WARNING.
+      _hb_mv_err=$(mktemp 2>/dev/null) || _hb_mv_err=""
+      if mv "$TMP_FILE" "$FLOW_STATE" 2>"${_hb_mv_err:-/dev/null}"; then
+        :
+      else
+        _mv_rc=$?
+        rm -f "$TMP_FILE"
+        echo "rite: pre-compact: mv flow-state updated_at failed (rc=$_mv_rc)" >&2
+        [ -n "$_hb_mv_err" ] && [ -s "$_hb_mv_err" ] && head -3 "$_hb_mv_err" | sed 's/^/  /' >&2
+      fi
+      [ -n "$_hb_mv_err" ] && rm -f "$_hb_mv_err"
     else
+      _heartbeat_rc=$?
       rm -f "$TMP_FILE"
+      echo "rite: pre-compact: WARNING: heartbeat jq failed (rc=$_heartbeat_rc) — session-ownership staleness check may misclassify this session as stale" >&2
+      [ -n "$_heartbeat_err" ] && [ -s "$_heartbeat_err" ] && head -3 "$_heartbeat_err" | sed 's/^/  /' >&2
     fi
+    [ -n "$_heartbeat_err" ] && rm -f "$_heartbeat_err"
     TMP_FILE=""
   fi
 
-  # Determine active issue from flow state
+  # Determine active issue from flow state. jq stderr を完全抑止していると corrupt JSON が
+  # silent に branch name fallback (下の if) に降格して snapshot が誤った issue 番号で保存される。
+  # RITE_DEBUG 時に詳細を log してトリアージ可能にする。
   ACTIVE_ISSUE="null"
   if [ -f "$FLOW_STATE" ]; then
-    ACTIVE_ISSUE=$(jq -r '.issue_number // "null"' "$FLOW_STATE" 2>/dev/null) || ACTIVE_ISSUE="null"
+    _ai_err=$(mktemp 2>/dev/null) || _ai_err=""
+    _ai_rc=0
+    ACTIVE_ISSUE=$(jq -r '.issue_number // "null"' "$FLOW_STATE" 2>"${_ai_err:-/dev/null}") || _ai_rc=$?
+    if [ "$_ai_rc" -ne 0 ] || [ -z "$ACTIVE_ISSUE" ]; then
+      [ -n "${RITE_DEBUG:-}" ] && echo "[rite] DEBUG: pre-compact: .issue_number jq 失敗 (rc=$_ai_rc) — branch name fallback へ降格" >&2
+      [ -n "${RITE_DEBUG:-}" ] && [ -n "$_ai_err" ] && [ -s "$_ai_err" ] && head -3 "$_ai_err" | sed 's/^/  /' >&2
+      ACTIVE_ISSUE="null"
+    fi
+    [ -n "$_ai_err" ] && rm -f "$_ai_err"
   fi
 
   # Validate ACTIVE_ISSUE is numeric before --argjson
@@ -102,9 +137,19 @@ if acquire_wm_lock "$LOCKDIR"; then
     ACTIVE_ISSUE="null"
   fi
 
-  # If no active issue in flow state, try branch name
+  # If no active issue in flow state, try branch name. Capture git stderr so
+  # corrupt .git / permission denied / missing git binary surface a WARNING
+  # instead of leaving the pre-compact snapshot without branch information.
   if [ "$ACTIVE_ISSUE" = "null" ]; then
-    BRANCH=$(cd "$CWD" && git branch --show-current 2>/dev/null || echo "")
+    _pc_br_err=$(mktemp 2>/dev/null) || _pc_br_err=""
+    _pc_br_rc=0
+    BRANCH=$(cd "$CWD" && git branch --show-current 2>"${_pc_br_err:-/dev/null}") || _pc_br_rc=$?
+    if [ "$_pc_br_rc" -ne 0 ]; then
+      echo "[rite] WARNING: pre-compact: git branch --show-current 失敗 (rc=$_pc_br_rc)" >&2
+      [ -n "$_pc_br_err" ] && [ -s "$_pc_br_err" ] && head -3 "$_pc_br_err" | sed 's/^/  /' >&2
+      BRANCH=""
+    fi
+    [ -n "$_pc_br_err" ] && rm -f "$_pc_br_err"
     if [[ "$BRANCH" =~ issue-([0-9]+) ]]; then
       ACTIVE_ISSUE="${BASH_REMATCH[1]}"
     fi
@@ -117,32 +162,80 @@ if acquire_wm_lock "$LOCKDIR"; then
   # Now PostCompact hook handles auto-recovery (recovering→normal), and pre-compact
   # always sets "recovering" to ensure every compact triggers PostCompact processing.
   TMP_COMPACT=$(mktemp "${COMPACT_STATE}.XXXXXX" 2>/dev/null) || TMP_COMPACT="${COMPACT_STATE}.tmp.$$"
+  # Capture jq stderr so a write failure (broken ACTIVE_ISSUE value, locale,
+  # disk full) is diagnosable instead of being collapsed to the generic
+  # "failed to write compact state" WARNING that loses the root cause.
+  _jq_compact_err=$(mktemp 2>/dev/null) || _jq_compact_err=""
   if jq -n \
     --arg state "recovering" \
     --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
     --argjson issue "$ACTIVE_ISSUE" \
     '{compact_state: $state, compact_state_set_at: $ts, active_issue: $issue}' \
-    > "$TMP_COMPACT" 2>/dev/null; then
-    mv "$TMP_COMPACT" "$COMPACT_STATE"
-    chmod 600 "$COMPACT_STATE" 2>/dev/null || true
-    TMP_COMPACT=""
+    > "$TMP_COMPACT" 2>"${_jq_compact_err:-/dev/null}"; then
+    _cs_mv_err=$(mktemp 2>/dev/null) || _cs_mv_err=""
+    if mv "$TMP_COMPACT" "$COMPACT_STATE" 2>"${_cs_mv_err:-/dev/null}"; then
+      TMP_COMPACT=""
+      # chmod failure here would leave compact_state world-readable; capture
+      # both rc and stderr so EPERM (read-only fs) is distinguishable from
+      # EACCES (foreign-owned file) and SELinux deny.
+      _chmod_err=$(mktemp 2>/dev/null) || _chmod_err=""
+      if chmod 600 "$COMPACT_STATE" 2>"${_chmod_err:-/dev/null}"; then
+        :
+      else
+        _chmod_rc=$?
+        echo "rite: pre-compact: chmod 600 $COMPACT_STATE failed (rc=$_chmod_rc)" >&2
+        [ -n "$_chmod_err" ] && [ -s "$_chmod_err" ] && head -3 "$_chmod_err" | sed 's/^/  /' >&2
+      fi
+      [ -n "$_chmod_err" ] && rm -f "$_chmod_err"
+    else
+      _mv_rc=$?
+      rm -f "$TMP_COMPACT"
+      TMP_COMPACT=""
+      echo "rite: pre-compact: mv compact state failed (rc=$_mv_rc)" >&2
+      [ -n "$_cs_mv_err" ] && [ -s "$_cs_mv_err" ] && head -3 "$_cs_mv_err" | sed 's/^/  /' >&2
+    fi
+    [ -n "$_cs_mv_err" ] && rm -f "$_cs_mv_err"
   else
+    _jq_compact_rc=$?
     rm -f "$TMP_COMPACT"
     TMP_COMPACT=""
-    echo "rite: pre-compact: failed to write compact state" >&2
+    echo "rite: pre-compact: failed to write compact state (jq rc=$_jq_compact_rc)" >&2
+    [ -n "$_jq_compact_err" ] && [ -s "$_jq_compact_err" ] && head -3 "$_jq_compact_err" | sed 's/^/  /' >&2
   fi
+  [ -n "$_jq_compact_err" ] && rm -f "$_jq_compact_err"
 
   # --- Save local work memory snapshot ---
   # Only save snapshot when workflow is actively running (active: true).
-  # Without this check, completed workflows (active: false) would get their
-  # work memory files recreated on compaction, causing stale file persistence (#776).
-  FLOW_ACTIVE=$(jq -r '.active // false' "$FLOW_STATE" 2>/dev/null) || FLOW_ACTIVE="false"
+  # Without this check, completed workflows would get their work memory files
+  # recreated on compaction, causing stale file persistence. A jq parse
+  # failure here (corrupt flow-state JSON) silently degrades to "skip
+  # snapshot" — surface a WARNING so a corrupt state file doesn't quietly
+  # cause snapshot loss in the middle of an active workflow.
+  _flow_active_err=$(mktemp 2>/dev/null) || _flow_active_err=""
+  if FLOW_ACTIVE=$(jq -r '.active // false' "$FLOW_STATE" 2>"${_flow_active_err:-/dev/null}"); then
+    :
+  else
+    _flow_active_rc=$?
+    echo "rite: pre-compact: WARNING: failed to parse .active from $FLOW_STATE (jq rc=$_flow_active_rc) — workflow snapshot will be skipped, recovery may lose context" >&2
+    [ -n "$_flow_active_err" ] && [ -s "$_flow_active_err" ] && head -3 "$_flow_active_err" | sed 's/^/  /' >&2
+    FLOW_ACTIVE="false"
+  fi
+  [ -n "$_flow_active_err" ] && rm -f "$_flow_active_err"
   if [ "$FLOW_ACTIVE" = "true" ] && [ "$ACTIVE_ISSUE" != "null" ] && [ -f "$FLOW_STATE" ]; then
     # Read phase and next_action from flow state for env vars
-    # cycle 12 MEDIUM F-04: unit separator 統一 (stop-guard.sh cycle 10 F-01 と同型の原則準拠)。
-    # next_action が trailing position のため現状 field shift は発生しないが、将来の field 追加で
-    # fragile になるため cycle 11 で確立した「@tsv + IFS=$'\t' 禁止」原則に揃える。
-    FLOW_DATA=$(jq -r '[.phase // "unknown", .pr_number // "null", .loop_count // 0, .next_action // ""] | join("\u001f")' "$FLOW_STATE" 2>/dev/null) || FLOW_DATA=""
+    # Use unit separator () instead of tab so a future field containing
+    # whitespace cannot shift later columns silently. next_action is trailing
+    # today so the bug would not bite yet, but adding fields between them later
+    # would corrupt downstream parsing without an obvious diff signal.
+    # snapshot 用 jq に stderr capture を加える: 失敗時に PHASE="unknown" の stub で続行すると
+    # post-compact が誤った phase で resume するため、root cause を WARNING で expose する。
+    _flow_data_snap_err=$(mktemp 2>/dev/null) || _flow_data_snap_err=""
+    FLOW_DATA=$(jq -r '[.phase // "unknown", .pr_number // "null", .loop_count // 0, .next_action // ""] | join("\u001f")' "$FLOW_STATE" 2>"${_flow_data_snap_err:-/dev/null}") || FLOW_DATA=""
+    if [ -n "$_flow_data_snap_err" ] && [ -s "$_flow_data_snap_err" ]; then
+      echo "rite: pre-compact: WARNING: snapshot jq failed — post-compact recovery may resume with phase=unknown" >&2
+      head -3 "$_flow_data_snap_err" | sed 's/^/  /' >&2
+    fi
+    [ -n "$_flow_data_snap_err" ] && rm -f "$_flow_data_snap_err"
     if [ -n "$FLOW_DATA" ]; then
       IFS=$'\x1f' read -r PHASE PR_NUM LOOP_CNT NEXT_ACT <<< "$FLOW_DATA"
     else

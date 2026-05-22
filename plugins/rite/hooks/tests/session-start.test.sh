@@ -877,6 +877,65 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-EXTRACT-SID-WARNING — malformed stdin JSON exercises the unsuppressed
+# extract_session_id stderr path. If a future refactor re-introduces
+# `2>/dev/null` (or routes through a helper that swallows stderr), the
+# production-safety signal disappears and this assertion fires.
+# --------------------------------------------------------------------------
+echo "TC-EXTRACT-SID-WARNING: malformed stdin → extract_session_id WARNING reaches caller stderr"
+dir_sid="$TEST_DIR/tc-sid-warning"
+mkdir -p "$dir_sid"
+sid_stderr=$(mktemp "$TEST_DIR/stderr.sid.XXXXXX")
+echo '{"cwd":"'"$dir_sid"'","session_id":"not-json-{{","extra":' | bash "$HOOK" >/dev/null 2>"$sid_stderr" || true
+if grep -qE 'extract_session_id|jq parse failed' "$sid_stderr"; then
+  pass "TC-EXTRACT-SID-WARNING: corrupt stdin surfaces session-id WARNING on stderr"
+else
+  fail "TC-EXTRACT-SID-WARNING: no WARNING reached caller stderr — silent classification possible. stderr: $(cat "$sid_stderr")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-PY-REPAIR-PIN: settings.local.json 修復経路の rc capture が `if !` antipattern に
+# 書き戻されると silent regression する (rc collapse → 修復 skip が WARNING 一切無しで通過)。
+# python3 / mv の rc capture と修復ヒント出力が source 上に残っていることを static に pin する。
+# behavioral 経路 (PATH-shim python3 + stderr-capture) はテスト harness 拡張が必要なため、
+# まず regression detector として canonical 文字列を保持する。
+# --------------------------------------------------------------------------
+echo "TC-PY-REPAIR-PIN: settings.local.json repair path retains rc capture doctrine"
+HOOK_SOURCE="$SCRIPT_DIR/../session-start.sh"
+if grep -q '_py_rc=\$?' "$HOOK_SOURCE"; then
+  pass "session-start.sh captures python3 repair rc via _py_rc=\$?"
+else
+  fail "session-start.sh missing _py_rc=\$? — python3 failure may be collapsed to silent skip"
+fi
+if grep -q "settings.local.json repair python3 failed" "$HOOK_SOURCE"; then
+  pass "session-start.sh retains 'settings.local.json repair python3 failed' WARNING"
+else
+  fail "session-start.sh missing 'settings.local.json repair python3 failed' WARNING — repair failure is silent"
+fi
+if grep -q "mv settings.local.json repair failed" "$HOOK_SOURCE"; then
+  pass "session-start.sh retains 'mv settings.local.json repair failed' WARNING (mv rc capture)"
+else
+  fail "session-start.sh missing mv-failure WARNING — settings.local.json repair mv failure is silent"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-YAML-LITERAL-PREFIX: _rite_read_yaml_key uses literal-prefix match
+# --------------------------------------------------------------------------
+# A regression to the regex form `$0 ~ k` would let YAML keys containing regex
+# metacharacters (e.g. `flow.state.v2`) silently overmatch unrelated lines.
+# Pin the literal-prefix form so the contract for future keys is enforced even
+# before such keys exist.
+echo "TC-YAML-LITERAL-PREFIX: _rite_read_yaml_key uses index() literal prefix"
+if grep -qF 'index($0, k) == 1' "$HOOK_SOURCE"; then
+  pass "session-start.sh _rite_read_yaml_key uses literal index() prefix match"
+else
+  fail "session-start.sh _rite_read_yaml_key regressed to regex form — YAML keys with regex metachars will overmatch"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

@@ -1,274 +1,66 @@
-# Bulk Sub-Issue Creation Pattern — 単一 Bash invocation での Pre-amble + Per-Sub-Issue body + linkage 連結
+# Bulk Sub-Issue Creation Pattern — 単一 Bash invocation 要件と Anti-pattern
 
-> **Source of Truth**: 本ファイルは `/rite:issue:create` ワークフローにおける **XL 分解パスでの bulk Sub-Issue creation** の **Pre-amble + Per-Sub-Issue body の連結パターン** の SoT である。`create-decompose.md` Phase 0.9.2 の bash literal の正規定義は本 reference に集約する。
->
-> **抽出経緯**: `create-decompose.md` Phase 0.9.2 (旧 lines 363-505、約 140 行) には Pre-amble bash block / Per-Sub-Issue body bash block / Critical guard 警告 / Sub-Issue body structure / Placeholder descriptions / Error handling が集約されており、本体ファイルの認知負荷を高めていた。これを Issue #773 (#768 P1-3) PR 8/8 で本 reference に移管し、`create-decompose.md` Phase 0.9.2 本体には **概要 + AC-1 critical 警告 (NFR-2 protected で本体に残す) + 本 reference への参照リンク** のみを残す形にスリム化する。
->
-> **NFR-2 (本体保持)**: AC-1 enforcement boundary に関する critical 警告 (`single-Bash-invocation requirement` / `silent-skip risk` の 2 文) は **`create-decompose.md` 本体に残す**。理由: AC-1 enforcement boundary の同 turn 警告は Phase 0.9.4 空配列 fail-fast との因果関係を保つため、本体読込時に LLM が認識できる位置にある必要がある。本 reference は **手順詳細とコードリテラル** を集約し、警告そのものは本体側 SoT を維持する。
+> **SoT scope**: `/rite:issue:create` の XL 分解パスにおける **bulk Sub-Issue creation の単一 Bash invocation 要件** と **post-loop sanity check 設計** の規約集。bash literal の SoT は `commands/issue/create.md` ステップ 5.3 + 5.4 + 5.5 Step 1 統合ブロック一本に集約する。本 reference は規約・理由付け・anti-pattern を documents し、code literal を持たない (二重 SoT が drift を生む経験則に基づく)。
 
 ## 位置づけ
 
-`create-decompose.md` Phase 0.9 (Bulk Sub-Issue Creation) は以下の 6 step で構成される:
-
-| Step | 役割 | SoT |
-|------|------|-----|
-| Phase 0.9.1 | Create the Parent Issue | `create-decompose.md` 本体 (作成 bash literal) + 本 reference ([Parent Issue body structure](#parent-issue-body-structure) — Issue #806 で移動) |
-| **Phase 0.9.2** | **Bulk Creation of Sub-Issues** (Pre-amble + Per-Sub-Issue body) | **本 reference** |
-| Phase 0.9.3 | Add Tasklist to Parent Issue | `create-decompose.md` 本体 |
-| Phase 0.9.4 | Sub-Issues API Linkage (Mandatory) | `create-decompose.md` 本体 + [`graphql-helpers.md`](../../../references/graphql-helpers.md#addsubissue-helper) |
-| Phase 0.9.5 | Projects Registration | `create-decompose.md` 本体 |
-| Phase 0.9.6 | Completion Report | `create-decompose.md` 本体 |
-
-本 reference は **Phase 0.9.2 (Pre-amble + Per-Sub-Issue body の連結 bash literal)** の正規定義を集約する。
+`commands/issue/create.md` ステップ 5.3 + 5.4 + 5.5 Step 1 は単一 Bash tool invocation の連結ブロックとして実行される。本 reference はこのブロックの設計判断 (なぜ単一 invocation か、なぜ post-loop sanity check が必須か、なぜ Pre-amble + Per-Sub-Issue body 分割が anti-pattern か) を集約する。実 bash literal および placeholder の正確な配置は create.md を参照する。
 
 ## なぜ単一 Bash invocation が要件か (AC-1 enforcement boundary)
 
-Phase 0.9.2 は **2 つの部分** から構成され、両者は **同一の Bash tool invocation** で実行されることが MUST 要件:
+ステップ 5.4 は 3 つの部分から構成される:
 
-1. **Pre-amble** (1 回のみ実行): accumulator arrays (`SUB_ISSUE_NUMBERS` / `SUB_ISSUE_URLS`) を宣言する
-2. **Per-Sub-Issue body** (Phase 0.8 分解 list の項目数 N 回繰り返し実行): Sub-Issue を作成し accumulator に append する
+1. **Pre-amble** (1 回のみ実行): counter (`created_count` / `failed_count` / `link_failures`)、accumulator (`created_numbers`)、loop index (`i`)、`expected_sub_count` (post-loop sanity check の比較基準、`{sub_count}` から代入)、jq 派生の `sub_labels_json` を初期化する
+2. **Per-Sub-Issue body** (ステップ 5.1 分解 list の項目数 N 回繰り返し実行): Sub-Issue を作成し、成功時に link-sub-issue.sh を inline で呼び出し、counter / accumulator を更新する
+3. **Post-loop sanity check** (1 回のみ実行): counter と `expected_sub_count` を比較して zero-iteration / loop-abort の silent failure を検出する (詳細は後述 "Post-loop sanity check の必須性")
 
-**Bash 変数 (配列を含む) は別々の Bash tool 呼び出し境界で消失する**。これは Claude Code の Bash tool 仕様 — 各呼び出しで新規 shell process が起動するため、前の呼び出しで宣言した変数は次の呼び出しでは参照不可。
+3 部分は同一の Bash tool invocation で連続実行されることが MUST 要件。Bash 変数 (配列を含む) は別々の Bash tool 呼び出し境界で消失する — Claude Code の Bash tool は各呼び出しで新規 shell process が起動するため、前の呼び出しで宣言した変数は次の呼び出しでは参照不可。
 
-このため:
+分割すると counter が常に初期値のままになり、以下の silent failure が連鎖する:
 
-- Pre-amble + N 個の Per-Sub-Issue body のすべてを **1 回の Bash tool invocation 内で順次実行** する必要がある。
-- 分割すると Phase 0.9.4 (Sub-Issues API linkage) が空配列を参照することになり、**linkage が silent skip され AC-1 が違反される** (linkage 失敗は per-call で non-blocking なため、log を見落とすと silent regression になる)。
-- Phase 0.9.4 が AC-1 enforcement boundary であり、空配列ガードで `exit 1` する fail-fast が最終防御層として機能する。
+- ステップ 5.4 末尾の zero-iteration guard が false-positive で発火する (`created_count==0`)
+- loop-abort sanity check (`created_count + failed_count != expected_sub_count`) が意味を成さなくなる
+- accumulator (`created_numbers`) が空のままで CONTEXT marker `SUB_ISSUE_NUMBERS=${created_numbers[*]}` が空文字列になり、ステップ 5.5 の Tasklist 編集が空 list を書き込んだまま完了レポートに到達する (silent AC-1 violation)
 
-> **これは本コマンドにおける silent-skip リスク最大の箇所**。Bookkeeping (accumulator append) の省略 / script 分割は **いかなる事情でも許容されない**。
+これが本コマンドにおける silent-skip リスク最大の箇所であり、Pre-amble + Per-Sub-Issue body + post-loop sanity check の分割は **いかなる事情でも許容されない**。
 
-## Pre-amble (1 回のみ)
+## Placeholder 展開 protocol
 
-結合スクリプトの先頭に **1 回だけ** 配置する:
+create.md のブロックは LLM が placeholder を展開して bash literal を生成する形式を採る。LLM が処理する記号と、runtime bash 変数として scope に存在する記号を混同しないため、両者を明確に分ける:
 
-```bash
-# === Loop pre-amble (このブロックは結合スクリプトの先頭で1回だけ実行) ===
-# SUB_ISSUE_NUMBERS / SUB_ISSUE_URLS は Per-Sub-Issue body の全反復で蓄積され、
-# 同一 Bash ツール呼び出し内の Phase 0.9.4 から参照される。
-SUB_ISSUE_NUMBERS=()
-SUB_ISSUE_URLS=()
-```
+| 種類 | 例 | 展開タイミング |
+|------|----|---------------|
+| LLM placeholder (1 回置換) | `{sub_count}` / `{labels_csv}` / `{owner}` / `{repo}` / `{priority}` / `{project_number}` / `{plugin_root}` | Pre-amble 部分で各 placeholder を rite-config.yml / 親 Issue 等の値で 1 回置換 |
+| LLM placeholder (反復置換) | `{sub_N_title}` / `{sub_N_body}` / `{sub_N_complexity}` | Per-Sub-Issue body を複製するたびに該当反復の実値で置換 |
+| LLM marker (複製範囲) | `{REPEAT_FOR_EACH_SUB_ISSUE}` ... `{END_REPEAT}` | LLM が間の Per-Sub-Issue body を ステップ 5.1 分解 list の項目数 N 回複製する範囲指定 |
+| Runtime bash 変数 | `$parent_issue_number` / `$i` / `$tmpdir` / `$sub_labels_json` | ステップ 5.3 や Pre-amble で代入される shell 変数。`{}` 形式の placeholder ではないため `$` 形式で参照する |
 
-## Per-Sub-Issue body (N 回複製)
+create.md の bash literal を LLM が読む際は、`{}` placeholder と `$` runtime 変数を取り違えないこと。**ステップ 5.3-5.4 の bash literal 内では** `{parent_issue_number}` 形式は使わない — runtime 取得値なので `$parent_issue_number` で参照する。完了レポート markdown 部分 (ステップ 5.6) は別途 LLM placeholder として `{parent_issue_number}` を使う (HTML sentinel `<!-- [create:completed:{parent_issue_number}] -->`、報告本文の `Issue #{parent_issue_number}` 等) — bash literal とは scope が異なる。
 
-Phase 0.8 分解 list の各 Sub-Issue について、以下のブロックを **複製して同一スクリプトに連結** する。各複製ごとに `{sub_issue_title}` / `{sub_issue_body}` / `{estimated_complexity}` placeholder を **その反復の実値で置換** すること:
+## Post-loop sanity check の必須性
 
-```bash
-# === Per-Sub-Issue body (N 回複製して連結。各複製ごとに placeholder を実値で置換) ===
-# Generate body content from Phase 0.8 decomposition and the structure defined below (see "Sub-Issue body structure")
-# Note: Empty check is required because {sub_issue_body} is dynamically generated.
-tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
+ステップ 5.4 末尾には counter ベースの 2 種類の sanity check が配置される:
 
-cat <<'BODY_EOF' > "$tmpfile"
-{sub_issue_body}
-BODY_EOF
+| Check | 発火条件 | 役割 |
+|------|---------|------|
+| zero-iteration guard | `created_count == 0 && expected_sub_count > 0` | placeholder 展開失敗 or shell loop 失敗を `sub_issue_zero_iteration_loop` incident として sentinel emit |
+| loop-abort sanity check | `created_count + failed_count != expected_sub_count` | mid-loop の set -e / jq crash / signal を `sub_issue_loop_abort` incident として sentinel emit |
 
-if [ ! -s "$tmpfile" ]; then
-  echo "ERROR: Issue body is empty for Sub-Issue '{sub_issue_title}'" >&2
-else
-  result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
-    --arg title "{sub_issue_title}" \
-    --arg body_file "$tmpfile" \
-    --argjson projects_enabled {projects_enabled} \
-    --argjson project_number {project_number} \
-    --arg owner "{owner}" \
-    --arg priority "{priority}" \
-    --arg complexity "{estimated_complexity}" \
-    --arg iter_mode "none" \
-    '{
-      issue: { title: $title, body_file: $body_file },
-      projects: {
-        enabled: $projects_enabled,
-        project_number: $project_number,
-        owner: $owner,
-        status: "Todo",
-        priority: $priority,
-        complexity: $complexity,
-        iteration: { mode: $iter_mode }
-      },
-      options: { source: "xl_decomposition", non_blocking_projects: true }
-    }'
-  )")
-
-  if [ -z "$result" ]; then
-    echo "ERROR: create-issue-with-projects.sh returned empty result for Sub-Issue '{sub_issue_title}'" >&2
-    # Skip accumulation for this Sub-Issue but continue to the next iteration block.
-    # NOTE: We intentionally do NOT use `continue` here because each per-Sub-Issue body
-    # is concatenated as a flat sequence (not wrapped in a for/while loop), and `continue`
-    # outside a loop is a bash syntax error. The else-branch below handles the skip.
-  else
-    sub_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
-    sub_issue_number=$(printf '%s' "$result" | jq -r '.issue_number')
-    sub_project_reg=$(printf '%s' "$result" | jq -r '.project_registration')
-    # project_id/item_id は XL 分解パスでは後続フェーズで使用しないため省略
-    printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w"; done
-
-    # === MANDATORY: 配列に蓄積（Phase 0.9.4 が参照） ===
-    # 数値であることを検証してから追加（"null" や空文字を弾く）
-    if [[ "$sub_issue_number" =~ ^[0-9]+$ ]]; then
-      SUB_ISSUE_NUMBERS+=("$sub_issue_number")
-      SUB_ISSUE_URLS+=("$sub_issue_url")
-    else
-      echo "⚠️ Sub-Issue '{sub_issue_title}' の番号が不正のため linkage 配列に追加しません: '$sub_issue_number'" >&2
-    fi
-  fi
-fi
-# === Per-Sub-Issue body 終了。次の Sub-Issue があれば、ここに次の複製を連結する ===
-```
-
-> **Alternative (advanced)**: 明示的な loop 構造を好む場合、上記 Per-Sub-Issue body を `for sub_entry in ...; do ... done` で wrap し、Phase 0.8 分解 list を bash array entries として展開する形でも実装可能。その場合は else-branch skip ではなく `continue` が syntactically valid となる。**Pre-amble が 1 回だけ実行され、すべての反復が同一 Bash tool invocation で実行される** という contract を満たせばどちらの approach も許容。
-
-## Placeholder descriptions
-
-Per-Sub-Issue body の placeholder は以下の通り:
-
-| Placeholder | 値の source |
-|-------------|-------------|
-| `{sub_issue_title}` | Phase 0.8 分解 list の各エントリの title |
-| `{sub_issue_body}` | 下記「Sub-Issue body structure」を該当反復の値で埋めて生成 |
-| `{estimated_complexity}` | Phase 0.8 で見積もった complexity (XS / S / M / L / XL の per-Sub-Issue 値) |
-| `{priority}` | 親 Issue から継承 |
-| `{owner}` | `github.projects.owner` (`rite-config.yml`) または `gh repo view --json owner --jq '.owner.login'` |
-| `{repo}` | `gh repo view --json name --jq '.name'`。Phase 0.9.4 の `link-sub-issue.sh` 呼び出しで必須。これが欠落すると GraphQL `repository(owner:..., name:"{repo}")` lookup が常に "Could not resolve to a Repository" で失敗し、AC-1 が silent 違反される (per-call 失敗が non-blocking なため)。 |
-| `{parent_issue_number}` | Phase 0.9.1 で作成した親 Issue 番号 (Sub-Issues 作成対象) |
-| `{projects_enabled}` | `rite-config.yml` の `github.projects.enabled` が `true` なら `true`、それ以外 `false` |
-| `{project_number}` | `github.projects.project_number` (`rite-config.yml`) |
-| `{plugin_root}` | [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script-full-version) で解決 |
-
-## Sub-Issue body structure
-
-Per-Sub-Issue body の `{sub_issue_body}` placeholder に展開する markdown:
-
-```markdown
-## 概要
-
-{この Sub-Issue で実装する内容}
-
-## 親 Issue
-
-#{parent_issue_number} - {parent_issue_title}
-
-## 設計ドキュメント
-
-詳細な仕様は [docs/designs/{slug}.md](docs/designs/{slug}.md) を参照してください。
-
-## 変更内容
-
-{具体的な変更内容}
-
-## 依存関係
-
-{依存する Sub-Issue があれば記載}
-
-## 複雑度
-
-{complexity}
-
-## チェックリスト
-
-- [ ] 実装完了
-- [ ] テスト追加/更新
-- [ ] ドキュメント更新（必要な場合）
-```
-
-## Parent Issue body structure
-
-Phase 0.9.1 で `create-issue-with-projects.sh` に渡す `{parent_issue_body}` の正規 markdown:
-
-```markdown
-## 概要
-
-{概要}
-
-## 背景・目的
-
-{背景・目的}
-
-## 設計ドキュメント
-
-詳細な仕様は [docs/designs/{slug}.md](docs/designs/{slug}.md) を参照してください。
-
-## Sub-Issues
-
-<!-- 自動更新: Sub-Issue 作成後にタスクリストを追加 -->
-
-## 進捗
-
-| フェーズ | 状態 |
-|---------|------|
-| 基盤構築 | [ ] 未着手 |
-| コア実装 | [ ] 未着手 |
-| 統合 | [ ] 未着手 |
-| 品質保証 | [ ] 未着手 |
-
-## 複雑度
-
-XL（{count} 件の Sub-Issue に分解）
-```
-
-**Placeholders for Parent Issue body**:
-
-| Placeholder | 値の source |
-|-------------|-------------|
-| `{概要}` / `{背景・目的}` | Phase 0.7 仕様書の SPEC-OVERVIEW / SPEC-BACKGROUND |
-| `{slug}` | Phase 0.1.3 で生成した tentative_slug (タイトル変更時は再生成) |
-| `{count}` | Phase 0.8 分解で確定した Sub-Issue 件数 |
-
-`Sub-Issues` 節は Phase 0.9.3 で Tasklist に置き換わる。`進捗` テーブルは Phase 0.8.3 の実装順序提案フェーズに準拠した 4 段固定。
-
-## Error handling for partial failures
-
-- Sub-Issue creation がループ途中で失敗した場合、エラーを log して残りの Sub-Issue 作成を継続する (per-call non-blocking)。
-- ループ完了後、Phase 0.9.6 (Completion Report) で **どの Sub-Issue が成功し、どの Sub-Issue が失敗したか** を報告する。
-- 失敗した Sub-Issue は user が手動で `/rite:issue:create` で retry 可能。
-
-各 Sub-Issue 作成成功後の post-processing:
-
-1. `sub_issue_url` / `sub_issue_number` を Phase 0.9.3 (Tasklist update) のために retain する
-2. accumulator (`SUB_ISSUE_NUMBERS` / `SUB_ISSUE_URLS`) に append する (Phase 0.9.4 が参照)
-3. `create-issue-with-projects.sh` script が Projects 登録 + field 設定を内部で処理する
+これらが機能するためには Pre-amble での counter 初期化と Per-Sub-Issue body 内での counter 更新が漏れなく実行される必要があり、これも「単一 Bash invocation」要件の load-bearing 理由の一つ。
 
 ## Anti-pattern: Pre-amble + Per-Sub-Issue body 分割
 
-❌ **以下の anti-pattern を絶対に行わないこと**:
+❌ **以下の anti-pattern を絶対に行わないこと**: Pre-amble を 1 つの Bash tool 呼び出しで実行し、各 Sub-Issue 作成 + linkage を別々の Bash tool 呼び出しに分割する。
 
-```
-# Bash tool 呼び出し 1 (Pre-amble のみ)
-SUB_ISSUE_NUMBERS=()
-SUB_ISSUE_URLS=()
+Bash variable scope は tool invocation 境界で消失するため、上記分割では Pre-amble で初期化した counter (`created_count` 等) と accumulator (`created_numbers`) が次の Bash 呼び出しでは見えない。各 Sub-Issue 作成呼び出しが独立した shell process で実行され、counter は常に未定義 (or 初期値 0) のまま、accumulator は常に空のまま完了レポートに到達する。post-loop sanity check はそれぞれ別の shell process でも実行されないか、実行されても counter が常に 0 のため zero-iteration guard が常に発火する。
 
-# Bash tool 呼び出し 2 (Sub-Issue 1 作成)
-... (SUB_ISSUE_NUMBERS は空配列にリセットされている)
+✅ **正しい pattern**: Pre-amble + N 個の Per-Sub-Issue body + 末尾の sanity check + fetch を **すべて 1 回の Bash tool invocation 内で順次実行** する。具体的な bash literal は `commands/issue/create.md` ステップ 5.3 + 5.4 + 5.5 Step 1 統合 bash block を参照。
 
-# Bash tool 呼び出し 3 (Sub-Issue 2 作成)
-... (依然として空配列)
-```
+create.md ステップ 5.3-5.4 本体の AC-1 critical 警告で何度繰り返されているように、この single-Bash-invocation 要件は本コマンドにおける silent-skip リスク最大の箇所である。
 
-Bash variable scope は tool invocation 境界で消失するため、上記分割では `SUB_ISSUE_NUMBERS` は常に空のままで、Phase 0.9.4 が空配列ガードで `exit 1` する。Phase 0.9.4 の fail-fast が無ければ、AC-1 (parent-child linkage) が silent 違反されたまま完了レポートまで到達する。
+## Error handling for partial failures
 
-✅ **正しい pattern**:
-
-```
-# Bash tool 呼び出し 1 (Pre-amble + Sub-Issue 1 + Sub-Issue 2 + ... + Sub-Issue N + Phase 0.9.4 を全部連結)
-SUB_ISSUE_NUMBERS=()
-SUB_ISSUE_URLS=()
-
-# (Sub-Issue 1 の Per-Sub-Issue body)
-tmpfile=$(mktemp); trap ...
-... SUB_ISSUE_NUMBERS+=("$sub_issue_number") ...
-
-# (Sub-Issue 2 の Per-Sub-Issue body)
-tmpfile=$(mktemp); trap ...
-... SUB_ISSUE_NUMBERS+=("$sub_issue_number") ...
-
-# ... (Sub-Issue N まで)
-
-# (Phase 0.9.4 linkage を同一スクリプトで実行)
-for issue_num in "${SUB_ISSUE_NUMBERS[@]}"; do
-  bash {plugin_root}/scripts/link-sub-issue.sh ...
-done
-```
-
-`create-decompose.md` 本体の AC-1 critical 警告で何度繰り返されているように、この single-Bash-invocation 要件は **本コマンドにおける silent-skip リスク最大の箇所** である。
+- Sub-Issue creation がループ途中で失敗した場合、エラーを log して `failed_count` を進め、残りの Sub-Issue 作成を継続する (per-call non-blocking)。
+- linkage 失敗は `link_failures` で計上し、Sub-Issue creation 自体は成功扱い (body meta fallback が残るため AC-1 の最終防衛は親 Issue body の `## 親 Issue` メタが担う)。
+- ループ完了後、ステップ 5.6 完了レポートで成功 / 失敗 / linkage 失敗の件数を報告する。
+- 失敗した Sub-Issue は user が手動で `/rite:issue:create` で retry 可能。

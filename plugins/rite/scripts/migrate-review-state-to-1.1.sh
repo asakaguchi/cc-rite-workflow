@@ -152,17 +152,25 @@ migrate_file() {
     FAILED_FILES+=("$file")
     return
   }
-  # Signal-aware orphan tracking (Issue #1021 F-07): SIGINT/SIGTERM/SIGHUP で
-  # 中断時に `${file}.XXXXXX` が `.rite/review-results/` 直下に残らないよう trap 配列に登録。
+  # Signal-aware orphan tracking: SIGINT/SIGTERM/SIGHUP で中断時に
+  # `${file}.XXXXXX` が `.rite/review-results/` 直下に残らないよう trap 配列に登録。
   _orphan_tmps+=("$tmp")
 
-  if ! jq "$MIGRATE_FILTER" "$file" > "$tmp" 2>/dev/null; then
-    echo "[rite] ERROR: jq migration filter failed for $file" >&2
+  # jq の stderr (parse error の line/column / locale 起因の異常 / OOM 等) を捕捉。
+  # 完全 silent にすると failed_files の root cause がユーザに見えず再 migration 時に再現できない。
+  local _jq_err
+  _jq_err=$(mktemp 2>/dev/null) || _jq_err=""
+  if ! jq "$MIGRATE_FILTER" "$file" > "$tmp" 2>"${_jq_err:-/dev/null}"; then
+    local _jq_rc=$?
+    echo "[rite] ERROR: jq migration filter failed for $file (rc=$_jq_rc)" >&2
+    [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | sed 's/^/  /' >&2
+    [ -n "$_jq_err" ] && rm -f "$_jq_err"
     rm -f "$tmp"
     FAILED_COUNT=$((FAILED_COUNT + 1))
     FAILED_FILES+=("$file")
     return
   fi
+  [ -n "$_jq_err" ] && rm -f "$_jq_err"
 
   if [ ! -s "$tmp" ]; then
     echo "[rite] ERROR: migrated output empty for $file (jq produced no output)" >&2
@@ -172,12 +180,23 @@ migrate_file() {
     return
   fi
 
-  if ! mv "$tmp" "$file"; then
-    echo "[rite] ERROR: atomic mv failed for $file (tmp=$tmp left behind for inspection)" >&2
+  # mv の rc と stderr を両方 capture して errno 詳細 (EXDEV / EACCES / ENOSPC / EROFS /
+  # SELinux deny) を triage 可能にする。bare mv + `if !` は rc を 0/1 に collapse し
+  # operator は failed_files に積み上がる root cause を判別できない。
+  local _mig_mv_err _mig_mv_rc=0
+  _mig_mv_err=$(mktemp 2>/dev/null) || _mig_mv_err=""
+  if mv "$tmp" "$file" 2>"${_mig_mv_err:-/dev/null}"; then
+    :
+  else
+    _mig_mv_rc=$?
+    echo "[rite] ERROR: atomic mv failed for $file (rc=$_mig_mv_rc, tmp=$tmp left behind for inspection)" >&2
+    [ -n "$_mig_mv_err" ] && [ -s "$_mig_mv_err" ] && head -3 "$_mig_mv_err" | sed 's/^/  /' >&2
+    [ -n "$_mig_mv_err" ] && rm -f "$_mig_mv_err"
     FAILED_COUNT=$((FAILED_COUNT + 1))
     FAILED_FILES+=("$file (tmp=$tmp)")
     return
   fi
+  [ -n "$_mig_mv_err" ] && rm -f "$_mig_mv_err"
   # mv 成功後: orphan 配列から該当 tmp を除外 (二重 rm 回避 / failure 時の inspection 用に preserve)
   # 配列から要素を削除する portable な方法: tmp が一致する要素のみ skip して新配列を作る
   declare -a _new_orphans=()

@@ -517,7 +517,7 @@ The review-fix loop has two exit paths and no cycle-count-based hard limit:
 
 | # | Signal | Detection point |
 |---|--------|-----------------|
-| 1 | Same-finding cycling | `start.md` Phase 5.4.1.0 fingerprint check before every re-review |
+| 1 | Same-finding cycling | fingerprint check before every re-review (see `commands/issue/references/fingerprint-cycling.md`) |
 | 2 | Root-cause-missing fix | `fix.md` Phase 3.2.1 commit body gate |
 | 3 | Cross-validation disagreement | `review.md` Phase 5.2 + debate phase |
 | 4 | Reviewer self-degraded | `_reviewer-base.md` Finding Quality Guardrail |

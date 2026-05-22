@@ -62,14 +62,16 @@ When activated, this skill provides:
 
 rite workflow の identity は「定義された step を全て実行し、生成物の品質を担保する」ことである。**時間的制約や context 残量を理由にした step の省略は禁止**。残量の推論も禁止。context が実際に枯渇した場合の正規経路は `/clear` + `/rite:resume` の組合せであり、LLM が自己判断でワークフローを短縮する経路は存在しない。
 
-**さらに、workflow は途中で止まらない。そして最後のわけのわからない出力で終わらない。** sub-skill の return tag (`[interview:completed]` / `[create:completed:{N}]` 等) は **turn 境界ではなく継続トリガ** である。ユーザー介入 (`continue` 入力) を要求せずに、同 turn 内で次 phase へ進む。また、ワークフロー完了時の user-visible な最終行は sentinel marker ではなく「✅ Issue #{N} を作成しました: {url}」のような人間可読な完了メッセージで終わる。sentinel marker は hook/grep 契約のため出力は保持するが、HTML コメント化等で user-visible な末端に孤立させない。
+**さらに、workflow は途中で止まらない。そして最後のわけのわからない出力で終わらない。** sub-skill の return tag (`[lint:*]` / `[pr:created:N]` / `[review:*]` / `[fix:*]` / `[ready:completed]`) は **turn 境界ではなく継続トリガ** である。ユーザー介入 (`continue` 入力) を要求せずに、同 turn 内で次 phase へ進む。
+
+`create.md` の flat workflow 終端で出力される `[create:completed:{N}]` HTML コメント marker は sub-skill return tag ではなく、create.md 内で完結する terminal sentinel である (hook / grep 契約のため必須)。ワークフロー完了時の user-visible な最終行は sentinel marker ではなく「✅ Issue #{N} を作成しました: {url}」のような人間可読な完了メッセージとし、sentinel は HTML コメント化等で user-visible な末端に孤立させない。
 
 | 禁止事項 | 正規経路 |
 |---------|---------|
 | 「時間が足りないので X を省略します」 | 手順どおり実行 |
 | 「context が圧迫しているので要約します」 | 手順どおり実行 |
 | 「残量が不安なので review を切り上げます」 | `/clear` + `/rite:resume` をユーザーに案内 |
-| return tag 直後に turn を閉じる | 同 turn 内で次 phase に継続 (stop-guard + HTML コメント化 sentinel により機械的に enforcement) |
+| return tag 直後に turn を閉じる | 同 turn 内で次 phase に継続。途中で止まった場合の正規復帰経路は `/rite:resume` (`commands/resume.md` Phase 3.2 の phase→step 表に従う) |
 | sentinel marker `[create:completed:{N}]` を user-visible な最終行として残す | HTML コメント `<!-- [create:completed:{N}] -->` として末尾に配置し、user-visible な最終行は `✅ ...` 完了メッセージにする |
 
 詳細と Anti-pattern / Correct Pattern は [references/workflow-identity.md](./references/workflow-identity.md) を参照。各 command (start / review / fix / ready / lint / cleanup / create / resume 等) からも同 reference を引いている。
@@ -140,19 +142,15 @@ See [references/phase-mapping.md](./references/phase-mapping.md) for phase list.
 
 See [references/work-memory-format.md](./references/work-memory-format.md) for work memory format.
 
-## Sub-skill Return Auto-Continuation Contract
+## Sub-skill Return — Flat Workflow
 
-When an orchestrator command (e.g., `/rite:issue:start`, `/rite:issue:create`) invokes a sub-skill via the Skill tool, the LLM **MUST** continue in the same response turn after the sub-skill returns. The return tag is a continuation trigger, not a turn boundary — stopping prematurely abandons the workflow before the terminal completion marker is output.
+`/rite:issue:start` / `/rite:issue:create` は **flat single-file workflow** に統合されている。Phase 5 を 3 sub-skill (`start-execute` / `start-publish` / `start-finalize`) に分割していた構造、および対応する HTML-commented sentinel ベースの routing は撤去済み。
 
-**`/rite:issue:start` の Phase 5 sub-skill chain**:
+LLM が途中で停止した場合の正規復帰経路は `/rite:resume` (`commands/resume.md` Phase 3.2 の phase→step 表に従う)。implicit-stop 対策の hook 群 (`auto-fire-step0.sh` / `stop-create-interview-block.sh` / `verify-terminal-output.sh`) も撤去済み。
 
-- **Phase 5.0-5.2.1**: `rite:issue:start-execute` — Stop Hook 検証 / 実装 / lint / checklist 確認
-- **Phase 5.3-5.4**: `rite:issue:start-publish` — PR 作成 / review-fix loop
-- **Phase 5.5-Termination**: `rite:issue:start-finalize` — Ready / Status / metrics / completion / parent close / workflow termination
+flat workflow から呼び出される sub-skill は `rite:lint` / `rite:pr:create` / `rite:pr:review` / `rite:pr:fix` / `rite:pr:ready` のみで、各々が 1 種類の sentinel pattern (`[lint:*]` / `[pr:created:N]` / `[review:*]` / `[fix:*]` / `[ready:completed]`) を emit する。orchestrator はその pattern を直接 grep で routing する。
 
-各 sub-skill は `<!-- [start:execute:completed|aborted] -->` / `<!-- [start:publish:completed|aborted] -->` / `<!-- [start:finalize:completed|aborted] -->` の HTML-commented sentinel を emit し、orchestrator の Mandatory After 5.0-5.2.1 / 5.3-5.4 / 5.5-Termination が context grep で sentinel-based routing を行う。
-
-See [references/sub-skill-return-protocol.md](./references/sub-skill-return-protocol.md) for the full contract, anti-pattern / correct-pattern examples, and the three defense-in-depth layers (prompt / flow-state / caller-continuation hint). The canonical specification lives in `docs/SPEC.md` "Sub-skill Return Auto-Continuation Contract" section.
+過去の defense-in-depth model (Layer 1/3/4) と移行マップは [references/sub-skill-return-protocol.md](./references/sub-skill-return-protocol.md) (retirement note) を参照。
 
 ## AI Coding Principles (Summary)
 
@@ -201,7 +199,7 @@ The rite workflow auto-detects **workflow blockers** (Skill load failure, hook a
 
 **Architecture**:
 1. Each skill (`rite:lint`, `rite:pr:fix`, `rite:pr:review`) emits a sentinel via `plugins/rite/hooks/workflow-incident-emit.sh` when an internal failure path is taken.
-2. The orchestrator (`/rite:issue:start` Phase 5.4.4.1) detects sentinels via context grep, presents `AskUserQuestion` for confirmation, and calls `create-issue-with-projects.sh` to register the incident with `Status: Todo / Priority: High / Complexity: S`.
+2. The orchestrator (`/rite:issue:start`, flat workflow steps ステップ 5〜7) detects sentinels via context grep, presents `AskUserQuestion` for confirmation, and calls `create-issue-with-projects.sh` to register the incident with `Status: Todo / Priority: High / Complexity: S`.
 3. Same-session duplicate types are suppressed (1 incident per type per session).
 4. Failure to register is non-blocking — the workflow continues regardless.
 

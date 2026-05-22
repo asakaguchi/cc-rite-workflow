@@ -29,24 +29,55 @@
 # Extract session_id from hook JSON payload
 # Args: $1 = hook JSON string (from stdin of the hook)
 # Output: session_id string, or empty string if not found
+# Note: jq parse failures degrade to empty so ownership check falls through to
+#   the backward-compat "own" path. The WARNING is unconditional because
+#   ownership classification feeds state-overwrite decisions; suppressing it
+#   under RITE_DEBUG would let a corrupt hook payload silently grant ownership.
+#   The stderr snippet stays behind RITE_DEBUG to keep the WARNING one line on
+#   the hot path.
 extract_session_id() {
   local hook_json="$1"
-  local sid
-  sid=$(echo "$hook_json" | jq -r '.session_id // empty' 2>/dev/null) || sid=""
+  local sid jq_err
+  jq_err=$(mktemp 2>/dev/null) || jq_err=""
+  # if/else preserves the real jq rc; the bash `!` operator zeros $? in its
+  # then-branch, so capturing rc via `if ! ...; then _rc=$?` would always show 0
+  # and hide jq missing / SIGPIPE / parse error from triagers.
+  if sid=$(echo "$hook_json" | jq -r '.session_id // empty' 2>"${jq_err:-/dev/null}"); then
+    :
+  else
+    local _jq_rc=$?
+    echo "[rite] WARNING: extract_session_id: jq parse failed on hook payload (rc=$_jq_rc, returning empty — ownership check falls back to backward-compat path)" >&2
+    [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+    sid=""
+  fi
+  [ -n "$jq_err" ] && rm -f "$jq_err"
   echo "$sid"
 }
 
 # Get session_id from .rite-flow-state file
 # Args: $1 = path to .rite-flow-state
 # Output: session_id string, or empty string if not found/file missing
+# Note: Surface jq parse failures unconditionally so a corrupt state file
+#   doesn't silently fall through to "legacy" classification (which would
+#   then allow the current session to overwrite another active session's
+#   state). Stderr snippet stays behind RITE_DEBUG to keep the WARNING terse.
 get_state_session_id() {
   local state_file="$1"
-  local sid
+  local sid jq_err
   if [ ! -f "$state_file" ]; then
     echo ""
     return 0
   fi
-  sid=$(jq -r '.session_id // empty' "$state_file" 2>/dev/null) || sid=""
+  jq_err=$(mktemp 2>/dev/null) || jq_err=""
+  if sid=$(jq -r '.session_id // empty' "$state_file" 2>"${jq_err:-/dev/null}"); then
+    :
+  else
+    local _jq_rc=$?
+    echo "[rite] WARNING: get_state_session_id: jq parse failed on $state_file (rc=$_jq_rc, returning empty — may classify a corrupt state file as legacy)" >&2
+    [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+    sid=""
+  fi
+  [ -n "$jq_err" ] && rm -f "$jq_err"
   echo "$sid"
 }
 
@@ -142,12 +173,23 @@ check_session_ownership() {
     return 0
   fi
 
-  # Different session — check staleness via updated_at
-  local updated_at
-  updated_at=$(jq -r '.updated_at // empty' "$state_file" 2>/dev/null) || updated_at=""
+  # Different session — check staleness via updated_at. Surface jq parse
+  # failure unconditionally because the fallthrough is `treat as stale →
+  # overwrite`, which can destroy another active session's state if the
+  # corruption is transient. Stderr snippet stays behind RITE_DEBUG.
+  local updated_at jq_err
+  jq_err=$(mktemp 2>/dev/null) || jq_err=""
+  if updated_at=$(jq -r '.updated_at // empty' "$state_file" 2>"${jq_err:-/dev/null}"); then
+    :
+  else
+    local _jq_rc=$?
+    echo "[rite] WARNING: check_session_ownership: jq parse failed on $state_file (rc=$_jq_rc, treating as stale — may overwrite another active session)" >&2
+    [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+    updated_at=""
+  fi
+  [ -n "$jq_err" ] && rm -f "$jq_err"
 
   if [ -z "$updated_at" ]; then
-    # No timestamp = treat as stale (safe to overwrite)
     echo "stale"
     return 0
   fi
@@ -166,8 +208,9 @@ check_session_ownership() {
   return 0
 }
 
-# Parse ISO 8601 timestamp to epoch seconds
-# Moved from stop-guard.sh L83-114 to share across hooks.
+# Parse ISO 8601 timestamp to epoch seconds.
+# Shared helper: every hook that needs to compare timestamps from the flow
+# state must use the same parser to avoid clock-skew false-positives.
 # Args: $1 = ISO 8601 timestamp (e.g., "2026-03-16T05:00:00+00:00")
 # Output: epoch seconds, or 0 on parse failure
 parse_iso8601_to_epoch() {

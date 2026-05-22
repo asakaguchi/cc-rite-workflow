@@ -27,10 +27,8 @@ cleanup() {
   # set -e で TC-016 が abort しても rm -rf が走らず leak する。常に cleanup する。
   [ -n "${dir016:-}" ] && rm -rf "$dir016"
 }
-# Cycle 2 F-02: signal-specific trap quartet to match sister tests (state-read.test.sh /
-# stop-create-interview-block.test.sh / work-memory-update.test.sh / _resolve-cross-session-guard.test.sh /
-# resume-active-flag-restore.test.sh / _resolve-session-id-from-file.test.sh / _validate-helpers.test.sh).
-# Without INT/TERM/HUP, Ctrl-C during interactive debug leaks dir016 (which lives under /tmp via
+# Signal-specific trap quartet matching the sister tests. Without INT/TERM/HUP,
+# Ctrl-C during interactive debug leaks dir016 (which lives under /tmp via
 # mktemp -d, NOT under $TEST_DIR) as an orphan git repo.
 trap cleanup EXIT
 trap 'cleanup; exit 130' INT
@@ -236,12 +234,15 @@ echo ""
 # TC-011: curl command structure - best-effort with timeouts
 # --------------------------------------------------------------------------
 echo "TC-011: curl command structure (static analysis)"
-# Verify that curl commands have proper flags: -sf, --connect-timeout, --max-time, || true
+# Verify curl call still uses the right flags. The `|| true` swallow was
+# replaced with `if ! curl ... ; then` + WARNING emit so a failed delivery
+# is visible in stderr instead of silently disappearing; require the
+# WARNING wiring too.
 if grep -q 'curl -sf --connect-timeout' "$HOOK" && \
-   grep -q '|| true' "$HOOK"; then
-  pass "curl commands have best-effort flags (silent-fail, timeouts, || true)"
+   grep -qE 'WARNING.*notification.*curl failed' "$HOOK"; then
+  pass "curl commands have best-effort flags and visible-failure WARNING"
 else
-  fail "curl commands missing required best-effort flags"
+  fail "curl commands missing best-effort flags or visible-failure WARNING"
 fi
 echo ""
 
@@ -249,12 +250,16 @@ echo ""
 # TC-012: send_slack function signature
 # --------------------------------------------------------------------------
 echo "TC-012: send_slack function signature"
+# send_slack delegates to _send_webhook, which takes (channel, url, payload).
+# The shared helper is where webhook_url + payload sanitization lives, so
+# the signature check pivots to _send_webhook to stay meaningful after the
+# DRY refactor.
 if grep -q 'send_slack()' "$HOOK" && \
-   grep -A5 'send_slack()' "$HOOK" | grep -q 'webhook_url' && \
-   grep -A5 'send_slack()' "$HOOK" | grep -q 'message'; then
-  pass "send_slack function has correct signature (webhook_url, message)"
+   grep -A5 '_send_webhook()' "$HOOK" | grep -q 'webhook_url' && \
+   grep -A5 '_send_webhook()' "$HOOK" | grep -q 'payload'; then
+  pass "send_slack delegates to _send_webhook(channel, url, payload)"
 else
-  fail "send_slack function signature incorrect"
+  fail "send_slack / _send_webhook signature drift"
 fi
 echo ""
 
@@ -263,11 +268,10 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-013: send_discord function signature"
 if grep -q 'send_discord()' "$HOOK" && \
-   grep -A5 'send_discord()' "$HOOK" | grep -q 'webhook_url' && \
-   grep -A5 'send_discord()' "$HOOK" | grep -q 'message'; then
-  pass "send_discord function has correct signature (webhook_url, message)"
+   grep -A2 'send_discord()' "$HOOK" | grep -q '_send_webhook "discord"'; then
+  pass "send_discord delegates to _send_webhook with discord channel name"
 else
-  fail "send_discord function signature incorrect"
+  fail "send_discord delegation pattern missing"
 fi
 echo ""
 
@@ -276,11 +280,33 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-014: send_teams function signature"
 if grep -q 'send_teams()' "$HOOK" && \
-   grep -A5 'send_teams()' "$HOOK" | grep -q 'webhook_url' && \
-   grep -A5 'send_teams()' "$HOOK" | grep -q 'message'; then
-  pass "send_teams function has correct signature (webhook_url, message)"
+   grep -A2 'send_teams()' "$HOOK" | grep -q '_send_webhook "teams"'; then
+  pass "send_teams delegates to _send_webhook with teams channel name"
 else
-  fail "send_teams function signature incorrect"
+  fail "send_teams delegation pattern missing"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-014b: _send_webhook preserves real curl rc (regression guard for if-not antipattern)
+# --------------------------------------------------------------------------
+echo "TC-014b: _send_webhook uses if/else (not `if !`) so curl rc=28 etc. survives"
+# A `if ! curl ... ; then _rc=$?` would collapse `$?` to 0. Proximity-check the
+# three literals (curl invocation / `else` / `local _rc=$?`) co-occur within an
+# 8-line window so a refactor that adds an unrelated else/$? elsewhere cannot
+# mask a regression at the webhook site.
+proximity=$(awk '
+  /if curl -sf --connect-timeout/ { start=NR; saw_else=0; saw_rc=0; matched=0 }
+  start && NR <= start+8 && /^[[:space:]]*else[[:space:]]*$/ { saw_else=1 }
+  start && NR <= start+8 && /local _rc=\$\?/ { saw_rc=1 }
+  start && NR > start+8 && saw_else && saw_rc { matched=1; start=0 }
+  start && NR > start+8 { start=0; saw_else=0; saw_rc=0 }
+  END { if (matched || (start && saw_else && saw_rc)) print "ok" }
+' "$HOOK")
+if [ "$proximity" = "ok" ]; then
+  pass "TC-014b _send_webhook if/else + curl rc capture are co-located (proximity-checked)"
+else
+  fail "TC-014b _send_webhook if/else/\$? not co-located within 8 lines of the curl call — webhook failure WARNING may report misleading rc=0"
 fi
 echo ""
 

@@ -6,10 +6,9 @@
 # by catching prose-level references that drift when content is added or
 # removed but the references are not updated in lockstep.
 #
-# Motivated by PR #661 cycle 2/3 incident (Issue #666):
-#   Cycle 2 propagation scan was limited to the `(line N, M)` form, so
-#   create-interview.md:605 prose form drifts (`本セクション直前の line 588 / 597`,
-#   `create.md:580 / create-interview.md:22`) escaped detection until cycle 3.
+# Detects prose-form drifts (e.g., 本セクション直前の line N, file.md:N) that
+# escape a simpler `(line N, M)` regex. Lockstep drift is the failure mode;
+# this script catches new instances before they ship.
 #
 # Detected patterns:
 #   P-A  Parenthesized form              `(line N)` / `(line N, M)` / `(line N, M, K)`

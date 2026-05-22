@@ -1,8 +1,6 @@
-# Fingerprint Cycling Detection — Phase 5.4.1.0 + Quality Signal SoT
+# Fingerprint Cycling Detection — Quality Signal SoT
 
-> **Source of Truth**: 本ファイルは `/rite:issue:start` Phase 5.4.1.0 **Fingerprint Cycling Detection** (review サイクル中の同一 finding 持続検出) と Phase 5.4.3 Step 3.1 **Quality Signal 3 & 4 Detection** の SoT である。`start.md` 本体は anchor reference + escalation 4-option AskUserQuestion の概要のみに圧縮し、fingerprint spec / similarity / Quality Signal markers / split bash は本ファイルに集約する。
->
-> **抽出経緯**: `start.md` の Phase 5.4.1.0 (旧 line 1016-1169、約 154 行) と Phase 5.4.3 Step 3.1 (旧 line 1258-1281、約 24 行) を本 reference へ移し、本体側は Step 4 routing table と user selection branching table への anchor 参照のみに圧縮する。
+> **Source of Truth**: 本ファイルは Review/Fix ループにおける **Fingerprint Cycling Detection** (review サイクル中の同一 finding 持続検出) と **Quality Signal 3 & 4 Detection** の SoT である。実際の caller は `pr/review.md` (Signal 3) と `pr/fix.md` (Signal 2) であり、`/rite:issue:start` のレビュー/修正ループ (ステップ 7) 内で間接的に実行される。本ファイルは fingerprint spec / similarity / Quality Signal markers / split bash / 4-option AskUserQuestion の標準形を定義する。
 
 ## 概要 — Quality Signal 1-4 の位置付け
 
@@ -121,9 +119,9 @@ Step 4 routing が「本 PR 内で再試行」または「別 Issue として切
 Invoke `skill: "rite:pr:review"`.
 ```
 
-review が return したら `start.md` の Phase 5.4.3 (After Review) へ進む。
+review が return したら `start.md` の ステップ 7.1 (After Review) へ進む。
 
-## §2 — Phase 5.4.3 Step 3.1 Quality Signal 3 & 4 Detection
+## §2 — Quality Signal 3 & 4 Detection (After Review)
 
 review が return した後、最新の `📜 rite レビュー結果` PR コメント **AND** conversation context を以下 marker で grep:
 

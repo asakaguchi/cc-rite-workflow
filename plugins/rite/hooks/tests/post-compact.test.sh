@@ -247,5 +247,253 @@ else
 fi
 echo ""
 
+# ──────────────────────────────────────────────────────────────────────────
+# Reconciliation block runtime coverage (PR != 0 path).
+# The block at post-compact.sh lines 158-379 emits 6 distinct incident sentinels
+# (state_root_inaccessible / state_root_toctou_race / pr_deleted_or_inaccessible
+# / post_compact_gh_pr_view_failed / projects_status_in_review_missing /
+# post_compact_reconciliation_failed) but none of TC-001..TC-749 set pr_number
+# to a non-zero value, so the entire block is otherwise dark. Exercise it with
+# a PATH-injected gh / projects-status-update.sh / workflow-incident-emit.sh
+# mock so a misclassification refactor fails here instead of in production.
+# ──────────────────────────────────────────────────────────────────────────
+
+_setup_recon_env() {
+  local label="$1" gh_behavior="$2" reconcile_result="${3:-updated}"
+  local dir="$TEST_DIR/recon-$label"
+  mkdir -p "$dir/.git" "$dir/bin"
+  # flow-state with pr_number=42 → reconciliation block enters
+  jq -n '{active: true, issue_number: 42, phase: "phase5_post_ready", next_action: "Ready", loop_count: 0, pr_number: 42, branch: "feat/issue-42-recon"}' \
+    > "$dir/.rite-flow-state"
+  jq -n '{compact_state: "recovering", compact_state_set_at: "2026-04-01T00:00:00Z", active_issue: 42}' \
+    > "$dir/.rite-compact-state"
+  # Minimal rite-config so awk projects.enabled detection picks up `true`
+  cat > "$dir/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+YAML
+
+  case "$gh_behavior" in
+    pr_view_404)
+      cat > "$dir/bin/gh" <<'EOF'
+#!/bin/bash
+case "$1 $2" in
+  "pr view") echo "could not resolve to a PullRequest with the number of 42" >&2; exit 1 ;;
+  "repo view") echo '{"owner":{"login":"o"},"name":"r"}' ;;
+  "api graphql") echo "Todo" ;;
+  *) exit 0 ;;
+esac
+EOF
+      ;;
+    pr_view_403)
+      cat > "$dir/bin/gh" <<'EOF'
+#!/bin/bash
+case "$1 $2" in
+  "pr view") echo "HTTP 403: rate limit exceeded" >&2; exit 1 ;;
+  *) exit 0 ;;
+esac
+EOF
+      ;;
+    repo_view_fail)
+      cat > "$dir/bin/gh" <<'EOF'
+#!/bin/bash
+case "$1 $2" in
+  "pr view") echo "false" ;;
+  "repo view") echo "auth required" >&2; exit 1 ;;
+  *) exit 0 ;;
+esac
+EOF
+      ;;
+    happy)
+      cat > "$dir/bin/gh" <<'EOF'
+#!/bin/bash
+case "$1 $2" in
+  "pr view") echo "false" ;;
+  "repo view") echo '{"owner":{"login":"o"},"name":"r"}' ;;
+  "api graphql") echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"project":{"number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"In Review"}]}}]}}}}}' ;;
+  *) exit 0 ;;
+esac
+EOF
+      ;;
+    mismatch_then_reconcile)
+      cat > "$dir/bin/gh" <<'EOF'
+#!/bin/bash
+case "$1 $2" in
+  "pr view") echo "false" ;;
+  "repo view") echo '{"owner":{"login":"o"},"name":"r"}' ;;
+  "api graphql") echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"project":{"number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}' ;;
+  *) exit 0 ;;
+esac
+EOF
+      ;;
+  esac
+  chmod +x "$dir/bin/gh"
+
+  # Mock projects-status-update.sh — return failure when reconcile_result=failed,
+  # otherwise return JSON the reconciliation block expects.
+  cat > "$dir/bin/projects-status-update.sh" <<EOF
+#!/bin/bash
+echo '{"result":"$reconcile_result"}'
+EOF
+  chmod +x "$dir/bin/projects-status-update.sh"
+
+  echo "$dir"
+}
+
+# TC-RECON-02: pr_deleted_or_inaccessible classification (false-positive guard)
+echo "TC-RECON-02: gh pr view 'could not resolve PullRequest' → pr_deleted_or_inaccessible classification"
+recon_dir=$(_setup_recon_env "pr-deleted" "pr_view_404")
+recon_stderr="$(mktemp "$TEST_DIR/recon-pr-deleted-stderr.XXXXXX")"
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" bash "$HOOK" >/dev/null 2>"$recon_stderr" || true
+if grep -qE 'pr_deleted_or_inaccessible' "$recon_stderr"; then
+  pass "pr_deleted_or_inaccessible root cause hint set (not gh_pr_view_failed)"
+else
+  fail "expected pr_deleted_or_inaccessible hint; got: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+if grep -qE 'post_compact_gh_pr_view_failed' "$recon_stderr"; then
+  fail "post_compact_gh_pr_view_failed wrongly emitted for closed-PR case"
+else
+  pass "post_compact_gh_pr_view_failed NOT emitted for closed-PR case"
+fi
+
+# TC-RECON-03: distinguish gh_pr_view_failed (HTTP 403) from pr_deleted
+echo "TC-RECON-03: gh pr view 'HTTP 403 rate limit' → post_compact_gh_pr_view_failed classification"
+recon_dir=$(_setup_recon_env "pr-403" "pr_view_403")
+recon_stderr="$(mktemp "$TEST_DIR/recon-pr-403-stderr.XXXXXX")"
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" bash "$HOOK" >/dev/null 2>"$recon_stderr" || true
+if grep -qE 'post_compact_gh_pr_view_failed' "$recon_stderr"; then
+  pass "post_compact_gh_pr_view_failed emitted for 403 case"
+else
+  fail "expected post_compact_gh_pr_view_failed; got: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+if grep -qE 'pr_deleted_or_inaccessible' "$recon_stderr"; then
+  fail "pr_deleted_or_inaccessible wrongly emitted for 403 case (classification leak)"
+else
+  pass "pr_deleted_or_inaccessible NOT emitted for 403 case (no classification leak)"
+fi
+
+# TC-RECON-04: mktemp degradation surfaces stderr_capture=disabled
+echo "TC-RECON-04: mktemp failure tags stderr_capture=disabled in emitted incident"
+recon_dir=$(_setup_recon_env "mktemp-fail" "pr_view_403")
+# Shadow mktemp to fail only for the pr_view tempfile pattern
+cat > "$recon_dir/bin/mktemp" <<'EOF'
+#!/bin/bash
+for arg in "$@"; do
+  case "$arg" in
+    /tmp/rite-pc-pr-err-*) exit 1 ;;
+  esac
+done
+exec /usr/bin/mktemp "$@"
+EOF
+chmod +x "$recon_dir/bin/mktemp"
+recon_stderr="$(mktemp "$TEST_DIR/recon-mktemp-fail-stderr.XXXXXX")"
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" bash "$HOOK" >/dev/null 2>"$recon_stderr" || true
+if grep -qE 'mktemp failed for pr_view_err' "$recon_stderr"; then
+  pass "WARNING fired for pr_view_err mktemp failure"
+else
+  fail "missing pr_view_err mktemp WARNING; got: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+if grep -qE 'stderr_capture=disabled' "$recon_stderr"; then
+  pass "stderr_capture=disabled tag propagated to emitted incident details"
+else
+  fail "stderr_capture=disabled tag missing from emitted incident; got: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+
+# TC-RECON-05: happy path emits NO incident sentinel (negative control)
+echo "TC-RECON-05: happy reconciliation path → no incident sentinel"
+recon_dir=$(_setup_recon_env "happy" "happy" "updated")
+recon_stderr="$(mktemp "$TEST_DIR/recon-happy-stderr.XXXXXX")"
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" bash "$HOOK" >/dev/null 2>"$recon_stderr" || true
+if grep -qE 'WORKFLOW_INCIDENT=1' "$recon_stderr"; then
+  fail "happy path wrongly emitted WORKFLOW_INCIDENT (false positive): $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+else
+  pass "happy path emits no WORKFLOW_INCIDENT (negative control)"
+fi
+
+# TC-RECON-06: reconcile failed → post_compact_reconciliation_failed hint
+echo "TC-RECON-06: reconcile result=failed → post_compact_reconciliation_failed hint"
+recon_dir=$(_setup_recon_env "recon-fail" "mismatch_then_reconcile" "failed")
+recon_stderr="$(mktemp "$TEST_DIR/recon-failed-stderr.XXXXXX")"
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" bash "$HOOK" >/dev/null 2>"$recon_stderr" || true
+if grep -qE 'post_compact_reconciliation_failed' "$recon_stderr"; then
+  pass "post_compact_reconciliation_failed emitted when reconcile returns failed"
+else
+  fail "expected post_compact_reconciliation_failed; got: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+fi
+
+# TC-RECON-07: gh repo view failure → cascade emit guard
+# Strict count: exactly 1 incident (the repo view failure itself). The
+# subsequent graphql / reconcile path is guarded by `exit 0` to prevent
+# double-emit; a relaxed `<= 2` threshold would let 0-emit silent drops pass.
+echo "TC-RECON-07: gh repo view failure → exactly one repo failure incident"
+recon_dir=$(_setup_recon_env "repo-fail" "repo_view_fail")
+recon_stderr="$(mktemp "$TEST_DIR/recon-repo-fail-stderr.XXXXXX")"
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" bash "$HOOK" >/dev/null 2>"$recon_stderr" || true
+incident_count=$(grep -cE 'WORKFLOW_INCIDENT=1' "$recon_stderr" || echo 0)
+if [ "$incident_count" -eq 1 ]; then
+  pass "repo view failure emits exactly 1 incident sentinel (cascade guard functional)"
+else
+  fail "repo view failure emitted $incident_count incident sentinels (expected exactly 1)"
+fi
+if grep -qE 'root_cause_hint=post_compact_gh_repo_view_failed' "$recon_stderr"; then
+  pass "TC-RECON-07 emitted incident is attributed to root_cause_hint=post_compact_gh_repo_view_failed"
+else
+  fail "TC-RECON-07 incident emitted but not attributed via canonical root_cause_hint field: $(head -c 500 "$recon_stderr")"
+fi
+
+# TC-CONFIG-PARSE: post-compact.sh が rite-config.yml の awk parse 失敗を silent skip ではなく
+# incident emit に乗せる経路を保持していることを static に pin する。awk-gating コードが削除
+# された場合や hint string が変わった場合に検出する。behavioral test は gh CLI shim 等が必要で
+# 重いため、source grep で contract をピン留めする。
+echo "TC-CONFIG-PARSE: awk parse failure routes to incident emit with config_parse_failed hint"
+if grep -q 'post_compact_config_parse_failed' "$HOOK"; then
+  pass "post-compact.sh contains 'config_parse_failed' root_cause_hint"
+else
+  fail "post-compact.sh missing 'config_parse_failed' root_cause_hint — awk parse failure may silently fall to 'projects disabled' classification"
+fi
+if grep -qE '(awk_pe_rc|awk_pn_rc)' "$HOOK"; then
+  pass "post-compact.sh distinguishes awk rc (config parse failure vs Projects disabled)"
+else
+  fail "post-compact.sh missing awk rc capture — awk failure cannot be distinguished from projects.enabled=false"
+fi
+
+# TC-RECON-08: command substitution は pipeline ではないため `set -o pipefail` だけでは jq -n の
+# 失敗を outer rc に伝播しない。`JQ_PAYLOAD=$(jq -n ...) || JQ_PAYLOAD_RC=$?` の rc capture と
+# `post_compact_jq_payload_build_failed` hint emit が削除されると、ENV 不整合 / locale / OOM 起因の
+# jq 失敗時に projects status sync が silent に degraded する経路ができる。static pin で回帰防御。
+echo "TC-RECON-08: jq -n payload build failure handling is wired (rc capture + jq_payload_build_failed hint)"
+if grep -q 'JQ_PAYLOAD_RC' "$HOOK"; then
+  pass "post-compact.sh contains JQ_PAYLOAD_RC capture (jq -n failure detection)"
+else
+  fail "post-compact.sh missing JQ_PAYLOAD_RC capture — command substitution swallows jq -n exit code"
+fi
+if grep -q 'post_compact_jq_payload_build_failed' "$HOOK"; then
+  pass "post-compact.sh contains post_compact_jq_payload_build_failed hint"
+else
+  fail "post-compact.sh missing post_compact_jq_payload_build_failed hint — jq payload failure cannot be triaged"
+fi
+
+# --- TC-COMPACT-STATE-CORRUPT: jq failure on .compact_state surfaces WARNING ---
+# A regression that drops the _compact_val_rc check would let a corrupt
+# COMPACT_STATE silently route to the non-recovering branch with no audit trail.
+echo "TC-COMPACT-STATE-CORRUPT: corrupt .rite-compact-state surfaces WARNING with rc"
+TC_DIR=$(setup_test "tc-compact-corrupt")
+jq -n '{active: true, issue_number: 99, phase: "phase5_implementation", branch: "feat/issue-99-test"}' > "$TC_DIR/.rite-flow-state"
+printf 'not-valid-json{{' > "$TC_DIR/.rite-compact-state"
+STDERR_OUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>&1 >/dev/null) || true
+if printf '%s' "$STDERR_OUT" | grep -qE 'post-compact: jq parse of \.compact_state failed \(rc=[1-9]'; then
+  pass "TC-COMPACT-STATE-CORRUPT: WARNING surfaces real jq rc on corrupt compact-state"
+else
+  fail "TC-COMPACT-STATE-CORRUPT: expected WARNING with rc on corrupt compact-state; got: $STDERR_OUT"
+fi
+
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

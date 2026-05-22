@@ -36,8 +36,10 @@
 #   (`<state_root>/.rite/sessions/<sid>.flow-state`), the caller MUST invoke
 #   `check_session_ownership` from session-ownership.sh and skip the modify
 #   path on the "other" branch. Reading or modifying another session's active
-#   per-session state file would clobber its in-flight work memory and trip
-#   stop-guard whitelist violations on its next phase transition.
+#   per-session state file would clobber its in-flight work memory: the peer
+#   session would observe an externally mutated .active flag or .phase value
+#   and either silently advance past its in-flight step or fall through to
+#   create-mode initialization on the next hook fire.
 #
 #   Failing this contract risks: (1) silent overwrite of another session's
 #   .active=false transition, (2) double-emit of cross-session incidents,
@@ -60,7 +62,6 @@
 #
 #   Command-level callers (silent fall-through to empty state_file via `|| state_file=""`):
 #     - plugins/rite/commands/issue/create.md
-#     - plugins/rite/commands/issue/create-interview.md
 #     - plugins/rite/commands/pr/cleanup.md
 #
 #   New callers MUST follow the caller contract above. When adding a new

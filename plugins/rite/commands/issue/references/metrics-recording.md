@@ -1,10 +1,19 @@
-# Metrics Recording — Phase 5.5.2 SoT
+# Metrics Recording — orphan reference
 
-> **Source of Truth**: 本ファイルは `/rite:issue:start` Phase 5.5.2 (Metrics Recording) の **bash literal + LLM 制御指示の SoT** である。`start.md` 本体の Phase 5.5.2 は本ファイルへ semantic 参照する anchor stub のみ保持する。
+> **Status: Orphan (no active caller).** The metrics recording step (Step 1–5
+> + Mandatory After) was originally an inline section of `start.md`, then
+> extracted here for cognitive-load reasons. The flat workflow consolidation
+> later moved away from a dedicated metrics phase; no current command file
+> sources this reference.
 >
-> **抽出経緯**: `start.md` Phase 5.5.2 は ~200 行で本体の最大 inline section の一つだった。Step 1 (collect metrics + plan_deviation_count bash block) / Step 2 (threshold evaluation) / Step 3 (failure classification) / Step 4 (heredoc PATCH 本体) / Step 5 (repeated failure) を 1 reference に集約することで、`start.md` 本体の認知負荷を下げる。Issue #901 (PR E — #896 親 Issue) で抽出。
+> **Retained because**: the Step 1–5 rubric, threshold-evaluation criteria,
+> repeated-failure classification, and PATCH heredoc together represent the
+> most complete record of how end-to-end metrics were intended to be
+> captured. A future reintroduction (post-PR metrics dashboard, retro logs,
+> etc.) should pick up from this file rather than re-deriving the criteria.
 >
-> **caller**: `start.md` Phase 5.5.2 (唯一の caller)。本 reference の bash literal および LLM 指示はこの caller でのみ使用される。
+> Section headings still use the historical `Phase 5.5.2 / phase5_post_metrics`
+> labels for traceability with the original design discussion.
 
 ## Skip Steps note (Phase 5.6 pre-condition)
 
@@ -59,8 +68,8 @@ plan_deviation_count="$val"
 # 成功経路では PLAN_DEVIATION_COUNT sentinel を emit し、Claude が会話履歴を grep して
 # Step 4 heredoc の `{plan_deviation_count}` placeholder に literal substitute する。シェル変数
 # `$plan_deviation_count` は Bash tool 境界で消失するため、stdout/stderr に明示的に emit しない限り
-# Claude は値を読み取れない。同型の cross-boundary state transfer は resume.md Phase 2.1 Step 1
-# / start.md Phase 5.7 で確立済みの canonical pattern。
+# Claude は値を読み取れない。同型の cross-boundary state transfer は resume.md Phase 1.3 routing
+# table emit / start.md ステップ 8.4 (parent close) で確立済みの canonical pattern。
 #
 # Emit channel policy: cross-boundary state transfer の sentinel は **stdout / stderr のいずれでも会話コンテキストに記録される**。
 # Claude Code の Bash tool は stdout/stderr 両方を会話コンテキストに取り込む仕様のため、emit channel の

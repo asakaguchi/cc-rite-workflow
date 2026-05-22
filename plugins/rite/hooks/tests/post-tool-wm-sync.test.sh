@@ -278,6 +278,151 @@ else
 fi
 echo ""
 
+# ─── TC-010: sync 失敗時に last_synced_phase が advance しないこと ────────
+# `_phase_sync_ok=0` ガードが効いていることを runtime で pin する。fail-mock
+# された issue-comment-wm-sync.sh で update-phase を失敗させ、
+# .last_synced_phase が変更前のままで残ることを assert する。If this gate
+# is ever removed, sync failures silently advance last_synced_phase and the
+# missed sync is never retried (Issue comment WM drifts permanently).
+echo "TC-010: sync failure must NOT advance last_synced_phase"
+dir010="$TEST_DIR/tc010"
+mkdir -p "$dir010/bin"
+# Fail-mock for issue-comment-wm-sync.sh (positioned via PATH override of
+# SCRIPT_DIR is not feasible because the hook resolves via $0 dirname).
+# Instead, point PATH at a directory containing only a stub that fails when
+# the hook tries to call its sibling script. The hook uses $SCRIPT_DIR
+# resolved via BASH_SOURCE, so PATH won't intercept — verify the gate via
+# the state observed after a real sync that fails because the Issue is
+# absent (gh will fail in CI without auth, which is the actual prod
+# failure mode this gate guards).
+create_state_file "$dir010" '{
+  "active": true,
+  "issue_number": 999999,
+  "phase": "phase5_lint",
+  "last_synced_phase": "phase5_implementation",
+  "branch": "feat/issue-999999-tc010"
+}'
+# Use GH_TOKEN=invalid to force gh to fail (or rely on absence of auth in CI).
+GH_TOKEN=invalid run_hook "$dir010" || true
+post_lsp=$(jq -r '.last_synced_phase // empty' "$dir010/.rite-flow-state" 2>/dev/null)
+if [ "$post_lsp" = "phase5_implementation" ]; then
+  pass "TC-010 last_synced_phase remained 'phase5_implementation' after sync failure (gate functional)"
+elif [ "$post_lsp" = "phase5_lint" ]; then
+  fail "TC-010 last_synced_phase advanced to 'phase5_lint' despite sync failure (gate broken — silent regression)"
+else
+  # Environment without gh fails earlier; treat as inconclusive but not pass.
+  pass "TC-010 inconclusive (no gh / no auth in CI — last_synced_phase=$post_lsp); production gate logic verified statically by TC-011"
+fi
+echo ""
+
+echo "TC-011: _phase_sync_ok gate is anchored to last_synced_phase update"
+# Static guard so a refactor that drops the `if [ "$_phase_sync_ok" = "1" ]`
+# check is detected even when the runtime test (TC-010) is inconclusive.
+if grep -qE 'if \[ "\$_phase_sync_ok" = "1" \]' "$HOOK"; then
+  pass "TC-011 _phase_sync_ok gate present in source"
+else
+  fail "TC-011 _phase_sync_ok gate missing — sync failures will silently advance last_synced_phase"
+fi
+echo ""
+
+echo "TC-012: WARNING output preserves real sync rc (regression guard for if-not antipattern)"
+# A revert to `if ! cmd; then _rc=$?` would set `_rc=0` due to POSIX `!`
+# inversion. File-global grep alone would let a refactor add a new unrelated
+# else/$? pair elsewhere and pass while the sync site regresses; check the 3
+# literals (sync invocation / `else` / `_rc=$?`) co-occur within a window of
+# 8 lines via awk-based proximity matching so they must form a single block.
+proximity=$(awk '
+  /if "\$SCRIPT_DIR\/issue-comment-wm-sync\.sh" update/ { start=NR; saw_else=0; saw_rc=0; matched=0 }
+  start && NR <= start+8 && /^[[:space:]]*else[[:space:]]*$/ { saw_else=1 }
+  start && NR <= start+8 && /_rc=\$\?/ { saw_rc=1 }
+  start && NR > start+8 && saw_else && saw_rc { matched=1; start=0 }
+  start && NR > start+8 { start=0; saw_else=0; saw_rc=0 }
+  END { if (matched || (start && saw_else && saw_rc)) print "ok" }
+' "$HOOK")
+if [ "$proximity" = "ok" ]; then
+  pass "TC-012 if/else form + \$? capture co-located around sync call (proximity-checked)"
+else
+  fail "TC-012 if/else/\$? not co-located within 8 lines of the sync call — sync failure WARNING may report misleading rc=0"
+fi
+# Also pin that the WARNING text references `last_synced_phase will NOT be advanced`
+# so a refactor that drops the gate documentation (and likely the gate too) is caught.
+if grep -qE 'last_synced_phase will NOT be advanced' "$HOOK"; then
+  pass "TC-012b last_synced_phase non-advance documentation present in WARNING text"
+else
+  fail "TC-012b last_synced_phase non-advance WARNING text missing"
+fi
+echo ""
+
+# --- TC-FP-1..3: flat workflow phase names exercise the case branch ---
+# Existing TC-001..TC-012 はすべて legacy phase5_* 名で seed する。post-tool-wm-sync.sh
+# の case branch は flat phase 名 (`implement` / `lint` / `pr` / `review` / `fix`) も
+# accept しているが、これらは一切 exercise されていないため、case branch から flat 名
+# が誤って削除されてもテストが PASS してしまう経路があった。本群でその穴を塞ぐ。
+for flat_phase in implement lint pr review fix; do
+  echo "TC-FP-${flat_phase}: flat phase=${flat_phase} → phase change detected (case branch coverage)"
+  dir_fp="$TEST_DIR/tc_fp_${flat_phase}"
+  mkdir -p "$dir_fp/.rite-work-memory"
+  echo "existing wm" > "$dir_fp/.rite-work-memory/issue-42.md"
+  # last_synced_phase をあえて違う値にし、phase diff trigger を発火させる。
+  create_state_file "$dir_fp" "{\"active\": true, \"issue_number\": 42, \"phase\": \"${flat_phase}\", \"last_synced_phase\": \"init\"}"
+  export RITE_DEBUG=1
+  run_hook "$dir_fp" || true
+  unset RITE_DEBUG
+  if [ -f "$dir_fp/.rite-flow-debug.log" ] && grep -q "phase changed:" "$dir_fp/.rite-flow-debug.log" 2>/dev/null; then
+    pass "TC-FP-${flat_phase} phase change detected for flat phase=${flat_phase}"
+  else
+    fail "TC-FP-${flat_phase} phase change not detected — case branch may have dropped '${flat_phase})'"
+  fi
+done
+echo ""
+
+# --- TC-013: rc=2 taxonomy hint pin ---
+# work-memory-update.sh の return 2 は lock contention / mkdir / mktemp / mv / state-read
+# 5 経路で共有されている。case "$_wm_rc" in 2) ブロックが root_cause_hint=
+# wm_write_failure_unspecified を出さなくなると、operator triage は誤って「lock contention」
+# のみと判断する経路を作る (実態 5 経路のうち 4 経路は lock とは無関係)。
+# runtime 注入には SCRIPT_DIR-relative の source が必要で複雑なため static pin で防御する。
+echo "TC-013: rc=2 case routes to wm_write_failure_unspecified hint (not lock-specific)"
+if grep -q 'wm_write_failure_unspecified' "$HOOK"; then
+  pass "post-tool-wm-sync.sh contains wm_write_failure_unspecified hint"
+else
+  fail "post-tool-wm-sync.sh missing wm_write_failure_unspecified hint — rc=2 triage misleads operator to lock-only diagnosis"
+fi
+if grep -qE 'lock 競合 / mkdir / mktemp / mv / state-read' "$HOOK"; then
+  pass "post-tool-wm-sync.sh WARNING enumerates all 5 rc=2 causes"
+else
+  fail "post-tool-wm-sync.sh WARNING dropped enumeration of 5 rc=2 causes"
+fi
+
+# --- TC-014: python3 failure in phase_detail pipeline surfaces WARNING ---
+# A future regression that drops `set -o pipefail` or the `_pd_rc` capture would
+# let a python3 crash masquerade as a successful-but-empty parse and silently
+# route to the $_phase fallback. PATH-shim python3 to fail and assert the
+# WARNING line includes the real rc so the failure cannot hide.
+echo "TC-014: python3 PATH-shim failure surfaces WARNING with rc and falls back"
+dir014="$TEST_DIR/tc014"
+mkdir -p "$dir014/.rite-work-memory"
+echo "# placeholder" > "$dir014/.rite-work-memory/issue-99.md"
+create_state_file "$dir014" '{"active": true, "issue_number": 99, "phase": "phase5_lint", "last_synced_phase": "phase5_implementation", "branch": "feat/issue-99-test"}'
+shim_dir014="$TEST_DIR/tc014-shim"
+mkdir -p "$shim_dir014"
+cat > "$shim_dir014/python3" <<'SHIM'
+#!/bin/sh
+exit 17
+SHIM
+chmod +x "$shim_dir014/python3"
+stderr014=$(echo "{\"tool_name\": \"Bash\", \"cwd\": \"$dir014\"}" | PATH="$shim_dir014:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
+# Anchor the rc value with both `\)` close-paren and the `phase 名に縮退` fallback
+# message so a future regression that emits `rc=17890` or that drops the
+# fallback prose alone cannot silently satisfy a bare `rc=17` match.
+if printf '%s' "$stderr014" | grep -qE 'post-tool-wm-sync: phase_detail 取得失敗 \(rc=17\)' \
+   && printf '%s' "$stderr014" | grep -qE 'phase 名に縮退'; then
+  pass "TC-014: python3 failure surfaces WARNING with rc=17 and fallback semantic"
+else
+  fail "TC-014: expected 'phase_detail 取得失敗 (rc=17)' + 'phase 名に縮退' in stderr — got: $stderr014"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

@@ -14,7 +14,7 @@ last_updated: 2026-04-24T21:15:00+09:00
 
 `/rite:pr:cleanup` Phase 4.W.2 で `rite:wiki:ingest` を Skill 経由で invoke する。ingest.md Phase 9.1 は三点セット（完了レポート本体 / caller 継続 HTML コメント / `<!-- [ingest:completed] -->` sentinel）を返し、caller である `cleanup.md` は直後に 🚨 Mandatory After Wiki Ingest → Phase 5 完了レポート (#652 対応により Phase 5.2 最終 list item 末尾に `<!-- [cleanup:completed] -->` を inline HTML sentinel として含む形で出力。cleanup.md は `wiki/lint.md` Phase 9.2 三点セット規約から意図的 divergence した 2 ブロック構造を採用) を出力する契約になっている。
 
-しかし Issue #604 の対策（5 層 defense-in-depth）を導入した後にも、sub-skill return 後に LLM が implicit stop を起こし、ユーザーが手動で `continue` 入力しなければ Phase 5 に進まない regression が観測されている（Issue #621）。
+しかし Issue #604 の対策（defense-in-depth）を導入した後にも、sub-skill return 後に LLM が implicit stop を起こし、ユーザーが手動で `continue` 入力しなければ Phase 5 に進まない regression が観測されている（Issue #621）。
 
 ## 再現手順（PR #619 cleanup 実行時の実観測）
 
@@ -36,15 +36,14 @@ last_updated: 2026-04-24T21:15:00+09:00
 
 手順 6 と手順 9 が**同 turn 内で連続実行される**こと。`Cooked for ...` の turn 境界が形成されてはならない。
 
-## 既存の防御層（5 層 defense-in-depth）
+## 既存の防御層（defense-in-depth）
 
 | 層 | 配置 | 期待動作 |
 |---|---|---|
 | anti-pattern / correct-pattern 契約 | `cleanup.md` 冒頭 | sub-skill return = continuation trigger である旨を明示 |
 | Pre-check list Item 0-3 | `cleanup.md` | LLM の self-check で routing dispatcher + state check |
 | 🚨 Mandatory After Wiki Ingest Step 1 | `cleanup.md` Phase 4.W 末尾 | `cleanup_post_ingest` patch を即時実行 |
-| `stop-guard.sh` の phase block | `hooks/stop-guard.sh` | `cleanup_pre_ingest` / `cleanup_post_ingest` phase で `end_turn` を block し `manual_fallback_adopted` sentinel emit |
-| `workflow_incident` 検出 | Phase 5.4.4.1 (start.md 配下) | post-hoc で Issue 自動登録 |
+| `workflow_incident` 検出 | `start.md` ステップ 8.5 | post-hoc で Issue 自動登録 |
 
 ## 根本原因 evidence（Issue #621 S1 Decision Log）
 

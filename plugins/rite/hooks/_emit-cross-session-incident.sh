@@ -91,7 +91,7 @@ esac
 # F-07 (MEDIUM) 対応: session_id を redact してから details に埋め込む。
 # 旧実装は full UUID を平文で埋め込み、`workflow-incident-emit.sh` 経由で
 # `[CONTEXT] WORKFLOW_INCIDENT=1; details=...,current_sid=11111111-...,legacy_sid=22222222-...` として
-# stderr/stdout に emit され、orchestrator (`start.md` Phase 5.4.4.1) が `AskUserQuestion` 経由で
+# stderr/stdout に emit され、orchestrator (`start.md` ステップ 8.5) が `AskUserQuestion` 経由で
 # `create-issue-with-projects.sh` に渡し、ソース文字列のまま `Details: {details}` の Issue body 行として
 # GitHub に publish していた。session_id は同一マシン上の他 LLM session を識別する内部 token であり、
 # public repo / multi-tenant repo の Issue search で漏洩すると session 取得への足がかりになる
@@ -166,7 +166,7 @@ esac
 
 # workflow-incident-emit.sh 不在 / 非実行可能チェック (silent suppression 防止)
 # verified-review cycle 38 F-08 MEDIUM: 不在時に canonical sentinel pattern を helper 自身が emit する。
-# 旧実装は WARNING のみ stderr に出して exit 0 だったため、orchestrator (start.md Phase 5.4.4.1) の
+# 旧実装は WARNING のみ stderr に出して exit 0 だったため、orchestrator (start.md ステップ 8.5) の
 # `[CONTEXT] WORKFLOW_INCIDENT=1` grep は WARNING line にマッチせず、cross_session_takeover_refused /
 # legacy_state_corrupt / invalid_uuid 経路を Issue 自動登録できなかった (helper 上部のコメント
 # 「sentinel emit 失敗を silent suppress しない」主張との乖離)。fallback sentinel を直接 emit して
@@ -176,14 +176,14 @@ esac
 # iteration_id を渡したい場合は workflow-incident-emit.sh が install されている前提で運用する。
 emit_script="$SCRIPT_DIR/workflow-incident-emit.sh"
 if [ ! -x "$emit_script" ]; then
-  echo "WARNING: workflow-incident-emit.sh missing — emitting canonical fallback sentinel directly to keep Phase 5.4.4.1 detection intact: type=${incident_type}" >&2
+  echo "WARNING: workflow-incident-emit.sh missing — emitting canonical fallback sentinel directly to keep ステップ 8.5 detection intact: type=${incident_type}" >&2
   # fallback_iter prefix は "0" 固定 (caller 6 site のいずれも PR 番号を渡していないため、cycle 44 F-09
   # で導入した第 6 引数は dead code 化していた。verified-review F-02 で撤去し旧挙動に restore)。
   fallback_iter="0-$(date +%s)"
   # PR #688 followup: cycle 41 review F-12 MEDIUM (security Hypothetical exception) — fallback
   # sentinel が sanitize() を経由していなかった defense-in-depth gap を修正。details / root_cause_hint
   # に制御文字 / `;` が混入すると sentinel format `[CONTEXT] WORKFLOW_INCIDENT=1; type=...; details=...;`
-  # が parse 不能になり Phase 5.4.4.1 grep 検出が break する経路を遮断 (workflow-incident-emit.sh
+  # が parse 不能になり ステップ 8.5 grep 検出が break する経路を遮断 (workflow-incident-emit.sh
   # の sanitize() と writer/fallback 完全対称化)。
   # PR #688 cycle 12 F-07 (LOW, security Hypothetical) 強化: `tr -d '\n\r'` を `tr -d '[:cntrl:]'`
   # に拡張し、tab / backspace / form feed / vertical tab / U+007F (DEL) 等の全制御文字を 1 ステップで

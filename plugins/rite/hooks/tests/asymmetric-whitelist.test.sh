@@ -57,12 +57,9 @@ fi
 
 echo
 echo "=== --phase usage extraction (orchestrator markdown) ==="
-# PR H (#905) F-03 対応: 動的展開 + sub-skill / reference を含む全 .md を scan。
-# 旧実装は ORCHESTRATOR_FILES 配列で 18 ファイルを hardcode していたが、`--phase` を使用する
-# 7 ファイル (branch-setup.md, child-issue-selection.md, implementation-plan.md, parent-routing.md,
-# references/flow-state-scaffolding.md, references/metrics-recording.md, work-memory-init.md) が
-# enumeration 漏れで silent drift のリスクがあった (code-quality-reviewer HIGH finding F-03)。
-# find で commands/ 全 .md を動的展開し、test ファイル自身は除外する。
+# Dynamic enumeration of all .md files under commands/ so new files (or files
+# that grow a `--phase` reference) are picked up automatically. A hard-coded
+# array would silently miss additions and let phase-name drift slip past CI.
 mapfile -t ORCHESTRATOR_FILES < <(find "$COMMANDS_DIR" -name '*.md' -type f | sort)
 echo "  orchestrator files (dynamic): ${#ORCHESTRATOR_FILES[@]}"
 
@@ -93,14 +90,9 @@ echo "=== orphan detection (whitelist key NOT in --phase usage) ==="
 # 現在のコードパスでは write されないことが意図された marker。removal は別 PR scope
 # (whitelist 簡素化 PR 候補) で扱う。本テストでは exception list として通過させる。
 DEAD_KEY_EXCEPTIONS=(
-  # phase5_post_pr: legacy ratchet marker。start.md Phase 5.3 は phase5_pr → phase5_review
-  # に直接遷移し、間接 phase5_post_pr は書かない。whitelist `["phase5_pr"]="phase5_post_pr phase5_review ..."`
-  # と `["phase5_post_pr"]="phase5_review"` は legacy backward-compat として保持 (devops cycle-2 CRITICAL)。
-  "phase5_post_pr"
-  # phase5_ready: legacy intermediate phase。rite:pr:ready Phase 4 defense-in-depth で
-  # phase5_post_review/phase5_post_fix → phase5_post_ready 直接書込 (phase5_ready skip)。
-  # whitelist target 列挙は意図的に残存 (start-finalize.md L64 の documented design comment)。
-  "phase5_ready"
+  # Empty by design: the whitelist currently contains no phase names that are
+  # known-unused. Add entries here with a one-line rationale when a backward-
+  # compat marker has to be kept in the whitelist without an active writer.
 )
 
 # comm -23 で A (whitelist) にあって B (used) に無い key を検出
@@ -141,9 +133,58 @@ else
   echo "  対処: (a) whitelist から削除するか、(b) orchestrator 側で --phase \"<name>\" を追加するか、(c) 意図的な backward-compat なら DEAD_KEY_EXCEPTIONS に追加 (rationale 付き) で対称性回復"
 fi
 
+echo
+echo "=== reverse direction: --phase used but NOT whitelisted ==="
+# Detects the opposite drift: an orchestrator writes `--phase foobar` while
+# the whitelist has no entry for it. `rite_phase_transition_allowed` accepts
+# unknown prev phases (forward-compat), so the hook itself cannot catch this —
+# we have to assert it statically here.
+#
+# Documented exceptions: some sub-skills still write legacy phase5_* /
+# phase1-3_* names that are intentionally kept until they're migrated to the
+# flat phase set. Keep entries here only while a corresponding write exists;
+# remove an exception when the write itself is removed.
+REVERSE_EXCEPTIONS=(
+  "phase5_lint"
+  "phase5_post_fix"
+  "phase5_post_metrics"
+  "phase5_post_ready"
+  "phase5_post_review"
+  "phase5_pr"
+  "phase5_ready"
+  "phase5_review"
+)
+
+# comm -13 で B (used) にあって A (whitelist) に無い key を検出
+mapfile -t raw_reverse_orphans < <(comm -13 "$whitelist_tmp" "$used_tmp")
+reverse_orphans=()
+for k in "${raw_reverse_orphans[@]}"; do
+  [ -z "$k" ] && continue
+  is_exception=0
+  for ex in "${REVERSE_EXCEPTIONS[@]}"; do
+    if [ "$k" = "$ex" ]; then
+      is_exception=1
+      break
+    fi
+  done
+  [ "$is_exception" -eq 0 ] && reverse_orphans+=("$k")
+done
+reverse_orphan_count="${#reverse_orphans[@]}"
+
+if [ "$reverse_orphan_count" -eq 0 ]; then
+  pass "no reverse-orphan phase keys (orchestrator が使う phase はすべて whitelist 登録済)"
+else
+  fail "found $reverse_orphan_count reverse-orphan phase key(s) in orchestrator (--phase で書かれているが whitelist 未登録):"
+  for k in "${reverse_orphans[@]}"; do
+    [ -z "$k" ] && continue
+    echo "    - $k"
+  done
+  echo "  対処: (a) whitelist に追加 (forward-compat unknown prev accept で silent 通過するため、明示登録で transition check を有効化)、(b) typo であれば orchestrator 側を修正、(c) 意図的な test/example use なら REVERSE_EXCEPTIONS に追加"
+fi
+
 # === Summary ===
 if ! print_summary "$(basename "$0")" \
-  "orphan key 検出時は whitelist 削除 or orchestrator --phase 追加で対称性回復。Do NOT relax this test."; then
+  "orphan key 検出時は whitelist 削除 or orchestrator --phase 追加で対称性回復。reverse orphan は whitelist 追加で transition check を有効化。Do NOT relax this test."; then
   exit 1
 fi
 exit 0

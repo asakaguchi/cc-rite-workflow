@@ -390,4 +390,67 @@ else
 fi
 rm -rf "$mock_bin7"
 
+echo ""
+echo "=== Phase 13: shrinkage trip × _EMIT_SH absent → body_shrinkage_guard_tripped sentinel ==="
+# `_emit_body_update_incident` now accepts the incident type as its 1st arg.
+# TC-25/25b/25c pinned the `issue_body_fetch_failed` fallback only. Shrinkage
+# trip + missing emit helper must surface as `body_shrinkage_guard_tripped` in
+# the canonical sentinel — without this TC, a refactor that hardcodes the type
+# literal in the fallback printf would pass all existing TCs.
+mock_bin8=$(mktemp -d)
+cat > "$mock_bin8/gh" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+chmod +x "$mock_bin8/gh"
+absent_emit_shrink="$mock_bin8/nonexistent_emit"
+tmp_read=$(mktemp)
+tmp_write=$(mktemp)
+printf 'a%.0s' $(seq 1 200) > "$tmp_read"
+# 5 bytes ≪ 200/2 — triggers shrinkage guard
+printf 'aaaaa' > "$tmp_write"
+rc=0
+out=$(PATH="$mock_bin8:$PATH" _EMIT_SH="$absent_emit_shrink" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
+assert_exit "TC-25d shrinkage trip with absent _EMIT_SH → exit 0" 0 "$rc"
+if printf '%s' "$out" | grep -qE '\[CONTEXT\] WORKFLOW_INCIDENT=1; type=body_shrinkage_guard_tripped'; then
+  pass "TC-25d shrinkage trip emits canonical sentinel with type=body_shrinkage_guard_tripped"
+else
+  fail "TC-25d shrinkage sentinel missing or wrong type: $out"
+fi
+if printf '%s' "$out" | grep -qE 'root_cause_hint=shrinkage_below_50pct'; then
+  pass "TC-25d sentinel carries root_cause_hint=shrinkage_below_50pct"
+else
+  fail "TC-25d root_cause_hint missing: $out"
+fi
+rm -rf "$mock_bin8"
+
+echo ""
+echo "=== Phase 14: empty write × _EMIT_SH absent → body_shrinkage_guard_tripped (empty_write) ==="
+mock_bin9=$(mktemp -d)
+cat > "$mock_bin9/gh" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+chmod +x "$mock_bin9/gh"
+absent_emit_empty="$mock_bin9/nonexistent_emit"
+tmp_read=$(mktemp)
+tmp_write=$(mktemp)
+printf 'a%.0s' $(seq 1 200) > "$tmp_read"
+# zero bytes — triggers empty-write guard
+: > "$tmp_write"
+rc=0
+out=$(PATH="$mock_bin9:$PATH" _EMIT_SH="$absent_emit_empty" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
+assert_exit "TC-25e empty write with absent _EMIT_SH → exit 0" 0 "$rc"
+if printf '%s' "$out" | grep -qE '\[CONTEXT\] WORKFLOW_INCIDENT=1; type=body_shrinkage_guard_tripped'; then
+  pass "TC-25e empty write emits canonical sentinel with type=body_shrinkage_guard_tripped"
+else
+  fail "TC-25e empty-write sentinel missing or wrong type: $out"
+fi
+if printf '%s' "$out" | grep -qE 'root_cause_hint=empty_write'; then
+  pass "TC-25e sentinel carries root_cause_hint=empty_write"
+else
+  fail "TC-25e empty-write root_cause_hint missing: $out"
+fi
+rm -rf "$mock_bin9"
+
 print_summary "$(basename "$0")" "If you weaken or remove the 50% shrinkage guard / empty-write rejection / missing-args check / gh-edit error capture / _emit_body_update_incident fallback in issue-body-safe-update.sh, body truncation or silent auth-failure regressions become invisible. Keep the guards intact and update the test if the guards intentionally change."

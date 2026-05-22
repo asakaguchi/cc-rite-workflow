@@ -298,13 +298,13 @@ Proceed to the next phase.
 2. GitHub Web UI から直接変更を試す
 ```
 
-**In e2e flow**: If flow state file exists, update the state file and output `[ready:error]` before ending to signal the failure to the caller (`start.md` ステップ 8):
+**In e2e flow**: If flow state file exists, update the state file and output `[ready:error]` before ending to signal the failure to the caller (`start.md` ステップ 8). Reuses the `pr` flat phase (the workflow has not actually exited the PR phase — it failed inside Ready transition) and conveys the error state through `--next` text rather than a distinct phase name, keeping the phase enum aligned with the flat workflow.
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
-  --phase "phase5_ready_error" \
+  --phase "pr" \
   --active true \
-  --next "rite:pr:ready failed. Ask user: retry / skip to ステップ 8.6 (完了レポート) / terminate." \
+  --next "rite:pr:ready failed during Ready transition. Ask user: retry / skip to ステップ 8.6 (完了レポート) / terminate." \
   --if-exists
 ```
 

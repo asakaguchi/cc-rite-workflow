@@ -1,17 +1,28 @@
 #!/bin/bash
 # rite workflow - Phase Transition Whitelist
 #
-# Provides the canonical phase-transition graph used by pre-tool-bash-guard.sh
-# and other orchestration helpers to detect silent phase-skipping bugs in the
-# /rite:issue:start end-to-end flow. The flat workflow uses 9 phases (init /
-# branch / plan / implement / lint / pr / review / fix / completed); legacy
-# phase names from earlier sub-skill chains are accepted via the fail-open
-# path so existing state files can still be resumed.
+# Defines the canonical phase-transition graph for the /rite:issue:start flat
+# workflow (9 phases: init / branch / plan / implement / lint / pr / review /
+# fix / completed) plus the cleanup and wiki:ingest lifecycle rings. Legacy
+# phase names from earlier sub-skill chains are accepted via the forward-compat
+# arm so existing state files can still be resumed.
 #
 # This file is designed to be SOURCED, not executed directly. After sourcing:
-#   - `rite_phase_transition_allowed <prev> <next>` — returns 0 if allowed, 1 otherwise
-#   - `rite_phase_expected_next <phase>` — prints space-separated list of valid next phases
-#   - `rite_phase_is_known <phase>` — returns 0 if the phase name exists in the graph
+#   - `rite_phase_transition_allowed <prev> <next>` — library entry point for
+#     orchestrator-level pre-write validation. Currently exercised only by the
+#     test suite; production hooks (pre-tool-bash-guard.sh, session-end.sh)
+#     consume the predicate helpers below rather than calling this validator
+#     directly. Wiring it into a write-time hook is a follow-up.
+#   - `rite_phase_is_create_lifecycle_in_progress <phase>` — predicate used by
+#     production hooks to detect orphaned create_* lifecycle state from
+#     pre-flat-workflow versions (the current flat create.md writes only
+#     `phase=completed`, so a non-completed `create_*` value indicates a stale
+#     state file that needs cleanup).
+#   - `rite_phase_is_cleanup_lifecycle_in_progress <phase>` — same shape for
+#     /rite:pr:cleanup intermediate phases.
+#   - `rite_phase_expected_next <phase>` — prints space-separated list of valid
+#     next phases (for diagnostic messages).
+#   - `rite_phase_is_known <phase>` — returns 0 if the phase name exists in the graph.
 #
 # Overrides may be loaded from rite-config.yml under:
 #   hooks:
@@ -339,15 +350,16 @@ rite_phase_is_known() {
   return 1
 }
 
-# Return 0 if the given phase is an in-progress phase of /rite:issue:create
-# lifecycle (i.e., create_interview / create_post_interview / create_delegation /
-# create_post_delegation — NOT create_completed which is terminal).
+# Return 0 if the given phase is an in-progress create_* lifecycle phase from
+# the pre-flat-workflow sub-skill chain (i.e., create_interview / create_post_interview /
+# create_delegation / create_post_delegation — NOT create_completed which is terminal).
 #
-# Single source of truth for "is the create workflow mid-delegation?" queries
-# used by pre-tool-bash-guard.sh (Pattern 5) and session-end.sh (lifecycle
-# unfinished warning). Centralizing the phase name list here prevents silent
-# drift when new create_* phases are added to _RITE_PHASE_TRANSITIONS (#501
-# code-quality review HIGH).
+# These phase names are legacy: the flat /rite:issue:create writes only
+# `phase=completed` and does not produce intermediate create_* states. This
+# predicate is retained so pre-tool-bash-guard.sh and session-end.sh can
+# identify orphaned state files left by older sessions and surface them as
+# stale-cleanup WARNINGs. Centralizing the legacy phase name list here
+# prevents silent drift between the predicate callers.
 rite_phase_is_create_lifecycle_in_progress() {
   local phase="$1"
   case "$phase" in

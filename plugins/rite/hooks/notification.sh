@@ -58,9 +58,15 @@ _send_webhook() {
     [ -n "$webhook_url" ] && [[ "$webhook_url" =~ ^https:// ]] || return 0
     local _curl_err
     _curl_err=$(mktemp 2>/dev/null) || _curl_err=""
-    if ! curl -sf --connect-timeout 5 --max-time 10 -X POST "$webhook_url" \
+    # `if ! curl` would invert the exit status, leaving `$?` as 0 inside the
+    # then-branch and producing the misleading "curl failed (rc=0)" message.
+    # The if/else split preserves the real curl rc (timeout=28, host unreachable=7,
+    # ssl=60, etc.) so an expired webhook URL or network outage is diagnosable.
+    if curl -sf --connect-timeout 5 --max-time 10 -X POST "$webhook_url" \
         -H 'Content-type: application/json' -d "$payload" \
         > /dev/null 2>"${_curl_err:-/dev/null}"; then
+        :
+    else
         local _rc=$?
         echo "[rite] WARNING: notification($channel): curl failed (rc=$_rc) — webhook may be expired or unreachable" >&2
         [ -n "$_curl_err" ] && [ -s "$_curl_err" ] && head -3 "$_curl_err" | sed 's/^/  /' >&2
@@ -80,9 +86,13 @@ send_teams() {
     _send_webhook "teams" "$1" "$(jq -n --arg text "$2" '{text: $text}')"
 }
 
-# Main notification logic — echo-only stubs. The send_* functions above are
-# defined for when rite-config.yml webhook parsing is implemented; until then
-# each branch simply logs the event type.
+# Main notification logic — echo-only stubs. The _send_webhook / send_slack /
+# send_discord / send_teams helpers above are SCAFFOLDING, NOT LIVE CODE: the
+# case arms below intentionally only echo because rite-config.yml webhook URL
+# parsing has not been wired through yet. The helpers (and their tests) are
+# kept here so the wiring step has a tested target to plug into; treat any
+# silent "no notifications arrived" complaint as expected behaviour, not a
+# bug in this hook.
 case "$EVENT_TYPE" in
     pr_created)
         echo "rite: Notification for PR created"

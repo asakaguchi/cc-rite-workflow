@@ -6,12 +6,12 @@
 # Usage:
 #   Create mode (full object with jq -n):
 #     bash plugins/rite/hooks/flow-state-update.sh create \
-#       --phase phase5_lint --issue 42 --branch "feat/issue-42-test" \
-#       --pr 0 --next "Proceed to Phase 5.2.1." [--active true]
+#       --phase lint --issue 42 --branch "feat/issue-42-test" \
+#       --pr 0 --next "Proceed to ステップ 6 (PR creation)." [--active true]
 #
 #   Patch mode (update fields in existing file):
 #     bash plugins/rite/hooks/flow-state-update.sh patch \
-#       --phase phase5_post_lint --next "Proceed to next phase." [--active true] [--if-exists] [--preserve-error-count]
+#       --phase pr --next "Proceed to ステップ 7 (review/fix)." [--active true] [--if-exists] [--preserve-error-count]
 #
 #   Increment mode (increment a numeric field):
 #     bash plugins/rite/hooks/flow-state-update.sh increment \
@@ -655,13 +655,14 @@ case "$MODE" in
     # Build jq filter: always update phase, timestamp, next_action; conditionally update active.
     # previous_phase は phase-transition-whitelist の検証用にプレ patch の .phase を保持する。
     #
-    # --preserve-error-count: patch mode のデフォルトは `.error_count = 0` でリセットする
-    # (phase transition は「進捗した」signal なのでエスカレーション counter をクリアするのが正しい)。
-    # ただし、create.md Step 0 / Step 1 のような **同一 phase への self-patch**
-    # (create_post_interview → create_post_interview) では error_count を保持しないと
-    # RE-ENTRY accumulation が常に 0 開始になり、resume.md / phase-transition-whitelist の
-    # エスカレーション判定が unreachable になる silent regression を生む。
-    # --preserve-error-count flag 指定時は `.error_count = 0` 条項を omit して既存値を保持する。
+    # --preserve-error-count: patch mode defaults to `.error_count = 0` on every
+    # transition. No production code currently consumes `.error_count` for
+    # escalation (the stop-guard hook that originally drove this was retired),
+    # but the field is preserved in the state-file schema so a future
+    # escalation consumer can opt in without a migration. The flag exists so
+    # same-phase self-patches (e.g., create.md mid-flow updates) can keep the
+    # field across writes; the default reset path matches the "fresh start on
+    # phase transition" intuition.
     if [[ "$PRESERVE_ERROR_COUNT" == "true" ]]; then
       JQ_FILTER='.previous_phase = (.phase // "") | .phase = $phase | .updated_at = $ts | .next_action = $next'
     else

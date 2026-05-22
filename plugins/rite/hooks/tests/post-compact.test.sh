@@ -428,19 +428,25 @@ else
   fail "expected post_compact_reconciliation_failed; got: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
 fi
 
-# TC-RECON-07: gh repo view failure → cascade emit guard (no extra gh_api_failed)
+# TC-RECON-07: gh repo view failure → cascade emit guard
+# Strict count: exactly 1 incident (the repo view failure itself). The
+# subsequent graphql / reconcile path is guarded by `exit 0` to prevent
+# double-emit; a relaxed `<= 2` threshold would let 0-emit silent drops pass.
 echo "TC-RECON-07: gh repo view failure → exactly one repo failure incident"
 recon_dir=$(_setup_recon_env "repo-fail" "repo_view_fail")
 recon_stderr="$(mktemp "$TEST_DIR/recon-repo-fail-stderr.XXXXXX")"
 echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
   | env PATH="$recon_dir/bin:$PATH" bash "$HOOK" >/dev/null 2>"$recon_stderr" || true
-# Reconciliation block continues even after repo view failure (REPO_INFO empty);
-# verify the subsequent graphql / reconcile do NOT emit additional incidents.
 incident_count=$(grep -cE 'WORKFLOW_INCIDENT=1' "$recon_stderr" || echo 0)
-if [ "$incident_count" -le 2 ]; then
-  pass "repo view failure does not cascade into multiple incident sentinels (count=$incident_count <= 2)"
+if [ "$incident_count" -eq 1 ]; then
+  pass "repo view failure emits exactly 1 incident sentinel (cascade guard functional)"
 else
-  fail "repo view failure cascaded into $incident_count incident sentinels"
+  fail "repo view failure emitted $incident_count incident sentinels (expected exactly 1)"
+fi
+if grep -qE 'post_compact_gh_repo_view_failed|gh repo view' "$recon_stderr"; then
+  pass "TC-RECON-07 emitted incident is attributed to repo_view_failed root cause"
+else
+  fail "TC-RECON-07 incident emitted but not attributed to repo_view_failed: $(head -c 500 "$recon_stderr")"
 fi
 
 echo "Results: $PASS passed, $FAIL failed"

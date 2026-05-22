@@ -171,10 +171,12 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     jq_err=""
     reconcile_err=""
     _pc_cleanup() {
-      # BSD `rm -f ""` prints a cosmetic stderr noise (`rm: '': No such file
-      # or directory`) when a tempfile slot is empty (mktemp failure path).
-      # Iterating and guarding with `[ -n "$f" ]` keeps the cleanup silent
-      # and portable across GNU / BSD rm.
+      # The `[ -n "$f" ]` guard is defense-in-depth: even though the `2>/dev/null`
+      # redirect below already suppresses BSD `rm -f ""` stderr noise
+      # (`rm: '': No such file or directory`), a future refactor that drops
+      # the redirect would let that diagnostic leak into incident triage and
+      # mask real cleanup failures. The guard keeps the cleanup silent
+      # regardless.
       for f in "${pr_view_err:-}" "${repo_view_err:-}" \
                "${jq_owner_err:-}" "${jq_name_err:-}" \
                "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}"; do

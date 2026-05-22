@@ -292,10 +292,12 @@ if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
     exit 2
   fi
   # Explicit allowlist instead of letting unknown values silently enable
-  # staging. Empty stays the historical "no opinion → enabled" default
-  # (configured via the strict guard above to require explicit empty intent),
-  # while a typo like `tru` is rejected so the safety net isn't bypassed by
-  # silent fallthrough.
+  # staging. The `""` arm represents the case where the `wiki:` section has
+  # no `enabled:` key at all (lenient default = enabled). The strict guard
+  # above already rejects `enabled:` with an empty value (key present but
+  # value missing / commented out), so the only path that reaches the empty
+  # arm here is "section absent" — preserving the historical opt-out default
+  # without re-enabling typo bypass.
   case "$wiki_enabled" in
     ""|true|yes|1) ;;
     false|no|0)

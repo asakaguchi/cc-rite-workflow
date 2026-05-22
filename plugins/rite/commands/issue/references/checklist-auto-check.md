@@ -1,14 +1,14 @@
-# Checklist Auto-Check — Phase 5.2.1 + 5.2.1.1 SoT
+# Checklist Auto-Check — cleanup safety-net SoT
 
-> **Source of Truth**: 本ファイルは `/rite:issue:start` Phase 5.2.1 (Checklist Confirmation) および Phase 5.2.1.1 (Auto-Check Evaluation) の **bash literal + 評価ロジック の SoT** である。`start.md` 本体の Phase 5.2.1 / 5.2.1.1 は本ファイルへ semantic 参照する anchor stub のみ保持する。
+> **Source of Truth**: 本ファイルは Issue body checklist の grep 確認 + auto-check evaluation + uncertain handling + re-check の 4 layer logic を 1 reference に集約した **bash literal + 評価ロジックの SoT** である。本 reference を参照する caller は本ファイルへ semantic anchor stub のみ保持する。
 >
-> **抽出経緯**: `start.md` Phase 5.2.1 + 5.2.1.1 は ~100 行で、Issue body checklist の grep 確認 + auto-check evaluation + uncertain handling + re-check の 4 layer logic を 1 reference に集約することで、本体の認知負荷を下げる。Issue #901 (PR E — #896 親 Issue) で抽出。
+> **caller**: `commands/pr/cleanup.md` safety-net (Issue body の incomplete checklist が PR merge 後に残っていないか cleanup 段階で再確認するパス、唯一の active caller)。
 >
-> **caller**: `start.md` Phase 5.2.1 (唯一の caller、`/rite:lint` returns 直後に呼び出される)。
+> **歴史的経緯**: 旧 sub-skill chain では `/rite:issue:start` の lint 直後にも同じロジックが走っていたが、flat workflow 統合により start.md からは撤去され、現在は cleanup phase 側の safety-net としてのみ参照される。
 
-## Phase 5.2.1: Checklist Confirmation
+## Checklist Confirmation
 
-**Owner**: `/rite:issue:start` after `/rite:lint` returns. **Condition**: Execute only if checklist retained in Phase 3.6. **Purpose**: Block PR until all items complete.
+**Owner**: `/rite:pr:cleanup` safety-net. **Condition**: PR merge 後の checklist 残存確認。**Purpose**: incomplete checklist が merged PR に残っていないか auditor として警告する。
 
 Use `grep -E` (not `-P`). Pattern per [gh-cli-patterns.md](../../../references/gh-cli-patterns.md#safe-checklist-operation-patterns).
 

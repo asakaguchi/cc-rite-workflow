@@ -8,7 +8,7 @@ This module handles the actual implementation work, commits, pushes, and checkli
 
 ## 5.1 Implementation Work
 
-Perform actual implementation work following the implementation plan approved in Phase 3.
+Perform actual implementation work following the implementation plan approved in `start.md` ステップ 3 (実装計画).
 
 > **Reference**: Apply the Phase 5.1 checklist from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
 > In particular, check `simplicity_enforcement`, `scope_discipline`, and `dead_code_hygiene`.
@@ -196,7 +196,7 @@ Execute parallel implementation when **all** of the following conditions are met
 
 **Independent task determination:**
 
-Analyze the "files to change" from the implementation plan (Phase 3) and determine independence using the following criteria:
+Analyze the "files to change" from the implementation plan (`start.md` ステップ 3) and determine independence using the following criteria:
 
 | Criterion | Determined as Independent | Determined as Dependent |
 |-----------|--------------------------|------------------------|
@@ -327,7 +327,7 @@ Use sequential implementation when: `parallel.enabled: false`, complexity S or b
 
 After completing each implementation step, re-evaluate the remaining steps before proceeding to the next one. This follows the "tackle the next most obvious problem" strategy from autonomous agent patterns.
 
-**When to execute**: After every step completion when the plan uses the dependency graph format (Phase 3.3 table with `depends_on` column). Skip if the plan was skipped in Phase 3.4 or if the plan lacks a `depends_on` column (pre-existing numbered list format).
+**When to execute**: After every step completion when the plan uses the dependency graph format (`start.md` ステップ 3.3 plan table with `depends_on` column). Skip if the plan was skipped at `start.md` ステップ 3.4 user confirmation, or if the plan lacks a `depends_on` column (pre-existing numbered list format).
 
 **Relationship with parallel implementation (5.1.0.1-5.1.0.4)**: When parallel implementation is active, execute the re-evaluation checkpoint **after each parallel batch completes** (not after each individual parallel task). The batch completion triggers dependency state update, and newly unblocked steps are candidates for the next parallel batch.
 
@@ -733,7 +733,7 @@ git push -u origin {branch_name}
 
 #### 5.1.1.1 Issue Body Checklist Update
 
-**Execution condition**: Execute only when Issue body checklist was extracted and retained in Phase 3.6.
+**Execution condition**: Execute only when Issue body checklist was extracted and retained at `start.md` ステップ 3.5 (Issue Body Checklist 更新).
 
 **Update as each task is completed**. Immediately update the Issue body checklist as implementation, test, and documentation tasks are completed.
 

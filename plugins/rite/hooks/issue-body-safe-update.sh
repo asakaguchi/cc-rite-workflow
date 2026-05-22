@@ -55,7 +55,7 @@ _emit_body_update_incident() {
   if [ -x "$_EMIT_SH" ]; then
     bash "$_EMIT_SH" \
       --type "$incident_type" \
-      --details "Issue #$ISSUE issue-body-safe-update.sh $MODE failed: reason=$reason rc=$rc stderr=$stderr_snippet" \
+      --details "Issue #${ISSUE:-unknown} issue-body-safe-update.sh ${MODE:-unknown} failed: reason=$reason rc=$rc stderr=$stderr_snippet" \
       --root-cause-hint "$reason" \
       --pr-number 0 >&2 || echo "[rite] WARNING: issue-body-safe-update: workflow-incident-emit.sh exited non-zero (reason=$reason); incident may not be recorded" >&2
   else
@@ -170,6 +170,20 @@ case "$MODE" in
     if [[ -z "$TMPFILE_READ" || -z "$TMPFILE_WRITE" || -z "$ORIGINAL_LENGTH" ]]; then
       echo "ERROR: apply mode requires --tmpfile-read, --tmpfile-write, --original-length" >&2
       exit 1
+    fi
+
+    # Defensive validation of --original-length. Under `set -euo pipefail`, the
+    # later arithmetic `$(( ${ORIGINAL_LENGTH:-1} / 2 ))` would abort the whole
+    # script (breaking the non-blocking exit-0 contract and leaking the tmp
+    # files) if a caller passed a non-numeric value (e.g. via a wc failure
+    # producing whitespace). Catch it here as a body_shrinkage_guard_tripped
+    # incident with a distinct hint so triage doesn't conflate it with a real
+    # safety-net trip.
+    if ! [[ "$ORIGINAL_LENGTH" =~ ^[0-9]+$ ]]; then
+      echo "${err_level}: --original-length が非数値 ('$ORIGINAL_LENGTH') — apply をスキップ" >&2
+      _emit_body_update_incident "body_shrinkage_guard_tripped" "original_length_invalid" "0" "ORIGINAL_LENGTH='$ORIGINAL_LENGTH' (caller passed non-numeric — likely wc failure upstream)"
+      rm -f "$TMPFILE_READ" "$TMPFILE_WRITE"
+      exit 0
     fi
 
     # Empty / shrinkage safety guards exit 0 so the caller's workflow continues,

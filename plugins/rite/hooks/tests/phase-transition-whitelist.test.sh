@@ -278,6 +278,66 @@ case "$override_out" in
   *) fail "TC-202 commented YAML loader did NOT merge custom_phase_z: $override_out" ;;
 esac
 
+# TC-203 — inline list with trailing whitespace only (no comment). The trailing-
+# whitespace strip in rhs_no_comment guards against misclassifying `[a, b]   ` as
+# an unclosed inline list; without this TC, removing the strip would regress
+# silently because TC-202 already covers the comment case.
+mkdir -p "$override_tmpdir/trailing-ws"
+printf 'hooks:\n  stop_guard:\n    phase_transitions:\n      custom_phase_ws: [foo, bar]   \n' > "$override_tmpdir/trailing-ws/rite-config.yml"
+override_out=$(RITE_CONFIG="$override_tmpdir/trailing-ws/rite-config.yml" bash -c "
+  set -e
+  source '$WHITELIST_SH'
+  declare -p _RITE_PHASE_TRANSITIONS | tr -d '\n'
+" 2>&1) || true
+case "$override_out" in
+  *'[custom_phase_ws]="foo bar"'*) pass "TC-203 inline list with trailing whitespace merged correctly" ;;
+  *) fail "TC-203 trailing-whitespace inline list did NOT merge: $override_out" ;;
+esac
+
+# TC-204 — empty inline list `[]` must not crash the parser and must not
+# inject a spurious empty entry. The merge result for the empty key is
+# implementation-defined; assert the loader at minimum sources cleanly.
+mkdir -p "$override_tmpdir/empty-list"
+cat > "$override_tmpdir/empty-list/rite-config.yml" <<'YAML'
+hooks:
+  stop_guard:
+    phase_transitions:
+      custom_phase_empty: []
+      custom_phase_after: [tail]
+YAML
+override_out=$(RITE_CONFIG="$override_tmpdir/empty-list/rite-config.yml" bash -c "
+  set -e
+  source '$WHITELIST_SH'
+  declare -p _RITE_PHASE_TRANSITIONS | tr -d '\n'
+" 2>&1) || true
+# Empty list must not block the following entry's parse — verify the next key
+# is still merged correctly. Empty key may or may not appear; both are OK.
+case "$override_out" in
+  *'[custom_phase_after]="tail"'*) pass "TC-204 empty inline list does not block subsequent entries" ;;
+  *) fail "TC-204 empty inline list broke parser state: $override_out" ;;
+esac
+
+# TC-205 — unclosed inline list must emit a recognizable WARNING and must NOT
+# pollute the transition graph silently. Tests the L210 WARNING path.
+mkdir -p "$override_tmpdir/unclosed"
+cat > "$override_tmpdir/unclosed/rite-config.yml" <<'YAML'
+hooks:
+  stop_guard:
+    phase_transitions:
+      custom_phase_broken: [a, b
+      custom_phase_recover: [ok]
+YAML
+override_out=$(RITE_CONFIG="$override_tmpdir/unclosed/rite-config.yml" bash -c "
+  set -e
+  source '$WHITELIST_SH'
+  declare -p _RITE_PHASE_TRANSITIONS | tr -d '\n'
+" 2>&1) || true
+if printf '%s' "$override_out" | grep -qE 'unclosed inline list'; then
+  pass "TC-205 unclosed inline list emits WARNING"
+else
+  fail "TC-205 unclosed inline list WARNING missing: $override_out"
+fi
+
 echo ""
 echo "=== Phase 12: Additional transition coverage ==="
 # 既存 TC は happy path 中心。fix → pr / lint → review / non-init terminal block の 3 種を補完する。

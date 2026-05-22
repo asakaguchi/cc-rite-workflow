@@ -790,14 +790,14 @@ Read `.claude/settings.local.json` and check for existing hooks section. If the 
 
 If the file already contains hooks, check each hook command for rite hook patterns:
 
-1. Scan all `.hooks.{EventName}[*].hooks[*].command` values across Stop, PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, and PostToolUse events
+1. Scan all `.hooks.{EventName}[*].hooks[*].command` values across PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, and PostToolUse events
 2. Identify commands containing `rite/hooks/` (this covers both `plugins/rite/hooks/` relative paths and any previous absolute paths)
 3. For each matching command, construct the expected full command string `bash {hooks_dir}/{script_name}` (where `{hooks_dir}` is the absolute path resolved in Phase 4.5.0 and `{script_name}` is the filename like `pre-tool-bash-guard.sh`). Compare the existing command string with the expected one
 4. If the existing command does NOT match the expected command, mark it as **needs update**
 
 **Note**: Phase 4.5.0 resolves `{hooks_dir}` as an absolute path (via `cd ... && pwd`). If existing hooks use relative paths (e.g., `bash plugins/rite/hooks/pre-tool-bash-guard.sh`), they will not match the absolute path and will be correctly marked for update. This is intentional — converting relative paths to absolute paths is one of the goals of this validation.
 
-**Display when outdated paths are detected** (where `{event}` is the hook event name such as Stop/PreCompact/PostCompact/SessionStart/SessionEnd/PreToolUse, and `{current_cmd}` is the existing command string):
+**Display when outdated paths are detected** (where `{event}` is the hook event name such as PreCompact/PostCompact/SessionStart/SessionEnd/PreToolUse, and `{current_cmd}` is the existing command string):
 ```
 ⚠️ Outdated rite hook paths detected:
 | Hook Event | Current Command | Expected Command |
@@ -811,7 +811,7 @@ If the file already contains hooks, check each hook command for rite hook patter
 
 **⚠️ このサブフェーズは 4.5.1.1 の結果に関わらず必ず実行する。** 4.5.1.1 が「全パス正常」と判定しても、フックイベント自体が欠落している可能性がある（例: SessionEnd, PreToolUse が未登録）。
 
-After validating existing hook paths in 4.5.1.1, verify that **all** required rite hooks are registered. This check prevents the scenario where some hooks (e.g., Stop, PreCompact, SessionStart) are correctly configured but others (e.g., SessionEnd, PostCompact) are missing entirely.
+After validating existing hook paths in 4.5.1.1, verify that **all** required rite hooks are registered. This check prevents the scenario where some hooks (e.g., PreCompact, SessionStart) are correctly configured but others (e.g., SessionEnd, PostCompact) are missing entirely.
 
 **Required hooks**:
 
@@ -832,7 +832,7 @@ After validating existing hook paths in 4.5.1.1, verify that **all** required ri
 
 **Note**: If no required hooks are missing, no output is displayed from this sub-phase. The decision is deferred to the combined Decision logic below.
 
-**Display when missing hooks are detected** (`{total_count}` = number of required hooks, currently 7):
+**Display when missing hooks are detected** (`{total_count}` = number of required hooks, currently 6):
 ```
 ⚠️ Required rite hooks are missing ({missing_count}/{total_count}):
 | Hook Event | Script | Status |

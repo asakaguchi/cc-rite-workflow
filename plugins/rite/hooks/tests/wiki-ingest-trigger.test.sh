@@ -970,6 +970,62 @@ fi
 rm -rf "$dir45"
 echo ""
 
+echo "[TC-046] wiki.enabled: TRUE (uppercase) → normalize lowercase → exit 0"
+# Without `tr '[:upper:]' '[:lower:]'` the uppercase value would land in the
+# typo-reject arm and exit 2; the TC pins that the normalization step survives
+# future refactors.
+dir46=$(mktemp -d /tmp/rite-wiki-test-tc046-XXXXXX)
+cat > "$dir46/rite-config.yml" <<EOF
+wiki:
+  enabled: TRUE
+EOF
+echo "content for tc046" > "$dir46/content.md"
+( cd "$dir46" && bash "$HOOK" --type reviews --source-ref pr-tc046 --content-file content.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ "$rc" -eq 0 ] && [ "$(find "$dir46/.rite/wiki/raw/reviews" -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')" -ge 1 ]; then
+  pass "TC-046 wiki.enabled: TRUE (uppercase) normalized to lowercase and accepted"
+else
+  fail "TC-046 uppercase TRUE rejected (rc=$rc) — case normalization broken: $(cat "$dir46/err.log" 2>/dev/null)"
+fi
+rm -rf "$dir46"
+echo ""
+
+echo "[TC-047] wiki.enabled: False (MixedCase) → normalize lowercase → exit 2"
+# Symmetric to TC-046 for the false path. A regression that drops the
+# normalize step would let MixedCase typos bypass the disable guard.
+dir47=$(mktemp -d /tmp/rite-wiki-test-tc047-XXXXXX)
+cat > "$dir47/rite-config.yml" <<EOF
+wiki:
+  enabled: False
+EOF
+echo "content for tc047" > "$dir47/content.md"
+( cd "$dir47" && bash "$HOOK" --type reviews --source-ref pr-tc047 --content-file content.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ "$rc" -eq 2 ] && grep -q 'wiki.enabled is false' "$dir47/err.log"; then
+  pass "TC-047 wiki.enabled: False (MixedCase) correctly rejected with exit 2"
+else
+  fail "TC-047 expected exit 2 with 'wiki.enabled is false', got rc=$rc: $(cat "$dir47/err.log" 2>/dev/null)"
+fi
+rm -rf "$dir47"
+echo ""
+
+echo "[TC-048] wiki.enabled: tru (typo) → exit 2 + recognised-boolean WARNING"
+# The typo-reject arm (`*)` in the case statement) is the security-net for
+# silent typo-induced enable. Without this TC, future refactors could weaken
+# the arm to no-op and the safety net would vanish silently.
+dir48=$(mktemp -d /tmp/rite-wiki-test-tc048-XXXXXX)
+cat > "$dir48/rite-config.yml" <<EOF
+wiki:
+  enabled: tru
+EOF
+echo "content for tc048" > "$dir48/content.md"
+( cd "$dir48" && bash "$HOOK" --type reviews --source-ref pr-tc048 --content-file content.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ "$rc" -eq 2 ] && grep -q 'not a recognised boolean' "$dir48/err.log"; then
+  pass "TC-048 typo 'tru' rejected with 'not a recognised boolean' WARNING"
+else
+  fail "TC-048 expected exit 2 with typo warning, got rc=$rc: $(cat "$dir48/err.log" 2>/dev/null)"
+fi
+rm -rf "$dir48"
+echo ""
+
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------

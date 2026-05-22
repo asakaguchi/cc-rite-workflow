@@ -5,14 +5,14 @@
 #
 # Usage (source from another script or inline):
 #   source {plugin_root}/hooks/work-memory-update.sh
-#   WM_SOURCE="implement" WM_PHASE="phase5_lint" WM_PHASE_DETAIL="品質チェック準備" \
+#   WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
 #     WM_NEXT_ACTION="rite:lint を実行" WM_BODY_TEXT="Post-implementation." \
 #     WM_PLUGIN_ROOT="/path/to/plugin" \
 #     update_local_work_memory
 #
 # Required environment variables:
 #   WM_SOURCE       - Source identifier (e.g., "implement", "lint", "fix")
-#   WM_PHASE        - Phase value (e.g., "phase5_lint")
+#   WM_PHASE        - Phase value (e.g., "lint", "implement", "pr", "review", "fix"; see phase-transition-whitelist.sh for the flat phase enum)
 #   WM_PHASE_DETAIL - Phase detail description
 #   WM_NEXT_ACTION  - Next action description
 #   WM_BODY_TEXT    - Body text after YAML frontmatter closing ---

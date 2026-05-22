@@ -123,7 +123,15 @@ _phase_detail=$(python3 "$SCRIPT_DIR/work-memory-parse.py" "$LOCAL_WM" 2>/dev/nu
 # the user changes phase again, producing a silent drift in Issue comment work
 # memory (gh auth expiry / rate limit / network failure all leave no trace
 # under the previous `2>/dev/null || log_debug` swallow).
+# Tag the WARNING with `stderr_capture=disabled` when mktemp fails so triagers
+# can distinguish "sync failed AND we lost the root-cause stderr" from "sync
+# failed and the captured stderr below tells us why". Without this flag a
+# rate-limit / auth-expiry failure on a hardened CI runner (read-only /tmp,
+# inode exhaustion, SELinux deny) is indistinguishable from "the helper
+# emitted no stderr at all".
 _phase_sync_err=$(mktemp 2>/dev/null) || _phase_sync_err=""
+_phase_sync_stderr_tag=""
+[ -z "$_phase_sync_err" ] && _phase_sync_stderr_tag=" stderr_capture=disabled"
 _phase_sync_ok=0
 if "$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
     --issue "$issue_number" \
@@ -133,14 +141,18 @@ if "$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
   _phase_sync_ok=1
 else
   _rc=$?
-  echo "[rite] WARNING: post-tool-wm-sync: update-phase failed (rc=$_rc) — last_synced_phase will NOT be advanced so next hook invocation retries" >&2
+  echo "[rite] WARNING: post-tool-wm-sync: update-phase failed (rc=$_rc${_phase_sync_stderr_tag}) — last_synced_phase will NOT be advanced so next hook invocation retries" >&2
   [ -n "$_phase_sync_err" ] && [ -s "$_phase_sync_err" ] && head -3 "$_phase_sync_err" | sed 's/^/  /' >&2
 fi
 [ -n "$_phase_sync_err" ] && rm -f "$_phase_sync_err"
 
-# --- 2. Progress table + changed files update (post-implementation phases) ---
+# --- 2. Progress table + changed files update (per-commit and post-implementation phases) ---
+# Flat phase `implement` fires for every commit during implementation (so the
+# progress table can track files added/modified incrementally); legacy
+# `phase5_post_execute` is the pre-flat equivalent. lint/pr/review/fix/completed
+# trigger end-of-cycle refresh.
 case "$_phase" in
-  phase5_lint|phase5_post_lint|phase5_post_execute|phase5_pr*|phase5_post_review|phase5_post_ready|lint|pr|review|fix|completed)
+  phase5_lint|phase5_post_lint|phase5_post_execute|phase5_pr*|phase5_post_review|phase5_post_ready|implement|lint|pr|review|fix|completed)
     cd "$STATE_ROOT" || { log_debug "cd STATE_ROOT failed"; exit 0; }
 
     _base_branch=$(grep -E '^  base:' "$STATE_ROOT/rite-config.yml" 2>/dev/null | sed 's/.*base:[[:space:]]*"\?\([^"]*\)"\?.*/\1/' || echo "develop")
@@ -176,15 +188,22 @@ case "$_phase" in
     grep -qE '(docs/.*\.md|README\.md|CHANGELOG\.md|API\.md)' <<< "$_diff_files" 2>/dev/null && _doc_status="✅ 完了"
 
     _progress_sync_err=$(mktemp 2>/dev/null) || _progress_sync_err=""
-    if ! "$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
+    _progress_sync_stderr_tag=""
+    [ -z "$_progress_sync_err" ] && _progress_sync_stderr_tag=" stderr_capture=disabled"
+    # `if ! cmd; then _rc=$?` forces rc=0 inside the then-branch (POSIX `!` inverts
+    # status). Use the else-branch to preserve the real exit code so triage logs
+    # show `rc=N` (auth=1, rate-limit=4 etc.), not the misleading `rc=0`.
+    if "$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
         --issue "$issue_number" \
         --transform update-progress \
         --impl-status "$_impl_status" \
         --test-status "$_test_status" \
         --doc-status "$_doc_status" \
         --changed-files-file "$_changed_files_tmp" 2>"${_progress_sync_err:-/dev/null}"; then
+      :
+    else
       _rc=$?
-      echo "[rite] WARNING: post-tool-wm-sync: update-progress failed (rc=$_rc)" >&2
+      echo "[rite] WARNING: post-tool-wm-sync: update-progress failed (rc=$_rc${_progress_sync_stderr_tag}) — last_synced_phase will NOT be advanced" >&2
       [ -n "$_progress_sync_err" ] && [ -s "$_progress_sync_err" ] && head -3 "$_progress_sync_err" | sed 's/^/  /' >&2
       _phase_sync_ok=0
     fi
@@ -193,11 +212,15 @@ case "$_phase" in
     rm -f "$_changed_files_tmp"
 
     _plan_sync_err=$(mktemp 2>/dev/null) || _plan_sync_err=""
-    if ! "$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
+    _plan_sync_stderr_tag=""
+    [ -z "$_plan_sync_err" ] && _plan_sync_stderr_tag=" stderr_capture=disabled"
+    if "$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
         --issue "$issue_number" \
         --transform update-plan-status 2>"${_plan_sync_err:-/dev/null}"; then
+      :
+    else
       _rc=$?
-      echo "[rite] WARNING: post-tool-wm-sync: update-plan-status failed (rc=$_rc)" >&2
+      echo "[rite] WARNING: post-tool-wm-sync: update-plan-status failed (rc=$_rc${_plan_sync_stderr_tag}) — last_synced_phase will NOT be advanced" >&2
       [ -n "$_plan_sync_err" ] && [ -s "$_plan_sync_err" ] && head -3 "$_plan_sync_err" | sed 's/^/  /' >&2
       _phase_sync_ok=0
     fi

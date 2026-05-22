@@ -102,10 +102,10 @@ if [ ! -f "$LOCAL_WM" ]; then
   export WM_BODY_TEXT="Local work memory auto-created by PostToolUse hook."
   export WM_ISSUE_NUMBER="$issue_number"
 
-  # update_local_work_memory の rc は: 0=success, 1=skipped (no-op), 2=lock contention,
-  # 3+=write failure。debug-only ログだと自動作成失敗が完全 silent になり、次セッションが
-  # 孤児 WM を読む経路を生む。rc=2 は workflow-incident-emit の canonical 経路に乗せ、
-  # それ以外の失敗は unconditional WARNING で operator が原因にたどり着けるようにする。
+  # update_local_work_memory rc: 0=success, 1=skip (no issue / flow-state未解決), 2=write failure。
+  # work-memory-update.sh は rc=2 を lock contention / mkdir / mktemp / mv / state-read helper
+  # 5 経路で共有する設計のため、WARNING + incident details に actual stderr 参照を含める
+  # (rc=2 単独で原因を断定すると operator triage が誤誘導される)。
   if update_local_work_memory; then
     log_debug "local WM created successfully"
   else
@@ -115,17 +115,18 @@ if [ ! -f "$LOCAL_WM" ]; then
         log_debug "update_local_work_memory skipped (rc=1)"
         ;;
       2)
-        echo "[rite] WARNING: post-tool-wm-sync: local WM 作成が lock 競合で失敗 (rc=2)。次の sync で再試行されます。" >&2
+        echo "[rite] WARNING: post-tool-wm-sync: local WM 作成失敗 (rc=2: lock 競合 / mkdir / mktemp / mv / state-read のいずれか — 直前の work-memory-update.sh stderr を参照)。次の sync で再試行されます。" >&2
         _EMIT_SH="$SCRIPT_DIR/workflow-incident-emit.sh"
         if [ -x "$_EMIT_SH" ]; then
           bash "$_EMIT_SH" \
             --type local_wm_update_lock_failed \
-            --details "post-tool-wm-sync auto-create failed (rc=2, lock contention)" \
+            --details "post-tool-wm-sync auto-create failed (rc=2: lock / mkdir / mktemp / mv / state-read — see prior stderr)" \
+            --root-cause-hint "wm_write_failure_unspecified" \
             --pr-number 0 >&2 || true
         fi
         ;;
       *)
-        echo "[rite] WARNING: post-tool-wm-sync: local WM 作成が rc=$_wm_rc で失敗 (write error / disk full / permissions?)。" >&2
+        echo "[rite] WARNING: post-tool-wm-sync: local WM 作成が rc=$_wm_rc で失敗 (unexpected — work-memory-update.sh 仕様外の rc)。" >&2
         ;;
     esac
   fi
@@ -272,7 +273,11 @@ esac
 # re-attempts every transformer that has not yet succeeded for this phase.
 if [ "$_phase_sync_ok" = "1" ]; then
   _tmp_fs=$(mktemp "${FLOW_STATE}.tmp.XXXXXX" 2>/dev/null) || _tmp_fs="${FLOW_STATE}.tmp.$$.${RANDOM}"
-  if jq --arg p "$_phase" '.last_synced_phase = $p' "$FLOW_STATE" > "$_tmp_fs" 2>/dev/null; then
+  # jq の stderr を捕捉する: silent 失敗だと last_synced_phase が進まず、次回 hook で同じ phase
+  # の全 transformer が再実行される。これを "sync 失敗" と "jq 失敗" で区別できないと triage が
+  # 詰まる (root cause が見えないと operator が retry を諦める)。
+  _last_phase_jq_err=$(mktemp 2>/dev/null) || _last_phase_jq_err=""
+  if jq --arg p "$_phase" '.last_synced_phase = $p' "$FLOW_STATE" > "$_tmp_fs" 2>"${_last_phase_jq_err:-/dev/null}"; then
     # Silent mv failure would leave last_synced_phase un-advanced; the next
     # invocation would then re-run every transformer for this phase, masking
     # the underlying mv error.
@@ -284,8 +289,12 @@ if [ "$_phase_sync_ok" = "1" ]; then
       echo "rite: post-tool-wm-sync: mv last_synced_phase failed (rc=$_mv_rc, EXDEV / EACCES?)" >&2
     fi
   else
+    _last_phase_jq_rc=$?
     rm -f "$_tmp_fs"
+    echo "rite: post-tool-wm-sync: WARNING: jq write of last_synced_phase failed (rc=$_last_phase_jq_rc) — next hook invocation will re-run all transformers" >&2
+    [ -n "$_last_phase_jq_err" ] && [ -s "$_last_phase_jq_err" ] && head -3 "$_last_phase_jq_err" | sed 's/^/  /' >&2
   fi
+  [ -n "$_last_phase_jq_err" ] && rm -f "$_last_phase_jq_err"
 fi
 
 log_debug "phase sync completed ($_last_synced_phase -> $_phase)"

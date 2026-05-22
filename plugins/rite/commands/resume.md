@@ -200,7 +200,7 @@ Extract phase information from the work memory comment:
 | `review` | レビュー中 | 7.1 |
 | `fix` | レビュー修正中 | 7.2 |
 | `ready` | Ready 成功 (Projects Status In Review → 親 Issue 完結待ち) | 8.3 |
-| `ready_error` | Ready 失敗 (PR は作成済み、Ready 遷移のみ再試行) | 8 |
+| `ready_error` | Ready 失敗 (PR は作成済み、Ready 遷移のみ再試行) | 8.2 |
 | `completed` | 完了 | — |
 
 (legacy `phase0` / `phase1*` / `phase2*` / `phase3*` / `phase4` / `phase5_*` は 3.2 節 Legacy compatibility 表で routing する)
@@ -266,10 +266,8 @@ else
   exit 1
 fi
 
-# 数値 fail-fast gate (writer/reader/resume 3 layer 対称化 doctrine): state file 改竄 / silent regression
-# 経路で non-numeric が混入した場合に WARNING を emit してから 0 に降格する。silent default 0 にすると
-# 他 caller (start.md Phase 5.7 / implement.md Phase 5.1.2 / pr/review.md Phase 5.3.8) と observability
-# が非対称になり、3 layer 対称化が破れる。
+# state file が non-numeric を含む場合に silent default で 0 に降格させると、改竄 / write race の
+# 兆候を握り潰すため、降格前に WARNING を emit して operator triage 可能にする。
 case "$parent_issue_number_raw" in
   ''|*[!0-9]*)
     echo "WARNING: parent_issue_number_raw is not numeric ('$parent_issue_number_raw'), defaulting to 0 (display なし)" >&2
@@ -284,13 +282,9 @@ else
   parent_issue_display="#${parent_issue_number_raw}"
 fi
 
-# verified-review F11-01 (CRITICAL): Bash tool 境界を越えた cross-boundary state transfer
-# (start.md Phase 5.7 / implement.md Phase 5.1.2 で確立された canonical pattern と統一)。
-# シェル変数 $parent_issue_display は次の Bash invocation には継承されないため、Step 2 の
-# display block で {parent_issue_display} placeholder を Claude が literal substitute するための
-# observable signal として stdout に echo する (start.md の Phase 5.7 (Parent Issue Completion)
-# / Workflow Termination "Why this routing relies on Phase 5.7 emit, not state re-read"
-# blockquote で確立された SoT 原則と整合)。
+# シェル変数 $parent_issue_display は次の Bash invocation には継承されないため、stdout の
+# [CONTEXT] 行として echo し、後続 Bash block で Claude が literal substitute できる
+# observable signal にする (state re-read だと Bash 境界後に再 lookup が必要で経路が増える)。
 echo "[CONTEXT] PARENT_ISSUE_DISPLAY=$parent_issue_display"
 ```
 

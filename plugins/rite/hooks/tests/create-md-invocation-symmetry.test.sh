@@ -122,4 +122,19 @@ else
   fail "TC-5b no canonical line-continuation form found (refactor to flag form?)"
 fi
 
+# ──────────────────────────────────────────────────────────────────────
+# TC-6: `[create:completed:{N}]` HTML sentinel が Single Issue path と Decompose path の
+#       両完了レポートに含まれている
+# ──────────────────────────────────────────────────────────────────────
+# 完了レポート末尾の HTML コメント sentinel は SKILL.md / workflow-identity.md / SPEC.md 等
+# 複数 SoT が grep 契約として依存している load-bearing artifact。flat workflow refactor で
+# silent に欠落する経路を防ぐため、リテラル grep で 2 site (Single Issue 4.4 / Decompose 5.6)
+# 以上の存在を pin する。
+sentinel_count=$(grep -cE '<!-- \[create:completed:\{(issue_number|parent_issue_number)\}\] -->' "$CREATE_MD" || true)
+if [ "$sentinel_count" -ge 2 ]; then
+  pass "TC-6 [create:completed:{N}] HTML sentinel present in both paths (count=$sentinel_count)"
+else
+  fail "TC-6 [create:completed:{N}] HTML sentinel missing or below 2 sites (count=$sentinel_count). Expected: Single Issue path (ステップ 4.4) + Decompose path (ステップ 5.6)"
+fi
+
 print_summary "create-md-invocation-symmetry.test.sh"

@@ -277,8 +277,24 @@ if [ -z "$BLOCKED_PATTERN" ]; then
         STATE_FILE_PATH="${STATE_ROOT_PATH}/.rite-flow-state"
       fi
       if [ -f "$STATE_FILE_PATH" ]; then
-        STATE_PHASE=$(jq -r '.phase // empty' "$STATE_FILE_PATH" 2>/dev/null) || STATE_PHASE=""
-        STATE_ACTIVE=$(jq -r '.active // false' "$STATE_FILE_PATH" 2>/dev/null) || STATE_ACTIVE="false"
+        # corrupt JSON で Pattern 5 (security defense layer) が silent fail-open すると、
+        # create_* lifecycle 中の `gh issue create` 直接呼び出しがブロックされない経路ができる。
+        # RITE_DEBUG 時に debug log へ trace を残し、operator が "なぜ Pattern 5 が発火しなかったか"
+        # を triage 可能にする。
+        _p5_phase_err=$(mktemp 2>/dev/null) || _p5_phase_err=""
+        STATE_PHASE=$(jq -r '.phase // empty' "$STATE_FILE_PATH" 2>"${_p5_phase_err:-/dev/null}") || STATE_PHASE=""
+        if [ -n "${RITE_DEBUG:-}" ] && [ -n "$_p5_phase_err" ] && [ -s "$_p5_phase_err" ]; then
+          echo "[rite] DEBUG: pre-tool-bash-guard Pattern 5: jq .phase 失敗 ($STATE_FILE_PATH may be corrupt) — fail-open" >&2
+          head -3 "$_p5_phase_err" | sed 's/^/  /' >&2
+        fi
+        [ -n "$_p5_phase_err" ] && rm -f "$_p5_phase_err"
+        _p5_active_err=$(mktemp 2>/dev/null) || _p5_active_err=""
+        STATE_ACTIVE=$(jq -r '.active // false' "$STATE_FILE_PATH" 2>"${_p5_active_err:-/dev/null}") || STATE_ACTIVE="false"
+        if [ -n "${RITE_DEBUG:-}" ] && [ -n "$_p5_active_err" ] && [ -s "$_p5_active_err" ]; then
+          echo "[rite] DEBUG: pre-tool-bash-guard Pattern 5: jq .active 失敗 ($STATE_FILE_PATH may be corrupt) — fail-open" >&2
+          head -3 "$_p5_active_err" | sed 's/^/  /' >&2
+        fi
+        [ -n "$_p5_active_err" ] && rm -f "$_p5_active_err"
         # Use query function from phase-transition-whitelist.sh as the single source of truth
         # for create_* lifecycle phase names. Fall back to inline glob check when the helper
         # is unavailable (e.g., bash < 4.2 where phase-transition-whitelist.sh exits early).

@@ -449,5 +449,21 @@ else
   fail "TC-RECON-07 incident emitted but not attributed via canonical root_cause_hint field: $(head -c 500 "$recon_stderr")"
 fi
 
+# TC-CONFIG-PARSE: post-compact.sh が rite-config.yml の awk parse 失敗を silent skip ではなく
+# incident emit に乗せる経路を保持していることを static に pin する。awk-gating コードが削除
+# された場合や hint string が変わった場合に検出する。behavioral test は gh CLI shim 等が必要で
+# 重いため、source grep で contract をピン留めする。
+echo "TC-CONFIG-PARSE: awk parse failure routes to incident emit with config_parse_failed hint"
+if grep -q 'post_compact_config_parse_failed' "$HOOK"; then
+  pass "post-compact.sh contains 'config_parse_failed' root_cause_hint"
+else
+  fail "post-compact.sh missing 'config_parse_failed' root_cause_hint — awk parse failure may silently fall to 'projects disabled' classification"
+fi
+if grep -qE '(awk_pe_rc|awk_pn_rc)' "$HOOK"; then
+  pass "post-compact.sh distinguishes awk rc (config parse failure vs Projects disabled)"
+else
+  fail "post-compact.sh missing awk rc capture — awk failure cannot be distinguished from projects.enabled=false"
+fi
+
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

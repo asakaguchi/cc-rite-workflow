@@ -321,9 +321,16 @@ if [ ! -f "$STATE_FILE" ]; then
   exit 0
 fi
 
-ACTIVE=$(jq -r '.active // false' "$STATE_FILE" 2>/dev/null) || ACTIVE=false
+_active_err=$(mktemp 2>/dev/null) || _active_err=""
+ACTIVE=$(jq -r '.active // false' "$STATE_FILE" 2>"${_active_err:-/dev/null}") || ACTIVE=false
+if [ -n "$_active_err" ] && [ -s "$_active_err" ]; then
+  # silent fallback to "inactive" だと corrupt JSON が見えず post-compact recovery が消失する
+  # 経路を operator が triage できない。stderr を expose する。
+  echo "rite: session-start: WARNING: jq parse of .active failed (STATE_FILE may be corrupt)" >&2
+  head -3 "$_active_err" | sed 's/^/  /' >&2
+fi
+[ -n "$_active_err" ] && rm -f "$_active_err"
 if [ "$ACTIVE" != "true" ]; then
-  # Clean stale compact state on startup/clear when flow is inactive (#756, #800)
   _cleanup_stale_compact
   exit 0
 fi
@@ -348,7 +355,16 @@ fi
 # When issue_number is empty (e.g., state file has no issue), exits silently without message.
 _reset_active_state() {
   local _phase _issue _branch _ownership
-  _phase=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || _phase=""
+  # corrupt JSON で reset が走った原因を不可視にすると、operator は reset 自体の理由を見失う
+  # (なぜ active=true が残ったのか / 既知の終了経路か など)。失敗を WARNING で expose する。
+  local _reset_jq_err
+  _reset_jq_err=$(mktemp 2>/dev/null) || _reset_jq_err=""
+  _phase=$(jq -r '.phase // ""' "$STATE_FILE" 2>"${_reset_jq_err:-/dev/null}") || _phase=""
+  if [ -n "$_reset_jq_err" ] && [ -s "$_reset_jq_err" ]; then
+    echo "rite: session-start: WARNING: _reset_active_state jq read failed (STATE_FILE may be corrupt)" >&2
+    head -3 "$_reset_jq_err" | sed 's/^/  /' >&2
+  fi
+  [ -n "$_reset_jq_err" ] && rm -f "$_reset_jq_err"
   _issue=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || _issue=""
   _branch=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || _branch=""
 

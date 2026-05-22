@@ -97,7 +97,7 @@ When an Issue has threshold violations:
 
 ### Work Memory Metrics Section
 
-Appended to the Issue work memory comment at workflow completion (Phase 5.5.2 of [`start.md`](../commands/issue/start.md)):
+Appended to the Issue work memory comment at workflow completion (ステップ 8.6 完了レポート of [`start.md`](../commands/issue/start.md)):
 
 ```markdown
 ### 📊 メトリクス

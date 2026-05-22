@@ -87,7 +87,11 @@ if acquire_wm_lock "$LOCKDIR"; then
   # Update .rite-flow-state timestamp (inside lock for atomicity)
   if [ -f "$FLOW_STATE" ]; then
     TMP_FILE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null) || TMP_FILE="${FLOW_STATE}.tmp.$$"
-    if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" '.updated_at = $ts' "$FLOW_STATE" > "$TMP_FILE"; then
+    # heartbeat (.updated_at) を silent に失敗させると session-ownership の staleness 検出
+    # (2h threshold) が peer session に上書き許可を出す経路を作るため、jq の stderr を capture
+    # して WARNING を出す。silent fallback は同居 session 上書きと作業ロストに直結する。
+    _heartbeat_err=$(mktemp 2>/dev/null) || _heartbeat_err=""
+    if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" '.updated_at = $ts' "$FLOW_STATE" > "$TMP_FILE" 2>"${_heartbeat_err:-/dev/null}"; then
       # Bare mv would silently orphan TMP_FILE on EXDEV/EACCES/ENOSPC and leave
       # the heartbeat unbumped. Capturing rc lets triagers tell cross-fs from
       # permission/space exhaustion.
@@ -99,8 +103,12 @@ if acquire_wm_lock "$LOCKDIR"; then
         echo "rite: pre-compact: mv flow-state updated_at failed (rc=$_mv_rc, EXDEV cross-fs / EACCES / ENOSPC?)" >&2
       fi
     else
+      _heartbeat_rc=$?
       rm -f "$TMP_FILE"
+      echo "rite: pre-compact: WARNING: heartbeat jq failed (rc=$_heartbeat_rc) — session-ownership staleness check may misclassify this session as stale" >&2
+      [ -n "$_heartbeat_err" ] && [ -s "$_heartbeat_err" ] && head -3 "$_heartbeat_err" | sed 's/^/  /' >&2
     fi
+    [ -n "$_heartbeat_err" ] && rm -f "$_heartbeat_err"
     TMP_FILE=""
   fi
 
@@ -200,7 +208,15 @@ if acquire_wm_lock "$LOCKDIR"; then
     # whitespace cannot shift later columns silently. next_action is trailing
     # today so the bug would not bite yet, but adding fields between them later
     # would corrupt downstream parsing without an obvious diff signal.
-    FLOW_DATA=$(jq -r '[.phase // "unknown", .pr_number // "null", .loop_count // 0, .next_action // ""] | join("\u001f")' "$FLOW_STATE" 2>/dev/null) || FLOW_DATA=""
+    # snapshot 用 jq に stderr capture を加える: 失敗時に PHASE="unknown" の stub で続行すると
+    # post-compact が誤った phase で resume するため、root cause を WARNING で expose する。
+    _flow_data_snap_err=$(mktemp 2>/dev/null) || _flow_data_snap_err=""
+    FLOW_DATA=$(jq -r '[.phase // "unknown", .pr_number // "null", .loop_count // 0, .next_action // ""] | join("\u001f")' "$FLOW_STATE" 2>"${_flow_data_snap_err:-/dev/null}") || FLOW_DATA=""
+    if [ -n "$_flow_data_snap_err" ] && [ -s "$_flow_data_snap_err" ]; then
+      echo "rite: pre-compact: WARNING: snapshot jq failed — post-compact recovery may resume with phase=unknown" >&2
+      head -3 "$_flow_data_snap_err" | sed 's/^/  /' >&2
+    fi
+    [ -n "$_flow_data_snap_err" ] && rm -f "$_flow_data_snap_err"
     if [ -n "$FLOW_DATA" ]; then
       IFS=$'\x1f' read -r PHASE PR_NUM LOOP_CNT NEXT_ACT <<< "$FLOW_DATA"
     else

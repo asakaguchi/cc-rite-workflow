@@ -346,7 +346,7 @@ Proceed to Phase 4.4.W.
 
 After completing the Issue close actions, trigger Wiki Ingest to capture retrospective knowledge from this Issue.
 
-> **⚠️ E2E Mandatory (Issue #524 — silent-skip 防止層 1)**: Phase 4.4.W and 4.4.W.2 are **NEVER** skipped under any output-minimization rule. Even when called from `/rite:issue:start` Phase 5.7 (parent close) or downstream automation, this section MUST execute (subject only to the configuration-based skip in Step 1 below). Skipping silently is the regression that Issue #524 explicitly fixes.
+> **⚠️ E2E Mandatory**: Phase 4.4.W and 4.4.W.2 are **NEVER** skipped under any output-minimization rule. Even when called from `/rite:issue:start` ステップ 8.4 (parent close) or downstream automation, this section MUST execute (subject only to the configuration-based skip in Step 1 below). Wiki Ingest を silent skip させると Issue 完結ごとに experiential knowledge が失われる。
 
 **Condition**: Execute only when `wiki.enabled: true` AND `wiki.auto_ingest: true` in `rite-config.yml`. Configuration-based skip is the **only** legitimate skip path — it MUST emit a `WIKI_INGEST_SKIPPED=1` status line and `wiki_ingest_skipped` sentinel so the caller can detect and report (see Phase 4.4.W.3 below).
 

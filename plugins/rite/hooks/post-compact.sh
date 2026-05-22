@@ -113,6 +113,7 @@ source "$SCRIPT_DIR/work-memory-lock.sh"
 # IFS=$'\t' + @tsv collapses empty fields under POSIX whitespace rules: an empty
 # next_action shifts every subsequent column left, contaminating the PR field with
 # the branch name. The unit separator \x1f preserves empty fields safely.
+_flow_data_err=$(mktemp 2>/dev/null) || _flow_data_err=""
 FLOW_DATA=$(jq -r '[
   (.issue_number // "unknown" | tostring),
   (.phase // "unknown"),
@@ -120,12 +121,17 @@ FLOW_DATA=$(jq -r '[
   (.loop_count // 0 | tostring),
   (.pr_number // 0 | tostring),
   (.branch // "")
-] | join("\u001f")' "$FLOW_STATE" 2>/dev/null) || FLOW_DATA=""
+] | join("\u001f")' "$FLOW_STATE" 2>"${_flow_data_err:-/dev/null}") || FLOW_DATA=""
+if [ -n "$_flow_data_err" ] && [ -s "$_flow_data_err" ]; then
+  # .active / .compact_state は通過したが本 composite jq だけ失敗した場合 (部分 corruption /
+  # concurrent writer race) を、上流 WARNING ではカバーできない経路として独立に expose する。
+  # silent fall-through すると recovery が phase=unknown で再開する。
+  echo "[rite] WARNING: post-compact: jq parse of flow-state composite fields failed (FLOW_STATE may be partially corrupt)" >&2
+  head -3 "$_flow_data_err" | sed 's/^/  /' >&2
+fi
+[ -n "$_flow_data_err" ] && rm -f "$_flow_data_err"
 
 if [ -z "$FLOW_DATA" ]; then
-  # peer hook (session-start.sh) と対称化。corrupt JSON を silent に compact-state cleanup で
-  # 流すと recovery 経路が完全に絶たれるため、上の jq 失敗 WARNING に頼って operator 介入を
-  # 待つ。FLOW_DATA が空のまま続行はできないので、cleanup して exit する。
   _cleanup_compact_state
   exit 0
 fi
@@ -194,6 +200,8 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     gql_err=""
     jq_err=""
     reconcile_err=""
+    reconcile_jq_err=""
+    reconcile_parse_err=""
     _pc_cleanup() {
       # The `[ -n "$f" ]` guard is defense-in-depth: even though the `2>/dev/null`
       # redirect below already suppresses BSD `rm -f ""` stderr noise
@@ -203,7 +211,8 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       # regardless.
       for f in "${pr_view_err:-}" "${repo_view_err:-}" \
                "${jq_owner_err:-}" "${jq_name_err:-}" \
-               "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}"; do
+               "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}" \
+               "${reconcile_jq_err:-}" "${reconcile_parse_err:-}"; do
         [ -n "$f" ] && rm -f "$f" 2>/dev/null || true
       done
     }
@@ -408,43 +417,57 @@ query($owner: String!, $repo: String!, $number: Int!) {
           # STATE_ROOT existence is already enforced at the top of the sub-shell
           # (early state_root_inaccessible emit + exit 0), so this reconciliation
           # block can call reconcile directly without re-checking.
-          # set -o pipefail を sub-shell 内で有効化することで、jq -n の JSON 組み立て失敗 (引数 unsubstituted / type mismatch 等) が
-          # 後段 projects-status-update.sh に空文字列として silent 流入することを防ぐ。
-          # jq 失敗時は RECONCILE_RESULT が空となり、続く jq parse は "failed" 扱いで
-          # incident emit に進む — ただし「reconcile 成功 + result field parse 失敗」と
-          # 「reconcile 自体の失敗」を区別するため、reconcile rc を独立に capture する。
+          # jq -n payload を別変数で capture することで、command substitution 内の jq 失敗
+          # (引数 unsubstituted / type mismatch 等) が空文字列として projects-status-update.sh
+          # へ silent 流入する経路を遮断する。command substitution は pipeline ではないため
+          # `set -o pipefail` は内部 jq の rc を outer rc に伝播しない。
           reconcile_err=$(mktemp /tmp/rite-pc-reconcile-err-XXXXXX) || reconcile_err=""
           reconcile_parse_err=$(mktemp /tmp/rite-pc-reconcile-parse-err-XXXXXX) || reconcile_parse_err=""
+          reconcile_jq_err=$(mktemp /tmp/rite-pc-reconcile-jq-err-XXXXXX) || reconcile_jq_err=""
           RECONCILE_RESULT=""
           RECONCILE_RC=0
-          RECONCILE_RESULT=$(set -o pipefail; cd "$STATE_ROOT" && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$(jq -n \
+          JQ_PAYLOAD=""
+          JQ_PAYLOAD_RC=0
+          JQ_PAYLOAD=$(jq -n \
             --argjson issue "$ISSUE" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
             --argjson project_number "$PROJECT_NUMBER" --arg status "In Review" \
             --argjson auto_add false --argjson non_blocking true \
-            '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || RECONCILE_RC=$?
-          RECONCILE_STATUS=$(printf '%s' "$RECONCILE_RESULT" | jq -r '.result // empty' 2>"${reconcile_parse_err:-/dev/null}") || RECONCILE_STATUS=""
-          if [ "$RECONCILE_STATUS" = "updated" ]; then
-            echo "[rite] ✅ post-compact reconciliation succeeded: Issue #$ISSUE Status → In Review" >&2
-          else
-            reconcile_err_oneline=$(head -c 200 "${reconcile_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
-            # parse 失敗と result 不一致を区別する。RECONCILE_STATUS が empty で、かつ
-            # RECONCILE_RESULT が非空なら「reconcile script は何か返したが result field を
-            # 抽出できなかった」= JSON 形式 drift の signal。それ以外は reconcile 自体の失敗。
-            if [ -z "$RECONCILE_STATUS" ] && [ -n "$RECONCILE_RESULT" ]; then
-              parse_err_snippet=""
-              [ -n "$reconcile_parse_err" ] && [ -s "$reconcile_parse_err" ] && parse_err_snippet=$(head -c 200 "$reconcile_parse_err" 2>/dev/null | tr '\n' ' ')
-              echo "[rite] ❌ post-compact reconciliation result parse failed (jq err=$parse_err_snippet, stdout snippet=$(printf '%s' "$RECONCILE_RESULT" | head -c 200))" >&2
-              RECONCILE_STATUS="parse_failed"
-            else
-              RECONCILE_STATUS="${RECONCILE_STATUS:-failed}"
-              echo "[rite] ❌ post-compact reconciliation failed (rc=$RECONCILE_RC result=$RECONCILE_STATUS)" >&2
-            fi
+            '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}' 2>"${reconcile_jq_err:-/dev/null}") || JQ_PAYLOAD_RC=$?
+          if [ "$JQ_PAYLOAD_RC" -ne 0 ] || [ -z "$JQ_PAYLOAD" ]; then
+            jq_err_oneline=$(head -c 200 "${reconcile_jq_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+            echo "[rite] ❌ post-compact reconciliation jq payload build failed (rc=$JQ_PAYLOAD_RC, jq_stderr=$jq_err_oneline)" >&2
             bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
               --type projects_status_in_review_missing \
-              --details "Issue #$ISSUE post-compact reconciliation failed (PR=#$PR isDraft=false Status=$CURRENT_STATUS reconcile_result=$RECONCILE_STATUS reconcile_rc=$RECONCILE_RC stderr=$reconcile_err_oneline)" \
-              --root-cause-hint "post_compact_reconciliation_failed" \
-              --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (reconciliation_failed); incident may not be recorded" >&2
+              --details "Issue #$ISSUE post-compact: jq -n payload build failed (rc=$JQ_PAYLOAD_RC, stderr=$jq_err_oneline)" \
+              --root-cause-hint "post_compact_jq_payload_build_failed" \
+              --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (jq_payload_build_failed); incident may not be recorded" >&2
+          else
+            RECONCILE_RESULT=$(cd "$STATE_ROOT" && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$JQ_PAYLOAD" 2>"${reconcile_err:-/dev/null}") || RECONCILE_RC=$?
+            RECONCILE_STATUS=$(printf '%s' "$RECONCILE_RESULT" | jq -r '.result // empty' 2>"${reconcile_parse_err:-/dev/null}") || RECONCILE_STATUS=""
+            if [ "$RECONCILE_STATUS" = "updated" ]; then
+              echo "[rite] ✅ post-compact reconciliation succeeded: Issue #$ISSUE Status → In Review" >&2
+            else
+              reconcile_err_oneline=$(head -c 200 "${reconcile_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+              # RECONCILE_STATUS が空で RECONCILE_RESULT が非空なら、reconcile script は応答したが
+              # result field を抽出できなかった (= JSON shape drift)。これは reconcile 自体の失敗とは
+              # 別の triage が必要なので、empty/non-empty で区別する。
+              if [ -z "$RECONCILE_STATUS" ] && [ -n "$RECONCILE_RESULT" ]; then
+                parse_err_snippet=""
+                [ -n "$reconcile_parse_err" ] && [ -s "$reconcile_parse_err" ] && parse_err_snippet=$(head -c 200 "$reconcile_parse_err" 2>/dev/null | tr '\n' ' ')
+                echo "[rite] ❌ post-compact reconciliation result parse failed (jq err=$parse_err_snippet, stdout snippet=$(printf '%s' "$RECONCILE_RESULT" | head -c 200))" >&2
+                RECONCILE_STATUS="parse_failed"
+              else
+                RECONCILE_STATUS="${RECONCILE_STATUS:-failed}"
+                echo "[rite] ❌ post-compact reconciliation failed (rc=$RECONCILE_RC result=$RECONCILE_STATUS)" >&2
+              fi
+              bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+                --type projects_status_in_review_missing \
+                --details "Issue #$ISSUE post-compact reconciliation failed (PR=#$PR isDraft=false Status=$CURRENT_STATUS reconcile_result=$RECONCILE_STATUS reconcile_rc=$RECONCILE_RC stderr=$reconcile_err_oneline)" \
+                --root-cause-hint "post_compact_reconciliation_failed" \
+                --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (reconciliation_failed); incident may not be recorded" >&2
+            fi
           fi
+          [ -n "$reconcile_jq_err" ] && rm -f "$reconcile_jq_err"
           [ -n "$reconcile_parse_err" ] && rm -f "$reconcile_parse_err"
         fi
       fi

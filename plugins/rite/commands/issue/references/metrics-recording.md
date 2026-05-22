@@ -68,8 +68,8 @@ plan_deviation_count="$val"
 # 成功経路では PLAN_DEVIATION_COUNT sentinel を emit し、Claude が会話履歴を grep して
 # Step 4 heredoc の `{plan_deviation_count}` placeholder に literal substitute する。シェル変数
 # `$plan_deviation_count` は Bash tool 境界で消失するため、stdout/stderr に明示的に emit しない限り
-# Claude は値を読み取れない。同型の cross-boundary state transfer は resume.md Phase 2.1 Step 1
-# / start.md Phase 5.7 で確立済みの canonical pattern。
+# Claude は値を読み取れない。同型の cross-boundary state transfer は resume.md Phase 1.3 routing
+# table emit / start.md ステップ 8.4 (parent close) で確立済みの canonical pattern。
 #
 # Emit channel policy: cross-boundary state transfer の sentinel は **stdout / stderr のいずれでも会話コンテキストに記録される**。
 # Claude Code の Bash tool は stdout/stderr 両方を会話コンテキストに取り込む仕様のため、emit channel の

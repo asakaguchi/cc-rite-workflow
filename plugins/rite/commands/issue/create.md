@@ -542,7 +542,7 @@ Decompose path も完了レポートの最終行は `<!-- [create:completed:{par
 
 ### 6.1 flow-state 完結
 
-`--preserve-error-count` は terminal phase 遷移で `.error_count` を 0 リセットせず温存する。現時点で `.error_count` を読む reader は無いが、再導入時の累積カウントが意図せずリセットされないよう半 legacy schema slot として保持する (reserved API)。
+`--preserve-error-count` はこの patch で `.error_count` を 0 にリセットせず保持する general flag。現時点で `.error_count` を読む reader は無いが、再導入時の累積カウントが意図せずリセットされないよう reserved API として保持する。
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \

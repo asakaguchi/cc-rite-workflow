@@ -358,7 +358,7 @@ echo ""
 # の case branch は flat phase 名 (`implement` / `lint` / `pr` / `review` / `fix`) も
 # accept しているが、これらは一切 exercise されていないため、case branch から flat 名
 # が誤って削除されてもテストが PASS してしまう経路があった。本群でその穴を塞ぐ。
-for flat_phase in implement lint pr; do
+for flat_phase in implement lint pr review fix; do
   echo "TC-FP-${flat_phase}: flat phase=${flat_phase} → phase change detected (case branch coverage)"
   dir_fp="$TEST_DIR/tc_fp_${flat_phase}"
   mkdir -p "$dir_fp/.rite-work-memory"

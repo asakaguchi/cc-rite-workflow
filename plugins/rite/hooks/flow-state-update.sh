@@ -727,43 +727,54 @@ case "$MODE" in
       JQ_FILTER="$JQ_FILTER | .session_id = \$session"
       JQ_ARGS+=(--arg session "$SESSION")
     fi
-    # 同対称: create mode の mv 失敗 diag コメント (mv 失敗 path 対称診断) を参照
-    if jq "${JQ_ARGS[@]}" -- "$JQ_FILTER" "$FLOW_STATE" > "$TMP_STATE"; then
+    # create mode と対称化: jq stderr を capture し、parse error の line/column を operator が
+    # triage できるようにする。silent fall-through は corrupt JSON の原因究明を不能にする。
+    _patch_jq_err=$(mktemp 2>/dev/null) || _patch_jq_err=""
+    if jq "${JQ_ARGS[@]}" -- "$JQ_FILTER" "$FLOW_STATE" > "$TMP_STATE" 2>"${_patch_jq_err:-/dev/null}"; then
       if mv "$TMP_STATE" "$FLOW_STATE"; then
         :
       else
         _mv_rc=$?
         _log_flow_diag "flow_state_mv_failed mode=patch phase=$PHASE rc=$_mv_rc"
         rm -f "$TMP_STATE"
+        [ -n "$_patch_jq_err" ] && rm -f "$_patch_jq_err"
         echo "ERROR: mv failed (patch mode, rc=$_mv_rc): $TMP_STATE -> $FLOW_STATE" >&2
         exit 1
       fi
     else
       _log_flow_diag "flow_state_jq_failed mode=patch phase=$PHASE"
-      rm -f "$TMP_STATE"
       echo "ERROR: flow-state file parse failed (patch mode): $FLOW_STATE" >&2
+      [ -n "$_patch_jq_err" ] && [ -s "$_patch_jq_err" ] && head -3 "$_patch_jq_err" | sed 's/^/  /' >&2
+      rm -f "$TMP_STATE"
+      [ -n "$_patch_jq_err" ] && rm -f "$_patch_jq_err"
       exit 1
     fi
+    [ -n "$_patch_jq_err" ] && rm -f "$_patch_jq_err"
     ;;
   increment)
-    # 同対称: create mode の mv 失敗 diag コメント (mv 失敗 path 対称診断) を参照
+    # patch mode と同じ stderr capture pattern を適用する (silent jq 失敗で root cause が失われる経路の対称化)。
+    _incr_jq_err=$(mktemp 2>/dev/null) || _incr_jq_err=""
     if jq --arg field "$FIELD" \
        '.[$field] = ((.[$field] // 0) + 1)' \
-       "$FLOW_STATE" > "$TMP_STATE"; then
+       "$FLOW_STATE" > "$TMP_STATE" 2>"${_incr_jq_err:-/dev/null}"; then
       if mv "$TMP_STATE" "$FLOW_STATE"; then
         :
       else
         _mv_rc=$?
         _log_flow_diag "flow_state_mv_failed mode=increment field=$FIELD rc=$_mv_rc"
         rm -f "$TMP_STATE"
+        [ -n "$_incr_jq_err" ] && rm -f "$_incr_jq_err"
         echo "ERROR: mv failed (increment mode, rc=$_mv_rc): $TMP_STATE -> $FLOW_STATE" >&2
         exit 1
       fi
     else
       _log_flow_diag "flow_state_jq_failed mode=increment field=$FIELD"
-      rm -f "$TMP_STATE"
       echo "ERROR: flow-state file parse failed (increment mode): $FLOW_STATE" >&2
+      [ -n "$_incr_jq_err" ] && [ -s "$_incr_jq_err" ] && head -3 "$_incr_jq_err" | sed 's/^/  /' >&2
+      rm -f "$TMP_STATE"
+      [ -n "$_incr_jq_err" ] && rm -f "$_incr_jq_err"
       exit 1
     fi
+    [ -n "$_incr_jq_err" ] && rm -f "$_incr_jq_err"
     ;;
 esac

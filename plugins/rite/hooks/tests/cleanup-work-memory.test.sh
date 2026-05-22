@@ -175,6 +175,33 @@ else
 fi
 echo ""
 
+# ─── TC-007: find permission-denied で「残存: unknown」を報告する ───────────
+# find stderr を /dev/null に流していると WM_DIR が読めなくても「残存: 0 件」と
+# 誤報告される経路があった。stderr capture pattern が後退した場合の regression を
+# detect するため、find が stderr を吐く PATH shim で run し、output に "unknown" が
+# 含まれることを確認する。
+echo "TC-007: find permission denied surfaces as remaining=unknown"
+dir007="$TEST_DIR/tc007"
+mkdir -p "$dir007/.rite-work-memory"
+echo "wm a" > "$dir007/.rite-work-memory/issue-1.md"
+mkdir -p "$dir007/bin"
+cat > "$dir007/bin/find" <<'EOF'
+#!/bin/bash
+echo "find: '.rite-work-memory': Permission denied" >&2
+exit 1
+EOF
+chmod +x "$dir007/bin/find"
+out007="$TEST_DIR/tc007.out"
+( cd "$dir007" && PATH="$dir007/bin:$PATH" bash "$HOOK" >"$out007" 2>&1 ) || true
+# stderr capture が機能していれば "残存: unknown 件" を表示し、permission denied の WARNING が出る。
+# silent regression が入ると "残存: 0 件" になり、本 assertion が fail する。
+if grep -q "残存: unknown 件" "$out007" && grep -q "permission denied" "$out007"; then
+  pass "TC-007 find permission-denied surfaced as remaining=unknown + WARNING"
+else
+  fail "TC-007 expected '残存: unknown 件' + permission-denied WARNING, got: $(head -10 "$out007")"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

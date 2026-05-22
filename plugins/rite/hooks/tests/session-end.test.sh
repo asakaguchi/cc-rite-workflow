@@ -593,7 +593,7 @@ PATH="$fake_jq_bin:$PATH" \
   >/dev/null 2>"$LAST_STDERR_FILE" || true
 stderr_jq="$(cat "$LAST_STDERR_FILE")"
 
-if printf '%s' "$stderr_jq" | grep -qF 'rite: session-end: failed to deactivate state file'; then
+if printf '%s' "$stderr_jq" | grep -qE 'rite: session-end: (WARNING: )?failed to deactivate state file'; then
   pass "WARNING emitted on jq atomic write failure"
 else
   fail "Expected jq-write WARNING; got stderr: $stderr_jq"
@@ -639,7 +639,7 @@ echo "[TC-022] deactivate-failure WARNING text present in production script"
 # previous workflow-incident emit was dead — but the human-readable WARNING is
 # the only diagnostic the user sees on the failed session itself. Pin it so
 # future cleanup work doesn't accidentally drop the line.
-if grep -qE 'session-end: failed to deactivate state file' "$SESSION_END_SCRIPT"; then
+if grep -qE 'session-end: (WARNING: )?failed to deactivate state file' "$SESSION_END_SCRIPT"; then
   pass "TC-022 deactivate-failure WARNING wired in session-end.sh"
 else
   fail "TC-022 deactivate-failure WARNING missing from session-end.sh"

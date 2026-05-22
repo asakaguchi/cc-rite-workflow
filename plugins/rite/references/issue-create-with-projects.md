@@ -13,11 +13,10 @@ Referenced from:
 - `commands/pr/review.md` Phase 7.4.2
 - `commands/pr/create.md` Phase 2.5.5
 - `commands/pr/cleanup.md` Phase 1.7.3.2
-- `commands/issue/create.md` ステップ 4.3 (Single Issue creation, PR #1079 で旧 `create-register.md` Phase 3.2 を統合)
-- `commands/issue/create.md` ステップ 5.3 (parent Issue creation in XL decomposition, PR #1079 で旧 `create-decompose.md` Phase 3.3 を統合)
-- `commands/issue/create.md` ステップ 5.4 (Sub-Issue bulk creation in XL decomposition, PR #1079 で旧 `create-decompose.md` Phase 3.3 を統合)
-- `commands/issue/start.md` ステップ 8.5 (Workflow Incident Detection の auto-Issue 起票経路, PR #1079 で旧 Phase 5.2.0.1 を統合)
-- 旧 caller (PR #1079 で削除): `parent-routing.md` Phase 1.5.4.5
+- `commands/issue/create.md` ステップ 4.3 (Single Issue creation)
+- `commands/issue/create.md` ステップ 5.3 (parent Issue creation in XL decomposition)
+- `commands/issue/create.md` ステップ 5.4 (Sub-Issue bulk creation in XL decomposition)
+- `commands/issue/start.md` ステップ 8.5 (Workflow Incident Detection の auto-Issue 起票経路)
 
 Related documents:
 - [projects-integration.md](./projects-integration.md) - Existing Issue Status update / Iteration assignment (this document covers new Issue creation with Projects registration)
@@ -176,10 +175,10 @@ Each caller determines Priority using its own logic before passing it to the scr
 
 | Context | Issue Priority | Reason |
 |---------|----------------|--------|
-| Parent Issue creation (ステップ 5.3 — Create the Parent Issue) | Determined in interview phase (旧 `create-register.md` Phase 3.1 Priority Estimation を `create.md` に統合) | Use Priority value decided during Issue creation |
+| Parent Issue creation (ステップ 5.3 — Create the Parent Issue) | Determined in interview phase | Use Priority value decided during Issue creation |
 | Sub-Issue bulk creation (ステップ 5.4 — Bulk Creation of Sub-Issues) | Inherited from parent | Use parent Issue's Priority value |
 
-### start.md ステップ 8.5 (Workflow Incident Detection — Lint Warnings 等, PR #1079 で旧 Phase 5.2.0.1 を統合)
+### start.md ステップ 8.5 (Workflow Incident Detection — Lint Warnings 等)
 
 | Context | Issue Priority | Reason |
 |---------|----------------|--------|

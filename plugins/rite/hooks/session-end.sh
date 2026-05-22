@@ -106,8 +106,23 @@ if [ -f "$STATE_FILE" ]; then
     # how to recover. session-end always proceeds with deactivation regardless.
     # Phase classification is delegated to phase-transition-whitelist.sh helpers as the
     # single source of truth (#501 HIGH).
-    _state_phase=$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null) || _state_phase=""
-    _state_active=$(jq -r '.active // false' "$STATE_FILE" 2>/dev/null) || _state_active="false"
+    # corrupt JSON を silent 流すと lifecycle WARN_MSG が空 phase で抑制され、user は
+    # create_*/cleanup_* の中断を知らないまま次セッションへ進む。stderr を capture して
+    # operator が原因にたどり着けるようにする。
+    _lifecycle_phase_err=$(mktemp 2>/dev/null) || _lifecycle_phase_err=""
+    _state_phase=$(jq -r '.phase // empty' "$STATE_FILE" 2>"${_lifecycle_phase_err:-/dev/null}") || _state_phase=""
+    if [ -n "$_lifecycle_phase_err" ] && [ -s "$_lifecycle_phase_err" ]; then
+        echo "rite: session-end: WARNING: jq parse of .phase failed (STATE_FILE may be corrupt) — lifecycle WARN suppressed" >&2
+        head -3 "$_lifecycle_phase_err" | sed 's/^/  /' >&2
+    fi
+    [ -n "$_lifecycle_phase_err" ] && rm -f "$_lifecycle_phase_err"
+    _lifecycle_active_err=$(mktemp 2>/dev/null) || _lifecycle_active_err=""
+    _state_active=$(jq -r '.active // false' "$STATE_FILE" 2>"${_lifecycle_active_err:-/dev/null}") || _state_active="false"
+    if [ -n "$_lifecycle_active_err" ] && [ -s "$_lifecycle_active_err" ]; then
+        echo "rite: session-end: WARNING: jq parse of .active failed (STATE_FILE may be corrupt)" >&2
+        head -3 "$_lifecycle_active_err" | sed 's/^/  /' >&2
+    fi
+    [ -n "$_lifecycle_active_err" ] && rm -f "$_lifecycle_active_err"
     _lifecycle_unfinished_kind=""
     if [ "$_state_active" = "true" ]; then
         if type rite_phase_is_create_lifecycle_in_progress >/dev/null 2>&1; then
@@ -159,12 +174,12 @@ WARN_MSG
     TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
     # trap is inside this block: only active when STATE_FILE exists and TMP_FILE is created
     trap 'rm -f "$TMP_FILE" 2>/dev/null' EXIT TERM INT
+    # SessionEnd stderr は次セッションの会話 context に流入しない経路があるため、jq / mv 失敗を
+    # workflow-incident-emit に乗せても orchestrator から grep されない。代替として diag log に
+    # 持続化することで、次回 session-start の defensive reset が cause を surface できる。
+    _deact_jq_err=$(mktemp 2>/dev/null) || _deact_jq_err=""
     if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-       '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE"; then
-        # SessionEnd stderr does not propagate to the next session's context,
-        # so a silent mv failure here would leave .active=true and block the
-        # next session from creating its own state. Persist the failure to the
-        # diag log via _log_flow_diag if available, then fall through.
+       '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE" 2>"${_deact_jq_err:-/dev/null}"; then
         if mv "$TMP_FILE" "$STATE_FILE"; then
           :
         else
@@ -176,19 +191,17 @@ WARN_MSG
           echo "rite: session-end: mv deactivation state failed (rc=$_mv_rc)" >&2
         fi
     else
-        # SessionEnd stderr is not captured into the next session's conversation
-        # context, so a workflow-incident emit here cannot be picked up by the
-        # orchestrator's grep. Stick to a plain WARNING and rely on the
-        # lifecycle helpers (rite_phase_is_create/cleanup_lifecycle_in_progress
-        # in session-end.sh's session-survey loop) to surface the stale
-        # `.active=true` state on the *next* session.
-        # state_file path を WARNING に含めることで、Issue 番号が解決できない
-        # 経路 (detached HEAD / non-issue branch / git 未初期化) でも debug 情報
-        # が残る。`${ISSUE_NUMBER:+ (Issue #$ISSUE_NUMBER)}` で issue 番号は
-        # 解決できた場合のみ追記し、空の場合は `(Issue #...)` 部分そのものを省略する。
-        echo "rite: session-end: failed to deactivate state file: $STATE_FILE${ISSUE_NUMBER:+ (Issue #$ISSUE_NUMBER)}" >&2
+        _deact_jq_rc=$?
+        if command -v _log_flow_diag >/dev/null 2>&1; then
+            _log_flow_diag "session_end_jq_failed rc=$_deact_jq_rc state=$STATE_FILE"
+        fi
+        # state_file path を WARNING に含めることで、Issue 番号が解決できない経路 (detached HEAD /
+        # non-issue branch / git 未初期化) でも debug 情報を残せる。
+        echo "rite: session-end: WARNING: failed to deactivate state file (jq rc=$_deact_jq_rc): $STATE_FILE${ISSUE_NUMBER:+ (Issue #$ISSUE_NUMBER)}" >&2
+        [ -n "$_deact_jq_err" ] && [ -s "$_deact_jq_err" ] && head -3 "$_deact_jq_err" | sed 's/^/  /' >&2
         rm -f "$TMP_FILE"
     fi
+    [ -n "$_deact_jq_err" ] && rm -f "$_deact_jq_err"
 
     # AC-10 (Issue #680): clean up per-session flow-state file on session end.
     # Note: this block also runs after the jq deactivation `else` arm above —

@@ -77,7 +77,15 @@ if [ ! -f "$FLOW_STATE" ]; then
 fi
 
 # --- Flow not active: clean up and exit ---
-FLOW_ACTIVE=$(jq -r '.active // false' "$FLOW_STATE" 2>/dev/null) || FLOW_ACTIVE="false"
+# jq の stderr を tempfile capture し、peer hook (pre-compact.sh / session-start.sh) と
+# 同じく WARNING で corrupt JSON を expose する。silent fallback だと recovery のチャンスを失う。
+_flow_active_err=$(mktemp 2>/dev/null) || _flow_active_err=""
+FLOW_ACTIVE=$(jq -r '.active // false' "$FLOW_STATE" 2>"${_flow_active_err:-/dev/null}") || FLOW_ACTIVE="false"
+if [ -n "$_flow_active_err" ] && [ -s "$_flow_active_err" ]; then
+  echo "[rite] WARNING: post-compact: jq parse of .active failed (FLOW_STATE may be corrupt)" >&2
+  head -3 "$_flow_active_err" | sed 's/^/  /' >&2
+fi
+[ -n "$_flow_active_err" ] && rm -f "$_flow_active_err"
 if [ "$FLOW_ACTIVE" != "true" ]; then
   _cleanup_compact_state
   exit 0
@@ -87,7 +95,13 @@ fi
 if [ ! -f "$COMPACT_STATE" ]; then
   exit 0
 fi
-COMPACT_VAL=$(jq -r '.compact_state // "normal"' "$COMPACT_STATE" 2>/dev/null) || COMPACT_VAL="unknown"
+_compact_val_err=$(mktemp 2>/dev/null) || _compact_val_err=""
+COMPACT_VAL=$(jq -r '.compact_state // "normal"' "$COMPACT_STATE" 2>"${_compact_val_err:-/dev/null}") || COMPACT_VAL="unknown"
+if [ -n "$_compact_val_err" ] && [ -s "$_compact_val_err" ]; then
+  echo "[rite] WARNING: post-compact: jq parse of .compact_state failed (COMPACT_STATE may be corrupt)" >&2
+  head -3 "$_compact_val_err" | sed 's/^/  /' >&2
+fi
+[ -n "$_compact_val_err" ] && rm -f "$_compact_val_err"
 if [ "$COMPACT_VAL" != "recovering" ]; then
   exit 0
 fi
@@ -109,7 +123,9 @@ FLOW_DATA=$(jq -r '[
 ] | join("\u001f")' "$FLOW_STATE" 2>/dev/null) || FLOW_DATA=""
 
 if [ -z "$FLOW_DATA" ]; then
-  # Cannot read flow state — clean up and exit silently
+  # peer hook (session-start.sh) と対称化。corrupt JSON を silent に compact-state cleanup で
+  # 流すと recovery 経路が完全に絶たれるため、上の jq 失敗 WARNING に頼って operator 介入を
+  # 待つ。FLOW_DATA が空のまま続行はできないので、cleanup して exit する。
   _cleanup_compact_state
   exit 0
 fi
@@ -287,13 +303,35 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       awk_pn_err=""
       awk_pe_err=$(mktemp /tmp/rite-pc-awk-pe-err-XXXXXX) || { awk_pe_err=""; stderr_capture_disabled=1; }
       awk_pn_err=$(mktemp /tmp/rite-pc-awk-pn-err-XXXXXX) || { awk_pn_err=""; stderr_capture_disabled=1; }
-      PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>"${awk_pe_err:-/dev/null}") || PROJECTS_ENABLED=""
-      PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>"${awk_pn_err:-/dev/null}") || PROJECT_NUMBER=""
-      if [ -n "${awk_pe_err:-}" ] && [ -s "$awk_pe_err" ]; then
-        echo "[rite] WARNING: post-compact: awk parse of projects.enabled failed: $(head -c 200 "$awk_pe_err" | tr '\n' ' ')" >&2
+      # awk rc を独立 capture することで「awk parse 失敗 (config file 不正)」と「Projects 無効
+      # 設定」を区別する。両者が silent に同一視されると、permission denied や IO error で
+      # Projects 整合性チェックが skip された事実が operator に届かない。
+      awk_pe_rc=0
+      awk_pn_rc=0
+      PROJECTS_ENABLED=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    enabled:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>"${awk_pe_err:-/dev/null}") || awk_pe_rc=$?
+      PROJECT_NUMBER=$(awk '/^github:/{h=1;next} h && /^  projects:/{p=1;next} p && /^    project_number:/{print $2; exit}' "$STATE_ROOT/rite-config.yml" 2>"${awk_pn_err:-/dev/null}") || awk_pn_rc=$?
+      awk_parse_failed=0
+      if [ "$awk_pe_rc" -ne 0 ] || { [ -n "${awk_pe_err:-}" ] && [ -s "$awk_pe_err" ]; }; then
+        awk_pe_oneline=""
+        [ -n "${awk_pe_err:-}" ] && [ -s "$awk_pe_err" ] && awk_pe_oneline=$(head -c 200 "$awk_pe_err" | tr '\n' ' ')
+        echo "[rite] WARNING: post-compact: awk parse of projects.enabled failed (rc=$awk_pe_rc, stderr=$awk_pe_oneline)" >&2
+        awk_parse_failed=1
       fi
-      if [ -n "${awk_pn_err:-}" ] && [ -s "$awk_pn_err" ]; then
-        echo "[rite] WARNING: post-compact: awk parse of projects.project_number failed: $(head -c 200 "$awk_pn_err" | tr '\n' ' ')" >&2
+      if [ "$awk_pn_rc" -ne 0 ] || { [ -n "${awk_pn_err:-}" ] && [ -s "$awk_pn_err" ]; }; then
+        awk_pn_oneline=""
+        [ -n "${awk_pn_err:-}" ] && [ -s "$awk_pn_err" ] && awk_pn_oneline=$(head -c 200 "$awk_pn_err" | tr '\n' ' ')
+        echo "[rite] WARNING: post-compact: awk parse of projects.project_number failed (rc=$awk_pn_rc, stderr=$awk_pn_oneline)" >&2
+        awk_parse_failed=1
+      fi
+      # awk 自体が失敗した場合は config 解析不能を incident emit する。後段の
+      # PROJECTS_ENABLED check は false fallback で Projects skip するが、その判定根拠が
+      # 「config 解析失敗」だった事実を tracking Issue として可視化する。
+      if [ "$awk_parse_failed" = "1" ]; then
+        bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+          --type projects_status_in_review_missing \
+          --details "Issue #$ISSUE post-compact: rite-config.yml awk parse failed (pe_rc=$awk_pe_rc pn_rc=$awk_pn_rc) — Projects reconciliation skipped without verifying config" \
+          --root-cause-hint "post_compact_config_parse_failed" \
+          --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (config_parse_failed); incident may not be recorded" >&2
       fi
       rm -f "${awk_pe_err:-}" "${awk_pn_err:-}"
       # Cascade emit guard: once we emit the upstream repo failure, downstream
@@ -370,24 +408,44 @@ query($owner: String!, $repo: String!, $number: Int!) {
           # STATE_ROOT existence is already enforced at the top of the sub-shell
           # (early state_root_inaccessible emit + exit 0), so this reconciliation
           # block can call reconcile directly without re-checking.
+          # set -o pipefail を sub-shell 内で有効化することで、jq -n の JSON 組み立て失敗 (引数 unsubstituted / type mismatch 等) が
+          # 後段 projects-status-update.sh に空文字列として silent 流入することを防ぐ。
+          # jq 失敗時は RECONCILE_RESULT が空となり、続く jq parse は "failed" 扱いで
+          # incident emit に進む — ただし「reconcile 成功 + result field parse 失敗」と
+          # 「reconcile 自体の失敗」を区別するため、reconcile rc を独立に capture する。
           reconcile_err=$(mktemp /tmp/rite-pc-reconcile-err-XXXXXX) || reconcile_err=""
-          RECONCILE_RESULT=$(cd "$STATE_ROOT" && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$(jq -n \
+          reconcile_parse_err=$(mktemp /tmp/rite-pc-reconcile-parse-err-XXXXXX) || reconcile_parse_err=""
+          RECONCILE_RESULT=""
+          RECONCILE_RC=0
+          RECONCILE_RESULT=$(set -o pipefail; cd "$STATE_ROOT" && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$(jq -n \
             --argjson issue "$ISSUE" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
             --argjson project_number "$PROJECT_NUMBER" --arg status "In Review" \
             --argjson auto_add false --argjson non_blocking true \
-            '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || RECONCILE_RESULT=""
-          RECONCILE_STATUS=$(printf '%s' "$RECONCILE_RESULT" | jq -r '.result // "failed"' 2>/dev/null) || RECONCILE_STATUS="failed"
+            '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || RECONCILE_RC=$?
+          RECONCILE_STATUS=$(printf '%s' "$RECONCILE_RESULT" | jq -r '.result // empty' 2>"${reconcile_parse_err:-/dev/null}") || RECONCILE_STATUS=""
           if [ "$RECONCILE_STATUS" = "updated" ]; then
             echo "[rite] ✅ post-compact reconciliation succeeded: Issue #$ISSUE Status → In Review" >&2
           else
-            echo "[rite] ❌ post-compact reconciliation failed (result=$RECONCILE_STATUS)" >&2
             reconcile_err_oneline=$(head -c 200 "${reconcile_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+            # parse 失敗と result 不一致を区別する。RECONCILE_STATUS が empty で、かつ
+            # RECONCILE_RESULT が非空なら「reconcile script は何か返したが result field を
+            # 抽出できなかった」= JSON 形式 drift の signal。それ以外は reconcile 自体の失敗。
+            if [ -z "$RECONCILE_STATUS" ] && [ -n "$RECONCILE_RESULT" ]; then
+              parse_err_snippet=""
+              [ -n "$reconcile_parse_err" ] && [ -s "$reconcile_parse_err" ] && parse_err_snippet=$(head -c 200 "$reconcile_parse_err" 2>/dev/null | tr '\n' ' ')
+              echo "[rite] ❌ post-compact reconciliation result parse failed (jq err=$parse_err_snippet, stdout snippet=$(printf '%s' "$RECONCILE_RESULT" | head -c 200))" >&2
+              RECONCILE_STATUS="parse_failed"
+            else
+              RECONCILE_STATUS="${RECONCILE_STATUS:-failed}"
+              echo "[rite] ❌ post-compact reconciliation failed (rc=$RECONCILE_RC result=$RECONCILE_STATUS)" >&2
+            fi
             bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
               --type projects_status_in_review_missing \
-              --details "Issue #$ISSUE post-compact reconciliation failed (PR=#$PR isDraft=false Status=$CURRENT_STATUS reconcile_result=$RECONCILE_STATUS stderr=$reconcile_err_oneline)" \
+              --details "Issue #$ISSUE post-compact reconciliation failed (PR=#$PR isDraft=false Status=$CURRENT_STATUS reconcile_result=$RECONCILE_STATUS reconcile_rc=$RECONCILE_RC stderr=$reconcile_err_oneline)" \
               --root-cause-hint "post_compact_reconciliation_failed" \
               --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (reconciliation_failed); incident may not be recorded" >&2
           fi
+          [ -n "$reconcile_parse_err" ] && rm -f "$reconcile_parse_err"
         fi
       fi
     fi

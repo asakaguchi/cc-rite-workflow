@@ -1002,7 +1002,7 @@ These appendices do NOT change the result pattern — `[lint:success]` remains t
 {first 10 lines of lint_output}
 ```
 
-> **Context savings**: In e2e flow, omit fix suggestions (the caller returns to ステップ 3 implementation for fixes; PR #1079 で旧 Phase 5.1 を統合). Only include first 10 lines of lint output to identify the issue category.
+> **Context savings**: In e2e flow, omit fix suggestions (the caller returns to ステップ 4 implementation for fixes). Only include first 10 lines of lint output to identify the issue category.
 
 **Standalone execution:**
 ```
@@ -1309,7 +1309,7 @@ When `[lint:success]` or `[lint:skipped]` is output:
 
 **Design intent**:
 - Guard function to prevent proceeding to PR creation until all Issue checklist items are complete (Issue #398)
-- If there are incomplete items, return to ステップ 3 (implementation; PR #1079 で旧 Phase 5.1 を統合) to continue implementation
+- If there are incomplete items, return to ステップ 4 (implementation) to continue implementation
 
 ### 5.3 Standalone Execution Behavior
 

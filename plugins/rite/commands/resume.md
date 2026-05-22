@@ -199,6 +199,8 @@ Extract phase information from the work memory comment:
 | `pr` | PR 作成中 | 6 |
 | `review` | レビュー中 | 7.1 |
 | `fix` | レビュー修正中 | 7.2 |
+| `ready` | Ready 成功 (Projects Status In Review → 親 Issue 完結待ち) | 8.3 |
+| `ready_error` | Ready 失敗 (PR は作成済み、Ready 遷移のみ再試行) | 8 |
 | `completed` | 完了 | — |
 
 (legacy `phase0` / `phase1*` / `phase2*` / `phase3*` / `phase4` / `phase5_*` は 3.2 節 Legacy compatibility 表で routing する)

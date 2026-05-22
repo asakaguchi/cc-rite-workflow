@@ -1256,7 +1256,7 @@ wiki_branch=$(awk '/^wiki:/{h=1;next} h && /^[[:space:]]+branch_name:/{print;exi
 [ -z "$wiki_branch" ] && wiki_branch="wiki"
 
 if [ "$wiki_push_failed" = "true" ]; then
-  # reason=commit_rc_4 で start.md Phase 5.6.2 の aggregation pattern と統一する
+  # reason=commit_rc_4 で start.md ステップ 8.6 完了レポートの aggregation pattern と統一する
   # (cleanup 固有情報は source= key で併記)。
   echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; source=cleanup_4W"
   emit_err=$(mktemp /tmp/rite-wiki-pushfail-emit-err-XXXXXX 2>/dev/null) || emit_err=""

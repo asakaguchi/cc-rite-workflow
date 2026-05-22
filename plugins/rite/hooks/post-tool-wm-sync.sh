@@ -82,7 +82,13 @@ if [ ! -f "$LOCAL_WM" ]; then
   log_debug "local WM missing for issue #${issue_number}, auto-creating"
 
   cd "$STATE_ROOT" || exit 0
-  source "$SCRIPT_DIR/work-memory-update.sh" || { log_debug "failed to source work-memory-update.sh"; exit 0; }
+  # source 失敗を RITE_DEBUG 環境変数の有無に依存させると、未設定時に WM 自動作成系の
+  # syntax error / 不在を完全 silent に握り潰す。peer hook (session-end.sh 等) と揃え、
+  # unconditional に WARNING を出して観測性を確保する。
+  source "$SCRIPT_DIR/work-memory-update.sh" || {
+    echo "[rite] WARNING: post-tool-wm-sync: failed to source work-memory-update.sh — local WM 自動作成を skip" >&2
+    exit 0
+  }
   export WM_PLUGIN_ROOT="${WM_PLUGIN_ROOT:-$(dirname "$SCRIPT_DIR")}"
 
   # cycle 12 HIGH F-01: unit separator 統一 (L33 と同じ理由)
@@ -96,10 +102,32 @@ if [ ! -f "$LOCAL_WM" ]; then
   export WM_BODY_TEXT="Local work memory auto-created by PostToolUse hook."
   export WM_ISSUE_NUMBER="$issue_number"
 
+  # update_local_work_memory の rc は: 0=success, 1=skipped (no-op), 2=lock contention,
+  # 3+=write failure。debug-only ログだと自動作成失敗が完全 silent になり、次セッションが
+  # 孤児 WM を読む経路を生む。rc=2 は workflow-incident-emit の canonical 経路に乗せ、
+  # それ以外の失敗は unconditional WARNING で operator が原因にたどり着けるようにする。
   if update_local_work_memory; then
     log_debug "local WM created successfully"
   else
-    log_debug "update_local_work_memory failed (exit $?)"
+    _wm_rc=$?
+    case "$_wm_rc" in
+      1)
+        log_debug "update_local_work_memory skipped (rc=1)"
+        ;;
+      2)
+        echo "[rite] WARNING: post-tool-wm-sync: local WM 作成が lock 競合で失敗 (rc=2)。次の sync で再試行されます。" >&2
+        _EMIT_SH="$SCRIPT_DIR/workflow-incident-emit.sh"
+        if [ -x "$_EMIT_SH" ]; then
+          bash "$_EMIT_SH" \
+            --type local_wm_update_lock_failed \
+            --details "post-tool-wm-sync auto-create failed (rc=2, lock contention)" \
+            --pr-number 0 >&2 || true
+        fi
+        ;;
+      *)
+        echo "[rite] WARNING: post-tool-wm-sync: local WM 作成が rc=$_wm_rc で失敗 (write error / disk full / permissions?)。" >&2
+        ;;
+    esac
   fi
   exit 0
 fi
@@ -155,8 +183,16 @@ case "$_phase" in
   phase5_lint|phase5_post_lint|phase5_post_execute|phase5_pr*|phase5_post_review|phase5_post_ready|implement|lint|pr|review|fix|completed)
     cd "$STATE_ROOT" || { log_debug "cd STATE_ROOT failed"; exit 0; }
 
-    _base_branch=$(grep -E '^  base:' "$STATE_ROOT/rite-config.yml" 2>/dev/null | sed 's/.*base:[[:space:]]*"\?\([^"]*\)"\?.*/\1/' || echo "develop")
-    [ -n "$_base_branch" ] || _base_branch="develop"
+    # base branch を rite-config.yml から awk で抽出する。grep|sed の pipe では pipefail 無し
+    # で sed の rc が握り潰され、config 不在 / permission denied / `base:` key 欠落の全てが
+    # silent な `develop` fallback に集約されていた。awk の rc を独立 capture し fallback
+    # 発動を RITE_DEBUG 時に観測可能にする。
+    _base_rc=0
+    _base_branch=$(awk '/^[[:space:]]+base:/ { sub(/^[[:space:]]+base:[[:space:]]*/, ""); gsub(/["'"'"'\r]/, ""); sub(/[[:space:]]+$/, ""); print; exit }' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || _base_rc=$?
+    if [ -z "$_base_branch" ] || [ "$_base_rc" -ne 0 ]; then
+      _base_branch="develop"
+      [ -n "${RITE_DEBUG:-}" ] && log_debug "rite-config.yml の base 取得が rc=$_base_rc / 空。default 'develop' にフォールバック"
+    fi
 
     # mktemp fallback uses $$ + $RANDOM to avoid TOCTOU collision when two
     # Claude Code sessions share a PID; pure $$ on /tmp is race-prone.

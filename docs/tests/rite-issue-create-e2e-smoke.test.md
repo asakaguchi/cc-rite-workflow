@@ -2,7 +2,7 @@
 
 **Issue**: #552 / Extends: #525
 
-本書は `/rite:issue:create` の「sub-skill return 直後の自動継続」と「ユーザー向け完了メッセージ」を検証するための手動 smoke test 手順を定める。既存の Phase 5.4.4.1 sentinel detection と異なり、回帰検出のために人間の目視確認が必要な項目を列挙する。
+本書は `/rite:issue:create` の「sub-skill return 直後の自動継続」と「ユーザー向け完了メッセージ」を検証するための手動 smoke test 手順を定める。既存の `start.md` ステップ 8.5 sentinel detection と異なり、回帰検出のために人間の目視確認が必要な項目を列挙する。
 
 ## 目的
 
@@ -44,9 +44,9 @@
   2. ステップ 3.1 規模判定 → 単一 Issue
   3. ステップ 4.1 Issue 情報確認 → 承認
   4. ステップ 4.3 `create-issue-with-projects.sh` 実行
-  5. ステップ 4.4 `✅ Issue #{N} を作成しました` テーブル出力
-  6. ステップ 6 共通完結処理（次のステップ案内）
-  7. `<!-- [create:completed:{N}] -->` （HTML コメント sentinel、user-visible な最終行は完了メッセージ）
+  5. ステップ 4.4 `✅ Issue #{N} を作成しました` テーブル + 次のアクション
+  6. `<!-- [create:completed:{N}] -->` HTML コメント sentinel (ステップ 4.4 末尾、user-visible な最終行は完了メッセージ)
+  7. ステップ 6 flow-state 完結 (silent)
 
 - ユーザーが `continue` を入力する必要がない
 - Issue が GitHub 上に実際に作成され、Projects に Status=Todo / Priority / Complexity が設定される
@@ -117,7 +117,9 @@ flow-state は `flow-state-update.sh` 経由で生成する (手動作成は sch
 
 ### Scenario 4a: implicit stop シミュレート
 
-1. flow-state を `create_post_interview` で初期化 (上記コマンド)
+> **Note**: 本シナリオの `create_post_interview` は flat workflow 統合により書き込み経路が無くなった legacy phase 名。`flow-state-update.sh create` は forward-compat で未知 phase でも受容するため初期化は通る。本シナリオの testing 目的は、`rite_phase_is_create_lifecycle_in_progress` predicate が legacy create_* phase を依然として検出できる契約 (forward-compat) を保証することにある。
+
+1. flow-state を `create_post_interview` で初期化 (上記コマンド)。phase 名が legacy であることは意図的な setup
 2. Claude Code で `/clear` → `/rite:issue:start <N>` を再実行し、前セッションの implicit stop を模した state を残したまま再開
 3. start.md ステップ 8.5 retrospective scan が `manual_fallback_adopted` キーワードを会話コンテキストから検出し、tracking Issue を auto-register することを確認
 

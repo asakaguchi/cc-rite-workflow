@@ -809,7 +809,7 @@ messages:
   lint_skipped: "lint をスキップしました。"
   lint_skip_reason: "理由: lint コマンド未検出"
   lint_skip_next_step: "必要に応じて `/rite:pr:create` で PR 作成"
-  lint_flow_continue: "🔄 **フロー継続**: 呼び出し元の `/rite:issue:start` が ステップ 4.4（チェックリスト確認）を実行"
+  lint_flow_continue: "🔄 **フロー継続**: 呼び出し元の `/rite:issue:start` が ステップ 6（PR 作成）を実行"
   lint_command_prompt: "使用する lint コマンドを入力してください（例: npm run lint, ruff check .）"
   lint_command_other: "他のコマンドを入力（Other を選択）"
   lint_check_path_correct: "パスが正しいか確認"

@@ -1,14 +1,12 @@
 # Bulk Sub-Issue Creation Pattern — 単一 Bash invocation での Pre-amble + Per-Sub-Issue body + linkage 連結
 
-> **Source of Truth**: 本ファイルは `/rite:issue:create` ワークフローにおける **XL 分解パスでの bulk Sub-Issue creation** の **Pre-amble + Per-Sub-Issue body の連結パターン** の SoT である。caller は `commands/issue/create.md` ステップ 5.3-5.4 (PR #1079 で旧 `create-decompose.md` Phase 0.9.2 を flat 化統合)。bash literal の正規定義は本 reference に集約する。
->
-> **抽出経緯**: 旧 `create-decompose.md` Phase 0.9.2 (旧 lines 363-505、約 140 行) には Pre-amble bash block / Per-Sub-Issue body bash block / Critical guard 警告 / Sub-Issue body structure / Placeholder descriptions / Error handling が集約されており、本体ファイルの認知負荷を高めていた。これを Issue #773 (#768 P1-3) PR 8/8 で本 reference に移管し、本体には **概要 + AC-1 critical 警告 (NFR-2 protected で本体に残す) + 本 reference への参照リンク** のみを残す形にスリム化した。PR #1079 で旧 sub-skill ファイルは削除されたため、現在は `create.md` ステップ 5.3-5.4 が caller。
+> **Source of Truth**: 本ファイルは `/rite:issue:create` ワークフローにおける **XL 分解パスでの bulk Sub-Issue creation** の **Pre-amble + Per-Sub-Issue body の連結パターン** の SoT。caller は `commands/issue/create.md` ステップ 5.3 + 5.4 + 5.5 Step 1 統合ブロックの 5.4 部分。bash literal の正規定義は本 reference に集約する。
 >
 > **NFR-2 (本体保持)**: AC-1 enforcement boundary に関する critical 警告 (`single-Bash-invocation requirement` / `silent-skip risk` の 2 文) は **`create.md` ステップ 5.3-5.4 本体に残す**。理由: AC-1 enforcement boundary の同 turn 警告は空配列 fail-fast との因果関係を保つため、本体読込時に LLM が認識できる位置にある必要がある。本 reference は **手順詳細とコードリテラル** を集約し、警告そのものは本体側 SoT を維持する。
 
 ## 位置づけ
 
-`commands/issue/create.md` ステップ 5.3-5.4 (Bulk Sub-Issue Creation, PR #1079 で旧 `create-decompose.md` Phase 0.9 を flat 化統合) は以下の 6 step で構成される:
+`commands/issue/create.md` ステップ 5.3-5.4 (Bulk Sub-Issue Creation) は以下の 6 step で構成される:
 
 | Step | 役割 | SoT |
 |------|------|-----|

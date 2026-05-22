@@ -206,6 +206,8 @@ fi
 
 ### 4.4 完了レポート
 
+完了レポートの最終行は `<!-- [create:completed:{issue_number}] -->` HTML コメント sentinel とし、user-visible な末端は `✅ ...` 完了メッセージで終わる。sentinel は hook / grep 契約のため必須だが、HTML コメント化することでユーザーに「完了したのか途中なのか」の判別を阻害しない。
+
 ```markdown
 ✅ Issue #{issue_number} を作成しました
 
@@ -220,6 +222,8 @@ fi
 ### 次のアクション
 - `/rite:issue:start {issue_number}` で作業を開始
 - または `/rite:pr:create` で Issue なしで PR を作成
+
+<!-- [create:completed:{issue_number}] -->
 ```
 
 ステップ 6（共通完結処理）へ。
@@ -501,6 +505,8 @@ fi
 
 ### 5.6 完了レポート
 
+Decompose path も完了レポートの最終行は `<!-- [create:completed:{parent_issue_number}] -->` HTML コメント sentinel で終わる。Single Issue path と同じく、sentinel は hook / grep 契約のため必須で、HTML コメント化することで user-visible な末端は `✅ ...` 完了メッセージとなる。`link_failures > 0` 時の警告ブロックは sentinel より前に挿入する。
+
 ```markdown
 ✅ Issue #{parent_issue_number} を分解して {sub_count} 件の Sub-Issue を作成しました
 
@@ -515,9 +521,11 @@ fi
 ### 次のアクション
 - `/rite:issue:start {first_sub_issue}` で最初の Sub-Issue から作業を開始
 - `/rite:issue:list` で全 Sub-Issue 一覧を確認
+
+<!-- [create:completed:{parent_issue_number}] -->
 ```
 
-`link_failures > 0` の場合は上記レポート末尾に以下を併記し、ユーザーに復旧を促す:
+`link_failures > 0` の場合は完了メッセージと sentinel の間に以下を併記し、ユーザーに復旧を促す:
 
 ```markdown
 ### ⚠️ Sub-issues API リンク失敗 ({link_failures} 件)
@@ -533,6 +541,8 @@ fi
 ## ステップ 6: 共通完結処理
 
 ### 6.1 flow-state 完結
+
+`--preserve-error-count` は terminal phase 遷移で `.error_count` を 0 リセットせず温存する。現時点で `.error_count` を読む reader は無いが、再導入時の累積カウントが意図せずリセットされないよう半 legacy schema slot として保持する (reserved API)。
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \

@@ -104,10 +104,20 @@ if acquire_wm_lock "$LOCKDIR"; then
     TMP_FILE=""
   fi
 
-  # Determine active issue from flow state
+  # Determine active issue from flow state. jq stderr を完全抑止していると corrupt JSON が
+  # silent に branch name fallback (下の if) に降格して snapshot が誤った issue 番号で保存される。
+  # RITE_DEBUG 時に詳細を log してトリアージ可能にする。
   ACTIVE_ISSUE="null"
   if [ -f "$FLOW_STATE" ]; then
-    ACTIVE_ISSUE=$(jq -r '.issue_number // "null"' "$FLOW_STATE" 2>/dev/null) || ACTIVE_ISSUE="null"
+    _ai_err=$(mktemp 2>/dev/null) || _ai_err=""
+    _ai_rc=0
+    ACTIVE_ISSUE=$(jq -r '.issue_number // "null"' "$FLOW_STATE" 2>"${_ai_err:-/dev/null}") || _ai_rc=$?
+    if [ "$_ai_rc" -ne 0 ] || [ -z "$ACTIVE_ISSUE" ]; then
+      [ -n "${RITE_DEBUG:-}" ] && echo "[rite] DEBUG: pre-compact: .issue_number jq 失敗 (rc=$_ai_rc) — branch name fallback へ降格" >&2
+      [ -n "${RITE_DEBUG:-}" ] && [ -n "$_ai_err" ] && [ -s "$_ai_err" ] && head -3 "$_ai_err" | sed 's/^/  /' >&2
+      ACTIVE_ISSUE="null"
+    fi
+    [ -n "$_ai_err" ] && rm -f "$_ai_err"
   fi
 
   # Validate ACTIVE_ISSUE is numeric before --argjson

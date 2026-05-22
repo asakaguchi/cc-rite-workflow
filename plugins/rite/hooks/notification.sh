@@ -61,7 +61,17 @@ EVENT_DATA="${2:-}"    # Reserved for future use (JSON data about the event).
 # outage doesn't cause notifications to silently stop arriving.
 _send_webhook() {
     local channel="$1" webhook_url="$2" payload="$3"
-    [ -n "$webhook_url" ] && [[ "$webhook_url" =~ ^https:// ]] || return 0
+    # 設定ミス (空文字 / typo / http:// で指定 / 末尾空白) を silent skip すると、配線時に
+    # 通知が届かない原因が特定できない。RITE_DEBUG 時は理由を log に残し、操作者が
+    # config を見直せるようにする。
+    if [ -z "$webhook_url" ]; then
+      [ -n "${RITE_DEBUG:-}" ] && echo "[rite] DEBUG: notification webhook=$channel skipped (URL empty)" >&2
+      return 0
+    fi
+    if ! [[ "$webhook_url" =~ ^https:// ]]; then
+      [ -n "${RITE_DEBUG:-}" ] && echo "[rite] DEBUG: notification webhook=$channel skipped (URL must start with https://)" >&2
+      return 0
+    fi
     local _curl_err
     _curl_err=$(mktemp 2>/dev/null) || _curl_err=""
     # `if ! curl` would invert the exit status, leaving `$?` as 0 inside the

@@ -127,6 +127,54 @@ else
 fi
 echo ""
 
+# ─── TC-004: close mode happy path (--issue N) ─────────────────
+# /rite:issue:close 呼び出し時の標準フロー: 指定 Issue の work memory のみを削除し、
+# 他 Issue の wm は残す。逆に他 Issue を巻き込んで消すと進行中作業の状態が失われる。
+echo "TC-004: --issue N close mode removes only the specified issue's wm"
+dir004="$TEST_DIR/tc004"
+mkdir -p "$dir004/.rite-work-memory"
+echo "# wm 50" > "$dir004/.rite-work-memory/issue-50.md"
+echo "# wm 51" > "$dir004/.rite-work-memory/issue-51.md"
+( cd "$dir004" && bash "$HOOK" --issue 50 >/dev/null 2>&1 ) || true
+if [ ! -f "$dir004/.rite-work-memory/issue-50.md" ] \
+   && [ -f "$dir004/.rite-work-memory/issue-51.md" ]; then
+  pass "TC-004 close mode: target removed, other issue preserved"
+else
+  fail "TC-004 close mode side-effects wrong: target removed=$([ ! -f "$dir004/.rite-work-memory/issue-50.md" ] && echo y || echo n), other preserved=$([ -f "$dir004/.rite-work-memory/issue-51.md" ] && echo y || echo n)"
+fi
+echo ""
+
+# ─── TC-005: --issue 引数が非数値なら拒否 ─────────────────────
+# 数値バリデーション (cleanup-work-memory.sh L36) が抜けると、後段で --argjson に
+# 非数値が流れ込み、別の Issue を巻き込むまたは jq エラーで全体が止まる。
+echo "TC-005: --issue with non-numeric value exits 1 with ERROR"
+dir005="$TEST_DIR/tc005"
+mkdir -p "$dir005"
+err005="$TEST_DIR/tc005.err"
+rc005=0
+( cd "$dir005" && bash "$HOOK" --issue abc 2>"$err005" >/dev/null ) || rc005=$?
+if [ "$rc005" != 0 ] && grep -q "must be a positive integer" "$err005"; then
+  pass "TC-005 non-numeric --issue rejected (rc=$rc005, ERROR emitted)"
+else
+  fail "TC-005 expected rc!=0 + 'must be a positive integer' ERROR, got rc=$rc005, stderr: $(head -3 "$err005")"
+fi
+echo ""
+
+# ─── TC-006: --issue 引数欠落の検出 ───────────────────────────
+# --issue を書き忘れた場合に next-token が値として読まれて誤動作するのを防ぐ。
+echo "TC-006: --issue with missing value exits 1 with ERROR"
+dir006="$TEST_DIR/tc006"
+mkdir -p "$dir006"
+err006="$TEST_DIR/tc006.err"
+rc006=0
+( cd "$dir006" && bash "$HOOK" --issue 2>"$err006" >/dev/null ) || rc006=$?
+if [ "$rc006" != 0 ] && grep -q "requires a number" "$err006"; then
+  pass "TC-006 missing --issue value rejected (rc=$rc006, ERROR emitted)"
+else
+  fail "TC-006 expected rc!=0 + 'requires a number' ERROR, got rc=$rc006, stderr: $(head -3 "$err006")"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

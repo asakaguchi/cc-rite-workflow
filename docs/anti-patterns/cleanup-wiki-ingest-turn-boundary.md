@@ -44,7 +44,7 @@ last_updated: 2026-04-24T21:15:00+09:00
 | Pre-check list Item 0-3 | `cleanup.md` | LLM の self-check で routing dispatcher + state check |
 | 🚨 Mandatory After Wiki Ingest Step 1 | `cleanup.md` Phase 4.W 末尾 | `cleanup_post_ingest` patch を即時実行 |
 | `stop-guard.sh` の phase block | `hooks/stop-guard.sh` | `cleanup_pre_ingest` / `cleanup_post_ingest` phase で `end_turn` を block し `manual_fallback_adopted` sentinel emit |
-| `workflow_incident` 検出 | Phase 5.4.4.1 (start.md 配下) | post-hoc で Issue 自動登録 |
+| `workflow_incident` 検出 | start.md ステップ 8.5 | post-hoc で Issue 自動登録 |
 
 ## 根本原因 evidence（Issue #621 S1 Decision Log）
 

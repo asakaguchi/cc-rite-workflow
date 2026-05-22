@@ -108,7 +108,7 @@ fi
 # the next line. A docstring example (single line, inside prose) is allowed —
 # the assertion below requires at least one canonical call but does not block
 # additional documentation mentions.
-link_actual_calls=$(grep -cE 'link-sub-issue\.sh[[:space:]]+\\?$' "$CREATE_MD" || true)
+link_actual_calls=$(grep -cE 'link-sub-issue\.sh[[:space:]]+\\$' "$CREATE_MD" || true)
 link_total_mentions=$(grep -c 'bash.*link-sub-issue\.sh' "$CREATE_MD" || true)
 
 if [ "$link_total_mentions" -ge 1 ]; then

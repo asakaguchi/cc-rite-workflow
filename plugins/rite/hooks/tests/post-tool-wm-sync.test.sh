@@ -353,6 +353,29 @@ else
 fi
 echo ""
 
+# --- TC-FP-1..3: flat workflow phase names exercise the case branch ---
+# Existing TC-001..TC-012 はすべて legacy phase5_* 名で seed する。post-tool-wm-sync.sh
+# の case branch は flat phase 名 (`implement` / `lint` / `pr` / `review` / `fix`) も
+# accept しているが、これらは一切 exercise されていないため、case branch から flat 名
+# が誤って削除されてもテストが PASS してしまう経路があった。本群でその穴を塞ぐ。
+for flat_phase in implement lint pr; do
+  echo "TC-FP-${flat_phase}: flat phase=${flat_phase} → phase change detected (case branch coverage)"
+  dir_fp="$TEST_DIR/tc_fp_${flat_phase}"
+  mkdir -p "$dir_fp/.rite-work-memory"
+  echo "existing wm" > "$dir_fp/.rite-work-memory/issue-42.md"
+  # last_synced_phase をあえて違う値にし、phase diff trigger を発火させる。
+  create_state_file "$dir_fp" "{\"active\": true, \"issue_number\": 42, \"phase\": \"${flat_phase}\", \"last_synced_phase\": \"init\"}"
+  export RITE_DEBUG=1
+  run_hook "$dir_fp" || true
+  unset RITE_DEBUG
+  if [ -f "$dir_fp/.rite-flow-debug.log" ] && grep -q "phase changed:" "$dir_fp/.rite-flow-debug.log" 2>/dev/null; then
+    pass "TC-FP-${flat_phase} phase change detected for flat phase=${flat_phase}"
+  else
+    fail "TC-FP-${flat_phase} phase change not detected — case branch may have dropped '${flat_phase})'"
+  fi
+done
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

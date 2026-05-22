@@ -20,7 +20,7 @@
 # Options:
 #   --phase                  Phase value (required for create/patch). Flat enum:
 #                            init / branch / plan / implement / lint / pr /
-#                            review / fix / ready_error / completed
+#                            review / fix / ready / ready_error / completed
 #                            (plus cleanup_* and ingest_* lifecycle phases —
 #                            see phase-transition-whitelist.sh for the full graph)
 #   --issue                  Issue number (create mode, default: 0)

@@ -1,18 +1,16 @@
 # Workflow Incident Detection — ステップ 8.5 SoT
 
-> **Source of Truth**: 本ファイルは `/rite:issue:start` ステップ 8.5 の **Workflow Incident Detection** (sentinel detection / parse / dedupe / AskUserQuestion / create-issue) と Phase 5.0 Step 6 の **`workflow_incident.enabled` parser** の SoT である。`start.md` 本体は anchor reference + sentinel `type` table のみに圧縮し、検出経路の全実装は本ファイルに集約する。
->
-> **抽出経緯**: `start.md` の ステップ 8.5 (旧 line 1309-1555、約 247 行) と Phase 5.0 Step 6 (旧 line 668-692、約 25 行) を本 reference へ移し、本体側の **Detection scope table** と **When to execute table** のみを残す。これにより workflow_incident 検出経路の全実装 (bash literal / 散文 rationale / 5 caller 用 emit pattern) を 1 ファイルへ集約し、本体の認知負荷を下げる。
+> **Source of Truth**: 本ファイルは `/rite:issue:start` ステップ 8.5 の **Workflow Incident Detection** (sentinel detection / parse / dedupe / AskUserQuestion / create-issue) と、workflow 開始時の **`workflow_incident.enabled` parser** の SoT。`start.md` 本体は anchor reference + sentinel `type` table のみに圧縮し、検出経路の全実装は本ファイルに集約する。
 
 ## 概要
 
 ステップ 8.5 は **workflow blockers** (Skill load failure, hook abnormal exit, manual fallback adoption, Wiki ingest skip / failure, Gitignore drift) を sentinel として検出し、AskUserQuestion 経由でユーザー確認のうえ tracking Issue として自動登録する。silent loss を防ぎ、workflow continuation を保証する non-blocking 経路。
 
-実行タイミングは `start.md` の **When to execute table** で 5 callers (lint / pr:create / pr:review / pr:fix / pr:ready) ごとに明示される。本 reference はその全 5 caller から呼び出される共通検出経路を定義する。
+5 つの emit source (lint / pr:create / pr:review / pr:fix / pr:ready) から発火される sentinel を ステップ 8.5 で 1 回 grep 検出する。per-caller 個別実行ではなく、共通検出経路で集約処理する。
 
-## Phase 5.0 Step 6 — `workflow_incident.enabled` parser
+## ステップ 1 — `workflow_incident.enabled` parser
 
-Phase 5.0 で `workflow_incident.enabled` を `rite-config.yml` から読み取り、Phase 5 全体でキャッシュする (ステップ 8.5 で参照)。section 不在時は `true` (default-on)。
+ステップ 1 (準備フェーズ) で `workflow_incident.enabled` を `rite-config.yml` から読み取り、以降のフェーズでキャッシュする (ステップ 8.5 で参照)。section 不在時は `true` (default-on)。
 
 ### Parser correctness
 
@@ -48,7 +46,7 @@ Retain `workflow_incident_enabled` in conversation context. ステップ 8.5 rea
 
 `set -euo pipefail` + ERR trap を有効化した caller (hook 等) は、上記 Canonical bash literal を **そのまま** copy-paste すると silent regression を再発する経路がある。`workflow_incident:` section が `rite-config.yml` に存在しない場合、`grep -E '^[[:space:]]+enabled:'` が no-match で exit 1 を返し、pipefail で pipeline 全体が exit 1 になる。`$(...)` substitution 経由で assignment 文の exit code が non-zero となり、ERR trap が発火して silent exit する経路を生む。
 
-PR #975 cycle 2 CRITICAL では当時 hooks/ 配下に存在した `stop-create-interview-block.sh` (#1079 で撤去済) の `workflow_incident.enabled` parser がまさにこの経路で発火し、Stop hook が user-facing ACTION message を表示せず exit する regression を発生させた。当該 hook は撤去済だが、他の `set -euo pipefail` + ERR trap caller (session-end.sh / pre-tool-bash-guard.sh 等) でも同じ pipefail 経路が再現しうる。canonical (上記) は default 想定で動作するが、strict-mode caller では assignment 末尾 pipeline に `|| true` を追加した以下 variant を使用すること:
+strict-mode caller (session-end.sh / pre-tool-bash-guard.sh 等) では assignment 末尾 pipeline に `|| true` を追加した以下 variant を使用すること:
 
 ```bash
 # Canonical との差分: `tr -d '[:space:]')` → `tr -d '[:space:]' || true)`
@@ -64,8 +62,6 @@ case "$workflow_incident_enabled" in
   *) workflow_incident_enabled="true" ;;  # 不明値 / 空 → default-on
 esac
 ```
-
-> **Drift detection contract — retired in #1079**: `stop-create-interview-block.sh` と `sentinel-visibility-rule.test.sh` は #1079 で撤去されたため、本 subsection の 3 点 assert (heading 存在 / variant bash literal `tr -d '[:space:]' || true` / strict-mode caller の `|| true` guard 保持) は無効化された。新規 strict-mode caller を追加する場合は、本 reference の variant pattern を採用すること自体は依然として canonical な書き方として有効である (Issue #978 は historical record として保持)。
 
 ## ステップ 8.5 — Workflow Incident Detection
 
@@ -111,7 +107,7 @@ sentinel 未発見時は **silent skip** (rest of phase を実行しない)。
 
 ### Step 3 — Duplicate suppression (session-local)
 
-conversation-context-local set `workflow_incident_processed_types` を維持 (flow state field 不使用、Phase 5.4.3 Step 2.8 re-invoke tracking と同手法)。各 detected sentinel:
+conversation-context-local set `workflow_incident_processed_types` を維持 (flow state field 不使用、`pr/review.md` Phase 5.4.3 Step 2.8 re-invoke tracking と同手法)。各 detected sentinel:
 
 | Condition | Action |
 |-----------|--------|
@@ -136,11 +132,11 @@ Root cause hint: {root_cause_hint or "(none)"}
 ### Step 5 — Branch on user choice
 
 - **「はい」**: Step 6 (create Issue) へ進む
-- **「skip」**: `type` を `workflow_incident_processed_types` に追加 (本 session で再質問しない)、`{type, details, root_cause_hint, iteration_id}` を context-local `workflow_incident_skipped` list へ append (Phase 5.6 reporting 用)。成功 skip / step 6 fallthrough 失敗の両経路で本 list へ append し silent loss を防ぐ。
+- **「skip」**: `type` を `workflow_incident_processed_types` に追加 (本 session で再質問しない)、`{type, details, root_cause_hint, iteration_id}` を context-local `workflow_incident_skipped` list へ append (start.md ステップ 8.6 完了レポート用)。成功 skip / step 6 fallthrough 失敗の両経路で本 list へ append し silent loss を防ぐ。
 
 ### Step 6 — Create Issue via common script
 
-> **Reference**: `start.md` Phase 5.2.0.1 (out-of-scope warnings) と同じ Issue Creation pattern を適用。
+> **Reference**: `pr/review.md` Phase 5.2.0.1 (out-of-scope warnings) と同じ Issue Creation pattern を適用。
 
 ```bash
 # trap + cleanup パターンの canonical 説明は ../../pr/references/bash-trap-patterns.md#signal-specific-trap-template 参照
@@ -163,7 +159,7 @@ trap '_rite_start_wi_cleanup; exit 129' HUP
 
 # 4. mktemp 実行 (trap 武装後)
 tmpfile=$(mktemp /tmp/rite-start-wi-body-XXXXXX) || {
-  echo "WARNING: mktemp failed for tmpfile. Skipping incident registration. Adding to workflow_incident_skipped for Phase 5.6 reporting." >&2
+  echo "WARNING: mktemp failed for tmpfile. Skipping incident registration. Adding to workflow_incident_skipped for start.md ステップ 8.6 完了レポート." >&2
   # workflow_incident_skipped に {type, details, root_cause_hint, iteration_id} を追加
   exit 0  # non-blocking guarantee
 }
@@ -188,15 +184,13 @@ BODY_EOF
 
 # AC-10 non-blocking guarantee: Issue body が空 (HEREDOC 失敗 / disk full / inode 枯渇) でも
 # workflow を halt せず、warning + workflow_incident_skipped 追加で fallthrough する。
-# 旧実装の `exit 1` は AC-10 と論理矛盾するため除去
 if [ ! -s "$tmpfile" ]; then
-  echo "WARNING: Issue body is empty (HEREDOC failure?). Skipping incident registration. Adding to workflow_incident_skipped for Phase 5.6 reporting." >&2
-  # context-local list に追加して Phase 5.6.1 で表示する (fallthrough、exit しない)
+  echo "WARNING: Issue body is empty (HEREDOC failure?). Skipping incident registration. Adding to workflow_incident_skipped for start.md ステップ 8.6 完了レポート." >&2
+  # context-local list に追加して start.md ステップ 8.6 で表示する (fallthrough、exit しない)
   # workflow_incident_skipped に {type, details, root_cause_hint, iteration_id} を追加
   # その後 step 7 (processed_types に追加) を実行してから本 step を抜ける
 else
-  # jq -n を別変数に切り出して exit code をチェック
-  # 旧実装は jq parse error を silent に握りつぶしていた
+  # jq parse error を silent に握りつぶさないため、stderr は tempfile に capture する
   jq_err=$(mktemp /tmp/rite-start-wi-jqerr-XXXXXX) || {
     echo "WARNING: mktemp failed for jq_err. Proceeding without jq stderr capture." >&2
     jq_err=""
@@ -222,19 +216,17 @@ else
       },
       options: { source: "workflow_incident", non_blocking_projects: true }
     }' 2>"${jq_err:-/dev/null}"); then
-    # || result="" で AC-10 non-blocking 保証
-    # 旧実装は `result=$(bash ...)` のみで、create-issue-with-projects.sh の非ゼロ exit が
-    # set -e 環境下で bash プロセス自体を kill する経路があった
+    # || result="" で non-blocking 保証。create-issue-with-projects.sh の非ゼロ exit が
+    # set -e 環境下で bash プロセス自体を kill する経路を遮断する。
     result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$json_args") || result=""
   else
     echo "WARNING: jq -n failed to build JSON args (placeholder unsubstituted? --argjson type mismatch?): $(cat "$jq_err" 2>/dev/null || echo '(stderr empty)')" >&2
-    echo "WARNING: Skipping incident registration. Adding to workflow_incident_skipped for Phase 5.6 reporting." >&2
+    echo "WARNING: Skipping incident registration. Adding to workflow_incident_skipped for start.md ステップ 8.6 完了レポート." >&2
     result=""
   fi
-  # 統合 trap が EXIT で削除するため、明示的 rm は不要
 
   if [ -z "$result" ]; then
-    echo "WARNING: create-issue-with-projects.sh returned empty result. Incident retained for Phase 5.6 reporting." >&2
+    echo "WARNING: create-issue-with-projects.sh returned empty result. Incident retained for start.md ステップ 8.6 完了レポート." >&2
     # Fallthrough — non-blocking, do NOT exit
   else
     new_issue_url=$(printf '%s' "$result" | jq -r '.issue_url // empty')
@@ -242,7 +234,7 @@ else
     if [ -n "$new_issue_url" ]; then
       echo "✅ Workflow incident auto-registered: #${new_issue_number} (${new_issue_url})"
     else
-      echo "WARNING: Issue creation failed (no URL returned). Incident retained for Phase 5.6 reporting." >&2
+      echo "WARNING: Issue creation failed (no URL returned). Incident retained for start.md ステップ 8.6 完了レポート." >&2
     fi
   fi
 fi
@@ -258,7 +250,7 @@ fi
 | **`new_issue_url` is empty** (script return 但し URL なし) | 同上 |
 | **Issue creation succeeded** (`new_issue_url` 非空) | `{new_issue_number, new_issue_url, type, details}` を `workflow_incident_registered` へ append |
 
-両 list は conversation-context-local (flow state 非永続化、`workflow_incident_processed_types` と同手法)。Phase 5.6.1 で「未処理 incident」/「自動登録された incident」 section の source として参照される。
+両 list は conversation-context-local (flow state 非永続化、`workflow_incident_processed_types` と同手法)。start.md ステップ 8.6 完了レポートで「未処理 incident」/「自動登録された incident」 section の source として参照される。
 
 ### Step 7 — Mark processed
 
@@ -268,7 +260,7 @@ fi
 
 ### Non-blocking guarantee
 
-`create-issue-with-projects.sh` が失敗 (network error / API error 等) しても workflow は halt しない。warning を stderr 表示し continue する。incident は `workflow_incident_skipped` に retain され Phase 5.6 で reporting される。**The workflow MUST NOT halt** because incident registration failed.
+`create-issue-with-projects.sh` が失敗 (network error / API error 等) しても workflow は halt しない。warning を stderr 表示し continue する。incident は `workflow_incident_skipped` に retain され start.md ステップ 8.6 完了レポートで報告される。**The workflow MUST NOT halt** because incident registration failed.
 
 ### Phase 7 non-interference
 

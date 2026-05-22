@@ -30,13 +30,13 @@ Mapping information for phase details. Used in work memory session information.
 | `ready_error` | Ready 失敗 (PR は作成済み、Ready 遷移のみ rollback。`/rite:pr:create` を再実行してはならない) | ステップ 8 |
 | `completed` | ワークフロー完了 (`active: false`) | ステップ 8 終端 |
 
-### Legacy (pre-#1079) phase 名
+### Legacy phase 名
 
-旧 sub-skill chain アーキテクチャで使われていた `phase5_*` / `phase1_*` / `phase2_*` / `phase3_*` 系 phase 名は `flow-state-update.sh` には現れなくなった。古い state file が残っている環境では `/rite:resume` が `commands/resume.md` Phase 3.2 の legacy alias 行で routing する。
+旧 sub-skill chain アーキテクチャで使われていた `phase5_*` / `phase1_*` / `phase2_*` / `phase3_*` 系 phase 名は `flow-state-update.sh` の write path からは消滅した。古い state file が残っている環境では `/rite:resume` が `commands/resume.md` Phase 3.2 の legacy alias 行で routing する。
 
-旧 phase 名は `phase-transition-whitelist.sh` 内の `_RITE_PHASE_TRANSITIONS` から削除済 (PR #1079 / I-01 対応)。`rite_phase_transition_allowed` の forward-compat 経路で未知 prev phase は accept されるため (terminal phase への遷移は PR #1079 で canonical predecessor 縮退済)、legacy state file からの非 terminal 遷移は警告無しで通過する。
+旧 phase 名は `phase-transition-whitelist.sh` 内の `_RITE_PHASE_TRANSITIONS` から削除済。`rite_phase_transition_allowed` の forward-compat 経路で未知 prev phase は accept される (terminal phase 以外への遷移は許可、terminal phase への遷移のみ canonical predecessor set による厳密 check)。caller 側 (production hook は predicate のみ使用) の WARNING / ERROR は、predicate の戻り値ではなく caller の判定で生じる。
 
-> **詳細 routing は `commands/resume.md` Phase 3.2 "For rite:issue:start (flat workflow, PR #1079 +)" Legacy phase 名 compatibility 表が SoT**。legacy `phase5_implementation` → ステップ 4 等、具体的なマッピングは resume.md を参照する。
+> **詳細 routing は `commands/resume.md` Phase 3.2 "For rite:issue:start" Legacy phase 名 compatibility 表が SoT**。legacy `phase5_implementation` → ステップ 4 等、具体的なマッピングは resume.md を参照する。
 
 ## Usage Example
 

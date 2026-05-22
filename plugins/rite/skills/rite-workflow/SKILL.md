@@ -62,7 +62,9 @@ When activated, this skill provides:
 
 rite workflow の identity は「定義された step を全て実行し、生成物の品質を担保する」ことである。**時間的制約や context 残量を理由にした step の省略は禁止**。残量の推論も禁止。context が実際に枯渇した場合の正規経路は `/clear` + `/rite:resume` の組合せであり、LLM が自己判断でワークフローを短縮する経路は存在しない。
 
-**さらに、workflow は途中で止まらない。そして最後のわけのわからない出力で終わらない。** sub-skill の return tag (`[lint:*]` / `[pr:created:N]` / `[review:*]` / `[fix:*]` / `[ready:completed]` / `[create:completed:{N}]` 等) は **turn 境界ではなく継続トリガ** である。ユーザー介入 (`continue` 入力) を要求せずに、同 turn 内で次 phase へ進む。また、ワークフロー完了時の user-visible な最終行は sentinel marker ではなく「✅ Issue #{N} を作成しました: {url}」のような人間可読な完了メッセージで終わる。sentinel marker は hook/grep 契約のため出力は保持するが、HTML コメント化等で user-visible な末端に孤立させない。
+**さらに、workflow は途中で止まらない。そして最後のわけのわからない出力で終わらない。** sub-skill の return tag (`[lint:*]` / `[pr:created:N]` / `[review:*]` / `[fix:*]` / `[ready:completed]`) は **turn 境界ではなく継続トリガ** である。ユーザー介入 (`continue` 入力) を要求せずに、同 turn 内で次 phase へ進む。
+
+`create.md` の flat workflow 終端で出力される `[create:completed:{N}]` HTML コメント marker は sub-skill return tag ではなく、create.md 内で完結する terminal sentinel である (hook / grep 契約のため必須)。ワークフロー完了時の user-visible な最終行は sentinel marker ではなく「✅ Issue #{N} を作成しました: {url}」のような人間可読な完了メッセージとし、sentinel は HTML コメント化等で user-visible な末端に孤立させない。
 
 | 禁止事項 | 正規経路 |
 |---------|---------|

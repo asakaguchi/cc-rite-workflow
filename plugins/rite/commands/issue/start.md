@@ -795,6 +795,8 @@ esac
 
 ### 8.7 flow-state 完結
 
+`--preserve-error-count` は terminal phase 遷移で `.error_count` を 0 リセットせず温存する。現時点で `.error_count` を読む reader は無いが、再導入時の累積カウントが意図せずリセットされないよう半 legacy schema slot として保持する (reserved API)。
+
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
   --phase completed --active false --next "none" \

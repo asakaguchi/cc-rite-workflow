@@ -75,12 +75,23 @@ assert_in_start "ready:completed literal" '\[ready:completed\]'
 assert_in_start "ready:error literal" '\[ready:error\]'
 
 echo ""
-echo "=== WORKFLOW_INCIDENT inline emit pattern ==="
-# Inline emit (`echo "[CONTEXT] WORKFLOW_INCIDENT=1; type=..."`) と
-# helper invoke (`workflow-incident-emit.sh --type ...`) の両形式どちらかが
-# 最低 1 回登場すること。これにより 5.4.4.1 検出経路と互換性のある
-# emit 経路が start.md から消えていないことを保証する。
-assert_in_start "WORKFLOW_INCIDENT emit (inline or helper)" '(\[CONTEXT\] WORKFLOW_INCIDENT=1; type=|workflow-incident-emit\.sh --type)'
+echo "=== WORKFLOW_INCIDENT emit patterns ==="
+# inline emit (`echo "[CONTEXT] WORKFLOW_INCIDENT=1; type=..."`) と helper invoke
+# (`workflow-incident-emit.sh --type ...`) を OR で 1 つの assert にすると、片方が
+# 完全に消えても残った形式で PASS する fragility (3-method OR alternation 問題と同型)
+# が出る。両形式が最低 1 回ずつ登場することを独立 assertion で pin する。
+inline_wf_count=$(grep -cE '\[CONTEXT\] WORKFLOW_INCIDENT=1; type=' "$START_MD" || true)
+if [ "$inline_wf_count" -ge 1 ]; then
+  pass "WORKFLOW_INCIDENT inline emit present (>=1, got $inline_wf_count)"
+else
+  fail "WORKFLOW_INCIDENT inline emit missing — context grep 検出経路の inline form が start.md から消滅"
+fi
+helper_wf_count=$(grep -cE 'workflow-incident-emit\.sh --type' "$START_MD" || true)
+if [ "$helper_wf_count" -ge 1 ]; then
+  pass "WORKFLOW_INCIDENT helper invoke present (>=1, got $helper_wf_count)"
+else
+  fail "WORKFLOW_INCIDENT helper invoke missing — workflow-incident-emit.sh への delegate が start.md から消滅"
+fi
 
 echo ""
 echo "=== Resume Dispatch ステップ 0 (H-2 fix) ==="

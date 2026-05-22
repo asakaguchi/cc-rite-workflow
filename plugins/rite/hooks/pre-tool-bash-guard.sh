@@ -72,7 +72,17 @@ fi
 #
 # All three field extractions share a single jq invocation; the original
 # three-jq layout would triple subprocess fork overhead on the PreToolUse hot path.
-JQ_OUT=$(echo "$INPUT" | jq -r '[(.transcript_path // ""), (.subagent_type | strings // ""), (.agent_type | strings // "")] | @tsv' 2>/dev/null) || JQ_OUT=$'\t\t'
+# jq 失敗時の空 fallback は subagent 判定経路を silent に外す危険があるため、stderr を
+# tempfile capture し、RITE_DEBUG 設定時は失敗詳細を debug log へ追記する。security 防御層
+# (subagent 限定の Tier 3 ガード等) が silent bypass される経路を観測できるようにする。
+_jq_input_err=$(mktemp 2>/dev/null) || _jq_input_err=""
+JQ_OUT=$(echo "$INPUT" | jq -r '[(.transcript_path // ""), (.subagent_type | strings // ""), (.agent_type | strings // "")] | @tsv' 2>"${_jq_input_err:-/dev/null}") || JQ_OUT=$'\t\t'
+if [ -n "${RITE_DEBUG:-}" ] && [ -n "$_jq_input_err" ] && [ -s "$_jq_input_err" ]; then
+  printf '[%s] pre-tool-bash-guard: jq input parse stderr: %s\n' \
+    "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$(head -c 200 "$_jq_input_err" | tr '\n' ' ')" \
+    >> "${STATE_ROOT:-/tmp}/.rite-flow-debug.log" 2>/dev/null || true
+fi
+[ -n "$_jq_input_err" ] && rm -f "$_jq_input_err"
 TRANSCRIPT_PATH=$(printf '%s' "$JQ_OUT" | cut -f1)
 INPUT_SUBAGENT_TYPE=$(printf '%s' "$JQ_OUT" | cut -f2)
 INPUT_AGENT_TYPE=$(printf '%s' "$JQ_OUT" | cut -f3)
@@ -95,12 +105,25 @@ fi
 # If heredoc extraction or simple pattern matching crashes (e.g., edge-case
 # failures with large multiline input), allow the command rather than blocking it.
 # Placed after JSON parsing (which has its own || fallbacks) to preserve
-# error detection for malformed hook input (TC-016).
+# error detection for malformed hook input.
 #
 # Scope this trap to Patterns 1-3 only. Pattern 5 does complex state-file ops
 # and needs explicit per-call fallbacks (`|| STATE_PHASE=""` etc.) instead of
 # a blanket fail-open — see the matching `trap - ERR` below.
-trap 'exit 0' ERR
+#
+# ERR trap で `exit 0` (= allow) するため、bash builtin の subtle bug や heredoc
+# extraction の意図せぬ crash が起きると、deny されるべきコマンドが silent に
+# allow に降格する経路がある。RITE_DEBUG 時は fail-open 発火を debug log に
+# 記録して、後追いトリアージを可能にする。
+trap '_rite_btg_pattern13_fail_open' ERR
+_rite_btg_pattern13_fail_open() {
+  if [ -n "${RITE_DEBUG:-}" ]; then
+    printf '[%s] pre-tool-bash-guard: Pattern 1-3 ERR trap fired — command allowed via fail-open\n' \
+      "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+      >> "${STATE_ROOT:-/tmp}/.rite-flow-debug.log" 2>/dev/null || true
+  fi
+  exit 0
+}
 
 # --- Heredoc-safe command extraction ---
 # Strip heredoc content to avoid false positives on text inside commit messages,
@@ -282,10 +305,10 @@ if [ -z "$BLOCKED_PATTERN" ]; then
   trap 'exit 0' ERR
 fi
 
-# Pattern 4: Reviewer subagent running state-mutating git commands (Issue #442).
+# Pattern 4: Reviewer subagent running state-mutating git commands.
 # Scope: only when IS_SUBAGENT=1 (transcript_path contains "/subagents/").
 # Main-session git operations (branch switch, commit, etc. performed by
-# /rite:issue:start Phase 5.1) are NOT affected because IS_SUBAGENT=0 there.
+# /rite:issue:start → implement.md Phase 5.1) are NOT affected because IS_SUBAGENT=0 there.
 #
 # Allowed read-only git commands (NOT matched below):
 #   - git diff / git log / git show / git blame / git status / git ls-files /

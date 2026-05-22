@@ -137,7 +137,19 @@ fi
 # Step 4: Verify and report
 remaining=0
 if [ -d "$WM_DIR" ]; then
-  remaining=$(find "$WM_DIR" -name 'issue-*.md' -type f 2>/dev/null | wc -l | tr -d ' ') || remaining=0
+  # find の stderr を捨てると permission denied で 1 件も走査できなかった場合に「残存: 0 件」
+  # と誤報告される。stderr は tempfile に capture し、非空なら WARNING を出して残存件数を
+  # 「unknown」扱いにすることで silent corruption を防ぐ。
+  _find_err=$(mktemp 2>/dev/null) || _find_err=""
+  _find_out=$(find "$WM_DIR" -name 'issue-*.md' -type f 2>"${_find_err:-/dev/null}" | wc -l | tr -d ' ') || _find_out=""
+  if [ -n "$_find_err" ] && [ -s "$_find_err" ]; then
+    echo "WARNING: cleanup-work-memory: find $WM_DIR で stderr を観測 (permission denied / IO error 等)。残存件数は信頼できません。" >&2
+    head -3 "$_find_err" | sed 's/^/  /' >&2
+    remaining="unknown"
+  else
+    remaining="${_find_out:-0}"
+  fi
+  [ -n "$_find_err" ] && rm -f "$_find_err"
 fi
 
 echo "削除: ${deleted_count} 件, 失敗: ${failed_count} 件, 残存: ${remaining} 件"

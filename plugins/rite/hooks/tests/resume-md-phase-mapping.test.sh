@@ -41,14 +41,47 @@ source "$WHITELIST_SH"
 FLAT_PHASES=(init branch plan implement lint pr review fix ready ready_error completed)
 
 # ──────────────────────────────────────────────────────────────────────
-# (a) Phase 3.2 主表に 11 phase 全てが row を持つ
+# (a) Phase 1.3 (Extract Phase Information) と Phase 3.2 (Command-Specific
+#     Resume Processing) の双方が 11 phase 全ての row を持つ。
+#
+# ファイル全体 grep だと片方の表に row があれば PASS してしまい、もう一方の
+# 表で行欠落 (例えば Phase 1.3 から ready/ready_error が落ちている) を検出
+# できない。各 section 範囲を heading 起点で抽出して独立に検証する。
 # ──────────────────────────────────────────────────────────────────────
+
+# 指定 section 内の行を抽出。同 level (`### `) 以上のヘッダで止め、`#### ` 等のサブセクションは
+# 同 section 内として扱う (resume.md の Phase 3.2 は `#### For rite:issue:start` を含むため)。
+extract_section() {
+  local file="$1" start_re="$2"
+  awk -v start_re="$start_re" '
+    $0 ~ start_re { in_section = 1; next }
+    in_section && /^### [^#]/ { in_section = 0 }
+    in_section && /^## [^#]/ { in_section = 0 }
+    in_section && /^# [^#]/ { in_section = 0 }
+    in_section { print }
+  ' "$file"
+}
+
+PHASE_1_3="$(extract_section "$RESUME_MD" "^### 1\\.3 ")"
+PHASE_3_2="$(extract_section "$RESUME_MD" "^### 3\\.2 ")"
+
+if [ -z "$PHASE_1_3" ]; then
+  fail "TC-A0 Phase 1.3 section not found in resume.md (heading drift?)"
+fi
+if [ -z "$PHASE_3_2" ]; then
+  fail "TC-A0 Phase 3.2 section not found in resume.md (heading drift?)"
+fi
+
 for phase in "${FLAT_PHASES[@]}"; do
-  # 行頭 `| \`<phase>\` |` を緩く拾う (空白許容)
-  if grep -qE "^\|[[:space:]]*\`${phase}\`[[:space:]]*\|" "$RESUME_MD"; then
-    pass "TC-A1 resume.md has row for phase=${phase}"
+  if printf '%s\n' "$PHASE_1_3" | grep -qE "^\|[[:space:]]*\`${phase}\`[[:space:]]*\|"; then
+    pass "TC-A1 Phase 1.3 has row for phase=${phase}"
   else
-    fail "TC-A1 resume.md missing row for phase=${phase}"
+    fail "TC-A1 Phase 1.3 missing row for phase=${phase}"
+  fi
+  if printf '%s\n' "$PHASE_3_2" | grep -qE "^\|[[:space:]]*\`${phase}\`[[:space:]]*\|"; then
+    pass "TC-A2 Phase 3.2 has row for phase=${phase}"
+  else
+    fail "TC-A2 Phase 3.2 missing row for phase=${phase}"
   fi
 done
 

@@ -155,7 +155,7 @@ rite-workflow/
 │   │   ├── close.md         # /rite:issue:close
 │   │   ├── edit.md          # /rite:issue:edit
 │   │   ├── recall.md        # /rite:issue:recall
-│   │   ├── implement.md     # Sub-skill: implementation phase
+│   │   ├── implement.md     # /rite:issue:implement (called by /rite:issue:start ステップ 4)
 │   │   └── references/      # Edge cases, complexity gates, bulk-create patterns
 │   ├── pr/
 │   │   ├── create.md        # /rite:pr:create
@@ -758,6 +758,33 @@ _No review responses_
 
 The Session Info section of the work memory includes phase information indicating the current work state. This information is used by `/rite:resume` for resuming work.
 
+**Flat workflow phase (current / 11 values):**
+
+| Phase | Phase Detail | start.md step |
+|-------|--------------|---------------|
+| `init` | Workflow initialised (Issue identified) | 1 |
+| `branch` | Branch created, ready for plan | 2 |
+| `plan` | Implementation planning in progress | 3 |
+| `implement` | Implementation in progress | 4 |
+| `lint` | Quality check in progress | 5 |
+| `pr` | PR creation in progress | 6 |
+| `review` | Review in progress | 7.1 |
+| `fix` | Review-fix loop in progress | 7.2 |
+| `ready` | `/rite:pr:ready` succeeded; awaiting Projects Status In Review → 完了レポート | 8.3 |
+| `ready_error` | `/rite:pr:ready` failed inside e2e flow; resume routes back to ステップ 8 for retry | 8 |
+| `completed` | Workflow finished | 8 終端 |
+
+Lifecycle sub-rings (managed by `hooks/phase-transition-whitelist.sh`):
+
+| Ring | Phase values |
+|------|--------------|
+| `/rite:pr:cleanup` | `cleanup` / `cleanup_pre_ingest` / `cleanup_post_ingest` / `cleanup_completed` |
+| `/rite:wiki:ingest` | `ingest_pre_lint` / `ingest_post_lint` / `ingest_completed` |
+
+**Legacy phase (forward-compat acceptance only — never newly written):**
+
+Older state files may contain these names from the pre-flat sub-skill chain architecture. `commands/resume.md` Phase 3.2 Legacy compatibility 表 maps them to flat step numbers.
+
 | Phase | Phase Detail |
 |-------|--------------|
 | `phase0` | Epic/Sub-Issues detection |
@@ -767,21 +794,7 @@ The Session Info section of the work memory includes phase information indicatin
 | `phase2` | Branch creation & setup |
 | `phase2_branch` | Branch creation in progress |
 | `phase2_work_memory` | Work memory initialization |
-| `init` | Workflow initialised (Issue identified) |
-| `branch` | Branch created, ready for plan |
-| `plan` | Implementation planning in progress |
-| `implement` | Implementation in progress |
-| `lint` | Quality check in progress |
-| `pr` | PR creation in progress |
-| `review` | Review in progress |
-| `fix` | Review-fix loop in progress |
-| `ready` | `/rite:pr:ready` succeeded; awaiting Projects Status In Review → 完了レポート |
-| `ready_error` | `/rite:pr:ready` failed inside e2e flow; `/rite:resume` routes back to ステップ 8 for retry |
-| `cleanup` / `cleanup_pre_ingest` / `cleanup_post_ingest` / `cleanup_completed` | `/rite:pr:cleanup` lifecycle ring (see `hooks/phase-transition-whitelist.sh`) |
-| `ingest_pre_lint` / `ingest_post_lint` / `ingest_completed` | `/rite:wiki:ingest` lifecycle ring (see `hooks/phase-transition-whitelist.sh`) |
-| `completed` | Workflow finished |
-
-> Legacy phase names (`phase2`, `phase5_implementation`, `phase5_lint`, `phase5_pr`, `phase5_review`, `phase5_fix`, `phase5_post_ready`, etc.) appear in state files written by older versions. `commands/resume.md` Phase 3.2 Legacy compatibility 表 がそれらを flat ステップ番号にマップする。
+| `phase5_implementation` / `phase5_lint` / `phase5_pr` / `phase5_review` / `phase5_fix` / `phase5_post_ready` | sub-skill chain working phases (mapped to `implement` / `lint` / `pr` / `review` / `fix` / `ready` respectively) |
 
 #### Phase 3: Implementation Planning
 
@@ -1299,14 +1312,14 @@ A pair of hooks that automate Experience Wiki integration (opt-out via `wiki.ena
 
 | Hook | Trigger | Action |
 |------|---------|--------|
-| `wiki-ingest-trigger.sh` | Phase 5.4.3 (post review), Phase 5.4.6 (post fix), Issue close | Writes a raw-source file under `.rite/wiki/raw/{type}/` on the dev branch working tree. Pure file writer, no git operations. |
-| `wiki-query-inject.sh` | Phase 2.6 (work memory init), Phase 5.1 (implement), Phase 5.4.1 (review), Phase 5.4.4 (fix) | Runs `/rite:wiki:query` against the current Issue title/body and injects matching heuristics. Reads via `origin/{wiki_branch}` when the local wiki branch is absent (fresh clone / separate worktree; #555). |
+| `wiki-ingest-trigger.sh` | `pr/review.md` Phase 5.4.3 (post review), `pr/fix.md` Phase 5.4.6 (post fix), `commands/issue/close.md` (Issue close) | Writes a raw-source file under `.rite/wiki/raw/{type}/` on the dev branch working tree. Pure file writer, no git operations. |
+| `wiki-query-inject.sh` | start.md ステップ 2.6 (work memory init), `implement.md` Phase 5.1, `pr/review.md` Phase 5.4.1, `pr/fix.md` Phase 5.4.4 | Runs `/rite:wiki:query` against the current Issue title/body and injects matching heuristics. Reads via `origin/{wiki_branch}` when the local wiki branch is absent (fresh clone / separate worktree). |
 
 See [Experience Wiki](#experience-wiki) for the full Phase X.X.W contract and the separate `wiki-ingest-commit.sh` / `wiki-worktree-commit.sh` helpers that actually commit + push raw sources onto the wiki branch.
 
 ### Workflow Incident Emit (`workflow-incident-emit.sh`) (#366)
 
-Emits a single sentinel line of the form `[CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; (root_cause_hint=<hint>; )?iteration_id=<pr>-<epoch>` that `/rite:issue:start` Phase 5.4.4.1 detects via context grep to auto-register workflow blockers as Issues.
+Emits a single sentinel line of the form `[CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; (root_cause_hint=<hint>; )?iteration_id=<pr>-<epoch>` that `/rite:issue:start` ステップ 8.5 detects via context grep to auto-register workflow blockers as Issues.
 
 **Supported `--type` values:** `skill_load_failure` / `hook_abnormal_exit` / `manual_fallback_adopted` / `wiki_ingest_skipped` (#524) / `wiki_ingest_failed` (#524) / `wiki_ingest_push_failed` (#555) / `gitignore_drift` (#567).
 
@@ -1651,7 +1664,7 @@ The rite workflow auto-detects **workflow blockers** during `/rite:issue:start` 
 |------|---------|--------|
 | `skill_load_failure` | Skill tool fails to load (e.g., Markdown parser bash interpretation error) | Orchestrator post-condition check (expected result pattern missing) |
 | `hook_abnormal_exit` | A hook script returns non-zero exit code or stderr ERROR message | Skill internal failure paths (file modification error, work memory PATCH failure, etc.) |
-| `manual_fallback_adopted` | User selects "manual Edit fallback" option in any orchestrator `AskUserQuestion` | Orchestrator fallback prompts (Phase 5.2 lint:aborted, Phase 5.3 pr:create-failed, Phase 5.4.4 fix:error, Phase 5.5 ready:error) |
+| `manual_fallback_adopted` | User selects "manual Edit fallback" option in any orchestrator `AskUserQuestion` | Orchestrator fallback prompts (lint:aborted at start.md ステップ 5, pr:create-failed at ステップ 6, fix:error at `pr/fix.md`, ready:error at `pr/ready.md`) |
 | `wiki_ingest_skipped` (#524) | `wiki.enabled=false` or `wiki.auto_ingest=false` causes Phase X.X.W (`pr/review.md` 6.5.W / `pr/fix.md` 4.6.W / `issue/close.md` 4.4.W) to skip the Wiki ingest pipeline | Sub-skill emits sentinel from Phase X.X.W Step 1 along with `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=...` status line |
 | `wiki_ingest_failed` (#524) | `wiki-ingest-trigger.sh` exits with a non-zero code other than 2 (exit 2 = Wiki disabled/uninitialized = legitimate skip) during Phase X.X.W | Sub-skill emits sentinel from Phase X.X.W Step 3 along with `[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_{n}` status line |
 | `wiki_ingest_push_failed` (#555) | `wiki-ingest-commit.sh` exits 4 — commit landed locally on the wiki branch but origin push failed during Phase X.X.W.2 | Sub-skill emits sentinel along with `[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4` status line |
@@ -1672,16 +1685,16 @@ The `root_cause_hint` field is **optional** and entirely omitted from the sentin
 | `root_cause_hint` | string | no | Optional cause hypothesis (omitted from sentinel if empty) |
 | `iteration_id` | string | yes | `{pr_number}-{epoch_seconds}` for traceability |
 
-Sentinels are emitted by `plugins/rite/hooks/workflow-incident-emit.sh`. Detection happens in `/rite:issue:start` Phase 5.4.4.1 via context grep.
+Sentinels are emitted by `plugins/rite/hooks/workflow-incident-emit.sh`. Detection happens in `/rite:issue:start` ステップ 8.5 via context grep.
 
 ### Detection Logic
 
-1. **Sentinel detection**: Phase 5.4.4.1 grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines after each Skill invocation in Phase 5.
+1. **Sentinel detection**: ステップ 8.5 grep the recent conversation context for `[CONTEXT] WORKFLOW_INCIDENT=1` lines after each Skill invocation in Phase 5.
 2. **Parse fields**: Extract `type`, `details`, `root_cause_hint`, `iteration_id`.
 3. **Duplicate suppression**: A context-local `workflow_incident_processed_types` set tracks types already handled in the current session. Re-occurrences of the same type are silently logged but not re-prompted.
 4. **User confirmation**: `AskUserQuestion` presents the incident details with options "register as Issue (recommended) / skip".
 5. **Issue creation**: On user approval, calls `plugins/rite/scripts/create-issue-with-projects.sh` with `Status: Todo / Priority: High / Complexity: S / source: workflow_incident`.
-6. **Non-blocking error handling**: Failure to create Issue does not abort the workflow. The incident is retained in `workflow_incident_skipped` for Phase 5.6 reporting.
+6. **Non-blocking error handling**: Failure to create Issue does not abort the workflow. The incident is retained in `workflow_incident_skipped` for start.md ステップ 8.6 完了レポート.
 
 ### Configuration
 
@@ -1698,9 +1711,9 @@ The current implementation always behaves as non-blocking (registration failure 
 
 | AC | Behavior | Implementation |
 |----|----------|---------------|
-| AC-1 | Skill load failure detection | `start.md` Phase 5.4.4.1 context grep + skill internal sentinel emit |
+| AC-1 | Skill load failure detection | `start.md` ステップ 8.5 context grep + skill internal sentinel emit |
 | AC-2 | User-approved Issue creation | `create-issue-with-projects.sh` call with `Priority: High / Complexity: S` |
-| AC-3 | Skip path retention | `workflow_incident_skipped` list + Phase 5.6 reporting section |
+| AC-3 | Skip path retention | `workflow_incident_skipped` list + start.md ステップ 8.6 完了レポート section |
 | AC-4 | Same-type dedupe | `workflow_incident_processed_types` context-local set |
 | AC-5 | Hook abnormal exit detection | `workflow-incident-emit.sh --type hook_abnormal_exit` from skill failure paths |
 | AC-6 | Manual fallback detection | Orchestrator fallback prompt options emit `--type manual_fallback_adopted` |
@@ -1711,12 +1724,12 @@ The current implementation always behaves as non-blocking (registration failure 
 
 ### Phase 7 Relationship
 
-Phase 7 (Automatic Issue Creation from review recommendations) and Phase 5.4.4.1 (Workflow Incident Detection) are **independent codepaths** that share only `create-issue-with-projects.sh` as a common helper. Both may run in the same `/rite:issue:start` flow and create separate Issues. There is no logic merging.
+Phase 7 (Automatic Issue Creation from review recommendations) and ステップ 8.5 (Workflow Incident Detection) are **independent codepaths** that share only `create-issue-with-projects.sh` as a common helper. Both may run in the same `/rite:issue:start` flow and create separate Issues. There is no logic merging.
 
 | Phase | Purpose | Source field |
 |-------|---------|--------------|
 | Phase 7 | Issues from reviewer "別 Issue として作成" recommendations | `pr_review` |
-| Phase 5.4.4.1 | Issues from workflow blockers (sentinel-detected) | `workflow_incident` |
+| ステップ 8.5 | Issues from workflow blockers (sentinel-detected) | `workflow_incident` |
 
 ## Experience Wiki
 
@@ -1745,8 +1758,8 @@ When `wiki.auto_ingest`, `wiki.auto_query`, or `wiki.auto_lint` are enabled, the
 
 | Hook | Trigger | Action |
 |------|---------|--------|
-| `wiki-query-inject.sh` | Phase 2.6 (work memory init), Phase 5.1 (implement), Phase 5.4.1 (review), Phase 5.4.4 (fix) | Run `/rite:wiki:query` against the current Issue title/body and inject matching heuristics |
-| `wiki-ingest-trigger.sh` | Phase 5.4.3 (after review), Phase 5.4.6 (after fix), Issue close | Write a raw source file into `.rite/wiki/raw/{type}/` on the dev branch working tree (pure file writer, no git operations) |
+| `wiki-query-inject.sh` | start.md ステップ 2.6 (work memory init), `implement.md` Phase 5.1, `pr/review.md` Phase 5.4.1, `pr/fix.md` Phase 5.4.4 | Run `/rite:wiki:query` against the current Issue title/body and inject matching heuristics |
+| `wiki-ingest-trigger.sh` | `pr/review.md` Phase 5.4.3 (post review), `pr/fix.md` Phase 5.4.6 (post fix), `commands/issue/close.md` (Issue close) | Write a raw source file into `.rite/wiki/raw/{type}/` on the dev branch working tree (pure file writer, no git operations) |
 | `wiki-ingest-commit.sh` | Phase 6.5.W.2 (review), Phase 4.6.W.2 (fix), Phase 4.4.W.2 (close) — immediately after the trigger | Move pending raw sources onto the `wiki` branch and commit + push them **in a single shell process** with no dependency on Claude multi-step orchestration |
 | `/rite:wiki:ingest` | Manual or optional post-commit invocation | LLM-driven page integration: read accumulated raw sources, produce/update wiki pages, refresh `index.md` / `log.md` |
 | `/rite:wiki:lint --auto` | After each successful page integration (when `auto_lint: true`) | Validate Wiki consistency; surface warnings without blocking the workflow |
@@ -1759,14 +1772,14 @@ When `wiki.auto_ingest`, `wiki.auto_query`, or `wiki.auto_lint` are enabled, the
 |-------|-----------|-------|
 | **0. Deterministic raw-commit path** | Phase X.X.W.2 invokes `wiki-ingest-commit.sh` directly as a single shell process. The script stashes raw sources into `/tmp`, removes them from the dev working tree, stashes any remaining unrelated changes, checks out the wiki branch, replays the staged raw sources, commits, pushes, checks out the original branch again, and pops the stash — all within one `bash` invocation. This eliminates dependency on Claude multi-step orchestration (the root cause of the pre-refactor regression where the `wiki` branch never grew despite multiple rounds of layer 1-3 defence — Issues #515, #518, #524). | `hooks/scripts/wiki-ingest-commit.sh`, `pr/review.md`, `pr/fix.md`, `issue/close.md` |
 | **1. Mandatory execution** | Each Phase X.X.W explicitly states "**NEVER** skipped under E2E Output Minimization" and emits an observable `[CONTEXT] WIKI_INGEST_DONE=1` / `WIKI_INGEST_SKIPPED=1; reason=...` / `WIKI_INGEST_FAILED=1; reason=...` line at completion (success / config-skip / commit-failure) | `pr/review.md`, `pr/fix.md`, `issue/close.md` |
-| **2. Sentinel-based observability** | Both legitimate skip (`wiki_ingest_skipped`) and commit failure (`wiki_ingest_failed`) emit workflow-incident sentinels via `workflow-incident-emit.sh`, which `start.md` Phase 5.4.4.1 detects via context grep and surfaces to the user via `AskUserQuestion` | `workflow-incident-emit.sh`, `start.md` Phase 5.4.4.1 |
+| **2. Sentinel-based observability** | Both legitimate skip (`wiki_ingest_skipped`) and commit failure (`wiki_ingest_failed`) emit workflow-incident sentinels via `workflow-incident-emit.sh`, which `start.md` ステップ 8.5 detects via context grep and surfaces to the user via `AskUserQuestion` | `workflow-incident-emit.sh`, `start.md` ステップ 8.5 |
 | **3. Lint growth check** | `lint.md` Phase 3.8 runs `wiki-growth-check.sh` which warns (non-blocking, `[lint:success]` retained) when `wiki.growth_check.threshold_prs` consecutive merged PRs land without a corresponding wiki branch commit. With layer 0 in place, a growth stall is a genuine regression signal (no longer confounded by fragile orchestration), and the warning is worth investigating promptly even though the contract remains non-blocking. | `wiki-growth-check.sh`, `lint.md` Phase 3.8 |
 
 **Responsibility split after the refactor**: `wiki-ingest-commit.sh` commits **raw sources only**. LLM-driven Wiki **page** integration (reading raw sources, deciding create/update/skip, writing `.rite/wiki/pages/*`) is **deferred** to `/rite:wiki:ingest`, which is idempotent over accumulated raw sources and can be invoked at a later, independent time (manually or in a separate session). This separation guarantees that raw sources are never lost even when page integration is skipped or fails.
 
 Layer 3's threshold is configurable via `wiki.growth_check.threshold_prs` (default: 5). Setting it to a very large number effectively disables the lint check while preserving layers 0-2.
 
-The completion report (`start.md` Phase 5.6.2) **always** includes a "Wiki ingest 状況" section that aggregates these signals so the user has a definitive answer about whether the Wiki branch grew during each `/rite:issue:start` invocation. AC-5 of #524 explicitly requires this section to render even when all counters are zero (the absence is itself the regression signal).
+The completion report (`start.md` ステップ 8.6) **always** includes a "Wiki ingest 状況" section that aggregates these signals so the user has a definitive answer about whether the Wiki branch grew during each `/rite:issue:start` invocation. This section is rendered even when all counters are zero — its absence would itself be a regression signal.
 
 ### Relationship to Workflow Incident Detection
 
@@ -1845,7 +1858,7 @@ Sentinel format (when implemented):
 [CONTEXT] WORKFLOW_INCIDENT=1; type=auto_continuation_failed; details=<details>; iteration_id=<pr>-<epoch>
 ```
 
-The sentinel would integrate with the existing Phase 5.4.4.1 detection flow (same as the existing five sentinel types: `skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`, `wiki_ingest_skipped`, `wiki_ingest_failed`) — no new dispatch code is required in the orchestrator. Note: the `type` enum in the "Workflow Incident Detection" section above remains five-valued until `auto_continuation_failed` is implemented.
+The sentinel would integrate with the existing ステップ 8.5 detection flow (same as the existing five sentinel types: `skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`, `wiki_ingest_skipped`, `wiki_ingest_failed`) — no new dispatch code is required in the orchestrator. Note: the `type` enum in the "Workflow Incident Detection" section above remains five-valued until `auto_continuation_failed` is implemented.
 
 ### Acceptance criteria
 
@@ -1862,7 +1875,7 @@ The sentinel would integrate with the existing Phase 5.4.4.1 detection flow (sam
 
 ### Relationship to Workflow Incident Detection
 
-Phase 5.4.4.1 (Workflow Incident Detection) currently treats five sentinel types as contract violations (`skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`, `wiki_ingest_skipped`, `wiki_ingest_failed`). The optional `auto_continuation_failed` sentinel (MAY, scoped to a follow-up PR — see Decision Log D-02 in Issue #525) would integrate via the same flow when implemented; until then, the `type` enum remains five-valued. All sentinel types share the same detection → AskUserQuestion → Issue registration flow via `create-issue-with-projects.sh`.
+ステップ 8.5 (Workflow Incident Detection) currently treats five sentinel types as contract violations (`skill_load_failure`, `hook_abnormal_exit`, `manual_fallback_adopted`, `wiki_ingest_skipped`, `wiki_ingest_failed`). The optional `auto_continuation_failed` sentinel (MAY, scoped to a follow-up PR — see Decision Log D-02 in Issue #525) would integrate via the same flow when implemented; until then, the `type` enum remains five-valued. All sentinel types share the same detection → AskUserQuestion → Issue registration flow via `create-issue-with-projects.sh`.
 
 ## Error Handling
 

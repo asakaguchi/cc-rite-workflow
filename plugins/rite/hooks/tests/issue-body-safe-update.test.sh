@@ -492,4 +492,32 @@ else
 fi
 rm -rf "$mock_bin10"
 
+# TC-25g — additional boundary forms for --original-length validation. The
+# numeric-prefix form `10abc` and whitespace-padded `" 5 "` share the same
+# code path as the pure-alpha `"abc"` of TC-25f, but a future refactor that
+# accidentally tightens the regex to `[0-9]+` matching anywhere would let
+# `10abc` slip through and produce arithmetic-eval errors downstream.
+for invalid_val in "10abc" " 5 " "5e3"; do
+  mock_bin_25g=$(mktemp -d /tmp/rite-mock-bin-25g.XXXXXX)
+  cat > "$mock_bin_25g/gh" <<'GHEOF'
+#!/bin/sh
+exit 0
+GHEOF
+  chmod +x "$mock_bin_25g/gh"
+  tmp_read=$(mktemp)
+  tmp_write=$(mktemp)
+  printf 'sample body' > "$tmp_read"
+  printf 'updated body' > "$tmp_write"
+  rc=0
+  out=$(PATH="$mock_bin_25g:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length "$invalid_val" 2>&1) || rc=$?
+  assert_exit "TC-25g (--original-length=$invalid_val) → exit 0 (non-blocking)" 0 "$rc"
+  if printf '%s' "$out" | grep -qE 'root_cause_hint=original_length_invalid'; then
+    pass "TC-25g (--original-length=$invalid_val) emits root_cause_hint=original_length_invalid"
+  else
+    fail "TC-25g (--original-length=$invalid_val) hint missing — regex may be accepting non-numeric content: $out"
+  fi
+  rm -f "$tmp_read" "$tmp_write"
+  rm -rf "$mock_bin_25g"
+done
+
 print_summary "$(basename "$0")" "If you weaken or remove the 50% shrinkage guard / empty-write rejection / missing-args check / gh-edit error capture / _emit_body_update_incident fallback in issue-body-safe-update.sh, body truncation or silent auth-failure regressions become invisible. Keep the guards intact and update the test if the guards intentionally change."

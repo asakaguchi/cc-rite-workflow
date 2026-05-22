@@ -1318,7 +1318,7 @@ trap - EXIT INT TERM HUP
 
 > **⚠️ MUST execute in the SAME response turn**: `rite:wiki:ingest` の return 直後、応答を終了せずに Step 0 → Step 1 → Step 2 を即座に実行する。Phase 5 (Completion Report) は本セクション経由でのみ実行される唯一の経路。
 >
-> **Defense layers in effect**: (1) the prompt contract in this file telling the LLM not to stop; (2) caller HTML continuation hint (`sub-skill-return-protocol.md` Defense-in-depth layers); (3) retrospective detection — if the LLM stops anyway, `start.md` ステップ 8.5 greps the next session's context for `manual_fallback_adopted` and auto-registers a tracking Issue. There is no Stop hook intercepting `end_turn` and no PostToolUse mechanical enforcement; recovery from an implicit stop is by `/rite:resume`.
+> **Defense layers in effect**: (1) the prompt contract in this file telling the LLM not to stop; (2) caller HTML continuation hint emitted by `wiki/ingest.md` Phase 9.1; (3) retrospective detection — if the LLM stops anyway, `start.md` ステップ 8.5 greps the next session's context for `manual_fallback_adopted` and auto-registers a tracking Issue. There is no Stop hook intercepting `end_turn` and no PostToolUse mechanical enforcement; recovery from an implicit stop is by `/rite:resume`.
 
 **Self-check and branching**:
 
@@ -1329,9 +1329,10 @@ trap - EXIT INT TERM HUP
 **Step 0: Immediate Bash Action**: **MUST execute** this bash block as your **VERY FIRST tool call** after `rite:wiki:ingest` returns (Self-check No branch), **BEFORE any text output, narrative, or response generation**. text output を先に出すと LLM の turn-boundary heuristic が誤発火し implicit stop の経路が開く (Issue #910 で実証)。This replaces the natural turn-boundary point ("the sub-skill finished") with a concrete next tool call. The block re-affirms the flow-state phase (idempotent with Step 1) and, on failure only, emits `[CONTEXT] STEP_0_PATCH_FAILED=1` to stderr.
 
 ```bash
-# --preserve-error-count: 未指定時は patch モードが .error_count = 0 でリセットし、
-#   RE-ENTRY 累積カウントが unreachable になる (累積カウントは
-#   resume.md / phase-transition-whitelist のエスカレーション判定の入力)。
+# --preserve-error-count: patch モードはデフォルトで .error_count = 0 にリセット
+#   するため、未指定だと RE-ENTRY 累積カウントが orchestrator prose
+#   (cleanup.md / wiki/ingest.md の re-entry detection + resume.md の threshold gate)
+#   から unreachable になる。
 # --if-exists: flow state file 不在時は silent skip (defense-in-depth)。
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
     --phase "cleanup_post_ingest" --active true \

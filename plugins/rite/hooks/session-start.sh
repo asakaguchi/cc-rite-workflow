@@ -43,8 +43,9 @@ fi
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
 SOURCE=$(echo "$INPUT" | jq -r '.source // "startup"' 2>/dev/null) || SOURCE="startup"
 
-# Extract session_id from hook JSON payload (#173)
-SESSION_ID=$(extract_session_id "$INPUT" 2>/dev/null) || SESSION_ID=""
+# Pass extract_session_id stderr through so corrupt hook payload WARNINGs reach
+# triage; suppressing them would hide cross-session classification failures.
+SESSION_ID=$(extract_session_id "$INPUT") || SESSION_ID=""
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
 fi

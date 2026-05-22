@@ -33,9 +33,12 @@ fi
 # shellcheck source=/dev/null
 source "$WHITELIST_SH"
 
-# 9 flat workflow phases per PR #1079 design.
-# `completed` is terminal (no further forward transition) but must still be known.
-FLAT_PHASES=(init branch plan implement lint pr review fix completed)
+# Flat workflow phases. `ready` (post-Ready success) and `ready_error` (Ready
+# failure) are first-class flat phases so resume.md routes their state files
+# without falling back to the legacy compat table. `completed` is terminal but
+# must still be known to rite_phase_is_known so callers can detect "no further
+# transition" without misclassifying it as unknown.
+FLAT_PHASES=(init branch plan implement lint pr review fix ready ready_error completed)
 
 # ──────────────────────────────────────────────────────────────────────
 # (a) Phase 3.2 主表に 9 phase 全てが row を持つ

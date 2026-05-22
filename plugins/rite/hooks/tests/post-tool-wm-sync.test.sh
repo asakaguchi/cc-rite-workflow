@@ -327,15 +327,22 @@ echo ""
 
 echo "TC-012: WARNING output preserves real sync rc (regression guard for if-not antipattern)"
 # A revert to `if ! cmd; then _rc=$?` would set `_rc=0` due to POSIX `!`
-# inversion. Confirm the source uses the if/else form so the real rc is
-# captured. Mirror the same regression guard issue-body-safe-update.sh
-# TC-19b/22b/24b apply: pin the if/else literal alongside the WARNING text.
-if grep -qE 'if "\$SCRIPT_DIR/issue-comment-wm-sync\.sh" update' "$HOOK" \
-  && grep -qE 'else[[:space:]]*$' "$HOOK" \
-  && grep -qE '_rc=\$\?' "$HOOK"; then
-  pass "TC-012 if/else form + real \$? capture present (if-not antipattern not reintroduced)"
+# inversion. File-global grep alone would let a refactor add a new unrelated
+# else/$? pair elsewhere and pass while the sync site regresses; check the 3
+# literals (sync invocation / `else` / `_rc=$?`) co-occur within a window of
+# 8 lines via awk-based proximity matching so they must form a single block.
+proximity=$(awk '
+  /if "\$SCRIPT_DIR\/issue-comment-wm-sync\.sh" update/ { start=NR; saw_else=0; saw_rc=0; matched=0 }
+  start && NR <= start+8 && /^[[:space:]]*else[[:space:]]*$/ { saw_else=1 }
+  start && NR <= start+8 && /_rc=\$\?/ { saw_rc=1 }
+  start && NR > start+8 && saw_else && saw_rc { matched=1; start=0 }
+  start && NR > start+8 { start=0; saw_else=0; saw_rc=0 }
+  END { if (matched || (start && saw_else && saw_rc)) print "ok" }
+' "$HOOK")
+if [ "$proximity" = "ok" ]; then
+  pass "TC-012 if/else form + \$? capture co-located around sync call (proximity-checked)"
 else
-  fail "TC-012 if/else form or \$? capture missing — sync failure WARNING may report misleading rc=0"
+  fail "TC-012 if/else/\$? not co-located within 8 lines of the sync call — sync failure WARNING may report misleading rc=0"
 fi
 # Also pin that the WARNING text references `last_synced_phase will NOT be advanced`
 # so a refactor that drops the gate documentation (and likely the gate too) is caught.

@@ -975,7 +975,7 @@ Check the state of remaining child Issues with `trackedIssues` and calculate `re
 3. **Update local work memory** (`.rite-work-memory/issue-{n}.md`) — see 5.1.1.3 above
 4. **CRITICAL: Initialize flow state and invoke lint** (atomic pair - MUST execute both):
 
-   > **Note**: All flow state writes use `flow-state-update.sh` which handles atomic write (PID-based temp file + `mv`) internally to prevent race conditions with concurrent hook shell processes (pre-compact, session-end, post-tool-wm-sync).
+   > **Note**: All flow state writes use `flow-state-update.sh` which handles atomic write (PID-based temp file + `mv`) internally to prevent race conditions with concurrent hook shell processes (e.g. pre-compact, post-compact, session-start, session-end, post-tool-wm-sync, cleanup-work-memory).
 
    **4a**: Create state file:
 

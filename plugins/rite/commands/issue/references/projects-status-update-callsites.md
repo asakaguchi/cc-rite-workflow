@@ -69,7 +69,7 @@ bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
 The script executes: GraphQL `projectItems` query → auto-add if not registered → `field-list` retrieval → Status `item-edit`. Inspect its stdout JSON:
 
 - `.result == "updated"` → success.
-- `.result == "skipped_not_in_project"` or `"failed"` → display `.warnings[]` and continue (non-blocking). The scaffolding-failure itself is recorded by stop-guard via the whitelist on the next transition attempt.
+- `.result == "skipped_not_in_project"` or `"failed"` → display `.warnings[]` and continue (non-blocking). The scaffolding-failure itself is recorded by `phase-transition-whitelist.sh` on the next transition attempt.
 
 The script is the single source of truth for Projects Status updates. See [projects-integration.md §2.4.2-2.4.5](../../../references/projects-integration.md#242-check-issue-project-registration-status) for API-level documentation.
 

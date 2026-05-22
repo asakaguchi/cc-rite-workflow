@@ -291,15 +291,22 @@ echo ""
 # TC-014b: _send_webhook preserves real curl rc (regression guard for if-not antipattern)
 # --------------------------------------------------------------------------
 echo "TC-014b: _send_webhook uses if/else (not `if !`) so curl rc=28 etc. survives"
-# A `if ! curl ... ; then _rc=$?` would collapse `$?` to 0. Pin both the
-# if/else form and the WARNING text so a refactor that re-introduces the
-# antipattern (the same bug shape fixed for post-tool-wm-sync) fails here.
-if grep -qE 'if curl -sf --connect-timeout' "$HOOK" \
-  && grep -qE 'else[[:space:]]*$' "$HOOK" \
-  && grep -qE 'local _rc=\$\?' "$HOOK"; then
-  pass "TC-014b _send_webhook uses if/else (real curl rc is captured)"
+# A `if ! curl ... ; then _rc=$?` would collapse `$?` to 0. Proximity-check the
+# three literals (curl invocation / `else` / `local _rc=$?`) co-occur within an
+# 8-line window so a refactor that adds an unrelated else/$? elsewhere cannot
+# mask a regression at the webhook site.
+proximity=$(awk '
+  /if curl -sf --connect-timeout/ { start=NR; saw_else=0; saw_rc=0; matched=0 }
+  start && NR <= start+8 && /^[[:space:]]*else[[:space:]]*$/ { saw_else=1 }
+  start && NR <= start+8 && /local _rc=\$\?/ { saw_rc=1 }
+  start && NR > start+8 && saw_else && saw_rc { matched=1; start=0 }
+  start && NR > start+8 { start=0; saw_else=0; saw_rc=0 }
+  END { if (matched || (start && saw_else && saw_rc)) print "ok" }
+' "$HOOK")
+if [ "$proximity" = "ok" ]; then
+  pass "TC-014b _send_webhook if/else + curl rc capture are co-located (proximity-checked)"
 else
-  fail "TC-014b _send_webhook missing if/else form — curl rc may collapse to 0 (if-not antipattern)"
+  fail "TC-014b _send_webhook if/else/\$? not co-located within 8 lines of the curl call — webhook failure WARNING may report misleading rc=0"
 fi
 echo ""
 

@@ -544,7 +544,9 @@ case "$MODE" in
     if [[ -n "$SESSION" && -f "$FLOW_STATE" ]]; then
       _existing_active=$(jq -r '.active // false' "$FLOW_STATE" 2>/dev/null) || _existing_active="false"
       if [[ "$_existing_active" == "true" ]]; then
-        _existing_sid=$(get_state_session_id "$FLOW_STATE" 2>/dev/null) || _existing_sid=""
+        # Pass get_state_session_id stderr through: a corrupt-state WARNING here
+        # signals possible overwrite of another active session.
+        _existing_sid=$(get_state_session_id "$FLOW_STATE") || _existing_sid=""
         if [[ -n "$_existing_sid" && "$_existing_sid" != "$SESSION" ]]; then
           # Different session owns the state — check staleness
           _updated_at=$(jq -r '.updated_at // empty' "$FLOW_STATE" 2>/dev/null) || _updated_at=""
@@ -642,10 +644,16 @@ case "$MODE" in
       --arg sid "$SESSION" \
       "$_create_filter" \
       > "$TMP_STATE"; then
-      if ! mv "$TMP_STATE" "$FLOW_STATE"; then
-        _log_flow_diag "flow_state_mv_failed mode=create phase=$PHASE issue=$ISSUE"
+      # if/else over `if !` preserves the real mv rc; the bash `!` operator
+      # zeros $? in its then-branch, so capturing rc via `_rc=$?` after
+      # `if ! mv ...` would always show 0 and lose EXDEV/EACCES diagnosis.
+      if mv "$TMP_STATE" "$FLOW_STATE"; then
+        :
+      else
+        _mv_rc=$?
+        _log_flow_diag "flow_state_mv_failed mode=create phase=$PHASE issue=$ISSUE rc=$_mv_rc"
         rm -f "$TMP_STATE"
-        echo "ERROR: mv failed (create mode): $TMP_STATE -> $FLOW_STATE (disk full / permission denied / EXDEV?)" >&2
+        echo "ERROR: mv failed (create mode, rc=$_mv_rc): $TMP_STATE -> $FLOW_STATE" >&2
         exit 1
       fi
     else
@@ -693,10 +701,13 @@ case "$MODE" in
     fi
     # 同対称: create mode の mv 失敗 diag コメント (mv 失敗 path 対称診断) を参照
     if jq "${JQ_ARGS[@]}" -- "$JQ_FILTER" "$FLOW_STATE" > "$TMP_STATE"; then
-      if ! mv "$TMP_STATE" "$FLOW_STATE"; then
-        _log_flow_diag "flow_state_mv_failed mode=patch phase=$PHASE"
+      if mv "$TMP_STATE" "$FLOW_STATE"; then
+        :
+      else
+        _mv_rc=$?
+        _log_flow_diag "flow_state_mv_failed mode=patch phase=$PHASE rc=$_mv_rc"
         rm -f "$TMP_STATE"
-        echo "ERROR: mv failed (patch mode): $TMP_STATE -> $FLOW_STATE (disk full / permission denied / EXDEV?)" >&2
+        echo "ERROR: mv failed (patch mode, rc=$_mv_rc): $TMP_STATE -> $FLOW_STATE" >&2
         exit 1
       fi
     else
@@ -711,10 +722,13 @@ case "$MODE" in
     if jq --arg field "$FIELD" \
        '.[$field] = ((.[$field] // 0) + 1)' \
        "$FLOW_STATE" > "$TMP_STATE"; then
-      if ! mv "$TMP_STATE" "$FLOW_STATE"; then
-        _log_flow_diag "flow_state_mv_failed mode=increment field=$FIELD"
+      if mv "$TMP_STATE" "$FLOW_STATE"; then
+        :
+      else
+        _mv_rc=$?
+        _log_flow_diag "flow_state_mv_failed mode=increment field=$FIELD rc=$_mv_rc"
         rm -f "$TMP_STATE"
-        echo "ERROR: mv failed (increment mode): $TMP_STATE -> $FLOW_STATE (disk full / permission denied / EXDEV?)" >&2
+        echo "ERROR: mv failed (increment mode, rc=$_mv_rc): $TMP_STATE -> $FLOW_STATE" >&2
         exit 1
       fi
     else

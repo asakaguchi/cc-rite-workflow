@@ -65,18 +65,23 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   ["plan"]="implement lint"
   ["implement"]="lint pr"
   ["lint"]="pr review completed"
-  ["pr"]="review completed ready_error"
+  ["pr"]="review completed ready ready_error"
   ["review"]="fix pr completed"
   ["fix"]="review pr completed"
   ["completed"]=""
 
+  # `ready` is the post-Ready success state written by /rite:pr:ready Phase 5.X.
+  # Terminal arms only — once Ready succeeds the caller proceeds to start.md
+  # ステップ 8.3-8.6 which writes `completed`.
+  ["ready"]="completed ready_error"
+
   # `ready_error` is an intermediate failure state written by /rite:pr:ready
-  # when the Ready transition fails inside the e2e flow. It must NOT route
-  # /rite:resume back to ステップ 6 (PR creation — the PR already exists);
-  # resume.md maps `ready_error` directly to ステップ 8 (Ready & 完結) so the
-  # user can retry the Ready transition or terminate without re-creating
-  # the PR.
-  ["ready_error"]="completed"
+  # when the Ready transition fails. It must NOT route /rite:resume back to
+  # ステップ 6 (PR creation — the PR already exists); resume.md maps
+  # `ready_error` directly to ステップ 8 (Ready & 完結) so the user can retry
+  # the Ready transition (→ ready) or terminate (→ completed) without
+  # re-creating the PR.
+  ["ready_error"]="ready completed"
   # `create_completed` is intentionally absent: /rite:issue:create writes
   # `completed` (same terminal as /rite:issue:start) in the flat workflow.
   # session-end.sh / pre-tool-bash-guard.sh still detect `create_*` lifecycle
@@ -294,7 +299,7 @@ rite_phase_transition_allowed() {
 
   if [ "$next" = "completed" ] || [ "$next" = "cleanup_completed" ] || [ "$next" = "ingest_completed" ]; then
     case "$next:$prev" in
-      completed:lint|completed:pr|completed:review|completed:fix|completed:ready_error) return 0 ;;
+      completed:lint|completed:pr|completed:review|completed:fix|completed:ready|completed:ready_error) return 0 ;;
       cleanup_completed:cleanup_post_ingest|cleanup_completed:cleanup_pre_ingest) return 0 ;;
       ingest_completed:ingest_pre_lint|ingest_completed:ingest_post_lint) return 0 ;;
       # Legacy phase names (create_* / start_* / phase[0-9]*) accepted so that
@@ -335,6 +340,15 @@ rite_phase_transition_allowed() {
   for val in $allowed; do
     [ "$val" = "$next" ] && return 0
   done
+  # Surface the block so triagers can distinguish "guard rejected" from "guard
+  # not running"; a silent return 1 here would let a caller swallow the
+  # decision and the protocol violation would only manifest downstream as a
+  # mismatched state file.
+  if [ "${RITE_DEBUG:-0}" = "1" ]; then
+    echo "[rite] ERROR phase-transition: '$prev' → '$next' not in allowed set [$allowed]" >&2
+  else
+    echo "[rite] ERROR phase-transition: '$prev' → '$next' blocked" >&2
+  fi
   return 1
 }
 

@@ -322,7 +322,7 @@ After `gh pr ready` succeeds, update local work memory (SoT):
 
 ```bash
 WM_SOURCE="ready" \
-  WM_PHASE="phase5_ready" \
+  WM_PHASE="ready" \
   WM_PHASE_DETAIL="Ready for review に変更完了" \
   WM_NEXT_ACTION="レビュー待ち" \
   WM_BODY_TEXT="PR marked as ready for review." \
@@ -367,7 +367,7 @@ body = re.sub(r"^(- \*\*フェーズ\*\*: ).*", lambda m: m.group(1) + phase, bo
 body = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", lambda m: m.group(1) + phase_detail, body, count=1, flags=re.MULTILINE)
 with open(out_path, "w") as f:
     f.write(body)
-' "$body_tmp" "$tmpfile" "phase5_ready" "Ready for review に変更完了" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
+' "$body_tmp" "$tmpfile" "ready" "Ready for review に変更完了" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
 
   # Safety checks before PATCH
   if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
@@ -486,11 +486,11 @@ Before outputting the result pattern (`[ready:completed]`) or skipping output, u
 
 | Result | Phase | Phase Detail | Next Action |
 |--------|-------|-------------|-------------|
-| `[ready:completed]` | `phase5_post_ready` | `Ready処理完了` | `rite:pr:ready completed. Proceed to start.md ステップ 8.3 (Projects Status In Review), then ステップ 8.4 (parent close check), then ステップ 8.6 (completion report). Do NOT stop.` |
+| `[ready:completed]` | `ready` | `Ready処理完了` | `rite:pr:ready completed. Proceed to start.md ステップ 8.3 (Projects Status In Review), then ステップ 8.4 (parent close check), then ステップ 8.6 (completion report). Do NOT stop.` |
 
 ```bash
 bash {plugin_root}/hooks/flow-state-update.sh patch \
-  --phase "phase5_post_ready" \
+  --phase "ready" \
   --active true \
   --next "rite:pr:ready completed. Proceed to start.md ステップ 8.3 (Projects Status In Review), then ステップ 8.4 (parent close check), then ステップ 8.6 (completion report). Do NOT stop." \
   --if-exists
@@ -502,7 +502,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 ```bash
 WM_SOURCE="ready" \
-  WM_PHASE="phase5_post_ready" \
+  WM_PHASE="ready" \
   WM_PHASE_DETAIL="Ready処理完了" \
   WM_NEXT_ACTION="start.md ステップ 8.3 Status 更新 → 8.4 親 Issue 完結判定 → 8.6 完了レポートを実行" \
   WM_BODY_TEXT="Post-ready phase sync." \

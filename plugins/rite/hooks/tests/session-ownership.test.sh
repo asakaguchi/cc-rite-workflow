@@ -296,11 +296,18 @@ echo ""
 # without RITE_DEBUG.
 echo "TC-CORRUPT-01: extract_session_id WARNING fires without RITE_DEBUG"
 unset RITE_DEBUG
-out=$(extract_session_id 'not-json-corrupt-{{{' 2>&1 >/dev/null)
-if printf '%s' "$out" | grep -qE 'WARNING: extract_session_id: jq parse failed'; then
-  pass "TC-CORRUPT-01 WARNING emitted unconditionally"
+out_stdout=$(extract_session_id 'not-json-corrupt-{{{' 2>/tmp/rite-corrupt01-stderr)
+out_stderr=$(cat /tmp/rite-corrupt01-stderr 2>/dev/null)
+rm -f /tmp/rite-corrupt01-stderr
+if printf '%s' "$out_stderr" | grep -qE 'WARNING: extract_session_id: jq parse failed.*rc='; then
+  pass "TC-CORRUPT-01 WARNING emitted with rc capture"
 else
-  fail "TC-CORRUPT-01 WARNING missing — corrupt hook payload silently classified as 'no session_id': $out"
+  fail "TC-CORRUPT-01 WARNING missing rc — corrupt hook payload silently classified or rc absent: $out_stderr"
+fi
+if [ -z "$out_stdout" ]; then
+  pass "TC-CORRUPT-01 stdout empty on corrupt input (caller sees fallback empty session)"
+else
+  fail "TC-CORRUPT-01 stdout leaked garbage on corrupt input: '$out_stdout' (caller may compare garbage session_id)"
 fi
 echo ""
 
@@ -309,13 +316,47 @@ unset RITE_DEBUG
 corrupt_state="$TEST_DIR/corrupt-state.json"
 mkdir -p "$TEST_DIR"
 printf '{ not valid json' > "$corrupt_state"
-out=$(get_state_session_id "$corrupt_state" 2>&1 >/dev/null)
-if printf '%s' "$out" | grep -qE 'WARNING: get_state_session_id: jq parse failed'; then
-  pass "TC-CORRUPT-02 WARNING emitted unconditionally"
+out_stdout=$(get_state_session_id "$corrupt_state" 2>/tmp/rite-corrupt02-stderr)
+out_stderr=$(cat /tmp/rite-corrupt02-stderr 2>/dev/null)
+rm -f /tmp/rite-corrupt02-stderr
+if printf '%s' "$out_stderr" | grep -qE 'WARNING: get_state_session_id: jq parse failed.*rc='; then
+  pass "TC-CORRUPT-02 WARNING emitted with rc capture"
 else
-  fail "TC-CORRUPT-02 WARNING missing — corrupt state file silently falls to 'legacy' classification: $out"
+  fail "TC-CORRUPT-02 WARNING missing rc — corrupt state file silently classified or rc absent: $out_stderr"
+fi
+if [ -z "$out_stdout" ]; then
+  pass "TC-CORRUPT-02 stdout empty on corrupt state file"
+else
+  fail "TC-CORRUPT-02 stdout leaked garbage on corrupt state file: '$out_stdout'"
 fi
 rm -f "$corrupt_state"
+echo ""
+
+# TC-CORRUPT-03 — runtime trigger of the updated_at branch is unreachable in
+# practice because get_state_session_id (L66) parses the same file first and
+# returns "" on any corruption, which causes check_session_ownership to return
+# "legacy" before reaching L173. The L173 branch only fires on the contrived
+# case where state_file is mutated between the two jq calls. The regression
+# guard for this WARNING gate is therefore a source-level pin in
+# static-source-pins.test.sh, not a runtime trigger.
+
+# TC-OWNERSHIP-MISSING-UPDATED-AT — documented fall-through when updated_at is
+# absent from a foreign-session state file. check_session_ownership returns
+# "stale" (safe to overwrite) so the corrupt-parse else-branch and the missing-
+# field path share the same behavior — pinning this means a refactor that
+# changes either branch's fallback will be caught.
+echo "TC-OWNERSHIP-MISSING-UPDATED-AT: foreign session without updated_at → 'stale'"
+unset RITE_DEBUG
+missing_state="$TEST_DIR/missing-updated-at.json"
+mkdir -p "$TEST_DIR"
+printf '{"session_id":"other-session-id"}' > "$missing_state"
+out=$(check_session_ownership '{"session_id":"my-session-id"}' "$missing_state" 2>/dev/null)
+if [ "$out" = "stale" ]; then
+  pass "TC-OWNERSHIP-MISSING-UPDATED-AT returns 'stale' when foreign session lacks updated_at"
+else
+  fail "TC-OWNERSHIP-MISSING-UPDATED-AT returned '$out' (expected 'stale' — missing-field fall-through semantics changed)"
+fi
+rm -f "$missing_state"
 echo ""
 
 # --- Summary ---

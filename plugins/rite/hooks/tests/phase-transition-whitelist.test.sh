@@ -398,10 +398,30 @@ else
   fail "TC-READY-ERROR-02 ready_error → completed blocked — workflow cannot terminate from ready_error"
 fi
 # Negative: ready_error should NOT route back to pr (no implicit re-creation)
-if RITE_DEBUG=0 bash -c "source '$WHITELIST_SH'; rite_phase_transition_allowed 'ready_error' 'pr'" 2>/dev/null; then
+_ready_err_stderr=$(mktemp)
+if RITE_DEBUG=0 bash -c "source '$WHITELIST_SH'; rite_phase_transition_allowed 'ready_error' 'pr'" 2>"$_ready_err_stderr"; then
   fail "TC-READY-ERROR-03 ready_error → pr should be blocked (would re-invoke /rite:pr:create against an already-existing PR)"
 else
   pass "TC-READY-ERROR-03 ready_error → pr blocked (resume must go through ステップ 8, not ステップ 6)"
+  # The block path emits an ERROR line. Pin the diagnostic so a refactor that
+  # silently reduces the block to a return 1 without stderr is caught.
+  if grep -qE "ERROR.*(transition|outside canonical)" "$_ready_err_stderr" 2>/dev/null; then
+    pass "TC-READY-ERROR-03b ready_error → pr block surfaces ERROR diagnostic on stderr"
+  else
+    fail "TC-READY-ERROR-03b ready_error → pr block silent — stderr lacked ERROR diagnostic"
+  fi
+fi
+rm -f "$_ready_err_stderr"
+
+# Ready flat phase (success path written by /rite:pr:ready Phase 5.X):
+# pr → ready / ready → completed allowed; ready → pr blocked (no re-creation).
+assert_allowed "TC-READY-FLAT-01 pr → ready (Ready success path)" "pr" "ready"
+assert_allowed "TC-READY-FLAT-02 ready → completed (terminal exit from Ready)" "ready" "completed"
+assert_allowed "TC-READY-FLAT-03 ready → ready_error (retry after Ready failure mid-flight)" "ready" "ready_error"
+if RITE_DEBUG=0 bash -c "source '$WHITELIST_SH'; rite_phase_transition_allowed 'ready' 'pr'" 2>/dev/null; then
+  fail "TC-READY-FLAT-04 ready → pr should be blocked (would re-invoke /rite:pr:create)"
+else
+  pass "TC-READY-FLAT-04 ready → pr blocked"
 fi
 
 # TC-CREATE-LIFECYCLE-LEGACY — legacy create_* phases are detected by the
@@ -417,6 +437,16 @@ if rite_phase_is_create_lifecycle_in_progress "create_post_interview"; then
   pass "TC-CREATE-LIFECYCLE-LEGACY create_post_interview detected"
 else
   fail "TC-CREATE-LIFECYCLE-LEGACY create_post_interview NOT detected"
+fi
+if rite_phase_is_create_lifecycle_in_progress "create_delegation"; then
+  pass "TC-CREATE-LIFECYCLE-LEGACY create_delegation detected"
+else
+  fail "TC-CREATE-LIFECYCLE-LEGACY create_delegation NOT detected"
+fi
+if rite_phase_is_create_lifecycle_in_progress "create_post_delegation"; then
+  pass "TC-CREATE-LIFECYCLE-LEGACY create_post_delegation detected"
+else
+  fail "TC-CREATE-LIFECYCLE-LEGACY create_post_delegation NOT detected"
 fi
 if ! rite_phase_is_create_lifecycle_in_progress "completed"; then
   pass "TC-CREATE-LIFECYCLE-LEGACY completed NOT classified as in-progress (terminal, no cleanup)"

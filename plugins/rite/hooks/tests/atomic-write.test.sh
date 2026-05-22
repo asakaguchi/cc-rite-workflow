@@ -233,21 +233,20 @@ baseline_phase=$(jq -r '.phase' "$mut_state_file")
 # Hash the baseline file so we can detect any mutation-induced change byte-exact.
 baseline_hash=$(sha1sum "$mut_state_file" | awk '{print $1}')
 
-# F-05: Replace ALL 3 `mv` occurrences (create + patch + increment).
-# sed の挙動: `s|A|B|g` は各行内の全 occurrence を置換 (g flag は per-line)、sed 自体は無 address
-# で全行に対して実行されるため、`mv` site が複数行にわたって配置されている本 hook では合計 3
-# occurrence が置換される。`mut_count == 3` の pin (line 246) が drift (mv site 数の増減) を検出する
-# regression guard として機能する。将来 1 行に 2 mv site が出現した場合は per-line `g` flag が
-# 両方を置換するため `mut_count` の expected value 更新が必要になる (現状は 3 行に各 1 site)。
-sed -i.bak -e 's|if ! mv "\$TMP_STATE" "\$FLOW_STATE"|if ! false "\$TMP_STATE" "\$FLOW_STATE"|g' \
+# Replace ALL 3 `mv` occurrences (create + patch + increment). Each site is now
+# an if/else form (`if mv "$TMP_STATE" "$FLOW_STATE"; then : else ...`) — the
+# previous `if !` antipattern was migrated because the bash `!` operator zeros
+# $? in its then-branch and loses the real mv rc. The sed below substitutes
+# `mv ` with `false ` so the conditional fails and the else branch fires.
+sed -i.bak -e 's|if mv "\$TMP_STATE" "\$FLOW_STATE"|if false "\$TMP_STATE" "\$FLOW_STATE"|g' \
   "$sandbox/flow-state-update.sh"
 rm -f "$sandbox/flow-state-update.sh.bak"
 
-# F-05: Verify exactly 3 mutations applied (sed regression guard with count pin).
+# Verify exactly 3 mutations applied (sed regression guard with count pin).
 # `|| true` is required because grep -c returns exit 1 when count == 0, which
 # would trip `set -e`. We rely on the count value, not the exit status.
-mut_count=$(grep -c 'if ! false "$TMP_STATE" "$FLOW_STATE"' "$sandbox/flow-state-update.sh" || true)
-unmutated_count=$(grep -c 'if ! mv "$TMP_STATE" "$FLOW_STATE"' "$sandbox/flow-state-update.sh" || true)
+mut_count=$(grep -c 'if false "$TMP_STATE" "$FLOW_STATE"' "$sandbox/flow-state-update.sh" || true)
+unmutated_count=$(grep -c 'if mv "$TMP_STATE" "$FLOW_STATE"' "$sandbox/flow-state-update.sh" || true)
 if [ "$mut_count" -eq 3 ] && [ "$unmutated_count" -eq 0 ]; then
   pass "TC-3.0: mutation sed applied (mut=3, unmutated=0 → all create/patch/increment mv→false)"
 else

@@ -775,7 +775,10 @@ The Session Info section of the work memory includes phase information indicatin
 | `pr` | PR creation in progress |
 | `review` | Review in progress |
 | `fix` | Review-fix loop in progress |
+| `ready` | `/rite:pr:ready` succeeded; awaiting Projects Status In Review → 完了レポート |
 | `ready_error` | `/rite:pr:ready` failed inside e2e flow; `/rite:resume` routes back to ステップ 8 for retry |
+| `cleanup` / `cleanup_pre_ingest` / `cleanup_post_ingest` / `cleanup_completed` | `/rite:pr:cleanup` lifecycle ring (see `hooks/phase-transition-whitelist.sh`) |
+| `ingest_pre_lint` / `ingest_post_lint` / `ingest_completed` | `/rite:wiki:ingest` lifecycle ring (see `hooks/phase-transition-whitelist.sh`) |
 | `completed` | Workflow finished |
 
 > Legacy phase names (`phase2`, `phase5_implementation`, `phase5_lint`, `phase5_pr`, `phase5_review`, `phase5_fix`, `phase5_post_ready`, etc.) appear in state files written by older versions. `commands/resume.md` Phase 3.2 Legacy compatibility 表 がそれらを flat ステップ番号にマップする。
@@ -1467,7 +1470,7 @@ A test framework for ensuring Hook script quality. Located in `plugins/rite/hook
 
 | Script | Test Content |
 |--------|-------------|
-| `stop-guard.sh` | Stop block/allow decisions per phase (+ `stop-guard-cleanup`, `stop-guard-ingest`) |
+| `phase-transition-whitelist.sh` | Phase transition allow/block decisions per phase (replaces retired `stop-guard.sh`) |
 | `preflight-check.sh` | Command blocking by compact state |
 | `post-compact.sh` | Recovery context emission, `.rite-compact-state` self-healing |
 | `pre-compact.sh` | State capture before compact |
@@ -1780,7 +1783,7 @@ They share no code paths.
 
 ### Overview (#525)
 
-When an orchestrator command (e.g., `/rite:issue:start`, `/rite:issue:create`) invokes a sub-skill via the Skill tool and the sub-skill outputs its result pattern (e.g., `[interview:skipped]`, `[review:mergeable]`, `[create:completed:{N}]`), control returns to the orchestrator LLM. The orchestrator **MUST** continue executing the next phase in the **same response turn** — the sub-skill return is a continuation trigger, not a turn boundary.
+When an orchestrator command (e.g., `/rite:issue:start`, `/rite:issue:create`) invokes a sub-skill via the Skill tool and the sub-skill outputs its result pattern (e.g., `[lint:success]`, `[review:mergeable]`, `[ready:completed]`, `[ingest:completed]`), control returns to the orchestrator LLM. The orchestrator **MUST** continue executing the next phase in the **same response turn** — the sub-skill return is a continuation trigger, not a turn boundary.
 
 Violating this contract leaves the workflow partially executed: no Issue created, `.rite-flow-state` stuck in `active: true`, stale timestamps, and the user forced to type `continue` manually to recover. Issue #525 was filed after multiple instances of this failure in `/rite:issue:create` with the Bug Fix preset.
 

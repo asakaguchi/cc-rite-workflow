@@ -39,8 +39,14 @@ extract_session_id() {
   local hook_json="$1"
   local sid jq_err
   jq_err=$(mktemp 2>/dev/null) || jq_err=""
-  if ! sid=$(echo "$hook_json" | jq -r '.session_id // empty' 2>"${jq_err:-/dev/null}"); then
-    echo "[rite] WARNING: extract_session_id: jq parse failed on hook payload (returning empty — ownership check falls back to backward-compat path)" >&2
+  # if/else preserves the real jq rc; the bash `!` operator zeros $? in its
+  # then-branch, so capturing rc via `if ! ...; then _rc=$?` would always show 0
+  # and hide jq missing / SIGPIPE / parse error from triagers.
+  if sid=$(echo "$hook_json" | jq -r '.session_id // empty' 2>"${jq_err:-/dev/null}"); then
+    :
+  else
+    local _jq_rc=$?
+    echo "[rite] WARNING: extract_session_id: jq parse failed on hook payload (rc=$_jq_rc, returning empty — ownership check falls back to backward-compat path)" >&2
     [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
     sid=""
   fi
@@ -63,8 +69,11 @@ get_state_session_id() {
     return 0
   fi
   jq_err=$(mktemp 2>/dev/null) || jq_err=""
-  if ! sid=$(jq -r '.session_id // empty' "$state_file" 2>"${jq_err:-/dev/null}"); then
-    echo "[rite] WARNING: get_state_session_id: jq parse failed on $state_file (returning empty — may classify a corrupt state file as legacy)" >&2
+  if sid=$(jq -r '.session_id // empty' "$state_file" 2>"${jq_err:-/dev/null}"); then
+    :
+  else
+    local _jq_rc=$?
+    echo "[rite] WARNING: get_state_session_id: jq parse failed on $state_file (rc=$_jq_rc, returning empty — may classify a corrupt state file as legacy)" >&2
     [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
     sid=""
   fi
@@ -170,9 +179,6 @@ check_session_ownership() {
   # corruption is transient. Stderr snippet stays behind RITE_DEBUG.
   local updated_at jq_err
   jq_err=$(mktemp 2>/dev/null) || jq_err=""
-  # if/else preserves the real jq rc instead of collapsing it to 0 under
-  # POSIX `!` inversion; symmetric with extract_session_id and
-  # get_state_session_id above.
   if updated_at=$(jq -r '.updated_at // empty' "$state_file" 2>"${jq_err:-/dev/null}"); then
     :
   else

@@ -647,6 +647,32 @@ else
 fi
 echo ""
 
+# --------------------------------------------------------------------------
+# TC-ACTIVE-PARSE-WARNING — corrupt .rite-flow-state must surface a WARNING
+# explaining the snapshot is skipped. A silent `2>/dev/null` here would let a
+# recovery path proceed with a missing workflow snapshot and no diagnostic.
+# --------------------------------------------------------------------------
+echo "TC-ACTIVE-PARSE-WARNING: corrupt .rite-flow-state → 'workflow snapshot will be skipped' WARNING"
+dir_active_parse="$TEST_DIR/tc-active-parse"
+mkdir -p "$dir_active_parse"
+# Valid JSON-prefix that fails when jq tries to extract .active
+printf '{ not json' > "$dir_active_parse/.rite-flow-state"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.active-parse.XXXXXX")"
+echo "{\"cwd\": \"$dir_active_parse\"}" \
+  | bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
+stderr_ap="$(cat "$LAST_STDERR_FILE")"
+if printf '%s' "$stderr_ap" | grep -qF 'workflow snapshot will be skipped'; then
+  pass "TC-ACTIVE-PARSE-WARNING: corrupt flow-state .active parse surfaces 'workflow snapshot will be skipped' WARNING"
+else
+  fail "TC-ACTIVE-PARSE-WARNING: WARNING missing — recovery may silently lose workflow snapshot. stderr: $stderr_ap"
+fi
+if printf '%s' "$stderr_ap" | grep -qE 'jq rc=[0-9]+'; then
+  pass "TC-ACTIVE-PARSE-WARNING: WARNING carries jq rc so triagers can distinguish failure modes"
+else
+  fail "TC-ACTIVE-PARSE-WARNING: WARNING missing rc capture — silent-failure regression"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed, $SKIP skipped ==="
 if [ "$FAIL" -gt 0 ]; then

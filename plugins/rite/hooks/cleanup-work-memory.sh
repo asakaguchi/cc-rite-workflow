@@ -90,7 +90,8 @@ if [ "$CLOSE_MODE" = false ]; then
         fi
         [ -n "$_mv_err" ] && rm -f "$_mv_err"
       else
-        echo "WARNING: .rite-flow-state のリセットに失敗しました (jq エラー)" >&2
+        _jq_rc=$?
+        echo "WARNING: .rite-flow-state のリセットに失敗しました (jq rc=$_jq_rc — missing in PATH / locale / parse error を区別)" >&2
         [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | sed 's/^/  /' >&2
       fi
       [ -n "$_jq_err" ] && rm -f "$_jq_err"

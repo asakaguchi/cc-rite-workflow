@@ -157,13 +157,13 @@ flow-state は以下のいずれかの方法で正しい schema (`active`, `issu
 
 - stop-guard が exit 2 で block し、WORKFLOW_HINT を含むメッセージを stderr に出力
 - `workflow-incident-emit.sh` から capture した `[CONTEXT] WORKFLOW_INCIDENT=1; type=manual_fallback_adopted; ...` sentinel line が stderr に echo される（stop-hook stderr は Claude Code の exit-2 契約で assistant にフィードされる）
-- diag log (`.rite-stop-guard-diag.log`) に `incident_emit type=manual_fallback_adopted rc=0 sentinel_captured=1 phase={phase}` が記録される
+- diag log (`.rite-flow-state-diag.log`) に `incident_emit type=manual_fallback_adopted rc=0 sentinel_captured=1 phase={phase}` が記録される
 
 ### 検証コマンド
 
 ```bash
 # 1. diag log で emit 成否を確認（sentinel_captured=1 なら成功、=0 なら helper 呼び出し失敗）
-tail -10 .rite-stop-guard-diag.log | grep incident_emit
+tail -10 .rite-flow-state-diag.log | grep incident_emit
 
 # 2. stderr 出力で sentinel line を確認 (現行実装では .rite/workflow-incidents/ ディレクトリは作成されない。
 #    sentinel は stderr のみで届く — stop-guard が exit 2 で stderr を assistant にフィードした後、

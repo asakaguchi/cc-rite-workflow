@@ -65,6 +65,8 @@ fi
 | `1` + `phase=pr` | ステップ 6 (PR 作成) から再開。既に PR 番号が state にあればステップ 7 へジャンプ |
 | `1` + `phase=review` | ステップ 7.1 (review 再実行) |
 | `1` + `phase=fix` | ステップ 7.2 (fix 再実行) |
+| `1` + `phase=ready` | ステップ 8.3 から再開 (Ready は完了済 — Projects Status In Review → 親判定 → 完了レポート) |
+| `1` + `phase=ready_error` | ステップ 8 (Ready & 完結) から再開。PR は既に存在するため `/rite:pr:create` は呼ばない |
 | `1` + `phase=completed` | Issue は既に完結。AskUserQuestion で「新規作業として再開 / 中止」を提示 |
 | `1` + `phase=<legacy>` (`phase5_*` 等) | `commands/resume.md` Phase 3.2 Legacy compatibility 表に従って対応ステップへジャンプ |
 

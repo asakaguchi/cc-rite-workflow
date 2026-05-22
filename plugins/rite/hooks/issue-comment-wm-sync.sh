@@ -59,13 +59,20 @@ cache_comment_id() {
   fi
   local _jq_err
   _jq_err=$(mktemp 2>/dev/null) || _jq_err=""
+  local _jq_rc=0
   if jq --arg cid "$cid" '. + {wm_comment_id: ($cid | tonumber)}' "$FLOW_STATE" > "$tmp" 2>"${_jq_err:-/dev/null}"; then
-    if ! mv "$tmp" "$FLOW_STATE" 2>/dev/null; then
-      echo "[rite] WARNING: issue-comment-wm-sync: cache_comment_id mv failed (disk full / EXDEV cross-filesystem?)" >&2
+    # Capture the real mv rc; the bash `!` operator zeros $? in its then-branch,
+    # so `if ! mv ...; then _rc=$?` would always show 0 and lose EXDEV/EACCES.
+    if mv "$tmp" "$FLOW_STATE"; then
+      :
+    else
+      local _mv_rc=$?
+      echo "[rite] WARNING: issue-comment-wm-sync: cache_comment_id mv failed (rc=$_mv_rc, EXDEV/EACCES/ENOSPC?)" >&2
       rm -f "$tmp"
     fi
   else
-    echo "[rite] WARNING: issue-comment-wm-sync: cache_comment_id jq failed — FLOW_STATE may be corrupt or cid='$cid' not numeric" >&2
+    _jq_rc=$?
+    echo "[rite] WARNING: issue-comment-wm-sync: cache_comment_id jq failed (rc=$_jq_rc — FLOW_STATE may be corrupt or cid='$cid' not numeric)" >&2
     [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | sed 's/^/  /' >&2
     rm -f "$tmp"
   fi

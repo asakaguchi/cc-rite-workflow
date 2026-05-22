@@ -37,7 +37,7 @@
 #   `check_session_ownership` from session-ownership.sh and skip the modify
 #   path on the "other" branch. Reading or modifying another session's active
 #   per-session state file would clobber its in-flight work memory and trip
-#   stop-guard whitelist violations on its next phase transition.
+#   phase-transition-whitelist violations on its next phase transition.
 #
 #   Failing this contract risks: (1) silent overwrite of another session's
 #   .active=false transition, (2) double-emit of cross-session incidents,

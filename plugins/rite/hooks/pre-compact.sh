@@ -131,9 +131,20 @@ if acquire_wm_lock "$LOCKDIR"; then
     --argjson issue "$ACTIVE_ISSUE" \
     '{compact_state: $state, compact_state_set_at: $ts, active_issue: $issue}' \
     > "$TMP_COMPACT" 2>"${_jq_compact_err:-/dev/null}"; then
-    mv "$TMP_COMPACT" "$COMPACT_STATE"
-    chmod 600 "$COMPACT_STATE" 2>/dev/null || true
-    TMP_COMPACT=""
+    if mv "$TMP_COMPACT" "$COMPACT_STATE"; then
+      TMP_COMPACT=""
+      # chmod failure here would leave compact_state world-readable; surface the
+      # rc so triagers can distinguish "EPERM on read-only fs" from "EACCES on
+      # foreign-owned file" instead of seeing a silent permission slip.
+      if ! chmod 600 "$COMPACT_STATE"; then
+        echo "rite: pre-compact: chmod 600 $COMPACT_STATE failed (rc=$?)" >&2
+      fi
+    else
+      _mv_rc=$?
+      rm -f "$TMP_COMPACT"
+      TMP_COMPACT=""
+      echo "rite: pre-compact: mv compact state failed (rc=$_mv_rc, EXDEV cross-fs / EACCES read-only / parent dir missing?)" >&2
+    fi
   else
     _jq_compact_rc=$?
     rm -f "$TMP_COMPACT"

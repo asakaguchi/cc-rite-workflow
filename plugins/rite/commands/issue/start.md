@@ -229,7 +229,7 @@ case "$status_value" in
     echo "WARNING: Issue #{issue_number} は Project に未登録 (Callsite 1)" >&2
     bash {plugin_root}/hooks/workflow-incident-emit.sh \
       --type projects_status_update_failed \
-      --details "Issue #{issue_number} Phase 2.4 (In Progress): projects-status-update.sh returned skipped_not_in_project" \
+      --details "Issue #{issue_number} ステップ 2.4 (In Progress): projects-status-update.sh returned skipped_not_in_project" \
       --root-cause-hint "issue_not_registered_in_project" \
       --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
     ;;
@@ -237,7 +237,7 @@ case "$status_value" in
     printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null | while read -r w; do echo "WARNING: $w" >&2; done
     bash {plugin_root}/hooks/workflow-incident-emit.sh \
       --type projects_status_update_failed \
-      --details "Issue #{issue_number} Phase 2.4 (In Progress): projects-status-update.sh returned $status_value" \
+      --details "Issue #{issue_number} ステップ 2.4 (In Progress): projects-status-update.sh returned $status_value" \
       --root-cause-hint "gh_api_or_graphql_failure" \
       --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
     ;;

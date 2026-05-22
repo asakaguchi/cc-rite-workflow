@@ -354,7 +354,9 @@ INIT_EOF
       --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .id // empty' \
       2>"${_verify_err:-/dev/null}") || _verify_rc=$?
     if [ "$_verify_rc" -ne 0 ]; then
-      echo "[rite] WARNING: issue-comment-wm-sync: validation gh api 失敗 (attempt=$attempt, rc=$_verify_rc)" >&2
+      _verify_tag=""
+      [ -z "$_verify_err" ] && _verify_tag=" stderr_capture=disabled"
+      echo "[rite] WARNING: issue-comment-wm-sync: validation gh api 失敗 (attempt=$attempt, rc=$_verify_rc${_verify_tag})" >&2
       [ -n "$_verify_err" ] && [ -s "$_verify_err" ] && head -3 "$_verify_err" | sed 's/^/  /' >&2
       created_id=""
     fi

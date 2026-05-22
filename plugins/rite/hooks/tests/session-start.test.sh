@@ -921,6 +921,21 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-YAML-LITERAL-PREFIX: _rite_read_yaml_key uses literal-prefix match
+# --------------------------------------------------------------------------
+# A regression to the regex form `$0 ~ k` would let YAML keys containing regex
+# metacharacters (e.g. `flow.state.v2`) silently overmatch unrelated lines.
+# Pin the literal-prefix form so the contract for future keys is enforced even
+# before such keys exist.
+echo "TC-YAML-LITERAL-PREFIX: _rite_read_yaml_key uses index() literal prefix"
+if grep -qF 'index($0, k) == 1' "$HOOK_SOURCE"; then
+  pass "session-start.sh _rite_read_yaml_key uses literal index() prefix match"
+else
+  fail "session-start.sh _rite_read_yaml_key regressed to regex form — YAML keys with regex metachars will overmatch"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

@@ -112,13 +112,13 @@ set +o pipefail
 | File | Line | 現状の anchor literal |
 |------|------|-----------------------|
 | `commands/pr/fix.md` | 1118 | `# === severity_map build (local_file/explicit_file only — referenced by pr_comment state transitions note) ===` |
-| `commands/issue/references/bulk-create-pattern.md` | 43 | `# === Loop pre-amble (このブロックは結合スクリプトの先頭で1回だけ実行) ===` |
-| `commands/issue/references/bulk-create-pattern.md` | 55 | `# === Per-Sub-Issue body (N 回複製して連結。各複製ごとに placeholder を実値で置換) ===` |
+| `commands/issue/references/bulk-create-pattern.md` | 41 | `# === Loop pre-amble (このブロックは結合スクリプトの先頭で1回だけ実行) ===` |
+| `commands/issue/references/bulk-create-pattern.md` | 56 | `# === Per-Sub-Issue body (N 回複製して連結。各複製ごとに placeholder を実値で置換) ===` |
 
 **refactor 方針** (別 Issue で実施):
 
 - `commands/pr/fix.md:1118` → anchor を `# === severity_map build ===` に最小化し、`local_file/explicit_file only` 条件と `pr_comment state transitions note` への back-reference は直前のコメント行に分離
-- `commands/issue/references/bulk-create-pattern.md:43,55` → anchor を `# === Loop pre-amble ===` / `# === Per-Sub-Issue body ===` に最小化し、用途説明は直前コメント行へ移動
+- `commands/issue/references/bulk-create-pattern.md:41,56` → anchor を `# === Loop pre-amble ===` / `# === Per-Sub-Issue body ===` に最小化し、用途説明は直前コメント行へ移動
 
 ### 4.2 既に canonical な anchor (参考)
 
@@ -128,7 +128,7 @@ set +o pipefail
 |------|------|----------------|
 | `commands/pr/fix.md` | 1084 | `# === Phase 1.2.0 Selection logic block end ===` |
 | `commands/pr/review.md` | 668 | `# === all_files_excluded bash impl ===` |
-| `commands/issue/references/bulk-create-pattern.md` | 113 | `# === Per-Sub-Issue body 終了。次の Sub-Issue があれば、ここに次の複製を連結する ===` (※末尾は説明的だがブロック終端マーカーとして許容) |
+| `commands/issue/references/bulk-create-pattern.md` | 134 | `# === Per-Sub-Issue body 終了。次の Sub-Issue があれば、ここに次の複製を連結する ===` (※末尾は説明的だがブロック終端マーカーとして許容) |
 
 ---
 

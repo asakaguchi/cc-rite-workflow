@@ -481,5 +481,19 @@ else
   fail "post-compact.sh missing post_compact_jq_payload_build_failed hint — jq payload failure cannot be triaged"
 fi
 
+# --- TC-COMPACT-STATE-CORRUPT: jq failure on .compact_state surfaces WARNING ---
+# A regression that drops the _compact_val_rc check would let a corrupt
+# COMPACT_STATE silently route to the non-recovering branch with no audit trail.
+echo "TC-COMPACT-STATE-CORRUPT: corrupt .rite-compact-state surfaces WARNING with rc"
+TC_DIR=$(setup_test "tc-compact-corrupt")
+jq -n '{active: true, issue_number: 99, phase: "phase5_implementation", branch: "feat/issue-99-test"}' > "$TC_DIR/.rite-flow-state"
+printf 'not-valid-json{{' > "$TC_DIR/.rite-compact-state"
+STDERR_OUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>&1 >/dev/null) || true
+if printf '%s' "$STDERR_OUT" | grep -qE 'post-compact: jq parse of \.compact_state failed \(rc=[1-9]'; then
+  pass "TC-COMPACT-STATE-CORRUPT: WARNING surfaces real jq rc on corrupt compact-state"
+else
+  fail "TC-COMPACT-STATE-CORRUPT: expected WARNING with rc on corrupt compact-state; got: $STDERR_OUT"
+fi
+
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

@@ -394,6 +394,31 @@ else
   fail "post-tool-wm-sync.sh WARNING dropped enumeration of 5 rc=2 causes"
 fi
 
+# --- TC-014: python3 failure in phase_detail pipeline surfaces WARNING ---
+# A future regression that drops `set -o pipefail` or the `_pd_rc` capture would
+# let a python3 crash masquerade as a successful-but-empty parse and silently
+# route to the $_phase fallback. PATH-shim python3 to fail and assert the
+# WARNING line includes the real rc so the failure cannot hide.
+echo "TC-014: python3 PATH-shim failure surfaces WARNING with rc and falls back"
+dir014="$TEST_DIR/tc014"
+mkdir -p "$dir014/.rite-work-memory"
+echo "# placeholder" > "$dir014/.rite-work-memory/issue-99.md"
+create_state_file "$dir014" '{"active": true, "issue_number": 99, "phase": "phase5_lint", "last_synced_phase": "phase5_implementation", "branch": "feat/issue-99-test"}'
+shim_dir014="$TEST_DIR/tc014-shim"
+mkdir -p "$shim_dir014"
+cat > "$shim_dir014/python3" <<'SHIM'
+#!/bin/sh
+exit 17
+SHIM
+chmod +x "$shim_dir014/python3"
+stderr014=$(echo "{\"tool_name\": \"Bash\", \"cwd\": \"$dir014\"}" | PATH="$shim_dir014:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
+if printf '%s' "$stderr014" | grep -qE 'post-tool-wm-sync: phase_detail 取得失敗 \(rc=17'; then
+  pass "TC-014: python3 failure surfaces WARNING with rc=17"
+else
+  fail "TC-014: expected 'phase_detail 取得失敗 (rc=17' in stderr — got: $stderr014"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

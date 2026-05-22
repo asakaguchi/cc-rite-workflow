@@ -178,7 +178,11 @@ echo ""
 # Pin the fallback by shimming `date` to always fail, then assert the iteration
 # id reads `0-0` and the WARNING surfaces on stderr.
 echo "TC-012: EPOCH=0 fallback when date fails"
-shim_dir=$(mktemp -d)
+# Place the shim under TEST_DIR so the existing EXIT trap (line 16) cleans it
+# up even when an unexpected exit interrupts this block, instead of leaking a
+# /tmp directory per orphaned test run.
+shim_dir="$TEST_DIR/date-shim"
+mkdir -p "$shim_dir"
 cat >"$shim_dir/date" <<'SHIM'
 #!/bin/sh
 exit 1
@@ -190,7 +194,6 @@ if echo "$output" | grep -qE 'iteration_id=0-0$' && grep -q 'date failed' "$STDE
 else
   fail "Expected iteration_id=0-0 + WARNING — got: $output (stderr: $(cat "$STDERR_FILE"))"
 fi
-rm -rf "$shim_dir"
 echo ""
 
 # --------------------------------------------------------------------------

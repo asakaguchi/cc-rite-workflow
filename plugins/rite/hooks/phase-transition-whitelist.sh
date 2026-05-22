@@ -31,10 +31,10 @@
 #       phase_transitions:
 #         <phase>: [<next1>, <next2>]
 #
-# ⚠️ The `stop_guard:` key name is preserved verbatim — the original
-# stop-guard.sh hook was retired earlier, but this YAML key remains as the
-# documented override point for phase_transitions. Renaming it would silently
-# break every consumer that already has overrides under the old key.
+# ⚠️ The `stop_guard:` YAML key is the documented override point for
+# phase_transitions and is load-bearing for existing rite-config.yml files.
+# Renaming it would silently break every consumer that has overrides under
+# this key.
 #
 # Override semantics: MERGE — listed targets are APPENDED to the baked-in
 # whitelist for that phase (so projects can add custom transitions without

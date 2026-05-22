@@ -202,6 +202,23 @@ else
 fi
 echo ""
 
+# ─── TC-008: 破損 FLOW_STATE は jq 失敗を WARNING で報告する ──────────────
+# A regression that drops the rc-check would let a corrupt FLOW_STATE silently
+# route the cleanup audit to issue=0, hiding from the operator that their real
+# issue number was discarded.
+echo "TC-008: corrupt FLOW_STATE surfaces jq rc in WARNING"
+dir008="$TEST_DIR/tc008"
+mkdir -p "$dir008/.rite-work-memory"
+printf 'not-valid-json{{' > "$dir008/.rite-flow-state"
+out008="$TEST_DIR/tc008.out"
+( cd "$dir008" && bash "$HOOK" >"$out008" 2>&1 ) || true
+if grep -qE 'cleanup-work-memory: \.rite-flow-state の \.issue_number 取得失敗 \(rc=[1-9]' "$out008"; then
+  pass "TC-008 corrupt FLOW_STATE surfaces WARNING with real jq rc"
+else
+  fail "TC-008 expected WARNING with rc on corrupt FLOW_STATE; got: $(head -10 "$out008")"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

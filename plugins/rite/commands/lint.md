@@ -272,7 +272,7 @@ When lint is skipped, output the completion message in the following format:
 
 **Clarification of responsibilities:**
 
-Reflecting the lint skip in the PR body is the responsibility of `/rite:issue:start` ステップ 5 (PR #1079 で旧 Phase 5.3 を統合):
+Reflecting the lint skip in the PR body is the responsibility of `/rite:issue:start` ステップ 5:
 1. `/rite:lint` only outputs the above output patterns
 2. When `/rite:issue:start` detects `[lint:skipped]`, it prepares the PR body template before calling `/rite:pr:create`
 3. The "Known Issues" section of the PR body includes the following:

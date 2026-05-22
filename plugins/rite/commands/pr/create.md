@@ -31,18 +31,18 @@ Execute the following phases in order when this command is invoked.
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
 
-This command can be invoked in two ways: standalone execution or from the `/rite:issue:start` end-to-end flow (via Phase 5.3).
+This command can be invoked in two ways: standalone execution or from the `/rite:issue:start` end-to-end flow (via ステップ 6).
 
 | Caller | Subsequent Action |
 |-----------|---------------|
-| End-to-end flow (via `/rite:issue:start` Phase 5.3) | **Output pattern and return control to caller** |
+| End-to-end flow (via `/rite:issue:start` ステップ 6) | **Output pattern and return control to caller** |
 | Standalone execution | Display "next steps" guidance |
 
 **Determination method**: Claude determines the caller from conversation context:
 
 | Condition | Determination |
 |------|---------|
-| Invoked via `Skill` tool from the `/rite:issue:start` end-to-end flow (Phase 5.3) within the same session | Within end-to-end flow |
+| Invoked via `Skill` tool from the `/rite:issue:start` end-to-end flow (ステップ 6) within the same session | Within end-to-end flow |
 | All other cases (user directly typed `/rite:pr:create`) | Standalone execution |
 
 > **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[pr:created:{number}]` or `[pr:create-failed]`) and **returns control to the caller** (`/rite:issue:start`). The caller determines the next action based on this output pattern.
@@ -753,7 +753,7 @@ gh pr create --draft --base "{base_branch}" --title "{title}" --body-file "$tmpf
 
 After PR creation, update the local work memory (SoT) and sync to Issue comment (backup).
 
-**Note**: Phase 3.5 performs immediate phase transition (`phase5_pr`) right after PR creation. Phase 4.1.2 later adds detailed information (progress summary, changed files, PR metadata). The `update-progress` in Phase 4.1.2 also updates the timestamp, effectively superseding Phase 3.5's timestamp. This two-step approach ensures the phase transition is recorded even if Phase 4 fails.
+**Note**: Phase 3.5 performs immediate phase transition (`pr`) right after PR creation. Phase 4.1.2 later adds detailed information (progress summary, changed files, PR metadata). The `update-progress` in Phase 4.1.2 also updates the timestamp, effectively superseding Phase 3.5's timestamp. This two-step approach ensures the phase transition is recorded even if Phase 4 fails.
 
 **Step 1: Update local work memory**
 
@@ -761,7 +761,7 @@ Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../
 
 ```bash
 WM_SOURCE="create" \
-  WM_PHASE="phase5_pr" \
+  WM_PHASE="pr" \
   WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="rite:pr:review を実行" \
   WM_BODY_TEXT="PR #{pr_number} created." \
@@ -777,7 +777,7 @@ WM_SOURCE="create" \
 bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
   --issue {issue_number} \
   --transform update-phase \
-  --phase "phase5_pr" --phase-detail "PR作成完了" \
+  --phase "pr" --phase-detail "PR作成完了" \
   2>/dev/null || true
 ```
 

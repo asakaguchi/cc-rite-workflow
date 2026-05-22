@@ -75,15 +75,20 @@ cache_comment_id() {
   _jq_err=$(mktemp 2>/dev/null) || _jq_err=""
   local _jq_rc=0
   if jq --arg cid "$cid" '. + {wm_comment_id: ($cid | tonumber)}' "$FLOW_STATE" > "$tmp" 2>"${_jq_err:-/dev/null}"; then
-    # Capture the real mv rc; the bash `!` operator zeros $? in its then-branch,
-    # so `if ! mv ...; then _rc=$?` would always show 0 and lose EXDEV/EACCES.
-    if mv "$tmp" "$FLOW_STATE"; then
+    # Capture both rc and stderr so EXDEV / EACCES / ENOSPC / SELinux deny is
+    # distinguishable. `if ! mv ...; then _rc=$?` would zero $? in its
+    # then-branch (bash `!` semantics) and collapse the real errno.
+    local _cid_mv_err
+    _cid_mv_err=$(mktemp 2>/dev/null) || _cid_mv_err=""
+    if mv "$tmp" "$FLOW_STATE" 2>"${_cid_mv_err:-/dev/null}"; then
       :
     else
       local _mv_rc=$?
-      echo "[rite] WARNING: issue-comment-wm-sync: cache_comment_id mv failed (rc=$_mv_rc, EXDEV/EACCES/ENOSPC?)" >&2
+      echo "[rite] WARNING: issue-comment-wm-sync: cache_comment_id mv failed (rc=$_mv_rc)" >&2
+      [ -n "$_cid_mv_err" ] && [ -s "$_cid_mv_err" ] && head -3 "$_cid_mv_err" | sed 's/^/  /' >&2
       rm -f "$tmp"
     fi
+    [ -n "$_cid_mv_err" ] && rm -f "$_cid_mv_err"
   else
     _jq_rc=$?
     echo "[rite] WARNING: issue-comment-wm-sync: cache_comment_id jq failed (rc=$_jq_rc — FLOW_STATE may be corrupt or cid='$cid' not numeric)" >&2

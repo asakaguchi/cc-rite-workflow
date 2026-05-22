@@ -242,7 +242,7 @@ rite-workflow/
 │   │   └── gitignore-health-check.sh                     # #567
 │   └── tests/               # フックレベルのテストスイート (シェルベース)
 ├── templates/
-│   ├── README.md / completion-report.md
+│   ├── README.md
 │   ├── config/
 │   │   └── rite-config.yml           # /rite:init 時に配布される最小デフォルト
 │   ├── project-types/

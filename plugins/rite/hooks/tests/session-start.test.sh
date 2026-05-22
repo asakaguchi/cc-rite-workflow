@@ -895,6 +895,32 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-PY-REPAIR-PIN: settings.local.json 修復経路の rc capture が `if !` antipattern に
+# 書き戻されると silent regression する (rc collapse → 修復 skip が WARNING 一切無しで通過)。
+# python3 / mv の rc capture と修復ヒント出力が source 上に残っていることを static に pin する。
+# behavioral 経路 (PATH-shim python3 + stderr-capture) はテスト harness 拡張が必要なため、
+# まず regression detector として canonical 文字列を保持する。
+# --------------------------------------------------------------------------
+echo "TC-PY-REPAIR-PIN: settings.local.json repair path retains rc capture doctrine"
+HOOK_SOURCE="$SCRIPT_DIR/../session-start.sh"
+if grep -q '_py_rc=\$?' "$HOOK_SOURCE"; then
+  pass "session-start.sh captures python3 repair rc via _py_rc=\$?"
+else
+  fail "session-start.sh missing _py_rc=\$? — python3 failure may be collapsed to silent skip"
+fi
+if grep -q "settings.local.json repair python3 failed" "$HOOK_SOURCE"; then
+  pass "session-start.sh retains 'settings.local.json repair python3 failed' WARNING"
+else
+  fail "session-start.sh missing 'settings.local.json repair python3 failed' WARNING — repair failure is silent"
+fi
+if grep -q "mv settings.local.json repair failed" "$HOOK_SOURCE"; then
+  pass "session-start.sh retains 'mv settings.local.json repair failed' WARNING (mv rc capture)"
+else
+  fail "session-start.sh missing mv-failure WARNING — settings.local.json repair mv failure is silent"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

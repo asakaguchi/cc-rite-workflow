@@ -243,7 +243,7 @@ rite-workflow/
 │   │   └── gitignore-health-check.sh                     # #567
 │   └── tests/               # Hook-level test suite (shell-based)
 ├── templates/
-│   ├── README.md / completion-report.md
+│   ├── README.md
 │   ├── config/
 │   │   └── rite-config.yml           # Minimal default distributed by /rite:init
 │   ├── project-types/

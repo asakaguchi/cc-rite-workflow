@@ -4049,13 +4049,13 @@ The target of metrics recording branches on `{post_comment_mode}` determined in 
 | Mode | Recording target | Rationale |
 |------|------------------|-----------|
 | **opt-in** (`post_comment_mode=true`) | Append metrics section to `{review_result_content}` **before** posting the PR comment in Phase 6.1.b. The metrics are included in the same comment as the review results, avoiding a separate API call | opt-in 経路は単一の PR コメントに review 結果と metrics を集約する想定 |
-| **default** (`post_comment_mode=false`) | Emit metrics as observability log only via `[CONTEXT] REVIEW_METRICS=critical={n};high={n};medium={n};low={n}` to stderr in Phase 6.1.a or 6.1.c | default 経路で metrics の出力先を失わないための明示分岐。PR コメントには投稿せず、`[CONTEXT]` 経由で caller (`/rite:issue:start` Phase 5.5.2) が読み取れる形式にする |
+| **default** (`post_comment_mode=false`) | Emit metrics as observability log only via `[CONTEXT] REVIEW_METRICS=critical={n};high={n};medium={n};low={n}` to stderr in Phase 6.1.a or 6.1.c | default 経路で metrics の出力先を失わないための明示分岐。PR コメントには投稿せず、`[CONTEXT]` 経由で caller (`/rite:issue:start` ステップ 8.5 Workflow Incident Detection) が読み取れる形式にする |
 
 **⚠️ Default 経路 (`post_comment_mode=false`) で metrics を JSON ファイルに埋め込まない理由**: review-result-schema.md の現行 schema には `metrics` top-level field が存在しない。schema 拡張は別 PR で実施する (本 PR は record target の明示化のみに留め、schema 変更は out-of-scope)。それまでは `[CONTEXT]` stderr emit が唯一の default 経路記録手段となる。
 
 **`post_comment_mode=true` 時の append 実行タイミング**: metrics section は Phase 6.1.b の PR コメント投稿 **前** に `{review_result_content_heredoc_body}` の末尾 (Raw JSON セクション直前) に Claude が literal substitute する。Phase 6.1.a の JSON 本文 (`{review_result_json_heredoc_body}`) には含めない (schema 変更 out-of-scope のため)。
 
-**Note**: This step records raw data only. Threshold evaluation is performed by `/rite:issue:start` Phase 5.5.2 at workflow completion, which reads `[CONTEXT] REVIEW_METRICS=...` from stderr in `post_comment_mode=false` path, or parses the metrics section from the PR comment in `post_comment_mode=true` path.
+**Note**: This step records raw data only. Threshold evaluation is performed by `/rite:issue:start` ステップ 8.5 (Workflow Incident Detection) at workflow completion, which reads `[CONTEXT] REVIEW_METRICS=...` from stderr in `post_comment_mode=false` path, or parses the metrics section from the PR comment in `post_comment_mode=true` path.
 
 ### 6.4 Update Issue Work Memory
 
@@ -4185,7 +4185,7 @@ PR #{number} のレビューを完了しました
 
 After outputting the completion report, trigger Wiki Ingest to capture review finding patterns as experiential knowledge.
 
-> **⚠️ E2E Mandatory (Issue #524 — silent-skip 防止層 1)**: Phase 6.5.W and 6.5.W.2 are **NEVER** skipped under the E2E Output Minimization rule. The "Phase 5/6/7 output minimization" applies only to display verbosity for findings tables / PR comment / issue creation guidance — it does **NOT** authorize skipping the Wiki ingest pipeline. Even when called from `/rite:issue:start` Phase 5.4 with `[review:mergeable]`, this section MUST execute (subject only to the configuration-based skip in Step 1 below). Skipping silently — for "context efficiency", "the orchestrator already wrote a completion report", or any other reason — is the regression that Issue #524 explicitly fixes.
+> **⚠️ E2E Mandatory (silent-skip 防止層 1)**: Phase 6.5.W and 6.5.W.2 are **NEVER** skipped under the E2E Output Minimization rule. The "Phase 5/6/7 output minimization" applies only to display verbosity for findings tables / PR comment / issue creation guidance — it does **NOT** authorize skipping the Wiki ingest pipeline. Even when called from `/rite:issue:start` ステップ 7 (レビュー/修正ループ) with `[review:mergeable]`, this section MUST execute (subject only to the configuration-based skip in Step 1 below). Skipping silently — for "context efficiency", "the orchestrator already wrote a completion report", or any other reason — would defeat the experiential-knowledge capture contract that this section enforces.
 
 **Condition**: Execute only when `wiki.enabled: true` AND `wiki.auto_ingest: true` in `rite-config.yml`. Configuration-based skip is the **only** legitimate skip path — it MUST emit a `WIKI_INGEST_SKIPPED=1` status line and `wiki_ingest_skipped` sentinel so the caller can detect and report (see Phase 6.5.W.3 below).
 
@@ -4530,7 +4530,7 @@ Before outputting the result pattern, execute Phase 7.1-7.4 to process recommend
 | **Merge OK** (0 findings) | `[review:mergeable]` |
 | **Requires fixes** (findings > 0) | `[review:fix-needed:{total_findings}]` |
 
-**Note**: Within the loop, `/rite:pr:review` only outputs results via patterns. Subsequent processing (invoking `/rite:pr:fix`, confirming `/rite:pr:ready` execution, etc.) is determined and executed by `/rite:issue:start` Phase 5.4.
+**Note**: Within the loop, `/rite:pr:review` only outputs results via patterns. Subsequent processing (invoking `/rite:pr:fix`, confirming `/rite:pr:ready` execution, etc.) is determined and executed by `/rite:issue:start` ステップ 7 (レビュー/修正ループ).
 
 ---
 

@@ -180,7 +180,8 @@ WARN_MSG
     _deact_jq_err=$(mktemp 2>/dev/null) || _deact_jq_err=""
     if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
        '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE" 2>"${_deact_jq_err:-/dev/null}"; then
-        if mv "$TMP_FILE" "$STATE_FILE"; then
+        _deact_mv_err=$(mktemp 2>/dev/null) || _deact_mv_err=""
+        if mv "$TMP_FILE" "$STATE_FILE" 2>"${_deact_mv_err:-/dev/null}"; then
           :
         else
           _mv_rc=$?
@@ -189,7 +190,9 @@ WARN_MSG
             _log_flow_diag "session_end_mv_failed rc=$_mv_rc state=$STATE_FILE"
           fi
           echo "rite: session-end: mv deactivation state failed (rc=$_mv_rc)" >&2
+          [ -n "$_deact_mv_err" ] && [ -s "$_deact_mv_err" ] && head -3 "$_deact_mv_err" | sed 's/^/  /' >&2
         fi
+        [ -n "$_deact_mv_err" ] && rm -f "$_deact_mv_err"
     else
         _deact_jq_rc=$?
         if command -v _log_flow_diag >/dev/null 2>&1; then

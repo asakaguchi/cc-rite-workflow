@@ -465,5 +465,21 @@ else
   fail "post-compact.sh missing awk rc capture — awk failure cannot be distinguished from projects.enabled=false"
 fi
 
+# TC-RECON-08: command substitution は pipeline ではないため `set -o pipefail` だけでは jq -n の
+# 失敗を outer rc に伝播しない。`JQ_PAYLOAD=$(jq -n ...) || JQ_PAYLOAD_RC=$?` の rc capture と
+# `post_compact_jq_payload_build_failed` hint emit が削除されると、ENV 不整合 / locale / OOM 起因の
+# jq 失敗時に projects status sync が silent に degraded する経路ができる。static pin で回帰防御。
+echo "TC-RECON-08: jq -n payload build failure handling is wired (rc capture + jq_payload_build_failed hint)"
+if grep -q 'JQ_PAYLOAD_RC' "$HOOK"; then
+  pass "post-compact.sh contains JQ_PAYLOAD_RC capture (jq -n failure detection)"
+else
+  fail "post-compact.sh missing JQ_PAYLOAD_RC capture — command substitution swallows jq -n exit code"
+fi
+if grep -q 'post_compact_jq_payload_build_failed' "$HOOK"; then
+  pass "post-compact.sh contains post_compact_jq_payload_build_failed hint"
+else
+  fail "post-compact.sh missing post_compact_jq_payload_build_failed hint — jq payload failure cannot be triaged"
+fi
+
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

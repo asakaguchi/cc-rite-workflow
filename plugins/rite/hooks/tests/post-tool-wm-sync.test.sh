@@ -376,6 +376,24 @@ for flat_phase in implement lint pr review fix; do
 done
 echo ""
 
+# --- TC-013: rc=2 taxonomy hint pin ---
+# work-memory-update.sh の return 2 は lock contention / mkdir / mktemp / mv / state-read
+# 5 経路で共有されている。case "$_wm_rc" in 2) ブロックが root_cause_hint=
+# wm_write_failure_unspecified を出さなくなると、operator triage は誤って「lock contention」
+# のみと判断する経路を作る (実態 5 経路のうち 4 経路は lock とは無関係)。
+# runtime 注入には SCRIPT_DIR-relative の source が必要で複雑なため static pin で防御する。
+echo "TC-013: rc=2 case routes to wm_write_failure_unspecified hint (not lock-specific)"
+if grep -q 'wm_write_failure_unspecified' "$HOOK"; then
+  pass "post-tool-wm-sync.sh contains wm_write_failure_unspecified hint"
+else
+  fail "post-tool-wm-sync.sh missing wm_write_failure_unspecified hint — rc=2 triage misleads operator to lock-only diagnosis"
+fi
+if grep -qE 'lock 競合 / mkdir / mktemp / mv / state-read' "$HOOK"; then
+  pass "post-tool-wm-sync.sh WARNING enumerates all 5 rc=2 causes"
+else
+  fail "post-tool-wm-sync.sh WARNING dropped enumeration of 5 rc=2 causes"
+fi
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

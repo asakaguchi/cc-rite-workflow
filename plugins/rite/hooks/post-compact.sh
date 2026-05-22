@@ -154,25 +154,35 @@ trap cleanup EXIT TERM INT
 
 if acquire_wm_lock "$LOCKDIR"; then
   TMP_COMPACT=$(mktemp "${COMPACT_STATE}.XXXXXX" 2>/dev/null) || TMP_COMPACT="${COMPACT_STATE}.tmp.$$"
+  # jq stderr is captured so a binary-missing / locale-broken date / disk-full
+  # failure surfaces as a diagnosable WARNING. Silent fall-through here would
+  # leave compact_state stuck at "recovering" forever and trigger an infinite
+  # auto-recovery loop on every subsequent PostCompact.
+  _jq_norm_err=$(mktemp 2>/dev/null) || _jq_norm_err=""
   if jq -n \
     --arg state "normal" \
     --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
     '{compact_state: $state, compact_state_set_at: $ts}' \
-    > "$TMP_COMPACT" 2>/dev/null; then
-    # Bare mv would leave compact_state stuck at "recovering" on EXDEV/EACCES,
-    # which would misroute the next session into resume-mode forever.
-    if mv "$TMP_COMPACT" "$COMPACT_STATE"; then
+    > "$TMP_COMPACT" 2>"${_jq_norm_err:-/dev/null}"; then
+    _mv_err=$(mktemp 2>/dev/null) || _mv_err=""
+    if mv "$TMP_COMPACT" "$COMPACT_STATE" 2>"${_mv_err:-/dev/null}"; then
       TMP_COMPACT=""
     else
       _mv_rc=$?
       rm -f "$TMP_COMPACT"
       TMP_COMPACT=""
-      echo "rite: post-compact: mv compact_state failed (rc=$_mv_rc, EXDEV / EACCES / parent dir missing?)" >&2
+      echo "rite: post-compact: mv compact_state failed (rc=$_mv_rc)" >&2
+      [ -n "$_mv_err" ] && [ -s "$_mv_err" ] && head -3 "$_mv_err" | sed 's/^/  /' >&2
     fi
+    [ -n "$_mv_err" ] && rm -f "$_mv_err"
   else
+    _jq_norm_rc=$?
+    echo "rite: post-compact: jq normalize compact_state failed (rc=$_jq_norm_rc)" >&2
+    [ -n "$_jq_norm_err" ] && [ -s "$_jq_norm_err" ] && head -3 "$_jq_norm_err" | sed 's/^/  /' >&2
     rm -f "$TMP_COMPACT"
     TMP_COMPACT=""
   fi
+  [ -n "$_jq_norm_err" ] && rm -f "$_jq_norm_err"
   release_wm_lock "$LOCKDIR"
 fi
 

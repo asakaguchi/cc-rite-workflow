@@ -113,11 +113,6 @@ Common variables:
 - `{issue_number}` or `#{issue_number}` — Related issue reference
 - `{owner}` — Repository owner in footer link
 
-### Report Templates
-
-- **`templates/completion-report.md`**
-  - `{number}`, `{title}`, `{owner}`, `{repo}`, `{branch_name}`, `{iteration_title}`, `{score}`, `{pr_number}`, `{pr_state}`, `{status}`, `{changed_files_count}`, `{review_result}`
-
 ---
 
 ## Variable Replacement Rules
@@ -134,11 +129,7 @@ Variables are replaced at runtime by the command that reads the template:
    - Reads: `templates/pr/{project_type}.md`
    - Replaces: `{issue_number}`, `{owner}`
 
-3. **Work memory updates** (`/rite:issue:update`, `/rite:issue:start`)
-   - Reads: `templates/completion-report.md`
-   - Replaces: All work-related variables
-
-4. **Error messages** (all commands)
+3. **Error messages** (all commands)
    - Inline replacement in command Markdown
 
 ### Replacement Implementation
@@ -216,7 +207,6 @@ Commands should check for these variables and handle their absence gracefully.
 
 ## References
 
-- [Completion Report Template](completion-report.md) — Full format specification
 - [Work Memory Format](../references/work-memory-format.md) — Work memory structure
 - [gh CLI Patterns](../references/gh-cli-patterns.md) — GitHub CLI command patterns
 

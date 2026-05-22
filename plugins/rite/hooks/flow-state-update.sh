@@ -362,28 +362,31 @@ FLOW_STATE=$(_resolve_session_state_path "$EFFECTIVE_SCHEMA_VERSION" "$LEGACY_MO
 # Ensure parent directory exists for the new format. The path-based check below
 # is the single source of truth — `_resolve_session_state_path` already encodes
 # the (schema_version, legacy_mode, session_id) decision, so we just compare the
-# resolved path to the legacy fallback (review #686 F-04). Failures surface via
-# `_log_flow_diag` (symmetric with mv-failure path) rather than being silently
-# suppressed (review #686 F-05).
+# resolved path to the legacy fallback. Failures surface via `_log_flow_diag`
+# (symmetric with mv-failure path) rather than being silently suppressed.
 
-# cycle 48 F-01 (HIGH): writer/reader 対称化 doctrine (state-read.sh の `_rite_state_read_cleanup`
-# 関数 — `rm -f "${_classify_err:-}" "${_jq_err:-}"` ブロックと同型) に従い、atomic-cleanup 関数を
-# 3 変数 (TMP_STATE / _mkdir_err / _jq_err) に拡張し、`_mkdir_err` (本ファイル前段の dir-creation
-# block 内 mktemp) と `_jq_err` (create mode の PREV_PHASE 抽出 jq stderr 用 mktemp) を含む全
-# tempfile の lifecycle を cover する位置に trap を前倒し配置する。旧実装の trap (atomic write
-# block 直前の TMP_STATE 専用 cleanup) は TMP_STATE のみ cleanup で、`_mkdir_err` / `_jq_err` の
-# mktemp 〜 rm 区間で SIGINT/SIGTERM/SIGHUP 到達時に orphan tempfile が leak する非対称があった
-# (verified-review F-01 HIGH)。canonical pattern「パス先行宣言 → trap 先行設定 → mktemp」を踏襲する。
+# Atomic-cleanup trap covers the full tempfile lifecycle (mktemp → rm) for every
+# stderr capture and atomic-write site below. Variables are pre-declared so a
+# SIGINT/SIGTERM/SIGHUP arriving inside the mktemp→rm window does not leak
+# orphan files into the user's TMPDIR. Pattern: declare → trap → mktemp.
+# (Symmetric with state-read.sh `_rite_state_read_cleanup`.)
 TMP_STATE=""
 _mkdir_err=""
 _jq_err=""
-# Per-mode jq stderr tempfiles in the create-mode session-ownership block. Declared
-# upfront so the atomic cleanup trap covers their mktemp → rm window; a SIGINT/
-# SIGTERM/SIGHUP arriving between the inline mktemp and rm would otherwise leak.
+# Stderr tempfiles in the create-mode session-ownership block.
 _existing_active_err=""
 _updated_at_err=""
+# Per-mode jq + mv stderr tempfiles (create / patch / increment write paths).
+_create_mv_err=""
+_patch_jq_err=""
+_patch_mv_err=""
+_incr_jq_err=""
+_incr_mv_err=""
 _rite_flow_state_atomic_cleanup() {
-  rm -f "${TMP_STATE:-}" "${_mkdir_err:-}" "${_jq_err:-}" "${_existing_active_err:-}" "${_updated_at_err:-}"
+  rm -f "${TMP_STATE:-}" "${_mkdir_err:-}" "${_jq_err:-}" \
+        "${_existing_active_err:-}" "${_updated_at_err:-}" \
+        "${_create_mv_err:-}" "${_patch_jq_err:-}" "${_patch_mv_err:-}" \
+        "${_incr_jq_err:-}" "${_incr_mv_err:-}"
 }
 trap 'rc=$?; _rite_flow_state_atomic_cleanup; exit $rc' EXIT
 trap '_rite_flow_state_atomic_cleanup; exit 130' INT
@@ -675,15 +678,19 @@ case "$MODE" in
       # if/else over `if !` preserves the real mv rc; the bash `!` operator
       # zeros $? in its then-branch, so capturing rc via `_rc=$?` after
       # `if ! mv ...` would always show 0 and lose EXDEV/EACCES diagnosis.
-      if mv "$TMP_STATE" "$FLOW_STATE"; then
+      _create_mv_err=$(mktemp 2>/dev/null) || _create_mv_err=""
+      if mv "$TMP_STATE" "$FLOW_STATE" 2>"${_create_mv_err:-/dev/null}"; then
         :
       else
         _mv_rc=$?
         _log_flow_diag "flow_state_mv_failed mode=create phase=$PHASE issue=$ISSUE rc=$_mv_rc"
         rm -f "$TMP_STATE"
         echo "ERROR: mv failed (create mode, rc=$_mv_rc): $TMP_STATE -> $FLOW_STATE" >&2
+        [ -n "$_create_mv_err" ] && [ -s "$_create_mv_err" ] && head -3 "$_create_mv_err" | sed 's/^/  /' >&2
+        [ -n "$_create_mv_err" ] && rm -f "$_create_mv_err"
         exit 1
       fi
+      [ -n "$_create_mv_err" ] && rm -f "$_create_mv_err"
     else
       _log_flow_diag "flow_state_jq_failed mode=create phase=$PHASE issue=$ISSUE"
       rm -f "$TMP_STATE"
@@ -718,11 +725,10 @@ case "$MODE" in
       JQ_FILTER="$JQ_FILTER | .parent_issue_number = (\$parent_issue_val | tonumber)"
       JQ_ARGS+=(--arg parent_issue_val "$PARENT_ISSUE")
     fi
-    # PR #688 cycle 6 (F-03 fix): patch mode で session_id を書き戻す経路を追加。
-    # 旧 resume.md は legacy direct jq write で `.session_id = $sid` を atomic 更新していた
-    # (resume 時の所有権移転 semantics) が、cycle 5 で patch 経由化した際に session_id 書き戻しが
-    # drop されていた。SESSION 変数は _resolve_session_id で resolve 済みなので、非空時に
-    # patch filter に追加する (caller は自身の session が所有する flow-state を patch する設計のため安全)。
+    # patch mode で session_id を書き戻すのは resume 時の所有権移転 semantics を保つため。
+    # caller が自身の session で resolve した SESSION 値で .session_id を上書きしないと、
+    # 別 session から /rite:resume された flow-state が peer-owned 扱いのまま残り、以降の
+    # patch が session-ownership block で reject される経路ができる。
     if [[ -n "$SESSION" ]]; then
       JQ_FILTER="$JQ_FILTER | .session_id = \$session"
       JQ_ARGS+=(--arg session "$SESSION")
@@ -731,7 +737,8 @@ case "$MODE" in
     # triage できるようにする。silent fall-through は corrupt JSON の原因究明を不能にする。
     _patch_jq_err=$(mktemp 2>/dev/null) || _patch_jq_err=""
     if jq "${JQ_ARGS[@]}" -- "$JQ_FILTER" "$FLOW_STATE" > "$TMP_STATE" 2>"${_patch_jq_err:-/dev/null}"; then
-      if mv "$TMP_STATE" "$FLOW_STATE"; then
+      _patch_mv_err=$(mktemp 2>/dev/null) || _patch_mv_err=""
+      if mv "$TMP_STATE" "$FLOW_STATE" 2>"${_patch_mv_err:-/dev/null}"; then
         :
       else
         _mv_rc=$?
@@ -739,8 +746,11 @@ case "$MODE" in
         rm -f "$TMP_STATE"
         [ -n "$_patch_jq_err" ] && rm -f "$_patch_jq_err"
         echo "ERROR: mv failed (patch mode, rc=$_mv_rc): $TMP_STATE -> $FLOW_STATE" >&2
+        [ -n "$_patch_mv_err" ] && [ -s "$_patch_mv_err" ] && head -3 "$_patch_mv_err" | sed 's/^/  /' >&2
+        [ -n "$_patch_mv_err" ] && rm -f "$_patch_mv_err"
         exit 1
       fi
+      [ -n "$_patch_mv_err" ] && rm -f "$_patch_mv_err"
     else
       _log_flow_diag "flow_state_jq_failed mode=patch phase=$PHASE"
       echo "ERROR: flow-state file parse failed (patch mode): $FLOW_STATE" >&2
@@ -757,7 +767,8 @@ case "$MODE" in
     if jq --arg field "$FIELD" \
        '.[$field] = ((.[$field] // 0) + 1)' \
        "$FLOW_STATE" > "$TMP_STATE" 2>"${_incr_jq_err:-/dev/null}"; then
-      if mv "$TMP_STATE" "$FLOW_STATE"; then
+      _incr_mv_err=$(mktemp 2>/dev/null) || _incr_mv_err=""
+      if mv "$TMP_STATE" "$FLOW_STATE" 2>"${_incr_mv_err:-/dev/null}"; then
         :
       else
         _mv_rc=$?
@@ -765,8 +776,11 @@ case "$MODE" in
         rm -f "$TMP_STATE"
         [ -n "$_incr_jq_err" ] && rm -f "$_incr_jq_err"
         echo "ERROR: mv failed (increment mode, rc=$_mv_rc): $TMP_STATE -> $FLOW_STATE" >&2
+        [ -n "$_incr_mv_err" ] && [ -s "$_incr_mv_err" ] && head -3 "$_incr_mv_err" | sed 's/^/  /' >&2
+        [ -n "$_incr_mv_err" ] && rm -f "$_incr_mv_err"
         exit 1
       fi
+      [ -n "$_incr_mv_err" ] && rm -f "$_incr_mv_err"
     else
       _log_flow_diag "flow_state_jq_failed mode=increment field=$FIELD"
       echo "ERROR: flow-state file parse failed (increment mode): $FLOW_STATE" >&2

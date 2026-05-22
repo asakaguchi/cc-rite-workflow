@@ -92,16 +92,20 @@ if acquire_wm_lock "$LOCKDIR"; then
     # して WARNING を出す。silent fallback は同居 session 上書きと作業ロストに直結する。
     _heartbeat_err=$(mktemp 2>/dev/null) || _heartbeat_err=""
     if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" '.updated_at = $ts' "$FLOW_STATE" > "$TMP_FILE" 2>"${_heartbeat_err:-/dev/null}"; then
-      # Bare mv would silently orphan TMP_FILE on EXDEV/EACCES/ENOSPC and leave
-      # the heartbeat unbumped. Capturing rc lets triagers tell cross-fs from
-      # permission/space exhaustion.
-      if mv "$TMP_FILE" "$FLOW_STATE"; then
+      # Bare mv would silently orphan TMP_FILE and leave the heartbeat unbumped,
+      # which lets session-ownership staleness gate misclassify this session as
+      # stale and authorize a peer overwrite. Capture stderr so errno detail
+      # (EXDEV / EACCES / ENOSPC / EROFS / SELinux deny) surfaces in WARNING.
+      _hb_mv_err=$(mktemp 2>/dev/null) || _hb_mv_err=""
+      if mv "$TMP_FILE" "$FLOW_STATE" 2>"${_hb_mv_err:-/dev/null}"; then
         :
       else
         _mv_rc=$?
         rm -f "$TMP_FILE"
-        echo "rite: pre-compact: mv flow-state updated_at failed (rc=$_mv_rc, EXDEV cross-fs / EACCES / ENOSPC?)" >&2
+        echo "rite: pre-compact: mv flow-state updated_at failed (rc=$_mv_rc)" >&2
+        [ -n "$_hb_mv_err" ] && [ -s "$_hb_mv_err" ] && head -3 "$_hb_mv_err" | sed 's/^/  /' >&2
       fi
+      [ -n "$_hb_mv_err" ] && rm -f "$_hb_mv_err"
     else
       _heartbeat_rc=$?
       rm -f "$TMP_FILE"
@@ -158,24 +162,29 @@ if acquire_wm_lock "$LOCKDIR"; then
     --argjson issue "$ACTIVE_ISSUE" \
     '{compact_state: $state, compact_state_set_at: $ts, active_issue: $issue}' \
     > "$TMP_COMPACT" 2>"${_jq_compact_err:-/dev/null}"; then
-    if mv "$TMP_COMPACT" "$COMPACT_STATE"; then
+    _cs_mv_err=$(mktemp 2>/dev/null) || _cs_mv_err=""
+    if mv "$TMP_COMPACT" "$COMPACT_STATE" 2>"${_cs_mv_err:-/dev/null}"; then
       TMP_COMPACT=""
-      # chmod failure here would leave compact_state world-readable; surface the
-      # rc so triagers can distinguish EPERM (read-only fs) from EACCES
-      # (foreign-owned file). `if ! cmd; then ...$?` would collapse rc to the
-      # negated status (always 0/1), hiding the real errno.
-      if chmod 600 "$COMPACT_STATE"; then
+      # chmod failure here would leave compact_state world-readable; capture
+      # both rc and stderr so EPERM (read-only fs) is distinguishable from
+      # EACCES (foreign-owned file) and SELinux deny.
+      _chmod_err=$(mktemp 2>/dev/null) || _chmod_err=""
+      if chmod 600 "$COMPACT_STATE" 2>"${_chmod_err:-/dev/null}"; then
         :
       else
         _chmod_rc=$?
         echo "rite: pre-compact: chmod 600 $COMPACT_STATE failed (rc=$_chmod_rc)" >&2
+        [ -n "$_chmod_err" ] && [ -s "$_chmod_err" ] && head -3 "$_chmod_err" | sed 's/^/  /' >&2
       fi
+      [ -n "$_chmod_err" ] && rm -f "$_chmod_err"
     else
       _mv_rc=$?
       rm -f "$TMP_COMPACT"
       TMP_COMPACT=""
-      echo "rite: pre-compact: mv compact state failed (rc=$_mv_rc, EXDEV cross-fs / EACCES read-only / parent dir missing?)" >&2
+      echo "rite: pre-compact: mv compact state failed (rc=$_mv_rc)" >&2
+      [ -n "$_cs_mv_err" ] && [ -s "$_cs_mv_err" ] && head -3 "$_cs_mv_err" | sed 's/^/  /' >&2
     fi
+    [ -n "$_cs_mv_err" ] && rm -f "$_cs_mv_err"
   else
     _jq_compact_rc=$?
     rm -f "$TMP_COMPACT"

@@ -122,7 +122,7 @@ if [ ! -f "$LOCAL_WM" ]; then
             --type local_wm_update_lock_failed \
             --details "post-tool-wm-sync auto-create failed (rc=2: lock / mkdir / mktemp / mv / state-read — see prior stderr)" \
             --root-cause-hint "wm_write_failure_unspecified" \
-            --pr-number 0 >&2 || true
+            --pr-number 0 >&2 || echo "[rite] WARNING: post-tool-wm-sync: workflow-incident-emit.sh exited non-zero for local_wm_update_lock_failed; incident may not be recorded" >&2
         fi
         ;;
       *)
@@ -280,14 +280,17 @@ if [ "$_phase_sync_ok" = "1" ]; then
   if jq --arg p "$_phase" '.last_synced_phase = $p' "$FLOW_STATE" > "$_tmp_fs" 2>"${_last_phase_jq_err:-/dev/null}"; then
     # Silent mv failure would leave last_synced_phase un-advanced; the next
     # invocation would then re-run every transformer for this phase, masking
-    # the underlying mv error.
-    if mv "$_tmp_fs" "$FLOW_STATE"; then
+    # the underlying mv error. Capture stderr so errno detail surfaces.
+    _lp_mv_err=$(mktemp 2>/dev/null) || _lp_mv_err=""
+    if mv "$_tmp_fs" "$FLOW_STATE" 2>"${_lp_mv_err:-/dev/null}"; then
       :
     else
       _mv_rc=$?
       rm -f "$_tmp_fs"
-      echo "rite: post-tool-wm-sync: mv last_synced_phase failed (rc=$_mv_rc, EXDEV / EACCES?)" >&2
+      echo "rite: post-tool-wm-sync: mv last_synced_phase failed (rc=$_mv_rc)" >&2
+      [ -n "$_lp_mv_err" ] && [ -s "$_lp_mv_err" ] && head -3 "$_lp_mv_err" | sed 's/^/  /' >&2
     fi
+    [ -n "$_lp_mv_err" ] && rm -f "$_lp_mv_err"
   else
     _last_phase_jq_rc=$?
     rm -f "$_tmp_fs"

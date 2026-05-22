@@ -206,16 +206,20 @@ with open(out_path, "w") as f:
 ' "$_settings_local" "$_repair_tmp" 2>"${_py_err:-/dev/null}"
         _py_rc=$?
         if [ "$_py_rc" -eq 0 ]; then
-          # mv must capture rc so EXDEV / EACCES / ENOSPC / EROFS surfaces; silent
-          # failure here would leave _auto_cleaned=false and the rite hook config
-          # would re-fire repair on every session start without surfacing why.
-          if mv "$_repair_tmp" "$_settings_local"; then
+          # mv must capture both rc and stderr so EXDEV / EACCES / ENOSPC / EROFS
+          # / SELinux deny is distinguishable; silent failure here would leave
+          # _auto_cleaned=false and the rite hook config would re-fire repair on
+          # every session start with no diagnosable cause.
+          _settings_mv_err=$(mktemp 2>/dev/null) || _settings_mv_err=""
+          if mv "$_repair_tmp" "$_settings_local" 2>"${_settings_mv_err:-/dev/null}"; then
             _auto_cleaned=true
           else
             _mv_rc=$?
             rm -f "$_repair_tmp" 2>/dev/null
             echo "rite: session-start: mv settings.local.json repair failed (rc=$_mv_rc)" >&2
+            [ -n "$_settings_mv_err" ] && [ -s "$_settings_mv_err" ] && head -3 "$_settings_mv_err" | sed 's/^/  /' >&2
           fi
+          [ -n "$_settings_mv_err" ] && rm -f "$_settings_mv_err"
         else
           rm -f "$_repair_tmp" 2>/dev/null
           # rc=1 is the intentional no-op branch (no hooks key / no rite entries).
@@ -355,18 +359,19 @@ fi
 # When issue_number is empty (e.g., state file has no issue), exits silently without message.
 _reset_active_state() {
   local _phase _issue _branch _ownership
-  # corrupt JSON で reset が走った原因を不可視にすると、operator は reset 自体の理由を見失う
-  # (なぜ active=true が残ったのか / 既知の終了経路か など)。失敗を WARNING で expose する。
-  local _reset_jq_err
+  # 3 field を single composite jq read で読む。3 read に分けると mid-write 中断などで
+  # .phase だけ valid / .issue_number 以降が corrupt な partial-failure を WARNING の有無で
+  # 区別できなくなり、reset reason の triage が不能になる経路ができる。
+  local _reset_jq_err _composite
   _reset_jq_err=$(mktemp 2>/dev/null) || _reset_jq_err=""
-  _phase=$(jq -r '.phase // ""' "$STATE_FILE" 2>"${_reset_jq_err:-/dev/null}") || _phase=""
+  _composite=$(jq -r '[(.phase // ""), (.issue_number // "" | tostring), (.branch // "")] | @tsv' \
+    "$STATE_FILE" 2>"${_reset_jq_err:-/dev/null}") || _composite=$'\t\t'
   if [ -n "$_reset_jq_err" ] && [ -s "$_reset_jq_err" ]; then
     echo "rite: session-start: WARNING: _reset_active_state jq read failed (STATE_FILE may be corrupt)" >&2
     head -3 "$_reset_jq_err" | sed 's/^/  /' >&2
   fi
   [ -n "$_reset_jq_err" ] && rm -f "$_reset_jq_err"
-  _issue=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || _issue=""
-  _branch=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || _branch=""
+  IFS=$'\t' read -r _phase _issue _branch <<< "$_composite"
 
   # Session ownership check runs on the normal execution path (#558), not just RITE_DEBUG.
   # Fail-safe: if the helper isn't sourced or returns non-zero, treat as "unknown"
@@ -386,23 +391,31 @@ _reset_active_state() {
   [ -n "${RITE_DEBUG:-}" ] && echo "[rite] Resetting active state (ownership: $_ownership)" >&2
 
   # Atomic write: jq to temp file, then mv. No trap — explicit cleanup on failure.
-  local _tmp
+  # Silent jq failure here leaves .active=true forever and ALL operators (user
+  # waiting for /rite:resume, peer sessions checking ownership) see a permanent
+  # "another session is active" block with no diagnosable cause. Capture stderr.
+  local _tmp _reset_jq_err _reset_mv_err
   _tmp=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || _tmp="${STATE_FILE}.tmp.$$"
+  _reset_jq_err=$(mktemp 2>/dev/null) || _reset_jq_err=""
   if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-     '.active = false | .updated_at = $ts' "$STATE_FILE" > "$_tmp" 2>/dev/null; then
-    # Silent mv failure leaves .active=true with no signal to the user, who
-    # then sees a permanent "another session is active" block on subsequent
-    # /rite:resume.
-    if mv "$_tmp" "$STATE_FILE"; then
+     '.active = false | .updated_at = $ts' "$STATE_FILE" > "$_tmp" 2>"${_reset_jq_err:-/dev/null}"; then
+    _reset_mv_err=$(mktemp 2>/dev/null) || _reset_mv_err=""
+    if mv "$_tmp" "$STATE_FILE" 2>"${_reset_mv_err:-/dev/null}"; then
       :
     else
       _mv_rc=$?
       rm -f "$_tmp" 2>/dev/null
-      echo "rite: session-start: mv defensive reset failed (rc=$_mv_rc, EXDEV / EACCES?)" >&2
+      echo "rite: session-start: mv defensive reset failed (rc=$_mv_rc)" >&2
+      [ -n "$_reset_mv_err" ] && [ -s "$_reset_mv_err" ] && head -3 "$_reset_mv_err" | sed 's/^/  /' >&2
     fi
+    [ -n "$_reset_mv_err" ] && rm -f "$_reset_mv_err"
   else
+    _reset_jq_rc=$?
+    echo "rite: session-start: jq defensive reset failed (rc=$_reset_jq_rc; STATE_FILE may be corrupt)" >&2
+    [ -n "$_reset_jq_err" ] && [ -s "$_reset_jq_err" ] && head -3 "$_reset_jq_err" | sed 's/^/  /' >&2
     rm -f "$_tmp" 2>/dev/null
   fi
+  [ -n "$_reset_jq_err" ] && rm -f "$_reset_jq_err"
   _cleanup_stale_compact
   # Silent reset for completed workflows (#772): no message, no /rite:resume suggestion
   if [ "$_phase" = "completed" ]; then

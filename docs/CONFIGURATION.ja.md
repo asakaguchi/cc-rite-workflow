@@ -3,6 +3,7 @@
 このドキュメントは Claude Code Rite Workflow のすべての設定オプションを説明する。
 
 > 🇺🇸 English version: [CONFIGURATION.md](./CONFIGURATION.md)
+> 📘 翻訳方針・用語ルール: [i18n-style-guide.md](./i18n-style-guide.md) (`finding` などの kept-English term を含む)
 
 ## 設定ファイル
 

@@ -215,7 +215,15 @@ if [[ -d ".rite/wiki/raw" ]]; then
   # operator understands why the file was treated as pending.
   fm_err=""
   trap 'rm -f "${fm_err:-}"' EXIT INT TERM HUP
-  fm_err=$(mktemp /tmp/rite-wic-fm-err-XXXXXX 2>/dev/null || echo "")
+  # Symmetric with stage_dir / git_err mktemp guards elsewhere in this file —
+  # without a WARNING here, mktemp failure (full /tmp / inode exhaustion)
+  # silently degrades awk stderr capture to /dev/null and operators can no
+  # longer see why files are being treated as pending.
+  if ! fm_err=$(mktemp /tmp/rite-wic-fm-err-XXXXXX 2>/dev/null); then
+    echo "WARNING: wiki-ingest-commit: fm_err mktemp failed — frontmatter parse errors will not be surfaced" >&2
+    echo "  hint: /tmp permission / disk space / inode exhaustion を確認" >&2
+    fm_err=""
+  fi
   while IFS= read -r -d '' f; do
     # extract `ingested` value from YAML frontmatter
     ingested_val=$(awk '
@@ -709,11 +717,20 @@ for f in "${pending_files[@]}"; do
     exit 3
   fi
 done
-# Remove now-empty raw subdirectories so git status stays clean.
-# verified-review cycle 4 LOW: intentionally cosmetic; failures are
-# silently ignored because the commit / push path below does not depend
-# on empty directory cleanup and the next fix cycle will re-run this.
-find .rite/wiki/raw -type d -empty -delete 2>/dev/null || true
+# Empty raw subdirectories must be removed so git status stays clean. Cleanup
+# is cosmetic — commit/push doesn't depend on it — but repeated failures hint
+# at a worktree problem (permission, inode), so route the diag to stderr when
+# RITE_DEBUG=1 instead of dropping it entirely.
+if [ -n "${RITE_DEBUG:-}" ]; then
+  _find_err=$(mktemp /tmp/rite-wiki-ingest-find-err-XXXXXX 2>/dev/null) || _find_err=""
+  find .rite/wiki/raw -type d -empty -delete 2>"${_find_err:-/dev/null}" || true
+  if [ -n "$_find_err" ] && [ -s "$_find_err" ]; then
+    sed 's/^/[rite][debug] find -delete: /' "$_find_err" >&2 || true
+  fi
+  [ -n "$_find_err" ] && rm -f "$_find_err"
+else
+  find .rite/wiki/raw -type d -empty -delete 2>/dev/null || true
+fi
 
 # Step 3: stash any remaining uncommitted work so checkout is safe.
 # We use `git stash push -u` with a specific message for traceability.

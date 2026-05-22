@@ -126,8 +126,11 @@ case "$CMD_CHECK" in
 esac
 
 # Pattern 2: gh pr diff -- <path> (file filter)
+# `[^|]*` (zero-or-more) covers both forms: `gh pr diff 123 -- file` and
+# `gh pr diff -- file` (when invoked from a PR branch with no positional arg).
+# An earlier `[^|]+` (one-or-more) silently missed the bare form.
 if [ -z "$BLOCKED_PATTERN" ]; then
-  if [[ "$CMD_CHECK" =~ gh[[:space:]]+pr[[:space:]]+diff[[:space:]]+[^|]+[[:space:]]--[[:space:]] ]]; then
+  if [[ "$CMD_CHECK" =~ gh[[:space:]]+pr[[:space:]]+diff[[:space:]]+[^|]*[[:space:]]?--[[:space:]] ]]; then
     BLOCKED_PATTERN="gh-pr-diff-file-filter"
     BLOCKED_REASON="gh pr diff does not support -- <path> for per-file filtering."
     BLOCKED_ALTERNATIVE="Use: gh pr diff {pr_number} | awk '/^diff --git/ { found=0 } /^diff --git.*target_pattern/ { found=1 } found { print }'"
@@ -239,11 +242,15 @@ if [ -z "$BLOCKED_PATTERN" ]; then
         # AND-logic against the legacy file always evaluates false, silently
         # bypassing the guard.
         echo "[rite] WARNING: pre-tool-bash-guard: _resolve-flow-state-path.sh failed; Pattern 5 detection falling back to legacy path ($STATE_ROOT_PATH/.rite-flow-state)" >&2
-        [ -n "${RITE_DEBUG:-}" ] && {
+        # `{ ... } || true` doubles up the failure suppression with the WARNING
+        # branch's `||`. A plain `if` avoids the redundant trap and keeps the
+        # intent — only append to the debug log when RITE_DEBUG is set, and
+        # surface a WARNING if the append itself fails.
+        if [ -n "${RITE_DEBUG:-}" ]; then
           echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: _resolve-flow-state-path.sh failed, falling back to legacy path" \
-            >> "$STATE_ROOT_PATH/.rite-flow-debug.log" \
+            >> "$STATE_ROOT_PATH/.rite-flow-debug.log" 2>/dev/null \
             || echo "[rite] WARNING: pre-tool-bash-guard: failed to write debug log to $STATE_ROOT_PATH/.rite-flow-debug.log (disk full / permission denied?)" >&2
-        } || true
+        fi
         STATE_FILE_PATH="${STATE_ROOT_PATH}/.rite-flow-state"
       fi
       if [ -f "$STATE_FILE_PATH" ]; then
@@ -261,13 +268,18 @@ if [ -z "$BLOCKED_PATTERN" ]; then
             BLOCKED_PATTERN="create-lifecycle-direct-gh-issue"
           fi
           if [ "$BLOCKED_PATTERN" = "create-lifecycle-direct-gh-issue" ]; then
-            BLOCKED_REASON="/rite:issue:create lifecycle 中 (phase=$STATE_PHASE) に gh issue create を直接実行することは禁止されています (#475 Mode B / #1079 forward-compat for legacy state)."
+            BLOCKED_REASON="/rite:issue:create lifecycle 中 (phase=$STATE_PHASE) に gh issue create を直接実行することは禁止されています."
             BLOCKED_ALTERNATIVE="Projects 統合 + label/status 設定のため、bash {plugin_root}/scripts/create-issue-with-projects.sh \"\$(jq -n --arg title ... --arg body_file ... --argjson labels ... --argjson projects ... '{issue:{title:\$title,body_file:\$body_file,labels:\$labels},projects:\$projects}')\" の canonical JSON pattern で呼び出してください (create.md ステップ 4.3 / 5.4 および references/issue-create-with-projects.md 参照)。"
           fi
         fi
       fi
     fi
   fi
+  # Re-arm the fail-open trap so Patterns 4 / 6 inherit the same regex-compile and
+  # bash-error fail-open behavior as Patterns 1-3. Without re-arming, a future bash
+  # builtin failure inside those patterns would abort the hook silently and Claude
+  # Code would interpret the missing deny JSON as "allow".
+  trap 'exit 0' ERR
 fi
 
 # Pattern 4: Reviewer subagent running state-mutating git commands (Issue #442).

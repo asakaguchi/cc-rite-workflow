@@ -45,13 +45,11 @@ else
 fi
 [ -f "$FLOW_STATE" ] || exit 0
 
-# cycle 12 HIGH F-01: unit separator \x1f に変更 (POSIX whitespace IFS collapse bug、
-# stop-guard.sh cycle 10 F-01 と同型)。.phase="" かつ .last_synced_phase 非空のとき
-# 全フィールド左 shift で _phase と _last_synced_phase が入れ替わり、下方の phase diff
-# 判定 (`[ "$_phase" != "$_last_synced_phase" ]` guard) が誤 true → spurious sync +
-# issue-comment-wm-sync.sh の --transform update-phase 呼び出しで last_synced_phase の
-# 値が phase として送信される silent データ汚染を起こす。
-# (line-number 参照を避ける理由は cycle 8 F-05 参照)
+# Unit separator (\x1f) prevents POSIX IFS from collapsing adjacent
+# whitespace delimiters. With tab, .phase="" + non-empty .last_synced_phase
+# would left-shift every field so _phase and _last_synced_phase swap,
+# making the diff guard fire erroneously and sending the wrong value
+# through issue-comment-wm-sync.sh --transform update-phase.
 _flow_data=$(jq -r '[(.active // false | tostring), (.issue_number // "" | tostring), (.phase // "" | tostring), (.last_synced_phase // "" | tostring)] | join("\u001f")' "$FLOW_STATE" 2>/dev/null) || exit 0
 IFS=$'\x1f' read -r _active issue_number _phase _last_synced_phase <<< "$_flow_data"
 [ "$_active" = "true" ] || exit 0
@@ -120,28 +118,45 @@ _phase_detail=$(python3 "$SCRIPT_DIR/work-memory-parse.py" "$LOCAL_WM" 2>/dev/nu
   | jq -r '.data.phase_detail // ""' 2>/dev/null) || _phase_detail=""
 [ -n "$_phase_detail" ] || _phase_detail="$_phase"
 
-"$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
-  --issue "$issue_number" \
-  --transform update-phase \
-  --phase "$_phase" \
-  --phase-detail "$_phase_detail" 2>/dev/null || log_debug "update-phase failed"
+# Capture sync rc so a failed phase update does NOT advance last_synced_phase —
+# advancing on failure makes the same phase skip its retry indefinitely until
+# the user changes phase again, producing a silent drift in Issue comment work
+# memory (gh auth expiry / rate limit / network failure all leave no trace
+# under the previous `2>/dev/null || log_debug` swallow).
+_phase_sync_err=$(mktemp 2>/dev/null) || _phase_sync_err=""
+_phase_sync_ok=0
+if "$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
+    --issue "$issue_number" \
+    --transform update-phase \
+    --phase "$_phase" \
+    --phase-detail "$_phase_detail" 2>"${_phase_sync_err:-/dev/null}"; then
+  _phase_sync_ok=1
+else
+  _rc=$?
+  echo "[rite] WARNING: post-tool-wm-sync: update-phase failed (rc=$_rc) — last_synced_phase will NOT be advanced so next hook invocation retries" >&2
+  [ -n "$_phase_sync_err" ] && [ -s "$_phase_sync_err" ] && head -3 "$_phase_sync_err" | sed 's/^/  /' >&2
+fi
+[ -n "$_phase_sync_err" ] && rm -f "$_phase_sync_err"
 
 # --- 2. Progress table + changed files update (post-implementation phases) ---
-# Automatically run update-progress and update-plan-status when phase transitions
-# to a post-implementation phase (phase5_lint and beyond).
 case "$_phase" in
-  phase5_lint|phase5_post_lint|phase5_post_execute|phase5_pr*|phase5_post_review|phase5_post_ready)
+  phase5_lint|phase5_post_lint|phase5_post_execute|phase5_pr*|phase5_post_review|phase5_post_ready|lint|pr|review|fix|completed)
     cd "$STATE_ROOT" || { log_debug "cd STATE_ROOT failed"; exit 0; }
 
-    # Determine base branch from rite-config.yml (absolute path for consistency with other hooks)
     _base_branch=$(grep -E '^  base:' "$STATE_ROOT/rite-config.yml" 2>/dev/null | sed 's/.*base:[[:space:]]*"\?\([^"]*\)"\?.*/\1/' || echo "develop")
     [ -n "$_base_branch" ] || _base_branch="develop"
 
-    # Get changed files list (single git diff call, reuse for both file list and status detection)
-    _changed_files_tmp=$(mktemp 2>/dev/null) || _changed_files_tmp="/tmp/rite-wm-sync-files.$$"
-    _diff_raw=$(git diff --name-status "origin/${_base_branch}...HEAD" 2>/dev/null || echo "")
+    # mktemp fallback uses $$ + $RANDOM to avoid TOCTOU collision when two
+    # Claude Code sessions share a PID; pure $$ on /tmp is race-prone.
+    _changed_files_tmp=$(mktemp 2>/dev/null) || _changed_files_tmp="/tmp/rite-wm-sync-files.$$.${RANDOM}"
+    _git_diff_err=$(mktemp 2>/dev/null) || _git_diff_err=""
+    _diff_raw=$(git diff --name-status "origin/${_base_branch}...HEAD" 2>"${_git_diff_err:-/dev/null}") || _diff_raw=""
+    if [ -n "$_git_diff_err" ] && [ -s "$_git_diff_err" ]; then
+      echo "[rite] WARNING: post-tool-wm-sync: git diff failed — progress table may show stale or empty file list:" >&2
+      head -3 "$_git_diff_err" | sed 's/^/  /' >&2
+    fi
+    [ -n "$_git_diff_err" ] && rm -f "$_git_diff_err"
 
-    # Generate formatted changed files list from raw diff
     echo "$_diff_raw" | while IFS=$'\t' read -r status file; do
       [ -n "$status" ] || continue
       case "$status" in
@@ -152,44 +167,57 @@ case "$_phase" in
       esac
     done > "$_changed_files_tmp" 2>/dev/null || true
 
-    # Determine statuses from raw diff (reuse _diff_raw, no second git call)
     _diff_files=$(echo "$_diff_raw" | awk -F'\t' '{print $2}')
     _impl_status="✅ 完了"
     _test_status="⬜ 未着手"
     _doc_status="⬜ 未着手"
-    # SIGPIPE 防止 (#398): echo | grep -qE パターンを here-string に置換。
-    # _diff_files が大きい場合、grep -q の早期終了で echo に SIGPIPE が届く経路を排除。
+    # Here-string avoids SIGPIPE from `grep -q` early-exit reaching the upstream `echo`.
     grep -qE '\.(test|spec)\.|test_|tests/' <<< "$_diff_files" 2>/dev/null && _test_status="✅ 完了"
     grep -qE '(docs/.*\.md|README\.md|CHANGELOG\.md|API\.md)' <<< "$_diff_files" 2>/dev/null && _doc_status="✅ 完了"
 
-    "$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
-      --issue "$issue_number" \
-      --transform update-progress \
-      --impl-status "$_impl_status" \
-      --test-status "$_test_status" \
-      --doc-status "$_doc_status" \
-      --changed-files-file "$_changed_files_tmp" 2>/dev/null || log_debug "update-progress failed"
+    _progress_sync_err=$(mktemp 2>/dev/null) || _progress_sync_err=""
+    if ! "$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
+        --issue "$issue_number" \
+        --transform update-progress \
+        --impl-status "$_impl_status" \
+        --test-status "$_test_status" \
+        --doc-status "$_doc_status" \
+        --changed-files-file "$_changed_files_tmp" 2>"${_progress_sync_err:-/dev/null}"; then
+      _rc=$?
+      echo "[rite] WARNING: post-tool-wm-sync: update-progress failed (rc=$_rc)" >&2
+      [ -n "$_progress_sync_err" ] && [ -s "$_progress_sync_err" ] && head -3 "$_progress_sync_err" | sed 's/^/  /' >&2
+      _phase_sync_ok=0
+    fi
+    [ -n "$_progress_sync_err" ] && rm -f "$_progress_sync_err"
 
     rm -f "$_changed_files_tmp"
 
-    # Bulk update implementation plan steps ⬜ → ✅
-    "$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
-      --issue "$issue_number" \
-      --transform update-plan-status 2>/dev/null || log_debug "update-plan-status failed"
+    _plan_sync_err=$(mktemp 2>/dev/null) || _plan_sync_err=""
+    if ! "$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
+        --issue "$issue_number" \
+        --transform update-plan-status 2>"${_plan_sync_err:-/dev/null}"; then
+      _rc=$?
+      echo "[rite] WARNING: post-tool-wm-sync: update-plan-status failed (rc=$_rc)" >&2
+      [ -n "$_plan_sync_err" ] && [ -s "$_plan_sync_err" ] && head -3 "$_plan_sync_err" | sed 's/^/  /' >&2
+      _phase_sync_ok=0
+    fi
+    [ -n "$_plan_sync_err" ] && rm -f "$_plan_sync_err"
 
     log_debug "progress sync completed"
     ;;
 esac
 
-# --- 3. Update last_synced_phase (atomic write) ---
-# Note: issue-comment-wm-sync.sh's cache_comment_id() may write wm_comment_id
-# to FLOW_STATE. We re-read FLOW_STATE after sync completes, so wm_comment_id
-# is preserved (sequential execution, no race condition).
-_tmp_fs=$(mktemp "${FLOW_STATE}.tmp.XXXXXX" 2>/dev/null) || _tmp_fs="${FLOW_STATE}.tmp.$$"
-if jq --arg p "$_phase" '.last_synced_phase = $p' "$FLOW_STATE" > "$_tmp_fs" 2>/dev/null; then
-  mv "$_tmp_fs" "$FLOW_STATE"
-else
-  rm -f "$_tmp_fs"
+# --- 3. Update last_synced_phase only when ALL sync calls succeeded ---
+# Advancing on partial failure would silently lose retry opportunity for the
+# subset that failed; gating on _phase_sync_ok ensures the next hook invocation
+# re-attempts every transformer that has not yet succeeded for this phase.
+if [ "$_phase_sync_ok" = "1" ]; then
+  _tmp_fs=$(mktemp "${FLOW_STATE}.tmp.XXXXXX" 2>/dev/null) || _tmp_fs="${FLOW_STATE}.tmp.$$.${RANDOM}"
+  if jq --arg p "$_phase" '.last_synced_phase = $p' "$FLOW_STATE" > "$_tmp_fs" 2>/dev/null; then
+    mv "$_tmp_fs" "$FLOW_STATE"
+  else
+    rm -f "$_tmp_fs"
+  fi
 fi
 
 log_debug "phase sync completed ($_last_synced_phase -> $_phase)"

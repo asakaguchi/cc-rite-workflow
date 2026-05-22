@@ -473,25 +473,23 @@ LLM は以下を実行する:
 > 以下の bash block 内 `{PARENT_ISSUE_NUMBER}`, `{TMPFILE_READ}`, `{TMPFILE_WRITE}`, `{ORIGINAL_LENGTH}` は LLM が直前の CONTEXT marker から literal 置換する。
 
 ```bash
+# helper 内で safety guard / API 失敗を WORKFLOW_INCIDENT として直接 emit するため、
+# orchestrator 側は stderr を観測するだけに留め、tmpfile パス未取得のときのみ
+# fetch_failed を発火する責務を残す。
 if [ -n "{TMPFILE_READ}" ] && [ -n "{TMPFILE_WRITE}" ]; then
-  if ! apply_err=$(bash {plugin_root}/hooks/issue-body-safe-update.sh apply \
-      --issue {PARENT_ISSUE_NUMBER} \
-      --tmpfile-read "{TMPFILE_READ}" \
-      --tmpfile-write "{TMPFILE_WRITE}" \
-      --original-length "{ORIGINAL_LENGTH}" \
-      --parent 2>&1); then
+  apply_err=$(bash {plugin_root}/hooks/issue-body-safe-update.sh apply \
+    --issue {PARENT_ISSUE_NUMBER} \
+    --tmpfile-read "{TMPFILE_READ}" \
+    --tmpfile-write "{TMPFILE_WRITE}" \
+    --original-length "{ORIGINAL_LENGTH}" \
+    --parent 2>&1) || true
+  if [ -n "$apply_err" ]; then
     if [ "${#apply_err}" -gt 500 ]; then
       apply_err_short="${apply_err:0:500}...truncated(${#apply_err})"
     else
       apply_err_short="$apply_err"
     fi
-    echo "WARNING: 親 Issue body の更新に失敗 (Sub-Issues セクションの追記が skip された可能性): $apply_err_short" >&2
-    if printf '%s' "$apply_err" | grep -q 'body 消失\|50%未満'; then
-      bash {plugin_root}/hooks/workflow-incident-emit.sh \
-        --type body_shrinkage_guard_tripped \
-        --details "Parent #{PARENT_ISSUE_NUMBER}: $apply_err_short" \
-        --pr-number 0 || true
-    fi
+    echo "WARNING: 親 Issue body の更新で診断メッセージ: $apply_err_short" >&2
   fi
 else
   bash {plugin_root}/hooks/workflow-incident-emit.sh \

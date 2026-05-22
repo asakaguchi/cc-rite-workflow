@@ -20,8 +20,8 @@
 #         <phase>: [<next1>, <next2>]
 #
 # ⚠️ The `stop_guard:` key name is preserved verbatim for backward compatibility
-# with existing project rite-config.yml files — the original stop-guard.sh has
-# been retired but renaming the config key would be a breaking change.
+# with existing project rite-config.yml files — renaming it would silently
+# break every consumer that already has overrides under the old key.
 #
 # Override semantics: MERGE — listed targets are APPENDED to the baked-in
 # whitelist for that phase (so projects can add custom transitions without
@@ -58,51 +58,29 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   ["review"]="fix pr completed"
   ["fix"]="review pr completed"
   ["completed"]=""
-  # create.md は flat 化後 terminal state を `completed` (start.md と同じ) で書き込むため、
-  # 旧 `create_completed` は whitelist から削除済。session-end.sh / pre-tool-bash-guard.sh
-  # の `create_*` lifecycle 検出は legacy state file 残置用 (forward-compat)。
+  # `create_completed` is intentionally absent: /rite:issue:create writes
+  # `completed` (same terminal as /rite:issue:start) in the flat workflow.
+  # session-end.sh / pre-tool-bash-guard.sh still detect `create_*` lifecycle
+  # phases only to handle legacy state files left by older versions.
 
-  # /rite:pr:cleanup lifecycle (#604).
-  # cleanup.md Phase 4 (wiki-auto-ingest) → Phase 5 (Completion Report) 多層防御で導入。
-  # cleanup_pre_ingest は Phase 4.W.2 invoke 直前、cleanup_post_ingest は wiki:ingest sub-skill
-  # return 直後 (🚨 Mandatory After Wiki Ingest セクション)、cleanup_completed は Phase 5
-  # Terminal Completion (sentinel + flow-state deactivate)。
-  # cleanup_completed は rite_phase_transition_allowed() の terminal acceptance に追加済み。
-  # /rite:pr:cleanup initial phase (#608 follow-up): cleanup.md Phase 1.0 (Activate
-  # Flow State) writes phase=cleanup before any sub-skill invoke. Without this entry,
-  # the cleanup → cleanup_pre_ingest transition was unknown, leaving Phase 1.0-4.W.1 unprotected.
-  # (stop-guard.sh の `case "$PHASE" in cleanup)` ブランチの HINT 文言 "Phase 1.0 (Activate Flow State)" と一致させる)
-  # NOTE (#618 reverts the #608 follow-up YAGNI removal): cleanup_pre_ingest can transition to
-  # ingest_pre_lint when ingest.md Phase 8.2 Pre-write overrides the caller phase. On lint return,
-  # ingest.md 🚨 Mandatory After Auto-Lint Step 1 patches ingest_post_lint, then the caller's
-  # Mandatory After Wiki Ingest writes back cleanup_post_ingest. See DRIFT-CHECK ANCHOR in
-  # plugins/rite/commands/wiki/ingest.md 🚨 Mandatory After Auto-Lint section.
+  # /rite:pr:cleanup lifecycle.
+  # cleanup → cleanup_pre_ingest → cleanup_post_ingest → cleanup_completed
+  # is the canonical ring; the entries below let pre-ingest jump directly to
+  # cleanup_completed when wiki ingest is configured off, and let the
+  # caller's "Mandatory After Wiki Ingest" rewrite cleanup_post_ingest after
+  # ingest.md temporarily overrides the phase to ingest_pre_lint.
   ["cleanup"]="cleanup_pre_ingest cleanup_completed"
   ["cleanup_pre_ingest"]="cleanup_post_ingest cleanup_completed ingest_pre_lint"
   ["cleanup_post_ingest"]="cleanup_completed"
   ["cleanup_completed"]=""
 
-  # /rite:wiki:ingest lifecycle ring (#618, reverts the #608 follow-up YAGNI removal).
-  # ingest.md Phase 8.2 Pre-write (ingest_pre_lint) → 🚨 Mandatory After Auto-Lint Step 1
-  # (ingest_post_lint) → Phase 9.1 Step 3 terminal patch (ingest_completed, active=false).
-  # Caller 経由時は caller Mandatory After Wiki Ingest が caller phase
-  # (cleanup_post_ingest) に書き戻す ring 構造。単独実行時は --if-exists により flow-state
-  # 不在なら no-op。
-  #
-  # **Historical (PR #675 で stop-guard.sh は削除済)**: 旧 `stop-guard.sh` の ingest_pre_lint /
-  # ingest_post_lint case arm が end_turn を block し manual_fallback_adopted sentinel を emit する
-  # 設計だった。現在は本 phase-transition-whitelist の許可遷移定義 + ingest.md 🚨 Mandatory After
-  # Auto-Lint section の 2 site で symmetry を担う (旧 3 site から 2 site に縮退)。
-  # DRIFT-CHECK ANCHOR (semantic): ingest.md 🚨 Mandatory After Auto-Lint section と
-  # 本 whitelist 定義の ingest_* phase 遷移とで 2 site 対称。いずれかを変更する際は両 site 同時確認。
-  #
-  # Edge rationale:
-  # - `ingest_pre_lint → ingest_post_lint`: canonical path (Mandatory After Step 1 patch after lint returns)
-  # - `ingest_pre_lint → ingest_completed`: defense-in-depth edge for the Step 1 WARNING fallback only.
-  #   If Mandatory After Step 1 patch silently fails (WARNING + continue), Phase 9.1 Step 3's terminal
-  #   patch can still transition directly to ingest_completed without tripping the guard.
-  # - `ingest_pre_lint → cleanup_post_ingest`: defense-in-depth edge for both Mandatory After Step 1
-  #   AND Phase 9.1 Step 3 failing — lets the caller's Mandatory After write the caller phase back.
+  # /rite:wiki:ingest lifecycle ring. ingest.md temporarily overrides the
+  # caller phase to ingest_pre_lint, patches ingest_post_lint after lint
+  # returns, then writes the terminal ingest_completed. The extra edges
+  # below let the caller's "Mandatory After Wiki Ingest" restore the
+  # caller phase (cleanup_post_ingest) even when the intermediate patches
+  # silently degrade — without them a downstream WARNING-and-continue would
+  # leave the flow-state in an unrepairable state.
   ["ingest_pre_lint"]="ingest_post_lint ingest_completed cleanup_post_ingest"
   ["ingest_post_lint"]="ingest_completed cleanup_post_ingest"
   ["ingest_completed"]="cleanup_post_ingest"
@@ -216,7 +194,11 @@ _rite_load_whitelist_overrides() {
       # Require balanced brackets — unclosed `[a, b` silently dropped the entry
       # and leaked into the next key (IMPORTANT R #3).
       if [[ "$rhs" =~ ^\[ ]]; then
-        if [[ "$rhs" =~ ^\[(.*)\]$ ]]; then
+        # Strip trailing comment / whitespace before matching the closing `]`
+        # so `[a]  # inline comment` is not misclassified as "unclosed inline list".
+        local rhs_no_comment="${rhs%%#*}"
+        rhs_no_comment="${rhs_no_comment%"${rhs_no_comment##*[![:space:]]}"}"
+        if [[ "$rhs_no_comment" =~ ^\[(.*)\]$ ]]; then
           local list_body="${BASH_REMATCH[1]}"
           list_body="${list_body//,/ }"
           for val in $list_body; do
@@ -275,61 +257,35 @@ _rite_merge_override_entry() {
 }
 
 # Return 0 if `prev_phase -> next_phase` is allowed, 1 otherwise.
+#
 # Synthetic rules:
-#   - Empty prev_phase is accepted for any known phase (workflow cold start).
-#   - Unknown prev_phase is accepted (forward-compatibility; phases added by
-#     sub-skills outside this whitelist should not cause spurious blocks).
-#   - The special phase "completed" is always a valid terminal.
+#   - Empty prev_phase is accepted for any known phase (workflow cold start where
+#     no prior state exists yet).
+#   - Unknown prev_phase is accepted (forward-compat; future sub-skills that
+#     introduce new phases outside this whitelist must not cause spurious blocks).
+#   - Terminal phases ("completed" / "cleanup_completed" / "ingest_completed")
+#     are accepted ONLY from their canonical predecessor set. Unconditional
+#     `prev → terminal` would let a workflow skip (e.g. init → completed) pass
+#     silently, defeating the whole point of the whitelist.
 rite_phase_transition_allowed() {
   local prev="$1"
   local next="$2"
-
-  # Terminal / cold-start cases.
-  # "completed" is the /rite:issue:start terminal state. "create_completed" is written by
-  # /rite:issue:create at its end. "cleanup_completed" (#604) is the terminal state for
-  # /rite:pr:cleanup. "phase_done" was a speculative reserved name with no producer —
-  # removed per code-quality cycle-3 LOW (premature abstraction). "ingest_completed" was
-  # removed in #608 follow-up as YAGNI, then **revived in #618 (PR #624)** when ingest.md
-  # gained flow-state writes (Phase 8.2 Pre-write / 🚨 Mandatory After Step 1 / Phase 9.1
-  # Step 3 terminal patch) — see the revived entries in _RITE_PHASE_TRANSITIONS array
-  # above and plugins/rite/commands/wiki/ingest.md Phase 8.2 / 🚨 Mandatory After /
-  # Phase 9.1 Step 3 for the ring design.
-  #
-  # NOTE (#608 follow-up — forward-compat bypass scope): The four terminal accepts below
-  # currently allow ANY prev → terminal transition unconditionally. This is intentional
-  # forward-compat behaviour today (catches cold-start writes, retry paths, and skill
-  # versions that may add new prev phases without updating this file), but it also masks
-  # genuine protocol violations such as cleanup → cleanup_completed (skipping pre/post
-  # ingest entirely). Tightening this to require specific prev → terminal pairs is a
-  # separate scope (devops LOW) — when revisited, build the constraint from the explicit
-  # _RITE_PHASE_TRANSITIONS entries (e.g. cleanup_completed must come from cleanup_post_ingest
-  # OR cleanup_pre_ingest) and add coverage in stop-guard.test.sh before flipping the
-  # default.
-  # ingest_completed (#618, reverts the #608 follow-up removal): ingest.md Phase 9.1 Step 3
-  # writes this terminal state when flow-state was actived by a caller. Accept any prev →
-  # ingest_completed in forward-compat mode; the explicit ingest_pre_lint / ingest_post_lint
-  # → ingest_completed transitions are still encoded in _RITE_PHASE_TRANSITIONS above for
-  # semantic clarity.
   [ -z "$prev" ] && return 0
   [ "$prev" = "$next" ] && return 0
 
-  # Terminal phase acceptance: only the canonical predecessor set is accepted.
-  # An unconditional `prev → terminal` allow would let a workflow skip (e.g.
-  # init → completed) pass silently, defeating the whole point of the whitelist.
   if [ "$next" = "completed" ] || [ "$next" = "cleanup_completed" ] || [ "$next" = "ingest_completed" ]; then
     case "$next:$prev" in
       completed:lint|completed:pr|completed:review|completed:fix) return 0 ;;
       cleanup_completed:cleanup_post_ingest|cleanup_completed:cleanup_pre_ingest) return 0 ;;
       ingest_completed:ingest_pre_lint|ingest_completed:ingest_post_lint) return 0 ;;
-      # Forward-compat arm: legacy phase names from earlier sub-skill chains
-      # (create_* / start_* / phase[0-9]* / phase5_*) are accepted when /rite:resume
-      # picks up a state file written before the flat workflow consolidation.
-      # Without this, resuming pre-existing in-flight workflows would be blocked.
-      completed:create_*|completed:start_*|completed:phase[0-9]*|completed:phase[0-9]_*) return 0 ;;
+      # Legacy phase names (create_* / start_* / phase[0-9]*) accepted so that
+      # /rite:resume can pick up state files written by older sub-skill chains
+      # without tripping the guard. `phase[0-9]*` covers both `phase5` and
+      # `phase5_step1` — separate underscored arm would be redundant.
+      completed:create_*|completed:start_*|completed:phase[0-9]*) return 0 ;;
       *)
-        # Block protocol violations (e.g. init → completed) and surface them on
-        # stderr — silent rejection would be indistinguishable from "guard not
-        # running" during incident triage.
+        # Surface the rejection so incident triagers can distinguish
+        # "protocol violation" from "guard not running".
         if [ "${RITE_DEBUG:-0}" = "1" ]; then
           echo "[rite] ERROR terminal-accept rejected: prev='$prev' → next='$next' is outside the canonical predecessor set; protocol violation" >&2
         else

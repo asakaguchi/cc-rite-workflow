@@ -38,7 +38,7 @@ This command has two invocation cases: standalone execution and being called fro
 
 | Caller | Output Pattern | Subsequent Action |
 |-----------|-------------|---------------|
-| `/rite:issue:start` (end-to-end flow) | Output (required) | `/rite:issue:start` calls `rite:pr:create` after executing ステップ 4.4 (PR #1079 で旧 Phase 5.2.1 を統合) |
+| `/rite:issue:start` (end-to-end flow) | Output (required) | `/rite:issue:start` calls `rite:pr:create` at ステップ 6 after consuming the lint result at ステップ 5.1 |
 | Standalone execution | Output (required) | Display "next steps" guidance |
 
 **Determination method**: Claude determines the caller from conversation context:
@@ -56,7 +56,7 @@ This command has two invocation cases: standalone execution and being called fro
 - `[lint:error]` - lint errors detected
 - `[lint:aborted]` - user aborted
 
-> **Important (flow continuation responsibility)**: When executed within the end-to-end flow, **this command does NOT directly call `rite:pr:create`; it returns control to the caller `/rite:issue:start`**. `/rite:issue:start` calls `rite:pr:create` after executing ステップ 4.4 (checklist completion confirmation, PR #1079 で旧 Phase 5.2.1 を統合).
+> **Important (flow continuation responsibility)**: When executed within the end-to-end flow, **this command does NOT directly call `rite:pr:create`; it returns control to the caller `/rite:issue:start`**. `/rite:issue:start` calls `rite:pr:create` at ステップ 6 after consuming the lint result at ステップ 5.1 (checklist completion confirmation happens earlier at ステップ 4.4).
 
 ---
 
@@ -262,10 +262,10 @@ When lint is skipped, output the completion message in the following format:
 ```
 
 > If `/rite:lint` continues to PR creation directly, it bypasses the checklist confirmation in the caller, potentially creating a PR with incomplete tasks.
-> **CRITICAL**: When called from `/rite:issue:start`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:issue:start` after ステップ 4.4 (checklist confirmation) is complete (PR #1079 で旧 Phase 5.2.1 を統合).
+> **CRITICAL**: When called from `/rite:issue:start`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:issue:start` at ステップ 6 after the lint result is consumed at ステップ 5.1.
 
 **Meaning of output patterns:**
-- `[lint:skipped]`: Used by `/rite:issue:start` ステップ 4.4 (PR #1079 で旧 Phase 5.2 を統合) to detect this pattern and decide to proceed to ステップ 5 (PR creation)
+- `[lint:skipped]`: Used by `/rite:issue:start` ステップ 5.1 to detect this pattern and decide to proceed to ステップ 6 (PR creation)
 - `[lint:success]`: When lint completed successfully (output in Phase 4.1)
 - `[lint:error]`: When lint detected errors (output in Phase 4.2)
 - `[lint:aborted]`: When the user selected "Abort"
@@ -990,9 +990,9 @@ These appendices do NOT change the result pattern — `[lint:success]` remains t
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 
-> **CRITICAL**: When called from `/rite:issue:start`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:issue:start` after ステップ 4.4 (checklist confirmation) is complete (PR #1079 で旧 Phase 5.2.1 を統合).
+> **CRITICAL**: When called from `/rite:issue:start`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:issue:start` at ステップ 6 after the lint result is consumed at ステップ 5.1.
 
-**Note**: `[lint:success]` is an output pattern used by `/rite:issue:start` ステップ 4.4 (PR #1079 で旧 Phase 5.2 を統合) to determine the lint result.
+**Note**: `[lint:success]` is an output pattern used by `/rite:issue:start` ステップ 5.1 to determine the lint result.
 
 ### 4.2 When Issues Found
 
@@ -1018,7 +1018,7 @@ These appendices do NOT change the result pattern — `[lint:success]` remains t
 {i18n:lint_fix_suggestions}:
 ```
 
-**Note**: `[lint:error]` is an output pattern used by `/rite:issue:start` ステップ 4.4 (PR #1079 で旧 Phase 5.2 を統合) to determine the lint result.
+**Note**: `[lint:error]` is an output pattern used by `/rite:issue:start` ステップ 5.1 to determine the lint result.
 
 **Presenting fix suggestions:**
 
@@ -1289,22 +1289,22 @@ Continue the end-to-end flow based on the output pattern from Phase 4.
 
 | Output Pattern | Action in End-to-End Flow |
 |-------------|---------------------------|
-| `[lint:success]` | `/rite:lint` execution completes, and the caller `/rite:issue:start` executes ステップ 4.4 (checklist completion confirmation, PR #1079 で旧 Phase 5.2.1 を統合) |
-| `[lint:skipped]` | `/rite:lint` execution completes, and the caller `/rite:issue:start` executes ステップ 4.4 (checklist completion confirmation, PR #1079 で旧 Phase 5.2.1 を統合) |
+| `[lint:success]` | `/rite:lint` execution completes, and the caller `/rite:issue:start` consumes the sentinel at ステップ 5.1 then proceeds to ステップ 6 (PR creation) |
+| `[lint:skipped]` | `/rite:lint` execution completes, and the caller `/rite:issue:start` consumes the sentinel at ステップ 5.1 then proceeds to ステップ 6 (PR creation) |
 | `[lint:error]` | After fixing errors, run lint again (return to Phase 3) |
 | `[lint:aborted]` | Flow ends (execution of `/rite:issue:start` also ends) |
 
-**Note**: During standalone execution (when the user directly executes `/rite:lint`), the ステップ 4.4 checklist confirmation (PR #1079 で旧 Phase 5.2.1 を統合) is **not executed**. Checklist confirmation is a feature only executed within the `/rite:issue:start` end-to-end flow; standalone lint execution ends without flow continuation.
+**Note**: During standalone execution (when the user directly executes `/rite:lint`), the ステップ 5.1 sentinel consumption and ステップ 6 PR creation are **not executed**. Lint sentinel consumption and PR creation are features only executed within the `/rite:issue:start` end-to-end flow; standalone lint execution ends without flow continuation.
 
 ### 5.2 Processing After `/rite:lint` Completion
 
 When `[lint:success]` or `[lint:skipped]` is output:
 
-**`/rite:lint` execution completes**, and Claude executes `/rite:issue:start` ステップ 4.4 (checklist completion confirmation, PR #1079 で旧 Phase 5.2.1 を統合). After that, it calls `rite:pr:create`.
+**`/rite:lint` execution completes**, and Claude returns to `/rite:issue:start` ステップ 5.1 to consume the lint sentinel, then proceeds to ステップ 6 to call `rite:pr:create`.
 
 **Important**:
 - `/rite:lint` does **NOT directly call** `rite:pr:create`
-- The caller `/rite:issue:start` performs checklist completion confirmation in ステップ 4.4 (PR #1079 で旧 Phase 5.2.1 を統合)
+- The caller `/rite:issue:start` consumes the lint sentinel at ステップ 5.1 and proceeds to ステップ 6 (PR creation)
 - After all checklist items are complete, `/rite:issue:start` calls `rite:pr:create`
 
 **Design intent**:

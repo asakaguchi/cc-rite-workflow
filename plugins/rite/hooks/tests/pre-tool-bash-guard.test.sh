@@ -1569,6 +1569,40 @@ else
 fi
 echo ""
 
+# Run the hook against a copy alongside a failing resolver so the literal-grep
+# pins above are paired with a runtime check that the WARNING actually fires.
+# Without this, a refactor could move the WARNING into a dead branch and the
+# literal-only assertions would still pass.
+echo "TC-202: Pattern 5 resolver fallback behavioral — failing resolver emits WARNING at runtime"
+tc202_tmp=$(mktemp -d)
+mkdir -p "$tc202_tmp/hooks"
+cp "$HOOK" "$tc202_tmp/hooks/pre-tool-bash-guard.sh"
+# Copy the real state-path-resolve.sh so Pattern 5 reaches the resolver step.
+cp "$(dirname "$HOOK")/state-path-resolve.sh" "$tc202_tmp/hooks/state-path-resolve.sh" 2>/dev/null || true
+# Inject a resolver that always fails, forcing the fallback branch.
+cat > "$tc202_tmp/hooks/_resolve-flow-state-path.sh" <<'FAIL_RESOLVER'
+#!/bin/bash
+echo "mock resolver failure" >&2
+exit 1
+FAIL_RESOLVER
+chmod +x "$tc202_tmp/hooks/_resolve-flow-state-path.sh"
+# Provide a CWD with a .rite-flow-state in legacy path so Pattern 5 has something to read.
+tc202_cwd=$(mktemp -d)
+printf '{"phase":"create_interview","active":true}' > "$tc202_cwd/.rite-flow-state"
+tc202_stderr=$(mktemp)
+tc202_rc=0
+jq -n --arg tn "Bash" --arg cmd "gh issue create --title 'x'" --arg cwd "$tc202_cwd" \
+  '{tool_name: $tn, tool_input: {command: $cmd}, cwd: $cwd}' \
+  | bash "$tc202_tmp/hooks/pre-tool-bash-guard.sh" >/dev/null 2>"$tc202_stderr" || tc202_rc=$?
+if grep -qE 'pre-tool-bash-guard:.*_resolve-flow-state-path.sh failed' "$tc202_stderr"; then
+  pass "TC-202 failing resolver triggers unconditional WARNING at runtime (rc=$tc202_rc)"
+else
+  fail "TC-202 failing resolver did not produce expected WARNING. stderr=$(cat "$tc202_stderr") rc=$tc202_rc"
+fi
+rm -rf "$tc202_tmp" "$tc202_cwd"
+rm -f "$tc202_stderr"
+echo ""
+
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------

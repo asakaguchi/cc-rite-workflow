@@ -121,15 +121,18 @@ if [[ -z "$SOURCE_REF" ]]; then
   echo "ERROR: --source-ref is required" >&2
   exit 1
 fi
-# F-07 fix + F-14 fix: reject all ASCII control chars to prevent YAML frontmatter injection
-# F-14: 改行/CR/タブ以外の制御文字 (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F, 0x7F) もフィルタ
+# Any ASCII control char can break YAML frontmatter (early --- close, key
+# injection, escape sequences). Reject the entire `[:cntrl:]` class — limiting
+# to LF/CR/TAB would leave 0x00-0x08 / 0x0B / 0x0C / 0x0E-0x1F / 0x7F as
+# bypass vectors.
 if [[ "$SOURCE_REF" =~ [[:cntrl:]] ]]; then
   echo "ERROR: --source-ref must not contain control characters (newlines, tabs, or other ASCII control chars)" >&2
   echo "  reason: control characters can break YAML frontmatter (early --- close, key injection, escape sequences)" >&2
   exit 1
 fi
 
-# F-09 fix: validate PR_NUMBER / ISSUE_NUMBER as positive integers BEFORE write
+# Validate numeric args before any write so a non-numeric string can't end up
+# in the YAML frontmatter and corrupt later parsers.
 if [[ -n "$PR_NUMBER" ]]; then
   case "$PR_NUMBER" in
     ''|*[!0-9]*)
@@ -147,7 +150,9 @@ if [[ -n "$ISSUE_NUMBER" ]]; then
   esac
 fi
 
-# F-08 fix + F-14 fix: reject all ASCII control chars in TITLE (SOURCE_REF と対称)
+# Mirror the SOURCE_REF control-char rejection on TITLE — the two fields land
+# in adjacent YAML keys, so an asymmetric guard would leak the same injection
+# class through whichever side is unprotected.
 if [[ -n "$TITLE" ]]; then
   if [[ "$TITLE" =~ [[:cntrl:]] ]]; then
     echo "ERROR: --title must not contain control characters (newlines, tabs, or other ASCII control chars)" >&2
@@ -166,9 +171,11 @@ if [[ -z "$CONTENT_FILE" ]]; then
   echo "ERROR: --content-file is required" >&2
   exit 1
 fi
-# cycle 3 fix (F-16): path containment + symlink 拒否。
-# LLM 駆動フローからの prompt injection で /etc/passwd 等を渡され、
-# 後続 /rite:wiki:ingest が wiki ブランチへ commit & push する exfiltration 経路を防ぐ。
+# Reject symlinks and require path containment so a prompt-injected
+# `--content-file /etc/passwd` can't slip through the subsequent
+# `/rite:wiki:ingest` commit + push (which would publish the file to the wiki
+# branch). Symlinks bypass the containment check after resolution, so they are
+# rejected before realpath runs.
 if [[ -L "$CONTENT_FILE" ]]; then
   echo "ERROR: --content-file '$CONTENT_FILE' is a symlink (rejected for security)" >&2
   echo "  hint: provide the actual file, not a symlink" >&2
@@ -178,17 +185,17 @@ if [[ ! -f "$CONTENT_FILE" ]]; then
   echo "ERROR: --content-file '$CONTENT_FILE' does not exist or is not a regular file" >&2
   exit 1
 fi
-# Path containment: $PWD 配下または /tmp/rite-* のみ許可
-# F-01 fix: realpath 失敗時を fail-fast にする (silent bypass 防止)
+# Path containment: $PWD 配下または /tmp/rite-* のみ許可。realpath 失敗時は
+# fail-fast にして silent bypass (resolved path 不明のまま allowlist 判定が
+# skip される経路) を塞ぐ。
 resolved_content=$(realpath -- "$CONTENT_FILE") || {
   echo "ERROR: realpath failed for '$CONTENT_FILE' — cannot verify path containment" >&2
   echo "  hint: ensure the file exists and realpath is available (coreutils)" >&2
   exit 1
 }
-# F-02 fix: /tmp/* → /tmp/rite-* に制限 (exfiltration 経路の縮小)
-# F-11 fix: macOS では /tmp → /private/tmp の symlink があり、realpath 解決後は
-#   /private/tmp/rite-* が返る。同じ信頼境界 (owner-managed /tmp/rite- namespace) として
-#   allowlist に追加する。exfiltration リスク増加なし (どちらも owner-writable /tmp 直下の rite prefix)
+# /tmp/* → /tmp/rite-* に限定して exfiltration 経路を縮小。macOS では realpath が
+# /tmp → /private/tmp に symlink 解決するため /private/tmp/rite-* も同じ信頼境界
+# (owner-managed /tmp/rite-* namespace) として allowlist に含める。
 case "$resolved_content" in
   "$PWD"/*|/tmp/rite-*|/private/tmp/rite-*)
     : # allowed ($PWD 配下 / /tmp/rite-* / /private/tmp/rite-* — 後者は macOS realpath 解決後)
@@ -211,10 +218,9 @@ fi
 # handle the strict validation later. The trigger only refuses when wiki.enabled
 # is explicitly false.
 #
-# F-01 fix: avoid `set -euo pipefail` × `grep no-match` silent abort.
-# When `wiki:` section or `enabled:` key is missing, grep returns exit 1, which
-# under pipefail aborts the entire script. We split the pipeline into stages and
-# explicitly tolerate empty results so missing keys lenient-fall-through to "not false".
+# `set -euo pipefail` + `grep` returning rc=1 on no-match would abort the
+# script. Stage the parse so a missing `wiki:` section or `enabled:` key
+# leniently falls through to "not false" instead of killing the trigger.
 #
 # YAML parse logic sync: the canonical implementation lives in
 # `hooks/scripts/lib/wiki-config.sh` (`parse_wiki_scalar()` / `validate_wiki_branch_name()`).
@@ -276,10 +282,30 @@ if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
       exit 2
     fi
   fi
+  # `wiki_enabled_line` non-empty but normalized to empty means the YAML parser
+  # produced a result the case statement can't classify (CRLF residue, locale
+  # corruption, sed gobbling the value). Fail closed so a corrupt config doesn't
+  # silently re-enable wiki staging the user disabled.
+  if [[ -n "$wiki_enabled_line" && -z "$wiki_enabled" ]]; then
+    echo "ERROR: wiki.enabled の値が正規化後 empty (元: '$wiki_enabled_line') — rite-config.yml の値を確認してください" >&2
+    echo "  safe-default: staging を中止します (silent policy-violation 防止)" >&2
+    exit 2
+  fi
+  # Explicit allowlist instead of letting unknown values silently enable
+  # staging. Empty stays the historical "no opinion → enabled" default
+  # (configured via the strict guard above to require explicit empty intent),
+  # while a typo like `tru` is rejected so the safety net isn't bypassed by
+  # silent fallthrough.
   case "$wiki_enabled" in
+    ""|true|yes|1) ;;
     false|no|0)
       echo "ERROR: wiki.enabled is false in rite-config.yml — refusing to stage Raw Source" >&2
       echo "  hint: set wiki.enabled: true and run /rite:wiki:init first" >&2
+      exit 2
+      ;;
+    *)
+      echo "ERROR: wiki.enabled='$wiki_enabled' is not a recognised boolean (expected true|yes|1|false|no|0)" >&2
+      echo "  safe-default: staging を中止します (typo による silent enable 防止)" >&2
       exit 2
       ;;
   esac
@@ -291,7 +317,7 @@ slugify() {
     | tr '[:upper:]' '[:lower:]' \
     | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' \
     | cut -c1-60 \
-    | sed -E 's/-+$//'  # cycle 3 fix (F-07): cut 境界の末尾ハイフンを再 strip
+    | sed -E 's/-+$//'  # cut may slice mid-hyphen-run; strip the trailing dash again so slugs never end in `-`
 }
 slug=$(slugify "$SOURCE_REF")
 if [[ -z "$slug" ]]; then
@@ -309,28 +335,27 @@ target_file="${target_dir}/${timestamp_compact}-${slug}.md"
 # when /rite:wiki:ingest is later run from the wiki branch; on the dev branch
 # the directory may not exist yet, so we create it on demand).
 #
-# F-13 fix: do NOT silently suppress mkdir stderr. Surface root cause
-# (permission denied / read-only filesystem / ancestor not a directory).
+# Surface mkdir's root cause (permission denied / read-only filesystem /
+# ancestor not a directory) — `2>/dev/null` would drop the diagnostic and
+# leave the user staring at a bare "failed to create".
 if ! mkdir -p "$target_dir"; then
   echo "ERROR: failed to create directory '$target_dir'" >&2
   echo "  hint: check filesystem permissions and ancestor path types" >&2
   exit 3
 fi
 
-# F-08 fix: properly escape backslash before double-quote in TITLE
-#   - escape backslash first (otherwise the next escape doubles them)
-#   - then escape double quote
+# Escape backslash BEFORE double quote in TITLE — reversing the order would
+# double-escape the backslashes that the second pass introduces, producing
+# malformed YAML.
 if [[ -n "$TITLE" ]]; then
   escaped_title=${TITLE//\\/\\\\}
   escaped_title=${escaped_title//\"/\\\"}
 fi
 
-# cycle 9 CRITICAL fix: partial-write rollback trap.
-# 旧実装は integrity check 失敗 / cat mid-write failure で exit 3 する経路で $target_file を
-# 残したままユーザーに手動削除を指示していた。stderr を見逃した / hook 経由実行時に次の
-# /rite:wiki:ingest が truncated Raw Source を `ingested: false` として読み込み、LLM が不完全な
-# 内容を Wiki ページに統合した後 `ingested: true` で永久封印する silent data degradation 経路があった。
-# trap を武装して非 0 exit 経路で target_file を自動削除し、正常経路の直前で trap を解除する。
+# Partial-write rollback: leaving a truncated `ingested: false` Raw Source on
+# disk lets the next `/rite:wiki:ingest` quietly merge incomplete content into
+# a Wiki page and then flip `ingested: true`, sealing in the data loss. Arm
+# the trap before the first write and disarm it just before the normal exit.
 _rite_trigger_target_rollback() {
   local _rc=$1
   if [ -n "${target_file:-}" ] && [ -f "$target_file" ]; then
@@ -347,9 +372,9 @@ trap 'trap - EXIT; _rite_trigger_target_rollback 129; exit 129' HUP
 {
   printf -- '---\n'
   printf 'type: %s\n' "$TYPE"
-  # cycle 3 fix (F-15): SOURCE_REF を double-quoted YAML scalar にして YAML 構造文字
-  # (#, [, {, &, !, *) が plain scalar として誤解釈される injection を防ぐ。
-  # TITLE と対称のエスケープ処理を適用する。
+  # Emit SOURCE_REF as a double-quoted YAML scalar so structural characters
+  # (#, [, {, &, !, *) cannot be reinterpreted by the parser. Mirror the
+  # TITLE escaping rules so both fields survive the same adversarial input.
   escaped_source_ref=${SOURCE_REF//\\/\\\\}
   escaped_source_ref=${escaped_source_ref//\"/\\\"}
   printf 'source_ref: "%s"\n' "$escaped_source_ref"
@@ -365,10 +390,10 @@ trap 'trap - EXIT; _rite_trigger_target_rollback 129; exit 129' HUP
   fi
   printf 'ingested: false\n'
   printf -- '---\n\n'
-  # F-02 fix: cat 失敗を明示検査 (set -e は || の LHS で抑制されるため silent swallow を防ぐ)
-  # cycle 6 fix: TOCTOU 緩和 — realpath 解決済みパス ($resolved_content) を cat に使用する。
-  # symlink check (-L) と realpath 解決の間にファイルが symlink に差し替えられた場合でも、
-  # realpath が解決した実パスから読み込むことで path containment bypass を緩和する。
+  # `set -e` is suppressed on the LHS of `||`, so cat failures must be checked
+  # explicitly. Reading from `$resolved_content` (the realpath result) instead
+  # of `$CONTENT_FILE` closes the TOCTOU window where a symlink swap between
+  # the `-L` check and the read could let the containment guard be bypassed.
   cat "$resolved_content" || { echo "ERROR: cat failed for '$resolved_content' (resolved from '$CONTENT_FILE')" >&2; exit 3; }
   # Ensure trailing newline
   printf '\n'
@@ -382,32 +407,45 @@ if [[ ! -s "$target_file" ]]; then
   exit 3
 fi
 
-# F-21 fix: integrity verification — partial-write 検出
-# (frontmatter のみが書き込まれて body 部分が欠落する truncated 書き込みを catch)
-#
-# cycle 2 H1 fix: body に `---` (markdown 水平線 / 別 YAML マーカー) を含む Raw Source を
-# 誤検出していた問題を修正する。state machine を 3 値化し、frontmatter が closed (in_fm == 2)
-# した後は `^---$` パターンを fm_close カウンタに反映しない。
-#   - in_fm == 0: frontmatter 開始前 (1 つ目の `---` を待つ)
-#   - in_fm == 1: frontmatter 内 (2 つ目の `---` を待つ)
-#   - in_fm == 2: frontmatter 終了後 (body 領域 — `---` は通常テキストとして扱う)
-expected_status=$(awk '
+# Integrity verification: detect partial writes where frontmatter landed but
+# the body is missing/truncated. A 3-state machine is required because a
+# 2-state version would mis-count `---` lines that appear in the body as
+# markdown horizontal rules or nested YAML markers — closing fm twice and
+# treating valid files as incomplete.
+#   - in_fm == 0: before frontmatter (waiting for the first `---`)
+#   - in_fm == 1: inside frontmatter (waiting for the closing `---`)
+#   - in_fm == 2: after frontmatter (body region — `---` is plain text)
+# `cmd && a || b` would conflate "integrity check failed (rc=1)" with
+# "awk binary IO / syntax error (rc>=2)" — both ending up as "incomplete"
+# and triggering the rm hint, including for transient awk failures. Branch
+# on the exit code explicitly so unexpected awk failures surface a WARNING
+# instead of falsely telling the operator to delete the file.
+awk_rc=0
+awk '
   BEGIN { in_fm = 0 }
   /^---$/ {
     if (in_fm < 2) { in_fm++; next }
-    # in_fm == 2: body 内の `---` は水平線等の通常テキストとして扱う
   }
   in_fm == 2 && NF > 0 { body_seen = 1; exit }
   END { exit !(in_fm == 2 && body_seen) }
-' "$target_file" && echo "ok" || echo "incomplete")
+' "$target_file" || awk_rc=$?
+case "$awk_rc" in
+  0) expected_status="ok" ;;
+  1) expected_status="incomplete" ;;
+  *)
+    echo "WARNING: awk integrity check failed unexpectedly (rc=$awk_rc) for '$target_file' — treating as incomplete to fail safe" >&2
+    expected_status="incomplete"
+    ;;
+esac
 if [ "$expected_status" = "incomplete" ]; then
   echo "ERROR: '$target_file' integrity check failed (frontmatter present but body missing/truncated)" >&2
   echo "  対処: ファイルを削除して再実行してください: rm '$target_file'" >&2
   exit 3
 fi
 
-# cycle 9 CRITICAL fix: integrity check も含めてすべての post-condition を通過したため、
-# partial-write rollback trap を解除する (正常経路で target_file を保護)。
+# All post-conditions (including the integrity check above) passed, so the
+# normal exit must not delete the file. Disarming the trap before printing
+# the path is the only thing that protects the result from the rollback hook.
 trap - EXIT INT TERM HUP
 
 # Print the relative path so callers (e.g. /rite:wiki:ingest) can pick it up

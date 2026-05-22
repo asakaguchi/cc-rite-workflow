@@ -87,6 +87,44 @@ assert_grep "reconciliation specifies 'In Review' as target status" "$POST_COMPA
 assert_grep "reconciliation failure emits post_compact_reconciliation_failed root-cause hint" "$POST_COMPACT" "post_compact_reconciliation_failed"
 assert_grep "post-compact mismatch detected log literal exists" "$POST_COMPACT" "post-compact mismatch detected"
 
+# A bare grep would still pass when literals migrate into a comment or a dead
+# branch. Extract the reconciliation block (from its anchor comment to the
+# end of post-compact.sh) and assert every literal appears inside the
+# extracted region. The anchor `--- PR Ready/Status mismatch reconciliation`
+# is present in the production file's section header.
+recon_block=$(awk '
+  /PR Ready\/Status mismatch reconciliation/ { capturing = 1 }
+  capturing { print }
+' "$POST_COMPACT" 2>/dev/null)
+if [ -n "$recon_block" ]; then
+  missing_in_block=""
+  for literal in "projects-status-update.sh" 'status_name:$status' '"In Review"' \
+                 "post_compact_reconciliation_failed" "post-compact mismatch detected"; do
+    if ! printf '%s' "$recon_block" | grep -qF "$literal"; then
+      missing_in_block="${missing_in_block} ${literal}"
+    fi
+  done
+  if [ -z "$missing_in_block" ]; then
+    pass "reconciliation block contains all 5 structural literals together"
+  else
+    fail "reconciliation block missing literal(s):${missing_in_block} (possible refactor into comment / dead branch)"
+  fi
+else
+  fail "could not extract reconciliation block from post-compact.sh (anchor literal missing)"
+fi
+
+# jq -n payload schema: confirm the jq expression for projects-status-update.sh
+# uses the keys the consumer expects so a future schema change breaks here
+# instead of at runtime. The reconciliation block uses multi-line jq -n with
+# args spread across continuation lines; grep individually rather than as one regex.
+if grep -qE 'jq -n' "$POST_COMPACT" && \
+   grep -qE '\--arg[[:space:]]+status' "$POST_COMPACT" && \
+   grep -qE 'status_name:\$status' "$POST_COMPACT"; then
+  pass "jq -n payload includes --arg status and status_name field"
+else
+  fail "jq -n payload schema drift: --arg status or status_name field missing"
+fi
+
 # bash -n syntax check catches quote/heredoc breakage at test time, before it
 # surfaces as a runtime session-start failure.
 if bash -n "$POST_COMPACT" 2>/dev/null; then

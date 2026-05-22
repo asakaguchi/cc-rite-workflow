@@ -143,7 +143,8 @@ if [ "$SOURCE" = "startup" ]; then
   fi
 
   if [ "$_needs_cleanup" = "true" ]; then
-    # i18n: read language from rite-config.yml (same awk pattern as stop-guard.sh)
+    # i18n: language is read with the same minimal awk pattern used elsewhere so
+    # malformed YAML in adjacent keys cannot poison the value.
     _lang="en"
     _rite_config="$STATE_ROOT/rite-config.yml"
     if [ -f "$_rite_config" ]; then
@@ -375,11 +376,11 @@ fi
 # manual-recovery source of truth (#679, #747 cycle 4 CRITICAL).
 find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -not -name ".rite-flow-state.legacy.*" -type f -mmin +1 -delete 2>/dev/null || true
 
-# Extract all fields in a single jq call for efficiency
-# cycle 11 MEDIUM F-04: unit separator \x1f (\037) を使用する理由。tab は POSIX IFS whitespace
-# で隣接 delimiter を単一区切りに collapse するため、next_action="" 時に LOOP 欄に他フィールドが
-# shift する silent 注入 bug を起こす (stop-guard.sh cycle 10 F-01 と同型)。non-whitespace IFS は
-# adjacent-delimiter を empty field として preserve する POSIX 準拠挙動となる。
+# Extract all fields in a single jq call for efficiency.
+# Unit separator (\x1f) is used instead of tab: POSIX IFS treats adjacent
+# whitespace delimiters as one separator, which collapses empty fields like
+# next_action="" and shifts later fields into earlier columns — silent data
+# corruption. A non-whitespace IFS preserves empty fields per POSIX.
 # Defense-in-depth: ACTIVE check (earlier in this script) already catches invalid JSON (jq
 # fails → ACTIVE=false → exit 0). This fallback handles the unlikely case where
 # the file becomes corrupt between the two jq reads (e.g., race condition,

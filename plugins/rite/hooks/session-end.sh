@@ -53,7 +53,11 @@ if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
   if [ -n "${RITE_DEBUG:-}" ]; then
     cat "$_resolve_err" >&2
   else
-    _resolve_err_total=$(wc -l < "$_resolve_err" 2>/dev/null | tr -d ' ')
+    # Use `grep -c ''` (matches every line, ignores trailing-newline differences)
+    # so the total agrees with the filter `grep -c` below. `wc -l` undercounts
+    # files without a trailing newline and would let `_resolve_err_dropped`
+    # go negative when every line matches the keep-filter.
+    _resolve_err_total=$(grep -c '' "$_resolve_err" 2>/dev/null) || _resolve_err_total=0
     # `$(cmd || echo 0)` is unsafe here: grep -c on no-match writes "0" to stdout
     # AND exits 1, so the `|| echo 0` appends a second "0" and the arithmetic
     # evaluation below explodes. Assignment + `|| var=0` keeps the value clean.
@@ -74,7 +78,9 @@ fi
 # Get current branch
 BRANCH=$(cd "$CWD" && git branch --show-current 2>/dev/null || echo "")
 
-# Check if on a feature branch with Issue number
+# Default-init ISSUE_NUMBER so `${ISSUE_NUMBER:+...}` expansions later in the
+# script don't trip `set -u` when the branch is not an issue branch.
+ISSUE_NUMBER=""
 if [[ "$BRANCH" =~ issue-([0-9]+) ]]; then
     ISSUE_NUMBER="${BASH_REMATCH[1]}"
     echo "rite: Saving final state for Issue #$ISSUE_NUMBER"
@@ -145,7 +151,8 @@ WARN_MSG
             ;;
     esac
 
-    # mktemp with PID-based fallback (consistent with stop-guard.sh)
+    # PID-based fallback so a broken mktemp (e.g. /tmp readonly) still produces
+    # a unique sibling path instead of clobbering the state file via a fixed name.
     TMP_FILE=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || TMP_FILE="${STATE_FILE}.tmp.$$"
     # trap is inside this block: only active when STATE_FILE exists and TMP_FILE is created
     trap 'rm -f "$TMP_FILE" 2>/dev/null' EXIT TERM INT
@@ -153,29 +160,17 @@ WARN_MSG
        '.active = false | .updated_at = $ts' "$STATE_FILE" > "$TMP_FILE"; then
         mv "$TMP_FILE" "$STATE_FILE"
     else
-        # Intentionally not exit 1 here (unlike pre-compact.sh) — session-end
-        # prioritizes cleanup over strict error propagation. Emit a WARNING
-        # so the user knows the deactivate failed (mirrors pre-compact.sh
-        # diagnostic line prefix `rite: <hook>: ...`); without it, .active=false
-        # silently fails to be written and the
-        # next session-start defensive reset has no signal that recovery is
-        # needed (#475 / #608 follow-up).
-        # WARNING に state_file path を含めることで、Issue 番号が解決できない
+        # SessionEnd stderr is not captured into the next session's conversation
+        # context, so a workflow-incident emit here cannot be picked up by the
+        # orchestrator's grep. Stick to a plain WARNING and rely on the
+        # lifecycle helpers (rite_phase_is_create/cleanup_lifecycle_in_progress
+        # in session-end.sh's session-survey loop) to surface the stale
+        # `.active=true` state on the *next* session.
+        # state_file path を WARNING に含めることで、Issue 番号が解決できない
         # 経路 (detached HEAD / non-issue branch / git 未初期化) でも debug 情報
         # が残る。`${ISSUE_NUMBER:+ (Issue #$ISSUE_NUMBER)}` で issue 番号は
         # 解決できた場合のみ追記し、空の場合は `(Issue #...)` 部分そのものを省略する。
         echo "rite: session-end: failed to deactivate state file: $STATE_FILE${ISSUE_NUMBER:+ (Issue #$ISSUE_NUMBER)}" >&2
-        # Emit a WORKFLOW_INCIDENT in addition to the WARNING so the next
-        # session-start's defensive reset can read it and choose a recovery
-        # action. Non-blocking via `|| true` — session-end's cleanup must
-        # complete regardless of emit success.
-        if [ -x "$SCRIPT_DIR/workflow-incident-emit.sh" ]; then
-            bash "$SCRIPT_DIR/workflow-incident-emit.sh" \
-                --type session_end_deactivate_failed \
-                --details "session-end could not write .active=false to $STATE_FILE${ISSUE_NUMBER:+ (Issue #$ISSUE_NUMBER)}" \
-                --root-cause-hint "jq_failure_or_state_file_write_error" \
-                --pr-number 0 >&2 || true
-        fi
         rm -f "$TMP_FILE"
     fi
 

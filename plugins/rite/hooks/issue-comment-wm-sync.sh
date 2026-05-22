@@ -44,14 +44,32 @@ get_owner_repo() {
   gh repo view --json owner,name --jq '.owner.login + "/" + .name' 2>/dev/null || echo ""
 }
 
-# --- Cache comment ID in flow-state ---
+# Caching is best-effort because get_comment_id() falls back to a full gh api
+# scan, but a silent cache failure makes every subsequent invocation re-scan
+# all comments — accelerating rate-limit hits. Surface mktemp / jq / mv
+# failures so this degradation can be diagnosed instead of mistaken for normal
+# behaviour.
 cache_comment_id() {
   local cid="$1"
-  if [ -f "$FLOW_STATE" ]; then
-    local tmp
-    tmp=$(mktemp)
-    jq --arg cid "$cid" '. + {wm_comment_id: ($cid | tonumber)}' "$FLOW_STATE" > "$tmp" 2>/dev/null && mv "$tmp" "$FLOW_STATE" || rm -f "$tmp"
+  [ -f "$FLOW_STATE" ] || return 0
+  local tmp
+  if ! tmp=$(mktemp 2>/dev/null); then
+    echo "[rite] WARNING: issue-comment-wm-sync: cache_comment_id mktemp failed; wm_comment_id will not be cached (gh api full-scan every call)" >&2
+    return 0
   fi
+  local _jq_err
+  _jq_err=$(mktemp 2>/dev/null) || _jq_err=""
+  if jq --arg cid "$cid" '. + {wm_comment_id: ($cid | tonumber)}' "$FLOW_STATE" > "$tmp" 2>"${_jq_err:-/dev/null}"; then
+    if ! mv "$tmp" "$FLOW_STATE" 2>/dev/null; then
+      echo "[rite] WARNING: issue-comment-wm-sync: cache_comment_id mv failed (disk full / EXDEV cross-filesystem?)" >&2
+      rm -f "$tmp"
+    fi
+  else
+    echo "[rite] WARNING: issue-comment-wm-sync: cache_comment_id jq failed — FLOW_STATE may be corrupt or cid='$cid' not numeric" >&2
+    [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | sed 's/^/  /' >&2
+    rm -f "$tmp"
+  fi
+  [ -n "$_jq_err" ] && rm -f "$_jq_err"
 }
 
 # --- Get comment ID (with flow-state cache) ---

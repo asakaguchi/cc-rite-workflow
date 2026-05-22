@@ -12,9 +12,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Read CWD from stdin JSON (consistent with other hooks).
 # CWD is provided by the Claude Code runtime and is already an absolute path;
 # realpath normalization is unnecessary and would add a portability concern.
-# cat failure does not abort under set -e; || guard is defensive
+# Malformed input is treated as "no CWD" and the hook exits silently — surface
+# the parse failure under RITE_DEBUG so a recurrent malformed payload is
+# diagnosable instead of being mistaken for "no notifications configured".
 INPUT=$(cat) || INPUT=""
-CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
+_cwd_jq_err=$(mktemp 2>/dev/null) || _cwd_jq_err=""
+if ! CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>"${_cwd_jq_err:-/dev/null}"); then
+    [ -n "${RITE_DEBUG:-}" ] && {
+        echo "[rite] WARNING: notification: hook stdin jq parse failed" >&2
+        [ -n "$_cwd_jq_err" ] && [ -s "$_cwd_jq_err" ] && head -3 "$_cwd_jq_err" | sed 's/^/  /' >&2
+    }
+    CWD=""
+fi
+[ -n "$_cwd_jq_err" ] && rm -f "$_cwd_jq_err"
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
     exit 0
 fi
@@ -39,43 +49,35 @@ EVENT_DATA="${2:-}"    # Reserved for future use (JSON data about the event).
 # This is a placeholder - actual implementation would parse YAML
 
 # Webhook URL validation: only ^https:// prefix is checked. A host whitelist is
-# intentionally not implemented because webhook URLs are configured by the project
-# owner in rite-config.yml (a trusted source). SSRF risk is mitigated by:
-# 1. URLs come from a committed config file, not user input at runtime
-# 2. curl -sf suppresses error output and fails silently on HTTP errors
-# 3. Notifications are best-effort (|| true) — failures are silent
+# intentionally not implemented because webhook URLs come from rite-config.yml,
+# which is committed by the project owner. Delivery itself is best-effort, but
+# curl failures surface a single-line WARNING so an expired webhook / network
+# outage doesn't cause notifications to silently stop arriving.
+_send_webhook() {
+    local channel="$1" webhook_url="$2" payload="$3"
+    [ -n "$webhook_url" ] && [[ "$webhook_url" =~ ^https:// ]] || return 0
+    local _curl_err
+    _curl_err=$(mktemp 2>/dev/null) || _curl_err=""
+    if ! curl -sf --connect-timeout 5 --max-time 10 -X POST "$webhook_url" \
+        -H 'Content-type: application/json' -d "$payload" \
+        > /dev/null 2>"${_curl_err:-/dev/null}"; then
+        local _rc=$?
+        echo "[rite] WARNING: notification($channel): curl failed (rc=$_rc) — webhook may be expired or unreachable" >&2
+        [ -n "$_curl_err" ] && [ -s "$_curl_err" ] && head -3 "$_curl_err" | sed 's/^/  /' >&2
+    fi
+    [ -n "$_curl_err" ] && rm -f "$_curl_err"
+}
 
 send_slack() {
-    local webhook_url="$1"
-    local message="$2"
-
-    if [ -n "$webhook_url" ] && [[ "$webhook_url" =~ ^https:// ]]; then
-        curl -sf --connect-timeout 5 --max-time 10 -X POST "$webhook_url" \
-            -H 'Content-type: application/json' \
-            -d "$(jq -n --arg text "$message" '{text: $text}')" > /dev/null || true
-    fi
+    _send_webhook "slack" "$1" "$(jq -n --arg text "$2" '{text: $text}')"
 }
 
 send_discord() {
-    local webhook_url="$1"
-    local message="$2"
-
-    if [ -n "$webhook_url" ] && [[ "$webhook_url" =~ ^https:// ]]; then
-        curl -sf --connect-timeout 5 --max-time 10 -X POST "$webhook_url" \
-            -H 'Content-type: application/json' \
-            -d "$(jq -n --arg content "$message" '{content: $content}')" > /dev/null || true
-    fi
+    _send_webhook "discord" "$1" "$(jq -n --arg content "$2" '{content: $content}')"
 }
 
 send_teams() {
-    local webhook_url="$1"
-    local message="$2"
-
-    if [ -n "$webhook_url" ] && [[ "$webhook_url" =~ ^https:// ]]; then
-        curl -sf --connect-timeout 5 --max-time 10 -X POST "$webhook_url" \
-            -H 'Content-type: application/json' \
-            -d "$(jq -n --arg text "$message" '{text: $text}')" > /dev/null || true
-    fi
+    _send_webhook "teams" "$1" "$(jq -n --arg text "$2" '{text: $text}')"
 }
 
 # Main notification logic — echo-only stubs. The send_* functions above are

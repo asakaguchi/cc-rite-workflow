@@ -145,6 +145,14 @@ if printf '%s' "$out" | grep -q 'gh issue edit 失敗.*rate limit\|apply_failure
 else
   fail "TC-19 apply gh failure WARNING missing in output: $out"
 fi
+# `if ! cmd; then rc=$?` forces rc=0 inside the then-branch — regression guard
+# for the canonical `if cmd; then :; else rc=$?` form. The mock gh exits 1, so
+# the incident details must report rc=1, not rc=0.
+if printf '%s' "$out" | grep -qE 'rc=1\b'; then
+  pass "TC-19b apply gh failure reports actual gh rc (rc=1, not rc=0)"
+else
+  fail "TC-19b apply gh failure reported wrong rc (likely rc=0 from if-! antipattern): $out"
+fi
 [ ! -f "$tmp_read" ] && pass "TC-20 apply gh failure cleaned tmpfile-read" || fail "TC-20 tmpfile-read leak after gh failure"
 [ ! -f "$tmp_write" ] && pass "TC-21 apply gh failure cleaned tmpfile-write" || fail "TC-21 tmpfile-write leak after gh failure"
 
@@ -157,8 +165,9 @@ rm -rf "$mock_bin"
 # ==========================================================================
 
 echo "=== Phase 8: _emit_body_update_incident runtime invocation ==="
-# Mock _EMIT_SH (or production _EMIT_SH if the override path doesn't apply) must
-# see the type when gh issue view fails.
+# The script honors a pre-exported `_EMIT_SH` via `: "${_EMIT_SH:=...}"`, so
+# injecting a mock emit and asserting it received the type + rc + reason is
+# the only way to catch regressions in `_emit_body_update_incident` itself.
 mock_bin2=$(mktemp -d)
 emit_log=$(mktemp)
 cat > "$mock_bin2/gh" <<'MOCK_FETCH_FAIL'
@@ -177,27 +186,27 @@ MOCK_EMIT
 chmod +x "$mock_emit"
 
 rc=0
-out=$(PATH="$mock_bin2:$PATH" _EMIT_SH_OVERRIDE="$mock_emit" bash -c '
-  # _EMIT_SH is resolved at top of script via PLUGIN_ROOT detection. Override by
-  # exporting _EMIT_SH explicitly — the script sees it before its own resolution
-  # because we re-source the script body with the override path injected.
-  export _EMIT_SH="$_EMIT_SH_OVERRIDE"
-  bash "$1" fetch --issue 999
-' _ "$TARGET" 2>&1) || rc=$?
-# 注: 上のラップが _EMIT_SH を override しないケース (script が自前で再解決する場合)
-# は emit_log が空になる。その場合は production _EMIT_SH が呼ばれた可能性を grep で確認する。
+out=$(PATH="$mock_bin2:$PATH" _EMIT_SH="$mock_emit" bash "$TARGET" fetch --issue 999 2>&1) || rc=$?
 assert_exit "TC-22 fetch failure → exit 0 (non-blocking)" 0 "$rc"
-if grep -q 'issue_body_fetch_failed\|fetch_failure_reason=gh_view_failed' "$emit_log" 2>/dev/null; then
-  pass "TC-22 fetch failure invoked _emit_body_update_incident (or emitted fetch_failure_reason)"
-elif printf '%s' "$out" | grep -q 'fetch_failure_reason=gh_view_failed\|issue_body_fetch_failed'; then
-  pass "TC-22 fetch failure stdout contains fetch_failure_reason or incident type"
+if grep -q -- '--type issue_body_fetch_failed' "$emit_log"; then
+  pass "TC-22 fetch failure invoked mock _emit_body_update_incident with type=issue_body_fetch_failed"
 else
-  fail "TC-22 fetch failure did not invoke emit nor produce fetch_failure_reason. emit_log=$(cat "$emit_log" 2>/dev/null); out=$out"
+  fail "TC-22 mock emit log missing --type issue_body_fetch_failed: $(cat "$emit_log" 2>/dev/null); out=$out"
+fi
+if grep -qE 'rc=1\b' "$emit_log"; then
+  pass "TC-22b emit details report actual gh rc=1 (regression guard for if-! antipattern)"
+else
+  fail "TC-22b emit details missing rc=1 (likely rc=0 from if-! pattern): $(cat "$emit_log" 2>/dev/null)"
+fi
+if grep -q -- '--root-cause-hint gh_view_failed' "$emit_log"; then
+  pass "TC-22c emit invoked with root-cause-hint=gh_view_failed"
+else
+  fail "TC-22c emit missing --root-cause-hint gh_view_failed: $(cat "$emit_log" 2>/dev/null)"
 fi
 rm -f "$emit_log" "$mock_emit"
 rm -rf "$mock_bin2"
 
-echo "=== Phase 9: _EMIT_SH absent → fallback sentinel ==="
+echo "=== Phase 9: _EMIT_SH absent → canonical fallback sentinel ==="
 mock_bin3=$(mktemp -d)
 cat > "$mock_bin3/gh" <<'MOCK_FAIL2'
 #!/bin/bash
@@ -206,31 +215,31 @@ exit 1
 MOCK_FAIL2
 chmod +x "$mock_bin3/gh"
 
-# Point _EMIT_SH to a non-existent path. We do this by running the script in an
-# environment where the plugin root resolution would land on a tempdir without
-# workflow-incident-emit.sh.
-fake_plugin_root=$(mktemp -d)
-mkdir -p "$fake_plugin_root/hooks"
-# Copy script under fake root and run from there. The script computes _EMIT_SH
-# via SCRIPT_DIR (relative to itself), so placing it in a hook-less dir makes
-# _EMIT_SH resolve to a non-executable path.
-cp "$TARGET" "$fake_plugin_root/hooks/issue-body-safe-update.sh"
-# Note: we do NOT copy workflow-incident-emit.sh, so [ -x "$_EMIT_SH" ] is false.
+# Point `_EMIT_SH` at a non-executable path so the fallback branch runs. The
+# fallback must echo the canonical `[CONTEXT] WORKFLOW_INCIDENT=1; ...` sentinel
+# that workflow-incident-detection.md greps — any other format (e.g. the legacy
+# `[rite][incident]`) is invisible to the orchestrator.
+absent_emit="/nonexistent/path/workflow-incident-emit.sh"
 
 rc=0
-out=$(PATH="$mock_bin3:$PATH" bash "$fake_plugin_root/hooks/issue-body-safe-update.sh" fetch --issue 999 2>&1) || rc=$?
+out=$(PATH="$mock_bin3:$PATH" _EMIT_SH="$absent_emit" bash "$TARGET" fetch --issue 999 2>&1) || rc=$?
 assert_exit "TC-23 fetch failure with absent _EMIT_SH → exit 0" 0 "$rc"
-if printf '%s' "$out" | grep -qE '\[rite\]\[incident\] type=issue_body_fetch_failed|fallback sentinel'; then
-  pass "TC-23 fallback sentinel emitted when _EMIT_SH absent (observability preserved)"
+if printf '%s' "$out" | grep -qE '\[CONTEXT\] WORKFLOW_INCIDENT=1; type=issue_body_fetch_failed'; then
+  pass "TC-23 fallback emits canonical [CONTEXT] WORKFLOW_INCIDENT=1 sentinel"
 else
-  # Permissible fallback: at minimum fetch_failure_reason= line must still appear.
-  if printf '%s' "$out" | grep -q 'fetch_failure_reason='; then
-    pass "TC-23 _EMIT_SH absent: fetch_failure_reason= stdout still emitted (caller can detect)"
-  else
-    fail "TC-23 _EMIT_SH absent + no fallback sentinel + no fetch_failure_reason. out=$out"
-  fi
+  fail "TC-23 fallback did not emit canonical sentinel format. out=$out"
 fi
-rm -rf "$mock_bin3" "$fake_plugin_root"
+if printf '%s' "$out" | grep -qE 'root_cause_hint=gh_view_failed'; then
+  pass "TC-23b canonical fallback includes root_cause_hint=gh_view_failed"
+else
+  fail "TC-23b canonical fallback missing root_cause_hint=gh_view_failed: $out"
+fi
+if printf '%s' "$out" | grep -qE 'iteration_id=0-[0-9]+'; then
+  pass "TC-23c canonical fallback includes iteration_id=0-<epoch>"
+else
+  fail "TC-23c canonical fallback missing iteration_id=0-<epoch>: $out"
+fi
+rm -rf "$mock_bin3"
 
 echo "=== Phase 10: apply mode failure emits gh_edit_failed root cause ==="
 mock_bin4=$(mktemp -d)
@@ -248,11 +257,137 @@ printf 'b%.0s' $(seq 1 250) > "$tmp_write"
 rc=0
 out=$(PATH="$mock_bin4:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
 assert_exit "TC-24 apply gh failure → exit 0" 0 "$rc"
-if printf '%s' "$out" | grep -qE 'apply_failure_reason=gh_edit_failed|root_cause_hint=gh_edit_failed|gh_edit_failed'; then
-  pass "TC-24 apply failure produces gh_edit_failed root cause hint"
+# AND-style assertion: collapsing apply_failure_reason / root_cause_hint into a
+# single OR would let regressions delete either signal silently.
+if printf '%s' "$out" | grep -qE 'apply_failure_reason=gh_edit_failed'; then
+  pass "TC-24 apply failure emits apply_failure_reason=gh_edit_failed"
 else
-  fail "TC-24 apply failure missing gh_edit_failed in output: $out"
+  fail "TC-24 apply failure missing apply_failure_reason=gh_edit_failed: $out"
+fi
+if printf '%s' "$out" | grep -qE 'rc=1\b'; then
+  pass "TC-24b apply failure reports actual gh rc=1 (if-! antipattern regression guard)"
+else
+  fail "TC-24b apply failure reported wrong rc (likely rc=0): $out"
 fi
 rm -rf "$mock_bin4"
+
+echo ""
+echo "=== Phase 10: apply mode + _EMIT_SH absent → canonical fallback sentinel ==="
+# Fetch mode at TC-23 verifies the _EMIT_SH fallback emits the canonical
+# `[CONTEXT] WORKFLOW_INCIDENT=1; type=issue_body_fetch_failed; ...
+# iteration_id=0-<epoch>` line when the emit helper is missing. The same
+# fallback path on apply mode (helper line 64 inline sentinel) was previously
+# unverified, leaving deployment-degraded scenarios silently broken on apply.
+mock_bin5=$(mktemp -d)
+cat > "$mock_bin5/gh" <<'MOCK_EDIT_FAIL'
+#!/bin/bash
+case "$1 $2" in
+  "issue edit") echo "HTTP 401: bad credentials" >&2; exit 1 ;;
+esac
+exit 0
+MOCK_EDIT_FAIL
+chmod +x "$mock_bin5/gh"
+absent_emit_apply="$mock_bin5/nonexistent_emit_sh"
+tmp_read=$(mktemp)
+tmp_write=$(mktemp)
+printf 'a%.0s' $(seq 1 200) > "$tmp_read"
+printf 'b%.0s' $(seq 1 250) > "$tmp_write"
+rc=0
+out=$(PATH="$mock_bin5:$PATH" _EMIT_SH="$absent_emit_apply" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
+assert_exit "TC-25 apply failure with absent _EMIT_SH → exit 0" 0 "$rc"
+if printf '%s' "$out" | grep -qE '\[CONTEXT\] WORKFLOW_INCIDENT=1; type=issue_body_fetch_failed'; then
+  pass "TC-25 apply fallback emits canonical sentinel even when _EMIT_SH is absent"
+else
+  fail "TC-25 apply fallback sentinel missing — degraded deployment silently loses observability: $out"
+fi
+if printf '%s' "$out" | grep -qE 'root_cause_hint=gh_edit_failed'; then
+  pass "TC-25b apply fallback preserves root_cause_hint=gh_edit_failed"
+else
+  fail "TC-25b apply fallback root_cause_hint missing: $out"
+fi
+if printf '%s' "$out" | grep -qE 'iteration_id=0-[0-9]+'; then
+  pass "TC-25c apply fallback uses canonical iteration_id=<pr>-<epoch> format"
+else
+  fail "TC-25c apply fallback iteration_id format drift: $out"
+fi
+rm -rf "$mock_bin5"
+
+echo ""
+echo "=== Phase 11: apply mktemp_failed surfaces incident ==="
+# A regression that drops the emit on apply mktemp failure would lose the
+# observability that the safety net exists at all. Shadow mktemp to fail only
+# on the rite-issue-body-apply-err-* pattern so the rest of the script runs.
+mock_bin6=$(mktemp -d)
+cat > "$mock_bin6/mktemp" <<'EOF'
+#!/bin/bash
+for arg in "$@"; do
+  case "$arg" in
+    /tmp/rite-issue-body-apply-err-*) exit 1 ;;
+  esac
+done
+exec /usr/bin/mktemp "$@"
+EOF
+chmod +x "$mock_bin6/mktemp"
+cat > "$mock_bin6/gh" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+chmod +x "$mock_bin6/gh"
+tmp_read=$(mktemp)
+tmp_write=$(mktemp)
+printf 'a%.0s' $(seq 1 200) > "$tmp_read"
+printf 'b%.0s' $(seq 1 250) > "$tmp_write"
+rc=0
+out=$(PATH="$mock_bin6:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
+if printf '%s' "$out" | grep -qE 'mktemp apply_err failed'; then
+  pass "TC-26 apply mktemp failure emits WARNING (regression guard for stderr capture disabled path)"
+else
+  fail "TC-26 apply mktemp WARNING missing: $out"
+fi
+if printf '%s' "$out" | grep -qE 'root_cause_hint=mktemp_failed'; then
+  pass "TC-26b apply mktemp failure carries root_cause_hint=mktemp_failed"
+else
+  fail "TC-26b apply mktemp incident root_cause_hint missing: $out"
+fi
+rm -rf "$mock_bin6"
+
+echo ""
+echo "=== Phase 12: diff IO error rc>=2 → skip apply with WARNING (not gh edit) ==="
+# A refactor to `if ! diff ...; then` would treat rc=2 (file unreadable / IO
+# error) identically to rc=1 (files differ) and proceed to gh edit, risking
+# data loss. The case branch on _diff_rc must distinguish IO failure.
+mock_bin7=$(mktemp -d)
+# Shadow diff to always return rc=2 (IO error)
+cat > "$mock_bin7/diff" <<'EOF'
+#!/bin/bash
+echo "diff: cannot read file" >&2
+exit 2
+EOF
+chmod +x "$mock_bin7/diff"
+# gh mock counts invocations so a regression that calls gh after IO error fails the assert
+cat > "$mock_bin7/gh" <<'EOF'
+#!/bin/bash
+echo "GH_INVOKED" >&2
+exit 0
+EOF
+chmod +x "$mock_bin7/gh"
+tmp_read=$(mktemp)
+tmp_write=$(mktemp)
+printf 'a%.0s' $(seq 1 200) > "$tmp_read"
+printf 'b%.0s' $(seq 1 250) > "$tmp_write"
+rc=0
+out=$(PATH="$mock_bin7:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 --diff-check 2>&1) || rc=$?
+assert_exit "TC-27 diff IO error → exit 0 (skip apply)" 0 "$rc"
+if printf '%s' "$out" | grep -qE 'diff コマンドが IO エラー.*rc=2'; then
+  pass "TC-27 diff IO error WARNING reports rc=2 explicitly"
+else
+  fail "TC-27 diff IO error WARNING missing or rc not reported: $out"
+fi
+if printf '%s' "$out" | grep -qE 'GH_INVOKED'; then
+  fail "TC-27 critical: gh issue edit was invoked despite diff IO error (data loss risk)"
+else
+  pass "TC-27 gh issue edit NOT invoked after diff IO error (data loss prevented)"
+fi
+rm -rf "$mock_bin7"
 
 print_summary "$(basename "$0")" "If you weaken or remove the 50% shrinkage guard / empty-write rejection / missing-args check / gh-edit error capture / _emit_body_update_incident fallback in issue-body-safe-update.sh, body truncation or silent auth-failure regressions become invisible. Keep the guards intact and update the test if the guards intentionally change."

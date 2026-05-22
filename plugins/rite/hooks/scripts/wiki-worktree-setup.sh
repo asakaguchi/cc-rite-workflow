@@ -58,8 +58,7 @@ fi
 # relative to the new cwd. `BASH_SOURCE[0]` + `cd -P` anchors the path
 # to the script's own file location regardless of the caller's cwd.
 #
-# Naming convention note: sibling hook scripts (session-start.sh,
-# stop-guard.sh, work-memory-update.sh, etc.) use `SCRIPT_DIR` without
+# Naming convention note: sibling hook scripts use `SCRIPT_DIR` without
 # the underscore prefix and `cd` without `-P`. The underscore prefix
 # here marks this as a private lib-source helper (not exported for
 # external use), and `cd -P` is a defensive addition that resolves

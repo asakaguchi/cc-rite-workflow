@@ -78,6 +78,11 @@ assert_grep "sub-issue-link-handler.md references active caller create.md" "$HAN
 echo "=== Phase 5: link-sub-issue.sh emits JSON status field ==="
 # script source 中に `"status"` キーが含まれること (output JSON skeleton 確認)
 assert_grep "link-sub-issue.sh emits JSON with status field" "$TARGET" '"status"'
-assert_grep "link-sub-issue.sh handles ok / already-linked / failed statuses" "$TARGET" "ok|already-linked|failed"
+# Split per-status assertions so a removed status (e.g. dropping the
+# `already-linked` idempotency path) fails its specific assertion instead of
+# being masked by the OR-grep.
+assert_grep "link-sub-issue.sh handles 'ok' status (successful link)" "$TARGET" '"ok"'
+assert_grep "link-sub-issue.sh handles 'already-linked' status (idempotency)" "$TARGET" '"already-linked"'
+assert_grep "link-sub-issue.sh handles 'failed' status (gh fatal)" "$TARGET" '"failed"'
 
 print_summary "$(basename "$0")" "If you change the link-sub-issue.sh argument contract (4 positional args), JSON output schema, or remove the placeholder rejection, update both this test and the consuming create.md ステップ 5.4 + sub-issue-link-handler.md."

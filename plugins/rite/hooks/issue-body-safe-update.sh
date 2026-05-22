@@ -34,31 +34,40 @@
 #   1: Argument error
 set -euo pipefail
 
-# Resolve plugin root so callers don't have to pass it. workflow-incident-emit.sh sits next to
-# this file under plugins/rite/hooks/. We follow the same resolution pattern used by
-# wiki-ingest-trigger.sh / wiki-query-inject.sh / session-end.sh.
+# Allow callers to override the emit script path for test injection. Without the
+# `:=` default-assign, the test harness cannot exercise the fallback path because
+# unconditional reassignment overwrites any exported override.
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_EMIT_SH="$_SCRIPT_DIR/workflow-incident-emit.sh"
+: "${_EMIT_SH:=$_SCRIPT_DIR/workflow-incident-emit.sh}"
 
-# Helper: emit issue_body_fetch_failed sentinel via workflow-incident-emit.sh.
-# Caller-side parsing of `fetch_failure_reason=` / `apply_failure_reason=` stdout
-# is not guaranteed in every code path, so persistent body-update failures can
-# slip through silently. Emit a sentinel into `.rite/incidents/` directly so the
-# orchestrator's workflow-incident-detection grep always picks it up.
+# Persistent body-update failures must not vanish — caller-side parsing of
+# `fetch_failure_reason=` is not guaranteed everywhere, so emit the canonical
+# sentinel that workflow-incident-detection.md greps for. In degraded deployments
+# (emit script missing / non-executable), inline the same canonical format so the
+# orchestrator still picks it up via stderr-captured-by-Bash-tool.
+#
+# Accepts the incident type as the first argument so the shrinkage / empty-write
+# safety guards can route through `body_shrinkage_guard_tripped` (distinct from
+# the umbrella `issue_body_fetch_failed`) — the orchestrator distinguishes safety
+# trips from API/IO failures via this type.
 _emit_body_update_incident() {
-  local reason="$1" rc="$2" stderr_snippet="$3"
+  local incident_type="$1" reason="$2" rc="$3" stderr_snippet="$4"
   if [ -x "$_EMIT_SH" ]; then
     bash "$_EMIT_SH" \
-      --type issue_body_fetch_failed \
+      --type "$incident_type" \
       --details "Issue #$ISSUE issue-body-safe-update.sh $MODE failed: reason=$reason rc=$rc stderr=$stderr_snippet" \
       --root-cause-hint "$reason" \
       --pr-number 0 >&2 || echo "[rite] WARNING: issue-body-safe-update: workflow-incident-emit.sh exited non-zero (reason=$reason); incident may not be recorded" >&2
   else
-    # Fallback for partial installs / stripped exec permission. Without this,
-    # the incident would vanish entirely in degraded deployments where the
-    # emit script is missing — and incident observability is the whole point
-    # of this helper.
-    echo "[rite][incident] type=issue_body_fetch_failed root_cause_hint=$reason rc=$rc details=Issue #${ISSUE:-unknown} issue-body-safe-update.sh ${MODE:-unknown} failed (workflow-incident-emit.sh not executable at $_EMIT_SH; using fallback sentinel) stderr=$stderr_snippet" >&2
+    # Sanitize semicolons/control chars to keep the single-line sentinel parseable.
+    local _details="Issue #${ISSUE:-unknown} issue-body-safe-update.sh ${MODE:-unknown} failed reason=$reason rc=$rc stderr=$stderr_snippet (emit script absent at $_EMIT_SH)"
+    _details=$(printf '%s' "$_details" | tr -d '[:cntrl:]' | tr ';' ',')
+    local _hint
+    _hint=$(printf '%s' "$reason" | tr -d '[:cntrl:]' | tr ';' ',')
+    local _epoch
+    _epoch=$(date +%s 2>/dev/null) || _epoch=0
+    printf '[CONTEXT] WORKFLOW_INCIDENT=1; type=%s; details=%s; root_cause_hint=%s; iteration_id=0-%s\n' \
+      "$incident_type" "$_details" "$_hint" "$_epoch" >&2
   fi
 }
 
@@ -106,33 +115,37 @@ case "$MODE" in
     tmpfile_read=$(mktemp /tmp/rite-issue-body-read-XXXXXX) || {
       echo "${err_level}: issue-body-safe-update fetch: mktemp tmpfile_read failed (disk full / inode / permission?)" >&2
       echo "fetch_failure_reason=mktemp_failed"
-      _emit_body_update_incident "mktemp_failed" "1" "tmpfile_read mktemp failed"
+      _emit_body_update_incident "issue_body_fetch_failed" "mktemp_failed" "1" "tmpfile_read mktemp failed"
       exit 0
     }
     tmpfile_write=$(mktemp /tmp/rite-issue-body-write-XXXXXX) || {
       echo "${err_level}: issue-body-safe-update fetch: mktemp tmpfile_write failed" >&2
       echo "fetch_failure_reason=mktemp_failed"
-      _emit_body_update_incident "mktemp_failed" "1" "tmpfile_write mktemp failed"
+      _emit_body_update_incident "issue_body_fetch_failed" "mktemp_failed" "1" "tmpfile_write mktemp failed"
       rm -f "$tmpfile_read"
       exit 0
     }
     tmpfile_err=$(mktemp /tmp/rite-issue-body-err-XXXXXX) || {
       echo "${err_level}: issue-body-safe-update fetch: mktemp tmpfile_err failed" >&2
       echo "fetch_failure_reason=mktemp_failed"
-      _emit_body_update_incident "mktemp_failed" "1" "tmpfile_err mktemp failed"
+      _emit_body_update_incident "issue_body_fetch_failed" "mktemp_failed" "1" "tmpfile_err mktemp failed"
       rm -f "$tmpfile_read" "$tmpfile_write"
       exit 0
     }
     trap 'rm -f "$tmpfile_read" "$tmpfile_write" "$tmpfile_err"' EXIT
 
-    # gh API 失敗 (auth / network / 404) と「body が本当に空」を区別するため、stderr を捕捉する。
-    # set -e 下で gh が non-zero exit すると trap が走り tmpfile leak を防ぐ。
-    if ! gh issue view "$ISSUE" --json body --jq '.body' >"$tmpfile_read" 2>"$tmpfile_err"; then
+    # `if ! cmd; then rc=$?` forces rc=0 inside the then-branch (POSIX `!` inverts
+    # status). Use the else-branch to preserve gh's real exit code so the incident
+    # details accurately attribute auth / rate-limit / 404 failures.
+    rc=0
+    if gh issue view "$ISSUE" --json body --jq '.body' >"$tmpfile_read" 2>"$tmpfile_err"; then
+      :
+    else
       rc=$?
       err_snippet=$(head -c 500 "$tmpfile_err" 2>/dev/null | tr -d '\r' || echo "")
       echo "${err_level}: gh issue view 失敗 (rc=$rc): ${err_snippet}" >&2
       echo "fetch_failure_reason=gh_view_failed"
-      _emit_body_update_incident "gh_view_failed" "$rc" "$err_snippet"
+      _emit_body_update_incident "issue_body_fetch_failed" "gh_view_failed" "$rc" "$err_snippet"
       exit 0
     fi
 
@@ -159,27 +172,47 @@ case "$MODE" in
       exit 1
     fi
 
+    # Empty / shrinkage safety guards exit 0 so the caller's workflow continues,
+    # but emit an incident sentinel directly here — caller cannot detect a "safety
+    # guard tripped" outcome from exit code alone, so a silent skip would erase
+    # the audit trail for accidental body destruction.
     if [ ! -s "$TMPFILE_WRITE" ]; then
       echo "${err_level}: 更新内容が空。更新をスキップします" >&2
+      _emit_body_update_incident "body_shrinkage_guard_tripped" "empty_write" "0" "tmpfile_write is empty (0 bytes)"
       rm -f "$TMPFILE_READ" "$TMPFILE_WRITE"
       exit 0
     fi
 
-    # Body length comparison safety check
     updated_length=$(wc -c < "$TMPFILE_WRITE")
     if [[ "${updated_length:-0}" -lt $(( ${ORIGINAL_LENGTH:-1} / 2 )) ]]; then
       echo "${err_level}: 更新後の body が元の50%未満 (${updated_length}/${ORIGINAL_LENGTH})。body 消失の可能性があるためスキップします" >&2
+      _emit_body_update_incident "body_shrinkage_guard_tripped" "shrinkage_below_50pct" "0" "updated=${updated_length} original=${ORIGINAL_LENGTH}"
       rm -f "$TMPFILE_READ" "$TMPFILE_WRITE"
       exit 0
     fi
 
-    # Diff check (optional, for idempotent updates like checkbox toggle)
+    # `diff -q ... 2>&1` collapses rc=0 (identical), rc=1 (different), and rc>=2 (IO
+    # error / missing file / permission) into one branch. Branch on the rc explicitly
+    # so transient IO failures don't masquerade as "different, proceed to gh edit".
     if [[ "$DIFF_CHECK" == true ]]; then
-      if diff -q "$TMPFILE_READ" "$TMPFILE_WRITE" > /dev/null 2>&1; then
-        echo "INFO: 変更なし（既に更新済み）"
-        rm -f "$TMPFILE_READ" "$TMPFILE_WRITE"
-        exit 0
-      fi
+      set +e
+      diff -q "$TMPFILE_READ" "$TMPFILE_WRITE" > /dev/null 2>&1
+      _diff_rc=$?
+      set -e
+      case $_diff_rc in
+        0)
+          echo "INFO: 変更なし（既に更新済み）"
+          rm -f "$TMPFILE_READ" "$TMPFILE_WRITE"
+          exit 0
+          ;;
+        1) : ;;
+        *)
+          echo "${err_level}: diff コマンドが IO エラー (rc=$_diff_rc) — apply をスキップ" >&2
+          _emit_body_update_incident "issue_body_fetch_failed" "diff_io_error" "$_diff_rc" "diff -q rc=$_diff_rc (file unreadable / permission)"
+          rm -f "$TMPFILE_READ" "$TMPFILE_WRITE"
+          exit 0
+          ;;
+      esac
     fi
 
     # Capture gh issue edit stderr so failures (auth / network / 404) can be
@@ -188,16 +221,19 @@ case "$MODE" in
     # "no stderr capture" rather than aborting the caller's workflow.
     apply_err=$(mktemp /tmp/rite-issue-body-apply-err-XXXXXX) || {
       echo "${err_level}: issue-body-safe-update apply: mktemp apply_err failed; stderr capture disabled" >&2
-      _emit_body_update_incident "mktemp_failed" "1" "apply_err mktemp failed"
+      _emit_body_update_incident "issue_body_fetch_failed" "mktemp_failed" "1" "apply_err mktemp failed"
       apply_err=""
     }
     trap 'rm -f "$apply_err" 2>/dev/null || true' EXIT
-    if ! gh issue edit "$ISSUE" --body-file "$TMPFILE_WRITE" 2>"${apply_err:-/dev/null}"; then
+    rc=0
+    if gh issue edit "$ISSUE" --body-file "$TMPFILE_WRITE" 2>"${apply_err:-/dev/null}"; then
+      :
+    else
       rc=$?
       err_snippet=$(head -c 500 "${apply_err:-/dev/null}" 2>/dev/null | tr -d '\r' || echo "")
       echo "${err_level}: gh issue edit 失敗 (rc=$rc): ${err_snippet}" >&2
       echo "apply_failure_reason=gh_edit_failed"
-      _emit_body_update_incident "gh_edit_failed" "$rc" "$err_snippet"
+      _emit_body_update_incident "issue_body_fetch_failed" "gh_edit_failed" "$rc" "$err_snippet"
       rm -f "$TMPFILE_READ" "$TMPFILE_WRITE"
       exit 0
     fi

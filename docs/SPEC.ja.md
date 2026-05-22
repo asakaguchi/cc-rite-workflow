@@ -230,8 +230,6 @@ rite-workflow/
 │   ├── preflight-check.sh
 │   ├── pre-tool-bash-guard.sh / post-tool-wm-sync.sh
 │   ├── phase-transition-whitelist.sh                     # Phase 遷移ガード
-│   # Historical (PR #1079 で削除): stop-guard.sh / verify-terminal-output.sh /
-│   # auto-fire-step0.sh / stop-create-interview-block.sh
 │   ├── hook-preamble.sh / state-path-resolve.sh          # 共通ヘルパー
 │   ├── flow-state-update.sh / local-wm-update.sh
 │   ├── work-memory-lock.sh / work-memory-update.sh / work-memory-parse.py
@@ -1424,7 +1422,7 @@ WM_SOURCE="implement" WM_PHASE="phase5_lint" \
 
 ### Phase Transition Whitelist（`phase-transition-whitelist.sh`）(#490)
 
-`pre-tool-bash-guard.sh` などのオーケストレーション系ヘルパーが参照する phase 遷移の canonical graph を提供する sourced ライブラリ（直接実行ではない）。`/rite:issue:start` の一気通貫フローで発生していた silent な phase-skipping を、ブロック可能なイベントに変えるためのもの (PR #675 までは `stop-guard.sh` も主要 caller だったが、Stop hook 廃止後は事前ガード経路のみで使用)。
+phase 遷移の canonical graph を提供する sourced ライブラリ（直接実行ではない）。production hooks (`session-end.sh` / `pre-tool-bash-guard.sh`) は helper predicate (`rite_phase_is_create_lifecycle_in_progress` / `rite_phase_is_cleanup_lifecycle_in_progress`) のみ消費する。トップレベル `rite_phase_transition_allowed` は orchestrator-level pre-write check 用のライブラリエントリポイントで、現状は test suite のみが呼出している (production caller の配線は follow-up)。`/rite:issue:start` の一気通貫フローで発生していた silent な phase-skipping を可観測なイベントに変える役割は、production caller が配線された時点で発火する設計。
 
 **提供する関数（source 後に利用可）:**
 
@@ -1472,7 +1470,7 @@ Phase X.X.W の契約と、raw source の commit + push を実際に行う `wiki
 
 `[CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; (root_cause_hint=<hint>; )?iteration_id=<pr>-<epoch>` 形式の sentinel 1 行を emit する。`/rite:issue:start` Phase 5.4.4.1 が context grep で検出し、workflow blocker を Issue として自動登録する。
 
-**`--type` で指定可能な値:** `skill_load_failure` / `hook_abnormal_exit` / `manual_fallback_adopted` / `wiki_ingest_skipped` (#524) / `wiki_ingest_failed` (#524) / `wiki_ingest_push_failed` (#555) / `gitignore_drift` (#567) / `cross_session_takeover_refused` / `legacy_state_corrupt` / `projects_status_update_failed` / `projects_status_in_review_missing` / `issue_branch_link_failed` / `local_wm_update_lock_failed` / `body_shrinkage_guard_tripped` / `issue_body_fetch_failed` / `git_push_failed` / `pr_create_failed` / `parent_close_failed` / `sub_issue_zero_iteration_loop` / `sub_issue_loop_abort` / `session_end_deactivate_failed` (PR #1079)。
+**`--type` で指定可能な値:** `skill_load_failure` / `hook_abnormal_exit` / `manual_fallback_adopted` / `wiki_ingest_skipped` / `wiki_ingest_failed` / `wiki_ingest_push_failed` / `gitignore_drift` / `cross_session_takeover_refused` / `legacy_state_corrupt` / `projects_status_update_failed` / `projects_status_in_review_missing` / `issue_branch_link_failed` / `local_wm_update_lock_failed` / `body_shrinkage_guard_tripped` / `issue_body_fetch_failed` / `git_push_failed` / `pr_create_failed` / `parent_close_failed` / `sub_issue_zero_iteration_loop` / `sub_issue_loop_abort` / `state_root_toctou_race`。
 
 検出・重複排除・登録プロトコルの詳細は [Workflow Incident Detection](#workflow-incident-detection) 参照。
 

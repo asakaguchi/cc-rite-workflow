@@ -37,7 +37,7 @@ The review-fix loop exits via exactly two paths:
 | **Normal** | 0 findings remaining | `[review:mergeable]` |
 | **Escalate** | Any of the 4 quality signals fires | Present `AskUserQuestion` → user decides (continue / create separate Issue / withdraw / manual review) |
 
-Cycle-count-based degradation (convergence strategy override / hard limit / severity gating) was fully removed in v0.4.0. See `commands/issue/start.md` Phase 5.4 for the escalate logic.
+Cycle-count-based degradation (convergence strategy override / hard limit / severity gating) was fully removed in v0.4.0. See `commands/issue/start.md` ステップ 7 for the escalate logic.
 
 ## Four Quality Signals for Escalation
 
@@ -45,9 +45,9 @@ Instead of cycle counting, the loop monitors quality signals that **each indepen
 
 | # | Signal | Detection | Where it runs |
 |---|--------|-----------|---------------|
-| 1 | **Same-finding cycling** | A finding fingerprint (file + category + normalised message) appears in two or more cycles | `start.md` Phase 5.4.1.0 |
+| 1 | **Same-finding cycling** | A finding fingerprint (file + category + normalised message) appears in two or more cycles | `start.md` ステップ 7.1 |
 | 2 | **Root-cause-missing fix** | A fix commit body lacks `Root cause:` / `根本原因:` section | `fix.md` Phase 3 (root-cause gate) |
-| 3 | **Cross-validation disagreement** | Two or more reviewers report the same finding with severity gap ≥ 2 and debate fails to resolve | `review.md` Phase 5.2 + debate |
+| 3 | **Cross-validation disagreement** | Two or more reviewers report the same finding with severity gap ≥ 2 and debate fails to resolve | `review.md` Phase 5.2 (review.md own internal section) + debate |
 | 4 | **Finding quality gate failure** | Reviewer degrades itself (self-reports inability to provide confident findings) | `_reviewer-base.md` Finding Quality Guardrail |
 
 Bikeshedding and defensive-code suggestions are filtered out by the Finding Quality Guardrail **before** output, so they never reach the loop counter. Only confident, evidence-backed findings participate in the fingerprint cycling signal.

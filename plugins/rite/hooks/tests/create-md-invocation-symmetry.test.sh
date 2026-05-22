@@ -104,14 +104,22 @@ fi
 # ──────────────────────────────────────────────────────────────────────
 # TC-5: link-sub-issue.sh callsite が positional 4 args pattern を維持
 # ──────────────────────────────────────────────────────────────────────
-# `link-sub-issue.sh "{owner}" "{repo}" "$parent..." "$sub_number"` の signature。
-link_calls=$(grep -c 'bash.*link-sub-issue\.sh' "$CREATE_MD" || true)
-link_canonical=$(grep -cE 'link-sub-issue\.sh[[:space:]]+\\?$' "$CREATE_MD" || true)
+# Real callsites end the first line with `\` and pass the positional args on
+# the next line. A docstring example (single line, inside prose) is allowed —
+# the assertion below requires at least one canonical call but does not block
+# additional documentation mentions.
+link_actual_calls=$(grep -cE 'link-sub-issue\.sh[[:space:]]+\\?$' "$CREATE_MD" || true)
+link_total_mentions=$(grep -c 'bash.*link-sub-issue\.sh' "$CREATE_MD" || true)
 
-if [ "$link_calls" -ge 1 ]; then
-  pass "TC-5 link-sub-issue.sh callsite exists (count=$link_calls)"
+if [ "$link_total_mentions" -ge 1 ]; then
+  pass "TC-5 link-sub-issue.sh mentioned in create.md (count=$link_total_mentions)"
 else
-  fail "TC-5 link-sub-issue.sh callsite missing in create.md"
+  fail "TC-5 link-sub-issue.sh mention missing in create.md"
+fi
+if [ "$link_actual_calls" -ge 1 ]; then
+  pass "TC-5b at least one link-sub-issue.sh callsite uses canonical line-continuation form (count=$link_actual_calls)"
+else
+  fail "TC-5b no canonical line-continuation form found (refactor to flag form?)"
 fi
 
 print_summary "create-md-invocation-symmetry.test.sh"

@@ -155,12 +155,8 @@ rite-workflow/
 │   │   ├── close.md         # /rite:issue:close
 │   │   ├── edit.md          # /rite:issue:edit
 │   │   ├── recall.md        # /rite:issue:recall
-│   │   ├── implement.md              # Sub-skill: implementation phase
+│   │   ├── implement.md     # Sub-skill: implementation phase
 │   │   └── references/      # Edge cases, complexity gates, bulk-create patterns
-│   │   # Historical (removed in PR #1079): create-interview.md / create-decompose.md /
-│   │   # create-register.md / start-execute.md / start-publish.md / start-finalize.md /
-│   │   # implementation-plan.md / completion-report.md / branch-setup.md /
-│   │   # child-issue-selection.md / parent-routing.md / work-memory-init.md
 │   ├── pr/
 │   │   ├── create.md        # /rite:pr:create
 │   │   ├── ready.md         # /rite:pr:ready
@@ -231,8 +227,6 @@ rite-workflow/
 │   ├── preflight-check.sh
 │   ├── pre-tool-bash-guard.sh / post-tool-wm-sync.sh
 │   ├── phase-transition-whitelist.sh                     # Phase transition guard
-│   # Historical (removed in PR #1079): stop-guard.sh, verify-terminal-output.sh,
-│   # auto-fire-step0.sh, stop-create-interview-block.sh
 │   ├── hook-preamble.sh / state-path-resolve.sh          # Shared helpers
 │   ├── flow-state-update.sh / local-wm-update.sh
 │   ├── work-memory-lock.sh / work-memory-update.sh / work-memory-parse.py
@@ -1256,7 +1250,7 @@ If a lock's `mtime` exceeds the threshold (default: 120 seconds), the PID file i
 
 ### Phase Transition Whitelist (`phase-transition-whitelist.sh`) (#490)
 
-Sourced (not executed) library that provides the canonical phase-transition graph consumed by orchestration helpers. The Stop hook itself was removed in PR #675; the whitelist is now consumed by phase-transition checks invoked from non-hook code paths (orchestrator command-level Pre-write + 🚨 Mandatory After scaffolding). Silent phase-skipping in `/rite:issue:start` end-to-end flow used to be an observability gap; this graph turns unexpected transitions into blockable events.
+Sourced (not executed) library that provides the canonical phase-transition graph. Production hooks (`session-end.sh` / `pre-tool-bash-guard.sh`) consume the helper predicates `rite_phase_is_create_lifecycle_in_progress` and `rite_phase_is_cleanup_lifecycle_in_progress` for lifecycle gating; the top-level `rite_phase_transition_allowed` function is a library entry point reserved for orchestrator-level pre-write checks (currently invoked only from the test suite — adding a production caller is a follow-up). Silent phase-skipping in `/rite:issue:start` end-to-end flow used to be an observability gap; the graph plus the in-library WARNING / ERROR / INFO emits keep that gap closed once a production caller is wired.
 
 > **Hook registration note**: This script is **not registered** in `hooks.json` — it is a `source`-only library used by other hooks (`session-end.sh` / `pre-tool-bash-guard.sh`) and orchestrator commands. Per the canonical SoT in `hooks.json`, only the 6 lifecycle hooks (`SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse`) are wired; this library does not appear in that registration.
 

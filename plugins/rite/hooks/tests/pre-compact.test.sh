@@ -126,7 +126,7 @@ else
 fi
 echo ""
 
-# --- TC-004: Timestamp is parseable by stop-guard.sh date chain ---
+# --- TC-004: Timestamp must remain parseable by GNU date ---
 echo "TC-004: Timestamp is parseable by GNU date -d"
 dir004="$TEST_DIR/tc004"
 mkdir -p "$dir004"

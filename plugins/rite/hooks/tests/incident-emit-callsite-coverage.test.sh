@@ -16,12 +16,20 @@ PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 
 START_MD="$PLUGIN_ROOT/commands/issue/start.md"
 CREATE_MD="$PLUGIN_ROOT/commands/issue/create.md"
+CLOSE_MD="$PLUGIN_ROOT/commands/issue/close.md"
 READY_MD="$PLUGIN_ROOT/commands/pr/ready.md"
+LINT_MD="$PLUGIN_ROOT/commands/lint.md"
+GITIGNORE_HEALTH="$PLUGIN_ROOT/hooks/scripts/gitignore-health-check.sh"
 POST_COMPACT="$PLUGIN_ROOT/hooks/post-compact.sh"
 SESSION_END="$PLUGIN_ROOT/hooks/session-end.sh"
 EMIT_SH="$PLUGIN_ROOT/hooks/workflow-incident-emit.sh"
+CROSS_SESSION_EMIT="$PLUGIN_ROOT/hooks/_emit-cross-session-incident.sh"
+# body_shrinkage_guard_tripped is emitted by the helper itself so the safety
+# net is self-emitting (caller cannot observe a guard-tripped exit from exit
+# code alone); the previous orchestrator-side emit was unreachable dead code.
+BODY_SAFE_UPDATE="$PLUGIN_ROOT/hooks/issue-body-safe-update.sh"
 
-for f in "$START_MD" "$CREATE_MD" "$READY_MD" "$POST_COMPACT" "$SESSION_END" "$EMIT_SH"; do
+for f in "$START_MD" "$CREATE_MD" "$CLOSE_MD" "$READY_MD" "$LINT_MD" "$GITIGNORE_HEALTH" "$POST_COMPACT" "$SESSION_END" "$EMIT_SH" "$CROSS_SESSION_EMIT" "$BODY_SAFE_UPDATE"; do
   [ -f "$f" ] || { echo "ERROR: required file not found: $f" >&2; exit 1; }
 done
 
@@ -60,14 +68,21 @@ declare -A INCIDENT_EXPECTED_SITES=(
   [pr_create_failed]="$START_MD"
   [skill_load_failure]="$START_MD"
   [issue_body_fetch_failed]="$START_MD $CREATE_MD"
-  [body_shrinkage_guard_tripped]="$START_MD $CREATE_MD"
+  [body_shrinkage_guard_tripped]="$BODY_SAFE_UPDATE"
   [sub_issue_zero_iteration_loop]="$CREATE_MD"
   [sub_issue_loop_abort]="$CREATE_MD"
   [issue_branch_link_failed]="$START_MD"
   [local_wm_update_lock_failed]="$START_MD"
   [parent_close_failed]="$START_MD"
-  [session_end_deactivate_failed]="$SESSION_END"
   [state_root_toctou_race]="$POST_COMPACT"
+  [wiki_ingest_skipped]="$CLOSE_MD"
+  [wiki_ingest_failed]="$CLOSE_MD"
+  [wiki_ingest_push_failed]="$CLOSE_MD"
+  [gitignore_drift]="$GITIGNORE_HEALTH"
+  [hook_abnormal_exit]="$LINT_MD"
+  [manual_fallback_adopted]="$LINT_MD"
+  [cross_session_takeover_refused]="$CROSS_SESSION_EMIT"
+  [legacy_state_corrupt]="$CROSS_SESSION_EMIT"
 )
 
 for type in "${!INCIDENT_EXPECTED_SITES[@]}"; do
@@ -85,6 +100,28 @@ for type in "${!INCIDENT_EXPECTED_SITES[@]}"; do
     pass "type '$type' emitted at all expected sites:${found_in}"
   else
     fail "type '$type' missing from expected emit site(s):${missing_from} (found in:${found_in:- none})"
+  fi
+done
+
+# Lifecycle types fire from multiple sites in start.md; presence at one site is
+# not enough — a partial removal (2 of 3 callsites) would silently regress the
+# audit trail for the missing path. Pin a lower bound count for each type that
+# has more than one expected emit site.
+declare -A INCIDENT_MIN_COUNT=(
+  [local_wm_update_lock_failed]=3
+  [parent_close_failed]=1
+  [issue_branch_link_failed]=1
+  [git_push_failed]=1
+  [pr_create_failed]=1
+  [skill_load_failure]=1
+)
+for type in "${!INCIDENT_MIN_COUNT[@]}"; do
+  expected_min="${INCIDENT_MIN_COUNT[$type]}"
+  actual=$(grep -cE -- "--type[[:space:]]+$type\\b|type=$type\\b" "$START_MD" 2>/dev/null || echo 0)
+  if [ "$actual" -ge "$expected_min" ]; then
+    pass "type '$type' callsite count $actual >= expected minimum $expected_min"
+  else
+    fail "type '$type' callsite count $actual < expected minimum $expected_min (partial removal?)"
   fi
 done
 

@@ -350,9 +350,9 @@ rows=$(printf '%s\n' "$index_content" | awk -F'|' '
     }
 
     if (path == "") next  # skip malformed rows
-    # cycle 11 HIGH F-02: unit separator \x1f (\037) を使用。tab では POSIX whitespace collapse
-    # により summary="" 等の empty field で下流の `IFS=$'\t' read` が confidence / updated を
-    # 入れ替える render corruption を起こす (stop-guard.sh cycle 10 F-01 と同型)。
+    # Unit separator (\x1f) prevents POSIX whitespace collapse: tab + summary=""
+    # would let downstream `IFS=$'\t' read` swap confidence / updated columns,
+    # rendering wrong metadata next to each Wiki entry.
     printf "%s\037%s\037%s\037%s\037%s\037%s\n", title, path, domain, summary, updated, confidence
   }
   /^## / && in_table == 1 { in_table=0 }

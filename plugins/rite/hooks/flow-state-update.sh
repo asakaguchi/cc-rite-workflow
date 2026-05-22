@@ -512,15 +512,19 @@ fi
 # best-effort skip (cycle 41 F-14 と対称)。
 chmod 600 "$TMP_STATE" 2>/dev/null || true
 
-# F-05 (#636 cycle 6): mv 失敗 diag を stop-guard.sh 側の log_diag 経路と対称化。
-# stderr だけだと caller が stderr を suppress した場合に永続痕跡が消える。
-# 既存の .rite-stop-guard-diag.log を re-use (日付形式のみ揃える。ring buffer truncation は
-# stop-guard.sh 側 log_diag() の mapfile + ${_lines[@]: -50} に委譲する — 本関数は append only)。
-# (#636 cycle 12 F-01 対応: 旧 comment「ring buffer と日付形式を揃える」は mapfile truncation
-# を含まない実装と drift していたため修正。truncation は stop-guard.sh 次回起動時に発火する)
+# Persistent diag log: stderr alone is lost when callers suppress stderr, but
+# flow-state mv failures are exactly the cases triagers need to see post-hoc.
+# Ring-buffer the file in-process (last 50 lines kept) so the log never grows
+# unbounded — historically a separate hook owned truncation but no longer
+# exists, so append-only would now leak.
 _log_flow_diag() {
-  local diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
-  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $1" >> "$diag_file" 2>/dev/null || true
+  local diag_file="$STATE_ROOT/.rite-flow-state-diag.log"
+  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $1" >> "$diag_file" 2>/dev/null || return 0
+  if [ -f "$diag_file" ]; then
+    local _trimmed
+    _trimmed=$(tail -n 50 "$diag_file" 2>/dev/null) || return 0
+    printf '%s\n' "$_trimmed" > "$diag_file" 2>/dev/null || true
+  fi
 }
 
 case "$MODE" in
@@ -602,12 +606,12 @@ case "$MODE" in
         fi
       fi
     fi
-    # verified-review cycle 4 F-05 / #636: mv 失敗 path も stop-guard.sh の error_count atomic write 後 mv 失敗 path と対称に (line-number 参照を避ける理由は cycle 8 F-05 参照)
-    # 診断メッセージを出す。`set -euo pipefail` 下で mv 失敗は script を非 0 exit させるが、
-    # else branch は jq 失敗のみを surface するため、disk full / permission denied / EXDEV 等の
-    # mv 失敗要因が silent に握りつぶされる (silent failure-hunter 指摘)。patch / increment mode と対称化。
+    # `set -euo pipefail` 下では mv 失敗が script を非 0 exit させるものの、jq 失敗の
+    # else 分岐は出るが mv 失敗の原因 (disk full / permission denied / EXDEV) は
+    # diagnostic 経路がないと silent に消える。patch / increment mode と同じ
+    # _log_flow_diag を介して post-hoc 診断可能にする。
     #
-    # #678: schema_version=2 (Option A per-session file) では create object に schema_version: 2 を含め、
+    # schema_version=2 (per-session file) では create object に schema_version: 2 を含め、
     # Migration 検出条件「schema_version キー無 or < 2」(design doc Migration 戦略) と整合させる。
     # legacy mode では schema_version field を含めず、旧形式 reader (#3-#5 移行前の hook 群) との
     # bytewise 互換を保つ。
@@ -649,16 +653,15 @@ case "$MODE" in
     ;;
   patch)
     # Build jq filter: always update phase, timestamp, next_action; conditionally update active.
-    # Also capture the outgoing phase into previous_phase so stop-guard can verify the
-    # transition whitelist (#490). Use the pre-update .phase value as previous_phase.
+    # previous_phase は phase-transition-whitelist の検証用にプレ patch の .phase を保持する。
     #
-    # --preserve-error-count (verified-review cycle 3 F-01 / #636): patch mode のデフォルトは
-    # `.error_count = 0` でリセットする (phase transition は「進捗した」signal なのでエスカレーション
-    # counter をクリアするのが正しい)。ただし、create.md Step 0 / Step 1 のような **同一 phase への
-    # self-patch** (create_post_interview → create_post_interview) では error_count を保持しないと
-    # stop-guard.sh の RE-ENTRY DETECTED escalation + THRESHOLD=3 bail-out が永久に fire しない
-    # silent regression になる (cycle 3 で実測確認済み)。--preserve-error-count flag 指定時は
-    # `.error_count = 0` 条項を omit して既存値を保持する。
+    # --preserve-error-count: patch mode のデフォルトは `.error_count = 0` でリセットする
+    # (phase transition は「進捗した」signal なのでエスカレーション counter をクリアするのが正しい)。
+    # ただし、create.md Step 0 / Step 1 のような **同一 phase への self-patch**
+    # (create_post_interview → create_post_interview) では error_count を保持しないと
+    # RE-ENTRY accumulation が常に 0 開始になり、resume.md / phase-transition-whitelist の
+    # エスカレーション判定が unreachable になる silent regression を生む。
+    # --preserve-error-count flag 指定時は `.error_count = 0` 条項を omit して既存値を保持する。
     if [[ "$PRESERVE_ERROR_COUNT" == "true" ]]; then
       JQ_FILTER='.previous_phase = (.phase // "") | .phase = $phase | .updated_at = $ts | .next_action = $next'
     else

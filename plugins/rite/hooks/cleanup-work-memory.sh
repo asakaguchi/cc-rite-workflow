@@ -61,23 +61,37 @@ if [ "$CLOSE_MODE" = false ]; then
       ISSUE_NUMBER=""
     fi
 
-    TMP_STATE=$(mktemp "$FLOW_STATE.tmp.XXXXXX")
-    trap 'rm -f "$TMP_STATE" 2>/dev/null' EXIT TERM INT
-    if jq -n \
-      --argjson active false \
-      --argjson issue "${ISSUE_NUMBER:-0}" \
-      --arg branch "" \
-      --arg phase "completed" \
-      --argjson pr 0 \
-      --arg next "none" \
-      --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-      '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, pr_number: $pr, next_action: $next, updated_at: $ts}' \
-      > "$TMP_STATE" 2>/dev/null; then
-      mv "$TMP_STATE" "$FLOW_STATE" 2>/dev/null || {
-        echo "WARNING: .rite-flow-state の更新に失敗しました（mv エラー）" >&2
-      }
+    # `set -euo pipefail` would abort the entire cleanup if mktemp fails before
+    # the trap is installed — leaving compact-state, lockdir, and per-issue
+    # work memory files un-removed. Guard explicitly so the remaining cleanup
+    # steps still run on temp-file failure.
+    if TMP_STATE=$(mktemp "$FLOW_STATE.tmp.XXXXXX" 2>/dev/null); then
+      trap 'rm -f "$TMP_STATE" 2>/dev/null' EXIT TERM INT
+      _jq_err=$(mktemp 2>/dev/null) || _jq_err=""
+      if jq -n \
+        --argjson active false \
+        --argjson issue "${ISSUE_NUMBER:-0}" \
+        --arg branch "" \
+        --arg phase "completed" \
+        --argjson pr 0 \
+        --arg next "none" \
+        --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
+        '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, pr_number: $pr, next_action: $next, updated_at: $ts}' \
+        > "$TMP_STATE" 2>"${_jq_err:-/dev/null}"; then
+        _mv_err=$(mktemp 2>/dev/null) || _mv_err=""
+        if ! mv "$TMP_STATE" "$FLOW_STATE" 2>"${_mv_err:-/dev/null}"; then
+          echo "WARNING: .rite-flow-state の更新に失敗しました (mv エラー)" >&2
+          [ -n "$_mv_err" ] && [ -s "$_mv_err" ] && head -3 "$_mv_err" | sed 's/^/  /' >&2
+        fi
+        [ -n "$_mv_err" ] && rm -f "$_mv_err"
+      else
+        echo "WARNING: .rite-flow-state のリセットに失敗しました (jq エラー)" >&2
+        [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | sed 's/^/  /' >&2
+      fi
+      [ -n "$_jq_err" ] && rm -f "$_jq_err"
     else
-      echo "WARNING: .rite-flow-state のリセットに失敗しました（jq エラー）" >&2
+      echo "WARNING: .rite-flow-state TMP_STATE mktemp failed — flow-state reset skipped (subsequent cleanup steps will still run)" >&2
+      echo "  hint: $(dirname "$FLOW_STATE") の permission / disk full / read-only を確認" >&2
     fi
   fi
 

@@ -234,12 +234,15 @@ echo ""
 # TC-011: curl command structure - best-effort with timeouts
 # --------------------------------------------------------------------------
 echo "TC-011: curl command structure (static analysis)"
-# Verify that curl commands have proper flags: -sf, --connect-timeout, --max-time, || true
+# Verify curl call still uses the right flags. The `|| true` swallow was
+# replaced with `if ! curl ... ; then` + WARNING emit so a failed delivery
+# is visible in stderr instead of silently disappearing; require the
+# WARNING wiring too.
 if grep -q 'curl -sf --connect-timeout' "$HOOK" && \
-   grep -q '|| true' "$HOOK"; then
-  pass "curl commands have best-effort flags (silent-fail, timeouts, || true)"
+   grep -qE 'WARNING.*notification.*curl failed' "$HOOK"; then
+  pass "curl commands have best-effort flags and visible-failure WARNING"
 else
-  fail "curl commands missing required best-effort flags"
+  fail "curl commands missing best-effort flags or visible-failure WARNING"
 fi
 echo ""
 
@@ -247,12 +250,16 @@ echo ""
 # TC-012: send_slack function signature
 # --------------------------------------------------------------------------
 echo "TC-012: send_slack function signature"
+# send_slack delegates to _send_webhook, which takes (channel, url, payload).
+# The shared helper is where webhook_url + payload sanitization lives, so
+# the signature check pivots to _send_webhook to stay meaningful after the
+# DRY refactor.
 if grep -q 'send_slack()' "$HOOK" && \
-   grep -A5 'send_slack()' "$HOOK" | grep -q 'webhook_url' && \
-   grep -A5 'send_slack()' "$HOOK" | grep -q 'message'; then
-  pass "send_slack function has correct signature (webhook_url, message)"
+   grep -A5 '_send_webhook()' "$HOOK" | grep -q 'webhook_url' && \
+   grep -A5 '_send_webhook()' "$HOOK" | grep -q 'payload'; then
+  pass "send_slack delegates to _send_webhook(channel, url, payload)"
 else
-  fail "send_slack function signature incorrect"
+  fail "send_slack / _send_webhook signature drift"
 fi
 echo ""
 
@@ -261,11 +268,10 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-013: send_discord function signature"
 if grep -q 'send_discord()' "$HOOK" && \
-   grep -A5 'send_discord()' "$HOOK" | grep -q 'webhook_url' && \
-   grep -A5 'send_discord()' "$HOOK" | grep -q 'message'; then
-  pass "send_discord function has correct signature (webhook_url, message)"
+   grep -A2 'send_discord()' "$HOOK" | grep -q '_send_webhook "discord"'; then
+  pass "send_discord delegates to _send_webhook with discord channel name"
 else
-  fail "send_discord function signature incorrect"
+  fail "send_discord delegation pattern missing"
 fi
 echo ""
 
@@ -274,11 +280,10 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-014: send_teams function signature"
 if grep -q 'send_teams()' "$HOOK" && \
-   grep -A5 'send_teams()' "$HOOK" | grep -q 'webhook_url' && \
-   grep -A5 'send_teams()' "$HOOK" | grep -q 'message'; then
-  pass "send_teams function has correct signature (webhook_url, message)"
+   grep -A2 'send_teams()' "$HOOK" | grep -q '_send_webhook "teams"'; then
+  pass "send_teams delegates to _send_webhook with teams channel name"
 else
-  fail "send_teams function signature incorrect"
+  fail "send_teams delegation pattern missing"
 fi
 echo ""
 

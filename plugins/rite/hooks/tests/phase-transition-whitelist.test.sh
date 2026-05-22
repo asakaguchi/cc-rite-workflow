@@ -86,8 +86,11 @@ echo ""
 echo "=== Phase 4: Negative path — phase skipping ==="
 assert_blocked "TC-40 init → review (skips 4 phases)" "init" "review"
 assert_blocked "TC-41 plan → completed via non-terminal target 'review'" "plan" "review"
-# NOTE: init → completed / pr → completed 等の terminal accept は forward-compat で allow される。
-# protocol violation の観測性は RITE_DEBUG=1 経由で確認する (TC-101 参照)。
+# Terminal acceptance is restricted to the canonical predecessor set
+# (lint/pr/review/fix → completed; cleanup_pre/post_ingest → cleanup_completed;
+# ingest_pre/post_lint → ingest_completed). Phase-skip patterns such as
+# init → completed are blocked (TC-103); canonical patterns such as
+# pr → completed are allowed (TC-104).
 
 echo ""
 echo "=== Phase 5: rite_phase_is_known ==="
@@ -123,6 +126,15 @@ echo "=== Phase 6: Legacy forward-compat (unknown prev → accept) ==="
 # behavior — RITE_DEBUG=1 should log a WARNING (see SF-7 fix).
 assert_allowed "TC-60 unknown prev 'typo_phase' → branch (forward-compat)" "typo_phase" "branch"
 assert_allowed "TC-61 unknown prev 'phase5_legacy' → lint (legacy carry-over)" "phase5_legacy" "lint"
+
+# Legacy phase prefixes from earlier sub-skill chains must still reach terminal
+# `completed`. Without these assertions, removing the case-glob in
+# phase-transition-whitelist.sh would silently break `/rite:resume` for users with
+# in-flight pre-flat state files.
+assert_allowed "TC-62 legacy 'phase5_post_review' → completed (terminal forward-compat)" "phase5_post_review" "completed"
+assert_allowed "TC-63 legacy 'phase3_lint' → completed (terminal forward-compat)" "phase3_lint" "completed"
+assert_allowed "TC-64 legacy 'create_in_review' → completed (terminal forward-compat)" "create_in_review" "completed"
+assert_allowed "TC-65 legacy 'start_branch_setup' → completed (terminal forward-compat)" "start_branch_setup" "completed"
 
 echo ""
 echo "=== Phase 7: Cleanup lifecycle (PR cleanup helper) ==="
@@ -234,17 +246,20 @@ hooks:
         - alpha
         - beta
 YAML
+# TC-201 — block list form. Inspect _RITE_PHASE_TRANSITIONS after sourcing so a
+# silently-skipped block-list parser fails the test instead of passing on "OK".
 override_out=$(RITE_CONFIG="$override_tmpdir/block-list/rite-config.yml" bash -c "
   set -e
   source '$WHITELIST_SH'
-  echo OK
+  declare -p _RITE_PHASE_TRANSITIONS | tr -d '\n'
 " 2>&1) || true
 case "$override_out" in
-  *OK*) pass "TC-201 block list form loader executed without fatal error" ;;
-  *) fail "TC-201 block list loader emitted unexpected output: $override_out" ;;
+  *'[custom_phase_y]="alpha beta"'*) pass "TC-201 block list parser merged custom_phase_y → 'alpha beta'" ;;
+  *) fail "TC-201 block list parser did NOT merge custom_phase_y: $override_out" ;;
 esac
 
-# TC-202 — comment lines tolerated
+# TC-202 — comment lines tolerated. Same inspection approach: confirm the
+# parsed value made it into the array, not just that sourcing didn't crash.
 mkdir -p "$override_tmpdir/with-comments"
 cat > "$override_tmpdir/with-comments/rite-config.yml" <<'YAML'
 hooks:
@@ -256,11 +271,11 @@ YAML
 override_out=$(RITE_CONFIG="$override_tmpdir/with-comments/rite-config.yml" bash -c "
   set -e
   source '$WHITELIST_SH'
-  echo OK
+  declare -p _RITE_PHASE_TRANSITIONS | tr -d '\n'
 " 2>&1) || true
 case "$override_out" in
-  *OK*) pass "TC-202 comment lines tolerated in override YAML" ;;
-  *) fail "TC-202 override loader failed on commented YAML: $override_out" ;;
+  *'[custom_phase_z]="a"'*) pass "TC-202 commented YAML loader merged custom_phase_z → 'a'" ;;
+  *) fail "TC-202 commented YAML loader did NOT merge custom_phase_z: $override_out" ;;
 esac
 
 echo ""
@@ -292,6 +307,57 @@ if RITE_DEBUG=0 bash -c "source '$WHITELIST_SH'; rite_phase_transition_allowed '
   fail "TC-304 implement → completed should be blocked (non-canonical predecessor)"
 else
   pass "TC-304 implement → completed is blocked (non-canonical predecessor)"
+fi
+
+echo ""
+echo "=== Phase 13: bash < 4.2 fail-open simulation ==="
+# macOS ships bash 3.2 by default; the production script's BASH_VERSINFO guard
+# at line 39 short-circuits the associative-array load with a WARNING and
+# `return 0`. None of the tests above exercise this branch — a future refactor
+# that switches `return 0` to `exit 1` would silently break macOS callers
+# (`source phase-transition-whitelist.sh 2>/dev/null || true` would abort the
+# caller process instead of falling through), and a removed WARNING would make
+# the silent disable indistinguishable from "validation passing".
+#
+# Approach: copy the script into a sandbox and rewrite the `BASH_VERSINFO`
+# guard to `if true` so the fail-open branch fires unconditionally. Source the
+# rewritten copy and assert (a) WARNING text on stderr, (b) graceful return
+# (the caller's `echo` after `source` still runs), (c) function undefined
+# afterward.
+sandbox_bash32=$(mktemp -d 2>/dev/null) || sandbox_bash32=""
+if [ -n "$sandbox_bash32" ]; then
+  sandbox_script="$sandbox_bash32/phase-transition-whitelist.sh"
+  # Replace the `if ((BASH_VERSINFO...))` line with `if true;` so the rest of
+  # the production behaviour (WARNING + return 0) runs unmodified.
+  sed -E 's|^if \(\(BASH_VERSINFO.*\)\); then$|if true; then|' "$WHITELIST_SH" > "$sandbox_script"
+
+  # TC-BASH32-01: WARNING text is on stderr
+  bash32_out=$(bash -c "source '$sandbox_script'; echo POST_SOURCE_REACHED" 2>"$sandbox_bash32/stderr") || true
+  bash32_stderr=$(cat "$sandbox_bash32/stderr")
+  if printf '%s' "$bash32_stderr" | grep -qE 'phase-transition-whitelist disabled.*requires bash >= 4\.2'; then
+    pass "TC-BASH32-01 WARNING text emitted on bash<4.2 fail-open path"
+  else
+    fail "TC-BASH32-01 WARNING text missing — silent disable regression: $bash32_stderr"
+  fi
+
+  # TC-BASH32-02: graceful return (caller's POST_SOURCE_REACHED still runs)
+  if printf '%s' "$bash32_out" | grep -qF 'POST_SOURCE_REACHED'; then
+    pass "TC-BASH32-02 graceful return 0 — caller continues after source"
+  else
+    fail "TC-BASH32-02 fail-open path aborted caller (return changed to exit?): out='$bash32_out' stderr='$bash32_stderr'"
+  fi
+
+  # TC-BASH32-03: rite_phase_transition_allowed is undefined after fail-open
+  type_check=$(bash -c "source '$sandbox_script' 2>/dev/null; type rite_phase_transition_allowed >/dev/null 2>&1 && echo DEFINED || echo UNDEFINED") || true
+  if [ "$type_check" = "UNDEFINED" ]; then
+    pass "TC-BASH32-03 rite_phase_transition_allowed undefined after fail-open (callers must fall through)"
+  else
+    fail "TC-BASH32-03 function unexpectedly defined after fail-open: $type_check"
+  fi
+
+  rm -rf "$sandbox_bash32"
+else
+  fail "TC-BASH32 sandbox mktemp -d failed; cannot exercise fail-open"
 fi
 
 echo ""

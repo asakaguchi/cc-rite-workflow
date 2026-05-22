@@ -5,7 +5,7 @@ description: マルチレビュアー PR レビューを実行
 # /rite:pr:review
 
 ## Contract
-**Input**: PR number (or auto-detected from current branch), flow state with `phase: review` (flat workflow, written by `start.md` ステップ 7.1) or `phase: phase5_review` (legacy, written by this sub-skill itself — both names coexist until sub-skill writes are migrated in a later PR)
+**Input**: PR number (or auto-detected from current branch), flow state with `phase: review` (written by `start.md` ステップ 7.1) or `phase: phase5_review` (legacy compat — this sub-skill still patches the old name so resume from an interrupted earlier session keeps working until every writer migrates off the legacy name)
 **Output**: `[review:mergeable]` | `[review:fix-needed:{n}]`
 
 Analyze PR changes and dynamically load expert skills to perform a multi-reviewer review.
@@ -44,7 +44,7 @@ When called from the `/rite:issue:start` end-to-end flow, Phase 4 (sub-agent exe
 > **Reference**: Apply `no_unnecessary_fallback` from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
 > All reviewers should flag fallbacks that hide failure causes or silently change behavior scope.
 
-> **⚠️ Scope limitation**: This command does NOT check or report hooks registration status (`.claude/settings.local.json`). Hooks registration is exclusively handled by `/rite:issue:start` Phase 5.0. Do NOT independently check hooks state, do NOT output messages about hooks being unregistered, and do NOT mention hooks registration in any output to the user.
+> **⚠️ Scope limitation**: This command does NOT check or report hooks registration status (`.claude/settings.local.json`). Hooks registration is exclusively handled by `/rite:init`. Do NOT independently check hooks state, do NOT output messages about hooks being unregistered, and do NOT mention hooks registration in any output to the user.
 
 > **⚠️ Anti-Degradation Guardrail — レビュー品質縮退の絶対禁止**:
 > このコマンドは、呼び出し回数・context 残量・前回レビュー結果の有無に**一切関係なく**、常にフルレビューを実行しなければならない。以下の行為は明示的に禁止する:
@@ -62,11 +62,11 @@ When this command is executed, run the following phases in order.
 
 ## Invocation Context and End-to-End Flow
 
-This command has two invocation cases: standalone execution and invocation from the `/rite:issue:start` end-to-end flow (via Phase 5.4).
+This command has two invocation cases: standalone execution and invocation from the `/rite:issue:start` end-to-end flow (via ステップ 7 review-fix loop).
 
 | Invocation Source | Subsequent Action |
 |-----------|---------------|
-| End-to-end flow (invoked from `/rite:issue:start` Phase 5.4) | **Output pattern and return control to caller** |
+| End-to-end flow (invoked from `/rite:issue:start` ステップ 7) | **Output pattern and return control to caller** |
 | Standalone execution | Confirm the next action with `AskUserQuestion` |
 
 **Determination method**: Claude determines the invocation source from the conversation context:
@@ -1287,7 +1287,7 @@ When the reviewer count reaches 4 or more, recommend splitting the review execut
 
 > **⚠️ MANDATORY**: This `AskUserQuestion` confirmation MUST be executed even within the `/rite:issue:start` end-to-end flow. Do NOT skip this step for context optimization or any other reason. The user must always confirm the reviewer configuration before review execution begins.
 >
-> **Note (区別注記 — PR #818 / Issue #820)**: 本ガード文は **reviewer 構成確認に固有**であり、`pr/ready.md` の Ready 移行確認とは別概念です。Ready 移行確認は親 skill `start.md` Phase 5.5 の `AskUserQuestion`（「Ready for review に変更 / ドラフトのまま完了 / 追加の修正を行う」）で同等の確認が実施されているため PR #818 で `ready.md` 側の MANDATORY ガード文を撤廃しましたが、reviewer 構成確認は親 skill での代替確認が存在しないため本ガード文を保持します。本対応を `ready.md` と同様に削除しないこと。
+> **Note (区別注記)**: 本ガード文は **reviewer 構成確認に固有**であり、`pr/ready.md` の Ready 移行確認とは別概念です。Ready 移行確認は親 skill `start.md` ステップ 8 の `AskUserQuestion`（「Ready for review に変更 / ドラフトのまま完了 / 追加の修正を行う」）で同等の確認が実施されているため `ready.md` 側の MANDATORY ガード文は撤廃されていますが、reviewer 構成確認は親 skill での代替確認が存在しないため本ガード文を保持します。本対応を `ready.md` と同様に削除しないこと。
 
 Confirm the reviewer configuration with `AskUserQuestion` (fallback: see Phase 1.4 note):
 
@@ -1617,7 +1617,7 @@ If the following issues occur with the sub-agent approach:
 
 Task results are returned automatically upon completion. No explicit wait handling is needed.
 
-**⚠️ CRITICAL**: Do NOT use `run_in_background: true` for review agents. Background agents cause the calling LLM to receive launch confirmation immediately and then repeatedly attempt to stop while waiting — triggering stop-guard blocks that inflate `error_count` and poison the circuit breaker for subsequent phases. Foreground agents launched in the same message already execute concurrently; Claude blocks until all results return, enabling seamless flow continuation.
+**⚠️ CRITICAL**: Do NOT use `run_in_background: true` for review agents. Background agents return launch confirmation immediately and the calling LLM then attempts to end the turn while results are still pending — leading to incomplete review collection and inconsistent `error_count` accounting. Foreground agents launched in the same message already execute concurrently; Claude blocks until all results return, enabling seamless flow continuation.
 
 ### 4.4 Retry Logic
 

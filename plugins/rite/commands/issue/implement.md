@@ -413,7 +413,7 @@ After completing each implementation step, re-evaluate the remaining steps befor
 
    **When threshold exceeded**:
    1. **Discover Oracle and re-decompose**: Follow [Bottleneck Detection Reference](../../references/bottleneck-detection.md) — discover Oracle (Priority 1→2→3), then re-decompose step into sub-steps `S{n}.1`, `S{n}.2`, etc.
-   2. **Update plan**: Insert sub-steps into the dependency graph, replacing the original step. Update the implementation plan in work memory per [Mid-Implementation Replanning (bottleneck-detection)](../../references/bottleneck-detection.md) — PR #1079 で旧 `implementation-plan.md#351-mid-implementation-replanning-triggered-by-bottleneck-detection` を bottleneck-detection.md に移管
+   2. **Update plan**: Insert sub-steps into the dependency graph, replacing the original step. Update the implementation plan in work memory per [Step Re-decomposition Procedure](../../references/bottleneck-detection.md#step-re-decomposition-procedure)
    3. **Display and record**: Use the bottleneck display format (see below). Add entry to work memory "ボトルネック検出ログ" section at next bulk update (commit time)
    4. **Continue**: Execute the first sub-step (`S{n}.1`) — do NOT re-evaluate the parent step
 
@@ -848,7 +848,7 @@ Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../
 
 ```bash
 WM_SOURCE="implement" \
-  WM_PHASE="phase5_lint" \
+  WM_PHASE="lint" \
   WM_PHASE_DETAIL="品質チェック準備" \
   WM_NEXT_ACTION="rite:lint を実行" \
   WM_BODY_TEXT="Post-implementation. Proceeding to lint." \
@@ -869,8 +869,8 @@ if parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_i
   :
 else
   rc=$?
-  echo "ERROR: state-read.sh failed (rc=$rc) for --field parent_issue_number in Phase 5.1.2" >&2
-  echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_1_2_parent_issue; rc=$rc" >&2
+  echo "ERROR: state-read.sh failed (rc=$rc) reading parent_issue_number for parent progress sync" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=parent_progress_sync; rc=$rc" >&2
   echo "RESUME_HINT: state-read.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2
   exit 1
 fi
@@ -966,7 +966,7 @@ Record progress in a comment on the parent Issue (completed child Issues, progre
 
 **5.1.2.3 Remaining Child Issues Check**
 
-Check the state of remaining child Issues with `trackedIssues` and calculate `remaining_count`. Full child Issue completion check is performed in Phase 5.7.
+Check the state of remaining child Issues with `trackedIssues` and calculate `remaining_count`. Full child Issue completion check is performed in start.md ステップ 8.4 (parent close judgement).
 
 **After 5.1.1 commit/push completion:**
 
@@ -981,9 +981,9 @@ Check the state of remaining child Issues with `trackedIssues` and calculate `re
 
    ```bash
    bash {plugin_root}/hooks/flow-state-update.sh create \
-     --phase "phase5_lint" --issue {issue_number} --branch "{branch_name}" \
+     --phase "lint" --issue {issue_number} --branch "{branch_name}" \
      --pr 0 \
-     --next "After rite:lint returns: [lint:success/skipped]->Phase 5.2.1 (checklist). [lint:error]->fix and re-invoke. [lint:aborted]->Phase 5.6. Do NOT stop."
+     --next "After rite:lint returns: [lint:success/skipped]->start.md ステップ 6 (PR creation). [lint:error]->fix and re-invoke. [lint:aborted]->start.md ステップ 8.6 (completion report). Do NOT stop."
    ```
 
    **4b**: **Immediately** invoke `rite:lint` via Skill tool (following the flow continuation principle, stopping is prohibited)

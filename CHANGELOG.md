@@ -19,7 +19,7 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
 
 ### Changed
 
-- **Flat workflow consolidation** (#1079) — Re-designed `/rite:issue:start` and `/rite:issue:create` as single-file flat workflows. 12 sub-skill files total were consolidated: 6 sub-skill chain files (`start-execute` / `start-publish` / `start-finalize` for start; `create-interview` / `create-register` / `create-decompose` for create) plus 6 peripheral sub-skill files (`parent-routing`, `child-issue-selection`, `branch-setup`, `work-memory-init`, `implementation-plan`, `completion-report`) were merged into `commands/issue/start.md` and `commands/issue/create.md`. Recovery from mid-flow stops now uses `/rite:resume` exclusively (`commands/resume.md` Phase 3.2 phase→step routing table). PR #1079 single-diff: **+3,286 / -12,609 (net -9,323 lines)**. Cumulative net deletion after offsetting Unreleased transitional adds (#920 series, ~3,900 lines): ~5,400 lines.
+- **Flat workflow consolidation** (#1079) — Re-designed `/rite:issue:start` and `/rite:issue:create` as single-file flat workflows. 12 sub-skill files total were consolidated: 6 sub-skill chain files (`start-execute` / `start-publish` / `start-finalize` for start; `create-interview` / `create-register` / `create-decompose` for create) plus 6 peripheral sub-skill files (`parent-routing`, `child-issue-selection`, `branch-setup`, `work-memory-init`, `implementation-plan`, `completion-report`) were merged into `commands/issue/start.md` and `commands/issue/create.md`. Recovery from mid-flow stops now uses `/rite:resume` exclusively (`commands/resume.md` Phase 3.2 phase→step routing table). Single-diff stats are finalized at release time via `gh pr view <pr> --json additions,deletions,changedFiles`; Unreleased rows omit them so successive review rounds don't drift the numbers.
 
 ### Removed
 
@@ -28,7 +28,7 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
 
 ### Added (pre-#1079 history — superseded by flat workflow consolidation)
 
-> 以下の "Added" / "Fixed" / "Changed" エントリ群は #1079 で statement-level に超えられた transitional state を記録する。stop-create-interview-block.sh は Unreleased 内で Added → Removed したため出荷されない。read 順序: 本セクション (pre-#1079) を歴史的経緯として参照し、 **canonical Unreleased state は上記 #1079 セクション**を SoT とすること。
+> The following "Added" / "Fixed" / "Changed" entries record transitional state that was statement-level superseded by the flat workflow consolidation. `stop-create-interview-block.sh` was added and then removed within the same Unreleased window and is therefore not shipped. Reading order: treat this section as historical context only; the canonical Unreleased state is the consolidated section above (the SoT).
 
 ### Added
 

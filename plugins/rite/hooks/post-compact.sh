@@ -33,6 +33,10 @@ _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "post-compact" \
   "resolve-flow-state-err" \
   "_resolve-flow-state-path.sh の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
+# SIGINT before the explicit rm below leaves `$_resolve_err` orphaned in /tmp;
+# clean up on any exit signal so the path never leaks even if the script aborts
+# mid-resolve.
+trap '[ -n "${_resolve_err:-}" ] && rm -f "$_resolve_err" 2>/dev/null || true' EXIT INT TERM
 # Single-pass branch (filter runs once regardless of resolver exit status).
 _resolve_failed=0
 FLOW_STATE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
@@ -42,7 +46,9 @@ if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
   if [ -n "${RITE_DEBUG:-}" ]; then
     cat "$_resolve_err" >&2
   else
-    _pc_resolve_err_total=$(wc -l < "$_resolve_err" 2>/dev/null | tr -d ' ')
+    # `grep -c ''` agrees with the filter `grep -c` below regardless of trailing
+    # newline; `wc -l` would undercount and let `_dropped` go negative.
+    _pc_resolve_err_total=$(grep -c '' "$_resolve_err" 2>/dev/null) || _pc_resolve_err_total=0
     _pc_resolve_err_kept=$(grep -cE '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" 2>/dev/null) || _pc_resolve_err_kept=0
     grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
     _pc_resolve_err_dropped=$((${_pc_resolve_err_total:-0} - ${_pc_resolve_err_kept:-0}))
@@ -165,9 +171,15 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     jq_err=""
     reconcile_err=""
     _pc_cleanup() {
-      rm -f "${pr_view_err:-}" "${repo_view_err:-}" \
-            "${jq_owner_err:-}" "${jq_name_err:-}" \
-            "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}"
+      # BSD `rm -f ""` prints a cosmetic stderr noise (`rm: '': No such file
+      # or directory`) when a tempfile slot is empty (mktemp failure path).
+      # Iterating and guarding with `[ -n "$f" ]` keeps the cleanup silent
+      # and portable across GNU / BSD rm.
+      for f in "${pr_view_err:-}" "${repo_view_err:-}" \
+               "${jq_owner_err:-}" "${jq_name_err:-}" \
+               "${gql_err:-}" "${jq_err:-}" "${reconcile_err:-}"; do
+        [ -n "$f" ] && rm -f "$f" 2>/dev/null || true
+      done
     }
     trap 'rc=$?; _pc_cleanup; exit $rc' EXIT
     trap '_pc_cleanup; exit 130' INT
@@ -198,51 +210,49 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       exit 0
     fi
 
-    # In `cd ... && gh pr view ... 2>FILE`, the redirect attaches to gh only;
-    # cd failures (TOCTOU race after the existence check above) leak no stderr
-    # and get misclassified as gh failures. Running cd in its own statement
-    # lets us emit state_root_toctou_race separately — different root cause,
-    # different remediation.
-    _cd_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
+    # `cd ... && gh ... 2>FILE` attaches the redirect to gh only — a TOCTOU
+    # cd failure (dir removed between the `-d` check above and the cd) leaks no
+    # stderr and gets misclassified as a gh failure. Capture cd stderr to a
+    # separate file inside the same subshell so the parent shell can branch on
+    # which stage actually failed, attributing it as the distinct
+    # `state_root_toctou_race` type instead of a vague `gh_pr_view_failed`.
+    _pr_cd_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
       "post-compact" \
-      "cd-toctou-err" \
-      "cd failure stderr cannot be distinguished from gh failure without this capture") || _cd_err=""
-    if ! (cd "$STATE_ROOT") 2>"${_cd_err:-/dev/null}"; then
-      _cd_rc=$?
-      _cd_err_oneline=$(head -c 200 "${_cd_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
-      bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
-        --type projects_status_in_review_missing \
-        --details "Issue #$ISSUE post-compact: cd STATE_ROOT failed after existence check (rc=$_cd_rc, stderr=$_cd_err_oneline) — TOCTOU race" \
-        --root-cause-hint "state_root_toctou_race" \
-        --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for state_root_toctou_race; incident may not be recorded" >&2
-      [ -n "$_cd_err" ] && rm -f "$_cd_err"
-      exit 0
-    fi
-    [ -n "$_cd_err" ] && rm -f "$_cd_err"
-
-    if PR_IS_DRAFT=$(cd "$STATE_ROOT" && gh pr view "$PR" --json isDraft --jq '.isDraft // null' 2>"${pr_view_err:-/dev/null}"); then
+      "pr-cd-err" \
+      "TOCTOU cd failure must be distinguished from gh pr view failure inside the same subshell") || _pr_cd_err=""
+    if PR_IS_DRAFT=$(cd "$STATE_ROOT" 2>"${_pr_cd_err:-/dev/null}" && gh pr view "$PR" --json isDraft --jq '.isDraft // null' 2>"${pr_view_err:-/dev/null}"); then
       :
     else
       pr_rc=$?
-      pr_err_oneline=$(head -c 200 "${pr_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
-      # PR が close/merge/delete されている legitimate な終了状態 (gh CLI 実出力 `Could not resolve to a PullRequest`
-      # の CamelCase 連結 stderr) と auth/network/permission failure を区別する。前者は false positive のため、
-      # caller ステップ 8.5 で偽 Issue を auto-register する経路を防ぐため別 hint で emit する。
-      # regex は `pull\s*request` で空白あり/なし両対応 (CamelCase 連結も classic 表現も catch)。
-      if printf '%s' "$pr_err_oneline" | grep -qiE 'could not resolve.*pull\s*request|no.*pull\s*request found'; then
-        pr_root_cause_hint="pr_deleted_or_inaccessible"
+      pr_view_err_oneline=$(head -c 200 "${pr_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+      pr_cd_err_oneline=$(head -c 200 "${_pr_cd_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+      if [ -n "$pr_cd_err_oneline" ]; then
+        bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+          --type state_root_toctou_race \
+          --details "Issue #$ISSUE post-compact: cd STATE_ROOT failed inside gh pr view subshell (rc=$pr_rc, stderr=$pr_cd_err_oneline) — TOCTOU race between -d check and cd" \
+          --root-cause-hint "state_root_toctou_race" \
+          --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for state_root_toctou_race; incident may not be recorded" >&2
       else
-        pr_root_cause_hint="post_compact_gh_pr_view_failed"
+        # PR が close/merge/delete された legitimate な終了状態 (gh CLI の
+        # `Could not resolve to a PullRequest` CamelCase 連結 stderr) と
+        # auth/network/permission 失敗を区別する。前者は false positive のため、
+        # caller ステップ 8.5 で偽 Issue を auto-register する経路を防ぐ。
+        if printf '%s' "$pr_view_err_oneline" | grep -qiE 'could not resolve.*pull\s*request|no.*pull\s*request found'; then
+          pr_root_cause_hint="pr_deleted_or_inaccessible"
+        else
+          pr_root_cause_hint="post_compact_gh_pr_view_failed"
+        fi
+        stderr_flag=""
+        [ "$stderr_capture_disabled" = "1" ] && stderr_flag=" stderr_capture=disabled"
+        bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
+          --type projects_status_in_review_missing \
+          --details "Issue #$ISSUE post-compact: gh pr view failed (rc=$pr_rc, stderr=$pr_view_err_oneline${stderr_flag})" \
+          --root-cause-hint "$pr_root_cause_hint" \
+          --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (gh_pr_view_failed); incident may not be recorded" >&2
       fi
-      stderr_flag=""
-      [ "$stderr_capture_disabled" = "1" ] && stderr_flag=" stderr_capture=disabled"
-      bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
-        --type projects_status_in_review_missing \
-        --details "Issue #$ISSUE post-compact: gh pr view failed (rc=$pr_rc, stderr=$pr_err_oneline${stderr_flag})" \
-        --root-cause-hint "$pr_root_cause_hint" \
-        --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (gh_pr_view_failed); incident may not be recorded" >&2
       PR_IS_DRAFT=""
     fi
+    [ -n "$_pr_cd_err" ] && rm -f "$_pr_cd_err"
 
     if [ "$PR_IS_DRAFT" = "false" ]; then
       # Capture gh repo view stderr so failures get attributed to auth/network/

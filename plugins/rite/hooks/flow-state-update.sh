@@ -377,8 +377,13 @@ FLOW_STATE=$(_resolve_session_state_path "$EFFECTIVE_SCHEMA_VERSION" "$LEGACY_MO
 TMP_STATE=""
 _mkdir_err=""
 _jq_err=""
+# Per-mode jq stderr tempfiles in the create-mode session-ownership block. Declared
+# upfront so the atomic cleanup trap covers their mktemp → rm window; a SIGINT/
+# SIGTERM/SIGHUP arriving between the inline mktemp and rm would otherwise leak.
+_existing_active_err=""
+_updated_at_err=""
 _rite_flow_state_atomic_cleanup() {
-  rm -f "${TMP_STATE:-}" "${_mkdir_err:-}" "${_jq_err:-}"
+  rm -f "${TMP_STATE:-}" "${_mkdir_err:-}" "${_jq_err:-}" "${_existing_active_err:-}" "${_updated_at_err:-}"
 }
 trap 'rc=$?; _rite_flow_state_atomic_cleanup; exit $rc' EXIT
 trap '_rite_flow_state_atomic_cleanup; exit 130' INT

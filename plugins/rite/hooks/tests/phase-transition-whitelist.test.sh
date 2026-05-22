@@ -56,7 +56,7 @@ assert_blocked() {
   fi
 }
 
-echo "=== Phase 1: Happy path (new flat workflow 9 phases) ==="
+echo "=== Phase 1: Happy path (new flat workflow 11 phases) ==="
 assert_allowed "TC-01 cold-start (empty → init)" "" "init"
 assert_allowed "TC-02 init → branch" "init" "branch"
 assert_allowed "TC-03 branch → plan" "branch" "plan"

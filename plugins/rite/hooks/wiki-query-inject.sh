@@ -47,12 +47,11 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Resolve project root (git root anchored). Matches session-start.sh /
-# _resolve-schema-version.sh / notification.sh convention (peer
-# `stop-create-interview-block.sh` was retired in PR #1079);
-# `$PWD`-based rite-config.yml lookup would silently miss the
-# config file when this script is invoked from a subdirectory (Issue #976).
-# This script is a CLI tool (not a Claude Code hook), so $PWD is used in place
-# of the stdin-supplied CWD that hook scripts receive.
+# _resolve-schema-version.sh / notification.sh convention. `$PWD`-based
+# rite-config.yml lookup would silently miss the config file when this script
+# is invoked from a subdirectory. This script is a CLI tool (not a Claude Code
+# hook), so $PWD is used in place of the stdin-supplied CWD that hook scripts
+# receive.
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$PWD" 2>/dev/null) || STATE_ROOT="$PWD"
 
 # Tempfile paths declared up front, trap set up before any mktemp, cleanup on

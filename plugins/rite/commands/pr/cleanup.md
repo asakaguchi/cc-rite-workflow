@@ -1346,7 +1346,7 @@ fi
 
 > **Rationale**: caller が implicit stop し `continue` 介入が必要となる症状の根本原因は、LLM が sub-skill return tag (`<!-- [ingest:completed] -->`) を turn 境界として誤認する turn-boundary heuristic の発火。Step 0 は **具体的な bash tool 呼び出し** を sub-skill return 直後の必須アクションとして挿入することで turn 境界シグナルを消去する。Step 0 / Step 1 は idempotent — この冗長性が防御機構である (片方が transient 失敗しても他方が正しい phase に書き込む)。
 
-**Step 1**: Update flow state to post-ingest phase (idempotent re-patch)。Step 0 が既に書いた `cleanup_post_ingest` の timestamp / `next_action` を refresh する。2 重 patch design は transient failure 下でも Step 0 / Step 1 のいずれかが成功することを保証し、同時失敗時のみ `[CONTEXT] STEP_1_PATCH_FAILED=1` を retained flag として残す。`--preserve-error-count` は Step 0 と対称に付与 (RE-ENTRY DETECTED escalation + THRESHOLD bail-out を機能させるため):
+**Step 1**: Update flow state to post-ingest phase (idempotent re-patch)。Step 0 が既に書いた `cleanup_post_ingest` の timestamp / `next_action` を refresh する。2 重 patch design は transient failure 下でも Step 0 / Step 1 のいずれかが成功することを保証し、同時失敗時のみ `[CONTEXT] STEP_1_PATCH_FAILED=1` を retained flag として残す。`--preserve-error-count` は Step 0 と対称に付与 (`.error_count` は現状 half-legacy schema slot で production reader 不在だが、future reader 再導入時の累積カウントを失わないよう保持する):
 
 ```bash
 if ! bash {plugin_root}/hooks/flow-state-update.sh patch \

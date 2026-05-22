@@ -122,10 +122,11 @@ else
 fi
 
 echo ""
-echo "=== 9-phase Resume Dispatch routing table rows ==="
-# Resume Dispatch table の各 phase 行が start.md に存在することを assert。
-# 行ごとに `phase=<name>` が table 内に登場するはず。
-for phase in init branch plan implement lint pr review fix completed; do
+echo "=== 11-phase Resume Dispatch routing table rows ==="
+# `phase=ready` / `phase=ready_error` 行が削除されると pr/ready.md の Ready
+# 後続 routing が start.md 側で silent regression する。resume.md の 11 phase
+# 仕様 (FLAT_PHASES) と一致する全行を必須化する。
+for phase in init branch plan implement lint pr review fix ready ready_error completed; do
   if grep -qE "phase=$phase\b" "$START_MD"; then
     pass "Resume Dispatch row for phase=$phase exists"
   else

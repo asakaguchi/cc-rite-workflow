@@ -41,6 +41,14 @@ assert_grep "start.md ステップ 8.4 uses trackedIssues GraphQL (not bare trac
 assert_grep "start.md retains Method 1 (## 親 Issue body meta) reference" "$START_MD" "親 Issue"
 
 echo "=== Phase 4: projects-integration.md retains 3-method documentation ==="
-assert_grep "projects-integration.md §2.4.7 retains 3-method parent detection" "$PROJECTS_REF" "trackedIssues|## 親 Issue|tasklist"
+# Issue #513 root cause was silent collapse of the 3-method OR documentation to a
+# single method. Each method is asserted independently so partial removal (e.g.
+# dropping `## 親 Issue` while keeping the GraphQL block) cannot slide through.
+# Method 2 here uses the child-to-parent GraphQL query `parent { number }` via
+# the `sub_issues` feature flag — different from close.md / start.md which use
+# the parent-to-children `trackedIssues` field.
+assert_grep "projects-integration.md §2.4.7 retains Method 1 (## 親 Issue body meta)" "$PROJECTS_REF" "## 親 Issue"
+assert_grep "projects-integration.md §2.4.7 retains Method 2 (sub_issues GraphQL feature)" "$PROJECTS_REF" "sub_issues"
+assert_grep "projects-integration.md §2.4.7 retains Method 3 (tasklist / in:body search)" "$PROJECTS_REF" "in:body|tasklist"
 
 print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or start.md ステップ 8.4, Issue #513 regression risk reopens. Re-confirm cross-references before removing methods."

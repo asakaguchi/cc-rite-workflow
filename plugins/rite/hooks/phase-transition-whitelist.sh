@@ -2,10 +2,11 @@
 # rite workflow - Phase Transition Whitelist
 #
 # Defines the canonical phase-transition graph for the /rite:issue:start flat
-# workflow (9 phases: init / branch / plan / implement / lint / pr / review /
-# fix / completed) plus the cleanup and wiki:ingest lifecycle rings. Legacy
-# phase names from earlier sub-skill chains are accepted via the forward-compat
-# arm so existing state files can still be resumed.
+# workflow (11 phases: init / branch / plan / implement / lint / pr / review /
+# fix / ready / ready_error / completed) plus the cleanup and wiki:ingest
+# lifecycle rings. Legacy phase names from earlier sub-skill chains are
+# accepted via the forward-compat arm so existing state files can still be
+# resumed.
 #
 # This file is designed to be SOURCED, not executed directly. After sourcing:
 #   - `rite_phase_transition_allowed <prev> <next>` — library entry point for

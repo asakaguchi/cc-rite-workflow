@@ -17,7 +17,7 @@
 | ステップ 5.4 (continuation: Add Tasklist) | Add Tasklist to Parent Issue | `commands/issue/create.md` 本体 |
 | ステップ 5.4 (continuation: Sub-Issues Linkage) | Sub-Issues API Linkage (Mandatory) | `commands/issue/create.md` 本体 + [`graphql-helpers.md`](../../../references/graphql-helpers.md#addsubissue-helper) |
 | ステップ 5.4 (continuation: Projects Registration) | Projects Registration | `commands/issue/create.md` 本体 |
-| ステップ 5.5 | Completion Report | `commands/issue/create.md` 本体 |
+| ステップ 5.6 | Completion Report | `commands/issue/create.md` 本体 |
 
 本 reference は **ステップ 5.4 (Pre-amble + Per-Sub-Issue body の連結 bash literal)** の正規定義を集約する。
 

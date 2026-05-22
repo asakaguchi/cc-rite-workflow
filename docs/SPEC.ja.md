@@ -778,6 +778,26 @@ _レビュー対応はありません_
 
 作業メモリのセッション情報セクションには、現在の作業状態を示すフェーズ情報が記録されます。この情報は `/rite:resume` による作業再開時に使用されます。
 
+**flat workflow phase (現行 / 11 種):**
+
+| フェーズ | フェーズ詳細 | start.md 対応 |
+|---------|------------|--------------|
+| `init` | Issue 取得・親子判定 | ステップ 1 |
+| `branch` | ブランチ作成完了 | ステップ 2 |
+| `plan` | 実装計画生成完了 | ステップ 3 |
+| `implement` | 実装作業中 / 完了 | ステップ 4 |
+| `lint` | 品質チェック完了 | ステップ 5 |
+| `pr` | PR 作成完了 | ステップ 6 |
+| `review` | レビュー実施中 / 完了 | ステップ 7.1 |
+| `fix` | レビュー修正中 / 完了 | ステップ 7.2 |
+| `ready` | Ready 成功 (`/rite:pr:ready` 完了、後続の Status / 親 Issue 完結待ち) | ステップ 8.3 |
+| `ready_error` | Ready 失敗 (PR は作成済み、Ready 遷移のみ rollback。`/rite:pr:create` を再実行してはならない) | ステップ 8 |
+| `completed` | ワークフロー完了 (`active: false`) | ステップ 8 終端 |
+
+**legacy phase (forward-compat 受容のみ、新規書き込みなし):**
+
+旧 sub-skill chain アーキテクチャで使われていた phase 名。古い state file は `/rite:resume` の `commands/resume.md` Phase 3.2 legacy 表で flat workflow phase へマッピングされる。
+
 | フェーズ | フェーズ詳細 |
 |---------|------------|
 | `phase0` | Epic/Sub-Issues 判定 |
@@ -795,7 +815,6 @@ _レビュー対応はありません_
 | `phase5_review` | レビュー中 |
 | `phase5_fix` | レビュー修正中 |
 | `phase5_post_ready` | Ready 処理後 |
-| `completed` | 完了 |
 
 #### Phase 3: 実装計画生成
 
@@ -1436,7 +1455,7 @@ phase 遷移の canonical graph を提供する sourced ライブラリ（直接
 
 ### Verify Terminal Output (retired in PR #1079)
 
-> **Status: Retired (PR #1079)**. 旧 `verify-terminal-output.sh` (#561) は `/rite:issue:create` サブスキルの Terminal Completion HTML コメント wrap を検証するスタンドアロン script だった。`/rite:issue:create` を flat workflow へ統合した PR #1079 で削除。HTML コメント wrap 契約自体は維持されており、`commands/issue/create.md` ステップ 4.6 / ステップ 5.5 に直接記述され、`start-md-sentinel-coverage.test.sh` / `create-md-invocation-symmetry.test.sh` でテスト保護される。
+> **Status: Retired (PR #1079)**. 旧 `verify-terminal-output.sh` (#561) は `/rite:issue:create` サブスキルの Terminal Completion HTML コメント wrap を検証するスタンドアロン script だった。`/rite:issue:create` を flat workflow へ統合した PR #1079 で削除。HTML コメント wrap 契約自体は維持されており、`commands/issue/create.md` ステップ 4.4 / ステップ 5.6 に直接記述され、`start-md-sentinel-coverage.test.sh` / `create-md-invocation-symmetry.test.sh` でテスト保護される。
 
 ### Session Ownership（`session-ownership.sh`）(#174–#179)
 

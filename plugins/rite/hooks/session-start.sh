@@ -153,12 +153,18 @@ if [ "$SOURCE" = "startup" ]; then
       [ -n "$_cfg_lang" ] && _lang="$_cfg_lang"
     fi
 
-    # Remove rite hook entries from settings.local.json (hooks.json handles them natively)
+    # Remove rite hook entries from settings.local.json (hooks.json handles them natively).
+    # The python3 script uses sys.exit(1) for the intentional no-op cases (no hooks key,
+    # no rite entries to remove). Distinguishing those from real failures (JSONDecodeError,
+    # FileNotFoundError, etc.) is required so settings.local.json corruption surfaces
+    # instead of silently retrying on every session start.
     _auto_cleaned=false
     _settings_local="$STATE_ROOT/.claude/settings.local.json"
     if [ -f "$_settings_local" ] && command -v python3 &>/dev/null; then
       _repair_tmp=$(mktemp "${_settings_local}.XXXXXX" 2>/dev/null) || _repair_tmp=""
-      if [ -n "$_repair_tmp" ] && python3 -c '
+      _py_err=$(mktemp 2>/dev/null) || _py_err=""
+      if [ -n "$_repair_tmp" ]; then
+        python3 -c '
 import json, sys, re
 
 settings_path = sys.argv[1]
@@ -197,20 +203,35 @@ if not changed:
 with open(out_path, "w") as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
     f.write("\n")
-' "$_settings_local" "$_repair_tmp" 2>/dev/null; then
-        # Silent mv failure would leave _auto_cleaned=false and the rite hook
-        # config would re-fire repair on every session start without surfacing
-        # why. Capture rc so the user sees EACCES vs ENOSPC vs EROFS.
-        if mv "$_repair_tmp" "$_settings_local"; then
-          _auto_cleaned=true
+' "$_settings_local" "$_repair_tmp" 2>"${_py_err:-/dev/null}"
+        _py_rc=$?
+        if [ "$_py_rc" -eq 0 ]; then
+          # mv must capture rc so EXDEV / EACCES / ENOSPC / EROFS surfaces; silent
+          # failure here would leave _auto_cleaned=false and the rite hook config
+          # would re-fire repair on every session start without surfacing why.
+          if mv "$_repair_tmp" "$_settings_local"; then
+            _auto_cleaned=true
+          else
+            _mv_rc=$?
+            rm -f "$_repair_tmp" 2>/dev/null
+            echo "rite: session-start: mv settings.local.json repair failed (rc=$_mv_rc)" >&2
+          fi
         else
-          _mv_rc=$?
           rm -f "$_repair_tmp" 2>/dev/null
-          echo "rite: session-start: mv settings.local.json repair failed (rc=$_mv_rc)" >&2
+          # rc=1 is the intentional no-op branch (no hooks key / no rite entries).
+          # Any other rc indicates a real failure — JSONDecodeError surfaces as rc=1
+          # with a traceback on stderr, so emit the captured stderr unconditionally
+          # when it is non-empty so the user can disambiguate corruption from no-op.
+          if [ "$_py_rc" -ne 1 ] || { [ -n "$_py_err" ] && [ -s "$_py_err" ]; }; then
+            echo "rite: session-start: settings.local.json repair python3 failed (rc=$_py_rc)" >&2
+            if [ -n "$_py_err" ] && [ -s "$_py_err" ]; then
+              head -3 "$_py_err" | sed 's/^/  /' >&2
+              echo "  hint: settings.local.json の JSON 形式 / encoding を確認してください" >&2
+            fi
+          fi
         fi
-      else
-        rm -f "$_repair_tmp" 2>/dev/null
       fi
+      [ -n "$_py_err" ] && rm -f "$_py_err"
     fi
 
     # Write cleanup marker when: (1) cleanup succeeded, or (2) no settings.local.json / no rite hooks

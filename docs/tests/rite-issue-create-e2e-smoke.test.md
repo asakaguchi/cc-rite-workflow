@@ -17,9 +17,9 @@
 - 対象リポジトリ: cc-rite-workflow 本体または別のテストリポジトリ
 - テスト実行前に `.rite-flow-state` が存在しないか `active: false` であること
 
-## シナリオ 1: Bug Fix preset（Phase 0.5 スキップ経路）
+## シナリオ 1: Single Issue path（ステップ 4 経路）
 
-**AC-1 / AC-6 / AC-7 を検証する最小シナリオ**
+**AC-1 / AC-6 を検証する最小シナリオ。flat workflow の規模ヒューリスティック（ステップ 3.1）が「単一 Issue」と判定するケース。**
 
 ### 手順
 
@@ -27,70 +27,64 @@
    ```
    /rite:issue:create バグ修正: XXX が発生する場合の処理を追加
    ```
-   入力には `バグ` / `bug` / `修正` 等のキーワードを含め、Phase 0.4 で Bug Fix goal classification が推定されるようにする。
+   distinct change が単一かつ scope keyword なしの入力にし、ステップ 3.1 で「大型タスク候補」に該当しないようにする。
 
-2. Phase 0.1.5 の parent pre-detection で「No」を選択（単一 Issue として作成）
+2. ステップ 2 の duplicate search で新規作成として続行
 
-3. Phase 0.3 の duplicate search で新規作成として続行
+3. ステップ 3.1 で単一 Issue 判定 → ステップ 4 へ自動遷移
 
-4. Phase 0.4 の goal classification で「既存機能のバグ修正」を選択
+4. ステップ 4.1 の AskUserQuestion で title / type=fix / priority / complexity=S-M / labels を確認
 
-5. interview が自動的にスキップされ、Phase 0.6 → create-register に到達することを確認
+5. ステップ 4.3 で Issue 作成 + Projects 登録の実行を観察
 
 ### 期待される動作
 
-- **同 turn 内で**以下の順序で出力が完了する:
-  1. `[interview:skipped]` 返却
-  2. Phase 0.6 評価 → Delegation Routing の Pre-write
-  3. `rite:issue:create-register` が自動起動
-  4. Issue body 確認ダイアログ → 承認
-  5. Projects 登録
-  6. `✅ Issue #{N} を作成しました: {url}` （#552 新規）
-  7. `次のステップ: ...` ブロック
-  8. `[create:completed:{N}]` （最終行）
+- **同 turn 内で** 以下の順序で出力が完了する:
+  1. ステップ 2 重複候補表示 → 新規作成選択
+  2. ステップ 3.1 規模判定 → 単一 Issue
+  3. ステップ 4.1 Issue 情報確認 → 承認
+  4. ステップ 4.3 `create-issue-with-projects.sh` 実行
+  5. ステップ 4.4 `✅ Issue #{N} を作成しました` テーブル出力
+  6. ステップ 6 共通完結処理（次のステップ案内）
+  7. `<!-- [create:completed:{N}] -->` （HTML コメント sentinel、user-visible な最終行は完了メッセージ）
 
 - ユーザーが `continue` を入力する必要がない
-- Issue が GitHub 上に実際に作成される
+- Issue が GitHub 上に実際に作成され、Projects に Status=Todo / Priority / Complexity が設定される
 
 ### 失敗時の確認項目
 
 | 症状 | 確認先 |
 |------|--------|
-| `[interview:skipped]` 後に turn が終了 | `.rite-flow-state` が `create_post_interview` で active:true のまま残存。`.rite-flow-state-diag.log` の `flow_state_*` 行を確認し、続いて `start.md ステップ 8.5 retrospective scan` が `manual_fallback_adopted` を拾ったか会話コンテキストを grep |
-| `✅ Issue #{N}` が出力されない | `create-register.md` Phase 4.2 の完了メッセージセクションが最新版か確認 |
-| `[create:completed:{N}]` が最終行でない | `create-register.md` Phase 4.3 以降の出力順序確認 |
+| ステップ 4 到達後 turn が終了 | `.rite-flow-state-diag.log` の `flow_state_*` 行を確認し、`start.md ステップ 8.5 retrospective scan` 相当の遡及検出が `manual_fallback_adopted` を拾ったか会話コンテキストを grep |
+| `✅ Issue #{N}` が出力されない | `commands/issue/create.md` ステップ 4.4 のテンプレートが現行版か確認 |
+| `[create:completed:{N}]` が user-visible な最終行になる | ステップ 6 共通完結処理の出力順序を確認（sentinel は HTML コメント化されているか） |
+| Projects 登録が `failed` | `create-issue-with-projects.sh` の戻り値 `project_registration` を確認、AskUserQuestion で retry / skip を選択 |
 
-## シナリオ 2: Feature preset（Phase 0.5 フル実施経路）
+## シナリオ 2: Decompose path（ステップ 5 経路）
 
-**AC-2 / AC-5 / AC-6 を検証する**
+**AC-2 / AC-5 / AC-6 を検証する。flat workflow の規模ヒューリスティック（ステップ 3.1）が「大型タスク」と判定するケース。**
 
 ### 手順
 
 1. 新規セッションで以下を実行:
    ```
-   /rite:issue:create feature: 新しい XXX 機能を追加
+   /rite:issue:create プロジェクト全体に auth, logging, caching を一括導入
    ```
+   distinct change を複数 + scope keyword（"全体" / "一括"）を含め、ステップ 3.1 の大型タスク判定を発火させる。
 
-2. Phase 0.1.5 pre-detection で「No」を選択
+2. ステップ 2 で新規作成として続行
 
-3. Phase 0.3 で新規作成として続行
+3. ステップ 3.1 で大型タスク候補と判定
 
-4. Phase 0.4 で「新機能の追加」を選択
+4. ステップ 3.2 AskUserQuestion で「Sub-Issue に分解（推奨）」を選択 → ステップ 5 へ
 
-5. Phase 0.4.1 で M complexity 程度を想定（files 2-5）
-
-6. Phase 0.5 interview に回答（5-10 回のラウンド）
-
-7. 「ない、この内容で進めてください」で interview 終了
-
-8. Phase 0.6 で「単一 Issue として作成」を選択
-
-9. `create-register` 自動起動を観察
+5. ステップ 5 で親 Issue + Sub-Issue 群の作成を観察（実装は `create.md` ステップ 5 を参照）
 
 ### 期待される動作
 
-- interview 終了後、同 turn 内で Phase 0.6 → `create-register` に進行
-- シナリオ 1 と同様、`✅ Issue #{N} を作成しました` + 次のステップ + `[create:completed:{N}]` が出力される
+- ステップ 3.2 選択後、同 turn 内でステップ 5 に進行
+- ステップ 5.6 `✅ Issue #{parent_issue_number} を分解して {sub_count} 件の Sub-Issue を作成しました` テーブル出力
+- ステップ 6 共通完結処理 + `<!-- [create:completed:{N}] -->` HTML sentinel
 - ユーザーの `continue` 介入なし
 
 ## シナリオ 3: AC-4 後方互換性 grep 確認
@@ -141,7 +135,7 @@ tail -20 .rite-flow-state-diag.log
 
 # 2. 前セッション会話の grep
 # Claude Code の会話履歴 (assistant response の保存先) から sentinel を grep
-# manual_fallback_adopted / [interview:skipped] / [create:completed:*] 等の sentinel literal を確認
+# manual_fallback_adopted / [create:completed:*] / [ready:completed] 等の sentinel literal を確認
 ```
 
 ### 失敗時の確認項目

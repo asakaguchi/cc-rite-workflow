@@ -12,9 +12,9 @@ Mapping information for phase details. Used in work memory session information.
 |-------|-------------|
 | `completed` | Issue 作成完了 (`create.md` Step 6 の終端のみ書き込む。中間 phase は書かない) |
 
-### `/rite:issue:start` (flat workflow, PR #1079 +)
+### `/rite:issue:start` (flat workflow)
 
-`start.md` のステップ番号と 1:1 対応する 9 phase。`/rite:resume` の routing は `commands/resume.md` Phase 3.2 表を SoT とする。
+`start.md` のステップ番号と 1:1 対応する 11 phase。`/rite:resume` の routing は `commands/resume.md` Phase 3.2 表を SoT とする。
 
 | Phase | Phase Detail | Step in start.md |
 |-------|-------------|------------------|
@@ -26,6 +26,8 @@ Mapping information for phase details. Used in work memory session information.
 | `pr` | PR 作成完了 | ステップ 6 |
 | `review` | レビュー実施中 / 完了 | ステップ 7.1 |
 | `fix` | レビュー修正中 / 完了 | ステップ 7.2 |
+| `ready` | Ready 成功 (`/rite:pr:ready` 完了、後続の Status / 親 Issue 完結待ち) | ステップ 8.3 |
+| `ready_error` | Ready 失敗 (PR は作成済み、Ready 遷移のみ rollback。`/rite:pr:create` を再実行してはならない) | ステップ 8 |
 | `completed` | ワークフロー完了 (`active: false`) | ステップ 8 終端 |
 
 ### Legacy (pre-#1079) phase 名

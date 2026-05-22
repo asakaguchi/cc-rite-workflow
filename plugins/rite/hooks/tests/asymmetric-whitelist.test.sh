@@ -152,7 +152,6 @@ REVERSE_EXCEPTIONS=(
   "phase5_post_review"
   "phase5_pr"
   "phase5_ready"
-  "phase5_ready_error"
   "phase5_review"
 )
 

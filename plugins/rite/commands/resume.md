@@ -494,6 +494,7 @@ Execute command-specific resume processing based on the `コマンド` and `フ�
 | `pr` | Resume from ステップ 6 (invoke `/rite:pr:create` via Skill tool) | 6 |
 | `review` | Resume from ステップ 7.1 (invoke `/rite:pr:review` via Skill tool, then route on `[review:*]` pattern) | 7.1 |
 | `fix` | Resume from ステップ 7.2 (invoke `/rite:pr:fix` via Skill tool, then route on `[fix:*]` pattern) | 7.2 |
+| `ready_error` | Resume from ステップ 8 (Ready & 完結 — retry the Ready transition or finalise; do NOT re-invoke `/rite:pr:create`, the PR already exists) | 8 |
 | `completed` | Issue already completed — display status and offer next actions | — |
 
 #### 3.2.1 Resume Execution

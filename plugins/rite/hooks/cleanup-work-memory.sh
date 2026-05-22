@@ -79,8 +79,13 @@ if [ "$CLOSE_MODE" = false ]; then
         '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, pr_number: $pr, next_action: $next, updated_at: $ts}' \
         > "$TMP_STATE" 2>"${_jq_err:-/dev/null}"; then
         _mv_err=$(mktemp 2>/dev/null) || _mv_err=""
-        if ! mv "$TMP_STATE" "$FLOW_STATE" 2>"${_mv_err:-/dev/null}"; then
-          echo "WARNING: .rite-flow-state の更新に失敗しました (mv エラー)" >&2
+        # if/else over `if !` preserves the real mv rc (EXDEV=18, EACCES=13,
+        # ENOSPC=28), which is the diagnostic the WARNING is meant to carry.
+        if mv "$TMP_STATE" "$FLOW_STATE" 2>"${_mv_err:-/dev/null}"; then
+          :
+        else
+          _mv_rc=$?
+          echo "WARNING: .rite-flow-state の更新に失敗しました (mv rc=$_mv_rc)" >&2
           [ -n "$_mv_err" ] && [ -s "$_mv_err" ] && head -3 "$_mv_err" | sed 's/^/  /' >&2
         fi
         [ -n "$_mv_err" ] && rm -f "$_mv_err"

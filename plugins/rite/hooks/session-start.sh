@@ -324,7 +324,7 @@ _reset_active_state() {
   # Fail-safe: if the helper isn't sourced or returns non-zero, treat as "unknown"
   # and proceed with reset — crash-recovery takes priority over multi-instance protection.
   if command -v check_session_ownership >/dev/null 2>&1; then
-    _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="unknown"
+    _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE") || _ownership="unknown"
   else
     _ownership="unknown"
     [ -n "${RITE_DEBUG:-}" ] && echo "[rite] ownership check unavailable (check_session_ownership not sourced)" >&2

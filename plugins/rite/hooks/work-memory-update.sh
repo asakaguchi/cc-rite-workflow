@@ -301,10 +301,20 @@ update_local_work_memory() {
   # mv 失敗 (disk full / permission denied / EXDEV / 親 dir 削除済) が silent に成功扱いされ、caller が
   # work memory 書き込み成功と誤認する経路があった。return 2 (本 helper の lock failure と同 code) で
   # caller の WM 書き込み失敗を fail-fast にする。
-  if ! mv "$tmp_wm" "$local_wm"; then
-    echo "rite: ${WM_SOURCE}: mv failed: $tmp_wm -> $local_wm" >&2
-    rm -f "$tmp_wm"
-    return 2
+  # if/else preserves the real mv rc (EXDEV=18, EACCES=13, ENOSPC=28). The
+  # caller (orchestrator) uses rc=2 as a generic "write failed" signal, but
+  # the rc shown in the WARNING lets triage distinguish disk-full from
+  # permission-denied from cross-filesystem.
+  local _mv_err
+  _mv_err=$(mktemp 2>/dev/null) || _mv_err=""
+  if mv "$tmp_wm" "$local_wm" 2>"${_mv_err:-/dev/null}"; then
+    [ -n "$_mv_err" ] && rm -f "$_mv_err"
+    return 0
   fi
-  return 0
+  local _mv_rc=$?
+  echo "rite: ${WM_SOURCE}: mv failed (rc=$_mv_rc): $tmp_wm -> $local_wm" >&2
+  [ -n "$_mv_err" ] && [ -s "$_mv_err" ] && head -3 "$_mv_err" | sed 's/^/  /' >&2
+  [ -n "$_mv_err" ] && rm -f "$_mv_err"
+  rm -f "$tmp_wm"
+  return 2
 }

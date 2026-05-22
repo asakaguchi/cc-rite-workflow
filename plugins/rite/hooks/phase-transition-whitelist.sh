@@ -65,10 +65,18 @@ declare -gA _RITE_PHASE_TRANSITIONS=(
   ["plan"]="implement lint"
   ["implement"]="lint pr"
   ["lint"]="pr review completed"
-  ["pr"]="review completed"
+  ["pr"]="review completed ready_error"
   ["review"]="fix pr completed"
   ["fix"]="review pr completed"
   ["completed"]=""
+
+  # `ready_error` is an intermediate failure state written by /rite:pr:ready
+  # when the Ready transition fails inside the e2e flow. It must NOT route
+  # /rite:resume back to ステップ 6 (PR creation — the PR already exists);
+  # resume.md maps `ready_error` directly to ステップ 8 (Ready & 完結) so the
+  # user can retry the Ready transition or terminate without re-creating
+  # the PR.
+  ["ready_error"]="completed"
   # `create_completed` is intentionally absent: /rite:issue:create writes
   # `completed` (same terminal as /rite:issue:start) in the flat workflow.
   # session-end.sh / pre-tool-bash-guard.sh still detect `create_*` lifecycle
@@ -286,7 +294,7 @@ rite_phase_transition_allowed() {
 
   if [ "$next" = "completed" ] || [ "$next" = "cleanup_completed" ] || [ "$next" = "ingest_completed" ]; then
     case "$next:$prev" in
-      completed:lint|completed:pr|completed:review|completed:fix) return 0 ;;
+      completed:lint|completed:pr|completed:review|completed:fix|completed:ready_error) return 0 ;;
       cleanup_completed:cleanup_post_ingest|cleanup_completed:cleanup_pre_ingest) return 0 ;;
       ingest_completed:ingest_pre_lint|ingest_completed:ingest_post_lint) return 0 ;;
       # Legacy phase names (create_* / start_* / phase[0-9]*) accepted so that

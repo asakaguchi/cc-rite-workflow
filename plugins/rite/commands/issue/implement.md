@@ -134,7 +134,7 @@ Record baseline exit code. Existing failures are logged but do not block.
 
 **Step 2: Extract acceptance criteria**
 
-Extract from Issue body (use body from Phase 0.1). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。スケルトン生成をスキップします`, record skip stub in work memory, and skip to 5.1.0.
+Extract from Issue body (use body from `start.md` ステップ 1.1 Issue 情報取得, retained in conversation context). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。スケルトン生成をスキップします`, record skip stub in work memory, and skip to 5.1.0.
 
 **Heading match rules**: Match any of the following headings (case-insensitive, level 2 `##`):
 
@@ -539,7 +539,7 @@ The section extends from the matched heading to the next `##` heading or end of 
 - `verification.acceptance_criteria_check` is `false`
 - Issue body does not contain an acceptance criteria section (none of the above headings found)
 
-**Issue body retrieval**: Use the Issue body already obtained in Phase 0.1 (retained in conversation context). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。受入条件チェックをスキップします` and skip to 5.1.0.7 (then 5.1.1).
+**Issue body retrieval**: Use the Issue body already obtained at `start.md` ステップ 1.1 Issue 情報取得 (retained in conversation context). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。受入条件チェックをスキップします` and skip to 5.1.0.7 (then 5.1.1).
 
 **Check procedure:**
 
@@ -975,7 +975,7 @@ Check the state of remaining child Issues with `trackedIssues` and calculate `re
 3. **Update local work memory** (`.rite-work-memory/issue-{n}.md`) — see 5.1.1.3 above
 4. **CRITICAL: Initialize flow state and invoke lint** (atomic pair - MUST execute both):
 
-   > **Note**: All flow state writes use `flow-state-update.sh` which handles atomic write (PID-based temp file + `mv`) internally to prevent race conditions with concurrent hook shell processes (stop-guard, pre-compact).
+   > **Note**: All flow state writes use `flow-state-update.sh` which handles atomic write (PID-based temp file + `mv`) internally to prevent race conditions with concurrent hook shell processes (pre-compact, session-end, post-tool-wm-sync).
 
    **4a**: Create state file:
 

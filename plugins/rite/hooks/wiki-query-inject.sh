@@ -290,7 +290,12 @@ if [[ "$branch_strategy" == "separate_branch" ]]; then
     echo "WARNING: mktemp failed for index.md stderr capture; falling back to /dev/null" >&2
     _index_err=""
   fi
-  if ! index_content=$(git show "${ref}:.rite/wiki/index.md" 2>"${_index_err:-/dev/null}"); then
+  # `if ! var=$(git show ...)` collapses the exit status to 0 inside the
+  # then-branch (POSIX `!`), masking the real git rc (128 = ref absent,
+  # 129 = object corrupt). if/else preserves the diagnostic rc.
+  if index_content=$(git show "${ref}:.rite/wiki/index.md" 2>"${_index_err:-/dev/null}"); then
+    :
+  else
     _index_rc=$?
     echo "WARNING: cannot read index.md from ref '$ref' (git show rc=$_index_rc)" >&2
     [ -n "$_index_err" ] && [ -s "$_index_err" ] && head -3 "$_index_err" | sed 's/^/  /' >&2

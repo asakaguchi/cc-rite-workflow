@@ -325,6 +325,27 @@ else
 fi
 echo ""
 
+echo "TC-012: WARNING output preserves real sync rc (regression guard for if-not antipattern)"
+# A revert to `if ! cmd; then _rc=$?` would set `_rc=0` due to POSIX `!`
+# inversion. Confirm the source uses the if/else form so the real rc is
+# captured. Mirror the same regression guard issue-body-safe-update.sh
+# TC-19b/22b/24b apply: pin the if/else literal alongside the WARNING text.
+if grep -qE 'if "\$SCRIPT_DIR/issue-comment-wm-sync\.sh" update' "$HOOK" \
+  && grep -qE 'else[[:space:]]*$' "$HOOK" \
+  && grep -qE '_rc=\$\?' "$HOOK"; then
+  pass "TC-012 if/else form + real \$? capture present (if-not antipattern not reintroduced)"
+else
+  fail "TC-012 if/else form or \$? capture missing — sync failure WARNING may report misleading rc=0"
+fi
+# Also pin that the WARNING text references `last_synced_phase will NOT be advanced`
+# so a refactor that drops the gate documentation (and likely the gate too) is caught.
+if grep -qE 'last_synced_phase will NOT be advanced' "$HOOK"; then
+  pass "TC-012b last_synced_phase non-advance documentation present in WARNING text"
+else
+  fail "TC-012b last_synced_phase non-advance WARNING text missing"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

@@ -337,6 +337,97 @@ if printf '%s' "$override_out" | grep -qE 'unclosed inline list'; then
 else
   fail "TC-205 unclosed inline list WARNING missing: $override_out"
 fi
+# Strengthened assertion: confirm the broken entry was NOT merged (silent
+# pollution) and the subsequent recover entry survived parser-state damage.
+case "$override_out" in
+  *'[custom_phase_broken]='*)
+    fail "TC-205b unclosed inline list silently merged broken value into _RITE_PHASE_TRANSITIONS — parser state corrupted"
+    ;;
+  *)
+    pass "TC-205b unclosed inline list did NOT pollute _RITE_PHASE_TRANSITIONS"
+    ;;
+esac
+case "$override_out" in
+  *'[custom_phase_recover]="ok"'*)
+    pass "TC-205c parser recovered cleanly — subsequent entry custom_phase_recover merged"
+    ;;
+  *)
+    fail "TC-205c parser corrupted by unclosed list — custom_phase_recover not merged: $override_out"
+    ;;
+esac
+
+# TC-206 — empty inline list at end-of-file (no recovery entry follows).
+# Pairs with TC-204; together they pin that the empty-list arm does not crash
+# the parser regardless of whether more entries follow.
+mkdir -p "$override_tmpdir/empty-eof"
+cat > "$override_tmpdir/empty-eof/rite-config.yml" <<'YAML'
+hooks:
+  stop_guard:
+    phase_transitions:
+      custom_phase_first: [a]
+      custom_phase_last_empty: []
+YAML
+override_out=$(RITE_CONFIG="$override_tmpdir/empty-eof/rite-config.yml" bash -c "
+  set -e
+  source '$WHITELIST_SH'
+  declare -p _RITE_PHASE_TRANSITIONS | tr -d '\n'
+" 2>&1) || true
+case "$override_out" in
+  *'[custom_phase_first]="a"'*)
+    pass "TC-206 empty list at EOF does not crash parser; earlier entry preserved"
+    ;;
+  *)
+    fail "TC-206 empty list at EOF appears to have aborted the parser: $override_out"
+    ;;
+esac
+
+# TC-READY-ERROR-01 — ready_error must be a recognised transition target
+# from `pr` (the only canonical predecessor) and route to `completed` only.
+# Production code in commands/pr/ready.md depends on the whitelist accepting
+# this flat phase; without this TC, a refactor that drops the entry would
+# leave /rite:pr:ready failures unrouted by resume.md.
+RITE_DEBUG=0 source "$WHITELIST_SH"
+if rite_phase_transition_allowed "pr" "ready_error"; then
+  pass "TC-READY-ERROR-01 pr → ready_error allowed (canonical Ready failure path)"
+else
+  fail "TC-READY-ERROR-01 pr → ready_error blocked — /rite:pr:ready failure path will not be writeable"
+fi
+if rite_phase_transition_allowed "ready_error" "completed"; then
+  pass "TC-READY-ERROR-02 ready_error → completed allowed (terminal exit)"
+else
+  fail "TC-READY-ERROR-02 ready_error → completed blocked — workflow cannot terminate from ready_error"
+fi
+# Negative: ready_error should NOT route back to pr (no implicit re-creation)
+if RITE_DEBUG=0 bash -c "source '$WHITELIST_SH'; rite_phase_transition_allowed 'ready_error' 'pr'" 2>/dev/null; then
+  fail "TC-READY-ERROR-03 ready_error → pr should be blocked (would re-invoke /rite:pr:create against an already-existing PR)"
+else
+  pass "TC-READY-ERROR-03 ready_error → pr blocked (resume must go through ステップ 8, not ステップ 6)"
+fi
+
+# TC-CREATE-LIFECYCLE-LEGACY — legacy create_* phases are detected by the
+# predicate so older state files can be cleaned up; the flat workflow's
+# canonical terminal `completed` and `create_completed` (also retired) must
+# NOT be detected as "in progress".
+if rite_phase_is_create_lifecycle_in_progress "create_interview"; then
+  pass "TC-CREATE-LIFECYCLE-LEGACY create_interview detected as in-progress"
+else
+  fail "TC-CREATE-LIFECYCLE-LEGACY create_interview NOT detected — legacy state cleanup will be skipped"
+fi
+if rite_phase_is_create_lifecycle_in_progress "create_post_interview"; then
+  pass "TC-CREATE-LIFECYCLE-LEGACY create_post_interview detected"
+else
+  fail "TC-CREATE-LIFECYCLE-LEGACY create_post_interview NOT detected"
+fi
+if ! rite_phase_is_create_lifecycle_in_progress "completed"; then
+  pass "TC-CREATE-LIFECYCLE-LEGACY completed NOT classified as in-progress (terminal, no cleanup)"
+else
+  fail "TC-CREATE-LIFECYCLE-LEGACY completed wrongly classified as in-progress — would trigger spurious cleanup"
+fi
+if ! rite_phase_is_create_lifecycle_in_progress "create_completed"; then
+  pass "TC-CREATE-LIFECYCLE-LEGACY create_completed NOT classified as in-progress"
+else
+  fail "TC-CREATE-LIFECYCLE-LEGACY create_completed wrongly classified as in-progress"
+fi
 
 echo ""
 echo "=== Phase 12: Additional transition coverage ==="

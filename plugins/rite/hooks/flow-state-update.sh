@@ -18,7 +18,11 @@
 #       --field implementation_round [--if-exists]
 #
 # Options:
-#   --phase                  Phase value (required for create/patch)
+#   --phase                  Phase value (required for create/patch). Flat enum:
+#                            init / branch / plan / implement / lint / pr /
+#                            review / fix / ready_error / completed
+#                            (plus cleanup_* and ingest_* lifecycle phases —
+#                            see phase-transition-whitelist.sh for the full graph)
 #   --issue                  Issue number (create mode, default: 0)
 #   --branch                 Branch name (create mode, default: "")
 #   --pr                     PR number (create mode, default: 0)
@@ -400,7 +404,7 @@ if [[ "$FLOW_STATE" != "$LEGACY_FLOW_STATE" ]]; then
   if ! mkdir -p "$_flow_state_dir" 2>"${_mkdir_err:-/dev/null}"; then
     # _log_flow_diag is defined later in the file; inline the diag write here
     # because we exit before reaching that definition's call sites.
-    _diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
+    _diag_file="$STATE_ROOT/.rite-flow-state-diag.log"
     echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] flow_state_mkdir_failed path=$_flow_state_dir" >> "$_diag_file" 2>/dev/null || true
     echo "ERROR: failed to create $_flow_state_dir (permission denied / disk full / parent is a regular file?)" >&2
     if [ -n "$_mkdir_err" ] && [ -s "$_mkdir_err" ]; then
@@ -445,12 +449,12 @@ case "$MODE" in
       echo "ERROR: increment mode requires --field" >&2
       exit 1
     fi
-    # verified-review cycle 44 F-13 LOW (security Hypothetical exception):
-    # FIELD allowlist validation — state-read.sh:94 と writer/reader 対称化。
-    # 現 caller は commands/issue/start.md:748 で `implementation_round` をハードコードしているのみだが、
-    # FIELD は `_log_flow_diag "flow_state_jq_failed mode=increment field=$FIELD"` で .rite-stop-guard-diag.log
-    # に書き込まれるため、改行を含む FIELD で log 形式破壊が可能。helper API 単体としての defense-in-depth gap
-    # を埋めるため、識別子 (英数字 + _) のみ受理する。
+    # FIELD allowlist validation — state-read.sh と writer/reader 対称化。
+    # Current callers hardcode `implementation_round`, but FIELD is appended
+    # to the diag log via `_log_flow_diag "flow_state_jq_failed mode=increment
+    # field=$FIELD"`; an embedded newline would break the diag-log line format
+    # used by triage greps. Restrict to identifier syntax (letters + digits +
+    # underscore) so the diag log line shape stays predictable.
     if ! [[ "$FIELD" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
       echo "ERROR: invalid field name: $FIELD" >&2
       echo "  field name must match ^[a-zA-Z_][a-zA-Z0-9_]*\$ (state-read.sh と対称化)" >&2
@@ -488,7 +492,7 @@ if ! TMP_STATE=$(mktemp "${FLOW_STATE}.XXXXXX" 2>/dev/null); then
   # _log_flow_diag 関数は本ブロックの後段 (この case 文の直後) で定義されるため、ここでは inline で
   # diag log を書き込む。関数名 anchor で定義位置を semantic に参照する (cycle 43 F-02 で hardcoded
   # 行番号 L332 から関数名 anchor に置換)。
-  _diag_file="$STATE_ROOT/.rite-stop-guard-diag.log"
+  _diag_file="$STATE_ROOT/.rite-flow-state-diag.log"
   echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] tmp_state_mktemp_failed path=${FLOW_STATE}" >> "$_diag_file" 2>/dev/null || true
   unset _diag_file
   exit 1
@@ -656,13 +660,14 @@ case "$MODE" in
     # previous_phase は phase-transition-whitelist の検証用にプレ patch の .phase を保持する。
     #
     # --preserve-error-count: patch mode defaults to `.error_count = 0` on every
-    # transition. No production code currently consumes `.error_count` for
-    # escalation (the stop-guard hook that originally drove this was retired),
-    # but the field is preserved in the state-file schema so a future
-    # escalation consumer can opt in without a migration. The flag exists so
-    # same-phase self-patches (e.g., create.md mid-flow updates) can keep the
-    # field across writes; the default reset path matches the "fresh start on
-    # phase transition" intuition.
+    # transition. The original mechanical reader was the retired Stop hook;
+    # the field is now read only by orchestrator prose (cleanup.md /
+    # wiki/ingest.md re-entry detection and resume.md threshold gates) which
+    # consults the value to decide whether to escalate to the user. The flag
+    # lets same-phase idempotent re-patches (cleanup.md Step 0/Step 1 pairs,
+    # wiki/ingest.md Step 0/Step 1 pairs) carry the accumulated count across
+    # writes instead of resetting on every retry; the default reset path
+    # matches the "fresh start on phase transition" intuition.
     if [[ "$PRESERVE_ERROR_COUNT" == "true" ]]; then
       JQ_FILTER='.previous_phase = (.phase // "") | .phase = $phase | .updated_at = $ts | .next_action = $next'
     else

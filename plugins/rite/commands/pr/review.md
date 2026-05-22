@@ -4897,7 +4897,7 @@ ACTION: Return to Phase 6.5.W and execute the Wiki Ingest Trigger before outputt
 ⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until Phase 6.5.W has been executed.
 ```
 
-> **Enforcement note**: This gate is a prose instruction — `exit 1` in bash does NOT halt the LLM. The LLM MUST recognise the ERROR text and return to Phase 6.5.W. Note that the stop-guard whitelist (`phase-transition-whitelist.sh`) validates phase name transitions only and does NOT check for W Phase sentinel presence. This gate is therefore the **sole** defense layer against W Phase skip.
+> **Enforcement note**: This gate is a prose instruction — `exit 1` in bash does NOT halt the LLM. The LLM MUST recognise the ERROR text and return to Phase 6.5.W. Note that the phase transition whitelist (`phase-transition-whitelist.sh`) validates phase name transitions only and does NOT check for W Phase sentinel presence. This gate is therefore the **sole** defense layer against W Phase skip.
 
 ### 8.0.2 Phase 7 Post-condition Gate Reference (Issue #1042)
 

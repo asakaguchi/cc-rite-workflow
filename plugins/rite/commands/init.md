@@ -823,6 +823,7 @@ After validating existing hook paths in 4.5.1.1, verify that **all** required ri
 | SessionEnd | `session-end.sh` | `""` | Reset flow state on session end |
 | PreToolUse | `pre-tool-bash-guard.sh` | `"Bash"` | Block known-bad Bash command patterns |
 | PostToolUse | `post-tool-wm-sync.sh` | `"Bash"` | Auto-create local WM |
+| PostToolUse | `scripts/bang-backtick-edit-hook.sh` | `"Edit\|Write\|MultiEdit"` | Block bang-backtick adjacency that bash would interpret as history expansion |
 
 **Check procedure**:
 
@@ -832,7 +833,7 @@ After validating existing hook paths in 4.5.1.1, verify that **all** required ri
 
 **Note**: If no required hooks are missing, no output is displayed from this sub-phase. The decision is deferred to the combined Decision logic below.
 
-**Display when missing hooks are detected** (`{total_count}` = number of required hooks, currently 6):
+**Display when missing hooks are detected** (`{total_count}` = number of required hooks, currently 7):
 ```
 ⚠️ Required rite hooks are missing ({missing_count}/{total_count}):
 | Hook Event | Script | Status |

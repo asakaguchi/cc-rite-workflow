@@ -90,7 +90,10 @@ fi
 if [ -f "$STATE_FILE" ]; then
     # Session ownership check (#173): only deactivate own/legacy/stale state.
     # Other session's fresh state (within 2h) must not be modified.
-    _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="own"
+    # See pre-compact.sh: caller-side `2>/dev/null` would mute the corrupt-
+    # state WARNING that exists to flag state-overwrite risk against another
+    # active session.
+    _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE") || _ownership="own"
     if [ "$_ownership" = "other" ]; then
         # Another session's active state — do not modify
         echo "rite: skipping deactivation (state belongs to another session)" >&2

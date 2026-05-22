@@ -767,15 +767,18 @@ The Session Info section of the work memory includes phase information indicatin
 | `phase2` | Branch creation & setup |
 | `phase2_branch` | Branch creation in progress |
 | `phase2_work_memory` | Work memory initialization |
-| `phase3` | Implementation planning |
-| `phase4` | Work start preparation |
-| `phase5_implementation` | Implementation in progress |
-| `phase5_lint` | Quality check in progress |
-| `phase5_pr` | PR creation in progress |
-| `phase5_review` | Review in progress |
-| `phase5_fix` | Review fix in progress |
-| `phase5_post_ready` | Post-ready processing |
-| `completed` | Completed |
+| `init` | Workflow initialised (Issue identified) |
+| `branch` | Branch created, ready for plan |
+| `plan` | Implementation planning in progress |
+| `implement` | Implementation in progress |
+| `lint` | Quality check in progress |
+| `pr` | PR creation in progress |
+| `review` | Review in progress |
+| `fix` | Review-fix loop in progress |
+| `ready_error` | `/rite:pr:ready` failed inside e2e flow; `/rite:resume` routes back to ステップ 8 for retry |
+| `completed` | Workflow finished |
+
+> Legacy phase names (`phase2`, `phase5_implementation`, `phase5_lint`, `phase5_pr`, `phase5_review`, `phase5_fix`, `phase5_post_ready`, etc.) appear in state files written by older versions. `commands/resume.md` Phase 3.2 Legacy compatibility 表 がそれらを flat ステップ番号にマップする。
 
 #### Phase 3: Implementation Planning
 
@@ -1213,7 +1216,7 @@ Standalone wrapper script for updating local work memory files. Automatically re
 **Usage:**
 
 ```bash
-WM_SOURCE="implement" WM_PHASE="phase5_lint" \
+WM_SOURCE="implement" WM_PHASE="lint" \
   WM_PHASE_DETAIL="Quality check prep" \
   WM_NEXT_ACTION="Run rite:lint" \
   WM_BODY_TEXT="Post-implementation." \
@@ -1226,7 +1229,7 @@ WM_SOURCE="implement" WM_PHASE="phase5_lint" \
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `WM_SOURCE` | Yes | Update source identifier (`init`, `implement`, `lint`, etc.) |
-| `WM_PHASE` | Yes | Current phase (`phase2`, `phase5_lint`, etc.) |
+| `WM_PHASE` | Yes | Current phase (`lint`, `implement`, `pr`, etc.; see flat phase enum in `phase-transition-whitelist.sh`) |
 | `WM_PHASE_DETAIL` | Yes | Detailed phase description |
 | `WM_NEXT_ACTION` | Yes | Next action |
 | `WM_BODY_TEXT` | Yes | Update content text |
@@ -1386,7 +1389,7 @@ The `session_id` is the same UUID stored in `.rite-session-id` and propagated to
 | Required (11) | `active` | `flow-state-update.sh create` / `patch` | `true` while a workflow is in flight |
 | Required | `issue_number` | `flow-state-update.sh create` | The Issue under work |
 | Required | `branch` | `flow-state-update.sh create` | Feature branch name |
-| Required | `phase` | `flow-state-update.sh create` / `patch` | Current orchestrator phase (e.g. `phase5_post_lint`) |
+| Required | `phase` | `flow-state-update.sh create` / `patch` | Current orchestrator phase (flat enum: `init` / `branch` / `plan` / `implement` / `lint` / `pr` / `review` / `fix` / `ready_error` / `completed`) |
 | Required | `previous_phase` | `flow-state-update.sh create` | Auto-populated from outgoing `phase` value |
 | Required | `pr_number` | `flow-state-update.sh create` / `patch` | `0` until the PR is opened |
 | Required | `parent_issue_number` | `flow-state-update.sh create` | `0` when the Issue is standalone |
@@ -1785,9 +1788,9 @@ Violating this contract leaves the workflow partially executed: no Issue created
 
 | Layer | Mechanism | Enforced by |
 |-------|-----------|------------|
-| **1. Prompt contract** | Anti-pattern / correct-pattern examples + "same response turn" / "DO NOT stop" phrases in orchestrator documentation + Mandatory After orchestrator prose | `commands/pr/cleanup.md` Sub-skill Return Protocol + Mandatory After Wiki Ingest, `commands/wiki/ingest.md` Mandatory After Auto-Lint, plus orchestrator prompt prose embedded in `commands/issue/start.md` / `commands/issue/create.md` (the dedicated "Sub-skill Return Protocol" sections in start.md / create.md were consolidated into the flat workflow; legacy reference `plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md` is retired) |
+| **1. Prompt contract** | Anti-pattern / correct-pattern examples + "same response turn" / "DO NOT stop" phrases + Mandatory After prose | `commands/pr/cleanup.md` Sub-skill Return Protocol + Mandatory After Wiki Ingest, `commands/wiki/ingest.md` Mandatory After Auto-Lint. (Layer 1 enforcement is required only where a sub-skill chain still hands off across turn boundaries; flat `commands/issue/start.md` / `commands/issue/create.md` no longer rely on this layer because they are single-file workflows. The legacy reference `plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md` is retired.) |
 | ~~**2. Flow state hard gate**~~ (retired in #675) | (Historical) Sub-skills write `*_post_*` phase markers with `active: true` before return; `stop-guard.sh` blocked stop attempts until terminal phase. The Stop hook was removed in PR #675; flow-state still records phase markers for observability but no longer enforces stops. | (historical: `hooks/stop-guard.sh`) |
-| **3. Caller-continuation hints** (decomposed into 3 sub-layers 3a/3b/3c — see `sub-skill-return-protocol.md` "3 layer canonical signaling pattern" blockquote) | Plain-text reminder + HTML comment immediately before the sub-skill's result pattern. The plain-text line renders in user-facing output; the HTML comment is visible to the LLM via conversation context but does NOT render in Markdown. Dual form ensures robustness against rendering modes that strip comments (#552). | Defense-in-Depth sections in `commands/issue/create.md` (flat workflow ステップ 4.6 / 5.5), `commands/wiki/ingest.md`, `commands/pr/cleanup.md`. (Historical: `create-interview.md` / `create-register.md` / `create-decompose.md` の旧 caller hint は PR #1079 で create.md に統合) |
+| **3. Caller-continuation hints** (3 sub-layers 3a/3b/3c) | Plain-text reminder + HTML comment immediately before the sub-skill's result pattern. The plain-text line renders in user-facing output; the HTML comment is visible to the LLM via conversation context but does NOT render in Markdown. Dual form ensures robustness against rendering modes that strip comments. 3a = plain-text caller line, 3b = HTML comment caller mirror, 3c = sub-skill terminal sentinel comment. | Defense-in-Depth sections in `commands/issue/create.md` (flat workflow ステップ 4.6 / 5.5), `commands/wiki/ingest.md`, `commands/pr/cleanup.md`. |
 | **4a. Pre-check list (#552)** | 4-item self-check the orchestrator runs before ending any response turn: (a) `[create:completed:{N}]` output? (b) `✅ Issue #{N} を作成しました` shown? (c) `.rite-flow-state` deactivated? (d) last sub-skill tag handled as continuation trigger? A single `NO` means the workflow is mid-flight. Renamed from "Layer 4" to "Layer 4a" by Issue #923 to avoid numbering collision with the new mechanical enforcement layer (4b below). | `commands/issue/create.md` "Pre-check list" section |
 | **4b. Completion message (#552)** | Terminal completion emits an explicit `✅ Issue #{N} を作成しました: {url}` line **before** the `<!-- [create:completed:{N}] -->` sentinel (HTML-comment wrap form, #561). The sentinel remains grep-matchable for tooling (AC-4 backward compat) but is no longer the absolute last visible line. Renamed from "Layer 5" to "Layer 4b" by Issue #923 (4a/4b grouping reflects that both are orchestrator-side completion reinforcements from #552). | `commands/issue/create.md` ステップ 4.6 (Single Issue Terminal Completion) / ステップ 5.5 (Decompose Terminal Completion) |
 | ~~**4. Mechanical enforcement (Issue #923)**~~ (retired in PR #1079) | (Historical) PostToolUse hook `auto-fire-step0.sh` (matcher `Skill`) fired after sub-skill Skill tool completion to patch `*_post_*` flow-state phases and inject continuation context. The mechanical enforcement layer was removed in PR #1079 along with the implicit-stop guard layer; recovery now relies on `/rite:resume` rather than a runtime continuation hook. | (historical: `hooks/auto-fire-step0.sh`) |
@@ -1847,12 +1850,12 @@ The sentinel would integrate with the existing Phase 5.4.4.1 detection flow (sam
 |----|-------------|
 | AC-1 | bug fix preset で `/rite:issue:create` が end-to-end で `[create:completed:{N}]` まで自動完了する（利用者の `continue` 介入なし） |
 | AC-2 (PR #1079 で意味変更) | M complexity 以上で flat create.md が同 turn 内で Single Issue → ステップ 4 (Heuristics + 出力) を実行する (旧: interview 完了後に create-register sub-skill が発火する) |
-| AC-3 | `create.md` の Sub-skill Return Protocol セクションに "anti-pattern" / "correct-pattern" / "same response turn" / "DO NOT stop" の 4 phrase が全て含まれる |
-| AC-4 | `auto_continuation_failed` sentinel 実装時、Phase 5.4.4.1 detection で観測可能（MAY — 本 Issue スコープ外） |
+| ~~AC-3~~ (retired) | (Historical) `create.md` の Sub-skill Return Protocol セクションに "anti-pattern" / "correct-pattern" / "same response turn" / "DO NOT stop" の 4 phrase が全て含まれる。The dedicated section was consolidated into the flat workflow; the contract is now enforced by `commands/pr/cleanup.md` + `commands/wiki/ingest.md` + the orchestrator's inline "Mandatory After" prose. |
+| AC-4 | `auto_continuation_failed` sentinel 実装時、ステップ 8.5 (Workflow Incident Detection) で観測可能（MAY — 本 Issue スコープ外） |
 | AC-5 | Terminal Completion pattern (`[create:completed:{N}]` + `.rite-flow-state active: false`) が引き続き動作する (non-regression) |
-| AC-6 (#552) | Terminal sub-skill の最終出力に `✅` で始まるユーザー向け完了メッセージが含まれる。Register 経路: `✅ Issue #{N} を作成しました: {url}`、Decompose 経路: `✅ Issue #{N} を分解して {count} 件の Sub-Issue を作成しました: {url}`。いずれの形式も `[create:completed:{N}]` は最終行として維持される |
-| AC-7 (#552) | `stop-guard.sh` が `create_post_interview` / `create_delegation` / `create_post_delegation` phase で implicit stop を block した際、`manual_fallback_adopted` workflow_incident sentinel を `workflow-incident-emit.sh` から capture し、stderr に echo する (stop-hook stderr は exit-2 契約で assistant にフィードされる)。helper 不在 / 失敗時は diag log に記録されるが block 決定には影響しない |
-| AC-8 (#552) | `create.md` に "Pre-check list" セクションが存在し、4 項目全て `YES` が turn 終了の必要条件として文書化されている |
+| AC-6 | Terminal sub-skill の最終出力に `✅` で始まるユーザー向け完了メッセージが含まれる。Register 経路: `✅ Issue #{N} を作成しました: {url}`、Decompose 経路: `✅ Issue #{N} を分解して {count} 件の Sub-Issue を作成しました: {url}`。いずれの形式も `[create:completed:{N}]` は最終行として維持される |
+| ~~AC-7~~ (retired) | (Historical) `stop-guard.sh` が `create_post_interview` / `create_delegation` / `create_post_delegation` phase で implicit stop を block した際、`manual_fallback_adopted` sentinel を emit する。The Stop hook layer was retired; `manual_fallback_adopted` detection now lives in `start.md` ステップ 8.5 retrospective scan. |
+| AC-8 | `create.md` に "Pre-check list" セクションが存在し、4 項目全て `YES` が turn 終了の必要条件として文書化されている |
 
 ### Relationship to Workflow Incident Detection
 

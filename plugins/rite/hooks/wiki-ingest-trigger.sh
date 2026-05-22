@@ -253,8 +253,12 @@ if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
   fi
   wiki_enabled_line=""
   if [[ -n "$wiki_section" ]]; then
-    # awk -- skip non-matches gracefully (exit 0 even with no output)
-    if ! wiki_enabled_line=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' 2>"${_yaml_err:-/dev/null}"); then
+    # `if ! var=$(cmd)` inverts the exit status, so `$?` inside the then-branch
+    # would always read 0 even on real awk failure. Use if/else to preserve the
+    # actual awk rc (locale=11, syntax=2, OOM via SIGKILL=137, etc.).
+    if wiki_enabled_line=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' 2>"${_yaml_err:-/dev/null}"); then
+      :
+    else
       _awk_rc=$?
       echo "ERROR: awk による wiki.enabled 行抽出が失敗 (rc=$_awk_rc)" >&2
       [ -n "$_yaml_err" ] && [ -s "$_yaml_err" ] && head -3 "$_yaml_err" | sed 's/^/  /' >&2
@@ -268,14 +272,17 @@ if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
   if [[ -n "$wiki_enabled_line" ]]; then
     # YAML requires whitespace before inline comments; `true#comment` is a value,
     # not a commented `true`. The first sed strips comments with that in mind.
-    # Wrap the whole pipe in a conditional: under pipefail+set -e, a midstream
-    # failure (locale, SIGPIPE, tr class differences) would abort and the user's
-    # `wiki.enabled: false` setting would be silently treated as enabled.
-    if ! wiki_enabled=$(printf '%s' "$wiki_enabled_line" \
+    # Wrap the whole pipe in if/else: under pipefail+set -e, a midstream failure
+    # (locale, SIGPIPE, tr class differences) would abort and the user's
+    # `wiki.enabled: false` setting would be silently treated as enabled. `if !`
+    # would also collapse the rc to 0; if/else preserves the real exit code.
+    if wiki_enabled=$(printf '%s' "$wiki_enabled_line" \
         | sed 's/[[:space:]]#.*//' \
         | sed 's/.*enabled:[[:space:]]*//' \
         | tr -d '[:space:]"'\''' \
         | tr '[:upper:]' '[:lower:]' 2>/dev/null); then
+      :
+    else
       _enabled_rc=$?
       echo "ERROR: wiki.enabled 値の正規化が失敗 (rc=$_enabled_rc) — sed/tr pipeline" >&2
       echo "  safe-default: staging を中止します (silent policy-violation 防止)" >&2

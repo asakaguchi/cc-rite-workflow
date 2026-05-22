@@ -288,6 +288,22 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-014b: _send_webhook preserves real curl rc (regression guard for if-not antipattern)
+# --------------------------------------------------------------------------
+echo "TC-014b: _send_webhook uses if/else (not `if !`) so curl rc=28 etc. survives"
+# A `if ! curl ... ; then _rc=$?` would collapse `$?` to 0. Pin both the
+# if/else form and the WARNING text so a refactor that re-introduces the
+# antipattern (the same bug shape fixed for post-tool-wm-sync) fails here.
+if grep -qE 'if curl -sf --connect-timeout' "$HOOK" \
+  && grep -qE 'else[[:space:]]*$' "$HOOK" \
+  && grep -qE 'local _rc=\$\?' "$HOOK"; then
+  pass "TC-014b _send_webhook uses if/else (real curl rc is captured)"
+else
+  fail "TC-014b _send_webhook missing if/else form — curl rc may collapse to 0 (if-not antipattern)"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # TC-015: Event data parameter reserved for future use
 # --------------------------------------------------------------------------
 echo "TC-015: Event data parameter (reserved, currently unused)"

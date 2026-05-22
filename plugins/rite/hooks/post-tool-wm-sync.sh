@@ -63,7 +63,7 @@ IFS=$'\x1f' read -r _active issue_number _phase _last_synced_phase <<< "$_flow_d
 # fallback remains active for schema_version=1 (legacy single-file path),
 # where extract_session_id / get_state_session_id may fail under
 # environmental issues (jq error, IO error). Keep both branches.
-_ownership=$(check_session_ownership "$INPUT" "$FLOW_STATE" 2>/dev/null) || _ownership="own"
+_ownership=$(check_session_ownership "$INPUT" "$FLOW_STATE") || _ownership="own"
 [ "$_ownership" != "other" ] || exit 0
 # Defense-in-depth: don't recreate WM for completed workflows (#776)
 [ "$_phase" != "completed" ] || exit 0

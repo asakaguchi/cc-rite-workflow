@@ -17,11 +17,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # diagnosable instead of being mistaken for "no notifications configured".
 INPUT=$(cat) || INPUT=""
 _cwd_jq_err=$(mktemp 2>/dev/null) || _cwd_jq_err=""
-if ! CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>"${_cwd_jq_err:-/dev/null}"); then
-    [ -n "${RITE_DEBUG:-}" ] && {
-        echo "[rite] WARNING: notification: hook stdin jq parse failed" >&2
-        [ -n "$_cwd_jq_err" ] && [ -s "$_cwd_jq_err" ] && head -3 "$_cwd_jq_err" | sed 's/^/  /' >&2
-    }
+# Pre-set CWD="" so set-u-safe; if/else preserves the real jq rc (POSIX `!`
+# inversion would collapse `$?` to 0 in the then-branch). A malformed hook
+# payload is a production-safety signal, not debug noise — surface the
+# WARNING unconditionally and reserve RITE_DEBUG for the stderr snippet.
+CWD=""
+if CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>"${_cwd_jq_err:-/dev/null}"); then
+    :
+else
+    _cwd_rc=$?
+    echo "[rite] WARNING: notification: hook stdin jq parse failed (rc=$_cwd_rc) — notification dispatch skipped for this event" >&2
+    [ -n "${RITE_DEBUG:-}" ] && [ -n "$_cwd_jq_err" ] && [ -s "$_cwd_jq_err" ] && head -3 "$_cwd_jq_err" | sed 's/^/  /' >&2
     CWD=""
 fi
 [ -n "$_cwd_jq_err" ] && rm -f "$_cwd_jq_err"

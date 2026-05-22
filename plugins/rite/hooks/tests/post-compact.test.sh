@@ -443,10 +443,10 @@ if [ "$incident_count" -eq 1 ]; then
 else
   fail "repo view failure emitted $incident_count incident sentinels (expected exactly 1)"
 fi
-if grep -qE 'post_compact_gh_repo_view_failed|gh repo view' "$recon_stderr"; then
-  pass "TC-RECON-07 emitted incident is attributed to repo_view_failed root cause"
+if grep -qE 'root_cause_hint=post_compact_gh_repo_view_failed' "$recon_stderr"; then
+  pass "TC-RECON-07 emitted incident is attributed to root_cause_hint=post_compact_gh_repo_view_failed"
 else
-  fail "TC-RECON-07 incident emitted but not attributed to repo_view_failed: $(head -c 500 "$recon_stderr")"
+  fail "TC-RECON-07 incident emitted but not attributed via canonical root_cause_hint field: $(head -c 500 "$recon_stderr")"
 fi
 
 echo "Results: $PASS passed, $FAIL failed"

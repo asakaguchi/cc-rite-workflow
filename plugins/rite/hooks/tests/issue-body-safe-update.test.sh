@@ -453,4 +453,43 @@ else
 fi
 rm -rf "$mock_bin9"
 
+echo ""
+echo "=== Phase 15: --original-length non-numeric → body_shrinkage_guard_tripped with original_length_invalid hint ==="
+# The defensive validation against non-numeric --original-length was added
+# specifically so that an upstream `wc` failure (which can return whitespace
+# or empty under `set -euo pipefail`) doesn't abort apply-mode via arithmetic
+# evaluation. Without this TC, dropping the regex check or mis-typing the
+# hint would silently revert to the original `arithmetic syntax error` abort
+# path that leaks tmpfiles and breaks the non-blocking contract.
+mock_bin10=$(mktemp -d)
+cat > "$mock_bin10/gh" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+chmod +x "$mock_bin10/gh"
+tmp_read=$(mktemp)
+tmp_write=$(mktemp)
+printf 'sample body' > "$tmp_read"
+printf 'updated body' > "$tmp_write"
+rc=0
+out=$(PATH="$mock_bin10:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length "abc" 2>&1) || rc=$?
+assert_exit "TC-25f apply with non-numeric --original-length → exit 0 (non-blocking)" 0 "$rc"
+if printf '%s' "$out" | grep -qE '\[CONTEXT\] WORKFLOW_INCIDENT=1; type=body_shrinkage_guard_tripped'; then
+  pass "TC-25f non-numeric --original-length emits body_shrinkage_guard_tripped sentinel"
+else
+  fail "TC-25f sentinel missing: $out"
+fi
+if printf '%s' "$out" | grep -qE 'root_cause_hint=original_length_invalid'; then
+  pass "TC-25f sentinel carries root_cause_hint=original_length_invalid (distinct from shrinkage_below_50pct / empty_write)"
+else
+  fail "TC-25f original_length_invalid hint missing — caller cannot distinguish from a real shrinkage trip: $out"
+fi
+# Confirm tmpfiles were cleaned up (the original arithmetic abort path would leak them).
+if [ ! -f "$tmp_read" ] && [ ! -f "$tmp_write" ]; then
+  pass "TC-25f tmpfiles cleaned up under defensive abort"
+else
+  fail "TC-25f tmpfiles leaked under defensive abort (read present=$([ -f "$tmp_read" ] && echo y || echo n), write present=$([ -f "$tmp_write" ] && echo y || echo n))"
+fi
+rm -rf "$mock_bin10"
+
 print_summary "$(basename "$0")" "If you weaken or remove the 50% shrinkage guard / empty-write rejection / missing-args check / gh-edit error capture / _emit_body_update_incident fallback in issue-body-safe-update.sh, body truncation or silent auth-failure regressions become invisible. Keep the guards intact and update the test if the guards intentionally change."

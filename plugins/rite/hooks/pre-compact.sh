@@ -72,7 +72,11 @@ trap cleanup EXIT TERM INT
 # Session ownership check (#173): skip state updates for other session's state.
 # Must run before lock to avoid holding the lock while doing nothing.
 if [ -f "$FLOW_STATE" ]; then
-  _ownership=$(check_session_ownership "$INPUT" "$FLOW_STATE" 2>/dev/null) || _ownership="own"
+  # Pass-through helper stderr so corrupt-state WARNINGs reach triage; the
+  # helper's WARNING messages exist specifically to flag state-overwrite risk
+  # against another active session, and a caller-side `2>/dev/null` would
+  # silently negate them.
+  _ownership=$(check_session_ownership "$INPUT" "$FLOW_STATE") || _ownership="own"
   if [ "$_ownership" = "other" ]; then
     exit 0
   fi
@@ -117,26 +121,45 @@ if acquire_wm_lock "$LOCKDIR"; then
   # Now PostCompact hook handles auto-recovery (recovering→normal), and pre-compact
   # always sets "recovering" to ensure every compact triggers PostCompact processing.
   TMP_COMPACT=$(mktemp "${COMPACT_STATE}.XXXXXX" 2>/dev/null) || TMP_COMPACT="${COMPACT_STATE}.tmp.$$"
+  # Capture jq stderr so a write failure (broken ACTIVE_ISSUE value, locale,
+  # disk full) is diagnosable instead of being collapsed to the generic
+  # "failed to write compact state" WARNING that loses the root cause.
+  _jq_compact_err=$(mktemp 2>/dev/null) || _jq_compact_err=""
   if jq -n \
     --arg state "recovering" \
     --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
     --argjson issue "$ACTIVE_ISSUE" \
     '{compact_state: $state, compact_state_set_at: $ts, active_issue: $issue}' \
-    > "$TMP_COMPACT" 2>/dev/null; then
+    > "$TMP_COMPACT" 2>"${_jq_compact_err:-/dev/null}"; then
     mv "$TMP_COMPACT" "$COMPACT_STATE"
     chmod 600 "$COMPACT_STATE" 2>/dev/null || true
     TMP_COMPACT=""
   else
+    _jq_compact_rc=$?
     rm -f "$TMP_COMPACT"
     TMP_COMPACT=""
-    echo "rite: pre-compact: failed to write compact state" >&2
+    echo "rite: pre-compact: failed to write compact state (jq rc=$_jq_compact_rc)" >&2
+    [ -n "$_jq_compact_err" ] && [ -s "$_jq_compact_err" ] && head -3 "$_jq_compact_err" | sed 's/^/  /' >&2
   fi
+  [ -n "$_jq_compact_err" ] && rm -f "$_jq_compact_err"
 
   # --- Save local work memory snapshot ---
   # Only save snapshot when workflow is actively running (active: true).
-  # Without this check, completed workflows (active: false) would get their
-  # work memory files recreated on compaction, causing stale file persistence (#776).
-  FLOW_ACTIVE=$(jq -r '.active // false' "$FLOW_STATE" 2>/dev/null) || FLOW_ACTIVE="false"
+  # Without this check, completed workflows would get their work memory files
+  # recreated on compaction, causing stale file persistence. A jq parse
+  # failure here (corrupt flow-state JSON) silently degrades to "skip
+  # snapshot" — surface a WARNING so a corrupt state file doesn't quietly
+  # cause snapshot loss in the middle of an active workflow.
+  _flow_active_err=$(mktemp 2>/dev/null) || _flow_active_err=""
+  if FLOW_ACTIVE=$(jq -r '.active // false' "$FLOW_STATE" 2>"${_flow_active_err:-/dev/null}"); then
+    :
+  else
+    _flow_active_rc=$?
+    echo "rite: pre-compact: WARNING: failed to parse .active from $FLOW_STATE (jq rc=$_flow_active_rc) — workflow snapshot will be skipped, recovery may lose context" >&2
+    [ -n "$_flow_active_err" ] && [ -s "$_flow_active_err" ] && head -3 "$_flow_active_err" | sed 's/^/  /' >&2
+    FLOW_ACTIVE="false"
+  fi
+  [ -n "$_flow_active_err" ] && rm -f "$_flow_active_err"
   if [ "$FLOW_ACTIVE" = "true" ] && [ "$ACTIVE_ISSUE" != "null" ] && [ -f "$FLOW_STATE" ]; then
     # Read phase and next_action from flow state for env vars
     # Use unit separator () instead of tab so a future field containing

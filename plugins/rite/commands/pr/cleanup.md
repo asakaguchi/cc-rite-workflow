@@ -26,7 +26,7 @@ When this command is executed, run the following phases in order.
 
 ## Sub-skill Return Protocol
 
-> **Reference**: Canonical Sub-skill Return contract は [`skills/rite-workflow/references/sub-skill-return-protocol.md`](../../skills/rite-workflow/references/sub-skill-return-protocol.md) (PR #1079 で Retired) と [`skills/rite-workflow/SKILL.md`](../../skills/rite-workflow/SKILL.md) "Sub-skill Return — Flat Workflow" セクションを参照。**Mandatory After Wiki Ingest は本 cleanup.md ファイル固有の contract** (start.md / create.md の flat workflow が削除した「sub-skill chain return」rule とは独立)。Same rules apply: DO NOT end your response after `rite:wiki:ingest` returns, DO NOT re-invoke the completed skill, and IMMEDIATELY proceed to Mandatory After Wiki Ingest in the **same response turn**.
+> **Reference**: Canonical Sub-skill Return contract は [`skills/rite-workflow/SKILL.md`](../../skills/rite-workflow/SKILL.md) "Sub-skill Return — Flat Workflow" セクションを参照。**Mandatory After Wiki Ingest は本 cleanup.md ファイル固有の contract** (start.md / create.md の flat workflow が削除した「sub-skill chain return」rule とは独立)。Same rules apply: DO NOT end your response after `rite:wiki:ingest` returns, DO NOT re-invoke the completed skill, and IMMEDIATELY proceed to Mandatory After Wiki Ingest in the **same response turn**.
 
 ### Routing dispatcher (MUST execute step-by-step)
 

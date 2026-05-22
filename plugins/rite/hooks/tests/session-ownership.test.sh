@@ -289,6 +289,35 @@ else
 fi
 echo ""
 
+# ─── TC-CORRUPT-01: extract_session_id emits unconditional WARNING on jq parse failure ───
+# RITE_DEBUG must NOT gate the WARNING — production safety depends on
+# surfacing corrupt hook payloads so a caller that swallows stderr is
+# detectable. This regression guard pins the WARNING is emitted even
+# without RITE_DEBUG.
+echo "TC-CORRUPT-01: extract_session_id WARNING fires without RITE_DEBUG"
+unset RITE_DEBUG
+out=$(extract_session_id 'not-json-corrupt-{{{' 2>&1 >/dev/null)
+if printf '%s' "$out" | grep -qE 'WARNING: extract_session_id: jq parse failed'; then
+  pass "TC-CORRUPT-01 WARNING emitted unconditionally"
+else
+  fail "TC-CORRUPT-01 WARNING missing — corrupt hook payload silently classified as 'no session_id': $out"
+fi
+echo ""
+
+echo "TC-CORRUPT-02: get_state_session_id WARNING fires without RITE_DEBUG"
+unset RITE_DEBUG
+corrupt_state="$TEST_DIR/corrupt-state.json"
+mkdir -p "$TEST_DIR"
+printf '{ not valid json' > "$corrupt_state"
+out=$(get_state_session_id "$corrupt_state" 2>&1 >/dev/null)
+if printf '%s' "$out" | grep -qE 'WARNING: get_state_session_id: jq parse failed'; then
+  pass "TC-CORRUPT-02 WARNING emitted unconditionally"
+else
+  fail "TC-CORRUPT-02 WARNING missing — corrupt state file silently falls to 'legacy' classification: $out"
+fi
+rm -f "$corrupt_state"
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

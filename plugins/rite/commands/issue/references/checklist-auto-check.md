@@ -1,10 +1,23 @@
-# Checklist Auto-Check — cleanup safety-net SoT
+# Checklist Auto-Check — orphan reference
 
-> **Source of Truth**: 本ファイルは Issue body checklist の grep 確認 + auto-check evaluation + uncertain handling + re-check の 4 layer logic を 1 reference に集約した **bash literal + 評価ロジックの SoT** である。本 reference を参照する caller は本ファイルへ semantic anchor stub のみ保持する。
+> **Status: Orphan (no active caller).** Earlier versions of `/rite:issue:start`
+> consumed this file as the SoT for the post-lint checklist confirmation. After
+> the flat workflow consolidation `start.md` removed that step, and the inline
+> safety-net in `commands/pr/cleanup.md` reimplemented the logic directly
+> rather than delegating to this reference. `commands/pr/cleanup.md` does
+> mention this filename in error-message strings (so audit logs continue to
+> name the historical SoT), but it does NOT execute the bash literal defined
+> below.
 >
-> **caller**: `commands/pr/cleanup.md` safety-net (Issue body の incomplete checklist が PR merge 後に残っていないか cleanup 段階で再確認するパス、唯一の active caller)。
+> **Retained because**: the bash literal and the four-layer evaluation rubric
+> documented here are the most thorough record of how checklist confirmation
+> was originally designed. A future re-introduction of the gate (either back
+> into start.md or as a dedicated sub-skill) should start from this file
+> rather than re-deriving the patterns.
 >
-> **歴史的経緯**: 旧 sub-skill chain では `/rite:issue:start` の lint 直後にも同じロジックが走っていたが、flat workflow 統合により start.md からは撤去され、現在は cleanup phase 側の safety-net としてのみ参照される。
+> Section headings below still use the historical `Phase 5.2.1 / 5.2.1.1`
+> numbering for traceability with the original design discussion; treat them
+> as historical labels, not pointers to current start.md sections.
 
 ## Checklist Confirmation
 

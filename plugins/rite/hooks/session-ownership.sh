@@ -170,8 +170,14 @@ check_session_ownership() {
   # corruption is transient. Stderr snippet stays behind RITE_DEBUG.
   local updated_at jq_err
   jq_err=$(mktemp 2>/dev/null) || jq_err=""
-  if ! updated_at=$(jq -r '.updated_at // empty' "$state_file" 2>"${jq_err:-/dev/null}"); then
-    echo "[rite] WARNING: check_session_ownership: jq parse failed on $state_file (treating as stale — may overwrite another active session)" >&2
+  # if/else preserves the real jq rc instead of collapsing it to 0 under
+  # POSIX `!` inversion; symmetric with extract_session_id and
+  # get_state_session_id above.
+  if updated_at=$(jq -r '.updated_at // empty' "$state_file" 2>"${jq_err:-/dev/null}"); then
+    :
+  else
+    local _jq_rc=$?
+    echo "[rite] WARNING: check_session_ownership: jq parse failed on $state_file (rc=$_jq_rc, treating as stale — may overwrite another active session)" >&2
     [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
     updated_at=""
   fi

@@ -53,8 +53,21 @@ if [ "$CLOSE_MODE" = false ]; then
   # Step 1: Reset .rite-flow-state to active:false BEFORE deleting files
   # This prevents post-tool-wm-sync.sh from recreating files
   if [ -f "$FLOW_STATE" ]; then
-    # Read issue number from flow state for logging
-    ISSUE_NUMBER=$(jq -r '.issue_number // empty' "$FLOW_STATE" 2>/dev/null) || ISSUE_NUMBER=""
+    # Read issue number from flow state for logging. Capture jq stderr so a
+    # corrupt FLOW_STATE surfaces as a WARNING — otherwise the silent fallback
+    # to ISSUE_NUMBER="" routes the cleanup audit log to `issue: 0` with no
+    # hint that the operator's actual issue number was discarded.
+    _isn_err=$(mktemp 2>/dev/null) || _isn_err=""
+    _isn_rc=0
+    ISSUE_NUMBER=$(jq -r '.issue_number // empty' "$FLOW_STATE" 2>"${_isn_err:-/dev/null}") || _isn_rc=$?
+    if [ "$_isn_rc" -ne 0 ]; then
+      _isn_tag=""
+      [ -z "$_isn_err" ] && _isn_tag=" stderr_capture=disabled"
+      echo "[rite] WARNING: cleanup-work-memory: .rite-flow-state の .issue_number 取得失敗 (rc=$_isn_rc — FLOW_STATE may be corrupt${_isn_tag})" >&2
+      [ -n "$_isn_err" ] && [ -s "$_isn_err" ] && head -3 "$_isn_err" | sed 's/^/  /' >&2
+      ISSUE_NUMBER=""
+    fi
+    [ -n "$_isn_err" ] && rm -f "$_isn_err"
     # Validate issue number from flow state (non-numeric values would break --argjson)
     if [ -n "$ISSUE_NUMBER" ] && ! [[ "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
       echo "WARNING: .rite-flow-state の issue_number が数値でない: '$ISSUE_NUMBER'. 0 にフォールバック" >&2

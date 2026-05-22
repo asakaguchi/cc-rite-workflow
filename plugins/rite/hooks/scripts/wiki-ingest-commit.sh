@@ -270,18 +270,38 @@ fi
 # and commit in place. No stash/checkout dance needed.
 # -----------------------------------------------------------------------
 if [[ "$branch_strategy" == "same_branch" ]]; then
- git add -- "${pending_files[@]}" || {
- echo "ERROR: git add failed for pending raw sources" >&2
- exit 3
+ # Capture git stderr locally — the shared git_err helper (declared at the
+ # separate_branch block) is not yet initialized at this point in the file.
+ # Without capture, `git add` / `git commit` failures (index lock, gpg sign
+ # failure, pre-commit hook reject, permission denied) collapse into a single
+ # opaque "ERROR" line with no root cause, breaking parity with the
+ # separate_branch path's dump_git_err diagnostics.
+ _sb_git_err=$(mktemp /tmp/rite-wic-sb-git-err-XXXXXX 2>/dev/null) || _sb_git_err=""
+ _sb_dump() {
+  local label="$1"
+  if [ -n "$_sb_git_err" ] && [ -s "$_sb_git_err" ]; then
+   head -n 10 "$_sb_git_err" | sed 's/^/  git ('"$label"'): /' >&2
+   : > "$_sb_git_err" 2>/dev/null || true
+  fi
  }
- if git diff --cached --quiet; then
- echo "[wiki-ingest-commit] committed=0; branch=${wiki_branch}; reason=no-staged-diff"
- exit 0
+ if ! git add -- "${pending_files[@]}" 2>"${_sb_git_err:-/dev/null}"; then
+  echo "ERROR: git add failed for pending raw sources" >&2
+  _sb_dump "add"
+  [ -n "$_sb_git_err" ] && rm -f "$_sb_git_err"
+  exit 3
  fi
- git commit -m "chore(wiki): ingest ${#pending_files[@]} raw source(s)" || {
- echo "ERROR: git commit failed" >&2
- exit 3
- }
+ if git diff --cached --quiet; then
+  [ -n "$_sb_git_err" ] && rm -f "$_sb_git_err"
+  echo "[wiki-ingest-commit] committed=0; branch=${wiki_branch}; reason=no-staged-diff"
+  exit 0
+ fi
+ if ! git commit -m "chore(wiki): ingest ${#pending_files[@]} raw source(s)" 2>"${_sb_git_err:-/dev/null}"; then
+  echo "ERROR: git commit failed" >&2
+  _sb_dump "commit"
+  [ -n "$_sb_git_err" ] && rm -f "$_sb_git_err"
+  exit 3
+ fi
+ [ -n "$_sb_git_err" ] && rm -f "$_sb_git_err"
  head_sha=$(git rev-parse HEAD 2>/dev/null || echo unknown)
  echo "[wiki-ingest-commit] committed=${#pending_files[@]}; branch=${wiki_branch}; head=${head_sha}"
  exit 0

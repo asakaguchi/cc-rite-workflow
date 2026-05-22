@@ -96,10 +96,17 @@ if [ ! -f "$COMPACT_STATE" ]; then
   exit 0
 fi
 _compact_val_err=$(mktemp 2>/dev/null) || _compact_val_err=""
-COMPACT_VAL=$(jq -r '.compact_state // "normal"' "$COMPACT_STATE" 2>"${_compact_val_err:-/dev/null}") || COMPACT_VAL="unknown"
-if [ -n "$_compact_val_err" ] && [ -s "$_compact_val_err" ]; then
-  echo "[rite] WARNING: post-compact: jq parse of .compact_state failed (COMPACT_STATE may be corrupt)" >&2
-  head -3 "$_compact_val_err" | sed 's/^/  /' >&2
+_compact_val_rc=0
+COMPACT_VAL=$(jq -r '.compact_state // "normal"' "$COMPACT_STATE" 2>"${_compact_val_err:-/dev/null}") || _compact_val_rc=$?
+# Surface jq failure regardless of whether mktemp succeeded. A broken /tmp would
+# otherwise let COMPACT_VAL="unknown" route silently to the non-recovering
+# branch with no audit trail, masking the underlying corruption.
+if [ "$_compact_val_rc" -ne 0 ]; then
+  COMPACT_VAL="unknown"
+  _compact_val_tag=""
+  [ -z "$_compact_val_err" ] && _compact_val_tag=" stderr_capture=disabled"
+  echo "[rite] WARNING: post-compact: jq parse of .compact_state failed (rc=$_compact_val_rc — COMPACT_STATE may be corrupt${_compact_val_tag})" >&2
+  [ -n "$_compact_val_err" ] && [ -s "$_compact_val_err" ] && head -3 "$_compact_val_err" | sed 's/^/  /' >&2
 fi
 [ -n "$_compact_val_err" ] && rm -f "$_compact_val_err"
 if [ "$COMPACT_VAL" != "recovering" ]; then

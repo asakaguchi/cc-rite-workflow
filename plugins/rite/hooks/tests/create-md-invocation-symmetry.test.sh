@@ -111,10 +111,15 @@ fi
 link_actual_calls=$(grep -cE 'link-sub-issue\.sh[[:space:]]+\\$' "$CREATE_MD" || true)
 link_total_mentions=$(grep -c 'bash.*link-sub-issue\.sh' "$CREATE_MD" || true)
 
-if [ "$link_total_mentions" -ge 1 ]; then
-  pass "TC-5 link-sub-issue.sh mentioned in create.md (count=$link_total_mentions)"
+# A mere `>=1` mention assertion would pass if every real invocation were
+# replaced by a single comment line. Require both: at least one canonical
+# callsite (line-continuation form, the runtime shape) AND total mentions
+# strictly greater than or equal to that callsite count (every real call
+# also appears in the total).
+if [ "$link_actual_calls" -ge 1 ] && [ "$link_total_mentions" -ge "$link_actual_calls" ]; then
+  pass "TC-5 link-sub-issue.sh has $link_actual_calls canonical callsite(s) and $link_total_mentions total mention(s)"
 else
-  fail "TC-5 link-sub-issue.sh mention missing in create.md"
+  fail "TC-5 link-sub-issue.sh integrity broken (canonical_callsites=$link_actual_calls, total_mentions=$link_total_mentions) — silent removal suspected if total<canonical"
 fi
 if [ "$link_actual_calls" -ge 1 ]; then
   pass "TC-5b at least one link-sub-issue.sh callsite uses canonical line-continuation form (count=$link_actual_calls)"

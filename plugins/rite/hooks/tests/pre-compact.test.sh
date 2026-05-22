@@ -722,6 +722,23 @@ else
 fi
 echo ""
 
+# --------------------------------------------------------------------------
+# TC-SENTINEL-PIN: pre-compact emits exact CONTEXT sentinel literals
+# --------------------------------------------------------------------------
+# These two sentinels are observability-only — no runtime consumer parses
+# them — so a silent rename would never surface as a test failure elsewhere.
+# Pin the literal strings here so triagers can trust grep against the diag
+# log regardless of future refactors.
+echo "TC-SENTINEL-PIN: PRE_COMPACT_SNAPSHOT_(RECORDED|FAILED) literals are present in pre-compact.sh"
+HOOK_SRC="$(dirname "$HOOK")/pre-compact.sh"
+if grep -qF 'PRE_COMPACT_SNAPSHOT_RECORDED=1' "$HOOK_SRC" \
+   && grep -qF 'PRE_COMPACT_SNAPSHOT_FAILED=1' "$HOOK_SRC"; then
+  pass "TC-SENTINEL-PIN: both sentinel literals retained"
+else
+  fail "TC-SENTINEL-PIN: one or both sentinels were renamed/removed in $HOOK_SRC"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed, $SKIP skipped ==="
 if [ "$FAIL" -gt 0 ]; then

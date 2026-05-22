@@ -143,9 +143,22 @@ fi
 log_debug "phase changed: $_last_synced_phase -> $_phase, syncing to issue comment"
 
 # --- 1. Phase update ---
+# python3|jq pipeline runs under pipefail with a captured stderr tempfile so a
+# python3 crash (missing interpreter, traceback on malformed LOCAL_WM) does not
+# masquerade as a successful-but-empty parse. The previous bare `2>/dev/null`
+# pattern silently routed parser failures into the `$_phase` fallback, hiding
+# the root cause from RITE_DEBUG triage.
 _phase_detail=""
-_phase_detail=$(python3 "$SCRIPT_DIR/work-memory-parse.py" "$LOCAL_WM" 2>/dev/null \
-  | jq -r '.data.phase_detail // ""' 2>/dev/null) || _phase_detail=""
+_pd_err=$(mktemp 2>/dev/null) || _pd_err=""
+_pd_rc=0
+_phase_detail=$(set -o pipefail; python3 "$SCRIPT_DIR/work-memory-parse.py" "$LOCAL_WM" 2>"${_pd_err:-/dev/null}" \
+  | jq -r '.data.phase_detail // ""' 2>>"${_pd_err:-/dev/null}") || _pd_rc=$?
+if [ "$_pd_rc" -ne 0 ]; then
+  echo "[rite] WARNING: post-tool-wm-sync: phase_detail 取得失敗 (rc=$_pd_rc) — phase 名に縮退" >&2
+  [ -n "$_pd_err" ] && [ -s "$_pd_err" ] && head -3 "$_pd_err" | sed 's/^/  /' >&2
+  _phase_detail=""
+fi
+[ -n "$_pd_err" ] && rm -f "$_pd_err"
 [ -n "$_phase_detail" ] || _phase_detail="$_phase"
 
 # Capture sync rc so a failed phase update does NOT advance last_synced_phase —

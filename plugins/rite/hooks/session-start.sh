@@ -85,7 +85,10 @@ _rite_read_yaml_key() {
   local _key="$1" _file="$2" _label="$3"
   local _err="" _rc=0 _val=""
   _err=$(mktemp 2>/dev/null) || _err=""
-  _val=$(set -o pipefail; awk -v k="^${_key}:" '$0 ~ k {print $2}' "$_file" 2>"${_err:-/dev/null}" | tr -d '[:space:]"') || _rc=$?
+  # Use literal prefix match (`index() == 1`) instead of `$0 ~ k` so a future
+  # YAML key containing regex metacharacters (`.` `*` `[` etc.) cannot cause
+  # overmatching or silent no-match. Callers are not required to pre-escape.
+  _val=$(set -o pipefail; awk -v k="${_key}:" 'index($0, k) == 1 {print $2}' "$_file" 2>"${_err:-/dev/null}" | tr -d '[:space:]"') || _rc=$?
   if [ "$_rc" -ne 0 ]; then
     echo "[rite] WARNING: session-start: ${_label} 読み取り失敗 (rc=$_rc) — ${_file}" >&2
     [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | sed 's/^/  /' >&2

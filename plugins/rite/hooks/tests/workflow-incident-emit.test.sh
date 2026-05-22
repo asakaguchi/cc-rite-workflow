@@ -171,6 +171,29 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-012: EPOCH=0 fallback when `date` fails
+# --------------------------------------------------------------------------
+# A future regression that removes the `2>/dev/null` or `||` chain on `date`
+# would let `set -e` kill incident emission on environments with broken date.
+# Pin the fallback by shimming `date` to always fail, then assert the iteration
+# id reads `0-0` and the WARNING surfaces on stderr.
+echo "TC-012: EPOCH=0 fallback when date fails"
+shim_dir=$(mktemp -d)
+cat >"$shim_dir/date" <<'SHIM'
+#!/bin/sh
+exit 1
+SHIM
+chmod +x "$shim_dir/date"
+output=$(PATH="$shim_dir:$PATH" bash "$HOOK" --type skill_load_failure --details "date shim test" 2>"$STDERR_FILE")
+if echo "$output" | grep -qE 'iteration_id=0-0$' && grep -q 'date failed' "$STDERR_FILE"; then
+  pass "EPOCH=0 fallback works and emits WARNING"
+else
+  fail "Expected iteration_id=0-0 + WARNING — got: $output (stderr: $(cat "$STDERR_FILE"))"
+fi
+rm -rf "$shim_dir"
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Summary ==="

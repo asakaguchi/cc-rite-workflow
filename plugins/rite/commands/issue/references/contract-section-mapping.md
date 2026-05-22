@@ -1,26 +1,21 @@
-# Implementation Contract Section Mapping — Interview → Section 1-9
+# Implementation Contract Section Mapping — Type → Section 3 / Perspective → Section 1-9
 
-> **Source of Truth**: 本ファイルは `/rite:issue:create` ワークフローにおける Issue Body 生成時の **Implementation Contract Section 1-9 への mapping** の SoT である。caller は `commands/issue/create.md` のみ (the flat-workflow refactor で旧 `create-register.md` Phase 2.2 Step 2-3 と旧 `create-decompose.md` Phase 0.7.3 cancel path の mapping 参照を `create.md` 本体に flat 化統合)。create.md からは本 reference へ semantic 参照する。
->
+> **SoT scope**: Issue body の rich template (Section 1-9 structure) における **Type → Section 3 mapping** と **Perspective → Section 1-9 mapping** の rubric。`templates/issue/default.md` から SoT として参照される。`create.md` ステップ 4.2 が emit する minimal body (`What / Why / Where / Acceptance Criteria / Implementation Notes / Out of Scope`) は本 rubric の subset であり、rich template への切替が必要な場合に本 reference を参照する。
 
 ## 位置づけ
 
-`commands/issue/create.md` ステップ 4 (Single Issue path) / ステップ 5 (Decompose path) における Implementation Contract format の生成は以下の 6 step で構成される:
+Rich template (Section 1-9) を生成する場合の 4 step 構成:
 
 | Step | 役割 | SoT |
 |------|------|-----|
 | Step 1 | Apply Complexity Gate (MUST/SHOULD/OMIT 判定) | [`complexity-gate.md`](./complexity-gate.md) |
-| **Step 2** | **Select Type Core Section (Section 3)** | **本 reference** |
-| **Step 3** | **Map Interview Results to Sections (Section 1-9)** | **本 reference** |
-| Step 4 | Generate Acceptance Criteria (AC 生成順序 / writing rules) | `commands/issue/create.md` ステップ 4 (Single) / ステップ 5 (Decompose) |
-| Step 5 | Generate Test Specification Table | `commands/issue/create.md` 本体 |
-| Step 6 | Output Validation Checklist | `commands/issue/create.md` 本体 |
-
-本 reference は **Step 2 (Type → Section 3 mapping) と Step 3 (Interview → Section 1-9 mapping)** の正規定義を集約する。Section 1-9 の **template 定義** (各 Section の markdown skeleton) は [`templates/issue/template-structure.md`](../../../templates/issue/template-structure.md) を参照すること。
+| Step 2 | Select Type Core Section (Section 3) | 本 reference |
+| Step 3 | Map Perspective inputs to Sections (Section 1-9) | 本 reference |
+| Step 4 | Section template 適用 | [`templates/issue/template-structure.md`](../../../templates/issue/template-structure.md) |
 
 ## Implementation Contract Section 1-9 概観
 
-`templates/issue/template-structure.md` で定義される Issue body の section 構成:
+`templates/issue/template-structure.md` で定義される rich Issue body の section 構成:
 
 | Section | 名称 | 主な内容 |
 |---------|------|---------|
@@ -39,11 +34,11 @@
 | 8 | Definition of Done | 完了条件チェックリスト |
 | 9 | Decision Log | 実装中の意思決定記録 |
 
-各 Section の正規 template は [`templates/issue/template-structure.md`](../../../templates/issue/template-structure.md) を参照。Complexity Gate による MUST/SHOULD/OMIT 判定は [`complexity-gate.md`](./complexity-gate.md) を参照。
+各 Section の正規 template は [`templates/issue/template-structure.md`](../../../templates/issue/template-structure.md)、Complexity Gate の MUST/SHOULD/OMIT 判定は [`complexity-gate.md`](./complexity-gate.md) を参照。
 
 ## Step 2: Type → Type Core Section (Section 3) Mapping
 
-Phase 1.2 で確定した Type に基づき、Section 3 として include する Type Core Section を選択する:
+`create.md` ステップ 4.1 の AskUserQuestion で確定した Type に基づき、Section 3 として include する Type Core Section を選択する:
 
 | Type | Section 3 内容 | template-structure.md 内 subsection |
 |------|---------------|------------------------------------|
@@ -53,14 +48,14 @@ Phase 1.2 で確定した Type に基づき、Section 3 として include する
 | Chore | Operational Context | [`3-Chore: Operational Context`](../../../templates/issue/template-structure.md#3-chore-operational-context) |
 | Docs | Documentation Target | [`3-Docs: Documentation Target`](../../../templates/issue/template-structure.md#3-docs-documentation-target) |
 
-**Type 判定の優先順位**: Labels > title keywords > body content analysis (`commands/issue/create.md` ステップ 4 の Type 判定セクション参照)。
+**Type 判定の優先順位**: Labels > title keywords > body content analysis。`create.md` ステップ 4.1 の AskUserQuestion option (`feat / fix / docs / refactor / chore`) は LLM がこの優先順位で推定したものを提示する。
 
-## Step 3: Interview Perspective → Target Sections Mapping
+## Step 3: Perspective → Target Sections Mapping
 
-Phase 0.5 interview で収集した観点 (Perspective) を、Section 1-9 のどの section に反映するかの mapping:
+`create.md` ステップ 1.3 (What/Why/Where 抽出) + ステップ 4.1 (AskUserQuestion 確認) で得られた input を、Section 1-9 のどの section に反映するかの mapping:
 
-| Interview Perspective | Target Sections |
-|----------------------|----------------|
+| Perspective | Target Sections |
+|-------------|----------------|
 | Technical Implementation | 4.1 Target Files / 4.3 Interface / Data Contract / 4.4 Behavioral Requirements |
 | User Experience | 1 Goal / 3 Type Core (Feature scenarios) / 5 AC (Happy Path) |
 | Edge Cases | 5 AC (Boundary / Error) / 6 Test Specification |
@@ -68,19 +63,18 @@ Phase 0.5 interview で収集した観点 (Perspective) を、Section 1-9 のど
 | Non-Functional Requirements | 4.5 Error Handling / Constraints / 5 AC (NFR outcome) / 6 Test Specification |
 | Tradeoffs | 1 Non-goal / 4.4 SHOULD / MAY / 9 Decision Log |
 
-**逆方向 mapping (section から perspective を引く)** が必要な場合は本表の右列を起点に検索すること。
+逆方向 mapping (section から perspective を引く) が必要な場合は本表の右列を起点に検索する。
 
 ## Section Inclusion Rules
 
-Step 2 で Section 3 を確定し、Step 3 で interview 結果を section に mapping した後、各 section の include / omit / placeholder 挿入を以下の rule で決定する:
+Step 2 で Section 3 を確定し、Step 3 で input を section に mapping した後、各 section の include / omit / placeholder 挿入を以下の rule で決定する:
 
 | Condition | Behavior |
 |-----------|----------|
-| Interview not conducted for a perspective | Omit target sections (unless MUST by Complexity Gate) |
-| Interview conducted for a perspective | Populate target sections with interview results |
-| Section is MUST but no interview data | Include section with placeholder comment (`<!-- 情報未収集 -->`) |
-| Phase 0.7 cancel path with specification document | Include `docs/designs/{slug}.md` content as design context in Section 4 (Implementation Details). Pre-validated specification supplements interview results for Section 4.1-4.5 |
-| Phase 0.3-0.5 all skipped (`phases_skipped: "0.3-0.5"`) | Apply [EDGE-3 row 4](./edge-cases-create.md#edge-3-interview-result-reflection-rules): populate all MUST sections per Complexity Gate using Phase 0.1 context (What/Why/Where). For MUST sections where no data is available from Phase 0.1, include `<!-- 情報未収集 -->` placeholder. AI-inferred content is marked with `（推定）`. SHOULD/OMIT sections follow normal Gate rules |
+| Perspective に対応する情報が input から取得できなかった | Target sections を omit (Complexity Gate で MUST 指定でない限り) |
+| Perspective に対応する情報が input から取得できた | Target sections に input 結果を populate |
+| Section が MUST だが input data なし | Section に placeholder comment (`<!-- 情報未収集 -->`) を含めて include |
+| Sub-Issue decompose path で `docs/designs/{slug}.md` が生成された場合 | 該当 design doc の内容を Section 4 (Implementation Details) の design context として include |
 
 **MUST/SHOULD/OMIT の判定基準**: [`complexity-gate.md#complexity-heuristics-scoring`](./complexity-gate.md#complexity-heuristics-scoring) と [`templates/issue/template-structure.md`](../../../templates/issue/template-structure.md) の Complexity Gate 表を参照。Complexity (XS/S/M/L/XL) ごとに各 section の include 必須度が決定される。
 
@@ -89,4 +83,3 @@ Step 2 で Section 3 を確定し、Step 3 で interview 結果を section に m
 - [`templates/issue/template-structure.md`](../../../templates/issue/template-structure.md) — Section 1-9 の正規 markdown template
 - [`templates/issue/default.md`](../../../templates/issue/default.md) — Complexity Gate / Type 定義の overview
 - [`complexity-gate.md`](./complexity-gate.md) — Complexity (XS/S/M/L/XL) 判定基準と MUST/SHOULD/OMIT mapping
-- [`edge-cases-create.md`](./edge-cases-create.md) — EDGE-3 Interview Result Reflection Rules (`phases_skipped` ハンドリング)

@@ -341,11 +341,24 @@ INIT_EOF
   fi
   [ -n "$_init_err" ] && rm -f "$_init_err"
 
-  # Validate creation (retry up to 3 times with 1s intervals)
+  # Validate creation (retry up to 3 times with 1s intervals).
+  # Capture per-attempt gh stderr so transient rate-limit / auth / network
+  # failures surface in the WARNING instead of silently routing to
+  # status=unverified — symmetric with the get_comment_id and init write paths
+  # above.
   created_id=""
   for attempt in 1 2 3; do
+    _verify_err=$(mktemp 2>/dev/null) || _verify_err=""
+    _verify_rc=0
     created_id=$(gh api "repos/${OWNER_REPO}/issues/${ISSUE}/comments" \
-      --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .id // empty' 2>/dev/null) || created_id=""
+      --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .id // empty' \
+      2>"${_verify_err:-/dev/null}") || _verify_rc=$?
+    if [ "$_verify_rc" -ne 0 ]; then
+      echo "[rite] WARNING: issue-comment-wm-sync: validation gh api 失敗 (attempt=$attempt, rc=$_verify_rc)" >&2
+      [ -n "$_verify_err" ] && [ -s "$_verify_err" ] && head -3 "$_verify_err" | sed 's/^/  /' >&2
+      created_id=""
+    fi
+    [ -n "$_verify_err" ] && rm -f "$_verify_err"
     [ -n "$created_id" ] && break
     [ "$attempt" -lt 3 ] && sleep 1
   done

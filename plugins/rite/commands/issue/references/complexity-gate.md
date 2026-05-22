@@ -1,14 +1,10 @@
 # Complexity Gate — Tentative Complexity Estimation + Heuristics Scoring
 
-> **Source of Truth**: 本ファイルは `/rite:issue:create` workflow における **複雑度判定 (XS/S/M/L/XL)** の正規定義 SoT である。Tentative Complexity Estimation (interview 中の暫定推定) と Complexity Heuristics Scoring (Issue 化時の最終決定) の 2 段階を集約する。caller は `commands/issue/create.md` のみ (the flat-workflow refactor で旧 `create-interview.md` Phase 0.4.1 / `create-register.md` Phase 1.1 を `create.md` ステップ 2 / ステップ 4 に flat 化統合)。create.md からは本 reference へ semantic 参照する。
->
+> **SoT scope**: `/rite:issue:create` における **複雑度判定 (XS/S/M/L/XL)** の rubric を集約する。`templates/issue/default.md` の Complexity Heuristics セクションが本 reference を SoT として参照する。`create.md` 側の consumer は ステップ 3.1 (規模ヒューリスティック) と ステップ 4.1 (Issue 情報の最終確認) の 2 箇所。
 
 ## Tentative Complexity Estimation
 
-`commands/issue/create.md` ステップ 2 (Tentative Complexity Estimation) で Issue 入力情報から暫定推定する。用途:
-
-1. **Adaptive Interview Depth** (create.md ステップ 3 の interview perspective filtering) — どの interview perspective を適用するか決定
-2. **Task Decomposition Decision** (create.md ステップ 3.5) — XL は decomposition trigger
+入力情報から暫定的に推定する quick reference 表。Issue 規模が `L` 以上に達するかを `create.md` ステップ 3.1 で判別するための input として使う。
 
 | Tentative Complexity | Criteria | Example |
 |---------------------|----------|---------|
@@ -18,17 +14,15 @@
 | **L** | Multiple files (approx. 6-10 files), requires multiple design decisions | medium-scale feature, design change |
 | **XL** | Large-scale change (10+ files) or spans multiple domains, architecture-level design decisions | new system construction, architecture change |
 
-**Notes**:
-
-- create.md ステップ 3.5 decomposition decision では **XL のみ** decomposition trigger (L は対象外)
-- 最終 complexity (XS/S/M/L/XL) は create.md ステップ 4 (Heuristics Scoring) で決定し Issue Meta section に記録される
-- Tentative は ステップ 4 Heuristics Scoring の **baseline** として使われる ([Final Complexity Decision Rules](#final-complexity-decision-rules) 参照、Heuristics 優先)
+- `create.md` ステップ 3.1 規模ヒューリスティック条件「Complexity ≥ L (推定)」はこの Tentative 値を使う
+- `create.md` ステップ 3.2 分解確認では **XL のみ** を decomposition trigger とする (L は対象外)
+- 最終的な complexity は `create.md` ステップ 4.1 の AskUserQuestion 確認値が確定値となる ([Final Complexity Decision Rules](#final-complexity-decision-rules) 参照)
 
 ---
 
 ## Complexity Heuristics Scoring
 
-`commands/issue/create.md` ステップ 4 (Heuristics Scoring) で **最終 complexity** を確定する。[Tentative Complexity Estimation](#tentative-complexity-estimation) を baseline として、Heuristics Scoring を **primary method** で使用する。Tentative テーブルは直感的な quick reference として、Heuristics Scoring は精度のある最終決定として使い分ける。両者が **不一致** の場合は Heuristics Score が優先される。
+Tentative と並行して評価する精緻 rubric。両者が不一致の場合は Heuristics Score を優先する。
 
 Score を +1 する条件:
 
@@ -51,16 +45,16 @@ Score → complexity mapping:
 | 5 | L |
 | 6+ | XL |
 
-Phase 0.1-0.5 の情報を使って各条件を評価する。最終 complexity は Issue Meta section に記録される。
+`create.md` ステップ 1.3 (What/Why/Where 抽出) と ステップ 3.1 (規模ヒューリスティック) で得られた情報から各条件を評価する。
 
 ---
 
 ## Final Complexity Decision Rules
 
-Tentative Complexity Estimation と Heuristics Scoring が **不一致** の場合、Heuristics Score が優先される。両者の関係性:
+Tentative Complexity Estimation と Heuristics Scoring が不一致の場合、Heuristics Score が優先される。
 
 | 状況 | Behavior |
 |------|----------|
 | Tentative と Heuristics が一致 | その値を最終 complexity として採用 |
 | Tentative と Heuristics が不一致 | **Heuristics Score 優先** (Tentative は quick reference のみ) |
-| ステップ 2 (Tentative Estimation) が実行されなかった (create.md ステップ 1.5 early decomposition path) | Tentative baseline として **XL** を採用 (ステップ 1.5 で large-scope と検出済み) — Heuristics Scoring 優先のため scoring 条件が低 complexity を示せば downward に調整される |
+| `create.md` ステップ 3.1 で大型タスク候補 (XL trigger) と判定された場合 | Tentative baseline として **XL** を採用。Heuristics scoring 条件が低 complexity を示せば downward 調整される |

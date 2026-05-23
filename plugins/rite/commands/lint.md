@@ -635,7 +635,7 @@ fi
 | Exit Code | `gitignore_health_status` | Action |
 |-----------|---------------------------|--------|
 | 0 | `success` | `.rite/wiki/` rule healthy (or legitimate no-op: wiki disabled / `rite-config.yml` absent — script handled internally and returned 0 with `findings: 0`) — continue to Phase 4 |
-| 1 | `warning` | Drift detected — record as **warning** (does NOT cause `[lint:error]`). A `[CONTEXT] WORKFLOW_INCIDENT=1; type=gitignore_drift; ...` sentinel is also emitted on stdout so ステップ 8.5 can auto-register a tracking Issue. Display findings and allow flow to continue |
+| 1 | `warning` | Drift detected — record as **warning** (does NOT cause `[lint:error]`). A `WARNING` is also emitted on stderr so the operator can triage the drift. Display findings and allow flow to continue |
 | 2 | `error` | Invocation error (not in git repo, `git check-ignore` failure, `same_branch` 戦略で probe file 作成不能 — read-only filesystem / permission denied / disk full 等) — record as warning, display error message |
 | -1 | `skipped` | Script not found (marketplace install without `hooks/scripts/`) — skip silently |
 
@@ -944,7 +944,7 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the flo
 {wiki_growth_output}
 ```
 
-**Gitignore health check appendix (Issue #567)** (both standalone and E2E): When `gitignore_health_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth / terminal-output. When status is `warning` (exit 1, drift detected), the appendix output includes both the stderr WARNING and the `[CONTEXT] WORKFLOW_INCIDENT=1; type=gitignore_drift; ...` sentinel from stdout (merged via `2>&1` at invocation) so the sentinel reaches the orchestrator's conversation context where ステップ 8.5 grep detects it. When status is `error` (exit 2, invocation failure), the script exits before sentinel emit so the appendix contains only the stderr ERROR diagnostic:
+**Gitignore health check appendix (Issue #567)** (both standalone and E2E): When `gitignore_health_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth / terminal-output. When status is `warning` (exit 1, drift detected), the appendix output includes the stderr WARNING describing the drift so the operator can triage it. When status is `error` (exit 2, invocation failure), the appendix contains the stderr ERROR diagnostic:
 
 ```
 ⚠️ Gitignore health check: {gitignore_health_finding_count} findings detected ({gitignore_health_status}, non-blocking)
@@ -1205,28 +1205,16 @@ rm -f "$next_steps_tmp"
 
 ---
 
-## Workflow Incident Emit Helper (#366)
-
-> **Reference**: See [workflow-incident-emit-protocol.md](../references/workflow-incident-emit-protocol.md) for the emit protocol and Sentinel Visibility Rule.
-
-This skill emits sentinels for the following failure paths:
-
-| Failure Path | Sentinel Type | Details |
-|--------------|---------------|---------|
-| Lint command not detected and user chose "skip" in Phase 1.3 | `manual_fallback_adopted` | `rite:lint command not detected, user skipped` |
-| Lint tool not found at execution time (Phase 3) | `hook_abnormal_exit` | `rite:lint tool not found: {tool_name}` |
-| Work memory append failure in Phase 4.4 | `hook_abnormal_exit` | `rite:lint work memory append failure` |
-
-**Note**: `{pr_number}` is `0` for lint (no PR exists yet at lint time).
-
 ## Error Handling
 
 See [Common Error Handling](../references/common-error-handling.md) for shared patterns (Not Found, Permission, Network errors).
 
+失敗パス (lint command 未検出で user skip / tool not found / work memory append 失敗) は plain `WARNING` を stderr に出力する。
+
 | Error | Recovery |
 |-------|----------|
 | When the lint command fails | See error output for details |
-| When the tool is not found | See [common patterns](../references/common-error-handling.md) (sentinel emit via Workflow Incident Emit Helper above) |
+| When the tool is not found | See [common patterns](../references/common-error-handling.md) (WARNING を stderr に出力) |
 
 ## Language-Specific Details
 

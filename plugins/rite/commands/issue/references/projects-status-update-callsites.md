@@ -11,17 +11,9 @@
 2. **Delegate to `projects-status-update.sh`** via `bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n ...)"` (single source of truth for Projects Status updates)
 3. **Inspect script stdout JSON**: `.result == "updated"` → success / `.result == "skipped_not_in_project"` or `"failed"` → display `.warnings[]` and continue (non-blocking)
 4. **DO NOT inline GraphQL queries** — past incident (Issue #513) caused AC-1 failure when `trackedInIssues`-only inline simplification was introduced; `parent-child-sync-static.test.sh` Group 4 pins this regression guard
-5. **MUST emit `workflow_incident` sentinel on `skipped_not_in_project` / `failed`** — silent skip 禁止。**timeless invariant**: caller 側で `.result` が `"skipped_not_in_project"` または `"failed"` の場合は必ず `bash {plugin_root}/hooks/workflow-incident-emit.sh --type projects_status_update_failed --details "..." --pr-number <pr>` で sentinel を emit する。本 SoT (callsites.md) は bash literal の delegate 構造のみを規定し、emit パターンは caller 側で inline 記述する委譲規約。emit 自体は `|| true` で non-blocking。caller (`start.md` ステップ 8.5) の grep 検出経路で Issue として auto-register され、silent skip により observability が失われた事象を防ぐ。Per-Callsite implementation status の詳細 (どの Callsite で emit 実装済み / 未実装か、PR-specific rollout scope 等) は下記 blockquote `> **Issue #1003 AC-4 適用範囲と Callsite ごとの emit 実装責務**` を参照。
-
-> **cycle 10 F-16 対応**: 旧 sub-bullet 「本 PR (Issue #1003) の scope 限定」は PR-specific 記述だったため timeless invariant section から削除し、直下 blockquote の section にロールアウト状況を集約。
+5. **MUST surface a WARNING on `skipped_not_in_project` / `failed`** — silent skip 禁止。**timeless invariant**: caller 側で `.result` が `"skipped_not_in_project"` または `"failed"` の場合は、`projects-status-update.sh` が返す `.warnings[]` をプレーンな `WARNING` 行として stderr に出力し、会話コンテキストで surface する。これは non-blocking であり workflow は続行する。観測した user は必要なら `/rite:resume` で該当ステップを再実行する。本 SoT (callsites.md) は bash literal の delegate 構造のみを規定する。
 
 詳細な API レベル動作 (GraphQL projectItems query / auto-add / field-list / item-edit) は [`projects-integration.md §2.4.2-2.4.5`](../../../references/projects-integration.md#242-check-issue-project-registration-status) を参照。
-
-> **Issue #1003 AC-4 適用範囲と Callsite ごとの emit 実装責務** (flat workflow 移行後):
-> - **Callsite 1 (ステップ 2.4 In Progress)**: 本 SoT の bash literal には emit 例なし。`start.md` ステップ 2.4 caller 側で `.result` が `failed` の場合に emit を inline 記述する責務がある。通常 `auto_add: true` で `skipped_not_in_project` は発火しにくいため failed 経路が主対象。
-> - **Callsite 2 (ステップ 8.3 In Review)**: `start.md` ステップ 8.3 (defense-in-depth) と `pr/ready.md` Phase 4.2 (primary) の両 caller で emit を実装済み。`auto_add: false` のため `skipped_not_in_project` が発生しやすく、本契約の主対象。
-> - **Callsite 3 (ステップ 8.4 Done — Parent Issue auto-close)**: `start.md` ステップ 8.4 caller および `close.md` Phase 4.6.3 (`status update` 経由) の caller 側で emit を inline 記述する責務がある。`auto_add: false` のため `skipped_not_in_project` が発生しやすい。旧 Callsite 4 (Parent Auto-Close → Done, auto_add: true) は本 Callsite 3 に統合済 — `start.md` ステップ 8.4 内で `gh issue close` 直後に `auto_add: false` で Status 更新を行う pattern に統一されている (将来 auto_add: true 経路が必要になった場合は本 SoT に section を再追加)。
-> - **最終 fallback**: emit 漏れがあった場合の最終 fallback は `start.md` ステップ 8.5 Workflow Incident Detection (Issue #1003 AC-8) の状態 query 経路で surface される。
 
 ## Callsite 1 — ステップ 2.4 (Issue Status → In Progress)
 
@@ -132,9 +124,9 @@ Inspect the script's stdout JSON:
 
 > **Status: Historical (retired)**: 旧 caller `parent-routing.md` Phase 1.5.5 (auto-close → Done with `auto_add: true`) は `commands/issue/start.md` ステップ 8.4 に統合された。新 ステップ 8.4 は `gh issue close` 直後に `auto_add: false` で Status → Done を更新するため、本 Callsite (auto_add: true 経路) は active caller を持たない。
 >
-> 本セクションは将来 `auto_add: true` 経路が再導入された場合の参照用に保持する (例: 親 Epic が Projects 未登録のまま自動 Done 化したい場合)。再導入時には Callsite 3 と独立した emit 経路として復活させる。
+> 本セクションは将来 `auto_add: true` 経路が再導入された場合の参照用に保持する (例: 親 Epic が Projects 未登録のまま自動 Done 化したい場合)。再導入時には Callsite 3 と独立した経路として復活させる。
 >
-> Historical 仕様 (auto_add: true 経路): `gh issue close` 成功確認 → `projects-status-update.sh` を `auto_add: true` + `status_name: "Done"` で invoke → `.result` を inspection → `skipped_not_in_project` / `failed` で `workflow_incident` emit (root-cause-hint: `issue_not_registered_in_project_at_parent_auto_close` / `gh_api_or_graphql_failure_at_parent_auto_close`)。`--pr-number 0` (PR 作成前経路)。observability reach は workflow review-fix loop 外のため `start.md` ステップ 8.5 grep 検出経路には乗らない (stderr / conversation context のみ)。
+> Historical 仕様 (auto_add: true 経路): `gh issue close` 成功確認 → `projects-status-update.sh` を `auto_add: true` + `status_name: "Done"` で invoke → `.result` を inspection → `skipped_not_in_project` / `failed` の場合は `.warnings[]` をプレーンな WARNING として stderr / conversation context に surface する (non-blocking)。`--pr-number 0` (PR 作成前経路)。
 
 See [projects-integration.md §2.4](../../../references/projects-integration.md#24-github-projects-status-update) for the underlying API calls.
 

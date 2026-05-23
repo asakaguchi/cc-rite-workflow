@@ -430,10 +430,7 @@ fi
 # zero-iteration guard (silent placeholder expansion failure 検出)
 # ============================================================
 if [ "$created_count" -eq 0 ] && [ "$expected_sub_count" -gt 0 ]; then
-  bash {plugin_root}/hooks/workflow-incident-emit.sh \
-    --type sub_issue_zero_iteration_loop \
-    --details "Expected $expected_sub_count Sub-Issues but created 0 (placeholder expansion or shell loop failure). parent=#$parent_issue_number" \
-    --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+  echo "WARNING: Expected $expected_sub_count Sub-Issues but created 0 (placeholder expansion or shell loop failure). parent=#$parent_issue_number" >&2
 fi
 
 # ============================================================
@@ -443,10 +440,7 @@ fi
 # ============================================================
 loop_processed=$((created_count + failed_count))
 if [ "$loop_processed" -ne "$expected_sub_count" ] && [ "$expected_sub_count" -gt 0 ]; then
-  bash {plugin_root}/hooks/workflow-incident-emit.sh \
-    --type sub_issue_loop_abort \
-    --details "Loop processed $loop_processed of $expected_sub_count expected Sub-Issues (created=$created_count, failed=$failed_count). Possible mid-loop abort. parent=#$parent_issue_number" \
-    --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+  echo "WARNING: Loop processed $loop_processed of $expected_sub_count expected Sub-Issues (created=$created_count, failed=$failed_count). Possible mid-loop abort. parent=#$parent_issue_number" >&2
 fi
 
 # ============================================================
@@ -477,9 +471,9 @@ LLM は以下を実行する:
 > 以下の bash block 内 `{PARENT_ISSUE_NUMBER}`, `{TMPFILE_READ}`, `{TMPFILE_WRITE}`, `{ORIGINAL_LENGTH}` は LLM が直前の CONTEXT marker から literal 置換する。
 
 ```bash
-# helper 内で safety guard / API 失敗を WORKFLOW_INCIDENT として直接 emit するため、
+# helper 内で safety guard / API 失敗を plain WARNING として stderr に出力するため、
 # orchestrator 側は stderr を観測するだけに留め、tmpfile パス未取得のときのみ
-# fetch_failed を発火する責務を残す。
+# caller 側で WARNING を出して checklist 更新を skip する。
 if [ -n "{TMPFILE_READ}" ] && [ -n "{TMPFILE_WRITE}" ]; then
   apply_err=$(bash {plugin_root}/hooks/issue-body-safe-update.sh apply \
     --issue {PARENT_ISSUE_NUMBER} \
@@ -496,10 +490,7 @@ if [ -n "{TMPFILE_READ}" ] && [ -n "{TMPFILE_WRITE}" ]; then
     echo "WARNING: 親 Issue body の更新で診断メッセージ: $apply_err_short" >&2
   fi
 else
-  bash {plugin_root}/hooks/workflow-incident-emit.sh \
-    --type issue_body_fetch_failed \
-    --details "Parent #{PARENT_ISSUE_NUMBER}: fetch did not return tmpfile paths (gh issue view 失敗 or 空 body)" \
-    --pr-number 0 >&2 || echo "[rite] WARNING: workflow-incident-emit.sh exited non-zero; sentinel may not be recorded" >&2
+  echo "WARNING: Parent #{PARENT_ISSUE_NUMBER}: fetch did not return tmpfile paths (gh issue view 失敗 or 空 body); 親 Issue body の Sub-Issues セクション更新を skip" >&2
 fi
 ```
 

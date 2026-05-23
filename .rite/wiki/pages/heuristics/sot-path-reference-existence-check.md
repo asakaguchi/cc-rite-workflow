@@ -2,7 +2,7 @@
 title: "SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する"
 domain: "heuristics"
 created: "2026-04-29T02:55:00+00:00"
-updated: "2026-05-04T05:00:00Z"
+updated: "2026-05-23T14:56:07Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260428T171940Z-pr-705.md"
@@ -14,6 +14,8 @@ sources:
     ref: "raw/reviews/20260504T040112Z-pr-801.md"
   - type: "fixes"
     ref: "raw/fixes/20260504T040558Z-pr-801.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260523T144332Z-pr-1102.md"
 tags: ["sot-document", "path-reference", "broken-ref", "self-violation", "cross-pr-fragility", "identifier-consistency"]
 confidence: high
 ---
@@ -88,6 +90,14 @@ cycle 1 (6 findings) → cycle 2 (1 finding) → cycle 3 (0 findings, mergeable)
 
 新規 SoT は最初から完全ではなく、3 cycle 程度の review-fix で収束する想定で書くと scope が現実的になる。
 
+### 逆方向: broken reference の修正 PR でも引用先実在性を事前確認する (PR #1102)
+
+PR #1102 (累積、`phase-mapping.md` の broken cross-reference 修正 doc PR) は本経験則の **逆方向の適用** を実測した: 新規 SoT 作成時の existence check だけでなく、**既に壊れている参照を修正する PR** でも、修正後参照先 (resume.md Phase 3.5 cross-check / Phase 5.3 mapping) の実在を Read tool で事前確認することが 0 blocking finding / 1 cycle 着地に直結した。`phase-mapping.md` が `commands/resume.md` の存在しない「Phase 3.2 legacy alias 表」を SoT として参照していた broken reference を、実在する Phase 3.5 / Phase 5.3 参照に書き換えた。両 reviewer (prompt-engineer / code-quality) が修正後参照の実在を Read で independently verify。
+
+このケースが示すのは、本経験則の検証手順 (引用先 SoT を Read tool で verify) は「reference を新規に書く時」だけでなく「broken reference を直す時」にも同じ rigour で適用すべきという点である。修正対象が壊れている事実は、修正後の参照先まで自動的に正しいことを保証しない。
+
+加えて PR #1102 で観測された **pre-existing 同型 broken reference の残存**: 同じ「Phase 3.2 legacy table」への broken 参照が `sub-skill-return-protocol.md` / `docs/SPEC.md` / `docs/SPEC.ja.md` にも残存していることが調査で surface した (本 PR scope 外として別途調査推奨)。これは [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の broken-reference 版であり、1 箇所の broken ref を直す際に同型参照を repo 全体で `grep` して残存件数を確認する pre-flight が canonical 対策となる。
+
 ## 関連ページ
 
 - [散文で宣言した設計は対応する実装契約がなければ機能しない](../anti-patterns/prose-design-without-backing-implementation.md)
@@ -102,3 +112,4 @@ cycle 1 (6 findings) → cycle 2 (1 finding) → cycle 3 (0 findings, mergeable)
 - [PR #705 cycle 1 fix (broken-ref 3 件 / cross-PR fragility / identifier / regex 全 6 解消)](../../raw/fixes/20260428T172314Z-pr-705.md)
 - [PR #801 review (新規 reference の inter-file anchor `./complexity-gate.md#complexity-gate-section-inclusion` が target ファイルに存在せず、両 reviewer (prompt-engineer + code-quality) で cross-validated。経験則: 新規 anchor 記述前に `grep -E '^##+ ' <target>` で実在 heading slug を検証してから書く)](../../raw/reviews/20260504T040112Z-pr-801.md)
 - [PR #801 fix (broken anchor 解消、grep ベースの heading slug 検証を anchor 記述前 pre-flight check として明示化)](../../raw/fixes/20260504T040558Z-pr-801.md)
+- [PR #1102 review (phase-mapping.md の broken cross-reference 修正 doc PR、0 blocking findings / 1 cycle 着地。修正後参照先 (resume.md Phase 3.5 / Phase 5.3) の実在を両 reviewer が Read で independently verify。同型 broken ref が sub-skill-return-protocol.md / docs/SPEC.md / docs/SPEC.ja.md に pre-existing 残存)](../../raw/reviews/20260523T144332Z-pr-1102.md)

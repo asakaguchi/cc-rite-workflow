@@ -58,7 +58,7 @@ _ボトルネック検出はありません_
 | `{timestamp}` | ISO 8601 `YYYY-MM-DDTHH:MM:SS+HH:MM` | `2026-01-29T14:30:00+09:00` |
 | `{branch_name}` | `{type}/issue-{number}-{slug}` | `feat/issue-13-new-feature` |
 | `{command_name}` | Command path | `/rite:issue:start`, `/rite:pr:create` |
-| `{phase}` | Phase ID (see [phase-mapping.md](./phase-mapping.md)) | `phase5_implementation` |
+| `{phase}` | Phase ID (see [phase-mapping.md](./phase-mapping.md)) | `implement` |
 | `{phase_detail}` | Detail state | `実装作業中`, `PR 作成完了` |
 | `{next_command}` | Next command | `/rite:pr:create`, `/rite:pr:review #42` |
 | `{next_status}` | `待機中` / `実行中` / `完了` | `待機中` |
@@ -297,7 +297,7 @@ sync_revision: 3
 sync_status: synced
 source: pre_compact
 last_modified_at: "2026-02-21T06:30:00Z"
-phase: "phase5_implementation"
+phase: "implement"
 phase_detail: "ファイル編集"
 next_action: "テスト実行"
 branch: "feat/issue-721"
@@ -322,7 +322,7 @@ loop_count: 0
 | `sync_status` | string | No | `synced` / `pending` / `conflict` |
 | `source` | string | No | Provenance tracking (e.g., `pre_compact`, `resume`, `init`) |
 | `last_modified_at` | string | No | UTC ISO 8601 timestamp (`Z` suffix) |
-| `phase` | string | No | Current phase ID (e.g., `phase5_implementation`; see [phase-mapping.md](./phase-mapping.md)) |
+| `phase` | string | No | Current phase ID (e.g., `implement`; see [phase-mapping.md](./phase-mapping.md)) |
 | `phase_detail` | string | No | Phase detail |
 | `next_action` | string | No | Next action description |
 | `branch` | string | No | Branch name |
@@ -388,7 +388,7 @@ Issue-level locking prevents concurrent access to local work memory files from i
 
 ```bash
 WM_SOURCE="implement" \
-  WM_PHASE="phase5_lint" \
+  WM_PHASE="lint" \
   WM_PHASE_DETAIL="品質チェック準備" \
   WM_NEXT_ACTION="rite:lint を実行" \
   WM_BODY_TEXT="Post-implementation." \

@@ -284,17 +284,10 @@ with open(out_path, "w") as f:
   fi
 fi
 
-# Auto-migrate legacy `.rite-flow-state` to the per-session path
-# (`.rite/sessions/{session_id}.flow-state`) when schema_version is missing or < 2.
-# Issue #672 (multi-state design) / #679 (migration). The script is non-blocking:
-# any error is reported to stderr but the hook continues with the legacy file so
-# the user can retry on the next session start. The explicit migration message
-# (AC-8 — silent skip forbidden) flows through stderr to the user's terminal.
-_migrate_script="$SCRIPT_DIR/scripts/migrate-flow-state.sh"
-if [ -x "$_migrate_script" ]; then
-  STATE_ROOT="$STATE_ROOT" bash "$_migrate_script" || true
-fi
-unset _migrate_script
+# Auto-migrate any v1/v2 state files to v3 via flow-state.sh migrate subcommand.
+# Non-blocking: errors surface to stderr but the hook continues. Idempotent: files
+# already at schema_version=3 are skipped.
+bash "$SCRIPT_DIR/flow-state.sh" migrate 2>&1 || true
 
 # Resolve active flow-state file path (Issue #680).
 # `_resolve-flow-state-path.sh` returns the per-session file
@@ -330,12 +323,12 @@ if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
   grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
 fi
 if [ "$_resolve_failed" -eq 1 ]; then
-  STATE_FILE="$STATE_ROOT/.rite-flow-state"
-  echo "[rite] WARNING: flow-state path resolution failed, falling back to legacy ($STATE_FILE)" >&2
+  echo "[rite] WARNING: flow-state.sh path resolution failed — STATE_FILE 不明、recovery を skip します" >&2
+  STATE_FILE=""
 fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 
-if [ ! -f "$STATE_FILE" ]; then
+if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
   # Clean stale compact state on startup/clear when no flow state exists (#756, #800)
   _cleanup_stale_compact
   exit 0
@@ -503,7 +496,7 @@ IMPORTANT: First inform the user that an interrupted workflow was detected.
 Display the Issue number, phase, and next action.
 Then suggest running /rite:resume to continue from where it left off.
 If the user provides a different instruction, respect it but mention the pending workflow.
-Read .rite-flow-state for full state details.
+Use `bash {plugin_root}/hooks/flow-state.sh get --field <field>` for full state details.
 EOF
 
 # --- Session ID notification (#173, #221) ---

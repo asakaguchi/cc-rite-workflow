@@ -27,7 +27,7 @@ CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
 # SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
-# Per-session state path resolution (Issue #681): _resolve-flow-state-path.sh
+# Per-session state path resolution (v3 SoT): flow-state.sh path
 # returns the per-session file (`<root>/.rite/sessions/<session_id>.flow-state`)
 # when schema_version=2 with a valid SID, or the legacy `.rite-flow-state` path
 # otherwise. The atomic write below (last_synced_phase update) targets whichever
@@ -39,9 +39,9 @@ else
   # Resolver failed (helper deploy regression / path validation rejection).
   # stderr was suppressed above to keep the hook silent in the common case;
   # surface the failure under RITE_DEBUG so deploy regressions are observable.
-  [ -n "${RITE_DEBUG:-}" ] && echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] post-tool-wm-sync: _resolve-flow-state-path.sh failed, falling back to legacy path" \
+  [ -n "${RITE_DEBUG:-}" ] && echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] post-tool-wm-sync: flow-state.sh path resolution failed, skipping wm sync" \
     >> "$STATE_ROOT/.rite-flow-debug.log" 2>/dev/null || true
-  FLOW_STATE="$STATE_ROOT/.rite-flow-state"
+  FLOW_STATE=""
 fi
 [ -f "$FLOW_STATE" ] || exit 0
 

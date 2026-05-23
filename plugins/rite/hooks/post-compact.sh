@@ -58,8 +58,8 @@ if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
   fi
 fi
 if [ "$_resolve_failed" -eq 1 ]; then
-  FLOW_STATE="$STATE_ROOT/.rite-flow-state"
-  echo "[rite] WARNING: flow-state path resolution failed, falling back to legacy ($FLOW_STATE)" >&2
+  FLOW_STATE=""
+  echo "[rite] WARNING: flow-state.sh path resolution failed — skip" >&2
 fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 LOCKDIR="$COMPACT_STATE.lockdir"

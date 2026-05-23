@@ -198,7 +198,7 @@ End processing.
 
 ### 2.1 Confirm with User (Standalone Path)
 
-> **Skip this confirmation when invoked from the main end-to-end flow path**: the orchestrator (`start.md` ステップ 8) has already confirmed the Ready transition with the user, so a second confirmation is duplicate (per [Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md) — fourth of the five self-questions: "Is this re-confirming an already-approved decision? → eliminate duplicates"). This sub-skill reads the flow state `.phase` and `.active`, and skips the confirmation when `.phase` matches one of the post-review / post-fix transition phases — either the legacy `phase5_post_review` / `phase5_post_fix` (written by `pr/review.md` / `pr/fix.md`) or the flat `review` / `fix` (written by `start.md` ステップ 7.1 / 7.2 before invoking the sub-skill) — AND `.active` is `true` (the AND condition closes the same-session interruption gap — see the next paragraph for details).
+> **Skip this confirmation when invoked from the main end-to-end flow path**: the orchestrator (`start.md` ステップ 8) has already confirmed the Ready transition with the user, so a second confirmation is duplicate (per [Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md) — fourth of the five self-questions: "Is this re-confirming an already-approved decision? → eliminate duplicates"). This sub-skill reads the flow state `.phase` and `.active`, and skips the confirmation when `.phase` matches one of the post-review / post-fix transition phases — either the legacy `phase5_post_review` / `phase5_post_fix` (no current writer — these values only persist as residue in pre-v3 state files; the whitelist still accepts them for resume-from-old-state compatibility) or the flat `review` / `fix` (current writers: `start.md` ステップ 7.1 / 7.2 before invoking the sub-skill, plus the sub-skills themselves — `pr/review.md` Phase 8.0 / `pr/fix.md` Phase 8.1) — AND `.active` is `true` (the AND condition closes the same-session interruption gap — see the next paragraph for details).
 >
 > **Side paths fall back fail-safe to the standalone path (legacy behavior)**: when this sub-skill is reached via any non-main path (e.g., via `/rite:resume`, a standalone re-invocation after an in-session e2e interruption, or an unexpected `.phase` value), or when the flow state is not active (`active=false`), the `else` branch sets `in_e2e_flow=false` and the confirmation is shown. Erring on the side of "silent confirm" rather than "silent skip" preserves UX safety. Same-session interruption + standalone re-invocation is also covered by the bash AND condition (`active = "true"`): `flow-state.sh` cross-session guard classifies the legacy file as `same` (`legacy.session_id == current_sid`), so the helper returns the legacy file's stored value rather than the default. The bash test `[ "$active" = "true" ]` then rejects the legacy file because its `active` field is `false` once the e2e flow stopped.
 >
@@ -235,9 +235,12 @@ fi
 # AND condition closes the same-session interruption + standalone re-invocation gap
 # left open by the cross-session guard alone (legacy file's `active=false` after
 # e2e stop is the rejecting condition).
-# Both legacy `phase5_*` names (written by sub-skills) and flat `review` / `fix`
-# (written by the orchestrator before sub-skill invocation) must be accepted —
-# the two coexist until sub-skill writes are migrated.
+# Both legacy `phase5_post_review` / `phase5_post_fix` (no current writer — only
+# residual in pre-v3 state files; accepted for resume-from-old-state compat) and
+# flat `review` / `fix` (written by the orchestrator `start.md` ステップ 7.1 / 7.2
+# before sub-skill invocation, and by the sub-skills `pr/review.md` Phase 8.0 /
+# `pr/fix.md` Phase 8.1) must be accepted — the legacy names are retained in the
+# whitelist solely for backward-compatible resume from pre-v3 state files.
 if { [ "$phase" = "phase5_post_review" ] || [ "$phase" = "phase5_post_fix" ] || [ "$phase" = "review" ] || [ "$phase" = "fix" ]; } && [ "$active" = "true" ]; then
   in_e2e_flow=true
 else

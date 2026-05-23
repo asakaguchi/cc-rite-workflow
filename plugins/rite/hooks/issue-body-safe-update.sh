@@ -34,41 +34,18 @@
 #   1: Argument error
 set -euo pipefail
 
-# Allow callers to override the emit script path for test injection. Without the
-# `:=` default-assign, the test harness cannot exercise the fallback path because
-# unconditional reassignment overwrites any exported override.
-_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-: "${_EMIT_SH:=$_SCRIPT_DIR/workflow-incident-emit.sh}"
-
-# Persistent body-update failures must not vanish — caller-side parsing of
-# `fetch_failure_reason=` is not guaranteed everywhere, so emit the canonical
-# sentinel that workflow-incident-detection.md greps for. In degraded deployments
-# (emit script missing / non-executable), inline the same canonical format so the
-# orchestrator still picks it up via stderr-captured-by-Bash-tool.
+# Persistent body-update failures must not vanish silently. The safety guards
+# (empty write / <50% shrinkage / gh edit failure / diff IO error) all exit 0 so
+# the caller's workflow continues, but the caller cannot detect a "guard tripped"
+# outcome from the exit code alone — so surface a plain WARNING to stderr here and
+# let the LLM surface it in the conversation context.
 #
-# Accepts the incident type as the first argument so the shrinkage / empty-write
-# safety guards can route through `body_shrinkage_guard_tripped` (distinct from
-# the umbrella `issue_body_fetch_failed`) — the orchestrator distinguishes safety
-# trips from API/IO failures via this type.
+# The first argument (a stable label distinguishing safety-guard trips from
+# API/IO failures) is kept in the WARNING text so triage can still tell a
+# `body_shrinkage_guard_tripped` apart from an `issue_body_fetch_failed`.
 _emit_body_update_incident() {
   local incident_type="$1" reason="$2" rc="$3" stderr_snippet="$4"
-  if [ -x "$_EMIT_SH" ]; then
-    bash "$_EMIT_SH" \
-      --type "$incident_type" \
-      --details "Issue #${ISSUE:-unknown} issue-body-safe-update.sh ${MODE:-unknown} failed: reason=$reason rc=$rc stderr=$stderr_snippet" \
-      --root-cause-hint "$reason" \
-      --pr-number 0 >&2 || echo "[rite] WARNING: issue-body-safe-update: workflow-incident-emit.sh exited non-zero (reason=$reason); incident may not be recorded" >&2
-  else
-    # Sanitize semicolons/control chars to keep the single-line sentinel parseable.
-    local _details="Issue #${ISSUE:-unknown} issue-body-safe-update.sh ${MODE:-unknown} failed reason=$reason rc=$rc stderr=$stderr_snippet (emit script absent at $_EMIT_SH)"
-    _details=$(printf '%s' "$_details" | tr -d '[:cntrl:]' | tr ';' ',')
-    local _hint
-    _hint=$(printf '%s' "$reason" | tr -d '[:cntrl:]' | tr ';' ',')
-    local _epoch
-    _epoch=$(date +%s 2>/dev/null) || _epoch=0
-    printf '[CONTEXT] WORKFLOW_INCIDENT=1; type=%s; details=%s; root_cause_hint=%s; iteration_id=0-%s\n' \
-      "$incident_type" "$_details" "$_hint" "$_epoch" >&2
-  fi
+  echo "WARNING: issue-body-safe-update: Issue #${ISSUE:-unknown} ${MODE:-unknown} ${incident_type} (reason=$reason rc=$rc stderr=$stderr_snippet)" >&2
 }
 
 # --- Argument parsing ---
@@ -187,7 +164,7 @@ case "$MODE" in
     fi
 
     # Empty / shrinkage safety guards exit 0 so the caller's workflow continues,
-    # but emit an incident sentinel directly here — caller cannot detect a "safety
+    # but surface a WARNING directly here — caller cannot detect a "safety
     # guard tripped" outcome from exit code alone, so a silent skip would erase
     # the audit trail for accidental body destruction.
     if [ ! -s "$TMPFILE_WRITE" ]; then

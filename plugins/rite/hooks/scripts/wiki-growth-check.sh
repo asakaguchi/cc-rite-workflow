@@ -14,7 +14,7 @@
 #              Phase X.X.W.2. This is the foundation that makes layer 3 a genuine
 #              regression signal rather than a symptom of fragile LLM orchestration.
 #   - layer 1: review.md / fix.md / close.md Phase X.X.W skip 不可化
-#   - layer 2: workflow-incident-emit.sh の wiki_ingest_skipped / wiki_ingest_failed sentinel
+#   - layer 2: review/fix/close が ingest skip/failure 時に stderr へ plain WARNING を出力
 #
 # Usage:
 #   wiki-growth-check.sh [--repo-root DIR] [--quiet] [--threshold N]

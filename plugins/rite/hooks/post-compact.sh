@@ -195,18 +195,18 @@ fi
 
 # --- PR Ready/Status mismatch reconciliation safety net ---
 # When workflow active + PR exists + PR is Ready (isDraft=false) + Status != In Review,
-# attempt reconciliation by re-invoking projects-status-update.sh. Emit an incident
-# sentinel on failure so a silent Status mismatch never persists past compaction.
+# attempt reconciliation by re-invoking projects-status-update.sh. On failure, print a
+# plain WARNING to stderr so a silent Status mismatch never persists past compaction.
 #
 # Stderr policy: every gh / jq / projects-status-update.sh invocation in this block
-# captures stderr to its own tempfile so the resulting incident can distinguish
+# captures stderr to its own tempfile so the resulting WARNING can distinguish
 # auth / rate-limit / network / permission / JSON-parse failures instead of
 # reporting a generic "command failed".
 if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
   PLUGIN_ROOT_PC="$(dirname "$SCRIPT_DIR")"
   # Sub-shell + pipefail + signal-specific trap pattern, paired with the
   # watchdog-status-mismatch hook. Capture the reconcile script's stderr so a
-  # gh API failure surfaces as an incident with root cause rather than a silent
+  # gh API failure surfaces as a WARNING with root cause rather than a silent
   # fall-through.
   (
     set -o pipefail
@@ -249,16 +249,12 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     gql_err=$(mktemp /tmp/rite-pc-gql-err-XXXXXX) || { gql_err=""; stderr_capture_disabled=1; }
     jq_err=$(mktemp /tmp/rite-pc-jq-err-XXXXXX) || { jq_err=""; stderr_capture_disabled=1; }
 
-    # Test STATE_ROOT existence up front and emit state_root_inaccessible
+    # Test STATE_ROOT existence up front and warn about state_root_inaccessible
     # directly. If we instead chained `cd ... 2>/dev/null && gh pr view ...`,
     # a cd failure would silently lose its stderr and the gh command would
-    # never run — leaving the incident misattributed to gh.
+    # never run — leaving the failure misattributed to gh.
     if [ ! -d "$STATE_ROOT" ]; then
-      bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
-        --type projects_status_in_review_missing \
-        --details "Issue #$ISSUE post-compact: STATE_ROOT inaccessible ($STATE_ROOT) — gh pr view skipped" \
-        --root-cause-hint "state_root_inaccessible" \
-        --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (state_root_inaccessible); incident may not be recorded — investigate emit.sh case allowlist drift" >&2
+      echo "[rite] WARNING: post-compact: Issue #$ISSUE — STATE_ROOT inaccessible ($STATE_ROOT); gh pr view skipped, PR Status reconciliation could not run (state_root_inaccessible)" >&2
       exit 0
     fi
 
@@ -279,16 +275,11 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       pr_view_err_oneline=$(head -c 200 "${pr_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
       pr_cd_err_oneline=$(head -c 200 "${_pr_cd_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
       if [ -n "$pr_cd_err_oneline" ]; then
-        bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
-          --type state_root_toctou_race \
-          --details "Issue #$ISSUE post-compact: cd STATE_ROOT failed inside gh pr view subshell (rc=$pr_rc, stderr=$pr_cd_err_oneline) — TOCTOU race between -d check and cd" \
-          --root-cause-hint "state_root_toctou_race" \
-          --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for state_root_toctou_race; incident may not be recorded" >&2
+        echo "[rite] WARNING: post-compact: Issue #$ISSUE — cd STATE_ROOT failed inside gh pr view subshell (rc=$pr_rc, stderr=$pr_cd_err_oneline); TOCTOU race between -d check and cd (state_root_toctou_race)" >&2
       else
         # PR が close/merge/delete された legitimate な終了状態 (gh CLI の
         # `Could not resolve to a PullRequest` CamelCase 連結 stderr) と
-        # auth/network/permission 失敗を区別する。前者は false positive のため、
-        # caller ステップ 8.5 で偽 Issue を auto-register する経路を防ぐ。
+        # auth/network/permission 失敗を区別して WARNING に出す。前者は false positive。
         if printf '%s' "$pr_view_err_oneline" | grep -qiE 'could not resolve.*pull\s*request|no.*pull\s*request found'; then
           pr_root_cause_hint="pr_deleted_or_inaccessible"
         else
@@ -296,11 +287,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
         fi
         stderr_flag=""
         [ "$stderr_capture_disabled" = "1" ] && stderr_flag=" stderr_capture=disabled"
-        bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
-          --type projects_status_in_review_missing \
-          --details "Issue #$ISSUE post-compact: gh pr view failed (rc=$pr_rc, stderr=$pr_view_err_oneline${stderr_flag})" \
-          --root-cause-hint "$pr_root_cause_hint" \
-          --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (gh_pr_view_failed); incident may not be recorded" >&2
+        echo "[rite] WARNING: post-compact: Issue #$ISSUE — gh pr view failed (rc=$pr_rc, stderr=$pr_view_err_oneline${stderr_flag}); PR Status reconciliation could not run ($pr_root_cause_hint)" >&2
       fi
       PR_IS_DRAFT=""
     fi
@@ -349,20 +336,16 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
         echo "[rite] WARNING: post-compact: awk parse of projects.project_number failed (rc=$awk_pn_rc, stderr=$awk_pn_oneline)" >&2
         awk_parse_failed=1
       fi
-      # awk 自体が失敗した場合は config 解析不能を incident emit する。後段の
+      # awk 自体が失敗した場合は config 解析不能を WARNING で surface する。後段の
       # PROJECTS_ENABLED check は false fallback で Projects skip するが、その判定根拠が
-      # 「config 解析失敗」だった事実を tracking Issue として可視化する。
+      # 「config 解析失敗」だった事実を operator に届ける。
       if [ "$awk_parse_failed" = "1" ]; then
-        bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
-          --type projects_status_in_review_missing \
-          --details "Issue #$ISSUE post-compact: rite-config.yml awk parse failed (pe_rc=$awk_pe_rc pn_rc=$awk_pn_rc) — Projects reconciliation skipped without verifying config" \
-          --root-cause-hint "post_compact_config_parse_failed" \
-          --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (config_parse_failed); incident may not be recorded" >&2
+        echo "[rite] WARNING: post-compact: Issue #$ISSUE — rite-config.yml awk parse failed (pe_rc=$awk_pe_rc pn_rc=$awk_pn_rc); Projects reconciliation skipped without verifying config (post_compact_config_parse_failed)" >&2
       fi
       rm -f "${awk_pe_err:-}" "${awk_pn_err:-}"
-      # Cascade emit guard: once we emit the upstream repo failure, downstream
+      # Cascade guard: once we warn about the upstream repo failure, downstream
       # graphql attempts would just produce a second (duplicated, less specific)
-      # incident. _owner_repo_ok=0 short-circuits them.
+      # warning. _owner_repo_ok=0 short-circuits them.
       _owner_repo_ok=1
       # Trip on either an empty REPO_INFO or null-valued owner/name fields.
       # The latter covers gh's auth-scope-degraded path where the call succeeds
@@ -376,21 +359,13 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
         [ -n "${jq_owner_err:-}" ] && [ -s "$jq_owner_err" ] && jq_owner_err_oneline=$(head -c 200 "$jq_owner_err" | tr '\n' ' ')
         [ -n "${jq_name_err:-}" ] && [ -s "$jq_name_err" ] && jq_name_err_oneline=$(head -c 200 "$jq_name_err" | tr '\n' ' ')
         if [ -z "$REPO_INFO" ]; then
-          bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
-            --type projects_status_in_review_missing \
-            --details "Issue #$ISSUE post-compact: gh repo view failed (rc=${repo_rc:-NA}, stderr=${repo_err_oneline:-NA})" \
-            --root-cause-hint "post_compact_gh_repo_view_failed" \
-            --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (gh_repo_view_failed); incident may not be recorded" >&2
+          echo "[rite] WARNING: post-compact: Issue #$ISSUE — gh repo view failed (rc=${repo_rc:-NA}, stderr=${repo_err_oneline:-NA}); PR Status reconciliation could not run (post_compact_gh_repo_view_failed)" >&2
         else
-          bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
-            --type projects_status_in_review_missing \
-            --details "Issue #$ISSUE post-compact: gh repo view returned null fields (owner=$REPO_OWNER name=$REPO_NAME jq_owner_stderr=$jq_owner_err_oneline jq_name_stderr=$jq_name_err_oneline)" \
-            --root-cause-hint "post_compact_gh_repo_view_returned_null" \
-            --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (gh_repo_view_returned_null); incident may not be recorded" >&2
+          echo "[rite] WARNING: post-compact: Issue #$ISSUE — gh repo view returned null fields (owner=$REPO_OWNER name=$REPO_NAME jq_owner_stderr=$jq_owner_err_oneline jq_name_stderr=$jq_name_err_oneline); PR Status reconciliation could not run (post_compact_gh_repo_view_returned_null)" >&2
         fi
         # Equivalent to `if _owner_repo_ok != "1"; then exit 0; fi`. Exit
         # directly so we cannot accidentally fall through into the graphql path
-        # below and double-emit a less specific incident.
+        # below and double-warn with a less specific message.
         exit 0
       fi
       if [ "$PROJECTS_ENABLED" = "true" ] && [ -n "$PROJECT_NUMBER" ] && [ -n "$REPO_OWNER" ] && [ -n "$REPO_NAME" ] && [ "$ISSUE" != "unknown" ]; then
@@ -421,18 +396,14 @@ query($owner: String!, $repo: String!, $number: Int!) {
           gql_rc=$?
           gql_err_oneline=$(head -c 200 "${gql_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
           jq_err_oneline=$(head -c 200 "${jq_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
-          bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
-            --type projects_status_in_review_missing \
-            --details "Issue #$ISSUE post-compact: gh api graphql failed (rc=$gql_rc, gh_stderr=$gql_err_oneline, jq_stderr=$jq_err_oneline)" \
-            --root-cause-hint "post_compact_gh_api_failed" \
-            --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (gh_api_failed); incident may not be recorded" >&2
+          echo "[rite] WARNING: post-compact: Issue #$ISSUE — gh api graphql failed (rc=$gql_rc, gh_stderr=$gql_err_oneline, jq_stderr=$jq_err_oneline); PR Status reconciliation could not run (post_compact_gh_api_failed)" >&2
           CURRENT_STATUS=""
         fi
 
         if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ]; then
           echo "[rite] ⚠️ post-compact mismatch detected: Issue #$ISSUE PR=#$PR isDraft=false Status=\"$CURRENT_STATUS\" (expected In Review)" >&2
           # STATE_ROOT existence is already enforced at the top of the sub-shell
-          # (early state_root_inaccessible emit + exit 0), so this reconciliation
+          # (early state_root_inaccessible WARNING + exit 0), so this reconciliation
           # block can call reconcile directly without re-checking.
           # jq -n payload を別変数で capture することで、command substitution 内の jq 失敗
           # (引数 unsubstituted / type mismatch 等) が空文字列として projects-status-update.sh
@@ -452,12 +423,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
             '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}' 2>"${reconcile_jq_err:-/dev/null}") || JQ_PAYLOAD_RC=$?
           if [ "$JQ_PAYLOAD_RC" -ne 0 ] || [ -z "$JQ_PAYLOAD" ]; then
             jq_err_oneline=$(head -c 200 "${reconcile_jq_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
-            echo "[rite] ❌ post-compact reconciliation jq payload build failed (rc=$JQ_PAYLOAD_RC, jq_stderr=$jq_err_oneline)" >&2
-            bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
-              --type projects_status_in_review_missing \
-              --details "Issue #$ISSUE post-compact: jq -n payload build failed (rc=$JQ_PAYLOAD_RC, stderr=$jq_err_oneline)" \
-              --root-cause-hint "post_compact_jq_payload_build_failed" \
-              --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (jq_payload_build_failed); incident may not be recorded" >&2
+            echo "[rite] ❌ post-compact reconciliation jq payload build failed (rc=$JQ_PAYLOAD_RC, jq_stderr=$jq_err_oneline, post_compact_jq_payload_build_failed)" >&2
           else
             RECONCILE_RESULT=$(cd "$STATE_ROOT" && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$JQ_PAYLOAD" 2>"${reconcile_err:-/dev/null}") || RECONCILE_RC=$?
             RECONCILE_STATUS=$(printf '%s' "$RECONCILE_RESULT" | jq -r '.result // empty' 2>"${reconcile_parse_err:-/dev/null}") || RECONCILE_STATUS=""
@@ -475,13 +441,8 @@ query($owner: String!, $repo: String!, $number: Int!) {
                 RECONCILE_STATUS="parse_failed"
               else
                 RECONCILE_STATUS="${RECONCILE_STATUS:-failed}"
-                echo "[rite] ❌ post-compact reconciliation failed (rc=$RECONCILE_RC result=$RECONCILE_STATUS)" >&2
+                echo "[rite] ❌ post-compact reconciliation failed (rc=$RECONCILE_RC result=$RECONCILE_STATUS, post_compact_reconciliation_failed)" >&2
               fi
-              bash "$PLUGIN_ROOT_PC/hooks/workflow-incident-emit.sh" \
-                --type projects_status_in_review_missing \
-                --details "Issue #$ISSUE post-compact reconciliation failed (PR=#$PR isDraft=false Status=$CURRENT_STATUS reconcile_result=$RECONCILE_STATUS reconcile_rc=$RECONCILE_RC stderr=$reconcile_err_oneline)" \
-                --root-cause-hint "post_compact_reconciliation_failed" \
-                --pr-number "$PR" >&2 || echo "[rite] WARNING: post-compact: workflow-incident-emit.sh exited non-zero for projects_status_in_review_missing (reconciliation_failed); incident may not be recorded" >&2
             fi
           fi
           [ -n "$reconcile_jq_err" ] && rm -f "$reconcile_jq_err"

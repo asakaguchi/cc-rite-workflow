@@ -30,14 +30,16 @@
 #   added reader).
 #
 # Caller responsibility:
-#   The caller decides what to do with each classification:
+#   The caller decides what to do with each classification (surfacing it as a
+#   plain WARNING on stderr — the workflow_incident emit mechanism was removed in
+#   PR 2b / #1088):
 #   - "same" / "empty" → adopt legacy as the resolved STATE_FILE
-#   - "foreign:<sid>" → emit cross_session_takeover_refused via workflow-incident-emit.sh
-#                       and route to per-session path (writer) or DEFAULT (reader)
-#   - "corrupt:<rc>" → emit legacy_state_corrupt via workflow-incident-emit.sh
-#                       and route to per-session path (writer) or DEFAULT (reader)
-#   - "invalid_uuid:<rc>" → emit legacy_state_corrupt with reason=invalid_uuid_format via
-#                       workflow-incident-emit.sh, distinct root_cause_hint for diagnosis
+#   - "foreign:<sid>" → cross-session takeover refused; route to per-session path
+#                       (writer) or DEFAULT (reader)
+#   - "corrupt:<rc>" → legacy state corrupt; route to per-session path (writer) or
+#                       DEFAULT (reader)
+#   - "invalid_uuid:<rc>" → legacy state corrupt (reason=invalid_uuid_format),
+#                       distinct classification for diagnosis
 #
 # Exit codes:
 #   0 — always (classification printed to stdout)
@@ -89,14 +91,13 @@ _jq_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
 # statement leaves `$?` at 0 once the condition is evaluated, so a post-`fi`
 # capture would always read 0 and collapse `corrupt:N` to `corrupt:0`. Capturing
 # in the `else` branch yields the actual jq exit code (4=parse error, 5=I/O,
-# etc.) that downstream consumers embed in the WORKFLOW_INCIDENT details.
+# etc.) that downstream consumers embed in the WARNING details.
 #
-# Stderr is intentionally kept clean here. Callers (state-read.sh /
-# flow-state-update.sh) historically combined stdout/stderr with `2>&1` to
-# capture diagnostics, but that merged any `jq:` parse-error text into the
-# `classification` string and broke the `case ... corrupt:*) ...` match,
-# silently routing to the defensive `*)` arm and suppressing the
-# `legacy_state_corrupt` sentinel. The current contract: callers use
+# Stderr is intentionally kept clean here. Callers historically combined
+# stdout/stderr with `2>&1` to capture diagnostics, but that merged any `jq:`
+# parse-error text into the `classification` string and broke the
+# `case ... corrupt:*) ...` match, silently routing to the defensive `*)` arm
+# and suppressing the legacy-state-corrupt WARNING. The current contract: callers use
 # `2>/dev/null` and observe the rc via `corrupt:N`; full jq stderr is captured
 # by each caller into its own tempfile (see `_jq_err` capture blocks in the
 # caller hooks). Drift history is in references/state-read-evolution.md.
@@ -108,9 +109,8 @@ if legacy_sid=$(jq -r '.session_id // empty' "$LEGACY_PATH" 2>"${_jq_err:-/dev/n
   else
     # Validate legacy_sid as UUID via `_resolve-session-id.sh`: the value is
     # read from an untrusted file (newline / shell metachar / huge payload all
-    # possible). Downstream workflow-incident-emit.sh sanitizes its own input,
-    # but this helper's API contract promises `foreign:<UUID>` and we enforce
-    # it here as defense-in-depth.
+    # possible). This helper's API contract promises `foreign:<UUID>`, so we
+    # enforce UUID validity here as defense-in-depth before the consumer surfaces it.
     #
     # Helper-existence check distinguishes deploy mishaps (rc=127 missing /
     # rc=126 non-executable) from real UUID validation failure (rc=1) so they
@@ -120,9 +120,9 @@ if legacy_sid=$(jq -r '.session_id // empty' "$LEGACY_PATH" 2>"${_jq_err:-/dev/n
     _resolve_sid_helper="$(dirname "${BASH_SOURCE[0]}")/_resolve-session-id.sh"
     if [ ! -x "$_resolve_sid_helper" ]; then
       # deploy 不整合: helper 自体が存在しない / 非実行可能。invalid_uuid:1 に collapse させずに
-      # corrupt:126 で emit して root cause 診断時の区別を可能にする (caller 側の
-      # case "$classification" in corrupt:*) は既存経路と同じ動線で legacy_state_corrupt sentinel
-      # を emit する)。
+      # corrupt:126 を返して root cause 診断時の区別を可能にする (caller 側の
+      # case "$classification" in corrupt:*) は既存経路と同じ動線で legacy-state-corrupt
+      # WARNING を surface する)。
       printf 'corrupt:126'
       exit 0
     fi
@@ -132,7 +132,7 @@ if legacy_sid=$(jq -r '.session_id // empty' "$LEGACY_PATH" 2>"${_jq_err:-/dev/n
       # legacy session_id is not a valid UUID (corrupt / tampered / legacy schema).
       # verified-review cycle 36 fix (F-16 LOW security): use `invalid_uuid:` prefix
       # instead of `corrupt:1` to avoid numeric collision with jq exit code 1
-      # ("any other error"). Operators reading WORKFLOW_INCIDENT details can now
+      # ("any other error"). Operators reading the WARNING details can now
       # distinguish "UUID validation failure" (this branch) from "jq general error"
       # (jq_rc=1 in the else branch below). Caller-side classification cases
       # (state-read.sh / flow-state-update.sh) are updated to handle `invalid_uuid:*`.

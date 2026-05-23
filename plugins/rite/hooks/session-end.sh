@@ -183,7 +183,7 @@ WARN_MSG
     # trap is inside this block: only active when STATE_FILE exists and TMP_FILE is created
     trap 'rm -f "$TMP_FILE" 2>/dev/null' EXIT TERM INT
     # SessionEnd stderr は次セッションの会話 context に流入しない経路があるため、jq / mv 失敗を
-    # workflow-incident-emit に乗せても orchestrator から grep されない。代替として diag log に
+    # stderr に出しても次セッションの orchestrator からは grep されない。代替として diag log に
     # 持続化することで、次回 session-start の defensive reset が cause を surface できる。
     _deact_jq_err=$(mktemp 2>/dev/null) || _deact_jq_err=""
     if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \

@@ -882,20 +882,19 @@ fi
 surface_git_warnings "commit"
 committed_sha=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 
-# Push is best-effort vs incident-observable:
+# Push is best-effort vs caller-observable:
 # Push failure MUST be observable by the
-# incident layer. Previous design exited 0 on push failure with only a stdout
+# caller. Previous design exited 0 on push failure with only a stdout
 # `push=failed` marker, which the callers (review.md / fix.md / close.md Phase
 # X.X.W.2) did not parse — so flaky remote / auth expiry / rate limit drove
 # all push failures through the success branch and silently emitted
-# WIKI_INGEST_DONE=1 without any wiki_ingest_push_failed sentinel.
+# WIKI_INGEST_DONE=1 without surfacing a push-failure warning.
 #
 # Fix: exit 4 on push failure so the caller's bash `if commit_out=$(...)`
-# takes the failure branch and emits a dedicated `wiki_ingest_push_failed`
-# sentinel via workflow-incident-emit.sh. The commit itself has already
-# landed on the local wiki branch, so the stdout status line still reports
-# `committed=N; head=<sha>; push=failed` — callers classify exit 4 as
-# "commit landed but push needs retry" rather than a full rollback.
+# takes the failure branch and surfaces a plain WARNING to stderr. The commit
+# itself has already landed on the local wiki branch, so the stdout status line
+# still reports `committed=N; head=<sha>; push=failed` — callers classify exit 4
+# as "commit landed but push needs retry" rather than a full rollback.
 #
 # Use --quiet to suppress progress updates (they go to stderr) so only
 # real errors appear in git_err.

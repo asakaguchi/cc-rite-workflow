@@ -24,13 +24,12 @@
 #       rc=0 + stdout contains `add '...negation-probe'`. The probe is cleaned
 #       up regardless of outcome via the signal-specific trap below.
 #
-# On drift, emit a `gitignore_drift` workflow incident sentinel on stdout so
-# ステップ 8.5 in start.md can auto-register a tracking Issue.
+# On drift, print a plain WARNING to stderr (exit 1) so the LLM surfaces the
+# `.rite/wiki/` rule regression in the conversation context.
 #
 # Issue #567 — `.gitignore` silent-leak regression guard.
 # Companion to:
 #   - PR #564: added `.rite/wiki/` to `.gitignore` as last-line-of-defense
-#   - plugins/rite/hooks/workflow-incident-emit.sh: sentinel formatter
 #   - plugins/rite/commands/lint.md Phase 3.9: invocation site
 #
 # Usage:
@@ -51,19 +50,9 @@
 #
 # Output:
 #   Always prints `==> Total gitignore-health-check findings: N` on stdout.
-#   On drift (exit 1), additionally prints a `[CONTEXT] WORKFLOW_INCIDENT=1;
-#   type=gitignore_drift; ...` sentinel line via workflow-incident-emit.sh.
+#   On drift (exit 1), additionally prints a plain `WARNING: ...` line to stderr.
 #
 set -uo pipefail
-
-# Resolve script directory early using POSIX-portable idiom.
-# `readlink -f` is a GNU extension unsupported by macOS BSD readlink — using it
-# would silently fall back to an empty string when coreutils is absent, and the
-# sentinel emit site (`$_SCRIPT_DIR/../workflow-incident-emit.sh`) would resolve
-# to a relative path under CWD (cd'd to REPO_ROOT later), breaking drift
-# detection silently. Peer scripts (wiki-ingest-commit.sh / wiki-worktree-*.sh)
-# all use this same `cd -P "$(dirname "${BASH_SOURCE[0]}")"` pattern.
-_SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Signal-specific trap (canonical pattern from references/bash-trap-patterns.md):
 # - EXIT preserves original exit code via `rc=$?`
@@ -305,35 +294,12 @@ case "$branch_strategy" in
     ;;
 esac
 
-# --- Emit sentinel on drift ---
+# --- Warn on drift ---
+# Drift detail was already printed to stderr above (the DRIFT DETECTED block per
+# strategy). Surface a final plain WARNING so a silently-broken .gitignore rule
+# does not go unnoticed. LLM surfaces this in the conversation context.
 if [ "$findings" -gt 0 ]; then
-  # Delegate sentinel formatting to workflow-incident-emit.sh. `$_SCRIPT_DIR`
-  # was resolved at the top of this script using the POSIX-portable
-  # `cd -P "$(dirname "${BASH_SOURCE[0]}")"` idiom (macOS BSD-compatible).
-  emit_script="$_SCRIPT_DIR/../workflow-incident-emit.sh"
-  if [ -f "$emit_script" ]; then
-    # Emit to stdout so the sentinel reaches the orchestrator's conversation context.
-    # Non-blocking contract: emit failure must not halt lint, but surface a WARNING
-    # so a silently-broken emit script doesn't go unnoticed ("script not found" is
-    # handled in a separate arm; this covers "ran but exited non-zero").
-    bash "$emit_script" \
-      --type gitignore_drift \
-      --details "gitignore health check: .rite/wiki/ rule drift detected (strategy=$branch_strategy)" \
-      --root-cause-hint "PR may have removed .rite/wiki/ exclusion or negation from .gitignore" \
-      --pr-number 0 || echo "WARNING: gitignore-health-check: workflow-incident-emit.sh exited non-zero for gitignore_drift; incident may not be recorded" >&2
-  else
-    # Inline the canonical sentinel so degraded deployments (partial install,
-    # chmod -x) still surface drift to the orchestrator's grep — otherwise the
-    # detection becomes silent the moment the emit script isn't reachable.
-    _gd_details="gitignore health check: .rite/wiki/ rule drift detected (strategy=$branch_strategy; emit script absent at $emit_script)"
-    _gd_details=$(printf '%s' "$_gd_details" | tr -d '[:cntrl:]' | tr ';' ',')
-    _gd_hint="PR may have removed .rite/wiki/ exclusion or negation from .gitignore"
-    _gd_hint=$(printf '%s' "$_gd_hint" | tr -d '[:cntrl:]' | tr ';' ',')
-    _gd_epoch=$(date +%s 2>/dev/null) || _gd_epoch=0
-    printf '[CONTEXT] WORKFLOW_INCIDENT=1; type=gitignore_drift; details=%s; root_cause_hint=%s; iteration_id=0-%s\n' \
-      "$_gd_details" "$_gd_hint" "$_gd_epoch"
-    echo "WARNING: gitignore-health-check: workflow-incident-emit.sh not found at $emit_script — emitted canonical sentinel inline" >&2
-  fi
+  echo "WARNING: gitignore-health-check: .rite/wiki/ rule drift detected (strategy=$branch_strategy) — PR may have removed the .rite/wiki/ exclusion or negation from .gitignore" >&2
   echo "==> Total gitignore-health-check findings: $findings"
   exit 1
 fi

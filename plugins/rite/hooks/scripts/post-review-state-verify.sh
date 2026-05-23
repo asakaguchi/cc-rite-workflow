@@ -191,26 +191,6 @@ if [ "$drift_type" = "branch_list" ]; then
   echo "  manual action: review 'git branch --list' for unexpected names matching reviewer experiment patterns" >&2
 fi
 
-# --- Workflow incident emit (best-effort, non-blocking) ---
-# state-changing emit は scope を absorb する設計のため failure は warning のみ
-incident_script=""
-for candidate in \
-  "$(dirname "$(dirname "${BASH_SOURCE[0]}")")/workflow-incident-emit.sh" \
-  "$(dirname "${BASH_SOURCE[0]}")/workflow-incident-emit.sh"; do
-  if [ -f "$candidate" ]; then
-    incident_script="$candidate"
-    break
-  fi
-done
-
-if [ -n "$incident_script" ]; then
-  bash "$incident_script" \
-    --type manual_fallback_adopted \
-    --details "Reviewer subagent caused $drift_type drift ($drift_detail); recovered=$recovered" \
-    --root-cause-hint "pre-tool-bash-guard Pattern 4 did not block — check transcript_path subagent detection or hook registration" \
-    2>/dev/null || echo "WARNING: workflow-incident-emit.sh failed (non-blocking)" >&2
-fi
-
 # --- JSON summary ---
 # `drift_detail` / `drift_type` は他 hook script 由来の長文メッセージを内包する可能性があるため、
 # printf で JSON value に直接埋め込むのではなく jq で escape する (Issue #999 LOW follow-up)。

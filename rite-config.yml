@@ -161,12 +161,6 @@ investigate:
 flow_state:
   schema_version: 2
 
-# ワークフロー incident 自動登録
-# Skill ロード失敗 / hook 異常終了 / 手動 fallback 採用などの blocker を検出して Issue 化する。
-# 詳細: docs/SPEC.md
-workflow_incident:
-  enabled: true              # incident 検出機構を有効化
-
 # Wiki（経験則永続化レイヤ）
 # 仕様詳細: docs/designs/experience-heuristics-persistence-layer.md
 wiki:

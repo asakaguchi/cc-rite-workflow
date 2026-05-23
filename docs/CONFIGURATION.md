@@ -205,12 +205,6 @@ safety:
   auto_stop_on_repeated_failure: true   # stop when same failure class repeats (default: true)
   repeated_failure_threshold: 3         # consecutive same-class failure count to trigger stop (default: 3)
 
-# Workflow incident auto-registration (#366)
-# Detects workflow blockers (Skill load failure, hook abnormal exit, manual fallback adoption)
-# and auto-registers them as Issues to prevent silent loss.
-workflow_incident:
-  enabled: true              # Enable incident detection mechanism (default: true, opt-out)
-
 # Experience Wiki (opt-out, see wiki section below for full description)
 wiki:
   enabled: true                        # Enable Wiki features (default: true, opt-out)
@@ -788,22 +782,6 @@ Settings for PR review **output** recording. This section is intentionally separ
 | `post_comment` | boolean | `false` | When `true`, review results are posted as PR comments (equivalent to `--post-comment`). When `false` (default), results are saved to `.rite/review-results/{pr_number}-{timestamp}.json` only |
 
 `/rite:pr:fix` automatically reads review results in the priority order: **conversation > local file > PR comment**. Most users should leave `post_comment: false` to keep PR comment history clean. Enable it only if you want an auditable review trail on the PR itself. See #443 for rationale.
-
-### workflow_incident
-
-Settings for workflow incident auto-registration. When a workflow blocker is detected (Skill load failure, hook abnormal exit, or user adoption of a manual fallback), the orchestrator emits a sentinel via `plugins/rite/hooks/workflow-incident-emit.sh`. Detected incidents are auto-registered as Issues to prevent silent loss of actionable platform defects.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | boolean | `true` | Enable the incident detection mechanism. Set `false` to opt out entirely |
-
-**Non-blocking and dedupe behavior** (not configurable):
-
-- Registration failure (network error, API error) never halts the workflow — the incident is retained in a context-local list and reported in the Phase 5.6 completion report.
-- Within a single session, the same incident `type` is prompted only once (subsequent occurrences are suppressed to avoid `AskUserQuestion` spam).
-- When absent from `rite-config.yml`, the section is treated as `enabled: true` (opt-out). Only the literal value `false` opts out.
-
-See `docs/SPEC.md` "Workflow Incident Detection" (#366) for the full specification.
 
 ### wiki
 

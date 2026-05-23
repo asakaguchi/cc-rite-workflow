@@ -328,15 +328,6 @@ INIT_EOF
     echo "[rite] WARNING: issue-comment-wm-sync: gh issue comment 作成失敗 (rc=$_init_rc)" >&2
     [ -n "$_init_err" ] && [ -s "$_init_err" ] && head -3 "$_init_err" | sed 's/^/  /' >&2
     [ -n "$_init_err" ] && rm -f "$_init_err"
-    # workflow-incident-emit で canonical な incident 経路に乗せる (allowlist に既存の type を使用)。
-    _EMIT_SH="$SCRIPT_DIR/workflow-incident-emit.sh"
-    if [ -x "$_EMIT_SH" ]; then
-      bash "$_EMIT_SH" \
-        --type issue_body_fetch_failed \
-        --details "issue-comment-wm-sync init: gh issue comment 失敗 (Issue=$ISSUE, rc=$_init_rc)" \
-        --root-cause-hint "gh_issue_comment_init_failed" \
-        --pr-number 0 >&2 || true
-    fi
     exit 0
   fi
   [ -n "$_init_err" ] && rm -f "$_init_err"

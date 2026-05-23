@@ -134,7 +134,7 @@ sbx=$(setup_validate_sandbox); cleanup_dirs+=("$sbx")
 out=$(bash "$HELPER" "$sbx" \
   state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
   _resolve-cross-session-guard.sh \
-  _emit-cross-session-incident.sh _mktemp-stderr-guard.sh 2>&1) && rc=0 || rc=$?
+  _mktemp-stderr-guard.sh 2>&1) && rc=0 || rc=$?
 assert_eq "TC-3.1: exit code is 0" "0" "$rc"
 assert_eq "TC-3.2: stdout/stderr is silent" "" "$out"
 
@@ -146,7 +146,7 @@ chmod -x "$sbx/_mktemp-stderr-guard.sh"
 out=$(bash "$HELPER" "$sbx" \
   state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
   _resolve-cross-session-guard.sh \
-  _emit-cross-session-incident.sh _mktemp-stderr-guard.sh 2>&1) && rc=0 || rc=$?
+  _mktemp-stderr-guard.sh 2>&1) && rc=0 || rc=$?
 assert_eq "TC-4.1: exit code is 1" "1" "$rc"
 assert_match "TC-4.2: ERROR mentions missing helper basename" "_mktemp-stderr-guard.sh" "$out"
 assert_match "TC-4.3: ERROR mentions 'not found or not executable'" "not found or not executable" "$out"
@@ -163,11 +163,11 @@ echo "TC-6 (legacy API): 複数 helper missing で最初の missing で fail-fas
 # ================================================================
 sbx=$(setup_validate_sandbox); cleanup_dirs+=("$sbx")
 chmod -x "$sbx/_resolve-session-id.sh"
-chmod -x "$sbx/_emit-cross-session-incident.sh"
+chmod -x "$sbx/_mktemp-stderr-guard.sh"
 out=$(bash "$HELPER" "$sbx" \
   state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
   _resolve-cross-session-guard.sh \
-  _emit-cross-session-incident.sh _mktemp-stderr-guard.sh 2>&1) && rc=0 || rc=$?
+  _mktemp-stderr-guard.sh 2>&1) && rc=0 || rc=$?
 assert_eq "TC-6.1: exit code is 1" "1" "$rc"
 assert_match "TC-6.2: ERROR mentions FIRST missing helper (順序保証)" "_resolve-session-id.sh" "$out"
 # 後続 helper は loop が早期 exit するため検査されない (deterministic order)

@@ -123,7 +123,7 @@ case "$bang_rc" in
 esac
 ```
 
-> **On exit 1 from this bash block**: The bash block exits before any `pr/ready.md` result pattern (`[ready:completed]` / `[ready:error]`) is emitted, so the orchestrator (`/rite:issue:start` ステップ 8) treats this as a missing-result-pattern Skill invocation — the post-condition check at start.md emits a `skill_load_failure` sentinel via ステップ 8.5 (Workflow Incident Detection) — **NOT** a `[ready:error]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a separate stderr-only diagnostic in a different format than the canonical `[CONTEXT] WORKFLOW_INCIDENT=1; type=...; iteration_id=...` token used by ステップ 8.5 grep, so it does NOT auto-register; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no sentinel is emitted at all (the failure is expected and the user fixes the code).
+> **On exit 1 from this bash block**: The bash block exits before any `pr/ready.md` result pattern (`[ready:completed]` / `[ready:error]`) is emitted, so the orchestrator (`/rite:issue:start` ステップ 8) treats this as a missing-result-pattern Skill invocation — start.md の default 経路は `WARNING` を stderr に出力し、AskUserQuestion で「再試行 / 強制続行 / 中止」を提示する — **NOT** a `[ready:error]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
 
 ### 1.1 Check Arguments
 
@@ -304,7 +304,7 @@ Proceed to the next phase.
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "ready_error" \
   --active true \
-  --next "rite:pr:ready failed during Ready transition. Ask user: retry / skip to ステップ 8.6 (完了レポート) / terminate." \
+  --next "rite:pr:ready failed during Ready transition. Ask user: retry / skip to ステップ 8.5 (完了レポート) / terminate." \
   --if-exists
 ```
 
@@ -431,15 +431,15 @@ bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
 
 Inspect the script's stdout JSON and route by `.result`:
 
-| `.result` | User-visible action | Workflow incident emit |
+| `.result` | User-visible action | 失敗時の surface |
 |-----------|--------------------|------------------------|
 | `"updated"` | Display `Projects Status を "In Review" に更新しました` and proceed to Phase 4.6 | — (success path) |
-| `"skipped_not_in_project"` | Display `警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします` and proceed to Phase 4.6 | **MUST emit** `projects_status_update_failed` sentinel via `workflow-incident-emit.sh` (silent skip 禁止 — Issue #1003 AC-4) |
-| `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "In Review" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "In Review" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <in_review_option_id> を実行してください。` and proceed to Phase 4.6 | **MUST emit** `projects_status_update_failed` sentinel via `workflow-incident-emit.sh` (silent skip 禁止 — Issue #1003 AC-4) |
+| `"skipped_not_in_project"` | Display `警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします` and proceed to Phase 4.6 | **MUST** `WARNING` を stderr に出力 (silent skip 禁止 — Issue #1003 AC-4) |
+| `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "In Review" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "In Review" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <in_review_option_id> を実行してください。` and proceed to Phase 4.6 | **MUST** `WARNING` を stderr に出力 (silent skip 禁止 — Issue #1003 AC-4) |
 
 **All result branches are non-blocking** — the ready-for-review transition is already complete (Phase 3 `gh pr ready` succeeded); a Status update issue MUST NOT abort the workflow.
 
-> **Incident emit MUST (Issue #1003 AC-4)**: 旧仕様では `skipped_not_in_project` / `failed` の両経路で **silent skip** していたため、observation log がどこにも残らず、user が手動確認するまで Status が `In Progress` に滞留する事象 (Issue #1003) が発生していた。本契約により、両経路は必ず `workflow-incident-emit.sh --type projects_status_update_failed` で sentinel を emit し、caller (`start.md` ステップ 8.5) の grep 検出経路で Issue として auto-register される。incident emit 自体は `|| true` で non-blocking とし、emit 失敗は workflow を halt させない (#366 contract に準拠)。
+> **失敗 surface MUST (Issue #1003 AC-4)**: 旧仕様では `skipped_not_in_project` / `failed` の両経路で **silent skip** していたため、observation log がどこにも残らず、user が手動確認するまで Status が `In Progress` に滞留する事象 (Issue #1003) が発生していた。本契約により、両経路は必ず `WARNING` を stderr に出力する。Status 更新失敗はブロッキングではなく、ユーザーが stderr を見て手動回復 (`/rite:resume` または手動 `gh project item-edit`) する。
 
 > **Bash 実装 minimal skeleton (delegate-only 経路の標準形)**:
 >
@@ -452,25 +452,14 @@ Inspect the script's stdout JSON and route by `.result`:
 >     echo "Projects Status を \"In Review\" に更新しました" ;;
 >   skipped_not_in_project)
 >     echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします" >&2
->     # Issue #1003 AC-4: silent skip 禁止 — workflow_incident sentinel を emit
->     bash {plugin_root}/hooks/workflow-incident-emit.sh \
->       --type projects_status_update_failed \
->       --details "Issue #{issue_number} skipped_not_in_project at ready.md Phase 4.2 (In Review transition)" \
->       --root-cause-hint "issue_not_registered_in_project_at_ready_time" \
->       --pr-number {pr_number} >&2 || true ;;
+>     # Issue #1003 AC-4: silent skip 禁止 — WARNING を stderr に出力 (上の echo がそれを満たす) ;;
 >   failed|*)
 >     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
->     echo "警告: Projects Status の \"In Review\" への更新に失敗しました。手動回復: gh project item-edit ..." >&2
->     # Issue #1003 AC-4: silent skip 禁止 — workflow_incident sentinel を emit
->     bash {plugin_root}/hooks/workflow-incident-emit.sh \
->       --type projects_status_update_failed \
->       --details "Issue #{issue_number} projects-status-update.sh failed at ready.md Phase 4.2 (In Review transition)" \
->       --root-cause-hint "gh_api_or_graphql_failure_at_ready_time" \
->       --pr-number {pr_number} >&2 || true ;;
+>     echo "警告: Projects Status の \"In Review\" への更新に失敗しました。手動回復: gh project item-edit ..." >&2 ;;
 > esac
 > ```
 >
-> 上記が delegate-only 経路 (close + summary 不要) の標準パターン。`.warnings[]` の stderr surface 実装を忘れると AC-2 (失敗時 warning surface) が LLM 実行揺らぎで silent skip するため必ず含めること。**Issue #1003 AC-4**: `skipped_not_in_project` / `failed` の両経路で `workflow-incident-emit.sh` 呼び出しを **MUST** 含めること。emit 自体は `|| true` で non-blocking。
+> 上記が delegate-only 経路 (close + summary 不要) の標準パターン。`.warnings[]` の stderr surface 実装を忘れると AC-2 (失敗時 warning surface) が LLM 実行揺らぎで silent skip するため必ず含めること。**Issue #1003 AC-4**: `skipped_not_in_project` / `failed` の両経路で `WARNING` を stderr に出力することを **MUST** とする (silent skip 禁止)。Status 更新失敗は non-blocking。
 >
 > **完全形 (state machine + signal-specific trap + tempfile + Step 3 inconsistency summary)** が必要な場合 (parent Issue close と Status update の片方失敗を可視化する unified block) は `commands/issue/close.md` Phase 4.6.3 を参照すること。
 
@@ -486,13 +475,13 @@ Before outputting the result pattern (`[ready:completed]`) or skipping output, u
 
 | Result | Phase | Phase Detail | Next Action |
 |--------|-------|-------------|-------------|
-| `[ready:completed]` | `ready` | `Ready処理完了` | `rite:pr:ready completed. Proceed to start.md ステップ 8.3 (Projects Status In Review), then ステップ 8.4 (parent close check), then ステップ 8.6 (completion report). Do NOT stop.` |
+| `[ready:completed]` | `ready` | `Ready処理完了` | `rite:pr:ready completed. Proceed to start.md ステップ 8.3 (Projects Status In Review), then ステップ 8.4 (parent close check), then ステップ 8.5 (completion report). Do NOT stop.` |
 
 ```bash
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "ready" \
   --active true \
-  --next "rite:pr:ready completed. Proceed to start.md ステップ 8.3 (Projects Status In Review), then ステップ 8.4 (parent close check), then ステップ 8.6 (completion report). Do NOT stop." \
+  --next "rite:pr:ready completed. Proceed to start.md ステップ 8.3 (Projects Status In Review), then ステップ 8.4 (parent close check), then ステップ 8.5 (completion report). Do NOT stop." \
   --if-exists
 ```
 
@@ -504,7 +493,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 WM_SOURCE="ready" \
   WM_PHASE="ready" \
   WM_PHASE_DETAIL="Ready処理完了" \
-  WM_NEXT_ACTION="start.md ステップ 8.3 Status 更新 → 8.4 親 Issue 完結判定 → 8.6 完了レポートを実行" \
+  WM_NEXT_ACTION="start.md ステップ 8.3 Status 更新 → 8.4 親 Issue 完結判定 → 8.5 完了レポートを実行" \
   WM_BODY_TEXT="Post-ready phase sync." \
   WM_REQUIRE_FLOW_STATE="true" \
   WM_READ_FROM_FLOW_STATE="true" \
@@ -524,8 +513,8 @@ Determine the caller from the conversation context:
 
 | Condition | Result | Action |
 |------|---------|---------------------|
-| Called via Skill chain from `/rite:issue:start` | Within end-to-end flow | **Skip completion report** — return control to `start.md` (ステップ 8.6 handles the report) |
-| Called from `/rite:pr:review` | Within end-to-end flow | **Skip completion report** — return control to `start.md` (ステップ 8.6 handles the report) |
+| Called via Skill chain from `/rite:issue:start` | Within end-to-end flow | **Skip completion report** — return control to `start.md` (ステップ 8.5 handles the report) |
+| Called from `/rite:pr:review` | Within end-to-end flow | **Skip completion report** — return control to `start.md` (ステップ 8.5 handles the report) |
 | `/rite:pr:ready` executed standalone | Standalone complete | Output Phase 5.1.2 format |
 
 **Detection method:**
@@ -540,7 +529,7 @@ Check the conversation history and determine "within end-to-end flow" if any of 
 
 #### 5.1.1 End-to-End Flow (Skip Completion Report, Output Signal)
 
-When called within the end-to-end flow (detected in Phase 5.0), **do NOT output any completion report**. The completion report is the responsibility of `start.md` ステップ 8.6 — outputting it here causes duplicate reports.
+When called within the end-to-end flow (detected in Phase 5.0), **do NOT output any completion report**. The completion report is the responsibility of `start.md` ステップ 8.5 — outputting it here causes duplicate reports.
 
 **Instead, output the following machine-readable signal** to indicate successful completion to the caller:
 
@@ -548,7 +537,7 @@ When called within the end-to-end flow (detected in Phase 5.0), **do NOT output 
 [ready:completed]
 ```
 
-This pattern is **mandatory** in e2e flow. It allows `start.md` ステップ 8 to detect that `rite:pr:ready` has completed successfully and immediately proceed to ステップ 8.3 (Status update), 8.4 (parent close check), and 8.6 (completion report). Without this signal, the caller may incorrectly interpret the lack of output as task completion and stop before ステップ 8.6.
+This pattern is **mandatory** in e2e flow. It allows `start.md` ステップ 8 to detect that `rite:pr:ready` has completed successfully and immediately proceed to ステップ 8.3 (Status update), 8.4 (parent close check), and 8.5 (completion report). Without this signal, the caller may incorrectly interpret the lack of output as task completion and stop before ステップ 8.5.
 
 No template loading, no inline format, no completion table — only the `[ready:completed]` pattern.
 

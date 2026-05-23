@@ -230,8 +230,8 @@ update_local_work_memory() {
   # まず backslash を `\\` に escape してから `"` → `\"` の順で sed を実行する
   # (順序逆転すると新たに作った escape sequence の `\` が更に escape されてしまう)。
   # tr -d '[:cntrl:]' に拡張し、tab / BEL (0x07) / DEL (0x7F) 等の他制御文字も strip する。
-  # workflow-incident-emit.sh / _emit-cross-session-incident.sh / _resolve-session-id-from-file.sh の
-  # superset cntrl char strip 規範と対称化 (tab / BEL を含む caller-supplied 値が frontmatter の
+  # _resolve-session-id-from-file.sh の superset cntrl char strip 規範と対称化
+  # (tab / BEL を含む caller-supplied 値が frontmatter の
   # double-quoted string に literal で混入する経路を遮断する)。
   _sanitize_yaml_value() {
     printf '%s' "$1" | tr -d '[:cntrl:]' | sed 's/\\/\\\\/g; s/"/\\"/g'

@@ -105,7 +105,7 @@ if [ ! -f "$LOCAL_WM" ]; then
 
   # update_local_work_memory rc: 0=success, 1=skip (no issue / flow-state未解決), 2=write failure。
   # work-memory-update.sh は rc=2 を lock contention / mkdir / mktemp / mv / state-read helper
-  # 5 経路で共有する設計のため、WARNING + incident details に actual stderr 参照を含める
+  # 5 経路で共有する設計のため、WARNING に actual stderr 参照を含める
   # (rc=2 単独で原因を断定すると operator triage が誤誘導される)。
   if update_local_work_memory; then
     log_debug "local WM created successfully"
@@ -116,15 +116,7 @@ if [ ! -f "$LOCAL_WM" ]; then
         log_debug "update_local_work_memory skipped (rc=1)"
         ;;
       2)
-        echo "[rite] WARNING: post-tool-wm-sync: local WM 作成失敗 (rc=2: lock 競合 / mkdir / mktemp / mv / state-read のいずれか — 直前の work-memory-update.sh stderr を参照)。次の sync で再試行されます。" >&2
-        _EMIT_SH="$SCRIPT_DIR/workflow-incident-emit.sh"
-        if [ -x "$_EMIT_SH" ]; then
-          bash "$_EMIT_SH" \
-            --type local_wm_update_lock_failed \
-            --details "post-tool-wm-sync auto-create failed (rc=2: lock / mkdir / mktemp / mv / state-read — see prior stderr)" \
-            --root-cause-hint "wm_write_failure_unspecified" \
-            --pr-number 0 >&2 || echo "[rite] WARNING: post-tool-wm-sync: workflow-incident-emit.sh exited non-zero for local_wm_update_lock_failed; incident may not be recorded" >&2
-        fi
+        echo "[rite] WARNING: post-tool-wm-sync: local WM 作成失敗 (rc=2: lock 競合 / mkdir / mktemp / mv / state-read のいずれか — 直前の work-memory-update.sh stderr を参照; wm_write_failure_unspecified)。次の sync で再試行されます。" >&2
         ;;
       *)
         echo "[rite] WARNING: post-tool-wm-sync: local WM 作成が rc=$_wm_rc で失敗 (unexpected — work-memory-update.sh 仕様外の rc)。" >&2

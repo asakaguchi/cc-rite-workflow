@@ -16,7 +16,6 @@ Referenced from:
 - `commands/issue/create.md` ステップ 4.3 (Single Issue creation)
 - `commands/issue/create.md` ステップ 5.3 (parent Issue creation in XL decomposition)
 - `commands/issue/create.md` ステップ 5.4 (Sub-Issue bulk creation in XL decomposition)
-- `commands/issue/start.md` ステップ 8.5 (Workflow Incident Detection の auto-Issue 起票経路)
 
 Related documents:
 - [projects-integration.md](./projects-integration.md) - Existing Issue Status update / Iteration assignment (this document covers new Issue creation with Projects registration)
@@ -178,15 +177,10 @@ Each caller determines Priority using its own logic before passing it to the scr
 | Parent Issue creation (ステップ 5.3 — Create the Parent Issue) | Determined in interview phase | Use Priority value decided during Issue creation |
 | Sub-Issue bulk creation (ステップ 5.4 — Bulk Creation of Sub-Issues) | Inherited from parent | Use parent Issue's Priority value |
 
-### start.md ステップ 8.5 (Workflow Incident Detection — Lint Warnings 等)
-
-| Context | Issue Priority | Reason |
-|---------|----------------|--------|
-| Out-of-scope lint warnings / workflow incidents | Medium | Default for lint findings and workflow incident tracking Issues |
-
 ### 旧 caller (retired)
 
 - `parent-routing.md` Phase 1.5.4 (Child Issue creation, Inherited from Parent) — flat 化に伴い child issue 自動作成経路自体が廃止された
+- `start.md` ステップ 8.5 (Workflow Incident Detection の auto-Issue 起票経路) — workflow-incident 機構ごと PR 2b / #1088 で廃止された
 
 ---
 

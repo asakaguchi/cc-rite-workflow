@@ -23,7 +23,7 @@
 #   bash "$SCRIPT_DIR/_validate-helpers.sh" "$SCRIPT_DIR" \
 #     state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
 #     _resolve-schema-version.sh _resolve-cross-session-guard.sh \
-#     _emit-cross-session-incident.sh _mktemp-stderr-guard.sh
+#     _mktemp-stderr-guard.sh
 #
 # Arguments:
 #   $1       script_dir   : Caller の SCRIPT_DIR (helper 群が存在するディレクトリ)
@@ -58,7 +58,6 @@ DEFAULT_HELPERS=(
   _resolve-session-id.sh
   _resolve-session-id-from-file.sh
   _resolve-cross-session-guard.sh
-  _emit-cross-session-incident.sh
   _mktemp-stderr-guard.sh
   _validate-state-root.sh
 )

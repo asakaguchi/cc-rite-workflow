@@ -6,8 +6,7 @@
 # `_resolve-cross-session-guard.sh`, `flow-state-update.sh` ×2, `resume-active-flag-restore.sh`,
 # `state-read.sh`). The duplicated block is structurally identical except for the calling
 # script's name and the `影響:` line wording. PR #688 cycle 9 F-02 (MEDIUM) extracted this
-# block into the present helper following the same API pattern established by
-# `_emit-cross-session-incident.sh` (cycle 38 F-08).
+# block into the present helper following the shared helper API pattern.
 #
 # Usage:
 #   path=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \

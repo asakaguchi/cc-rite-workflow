@@ -43,7 +43,7 @@ After any sub-skill return, output two HTML-comment evidence lines (bare bracket
 
 The **correct-pattern**: in the same response turn, immediately (1) run Mandatory After Wiki Ingest Pre-write (post-ingest re-patch — v3 enum では引き続き `phase=cleanup`); (2) output Phase 5.1 Cleanup Result Summary; (3) output Phase 5.2 Guidance for Next Steps with **inline `<!-- [cleanup:completed] -->` HTML sentinel at the trailing position of the final list item** (not on an independent line); (4) Phase 5.3 Step 1 deactivates flow state (`phase=cleanup`, `active: false` — v3 enum の terminal state) and the turn closes — DO NOT stop earlier. Ending the turn after `rite:wiki:ingest` returns abandons the cleanup workflow mid-flight, leaves Phase 5 unexecuted, and leaves the flow state non-terminal.
 
-**Completion marker**: `[cleanup:completed]` is emitted as an HTML comment (`<!-- [cleanup:completed] -->`) inline at the trailing position of Phase 5.2's final list item — keeps the marker grep-matchable (`grep -F '[cleanup:completed]'`) while making `クリーンアップが完了しました` the user-visible final content. Protocol violations (premature `end_turn` during any step where `phase=cleanup` is active — v3 enum では Pre-write / re-patch / terminal の logical sub-step は phase 値ではなく step 名で区別される) are caught retrospectively by `start.md` ステップ 8.5 (Workflow Incident Detection), which greps the next turn's conversation context for `manual_fallback_adopted` sentinels emitted by the orchestrator on resume. Step 名による correlation は incident detector 側が step 識別を必要としない設計 (phase=cleanup の active=true 残存があれば in-progress と扱う) のため、phase 縮約後も検出は機能する。
+**Completion marker**: `[cleanup:completed]` is emitted as an HTML comment (`<!-- [cleanup:completed] -->`) inline at the trailing position of Phase 5.2's final list item — keeps the marker grep-matchable (`grep -F '[cleanup:completed]'`) while making `クリーンアップが完了しました` the user-visible final content. Protocol violations (premature `end_turn` during any step where `phase=cleanup` is active — v3 enum では Pre-write / re-patch / terminal の logical sub-step は phase 値ではなく step 名で区別される) からの復帰は `/rite:resume` による。Stop hook も retrospective incident detector も存在しない単層設計のため、`phase=cleanup` の `active=true` が flow-state に残っていれば `/rite:resume` が in-progress と判定して該当 step から再開する。
 
 ---
 
@@ -86,7 +86,7 @@ else
   if ! bash {plugin_root}/hooks/flow-state.sh set \
       --phase "cleanup" --issue 0 --branch "" --pr 0 \
       --next "Execute cleanup phases. Do NOT stop."; then
-    echo "WARNING: flow-state.sh set (cleanup activate) failed — flow state was not created. cleanup の進行記録が残らない (workflow_incident 検出が retrospective に効かなくなる可能性)." >&2
+    echo "WARNING: flow-state.sh set (cleanup activate) failed — flow state was not created. cleanup の進行記録が残らない (中断時に /rite:resume での復帰が効かなくなる可能性)." >&2
   fi
 fi
 ```
@@ -292,7 +292,7 @@ If incomplete tasks are found, prompt with `AskUserQuestion`:
 
 In addition to checking the work memory, also check the checklist in the Issue body.
 
-> **責務 — safety net (例外残存項目の救済)**: 本 Phase は Issue 実装中の `/rite:issue:start` ステップ 4 (`implement.md` Phase 5.1 per-task checklist 更新) を **passthrough した例外残存項目** を merge 後に拾う **safety net** として位置付ける。primary update path は実装中の per-task update であり、本 Phase は最終 fallback。大量検出時は primary path の機能不全を示唆するため Phase 1.6.5.2 で `workflow_incident` sentinel を emit し observability を確保する。
+> **責務 — safety net (例外残存項目の救済)**: 本 Phase は Issue 実装中の `/rite:issue:start` ステップ 4 (`implement.md` Phase 5.1 per-task checklist 更新) を **passthrough した例外残存項目** を merge 後に拾う **safety net** として位置付ける。primary update path は実装中の per-task update であり、本 Phase は最終 fallback。大量検出時は primary path の機能不全を示唆するため Phase 1.6.5.2 で `WARNING` を stderr に出力し observability を確保する。
 
 **1.6.5.1 Extract Checklist**
 
@@ -306,17 +306,13 @@ gh issue view {issue_number} --json body --jq '.body'
 
 **1.6.5.2 Detect Incomplete Checklist Items**
 
-抽出されたチェックリストから `- [ ]` 項目を検出 (除外パターン: `- [ ] #XX` 親子 Tasklist)。検出件数が **5 件以上** の場合は primary path (`implement.md` Phase 5.1.1.1 per-task / `checklist-auto-check.md` Phase 5.2.1.1 Auto-Check) の機能不全を示唆するため `workflow_incident` sentinel (`type=manual_fallback_adopted`, `--root-cause-hint=checklist_mass_remaining_at_cleanup`) を non-blocking で emit する。emit は cleanup session の stderr に observability log として記録される。`/rite:pr:cleanup` workflow には ステップ 8.5 detector が存在しないため (workflow-incident-detection.md caller 表は lint/pr:create/pr:review/pr:fix/pr:ready の 5 caller のみ)、本 sentinel は cleanup 内で自動 Issue 化されない。手動 triage が必要な場合は stderr ログを確認すること:
+抽出されたチェックリストから `- [ ]` 項目を検出 (除外パターン: `- [ ] #XX` 親子 Tasklist)。検出件数が **5 件以上** の場合は primary path (`implement.md` Phase 5.1.1.1 per-task / `checklist-auto-check.md` Phase 5.2.1.1 Auto-Check) の機能不全を示唆するため `WARNING` を non-blocking で stderr に出力する。observability log として cleanup session の stderr に記録される。手動 triage が必要な場合は stderr ログを確認すること:
 
 ```bash
 incomplete_count=$(gh issue view {issue_number} --json body --jq '.body' \
   | grep -E '^- \[[ xX]\] ' | grep -v -E '^- \[[ xX]\] #[0-9]+' | grep -c '^- \[ \] ' || true)
 if [ "${incomplete_count:-0}" -ge 5 ]; then
-  bash {plugin_root}/hooks/workflow-incident-emit.sh \
-    --type manual_fallback_adopted \
-    --details "Issue #{issue_number} cleanup Phase 1.6.5.2 mass-residual detection: ${incomplete_count} incomplete checklist items at cleanup time (threshold: 5). Primary update path (implement.md Phase 5.1.1.1 per-task / checklist-auto-check.md Phase 5.2.1.1 Auto-Check) appears to have malfunctioned." \
-    --root-cause-hint "checklist_mass_remaining_at_cleanup" \
-    --pr-number {pr_number} >&2 || true
+  echo "WARNING: Issue #{issue_number} cleanup Phase 1.6.5.2 mass-residual detection: ${incomplete_count} incomplete checklist items at cleanup time (threshold: 5). Primary update path (implement.md Phase 5.1.1.1 per-task / checklist-auto-check.md Phase 5.2.1.1 Auto-Check) appears to have malfunctioned." >&2
 fi
 ```
 
@@ -1134,23 +1130,7 @@ else
 fi
 if [ -n "$reason" ]; then
   echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=$reason"
-  emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
-  trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
-  if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
-      --type wiki_ingest_skipped \
-      --details "cleanup Phase 4.W skipped: $reason" \
-      --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
-    [ -n "$sentinel_line" ] && echo "$sentinel_line" && echo "$sentinel_line" >&2
-  else
-    fallback_iter="{pr_number}-$(date +%s)"
-    fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_skipped reason=$reason; iteration_id=$fallback_iter"
-    echo "$fallback_sentinel"
-    echo "$fallback_sentinel" >&2
-    echo "WARNING: workflow-incident-emit.sh (wiki_ingest_skipped) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
-    [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
-  fi
-  [ -n "$emit_err" ] && rm -f "$emit_err"
-  trap - EXIT INT TERM HUP
+  echo "WARNING: cleanup Phase 4.W Wiki ingest skipped: $reason" >&2
 fi
 ```
 
@@ -1206,7 +1186,7 @@ If `pending_count == 0`, skip Phase 4.W.2-4.W.3 and proceed to Phase 5. Otherwis
 >
 > **Identity reference**: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` / `clear_resume_is_canonical` / `quality_over_expediency` principle を参照。
 
-**Pre-write** (before invoking `rite:wiki:ingest`): Re-affirm the flow state as `phase=cleanup, active=true` so the sub-skill return is tagged with the cleanup phase (v3 enum では `cleanup_pre_ingest` のような sub-phase 区別は phase 値では持たず、step 名で識別する)。The `if ! cmd; then` rc capture is mandatory — silent patch failure leaves the sub-skill flow untagged, so the retrospective `manual_fallback_adopted` detection in `start.md` ステップ 8.5 has nothing to correlate against.
+**Pre-write** (before invoking `rite:wiki:ingest`): Re-affirm the flow state as `phase=cleanup, active=true` so the sub-skill return is tagged with the cleanup phase (v3 enum では `cleanup_pre_ingest` のような sub-phase 区別は phase 値では持たず、step 名で識別する)。The `if ! cmd; then` rc capture is mandatory — silent patch failure leaves the sub-skill flow untagged, so `/rite:resume` cannot correlate against the cleanup phase.
 
 ```bash
 # --active true を明示する理由: Phase 1.0 patch が fail-safe path を経由した場合 active=false
@@ -1215,7 +1195,7 @@ if ! bash {plugin_root}/hooks/flow-state.sh set \
     --phase "cleanup" --active true \
     --next "After rite:wiki:ingest returns: run 🚨 Mandatory After Wiki Ingest (re-patch phase=cleanup) → Phase 5 Completion Report (terminal: phase=cleanup, active=false + <!-- [cleanup:completed] --> as inline HTML sentinel at the trailing position of the final list item of Phase 5.2) in the SAME response turn. Do NOT stop." \
     --if-exists; then
-  echo "WARNING: flow-state.sh set (Phase 4.W.2 Pre-write, phase=cleanup) failed — sub-skill will run unphased, so retrospective workflow-incident correlation against phase=cleanup will not fire." >&2
+  echo "WARNING: flow-state.sh set (Phase 4.W.2 Pre-write, phase=cleanup) failed — sub-skill will run unphased, so /rite:resume での phase=cleanup 復帰が効かなくなる可能性." >&2
 fi
 ```
 
@@ -1256,26 +1236,9 @@ wiki_branch=$(awk '/^wiki:/{h=1;next} h && /^[[:space:]]+branch_name:/{print;exi
 [ -z "$wiki_branch" ] && wiki_branch="wiki"
 
 if [ "$wiki_push_failed" = "true" ]; then
-  # reason=commit_rc_4 で start.md ステップ 8.6 完了レポートの aggregation pattern と統一する
-  # (cleanup 固有情報は source= key で併記)。
+  # cleanup 固有情報は source= key で併記。
   echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; source=cleanup_4W"
-  emit_err=$(mktemp /tmp/rite-wiki-pushfail-emit-err-XXXXXX 2>/dev/null) || emit_err=""
-  trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
-  if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
-      --type wiki_ingest_push_failed \
-      --details "wiki-worktree-commit.sh exited 4 (commit landed, push failed) during cleanup Phase 4.W" \
-      --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
-    [ -n "$sentinel_line" ] && echo "$sentinel_line" && echo "$sentinel_line" >&2
-  else
-    fallback_iter="{pr_number}-$(date +%s)"
-    fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_push_failed; iteration_id=$fallback_iter"
-    echo "$fallback_sentinel"
-    echo "$fallback_sentinel" >&2
-    echo "WARNING: workflow-incident-emit.sh (wiki_ingest_push_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
-    [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
-  fi
-  [ -n "$emit_err" ] && rm -f "$emit_err"
-  trap - EXIT INT TERM HUP
+  echo "WARNING: wiki-worktree-commit.sh exited 4 (commit landed, push failed) during cleanup Phase 4.W" >&2
   # ユーザー可視の push 失敗警告は Phase 5.1 Completion Report display rules に一元化済み。
 fi
 ```
@@ -1288,23 +1251,7 @@ Emit failure sentinel and continue to Phase 5 (loss-safe continuation):
 
 ```bash
 echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=ingest_error; phase=cleanup_4W"
-emit_err=$(mktemp /tmp/rite-wiki-emit-err-XXXXXX 2>/dev/null) || emit_err=""
-trap 'rm -f "${emit_err:-}"' EXIT INT TERM HUP
-if sentinel_line=$(bash {plugin_root}/hooks/workflow-incident-emit.sh \
-    --type wiki_ingest_failed \
-    --details "rite:wiki:ingest failed during cleanup Phase 4.W" \
-    --pr-number {pr_number} 2>"${emit_err:-/dev/null}"); then
-  [ -n "$sentinel_line" ] && echo "$sentinel_line" && echo "$sentinel_line" >&2
-else
-  fallback_iter="{pr_number}-$(date +%s)"
-  fallback_sentinel="[CONTEXT] WORKFLOW_INCIDENT=1; type=hook_abnormal_exit; details=workflow-incident-emit.sh failed for wiki_ingest_failed; iteration_id=$fallback_iter"
-  echo "$fallback_sentinel"
-  echo "$fallback_sentinel" >&2
-  echo "WARNING: workflow-incident-emit.sh (wiki_ingest_failed) が失敗しました — hook_abnormal_exit sentinel で fallback emit 済み" >&2
-  [ -n "$emit_err" ] && [ -s "$emit_err" ] && head -3 "$emit_err" | sed 's/^/  /' >&2
-fi
-[ -n "$emit_err" ] && rm -f "$emit_err"
-trap - EXIT INT TERM HUP
+echo "WARNING: rite:wiki:ingest failed during cleanup Phase 4.W" >&2
 ```
 
 ```
@@ -1318,7 +1265,7 @@ trap - EXIT INT TERM HUP
 
 > **⚠️ MUST execute in the SAME response turn**: `rite:wiki:ingest` の return 直後、応答を終了せずに Step 0 → Step 1 → Step 2 を即座に実行する。Phase 5 (Completion Report) は本セクション経由でのみ実行される唯一の経路。
 >
-> **Defense layers in effect**: (1) the prompt contract in this file telling the LLM not to stop; (2) caller HTML continuation hint emitted by `wiki/ingest.md` Phase 9.1; (3) retrospective detection — if the LLM stops anyway, `start.md` ステップ 8.5 greps the next session's context for `manual_fallback_adopted` and auto-registers a tracking Issue. There is no Stop hook intercepting `end_turn` and no PostToolUse mechanical enforcement; recovery from an implicit stop is by `/rite:resume`.
+> **Defense layers in effect**: (1) the prompt contract in this file telling the LLM not to stop; (2) caller HTML continuation hint emitted by `wiki/ingest.md` Phase 9.1. There is no Stop hook intercepting `end_turn`, no PostToolUse mechanical enforcement, and no retrospective incident detector; recovery from an implicit stop is by `/rite:resume`.
 
 **Self-check and branching**:
 

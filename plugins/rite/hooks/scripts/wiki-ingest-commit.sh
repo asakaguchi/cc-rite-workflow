@@ -54,9 +54,8 @@
 # 2 wiki feature disabled or wiki branch missing (treated as skip)
 # 3 git operation failure (stash / checkout / commit — push NOT included)
 # 4 push failed after successful local commit (commit landed locally,
-# but origin push failed — caller MUST emit wiki_ingest_push_failed
-# sentinel so the incident layer can observe the silent regression
-# that occurred in pre-PR-529 designs where push=failed was silent).
+# but origin push failed — a distinct code so the caller surfaces a plain
+# WARNING instead of folding the push failure into a success report).
 #
 # Notes:
 # - Designed to be idempotent: when called with no pending raw sources,
@@ -882,20 +881,19 @@ fi
 surface_git_warnings "commit"
 committed_sha=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 
-# Push is best-effort vs incident-observable:
+# Push is best-effort vs caller-observable:
 # Push failure MUST be observable by the
-# incident layer. Previous design exited 0 on push failure with only a stdout
+# caller. Previous design exited 0 on push failure with only a stdout
 # `push=failed` marker, which the callers (review.md / fix.md / close.md Phase
 # X.X.W.2) did not parse — so flaky remote / auth expiry / rate limit drove
 # all push failures through the success branch and silently emitted
-# WIKI_INGEST_DONE=1 without any wiki_ingest_push_failed sentinel.
+# WIKI_INGEST_DONE=1 without surfacing a push-failure warning.
 #
 # Fix: exit 4 on push failure so the caller's bash `if commit_out=$(...)`
-# takes the failure branch and emits a dedicated `wiki_ingest_push_failed`
-# sentinel via workflow-incident-emit.sh. The commit itself has already
-# landed on the local wiki branch, so the stdout status line still reports
-# `committed=N; head=<sha>; push=failed` — callers classify exit 4 as
-# "commit landed but push needs retry" rather than a full rollback.
+# takes the failure branch and surfaces a plain WARNING to stderr. The commit
+# itself has already landed on the local wiki branch, so the stdout status line
+# still reports `committed=N; head=<sha>; push=failed` — callers classify exit 4
+# as "commit landed but push needs retry" rather than a full rollback.
 #
 # Use --quiet to suppress progress updates (they go to stderr) so only
 # real errors appear in git_err.
@@ -914,8 +912,8 @@ surface_git_warnings "push origin $wiki_branch"
 echo "[wiki-ingest-commit] committed=${#pending_files[@]}; branch=${wiki_branch}; head=${committed_sha}; push=${push_status}"
 
 # cleanup trap handles checkout-back + stash pop + /tmp rm.
-# Exit 4 signals "commit landed, push failed" so the caller emits a
-# dedicated wiki_ingest_push_failed sentinel (CRITICAL #1 fix).
+# Exit 4 signals "commit landed, push failed" so the caller surfaces a plain
+# WARNING (push retry needed) rather than treating the ingest as fully done.
 if [[ "$push_failed" == "true" ]]; then
  exit 4
 fi

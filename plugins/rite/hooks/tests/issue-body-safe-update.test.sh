@@ -2,10 +2,10 @@
 # issue-body-safe-update.test.sh
 #
 # Pin the apply-mode safety net (50% shrinkage guard, empty-write rejection,
-# missing-args detection, diff-check short-circuit) plus the incident emit
-# invariants. Without these guards, a body update with a truncated payload
-# could silently destroy the Issue body, and a transient gh failure could
-# vanish without an incident record.
+# missing-args detection, diff-check short-circuit) plus the failure-surfacing
+# WARNING invariants. Without these guards, a body update with a truncated
+# payload could silently destroy the Issue body, and a transient gh failure
+# could vanish without a diagnostic WARNING.
 
 set -euo pipefail
 
@@ -159,17 +159,17 @@ fi
 rm -rf "$mock_bin"
 
 # ==========================================================================
-# Incident emit invocation guarantees: without these assertions a refactor
-# can drop the fetch_failure_reason / root-cause-hint signal silently, and
-# operators lose visibility into auth/network/permission failures.
+# Failure surfacing guarantees: without these assertions a refactor can drop
+# the fetch_failure_reason / rc signal silently, and operators lose visibility
+# into auth/network/permission failures. workflow_incident 機構廃止 (#1088) 後、
+# helper は emit script に delegate せず plain WARNING を stderr に出力する。
 # ==========================================================================
 
-echo "=== Phase 8: _emit_body_update_incident runtime invocation ==="
-# The script honors a pre-exported `_EMIT_SH` via `: "${_EMIT_SH:=...}"`, so
-# injecting a mock emit and asserting it received the type + rc + reason is
-# the only way to catch regressions in `_emit_body_update_incident` itself.
+echo "=== Phase 8: _emit_body_update_incident emits plain WARNING ==="
+# helper は `_emit_body_update_incident` で `WARNING: ... (reason=... rc=... stderr=...)` を
+# stderr に出力する。WARNING が incident_type / rc / reason を含むことを pin し、失敗が
+# silent に落ちる regression を防ぐ。
 mock_bin2=$(mktemp -d)
-emit_log=$(mktemp)
 cat > "$mock_bin2/gh" <<'MOCK_FETCH_FAIL'
 #!/bin/bash
 echo "HTTP 404: Issue not found" >&2
@@ -177,69 +177,25 @@ exit 1
 MOCK_FETCH_FAIL
 chmod +x "$mock_bin2/gh"
 
-mock_emit=$(mktemp /tmp/rite-mock-emit-XXXXXX.sh)
-cat > "$mock_emit" <<MOCK_EMIT
-#!/bin/bash
-echo "EMIT: \$*" >> "$emit_log"
-exit 0
-MOCK_EMIT
-chmod +x "$mock_emit"
-
 rc=0
-out=$(PATH="$mock_bin2:$PATH" _EMIT_SH="$mock_emit" bash "$TARGET" fetch --issue 999 2>&1) || rc=$?
+out=$(PATH="$mock_bin2:$PATH" bash "$TARGET" fetch --issue 999 2>&1) || rc=$?
 assert_exit "TC-22 fetch failure → exit 0 (non-blocking)" 0 "$rc"
-if grep -q -- '--type issue_body_fetch_failed' "$emit_log"; then
-  pass "TC-22 fetch failure invoked mock _emit_body_update_incident with type=issue_body_fetch_failed"
+if printf '%s' "$out" | grep -q 'issue_body_fetch_failed'; then
+  pass "TC-22 fetch failure emits WARNING with incident_type=issue_body_fetch_failed"
 else
-  fail "TC-22 mock emit log missing --type issue_body_fetch_failed: $(cat "$emit_log" 2>/dev/null); out=$out"
+  fail "TC-22 WARNING missing issue_body_fetch_failed: out=$out"
 fi
-if grep -qE 'rc=1\b' "$emit_log"; then
-  pass "TC-22b emit details report actual gh rc=1 (regression guard for if-! antipattern)"
+if printf '%s' "$out" | grep -qE 'rc=1\b'; then
+  pass "TC-22b WARNING reports actual gh rc=1 (regression guard for if-! antipattern)"
 else
-  fail "TC-22b emit details missing rc=1 (likely rc=0 from if-! pattern): $(cat "$emit_log" 2>/dev/null)"
+  fail "TC-22b WARNING missing rc=1 (likely rc=0 from if-! pattern): out=$out"
 fi
-if grep -q -- '--root-cause-hint gh_view_failed' "$emit_log"; then
-  pass "TC-22c emit invoked with root-cause-hint=gh_view_failed"
+if printf '%s' "$out" | grep -q 'gh_view_failed'; then
+  pass "TC-22c WARNING includes reason=gh_view_failed"
 else
-  fail "TC-22c emit missing --root-cause-hint gh_view_failed: $(cat "$emit_log" 2>/dev/null)"
+  fail "TC-22c WARNING missing gh_view_failed: out=$out"
 fi
-rm -f "$emit_log" "$mock_emit"
 rm -rf "$mock_bin2"
-
-echo "=== Phase 9: _EMIT_SH absent → canonical fallback sentinel ==="
-mock_bin3=$(mktemp -d)
-cat > "$mock_bin3/gh" <<'MOCK_FAIL2'
-#!/bin/bash
-echo "HTTP 500 mock failure" >&2
-exit 1
-MOCK_FAIL2
-chmod +x "$mock_bin3/gh"
-
-# Point `_EMIT_SH` at a non-executable path so the fallback branch runs. The
-# fallback must echo the canonical `[CONTEXT] WORKFLOW_INCIDENT=1; ...` sentinel
-# that workflow-incident-detection.md greps — any other format (e.g. the legacy
-# `[rite][incident]`) is invisible to the orchestrator.
-absent_emit="/nonexistent/path/workflow-incident-emit.sh"
-
-rc=0
-out=$(PATH="$mock_bin3:$PATH" _EMIT_SH="$absent_emit" bash "$TARGET" fetch --issue 999 2>&1) || rc=$?
-assert_exit "TC-23 fetch failure with absent _EMIT_SH → exit 0" 0 "$rc"
-if printf '%s' "$out" | grep -qE '\[CONTEXT\] WORKFLOW_INCIDENT=1; type=issue_body_fetch_failed'; then
-  pass "TC-23 fallback emits canonical [CONTEXT] WORKFLOW_INCIDENT=1 sentinel"
-else
-  fail "TC-23 fallback did not emit canonical sentinel format. out=$out"
-fi
-if printf '%s' "$out" | grep -qE 'root_cause_hint=gh_view_failed'; then
-  pass "TC-23b canonical fallback includes root_cause_hint=gh_view_failed"
-else
-  fail "TC-23b canonical fallback missing root_cause_hint=gh_view_failed: $out"
-fi
-if printf '%s' "$out" | grep -qE 'iteration_id=0-[0-9]+'; then
-  pass "TC-23c canonical fallback includes iteration_id=0-<epoch>"
-else
-  fail "TC-23c canonical fallback missing iteration_id=0-<epoch>: $out"
-fi
-rm -rf "$mock_bin3"
 
 echo "=== Phase 10: apply mode failure emits gh_edit_failed root cause ==="
 mock_bin4=$(mktemp -d)
@@ -272,12 +228,9 @@ fi
 rm -rf "$mock_bin4"
 
 echo ""
-echo "=== Phase 10: apply mode + _EMIT_SH absent → canonical fallback sentinel ==="
-# Fetch mode at TC-23 verifies the _EMIT_SH fallback emits the canonical
-# `[CONTEXT] WORKFLOW_INCIDENT=1; type=issue_body_fetch_failed; ...
-# iteration_id=0-<epoch>` line when the emit helper is missing. The same
-# fallback path on apply mode (helper line 64 inline sentinel) was previously
-# unverified, leaving deployment-degraded scenarios silently broken on apply.
+echo "=== Phase 10b: apply gh edit failure → plain WARNING (incident_type + reason) ==="
+# The apply-mode gh edit failure path surfaces a plain WARNING carrying
+# incident_type=issue_body_fetch_failed + reason=gh_edit_failed + the actual rc.
 mock_bin5=$(mktemp -d)
 cat > "$mock_bin5/gh" <<'MOCK_EDIT_FAIL'
 #!/bin/bash
@@ -287,28 +240,27 @@ esac
 exit 0
 MOCK_EDIT_FAIL
 chmod +x "$mock_bin5/gh"
-absent_emit_apply="$mock_bin5/nonexistent_emit_sh"
 tmp_read=$(mktemp)
 tmp_write=$(mktemp)
 printf 'a%.0s' $(seq 1 200) > "$tmp_read"
 printf 'b%.0s' $(seq 1 250) > "$tmp_write"
 rc=0
-out=$(PATH="$mock_bin5:$PATH" _EMIT_SH="$absent_emit_apply" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
-assert_exit "TC-25 apply failure with absent _EMIT_SH → exit 0" 0 "$rc"
-if printf '%s' "$out" | grep -qE '\[CONTEXT\] WORKFLOW_INCIDENT=1; type=issue_body_fetch_failed'; then
-  pass "TC-25 apply fallback emits canonical sentinel even when _EMIT_SH is absent"
+out=$(PATH="$mock_bin5:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
+assert_exit "TC-25 apply gh edit failure → exit 0" 0 "$rc"
+if printf '%s' "$out" | grep -qE 'issue_body_fetch_failed'; then
+  pass "TC-25 apply gh failure emits WARNING with incident_type=issue_body_fetch_failed"
 else
-  fail "TC-25 apply fallback sentinel missing — degraded deployment silently loses observability: $out"
+  fail "TC-25 apply WARNING missing incident_type — degraded deployment silently loses observability: $out"
 fi
-if printf '%s' "$out" | grep -qE 'root_cause_hint=gh_edit_failed'; then
-  pass "TC-25b apply fallback preserves root_cause_hint=gh_edit_failed"
+if printf '%s' "$out" | grep -qE 'reason=gh_edit_failed'; then
+  pass "TC-25b apply WARNING preserves reason=gh_edit_failed"
 else
-  fail "TC-25b apply fallback root_cause_hint missing: $out"
+  fail "TC-25b apply WARNING reason missing: $out"
 fi
-if printf '%s' "$out" | grep -qE 'iteration_id=0-[0-9]+'; then
-  pass "TC-25c apply fallback uses canonical iteration_id=<pr>-<epoch> format"
+if printf '%s' "$out" | grep -qE 'rc=1\b'; then
+  pass "TC-25c apply WARNING reports actual gh rc=1"
 else
-  fail "TC-25c apply fallback iteration_id format drift: $out"
+  fail "TC-25c apply WARNING rc missing: $out"
 fi
 rm -rf "$mock_bin5"
 
@@ -344,10 +296,10 @@ if printf '%s' "$out" | grep -qE 'mktemp apply_err failed'; then
 else
   fail "TC-26 apply mktemp WARNING missing: $out"
 fi
-if printf '%s' "$out" | grep -qE 'root_cause_hint=mktemp_failed'; then
-  pass "TC-26b apply mktemp failure carries root_cause_hint=mktemp_failed"
+if printf '%s' "$out" | grep -qE 'reason=mktemp_failed'; then
+  pass "TC-26b apply mktemp failure WARNING carries reason=mktemp_failed"
 else
-  fail "TC-26b apply mktemp incident root_cause_hint missing: $out"
+  fail "TC-26b apply mktemp WARNING reason missing: $out"
 fi
 rm -rf "$mock_bin6"
 
@@ -391,65 +343,63 @@ fi
 rm -rf "$mock_bin7"
 
 echo ""
-echo "=== Phase 13: shrinkage trip × _EMIT_SH absent → body_shrinkage_guard_tripped sentinel ==="
-# `_emit_body_update_incident` now accepts the incident type as its 1st arg.
-# TC-25/25b/25c pinned the `issue_body_fetch_failed` fallback only. Shrinkage
-# trip + missing emit helper must surface as `body_shrinkage_guard_tripped` in
-# the canonical sentinel — without this TC, a refactor that hardcodes the type
-# literal in the fallback printf would pass all existing TCs.
+echo "=== Phase 13: shrinkage trip → body_shrinkage_guard_tripped WARNING ==="
+# `_emit_body_update_incident` accepts the incident type as its 1st arg.
+# TC-25/25b/25c pinned the `issue_body_fetch_failed` path only. Shrinkage trip
+# must surface as `body_shrinkage_guard_tripped` in the WARNING — without this
+# TC, a refactor that hardcodes the incident_type literal would pass all
+# existing TCs.
 mock_bin8=$(mktemp -d)
 cat > "$mock_bin8/gh" <<'EOF'
 #!/bin/bash
 exit 0
 EOF
 chmod +x "$mock_bin8/gh"
-absent_emit_shrink="$mock_bin8/nonexistent_emit"
 tmp_read=$(mktemp)
 tmp_write=$(mktemp)
 printf 'a%.0s' $(seq 1 200) > "$tmp_read"
 # 5 bytes ≪ 200/2 — triggers shrinkage guard
 printf 'aaaaa' > "$tmp_write"
 rc=0
-out=$(PATH="$mock_bin8:$PATH" _EMIT_SH="$absent_emit_shrink" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
-assert_exit "TC-25d shrinkage trip with absent _EMIT_SH → exit 0" 0 "$rc"
-if printf '%s' "$out" | grep -qE '\[CONTEXT\] WORKFLOW_INCIDENT=1; type=body_shrinkage_guard_tripped'; then
-  pass "TC-25d shrinkage trip emits canonical sentinel with type=body_shrinkage_guard_tripped"
+out=$(PATH="$mock_bin8:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
+assert_exit "TC-25d shrinkage trip → exit 0" 0 "$rc"
+if printf '%s' "$out" | grep -qE 'body_shrinkage_guard_tripped'; then
+  pass "TC-25d shrinkage trip emits WARNING with incident_type=body_shrinkage_guard_tripped"
 else
-  fail "TC-25d shrinkage sentinel missing or wrong type: $out"
+  fail "TC-25d shrinkage WARNING missing or wrong incident_type: $out"
 fi
-if printf '%s' "$out" | grep -qE 'root_cause_hint=shrinkage_below_50pct'; then
-  pass "TC-25d sentinel carries root_cause_hint=shrinkage_below_50pct"
+if printf '%s' "$out" | grep -qE 'reason=shrinkage_below_50pct'; then
+  pass "TC-25d WARNING carries reason=shrinkage_below_50pct"
 else
-  fail "TC-25d root_cause_hint missing: $out"
+  fail "TC-25d reason missing: $out"
 fi
 rm -rf "$mock_bin8"
 
 echo ""
-echo "=== Phase 14: empty write × _EMIT_SH absent → body_shrinkage_guard_tripped (empty_write) ==="
+echo "=== Phase 14: empty write → body_shrinkage_guard_tripped WARNING (empty_write) ==="
 mock_bin9=$(mktemp -d)
 cat > "$mock_bin9/gh" <<'EOF'
 #!/bin/bash
 exit 0
 EOF
 chmod +x "$mock_bin9/gh"
-absent_emit_empty="$mock_bin9/nonexistent_emit"
 tmp_read=$(mktemp)
 tmp_write=$(mktemp)
 printf 'a%.0s' $(seq 1 200) > "$tmp_read"
 # zero bytes — triggers empty-write guard
 : > "$tmp_write"
 rc=0
-out=$(PATH="$mock_bin9:$PATH" _EMIT_SH="$absent_emit_empty" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
-assert_exit "TC-25e empty write with absent _EMIT_SH → exit 0" 0 "$rc"
-if printf '%s' "$out" | grep -qE '\[CONTEXT\] WORKFLOW_INCIDENT=1; type=body_shrinkage_guard_tripped'; then
-  pass "TC-25e empty write emits canonical sentinel with type=body_shrinkage_guard_tripped"
+out=$(PATH="$mock_bin9:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
+assert_exit "TC-25e empty write → exit 0" 0 "$rc"
+if printf '%s' "$out" | grep -qE 'body_shrinkage_guard_tripped'; then
+  pass "TC-25e empty write emits WARNING with incident_type=body_shrinkage_guard_tripped"
 else
-  fail "TC-25e empty-write sentinel missing or wrong type: $out"
+  fail "TC-25e empty-write WARNING missing or wrong incident_type: $out"
 fi
-if printf '%s' "$out" | grep -qE 'root_cause_hint=empty_write'; then
-  pass "TC-25e sentinel carries root_cause_hint=empty_write"
+if printf '%s' "$out" | grep -qE 'reason=empty_write'; then
+  pass "TC-25e WARNING carries reason=empty_write"
 else
-  fail "TC-25e empty-write root_cause_hint missing: $out"
+  fail "TC-25e empty-write reason missing: $out"
 fi
 rm -rf "$mock_bin9"
 
@@ -474,15 +424,15 @@ printf 'updated body' > "$tmp_write"
 rc=0
 out=$(PATH="$mock_bin10:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length "abc" 2>&1) || rc=$?
 assert_exit "TC-25f apply with non-numeric --original-length → exit 0 (non-blocking)" 0 "$rc"
-if printf '%s' "$out" | grep -qE '\[CONTEXT\] WORKFLOW_INCIDENT=1; type=body_shrinkage_guard_tripped'; then
-  pass "TC-25f non-numeric --original-length emits body_shrinkage_guard_tripped sentinel"
+if printf '%s' "$out" | grep -qE 'body_shrinkage_guard_tripped'; then
+  pass "TC-25f non-numeric --original-length emits body_shrinkage_guard_tripped WARNING"
 else
-  fail "TC-25f sentinel missing: $out"
+  fail "TC-25f WARNING missing: $out"
 fi
-if printf '%s' "$out" | grep -qE 'root_cause_hint=original_length_invalid'; then
-  pass "TC-25f sentinel carries root_cause_hint=original_length_invalid (distinct from shrinkage_below_50pct / empty_write)"
+if printf '%s' "$out" | grep -qE 'reason=original_length_invalid'; then
+  pass "TC-25f WARNING carries reason=original_length_invalid (distinct from shrinkage_below_50pct / empty_write)"
 else
-  fail "TC-25f original_length_invalid hint missing — caller cannot distinguish from a real shrinkage trip: $out"
+  fail "TC-25f original_length_invalid reason missing — caller cannot distinguish from a real shrinkage trip: $out"
 fi
 # Confirm tmpfiles were cleaned up (the original arithmetic abort path would leak them).
 if [ ! -f "$tmp_read" ] && [ ! -f "$tmp_write" ]; then
@@ -511,10 +461,10 @@ GHEOF
   rc=0
   out=$(PATH="$mock_bin_25g:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length "$invalid_val" 2>&1) || rc=$?
   assert_exit "TC-25g (--original-length=$invalid_val) → exit 0 (non-blocking)" 0 "$rc"
-  if printf '%s' "$out" | grep -qE 'root_cause_hint=original_length_invalid'; then
-    pass "TC-25g (--original-length=$invalid_val) emits root_cause_hint=original_length_invalid"
+  if printf '%s' "$out" | grep -qE 'reason=original_length_invalid'; then
+    pass "TC-25g (--original-length=$invalid_val) emits reason=original_length_invalid"
   else
-    fail "TC-25g (--original-length=$invalid_val) hint missing — regex may be accepting non-numeric content: $out"
+    fail "TC-25g (--original-length=$invalid_val) reason missing — regex may be accepting non-numeric content: $out"
   fi
   rm -f "$tmp_read" "$tmp_write"
   rm -rf "$mock_bin_25g"

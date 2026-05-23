@@ -119,7 +119,7 @@ assert "cleanup_pre_ingest → cleanup" "cleanup" "$(jq -r .phase "$state_file")
 assert "branch_name → branch (rename)" "old-branch" "$(jq -r .branch "$state_file")"
 assert "branch_name dropped" "null" "$(jq -r '.branch_name // "null"' "$state_file")"
 assert "previous_phase dropped" "null" "$(jq -r '.previous_phase // "null"' "$state_file")"
-assert "last_synced_phase dropped" "null" "$(jq -r '.last_synced_phase // "null"' "$state_file")"
+assert "last_synced_phase preserved (PR #1089 H1: post-tool-wm-sync.sh runtime-only field)" "cleanup" "$(jq -r '.last_synced_phase // "null"' "$state_file")"
 assert "issue_number preserved" "100" "$(jq -r .issue_number "$state_file")"
 
 # --- TC-7: migrate idempotent for already-v3 files ---
@@ -184,6 +184,43 @@ if jq -e . "$state_file" >/dev/null 2>&1; then
   pass "TC-10: JSON integrity preserved after 5 concurrent writes"
 else
   fail "TC-10: JSON corrupted by concurrent writes"
+fi
+
+# --- TC-11: cmd_set preserves last_synced_phase across merge (PR #1089 H1 regression) ---
+echo ""
+echo "=== TC-11: cmd_set preserves last_synced_phase (post-tool-wm-sync.sh runtime field) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase plan --issue 11 --branch "b" --pr 0 --next "n")
+state_file="$d/.rite/sessions/${sid}.flow-state"
+# Simulate post-tool-wm-sync.sh writing last_synced_phase as a runtime-only field.
+jq '.last_synced_phase = "plan"' "$state_file" > "$state_file.tmp" && mv "$state_file.tmp" "$state_file"
+# A subsequent cmd_set must NOT wipe last_synced_phase (else wm-sync diff guard would
+# fire every hook invocation and spam GitHub API calls).
+(cd "$d" && bash "$HOOK" set --phase implement --issue 11 --branch "b" --pr 0 --next "n2")
+assert "TC-11: last_synced_phase preserved across cmd_set merge" "plan" "$(jq -r '.last_synced_phase // "null"' "$state_file")"
+assert "TC-11: phase updated as expected" "implement" "$(jq -r .phase "$state_file")"
+
+# --- TC-12: cmd_set on corrupt JSON emits WARNING (PR #1089 H3 regression) ---
+echo ""
+echo "=== TC-12: cmd_set on corrupt existing state emits WARNING (no silent overwrite) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+# Create a corrupt state file (invalid JSON) at the per-session path.
+mkdir -p "$d/.rite/sessions"
+state_file="$d/.rite/sessions/${sid}.flow-state"
+printf '{this is not valid JSON' > "$state_file"
+# cmd_set should succeed (defaults applied to merge) BUT emit a WARNING to stderr so
+# operator can observe the silent-overwrite-into-zero-state situation.
+(cd "$d" && bash "$HOOK" set --phase plan --issue 12 --branch "b" --pr 0 --next "n") 2> "$d/tc12.stderr"
+if grep -q "WARNING: flow-state.sh cmd_set: existing state read failed" "$d/tc12.stderr"; then
+  pass "TC-12: corrupt-JSON WARNING emitted"
+else
+  fail "TC-12: no WARNING for corrupt JSON (silent overwrite regression)"
+fi
+# Resulting file must be valid JSON (write proceeded with defaults).
+if jq -e . "$state_file" >/dev/null 2>&1; then
+  pass "TC-12: merged write produced valid JSON with defaults"
+else
+  fail "TC-12: merged write failed to produce valid JSON"
 fi
 
 if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor"; then

@@ -96,14 +96,35 @@ cmd_set() {
   path=$(_state_path "$sid")
   [ $if_exists -eq 1 ] && [ ! -f "$path" ] && return 0
   # Pull existing values for fields the caller did not specify (merge behavior).
-  local cur_issue=0 cur_branch="" cur_pr=0 cur_parent=0 cur_active=true cur_err=0
+  # `cur_last_synced` は post-tool-wm-sync.sh が runtime-only field として書き続けるため、
+  # cmd_set が schema 構築時に既存値を merge しないと毎回 wipe され、wm-sync の diff guard
+  # が常に「変化あり」と判定 → GitHub API spam (issue-comment-wm-sync 連発、PR #1089 H1)。
+  # 既存値が無い場合は空文字 → null として書き込み、wm-sync 側の `// "" | tostring` で
+  # 空文字に縮退する (空 vs 非空 を別値として扱う wm-sync の diff guard と整合)。
+  #
+  # Single composite jq read (PR #1089 H3): 6 つの独立 jq 呼び出しの silent fallback chain
+  # では既存 state が corrupt JSON でも全フィールドが default に縮退して silent overwrite
+  # される。1 回の composite jq + stderr capture に集約し、jq 失敗時に WARNING を stderr emit
+  # して operator が corrupt overwrite を検出できるようにする。Unit separator () で field
+  # を分割し、IFS で安全に split (whitespace collapse 防止)。
+  local cur_issue=0 cur_branch="" cur_pr=0 cur_parent=0 cur_active=true cur_err=0 cur_last_synced=""
   if [ -f "$path" ]; then
-    cur_issue=$(jq -r '.issue_number // 0' "$path" 2>/dev/null) || cur_issue=0
-    cur_branch=$(jq -r '.branch // ""' "$path" 2>/dev/null) || cur_branch=""
-    cur_pr=$(jq -r '.pr_number // 0' "$path" 2>/dev/null) || cur_pr=0
-    cur_parent=$(jq -r '.parent_issue_number // 0' "$path" 2>/dev/null) || cur_parent=0
-    cur_active=$(jq -r '.active // true' "$path" 2>/dev/null) || cur_active=true
-    cur_err=$(jq -r '.error_count // 0' "$path" 2>/dev/null) || cur_err=0
+    local _cur_jq_err _cur_data _cur_rc=0
+    _cur_jq_err=$(mktemp 2>/dev/null) || _cur_jq_err=""
+    _cur_data=$(jq -r '[(.issue_number // 0 | tostring),
+                       (.branch // ""),
+                       (.pr_number // 0 | tostring),
+                       (.parent_issue_number // 0 | tostring),
+                       (.active // true | tostring),
+                       (.error_count // 0 | tostring),
+                       (.last_synced_phase // "")] | join("")' "$path" 2>"${_cur_jq_err:-/dev/null}") || _cur_rc=$?
+    if [ "$_cur_rc" -ne 0 ]; then
+      echo "WARNING: flow-state.sh cmd_set: existing state read failed for $path (may be corrupt; merged write will use defaults)" >&2
+      [ -n "$_cur_jq_err" ] && [ -s "$_cur_jq_err" ] && head -3 "$_cur_jq_err" | sed 's/^/  /' >&2
+    else
+      IFS=$'\x1f' read -r cur_issue cur_branch cur_pr cur_parent cur_active cur_err cur_last_synced <<< "$_cur_data"
+    fi
+    [ -n "$_cur_jq_err" ] && rm -f "$_cur_jq_err"
   fi
   [ -z "$issue" ] && issue=$cur_issue
   [ -z "$branch" ] && branch=$cur_branch
@@ -119,10 +140,12 @@ cmd_set() {
     --argjson pr "$pr" --argjson parent "$parent_issue" \
     --arg next "$next" --argjson active "$active" \
     --argjson err "$err_count" --arg ts "$now" \
+    --arg lsp "$cur_last_synced" \
     '{schema_version:$schema, session_id:$session, phase:$phase,
       issue_number:$issue, branch:$branch, pr_number:$pr,
       parent_issue_number:$parent, next_action:$next, active:$active,
-      error_count:$err, updated_at:$ts}') || return 1
+      error_count:$err, updated_at:$ts}
+     | (if $lsp != "" then .last_synced_phase = $lsp else . end)') || return 1
   _atomic_write "$path" "$new"
 }
 
@@ -170,9 +193,13 @@ _migrate_file() {
   np=$(_phase_migrate "$cp")
   [ "$dry" = 1 ] && { echo "  would migrate: $f (schema v$sv→v$SCHEMA_VERSION_V3, phase $cp→$np)"; return 0; }
   local now updated; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  # v3 schema: drop legacy fields (previous_phase, last_synced_phase) and normalize branch_name → branch
+  # v3 schema: drop legacy `previous_phase` (replaced by step name discrimination in v3) and
+  # normalize legacy `branch_name` → `branch`. `last_synced_phase` is preserved because
+  # post-tool-wm-sync.sh continues to use it as a runtime-only diff guard field (PR #1089 H1);
+  # dropping it during migrate would cause one round of unnecessary GitHub API spam right after
+  # migration.
   updated=$(jq --argjson s "$SCHEMA_VERSION_V3" --arg p "$np" --arg ts "$now" \
-    'del(.previous_phase, .last_synced_phase)
+    'del(.previous_phase)
      | (if .branch_name and (.branch | not) then .branch = .branch_name else . end)
      | del(.branch_name)
      | .schema_version = $s | .phase = $p | .updated_at = $ts' "$f") || return 1

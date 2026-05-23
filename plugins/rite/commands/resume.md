@@ -86,6 +86,18 @@ state_issue=$(bash {plugin_root}/hooks/flow-state.sh get --field issue_number --
 state_pr=$(bash {plugin_root}/hooks/flow-state.sh get --field pr_number --default "0")
 state_next=$(bash {plugin_root}/hooks/flow-state.sh get --field next_action --default "")
 state_parent=$(bash {plugin_root}/hooks/flow-state.sh get --field parent_issue_number --default "0")
+
+# Emit [CONTEXT] markers so Phase 5.2 (separate Bash tool invocation) can read these values.
+# Claude Code Bash tool 境界でシェル状態は失われるため、Phase 5.2 で `$state_phase` を直接参照しても
+# 常に空文字となり active=true 復元経路が dead になる (PR #1089 review C2)。後続ステップは本 [CONTEXT]
+# marker を読み、{resolved_phase} / {state_next} placeholder を実値に置換して bash block を出力する。
+echo "[CONTEXT] STATE_PHASE=$state_phase"
+echo "[CONTEXT] STATE_BRANCH=$state_branch"
+echo "[CONTEXT] STATE_ACTIVE=$state_active"
+echo "[CONTEXT] STATE_ISSUE=$state_issue"
+echo "[CONTEXT] STATE_PR=$state_pr"
+echo "[CONTEXT] STATE_NEXT=$state_next"
+echo "[CONTEXT] STATE_PARENT=$state_parent"
 ```
 
 ### 3.2 git 状態取得
@@ -188,15 +200,20 @@ fi
 
 ### 5.2 flow-state の active=true 復元
 
-中断時 (例: クラッシュ / context 枯渇) で active=false になっている可能性があるため、resume では active=true に復元。merge semantics により他のフィールドは保持される:
+中断時 (例: クラッシュ / context 枯渇) で active=false になっている可能性があるため、resume では active=true に復元。merge semantics により他のフィールドは保持される。
+
+> **重要 — Bash tool 境界での変数消失** (PR #1089 review C2): 本 step は Phase 3.1 とは別の Bash tool 呼び出しとなるため、`$state_phase` / `$resolved_phase` / `$state_next` 等のシェル変数を直接参照できない (Claude Code の Bash tool 境界でシェル状態は失われる)。LLM は Phase 3.1 末尾で stdout に emit された `[CONTEXT] STATE_PHASE=...` / `[CONTEXT] STATE_NEXT=...` marker と Phase 3.5 の cross-check 結果 `{resolved_phase}` を読み、下記 bash block 内の placeholder を実値に置換してから実行すること。`--if-exists` フラグにより flow state file 不在時は no-op (idempotent)、merge semantics により未指定フィールドは既存値を保持する:
 
 ```bash
-if [ -n "$state_phase" ]; then
-  bash {plugin_root}/hooks/flow-state.sh set \
-    --phase "$resolved_phase" \
-    --next "${state_next:-resume from $resolved_phase}" \
-    --active true --if-exists
-fi
+# Placeholder substitution rule:
+#   {resolved_phase} → Phase 3.5 cross-check の確定 phase (v3 enum 13 値のいずれか)
+#   {state_next}     → Phase 3.1 [CONTEXT] STATE_NEXT marker の値 (空なら "resume from {resolved_phase}" を代入)
+# {resolved_phase} が空の場合 (flow-state 不在 + WM 不在 + git/PR 推定も不可能 → Phase 3.5 で `init` 採用)
+# でも `--if-exists` により file 不在なら no-op となるため、unconditional 呼び出しで安全。
+bash {plugin_root}/hooks/flow-state.sh set \
+  --phase "{resolved_phase}" \
+  --next "{state_next}" \
+  --active true --if-exists
 ```
 
 ### 5.3 Phase enum → Step mapping (SoT)

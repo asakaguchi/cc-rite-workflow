@@ -5,7 +5,7 @@ created: "2026-05-23T11:37:40Z"
 updated: "2026-05-23T11:37:40Z"
 sources:
   - type: "reviews"
-    ref: "pr-1097"
+    ref: "raw/reviews/20260523T112739Z-pr-1097.md"
 tags: ["gh-cli", "git-flow", "branch-base", "drift-prevention"]
 confidence: high
 ---

@@ -101,7 +101,7 @@ reviewer 側 prompt template の改修と、Phase 5.3.0 mechanical gate の lite
 
 ## 関連ページ
 
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](anti-patterns/asymmetric-fix-transcription.md)
+- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 
 ## ソース
 

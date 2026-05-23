@@ -145,8 +145,8 @@ PR #1049 の cycle 1 で test / code-quality / error-handling の 3 reviewer が
 
 ## 関連ページ
 
-- [trap 登録 → mktemp の順序で tempfile lifecycle を守る](patterns/trap-register-before-mktemp.md)
-- [stderr ノイズ削減: truncate ではなく selective surface で解く](heuristics/stderr-selective-surface-over-truncate.md)
+- [trap 登録 → mktemp の順序で tempfile lifecycle を守る](./trap-register-before-mktemp.md)
+- [stderr ノイズ削減: truncate ではなく selective surface で解く](../heuristics/stderr-selective-surface-over-truncate.md)
 
 ## ソース
 

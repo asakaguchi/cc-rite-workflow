@@ -77,12 +77,12 @@ skip 経路では `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=...` のような sen
 
 ### `$?` 経由の 3 値コマンドとの違い
 
-本パターンは「独自定義 exit code を持つスクリプト」を対象とする。`git diff --quiet` のような標準コマンドの 3 値 exit code (0/1/>1) も case で扱うが、そちらは [`if ! cmd` anti-pattern](anti-patterns/bash-if-bang-rc-capture.md) が別軸で混在するので区別して扱うこと。
+本パターンは「独自定義 exit code を持つスクリプト」を対象とする。`git diff --quiet` のような標準コマンドの 3 値 exit code (0/1/>1) も case で扱うが、そちらは [`if ! cmd` anti-pattern](../anti-patterns/bash-if-bang-rc-capture.md) が別軸で混在するので区別して扱うこと。
 
 ## 関連ページ
 
-- [`if ! cmd; then rc=$?` は常に 0 を捕捉する](anti-patterns/bash-if-bang-rc-capture.md)
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](anti-patterns/asymmetric-fix-transcription.md)
+- [`if ! cmd; then rc=$?` は常に 0 を捕捉する](../anti-patterns/bash-if-bang-rc-capture.md)
+- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 
 ## ソース
 

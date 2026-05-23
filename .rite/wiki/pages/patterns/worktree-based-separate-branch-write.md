@@ -84,8 +84,8 @@ prunable: gitdir file points to non-existent location
 
 ## 関連ページ
 
-- [Exit code semantic preservation: caller は case で語彙を保持する](patterns/exit-code-semantic-preservation.md)
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](anti-patterns/asymmetric-fix-transcription.md)
+- [Exit code semantic preservation: caller は case で語彙を保持する](./exit-code-semantic-preservation.md)
+- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 
 ## ソース
 

@@ -52,7 +52,7 @@ grep -rn "Phase 8.0" --include='*.md' plugins/rite/
 grep -rn "Phase 8\.0\.1" --include='*.md' plugins/rite/
 ```
 
-cross-file reference の drift は [Asymmetric Fix Transcription](anti-patterns/asymmetric-fix-transcription.md) の典型ケース。PR #548 cycle 3 では `cleanup.md Phase 2.6` が `init.md Phase 3.5.1` を `Phase 3.5` と誤記し、review で検出された。
+cross-file reference の drift は [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の典型ケース。PR #548 cycle 3 では `cleanup.md Phase 2.6` が `init.md Phase 3.5.1` を `Phase 3.5` と誤記し、review で検出された。
 
 ### Enforcement note の事実正確性
 
@@ -64,7 +64,7 @@ Phase 番号と併せて「この sub-phase は stop-guard hook によって enf
 
 ## 関連ページ
 
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](anti-patterns/asymmetric-fix-transcription.md)
+- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 
 ## ソース
 

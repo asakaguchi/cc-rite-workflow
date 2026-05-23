@@ -90,7 +90,7 @@ cleanup.md (Issue #652) と ingest.md (Issue #618) はこの双対に対して *
 
 ## 関連ページ
 
-- [散文で宣言した設計は対応する実装契約がなければ機能しない](prose-design-without-backing-implementation.md)
+- [散文で宣言した設計は対応する実装契約がなければ機能しない](../anti-patterns/prose-design-without-backing-implementation.md)
 - [同 file 内 MUST NOT vs MUST 衝突: bare form 禁止規約と bare form 出力義務の自己矛盾](../anti-patterns/same-file-must-not-vs-must-conflict.md)
 - [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](drift-check-anchor-semantic-name.md)
 

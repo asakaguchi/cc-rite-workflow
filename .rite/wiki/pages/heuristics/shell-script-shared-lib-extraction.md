@@ -66,7 +66,7 @@ shared lib 抽出前の状態では `parse_wiki_scalar` のような helper が 
 - 非対称が発生する余地がない
 - reviewer の認知負荷低減
 
-本パターンは [Asymmetric Fix Transcription](anti-patterns/asymmetric-fix-transcription.md) の根本解決策として位置付けられる。
+本パターンは [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の根本解決策として位置付けられる。
 
 ### Cross-script duplication の検出
 
@@ -79,7 +79,7 @@ grep -rn 'parse_wiki_scalar()' plugins/rite/hooks/scripts/
 
 ## 関連ページ
 
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](anti-patterns/asymmetric-fix-transcription.md)
+- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 
 ## ソース
 

@@ -98,7 +98,7 @@ grep -rnE 'jq -n' --include='*.sh' --include='*.md' .
 
 ## 関連ページ
 
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](anti-patterns/asymmetric-fix-transcription.md)
+- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 
 ## ソース
 

@@ -200,32 +200,32 @@ End processing.
 
 > **Skip this confirmation when invoked from the main end-to-end flow path**: the orchestrator (`start.md` ステップ 8) has already confirmed the Ready transition with the user, so a second confirmation is duplicate (per [Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md) — fourth of the five self-questions: "Is this re-confirming an already-approved decision? → eliminate duplicates"). This sub-skill reads the flow state `.phase` and `.active`, and skips the confirmation when `.phase` matches one of the post-review / post-fix transition phases — either the legacy `phase5_post_review` / `phase5_post_fix` (written by `pr/review.md` / `pr/fix.md`) or the flat `review` / `fix` (written by `start.md` ステップ 7.1 / 7.2 before invoking the sub-skill) — AND `.active` is `true` (the AND condition closes the same-session interruption gap — see the next paragraph for details).
 >
-> **Side paths fall back fail-safe to the standalone path (legacy behavior)**: when this sub-skill is reached via any non-main path (e.g., via `/rite:resume`, a standalone re-invocation after an in-session e2e interruption, or an unexpected `.phase` value), or when the flow state is not active (`active=false`), the `else` branch sets `in_e2e_flow=false` and the confirmation is shown. Erring on the side of "silent confirm" rather than "silent skip" preserves UX safety. Same-session interruption + standalone re-invocation is also covered by the bash AND condition (`active = "true"`): `state-read.sh` cross-session guard classifies the legacy file as `same` (`legacy.session_id == current_sid`), so the helper returns the legacy file's stored value rather than the default. The bash test `[ "$active" = "true" ]` then rejects the legacy file because its `active` field is `false` once the e2e flow stopped.
+> **Side paths fall back fail-safe to the standalone path (legacy behavior)**: when this sub-skill is reached via any non-main path (e.g., via `/rite:resume`, a standalone re-invocation after an in-session e2e interruption, or an unexpected `.phase` value), or when the flow state is not active (`active=false`), the `else` branch sets `in_e2e_flow=false` and the confirmation is shown. Erring on the side of "silent confirm" rather than "silent skip" preserves UX safety. Same-session interruption + standalone re-invocation is also covered by the bash AND condition (`active = "true"`): `flow-state.sh` cross-session guard classifies the legacy file as `same` (`legacy.session_id == current_sid`), so the helper returns the legacy file's stored value rather than the default. The bash test `[ "$active" = "true" ]` then rejects the legacy file because its `active` field is `false` once the e2e flow stopped.
 >
 > **Standalone execution** (direct `/rite:pr:ready` invocation): always confirm via `AskUserQuestion` as a misuse safety net.
 
 **E2E flow detection** (canonical pattern: on helper invocation failure, emit a WARNING + sentinel and fall back fail-safe):
 
 ```bash
-if phase=$(bash {plugin_root}/hooks/state-read.sh --field phase --default ""); then
+if phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default ""); then
   :
 else
   rc=$?
-  echo "WARNING: state-read.sh failed (rc=$rc) for --field phase in pr/ready Phase 2.1 — falling back to standalone confirmation" >&2
+  echo "WARNING: flow-state.sh failed (rc=$rc) for --field phase in pr/ready Phase 2.1 — falling back to standalone confirmation" >&2
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=pr_ready_phase_2_1_phase; rc=$rc" >&2
   phase=""
 fi
-# Boolean field read via state-read.sh: `--default ""` returns "" for both stored false
+# Boolean field read via flow-state.sh: `--default ""` returns "" for both stored false
 # and missing field (jq's `// $default` collapses null/false to default). The binary
 # AND check below (`[ "$active" = "true" ]`) is safe — both `active=false` and missing
 # route to the `else` branch (in_e2e_flow=false), which is the fail-safe behavior.
 # A NOT-style check (`[ x = "false" ]`) would NOT be safe under this default and is
-# explicitly forbidden by state-read.sh's caveat block.
-if active=$(bash {plugin_root}/hooks/state-read.sh --field active --default ""); then
+# explicitly forbidden by flow-state.sh's caveat block.
+if active=$(bash {plugin_root}/hooks/flow-state.sh get --field active --default ""); then
   :
 else
   rc=$?
-  echo "WARNING: state-read.sh failed (rc=$rc) for --field active in pr/ready Phase 2.1 — falling back to standalone confirmation" >&2
+  echo "WARNING: flow-state.sh failed (rc=$rc) for --field active in pr/ready Phase 2.1 — falling back to standalone confirmation" >&2
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=pr_ready_phase_2_1_active; rc=$rc" >&2
   active=""
 fi
@@ -301,7 +301,7 @@ Proceed to the next phase.
 **In e2e flow**: If flow state file exists, update the state file and output `[ready:error]` before ending to signal the failure to the caller (`start.md` ステップ 8). Use the dedicated `ready_error` flat phase so `/rite:resume` routes back to ステップ 8 (Ready & 完結) for retry — writing `phase=pr` would route resume to ステップ 6 (PR creation) and re-invoke `/rite:pr:create` against the already-existing PR.
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh patch \
+bash {plugin_root}/hooks/flow-state.sh set \
   --phase "ready_error" \
   --active true \
   --next "rite:pr:ready failed during Ready transition. Ask user: retry / skip to ステップ 8.6 (完了レポート) / terminate." \
@@ -489,14 +489,14 @@ Before outputting the result pattern (`[ready:completed]`) or skipping output, u
 | `[ready:completed]` | `ready` | `Ready処理完了` | `rite:pr:ready completed. Proceed to start.md ステップ 8.3 (Projects Status In Review), then ステップ 8.4 (parent close check), then ステップ 8.6 (completion report). Do NOT stop.` |
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh patch \
+bash {plugin_root}/hooks/flow-state.sh set \
   --phase "ready" \
   --active true \
   --next "rite:pr:ready completed. Proceed to start.md ステップ 8.3 (Projects Status In Review), then ステップ 8.4 (parent close check), then ステップ 8.6 (completion report). Do NOT stop." \
   --if-exists
 ```
 
-**Note on `error_count`**: `flow-state-update.sh` patch mode resets `error_count` to 0 on every phase transition (since #294). This prevents stale circuit breaker counts from one phase from poisoning subsequent phases.
+**Note on `error_count`**: `flow-state.sh` patch mode resets `error_count` to 0 on every phase transition (since #294). This prevents stale circuit breaker counts from one phase from poisoning subsequent phases.
 
 **Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when flow state file exists:
 

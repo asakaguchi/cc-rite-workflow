@@ -36,8 +36,8 @@
 #                             values are parsed from the existing work memory file instead.
 #                             (default: "false")
 #   WM_REQUIRE_FLOW_STATE   - If "true", skip if flow-state phase cannot be resolved via
-#                             state-read.sh (per-session and legacy file both absent, or phase
-#                             is null/empty). Uses state-read.sh under the hood so schema_version=2
+#                             flow-state.sh (per-session and legacy file both absent, or phase
+#                             is null/empty). Uses flow-state.sh under the hood so schema_version=2
 #                             per-session files are resolved transparently. (default: "false")
 #   WM_READ_FROM_FLOW_STATE - If "true", read pr_number/loop_count from .rite-flow-state (lint pattern).
 #                             When set, overrides WM_PR_NUMBER/WM_LOOP_COUNT and values from existing WM.
@@ -60,7 +60,7 @@
 # This avoids re-sourcing on every function call and prevents BASH_SOURCE issues.
 source "$(dirname "${BASH_SOURCE[0]}")/work-memory-lock.sh"
 
-# verified-review F-04 MEDIUM: state-read.sh 呼び出し boilerplate を helper 関数に抽出。
+# verified-review F-04 MEDIUM: flow-state.sh 呼び出し boilerplate を helper 関数に抽出。
 # 旧実装は (a) helper executable check と (b) `if cmd; then :; else rc=$?; ...; return 2; fi` 形式の
 # fail-fast capture を 3 箇所 (line 96-110 / 175-186 / 187-193) で完全に同一構造で複製していた。
 # 共通 helper に集約することで spec 変更を 1 箇所で完結させる。
@@ -74,8 +74,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/work-memory-lock.sh"
 #
 # Arguments:
 #   $1 var_name  caller 側で値を受け取る変数名 (e.g., "_phase")
-#   $2 field     state-read.sh の --field に渡す値 (e.g., "phase" / "pr_number" / "loop_count")
-#   $3 default   state-read.sh の --default に渡す値 (e.g., "" / "null" / "0")
+#   $2 field     flow-state.sh の --field に渡す値 (e.g., "phase" / "pr_number" / "loop_count")
+#   $3 default   flow-state.sh の --default に渡す値 (e.g., "" / "null" / "0")
 # Returns:
 #   0 — success (var_name に値が代入される)
 #   2 — helper 不在 / helper exit != 0 (fail-fast)
@@ -83,17 +83,17 @@ _wm_state_read_field() {
   local _var_name="$1"
   local _field="$2"
   local _default="$3"
-  if [ ! -x "$WM_PLUGIN_ROOT/hooks/state-read.sh" ]; then
-    echo "rite: ${WM_SOURCE}: state-read.sh not found at $WM_PLUGIN_ROOT/hooks/" >&2
+  if [ ! -x "$WM_PLUGIN_ROOT/hooks/flow-state.sh" ]; then
+    echo "rite: ${WM_SOURCE}: flow-state.sh not found at $WM_PLUGIN_ROOT/hooks/" >&2
     return 2
   fi
   local _val _rc
-  if _val=$(bash "$WM_PLUGIN_ROOT/hooks/state-read.sh" --field "$_field" --default "$_default"); then
+  if _val=$(bash "$WM_PLUGIN_ROOT/hooks/flow-state.sh" get --field "$_field" --default "$_default"); then
     printf -v "$_var_name" '%s' "$_val"
     return 0
   else
     _rc=$?
-    echo "rite: ${WM_SOURCE}: state-read.sh failed (rc=$_rc) for --field $_field" >&2
+    echo "rite: ${WM_SOURCE}: flow-state.sh failed (rc=$_rc) for --field $_field" >&2
     return 2
   fi
 }
@@ -114,7 +114,7 @@ update_local_work_memory() {
   fi
 
   # PR #688 cycle 12 fix (F-01 HIGH AC-4 caller migration完遂):
-  # legacy `.rite-flow-state` 直接 `[ ! -f ]` check を state-read.sh 経由に変更。
+  # legacy `.rite-flow-state` 直接 `[ ! -f ]` check を flow-state.sh 経由に変更。
   # cycle 10 で WM_READ_FROM_FLOW_STATE 分岐の同種 read を移行済みだが、本箇所
   # (WM_REQUIRE_FLOW_STATE check) は cycle 11 review で取り残しが指摘された。
   # (verified-review cycle 29 F-04 MEDIUM: cycle 28 で確立した semantic anchor 規範を本箇所
@@ -122,10 +122,10 @@ update_local_work_memory() {
   # schema_version=2 環境で per-session file (`.rite/sessions/{sid}.flow-state`)
   # のみ存在し legacy file 不在のとき、旧 check は false negative で skip し work memory が更新されない
   # (例: lint pattern で session 起点の caller が WM_REQUIRE_FLOW_STATE=true を渡しても skip される)。
-  # state-read.sh は per-session/legacy 両方を transparent に解決し、両方不在時のみ default ("") を
+  # flow-state.sh は per-session/legacy 両方を transparent に解決し、両方不在時のみ default ("") を
   # 返すため、空文字判定で「flow-state が解決できない」状態を正確に検出できる。
   #
-  # verified-review cycle 33 fix (F-01 HIGH): state-read.sh 起動失敗 (ENOENT / WM_PLUGIN_ROOT 不正 /
+  # verified-review cycle 33 fix (F-01 HIGH): flow-state.sh 起動失敗 (ENOENT / WM_PLUGIN_ROOT 不正 /
   # permission denied 等) が「両 file 不在 → DEFAULT 返却」と区別不能で silent skip される regression
   # を解消する。helper が **存在しない** ケースは return 2 で fail-fast、**存在するが exit != 0** の
   # ケース (jq エラー / 内部失敗) も独立 exit code 捕捉で fail-fast。**存在し exit == 0 だが空文字**
@@ -192,8 +192,8 @@ update_local_work_memory() {
 
   # Read flow-state fields if requested (lint pattern).
   # PR #688 cycle 10 fix (F-02 HIGH AC-4 caller migration): legacy `.rite-flow-state` 直接読みを
-  # state-read.sh 経由に変更。schema_version=2 環境では state-read.sh が per-session file を解決
-  # するため、別 session の stale residue を読まなくなる。state-read.sh は per-session/legacy
+  # flow-state.sh 経由に変更。schema_version=2 環境では flow-state.sh が per-session file を解決
+  # するため、別 session の stale residue を読まなくなる。flow-state.sh は per-session/legacy
   # 両方を transparent に解決し、両方不在時は default を返すので、外側の `[ -f ]` check は不要。
   #
   # verified-review cycle 33 fix (F-01 HIGH): WM_REQUIRE_FLOW_STATE 経路と対称化。helper 存在性 +
@@ -236,7 +236,7 @@ update_local_work_memory() {
   _sanitize_yaml_value() {
     printf '%s' "$1" | tr -d '[:cntrl:]' | sed 's/\\/\\\\/g; s/"/\\"/g'
   }
-  # 数値フィールド (pr_num / loop_cnt) の YAML literal 化 helper。state-read.sh 経由で取得される
+  # 数値フィールド (pr_num / loop_cnt) の YAML literal 化 helper。flow-state.sh 経由で取得される
   # 値に改行 / 制御文字 / その他非数値が混入していた場合 (tampered/corrupt な flow-state file の防御)、
   # `null` (YAML literal) に降格して frontmatter parse の破壊を防ぐ。
   # 引数: $1 = 値, $2 = フィールド名 (WARNING に出力)。stdout に YAML literal を出力。
@@ -263,7 +263,7 @@ update_local_work_memory() {
   _last_commit_san=$(_sanitize_yaml_value "$last_commit")
 
   # verified-review (PR #688 cycle 15) F-04 (MEDIUM) 対応 + post-review F-01 (MEDIUM) DRY 化:
-  # pr_num / loop_cnt は state-read.sh 経由で flow-state JSON から取得されるが、jq -r は raw string を
+  # pr_num / loop_cnt は flow-state.sh 経由で flow-state JSON から取得されるが、jq -r は raw string を
   # 返すため、tampered/corrupt な flow-state file (例: `{"pr_number": "123\nmalicious: injection"}`) で
   # 改行込みの値が返ると YAML frontmatter parse が破壊される (Issue #687 同型の writer/reader 対称化破綻)。
   # 数値型 validation を _validate_numeric_yaml_value() helper に集約し、新規数値フィールド追加時の
@@ -296,7 +296,7 @@ update_local_work_memory() {
 
   chmod 600 "$tmp_wm" 2>/dev/null || true
   # mv の exit code を明示的にチェックする (writer/reader 対称化 doctrine、cycle 49 M-1)。
-  # flow-state-update.sh の create/patch/increment mode は同型 pattern (`if ! mv ...; then ...; rm -f; exit 1; fi`)
+  # flow-state.sh の create/patch/increment mode は同型 pattern (`if ! mv ...; then ...; rm -f; exit 1; fi`)
   # で mv 失敗を fail-fast 化しているが、本 work-memory-update.sh は `set -e` 不在 (sourced helper) のため
   # mv 失敗 (disk full / permission denied / EXDEV / 親 dir 削除済) が silent に成功扱いされ、caller が
   # work memory 書き込み成功と誤認する経路があった。return 2 (本 helper の lock failure と同 code) で

@@ -32,7 +32,7 @@ COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
 #
 # Issue #749: stderr pass-through for diagnostic visibility, via canonical helper
 # `_mktemp-stderr-guard.sh`. 詳細は session-start.sh の同パターンを参照。
-# filter は state-read.sh cross-session guard の 3-pattern を `^ERROR:` で
+# filter は flow-state.sh cross-session guard の 3-pattern を `^ERROR:` で
 # superset 化した 4-pattern 拡張版 (resolver self-validation の ERROR: を捕捉)。
 # success arm でも tempfile を inspect して helper graceful-degrade 経路の WARNING
 # を silent drop しないようにする。
@@ -42,13 +42,13 @@ _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "_resolve-flow-state-path.sh の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
 # Single-pass branch (filter runs once regardless of resolver exit status).
 _resolve_failed=0
-FLOW_STATE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
+FLOW_STATE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
 if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
   grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
 fi
 if [ "$_resolve_failed" -eq 1 ]; then
-  FLOW_STATE="$STATE_ROOT/.rite-flow-state"
-  echo "[rite] WARNING: flow-state path resolution failed, falling back to legacy ($FLOW_STATE)" >&2
+  FLOW_STATE=""
+  echo "[rite] WARNING: flow-state.sh path resolution failed — skip" >&2
 fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 LOCKDIR="$COMPACT_STATE.lockdir"

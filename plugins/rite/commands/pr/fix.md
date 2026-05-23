@@ -5609,14 +5609,14 @@ ACTION: Return to Phase 4.6.W and execute the Wiki Ingest Trigger before outputt
 The `phase5_post_fix` flow-state write below keeps in-flight state files consistent with what older versions expected, so a `/rite:resume` started against a partially-migrated state still classifies correctly:
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh patch \
-  --phase "phase5_post_fix" \
+bash {plugin_root}/hooks/flow-state.sh set \
+  --phase "fix" \
   --active true \
   --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]->start.md ステップ 7.1 (FULL re-review — スコープ縮退禁止、/rite:pr:review と同等のフルレビューを実行). [fix:pushed-wm-stale]->start.md ステップ 7.1 (FULL re-review after AskUserQuestion — スコープ縮退禁止) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:issues-created]->start.md ステップ 7.1 (FULL re-review — スコープ縮退禁止、/rite:pr:review と同等のフルレビューを実行). [fix:replied-only]->start.md ステップ 8 (Ready & 完結). Do NOT stop." \
   --if-exists
 ```
 
-**Note on `error_count`**: `flow-state-update.sh` patch mode resets `error_count` to 0 on every phase transition (since #294). This prevents stale circuit breaker counts from one phase from poisoning subsequent phases.
+**Note on `error_count`**: `flow-state.sh` patch mode resets `error_count` to 0 on every phase transition (since #294). This prevents stale circuit breaker counts from one phase from poisoning subsequent phases.
 
 **Also update local work memory** (`.rite-work-memory/issue-{n}.md`) with phase transition:
 

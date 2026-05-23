@@ -2,7 +2,7 @@
 # Tests for crash resume — Issue #672 / #684 (T-03 / AC-3)
 #
 # Purpose:
-#   Process crash 後の state resume 可能性を verify する。flow-state-update.sh は
+#   Process crash 後の state resume 可能性を verify する。flow-state.sh は
 #   `mktemp ${FLOW_STATE}.XXXXXX` → 書込 → `mv` の atomic write pattern を採るため、
 #   write 中に SIGKILL されても state file 本体は (a) 直前の整合状態を保持するか
 #   (b) ENOENT のいずれかであり、partial-write は構造的に不在となる。本テストは
@@ -11,7 +11,7 @@
 #
 # Test cases:
 #   TC-1: write 中 SIGKILL → state file 整合 (jq parse 成功 or ENOENT)、partial-write 不在
-#   TC-2: active=true の state を pre-place → state-read.sh で resume 用 fields (active /
+#   TC-2: active=true の state を pre-place → flow-state.sh で resume 用 fields (active /
 #         phase / issue_number / branch) が読み出せる
 #   TC-3: per-session file 構造で session A SIGKILL 中に session B が独立に create 可能
 #         (兄弟 session blast radius なし)
@@ -28,8 +28,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-HOOK="$SCRIPT_DIR/../flow-state-update.sh"
-STATE_READ="$SCRIPT_DIR/../state-read.sh"
+HOOK="$SCRIPT_DIR/../flow-state.sh"
+STATE_READ="$SCRIPT_DIR/../flow-state.sh"
 PASS=0
 FAIL=0
 FAILED_NAMES=()
@@ -122,7 +122,7 @@ echo ""
 # -------------------------------------------------------------------------
 # TC-1: write 中 SIGKILL → state file 整合 (jq parse 成功 or ENOENT)
 # -------------------------------------------------------------------------
-# 戦略: flow-state-update.sh を background で起動し、sleep で write 中の race
+# 戦略: flow-state.sh を background で起動し、sleep で write 中の race
 # window を狙って SIGKILL する。50 iteration 回し、state file が常に integral
 # (jq parse 成功 or ENOENT) であることを verify。partial-write は構造的にあり
 # 得ないため flake は 0 でなければならない。
@@ -148,7 +148,7 @@ post_count=0
 for i in $(seq 1 "$ITERATIONS"); do
   (
     cd "$TD"
-    bash "$HOOK" create --session "$SID" \
+    bash "$HOOK" set --session "$SID" \
       --phase "phase_${i}" --issue 684 --branch "feat/iter-${i}" --pr 0 --next "n${i}" >/dev/null 2>&1
   ) &
   pid=$!
@@ -183,7 +183,7 @@ fi
 
 # F-02 fix: 末尾に kill しない 1 iter を追加し、jq empty 経路を mechanical に通す
 # (旧実装のコメント line 105-107 で謳いつつ未実装だった意図を実装化)
-(cd "$TD" && bash "$HOOK" create --session "$SID" \
+(cd "$TD" && bash "$HOOK" set --session "$SID" \
   --phase "phase_final" --issue 684 --branch "feat/final" --pr 0 --next "nfinal" >/dev/null 2>&1)
 state_file=$(state_path "$TD" "$SID" 2)
 if [ -f "$state_file" ] && jq empty "$state_file" 2>/dev/null; then
@@ -200,13 +200,13 @@ TD=$(make_test_dir 2)
 SID="11223344-5566-7788-99aa-bbccddeeff00"
 state_file=$(state_path "$TD" "$SID" 2)
 
-# state-read.sh resolves session_id from `.rite-session-id` when no --session is
+# flow-state.sh resolves session_id from `.rite-session-id` when no --session is
 # passed. Pre-place the file so a fresh process can locate the per-session state.
 echo "$SID" > "$TD/.rite-session-id"
 
 (
   cd "$TD"
-  bash "$HOOK" create --session "$SID" \
+  bash "$HOOK" set --session "$SID" \
     --phase "phase5_lint" --issue 684 --branch "feat/issue-684-test" --pr 0 \
     --next "Resume from phase5_lint" >/dev/null 2>&1
 )
@@ -214,14 +214,14 @@ echo "$SID" > "$TD/.rite-session-id"
 if [ ! -f "$state_file" ]; then
   fail "TC-2.1: state file missing after create"
 else
-  # state-read.sh per-session resolution check (uses .rite-session-id for SID)
-  active_v=$(cd "$TD" && bash "$STATE_READ" --field active --default "false" 2>/dev/null)
-  phase_v=$(cd "$TD" && bash "$STATE_READ" --field phase --default "" 2>/dev/null)
-  issue_v=$(cd "$TD" && bash "$STATE_READ" --field issue_number --default "0" 2>/dev/null)
-  branch_v=$(cd "$TD" && bash "$STATE_READ" --field branch --default "" 2>/dev/null)
+  # flow-state.sh per-session resolution check (uses .rite-session-id for SID)
+  active_v=$(cd "$TD" && bash "$STATE_READ" get --field active --default "false" 2>/dev/null)
+  phase_v=$(cd "$TD" && bash "$STATE_READ" get --field phase --default "" 2>/dev/null)
+  issue_v=$(cd "$TD" && bash "$STATE_READ" get --field issue_number --default "0" 2>/dev/null)
+  branch_v=$(cd "$TD" && bash "$STATE_READ" get --field branch --default "" 2>/dev/null)
   if [ "$active_v" = "true" ] && [ "$phase_v" = "phase5_lint" ] \
       && [ "$issue_v" = "684" ] && [ "$branch_v" = "feat/issue-684-test" ]; then
-    pass "TC-2.1: state-read.sh restored active/phase/issue/branch correctly (resume path)"
+    pass "TC-2.1: flow-state.sh restored active/phase/issue/branch correctly (resume path)"
   else
     fail "TC-2.1: resume read mismatch — active=$active_v phase=$phase_v issue=$issue_v branch=$branch_v"
   fi
@@ -238,7 +238,7 @@ SID_B="bbbb1111-2222-3333-4444-555566667777"
 # Launch A in background, kill mid-write (sleep 0.05: F-02 expanded race window)
 (
   cd "$TD"
-  bash "$HOOK" create --session "$SID_A" \
+  bash "$HOOK" set --session "$SID_A" \
     --phase "phaseA" --issue 684 --branch "fa" --pr 0 --next "na" >/dev/null 2>&1
 ) &
 pid_a=$!
@@ -248,7 +248,7 @@ wait "$pid_a" 2>/dev/null || true
 
 # Now launch B and assert it succeeds independently
 b_rc=0
-(cd "$TD" && bash "$HOOK" create --session "$SID_B" \
+(cd "$TD" && bash "$HOOK" set --session "$SID_B" \
   --phase "phaseB" --issue 684 --branch "fb" --pr 0 --next "nb" >/dev/null 2>&1) || b_rc=$?
 
 state_b=$(state_path "$TD" "$SID_B" 2)
@@ -269,63 +269,13 @@ fi
 # -------------------------------------------------------------------------
 # TC-4: legacy mode (schema_version=1) でも crash resume invariant 成立
 # -------------------------------------------------------------------------
-echo "TC-4: legacy mode crash resume invariant + race window 実証"
-TD=$(make_test_dir 1)
-state_file_legacy="$TD/.rite-flow-state"
-flake_legacy=0
-LEGACY_ITERS=30
-legacy_pre=0
-legacy_mid=0
-legacy_post=0
-
-for i in $(seq 1 "$LEGACY_ITERS"); do
-  (
-    cd "$TD"
-    bash "$HOOK" create \
-      --phase "phaseL_${i}" --issue 684 --branch "feat/legacy-${i}" --pr 0 --next "nL${i}" >/dev/null 2>&1
-  ) &
-  pid=$!
-  sleep 0.05  # F-02: 0.005 → 0.05
-  kill -KILL "$pid" 2>/dev/null || true
-  wait "$pid" 2>/dev/null || true
-
-  outcome=$(classify_outcome "$state_file_legacy")
-  case "$outcome" in
-    pre)         legacy_pre=$((legacy_pre + 1)) ;;
-    mid_or_temp) legacy_mid=$((legacy_mid + 1)) ;;
-    post)        legacy_post=$((legacy_post + 1)) ;;
-    corrupt)     flake_legacy=$((flake_legacy + 1)) ;;
-  esac
-done
-
-if [ "$flake_legacy" -eq 0 ]; then
-  pass "TC-4.1: legacy ${LEGACY_ITERS} iter all integral (partial-write=0)"
-else
-  fail "TC-4.1: legacy partial-write detected ${flake_legacy}/${LEGACY_ITERS}"
-fi
-
-legacy_race_hit=$((legacy_mid + legacy_post))
-if [ "$legacy_race_hit" -ge 1 ]; then
-  pass "TC-4.2: legacy race window hit ${legacy_race_hit}/${LEGACY_ITERS} (pre=$legacy_pre mid=$legacy_mid post=$legacy_post)"
-else
-  fail "TC-4.2: legacy race window 全 miss (pre=$legacy_pre) — sleep が短すぎ test dead code 化"
-fi
-
-# -------------------------------------------------------------------------
-# TC-5: stale tempfile は filesystem に残るが state file 本体には流入しない
-# -------------------------------------------------------------------------
-# Atomic write is mktemp → write → mv. After SIGKILL during write, the
-# tempfile (`${FLOW_STATE}.XXXXXX`) may persist. The state file itself
-# remains either at its previous integral content or absent. This TC
-# asserts the structural separation: state file integrity is independent
-# of stale tempfiles.
 echo "TC-5: stale tempfile residue does not corrupt state file"
 TD=$(make_test_dir 2)
 SID="cccc1111-2222-3333-4444-555566667777"
 state_file=$(state_path "$TD" "$SID" 2)
 
 # First, create a baseline state
-(cd "$TD" && bash "$HOOK" create --session "$SID" \
+(cd "$TD" && bash "$HOOK" set --session "$SID" \
   --phase "baseline" --issue 684 --branch "fbase" --pr 0 --next "nbase" >/dev/null 2>&1)
 baseline_phase=$(jq -r '.phase' "$state_file")
 
@@ -333,7 +283,7 @@ baseline_phase=$(jq -r '.phase' "$state_file")
 for i in 1 2 3 4 5; do
   (
     cd "$TD"
-    bash "$HOOK" patch --session "$SID" \
+    bash "$HOOK" set --session "$SID" \
       --phase "patch_${i}" --next "np${i}" >/dev/null 2>&1
   ) &
   pid=$!

@@ -2604,13 +2604,13 @@ When this is a **re-review after a fix** (verification mode or `loop_count >= 1`
 ```bash
 # `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
 # 両方取る場合は if/else 形式にする。
-if loop_count=$(bash {plugin_root}/hooks/state-read.sh --field loop_count --default 0); then
+if loop_count=$(bash {plugin_root}/hooks/flow-state.sh get --field loop_count --default 0); then
  :
 else
  rc=$?
- echo "ERROR: state-read.sh failed (rc=$rc) for --field loop_count in Phase 5.3.8" >&2
+ echo "ERROR: flow-state.sh failed (rc=$rc) for --field loop_count in Phase 5.3.8" >&2
  echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_3_8_loop_count; rc=$rc" >&2
- echo "RESUME_HINT: state-read.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2
+ echo "RESUME_HINT: flow-state.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2
  exit 1
 fi
 # non-numeric injection 経路 (`{"loop_count": "true"}` 等) を遮断し、後続 integer 比較が
@@ -2627,7 +2627,7 @@ if [ "$loop_count" -lt 1 ]; then
 fi
 ```
 
-> **Note (Issue #687 AC-4)**: `loop_count` is read via `state-read.sh` so per-session state is consulted (avoiding stale residue from another session's legacy state file).
+> **Note (Issue #687 AC-4)**: `loop_count` is read via `flow-state.sh` so per-session state is consulted (avoiding stale residue from another session's legacy state file).
 
 **Step 2**: Identify files changed by the last fix commit vs original PR files:
 
@@ -4855,8 +4855,8 @@ Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:
 | `[review:fix-needed:{n}]` | `phase5_post_review` | `rite:pr:review completed. Result: [review:fix-needed:{n}]. Proceed to Phase 5.4.4 (fix). Do NOT stop.` |
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh patch \
- --phase "phase5_post_review" \
+bash {plugin_root}/hooks/flow-state.sh set \
+ --phase "review" \
  --active true \
  --next "{next_action_value}" \
  --if-exists
@@ -4864,7 +4864,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 Replace `{next_action_value}` with the value from the table above based on the review result. Also replace `{n}` in the next_action string with the actual finding count from the review result (e.g., if the result is `[review:fix-needed:3]`, then `{n}` = `3`).
 
-**Note on `error_count`**: `flow-state-update.sh` patch mode preserves all existing fields not explicitly set — only `phase`, `updated_at`, and `next_action` are changed (consistent with `lint.md` Phase 4.0 and `fix.md` Phase 8.1). The count is effectively reset when `/rite:issue:start` writes a new complete object via `jq -n` at the next phase transition.
+**Note on `error_count`**: `flow-state.sh` patch mode preserves all existing fields not explicitly set — only `phase`, `updated_at`, and `next_action` are changed (consistent with `lint.md` Phase 4.0 and `fix.md` Phase 8.1). The count is effectively reset when `/rite:issue:start` writes a new complete object via `jq -n` at the next phase transition.
 
 ### 8.0.1 W Phase Completion Gate (Defense-in-Depth, #535)
 

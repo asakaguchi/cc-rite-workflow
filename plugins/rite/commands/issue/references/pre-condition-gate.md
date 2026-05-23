@@ -1,4 +1,4 @@
-# Pre-condition Gate — `state-read.sh` fail-fast Pattern SoT (reduced scope)
+# Pre-condition Gate — `flow-state.sh` fail-fast Pattern SoT (reduced scope)
 
 > **変更点**: 旧 sub-skill chain (start-execute / start-publish / start-finalize) と
 > それに付随する 5 site の pre-condition gate (Phase 3 / 5.5.1 / 5.6 / 5.5.2 metrics / 5.7
@@ -8,9 +8,9 @@
 > となった。
 >
 > 本 reference は **flat workflow 外部 (`commands/issue/implement.md`, `commands/pr/review.md`,
-> `commands/resume.md`) で残存する `state-read.sh` capture pattern** のみを SoT として残す。
+> `commands/resume.md`) で残存する `flow-state.sh` capture pattern** のみを SoT として残す。
 
-## `state-read.sh` を使う理由 (per-session vs legacy state file)
+## `flow-state.sh` を使う理由 (per-session vs legacy state file)
 
 `flow_state.schema_version=2` 以降、active state は per-session file
 (`.rite/sessions/{session_id}.flow-state`) に書き込まれる。一方、legacy state file
@@ -24,27 +24,27 @@
  └── {session_id}.flow-state ← 現 session 固有 state (authoritative)
 ```
 
-`state-read.sh` は per-session file を優先解決し、存在しない場合のみ legacy にフォールバックする。
+`flow-state.sh` は per-session file を優先解決し、存在しない場合のみ legacy にフォールバックする。
 直接 `cat .rite/flow-state.json | jq -r .phase` のような形で legacy を読むと別 session の
-state が leak するため、 **必ず `state-read.sh` 経由で読むこと**。
+state が leak するため、 **必ず `flow-state.sh` 経由で読むこと**。
 
 ## Canonical capture pattern (1 form)
 
-`state-read.sh` 起動失敗と値取得を区別するため、以下の if/else 形式を使う。複数行 form を canonical とする:
+`flow-state.sh` 起動失敗と値取得を区別するため、以下の if/else 形式を使う。複数行 form を canonical とする:
 
 ```bash
-if val=$(bash {plugin_root}/hooks/state-read.sh --field <field> --default "<default>"); then
+if val=$(bash {plugin_root}/hooks/flow-state.sh get --field <field> --default "<default>"); then
  :
 else
  rc=$?
- echo "WARNING: state-read.sh failed (rc=$rc) for --field <field>" >&2
+ echo "WARNING: flow-state.sh failed (rc=$rc) for --field <field>" >&2
  echo "[CONTEXT] STATE_READ_FAILED=1; phase=<site_phase>; rc=$rc" >&2
- echo "RESUME_HINT: state-read.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2
+ echo "RESUME_HINT: flow-state.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2
  val=""
 fi
 ```
 
-> **NG パターン**: `if ! val=$(...); then rc=$?; ... fi` は bash 仕様上、bang 演算子が pipeline 全体を反転するため `rc` には常に 0 が入る。 helper 起動失敗 (state-read.sh の exit 非 0) と pre-condition 失敗 (state-read.sh は exit 0 で値を返したが `val` が期待値と不一致) を区別できなくなる。 必ず `if cmd; then :; else rc=$?; fi` 形式を使うこと。
+> **NG パターン**: `if ! val=$(...); then rc=$?; ... fi` は bash 仕様上、bang 演算子が pipeline 全体を反転するため `rc` には常に 0 が入る。 helper 起動失敗 (flow-state.sh の exit 非 0) と pre-condition 失敗 (flow-state.sh は exit 0 で値を返したが `val` が期待値と不一致) を区別できなくなる。 必ず `if cmd; then :; else rc=$?; fi` 形式を使うこと。
 
 ## 適用箇所 (現在の生存 site)
 
@@ -59,5 +59,5 @@ fi
 ## 関連
 
 - [`flow-state-scaffolding.md`](./flow-state-scaffolding.md) — Pre-write 契約 SoT
-- `plugins/rite/hooks/state-read.sh` — per-session flow-state 読み出し (legacy フォールバック含む)
+- `plugins/rite/hooks/flow-state.sh` — per-session flow-state 読み出し (legacy フォールバック含む)
 - `plugins/rite/hooks/_resolve-flow-state-path.sh` — per-session vs legacy path 解決ロジック

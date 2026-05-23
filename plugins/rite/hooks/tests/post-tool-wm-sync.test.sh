@@ -29,11 +29,33 @@ fail() {
   echo "  ❌ FAIL: $1"
 }
 
-# Helper: create a state file
+# Helper: create a per-session state file (schema v3) in the given directory.
+# Writes .rite-session-id + .rite/sessions/<sid>.flow-state. Auto-injects
+# schema_version=3 if missing so the auto-migrate step on session-start does
+# not re-rewrite the fixture mid-test (post-tool-wm-sync.sh itself does not
+# call migrate, but other hooks in the same test invocation might).
 create_state_file() {
   local dir="$1"
   local content="$2"
-  echo "$content" > "$dir/.rite-flow-state"
+  local sid="${3:-test-sid-$(basename "$dir")}"
+  mkdir -p "$dir/.rite/sessions"
+  printf '%s' "$sid" > "$dir/.rite-session-id"
+  local merged
+  if printf '%s' "$content" | grep -q '"schema_version"'; then
+    merged="$content"
+  elif printf '%s' "$content" | jq -e . >/dev/null 2>&1; then
+    merged=$(printf '%s' "$content" | jq -c '. + {schema_version: 3}')
+  else
+    merged="$content"
+  fi
+  printf '%s\n' "$merged" > "$dir/.rite/sessions/${sid}.flow-state"
+}
+
+# Helper: per-session state file path used by create_state_file
+state_file_path() {
+  local dir="$1"
+  local sid="${2:-test-sid-$(basename "$dir")}"
+  echo "$dir/.rite/sessions/${sid}.flow-state"
 }
 
 # Helper: run hook with given CWD
@@ -133,12 +155,12 @@ echo "TC-006: Phase same as last_synced_phase → no-op"
 dir006="$TEST_DIR/tc006"
 mkdir -p "$dir006/.rite-work-memory"
 echo "existing wm" > "$dir006/.rite-work-memory/issue-42.md"
-create_state_file "$dir006" '{"active": true, "issue_number": 42, "phase": "phase5_lint", "last_synced_phase": "phase5_lint"}'
+create_state_file "$dir006" '{"active": true, "issue_number": 42, "phase": "lint", "last_synced_phase": "lint"}'
 rc006=0
 run_hook "$dir006" || rc006=$?
 # Verify exit code is 0 (not a crash)
-synced=$(jq -r '.last_synced_phase' "$dir006/.rite-flow-state" 2>/dev/null)
-if [ "$synced" = "phase5_lint" ] && [ "$rc006" -eq 0 ]; then
+synced=$(jq -r '.last_synced_phase' "$(state_file_path "$dir006")" 2>/dev/null)
+if [ "$synced" = "lint" ] && [ "$rc006" -eq 0 ]; then
   pass "No sync when phase matches last_synced_phase (no-op, exit code: $rc006)"
 else
   fail "Unexpected: last_synced_phase=$synced, exit code=$rc006"
@@ -208,7 +230,7 @@ fi
 echo ""
 
 # --- TC-POST-WM-PER-SESSION-1: per-session state file (Issue #681) → phase diff detection works ---
-# Verifies _resolve-flow-state-path.sh integration: when schema_version=2 with a valid SID
+# Verifies flow-state.sh integration: when schema_version=2 with a valid SID
 # and a per-session file exists, the hook reads from `.rite/sessions/<sid>.flow-state`
 # (not the legacy `.rite-flow-state`). Phase diff detection must still work end-to-end.
 echo "TC-POST-WM-PER-SESSION-1: per-session state file → phase diff detected"
@@ -304,7 +326,10 @@ create_state_file "$dir010" '{
 }'
 # Use GH_TOKEN=invalid to force gh to fail (or rely on absence of auth in CI).
 GH_TOKEN=invalid run_hook "$dir010" || true
-post_lsp=$(jq -r '.last_synced_phase // empty' "$dir010/.rite-flow-state" 2>/dev/null)
+# Per-session path (PR 2a v3 SoT) — legacy `.rite-flow-state` is no longer written.
+# `|| post_lsp=""` keeps the assignment from triggering `set -e` when jq returns
+# non-zero (e.g., file missing because the hook never wrote the per-session file).
+post_lsp=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir010")" 2>/dev/null) || post_lsp=""
 if [ "$post_lsp" = "phase5_implementation" ]; then
   pass "TC-010 last_synced_phase remained 'phase5_implementation' after sync failure (gate functional)"
 elif [ "$post_lsp" = "phase5_lint" ]; then

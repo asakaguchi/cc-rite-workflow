@@ -39,7 +39,7 @@ _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
 trap '[ -n "${_resolve_err:-}" ] && rm -f "$_resolve_err" 2>/dev/null || true' EXIT INT TERM
 # Single-pass branch (filter runs once regardless of resolver exit status).
 _resolve_failed=0
-FLOW_STATE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
+FLOW_STATE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
 # Mirror of session-end.sh resolver stderr handler. The grep pins accepted prefixes;
 # any new resolver prefix (INFO:/DIAG:/...) would silently drop without the counter.
 if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
@@ -58,8 +58,8 @@ if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
   fi
 fi
 if [ "$_resolve_failed" -eq 1 ]; then
-  FLOW_STATE="$STATE_ROOT/.rite-flow-state"
-  echo "[rite] WARNING: flow-state path resolution failed, falling back to legacy ($FLOW_STATE)" >&2
+  echo "[rite] WARNING: flow-state.sh path resolution failed — FLOW_STATE 不明、recovery を skip します" >&2
+  FLOW_STATE=""
 fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 LOCKDIR="$COMPACT_STATE.lockdir"
@@ -71,7 +71,7 @@ _cleanup_compact_state() {
 }
 
 # --- No flow state: clean up and exit ---
-if [ ! -f "$FLOW_STATE" ]; then
+if [ -z "$FLOW_STATE" ] || [ ! -f "$FLOW_STATE" ]; then
   _cleanup_compact_state
   exit 0
 fi
@@ -501,7 +501,7 @@ if [ "$SOURCE" = "auto" ]; then
 [rite] Auto-compact recovery: Issue #${ISSUE}, Phase: ${PHASE}, Branch: ${BRANCH}
 Next action: ${NEXT_ACTION}
 Loop: ${LOOP} | PR: #${PR}
-Read .rite-flow-state and .rite-work-memory/issue-${ISSUE}.md for full context, then continue.
+Use \`bash {plugin_root}/hooks/flow-state.sh get --field <field>\` for full state details. Also consult .rite-work-memory/issue-${ISSUE}.md, then continue.
 EOF
 else
   # Manual compact: state re-injection only, no auto-continue instruction

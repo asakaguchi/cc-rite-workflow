@@ -31,7 +31,7 @@ Collect metrics from the current workflow execution:
 | `test_pass_rate` | From Phase 5.2 lint results | 100% if tests passed or no tests configured |
 | `review_critical_high` | Phase 5.4 review results | Count of CRITICAL+HIGH findings from the last `📜 rite レビュー結果` PR comment |
 | `review_fix_loops` | PR comments | Count `📜 rite レビュー結果` comments on the PR: `gh api repos/{owner}/{repo}/issues/{pr_number}/comments --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | length'` |
-| `plan_deviation_count` | flow-state | Read `implementation_round` field (set by Phase 5.1.3) via `state-read.sh`. **Use the same fail-fast pattern documented at the Phase 3 pre-condition** (canonical `if cmd; then :; else rc=$?; fi` form). state-read.sh launch failure 時は metrics output を skip し、silent に `"0"` 扱い (= "no deviation" の誤分類) しないこと。per-session state を参照 (legacy state file snapshot ではない)。Phase 5.1 への re-entry 数 (checklist failure 由来) を計測。詳細な bash literal は本ファイルの「`plan_deviation_count` 取得 bash block」セクション参照 |
+| `plan_deviation_count` | flow-state | Read `implementation_round` field (set by Phase 5.1.3) via `flow-state.sh`. **Use the same fail-fast pattern documented at the Phase 3 pre-condition** (canonical `if cmd; then :; else rc=$?; fi` form). flow-state.sh launch failure 時は metrics output を skip し、silent に `"0"` 扱い (= "no deviation" の誤分類) しないこと。per-session state を参照 (legacy state file snapshot ではない)。Phase 5.1 への re-entry 数 (checklist failure 由来) を計測。詳細な bash literal は本ファイルの「`plan_deviation_count` 取得 bash block」セクション参照 |
 
 > **Note**: bash literal は table cell 内に埋め込まず、独立 code block として下に分離している。これは LLM が table を読んで値を提示する際に、cell 内 literal を正規の Bash tool 呼び出しと誤認するリスクを避けるため。table cell 内の prose は Phase 3 pre-condition への semantic reference にとどめる。
 
@@ -40,15 +40,15 @@ Collect metrics from the current workflow execution:
 canonical capture pattern を維持し `caller-markdown-block.test.sh` G-03 metatest が pass することを保証:
 
 ```bash
-# canonical fail-fast pattern (Phase 3 pre-condition と同型): state-read.sh 起動失敗時は
+# canonical fail-fast pattern (Phase 3 pre-condition と同型): flow-state.sh 起動失敗時は
 # silent default 0 (= "no deviation") に降格せず、metrics output を skip する。
 # 注意: inline 1 行 form を維持 (caller-markdown-block.test.sh TC-6 が
 # `if val=...; then :; else rc=$?` の 1 行 canonical capture pattern を grep で pin する)。
-if val=$(bash {plugin_root}/hooks/state-read.sh --field implementation_round --default 0); then :; else rc=$?; echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_5_2_metrics; rc=$rc" >&2; echo "WARNING: state-read.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; echo "RESUME_HINT: state-read.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2; val=""; fi
+if val=$(bash {plugin_root}/hooks/flow-state.sh get --field implementation_round --default 0); then :; else rc=$?; echo "[CONTEXT] STATE_READ_FAILED=1; phase=phase5_5_2_metrics; rc=$rc" >&2; echo "WARNING: flow-state.sh failed (rc=$rc) — metrics for plan_deviation_count skipped" >&2; echo "RESUME_HINT: flow-state.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2; val=""; fi
 # numeric type validation (writer/reader/resume 3 layer 対称化 doctrine): 他 caller (Phase 5.7
 # parent_issue_number / implement.md parent_issue_number / pr/review.md loop_count /
 # resume.md parent_issue_number_raw) と同様に non-numeric 値を 0 に降格して partial corruption
-# (`| 計画逸脱回数 | abc回 |` 等) を防ぐ。空文字列 (state-read.sh 失敗) は下記 if-z で別途
+# (`| 計画逸脱回数 | abc回 |` 等) を防ぐ。空文字列 (flow-state.sh 失敗) は下記 if-z で別途
 # METRICS_SKIPPED 経路へ流すため、ここでは非空かつ非数値のみ 0 に降格する。
 case "$val" in
   '') ;;
@@ -58,7 +58,7 @@ case "$val" in
     ;;
 esac
 plan_deviation_count="$val"
-# state-read.sh 失敗時 (`val=""`) は METRICS_SKIPPED sentinel を emit し、後続 Step 2/3/4
+# flow-state.sh 失敗時 (`val=""`) は METRICS_SKIPPED sentinel を emit し、後続 Step 2/3/4
 # (threshold evaluation + failure classification + PATCH heredoc generation) を skip させる。
 # silent に空文字列 `{plan_deviation_count}` substitute が下流 heredoc (Phase 5.5.2 完了レポート)
 # に流入し `| 計画逸脱回数 | 回 | ...` の partial corruption が発生する経路
@@ -85,7 +85,7 @@ fi
 
 ### Claude への指示 (METRICS_SKIPPED 検出時の挙動)
 
-上記 bash block 実行後、stderr に `[CONTEXT] METRICS_SKIPPED=1; reason=state_read_failed` が emit された場合、Claude は **Step 2 (threshold evaluation)、Step 3 (failure classification)、Step 4 (PATCH heredoc generation) の 3 step すべてを skip** し、`Phase 5.5.2: state-read.sh 失敗のため metrics 更新を skip しました (manual intervention で次回計測してください)` を stderr に出力する。その後、**Mandatory After 5.5.2 (`flow-state-update.sh create --phase phase5_post_metrics` の marker 書き込み) を unconditional に実行してから Phase 5.6 へ進む** (AC-5 により body skip 時も marker 書き込みは必須。これを skip すると Phase 5.6 pre-condition `expected: phase5_post_metrics` で hard abort する)。Phase 5.5.2 の実 heading 構造は Step 1=collect / Step 2=threshold / Step 3=failure classification / **Step 4=Append metrics section to work memory (= heredoc PATCH 本体)** / Step 5=repeated failure であり、Step 4 が PATCH heredoc 本体のため、Step 4 を skip 対象に含めないと空 placeholder の partial corruption が再発する self-defeating defense になる。
+上記 bash block 実行後、stderr に `[CONTEXT] METRICS_SKIPPED=1; reason=state_read_failed` が emit された場合、Claude は **Step 2 (threshold evaluation)、Step 3 (failure classification)、Step 4 (PATCH heredoc generation) の 3 step すべてを skip** し、`Phase 5.5.2: flow-state.sh 失敗のため metrics 更新を skip しました (manual intervention で次回計測してください)` を stderr に出力する。その後、**Mandatory After 5.5.2 (`flow-state.sh set --phase phase5_post_metrics` の marker 書き込み) を unconditional に実行してから Phase 5.6 へ進む** (AC-5 により body skip 時も marker 書き込みは必須。これを skip すると Phase 5.6 pre-condition `expected: phase5_post_metrics` で hard abort する)。Phase 5.5.2 の実 heading 構造は Step 1=collect / Step 2=threshold / Step 3=failure classification / **Step 4=Append metrics section to work memory (= heredoc PATCH 本体)** / Step 5=repeated failure であり、Step 4 が PATCH heredoc 本体のため、Step 4 を skip 対象に含めないと空 placeholder の partial corruption が再発する self-defeating defense になる。
 
 ## Step 2: Evaluate thresholds
 
@@ -202,7 +202,7 @@ fi
 
 ### Placeholder descriptions
 
-`{plan_deviation_rate}`, `{test_pass_rate}`, `{review_critical_high}`, `{review_fix_loops}`, `{plan_deviation_count}` are the values collected in Step 1. **`{plan_deviation_count}` の source**: Step 1 bash block の stderr に emit される `[CONTEXT] PLAN_DEVIATION_COUNT=<N>` 行を Claude が会話履歴で first-match で grep し、`<N>` 部分を literal substitute する (state-read.sh 失敗時は `[CONTEXT] METRICS_SKIPPED=1` が代わりに emit され、本 heredoc 全体が skip される — 上記「Claude への指示 (METRICS_SKIPPED 検出時の挙動)」段落を参照)。`{judgment}` is `pass`/`warn`/`skip` from Step 2. `{threshold}` is the MA5 threshold. `{baseline_status}`, `{primary_failure_class}`, `{corrective_action_pointer}` are from Steps 2-3. Before executing this bash block, replace all `{...}` placeholders in the heredoc body with actual values computed in Steps 1-3. The heredoc uses a single-quoted delimiter (`'METRICS_EOF'`) so shell variables are NOT expanded; Claude must substitute the placeholder text directly in the template before passing it to the Bash tool.
+`{plan_deviation_rate}`, `{test_pass_rate}`, `{review_critical_high}`, `{review_fix_loops}`, `{plan_deviation_count}` are the values collected in Step 1. **`{plan_deviation_count}` の source**: Step 1 bash block の stderr に emit される `[CONTEXT] PLAN_DEVIATION_COUNT=<N>` 行を Claude が会話履歴で first-match で grep し、`<N>` 部分を literal substitute する (flow-state.sh 失敗時は `[CONTEXT] METRICS_SKIPPED=1` が代わりに emit され、本 heredoc 全体が skip される — 上記「Claude への指示 (METRICS_SKIPPED 検出時の挙動)」段落を参照)。`{judgment}` is `pass`/`warn`/`skip` from Step 2. `{threshold}` is the MA5 threshold. `{baseline_status}`, `{primary_failure_class}`, `{corrective_action_pointer}` are from Steps 2-3. Before executing this bash block, replace all `{...}` placeholders in the heredoc body with actual values computed in Steps 1-3. The heredoc uses a single-quoted delimiter (`'METRICS_EOF'`) so shell variables are NOT expanded; Claude must substitute the placeholder text directly in the template before passing it to the Bash tool.
 
 ## Step 5: Check repeated failure
 
@@ -223,5 +223,5 @@ Present options via `AskUserQuestion`:
 
 - [`../../../references/execution-metrics.md`](../../../references/execution-metrics.md) — メトリクス定義 / 閾値 / failure classification
 - [`../../../references/gh-cli-patterns.md`](../../../references/gh-cli-patterns.md#work-memory-update-safety-patterns) — Work Memory Update Safety Patterns
-- [`./pre-condition-gate.md`](./pre-condition-gate.md) — Phase 5.6 pre-condition の `state-read.sh` fail-fast pattern
+- [`./pre-condition-gate.md`](./pre-condition-gate.md) — Phase 5.6 pre-condition の `flow-state.sh` fail-fast pattern
 - `plugins/rite/hooks/tests/caller-markdown-block.test.sh` TC-6 — `implementation_round` inline form pin (本 reference の bash block を grep 対象とする)

@@ -57,7 +57,6 @@ DEFAULT_HELPERS=(
   state-path-resolve.sh
   _resolve-session-id.sh
   _resolve-session-id-from-file.sh
-  _resolve-schema-version.sh
   _resolve-cross-session-guard.sh
   _emit-cross-session-incident.sh
   _mktemp-stderr-guard.sh

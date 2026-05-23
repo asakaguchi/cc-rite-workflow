@@ -46,11 +46,33 @@ show_stderr() {
   fi
 }
 
-# Helper: create a state file in the given directory
+# Helper: create a per-session state file (schema v3) in the given directory.
+# Writes .rite-session-id and .rite/sessions/<sid>.flow-state. Auto-injects
+# schema_version=3 so the consuming hook does not re-migrate the fixture
+# mid-test (the auto-migrate step on session-start would rewrite legacy
+# phase names like `implementing`).
 create_state_file() {
   local dir="$1"
   local content="$2"
-  echo "$content" > "$dir/.rite-flow-state"
+  local sid="${3:-test-sid-$(basename "$dir")}"
+  mkdir -p "$dir/.rite/sessions"
+  printf '%s' "$sid" > "$dir/.rite-session-id"
+  local merged
+  if printf '%s' "$content" | grep -q '"schema_version"'; then
+    merged="$content"
+  elif printf '%s' "$content" | jq -e . >/dev/null 2>&1; then
+    merged=$(printf '%s' "$content" | jq -c '. + {schema_version: 3}')
+  else
+    merged="$content"
+  fi
+  printf '%s\n' "$merged" > "$dir/.rite/sessions/${sid}.flow-state"
+}
+
+# Helper: path to the per-session state file written by create_state_file
+state_file_path() {
+  local dir="$1"
+  local sid="${2:-test-sid-$(basename "$dir")}"
+  echo "$dir/.rite/sessions/${sid}.flow-state"
 }
 
 # Helper: run pre-compact hook with given CWD, capture stderr
@@ -89,7 +111,7 @@ mkdir -p "$dir002"
 create_state_file "$dir002" '{"active": true, "phase": "impl"}'
 
 if run_hook "$dir002"; then
-  updated_at=$(jq -r '.updated_at' "$dir002/.rite-flow-state")
+  updated_at=$(jq -r '.updated_at' "$(state_file_path "$dir002")")
   # Verify ISO 8601 format: YYYY-MM-DDTHH:MM:SS+00:00
   if echo "$updated_at" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\+00:00$'; then
     # Also verify year is reasonable (>= 2024) to catch bogus values
@@ -114,8 +136,9 @@ mkdir -p "$dir003"
 create_state_file "$dir003" '{"active": true, "phase": "review", "issue": 42}'
 
 if run_hook "$dir003"; then
-  phase=$(jq -r '.phase' "$dir003/.rite-flow-state")
-  issue=$(jq -r '.issue' "$dir003/.rite-flow-state")
+  sf003=$(state_file_path "$dir003")
+  phase=$(jq -r '.phase' "$sf003")
+  issue=$(jq -r '.issue' "$sf003")
   if [ "$phase" = "review" ] && [ "$issue" = "42" ]; then
     pass "Existing fields preserved (phase=$phase, issue=$issue)"
   else
@@ -133,7 +156,7 @@ mkdir -p "$dir004"
 create_state_file "$dir004" '{"active": true}'
 
 if run_hook "$dir004"; then
-  updated_at=$(jq -r '.updated_at' "$dir004/.rite-flow-state")
+  updated_at=$(jq -r '.updated_at' "$(state_file_path "$dir004")")
   # Try parsing with GNU date (Linux)
   if epoch=$(date -d "$updated_at" +%s 2>/dev/null); then
     if [ "$epoch" -gt 0 ]; then
@@ -174,7 +197,8 @@ echo ""
 echo "TC-005b: Corrupted state file → exit 0 + jq parse error stderr + 元ファイル保持"
 dir005b="$TEST_DIR/tc005b"
 mkdir -p "$dir005b"
-echo "{broken" > "$dir005b/.rite-flow-state"
+create_state_file "$dir005b" "{broken"
+sf005b=$(state_file_path "$dir005b")
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 if run_hook "$dir005b" >/dev/null; then
   rc=0
@@ -183,8 +207,8 @@ else
 fi
 if [ "$rc" -eq 0 ]; then
   # Verify the corrupted file is preserved (jq failure should not overwrite it)
-  if [ -f "$dir005b/.rite-flow-state" ]; then
-    preserved_content=$(cat "$dir005b/.rite-flow-state")
+  if [ -f "$sf005b" ]; then
+    preserved_content=$(cat "$sf005b")
     if [ "$preserved_content" = "{broken" ]; then
       # Verify jq parse error is emitted to stderr (silent failure 防止)
       if grep -q "parse error" "$LAST_STDERR_FILE" 2>/dev/null; then
@@ -210,7 +234,7 @@ mkdir -p "$dir006"
 create_state_file "$dir006" '{"active": true, "updated_at": "2020-01-01T00:00:00+00:00"}'
 
 if run_hook "$dir006"; then
-  updated_at=$(jq -r '.updated_at' "$dir006/.rite-flow-state")
+  updated_at=$(jq -r '.updated_at' "$(state_file_path "$dir006")")
   if [ "$updated_at" != "2020-01-01T00:00:00+00:00" ]; then
     # Verify it's a valid current-ish timestamp (year >= 2024)
     year=$(echo "$updated_at" | cut -c1-4)
@@ -431,11 +455,12 @@ mkdir -p "$dir014"
 create_state_file "$dir014" '{"active": true, "phase": "phase5_review", "issue_number": 847}'
 
 if run_hook "$dir014"; then
-  has_needs_clear=$(jq -e 'has("needs_clear")' "$dir014/.rite-flow-state" 2>/dev/null) && has_needs_clear="true" || has_needs_clear="false"
+  sf014=$(state_file_path "$dir014")
+  has_needs_clear=$(jq -e 'has("needs_clear")' "$sf014" 2>/dev/null) && has_needs_clear="true" || has_needs_clear="false"
   if [ "$has_needs_clear" = "false" ]; then
     pass "needs_clear field is absent after pre-compact (AC-2)"
   else
-    needs_clear_val=$(jq -r '.needs_clear' "$dir014/.rite-flow-state" 2>/dev/null)
+    needs_clear_val=$(jq -r '.needs_clear' "$sf014" 2>/dev/null)
     fail "needs_clear field exists after pre-compact: needs_clear=$needs_clear_val"
   fi
 else
@@ -603,47 +628,39 @@ echo ""
 # --------------------------------------------------------------------------
 # TC-749-STDERR-PASSTHROUGH (Issue #749, AC-1 / AC-LOCAL-1)
 # --------------------------------------------------------------------------
-echo "TC-749-STDERR-PASSTHROUGH: helper failure → ERROR pass-through + fallback WARNING"
+echo "TC-749-STDERR-PASSTHROUGH: helper failure → ERROR pass-through + skip WARNING"
 
 HOOKS_REAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 sbx_749="$(mktemp -d "$TEST_DIR/sbx-hooks-XXXXXX")"
 cp -a "$HOOKS_REAL_DIR/." "$sbx_749/"
-cat > "$sbx_749/_resolve-flow-state-path.sh" <<'FAKE_RESOLVER_EOF'
+cat > "$sbx_749/flow-state.sh" <<'FAKE_RESOLVER_EOF'
 #!/bin/bash
-echo "ERROR: TC-749 simulated _resolve-flow-state-path failure" >&2
+echo "ERROR: TC-749 simulated flow-state.sh path failure" >&2
 exit 1
 FAKE_RESOLVER_EOF
-chmod +x "$sbx_749/_resolve-flow-state-path.sh"
+chmod +x "$sbx_749/flow-state.sh"
 
 dir_749="$TEST_DIR/tc749-passthrough"
 mkdir -p "$dir_749"
-cat > "$dir_749/.rite-flow-state" <<EOF
-{"active": true, "issue_number": 749, "phase": "phase5_test", "branch": "refactor/issue-749-test"}
-EOF
 
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.749.XXXXXX")"
 echo "{\"cwd\": \"$dir_749\"}" \
   | bash "$sbx_749/pre-compact.sh" >/dev/null 2>"$LAST_STDERR_FILE" || true
 stderr_749="$(cat "$LAST_STDERR_FILE")"
 
-if printf '%s' "$stderr_749" | grep -qF 'TC-749 simulated _resolve-flow-state-path failure'; then
-  pass "ERROR line from helper passed through to caller stderr"
+if printf '%s' "$stderr_749" | grep -qF 'TC-749 simulated flow-state.sh path failure'; then
+  pass "ERROR line from flow-state.sh passed through to caller stderr"
 else
   fail "Expected ERROR pass-through; got stderr: $stderr_749"
 fi
-if printf '%s' "$stderr_749" | grep -qF 'flow-state path resolution failed, falling back to legacy'; then
-  pass "Fallback WARNING emitted to stderr"
+# PR 2a refactor (Phase F-3): the legacy fallback was removed. pre-compact now
+# emits a "flow-state.sh path resolution failed — skip" WARNING and aborts the
+# flow-state update. The previous "Legacy fallback path was loaded" assertion
+# was removed accordingly.
+if printf '%s' "$stderr_749" | grep -qF 'flow-state.sh path resolution failed'; then
+  pass "Skip WARNING emitted to stderr (no legacy fallback in v3)"
 else
-  fail "Expected fallback WARNING; got stderr: $stderr_749"
-fi
-# Positive evidence: assert the legacy fallback path was actually used.
-# pre-compact.sh updates `.updated_at` on the resolved FLOW_STATE. If the fallback
-# silently broke (typo / missing file), this would not happen.
-updated_at_after=$(jq -r '.updated_at // empty' "$dir_749/.rite-flow-state" 2>/dev/null)
-if [ -n "$updated_at_after" ]; then
-  pass "Legacy fallback path was loaded (.updated_at present after pre-compact)"
-else
-  fail "Expected .updated_at in legacy state file; got: '$updated_at_after'"
+  fail "Expected skip WARNING; got stderr: $stderr_749"
 fi
 echo ""
 
@@ -652,11 +669,11 @@ echo ""
 # explaining the snapshot is skipped. A silent `2>/dev/null` here would let a
 # recovery path proceed with a missing workflow snapshot and no diagnostic.
 # --------------------------------------------------------------------------
-echo "TC-ACTIVE-PARSE-WARNING: corrupt .rite-flow-state → 'workflow snapshot will be skipped' WARNING"
+echo "TC-ACTIVE-PARSE-WARNING: corrupt per-session flow-state → 'workflow snapshot will be skipped' WARNING"
 dir_active_parse="$TEST_DIR/tc-active-parse"
 mkdir -p "$dir_active_parse"
 # Valid JSON-prefix that fails when jq tries to extract .active
-printf '{ not json' > "$dir_active_parse/.rite-flow-state"
+create_state_file "$dir_active_parse" '{ not json'
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.active-parse.XXXXXX")"
 echo "{\"cwd\": \"$dir_active_parse\"}" \
   | bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
@@ -689,7 +706,7 @@ SHIM
 chmod +x "$shim_dir/mv"
 dir_mvfail="$TEST_DIR/tc-mv-fail"
 mkdir -p "$dir_mvfail"
-echo '{"active":true,"phase":"implement","updated_at":"2026-01-01T00:00:00+00:00"}' > "$dir_mvfail/.rite-flow-state"
+create_state_file "$dir_mvfail" '{"active":true,"phase":"implement","updated_at":"2026-01-01T00:00:00+00:00"}'
 stderr_mvfail=$(echo "{\"cwd\": \"$dir_mvfail\"}" | PATH="$shim_dir:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
 if printf '%s' "$stderr_mvfail" | grep -qE 'mv flow-state updated_at failed \(rc=[1-9][0-9]*'; then
   pass "TC-FLOW-MV-FAIL: flow-state mv WARNING carries real rc (≥1)"
@@ -713,7 +730,7 @@ SHIM
 chmod +x "$shim_chmod_dir/chmod"
 dir_chmod="$TEST_DIR/tc-chmod-fail"
 mkdir -p "$dir_chmod"
-echo '{"active":true,"phase":"implement","updated_at":"2026-01-01T00:00:00+00:00"}' > "$dir_chmod/.rite-flow-state"
+create_state_file "$dir_chmod" '{"active":true,"phase":"implement","updated_at":"2026-01-01T00:00:00+00:00"}'
 stderr_chmod=$(echo "{\"cwd\": \"$dir_chmod\"}" | PATH="$shim_chmod_dir:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
 if printf '%s' "$stderr_chmod" | grep -qE 'chmod 600 .* failed \(rc=13\)'; then
   pass "TC-CHMOD-FAIL: chmod WARNING carries the real rc (13), not bash-! collapsed value"

@@ -40,11 +40,34 @@ show_stderr() {
   fi
 }
 
-# Helper: create a state file in the given directory
+# Helper: create a per-session state file (schema v3) in the given directory.
+# Writes .rite-session-id and .rite/sessions/<sid>.flow-state. The default sid
+# is deterministic so subsequent run_hook calls resolve the same file via the
+# .rite-session-id fallback in flow-state.sh path.
+# Auto-injects schema_version=3 if the content is JSON without it, so the
+# session-end hook does not re-migrate the fixture mid-test.
 create_state_file() {
   local dir="$1"
   local content="$2"
-  echo "$content" > "$dir/.rite-flow-state"
+  local sid="${3:-test-sid-$(basename "$dir")}"
+  mkdir -p "$dir/.rite/sessions"
+  printf '%s' "$sid" > "$dir/.rite-session-id"
+  local merged
+  if printf '%s' "$content" | grep -q '"schema_version"'; then
+    merged="$content"
+  elif printf '%s' "$content" | jq -e . >/dev/null 2>&1; then
+    merged=$(printf '%s' "$content" | jq -c '. + {schema_version: 3}')
+  else
+    merged="$content"
+  fi
+  printf '%s\n' "$merged" > "$dir/.rite/sessions/${sid}.flow-state"
+}
+
+# Helper: path to the per-session state file written by create_state_file
+state_file_path() {
+  local dir="$1"
+  local sid="${2:-test-sid-$(basename "$dir")}"
+  echo "$dir/.rite/sessions/${sid}.flow-state"
 }
 
 # Helper: run session-end hook with given CWD, capture stdout and stderr
@@ -124,41 +147,33 @@ echo ""
 # --------------------------------------------------------------------------
 # TC-005: State file exists → active set to false, updated_at updated
 # --------------------------------------------------------------------------
-echo "TC-005: State file exists → active=false, updated_at updated"
+echo "TC-005: State file exists → deactivated then removed (AC-10)"
 dir005="$TEST_DIR/tc005"
 mkdir -p "$dir005"
-create_state_file "$dir005" '{"active": true, "issue_number": 42, "phase": "impl"}'
+create_state_file "$dir005" '{"active": true, "issue_number": 42, "phase": "implement"}'
 
+# PR 2a refactor: under per-session model session-end.sh deactivates (.active=false +
+# updated_at) AND then removes the per-session file (AC-10). The legacy
+# assertion (file remains with .active=false) is no longer satisfiable; the
+# observable invariant is "file is gone after session-end".
 output=$(run_hook "$dir005")
-active=$(jq -r '.active' "$dir005/.rite-flow-state")
-updated_at=$(jq -r '.updated_at' "$dir005/.rite-flow-state")
-
-if [ "$active" = "false" ] && echo "$updated_at" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\+00:00$'; then
-  pass "State file deactivated and updated_at set"
+sf005=$(state_file_path "$dir005")
+if [ ! -f "$sf005" ]; then
+  pass "Per-session state file removed after session-end (AC-10)"
 else
-  fail "active=$active, updated_at=$updated_at"
+  active=$(jq -r '.active' "$sf005" 2>/dev/null)
+  fail "Expected per-session file removed; still present with active=$active"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
 # TC-006: State file deactivation preserves other fields
 # --------------------------------------------------------------------------
-echo "TC-006: State file deactivation preserves other fields"
-dir006="$TEST_DIR/tc006"
-mkdir -p "$dir006"
-create_state_file "$dir006" '{"active": true, "issue_number": 99, "phase": "test", "loop_count": 5}'
-
-output=$(run_hook "$dir006")
-issue=$(jq -r '.issue_number' "$dir006/.rite-flow-state")
-phase=$(jq -r '.phase' "$dir006/.rite-flow-state")
-loop=$(jq -r '.loop_count' "$dir006/.rite-flow-state")
-
-if [ "$issue" = "99" ] && [ "$phase" = "test" ] && [ "$loop" = "5" ]; then
-  pass "Existing fields preserved (issue=$issue, phase=$phase, loop=$loop)"
-else
-  fail "Fields were modified: issue=$issue, phase=$phase, loop=$loop"
-fi
-echo ""
+# TC-006 removed (PR 2a refactor): the deactivation-preserves-fields assertion
+# only made sense when the legacy `.rite-flow-state` file stayed on disk after
+# session-end. Under v3 the per-session file is deleted at the end of the hook,
+# so there is no on-disk state to inspect for field preservation. The field
+# layout itself is now pinned by the schema_version=3 SoT in flow-state.sh.
 
 # --------------------------------------------------------------------------
 # TC-007: No state file → no error, hook completes normally
@@ -181,12 +196,15 @@ echo ""
 echo "TC-008: Corrupted state file JSON → cleanup, exit 0 (best-effort)"
 dir008="$TEST_DIR/tc008"
 mkdir -p "$dir008"
-echo "{broken json" > "$dir008/.rite-flow-state"
+# Write broken JSON via create_state_file so the per-session resolver finds it
+create_state_file "$dir008" "{broken json"
 
 # session-end.sh prioritizes cleanup over strict error propagation
 output=$(run_hook "$dir008") && rc=0 || rc=$?
-# Check that temp files are cleaned up even on jq failure
-temp_files=$(find "$dir008" -name ".rite-flow-state.tmp.*" 2>/dev/null | wc -l)
+# Check that no temp files leak in the per-session directory (legacy
+# `.rite-flow-state.tmp.*` is no longer produced — atomic writes live under
+# `.rite/sessions/<sid>.flow-state.XXXXXX`).
+temp_files=$(find "$dir008/.rite/sessions" -name "*.flow-state.*" -not -name "*.flow-state" 2>/dev/null | wc -l)
 if [ "$temp_files" -eq 0 ]; then
   pass "Corrupted JSON → temp files cleaned up (rc=$rc)"
 else
@@ -197,12 +215,14 @@ echo ""
 # --------------------------------------------------------------------------
 # TC-009: Stale temp file cleanup (older than 1 minute)
 # --------------------------------------------------------------------------
-echo "TC-009: Stale temp file cleanup"
+echo "TC-009: Stale legacy temp file cleanup (orphans in CWD)"
 dir009="$TEST_DIR/tc009"
 mkdir -p "$dir009"
 create_state_file "$dir009" '{"active": true, "issue_number": 1}'
 
-# Create a stale temp file
+# Create a stale temp file at the legacy path — session-end.sh's stale cleanup
+# (`find $CWD -maxdepth 1 -name '.rite-flow-state.tmp.*' -mmin +1 -delete`)
+# still mops up orphans from pre-v3 deployments.
 stale_file="$dir009/.rite-flow-state.tmp.99999"
 touch "$stale_file"
 # Set modification time to 2 minutes ago
@@ -212,9 +232,9 @@ touch -t "$(date -u -d '2 minutes ago' +'%Y%m%d%H%M' 2>/dev/null || date -u -v-2
 output=$(run_hook "$dir009")
 
 if [ ! -f "$stale_file" ]; then
-  pass "Stale temp file cleaned up"
+  pass "Stale legacy temp file cleaned up"
 else
-  fail "Stale temp file not cleaned up: $stale_file"
+  fail "Stale legacy temp file not cleaned up: $stale_file"
 fi
 echo ""
 
@@ -229,39 +249,28 @@ create_state_file "$dir010" '{"active": true, "issue_number": 123}'
 # Run hook (temp file should be created and cleaned up by trap)
 output=$(run_hook "$dir010")
 
-# Verify no temp files remain after successful completion
+# Verify no temp files remain after successful completion. Atomic writes
+# under v3 land in `.rite/sessions/<sid>.flow-state.XXXXXX`; the legacy
+# `.rite-flow-state.tmp.*` form is no longer produced but is still searched
+# defensively to catch regression.
 temp_count=$(find "$dir010" -name ".rite-flow-state.tmp.*" 2>/dev/null | wc -l)
-if [ "$temp_count" -eq 0 ]; then
-  pass "Temp file created and cleaned up by trap"
+per_session_temp_count=$(find "$dir010/.rite/sessions" -name "*.flow-state.*" -not -name "*.flow-state" 2>/dev/null | wc -l)
+total=$((temp_count + per_session_temp_count))
+if [ "$total" -eq 0 ]; then
+  pass "Temp file created and cleaned up by trap (legacy=$temp_count, per-session=$per_session_temp_count)"
 else
-  fail "Temp files not cleaned up: $temp_count files found"
+  fail "Temp files not cleaned up: legacy=$temp_count, per-session=$per_session_temp_count"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
 # TC-011: Updated timestamp is parseable and recent
 # --------------------------------------------------------------------------
-echo "TC-011: Updated timestamp is parseable and recent"
-dir011="$TEST_DIR/tc011"
-mkdir -p "$dir011"
-create_state_file "$dir011" '{"active": true, "issue_number": 1}'
-
-before_epoch=$(date +%s)
-output=$(run_hook "$dir011")
-after_epoch=$(date +%s)
-
-updated_at=$(jq -r '.updated_at' "$dir011/.rite-flow-state")
-# Parse timestamp with GNU date
-if state_epoch=$(date -d "$updated_at" +%s 2>/dev/null); then
-  if [ "$state_epoch" -ge "$before_epoch" ] && [ "$state_epoch" -le "$after_epoch" ]; then
-    pass "Timestamp is parseable and within test execution window"
-  else
-    fail "Timestamp out of range: $updated_at (epoch: $state_epoch, expected: $before_epoch-$after_epoch)"
-  fi
-else
-  fail "Timestamp not parseable by date -d: $updated_at"
-fi
-echo ""
+# TC-011 removed (PR 2a refactor): the updated_at-within-window assertion read
+# the legacy state file post-session-end. Under v3 the per-session file is
+# deleted by session-end (AC-10), so updated_at cannot be inspected after the
+# hook runs. The timestamp format itself is pinned by flow-state.sh cmd_set's
+# `date -u +"%Y-%m-%dT%H:%M:%SZ"` and exercised by other hooks' tests.
 
 # --------------------------------------------------------------------------
 # TC-475-WARN-A: create_interview lifecycle unfinished → stderr warning (#475 AC-9)
@@ -437,25 +446,13 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-680-B (Issue #680): legacy flow-state file is preserved (NOT deleted) on session end
+# TC-680-B: removed (PR 2a refactor)
+# Previously verified that the legacy `.rite-flow-state` was preserved with
+# active=false marker. Under v3 the legacy single-file path is no longer used
+# (state lives exclusively in `.rite/sessions/<sid>.flow-state`); session-end
+# does not write to the legacy path. The backward-compat contract this TC
+# guarded is now structurally enforced by the per-session resolver.
 # --------------------------------------------------------------------------
-echo "TC-680-B (Issue #680): legacy file → preserved (active=false marker only)"
-dir680b="$TEST_DIR/tc680b"
-mkdir -p "$dir680b"
-# No rite-config.yml → schema_version=1 (legacy mode)
-create_state_file "$dir680b" '{"active": true, "phase": "phase5_review", "issue_number": 681}'
-run_hook "$dir680b" >/dev/null || true
-if [ -f "$dir680b/.rite-flow-state" ]; then
-  active_after=$(jq -r '.active' "$dir680b/.rite-flow-state" 2>/dev/null)
-  if [ "$active_after" = "false" ]; then
-    pass "TC-680-B: legacy file preserved with active=false (backward compat)"
-  else
-    fail "TC-680-B: legacy file present but active=$active_after (expected false)"
-  fi
-else
-  fail "TC-680-B: legacy file unexpectedly removed (would break v1 backward compat)"
-fi
-echo ""
 
 # --------------------------------------------------------------------------
 # TC-680-C (Issue #680, AC-LOCAL-2): .active=true precondition preserved on per-session path
@@ -484,47 +481,39 @@ echo ""
 # --------------------------------------------------------------------------
 # TC-749-STDERR-PASSTHROUGH (Issue #749, AC-1 / AC-LOCAL-1)
 # --------------------------------------------------------------------------
-echo "TC-749-STDERR-PASSTHROUGH: helper failure → ERROR pass-through + fallback WARNING"
+echo "TC-749-STDERR-PASSTHROUGH: helper failure → ERROR pass-through + skip WARNING"
 
 HOOKS_REAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 sbx_749="$(mktemp -d "$TEST_DIR/sbx-hooks-XXXXXX")"
 cp -a "$HOOKS_REAL_DIR/." "$sbx_749/"
-cat > "$sbx_749/_resolve-flow-state-path.sh" <<'FAKE_RESOLVER_EOF'
+cat > "$sbx_749/flow-state.sh" <<'FAKE_RESOLVER_EOF'
 #!/bin/bash
-echo "ERROR: TC-749 simulated _resolve-flow-state-path failure" >&2
+echo "ERROR: TC-749 simulated flow-state.sh path failure" >&2
 exit 1
 FAKE_RESOLVER_EOF
-chmod +x "$sbx_749/_resolve-flow-state-path.sh"
+chmod +x "$sbx_749/flow-state.sh"
 
 dir_749="$TEST_DIR/tc749-passthrough"
 mkdir -p "$dir_749"
-cat > "$dir_749/.rite-flow-state" <<EOF
-{"active": true, "issue_number": 749, "phase": "phase5_test", "branch": "refactor/issue-749-test"}
-EOF
 
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.749.XXXXXX")"
 echo "{\"cwd\": \"$dir_749\"}" \
   | bash "$sbx_749/session-end.sh" >/dev/null 2>"$LAST_STDERR_FILE" || true
 stderr_749="$(cat "$LAST_STDERR_FILE")"
 
-if printf '%s' "$stderr_749" | grep -qF 'TC-749 simulated _resolve-flow-state-path failure'; then
-  pass "ERROR line from helper passed through to caller stderr"
+if printf '%s' "$stderr_749" | grep -qF 'TC-749 simulated flow-state.sh path failure'; then
+  pass "ERROR line from flow-state.sh passed through to caller stderr"
 else
   fail "Expected ERROR pass-through; got stderr: $stderr_749"
 fi
-if printf '%s' "$stderr_749" | grep -qF 'flow-state path resolution failed, falling back to legacy'; then
-  pass "Fallback WARNING emitted to stderr"
+# PR 2a refactor (Phase F-3): the legacy fallback was removed. session-end now
+# emits a "flow-state.sh path resolution failed — skip" WARNING and aborts the
+# state-cleanup step. The previous "Legacy fallback path was loaded" assertion
+# was removed accordingly.
+if printf '%s' "$stderr_749" | grep -qF 'flow-state.sh path resolution failed'; then
+  pass "Skip WARNING emitted to stderr (no legacy fallback in v3)"
 else
-  fail "Expected fallback WARNING; got stderr: $stderr_749"
-fi
-# Positive evidence: assert the legacy fallback path was actually used.
-# session-end.sh should deactivate the legacy state file (set .active=false). If the
-# fallback path silently broke, the file would remain .active=true.
-deactivated_active=$(jq -r '.active' "$dir_749/.rite-flow-state" 2>/dev/null)
-if [ "$deactivated_active" = "false" ]; then
-  pass "Legacy fallback path was loaded (.active flipped to false)"
-else
-  fail "Expected .active=false in legacy state file; got: $deactivated_active"
+  fail "Expected skip WARNING; got stderr: $stderr_749"
 fi
 echo ""
 
@@ -583,8 +572,11 @@ mkdir -p "$dir_jq"
     && git -c user.name=test -c user.email=test@test.com commit --allow-empty -m init -q \
     && git checkout -B "refactor/issue-749-jqwarn" -q
 )
-cat > "$dir_jq/.rite-flow-state" <<EOF
-{"active": true, "issue_number": 749, "phase": "phase5_test", "branch": "refactor/issue-749-jqwarn"}
+sid_jq="ses-tc749-jqwarn"
+mkdir -p "$dir_jq/.rite/sessions"
+printf '%s' "$sid_jq" > "$dir_jq/.rite-session-id"
+cat > "$dir_jq/.rite/sessions/${sid_jq}.flow-state" <<EOF
+{"schema_version": 3, "active": true, "issue_number": 749, "phase": "review", "branch": "refactor/issue-749-jqwarn", "session_id": "$sid_jq"}
 EOF
 
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.749jq.XXXXXX")"
@@ -608,10 +600,12 @@ else
 fi
 # Assert state_file path appears in WARNING (so $STATE_FILE substitution works
 # and operators can locate the failed deactivation target without grepping git).
-if printf '%s' "$stderr_jq" | grep -qF '.rite-flow-state'; then
+# Under v3 the resolved path is `.rite/sessions/<sid>.flow-state`; accept either
+# the per-session form or the legacy form for backward-compat-friendly matching.
+if printf '%s' "$stderr_jq" | grep -qE '\.rite-flow-state|\.rite/sessions/.*\.flow-state'; then
   pass "WARNING includes state file path"
 else
-  fail "Expected state file path '.rite-flow-state' in WARNING; got stderr: $stderr_jq"
+  fail "Expected state file path in WARNING; got stderr: $stderr_jq"
 fi
 # Assert jq stderr is passed through to the caller (not silently swallowed).
 # session-end.sh runs `jq ... > "$TMP_FILE"` without `2>/dev/null`, so jq's own
@@ -693,7 +687,7 @@ echo "=== TC-026: resolver drop-counter runtime arithmetic ==="
 # known lines through.
 DROP_TEST_DIR=$(mktemp -d 2>/dev/null) || DROP_TEST_DIR=""
 if [ -n "$DROP_TEST_DIR" ]; then
-  fake_resolver="$DROP_TEST_DIR/_resolve-flow-state-path.sh"
+  fake_resolver="$DROP_TEST_DIR/flow-state.sh"
   cat > "$fake_resolver" <<'RESOLVER_EOF'
 #!/bin/bash
 echo "INFO: synthetic info one" >&2
@@ -739,7 +733,8 @@ echo ""
 echo "TC-MV-FAIL: mv shim → SessionEnd WARNING must carry rc"
 dir_mvfail="$TEST_DIR/tc-mv-fail"
 mkdir -p "$dir_mvfail"
-echo '{"active":true,"phase":"implement","issue_number":99,"branch":"feat/issue-99","updated_at":"2026-01-01T00:00:00+00:00"}' > "$dir_mvfail/.rite-flow-state"
+create_state_file "$dir_mvfail" \
+  '{"active":true,"phase":"implement","issue_number":99,"branch":"feat/issue-99","updated_at":"2026-01-01T00:00:00+00:00"}'
 shim_mv="$TEST_DIR/shim-mv-end"
 mkdir -p "$shim_mv"
 cat > "$shim_mv/mv" <<'MV_SHIM'

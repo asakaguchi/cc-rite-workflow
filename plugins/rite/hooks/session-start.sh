@@ -60,7 +60,7 @@ if [ -d "$_plugin_root/hooks" ]; then
   printf '%s' "$_plugin_root" > "$STATE_ROOT/.rite-plugin-root" 2>/dev/null || true
 fi
 
-# Save session_id to .rite-session-id for flow-state-update.sh auto-read (#216)
+# Save session_id to .rite-session-id for flow-state.sh auto-read (#216)
 if [ -n "$SESSION_ID" ]; then
   (umask 077; printf '%s' "$SESSION_ID" > "$STATE_ROOT/.rite-session-id") 2>/dev/null || {
     [ -n "${RITE_DEBUG:-}" ] && echo "[rite] WARNING: Failed to write .rite-session-id" >&2
@@ -284,17 +284,13 @@ with open(out_path, "w") as f:
   fi
 fi
 
-# Auto-migrate legacy `.rite-flow-state` to the per-session path
-# (`.rite/sessions/{session_id}.flow-state`) when schema_version is missing or < 2.
-# Issue #672 (multi-state design) / #679 (migration). The script is non-blocking:
-# any error is reported to stderr but the hook continues with the legacy file so
-# the user can retry on the next session start. The explicit migration message
-# (AC-8 — silent skip forbidden) flows through stderr to the user's terminal.
-_migrate_script="$SCRIPT_DIR/scripts/migrate-flow-state.sh"
-if [ -x "$_migrate_script" ]; then
-  STATE_ROOT="$STATE_ROOT" bash "$_migrate_script" || true
-fi
-unset _migrate_script
+# Auto-migrate any v1/v2 state files to v3 via flow-state.sh migrate subcommand.
+# Non-blocking: errors surface to stderr but the hook continues. Idempotent: files
+# already at schema_version=3 are skipped.
+# stdout is silenced so the migrate completion line never leaks into the hook's
+# stdout (which Claude reads as the active-workflow injection payload); errors
+# remain on stderr for triage.
+RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" migrate >/dev/null || true
 
 # Resolve active flow-state file path (Issue #680).
 # `_resolve-flow-state-path.sh` returns the per-session file
@@ -307,12 +303,12 @@ unset _migrate_script
 # helper `_mktemp-stderr-guard.sh`.
 # - mktemp 失敗時に 3 行 WARNING を emit (silent fall-through 解消)
 # - chmod 600 / TMPDIR 尊重を helper 経由で取得
-# - filter は state-read.sh の cross-session guard pass-through (3-pattern:
+# - filter は flow-state.sh の cross-session guard pass-through (3-pattern:
 #   `^WARNING:|^  |^jq: `) を `^ERROR:` で superset 化した 4-pattern 拡張版。
 #   `_resolve-flow-state-path.sh` は `_validate-helpers.sh` / `_validate-state-root.sh`
 #   経由で `ERROR:` 行を emit する (resolver self-validation contract) ため、
 #   reader-side filter より広い範囲を要求する。indented continuation 行と
-#   raw `jq:` parse error は state-read.sh と同じく pass-through する
+#   raw `jq:` parse error は flow-state.sh と同じく pass-through する
 # - success arm でも tempfile を inspect する (`_resolve-flow-state-path.sh`
 #   が graceful-degrade で exit 0 を返す経路、例えば `_resolve-session-id-from-file.sh`
 #   の tr IO failure による empty SID + WARNING 出力 + exit 0 経路で
@@ -325,17 +321,17 @@ _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
 # of success/failure (helper may graceful-degrade exit 0 with WARNING in stderr,
 # e.g., empty SID via tr IO failure — both paths require pass-through).
 _resolve_failed=0
-STATE_FILE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
+STATE_FILE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
 if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
   grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
 fi
 if [ "$_resolve_failed" -eq 1 ]; then
-  STATE_FILE="$STATE_ROOT/.rite-flow-state"
-  echo "[rite] WARNING: flow-state path resolution failed, falling back to legacy ($STATE_FILE)" >&2
+  echo "[rite] WARNING: flow-state.sh path resolution failed — STATE_FILE 不明、recovery を skip します" >&2
+  STATE_FILE=""
 fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 
-if [ ! -f "$STATE_FILE" ]; then
+if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
   # Clean stale compact state on startup/clear when no flow state exists (#756, #800)
   _cleanup_stale_compact
   exit 0
@@ -503,10 +499,10 @@ IMPORTANT: First inform the user that an interrupted workflow was detected.
 Display the Issue number, phase, and next action.
 Then suggest running /rite:resume to continue from where it left off.
 If the user provides a different instruction, respect it but mention the pending workflow.
-Read .rite-flow-state for full state details.
+Use \`bash {plugin_root}/hooks/flow-state.sh get --field <field>\` for full state details.
 EOF
 
 # --- Session ID notification (#173, #221) ---
-# session_id is now auto-read from .rite-session-id by flow-state-update.sh.
+# session_id is now auto-read from .rite-session-id by flow-state.sh.
 # stdout output removed to prevent Claude from fabricating inconsistent values
 # via the {session_id} placeholder. See Issue #221.

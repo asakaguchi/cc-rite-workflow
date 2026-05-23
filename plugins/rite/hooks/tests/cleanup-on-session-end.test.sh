@@ -6,7 +6,7 @@
 #     (a) 当該 session の per-session file (`.rite/sessions/{sid}.flow-state`) を削除
 #     (b) **兄弟 session** の file には影響なし (blast radius 0)
 #     (c) `.rite-flow-state.legacy.*` backup には影響なし (#747 cycle 3/4 regression)
-#     (d) cleanup 後は state-read.sh が ENOENT 経路 (default 値) を返し resume 不能
+#     (d) cleanup 後は flow-state.sh が ENOENT 経路 (default 値) を返し resume 不能
 #     (e) 異なる cwd (別 repo) の per-session file には影響なし
 #   を verify する。
 #
@@ -22,7 +22,7 @@
 #   TC-1: 当該 session の per-session file 削除 (TC-680-A 等価、再 pin)
 #   TC-2: 兄弟 session の file は影響なし (blast radius 0)
 #   TC-3: `.rite-flow-state.legacy.*` backup は影響なし (#747 cycle 3/4 regression guard)
-#   TC-4: cleanup 後 state-read.sh は default 値 (ENOENT 経路) を返す (resume 不能)
+#   TC-4: cleanup 後 flow-state.sh は default 値 (ENOENT 経路) を返す (resume 不能)
 #   TC-5: 異なる cwd (別 repo) の per-session file は影響なし
 #   TC-6: cleanup 後 sessions ディレクトリ自体は残る (mkdir レース回避)
 #
@@ -37,7 +37,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 HOOK="$HOOKS_DIR/session-end.sh"
-STATE_READ="$HOOKS_DIR/state-read.sh"
+STATE_READ="$HOOKS_DIR/flow-state.sh"
 PASS=0
 FAIL=0
 FAILED_NAMES=()
@@ -164,9 +164,9 @@ else
 fi
 
 # -------------------------------------------------------------------------
-# TC-4: cleanup 後 state-read.sh は default 値を返す (resume 不能)
+# TC-4: cleanup 後 flow-state.sh は default 値を返す (resume 不能)
 # -------------------------------------------------------------------------
-echo "TC-4: cleanup 後 state-read.sh は default 値を返す (ENOENT 経路)"
+echo "TC-4: cleanup 後 flow-state.sh は default 値を返す (ENOENT 経路)"
 TD=$(make_test_dir)
 SID="eeeeeeee-1010-1010-1010-101010101010"
 echo "$SID" > "$TD/.rite-session-id"
@@ -175,7 +175,7 @@ echo "{\"active\":true,\"phase\":\"phase5_pre_cleanup\",\"issue_number\":684,\"s
   > "$TD/.rite/sessions/${SID}.flow-state"
 
 # Sanity check pre-cleanup
-phase_before=$(cd "$TD" && bash "$STATE_READ" --field phase --default "default_unset")
+phase_before=$(cd "$TD" && bash "$STATE_READ" get --field phase --default "default_unset")
 if [ "$phase_before" = "phase5_pre_cleanup" ]; then
   pass "TC-4.0 (pre): state-read returns the live state before cleanup"
 else
@@ -184,7 +184,7 @@ fi
 
 run_session_end "$TD" >/dev/null
 
-phase_after=$(cd "$TD" && bash "$STATE_READ" --field phase --default "default_unset")
+phase_after=$(cd "$TD" && bash "$STATE_READ" get --field phase --default "default_unset")
 if [ "$phase_after" = "default_unset" ]; then
   pass "TC-4.1: state-read returns default after cleanup (resume not possible)"
 else

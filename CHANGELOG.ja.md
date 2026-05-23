@@ -18,7 +18,7 @@ Phase 番号取扱方針: エントリは機能名レベルで変更を記述し
 
 ### 変更
 
-- **Flat workflow 統合** (#1079) — `/rite:issue:start` と `/rite:issue:create` を単一ファイルの flat workflow に再設計。合計 12 個の sub-skill ファイル (sub-skill chain 6: start 系の `start-execute` / `start-publish` / `start-finalize` + create 系の `create-interview` / `create-register` / `create-decompose`、周辺 sub-skill 6: `parent-routing`, `child-issue-selection`, `branch-setup`, `work-memory-init`, `implementation-plan`, `completion-report`) を `commands/issue/start.md` / `commands/issue/create.md` に統合。途中停止時の復帰経路は `/rite:resume` (`commands/resume.md` Phase 3.2 の phase→step 表) に一本化。単独 diff 数値は release 時に `gh pr view <pr> --json additions,deletions,changedFiles` で最終確定する。Unreleased 期間中は数値を載せず、review round ごとのドリフトを防ぐ運用。
+- **Flat workflow 統合** (#1079) — `/rite:issue:start` と `/rite:issue:create` を単一ファイルの flat workflow に再設計。合計 12 個の sub-skill ファイル (sub-skill chain 6: start 系の `start-execute` / `start-publish` / `start-finalize` + create 系の `create-interview` / `create-register` / `create-decompose`、周辺 sub-skill 6: `parent-routing`, `child-issue-selection`, `branch-setup`, `work-memory-init`, `implementation-plan`, `completion-report`) を `commands/issue/start.md` / `commands/issue/create.md` に統合。途中停止時の復帰経路は `/rite:resume` (`commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) の phase→step 表) に一本化。単独 diff 数値は release 時に `gh pr view <pr> --json additions,deletions,changedFiles` で最終確定する。Unreleased 期間中は数値を載せず、review round ごとのドリフトを防ぐ運用。
 
 ### 削除
 

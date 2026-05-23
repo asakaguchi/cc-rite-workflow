@@ -789,7 +789,7 @@ _レビュー対応はありません_
 
 **legacy phase (forward-compat 受容のみ、新規書き込みなし):**
 
-旧 sub-skill chain アーキテクチャで使われていた phase 名。古い state file は `/rite:resume` の `commands/resume.md` Phase 3.2 legacy 表で flat workflow phase へマッピングされる。
+旧 sub-skill chain アーキテクチャで使われていた phase 名。古い state file は `/rite:resume` の `commands/resume.md` Phase 3.5 整合性判定 (cross-check) で v3 enum へ解決され、Phase 5.3 (Phase enum → Step mapping (SoT)) で flat workflow step へマッピングされる。
 
 | フェーズ | フェーズ詳細 |
 |---------|------------|

@@ -208,7 +208,7 @@ fi
 echo ""
 
 # --- TC-POST-WM-PER-SESSION-1: per-session state file (Issue #681) → phase diff detection works ---
-# Verifies _resolve-flow-state-path.sh integration: when schema_version=2 with a valid SID
+# Verifies flow-state.sh integration: when schema_version=2 with a valid SID
 # and a per-session file exists, the hook reads from `.rite/sessions/<sid>.flow-state`
 # (not the legacy `.rite-flow-state`). Phase diff detection must still work end-to-end.
 echo "TC-POST-WM-PER-SESSION-1: per-session state file → phase diff detected"

@@ -18,7 +18,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-HOOK="$SCRIPT_DIR/../flow-state-update.sh"
+HOOK="$SCRIPT_DIR/../flow-state.sh"
 PASS=0
 FAIL=0
 
@@ -78,9 +78,9 @@ write_config "$TD" 2
 SID_A="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa01"
 SID_B="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb01"
 
-(cd "$TD" && bash "$HOOK" create --session "$SID_A" \
+(cd "$TD" && bash "$HOOK" set --session "$SID_A" \
   --phase "create_interview" --issue 100 --branch "test-a" --pr 0 --next "next-a" >/dev/null 2>&1)
-(cd "$TD" && bash "$HOOK" create --session "$SID_B" \
+(cd "$TD" && bash "$HOOK" set --session "$SID_B" \
   --phase "start_implementation" --issue 200 --branch "test-b" --pr 0 --next "next-b" >/dev/null 2>&1)
 
 A="$TD/.rite/sessions/$SID_A.flow-state"
@@ -121,13 +121,13 @@ SID_D="dddddddd-dddd-dddd-dddd-dddddddddd01"
 
 (
   cd "$TD"
-  bash "$HOOK" create --session "$SID_C" \
+  bash "$HOOK" set --session "$SID_C" \
     --phase "phase_c" --issue 1 --branch "bc" --pr 0 --next "nc" >/dev/null 2>&1
 ) &
 PID_C=$!
 (
   cd "$TD"
-  bash "$HOOK" create --session "$SID_D" \
+  bash "$HOOK" set --session "$SID_D" \
     --phase "phase_d" --issue 2 --branch "bd" --pr 0 --next "nd" >/dev/null 2>&1
 ) &
 PID_D=$!
@@ -160,21 +160,21 @@ SID_E="eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01"
 SID_F="ffffffff-ffff-ffff-ffff-ffffffffff01"
 
 # Both sessions create first
-(cd "$TD" && bash "$HOOK" create --session "$SID_E" \
+(cd "$TD" && bash "$HOOK" set --session "$SID_E" \
   --phase "phase_e1" --issue 10 --branch "be" --pr 0 --next "ne" >/dev/null 2>&1)
-(cd "$TD" && bash "$HOOK" create --session "$SID_F" \
+(cd "$TD" && bash "$HOOK" set --session "$SID_F" \
   --phase "phase_f1" --issue 20 --branch "bf" --pr 0 --next "nf" >/dev/null 2>&1)
 
 # Then patch concurrently
 (
   cd "$TD"
-  bash "$HOOK" patch --session "$SID_E" \
+  bash "$HOOK" set --session "$SID_E" \
     --phase "phase_e2" --next "ne2" >/dev/null 2>&1
 ) &
 PID_E=$!
 (
   cd "$TD"
-  bash "$HOOK" patch --session "$SID_F" \
+  bash "$HOOK" set --session "$SID_F" \
     --phase "phase_f2" --next "nf2" >/dev/null 2>&1
 ) &
 PID_F=$!
@@ -209,13 +209,13 @@ SID_H="22222222-2222-2222-2222-222222222201"
 
 (
   cd "$TD"
-  bash "$HOOK" create --session "$SID_G" \
+  bash "$HOOK" set --session "$SID_G" \
     --phase "phase_g" --issue 999 --branch "bg" --pr 0 --next "ng" >/dev/null 2>&1
 ) &
 PID_G=$!
 (
   cd "$TD"
-  bash "$HOOK" create --session "$SID_H" \
+  bash "$HOOK" set --session "$SID_H" \
     --phase "phase_h" --issue 999 --branch "bh" --pr 0 --next "nh" >/dev/null 2>&1
 ) &
 PID_H=$!
@@ -253,13 +253,13 @@ for i in $(seq 1 "$ITERATIONS"); do
   SID_Y="bbbbbbbb-bbbb-bbbb-bbbb-${hex_i}"
   (
     cd "$TD"
-    bash "$HOOK" create --session "$SID_X" \
+    bash "$HOOK" set --session "$SID_X" \
       --phase "px_$i" --issue "$i" --branch "bx_$i" --pr 0 --next "nx" >/dev/null 2>&1
   ) &
   pid_x=$!
   (
     cd "$TD"
-    bash "$HOOK" create --session "$SID_Y" \
+    bash "$HOOK" set --session "$SID_Y" \
       --phase "py_$i" --issue "$i" --branch "by_$i" --pr 0 --next "ny" >/dev/null 2>&1
   ) &
   pid_y=$!

@@ -824,7 +824,7 @@ echo ""
 # --------------------------------------------------------------------------
 # TC-749-STDERR-PASSTHROUGH (Issue #749, AC-1 / AC-LOCAL-1)
 # --------------------------------------------------------------------------
-# Verify that when _resolve-flow-state-path.sh exits non-zero, its stderr
+# Verify that when flow-state.sh exits non-zero, its stderr
 # (ERROR: lines from _validate-helpers.sh / _validate-state-root.sh) is passed
 # through to the user, AND a fallback WARNING is emitted. This defends against
 # the silent-fall-through regression that the previous `2>/dev/null` produced.
@@ -833,12 +833,12 @@ echo "TC-749-STDERR-PASSTHROUGH: helper failure → ERROR pass-through + fallbac
 HOOKS_REAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 sbx_749="$(mktemp -d "$TEST_DIR/sbx-hooks-XXXXXX")"
 cp -a "$HOOKS_REAL_DIR/." "$sbx_749/"
-cat > "$sbx_749/_resolve-flow-state-path.sh" <<'FAKE_RESOLVER_EOF'
+cat > "$sbx_749/flow-state.sh" <<'FAKE_RESOLVER_EOF'
 #!/bin/bash
 echo "ERROR: TC-749 simulated _resolve-flow-state-path failure" >&2
 exit 1
 FAKE_RESOLVER_EOF
-chmod +x "$sbx_749/_resolve-flow-state-path.sh"
+chmod +x "$sbx_749/flow-state.sh"
 
 dir_749="$TEST_DIR/tc749"
 mkdir -p "$dir_749"

@@ -489,12 +489,12 @@ echo "TC-749-STDERR-PASSTHROUGH: helper failure → ERROR pass-through + fallbac
 HOOKS_REAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 sbx_749="$(mktemp -d "$TEST_DIR/sbx-hooks-XXXXXX")"
 cp -a "$HOOKS_REAL_DIR/." "$sbx_749/"
-cat > "$sbx_749/_resolve-flow-state-path.sh" <<'FAKE_RESOLVER_EOF'
+cat > "$sbx_749/flow-state.sh" <<'FAKE_RESOLVER_EOF'
 #!/bin/bash
 echo "ERROR: TC-749 simulated _resolve-flow-state-path failure" >&2
 exit 1
 FAKE_RESOLVER_EOF
-chmod +x "$sbx_749/_resolve-flow-state-path.sh"
+chmod +x "$sbx_749/flow-state.sh"
 
 dir_749="$TEST_DIR/tc749-passthrough"
 mkdir -p "$dir_749"
@@ -693,7 +693,7 @@ echo "=== TC-026: resolver drop-counter runtime arithmetic ==="
 # known lines through.
 DROP_TEST_DIR=$(mktemp -d 2>/dev/null) || DROP_TEST_DIR=""
 if [ -n "$DROP_TEST_DIR" ]; then
-  fake_resolver="$DROP_TEST_DIR/_resolve-flow-state-path.sh"
+  fake_resolver="$DROP_TEST_DIR/flow-state.sh"
   cat > "$fake_resolver" <<'RESOLVER_EOF'
 #!/bin/bash
 echo "INFO: synthetic info one" >&2

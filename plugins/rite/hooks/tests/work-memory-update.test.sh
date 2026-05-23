@@ -2,7 +2,7 @@
 # Tests for hooks/work-memory-update.sh — caller-side AC-4 migration verification (PR #688).
 #
 # Covers Issue #687 acceptance criteria from caller perspective:
-#   AC-4 — caller (work-memory-update.sh) integrates with state-read.sh transparently:
+#   AC-4 — caller (work-memory-update.sh) integrates with flow-state.sh transparently:
 #          (TC-1) schema_version=2 + per-session file present + legacy absent + WM_REQUIRE_FLOW_STATE=true
 #                 → return 0 with WM updated (cycle 12 false negative regression guard)
 #          (TC-2) schema_version=2 + both files absent + WM_REQUIRE_FLOW_STATE=true
@@ -122,7 +122,7 @@ run_update() {
 
 # --- TC-1: schema_version=2 + per-session present + legacy absent + WM_REQUIRE_FLOW_STATE=true ---
 # cycle 12 fix の core invariant: WM_REQUIRE_FLOW_STATE check が legacy file 直接 [ -f ] check ではなく
-# state-read.sh 経由になったので per-session のみで skip しない
+# flow-state.sh 経由になったので per-session のみで skip しない
 echo "TC-1: schema_v=2 + per-session present + legacy absent + WM_REQUIRE_FLOW_STATE=true → return 0 (cycle 12 false negative regression guard)"
 SBX=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX")
 write_config_v2 "$SBX"
@@ -155,7 +155,7 @@ if run_update "$SBX" \
 else
   rc=$?
 fi
-assert_eq "TC-1.1: return 0 (per-session resolved via state-read.sh, branch parsing extracts ${EXPECTED_ISSUE_NUM})" "0" "$rc"
+assert_eq "TC-1.1: return 0 (per-session resolved via flow-state.sh, branch parsing extracts ${EXPECTED_ISSUE_NUM})" "0" "$rc"
 assert_eq "TC-1.2: WM file created via branch parsing (issue-${EXPECTED_ISSUE_NUM}.md)" "yes" \
   "$([ -f "$SBX/.rite-work-memory/issue-${EXPECTED_ISSUE_NUM}.md" ] && echo yes || echo no)"
 

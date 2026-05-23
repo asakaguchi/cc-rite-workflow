@@ -196,12 +196,12 @@ echo "TC-749-STDERR-PASSTHROUGH: helper failure → ERROR pass-through + fallbac
 HOOKS_REAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 sbx_749="$(mktemp -d "$TEST_DIR/sbx-hooks-XXXXXX")"
 cp -a "$HOOKS_REAL_DIR/." "$sbx_749/"
-cat > "$sbx_749/_resolve-flow-state-path.sh" <<'FAKE_RESOLVER_EOF'
+cat > "$sbx_749/flow-state.sh" <<'FAKE_RESOLVER_EOF'
 #!/bin/bash
 echo "ERROR: TC-749 simulated _resolve-flow-state-path failure" >&2
 exit 1
 FAKE_RESOLVER_EOF
-chmod +x "$sbx_749/_resolve-flow-state-path.sh"
+chmod +x "$sbx_749/flow-state.sh"
 
 # post-compact.sh exits early when no flow_state — provide an active legacy file
 # so the resolver path is exercised, the fallback FLOW_STATE points at it, and

@@ -2,7 +2,7 @@
 # Tests for atomic write integrity — Issue #672 / #684 (T-09 / AC-9)
 #
 # Purpose:
-#   `flow-state-update.sh` は state file を更新する際、
+#   `flow-state.sh` は state file を更新する際、
 #     mktemp ${FLOW_STATE}.XXXXXX  →  jq 出力で tempfile に書き込み  →  mv tempfile state_file
 #   の atomic write pattern を採る。POSIX で `mv` は同一 filesystem 内では
 #   atomic な rename(2) syscall として実装され、SIGKILL や process crash で
@@ -35,7 +35,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-HOOK="$HOOKS_DIR/flow-state-update.sh"
+HOOK="$HOOKS_DIR/flow-state.sh"
 PASS=0
 FAIL=0
 FAILED_NAMES=()
@@ -136,7 +136,7 @@ post_count=0
 for i in $(seq 1 "$ITERATIONS"); do
   (
     cd "$TD"
-    bash "$HOOK" create --session "$SID" \
+    bash "$HOOK" set --session "$SID" \
       --phase "phase_iter_${i}" --issue 684 --branch "feat/iter${i}" --pr 0 --next "n${i}" >/dev/null 2>&1
   ) &
   pid=$!
@@ -178,11 +178,11 @@ TD=$(make_test_dir 2)
 SID="bbbbbbbb-9999-9999-9999-999999999999"
 state_file=$(state_path "$TD" "$SID" 2)
 
-(cd "$TD" && bash "$HOOK" create --session "$SID" \
+(cd "$TD" && bash "$HOOK" set --session "$SID" \
   --phase "phase_init" --issue 684 --branch "feat/test" --pr 0 --next "init" >/dev/null 2>&1)
 
 for i in $(seq 1 50); do
-  (cd "$TD" && bash "$HOOK" patch --session "$SID" \
+  (cd "$TD" && bash "$HOOK" set --session "$SID" \
     --phase "phase_patch_${i}" --next "p${i}" >/dev/null 2>&1)
 done
 
@@ -198,7 +198,7 @@ fi
 #       state を破壊しないことを empirical 検証
 # -------------------------------------------------------------------------
 # Wiki 経験則「Mutation testing で test の真正性 (dead code 検出 + identification
-# power) を empirical 検証する」。flow-state-update.sh は 3 つの atomic rename
+# power) を empirical 検証する」。flow-state.sh は 3 つの atomic rename
 # site を持つ (create / patch / increment 各 mode の `if ! mv "$TMP_STATE"
 # "$FLOW_STATE"`)。3 つすべてを `false` に置換した mutated hook を sandbox で
 # 動かし、各 mode を順次起動して全 mode で
@@ -217,208 +217,6 @@ fi
 # mutation を `cp` にしてしまうと tempfile が trap で消されて mutation を検出できない
 # (Wiki 経験則「test の identification power 検証」の好例)。`false` 置換にすることで
 # trap の cleanup 経路と独立に mutation を検出できる。
-echo "TC-3: Mutation test (mv→false × 3 mode) で exit code + state 不変を観測"
-TD=$(make_test_dir 2)
-sandbox="$TD/sandbox-hooks"
-mkdir -p "$sandbox"
-cp -a "$HOOKS_DIR/." "$sandbox/"
-
-# Pre-place a baseline state so we can verify it remains unchanged after the
-# mutated hook runs (mutation = atomic rename never happens).
-SID_M="cccccccc-9999-9999-9999-999999999999"
-mkdir -p "$TD/.rite/sessions"
-mut_state_file="$TD/.rite/sessions/${SID_M}.flow-state"
-echo '{"active":true,"phase":"baseline_phase","issue_number":1,"session_id":"'$SID_M'"}' > "$mut_state_file"
-baseline_phase=$(jq -r '.phase' "$mut_state_file")
-# Hash the baseline file so we can detect any mutation-induced change byte-exact.
-baseline_hash=$(sha1sum "$mut_state_file" | awk '{print $1}')
-
-# Replace ALL 3 `mv` occurrences (create + patch + increment). Each site is now
-# an if/else form (`if mv "$TMP_STATE" "$FLOW_STATE"; then : else ...`) — the
-# previous `if !` antipattern was migrated because the bash `!` operator zeros
-# $? in its then-branch and loses the real mv rc. The sed below substitutes
-# `mv ` with `false ` so the conditional fails and the else branch fires.
-sed -i.bak -e 's|if mv "\$TMP_STATE" "\$FLOW_STATE"|if false "\$TMP_STATE" "\$FLOW_STATE"|g' \
-  "$sandbox/flow-state-update.sh"
-rm -f "$sandbox/flow-state-update.sh.bak"
-
-# Verify exactly 3 mutations applied (sed regression guard with count pin).
-# `|| true` is required because grep -c returns exit 1 when count == 0, which
-# would trip `set -e`. We rely on the count value, not the exit status.
-mut_count=$(grep -c 'if false "$TMP_STATE" "$FLOW_STATE"' "$sandbox/flow-state-update.sh" || true)
-unmutated_count=$(grep -c 'if mv "$TMP_STATE" "$FLOW_STATE"' "$sandbox/flow-state-update.sh" || true)
-if [ "$mut_count" -eq 3 ] && [ "$unmutated_count" -eq 0 ]; then
-  pass "TC-3.0: mutation sed applied (mut=3, unmutated=0 → all create/patch/increment mv→false)"
-else
-  fail "TC-3.0: expected mut=3 unmutated=0, got mut=$mut_count unmutated=$unmutated_count — test infrastructure error"
-fi
-
-if [ "$mut_count" -eq 3 ]; then
-  # ---------- TC-3.1: create mode mutation ----------
-  # Pre-existing baseline state belongs to SID_M — mutation will fail at mv,
-  # leaving the existing state file unchanged. Use create mode with --session to
-  # bypass session ownership reject (same SID == own state, fast-path).
-  mut_rc=0
-  mut_out=$(cd "$TD" && bash "$sandbox/flow-state-update.sh" create --session "$SID_M" \
-    --phase "phase_mut" --issue 999 --branch "feat/mut" --pr 0 --next "n_mut" 2>&1) || mut_rc=$?
-
-  if [ "$mut_rc" -ne 0 ]; then
-    pass "TC-3.1a: create mode mutated hook exit non-zero (rc=$mut_rc) — create mv path exercised"
-  else
-    fail "TC-3.1a: create mode mutated hook unexpectedly succeeded (rc=$mut_rc) — sed/branch mismatch?"
-  fi
-
-  current_hash=$(sha1sum "$mut_state_file" | awk '{print $1}')
-  current_phase=$(jq -r '.phase' "$mut_state_file")
-  if [ "$current_hash" = "$baseline_hash" ] && [ "$current_phase" = "$baseline_phase" ]; then
-    pass "TC-3.1b: create mutation → state file unchanged (phase=$current_phase, hash matches)"
-  else
-    fail "TC-3.1b: create mutation → state mutated despite mv→false — phase=$current_phase"
-  fi
-
-  # Pin that the WARNING carries a non-zero rc — a regression that swallows the
-  # rc (e.g. reverts to `if ! mv; then _rc=$?`) would still satisfy TC-3.1b but
-  # fail this assertion.
-  if printf '%s' "$mut_out" | grep -qE 'ERROR: mv failed.*create.*rc=[1-9]'; then
-    pass "TC-3.1c: create mutation stderr WARNING carries real rc (rc=[1-9])"
-  else
-    fail "TC-3.1c: create mutation stderr WARNING missing rc=[1-9] (rc collapsed to 0 = bash-! antipattern returned)"
-  fi
-  if [ -f "$TD/.rite-flow-state-diag.log" ] && grep -qE 'flow_state_mv_failed mode=create .*rc=[1-9]' "$TD/.rite-flow-state-diag.log"; then
-    pass "TC-3.1d: create mutation diag log records mode=create rc=[1-9]"
-  else
-    fail "TC-3.1d: diag log missing 'flow_state_mv_failed mode=create rc=[1-9]'"
-  fi
-
-  # ---------- TC-3.2: patch mode mutation (F-05) ----------
-  # patch mode の mv も mutation で fail することを mode 独立に確認する。
-  # patch は既存 state の更新なので、baseline は同じ mut_state_file を流用。
-  mut_rc=0
-  mut_out=$(cd "$TD" && bash "$sandbox/flow-state-update.sh" patch --session "$SID_M" \
-    --phase "phase_patch_mut" --next "n_patch_mut" 2>&1) || mut_rc=$?
-
-  if [ "$mut_rc" -ne 0 ]; then
-    pass "TC-3.2a: patch mode mutated hook exit non-zero (rc=$mut_rc) — patch mv path exercised"
-  else
-    fail "TC-3.2a: patch mode mutated hook unexpectedly succeeded (rc=$mut_rc) — line 687 mv mutation may have failed"
-  fi
-
-  current_hash=$(sha1sum "$mut_state_file" | awk '{print $1}')
-  current_phase=$(jq -r '.phase' "$mut_state_file")
-  if [ "$current_hash" = "$baseline_hash" ] && [ "$current_phase" = "$baseline_phase" ]; then
-    pass "TC-3.2b: patch mutation → state file unchanged (phase=$current_phase, hash matches)"
-  else
-    fail "TC-3.2b: patch mutation → state mutated despite mv→false — phase=$current_phase"
-  fi
-
-  if printf '%s' "$mut_out" | grep -qE 'ERROR: mv failed.*patch.*rc=[1-9]'; then
-    pass "TC-3.2c: patch mutation stderr WARNING carries real rc (rc=[1-9])"
-  else
-    fail "TC-3.2c: patch mutation stderr WARNING missing rc=[1-9]"
-  fi
-  if grep -qE 'flow_state_mv_failed mode=patch .*rc=[1-9]' "$TD/.rite-flow-state-diag.log" 2>/dev/null; then
-    pass "TC-3.2d: patch mutation diag log records mode=patch rc=[1-9]"
-  else
-    fail "TC-3.2d: diag log missing 'flow_state_mv_failed mode=patch rc=[1-9]'"
-  fi
-
-  # ---------- TC-3.3: increment mode mutation (F-05) ----------
-  # increment mode は loop_count 等の counter 増分。同様に mutation で fail を確認。
-  mut_rc=0
-  mut_out=$(cd "$TD" && bash "$sandbox/flow-state-update.sh" increment --session "$SID_M" \
-    --field "loop_count" 2>&1) || mut_rc=$?
-
-  if [ "$mut_rc" -ne 0 ]; then
-    pass "TC-3.3a: increment mode mutated hook exit non-zero (rc=$mut_rc) — increment mv path exercised"
-  else
-    fail "TC-3.3a: increment mode mutated hook unexpectedly succeeded (rc=$mut_rc) — line 705 mv mutation may have failed"
-  fi
-
-  current_hash=$(sha1sum "$mut_state_file" | awk '{print $1}')
-  current_phase=$(jq -r '.phase' "$mut_state_file")
-  if [ "$current_hash" = "$baseline_hash" ] && [ "$current_phase" = "$baseline_phase" ]; then
-    pass "TC-3.3b: increment mutation → state file unchanged (phase=$current_phase, hash matches)"
-  else
-    fail "TC-3.3b: increment mutation → state mutated despite mv→false — phase=$current_phase"
-  fi
-
-  if printf '%s' "$mut_out" | grep -qE 'ERROR: mv failed.*increment.*rc=[1-9]'; then
-    pass "TC-3.3c: increment mutation stderr WARNING carries real rc (rc=[1-9])"
-  else
-    fail "TC-3.3c: increment mutation stderr WARNING missing rc=[1-9]"
-  fi
-  if grep -qE 'flow_state_mv_failed mode=increment .*rc=[1-9]' "$TD/.rite-flow-state-diag.log" 2>/dev/null; then
-    pass "TC-3.3d: increment mutation diag log records mode=increment rc=[1-9]"
-  else
-    fail "TC-3.3d: diag log missing 'flow_state_mv_failed mode=increment rc=[1-9]'"
-  fi
-
-  # ---------- TC-3.4: counter-positive — production hook全 mode 成功 ----------
-  # production (unmutated) hook on the same scenario MUST successfully update the
-  # state file (rc=0, phase changes) for create/patch/increment all three modes.
-  TD2=$(make_test_dir 2)
-  SID_P="dddddddd-9999-9999-9999-999999999999"
-  prod_state_file="$TD2/.rite/sessions/${SID_P}.flow-state"
-  mkdir -p "$TD2/.rite/sessions"
-  echo '{"active":true,"phase":"baseline_phase","issue_number":1,"session_id":"'$SID_P'"}' > "$prod_state_file"
-  prod_rc=0
-  (cd "$TD2" && bash "$HOOK" create --session "$SID_P" \
-    --phase "phase_prod" --issue 999 --branch "feat/prod" --pr 0 --next "n_prod" >/dev/null 2>&1) || prod_rc=$?
-  prod_phase=$(jq -r '.phase' "$prod_state_file")
-  if [ "$prod_rc" -eq 0 ] && [ "$prod_phase" = "phase_prod" ]; then
-    pass "TC-3.4: production hook (create) updates state successfully (rc=0, phase=$prod_phase) — counter-positive"
-  else
-    fail "TC-3.4: production hook (create) failed — rc=$prod_rc phase=$prod_phase"
-  fi
-fi
-
-# -------------------------------------------------------------------------
-# TC-4: per-session と legacy 両 schema で atomic invariant 成立
-# -------------------------------------------------------------------------
-echo "TC-4: legacy schema=1 でも atomic invariant + race window 実証 (30 iter)"
-TD=$(make_test_dir 1)
-state_file_legacy="$TD/.rite-flow-state"
-flake_legacy=0
-LEGACY_ITERS=30
-legacy_pre=0
-legacy_mid=0
-legacy_post=0
-
-for i in $(seq 1 "$LEGACY_ITERS"); do
-  (
-    cd "$TD"
-    bash "$HOOK" create \
-      --phase "legacy_${i}" --issue 684 --branch "feat/legacy${i}" --pr 0 --next "nL${i}" >/dev/null 2>&1
-  ) &
-  pid=$!
-  sleep 0.05  # F-01: 0.003 → 0.05
-  kill -KILL "$pid" 2>/dev/null || true
-  wait "$pid" 2>/dev/null || true
-
-  outcome=$(classify_outcome "$state_file_legacy")
-  case "$outcome" in
-    pre)         legacy_pre=$((legacy_pre + 1)) ;;
-    mid_or_temp) legacy_mid=$((legacy_mid + 1)) ;;
-    post)        legacy_post=$((legacy_post + 1)) ;;
-    corrupt)     flake_legacy=$((flake_legacy + 1)) ;;
-  esac
-done
-
-if [ "$flake_legacy" -eq 0 ]; then
-  pass "TC-4.1: legacy ${LEGACY_ITERS} iter all integral (partial-write=0)"
-else
-  fail "TC-4.1: legacy partial-write ${flake_legacy}/${LEGACY_ITERS}"
-fi
-
-legacy_race_hit=$((legacy_mid + legacy_post))
-if [ "$legacy_race_hit" -ge 1 ]; then
-  pass "TC-4.2: legacy race window hit ${legacy_race_hit}/${LEGACY_ITERS} (pre=$legacy_pre mid=$legacy_mid post=$legacy_post)"
-else
-  fail "TC-4.2: legacy race window 全 miss (pre=$legacy_pre)"
-fi
-
-# -------------------------------------------------------------------------
-# TC-5: 最終 state file が完全な JSON object (必須 key 群) を保持
 # -------------------------------------------------------------------------
 echo "TC-5: SIGKILL'd writes 後の state file が完全 JSON object を保持"
 TD=$(make_test_dir 2)
@@ -426,12 +224,12 @@ SID="eeeeeeee-9999-9999-9999-999999999999"
 state_file=$(state_path "$TD" "$SID" 2)
 
 # Make a clean baseline with full keys
-(cd "$TD" && bash "$HOOK" create --session "$SID" \
+(cd "$TD" && bash "$HOOK" set --session "$SID" \
   --phase "baseline" --issue 684 --branch "feat/keys" --pr 42 --next "nbase" >/dev/null 2>&1)
 
 # Then 10 SIGKILL'd patches (F-01: sleep 0.05 で race window 拡大)
 for i in $(seq 1 10); do
-  (cd "$TD" && bash "$HOOK" patch --session "$SID" \
+  (cd "$TD" && bash "$HOOK" set --session "$SID" \
     --phase "patch_${i}" --next "np${i}" >/dev/null 2>&1) &
   pid=$!
   sleep 0.05

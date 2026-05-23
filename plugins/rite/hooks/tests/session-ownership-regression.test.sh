@@ -8,7 +8,7 @@
 # Coverage:
 #   - TC-173 (Per-session isolation)         : 2 session が異なる per-session file に独立に書き込む
 #   - TC-206 (SOURCE=startup/clear reset)    : startup/clear 時に自 session の state が active=false にリセット
-#   - TC-216 (.rite-session-id auto-read)    : flow-state-update.sh が --session 省略時に file 経由で読み取る
+#   - TC-216 (.rite-session-id auto-read)    : flow-state.sh が --session 省略時に file 経由で読み取る
 #   - TC-558 (Other-session preservation)    : 他 session の state は reset しない (核心)
 #   - TC-660 (active=true gate)              : active=false / true で防御層 (AND-logic) が正しく振舞う
 #
@@ -24,7 +24,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK_DIR="$SCRIPT_DIR/.."
-HOOK="$HOOK_DIR/flow-state-update.sh"
+HOOK="$HOOK_DIR/flow-state.sh"
 SESSION_START="$HOOK_DIR/session-start.sh"
 PRE_TOOL_GUARD="$HOOK_DIR/pre-tool-bash-guard.sh"
 PASS=0
@@ -89,9 +89,9 @@ write_config "$TD" 2
 SID_A="11111111-1111-1111-1111-111111111111"
 SID_B="22222222-2222-2222-2222-222222222222"
 
-(cd "$TD" && bash "$HOOK" create --session "$SID_A" \
+(cd "$TD" && bash "$HOOK" set --session "$SID_A" \
   --phase "p_a" --issue 100 --branch "ba" --pr 0 --next "na" >/dev/null 2>&1)
-(cd "$TD" && bash "$HOOK" create --session "$SID_B" \
+(cd "$TD" && bash "$HOOK" set --session "$SID_B" \
   --phase "p_b" --issue 200 --branch "bb" --pr 0 --next "nb" >/dev/null 2>&1)
 
 A="$TD/.rite/sessions/$SID_A.flow-state"
@@ -113,7 +113,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-216: .rite-session-id auto-read by flow-state-update.sh
+# TC-216: .rite-session-id auto-read by flow-state.sh
 # AC-1: session-start.sh saves UUID / AC-2: flow-state-update reads it / AC-3: fallback
 # --------------------------------------------------------------------------
 echo "TC-216 (.rite-session-id auto-read):"
@@ -123,7 +123,7 @@ SID_AUTO="33333333-3333-3333-3333-333333333333"
 write_session_id "$TD" "$SID_AUTO"
 
 # AC-2: --session 省略時に .rite-session-id を auto-read
-(cd "$TD" && bash "$HOOK" create \
+(cd "$TD" && bash "$HOOK" set \
   --phase "p_auto" --issue 1 --branch "b_auto" --pr 0 --next "n_auto" >/dev/null 2>&1)
 
 AUTO="$TD/.rite/sessions/$SID_AUTO.flow-state"
@@ -135,7 +135,7 @@ fi
 
 # AC-3: --session 引数指定時は引数優先 (.rite-session-id を上書きしない)
 SID_OVERRIDE="44444444-4444-4444-4444-444444444444"
-(cd "$TD" && bash "$HOOK" create --session "$SID_OVERRIDE" \
+(cd "$TD" && bash "$HOOK" set --session "$SID_OVERRIDE" \
   --phase "p_ov" --issue 2 --branch "b_ov" --pr 0 --next "n_ov" >/dev/null 2>&1)
 
 OV="$TD/.rite/sessions/$SID_OVERRIDE.flow-state"
@@ -156,7 +156,7 @@ SID_OWN="55555555-5555-5555-5555-555555555555"
 write_session_id "$TD" "$SID_OWN"
 
 # 自セッションの state を作成 (active=true)
-(cd "$TD" && bash "$HOOK" create --session "$SID_OWN" \
+(cd "$TD" && bash "$HOOK" set --session "$SID_OWN" \
   --phase "phase_x" --issue 10 --branch "bx" --pr 0 --next "nx" >/dev/null 2>&1)
 
 OWN="$TD/.rite/sessions/$SID_OWN.flow-state"
@@ -189,7 +189,7 @@ SID_OTHER="88888888-8888-8888-8888-888888888888"
 write_session_id "$TD" "$SID_ME"
 
 # 他 session の state を作成 (active=true)
-(cd "$TD" && bash "$HOOK" create --session "$SID_OTHER" \
+(cd "$TD" && bash "$HOOK" set --session "$SID_OTHER" \
   --phase "phase_other" --issue 20 --branch "b_other" --pr 0 --next "n_other" >/dev/null 2>&1)
 OTHER="$TD/.rite/sessions/$SID_OTHER.flow-state"
 [ "$(jq -r '.active' "$OTHER")" = "true" ] || fail "TC-558 AC-02 setup: other state が active=true でない"
@@ -220,7 +220,7 @@ TD=$(make_test_dir); cleanup_dirs+=("$TD")
 write_config "$TD" 2
 SID_CLEAR="99999999-9999-9999-9999-999999999999"
 write_session_id "$TD" "$SID_CLEAR"
-(cd "$TD" && bash "$HOOK" create --session "$SID_CLEAR" \
+(cd "$TD" && bash "$HOOK" set --session "$SID_CLEAR" \
   --phase "phase_c" --issue 30 --branch "bc" --pr 0 --next "nc" >/dev/null 2>&1)
 CLEAR_F="$TD/.rite/sessions/$SID_CLEAR.flow-state"
 
@@ -251,7 +251,7 @@ SID_GATE="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 write_session_id "$TD" "$SID_GATE"
 
 # Setup: active=false で create_interview phase
-(cd "$TD" && bash "$HOOK" create --session "$SID_GATE" \
+(cd "$TD" && bash "$HOOK" set --session "$SID_GATE" \
   --phase "create_interview" --issue 40 --branch "bg" --pr 0 --next "ng" >/dev/null 2>&1)
 GATE_F="$TD/.rite/sessions/$SID_GATE.flow-state"
 

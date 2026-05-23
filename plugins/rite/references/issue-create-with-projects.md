@@ -164,7 +164,7 @@ Each caller determines Priority using its own logic before passing it to the scr
 |---------|----------------|--------|
 | Unresolved issues detected during PR creation | Medium | Default for detected problems |
 
-### cleanup.md (Phase 1.7.3): Default Medium
+### cleanup.md (Phase 1.7): Default Medium
 
 | Context | Issue Priority | Reason |
 |---------|----------------|--------|

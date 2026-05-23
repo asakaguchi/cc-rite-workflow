@@ -138,11 +138,16 @@ echo "$out" | grep -q "skip (already v3)" && pass "TC-7: skip message shown" || 
 # --- TC-8: migrate maps various legacy phases correctly ---
 echo ""
 echo "=== TC-8: migrate phase reduction matrix (cleanup_*/ingest_*/create_*/implementing) ==="
+# Note: `implementing` legacy phase maps to v3 `implement` (not `init`) because
+# the v3 SoT enum keeps the `implement` value (`init branch plan implement lint
+# pr review fix ...`). Only create_*/parent_progress_sync/unknown collapse into
+# init.
 for legacy_phase in cleanup_post_ingest cleanup_completed ingest_pre_lint ingest_post_lint ingest_completed create_interview create_completed implementing; do
   case "$legacy_phase" in
     cleanup_*) expected=cleanup ;;
     ingest_*) expected=ingest ;;
-    create_*|implementing) expected=init ;;
+    implementing) expected=implement ;;
+    create_*) expected=init ;;
   esac
   result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
   mkdir -p "$d/.rite/sessions"

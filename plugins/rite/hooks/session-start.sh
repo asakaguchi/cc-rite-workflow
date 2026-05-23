@@ -287,7 +287,10 @@ fi
 # Auto-migrate any v1/v2 state files to v3 via flow-state.sh migrate subcommand.
 # Non-blocking: errors surface to stderr but the hook continues. Idempotent: files
 # already at schema_version=3 are skipped.
-bash "$SCRIPT_DIR/flow-state.sh" migrate 2>&1 || true
+# stdout is silenced so the migrate completion line never leaks into the hook's
+# stdout (which Claude reads as the active-workflow injection payload); errors
+# remain on stderr for triage.
+RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" migrate >/dev/null || true
 
 # Resolve active flow-state file path (Issue #680).
 # `_resolve-flow-state-path.sh` returns the per-session file
@@ -318,7 +321,7 @@ _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
 # of success/failure (helper may graceful-degrade exit 0 with WARNING in stderr,
 # e.g., empty SID via tr IO failure — both paths require pass-through).
 _resolve_failed=0
-STATE_FILE=$("$SCRIPT_DIR/flow-state.sh" path 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
+STATE_FILE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
 if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
   grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
 fi
@@ -496,7 +499,7 @@ IMPORTANT: First inform the user that an interrupted workflow was detected.
 Display the Issue number, phase, and next action.
 Then suggest running /rite:resume to continue from where it left off.
 If the user provides a different instruction, respect it but mention the pending workflow.
-Use `bash {plugin_root}/hooks/flow-state.sh get --field <field>` for full state details.
+Use \`bash {plugin_root}/hooks/flow-state.sh get --field <field>\` for full state details.
 EOF
 
 # --- Session ID notification (#173, #221) ---

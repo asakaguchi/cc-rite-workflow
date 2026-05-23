@@ -9,7 +9,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=state-path-resolve.sh
 source "$SCRIPT_DIR/state-path-resolve.sh"
 
-STATE_ROOT=$(resolve_state_root)
+# Callers may pre-resolve STATE_ROOT (e.g., session-start.sh resolves it from
+# the hook payload's `cwd` field, which differs from flow-state.sh's own CWD)
+# and pass it via the RITE_STATE_ROOT env var so the resolver does not silently
+# fall back to its own pwd. Falls back to the CWD-based resolver when unset.
+if [ -n "${RITE_STATE_ROOT:-}" ] && [ -d "$RITE_STATE_ROOT" ]; then
+  STATE_ROOT="$RITE_STATE_ROOT"
+else
+  STATE_ROOT=$(resolve_state_root)
+fi
 SESSION_DIR="$STATE_ROOT/.rite/sessions"
 LEGACY_STATE="$STATE_ROOT/.rite-flow-state"
 SESSION_ID_FILE="$STATE_ROOT/.rite-session-id"
@@ -28,7 +36,8 @@ _phase_migrate() {
   case "$1" in
     cleanup_pre_ingest|cleanup_post_ingest|cleanup_completed) echo cleanup ;;
     ingest_pre_lint|ingest_post_lint|ingest_completed) echo ingest ;;
-    create_*|implementing|parent_progress_sync|unknown) echo init ;;
+    implementing) echo implement ;;
+    create_*|parent_progress_sync|unknown) echo init ;;
     *) echo "$1" ;;
   esac
 }

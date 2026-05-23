@@ -38,12 +38,37 @@ setup_test() {
   echo "$test_cwd"
 }
 
+# Helper: write a per-session flow-state file (schema v3) for the given dir.
+# Returns nothing; writes .rite-session-id + .rite/sessions/<sid>.flow-state.
+# Auto-injects schema_version=3 if missing so flow-state.sh migrate (run by
+# session-start.sh, but not post-compact.sh) does not silently rewrite the
+# fixture mid-test. For post-compact.sh specifically the migrate step is not
+# invoked, but the helper keeps the schema-version contract consistent with
+# the other hooks' tests.
+write_per_session_state() {
+  local dir="$1"
+  local content="$2"
+  local sid="${3:-test-sid-$(basename "$dir")}"
+  mkdir -p "$dir/.rite/sessions"
+  printf '%s' "$sid" > "$dir/.rite-session-id"
+  local merged
+  if printf '%s' "$content" | grep -q '"schema_version"'; then
+    merged="$content"
+  elif printf '%s' "$content" | jq -e . >/dev/null 2>&1; then
+    merged=$(printf '%s' "$content" | jq -c '. + {schema_version: 3}')
+  else
+    merged="$content"
+  fi
+  printf '%s\n' "$merged" > "$dir/.rite/sessions/${sid}.flow-state"
+}
+
 echo "=== post-compact.sh tests ==="
 
 # --- TC-001: active flow + recovering → stdout output + normal transition ---
 echo "TC-001: Active flow + recovering → auto-recovery"
 TC_DIR=$(setup_test "tc001")
-jq -n '{active: true, issue_number: 42, phase: "phase5_implementation", next_action: "Continue coding", loop_count: 1, pr_number: 10, branch: "feat/issue-42-test"}' > "$TC_DIR/.rite-flow-state"
+write_per_session_state "$TC_DIR" \
+  '{"active": true, "issue_number": 42, "phase": "implement", "next_action": "Continue coding", "loop_count": 1, "pr_number": 10, "branch": "feat/issue-42-test"}'
 jq -n '{compact_state: "recovering", compact_state_set_at: "2026-03-14T12:00:00Z", active_issue: 42}' > "$TC_DIR/.rite-compact-state"
 
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
@@ -67,7 +92,8 @@ fi
 # --- TC-002: manual compact → state re-injection only ---
 echo "TC-002: Manual compact → no auto-continue instruction"
 TC_DIR=$(setup_test "tc002")
-jq -n '{active: true, issue_number: 42, phase: "phase5_review", next_action: "Review PR", loop_count: 0, pr_number: 5, branch: "feat/issue-42-test"}' > "$TC_DIR/.rite-flow-state"
+write_per_session_state "$TC_DIR" \
+  '{"active": true, "issue_number": 42, "phase": "review", "next_action": "Review PR", "loop_count": 0, "pr_number": 5, "branch": "feat/issue-42-test"}'
 jq -n '{compact_state: "recovering", compact_state_set_at: "2026-03-14T12:00:00Z", active_issue: 42}' > "$TC_DIR/.rite-compact-state"
 
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "manual"}' | bash "$HOOK" 2>/dev/null) || true
@@ -102,7 +128,7 @@ fi
 # --- TC-004: active=false → cleanup + no stdout ---
 echo "TC-004: Active=false → cleanup, no output"
 TC_DIR=$(setup_test "tc004")
-jq -n '{active: false, issue_number: 42}' > "$TC_DIR/.rite-flow-state"
+write_per_session_state "$TC_DIR" '{"active": false, "issue_number": 42}'
 jq -n '{compact_state: "recovering"}' > "$TC_DIR/.rite-compact-state"
 
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
@@ -120,7 +146,7 @@ fi
 # --- TC-005: compact_state=normal → no action ---
 echo "TC-005: compact_state=normal → no action"
 TC_DIR=$(setup_test "tc005")
-jq -n '{active: true, issue_number: 42}' > "$TC_DIR/.rite-flow-state"
+write_per_session_state "$TC_DIR" '{"active": true, "issue_number": 42}'
 jq -n '{compact_state: "normal"}' > "$TC_DIR/.rite-compact-state"
 
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
@@ -191,59 +217,41 @@ echo ""
 # --------------------------------------------------------------------------
 # TC-749-STDERR-PASSTHROUGH (Issue #749, AC-1 / AC-LOCAL-1)
 # --------------------------------------------------------------------------
-echo "TC-749-STDERR-PASSTHROUGH: helper failure → ERROR pass-through + fallback WARNING"
+echo "TC-749-STDERR-PASSTHROUGH: helper failure → ERROR pass-through + skip WARNING"
 
 HOOKS_REAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 sbx_749="$(mktemp -d "$TEST_DIR/sbx-hooks-XXXXXX")"
 cp -a "$HOOKS_REAL_DIR/." "$sbx_749/"
 cat > "$sbx_749/flow-state.sh" <<'FAKE_RESOLVER_EOF'
 #!/bin/bash
-echo "ERROR: TC-749 simulated _resolve-flow-state-path failure" >&2
+echo "ERROR: TC-749 simulated flow-state.sh path failure" >&2
 exit 1
 FAKE_RESOLVER_EOF
 chmod +x "$sbx_749/flow-state.sh"
 
-# post-compact.sh exits early when no flow_state — provide an active legacy file
-# so the resolver path is exercised, the fallback FLOW_STATE points at it, and
-# the hook continues to attempt recovery (which will exit silently when there
-# is no .rite-compact-state). The point of this TC is the stderr pass-through,
-# not the recovery output.
+# post-compact.sh exits early when no flow_state — the TC only validates stderr
+# pass-through, not the legacy fallback (which was removed in PR 2a / Phase F-3).
 dir_749="$TEST_DIR/tc749-passthrough"
 mkdir -p "$dir_749"
-jq -n '{active: true, issue_number: 749, phase: "phase5_test", next_action: "test", loop_count: 0, pr_number: 0, branch: "refactor/issue-749-test"}' \
-  > "$dir_749/.rite-flow-state"
-# Seed compact_state so post-compact.sh actually exercises the recovery transition
-# (instead of the early `! -f compact_state` exit path). This lets us assert the
-# fallback path was loaded by observing the recovering→normal state transition.
-jq -n '{compact_state: "recovering", compact_state_set_at: "2026-04-01T00:00:00Z", active_issue: 749}' \
-  > "$dir_749/.rite-compact-state"
 
 stderr_file="$(mktemp "$TEST_DIR/stderr.749.XXXXXX")"
 echo "{\"cwd\": \"$dir_749\", \"source\": \"auto\"}" \
   | bash "$sbx_749/post-compact.sh" >/dev/null 2>"$stderr_file" || true
 stderr_749="$(cat "$stderr_file")"
 
-if printf '%s' "$stderr_749" | grep -qF 'TC-749 simulated _resolve-flow-state-path failure'; then
-  pass "ERROR line from helper passed through to caller stderr"
+if printf '%s' "$stderr_749" | grep -qF 'TC-749 simulated flow-state.sh path failure'; then
+  pass "ERROR line from flow-state.sh passed through to caller stderr"
 else
   fail "Expected ERROR pass-through; got stderr: $stderr_749"
 fi
-if printf '%s' "$stderr_749" | grep -qF 'flow-state path resolution failed, falling back to legacy'; then
-  pass "Fallback WARNING emitted to stderr"
+# PR 2a refactor (Phase F-3): the legacy fallback was removed. post-compact now
+# emits a "flow-state.sh path resolution failed — skip" WARNING and aborts the
+# recovery branch. The previous "Legacy fallback path was loaded" assertion was
+# removed accordingly.
+if printf '%s' "$stderr_749" | grep -qF 'flow-state.sh path resolution failed'; then
+  pass "Skip WARNING emitted to stderr (no legacy fallback in v3)"
 else
-  fail "Expected fallback WARNING; got stderr: $stderr_749"
-fi
-# Positive evidence: assert the legacy fallback path was actually used by
-# observing the compact_state transition. With compact_state="recovering"
-# seeded above, post-compact.sh on the fallback FLOW_STATE should transition
-# it to "normal". If the fallback path silently broke, post-compact.sh would
-# either ENOENT or transition the wrong file, and compact_state would remain
-# "recovering".
-compact_state_after=$(jq -r '.compact_state' "$dir_749/.rite-compact-state" 2>/dev/null)
-if [ "$compact_state_after" = "normal" ]; then
-  pass "Legacy fallback path was loaded (compact_state transitioned recovering→normal)"
-else
-  fail "Expected compact_state=normal after recovery; got: $compact_state_after"
+  fail "Expected skip WARNING; got stderr: $stderr_749"
 fi
 echo ""
 
@@ -263,8 +271,8 @@ _setup_recon_env() {
   local dir="$TEST_DIR/recon-$label"
   mkdir -p "$dir/.git" "$dir/bin"
   # flow-state with pr_number=42 → reconciliation block enters
-  jq -n '{active: true, issue_number: 42, phase: "phase5_post_ready", next_action: "Ready", loop_count: 0, pr_number: 42, branch: "feat/issue-42-recon"}' \
-    > "$dir/.rite-flow-state"
+  write_per_session_state "$dir" \
+    '{"active": true, "issue_number": 42, "phase": "ready", "next_action": "Ready", "loop_count": 0, "pr_number": 42, "branch": "feat/issue-42-recon"}'
   jq -n '{compact_state: "recovering", compact_state_set_at: "2026-04-01T00:00:00Z", active_issue: 42}' \
     > "$dir/.rite-compact-state"
   # Minimal rite-config so awk projects.enabled detection picks up `true`
@@ -486,7 +494,8 @@ fi
 # COMPACT_STATE silently route to the non-recovering branch with no audit trail.
 echo "TC-COMPACT-STATE-CORRUPT: corrupt .rite-compact-state surfaces WARNING with rc"
 TC_DIR=$(setup_test "tc-compact-corrupt")
-jq -n '{active: true, issue_number: 99, phase: "phase5_implementation", branch: "feat/issue-99-test"}' > "$TC_DIR/.rite-flow-state"
+write_per_session_state "$TC_DIR" \
+  '{"active": true, "issue_number": 99, "phase": "implement", "branch": "feat/issue-99-test"}'
 printf 'not-valid-json{{' > "$TC_DIR/.rite-compact-state"
 STDERR_OUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>&1 >/dev/null) || true
 if printf '%s' "$STDERR_OUT" | grep -qE 'post-compact: jq parse of \.compact_state failed \(rc=[1-9]'; then

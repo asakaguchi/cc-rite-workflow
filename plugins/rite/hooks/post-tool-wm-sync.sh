@@ -33,7 +33,7 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 # otherwise. The atomic write below (last_synced_phase update) targets whichever
 # file the resolver returns, preserving per-session isolation under schema 2 and
 # falling back to the single-file lock under schema 1.
-if FLOW_STATE=$("$SCRIPT_DIR/flow-state.sh" path 2>/dev/null); then
+if FLOW_STATE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>/dev/null); then
   :
 else
   # Resolver failed (helper deploy regression / path validation rejection).

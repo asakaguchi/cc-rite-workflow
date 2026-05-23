@@ -10,9 +10,14 @@
 #          (TC-3) WM_READ_FROM_FLOW_STATE=true + per-session file with pr_number=100/loop_count=3
 #                 → generated WM frontmatter contains pr_number: 100 / loop_count: 3
 #                 (cycle 10 stale residue regression guard)
-#          (TC-4) schema_version=1 + legacy file present + WM_REQUIRE_FLOW_STATE=true
-#                 → return 0 with legacy phase value reflected
 #   AC-7 — regression test discoverable under hooks/tests/
+#
+# Removed (PR 2a refactor, v3 SoT):
+#   (TC-4) schema_version=1 + legacy `.rite-flow-state` file present — the
+#          legacy single-file path was retired in Phase E (commit bf5a2415);
+#          v1/v2 files are now one-shot migrated to v3 per-session form by
+#          flow-state.sh migrate at session-start, not handled inline by
+#          work-memory-update.sh.
 #
 # Usage: bash plugins/rite/hooks/tests/work-memory-update.test.sh
 set -euo pipefail
@@ -208,23 +213,12 @@ else
   FAILED_NAMES+=("TC-3.2" "TC-3.3")
 fi
 
-# --- TC-4: schema_version=1 + legacy file present ---
-echo "TC-4: schema_v=1 + legacy file present + WM_REQUIRE_FLOW_STATE=true → return 0 (legacy 経路維持)"
-SBX=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX")
-write_config_v1 "$SBX"
-write_legacy "$SBX" '{"phase":"phase5_lint","next_action":"continue","pr_number":50,"loop_count":1,"active":true}'
-
-if run_update "$SBX" \
-  WM_SOURCE="lint" WM_PHASE="phase5_lint" WM_PHASE_DETAIL="quality check" \
-  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Test body." \
-  WM_REQUIRE_FLOW_STATE="true" WM_ISSUE_NUMBER="687"; then
-  rc=0
-else
-  rc=$?
-fi
-assert_eq "TC-4.1: return 0 (schema_v=1 legacy 経路)" "0" "$rc"
-assert_eq "TC-4.2: WM file created" "yes" \
-  "$([ -f "$SBX/.rite-work-memory/issue-687.md" ] && echo yes || echo no)"
+# TC-4 removed (PR 2a refactor): schema_version=1 + legacy file path is no
+# longer reachable. flow-state.sh always writes / reads per-session files at
+# `.rite/sessions/<sid>.flow-state`; the legacy single-file form is gone.
+# Backward compat for legacy state has migrated to flow-state.sh migrate
+# (one-shot v1/v2 → v3 conversion at session-start), not to a parallel
+# read path inside work-memory-update.sh.
 
 echo
 echo "─── work-memory-update.test.sh summary ──────────────────────────"

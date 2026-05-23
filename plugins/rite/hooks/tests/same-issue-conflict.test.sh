@@ -10,26 +10,20 @@
 #   と一致する設計判断であり、Issue #672 SHOULD 要件「同 issue 同時 target 時の
 #   明示的競合エラー reject」は別 Issue で tracking する (本 PR scope 外)。
 #
-#   一方 legacy (schema_version=1) では state file が単一なため、別 session が
-#   2 時間以内に active 状態で書き込もうとすると `flow-state.sh` create
-#   mode が ERROR で reject する。本テストは reject error の canonical phrase
-#   "別のワークフローが進行中です" を contract として pin する (実装が無言で
-#   フォールバックさせる回帰を防ぐ)。
-#
 # Test cases:
 #   TC-1: schema=2 sequential 同 issue 2 session create → 両方成功 + 独立 file (Option C)
 #   TC-2: schema=2 concurrent 同 issue 2 session create → 両方成功 (race-free)
 #   TC-3: schema=2 同 issue patch → 各 session 独立に更新 (no field leak)
-#   TC-4: legacy 同一 path に foreign active session 存在 + 7200s 以内 →
-#         create reject + canonical phrase "別のワークフローが進行中です" を pin
-#   TC-5: legacy + 7200s 超えた stale state → reject されず overwrite 許可
 #   TC-6: contract sentence regression guard — 本ファイル冒頭の Option C 文言を pin
+#
+# Removed (PR 2a refactor, v3 SoT):
+#   - TC-4 / TC-5: legacy schema_version=1 single-file reject/overwrite. The
+#     legacy single-file path no longer exists in v3, so the "two sessions
+#     targeting the same legacy file" scenario is structurally unreachable.
 #
 # Out of scope:
 #   - per-session での明示的競合エラー (SHOULD 要件、別 Issue で tracking)
-#   - concurrent-sessions.test.sh の TC-4 と相補 (同 issue 2 session の独立性
-#     は同テストでも verify されている。本テストでは「contract としての固定」と
-#     legacy reject phrase pin に focus)
+#   - concurrent-sessions.test.sh の TC-4 と相補
 #
 # Usage: bash plugins/rite/hooks/tests/same-issue-conflict.test.sh
 set -euo pipefail
@@ -45,11 +39,6 @@ if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required but not installed" >&2
   exit 1
 fi
-
-# Canonical phrase that flow-state.sh emits when reject-on-active fires
-# in legacy mode. Pinned here as a contract — if production changes this phrase,
-# the test breaks loudly so callers depending on the message can be updated.
-LEGACY_REJECT_PHRASE="別のワークフローが進行中です"
 
 # ---- helpers ----
 cleanup_dirs=()
@@ -202,69 +191,15 @@ else
 fi
 
 # -------------------------------------------------------------------------
-# TC-4: legacy + foreign active session + recent → reject + canonical phrase pin
+# TC-4 / TC-5: removed (PR 2a refactor)
 # -------------------------------------------------------------------------
-echo "TC-4: legacy foreign active + recent → reject + canonical phrase '$LEGACY_REJECT_PHRASE'"
-TD=$(make_test_dir 1)
-legacy="$TD/.rite-flow-state"
-SID_OWN="11111111-aaaa-bbbb-cccc-ddddeeeeff01"
-SID_NEW="22222222-aaaa-bbbb-cccc-ddddeeeeff01"
-recent_ts=$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')
-echo "{\"active\":true,\"phase\":\"phase_own\",\"issue_number\":$ISSUE,\"session_id\":\"$SID_OWN\",\"updated_at\":\"$recent_ts\"}" > "$legacy"
-
-# A different session attempting create on the same legacy path must be rejected.
-new_rc=0
-new_out=$(cd "$TD" && bash "$HOOK" set --session "$SID_NEW" \
-  --phase "phase_new" --issue $ISSUE --branch "feat/new" --pr 0 --next "n_new" 2>&1) || new_rc=$?
-
-if [ "$new_rc" -ne 0 ] && echo "$new_out" | grep -qF "$LEGACY_REJECT_PHRASE"; then
-  pass "TC-4.1: foreign session create rejected (rc=$new_rc) with canonical phrase"
-else
-  fail "TC-4.1: expected rc!=0 + phrase '$LEGACY_REJECT_PHRASE'; got rc=$new_rc, out: $(echo "$new_out" | head -3)"
-fi
-
-# State file MUST remain unchanged (loser session does not corrupt winner's state)
-if [ "$(jq -r '.session_id' "$legacy")" = "$SID_OWN" ] \
-    && [ "$(jq -r '.phase' "$legacy")" = "phase_own" ]; then
-  pass "TC-4.2: rejected create did NOT mutate winner's state"
-else
-  fail "TC-4.2: state mutated — session_id=$(jq -r '.session_id' "$legacy") phase=$(jq -r '.phase' "$legacy")"
-fi
-
-# -------------------------------------------------------------------------
-# TC-5: legacy + foreign active session + stale (>7200s) → overwrite 許可
-# -------------------------------------------------------------------------
-echo "TC-5: legacy foreign active + stale (>7200s) → reject されず overwrite 許可"
-# F-07 fix (Issue #760): GNU/BSD date fallback の silent failure 検出。
-# 旧実装は両 fallback が失敗した場合 `old_ts` が空になり、後続の JSON 構築で
-# `"updated_at":""` として書き込まれ、test が undefined 動作になる経路があった。
-# `[ -z "$old_ts" ]` で empty check し、両環境で fallback 不能なら fail させる。
-#
-# F-04 note (Issue #761 review): 同形 7-line スニペットが session-id-mismatch.test.sh:158-164
-# にもコピペされており、test code の DRY 違反として LOW 指摘あり。helper extraction (例:
-# tests/_helpers/stale-timestamp.sh の `_make_stale_timestamp <seconds>`) が望ましいが、
-# 現在の test suite は意図的に self-contained ファイル群を維持している (helper module 不在)。
-# Helper 導入は test suite 全体の convention 変更になるため別 Issue で trade-off 議論する。
-old_ts=$(date -u -d "8000 seconds ago" +'%Y-%m-%dT%H:%M:%S+00:00' 2>/dev/null \
-  || date -u -v-8000S +'%Y-%m-%dT%H:%M:%S+00:00' 2>/dev/null)
-if [ -z "$old_ts" ]; then
-  fail "TC-5.0: GNU date (-d) と BSD date (-v) の両 fallback が失敗 — test 環境の date が non-portable"
-  echo "ERROR: cannot generate stale timestamp; aborting TC-5" >&2
-  exit 1
-fi
-echo "{\"active\":true,\"phase\":\"phase_own\",\"issue_number\":$ISSUE,\"session_id\":\"$SID_OWN\",\"updated_at\":\"$old_ts\"}" > "$legacy"
-
-stale_rc=0
-(cd "$TD" && bash "$HOOK" set --session "$SID_NEW" \
-  --phase "phase_new_after_stale" --issue $ISSUE --branch "feat/new" --pr 0 --next "n_new" >/dev/null 2>&1) || stale_rc=$?
-
-if [ "$stale_rc" -eq 0 ] \
-    && [ "$(jq -r '.session_id' "$legacy")" = "$SID_NEW" ] \
-    && [ "$(jq -r '.phase' "$legacy")" = "phase_new_after_stale" ]; then
-  pass "TC-5.1: stale state overwritten by new session (rc=0, no reject)"
-else
-  fail "TC-5.1: rc=$stale_rc state.session_id=$(jq -r '.session_id' "$legacy")"
-fi
+# Previously verified the legacy schema_version=1 single-file reject-on-active
+# contract (canonical phrase "別のワークフローが進行中です" for fresh foreign
+# state + overwrite-allowed for stale state). Under v3 the legacy single-file
+# path is gone — every session writes to its own `.rite/sessions/<sid>.flow-state`,
+# so the "two sessions targeting the same legacy file" scenario is structurally
+# unreachable. The Option C contract (TC-1..TC-3) replaces the reject behavior
+# with per-session isolation.
 
 # -------------------------------------------------------------------------
 # TC-6: contract sentence regression guard

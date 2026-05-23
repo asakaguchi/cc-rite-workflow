@@ -282,36 +282,21 @@ else
   fail "TC-660 AC-2: active=false でも pre-tool-bash-guard が block (rc=$rc)"
 fi
 
-# AC-3: active=true で `gh issue create` (phase=create_interview で block 対象) を渡し、
-# stdout の `permissionDecision: "deny"` JSON 出力で AND-logic fire を verify する
-# (pre-tool-bash-guard は exit 0 のまま stdout で deny を表現する仕様のため、stdout match で判定)。
-HOOK_INPUT_BLOCKING=$(jq -n --arg cwd "$TD" --arg sid "$SID_GATE" \
-  '{cwd: $cwd, session_id: $sid, tool_name: "Bash", tool_input: {command: "gh issue create --title test --body test"}}')
-
-# active=false → guard は早期 silent skip (deny JSON なし)
-patch_active "$GATE_F" false
-set +e
-out_active_false=$(echo "$HOOK_INPUT_BLOCKING" | (cd "$TD" && bash "$PRE_TOOL_GUARD" 2>/dev/null))
-set -e
-
-# active=true → guard は AND-logic 評価に進み deny JSON を出力
-patch_active "$GATE_F" true
-set +e
-out_active_true=$(echo "$HOOK_INPUT_BLOCKING" | (cd "$TD" && bash "$PRE_TOOL_GUARD" 2>/dev/null))
-set -e
-
-# active=false: deny JSON が出力されないこと (silent skip)
-if ! echo "$out_active_false" | grep -q '"permissionDecision":[[:space:]]*"deny"'; then
-  pass "TC-660 AC-3 (active=false): permissionDecision: deny が出力されない (silent skip = 防御層 no-op)"
-else
-  fail "TC-660 AC-3 (active=false): active=false でも guard が block JSON を出力した (silent skip 契約違反)"
-fi
-# active=true: deny JSON が出力されること (AND-logic fire)
-if echo "$out_active_true" | grep -q '"permissionDecision":[[:space:]]*"deny"'; then
-  pass "TC-660 AC-3 (active=true): permissionDecision: deny が出力 (AND-logic fire verified, #660 regression なし)"
-else
-  fail "TC-660 AC-3 (active=true): active=true でも guard が block JSON を出力しない (silent AND-logic skip = #660 regression)"
-fi
+# AC-3 removed (PR 2a refactor / Phase C scope reduction):
+#
+# Previously TC-660 AC-3 verified that `gh issue create` was blocked when
+# active=true + phase=create_interview (AND-logic gate) and silently skipped
+# when active=false. Phase C (commit 7f135e13) shrank pre-tool-bash-guard.sh
+# from 850L to 540L and removed the create_*-related branch entirely — the
+# denylist is now scoped to `gh pr diff --stat` / `gh pr diff -- <path>` /
+# `!= null` jq antipattern / reviewer-subagent state-mutating git operations.
+#
+# None of the remaining denylist patterns gate on the active flag; they fire
+# unconditionally based on command-string match (and, for Pattern 4, on the
+# IS_SUBAGENT detection). The "active=true precondition fires AND-logic" /
+# "active=false silent skip" contract therefore no longer exists in the
+# code path TC-660 was probing. Verifying the remaining patterns belongs to
+# pre-tool-bash-guard.test.sh, not session-ownership-regression.test.sh.
 
 # --------------------------------------------------------------------------
 # Summary

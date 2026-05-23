@@ -675,3 +675,4 @@
 | 2026-05-22T21:04:56Z | lint:warning | — | contradictions=0, stale=0, orphans=1, missing_concept=2, unregistered_raw=149, broken_refs=0 |
 | 2026-05-23T00:10:00Z | ingest:skip | raw/reviews/20260522T235629Z-pr-1087.md | PR #1087 (Issue #1086) 1 ファイル 1 行の bug fix (`gh issue develop --branch` → `--name`)、reviewer 2 名承認、findings 0 件、severity 全 0。novel な経験則・failure mode の抽出ターゲットなし |
 | 2026-05-23T00:07:47Z | lint:warning | — | contradictions=0, stale=0, orphans=1, missing_concept=2, unregistered_raw=151, broken_refs=1 |
+| 2026-05-23T11:37:40Z | ingest:create | pages/heuristics/git-flow-cli-pin-base-branch.md | pr-1097 (#1092) — git-flow で branch を作る gh CLI に --base を明示する経験則を新規作成 |

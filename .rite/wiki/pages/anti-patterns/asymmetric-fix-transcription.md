@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-20T10:27:06Z"
+updated: "2026-05-23T15:29:20Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260520T101636Z-pr-1071-cycle-5-mergeable.md"
@@ -208,6 +208,8 @@ sources:
     ref: "raw/reviews/20260519T114404Z-pr-1062.md"
   - type: "reviews"
     ref: "raw/reviews/20260519T122133Z-pr-1062.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260523T151953Z-pr-1105.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration"]
 confidence: high
 ---
@@ -744,6 +746,17 @@ PR #1071 (Issue #1070 — `parent-routing.md` Phase 1.5.5 auto-close 後の Proj
 (4) **完全形 reference vs minimal skeleton reference の意味論層混同** — cycle 3 fix で sibling reference として close.md Phase 4.6.3 (full state machine、tempfile + 一体化 inconsistency summary) を選択したが、本 PR Phase 1.5.5 の bash 実装は delegate-only minimal skeleton 抽象度であり Phase 4.6.3 とは scope が異なる。canonical 対策: sibling reference 選択時に「対象 site と抽象度 (full / minimal / delegate-only) が一致する sibling を選ぶ」を pre-condition 化。同一 file 内に複数の抽象度 reference がある場合は「**完全形が必要な場合は X、minimal skeleton で良い場合は Y**」のような明示的な navigation note を SoT に追加。
 
 (5) **Shrinking convergence trajectory の連続再現** — 累積 33 (PR #1028 3-cycle 18→3→0) / 累積 34 (PR #1032 4-cycle) / 累積 35 (PR #1043 4-cycle 18→14→4→0) / 累積 36 (PR #1049 2-cycle 3→0) / 累積 37 (PR #1062 4-cycle 18→6→3→3→0) に続き本 PR (5-cycle 5→4→2→1→0) で 6 連続の shrinking trajectory 再現。「**fix の対称化レイヤーごとの byte-exact 一致検証契約が未確立だと、recursive recurrence in fix layer が 2-5 cycle の shrinking pattern で発火し、各 cycle で drift class が細粒度化する**」mode が累積 38 回目で再観測。`accumulated-pr-three-cycle-convergence.md` (3-cycle 収束 baseline) は 4-5 cycle 拡張形態として再分類が必要。
+
+### Broken phase reference defect class の着手時 repo-wide grep による successful preventive application (PR #1102 → #1105、0 findings)
+
+PR #1105 (Issue #1103、元 Issue #1094) は `commands/resume.md` の存在しない「Phase 3.2 legacy table」を phase → step routing の SoT として参照していた broken reference を修正した documentation drift cleanup。**発生条件 #3 (Phase 番号書き換え時の相互参照)** と同 class の defect が、`commands/` 単一 file ではなく稼働中 skill doc・変更履歴・spec の複数 file に波及していた事例。phase-mapping.md を修正した sibling PR #1102 と同一 defect class。
+
+- **当初 scope (3 file)**: Issue は `sub-skill-return-protocol.md` / `docs/SPEC.md` / `docs/SPEC.ja.md` の 3 file のみを列挙していた。
+- **着手時 repo-wide grep で +4 file 検出**: 「Phase 3.2 legacy/routing/表」参照を全リポジトリ grep した結果、当初列挙外に `SKILL.md` ×2 (LLM が復帰時に実際に読む routing 参照)・`CHANGELOG.md` / `CHANGELOG.ja.md` (#1079 エントリ内) の 4 箇所が残存していることが判明。scope を **3 → 7 file** に拡張して一括修正した。
+- **2 パターンに応じた修正**: routing table 参照 5 箇所 → `Phase 5.3 (Phase enum → Step mapping (SoT))` へ。legacy phase mapping 参照 2 箇所 → 「`Phase 3.5` cross-check で v3 enum へ解決 → `Phase 5.3` で step routing」の 2 段表現へ。SPEC / CHANGELOG は ja/en ペアで i18n parity を維持。
+- **収束**: 両レビュアー (prompt-engineer / tech-writer) とも **0 findings**、1 cycle で mergeable。
+
+**累積観点 — 「着手時 grep」が「fix 後 grep」より cycle 数を削減する**: 本ページの Detection Heuristic (`grep -rn "Phase {old_number}"`) は従来 **fix 直後** の取りこぼし検出として位置づけられていたが、PR #1102 → #1105 は同 grep を **着手時 (Issue scope 確定前)** に実行することで、defect class の全 site を最初の 1 commit で網羅し multi-cycle drift を構造的に予防できることを実証した (positive evidence)。canonical 対策: broken reference / 番号取り違え系 Issue は、Issue 本文の列挙 site を信頼せず **着手時に必ず repo-wide grep で defect class の全 site を棚卸し**し、scope 拡張分は同 PR 内で一括修正する (scope 拡張が大きい場合のみ別 Issue 化を検討)。関連: [Issue 起票前の grep 棚卸しで「違反あり」前提が既に解消済みか確認する](../heuristics/issue-precondition-grep-survey.md)。
 
 ## 関連ページ
 

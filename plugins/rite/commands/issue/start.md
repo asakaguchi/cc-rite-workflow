@@ -194,7 +194,7 @@ fi
 Issue にブランチを関連付け (失敗しても workflow は続行するが、stderr に WARNING + `workflow_incident` sentinel を emit):
 
 ```bash
-if ! develop_err=$(gh issue develop {issue_number} --branch "{branch_name}" 2>&1); then
+if ! develop_err=$(gh issue develop {issue_number} --name "{branch_name}" 2>&1); then
   # Strip control characters before truncation. gh error messages occasionally
   # contain binary bytes; allowing them through could break JSON details
   # serialization or trigger unintended terminal escape sequences downstream.

@@ -15,7 +15,6 @@
 #   4. pr:fix sentinel: [fix:pushed], [fix:pushed-wm-stale], [fix:issues-created:N],
 #                       [fix:replied-only], [fix:error]
 #   5. pr:ready sentinel: [ready:completed], [ready:error]
-#   6. WORKFLOW_INCIDENT inline emit pattern (literal format guard)
 #
 # When this test fails:
 #   start.md のドキュメント部分から sentinel literal が消えた場合、(a) sentinel set
@@ -75,62 +74,12 @@ assert_in_start "ready:completed literal" '\[ready:completed\]'
 assert_in_start "ready:error literal" '\[ready:error\]'
 
 echo ""
-echo "=== WORKFLOW_INCIDENT emit patterns ==="
-# inline emit (`echo "[CONTEXT] WORKFLOW_INCIDENT=1; type=..."`) と helper invoke
-# (`workflow-incident-emit.sh --type ...`) を OR で 1 つの assert にすると、片方が
-# 完全に消えても残った形式で PASS する fragility (3-method OR alternation 問題と同型)
-# が出る。両形式が最低 1 回ずつ登場することを独立 assertion で pin する。
-inline_wf_count=$(grep -cE '\[CONTEXT\] WORKFLOW_INCIDENT=1; type=' "$START_MD" || true)
-if [ "$inline_wf_count" -ge 1 ]; then
-  pass "WORKFLOW_INCIDENT inline emit present (>=1, got $inline_wf_count)"
-else
-  fail "WORKFLOW_INCIDENT inline emit missing — context grep 検出経路の inline form が start.md から消滅"
-fi
-helper_wf_count=$(grep -cE 'workflow-incident-emit\.sh --type' "$START_MD" || true)
-if [ "$helper_wf_count" -ge 1 ]; then
-  pass "WORKFLOW_INCIDENT helper invoke present (>=1, got $helper_wf_count)"
-else
-  fail "WORKFLOW_INCIDENT helper invoke missing — workflow-incident-emit.sh への delegate が start.md から消滅"
-fi
-
-echo ""
 echo "=== Resume Dispatch ステップ 0 (H-2 fix) ==="
 # H-2 で追加した Resume Dispatch ステップが start.md に存在することを assert。
 # resume.md Phase 3.2 表が「start.md は冒頭で flow state を読む」と公言するため、
 # state-read.sh への呼び出しが最低 1 回登場する必要がある。
 assert_in_start "flow-state.sh get invocation (Resume Dispatch ステップ 0)" 'flow-state\.sh get --field phase'
 assert_in_start "RESUME_DISPATCH context marker" 'RESUME_DISPATCH='
-
-echo ""
-echo "=== Multi-site lower bound ==="
-# A wildcard 1-hit grep would let silent deletions through when the same sentinel
-# is emitted from multiple phases. Aggregated lower-bound counts (count >= N)
-# catch the case where most emit sites disappear but one literal remains.
-# WORKFLOW_INCIDENT spans lint / pr_create_failed / git push / projects_* phases —
-# at least 8 occurrences are expected.
-wf_incident_count=$(grep -cE 'workflow-incident-emit\.sh' "$START_MD" || true)
-if [ "$wf_incident_count" -ge 8 ]; then
-  pass "WORKFLOW_INCIDENT emit lower bound (>=8, got $wf_incident_count)"
-else
-  fail "WORKFLOW_INCIDENT emit lower bound failed (expected >=8, got $wf_incident_count) — silent deletion risk"
-fi
-
-# projects_status_update_failed は 8.3 (skipped + failed arms) + 8.4 (skipped + failed arms) で 4+ 箇所
-proj_status_count=$(grep -cE 'projects_status_update_failed' "$START_MD" || true)
-if [ "$proj_status_count" -ge 2 ]; then
-  pass "projects_status_update_failed lower bound (>=2, got $proj_status_count)"
-else
-  fail "projects_status_update_failed lower bound failed (expected >=2, got $proj_status_count)"
-fi
-
-# skill_load_failure は lint default / pr:create default / pr:review default / pr:fix default / pr:ready default
-# の最低 5 site で emit されるはず (H-4 改修後)
-skill_load_count=$(grep -cE 'skill_load_failure' "$START_MD" || true)
-if [ "$skill_load_count" -ge 3 ]; then
-  pass "skill_load_failure multi-site lower bound (>=3, got $skill_load_count)"
-else
-  fail "skill_load_failure multi-site lower bound failed (expected >=3, got $skill_load_count) — non-lint phase default handlers may have been removed"
-fi
 
 echo ""
 echo "=== 11-phase Resume Dispatch routing table rows ==="

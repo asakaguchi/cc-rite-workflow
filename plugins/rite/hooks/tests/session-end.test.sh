@@ -630,9 +630,8 @@ SESSION_END_SCRIPT="$SCRIPT_DIR/../session-end.sh"
 
 echo "[TC-022] deactivate-failure WARNING text present in production script"
 # SessionEnd stderr cannot reach the next session's orchestrator grep, so the
-# previous workflow-incident emit was dead — but the human-readable WARNING is
-# the only diagnostic the user sees on the failed session itself. Pin it so
-# future cleanup work doesn't accidentally drop the line.
+# human-readable WARNING is the only diagnostic the user sees on the failed
+# session itself. Pin it so future cleanup work doesn't accidentally drop the line.
 if grep -qE 'session-end: (WARNING: )?failed to deactivate state file' "$SESSION_END_SCRIPT"; then
   pass "TC-022 deactivate-failure WARNING wired in session-end.sh"
 else

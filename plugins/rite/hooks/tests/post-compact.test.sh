@@ -257,13 +257,13 @@ echo ""
 
 # ──────────────────────────────────────────────────────────────────────────
 # Reconciliation block runtime coverage (PR != 0 path).
-# The block at post-compact.sh lines 158-379 emits 6 distinct incident sentinels
+# The reconciliation block surfaces distinct root-cause tokens in plain WARNINGs
 # (state_root_inaccessible / state_root_toctou_race / pr_deleted_or_inaccessible
-# / post_compact_gh_pr_view_failed / projects_status_in_review_missing /
+# / post_compact_gh_pr_view_failed / post_compact_gh_repo_view_failed /
 # post_compact_reconciliation_failed) but none of TC-001..TC-749 set pr_number
 # to a non-zero value, so the entire block is otherwise dark. Exercise it with
-# a PATH-injected gh / projects-status-update.sh / workflow-incident-emit.sh
-# mock so a misclassification refactor fails here instead of in production.
+# a PATH-injected gh / projects-status-update.sh mock so a misclassification
+# refactor fails here instead of in production.
 # ──────────────────────────────────────────────────────────────────────────
 
 _setup_recon_env() {
@@ -445,23 +445,23 @@ recon_dir=$(_setup_recon_env "repo-fail" "repo_view_fail")
 recon_stderr="$(mktemp "$TEST_DIR/recon-repo-fail-stderr.XXXXXX")"
 echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
   | env PATH="$recon_dir/bin:$PATH" bash "$HOOK" >/dev/null 2>"$recon_stderr" || true
-incident_count=$(grep -cE 'WORKFLOW_INCIDENT=1' "$recon_stderr" || echo 0)
+incident_count=$(grep -cE 'post_compact_gh_repo_view_failed' "$recon_stderr" || echo 0)
 if [ "$incident_count" -eq 1 ]; then
-  pass "repo view failure emits exactly 1 incident sentinel (cascade guard functional)"
+  pass "repo view failure emits exactly 1 WARNING (cascade guard functional)"
 else
-  fail "repo view failure emitted $incident_count incident sentinels (expected exactly 1)"
+  fail "repo view failure emitted $incident_count WARNINGs (expected exactly 1)"
 fi
-if grep -qE 'root_cause_hint=post_compact_gh_repo_view_failed' "$recon_stderr"; then
-  pass "TC-RECON-07 emitted incident is attributed to root_cause_hint=post_compact_gh_repo_view_failed"
+if grep -qE 'post_compact_gh_repo_view_failed' "$recon_stderr"; then
+  pass "TC-RECON-07 WARNING is attributed via post_compact_gh_repo_view_failed token"
 else
-  fail "TC-RECON-07 incident emitted but not attributed via canonical root_cause_hint field: $(head -c 500 "$recon_stderr")"
+  fail "TC-RECON-07 WARNING emitted but not attributed via post_compact_gh_repo_view_failed token: $(head -c 500 "$recon_stderr")"
 fi
 
 # TC-CONFIG-PARSE: post-compact.sh が rite-config.yml の awk parse 失敗を silent skip ではなく
-# incident emit に乗せる経路を保持していることを static に pin する。awk-gating コードが削除
+# WARNING で surface する経路を保持していることを static に pin する。awk-gating コードが削除
 # された場合や hint string が変わった場合に検出する。behavioral test は gh CLI shim 等が必要で
 # 重いため、source grep で contract をピン留めする。
-echo "TC-CONFIG-PARSE: awk parse failure routes to incident emit with config_parse_failed hint"
+echo "TC-CONFIG-PARSE: awk parse failure surfaces WARNING with config_parse_failed hint"
 if grep -q 'post_compact_config_parse_failed' "$HOOK"; then
   pass "post-compact.sh contains 'config_parse_failed' root_cause_hint"
 else

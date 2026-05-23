@@ -19,7 +19,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 | 引数 | 型 | 意味 |
 |------|----|----|
-| `--phase` | string | 現 phase 名 (例: `branch`, `plan`, `implement`)。`commands/resume.md` Phase 3.2 の phase→step routing で使われる |
+| `--phase` | string | 現 phase 名 (例: `branch`, `plan`, `implement`)。`commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) の phase→step routing で使われる |
 | `--issue` | int | 対象 Issue 番号。session 識別子の一部 |
 | `--branch` | string | 作業ブランチ名。ステップ 2 前は空文字列 `""` (まだブランチ未作成のため) |
 | `--pr` | int | PR 番号。ステップ 6 前は `0` (まだ PR 未作成のため) |
@@ -29,7 +29,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 各ステップ末尾の write block は、**当該ステップの完了直後**（= 次ステップ開始前）に flow state を更新する。本 SoT では従来「Pre-write」と呼称していたが、実装上は post-step / phase-boundary write が正確な記述。目的:
 
-1. **`/rite:resume` の復帰経路保証**: コンテキスト消失 / セッション中断時、書き込まれた `phase` / `issue` / `branch` / `pr` / `next` フィールドを `/rite:resume` が読み取り、`commands/resume.md` Phase 3.2 表で対応する step に復帰する。
+1. **`/rite:resume` の復帰経路保証**: コンテキスト消失 / セッション中断時、書き込まれた `phase` / `issue` / `branch` / `pr` / `next` フィールドを `/rite:resume` が読み取り、`commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) で対応する step に復帰する。
 2. **next フィールドによる継続指示**: `next` 文字列は「中断時の次行動」を natural language で記述し、LLM が `/rite:resume` 経由で復帰した際の routing hint として機能する。
 
 ## patch mode の例外 (Workflow Termination の 1 site)
@@ -58,9 +58,9 @@ bash {plugin_root}/hooks/flow-state.sh set \
 | 7.2 | `fix` | ステップ 7.4 |
 | 8 | `completed` (patch) | ステップ 8.7 |
 
-(step 名 / phase 名は `commands/issue/start.md` を参照。`commands/resume.md` Phase 3.2 表が phase → step の正規 mapping)
+(step 名 / phase 名は `commands/issue/start.md` を参照。`commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) が phase → step の正規 mapping)
 
-> **位置のセマンティクス**: 表の write 位置は「当該 phase 名を `create` mode で書き込む sub-step」を指し、その実行時点ではすでに当該 phase の作業（lint 実行 / PR 作成 / review 実行など）が完了している。`/rite:resume` から復帰する際、書き込まれた phase は **その次のステップ**（`resume.md` Phase 3.2 表の Resume action 行）への routing キーとして使われる。
+> **位置のセマンティクス**: 表の write 位置は「当該 phase 名を `create` mode で書き込む sub-step」を指し、その実行時点ではすでに当該 phase の作業（lint 実行 / PR 作成 / review 実行など）が完了している。`/rite:resume` から復帰する際、書き込まれた phase は **その次のステップ**（`resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) の Resume action 行）への routing キーとして使われる。
 
 ## アンチパターン
 
@@ -73,5 +73,5 @@ bash {plugin_root}/hooks/flow-state.sh set \
 - `plugins/rite/hooks/flow-state.sh` — `create` / `patch` / `increment` modes の実装
 - `plugins/rite/hooks/phase-transition-whitelist.sh` — 遷移許可定義 (flat phase 群を反映)
 - `plugins/rite/hooks/flow-state.sh` — per-session flow-state 読み出し
-- `plugins/rite/commands/resume.md` Phase 3.2 — phase → step routing 表
+- `plugins/rite/commands/resume.md` Phase 5.3 — Phase enum → Step mapping (SoT)
 - [Sub-skill Return Auto-Continuation Contract (Retired)](../../../skills/rite-workflow/references/sub-skill-return-protocol.md) — retirement note

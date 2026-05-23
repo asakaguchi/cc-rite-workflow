@@ -68,7 +68,7 @@ fi
 | `1` + `phase=ready` | ステップ 8.3 から再開 (Ready は完了済 — Projects Status In Review → 親判定 → 完了レポート) |
 | `1` + `phase=ready_error` | ステップ 8 (Ready & 完結) から再開。PR は既に存在するため `/rite:pr:create` は呼ばない |
 | `1` + `phase=completed` | Issue は既に完結。AskUserQuestion で「新規作業として再開 / 中止」を提示 |
-| `1` + `phase=<legacy>` (`phase5_*` 等) | `commands/resume.md` Phase 3.2 Legacy compatibility 表に従って対応ステップへジャンプ |
+| `1` + `phase=<legacy>` (`phase5_*` 等) | Phase 2 の自動 migration で v3 enum に変換された後、`commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) の対応行に従う |
 
 `active=false` または `issue_number` が引数と異なる場合は、別 Issue の state が残っているだけなので新規セッション扱い (ステップ 1 から開始)。state file は新 phase 書き込み時に `previous_phase` がシフトされるため、誤った overwrite は発生しない。
 
@@ -807,7 +807,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ## エラー時の方針
 
-- どのステップで止まっても flow-state ファイル (`.rite/sessions/{session_id}.flow-state` / legacy `.rite-flow-state` fallback) に `phase` が記録されているので、ユーザーは `/rite:resume` で対応ステップから再開できる (`commands/resume.md` Phase 3.2 の phase→step 表を参照)
+- どのステップで止まっても flow-state ファイル (`.rite/sessions/{session_id}.flow-state` / legacy `.rite-flow-state` fallback) に `phase` が記録されているので、ユーザーは `/rite:resume` で対応ステップから再開できる (`commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) を参照)
 - 各ステップは「Bash 実行 → 結果確認 → 次へ」のフラットな逐次フロー
 - AskUserQuestion で明示的に「中止」が選ばれた場合のみ workflow 終了
 - bash command 失敗時は stderr に `WARNING` または `ERROR` プレフィックスを残し、復旧不能なケースのみ workflow を停止する
@@ -826,7 +826,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 - ブランチ・work memory・Projects Status・実装計画は途中状態でも保持される
 - 中断時は `/rite:resume {issue_number}` で復帰
-- phase → step mapping は `commands/resume.md` Phase 3.2 表が SoT (例: `phase=plan` で中断 → ステップ 3 から再開、`phase=fix` で中断 → ステップ 7.2 から)
+- phase → step mapping は `commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) が SoT (例: `phase=plan` で中断 → ステップ 3 から再開、`phase=fix` で中断 → ステップ 7.2 から)
 
 ## Standalone Usage
 

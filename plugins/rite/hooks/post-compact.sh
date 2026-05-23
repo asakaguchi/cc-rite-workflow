@@ -58,8 +58,8 @@ if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
   fi
 fi
 if [ "$_resolve_failed" -eq 1 ]; then
+  echo "[rite] WARNING: flow-state.sh path resolution failed — FLOW_STATE 不明、recovery を skip します" >&2
   FLOW_STATE=""
-  echo "[rite] WARNING: flow-state.sh path resolution failed — skip" >&2
 fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 LOCKDIR="$COMPACT_STATE.lockdir"
@@ -71,7 +71,7 @@ _cleanup_compact_state() {
 }
 
 # --- No flow state: clean up and exit ---
-if [ ! -f "$FLOW_STATE" ]; then
+if [ -z "$FLOW_STATE" ] || [ ! -f "$FLOW_STATE" ]; then
   _cleanup_compact_state
   exit 0
 fi

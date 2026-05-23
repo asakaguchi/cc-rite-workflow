@@ -4732,7 +4732,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 Replace `{next_action_value}` with the value from the table above based on the review result. Also replace `{n}` in the next_action string with the actual finding count from the review result (e.g., if the result is `[review:fix-needed:3]`, then `{n}` = `3`).
 
-**Note on `error_count`**: `flow-state.sh` patch mode preserves all existing fields not explicitly set — only `phase`, `updated_at`, and `next_action` are changed (consistent with `lint.md` Phase 4.0 and `fix.md` Phase 8.1). The count is effectively reset when `/rite:issue:start` writes a new complete object via `jq -n` at the next phase transition.
+**Note on `error_count`**: `flow-state.sh set` resets `error_count` to 0 by default on every phase transition, and preserves the existing value only when `--preserve-error-count` is passed. This prevents stale circuit breaker counts from one phase from poisoning subsequent phases.
 
 ### 8.0.1 W Phase Completion Gate (Defense-in-Depth, #535)
 

@@ -65,8 +65,8 @@ fi
 # Trap is canonical signal-specific (variable-first-declared / trap-set-second /
 # mktemp-third) per references/bash-trap-patterns.md; SIGINT/SIGTERM/SIGHUP
 # propagate POSIX exit codes 130/143/129.
-# Variable name `_jq_err` is intentionally aligned with state-read.sh for the
-# writer/reader symmetry that this helper enforces. cleanup is Form A (single
+# Variable name `_jq_err` follows the `_*_err` stderr-capture naming convention
+# shared across the state hooks. cleanup is Form A (single
 # `rm -f`); see bash-trap-patterns.md "cleanup 関数の契約" for why `return 0`
 # is unnecessary. Historical drift fixes are catalogued in
 # references/state-read-evolution.md.
@@ -80,9 +80,9 @@ trap '_rite_cross_session_cleanup; exit 143' TERM
 trap '_rite_cross_session_cleanup; exit 129' HUP
 # Mktemp + chmod 600 + WARNING emit on failure are centralised in
 # `_mktemp-stderr-guard.sh` (returns empty path on failure, emits WARNING to
-# stderr). Caller (state-read.sh / flow-state-update.sh) treats an empty path
-# as `/dev/null` redirection — the corrupt:N rc is still observable, only the
-# line/column detail is lost when mktemp itself fails.
+# stderr). A consumer would treat an empty path as `/dev/null` redirection — the
+# corrupt:N rc is still observable, only the line/column detail is lost when
+# mktemp itself fails.
 _jq_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
   "_resolve-cross-session-guard" "cross-session-jq-err" \
   "jq 失敗時の parse error 詳細が表示されません (caller は corrupt:N rc を観測できますが原因 line/column が失われます)")
@@ -134,8 +134,8 @@ if legacy_sid=$(jq -r '.session_id // empty' "$LEGACY_PATH" 2>"${_jq_err:-/dev/n
       # instead of `corrupt:1` to avoid numeric collision with jq exit code 1
       # ("any other error"). Operators reading the WARNING details can now
       # distinguish "UUID validation failure" (this branch) from "jq general error"
-      # (jq_rc=1 in the else branch below). Caller-side classification cases
-      # (state-read.sh / flow-state-update.sh) are updated to handle `invalid_uuid:*`.
+      # (jq_rc=1 in the else branch below). A consumer would handle the
+      # `invalid_uuid:*` token distinctly in its classification cases.
       printf 'invalid_uuid:1'
     fi
   fi

@@ -3929,7 +3929,7 @@ fi
 
 ### 6.2 Update Work Memory Phase
 
-> **Reference**: Update work memory per `work-memory-format.md` (at `{plugin_root}/skills/rite-workflow/references/work-memory-format.md`). Update phase to `phase5_review`, detail to `レビュー中`.
+> **Reference**: Update work memory per `work-memory-format.md` (at `{plugin_root}/skills/rite-workflow/references/work-memory-format.md`). Update phase to `review`, detail to `レビュー中`.
 
 **Step 1: Update local work memory (SoT)**
 
@@ -3943,7 +3943,7 @@ Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../
 hook_err=$(mktemp /tmp/rite-review-p62-hook-err-XXXXXX) || hook_err=""
 if [ -n "$hook_err" ]; then
  if WM_SOURCE="review" \
- WM_PHASE="phase5_review" \
+ WM_PHASE="review" \
  WM_PHASE_DETAIL="レビュー中" \
  WM_NEXT_ACTION="レビュー結果に基づき次のアクションを決定" \
  WM_BODY_TEXT="Review cycle completed." \
@@ -3969,7 +3969,7 @@ else
  # mktemp 失敗時は stderr を 2>&1 経由で stdout 統合し、失敗時に上位 5 行を表示する簡易 fallback
  echo "WARNING: hook_err mktemp 失敗により local-wm-update.sh の stderr 詳細が取得できません" >&2
  if hook_combined=$(WM_SOURCE="review" \
- WM_PHASE="phase5_review" \
+ WM_PHASE="review" \
  WM_PHASE_DETAIL="レビュー中" \
  WM_NEXT_ACTION="レビュー結果に基づき次のアクションを決定" \
  WM_BODY_TEXT="Review cycle completed." \
@@ -3995,7 +3995,7 @@ if [ -n "$sync_err" ]; then
  if bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
  --issue {issue_number} \
  --transform update-phase \
- --phase "phase5_review" --phase-detail "レビュー中" \
+ --phase "review" --phase-detail "レビュー中" \
  2>"$sync_err"; then
  :
  else
@@ -4016,7 +4016,7 @@ else
  if sync_combined=$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
  --issue {issue_number} \
  --transform update-phase \
- --phase "phase5_review" --phase-detail "レビュー中" \
+ --phase "review" --phase-detail "レビュー中" \
  2>&1); then
  : # success
  else
@@ -4114,7 +4114,7 @@ _rite_review_p64_run_sync "p64 update-phase" \
  bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
  --issue {issue_number} \
  --transform update-phase \
- --phase "phase5_review" --phase-detail "レビュー中"
+ --phase "review" --phase-detail "レビュー中"
 
 # Step 2: レビュー対応履歴追記
 review_tmp=$(mktemp) || {

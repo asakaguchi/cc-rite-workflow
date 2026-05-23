@@ -12,8 +12,18 @@
 > captured. A future reintroduction (post-PR metrics dashboard, retro logs,
 > etc.) should pick up from this file rather than re-deriving the criteria.
 >
-> Section headings still use the historical `Phase 5.5.2 / phase5_post_metrics`
-> labels for traceability with the original design discussion.
+> **The `phase5_*`-form identifiers in this file are intentional — not legacy
+> drift.** The markers used below (`phase5_post_metrics`,
+> `phase5_post_status_in_review`, `phase5_5_2_metrics`) are **metrics-gate
+> internal markers, NOT work-memory phase vocabulary**. They are distinct from
+> the work-memory `phase5_*` examples that Issue #1104 / #1109 unified to the v3
+> enum (`implement` / `lint` / …): those were work-memory phase labels, whereas
+> these name points in the (now-orphan) metrics recording flow. The `phase5_*`
+> form here is **historically fixed and deliberately NOT renamed**, to preserve
+> traceability with the original design discussion. Because this file has no live
+> writer/reader (see the orphan banner above), these markers never appear in a
+> real flow-state `.phase` value — a `phase5_*` drift-cleanup grep that lands here
+> can treat them as documentation-only and skip them.
 
 ## Skip Steps note (Phase 5.6 pre-condition)
 

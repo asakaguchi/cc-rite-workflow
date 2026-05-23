@@ -189,20 +189,32 @@ cmd_migrate() {
   echo "Migration complete: $migrated file(s) processed"
 }
 
+cmd_path() {
+  local session=""
+  while [ $# -gt 0 ]; do case "$1" in
+    --session) session="$2"; shift 2 ;;
+    *) echo "ERROR: unknown option: $1" >&2; return 1 ;;
+  esac; done
+  local sid; sid=$(_resolve_session_id "$session") || return 1
+  _state_path "$sid"
+}
+
 case "${1:-}" in
   set) shift; cmd_set "$@" ;;
   get) shift; cmd_get "$@" ;;
   deactivate) shift; cmd_deactivate "$@" ;;
   migrate) shift; cmd_migrate "$@" ;;
+  path) shift; cmd_path "$@" ;;
   *)
     cat >&2 <<EOF
-Usage: $0 {set|get|deactivate|migrate} [options]
+Usage: $0 {set|get|deactivate|migrate|path} [options]
   set --phase <P> --next <T> [--issue N] [--branch S] [--pr N] [--parent-issue N]
       [--active true|false] [--session UUID] [--if-exists] [--preserve-error-count]
   get --field <F> [--default V] [--session UUID]
       | --jq-filter <FILTER> [--default V] [--session UUID]
   deactivate [--next T] [--session UUID]
   migrate [--dry-run] [--verbose]
+  path [--session UUID]
 Phase enum (v3): $PHASE_ENUM_V3
 EOF
     exit 1

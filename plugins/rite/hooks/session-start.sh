@@ -325,7 +325,7 @@ _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
 # of success/failure (helper may graceful-degrade exit 0 with WARNING in stderr,
 # e.g., empty SID via tr IO failure — both paths require pass-through).
 _resolve_failed=0
-STATE_FILE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
+STATE_FILE=$("$SCRIPT_DIR/flow-state.sh" path 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
 if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
   grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
 fi

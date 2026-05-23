@@ -15,8 +15,6 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 # 2>/dev/null は parser-level syntax error の場合のみ silent skip するため。
 # whitelist 自身が bash < 4.2 警告を出すため、source 失敗時の追加警告は不要。
 # fail-open 自体は session-end の主処理 (state 保存) を止めない設計 (#675 retire 後の方針)。
-source "$SCRIPT_DIR/phase-transition-whitelist.sh" 2>/dev/null \
-  || echo "[rite] WARNING: phase-transition-whitelist.sh source failed in session-end.sh; phase validation disabled for this session" >&2
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
@@ -44,7 +42,7 @@ _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "_resolve-flow-state-path.sh の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
 # Single-pass branch (filter runs once regardless of resolver exit status).
 _resolve_failed=0
-STATE_FILE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
+STATE_FILE=$("$SCRIPT_DIR/flow-state.sh" path 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
 if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
   # Mirror of post-compact.sh resolver stderr handler. The grep below accepts only
   # WARNING:/ERROR:/jq:/indented continuation lines; any new prefix the resolver

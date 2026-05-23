@@ -39,7 +39,7 @@ _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
 trap '[ -n "${_resolve_err:-}" ] && rm -f "$_resolve_err" 2>/dev/null || true' EXIT INT TERM
 # Single-pass branch (filter runs once regardless of resolver exit status).
 _resolve_failed=0
-FLOW_STATE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
+FLOW_STATE=$("$SCRIPT_DIR/flow-state.sh" path 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
 # Mirror of session-end.sh resolver stderr handler. The grep pins accepted prefixes;
 # any new resolver prefix (INFO:/DIAG:/...) would silently drop without the counter.
 if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then

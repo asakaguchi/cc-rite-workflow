@@ -42,7 +42,7 @@ _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "_resolve-flow-state-path.sh の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
 # Single-pass branch (filter runs once regardless of resolver exit status).
 _resolve_failed=0
-FLOW_STATE=$("$SCRIPT_DIR/_resolve-flow-state-path.sh" "$STATE_ROOT" 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
+FLOW_STATE=$("$SCRIPT_DIR/flow-state.sh" path 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
 if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
   grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
 fi

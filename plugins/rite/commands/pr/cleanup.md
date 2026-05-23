@@ -72,7 +72,7 @@ Activate flow state to record that a cleanup workflow is in flight. The `.active
 # helper が空文字列を返した場合は後続の `[ -f "" ]` が false 評価され create 分岐に進む。
 # state file 不在と同等に扱う safe-default fallback。
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
-state_file=$(bash {plugin_root}/hooks/_resolve-flow-state-path.sh "$state_root" 2>/dev/null) || state_file=""
+state_file=$(bash {plugin_root}/hooks/flow-state.sh path 2>/dev/null) || state_file=""
 if [ -n "$state_file" ] && [ -f "$state_file" ]; then
   # 前 session 終了時に {phase: cleanup_completed, active: false} で残存している
   # ケースで `--active true` を省略すると patch モードは .active を更新しないため、

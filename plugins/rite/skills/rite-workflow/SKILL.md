@@ -193,30 +193,11 @@ All `gh` commands that accept `--body` or `--comment` parameters **MUST** use sa
 
 **Never** pass user-generated content directly via `--body` or `--comment` flags.
 
-## Workflow Incident Detection (#366)
+## Workflow Failure Surfacing
 
-The rite workflow auto-detects **workflow blockers** (Skill load failure, hook abnormal exit, manual fallback adoption) during `/rite:issue:start` end-to-end execution and registers them as Issues to prevent silent loss.
+When a step of `/rite:issue:start` fails or is skipped (Skill load failure, hook abnormal exit, Wiki ingest skip/failure, etc.), the affected skill or hook emits a plain `WARNING` / `ERROR` line to **stderr**. The orchestrator surfaces it in the conversation context, and the user re-runs the affected step via `/rite:resume`. Failures are visible but not auto-registered as Issues; the user decides whether to file one.
 
-**Architecture**:
-1. Each skill (`rite:lint`, `rite:pr:fix`, `rite:pr:review`) emits a sentinel via `plugins/rite/hooks/workflow-incident-emit.sh` when an internal failure path is taken.
-2. The orchestrator (`/rite:issue:start`, flat workflow steps ステップ 5〜7) detects sentinels via context grep, presents `AskUserQuestion` for confirmation, and calls `create-issue-with-projects.sh` to register the incident with `Status: Todo / Priority: High / Complexity: S`.
-3. Same-session duplicate types are suppressed (1 incident per type per session).
-4. Failure to register is non-blocking — the workflow continues regardless.
-
-**Configuration** (default-on):
-
-```yaml
-workflow_incident:
-  enabled: true              # set to false to disable detection entirely
-```
-
-**Sentinel format** (`root_cause_hint` is optional and entirely omitted when empty):
-
-```
-[CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; (root_cause_hint=<hint>; )?iteration_id=<pr>-<epoch>
-```
-
-See `docs/SPEC.md` "Workflow Incident Detection" section for the full specification, including AC mapping and Phase 7 non-interference guarantees.
+> The earlier auto-registration mechanism (`workflow-incident-emit.sh` sentinel + `/rite:issue:start` detection + `workflow_incident:` config key) was removed in PR 2b (#1088) in favor of this single-layer plain-stderr design. See `docs/SPEC.md` "Workflow Failure Surfacing" for details.
 
 ## Integration
 

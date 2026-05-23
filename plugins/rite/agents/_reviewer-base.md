@@ -83,7 +83,7 @@ cd -  # parent repo に戻る (HEAD 変更なし、stash なし)
 2. `git stash list` の長さが reviewer 起動時と同一 (state vector axis 2: stash count、`--original-stash-count` で check)
 3. `git branch --list` の出力が reviewer 起動時と同一 (state vector axis 3: branch_list hash、`--original-branch-list-hash` で check — 新規 named branch leak 検出)
 
-これらの invariant 違反は orchestrator 側 (`commands/pr/review.md` Phase 5.0.A post-review state verification) で post-condition check され、drift 検出時は WARNING + (branch drift のみ) automatic recovery (`git checkout <original_branch>`) + `workflow-incident-emit.sh --type manual_fallback_adopted` が発火する。stash/branch_list drift は内容を失うリスク回避のため auto-recover せず manual action を案内する。
+これらの invariant 違反は orchestrator 側 (`commands/pr/review.md` Phase 5.0.A post-review state verification) で post-condition check され、drift 検出時は WARNING を stderr に出力 + (branch drift のみ) automatic recovery (`git checkout <original_branch>`) を行う。stash/branch_list drift は内容を失うリスク回避のため auto-recover せず manual action を案内する。
 
 ## Reviewer Mindset
 

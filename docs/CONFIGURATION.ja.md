@@ -206,12 +206,6 @@ safety:
   auto_stop_on_repeated_failure: true   # 同一クラスの失敗が連続したら停止 (default: true)
   repeated_failure_threshold: 3         # 自動停止をトリガする連続失敗回数 (default: 3)
 
-# ワークフローインシデント自動登録 (#366)
-# ワークフローブロッカー (Skill load 失敗 / hook 異常終了 / 手動フォールバック採用) を検出し
-# Issue 化することで silent loss を防ぐ。
-workflow_incident:
-  enabled: true              # インシデント検出機構を有効化 (default: true, opt-out)
-
 # Experience Wiki (opt-out, 詳細は下の wiki セクションを参照)
 wiki:
   enabled: true                        # Wiki 機能を有効化 (default: true, opt-out)
@@ -789,22 +783,6 @@ PR レビュー **出力** の記録設定。このセクションは `review:` 
 | `post_comment` | boolean | `false` | `true` の時、レビュー結果は PR コメントとして投稿される (`--post-comment` 相当)。`false` (default) の時は `.rite/review-results/{pr_number}-{timestamp}.json` にのみ保存される |
 
 `/rite:pr:fix` は優先順位 **conversation > local file > PR comment** でレビュー結果を自動読込する。ほとんどのユーザーは PR コメント履歴をクリーンに保つため `post_comment: false` のままにすべき。PR 自体に監査可能なレビュー痕跡を残したい時のみ有効化する。背景は #443 を参照。
-
-### workflow_incident
-
-ワークフローインシデント自動登録の設定。ワークフローブロッカー (Skill load 失敗、hook 異常終了、ユーザーによる手動フォールバック採用) が検出されると、orchestrator は `plugins/rite/hooks/workflow-incident-emit.sh` 経由で sentinel を emit する。検出されたインシデントは Issue として自動登録され、実行可能なプラットフォーム欠陥が silent loss するのを防ぐ。
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | boolean | `true` | インシデント検出機構を有効化。完全に opt out するには `false` に設定 |
-
-**Non-blocking と dedupe 挙動** (設定不可):
-
-- 登録失敗 (ネットワークエラー、API エラー) はワークフローを停止しない — インシデントはコンテキストローカルなリストに保持され Phase 5.6 完了レポートで報告される。
-- 1 セッション内で、同一インシデント `type` のプロンプトは一度のみ表示される (`AskUserQuestion` スパムを避けるため、2 回目以降は抑止される)。
-- `rite-config.yml` に未設定の場合、このセクションは `enabled: true` として扱われる (opt-out)。literal な `false` のみが opt-out として扱われる。
-
-完全な仕様は `docs/SPEC.md` "Workflow Incident Detection" (#366) を参照。
 
 ### wiki
 

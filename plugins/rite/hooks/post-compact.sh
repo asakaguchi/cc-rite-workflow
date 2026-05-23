@@ -223,7 +223,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       # The `[ -n "$f" ]` guard is defense-in-depth: even though the `2>/dev/null`
       # redirect below already suppresses BSD `rm -f ""` stderr noise
       # (`rm: '': No such file or directory`), a future refactor that drops
-      # the redirect would let that diagnostic leak into incident triage and
+      # the redirect would let that diagnostic leak into triage and
       # mask real cleanup failures. The guard keeps the cleanup silent
       # regardless.
       for f in "${pr_view_err:-}" "${repo_view_err:-}" \
@@ -239,7 +239,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     trap '_pc_cleanup; exit 129' HUP
     # When mktemp fails (disk full / inode shortage / /tmp readonly), gh's stderr
     # would silently route to /dev/null and the root cause (auth/rate-limit/
-    # permission) would vanish from the incident. Tag the failure so the incident
+    # permission) would vanish from the WARNING. Tag the failure so the WARNING
     # can distinguish "gh returned no stderr" from "we couldn't capture it".
     stderr_capture_disabled=0
     pr_view_err=$(mktemp /tmp/rite-pc-pr-err-XXXXXX) || { pr_view_err=""; stderr_capture_disabled=1; echo "[rite] WARNING: post-compact: mktemp failed for pr_view_err; gh pr view stderr will not be captured" >&2; }
@@ -297,7 +297,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       # Capture gh repo view stderr so failures get attributed to auth/network/
       # permission rather than misclassified as missing data. This pattern is
       # paired with watchdog-status-mismatch; if those two sites diverge in error
-      # capture, the same root cause produces asymmetric incident details and
+      # capture, the same root cause produces asymmetric WARNING details and
       # becomes harder to diagnose.
       if REPO_INFO=$(cd "$STATE_ROOT" && gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
         :
@@ -307,7 +307,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
         REPO_INFO=""
       fi
       # Capture jq stderr separately so JSON parse failure (gh succeeded but JSON
-      # is corrupt or a field is null) gets attributed in the incident details.
+      # is corrupt or a field is null) gets attributed in the WARNING details.
       REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>"${jq_owner_err:-/dev/null}") || REPO_OWNER=""
       REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>"${jq_name_err:-/dev/null}") || REPO_NAME=""
       # Capture awk stderr for rite-config.yml parsing. A silent empty fallback

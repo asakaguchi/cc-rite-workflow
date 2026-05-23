@@ -231,8 +231,6 @@ echo ""
 echo "=== Phase 10b: apply gh edit failure → plain WARNING (incident_type + reason) ==="
 # The apply-mode gh edit failure path surfaces a plain WARNING carrying
 # incident_type=issue_body_fetch_failed + reason=gh_edit_failed + the actual rc.
-# (The workflow_incident emit mechanism + _EMIT_SH fallback were removed in
-# PR 2b / #1088; the helper now always emits a plain WARNING.)
 mock_bin5=$(mktemp -d)
 cat > "$mock_bin5/gh" <<'MOCK_EDIT_FAIL'
 #!/bin/bash
@@ -242,13 +240,12 @@ esac
 exit 0
 MOCK_EDIT_FAIL
 chmod +x "$mock_bin5/gh"
-absent_emit_apply="$mock_bin5/nonexistent_emit_sh"
 tmp_read=$(mktemp)
 tmp_write=$(mktemp)
 printf 'a%.0s' $(seq 1 200) > "$tmp_read"
 printf 'b%.0s' $(seq 1 250) > "$tmp_write"
 rc=0
-out=$(PATH="$mock_bin5:$PATH" _EMIT_SH="$absent_emit_apply" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
+out=$(PATH="$mock_bin5:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
 assert_exit "TC-25 apply gh edit failure → exit 0" 0 "$rc"
 if printf '%s' "$out" | grep -qE 'issue_body_fetch_failed'; then
   pass "TC-25 apply gh failure emits WARNING with incident_type=issue_body_fetch_failed"
@@ -358,14 +355,13 @@ cat > "$mock_bin8/gh" <<'EOF'
 exit 0
 EOF
 chmod +x "$mock_bin8/gh"
-absent_emit_shrink="$mock_bin8/nonexistent_emit"
 tmp_read=$(mktemp)
 tmp_write=$(mktemp)
 printf 'a%.0s' $(seq 1 200) > "$tmp_read"
 # 5 bytes ≪ 200/2 — triggers shrinkage guard
 printf 'aaaaa' > "$tmp_write"
 rc=0
-out=$(PATH="$mock_bin8:$PATH" _EMIT_SH="$absent_emit_shrink" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
+out=$(PATH="$mock_bin8:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
 assert_exit "TC-25d shrinkage trip → exit 0" 0 "$rc"
 if printf '%s' "$out" | grep -qE 'body_shrinkage_guard_tripped'; then
   pass "TC-25d shrinkage trip emits WARNING with incident_type=body_shrinkage_guard_tripped"
@@ -387,14 +383,13 @@ cat > "$mock_bin9/gh" <<'EOF'
 exit 0
 EOF
 chmod +x "$mock_bin9/gh"
-absent_emit_empty="$mock_bin9/nonexistent_emit"
 tmp_read=$(mktemp)
 tmp_write=$(mktemp)
 printf 'a%.0s' $(seq 1 200) > "$tmp_read"
 # zero bytes — triggers empty-write guard
 : > "$tmp_write"
 rc=0
-out=$(PATH="$mock_bin9:$PATH" _EMIT_SH="$absent_emit_empty" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
+out=$(PATH="$mock_bin9:$PATH" bash "$TARGET" apply --issue 999 --tmpfile-read "$tmp_read" --tmpfile-write "$tmp_write" --original-length 200 2>&1) || rc=$?
 assert_exit "TC-25e empty write → exit 0" 0 "$rc"
 if printf '%s' "$out" | grep -qE 'body_shrinkage_guard_tripped'; then
   pass "TC-25e empty write emits WARNING with incident_type=body_shrinkage_guard_tripped"

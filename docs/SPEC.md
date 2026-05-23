@@ -1700,7 +1700,7 @@ When `wiki.auto_ingest`, `wiki.auto_query`, or `wiki.auto_lint` are enabled, the
 
 Layer 3's threshold is configurable via `wiki.growth_check.threshold_prs` (default: 5). Setting it to a very large number effectively disables the lint check while preserving layers 0-2.
 
-The completion report (`start.md` ステップ 8.6) **always** includes a "Wiki ingest 状況" section that aggregates these signals so the user has a definitive answer about whether the Wiki branch grew during each `/rite:issue:start` invocation. This section is rendered even when all counters are zero — its absence would itself be a regression signal.
+The completion report (`start.md` ステップ 8.5) **always** includes a "Wiki ingest 状況" section that aggregates these signals so the user has a definitive answer about whether the Wiki branch grew during each `/rite:issue:start` invocation. This section is rendered even when all counters are zero — its absence would itself be a regression signal.
 
 ### Relationship to workflow failure surfacing
 
@@ -1749,7 +1749,7 @@ The contract ends only when the orchestrator's terminal completion marker has be
 
 | Orchestrator | Terminal marker |
 |-------------|----------------|
-| `/rite:issue:start` | ステップ 8.6 completion report + Workflow Termination block |
+| `/rite:issue:start` | ステップ 8.5 completion report + Workflow Termination block |
 | `/rite:issue:create` | `<!-- [create:completed:{N}] -->` (HTML-comment wrap form per #561) preceded by user-visible `✅ Issue #{N} を作成しました: {url}` and next-step guidance |
 
 ### Phase-aware continuation hints (#525)

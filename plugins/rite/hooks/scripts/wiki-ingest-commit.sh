@@ -54,9 +54,8 @@
 # 2 wiki feature disabled or wiki branch missing (treated as skip)
 # 3 git operation failure (stash / checkout / commit — push NOT included)
 # 4 push failed after successful local commit (commit landed locally,
-# but origin push failed — caller MUST emit wiki_ingest_push_failed
-# sentinel so the incident layer can observe the silent regression
-# that occurred in pre-PR-529 designs where push=failed was silent).
+# but origin push failed — a distinct code so the caller surfaces a plain
+# WARNING instead of folding the push failure into a success report).
 #
 # Notes:
 # - Designed to be idempotent: when called with no pending raw sources,
@@ -913,8 +912,8 @@ surface_git_warnings "push origin $wiki_branch"
 echo "[wiki-ingest-commit] committed=${#pending_files[@]}; branch=${wiki_branch}; head=${committed_sha}; push=${push_status}"
 
 # cleanup trap handles checkout-back + stash pop + /tmp rm.
-# Exit 4 signals "commit landed, push failed" so the caller emits a
-# dedicated wiki_ingest_push_failed sentinel (CRITICAL #1 fix).
+# Exit 4 signals "commit landed, push failed" so the caller surfaces a plain
+# WARNING (push retry needed) rather than treating the ingest as fully done.
 if [[ "$push_failed" == "true" ]]; then
  exit 4
 fi

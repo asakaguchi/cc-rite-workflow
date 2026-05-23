@@ -224,7 +224,14 @@ case "$status_value" in
     echo "WARNING: Issue #{issue_number} は Project に未登録 (Callsite 1)" >&2
     ;;
   failed|*)
-    printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null | while read -r w; do echo "WARNING: $w" >&2; done
+    # `*` also catches unexpected result values that may carry no warnings, so a
+    # failed / unknown result is never allowed to pass silently.
+    status_warnings=$(printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null)
+    if [ -n "$status_warnings" ]; then
+      printf '%s\n' "$status_warnings" | while read -r w; do echo "WARNING: $w" >&2; done
+    else
+      echo "WARNING: Projects Status 更新が想定外の結果 ($status_value) を返しました (warning なし)" >&2
+    fi
     ;;
 esac
 ```
@@ -621,7 +628,14 @@ case "$status_value" in
     echo "WARNING: Issue #{issue_number} は Project に未登録 (Callsite 2)" >&2
     ;;
   failed|*)
-    printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null | while read -r w; do echo "WARNING: $w" >&2; done
+    # `*` also catches unexpected result values that may carry no warnings, so a
+    # failed / unknown result is never allowed to pass silently.
+    status_warnings=$(printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null)
+    if [ -n "$status_warnings" ]; then
+      printf '%s\n' "$status_warnings" | while read -r w; do echo "WARNING: $w" >&2; done
+    else
+      echo "WARNING: Projects Status 更新が想定外の結果 ($status_value) を返しました (warning なし)" >&2
+    fi
     ;;
 esac
 ```
@@ -673,7 +687,14 @@ case "$status_value" in
     echo "WARNING: parent Issue #{parent_issue_number} は Project に未登録 (Callsite 3, gh issue close rc=$close_rc)" >&2
     ;;
   failed|*)
-    printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null | while read -r w; do echo "WARNING: $w" >&2; done
+    # `*` also catches unexpected result values that may carry no warnings, so a
+    # failed / unknown result is never allowed to pass silently.
+    status_warnings=$(printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null)
+    if [ -n "$status_warnings" ]; then
+      printf '%s\n' "$status_warnings" | while read -r w; do echo "WARNING: $w" >&2; done
+    else
+      echo "WARNING: Projects Status 更新が想定外の結果 ($status_value) を返しました (warning なし)" >&2
+    fi
     ;;
 esac
 ```

@@ -489,16 +489,15 @@ else
  if [ "$commit_err" != "/dev/null" ] && [ -s "$commit_err" ]; then
  head -5 "$commit_err" | sed 's/^/ /' >&2
  fi
- # MEDIUM #5 — exit 2 は legitimate skip (wiki disabled / wiki branch missing).
- # exit 4 = commit landed locally
- # but origin push failed; emit dedicated wiki_ingest_push_failed sentinel.
+ # exit 2 は legitimate skip (wiki disabled / wiki branch missing).
+ # exit 4 = commit landed locally but origin push failed; surface the
+ # WIKI_INGEST_PUSH_FAILED marker + WARNING so the push failure stays observable.
  case "$commit_rc" in
  2)
  echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing; exit_code=$commit_rc"
  echo "WARNING: wiki-ingest-commit.sh exited 2 (wiki branch missing / disabled) during issue/close.md Phase 4.4.W.2" >&2
  ;;
  4)
- # CRITICAL #1: commit landed locally, push failed.
  echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; exit_code=$commit_rc"
  if [ -n "${commit_out:-}" ]; then
  echo "$commit_out"

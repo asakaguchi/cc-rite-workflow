@@ -112,7 +112,7 @@ case "$MODE" in
     trap 'rm -f "$tmpfile_read" "$tmpfile_write" "$tmpfile_err"' EXIT
 
     # `if ! cmd; then rc=$?` forces rc=0 inside the then-branch (POSIX `!` inverts
-    # status). Use the else-branch to preserve gh's real exit code so the incident
+    # status). Use the else-branch to preserve gh's real exit code so the WARNING
     # details accurately attribute auth / rate-limit / 404 failures.
     rc=0
     if gh issue view "$ISSUE" --json body --jq '.body' >"$tmpfile_read" 2>"$tmpfile_err"; then
@@ -154,7 +154,7 @@ case "$MODE" in
     # script (breaking the non-blocking exit-0 contract and leaking the tmp
     # files) if a caller passed a non-numeric value (e.g. via a wc failure
     # producing whitespace). Catch it here as a body_shrinkage_guard_tripped
-    # incident with a distinct hint so triage doesn't conflate it with a real
+    # failure with a distinct hint so triage doesn't conflate it with a real
     # safety-net trip.
     if ! [[ "$ORIGINAL_LENGTH" =~ ^[0-9]+$ ]]; then
       echo "${err_level}: --original-length が非数値 ('$ORIGINAL_LENGTH') — apply をスキップ" >&2
@@ -207,7 +207,7 @@ case "$MODE" in
     fi
 
     # Capture gh issue edit stderr so failures (auth / network / 404) can be
-    # attributed in the incident rather than reported as "API failed, reason
+    # attributed in the WARNING rather than reported as "API failed, reason
     # unknown". The script is non-blocking, so mktemp failure degrades to
     # "no stderr capture" rather than aborting the caller's workflow.
     apply_err=$(mktemp /tmp/rite-issue-body-apply-err-XXXXXX) || {

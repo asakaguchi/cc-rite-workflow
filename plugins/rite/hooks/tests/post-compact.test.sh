@@ -412,16 +412,19 @@ else
   fail "stderr_capture=disabled tag missing from emitted incident; got: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
 fi
 
-# TC-RECON-05: happy path emits NO incident sentinel (negative control)
-echo "TC-RECON-05: happy reconciliation path → no incident sentinel"
+# TC-RECON-05: happy path surfaces no reconciliation-failure WARNING (negative control)
+echo "TC-RECON-05: happy reconciliation path → no failure WARNING"
 recon_dir=$(_setup_recon_env "happy" "happy" "updated")
 recon_stderr="$(mktemp "$TEST_DIR/recon-happy-stderr.XXXXXX")"
 echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
   | env PATH="$recon_dir/bin:$PATH" bash "$HOOK" >/dev/null 2>"$recon_stderr" || true
-if grep -qE 'WORKFLOW_INCIDENT=1' "$recon_stderr"; then
-  fail "happy path wrongly emitted WORKFLOW_INCIDENT (false positive): $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+# Status is already "In Review", so the mismatch branch never runs and the block must
+# stay silent. The failure root-cause hints below appear only inside failure WARNINGs,
+# so finding any one on a clean run signals a classification regression firing falsely.
+if grep -qE '(post_compact_[a-z_]+|state_root_(inaccessible|toctou_race)|pr_deleted_or_inaccessible)' "$recon_stderr"; then
+  fail "happy path wrongly surfaced a reconciliation-failure WARNING (false positive): $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
 else
-  pass "happy path emits no WORKFLOW_INCIDENT (negative control)"
+  pass "happy path surfaces no reconciliation-failure WARNING (negative control)"
 fi
 
 # TC-RECON-06: reconcile failed → post_compact_reconciliation_failed hint

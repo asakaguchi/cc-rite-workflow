@@ -17,8 +17,8 @@
 #   "corrupt:<jq_rc>"       legacy file jq parse failed → refuse take-over (cannot verify)
 #   "invalid_uuid:1"        legacy.session_id JSON-parseable but UUID validation failed
 #                           → refuse take-over (tampered / legacy schema with non-UUID session_id)
-#                           Distinct from "corrupt:*" so incident response can differentiate
-#                           UUID validation failure from jq parse failure (cycle 36 F-16)
+#                           Distinct from "corrupt:*" so a consumer can differentiate
+#                           UUID validation failure from jq parse failure.
 #
 # Why this exists (verified-review cycle 34 fix F-02 HIGH):
 #   The same `legacy.session_id` extraction + comparison logic was duplicated
@@ -30,9 +30,8 @@
 #   added reader).
 #
 # Caller responsibility:
-#   The caller decides what to do with each classification (surfacing it as a
-#   plain WARNING on stderr — the workflow_incident emit mechanism was removed in
-#   PR 2b / #1088):
+#   A consumer of these classifications routes each one and surfaces the
+#   non-adoptable cases as a plain WARNING on stderr:
 #   - "same" / "empty" → adopt legacy as the resolved STATE_FILE
 #   - "foreign:<sid>" → cross-session takeover refused; route to per-session path
 #                       (writer) or DEFAULT (reader)

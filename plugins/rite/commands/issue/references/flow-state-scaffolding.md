@@ -56,7 +56,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 | 6 | `pr` | ステップ 6.3 |
 | 7.1 | `review` | ステップ 7.4 |
 | 7.2 | `fix` | ステップ 7.4 |
-| 8 | `completed` (patch) | ステップ 8.7 |
+| 8 | `completed` (patch) | ステップ 8.6 |
 
 (step 名 / phase 名は `commands/issue/start.md` を参照。`commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) が phase → step の正規 mapping)
 

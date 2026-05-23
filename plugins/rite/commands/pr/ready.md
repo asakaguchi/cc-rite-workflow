@@ -304,7 +304,7 @@ Proceed to the next phase.
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "ready_error" \
   --active true \
-  --next "rite:pr:ready failed during Ready transition. Ask user: retry / skip to ステップ 8.6 (完了レポート) / terminate." \
+  --next "rite:pr:ready failed during Ready transition. Ask user: retry / skip to ステップ 8.5 (完了レポート) / terminate." \
   --if-exists
 ```
 
@@ -475,13 +475,13 @@ Before outputting the result pattern (`[ready:completed]`) or skipping output, u
 
 | Result | Phase | Phase Detail | Next Action |
 |--------|-------|-------------|-------------|
-| `[ready:completed]` | `ready` | `Ready処理完了` | `rite:pr:ready completed. Proceed to start.md ステップ 8.3 (Projects Status In Review), then ステップ 8.4 (parent close check), then ステップ 8.6 (completion report). Do NOT stop.` |
+| `[ready:completed]` | `ready` | `Ready処理完了` | `rite:pr:ready completed. Proceed to start.md ステップ 8.3 (Projects Status In Review), then ステップ 8.4 (parent close check), then ステップ 8.5 (completion report). Do NOT stop.` |
 
 ```bash
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "ready" \
   --active true \
-  --next "rite:pr:ready completed. Proceed to start.md ステップ 8.3 (Projects Status In Review), then ステップ 8.4 (parent close check), then ステップ 8.6 (completion report). Do NOT stop." \
+  --next "rite:pr:ready completed. Proceed to start.md ステップ 8.3 (Projects Status In Review), then ステップ 8.4 (parent close check), then ステップ 8.5 (completion report). Do NOT stop." \
   --if-exists
 ```
 
@@ -493,7 +493,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 WM_SOURCE="ready" \
   WM_PHASE="ready" \
   WM_PHASE_DETAIL="Ready処理完了" \
-  WM_NEXT_ACTION="start.md ステップ 8.3 Status 更新 → 8.4 親 Issue 完結判定 → 8.6 完了レポートを実行" \
+  WM_NEXT_ACTION="start.md ステップ 8.3 Status 更新 → 8.4 親 Issue 完結判定 → 8.5 完了レポートを実行" \
   WM_BODY_TEXT="Post-ready phase sync." \
   WM_REQUIRE_FLOW_STATE="true" \
   WM_READ_FROM_FLOW_STATE="true" \
@@ -513,8 +513,8 @@ Determine the caller from the conversation context:
 
 | Condition | Result | Action |
 |------|---------|---------------------|
-| Called via Skill chain from `/rite:issue:start` | Within end-to-end flow | **Skip completion report** — return control to `start.md` (ステップ 8.6 handles the report) |
-| Called from `/rite:pr:review` | Within end-to-end flow | **Skip completion report** — return control to `start.md` (ステップ 8.6 handles the report) |
+| Called via Skill chain from `/rite:issue:start` | Within end-to-end flow | **Skip completion report** — return control to `start.md` (ステップ 8.5 handles the report) |
+| Called from `/rite:pr:review` | Within end-to-end flow | **Skip completion report** — return control to `start.md` (ステップ 8.5 handles the report) |
 | `/rite:pr:ready` executed standalone | Standalone complete | Output Phase 5.1.2 format |
 
 **Detection method:**
@@ -529,7 +529,7 @@ Check the conversation history and determine "within end-to-end flow" if any of 
 
 #### 5.1.1 End-to-End Flow (Skip Completion Report, Output Signal)
 
-When called within the end-to-end flow (detected in Phase 5.0), **do NOT output any completion report**. The completion report is the responsibility of `start.md` ステップ 8.6 — outputting it here causes duplicate reports.
+When called within the end-to-end flow (detected in Phase 5.0), **do NOT output any completion report**. The completion report is the responsibility of `start.md` ステップ 8.5 — outputting it here causes duplicate reports.
 
 **Instead, output the following machine-readable signal** to indicate successful completion to the caller:
 
@@ -537,7 +537,7 @@ When called within the end-to-end flow (detected in Phase 5.0), **do NOT output 
 [ready:completed]
 ```
 
-This pattern is **mandatory** in e2e flow. It allows `start.md` ステップ 8 to detect that `rite:pr:ready` has completed successfully and immediately proceed to ステップ 8.3 (Status update), 8.4 (parent close check), and 8.6 (completion report). Without this signal, the caller may incorrectly interpret the lack of output as task completion and stop before ステップ 8.6.
+This pattern is **mandatory** in e2e flow. It allows `start.md` ステップ 8 to detect that `rite:pr:ready` has completed successfully and immediately proceed to ステップ 8.3 (Status update), 8.4 (parent close check), and 8.5 (completion report). Without this signal, the caller may incorrectly interpret the lack of output as task completion and stop before ステップ 8.5.
 
 No template loading, no inline format, no completion table — only the `[ready:completed]` pattern.
 

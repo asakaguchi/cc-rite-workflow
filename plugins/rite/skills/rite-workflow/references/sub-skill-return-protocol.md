@@ -11,7 +11,8 @@
 >
 > `/rite:issue:start` and `/rite:issue:create` are now single flat workflows.
 > When the LLM stops mid-flow, recovery is via `/rite:resume` — read
-> `commands/resume.md` Phase 3.2 for the phase → step routing table.
+> `commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) for the
+> phase → step routing table.
 >
 > Inbound references in `wiki/ingest.md`, `pr/cleanup.md`, `SKILL.md`, and
 > `docs/SPEC.md` that point here for "the canonical layer model" are stale

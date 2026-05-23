@@ -780,7 +780,7 @@ Lifecycle sub-rings (managed by `hooks/phase-transition-whitelist.sh`):
 
 **Legacy phase (forward-compat acceptance only — never newly written):**
 
-Older state files may contain these names from the pre-flat sub-skill chain architecture. `commands/resume.md` Phase 3.2 Legacy compatibility 表 maps them to flat step numbers.
+Older state files may contain these names from the pre-flat sub-skill chain architecture. `commands/resume.md` Phase 3.5 整合性判定 (cross-check) resolves them to v3 enum values, then Phase 5.3 (Phase enum → Step mapping (SoT)) maps them to flat step numbers.
 
 | Phase | Phase Detail |
 |-------|--------------|

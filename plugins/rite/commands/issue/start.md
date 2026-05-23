@@ -68,9 +68,9 @@ fi
 | `1` + `phase=ready` | ステップ 8.3 から再開 (Ready は完了済 — Projects Status In Review → 親判定 → 完了レポート) |
 | `1` + `phase=ready_error` | ステップ 8 (Ready & 完結) から再開。PR は既に存在するため `/rite:pr:create` は呼ばない |
 | `1` + `phase=completed` | Issue は既に完結。AskUserQuestion で「新規作業として再開 / 中止」を提示 |
-| `1` + `phase=<legacy>` (`phase5_*` 等) | Phase 2 の自動 migration で v3 enum に変換された後、`commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) の対応行に従う |
+| `1` + `phase=<legacy>` (`phase5_*` 等) | `phase5_*` は v3 enum (13 個) に該当せず `_phase_migrate` でも変換されない legacy 値 (pre-v3 state file の残存)。start.md 自体は migration を行わないため、`/rite:resume {issue_number}` での再開を案内する (resume.md の Phase 2 migration + Phase 3.5 cross-check が v3 phase へ解決し、`commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) の対応行に routing する) |
 
-`active=false` または `issue_number` が引数と異なる場合は、別 Issue の state が残っているだけなので新規セッション扱い (ステップ 1 から開始)。state file は新 phase 書き込み時に `previous_phase` がシフトされるため、誤った overwrite は発生しない。
+`active=false` または `issue_number` が引数と異なる場合は、別 Issue の state が残っているだけなので新規セッション扱い (ステップ 1 から開始)。ステップ 1.5 が新しい issue 番号で `--phase init` を書き込んで当該 session の state を更新するため、古い state が誤って参照され続けることはない。
 
 ---
 

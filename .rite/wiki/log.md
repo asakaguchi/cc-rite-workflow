@@ -674,3 +674,4 @@
 | 2026-05-23T06:00:00Z | ingest:skip | raw/reviews/20260522T205125Z-pr-1082.md | PR #1082 (Issue #1081) 翻訳 PR の 0 findings / 1-cycle healthy landing。reviewer の structural verification (見出し階層・テーブル行数・フェンスブロック数の line-by-line 一致) は既存 ac-resolution-statement-implementation-verification と identity-reference-documentation-unification (sub-heuristic #7 i18n style) の successful application であり novel な failure mode / heuristic 無し |
 | 2026-05-22T21:04:56Z | lint:warning | — | contradictions=0, stale=0, orphans=1, missing_concept=2, unregistered_raw=149, broken_refs=0 |
 | 2026-05-23T00:10:00Z | ingest:skip | raw/reviews/20260522T235629Z-pr-1087.md | PR #1087 (Issue #1086) 1 ファイル 1 行の bug fix (`gh issue develop --branch` → `--name`)、reviewer 2 名承認、findings 0 件、severity 全 0。novel な経験則・failure mode の抽出ターゲットなし |
+| 2026-05-23T00:07:47Z | lint:warning | — | contradictions=0, stale=0, orphans=1, missing_concept=2, unregistered_raw=151, broken_refs=1 |

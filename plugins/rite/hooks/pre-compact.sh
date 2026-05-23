@@ -32,7 +32,7 @@ COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
 #
 # Issue #749: stderr pass-through for diagnostic visibility, via canonical helper
 # `_mktemp-stderr-guard.sh`. 詳細は session-start.sh の同パターンを参照。
-# filter は state-read.sh cross-session guard の 3-pattern を `^ERROR:` で
+# filter は flow-state.sh cross-session guard の 3-pattern を `^ERROR:` で
 # superset 化した 4-pattern 拡張版 (resolver self-validation の ERROR: を捕捉)。
 # success arm でも tempfile を inspect して helper graceful-degrade 経路の WARNING
 # を silent drop しないようにする。

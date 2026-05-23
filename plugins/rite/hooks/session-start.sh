@@ -60,7 +60,7 @@ if [ -d "$_plugin_root/hooks" ]; then
   printf '%s' "$_plugin_root" > "$STATE_ROOT/.rite-plugin-root" 2>/dev/null || true
 fi
 
-# Save session_id to .rite-session-id for flow-state-update.sh auto-read (#216)
+# Save session_id to .rite-session-id for flow-state.sh auto-read (#216)
 if [ -n "$SESSION_ID" ]; then
   (umask 077; printf '%s' "$SESSION_ID" > "$STATE_ROOT/.rite-session-id") 2>/dev/null || {
     [ -n "${RITE_DEBUG:-}" ] && echo "[rite] WARNING: Failed to write .rite-session-id" >&2
@@ -307,12 +307,12 @@ unset _migrate_script
 # helper `_mktemp-stderr-guard.sh`.
 # - mktemp 失敗時に 3 行 WARNING を emit (silent fall-through 解消)
 # - chmod 600 / TMPDIR 尊重を helper 経由で取得
-# - filter は state-read.sh の cross-session guard pass-through (3-pattern:
+# - filter は flow-state.sh の cross-session guard pass-through (3-pattern:
 #   `^WARNING:|^  |^jq: `) を `^ERROR:` で superset 化した 4-pattern 拡張版。
 #   `_resolve-flow-state-path.sh` は `_validate-helpers.sh` / `_validate-state-root.sh`
 #   経由で `ERROR:` 行を emit する (resolver self-validation contract) ため、
 #   reader-side filter より広い範囲を要求する。indented continuation 行と
-#   raw `jq:` parse error は state-read.sh と同じく pass-through する
+#   raw `jq:` parse error は flow-state.sh と同じく pass-through する
 # - success arm でも tempfile を inspect する (`_resolve-flow-state-path.sh`
 #   が graceful-degrade で exit 0 を返す経路、例えば `_resolve-session-id-from-file.sh`
 #   の tr IO failure による empty SID + WARNING 出力 + exit 0 経路で
@@ -507,6 +507,6 @@ Read .rite-flow-state for full state details.
 EOF
 
 # --- Session ID notification (#173, #221) ---
-# session_id is now auto-read from .rite-session-id by flow-state-update.sh.
+# session_id is now auto-read from .rite-session-id by flow-state.sh.
 # stdout output removed to prevent Claude from fabricating inconsistent values
 # via the {session_id} placeholder. See Issue #221.

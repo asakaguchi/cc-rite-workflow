@@ -867,7 +867,7 @@ Before outputting any result pattern (`[lint:success]`, `[lint:skipped]`, `[lint
 | `[lint:aborted]` | `lint` | `品質チェック中断` | `rite:lint was aborted by user. Proceed to start.md ステップ 8.5 (完了レポート、abort context 含む) — PR 作成はスキップ. Do NOT stop.` |
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh patch \
+bash {plugin_root}/hooks/flow-state.sh set \
   --phase "{phase_value}" \
   --active true \
   --next "{next_action_value}" \
@@ -876,7 +876,7 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 Replace `{phase_value}` and `{next_action_value}` with the values from the table above based on the lint result.
 
-**Note on `error_count`**: `flow-state-update.sh` patch mode resets `error_count` to 0 on every phase transition (since #294). This prevents stale circuit breaker counts from one phase from poisoning subsequent phases.
+**Note on `error_count`**: `flow-state.sh` patch mode resets `error_count` to 0 on every phase transition (since #294). This prevents stale circuit breaker counts from one phase from poisoning subsequent phases.
 
 **Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when flow state file exists:
 

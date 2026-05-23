@@ -66,7 +66,7 @@ Retain the `plugin_root` value output above and use it for all subsequent `{plug
 
 Activate flow state to record that a cleanup workflow is in flight. The `.active=true, phase=cleanup` pair is the persistent signal read by `session-end.sh`'s lifecycle helpers on the next session to surface a stale-cleanup WARNING — without it, an interrupted cleanup leaves no trace.
 
-> **Fail-safe**: `flow-state-update.sh` 呼び出しは `if ! ... ; then echo "WARNING..." >&2; fi` で包み、失敗時もユーザー可視 WARNING のみで続行する。状態書込みが失敗しても cleanup ロジック自体は走るので、recovery は "continue" 入力で可能。
+> **Fail-safe**: `flow-state.sh` 呼び出しは `if ! ... ; then echo "WARNING..." >&2; fi` で包み、失敗時もユーザー可視 WARNING のみで続行する。状態書込みが失敗しても cleanup ロジック自体は走るので、recovery は "continue" 入力で可能。
 
 ```bash
 # helper が空文字列を返した場合は後続の `[ -f "" ]` が false 評価され create 分岐に進む。
@@ -78,15 +78,15 @@ if [ -n "$state_file" ] && [ -f "$state_file" ]; then
   # ケースで `--active true` を省略すると patch モードは .active を更新しないため、
   # lifecycle observability (session-end が `cleanup_*` の in-progress を検出する経路) が
   # silent に無効化される。明示再活性化で防ぐ。
-  if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
+  if ! bash {plugin_root}/hooks/flow-state.sh set \
       --phase "cleanup" --active true --next "Execute cleanup phases. Do NOT stop."; then
-    echo "WARNING: flow-state-update.sh patch (cleanup activate) failed — cleanup observability degraded (session-end will not see cleanup-in-progress on next session). 'continue' で再開可能." >&2
+    echo "WARNING: flow-state.sh set (cleanup activate) failed — cleanup observability degraded (session-end will not see cleanup-in-progress on next session). 'continue' で再開可能." >&2
   fi
 else
-  if ! bash {plugin_root}/hooks/flow-state-update.sh create \
+  if ! bash {plugin_root}/hooks/flow-state.sh set \
       --phase "cleanup" --issue 0 --branch "" --pr 0 \
       --next "Execute cleanup phases. Do NOT stop."; then
-    echo "WARNING: flow-state-update.sh create (cleanup activate) failed — flow state was not created. cleanup の進行記録が残らない (workflow_incident 検出が retrospective に効かなくなる可能性)." >&2
+    echo "WARNING: flow-state.sh set (cleanup activate) failed — flow state was not created. cleanup の進行記録が残らない (workflow_incident 検出が retrospective に効かなくなる可能性)." >&2
   fi
 fi
 ```
@@ -1211,11 +1211,11 @@ If `pending_count == 0`, skip Phase 4.W.2-4.W.3 and proceed to Phase 5. Otherwis
 ```bash
 # --active true を明示する理由: Phase 1.0 patch が fail-safe path を経由した場合 active=false
 # 残存状態のまま到達する可能性があるため、各 patch で active=true を明示的に pin する。
-if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "cleanup_pre_ingest" --active true \
+if ! bash {plugin_root}/hooks/flow-state.sh set \
+    --phase "cleanup" --active true \
     --next "After rite:wiki:ingest returns: run 🚨 Mandatory After Wiki Ingest (Pre-write cleanup_post_ingest) → Phase 5 Completion Report (cleanup_completed + <!-- [cleanup:completed] --> as inline HTML sentinel at the trailing position of the final list item of Phase 5.2) in the SAME response turn. Do NOT stop." \
     --if-exists; then
-  echo "WARNING: flow-state-update.sh patch (cleanup_pre_ingest) failed — sub-skill will run unphased, so retrospective workflow-incident correlation against cleanup_pre_ingest will not fire." >&2
+  echo "WARNING: flow-state.sh set (cleanup_pre_ingest) failed — sub-skill will run unphased, so retrospective workflow-incident correlation against cleanup_pre_ingest will not fire." >&2
 fi
 ```
 
@@ -1323,7 +1323,7 @@ trap - EXIT INT TERM HUP
 **Self-check and branching**:
 
 1. **Has `<!-- [cleanup:completed] -->` been output (as inline HTML sentinel at the trailing position of Phase 5.2's final list item)?** Use `grep -F '[cleanup:completed]'` for terminal detection.
-   - **Yes** — terminal reached. flow state は既に `cleanup_completed, active: false`。Step 0 / Step 1 below MUST be skipped (`flow-state-update.sh patch --if-exists` は active=false でも patch するため、実行すると phase を `cleanup_post_ingest` に巻き戻して flow state を破壊する)。
+   - **Yes** — terminal reached. flow state は既に `cleanup_completed, active: false`。Step 0 / Step 1 below MUST be skipped (`flow-state.sh set --if-exists` は active=false でも patch するため、実行すると phase を `cleanup_post_ingest` に巻き戻して flow state を破壊する)。
    - **No** — Phase 5 has NOT been output yet。Steps 0-2 below are critical — execute immediately to force the workflow into the terminal state.
 
 **Step 0: Immediate Bash Action**: **MUST execute** this bash block as your **VERY FIRST tool call** after `rite:wiki:ingest` returns (Self-check No branch), **BEFORE any text output, narrative, or response generation**. text output を先に出すと LLM の turn-boundary heuristic が誤発火し implicit stop の経路が開く (Issue #910 で実証)。This replaces the natural turn-boundary point ("the sub-skill finished") with a concrete next tool call. The block re-affirms the flow-state phase (idempotent with Step 1) and, on failure only, emits `[CONTEXT] STEP_0_PATCH_FAILED=1` to stderr.
@@ -1334,8 +1334,8 @@ trap - EXIT INT TERM HUP
 #   schema slot だが、Step 0/Step 1 の idempotent re-patch ペアで future reader
 #   再導入時の累積カウントを失わないよう preserve しておく。
 # --if-exists: flow state file 不在時は silent skip (defense-in-depth)。
-if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "cleanup_post_ingest" --active true \
+if ! bash {plugin_root}/hooks/flow-state.sh set \
+    --phase "cleanup" --active true \
     --next "Step 0 Immediate Bash Action fired; proceeding to Phase 5 Completion Report. Do NOT stop." \
     --if-exists \
     --preserve-error-count; then
@@ -1349,8 +1349,8 @@ fi
 **Step 1**: Update flow state to post-ingest phase (idempotent re-patch)。Step 0 が既に書いた `cleanup_post_ingest` の timestamp / `next_action` を refresh する。2 重 patch design は transient failure 下でも Step 0 / Step 1 のいずれかが成功することを保証し、同時失敗時のみ `[CONTEXT] STEP_1_PATCH_FAILED=1` を retained flag として残す。`--preserve-error-count` は Step 0 と対称に付与 (`.error_count` は現状 half-legacy schema slot で production reader 不在だが、future reader 再導入時の累積カウントを失わないよう保持する):
 
 ```bash
-if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "cleanup_post_ingest" --active true \
+if ! bash {plugin_root}/hooks/flow-state.sh set \
+    --phase "cleanup" --active true \
     --next "rite:wiki:ingest completed/skipped/failed. Proceed to Phase 5 (Completion Report) and emit <!-- [cleanup:completed] --> as inline HTML sentinel at the trailing position of the final list item of Phase 5.2 in the SAME response turn. Do NOT stop." \
     --if-exists \
     --preserve-error-count; then
@@ -1526,11 +1526,11 @@ git stash pop
 **Step 1**: Deactivate flow state to terminal `cleanup_completed` (idempotent — safe to re-execute). The `if ! cmd; then` rc capture is mandatory — silent failure here leaves `.active = true`、which causes the next session-end's lifecycle helpers to surface a stale "cleanup in progress" WARN_MSG even though cleanup actually finished:
 
 ```bash
-if ! bash {plugin_root}/hooks/flow-state-update.sh patch \
-    --phase "cleanup_completed" \
+if ! bash {plugin_root}/hooks/flow-state.sh set \
+    --phase "cleanup" \
     --next "none" --active false \
     --if-exists; then
-  echo "WARNING: flow-state-update.sh patch (cleanup_completed) failed — flow state may still report active=true. Subsequent self-verification will fail because '.phase = cleanup_completed AND .active = false' won't hold. Manually run: bash {plugin_root}/hooks/flow-state-update.sh patch --phase cleanup_completed --next none --active false --if-exists" >&2
+  echo "WARNING: flow-state.sh set (cleanup_completed) failed — flow state may still report active=true. Subsequent self-verification will fail because '.phase = cleanup_completed AND .active = false' won't hold. Manually run: bash {plugin_root}/hooks/flow-state.sh set --phase cleanup_completed --next none --active false --if-exists" >&2
 fi
 ```
 

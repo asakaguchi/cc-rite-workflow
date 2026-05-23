@@ -1,15 +1,15 @@
 # Flow State Scaffolding — Pre-write 契約 SoT
 
-> **Source of Truth**: 本ファイルは `/rite:issue:start` ワークフローにおける **`flow-state-update.sh create` の Pre-write 契約**の SoT である。`start.md` の各ステップ冒頭 Pre-write block は本ファイルへ semantic 参照する。
+> **Source of Truth**: 本ファイルは `/rite:issue:start` ワークフローにおける **`flow-state.sh set` の Pre-write 契約**の SoT である。`start.md` の各ステップ冒頭 Pre-write block は本ファイルへ semantic 参照する。
 >
 > **変更点**: 旧 sub-skill chain (`parent-routing` / `child-issue-selection` / `branch-setup` / `work-memory-init` / `implementation-plan` の Defense-in-Depth 1 回目書き込み + orchestrator の 2 回目 atomic 書き込み) は retire。flat workflow では各ステップが Pre-write 1 回のみを実行する。
 
 ## 5 引数 canonical literal
 
-`flow-state-update.sh create` 呼び出しは **必ず以下の 5 引数**を含む:
+`flow-state.sh set` 呼び出しは **必ず以下の 5 引数**を含む:
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh create \
+bash {plugin_root}/hooks/flow-state.sh set \
  --phase "{phase_name}" \
  --issue {issue_number} \
  --branch "{branch_name}" \
@@ -34,10 +34,10 @@ bash {plugin_root}/hooks/flow-state-update.sh create \
 
 ## patch mode の例外 (Workflow Termination の 1 site)
 
-`start.md` のステップ 8 終端 1 site のみ `flow-state-update.sh patch` を使う。terminal state (`completed` + `active false`) を書き込み、workflow 終了をマークする:
+`start.md` のステップ 8 終端 1 site のみ `flow-state.sh set` を使う。terminal state (`completed` + `active false`) を書き込み、workflow 終了をマークする:
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh patch \
+bash {plugin_root}/hooks/flow-state.sh set \
  --phase completed --active false --next "none" \
  --if-exists --preserve-error-count
 ```
@@ -69,9 +69,9 @@ bash {plugin_root}/hooks/flow-state-update.sh patch \
 
 ## 関連
 
-- [`pre-condition-gate.md`](./pre-condition-gate.md) — pre-condition の `state-read.sh` fail-fast pattern
-- `plugins/rite/hooks/flow-state-update.sh` — `create` / `patch` / `increment` modes の実装
+- [`pre-condition-gate.md`](./pre-condition-gate.md) — pre-condition の `flow-state.sh` fail-fast pattern
+- `plugins/rite/hooks/flow-state.sh` — `create` / `patch` / `increment` modes の実装
 - `plugins/rite/hooks/phase-transition-whitelist.sh` — 遷移許可定義 (flat phase 群を反映)
-- `plugins/rite/hooks/state-read.sh` — per-session flow-state 読み出し
+- `plugins/rite/hooks/flow-state.sh` — per-session flow-state 読み出し
 - `plugins/rite/commands/resume.md` Phase 3.2 — phase → step routing 表
 - [Sub-skill Return Auto-Continuation Contract (Retired)](../../../skills/rite-workflow/references/sub-skill-return-protocol.md) — retirement note

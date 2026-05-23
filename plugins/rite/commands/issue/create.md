@@ -545,7 +545,7 @@ Decompose path も完了レポートの最終行は `<!-- [create:completed:{par
 `--preserve-error-count` はこの patch で `.error_count` を 0 にリセットせず保持する general flag。現時点で `.error_count` を読む reader は無いが、再導入時の累積カウントが意図せずリセットされないよう reserved API として保持する。
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh patch \
+bash {plugin_root}/hooks/flow-state.sh set \
   --phase completed --active false --next "none" \
   --if-exists --preserve-error-count 2>/dev/null || true
 ```

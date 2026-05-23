@@ -63,8 +63,10 @@ _atomic_write() {
 }
 
 cmd_set() {
-  local phase="" issue=0 branch="" pr=0 next="" active=true session=""
-  local parent_issue=0 if_exists=0 preserve_error=0
+  # Merge semantics: unspecified scalar fields preserve existing values (旧 patch 互換).
+  # Required: --phase, --next. Optional fields fall back to existing JSON or defaults.
+  local phase="" next="" session="" if_exists=0 preserve_error=0
+  local issue="" branch="" pr="" parent_issue="" active=""
   while [ $# -gt 0 ]; do case "$1" in
     --phase) phase="$2"; shift 2 ;;
     --issue) issue="$2"; shift 2 ;;
@@ -84,10 +86,23 @@ cmd_set() {
   local sid path; sid=$(_resolve_session_id "$session") || return 1
   path=$(_state_path "$sid")
   [ $if_exists -eq 1 ] && [ ! -f "$path" ] && return 0
-  local err_count=0
-  if [ $preserve_error -eq 1 ] && [ -f "$path" ]; then
-    err_count=$(jq -r '.error_count // 0' "$path" 2>/dev/null) || err_count=0
+  # Pull existing values for fields the caller did not specify (merge behavior).
+  local cur_issue=0 cur_branch="" cur_pr=0 cur_parent=0 cur_active=true cur_err=0
+  if [ -f "$path" ]; then
+    cur_issue=$(jq -r '.issue_number // 0' "$path" 2>/dev/null) || cur_issue=0
+    cur_branch=$(jq -r '.branch // ""' "$path" 2>/dev/null) || cur_branch=""
+    cur_pr=$(jq -r '.pr_number // 0' "$path" 2>/dev/null) || cur_pr=0
+    cur_parent=$(jq -r '.parent_issue_number // 0' "$path" 2>/dev/null) || cur_parent=0
+    cur_active=$(jq -r '.active // true' "$path" 2>/dev/null) || cur_active=true
+    cur_err=$(jq -r '.error_count // 0' "$path" 2>/dev/null) || cur_err=0
   fi
+  [ -z "$issue" ] && issue=$cur_issue
+  [ -z "$branch" ] && branch=$cur_branch
+  [ -z "$pr" ] && pr=$cur_pr
+  [ -z "$parent_issue" ] && parent_issue=$cur_parent
+  [ -z "$active" ] && active=$cur_active
+  local err_count=0
+  [ $preserve_error -eq 1 ] && err_count=$cur_err
   local now new; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   new=$(jq -n \
     --argjson schema "$SCHEMA_VERSION_V3" --arg session "$sid" \

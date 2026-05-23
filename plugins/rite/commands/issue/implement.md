@@ -860,18 +860,18 @@ WM_SOURCE="implement" \
 
 #### 5.1.2 Parent Issue Progress Update (only when working on child Issue)
 
-**Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically via `state-read.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy state file snapshot (#497 — also survives context compaction):
+**Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically via `flow-state.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy state file snapshot (#497 — also survives context compaction):
 
 ```bash
 # `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
 # 両方取る場合は if/else 形式にする。
-if parent_issue_number=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0); then
+if parent_issue_number=$(bash {plugin_root}/hooks/flow-state.sh get --field parent_issue_number --default 0); then
   :
 else
   rc=$?
-  echo "ERROR: state-read.sh failed (rc=$rc) reading parent_issue_number for parent progress sync" >&2
+  echo "ERROR: flow-state.sh failed (rc=$rc) reading parent_issue_number for parent progress sync" >&2
   echo "[CONTEXT] STATE_READ_FAILED=1; phase=parent_progress_sync; rc=$rc" >&2
-  echo "RESUME_HINT: state-read.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2
+  echo "RESUME_HINT: flow-state.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2
   exit 1
 fi
 # non-numeric injection 経路を遮断
@@ -975,12 +975,12 @@ Check the state of remaining child Issues with `trackedIssues` and calculate `re
 3. **Update local work memory** (`.rite-work-memory/issue-{n}.md`) — see 5.1.1.3 above
 4. **CRITICAL: Initialize flow state and invoke lint** (atomic pair - MUST execute both):
 
-   > **Note**: All flow state writes use `flow-state-update.sh` which handles atomic write (PID-based temp file + `mv`) internally to prevent race conditions with concurrent hook shell processes (e.g. pre-compact, post-compact, session-start, session-end, post-tool-wm-sync, cleanup-work-memory).
+   > **Note**: All flow state writes use `flow-state.sh` which handles atomic write (PID-based temp file + `mv`) internally to prevent race conditions with concurrent hook shell processes (e.g. pre-compact, post-compact, session-start, session-end, post-tool-wm-sync, cleanup-work-memory).
 
    **4a**: Create state file:
 
    ```bash
-   bash {plugin_root}/hooks/flow-state-update.sh create \
+   bash {plugin_root}/hooks/flow-state.sh set \
      --phase "lint" --issue {issue_number} --branch "{branch_name}" \
      --pr 0 \
      --next "After rite:lint returns: [lint:success/skipped]->start.md ステップ 6 (PR creation). [lint:error]->fix and re-invoke. [lint:aborted]->start.md ステップ 8.6 (completion report). Do NOT stop."

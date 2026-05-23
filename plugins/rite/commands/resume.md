@@ -22,10 +22,25 @@ description: 中断した作業を再開
 
 ## Placeholder Legend
 
+> 後続 Phase は別々の Bash tool 呼び出しとなりシェル変数を引き継げないため、Phase 3.1 / 3.5 / 4.2 が stdout に emit する `[CONTEXT] STATE_* / RESOLVED_PHASE / FINAL_PHASE` marker を source とし、LLM が会話コンテキストから読んで placeholder を実値置換する (詳細は Phase 5.2 の注記参照)。
+
 | Placeholder | Source |
 |-------------|--------|
-| `{issue_number}` | 引数 or ブランチ名抽出 |
-| `{branch}` | `git branch --show-current` |
+| `{issue_number}` / `{issue_arg}` / `{number}` | Phase 1.1: 引数 or ブランチ名 `{type}/issue-{number}-{slug}` 抽出 (`[CONTEXT] RESUME_ISSUE` marker) |
+| `{title}` | Phase 1.2: `gh issue view` の title |
+| `{branch}` / `{git_branch}` | Phase 3.2: `git branch --show-current` |
+| `{base_branch}` | Phase 3.2: `rite-config.yml` の `branch.base` (default `develop`) |
+| `{git_commit_count}` | Phase 3.2: `git rev-list --count origin/{base_branch}..HEAD` |
+| `{git_has_uncommitted}` | Phase 3.2: `git status --porcelain` の非空判定 (サマリでは「あり」/「なし」整形) |
+| `{state_next}` | Phase 3.1: `[CONTEXT] STATE_NEXT` marker (flow-state `next_action`) |
+| `{state_parent}` | Phase 3.1: `[CONTEXT] STATE_PARENT` marker (flow-state `parent_issue_number`) |
+| `{state_parent_display}` | Phase 3.1: `[CONTEXT] STATE_PARENT_DISPLAY` marker (`0`/空 → 「なし」、それ以外 → `#NN` 整形) |
+| `{pr_number}` | Phase 3.3: `gh pr view` の `.number` (Phase 3.1 `[CONTEXT] STATE_PR` も参照可) |
+| `{pr_state}` | Phase 3.3: `gh pr view` の `.state` (NONE/OPEN/MERGED/CLOSED) |
+| `{pr_is_draft}` | Phase 3.3: `gh pr view` の `.isDraft` |
+| `{wm_next}` | Phase 3.4: work memory (`.rite-work-memory/issue-{n}.md`) の `next_action:` |
+| `{resolved_phase}` | Phase 3.5: cross-check 確定 phase (`[CONTEXT] RESOLVED_PHASE` marker)。Phase 4.2 で user が phase 変更を選んだ場合は `[CONTEXT] FINAL_PHASE` marker を優先 |
+| `{type}` / `{slug}` | ブランチ名 `{type}/issue-{number}-{slug}` の構成要素 |
 | `{plugin_root}` | [Plugin Path Resolution](../references/plugin-path-resolution.md#resolution-script-full-version) |
 
 ---
@@ -296,4 +311,6 @@ init / branch / plan / implement / lint / pr / review / fix / ready /
 ready_error / cleanup / ingest / completed
 ```
 
-旧 v1/v2 schema の phase 値 (`cleanup_pre_ingest`, `ingest_pre_lint`, `create_*`, `phase5_*` 等) は Phase 2 の自動 migration で v3 に変換される。Migration の reduction matrix は `plugins/rite/hooks/flow-state.sh` の `_phase_migrate` 関数を参照。
+旧 v1/v2 schema の phase 値 (`cleanup_pre_ingest`, `ingest_pre_lint`, `create_*`, `implementing` 等) は Phase 2 の自動 migration で v3 に変換される。Migration の reduction matrix は `plugins/rite/hooks/flow-state.sh` の `_phase_migrate` 関数を参照。
+
+なお `phase5_*` 系の legacy 名 (pre-v3 の sub-skill chain アーキテクチャが書き込んだ古い state file に残存しうる) は `_phase_migrate` の reduction matrix に **含まれず pass-through される**。これらは PHASE_ENUM_V3 (13 個) に該当しないため Phase 2 migration では変換されず、Phase 3.5 の cross-check (state_phase が v3 enum でない → wm_phase / git commit / PR 状態からの fallback 推定) で再開 phase が解決される。

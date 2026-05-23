@@ -226,7 +226,7 @@ case "$status_value" in
   failed|*)
     # `*` also catches unexpected result values that may carry no warnings, so a
     # failed / unknown result is never allowed to pass silently.
-    status_warnings=$(printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null)
+    status_warnings=$(printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null || true)
     if [ -n "$status_warnings" ]; then
       printf '%s\n' "$status_warnings" | while read -r w; do echo "WARNING: $w" >&2; done
     else
@@ -630,7 +630,7 @@ case "$status_value" in
   failed|*)
     # `*` also catches unexpected result values that may carry no warnings, so a
     # failed / unknown result is never allowed to pass silently.
-    status_warnings=$(printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null)
+    status_warnings=$(printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null || true)
     if [ -n "$status_warnings" ]; then
       printf '%s\n' "$status_warnings" | while read -r w; do echo "WARNING: $w" >&2; done
     else
@@ -689,7 +689,7 @@ case "$status_value" in
   failed|*)
     # `*` also catches unexpected result values that may carry no warnings, so a
     # failed / unknown result is never allowed to pass silently.
-    status_warnings=$(printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null)
+    status_warnings=$(printf '%s' "$status_result" | jq -r '.warnings[]?' 2>/dev/null || true)
     if [ -n "$status_warnings" ]; then
       printf '%s\n' "$status_warnings" | while read -r w; do echo "WARNING: $w" >&2; done
     else

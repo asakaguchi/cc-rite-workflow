@@ -2,9 +2,10 @@
 # rite workflow - Cross-Session Legacy Guard Helper (private internal helper)
 #
 # Inspects a legacy `.rite-flow-state` file relative to a current session_id
-# and classifies the cross-session takeover/fallback decision. Both writer
-# (flow-state-update.sh) and reader (state-read.sh) layers share this
-# classification so the decision logic can never drift.
+# and classifies the cross-session takeover/fallback decision. The writer and
+# reader state resolvers that shared this classification were consolidated into
+# flow-state.sh, so this helper currently has no live caller — it is retained as
+# the canonical classification contract for any future re-wiring.
 #
 # Usage:
 #   bash plugins/rite/hooks/_resolve-cross-session-guard.sh \
@@ -29,8 +30,8 @@
 #   that the reader-side did not yet mirror (cycle 32 added writer, cycle 33
 #   added reader).
 #
-# Caller responsibility:
-#   A consumer of these classifications routes each one and surfaces the
+# Caller responsibility (no live caller today — see above):
+#   A consumer of these classifications would route each one and surface the
 #   non-adoptable cases as a plain WARNING on stderr:
 #   - "same" / "empty" → adopt legacy as the resolved STATE_FILE
 #   - "foreign:<sid>" → cross-session takeover refused; route to per-session path

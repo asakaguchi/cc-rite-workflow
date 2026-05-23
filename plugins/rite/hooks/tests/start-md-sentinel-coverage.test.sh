@@ -95,6 +95,18 @@ for phase in init branch plan implement lint pr review fix ready ready_error com
 done
 
 echo ""
+echo "=== Projects Status failed|*) サイレント化防止フォールバック ==="
+# failed|*) arm は warning 配列が空の想定外 result でも必ず WARNING を出す。3 つの
+# projects-status-update callsite すべてに無いと、片方だけ revert された際に
+# サイレント Status 滞留が再発する。grep -c は 0 マッチ時 exit 1 で set -e を踏むため || true で受ける。
+fallback_count=$(grep -cF 'を返しました (warning なし)' "$START_MD" || true)
+if [ "$fallback_count" -eq 3 ]; then
+  pass "failed|*) フォールバック WARNING が 3 callsite すべてに存在"
+else
+  fail "failed|*) フォールバック WARNING が 3 箇所のはずが ${fallback_count} 箇所 (silent-failure 経路の drift)"
+fi
+
+echo ""
 echo "=== 5-arg symmetry for flow-state.sh set ==="
 # Every `flow-state.sh set` invocation across start.md + create.md must
 # include all 5 args: --phase / --issue / --branch / --pr / --next. Argument drift

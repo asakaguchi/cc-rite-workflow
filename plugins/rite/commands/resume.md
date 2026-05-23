@@ -4,569 +4,252 @@ description: 中断した作業を再開
 
 # /rite:resume
 
-Resume an interrupted rite command from where it left off after a crash or interruption.
+中断した rite ワークフローを再開する。flow-state (phase enum v3 SoT) と commit 数 / PR 状態 / work memory を cross-check して、最適な再開点を決定する。
 
 **Use cases:**
-- Resuming work after a Claude Code crash
-- Resuming work after a session disconnection
-- Resuming manually interrupted work
-- **Context window 枯渇時の継続**: セッションの context が実際に逼迫した場合は、`/clear` で会話履歴をリセットしてから `/rite:resume` を実行する。これが rite workflow における context 枯渇時の **唯一の正規経路** であり、LLM が自己判断で step を省略してワークフローを短縮する経路は存在しない（詳細: [workflow-identity.md](../skills/rite-workflow/references/workflow-identity.md)）。`/rite:resume` は flow state と work memory を読み直して中断点から再開する。
+- Claude Code クラッシュ後の再開
+- セッション切断後の再開
+- 手動中断後の再開
+- **Context 枯渇時の継続**: セッションの context が逼迫した場合は `/clear` で会話履歴をリセットしてから `/rite:resume` を実行する。これが rite workflow における context 枯渇時の **唯一の正規経路** (詳細: [workflow-identity.md](../skills/rite-workflow/references/workflow-identity.md))。
 
 ---
-
-Execute the following phases in order when this command is invoked.
 
 ## Arguments
 
 | Argument | Description |
 |----------|-------------|
-| `[issue_number]` | Issue number (auto-detected from branch name if omitted) |
+| `[issue_number]` | Issue 番号 (省略時はブランチ名から自動抽出) |
+
+## Placeholder Legend
+
+| Placeholder | Source |
+|-------------|--------|
+| `{issue_number}` | 引数 or ブランチ名抽出 |
+| `{branch}` | `git branch --show-current` |
+| `{plugin_root}` | [Plugin Path Resolution](../references/plugin-path-resolution.md#resolution-script-full-version) |
 
 ---
 
-## Phase 1: Detect Work State
+## Phase 1: Issue 番号確定
 
-### 1.1 Determine Issue Number
+### 1.1 引数優先
 
-#### From Arguments
-
-If an issue number is provided as an argument, use that value.
-
-#### Extract from Branch Name
-
-If the argument is omitted, extract the issue number from the branch name:
+引数があればそれを使う。なければブランチ名 `{type}/issue-{number}-{slug}` から抽出。
 
 ```bash
-git branch --show-current
-```
-
-**Extraction pattern**: `{type}/issue-{number}-{slug}`
-
-Examples:
-- `feat/issue-288-checkpoint-removal` → Issue #288
-- `fix/issue-42-bug-fix` → Issue #42
-- `refactor/issue-123-cleanup` → Issue #123
-
-**If extraction fails:**
-
-```
-{i18n:resume_branch_extraction_failed}
-
-{i18n:resume_current_branch}: {branch}
-
-オプション:
-- {i18n:resume_option_manual_number}
-- {i18n:resume_option_new_work}
-```
-
-Stop here.
-
-### 1.2 Retrieve Work Memory
-
-**Local file first (SoT)**: Check local work memory file before falling back to Issue comment.
-
-**Placeholder legend:**
-- `{issue_number}`: Issue number (from argument or branch name extraction in Phase 1.1)
-- `{owner}`, `{repo}`: Repository information (obtain via `gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'`)
-- `{plugin_root}`: Plugin root directory (resolve per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version))
-- `{parent_issue_display}`: `state-read.sh --field parent_issue_number` 経由で取得。**capture form は Phase 2.1 Display Interrupted State の Step 1 (Display 直前の独立 bash code block) を参照** (verified-review F-02 で placeholder 表 cell には bash literal を埋め込まず、actual capture site を semantic anchor で示す方針に統一。F11-07 で「直前」→「Step 1」へ用語を厳密化、Step 1 末尾の `[CONTEXT] PARENT_ISSUE_DISPLAY=...` echo を Step 2 で literal substitute する cross-boundary state transfer pattern を採用)。Display `#{N}` if non-zero, `なし` if zero or absent。Issue #687 AC-4 — per-session state, not legacy state file snapshot
-
-#### 1.2.1 Local Work Memory Check
-
-```bash
-LOCAL_WM=".rite-work-memory/issue-{issue_number}.md"
-```
-
-If the file exists, validate it using the parser:
-
-```bash
-python3 {plugin_root}/hooks/work-memory-parse.py "$LOCAL_WM"
-```
-
-**If valid** (`status: "valid"`): Use the local file as the work memory source. Extract phase information from the frontmatter `data` field in the JSON output. Skip 1.2.2.
-
-**If corrupt** (`status: "corrupt"`): Display warning and proceed to 1.2.2 (fallback to Issue comment).
-
-```
-⚠️ ローカル作業メモリが破損しています。
-エラー: {errors}
-Issue コメントからの復元を試みます...
-```
-
-**If file does not exist**: Proceed to 1.2.2 (fallback to Issue comment).
-
-#### 1.2.2 Issue Comment Fallback
-
-Search for work memory in Issue comments:
-
-```bash
-gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-  --jq '.[] | select(.body | contains("📜 rite 作業メモリ"))'
-```
-
-**If found**: Restore to local file by converting the Issue comment format to schema v1:
-
-```bash
-mkdir -p .rite-work-memory
-chmod 700 .rite-work-memory 2>/dev/null || true
-```
-
-**Step 1**: Extract phase information from the Issue comment (see 1.3).
-
-**Step 2**: Create a local work memory file in schema v1 format. Use the following template, substituting values extracted from the Issue comment:
-
-```bash
-LOCAL_WM=".rite-work-memory/issue-{issue_number}.md"
-TMP_WM="${LOCAL_WM}.tmp.$$"
-cat > "$TMP_WM" << 'WMEOF'
-# 📜 rite 作業メモリ
-
-## Summary
----
-schema_version: 1
-WMEOF
-{
-  printf 'issue_number: %s\n' "{issue_number}"
-  printf 'sync_revision: 1\n'
-  printf 'sync_status: synced\n'
-  printf 'source: resume\n'
-  printf 'last_modified_at: "%s"\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-  printf 'phase: "%s"\n' "{phase}"
-  printf 'phase_detail: "%s"\n' "{phase_detail}"
-  printf 'next_action: "%s"\n' "{next_action}"
-  printf 'branch: "%s"\n' "{branch}"
-  printf 'pr_number: %s\n' "{pr_number_or_null}"
-  printf 'last_commit: "%s"\n' "{last_commit_or_empty}"
-  printf 'loop_count: %s\n' "{loop_count_or_0}"
-  printf -- '---\n'
-  printf '\nRestored from Issue comment by /rite:resume.\n'
-  printf '\n## Detail\n'
-  printf 'Phase: %s\n' "{phase}"
-  printf 'Branch: %s\n' "{branch}"
-} >> "$TMP_WM"
-chmod 600 "$TMP_WM" 2>/dev/null || true
-mv "$TMP_WM" "$LOCAL_WM"
-```
-
-**Placeholder mapping** (Issue comment → schema v1):
-
-| Issue Comment Field | Schema v1 Field | Default |
-|---------------------|-----------------|---------|
-| `- **フェーズ**: {value}` | `phase` | `"implement"` (legacy: `"phase5_implementation"`) |
-| `- **フェーズ詳細**: {value}` | `phase_detail` | `"実装作業中"` |
-| `- **ブランチ**: {value}` | `branch` | `git branch --show-current` |
-| `### 次のステップ` → `- **コマンド**: {value}` | `next_action` | `""` |
-| `### 関連 PR` → `- **番号**: #{value}` | `pr_number` | `null` |
-| `### レビュー対応履歴` → `- **現在のループ回数**: {value}` | `loop_count` | `0` |
-| (not available in Issue comment format) | `last_commit` | `""` |
-
-**If work memory is not found (neither local nor Issue comment):**
-
-```
-{i18n:resume_work_memory_not_found}
-
-{i18n:resume_possible_causes}:
-- {i18n:resume_not_started_yet}
-- {i18n:resume_memory_deleted}
-
-{i18n:resume_actions}:
-1. {i18n:resume_action_start_work}
-2. {i18n:resume_action_check_list}
-```
-
-Stop here.
-
-### 1.3 Extract Phase Information
-
-Extract phase information from the work memory comment:
-
-**Extraction patterns:**
-- コマンド: `/\*\*コマンド\*\*: (.+)/`
-- フェーズ: `/\*\*フェーズ\*\*: (.+)/`
-- フェーズ詳細: `/\*\*フェーズ詳細\*\*: (.+)/`
-- ブランチ: `/\*\*ブランチ\*\*: (.+)/`
-- 最終更新: `/\*\*最終更新\*\*: (.+)/`
-
-**Phase detail mapping (flat workflow):**
-
-| フェーズ | フェーズ詳細 | start.md step |
-|---------|------------|---------------|
-| `init` | Issue 取得・親子判定 | 1 |
-| `branch` | ブランチ作成 | 2 |
-| `plan` | 実装計画生成 | 3 |
-| `implement` | 実装作業中 | 4 |
-| `lint` | 品質チェック中 | 5 |
-| `pr` | PR 作成中 | 6 |
-| `review` | レビュー中 | 7.1 |
-| `fix` | レビュー修正中 | 7.2 |
-| `ready` | Ready 成功 (Projects Status In Review → 親 Issue 完結待ち) | 8.3 |
-| `ready_error` | Ready 失敗 (PR は作成済み、Ready 遷移のみ再試行) | 8.2 |
-| `completed` | 完了 | — |
-
-(legacy `phase0` / `phase1*` / `phase2*` / `phase3*` / `phase4` / `phase5_*` は 3.2 節 Legacy compatibility 表で routing する)
-
-### 1.4 Validate Phase Information
-
-Verify the following:
-
-1. **Timestamp**: Check whether more than 24 hours have elapsed since the last update
-2. **Issue state**: Confirm the Issue is still OPEN
-3. **Branch existence**: Confirm the recorded branch exists
-
-```bash
-# Issue 状態確認
-gh issue view {issue_number} --json state --jq '.state'
-
-# ブランチ確認（出力の有無で判定。終了コードは常に 0 のため使用不可）
-# DO NOT use exit code (&&, ||, $?) to determine branch existence.
-branch_match=$(git branch --list "{branch}")
-if [ -n "$branch_match" ]; then
-  echo "BRANCH_EXISTS"
-else
-  echo "BRANCH_NOT_FOUND"
+# Auto-detect from branch name when argument is missing
+branch=$(git branch --show-current 2>/dev/null || echo "")
+issue_arg="${1:-}"
+if [ -z "$issue_arg" ]; then
+  issue_arg=$(echo "$branch" | sed -nE 's|^[a-z]+/issue-([0-9]+)-.*$|\1|p')
 fi
-```
-
-**Timestamp validation:**
-
-Claude reads the `最終更新` field from the work memory and calculates the difference from the current time. Parse the ISO 8601 formatted timestamp and determine whether 24 hours (86400 seconds) or more have elapsed.
-
-**If more than 24 hours have elapsed:**
-
-Confirm with `AskUserQuestion`:
-
-```
-{i18n:resume_work_memory_old}
-
-オプション:
-- {i18n:resume_option_continue}
-- {i18n:resume_option_restart}
-- {i18n:resume_option_cancel}
-```
-
----
-
-## Phase 2: Resume Confirmation
-
-### 2.1 Display Interrupted State
-
-**Step 1: Capture `{parent_issue_display}` from per-session state** (verified-review F-02):
-
-```bash
-# state-read.sh API: --field parent_issue_number --default 0 (Issue #687 AC-4 — per-session state)
-# `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
-# 両方取る場合は必ず else 節形式を使う。
-if parent_issue_number_raw=$(bash {plugin_root}/hooks/state-read.sh --field parent_issue_number --default 0); then
-  :
-else
-  rc=$?
-  echo "ERROR: state-read.sh failed (rc=$rc) reading parent_issue_number" >&2
-  echo "[CONTEXT] STATE_READ_FAILED=1; phase=resume_phase_2_1_parent_issue_display; rc=$rc" >&2
-  echo "RESUME_HINT: state-read.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2
+if [ -z "$issue_arg" ]; then
+  echo "ERROR: Issue 番号が判定できません (引数も branch 名からの抽出も失敗)" >&2
+  echo "  current branch: $branch" >&2
+  echo "  /rite:resume <number> で明示指定するか、Issue ブランチに切り替えてください" >&2
   exit 1
 fi
-
-# state file が non-numeric を含む場合に silent default で 0 に降格させると、改竄 / write race の
-# 兆候を握り潰すため、降格前に WARNING を emit して operator triage 可能にする。
-case "$parent_issue_number_raw" in
-  ''|*[!0-9]*)
-    echo "WARNING: parent_issue_number_raw is not numeric ('$parent_issue_number_raw'), defaulting to 0 (display なし)" >&2
-    parent_issue_number_raw=0
-    ;;
-esac
-
-# Display 整形: 0 / 不在 → `なし`、それ以外 → `#{N}`
-if [ "$parent_issue_number_raw" -eq 0 ] 2>/dev/null; then
-  parent_issue_display="なし"
-else
-  parent_issue_display="#${parent_issue_number_raw}"
-fi
-
-# シェル変数 $parent_issue_display は次の Bash invocation には継承されないため、stdout の
-# [CONTEXT] 行として echo し、後続 Bash block で Claude が literal substitute できる
-# observable signal にする (state re-read だと Bash 境界後に再 lookup が必要で経路が増える)。
-echo "[CONTEXT] PARENT_ISSUE_DISPLAY=$parent_issue_display"
+echo "[CONTEXT] RESUME_ISSUE=$issue_arg"
 ```
 
-**Step 2 注記**: Claude は本 bash block の stdout から `[CONTEXT] PARENT_ISSUE_DISPLAY=...` 行を読み取り、Step 2 の display block で `{parent_issue_display}` placeholder を当該値に literal substitute する。
-
-**Step 2: Display the detected information**:
-
-```
-{i18n:resume_interrupted_work_found}
-
-{i18n:resume_command_label}: {command}
-Issue: #{issue_number} - {issue_title}
-{i18n:resume_branch_label}: {branch}
-{i18n:resume_phase_label}: {phase}
-{i18n:resume_phase_detail_label}: {phase_detail}
-{i18n:resume_last_updated_label}: {timestamp}
-{i18n:resume_parent_issue_label}: {parent_issue_display}
-
-{i18n:resume_confirm_resume}
-```
-
-### 2.2 User Confirmation
-
-Confirm with `AskUserQuestion`:
-
-```
-オプション:
-- {i18n:resume_option_resume_recommended}
-- {i18n:resume_option_restart_issue}
-- {i18n:resume_option_cancel}
-```
-
-**Transition after selection:**
-
-| Selection | Subsequent action |
-|-----------|-------------------|
-| **再開する** | → Proceed to Phase 3 |
-| **最初からやり直す** | Execute the corresponding command from Phase 0 |
-| **キャンセル** | Exit |
-
-**Specific steps for "最初からやり直す":**
-
-```
-Skill ツール呼び出し:
-  skill: "rite:issue:start"
-  args: "{issue_number}"
-```
-
----
-
-## Phase 3: Resume Work
-
-### 3.0 Clear Compact State (recovering → normal)
-
-Transition compact state to `normal` before resuming work. PostCompact hook normally handles
-this automatically (#133), but `/rite:resume` serves as a fallback when PostCompact doesn't fire.
+### 1.2 Issue 存在確認
 
 ```bash
-COMPACT_STATE=".rite-compact-state"
-if [ -f "$COMPACT_STATE" ]; then
-  COMPACT_VAL=$(jq -r '.compact_state // "normal"' "$COMPACT_STATE" 2>/dev/null) || COMPACT_VAL="unknown"
-  if [ "$COMPACT_VAL" != "normal" ]; then
-    TMP_COMPACT="${COMPACT_STATE}.tmp.$$"
-    jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-      '.compact_state = "normal" | .compact_state_set_at = $ts' \
-      "$COMPACT_STATE" > "$TMP_COMPACT" && mv "$TMP_COMPACT" "$COMPACT_STATE" || rm -f "$TMP_COMPACT"
-  fi
-fi
-```
-
-### 3.0.1 Restore Flow State Active Flag
-
-Ensure flow-state has `active: true` so the prompt-side `Sub-skill Return Protocol` (in invoked commands like `rite:issue:start` / `rite:issue:implement`) can detect "in-flight" workflows and resume Pre-write/Mandatory After scaffolding. Without this, the resumed sub-skill sees `active: false` (or missing state) and treats the run as a fresh start, skipping recovery scaffolding.
-
-**Note**: The previous design relied on the now-removed `stop-guard.sh` hook checking `active: true` on the `Stop` event to block premature stops. The current defense lives entirely in prompt-side scaffolding.
-
-```bash
-# legacy state file への直接 jq write ではなく `flow-state-update.sh patch` を経由することで、
-# schema_version=2 環境 (multi-state) でも per-session file が正しく更新される。
-# patch mode は `--phase` / `--next` を必須引数として取るため、self-patch 形式で
-# state-read.sh から現在値を読み込み、「他フィールドは保持しつつ active のみ true に戻す」
-# semantics を維持する。`--if-exists` を付けることで flow-state file (legacy or per-session)
-# が存在する場合のみ patch し、不在時は invoked command が create mode で初期化する。
-# 実体は helper script へ抽出済み: plugins/rite/hooks/resume-active-flag-restore.sh
-if ! bash {plugin_root}/hooks/resume-active-flag-restore.sh "{plugin_root}"; then
-  echo "ERROR: failed to restore active flag, abort resume" >&2
+if ! gh issue view "$issue_arg" --json number,title,state >/dev/null 2>&1; then
+  echo "ERROR: Issue #$issue_arg が見つかりません" >&2
   exit 1
 fi
 ```
 
-**If flow-state does not exist**: The invoked command (e.g., `rite:issue:start`) will create it via `flow-state-update.sh create` in its own phases, so no action is needed here. The actual no-state handling lives in `hooks/resume-active-flag-restore.sh` — it reads `curr_phase` via `state-read.sh --field phase --default ""` and skips the `flow-state-update.sh patch` invocation entirely when `state-read.sh` returns an empty string, deferring to the invoked command's create-mode initialization.
+---
 
-**Canonical enumeration of paths where `state-read.sh` returns the DEFAULT (empty string)** (matches the `case` labels in `hooks/state-read.sh`; references are by semantic anchor name, not line number, because line numbers drift on minor insertion):
+## Phase 2: 自動 migration (v1/v2 → v3)
 
-1. per-session **and** legacy files **both** absent (conjunctive — under schema_version=2, single-file absence alone does not trigger an empty result because state-read.sh falls back to legacy when per-session is absent)
-2. file is present but `phase` is null / missing (jq's `// $default` operator returns DEFAULT for null AND missing keys; `phase` is a string field so `false` does not occur in practice — see the boolean field caveat comment block in `state-read.sh` adjacent to its `// $default` operator usage)
-3. `phase` is an empty string
-4. file is empty (size 0) or corrupt JSON
-5. **schema_version=2 + valid sid + per-session absent + legacy present + legacy.session_id is a *foreign* session** (`foreign:*` classification) — reader's `foreign:*` case branch in `state-read.sh` emits `cross_session_takeover_refused` sentinel and returns DEFAULT
-6. **schema_version=2 + valid sid + per-session absent + legacy present + legacy.session_id jq parse fails** (`corrupt:*` classification) — reader's `corrupt:*` case branch in `state-read.sh` emits `legacy_state_corrupt` sentinel and returns DEFAULT
-7. **schema_version=2 + valid sid + per-session absent + legacy present + legacy.session_id is JSON-parseable but fails UUID validation** (`invalid_uuid:*` classification) — reader's `invalid_uuid:*` case branch in `state-read.sh` emits `legacy_state_corrupt` sentinel with `root_cause_hint=legacy_session_id_failed_uuid_validation_tampered_or_legacy_schema` and returns DEFAULT
-
-The `--if-exists` flag passed to `flow-state-update.sh patch` inside the helper provides a defense-in-depth no-op safety net for the case where both per-session and legacy are absent at write time. `_resolve_session_state_path` (in `flow-state-update.sh`) carries a reader-symmetric legacy fallback with a cross-session guard: under schema_version=2 + valid sid + per-session absent + legacy present + legacy.session_id matches current sid (or is empty/null), the writer routes to legacy and restores active=true. When legacy.session_id belongs to another session, the writer refuses takeover and emits `[CONTEXT] WORKFLOW_INCIDENT=1; type=cross_session_takeover_refused`, routing the helper to per-session path (which silent-skips with `--if-exists`, deferring to create-mode init).
-
-### 3.1 Switch Branch
-
-If the current branch differs from the branch in work memory:
+旧 schema の flow-state ファイルを v3 schema (新 phase enum 13 個) に自動移行する。失敗してもベストエフォートで続行 (cross-check で実態を再推定する)。
 
 ```bash
-# 未コミットの変更を確認
-git status --porcelain
-
-# 変更がなければブランチ切り替え
-git checkout {branch}
-```
-
-**If there are uncommitted changes:**
-
-```
-{i18n:resume_uncommitted_changes_warning}
-
-{i18n:resume_current_branch}: {current_branch}
-{i18n:resume_target_branch}: {work_memory_branch}
-
-オプション:
-- {i18n:resume_option_stash_and_switch}
-- {i18n:resume_option_discard_and_switch}
-- {i18n:resume_option_cancel}
-```
-
-### 3.1.1 Context Delta Display (Post-Resume Orientation)
-
-After switching to the correct branch, display a summary of what has changed since the last work memory save to help the user quickly re-orient. This is useful after `/clear` + `/rite:resume` (context reset) or crash/disconnect recovery where conversation context was lost.
-
-**Steps:**
-
-1. **Retrieve last known commit** from work memory:
-   - **Schema v1 (local file)**: Use the `last_commit` field from the frontmatter
-   - **Issue comment fallback**: `last_commit` is not available in the Issue comment format (the `### コミット履歴` section contains multi-line log output, not a single hash). When restoring from Issue comment, skip Step 2 and proceed directly to Step 3
-   - **When `last_commit` is empty or unavailable**: Skip Step 2
-
-2. **Show delta since last save** (only when `last_commit` is available):
-   ```bash
-   # last_commit が取得できた場合のみ実行
-   if [ -n "{last_commit}" ]; then
-     echo "=== 前回保存時点からの変更 ==="
-     git log --oneline {last_commit}..HEAD 2>/dev/null || echo "差分なし（コミット変更なし）"
-     echo "=== 変更ファイル ==="
-     git diff --name-only {last_commit}..HEAD 2>/dev/null || echo "なし"
-   fi
-   ```
-   The `git log` output line count serves as the commit count, and the `git diff --name-only` output serves as the file list for the display format below.
-
-3. **Display implementation plan progress**: Read the local work memory file (`.rite-work-memory/issue-{issue_number}.md`) with the Read tool. Extract the `## Detail` section and identify step entries matching the pattern `S{n}` with `✅` (completed) or `⬜` (pending). Display the first pending step as the resume point. If the local file is unavailable, read the Issue body checklist (`- [x]`/`- [ ]` items) as a fallback indicator of progress.
-
-**Display format:**
-
-```
-📋 前回の保存時点からの状態:
-
-コミット差分: {git log output line count} commits since last save
-変更ファイル:
-{git diff --name-only output}
-
-実装計画の進捗:
-| Step | 内容 | 状態 |
-|------|------|------|
-| S1 | {description} | ✅ |
-| S2 | {description} | ⬜ ← 再開ポイント |
-```
-
-**When `last_commit` is unavailable** (Issue comment fallback): Omit the "コミット差分" and "変更ファイル" sections. Display only the implementation plan progress.
-
-**When no delta is detected** (no commits since last save): Display "前回の保存時点から変更はありません。中断した地点から再開します。"
-
-### 3.2 Command-Specific Resume Processing
-
-Execute command-specific resume processing based on the `コマンド` and `フェーズ` values from the work memory. The mapping is defined in the tables below for each command type.
-
-#### For rite:issue:start (flat workflow)
-
-`/rite:issue:start` は flat single-file workflow に統合済み。phase 名は `commands/issue/start.md` のステップ番号と 1:1 対応する 11 種 (init/branch/plan/implement/lint/pr/review/fix/ready/ready_error/completed):
-
-| Interrupted phase | Resume action | start.md step |
-|-------------------|---------------|---------------|
-| `init` | Resume from ステップ 1 (Issue 取得・親子判定) | 1 |
-| `branch` | Resume from ステップ 2 (ブランチ作成) | 2 |
-| `plan` | Resume from ステップ 3 (実装計画生成) | 3 |
-| `implement` | Continue implementation work from ステップ 4 (refer to implementation plan in work memory and continue from incomplete checklist items) | 4 |
-| `lint` | Resume from ステップ 5 (invoke `/rite:lint` via Skill tool) | 5 |
-| `pr` | Resume from ステップ 6 (invoke `/rite:pr:create` via Skill tool) | 6 |
-| `review` | Resume from ステップ 7.1 (invoke `/rite:pr:review` via Skill tool, then route on `[review:*]` pattern) | 7.1 |
-| `fix` | Resume from ステップ 7.2 (invoke `/rite:pr:fix` via Skill tool, then route on `[fix:*]` pattern) | 7.2 |
-| `ready` | Resume from ステップ 8.3 (Projects Status In Review → 親 Issue 完結判定 → 完了レポート; `/rite:pr:ready` は既に成功している) | 8.3 |
-| `ready_error` | Resume from ステップ 8 (Ready & 完結 — retry the Ready transition or finalise; do NOT re-invoke `/rite:pr:create`, the PR already exists) | 8 |
-| `completed` | Issue already completed — display status and offer next actions | — |
-
-#### 3.2.1 Resume Execution
-
-`/rite:resume` detects the phase value from flow state and invokes `rite:issue:start` via the Skill tool:
-
-```
-Skill ツール呼び出し:
-  skill: "rite:issue:start"
-  args: "{issue_number}"
-```
-
-`start.md` は冒頭で flow state を読み、上表の Resume action 行に従って対応ステップから再開する。
-
-#### Legacy phase 名 (sub-skill chain era) compatibility
-
-旧 sub-skill chain アーキテクチャで使われていた phase 名が残った state file に対しては、以下の compat 表で routing する。新規 state file は flat workflow phase 名のみを書き込む:
-
-| Legacy phase | Compat routing |
-|-------------|----------------|
-| `phase0` / `phase1` / `phase2` / `phase3` / `phase4` / `phase5_implementation` / `phase5_stop_hook` / `phase5_post_stop_hook` / `phase5_execute_running` / `phase5_post_execute` | Resume from ステップ 4 (implement) — implementation context が最も近い |
-| `phase5_lint` / `phase5_post_lint` | Resume from ステップ 5 (lint) |
-| `phase5_publish_running` / `phase5_pr` | Resume from ステップ 6 (pr) |
-| `phase5_review` / `phase5_post_review` | Resume from ステップ 7.1 (review) |
-| `phase5_fix` / `phase5_post_fix` | Resume from ステップ 7.2 (fix) |
-| `phase5_finalize_running` / `phase5_post_ready` / `phase5_ready_error` / `phase5_status_in_review` / `phase5_metrics` / `phase5_completion` / `phase5_parent_close` / `phase5_post_parent_completion` | Resume from ステップ 8 (ready / status / metrics / parent close を実態に応じて選択) |
-| `phase1_5_parent` / `phase1_5_post_parent` / `phase1_6_child` / `phase1_6_post_child` | Resume from ステップ 1 (init — 親子判定をやり直す) |
-| `phase2_*` | Resume from ステップ 2 (branch) |
-| `phase3_*` | Resume from ステップ 3 (plan) |
-
-#### For rite:issue:create
-
-> **Note**: `/rite:issue:create` は flat workflow に統合されており、**中間 phase を flow-state に書き込まない設計**になっている。`create.md` は terminal な `phase=completed` のみを書き、Issue 作成・Projects 追加が完了するまでは flow-state を更新しない。途中中断した場合、ユーザは中断時の同じ入力で `/rite:issue:create` を再実行するのが canonical な復帰経路となる (idempotent: 既に作成済みの Issue は重複作成されないことが Phase 1.5 親子検出で担保されている)。
->
-> 旧 sub-skill chain 時代に書き込まれた以下の legacy phase 名は forward-compat 経路で受理されるが、新規セッションでは出現しない:
-> - `phase0` (Task decomposition decision)
-> - `phase0_decompose` (Decomposition processing)
-> - `phase1` (Issue creation)
-> - `phase2` (Projects addition)
->
-> これらの legacy phase が flow-state に残存している場合、`/rite:issue:create` を再実行することで terminal `completed` まで進む。
-
-#### For rite:pr:create
-
-| Interrupted phase | Resume action |
-|-------------------|---------------|
-| `phase1` | Resume from Phase 1 (Current state check) |
-| `phase2` | Resume from Phase 2 (Quality check) |
-| `phase3` | Resume from Phase 3 (PR creation) |
-| `phase4` | Resume from Phase 4 (Post-processing) |
-
-#### For rite:pr:review
-
-| Interrupted phase | Resume action |
-|-------------------|---------------|
-| `phase1` | Resume from Phase 1 (Preparation) |
-| `phase2` | Resume from Phase 2 (Reviewer selection) |
-| `phase3` | Resume from Phase 3 (Reviewer count decision) |
-| `phase4` | Resume from Phase 4 (Parallel review execution) |
-| `phase5` | Resume from Phase 5 (Result verification & integration) |
-| `phase6` | Resume from Phase 6 (Result output) |
-
-### 3.3 Resume Completion Message
-
-```
-{i18n:resume_work_resumed}
-
-Issue: #{issue_number} - {issue_title}
-{i18n:resume_branch_label}: {branch}
-{i18n:resume_resumed_phase}: {phase} ({phase_detail})
-
-{i18n:resume_continue_work}
+bash {plugin_root}/hooks/flow-state.sh migrate --verbose 2>&1 || \
+  echo "WARNING: migrate に失敗しました — cross-check で実態を推定します" >&2
 ```
 
 ---
 
-## Error Handling
+## Phase 3: 状態の cross-check (4 指標から実態 phase を推定)
 
-See [Common Error Handling](../references/common-error-handling.md) for shared patterns (Not Found, Permission, Network errors).
+### 3.1 flow-state から状態取得
 
-| Error | Recovery |
-|-------|----------|
-| When Phase Information Is Not Found | See [common patterns](../references/common-error-handling.md) |
-| When Issue Is Not Found | See [common patterns](../references/common-error-handling.md) |
-| When Branch Is Not Found | See [common patterns](../references/common-error-handling.md) |
-| When PR Already Exists | See error output for details |
-| When Work Memory Is Corrupted | See error output for details |
-| When Multiple Work Branches Exist | See error output for details |
-| When Merge Conflicts Occur | See error output for details |
-| When Stash Restore Fails | See error output for details |
+```bash
+state_phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default "")
+state_branch=$(bash {plugin_root}/hooks/flow-state.sh get --field branch --default "")
+state_active=$(bash {plugin_root}/hooks/flow-state.sh get --field active --default "true")
+state_issue=$(bash {plugin_root}/hooks/flow-state.sh get --field issue_number --default "0")
+state_pr=$(bash {plugin_root}/hooks/flow-state.sh get --field pr_number --default "0")
+state_next=$(bash {plugin_root}/hooks/flow-state.sh get --field next_action --default "")
+state_parent=$(bash {plugin_root}/hooks/flow-state.sh get --field parent_issue_number --default "0")
+```
+
+### 3.2 git 状態取得
+
+```bash
+git_branch=$(git branch --show-current 2>/dev/null || echo "")
+# develop に到達できない場合は origin/develop or main を base に
+base_branch="develop"
+git fetch origin "$base_branch" >/dev/null 2>&1 || true
+git_commit_count=$(git rev-list --count "origin/${base_branch}..HEAD" 2>/dev/null || echo "0")
+git_has_uncommitted=$(git status --porcelain 2>/dev/null | head -1)
+```
+
+### 3.3 PR 状態取得
+
+```bash
+pr_info=$(gh pr view --json state,number,isDraft 2>/dev/null || echo '{"state":"NONE","number":0,"isDraft":false}')
+pr_state=$(echo "$pr_info" | jq -r '.state // "NONE"')
+pr_number_gh=$(echo "$pr_info" | jq -r '.number // 0')
+pr_is_draft=$(echo "$pr_info" | jq -r '.isDraft // false')
+```
+
+### 3.4 Work Memory 状態取得
+
+```bash
+LOCAL_WM=".rite-work-memory/issue-${issue_arg}.md"
+wm_phase=""
+wm_next=""
+if [ -f "$LOCAL_WM" ]; then
+  wm_phase=$(grep "^phase:" "$LOCAL_WM" 2>/dev/null | head -1 | sed 's/phase: *//' | tr -d '"')
+  wm_next=$(grep "^next_action:" "$LOCAL_WM" 2>/dev/null | head -1 | sed 's/next_action: *//' | tr -d '"')
+fi
+```
+
+### 3.5 整合性判定 (cross-check)
+
+以下の優先順で実態 phase を確定:
+
+1. **state_phase が v3 enum (13 個) の有効値** → state_phase を採用
+2. **state_phase が空 + wm_phase が有効値** → wm_phase を採用 (work memory fallback)
+3. **state_phase が空 + wm_phase も空 + pr_state=OPEN** → `review` (PR がある → レビュー段階)
+4. **state_phase が空 + wm_phase も空 + git_commit_count>0** → `implement` (コミットあり → 実装段階)
+5. **state_phase が空 + wm_phase も空 + git_branch が refactor/feat/fix/chore/issue ブランチ** → `branch` (ブランチのみある状態)
+6. **どれも該当しない** → `init` (新規スタート相当)
+
+矛盾検出時 (例: state_phase=plan だが git_commit_count>5):
+
+```
+⚠️ flow-state と実態の不整合を検出しました:
+  - flow-state phase: $state_phase
+  - 実態 commit 数: $git_commit_count
+  - 推定 phase: <推定値>
+```
+
+AskUserQuestion で「推定 phase で再開 / 別 phase を選ぶ / 中止」を提示。
+
+---
+
+## Phase 4: Resume 確認
+
+### 4.1 状態サマリ表示
+
+```
+=== 中断状態 ===
+Issue: #{issue_arg} ({title})
+Branch: {git_branch}
+Phase: {resolved_phase} ({cross-check 結果})
+Parent Issue: #{state_parent} (あれば)
+PR: #{pr_number} ({pr_state}, draft={pr_is_draft})
+Commits ahead of {base_branch}: {git_commit_count}
+Uncommitted changes: {git_has_uncommitted: "あり" or "なし"}
+Next action (state): {state_next}
+Next action (WM):    {wm_next}
+```
+
+### 4.2 ユーザー確認
+
+AskUserQuestion で:
+- **続行 (推定 phase で再開)** — 推定された phase に対応する Step / Skill を実行
+- **別 phase を選ぶ** — phase 一覧から手動選択
+- **新規セッション扱い** — flow-state をクリアして `/rite:issue:start {issue_arg}` を最初から実行
+- **中止** — 何もせず終了
+
+---
+
+## Phase 5: 再開実行
+
+### 5.1 ブランチ切り替え
+
+ブランチが state_branch と一致しない場合のみ切り替え:
+
+```bash
+if [ -n "$state_branch" ] && [ "$git_branch" != "$state_branch" ]; then
+  git switch "$state_branch" || {
+    echo "ERROR: ブランチ切り替え失敗: $state_branch" >&2
+    exit 1
+  }
+fi
+```
+
+### 5.2 flow-state の active=true 復元
+
+中断時 (例: クラッシュ / context 枯渇) で active=false になっている可能性があるため、resume では active=true に復元。merge semantics により他のフィールドは保持される:
+
+```bash
+if [ -n "$state_phase" ]; then
+  bash {plugin_root}/hooks/flow-state.sh set \
+    --phase "$resolved_phase" \
+    --next "${state_next:-resume from $resolved_phase}" \
+    --active true --if-exists
+fi
+```
+
+### 5.3 Phase enum → Step mapping (SoT)
+
+| phase | 再開アクション |
+|-------|---------------|
+| `init` | `/rite:issue:start {issue_arg}` をステップ 1 (Issue 取得) から再実行 (idempotent) |
+| `branch` | `/rite:issue:start {issue_arg}` をステップ 2 (ブランチ作成) から再開 (既存ブランチがあれば `git switch` で復帰) |
+| `plan` | `/rite:issue:start {issue_arg}` をステップ 3 (実装計画) から再開 |
+| `implement` | `/rite:issue:start {issue_arg}` をステップ 4 (実装) を継続 (Issue body の checklist 未完項目から) |
+| `lint` | `/rite:issue:start {issue_arg}` をステップ 5 (lint 再実行) から再開 |
+| `pr` | `/rite:issue:start {issue_arg}` をステップ 6 (PR 作成) から再開 (既に PR 番号が state にあればステップ 7 へジャンプ) |
+| `review` | `/rite:pr:review {pr_number}` を再実行 |
+| `fix` | `/rite:pr:fix {pr_number}` を再実行 |
+| `ready` | `/rite:issue:start {issue_arg}` をステップ 8.3 から再開 (Ready は完了済 — Projects Status In Review → 親判定 → 完了レポート) |
+| `ready_error` | `/rite:issue:start {issue_arg}` をステップ 8 (Ready & 完結) から再開 |
+| `cleanup` | `/rite:pr:cleanup {pr_number}` を再実行 |
+| `ingest` | `/rite:wiki:ingest` を再呼び出し |
+| `completed` | Issue は完結済。AskUserQuestion で「新規作業として再開 / 終了」 |
+
+### 5.4 invoke
+
+確定した phase に応じて Skill ツール経由で対応コマンドを呼ぶ。引数として `{issue_arg}` (issue 系) または `{pr_number}` (pr 系) を渡す。
+
+`/rite:issue:start` 系は内部の Resume Dispatch (ステップ 0) で `[CONTEXT] RESUME_DISPATCH=1; phase=$resolved_phase; issue=$issue_arg` を観測し、適切な step にジャンプする。
+
+---
+
+## Phase 6: 完了
+
+再開後の最初のサイクルが完了するまで、再開した skill に制御を委譲する。再開先の skill は flow-state を順次更新し、最終的に `completed` または `cleanup` 状態に到達する。
+
+---
+
+## エラー処理
+
+| 状況 | 対応 |
+|------|------|
+| Issue not found | エラー終了、`gh issue list` で確認するよう案内 |
+| Branch 不在 | `gh issue develop` で再生成するよう案内 |
+| flow-state 不在 + WM 不在 | 「新規セッション」として `/rite:issue:start {issue_arg}` を提案 |
+| 矛盾検出 (phase vs commit/PR) | AskUserQuestion で「推定 phase で再開 / 別 phase を選ぶ / 中止」 |
+| migrate 失敗 | WARNING 表示後、cross-check で実態推定して続行 |
+
+---
+
+## Phase enum 13 個 (SoT)
+
+新 v3 schema の phase enum (`flow-state.sh` 内 `PHASE_ENUM_V3` と同期):
+
+```
+init / branch / plan / implement / lint / pr / review / fix / ready /
+ready_error / cleanup / ingest / completed
+```
+
+旧 v1/v2 schema の phase 値 (`cleanup_pre_ingest`, `ingest_pre_lint`, `create_*`, `phase5_*` 等) は Phase 2 の自動 migration で v3 に変換される。Migration の reduction matrix は `plugins/rite/hooks/flow-state.sh` の `_phase_migrate` 関数を参照。

@@ -194,7 +194,13 @@ fi
 Issue にブランチを関連付け (失敗しても workflow は続行するが、stderr に WARNING を出力):
 
 ```bash
-if ! develop_err=$(gh issue develop {issue_number} --name "{branch_name}" 2>&1); then
+# --base "{base_branch}" is REQUIRED: without it, `gh issue develop` creates the
+# remote branch from the repository's default branch (e.g. main). In a git-flow
+# layout where branch.base (develop) ≠ default branch (main), the remote branch
+# would diverge from the local develop-based branch and the first `git push`
+# fails with non-fast-forward. Passing --base anchors the remote branch to
+# {base_branch}, matching the local branch created in 2.3. (Issue #1092)
+if ! develop_err=$(gh issue develop {issue_number} --name "{branch_name}" --base "{base_branch}" 2>&1); then
   # Strip control characters before truncation. gh error messages occasionally
   # contain binary bytes; allowing them through could break JSON details
   # serialization or trigger unintended terminal escape sequences downstream.

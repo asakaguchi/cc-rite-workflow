@@ -5491,7 +5491,7 @@ ACTION: Return to Phase 4.6.W and execute the Wiki Ingest Trigger before outputt
 
 ### 8.1 Output Pattern (Return Control to Caller)
 
-The `phase5_post_fix` flow-state write below keeps in-flight state files consistent with what older versions expected, so a `/rite:resume` started against a partially-migrated state still classifies correctly:
+The `fix` flow-state write below records the v3 phase so a `/rite:resume` started after a fix iteration classifies the resume point correctly (`commands/resume.md` Phase 5.3 で `fix` → ステップ 7.2 へ routing):
 
 ```bash
 bash {plugin_root}/hooks/flow-state.sh set \
@@ -5520,7 +5520,7 @@ if [ -n "$hook_err" ]; then
   # 旧 `if ! cmd; then hook_wm_update_rc=$?` パターンは bash 仕様上 `$?` が常に 0 を返す。
   # `if cmd; then :; else rc=$?; fi` の else 節形式に切り替えて hook 自身の exit code を正しく取得する。
   if WM_SOURCE="fix" \
-      WM_PHASE="phase5_post_fix" \
+      WM_PHASE="fix" \
       WM_PHASE_DETAIL="レビュー修正後処理" \
       WM_NEXT_ACTION="re-review or completion" \
       WM_BODY_TEXT="Post-fix sync." \
@@ -5551,7 +5551,7 @@ else
   # head -5 で上位 5 行のみ保持する簡易 fallback に変更する。
   echo "WARNING: hook_err mktemp 失敗により local-wm-update.sh の stderr 詳細が取得できません" >&2
   if hook_combined=$(WM_SOURCE="fix" \
-        WM_PHASE="phase5_post_fix" \
+        WM_PHASE="fix" \
         WM_PHASE_DETAIL="レビュー修正後処理" \
         WM_NEXT_ACTION="re-review or completion" \
         WM_BODY_TEXT="Post-fix sync." \

@@ -4719,8 +4719,8 @@ Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:
 
 | Result | Phase | Next Action |
 |--------|-------|-------------|
-| `[review:mergeable]` | `phase5_post_review` | `rite:pr:review completed. Result: [review:mergeable]. Proceed to Phase 5.5 (Ready for Review). Do NOT stop.` |
-| `[review:fix-needed:{n}]` | `phase5_post_review` | `rite:pr:review completed. Result: [review:fix-needed:{n}]. Proceed to Phase 5.4.4 (fix). Do NOT stop.` |
+| `[review:mergeable]` | `review` | `rite:pr:review completed. Result: [review:mergeable]. Proceed to Phase 5.5 (Ready for Review). Do NOT stop.` |
+| `[review:fix-needed:{n}]` | `review` | `rite:pr:review completed. Result: [review:fix-needed:{n}]. Proceed to Phase 5.4.4 (fix). Do NOT stop.` |
 
 ```bash
 bash {plugin_root}/hooks/flow-state.sh set \

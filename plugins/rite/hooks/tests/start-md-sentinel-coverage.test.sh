@@ -98,7 +98,7 @@ echo "=== Resume Dispatch ステップ 0 (H-2 fix) ==="
 # H-2 で追加した Resume Dispatch ステップが start.md に存在することを assert。
 # resume.md Phase 3.2 表が「start.md は冒頭で flow state を読む」と公言するため、
 # state-read.sh への呼び出しが最低 1 回登場する必要がある。
-assert_in_start "state-read.sh invocation (Resume Dispatch ステップ 0)" 'state-read\.sh --field phase'
+assert_in_start "flow-state.sh get invocation (Resume Dispatch ステップ 0)" 'flow-state\.sh get --field phase'
 assert_in_start "RESUME_DISPATCH context marker" 'RESUME_DISPATCH='
 
 echo ""
@@ -146,8 +146,8 @@ for phase in init branch plan implement lint pr review fix ready ready_error com
 done
 
 echo ""
-echo "=== 5-arg symmetry for flow-state-update.sh create ==="
-# Every `flow-state-update.sh create` invocation across start.md + create.md must
+echo "=== 5-arg symmetry for flow-state.sh set ==="
+# Every `flow-state.sh set` invocation across start.md + create.md must
 # include all 5 args: --phase / --issue / --branch / --pr / --next. Argument drift
 # breaks phase routing and resume; CI must catch the divergence early.
 CREATE_MD="$PLUGIN_ROOT/commands/issue/create.md"
@@ -155,12 +155,12 @@ for f in "$START_MD" "$CREATE_MD"; do
   [ -f "$f" ] || { echo "ERROR: required file not found: $f" >&2; exit 1; }
 done
 
-# awk で `flow-state-update.sh create` を含む multi-line invocation を抽出 (連続行 + 末尾の `\`)。
+# awk で `flow-state.sh set` を含む multi-line invocation を抽出 (連続行 + 末尾の `\`)。
 # 抽出した塊ごとに 5 種類の flag が登場するか検査する。
 check_symmetry_5arg() {
   local file="$1"
   local fname; fname="$(basename "$file")"
-  # bash fenced code block (` ```bash ... ``` `) 内に限定して `flow-state-update.sh create` invocation を抽出する。
+  # bash fenced code block (` ```bash ... ``` `) 内に限定して `flow-state.sh set` invocation を抽出する。
   # markdown 表内のテキスト (例: 表セルでの言及) を誤検出しないため、in_bash フラグを使う。
   # multi-line bash invocation (行末 `\` で継続) は 1 record として concat する。
   awk '
@@ -195,9 +195,9 @@ check_symmetry_5arg() {
     { block = (block == "" ? $0 : block " " $0) }
     END {
       if (block_count == 0) {
-        printf "  (no flow-state-update.sh create invocations in %s — skipping)\n", fname
+        printf "  (no flow-state.sh set invocations in %s — skipping)\n", fname
       } else if (ok == 0) {
-        printf "  %s %s: all %d flow-state-update.sh create invocations carry --phase/--issue/--branch/--pr/--next\n", pass_token, fname, block_count
+        printf "  %s %s: all %d flow-state.sh set invocations carry --phase/--issue/--branch/--pr/--next\n", pass_token, fname, block_count
       }
       exit ok
     }
@@ -205,13 +205,13 @@ check_symmetry_5arg() {
 }
 
 if check_symmetry_5arg "$START_MD"; then
-  pass "5-arg symmetry: start.md flow-state-update.sh create invocations"
+  pass "5-arg symmetry: start.md flow-state.sh set invocations"
 else
   fail "5-arg symmetry: start.md has invocations missing required flags (see awk output above)"
 fi
 
 if check_symmetry_5arg "$CREATE_MD"; then
-  pass "5-arg symmetry: create.md flow-state-update.sh create invocations"
+  pass "5-arg symmetry: create.md flow-state.sh set invocations"
 else
   fail "5-arg symmetry: create.md has invocations missing required flags (see awk output above)"
 fi

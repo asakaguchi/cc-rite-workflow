@@ -876,7 +876,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 Replace `{phase_value}` and `{next_action_value}` with the values from the table above based on the lint result.
 
-**Note on `error_count`**: `flow-state.sh set` resets `error_count` to 0 by default on every phase transition, and preserves the existing value only when `--preserve-error-count` is passed. This prevents stale circuit breaker counts from one phase from poisoning subsequent phases.
+**Note on `error_count`**: `flow-state.sh set` resets `error_count` to 0 by default on every phase transition, and preserves the existing value only when `--preserve-error-count` is passed. `error_count` is currently a reserved/legacy schema slot with no production reader; resetting on transition keeps the slot well-defined for future re-introduction without carrying stale counts.
 
 **Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when flow state file exists:
 

@@ -5501,7 +5501,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
   --if-exists
 ```
 
-**Note on `error_count`**: `flow-state.sh` patch mode resets `error_count` to 0 on every phase transition (since #294). This prevents stale circuit breaker counts from one phase from poisoning subsequent phases.
+**Note on `error_count`**: `flow-state.sh set` resets `error_count` to 0 by default on every phase transition, and preserves the existing value only when `--preserve-error-count` is passed. This prevents stale circuit breaker counts from one phase from poisoning subsequent phases.
 
 **Also update local work memory** (`.rite-work-memory/issue-{n}.md`) with phase transition:
 

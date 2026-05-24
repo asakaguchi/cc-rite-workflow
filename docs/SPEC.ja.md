@@ -224,7 +224,6 @@ rite-workflow/
 │ ├── pre-compact.sh / post-compact.sh # #133
 │ ├── preflight-check.sh
 │ ├── pre-tool-bash-guard.sh / post-tool-wm-sync.sh
-│ ├── phase-transition-whitelist.sh # Phase 遷移ガード
 │ ├── hook-preamble.sh / state-path-resolve.sh # 共通ヘルパー
 │ ├── flow-state-update.sh / local-wm-update.sh
 │ ├── work-memory-lock.sh / work-memory-update.sh / work-memory-parse.py
@@ -1299,7 +1298,7 @@ SessionEnd
 
 ### Stop Guard (retired)
 
-> **Status: Retired**. 旧 `stop-guard.sh` は Stop event hook として登録され、アクティブな rite ワークフロー中の implicit stop をブロックしていた。Stop hook 自体は廃止済みで、現在は `phase-transition-whitelist.sh` の事前チェック + 各 orchestrator の `🚨 Mandatory After ...` テキスト契約 + `pre-tool-bash-guard.sh` の事前ガードに役割を分散している。
+> **Status: Retired**. 旧 `stop-guard.sh` は Stop event hook として登録され、アクティブな rite ワークフロー中の implicit stop をブロックしていた。Stop hook 自体は廃止済みで、現在は各 orchestrator の `🚨 Mandatory After ...` テキスト契約 + `pre-tool-bash-guard.sh` の事前ガードに役割を分散している。
 
 旧仕様の概要（historical context）:
 
@@ -1432,19 +1431,11 @@ WM_SOURCE="implement" WM_PHASE="phase5_lint" \
 
 ロックの `mtime` が閾値（デフォルト: 120秒）を超えた場合、PID ファイルでプロセスの生存を確認し、プロセスが終了していればロックを自動解放する。
 
-### Phase Transition Whitelist（`phase-transition-whitelist.sh`）(#490)
+### Phase Transition Whitelist (retired)
 
-phase 遷移の canonical graph を提供する sourced ライブラリ（直接実行ではない）。production hooks (`session-end.sh` / `pre-tool-bash-guard.sh`) は helper predicate (`rite_phase_is_create_lifecycle_in_progress` / `rite_phase_is_cleanup_lifecycle_in_progress`) のみ消費する。トップレベル `rite_phase_transition_allowed` は orchestrator-level pre-write check 用のライブラリエントリポイントで、現状は test suite のみが呼出している (production caller の配線は follow-up)。`/rite:issue:start` の一気通貫フローで発生していた silent な phase-skipping を可観測なイベントに変える役割は、production caller が配線された時点で発火する設計。
+> **Status: Retired**. `phase-transition-whitelist.sh` ライブラリ（および `phase-transition-whitelist.test.sh` スイート）は v2→v3 移行で削除済み（[`docs/migration-guides/v2-to-v3.md`](migration-guides/v2-to-v3.md) 参照）。phase enum の canonical SoT は現在 `flow-state.sh` の `PHASE_ENUM_V3`（`init branch plan implement lint pr review fix ready ready_error cleanup ingest completed`）で、`_phase_is_valid` ヘルパーが検証する。legacy phase 名は遷移 graph ではなく `_phase_migrate` + `/rite:resume` の cross-check で解決される。
 
-**提供する関数（source 後に利用可）:**
-
-| 関数 | 目的 |
-|------|------|
-| `rite_phase_transition_allowed <prev> <next>` | whitelist に含まれる遷移であれば 0 を返す |
-| `rite_phase_expected_next <phase>` | 有効な次 phase を空白区切りで出力 |
-| `rite_phase_is_known <phase>` | phase 名が既知であれば 0 |
-
-**オーバーライドのマージ:** `rite-config.yml` の `hooks.stop_guard.phase_transitions.<phase>: [<next1>, …]` でプロジェクト固有の遷移を**追加**できる（上書きではない、設定キー名は historical 互換のため `stop_guard` prefix を保持）。`declare -gA` のため Bash 4.2+ が必要で、古い bash では graceful にバイパス（fail-open）。
+legacy `create_*` / `cleanup_*` phase の lifecycle 未完了検出は現在 `session-end.sh` の inline glob 分岐（`[[ "$_state_phase" == create_* ]]` / `cleanup_*`）に統合されている。旧 `rite_phase_is_create_lifecycle_in_progress` / `rite_phase_is_cleanup_lifecycle_in_progress` predicate は存在しないため、同 hook の `type … >/dev/null` guard は常に false で inline glob が唯一の active path となる（`session-end.test.sh` TC-475-WARN-A〜D / TC-608-WARN-A〜E で pin）。`rite_phase_transition_allowed` / `rite_phase_expected_next` / `rite_phase_is_known` 関数と、それらが支えていた `hooks.stop_guard.phase_transitions` オーバーライドマージは撤去済み — 現行の hook / script / template はこの設定キーを一切読まない。
 
 ### Verify Terminal Output (retired)
 

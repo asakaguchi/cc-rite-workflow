@@ -213,7 +213,9 @@ cat > "$d/.rite/sessions/${sid2}.flow-state" <<EOF
 {"schema_version":2,"phase":"create_branch","session_id":"$sid2","issue_number":4,"branch":"b2","pr_number":0,"next_action":"y","active":true,"updated_at":"2026-05-22T00:00:00Z"}
 EOF
 err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
-migrated_count=$(echo "$err" | grep -c 'migrated:' || true)
+# Why: 行頭 anchor `^  migrated:` で固定することで、将来 hook が `Already migrated:` 等の文言を
+# 追加した場合の false match を防ぎ、emission format specificity を TC-8b-a/e と統一する。
+migrated_count=$(echo "$err" | grep -c '^  migrated:' || true)
 if [ "$migrated_count" = "2" ]; then
   pass "TC-8b-d: multi-file migrate emits 'migrated:' per file (count=2)"
 else
@@ -235,15 +237,25 @@ EOF
 # (write が通る環境で test が pass する誤検出) を防ぐ。
 # Why (probe を sandbox 近接に配置): TMPDIR が別 filesystem を指す環境でも probe と sandbox の DAC
 # 挙動を一致させるため、probe を sandbox dir 配下に作成する。
-if ! _dac_probe_parent=$(mktemp -d "$d/_dac_probe.XXXXXX" 2>/dev/null); then
+# Why: mktemp 失敗時の stderr を一時的に capture することで、TMPDIR が別 fs を指す / inode 枯渇 /
+# permission denied 等の root cause を fail message から確認可能にする (silent な原因隠蔽を防ぐ)。
+_dac_probe_err=$(mktemp /tmp/rite-dac-probe-err-XXXXXX 2>/dev/null) || _dac_probe_err=""
+if ! _dac_probe_parent=$(mktemp -d "$d/_dac_probe.XXXXXX" 2>"${_dac_probe_err:-/dev/null}"); then
+  _dac_probe_diag=""
+  [ -n "$_dac_probe_err" ] && [ -s "$_dac_probe_err" ] && _dac_probe_diag=" ($(head -1 "$_dac_probe_err"))"
+  [ -n "$_dac_probe_err" ] && rm -f "$_dac_probe_err"
   # Why: probe 構築失敗時は silent skip ではなく fail にする。test 自体の構築不能は AC-8 invariant の
   # 検証不能を意味し、observability を確保するため明示的に fail にする。
-  fail "TC-8b-e/g: mktemp -d failed for DAC probe parent under $d"
+  fail "TC-8b-e/g: mktemp -d failed for DAC probe parent under $d$_dac_probe_diag"
 else
+  [ -n "$_dac_probe_err" ] && rm -f "$_dac_probe_err"
   _dac_probe="$_dac_probe_parent/probe"
   mkdir -p "$_dac_probe"
   chmod 0555 "$_dac_probe"
-  if echo x > "$_dac_probe/_probe_file" 2>/dev/null; then
+  # Why: redirect-open 失敗時の "Permission denied" 1 行が test output に混入することを避けるため、
+  # subshell 内で `>` の open 自体を実行する。shell の redirect-open 失敗 message は `2>` 再リダイレクト
+  # の前に直接 stderr へ出力されるため、subshell 化で外側に漏らさない設計。
+  if ( echo x > "$_dac_probe/_probe_file" ) 2>/dev/null; then
     chmod +w "$_dac_probe" 2>/dev/null || true
     rm -rf "$_dac_probe_parent"
     pass "TC-8b-e/g: skipped (chmod 0555 ineffective in this env — DAC override / root / fakeroot; write-failure invariant unverifiable)"

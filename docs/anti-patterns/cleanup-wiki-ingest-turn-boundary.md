@@ -5,10 +5,12 @@ confidence: high
 source_refs:
   issues: [621, 604, 618, 561, 652]
   prs: [655]
-last_updated: 2026-04-24T21:15:00+09:00
+last_updated: 2026-05-25T00:00:00+09:00
 ---
 
 # `/rite:pr:cleanup` の Wiki ingest sub-skill return 後に implicit stop が発生する regression
+
+> **Note（機構の撤去 / 2026-05）**: 本ページが参照する Stop hook ガード機構（`stop-guard.sh` および unit test fixture `stop-guard-cleanup.test.sh` / `stop-guard.test.sh`）は PR #675 で撤去済みである。implicit stop 対策は現在、orchestrator レベルの scaffolding 契約（Pre-write + 🚨 Mandatory After）と `/rite:resume` による復帰に役割が移っており、lifecycle phase の分類は `session-end.sh` の inline glob が担う。以下の root-cause 分析（turn-boundary heuristic 強化 + Pre-check list の self-check 依存）は教訓として依然有効だが、`stop-guard.sh` の block 挙動・診断ログ（`.rite-stop-guard-diag.log`）・test fixture への言及は当時の機構を説明する historical な記述である。
 
 ## 背景
 
@@ -71,7 +73,7 @@ diag log (`.rite-stop-guard-diag.log`) の 2026-04-20 window 集計:
 
 1. **cleanup.md Pre-check list Item 0 の機械化**: `[routing-check] ingest=matched|unmatched` / `[routing-check] cleanup=matched|unmatched` の 1 行出力義務化で LLM の silent skip を検出可能にする
 2. **ingest.md Phase 9.1 の三点セット #2/#3 間 recap 挿入禁止**: MUST NOT 行を追加し、caller 継続 HTML コメント直後に即 sentinel を出力する規約を reinforce
-3. **unit test fixture** (`plugins/rite/hooks/tests/stop-guard-cleanup.test.sh`、4 tests / 14 assertions、実行: `bash plugins/rite/hooks/tests/run-tests.sh` で既存 hook test suite と共に自動実行): stop-guard.sh を `cleanup_pre_ingest` / `cleanup_post_ingest` / `cleanup` phase で invoke、exit 2 + stderr に Phase 情報 + HINT-specific 文言が出力されることを assert (Test 4 は active:false 時の正常終了を negative assertion で検証)。既存 `stop-guard.test.sh` TC-608-A〜H とは役割分担: 本 fixture は **fixture ベースで独立実行可能** (同テストを異なる環境でスタンドアロン起動する用途)、TC-608-A〜H は **HINT-specific 文言 pin** (regression 検知性能優先)。両者は同一 HINT 文言を pin するため相補関係を形成する (片方の regression でもう片方が catch)
+3. **unit test fixture**（当時 `plugins/rite/hooks/tests/stop-guard-cleanup.test.sh`、4 tests / 14 assertions）: stop-guard.sh を `cleanup_pre_ingest` / `cleanup_post_ingest` / `cleanup` phase で invoke、exit 2 + stderr に Phase 情報 + HINT-specific 文言が出力されることを assert していた（Test 4 は active:false 時の正常終了を negative assertion で検証）。既存 `stop-guard.test.sh` TC-608-A〜H とは役割分担し（前者は fixture ベースで独立実行可能、後者は HINT-specific 文言 pin）、両者は同一 HINT 文言を pin して相補関係を形成していた。**いずれの fixture も stop-guard.sh とともに PR #675 で撤去済みであり、現在は `run-tests.sh` の対象ではない（上記 Note 参照）。**
 
 ## INTENTIONAL DIVERGENCE Rationale (#652) — cleanup 系 vs ingest 系の terminal 規約
 

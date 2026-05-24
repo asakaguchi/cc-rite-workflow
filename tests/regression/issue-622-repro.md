@@ -4,6 +4,12 @@
 - **Sibling**: #621 (cleanup workflow 内の同型問題)
 - **Original**: #552 (CLOSED — 対策導入時)
 
+> **⚠️ Status: Retired（歴史的記録）**
+>
+> 本 fixture が検証していたアーキテクチャ — pre-v3 の sub-skill chain（`create-interview.md` 等）と Stop hook `stop-guard.sh` による implicit-stop ブロック機構 — は撤去済みである。sub-skill 群は flat な `create.md` へ統合され、Stop hook は PR #675 で機構ごと撤去された。後継 fixture の `issue-634-repro.md` も同様に Retired。
+>
+> したがって以下の検証コマンドのうち `stop-guard.sh` / `stop-guard.test.sh` / `create-interview.md` / `.rite-stop-guard-diag.log` を参照するものは **すべて実行不能**であり、#622 を含む同型 regression シリーズの**歴史的記録**として残置する。現在の implicit-stop 対策は orchestrator レベルの scaffolding 契約と `/rite:resume` による復帰が担い、lifecycle phase の分類は `session-end.sh` の inline glob が行う。
+
 ## 1. 再現手順 (baseline: 修正前)
 
 ### 1.1 前提条件

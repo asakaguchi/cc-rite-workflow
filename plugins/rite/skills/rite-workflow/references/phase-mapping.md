@@ -32,7 +32,7 @@ Mapping information for phase details. Used in work memory session information.
 
 ### Legacy phase 名
 
-旧 sub-skill chain アーキテクチャで使われていた `phase5_*` / `phase1_*` / `phase2_*` / `phase3_*` 系 phase 名は `flow-state-update.sh` の write path からは消滅した。古い state file が残っている環境では `/rite:resume` の `commands/resume.md` Phase 3.5 整合性判定 (cross-check) が legacy phase 値を v3 enum に解決して routing する。
+旧 sub-skill chain アーキテクチャで使われていた `phase5_*` / `phase1_*` / `phase2_*` / `phase3_*` 系 phase 名は `flow-state.sh` の write path からは消滅した。古い state file が残っている環境では `/rite:resume` の `commands/resume.md` Phase 3.5 整合性判定 (cross-check) が legacy phase 値を v3 enum に解決して routing する。
 
 旧 phase 名の遷移許可 graph（`phase-transition-whitelist.sh` の `_RITE_PHASE_TRANSITIONS` / `rite_phase_transition_allowed`）は v2→v3 移行で retired・削除済み。現在 phase 名の妥当性は `flow-state.sh` の `_phase_is_valid` が `PHASE_ENUM_V3` に対して検査するのみで、未知 phase は reject されず WARNING を出して forward-compat に受容される。legacy phase の v3 解決は下記の cross-check が担当する。
 

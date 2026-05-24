@@ -159,6 +159,155 @@ EOF
   assert "migrate $legacy_phase → $expected" "$expected" "$got"
 done
 
+# --- TC-8b: AC-8 — a performed migration is announced on stderr WITHOUT --verbose ---
+echo ""
+echo "=== TC-8b: AC-8 non-verbose migrate emits 'migrated:' to stderr; v3-only stays silent ==="
+# Why: session-start auto path silences only stdout. If `migrated:` is gated on --verbose or
+# moved to stdout, a real migration becomes silent and violates AC-8 (silent skip forbidden).
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/sessions"
+cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
+{"schema_version":2,"phase":"ingest_pre_lint","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
+EOF
+err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
+# Why: grep specificity に v[12]→v3 矢印と phase 変換 token を要求することで、emission format が
+# `migrate done:` 等にリネームされた場合も regression を検出できる (format stability invariant)。
+echo "$err" | grep -qE 'migrated:.*v[12]→v3.*[a-z_]+→[a-z_]+' \
+  && pass "TC-8b-a: non-verbose migrate announces 'migrated:' on stderr with v→v3 + phase tokens" \
+  || fail "TC-8b-a: non-verbose migrate format mismatch (expected 'migrated:.*v[12]→v3.*phase→phase'): '$err'"
+
+# Why: v3-only file は migrate 対象外で出力を発生させてはならない。`skip (already v3)` は --verbose
+# でのみ出力される invariant も同時に検証する (quiet session start での noise 抑制)。
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase fix --issue 8 --branch "b" --pr 1 --next "n")
+err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
+if echo "$err" | grep -q "migrated:\|skip (already v3)"; then
+  fail "TC-8b-b: non-verbose migrate of v3-only emitted output (should be silent): '$err'"
+else
+  pass "TC-8b-b: non-verbose migrate of v3-only stays silent"
+fi
+
+# Why: AC-8 文面は v1/v2 両方を対象とする。`_migrate_file` の `jq -r '.schema_version // 1'`
+# fallback で v1 (schema_version 欠落) と v2 の code path は等価だが、両方を invariant 化することで
+# 将来 fallback 削除や schema_version 必須化が起きても regression を即検出できる。
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/sessions"
+cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
+{"phase":"cleanup_pre_ingest","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
+EOF
+err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
+echo "$err" | grep -qE 'migrated:.*v1→v3.*[a-z_]+→[a-z_]+' \
+  && pass "TC-8b-c: non-verbose migrate of v1 (schema_version 欠落) announces 'migrated:' on stderr" \
+  || fail "TC-8b-c: v1 schema 欠落 migrate did not emit expected 'migrated:.*v1→v3.*phase→phase' format: '$err'"
+
+# Why: `cmd_migrate` は SESSION_DIR/*.flow-state を loop して `_migrate_file` を call するため、
+# N 個の v2 file があれば N 行の `migrated:` が emit される。single-file test では loop 内の
+# 重複処理や emission 抜けを検出できないため、multi-file の counter 一致を直接 assertion する。
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+sid2="00000000-0000-0000-0000-000000000002"
+mkdir -p "$d/.rite/sessions"
+cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
+{"schema_version":2,"phase":"ingest_pre_lint","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
+EOF
+cat > "$d/.rite/sessions/${sid2}.flow-state" <<EOF
+{"schema_version":2,"phase":"create_branch","session_id":"$sid2","issue_number":4,"branch":"b2","pr_number":0,"next_action":"y","active":true,"updated_at":"2026-05-22T00:00:00Z"}
+EOF
+err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
+# Why: 行頭 anchor `^  migrated:` で固定することで、将来 hook が `Already migrated:` 等の文言を
+# 追加した場合の false match を防ぐ (TC-8b-e/g と同じ anchor 形式)。
+migrated_count=$(echo "$err" | grep -c '^  migrated:' || true)
+if [ "$migrated_count" = "2" ]; then
+  pass "TC-8b-d: multi-file migrate emits 'migrated:' per file (count=2)"
+else
+  fail "TC-8b-d: expected 2 'migrated:' lines but got $migrated_count: '$err'"
+fi
+
+# Why: write IO 失敗時に false `migrated:` を emit すると AC-8 invariant が逆方向 (skip を migrated
+# と誤報) で破られる。chmod 0555 で sessions dir を readonly にして mv 失敗経路を強制し、
+# `migrated:` 行 0 件 + `Migration complete: 0 file` を assert することで、`_atomic_write` の rc
+# 伝播が将来削除されても本テストが fail する (write-failure invariant の direct verification)。
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/sessions"
+cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
+{"schema_version":2,"phase":"ingest_pre_lint","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
+EOF
+# Why (DAC probe): root / fakeroot / CAP_DAC_OVERRIDE 環境では chmod 0555 が DAC override で
+# 無効化され write-failure path を強制できない。`id -u` 判定では fakeroot / capability bound
+# scenario を捕捉できないため、実機 write probe で write 強制可能性を検出する。silent false-pass
+# (write が通る環境で test が pass する誤検出) を防ぐ。
+# Why (probe を sandbox 近接に配置): TMPDIR が別 filesystem を指す環境でも probe と sandbox の DAC
+# 挙動を一致させるため、probe を sandbox dir 配下に作成する。
+# Why: mktemp 失敗時の stderr を一時的に capture することで、TMPDIR が別 fs を指す / inode 枯渇 /
+# permission denied 等の root cause を fail message から確認可能にする (silent な原因隠蔽を防ぐ)。
+_dac_probe_err=$(mktemp /tmp/rite-dac-probe-err-XXXXXX 2>/dev/null) || _dac_probe_err=""
+if ! _dac_probe_parent=$(mktemp -d "$d/_dac_probe.XXXXXX" 2>"${_dac_probe_err:-/dev/null}"); then
+  _dac_probe_diag=""
+  [ -n "$_dac_probe_err" ] && [ -s "$_dac_probe_err" ] && _dac_probe_diag=" ($(head -1 "$_dac_probe_err"))"
+  [ -n "$_dac_probe_err" ] && rm -f "$_dac_probe_err"
+  # Why: probe 構築失敗時は silent skip ではなく fail にする。test 自体の構築不能は AC-8 invariant の
+  # 検証不能を意味し、observability を確保するため明示的に fail にする。
+  fail "TC-8b-e/g: mktemp -d failed for DAC probe parent under $d$_dac_probe_diag"
+else
+  [ -n "$_dac_probe_err" ] && rm -f "$_dac_probe_err"
+  _dac_probe="$_dac_probe_parent/probe"
+  mkdir -p "$_dac_probe"
+  chmod 0555 "$_dac_probe"
+  # Why: redirect-open 失敗時の "Permission denied" 1 行が test output に混入することを避けるため、
+  # subshell 内で `>` の open 自体を実行する。shell の redirect-open 失敗 message は `2>` 再リダイレクト
+  # の前に直接 stderr へ出力されるため、subshell 化で外側に漏らさない設計。
+  if ( echo x > "$_dac_probe/_probe_file" ) 2>/dev/null; then
+    chmod +w "$_dac_probe" 2>/dev/null || true
+    rm -rf "$_dac_probe_parent"
+    pass "TC-8b-e/g: skipped (chmod 0555 ineffective in this env — DAC override / root / fakeroot; write-failure invariant unverifiable)"
+  else
+    chmod +w "$_dac_probe" 2>/dev/null || true
+    rm -rf "$_dac_probe_parent"
+    # Why (trap save/restore): 将来 top-level cleanup trap が flow-state.test.sh に導入されても、
+    # 本 TC の `trap -` で外側 trap を破壊しないよう既存 trap を保存し eval で復元する。
+    # POSIX `trap -p` 出力は shell に reinput 可能な proper quoting 形式であり、既存 trap が
+    # 空の場合は `eval ""` が no-op になる (defense-in-depth)。
+    # Why (異常終了時の restore): hard-fail test や signal kill (INT/TERM/HUP) で sandbox dir
+    # が readonly のまま残ると後続 test が clean state を得られないため trap で restore を保証する。
+    _tc8beg_saved_trap=$(trap -p EXIT INT TERM HUP)
+    _tc8beg_test_cleanup() { chmod +w "$d/.rite/sessions" 2>/dev/null || true; }
+    trap _tc8beg_test_cleanup EXIT INT TERM HUP
+    chmod 0555 "$d/.rite/sessions"
+    combined=$( (cd "$d" && bash "$HOOK" migrate) 2>&1 )
+    chmod +w "$d/.rite/sessions"
+    trap - EXIT INT TERM HUP
+    eval "$_tc8beg_saved_trap"
+    # Why: 解除後の dead function/変数を unset し、後続 TC の shell scope (declare -f / スタック
+    # トレース) にノイズが残らないようにする。
+    unset -f _tc8beg_test_cleanup
+    unset _tc8beg_saved_trap
+    migrated_lines=$(echo "$combined" | grep -c '^  migrated:' || true)
+    # Why: counter が inflate しない invariant の direct verification。`_atomic_write` 失敗時に
+    # `_migrate_file` が rc=1 を返し counter が 0 のままであることを確認する。
+    if [ "$migrated_lines" = "0" ] && echo "$combined" | grep -qE 'Migration complete: 0 file'; then
+      pass "TC-8b-e/g: write-failure path emits no 'migrated:' and counter stays 0 (AC-8 negative regression + counter invariant)"
+    else
+      fail "TC-8b-e/g: write-failure path leaked output: migrated_lines=$migrated_lines; combined='$combined'"
+    fi
+  fi
+fi
+# Why: TC 内で導入した一時変数を後続 TC の shell scope に残さないため明示 unset する
+# (`_tc8beg_test_cleanup` / `_tc8beg_saved_trap` の cleanup precedent と整合)。
+unset _dac_probe_err _dac_probe_parent _dac_probe _dac_probe_diag 2>/dev/null || true
+
+# Why: `--dry-run` preview は session-start.sh の stdout-only silence 経路で見える必要があるため
+# stderr に出力されることを invariant 化する。stdout に戻る regression を即検出する。
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/sessions"
+cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
+{"schema_version":2,"phase":"ingest_pre_lint","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
+EOF
+err=$( (cd "$d" && bash "$HOOK" migrate --dry-run >/dev/null) 2>&1 )
+if echo "$err" | grep -q 'would migrate:'; then
+  pass "TC-8b-f: --dry-run preview goes to stderr"
+else
+  fail "TC-8b-f: --dry-run preview missing from stderr (regression — possibly moved back to stdout): '$err'"
+fi
+
 # --- TC-9: phase enum validation warns but accepts unknown phase ---
 echo ""
 echo "=== TC-9: unknown phase warns but writes file (non-strict mode) ==="

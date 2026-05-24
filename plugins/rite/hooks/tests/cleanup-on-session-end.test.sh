@@ -145,7 +145,9 @@ echo "$SID" > "$TD/.rite-session-id"
 mkdir -p "$TD/.rite/sessions"
 echo "{\"active\":true,\"phase\":\"phase5\",\"issue_number\":684,\"session_id\":\"$SID\"}" \
   > "$TD/.rite/sessions/${SID}.flow-state"
-# Pre-place a migration backup (per migrate-flow-state.sh naming)
+# Pre-place a pre-v3 legacy backup file (`.rite-flow-state.legacy.*` naming).
+# The v3 in-place migrate no longer creates these, but cleanup must still
+# preserve any left over from a pre-v3 (rename-based) migration upgrade.
 backup_file="$TD/.rite-flow-state.legacy.20260101120000"
 echo '{"legacy":"backup","schema_version":1}' > "$backup_file"
 backup_hash_before=$(sha1sum "$backup_file" | awk '{print $1}')

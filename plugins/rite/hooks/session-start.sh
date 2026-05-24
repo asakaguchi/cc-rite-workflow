@@ -454,10 +454,13 @@ fi
 # Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes).
 # `.rite-flow-state.??????*` is intended to match mktemp tempfiles
 # (`.rite-flow-state.<6-hex>`), but its `??????*` glob matches **any suffix
-# of 6 or more chars**, which includes the migration backup name
-# (`.rite-flow-state.legacy.<timestamp>.<pid>.<random>`). Adding
-# `-not -name '.rite-flow-state.legacy.*'` keeps the migration backup as the
-# manual-recovery source of truth (#679, #747 cycle 4 CRITICAL).
+# of 6 or more chars**, which would also match a `.rite-flow-state.legacy.*`
+# file. The v3 in-place migrate (`flow-state.sh` `_migrate_file`) does NOT
+# create such backups (it rewrites the file in place via `_atomic_write`), but a
+# pre-v3 rename-based migration (the now-removed `flow-state-update.sh` design)
+# may have left one across an upgrade. `-not -name '.rite-flow-state.legacy.*'`
+# defensively preserves any such legacy backup as a manual-recovery source
+# rather than auto-deleting it (#679, #747 cycle 4 CRITICAL).
 find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -not -name ".rite-flow-state.legacy.*" -type f -mmin +1 -delete 2>/dev/null || true
 
 # Extract all fields in a single jq call for efficiency.

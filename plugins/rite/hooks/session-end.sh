@@ -236,8 +236,10 @@ fi
 
 # Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes).
 # Mirrors the same find command in session-start.sh (the canonical source).
-# `-not -name '.rite-flow-state.legacy.*'` excludes the migration backup so it
-# remains the manual-recovery source of truth.
+# `-not -name '.rite-flow-state.legacy.*'` defensively preserves any pre-v3
+# `.rite-flow-state.legacy.*` backup as a manual-recovery source. The v3 in-place
+# migrate does NOT create one — this only matters for files left over from the
+# pre-v3 rename-based migration (the now-removed `flow-state-update.sh` design).
 # DRY caveat: this cleanup is duplicated across session-start.sh and session-end.sh.
 # If you change one, change the other — past fixes to one-side-only have produced
 # CRITICAL regressions.

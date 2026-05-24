@@ -51,8 +51,8 @@ rite workflow はコードベースではなく、Claude Code 用のプロンプ
 {script-name}.test.md
 ```
 
-例:
-- `stop-guard.test.md` - stop-guard.sh のテスト仕様書
+例（命名形式のみ。対応するシェルスクリプトと同名の `.test.md` を置く）:
+- `<script-name>.test.md` — `<script-name>.sh` のテスト仕様書
 
 対応するテストスクリプト（`*.test.sh`）は対象スクリプトと同階層の `tests/` ディレクトリに配置する。
 
@@ -102,4 +102,3 @@ rite workflow はコードベースではなく、Claude Code 用のプロンプ
 | `start-pr-detection.test.md` | `start.md` 再開時 | 既存 PR 検出時の自動遷移 |
 | `cleanup-1.7.3.2.1.test.md` | `cleanup.md` 1.7.3.2.1 | Projects への追加とフィールド設定 |
 | `skill-structure-358.test.md` | Issue #358 | スキル構造改善の検証テスト |
-| `stop-guard.test.md` | `stop-guard.sh` | stop-guard.sh のシェルスクリプトテスト（#506） |

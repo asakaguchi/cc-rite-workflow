@@ -5,7 +5,7 @@ created: "2026-05-24T18:01:50Z"
 updated: "2026-05-24T18:01:50Z"
 sources:
   - type: "reviews"
-    ref: "pr-1132"
+    ref: "raw/reviews/20260524T175056Z-pr-1132.md"
 tags: []
 confidence: medium
 ---

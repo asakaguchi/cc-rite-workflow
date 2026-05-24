@@ -237,18 +237,47 @@ EOF
 # cycle 4 fix (Rec #2 boundary): root user では chmod 0555 が DAC 無視で write 可になり
 # write-failure path を強制できないため、本 invariant を検証不能。silent false-pass を防ぐため
 # 明示的に skip する (container CI で root 実行された場合の silent regression を遮断)。
-if [ "$(id -u)" = "0" ]; then
-  pass "TC-8b-e/g: skipped (root user detected — chmod 0555 ineffective under DAC; write-failure invariant unverifiable in this env)"
+# cycle 5 fix (Rec #4 boundary): id -u だけでは fakeroot / CAP_DAC_OVERRIDE 等で uid=0 表示でも
+# 実 DAC が効くケース / 非 root でも DAC override 可能なケースを正しく判別できない。実機 probe
+# (`chmod 0555` した probe dir に write を試みて失敗するか) で write-failure 強制可能性を確認し、
+# 不可能なら silent false-pass を避けて明示 skip する。これにより id -u 0/non-0 のいずれでも
+# 実環境の DAC 挙動に従って正しく分岐する。
+_dac_probe=$(mktemp -d)/probe
+mkdir -p "$_dac_probe"
+chmod 0555 "$_dac_probe"
+if echo x > "$_dac_probe/_probe_file" 2>/dev/null; then
+  # write が成功 = chmod 0555 で write 強制不能な環境 (root / fakeroot / CAP_DAC_OVERRIDE 等)
+  chmod +w "$_dac_probe" 2>/dev/null || true
+  rm -rf "${_dac_probe%/probe}"
+  pass "TC-8b-e/g: skipped (chmod 0555 ineffective in this env — DAC override / root / fakeroot; write-failure invariant unverifiable)"
 else
+  # write が失敗 = chmod 0555 が effective、本 invariant を検証可能
+  chmod +w "$_dac_probe" 2>/dev/null || true
+  rm -rf "${_dac_probe%/probe}"
   # cycle 4 fix (Rec #1 actionable): chmod restore に defense-in-depth trap を追加。
   # 将来 hard-fail test (assertion 後の `exit 1` 等) が混入しても sandbox の sessions dir が
   # readonly のまま残らないよう保証する。trap は本 TC 完了直後に解除し後続 TC に leak しない。
-  _tc8beg_restore() { chmod +w "$d/.rite/sessions" 2>/dev/null || true; }
-  trap _tc8beg_restore EXIT INT TERM HUP
+  # cycle 5 fix (Rec #1 design_confirmation): 将来 top-level `trap cleanup EXIT` 等が導入されても
+  # 本 TC の trap 解除で外側 cleanup を破壊しないよう、既存 trap を save/restore する。
+  # `trap -p EXIT INT TERM HUP` 出力は POSIX 仕様で shell に reinput 可能 (proper quoting 込み)。
+  # 既存 trap が空の場合は `trap -p` 出力も空となり `eval ""` で no-op (安全)。
+  # cycle 5 fix (Rec #2 actionable): helper 関数名を `_<context>_test_cleanup` パターン
+  # (`_wm_update_test_cleanup` 等の既存 convention) に揃え、命名規約を統一する。
+  # cycle 5 fix (Rec #5 actionable): trap signal list に SIGQUIT を追加し、kill -QUIT 経由の
+  # 異常終了でも sandbox restore を保証する (defense-in-depth)。
+  _tc8beg_saved_trap=$(trap -p EXIT INT TERM HUP QUIT)
+  _tc8beg_test_cleanup() { chmod +w "$d/.rite/sessions" 2>/dev/null || true; }
+  trap _tc8beg_test_cleanup EXIT INT TERM HUP QUIT
   chmod 0555 "$d/.rite/sessions"
   combined=$( (cd "$d" && bash "$HOOK" migrate) 2>&1 )
   chmod +w "$d/.rite/sessions"
-  trap - EXIT INT TERM HUP
+  # cycle 5 fix (Rec #1): 既存 trap を restore (空なら eval "" で no-op)
+  trap - EXIT INT TERM HUP QUIT
+  eval "$_tc8beg_saved_trap"
+  # cycle 5 fix (Rec #3 boundary): trap 解除後に dead function を unset し、後続 TC の shell scope
+  # に function 残存させない (declare -f / スタックトレースのノイズ防止)。
+  unset -f _tc8beg_test_cleanup
+  unset _tc8beg_saved_trap
   migrated_lines=$(echo "$combined" | grep -c '^  migrated:' || true)
   # F-07 対応 (TC-8b-g 統合): Migration complete counter が 0 のままであることを直接 assert する。
   # `_atomic_write` 失敗時に counter が inflate しない invariant の direct verification。

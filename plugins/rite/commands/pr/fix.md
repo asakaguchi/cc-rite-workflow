@@ -643,145 +643,64 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
 fi
 
 # Priority 1: Conversation context (Claude が判断)
-# ⚠️ Claude への指示: Priority 0 が未発火 (review_source="") の状態で、
-# 同一 session 内の直前 assistant turn に `## 📜 rite レビュー結果` セクションを含む
-# /rite:pr:review の出力が残っている場合、下記 bash block を実行する前に会話コンテキストから
-# findings を読み取り、`conversation_review_decision="use"` を literal substitute すること。
-# 会話コンテキストに review 結果がない場合は `conversation_review_decision="none"` を substitute する。
-#
-# 旧実装は noop `:` のみで、Claude が「使う」と判断したのに
-# substitute を忘れた場合と「使わない」と判断した場合が区別できず silent fallthrough する穴があった。
-# Priority 0/3 と対称な defensive check を追加し、literal placeholder のままなら fail-fast する。
-#
-# verified-review H-3 / M-2 (M6) 対応: Phase 1.2.0.1 からの retry 経由で Phase 1.2.0 を再入した場合、
-# 上流の retry counter (.rite/state/fix-fallback-retry-{pr_number}.count) が >= 1 であれば、
-# 前 iteration で Claude が substitute した conversation_review_decision="use" が stale
-# な可能性がある (Phase 1.2.0.1 がファイルパスを変更した後、Priority 0 を再発火させたいのに
-# 前回の "use" が残ったまま Priority 1 が発火して stale conversation source に silent route する
-# Intent Hijack のリスク)。retry counter >= 1 の場合は Claude の substitute に関わらず強制 skip する。
+# ⚠️ Claude への指示: Priority 0 が未発火 (review_source="") の状態で、同一 session 内の直前
+# assistant turn に `## 📜 rite レビュー結果` を含む /rite:pr:review 出力が残っていれば、下記 bash
+# 実行前に会話コンテキストから findings を読み取り `conversation_review_decision="use"` を literal
+# substitute する。会話に review 結果がなければ `conversation_review_decision="none"` を substitute する。
+# substitute 漏れ (literal placeholder 残留) は silent fallthrough / silent P1 hijack を起こすため fail-fast する。
 if [ -z "$review_source" ]; then
-  # verified-review H-3 / M-2 対応: retry counter が >= 1 の場合は Priority 1 を強制 skip する
-  retry_state_file=".rite/state/fix-fallback-retry-${pr_number}.count"
-  retry_current=0
-  if [ -f "$retry_state_file" ]; then
-    # cat の IO エラー (permission denied / inode 破損 / NFS timeout) を
-    # silent に counter=0 にフォールバックさせない。
-    # 真の IO エラーは「未知の状態」として safe side に倒し、retry_current を 999 にして
-    # hard gate を強制発火させる (machine-enforced hard gate 原則)。
-    cat_err=$(mktemp /tmp/rite-fix-retry-cat-err-XXXXXX 2>/dev/null) || cat_err=""
-    if retry_raw=$(cat "$retry_state_file" 2>"${cat_err:-/dev/null}"); then
-      case "$retry_raw" in
-        ''|*[!0-9]*) retry_current=0 ;;
-        *) retry_current=$retry_raw ;;
-      esac
-    else
-      cat_retry_state_rc=$?
-      echo "WARNING: retry state file の読取に失敗 (rc=$cat_retry_state_rc, path=$retry_state_file)" >&2
-      if [ -n "$cat_err" ] && [ -s "$cat_err" ]; then
-        head -3 "$cat_err" | sed 's/^/  /' >&2
-      fi
-      echo "  対処: $retry_state_file の permission / filesystem 健全性を確認してください" >&2
-      echo "[CONTEXT] FIX_FALLBACK_RETRY_READ_FAILED=1; reason=state_file_read_io_error" >&2
-      # IO エラーは「未知の状態」として safe side に倒す: hard gate を確実に発火させる
-      retry_current=999
-    fi
-    [ -n "$cat_err" ] && rm -f "$cat_err"
-  fi
-  # 「レビュー実行」option で新鮮な review が会話コンテキストに乗った経路を識別するため、
-  # Phase 1.2.0.1 Interactive fallback の「レビュー実行」ハンドラは **state file を明示 rm してから**
-  # Phase 1.2 を再入する (下記 "State file cleanup on review_execute" 参照)。state file が削除されていれば
-  # retry_current=0 となり Priority 1 scan が発火する。一方「ファイルパス指定」retry 経路は state file を
-  # 保持したまま Phase 1.2.0 を再入するため、retry_current >= 1 で Priority 1 は強制 skip される。
-  #
-  # 旧実装は `RITE_FIX_P1_BYPASS_COUNTER=1` 環境変数による bypass gate を使っていたが、Claude Code Bash tool は
-  # 呼び出し境界を跨いで env var を継承しないため (anthropics/claude-code#2508)、「レビュー実行」ハンドラが
-  # 環境変数を set しても次の Phase 1.2 bash block には届かず、設計された silent regression になっていた。
-  # state file 自体の明示削除に一元化することで、Bash tool 境界を跨いでも確実に動作する。
-  if [ "$retry_current" -ge 1 ]; then
-    echo "[CONTEXT] P1_SCAN_SKIPPED=1; reason=retry_re_entry; retry_count=$retry_current" >&2
-  else
-    # ⚠️ Claude は以下の literal を Phase 1.2 進入時の判断に基づいて substitute すること
-    #   - 会話に最新の /rite:pr:review 結果あり → `conversation_review_decision="use"`
-    #   - 会話に該当 review 結果なし → `conversation_review_decision="none"`
-    # sentinel は `[A-Z_]` のみで構成し、bash case pattern matching の glob 特殊文字
-    # (`{`, `}`, `*`, `?`, `[]`) を含まない形式とする (review_file_path sentinel と同方針)
-    conversation_review_decision="__RITE_CONVERSATION_DECISION_UNSET__"
-    # machine-readable receipt を必須化する。
-    # Claude は substitute 時に下記 P1_SCAN_TURNS / P1_SCAN_FOUND も同時に substitute すること:
-    #   - use: p1_scan_turns=<N> (scan した assistant turn 数、最低 1)、p1_scan_found="true"
-    #   - none: p1_scan_turns=<N> (scan した assistant turn 数、0 以上)、p1_scan_found="false"
-    # receipt 欠落 (literal placeholder 残留) は silent P1 hijack を起こすため fail-fast する。
-    p1_scan_turns="__RITE_P1_SCAN_TURNS_UNSET__"
-    p1_scan_found="__RITE_P1_SCAN_FOUND_UNSET__"
-    case "$conversation_review_decision" in
-      use)
-        # receipt validation: P1_SCAN_TURNS / FOUND が literal の場合 fail-fast
-        case "$p1_scan_turns" in
-          __RITE_P1_SCAN_TURNS_UNSET__|"")
-            echo "ERROR: Priority 1 receipt p1_scan_turns が literal substitute されていません (decision=use)" >&2
-            echo "  Claude は 'use' を substitute する場合、同時に p1_scan_turns (整数) を substitute する必要があります" >&2
-            echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_receipt_missing" >&2
-            exit 1
-            ;;
-          *[!0-9]*)
-            echo "ERROR: Priority 1 receipt p1_scan_turns が数値ではありません: '$p1_scan_turns'" >&2
-            echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_receipt_invalid" >&2
-            exit 1
-            ;;
-        esac
-        if [ "$p1_scan_found" != "true" ]; then
-          echo "ERROR: Priority 1 decision=use だが p1_scan_found!=true ('$p1_scan_found')" >&2
-          echo "  Claude は conversation に review 結果を見つけた場合のみ 'use' を substitute し、同時に p1_scan_found='true' も substitute する必要があります" >&2
-          echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_receipt_inconsistent" >&2
+  conversation_review_decision="__RITE_CONVERSATION_DECISION_UNSET__"
+  # machine-readable receipt を必須化する。Claude は decision と同時に substitute すること:
+  #   - use:  p1_scan_turns=<N> (scan した assistant turn 数、最低 1)、p1_scan_found="true"
+  #   - none: p1_scan_turns=<N> (0 以上)、p1_scan_found="false"
+  p1_scan_turns="__RITE_P1_SCAN_TURNS_UNSET__"
+  p1_scan_found="__RITE_P1_SCAN_FOUND_UNSET__"
+  case "$conversation_review_decision" in
+    use)
+      case "$p1_scan_turns" in
+        __RITE_P1_SCAN_TURNS_UNSET__|"")
+          echo "ERROR: Priority 1 receipt p1_scan_turns が literal substitute されていません (decision=use)" >&2
+          echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_receipt_missing" >&2
           exit 1
-        fi
-        review_source="conversation"
-        echo "[CONTEXT] REVIEW_SOURCE=conversation; pr_number=${pr_number}; p1_scan_turns=$p1_scan_turns; p1_scan_found=$p1_scan_found" >&2
-        ;;
-      none)
-        # decision=none でも receipt は substitute される想定 (p1_scan_found=false でよい)
-        # literal 残留は observability 欠落のため WARNING のみ (fail-fast はしない)
-        case "$p1_scan_turns" in
-          __RITE_P1_SCAN_TURNS_UNSET__|"")
-            echo "WARNING: Priority 1 decision=none だが receipt p1_scan_turns が未設定 (observability 欠落)" >&2
-            ;;
-          *[!0-9]*)
-            echo "WARNING: Priority 1 decision=none だが p1_scan_turns が非数値 ('$p1_scan_turns')" >&2
-            ;;
-        esac
-        # `use` branch は p1_scan_turns と p1_scan_found を
-        # 両方検証し receipt 整合性で fail-fast するが、`none` branch は p1_scan_turns のみ WARNING
-        # で p1_scan_found の sentinel 残留 / 不正値を一切検知しない非対称があった。
-        # receipt 必須化の趣旨 (Claude substitute 漏れを machine-enforced gate で検出) を
-        # `none` 経路にも展開する。fail-fast はせず WARNING のみに留めるのは、decision=none は
-        # legitimate な「会話コンテキストに review 結果なし」経路であり observability loss は許容
-        # できるため (Priority 2 以降に fallthrough して別経路で finding を取得する)。
-        case "$p1_scan_found" in
-          true|false) ;;  # 正常値
-          __RITE_P1_SCAN_FOUND_UNSET__|"")
-            echo "WARNING: Priority 1 decision=none だが p1_scan_found が sentinel 残留/未設定 (observability 欠落)" >&2
-            ;;
-          *)
-            echo "WARNING: Priority 1 decision=none だが p1_scan_found が不正値: '$p1_scan_found' (許容値: true / false)" >&2
-            ;;
-        esac
-        :  # Priority 2 以降に fallthrough
-        ;;
-      __RITE_CONVERSATION_DECISION_UNSET__)
-        # sentinel のまま → Claude が substitute を忘れた
-        echo "ERROR: Priority 1 conversation_review_decision が literal substitute されていません" >&2
-        echo "  Claude は会話コンテキストの review 結果有無を判断し、'use' または 'none' を substitute する必要があります" >&2
-        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_decision_unset" >&2
+          ;;
+        *[!0-9]*)
+          echo "ERROR: Priority 1 receipt p1_scan_turns が数値ではありません: '$p1_scan_turns'" >&2
+          echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_receipt_invalid" >&2
+          exit 1
+          ;;
+      esac
+      if [ "$p1_scan_found" != "true" ]; then
+        echo "ERROR: Priority 1 decision=use だが p1_scan_found!=true ('$p1_scan_found')" >&2
+        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_receipt_inconsistent" >&2
         exit 1
-        ;;
-      *)
-        echo "ERROR: Priority 1 conversation_review_decision に未知の値: '$conversation_review_decision'" >&2
-        echo "  許容値: use / none" >&2
-        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_decision_invalid" >&2
-        exit 1
-        ;;
-    esac
-  fi
+      fi
+      review_source="conversation"
+      echo "[CONTEXT] REVIEW_SOURCE=conversation; pr_number=${pr_number}; p1_scan_turns=$p1_scan_turns; p1_scan_found=$p1_scan_found" >&2
+      ;;
+    none)
+      # legitimate な「会話に review 結果なし」経路。receipt 不整合は observability 欠落として
+      # WARNING のみ (fail-fast しない — Priority 2 以降に fallthrough)。
+      case "$p1_scan_turns" in
+        __RITE_P1_SCAN_TURNS_UNSET__|"") echo "WARNING: Priority 1 decision=none だが receipt p1_scan_turns が未設定" >&2 ;;
+        *[!0-9]*) echo "WARNING: Priority 1 decision=none だが p1_scan_turns が非数値 ('$p1_scan_turns')" >&2 ;;
+      esac
+      case "$p1_scan_found" in
+        true|false) ;;
+        *) echo "WARNING: Priority 1 decision=none だが p1_scan_found が不正/未設定 ('$p1_scan_found')" >&2 ;;
+      esac
+      :  # Priority 2 以降に fallthrough
+      ;;
+    __RITE_CONVERSATION_DECISION_UNSET__)
+      echo "ERROR: Priority 1 conversation_review_decision が literal substitute されていません" >&2
+      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_decision_unset" >&2
+      exit 1
+      ;;
+    *)
+      echo "ERROR: Priority 1 conversation_review_decision に未知の値: '$conversation_review_decision'" >&2
+      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_decision_invalid" >&2
+      exit 1
+      ;;
+  esac
 fi
 
 # Priority 2: Local file — lexicographic sort で最新 timestamp を選択
@@ -1025,34 +944,6 @@ fi
 # Priority 3: PR comment (fall through to existing Broad Retrieval path if still unresolved)
 if [ -z "$review_source" ]; then
   review_source="pr_comment"  # Existing Phase 1.2 Broad Retrieval / Fast Path handles this
-fi
-
-# verified-review M-1 (M3) 対応: happy path で state file を unconditional clear する。
-# Priority 0-3 のいずれかが成功して review_source が fallback 以外に set された場合、
-# 前セッションで Phase 1.2.0.1 が残した stale retry counter をクリーンアップする
-# (count==3 で永久 block される経路を防ぐ)。fallback 経路 (review_source="fallback") では
-# Phase 1.2.0.1 の retry カウンタ動作を妨げないため rm を skip する。
-if [ -n "$review_source" ] && [ "$review_source" != "fallback" ]; then
-  # rm 失敗を silent に握り潰さず、失敗時には retained flag を emit する (cleanup.md Phase 2.5 と対称)。
-  # pr_number が空だと state_path=".rite/state/fix-fallback-retry-.count" となり、実在しないので
-  # `[ -f ]` で false → silent skip する経路があった。cleanup.md Phase 2.5 の pr_number guard
-  # と対称に、数値 validation で早期 fail する。
-  case "$pr_number" in
-    ''|*[!0-9]*)
-      echo "WARNING: Phase 1.2.0 happy path cleanup: pr_number が空 or 非数値 ('$pr_number')。state file 削除を skip します" >&2
-      echo "[CONTEXT] FIX_FALLBACK_STATE_CLEAR_FAILED=1; reason=invalid_pr_number_at_happy_cleanup" >&2
-      ;;
-    *)
-      state_path=".rite/state/fix-fallback-retry-${pr_number}.count"
-      if [ -f "$state_path" ]; then
-        if ! rm -f "$state_path"; then
-          echo "WARNING: happy path の retry state file 削除に失敗 ($state_path)" >&2
-          echo "  対処: 次回 fallback 経路で stale counter により AskUserQuestion が誤動作する可能性があります。手動削除してください" >&2
-          echo "[CONTEXT] FIX_FALLBACK_STATE_CLEAR_FAILED=1; reason=happy_path_rm_failure" >&2
-        fi
-      fi
-      ;;
-  esac
 fi
 
 # Priority 0/2/3/fallback の最終 review_source 値を
@@ -1576,9 +1467,9 @@ fi
 
 #### 1.2.0.1 Interactive Fallback (when all sources missing — #443) <!-- AC-6 -->
 
-> **Acceptance Criteria anchor**: AC-6 (全ソース欠落時に `AskUserQuestion` で「レビュー実行 / ファイルパス指定 / 中止」を提示。ファイルパス指定は最大 3 回リトライ、state file による hard gate で強制終了)。
+> **Acceptance Criteria anchor**: AC-6 (全ソース欠落時に `AskUserQuestion` で「レビュー実行 / ファイルパス指定 / 中止」を提示する)。
 
-When `{review_source}=fallback` (all Priority 0-3 sources unavailable or invalid), present a 3-option interactive prompt via `AskUserQuestion`:
+`{review_source}=fallback` (Priority 0-3 が全て不可) の場合、`AskUserQuestion` で 3 択を提示する:
 
 ```
 レビュー結果が見つかりませんでした
@@ -1594,193 +1485,34 @@ When `{review_source}=fallback` (all Priority 0-3 sources unavailable or invalid
 - 中止: /rite:pr:fix の処理を終了する
 ```
 
-**Per-option behavior**:
+**Per-option behavior** (one-shot — retry counter / state file による hard gate は廃止した。止まったら `/rite:resume`):
 
 | User Choice | Action |
 |-------------|--------|
-| **レビュー実行** (Recommended) | **State file を削除してから** `skill: "rite:pr:review", args: "{pr_number}"` を invoke し、Phase 1.2 を再入する。state file を削除することで retry counter が 0 に戻り、Priority 1 の conversation context scan が発火する (下記 "State file cleanup on review_execute" の bash block 参照) |
-| **ファイルパス指定** | Re-run Phase 1.2.0 Priority 0 with the user-provided path. If invalid, re-prompt (max 3 attempts, hard gate enforced via state file). state file は保持したまま Phase 1.2.0 を再入するため、retry_current >= 1 で Priority 1 scan は自動的に skip される |
-| **中止** | Emit `[CONTEXT] FIX_FALLBACK_FAILED=1; reason=user_cancelled`, then output `[fix:error]` result pattern and terminate. Do NOT invoke any Phase 2+ logic |
+| **レビュー実行** (Recommended) | `skill: "rite:pr:review", args: "{pr_number}"` を invoke し、完了後 Phase 1.2 を再入する。再入時は会話コンテキストに新鮮な review があるため Priority 1 が `use` で発火する |
+| **ファイルパス指定** | ユーザー入力パスで Phase 1.2.0 Priority 0 を **1 回だけ** 再実行する。再実行でも invalid なら `[CONTEXT] FIX_FALLBACK_FAILED=1; reason=user_file_path_invalid` を emit して `[fix:error]` で terminate する (リトライループなし) |
+| **中止** | `[CONTEXT] FIX_FALLBACK_FAILED=1; reason=user_cancelled` を emit し `[fix:error]` を出力して terminate する。Phase 2+ のロジックは一切実行しない |
 
-**State file cleanup on review_execute** (「レビュー実行」option 選択時の必須 bash 実装):
-
-```bash
-# 「レビュー実行」option 選択時: state file を明示削除してから Phase 1.2 を再入する。
-# これにより next Phase 1.2 bash block の retry_current が 0 になり、Priority 1 scan が発火する。
-pr_number="{pr_number}"
-if ! rm -f ".rite/state/fix-fallback-retry-${pr_number}.count"; then
-  echo "WARNING: retry counter state file の削除に失敗: .rite/state/fix-fallback-retry-${pr_number}.count" >&2
-  echo "  影響: Priority 1 scan が強制 skip される可能性があります" >&2
-fi
-echo "ℹ️  retry counter state file を削除しました。/rite:pr:review を起動して新しいレビューを生成します" >&2
-# この後 Claude は `skill: "rite:pr:review", args: "{pr_number}"` を invoke し、
-# 完了後に Phase 1.2 を最初から再入する (Priority 1 で新鮮な conversation review を採用)。
-```
-
-**Retry cap for ファイルパス指定**: **最大 3 回まで AskUserQuestion が発火する** (1 回目, 2 回目, 3 回目)。3 回目の応答も invalid だった場合、4 回目の AskUserQuestion は発火せず、`[CONTEXT] FIX_FALLBACK_FAILED=1; reason=user_file_path_retries` を emit して `[fix:error]` で terminate する。retry counter は **state file** (`.rite/state/fix-fallback-retry-{pr_number}.count`) で管理し、Claude の自然言語判断に依存しない machine-enforced hard gate として動作する。
-
-> **数え方の正規化**: bash gate (下記) は `current >= 3` で fail する。AskUserQuestion 発火直前に `current` を increment するため、increment 後の値が「これから発火する回数」を表す。`current=0` → increment → `current=1` → 1 回目発火 → `current=1` → increment → `current=2` → 2 回目発火 → `current=2` → increment → `current=3` → 3 回目発火 → `current=3` で 4 回目の gate check が fail。すなわち AskUserQuestion 発火は最大 3 回まで。
-
-**⚠️ Retry counter hard gate — 機械的強制ルール** (state file 方式):
-
-Claude の自然言語判断 / 会話履歴 grep に依存すると、長 context での history truncation / hallucination で無限ループ化するリスクがある。本仕様では retry counter を **ローカル state file** に persistent 保存し、bash レベルで hard gate を強制する。
-
-**State file path**: `.rite/state/fix-fallback-retry-{pr_number}.count` ({pr_number} は Phase 1.0 で正規化済み)
-
-> **State file path は固定** (`fix-fallback-retry-${pr_number}.count`、PID suffix なし)。
->
-> **背景**: 過去の cycle では「並列 fix race 回避」のため `$$` (bash PID) を suffix に追加していたが、Claude Code Bash tool は各呼び出しで別の bash プロセスを起動する (実証: `echo $$` を 3 回連続呼出 → PID が毎回異なる)。`$$` を含む path では retry 毎に別ファイルを参照し counter が永遠に 1 止まりで hard gate が機能しなかった。並列 race については単一 session 内では Bash tool 呼び出しが逐次実行されるため発生しない (sprint team-execute でも同一 issue を 2 セッションで並列実装することはない)。万一の race 懸念は別 Issue で `mkdir` ロック等の defense-in-depth で対応する。
-
-> **⚠️ Counter semantics — Priority 0 と Priority 4 の共有** (verified-review M-2 / M4 対応):
->
-> 本 state file (`fix-fallback-retry-{pr_number}.count`) の counter は **Priority 0 の明示失敗** と **Priority 4 の interactive fallback** で共有される。これは意図的な設計で、両者は「user が valid review path を提供できなかった」という同一の UX 状態を表現する:
->
-> - `/rite:pr:fix --review-file a.json` (invalid) → Priority 0 fail → Phase 1.2.0.1 interactive fallback → 「ファイルパス指定」→ b.json (invalid) → retry 1 → c.json (invalid) → retry 2 → ...
->
-> この経路で counter は 0 → 1 → 2 → 3 と incrementate され、3 で hard gate が発火する。Priority 0 の初回失敗は counter を increment せず (Phase 1.2.0.1 に routing されるだけ)、Phase 1.2.0.1 の retry 発火時にのみ increment される。つまり「Priority 0 失敗 + Phase 1.2.0.1 で 3 回失敗 = 合計 4 回の path 試行」が上限となる (Priority 0 の 1 回はカウント対象外)。
->
-> 別 counter に分ける選択肢 (例: `explicit.count` / `interactive.count`) も検討したが、(a) UX 的には同一の「user がファイルパスを提供する試行」であり分ける必要性が薄い、(b) 分けると lifecycle 管理と state file 命名が複雑化する、(c) 別分岐 retry は Priority 0 初回失敗後に「Priority 0 でも Priority 4 でも counter が incrementate される」とは限らないため既存ユーザーの混乱を招く、という理由で共有を選択した。
-
-**State file lifecycle**:
-
-- **作成**: 「ファイルパス指定」option が初めて選択された時点で `mkdir -p .rite/state && echo 0 > "$state_file"`
-- **増分**: AskUserQuestion 呼び出し**前**に `current=$(cat ...); echo $((current + 1)) > $state_file`
-- **読み出し**: 上記増分前に、cat の **exit code を明示 check して IO エラーとファイル不在を区別** する。cat 成功時は `current=<read value>`、IO エラー時は `current=999` (safe side = hard gate を確実発火)、ファイル不在 (初回) は `current=0`。詳細は下記 bash gate 参照 (Priority 1 skip の I-1 pattern と対称)
-- **削除**: Phase 2+ 進入時 / `[fix:error]` 出力前 / fix loop 終了時 / **AskUserQuestion runtime error 時** (下記「AskUserQuestion failure / abort 経路の state cleanup」参照) のいずれかで `rm -f "$state_file"`
-
-**AskUserQuestion failure / abort 経路の state cleanup**:
-
-AskUserQuestion 自体が runtime error / signal 中断した場合の retry counter state file は、次回 `/rite:pr:fix` 起動時に残留していても hard gate が自動的に発火する方向 (counter >= 3) にしか作用しない。つまり「orphan state file が次回実行で hard gate を skip させる silent regression」は原理的に発生しない (counter は monotonic に増加するのみ)。したがって Phase 1.2.0.1 に独立した trap cleanup は設けない — 状態遷移が不明瞭になり hard gate を誤破壊するリスクの方が高いため。
-
-正常経路での state file 削除は以下の 3 箇所に一元化される:
-1. 「ファイルパス指定」retry が成功した時点 (下記「State file cleanup on success」参照)
-2. 「中止」option が選択された時点 (下記「中止 option の bash 実装」参照)
-3. hard gate が発火 (counter >= 3) した時点 (下記 bash gate 参照)
-
-**1. AskUserQuestion 呼び出し前の必須 bash gate**: 「ファイルパス指定」retry を実行する際、`AskUserQuestion` を呼び出す**直前**に必ず以下の bash を実行する:
+**中止 / file-path invalid の bash 実装** (silent regression 防止 — Phase 8.1 評価順 1 で `[fix:error]` に昇格):
 
 ```bash
-# Retry hard gate: state file による machine-enforced 強制
-# state file は specific path (pr_number suffix 必須、wildcard glob 禁止)
-# pr_number は Claude が Phase 1.0 の値で literal substitute する。block 冒頭で束縛することで、
-# 後続の参照が `${pr_number}` 形式に統一され、placeholder 残留 silent bug を防ぐ。
-pr_number="{pr_number}"
-state_dir=".rite/state"
-# state_file の path は固定 (PID suffix なし)。Claude Code Bash tool は各呼び出しで別 bash
-# プロセスを起動するため、PID suffix を入れると retry 毎に別ファイルを参照し counter が
-# 永遠に 1 止まりで hard gate が機能しない。並列 race については単一 session 内では Bash
-# tool 呼び出しが逐次実行されるため発生しない。
-state_file="${state_dir}/fix-fallback-retry-${pr_number}.count"
-mkdir_err=$(mktemp /tmp/rite-fix-p1201-mkdir-err-XXXXXX 2>/dev/null) || mkdir_err=""
-if ! mkdir -p "$state_dir" 2>"${mkdir_err:-/dev/null}"; then
-  echo "ERROR: $state_dir の作成に失敗しました" >&2
-  if [ -n "$mkdir_err" ] && [ -s "$mkdir_err" ]; then
-    head -3 "$mkdir_err" | sed 's/^/  /' >&2
-  fi
-  echo "  対処: permission denied / read-only filesystem / .rite が通常ファイルでないか確認してください" >&2
-  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=state_dir_mkdir_failed" >&2
-  [ -n "$mkdir_err" ] && rm -f "$mkdir_err"
-  echo "[fix:error]"
-  exit 1
-fi
-[ -n "$mkdir_err" ] && rm -f "$mkdir_err"
-
-# cat の exit code を明示 check することで、IO エラー (permission denied / NFS timeout / inode 破損 等)
-# を silent に `current=0` に倒す silent regression を防ぐ。Phase 1.2.0 Priority 1 の retry_state_file
-# 読取ブロック (IO エラー時 `retry_current=999` で safe-side 倒し) と対称に、IO エラー時は `current=999`
-# で hard gate を確実発火させる。
-cat_err=$(mktemp /tmp/rite-fix-p1201-cat-err-XXXXXX 2>/dev/null) || cat_err=""
-if [ -f "$state_file" ]; then
-  if current=$(cat "$state_file" 2>"${cat_err:-/dev/null}"); then
-    # cat 成功: 数値 validation (state file 改竄 / 異常値の防御)
-    case "$current" in
-      ''|*[!0-9]*) current=0 ;;
-    esac
-  else
-    cat_p1201_state_rc=$?
-    echo "ERROR: retry state file の読取に失敗 (rc=$cat_p1201_state_rc)" >&2
-    if [ -n "$cat_err" ] && [ -s "$cat_err" ]; then
-      echo "  詳細 (cat stderr):" >&2
-      head -3 "$cat_err" | sed 's/^/  /' >&2
-    fi
-    echo "  影響: safe side に倒して hard gate を確実発火させます (counter=999)" >&2
-    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=state_file_read_io_error_gate" >&2
-    current=999  # safe side: hard gate を確実発火 (Priority 1 skip I-1 と対称)
-  fi
-else
-  # 初回実行 (ファイル不在) は legitimate な 0 開始
-  current=0
-fi
-[ -n "$cat_err" ] && rm -f "$cat_err"
-
-if [ "$current" -ge 3 ]; then
-  echo "エラー: ファイルパス指定のリトライが 3 回続けて失敗しました" >&2
-  echo "  [CONTEXT] retry counter=$current/3 (state file: $state_file)" >&2
-  echo "" >&2
-  echo "次の対処を検討してください:" >&2
-  echo "  1. /rite:pr:review を実行してローカル JSON を新規生成する (recommended)" >&2
-  echo "  2. .rite/review-results/ ディレクトリに既存ファイルが存在するか確認する:" >&2
-  echo "       ls -la .rite/review-results/${pr_number}-*.json" >&2
-  echo "  3. 既存 JSON の必須フィールド (schema_version, pr_number, findings) をエディタで検証する" >&2
-  echo "  4. schema 定義を参照する: plugins/rite/references/review-result-schema.md" >&2
-  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=user_file_path_retries" >&2
-  # rm 失敗を可視化 (旧実装は silent)。
-  # Phase 1.2.0 happy path state file rm (I-2 対応) と対称化する。失敗時は
-  # retained flag を追加 emit し、state file が counter=3 のまま残留する silent 経路を防ぐ。
-  # Non-blocking Contract 準拠: rm 失敗でも `[fix:error]` は既に emit 済みなので hard exit は継続。
-  if ! rm -f "$state_file"; then
-    echo "WARNING: hard gate 発火後の state file 削除に失敗: $state_file" >&2
-    echo "  影響: 次回 fix 起動時に stale counter=3 が残留し Priority 1 skip が発動し続ける可能性があります" >&2
-    echo "  手動削除: rm \"$state_file\"" >&2
-    echo "[CONTEXT] FIX_FALLBACK_STATE_CLEAR_FAILED=1; reason=hard_gate_rm_failure" >&2
-  fi
-  echo "[fix:error]"
-  exit 1
-fi
-
-new_count=$((current + 1))
-echo "$new_count" > "$state_file" || {
-  echo "ERROR: state file への書き込みに失敗 (disk full / permission)" >&2
-  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=state_file_write_failed" >&2
-  echo "[fix:error]"
-  exit 1
-}
-echo "[CONTEXT] FIX_FALLBACK_RETRY=$new_count/3" >&2
-```
-
-**2. Phase 2+ 進入禁止**: retry_count >= 3 で `[fix:error]` が emit された時点で Claude は **以降の Phase (Phase 2 Categorization, Phase 3 Commit, Phase 4 Report) への bash tool 呼び出しを一切行ってはならない**。これは bash の `exit 1` と state file による機械的強制ルールであり、自然言語判断による例外を認めない。
-
-**3. State file cleanup on success**: 「ファイルパス指定」が成功 (= valid JSON file が見つかり Phase 1.2.0 Priority 0 が成功) した時点で:
-
-```bash
-pr_number="{pr_number}"
-# 成功時 cleanup の rm 失敗を可視化 (I-2 と対称化)。
-# 旧実装は silent で、失敗時に次回 fix が起動した時点で stale counter が残留し Priority 1 skip が
-# 誤発動する経路があった。
-if ! rm -f ".rite/state/fix-fallback-retry-${pr_number}.count"; then
-  echo "WARNING: 成功時 cleanup の state file 削除に失敗: .rite/state/fix-fallback-retry-${pr_number}.count" >&2
-  echo "  影響: 次回 fix 起動時に stale counter が残留し Priority 1 skip が誤発動する可能性があります" >&2
-  echo "  手動削除: rm \".rite/state/fix-fallback-retry-${pr_number}.count\"" >&2
-  echo "[CONTEXT] FIX_FALLBACK_STATE_CLEAR_FAILED=1; reason=success_cleanup_rm_failure" >&2
-fi
-```
-
-これにより次回の Interactive Fallback 起動時に counter が clean state から始まる。
-
-**「中止」option の bash 実装**: 「中止」が選択された場合は以下を実行する (silent regression 防止 — Phase 8.1 評価順 1 で `[fix:error]` に昇格させる):
-
-```bash
-pr_number="{pr_number}"
+# 中止が選択された場合:
 echo "ユーザーが Interactive Fallback で「中止」を選択しました" >&2
 echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=user_cancelled" >&2
-# 中止時 cleanup の rm 失敗を可視化 (I-2 と対称化)。
-if ! rm -f ".rite/state/fix-fallback-retry-${pr_number}.count"; then
-  echo "WARNING: 中止時 cleanup の state file 削除に失敗: .rite/state/fix-fallback-retry-${pr_number}.count" >&2
-  echo "[CONTEXT] FIX_FALLBACK_STATE_CLEAR_FAILED=1; reason=user_cancel_rm_failure" >&2
-fi
 echo "[fix:error]"
 exit 1
 ```
+
+```bash
+# 「ファイルパス指定」の再実行でも invalid だった場合:
+echo "エラー: 指定されたファイルパスでもレビュー結果を取得できませんでした" >&2
+echo "  /rite:pr:review を実行してローカル JSON を生成するか、有効な JSON path を確認してください" >&2
+echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=user_file_path_invalid" >&2
+echo "[fix:error]"
+exit 1
+```
+
+**Phase 2+ 進入禁止**: `[fix:error]` が emit された時点で Claude は以降の Phase (Phase 2 Categorization, Phase 3 Commit, Phase 4 Report) への bash tool 呼び出しを一切行ってはならない。bash の `exit 1` による機械的強制ルールであり、自然言語判断による例外を認めない。
 
 **Phase 1.0.1 / 1.2.0 / 1.2.0.1 failure reasons** (reason table drift prevention — see [distributed-fix-drift-check](../../hooks/scripts/distributed-fix-drift-check.sh) Pattern-2 / Pattern-5):
 
@@ -1805,17 +1537,10 @@ exit 1
 | `pr_comment_cross_field_invariant_violated` | Priority 3 で取得した PR コメント Raw JSON の cross-field invariant 違反: `overall_assessment=="mergeable"` だが CRITICAL/HIGH かつ status==open の finding が存在 (legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
 | `pr_comment_critical_high_scope_nit_noted` | Priority 3 で取得した PR コメント Raw JSON の cross-field invariant #4 違反 (Issue #1016): `severity ∈ {CRITICAL, HIGH}` × `scope == "nit-noted"` の finding が存在 (legacy Markdown parser へ fallthrough、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
 | `pr_comment_schema_version_unknown` | Priority 3 で取得した PR コメント Raw JSON の schema_version が未知 (legacy Markdown parser へ fallthrough) |
-| `user_file_path_retries` | Interactive fallback の「ファイルパス指定」が 3 回連続で失敗 (terminate with `[fix:error]`) |
 | `user_cancelled` | Interactive fallback で「中止」option が選択された (Phase 8.1 評価順 1 で `[fix:error]` に昇格) |
-| `state_dir_mkdir_failed` | retry hard gate state directory `.rite/state/` の作成失敗 (permission denied / read-only filesystem) |
-| `state_file_write_failed` | retry hard gate state file への書き込み失敗 (disk full / permission denied) |
-| `state_file_read_io_error_gate` | Phase 1.2.0.1 retry hard gate の state file 読取が IO エラーで失敗 (permission denied / NFS timeout / inode 破損 等)。safe side に倒して counter=999 で hard gate を確実発火させる (Priority 1 skip の I-1 pattern と対称) |
+| `user_file_path_invalid` | Interactive fallback の「ファイルパス指定」で再実行した path でもレビュー結果を取得できなかった (one-shot、retry ループなし、`[fix:error]` 昇格) |
 | `review_source_unset_post_chain` | Phase 1.2.0 Priority chain 終了時に `review_source` が空 (未設定) のまま block 末尾に到達 (設計契約違反、Priority chain の routing bug) |
 | `review_source_invalid_post_chain` | Phase 1.2.0 Priority chain 終了時に `review_source` に未知の値が設定されている (許容値: `explicit_file` / `conversation` / `local_file` / `pr_comment` / `fallback`) |
-| `invalid_pr_number_at_happy_cleanup` | Phase 1.2.0 happy path state cleanup 時に pr_number が空 / 非数値 (cleanup.md Phase 2.5 numeric guard と対称、`[CONTEXT] FIX_FALLBACK_STATE_CLEAR_FAILED=1` flag を併設) |
-| `hard_gate_rm_failure` | Phase 1.2.0.1 retry hard gate 発火後の state file `rm -f` が失敗 (`[CONTEXT] FIX_FALLBACK_STATE_CLEAR_FAILED=1` flag を併設、stale counter=3 残留のリスクを WARNING で可視化) |
-| `success_cleanup_rm_failure` | Phase 1.2.0.1 ファイルパス指定成功時 state file `rm -f` が失敗 (`[CONTEXT] FIX_FALLBACK_STATE_CLEAR_FAILED=1` flag を併設、stale state 残留のリスクを WARNING で可視化) |
-| `user_cancel_rm_failure` | Phase 1.2.0.1 中止選択時 state file `rm -f` が失敗 (`[CONTEXT] FIX_FALLBACK_STATE_CLEAR_FAILED=1` flag を併設) |
 | `review_file_path_empty_value` | Phase 1.0.1 で値を持たない `--review-file` が指定された。Pattern 1 (equals style: `--review-file=`) と Pattern 2 (space style: `--review-file <末尾>`) の両方で検出される。`flag_style=equals` / `flag_style=space` として retained flag に付記される |
 | `comment_body_tempfile_empty` | Phase 1.2.0 Priority 3 で `/tmp/rite-fix-pr-comment-{pr_number}.txt` が存在するが空 (Broad Retrieval が異常終了したか PR コメント本文が完全に空) |
 | `bash_version_incompatible` | Prerequisites の `command -v mapfile` チェックが失敗 (bash 3.2 等の旧バージョン) |
@@ -1831,9 +1556,6 @@ exit 1
 | `local_file_find_io_error` | Priority 2 の `find .rite/review-results/` が IO エラーで failed (L-3 対応) |
 | `mktemp_failure_find_err` | Priority 2 の find stderr 退避用 tempfile の mktemp が失敗 (C-5 対応、cleanup.md Phase 2.5 と対称)。silent skip 防止のため WARNING + retained flag を必ず emit する (Issue #1025 対応) |
 | `latest_file_stat_failure` | Priority 2 で find が見つけた `latest_file` が `-f` check で脱落 (M-4 対応、permission denied / symlink 破壊) |
-| `state_file_read_io_error` | Phase 1.2.0 Priority 1 の retry state file `cat` が IO エラーで失敗 (I-1 対応、hard gate を safe side に倒すため `retry_current=999`) |
-| `happy_path_rm_failure` | Phase 1.2.0 happy path の retry state file 削除が失敗 (I-2 対応、cleanup.md Phase 2.5 と対称) |
-| `retry_re_entry` | Phase 1.2.0 Priority 1 が retry counter >= 1 のため強制 skip された (verified-review H-3 / M-2 対応、stale conversation source の silent route を防ぐ。`P1_SCAN_SKIPPED` flag 専用の reason で fix loop を中断しない) |
 | `jq_duplicate_check_failed` | Priority 0/2 で重複 file:line 検出用 jq が失敗 (silent data loss 検出を skip、非ブロッキング) |
 | `severity_map_build_failed` | Priority 0/2 で severity_map 構築用 jq が失敗 (0 件で正常終了する silent regression 防止、`[fix:error]` 昇格) |
 | `pr_comment_severity_map_build_failed` | Priority 3 で PR コメント Raw JSON からの severity_map 構築用 jq が失敗 (legacy Markdown parser へ fallthrough) |
@@ -1848,7 +1570,7 @@ exit 1
 | `scope_map_build_failed` | Issue #1018 M2: Priority 0/2 (file-based) で scope_map_json 構築用 jq が失敗 (`REVIEW_SOURCE_PARSE_FAILED` flag、非ブロッキング、`scope_map_json="{}"` で legacy blocking 扱いに fallback) |
 | `pr_comment_scope_map_build_failed` | Issue #1018 M2: Priority 3 (pr_comment Raw JSON) で scope_map_json 構築用 jq が失敗 (`REVIEW_SOURCE_PARSE_FAILED` flag、非ブロッキング、`scope_map_json="{}"` で legacy blocking 扱いに fallback) |
 
-**Eval-order enumeration** (for Pattern-5 drift check): 本 enumeration は Pattern-5 drift check の **唯一の入力源** であり、上の Phase 1.2.0 / 1.2.0.1 reason 表と必ず同期させること。reason を追加・削除する際は表と本 enumeration の両方を同時に更新する。emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `explicit_file_not_found` / `explicit_file_parse` / `explicit_file_schema_required_fields_missing` / `mergeable_has_open_blockers` / `explicit_file_critical_high_scope_nit_noted` / `overall_assessment_unknown_value` / `explicit_file_schema_version_unknown` / `priority1_decision_unset` / `priority1_decision_invalid` / `priority1_receipt_missing` / `priority1_receipt_invalid` / `priority1_receipt_inconsistent` / `sort_or_mapfile_failure` / `local_file_json_parse_failure` / `local_file_schema_required_fields_missing` / `local_file_cross_field_invariant_violated` / `local_file_critical_high_scope_nit_noted` / `local_file_schema_version_unknown` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_file_path_retries` / `user_cancelled` / `state_dir_mkdir_failed` / `state_file_write_failed` / `state_file_read_io_error_gate` / `review_source_unset_post_chain` / `review_source_invalid_post_chain` / `invalid_pr_number_at_happy_cleanup` / `hard_gate_rm_failure` / `success_cleanup_rm_failure` / `user_cancel_rm_failure` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `explicit_file_commit_sha_mismatch` / `local_file_commit_sha_mismatch` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `local_file_find_io_error` / `mktemp_failure_find_err` / `latest_file_stat_failure` / `state_file_read_io_error` / `happy_path_rm_failure` / `retry_re_entry` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `review_file_path_placeholder_residue` / `scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `mktemp_failure_norm_tmp` / `low_current_pr_demoted_to_nit_noted` / `scope_map_build_failed` / `pr_comment_scope_map_build_failed`)
+**Eval-order enumeration** (for Pattern-5 drift check): 本 enumeration は Pattern-5 drift check の **唯一の入力源** であり、上の Phase 1.2.0 / 1.2.0.1 reason 表と必ず同期させること。reason を追加・削除する際は表と本 enumeration の両方を同時に更新する。emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `explicit_file_not_found` / `explicit_file_parse` / `explicit_file_schema_required_fields_missing` / `mergeable_has_open_blockers` / `explicit_file_critical_high_scope_nit_noted` / `overall_assessment_unknown_value` / `explicit_file_schema_version_unknown` / `priority1_decision_unset` / `priority1_decision_invalid` / `priority1_receipt_missing` / `priority1_receipt_invalid` / `priority1_receipt_inconsistent` / `sort_or_mapfile_failure` / `local_file_json_parse_failure` / `local_file_schema_required_fields_missing` / `local_file_cross_field_invariant_violated` / `local_file_critical_high_scope_nit_noted` / `local_file_schema_version_unknown` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_source_unset_post_chain` / `review_source_invalid_post_chain` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `explicit_file_commit_sha_mismatch` / `local_file_commit_sha_mismatch` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `local_file_find_io_error` / `mktemp_failure_find_err` / `latest_file_stat_failure` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `review_file_path_placeholder_residue` / `scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `mktemp_failure_norm_tmp` / `low_current_pr_demoted_to_nit_noted` / `scope_map_build_failed` / `pr_comment_scope_map_build_failed`)
 
 #### Legacy Branching (PR Comment Path Only)
 

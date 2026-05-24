@@ -146,8 +146,6 @@ fi
 
 Automatically append the following to the work memory:
 
-**Note**: If a `### 未完了タスクの処理結果` section was appended in Phase 1.7.4, preserve its content. The update in Phase 3.5 appends to the existing content and must not overwrite the Phase 1.7.4 records.
-
 **Progress section merge method:**
 
 The progress section update in Phase 3.5.2 follows this logic:
@@ -155,15 +153,13 @@ The progress section update in Phase 3.5.2 follows this logic:
 1. Retrieve the existing progress section
 2. Preserve all existing checklist items
 3. Append new items (`- [x] レビュー完了`, `- [x] マージ完了`, `- [x] クリーンアップ完了`) at the end (do not duplicate if already present)
-4. If `- [x] 未完了タスク処理済み` added in Phase 1.7.4 exists, preserve it as well
 
-**Example (merging from a state after Phase 1.7.4 execution):**
+**Example:**
 
 ```markdown
 ### 進捗
 - [x] 実装完了
 - [x] PR マージ済み
-- [x] 未完了タスク処理済み  ← Phase 1.7.4 で追加（保持）
 - [x] レビュー完了           ← Phase 3.5.2 で追加
 - [x] マージ完了             ← Phase 3.5.2 で追加
 - [x] クリーンアップ完了     ← Phase 3.5.2 で追加

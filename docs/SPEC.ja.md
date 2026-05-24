@@ -225,7 +225,7 @@ rite-workflow/
 │ ├── preflight-check.sh
 │ ├── pre-tool-bash-guard.sh / post-tool-wm-sync.sh
 │ ├── hook-preamble.sh / state-path-resolve.sh # 共通ヘルパー
-│ ├── flow-state-update.sh / local-wm-update.sh
+│ ├── flow-state.sh / local-wm-update.sh
 │ ├── work-memory-lock.sh / work-memory-update.sh / work-memory-parse.py
 │ ├── cleanup-work-memory.sh
 │ ├── issue-body-safe-update.sh / issue-comment-wm-sync.sh / issue-comment-wm-update.py
@@ -1443,7 +1443,7 @@ legacy `create_*` / `cleanup_*` phase の lifecycle 未完了検出は現在 `se
 
 ### Session Ownership (`session-ownership.sh`)
 
-マルチセッション競合防止のために `session-start.sh` / `session-end.sh` / `post-tool-wm-sync.sh` / `pre-compact.sh` / `flow-state-update.sh` 等から source される共有ライブラリ (`stop-guard.sh` は撤去済)。
+マルチセッション競合防止のために `session-start.sh` / `session-end.sh` / `post-tool-wm-sync.sh` / `pre-compact.sh` 等から source される共有ライブラリ (`flow-state.sh` は本ライブラリの source caller ではなく `state-path-resolve.sh` のみを source する。`stop-guard.sh` は撤去済)。
 
 **提供する関数:**
 

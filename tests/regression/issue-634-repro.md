@@ -4,6 +4,12 @@
 - **Previous accumulated fixes**: #525, #444, #475, #552, #561, #622, #628
 - **Sibling regression**: #621 (cleanup workflow 内の同型問題)
 
+> **⚠️ Status: Retired（歴史的記録）**
+>
+> 本 fixture が検証していたアーキテクチャ — pre-v3 の sub-skill chain（`create-interview.md` / `create-register.md` / `create-decompose.md`）と Stop hook `stop-guard.sh` による implicit-stop ブロック機構 — は撤去済みである。sub-skill 群は flat な `create.md` へ統合され、Stop hook は PR #675 で機構ごと撤去された（phase 遷移 whitelist `phase-transition-whitelist.sh` も v2→v3 で削除）。
+>
+> したがって以下の検証コマンドのうち `stop-guard.sh` / `stop-guard.test.sh` / `phase-transition-whitelist.sh` / `create-interview.md` / `create-register.md` / `create-decompose.md` / `.rite-stop-guard-diag.log` を参照するものは **すべて実行不能**であり、#634 を含む同型 regression シリーズの**歴史的記録**として残置する。現在の implicit-stop 対策は orchestrator レベルの scaffolding 契約（Pre-write + 🚨 Mandatory After）と `/rite:resume` による復帰が担い、lifecycle phase の分類は `session-end.sh` の inline glob が行う。
+
 ## 0. このドキュメントの位置づけ
 
 #634 は本リポジトリで 8 回目の同一 protocol violation regression (7 件の累積対策 + #634 fix)。本ドキュメントは #622 fixture (`issue-622-repro.md`) の後継として、#634 で追加した防御層の検証手順と AC 対応表を記録する。

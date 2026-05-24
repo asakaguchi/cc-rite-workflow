@@ -375,10 +375,11 @@ else
 fi
 echo ""
 
-# TC-608-WARN-D: cleanup_post_ingest phase branch coverage (case branch 全網羅)
-# session-end.sh の cleanup lifecycle check は cleanup / cleanup_pre_ingest / cleanup_post_ingest の
-# 3 phase をカバーする必要がある。TC-608-WARN-A は cleanup_pre_ingest のみで、cleanup_post_ingest
-# の case branch が削除されても WARN-A/B/C は pass し続ける false-positive 構造。本 TC で補完。
+# TC-608-WARN-D: cleanup_post_ingest phase branch coverage (ELIF glob 分岐 全網羅)
+# session-end.sh の cleanup lifecycle 判定 ELIF glob (`cleanup` / `cleanup_*` 一致) は cleanup /
+# cleanup_pre_ingest / cleanup_post_ingest の 3 phase をカバーする必要がある。TC-608-WARN-A は
+# cleanup_pre_ingest のみで、cleanup_post_ingest 一致が外れても WARN-A/B/C は pass し続ける
+# false-positive 構造。本 TC で補完。
 echo "TC-608-WARN-D: cleanup_post_ingest active → /rite:pr:cleanup lifecycle warning"
 dir608wd="$TEST_DIR/tc608wd"
 mkdir -p "$dir608wd"

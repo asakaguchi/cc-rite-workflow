@@ -84,7 +84,7 @@ Before executing git log, verify the base branch exists:
 git rev-parse --verify {base_branch} 2>/dev/null
 # If fails, try remote:
 git rev-parse --verify origin/{base_branch} 2>/dev/null
-# If both fail: display "ベースブランチ {branch} が見つかりません。rite-config.yml の branch.base を確認してください" and terminate
+# If both fail: display "ベースブランチ {base_branch} が見つかりません。rite-config.yml の branch.base を確認してください" and terminate
 ```
 
 Use `{base_branch}` if local exists, otherwise `origin/{base_branch}`:
@@ -223,6 +223,6 @@ Suggest narrowing with a more specific scope or action type filter.
 | Error | Response |
 |-------|----------|
 | Not in a git repository | `Git リポジトリ内で実行してください` |
-| Base branch not found (mode=branch) | `ベースブランチ {branch} が見つかりません。rite-config.yml の branch.base を確認してください` |
+| Base branch not found (mode=branch) | `ベースブランチ {base_branch} が見つかりません。rite-config.yml の branch.base を確認してください` |
 | No commits in range | Phase 3.2 empty result handling |
 | Git command failure | Display error and terminate |

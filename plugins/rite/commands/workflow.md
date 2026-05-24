@@ -24,9 +24,9 @@ ls rite-config.yml 2>/dev/null || ls .claude/rite:config.yml 2>/dev/null
 **If it does not exist:**
 
 ```
-{i18n:workflow_not_initialized}
+rite workflow が初期化されていません
 
-{i18n:workflow_run_init}
+まず /rite:init を実行してセットアップを完了してください
 ```
 
 Stop here and do not execute any subsequent phases.

@@ -181,63 +181,63 @@ Determine the output language according to the `language` setting read in Phase 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  {i18n:skill_suggest_title}                                  │
+│  スキル提案                                  │
 └─────────────────────────────────────────────────────────────┘
 
-{i18n:skill_suggest_current_context}:
+現在のコンテキスト:
   Issue: #{number} {title}
-  {i18n:skill_suggest_branch}: {branch_name}
-  {i18n:skill_suggest_changed_files}: {changed_files_count} {i18n:sprint_plan_count_unit}
+  ブランチ: {branch_name}
+  変更ファイル: {changed_files_count} 件
 
 ───────────────────────────────────────────────────────────────
 
-【{i18n:skill_suggest_strongly_recommended}】
+【強く推奨】
 
   📌 {skill_name}
      {skill_description}
 
-     {i18n:skill_suggest_reason}:
+     適用理由:
      - {reason_1}
      - {reason_2}
 
-     {i18n:skill_suggest_how_to_apply}: {i18n:skill_suggest_auto_apply}
+     適用方法: このスキルは自動的に適用されます
 
-【{i18n:skill_suggest_recommended}】
+【推奨】
 
   📎 {skill_name}
      {skill_description}
 
-     {i18n:skill_suggest_reason}:
+     適用理由:
      - {reason_1}
 
 ───────────────────────────────────────────────────────────────
 
-【{i18n:skill_suggest_reference_info}】
-- {i18n:skill_suggest_info_based_on_context}
-- {i18n:skill_suggest_info_defined_in}
+【参考情報】
+- 上記スキルは現在のコンテキストに基づいて提案されています
+- スキルは skills/ ディレクトリの SKILL.md で定義されています
 ```
 
 ### 4.3 When No Recommended Skills Exist
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  {i18n:skill_suggest_title}                                  │
+│  スキル提案                                  │
 └─────────────────────────────────────────────────────────────┘
 
-{i18n:skill_suggest_current_context}:
+現在のコンテキスト:
   Issue: #{number} {title}
-  {i18n:skill_suggest_branch}: {branch_name}
-  {i18n:skill_suggest_changed_files}: {changed_files_count} {i18n:sprint_plan_count_unit}
+  ブランチ: {branch_name}
+  変更ファイル: {changed_files_count} 件
 
 ───────────────────────────────────────────────────────────────
 
-{i18n:skill_suggest_no_recommended}
+現在のコンテキストに特に推奨されるスキルはありません。
 
-{i18n:skill_suggest_available_skills}:
+利用可能なスキル一覧:
 - {skill_name}: {skill_description}
 - {skill_name}: {skill_description}
 
-{i18n:skill_suggest_auto_apply_note}
+スキルは作業内容に応じて自動的に適用されます。
 ```
 
 ### 4.4 When Context Information Is Missing or Incomplete
@@ -246,18 +246,18 @@ When the Issue number cannot be determined (no `issue-{number}` pattern in branc
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  {i18n:skill_suggest_title}                                  │
+│  スキル提案                                  │
 └─────────────────────────────────────────────────────────────┘
 
-{i18n:skill_suggest_insufficient_context}:
+コンテキスト情報が不足しています:
 
 {missing_info_list}
 
-【{i18n:skill_suggest_resolution}】
-- {i18n:skill_suggest_resolution_work_on_branch}
-- {i18n:skill_suggest_resolution_use_start}
+【対処方法】
+- Issue を紐づけたブランチで作業してください
+- /rite:issue:start {number} で作業を開始すると、ブランチと Issue が自動的に紐づきます
 
-{i18n:skill_suggest_available_skills}:
+利用可能なスキル一覧:
 - {skill_name}: {skill_description}
 ```
 
@@ -270,14 +270,14 @@ When the Issue number cannot be determined (no `issue-{number}` pattern in branc
 When `--verbose` or `-v` is specified as an argument, display matching score details:
 
 ```
-【{i18n:skill_suggest_matching_details}】
+【マッチング詳細】
 
 {skill_name}:
-  {i18n:skill_suggest_total_score}: 7
-  - {i18n:skill_suggest_keyword_match}: +3 (workflow, Issue)
-  - {i18n:skill_suggest_file_match}: +2 (*.md)
-  - {i18n:skill_suggest_label_match}: +2 (enhancement)
-  - {i18n:skill_suggest_project_type}: +0
+  総合スコア: 7
+  - Issue キーワード: +3 (workflow, Issue)
+  - 変更ファイル: +2 (*.md)
+  - ラベル: +2 (enhancement)
+  - プロジェクト種別: +0
 ```
 
 ### 5.2 Filter Mode (`--filter {category}`)
@@ -305,13 +305,13 @@ Categories are dynamically retrieved from the directory structure of `{plugin_ro
 **Note**: When a skill is not assigned to a category or a non-existent category is specified:
 
 ```
-{i18n:skill_suggest_warning_category} (variables: category={category})
+警告: カテゴリ '{category}' に一致するスキルが見つかりません
 
-{i18n:skill_suggest_available_categories}:
+利用可能なカテゴリ:
 - workflow
 - review
 
-{i18n:skill_suggest_show_all_hint}
+すべてのスキルを表示するには --filter オプションを省略してください。
 ```
 
 ---

@@ -26,9 +26,9 @@ gh --version
 
 If not installed, show:
 ```
-{i18n:init_gh_not_installed}
+GitHub CLI (gh) がインストールされていません
 
-{i18n:init_install_instructions}:
+インストール手順:
 - macOS: `brew install gh`
 - Linux: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
 - Windows: `winget install GitHub.cli`
@@ -61,9 +61,9 @@ gh auth status
 
 If not authenticated, show:
 ```
-{i18n:init_not_authenticated}
+GitHub に認証されていません
 
-{i18n:init_auth_command}: `gh auth login`
+認証コマンド: `gh auth login`
 ```
 and exit.
 
@@ -75,7 +75,7 @@ gh repo view --json owner,name,id,url
 
 If not a Git repository or not a GitHub repository, show:
 ```
-{i18n:init_not_github_repo}
+GitHub リポジトリではありません
 ```
 and exit.
 
@@ -109,12 +109,12 @@ Check in the following order:
 Confirm the detection result with AskUserQuestion:
 
 ```
-{i18n:init_confirm_project_type}:
-- webapp: {i18n:init_project_type_webapp}
-- library: {i18n:init_project_type_library}
-- cli: {i18n:init_project_type_cli}
-- documentation: {i18n:init_project_type_documentation}
-- generic: {i18n:init_project_type_generic}
+プロジェクト種別を確認してください:
+- webapp: Web アプリケーション
+- library: OSS ライブラリ
+- cli: CLI ツール
+- documentation: ドキュメントサイト
+- generic: 汎用プロジェクト
 ```
 
 ---
@@ -132,8 +132,8 @@ gh project list --owner {owner} --format json
 Select with AskUserQuestion:
 
 オプション:
-- {i18n:init_projects_use_existing}
-- {i18n:init_projects_create_new}
+- 既存の Projects と連携する（リストから選択）
+- 新規 Projects を作成する
 
 ### 3.3 If Creating New
 
@@ -238,16 +238,16 @@ Iteration/スプリント管理を使用しますか？
 Display a manual creation guide:
 
 ```
-{i18n:init_iteration_manual_create_note}
+Iteration フィールドは GitHub CLI から自動作成できないため、手動で作成する必要があります。
 
-{i18n:init_iteration_creation_steps}:
-1. {i18n:init_iteration_step1} (variables: project_url={project_url})
-2. {i18n:init_iteration_step2}
-3. {i18n:init_iteration_step3}
-4. {i18n:init_iteration_step4}
-5. {i18n:init_iteration_step5}
+作成手順:
+1. GitHub Projects の画面を開く: {project_url}
+2. 「+」ボタンをクリックして新規フィールドを追加
+3. 「Iteration」を選択
+4. フィールド名を設定（推奨: 「Sprint」）
+5. 開始日とスプリント期間を設定（推奨: 2週間）
 
-{i18n:init_iteration_after_creation}
+作成後、/rite:init を再度実行するか、rite-config.yml の iteration.enabled を手動で true に設定してください。
 ```
 
 If the user selects "set up later", proceed to Phase 4 with `iteration.enabled: false`.
@@ -282,7 +282,7 @@ Then compare the existing values with the values detected in Phases 2-3.5. Ident
 | `iteration.enabled` | (from file) | (from Phase 3.5) | |
 | `iteration.field_name` | (from file) | (from Phase 3.5) | |
 
-**If no differences** → Display "{i18n:init_config_up_to_date}" and proceed to 4.2.
+**If no differences** → Display "rite-config.yml は最新です。スキップします。" and proceed to 4.2.
 
 **If differences exist** → Show the diff table above and ask with AskUserQuestion:
 
@@ -330,7 +330,7 @@ Generate `rite-config.yml` from the template config file.
 
 **Step 1: Read current config and template**
 
-Display "{i18n:init_upgrade_start}" and "{i18n:init_upgrade_checking}".
+Display "rite-config.yml のアップグレードを開始します" and "スキーマバージョンを確認しています...".
 
 Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) (required when entering via `--upgrade` skip, which bypasses the Phase 4.1 blockquote).
 
@@ -352,7 +352,7 @@ Read both files with the Read tool:
 
 `current >= latest` 経路では Step 3.5 が config を変更する可能性があるため Step 3 Backup を必ず先に実行する (precondition)。
 
-schema 同等 + Wiki 既に初期化済みの場合、Step 3.5 は「既に `^wiki:` active section が存在する」ことを検出して no-op となる。この経路で `{i18n:init_upgrade_up_to_date}` を表示するタイミングは **Step 3.5 の no-op 確定時** (Phase 4.7 進入前) とする。Phase 4.7 はそのまま実行され、Phase 4.7.2 が `wiki_status=already_initialized` を set して Skill 呼び出しは skip される (冪等)。
+schema 同等 + Wiki 既に初期化済みの場合、Step 3.5 は「既に `^wiki:` active section が存在する」ことを検出して no-op となる。この経路で `rite-config.yml は最新です (v{current})` を表示するタイミングは **Step 3.5 の no-op 確定時** (Phase 4.7 進入前) とする。Phase 4.7 はそのまま実行され、Phase 4.7.2 が `wiki_status=already_initialized` を set して Skill 呼び出しは skip される (冪等)。
 
 **Step 3: Create backup**
 
@@ -360,7 +360,7 @@ schema 同等 + Wiki 既に初期化済みの場合、Step 3.5 は「既に `^wi
 cp rite-config.yml "rite-config.yml.bak.$(date +%Y%m%d-%H%M%S)"
 ```
 
-Display "{i18n:init_upgrade_backup_created}".
+Display "バックアップを作成しました: {path}".
 
 **Step 3.5: Wiki Section Append (conditional — #491)**
 
@@ -371,8 +371,8 @@ Display "{i18n:init_upgrade_backup_created}".
 **Procedure**:
 
 1. Grep `rite-config.yml` for `^wiki:` (excluding lines starting with `#`) to detect an existing active wiki section.
-2. **If an active `^wiki:` match is found** (Wiki section already present): no-op. Display `{i18n:init_upgrade_up_to_date}` and proceed to Step 7 (Phase 4.7). Phase 4.7.2 will subsequently detect the initialized Wiki and set `wiki_status=already_initialized`.
-3. **If no active `^wiki:` match**: invoke the same append procedure defined in Step 6 item 5 below (single source of truth for the wiki block literal source and anchor selection). After the append completes, display `{i18n:init_wiki_config_added}` and proceed to Step 7.
+2. **If an active `^wiki:` match is found** (Wiki section already present): no-op. Display `rite-config.yml は最新です (v{current})` and proceed to Step 7 (Phase 4.7). Phase 4.7.2 will subsequently detect the initialized Wiki and set `wiki_status=already_initialized`.
+3. **If no active `^wiki:` match**: invoke the same append procedure defined in Step 6 item 5 below (single source of truth for the wiki block literal source and anchor selection). After the append completes, display `rite-config.yml に wiki セクションを追加しました（active）。` and proceed to Step 7.
 
 **Anchor/append handoff**: Step 3.5 does NOT duplicate the wiki block literal or anchor-selection logic. Both are defined in Step 6 item 5 below; Step 3.5 simply invokes that same procedure. This keeps the wiki block definition in a single location within `init.md` and prevents drift between the two paths.
 
@@ -396,7 +396,7 @@ Compare current config against the template and classify each key:
 Display the changes to the user:
 
 ```
-{i18n:init_upgrade_diff_preview}
+以下の変更が適用されます:
 
 廃止キー削除: {deprecated_keys}
 新規セクション追加: {new_sections}
@@ -407,7 +407,7 @@ Advanced セクション追加（コメントアウト）: {advanced_sections}
 Ask with `AskUserQuestion`:
 
 ```
-{i18n:init_upgrade_confirm}
+アップグレードを適用しますか？
 オプション:
 - 適用する（推奨）: 上記の変更を適用します
 - キャンセル: アップグレードを中止します
@@ -418,8 +418,8 @@ Ask with `AskUserQuestion`:
 If the user confirms:
 
 1. Update `schema_version` to latest value
-2. Remove deprecated keys using the Edit tool. Display "{i18n:init_upgrade_deprecated_removed}".
-3. Add missing sections from the template using the Edit tool. Display "{i18n:init_upgrade_sections_added}".
+2. Remove deprecated keys using the Edit tool. Display "廃止キーを削除しました: {keys}".
+3. Add missing sections from the template using the Edit tool. Display "新しいセクションを追加しました: {sections}".
 4. Add Advanced sections as comments (prefixed with `#`) using the Edit tool
 5. **If `wiki:` section is absent** (#491): append the active `wiki:` block from the template (single source of truth) so Phase 4.7 can auto-initialize Wiki.
 
@@ -437,10 +437,10 @@ If the user confirms:
    - `new_string` = anchor line + `\n\n` + extracted wiki block
    (For the Advanced-marker fallback, swap: `new_string` = wiki block + `\n\n` + marker line)
 
-   Display `{i18n:init_wiki_config_added}` only when the Edit actually ran (skip the message on idempotency no-op).
+   Display `rite-config.yml に wiki セクションを追加しました（active）。` only when the Edit actually ran (skip the message on idempotency no-op).
 6. Preserve all user-customized values
 
-Display "{i18n:init_upgrade_applied}".
+Display "rite-config.yml をアップグレードしました (v{current} → v{latest})".
 
 **Step 7: Run Phase 4.7 and display status (#491)**
 
@@ -454,16 +454,16 @@ Phase 4.7's internal "next step" instructions (e.g., "proceed to the next step: 
 
 **Step 7b: Display status line and exit**
 
-After Phase 4.7.1/4.7.2/4.7.4 returns control to Step 7, display a Wiki status line selected from the 4 literal keys based on the `wiki_status` value in LLM context, using the same explicit if/else mapping as Phase 5 (do NOT use dynamic placeholder syntax like `{i18n:init_summary_wiki_<status>}`):
+After Phase 4.7.1/4.7.2/4.7.4 returns control to Step 7, display a Wiki status line selected based on the `wiki_status` value in LLM context, using the same explicit if/else mapping as Phase 5 (select exactly one literal below; do not construct the message dynamically from `wiki_status`):
 
-- If `wiki_status == "initialized"` → `{i18n:init_summary_wiki_initialized}`
-- Else if `wiki_status == "already_initialized"` → `{i18n:init_summary_wiki_already_initialized}`
-- Else if `wiki_status == "skipped_disabled"` → `{i18n:init_summary_wiki_skipped_disabled}`
-- Else if `wiki_status == "failed"` → `{i18n:init_summary_wiki_failed}`
+- If `wiki_status == "initialized"` → `Wiki: 初期化完了`
+- Else if `wiki_status == "already_initialized"` → `Wiki: 既に初期化済み`
+- Else if `wiki_status == "skipped_disabled"` → `Wiki: スキップ（無効）`
+- Else if `wiki_status == "failed"` → `Wiki: 失敗`
 
 After displaying the status line, exit. (`--upgrade` skips Phases 1-3 and the Phase 5 full completion report, so only the Wiki status is reported — there is no merge conflict with Phase 5 because `--upgrade` does not enter the new-install path.)
 
-If the user cancels: Display "{i18n:init_upgrade_cancelled}" and exit.
+If the user cancels: Display "アップグレードをキャンセルしました" and exit.
 
 **MUST requirements**:
 - `schema_version` 未設定の config は暗黙的に v1 として扱う
@@ -477,9 +477,9 @@ If the user cancels: Display "{i18n:init_upgrade_cancelled}" and exit.
 
 If `.github/ISSUE_TEMPLATE/` does not exist, show:
 ```
-{i18n:init_issue_template_missing}
+.github/ISSUE_TEMPLATE/ が存在しません
 
-{i18n:init_issue_template_suggestion}
+Issue テンプレートの作成を推奨します
 ```
 
 ---
@@ -1071,11 +1071,11 @@ echo "wiki_enabled=$wiki_enabled"
 ```
 
 **When `wiki_enabled=false`**:
-- Display `{i18n:init_wiki_disabled}`
+- Display `Wiki が無効化されています（wiki.enabled: false）。Phase 4.7 をスキップします。`
 - Set `wiki_status=skipped_disabled` (remember in LLM context)
 - **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit)
 
-**When `wiki_enabled=true`**: Display `{i18n:init_wiki_start}` and proceed to 4.7.2.
+**When `wiki_enabled=true`**: Display `Wiki の自動初期化を開始します...` and proceed to 4.7.2.
 
 ### 4.7.2 Pre-check: Existing Wiki Detection
 
@@ -1112,7 +1112,7 @@ fi
 ```
 
 **When `WIKI_INITIALIZED=true`**:
-- Display `{i18n:init_wiki_already_initialized}` (substitute `{detection}` with the matched branch name or file path)
+- Display `Wiki は既に初期化されています（検知: {detection}）。スキップします。` (substitute `{detection}` with the matched branch name or file path)
 - Set `wiki_status=already_initialized` (remember in LLM context)
 - **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 5 / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Do NOT invoke Skill (preserves existing Wiki content per AC-2)
 
@@ -1120,7 +1120,7 @@ fi
 
 ### 4.7.3 Invoke rite:wiki:init Skill
 
-Display `{i18n:init_wiki_invoking}`, then invoke the Skill tool:
+Display `rite:wiki:init を呼び出して Wiki を初期化します...`, then invoke the Skill tool:
 
 ```
 skill: "rite:wiki:init"
@@ -1160,11 +1160,11 @@ fi
 Then:
 
 **When `WIKI_INITIALIZED=true`**:
-- Display `{i18n:init_wiki_success}`
+- Display `✅ Wiki の初期化が完了しました。`
 - Set `wiki_status=initialized` (remember in LLM context)
 
 **When `WIKI_INITIALIZED=false`** (Skill invocation failed or did not complete):
-- Display `{i18n:init_wiki_failed_nonblocking}` (warning only — do NOT exit)
+- Display `⚠️ Wiki の初期化に失敗しました。/rite:init 全体は成功扱いで続行します。手動で /rite:wiki:init を実行してください。` (warning only — do NOT exit)
 - Set `wiki_status=failed` (remember in LLM context)
 
 **→ Proceed to the next step (new-install: Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Non-blocking regardless of outcome.**
@@ -1176,52 +1176,51 @@ Then:
 ### Display Configuration Summary
 
 ```
-{i18n:init_complete}
+rite workflow セットアップが完了しました
 
-## {i18n:init_summary_config}
-- {i18n:init_summary_project_type}: {type}
+## 設定内容
+- プロジェクト種別: {type}
 - GitHub Projects: {project-url}
-- {i18n:init_summary_iteration}: {iteration-status}
-- {i18n:init_summary_config_file}: rite-config.yml
+- Iteration/スプリント: {iteration-status}
+- 設定ファイル: rite-config.yml
 <!-- If hooks were registered in Phase 4.5 (LOCAL or MARKETPLACE detected): -->
-- {i18n:init_summary_hooks}
+- Hooks: pre-compact, session-start, session-end (registered)
 <!-- If hooks were skipped due to NOT_FOUND in Phase 4.5.0: -->
-- {i18n:init_summary_hooks_skipped}
+- Hooks: スキップ（未検出）
 <!-- Wiki status line from Phase 4.7 (#491). Select exactly one of the following
-     based on the wiki_status value retained in LLM context. Do NOT use dynamic
-     placeholder syntax like {i18n:init_summary_wiki_<status>} — expand to the
-     matching literal key via explicit if/else below: -->
+     based on the wiki_status value retained in LLM context via explicit if/else.
+     Do not construct the message dynamically from wiki_status: -->
 <!-- If wiki_status == "initialized":         -->
-- {i18n:init_summary_wiki_initialized}
+- Wiki: 初期化完了
 <!-- Else if wiki_status == "already_initialized": -->
-- {i18n:init_summary_wiki_already_initialized}
+- Wiki: 既に初期化済み
 <!-- Else if wiki_status == "skipped_disabled":    -->
-- {i18n:init_summary_wiki_skipped_disabled}
+- Wiki: スキップ（無効）
 <!-- Else if wiki_status == "failed":              -->
-- {i18n:init_summary_wiki_failed}
+- Wiki: 失敗
 
-## {i18n:init_summary_next_steps}
-1. {i18n:init_summary_step1}
-2. {i18n:init_summary_step2}
-3. {i18n:init_summary_step3}
+## 次のステップ
+1. /rite:issue:list で既存 Issue を確認
+2. /rite:issue:create で新規 Issue を作成
+3. /rite:issue:start <番号> で作業開始
 
 <!-- Iteration が有効な場合のみ表示 -->
-## {i18n:init_summary_sprint_mgmt}
-- {i18n:init_summary_sprint_list}
-- {i18n:init_summary_sprint_current}
-- {i18n:init_summary_sprint_plan}
+## スプリント管理（有効な場合）
+- /rite:sprint:list でスプリント一覧を表示
+- /rite:sprint:current で現在のスプリントを確認
+- /rite:sprint:plan でスプリント計画を実行
 
-{i18n:init_summary_workflow_check}
+詳細は /rite:workflow でワークフロー全体を確認できます。
 
-## {i18n:init_summary_view_config}
+## 推奨ビュー設定（手動）
 
-{i18n:init_summary_view_note}
+GitHub Projects のビュー設定は API で自動化できないため、以下の設定を推奨します。Projects 画面右上の「+ New view」から作成してください。
 
-| {i18n:init_summary_view_name} | {i18n:init_summary_view_layout} | {i18n:init_summary_view_group} | {i18n:init_summary_view_purpose} |
+| ビュー名 | レイアウト | グループ化 | 用途 |
 |---------|-----------|-----------|------|
-| Kanban | Board | Status | {i18n:init_summary_view_kanban_purpose} |
-| Priority | Table | Priority | {i18n:init_summary_view_priority_purpose} |
-| Sprint | Board | Iteration | {i18n:init_summary_view_sprint_purpose} |
+| Kanban | Board | Status | タスク進捗の可視化 |
+| Priority | Table | Priority | 優先度別の一覧 |
+| Sprint | Board | Iteration | スプリント管理（Iteration 有効時） |
 
-{i18n:init_summary_view_sprint_note}
+※ Sprint ビューは Iteration フィールドが有効な場合のみ使用できます。
 ```

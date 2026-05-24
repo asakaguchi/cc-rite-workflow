@@ -117,34 +117,34 @@ Status でグループ化:
 ### 3.1 Sprint Information
 
 ```
-{i18n:sprint_current_title}: Sprint 3
+現在のスプリント: Sprint 3
 
-{i18n:sprint_current_period}: 2025-01-06 - 2025-01-19 (14{i18n:sprint_current_days})
-{i18n:sprint_current_remaining}: 8{i18n:sprint_current_days}
+期間: 2025-01-06 - 2025-01-19 (14日間)
+残り: 8日間
 
-{i18n:sprint_current_progress}: ████████░░░░░░░░ 50% (4/8 {i18n:sprint_current_completed})
+進捗: ████████░░░░░░░░ 50% (4/8 完了)
 ```
 
 ### 3.2 Issue List (by Status)
 
 ```
-## {i18n:status_in_progress} (2{i18n:sprint_plan_count_unit})
+## In Progress (2件)
 
   #42  ログイン機能を追加
-       {i18n:sprint_current_assignee}: @user1  {i18n:sprint_current_label}: enhancement
+       担当: @user1  ラベル: enhancement
 
   #45  API エンドポイント実装
-       {i18n:sprint_current_assignee}: @user2  {i18n:sprint_current_label}: enhancement
+       担当: @user2  ラベル: enhancement
 
-## {i18n:status_todo} (2{i18n:sprint_plan_count_unit})
+## Todo (2件)
 
   #48  テスト追加
-       {i18n:sprint_current_assignee}: {i18n:sprint_current_unassigned}  {i18n:sprint_current_label}: testing
+       担当: 未割当  ラベル: testing
 
   #49  ドキュメント更新
-       {i18n:sprint_current_assignee}: @user1  {i18n:sprint_current_label}: documentation
+       担当: @user1  ラベル: documentation
 
-## {i18n:status_done} (4{i18n:sprint_plan_count_unit})
+## Done (4件)
 
   #40  初期設定  ✓
   #41  DB スキーマ  ✓
@@ -155,11 +155,11 @@ Status でグループ化:
 ### 3.3 Summary
 
 ```
-{i18n:sprint_current_summary}:
-- {i18n:sprint_current_summary_done}: 4{i18n:sprint_plan_count_unit}
-- {i18n:sprint_current_summary_in_progress}: 2{i18n:sprint_plan_count_unit}
-- {i18n:sprint_current_summary_todo}: 2{i18n:sprint_plan_count_unit}
-- {i18n:sprint_current_summary_total}: 8{i18n:sprint_plan_count_unit}
+サマリー:
+- 完了: 4件
+- 進行中: 2件
+- 未着手: 2件
+- 合計: 8件
 ```
 
 ---
@@ -167,10 +167,10 @@ Status でグループ化:
 ## Phase 4: Suggest Next Actions
 
 ```
-{i18n:sprint_plan_next_actions}:
-- `/rite:issue:start <番号>` {i18n:sprint_plan_action_start_issue}
-- `/rite:sprint:plan` {i18n:sprint_current_action_plan_next}
-- `/rite:issue:list --sprint current` {i18n:sprint_current_action_details}
+次のアクション:
+- `/rite:issue:start <番号>` で Issue の作業を開始
+- `/rite:sprint:plan` で次スプリントの計画
+- `/rite:issue:list --sprint current` で詳細一覧
 ```
 
 ---
@@ -178,14 +178,14 @@ Status でグループ化:
 ## When No Current Iteration Exists
 
 ```
-{i18n:sprint_no_current}
+現在アクティブなスプリントがありません
 
-{i18n:sprint_suggest_next}: Sprint 4
-{i18n:sprint_current_start_date}: 2025-01-20
+次のスプリント: {sprint_name}: Sprint 4
+開始日: 2025-01-20
 
-{i18n:sprint_current_hint_title}:
-- {i18n:sprint_current_hint_adjust_period}
-- {i18n:sprint_current_hint_plan_next}
+ヒント:
+- GitHub Projects でイテレーションの期間を調整してください
+- または /rite:sprint:plan で次スプリントの計画を開始
 ```
 
 ---

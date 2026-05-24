@@ -215,18 +215,18 @@ If the lint command cannot be detected, use the `AskUserQuestion` tool to intera
 **Note**: `AskUserQuestion` is a standard Claude Code tool that presents choices to the user and retrieves their response.
 
 ```
-{i18n:lint_command_not_found}
+lint コマンドを検出できませんでした
 
-{i18n:lint_supported_detection}:
+対応している自動検出:
 - Node.js: package.json の scripts.lint
 - Python: ruff check（pyproject.toml 検出時）
 - Rust: cargo clippy（Cargo.toml 検出時）
 - Go: golangci-lint run（go.mod 検出時）
 
 オプション:
-- {i18n:lint_option_skip}
-- {i18n:lint_option_specify}
-- {i18n:lint_option_abort}
+- スキップして続行（推奨）: lint をスキップし、次のステップに進みます
+- コマンドを指定: lint コマンドを手動で入力します
+- 中断: 処理を中断します
 ```
 
 **Subsequent processing for each choice:**
@@ -244,21 +244,21 @@ When lint is skipped, output the completion message in the following format:
 **Standalone execution:**
 ```
 [lint:skipped]
-{i18n:lint_skipped}
-{i18n:lint_skip_reason}
+lint をスキップしました。
+理由: lint コマンド未検出
 
-{i18n:lint_next_steps}:
-1. {i18n:lint_skip_next_step}
+次のステップ:
+1. 必要に応じて `/rite:pr:create` で PR 作成
 ```
 
 **When called from `/rite:issue:start`:**
 ```
 [lint:skipped]
-{i18n:lint_skipped}
-{i18n:lint_skip_reason}
+lint をスキップしました。
+理由: lint コマンド未検出
 
 ---
-{i18n:lint_flow_continue}
+🔄 **フロー継続**: 呼び出し元の `/rite:issue:start` が ステップ 6（PR 作成）を実行
 ```
 
 > If `/rite:lint` continues to PR creation directly, it bypasses the checklist confirmation in the caller, potentially creating a PR with incomplete tasks.
@@ -287,12 +287,12 @@ Reflecting the lint skip in the PR body is the responsibility of `/rite:issue:st
 When "Specify command" is selected, use `AskUserQuestion` to prompt for command input:
 
 ```
-{i18n:lint_command_prompt}
+使用する lint コマンドを入力してください（例: npm run lint, ruff check .）
 
 オプション:
 - npm run lint
 - ruff check .
-- {i18n:lint_command_other}
+- 他のコマンドを入力（Other を選択）
 ```
 
 **Note**: Present representative commands as choices in `AskUserQuestion` `options`. The user can also select "Other" to enter a custom command.
@@ -312,17 +312,17 @@ When the user enters/selects a command:
 Use the specified path as-is:
 
 ```
-{i18n:lint_target_path}: {path}
+対象: {path}
 ```
 
 If the path does not exist:
 
 ```
-{i18n:lint_path_not_found} (variables: path={path})
+指定されたパス '{path}' が見つかりません
 
-{i18n:resume_actions}:
-1. {i18n:lint_check_path_correct}
-2. {i18n:lint_check_path_exists}
+対処:
+1. パスが正しいか確認
+2. ファイル/ディレクトリが存在するか確認
 ```
 
 ### 2.2 When Arguments Are Omitted
@@ -390,7 +390,7 @@ Terminate processing. Do not silently fall back to `HEAD` diff or targeting the 
 **When there are no changed files:**
 
 ```
-{i18n:lint_no_changed_files}
+変更ファイルがありません。プロジェクト全体をチェックします
 
 ベースブランチとの差分がないため、プロジェクト全体をチェックします。
 特定のパスに限定するには /rite:lint <path> を指定してください。
@@ -405,10 +405,10 @@ Target the entire project (current directory) with a visible warning that the sc
 ### 3.1 Pre-Execution Notice
 
 ```
-{i18n:lint_running}
+品質チェックを実行しています...
 
-{i18n:lint_command}: {lint_command}
-{i18n:lint_target_path}: {target_path または "変更ファイル ({count} files)"}
+コマンド: {lint_command}
+対象: {target_path または "変更ファイル ({count} files)"}
 ```
 
 ### 3.2 Command Execution
@@ -449,9 +449,9 @@ When skipped, no output needed (silent skip).
 **Execution:**
 
 ```
-{i18n:lint_running_tests}
+テストを実行しています...
 
-{i18n:lint_command}: {test_command}
+コマンド: {test_command}
 ```
 
 ```bash
@@ -903,12 +903,12 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the flo
 **Standalone execution:**
 ```
 [lint:success]
-{i18n:lint_complete}
+品質チェック完了
 
-{i18n:lint_result_success}
+問題は検出されませんでした
 
-{i18n:lint_target_path}: {target_description}
-{i18n:lint_command}: {lint_command}
+対象: {target_description}
+コマンド: {lint_command}
 ```
 
 **When called from `/rite:issue:start` (E2E Output Minimization):**
@@ -1007,15 +1007,15 @@ These appendices do NOT change the result pattern — `[lint:success]` remains t
 **Standalone execution:**
 ```
 [lint:error]
-{i18n:lint_complete}
+品質チェック完了
 
-{i18n:lint_result_errors} (variables: error_count={error_count}, warning_count={warning_count})
+{error_count} 件のエラー、{warning_count} 件の警告が検出されました
 
 {lint_output}
 
 ---
 
-{i18n:lint_fix_suggestions}:
+修正案:
 ```
 
 **Note**: `[lint:error]` is an output pattern used by `/rite:issue:start` ステップ 5.1 to determine the lint result.
@@ -1026,17 +1026,17 @@ Analyze the error content and present fix suggestions when possible:
 
 1. **When auto-fix is available:**
    ```
-   {i18n:lint_ask_autofix}
+   自動修正を実行しますか？
 
-   {i18n:lint_command}: {fix_command}
-   {i18n:lint_autofix_examples}:
+   コマンド: {fix_command}
+   例:
        npm run lint -- --fix
        ruff check --fix
        cargo clippy --fix
 
    オプション:
-   - {i18n:lint_option_autofix}
-   - {i18n:lint_option_manual}
+   - はい、自動修正を実行
+   - いいえ、手動で修正
    ```
 
 2. **When manual fix is required:**
@@ -1049,15 +1049,15 @@ Analyze the error content and present fix suggestions when possible:
 **Standalone execution only:**
 
 ```
-{i18n:lint_summary_title}
+品質チェック結果サマリー
 
-| {i18n:lint_summary_item} | {i18n:lint_summary_result} |
+| 項目 | 結果 |
 |------|------|
-| {i18n:lint_target_path} | {target} |
-| {i18n:lint_errors} | {error_count} |
-| {i18n:lint_warnings} | {warning_count} |
-| {i18n:lint_test} | {test_status} ({test_error_count} failures) |
-| {i18n:lint_drift_check} | {drift_status} ({drift_finding_count} findings) |
+| 対象 | {target} |
+| エラー | {error_count} |
+| 警告 | {warning_count} |
+| テスト | {test_status} ({test_error_count} failures) |
+| Drift チェック | {drift_status} ({drift_finding_count} findings) |
 | Bang-backtick check | {bang_backtick_status} ({bang_backtick_finding_count} findings) |
 | Doc-heavy patterns drift check | {doc_heavy_drift_status} ({doc_heavy_drift_finding_count} findings) |
 | Wiki growth check (#524) | {wiki_growth_status} ({wiki_growth_finding_count} findings) |
@@ -1067,17 +1067,17 @@ Analyze the error content and present fix suggestions when possible:
 | Comment journal narration (#702) | {comment_journal_status} ({comment_journal_finding_count} findings) |
 | Comment line-ref check (#702) | {comment_line_ref_status} ({comment_line_ref_finding_count} findings) |
 | Direct gh issue create check (#958) | {direct_gh_issue_status} ({direct_gh_issue_finding_count} findings) |
-| {i18n:lint_duration} | {duration} |
+| 所要時間 | {duration} |
 
-{i18n:lint_next_steps}:
-1. {i18n:lint_next_fix_errors}
-2. {i18n:lint_next_rerun}
-3. {i18n:lint_next_create_pr}
+次のステップ:
+1. エラーを修正
+2. 再度 `/rite:lint` を実行
+3. 問題がなければ `/rite:pr:create` で PR 作成
 
-> **{i18n:lint_standalone_note}**: {i18n:lint_standalone_note_detail}
+> **注**: `/rite:issue:start` の一気通貫フローから呼び出された場合、この「次のステップ」案内は**スキップ**されます。呼び出し元が出力パターン（`[lint:success]` 等）を検出し、自動的に次のアクション（PR 作成）に進みます。**この案内は単独実行時のみ参照してください**。
 ```
 
-**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `{i18n:lint_drift_check}` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Wiki growth check (#524)` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). The `Gitignore health check (#567)` row follows the same policy: omit when `gitignore_health_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = healthy rule / legitimate no-op; `warning` = drift detected; `error` = invocation failure). The `Backlink format check (#627)` row follows the same policy: omit when `backlink_format_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no dialect violations; `warning` = legacy dialect detected; `error` = invocation failure). The `Hardcoded line-number check (#666)` row follows the same policy: omit when `hardcoded_line_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no hardcoded references; `warning` = P-A/P-B/P-C reference detected; `error` = invocation failure). **Asymmetry note**: The `{i18n:lint_drift_check}` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. The `Comment journal narration (#702)` row follows the same policy: omit when `comment_journal_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no journal narration; `warning` = P1/P2/P3/P4 pattern detected; `error` = invocation failure). The `Comment line-ref check (#702)` row follows the same policy: omit when `comment_line_ref_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no comment line-number references; `warning` = `<file>.<ext>:<NN>` pattern detected in shell comments; `error` = invocation failure). The `Direct gh issue create check (#958)` row follows the same policy: omit when `direct_gh_issue_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no direct invocations; `warning` = direct `gh issue create` invocation detected; `error` = invocation failure / usage error / missing commands directory). All Phase 3.x lint checks added after Phase 3.5 (3.7 `Doc-heavy patterns drift check`, 3.8 `Wiki growth check`, 3.9 `Gitignore health check`, 3.10 `Backlink format check`, 3.11 `Hardcoded line-number check`, 3.12 `Comment journal narration`, 3.13 `Comment line-ref check`, 3.14 `Direct gh issue create check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
+**Note**: The `テスト` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `Drift チェック` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Wiki growth check (#524)` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). The `Gitignore health check (#567)` row follows the same policy: omit when `gitignore_health_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = healthy rule / legitimate no-op; `warning` = drift detected; `error` = invocation failure). The `Backlink format check (#627)` row follows the same policy: omit when `backlink_format_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no dialect violations; `warning` = legacy dialect detected; `error` = invocation failure). The `Hardcoded line-number check (#666)` row follows the same policy: omit when `hardcoded_line_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no hardcoded references; `warning` = P-A/P-B/P-C reference detected; `error` = invocation failure). **Asymmetry note**: The `Drift チェック` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. The `Comment journal narration (#702)` row follows the same policy: omit when `comment_journal_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no journal narration; `warning` = P1/P2/P3/P4 pattern detected; `error` = invocation failure). The `Comment line-ref check (#702)` row follows the same policy: omit when `comment_line_ref_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no comment line-number references; `warning` = `<file>.<ext>:<NN>` pattern detected in shell comments; `error` = invocation failure). The `Direct gh issue create check (#958)` row follows the same policy: omit when `direct_gh_issue_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no direct invocations; `warning` = direct `gh issue create` invocation detected; `error` = invocation failure / usage error / missing commands directory). All Phase 3.x lint checks added after Phase 3.5 (3.7 `Doc-heavy patterns drift check`, 3.8 `Wiki growth check`, 3.9 `Gitignore health check`, 3.10 `Backlink format check`, 3.11 `Hardcoded line-number check`, 3.12 `Comment journal narration`, 3.13 `Comment line-ref check`, 3.14 `Direct gh issue create check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
 
 ### 4.4 Automatic Work Memory Update (Conditional)
 

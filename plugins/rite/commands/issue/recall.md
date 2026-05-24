@@ -36,7 +36,7 @@ When this command is executed, run the following phases in order.
 Read `rite-config.yml` with the Read tool and check `commit.contextual`:
 
 - `true` or not set -> proceed
-- `false` -> display `{i18n:issue_recall_disabled}` and terminate
+- `false` -> display `Contextual Commits が無効です（commit.contextual: false）。rite-config.yml で有効にしてください` and terminate
 
 ### 1.2 Base Branch
 
@@ -60,7 +60,7 @@ Parse the user-provided argument to determine the search mode:
   → action = マッチした action type
   → scope = マッチした scope
   → Validate action ∈ {intent, decision, root-cause, rejected, constraint, learned, comment-update}
-  → Invalid action → display "{i18n:issue_recall_invalid_action}" and terminate
+  → Invalid action → display "無効なアクションタイプです。有効な値: intent, decision, root-cause, rejected, constraint, learned, comment-update" and terminate
 
 入力: その他の文字列 (例: "auth")
   → mode = "scope"
@@ -84,7 +84,7 @@ Before executing git log, verify the base branch exists:
 git rev-parse --verify {base_branch} 2>/dev/null
 # If fails, try remote:
 git rev-parse --verify origin/{base_branch} 2>/dev/null
-# If both fail: display "{i18n:issue_recall_error_no_base_branch}" and terminate
+# If both fail: display "ベースブランチ {branch} が見つかりません。rite-config.yml の branch.base を確認してください" and terminate
 ```
 
 Use `{base_branch}` if local exists, otherwise `origin/{base_branch}`:
@@ -110,12 +110,12 @@ git log --all --fixed-strings --grep="{action}({scope}" --format="%H%n%s%n%ai%n%
 If no commits are found:
 
 ```
-{i18n:issue_recall_no_results}
+アクションラインが見つかりませんでした
 ```
 
 Display guidance based on mode:
-- **branch**: `{i18n:issue_recall_no_results_branch_hint}`
-- **scope/action_scope**: `{i18n:issue_recall_no_results_scope_hint}`
+- **branch**: `現在のブランチにはコンテキストコミットがありません。コミットにアクションラインを含めるには commit.contextual: true を設定してください`
+- **scope/action_scope**: `指定した scope に一致するアクションラインがありません。scope を広げるか、/rite:issue:recall で全件検索してください`
 
 Terminate.
 
@@ -211,7 +211,7 @@ After the grouped results, display a summary:
 If total action lines exceed 50:
 
 ```
-{i18n:issue_recall_large_result}
+結果が 50 件を超えています。より具体的な scope またはアクションタイプでフィルタしてください
 ```
 
 Suggest narrowing with a more specific scope or action type filter.
@@ -222,7 +222,7 @@ Suggest narrowing with a more specific scope or action type filter.
 
 | Error | Response |
 |-------|----------|
-| Not in a git repository | `{i18n:issue_recall_error_not_git}` |
-| Base branch not found (mode=branch) | `{i18n:issue_recall_error_no_base_branch}` |
+| Not in a git repository | `Git リポジトリ内で実行してください` |
+| Base branch not found (mode=branch) | `ベースブランチ {branch} が見つかりません。rite-config.yml の branch.base を確認してください` |
 | No commits in range | Phase 3.2 empty result handling |
 | Git command failure | Display error and terminate |

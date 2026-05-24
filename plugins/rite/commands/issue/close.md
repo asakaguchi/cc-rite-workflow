@@ -55,12 +55,12 @@ gh issue view {issue_number} --json number,title,body,state,labels,closedAt
 **Issue が既にクローズ済みの場合:**
 
 ```
-{i18n:issue_close_already_closed} (variables: number={number})
+Issue #{number} は既にクローズされています
 
-{i18n:workflow_title}: {title}
-{i18n:issue_close_closed_at}: {closed_at}
+rite workflow: {title}
+クローズ日時: {closed_at}
 
-{i18n:issue_close_no_action_needed}
+追加のアクションは不要です
 ```
 
 → Phase 1.3 へ。**Open の場合**は Phase 2 へ。
@@ -124,13 +124,13 @@ Issue が自動クローズされる条件: (1) リンク PR の body に `Close
 リンク PR がマージ済みかつ close キーワードを含む場合:
 
 ```
-{i18n:issue_close_auto_close_will_happen} (variables: number={number})
+Issue #{number} は自動的にクローズされます
 
-{i18n:issue_close_linked_prs}:
+紐づく PR:
 - #{pr_number}: {pr_title} (Merged)
 
-{i18n:issue_close_auto_close_note}
-{i18n:issue_close_no_action_needed}
+GitHub のキーワード連携により、PR マージ時に Issue は自動クローズされます
+追加のアクションは不要です
 ```
 
 #### Pattern B: PR Exists but No Auto-Close
@@ -138,14 +138,14 @@ Issue が自動クローズされる条件: (1) リンク PR の body に `Close
 リンク PR はあるが close キーワードが無い場合:
 
 ```
-{i18n:issue_close_no_auto_close} (variables: number={number})
+Issue #{number} に紐づく PR がありますが、自動クローズは設定されていません
 
-{i18n:issue_close_linked_prs}:
+紐づく PR:
 - #{pr_number}: {pr_title} ({state})
 
-{i18n:issue_close_recommended_action}:
-1. {i18n:issue_close_add_closes_keyword} (variables: number={number})
-2. {i18n:issue_close_manual_close}
+推奨アクション:
+1. PR 本文に "Closes #{number}" を追加してマージ
+2. 手動で Issue をクローズ
 ```
 
 #### Pattern C: PR Awaiting Merge
@@ -153,13 +153,13 @@ Issue が自動クローズされる条件: (1) リンク PR の body に `Close
 リンク PR が open の場合:
 
 ```
-{i18n:issue_close_pr_pending} (variables: number={number})
+Issue #{number} に紐づく PR がマージ待ちです
 
-{i18n:issue_close_linked_prs}:
+紐づく PR:
 - #{pr_number}: {pr_title} (Open)
   URL: {pr_url}
 
-{i18n:issue_close_recommended_action}:
+推奨アクション:
 1. PR をレビュー・マージ
 2. マージ後、Issue は自動的にクローズされます
 ```
@@ -169,18 +169,18 @@ Issue が自動クローズされる条件: (1) リンク PR の body に `Close
 関連 PR が無い場合:
 
 ```
-{i18n:issue_close_no_prs_found} (variables: number={number})
+Issue #{number} に紐づく PR が見つかりません
 ```
 
 `AskUserQuestion` で次のアクションを確認する:
 
 ```
-{i18n:issue_close_ask_action}
+どのアクションを実行しますか？
 
 オプション:
-- {i18n:issue_close_option_create_pr}（/rite:pr:create）
-- {i18n:issue_close_option_close_manual}（gh issue close {number}）
-- {i18n:issue_close_option_do_nothing}
+- PR を作成する (/rite:pr:create)（/rite:pr:create）
+- Issue を手動でクローズする（gh issue close {number}）
+- 何もしない
 ```
 
 ---
@@ -218,9 +218,9 @@ lock 失敗時は WARNING を出して続行（best-effort — Phase 5 でどの
 ### 4.4 Completion Report
 
 ```
-{i18n:issue_close_complete} (variables: number={number})
+Issue #{number} をクローズしました
 
-{i18n:workflow_title}: {title}
+rite workflow: {title}
 Status: Done
 
 関連 PR: #{pr_number} (Merged)

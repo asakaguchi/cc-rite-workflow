@@ -35,12 +35,12 @@ When this command is executed, run the following phases in order.
 If no argument is provided, confirm with `AskUserQuestion`:
 
 ```
-{i18n:sprint_plan_ask_target}
+どのスプリントを計画しますか？
 
 オプション:
-- {i18n:sprint_plan_option_current}: Sprint 3 (2025-01-06 - 2025-01-19)
-- {i18n:sprint_plan_option_next}: Sprint 4 (2025-01-20 - 2025-02-02)
-- {i18n:sprint_plan_option_specify}
+- 現在のスプリント: Sprint 3 (2025-01-06 - 2025-01-19)
+- 次のスプリント: Sprint 4 (2025-01-20 - 2025-02-02)
+- 別のスプリントを指定
 ```
 
 ---
@@ -83,13 +83,13 @@ query($projectId: ID!, $iterationId: String!, $fieldId: ID!) {
 ### 2.2 Display Current Capacity
 
 ```
-{i18n:sprint_plan_target_title} (variables: name=Sprint 4)
+{name} の計画
 
-{i18n:sprint_plan_current_state}:
-- {i18n:sprint_plan_assigned_issues}: 3{i18n:sprint_plan_count_unit}
-- {i18n:sprint_plan_estimated_points}: 8 / 20
+現在の状態:
+- 割り当て済み Issue: 3件
+- 見積もりポイント: 8 / 20
 
-{i18n:sprint_plan_remaining_capacity}: 12{i18n:sprint_plan_points_unit}
+残りキャパシティ: 12ポイント
 ```
 
 ---
@@ -139,7 +139,7 @@ query($projectId: ID!) {
 Sort by Priority and Complexity and display:
 
 ```
-{i18n:sprint_plan_backlog_title} (variables: count=10)
+バックログ（{count}件）
 
   # | Priority | Complexity | Title
 ----|----------|------------|-------------------------------
@@ -150,7 +150,7 @@ Sort by Priority and Complexity and display:
  54 | Low      | XS (1pt)   | README の更新
  ...
 
-{i18n:sprint_plan_backlog_total}: 10{i18n:sprint_plan_count_unit}（{i18n:sprint_plan_backlog_estimated} 25{i18n:sprint_plan_points_unit}）
+合計: 10件（推定 25ポイント）
 ```
 
 ---
@@ -162,18 +162,18 @@ Sort by Priority and Complexity and display:
 Confirm the selection method with `AskUserQuestion`:
 
 ```
-{i18n:sprint_plan_ask_selection_method}:
+Issue の選択方法を選んでください:
 
 オプション:
-- {i18n:sprint_plan_option_select_individual}: Issue を1件ずつ選択
-- {i18n:sprint_plan_option_select_priority}: High Priority のものをすべて選択
-- {i18n:sprint_plan_option_select_auto}: Priority 順に自動で選択（{i18n:sprint_plan_recommended}）
+- 個別に選択: Issue を1件ずつ選択
+- Priority で一括選択: High Priority のものをすべて選択
+- キャパシティ内で自動選択: Priority 順に自動で選択（推奨）
 ```
 
 ### 4.2 Individual Selection
 
 ```
-{i18n:sprint_plan_select_from_backlog}:
+バックログから追加する Issue を選択:
 
 [ ] #50 ユーザー認証機能の追加 (High, M: 3pt)
 [ ] #51 ログ出力の改善 (High, S: 2pt)
@@ -181,26 +181,26 @@ Confirm the selection method with `AskUserQuestion`:
 [ ] #53 API レスポンスのキャッシュ (Medium, M: 3pt)
 ...
 
-{i18n:sprint_plan_selected_issues}: ({i18n:sprint_plan_none})
-{i18n:sprint_plan_current_total}: 8pt / 20pt
+選択した Issue: (なし)
+現在の合計: 8pt / 20pt
 ```
 
 ### 4.3 Automatic Selection
 
 ```
-{i18n:sprint_plan_auto_selected}:
+キャパシティ内で自動選択しました:
 
-{i18n:sprint_plan_selected_issues}:
+選択した Issue:
 - #50 ユーザー認証機能の追加 (High, M: 3pt)
 - #51 ログ出力の改善 (High, S: 2pt)
 - #53 API レスポンスのキャッシュ (Medium, M: 3pt)
 
-{i18n:sprint_plan_total_points}: 8pt（{i18n:sprint_plan_fits_capacity} 12pt {i18n:sprint_plan_fits_capacity_suffix}）
+合計: 8pt（残りキャパシティ 12pt に収まります）
 
-{i18n:sprint_plan_ask_proceed}？
-- {i18n:sprint_plan_option_assign}
-- {i18n:sprint_plan_option_change_selection}
-- {i18n:sprint_plan_option_cancel}
+この選択で進めますか？
+- はい、割り当てる
+- 選択を変更する
+- キャンセル
 ```
 
 ### 4.4 Execute Assignment
@@ -228,23 +228,23 @@ mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $iterationId: String!) {
 ## Phase 5: Completion Report
 
 ```
-{i18n:sprint_plan_complete}
+スプリント計画完了
 
 Sprint 4 (2025-01-20 - 2025-02-02)
 
-{i18n:sprint_plan_added_issues}:
+追加した Issue:
 - #50 ユーザー認証機能の追加
 - #51 ログ出力の改善
 - #53 API レスポンスのキャッシュ
 
-{i18n:sprint_plan_sprint_state}:
-- {i18n:sprint_plan_total_issues}: 6{i18n:sprint_plan_count_unit}
-- {i18n:sprint_plan_total_points}: 16 / 20
-- {i18n:sprint_plan_remaining_capacity}: 4pt
+スプリントの状態:
+- 合計 Issue: 6件
+- 合計: 16 / 20
+- 残りキャパシティ: 4pt
 
-{i18n:sprint_plan_next_actions}:
-- `/rite:sprint:current` {i18n:sprint_plan_action_check_details}
-- `/rite:issue:start <番号>` {i18n:sprint_plan_action_start_issue}
+次のアクション:
+- `/rite:sprint:current` でスプリント詳細を確認
+- `/rite:issue:start <番号>` で Issue の作業を開始
 ```
 
 ---
@@ -270,5 +270,5 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 | Error | Recovery |
 |-------|----------|
 | When Backlog is Empty | See error output for details |
-| When Selection Exceeds Capacity | {i18n:sprint_plan_option_assign_anyway}（{i18n:sprint_plan_overcommit}） / {i18n:sprint_plan_option_change_selection} |
+| When Selection Exceeds Capacity | このまま割り当てる（オーバーコミット） / 選択を変更する |
 | On API Error | See error output for details |

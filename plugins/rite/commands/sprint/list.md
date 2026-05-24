@@ -19,14 +19,14 @@ When this command is executed, run the following phases in order.
 **If Iteration is disabled**:
 
 ```
-{i18n:sprint_disabled}
+Iteration 機能は無効化されています
 
-{i18n:sprint_list_enable_howto}:
-1. {i18n:sprint_list_enable_step1}
-2. {i18n:sprint_list_enable_step2}
-3. {i18n:sprint_list_enable_step3}
+有効にするには:
+1. GitHub Projects で Iteration フィールドを作成
+2. rite-config.yml の iteration.enabled を true に設定
+3. /rite:init を再実行
 
-{i18n:sprint_list_see_workflow}
+詳細は /rite:workflow を参照してください。
 ```
 
 ---
@@ -133,18 +133,18 @@ query($projectId: ID!, $iterationId: String!, $fieldId: ID!) {
 ### 3.1 Default Display (Current + Next + Most Recent Past)
 
 ```
-{i18n:sprint_list_title}
+Sprint 一覧
 
-  [{i18n:sprint_list_current}] Sprint 3 (2025-01-06 - 2025-01-19)
-         {i18n:sprint_issues_count}: 5{i18n:sprint_plan_count_unit} ({i18n:sprint_issues_done}: 2, {i18n:sprint_issues_in_progress}: 2, {i18n:sprint_issues_todo}: 1)
+  [[現在]] Sprint 3 (2025-01-06 - 2025-01-19)
+         Issue: {count} 件: 5件 (完了: 2, 進行中: 2, 未着手: 1)
 
-  [{i18n:sprint_list_next}] Sprint 4 (2025-01-20 - 2025-02-02)
-         {i18n:sprint_issues_count}: 3{i18n:sprint_plan_count_unit} ({i18n:sprint_list_all_todo})
+  [[次回]] Sprint 4 (2025-01-20 - 2025-02-02)
+         Issue: {count} 件: 3件 (すべて未着手)
 
-  [{i18n:sprint_list_past}] Sprint 2 (2024-12-23 - 2025-01-05)
-         {i18n:sprint_issues_count}: 8{i18n:sprint_plan_count_unit} ({i18n:sprint_list_all_done})
+  [[過去]] Sprint 2 (2024-12-23 - 2025-01-05)
+         Issue: {count} 件: 8件 (すべて完了)
 
-{i18n:sprint_list_displayed_total}: 3 {i18n:sprint_list_sprints} ({i18n:sprint_list_total_sprints} 5 {i18n:sprint_list_sprints})
+合計: 3 スプリント表示 (全 5 スプリント表示)
 ```
 
 ### 3.2 Filter Options
@@ -159,17 +159,17 @@ query($projectId: ID!, $iterationId: String!, $fieldId: ID!) {
 ### 3.3 When No Current Iteration Exists
 
 ```
-{i18n:sprint_list_title}
+Sprint 一覧
 
-{i18n:sprint_no_current}
+現在アクティブなスプリントがありません
 
-  [{i18n:sprint_list_next}] Sprint 4 (2025-01-20 - 2025-02-02)
-         {i18n:sprint_issues_count}: 3{i18n:sprint_plan_count_unit} ({i18n:sprint_list_all_todo})
+  [[次回]] Sprint 4 (2025-01-20 - 2025-02-02)
+         Issue: {count} 件: 3件 (すべて未着手)
 
-  [{i18n:sprint_list_past}] Sprint 3 (2025-01-06 - 2025-01-19)
-         {i18n:sprint_issues_count}: 5{i18n:sprint_plan_count_unit} ({i18n:sprint_list_all_done})
+  [[過去]] Sprint 3 (2025-01-06 - 2025-01-19)
+         Issue: {count} 件: 5件 (すべて完了)
 
-{i18n:sprint_list_hint_check_period}
+ヒント: GitHub Projects でイテレーションの期間を確認してください。
 ```
 
 ---
@@ -177,10 +177,10 @@ query($projectId: ID!, $iterationId: String!, $fieldId: ID!) {
 ## Phase 4: Present Next Actions
 
 ```
-{i18n:sprint_plan_next_actions}:
-- `/rite:sprint:current` {i18n:sprint_list_action_show_current}
-- `/rite:sprint:plan` {i18n:sprint_list_action_execute_plan}
-- `/rite:issue:list --sprint current` {i18n:sprint_list_action_list_issues}
+次のアクション:
+- `/rite:sprint:current` で現在のスプリント詳細を表示
+- `/rite:sprint:plan` でスプリント計画を実行
+- `/rite:issue:list --sprint current` で現在スプリントの Issue 一覧
 ```
 
 ---

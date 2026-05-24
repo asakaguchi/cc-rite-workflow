@@ -234,16 +234,29 @@ mkdir -p "$d/.rite/sessions"
 cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
 {"schema_version":2,"phase":"ingest_pre_lint","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
 EOF
-chmod 0555 "$d/.rite/sessions"
-combined=$( (cd "$d" && bash "$HOOK" migrate) 2>&1 )
-chmod +w "$d/.rite/sessions"
-migrated_lines=$(echo "$combined" | grep -c '^  migrated:' || true)
-# F-07 対応 (TC-8b-g 統合): Migration complete counter が 0 のままであることを直接 assert する。
-# `_atomic_write` 失敗時に counter が inflate しない invariant の direct verification。
-if [ "$migrated_lines" = "0" ] && echo "$combined" | grep -qE 'Migration complete: 0 file'; then
-  pass "TC-8b-e/g: write-failure path emits no 'migrated:' and counter stays 0 (F-05/F-07 — AC-8 negative regression + counter invariant)"
+# cycle 4 fix (Rec #2 boundary): root user では chmod 0555 が DAC 無視で write 可になり
+# write-failure path を強制できないため、本 invariant を検証不能。silent false-pass を防ぐため
+# 明示的に skip する (container CI で root 実行された場合の silent regression を遮断)。
+if [ "$(id -u)" = "0" ]; then
+  pass "TC-8b-e/g: skipped (root user detected — chmod 0555 ineffective under DAC; write-failure invariant unverifiable in this env)"
 else
-  fail "TC-8b-e/g: write-failure path leaked output: migrated_lines=$migrated_lines; combined='$combined'"
+  # cycle 4 fix (Rec #1 actionable): chmod restore に defense-in-depth trap を追加。
+  # 将来 hard-fail test (assertion 後の `exit 1` 等) が混入しても sandbox の sessions dir が
+  # readonly のまま残らないよう保証する。trap は本 TC 完了直後に解除し後続 TC に leak しない。
+  _tc8beg_restore() { chmod +w "$d/.rite/sessions" 2>/dev/null || true; }
+  trap _tc8beg_restore EXIT INT TERM HUP
+  chmod 0555 "$d/.rite/sessions"
+  combined=$( (cd "$d" && bash "$HOOK" migrate) 2>&1 )
+  chmod +w "$d/.rite/sessions"
+  trap - EXIT INT TERM HUP
+  migrated_lines=$(echo "$combined" | grep -c '^  migrated:' || true)
+  # F-07 対応 (TC-8b-g 統合): Migration complete counter が 0 のままであることを直接 assert する。
+  # `_atomic_write` 失敗時に counter が inflate しない invariant の direct verification。
+  if [ "$migrated_lines" = "0" ] && echo "$combined" | grep -qE 'Migration complete: 0 file'; then
+    pass "TC-8b-e/g: write-failure path emits no 'migrated:' and counter stays 0 (F-05/F-07 — AC-8 negative regression + counter invariant)"
+  else
+    fail "TC-8b-e/g: write-failure path leaked output: migrated_lines=$migrated_lines; combined='$combined'"
+  fi
 fi
 
 # (f) F-06 対応: cycle 2 で `--dry-run` preview の出力先が stdout → stderr に変更された

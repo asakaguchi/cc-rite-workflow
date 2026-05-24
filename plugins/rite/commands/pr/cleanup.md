@@ -272,7 +272,7 @@ git ls-remote --heads origin {branch_name}
 削除対象（評価順）:
 1. レビュー結果: `.rite/review-results/{pr_number}-*.json`
 2. 破損レビュー結果: `.rite/review-results/{pr_number}-*.json.corrupt-*`（fix.md Priority 2 が rename した orphan の回収）
-3. fix retry state: `.rite/state/fix-fallback-retry-{pr_number}.count`
+3. fix retry state（legacy）: `.rite/state/fix-fallback-retry-{pr_number}.count` — 旧 retry-counter 機構の orphan 回収（fix.md は #1115 以降生成しない）
 4. fix-cycle state: `.rite/fix-cycle-state/{pr_number}.json`
 5. legacy fix-cycle state: `.rite/fix-cycle-state.json`（workspace 直下の単一ファイル形式の残骸）
 6. accepted fingerprints: `.rite/state/accepted-fingerprints-{pr_number}.txt`

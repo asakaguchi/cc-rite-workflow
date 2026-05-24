@@ -58,10 +58,25 @@ _state_path() {
   printf '%s\n' "$SESSION_DIR/${1}.flow-state"
 }
 
+# Returns: 0 on successful atomic replace, 1 on tmpfile mktemp / write IO failure
+# or any non-zero from the flock+mv subshell. Callers MUST check rc (e.g.
+# `_atomic_write "$f" "$updated" || return 1`) — silent success leads to false
+# "migrated:" announcements when EROFS/ENOSPC/EXDEV/EACCES truncate the tmpfile.
 _atomic_write() {
   local target="$1" content="$2" lockfile="${1}.lock" tmpfile rc=0
   tmpfile=$(mktemp "${target}.XXXXXX") || return 1
-  printf '%s' "$content" > "$tmpfile"
+  # printf rc を必ず check し、disk-full / EROFS / quota exceeded で empty/partial tmpfile が
+  # 生成されたまま下流の mv が "成功" して target を破損内容で上書きする経路を遮断する。
+  # Additionally guard the post-write non-empty invariant: jq filters in this script always
+  # produce a non-empty JSON object, so a 0-byte tmpfile is a write-time corruption signal.
+  printf '%s' "$content" > "$tmpfile" || {
+    rm -f "$tmpfile" 2>/dev/null
+    return 1
+  }
+  [ -s "$tmpfile" ] || {
+    rm -f "$tmpfile" 2>/dev/null
+    return 1
+  }
   ( flock -w 3 9 || { echo "ERROR: flock timeout: $lockfile" >&2; exit 1; }
     mv "$tmpfile" "$target" ) 9>"$lockfile" || rc=$?
   [ -f "$tmpfile" ] && rm -f "$tmpfile" 2>/dev/null || true
@@ -182,13 +197,25 @@ cmd_deactivate() {
   _atomic_write "$path" "$updated"
 }
 
+# Returns:
+#   0 on actually-performed migration (`migrated:` announced unconditionally on stderr, AC-8)
+#   0 on `--dry-run` (no rewrite; "would migrate:" printed to **stderr** for stdout/stderr
+#                     consistency with the migration announcement — session-start silences
+#                     only stdout, so dry-run preview surfaces alongside real migrations)
+#   1 on skip (already v3) or error (jq parse failure / _atomic_write IO failure)
+# Caller `cmd_migrate` uses `&& migrated=$((migrated + 1)) || true` and therefore skip is
+# NOT counted in the "Migration complete: N" summary (only rc=0 increments). Treating skip
+# and error identically as rc=1 is intentional — both mean "no rewrite happened".
 _migrate_file() {
   local f="$1" dry="$2" verbose="$3" sv cp np
   sv=$(jq -r '.schema_version // 1' "$f" 2>/dev/null) || sv=1
   cp=$(jq -r '.phase // ""' "$f" 2>/dev/null) || cp=""
   [ "$sv" = "$SCHEMA_VERSION_V3" ] && { [ "$verbose" = 1 ] && echo "  skip (already v3): $f" >&2; return 1; }
   np=$(_phase_migrate "$cp")
-  [ "$dry" = 1 ] && { echo "  would migrate: $f (schema v$sv→v$SCHEMA_VERSION_V3, phase $cp→$np)"; return 0; }
+  # `--dry-run` の preview を stderr に統一する (line 208 の `migrated:` 出力と対称化)。
+  # session-start.sh は stdout のみ silence するため、dry-run preview を stderr に出すことで
+  # 実際の migration announcement と同じ経路で observability を確保する。
+  [ "$dry" = 1 ] && { echo "  would migrate: $f (schema v$sv→v$SCHEMA_VERSION_V3, phase $cp→$np)" >&2; return 0; }
   local now updated; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   # v3 schema: drop legacy `previous_phase` (replaced by step name discrimination in v3) and
   # normalize legacy `branch_name` → `branch`. `last_synced_phase` is preserved because
@@ -200,7 +227,13 @@ _migrate_file() {
      | (if .branch_name and (.branch | not) then .branch = .branch_name else . end)
      | del(.branch_name)
      | .schema_version = $s | .phase = $p | .updated_at = $ts' "$f") || return 1
-  _atomic_write "$f" "$updated"
+  # _atomic_write の rc を必ず伝播させる。`cmd_migrate` の `&&` 連結により _migrate_file 内で
+  # set -e が抑制されるため、`_atomic_write` が flock timeout / mv 失敗 / EXDEV / EACCES /
+  # ENOSPC / EROFS / printf 書き込み失敗で rc=1 を返しても、`|| return 1` がなければ実行は
+  # 下流の `echo "  migrated: ..."` まで継続し、false announcement (migration counter inflate +
+  # AC-8 invariant 違反) を引き起こす。`|| return 1` で early-return することで、announce は
+  # physical-completion (atomic mv 成功) 後の経路でのみ出ることを保証する。
+  _atomic_write "$f" "$updated" || return 1
   # AC-8 (silent skip forbidden): an actually-performed migration is always
   # announced on stderr, even without --verbose, so the session-start auto path
   # (session-start.sh silences only stdout) surfaces it. The no-op "skip (already

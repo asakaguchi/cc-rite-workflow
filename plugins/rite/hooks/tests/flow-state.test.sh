@@ -172,7 +172,12 @@ cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
 {"schema_version":2,"phase":"ingest_pre_lint","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
 EOF
 err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
-echo "$err" | grep -q "migrated:" && pass "TC-8b-a: non-verbose migrate announces 'migrated:' on stderr (AC-8)" || fail "TC-8b-a: non-verbose migrate was silent (AC-8 violation): '$err'"
+# F-05 対応: format stability invariant も grep specificity で固定する
+# `migrated:.*v[12]→v3.*[a-z_]+→[a-z_]+` で v1/v2→v3 矢印と phase 変換 token も assert し、
+# 将来 emission format が `migrate done:` 等へ rename される regression を即検出する
+echo "$err" | grep -qE 'migrated:.*v[12]→v3.*[a-z_]+→[a-z_]+' \
+  && pass "TC-8b-a: non-verbose migrate announces 'migrated:' on stderr with v→v3 + phase tokens (AC-8 + format stability)" \
+  || fail "TC-8b-a: non-verbose migrate format mismatch (expected 'migrated:.*v[12]→v3.*phase→phase'): '$err'"
 
 # (b) An already-v3 file migrated without --verbose MUST stay silent (no 'migrated:' and
 #     no verbose-only 'skip (already v3)'), so quiet session starts produce no noise.
@@ -183,6 +188,40 @@ if echo "$err" | grep -q "migrated:\|skip (already v3)"; then
   fail "TC-8b-b: non-verbose migrate of v3-only emitted output (should be silent): '$err'"
 else
   pass "TC-8b-b: non-verbose migrate of v3-only stays silent"
+fi
+
+# (c) F-04 対応: AC-8 文面は「v1/v2 → v3」両方を対象とするため、v1 (schema_version 欠落) で
+#     も同様の `migrated:` emit を assert する。_migrate_file の `jq -r '.schema_version // 1'`
+#     fallback により code path は v2 と等価だが、invariant 表現として明示的に固定する。
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/sessions"
+cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
+{"phase":"cleanup_pre_ingest","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
+EOF
+err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
+echo "$err" | grep -qE 'migrated:.*v1→v3.*[a-z_]+→[a-z_]+' \
+  && pass "TC-8b-c: non-verbose migrate of v1 (schema_version 欠落) announces 'migrated:' on stderr (AC-8 — v1 path)" \
+  || fail "TC-8b-c: v1 schema 欠落 migrate did not emit expected 'migrated:.*v1→v3.*phase→phase' format: '$err'"
+
+# (d) F-06 対応: cmd_migrate は $SESSION_DIR/*.flow-state を loop して各 file で _migrate_file を
+#     呼ぶため、N 個の v2 file があれば N 行の `migrated:` が emit される。multi-file emission の
+#     invariant を `grep -c` で固定する (single-file の TC-8b-a/c だけでは loop 内の重複処理を
+#     検出できない)。
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+sid2="00000000-0000-0000-0000-000000000002"
+mkdir -p "$d/.rite/sessions"
+cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
+{"schema_version":2,"phase":"ingest_pre_lint","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
+EOF
+cat > "$d/.rite/sessions/${sid2}.flow-state" <<EOF
+{"schema_version":2,"phase":"create_branch","session_id":"$sid2","issue_number":4,"branch":"b2","pr_number":0,"next_action":"y","active":true,"updated_at":"2026-05-22T00:00:00Z"}
+EOF
+err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
+migrated_count=$(echo "$err" | grep -c 'migrated:' || true)
+if [ "$migrated_count" = "2" ]; then
+  pass "TC-8b-d: multi-file migrate emits 'migrated:' per file (count=2)"
+else
+  fail "TC-8b-d: expected 2 'migrated:' lines but got $migrated_count: '$err'"
 fi
 
 # --- TC-9: phase enum validation warns but accepts unknown phase ---

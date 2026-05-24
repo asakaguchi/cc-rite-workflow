@@ -85,34 +85,26 @@ Hooks are shell scripts that respond to Claude Code lifecycle events. They are r
 
 ### Hook Directory Structure
 
+Representative entries (not exhaustive — see the note below):
+
 ```
 plugins/rite/hooks/
-├── session-start.sh          # SessionStart hook: re-injects flow state after compact or resume
-├── session-end.sh            # SessionEnd hook: saves final state when session ends
-├── session-ownership.sh      # Helper: session ownership guard for .rite-flow-state writes
-├── pre-compact.sh            # PreCompact hook: saves work memory snapshot before context compaction
-├── post-compact.sh           # PostCompact hook: restores state after context compaction
-├── pre-tool-bash-guard.sh    # PreToolUse hook (Bash): blocks known-bad Bash command patterns
-├── post-tool-wm-sync.sh      # PostToolUse hook (Bash): auto-creates local work memory when missing
-├── preflight-check.sh        # Guard script called by commands before execution
-├── notification.sh           # Sends notifications to configured channels (Slack, Discord, Teams)
-├── hook-preamble.sh          # Shared preamble sourced by hooks (env, logging, state path)
-├── local-wm-update.sh        # Self-resolving wrapper for local work memory file updates
-├── work-memory-update.sh     # Shared helper for local work memory atomic writes
-├── work-memory-lock.sh       # mkdir-based lock/unlock for issue-level work memory access
-├── issue-comment-wm-sync.sh  # Sync local work memory to Issue comment backup
-├── issue-comment-wm-update.py # Python helper for Issue comment work memory updates
-├── state-path-resolve.sh     # Resolves root directory for rite state files
-├── cleanup-work-memory.sh    # Deterministic cleanup of local work memory files
-├── flow-state.sh             # Unified per-session flow-state management
-├── issue-body-safe-update.sh # Safe Issue body fetch/apply with backup and validation
-├── wiki-ingest-trigger.sh    # Hook: trigger Wiki ingest on review/fix/close events
-├── wiki-query-inject.sh      # Hook: inject Wiki heuristics at start/review/fix/implement
-├── work-memory-parse.py      # YAML frontmatter parser for work memory files
-├── hooks.json                # Native plugin hook registration (managed by Claude Code plugin system)
-├── scripts/                  # Internal helper scripts (drift-check, bang-backtick-check, etc.)
-└── tests/                    # Test scripts
+├── session-start.sh / session-end.sh        # SessionStart / SessionEnd lifecycle hooks
+├── pre-compact.sh / post-compact.sh          # PreCompact / PostCompact (context compaction)
+├── pre-tool-bash-guard.sh                    # PreToolUse (Bash): blocks known-bad command patterns
+├── post-tool-wm-sync.sh                      # PostToolUse (Bash): auto-creates local work memory
+├── flow-state.sh                             # Unified per-session flow-state management
+├── session-ownership.sh / hook-preamble.sh   # Sourced helper libraries (not registered hooks)
+├── work-memory-*.sh / local-wm-update.sh     # Local work memory read / write / lock helpers
+├── issue-body-safe-update.sh                 # Safe Issue body fetch / apply with backup
+├── wiki-ingest-trigger.sh / wiki-query-inject.sh  # Wiki ingest / query helpers (invoked from commands)
+├── _resolve-*.sh / _validate-*.sh            # Internal session-id / state-root helpers
+├── hooks.json                                # Native plugin hook registration (Claude Code reads this)
+├── scripts/                                  # Internal helper scripts (drift-check, wiki commit, etc.)
+└── tests/                                    # Hook test suite
 ```
+
+> **Note**: This is a representative list, not a complete enumeration. The canonical full list is the `plugins/rite/hooks/` directory itself (and the Plugin Structure section of `docs/SPEC.md`). Only the six events above — `SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse` — are registered in `hooks.json` (verify with `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`); every other `.sh` is a sourced helper library or a script invoked from commands. New hooks are added to the directory and `hooks.json`, so this section does **not** need to be updated for each one.
 
 > **Note**: There is no Stop hook. A Stop hook that blocked on exit made the LLM stall in thinking loops at phase boundaries, so workflow halting is prevented by the per-session flow-state structure and the orchestrator-level scaffolding contract instead. Compact recovery is handled by `pre-compact.sh` + `post-compact.sh` + `session-start.sh`.
 

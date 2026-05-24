@@ -114,9 +114,10 @@
 | [doc 内 _TBD_ placeholder は merge 前 enforcement なしだと長期残留する](pages/anti-patterns/in-doc-tbd-placeholder-without-merge-gate.md) | anti-patterns | 検証結果 doc / 設計書に `_TBD_` / `（追記予定）` / `<!-- TODO: post-hoc 観測 -->` placeholder を埋め込み「merge 後に観測値を追記する」設計は、merge 前 enforcement (CI check / pre-commit / required reviewer) なしでは長期残留し、後続 reader が context 喪失した状態で読む drift を生む。PR #1065 で `docs/verification-results/middle-refactor-2026-05-20.md` Section 4 の live dogfooding 結果欄が `_TBD_` placeholder のまま commit され cycle 1 review で MEDIUM finding として検出。canonical 対策: Pattern 1 (recommended) doc 外で追跡する (PR description チェックリスト + follow-up Issue)、Pattern 2 placeholder を残すなら CI で強制 (`grep -F '_TBD_' docs/`)、Pattern 3 merge 後追記が永遠に確定しない経路では N/A + 代替手法明示で commit する。Wiki Ingest 運用プロジェクトでは raw source 経由で自動的に経験則化される経路が確立済みのため Pattern 1 が前提的に低コスト。 | 2026-05-19T20:10:23Z | high |
 | [branch を作る gh コマンドは git-flow で --base を明示し default branch 起点の push 衝突を防ぐ](pages/heuristics/git-flow-cli-pin-base-branch.md) | heuristics | branch.base ≠ リポジトリの default branch という git-flow 構成では、remote ブランチを作成する gh CLI（gh issue develop 等）に --base を明示しないと remote が default branch (main) 起点で作られ、local の base 派生ブランチと乖離して初回 push が non-fast-forward で失敗する。非自明なフラグ選択は WHY コメント併記で後続編集の退行を防ぐ。 | 2026-05-23T11:37:40Z | high |
 | [aggregate label による推奨事項の責任曖昧化 (「推奨 N 件 (全て scope 外)」)](pages/anti-patterns/aggregate-recommendation-label-evasion.md) | anti-patterns | `/rite:pr:review` reviewer の「推奨事項」を件数のみの aggregate label (「推奨 N 件」「全て scope 外」) で完了報告し、各 item の disposition (起票 / 保留 / 観察) を明示せず silent skip する anti-pattern。Phase 7 AskUserQuestion を prose 強制のみで gate していたため発火。PR #1039 で 4 件を aggregate 報告し実際は Issue 化すべき 2 件が事後起票 (#1040/#1041) になった事例で実測。防止策は reviewer 出力の 3-classification (actionable/design_confirmation/boundary) 明示 + Phase 7 post-condition の機械 gate + 完了報告の disposition breakdown 必須化。 | 2026-05-18T00:00:00+09:00 | high |
+| [dead reference 整理では live citation と historical 記述を区別する](pages/heuristics/dead-ref-cleanup-live-vs-historical-citation.md) | heuristics | 削除・改名されたファイル / シンボルへの参照を整理する PR では、「現行 SoT として現在形・行番号付きで参照する live citation（修正対象）」と「過去形・period-accurate な旧名を残す historical 記述（CHANGELOG / migration-guide / design-snapshot として据え置き）」を区別する。find/replace 一括 rename は dead file 参照で grep 検証不能だった主張を live file への検証可能な反証へ変えうるため実態検証が必須。schema drift は別種として別 Issue に切り出す。PR #1132（dead-ref 整理、tech-writer/prompt-engineer 2 reviewer 0 findings mergeable）で実測。 | 2026-05-24T18:01:50Z | medium |
 
 ## 統計
 
-- 総ページ数: 108
-- ドメイン別: patterns=39, heuristics=31, anti-patterns=38
-- 最終更新: 2026-05-23T12:05:34Z
+- 総ページ数: 109
+- ドメイン別: patterns=39, heuristics=32, anti-patterns=38
+- 最終更新: 2026-05-24T18:01:50Z

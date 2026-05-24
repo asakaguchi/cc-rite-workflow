@@ -20,7 +20,7 @@ Check the completion status of an Issue and guide necessary actions.
 
 ## Shared: Projects Status → Done (delegate pattern)
 
-Phase 1.3.2 / 4.2 / 4.6.3 はいずれも Projects Status を **Done** に更新する。直接の `gh api graphql` + `field-list` + `item-edit` インライン呼び出しは substep 間で LLM attention が失われ silent skip を生む（Issue #658）ため、共通スクリプト `projects-status-update.sh` に委譲する（`start.md` Phase 2.4 / 5.5.1 / 5.7.2 と同一）。スクリプトは冪等で、API 詳細は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) を参照。
+Phase 1.3.2 / 4.2 / 4.6.3 はいずれも Projects Status を **Done** に更新する。直接の `gh api graphql` + `field-list` + `item-edit` インライン呼び出しは substep 間で LLM attention が失われ silent skip を生む（Issue #658）ため、共通スクリプト `projects-status-update.sh` に委譲する（`start.md` Phase 2.4 / 8.3 と同一）。スクリプトは冪等で、API 詳細は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) を参照。
 
 **委譲呼び出し**（`{issue}` は対象 Issue 番号、`auto_add false`・`non_blocking true`）:
 

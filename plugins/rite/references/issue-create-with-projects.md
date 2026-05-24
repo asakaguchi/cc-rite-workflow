@@ -12,7 +12,7 @@ Referenced from:
 - `commands/pr/fix.md` Phase 4.3.4 Step 2
 - `commands/pr/review.md` Phase 7.4.2
 - `commands/pr/create.md` Phase 2.5.5
-- `commands/pr/cleanup.md` Phase 1.7.3.2
+- `commands/pr/cleanup.md` Phase 1.7.2
 - `commands/issue/create.md` ステップ 4.3 (Single Issue creation)
 - `commands/issue/create.md` ステップ 5.3 (parent Issue creation in XL decomposition)
 - `commands/issue/create.md` ステップ 5.4 (Sub-Issue bulk creation in XL decomposition)
@@ -164,7 +164,7 @@ Each caller determines Priority using its own logic before passing it to the scr
 |---------|----------------|--------|
 | Unresolved issues detected during PR creation | Medium | Default for detected problems |
 
-### cleanup.md (Phase 1.7.3): Default Medium
+### cleanup.md (Phase 1.7): Default Medium
 
 | Context | Issue Priority | Reason |
 |---------|----------------|--------|

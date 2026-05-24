@@ -2,8 +2,12 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-24T16:26:40Z"
+updated: "2026-05-24T17:13:31Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260524T170425Z-pr-1130.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260524T165749Z-pr-1130.md"
   - type: "reviews"
     ref: "raw/reviews/20260520T101636Z-pr-1071-cycle-5-mergeable.md"
   - type: "reviews"
@@ -793,6 +797,14 @@ PR #1128 (Issue #1123 — #1122 の横展開確認から分割された後続。
 
 - **Retired 節へ書き換え > 節削除**: retired コンポーネントの doc 整理は、節を完全削除するより「Retired 節へ書き換え」が既存パターン（`Stop Guard (retired)` / `Verify Terminal Output (retired)`）と整合し、migration-guide からの参照も維持できる。完全削除は migration-guide からの参照を dangling 化させるため、retired 系譜のページ群では Retired 節保持が canonical。なお [Legacy field の「deprecate + 残置」よりも「完全削除」が構造的閉塞を実現する](../heuristics/complete-deletion-over-deprecation-for-structural-closure.md) は *runtime に効く field/code* の話で、本 sub-pattern は *人間向け doc の参照保全* の話 — 適用 layer が異なる（コードは完全削除で構造閉塞、doc は Retired 節で参照保全）。
 
+### ファイル削除整理 PR は inbound 参照（行番号 citation 含む）を削除前 grep で検証する (PR #1130 — Issue #1127、累積 41 回目)
+
+PR #1130 (Issue #1127 — #1123 から分割された後続。直前の累積 40 回目 PR #1128 と同系譜) は削除済み `flow-state-update.sh` / `stop-guard.sh` 系への dead reference を test docs / anti-pattern docs / regression fixtures から整理し、`stop-guard.test.md`（521 行）を削除。本ページの dead/broken reference cleanup 系譜（PR #1102→#1105 の着手時 repo-wide grep、PR #1124 の semantic variant、PR #1128 の grep scope breadth）に **grep の direction 軸** を追加する:
+
+- **inbound 参照の見落とし（outbound だけ検証する不全）**: cycle 1 で tech-writer + code-quality が独立検出した HIGH（cross-validation で High Confidence、cycle 2 で fix 確認 → 0 findings 収束）。`stop-guard.test.md` を削除した際、`docs/designs/multi-session-state.md:78` の **行番号付き citation**（`stop-guard.test.md:436`）が dangling 化した。原因は AC-5 grep が **変更ファイル内の outbound dead ref**（整理対象 docs → 削除ファイル）のみを検証し、**他の live doc → 削除ファイルの inbound 参照** を scope に含めなかったこと。修正は dead citation を除去し同 Note 内の既出の live な根拠（`pre-compact.test.sh` の AC-2 検証）に集約。canonical 対策: ファイル削除を含む整理 PR では、削除前に `grep -rn '<deleted-file-name>'` を repo 全体で実行し、**行番号付き citation を含む inbound 参照** を確認する手順を組み込む。PR #1128 が grep の *breadth*（repo 全体 / `tests/` 含む）を着手時固定したのに対し、本 PR は grep の *direction*（outbound だけでなく inbound）を追加する — breadth × direction の 2 軸で dead reference cleanup の検出網羅性を構成する。
+
+- **削除ファイルを「現行 SoT」として live 参照する pre-existing dead ref**: inbound grep の副産物として、design doc が削除済みファイルを現行 SoT として live 参照する pre-existing dead ref も同時に surface し、本 PR scope 外として follow-up Issue #1129 に切り出した。関連: [SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する](../heuristics/sot-path-reference-existence-check.md) / [Design doc は現 HEAD の SoT を verify してから書く](../heuristics/design-doc-current-head-verification.md)。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -807,6 +819,8 @@ PR #1128 (Issue #1123 — #1122 の横展開確認から分割された後続。
 
 ## ソース
 
+- [PR #1130 review (累積 41 回目: ファイル削除整理 PR で inbound 参照の行番号付き dangling citation を tech-writer + code-quality が cross-validation 検出 → cycle 2 で 0 findings 収束。削除前 `grep -rn` で inbound 参照を検証する learning、design doc の pre-existing dead ref を #1129 化)](../../raw/reviews/20260524T170425Z-pr-1130.md)
+- [PR #1130 fix (stop-guard.test.md 削除に伴う multi-session-state.md:78 の dangling citation 除去 + live 根拠への集約。ファイル削除を含む整理 PR では outbound だけでなく inbound 参照を削除前 grep で確認すべき learning)](../../raw/fixes/20260524T165749Z-pr-1130.md)
 - [PR #792 cycle 3 fix (Asymmetric pattern 再発 + GFM table boundary 破壊)](../../raw/fixes/20260503T110855Z-pr-792-fix-cycle3.md)
 - [PR #792 cycle 5 fix (Meta-contract レイヤーでの asymmetric 再発 + FR status 変更 5 項目 checklist)](../../raw/fixes/20260503T111722Z-pr-792-fix-cycle5.md)
 - [PR #548 cycle 3 fix: asymmetric fix transcription pattern](../../raw/fixes/20260416T173607Z-pr-548-cycle3.md)

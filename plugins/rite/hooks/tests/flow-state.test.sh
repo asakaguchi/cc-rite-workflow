@@ -214,7 +214,7 @@ cat > "$d/.rite/sessions/${sid2}.flow-state" <<EOF
 EOF
 err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
 # Why: 行頭 anchor `^  migrated:` で固定することで、将来 hook が `Already migrated:` 等の文言を
-# 追加した場合の false match を防ぎ、emission format specificity を TC-8b-a/e と統一する。
+# 追加した場合の false match を防ぐ (TC-8b-e/g と同じ anchor 形式)。
 migrated_count=$(echo "$err" | grep -c '^  migrated:' || true)
 if [ "$migrated_count" = "2" ]; then
   pass "TC-8b-d: multi-file migrate emits 'migrated:' per file (count=2)"
@@ -290,6 +290,9 @@ else
     fi
   fi
 fi
+# Why: TC 内で導入した一時変数を後続 TC の shell scope に残さないため明示 unset する
+# (`_tc8beg_test_cleanup` / `_tc8beg_saved_trap` の cleanup precedent と整合)。
+unset _dac_probe_err _dac_probe_parent _dac_probe _dac_probe_diag 2>/dev/null || true
 
 # Why: `--dry-run` preview は session-start.sh の stdout-only silence 経路で見える必要があるため
 # stderr に出力されることを invariant 化する。stdout に戻る regression を即検出する。

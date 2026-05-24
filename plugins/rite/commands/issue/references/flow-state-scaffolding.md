@@ -70,8 +70,6 @@ bash {plugin_root}/hooks/flow-state.sh set \
 ## 関連
 
 - [`pre-condition-gate.md`](./pre-condition-gate.md) — pre-condition の `flow-state.sh` fail-fast pattern
-- `plugins/rite/hooks/flow-state.sh` — `set` / `get` / `deactivate` / `migrate` subcommand の実装 (`set` の merge semantics + `--if-exists` / `--preserve-error-count` flag を含む)
-- `plugins/rite/hooks/phase-transition-whitelist.sh` — 遷移許可定義 (flat phase 群を反映)
-- `plugins/rite/hooks/flow-state.sh` — per-session flow-state 読み出し
+- `plugins/rite/hooks/flow-state.sh` — `set` / `get` / `deactivate` / `migrate` subcommand の実装 (`set` の merge semantics + `--if-exists` / `--preserve-error-count` flag を含む) および per-session flow-state 読み出し
 - `plugins/rite/commands/resume.md` Phase 5.3 — Phase enum → Step mapping (SoT)
 - [Sub-skill Return Auto-Continuation Contract (Retired)](../../../skills/rite-workflow/references/sub-skill-return-protocol.md) — retirement note

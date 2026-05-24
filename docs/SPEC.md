@@ -225,7 +225,6 @@ rite-workflow/
 │ ├── pre-compact.sh / post-compact.sh # #133
 │ ├── preflight-check.sh
 │ ├── pre-tool-bash-guard.sh / post-tool-wm-sync.sh
-│ ├── phase-transition-whitelist.sh # Phase transition guard
 │ ├── hook-preamble.sh / state-path-resolve.sh # Shared helpers
 │ ├── flow-state-update.sh / local-wm-update.sh
 │ ├── work-memory-lock.sh / work-memory-update.sh / work-memory-parse.py
@@ -771,7 +770,7 @@ The Session Info section of the work memory includes phase information indicatin
 | `ready_error` | `/rite:pr:ready` failed inside e2e flow; resume routes back to ステップ 8 for retry | 8 |
 | `completed` | Workflow finished | 8 終端 |
 
-Lifecycle sub-rings (managed by `hooks/phase-transition-whitelist.sh`):
+Lifecycle sub-rings (legacy granular phases — lifecycle-incomplete detection now lives in `session-end.sh`'s inline glob; see the retired Phase Transition Whitelist note below):
 
 | Ring | Phase values |
 |------|--------------|
@@ -1242,7 +1241,7 @@ WM_SOURCE="implement" WM_PHASE="lint" \
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `WM_SOURCE` | Yes | Update source identifier (`init`, `implement`, `lint`, etc.) |
-| `WM_PHASE` | Yes | Current phase (`lint`, `implement`, `pr`, etc.; see flat phase enum in `phase-transition-whitelist.sh`) |
+| `WM_PHASE` | Yes | Current phase (`lint`, `implement`, `pr`, etc.; see `PHASE_ENUM_V3` in `flow-state.sh`) |
 | `WM_PHASE_DETAIL` | Yes | Detailed phase description |
 | `WM_NEXT_ACTION` | Yes | Next action |
 | `WM_BODY_TEXT` | Yes | Update content text |
@@ -1264,21 +1263,11 @@ Shared library script providing `mkdir`-based lock/unlock functionality. Used by
 
 If a lock's `mtime` exceeds the threshold (default: 120 seconds), the PID file is checked to verify process liveness. If the process has terminated, the lock is automatically released.
 
-### Phase Transition Whitelist (`phase-transition-whitelist.sh`) (#490)
+### Phase Transition Whitelist (retired)
 
-Sourced (not executed) library that provides the canonical phase-transition graph. Production hooks (`session-end.sh` / `pre-tool-bash-guard.sh`) consume the helper predicates `rite_phase_is_create_lifecycle_in_progress` and `rite_phase_is_cleanup_lifecycle_in_progress` for lifecycle gating; the top-level `rite_phase_transition_allowed` function is a library entry point reserved for orchestrator-level pre-write checks (currently invoked only from the test suite — adding a production caller is a follow-up). Silent phase-skipping in `/rite:issue:start` end-to-end flow used to be an observability gap; the graph plus the in-library WARNING / ERROR / INFO emits keep that gap closed once a production caller is wired.
+> **Status: Retired**. The `phase-transition-whitelist.sh` library (and its `phase-transition-whitelist.test.sh` suite) were removed in the v2→v3 migration (see [`docs/migration-guides/v2-to-v3.md`](migration-guides/v2-to-v3.md)). The canonical phase enum is now `PHASE_ENUM_V3` in `flow-state.sh` (`init branch plan implement lint pr review fix ready ready_error cleanup ingest completed`), validated by its `_phase_is_valid` helper; legacy phase names are resolved by `_phase_migrate` plus the `/rite:resume` cross-check rather than a transition graph.
 
-> **Hook registration note**: This script is **not registered** in `hooks.json` — it is a `source`-only library used by other hooks (`session-end.sh` / `pre-tool-bash-guard.sh`) and orchestrator commands. Per the canonical SoT in `hooks.json`, only the 6 lifecycle hooks (`SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse`) are wired; this library does not appear in that registration.
-
-**Provided Functions (post-source):**
-
-| Function | Purpose |
-|----------|---------|
-| `rite_phase_transition_allowed <prev> <next>` | 0 if the transition is whitelisted |
-| `rite_phase_expected_next <phase>` | Prints space-separated valid next phases |
-| `rite_phase_is_known <phase>` | 0 if the phase name is known |
-
-**Override merging:** Projects can extend (not overwrite) the whitelist via `hooks.stop_guard.phase_transitions.<phase>: [<next1>, …]` in `rite-config.yml`. (The config key name retains the historical `stop_guard` prefix for backwards compatibility with existing user configs even though the Stop hook was removed; the value is now consumed by the orchestrator-level phase-transition checks.) Bash 4.2+ is required for `declare -gA`; older bash aborts gracefully so the consuming caller can fail-open.
+Lifecycle-incomplete detection for the legacy `create_*` / `cleanup_*` phases now lives inline in `session-end.sh` (the `[[ "$_state_phase" == create_* ]]` / `cleanup_*` glob branches). The former `rite_phase_is_create_lifecycle_in_progress` / `rite_phase_is_cleanup_lifecycle_in_progress` predicates no longer exist, so the `type … >/dev/null` guard in that hook always falls through to the inline glob, which is the sole active path (pinned by `session-end.test.sh` TC-475-WARN-A〜D / TC-608-WARN-A〜E). The `rite_phase_transition_allowed` / `rite_phase_expected_next` / `rite_phase_is_known` functions and the `hooks.stop_guard.phase_transitions` override merging they backed are gone — no current hook, script, or template reads that config key.
 
 ### Verify Terminal Output (retired)
 
@@ -1421,7 +1410,7 @@ Legacy `.rite-flow-state` files (flat JSON without `schema_version` or with `sch
 
 The Issue series that delivered this feature (#672 epic with children #678 / #679 / #680 / #681 / #682 / #683 / #684 / #685 + follow-up #749) used GitHub's native Sub-Issues API to maintain the parent-child relation. `/rite:issue:start` Phase 0.3 detects parent Issues via three OR-combined methods (trackedIssues API → body tasklist `- [ ] #N` → label-based `epic`/`parent`/`umbrella`), and Phase 2.4.7 propagates Status promotion (Todo → In Progress) from child to parent in the same OR-combined order (`## 親 Issue` body meta → Sub-Issues API `trackedInIssues` → tasklist search).
 
-> **Hook list canonical SoT**: The hooks that read or write per-session state are registered in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json) — currently 6 events (`SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse`). To re-enumerate the live registration, run `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`. The `Stop` event has been removed and is not part of the current registration. The library scripts `phase-transition-whitelist.sh` and `session-ownership.sh` are sourced (not registered) and therefore do not appear in `hooks.json`.
+> **Hook list canonical SoT**: The hooks that read or write per-session state are registered in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json) — currently 6 events (`SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse`). To re-enumerate the live registration, run `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`. The `Stop` event has been removed and is not part of the current registration. The library script `session-ownership.sh` is sourced (not registered) and therefore does not appear in `hooks.json`.
 
 ### Local Work Memory + Compact Resilience
 
@@ -1472,7 +1461,6 @@ A test framework for ensuring Hook script quality. Located in `plugins/rite/hook
 
 | Script | Test Content |
 |--------|-------------|
-| `phase-transition-whitelist.sh` | Phase transition allow/block decisions per phase (replaces retired `stop-guard.sh`) |
 | `preflight-check.sh` | Command blocking by compact state |
 | `post-compact.sh` | Recovery context emission, `.rite-compact-state` self-healing |
 | `pre-compact.sh` | State capture before compact |

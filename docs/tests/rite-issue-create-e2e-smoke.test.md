@@ -117,7 +117,7 @@ flow-state は `flow-state-update.sh` 経由で生成する (手動作成は sch
 
 ### Scenario 4a: implicit stop シミュレート
 
-> **Note**: 本シナリオの `create_post_interview` は flat workflow 統合により書き込み経路が無くなった legacy phase 名。`flow-state-update.sh create` は forward-compat で未知 phase でも受容するため初期化は通る。本シナリオの testing 目的は、`rite_phase_is_create_lifecycle_in_progress` predicate が legacy create_* phase を依然として検出できる契約 (forward-compat) を保証することにある。
+> **Note**: 本シナリオの `create_post_interview` は flat workflow 統合により書き込み経路が無くなった legacy phase 名。`flow-state-update.sh create` は forward-compat で未知 phase でも受容するため初期化は通る。本シナリオの testing 目的は、`session-end.sh` の inline glob fallback (`[[ "$_state_phase" == create_* ]]`) が legacy create_* phase を依然として検出できる契約 (forward-compat) を保証することにある。
 
 1. flow-state を `create_post_interview` で初期化 (上記コマンド)。phase 名が legacy であることは意図的な setup
 2. Claude Code で `/clear` → `/rite:issue:start <N>` を再実行し、前セッションの implicit stop を模した state を残したまま再開
@@ -127,7 +127,7 @@ flow-state は `flow-state-update.sh` 経由で生成する (手動作成は sch
 
 - `start.md ステップ 8.5` 実行中に `manual_fallback_adopted` を含む sentinel が前セッション会話に存在する場合、tracking Issue が GitHub に作成される
 - `.rite-flow-state-diag.log` に `flow_state_*` 行が記録され、phase transition の経過が監査可能
-- `phase-transition-whitelist.sh` の `rite_phase_is_create_lifecycle_in_progress` 等の predicate が legacy create_* phase を正しく detect する (test-suite で覆われる契約)
+- `session-end.sh` の inline glob fallback が legacy create_* phase を正しく detect する (`session-end.test.sh` TC-475-WARN-A〜D で覆われる契約)
 
 ### 検証コマンド
 
@@ -146,7 +146,7 @@ tail -20 .rite-flow-state-diag.log
 |------|--------|
 | retrospective scan が sentinel を取り逃す | `start.md ステップ 8.5` の grep パターンが現行 sentinel literal を網羅しているか確認 |
 | diag log に flow-state 行が全く残らない | `flow-state-update.sh` の write path で mv/jq が silent fail していないか — 全 mv site で rc capture + WARNING が出ている前提で、欠落がないか確認する |
-| `rite_phase_is_create_lifecycle_in_progress` が legacy phase を取り逃す | `phase-transition-whitelist.test.sh` TC-CREATE-LIFECYCLE-LEGACY が PASS しているか確認 |
+| `session-end.sh` の inline glob が legacy create_* phase を取り逃す | `session-end.test.sh` TC-475-WARN-A〜D が PASS しているか確認 |
 
 ## 回帰検出のトリガー
 
@@ -154,7 +154,7 @@ tail -20 .rite-flow-state-diag.log
 
 - `plugins/rite/commands/issue/create.md`
 - `plugins/rite/commands/issue/start.md` (ステップ 8.5 retrospective scan)
-- `plugins/rite/hooks/phase-transition-whitelist.sh`
+- `plugins/rite/hooks/session-end.sh`（lifecycle 未完了検出の inline glob）
 - `plugins/rite/hooks/flow-state-update.sh`
 
 ## 実施記録テンプレート

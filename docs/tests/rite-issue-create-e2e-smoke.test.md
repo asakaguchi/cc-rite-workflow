@@ -111,13 +111,13 @@ flat workflow への移行後、Stop hook による exit-2 block は廃止され
 
 ### 共通前提
 
-flow-state は `flow-state-update.sh` 経由で生成する (手動作成は schema drift の原因となる):
+flow-state は `flow-state.sh` 経由で生成する (手動作成は schema drift の原因となる):
 
-- 推奨: `bash plugins/rite/hooks/flow-state-update.sh create --phase {phase} --issue 0 --branch "" --pr 0 --next "test"`
+- 推奨: `bash plugins/rite/hooks/flow-state.sh set --phase {phase} --issue 0 --branch "" --pr 0 --next "test"`
 
 ### Scenario 4a: implicit stop シミュレート
 
-> **Note**: 本シナリオの `create_post_interview` は flat workflow 統合により書き込み経路が無くなった legacy phase 名。`flow-state-update.sh create` は forward-compat で未知 phase でも受容するため初期化は通る。本シナリオの testing 目的は、`session-end.sh` の inline glob fallback (`[[ "$_state_phase" == create_* ]]`) が legacy create_* phase を依然として検出できる契約 (forward-compat) を保証することにある。
+> **Note**: 本シナリオの `create_post_interview` は flat workflow 統合により書き込み経路が無くなった legacy phase 名。`flow-state.sh set` は forward-compat で未知 phase でも受容するため初期化は通る。本シナリオの testing 目的は、`session-end.sh` の inline glob fallback (`[[ "$_state_phase" == create_* ]]`) が legacy create_* phase を依然として検出できる契約 (forward-compat) を保証することにある。
 
 1. flow-state を `create_post_interview` で初期化 (上記コマンド)。phase 名が legacy であることは意図的な setup
 2. Claude Code で `/clear` → `/rite:issue:start <N>` を再実行し、前セッションの implicit stop を模した state を残したまま再開
@@ -145,7 +145,7 @@ tail -20 .rite-flow-state-diag.log
 | 症状 | 確認先 |
 |------|--------|
 | retrospective scan が sentinel を取り逃す | `start.md ステップ 8.5` の grep パターンが現行 sentinel literal を網羅しているか確認 |
-| diag log に flow-state 行が全く残らない | `flow-state-update.sh` の write path で mv/jq が silent fail していないか — 全 mv site で rc capture + WARNING が出ている前提で、欠落がないか確認する |
+| diag log に flow-state 行が全く残らない | `flow-state.sh` の write path で mv/jq が silent fail していないか — 全 mv site で rc capture + WARNING が出ている前提で、欠落がないか確認する |
 | `session-end.sh` の inline glob が legacy create_* phase を取り逃す | `session-end.test.sh` TC-475-WARN-A〜D が PASS しているか確認 |
 
 ## 回帰検出のトリガー
@@ -155,7 +155,7 @@ tail -20 .rite-flow-state-diag.log
 - `plugins/rite/commands/issue/create.md`
 - `plugins/rite/commands/issue/start.md` (ステップ 8.5 retrospective scan)
 - `plugins/rite/hooks/session-end.sh`（lifecycle 未完了検出の inline glob）
-- `plugins/rite/hooks/flow-state-update.sh`
+- `plugins/rite/hooks/flow-state.sh`
 
 ## 実施記録テンプレート
 

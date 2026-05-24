@@ -1,8 +1,5 @@
 #!/bin/bash
 # rite workflow - Unified flow-state management (schema_version=3)
-# Subcommands: set | get | deactivate | migrate
-# Replaces: flow-state-update.sh, state-read.sh, _resolve-flow-state-path.sh,
-#           _resolve-schema-version.sh, resume-active-flag-restore.sh, phase-transition-whitelist.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

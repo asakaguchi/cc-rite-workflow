@@ -104,7 +104,7 @@ plugins/rite/hooks/
 ├── issue-comment-wm-update.py # Python helper for Issue comment work memory updates
 ├── state-path-resolve.sh     # Resolves root directory for rite state files
 ├── cleanup-work-memory.sh    # Deterministic cleanup of local work memory files
-├── flow-state.sh             # Unified flow-state management (set/get/deactivate/migrate subcommands)
+├── flow-state.sh             # Unified per-session flow-state management
 ├── issue-body-safe-update.sh # Safe Issue body fetch/apply with backup and validation
 ├── wiki-ingest-trigger.sh    # Hook: trigger Wiki ingest on review/fix/close events
 ├── wiki-query-inject.sh      # Hook: inject Wiki heuristics at start/review/fix/implement
@@ -114,7 +114,7 @@ plugins/rite/hooks/
 └── tests/                    # Test scripts
 ```
 
-> **Note**: Context pressure monitoring hooks (previously `context-pressure.sh`, `post-compact-guard.sh`) were retired in PR #481 / commit 77f0c49, and the Stop hook (`stop-guard.sh`) was removed in PR #1079. Compact recovery is now handled by `pre-compact.sh` + `post-compact.sh` + `session-start.sh`; workflow stop prevention is enforced by the per-session flow-state structure and the orchestrator-level scaffolding contract rather than a Stop hook.
+> **Note**: There is no Stop hook. A Stop hook that blocked on exit made the LLM stall in thinking loops at phase boundaries, so workflow halting is prevented by the per-session flow-state structure and the orchestrator-level scaffolding contract instead. Compact recovery is handled by `pre-compact.sh` + `post-compact.sh` + `session-start.sh`.
 
 ### Hook Events and Registration
 

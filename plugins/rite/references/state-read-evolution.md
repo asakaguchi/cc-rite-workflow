@@ -11,6 +11,8 @@
 > 各 cycle で検出された anti-pattern を構造的に解消した結果、`state-read.sh` 自身のコメント密度は
 > peak で 51〜64% まで増加し、Issue #694 で本ドキュメントへの履歴外出しと併せて約 48%（執筆時点
 > の `awk` 計測値）に再収束した。歴史的経緯への参照は本ドキュメントを SoT とする。
+>
+> **Note — ファイル名について**: 本書の歴史的 cycle 記述に現れる `flow-state-update.sh` は、v2→v3 で `flow-state.sh`（`set` サブコマンド）に統合・改名された旧ファイル名である。当時の cycle / commit message を正確に引用するため、過去形の記述では period-accurate な旧名をそのまま残す。現在の writer/reader 契約は `flow-state.sh` を参照すること。
 
 ---
 
@@ -21,7 +23,7 @@ state-read.sh の構造を支配する 3 つの doctrine。本 helper の各 fix
 
 ### writer/reader 対称化 doctrine
 
-state-read.sh と `flow-state-update.sh` は同じ flow-state ファイルに対する reader/writer ペア。
+state-read.sh と `flow-state.sh`（旧 `flow-state-update.sh`）は同じ flow-state ファイルに対する reader/writer ペア。
 同型の logic は両方に同期更新する。Issue #687 の root cause がこの doctrine 違反の典型
 （writer 側 guard を cycle 32 で追加、reader 側 guard を cycle 33 で後追い → 片肺更新 drift）。
 

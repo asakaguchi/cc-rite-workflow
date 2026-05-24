@@ -52,7 +52,6 @@ ls -la package.json pyproject.toml Cargo.toml go.mod pom.xml build.gradle 2>/dev
 
 Use the Read tool to read `rite-config.yml` and check the following:
 
-- `project.type`: Project type (generic, webapp, library, cli, documentation)
 - `language`: Language setting (used to determine output language)
 
 ---
@@ -106,7 +105,6 @@ For each skill, calculate a score based on the following factors:
 | Issue title/body keyword match | 3 | Match between Issue content and skill keywords | `## Auto-Activation Keywords` |
 | Changed file types | 2 | File extensions and directory placement | `## File Patterns` or inference (see below) |
 | Label match | 2 | Relevance between Issue labels and skill | Inferred from keywords (see below) |
-| Project type | 1 | project.type from rite-config.yml | Inferred from skill directory structure |
 
 **Retrieving file patterns:**
 
@@ -145,10 +143,6 @@ Infer from skill keywords using the following mapping:
   for label in issue.labels:
     if label in skill.related_labels:
       score += 2
-
-  # プロジェクト種別マッチ
-  if project.type in skill.applicable_types:
-    score += 1
 
   if score >= threshold:
     suggested_skills.append(skill)

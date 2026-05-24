@@ -1,10 +1,6 @@
 # Claude Code Rite Workflow のリポジトリ設定（self-hosted）
 schema_version: 2
 
-# プロジェクト設定
-project:
-  type: generic
-
 # GitHub Projects 連携
 github:
   projects:

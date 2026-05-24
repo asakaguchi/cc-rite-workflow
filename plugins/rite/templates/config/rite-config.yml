@@ -1,10 +1,6 @@
 # rite-workflow configuration file
 schema_version: 2
 
-# Project settings
-project:
-  type: generic  # generic | webapp | library | cli | documentation
-
 # GitHub Projects integration
 github:
   projects:

@@ -84,7 +84,6 @@ Variables use the following formats:
 
 | Variable | Description | Source | Example |
 |----------|-------------|--------|---------|
-| `{project_type}` | Project type | `rite-config.yml` `project.type` | `webapp`, `library`, `cli` |
 | `{language}` | Configured language | `rite-config.yml` `language` | `ja`, `en`, `auto` |
 
 ---
@@ -104,10 +103,6 @@ Variables use the following formats:
 All PR templates use these common variables:
 
 - **`templates/pr/generic.md`**
-- **`templates/pr/webapp.md`**
-- **`templates/pr/library.md`**
-- **`templates/pr/cli.md`**
-- **`templates/pr/documentation.md`**
 
 Common variables:
 - `{issue_number}` or `#{issue_number}` — Related issue reference
@@ -126,7 +121,7 @@ Variables are replaced at runtime by the command that reads the template:
    - Replaces: `{owner}`
 
 2. **PR creation** (`/rite:pr:create`)
-   - Reads: `templates/pr/{project_type}.md`
+   - Reads: `templates/pr/generic.md`
    - Replaces: `{issue_number}`, `{owner}`
 
 3. **Error messages** (all commands)

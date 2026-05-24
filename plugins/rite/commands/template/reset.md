@@ -41,18 +41,6 @@ rite-config.yml が見つかりません
 - キャンセル
 ```
 
-### 1.2 Confirm Project Type
-
-Get `project.type` from the configuration file:
-
-- `generic` - General purpose project
-- `webapp` - Web application
-- `library` - OSS library
-- `cli` - CLI tool
-- `documentation` - Documentation site
-
----
-
 ## Phase 2: Check Existing Templates
 
 ### 2.1 Detect Existing Files
@@ -200,22 +188,10 @@ assignees: ''
 
 ### 3.2 Generate PR Template
 
-Generate a PR template based on the project type.
-
-| Project Type | Template Source |
-|-----------------|-------------------|
-| `generic` | `templates/pr/generic.md` |
-| `webapp` | `templates/pr/webapp.md` |
-| `library` | `templates/pr/library.md` |
-| `cli` | `templates/pr/cli.md` |
-| `documentation` | `templates/pr/documentation.md` |
-
 **Steps:**
 
-1. Read `project.type` from `rite-config.yml`
-2. Load the corresponding template file:
-   - `templates/pr/{project_type}.md`
-3. Write as `.github/PULL_REQUEST_TEMPLATE.md`
+1. Load the template file `templates/pr/generic.md`
+2. Write as `.github/PULL_REQUEST_TEMPLATE.md`
 
 ```bash
 # Read ツールでテンプレートを読み込み
@@ -274,10 +250,6 @@ rite-config.yml も再生成しますか？
 | 元ファイル | バックアップ |
 |-----------|-------------|
 | rite-config.yml | rite-config.yml.backup.{timestamp} |
-
-## プロジェクト種別
-
-{project_type}
 
 ## 次のステップ
 

@@ -81,44 +81,6 @@ and exit.
 
 ---
 
-## Phase 2: Determine Project Type
-
-### 2.1 Auto-detect from File Structure
-
-Check in the following order:
-
-1. **webapp**: `package.json` exists and contains one of the following
-   - dependencies include `react`, `vue`, `angular`, `svelte`, `next`, `nuxt`
-   - `vite.config.*`, `webpack.config.*` exists
-
-2. **library**: `package.json` exists and has a `main` or `exports` field
-
-3. **cli**: One of the following
-   - `pyproject.toml` has a `[project.scripts]` section
-   - `package.json` has a `bin` field
-   - `Cargo.toml` has a `[[bin]]` section
-
-4. **documentation**: One of the following exists
-   - `mkdocs.yml`, `docusaurus.config.js`, `vuepress.config.*`
-   - Composed only of a `docs/` directory
-
-5. **generic**: Does not match any of the above
-
-### 2.2 User Confirmation
-
-Confirm the detection result with AskUserQuestion:
-
-```
-プロジェクト種別を確認してください:
-- webapp: Web アプリケーション
-- library: OSS ライブラリ
-- cli: CLI ツール
-- documentation: ドキュメントサイト
-- generic: 汎用プロジェクト
-```
-
----
-
 ## Phase 3: GitHub Projects Configuration
 
 ### 3.1 Detect Existing Projects
@@ -272,11 +234,10 @@ Read `rite-config.yml` in the project root with the Read tool.
 2. Read `schema_version` from template config (`{plugin_root}/templates/config/rite-config.yml`). If missing, treat as v1.
 3. If existing `schema_version` < template `schema_version`, display: `rite-config.yml のスキーマが古くなっています (v{current} → v{latest})。/rite:init --upgrade でアップグレードできます。`
 
-Then compare the existing values with the values detected in Phases 2-3.5. Identify fields that differ:
+Then compare the existing values with the values detected in Phases 3-3.5. Identify fields that differ:
 
 | Field | Existing Value | Detected Value | Differs? |
 |-------|---------------|----------------|----------|
-| `project.type` | (from file) | (from Phase 2) | |
 | `github.projects.project_number` | (from file) | (from Phase 3) | |
 | `github.projects.owner` | (from file) | (from Phase 1.4) | |
 | `iteration.enabled` | (from file) | (from Phase 3.5) | |
@@ -314,7 +275,6 @@ Generate `rite-config.yml` from the template config file.
 
 | Placeholder/Field | Replacement Value |
 |-------------------|-------------------|
-| `project.type` | `{detected-type}` from Phase 2 |
 | `github.projects.project_number` | `{project-number}` from Phase 3 (null if not detected) |
 | `github.projects.owner` | `"{owner}"` from Phase 1.4 (null if not detected) |
 | `iteration.enabled` | `{iteration-enabled}` from Phase 3.5 |
@@ -1179,7 +1139,6 @@ Then:
 rite workflow セットアップが完了しました
 
 ## 設定内容
-- プロジェクト種別: {type}
 - GitHub Projects: {project-url}
 - Iteration/スプリント: {iteration-status}
 - 設定ファイル: rite-config.yml

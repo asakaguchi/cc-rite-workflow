@@ -695,9 +695,7 @@ Example (Japanese): feat(pr): /rite:pr:create コマンドを実装
 
 ### 3.2 Generate PR Body
 
-Use a template based on the project type (`project.type` in `rite-config.yml`).
-
-Template file: `templates/pr/{project_type}.md`
+Template file: `templates/pr/generic.md`
 
 **Language consistency rules:**
 

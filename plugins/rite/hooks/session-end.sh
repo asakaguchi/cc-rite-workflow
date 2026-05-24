@@ -11,10 +11,9 @@ export _RITE_HOOK_RUNNING_SESSIONEND=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
-# Single source of truth for create_* lifecycle phase names (#501 HIGH).
-# 2>/dev/null は parser-level syntax error の場合のみ silent skip するため。
-# whitelist 自身が bash < 4.2 警告を出すため、source 失敗時の追加警告は不要。
-# fail-open 自体は session-end の主処理 (state 保存) を止めない設計 (#675 retire 後の方針)。
+# session-ownership.sh provides the ownership guard consumed below. Sourcing is
+# fail-open (2>/dev/null || true) so a missing or unparsable helper cannot block
+# session-end's main job: persisting / deactivating the flow state.
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
@@ -108,12 +107,14 @@ if [ -f "$STATE_FILE" ]; then
         exit 0
     fi
 
-    # Lifecycle unfinished warnings (#475 AC-9, extended #608 follow-up for cleanup_*).
+    # Lifecycle unfinished warnings for create_* / cleanup_* phases.
     # If the session is ending mid-lifecycle (active=true with a non-terminal phase),
     # emit an informational warning so the user knows what flow did NOT complete and
     # how to recover. session-end always proceeds with deactivation regardless.
-    # Phase classification is delegated to phase-transition-whitelist.sh helpers as the
-    # single source of truth (#501 HIGH).
+    # Phase classification is an inline glob match on the phase name (the elif
+    # branches below). The `type … >/dev/null` guards would defer to a sourced
+    # phase-classifier helper if one were loaded; none ships today, so the glob
+    # fallback is the active path.
     # corrupt JSON を silent 流すと lifecycle WARN_MSG が空 phase で抑制され、user は
     # create_*/cleanup_* の中断を知らないまま次セッションへ進む。stderr を capture して
     # operator が原因にたどり着けるようにする。

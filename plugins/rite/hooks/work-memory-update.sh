@@ -12,7 +12,7 @@
 #
 # Required environment variables:
 #   WM_SOURCE       - Source identifier (e.g., "implement", "lint", "fix")
-#   WM_PHASE        - Phase value (e.g., "lint", "implement", "pr", "review", "fix"; see phase-transition-whitelist.sh for the flat phase enum)
+#   WM_PHASE        - Phase value (e.g., "lint", "implement", "pr", "review", "fix"; see PHASE_ENUM_V3 in flow-state.sh for the flat phase enum)
 #   WM_PHASE_DETAIL - Phase detail description
 #   WM_NEXT_ACTION  - Next action description
 #   WM_BODY_TEXT    - Body text after YAML frontmatter closing ---

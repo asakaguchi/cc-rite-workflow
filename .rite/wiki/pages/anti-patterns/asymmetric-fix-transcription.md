@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-24T13:15:37Z"
+updated: "2026-05-24T16:26:40Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260520T101636Z-pr-1071-cycle-5-mergeable.md"
@@ -216,6 +216,8 @@ sources:
     ref: "raw/fixes/20260524T122022Z-pr-1124.md"
   - type: "fixes"
     ref: "raw/fixes/20260524T123235Z-pr-1124.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260524T161242Z-pr-1128.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration"]
 confidence: high
 ---
@@ -783,6 +785,14 @@ PR #1124 (Issue #1122、削除済み `phase-transition-whitelist.sh` への dead
 
 **累積観点 — Detection Heuristic の literal grep 射程外**: 本ページの Detection Heuristic (`grep -rn "{anti-pattern-regex}"`) は literal 文字列前提だが、PR #1124 cycle 3 は **削除済みコンポーネントの semantic variant**（filename を含まない構造・概念記述）が literal grep の射程外にあることを実測した。canonical 対策: 削除済みコンポーネントの横展開は、(a) filename literal grep に加えて (b) その構造・挙動を前提にした散文記述（case arm / 関数挙動説明）も grep keyword に含め、(c) 1 箇所修正後は同一論理グループ全体を一括整合する。関連: [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](../patterns/drift-check-anchor-semantic-name.md)。
 
+### dead reference 横断整理 PR の検出 grep scope (PR #1128 — Issue #1123、累積 40 回目)
+
+PR #1128 (Issue #1123 — #1122 の横展開確認から分割された後続。直前の累積 39 回目 PR #1124 と同系譜) は削除済み `phase-transition-whitelist.sh` への dead reference を SPEC / commands / skills / test docs から整理。0 blocking findings で両 reviewer が置換先記述（`flow-state.sh` の `PHASE_ENUM_V3` / `_phase_is_valid`、`session-end.sh` の inline glob、`session-end.test.sh` TC-475-WARN-A〜D）の実装一致を grep+read で verify。本ページの dead/broken reference cleanup 系譜（PR #1102→#1105 の「着手時 repo-wide grep」、PR #1124 の「横展開は削除済みコンポーネントの構造・概念記述も対象」）に 2 つの sub-pattern を追加:
+
+- **検出 grep scope の範囲漏れ**: Issue #1123 の検出 grep が `docs/ plugins/rite/{commands,skills,references,agents}` に限定されていたため、`tests/regression/issue-634-repro.md` の同種 dead rot を取りこぼした（AC-4 横展開確認で検出 → #1127 として別 Issue 化）。canonical 対策: 削除済みコンポーネントの横断整理 PR では、検出 grep の scope を **repo 全体（`tests/` を含む）** に取る。これは PR #1102→#1105 の「Detection Heuristic を fix 後 grep から着手時 grep へ前倒し」の scope coverage 軸への拡張（grep の *timing* だけでなく *breadth* も着手時に固定する）。
+
+- **Retired 節へ書き換え > 節削除**: retired コンポーネントの doc 整理は、節を完全削除するより「Retired 節へ書き換え」が既存パターン（`Stop Guard (retired)` / `Verify Terminal Output (retired)`）と整合し、migration-guide からの参照も維持できる。完全削除は migration-guide からの参照を dangling 化させるため、retired 系譜のページ群では Retired 節保持が canonical。なお [Legacy field の「deprecate + 残置」よりも「完全削除」が構造的閉塞を実現する](../heuristics/complete-deletion-over-deprecation-for-structural-closure.md) は *runtime に効く field/code* の話で、本 sub-pattern は *人間向け doc の参照保全* の話 — 適用 layer が異なる（コードは完全削除で構造閉塞、doc は Retired 節で参照保全）。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -892,3 +902,4 @@ PR #1124 (Issue #1122、削除済み `phase-transition-whitelist.sh` への dead
 - [PR #1106 review (phase5_* doc drift cleanup の完結: AC-1 twin-comment 双子対称化 + AC-2 6-callsite 伝播。0 findings / 1 cycle mergeable。Issue AC-3 前提の flow-state.sh WARNING 主張が事実誤認だったが実装者が PR body で訂正しつつ命名統一の妥当な修正方向は維持)](../../raw/reviews/20260523T155929Z-pr-1106.md)
 - [PR #1124 cycle 2 fix (累積 39 回目の起点: 削除済み helper の dead comment 整理で NOTE ブロックを書き換えたが同一コメントブロックの見出し行 (case arm 前提) を取りこぼし、ブロック内で自己矛盾。tech-writer + code-quality cross-validation 検出。コメント整理時は touched 行だけでなく同一論理ブロック全体を整合対象とする学習)](../../raw/fixes/20260524T122022Z-pr-1124.md)
 - [PR #1124 cycle 3 fix (累積 39 回目の横展開チェック semantic variant 取りこぼし: 削除済みコンポーネントの横展開を literal filename grep のみで実施し、case 構造を前提にした framing (ファイル名を含まない記述) を検出できず再レビューで tech-writer 検出。横展開は literal filename だけでなく削除済みコンポーネントの構造・概念記述も対象に含め、同一論理グループを一括整合する学習)](../../raw/fixes/20260524T123235Z-pr-1124.md)
+- [PR #1128 review (累積 40 回目: 削除済み phase-transition-whitelist.sh dead reference 横断整理 PR、0 blocking findings。検出 grep scope の範囲漏れ — Issue #1123 の検出 grep が docs/ plugins/rite/{commands,skills,references,agents} 限定で tests/regression/issue-634-repro.md の同種 dead rot を取りこぼし #1127 化。横断整理 PR の検出 grep は repo 全体 (tests/ 含む) を scope にすべき。retired コンポーネントの doc 整理は節削除より Retired 節へ書き換えが既存パターンと整合し migration-guide 参照を保全する learning)](../../raw/reviews/20260524T161242Z-pr-1128.md)

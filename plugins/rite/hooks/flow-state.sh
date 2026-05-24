@@ -201,7 +201,11 @@ _migrate_file() {
      | del(.branch_name)
      | .schema_version = $s | .phase = $p | .updated_at = $ts' "$f") || return 1
   _atomic_write "$f" "$updated"
-  [ "$verbose" = 1 ] && echo "  migrated: $f (v$sv→v$SCHEMA_VERSION_V3, $cp→$np)" >&2
+  # AC-8 (silent skip forbidden): an actually-performed migration is always
+  # announced on stderr, even without --verbose, so the session-start auto path
+  # (session-start.sh silences only stdout) surfaces it. The no-op "skip (already
+  # v3)" case above stays --verbose-gated to keep quiet session starts quiet.
+  echo "  migrated: $f (v$sv→v$SCHEMA_VERSION_V3, $cp→$np)" >&2
   return 0
 }
 

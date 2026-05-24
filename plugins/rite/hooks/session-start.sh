@@ -287,9 +287,11 @@ fi
 # Auto-migrate any v1/v2 state files to v3 via flow-state.sh migrate subcommand.
 # Non-blocking: errors surface to stderr but the hook continues. Idempotent: files
 # already at schema_version=3 are skipped.
-# stdout is silenced so the migrate completion line never leaks into the hook's
-# stdout (which Claude reads as the active-workflow injection payload); errors
-# remain on stderr for triage.
+# Only stdout is silenced (the "Migration complete: N" summary), which Claude reads
+# as the active-workflow injection payload. stderr is intentionally passed through:
+# _migrate_file emits an unconditional `migrated:` line per actually-migrated file
+# (AC-8, silent skip forbidden), so a real migration is always announced here while
+# quiet session starts (only v3 files → verbose-gated skip) stay silent.
 RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" migrate >/dev/null || true
 
 # Resolve active flow-state file path (Issue #680).

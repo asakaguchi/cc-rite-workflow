@@ -159,6 +159,32 @@ EOF
   assert "migrate $legacy_phase → $expected" "$expected" "$got"
 done
 
+# --- TC-8b: AC-8 — a performed migration is announced on stderr WITHOUT --verbose ---
+echo ""
+echo "=== TC-8b: AC-8 non-verbose migrate emits 'migrated:' to stderr; v3-only stays silent ==="
+# (a) A v2 file migrated without --verbose MUST still emit 'migrated:' on stderr so the
+#     session-start auto path (session-start.sh silences only stdout, passes stderr
+#     through) is non-silent. A regression that re-gates this line on --verbose would
+#     make startup migration silent and violate AC-8.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/sessions"
+cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
+{"schema_version":2,"phase":"ingest_pre_lint","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
+EOF
+err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
+echo "$err" | grep -q "migrated:" && pass "TC-8b-a: non-verbose migrate announces 'migrated:' on stderr (AC-8)" || fail "TC-8b-a: non-verbose migrate was silent (AC-8 violation): '$err'"
+
+# (b) An already-v3 file migrated without --verbose MUST stay silent (no 'migrated:' and
+#     no verbose-only 'skip (already v3)'), so quiet session starts produce no noise.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase fix --issue 8 --branch "b" --pr 1 --next "n")
+err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
+if echo "$err" | grep -q "migrated:\|skip (already v3)"; then
+  fail "TC-8b-b: non-verbose migrate of v3-only emitted output (should be silent): '$err'"
+else
+  pass "TC-8b-b: non-verbose migrate of v3-only stays silent"
+fi
+
 # --- TC-9: phase enum validation warns but accepts unknown phase ---
 echo ""
 echo "=== TC-9: unknown phase warns but writes file (non-strict mode) ==="

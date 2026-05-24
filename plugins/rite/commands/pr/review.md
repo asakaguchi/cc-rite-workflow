@@ -141,7 +141,7 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 
 **Parsing procedure**:
 
-> **⚠️ 重要 — 単一 Bash tool invocation での実行**: Phase 1.0 の bash block は **1 つの Bash tool 呼び出しで完結させる** こと。旧実装は Step 1 (flag 抽出) と Step 2 (conflict check) を別 invocation に分割し、Step 1 の `[CONTEXT] FLAG_POST=...` emit 値を Claude が literal substitute する方式だった。しかし substitute 漏れが silent regression (AC-8 conflict check の常時 false) を起こすリスクがあり、分割の合理的理由が薄いため本 PR (verified-review C-4) で単一 block に統合した。
+> **⚠️ 重要 — 単一 Bash tool invocation での実行**: Phase 1.0 の bash block は **1 つの Bash tool 呼び出しで完結させる** こと。Step 1 (flag 抽出) と Step 2 (conflict check) を別 invocation に分割すると、emit 値の literal substitute 漏れが silent regression (AC-8 conflict check の常時 false) を起こすため、単一 block で実行する。
 >
 > Claude は下記 bash block **全体**を 1 回の Bash tool 呼び出しで実行し、内部のシェル変数 (`flag_post`, `flag_no_post`, `remaining_args`, `config_post_comment`, `post_comment_mode`) は bash 内で完結させる。literal substitution は bash-compat-guard placeholder 以外一切不要。
 
@@ -1962,8 +1962,6 @@ For **every** item in the "### 推奨事項" section (regardless of `別 Issue` 
 
 - **`recommendation_items`** (本 PR で新設、canonical data): Phase 5.1 が全 reviewer 推奨事項を classification 付きで集約した list (全 item を保持、Source B extraction の元データ)
 - **`candidate_count`** (Phase 7.1 で算出、Phase 7.7 / Phase 8.0.2 で参照): Phase 7.1 が Source A (findings + scope-out keyword) と Source B (`recommendation_items` の `classification ∈ {actionable, boundary}` filter + Phase 7.2 user approval 結果による boundary 採否決定) を **合算 + deduplication した最終件数**。Phase 7.7 post-condition gate と Phase 8.0.2 cross-reference はこの値を参照する
-
-> **Note (Issue #1042 review cycle 4)**: 旧仕様で記述されていた legacy field `recommendation_issue_candidates` (keyword-based subset / classification-based subset の二重定義経路) は本 cycle で完全削除した。consumer は存在せず (scripts/ hooks/ への grep 0 hit、Phase 5.4 推奨事項 table も `recommendation_items` を直接参照していた)、historical context が必要な場合は git history (commit `5aae26e3` 以前) を参照すること。
 
 **Investigation suggestion collection**: Extract items from each reviewer's "### 調査推奨" section. Retain these as `investigation_suggestions` in the conversation context (reviewer_type, file, concern_description, notes). These are NOT findings and NOT Issue candidates — they do not affect the assessment, finding counts, or merge decision, and are never auto-Issue-ified by Phase 7. They are collected solely for Phase 5.4 "調査推奨" section rendering so the user may optionally run `/rite:investigate {file}` afterwards. A reviewer writing nothing in this section is the common case (blocking-worthy issues should go into findings, out-of-scope recommendations with Issue keywords into 推奨事項).
 

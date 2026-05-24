@@ -1,8 +1,5 @@
 #!/bin/bash
 # rite workflow - Unified flow-state management (schema_version=3)
-# Subcommands: set | get | deactivate | migrate
-# Replaces: flow-state-update.sh, state-read.sh, _resolve-flow-state-path.sh,
-#           _resolve-schema-version.sh, resume-active-flag-restore.sh, phase-transition-whitelist.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,7 +19,7 @@ SESSION_DIR="$STATE_ROOT/.rite/sessions"
 LEGACY_STATE="$STATE_ROOT/.rite-flow-state"
 SESSION_ID_FILE="$STATE_ROOT/.rite-session-id"
 
-# Phase enum SoT (13 values) — PR 2a refactor; SoT also referenced from resume.md cross-check.
+# Phase enum SoT (13 values); also referenced from resume.md cross-check.
 PHASE_ENUM_V3="init branch plan implement lint pr review fix ready ready_error cleanup ingest completed"
 SCHEMA_VERSION_V3=3
 

@@ -112,6 +112,8 @@ bash plugins/rite/hooks/flow-state.sh migrate --verbose
 Migration complete: 1 file(s) processed
 ```
 
+**出力先の振り分け**: `migrated:` / `skip (already v3):` / `would migrate:` (`--dry-run`) はすべて **stderr** に出力され、`Migration complete: N file(s) processed` のみ **stdout** に出力される。これは `session-start.sh` の auto-migration 経路で stdout のみが silence される設計と対称で、自動起動時でも実際の migration / skip / preview は stderr 経由で常に可視化される (AC-8: silent skip 禁止)。
+
 ## ロールバック
 
 v3 へのマイグレーションは「片方向」です (v3 → v2 への自動 downgrade は提供しません)。ロールバックが必要な場合:

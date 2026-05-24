@@ -69,11 +69,16 @@ _atomic_write() {
   # 生成されたまま下流の mv が "成功" して target を破損内容で上書きする経路を遮断する。
   # Additionally guard the post-write non-empty invariant: jq filters in this script always
   # produce a non-empty JSON object, so a 0-byte tmpfile is a write-time corruption signal.
+  # printf 失敗分岐と 0-byte invariant 違反分岐は flock timeout 分岐 (L80) と対称的に診断 ERROR を
+  # 必ず emit する。rc=1 だけでは EROFS / ENOSPC / EXDEV / EACCES / 0-byte write のどの失敗種別か
+  # 区別できず、operator がトリアージできない。
   printf '%s' "$content" > "$tmpfile" || {
+    echo "ERROR: _atomic_write write failed: $target" >&2
     rm -f "$tmpfile" 2>/dev/null
     return 1
   }
   [ -s "$tmpfile" ] || {
+    echo "ERROR: _atomic_write produced empty tmpfile (invariant violation): $target" >&2
     rm -f "$tmpfile" 2>/dev/null
     return 1
   }
@@ -158,7 +163,11 @@ cmd_set() {
       parent_issue_number:$parent, next_action:$next, active:$active,
       error_count:$err, updated_at:$ts}
      | (if $lsp != "" then .last_synced_phase = $lsp else . end)') || return 1
-  _atomic_write "$path" "$new"
+  # `_atomic_write` の header 契約 (L61-64 "Callers MUST check rc") を遵守。現状は cmd_set の
+  # 最終 statement のため set -e で rc が暗黙伝播するが、将来 `_atomic_write` の後に log 行を
+  # 1 つ足す等の小修正で silent failure path が即復活する fragile pattern を避けるため、明示的
+  # に `|| return 1` で rc を伝播させる (`_migrate_file` L236 と対称化)。
+  _atomic_write "$path" "$new" || return 1
 }
 
 cmd_get() {
@@ -194,7 +203,8 @@ cmd_deactivate() {
   local now updated; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   updated=$(jq --argjson a false --arg n "$next" --arg ts "$now" \
     '.active = $a | (if $n != "" then .next_action = $n else . end) | .updated_at = $ts' "$path") || return 1
-  _atomic_write "$path" "$updated"
+  # `_atomic_write` rc 伝播 (cmd_set / `_migrate_file` と対称、header 契約遵守)。
+  _atomic_write "$path" "$updated" || return 1
 }
 
 # Returns:

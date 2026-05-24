@@ -224,6 +224,43 @@ else
   fail "TC-8b-d: expected 2 'migrated:' lines but got $migrated_count: '$err'"
 fi
 
+# (e) F-05 対応: cycle 2 で閉塞した最大の経路 (write IO 失敗時の false 'migrated:' 抑止) に対する
+#     negative regression test。`chmod 0555` で sessions dir を readonly にして mv が失敗する経路を
+#     強制的に作り、`migrated:` 行が 0 件であり、かつ stdout に "Migration complete: 0 file" が出る
+#     ことを assert する。これにより `_atomic_write` の `|| return 1` (L236) を将来誰かが削除しても
+#     本テストが fail するため、AC-8 invariant の write-failure side が固定される。
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/sessions"
+cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
+{"schema_version":2,"phase":"ingest_pre_lint","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
+EOF
+chmod 0555 "$d/.rite/sessions"
+combined=$( (cd "$d" && bash "$HOOK" migrate) 2>&1 )
+chmod +w "$d/.rite/sessions"
+migrated_lines=$(echo "$combined" | grep -c '^  migrated:' || true)
+# F-07 対応 (TC-8b-g 統合): Migration complete counter が 0 のままであることを直接 assert する。
+# `_atomic_write` 失敗時に counter が inflate しない invariant の direct verification。
+if [ "$migrated_lines" = "0" ] && echo "$combined" | grep -qE 'Migration complete: 0 file'; then
+  pass "TC-8b-e/g: write-failure path emits no 'migrated:' and counter stays 0 (F-05/F-07 — AC-8 negative regression + counter invariant)"
+else
+  fail "TC-8b-e/g: write-failure path leaked output: migrated_lines=$migrated_lines; combined='$combined'"
+fi
+
+# (f) F-06 対応: cycle 2 で `--dry-run` preview の出力先が stdout → stderr に変更された
+#     (_migrate_file L218 `echo "  would migrate: ..." >&2`)。stderr→stdout の出力先変更を test 上で
+#     固定し、将来 stdout に戻る regression を即検出する。
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/sessions"
+cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
+{"schema_version":2,"phase":"ingest_pre_lint","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
+EOF
+err=$( (cd "$d" && bash "$HOOK" migrate --dry-run >/dev/null) 2>&1 )
+if echo "$err" | grep -q 'would migrate:'; then
+  pass "TC-8b-f: --dry-run preview goes to stderr (F-06 — stdout→stderr regression guard)"
+else
+  fail "TC-8b-f: --dry-run preview missing from stderr (regression — possibly moved back to stdout): '$err'"
+fi
+
 # --- TC-9: phase enum validation warns but accepts unknown phase ---
 echo ""
 echo "=== TC-9: unknown phase warns but writes file (non-strict mode) ==="

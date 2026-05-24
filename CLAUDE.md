@@ -26,19 +26,17 @@ plugins/rite/
 │   └── wiki/           #   Experience Wiki スキル（opt-out）
 ├── agents/           # PR レビュー用サブエージェント定義
 │                     # _reviewer-base.md（共通原則）+ 13 reviewer agent + sprint-teammate
-├── templates/        # config/（rite-config.yml 最小デフォルト）、project-types/、
+├── templates/        # config/（rite-config.yml 最小デフォルト）、
 │                     # issue/, pr/, review/, wiki/ の各フォーマット
 ├── references/       # gh CLI パターン、GraphQL、severity-levels、investigation-protocol、
-│                     # wiki-patterns、workflow-incident-emit-protocol、review-result-schema 等
+│                     # wiki-patterns、review-result-schema 等
 ├── scripts/          # Projects 統合 Issue 作成、Sub-Issue リンク、レビュー結果抽出・計測 等
-├── hooks/            # Claude Code ライフサイクルフック（session / compact /
-│   │                 # preflight / pre-tool-bash-guard / post-tool-wm-sync /
-│   │                 # phase-transition-whitelist /
-│   │                 # wiki-ingest-trigger / wiki-query-inject / workflow-incident-emit /
-│   │                 # session-ownership / hook-preamble 等）+ hooks.json
-│   ├── scripts/      #   Wiki commit / worktree / backlink / gitignore-health check 等のヘルパー
-│   └── tests/        #   hook レベルの自動テストスイート
-└── i18n/             # 多言語対応（ja.yml / en.yml の legacy + ja/, en/ 配下の分割ファイル）
+└── hooks/            # Claude Code ライフサイクルフック（session / compact /
+    │                 # preflight / pre-tool-bash-guard / post-tool-wm-sync /
+    │                 # wiki-ingest-trigger / wiki-query-inject /
+    │                 # session-ownership / hook-preamble 等）+ hooks.json
+    ├── scripts/      #   Wiki commit / worktree / backlink / gitignore-health check 等のヘルパー
+    └── tests/        #   hook レベルの自動テストスイート
 rite-config.yml        # プロジェクト固有設定（ブランチ戦略、Projects連携、Wiki、review loop 等）
 ```
 

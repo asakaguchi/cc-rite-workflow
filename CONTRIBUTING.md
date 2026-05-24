@@ -75,8 +75,7 @@ plugins/rite/
 │   └── tests/        #   Shell script tests
 ├── templates/        # Issue/PR/completion report templates
 ├── references/       # gh CLI patterns, GraphQL helpers
-├── scripts/          # Utility scripts (Issue creation with Projects integration)
-└── i18n/             # Internationalization (ja.yml, en.yml)
+└── scripts/          # Utility scripts (Issue creation with Projects integration)
 ```
 
 ## Hook Development Guide

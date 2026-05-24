@@ -57,7 +57,7 @@ gh issue view {issue_number} --json number,title,body,state,labels,closedAt
 ```
 Issue #{number} は既にクローズされています
 
-rite workflow: {title}
+タイトル: {title}
 クローズ日時: {closed_at}
 
 追加のアクションは不要です
@@ -220,7 +220,7 @@ lock 失敗時は WARNING を出して続行（best-effort — Phase 5 でどの
 ```
 Issue #{number} をクローズしました
 
-rite workflow: {title}
+タイトル: {title}
 Status: Done
 
 関連 PR: #{pr_number} (Merged)

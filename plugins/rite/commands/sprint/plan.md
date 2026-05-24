@@ -83,7 +83,7 @@ query($projectId: ID!, $iterationId: String!, $fieldId: ID!) {
 ### 2.2 Display Current Capacity
 
 ```
-{name} の計画
+Sprint 4 の計画
 
 現在の状態:
 - 割り当て済み Issue: 3件
@@ -139,7 +139,7 @@ query($projectId: ID!) {
 Sort by Priority and Complexity and display:
 
 ```
-バックログ（{count}件）
+バックログ（10件）
 
   # | Priority | Complexity | Title
 ----|----------|------------|-------------------------------

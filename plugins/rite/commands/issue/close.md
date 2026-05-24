@@ -178,7 +178,7 @@ Issue #{number} に紐づく PR が見つかりません
 どのアクションを実行しますか？
 
 オプション:
-- PR を作成する (/rite:pr:create)（/rite:pr:create）
+- PR を作成する (/rite:pr:create)
 - Issue を手動でクローズする（gh issue close {number}）
 - 何もしない
 ```

@@ -82,7 +82,7 @@ If existing files are found, confirm with `AskUserQuestion`:
 | .github/ISSUE_TEMPLATE/bug_report.md | 2025-01-01 |
 | .github/PULL_REQUEST_TEMPLATE.md | 2025-01-01 |
 
-どのファイルを再生成しますか？？
+どのファイルを再生成しますか？
 
 オプション:
 - すべて上書き
@@ -229,14 +229,14 @@ Generate a PR template based on the project type.
 Regenerate `rite-config.yml` only if the user selects to do so:
 
 ```
-rite-config.yml も再生成しますか？？
+rite-config.yml も再生成しますか？
 
 既存の設定（Projects 連携など）が失われます
 バックアップは自動的に作成されます
 
 オプション:
 - はい、再生成する
-- いいえ、スキップ（推奨）（推奨）
+- いいえ、スキップ（推奨）
 ```
 
 **Steps for regeneration:**

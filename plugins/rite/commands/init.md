@@ -1028,18 +1028,18 @@ Auto-initialize the Experience Wiki so the user does not need to run `/rite:wiki
 
 > **Non-blocking contract**: Phase 4.7 failure (including Skill invocation failure) MUST NOT abort `/rite:init`. On failure, display a warning and continue to Phase 5. The flow always reports Wiki status via the completion report (Phase 5).
 
-> **Status enum** (consumed by Phase 5 — identifier-compatible values, no whitespace/parens, trivial 1:1 i18n mapping):
+> **Status enum** (consumed by Phase 5 — identifier-compatible values, no whitespace/parens):
 >
-> | Status value | i18n key | Meaning |
-> |--------------|----------|---------|
-> | `initialized` | `init_summary_wiki_initialized` | Newly initialized in this `/rite:init` invocation |
-> | `already_initialized` | `init_summary_wiki_already_initialized` | Pre-existing Wiki detected and skipped |
-> | `skipped_disabled` | `init_summary_wiki_skipped_disabled` | `wiki.enabled: false` detected |
-> | `failed` | `init_summary_wiki_failed` | Post-check after Skill invocation found Wiki still uninitialized |
+> | Status value | Meaning |
+> |--------------|---------|
+> | `initialized` | Newly initialized in this `/rite:init` invocation |
+> | `already_initialized` | Pre-existing Wiki detected and skipped |
+> | `skipped_disabled` | `wiki.enabled: false` detected |
+> | `failed` | Post-check after Skill invocation found Wiki still uninitialized |
 
 **Retain `wiki_status` as LLM conversational state (NOT a shell variable)**. Claude Code's Bash tool invocations are independent subshells — shell variables do NOT persist across tool calls. Each status set point below instructs the LLM to **remember the value directly in conversation context** and carry it forward to Phase 5. Do NOT attempt `echo $wiki_status` in a subsequent Bash call.
 
-The enum values are identifier-compatible (snake_case, no whitespace or parentheses) so that the Phase 5 i18n mapping is a trivial 1:1 lookup (`init_summary_wiki_${wiki_status}`). No string transformation is required.
+The enum values are identifier-compatible (snake_case, no whitespace or parentheses) so that Phase 5 / Step 7b can branch on `wiki_status` with an explicit if/else and select the matching literal directly. Do not construct the message dynamically from `wiki_status`.
 
 ### 4.7.1 Wiki Enabled Check
 

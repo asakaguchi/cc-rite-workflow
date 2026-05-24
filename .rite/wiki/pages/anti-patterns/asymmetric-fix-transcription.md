@@ -2,8 +2,10 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-24T17:13:31Z"
+updated: "2026-05-24T18:26:30Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260524T182630Z-pr-1133.md"
   - type: "reviews"
     ref: "raw/reviews/20260524T170425Z-pr-1130.md"
   - type: "fixes"
@@ -805,6 +807,14 @@ PR #1130 (Issue #1127 — #1123 から分割された後続。直前の累積 40
 
 - **削除ファイルを「現行 SoT」として live 参照する pre-existing dead ref**: inbound grep の副産物として、design doc が削除済みファイルを現行 SoT として live 参照する pre-existing dead ref も同時に surface し、本 PR scope 外として follow-up Issue #1129 に切り出した。関連: [SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する](../heuristics/sot-path-reference-existence-check.md) / [Design doc は現 HEAD の SoT を verify してから書く](../heuristics/design-doc-current-head-verification.md)。
 
+### 構造化要素（表セル値）更新 → 同セクション直下の散文 prose / dead ref の drift surface (PR #1133 — Issue #1131、0 findings)
+
+PR #1133 (Issue #1131) は `docs/SPEC.md` の flow-state schema フィールド**表**を v2→v3 実態へ整理（schema_version `2→3`、phase enum 11→13、`previous_phase` 行削除、`updated_at` format `+00:00→Z`、Required 注記 `(11)→(10)`）。両 reviewer (tech-writer Doc-Heavy mode / code-quality) が 0 findings で mergeable 判定したが、**調査推奨セクション**で同セクション直下の散文に pre-existing drift を cross-validation 検出した。本ページの「同一 doc 内 propagation scan」(PR #623) / dead-ref cleanup 系譜に **structured-element ↔ same-section prose** 軸を追加する:
+
+- **表セル値の更新が同セクション直下の散文の依存値を stale 化させる**: フィールド表の `schema_version` 行を `!= 3` へ更新した結果、表（`!= 3`）と直下の migration prose（`schema_version < 2`）の間に閾値表現の差が surface。表の構造化セルだけを更新スコープに含め、同セクションの散文 prose が保持する**依存値**（migration threshold）を見落とす failure mode。code-quality reviewer が「表更新で latent inconsistency が surface した」と revert test 付きで pre-existing 判定（本 PR diff 外）。
+- **同セクション散文の dead ref も同時 surface**: migration prose が参照する `migrate-flow-state.sh` が実在しない dead ref（実態は `flow-state.sh migrate` subcommand）であることも調査推奨で検出。PR #1130 の inbound grep direction 軸と同様、構造化要素の値更新時は**同セクションの散文に含まれる閾値・dead ref も確認スコープに含める**のが canonical（表更新 PR でも prose を revert test 外として放置せず、follow-up Issue #1134 に bundle して追跡）。
+- canonical 対策: 構造化要素（表 / list / enum）のセル値を更新する PR は、(a) 同セクション直下の散文が同一概念の**依存値**（閾値・version・count）を保持していないか、(b) 散文に削除済みコンポーネントへの dead ref がないか、を着手時の同セクション grep スコープに含める。値更新の波及は cross-file（PR #1130）/ same-file adjacent-line（PR #711）に加え、**same-section structured-element ↔ prose** でも発火する。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -819,6 +829,7 @@ PR #1130 (Issue #1127 — #1123 から分割された後続。直前の累積 40
 
 ## ソース
 
+- [PR #1133 review (Issue #1131、0 findings mergeable: docs schema フィールド表の v2→v3 整理 PR で、表セル値更新が同セクション直下の migration prose の閾値 `< 2` を stale 化させる + 散文の dead ref `migrate-flow-state.sh` を tech-writer Doc-Heavy + code-quality が調査推奨で cross-validation 検出。structured-element ↔ same-section prose 軸を追加、pre-existing drift を #1134 化)](../../raw/reviews/20260524T182630Z-pr-1133.md)
 - [PR #1130 review (累積 41 回目: ファイル削除整理 PR で inbound 参照の行番号付き dangling citation を tech-writer + code-quality が cross-validation 検出 → cycle 2 で 0 findings 収束。削除前 `grep -rn` で inbound 参照を検証する learning、design doc の pre-existing dead ref を #1129 化)](../../raw/reviews/20260524T170425Z-pr-1130.md)
 - [PR #1130 fix (stop-guard.test.md 削除に伴う multi-session-state.md:78 の dangling citation 除去 + live 根拠への集約。ファイル削除を含む整理 PR では outbound だけでなく inbound 参照を削除前 grep で確認すべき learning)](../../raw/fixes/20260524T165749Z-pr-1130.md)
 - [PR #792 cycle 3 fix (Asymmetric pattern 再発 + GFM table boundary 破壊)](../../raw/fixes/20260503T110855Z-pr-792-fix-cycle3.md)

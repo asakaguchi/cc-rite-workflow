@@ -393,15 +393,16 @@ else
 fi
 echo ""
 
-# TC-608-WARN-E: bare cleanup phase branch coverage (cycle 9 F-11)
-# rite_phase_is_cleanup_lifecycle_in_progress の case arm `cleanup|cleanup_pre_ingest|cleanup_post_ingest)`
-# のうち、bare `cleanup` arm が削除されても WARN-A/B/C/D は全 pass する false-positive 構造を補完。
-# Phase 1.0 Activate Flow State が実際に書く phase 名 ("cleanup" bare) を pin する regression guard。
+# TC-608-WARN-E: bare cleanup phase branch coverage
+# session-end.sh の cleanup lifecycle 判定 ELIF glob 分岐 (`[[ "$_state_phase" == "cleanup" ||
+# "$_state_phase" == cleanup_* ]]`) のうち、bare `cleanup` 一致が削除されても WARN-A/B/C/D は
+# 全 pass する false-positive 構造を補完。cleanup workflow が実際に書く phase 名 ("cleanup" bare) を
+# pin する regression guard。
 #
 # NOTE: 本 TC は ELIF glob 分岐の改変検出が scope。phase 分類 helper
 # (rite_phase_is_*_lifecycle_in_progress) は廃止済みのため session-end.sh の
 # `type … >/dev/null` guard は常に false で、ELIF の glob 一致
-# (`[[ "$_state_phase" == "cleanup" || cleanup_* ]]`) が唯一の active path となる。
+# (`[[ "$_state_phase" == "cleanup" || "$_state_phase" == cleanup_* ]]`) が唯一の active path となる。
 # 本 TC はその path を直接 exercise する。
 echo "TC-608-WARN-E: cleanup active → /rite:pr:cleanup lifecycle warning (bare cleanup arm coverage)"
 dir608we="$TEST_DIR/tc608we"
@@ -411,7 +412,7 @@ run_hook "$dir608we" >/dev/null || true
 if [ -f "${LAST_STDERR_FILE:-}" ] \
     && grep -q "lifecycle was not completed" "$LAST_STDERR_FILE" \
     && grep -q "/rite:pr:cleanup" "$LAST_STDERR_FILE"; then
-  pass "bare cleanup unfinished → cleanup-specific warning emitted (case arm 全網羅完成)"
+  pass "bare cleanup unfinished → cleanup-specific warning emitted (ELIF glob 分岐 全網羅完成)"
 else
   fail "expected /rite:pr:cleanup lifecycle warning for bare cleanup, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
 fi

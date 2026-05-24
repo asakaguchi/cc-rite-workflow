@@ -19,7 +19,7 @@ SESSION_DIR="$STATE_ROOT/.rite/sessions"
 LEGACY_STATE="$STATE_ROOT/.rite-flow-state"
 SESSION_ID_FILE="$STATE_ROOT/.rite-session-id"
 
-# Phase enum SoT (13 values) — PR 2a refactor; SoT also referenced from resume.md cross-check.
+# Phase enum SoT (13 values); also referenced from resume.md cross-check.
 PHASE_ENUM_V3="init branch plan implement lint pr review fix ready ready_error cleanup ingest completed"
 SCHEMA_VERSION_V3=3
 

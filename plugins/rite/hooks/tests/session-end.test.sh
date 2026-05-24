@@ -398,11 +398,11 @@ echo ""
 # のうち、bare `cleanup` arm が削除されても WARN-A/B/C/D は全 pass する false-positive 構造を補完。
 # Phase 1.0 Activate Flow State が実際に書く phase 名 ("cleanup" bare) を pin する regression guard。
 #
-# NOTE (cycle 10 F-08): 本 TC は **case arm 改変の検出が scope**。関数定義全体が削除された場合は
-# session-end.sh の ELIF fallback (`elif echo "$phase" | grep -q "^cleanup"`) が発火して同じ warning
-# を出すため silently pass する限界あり (関数欠損時は call site が `rite_phase_is_cleanup_lifecycle_in_progress`
-# 自体を呼べない別エラー経路で検出される想定)。関数欠損の regression guard は別 TC (phase-transition-whitelist
-# unit test) で扱う必要あり (F-09 と合わせて別 Issue で tracking 推奨)。
+# NOTE: 本 TC は ELIF glob 分岐の改変検出が scope。phase 分類 helper
+# (rite_phase_is_*_lifecycle_in_progress) は廃止済みのため session-end.sh の
+# `type … >/dev/null` guard は常に false で、ELIF の glob 一致
+# (`[[ "$_state_phase" == "cleanup" || cleanup_* ]]`) が唯一の active path となる。
+# 本 TC はその path を直接 exercise する。
 echo "TC-608-WARN-E: cleanup active → /rite:pr:cleanup lifecycle warning (bare cleanup arm coverage)"
 dir608we="$TEST_DIR/tc608we"
 mkdir -p "$dir608we"

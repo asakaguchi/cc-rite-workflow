@@ -6,7 +6,7 @@ description: レビュー指摘への対応を支援
 
 ## Contract
 **Input**: PR number, review findings from `/rite:pr:review`, flow state with `phase: fix` (written by `start.md` ステップ 7.2) or `phase: phase5_fix` (legacy compat — this sub-skill still patches the old name so resume from an interrupted earlier session keeps working until every writer migrates off the legacy name)
-**Output**: `[fix:pushed]` | `[fix:pushed-wm-stale]` | `[fix:replied-only]` | `[fix:error]`
+**Output**: `[fix:pushed]` | `[fix:pushed-wm-stale]` | `[fix:replied-only]` | `[fix:cancelled-by-user]` | `[fix:error]`
 
 Retrieve and organize PR review comments to efficiently assist with addressing review feedback
 
@@ -2993,7 +2993,7 @@ finding を出して fix ループが永久化する。
    target_symbol="{symbol_name}"   # 例: "validate_input", "API_TIMEOUT", "UserRepo"
 
    # caller / test / sibling を全部列挙する。git grep の exit code を捕捉して silent failure を防ぐ。
-   # bash の `!` 否定 pipeline は then-branch 内で `$?` が常に 0 を返す仕様のため、
+   # 注意: bang (negation) pipeline は then-branch 内で `$?` が常に 0 を返す bash 仕様のため、
    # `if cmd; then :; else rc=$?; ... fi` 形式で rc を正しく捕捉する (fix.md L4914 周辺の
    # canonical pattern と同型、Phase 2.4 / 4.2 と対称)。
    if git grep -nE "\\b${target_symbol}\\b" -- \

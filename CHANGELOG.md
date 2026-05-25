@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!--
 Phase number policy: Entries describe changes at the feature-name level, not
 internal `Phase X.Y.Z` implementation identifiers. Phase numbers inside
-`review.md` / `fix.md` / `start.md` may be renumbered between releases, so
+`review.md` / `fix.md` / `pr/open.md` may be renumbered between releases, so
 CHANGELOG entries must remain stable across such refactors. When a change
 genuinely needs locational precision, prefer referencing the file name
 (e.g. `review.md`) over internal phase numbers. See Issue #352 for the

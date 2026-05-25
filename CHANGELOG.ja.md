@@ -7,7 +7,7 @@ Rite Workflow の主要な変更を記録します。
 
 <!--
 Phase 番号取扱方針: エントリは機能名レベルで変更を記述し、`review.md` /
-`fix.md` / `start.md` 等の内部 `Phase X.Y.Z` 識別子には依存しません。Phase
+`fix.md` / `pr/open.md` 等の内部 `Phase X.Y.Z` 識別子には依存しません。Phase
 番号はリファクタで採番し直される可能性があるため、CHANGELOG のエントリは
 それらの変更に対して安定でなければなりません。位置情報が必要な場合は
 内部 Phase 番号ではなくファイル名 (例: `review.md`) を参照してください。

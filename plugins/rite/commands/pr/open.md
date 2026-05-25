@@ -24,13 +24,12 @@ Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → 
 | Placeholder | Source |
 |-------------|--------|
 | `{issue_number}` | 引数 |
-| `{owner}`, `{repo}` | `gh repo view --json owner,name` |
 | `{base_branch}` | `branch.base` in `rite-config.yml`（default: `main`） |
 | `{branch_name}` | ステップ 2 で生成 |
 | `{pr_number}` | ステップ 6 の `[pr:created:N]` から抽出 |
-| `{project_number}` | `rite-config.yml` の `github.projects.project_number` |
-| `{parent_issue_number}` | ステップ 1.2 で検出した親 Issue 番号（親 detection 時のみ） |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
+
+> **Note**: `{owner}` / `{repo}` / `{project_number}` / `{parent_issue_number}` 等は下流 sub-skill (`rite:issue:implement` / `rite:pr:create` / Projects integration script 経由) が `rite-config.yml` / `gh` から個別に取得するため、本コマンド body 内で直接 substitute する経路は持たない (responsibility を sub-skill に委譲)。
 
 ---
 

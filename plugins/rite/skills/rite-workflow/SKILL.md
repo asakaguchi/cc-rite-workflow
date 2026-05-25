@@ -90,8 +90,9 @@ Detect current state from:
 | State | Suggestion |
 |-------|------------|
 | On main/develop, no Issue | `/rite:issue:create` or `/rite:issue:list` |
-| On feature branch, no PR | `/rite:pr:create` after work |
-| PR open, draft | `/rite:pr:review` then `/rite:pr:ready` |
+| Have an Issue, want to start work | `/rite:pr:open <issue>` (Issue → branch → 実装 → lint → draft PR を一気通貫) |
+| On feature branch, PR open / draft, review-fix cycle | `/rite:pr:iterate <pr>` (mergeable まで review ⇄ fix を無限ループ) |
+| Review mergeable, want to mark Ready | `/rite:pr:ready <pr>` then `/rite:pr:merge <pr>` |
 | Long session (30+ minutes elapsed) | `/rite:issue:update` |
 | Sprint with Todo Issues available | `/rite:sprint:execute` to run Issues sequentially |
 | Sprint with multiple independent Issues | `/rite:sprint:team-execute` to run Issues in parallel with worktrees |

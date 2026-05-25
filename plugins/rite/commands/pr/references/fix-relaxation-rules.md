@@ -57,10 +57,10 @@ Findings are classified by **severity × scope**. Scope was added in schema 1.1.
 ```yaml
 review:
   scope_assignment:
-    auto_demote_low: true   # default true; LOW + 実害なし MEDIUM を nit-noted に降格
+    auto_demote_low: true   # default true; LOW + 実害なし MEDIUM + 実害なし LOW-MEDIUM を nit-noted に降格
 ```
 
-`auto_demote_low: false` の場合、LOW × current-pr / 実害なし MEDIUM × current-pr は通常通り blocking 扱いになる。
+`auto_demote_low: false` の場合、LOW × current-pr / 実害なし MEDIUM × current-pr / 実害なし LOW-MEDIUM × current-pr は通常通り blocking 扱いになる。
 
 ## Loop Termination (Issue #1136)
 

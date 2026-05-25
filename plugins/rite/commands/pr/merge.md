@@ -32,9 +32,13 @@ description: PR を squash merge する（cleanup は別コマンド /rite:pr:cl
 Bash tool 呼び出し境界では shell 変数が消失するため、判定値を `[CONTEXT]` marker で emit して後段の LLM が読み取れる形にする。
 
 ```bash
-phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default "" 2>"${flow_state_err:-/dev/null}") || phase=""
-state_pr=$(bash {plugin_root}/hooks/flow-state.sh get --field pr_number --default "0" 2>>"${flow_state_err:-/dev/null}") || state_pr="0"
-state_branch=$(bash {plugin_root}/hooks/flow-state.sh get --field branch --default "" 2>>"${flow_state_err:-/dev/null}") || state_branch=""
+# pr/open.md Step 0 の方針 (stderr は WARNING channel として残し、2>/dev/null で握りつぶさない) と
+# 整合させる。flow-state.sh の `--default ""` は session 解決失敗 / file 不在 / jq parse 失敗を
+# すべて吸収するため、外側 `|| var=""` は helper validation 失敗経路のみを catch する defensive
+# fallback。stderr は redirect せず WARNING を context に残す。
+phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default "") || phase=""
+state_pr=$(bash {plugin_root}/hooks/flow-state.sh get --field pr_number --default "0") || state_pr="0"
+state_branch=$(bash {plugin_root}/hooks/flow-state.sh get --field branch --default "") || state_branch=""
 
 echo "[CONTEXT] MERGE_STATE_PHASE=$phase; MERGE_STATE_PR=$state_pr; MERGE_STATE_BRANCH=$state_branch"
 ```
@@ -62,11 +66,27 @@ gh pr view {pr_number} --json mergeable,mergeStateStatus,isDraft
 ## ステップ 3: マージ実行
 
 ```bash
+# canonical signal-specific trap pattern (references/bash-trap-patterns.md 参照、fix.md Phase 2.4 と対称)
+gh_err=""
+_rite_merge_cleanup() {
+  rm -f "${gh_err:-}"
+}
+trap 'rc=$?; _rite_merge_cleanup; exit $rc' EXIT
+trap '_rite_merge_cleanup; exit 130' INT
+trap '_rite_merge_cleanup; exit 143' TERM
+trap '_rite_merge_cleanup; exit 129' HUP
+
 gh_err=$(mktemp /tmp/rite-merge-gh-err-XXXXXX) || gh_err=""
-trap 'rm -f "${gh_err:-}"' EXIT INT TERM HUP
 
 if gh pr merge {pr_number} --squash --delete-branch=false 2>"${gh_err:-/dev/null}"; then
   echo "[merge:completed]"
+  # 成功時のみ stderr の warning (deprecation / rate-limit) を surface する。
+  # 失敗時に同 stderr を head -5 で再表示すると、下の else block の head -10 と二重出力に
+  # なるため、warning surface は then-branch 内に閉じ込める。
+  if [ -n "$gh_err" ] && [ -s "$gh_err" ]; then
+    echo "  WARNING (gh stderr):" >&2
+    head -5 "$gh_err" | sed 's/^/    /' >&2
+  fi
   # 完了通知は Step 4 で表示
 else
   merge_rc=$?
@@ -77,12 +97,6 @@ else
     head -10 "$gh_err" | sed 's/^/    /' >&2
   fi
   # AskUserQuestion を LLM 側で起動: 「再試行 / 中止」
-fi
-
-# 成功時にも stderr の warning (deprecation / rate-limit) を表示
-if [ -n "$gh_err" ] && [ -s "$gh_err" ]; then
-  echo "  WARNING (gh stderr):" >&2
-  head -5 "$gh_err" | sed 's/^/    /' >&2
 fi
 ```
 

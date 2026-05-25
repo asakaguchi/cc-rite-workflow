@@ -2992,10 +2992,15 @@ finding を出して fix ループが永久化する。
    # Step 1 末尾「symbol 不在ケースの fallback」を参照
    target_symbol="{symbol_name}"   # 例: "validate_input", "API_TIMEOUT", "UserRepo"
 
-   # caller / test / sibling を全部列挙する。git grep の exit code を捕捉して silent failure を防ぐ
-   if ! git grep -nE "\\b${target_symbol}\\b" -- \
+   # caller / test / sibling を全部列挙する。git grep の exit code を捕捉して silent failure を防ぐ。
+   # bash の `!` 否定 pipeline は then-branch 内で `$?` が常に 0 を返す仕様のため、
+   # `if cmd; then :; else rc=$?; ... fi` 形式で rc を正しく捕捉する (fix.md L4914 周辺の
+   # canonical pattern と同型、Phase 2.4 / 4.2 と対称)。
+   if git grep -nE "\\b${target_symbol}\\b" -- \
      '*.ts' '*.tsx' '*.js' '*.jsx' '*.py' '*.rb' '*.go' '*.rs' \
      '*.sh' '*.bash' '*.md' '*.yml' '*.yaml' '*.json' > /tmp/rite-fix-impact-scan-$$.txt 2>/tmp/rite-fix-impact-scan-err-$$.txt; then
+     :  # match あり (rc=0) — 結果は tmpfile に展開済、Step 2 へ
+   else
      rc=$?
      case "$rc" in
        1) : ;; # match なし (期待動作)、空の影響範囲として Step 2 へ

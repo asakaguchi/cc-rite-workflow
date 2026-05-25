@@ -1647,7 +1647,7 @@ LLM analyzes diff content to determine:
 
 When a step of the end-to-end flow (`/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:ready` → `/rite:pr:merge`) fails or is skipped (Skill load failure, hook abnormal exit, Wiki ingest skip/failure, `.gitignore` drift, etc.), the relevant script or hook emits a plain `WARNING` / `ERROR` line to **stderr**. The orchestrator LLM surfaces these in the conversation context, and the user resolves them by re-running the affected step via `/rite:resume`.
 
-> **History (PR 2b, #1088)**: An earlier design (#366) auto-detected these as "workflow incidents" — each failure path emitted a `[CONTEXT] WORKFLOW_INCIDENT=1; ...` sentinel via a dedicated `workflow-incident-emit.sh` hook, which the (then-current) `/rite:issue:start` orchestrator's ステップ 8.5 grepped from the conversation context to auto-register the blocker as a Todo Issue (`AskUserQuestion` confirmation, per-session dedupe, `workflow_incident.enabled` opt-out). The entire mechanism — the emit hook, the ステップ 8.5 detection logic, the `workflow_incident:` config key, and the sentinel format — was removed in favor of the single-layer plain-stderr design described above. The `/rite:issue:start` orchestrator itself was subsequently decomposed in #1136 (see the [Retired section](#riteissuesart-retired-in-1136) above). Failures are now visible but no longer auto-registered; the user decides whether to file an Issue.
+> **History (PR 2b, #1088)**: An earlier design (#366) auto-detected these as "workflow incidents" — each failure path emitted a `[CONTEXT] WORKFLOW_INCIDENT=1; ...` sentinel via a dedicated `workflow-incident-emit.sh` hook, which the (then-current) `/rite:issue:start` orchestrator's ステップ 8.5 grepped from the conversation context to auto-register the blocker as a Todo Issue (`AskUserQuestion` confirmation, per-session dedupe, `workflow_incident.enabled` opt-out). The entire mechanism — the emit hook, the ステップ 8.5 detection logic, the `workflow_incident:` config key, and the sentinel format — was removed in favor of the single-layer plain-stderr design described above. The `/rite:issue:start` orchestrator itself was subsequently decomposed in #1136 (see the [Retired section](#riteissuestart-retired-in-1136) above). Failures are now visible but no longer auto-registered; the user decides whether to file an Issue.
 
 ### Reviewer-Triggered Issue Creation (Removed in #1136)
 
@@ -1751,8 +1751,8 @@ The contract ends only when the orchestrator's terminal completion marker has be
 | Orchestrator | Terminal marker |
 |-------------|----------------|
 | `/rite:pr:open` | Step 6 completion notice listing the draft PR number/URL and the next-command suggestions (`/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge` / `/rite:pr:cleanup`) |
-| `/rite:pr:iterate` | `[iterate:completed]` (after `[review:mergeable]` or `[fix:replied-only]`) |
-| `/rite:pr:ready` | `[ready:completed]` followed by Workflow Termination block |
+| `/rite:pr:iterate` | `[review:mergeable]` or `[fix:replied-only]` (whichever sub-skill returns first terminates the loop) / `[fix:cancelled-by-user]` (user-initiated cancel via fix.md AskUserQuestion) |
+| `/rite:pr:ready` | `[ready:completed]` (E2E flow) / completion display message (standalone) |
 | `/rite:pr:merge` | `[merge:completed]` |
 | `/rite:issue:create` | `<!-- [create:completed:{N}] -->` (HTML-comment wrap form per #561) preceded by user-visible `✅ Issue #{N} を作成しました: {url}` and next-step guidance |
 

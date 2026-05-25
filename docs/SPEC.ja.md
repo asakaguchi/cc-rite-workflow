@@ -1758,7 +1758,7 @@ diff 内容を LLM が解析し、以下を判断:
 
 一気通貫フロー (`/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:ready` → `/rite:pr:merge`) のステップが失敗または skip された場合 (Skill ロード失敗 / hook 異常終了 / Wiki ingest skip・失敗 / `.gitignore` drift 等)、該当する script や hook はプレーンな `WARNING` / `ERROR` 行を **stderr** に出力します。orchestrator LLM はこれを会話コンテキストで surface し、ユーザーは `/rite:resume` で該当ステップを再実行して対応します。
 
-> **History (PR 2b, #1088)**: 以前の設計 (#366) ではこれらを「workflow incident」として自動検出していました。各 failure path が専用の `workflow-incident-emit.sh` hook 経由で `[CONTEXT] WORKFLOW_INCIDENT=1; ...` sentinel を emit し、当時の `/rite:issue:start` orchestrator のステップ 8.5 が会話コンテキストを grep して blocker を Todo Issue として自動登録する仕組みでした (`AskUserQuestion` 確認、session 内 dedupe、`workflow_incident.enabled` opt-out)。emit hook・ステップ 8.5 検出ロジック・`workflow_incident:` config key・sentinel フォーマットを含む機構全体は、上記のプレーン stderr による単層設計に置き換えるため撤去されました。`/rite:issue:start` orchestrator 自体も後続の #1136 で 4 コマンドへ分解されています (上記 [Retired section](#riteissuesart-retired-in-1136) 参照)。失敗は可視化されますが自動登録はされず、Issue を起票するかはユーザーが判断します。
+> **History (PR 2b, #1088)**: 以前の設計 (#366) ではこれらを「workflow incident」として自動検出していました。各 failure path が専用の `workflow-incident-emit.sh` hook 経由で `[CONTEXT] WORKFLOW_INCIDENT=1; ...` sentinel を emit し、当時の `/rite:issue:start` orchestrator のステップ 8.5 が会話コンテキストを grep して blocker を Todo Issue として自動登録する仕組みでした (`AskUserQuestion` 確認、session 内 dedupe、`workflow_incident.enabled` opt-out)。emit hook・ステップ 8.5 検出ロジック・`workflow_incident:` config key・sentinel フォーマットを含む機構全体は、上記のプレーン stderr による単層設計に置き換えるため撤去されました。`/rite:issue:start` orchestrator 自体も後続の #1136 で 4 コマンドへ分解されています (上記 [Retired section](#riteissuestart-retired-in-1136) 参照)。失敗は可視化されますが自動登録はされず、Issue を起票するかはユーザーが判断します。
 
 ### Reviewer 推奨からの Issue 作成 (Removed in #1136)
 

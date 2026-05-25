@@ -5,9 +5,8 @@
 # Markdown context block with the top-N matching Wiki pages, formatted for
 # direct inclusion in an LLM prompt. This script is the Query primitive for
 # the cycle described in docs/designs/experience-heuristics-persistence-layer.md
-# (F3) — it is called from command markdown files (query.md, pr/open.md,
-# pr/iterate.md, review.md, fix.md, implement.md) via Bash to fetch relevant
-# experiential knowledge.
+# (F3) — it is called from command markdown files (query.md, review.md, fix.md,
+# implement.md) via Bash to fetch relevant experiential knowledge.
 #
 # The script does NOT perform any LLM work — keyword matching and scoring
 # are purely mechanical. The LLM decides how to use the injected context

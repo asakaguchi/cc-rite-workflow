@@ -8,7 +8,7 @@
 #
 #   - close.md Phase 4.5.1 keeps all three Method 1/2/3 blocks
 #   - close.md Phase 4.6 keeps the auto-close skeleton (P460_DECISION)
-#   - start.md ステップ 8.4 uses the trackedIssues query
+#   - pr/open.md ステップ 1.2 uses the trackedIssues query (was start.md ステップ 8.4 pre-#1136)
 #   - projects-integration.md §2.4.7 documents all three methods
 
 set -euo pipefail
@@ -18,7 +18,7 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 
 CLOSE_MD="$PLUGIN_ROOT/commands/issue/close.md"
-START_MD="$PLUGIN_ROOT/commands/issue/start.md"
+START_MD="$PLUGIN_ROOT/commands/pr/open.md"
 PROJECTS_REF="$PLUGIN_ROOT/references/projects-integration.md"
 
 for f in "$CLOSE_MD" "$START_MD" "$PROJECTS_REF"; do
@@ -33,12 +33,12 @@ assert_grep "close.md retains tasklist search method" "$CLOSE_MD" "in:body|taskl
 echo "=== Phase 2: close.md Phase 4.6 auto-close decision skeleton ==="
 assert_grep "close.md retains P460_DECISION skip_already_closed branch" "$CLOSE_MD" "P460_DECISION|skip_already_closed|Phase 4\.6"
 
-echo "=== Phase 3: start.md ステップ 8.4 trackedIssues query (no inline simplification) ==="
-assert_grep "start.md ステップ 8.4 uses trackedIssues GraphQL (not bare trackedInIssues)" "$START_MD" "trackedIssues"
+echo "=== Phase 3: pr/open.md ステップ 1.2 trackedIssues query (no inline simplification) ==="
+assert_grep "pr/open.md ステップ 1.2 uses trackedIssues GraphQL (not bare trackedInIssues)" "$START_MD" "trackedIssues"
 # Negative: regression guard. Old simplification used `trackedInIssues` which is not the canonical name.
 # トラッキング trackedInIssues (Inヌキ) は GitHub API 名で本来正しいが、Issue #513 では誤った
 # 簡略化が起きたため defensive assertion として `trackedIssues` 名の存在を必須にする。
-assert_grep "start.md retains Method 1 (## 親 Issue body meta) reference" "$START_MD" "親 Issue"
+assert_grep "pr/open.md retains Method 1 (親 Issue body meta) reference" "$START_MD" "親 Issue"
 
 echo "=== Phase 4: projects-integration.md retains 3-method documentation ==="
 # Issue #513 root cause was silent collapse of the 3-method OR documentation to a

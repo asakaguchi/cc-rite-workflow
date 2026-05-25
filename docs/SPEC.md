@@ -275,14 +275,11 @@ rite-workflow/
 │ ├── output-patterns.md / execution-metrics.md
 │ ├── plugin-path-resolution.md / git-worktree-patterns.md
 │ ├── common-error-handling.md / error-codes.md
-│ ├── i18n-usage.md / tdd-light.md
+│ ├── tdd-light.md
 │ └── bottleneck-detection.md
-├── i18n/
-│ ├── ja.yml / en.yml # Legacy monolithic files (kept for back-compat)
-│ ├── ja/ # Japanese split files
-│ │ └── {common,issue,pr,other}.yml
-│ └── en/ # English split files
-│ └── {common,issue,pr,other}.yml
+│ # Note: references/i18n-usage.md and plugins/rite/i18n/ directory (ja.yml,
+│ # en.yml, and the ja/ + en/ split files) were deleted entirely in #1117 —
+│ # see the ## Internationalization (Retired in #1117) section below.
 └── README.md
 ```
 
@@ -779,7 +776,7 @@ The Session Info section of the work memory includes phase information indicatin
 | `review` | Review in progress | `/rite:pr:iterate` review side (旧 7.1) |
 | `fix` | Review-fix loop in progress | `/rite:pr:iterate` fix side (旧 7.2) |
 | `ready` | `/rite:pr:ready` succeeded; awaiting Projects Status In Review → 完了レポート | `/rite:pr:ready` (旧 8.3) |
-| `ready_error` | `/rite:pr:ready` failed inside e2e flow; resume routes back to ステップ 8 for retry | `/rite:pr:ready` retry (旧 8) |
+| `ready_error` | `/rite:pr:ready` failed inside e2e flow; resume routes back to Step 8 for retry | `/rite:pr:ready` retry (旧 8) |
 | `completed` | Workflow finished | `/rite:pr:merge` / `/rite:pr:cleanup` 完了 (旧 8 終端) |
 
 Lifecycle sub-rings (legacy granular phases — lifecycle-incomplete detection now lives in `session-end.sh`'s inline glob; see the retired Phase Transition Whitelist note below):
@@ -1904,40 +1901,11 @@ Details: {technical details for debugging}
 
 ---
 
-## Internationalization
+## Internationalization (Retired in #1117)
 
-### Language Auto-Detection
-
-1. Detect user input language (from recent input)
-2. Reference system locale
-3. Check `language` setting in config file
-
-### Supported Languages
-
-- Japanese (ja)
-- English (en)
-
-### Language File Structure
-
-Language files use a split directory structure organized by language and domain:
-
-```
-plugins/rite/i18n/
-├── en.yml # English (deprecated, kept for backward compatibility)
-├── ja.yml # Japanese (deprecated, kept for backward compatibility)
-├── en/
-│ ├── common.yml # Common messages (shared across commands)
-│ ├── issue.yml # Issue-related messages
-│ ├── pr.yml # PR-related messages
-│ └── other.yml # Other messages (init, resume, lint, etc.)
-└── ja/
- ├── common.yml # 共通メッセージ
- ├── issue.yml # Issue 関連メッセージ
- ├── pr.yml # PR 関連メッセージ
- └── other.yml # その他メッセージ（init, resume, lint 等）
-```
-
-Each domain file contains keys grouped by command context (e.g., `# rite:init`, `# rite:resume`). Messages are referenced in commands using `{i18n:key_name}` placeholder syntax.
+> **Status: Retired**. The runtime i18n mechanism (`{i18n:key_name}` placeholder substitution, the `plugins/rite/i18n/` directory tree with `ja.yml` / `en.yml` legacy monolithic files and `ja/` / `en/` per-domain split files, and the `references/i18n-usage.md` reference doc) was deleted entirely in #1117 (commit `d3a105f1`). All 364 placeholders across 10 remaining command/sub-skill files were resolved to inline Japanese, removing the runtime i18n resolution dependency. No language file structure remains in the plugin source tree.
+>
+> The remaining language-related controls are documentation-side conventions only — see `docs/i18n-style-guide.md` for the kept-English term list (Issue / PR / Sprint / Iteration / finding / fingerprint / severity / etc.) and the document-vs-inline split that replaces the deleted UI string store. The `language` setting in `rite-config.yml` (still live) controls commit message language only; it does not select a runtime UI message catalog (no such catalog exists post-#1117).
 
 ---
 

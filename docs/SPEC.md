@@ -426,14 +426,14 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 
 | Section | Purpose |
 |---------|---------|
-| `project.type` | Project preset (`generic` / `webapp` / `library` / `cli` / `documentation`) |
+| ~~`project.type`~~ | **DEPRECATED (#1118)** — Removed entirely; project-specific configuration is now expressed via per-key YAML directly. See CONFIGURATION.md project section for deprecation note |
 | `github.projects.*` | GitHub Projects integration (`field_ids`, `fields`, `project_number`, `owner`) |
 | `branch.*` | `base`, `pattern`, `recognized_patterns` |
 | `commit.contextual` | Contextual Commits action lines in commit body |
 | `commands.{build,test,lint}` | Build/test/lint auto-detection overrides |
 | `issue.auto_decompose_threshold` | Threshold for skipping the decomposition prompt |
-| `review.*` | `loop.*` (convergence_monitoring / auto_propagation_scan / pre_commit_drift_check), `doc_heavy.*`, `fact_check.*` (incl. `use_context7`), `debate.*`, `security_reviewer.*`, `confidence_threshold`, `observed_likelihood_gate.*` / `fail_fast_first.*` (all #506). The `separate_issue_creation.*` keys were removed entirely in #1136 along with the `[fix:issues-created:N]` sentinel and `fix.md` Phase 4.3 — see CONFIGURATION.md for the deprecation note |
-| `fix.*` | `fail_fast_response` (#506), `severity_gating` (deprecated #557, pinned `false`) |
+| `review.*` | `loop.*` (convergence_monitoring / auto_propagation_scan / pre_commit_drift_check), `doc_heavy.*`, `fact_check.*` (incl. `use_context7`), `debate.*`, `security_reviewer.*`, `confidence_threshold`. **DEPRECATED (#1118)**: `observed_likelihood_gate.*` / `fail_fast_first.*` were removed entirely — see CONFIGURATION.md for the deprecation note. The `separate_issue_creation.*` keys were removed entirely in #1136 along with the `[fix:issues-created:N]` sentinel and `fix.md` Phase 4.3 |
+| `fix.*` | `fail_fast_response` (#506). **DEPRECATED (#1118)**: `severity_gating.*` was removed entirely — see CONFIGURATION.md for the deprecation note |
 | `verification.*` | `run_tests_before_pr`, `acceptance_criteria_check` |
 | `tdd.*` | TDD Light mode (`off` / `light`) |
 | `parallel.*`, `team.*` | Parallel implementation and Sprint team execution |
@@ -768,19 +768,19 @@ The Session Info section of the work memory includes phase information indicatin
 
 **Flat workflow phase (current / 11 values):**
 
-| Phase | Phase Detail | start.md step |
-|-------|--------------|---------------|
-| `init` | Workflow initialised (Issue identified) | 1 |
-| `branch` | Branch created, ready for plan | 2 |
-| `plan` | Implementation planning in progress | 3 |
-| `implement` | Implementation in progress | 4 |
-| `lint` | Quality check in progress | 5 |
-| `pr` | PR creation in progress | 6 |
-| `review` | Review in progress | 7.1 |
-| `fix` | Review-fix loop in progress | 7.2 |
-| `ready` | `/rite:pr:ready` succeeded; awaiting Projects Status In Review → 完了レポート | 8.3 |
-| `ready_error` | `/rite:pr:ready` failed inside e2e flow; resume routes back to ステップ 8 for retry | 8 |
-| `completed` | Workflow finished | 8 終端 |
+| Phase | Phase Detail | 4-command step (旧 start.md step pre-#1136) |
+|-------|--------------|---------------------------------------------|
+| `init` | Workflow initialised (Issue identified) | `/rite:pr:open` Step 1 (旧 1) |
+| `branch` | Branch created, ready for plan | `/rite:pr:open` Step 2 (旧 2) |
+| `plan` | Implementation planning in progress | `/rite:pr:open` Step 3 (旧 3) |
+| `implement` | Implementation in progress | `/rite:pr:open` Step 4 (旧 4) |
+| `lint` | Quality check in progress | `/rite:pr:open` Step 5 (旧 5) |
+| `pr` | PR creation in progress | `/rite:pr:open` Step 6 (旧 6) |
+| `review` | Review in progress | `/rite:pr:iterate` review side (旧 7.1) |
+| `fix` | Review-fix loop in progress | `/rite:pr:iterate` fix side (旧 7.2) |
+| `ready` | `/rite:pr:ready` succeeded; awaiting Projects Status In Review → 完了レポート | `/rite:pr:ready` (旧 8.3) |
+| `ready_error` | `/rite:pr:ready` failed inside e2e flow; resume routes back to ステップ 8 for retry | `/rite:pr:ready` retry (旧 8) |
+| `completed` | Workflow finished | `/rite:pr:merge` / `/rite:pr:cleanup` 完了 (旧 8 終端) |
 
 Lifecycle sub-rings (legacy granular phases — lifecycle-incomplete detection now lives in `session-end.sh`'s inline glob; see the retired Phase Transition Whitelist note below):
 
@@ -1311,7 +1311,7 @@ A pair of hooks that automate Experience Wiki integration (opt-out via `wiki.ena
 | Hook | Trigger | Action |
 |------|---------|--------|
 | `wiki-ingest-trigger.sh` | `pr/review.md` Phase 5.4.3 (post review), `pr/fix.md` Phase 5.4.6 (post fix), `commands/issue/close.md` (Issue close) | Writes a raw-source file under `.rite/wiki/raw/{type}/` on the dev branch working tree. Pure file writer, no git operations. |
-| `wiki-query-inject.sh` | start.md ステップ 2.6 (work memory init), `implement.md` Phase 5.0.W, `pr/review.md` Phase 4.0.W, `pr/fix.md` Phase 0.5.W | Runs `/rite:wiki:query` against the current Issue title/body and injects matching heuristics. Reads via `origin/{wiki_branch}` when the local wiki branch is absent (fresh clone / separate worktree). |
+| `wiki-query-inject.sh` | `/rite:pr:open` Step 1 (work memory init, formerly start.md ステップ 2.6 pre-#1136), `implement.md` Phase 5.0.W, `pr/review.md` Phase 4.0.W, `pr/fix.md` Phase 0.5.W | Runs `/rite:wiki:query` against the current Issue title/body and injects matching heuristics. Reads via `origin/{wiki_branch}` when the local wiki branch is absent (fresh clone / separate worktree). |
 
 See [Experience Wiki](#experience-wiki) for the full Phase X.X.W contract and the separate `wiki-ingest-commit.sh` / `wiki-worktree-commit.sh` helpers that actually commit + push raw sources onto the wiki branch.
 
@@ -1680,7 +1680,7 @@ When `wiki.auto_ingest`, `wiki.auto_query`, or `wiki.auto_lint` are enabled, the
 
 | Hook | Trigger | Action |
 |------|---------|--------|
-| `wiki-query-inject.sh` | start.md ステップ 2.6 (work memory init), `implement.md` Phase 5.0.W, `pr/review.md` Phase 4.0.W, `pr/fix.md` Phase 0.5.W | Run `/rite:wiki:query` against the current Issue title/body and inject matching heuristics |
+| `wiki-query-inject.sh` | `/rite:pr:open` Step 1 (work memory init, formerly start.md ステップ 2.6 pre-#1136), `implement.md` Phase 5.0.W, `pr/review.md` Phase 4.0.W, `pr/fix.md` Phase 0.5.W | Run `/rite:wiki:query` against the current Issue title/body and inject matching heuristics |
 | `wiki-ingest-trigger.sh` | `pr/review.md` Phase 5.4.3 (post review), `pr/fix.md` Phase 5.4.6 (post fix), `commands/issue/close.md` (Issue close) | Write a raw source file into `.rite/wiki/raw/{type}/` on the dev branch working tree (pure file writer, no git operations) |
 | `wiki-ingest-commit.sh` | Phase 6.5.W.2 (review), Phase 4.6.W.2 (fix), Phase 4.4.W.2 (close) — immediately after the trigger | Move pending raw sources onto the `wiki` branch and commit + push them **in a single shell process** with no dependency on Claude multi-step orchestration |
 | `/rite:wiki:ingest` | Manual or optional post-commit invocation | LLM-driven page integration: read accumulated raw sources, produce/update wiki pages, refresh `index.md` / `log.md` |

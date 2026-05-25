@@ -983,7 +983,7 @@ Check the state of remaining child Issues with `trackedIssues` and calculate `re
    bash {plugin_root}/hooks/flow-state.sh set \
      --phase "lint" --issue {issue_number} --branch "{branch_name}" \
      --pr 0 \
-     --next "After rite:lint returns: [lint:success/skipped]->start.md ステップ 6 (PR creation). [lint:error]->fix and re-invoke. [lint:aborted]->start.md ステップ 8.5 (completion report). Do NOT stop."
+     --next "After rite:lint returns: [lint:success/skipped]->/rite:pr:open ステップ 6 (PR creation). [lint:error]->fix and re-invoke. [lint:aborted]->/rite:pr:open 完了通知でユーザー判断. Do NOT stop."
    ```
 
    **4b**: **Immediately** invoke `rite:lint` via Skill tool (following the flow continuation principle, stopping is prohibited)

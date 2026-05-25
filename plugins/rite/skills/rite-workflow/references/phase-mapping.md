@@ -49,7 +49,7 @@ Work memory session information section:
 - **開始**: 2026-01-29T12:00:00+09:00
 - **ブランチ**: feat/issue-123-feature-name
 - **最終更新**: 2026-01-29T14:30:00+09:00
-- **コマンド**: rite:pr:open
+- **コマンド**: /rite:pr:open
 - **フェーズ**: implement
 - **フェーズ詳細**: 実装作業中
 ```

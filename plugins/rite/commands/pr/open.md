@@ -58,8 +58,8 @@ fi
 | `1` + `phase=init` | ステップ 1 (準備) から再実行 (idempotent) |
 | `1` + `phase=branch` | ステップ 2 (ブランチ作成) から再開。既存ブランチがあれば `git switch` で復帰 |
 | `1` + `phase=plan` | ステップ 3 (実装計画) から再開。既存の Issue body 実装ステップを再読込 |
-| `1` + `phase=implement` | ステップ 4 (実装) を継続。Issue body の checklist 未完項目から続行 |
-| `1` + `phase=lint` | ステップ 5 (lint 再実行) |
+| `1` + `phase=implement` | ステップ 4 (実装) を継続。`/rite:issue:implement` の checklist 未完項目から続行 (autonomous lint まで進む内蔵動作あり) |
+| `1` + `phase=lint` | ステップ 5 (Step 4 内 autonomous lint の sentinel 検証) から再開。implement が既に lint まで完了している場合は sentinel を context から読み Step 6 へ |
 | `1` + `phase=pr` | ステップ 6 (PR 作成) から再開。既存 draft PR があれば検出して `[pr:created:N]` 相当を再構成 |
 | `1` + `phase=review` / `fix` | 本コマンドは扱わない。ユーザーに `/rite:pr:iterate {pr_number}` を案内 |
 | `1` + `phase=ready` / `ready_error` | 本コマンドは扱わない。`/rite:pr:ready {pr_number}` を案内 |
@@ -213,19 +213,27 @@ args: "{issue_number}"
 - チェックリスト駆動で各ステップを実装 (Edit / Write ツール経由)
 - conventional commits 形式でコミット (`{type}: {summary} (refs #{issue_number})`)
 - Work Memory のチェックリストを完了状態に更新
-- 完了時に `[implement:completed]` (or 同等の終了通知) を emit
+- 全 step 完了後、autonomous に `rite:lint` を Skill ツール経由で invoke する
+  (元 `start.md` の flat 設計を継承した内蔵動作。本コマンドの責務として lint 二重実行を避けるため、Step 5 は no-op になる)
 
-implement 側で全 step を完了したら flow-state を `phase=implement` に確定し、本コマンドは次のステップ 5 へ進む。
+**実態としての挙動**:
+- `/rite:issue:implement` 完了時点で `phase=lint` が flow-state に書かれ、`rite:lint` の sentinel
+  (`[lint:success]` / `[lint:skipped]` / `[lint:error]` / `[lint:aborted]`) が会話 context に emit 済みとなる
+- 本コマンドは Step 5 で sentinel を**読み取るだけ**で `rite:lint` を再 invoke しない
+  (Step 4 が autonomous lint を内包しているため)
+
+| Sentinel (Step 4 内部の autonomous lint 結果) | 次のアクション |
+|---|---|
+| sentinel 不在 (implement abort 等) | AskUserQuestion で「再試行 / 再開 / 中止」を提示 |
+
+`[implement:*]` 系の終了通知 sentinel が unset で `rite:lint` 経路にも進めない場合は AskUserQuestion fallback で処理。
 
 ---
 
-## ステップ 5: 品質チェック
+## ステップ 5: 品質チェック (Step 4 の autonomous lint 結果検証)
 
-```text
-skill: rite:lint
-```
-
-`/rite:lint` の出力 sentinel を判定:
+Step 4 で `/rite:issue:implement` が autonomous に invoke した `rite:lint` の sentinel を会話 context から検証する。
+本ステップは sentinel を読むだけで、自前で `rite:lint` を再 invoke しない (二重実行防止)。
 
 | Sentinel | 次のアクション |
 |---------|--------------|
@@ -233,8 +241,9 @@ skill: rite:lint
 | `[lint:skipped]` | ステップ 6 へ進む (lint 未設定) |
 | `[lint:error]` | AskUserQuestion で「修正再実行 / 強制続行 / 中止」を提示 |
 | `[lint:aborted]` | エラー終了。ユーザーに復旧手順を案内 |
+| sentinel 不在 | Step 4 で `/rite:issue:implement` が autonomous lint まで到達できなかった可能性。AskUserQuestion で「手動で `/rite:lint` 実行 / 中止」を提示 |
 
-flow-state を `phase=lint` に更新。
+`phase=lint` は Step 4 の `/rite:issue:implement` が既に flow-state に書き込んでいるため、本コマンドからの上書きは不要 (二重 write を避ける契約)。
 
 ---
 

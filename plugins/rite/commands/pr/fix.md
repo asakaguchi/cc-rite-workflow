@@ -4829,7 +4829,7 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 | Priority | Condition | Result |
 |----------|-----------|--------|
 | 1 | Conversation history contains a record of `Skill tool` invoking `rite:pr:fix` (recent message) | Within loop → Execute Phase 8 |
-| 2 | Work memory contains `コマンド: /rite:issue:start` AND (`フェーズ: 実装作業中` OR `フェーズ: 品質検証`) | Within loop → Execute Phase 8 |
+| 2 | Work memory contains `コマンド: /rite:pr:open` (or legacy `rite:pr:open` without prefix slash — writer hook が prefix なしで書く時期の互換) AND any `フェーズ:` value (具体値は writer 実装に依存。Priority 1 が catch しない context-compaction 経路の defensive fallback) | Within loop → Execute Phase 8 |
 | 3 | Otherwise (user directly input `/rite:pr:fix`) | Standalone execution → Skip Phase 8 |
 
 ### 8.0 W Phase Completion Gate (Defense-in-Depth, #535)

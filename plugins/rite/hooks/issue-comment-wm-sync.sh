@@ -278,7 +278,7 @@ if [ "$MODE" = "init" ]; then
 - **開始**: ${TIMESTAMP}
 - **ブランチ**: ${BRANCH}
 - **最終更新**: ${TIMESTAMP}
-- **コマンド**: rite:pr:open
+- **コマンド**: /rite:pr:open
 - **フェーズ**: phase2
 - **フェーズ詳細**: ブランチ作成・準備
 

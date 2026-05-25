@@ -43,7 +43,7 @@ The command prefix `rite` was chosen for:
 15. [~~Internationalization~~ (Retired in #1117)](#internationalization-retired-in-1117)
 16. [Dependencies](#dependencies)
 17. [Distribution](#distribution)
-18. [Project Types](#project-types)
+18. [~~Project Types~~ (Retired in #1118)](#project-types-retired-in-1118)
 
 ---
 
@@ -245,8 +245,8 @@ rite-workflow/
 │ ├── README.md
 │ ├── config/
 │ │ └── rite-config.yml # Minimal default distributed by /rite:init
-│ │ # Note: templates/project-types/ (generic / webapp / library / cli / documentation .yml)
-│ │ # was deleted in #1118 together with the project.type preset feature retirement.
+│ # Note: templates/project-types/ (generic / webapp / library / cli / documentation .yml)
+│ # was deleted in #1118 together with the project.type preset feature retirement.
 │ ├── issue/
 │ │ ├── default.md / decomposition-spec.md
 │ │ ├── interview-perspectives.md / template-structure.md
@@ -1419,7 +1419,7 @@ Legacy state files (flat JSON without `schema_version`, or any file with `schema
 
 **Sub-Issues API parent-child structure:**
 
-The Issue series that delivered this feature (#672 epic with children #678 / #679 / #680 / #681 / #682 / #683 / #684 / #685 + follow-up #749) used GitHub's native Sub-Issues API to maintain the parent-child relation. `/rite:pr:open` Step 1.2 (previously `start.md` Phase 0.3 before the #1136 decomposition) detects parent Issues via three OR-combined methods (trackedIssues API → body tasklist `- [ ] #N` → label-based `epic`/`parent`/`umbrella`), and the child→parent Status promotion (Todo → In Progress) is propagated in the same OR-combined order (`## 親 Issue` body meta → Sub-Issues API `trackedInIssues` → tasklist search) from the same step.
+The Issue series that delivered this feature (#672 epic with children #678 / #679 / #680 / #681 / #682 / #683 / #684 / #685 + follow-up #749) used GitHub's native Sub-Issues API to maintain the parent-child relation. `/rite:pr:open` Step 1.2 (previously `start.md` Phase 0.3 before the #1136 decomposition) detects parent Issues via three OR-combined methods (trackedIssues API → body tasklist `- [ ] #N` → label-based `epic`/`parent`/`umbrella`). The child→parent Status promotion (Todo → In Progress) is propagated in the same OR-combined order (`## 親 Issue` body meta → Sub-Issues API `trackedInIssues` → tasklist search) by `/rite:pr:open` Step 2.4 (`### 2.4 GitHub Projects Status 更新`, sub-step 2.4.7 — see [`references/projects-integration.md`](../plugins/rite/references/projects-integration.md) §2.4.7 Parent Issue Status Update for the SoT).
 
 > **Hook list canonical SoT**: The hooks that read or write per-session state are registered in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json) — currently 6 events (`SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse`). To re-enumerate the live registration, run `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`. The `Stop` event has been removed and is not part of the current registration. The library script `session-ownership.sh` is sourced (not registered) and therefore does not appear in `hooks.json`.
 

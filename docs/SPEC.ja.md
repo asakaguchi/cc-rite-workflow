@@ -42,7 +42,7 @@
 14. [~~多言語対応~~ (Retired in #1117)](#多言語対応-retired-in-1117)
 15. [依存関係](#依存関係)
 16. [配布方法](#配布方法)
-17. [プロジェクト種別](#プロジェクト種別)
+17. [~~プロジェクト種別~~ (Retired in #1118)](#プロジェクト種別-retired-in-1118)
 
 ---
 
@@ -244,8 +244,8 @@ rite-workflow/
 │ ├── README.md
 │ ├── config/
 │ │ └── rite-config.yml # /rite:init 時に配布される最小デフォルト
-│ │ # 注: templates/project-types/ (generic / webapp / library / cli / documentation .yml)
-│ │ # は #1118 で project.type プリセット機能廃止と併せて削除済。
+│ # 注: templates/project-types/ (generic / webapp / library / cli / documentation .yml)
+│ # は #1118 で project.type プリセット機能廃止と併せて削除済。
 │ ├── issue/
 │ │ ├── default.md / decomposition-spec.md
 │ │ ├── interview-perspectives.md / template-structure.md

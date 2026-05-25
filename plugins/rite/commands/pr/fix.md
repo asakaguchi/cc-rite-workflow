@@ -2974,6 +2974,58 @@ When "コードを修正する" is selected:
 修正案を検討しています...
 ```
 
+### 2.2.A Pre-Fix Impact Scan (全体俯瞰でデグレ・仕様ドリフト防止)
+
+**Purpose**: 「指摘箇所だけ直す」では既存 caller / test / 他 file の同名 symbol を
+壊す silent regression が頻発するため、修正案を確定する前に必ず周辺の影響範囲を
+列挙する。指摘ゼロまでループする以上、デグレが入ると次 cycle で reviewer が新規
+finding を出して fix ループが永久化する。
+
+**Mandatory before applying any fix**:
+
+1. **修正対象 symbol の `git grep` 列挙** (function / class / variable / constant /
+   config key):
+
+   ```bash
+   # 修正対象 file から symbol を抽出 (Claude が静的に決定)
+   target_symbol="{symbol_name}"   # 例: "validate_input", "API_TIMEOUT", "UserRepo"
+
+   # caller / test / sibling を全部列挙する
+   git grep -nE "\\b${target_symbol}\\b" -- \
+     '*.ts' '*.tsx' '*.js' '*.jsx' '*.py' '*.rb' '*.go' '*.rs' \
+     '*.sh' '*.bash' '*.md' '*.yml' '*.yaml' '*.json'
+   ```
+
+2. **影響範囲の thought process 出力**: 修正案の前に必ず以下を Claude 側で
+   verbalize する (chat への明示出力 - ユーザーが追跡できる形で):
+
+   ```
+   修正対象 symbol: {symbol_name}
+   影響範囲:
+   - caller: {file_path:line_range} ({n} 箇所)
+   - test: {test_path:line_range} ({n} 箇所)
+   - sibling (同一ファイル内の関連箇所): {n} 箇所
+   - cross-file 参照: {他 file 名} ({n} 箇所)
+
+   修正方針が影響範囲に与える影響:
+   - {caller_file_1}: {影響の有無、必要な追従修正}
+   - {test_file_1}: {test も更新が必要か、test の期待値は変わるか}
+   - {他 file}: {同上}
+   ```
+
+3. **Markdown / config 文書化された参照** (`reference:` リンク / API 仕様書 / docs
+   / CHANGELOG など) も grep 対象に含める。コード以外で型・仕様が宣言されている
+   場合、修正がドキュメント側と drift しないか確認する。
+
+4. **省略可能なケース**: 修正範囲が **同一ファイル内の純粋に局所的な変更**
+   (e.g., typo 修正、コメント追加、未参照 import 削除) と Claude が判断した場合に
+   限り、step 1-3 を省略してよい。判断根拠 (`local-only: {根拠}`) を chat に明示
+   出力する。
+
+**Why mandatory**: Doc-Heavy PR 以外でも fix が破壊的変更を起こした場合、本 PR
+内の review-fix ループは指摘ゼロにならず、結果として無限ループ + reviewer の
+context 消費という最悪結果になる。修正前 30 秒の grep が回避できる。
+
 ### 2.3 Apply the Fix
 
 Present the proposed fix and apply with Edit tool after confirmation:
@@ -3039,6 +3091,11 @@ If `propagated_count == 0` and `already_applied_count == 0`, output a single lin
 
 ### 2.4 Create Reply (Optional)
 
+**Reply 本文の SoT**: 返信は `templates/review/reply.md` の Why-only テンプレート
++ 禁止句リストに従う。本文は **Why の 1〜3 文** で、Issue 番号 / PR 番号 / 修正
+履歴 (`Fixed in commit ...` / `See PR #...` / `Closes #...` 等) は記載しない。
+詳細は `{plugin_root}/templates/review/reply.md` 参照。
+
 After completing the fix, propose a reply to the reviewer:
 
 ```
@@ -3047,13 +3104,18 @@ After completing the fix, propose a reply to the reviewer:
 提案される返信:
 > {original_comment_preview}
 
-修正しました。{brief_explanation}
+{why_only_explanation}
 
 オプション:
 - この返信を投稿
 - 返信を編集
 - 返信しない
 ```
+
+`{why_only_explanation}` は「なぜそう直したか」を 1〜3 文で表現する。
+**禁止句** (reply.md 参照): `Fixed in commit {sha}` / `See PR #{N}` /
+`Related to #{issue}` / `In commit {sha}` / 日本語版「コミット {sha} で対応」
+「PR #{N} で対応」「#{N} で別途対応」等。
 
 When posting the reply:
 

@@ -76,11 +76,13 @@ This will:
 | `/rite:workflow` | Show workflow guide |
 | `/rite:issue:list` | List Issues |
 | `/rite:issue:create` | Create new Issue |
-| `/rite:issue:start` | Start work (end-to-end: branch → implementation → PR → review) |
 | `/rite:issue:update` | Update work memory |
 | `/rite:issue:close` | Check Issue completion |
 | `/rite:issue:edit` | Edit existing Issue interactively |
 | `/rite:issue:recall` | Search Contextual Commit history for past decisions |
+| `/rite:pr:open` | Start work end-to-end (branch → plan → implement → lint → draft PR) |
+| `/rite:pr:iterate` | Loop review ⇄ fix until mergeable |
+| `/rite:pr:merge` | Squash-merge the PR |
 | `/rite:pr:create` | Create draft PR |
 | `/rite:pr:ready` | Mark as Ready for review |
 | `/rite:pr:review` | Multi-reviewer review |
@@ -104,10 +106,12 @@ This will:
 ## Workflow
 
 ```
-/rite:issue:create → /rite:issue:start (Implementation → /rite:lint → /rite:pr:create → /rite:pr:review → /rite:pr:fix) → /rite:pr:ready → Merge → /rite:pr:cleanup
+/rite:issue:create → /rite:pr:open (branch → plan → implement → /rite:lint → draft PR)
+                  → /rite:pr:iterate (review ⇄ fix loop until mergeable)
+                  → /rite:pr:ready → /rite:pr:merge → /rite:pr:cleanup
 ```
 
-**Note:** `/rite:issue:start` executes the complete end-to-end flow: branch creation, implementation, quality checks, draft PR creation, self-review, and review fixes - all in one continuous process. See [Phase 5: End-to-End Execution](docs/SPEC.md#phase-5-end-to-end-execution) for details.
+**Note:** The end-to-end flow is split across four single-responsibility commands (#1136). `/rite:pr:open <issue>` handles branch creation, implementation, quality checks, and draft PR creation. `/rite:pr:iterate <pr>` loops review and fix until mergeable. `/rite:pr:ready <pr>` flips the PR to Ready for review. `/rite:pr:merge <pr>` performs the squash-merge. If any step is interrupted (e.g. `Context limit reached`), run `/rite:resume` to recover.
 
 Status Transitions:
 ```

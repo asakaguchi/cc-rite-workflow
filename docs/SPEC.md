@@ -40,10 +40,10 @@ The command prefix `rite` was chosen for:
 12. [Sub-skill Return Auto-Continuation Contract](#sub-skill-return-auto-continuation-contract)
 13. [Error Handling](#error-handling)
 14. [Migration](#migration)
-15. [Internationalization](#internationalization)
+15. [~~Internationalization~~ (Retired in #1117)](#internationalization-retired-in-1117)
 16. [Dependencies](#dependencies)
 17. [Distribution](#distribution)
-18. [Project Types](#project-types)
+18. [~~Project Types~~ (Retired in #1118)](#project-types-retired-in-1118)
 
 ---
 
@@ -57,11 +57,13 @@ The command prefix `rite` was chosen for:
 | `/rite:investigate` | Structured code investigation | `<topic or question>` |
 | `/rite:issue:list` | List Issues | `[filter]` |
 | `/rite:issue:create` | Create new Issue | `<title or description>` |
-| `/rite:issue:start` | Start work (end-to-end: branch → implementation → PR) | `<Issue number>` |
 | `/rite:issue:update` | Update work memory | `[memo]` |
 | `/rite:issue:close` | Check Issue completion | `<Issue number>` |
 | `/rite:issue:edit` | Interactively edit existing Issue | `<Issue number>` |
 | `/rite:issue:recall` | Search Contextual Commit history for past decisions | `[{scope}\|{action}({scope})]` |
+| `/rite:pr:open` | Start work end-to-end (branch → plan → implement → lint → draft PR) | `<Issue number>` |
+| `/rite:pr:iterate` | Loop review ⇄ fix until mergeable | `<PR number>` |
+| `/rite:pr:merge` | Squash-merge the PR | `<PR number>` |
 | `/rite:pr:create` | Create draft PR | `[PR title]` |
 | `/rite:pr:ready` | Mark as Ready for review | `[PR number]` |
 | `/rite:pr:review` | Multi-reviewer review | `[PR number]` |
@@ -95,34 +97,32 @@ The command prefix `rite` was chosen for:
 /rite:issue:create (Create New Issue)
  │ Status: Todo
  ▼
-/rite:issue:start (Start Work)
+/rite:pr:open <issue> (Start Work)
  │ Status: In Progress
  │
  ├── Branch Creation
  ├── Implementation Planning
- ├── Implementation Work
- ├── /rite:lint (Quality Check)
- ├── /rite:pr:create (Create Draft PR)
- ├── /rite:pr:review (Self Review)
+ ├── Implementation Work (rite:issue:implement)
+ ├── /rite:lint (Quality Check, autonomous)
+ └── /rite:pr:create (Create Draft PR)
  ▼
-/rite:pr:fix (Address Review Feedback) ←─┐
- │ │
- ▼ │
-/rite:pr:ready (Ready for Review) │
+/rite:pr:iterate <pr> (Review ⇄ Fix loop)
+ │ Internally invokes /rite:pr:review and /rite:pr:fix repeatedly
+ │ until [review:mergeable] or [fix:replied-only]
+ ▼
+/rite:pr:ready <pr> (Ready for Review)
  │ Status: In Review
- │ │
- └── (if changes requested) ──────────┘
  ▼
-PR Merge
+/rite:pr:merge <pr> (Squash-Merge)
  │
  ▼
-/rite:pr:cleanup (Post-Merge Cleanup)
+/rite:pr:cleanup <pr> (Post-Merge Cleanup)
  │ Status: Done
  ▼
 Issue Auto-Close
 ```
 
-**Note:** `/rite:issue:start` handles the entire flow from branch creation to review fixes in one continuous process. When "Start implementation" is selected, the workflow proceeds through implementation, quality checks, draft PR creation, self-review, and review fixes automatically. See [Phase 5: End-to-End Execution](#phase-5-end-to-end-execution) for details.
+**Note:** The end-to-end flow is split across four single-responsibility commands (#1136). `/rite:pr:open <issue>` handles branch creation, implementation, autonomous lint, and draft PR creation. `/rite:pr:iterate <pr>` loops review and fix until convergence (no cycle-count cap; manual abort via `Ctrl+C` + `/rite:resume`). `/rite:pr:ready <pr>` flips the PR to Ready for review. `/rite:pr:merge <pr>` runs `gh pr merge --squash`. For the canonical live spec of each command, see [`commands/pr/open.md`](../plugins/rite/commands/pr/open.md), [`iterate.md`](../plugins/rite/commands/pr/iterate.md), [`ready.md`](../plugins/rite/commands/pr/ready.md), and [`merge.md`](../plugins/rite/commands/pr/merge.md). (The legacy [Phase 5: End-to-End Execution](#phase-5-end-to-end-execution) section below documents the pre-#1136 `start.md` orchestrator for archaeological / migration reference only.)
 
 **Status Transitions:**
 ```
@@ -133,7 +133,7 @@ Todo → In Progress → In Review → Done
 
 ## Plugin Structure
 
-> **Architecture**: The `/rite:issue:start` and `/rite:issue:create` lifecycles are single-file flat workflows. Older sub-skill files (`commands/issue/start-execute`, `start-publish`, `start-finalize`, `create-interview`, `create-register`, `create-decompose`, `parent-routing`, etc.) and implicit-stop guard hooks (`auto-fire-step0.sh`, `verify-terminal-output.sh`, `stop-create-interview-block.sh`) were consolidated into the flat workflow. Sections referencing those retired components remain only as migration anchors.
+> **Architecture**: The `/rite:issue:create` lifecycle is a single-file flat workflow. The previous `/rite:issue:start` flat workflow was decomposed in #1136 into four single-responsibility commands (`/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge`); the source file `commands/issue/start.md` was deleted. Older sub-skill files (`commands/issue/start-execute`, `start-publish`, `start-finalize`, `create-interview`, `create-register`, `create-decompose`, `parent-routing`, etc.) and implicit-stop guard hooks (`auto-fire-step0.sh`, `verify-terminal-output.sh`, `stop-create-interview-block.sh`) were earlier consolidated into the flat workflow (#1079) before the start.md decomposition. Sections referencing those retired components remain only as migration anchors.
 
 ```
 rite-workflow/
@@ -149,16 +149,18 @@ rite-workflow/
 │ ├── issue/
 │ │ ├── list.md # /rite:issue:list
 │ │ ├── create.md # /rite:issue:create
-│ │ ├── start.md # /rite:issue:start
 │ │ ├── update.md # /rite:issue:update
 │ │ ├── close.md # /rite:issue:close
 │ │ ├── edit.md # /rite:issue:edit
 │ │ ├── recall.md # /rite:issue:recall
-│ │ ├── implement.md # /rite:issue:implement
+│ │ ├── implement.md # /rite:issue:implement (sub-skill, invoked from /rite:pr:open)
 │ │ └── references/ # Edge cases, complexity gates, bulk-create patterns
 │ ├── pr/
-│ │ ├── create.md # /rite:pr:create
+│ │ ├── open.md # /rite:pr:open (start work end-to-end)
+│ │ ├── iterate.md # /rite:pr:iterate (review ⇄ fix loop)
+│ │ ├── merge.md # /rite:pr:merge (squash merge)
 │ │ ├── ready.md # /rite:pr:ready
+│ │ ├── create.md # /rite:pr:create
 │ │ ├── review.md # /rite:pr:review
 │ │ ├── fix.md # /rite:pr:fix
 │ │ ├── cleanup.md # /rite:pr:cleanup
@@ -243,16 +245,15 @@ rite-workflow/
 │ ├── README.md
 │ ├── config/
 │ │ └── rite-config.yml # Minimal default distributed by /rite:init
-│ ├── project-types/
-│ │ ├── generic.yml / webapp.yml / library.yml / cli.yml / documentation.yml
+│ # Note: templates/project-types/ (generic / webapp / library / cli / documentation .yml)
+│ # was deleted in #1118 together with the project.type preset feature retirement.
 │ ├── issue/
 │ │ ├── default.md / decomposition-spec.md
 │ │ ├── interview-perspectives.md / template-structure.md
 │ ├── pr/
-│ │ ├── generic.md / webapp.md / library.md / cli.md / documentation.md
-│ │ └── fix-report.md # Fix loop summary format
+│ │ └── generic.md # Generic PR template (cli/library/webapp/documentation/fix-report.md were all deleted in #1118)
 │ ├── review/
-│ │ └── comment.md # PR review comment format
+│ │ └── reply.md # Why-only PR review reply SoT (added in #1136; the prior orphan comment.md was deleted in the same PR)
 │ └── wiki/
 │ ├── index-template.md / log-template.md
 │ ├── page-template.md / schema-template.md
@@ -273,14 +274,11 @@ rite-workflow/
 │ ├── output-patterns.md / execution-metrics.md
 │ ├── plugin-path-resolution.md / git-worktree-patterns.md
 │ ├── common-error-handling.md / error-codes.md
-│ ├── i18n-usage.md / tdd-light.md
+│ ├── tdd-light.md
 │ └── bottleneck-detection.md
-├── i18n/
-│ ├── ja.yml / en.yml # Legacy monolithic files (kept for back-compat)
-│ ├── ja/ # Japanese split files
-│ │ └── {common,issue,pr,other}.yml
-│ └── en/ # English split files
-│ └── {common,issue,pr,other}.yml
+│ # Note: references/i18n-usage.md and plugins/rite/i18n/ directory (ja.yml,
+│ # en.yml, and the ja/ + en/ split files) were deleted entirely in #1117 —
+│ # see the ## ~~Internationalization~~ (Retired in #1117) section below.
 └── README.md
 ```
 
@@ -424,14 +422,14 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 
 | Section | Purpose |
 |---------|---------|
-| `project.type` | Project preset (`generic` / `webapp` / `library` / `cli` / `documentation`) |
+| ~~`project.type`~~ | **DEPRECATED (#1118)** — Removed entirely; project-specific configuration is now expressed via per-key YAML directly. See CONFIGURATION.md project section for deprecation note |
 | `github.projects.*` | GitHub Projects integration (`field_ids`, `fields`, `project_number`, `owner`) |
 | `branch.*` | `base`, `pattern`, `recognized_patterns` |
 | `commit.contextual` | Contextual Commits action lines in commit body |
 | `commands.{build,test,lint}` | Build/test/lint auto-detection overrides |
 | `issue.auto_decompose_threshold` | Threshold for skipping the decomposition prompt |
-| `review.*` | `loop.*` (convergence_monitoring / auto_propagation_scan / pre_commit_drift_check), `doc_heavy.*`, `fact_check.*` (incl. `use_context7`), `debate.*`, `security_reviewer.*`, `confidence_threshold`, `observed_likelihood_gate.*` / `fail_fast_first.*` / `separate_issue_creation.*` (all #506) |
-| `fix.*` | `fail_fast_response` (#506), `severity_gating` (deprecated #557, pinned `false`) |
+| `review.*` | `loop.*` (convergence_monitoring / auto_propagation_scan / pre_commit_drift_check), `doc_heavy.*`, `fact_check.*` (incl. `use_context7`), `debate.*`, `security_reviewer.*`, `confidence_threshold`. **DEPRECATED (#1118)**: `observed_likelihood_gate.*` / `fail_fast_first.*` were removed entirely — see CONFIGURATION.md for the deprecation note. The `separate_issue_creation.*` keys were removed entirely in #1136 along with the `[fix:issues-created:N]` sentinel and `fix.md` Phase 4.3 |
+| `fix.*` | `fail_fast_response` (#506). **DEPRECATED (#1118)**: `severity_gating.*` was removed entirely — see CONFIGURATION.md for the deprecation note |
 | `verification.*` | `run_tests_before_pr`, `acceptance_criteria_check` |
 | `tdd.*` | TDD Light mode (`off` / `light`) |
 | `parallel.*`, `team.*` | Parallel implementation and Sprint team execution |
@@ -467,14 +465,17 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 2. Check GitHub authentication status
 3. Get repository information
 
-#### Phase 2: Project Type Detection
-1. Auto-detect from file structure
- - `package.json` + frontend framework → webapp
- - `package.json` + `main`/`exports` → library
- - `pyproject.toml` + `[project.scripts]` → cli
- - SSG config file → documentation
- - Other → generic
-2. Confirm/select with user (AskUserQuestion)
+#### ~~Phase 2: Project Type Detection~~ (Removed in #1118)
+
+> **Status: Removed**. The `project.type` preset feature and the Phase 2 auto-detection logic (`package.json` + frontend framework → webapp, etc.) were removed entirely in #1118. `/rite:init` no longer performs project type detection; project-specific configuration is expressed via per-key YAML directly. The original detection rules below are preserved as historical reference only.
+
+(Historical rules — no longer executed:
+- `package.json` + frontend framework → webapp
+- `package.json` + `main`/`exports` → library
+- `pyproject.toml` + `[project.scripts]` → cli
+- SSG config file → documentation
+- Other → generic
+followed by AskUserQuestion confirmation)
 
 #### Phase 3: GitHub Projects Setup
 1. Detect existing Projects
@@ -622,21 +623,30 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 
 ---
 
-### /rite:issue:start
+### /rite:issue:start (Retired in #1136)
 
-**Description:** Start work on Issue with end-to-end flow (branch creation → implementation → PR creation)
+> **Status**: Decomposed into four single-responsibility commands. The 783-line `commands/issue/start.md` orchestrator was deleted; the live specification now lives in `/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge`. This section is preserved as a migration anchor so that the historical Phase numbering (Phase 0 / 1 / 1.5 / 1.6 / 2 / 3 / 4 / 5) can still be traced when reading older PRs, design docs, and CHANGELOG entries.
 
-**Arguments:** `<Issue number>` (required)
+**Mapping from old phases to new commands:**
 
-**Workflow:** This command handles the complete development flow:
-1. Branch creation and preparation
-2. Implementation planning
-3. Implementation work
-4. Quality checks (`/rite:lint`)
-5. Draft PR creation (`/rite:pr:create`)
-6. Self review (`/rite:pr:review`)
+| Old Phase (start.md) | New command + step |
+|----------------------|--------------------|
+| Phase 0 (Epic / Sub-Issues detection) | `/rite:pr:open` Step 1 (Issue fetch + parent detection) |
+| Phase 1 (Issue quality verification) | `/rite:pr:open` Step 1.3 |
+| Phase 1.5 / 1.6 (Parent routing / Child selection) | `/rite:pr:open` Step 1.2 |
+| Phase 2 (Branch creation, Projects Status, Iteration) | `/rite:pr:open` Step 2 |
+| Phase 3 (Implementation planning) | `/rite:pr:open` Step 3 |
+| Phase 4 (Guidance / "Work later" pause) | Removed — `/rite:pr:open` always proceeds to implementation |
+| Phase 5.1 (Implementation work) | `/rite:pr:open` Step 4 → delegates to `/rite:issue:implement` |
+| Phase 5.2 (Quality checks) | `/rite:pr:open` Step 5 (`/rite:issue:implement` autonomously invokes `/rite:lint`) |
+| Phase 5.3 (Draft PR creation) | `/rite:pr:open` Step 6 (invokes `/rite:pr:create` sub-skill) |
+| Phase 5.4 / 5.5 (Review + fix loop) | `/rite:pr:iterate <pr>` (loops `/rite:pr:review` ⇄ `/rite:pr:fix` until convergence) |
+| Phase 5.6 (Completion report — formerly the last sub-step of Phase 5) | `/rite:pr:ready <pr>` (Set Ready) + `/rite:pr:merge <pr>` (Merge) — split into two responsibility-isolated commands in #1136. Historically `start.md` reached completion at Phase 5.6 and then ran `gh pr merge --squash` inline as ステップ 8 of the orchestrator |
+| Phase 6 (Cleanup) | `/rite:pr:cleanup <pr>` (unchanged, decoupled from merge in #1136) |
 
-**What "automatic" means:** In this command, "automatic" refers to sequential execution via the Skill tool in Phase 5 without requiring manual command input from the user.
+The four new commands maintain the same flow-state phases (`init` / `branch` / `plan` / `implement` / `lint` / `pr` / `review` / `fix` / `ready` / `ready_error` / `cleanup` / `ingest` / `completed` — `PHASE_ENUM_V3` SoT in `hooks/flow-state.sh`), so `/rite:resume` can recover from interruptions regardless of which command was running. See [commands/resume.md](../plugins/rite/commands/resume.md) Phase 5.3 (Phase enum → Step mapping (SoT)) for the routing table.
+
+> **Historical Phase Description (pre-#1136)**: The remainder of this section describes the previous `start.md` orchestrator's Phase 0 / 1 / 1.5 / 1.6 / 2 / 3 / 4 / 5 internals. Use it only for archaeological / migration cross-reference; the live specification is in the new pr/ commands above.
 
 #### Phase 0: Epic/Sub-issues Detection
 
@@ -754,21 +764,23 @@ _No review responses_
 
 The Session Info section of the work memory includes phase information indicating the current work state. This information is used by `/rite:resume` for resuming work.
 
-**Flat workflow phase (current / 11 values):**
+**Flat workflow phase (current / 13 values — matches `PHASE_ENUM_V3` SoT in `hooks/flow-state.sh`):**
 
-| Phase | Phase Detail | start.md step |
-|-------|--------------|---------------|
-| `init` | Workflow initialised (Issue identified) | 1 |
-| `branch` | Branch created, ready for plan | 2 |
-| `plan` | Implementation planning in progress | 3 |
-| `implement` | Implementation in progress | 4 |
-| `lint` | Quality check in progress | 5 |
-| `pr` | PR creation in progress | 6 |
-| `review` | Review in progress | 7.1 |
-| `fix` | Review-fix loop in progress | 7.2 |
-| `ready` | `/rite:pr:ready` succeeded; awaiting Projects Status In Review → 完了レポート | 8.3 |
-| `ready_error` | `/rite:pr:ready` failed inside e2e flow; resume routes back to ステップ 8 for retry | 8 |
-| `completed` | Workflow finished | 8 終端 |
+| Phase | Phase Detail | 4-command step (formerly start.md step pre-#1136) |
+|-------|--------------|----------------------------------------------------|
+| `init` | Workflow initialised (Issue identified) | `/rite:pr:open` Step 1 (formerly step 1) |
+| `branch` | Branch created, ready for plan | `/rite:pr:open` Step 2 (formerly step 2) |
+| `plan` | Implementation planning in progress | `/rite:pr:open` Step 3 (formerly step 3) |
+| `implement` | Implementation in progress | `/rite:pr:open` Step 4 (formerly step 4) |
+| `lint` | Quality check in progress | `/rite:pr:open` Step 5 (formerly step 5) |
+| `pr` | PR creation in progress | `/rite:pr:open` Step 6 (formerly step 6) |
+| `review` | Review in progress | `/rite:pr:iterate` review side (formerly step 7.1) |
+| `fix` | Review-fix loop in progress | `/rite:pr:iterate` fix side (formerly step 7.2) |
+| `ready` | `/rite:pr:ready` succeeded; awaiting Projects Status In Review → completion report | `/rite:pr:ready` (formerly step 8.3) |
+| `ready_error` | `/rite:pr:ready` failed inside e2e flow; `/rite:resume` re-enters `/rite:pr:ready` retry | `/rite:pr:ready` retry (formerly step 8) |
+| `cleanup` | `/rite:pr:cleanup` in progress (branch / worktree cleanup pre-ingest) | `/rite:pr:cleanup` Steps 1-3 |
+| `ingest` | Wiki ingest in progress (post-cleanup `/rite:wiki:ingest` integration) | `/rite:pr:cleanup` Phase 4.W → `/rite:wiki:ingest` |
+| `completed` | Workflow finished | `/rite:pr:merge` / `/rite:pr:cleanup` completed (formerly step 8 end) |
 
 Lifecycle sub-rings (legacy granular phases — lifecycle-incomplete detection now lives in `session-end.sh`'s inline glob; see the retired Phase Transition Whitelist note below):
 
@@ -802,7 +814,7 @@ Older state files may contain these names from the pre-flat sub-skill chain arch
 
 After preparation, user selects:
 - **Start implementation (Recommended)**: Proceed to Phase 5 for end-to-end execution from implementation to PR creation and review
-- **Work later**: Pause here and resume later with `/rite:issue:start`
+- **Work later** (Removed in #1136 — pre-decomposition behavior): Pause here and resume later with `/rite:issue:start` (now `/rite:pr:open <issue_number>` followed by `/rite:resume` to recover from any stop)
 
 #### Phase 5: End-to-End Execution
 
@@ -848,9 +860,9 @@ Work memory is automatically updated when executing the following commands:
 
 | Command | Auto-Update Content |
 |---------|---------------------|
-| `/rite:issue:start` | Initialize work memory, record implementation plan |
+| `/rite:pr:open` | Initialize work memory, record implementation plan |
 | `/rite:pr:create` | Record changed files, commit history, PR info |
-| `/rite:pr:fix` | Record review response history |
+| `/rite:pr:iterate` / `/rite:pr:fix` | Record review response history (fix history per cycle; no loop counter — Issue #1136 removed cycle counters and quality-signal escalation entirely) |
 | `/rite:pr:cleanup` | Record completion info |
 | `/rite:lint` | Record quality check results (conditional: only on issue branches) |
 
@@ -1050,7 +1062,7 @@ Completed tasks:
 
 Next steps:
 1. `/rite:issue:list` to check next Issue
-2. `/rite:issue:start <issue_number>` to start new work
+2. `/rite:pr:open <issue_number>` to start new work
 ```
 
 ---
@@ -1083,7 +1095,7 @@ Sprint management feature using GitHub Projects Iteration field.
 iteration:
  enabled: false # Set true to enable
  field_name: "Sprint" # Iteration field name
- auto_assign: true # Auto-assign on issue:start
+ auto_assign: true # Auto-assign on /rite:pr:open
  show_in_list: true # Show Iteration column in issue:list
 ```
 
@@ -1100,7 +1112,7 @@ iteration:
 | Command | Iteration Feature |
 |---------|-------------------|
 | `/rite:init` | Iteration field detection & setup guide |
-| `/rite:issue:start` | Auto-assign to current iteration |
+| `/rite:pr:open` | Auto-assign to current iteration when starting work |
 | `/rite:issue:create` | Iteration assignment option on creation |
 | `/rite:issue:list` | `--sprint current`, `--backlog` filters |
 
@@ -1175,7 +1187,7 @@ Pre-validation script called before every `/rite:*` command execution. Detects b
 **Usage:**
 
 ```bash
-bash plugins/rite/hooks/preflight-check.sh --command-id "/rite:issue:start" --cwd "$PWD"
+bash plugins/rite/hooks/preflight-check.sh --command-id "/rite:pr:open" --cwd "$PWD"
 ```
 
 ### Post-Compact Recovery (`post-compact.sh`) (#133)
@@ -1271,7 +1283,7 @@ Lifecycle-incomplete detection for the legacy `create_*` / `cleanup_*` phases no
 
 ### Verify Terminal Output (retired)
 
-> **Status: Retired**. The standalone `verify-terminal-output.sh` check was removed when `/rite:issue:create` was flattened into a single file. The Terminal Completion HTML-comment wrap contract is still required (`<!-- [create:completed:{…}] -->`), but enforcement now lives inline in `commands/issue/create.md` ステップ 4.4 / ステップ 5.6 and is exercised via `start-md-sentinel-coverage.test.sh` / `create-md-invocation-symmetry.test.sh` rather than a standalone hook.
+> **Status: Retired**. The standalone `verify-terminal-output.sh` check was removed when `/rite:issue:create` was flattened into a single file. The Terminal Completion HTML-comment wrap contract is still required (`<!-- [create:completed:{…}] -->`), but enforcement now lives inline in `commands/issue/create.md` ステップ 4.4 / ステップ 5.6 and is exercised via `create-md-invocation-symmetry.test.sh` rather than a standalone hook (the older `start-md-sentinel-coverage.test.sh` was deleted in #1136 — a replacement `pr-cmd-sentinel-coverage.test.sh` targeting the new `pr/` commands is planned as a follow-up; see CHANGELOG "Removed" section).
 
 ### Session Ownership (`session-ownership.sh`) (#174–#179)
 
@@ -1299,7 +1311,7 @@ A pair of hooks that automate Experience Wiki integration (opt-out via `wiki.ena
 | Hook | Trigger | Action |
 |------|---------|--------|
 | `wiki-ingest-trigger.sh` | `pr/review.md` Phase 5.4.3 (post review), `pr/fix.md` Phase 5.4.6 (post fix), `commands/issue/close.md` (Issue close) | Writes a raw-source file under `.rite/wiki/raw/{type}/` on the dev branch working tree. Pure file writer, no git operations. |
-| `wiki-query-inject.sh` | start.md ステップ 2.6 (work memory init), `implement.md` Phase 5.0.W, `pr/review.md` Phase 4.0.W, `pr/fix.md` Phase 0.5.W | Runs `/rite:wiki:query` against the current Issue title/body and injects matching heuristics. Reads via `origin/{wiki_branch}` when the local wiki branch is absent (fresh clone / separate worktree). |
+| `wiki-query-inject.sh` | `commands/issue/implement.md` Phase 5.0.W (invoked from `/rite:pr:open` Step 4 sub-skill chain, formerly `start.md` ステップ 2.6 pre-#1136), `pr/review.md` Phase 4.0.W, `pr/fix.md` Phase 0.5.W | Runs `/rite:wiki:query` against the current Issue title/body and injects matching heuristics. Reads via `origin/{wiki_branch}` when the local wiki branch is absent (fresh clone / separate worktree). |
 
 See [Experience Wiki](#experience-wiki) for the full Phase X.X.W contract and the separate `wiki-ingest-commit.sh` / `wiki-worktree-commit.sh` helpers that actually commit + push raw sources onto the wiki branch.
 
@@ -1409,7 +1421,7 @@ Legacy state files (flat JSON without `schema_version`, or any file with `schema
 
 **Sub-Issues API parent-child structure:**
 
-The Issue series that delivered this feature (#672 epic with children #678 / #679 / #680 / #681 / #682 / #683 / #684 / #685 + follow-up #749) used GitHub's native Sub-Issues API to maintain the parent-child relation. `/rite:issue:start` Phase 0.3 detects parent Issues via three OR-combined methods (trackedIssues API → body tasklist `- [ ] #N` → label-based `epic`/`parent`/`umbrella`), and Phase 2.4.7 propagates Status promotion (Todo → In Progress) from child to parent in the same OR-combined order (`## 親 Issue` body meta → Sub-Issues API `trackedInIssues` → tasklist search).
+The Issue series that delivered this feature (#672 epic with children #678 / #679 / #680 / #681 / #682 / #683 / #684 / #685 + follow-up #749) used GitHub's native Sub-Issues API to maintain the parent-child relation. `/rite:pr:open` Step 1.2 (previously `start.md` Phase 0.3 before the #1136 decomposition) detects parent Issues via three OR-combined methods (trackedIssues API → body tasklist `- [ ] #N` → label-based `epic`/`parent`/`umbrella`). The child→parent Status promotion (Todo → In Progress) is propagated in the same OR-combined order (`## 親 Issue` body meta → Sub-Issues API `trackedInIssues` → tasklist search) by `/rite:pr:open` Step 2.4 (`### 2.4 GitHub Projects Status 更新`, sub-step 2.4.7 — see [`references/projects-integration.md`](../plugins/rite/references/projects-integration.md) §2.4.7 Parent Issue Status Update for the SoT).
 
 > **Hook list canonical SoT**: The hooks that read or write per-session state are registered in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json) — currently 6 events (`SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse`). To re-enumerate the live registration, run `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`. The `Stop` event has been removed and is not part of the current registration. The library script `session-ownership.sh` is sourced (not registered) and therefore does not appear in `hooks.json`.
 
@@ -1555,7 +1567,7 @@ When build/test/lint commands cannot be detected, the workflow provides interact
 **Skip behavior:**
 - The skip is recorded in the conversation context
 - When `/rite:pr:create` is called, the "Known Issues" section includes the skipped command
-- The end-to-end flow (`/rite:issue:start`) continues without interruption
+- The end-to-end flow (`/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:ready` → `/rite:pr:merge`) continues without interruption
 
 **Command specification behavior:**
 - The specified command is used for the current execution only
@@ -1633,13 +1645,20 @@ LLM analyzes diff content to determine:
 
 ### Overview
 
-When a step of `/rite:issue:start` end-to-end execution fails or is skipped (Skill load failure, hook abnormal exit, Wiki ingest skip/failure, `.gitignore` drift, etc.), the relevant script or hook emits a plain `WARNING` / `ERROR` line to **stderr**. The orchestrator LLM surfaces these in the conversation context, and the user resolves them by re-running the affected step via `/rite:resume`.
+When a step of the end-to-end flow (`/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:ready` → `/rite:pr:merge`) fails or is skipped (Skill load failure, hook abnormal exit, Wiki ingest skip/failure, `.gitignore` drift, etc.), the relevant script or hook emits a plain `WARNING` / `ERROR` line to **stderr**. The orchestrator LLM surfaces these in the conversation context, and the user resolves them by re-running the affected step via `/rite:resume`.
 
-> **History (PR 2b, #1088)**: An earlier design (#366) auto-detected these as "workflow incidents" — each failure path emitted a `[CONTEXT] WORKFLOW_INCIDENT=1; ...` sentinel via a dedicated `workflow-incident-emit.sh` hook, which `/rite:issue:start` ステップ 8.5 grepped from the conversation context to auto-register the blocker as a Todo Issue (`AskUserQuestion` confirmation, per-session dedupe, `workflow_incident.enabled` opt-out). The entire mechanism — the emit hook, the ステップ 8.5 detection logic, the `workflow_incident:` config key, and the sentinel format — was removed in favor of the single-layer plain-stderr design described above. Failures are now visible but no longer auto-registered; the user decides whether to file an Issue.
+> **History (PR 2b, #1088)**: An earlier design (#366) auto-detected these as "workflow incidents" — each failure path emitted a `[CONTEXT] WORKFLOW_INCIDENT=1; ...` sentinel via a dedicated `workflow-incident-emit.sh` hook, which the (then-current) `/rite:issue:start` orchestrator's ステップ 8.5 grepped from the conversation context to auto-register the blocker as a Todo Issue (`AskUserQuestion` confirmation, per-session dedupe, `workflow_incident.enabled` opt-out). The entire mechanism — the emit hook, the ステップ 8.5 detection logic, the `workflow_incident:` config key, and the sentinel format — was removed in favor of the single-layer plain-stderr design described above. The `/rite:issue:start` orchestrator itself was subsequently decomposed in #1136 (see the [Retired section](#riteissuestart-retired-in-1136) above). Failures are now visible but no longer auto-registered; the user decides whether to file an Issue.
 
-### Phase 7 (Issue creation from review recommendations)
+### Reviewer-Triggered Issue Creation (Two Paths — #1136 Status)
 
-Phase 7 — Automatic Issue Creation from reviewer "別 Issue として作成" recommendations (`source: pr_review`) — is unrelated to the surfacing path above. It runs inside `/rite:issue:start` and calls `plugins/rite/scripts/create-issue-with-projects.sh` directly on user-approved reviewer recommendations.
+There are (were) two paths that converted reviewer "別 Issue として作成" recommendations into tracked GitHub Issues. Their #1136 status differs and must not be conflated:
+
+| Path | Location | #1136 Status | Notes |
+|------|----------|--------------|-------|
+| Fix-side post-loop | `fix.md` Phase 4.3 ("Automatic Separate Issue Creation") | **Removed in #1136** | The full Phase 4.3 section and the `[fix:issues-created:N]` sentinel were deleted. The `review.separate_issue_creation.*` runtime mechanism is removed, but the scaffolding block remains in `templates/config/rite-config.yml` (no runtime effect) and is scheduled for removal in a follow-up PR — see [CONFIGURATION.md](./CONFIGURATION.md) `~~separate_issue_creation.*~~` DEPRECATED note for the template state caveat. Inside the `/rite:pr:fix` review-fix loop, reviewer recommendations are now handled per-finding via the Phase 2.1 menu (fix / accept / reply) — no post-loop auto-creation. |
+| Review-side | `pr/review.md` Phase 7 ("Automatic Issue Creation") | **Live (not removed)** | Calls `plugins/rite/scripts/create-issue-with-projects.sh` with `source: "pr_review"`, gated by `AskUserQuestion` confirmation. This is the canonical path for converting reviewer recommendations into tracked Issues. |
+
+The `scripts/create-issue-with-projects.sh` helper is the canonical Issue-creation path for both the review-side Phase 7 invocation above and for manual `/rite:issue:create` use.
 
 ## Experience Wiki
 
@@ -1668,7 +1687,7 @@ When `wiki.auto_ingest`, `wiki.auto_query`, or `wiki.auto_lint` are enabled, the
 
 | Hook | Trigger | Action |
 |------|---------|--------|
-| `wiki-query-inject.sh` | start.md ステップ 2.6 (work memory init), `implement.md` Phase 5.0.W, `pr/review.md` Phase 4.0.W, `pr/fix.md` Phase 0.5.W | Run `/rite:wiki:query` against the current Issue title/body and inject matching heuristics |
+| `wiki-query-inject.sh` | `commands/issue/implement.md` Phase 5.0.W (invoked from `/rite:pr:open` Step 4 sub-skill chain, formerly `start.md` ステップ 2.6 pre-#1136), `pr/review.md` Phase 4.0.W, `pr/fix.md` Phase 0.5.W | Run `/rite:wiki:query` against the current Issue title/body and inject matching heuristics |
 | `wiki-ingest-trigger.sh` | `pr/review.md` Phase 5.4.3 (post review), `pr/fix.md` Phase 5.4.6 (post fix), `commands/issue/close.md` (Issue close) | Write a raw source file into `.rite/wiki/raw/{type}/` on the dev branch working tree (pure file writer, no git operations) |
 | `wiki-ingest-commit.sh` | Phase 6.5.W.2 (review), Phase 4.6.W.2 (fix), Phase 4.4.W.2 (close) — immediately after the trigger | Move pending raw sources onto the `wiki` branch and commit + push them **in a single shell process** with no dependency on Claude multi-step orchestration |
 | `/rite:wiki:ingest` | Manual or optional post-commit invocation | LLM-driven page integration: read accumulated raw sources, produce/update wiki pages, refresh `index.md` / `log.md` |
@@ -1689,7 +1708,7 @@ When `wiki.auto_ingest`, `wiki.auto_query`, or `wiki.auto_lint` are enabled, the
 
 Layer 3's threshold is configurable via `wiki.growth_check.threshold_prs` (default: 5). Setting it to a very large number effectively disables the lint check while preserving layers 0-2.
 
-The completion report (`start.md` ステップ 8.5) **always** includes a "Wiki ingest 状況" section that aggregates these signals so the user has a definitive answer about whether the Wiki branch grew during each `/rite:issue:start` invocation. This section is rendered even when all counters are zero — its absence would itself be a regression signal.
+The completion report (now emitted by `/rite:pr:cleanup` after merge) **always** includes a "Wiki ingest 状況" section that aggregates these signals so the user has a definitive answer about whether the Wiki branch grew during each end-to-end flow (`/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:ready` → `/rite:pr:merge` → `/rite:pr:cleanup`). This section is rendered even when all counters are zero — its absence would itself be a regression signal.
 
 ### Relationship to workflow failure surfacing
 
@@ -1706,7 +1725,7 @@ They share no code paths.
 
 ### Overview (#525)
 
-When an orchestrator command (e.g., `/rite:issue:start`, `/rite:issue:create`) invokes a sub-skill via the Skill tool and the sub-skill outputs its result pattern (e.g., `[lint:success]`, `[review:mergeable]`, `[ready:completed]`, `[ingest:completed]`), control returns to the orchestrator LLM. The orchestrator **MUST** continue executing the next phase in the **same response turn** — the sub-skill return is a continuation trigger, not a turn boundary.
+When an orchestrator command (e.g., `/rite:pr:open`, `/rite:pr:iterate`, `/rite:issue:create`) invokes a sub-skill via the Skill tool and the sub-skill outputs its result pattern (e.g., `[lint:success]`, `[review:mergeable]`, `[ready:completed]`, `[ingest:completed]`), control returns to the orchestrator LLM. The orchestrator **MUST** continue executing the next phase in the **same response turn** — the sub-skill return is a continuation trigger, not a turn boundary.
 
 Violating this contract leaves the workflow partially executed: no Issue created, `.rite-flow-state` stuck in `active: true`, stale timestamps, and the user forced to type `continue` manually to recover. Issue #525 was filed after multiple instances of this failure in `/rite:issue:create` with the Bug Fix preset.
 
@@ -1714,7 +1733,7 @@ Violating this contract leaves the workflow partially executed: no Issue created
 
 | Layer | Mechanism | Enforced by |
 |-------|-----------|------------|
-| **1. Prompt contract** | Anti-pattern / correct-pattern examples + "same response turn" / "DO NOT stop" phrases + Mandatory After prose | `commands/pr/cleanup.md` Sub-skill Return Protocol + Mandatory After Wiki Ingest, `commands/wiki/ingest.md` Mandatory After Auto-Lint. (Layer 1 enforcement is required only where a sub-skill chain still hands off across turn boundaries; flat `commands/issue/start.md` / `commands/issue/create.md` no longer rely on this layer because they are single-file workflows. The legacy reference `plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md` is retired.) |
+| **1. Prompt contract** | Anti-pattern / correct-pattern examples + "same response turn" / "DO NOT stop" phrases + Mandatory After prose | `commands/pr/cleanup.md` Sub-skill Return Protocol + Mandatory After Wiki Ingest, `commands/wiki/ingest.md` Mandatory After Auto-Lint. (Layer 1 enforcement is required only where a sub-skill chain still hands off across turn boundaries; the flat `commands/issue/create.md` workflow and the four `commands/pr/{open,iterate,ready,merge}.md` orchestrators each invoke sub-skills within a single file and do not rely on this layer for cross-orchestrator hand-off. The legacy reference `plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md` is retired. The former `commands/issue/start.md` orchestrator was deleted in #1136.) |
 | ~~**2. Flow state hard gate**~~ (retired) | (Historical) Sub-skills write `*_post_*` phase markers with `active: true` before return; `stop-guard.sh` blocked stop attempts until terminal phase. flow-state still records phase markers for observability but no longer enforces stops. | (historical: `hooks/stop-guard.sh`) |
 | **3. Caller-continuation hints** (3 sub-layers 3a/3b/3c) | Plain-text reminder + HTML comment immediately before the sub-skill's result pattern. The plain-text line renders in user-facing output; the HTML comment is visible to the LLM via conversation context but does NOT render in Markdown. Dual form ensures robustness against rendering modes that strip comments. 3a = plain-text caller line, 3b = HTML comment caller mirror, 3c = sub-skill terminal sentinel comment. | Defense-in-Depth sections in `commands/issue/create.md` (flat workflow ステップ 4.4 / 5.6), `commands/wiki/ingest.md`, `commands/pr/cleanup.md`. |
 | **4a. Pre-check list (#552)** | 4-item self-check the orchestrator runs before ending any response turn: (a) `[create:completed:{N}]` output? (b) `✅ Issue #{N} を作成しました` shown? (c) `.rite-flow-state` deactivated? (d) last sub-skill tag handled as continuation trigger? A single `NO` means the workflow is mid-flight. Renamed from "Layer 4" to "Layer 4a" by Issue #923 to avoid numbering collision with the new mechanical enforcement layer (4b below). | `commands/issue/create.md` "Pre-check list" section |
@@ -1738,7 +1757,10 @@ The contract ends only when the orchestrator's terminal completion marker has be
 
 | Orchestrator | Terminal marker |
 |-------------|----------------|
-| `/rite:issue:start` | ステップ 8.5 completion report + Workflow Termination block |
+| `/rite:pr:open` | Step 6 completion notice listing the draft PR number/URL and the next-command suggestions (`/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge` / `/rite:pr:cleanup`) |
+| `/rite:pr:iterate` | `[review:mergeable]` or `[fix:replied-only]` (whichever sub-skill returns first terminates the loop) / `[fix:cancelled-by-user]` (user-initiated cancel via fix.md AskUserQuestion) |
+| `/rite:pr:ready` | `[ready:completed]` (E2E flow) / completion display message (standalone) |
+| `/rite:pr:merge` | `[merge:completed]` |
 | `/rite:issue:create` | `<!-- [create:completed:{N}] -->` (HTML-comment wrap form per #561) preceded by user-visible `✅ Issue #{N} を作成しました: {url}` and next-step guidance |
 
 ### Phase-aware continuation hints (#525)
@@ -1802,7 +1824,7 @@ For persistent errors, provide:
 
 ### Context Limit Recovery
 
-Long-running commands such as `/rite:issue:start` (end-to-end flow: branch creation → implementation → PR creation → review) may exceed Claude Code's context window and get interrupted with `Context limit reached`.
+Long-running commands such as the end-to-end flow `/rite:pr:open` → `/rite:pr:iterate` (branch creation → implementation → PR creation → review-fix loop) may exceed Claude Code's context window and get interrupted with `Context limit reached`.
 
 **Recovery steps:**
 
@@ -1882,40 +1904,11 @@ Details: {technical details for debugging}
 
 ---
 
-## Internationalization
+## ~~Internationalization~~ (Retired in #1117)
 
-### Language Auto-Detection
-
-1. Detect user input language (from recent input)
-2. Reference system locale
-3. Check `language` setting in config file
-
-### Supported Languages
-
-- Japanese (ja)
-- English (en)
-
-### Language File Structure
-
-Language files use a split directory structure organized by language and domain:
-
-```
-plugins/rite/i18n/
-├── en.yml # English (deprecated, kept for backward compatibility)
-├── ja.yml # Japanese (deprecated, kept for backward compatibility)
-├── en/
-│ ├── common.yml # Common messages (shared across commands)
-│ ├── issue.yml # Issue-related messages
-│ ├── pr.yml # PR-related messages
-│ └── other.yml # Other messages (init, resume, lint, etc.)
-└── ja/
- ├── common.yml # 共通メッセージ
- ├── issue.yml # Issue 関連メッセージ
- ├── pr.yml # PR 関連メッセージ
- └── other.yml # その他メッセージ（init, resume, lint 等）
-```
-
-Each domain file contains keys grouped by command context (e.g., `# rite:init`, `# rite:resume`). Messages are referenced in commands using `{i18n:key_name}` placeholder syntax.
+> **Status: Retired**. The runtime i18n mechanism (`{i18n:key_name}` placeholder substitution, the `plugins/rite/i18n/` directory tree with `ja.yml` / `en.yml` legacy monolithic files and `ja/` / `en/` per-domain split files, and the `references/i18n-usage.md` reference doc) was deleted entirely in #1117 (commit `d3a105f1`). All 364 placeholders across 10 remaining command/sub-skill files were resolved to inline Japanese, removing the runtime i18n resolution dependency. No language file structure remains in the plugin source tree.
+>
+> The remaining language-related controls are documentation-side conventions only — see `docs/i18n-style-guide.md` for the kept-English term list (Issue / PR / Sprint / Iteration / finding / fingerprint / severity / etc.) and the document-vs-inline split that replaces the deleted UI string store. The `language` setting in `rite-config.yml` (still live) controls the output language of LLM-generated content — including commit messages (`commands/issue/implement.md`, `commands/pr/fix.md`), PR title and body (`commands/pr/create.md`), Issue creation prompts (`commands/issue/create.md`), workflow / list output (`commands/workflow.md`, `commands/issue/list.md`), and sprint team-execute reports (`commands/sprint/team-execute.md`). It does not select a runtime UI message catalog (no such catalog exists post-#1117).
 
 ---
 
@@ -1949,7 +1942,11 @@ Distributed via Claude Code plugin system:
 
 ---
 
-## Project Types
+## ~~Project Types~~ (Retired in #1118)
+
+> **Status: Retired**. The `project.type` preset feature (`generic` / `webapp` / `library` / `cli` / `documentation`) and the associated `templates/project-types/*.yml` files were removed entirely in #1118. The Type-Specific PR templates (`templates/pr/{cli,library,webapp,documentation,fix-report}.md`) were also deleted in the same wave — only `templates/pr/generic.md` remains. Project-specific configuration is now expressed via the per-key YAML structure directly in `rite-config.yml` (see [CONFIGURATION.md](./CONFIGURATION.md) `~~Project Type Presets~~ (DEPRECATED in #1118)` section).
+>
+> The content below is preserved as **historical reference only** and does not reflect the v0.5.0 behavior. Do not consult these sections for current implementation guidance.
 
 ### Supported Types
 

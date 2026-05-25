@@ -32,6 +32,18 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
 - **Re-mapped `/rite:resume` phase routing to the new 4 commands** — `init/branch/plan/implement/lint/pr` → `/rite:pr:open`, `review/fix` → `/rite:pr:iterate`, `ready/ready_error` → `/rite:pr:ready`, `cleanup/ingest` → `/rite:pr:cleanup`, `completed` → completion notice
 - **Sprint sequential execution updated** — `commands/sprint/execute.md` Phase 3.1.2 now invokes the new triple `/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:ready` instead of the deprecated `/rite:issue:start`
 - New sentinels: `[merge:completed]` / `[merge:not-ready]` / `[merge:error]` (specific to `/rite:pr:merge`)
+- **i18n mechanism removed; Japanese inline** (#1117) — the `{i18n:KEY}` placeholder mechanism is retired. All 364 placeholders across 10 remaining command/sub-skill files were resolved to inline Japanese, removing the runtime i18n resolution dependency. start/create/pr-series files had been migrated in earlier PRs; #1117 completes the migration so every command is i18n-free. The legacy `plugins/rite/i18n/` directory (ja/en split message files + `i18n-usage.md`) was deleted entirely (commit `d3a105f1`); no language file structure remains in the plugin source tree
+- **Removed scaffolding config keys and `project.type` presets** (#1118) — `observed_likelihood_gate.*` / `fail_fast_first.*` / `fix.severity_gating` were template scaffolding with zero live references (their behavior is hardcoded in `_reviewer-base.md` / `fix.md`); the keys are dropped from the rite-config template. The `project.type` preset feature (`generic` / `webapp` / `library` / `cli` / `documentation`) is also retired — project-specific configuration is expressed via the per-key YAML structure directly
+- **Flow-state v2→v3 migration prose corrected** (#1134, #1135) — `docs/SPEC.md` migration prose was aligned with the actual `flow-state.sh migrate` implementation: the threshold check (`!= 3` rather than `< 2`), the dead reference `migrate-flow-state.sh` was redirected to `flow-state.sh migrate` (`cmd_migrate` / `_migrate_file`) + `session-start.sh`, the non-existent `.legacy.{timestamp}` backup wording was removed (v3 is in-place rewrite), the `multi-session-state.md` required-field count corrected (11→10 after `previous_phase` removal with a historical note), and `last_synced_phase` was corrected to "preserved" instead of "dropped" in the table / drop section / rollback section of `v2-to-v3.md` (matches `_migrate_file` which does not call `del(.last_synced_phase)`)
+
+### Added
+
+- **CONFIGURATION.ja.md created** (#1082) — Japanese translation of the configuration reference (`docs/CONFIGURATION.ja.md`) was added as the initial version, mirroring the section structure of the English original (`docs/CONFIGURATION.md`)
+- **i18n style-guide created** (#1085) — `docs/i18n-style-guide.md` was added with a minimal scope. The kept-English term list (Issue / PR / Sprint / Iteration / finding / fingerprint / severity / confidence / blocking / etc.) is formalized; documentation uses the English form while command/sub-skill files use the action-oriented Japanese term 「指摘」 for `finding` inline (formerly `plugins/rite/i18n/ja/`, deleted in #1117) — the document/inline-UI split is explicitly noted
+
+### Fixed
+
+- **flow-state-update.sh dead reference cleanup** (#1129, #1132) — references to `flow-state-update.sh` (deleted in PR 2a with the v2→v3 schema migration) were cleaned up across six files. Live SPEC / SKILL references were redirected to the actual `flow-state.sh` API; references inside `docs/designs/` historical context were promoted to historical notes rather than rewritten (per the "live citation vs historical" distinction)
 
 ### Removed
 

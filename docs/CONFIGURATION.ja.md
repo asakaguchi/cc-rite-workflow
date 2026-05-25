@@ -107,11 +107,15 @@ review:
   loop:
     verification_mode: false    # フルレビューに加えて verification mode を有効化 (default: false)
     allow_new_findings_in_unchanged_code: false  # 未変更コードでの新規 finding を blocking 扱いにするか (default: false)
-    # レビュー・フィックスループの品質シグナル (#557)
-    # サイクル数ベースの degradation は v0.4.0 で完全に廃止された。正常終了は 0 件の finding のみで、
-    # 異常終了は 4 つの品質シグナル (フィンガープリント cycling / 根本原因欠落 /
-    # クロスバリデーション不一致 / レビュアー自己 degraded) のいずれか。
-    convergence_monitoring: true          # フィンガープリントベースの cycling 検出を有効化 (default: true)
+    # レビュー・フィックスループの終了 (post-#1136)
+    # サイクル数ベースの degradation (v0.4.0 #557 で 4 品質シグナルが異常終了機構として導入) は
+    # #1136 で quality-signal escalation 全体ごと撤去済。現行ループは以下のいずれかでのみ終了する:
+    #   (a) 残り finding が 0 件 → [review:mergeable] (正常終了)
+    #   (b) Ctrl+C 中断 → /rite:resume (または fix.md AskUserQuestion 「中止」 → [fix:cancelled-by-user])
+    # 以下のキーは historical 互換性のため config scaffolding として残置されているが、
+    # ループ終了に対する runtime 効果はない — live spec は commands/pr/iterate.md ループ仕様 と
+    # commands/pr/references/fix-relaxation-rules.md 「Loop Termination」節 を参照。
+    convergence_monitoring: true          # (post-#1136 では scaffolding のみ — 上記コメント参照)
     auto_propagation_scan: true           # fix 後に類似パターンの propagation スキャンを実行 (default: true)
     pre_commit_drift_check: true          # commit 前に distributed-fix-drift-check を実行 (default: true)
   doc_heavy:
@@ -226,7 +230,8 @@ pr_review:
 # Safety 設定 (fail-closed しきい値)
 safety:
   max_implementation_rounds: 20    # 1 Issue あたりの implementation round の上限 (default: 20)
-  # max_review_fix_loops は v0.4.0 (#557) で廃止。ループは 0 件の finding または 4 シグナルでのみ終了
+  # max_review_fix_loops は v0.4.0 (#557) で廃止、それを置き換えた 4 シグナル escalation も #1136 で全廃済。
+  # 現行ループは 0 件の finding (正常終了) または Ctrl+C 中断 (/rite:resume で再開) のみで終了する。
   time_budget_minutes: 120         # 1 Issue あたりの time budget (アドバイザリ) (default: 120)
   auto_stop_on_repeated_failure: true   # 同一クラスの失敗が連続したら停止 (default: true)
   repeated_failure_threshold: 3         # 自動停止をトリガする連続失敗回数 (default: 3)
@@ -500,7 +505,7 @@ issue:
 | `criteria` | array | `[file_types, content_analysis]` | レビュー基準 |
 | `loop.verification_mode` | boolean | `false` | フルレビューに加えて verification mode を有効化。有効時は、最初のサイクル以降のレビューでフルレビューと過去の fix の verification (incremental diff regression チェック) の両方を実施 |
 | `loop.allow_new_findings_in_unchanged_code` | boolean | `false` | 未変更コードに対する新規 finding を blocking 扱いにするか。`false` の場合、未変更コードの新規 MEDIUM/LOW finding は "stability concerns" (非 blocking) として報告される |
-| `loop.convergence_monitoring` | boolean | `true` | フィンガープリントベースの cycling 検出を有効化 (#557)。finding フィンガープリントが 2 サイクル以上にわたって持続した場合、orchestrator は Quality Signal 1 を発火し `AskUserQuestion` でエスカレートする。従来のサイクル数ベースの収束戦略を置き換える |
+| `loop.convergence_monitoring` | boolean | `true` | **post-#1136 では scaffolding のみ** — 元々のフィンガープリントベース cycling 検出 (#557 Quality Signal 1) は `AskUserQuestion` でエスカレートしていたが、quality-signal escalation 機構全体が #1136 で撤去された。現行のレビュー・フィックスループは 0 件の finding (正常終了) または手動中断 (Ctrl+C → `/rite:resume`) でのみ終了する。本キーは runtime 効果を持たない — live spec は `commands/pr/iterate.md` を参照 |
 | `loop.auto_propagation_scan` | boolean | `true` | fix 適用後、コードベース内の類似パターンを自動でスキャンして propagation の取りこぼしを検出 |
 | `loop.pre_commit_drift_check` | boolean | `true` | fix の変更を commit する前に `distributed-fix-drift-check` を実行し、partial application の不整合を検出 |
 | `doc_heavy.enabled` | boolean | `true` | Doc-Heavy PR 検出を有効化。PR の diff がドキュメント変更で占有されている場合、`tech-writer` レビュアーがブーストされ Grep/Read/Glob で 5 種類の doc-implementation 整合性をチェックする |
@@ -520,25 +525,16 @@ issue:
 | ~~`fail_fast_first.*`~~ | — | — | **DEPRECATED (#1118)**: 完全に削除済み。これらは #506 で導入された scaffolding キーで、conditional runtime logic に一度も配線されないまま削除された。Fail-Fast First 原則 (fallback 推奨前の throw/raise 伝播考慮) は `_reviewer-base.md` / `fix.md` の prose にハードコードされている。`rite-config.yml` から `fail_fast_first:` を削除して構わない (キーは効果を持たない) |
 | ~~`separate_issue_creation.*`~~ | — | — | **DEPRECATED (#1136)**: 完全に削除済み。fix-side の post-loop 経路 `fix.md` Phase 4.3 (「Automatic Separate Issue Creation」) と `[fix:issues-created:N]` sentinel を撤去した。**Note**: review-side の `pr/review.md` Phase 7 (Automatic Issue Creation、`source: pr_review`、`AskUserQuestion` 承認 gate 付き) は依然 live で、reviewer の「別 Issue として作成」推奨を tracking Issue に変換する canonical な経路。`/rite:pr:fix` のレビュー・フィックスループ内では reviewer recommendation は per-finding で fix / accept / reply (Phase 2.1 menu) として処理され、fix-side の post-loop auto-creation は無い。`rite-config.yml` から `separate_issue_creation:` を削除して構わない (キーは効果を持たない) |
 
-**レビュー・フィックスループの終了 (v0.4.0 #557):**
+**レビュー・フィックスループの終了 (post-#1136):**
 
-レビュー・フィックスループには 2 つの終了パスがあり、サイクル数ベースのハードリミットは存在しない:
+レビュー・フィックスループは 2 つの終了パスのみを持ち、自動的な異常終了機構は存在しない:
 
 | Exit | Trigger |
 |------|---------|
 | Normal | 残り finding が 0 件 → `[review:mergeable]` |
-| Escalate | 4 つの品質シグナルのいずれかが発火 → `AskUserQuestion` で `本 PR 内で再試行 / 別 Issue として切り出す / PR を取り下げる / 手動レビューへエスカレーション` |
+| Manual abort | ユーザーが `Ctrl+C` で中断 → `/rite:resume` (または `fix.md` AskUserQuestion で「中止」選択 → `[fix:cancelled-by-user]`) |
 
-**4 つの品質シグナル** (完全な仕様は `commands/pr/references/fix-relaxation-rules.md#four-quality-signals-for-escalation` を参照):
-
-| # | Signal | Detection point |
-|---|--------|-----------------|
-| 1 | 同一 finding の cycling | 再レビュー前のフィンガープリントチェック (`commands/issue/references/fingerprint-cycling.md` 参照) |
-| 2 | 根本原因欠落の fix | `fix.md` Phase 3.2.1 のコミット body ゲート |
-| 3 | クロスバリデーション不一致 | `review.md` Phase 5.2 + debate フェーズ |
-| 4 | レビュアー自己 degraded | `_reviewer-base.md` Finding Quality Guardrail |
-
-サイクル数によるセーフティリミットは意図的に存在しない: 4 つの品質シグナルが唯一の終了メカニズムである。シグナル発火時、ユーザーは `AskUserQuestion` で次のアクションを選ぶ。
+> **Historical note (#557 → #1136)**: v0.4.0 (#557) で 4 つの品質シグナル (フィンガープリント cycling / 根本原因欠落 / クロスバリデーション不一致 / レビュアー自己 degraded) を異常終了機構として導入し、発火時に `AskUserQuestion` で `本 PR 内で再試行 / 別 Issue として切り出す / PR を取り下げる / 手動レビューへエスカレーション` のオプションを提示していた。#1136 でこの機構全体を撤去 — 設計判断は「指摘ゼロになるまでループ + 手動中断のみ」(`commands/pr/iterate.md` 設計判断 (Issue #1136) 参照)。4 つの検出ポイント自体は依然 reviewer-side ヒューリスティクスとしてコードに残存する (フィンガープリント cycling: `commands/issue/references/fingerprint-cycling.md`、根本原因欠落: `fix.md` Phase 3.2.1 commit body gate、クロスバリデーション: `review.md` Phase 5.2 + debate フェーズ、レビュアー自己 degraded: `_reviewer-base.md` Finding Quality Guardrail) が、`AskUserQuestion` への escalation や early loop exit は発生しない。
 
 **Fix 設定 (#506):**
 

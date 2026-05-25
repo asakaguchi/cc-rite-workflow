@@ -1308,7 +1308,7 @@ A pair of hooks that automate Experience Wiki integration (opt-out via `wiki.ena
 | Hook | Trigger | Action |
 |------|---------|--------|
 | `wiki-ingest-trigger.sh` | `pr/review.md` Phase 5.4.3 (post review), `pr/fix.md` Phase 5.4.6 (post fix), `commands/issue/close.md` (Issue close) | Writes a raw-source file under `.rite/wiki/raw/{type}/` on the dev branch working tree. Pure file writer, no git operations. |
-| `wiki-query-inject.sh` | `/rite:pr:open` Step 1 (work memory init, formerly start.md ステップ 2.6 pre-#1136), `implement.md` Phase 5.0.W, `pr/review.md` Phase 4.0.W, `pr/fix.md` Phase 0.5.W | Runs `/rite:wiki:query` against the current Issue title/body and injects matching heuristics. Reads via `origin/{wiki_branch}` when the local wiki branch is absent (fresh clone / separate worktree). |
+| `wiki-query-inject.sh` | `commands/issue/implement.md` Phase 5.0.W (invoked from `/rite:pr:open` Step 4 sub-skill chain, formerly `start.md` ステップ 2.6 pre-#1136), `pr/review.md` Phase 4.0.W, `pr/fix.md` Phase 0.5.W | Runs `/rite:wiki:query` against the current Issue title/body and injects matching heuristics. Reads via `origin/{wiki_branch}` when the local wiki branch is absent (fresh clone / separate worktree). |
 
 See [Experience Wiki](#experience-wiki) for the full Phase X.X.W contract and the separate `wiki-ingest-commit.sh` / `wiki-worktree-commit.sh` helpers that actually commit + push raw sources onto the wiki branch.
 
@@ -1684,7 +1684,7 @@ When `wiki.auto_ingest`, `wiki.auto_query`, or `wiki.auto_lint` are enabled, the
 
 | Hook | Trigger | Action |
 |------|---------|--------|
-| `wiki-query-inject.sh` | `/rite:pr:open` Step 1 (work memory init, formerly start.md ステップ 2.6 pre-#1136), `implement.md` Phase 5.0.W, `pr/review.md` Phase 4.0.W, `pr/fix.md` Phase 0.5.W | Run `/rite:wiki:query` against the current Issue title/body and inject matching heuristics |
+| `wiki-query-inject.sh` | `commands/issue/implement.md` Phase 5.0.W (invoked from `/rite:pr:open` Step 4 sub-skill chain, formerly `start.md` ステップ 2.6 pre-#1136), `pr/review.md` Phase 4.0.W, `pr/fix.md` Phase 0.5.W | Run `/rite:wiki:query` against the current Issue title/body and inject matching heuristics |
 | `wiki-ingest-trigger.sh` | `pr/review.md` Phase 5.4.3 (post review), `pr/fix.md` Phase 5.4.6 (post fix), `commands/issue/close.md` (Issue close) | Write a raw source file into `.rite/wiki/raw/{type}/` on the dev branch working tree (pure file writer, no git operations) |
 | `wiki-ingest-commit.sh` | Phase 6.5.W.2 (review), Phase 4.6.W.2 (fix), Phase 4.4.W.2 (close) — immediately after the trigger | Move pending raw sources onto the `wiki` branch and commit + push them **in a single shell process** with no dependency on Claude multi-step orchestration |
 | `/rite:wiki:ingest` | Manual or optional post-commit invocation | LLM-driven page integration: read accumulated raw sources, produce/update wiki pages, refresh `index.md` / `log.md` |

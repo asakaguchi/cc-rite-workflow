@@ -662,7 +662,7 @@ model: opus # opus | sonnet | haiku (optional — 省略時は親セッション
 | Phase 5.7 (マージ) | `/rite:pr:merge <pr>` |
 | Phase 6 (Cleanup) | `/rite:pr:cleanup <pr>` (#1136 で merge と decouple、機能変更なし) |
 
-新 4 コマンドは同じ flow-state phase enum (`init` / `branch` / `plan` / `implement` / `lint` / `pr` / `review` / `fix` / `ready` / `cleanup` / `ingest` / `completed` — `hooks/flow-state.sh` 参照) を継承するため、`/rite:resume` はどのコマンド実行中の中断からも復帰可能。詳細は [commands/resume.md](../plugins/rite/commands/resume.md) Phase 5.3 (Phase enum → Step mapping (SoT)) の routing table 参照。
+新 4 コマンドは同じ flow-state phase enum (`init` / `branch` / `plan` / `implement` / `lint` / `pr` / `review` / `fix` / `ready` / `ready_error` / `cleanup` / `ingest` / `completed` — `PHASE_ENUM_V3` SoT in `hooks/flow-state.sh`) を継承するため、`/rite:resume` はどのコマンド実行中の中断からも復帰可能。詳細は [commands/resume.md](../plugins/rite/commands/resume.md) Phase 5.3 (Phase enum → Step mapping (SoT)) の routing table 参照。
 
 > **Historical Phase Description (pre-#1136)**: 以下の節は旧 `start.md` orchestrator の Phase 0 / 1 / 1.5 / 1.6 / 2 / 3 / 4 / 5 内部仕様を historical reference として保持する。新コマンドへの対応は上記の表を参照し、live spec は新 pr/ コマンドファイルを当たること。
 

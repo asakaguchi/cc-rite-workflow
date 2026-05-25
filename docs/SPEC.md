@@ -646,7 +646,7 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 | Phase 5.7 (Merge) | `/rite:pr:merge <pr>` |
 | Phase 6 (Cleanup) | `/rite:pr:cleanup <pr>` (unchanged, decoupled from merge in #1136) |
 
-The four new commands maintain the same flow-state phases (`init` / `branch` / `plan` / `implement` / `lint` / `pr` / `review` / `fix` / `ready` / `cleanup` / `ingest` / `completed` — see `hooks/flow-state.sh`), so `/rite:resume` can recover from interruptions regardless of which command was running. See [commands/resume.md](../plugins/rite/commands/resume.md) Phase 5.3 (Phase enum → Step mapping (SoT)) for the routing table.
+The four new commands maintain the same flow-state phases (`init` / `branch` / `plan` / `implement` / `lint` / `pr` / `review` / `fix` / `ready` / `ready_error` / `cleanup` / `ingest` / `completed` — `PHASE_ENUM_V3` SoT in `hooks/flow-state.sh`), so `/rite:resume` can recover from interruptions regardless of which command was running. See [commands/resume.md](../plugins/rite/commands/resume.md) Phase 5.3 (Phase enum → Step mapping (SoT)) for the routing table.
 
 > **Historical Phase Description (pre-#1136)**: The remainder of this section describes the previous `start.md` orchestrator's Phase 0 / 1 / 1.5 / 1.6 / 2 / 3 / 4 / 5 internals. Use it only for archaeological / migration cross-reference; the live specification is in the new pr/ commands above.
 
@@ -1283,7 +1283,7 @@ Lifecycle-incomplete detection for the legacy `create_*` / `cleanup_*` phases no
 
 ### Verify Terminal Output (retired)
 
-> **Status: Retired**. The standalone `verify-terminal-output.sh` check was removed when `/rite:issue:create` was flattened into a single file. The Terminal Completion HTML-comment wrap contract is still required (`<!-- [create:completed:{…}] -->`), but enforcement now lives inline in `commands/issue/create.md` ステップ 4.4 / ステップ 5.6 and is exercised via `start-md-sentinel-coverage.test.sh` / `create-md-invocation-symmetry.test.sh` rather than a standalone hook.
+> **Status: Retired**. The standalone `verify-terminal-output.sh` check was removed when `/rite:issue:create` was flattened into a single file. The Terminal Completion HTML-comment wrap contract is still required (`<!-- [create:completed:{…}] -->`), but enforcement now lives inline in `commands/issue/create.md` ステップ 4.4 / ステップ 5.6 and is exercised via `create-md-invocation-symmetry.test.sh` rather than a standalone hook (the older `start-md-sentinel-coverage.test.sh` was deleted in #1136 — a replacement `pr-cmd-sentinel-coverage.test.sh` targeting the new `pr/` commands is planned as a follow-up; see CHANGELOG "Removed" section).
 
 ### Session Ownership (`session-ownership.sh`) (#174–#179)
 

@@ -776,7 +776,7 @@ The Session Info section of the work memory includes phase information indicatin
 | `review` | Review in progress | `/rite:pr:iterate` review side (formerly step 7.1) |
 | `fix` | Review-fix loop in progress | `/rite:pr:iterate` fix side (formerly step 7.2) |
 | `ready` | `/rite:pr:ready` succeeded; awaiting Projects Status In Review → completion report | `/rite:pr:ready` (formerly step 8.3) |
-| `ready_error` | `/rite:pr:ready` failed inside e2e flow; `/rite:resume` re-enters `/rite:pr:ready` retry (formerly start.md step 8) | `/rite:pr:ready` retry (formerly step 8) |
+| `ready_error` | `/rite:pr:ready` failed inside e2e flow; `/rite:resume` re-enters `/rite:pr:ready` retry | `/rite:pr:ready` retry (formerly step 8) |
 | `completed` | Workflow finished | `/rite:pr:merge` / `/rite:pr:cleanup` completed (formerly step 8 end) |
 
 Lifecycle sub-rings (legacy granular phases — lifecycle-incomplete detection now lives in `session-end.sh`'s inline glob; see the retired Phase Transition Whitelist note below):
@@ -1905,7 +1905,7 @@ Details: {technical details for debugging}
 
 > **Status: Retired**. The runtime i18n mechanism (`{i18n:key_name}` placeholder substitution, the `plugins/rite/i18n/` directory tree with `ja.yml` / `en.yml` legacy monolithic files and `ja/` / `en/` per-domain split files, and the `references/i18n-usage.md` reference doc) was deleted entirely in #1117 (commit `d3a105f1`). All 364 placeholders across 10 remaining command/sub-skill files were resolved to inline Japanese, removing the runtime i18n resolution dependency. No language file structure remains in the plugin source tree.
 >
-> The remaining language-related controls are documentation-side conventions only — see `docs/i18n-style-guide.md` for the kept-English term list (Issue / PR / Sprint / Iteration / finding / fingerprint / severity / etc.) and the document-vs-inline split that replaces the deleted UI string store. The `language` setting in `rite-config.yml` (still live) controls commit message language only; it does not select a runtime UI message catalog (no such catalog exists post-#1117).
+> The remaining language-related controls are documentation-side conventions only — see `docs/i18n-style-guide.md` for the kept-English term list (Issue / PR / Sprint / Iteration / finding / fingerprint / severity / etc.) and the document-vs-inline split that replaces the deleted UI string store. The `language` setting in `rite-config.yml` (still live) controls the output language of LLM-generated content — including commit messages (`commands/issue/implement.md`, `commands/pr/fix.md`), PR title and body (`commands/pr/create.md`), Issue creation prompts (`commands/issue/create.md`), workflow / list output (`commands/workflow.md`, `commands/issue/list.md`), and sprint team-execute reports (`commands/sprint/team-execute.md`). It does not select a runtime UI message catalog (no such catalog exists post-#1117).
 
 ---
 

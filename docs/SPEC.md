@@ -40,7 +40,7 @@ The command prefix `rite` was chosen for:
 12. [Sub-skill Return Auto-Continuation Contract](#sub-skill-return-auto-continuation-contract)
 13. [Error Handling](#error-handling)
 14. [Migration](#migration)
-15. [Internationalization](#internationalization)
+15. [~~Internationalization~~ (Retired in #1117)](#internationalization-retired-in-1117)
 16. [Dependencies](#dependencies)
 17. [Distribution](#distribution)
 18. [Project Types](#project-types)
@@ -251,9 +251,9 @@ rite-workflow/
 │ │ ├── default.md / decomposition-spec.md
 │ │ ├── interview-perspectives.md / template-structure.md
 │ ├── pr/
-│ │ └── generic.md # Generic PR template (cli/library/webapp/documentation/fix-report.md were all deleted in #1118 / #1136)
+│ │ └── generic.md # Generic PR template (cli/library/webapp/documentation/fix-report.md were all deleted in #1118)
 │ ├── review/
-│ │ └── reply.md # Why-only PR review reply SoT (renamed from comment.md in #1136)
+│ │ └── reply.md # Why-only PR review reply SoT (added in #1136; the prior orphan comment.md was deleted in the same PR)
 │ └── wiki/
 │ ├── index-template.md / log-template.md
 │ ├── page-template.md / schema-template.md
@@ -465,14 +465,17 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 2. Check GitHub authentication status
 3. Get repository information
 
-#### Phase 2: Project Type Detection
-1. Auto-detect from file structure
- - `package.json` + frontend framework → webapp
- - `package.json` + `main`/`exports` → library
- - `pyproject.toml` + `[project.scripts]` → cli
- - SSG config file → documentation
- - Other → generic
-2. Confirm/select with user (AskUserQuestion)
+#### ~~Phase 2: Project Type Detection~~ (Removed in #1118)
+
+> **Status: Removed**. The `project.type` preset feature and the Phase 2 auto-detection logic (`package.json` + frontend framework → webapp, etc.) were removed entirely in #1118. `/rite:init` no longer performs project type detection; project-specific configuration is expressed via per-key YAML directly. The original detection rules below are preserved as historical reference only.
+
+(Historical rules — no longer executed:
+- `package.json` + frontend framework → webapp
+- `package.json` + `main`/`exports` → library
+- `pyproject.toml` + `[project.scripts]` → cli
+- SSG config file → documentation
+- Other → generic
+followed by AskUserQuestion confirmation)
 
 #### Phase 3: GitHub Projects Setup
 1. Detect existing Projects
@@ -1937,7 +1940,11 @@ Distributed via Claude Code plugin system:
 
 ---
 
-## Project Types
+## ~~Project Types~~ (Retired in #1118)
+
+> **Status: Retired**. The `project.type` preset feature (`generic` / `webapp` / `library` / `cli` / `documentation`) and the associated `templates/project-types/*.yml` files were removed entirely in #1118. The Type-Specific PR templates (`templates/pr/{cli,library,webapp,documentation,fix-report}.md`) were also deleted in the same wave — only `templates/pr/generic.md` remains. Project-specific configuration is now expressed via the per-key YAML structure directly in `rite-config.yml` (see [CONFIGURATION.md](./CONFIGURATION.md) `~~Project Type Presets~~ (DEPRECATED in #1118)` section).
+>
+> The content below is preserved as **historical reference only** and does not reflect the v0.5.0 behavior. Do not consult these sections for current implementation guidance.
 
 ### Supported Types
 

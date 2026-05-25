@@ -39,7 +39,7 @@
 11. [動的レビュアー生成](#動的レビュアー生成)
 12. [エラーハンドリング](#エラーハンドリング)
 13. [マイグレーション](#マイグレーション)
-14. [多言語対応](#多言語対応)
+14. [~~多言語対応~~ (Retired in #1117)](#多言語対応-retired-in-1117)
 15. [依存関係](#依存関係)
 16. [配布方法](#配布方法)
 17. [プロジェクト種別](#プロジェクト種別)
@@ -250,9 +250,9 @@ rite-workflow/
 │ │ ├── default.md / decomposition-spec.md
 │ │ ├── interview-perspectives.md / template-structure.md
 │ ├── pr/
-│ │ └── generic.md # 汎用 PR template (cli / library / webapp / documentation / fix-report.md は #1118 / #1136 で削除済)
+│ │ └── generic.md # 汎用 PR template (cli / library / webapp / documentation / fix-report.md は #1118 で削除済)
 │ ├── review/
-│ │ └── reply.md # Why-only PR レビュー reply SoT (#1136 で comment.md からリネーム)
+│ │ └── reply.md # Why-only PR レビュー reply SoT (#1136 で新規作成、旧 comment.md は同 PR で orphan として別途削除)
 │ └── wiki/
 │ ├── index-template.md / log-template.md
 │ ├── page-template.md / schema-template.md
@@ -464,14 +464,17 @@ model: opus # opus | sonnet | haiku (optional — 省略時は親セッション
 2. GitHub 認証状態の確認
 3. リポジトリ情報の取得
 
-#### Phase 2: プロジェクト種別の判定
-1. ファイル構成から自動推定
- - `package.json` + フロントエンドフレームワーク → webapp
- - `package.json` + `main`/`exports` → library
- - `pyproject.toml` + `[project.scripts]` → cli
- - SSG 設定ファイル → documentation
- - その他 → generic
-2. ユーザーに確認・選択（AskUserQuestion）
+#### ~~Phase 2: プロジェクト種別の判定~~ (Removed in #1118)
+
+> **Status: Removed**. `project.type` プリセット機能と Phase 2 auto-detection ロジック (`package.json` + フロントエンドフレームワーク → webapp 等) は #1118 で完全削除済。`/rite:init` は project type 判定を行わず、project 固有設定は YAML 個別キー直書きで表現する設計に統一済。以下の旧 detection rules は historical reference として残置。
+
+(Historical rules — 現在は実行されません:
+- `package.json` + フロントエンドフレームワーク → webapp
+- `package.json` + `main`/`exports` → library
+- `pyproject.toml` + `[project.scripts]` → cli
+- SSG 設定ファイル → documentation
+- その他 → generic
+の後 AskUserQuestion で確認・選択していた)
 
 #### Phase 3: GitHub Projects 設定
 1. 既存 Projects の検出
@@ -1980,7 +1983,11 @@ Claude Code プラグインシステムを通じて配布:
 
 ---
 
-## プロジェクト種別
+## ~~プロジェクト種別~~ (Retired in #1118)
+
+> **Status: Retired**. `project.type` プリセット機能 (`generic` / `webapp` / `library` / `cli` / `documentation`) と対応する `templates/project-types/*.yml` ファイルは #1118 で完全削除済。Type-Specific PR template (`templates/pr/{cli,library,webapp,documentation,fix-report}.md`) も同時に削除され、現在は `templates/pr/generic.md` のみ残存。プロジェクト固有設定は `rite-config.yml` の YAML 個別キー直書きで表現する設計に統一 (詳細は [CONFIGURATION.ja.md](./CONFIGURATION.ja.md) `~~Project Type Presets~~ (DEPRECATED in #1118)` セクション参照)。
+>
+> 以下の内容は **historical reference として残置** されたものであり、v0.5.0 の実態を反映しません。current 実装の guidance としては参照しないでください。
 
 ### 対応種別
 

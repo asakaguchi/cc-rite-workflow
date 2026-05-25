@@ -49,15 +49,15 @@
 - `docs/CONFIGURATION.ja.md` ↔ `docs/CONFIGURATION.md` のように、対応する英語版を冒頭に明示する。
 - 内部 markdown リンク (例: `plugins/rite/references/severity-levels.md`) は英語版と同じパスを保持し、リンク切れを起こさない。
 
-## 3. UI 文言 (i18n/ja/) との関係
+## 3. UI 文言 (commands/skills 内の日本語直書き) との関係
 
-`plugins/rite/i18n/ja/` 配下の UI 文言ファイルでは、以下の使い分けが既に定着している:
+以前 `plugins/rite/i18n/ja/` 配下の UI 文言ファイルで定着していた使い分け (#1117 で i18n 機構ごと削除済) は、現在 commands / sub-skills の日本語直書きに継承されている。本ガイドでも同じ使い分けを維持する:
 
 - 「指摘」: ユーザーに表示される **UI 文言の中の `finding`** を指す行為的表現
-  - 例: `pr_review_issues_list: "指摘事項一覧"`、`pr_fix_addressed_count: "対応した指摘"`
+  - 例: 旧 `pr_review_issues_list: "指摘事項一覧"` / `pr_fix_addressed_count: "対応した指摘"` 相当の文言を commands 内で日本語直書き
 - 素の `finding` / `findings`: **技術的な概念** として参照する場合
-  - 例: `review_observed_likelihood_demotion_notice: "🔽 Observed Likelihood Gate: 指摘 {finding_id} は..."`
-- `pr_review_findings: "所見"` のように別訳語が定着している箇所はそのまま (個別文脈に依存)
+  - 例: 「🔽 Observed Likelihood Gate: 指摘 {finding_id} は…」のように UI 文言内でも英語識別子を保持する
+- 「所見」のように別訳語が定着している箇所はそのまま (個別文脈に依存)
 
 ドキュメント (`docs/*.ja.md`) では UI 文言と異なり、`finding` を英語のまま使う (kept-English term)。「指摘」と `finding` の混在は許容するが、同一段落内で意図的に使い分ける場合は概念区別を明示する。
 

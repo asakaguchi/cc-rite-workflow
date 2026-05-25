@@ -83,8 +83,8 @@ Automatic fix target selection (Phase 2.1) is applied only when `/rite:pr:fix` i
 
 | Condition | Determination |
 |-----------|---------------|
-| Conversation history contains execution context from `/rite:pr:iterate` review-fix loop | Within loop → Apply automatic selection (all findings) |
-| Conversation history has a record of `rite:pr:fix` being called via `Skill tool` (recent message) | Within loop → Apply automatic selection (all findings) |
-| Otherwise (user directly entered `/rite:pr:fix`) | Manual execution → Display option selection |
+| Conversation history contains an explicit `/rite:pr:iterate` Skill invocation marker in recent context | Within loop → Apply automatic selection (all findings) |
+| Conversation history has a record of `rite:pr:fix` itself being called via Skill tool by `/rite:pr:iterate` (= caller chain `iterate → fix`) | Within loop → Apply automatic selection (all findings) |
+| Otherwise (user directly entered `/rite:pr:fix` outside of `/rite:pr:iterate`) | Manual execution → Display option selection |
 
-For manual execution, users select targets via interactive options. Issue #1136 以降は separate-issue creation の AskUserQuestion 経路は廃止されているため、Phase 2.1 の選択肢は「コードを修正する / accept (認知のみ) / 説明・返信のみ」の 3 択になる (skip → 別 Issue 化の選択肢は提示しない)。
+For manual execution, users select targets via interactive options. separate-issue creation の AskUserQuestion 経路は廃止されているため、Phase 2.1 の選択肢は「コードを修正する / accept (認知のみ) / 説明・返信のみ」の 3 択になる (skip → 別 Issue 化の選択肢は提示しない)。

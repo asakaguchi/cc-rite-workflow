@@ -2988,13 +2988,31 @@ finding を出して fix ループが永久化する。
 
    ```bash
    # 修正対象 file から symbol を抽出 (Claude が静的に決定)
+   # symbol 不在ケース (file:line のみの finding / Markdown rewording / config 値変更等) は
+   # Step 1 末尾「symbol 不在ケースの fallback」を参照
    target_symbol="{symbol_name}"   # 例: "validate_input", "API_TIMEOUT", "UserRepo"
 
-   # caller / test / sibling を全部列挙する
-   git grep -nE "\\b${target_symbol}\\b" -- \
+   # caller / test / sibling を全部列挙する。git grep の exit code を捕捉して silent failure を防ぐ
+   if ! git grep -nE "\\b${target_symbol}\\b" -- \
      '*.ts' '*.tsx' '*.js' '*.jsx' '*.py' '*.rb' '*.go' '*.rs' \
-     '*.sh' '*.bash' '*.md' '*.yml' '*.yaml' '*.json'
+     '*.sh' '*.bash' '*.md' '*.yml' '*.yaml' '*.json' > /tmp/rite-fix-impact-scan-$$.txt 2>/tmp/rite-fix-impact-scan-err-$$.txt; then
+     rc=$?
+     case "$rc" in
+       1) : ;; # match なし (期待動作)、空の影響範囲として Step 2 へ
+       128|*)
+         echo "WARNING: git grep failed (rc=$rc): $(cat /tmp/rite-fix-impact-scan-err-$$.txt 2>/dev/null)" >&2
+         echo "[CONTEXT] IMPACT_SCAN_DEGRADED=1; reason=git_grep_rc_$rc" >&2
+         echo "  Claude は thought-process verbalize 義務を継続し、grep 不可の影響範囲を手動推定すること" >&2
+         ;;
+     esac
+   fi
+   rm -f /tmp/rite-fix-impact-scan-$$.txt /tmp/rite-fix-impact-scan-err-$$.txt
    ```
+
+   **symbol 不在ケースの fallback** (finding が file:line のみで symbol を含まない場合):
+   - (a) 同ファイル内の関連シンボル列挙 → caller 探索を反復
+   - (b) 複数 symbol を含む大規模 fix → 各 symbol について Step 1 を反復
+   - (c) Markdown / config rewording → 該当 file 名で grep + CHANGELOG / docs 内の参照を確認
 
 2. **影響範囲の thought process 出力**: 修正案の前に必ず以下を Claude 側で
    verbalize する (chat への明示出力 - ユーザーが追跡できる形で):
@@ -5009,7 +5027,7 @@ Phase 4.5.1 または Phase 4.5.2 の bash block が stdout に `[CONTEXT] WM_UP
 | `wm_header_missing` | Phase 4.5.2 | 更新後 work memory body に `📜 rite 作業メモリ` header が欠落 |
 | `wm_body_too_small` | Phase 4.5.2 | 更新後 work memory body が元サイズの 50% 未満で棄却 (大量削除検出) |
 | `patch_failed` | Phase 4.5.2 | `jq \| gh api PATCH` pipeline が失敗 |
-| `cat_redirection_failed` | Phase 2.4 / 4.2 | cat heredoc redirection の exit code が非ゼロ (disk full / write permission denied / IO error) |
+| `cat_redirection_failed` | Phase 2.4 / 4.2 / 4.5.x (heredoc redirection を使う任意箇所) | cat heredoc redirection の exit code が非ゼロ (disk full / write permission denied / IO error)。Phase 4.5.1 / 4.5.2 の WM 更新経路など、heredoc を使う任意箇所で発火する可能性があるため、Phase 列は exhaustive な実 emit 箇所のリストではなく、典型的に発火する代表 phase の例示 |
 | `empty_stdout` | Phase 1.2 | gh api が exit 0 だが stdout が空または null |
 | `missing_issue_url` | Phase 1.2 | レスポンスに `.issue_url` フィールドが存在しない |
 | `mktemp_failed_override_err` | Phase 1.3 | confidence override stderr 退避用 tempfile の mktemp が失敗 |

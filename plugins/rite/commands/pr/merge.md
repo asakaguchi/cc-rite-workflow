@@ -76,7 +76,15 @@ trap '_rite_merge_cleanup; exit 130' INT
 trap '_rite_merge_cleanup; exit 143' TERM
 trap '_rite_merge_cleanup; exit 129' HUP
 
-gh_err=$(mktemp /tmp/rite-merge-gh-err-XXXXXX) || gh_err=""
+if gh_err=$(mktemp /tmp/rite-merge-gh-err-XXXXXX 2>/dev/null); then
+  :
+else
+  mktemp_gh_err_rc=$?
+  echo "WARNING: gh stderr 退避用 tempfile の mktemp に失敗しました (rc=$mktemp_gh_err_rc)。gh pr merge の stderr 詳細は失われます" >&2
+  echo "  対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
+  echo "[CONTEXT] MERGE_MKTEMP_DEGRADED=1; reason=mktemp_failure_gh_err; rc=$mktemp_gh_err_rc" >&2
+  gh_err=""
+fi
 
 if gh pr merge {pr_number} --squash --delete-branch=false 2>"${gh_err:-/dev/null}"; then
   echo "[merge:completed]"

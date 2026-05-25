@@ -93,6 +93,7 @@ Detect current state from:
 | Have an Issue, want to start work | `/rite:pr:open <issue>` (Issue → branch → 実装 → lint → draft PR を一気通貫) |
 | On feature branch, PR open / draft, review-fix cycle | `/rite:pr:iterate <pr>` (mergeable まで review ⇄ fix を無限ループ) |
 | Review mergeable, want to mark Ready | `/rite:pr:ready <pr>` then `/rite:pr:merge <pr>` |
+| Merge 完了、branch 削除 / Wiki ingest / Projects Status Done 後処理が必要 | `/rite:pr:cleanup <pr>` |
 | Long session (30+ minutes elapsed) | `/rite:issue:update` |
 | Sprint with Todo Issues available | `/rite:sprint:execute` to run Issues sequentially |
 | Sprint with multiple independent Issues | `/rite:sprint:team-execute` to run Issues in parallel with worktrees |

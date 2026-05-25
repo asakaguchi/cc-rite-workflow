@@ -862,9 +862,9 @@ Before outputting any result pattern (`[lint:success]`, `[lint:skipped]`, `[lint
 
 | Result | Phase | Phase Detail | Next Action |
 |--------|-------|-------------|-------------|
-| `[lint:success]` / `[lint:skipped]` | `lint` | `品質チェック完了` | `rite:lint completed successfully. Proceed to ステップ 6 (PR 作成) in start.md flat workflow. Do NOT stop.` |
+| `[lint:success]` / `[lint:skipped]` | `lint` | `品質チェック完了` | `rite:lint completed successfully. Proceed to /rite:pr:open ステップ 6 (PR 作成). Do NOT stop.` |
 | `[lint:error]` | `lint` | `lint エラー検出` | `rite:lint found errors. Fix the errors and re-invoke rite:lint, or AskUserQuestion で 修正再実行 / 強制続行 / 中止 を選択. Do NOT stop.` |
-| `[lint:aborted]` | `lint` | `品質チェック中断` | `rite:lint was aborted by user. Proceed to start.md ステップ 8.5 (完了レポート、abort context 含む) — PR 作成はスキップ. Do NOT stop.` |
+| `[lint:aborted]` | `lint` | `品質チェック中断` | `rite:lint was aborted by user. Proceed to caller 完了レポート (orchestrator 経由なら sprint flow / 開発者復帰 — abort 時は PR 作成スキップ). Do NOT stop.` |
 
 ```bash
 bash {plugin_root}/hooks/flow-state.sh set \

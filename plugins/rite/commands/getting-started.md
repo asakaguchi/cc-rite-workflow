@@ -133,10 +133,10 @@ The typical workflow consists of three main steps:
    └─ /rite:pr:open <番号>  (start working)
 
 3. Complete and submit
-   ├─ /rite:lint               (quality check)
-   ├─ /rite:pr:create          (create draft PR)
-   ├─ /rite:pr:review          (self-review)
-   └─ /rite:pr:ready           (mark as ready for review)
+   ├─ /rite:pr:iterate <PR>    (review ⇄ fix loop until mergeable)
+   ├─ /rite:pr:ready <PR>      (mark as ready for review)
+   ├─ /rite:pr:merge <PR>      (squash merge)
+   └─ /rite:pr:cleanup <PR>    (branch delete + Wiki ingest + Projects Done)
 ```
 
 ### 3.2 Step 1: Initial Setup

@@ -117,4 +117,4 @@ Perform the following investigation before reporting findings:
 |------------------|-------------------|
 | 「このツール名が正しいか確認が必要」 | 「WebFetch 確認: `AskUserQuestion` は正しい」または「ツール名は `AskUser` でなく `AskUserQuestion`（Claude Code Tool Reference）」 |
 | 「Phase 3 の指示が曖昧かもしれない」 | 「Phase 3.2 の『適切に処理する』は不明確。『gh api でステータス更新』と具体化を」 |
-| 「エラーハンドリングが不足している可能性」 | 「Phase 2 で `gh issue view` 404 時の処理未定義。他コマンド（`issue/start.md` Phase 0.1）ではエラーケース明記」 |
+| 「エラーハンドリングが不足している可能性」 | 「Phase 2 で `gh issue view` 404 時の処理未定義。他コマンド（`pr/open.md` ステップ 0）ではエラーケース明記」 |

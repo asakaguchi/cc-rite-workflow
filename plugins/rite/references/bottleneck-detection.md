@@ -233,7 +233,7 @@ Record in work memory at the next bulk update point (typically at commit time, p
 ## Related
 
 - [Implementation Guidance](../commands/issue/implement.md) - 5.1.0.5 Adaptive Re-evaluation
-- [Issue Start (flat workflow)](../commands/issue/start.md) ステップ 3 — 実装計画 (`implementation-plan.md` から移管 (現在は flat workflow に統合済))
+- [PR Open](../commands/pr/open.md) ステップ 3 — 実装計画
 - [AI Coding Principles](../skills/rite-workflow/references/coding-principles.md) - `reference_discovery` principle
 - [Execution Metrics](./execution-metrics.md) - `plan_deviation_count` metric
 - [Work Memory Format](../skills/rite-workflow/references/work-memory-format.md) - "ボトルネック検出ログ" section format

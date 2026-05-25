@@ -25,7 +25,7 @@ Retrieve and organize PR review comments to efficiently assist with addressing r
 
 ## E2E Output Minimization
 
-When called from the `/rite:issue:start` end-to-end flow, minimize output to reduce context window consumption:
+When called from the `/rite:pr:iterate` end-to-end flow, minimize output to reduce context window consumption:
 
 > **⚠️ minimize されるのは出力のみ**: fix implementation、commit/push、work memory 更新等の処理本体は standalone と同等に実行する。時間・context を理由にした修正内容の省略・commit 分割の省略は identity 違反。Identity: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md)。
 
@@ -46,9 +46,9 @@ When called from the `/rite:issue:start` end-to-end flow, minimize output to red
 
 Execute the following phases in order when this command is run.
 
-**⚠️ Integration with `/rite:issue:start`:**
+**⚠️ Integration with `/rite:pr:iterate`:**
 
-This command is automatically invoked within the review-fix loop of `/rite:issue:start` when the evaluation results in "not mergeable (issues found)" or "needs fixes". **All findings are targeted for fixes** regardless of severity or loop count. After completion, this command outputs a machine-readable output pattern and **returns control to the caller** (`/rite:issue:start`).
+This command is automatically invoked within the review-fix loop of `/rite:pr:iterate` when the evaluation results in "not mergeable (issues found)" or "needs fixes". **All findings are targeted for fixes** regardless of severity or loop count. After completion, this command outputs a machine-readable output pattern and **returns control to the caller** (`/rite:pr:iterate`).
 
 ## Arguments
 
@@ -166,7 +166,7 @@ fi
 
 ## Phase 1: Retrieve and Organize Review Comments
 
-> **Note**: The cycle-count-based convergence strategy loader (formerly Phase 0.4) was fully removed in v0.4.0. The review-fix loop now exits only when findings == 0; non-convergence is detected via 4 quality signals (see `commands/issue/start.md` ステップ 7 and `commands/pr/references/fix-relaxation-rules.md`). All findings are treated uniformly regardless of severity.
+> **Note**: The cycle-count-based convergence strategy loader (formerly Phase 0.4) was fully removed in v0.4.0. The review-fix loop now exits only when findings == 0; non-convergence is detected via 4 quality signals (see `commands/pr/iterate.md` ステップ 7 and `commands/pr/references/fix-relaxation-rules.md`). All findings are treated uniformly regardless of severity.
 
 ### 1.0 Argument Parsing (Pre-flight)
 
@@ -2564,7 +2564,7 @@ When rite review results were not found, use conventional GitHub state-based cla
 
 | Caller | Option Selection | Target |
 |--------|-----------------|--------|
-| Within `/rite:issue:start` review-fix loop | **Skip** (auto-select) | All findings + external reviews |
+| Within `/rite:pr:iterate` review-fix loop | **Skip** (auto-select) | All findings + external reviews |
 | Manual `/rite:pr:fix` | Display | User-selected |
 
 > **Automatic target selection**: Within the e2e loop, all findings are always blocking and targeted for fix. See [Fix Targeting Rules](./references/fix-relaxation-rules.md)
@@ -2619,7 +2619,7 @@ PR #{number} のレビューコメント
 
 | Option | Target | Use Case |
 |--------|--------|----------|
-| **すべての指摘に対応（推奨）** | All severities + external reviews | When full resolution is needed. Within `/rite:issue:start` loop, all findings are auto-selected |
+| **すべての指摘に対応（推奨）** | All severities + external reviews | When full resolution is needed. Within `/rite:pr:iterate` loop, all findings are auto-selected |
 | **CRITICAL/HIGH のみ対応** | CRITICAL + HIGH only | When addressing only urgent issues and deferring MEDIUM/LOW-MEDIUM/LOW |
 | **特定の指摘を選択** | Individual selection | When addressing only specific findings |
 | **キャンセル** | - | Abort the process (Fast Path 経由の場合はハンドオフファイルを削除してから exit) |
@@ -3347,7 +3347,7 @@ Phase 2.4.N が emit する `[CONTEXT] NIT_NOTED_REPLY_*` retained flag の reas
 
 **Eval-order enumeration** (Phase 2.4.N 独立 namespace、Phase 1.2.0 enumeration とは別): emit reasons sequence = (`already_replied` / `mktemp_failed` / `gh_api_post_failure`)
 
-これらの reason は Phase 1.2.0 の `FIX_FALLBACK_FAILED` / `REVIEW_SOURCE_*` 系列とは独立した namespace で、`/rite:issue:start` 側の ステップ 7 review-fix 判定では情報提示のみに使われる (Phase 4.6 の `acknowledged_nit_count > 0` を超える詳細 routing には参加しない)。
+これらの reason は Phase 1.2.0 の `FIX_FALLBACK_FAILED` / `REVIEW_SOURCE_*` 系列とは独立した namespace で、`/rite:pr:iterate` 側の ステップ 7 review-fix 判定では情報提示のみに使われる (Phase 4.6 の `acknowledged_nit_count > 0` を超える詳細 routing には参加しない)。
 
 ---
 
@@ -3989,12 +3989,12 @@ fi
 
 **Implementation note for Claude**: `{pr_body}` はドキュメントのプレースホルダ。Claude はスクリプト生成前に実際の PR body で置換する。**必ず single-quoted HEREDOC delimiter (`<<'PRBODY_EOF'`) を使う**こと — double-quoted printf 形式 (`printf '%s' "{pr_body}"`) は PR body 内の `"` でクォート閉じが起きると bash parser が後続テキストをコマンドラインとして解釈する構文エラーになり、さらに `$(...)` 形式の command substitution が literal 展開時に実行される **command injection リスク** を生む。PR body は外部入力 (PR 投稿者) であるため、shell expansion を完全抑制する HEREDOC が必須。
 
-If no Issue number is found, display a warning **and emit a `WM_UPDATE_FAILED=1` retained flag** so the caller (`/rite:issue:start` review-fix loop) treats the result as `[fix:pushed-wm-stale]` instead of silently treating it as `[fix:pushed]`:
+If no Issue number is found, display a warning **and emit a `WM_UPDATE_FAILED=1` retained flag** so the caller (`/rite:pr:iterate` review-fix loop) treats the result as `[fix:pushed-wm-stale]` instead of silently treating it as `[fix:pushed]`:
 
 ```bash
 # Phase 4.5.1 で issue_number 抽出に失敗した場合の silent regression 防止 (HIGH-2 対応):
 # 単に WARNING を出すだけだと、E2E flow / hook 経由実行で人間の目に見えず、
-# `/rite:issue:start` review-fix loop が「work memory 更新失敗」を一切認識しないまま
+# `/rite:pr:iterate` review-fix loop が「work memory 更新失敗」を一切認識しないまま
 # `[fix:pushed]` を silent 出力 → 次の loop iteration が stale work memory のまま続行する
 # silent regression になる。これを防ぐため:
 #   1. WARNING を stderr に出す (人間が tail で見えるケースのため)
@@ -4143,7 +4143,7 @@ if [[ -n "$comment_id" ]]; then
   if [[ -z "$current_body" ]]; then
     # current_body 空時の silent fall-through 防止:
     # 単に stderr WARNING を出すだけだと、E2E flow (hook 経由実行) で人間に見えず、
-    # `/rite:issue:start` review-fix loop が「work memory 更新失敗」を一切認識しないまま
+    # `/rite:pr:iterate` review-fix loop が「work memory 更新失敗」を一切認識しないまま
     # `[fix:pushed]` を silent 出力 → 次の loop iteration が stale work memory のまま続行する
     # silent regression になる。これを防ぐため:
     #   1. ERROR を stderr に出す (人間が tail で見えるケースのため)
@@ -4623,12 +4623,12 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 | `Confidence override (policy bypass): {N}件` | Number of findings imported via Confidence policy override | Phase 1.2 best-effort parse で「Confidence 70 のままバイパス」を選択した finding 数 (Confidence 80+ ゲート invariant の policy override 追跡義務)。0 件でも常時表示 |
 | `レビューソース: {review_source} (...)` | Provenance of the review findings consumed by this fix run | Phase 1.2.0 Priority chain で決定された `review_source` 値 (schema.md Priority 1 emit 義務の provenance 契約を Phase 4.6 で履行)。展開ルールは Phase 4.5.3 の `{review_source}` / `{review_source_path_display}` 表を参照 |
 
-**Note**: The review-fix loop of `/rite:issue:start` checks the content of this completion report to determine the next action:
+**Note**: The review-fix loop of `/rite:pr:iterate` checks the content of this completion report to determine the next action:
 - `プッシュ: 完了` -> Execute full re-review (`/rite:pr:review` と同等のフルレビュー — スコープ縮退禁止)
 - `別 Issue 作成: N件` (N >= 1) -> Execute full re-review (`/rite:pr:review` と同等のフルレビュー — スコープ縮退禁止)
 - `プッシュ: 未実行` and `別 Issue 作成: 0件` and `全指摘 == 対応指摘` -> Proceed to completion report (all addressed via replies)
 
-> **⚠️ re-review 時のスコープ縮退禁止**: caller (`/rite:issue:start`) が re-review を実行する際、「前回指摘の修正確認に絞る」「context 効率のためスコープを限定する」等の理由でレビュー範囲を縮退させてはならない。re-review は常に初回 `/rite:pr:review` と完全に同等のフルレビューとして実行し、全レビュアーをサブエージェントで並列起動すること。
+> **⚠️ re-review 時のスコープ縮退禁止**: caller (`/rite:pr:iterate`) が re-review を実行する際、「前回指摘の修正確認に絞る」「context 効率のためスコープを限定する」等の理由でレビュー範囲を縮退させてはならない。re-review は常に初回 `/rite:pr:review` と完全に同等のフルレビューとして実行し、全レビュアーをサブエージェントで並列起動すること。
 
 ### 4.6.W Wiki Ingest Trigger (Conditional)
 
@@ -4636,7 +4636,7 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 
 After outputting the completion report, trigger Wiki Ingest to capture fix patterns as experiential knowledge.
 
-> **⚠️ E2E Mandatory (silent-skip 防止層 1)**: Phase 4.6.W and 4.6.W.2 are **NEVER** skipped under the E2E Output Minimization rule. The "Phase 4-7 output minimization" applies only to display verbosity for fix completion reporting — it does **NOT** authorize skipping the Wiki ingest pipeline. Even when called from `/rite:issue:start` ステップ 7 (review-fix loop) with `[fix:pushed]`, this section MUST execute (subject only to the configuration-based skip in Step 1 below). Skipping silently re-opens the silent Wiki ingest skip regression that this layer exists to prevent.
+> **⚠️ E2E Mandatory (silent-skip 防止層 1)**: Phase 4.6.W and 4.6.W.2 are **NEVER** skipped under the E2E Output Minimization rule. The "Phase 4-7 output minimization" applies only to display verbosity for fix completion reporting — it does **NOT** authorize skipping the Wiki ingest pipeline. Even when called from `/rite:pr:iterate` ステップ 7 (review-fix loop) with `[fix:pushed]`, this section MUST execute (subject only to the configuration-based skip in Step 1 below). Skipping silently re-opens the silent Wiki ingest skip regression that this layer exists to prevent.
 
 **Condition**: Execute only when `wiki.enabled: true` AND `wiki.auto_ingest: true` in `rite-config.yml`. Configuration-based skip is the **only** legitimate skip path — it MUST emit a `WIKI_INGEST_SKIPPED=1` status line and `wiki_ingest_skipped` sentinel so the caller can detect and report (see Phase 4.6.W.3 below).
 
@@ -4834,7 +4834,7 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 
 ## Phase 8: End-to-End Flow Continuation (Output Pattern)
 
-> **This phase is executed only within the end-to-end flow (within the review-fix loop of `/rite:issue:start`). Skip for standalone execution.**
+> **This phase is executed only within the end-to-end flow (within the review-fix loop of `/rite:pr:iterate`). Skip for standalone execution.**
 
 **用語定義**:
 

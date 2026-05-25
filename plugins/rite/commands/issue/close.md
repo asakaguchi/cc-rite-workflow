@@ -232,7 +232,7 @@ Status: Done
 
 > **Reference**: [Wiki Ingest](../wiki/ingest.md) — `wiki-ingest-trigger.sh` API。本 Phase は raw source の **蓄積** を担う（page 統合は後続の `/rite:wiki:ingest` が冪等に行う）。raw 蓄積と page 統合を分離することで、page 統合が skip / 失敗しても raw source は失われない。
 
-> **⚠️ E2E Mandatory**: 本 Phase は出力最小化ルールで skip しない。`/rite:issue:start` ステップ 8.4（親 close）経由でも実行する。唯一の正当な skip は Step 1 の config ベース skip（`WIKI_INGEST_SKIPPED=1` sentinel + WARNING を必ず emit）。
+> **⚠️ E2E Mandatory**: 本 Phase は出力最小化ルールで skip しない。orchestrator 経由 (例: `/rite:pr:open` 後の parent close routing / sprint flow 等) でも実行する。唯一の正当な skip は Step 1 の config ベース skip（`WIKI_INGEST_SKIPPED=1` sentinel + WARNING を必ず emit）。
 
 **Step 1**: Wiki 設定を確認する（`wiki.enabled` opt-out default true / `wiki.auto_ingest` default false）:
 

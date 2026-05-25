@@ -14,7 +14,7 @@ description: ドラフト Pull Request を作成
 
 ## E2E Output Minimization
 
-When called from the `/rite:issue:start` end-to-end flow, minimize output to reduce context window consumption:
+When called from an orchestrator's end-to-end flow (e.g. `/rite:pr:open` ステップ 6 / `sprint/execute.md` sequential), minimize output to reduce context window consumption:
 
 | Phase | Standalone | E2E Flow |
 |-------|-----------|----------|
@@ -150,7 +150,7 @@ case "$bang_rc" in
 esac
 ```
 
-> **On exit 1 from this bash block**: The bash block exits before any `pr/create.md` result pattern (`[pr:created:{N}]` / `[pr:create-failed]`) is emitted, so the orchestrator (`/rite:issue:start` ステップ 6) treats this as a missing-result-pattern Skill invocation — start.md の default 経路は `WARNING` を stderr に出力し、AskUserQuestion で「手動作成 / 再試行 / 中止」を提示する — **NOT** a `[pr:create-failed]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
+> **On exit 1 from this bash block**: The bash block exits before any `pr/create.md` result pattern (`[pr:created:{N}]` / `[pr:create-failed]`) is emitted, so the orchestrator treats this as a missing-result-pattern Skill invocation — default 経路は `WARNING` を stderr に出力し、AskUserQuestion で「手動作成 / 再試行 / 中止」を提示する — **NOT** a `[pr:create-failed]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
 
 ### 1.1 Retrieve Base Branch
 
@@ -639,7 +639,7 @@ Proceed to Phase 3.
 
 #### 2.5.7 Behavior During End-to-End Flow
 
-Behavior when invoked from `/rite:issue:start`:
+Behavior when invoked from an orchestrator (e.g. `/rite:pr:open` ステップ 6):
 
 | Situation | Behavior |
 |------|------|
@@ -711,9 +711,9 @@ Information to include in the PR body: summary, related Issue (`Closes #{number}
 
 #### 3.2.1 Context Optimization During End-to-End Flow
 
-When executed via the end-to-end flow (`/rite:issue:start`), apply the following optimizations to reduce context usage.
+When executed via an orchestrator's end-to-end flow (e.g. `/rite:pr:open` ステップ 6 / `sprint/execute.md`), apply the following optimizations to reduce context usage.
 
-**Optimization conditions (OR evaluation):** During end-to-end flow execution / 20 or more changed files / Over 30 tool invocations. 30 invocations is lightweight optimization for PR creation alone; 50 invocations (see `issue/start.md`) is full-scale mitigation.
+**Optimization conditions (OR evaluation):** During end-to-end flow execution / 20 or more changed files / Over 30 tool invocations. 30 invocations is lightweight optimization for PR creation alone; 50 invocations (see `pr/open.md` / `sprint/execute.md` 等の上位 orchestrator) is full-scale mitigation.
 
 **Optimization content:** Changes -> file list and summary only (show top 3 files), Work memory -> progress summary only, Checklist -> mandatory items only. Applied automatically without user confirmation.
 
@@ -936,7 +936,7 @@ Output the following pattern based on PR creation result:
 
 **Important**:
 - Do **NOT** invoke `rite:pr:review` via the Skill tool
-- Return control to the caller (`/rite:issue:start`)
+- Return control to the caller (orchestrator — caller-name agnostic, e.g. `/rite:pr:open` / `sprint/execute.md`)
 - The caller determines the next action based on this output pattern
 
 **Example output:**

@@ -45,10 +45,10 @@ echo "=== Phase 4: projects-integration.md retains 3-method documentation ==="
 # single method. Each method is asserted independently so partial removal (e.g.
 # dropping `## 親 Issue` while keeping the GraphQL block) cannot slide through.
 # Method 2 here uses the child-to-parent GraphQL query `parent { number }` via
-# the `sub_issues` feature flag — different from close.md / start.md which use
+# the `sub_issues` feature flag — different from close.md / pr/open.md which use
 # the parent-to-children `trackedIssues` field.
 assert_grep "projects-integration.md §2.4.7 retains Method 1 (## 親 Issue body meta)" "$PROJECTS_REF" "## 親 Issue"
 assert_grep "projects-integration.md §2.4.7 retains Method 2 (sub_issues GraphQL feature)" "$PROJECTS_REF" "sub_issues"
 assert_grep "projects-integration.md §2.4.7 retains Method 3 (tasklist / in:body search)" "$PROJECTS_REF" "in:body|tasklist"
 
-print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or start.md ステップ 8.4, Issue #513 regression risk reopens. Re-confirm cross-references before removing methods."
+print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or pr/open.md ステップ 1.2, Issue #513 regression risk reopens. Re-confirm cross-references before removing methods."

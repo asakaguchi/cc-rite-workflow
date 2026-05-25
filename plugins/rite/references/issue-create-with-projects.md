@@ -223,7 +223,7 @@ Issue #669 strengthens the script so that **Projects registration failures are n
 ```bash
 # Mode 1: explicit file list (original #669 form)
 bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh \
- plugins/rite/commands/issue/start.md \
+ plugins/rite/commands/pr/open.md \
  plugins/rite/commands/issue/create.md
 
 # Mode 2: --all auto-expansion (#958)

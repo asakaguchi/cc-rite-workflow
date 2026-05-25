@@ -227,7 +227,7 @@ Issue の内容に矛盾があります:
 この計画で進めますか？
 ```
 
-**Note**: For the full plan template including the "参考実装" section, see [`commands/issue/start.md`](../../../commands/issue/start.md) ステップ 3 (実装計画) — 旧 `implementation-plan.md` Phase 3.3 は start.md に統合。
+**Note**: For the full plan template including the "参考実装" section, see [`commands/pr/open.md`](../../../commands/pr/open.md) ステップ 3 (実装計画)。
 
 ---
 
@@ -395,7 +395,7 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 
 **Failure Patterns**:
 - Renaming a command or config key in code without updating README / docs / CLAUDE.md
-- Adding a new workflow phase to `commands/issue/start.md` without updating the corresponding skill / reference docs
+- Adding a new workflow phase to `commands/pr/open.md` / `commands/pr/iterate.md` 等 without updating the corresponding skill / reference docs
 - Removing a feature from code while marketing copy in README still describes it
 - Deferring documentation drift to a separate "follow-up" Issue that never gets done
 - Relying on the tech-writer reviewer at PR review time to catch drift, causing avoidable review round-trips
@@ -531,7 +531,7 @@ OK patterns:
 
 - [SKILL.md](../SKILL.md) - Principle summary
 - [Phase Mapping](./phase-mapping.md) - Phase details
-- [Issue Start Workflow](../../../commands/issue/start.md) - start.md
+- [PR Open Workflow](../../../commands/pr/open.md) - pr/open.md (Issue → branch → 実装 → lint → draft PR)
 - [PR Create Command](../../../commands/pr/create.md) - Unaddressed issues check before PR creation (Phase 2.5)
 - [PR Review](../../../commands/pr/review.md) - review.md
 - [Markdown Authoring Conventions](#markdown-authoring-conventions) - Skill loader に load される Markdown ファイルの記述規約 (bash negation operator inline code convention)

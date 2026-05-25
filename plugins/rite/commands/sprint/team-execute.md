@@ -241,7 +241,7 @@ Batch {current} の Issue:
 
 For each Issue in the current batch:
 
-**Step 1**: Generate branch name (same as [issue/start.md](../issue/start.md) Phase 2.1):
+**Step 1**: Generate branch name (same as [pr/open.md](../pr/open.md) ステップ 2):
 
 ```
 {type}/issue-{number}-{slug}

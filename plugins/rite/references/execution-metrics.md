@@ -70,7 +70,7 @@ After 3 Issues are collected:
 
 | Classification | Definition | Required Corrective Action |
 |---------------|------------|---------------------------|
-| `plan_miss` | Implementation plan assumptions were incorrect | Add pattern to [`start.md`](../commands/issue/start.md) ステップ 3 (実装計画、`implementation-plan.md` から移管 (現在は flat workflow に統合済)) plan generation |
+| `plan_miss` | Implementation plan assumptions were incorrect | Add pattern to [`pr/open.md`](../commands/pr/open.md) ステップ 3 (実装計画) plan generation |
 | `impl_miss` | Code implementation error, test failure | Add test cases + record failure pattern in [`coding-principles.md`](../skills/rite-workflow/references/coding-principles.md) |
 | `eval_miss` | Review false positive/negative | Update reviewer skill checklist |
 
@@ -97,7 +97,7 @@ When an Issue has threshold violations:
 
 ### Work Memory Metrics Section
 
-Appended to the Issue work memory comment at workflow completion (ステップ 8.5 完了レポート of [`start.md`](../commands/issue/start.md)):
+Appended to the Issue work memory comment at workflow completion (caller orchestrator の 完了レポート — sprint flow なら sprint/execute.md sequential 末尾、standalone なら user が `/rite:pr:cleanup` 実行時):
 
 ```markdown
 ### 📊 メトリクス

@@ -5,7 +5,7 @@ description: マルチレビュアー PR レビューを実行
 # /rite:pr:review
 
 ## Contract
-**Input**: PR number (or auto-detected from current branch), flow state with `phase: review` (written by `start.md` ステップ 7.1) or `phase: phase5_review` (legacy compat — this sub-skill still patches the old name so resume from an interrupted earlier session keeps working until every writer migrates off the legacy name)
+**Input**: PR number (or auto-detected from current branch), flow state with `phase: review` (written by `pr/iterate.md` review side) or `phase: phase5_review` (legacy compat — this sub-skill still patches the old name so resume from an interrupted earlier session keeps working until every writer migrates off the legacy name)
 **Output**: `[review:mergeable]` | `[review:fix-needed:{n}]`
 
 Analyze PR changes and dynamically load expert skills to perform a multi-reviewer review.
@@ -1287,7 +1287,7 @@ When the reviewer count reaches 4 or more, recommend splitting the review execut
 
 > **⚠️ MANDATORY**: This `AskUserQuestion` confirmation MUST be executed even within the `/rite:pr:iterate` end-to-end flow. Do NOT skip this step for context optimization or any other reason. The user must always confirm the reviewer configuration before review execution begins.
 >
-> **Note (区別注記)**: 本ガード文は **reviewer 構成確認に固有**であり、`pr/ready.md` の Ready 移行確認とは別概念です。Ready 移行確認は親 skill `start.md` ステップ 8 の `AskUserQuestion`（「Ready for review に変更 / ドラフトのまま完了 / 追加の修正を行う」）で同等の確認が実施されているため `ready.md` 側の MANDATORY ガード文は撤廃されていますが、reviewer 構成確認は親 skill での代替確認が存在しないため本ガード文を保持します。本対応を `ready.md` と同様に削除しないこと。
+> **Note (区別注記)**: 本ガード文は **reviewer 構成確認に固有**であり、`pr/ready.md` の Ready 移行確認とは別概念です。Ready 移行確認は user が `/rite:pr:ready <pr>` を直接 invoke する経路 (新 4 コマンド体系の標準) で AskUserQuestion を経由するため `ready.md` 側の MANDATORY ガード文は撤廃されていますが、reviewer 構成確認は `/rite:pr:iterate` review-fix loop / standalone のいずれの呼び出し経路でも代替確認が存在しないため本ガード文を保持します。本対応を `ready.md` と同様に削除しないこと。
 
 Confirm the reviewer configuration with `AskUserQuestion` (fallback: see Phase 1.4 note):
 

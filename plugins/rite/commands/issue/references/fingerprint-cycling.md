@@ -119,7 +119,7 @@ Step 4 routing が「本 PR 内で再試行」または「別 Issue として切
 Invoke `skill: "rite:pr:review"`.
 ```
 
-review が return したら `start.md` の ステップ 7.1 (After Review) へ進む。
+review が return したら `pr/iterate.md` review-fix loop の fix side へ進む。
 
 ## §2 — Quality Signal 3 & 4 Detection (After Review)
 

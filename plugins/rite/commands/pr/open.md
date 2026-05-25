@@ -224,12 +224,12 @@ args: "{issue_number}"
   (`[lint:success]` / `[lint:skipped]` / `[lint:error]` / `[lint:aborted]`) が会話 context に emit 済みとなる
 - 本コマンドは Step 5 で sentinel を**読み取るだけ**で `rite:lint` を再 invoke しない
   (Step 4 が autonomous lint を内包しているため)
+- `/rite:issue:implement` 自体は固有 sentinel (`[implement:*]`) を emit しない設計のため、本ステップでは
+  `[lint:*]` sentinel の context 投入のみを期待し、判定そのものは Step 5 に委譲する (no-op step)
 
-| Sentinel (Step 4 内部の autonomous lint 結果) | 次のアクション |
-|---|---|
-| sentinel 不在 (implement abort 等) | AskUserQuestion で「再試行 / 再開 / 中止」を提示 |
-
-`[implement:*]` 系の終了通知 sentinel が unset で `rite:lint` 経路にも進めない場合は AskUserQuestion fallback で処理。
+Step 4 では Step 5 への引き渡し前提のため、本ステップ単体での sentinel routing table は持たない。
+`rite:lint` も含めて context に sentinel が全く emit されない場合 (implement が autonomous lint へ
+到達せず abort した稀ケース) は Step 5 末尾の「sentinel 不在」行で catch する。
 
 ---
 

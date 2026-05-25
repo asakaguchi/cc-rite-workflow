@@ -17,9 +17,9 @@
 > (Phase enum → Step mapping (SoT)) for the phase → command routing
 > table.
 >
-> Inbound references in `wiki/ingest.md`, `pr/cleanup.md`, `SKILL.md`, and
-> `docs/SPEC.md` that point here for "the canonical layer model" are stale
-> historical context; the layered model no longer exists at runtime.
+> Inbound references in `SKILL.md`, `docs/SPEC.md`, and `phase-mapping.md`
+> that point here for "the canonical layer model" are stale historical
+> context; the layered model no longer exists at runtime.
 
 ## Migration map
 

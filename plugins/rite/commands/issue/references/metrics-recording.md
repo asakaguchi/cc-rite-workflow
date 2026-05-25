@@ -233,5 +233,4 @@ Present options via `AskUserQuestion`:
 
 - [`../../../references/execution-metrics.md`](../../../references/execution-metrics.md) — メトリクス定義 / 閾値 / failure classification
 - [`../../../references/gh-cli-patterns.md`](../../../references/gh-cli-patterns.md#work-memory-update-safety-patterns) — Work Memory Update Safety Patterns
-- [`./pre-condition-gate.md`](./pre-condition-gate.md) — Phase 5.6 pre-condition の `flow-state.sh` fail-fast pattern
 - `plugins/rite/hooks/tests/caller-markdown-block.test.sh` TC-6 — `implementation_round` inline form pin (本 reference の bash block を grep 対象とする)

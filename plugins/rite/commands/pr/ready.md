@@ -516,17 +516,17 @@ Determine the caller from the conversation context:
 
 | Condition | Result | Action |
 |------|---------|---------------------|
-| Called via Skill chain from `/rite:issue:start` | Within end-to-end flow | **Skip completion report** — return control to `start.md` (ステップ 8.5 handles the report) |
-| Called from `/rite:pr:review` | Within end-to-end flow | **Skip completion report** — return control to `start.md` (ステップ 8.5 handles the report) |
+| Called via Skill tool from any orchestrator (legacy `/rite:issue:start` / sprint flow / etc.) | Within end-to-end flow | **Skip completion report** — return control to caller (orchestrator handles the report) |
 | `/rite:pr:ready` executed standalone | Standalone complete | Output Phase 5.1.2 format |
+
+> **Note**: 新 4 コマンドアーキテクチャ (`/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge`) では `pr:ready` は self-contained command として user が直接 invoke するのが標準経路。e2e flow からの呼び出しは `commands/sprint/execute.md` (Sprint sequential 実行) 等で残るため、本表の "Within end-to-end flow" 行は legacy compatibility として保持する。
 
 **Detection method:**
 
 Check the conversation history and determine "within end-to-end flow" if any of the following apply:
 
-1. `/rite:issue:start` was executed in the conversation
-2. A `/rite:pr:review` -> `/rite:pr:ready` call chain is confirmed in the conversation
-3. `rite:pr:ready` was invoked via the Skill tool (not as a standalone user command)
+1. `rite:pr:ready` was invoked via the Skill tool (not as a standalone user command)
+2. A caller orchestrator (`commands/sprint/execute.md` 等) の Skill invocation marker が会話履歴に存在
 
 ### 5.1 Output the Completion Report
 

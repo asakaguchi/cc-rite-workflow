@@ -39,16 +39,19 @@ Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → 
 セッション開始時に flow-state を読み、再開かどうかを判定する。新規セッション (state file 不在 or `active=false` or `issue_number` 不一致) の場合は何もせずステップ 1 に進む:
 
 ```bash
-resume_phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default "" 2>/dev/null || echo "")
-resume_issue=$(bash {plugin_root}/hooks/flow-state.sh get --field issue_number --default "" 2>/dev/null || echo "")
-resume_active=$(bash {plugin_root}/hooks/flow-state.sh get --field active --default "" 2>/dev/null || echo "")
+resume_phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default "") || resume_phase=""
+resume_issue=$(bash {plugin_root}/hooks/flow-state.sh get --field issue_number --default "") || resume_issue=""
+resume_active=$(bash {plugin_root}/hooks/flow-state.sh get --field active --default "") || resume_active=""
+resume_pr=$(bash {plugin_root}/hooks/flow-state.sh get --field pr_number --default "0") || resume_pr="0"
 
 if [ -n "$resume_phase" ] && [ "$resume_active" = "true" ] && [ "$resume_issue" = "{issue_number}" ]; then
-  echo "[CONTEXT] RESUME_DISPATCH=1; phase=$resume_phase; issue=$resume_issue"
+  echo "[CONTEXT] RESUME_DISPATCH=1; phase=$resume_phase; issue=$resume_issue; pr=$resume_pr"
 else
   echo "[CONTEXT] RESUME_DISPATCH=0; reason=fresh_or_mismatched_session (phase='$resume_phase' active='$resume_active' issue='$resume_issue' arg='{issue_number}')"
 fi
 ```
+
+`{plugin_root}/hooks/flow-state.sh get --default ""` は session 解決失敗 / file 不在 / jq parse 失敗のいずれでも default を stdout に書く設計のため、外側 `|| ...` は helper validation 失敗 (`--field` 引数欠落 / invalid field name) 経路のみを catch する defensive fallback。stderr は WARNING channel として残し、`2>/dev/null` で握りつぶさない (想定外 ERROR を context に残すため)。
 
 **LLM routing rule** (Bash tool shell state は次の Bash 呼び出しでリセットされるため `[CONTEXT] RESUME_DISPATCH=` marker を会話コンテキストから読む):
 
@@ -61,9 +64,9 @@ fi
 | `1` + `phase=implement` | ステップ 4 (実装) を継続。`/rite:issue:implement` の checklist 未完項目から続行 (autonomous lint まで進む内蔵動作あり) |
 | `1` + `phase=lint` | ステップ 5 (Step 4 内 autonomous lint の sentinel 検証) から再開。implement が既に lint まで完了している場合は sentinel を context から読み Step 6 へ |
 | `1` + `phase=pr` | ステップ 6 (PR 作成) から再開。既存 draft PR があれば検出して `[pr:created:N]` 相当を再構成 |
-| `1` + `phase=review` / `fix` | 本コマンドは扱わない。ユーザーに `/rite:pr:iterate {pr_number}` を案内 |
-| `1` + `phase=ready` / `ready_error` | 本コマンドは扱わない。`/rite:pr:ready {pr_number}` を案内 |
-| `1` + `phase=cleanup` / `ingest` / `completed` | 既に PR 段階を超えている。ユーザーに状態を案内して `/rite:pr:cleanup` 等を提案 |
+| `1` + `phase=review` / `fix` | 本コマンドは扱わない。ユーザーに `/rite:pr:iterate <pr={resume_pr}>` を案内 (PR 番号は `[CONTEXT] RESUME_DISPATCH=...; pr=$resume_pr` marker から literal substitute) |
+| `1` + `phase=ready` / `ready_error` | 本コマンドは扱わない。`/rite:pr:ready <pr={resume_pr}>` を案内 |
+| `1` + `phase=cleanup` / `ingest` / `completed` | 既に PR 段階を超えている。ユーザーに状態を案内して `/rite:pr:cleanup <pr={resume_pr}>` 等を提案 |
 
 `active=false` または `issue_number` が引数と異なる場合は別 Issue の state なので新規セッション扱い (ステップ 1 から開始)。
 

@@ -545,7 +545,7 @@ issue:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `fix.fail_fast_response` | boolean | `true` | `fix.md` Phase 2 で Fail-Fast Response Principle を有効化。fix アプローチ採用前に 4 項目チェックリスト (throw/raise 伝播 / 既存のエラー境界 / null-check で隠していないか / テスト側を修正すべきでないか) を要求する。fallback 採用はコミットメッセージで正当化が要求される。**⚠️ Known limitation (#506)**: 設定スキャフォールドのみで、まだ wired されていない。原則は `fix.md` Phase 2 のプロンプトで強制されている。`false` に設定しても現状効果がない |
-| ~~`fix.severity_gating.*`~~ | — | — | **DEPRECATED (#1118)**: 完全に削除済み。severity_gating 収束戦略 (#506) は #1118 で削除された。非収束緩和は 4 つの品質シグナル (#557) によって自動処理される。`rite-config.yml` から `fix.severity_gating:` を削除して構わない (キーは効果を持たない) |
+| ~~`fix.severity_gating.*`~~ | — | — | **DEPRECATED (#1118)**: 完全に削除済み。severity_gating 収束戦略 (#506) は #1118 で削除された。非収束緩和は #1136 までは 4 つの品質シグナル (#557) で処理されていたが、#1136 で quality-signal escalation 全廃済 — 現行のレビュー・フィックスループは残り finding が 0 件 (normal exit) か、ユーザーが Ctrl+C で中断 (manual exit、`/rite:resume` で復帰) のいずれかでのみ終了する (`commands/pr/iterate.md` ループ仕様 / `commands/pr/references/fix-relaxation-rules.md` 「Loop Termination」節 参照)。`rite-config.yml` から `fix.severity_gating:` を削除して構わない (キーは効果を持たない) |
 
 **Doc-Heavy PR モード** (`doc_heavy.enabled: true` がデフォルト): PR は `doc_lines / total_diff_lines >= lines_ratio_threshold` の場合、または小規模 diff (`total_diff_lines < max_diff_lines_for_count`) では `doc_files / total_files >= count_ratio_threshold` の場合に doc-heavy として分類される。doc-heavy モードでは `tech-writer-reviewer` が Grep/Read/Glob を使って 5 種類の整合性 (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) を実装と照合する。完全なプロトコルは `plugins/rite/commands/pr/references/internal-consistency.md` を参照。
 

@@ -121,7 +121,7 @@
 Issue 自動クローズ
 ```
 
-**補足:** 一気通貫フローは責務単位の 4 コマンドに分解されている (#1136)。`/rite:pr:open <issue>` がブランチ作成・実装・autonomous lint・ドラフト PR 作成を担当し、`/rite:pr:iterate <pr>` がレビューと修正を収束まで反復 (cycle 数上限なし。手動中断は `Ctrl+C` + `/rite:resume`)、`/rite:pr:ready <pr>` で Ready に切替、`/rite:pr:merge <pr>` で `gh pr merge --squash` を実行する。詳細は [Phase 5: 一気通貫実行](#phase-5-一気通貫実行) を参照。
+**補足:** 一気通貫フローは責務単位の 4 コマンドに分解されている (#1136)。`/rite:pr:open <issue>` がブランチ作成・実装・autonomous lint・ドラフト PR 作成を担当し、`/rite:pr:iterate <pr>` がレビューと修正を収束まで反復 (cycle 数上限なし。手動中断は `Ctrl+C` + `/rite:resume`)、`/rite:pr:ready <pr>` で Ready に切替、`/rite:pr:merge <pr>` で `gh pr merge --squash` を実行する。各コマンドの canonical live spec は [`commands/pr/open.md`](../plugins/rite/commands/pr/open.md) / [`iterate.md`](../plugins/rite/commands/pr/iterate.md) / [`ready.md`](../plugins/rite/commands/pr/ready.md) / [`merge.md`](../plugins/rite/commands/pr/merge.md) を参照。下記の [Phase 5: 一気通貫実行](#phase-5-一気通貫実行) セクションは #1136 以前の旧 `start.md` orchestrator の archaeological / migration reference として残置している。
 
 **Status 遷移:**
 ```

@@ -122,7 +122,7 @@ The command prefix `rite` was chosen for:
 Issue Auto-Close
 ```
 
-**Note:** The end-to-end flow is split across four single-responsibility commands (#1136). `/rite:pr:open <issue>` handles branch creation, implementation, autonomous lint, and draft PR creation. `/rite:pr:iterate <pr>` loops review and fix until convergence (no cycle-count cap; manual abort via `Ctrl+C` + `/rite:resume`). `/rite:pr:ready <pr>` flips the PR to Ready for review. `/rite:pr:merge <pr>` runs `gh pr merge --squash`. See [Phase 5: End-to-End Execution](#phase-5-end-to-end-execution) for details.
+**Note:** The end-to-end flow is split across four single-responsibility commands (#1136). `/rite:pr:open <issue>` handles branch creation, implementation, autonomous lint, and draft PR creation. `/rite:pr:iterate <pr>` loops review and fix until convergence (no cycle-count cap; manual abort via `Ctrl+C` + `/rite:resume`). `/rite:pr:ready <pr>` flips the PR to Ready for review. `/rite:pr:merge <pr>` runs `gh pr merge --squash`. For the canonical live spec of each command, see [`commands/pr/open.md`](../plugins/rite/commands/pr/open.md), [`iterate.md`](../plugins/rite/commands/pr/iterate.md), [`ready.md`](../plugins/rite/commands/pr/ready.md), and [`merge.md`](../plugins/rite/commands/pr/merge.md). (The legacy [Phase 5: End-to-End Execution](#phase-5-end-to-end-execution) section below documents the pre-#1136 `start.md` orchestrator for archaeological / migration reference only.)
 
 **Status Transitions:**
 ```
@@ -765,19 +765,19 @@ The Session Info section of the work memory includes phase information indicatin
 
 **Flat workflow phase (current / 11 values):**
 
-| Phase | Phase Detail | 4-command step (旧 start.md step pre-#1136) |
-|-------|--------------|---------------------------------------------|
-| `init` | Workflow initialised (Issue identified) | `/rite:pr:open` Step 1 (旧 1) |
-| `branch` | Branch created, ready for plan | `/rite:pr:open` Step 2 (旧 2) |
-| `plan` | Implementation planning in progress | `/rite:pr:open` Step 3 (旧 3) |
-| `implement` | Implementation in progress | `/rite:pr:open` Step 4 (旧 4) |
-| `lint` | Quality check in progress | `/rite:pr:open` Step 5 (旧 5) |
-| `pr` | PR creation in progress | `/rite:pr:open` Step 6 (旧 6) |
-| `review` | Review in progress | `/rite:pr:iterate` review side (旧 7.1) |
-| `fix` | Review-fix loop in progress | `/rite:pr:iterate` fix side (旧 7.2) |
-| `ready` | `/rite:pr:ready` succeeded; awaiting Projects Status In Review → 完了レポート | `/rite:pr:ready` (旧 8.3) |
-| `ready_error` | `/rite:pr:ready` failed inside e2e flow; resume routes back to Step 8 for retry | `/rite:pr:ready` retry (旧 8) |
-| `completed` | Workflow finished | `/rite:pr:merge` / `/rite:pr:cleanup` 完了 (旧 8 終端) |
+| Phase | Phase Detail | 4-command step (formerly start.md step pre-#1136) |
+|-------|--------------|----------------------------------------------------|
+| `init` | Workflow initialised (Issue identified) | `/rite:pr:open` Step 1 (formerly step 1) |
+| `branch` | Branch created, ready for plan | `/rite:pr:open` Step 2 (formerly step 2) |
+| `plan` | Implementation planning in progress | `/rite:pr:open` Step 3 (formerly step 3) |
+| `implement` | Implementation in progress | `/rite:pr:open` Step 4 (formerly step 4) |
+| `lint` | Quality check in progress | `/rite:pr:open` Step 5 (formerly step 5) |
+| `pr` | PR creation in progress | `/rite:pr:open` Step 6 (formerly step 6) |
+| `review` | Review in progress | `/rite:pr:iterate` review side (formerly step 7.1) |
+| `fix` | Review-fix loop in progress | `/rite:pr:iterate` fix side (formerly step 7.2) |
+| `ready` | `/rite:pr:ready` succeeded; awaiting Projects Status In Review → completion report | `/rite:pr:ready` (formerly step 8.3) |
+| `ready_error` | `/rite:pr:ready` failed inside e2e flow; `/rite:resume` re-enters `/rite:pr:ready` retry (formerly start.md step 8) | `/rite:pr:ready` retry (formerly step 8) |
+| `completed` | Workflow finished | `/rite:pr:merge` / `/rite:pr:cleanup` completed (formerly step 8 end) |
 
 Lifecycle sub-rings (legacy granular phases — lifecycle-incomplete detection now lives in `session-end.sh`'s inline glob; see the retired Phase Transition Whitelist note below):
 

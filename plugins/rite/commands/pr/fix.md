@@ -3076,8 +3076,11 @@ context 消費という最悪結果になる。修正前の影響範囲確認で
 >   で行う
 >
 > 違反コメントを含む Edit/Write を生成しそうになったら、Apply 前に rewrite する。
-> post-hoc な Phase 3 の gate (Phase 3.1.1 — Pre-Commit Drift Lint Gate) は
-> 防御の最終層であり、本 Phase 2.3 の declarative gate を skip する根拠にしない。
+> Phase 3.1.1 (Pre-Commit Drift Lint Gate) は **構造的 drift** (retained-flag /
+> reason-table / if-wrap / anchor / eval-table / schema-version) のみを catch する
+> 設計で、コメント原則違反 (`why_over_what` / `no_journal_comment` /
+> `no_line_or_cycle_reference`) は検出しない。コメント原則違反については本 Phase 2.3 が
+> **唯一の declarative gate** であり、skip 不可。
 
 Present the proposed fix and apply with Edit tool after confirmation:
 

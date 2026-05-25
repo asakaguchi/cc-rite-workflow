@@ -45,7 +45,7 @@ github:
 iteration:
   enabled: false          # true to enable iteration features
   field_name: "Sprint"    # Name of the iteration field in Projects
-  auto_assign: true       # Auto-assign to current iteration on issue:start
+  auto_assign: true       # Auto-assign to current iteration on /rite:pr:open
   show_in_list: true      # Show iteration column in issue:list
 
 # Branch naming rules

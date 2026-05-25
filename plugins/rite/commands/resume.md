@@ -209,7 +209,7 @@ Next action (WM):    {wm_next}
 AskUserQuestion で:
 - **続行 (推定 phase で再開)** — 推定された phase に対応する Step / Skill を実行
 - **別 phase を選ぶ** — phase 一覧から手動選択
-- **新規セッション扱い** — flow-state をクリアして `/rite:issue:start {issue_arg}` を最初から実行
+- **新規セッション扱い** — flow-state をクリアして `/rite:pr:open {issue_arg}` を最初から実行
 - **中止** — 何もせず終了
 
 ユーザーが「別 phase を選ぶ」を選択し phase を変更した場合は、新値を `$user_selected_phase` シェル変数に set した上で以下を実行し、Phase 5.2 が優先採用する `[CONTEXT] FINAL_PHASE` marker を emit する (RESOLVED_PHASE をオーバーライドする最終確定値):
@@ -262,25 +262,25 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 | phase | 再開アクション |
 |-------|---------------|
-| `init` | `/rite:issue:start {issue_arg}` をステップ 1 (Issue 取得) から再実行 (idempotent) |
-| `branch` | `/rite:issue:start {issue_arg}` をステップ 2 (ブランチ作成) から再開 (既存ブランチがあれば `git switch` で復帰) |
-| `plan` | `/rite:issue:start {issue_arg}` をステップ 3 (実装計画) から再開 |
-| `implement` | `/rite:issue:start {issue_arg}` をステップ 4 (実装) を継続 (Issue body の checklist 未完項目から) |
-| `lint` | `/rite:issue:start {issue_arg}` をステップ 5 (lint 再実行) から再開 |
-| `pr` | `/rite:issue:start {issue_arg}` をステップ 6 (PR 作成) から再開 (既に PR 番号が state にあればステップ 7 へジャンプ) |
-| `review` | `/rite:pr:review {pr_number}` を再実行 |
-| `fix` | `/rite:pr:fix {pr_number}` を再実行 |
-| `ready` | `/rite:issue:start {issue_arg}` をステップ 8.3 から再開 (Ready は完了済 — Projects Status In Review → 親判定 → 完了レポート) |
-| `ready_error` | `/rite:issue:start {issue_arg}` をステップ 8 (Ready & 完結) から再開 |
+| `init` | `/rite:pr:open {issue_arg}` をステップ 1 (Issue 取得) から再実行 (idempotent) |
+| `branch` | `/rite:pr:open {issue_arg}` をステップ 2 (ブランチ作成) から再開 (既存ブランチがあれば `git switch` で復帰) |
+| `plan` | `/rite:pr:open {issue_arg}` をステップ 3 (実装計画) から再開 |
+| `implement` | `/rite:pr:open {issue_arg}` をステップ 4 (実装) を継続 — 内部で `rite:issue:implement` を invoke し Issue body の checklist 未完項目から再開 |
+| `lint` | `/rite:pr:open {issue_arg}` をステップ 5 (lint 再実行) から再開 |
+| `pr` | `/rite:pr:open {issue_arg}` をステップ 6 (PR 作成) から再開 (既に PR 番号が state にあれば検出して `[pr:created:N]` 相当を再構成) |
+| `review` | `/rite:pr:iterate {pr_number}` を起動 (review 側から再開) |
+| `fix` | `/rite:pr:iterate {pr_number}` を起動 (fix 側から再開) |
+| `ready` | `/rite:pr:ready {pr_number}` をステップ 3 から再開 (Ready 化は完了済 — Projects Status In Review → 親判定 → 完了レポート) |
+| `ready_error` | `/rite:pr:ready {pr_number}` を ready 化リトライから再開 |
 | `cleanup` | `/rite:pr:cleanup {pr_number}` を再実行 |
 | `ingest` | `/rite:wiki:ingest` を再呼び出し |
 | `completed` | Issue は完結済。AskUserQuestion で「新規作業として再開 / 終了」 |
 
 ### 5.4 invoke
 
-確定した phase に応じて Skill ツール経由で対応コマンドを呼ぶ。引数として `{issue_arg}` (issue 系) または `{pr_number}` (pr 系) を渡す。
+確定した phase に応じて Skill ツール経由で対応コマンドを呼ぶ。引数として `{issue_arg}` (`pr:open`) または `{pr_number}` (`pr:iterate` / `pr:ready` / `pr:cleanup`) を渡す。
 
-`/rite:issue:start` 系は内部の Resume Dispatch (ステップ 0) で `[CONTEXT] RESUME_DISPATCH=1; phase=$resolved_phase; issue=$issue_arg` を観測し、適切な step にジャンプする。
+`/rite:pr:open` は内部の Resume Dispatch (ステップ 0) で `[CONTEXT] RESUME_DISPATCH=1; phase=$resolved_phase; issue=$issue_arg` を観測し、適切な step にジャンプする。`/rite:pr:iterate` は phase に応じて review / fix のどちら側からループを始めるかを自動判定する。
 
 ---
 
@@ -296,7 +296,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 |------|------|
 | Issue not found | エラー終了、`gh issue list` で確認するよう案内 |
 | Branch 不在 | `gh issue develop` で再生成するよう案内 |
-| flow-state 不在 + WM 不在 | 「新規セッション」として `/rite:issue:start {issue_arg}` を提案 |
+| flow-state 不在 + WM 不在 | 「新規セッション」として `/rite:pr:open {issue_arg}` を提案 |
 | 矛盾検出 (phase vs commit/PR) | AskUserQuestion で「推定 phase で再開 / 別 phase を選ぶ / 中止」 |
 | migrate 失敗 | WARNING 表示後、cross-check で実態推定して続行 |
 

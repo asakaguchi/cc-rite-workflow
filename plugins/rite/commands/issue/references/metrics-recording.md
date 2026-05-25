@@ -79,7 +79,7 @@ plan_deviation_count="$val"
 # Step 4 heredoc の `{plan_deviation_count}` placeholder に literal substitute する。シェル変数
 # `$plan_deviation_count` は Bash tool 境界で消失するため、stdout/stderr に明示的に emit しない限り
 # Claude は値を読み取れない。同型の cross-boundary state transfer は resume.md Phase 1.3 routing
-# table emit / start.md ステップ 8.4 (parent close) で確立済みの canonical pattern。
+# table emit / pr/open.md ステップ 1.2 (parent detection) で確立済みの canonical pattern。
 #
 # Emit channel policy: cross-boundary state transfer の sentinel は **stdout / stderr のいずれでも会話コンテキストに記録される**。
 # Claude Code の Bash tool は stdout/stderr 両方を会話コンテキストに取り込む仕様のため、emit channel の
@@ -233,5 +233,4 @@ Present options via `AskUserQuestion`:
 
 - [`../../../references/execution-metrics.md`](../../../references/execution-metrics.md) — メトリクス定義 / 閾値 / failure classification
 - [`../../../references/gh-cli-patterns.md`](../../../references/gh-cli-patterns.md#work-memory-update-safety-patterns) — Work Memory Update Safety Patterns
-- [`./pre-condition-gate.md`](./pre-condition-gate.md) — Phase 5.6 pre-condition の `flow-state.sh` fail-fast pattern
 - `plugins/rite/hooks/tests/caller-markdown-block.test.sh` TC-6 — `implementation_round` inline form pin (本 reference の bash block を grep 対象とする)

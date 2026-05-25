@@ -1,10 +1,10 @@
 # Fingerprint Cycling Detection — Quality Signal SoT
 
-> **Source of Truth**: 本ファイルは Review/Fix ループにおける **Fingerprint Cycling Detection** (review サイクル中の同一 finding 持続検出) と **Quality Signal 3 & 4 Detection** の SoT である。実際の caller は `pr/review.md` (Signal 3) と `pr/fix.md` (Signal 2) であり、`/rite:issue:start` のレビュー/修正ループ (ステップ 7) 内で間接的に実行される。本ファイルは fingerprint spec / similarity / Quality Signal markers / split bash / 4-option AskUserQuestion の標準形を定義する。
+> **Source of Truth**: 本ファイルは Review/Fix ループにおける **Fingerprint Cycling Detection** (review サイクル中の同一 finding 持続検出) と **Quality Signal 3 & 4 Detection** の SoT である。実際の caller は `pr/review.md` (Signal 3) と `pr/fix.md` (Signal 2) であり、`/rite:pr:open` のレビュー/修正ループ (ステップ 7) 内で間接的に実行される。本ファイルは fingerprint spec / similarity / Quality Signal markers / split bash / 4-option AskUserQuestion の標準形を定義する。
 
 ## 概要 — Quality Signal 1-4 の位置付け
 
-`/rite:issue:start` の review-fix loop には cycle-count-based safety limit が **存在しない** 設計 (旧 cycle-count monitor は #557 で完全に削除済み)。代わりに以下 **4 つの quality signal** で escalation を行う:
+`/rite:pr:open` の review-fix loop には cycle-count-based safety limit が **存在しない** 設計 (旧 cycle-count monitor は #557 で完全に削除済み)。代わりに以下 **4 つの quality signal** で escalation を行う:
 
 | Signal | 検出 phase | 内容 |
 |--------|-----------|------|
@@ -119,7 +119,7 @@ Step 4 routing が「本 PR 内で再試行」または「別 Issue として切
 Invoke `skill: "rite:pr:review"`.
 ```
 
-review が return したら `start.md` の ステップ 7.1 (After Review) へ進む。
+review が return したら `pr/iterate.md` review-fix loop の fix side へ進む。
 
 ## §2 — Quality Signal 3 & 4 Detection (After Review)
 

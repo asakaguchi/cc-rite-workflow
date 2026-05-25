@@ -9,20 +9,23 @@
 > `branch-setup`, `work-memory-init`, `completion-report`) were removed in
 > flat workflow consolidation.
 >
-> `/rite:issue:start` and `/rite:issue:create` are now single flat workflows.
-> When the LLM stops mid-flow, recovery is via `/rite:resume` — read
-> `commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) for the
-> phase → step routing table.
+> `/rite:issue:create` is a single flat workflow. `/rite:issue:start`
+> (formerly `commands/issue/start.md`, deleted in a later refactor) was
+> further decomposed into `/rite:pr:open` / `/rite:pr:iterate` /
+> `/rite:pr:ready` / `/rite:pr:merge`. When the LLM stops mid-flow,
+> recovery is via `/rite:resume` — read `commands/resume.md` Phase 5.3
+> (Phase enum → Step mapping (SoT)) for the phase → command routing
+> table.
 >
-> Inbound references in `wiki/ingest.md`, `pr/cleanup.md`, `SKILL.md`, and
-> `docs/SPEC.md` that point here for "the canonical layer model" are stale
-> historical context; the layered model no longer exists at runtime.
+> Inbound references in `SKILL.md`, `docs/SPEC.md`, and `phase-mapping.md`
+> that point here for "the canonical layer model" are stale historical
+> context; the layered model no longer exists at runtime.
 
 ## Migration map
 
 | Pre-#1079 mechanism | Post-#1079 equivalent |
 |---|---|
-| Layer 1 prompt contract in sub-skill files | Single flat workflow in `commands/issue/start.md` / `commands/issue/create.md` |
+| Layer 1 prompt contract in sub-skill files | `commands/issue/create.md` is a single flat workflow. `commands/issue/start.md` was removed in a later refactor and decomposed into `commands/pr/{open,iterate,ready,merge}.md` |
 | Layer 2 `stop-guard.sh` Stop hook | Removed (#675) |
 | Layer 3 caller HTML hint + sub-skill continuation comment | N/A — no sub-skill delegation, no continuation hand-off |
 | Layer 4 `auto-fire-step0.sh` PostToolUse Skill hook | Removed (#1079); recovery via `/rite:resume` |

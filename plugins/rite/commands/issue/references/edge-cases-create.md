@@ -47,4 +47,4 @@ Options:
 2. `gh issue view {issue_number} --json number,title,state,body --jq '{number,title,state}'` で存在検証
 3. Issue が存在しない (404) → エラー表示し再入力を促す
 4. Issue が CLOSED → 言語別オプション提示: "参考として新規 Issue 作成" / "Issue 番号を再入力"。参考選択なら `gh issue view {issue_number} --json body --jq '.body'` で body を取得し context として使用
-5. Issue が OPEN → 言語別オプション提示: "context として新規 Issue 作成" / "この Issue で /rite:issue:start を実行 (create 中止)"。start 選択なら create を終了して `参照先の Issue に対して /rite:issue:start #{issue_number} を実行してください。` (英語は equivalent) を出力
+5. Issue が OPEN → 言語別オプション提示: "context として新規 Issue 作成" / "この Issue で /rite:pr:open を実行 (create 中止)"。start 選択なら create を終了して `参照先の Issue に対して /rite:pr:open #{issue_number} を実行してください。` (英語は equivalent) を出力

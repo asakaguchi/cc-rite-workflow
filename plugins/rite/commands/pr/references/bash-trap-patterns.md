@@ -2,7 +2,7 @@
 
 > **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
 
-対象 5 ファイル: `pr/fix.md` / `pr/review.md` / `issue/start.md` / `wiki/lint.md` / `wiki/ingest.md`。
+対象 6 ファイル: `pr/fix.md` / `pr/review.md` / `pr/open.md` / `pr/merge.md` / `wiki/lint.md` / `wiki/ingest.md`。
 本ファイルは **signal-specific trap + cleanup function パターン**の canonical 定義と根拠を集約する。
 各 bash block の冒頭では本ファイルへの anchor 参照を pointer コメントとして置く。
 

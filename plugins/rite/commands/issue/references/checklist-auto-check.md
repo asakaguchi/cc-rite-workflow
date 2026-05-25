@@ -73,7 +73,7 @@ Root Cause を調査しますか?
 - 手動でチェックリスト確認: workflow を中断しユーザーが Issue body を手動更新
 ```
 
-「Root Cause 調査」→ Phase 5.1 に戻る (`implement.md` Phase 5.1.1.1 を per-task で再実行)。「そのまま Auto-Check」→ Step 1 へ続行。「手動確認」→ workflow 中断、ユーザー手動更新後 `/rite:issue:start {N}` で再開を案内。`incomplete_count < 5` の場合は本 Step を skip し Step 1 へ直接遷移する。
+「Root Cause 調査」→ Phase 5.1 に戻る (`implement.md` Phase 5.1.1.1 を per-task で再実行)。「そのまま Auto-Check」→ Step 1 へ続行。「手動確認」→ workflow 中断、ユーザー手動更新後 `/rite:resume` で再開を案内。`incomplete_count < 5` の場合は本 Step を skip し Step 1 へ直接遷移する。
 
 1. **Collect evidence**: Use `git diff origin/{base_branch}...HEAD --name-only` and `git log --oneline origin/{base_branch}...HEAD` to understand what was implemented.
 

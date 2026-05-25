@@ -532,7 +532,7 @@ stash した変更があれば「復元する（`git stash pop`）/ 後で手動
 
 次のステップ:
 1. `/rite:issue:list` で次の Issue を確認
-2. `/rite:issue:start <issue_number>` で新しい作業を開始 <!-- [cleanup:completed] -->
+2. `/rite:pr:open <issue_number>` で新しい作業を開始 <!-- [cleanup:completed] -->
 
 ### 5.3 Terminal Completion
 

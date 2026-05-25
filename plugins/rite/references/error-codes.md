@@ -168,7 +168,7 @@ Example: `[ZEN-E001] rite-config.yml not found`
    - Detailed description
    - Acceptance criteria
    - Technical context or requirements
-2. Re-evaluate: `/rite:issue:start {number}`
+2. Re-evaluate: `/rite:pr:open {number}`
 3. Or proceed with supplementary questions
 
 ---

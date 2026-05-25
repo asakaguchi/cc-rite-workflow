@@ -5,7 +5,7 @@ description: マルチレビュアー PR レビューを実行
 # /rite:pr:review
 
 ## Contract
-**Input**: PR number (or auto-detected from current branch), flow state with `phase: review` (written by `start.md` ステップ 7.1) or `phase: phase5_review` (legacy compat — this sub-skill still patches the old name so resume from an interrupted earlier session keeps working until every writer migrates off the legacy name)
+**Input**: PR number (or auto-detected from current branch), flow state with `phase: review` (written by `pr/iterate.md` review side) or `phase: phase5_review` (legacy compat — this sub-skill still patches the old name so resume from an interrupted earlier session keeps working until every writer migrates off the legacy name)
 **Output**: `[review:mergeable]` | `[review:fix-needed:{n}]`
 
 Analyze PR changes and dynamically load expert skills to perform a multi-reviewer review.
@@ -18,7 +18,7 @@ Analyze PR changes and dynamically load expert skills to perform a multi-reviewe
 
 ## E2E Output Minimization
 
-When called from the `/rite:issue:start` end-to-end flow, Phase 4 (sub-agent execution) runs in **full** — only Phase 5-7 **output** is minimized to reduce context window consumption:
+When called from the `/rite:pr:iterate` end-to-end flow, Phase 4 (sub-agent execution) runs in **full** — only Phase 5-7 **output** is minimized to reduce context window consumption:
 
 > **⚠️ "Output minimization" は処理短縮ではない**: minimize されるのは Phase 5-7 の **人間向け表示** のみで、Phase 4 の sub-agent parallel execution、Phase 6 の PR コメント投稿、Phase 7 の recommendations AskUserQuestion 等の処理本体は standalone と同等に実行する。時間・context を理由にした sub-agent 省略 / parallel の直列化 / AskUserQuestion 省略は identity 違反である。Identity: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md)。
 
@@ -62,11 +62,11 @@ When this command is executed, run the following phases in order.
 
 ## Invocation Context and End-to-End Flow
 
-This command has two invocation cases: standalone execution and invocation from the `/rite:issue:start` end-to-end flow (via ステップ 7 review-fix loop).
+This command has two invocation cases: standalone execution and invocation from the `/rite:pr:iterate` end-to-end flow (via ステップ 7 review-fix loop).
 
 | Invocation Source | Subsequent Action |
 |-----------|---------------|
-| End-to-end flow (invoked from `/rite:issue:start` ステップ 7) | **Output pattern and return control to caller** |
+| End-to-end flow (invoked from `/rite:pr:iterate` ステップ 7) | **Output pattern and return control to caller** |
 | Standalone execution | Confirm the next action with `AskUserQuestion` |
 
 **Determination method**: Claude determines the invocation source from the conversation context:
@@ -76,7 +76,7 @@ This command has two invocation cases: standalone execution and invocation from 
 | `rite:pr:review` was invoked via the `Skill` tool within the same session immediately before | Within the end-to-end flow |
 | Otherwise (user directly entered `/rite:pr:review`) | Standalone execution |
 
-> **Important (Responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (e.g. `[review:mergeable]`, `[review:fix-needed:{n}]`) and **returns control to the caller** (`/rite:issue:start`). The caller determines the next action based on this output pattern.
+> **Important (Responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (e.g. `[review:mergeable]`, `[review:fix-needed:{n}]`) and **returns control to the caller** (`/rite:pr:iterate`). The caller determines the next action based on this output pattern.
 
 ---
 
@@ -1285,9 +1285,9 @@ When the reviewer count reaches 4 or more, recommend splitting the review execut
 
 ### 3.3 Confirm Reviewers
 
-> **⚠️ MANDATORY**: This `AskUserQuestion` confirmation MUST be executed even within the `/rite:issue:start` end-to-end flow. Do NOT skip this step for context optimization or any other reason. The user must always confirm the reviewer configuration before review execution begins.
+> **⚠️ MANDATORY**: This `AskUserQuestion` confirmation MUST be executed even within the `/rite:pr:iterate` end-to-end flow. Do NOT skip this step for context optimization or any other reason. The user must always confirm the reviewer configuration before review execution begins.
 >
-> **Note (区別注記)**: 本ガード文は **reviewer 構成確認に固有**であり、`pr/ready.md` の Ready 移行確認とは別概念です。Ready 移行確認は親 skill `start.md` ステップ 8 の `AskUserQuestion`（「Ready for review に変更 / ドラフトのまま完了 / 追加の修正を行う」）で同等の確認が実施されているため `ready.md` 側の MANDATORY ガード文は撤廃されていますが、reviewer 構成確認は親 skill での代替確認が存在しないため本ガード文を保持します。本対応を `ready.md` と同様に削除しないこと。
+> **Note (区別注記)**: 本ガード文は **reviewer 構成確認に固有**であり、`pr/ready.md` の Ready 移行確認とは別概念です。Ready 移行確認は user が `/rite:pr:ready <pr>` を直接 invoke する経路 (新 4 コマンド体系の標準) で AskUserQuestion を経由するため `ready.md` 側の MANDATORY ガード文は撤廃されていますが、reviewer 構成確認は `/rite:pr:iterate` review-fix loop / standalone のいずれの呼び出し経路でも代替確認が存在しないため本ガード文を保持します。本対応を `ready.md` と同様に削除しないこと。
 
 Confirm the reviewer configuration with `AskUserQuestion` (fallback: see Phase 1.4 note):
 
@@ -4047,7 +4047,7 @@ The target of metrics recording branches on `{post_comment_mode}` determined in 
 | Mode | Recording target | Rationale |
 |------|------------------|-----------|
 | **opt-in** (`post_comment_mode=true`) | Append metrics section to `{review_result_content}` **before** posting the PR comment in Phase 6.1.b. The metrics are included in the same comment as the review results, avoiding a separate API call | opt-in 経路は単一の PR コメントに review 結果と metrics を集約する想定 |
-| **default** (`post_comment_mode=false`) | Emit metrics as observability log only via `[CONTEXT] REVIEW_METRICS=critical={n};high={n};medium={n};low={n}` to stderr in Phase 6.1.a or 6.1.c | default 経路で metrics の出力先を失わないための明示分岐。PR コメントには投稿せず、`[CONTEXT]` 経由で caller (`/rite:issue:start`) が読み取れる形式にする |
+| **default** (`post_comment_mode=false`) | Emit metrics as observability log only via `[CONTEXT] REVIEW_METRICS=critical={n};high={n};medium={n};low={n}` to stderr in Phase 6.1.a or 6.1.c | default 経路で metrics の出力先を失わないための明示分岐。PR コメントには投稿せず、`[CONTEXT]` 経由で caller (`/rite:pr:iterate`) が読み取れる形式にする |
 
 **⚠️ Default 経路 (`post_comment_mode=false`) で metrics を JSON ファイルに埋め込まない理由**: review-result-schema.md の現行 schema には `metrics` top-level field が存在しない。schema 拡張は別 PR で実施する (本 PR は record target の明示化のみに留め、schema 変更は out-of-scope)。それまでは `[CONTEXT]` stderr emit が唯一の default 経路記録手段となる。
 
@@ -4183,7 +4183,7 @@ PR #{number} のレビューを完了しました
 
 After outputting the completion report, trigger Wiki Ingest to capture review finding patterns as experiential knowledge.
 
-> **⚠️ E2E Mandatory (silent-skip 防止層 1)**: Phase 6.5.W and 6.5.W.2 are **NEVER** skipped under the E2E Output Minimization rule. The "Phase 5/6/7 output minimization" applies only to display verbosity for findings tables / PR comment / issue creation guidance — it does **NOT** authorize skipping the Wiki ingest pipeline. Even when called from `/rite:issue:start` ステップ 7 (レビュー/修正ループ) with `[review:mergeable]`, this section MUST execute (subject only to the configuration-based skip in Step 1 below). Skipping silently — for "context efficiency", "the orchestrator already wrote a completion report", or any other reason — would defeat the experiential-knowledge capture contract that this section enforces.
+> **⚠️ E2E Mandatory (silent-skip 防止層 1)**: Phase 6.5.W and 6.5.W.2 are **NEVER** skipped under the E2E Output Minimization rule. The "Phase 5/6/7 output minimization" applies only to display verbosity for findings tables / PR comment / issue creation guidance — it does **NOT** authorize skipping the Wiki ingest pipeline. Even when called from `/rite:pr:iterate` ステップ 7 (レビュー/修正ループ) with `[review:mergeable]`, this section MUST execute (subject only to the configuration-based skip in Step 1 below). Skipping silently — for "context efficiency", "the orchestrator already wrote a completion report", or any other reason — would defeat the experiential-knowledge capture contract that this section enforces.
 
 **Condition**: Execute only when `wiki.enabled: true` AND `wiki.auto_ingest: true` in `rite-config.yml`. Configuration-based skip is the **only** legitimate skip path — it MUST emit a `WIKI_INGEST_SKIPPED=1` status line and `wiki_ingest_skipped` sentinel so the caller can detect and report (see Phase 6.5.W.3 below).
 
@@ -4369,7 +4369,7 @@ trap - EXIT INT TERM HUP
 
 **Non-blocking**: failures of this block do not halt the review workflow. `wiki-ingest-commit.sh` restores raw source files to the dev branch working tree on failure via its cleanup trap, so the next invocation can retry them.
 
-**Position rationale**: this block sits after the review-fix loop has exited (the caller `/rite:issue:start` only enters Phase 6.5.W on `[review:mergeable]` or standalone execution). Raw sources written mid-loop would reflect unsettled review state, so the placement is intentional.
+**Position rationale**: this block sits after the review-fix loop has exited (the caller `/rite:pr:iterate` only enters Phase 6.5.W on `[review:mergeable]` or standalone execution). Raw sources written mid-loop would reflect unsettled review state, so the placement is intentional.
 
 **Responsibility boundary**: `wiki-ingest-trigger.sh` writes a raw source file into the dev branch working tree; `wiki-ingest-commit.sh` moves that file onto the `wiki` branch and commits it. Neither involves LLM work. The subsequent LLM-driven page integration is the exclusive responsibility of `/rite:wiki:ingest`, invoked at a later, independent time.
 
@@ -4390,7 +4390,7 @@ Claude determines the invocation source from the conversation context:
 
 ---
 
-**When invoked from within the `/rite:issue:start` loop:**
+**When invoked from within the `/rite:pr:iterate` loop:**
 
 **Step 1: Process recommendation-based Issue candidates (Phase 7)**
 
@@ -4408,7 +4408,7 @@ Before outputting the result pattern, execute Phase 7.1-7.4 to process recommend
 | **Merge OK** (0 findings) | `[review:mergeable]` |
 | **Requires fixes** (findings > 0) | `[review:fix-needed:{total_findings}]` |
 
-**Note**: Within the loop, `/rite:pr:review` only outputs results via patterns. Subsequent processing (invoking `/rite:pr:fix`, confirming `/rite:pr:ready` execution, etc.) is determined and executed by `/rite:issue:start` ステップ 7 (レビュー/修正ループ).
+**Note**: Within the loop, `/rite:pr:review` only outputs results via patterns. Subsequent processing (invoking `/rite:pr:fix`, confirming `/rite:pr:ready` execution, etc.) is determined and executed by `/rite:pr:iterate` ステップ 7 (レビュー/修正ループ).
 
 ---
 
@@ -4809,12 +4809,12 @@ Based on the Phase 6 review results, output the corresponding machine-readable p
 
 **Fact-check suffix**: When fact-check was executed (external claims > 0), append the fact-check summary to the E2E output line: `| fact-check: {v}✅ {c}❌ {u}⚠️`. `{total_findings}` is the post-fact-check count (CONTRADICTED and UNVERIFIED:ソース未確認 excluded). See [E2E Output Minimization](#e2e-output-minimization) for the full format.
 
-**⚠️ aggregate label 禁止**: Phase 8.1 の result line および E2E output line に **「推奨 N 件」「follow-up 候補 N 件」のような件数のみの aggregate label を含めてはならない**。推奨事項は Phase 5.4 推奨事項テーブルで各 item の classification (actionable / design_confirmation / boundary) を明示する形でのみ表示し、result line / E2E output には件数集計を出力しない。aggregate label を含めると Phase 7.7 post-condition gate に該当する記述として block 対象になる可能性がある。完了報告での disposition 表示は caller (`/rite:issue:start` ステップ 8.5 完了レポート) の責務。
+**⚠️ aggregate label 禁止**: Phase 8.1 の result line および E2E output line に **「推奨 N 件」「follow-up 候補 N 件」のような件数のみの aggregate label を含めてはならない**。推奨事項は Phase 5.4 推奨事項テーブルで各 item の classification (actionable / design_confirmation / boundary) を明示する形でのみ表示し、result line / E2E output には件数集計を出力しない。aggregate label を含めると Phase 7.7 post-condition gate に該当する記述として block 対象になる可能性がある。完了報告での disposition 表示は caller (`/rite:pr:iterate` ステップ 8.5 完了レポート) の責務。
 
 **Important**:
 - **[READ-ONLY RULE]**: `Edit`/`Write` ツールでプロジェクトのソースファイルを修正してはなりません。`Bash` で working tree / index / ref を変更する git コマンド（`git checkout` / `git reset` / `git add` / `git stash` / `git restore` / `git rebase` / `git commit` / `git push` 等）も **禁止** です。許可される read-only git コマンドの完全一覧は `plugins/rite/agents/_reviewer-base.md` の `## READ-ONLY Enforcement` を single source of truth として参照してください。指摘がある場合は `[review:fix-needed:{n}]` を出力し、修正は `/rite:pr:fix` に委譲してください
 - Do **NOT** invoke `rite:pr:fix` or `rite:pr:ready` via the Skill tool
-- Return control to the caller (`/rite:issue:start`)
+- Return control to the caller (`/rite:pr:iterate`)
 - The caller determines the next action based on this output pattern
 - The prohibited actions defined in Phase 5.3.7 "Prohibition of Independent Judgment After Assessment" also apply here
 

@@ -155,7 +155,7 @@ fi
 # Pattern 4: Reviewer subagent running state-mutating git commands.
 # Scope: only when IS_SUBAGENT=1 (transcript_path contains "/subagents/").
 # Main-session git operations (branch switch, commit, etc. performed by
-# /rite:issue:start → implement.md Phase 5.1) are NOT affected because IS_SUBAGENT=0 there.
+# /rite:pr:open → implement.md Phase 5.1) are NOT affected because IS_SUBAGENT=0 there.
 #
 # Allowed read-only git commands (NOT matched below):
 #   - git diff / git log / git show / git blame / git status / git ls-files /

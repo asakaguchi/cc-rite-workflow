@@ -344,7 +344,7 @@ gh issue view {issue_number} --json body --jq '.body' > "$tmpfile_read"
 # Validate retrieval result
 if [ ! -s "$tmpfile_read" ]; then
   echo "ERROR: Failed to retrieve Issue body" >&2
-  exit 1  # May be overridden by the calling workflow (start.md etc.)
+  exit 1  # May be overridden by the calling workflow (pr/open.md / pr/iterate.md 等)
 fi
 
 # Output mktemp paths for use in subsequent Read/Write tool calls

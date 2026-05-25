@@ -10,7 +10,7 @@ description: PR を Ready for review に変更
 
 Change PR to Ready for review and update the related Issue's Status
 
-> **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[ready:completed]` or `[ready:error]`) and **returns control to the caller** (`/rite:issue:start`). The caller determines the next action based on this output pattern.
+> **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[ready:completed]` or `[ready:error]`) and **returns control to the caller** (orchestrator — caller-name agnostic, e.g. `sprint/execute.md` 等). The caller determines the next action based on this output pattern.
 
 ---
 
@@ -34,7 +34,7 @@ When this command is executed, run the following phases in order.
 
 ## Phase 0: Load Work Memory (End-to-End Flow Only)
 
-> **This phase is only executed within the `/rite:issue:start` end-to-end flow. Skip when running standalone.**
+> **This phase is only executed within an orchestrator's end-to-end flow (e.g. `sprint/execute.md` 経由). Skip when running standalone.**
 
 > **Warning**: Work memory is published as Issue comments. In public repositories, third parties can view it. Do not record sensitive information (credentials, personal data, internal URLs, etc.) in work memory.
 
@@ -123,7 +123,7 @@ case "$bang_rc" in
 esac
 ```
 
-> **On exit 1 from this bash block**: The bash block exits before any `pr/ready.md` result pattern (`[ready:completed]` / `[ready:error]`) is emitted, so the orchestrator (`/rite:issue:start` ステップ 8) treats this as a missing-result-pattern Skill invocation — start.md の default 経路は `WARNING` を stderr に出力し、AskUserQuestion で「再試行 / 強制続行 / 中止」を提示する — **NOT** a `[ready:error]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
+> **On exit 1 from this bash block**: The bash block exits before any `pr/ready.md` result pattern (`[ready:completed]` / `[ready:error]`) is emitted, so the orchestrator treats this as a missing-result-pattern Skill invocation — default 経路は `WARNING` を stderr に出力し、AskUserQuestion で「再試行 / 強制続行 / 中止」を提示する — **NOT** a `[ready:error]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
 
 ### 1.1 Check Arguments
 
@@ -198,7 +198,7 @@ End processing.
 
 ### 2.1 Confirm with User (Standalone Path)
 
-> **Skip this confirmation when invoked from the main end-to-end flow path**: the orchestrator (`start.md` ステップ 8) has already confirmed the Ready transition with the user, so a second confirmation is duplicate (per [Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md) — fourth of the five self-questions: "Is this re-confirming an already-approved decision? → eliminate duplicates"). This sub-skill reads the flow state `.phase` and `.active`, and skips the confirmation when `.phase` matches one of the post-review / post-fix transition phases — either the legacy `phase5_post_review` / `phase5_post_fix` (no current writer — these values only persist as residue in pre-v3 state files; the whitelist still accepts them for resume-from-old-state compatibility) or the flat `review` / `fix` (current writers: `start.md` ステップ 7.1 / 7.2 before invoking the sub-skill, plus the sub-skills themselves — `pr/review.md` Phase 8.0 / `pr/fix.md` Phase 8.1) — AND `.active` is `true` (the AND condition closes the same-session interruption gap — see the next paragraph for details).
+> **Skip this confirmation when invoked from the main end-to-end flow path**: the orchestrator has already confirmed the Ready transition with the user, so a second confirmation is duplicate (per [Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md) — fourth of the five self-questions: "Is this re-confirming an already-approved decision? → eliminate duplicates"). This sub-skill reads the flow state `.phase` and `.active`, and skips the confirmation when `.phase` matches one of the post-review / post-fix transition phases — either the legacy `phase5_post_review` / `phase5_post_fix` (no current writer — these values only persist as residue in pre-v3 state files; the whitelist still accepts them for resume-from-old-state compatibility) or the flat `review` / `fix` (current writers: `pr/iterate.md` review/fix sides, plus the sub-skills themselves — `pr/review.md` Phase 8.0 / `pr/fix.md` Phase 8.1) — AND `.active` is `true` (the AND condition closes the same-session interruption gap — see the next paragraph for details).
 >
 > **Side paths fall back fail-safe to the standalone path (legacy behavior)**: when this sub-skill is reached via any non-main path (e.g., via `/rite:resume`, a standalone re-invocation after an in-session e2e interruption, or an unexpected `.phase` value), or when the flow state is not active (`active=false`), the `else` branch sets `in_e2e_flow=false` and the confirmation is shown. Erring on the side of "silent confirm" rather than "silent skip" preserves UX safety. Same-session interruption + standalone re-invocation is also covered by the bash AND condition (`active = "true"`): `flow-state.sh` cross-session guard classifies the legacy file as `same` (`legacy.session_id == current_sid`), so the helper returns the legacy file's stored value rather than the default. The bash test `[ "$active" = "true" ]` then rejects the legacy file because its `active` field is `false` once the e2e flow stopped.
 >
@@ -237,7 +237,7 @@ fi
 # e2e stop is the rejecting condition).
 # Both legacy `phase5_post_review` / `phase5_post_fix` (no current writer — only
 # residual in pre-v3 state files; accepted for resume-from-old-state compat) and
-# flat `review` / `fix` (written by the orchestrator `start.md` ステップ 7.1 / 7.2
+# flat `review` / `fix` (written by the orchestrator `pr/iterate.md` review/fix sides
 # before sub-skill invocation, and by the sub-skills `pr/review.md` Phase 8.0 /
 # `pr/fix.md` Phase 8.1) must be accepted — the legacy names are retained in the
 # whitelist solely for backward-compatible resume from pre-v3 state files.
@@ -301,13 +301,13 @@ Proceed to the next phase.
 2. GitHub Web UI から直接変更を試す
 ```
 
-**In e2e flow**: If flow state file exists, update the state file and output `[ready:error]` before ending to signal the failure to the caller (`start.md` ステップ 8). Use the dedicated `ready_error` flat phase so `/rite:resume` routes back to ステップ 8 (Ready & 完結) for retry — writing `phase=pr` would route resume to ステップ 6 (PR creation) and re-invoke `/rite:pr:create` against the already-existing PR.
+**In e2e flow**: If flow state file exists, update the state file and output `[ready:error]` before ending to signal the failure to the caller (orchestrator). Use the dedicated `ready_error` flat phase so `/rite:resume` routes back to `/rite:pr:ready` for retry — writing `phase=pr` would route resume to `/rite:pr:open` ステップ 6 (PR creation) and re-invoke `/rite:pr:create` against the already-existing PR.
 
 ```bash
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "ready_error" \
   --active true \
-  --next "rite:pr:ready failed during Ready transition. Ask user: retry / skip to ステップ 8.5 (完了レポート) / terminate." \
+  --next "rite:pr:ready failed during Ready transition. Ask user: retry / abort (orchestrator 経由なら caller に制御を戻す / standalone なら手動再実行)." \
   --if-exists
 ```
 
@@ -394,7 +394,7 @@ fi
 
 ## Phase 4: Update Issue Status
 
-> **Note**: In the end-to-end flow (`/rite:issue:start`), `start.md` ステップ 8.3 also performs this Status update as defense-in-depth. This Phase 4 remains essential for standalone `/rite:pr:ready` execution.
+> **Note**: 新 4 コマンドアーキテクチャでは `pr/ready.md` が Projects Status In Review 更新の **唯一の writer**。本 Phase 4 は standalone / orchestrator (sprint flow 等) 両経路で必須。
 
 **Critical**: Do NOT skip this phase. After `gh pr ready` succeeds in Phase 3, this Status update MUST be executed before proceeding to Phase 5.
 
@@ -412,7 +412,7 @@ gh pr view {pr_number} --json body,headRefName
 
 ### 4.2 Update Status via Shared Script
 
-> **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `commands/issue/start.md` Phase 2.4 / 5.5.1 / 5.7.2 (Issue #496 / PR #531). Direct inline `gh api graphql` (Organization-aware) + `gh project item-edit` calls have been removed because the multi-stage inline pipeline produced silent skips when LLM attention was lost between substeps, leaving Issue Status at "In Progress" instead of advancing to "In Review" (Issue #658 — observed on #652 stuck at "In Progress" through subsequent cleanup).
+> **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `commands/pr/open.md` ステップ 2.4 / 後続 Projects Status callsite。Direct inline `gh api graphql` (Organization-aware) + `gh project item-edit` calls have been removed because the multi-stage inline pipeline produced silent skips when LLM attention was lost between substeps, leaving Issue Status at "In Progress" instead of advancing to "In Review" (Issue #658 — observed on #652 stuck at "In Progress" through subsequent cleanup).
 
 Skip Phase 4.2 if `github.projects.enabled: false` in `rite-config.yml` or if no related Issue was identified in Phase 4.1, and proceed to Phase 4.6. Otherwise, invoke the shared script to transition the Issue Status to **In Review**:
 
@@ -428,7 +428,7 @@ bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
   '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
 ```
 
-`auto_add: false` because by ready time the Issue is already registered in the Project (start.md Phase 2.4 auto-added it if missing). The script internally executes the GraphQL `projectItems` query → `gh project field-list` → `gh project item-edit` triple in a single fail-fast pipeline. The query uses GraphQL の `repository(owner:)` 形式 (User / Organization どちらの owner でも透過的に解決されるため、client-side type detection は不要)。旧 ready.md inline 経路は `user(login:)` を直接 query して Organization fallback を行う実装だったが、`repository(owner:)` への delegation でこの分岐自体が不要になった。
+`auto_add: false` because by ready time the Issue is already registered in the Project (`pr/open.md` ステップ 2.4 auto-added it if missing). The script internally executes the GraphQL `projectItems` query → `gh project field-list` → `gh project item-edit` triple in a single fail-fast pipeline. The query uses GraphQL の `repository(owner:)` 形式 (User / Organization どちらの owner でも透過的に解決されるため、client-side type detection は不要)。旧 ready.md inline 経路は `user(login:)` を直接 query して Organization fallback を行う実装だったが、`repository(owner:)` への delegation でこの分岐自体が不要になった。
 
 #### 4.2.1 Result Handling
 
@@ -478,13 +478,13 @@ Before outputting the result pattern (`[ready:completed]`) or skipping output, u
 
 | Result | Phase | Phase Detail | Next Action |
 |--------|-------|-------------|-------------|
-| `[ready:completed]` | `ready` | `Ready処理完了` | `rite:pr:ready completed. Proceed to start.md ステップ 8.3 (Projects Status In Review), then ステップ 8.4 (parent close check), then ステップ 8.5 (completion report). Do NOT stop.` |
+| `[ready:completed]` | `ready` | `Ready処理完了` | `rite:pr:ready completed. Standalone 起動の場合は次に /rite:pr:merge {pr_number} を実行。orchestrator (sprint flow 等) 経由なら caller に制御を戻す。Do NOT stop.` |
 
 ```bash
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "ready" \
   --active true \
-  --next "rite:pr:ready completed. Proceed to start.md ステップ 8.3 (Projects Status In Review), then ステップ 8.4 (parent close check), then ステップ 8.5 (completion report). Do NOT stop." \
+  --next "rite:pr:ready completed. Standalone 起動の場合は次に /rite:pr:merge {pr_number} を実行。orchestrator (sprint flow 等) 経由なら caller に制御を戻す。Do NOT stop." \
   --if-exists
 ```
 
@@ -496,7 +496,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 WM_SOURCE="ready" \
   WM_PHASE="ready" \
   WM_PHASE_DETAIL="Ready処理完了" \
-  WM_NEXT_ACTION="start.md ステップ 8.3 Status 更新 → 8.4 親 Issue 完結判定 → 8.5 完了レポートを実行" \
+  WM_NEXT_ACTION="Standalone なら /rite:pr:merge {pr_number} を実行。orchestrator 経由なら caller に制御を戻す (sprint flow 等)" \
   WM_BODY_TEXT="Post-ready phase sync." \
   WM_REQUIRE_FLOW_STATE="true" \
   WM_READ_FROM_FLOW_STATE="true" \
@@ -516,23 +516,23 @@ Determine the caller from the conversation context:
 
 | Condition | Result | Action |
 |------|---------|---------------------|
-| Called via Skill chain from `/rite:issue:start` | Within end-to-end flow | **Skip completion report** — return control to `start.md` (ステップ 8.5 handles the report) |
-| Called from `/rite:pr:review` | Within end-to-end flow | **Skip completion report** — return control to `start.md` (ステップ 8.5 handles the report) |
+| Called via Skill tool from any orchestrator (legacy `/rite:issue:start` / sprint flow / etc.) | Within end-to-end flow | **Skip completion report** — return control to caller (orchestrator handles the report) |
 | `/rite:pr:ready` executed standalone | Standalone complete | Output Phase 5.1.2 format |
+
+> **Note**: 新 4 コマンドアーキテクチャ (`/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge`) では `pr:ready` は self-contained command として user が直接 invoke するのが標準経路。e2e flow からの呼び出しは `commands/sprint/execute.md` (Sprint sequential 実行) 等で残るため、本表の "Within end-to-end flow" 行は legacy compatibility として保持する。
 
 **Detection method:**
 
 Check the conversation history and determine "within end-to-end flow" if any of the following apply:
 
-1. `/rite:issue:start` was executed in the conversation
-2. A `/rite:pr:review` -> `/rite:pr:ready` call chain is confirmed in the conversation
-3. `rite:pr:ready` was invoked via the Skill tool (not as a standalone user command)
+1. `rite:pr:ready` was invoked via the Skill tool (not as a standalone user command)
+2. A caller orchestrator (`commands/sprint/execute.md` 等) の Skill invocation marker が会話履歴に存在
 
 ### 5.1 Output the Completion Report
 
 #### 5.1.1 End-to-End Flow (Skip Completion Report, Output Signal)
 
-When called within the end-to-end flow (detected in Phase 5.0), **do NOT output any completion report**. The completion report is the responsibility of `start.md` ステップ 8.5 — outputting it here causes duplicate reports.
+When called within the end-to-end flow (detected in Phase 5.0), **do NOT output any completion report**. The completion report is the responsibility of the caller orchestrator (e.g. `sprint/execute.md` の sequential 実行末尾) — outputting it here causes duplicate reports.
 
 **Instead, output the following machine-readable signal** to indicate successful completion to the caller:
 
@@ -540,7 +540,7 @@ When called within the end-to-end flow (detected in Phase 5.0), **do NOT output 
 [ready:completed]
 ```
 
-This pattern is **mandatory** in e2e flow. It allows `start.md` ステップ 8 to detect that `rite:pr:ready` has completed successfully and immediately proceed to ステップ 8.3 (Status update), 8.4 (parent close check), and 8.5 (completion report). Without this signal, the caller may incorrectly interpret the lack of output as task completion and stop before ステップ 8.5.
+This pattern is **mandatory** in e2e flow. It allows the caller orchestrator (e.g. `sprint/execute.md`) to detect that `rite:pr:ready` has completed successfully and immediately proceed to caller-specific 完了処理 (sprint なら次 Issue の処理、独立 orchestrator なら completion report)。Without this signal, the caller may incorrectly interpret the lack of output as task completion.
 
 No template loading, no inline format, no completion table — only the `[ready:completed]` pattern.
 

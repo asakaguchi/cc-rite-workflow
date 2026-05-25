@@ -60,7 +60,7 @@ Display in the following format:
 ───────────────────────────────────────────────────────────────
 
 【次のアクション】
-- /rite:issue:start {number}  この Issue の作業を開始
+- /rite:pr:open {number}  この Issue の作業を開始
 - /rite:issue:close {number}  完了状態を確認
 ```
 
@@ -125,7 +125,7 @@ When Issues exist:
 
 【操作】
 - /rite:issue:list #{number}  詳細を表示
-- /rite:issue:start {number}  作業を開始
+- /rite:pr:open {number}  作業を開始
 - /rite:issue:create          新規 Issue を作成
 ```
 

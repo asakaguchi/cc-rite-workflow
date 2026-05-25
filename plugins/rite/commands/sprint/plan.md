@@ -244,7 +244,7 @@ Sprint 4 (2025-01-20 - 2025-02-02)
 
 次のアクション:
 - `/rite:sprint:current` でスプリント詳細を確認
-- `/rite:issue:start <番号>` で Issue の作業を開始
+- `/rite:pr:open <番号>` で Issue の作業を開始
 ```
 
 ---

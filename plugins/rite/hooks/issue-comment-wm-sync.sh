@@ -278,9 +278,9 @@ if [ "$MODE" = "init" ]; then
 - **開始**: ${TIMESTAMP}
 - **ブランチ**: ${BRANCH}
 - **最終更新**: ${TIMESTAMP}
-- **コマンド**: rite:issue:start
-- **フェーズ**: phase2
-- **フェーズ詳細**: ブランチ作成・準備
+- **コマンド**: /rite:pr:open
+- **フェーズ**: branch
+- **フェーズ詳細**: ブランチ作成完了
 
 ### 進捗サマリー
 

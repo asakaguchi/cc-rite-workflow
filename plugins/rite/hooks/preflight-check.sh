@@ -4,7 +4,7 @@
 # Only /rite:resume is allowed when blocked.
 #
 # Usage:
-#   plugins/rite/hooks/preflight-check.sh --command-id "/rite:issue:start" --cwd "$PWD"
+#   plugins/rite/hooks/preflight-check.sh --command-id "/rite:pr:open" --cwd "$PWD"
 #
 # Exit codes:
 #   0: Allowed (proceed with command)

@@ -141,10 +141,16 @@ review:
     enabled: true                      # Enable Fail-Fast First principle for reviewer recommendations (default: true)
     allow_skill_exceptions: true       # Respect skill-level fallback allowances (default: true)
     wiki_query_required: true          # Require Wiki check for project-specific fallback patterns before recommendation (default: true)
-  # Separate Issue Creation (#506): Always require user confirmation for separate-issue creation.
-  separate_issue_creation:
-    require_user_confirmation: true    # Require AskUserQuestion even in E2E flow (default: true). Strongly recommended.
-    report_pre_existing_issues: false  # Suppress Source C (pre-existing issue) reporting in reviewer output (default: false)
+  # DEPRECATED (#1136): separate_issue_creation keys are ignored.
+  # The "Automatic Separate Issue Creation" mechanism (fix.md Phase 4.3) and the
+  # [fix:issues-created:N] sentinel were removed entirely. Reviewers' recommendations
+  # are handled in-loop only (fix code / accept / reply); no automatic Issue creation
+  # happens from review output. Remove these keys from rite-config.yml — they no
+  # longer have any effect. The report_pre_existing_issues knob is kept only as a
+  # historical reference and is similarly ignored.
+  # separate_issue_creation:
+  #   require_user_confirmation: true
+  #   report_pre_existing_issues: false
 
 # Fix settings (#506)
 fix:
@@ -159,7 +165,7 @@ fix:
 iteration:
   enabled: false          # true to enable iteration features (default: false)
   field_name: "Sprint"    # Name of the iteration field in Projects (default: "Sprint")
-  auto_assign: true       # Auto-assign to current iteration on issue:start (default: true)
+  auto_assign: true       # Auto-assign to current iteration on /rite:pr:open (default: true)
   show_in_list: true      # Show iteration column in issue:list (default: true)
 
 # Verification gate settings
@@ -366,9 +372,9 @@ branch:
 ```
 
 This affects the following commands:
-- `/rite:issue:start`: Creates branches from `branch.base`
+- `/rite:pr:open`: Creates the feature branch from `branch.base`
 - `/rite:pr:create`: Sets `branch.base` as the PR target
-- `/rite:pr:cleanup`: Switches to `branch.base` after cleanup
+- `/rite:pr:cleanup`: Switches back to `branch.base` after cleanup
 - `/rite:lint`: Uses `origin/{branch.base}...HEAD` for diff detection (e.g., `origin/develop...HEAD`)
 
 **Recognized Patterns (Non-standard branches):**
@@ -402,7 +408,7 @@ These variables are used exclusively in `recognized_patterns` to match existing 
 - Internationalization: `i18n/zh-tw`
 - Hotfixes without Issues: `hotfix/20250109-critical-fix`
 
-When `/rite:issue:start` detects an existing branch matching these patterns (see Phase 2.2.1), it will offer to use the branch even though it doesn't contain an Issue number.
+When `/rite:pr:open` detects an existing branch matching these patterns (Step 2.2 existing branch check), it will offer to use the branch even though it doesn't contain an Issue number.
 
 **Pattern variables for `branch.pattern`:**
 
@@ -455,7 +461,7 @@ These variables are used in `branch.pattern` to generate new branch names:
 | Complexity == threshold | Analyze Issue body to estimate scope, then decide |
 | Complexity > threshold | Show decomposition proposal |
 
-When an Issue's complexity is below the threshold, `/rite:issue:start` will skip the decomposition confirmation and proceed directly to work. When the complexity equals the threshold, the Issue body is analyzed to estimate the scope of changes (number of files mentioned). This reduces unnecessary prompts for simple Issues while still prompting for complex ones.
+When an Issue's complexity is below the threshold, `/rite:issue:create` skips the decomposition proposal and the Issue is created as-is; `/rite:pr:open` then begins work without an intermediate confirmation. When the complexity equals the threshold, the Issue body is analyzed to estimate the scope of changes (number of files mentioned). This reduces unnecessary prompts for simple Issues while still prompting for complex ones.
 
 **Body analysis criteria:** When complexity equals the threshold, the Issue body is analyzed. If 1-2 files are mentioned, decomposition is skipped. If 3+ files are mentioned, decomposition proposal is shown.
 
@@ -497,8 +503,7 @@ issue:
 | `fail_fast_first.enabled` | boolean | `true` | Enable Fail-Fast First principle (#506). Reviewers must consider throw/raise propagation before recommending fallback code. **⚠️ Known limitation (#506)**: config scaffolding only — not yet wired. Setting this to `false` currently has no effect |
 | `fail_fast_first.allow_skill_exceptions` | boolean | `true` | Respect skill-level explicit fallback allowances (e.g., UI graceful degradation, stale-cache requirement) |
 | `fail_fast_first.wiki_query_required` | boolean | `true` | Require Wiki query (`/rite:wiki:query`) for project-specific fallback patterns before recommendation |
-| `separate_issue_creation.require_user_confirmation` | boolean | `true` | Require `AskUserQuestion` confirmation for separate-issue creation **even in E2E flow** (#506). **⚠️ Known limitation (#506)**: config scaffolding only — not yet wired. The "always confirm" behavior is hardcoded in `fix.md` Phase 4.3.3; setting this to `false` currently has no effect. Strongly recommended anyway once wired, to prevent the "escape hatch" misuse of separate issues |
-| `separate_issue_creation.report_pre_existing_issues` | boolean | `false` | Suppress Source C (pre-existing issue) reporting in reviewer output. Use `/rite:investigate` for pre-existing concerns instead |
+| ~~`separate_issue_creation.*`~~ | — | — | **DEPRECATED (#1136)**: removed entirely. `fix.md` Phase 4.3 ("Automatic Separate Issue Creation") was deleted along with the `[fix:issues-created:N]` sentinel. Reviewers' "別 Issue として作成" recommendations are now handled in-loop only (fix / accept / reply); no automatic Issue creation occurs from review output. Use `/rite:investigate` for pre-existing concerns that need a separate Issue, then file it manually via `/rite:issue:create`. Remove `separate_issue_creation:` from `rite-config.yml` — the keys have no effect |
 
 **Review-fix loop exit (v0.4.0 #557):**
 
@@ -577,7 +582,7 @@ Settings for Sprint/Iteration integration with GitHub Projects.
 |-------|------|---------|-------------|
 | `enabled` | boolean | `false` | Enable iteration features |
 | `field_name` | string | `"Sprint"` | Name of the iteration field in GitHub Projects |
-| `auto_assign` | boolean | `true` | Auto-assign Issues to current iteration on `/rite:issue:start` |
+| `auto_assign` | boolean | `true` | Auto-assign Issues to current iteration on `/rite:pr:open` |
 | `show_in_list` | boolean | `true` | Show iteration column in `/rite:issue:list` output |
 
 **Example:**
@@ -590,7 +595,7 @@ iteration:
   show_in_list: true
 ```
 
-When enabled, `/rite:issue:start` will automatically assign the Issue to the current active iteration. Use `/rite:sprint:list` to view iterations and `/rite:sprint:current` to see the current sprint details.
+When enabled, `/rite:pr:open` will automatically assign the Issue to the current active iteration when starting work. Use `/rite:sprint:list` to view iterations and `/rite:sprint:current` to see the current sprint details.
 
 ### verification
 
@@ -715,7 +720,7 @@ team:
 **How team execution works:**
 
 1. `/rite:sprint:team-execute` spawns multiple teammate agents
-2. Each teammate picks up an Issue from the Sprint and executes `/rite:issue:start`
+2. Each teammate picks up an Issue from the Sprint and executes the new 3-command chain (`/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:ready`); the previous `/rite:issue:start` orchestrator was retired in #1136
 3. Teammates work in parallel, each in their own worktree (if `parallel.mode` is `"worktree"`)
 4. After all PRs are created, reviews are run automatically if `auto_review` is `true`
 

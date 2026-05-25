@@ -142,10 +142,15 @@ review:
     enabled: true                      # レビュアー推奨に Fail-Fast First 原則を適用 (default: true)
     allow_skill_exceptions: true       # skill レベルでのフォールバック許可を尊重 (default: true)
     wiki_query_required: true          # 推奨前にプロジェクト固有のフォールバックパターンを Wiki で確認 (default: true)
-  # Separate Issue Creation (#506): 別 Issue 作成時は必ずユーザー確認を要求する
-  separate_issue_creation:
-    require_user_confirmation: true    # E2E フロー内でも AskUserQuestion を要求 (default: true)。強く推奨
-    report_pre_existing_issues: false  # レビュアー出力での Source C (既存 issue) 報告を抑止 (default: false)
+  # DEPRECATED (#1136): separate_issue_creation キーは無視される。
+  # 「Automatic Separate Issue Creation」機構 (fix.md Phase 4.3) と
+  # [fix:issues-created:N] sentinel は完全に削除された。レビュアーの推奨は
+  # ループ内で処理される (fix / accept / reply) のみで、review 出力からの
+  # 自動 Issue 作成は行われない。report_pre_existing_issues も同様に無視されるため、
+  # rite-config.yml から separate_issue_creation: ブロックを削除してよい。
+  # separate_issue_creation:
+  #   require_user_confirmation: true
+  #   report_pre_existing_issues: false
 
 # Fix 設定 (#506)
 fix:
@@ -160,7 +165,7 @@ fix:
 iteration:
   enabled: false          # true で iteration 機能を有効化 (default: false)
   field_name: "Sprint"    # Projects の iteration フィールド名 (default: "Sprint")
-  auto_assign: true       # issue:start 時に現在の iteration へ自動 assign (default: true)
+  auto_assign: true       # /rite:pr:open 時に現在の iteration へ自動 assign (default: true)
   show_in_list: true      # issue:list で iteration 列を表示 (default: true)
 
 # Verification gate 設定
@@ -367,7 +372,7 @@ branch:
 ```
 
 この設定は以下のコマンドに影響する:
-- `/rite:issue:start`: `branch.base` からブランチを作成
+- `/rite:pr:open`: `branch.base` からフィーチャーブランチを作成
 - `/rite:pr:create`: `branch.base` を PR のターゲットに設定
 - `/rite:pr:cleanup`: cleanup 後に `branch.base` に切り替え
 - `/rite:lint`: diff 検出に `origin/{branch.base}...HEAD` を使用 (例: `origin/develop...HEAD`)
@@ -403,7 +408,7 @@ branch:
 - 国際化: `i18n/zh-tw`
 - Issue を伴わない hotfix: `hotfix/20250109-critical-fix`
 
-`/rite:issue:start` がこれらのパターンに一致する既存ブランチを検出した場合 (Phase 2.2.1 参照)、Issue 番号を含まなくてもそのブランチを使う選択肢を提示する。
+`/rite:pr:open` がこれらのパターンに一致する既存ブランチを検出した場合 (Step 2.2 既存ブランチチェック参照)、Issue 番号を含まなくてもそのブランチを使う選択肢を提示する。
 
 **`branch.pattern` 用のパターン変数:**
 
@@ -456,7 +461,7 @@ branch:
 | Complexity == threshold | Issue body を解析してスコープを推定し、判定 |
 | Complexity > threshold | decomposition 提案を表示 |
 
-Issue の complexity がしきい値未満の場合、`/rite:issue:start` は decomposition 確認をスキップして直接作業に進む。complexity がしきい値と一致する場合、Issue body を解析して変更スコープ (言及されているファイル数) を推定して判定する。これにより単純な Issue で不要なプロンプトが減り、複雑な Issue では引き続きプロンプトが表示される。
+Issue の complexity がしきい値未満の場合、`/rite:issue:create` は decomposition 提案をスキップして Issue をそのまま作成し、後続の `/rite:pr:open` は確認なしで作業を開始する。complexity がしきい値と一致する場合、Issue body を解析して変更スコープ (言及されているファイル数) を推定して判定する。これにより単純な Issue で不要なプロンプトが減り、複雑な Issue では引き続きプロンプトが表示される。
 
 **Body 解析基準:** complexity がしきい値と一致する場合、Issue body を解析する。1〜2 ファイルが言及されていれば decomposition をスキップ、3 ファイル以上なら decomposition 提案を表示する。
 
@@ -498,8 +503,7 @@ issue:
 | `fail_fast_first.enabled` | boolean | `true` | Fail-Fast First 原則を有効化 (#506)。レビュアーは fallback コードを推奨する前に throw/raise の伝播を考慮する必要がある。**⚠️ Known limitation (#506)**: 設定スキャフォールドのみで、まだ wired されていない。`false` に設定しても現状効果がない |
 | `fail_fast_first.allow_skill_exceptions` | boolean | `true` | skill レベルで明示的に許可された fallback (UI graceful degradation, stale-cache 要件など) を尊重 |
 | `fail_fast_first.wiki_query_required` | boolean | `true` | 推奨前にプロジェクト固有の fallback パターンを Wiki query (`/rite:wiki:query`) で確認することを要求 |
-| `separate_issue_creation.require_user_confirmation` | boolean | `true` | 別 Issue 作成時には **E2E フロー内でも** `AskUserQuestion` 確認を要求 (#506)。**⚠️ Known limitation (#506)**: 設定スキャフォールドのみで、まだ wired されていない。"always confirm" の挙動は `fix.md` Phase 4.3.3 にハードコードされている。`false` に設定しても現状効果がない。wiring 後も、別 issue の "escape hatch" 誤用を防ぐため引き続き強く推奨 |
-| `separate_issue_creation.report_pre_existing_issues` | boolean | `false` | レビュアー出力での Source C (既存 issue) 報告を抑止。既存の懸念事項には代わりに `/rite:investigate` を使う |
+| ~~`separate_issue_creation.*`~~ | — | — | **DEPRECATED (#1136)**: 完全に削除済み。`fix.md` Phase 4.3 (「Automatic Separate Issue Creation」) と `[fix:issues-created:N]` sentinel を撤去した。レビュアーの「別 Issue として作成」推奨はループ内 (fix / accept / reply) のみで処理し、review 出力からの自動 Issue 作成は発生しない。事前存在の懸念事項は `/rite:investigate` で調査後、`/rite:issue:create` で手動起票する。`rite-config.yml` から `separate_issue_creation:` を削除して構わない (キーは効果を持たない) |
 
 **レビュー・フィックスループの終了 (v0.4.0 #557):**
 
@@ -578,7 +582,7 @@ GitHub Projects との Sprint / Iteration 連携設定。
 |-------|------|---------|-------------|
 | `enabled` | boolean | `false` | iteration 機能を有効化 |
 | `field_name` | string | `"Sprint"` | GitHub Projects 内の iteration フィールド名 |
-| `auto_assign` | boolean | `true` | `/rite:issue:start` 時に現在の iteration に Issue を自動 assign |
+| `auto_assign` | boolean | `true` | `/rite:pr:open` 時に現在の iteration に Issue を自動 assign |
 | `show_in_list` | boolean | `true` | `/rite:issue:list` 出力で iteration 列を表示 |
 
 **例:**
@@ -591,7 +595,7 @@ iteration:
   show_in_list: true
 ```
 
-有効化すると、`/rite:issue:start` は Issue を現在アクティブな iteration に自動 assign する。iteration の一覧表示は `/rite:sprint:list`、現在の sprint 詳細は `/rite:sprint:current` を使う。
+有効化すると、`/rite:pr:open` は作業開始時に Issue を現在アクティブな iteration に自動 assign する。iteration の一覧表示は `/rite:sprint:list`、現在の sprint 詳細は `/rite:sprint:current` を使う。
 
 ### verification
 
@@ -716,7 +720,7 @@ team:
 **チーム実行の動作:**
 
 1. `/rite:sprint:team-execute` が複数の teammate agent を spawn する
-2. 各 teammate は Sprint から Issue を 1 つピックアップして `/rite:issue:start` を実行
+2. 各 teammate は Sprint から Issue を 1 つピックアップし、新 3 コマンド合成 (`/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:ready`) を順次実行する (#1136 で旧 `/rite:issue:start` orchestrator は廃止)
 3. teammate は並列で作業する (`parallel.mode` が `"worktree"` の場合はそれぞれ独立した worktree で)
 4. すべての PR が作成された後、`auto_review` が `true` ならレビューが自動実行される
 

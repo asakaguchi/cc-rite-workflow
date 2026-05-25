@@ -142,13 +142,32 @@ See [references/phase-mapping.md](./references/phase-mapping.md) for phase list.
 
 See [references/work-memory-format.md](./references/work-memory-format.md) for work memory format.
 
-## Sub-skill Return — Flat Workflow
+## Sub-skill Return — 4 Command Architecture (Issue #1136)
 
-`/rite:issue:start` / `/rite:issue:create` は **flat single-file workflow** に統合されている。Phase 5 を 3 sub-skill (`start-execute` / `start-publish` / `start-finalize`) に分割していた構造、および対応する HTML-commented sentinel ベースの routing は撤去済み。
+`/rite:issue:start` (廃止済み、Issue #1136) は **4 つの単機能コマンド** に分解された:
 
-LLM が途中で停止した場合の正規復帰経路は `/rite:resume` (`commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) の phase→step 表に従う)。implicit-stop 対策の hook 群 (`auto-fire-step0.sh` / `stop-create-interview-block.sh` / `verify-terminal-output.sh`) も撤去済み。
+| コマンド | 責務 |
+|---|---|
+| `/rite:pr:open <issue>` | Issue → branch → 実装 → lint → draft PR (Step 0 Resume Dispatch 含む) |
+| `/rite:pr:iterate <pr>` | review ↔ fix を `[review:mergeable]` まで無限ループ (cycle counter なし、abort は Ctrl+C のみ) |
+| `/rite:pr:ready <pr>` | Ready 化 + Projects Status + 親判定 + 完了レポート |
+| `/rite:pr:merge <pr>` | `gh pr merge --squash` を叩くだけ (cleanup は分離) |
 
-flat workflow から呼び出される sub-skill は `rite:lint` / `rite:pr:create` / `rite:pr:review` / `rite:pr:fix` / `rite:pr:ready` のみで、各々が 1 種類の sentinel pattern (`[lint:*]` / `[pr:created:N]` / `[review:*]` / `[fix:*]` / `[ready:completed]`) を emit する。orchestrator はその pattern を直接 grep で routing する。
+`/rite:issue:create` は引き続き flat single-file workflow を維持。マージ後の cleanup は `/rite:pr:cleanup` (既存) を別途実行する。
+
+LLM が途中で停止した場合の正規復帰経路は `/rite:resume` で、`commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) の phase→新 4 コマンド routing 表に従う。implicit-stop 対策の hook 群 (`auto-fire-step0.sh` / `stop-create-interview-block.sh` / `verify-terminal-output.sh`) は撤去済み。
+
+各コマンドから invoke される sub-skill は `rite:lint` / `rite:issue:implement` / `rite:pr:create` / `rite:pr:review` / `rite:pr:fix` で、各々が 1 種類の sentinel pattern を emit する:
+
+| sub-skill | sentinel |
+|---|---|
+| `rite:lint` | `[lint:success]` / `[lint:skipped]` / `[lint:error]` / `[lint:aborted]` |
+| `rite:pr:create` | `[pr:created:N]` / `[pr:create-failed]` |
+| `rite:pr:review` | `[review:mergeable]` / `[review:fix-needed:N]` |
+| `rite:pr:fix` | `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:replied-only]` / `[fix:error]` |
+| `rite:pr:merge` (new) | `[merge:completed]` / `[merge:not-ready]` / `[merge:error]` |
+
+orchestrator (`pr:open` / `pr:iterate` / `pr:merge`) はその pattern を grep で routing する。
 
 過去の defense-in-depth model (Layer 1/3/4) と移行マップは [references/sub-skill-return-protocol.md](./references/sub-skill-return-protocol.md) (retirement note) を参照。
 
@@ -195,7 +214,7 @@ All `gh` commands that accept `--body` or `--comment` parameters **MUST** use sa
 
 ## Workflow Failure Surfacing
 
-When a step of `/rite:issue:start` fails or is skipped (Skill load failure, hook abnormal exit, Wiki ingest skip/failure, etc.), the affected skill or hook emits a plain `WARNING` / `ERROR` line to **stderr**. The orchestrator surfaces it in the conversation context, and the user re-runs the affected step via `/rite:resume`. Failures are visible but not auto-registered as Issues; the user decides whether to file one.
+When a step of `/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge` fails or is skipped (Skill load failure, hook abnormal exit, Wiki ingest skip/failure, etc.), the affected skill or hook emits a plain `WARNING` / `ERROR` line to **stderr**. The orchestrator surfaces it in the conversation context, and the user re-runs the affected step via `/rite:resume`. Failures are visible but not auto-registered as Issues; the user decides whether to file one.
 
 > The earlier auto-registration mechanism (`workflow-incident-emit.sh` sentinel + `/rite:issue:start` detection + `workflow_incident:` config key) was removed in PR 2b (#1088) in favor of this single-layer plain-stderr design. See `docs/SPEC.md` "Workflow Failure Surfacing" for details.
 

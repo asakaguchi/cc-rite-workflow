@@ -3079,8 +3079,13 @@ context 消費という最悪結果になる。修正前の影響範囲確認で
 > Phase 3.1.1 (Pre-Commit Drift Lint Gate) は **構造的 drift** (retained-flag /
 > reason-table / if-wrap / anchor / eval-table / schema-version) のみを catch する
 > 設計で、コメント原則違反 (`why_over_what` / `no_journal_comment` /
-> `no_line_or_cycle_reference`) は検出しない。コメント原則違反については本 Phase 2.3 が
-> **唯一の declarative gate** であり、skip 不可。
+> `no_line_or_cycle_reference`) は検出しない。**Apply 時点** におけるコメント原則違反の
+> declarative gate としては本 Phase 2.3 が唯一であり、skip 不可。
+>
+> 別位相の gate との関係: review 時点では `_reviewer-base.md` Finding Gate と
+> `tech-writer.md` Detection Checklist が独立した declarative gate として機能するが、
+> これらは reviewer 側で発火する post-hoc 検出経路で、本 Phase 2.3 の Apply 時点 gate とは
+> 位相 (Apply 時点 / review 時点) が異なる。両者は独立に動作し、本 Phase は前者のみを担当する。
 
 Present the proposed fix and apply with Edit tool after confirmation:
 

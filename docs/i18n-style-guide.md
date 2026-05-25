@@ -22,7 +22,7 @@
 | `review-fix loop` | 「レビュー・フィックスループ」 | 一語のみ片仮名化可 (慣用) |
 | GitHub Projects フィールド名 (`Status`, `Todo`, `In Progress`, `In Review`, `Done`, `Iteration` 等) | 「Status を In Progress に更新」 | GitHub UI と一致させる |
 | `rite-config.yml` キー名 (`branch.base`, `github.projects.enabled` 等) | 「`branch.base` を `develop` に設定」 | YAML キーは原文ママ |
-| コマンド名 (`/rite:issue:start`, `gh issue view` 等) | 「`/rite:issue:start` を実行」 | コマンドは原文ママ |
+| コマンド名 (`/rite:pr:open`, `gh issue view` 等) | 「`/rite:pr:open` を実行」 | コマンドは原文ママ |
 
 > **Note**: 上記以外の英語固有概念 (例: `worktree`, `hook`, `sentinel`, `marker`) も、原文の意味を保つ必要がある場合は英語のまま使用してよい。
 

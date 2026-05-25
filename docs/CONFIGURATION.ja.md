@@ -17,9 +17,15 @@
 # Claude Code Rite Workflow 設定ファイル
 schema_version: 2
 
-# プロジェクト設定
-project:
-  type: webapp  # generic | webapp | library | cli | documentation
+# DEPRECATED (#1118): project.type プリセット機能は完全に削除されました。
+# `generic` / `webapp` / `library` / `cli` / `documentation` のプリセットと
+# `templates/project-types/*.yml` は #1118 で削除済。プロジェクト固有設定は
+# 個別キー (`branch.pattern`, `commands.*`, `iteration.*` 等) を YAML で
+# 直接指定する方式に統一されました。
+# rite-config.yml から `project:` ブロックを削除して構わない (キーは効果を持たない)。
+# project:
+#   type: webapp
+
 
 # GitHub Projects 連携
 github:
@@ -252,11 +258,11 @@ language: auto  # auto | ja | en
 
 ## 設定セクション
 
-### project
+### ~~project~~ (DEPRECATED in #1118)
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `type` | string | `generic` | プロジェクトタイプ: `generic`, `webapp`, `library`, `cli`, `documentation` |
+| ~~`project.type`~~ | — | — | **DEPRECATED (#1118)**: 完全に削除済み。`generic` / `webapp` / `library` / `cli` / `documentation` のプリセットと `templates/project-types/*.yml` は #1118 で削除済。プロジェクト固有設定は個別キー (`branch.pattern`, `commands.*`, `iteration.*` 等) を YAML で直接指定する方式に統一された。`rite-config.yml` から `project:` ブロックを削除して構わない (キーは効果を持たない) |
 
 ### github.projects
 
@@ -862,37 +868,36 @@ wiki:
 
 ```yaml
 schema_version: 2
-
-project:
-  type: webapp
 ```
 
-その他の設定は妥当なデフォルトもしくは自動検出が使われる。
+その他の設定は妥当なデフォルトもしくは自動検出が使われる。プロジェクト固有のカスタマイズは個別キー (`branch.pattern`, `commands.*`, `iteration.*` 等) を YAML で直接指定する。
 
-## プロジェクトタイプのプリセット
+## ~~プロジェクトタイプのプリセット~~ (DEPRECATED in #1118 — historical reference only)
 
-### webapp
+> **DEPRECATED (#1118)**: `project.type` プリセット機能 (`generic` / `webapp` / `library` / `cli` / `documentation`) は #1118 で廃止された。`templates/project-types/*.yml` のプリセットファイルと `templates/pr/{cli,library,webapp,documentation,fix-report}.md` の PR テンプレートも削除済。プロジェクト固有設定は個別キー直書きの方式に統一された。以下のサブセクションは、廃止前にサポートされていたプリセット挙動の歴史的リファレンスとして残置する。
+
+### ~~webapp~~ (retired)
 
 Web アプリケーション向けの最適化:
 - Frontend / Backend / Database 変更の追跡
 - PR テンプレートでのスクリーンショット要求
 - E2E テストチェックリスト
 
-### library
+### ~~library~~ (retired)
 
 OSS ライブラリ向けの最適化:
 - Breaking change の追跡
 - マイグレーションガイドのプロンプト
 - CHANGELOG リマインダー
 
-### cli
+### ~~cli~~ (retired)
 
 CLI ツール向けの最適化:
 - コマンド変更の追跡
 - 後方互換性チェック
 - Help / マニュアル更新のリマインダー
 
-### documentation
+### ~~documentation~~ (retired)
 
 ドキュメントサイト向けの最適化:
 - ビルド検証

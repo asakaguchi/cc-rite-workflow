@@ -16,9 +16,14 @@ The configuration file should be named `rite-config.yml` and placed in:
 # Claude Code Rite Workflow configuration file
 schema_version: 2
 
-# Project settings
-project:
-  type: webapp  # generic | webapp | library | cli | documentation
+# DEPRECATED (#1118): project.type preset feature was removed entirely.
+# The `generic` / `webapp` / `library` / `cli` / `documentation` presets and
+# `templates/project-types/*.yml` were dropped in #1118. Project-specific
+# configuration is now expressed via the per-key YAML structure directly
+# (e.g. configure `branch.pattern`, `commands.*`, `iteration.*` individually).
+# Remove `project:` from rite-config.yml — the key has no effect.
+# project:
+#   type: webapp
 
 # GitHub Projects integration
 github:
@@ -252,11 +257,11 @@ language: auto  # auto | ja | en
 
 ## Configuration Sections
 
-### project
+### ~~project~~ (DEPRECATED in #1118)
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `type` | string | `generic` | Project type: `generic`, `webapp`, `library`, `cli`, `documentation` |
+| ~~`project.type`~~ | — | — | **DEPRECATED (#1118)**: removed entirely. The `generic` / `webapp` / `library` / `cli` / `documentation` presets and `templates/project-types/*.yml` were dropped in #1118. Project-specific configuration is now expressed via the per-key YAML structure directly (`branch.pattern`, `commands.*`, `iteration.*` etc.). Remove `project:` from `rite-config.yml` — the key has no effect |
 
 ### github.projects
 
@@ -862,37 +867,36 @@ For most projects, a minimal configuration is sufficient:
 
 ```yaml
 schema_version: 2
-
-project:
-  type: webapp
 ```
 
-All other settings will use sensible defaults or auto-detection.
+All settings use sensible defaults or auto-detection. Override specific keys (`branch.pattern`, `commands.*`, `iteration.*` etc.) as needed.
 
-## Project Type Presets
+## ~~Project Type Presets~~ (DEPRECATED in #1118 — historical reference only)
 
-### webapp
+> **DEPRECATED (#1118)**: The `project.type` preset feature (`generic` / `webapp` / `library` / `cli` / `documentation`) was retired in #1118. The `templates/project-types/*.yml` preset files and `templates/pr/{cli,library,webapp,documentation,fix-report}.md` PR templates were removed. Project-specific configuration is now expressed via the per-key YAML structure directly. The sections below are kept as a historical reference of the previously-supported preset behaviors.
+
+### ~~webapp~~ (retired)
 
 Optimized for web applications:
 - Frontend/Backend/Database change tracking
 - Screenshot requests in PR template
 - E2E test checklist
 
-### library
+### ~~library~~ (retired)
 
 Optimized for OSS libraries:
 - Breaking change tracking
 - Migration guide prompts
 - CHANGELOG reminders
 
-### cli
+### ~~cli~~ (retired)
 
 Optimized for CLI tools:
 - Command change tracking
 - Backward compatibility checks
 - Help/manual update reminders
 
-### documentation
+### ~~documentation~~ (retired)
 
 Optimized for documentation sites:
 - Build verification

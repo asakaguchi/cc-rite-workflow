@@ -169,9 +169,11 @@ fix:
   fail_fast_response: true             # Enable Fail-Fast Response Principle in fix.md Phase 2 (default: true)
   # DEPRECATED (#1118): fix.severity_gating keys are ignored.
   # The severity_gating convergence strategy (#506) was removed entirely in #1118.
-  # Non-convergence is now handled via fix.md Phase 4.3.3 AskUserQuestion (retry /
-  # separate issue / withdraw). Remove these keys from rite-config.yml — they no
-  # longer have any effect.
+  # Non-convergence is now handled via 4 quality signals (see
+  # commands/pr/iterate.md ステップ 7 and commands/pr/references/fix-relaxation-rules.md);
+  # the previous Phase 4.3.3 AskUserQuestion (retry / separate issue / withdraw)
+  # mechanism was removed in #1136 along with the entire fix.md Phase 4.3.
+  # Remove these keys from rite-config.yml — they no longer have any effect.
   # severity_gating:
   #   enabled: false
 

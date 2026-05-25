@@ -171,8 +171,10 @@ fix:
   fail_fast_response: true             # fix.md Phase 2 で Fail-Fast Response Principle を有効化 (default: true)
   # DEPRECATED (#1118): fix.severity_gating キーは無視される。
   # severity_gating 収束戦略 (#506) は #1118 で完全に削除された。
-  # 非収束は fix.md Phase 4.3.3 の AskUserQuestion (retry / 別 issue / withdraw) で
-  # 処理される。rite-config.yml から fix.severity_gating: ブロックを削除してよい。
+  # 非収束は 4 つの品質シグナルで処理される (commands/pr/iterate.md ステップ 7 と
+  # commands/pr/references/fix-relaxation-rules.md 参照)。旧 Phase 4.3.3 AskUserQuestion
+  # (retry / 別 issue / withdraw) 機構は #1136 で fix.md Phase 4.3 全体と併せて削除済。
+  # rite-config.yml から fix.severity_gating: ブロックを削除してよい。
   # severity_gating:
   #   enabled: false
 

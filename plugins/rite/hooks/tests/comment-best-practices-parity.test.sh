@@ -20,6 +20,17 @@
 #   The SoT table lists token templates like `Fixed in commit {sha}`. We replace
 #   `{sha}` / `{N}` / `{issue}` placeholders with concrete probe strings (e.g.
 #   `abc1234`, `42`) and assert each probe matches at least one Heuristics regex.
+#
+# Maintenance Note:
+#   The heuristic_regexes and probes arrays below are HARDCODED for portability
+#   (no awk/sed parsing of the SoT document at runtime). When you update either:
+#   - §A 「禁止句リスト (SoT)」table in comment-best-practices.md, or
+#   - §C Detection Heuristics row 2 regex line
+#   you MUST manually update the corresponding array in this test. A drift between
+#   the SoT document and this test silently weakens the parity guarantee. The
+#   `\d` → `[0-9]` translation is semantic (portable GNU grep -E does not support
+#   PCRE `\d`), so regex line in the doc and this array are *semantically equivalent*
+#   rather than character-identical.
 
 set -o pipefail
 
@@ -32,7 +43,7 @@ if [ ! -f "$SOT_FILE" ]; then
 fi
 
 # Heuristics regex subgroups (Detection Heuristics row 2 — 原則 2 no_journal_comment)
-# 単一 source of truth: §C Detection Heuristics 表 row 2 の正規表現と完全一致させる
+# §C Detection Heuristics 表 row 2 の正規表現と semantic に等価 (`\d` → `[0-9]` 変換適用)
 heuristic_regexes=(
   'cycle\s*[0-9]+'
   'F-[0-9]+'

@@ -70,7 +70,7 @@ A guide for robust machine-readable pattern recognition in rite workflow Skills.
 | Pattern | Meaning | Value Type |
 |---------|---------|------------|
 | `[fix:pushed]` | Fixes pushed to PR | - |
-| `[fix:issues-created:{n}]` | Findings converted to Issues | Issue count (integer) |
+| `[fix:pushed-wm-stale]` | Fixes pushed but work memory update failed | - |
 | `[fix:replied-only]` | Only replied to findings (no code changes) | - |
 | `[fix:error]` | Fix operation failed | - |
 
@@ -221,8 +221,8 @@ def detect_pattern(skill_output, expected_patterns):
 1. **Exact canonical pattern**: `[review:mergeable]`
 2. **Extra whitespace**: `[ review : mergeable ]`
 3. **Case variation**: `[Review:Mergeable]`
-4. **With value**: `[fix:issues-created:3]`
-5. **Malformed**: `[fix:issues-created:]` (missing value)
+4. **With value**: `[review:fix-needed:3]`
+5. **Malformed**: `[review:fix-needed:]` (missing value)
 6. **Missing**: Output with no pattern at all
 7. **Fallback keywords**: Output with keyword but no pattern
 

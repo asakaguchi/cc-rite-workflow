@@ -4,9 +4,9 @@ description: Sprint 内の Todo Issue を連続実行
 
 # /rite:sprint:execute
 
-Orchestrate sequential execution of Todo Issues within a Sprint. Retrieves Issues by priority, runs `/rite:issue:start` for each, and generates a Sprint completion report.
+Orchestrate sequential execution of Todo Issues within a Sprint. Retrieves Issues by priority, runs the `/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:ready` flow for each, and generates a Sprint completion report.
 
-**Flow:** Identify Sprint → Retrieve Todo Issues → Priority sort + dependency analysis → Sequential `/rite:issue:start` execution → Completion report.
+**Flow:** Identify Sprint → Retrieve Todo Issues → Priority sort + dependency analysis → Sequential per-Issue execution (`pr:open` → `pr:iterate` → `pr:ready`) → Completion report.
 
 ---
 
@@ -305,7 +305,7 @@ jq -n \
 
 Where `{issue_numbers_json}` is a JSON array of Issue numbers in execution order (e.g., `[42, 45, 48]`).
 
-**Note**: `completed`, `skipped`, and `failed` arrays store objects with Issue details: `[{"issue": 42, "pr": 67}, ...]`. The `pr` field records the PR number created by `/rite:issue:start` for use in the Phase 4 completion report.
+**Note**: `completed`, `skipped`, and `failed` arrays store objects with Issue details: `[{"issue": 42, "pr": 67}, ...]`. The `pr` field records the PR number created by `/rite:pr:open` for use in the Phase 4 completion report.
 
 ### 3.1 Execution Loop
 
@@ -325,15 +325,29 @@ Priority: {priority} | Complexity: {complexity}
 
 #### 3.1.2 Execute Issue
 
-Invoke `/rite:issue:start` via the Skill tool:
+Invoke the new per-Issue flow as 3 sequential Skill tool calls:
 
 ```
-Skill ツール呼び出し:
-  skill: "rite:issue:start"
-  args: "{issue_number}"
+Skill ツール呼び出し (順次):
+  1. skill: "rite:pr:open"
+     args: "{issue_number}"
+     → Issue → branch → 実装 → lint → draft PR を作成。
+       [pr:created:{number}] sentinel から PR 番号を抽出して retain。
+
+  2. skill: "rite:pr:iterate"
+     args: "{pr_number}"
+     → review ↔ fix を mergeable まで loop。
+       [review:mergeable] or [fix:replied-only] で完了。
+
+  3. skill: "rite:pr:ready"
+     args: "{pr_number}"
+     → Ready for review に遷移、親判定 + 完了レポート出力。
+       [ready:completed] or [ready:error] を観測。
 ```
 
-**Wait for completion**. The sub-skill will run the full end-to-end flow (branch → implement → lint → PR → review-fix loop). After completion, capture the PR number from the `[pr:created:{number}]` pattern in the conversation context for use in Phase 3.1.3 and Phase 4.1.
+**Wait for completion**. The 3 sub-skills run the full end-to-end flow (branch → implement → lint → draft PR → review-fix loop → ready)。After completion, capture the PR number from the `[pr:created:{number}]` pattern in the conversation context for use in Phase 3.1.3 and Phase 4.1.
+
+**Sprint における review-fix loop の挙動**: `/rite:pr:iterate` は cycle counter / 上限を持たないため、reviewer が non-deterministic に振動した場合は Issue 単体で長時間ループする可能性がある。Sprint 全体の進行を止めないために、ユーザーは Phase 3.1.4 の Post-Issue Checkpoint で「Continue / Pause Sprint / Stop」を選択して中断できる。中断した Sprint は `.rite-sprint-state` から再開可能。
 
 #### 3.1.3 Update Sprint State
 
@@ -348,7 +362,7 @@ jq --argjson idx {current_index} \
    .rite-sprint-state > "$TMP_STATE" && mv "$TMP_STATE" .rite-sprint-state || rm -f "$TMP_STATE"
 ```
 
-**Note**: `{pr_number_or_null}` is the PR number captured from `/rite:issue:start` output, or `null` if no PR was created (e.g., on skip/failure).
+**Note**: `{pr_number_or_null}` is the PR number captured from `/rite:pr:open` output (`[pr:created:N]` sentinel), or `null` if no PR was created (e.g., on skip/failure).
 
 #### 3.1.4 Post-Issue Checkpoint
 
@@ -380,11 +394,11 @@ Use `AskUserQuestion`:
 | **Break** | Save state, display resume instructions, exit |
 | **Abort** | Proceed to Phase 4 (completion report) |
 
-**Context management note**: `/rite:issue:start` consumes significant context per Issue (branch → implement → lint → PR → review-fix loop). For most cases, "Continue (with /clear)" is the recommended option to ensure each Issue executes with a fresh context window.
+**Context management note**: The per-Issue flow (`/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:ready`) consumes significant context per Issue (branch → implement → lint → draft PR → review-fix loop → ready). For most cases, "Continue (with /clear)" is the recommended option to ensure each Issue executes with a fresh context window.
 
 #### 3.1.5 Error Handling
 
-If `/rite:issue:start` fails or is interrupted:
+If the per-Issue flow (`/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready`) fails or is interrupted:
 
 Use `AskUserQuestion`:
 
@@ -400,7 +414,7 @@ Issue #{number} の実行中にエラーが発生しました。
 | Option | Action |
 |--------|--------|
 | **Skip** | Mark as "skipped" in state, proceed to next |
-| **Retry** | Re-invoke `/rite:issue:start` for same Issue |
+| **Retry** | Re-invoke the per-Issue flow (`/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:ready`) for same Issue, or `/rite:resume` で適切な phase から復帰 |
 | **Abort** | Proceed to Phase 4 |
 
 ---

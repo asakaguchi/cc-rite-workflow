@@ -99,6 +99,31 @@ def get_user_id(email: str) -> int:
 2. その変更の動機を残したい場合は、commit message → PR description → (経験則化に値するなら) Wiki に書く
 3. コードに残してよいのは「未来の読み手が同じ罠にハマらないための WHY」(原則 1) のみ。「過去にハマった」記録ではなく「これから来る読み手への警告」として書く
 
+#### 禁止句リスト (SoT)
+
+本原則の機械的検出ガイドライン (Detection Heuristics) を補完する **禁止句リスト**。
+以下の語句は **in-source コメント** / **レビュアー返信** / **docstring** いずれの場面でも記述してはならない (commit message / PR description / Wiki への記載は許可)。
+
+| 言語 | 禁止句 |
+|------|--------|
+| 英語 | `Fixed in commit {sha}` / `Fixed in {sha}` / `Resolved in commit ...` |
+| 英語 | `See PR #{N}` / `See #{N}` / `Refs PR #{N}` |
+| 英語 | `Related to #{issue}` / `Closes #{issue}` / `Fixes #{issue}` |
+| 英語 | `In commit {sha}` / `Pushed as {sha}` |
+| 英語 | `verified-review cycle N` / `cycle N F-M` / `F-NN HIGH` 等の cycle / finding ID 参照 |
+| 日本語 | 「コミット {sha} で対応しました」「PR #{N} で対応」「#{N} で別途対応」 |
+| 日本語 | 「サイクル N で導入」「cycle N F-M で確立」等 |
+
+**適用範囲**:
+
+| 適用先 | 出典 |
+|--------|------|
+| in-source コメント (Edit/Write で生成するコード内コメント全般) | 本ドキュメント (SoT) |
+| `templates/review/reply.md` のレビュアー返信本文 | 本ドキュメントを参照 |
+| `commands/pr/fix.md` Phase 2.3 / 2.4 の修正生成時 | 本ドキュメントを参照 |
+
+**理由**: コメントに番号や履歴を書くと、後追いで読むレビュアーが GitHub の commit / PR / Issue ページを行き来する負担が増える。番号は将来の rename / squash で意味を失う。**「なぜそうしたか」(Why) が分かれば commit history は code から辿れる** ため、本文は Why に集中する。
+
 **Where to Apply**:
 
 - Phase 5.1 (Implementation): コード生成時にジャーナルコメントを生成しない

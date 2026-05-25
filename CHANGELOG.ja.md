@@ -41,9 +41,9 @@ Phase 番号取扱方針: エントリは機能名レベルで変更を記述し
 - **`hooks/tests/start-md-sentinel-coverage.test.sh`** (#1136、183 行) — `start.md` を caller orchestrator として前提とする旧 test。後続の `pr-cmd-sentinel-coverage.test.sh` で新 commands を対象に再構成予定
 - **`templates/review/comment.md`** (#1136、72 行) — orphan template (full grep で no active caller)、Why-only ポリシーの SoT は `templates/review/reply.md` に集約
 
-### 移行
+### 移行手順 (Migration guide)
 
-- 既存 work memory コメントの `コマンド: rite:issue:start` literal は新規 work memory では `コマンド: rite:pr:open` に変わるが、表示用のため読み取り側は破壊されない。silent compat。
+- 既存 work memory コメントの `コマンド: rite:issue:start` literal は新規 work memory では `コマンド: /rite:pr:open` に変わるが、表示用のため読み取り側は破壊されない。silent compat。
 - `/rite:issue:start <N>` を直接呼んでいた alias / スクリプトは `/rite:pr:open <N>` に置き換える必要がある。途中で止まっていた既存 flow-state は `/rite:resume` 経由で新 4 コマンドに routing される。
 - `rite-config.yml` の `review.separate_issue_creation.*` キーは無視される (廃止済み、削除推奨)。
 

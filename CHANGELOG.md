@@ -19,34 +19,34 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
 
 ### Changed
 
-- **`/rite:issue:start` 廃止と 4 コマンド分解** (#1136) — 「Issue → branch → 実装 → lint → PR → review → fix → ready → merge」を 1 つの巨大 orchestrator に詰め込んでいた `/rite:issue:start` (783 行) を、責務単位の 4 コマンドに分解:
-  - `/rite:pr:open <issue>` — 準備 → ブランチ → 計画 → 実装 (`rite:issue:implement` を invoke) → lint → draft PR (新規、約 290 行)
-  - `/rite:pr:iterate <pr>` — review ⇄ fix を `[review:mergeable]` または `[fix:replied-only]` まで無限ループ。cycle counter / N 回上限 / quality-signal escalation / ping-pong サーキットブレーカー は意図的に廃止。中断は Ctrl+C のみで効き、`/rite:resume` で復帰 (新規、約 115 行)
-  - `/rite:pr:merge <pr>` — `gh pr merge --squash --delete-branch=false` を叩くだけ。cleanup は分離 (新規、約 80 行)
-  - `/rite:pr:ready <pr>` は既存維持
-- **レビュー修正ポリシー 4 つを review/fix へ注入** (#1136):
-  - 実害基準による降格 — 既存 `auto_demote_low` の対象を「LOW + 実害なし MEDIUM (style/naming/typo/dead code/TODO)」に拡張、security/correctness/data-loss/regression/user-facing typo は降格対象外
-  - 全体俯瞰でデグレ防止 — `fix.md` Phase 2.2.A "Pre-Fix Impact Scan" を新設し、修正対象 symbol の caller / test / sibling / cross-file 参照を `git grep` で必ず列挙
-  - 別 Issue 化の完全廃止 — `fix.md` Phase 4.3 (Automatic Separate Issue Creation) 全削除、`[fix:issues-created:N]` sentinel 全廃、Phase 2.1 選択肢から「スキップ（後で対応）」削除 (残る選択肢は「コードを修正する / accept (認知のみ) / 説明・返信のみ」の 3 択)
-  - コメント Why-only ポリシー — `templates/review/reply.md` を SoT として新規作成、禁止句リスト (`Fixed in commit {sha}` / `See PR #{N}` / `Related to #{issue}` 等) を明示。`templates/review/comment.md` は誰からも参照されていない orphan のため削除
-- **`/rite:resume` の phase mapping を新 4 コマンドに分岐** — `init/branch/plan/implement/lint/pr` → `/rite:pr:open`、`review/fix` → `/rite:pr:iterate`、`ready/ready_error` → `/rite:pr:ready`、`cleanup/ingest` → `/rite:pr:cleanup`、`completed` → 完了通知
-- **Sprint sequential 実行も新 4 コマンド合成に置換** — `commands/sprint/execute.md` Phase 3.1.2 が `/rite:issue:start` 単独 invoke から `/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:ready` の順次 invoke に変更
-- 新規 sentinel: `[merge:completed]` / `[merge:not-ready]` / `[merge:error]` (`/rite:pr:merge` 専用)
+- **Decomposed `/rite:issue:start` into 4 single-responsibility commands** (#1136) — the previous 783-line orchestrator that bundled `Issue → branch → implement → lint → PR → review → fix → ready → merge` into a single command is replaced by four focused commands:
+  - `/rite:pr:open <issue>` — preparation → branch → plan → implement (invokes `rite:issue:implement`) → lint → draft PR (new, ~290 lines)
+  - `/rite:pr:iterate <pr>` — loops `review ⇄ fix` until `[review:mergeable]` or `[fix:replied-only]`. Cycle counter / N-iteration cap / quality-signal escalation / ping-pong circuit breaker are intentionally removed. Manual abort is via `Ctrl+C` followed by `/rite:resume` (new, ~115 lines)
+  - `/rite:pr:merge <pr>` — runs `gh pr merge --squash --delete-branch=false` and nothing else; cleanup is decoupled (new, ~80 lines)
+  - `/rite:pr:ready <pr>` — unchanged
+- **Injected four review/fix policies** (#1136):
+  - Practical impact demotion — extended `auto_demote_low` to cover `LOW` plus MEDIUM/LOW-MEDIUM findings whose category is style/naming/typo/dead code/TODO. security / correctness / data-loss / regression / user-facing typo are excluded from demotion
+  - Drift prevention via whole-codebase impact scan — added `fix.md` Phase 2.2.A "Pre-Fix Impact Scan" which mandates `git grep` enumeration of callers, tests, siblings, and cross-file references for the symbol being modified
+  - Separate-Issue creation fully removed — deleted `fix.md` Phase 4.3 ("Automatic Separate Issue Creation") entirely, retired the `[fix:issues-created:N]` sentinel across all consumers, and dropped the "skip (handle later)" option from Phase 2.1 (remaining options: "fix code / accept (acknowledge only) / reply only")
+  - Why-only reply policy — added `templates/review/reply.md` as the SoT, codifying a prohibited-phrase list (`Fixed in commit {sha}` / `See PR #{N}` / `Related to #{issue}` etc.). Deleted the orphan `templates/review/comment.md`
+- **Re-mapped `/rite:resume` phase routing to the new 4 commands** — `init/branch/plan/implement/lint/pr` → `/rite:pr:open`, `review/fix` → `/rite:pr:iterate`, `ready/ready_error` → `/rite:pr:ready`, `cleanup/ingest` → `/rite:pr:cleanup`, `completed` → completion notice
+- **Sprint sequential execution updated** — `commands/sprint/execute.md` Phase 3.1.2 now invokes the new triple `/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:ready` instead of the deprecated `/rite:issue:start`
+- New sentinels: `[merge:completed]` / `[merge:not-ready]` / `[merge:error]` (specific to `/rite:pr:merge`)
 
 ### Removed
 
-- **`commands/issue/start.md` を削除** (#1136、783 行) — 機能は `/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge` に分解済み
-- **`commands/issue/references/{flow-state-scaffolding,pre-condition-gate}.md`** (#1136) — `start.md` 専用 references で他に caller なし
-- **`commands/pr/fix.md` Phase 4.3 (Automatic Separate Issue Creation) 全削除** (#1136、約 386 行) — 「別 Issue 化は一切認めない」ポリシーの core 実装
-- **`[fix:issues-created:N]` sentinel を全 consumer から削除** (#1136) — `output-patterns.md` エントリ、Phase 8.1 output pattern 表、`--next` メッセージ、backup_file cleanup、re-review caller 説明、Example output から完全除去
-- **`hooks/tests/start-md-sentinel-coverage.test.sh`** (#1136、183 行) — `start.md` を caller orchestrator として前提とする旧 test。後続の `pr-cmd-sentinel-coverage.test.sh` で新 commands を対象に再構成予定
-- **`templates/review/comment.md`** (#1136、72 行) — orphan template (full grep で no active caller)、Why-only ポリシーの SoT は `templates/review/reply.md` に集約
+- **Deleted `commands/issue/start.md`** (#1136, 783 lines) — functionality is now decomposed across `/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge`
+- **Deleted `commands/issue/references/{flow-state-scaffolding,pre-condition-gate}.md`** (#1136) — these were `start.md`-only references with no other callers
+- **Deleted `commands/pr/fix.md` Phase 4.3 ("Automatic Separate Issue Creation")** (#1136, ~386 lines) — core implementation of the "no separate Issue" policy
+- **Retired the `[fix:issues-created:N]` sentinel across all consumers** (#1136) — removed from `output-patterns.md`, the Phase 8.1 output-pattern table, the `--next` message, backup_file cleanup, the re-review caller note, and the example output
+- **Deleted `hooks/tests/start-md-sentinel-coverage.test.sh`** (#1136, 183 lines) — the old test assumed `start.md` as the caller orchestrator. A replacement `pr-cmd-sentinel-coverage.test.sh` targeting the new commands is planned as follow-up
+- **Deleted `templates/review/comment.md`** (#1136, 72 lines) — an orphan template (no active caller in full grep); Why-only policy is now consolidated in `templates/review/reply.md`
 
-### Migration
+### Migration guide
 
-- 既存 work memory comment の `コマンド: rite:issue:start` literal は新規 work memory では `コマンド: rite:pr:open` に変わるが、表示用のため読み取り側は破壊されない。silent compat。
-- `/rite:issue:start <N>` を直接呼んでいた alias / scripts は `/rite:pr:open <N>` に置き換える必要がある。途中で止まっていた既存 flow-state は `/rite:resume` 経由で新 4 コマンドに routing される。
-- `rite-config.yml` の `review.separate_issue_creation.*` キーは無視される (廃止済み、削除推奨)。
+- The work memory comment literal `コマンド: rite:issue:start` becomes `コマンド: /rite:pr:open` in new work memories. The literal is display-only, so existing readers are not broken. Silent compat.
+- Aliases / scripts that invoke `/rite:issue:start <N>` directly must switch to `/rite:pr:open <N>`. Existing in-flight `flow-state` is routed to the new 4 commands via `/rite:resume`.
+- The `rite-config.yml` keys under `review.separate_issue_creation.*` are ignored (deprecated; removal recommended).
 
 ### Changed (pre-#1136 history — superseded by command split)
 

@@ -9,9 +9,9 @@ Claude Code Rite Workflow - Claude Code 用 Issue ドリブン開発ワークフ
 plugins/rite/.claude-plugin/       # プラグイン固有メタデータ（plugin.json）
 plugins/rite/
 ├── commands/         # スキルから呼び出される実行手順書（Markdown）
-│   ├── issue/        #   メイン (list, create, start, update, close, edit, recall, implement) +
-│   │                 #   references/ (create/start は flat workflow として単一 file 内に統合済)
-│   ├── pr/           #   メイン (create, ready, review, fix, cleanup) +
+│   ├── issue/        #   メイン (list, create, update, close, edit, recall, implement) +
+│   │                 #   references/ (create は flat workflow として単一 file 内に統合済)
+│   ├── pr/           #   メイン (open, iterate, merge, ready, create, review, fix, cleanup) +
 │   │                 #   references/ (fact-check, internal-consistency, fix-relaxation-rules,
 │   │                 #   assessment-rules, reviewer-fallbacks, bash-trap-patterns 等)
 │   ├── sprint/       #   Sprint 操作（list, current, plan, execute, team-execute）

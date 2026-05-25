@@ -66,7 +66,7 @@ Variables use the following formats:
 
 | Variable | Description | Source | Example |
 |----------|-------------|--------|---------|
-| `{command}` | Command being executed | Work memory `コマンド` field | `/rite:issue:start` |
+| `{command}` | Command being executed | Work memory `コマンド` field | `/rite:pr:open` |
 | `{phase}` | Work phase | Work memory `フェーズ` field | `実装作業中`, `品質検証` |
 | `{phase_detail}` | Phase detail | Work memory or command context | `PR 作成中` |
 | `{timestamp}` | Timestamp | ISO 8601 format | `2026-02-10T07:00:00Z` |

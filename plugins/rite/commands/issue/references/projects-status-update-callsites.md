@@ -1,6 +1,6 @@
 # Projects Status Update — Callsite Delegation SoT (flat workflow)
 
-> **Source of Truth**: 本ファイルは `/rite:issue:start` 内で `plugins/rite/scripts/projects-status-update.sh` を invoke する **3 callsite (ステップ 2.4 / 8.3 / 8.4) の bash literal SoT** である。`start.md` 本体の各 callsite は本ファイルへ semantic 参照する anchor stub のみ保持する。
+> **Source of Truth**: 本ファイルは `/rite:pr:open` 内で `plugins/rite/scripts/projects-status-update.sh` を invoke する **3 callsite (ステップ 2.4 / 8.3 / 8.4) の bash literal SoT** である。`start.md` 本体の各 callsite は本ファイルへ semantic 参照する anchor stub のみ保持する。
 >
 
 ## Common contract
@@ -66,7 +66,7 @@ The script is the single source of truth for Projects Status updates. See [proje
 
 ## Callsite 2 — ステップ 8.3 (Issue Status → In Review)
 
-**Owner**: `/rite:issue:start` (defense-in-depth — `rite:pr:ready` Phase 4 also attempts this, but may not execute reliably within e2e flow).
+**Owner**: `/rite:pr:open` (defense-in-depth — `rite:pr:ready` Phase 4 also attempts this, but may not execute reliably within e2e flow).
 
 **Note**: Delegates to `plugins/rite/scripts/projects-status-update.sh`. `ready.md` Phase 4.2 も同じく `projects-status-update.sh` delegate に統一済み。本 ステップ 8.3 は defense-in-depth の二重実行であり、ready.md 失敗時の補完として機能する。
 

@@ -1161,7 +1161,7 @@ rite workflow セットアップが完了しました
 ## 次のステップ
 1. /rite:issue:list で既存 Issue を確認
 2. /rite:issue:create で新規 Issue を作成
-3. /rite:issue:start <番号> で作業開始
+3. /rite:pr:open <番号> で作業開始
 
 <!-- Iteration が有効な場合のみ表示 -->
 ## スプリント管理（有効な場合）

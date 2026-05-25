@@ -62,7 +62,7 @@ Display the following diagram:
   /rite:issue:create (新規 Issue 作成)
         │                              Status: Todo
         ▼
-  /rite:issue:start <番号> (ブランチ作成)
+  /rite:pr:open <番号> (ブランチ作成)
         │                              Status: In Progress
         ▼
   ┌─────────────────────┐
@@ -120,7 +120,7 @@ Display the following list:
 【Issue 管理】
   /rite:issue:list      Issue 一覧を表示
   /rite:issue:create    新規 Issue を作成
-  /rite:issue:start     Issue の作業を開始（ブランチ作成）
+  /rite:pr:open     Issue の作業を開始（ブランチ作成）
   /rite:issue:update    作業メモリを更新
   /rite:issue:close     Issue の完了状態を確認
 
@@ -177,11 +177,11 @@ gh issue view {issue-number} --json title,body,state
   1. /rite:issue:list で既存 Issue を確認
   2. /rite:issue:create <説明> で新規 Issue を作成
      または
-     /rite:issue:start <番号> で既存 Issue の作業を開始
+     /rite:pr:open <番号> で既存 Issue の作業を開始
 
   【例】
   - /rite:issue:create ログイン機能を追加
-  - /rite:issue:start 42
+  - /rite:pr:open 42
 ```
 
 ---

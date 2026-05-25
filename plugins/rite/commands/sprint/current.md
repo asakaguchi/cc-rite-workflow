@@ -168,7 +168,7 @@ Status でグループ化:
 
 ```
 次のアクション:
-- `/rite:issue:start <番号>` で Issue の作業を開始
+- `/rite:pr:open <番号>` で Issue の作業を開始
 - `/rite:sprint:plan` で次スプリントの計画
 - `/rite:issue:list --sprint current` で詳細一覧
 ```

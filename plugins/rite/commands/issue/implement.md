@@ -519,7 +519,7 @@ Return to Phase 5.1 (implementation). Do NOT proceed to commit.
 
 **Re-execution limit**: Test re-execution follows the `safety.max_implementation_rounds` limit in `rite-config.yml`. When the limit is reached, display via `AskUserQuestion`: `テスト再実行の上限に達しました（{max_implementation_rounds}回）。続行しますか？ オプション: 継続する / 中断してユーザーに確認`
 
-**Note**: When called from the `/rite:issue:start` end-to-end flow, test results are retained in conversation context. The subsequent `/rite:lint` Phase 3.4 can skip duplicate test execution if tests were already run and passed in this phase.
+**Note**: When called from the `/rite:pr:open` end-to-end flow, test results are retained in conversation context. The subsequent `/rite:lint` Phase 3.4 can skip duplicate test execution if tests were already run and passed in this phase.
 
 ##### 5.1.0.6.1 Acceptance Criteria Check (Conditional)
 
@@ -594,7 +594,7 @@ From the implementation just completed, extract user-facing identifiers that may
 
 | Source | Examples |
 |--------|---------|
-| Renamed / added / removed commands | `/rite:issue:start`, slash-command names |
+| Renamed / added / removed commands | `/rite:pr:open`, slash-command names |
 | Renamed / added / removed config keys | `rite-config.yml` keys (`branch.base`, `wiki.enabled`) |
 | Renamed / added / removed file paths | Section file paths a user copies into their project |
 | Renamed / added / removed phase / workflow names | `start.md ステップ 7.2`, `review-fix loop` |

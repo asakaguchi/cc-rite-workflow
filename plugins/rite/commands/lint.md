@@ -12,7 +12,7 @@ description: 品質チェックを実行
 
 ## E2E Output Minimization
 
-When called from the `/rite:issue:start` end-to-end flow, minimize output to reduce context window consumption:
+When called from the `/rite:pr:open` end-to-end flow, minimize output to reduce context window consumption:
 
 | Phase | Standalone | E2E Flow |
 |-------|-----------|----------|
@@ -34,11 +34,11 @@ Execute the following phases in order when this command is invoked.
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
 
-This command has two invocation cases: standalone execution and being called from the `/rite:issue:start` end-to-end flow.
+This command has two invocation cases: standalone execution and being called from the `/rite:pr:open` end-to-end flow.
 
 | Caller | Output Pattern | Subsequent Action |
 |-----------|-------------|---------------|
-| `/rite:issue:start` (end-to-end flow) | Output (required) | `/rite:issue:start` calls `rite:pr:create` at ステップ 6 after consuming the lint result at ステップ 5.1 |
+| `/rite:pr:open` (end-to-end flow) | Output (required) | `/rite:pr:open` calls `rite:pr:create` at ステップ 6 after consuming the lint result at ステップ 5.1 |
 | Standalone execution | Output (required) | Display "next steps" guidance |
 
 **Determination method**: Claude determines the caller from conversation context:
@@ -56,7 +56,7 @@ This command has two invocation cases: standalone execution and being called fro
 - `[lint:error]` - lint errors detected
 - `[lint:aborted]` - user aborted
 
-> **Important (flow continuation responsibility)**: When executed within the end-to-end flow, **this command does NOT directly call `rite:pr:create`; it returns control to the caller `/rite:issue:start`**. `/rite:issue:start` calls `rite:pr:create` at ステップ 6 after consuming the lint result at ステップ 5.1 (checklist completion confirmation happens earlier at ステップ 4.4).
+> **Important (flow continuation responsibility)**: When executed within the end-to-end flow, **this command does NOT directly call `rite:pr:create`; it returns control to the caller `/rite:pr:open`**. `/rite:pr:open` calls `rite:pr:create` at ステップ 6 after consuming the lint result at ステップ 5.1 (checklist completion confirmation happens earlier at ステップ 4.4).
 
 ---
 
@@ -78,7 +78,7 @@ Determine the caller from conversation context:
 
 | Condition | Result | Action |
 |------|---------|------|
-| Conversation history contains rich context from `/rite:issue:start` | Within end-to-end flow | Work memory loading optional (information available in context) |
+| Conversation history contains rich context from `/rite:pr:open` | Within end-to-end flow | Work memory loading optional (information available in context) |
 | `/rite:lint` was executed standalone | Standalone execution | Can identify Issue from branch name |
 
 ### 0.2 Load Work Memory
@@ -233,7 +233,7 @@ lint コマンドを検出できませんでした
 
 | Choice | Subsequent Processing |
 |--------|----------|
-| **Skip and continue** | Record "lint skipped" in conversation context, skip Phase 2 onward, and complete normally. If called from `/rite:issue:start`, proceed to the next step (PR creation) |
+| **Skip and continue** | Record "lint skipped" in conversation context, skip Phase 2 onward, and complete normally. If called from `/rite:pr:open`, proceed to the next step (PR creation) |
 | **Specify command** | Follow up with `AskUserQuestion` to prompt for command input (see below), then execute Phase 2 onward with the entered command |
 | **Abort** | Abort processing and display guidance to "configure lint and run again" |
 
@@ -251,30 +251,30 @@ lint をスキップしました。
 1. 必要に応じて `/rite:pr:create` で PR 作成
 ```
 
-**When called from `/rite:issue:start`:**
+**When called from `/rite:pr:open`:**
 ```
 [lint:skipped]
 lint をスキップしました。
 理由: lint コマンド未検出
 
 ---
-🔄 **フロー継続**: 呼び出し元の `/rite:issue:start` が ステップ 6（PR 作成）を実行
+🔄 **フロー継続**: 呼び出し元の `/rite:pr:open` が ステップ 6（PR 作成）を実行
 ```
 
 > If `/rite:lint` continues to PR creation directly, it bypasses the checklist confirmation in the caller, potentially creating a PR with incomplete tasks.
-> **CRITICAL**: When called from `/rite:issue:start`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:issue:start` at ステップ 6 after the lint result is consumed at ステップ 5.1.
+> **CRITICAL**: When called from `/rite:pr:open`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:pr:open` at ステップ 6 after the lint result is consumed at ステップ 5.1.
 
 **Meaning of output patterns:**
-- `[lint:skipped]`: Used by `/rite:issue:start` ステップ 5.1 to detect this pattern and decide to proceed to ステップ 6 (PR creation)
+- `[lint:skipped]`: Used by `/rite:pr:open` ステップ 5.1 to detect this pattern and decide to proceed to ステップ 6 (PR creation)
 - `[lint:success]`: When lint completed successfully (output in Phase 4.1)
 - `[lint:error]`: When lint detected errors (output in Phase 4.2)
 - `[lint:aborted]`: When the user selected "Abort"
 
 **Clarification of responsibilities:**
 
-Reflecting the lint skip in the PR body is the responsibility of `/rite:issue:start` ステップ 5:
+Reflecting the lint skip in the PR body is the responsibility of `/rite:pr:open` ステップ 5:
 1. `/rite:lint` only outputs the above output patterns
-2. When `/rite:issue:start` detects `[lint:skipped]`, it prepares the PR body template before calling `/rite:pr:create`
+2. When `/rite:pr:open` detects `[lint:skipped]`, it prepares the PR body template before calling `/rite:pr:create`
 3. The "Known Issues" section of the PR body includes the following:
 
 ```markdown
@@ -442,7 +442,7 @@ Execute test commands as part of quality check when configured.
 
 **Note**: When the `verification` section does not exist in `rite-config.yml`, treat defaults as enabled (`run_tests_before_pr: true`). The test execution condition still requires `commands.test` to be set.
 
-**Duplicate execution avoidance**: When called from the `/rite:issue:start` end-to-end flow and tests were already run and passed in `implement.md` Phase 5.1.0.6 (Test Verification Gate — implement.md retains its own internal phase numbering; test results available in conversation context), skip duplicate test execution and reuse previous results.
+**Duplicate execution avoidance**: When called from the `/rite:pr:open` end-to-end flow and tests were already run and passed in `implement.md` Phase 5.1.0.6 (Test Verification Gate — implement.md retains its own internal phase numbering; test results available in conversation context), skip duplicate test execution and reuse previous results.
 
 When skipped, no output needed (silent skip).
 
@@ -911,7 +911,7 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the flo
 コマンド: {lint_command}
 ```
 
-**When called from `/rite:issue:start` (E2E Output Minimization):**
+**When called from `/rite:pr:open` (E2E Output Minimization):**
 ```
 [lint:success] — lint passed ({target_file_count} files)
 ```
@@ -990,9 +990,9 @@ These appendices do NOT change the result pattern — `[lint:success]` remains t
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 
-> **CRITICAL**: When called from `/rite:issue:start`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:issue:start` at ステップ 6 after the lint result is consumed at ステップ 5.1.
+> **CRITICAL**: When called from `/rite:pr:open`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:pr:open` at ステップ 6 after the lint result is consumed at ステップ 5.1.
 
-**Note**: `[lint:success]` is an output pattern used by `/rite:issue:start` ステップ 5.1 to determine the lint result.
+**Note**: `[lint:success]` is an output pattern used by `/rite:pr:open` ステップ 5.1 to determine the lint result.
 
 ### 4.2 When Issues Found
 
@@ -1018,7 +1018,7 @@ These appendices do NOT change the result pattern — `[lint:success]` remains t
 修正案:
 ```
 
-**Note**: `[lint:error]` is an output pattern used by `/rite:issue:start` ステップ 5.1 to determine the lint result.
+**Note**: `[lint:error]` is an output pattern used by `/rite:pr:open` ステップ 5.1 to determine the lint result.
 
 **Presenting fix suggestions:**
 
@@ -1074,7 +1074,7 @@ Analyze the error content and present fix suggestions when possible:
 2. 再度 `/rite:lint` を実行
 3. 問題がなければ `/rite:pr:create` で PR 作成
 
-> **注**: `/rite:issue:start` の一気通貫フローから呼び出された場合、この「次のステップ」案内は**スキップ**されます。呼び出し元が出力パターン（`[lint:success]` 等）を検出し、自動的に次のアクション（PR 作成）に進みます。**この案内は単独実行時のみ参照してください**。
+> **注**: `/rite:pr:open` の一気通貫フローから呼び出された場合、この「次のステップ」案内は**スキップ**されます。呼び出し元が出力パターン（`[lint:success]` 等）を検出し、自動的に次のアクション（PR 作成）に進みます。**この案内は単独実行時のみ参照してください**。
 ```
 
 **Note**: The `テスト` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `Drift チェック` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Wiki growth check (#524)` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). The `Gitignore health check (#567)` row follows the same policy: omit when `gitignore_health_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = healthy rule / legitimate no-op; `warning` = drift detected; `error` = invocation failure). The `Backlink format check (#627)` row follows the same policy: omit when `backlink_format_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no dialect violations; `warning` = legacy dialect detected; `error` = invocation failure). The `Hardcoded line-number check (#666)` row follows the same policy: omit when `hardcoded_line_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no hardcoded references; `warning` = P-A/P-B/P-C reference detected; `error` = invocation failure). **Asymmetry note**: The `Drift チェック` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. The `Comment journal narration (#702)` row follows the same policy: omit when `comment_journal_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no journal narration; `warning` = P1/P2/P3/P4 pattern detected; `error` = invocation failure). The `Comment line-ref check (#702)` row follows the same policy: omit when `comment_line_ref_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no comment line-number references; `warning` = `<file>.<ext>:<NN>` pattern detected in shell comments; `error` = invocation failure). The `Direct gh issue create check (#958)` row follows the same policy: omit when `direct_gh_issue_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no direct invocations; `warning` = direct `gh issue create` invocation detected; `error` = invocation failure / usage error / missing commands directory). All Phase 3.x lint checks added after Phase 3.5 (3.7 `Doc-heavy patterns drift check`, 3.8 `Wiki growth check`, 3.9 `Gitignore health check`, 3.10 `Backlink format check`, 3.11 `Hardcoded line-number check`, 3.12 `Comment journal narration`, 3.13 `Comment line-ref check`, 3.14 `Direct gh issue create check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
@@ -1277,23 +1277,23 @@ Continue the end-to-end flow based on the output pattern from Phase 4.
 
 | Output Pattern | Action in End-to-End Flow |
 |-------------|---------------------------|
-| `[lint:success]` | `/rite:lint` execution completes, and the caller `/rite:issue:start` consumes the sentinel at ステップ 5.1 then proceeds to ステップ 6 (PR creation) |
-| `[lint:skipped]` | `/rite:lint` execution completes, and the caller `/rite:issue:start` consumes the sentinel at ステップ 5.1 then proceeds to ステップ 6 (PR creation) |
+| `[lint:success]` | `/rite:lint` execution completes, and the caller `/rite:pr:open` consumes the sentinel at ステップ 5.1 then proceeds to ステップ 6 (PR creation) |
+| `[lint:skipped]` | `/rite:lint` execution completes, and the caller `/rite:pr:open` consumes the sentinel at ステップ 5.1 then proceeds to ステップ 6 (PR creation) |
 | `[lint:error]` | After fixing errors, run lint again (return to Phase 3) |
-| `[lint:aborted]` | Flow ends (execution of `/rite:issue:start` also ends) |
+| `[lint:aborted]` | Flow ends (execution of `/rite:pr:open` also ends) |
 
-**Note**: During standalone execution (when the user directly executes `/rite:lint`), the ステップ 5.1 sentinel consumption and ステップ 6 PR creation are **not executed**. Lint sentinel consumption and PR creation are features only executed within the `/rite:issue:start` end-to-end flow; standalone lint execution ends without flow continuation.
+**Note**: During standalone execution (when the user directly executes `/rite:lint`), the ステップ 5.1 sentinel consumption and ステップ 6 PR creation are **not executed**. Lint sentinel consumption and PR creation are features only executed within the `/rite:pr:open` end-to-end flow; standalone lint execution ends without flow continuation.
 
 ### 5.2 Processing After `/rite:lint` Completion
 
 When `[lint:success]` or `[lint:skipped]` is output:
 
-**`/rite:lint` execution completes**, and Claude returns to `/rite:issue:start` ステップ 5.1 to consume the lint sentinel, then proceeds to ステップ 6 to call `rite:pr:create`.
+**`/rite:lint` execution completes**, and Claude returns to `/rite:pr:open` ステップ 5.1 to consume the lint sentinel, then proceeds to ステップ 6 to call `rite:pr:create`.
 
 **Important**:
 - `/rite:lint` does **NOT directly call** `rite:pr:create`
-- The caller `/rite:issue:start` consumes the lint sentinel at ステップ 5.1 and proceeds to ステップ 6 (PR creation)
-- After all checklist items are complete, `/rite:issue:start` calls `rite:pr:create`
+- The caller `/rite:pr:open` consumes the lint sentinel at ステップ 5.1 and proceeds to ステップ 6 (PR creation)
+- After all checklist items are complete, `/rite:pr:open` calls `rite:pr:create`
 
 **Design intent**:
 - Guard function to prevent proceeding to PR creation until all Issue checklist items are complete (Issue #398)

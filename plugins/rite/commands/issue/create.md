@@ -81,7 +81,7 @@ title 類似度 / label 一致 / 更新日時 / state（OPEN > CLOSED）で top 
 | 候補数 | Options（AskUserQuestion） |
 |--------|---------------------------|
 | 0 件 | 次ステップへ |
-| 1 件 | (a) #{number} の拡張 → body に `Extends: #{number}` 追記 / (b) 既存 Issue を使用 → 終了 + `/rite:issue:start {number}` 提案 / (c) 関連なし |
+| 1 件 | (a) #{number} の拡張 → body に `Extends: #{number}` 追記 / (b) 既存 Issue を使用 → 終了 + `/rite:pr:open {number}` 提案 / (c) 関連なし |
 | 2+ 件 | (a) #{番号} の拡張 / (b) 別 Issue 番号入力 / (c) 関連なし |
 
 ---
@@ -220,7 +220,7 @@ fi
 | URL | {issue_url} |
 
 ### 次のアクション
-- `/rite:issue:start {issue_number}` で作業を開始
+- `/rite:pr:open {issue_number}` で作業を開始
 - または `/rite:pr:create` で Issue なしで PR を作成
 
 <!-- [create:completed:{issue_number}] -->
@@ -510,7 +510,7 @@ Decompose path も完了レポートの最終行は `<!-- [create:completed:{par
 - ...
 
 ### 次のアクション
-- `/rite:issue:start {first_sub_issue}` で最初の Sub-Issue から作業を開始
+- `/rite:pr:open {first_sub_issue}` で最初の Sub-Issue から作業を開始
 - `/rite:issue:list` で全 Sub-Issue 一覧を確認
 
 <!-- [create:completed:{parent_issue_number}] -->
@@ -566,7 +566,7 @@ create.md は作業 phase ではなく Issue 作成のみなので、flow-state 
 
 ## Standalone Usage
 
-`/rite:issue:create` 単独で動作する。Issue 作成後に作業を開始するには `/rite:issue:start {issue_number}` を実行する。
+`/rite:issue:create` 単独で動作する。Issue 作成後に作業を開始するには `/rite:pr:open {issue_number}` を実行する。
 
 ## Error Handling
 

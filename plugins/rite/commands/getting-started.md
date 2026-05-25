@@ -130,7 +130,7 @@ The typical workflow consists of three main steps:
 2. Start working on an Issue
    ├─ /rite:issue:list         (view existing Issues)
    ├─ /rite:issue:create       (create new Issue)
-   └─ /rite:issue:start <番号>  (start working)
+   └─ /rite:pr:open <番号>  (start working)
 
 3. Complete and submit
    ├─ /rite:lint               (quality check)
@@ -253,7 +253,7 @@ Option A: Work on an existing Issue
      /rite:issue:list
 
   2. Start working on a specific Issue:
-     /rite:issue:start 42
+     /rite:pr:open 42
      (Replace 42 with the Issue number)
 
 Option B: Create a new Issue
@@ -323,7 +323,7 @@ Common Issues and Solutions:
    Solution: Projects is optional. Choose "Skip Projects integration"
    or create a Project manually on GitHub first
 
-4. Branch creation fails in /rite:issue:start
+4. Branch creation fails in /rite:pr:open
    Solution: Ensure you're on the main/develop branch first
    Check with: git branch --show-current
 

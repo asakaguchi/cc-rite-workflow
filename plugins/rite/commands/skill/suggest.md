@@ -249,7 +249,7 @@ When the Issue number cannot be determined (no `issue-{number}` pattern in branc
 
 【対処方法】
 - Issue を紐づけたブランチで作業してください
-- /rite:issue:start {number} で作業を開始すると、ブランチと Issue が自動的に紐づきます
+- /rite:pr:open {number} で作業を開始すると、ブランチと Issue が自動的に紐づきます
 
 利用可能なスキル一覧:
 - {skill_name}: {skill_description}

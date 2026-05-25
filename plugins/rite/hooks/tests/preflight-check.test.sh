@@ -40,7 +40,7 @@ fail() {
 # The lock acquisition failure fallback is covered by work-memory-lock.test.sh.
 run_hook() {
   local cwd="$1"
-  local command_id="${2:-/rite:issue:start}"
+  local command_id="${2:-/rite:pr:open}"
   local rc=0
   LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
   bash "$HOOK" --command-id "$command_id" --cwd "$cwd" 2>"$LAST_STDERR_FILE" || rc=$?
@@ -91,7 +91,7 @@ echo "TC-003: compact_state=blocked → exit 1 (block)"
 dir003="$TEST_DIR/tc003"
 mkdir -p "$dir003"
 create_compact_state "$dir003" '{"compact_state": "recovering", "active_issue": 42, "compact_state_set_at": "2026-01-01T00:00:00Z"}'
-output=$(bash "$HOOK" --command-id "/rite:issue:start" --cwd "$dir003" 2>/dev/null) && rc=0 || rc=$?
+output=$(bash "$HOOK" --command-id "/rite:pr:open" --cwd "$dir003" 2>/dev/null) && rc=0 || rc=$?
 if [ $rc -eq 1 ]; then
   if echo "$output" | grep -q "#42"; then
     pass "Blocked state → exit 1 with Issue #42 in output"
@@ -175,7 +175,7 @@ echo "TC-008: Invalid JSON in compact state → exit 1 (fail-closed)"
 dir008="$TEST_DIR/tc008"
 mkdir -p "$dir008"
 echo "NOT-VALID-JSON" > "$dir008/.rite-compact-state"
-output=$(bash "$HOOK" --command-id "/rite:issue:start" --cwd "$dir008" 2>/dev/null) && rc=0 || rc=$?
+output=$(bash "$HOOK" --command-id "/rite:pr:open" --cwd "$dir008" 2>/dev/null) && rc=0 || rc=$?
 if [ $rc -eq 1 ]; then
   # Verify error message mentions read failure
   if echo "$output" | grep -qi "読み取り\|read\|parse\|fail\|error\|invalid"; then
@@ -208,7 +208,7 @@ dir010="$TEST_DIR/tc010"
 mkdir -p "$dir010"
 # Run from a clean directory without .rite-compact-state
 rc=0
-(cd "$dir010" && bash "$HOOK" --command-id "/rite:issue:start" 2>/dev/null) || rc=$?
+(cd "$dir010" && bash "$HOOK" --command-id "/rite:pr:open" 2>/dev/null) || rc=$?
 if [ $rc -eq 0 ]; then
   pass "No --cwd → uses pwd (clean dir), exit 0"
 else
@@ -256,7 +256,7 @@ echo "TC-013: Unknown compact_state value → exit 1 (block)"
 dir013="$TEST_DIR/tc013"
 mkdir -p "$dir013"
 create_compact_state "$dir013" '{"compact_state": "unknown_state", "active_issue": 1}'
-output=$(bash "$HOOK" --command-id "/rite:issue:start" --cwd "$dir013" 2>/dev/null) && rc=0 || rc=$?
+output=$(bash "$HOOK" --command-id "/rite:pr:open" --cwd "$dir013" 2>/dev/null) && rc=0 || rc=$?
 if [ $rc -eq 1 ]; then
   pass "Unknown state → exit 1 (blocked)"
 else

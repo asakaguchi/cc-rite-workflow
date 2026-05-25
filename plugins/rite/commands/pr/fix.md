@@ -3076,7 +3076,7 @@ context 消費という最悪結果になる。修正前の影響範囲確認で
 >   で行う
 >
 > 違反コメントを含む Edit/Write を生成しそうになったら、Apply 前に rewrite する。
-> post-hoc な Phase 3 の gate (line ~3370 周辺の Pre-Commit Drift Lint Gate) は
+> post-hoc な Phase 3 の gate (Phase 3.1.1 — Pre-Commit Drift Lint Gate) は
 > 防御の最終層であり、本 Phase 2.3 の declarative gate を skip する根拠にしない。
 
 Present the proposed fix and apply with Edit tool after confirmation:

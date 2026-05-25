@@ -278,7 +278,7 @@ rite-workflow/
 │ └── bottleneck-detection.md
 │ # Note: references/i18n-usage.md and plugins/rite/i18n/ directory (ja.yml,
 │ # en.yml, and the ja/ + en/ split files) were deleted entirely in #1117 —
-│ # see the ## Internationalization (Retired in #1117) section below.
+│ # see the ## ~~Internationalization~~ (Retired in #1117) section below.
 └── README.md
 ```
 
@@ -764,7 +764,7 @@ _No review responses_
 
 The Session Info section of the work memory includes phase information indicating the current work state. This information is used by `/rite:resume` for resuming work.
 
-**Flat workflow phase (current / 11 values):**
+**Flat workflow phase (current / 13 values — matches `PHASE_ENUM_V3` SoT in `hooks/flow-state.sh`):**
 
 | Phase | Phase Detail | 4-command step (formerly start.md step pre-#1136) |
 |-------|--------------|----------------------------------------------------|
@@ -778,6 +778,8 @@ The Session Info section of the work memory includes phase information indicatin
 | `fix` | Review-fix loop in progress | `/rite:pr:iterate` fix side (formerly step 7.2) |
 | `ready` | `/rite:pr:ready` succeeded; awaiting Projects Status In Review → completion report | `/rite:pr:ready` (formerly step 8.3) |
 | `ready_error` | `/rite:pr:ready` failed inside e2e flow; `/rite:resume` re-enters `/rite:pr:ready` retry | `/rite:pr:ready` retry (formerly step 8) |
+| `cleanup` | `/rite:pr:cleanup` in progress (branch / worktree cleanup pre-ingest) | `/rite:pr:cleanup` Steps 1-3 |
+| `ingest` | Wiki ingest in progress (post-cleanup `/rite:wiki:ingest` integration) | `/rite:pr:cleanup` Phase 4.W → `/rite:wiki:ingest` |
 | `completed` | Workflow finished | `/rite:pr:merge` / `/rite:pr:cleanup` completed (formerly step 8 end) |
 
 Lifecycle sub-rings (legacy granular phases — lifecycle-incomplete detection now lives in `session-end.sh`'s inline glob; see the retired Phase Transition Whitelist note below):
@@ -1653,7 +1655,7 @@ There are (were) two paths that converted reviewer "別 Issue として作成" r
 
 | Path | Location | #1136 Status | Notes |
 |------|----------|--------------|-------|
-| Fix-side post-loop | `fix.md` Phase 4.3 ("Automatic Separate Issue Creation") | **Removed in #1136** | The full Phase 4.3 section, the `[fix:issues-created:N]` sentinel, and the `review.separate_issue_creation.*` config keys were deleted. Inside the `/rite:pr:fix` review-fix loop, reviewer recommendations are now handled per-finding via the Phase 2.1 menu (fix / accept / reply) — no post-loop auto-creation. |
+| Fix-side post-loop | `fix.md` Phase 4.3 ("Automatic Separate Issue Creation") | **Removed in #1136** | The full Phase 4.3 section and the `[fix:issues-created:N]` sentinel were deleted. The `review.separate_issue_creation.*` runtime mechanism is removed, but the scaffolding block remains in `templates/config/rite-config.yml` (no runtime effect) and is scheduled for removal in a follow-up PR — see [CONFIGURATION.md](./CONFIGURATION.md) `~~separate_issue_creation.*~~` DEPRECATED note for the template state caveat. Inside the `/rite:pr:fix` review-fix loop, reviewer recommendations are now handled per-finding via the Phase 2.1 menu (fix / accept / reply) — no post-loop auto-creation. |
 | Review-side | `pr/review.md` Phase 7 ("Automatic Issue Creation") | **Live (not removed)** | Calls `plugins/rite/scripts/create-issue-with-projects.sh` with `source: "pr_review"`, gated by `AskUserQuestion` confirmation. This is the canonical path for converting reviewer recommendations into tracked Issues. |
 
 The `scripts/create-issue-with-projects.sh` helper is the canonical Issue-creation path for both the review-side Phase 7 invocation above and for manual `/rite:issue:create` use.
@@ -1902,7 +1904,7 @@ Details: {technical details for debugging}
 
 ---
 
-## Internationalization (Retired in #1117)
+## ~~Internationalization~~ (Retired in #1117)
 
 > **Status: Retired**. The runtime i18n mechanism (`{i18n:key_name}` placeholder substitution, the `plugins/rite/i18n/` directory tree with `ja.yml` / `en.yml` legacy monolithic files and `ja/` / `en/` per-domain split files, and the `references/i18n-usage.md` reference doc) was deleted entirely in #1117 (commit `d3a105f1`). All 364 placeholders across 10 remaining command/sub-skill files were resolved to inline Japanese, removing the runtime i18n resolution dependency. No language file structure remains in the plugin source tree.
 >

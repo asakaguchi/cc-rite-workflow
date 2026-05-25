@@ -244,16 +244,15 @@ rite-workflow/
 │ ├── README.md
 │ ├── config/
 │ │ └── rite-config.yml # /rite:init 時に配布される最小デフォルト
-│ ├── project-types/
-│ │ ├── generic.yml / webapp.yml / library.yml / cli.yml / documentation.yml
+│ │ # 注: templates/project-types/ (generic / webapp / library / cli / documentation .yml)
+│ │ # は #1118 で project.type プリセット機能廃止と併せて削除済。
 │ ├── issue/
 │ │ ├── default.md / decomposition-spec.md
 │ │ ├── interview-perspectives.md / template-structure.md
 │ ├── pr/
-│ │ ├── generic.md / webapp.md / library.md / cli.md / documentation.md
-│ │ └── fix-report.md # Fix ループサマリーフォーマット
+│ │ └── generic.md # 汎用 PR template (cli / library / webapp / documentation / fix-report.md は #1118 / #1136 で削除済)
 │ ├── review/
-│ │ └── comment.md # PR レビューコメントフォーマット
+│ │ └── reply.md # Why-only PR レビュー reply SoT (#1136 で comment.md からリネーム)
 │ └── wiki/
 │ ├── index-template.md / log-template.md
 │ ├── page-template.md / schema-template.md
@@ -655,8 +654,7 @@ model: opus # opus | sonnet | haiku (optional — 省略時は親セッション
 | Phase 5.2 (品質チェック) | `/rite:pr:open` Step 5 (`/rite:issue:implement` が autonomous に `/rite:lint` を invoke) |
 | Phase 5.3 (ドラフト PR 作成) | `/rite:pr:open` Step 6 (`/rite:pr:create` sub-skill を invoke) |
 | Phase 5.4 / 5.5 (レビュー + 修正ループ) | `/rite:pr:iterate <pr>` (`/rite:pr:review` ⇄ `/rite:pr:fix` を収束まで反復) |
-| Phase 5.6 (Ready 化) | `/rite:pr:ready <pr>` |
-| Phase 5.7 (マージ) | `/rite:pr:merge <pr>` |
+| Phase 5.6 (完了報告 — 旧 Phase 5 の最終 sub-step) | `/rite:pr:ready <pr>` (Ready 化) + `/rite:pr:merge <pr>` (マージ) — #1136 で 2 つの責務分離コマンドに分割。旧 `start.md` では Phase 5.6 で完了報告に到達し、orchestrator のステップ 8 で `gh pr merge --squash` を inline 実行していた |
 | Phase 6 (Cleanup) | `/rite:pr:cleanup <pr>` (#1136 で merge と decouple、機能変更なし) |
 
 新 4 コマンドは同じ flow-state phase enum (`init` / `branch` / `plan` / `implement` / `lint` / `pr` / `review` / `fix` / `ready` / `ready_error` / `cleanup` / `ingest` / `completed` — `PHASE_ENUM_V3` SoT in `hooks/flow-state.sh`) を継承するため、`/rite:resume` はどのコマンド実行中の中断からも復帰可能。詳細は [commands/resume.md](../plugins/rite/commands/resume.md) Phase 5.3 (Phase enum → Step mapping (SoT)) の routing table 参照。

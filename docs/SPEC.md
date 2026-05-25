@@ -245,16 +245,15 @@ rite-workflow/
 │ ├── README.md
 │ ├── config/
 │ │ └── rite-config.yml # Minimal default distributed by /rite:init
-│ ├── project-types/
-│ │ ├── generic.yml / webapp.yml / library.yml / cli.yml / documentation.yml
+│ │ # Note: templates/project-types/ (generic / webapp / library / cli / documentation .yml)
+│ │ # was deleted in #1118 together with the project.type preset feature retirement.
 │ ├── issue/
 │ │ ├── default.md / decomposition-spec.md
 │ │ ├── interview-perspectives.md / template-structure.md
 │ ├── pr/
-│ │ ├── generic.md / webapp.md / library.md / cli.md / documentation.md
-│ │ └── fix-report.md # Fix loop summary format
+│ │ └── generic.md # Generic PR template (cli/library/webapp/documentation/fix-report.md were all deleted in #1118 / #1136)
 │ ├── review/
-│ │ └── comment.md # PR review comment format
+│ │ └── reply.md # Why-only PR review reply SoT (renamed from comment.md in #1136)
 │ └── wiki/
 │ ├── index-template.md / log-template.md
 │ ├── page-template.md / schema-template.md
@@ -639,8 +638,7 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 | Phase 5.2 (Quality checks) | `/rite:pr:open` Step 5 (`/rite:issue:implement` autonomously invokes `/rite:lint`) |
 | Phase 5.3 (Draft PR creation) | `/rite:pr:open` Step 6 (invokes `/rite:pr:create` sub-skill) |
 | Phase 5.4 / 5.5 (Review + fix loop) | `/rite:pr:iterate <pr>` (loops `/rite:pr:review` ⇄ `/rite:pr:fix` until convergence) |
-| Phase 5.6 (Set Ready) | `/rite:pr:ready <pr>` |
-| Phase 5.7 (Merge) | `/rite:pr:merge <pr>` |
+| Phase 5.6 (Completion report — formerly the last sub-step of Phase 5) | `/rite:pr:ready <pr>` (Set Ready) + `/rite:pr:merge <pr>` (Merge) — split into two responsibility-isolated commands in #1136. Historically `start.md` reached completion at Phase 5.6 and then ran `gh pr merge --squash` inline as ステップ 8 of the orchestrator |
 | Phase 6 (Cleanup) | `/rite:pr:cleanup <pr>` (unchanged, decoupled from merge in #1136) |
 
 The four new commands maintain the same flow-state phases (`init` / `branch` / `plan` / `implement` / `lint` / `pr` / `review` / `fix` / `ready` / `ready_error` / `cleanup` / `ingest` / `completed` — `PHASE_ENUM_V3` SoT in `hooks/flow-state.sh`), so `/rite:resume` can recover from interruptions regardless of which command was running. See [commands/resume.md](../plugins/rite/commands/resume.md) Phase 5.3 (Phase enum → Step mapping (SoT)) for the routing table.

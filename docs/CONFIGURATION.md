@@ -125,22 +125,29 @@ review:
     max_claims: 20                     # Maximum number of External claims to verify per review (default: 20). Internal Likelihood claims are Grep-based and counted outside this cap
     use_context7: true                 # Use context7 MCP tool for verification (default: true). Auto-falls back to WebSearch when context7 is unavailable
     verify_internal_likelihood: true   # Enable Sub-Phase B (Internal Likelihood Claim Verification) via Grep (default: true)
-  # Observed Likelihood Gate (#506): Require evidence of actual occurrence for findings.
-  # See `plugins/rite/references/severity-levels.md` for the Observed / Demonstrable / Hypothetical axis.
-  observed_likelihood_gate:
-    enabled: true                      # Enable Observed Likelihood Gate (default: true)
-    security_exception: true           # Security reviewer keeps severity even for Hypothetical findings (default: true)
-    hypothetical_exception_reviewers:  # Reviewer categories allowed to report Hypothetical findings
-      - security
-      - database
-      - devops
-      - dependencies
-    minimum: "demonstrable"            # Minimum likelihood for non-exception reviewers (default: "demonstrable")
-  # Fail-Fast First (#506): Require throw/raise propagation to be considered before recommending fallback.
-  fail_fast_first:
-    enabled: true                      # Enable Fail-Fast First principle for reviewer recommendations (default: true)
-    allow_skill_exceptions: true       # Respect skill-level fallback allowances (default: true)
-    wiki_query_required: true          # Require Wiki check for project-specific fallback patterns before recommendation (default: true)
+  # DEPRECATED (#1118): observed_likelihood_gate keys are ignored.
+  # These keys were scaffolding (#506) that never got wired to conditional runtime logic.
+  # The Observed Likelihood Gate behavior is hardcoded in `_reviewer-base.md` /
+  # `fix.md` prose and cannot currently be disabled via config. Remove these keys
+  # from rite-config.yml — they no longer have any effect.
+  # observed_likelihood_gate:
+  #   enabled: true
+  #   security_exception: true
+  #   hypothetical_exception_reviewers:
+  #     - security
+  #     - database
+  #     - devops
+  #     - dependencies
+  #   minimum: "demonstrable"
+  # DEPRECATED (#1118): fail_fast_first keys are ignored.
+  # These keys were scaffolding (#506) that never got wired to conditional runtime logic.
+  # The Fail-Fast First principle is hardcoded in `_reviewer-base.md` / `fix.md` prose
+  # and cannot currently be disabled via config. Remove these keys from rite-config.yml
+  # — they no longer have any effect.
+  # fail_fast_first:
+  #   enabled: true
+  #   allow_skill_exceptions: true
+  #   wiki_query_required: true
   # DEPRECATED (#1136): separate_issue_creation keys are ignored.
   # The "Automatic Separate Issue Creation" mechanism (fix.md Phase 4.3) and the
   # [fix:issues-created:N] sentinel were removed entirely. Reviewers' recommendations
@@ -155,11 +162,13 @@ review:
 # Fix settings (#506)
 fix:
   fail_fast_response: true             # Enable Fail-Fast Response Principle in fix.md Phase 2 (default: true)
-  # DEPRECATED (#506): severity_gating convergence strategy has been removed.
-  # The key is retained for backward compatibility only; it is always treated as false.
-  # Non-convergence is now handled via fix.md Phase 4.3.3 AskUserQuestion (retry / separate issue / withdraw).
-  severity_gating:
-    enabled: false                     # DEPRECATED (#506): Pinned to false; not referenced by any code path
+  # DEPRECATED (#1118): fix.severity_gating keys are ignored.
+  # The severity_gating convergence strategy (#506) was removed entirely in #1118.
+  # Non-convergence is now handled via fix.md Phase 4.3.3 AskUserQuestion (retry /
+  # separate issue / withdraw). Remove these keys from rite-config.yml — they no
+  # longer have any effect.
+  # severity_gating:
+  #   enabled: false
 
 # Iteration/Sprint settings (optional)
 iteration:
@@ -496,13 +505,8 @@ issue:
 | `fact_check.max_claims` | integer | `20` | Maximum number of **External** claims to verify per review (Sub-Phase A). Internal Likelihood claims are Grep-based and counted outside this cap |
 | `fact_check.use_context7` | boolean | `true` | Use context7 MCP tool for verification. Auto-falls back to WebSearch when context7 is unavailable |
 | `fact_check.verify_internal_likelihood` | boolean | `true` | Enable Sub-Phase B (Internal Likelihood Claim Verification) via Grep-based call site / entry point checks |
-| `observed_likelihood_gate.enabled` | boolean | `true` | Enable Observed Likelihood Gate (#506). Requires reviewers to evidence actual occurrence (Observed / Demonstrable) before reporting, reducing hypothetical-only findings. **⚠️ Known limitation (#506)**: config scaffolding only — not yet referenced by conditional runtime logic. The new behavior is hardcoded in `fix.md` / `review.md` / `_reviewer-base.md` prose. Setting this to `false` currently has no effect. Wiring is tracked as a follow-up |
-| `observed_likelihood_gate.security_exception` | boolean | `true` | Security reviewer retains severity for Hypothetical findings (adversarial-input threat modeling is its job) |
-| `observed_likelihood_gate.hypothetical_exception_reviewers` | array | `[security, database, devops, dependencies]` | Reviewer categories allowed to report Hypothetical findings — database migrations / infra / CVE are fatal on first occurrence |
-| `observed_likelihood_gate.minimum` | string | `"demonstrable"` | Minimum likelihood required for non-exception reviewers (`observed` / `demonstrable` / `hypothetical`) |
-| `fail_fast_first.enabled` | boolean | `true` | Enable Fail-Fast First principle (#506). Reviewers must consider throw/raise propagation before recommending fallback code. **⚠️ Known limitation (#506)**: config scaffolding only — not yet wired. Setting this to `false` currently has no effect |
-| `fail_fast_first.allow_skill_exceptions` | boolean | `true` | Respect skill-level explicit fallback allowances (e.g., UI graceful degradation, stale-cache requirement) |
-| `fail_fast_first.wiki_query_required` | boolean | `true` | Require Wiki query (`/rite:wiki:query`) for project-specific fallback patterns before recommendation |
+| ~~`observed_likelihood_gate.*`~~ | — | — | **DEPRECATED (#1118)**: removed entirely. These keys were scaffolding (#506) that never got wired to conditional runtime logic. The Observed Likelihood Gate behavior (Observed / Demonstrable / Hypothetical axis enforcement) is hardcoded in `_reviewer-base.md` / `fix.md` / `review.md` prose. Remove `observed_likelihood_gate:` from `rite-config.yml` — the keys have no effect |
+| ~~`fail_fast_first.*`~~ | — | — | **DEPRECATED (#1118)**: removed entirely. These keys were scaffolding (#506) that never got wired to conditional runtime logic. The Fail-Fast First principle (require throw/raise propagation consideration before fallback) is hardcoded in `_reviewer-base.md` / `fix.md` prose. Remove `fail_fast_first:` from `rite-config.yml` — the keys have no effect |
 | ~~`separate_issue_creation.*`~~ | — | — | **DEPRECATED (#1136)**: removed entirely. `fix.md` Phase 4.3 ("Automatic Separate Issue Creation") was deleted along with the `[fix:issues-created:N]` sentinel. Reviewers' "別 Issue として作成" recommendations are now handled in-loop only (fix / accept / reply); no automatic Issue creation occurs from review output. Use `/rite:investigate` for pre-existing concerns that need a separate Issue, then file it manually via `/rite:issue:create`. Remove `separate_issue_creation:` from `rite-config.yml` — the keys have no effect |
 
 **Review-fix loop exit (v0.4.0 #557):**
@@ -530,7 +534,7 @@ There is intentionally no cycle-count safety limit: the 4 quality signals are th
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `fix.fail_fast_response` | boolean | `true` | Enable Fail-Fast Response Principle in `fix.md` Phase 2. Requires a 4-item checklist (throw/raise propagation / existing error boundaries / not hiding via null-check / fix the test instead) before adopting a fix approach. Fallback adoption requires a commit message justification. **⚠️ Known limitation (#506)**: config scaffolding only — not yet wired. The principle is enforced via prose in `fix.md` Phase 2; setting this to `false` currently has no effect |
-| `fix.severity_gating.enabled` | boolean | `false` | **DEPRECATED (#506 / #557)**. Retained for backward compatibility only; pinned to `false` and not referenced by any code path. Non-convergence mitigation is now handled automatically by the 4 quality signals (#557) — no strategy configuration is needed |
+| ~~`fix.severity_gating.*`~~ | — | — | **DEPRECATED (#1118)**: removed entirely. The severity_gating convergence strategy (#506) was removed in #1118; non-convergence mitigation is now handled automatically by the 4 quality signals (#557). Remove `fix.severity_gating:` from `rite-config.yml` — the keys have no effect |
 
 **Doc-Heavy PR Mode** (`doc_heavy.enabled: true` by default): A PR is classified as doc-heavy when `doc_lines / total_diff_lines >= lines_ratio_threshold`, or — for small diffs (`total_diff_lines < max_diff_lines_for_count`) — when `doc_files / total_files >= count_ratio_threshold`. In doc-heavy mode, `tech-writer-reviewer` verifies the five consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) against the actual implementation using Grep/Read/Glob. See `plugins/rite/commands/pr/references/internal-consistency.md` for the full protocol.
 

@@ -126,22 +126,30 @@ review:
     max_claims: 20                     # 1 回のレビューで検証する External claim の最大数 (default: 20)。Internal Likelihood claim は Grep ベースで、この上限の対象外
     use_context7: true                 # 検証に context7 MCP ツールを使う (default: true)。context7 が利用不可な場合は WebSearch に自動フォールバック
     verify_internal_likelihood: true   # Grep ベースで Sub-Phase B (Internal Likelihood Claim Verification) を有効化 (default: true)
-  # Observed Likelihood Gate (#506): finding に実際の発生証拠を要求する
-  # Observed / Demonstrable / Hypothetical 軸の詳細は `plugins/rite/references/severity-levels.md` を参照
-  observed_likelihood_gate:
-    enabled: true                      # Observed Likelihood Gate を有効化 (default: true)
-    security_exception: true           # security reviewer は Hypothetical finding でも severity を維持 (default: true)
-    hypothetical_exception_reviewers:  # Hypothetical finding の報告を許可するレビュアーカテゴリ
-      - security
-      - database
-      - devops
-      - dependencies
-    minimum: "demonstrable"            # 例外外のレビュアーに要求される最低 likelihood (default: "demonstrable")
-  # Fail-Fast First (#506): フォールバック推奨前に throw/raise の伝播を考慮する
-  fail_fast_first:
-    enabled: true                      # レビュアー推奨に Fail-Fast First 原則を適用 (default: true)
-    allow_skill_exceptions: true       # skill レベルでのフォールバック許可を尊重 (default: true)
-    wiki_query_required: true          # 推奨前にプロジェクト固有のフォールバックパターンを Wiki で確認 (default: true)
+  # DEPRECATED (#1118): observed_likelihood_gate キーは無視される。
+  # これらは #506 で導入された scaffolding キーで、conditional runtime logic に
+  # 一度も配線されないまま削除された。Observed Likelihood Gate の挙動 (Observed /
+  # Demonstrable / Hypothetical 軸の強制) は `_reviewer-base.md` / `fix.md` /
+  # `review.md` の prose にハードコードされており、config で無効化できない。
+  # rite-config.yml から observed_likelihood_gate: ブロックを削除してよい。
+  # observed_likelihood_gate:
+  #   enabled: true
+  #   security_exception: true
+  #   hypothetical_exception_reviewers:
+  #     - security
+  #     - database
+  #     - devops
+  #     - dependencies
+  #   minimum: "demonstrable"
+  # DEPRECATED (#1118): fail_fast_first キーは無視される。
+  # これらは #506 で導入された scaffolding キーで、conditional runtime logic に
+  # 一度も配線されないまま削除された。Fail-Fast First 原則 (フォールバック推奨前の
+  # throw/raise 伝播考慮) は `_reviewer-base.md` / `fix.md` の prose にハードコード
+  # されており、config で無効化できない。rite-config.yml から fail_fast_first: ブロックを削除してよい。
+  # fail_fast_first:
+  #   enabled: true
+  #   allow_skill_exceptions: true
+  #   wiki_query_required: true
   # DEPRECATED (#1136): separate_issue_creation キーは無視される。
   # 「Automatic Separate Issue Creation」機構 (fix.md Phase 4.3) と
   # [fix:issues-created:N] sentinel は完全に削除された。レビュアーの推奨は
@@ -155,11 +163,12 @@ review:
 # Fix 設定 (#506)
 fix:
   fail_fast_response: true             # fix.md Phase 2 で Fail-Fast Response Principle を有効化 (default: true)
-  # DEPRECATED (#506): severity_gating 収束戦略は廃止された
-  # 後方互換のためにキーは残されており、常に false として扱われる
-  # 非収束は fix.md Phase 4.3.3 の AskUserQuestion (retry / 別 issue / withdraw) で処理される
-  severity_gating:
-    enabled: false                     # DEPRECATED (#506): false に固定。どのコードパスからも参照されない
+  # DEPRECATED (#1118): fix.severity_gating キーは無視される。
+  # severity_gating 収束戦略 (#506) は #1118 で完全に削除された。
+  # 非収束は fix.md Phase 4.3.3 の AskUserQuestion (retry / 別 issue / withdraw) で
+  # 処理される。rite-config.yml から fix.severity_gating: ブロックを削除してよい。
+  # severity_gating:
+  #   enabled: false
 
 # Iteration / Sprint 設定 (任意)
 iteration:
@@ -496,13 +505,8 @@ issue:
 | `fact_check.max_claims` | integer | `20` | 1 回のレビューで検証する **External** claim の最大数 (Sub-Phase A)。Internal Likelihood claim は Grep ベースで、この上限の対象外 |
 | `fact_check.use_context7` | boolean | `true` | 検証に context7 MCP ツールを使う。context7 が利用不可な場合は WebSearch に自動フォールバック |
 | `fact_check.verify_internal_likelihood` | boolean | `true` | Grep ベースの呼び出し箇所 / エントリポイントチェックで Sub-Phase B (Internal Likelihood Claim Verification) を有効化 |
-| `observed_likelihood_gate.enabled` | boolean | `true` | Observed Likelihood Gate を有効化 (#506)。レビュアーは Observed / Demonstrable のいずれかの実際の発生証拠を提示してから報告することが要求され、hypothetical のみの finding が減る。**⚠️ Known limitation (#506)**: 設定スキャフォールドのみで、条件付きランタイムロジックからはまだ参照されていない。新挙動は `fix.md` / `review.md` / `_reviewer-base.md` のプロンプト内にハードコードされている。`false` に設定しても現状効果がない。wiring は後続タスクで追跡 |
-| `observed_likelihood_gate.security_exception` | boolean | `true` | security reviewer は Hypothetical finding でも severity を維持 (adversarial input の脅威モデリングが本職のため) |
-| `observed_likelihood_gate.hypothetical_exception_reviewers` | array | `[security, database, devops, dependencies]` | Hypothetical finding の報告を許可するレビュアーカテゴリ — DB マイグレーション / インフラ / CVE は初回発生で致命的 |
-| `observed_likelihood_gate.minimum` | string | `"demonstrable"` | 例外外のレビュアーに要求される最低 likelihood (`observed` / `demonstrable` / `hypothetical`) |
-| `fail_fast_first.enabled` | boolean | `true` | Fail-Fast First 原則を有効化 (#506)。レビュアーは fallback コードを推奨する前に throw/raise の伝播を考慮する必要がある。**⚠️ Known limitation (#506)**: 設定スキャフォールドのみで、まだ wired されていない。`false` に設定しても現状効果がない |
-| `fail_fast_first.allow_skill_exceptions` | boolean | `true` | skill レベルで明示的に許可された fallback (UI graceful degradation, stale-cache 要件など) を尊重 |
-| `fail_fast_first.wiki_query_required` | boolean | `true` | 推奨前にプロジェクト固有の fallback パターンを Wiki query (`/rite:wiki:query`) で確認することを要求 |
+| ~~`observed_likelihood_gate.*`~~ | — | — | **DEPRECATED (#1118)**: 完全に削除済み。これらは #506 で導入された scaffolding キーで、conditional runtime logic に一度も配線されないまま削除された。Observed Likelihood Gate の挙動 (Observed / Demonstrable / Hypothetical 軸の強制) は `_reviewer-base.md` / `fix.md` / `review.md` の prose にハードコードされている。`rite-config.yml` から `observed_likelihood_gate:` を削除して構わない (キーは効果を持たない) |
+| ~~`fail_fast_first.*`~~ | — | — | **DEPRECATED (#1118)**: 完全に削除済み。これらは #506 で導入された scaffolding キーで、conditional runtime logic に一度も配線されないまま削除された。Fail-Fast First 原則 (fallback 推奨前の throw/raise 伝播考慮) は `_reviewer-base.md` / `fix.md` の prose にハードコードされている。`rite-config.yml` から `fail_fast_first:` を削除して構わない (キーは効果を持たない) |
 | ~~`separate_issue_creation.*`~~ | — | — | **DEPRECATED (#1136)**: 完全に削除済み。`fix.md` Phase 4.3 (「Automatic Separate Issue Creation」) と `[fix:issues-created:N]` sentinel を撤去した。レビュアーの「別 Issue として作成」推奨はループ内 (fix / accept / reply) のみで処理し、review 出力からの自動 Issue 作成は発生しない。事前存在の懸念事項は `/rite:investigate` で調査後、`/rite:issue:create` で手動起票する。`rite-config.yml` から `separate_issue_creation:` を削除して構わない (キーは効果を持たない) |
 
 **レビュー・フィックスループの終了 (v0.4.0 #557):**
@@ -530,7 +534,7 @@ issue:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `fix.fail_fast_response` | boolean | `true` | `fix.md` Phase 2 で Fail-Fast Response Principle を有効化。fix アプローチ採用前に 4 項目チェックリスト (throw/raise 伝播 / 既存のエラー境界 / null-check で隠していないか / テスト側を修正すべきでないか) を要求する。fallback 採用はコミットメッセージで正当化が要求される。**⚠️ Known limitation (#506)**: 設定スキャフォールドのみで、まだ wired されていない。原則は `fix.md` Phase 2 のプロンプトで強制されている。`false` に設定しても現状効果がない |
-| `fix.severity_gating.enabled` | boolean | `false` | **DEPRECATED (#506 / #557)**。後方互換のために残されており `false` に固定。どのコードパスからも参照されない。非収束緩和は 4 つの品質シグナル (#557) によって自動処理されるため、戦略設定は不要 |
+| ~~`fix.severity_gating.*`~~ | — | — | **DEPRECATED (#1118)**: 完全に削除済み。severity_gating 収束戦略 (#506) は #1118 で削除された。非収束緩和は 4 つの品質シグナル (#557) によって自動処理される。`rite-config.yml` から `fix.severity_gating:` を削除して構わない (キーは効果を持たない) |
 
 **Doc-Heavy PR モード** (`doc_heavy.enabled: true` がデフォルト): PR は `doc_lines / total_diff_lines >= lines_ratio_threshold` の場合、または小規模 diff (`total_diff_lines < max_diff_lines_for_count`) では `doc_files / total_files >= count_ratio_threshold` の場合に doc-heavy として分類される。doc-heavy モードでは `tech-writer-reviewer` が Grep/Read/Glob を使って 5 種類の整合性 (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) を実装と照合する。完全なプロトコルは `plugins/rite/commands/pr/references/internal-consistency.md` を参照。
 

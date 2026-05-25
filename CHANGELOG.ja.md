@@ -31,6 +31,18 @@ Phase 番号取扱方針: エントリは機能名レベルで変更を記述し
 - **`/rite:resume` の phase mapping を新 4 コマンドに分岐** — `init/branch/plan/implement/lint/pr` → `/rite:pr:open`、`review/fix` → `/rite:pr:iterate`、`ready/ready_error` → `/rite:pr:ready`、`cleanup/ingest` → `/rite:pr:cleanup`、`completed` → 完了通知
 - **Sprint sequential 実行も新 4 コマンド合成に置換** — `commands/sprint/execute.md` Phase 3.1.2 が `/rite:issue:start` 単独 invoke から `/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:ready` の順次 invoke に変更
 - 新規 sentinel: `[merge:completed]` / `[merge:not-ready]` / `[merge:error]` (`/rite:pr:merge` 専用)
+- **i18n 機構の全廃 (日本語直書き化)** (#1117) — `{i18n:KEY}` プレースホルダー機構を廃止。残り 10 command / sub-skill ファイル 364 箇所のプレースホルダーを ja カタログ値の日本語直書きに解決し、runtime i18n 解決への依存が消えた。start / create / pr 系は先行 PR で移行済みで、#1117 で完了 (全 command が i18n-free)。`plugins/rite/i18n/ja/` の split message ファイルはディスクに残るが runtime には参照されない
+- **未結線 scaffolding キー 3 件削除 + `project.type` 機能廃止** (#1118) — `observed_likelihood_gate.*` / `fail_fast_first.*` / `fix.severity_gating` は scaffolding のみで実参照 0 (挙動は `_reviewer-base.md` / `fix.md` にハードコード)、template config から削除。`project.type` プリセット機能 (`generic` / `webapp` / `library` / `cli` / `documentation`) も廃止し、project 固有設定は YAML 個別キー直書きで表現する設計へ単純化
+- **flow-state v2→v3 移行 prose の drift 修正** (#1134, #1135) — `docs/SPEC.md` の migration prose を実装 (`flow-state.sh migrate`) と一致させた: 閾値判定を `< 2` → `!= 3`、dead ref `migrate-flow-state.sh` を `flow-state.sh migrate` (`cmd_migrate` / `_migrate_file`) + `session-start.sh` 経路に張り替え、存在しない `.legacy.{timestamp}` backup 記述を除去 (v3 は in-place rewrite)、`multi-session-state.md` の必須フィールドを 11→10 に訂正 (`previous_phase` 削除 + 経緯 note)、`v2-to-v3.md` の `last_synced_phase` を「削除」→「保持」へ訂正 (表 / drop / rollback の 3 箇所、`_migrate_file` は `del(.last_synced_phase)` しない実装と一致)
+
+### 追加
+
+- **CONFIGURATION.ja.md 新規作成** (#1082) — 設定リファレンスの日本語版 `docs/CONFIGURATION.ja.md` を初版作成 (英語原文 `docs/CONFIGURATION.md` のセクション構造を mirror)
+- **i18n style-guide 新規作成** (#1085) — `docs/i18n-style-guide.md` を最小限で新規作成。kept-English term (Issue / PR / Sprint / Iteration / finding / fingerprint / severity / confidence / blocking 等) を正式化し、ドキュメントは英語のまま使用 / `plugins/rite/i18n/ja/` UI 文言は行為的表現「指摘」を使う使い分けを明文化
+
+### 修正
+
+- **flow-state-update.sh dead reference 整理** (#1129, #1132) — `flow-state-update.sh` (PR 2a で削除済み、v2→v3 schema 移行に伴う) への dead reference を 6 ファイルで整理。SPEC / SKILL の live citation は新 `flow-state.sh` API に張り替え、`docs/designs/` の歴史的経緯 doc 内参照は historical 注記化 (「live citation vs historical」区別の原則に従う)
 
 ### 削除
 

@@ -31,21 +31,21 @@ Execute the following phases in order when this command is invoked.
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
 
-This command can be invoked in two ways: standalone execution or from the `/rite:issue:start` end-to-end flow (via ステップ 6).
+This command can be invoked in two ways: standalone execution or from an orchestrator's end-to-end flow (e.g. `/rite:pr:open` ステップ 6 / sprint sequential execution).
 
 | Caller | Subsequent Action |
 |-----------|---------------|
-| End-to-end flow (via `/rite:issue:start` ステップ 6) | **Output pattern and return control to caller** |
+| End-to-end flow (via any orchestrator's Skill tool invocation, e.g. `/rite:pr:open` ステップ 6) | **Output pattern and return control to caller** |
 | Standalone execution | Display "next steps" guidance |
 
 **Determination method**: Claude determines the caller from conversation context:
 
 | Condition | Determination |
 |------|---------|
-| Invoked via `Skill` tool from the `/rite:issue:start` end-to-end flow (ステップ 6) within the same session | Within end-to-end flow |
+| Invoked via `Skill` tool from any orchestrator within the same session (caller-name agnostic — `/rite:pr:open` / sprint flow / etc.) | Within end-to-end flow |
 | All other cases (user directly typed `/rite:pr:create`) | Standalone execution |
 
-> **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[pr:created:{number}]` or `[pr:create-failed]`) and **returns control to the caller** (`/rite:issue:start`). The caller determines the next action based on this output pattern.
+> **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[pr:created:{number}]` or `[pr:create-failed]`) and **returns control to the caller** (orchestrator). The caller determines the next action based on this output pattern.
 
 ---
 
@@ -67,7 +67,7 @@ Determine the caller from conversation context:
 
 | Condition | Determination | Action |
 |------|---------|------|
-| Conversation history contains rich context from the `/rite:issue:start` end-to-end flow | Within end-to-end flow | Work memory loading optional (information available in context) |
+| Conversation history contains rich context from an orchestrator's end-to-end flow (e.g. `/rite:pr:open` invocation marker) | Within end-to-end flow | Work memory loading optional (information available in context) |
 | `/rite:pr:create` was executed standalone | Standalone execution | Issue can be identified from branch name |
 
 ### 0.2 Load Work Memory
@@ -187,7 +187,7 @@ git branch --show-current
 エラー: 現在 {branch} ブランチにいます
 
 PR を作成するには作業ブランチに切り替えてください。
-`/rite:issue:start` で作業を開始できます。
+`/rite:pr:open` で作業を開始できます。
 ```
 
 Terminate processing.

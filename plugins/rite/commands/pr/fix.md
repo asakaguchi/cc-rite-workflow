@@ -232,7 +232,7 @@ ASCII 数字のみの入力 (`123` → `123`) では本 INFO は出力しない 
      - PR 番号（例: 123、全角 １２３ も可）
      - PR URL（例: https://github.com/owner/repo/pull/123、trailing /files や ?tab=... も可）
      - PR コメント URL（例: https://github.com/owner/repo/pull/123#issuecomment-4567890、末尾の ?notification_referrer_id=... は自動的に無視）
-   ヒント: もし Issue URL (/issues/123) を渡している場合、/rite:pr:fix は PR 専用です。Issue 対応は /rite:issue:start を使用してください。
+   ヒント: もし Issue URL (/issues/123) を渡している場合、/rite:pr:fix は PR 専用です。Issue 対応は /rite:pr:open を使用してください。
    ```
 2. **Context 変数を explicit set** (undefined 参照防止):
    - `{pr_number} = null`

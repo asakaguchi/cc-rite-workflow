@@ -3042,7 +3042,7 @@ finding を出して fix ループが永久化する。
 
 **Why mandatory**: Doc-Heavy PR 以外でも fix が破壊的変更を起こした場合、本 PR
 内の review-fix ループは指摘ゼロにならず、結果として無限ループ + reviewer の
-context 消費という最悪結果になる。修正前 30 秒の grep が回避できる。
+context 消費という最悪結果になる。修正前の影響範囲確認で予防できる。
 
 ### 2.3 Apply the Fix
 

@@ -53,7 +53,7 @@ fi
 
 `{plugin_root}/hooks/flow-state.sh get --default ""` は session 解決失敗 / file 不在 / jq parse 失敗のいずれでも default を stdout に書く設計のため、外側 `|| ...` は helper validation 失敗 (`--field` 引数欠落 / invalid field name) 経路のみを catch する defensive fallback。stderr は WARNING channel として残し、`2>/dev/null` で握りつぶさない (想定外 ERROR を context に残すため)。
 
-**LLM routing rule** (Bash tool shell state は次の Bash 呼び出しでリセットされるため `[CONTEXT] RESUME_DISPATCH=` marker を会話コンテキストから読む):
+**LLM routing rule** (Bash tool shell state は次の Bash 呼び出しでリセットされるため `[CONTEXT] RESUME_DISPATCH=` marker を会話コンテキストから読む)。本表は **本コマンド内部の Step jump 用** の routing。`phase=review/fix/ready/cleanup` を含む外部コマンドへの routing 全体は [commands/resume.md](../resume.md) Phase 5.3 Phase enum → Step mapping (SoT) を参照:
 
 | `RESUME_DISPATCH` value + `phase` | LLM action |
 |---|---|

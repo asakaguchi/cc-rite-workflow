@@ -35,7 +35,7 @@ bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
   '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
 ```
 
-`auto_add: false` because by cleanup time the Issue is already registered in the Project (start.md Phase 2.4 auto-added it if missing).
+`auto_add: false` because by cleanup time the Issue is already registered in the Project (`pr/open.md` ステップ 2.4 auto-added it if missing).
 
 #### 3.2.1 Result Handling
 

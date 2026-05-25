@@ -223,7 +223,7 @@ Record in work memory at the next bulk update point (typically at commit time, p
 | Component | Integration |
 |-----------|-------------|
 | `implement.md` 5.1.0.5 | Bottleneck check added to adaptive re-evaluation checkpoint |
-| `start.md` ステップ 3 | Mid-replanning: re-insert sub-steps into plan and work memory |
+| `pr/open.md` ステップ 3 | Mid-replanning: re-insert sub-steps into plan and work memory |
 | `coding-principles.md` `reference_discovery` | Oracle discovery reuses the same search patterns |
 | `execution-metrics.md` `plan_deviation_count` | Each re-decomposition counts as a plan deviation |
 | `work-memory-format.md` | New "ボトルネック検出ログ" section added |

@@ -5,7 +5,7 @@ description: レビュー指摘への対応を支援
 # /rite:pr:fix
 
 ## Contract
-**Input**: PR number, review findings from `/rite:pr:review`, flow state with `phase: fix` (written by `start.md` ステップ 7.2) or `phase: phase5_fix` (legacy compat — this sub-skill still patches the old name so resume from an interrupted earlier session keeps working until every writer migrates off the legacy name)
+**Input**: PR number, review findings from `/rite:pr:review`, flow state with `phase: fix` (written by `pr/iterate.md` fix side) or `phase: phase5_fix` (legacy compat — this sub-skill still patches the old name so resume from an interrupted earlier session keeps working until every writer migrates off the legacy name)
 **Output**: `[fix:pushed]` | `[fix:pushed-wm-stale]` | `[fix:replied-only]` | `[fix:cancelled-by-user]` | `[fix:error]`
 
 Retrieve and organize PR review comments to efficiently assist with addressing review feedback

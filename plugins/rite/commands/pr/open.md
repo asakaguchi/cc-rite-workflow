@@ -216,7 +216,7 @@ args: "{issue_number}"
 - conventional commits 形式でコミット (`{type}: {summary} (refs #{issue_number})`)
 - Work Memory のチェックリストを完了状態に更新
 - 全 step 完了後、autonomous に `rite:lint` を Skill ツール経由で invoke する
-  (元 `start.md` の flat 設計を継承した内蔵動作。本コマンドの責務として lint 二重実行を避けるため、Step 5 は no-op になる)
+  (旧 `start.md` — 本 PR で削除済 — の flat 設計を継承した内蔵動作。本コマンドの責務として lint 二重実行を避けるため、Step 5 は no-op になる)
 
 **実態としての挙動**:
 - `/rite:issue:implement` 完了時点で `phase=lint` が flow-state に書かれ、`rite:lint` の sentinel

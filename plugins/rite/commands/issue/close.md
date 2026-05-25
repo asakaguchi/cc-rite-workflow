@@ -20,7 +20,7 @@ Check the completion status of an Issue and guide necessary actions.
 
 ## Shared: Projects Status → Done (delegate pattern)
 
-Phase 1.3.2 / 4.2 / 4.6.3 はいずれも Projects Status を **Done** に更新する。直接の `gh api graphql` + `field-list` + `item-edit` インライン呼び出しは substep 間で LLM attention が失われ silent skip を生む（Issue #658）ため、共通スクリプト `projects-status-update.sh` に委譲する（`start.md` Phase 2.4 / 8.3 と同一）。スクリプトは冪等で、API 詳細は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) を参照。
+Phase 1.3.2 / 4.2 / 4.6.3 はいずれも Projects Status を **Done** に更新する。直接の `gh api graphql` + `field-list` + `item-edit` インライン呼び出しは substep 間で LLM attention が失われ silent skip を生む（Issue #658）ため、共通スクリプト `projects-status-update.sh` に委譲する（`pr/open.md` ステップ 2.4 / `pr/ready.md` Phase 4 と同一）。スクリプトは冪等で、API 詳細は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) を参照。
 
 **委譲呼び出し**（`{issue}` は対象 Issue 番号、`auto_add false`・`non_blocking true`）:
 
@@ -197,7 +197,7 @@ gh issue close {issue_number}
 
 ### 4.2 Update Projects Status
 
-`github.projects.enabled: false` ならスキップして Phase 4.3 へ。そうでなければ [Shared: Projects Status → Done](#shared-projects-status--done-delegate-pattern) の委譲パターンを実行する（`{issue}` = `{issue_number}`、`auto_add false` の理由: close 時点で start.md Phase 2.4 が登録済み）。結果分岐は共通テーブルに従い、いずれの場合も Phase 4.3 へ（non-blocking — close は Phase 4.1 で実行済み）。
+`github.projects.enabled: false` ならスキップして Phase 4.3 へ。そうでなければ [Shared: Projects Status → Done](#shared-projects-status--done-delegate-pattern) の委譲パターンを実行する（`{issue}` = `{issue_number}`、`auto_add false` の理由: close 時点で `pr/open.md` ステップ 2.4 が登録済み）。結果分岐は共通テーブルに従い、いずれの場合も Phase 4.3 へ（non-blocking — close は Phase 4.1 で実行済み）。
 
 ### 4.3 Update Local Work Memory
 

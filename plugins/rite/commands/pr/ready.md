@@ -307,7 +307,7 @@ Proceed to the next phase.
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "ready_error" \
   --active true \
-  --next "rite:pr:ready failed during Ready transition. Ask user: retry / skip to ステップ 8.5 (完了レポート) / terminate." \
+  --next "rite:pr:ready failed during Ready transition. Ask user: retry / abort (orchestrator 経由なら caller に制御を戻す / standalone なら手動再実行)." \
   --if-exists
 ```
 

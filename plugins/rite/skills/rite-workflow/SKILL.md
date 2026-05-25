@@ -142,32 +142,34 @@ See [references/phase-mapping.md](./references/phase-mapping.md) for phase list.
 
 See [references/work-memory-format.md](./references/work-memory-format.md) for work memory format.
 
-## Sub-skill Return — 4 Command Architecture (Issue #1136)
+## 4 Command Architecture
 
-`/rite:issue:start` (廃止済み、Issue #1136) は **4 つの単機能コマンド** に分解された:
+`/rite:issue:start` は廃止され、**4 つの単機能コマンド** に分解されている (詳細は CHANGELOG 参照):
 
-| コマンド | 責務 |
-|---|---|
-| `/rite:pr:open <issue>` | Issue → branch → 実装 → lint → draft PR (Step 0 Resume Dispatch 含む) |
-| `/rite:pr:iterate <pr>` | review ↔ fix を `[review:mergeable]` まで無限ループ (cycle counter なし、abort は Ctrl+C のみ) |
-| `/rite:pr:ready <pr>` | Ready 化 + Projects Status + 親判定 + 完了レポート |
-| `/rite:pr:merge <pr>` | `gh pr merge --squash` を叩くだけ (cleanup は分離) |
+| コマンド | 責務 | 区分 |
+|---|---|---|
+| `/rite:pr:open <issue>` | Issue → branch → 実装 → lint → draft PR (Step 0 Resume Dispatch 含む) | orchestrator |
+| `/rite:pr:iterate <pr>` | review ↔ fix を `[review:mergeable]` まで無限ループ (cycle counter なし、abort は Ctrl+C のみ) | orchestrator |
+| `/rite:pr:ready <pr>` | Ready 化 + Projects Status + 親判定 + 完了レポート | self-contained command |
+| `/rite:pr:merge <pr>` | `gh pr merge --squash` を叩くだけ (cleanup は分離) | self-contained command |
 
 `/rite:issue:create` は引き続き flat single-file workflow を維持。マージ後の cleanup は `/rite:pr:cleanup` (既存) を別途実行する。
 
 LLM が途中で停止した場合の正規復帰経路は `/rite:resume` で、`commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) の phase→新 4 コマンド routing 表に従う。implicit-stop 対策の hook 群 (`auto-fire-step0.sh` / `stop-create-interview-block.sh` / `verify-terminal-output.sh`) は撤去済み。
 
-各コマンドから invoke される sub-skill は `rite:lint` / `rite:issue:implement` / `rite:pr:create` / `rite:pr:review` / `rite:pr:fix` で、各々が 1 種類の sentinel pattern を emit する:
+### Sub-skill sentinel 一覧 (orchestrator から grep される SoT)
 
-| sub-skill | sentinel |
-|---|---|
-| `rite:lint` | `[lint:success]` / `[lint:skipped]` / `[lint:error]` / `[lint:aborted]` |
-| `rite:pr:create` | `[pr:created:N]` / `[pr:create-failed]` |
-| `rite:pr:review` | `[review:mergeable]` / `[review:fix-needed:N]` |
-| `rite:pr:fix` | `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:replied-only]` / `[fix:error]` |
-| `rite:pr:merge` (new) | `[merge:completed]` / `[merge:not-ready]` / `[merge:error]` |
+| sub-skill | emit する sentinel | invoke 元 |
+|---|---|---|
+| `rite:issue:implement` | (現状 sentinel 未発火 — 完了は work memory / flow-state 側で確認する設計) | `pr:open` Step 4 |
+| `rite:lint` | `[lint:success]` / `[lint:skipped]` / `[lint:error]` / `[lint:aborted]` | `implement` 内で autonomous invoke、`pr:open` Step 5 が結果を読む |
+| `rite:pr:create` | `[pr:created:N]` / `[pr:create-failed]` | `pr:open` Step 6 |
+| `rite:pr:review` | `[review:mergeable]` / `[review:fix-needed:N]` / `[review:error]` | `pr:iterate` 内ループ |
+| `rite:pr:fix` | `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:replied-only]` / `[fix:cancelled-by-user]` / `[fix:error]` | `pr:iterate` 内ループ |
+| `rite:pr:ready` | `[ready:completed]` / `[ready:error]` | ユーザーが直接 invoke (orchestrator 経由なし) |
+| `rite:pr:merge` | `[merge:completed]` / `[merge:not-ready]` / `[merge:error]` | ユーザーが直接 invoke (orchestrator 経由なし) |
 
-orchestrator (`pr:open` / `pr:iterate` / `pr:merge`) はその pattern を grep で routing する。
+orchestrator (`pr:open` / `pr:iterate`) が sub-skill 出力の sentinel を grep で routing する。`pr:ready` / `pr:merge` は self-contained で他 sub-skill を起動しない。
 
 過去の defense-in-depth model (Layer 1/3/4) と移行マップは [references/sub-skill-return-protocol.md](./references/sub-skill-return-protocol.md) (retirement note) を参照。
 

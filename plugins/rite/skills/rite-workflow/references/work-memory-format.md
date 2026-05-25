@@ -57,7 +57,7 @@ _ボトルネック検出はありません_
 |-------------|--------|---------|
 | `{timestamp}` | ISO 8601 `YYYY-MM-DDTHH:MM:SS+HH:MM` | `2026-01-29T14:30:00+09:00` |
 | `{branch_name}` | `{type}/issue-{number}-{slug}` | `feat/issue-13-new-feature` |
-| `{command_name}` | Command path | `/rite:issue:start`, `/rite:pr:create` |
+| `{command_name}` | Command path | `/rite:pr:open`, `/rite:pr:create` |
 | `{phase}` | Phase ID (see [phase-mapping.md](./phase-mapping.md)) | `implement` |
 | `{phase_detail}` | Detail state | `実装作業中`, `PR 作成完了` |
 | `{next_command}` | Next command | `/rite:pr:create`, `/rite:pr:review #42` |

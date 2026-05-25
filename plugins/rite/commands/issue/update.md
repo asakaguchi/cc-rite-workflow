@@ -20,7 +20,7 @@ In the rite workflow, the work memory is **automatically updated** when the foll
 
 | Command | Auto-update content |
 |---------|-------------|
-| `/rite:issue:start` | 作業メモリの初期化、実装計画の記録 |
+| `/rite:pr:open` | 作業メモリの初期化、実装計画の記録 |
 | `/rite:pr:create` | 変更ファイル、コミット履歴、PR 情報の記録 |
 | `/rite:pr:review` | セッション情報更新、ループ回数の更新、レビュー結果の記録 |
 | `/rite:pr:fix` | 進捗サマリー更新、変更ファイル更新、レビュー対応履歴の記録 |
@@ -137,7 +137,7 @@ If neither local file nor Issue comment is found:
 ```
 警告: 作業メモリが見つかりません
 
-この Issue は `/rite:issue:start` で開始されていない可能性があります。
+この Issue は `/rite:pr:open` で開始されていない可能性があります。
 
 オプション:
 - 新規に作業メモリを作成

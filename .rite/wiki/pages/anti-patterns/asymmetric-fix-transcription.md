@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-24T18:26:30Z"
+updated: "2026-05-26T00:00:00Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260524T182630Z-pr-1133.md"
@@ -224,6 +224,16 @@ sources:
     ref: "raw/fixes/20260524T123235Z-pr-1124.md"
   - type: "reviews"
     ref: "raw/reviews/20260524T161242Z-pr-1128.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260525T070727Z-pr-1139.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260525T081823Z-pr-1139.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260525T082346Z-pr-1139.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260525T094610Z-pr-1139.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260525T142741Z-pr-1139.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration"]
 confidence: high
 ---
@@ -815,6 +825,22 @@ PR #1133 (Issue #1131) は `docs/SPEC.md` の flow-state schema フィールド*
 - **同セクション散文の dead ref も同時 surface**: migration prose が参照する `migrate-flow-state.sh` が実在しない dead ref（実態は `flow-state.sh migrate` subcommand）であることも調査推奨で検出。PR #1130 の inbound grep direction 軸と同様、構造化要素の値更新時は**同セクションの散文に含まれる閾値・dead ref も確認スコープに含める**のが canonical（表更新 PR でも prose を revert test 外として放置せず、follow-up Issue #1134 に bundle して追跡）。
 - canonical 対策: 構造化要素（表 / list / enum）のセル値を更新する PR は、(a) 同セクション直下の散文が同一概念の**依存値**（閾値・version・count）を保持していないか、(b) 散文に削除済みコンポーネントへの dead ref がないか、を着手時の同セクション grep スコープに含める。値更新の波及は cross-file（PR #1130）/ same-file adjacent-line（PR #711）に加え、**same-section structured-element ↔ prose** でも発火する。
 
+### CHANGELOG `# wave` を unit of consistency として扱う (PR #1139 — Issue #1138、累積 42 回目、cycle 14 / 51 findings)
+
+PR #1139 (v0.5.0 リリース前ドキュメント見直し) は 14 cycle / 51 findings (CRITICAL×7, HIGH×20, MEDIUM×9, LOW-MEDIUM×6, MEDIUM-LOW×1, LOW×5) に達する超大規模 docs PR で、ほぼ全 cycle で Asymmetric Fix Transcription の variant が発火した。本系譜に **CHANGELOG `# wave` を unit of consistency として扱う** 軸を追加する:
+
+- **`# wave grep sweep`**: CHANGELOG に `removed in #N` を追記する PR は、その # で削除された **全 keys / features** を CHANGELOG 自体から再抽出し、各 key について `grep -rn '<key>' docs/` で残存 live citation を機械検出し同じ DEPRECATED 化パターンで一括更新する。cycle 1 で `separate_issue_creation.*` のみ DEPRECATED 化し他 4 keys (`observed_likelihood_gate.*` / `fail_fast_first.*` / `fix.severity_gating` / `project.type`) を live 残置した失敗が cycle 2-6 で連続再発、`# wave` (e.g. #1118) は unit of consistency と認識する必要があった。
+- **JA/EN parity grep の必須化**: cycle 3 F-06 fix が SPEC.ja.md L1454 のみ historical 注記化し EN 側 SPEC.md L1286 を取りこぼした cross-language drift を cycle 4 で再検出。fix 直後に対応する日英ペアの `grep -rn` 再走査が verification protocol に必要 (PR #623 の同 file 内 propagation scan の cross-language 拡張)。
+- **Fix 自体が新規 dead reference を導入する self-defeating fix の連続再発**: cycle 4/5/8/11/12 で 5 cycle 連続で「fix の prose 自体が削除済 component を引用する」self-defeating pattern が発火。cycle 4 で learned 記録しても cycle 5/8/11/12 で再発したため、learned 単発記録では不十分で「fix 適用時に導入する説明文の事実関係を `git log` / `git show` / `ls` で verify する step」を verification protocol レベルで強制必須化する必要があった。([Documentation review は対応する実装側の grep verify を必須 step とする](../heuristics/docs-review-implementation-grep-verification.md) で同 PR の implementation grep gap として独立化)。
+- **TOC anchor symmetric sweep gap** (cycle 12 F-01 / cycle 13 CQ-F-01): SPEC H2 rename 後 TOC entry の GFM auto-generated anchor 再計算が必要だが、cycle 12 で `Internationalization` H2 rename を fix した際に同じ rename pattern を持つ `Project Types` H2 を sweep し忘れ cycle 13 で再検出。TOC anchor mismatch fix 時は同じ rename pattern を持つ heading を全て sweep する step が必要。
+- **Pre-existing → current-pr scope 昇格 (Diff Accumulation Effect)** (cycle 6/7/11): reviewer が cycle N で「pre-existing drift / follow-up」と判定した finding が、後続 cycle の同 PR 内変更 (CHANGELOG `+` 行追加など) で「本 PR 内 documentation セット内の直接矛盾」へ正当に昇格する mode を実測。reviewer self-degradation ではなく **diff 累積効果** であり、次 cycle で再走査して scope を再評価する step が必要。「本 PR `+` 行と既存 documentation の対称矛盾は必ず current-pr scope」を Wiki 経験則として明示。
+- **Multi-Source-of-Truth Phase Enum Drift** (cycle 4 F-04): 同一 SPEC 文書内で phase enum を 3 箇所 (prose / Phase 表 / Retired note) で個別に記述しており、片方の prose 追加時に他箇所との同期が漏れた。enum は **単一 SoT** (`PHASE_ENUM_V3` in `flow-state.sh`) を参照する形に統一すべき (本 PR では prose に直接列挙する形のまま、参照を明示するに留めた)。
+- **canonical 対策**: 大規模 retire 系 PR (`#1117` i18n 廃止、`#1118` scaffolding 削除、`#1136` /rite:issue:start 4 分解 など) の事後 docs 整備 PR では、(a) CHANGELOG `# wave` enumeration で削除対象全 keys/features の docs grep sweep、(b) `removed in #N` claim 全件の `ls` / `git show {sha}:{path}` fact-check、(c) JA/EN pair grep、(d) implementation side (`commands/` / `scripts/`) grep を 4 点セットで必須化する。
+
+### Cumulative cycle count update (PR #1139 後)
+
+累積 1-42 回 (PR #548〜#1139): 構造的予防の連続再現は PR #968 → #973 → #984 → #992 → #996 (5 PR / 累積 28-32) を maximum 記録として、PR #1124 (累積 39)・PR #1128 (累積 40)・PR #1130 (累積 41)・PR #1133 (0 findings)・PR #1139 (累積 42 / 14 cycle / 51 findings) と続く。**PR #1139 は cycle 数で最長記録** (14 cycle、累積 33-38 の 3-5 cycle convergence 帯から大幅拡張)。要因: (a) v0.5.0 リリース直前という period が「pre-existing drift も current-pr scope」と判定されるバイアスを生んだ、(b) 大規模 retire 系 PR (#1117/#1118/#1136) の事後 docs 整備が同 PR 内で重なった、(c) implementation grep gap が cycle 5 まで未明文化だった。長期 cycle PR の analyse は別 heuristic [Documentation review は対応する実装側の grep verify を必須 step とする](../heuristics/docs-review-implementation-grep-verification.md) で詳述。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -832,6 +858,11 @@ PR #1133 (Issue #1131) は `docs/SPEC.md` の flow-state schema フィールド*
 - [PR #1133 review (Issue #1131、0 findings mergeable: docs schema フィールド表の v2→v3 整理 PR で、表セル値更新が同セクション直下の migration prose の閾値 `< 2` を stale 化させる + 散文の dead ref `migrate-flow-state.sh` を tech-writer Doc-Heavy + code-quality が調査推奨で cross-validation 検出。structured-element ↔ same-section prose 軸を追加、pre-existing drift を #1134 化)](../../raw/reviews/20260524T182630Z-pr-1133.md)
 - [PR #1130 review (累積 41 回目: ファイル削除整理 PR で inbound 参照の行番号付き dangling citation を tech-writer + code-quality が cross-validation 検出 → cycle 2 で 0 findings 収束。削除前 `grep -rn` で inbound 参照を検証する learning、design doc の pre-existing dead ref を #1129 化)](../../raw/reviews/20260524T170425Z-pr-1130.md)
 - [PR #1130 fix (stop-guard.test.md 削除に伴う multi-session-state.md:78 の dangling citation 除去 + live 根拠への集約。ファイル削除を含む整理 PR では outbound だけでなく inbound 参照を削除前 grep で確認すべき learning)](../../raw/fixes/20260524T165749Z-pr-1130.md)
+- [PR #1139 review cycle 1 (累積 42 回目の起点: v0.5.0 リリース前 docs 見直し PR で `#1118 wave` の 3 keys のうち 1 key のみ DEPRECATED 化、他 2 keys を live 残置した cross-key drift を tech-writer + code-quality cross-validation 検出。`# wave` を unit of consistency として扱う Wiki 経験則を確立)](../../raw/reviews/20260525T070727Z-pr-1139.md)
+- [PR #1139 review cycle 2 (累積 42 回目の `# wave` 拡張: CHANGELOG L36 が `project.type` retired 宣言したが docs L21/L259/L867/L872 に live spec 残置の Asymmetric Fix Transcription LARGER drift。CHANGELOG `removed in #N` PR は `# wave` 全 keys を docs grep sweep する Wiki 経験則を確立)](../../raw/reviews/20260525T081823Z-pr-1139.md)
+- [PR #1139 fix cycle 2 (CHANGELOG `removed in #N` fact-check protocol 確立: `plugins/rite/i18n/ja/` を「remain on disk」と書いたが実態は ENOENT、`ls` / `git show {sha}:{path}` で actual state 確認義務化)](../../raw/fixes/20260525T082346Z-pr-1139.md)
+- [PR #1139 fix cycle 3 (SPEC ↔ CONFIGURATION 同期 verify 欠落の cross-document drift: project.type / observed_likelihood_gate / fail_fast_first / severity_gating の 4 keys すべてに DEPRECATED 注記が未連動だった片肺、cycle 1+2 で CONFIGURATION 側のみ DEPRECATED 化されていた parallel drift)](../../raw/fixes/20260525T094610Z-pr-1139.md)
+- [PR #1139 fix cycle 13 (TOC Symmetric Fix Gap: cycle 12 で `Internationalization` H2 rename を fix したが同じ rename pattern を持つ `Project Types` H2 を sweep し忘れ cycle 13 で再検出。Symmetric fix sweep を heading rename 全件に適用する learning + prose 内 step 番号書き換えの implementation SoT grep verify 義務化)](../../raw/fixes/20260525T142741Z-pr-1139.md)
 - [PR #792 cycle 3 fix (Asymmetric pattern 再発 + GFM table boundary 破壊)](../../raw/fixes/20260503T110855Z-pr-792-fix-cycle3.md)
 - [PR #792 cycle 5 fix (Meta-contract レイヤーでの asymmetric 再発 + FR status 変更 5 項目 checklist)](../../raw/fixes/20260503T111722Z-pr-792-fix-cycle5.md)
 - [PR #548 cycle 3 fix: asymmetric fix transcription pattern](../../raw/fixes/20260416T173607Z-pr-548-cycle3.md)

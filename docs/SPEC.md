@@ -862,7 +862,7 @@ Work memory is automatically updated when executing the following commands:
 |---------|---------------------|
 | `/rite:pr:open` | Initialize work memory, record implementation plan |
 | `/rite:pr:create` | Record changed files, commit history, PR info |
-| `/rite:pr:iterate` / `/rite:pr:fix` | Record review response history (loop counter, fix history) |
+| `/rite:pr:iterate` / `/rite:pr:fix` | Record review response history (fix history per cycle; no loop counter — Issue #1136 removed cycle counters and quality-signal escalation entirely) |
 | `/rite:pr:cleanup` | Record completion info |
 | `/rite:lint` | Record quality check results (conditional: only on issue branches) |
 
@@ -1649,9 +1649,16 @@ When a step of the end-to-end flow (`/rite:pr:open` → `/rite:pr:iterate` → `
 
 > **History (PR 2b, #1088)**: An earlier design (#366) auto-detected these as "workflow incidents" — each failure path emitted a `[CONTEXT] WORKFLOW_INCIDENT=1; ...` sentinel via a dedicated `workflow-incident-emit.sh` hook, which the (then-current) `/rite:issue:start` orchestrator's ステップ 8.5 grepped from the conversation context to auto-register the blocker as a Todo Issue (`AskUserQuestion` confirmation, per-session dedupe, `workflow_incident.enabled` opt-out). The entire mechanism — the emit hook, the ステップ 8.5 detection logic, the `workflow_incident:` config key, and the sentinel format — was removed in favor of the single-layer plain-stderr design described above. The `/rite:issue:start` orchestrator itself was subsequently decomposed in #1136 (see the [Retired section](#riteissuestart-retired-in-1136) above). Failures are now visible but no longer auto-registered; the user decides whether to file an Issue.
 
-### Reviewer-Triggered Issue Creation (Removed in #1136)
+### Reviewer-Triggered Issue Creation (Two Paths — #1136 Status)
 
-A previous "Phase 7" mechanism in `fix.md` Phase 4.3 ("Automatic Separate Issue Creation") used to call `plugins/rite/scripts/create-issue-with-projects.sh` directly on user-approved reviewer "別 Issue として作成" recommendations (`source: pr_review`). The entire mechanism (Phase 4.3, the `[fix:issues-created:N]` sentinel, the `review.separate_issue_creation.*` config keys) was removed in #1136. Reviewer recommendations are now handled in-loop only — the user picks one of `fix code` / `accept (acknowledge only)` / `reply only` from the Phase 2.1 menu, and any concerns that warrant a separate Issue must be filed manually via `/rite:issue:create` (use `/rite:investigate` first if a fact-check is needed). The `scripts/create-issue-with-projects.sh` helper is still the canonical Issue-creation path for manual invocations.
+There are (were) two paths that converted reviewer "別 Issue として作成" recommendations into tracked GitHub Issues. Their #1136 status differs and must not be conflated:
+
+| Path | Location | #1136 Status | Notes |
+|------|----------|--------------|-------|
+| Fix-side post-loop | `fix.md` Phase 4.3 ("Automatic Separate Issue Creation") | **Removed in #1136** | The full Phase 4.3 section, the `[fix:issues-created:N]` sentinel, and the `review.separate_issue_creation.*` config keys were deleted. Inside the `/rite:pr:fix` review-fix loop, reviewer recommendations are now handled per-finding via the Phase 2.1 menu (fix / accept / reply) — no post-loop auto-creation. |
+| Review-side | `pr/review.md` Phase 7 ("Automatic Issue Creation") | **Live (not removed)** | Calls `plugins/rite/scripts/create-issue-with-projects.sh` with `source: "pr_review"`, gated by `AskUserQuestion` confirmation. This is the canonical path for converting reviewer recommendations into tracked Issues. |
+
+The `scripts/create-issue-with-projects.sh` helper is the canonical Issue-creation path for both the review-side Phase 7 invocation above and for manual `/rite:issue:create` use.
 
 ## Experience Wiki
 

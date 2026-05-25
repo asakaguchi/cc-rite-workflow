@@ -169,10 +169,14 @@ fix:
   fail_fast_response: true             # Enable Fail-Fast Response Principle in fix.md Phase 2 (default: true)
   # DEPRECATED (#1118): fix.severity_gating keys are ignored.
   # The severity_gating convergence strategy (#506) was removed entirely in #1118.
-  # Non-convergence is now handled via 4 quality signals (see
-  # commands/pr/iterate.md ステップ 7 and commands/pr/references/fix-relaxation-rules.md);
-  # the previous Phase 4.3.3 AskUserQuestion (retry / separate issue / withdraw)
-  # mechanism was removed in #1136 along with the entire fix.md Phase 4.3.
+  # The review-fix loop now has no automatic non-convergence handling — it simply
+  # continues until 0 findings remain (normal exit) or the user aborts via Ctrl+C
+  # (manual exit, resume with /rite:resume). See commands/pr/iterate.md (loop spec)
+  # and commands/pr/references/fix-relaxation-rules.md ("Loop Termination" section)
+  # for exit conditions. Both the severity_gating strategy and the previous
+  # Phase 4.3.3 AskUserQuestion (retry / separate issue / withdraw) mechanism were
+  # removed in #1118 / #1136 — neither cycle counter, N-retry cap, nor
+  # quality-signal escalation exists in the current loop.
   # Remove these keys from rite-config.yml — they no longer have any effect.
   # severity_gating:
   #   enabled: false
@@ -514,7 +518,7 @@ issue:
 | `fact_check.verify_internal_likelihood` | boolean | `true` | Enable Sub-Phase B (Internal Likelihood Claim Verification) via Grep-based call site / entry point checks |
 | ~~`observed_likelihood_gate.*`~~ | — | — | **DEPRECATED (#1118)**: removed entirely. These keys were scaffolding (#506) that never got wired to conditional runtime logic. The Observed Likelihood Gate behavior (Observed / Demonstrable / Hypothetical axis enforcement) is hardcoded in `_reviewer-base.md` / `fix.md` / `review.md` prose. Remove `observed_likelihood_gate:` from `rite-config.yml` — the keys have no effect |
 | ~~`fail_fast_first.*`~~ | — | — | **DEPRECATED (#1118)**: removed entirely. These keys were scaffolding (#506) that never got wired to conditional runtime logic. The Fail-Fast First principle (require throw/raise propagation consideration before fallback) is hardcoded in `_reviewer-base.md` / `fix.md` prose. Remove `fail_fast_first:` from `rite-config.yml` — the keys have no effect |
-| ~~`separate_issue_creation.*`~~ | — | — | **DEPRECATED (#1136)**: removed entirely. `fix.md` Phase 4.3 ("Automatic Separate Issue Creation") was deleted along with the `[fix:issues-created:N]` sentinel. Reviewers' "別 Issue として作成" recommendations are now handled in-loop only (fix / accept / reply); no automatic Issue creation occurs from review output. Use `/rite:investigate` for pre-existing concerns that need a separate Issue, then file it manually via `/rite:issue:create`. Remove `separate_issue_creation:` from `rite-config.yml` — the keys have no effect |
+| ~~`separate_issue_creation.*`~~ | — | — | **DEPRECATED (#1136)**: removed entirely. The fix-side post-loop `fix.md` Phase 4.3 ("Automatic Separate Issue Creation") was deleted along with the `[fix:issues-created:N]` sentinel. **Note**: The review-side `pr/review.md` Phase 7 (Automatic Issue Creation with `source: pr_review`, gated by `AskUserQuestion` confirmation) remains live and is the canonical path for converting reviewer "別 Issue として作成" recommendations into tracked Issues. Inside the `/rite:pr:fix` review-fix loop, reviewer recommendations are handled per-finding via fix / accept / reply (Phase 2.1 menu) — no fix-side post-loop auto-creation. Remove `separate_issue_creation:` from `rite-config.yml` — the keys have no effect |
 
 **Review-fix loop exit (v0.4.0 #557):**
 

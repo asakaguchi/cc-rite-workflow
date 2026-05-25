@@ -26,7 +26,6 @@ schema_version: 2
 # project:
 #   type: webapp
 
-
 # GitHub Projects 連携
 github:
   projects:
@@ -171,9 +170,13 @@ fix:
   fail_fast_response: true             # fix.md Phase 2 で Fail-Fast Response Principle を有効化 (default: true)
   # DEPRECATED (#1118): fix.severity_gating キーは無視される。
   # severity_gating 収束戦略 (#506) は #1118 で完全に削除された。
-  # 非収束は 4 つの品質シグナルで処理される (commands/pr/iterate.md ステップ 7 と
-  # commands/pr/references/fix-relaxation-rules.md 参照)。旧 Phase 4.3.3 AskUserQuestion
-  # (retry / 別 issue / withdraw) 機構は #1136 で fix.md Phase 4.3 全体と併せて削除済。
+  # 現行のレビュー・フィックスループは非収束の自動処理機構を持たない —
+  # 残り finding が 0 件 (normal exit) か、ユーザーが Ctrl+C で中断 (manual exit、
+  # /rite:resume で復帰) のいずれかでのみ終了する。終了条件は commands/pr/iterate.md
+  # (ループ仕様) と commands/pr/references/fix-relaxation-rules.md の
+  # 「Loop Termination」節を参照。severity_gating 戦略も旧 Phase 4.3.3 AskUserQuestion
+  # (retry / 別 issue / withdraw) 機構も #1118 / #1136 で削除済 — 現行ループには
+  # cycle counter / N 回上限 / quality-signal escalation のいずれも存在しない。
   # rite-config.yml から fix.severity_gating: ブロックを削除してよい。
   # severity_gating:
   #   enabled: false
@@ -515,7 +518,7 @@ issue:
 | `fact_check.verify_internal_likelihood` | boolean | `true` | Grep ベースの呼び出し箇所 / エントリポイントチェックで Sub-Phase B (Internal Likelihood Claim Verification) を有効化 |
 | ~~`observed_likelihood_gate.*`~~ | — | — | **DEPRECATED (#1118)**: 完全に削除済み。これらは #506 で導入された scaffolding キーで、conditional runtime logic に一度も配線されないまま削除された。Observed Likelihood Gate の挙動 (Observed / Demonstrable / Hypothetical 軸の強制) は `_reviewer-base.md` / `fix.md` / `review.md` の prose にハードコードされている。`rite-config.yml` から `observed_likelihood_gate:` を削除して構わない (キーは効果を持たない) |
 | ~~`fail_fast_first.*`~~ | — | — | **DEPRECATED (#1118)**: 完全に削除済み。これらは #506 で導入された scaffolding キーで、conditional runtime logic に一度も配線されないまま削除された。Fail-Fast First 原則 (fallback 推奨前の throw/raise 伝播考慮) は `_reviewer-base.md` / `fix.md` の prose にハードコードされている。`rite-config.yml` から `fail_fast_first:` を削除して構わない (キーは効果を持たない) |
-| ~~`separate_issue_creation.*`~~ | — | — | **DEPRECATED (#1136)**: 完全に削除済み。`fix.md` Phase 4.3 (「Automatic Separate Issue Creation」) と `[fix:issues-created:N]` sentinel を撤去した。レビュアーの「別 Issue として作成」推奨はループ内 (fix / accept / reply) のみで処理し、review 出力からの自動 Issue 作成は発生しない。事前存在の懸念事項は `/rite:investigate` で調査後、`/rite:issue:create` で手動起票する。`rite-config.yml` から `separate_issue_creation:` を削除して構わない (キーは効果を持たない) |
+| ~~`separate_issue_creation.*`~~ | — | — | **DEPRECATED (#1136)**: 完全に削除済み。fix-side の post-loop 経路 `fix.md` Phase 4.3 (「Automatic Separate Issue Creation」) と `[fix:issues-created:N]` sentinel を撤去した。**Note**: review-side の `pr/review.md` Phase 7 (Automatic Issue Creation、`source: pr_review`、`AskUserQuestion` 承認 gate 付き) は依然 live で、reviewer の「別 Issue として作成」推奨を tracking Issue に変換する canonical な経路。`/rite:pr:fix` のレビュー・フィックスループ内では reviewer recommendation は per-finding で fix / accept / reply (Phase 2.1 menu) として処理され、fix-side の post-loop auto-creation は無い。`rite-config.yml` から `separate_issue_creation:` を削除して構わない (キーは効果を持たない) |
 
 **レビュー・フィックスループの終了 (v0.4.0 #557):**
 

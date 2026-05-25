@@ -39,7 +39,7 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
 ### Added
 
 - **CONFIGURATION.ja.md created** (#1082) — Japanese translation of the configuration reference (`docs/CONFIGURATION.ja.md`) was added as the initial version, mirroring the section structure of the English original (`docs/CONFIGURATION.md`)
-- **i18n style-guide created** (#1085) — `docs/i18n-style-guide.md` was added with a minimal scope. The kept-English term list (Issue / PR / Sprint / Iteration / finding / fingerprint / severity / confidence / blocking / etc.) is formalized; documentation uses the English form while `plugins/rite/i18n/ja/` UI strings use the action-oriented Japanese term 「指摘」 for `finding` — the document/UI split is explicitly noted
+- **i18n style-guide created** (#1085) — `docs/i18n-style-guide.md` was added with a minimal scope. The kept-English term list (Issue / PR / Sprint / Iteration / finding / fingerprint / severity / confidence / blocking / etc.) is formalized; documentation uses the English form while command/sub-skill files use the action-oriented Japanese term 「指摘」 for `finding` inline (formerly `plugins/rite/i18n/ja/`, deleted in #1117) — the document/inline-UI split is explicitly noted
 
 ### Fixed
 

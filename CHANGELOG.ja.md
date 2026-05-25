@@ -38,7 +38,7 @@ Phase 番号取扱方針: エントリは機能名レベルで変更を記述し
 ### 追加
 
 - **CONFIGURATION.ja.md 新規作成** (#1082) — 設定リファレンスの日本語版 `docs/CONFIGURATION.ja.md` を初版作成 (英語原文 `docs/CONFIGURATION.md` のセクション構造を mirror)
-- **i18n style-guide 新規作成** (#1085) — `docs/i18n-style-guide.md` を最小限で新規作成。kept-English term (Issue / PR / Sprint / Iteration / finding / fingerprint / severity / confidence / blocking 等) を正式化し、ドキュメントは英語のまま使用 / `plugins/rite/i18n/ja/` UI 文言は行為的表現「指摘」を使う使い分けを明文化
+- **i18n style-guide 新規作成** (#1085) — `docs/i18n-style-guide.md` を最小限で新規作成。kept-English term (Issue / PR / Sprint / Iteration / finding / fingerprint / severity / confidence / blocking 等) を正式化し、ドキュメントは英語のまま使用 / commands・sub-skill ファイル内の日本語直書き UI 文言 (旧 `plugins/rite/i18n/ja/`、#1117 で削除) は行為的表現「指摘」を使う使い分けを明文化
 
 ### 修正
 

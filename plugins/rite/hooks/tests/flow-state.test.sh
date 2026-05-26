@@ -382,12 +382,14 @@ result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 (cd "$d" && bash "$HOOK" set --phase plan --issue 1142 --branch "fix/issue-1142" --pr 0 --next "n")
 # Remove .rite-session-id to force env-var path.
 rm -f "$d/.rite-session-id"
-got=$(cd "$d" && CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" get --field phase --default "EMPTY")
+# `env -u CLAUDE_SESSION_ID` で legacy env も明示 unset し、TC-14 と完全対称化。
+# precedence regression (CLAUDE_CODE_SESSION_ID 分岐削除) を TC-13 単体で検出可能にする。
+got=$(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" get --field phase --default "EMPTY")
 assert "TC-13.1: CLAUDE_CODE_SESSION_ID resolves get correctly" "plan" "$got"
-(cd "$d" && CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" set --phase pr --next "after-fix" --if-exists)
-got=$(cd "$d" && CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" get --field phase --default "EMPTY")
+(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" set --phase pr --next "after-fix" --if-exists)
+got=$(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" get --field phase --default "EMPTY")
 assert "TC-13.2: CLAUDE_CODE_SESSION_ID resolves set --if-exists correctly" "pr" "$got"
-got=$(cd "$d" && CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" get --field next_action --default "EMPTY")
+got=$(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" get --field next_action --default "EMPTY")
 assert "TC-13.3: --if-exists write was not silently skipped" "after-fix" "$got"
 
 # --- TC-14: AC-4 backwards-compat — CLAUDE_SESSION_ID still works ---
@@ -409,9 +411,13 @@ echo "=== TC-15: AC-3 cmd_get does not silence resolution ERROR ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 rm -f "$d/.rite-session-id"
 err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 )
-echo "$err" | grep -q "ERROR: cannot resolve session_id" \
-  && pass "TC-15: cmd_get surfaces _resolve_session_id ERROR on stderr" \
-  || fail "TC-15: cmd_get silenced resolution ERROR (regression of Issue #1142 fix): '$err'"
+# ERE pattern: 文言の軽微なリネーム (e.g. cmd_get→get、prefix 変更) でも brittle に
+# silent regression しないようにする (cmd_get と "cannot resolve" の組合せのみ assert)
+if echo "$err" | grep -qE 'ERROR:.*cannot resolve session_id'; then
+  pass "TC-15: cmd_get surfaces _resolve_session_id ERROR on stderr"
+else
+  fail "TC-15: cmd_get silenced resolution ERROR (regression of Issue #1142 fix): '$err'"
+fi
 
 # --- TC-16: AC-3 — cmd_get emits WARNING for stale .rite-session-id drift ---
 echo ""
@@ -423,17 +429,23 @@ echo "=== TC-16: AC-3 cmd_get WARNs on stale .rite-session-id drift ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 echo "deadbeef-0000-0000-0000-000000000000" > "$d/.rite-session-id"
 err=$( (cd "$d" && bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 )
-echo "$err" | grep -q "WARNING: flow-state.sh cmd_get: state file not found" \
-  && pass "TC-16.1: cmd_get WARNs on stale sid drift" \
-  || fail "TC-16.1: cmd_get silent on stale sid drift: '$err'"
+# ERE pattern で文言 drift に耐性。F-09 修正で `path:` → `file:` (basename only) に
+# リネームしたが、ERE は両方マッチ可能 (`(path|file):` を含めない柔軟な anchor)。
+if echo "$err" | grep -qE 'WARNING:.*cmd_get.*state file not found'; then
+  pass "TC-16.1: cmd_get WARNs on stale sid drift"
+else
+  fail "TC-16.1: cmd_get silent on stale sid drift: '$err'"
+fi
 # Truly first-time (no .rite-session-id) must stay silent (graceful contract).
 rm -f "$d/.rite-session-id"
 err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
 # The resolution-ERROR is expected here; WARNING about state-file-not-found must NOT
 # fire because we never resolved a sid.
-echo "$err" | grep -q "WARNING: flow-state.sh cmd_get: state file not found" \
-  && fail "TC-16.2: cmd_get emitted state-file WARNING when sid was not resolved (regression)" \
-  || pass "TC-16.2: cmd_get silent about state-file-not-found when sid resolution itself failed"
+if echo "$err" | grep -qE 'WARNING:.*cmd_get.*state file not found'; then
+  fail "TC-16.2: cmd_get emitted state-file WARNING when sid was not resolved (regression)"
+else
+  pass "TC-16.2: cmd_get silent about state-file-not-found when sid resolution itself failed"
+fi
 
 # --- TC-17: AC-2 + AC-3 — cmd_set --if-exists WARNs on stale .rite-session-id drift ---
 echo ""
@@ -446,22 +458,71 @@ echo "=== TC-17: AC-2/AC-3 cmd_set --if-exists WARNs on stale sid; first-time si
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 echo "deadbeef-0000-0000-0000-000000000000" > "$d/.rite-session-id"
 err=$( (cd "$d" && bash "$HOOK" set --phase plan --issue 1 --branch "b" --pr 0 --next "n" --if-exists) 2>&1 )
-echo "$err" | grep -q "WARNING: flow-state.sh cmd_set: --if-exists skipped" \
-  && pass "TC-17.1: cmd_set --if-exists WARNs on stale sid drift" \
-  || fail "TC-17.1: cmd_set --if-exists silent on stale sid drift: '$err'"
-# First-time session (no .rite-session-id, no env): silent no-op (legitimate graceful path).
+if echo "$err" | grep -qE 'WARNING:.*cmd_set:.*if-exists skipped'; then
+  pass "TC-17.1: cmd_set --if-exists WARNs on stale sid drift"
+else
+  fail "TC-17.1: cmd_set --if-exists silent on stale sid drift: '$err'"
+fi
+# First-time session (no .rite-session-id, no env): cmd_set returns rc=1 + ERROR
+# (resolution failure surfaces). The --if-exists silent-skip contract applies AFTER
+# sid resolution succeeds, not before. First-time graceful means "no WARNING about
+# --if-exists skip", not "rc=0". 旧 L455 コメントの "rc=0 graceful" 記述は obsolete
+# だったため Issue #1019 で修正 (実機: env 両方 unset で set --if-exists → rc=1 + ERROR)。
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 rm -f "$d/.rite-session-id"
-# Must succeed silently with rc=0 — the truly-first-time graceful contract.
 combined=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" set --phase plan --issue 1 --branch "b" --pr 0 --next "n" --if-exists) 2>&1 || true )
-# When session_id cannot be resolved at all, cmd_set returns rc=1 with ERROR (not
-# silent). This is correct: --if-exists's silent-skip contract applies after sid
-# resolution succeeds, not before. The WARNING about "--if-exists skipped" must
-# NOT appear because we never reached that branch.
-echo "$combined" | grep -q "WARNING: flow-state.sh cmd_set: --if-exists skipped" \
-  && fail "TC-17.2: emitted --if-exists WARNING when sid resolution itself failed (regression)" \
-  || pass "TC-17.2: silent about --if-exists skip when sid resolution failed (ERROR surfaces instead)"
+# WARNING about "--if-exists skipped" must NOT appear because we never reached that branch.
+if echo "$combined" | grep -qE 'WARNING:.*cmd_set:.*if-exists skipped'; then
+  fail "TC-17.2: emitted --if-exists WARNING when sid resolution itself failed (regression)"
+else
+  pass "TC-17.2: silent about --if-exists skip when sid resolution failed (ERROR surfaces instead)"
+fi
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes"; then
+# --- TC-18: F-02 path traversal regression guard (Issue #1148) ---
+echo ""
+echo "=== TC-18: F-02 env-var session_id path-traversal validation ==="
+# Why: CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID env-var paths were resolving sid
+# without validation, allowing CLAUDE_CODE_SESSION_ID="../../tmp/owned" to write
+# state files outside .rite/sessions/. Pin the validator with negative tests for
+# both env vars and direct override.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+rm -f "$d/.rite-session-id"
+err=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="../../tmp/pwned" bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
+if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*path-traversal'; then
+  pass "TC-18.1: CLAUDE_CODE_SESSION_ID rejects '..' path traversal"
+else
+  fail "TC-18.1: path traversal not rejected: '$err'"
+fi
+err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID="abc/def" bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
+if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*path-traversal'; then
+  pass "TC-18.2: CLAUDE_SESSION_ID rejects '/' path traversal"
+else
+  fail "TC-18.2: path traversal not rejected: '$err'"
+fi
+
+# --- TC-19: F-03 log injection regression guard (Issue #1148) ---
+echo ""
+echo "=== TC-19: F-03 env-var session_id control-character validation ==="
+# Why: WARNING messages embedded $sid without escaping, allowing
+# CLAUDE_CODE_SESSION_ID=$'innocent\nWARNING: fake injected' to inject fake
+# WARNING lines into stderr (log injection vector). Pin rejection of newline /
+# tab / NUL etc.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+rm -f "$d/.rite-session-id"
+err=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID=$'sid-with\nnewline' bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
+if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*control characters'; then
+  pass "TC-19.1: CLAUDE_CODE_SESSION_ID rejects embedded newline (log injection)"
+else
+  fail "TC-19.1: newline not rejected: '$err'"
+fi
+# tab も same code path (any [[:cntrl:]] char) で reject される
+err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID=$'sid\twith-tab' bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
+if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*control characters'; then
+  pass "TC-19.2: CLAUDE_SESSION_ID rejects embedded tab (log injection)"
+else
+  fail "TC-19.2: tab not rejected: '$err'"
+fi
+
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + Issue #1148 security/observability fixes"; then
   exit 1
 fi

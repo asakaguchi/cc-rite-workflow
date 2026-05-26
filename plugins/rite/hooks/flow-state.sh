@@ -39,21 +39,56 @@ _phase_migrate() {
   esac
 }
 
+# Reject path-traversal characters and control characters (log injection vector).
+# All session_id sources (override, SESSION_ID_FILE content, env vars) MUST pass through
+# this validator before being printed or used in path construction. Control-character
+# rejection prevents attackers from injecting fake "WARNING:" lines into stderr by setting
+# env var to e.g. $'innocent\nWARNING: fake injected'. Path-traversal rejection prevents
+# CLAUDE_CODE_SESSION_ID="../../tmp/owned" from writing state files outside .rite/sessions/.
+_validate_session_id() {
+  local sid="$1" source="$2"
+  case "$sid" in
+    *..*|*/*)
+      echo "ERROR: invalid session_id from $source: contains path-traversal characters ('..' or '/')" >&2
+      return 1
+      ;;
+  esac
+  if [[ "$sid" =~ [[:cntrl:]] ]]; then
+    echo "ERROR: invalid session_id from $source: contains control characters (newline / tab / etc.)" >&2
+    return 1
+  fi
+  return 0
+}
+
 _resolve_session_id() {
   local override="${1:-}"
   if [ -n "$override" ]; then
-    case "$override" in *..*|*/*) echo "ERROR: invalid session_id: $override" >&2; return 1 ;; esac
+    _validate_session_id "$override" "--session override" || return 1
     printf '%s\n' "$override"; return 0
   fi
   if [ -f "$SESSION_ID_FILE" ]; then
     local sid; sid=$(tr -d '[:space:]' < "$SESSION_ID_FILE" 2>/dev/null) || sid=""
-    [ -n "$sid" ] && printf '%s\n' "$sid" && return 0
+    if [ -n "$sid" ]; then
+      _validate_session_id "$sid" "$SESSION_ID_FILE" || return 1
+      printf '%s\n' "$sid"
+      return 0
+    fi
   fi
   # Claude Code runtime exposes CLAUDE_CODE_SESSION_ID; older / non-Code clients used
   # CLAUDE_SESSION_ID. Accept both so cmd_get / cmd_set --if-exists do not silently
   # degrade when `.rite-session-id` is absent but the runtime env IS set (Issue #1142).
-  [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] && { printf '%s\n' "$CLAUDE_CODE_SESSION_ID"; return 0; }
-  [ -n "${CLAUDE_SESSION_ID:-}" ] && { printf '%s\n' "$CLAUDE_SESSION_ID"; return 0; }
+  # 両 env-var 経路にも _validate_session_id を適用し、無検証で _state_path に渡る
+  # path-traversal / log-injection 経路を遮断する。
+  if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+    _validate_session_id "$CLAUDE_CODE_SESSION_ID" "CLAUDE_CODE_SESSION_ID env" || return 1
+    printf '%s\n' "$CLAUDE_CODE_SESSION_ID"
+    return 0
+  fi
+  if [ -n "${CLAUDE_SESSION_ID:-}" ]; then
+    _validate_session_id "$CLAUDE_SESSION_ID" "CLAUDE_SESSION_ID env" || return 1
+    printf '%s\n' "$CLAUDE_SESSION_ID"
+    return 0
+  fi
   echo "ERROR: cannot resolve session_id" >&2; return 1
 }
 
@@ -140,8 +175,12 @@ cmd_set() {
   # を分割し、IFS で安全に split (whitespace collapse 防止)。
   local cur_issue=0 cur_branch="" cur_pr=0 cur_parent=0 cur_active=true cur_err=0 cur_last_synced=""
   if [ -f "$path" ]; then
-    local _cur_jq_err _cur_data _cur_rc=0
+    local _cur_jq_err="" _cur_data _cur_rc=0
     _cur_jq_err=$(mktemp 2>/dev/null) || _cur_jq_err=""
+    # SIGINT / set -e / 関数 early return のいずれでも tempfile 削除を保証する RETURN trap。
+    # 旧実装は L158 の `[ -n "$_cur_jq_err" ] && rm -f "$_cur_jq_err"` インライン rm のみで、
+    # set -e 経由の途中 exit や signal 中断で orphan が残る経路があった (F-05 対応)。
+    trap '[ -n "${_cur_jq_err:-}" ] && rm -f "${_cur_jq_err:-}"' RETURN
     _cur_data=$(jq -r '[(.issue_number // 0 | tostring),
                        (.branch // ""),
                        (.pr_number // 0 | tostring),
@@ -193,7 +232,12 @@ cmd_get() {
     --jq-filter) jq_filter="$2"; shift 2 ;;
     *) echo "ERROR: unknown option: $1" >&2; return 1 ;;
   esac; done
-  local sid path
+  local sid path jq_err=""
+  # mktemp tempfile cleanup を RETURN trap に集約する。SIGINT / set -e / 関数 early
+  # return / 関数末尾 fall-through のいずれでも確実に削除される。インライン rm -f を
+  # 関数末尾に置く旧実装は最終 statement が rc=1 を返した際に関数 rc に漏れる silent
+  # failure (Issue #1142 を作った同型 bug の再導入リスク) を持っていた。
+  trap '[ -n "${jq_err:-}" ] && rm -f "${jq_err:-}"' RETURN
   # Do not silence _resolve_session_id stderr: when neither `.rite-session-id` nor
   # the env vars are usable, the helper's ERROR message must surface so the silent
   # "empty + rc=0" failure path observed in Issue #1142 becomes diagnosable.
@@ -203,34 +247,34 @@ cmd_get() {
     # Stale `.rite-session-id` pointing to a nonexistent state file is a drift signal —
     # WARN so it is observable. Truly first-time sessions (no `.rite-session-id`) stay
     # silent: the caller's --default fallback is the legitimate graceful path.
+    # path 全体ではなく basename のみを露出し、multi-tenant 環境での絶対 path leakage
+    # を最小化する。診断に必要な情報 (どのファイル名か / SESSION_DIR は既知) は basename
+    # で十分。
     if [ -f "$SESSION_ID_FILE" ]; then
-      echo "WARNING: flow-state.sh cmd_get: state file not found for resolved session_id=$sid (path: $path; possible stale .rite-session-id); returning --default" >&2
+      echo "WARNING: flow-state.sh cmd_get: state file not found for resolved session_id=$sid (file: $(basename "$path"); possible stale .rite-session-id); returning --default" >&2
     fi
     printf '%s\n' "$default"
     return 0
   fi
-  local jq_err
   jq_err=$(mktemp 2>/dev/null) || jq_err=""
   if [ -n "$jq_filter" ]; then
     if ! jq -r "$jq_filter" "$path" 2>"${jq_err:-/dev/null}"; then
-      echo "WARNING: flow-state.sh cmd_get: jq filter failed for $path (filter: $jq_filter); returning --default" >&2
+      echo "WARNING: flow-state.sh cmd_get: jq filter failed for $(basename "$path") (filter: $jq_filter); returning --default" >&2
       [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
       printf '%s\n' "$default"
     fi
-    [ -n "$jq_err" ] && rm -f "$jq_err"
     return 0
   fi
   if [ -z "$field" ]; then
-    [ -n "$jq_err" ] && rm -f "$jq_err"
     echo "ERROR: --field or --jq-filter required" >&2
     return 1
   fi
   if ! jq -r --arg d "$default" ".${field} // \$d" "$path" 2>"${jq_err:-/dev/null}"; then
-    echo "WARNING: flow-state.sh cmd_get: jq read failed for $path (field: $field); returning --default" >&2
+    echo "WARNING: flow-state.sh cmd_get: jq read failed for $(basename "$path") (field: $field); returning --default" >&2
     [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
     printf '%s\n' "$default"
   fi
-  [ -n "$jq_err" ] && rm -f "$jq_err"
+  return 0
 }
 
 cmd_deactivate() {

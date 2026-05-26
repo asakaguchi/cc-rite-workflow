@@ -126,7 +126,7 @@ Read `plugins/rite/agents/_reviewer-base.md` for format specification.
 ```
 ### 評価: 要修正
 ### 所見
-Phase 3.2 で使用するプレースホルダー `{comment_id}` の取得元が Phase 3.1 の Bash ツール呼び出しですが、Bash ツール間でシェル変数は引き継がれません。
+bash block X で使用するプレースホルダー `{comment_id}` の取得元が bash block Y の Bash ツール呼び出しですが、Bash ツール間でシェル変数は引き継がれません。
 ### 指摘事項
 | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
 |--------|----------|------------|------|----------|

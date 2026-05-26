@@ -23,7 +23,7 @@ resolution_issue: 1144
 
 ## 背景
 
-`/rite:pr:cleanup` Phase 4.W.2 で `rite:wiki:ingest` を Skill 経由で invoke する。ingest.md Phase 9.1 は三点セット（完了レポート本体 / caller 継続 HTML コメント / `<!-- [ingest:completed] -->` sentinel）を返し、caller である `cleanup.md` は直後に 🚨 Mandatory After Wiki Ingest → Phase 5 完了レポート (#652 対応により Phase 5.2 最終 list item 末尾に `<!-- [cleanup:completed] -->` を inline HTML sentinel として含む形で出力。cleanup.md は `wiki/lint.md` ステップ 9.2 三点セット規約から意図的 divergence した 2 ブロック構造を採用) を出力する契約になっている。
+`/rite:pr:cleanup` Phase 4.W.2 で `rite:wiki:ingest` を Skill 経由で invoke する。ingest.md Phase 9.1 は三点セット（完了レポート本体 / caller 継続 HTML コメント / `<!-- [ingest:completed] -->` sentinel）を返し、caller である `cleanup.md` は直後に 🚨 Mandatory After Wiki Ingest → Phase 5 完了レポート (#652 対応により Phase 5.2 最終 list item 末尾に `<!-- [cleanup:completed] -->` を inline HTML sentinel として含む形で出力。cleanup.md は `wiki/lint.md` Phase 9.2 三点セット規約から意図的 divergence した 2 ブロック構造を採用) を出力する契約になっている。
 
 しかし Issue #604 の対策（defense-in-depth）を導入した後にも、sub-skill return 後に LLM が implicit stop を起こし、ユーザーが手動で `continue` 入力しなければ Phase 5 に進まない regression が観測されている（Issue #621）。
 
@@ -32,7 +32,7 @@ resolution_issue: 1144
 1. `/rite:pr:cleanup #619` を実行
 2. cleanup.md Phase 1-4（branch delete / Projects Status update / Issue close / 作業メモリ削除）完了
 3. cleanup.md Phase 4.W.2 が `Skill: rite:wiki:ingest` を invoke
-4. ingest.md が pending raw source (1 件) を処理し、ステップ 8 で `Skill: rite:wiki:lint --auto` を invoke
+4. ingest.md が pending raw source (1 件) を処理し、Phase 8 で `Skill: rite:wiki:lint --auto` を invoke
 5. lint Skill が `Lint: contradictions=0, ...` を return
 6. ingest.md Phase 9 が三点セットを emit:
    - `Wiki Lint が完了しました ...`（完了レポート本体）

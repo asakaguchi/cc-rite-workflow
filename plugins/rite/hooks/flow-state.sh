@@ -39,17 +39,58 @@ _phase_migrate() {
   esac
 }
 
+# Reject path-traversal characters and control characters (log injection vector).
+# All session_id sources (override, SESSION_ID_FILE content, env vars) MUST pass through
+# this validator before being printed or used in path construction. Control-character
+# rejection prevents attackers from injecting fake "WARNING:" lines into stderr by setting
+# env var to e.g. $'innocent\nWARNING: fake injected'. Path-traversal rejection prevents
+# CLAUDE_CODE_SESSION_ID="../../tmp/owned" from writing state files outside .rite/sessions/.
+_validate_session_id() {
+  # `origin` (引数 2) は session_id の出所 (override / SESSION_ID_FILE / env var) を識別する
+  # エラーメッセージ用ラベル。bash builtin `source` の shadow を避けるため `origin` を採用。
+  local sid="$1" origin="$2"
+  case "$sid" in
+    *..*|*/*)
+      echo "ERROR: invalid session_id from $origin: contains path-traversal characters ('..' or '/')" >&2
+      return 1
+      ;;
+  esac
+  if [[ "$sid" =~ [[:cntrl:]] ]]; then
+    echo "ERROR: invalid session_id from $origin: contains control characters (newline / tab / etc.)" >&2
+    return 1
+  fi
+  return 0
+}
+
 _resolve_session_id() {
   local override="${1:-}"
   if [ -n "$override" ]; then
-    case "$override" in *..*|*/*) echo "ERROR: invalid session_id: $override" >&2; return 1 ;; esac
+    _validate_session_id "$override" "--session override" || return 1
     printf '%s\n' "$override"; return 0
   fi
   if [ -f "$SESSION_ID_FILE" ]; then
     local sid; sid=$(tr -d '[:space:]' < "$SESSION_ID_FILE" 2>/dev/null) || sid=""
-    [ -n "$sid" ] && printf '%s\n' "$sid" && return 0
+    if [ -n "$sid" ]; then
+      _validate_session_id "$sid" "$SESSION_ID_FILE" || return 1
+      printf '%s\n' "$sid"
+      return 0
+    fi
   fi
-  [ -n "${CLAUDE_SESSION_ID:-}" ] && { printf '%s\n' "$CLAUDE_SESSION_ID"; return 0; }
+  # Claude Code runtime exposes CLAUDE_CODE_SESSION_ID; older / non-Code clients used
+  # CLAUDE_SESSION_ID. Accept both so cmd_get / cmd_set --if-exists do not silently
+  # degrade when `.rite-session-id` is absent but the runtime env IS set (Issue #1142).
+  # 両 env-var 経路にも _validate_session_id を適用し、無検証で _state_path に渡る
+  # path-traversal / log-injection 経路を遮断する。
+  if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+    _validate_session_id "$CLAUDE_CODE_SESSION_ID" "CLAUDE_CODE_SESSION_ID env" || return 1
+    printf '%s\n' "$CLAUDE_CODE_SESSION_ID"
+    return 0
+  fi
+  if [ -n "${CLAUDE_SESSION_ID:-}" ]; then
+    _validate_session_id "$CLAUDE_SESSION_ID" "CLAUDE_SESSION_ID env" || return 1
+    printf '%s\n' "$CLAUDE_SESSION_ID"
+    return 0
+  fi
   echo "ERROR: cannot resolve session_id" >&2; return 1
 }
 
@@ -69,9 +110,9 @@ _atomic_write() {
   # 生成されたまま下流の mv が "成功" して target を破損内容で上書きする経路を遮断する。
   # Additionally guard the post-write non-empty invariant: jq filters in this script always
   # produce a non-empty JSON object, so a 0-byte tmpfile is a write-time corruption signal.
-  # printf 失敗分岐と 0-byte invariant 違反分岐は flock timeout 分岐 (L80) と対称的に診断 ERROR を
-  # 必ず emit する。rc=1 だけでは EROFS / ENOSPC / EXDEV / EACCES / 0-byte write のどの失敗種別か
-  # 区別できず、operator がトリアージできない。
+  # printf 失敗分岐と 0-byte invariant 違反分岐は下流の flock+mv の ERROR emission (`flock timeout`
+  # 分岐) と対称的に診断 ERROR を必ず emit する。rc=1 だけでは EROFS / ENOSPC / EXDEV / EACCES /
+  # 0-byte write のどの失敗種別か区別できず、operator がトリアージできない。
   printf '%s' "$content" > "$tmpfile" || {
     echo "ERROR: _atomic_write write failed: $target" >&2
     rm -f "$tmpfile" 2>/dev/null
@@ -111,7 +152,18 @@ cmd_set() {
   _phase_is_valid "$phase" || echo "WARNING: unknown phase: $phase (allowed: $PHASE_ENUM_V3)" >&2
   local sid path; sid=$(_resolve_session_id "$session") || return 1
   path=$(_state_path "$sid")
-  [ $if_exists -eq 1 ] && [ ! -f "$path" ] && return 0
+  if [ $if_exists -eq 1 ] && [ ! -f "$path" ]; then
+    # `.rite-session-id` exists ⇒ a session-start hook ran and the caller expects an
+    # active session. Resolved path missing means stale/drifted session_id (Issue #1142)
+    # — emit a WARNING so the silent skip is observable. Truly first-time sessions (no
+    # `.rite-session-id`) stay silent to preserve the graceful no-op contract that
+    # `commands/wiki/ingest.md` / `commands/issue/create.md` / etc. depend on.
+    if [ -f "$SESSION_ID_FILE" ]; then
+      # basename only — multi-tenant 環境での絶対 path leakage を最小化 (cmd_get と対称化)
+      echo "WARNING: flow-state.sh cmd_set: --if-exists skipped (resolved session_id=$sid has no state file at file: $(basename "$path"); possible stale .rite-session-id or sid drift)" >&2
+    fi
+    return 0
+  fi
   # Pull existing values for fields the caller did not specify (merge behavior).
   # `cur_last_synced` は post-tool-wm-sync.sh が runtime-only field として書き続けるため、
   # cmd_set が schema 構築時に既存値を merge しないと毎回 wipe され、wm-sync の diff guard
@@ -126,8 +178,10 @@ cmd_set() {
   # を分割し、IFS で安全に split (whitespace collapse 防止)。
   local cur_issue=0 cur_branch="" cur_pr=0 cur_parent=0 cur_active=true cur_err=0 cur_last_synced=""
   if [ -f "$path" ]; then
-    local _cur_jq_err _cur_data _cur_rc=0
+    local _cur_jq_err="" _cur_data _cur_rc=0
     _cur_jq_err=$(mktemp 2>/dev/null) || _cur_jq_err=""
+    # インライン rm では set -e / signal 中断時に orphan tempfile が残るため RETURN trap で保証する。
+    trap '[ -n "${_cur_jq_err:-}" ] && rm -f "${_cur_jq_err:-}"' RETURN
     _cur_data=$(jq -r '[(.issue_number // 0 | tostring),
                        (.branch // ""),
                        (.pr_number // 0 | tostring),
@@ -136,12 +190,12 @@ cmd_set() {
                        (.error_count // 0 | tostring),
                        (.last_synced_phase // "")] | join("")' "$path" 2>"${_cur_jq_err:-/dev/null}") || _cur_rc=$?
     if [ "$_cur_rc" -ne 0 ]; then
-      echo "WARNING: flow-state.sh cmd_set: existing state read failed for $path (may be corrupt; merged write will use defaults)" >&2
+      # basename only — multi-tenant 環境での絶対 path leakage を最小化 (cmd_get / cmd_set --if-exists と対称化)
+      echo "WARNING: flow-state.sh cmd_set: existing state read failed for $(basename "$path") (may be corrupt; merged write will use defaults)" >&2
       [ -n "$_cur_jq_err" ] && [ -s "$_cur_jq_err" ] && head -3 "$_cur_jq_err" | sed 's/^/  /' >&2
     else
       IFS=$'\x1f' read -r cur_issue cur_branch cur_pr cur_parent cur_active cur_err cur_last_synced <<< "$_cur_data"
     fi
-    [ -n "$_cur_jq_err" ] && rm -f "$_cur_jq_err"
   fi
   [ -z "$issue" ] && issue=$cur_issue
   [ -z "$branch" ] && branch=$cur_branch
@@ -163,10 +217,10 @@ cmd_set() {
       parent_issue_number:$parent, next_action:$next, active:$active,
       error_count:$err, updated_at:$ts}
      | (if $lsp != "" then .last_synced_phase = $lsp else . end)') || return 1
-  # `_atomic_write` の header 契約 (L61-64 "Callers MUST check rc") を遵守。現状は cmd_set の
+  # `_atomic_write` の header コメント ("Callers MUST check rc") を遵守。現状は cmd_set の
   # 最終 statement のため set -e で rc が暗黙伝播するが、将来 `_atomic_write` の後に log 行を
   # 1 つ足す等の小修正で silent failure path が即復活する fragile pattern を避けるため、明示的
-  # に `|| return 1` で rc を伝播させる (`_migrate_file` L236 と対称化)。
+  # に `|| return 1` で rc を伝播させる (`_migrate_file` の `_atomic_write` 呼び出し直前と対称化)。
   _atomic_write "$path" "$new" || return 1
 }
 
@@ -179,16 +233,47 @@ cmd_get() {
     --jq-filter) jq_filter="$2"; shift 2 ;;
     *) echo "ERROR: unknown option: $1" >&2; return 1 ;;
   esac; done
-  local sid path
-  sid=$(_resolve_session_id "$session" 2>/dev/null) || { printf '%s\n' "$default"; return 0; }
+  local sid path jq_err=""
+  # RETURN trap で mktemp tempfile cleanup を集約する。SIGINT / set -e / 関数 early
+  # return / 関数末尾 fall-through すべての経路で確実に削除される。
+  trap '[ -n "${jq_err:-}" ] && rm -f "${jq_err:-}"' RETURN
+  # Do not silence _resolve_session_id stderr: when neither `.rite-session-id` nor
+  # the env vars are usable, the helper's ERROR message must surface so the silent
+  # "empty + rc=0" failure path observed in Issue #1142 becomes diagnosable.
+  sid=$(_resolve_session_id "$session") || { printf '%s\n' "$default"; return 0; }
   path=$(_state_path "$sid")
-  [ ! -f "$path" ] && { printf '%s\n' "$default"; return 0; }
-  if [ -n "$jq_filter" ]; then
-    jq -r "$jq_filter" "$path" 2>/dev/null || printf '%s\n' "$default"
+  if [ ! -f "$path" ]; then
+    # Stale `.rite-session-id` pointing to a nonexistent state file is a drift signal —
+    # WARN so it is observable. Truly first-time sessions (no `.rite-session-id`) stay
+    # silent: the caller's --default fallback is the legitimate graceful path.
+    # path 全体ではなく basename のみを露出し、multi-tenant 環境での絶対 path leakage
+    # を最小化する。診断に必要な情報 (どのファイル名か / SESSION_DIR は既知) は basename
+    # で十分。
+    if [ -f "$SESSION_ID_FILE" ]; then
+      echo "WARNING: flow-state.sh cmd_get: state file not found for resolved session_id=$sid (file: $(basename "$path"); possible stale .rite-session-id); returning --default" >&2
+    fi
+    printf '%s\n' "$default"
     return 0
   fi
-  [ -z "$field" ] && { echo "ERROR: --field or --jq-filter required" >&2; return 1; }
-  jq -r --arg d "$default" ".${field} // \$d" "$path" 2>/dev/null || printf '%s\n' "$default"
+  jq_err=$(mktemp 2>/dev/null) || jq_err=""
+  if [ -n "$jq_filter" ]; then
+    if ! jq -r "$jq_filter" "$path" 2>"${jq_err:-/dev/null}"; then
+      echo "WARNING: flow-state.sh cmd_get: jq filter failed for $(basename "$path") (filter: $jq_filter); returning --default" >&2
+      [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+      printf '%s\n' "$default"
+    fi
+    return 0
+  fi
+  if [ -z "$field" ]; then
+    echo "ERROR: --field or --jq-filter required" >&2
+    return 1
+  fi
+  if ! jq -r --arg d "$default" ".${field} // \$d" "$path" 2>"${jq_err:-/dev/null}"; then
+    echo "WARNING: flow-state.sh cmd_get: jq read failed for $(basename "$path") (field: $field); returning --default" >&2
+    [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+    printf '%s\n' "$default"
+  fi
+  return 0
 }
 
 cmd_deactivate() {
@@ -222,7 +307,7 @@ _migrate_file() {
   cp=$(jq -r '.phase // ""' "$f" 2>/dev/null) || cp=""
   [ "$sv" = "$SCHEMA_VERSION_V3" ] && { [ "$verbose" = 1 ] && echo "  skip (already v3): $f" >&2; return 1; }
   np=$(_phase_migrate "$cp")
-  # `--dry-run` の preview を stderr に統一する (line 208 の `migrated:` 出力と対称化)。
+  # `--dry-run` の preview を stderr に統一する (本関数末尾の `migrated:` announcement と対称化)。
   # session-start.sh は stdout のみ silence するため、dry-run preview を stderr に出すことで
   # 実際の migration announcement と同じ経路で observability を確保する。
   [ "$dry" = 1 ] && { echo "  would migrate: $f (schema v$sv→v$SCHEMA_VERSION_V3, phase $cp→$np)" >&2; return 0; }

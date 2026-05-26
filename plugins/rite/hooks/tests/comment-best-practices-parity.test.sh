@@ -30,7 +30,9 @@
 #   the SoT document and this test silently weakens the parity guarantee. The
 #   `\d` → `[0-9]` translation is semantic (portable GNU grep -E does not support
 #   PCRE `\d`), so regex line in the doc and this array are *semantically equivalent*
-#   rather than character-identical.
+#   rather than character-identical. `\s` is similarly used as a GNU grep extension
+#   (de-facto supported by GNU grep -E; POSIX-strict equivalent would be `[[:space:]]`).
+#   Both `\d` and `\s` rely on GNU grep extensions; the test target is GNU grep environments.
 
 set -o pipefail
 

@@ -28,11 +28,14 @@
 #   - §C Detection Heuristics row 2 regex line
 #   you MUST manually update the corresponding array in this test. A drift between
 #   the SoT document and this test silently weakens the parity guarantee. The
-#   `\d` → `[0-9]` translation is semantic (portable GNU grep -E does not support
-#   PCRE `\d`), so regex line in the doc and this array are *semantically equivalent*
-#   rather than character-identical. `\s` is similarly used as a GNU grep extension
-#   (de-facto supported by GNU grep -E; POSIX-strict equivalent would be `[[:space:]]`).
-#   Both `\d` and `\s` rely on GNU grep extensions; the test target is GNU grep environments.
+#   `\d` and `\s` are handled asymmetrically because they belong to different extension layers:
+#   - `\d` is a PCRE extension. GNU grep -E does NOT support `\d` as a digit class — it matches
+#     the literal character `d`. To work under GNU grep -E, `\d` must be translated to `[0-9]`.
+#   - `\s` is a GNU grep extension. GNU grep -E supports `\s` as a whitespace class de-facto,
+#     equivalent to `[[:space:]]` in POSIX-strict environments. No translation needed.
+#   The doc (§C row 2) uses `\d` and `\s` for readability; this test array translates `\d` to
+#   `[0-9]` while preserving `\s` as-is. The test target is GNU grep environments; for POSIX-strict
+#   portability both `\d` and `\s` would need translation (`\d` → `[0-9]`, `\s` → `[[:space:]]`).
 
 set -o pipefail
 
@@ -45,7 +48,8 @@ if [ ! -f "$SOT_FILE" ]; then
 fi
 
 # Heuristics regex subgroups (Detection Heuristics row 2 — 原則 2 no_journal_comment)
-# §C Detection Heuristics 表 row 2 の正規表現と semantic に等価 (`\d` → `[0-9]` 変換適用)
+# §C Detection Heuristics 表 row 2 の正規表現と semantic に等価
+# (`\d` のみ `[0-9]` に翻訳 — PCRE 拡張で GNU grep -E 非対応のため。`\s` は GNU grep -E 拡張として直接動作するため翻訳不要)
 heuristic_regexes=(
   'cycle\s*[0-9]+'
   'F-[0-9]+'

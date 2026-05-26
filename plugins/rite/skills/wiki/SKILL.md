@@ -121,7 +121,7 @@ raw source は `/rite:pr:review`（Phase 6.5.W.2）、`/rite:pr:fix`（Phase 4.6
 
 raw source は蓄積されているが `.rite/wiki/pages/` にページが生成されていない場合:
 
-1. **`/rite:wiki:ingest` を手動実行**: ページ統合は `/rite:wiki:ingest` で実行されます。自動発火は `/rite:pr:cleanup` の末尾 Phase で行われるため、cleanup を実行していない場合はページが生成されません
+1. **`/rite:wiki:ingest` を手動実行**: ページ統合は `/rite:wiki:ingest` で実行されます。自動発火は `/rite:pr:cleanup` の ステップ 9 (Wiki Ingest 条件付き) で行われるため、cleanup を実行していない場合はページが生成されません
 2. **pending raw を確認**: `wiki-growth-check.sh` の出力で `pending` 数を確認。`ingested: false` のまま残っている raw source が多い場合は ingest が実行されていません
 3. **ingest のエラーログを確認**: `/rite:wiki:ingest` 実行時に LLM 解析エラーが発生していないか確認
 4. **SCHEMA.md の整合性を確認**: `.rite/wiki/SCHEMA.md` が正しくセットアップされているか。`/rite:wiki:lint` で品質チェックを実行

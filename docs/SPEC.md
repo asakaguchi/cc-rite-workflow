@@ -779,7 +779,7 @@ The Session Info section of the work memory includes phase information indicatin
 | `ready` | `/rite:pr:ready` succeeded; awaiting Projects Status In Review → completion report | `/rite:pr:ready` (formerly step 8.3) |
 | `ready_error` | `/rite:pr:ready` failed inside e2e flow; `/rite:resume` re-enters `/rite:pr:ready` retry | `/rite:pr:ready` retry (formerly step 8) |
 | `cleanup` | `/rite:pr:cleanup` in progress (branch / worktree cleanup pre-ingest) | `/rite:pr:cleanup` Steps 1-3 |
-| `ingest` | Wiki ingest in progress (post-cleanup `/rite:wiki:ingest` integration) | `/rite:pr:cleanup` Phase 4.W → `/rite:wiki:ingest` |
+| `ingest` | Wiki ingest in progress (post-cleanup `/rite:wiki:ingest` integration) | `/rite:pr:cleanup` ステップ 9 → `/rite:wiki:ingest` |
 | `completed` | Workflow finished | `/rite:pr:merge` / `/rite:pr:cleanup` completed (formerly step 8 end) |
 
 Lifecycle sub-rings (legacy granular phases — lifecycle-incomplete detection now lives in `session-end.sh`'s inline glob; see the retired Phase Transition Whitelist note below):

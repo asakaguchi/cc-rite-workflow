@@ -53,7 +53,7 @@ Inspect the script's stdout JSON and route by `.result`:
 
 #### 3.2.2 Phase 3 Result Summary
 
-Track the final success/failure of the Projects Status update for inclusion in the Phase 5 completion report:
+Track the final success/failure of the Projects Status update for inclusion in the cleanup.md ステップ 12 (完了報告):
 
 **Result variable:**
 - `projects_status_updated` = `false` (default). Set to `true` only when Phase 3.2 returns `.result == "updated"`.
@@ -84,7 +84,7 @@ case "$status_result" in
     echo "警告: Projects Status の \"Done\" への更新に失敗しました。手動で更新する場合: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id>" >&2
     ;;
 esac
-# projects_status_updated を Phase 5.1 で参照するため context-local に保持する
+# projects_status_updated を cleanup.md ステップ 12 (完了報告) で参照するため context-local に保持する
 ```
 
 完全な bash 実装サンプルは `commands/issue/close.md` Phase 4.6.3 (parent Issue Done 更新の unified block) を参照すること (state machine + signal-specific trap + tempfile + Step 3 inconsistency summary を含む完全形)。
@@ -594,7 +594,7 @@ bash {plugin_root}/hooks/cleanup-work-memory.sh
 | flow state reset fails | Script displays WARNING to stderr and continues with file deletion |
 | File deletion fails | Script displays WARNING to stderr per file and continues |
 | `.rite-work-memory/` does not exist | No error (script handles gracefully) |
-| Script itself fails | Display warning and proceed to Phase 5 (non-blocking) |
+| Script itself fails | Display warning and proceed to cleanup.md ステップ 12 (non-blocking) |
 
 **Warning message on script failure:**
 
@@ -603,7 +603,7 @@ bash {plugin_root}/hooks/cleanup-work-memory.sh
 手動でリセットする場合: flow state file を削除するか active を false に変更し、.rite-work-memory/issue-*.md を手動削除してください
 ```
 
-**Note**: Failure does not block the cleanup process. Display a warning and proceed to Phase 5.
+**Note**: Failure does not block the cleanup process. Display a warning and proceed to cleanup.md ステップ 12.
 
 **Do NOT delete** the `.rite-work-memory/` directory itself — the script preserves it.
 

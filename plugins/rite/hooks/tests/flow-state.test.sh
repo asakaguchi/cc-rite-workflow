@@ -372,6 +372,96 @@ else
   fail "TC-12: merged write failed to produce valid JSON"
 fi
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor"; then
+# --- TC-13: AC-4 — CLAUDE_CODE_SESSION_ID env resolves session_id when .rite-session-id is absent ---
+echo ""
+echo "=== TC-13: AC-4 CLAUDE_CODE_SESSION_ID env-only resolution (Issue #1142) ==="
+# Why: Issue #1142 root cause was that `_resolve_session_id` only honored
+# CLAUDE_SESSION_ID, but Claude Code runtime sets CLAUDE_CODE_SESSION_ID. When
+# `.rite-session-id` was absent, get/set silently degraded (empty + rc=0 / silent skip).
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase plan --issue 1142 --branch "fix/issue-1142" --pr 0 --next "n")
+# Remove .rite-session-id to force env-var path.
+rm -f "$d/.rite-session-id"
+got=$(cd "$d" && CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" get --field phase --default "EMPTY")
+assert "TC-13.1: CLAUDE_CODE_SESSION_ID resolves get correctly" "plan" "$got"
+(cd "$d" && CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" set --phase pr --next "after-fix" --if-exists)
+got=$(cd "$d" && CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" get --field phase --default "EMPTY")
+assert "TC-13.2: CLAUDE_CODE_SESSION_ID resolves set --if-exists correctly" "pr" "$got"
+got=$(cd "$d" && CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" get --field next_action --default "EMPTY")
+assert "TC-13.3: --if-exists write was not silently skipped" "after-fix" "$got"
+
+# --- TC-14: AC-4 backwards-compat — CLAUDE_SESSION_ID still works ---
+echo ""
+echo "=== TC-14: AC-4 backwards-compat CLAUDE_SESSION_ID still resolves ==="
+# Why: keep the legacy env var name working so any out-of-tree tooling that
+# already sets CLAUDE_SESSION_ID does not break.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase implement --issue 1142 --branch "b" --pr 0 --next "n")
+rm -f "$d/.rite-session-id"
+got=$(cd "$d" && env -u CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID="$sid" bash "$HOOK" get --field phase --default "EMPTY")
+assert "TC-14: legacy CLAUDE_SESSION_ID still resolves get" "implement" "$got"
+
+# --- TC-15: AC-3 — cmd_get surfaces _resolve_session_id ERROR (no silencing) ---
+echo ""
+echo "=== TC-15: AC-3 cmd_get does not silence resolution ERROR ==="
+# Why: Issue #1142 — cmd_get used `_resolve_session_id ... 2>/dev/null`, hiding the
+# "ERROR: cannot resolve session_id" message. Now stderr must reach the operator.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+rm -f "$d/.rite-session-id"
+err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 )
+echo "$err" | grep -q "ERROR: cannot resolve session_id" \
+  && pass "TC-15: cmd_get surfaces _resolve_session_id ERROR on stderr" \
+  || fail "TC-15: cmd_get silenced resolution ERROR (regression of Issue #1142 fix): '$err'"
+
+# --- TC-16: AC-3 — cmd_get emits WARNING for stale .rite-session-id drift ---
+echo ""
+echo "=== TC-16: AC-3 cmd_get WARNs on stale .rite-session-id drift ==="
+# Why: When `.rite-session-id` resolves to a sid whose state file does not exist,
+# the caller's "get value" intent silently degrades to default. Issue #1142 fix
+# emits a WARNING to make the drift observable. Truly first-time sessions (no
+# `.rite-session-id`) stay silent (graceful no-op).
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+echo "deadbeef-0000-0000-0000-000000000000" > "$d/.rite-session-id"
+err=$( (cd "$d" && bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 )
+echo "$err" | grep -q "WARNING: flow-state.sh cmd_get: state file not found" \
+  && pass "TC-16.1: cmd_get WARNs on stale sid drift" \
+  || fail "TC-16.1: cmd_get silent on stale sid drift: '$err'"
+# Truly first-time (no .rite-session-id) must stay silent (graceful contract).
+rm -f "$d/.rite-session-id"
+err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
+# The resolution-ERROR is expected here; WARNING about state-file-not-found must NOT
+# fire because we never resolved a sid.
+echo "$err" | grep -q "WARNING: flow-state.sh cmd_get: state file not found" \
+  && fail "TC-16.2: cmd_get emitted state-file WARNING when sid was not resolved (regression)" \
+  || pass "TC-16.2: cmd_get silent about state-file-not-found when sid resolution itself failed"
+
+# --- TC-17: AC-2 + AC-3 — cmd_set --if-exists WARNs on stale .rite-session-id drift ---
+echo ""
+echo "=== TC-17: AC-2/AC-3 cmd_set --if-exists WARNs on stale sid; first-time silent ==="
+# Why: Issue #1142 — `--if-exists` silently skipped when sid resolved to a file
+# that did not exist (stale `.rite-session-id`). Caller's intent (update active
+# session state) was violated without any signal. Fix emits WARNING only when
+# `.rite-session-id` exists (caller expected a session), staying silent for the
+# truly first-time case that wiki/ingest.md and issue/create.md rely on.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+echo "deadbeef-0000-0000-0000-000000000000" > "$d/.rite-session-id"
+err=$( (cd "$d" && bash "$HOOK" set --phase plan --issue 1 --branch "b" --pr 0 --next "n" --if-exists) 2>&1 )
+echo "$err" | grep -q "WARNING: flow-state.sh cmd_set: --if-exists skipped" \
+  && pass "TC-17.1: cmd_set --if-exists WARNs on stale sid drift" \
+  || fail "TC-17.1: cmd_set --if-exists silent on stale sid drift: '$err'"
+# First-time session (no .rite-session-id, no env): silent no-op (legitimate graceful path).
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+rm -f "$d/.rite-session-id"
+# Must succeed silently with rc=0 — the truly-first-time graceful contract.
+combined=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" set --phase plan --issue 1 --branch "b" --pr 0 --next "n" --if-exists) 2>&1 || true )
+# When session_id cannot be resolved at all, cmd_set returns rc=1 with ERROR (not
+# silent). This is correct: --if-exists's silent-skip contract applies after sid
+# resolution succeeds, not before. The WARNING about "--if-exists skipped" must
+# NOT appear because we never reached that branch.
+echo "$combined" | grep -q "WARNING: flow-state.sh cmd_set: --if-exists skipped" \
+  && fail "TC-17.2: emitted --if-exists WARNING when sid resolution itself failed (regression)" \
+  || pass "TC-17.2: silent about --if-exists skip when sid resolution failed (ERROR surfaces instead)"
+
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes"; then
   exit 1
 fi

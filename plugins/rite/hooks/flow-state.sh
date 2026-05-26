@@ -49,6 +49,10 @@ _resolve_session_id() {
     local sid; sid=$(tr -d '[:space:]' < "$SESSION_ID_FILE" 2>/dev/null) || sid=""
     [ -n "$sid" ] && printf '%s\n' "$sid" && return 0
   fi
+  # Claude Code runtime exposes CLAUDE_CODE_SESSION_ID; older / non-Code clients used
+  # CLAUDE_SESSION_ID. Accept both so cmd_get / cmd_set --if-exists do not silently
+  # degrade when `.rite-session-id` is absent but the runtime env IS set (Issue #1142).
+  [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] && { printf '%s\n' "$CLAUDE_CODE_SESSION_ID"; return 0; }
   [ -n "${CLAUDE_SESSION_ID:-}" ] && { printf '%s\n' "$CLAUDE_SESSION_ID"; return 0; }
   echo "ERROR: cannot resolve session_id" >&2; return 1
 }
@@ -111,7 +115,17 @@ cmd_set() {
   _phase_is_valid "$phase" || echo "WARNING: unknown phase: $phase (allowed: $PHASE_ENUM_V3)" >&2
   local sid path; sid=$(_resolve_session_id "$session") || return 1
   path=$(_state_path "$sid")
-  [ $if_exists -eq 1 ] && [ ! -f "$path" ] && return 0
+  if [ $if_exists -eq 1 ] && [ ! -f "$path" ]; then
+    # `.rite-session-id` exists ⇒ a session-start hook ran and the caller expects an
+    # active session. Resolved path missing means stale/drifted session_id (Issue #1142)
+    # — emit a WARNING so the silent skip is observable. Truly first-time sessions (no
+    # `.rite-session-id`) stay silent to preserve the graceful no-op contract that
+    # `commands/wiki/ingest.md` / `commands/issue/create.md` / etc. depend on.
+    if [ -f "$SESSION_ID_FILE" ]; then
+      echo "WARNING: flow-state.sh cmd_set: --if-exists skipped (resolved session_id=$sid has no state file at $path; possible stale .rite-session-id or sid drift)" >&2
+    fi
+    return 0
+  fi
   # Pull existing values for fields the caller did not specify (merge behavior).
   # `cur_last_synced` は post-tool-wm-sync.sh が runtime-only field として書き続けるため、
   # cmd_set が schema 構築時に既存値を merge しないと毎回 wipe され、wm-sync の diff guard
@@ -180,15 +194,43 @@ cmd_get() {
     *) echo "ERROR: unknown option: $1" >&2; return 1 ;;
   esac; done
   local sid path
-  sid=$(_resolve_session_id "$session" 2>/dev/null) || { printf '%s\n' "$default"; return 0; }
+  # Do not silence _resolve_session_id stderr: when neither `.rite-session-id` nor
+  # the env vars are usable, the helper's ERROR message must surface so the silent
+  # "empty + rc=0" failure path observed in Issue #1142 becomes diagnosable.
+  sid=$(_resolve_session_id "$session") || { printf '%s\n' "$default"; return 0; }
   path=$(_state_path "$sid")
-  [ ! -f "$path" ] && { printf '%s\n' "$default"; return 0; }
-  if [ -n "$jq_filter" ]; then
-    jq -r "$jq_filter" "$path" 2>/dev/null || printf '%s\n' "$default"
+  if [ ! -f "$path" ]; then
+    # Stale `.rite-session-id` pointing to a nonexistent state file is a drift signal —
+    # WARN so it is observable. Truly first-time sessions (no `.rite-session-id`) stay
+    # silent: the caller's --default fallback is the legitimate graceful path.
+    if [ -f "$SESSION_ID_FILE" ]; then
+      echo "WARNING: flow-state.sh cmd_get: state file not found for resolved session_id=$sid (path: $path; possible stale .rite-session-id); returning --default" >&2
+    fi
+    printf '%s\n' "$default"
     return 0
   fi
-  [ -z "$field" ] && { echo "ERROR: --field or --jq-filter required" >&2; return 1; }
-  jq -r --arg d "$default" ".${field} // \$d" "$path" 2>/dev/null || printf '%s\n' "$default"
+  local jq_err
+  jq_err=$(mktemp 2>/dev/null) || jq_err=""
+  if [ -n "$jq_filter" ]; then
+    if ! jq -r "$jq_filter" "$path" 2>"${jq_err:-/dev/null}"; then
+      echo "WARNING: flow-state.sh cmd_get: jq filter failed for $path (filter: $jq_filter); returning --default" >&2
+      [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+      printf '%s\n' "$default"
+    fi
+    [ -n "$jq_err" ] && rm -f "$jq_err"
+    return 0
+  fi
+  if [ -z "$field" ]; then
+    [ -n "$jq_err" ] && rm -f "$jq_err"
+    echo "ERROR: --field or --jq-filter required" >&2
+    return 1
+  fi
+  if ! jq -r --arg d "$default" ".${field} // \$d" "$path" 2>"${jq_err:-/dev/null}"; then
+    echo "WARNING: flow-state.sh cmd_get: jq read failed for $path (field: $field); returning --default" >&2
+    [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+    printf '%s\n' "$default"
+  fi
+  [ -n "$jq_err" ] && rm -f "$jq_err"
 }
 
 cmd_deactivate() {

@@ -255,19 +255,19 @@ fi
 `wiki.enabled` パースを実装するファイルは以下の通り。本セクションが**唯一の同期一覧**。将来パース仕様を変更する PR は本一覧の全 site を漏れなく同期更新する義務がある:
 
 - `plugins/rite/commands/wiki/query.md` ステップ 1.1 (probe 用簡易パーサ、本ファイル参照)
-- `plugins/rite/commands/wiki/ingest.md` ステップ 1.1 (strict 4 分岐 + helper、`extract_yaml_key` は `wiki_enabled` のみ lowercase 適用)
-- `plugins/rite/commands/wiki/lint.md` ステップ 1.1 (strict 4 分岐 + helper、ingest と対称)
+- `plugins/rite/commands/wiki/ingest.md` ステップ 1.1 (`extract_yaml_key` helper 経由、`wiki_enabled` のみ呼び出し側で lowercase 適用)
+- `plugins/rite/commands/wiki/lint.md` ステップ 1.1 (ingest.md と対称な helper 経由)
 - `plugins/rite/commands/wiki/init.md` (init 時の状態判定)
-- `plugins/rite/hooks/wiki-query-inject.sh` (auto_query 注入の前提判定、lenient)
-- `plugins/rite/hooks/wiki-ingest-trigger.sh` (auto_ingest 起動の前提判定、lenient)
-- `plugins/rite/hooks/scripts/lib/wiki-config.sh` (共通 helper `_extract_yaml_value`、lenient)
-- `plugins/rite/commands/pr/open.md` (Wiki query 起動条件)
-- `plugins/rite/commands/issue/implement.md` (Wiki query 起動条件)
-- `plugins/rite/commands/issue/close.md` (Wiki ingest 起動条件)
+- `plugins/rite/commands/pr/cleanup.md` ステップ 9 (`parse_wiki_key` helper 経由、auto_ingest 起動条件)
 - `plugins/rite/commands/pr/fix.md` Phase 0.5.W / 4.6.W (Wiki query / ingest 起動条件)
 - `plugins/rite/commands/pr/review.md` Phase 4.0.W / 6.5.W (Wiki query / ingest 起動条件)
+- `plugins/rite/commands/issue/implement.md` (Wiki query 起動条件)
+- `plugins/rite/commands/issue/close.md` (Wiki ingest 起動条件)
+- `plugins/rite/hooks/wiki-query-inject.sh` (auto_query 注入の前提判定、ローカル helper `_extract_yaml_value`)
+- `plugins/rite/hooks/wiki-ingest-trigger.sh` (auto_ingest 起動の前提判定、`parse_wiki_scalar` 経由)
+- `plugins/rite/hooks/scripts/lib/wiki-config.sh` (共通 helper `parse_wiki_scalar`、lenient)
 
-**設計差異**: ingest.md / lint.md は strict (`true/yes/1` のみ true、`false/no/0` のみ false、不明値で fail-fast)、trigger.sh / inject.sh / wiki-config.sh は lenient (`false/no/0` のみ reject、それ以外通過) — 意図的な責務分離。
+**設計差異**: 全 site が共通 lenient 設計 — `false`/`no`/`0` のみ reject、それ以外 (`true`/`yes`/`1` も不明値も空文字も) は `true` として opt-out default 化する (#483)。ingest.md / lint.md は `case "$wiki_enabled" in false|no|0) wiki_enabled=false ;; *) wiki_enabled=true ;; esac` の 2-arm 形式で実装、trigger.sh / inject.sh / wiki-config.sh も同型 lenient。**fail-fast 経路は wiki.enabled には存在しない** (`branch_strategy` のみ lint.md L72-86 で未知値 fail-fast、ingest.md は silent default で別経路)。
 
 ## Wiki 初期化判定パターン
 

@@ -61,7 +61,7 @@ branch_strategy="${branch_strategy:-separate_branch}"
 echo "wiki_enabled=$wiki_enabled branch_strategy=$branch_strategy wiki_branch=$wiki_branch"
 ```
 
-分散実装の完全一覧と設計差異は [Wiki 有効判定パターン §分散実装ファイル一覧](../../references/wiki-patterns.md#分散実装ファイル一覧-single-source-of-truth) を SoT として参照する。本ファイルは strict 4 分岐 + helper 経路。trigger.sh / wiki-config.sh は lenient (意図的な責務分離)。
+分散実装の完全一覧と設計差異は [Wiki 有効判定パターン §分散実装ファイル一覧](../../references/wiki-patterns.md#分散実装ファイル一覧-single-source-of-truth) を SoT として参照する。本ファイルは `extract_yaml_key` helper 経由でパースする lenient 2-arm 経路 (trigger.sh / wiki-config.sh と同型、#483 opt-out default)。
 
 **`wiki_enabled=false` の場合**: 早期 return:
 

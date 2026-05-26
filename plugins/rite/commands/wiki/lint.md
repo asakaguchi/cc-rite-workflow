@@ -90,7 +90,7 @@ echo "branch_strategy=$branch_strategy"
 echo "wiki_branch=$wiki_branch"
 ```
 
-分散実装の完全一覧と設計差異は [Wiki 有効判定パターン §分散実装ファイル一覧](../../references/wiki-patterns.md#分散実装ファイル一覧-single-source-of-truth) を SoT として参照する。本ファイルは ingest.md と対称な strict 4 分岐 + helper 経路。
+分散実装の完全一覧と設計差異は [Wiki 有効判定パターン §分散実装ファイル一覧](../../references/wiki-patterns.md#分散実装ファイル一覧-single-source-of-truth) を SoT として参照する。本ファイルは ingest.md と対称な `extract_yaml_key` helper 経由の lenient 2-arm 経路 (#483 opt-out default)。
 
 **Wiki が無効の場合**: 早期 return (`--auto` モードでは ステップ 9.2 の 2 行出力契約を必ず守る):
 
@@ -927,6 +927,8 @@ if [ -n "$all_source_refs" ]; then
   set -o pipefail
   sort_err=$(mktemp /tmp/rite-lint-p62-sort-err-XXXXXX 2>/dev/null) || {
     echo "WARNING: stderr 退避 tempfile (sort_err) の mktemp に失敗しました。sort/awk pipeline の詳細エラー情報は失われます" >&2
+    echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
+    echo "  影響: pipeline 失敗時の根本原因 (sort バイナリ異常 / OOM / SIGPIPE 等) が不可視になり、all_source_refs が io_error 降格しても理由が追えません" >&2
     sort_err=""
   }
   # 末尾 `awk 'NF>0'` は grep -c の no-match (rc=1) 問題を回避 (空行 only の edge case 対応)
@@ -1215,10 +1217,14 @@ case "$branch_strategy" in
     # gpg sign / index lock 等の根本原因が不可視になる。
     add_err=$(mktemp /tmp/rite-lint-add-err-XXXXXX 2>/dev/null) || {
       echo "WARNING: stderr 退避 tempfile (add_err) の mktemp に失敗しました。git add の詳細エラー情報は失われます" >&2
+      echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
+      echo "  影響: index lock / permission denied 等の根本原因が不可視になります" >&2
       add_err=""
     }
     commit_err=$(mktemp /tmp/rite-lint-commit-err-XXXXXX 2>/dev/null) || {
       echo "WARNING: stderr 退避 tempfile (commit_err) の mktemp に失敗しました。git commit の詳細エラー情報は失われます" >&2
+      echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
+      echo "  影響: pre-commit hook / gpg sign / author config 失敗の根本原因が不可視になります" >&2
       commit_err=""
     }
 

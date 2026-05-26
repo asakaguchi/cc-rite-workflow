@@ -150,7 +150,8 @@ abs_target="${repo_root}/${target_path}"
 # absolute-path exact match, then on the subsequent `branch ` line to
 # confirm the checked-out branch matches `wiki_branch`. Additionally
 # detect `prunable` markers so that phantom worktrees (when the user
-# `rm -rf .rite/wiki-worktree/` per cleanup.md Phase 2.6 manual step)
+# `rm -rf .rite/wiki-worktree/` 等で worktree を手動破壊した場合 — cleanup.md ステップ 6 では
+# .rite/wiki-worktree/ を永続化する設計のため、削除は手動操作のみが想定される)
 # are not silently treated as healthy (cycle 2 MEDIUM F-10 fix).
 #
 # `git worktree list` の stderr を tempfile に capture して、corrupt

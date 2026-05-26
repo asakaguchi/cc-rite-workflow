@@ -130,7 +130,7 @@ raw source は蓄積されているが `.rite/wiki/pages/` にページが生成
 
 以下のタイミングで手動実行を推奨:
 
-- **PR cleanup 後に自動発火しなかった場合**: cleanup.md の末尾 Phase で ingest が skip された場合
+- **PR cleanup 後に自動発火しなかった場合**: cleanup.md ステップ 9 (Wiki Ingest 条件付き) で ingest が skip された場合
 - **`wiki-growth-check.sh` が page stall を検出した場合**: `==> Page stall detected` の出力があった場合
 - **大量の pending raw source がある場合**: `pending` 数が raw 総数の 50% を超えている場合
 - **Wiki を初めて使い始める場合**: `/rite:wiki:init` 実行後、既存の raw source をページ化するため

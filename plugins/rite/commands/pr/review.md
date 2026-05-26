@@ -3109,7 +3109,7 @@ Phase 6 failure reasons (reason 表の本文は `common-error-handling.md#jq-req
 | `mv_failure` | Atomic move of JSON tmpfile to final path failed (Phase 6.1.a, **WARNING only**) |
 | `mktemp_failure_mv_err` | Phase 6.1.a の mv stderr 退避用 tempfile の mktemp が失敗 (I-3 対応、**WARNING only**、mv 失敗時の stderr 詳細が失われるため explicit に通知) |
 | `timestamp_injection_mv_failure` | Phase 6.1.a の timestamp 注入後 inner mv (`mv "$json_ts_injected" "$json_tmp"`) が失敗 (**WARNING only**、sentinel 残留 JSON を final path に書かないため後続処理を skip) |
-| `pr_number_placeholder_residue` | Phase 6.1.a 冒頭の `pr_number="{pr_number}"` literal substitute が忘れられ、数値以外 (空文字 / placeholder 残留) のまま bash block に入った (**WARNING only**、cleanup.md Phase 2.5 の numeric gate と対称化し永久 orphan 化を防ぐ) |
+| `pr_number_placeholder_residue` | Phase 6.1.a 冒頭の `pr_number="{pr_number}"` literal substitute が忘れられ、数値以外 (空文字 / placeholder 残留) のまま bash block に入った (**WARNING only**、cleanup.md ステップ 6 の numeric gate と対称化し永久 orphan 化を防ぐ) |
 | `collision_resolution_exhausted` | Phase 6.1.a の同一秒衝突回避 `~<4桁hex>` suffix を付与しても再衝突を検出 (**WARNING only**、同秒 3 回目以上の連続実行 / `$RANDOM` fallback `0` / parallel race の兆候で発火、後続の mv を skip して silent overwrite を防ぐ) |
 | `p61c_file_timestamp_unknown_without_failure` | Phase 6.1.c で `file_timestamp='unknown'` だが `local_save_failed != '1'` (整合性違反、ケース 1 での `.../unknown.json` 誤提示を遮断) |
 
@@ -3169,9 +3169,9 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
 # (Claude placeholder と bash 変数展開の混在を避けて substitute 忘れによる literal ファイル名生成を防ぐ)
 pr_number="{pr_number}"
 
-# pr_number の数値 fail-fast gate。cleanup.md Phase 2.5 の pr_number guard と対称化。
+# pr_number の数値 fail-fast gate。cleanup.md ステップ 6 の pr_number guard と対称化。
 # Claude が literal substitute を忘れた場合、json_path が `.rite/review-results/{pr_number}-...json`
-# (literal) となり、cleanup.md Phase 2.5 の numeric glob (`${pr_number}-*.json`) と不一致で
+# (literal) となり、cleanup.md ステップ 6 の numeric glob (`${pr_number}-*.json`) と不一致で
 # 永久 orphan 化する。数値以外 (空文字 / placeholder 残留 / 異常値) を early-exit で reject。
 case "$pr_number" in
  ''|*[!0-9]*)
@@ -3252,7 +3252,7 @@ else
  [ -n "$mkdir_err" ] && rm -f "$mkdir_err"
  # mktemp の stderr を tempfile に退避して、失敗時に原因 (disk full / permission / readonly) を可視化
  # mktemp の stderr 退避 tempfile を作る mktemp 自体の失敗経路でも WARNING を emit
- # (cleanup.md Phase 2.5 と Phase 6.1.a C-5 修正と対称化、meta silent 化を防ぐ)
+ # (cleanup.md ステップ 6 と Phase 6.1.a C-5 修正と対称化、meta silent 化を防ぐ)
  if ! mktemp_err=$(mktemp /tmp/rite-review-p61a-mktemp-err-XXXXXX 2>/dev/null); then
  echo "WARNING: mktemp stderr 退避用 tempfile の mktemp に失敗しました (meta エラー)。json_tmp 失敗時の stderr 詳細は失われます" >&2
  mktemp_err=""

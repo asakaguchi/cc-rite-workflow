@@ -121,7 +121,69 @@ incomplete=$(printf '%s\n' "$comment_body" | sed -n '/### 進捗/,/### /p' \
   | grep -E '^\s*- \[ \]' | grep -v -E '^\s*- \[ \] #[0-9]+' | head -10)
 ```
 
-未完了タスクがあれば `AskUserQuestion` で「未完了タスクを Issue 化 (推奨) / 無視して続行 / キャンセル」を確認。Issue 化選択時は各タスクを `残作業` label 付きで作成 ([Issue Creation with Projects Integration](../../references/issue-create-with-projects.md) を参照、interview をスキップして `{plugin_root}/scripts/create-issue-with-projects.sh` を直接呼ぶ)。
+未完了タスクがあれば `AskUserQuestion` で「未完了タスクを Issue 化 (推奨) / 無視して続行 / キャンセル」を確認。Issue 化選択時は各タスクを `残作業` label 付きで作成する。
+
+**Issue 本文テンプレート** (cleanup-specific、各タスクごとに以下の形式で生成):
+
+```markdown
+## 概要
+
+{task_title}
+
+## 背景・目的
+
+PR #{pr_number} ({pr_title}) のマージ時点で未完了だったタスクを残作業として切り出す。元 PR の context を維持するため、根拠を以下に保持する。
+
+## 関連
+
+- 元 PR: #{pr_number}
+- 元 Issue: #{issue_number}
+- 元の進捗チェックボックス (work memory より): `- [ ] {task_text}`
+
+## 変更内容
+
+{task_text}
+
+## チェックリスト
+
+- [ ] {task_text}
+```
+
+**bash skeleton** (タスクごとに以下を反復実行):
+
+```bash
+# {plugin_root} は冒頭で resolve 済み (Plugin Path Resolution)
+tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"' EXIT
+cat > "$tmpfile" << BODY_EOF
+{Issue 本文テンプレート (上記) を実値で展開}
+BODY_EOF
+
+bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+  --arg title "残作業: {task_title}" \
+  --arg body_file "$tmpfile" \
+  --argjson projects_enabled {projects_enabled} \
+  --argjson project_number {project_number} \
+  --arg owner "{owner}" \
+  --arg priority "Medium" \
+  --arg complexity "S" \
+  --arg iter_mode "{iteration_mode}" \
+  '{
+    issue: { title: $title, body_file: $body_file, labels: ["残作業"] },
+    projects: {
+      enabled: $projects_enabled,
+      project_number: $project_number,
+      owner: $owner,
+      status: "Todo",
+      priority: $priority,
+      complexity: $complexity,
+      iteration: { mode: $iter_mode }
+    },
+    options: { source: "cleanup", non_blocking_projects: true }
+  }')"
+```
+
+汎用的な argument structure・mapping 表は [Issue Creation with Projects Integration](../../references/issue-create-with-projects.md) を参照。`source: "cleanup"` 引数は本 caller の識別子として必須 (将来 metrics 集計で起点 caller を区別するため)。`残作業` label は初回作成時に GitHub が自動生成する (`gh label create 残作業` を事前実行する必要はない)。
 
 ---
 

@@ -432,7 +432,7 @@ Terminate processing.
 pr_number="{pr_number}"
 
 # pr_number の数値 fail-fast gate。
-# cleanup.md Phase 2.5 の pr_number guard および review.md Phase 6.1.a と対称化。
+# cleanup.md ステップ 6 の pr_number guard および review.md Phase 6.1.a と対称化。
 # Claude が literal substitute を忘れた場合、find が literal `{pr_number}-*.json` を探して常に
 # 0 件を返し Priority 2 が silent fallthrough する経路を早期に閉じる。retained flag
 # FIX_FALLBACK_FAILED を emit して Phase 8.1 が `[fix:error]` を出力するように昇格させる。
@@ -713,12 +713,12 @@ fi
 # mapfile + process substitution で pipeline を分離し、配列経由で先頭要素を取得する。
 if [ -z "$review_source" ]; then
   # .rite/review-results/ dir 不在を初回実行の正常経路として silent pass-through する
-  # (初回 fix / fresh clone で確実に再現する UX bug の修正)。cleanup.md Phase 2.5 と対称。
+  # (初回 fix / fresh clone で確実に再現する UX bug の修正)。cleanup.md ステップ 6 と対称。
   if [ ! -d .rite/review-results ]; then
     # dir 不在 = 正常経路。Priority 3 へ silent fall-through。
     :
   else
-    # mktemp 失敗時も WARNING を emit (format 概形は cleanup.md Phase 2.5 と共有、rc capture は
+    # mktemp 失敗時も WARNING を emit (format 概形は cleanup.md ステップ 6 と共有、rc capture は
     # reason=`mktemp_failure_norm_tmp` の SoT block (Phase 1.2.0 schema 1.1.0 normalization 内の
     # `if norm_tmp=$(mktemp ...); then ... else mktemp_norm_rc=$?; fi` 構造) と semantic 同期)。
     # 構造: bash の 「!」否定 pipeline では then 節内 $? が常に 0 になるため、SoT と同じ
@@ -1554,14 +1554,14 @@ exit 1
 | `pr_comment_commit_sha_mismatch` | Priority 3 の PR コメント Raw JSON の `commit_sha` が現 HEAD と不一致 (stale detection、WARNING のみで continue) |
 | `jq_error_on_commit_sha` | Priority 0/2/3 の `.commit_sha` 抽出 jq が IO/binary エラーで失敗 (I-4 対応。stale detection 無効化を silent にしない。`priority=0|2|3` として retained flag に付記される) |
 | `local_file_find_io_error` | Priority 2 の `find .rite/review-results/` が IO エラーで failed (L-3 対応) |
-| `mktemp_failure_find_err` | Priority 2 の find stderr 退避用 tempfile の mktemp が失敗 (C-5 対応、cleanup.md Phase 2.5 と対称)。silent skip 防止のため WARNING + retained flag を必ず emit する (Issue #1025 対応) |
+| `mktemp_failure_find_err` | Priority 2 の find stderr 退避用 tempfile の mktemp が失敗 (C-5 対応、cleanup.md ステップ 6 と対称)。silent skip 防止のため WARNING + retained flag を必ず emit する (Issue #1025 対応) |
 | `latest_file_stat_failure` | Priority 2 で find が見つけた `latest_file` が `-f` check で脱落 (M-4 対応、permission denied / symlink 破壊) |
 | `jq_duplicate_check_failed` | Priority 0/2 で重複 file:line 検出用 jq が失敗 (silent data loss 検出を skip、非ブロッキング) |
 | `severity_map_build_failed` | Priority 0/2 で severity_map 構築用 jq が失敗 (0 件で正常終了する silent regression 防止、`[fix:error]` 昇格) |
 | `pr_comment_severity_map_build_failed` | Priority 3 で PR コメント Raw JSON からの severity_map 構築用 jq が失敗 (legacy Markdown parser へ fallthrough) |
 | `pr_comment_tempfile_read_io_error` | Priority 3 で `pr_comment_body_file` の cat が IO エラーで失敗 (permission 変更 / NFS timeout / TOCTOU truncate) |
 | `review_file_path_placeholder_residue` | Priority 0 で `review_file_path="{review_file_path_from_phase_1_0_1}"` placeholder が literal substitute されていない (fail-fast) |
-| `pr_number_placeholder_residue` | Phase 1.2.0 冒頭の `pr_number="{pr_number}"` literal substitute が忘れられ、数値以外 (空文字 / placeholder 残留) のまま bash block に入った (cleanup.md Phase 2.5 / review.md Phase 6.1.a と対称化、`[fix:error]` 昇格) |
+| `pr_number_placeholder_residue` | Phase 1.2.0 冒頭の `pr_number="{pr_number}"` literal substitute が忘れられ、数値以外 (空文字 / placeholder 残留) のまま bash block に入った (cleanup.md ステップ 6 / review.md Phase 6.1.a と対称化、`[fix:error]` 昇格) |
 | `scope_omitted_in_v1_0` | Issue #1016: schema 1.0/1.0.0 受信時に findings[].scope が欠落しているため severity ベースの default mapping で補完した (`REVIEW_SOURCE_SCOPE_DEFAULTED` flag、非ブロッキング、observability のみ) |
 | `pre_existing_false_scope_nit_noted` | Issue #1016: cross-field invariant #5 違反 — `pre_existing == false` × `scope == "nit-noted"` の finding を検出し、scope を `current-pr` に auto-correct した (`REVIEW_SOURCE_AUTO_CORRECTED` flag、非ブロッキング、auto-correct + observability) |
 | `jq_mutation_failed` | Issue #1016: schema 1.1.0 normalization (default mapping + invariant #5 auto-correct) を行う jq mutation が失敗 (`REVIEW_SOURCE_NORMALIZATION_FAILED` flag、非ブロッキング、原 JSON のまま続行) |

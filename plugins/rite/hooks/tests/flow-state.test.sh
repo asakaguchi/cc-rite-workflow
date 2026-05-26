@@ -751,6 +751,6 @@ else
   fail "TC-22.2: env-set first-time で stdout に default 返却なし: '$combined'"
 fi
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + PR #1148 security/observability fixes"; then
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + security/observability hardening"; then
   exit 1
 fi

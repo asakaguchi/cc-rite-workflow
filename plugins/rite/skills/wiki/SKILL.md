@@ -109,7 +109,7 @@ Wiki 機能が期待通りに動作しない場合の診断手順。
 
 ### raw source が増えていない場合
 
-raw source は `/rite:pr:review`（ステップ 6.5.W.2）、`/rite:pr:fix`（ステップ 4.6.W.2）、`/rite:issue:close`（ステップ 4.4.W.2）で自動生成されます。raw が増えていない場合:
+raw source は `/rite:pr:review`（Phase 6.5.W.2）、`/rite:pr:fix`（Phase 4.6.W.2）、`/rite:issue:close`（Phase 4.4.W.2）で自動生成されます。raw が増えていない場合:
 
 1. **wiki.enabled を確認**: `rite-config.yml` で `wiki.enabled: true` になっているか
 2. **wiki.auto_ingest を確認**: `wiki.auto_ingest: true` になっているか（`false` だと raw 蓄積のトリガーが無効化される）

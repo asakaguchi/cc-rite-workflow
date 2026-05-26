@@ -18,7 +18,7 @@
 # wiki-ingest-trigger.sh (if any) can be updated together.
 #
 # This script is the shell-only counterpart of commands/wiki/ingest.md
-# Phase 5.1 Block A + Block B. It exists because the markdown-based Phase
+# ステップ 5.1 Block A + Block B. It exists because the markdown-based ステップ
 # 5.1 requires Claude to chain three Bash tool invocations across an LLM
 # Write/Edit phase, which is structurally fragile under E2E output
 # minimization and sub-skill auto-continuation failures (Issue #525, and
@@ -202,7 +202,7 @@ esac
 # Enumerate pending raw sources on the CURRENT branch working tree.
 #
 # Only files with `ingested: false` (or missing ingested field, treated as
-# false per the ingest.md Phase 2.3 convention) are considered pending.
+# false per the ingest.md ステップ 2.3 convention) are considered pending.
 # -----------------------------------------------------------------------
 pending_files=()
 if [[ -d ".rite/wiki/raw" ]]; then
@@ -335,7 +335,7 @@ if [ -d "$worktree_path" ]; then
  verify_worktree_branch "$worktree_path" "$wiki_branch" "wic-wt" \
  "silent fall-through to legacy path would fail with 'already used by worktree'" \
  || exit 1
- # Pre-flight: validate wiki branch name (Phase 1.1 already validates but
+ # Pre-flight: validate wiki branch name (ステップ 1.1 already validates but
  # defense-in-depth here since `git -C ... add -- "$path"` would silently
  # accept option-like paths if the validation were bypassed).
  if [[ -z "$wiki_branch" ]] || [[ "$wiki_branch" == -* ]]; then

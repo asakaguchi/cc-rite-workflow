@@ -15,7 +15,7 @@
 |------|------|
 | **基準ディレクトリ** | リンクが書かれた **ページファイルのディレクトリ** (`page_dir`) を起点とする |
 | **解決関数** | `realpath -m -s --relative-to "$wiki_root" -- "$page_dir/$link"` で正規化 |
-| **`$wiki_root` の値** | `.rite/wiki` (cwd 相対 fixed string)。lint.md には `wiki_root` 変数を生成する Phase が存在しないため、本実装内で初期化し、`[ -d "$wiki_root" ]` の runtime guard で cwd=repo root 前提を fail-fast に検証する |
+| **`$wiki_root` の値** | `.rite/wiki` (cwd 相対 fixed string)。lint.md には `wiki_root` 変数を生成するステップが存在しないため、本実装内で初期化し、`[ -d "$wiki_root" ]` の runtime guard で cwd=repo root 前提を fail-fast に検証する |
 | **`$page_path` の値** | cwd 相対パス (例: `.rite/wiki/pages/heuristics/foo.md`)。lint.md ステップ 4.2 / 6.2 のループで `pages_list` の各要素として渡される |
 | **アンカー除去** | `#section` 部分は解決前に除去 (`sed -E 's/#.*$//'`) |
 | **照合先 (pages 参照)** | `pages_list_normalized` — ステップ 7.1 末尾で `printf '%s\n' "$pages_list" \| sed -E 's\|^\.rite/wiki/\|\|' \| grep -v '^$'` で生成された相対パスのリスト (`pages/...` 形式) |
@@ -56,7 +56,7 @@ positive / negative が両方発生する。
 #   $broken            — "true" / "false"
 
 # wiki_root を cwd 相対の固定値で初期化 + runtime guard
-# (lint.md には wiki_root 変数を生成する Phase が存在しないため本実装内で定義する)
+# (lint.md には wiki_root 変数を生成するステップが存在しないため本実装内で定義する)
 # cwd=repo root 前提が破綻すると `realpath --relative-to` の結果が pages_list_normalized と
 # 一致せず全 link が broken-ref と silent 誤判定される経路があるため、fail-fast で検証する。
 wiki_root=".rite/wiki"

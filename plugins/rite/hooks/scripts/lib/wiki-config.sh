@@ -29,7 +29,7 @@
 # parse_wiki_scalar KEY
 #
 # Extract the value of `wiki.<KEY>` from rite-config.yml using the same
-# lenient YAML approach as wiki-ingest-trigger.sh / ingest.md Phase 1.1
+# lenient YAML approach as wiki-ingest-trigger.sh / ingest.md ステップ 1.1
 # (awk section extraction + inline-comment strip + quote strip).
 #
 # Security note (verified-review cycle 4 LOW): key value extraction uses

@@ -65,7 +65,7 @@ branch_strategy=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
   | sed 's/.*branch_strategy:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 branch_strategy="${branch_strategy:-separate_branch}"
 
-# 変数の値を出力（後続 Phase で使用）
+# 変数の値を出力（後続ステップで使用）
 echo "branch_strategy=$branch_strategy"
 echo "wiki_branch=$wiki_branch"
 
@@ -103,7 +103,7 @@ Wiki は既に初期化されています。
 
 ### 1.3 same_branch 戦略向け .gitignore negation 自動注入
 
-PR #564 で `.rite/wiki/` が `.gitignore` に追加されたため、`same_branch` 戦略ユーザーは ステップ 3.1 の `git add .rite/wiki/` が "paths are ignored" で hard fail します。本 Phase は negation エントリ (`!.rite/wiki/` および `!.rite/wiki/**`) を対話的に追記し、hard fail を未然に防ぎます。
+PR #564 で `.rite/wiki/` が `.gitignore` に追加されたため、`same_branch` 戦略ユーザーは ステップ 3.1 の `git add .rite/wiki/` が "paths are ignored" で hard fail します。本ステップは negation エントリ (`!.rite/wiki/` および `!.rite/wiki/**`) を対話的に追記し、hard fail を未然に防ぎます。
 
 **発動条件** (すべて満たすときのみ):
 

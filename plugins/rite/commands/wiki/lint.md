@@ -58,10 +58,10 @@ wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wi
 extract_yaml_key() {
   local key=$1
   printf '%s\n' "$wiki_section" | awk -v k="$key" '$0 ~ "^[[:space:]]+" k ":" { print; exit }' \
-    | sed 's/[[:space:]]#.*//' | sed "s/.*$key:[[:space:]]*//" | tr -d '[:space:]"'\''' | tr '[:upper:]' '[:lower:]'
+    | sed 's/[[:space:]]#.*//' | sed "s/.*$key:[[:space:]]*//" | tr -d '[:space:]"'\'''
 }
 
-wiki_enabled=$(extract_yaml_key enabled)
+wiki_enabled=$(extract_yaml_key enabled | tr '[:upper:]' '[:lower:]')
 wiki_branch=$(extract_yaml_key branch_name)
 branch_strategy=$(extract_yaml_key branch_strategy)
 
@@ -89,6 +89,8 @@ echo "wiki_enabled=$wiki_enabled"
 echo "branch_strategy=$branch_strategy"
 echo "wiki_branch=$wiki_branch"
 ```
+
+分散実装の完全一覧と設計差異は [Wiki 有効判定パターン §分散実装ファイル一覧](../../references/wiki-patterns.md#分散実装ファイル一覧-single-source-of-truth) を SoT として参照する。本ファイルは ingest.md と対称な strict 4 分岐 + helper 経路。
 
 **Wiki が無効の場合**: 早期 return (`--auto` モードでは ステップ 9.2 の 2 行出力契約を必ず守る):
 

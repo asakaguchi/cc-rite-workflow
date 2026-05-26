@@ -250,6 +250,25 @@ if [ "$wiki_enabled" != "true" ]; then
 fi
 ```
 
+### 分散実装ファイル一覧 (Single Source of Truth)
+
+`wiki.enabled` パースを実装するファイルは以下の通り。本セクションが**唯一の同期一覧**。将来パース仕様を変更する PR は本一覧の全 site を漏れなく同期更新する義務がある:
+
+- `plugins/rite/commands/wiki/query.md` ステップ 1.1 (probe 用簡易パーサ、本ファイル参照)
+- `plugins/rite/commands/wiki/ingest.md` ステップ 1.1 (strict 4 分岐 + helper、`extract_yaml_key` は `wiki_enabled` のみ lowercase 適用)
+- `plugins/rite/commands/wiki/lint.md` ステップ 1.1 (strict 4 分岐 + helper、ingest と対称)
+- `plugins/rite/commands/wiki/init.md` (init 時の状態判定)
+- `plugins/rite/hooks/wiki-query-inject.sh` (auto_query 注入の前提判定、lenient)
+- `plugins/rite/hooks/wiki-ingest-trigger.sh` (auto_ingest 起動の前提判定、lenient)
+- `plugins/rite/hooks/scripts/lib/wiki-config.sh` (共通 helper `_extract_yaml_value`、lenient)
+- `plugins/rite/commands/pr/open.md` (Wiki query 起動条件)
+- `plugins/rite/commands/issue/implement.md` (Wiki query 起動条件)
+- `plugins/rite/commands/issue/close.md` (Wiki ingest 起動条件)
+- `plugins/rite/commands/pr/fix.md` Phase 0.5.W / 4.6.W (Wiki query / ingest 起動条件)
+- `plugins/rite/commands/pr/review.md` Phase 4.0.W / 6.5.W (Wiki query / ingest 起動条件)
+
+**設計差異**: ingest.md / lint.md は strict (`true/yes/1` のみ true、`false/no/0` のみ false、不明値で fail-fast)、trigger.sh / inject.sh / wiki-config.sh は lenient (`false/no/0` のみ reject、それ以外通過) — 意図的な責務分離。
+
 ## Wiki 初期化判定パターン
 
 Wiki が既に初期化済みかを判定します:

@@ -47,10 +47,10 @@ wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wi
 extract_yaml_key() {
   local key=$1
   printf '%s\n' "$wiki_section" | awk -v k="$key" '$0 ~ "^[[:space:]]+" k ":" { print; exit }' \
-    | sed 's/[[:space:]]#.*//' | sed "s/.*$key:[[:space:]]*//" | tr -d '[:space:]"'\''' | tr '[:upper:]' '[:lower:]'
+    | sed 's/[[:space:]]#.*//' | sed "s/.*$key:[[:space:]]*//" | tr -d '[:space:]"'\'''
 }
 
-wiki_enabled=$(extract_yaml_key enabled)
+wiki_enabled=$(extract_yaml_key enabled | tr '[:upper:]' '[:lower:]')
 wiki_branch=$(extract_yaml_key branch_name)
 branch_strategy=$(extract_yaml_key branch_strategy)
 
@@ -61,7 +61,7 @@ branch_strategy="${branch_strategy:-separate_branch}"
 echo "wiki_enabled=$wiki_enabled branch_strategy=$branch_strategy wiki_branch=$wiki_branch"
 ```
 
-`hooks/wiki-ingest-trigger.sh` と `hooks/scripts/lib/wiki-config.sh` にも同型の YAML パーサがある。trigger.sh / wiki-config.sh は lenient (false/no/0 のみ reject、それ以外通過) で、本ファイルは strict 4 分岐 — 意図的な設計差異。
+分散実装の完全一覧と設計差異は [Wiki 有効判定パターン §分散実装ファイル一覧](../../references/wiki-patterns.md#分散実装ファイル一覧-single-source-of-truth) を SoT として参照する。本ファイルは strict 4 分岐 + helper 経路。trigger.sh / wiki-config.sh は lenient (意図的な責務分離)。
 
 **`wiki_enabled=false` の場合**: 早期 return:
 
@@ -245,7 +245,12 @@ trap '_cleanup; exit 130' INT
 trap '_cleanup; exit 143' TERM
 trap '_cleanup; exit 129' HUP
 
-cat_err=$(mktemp /tmp/rite-wiki-ingest-cat-err-XXXXXX 2>/dev/null) || cat_err=""
+cat_err=$(mktemp /tmp/rite-wiki-ingest-cat-err-XXXXXX 2>/dev/null) || {
+  echo "WARNING: stderr 退避 tempfile (cat_err) の mktemp に失敗しました。cat の詳細エラー情報は失われます" >&2
+  echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
+  echo "  影響: file body 読取失敗の根本原因 (permission / IO error) が不可視になります" >&2
+  cat_err=""
+}
 if ! file_body=$(cat "$candidate" 2>"${cat_err:-/dev/null}"); then
   echo "WARNING: failed to read $candidate" >&2
   [ -n "$cat_err" ] && [ -s "$cat_err" ] && head -3 "$cat_err" | sed 's/^/  /' >&2
@@ -532,7 +537,12 @@ if [ "$branch_strategy" = "same_branch" ]; then
   if ! git commit -m "$commit_msg"; then
     echo "ERROR: git commit failed" >&2
     echo "  ロールバック: staging area の .rite/wiki/ 変更を unstage します" >&2
-    _reset_err=$(mktemp /tmp/rite-wiki-ingest-reset-err-XXXXXX 2>/dev/null) || _reset_err=""
+    _reset_err=$(mktemp /tmp/rite-wiki-ingest-reset-err-XXXXXX 2>/dev/null) || {
+      echo "  WARNING: stderr 退避 tempfile (_reset_err) の mktemp に失敗しました。git reset の詳細エラー情報は失われます" >&2
+      echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
+      echo "  影響: git reset 失敗の根本原因 (index lock / permission denied 等) が不可視になります" >&2
+      _reset_err=""
+    }
     if ! git reset HEAD .rite/wiki/ 2>"${_reset_err:-/dev/null}"; then
       echo "  WARNING: git reset HEAD .rite/wiki/ に失敗。手動で unstage してください: git reset HEAD .rite/wiki/" >&2
       [ -n "${_reset_err:-}" ] && [ -s "${_reset_err:-}" ] && head -3 "$_reset_err" | sed 's/^/    /' >&2

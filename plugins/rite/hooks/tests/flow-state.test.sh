@@ -365,6 +365,20 @@ if grep -q "WARNING: flow-state.sh cmd_set: existing state read failed" "$d/tc12
 else
   fail "TC-12: no WARNING for corrupt JSON (silent overwrite regression)"
 fi
+# 他 4 経路 (TC-16.1 / TC-17.1 / TC-20.1 / TC-20.2) と対称化。cmd_set corrupt-JSON 経路に
+# 導入された $(basename) 化と head -3 | sed 's/^/  /' indented diagnostic を pin する。
+# 前者が抜けると multi-tenant 絶対 path leak が silent に復活し、後者が抜けると
+# observability 喪失 (jq parse error の中身が見えなくなる) が silent に復活する。
+if grep -qE 'WARNING:.*\.rite/sessions/' "$d/tc12.stderr"; then
+  fail "TC-12: WARNING に絶対 path (.rite/sessions/) が leak"
+else
+  pass "TC-12: WARNING に絶対 path leak なし"
+fi
+if grep -qE '^  [^ ]' "$d/tc12.stderr"; then
+  pass "TC-12: corrupt JSON で診断 stderr の indented 行が出力される"
+else
+  fail "TC-12: 診断 stderr の indented 行が欠落"
+fi
 # Resulting file must be valid JSON (write proceeded with defaults).
 if jq -e . "$state_file" >/dev/null 2>&1; then
   pass "TC-12: merged write produced valid JSON with defaults"
@@ -679,8 +693,9 @@ echo "=== TC-21: cmd_get --field/--jq-filter required (contract pin) ==="
 # 成立しないため、事前に set で state file を作成する。将来引数 parser を loose にして default
 # field を導入した場合の silent な behavioral drift を pin する。
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
-# state file を作成する (state file 不在では L245 の `[ ! -f "$path" ]` 分岐で WARNING + default + rc=0
-# に流れるため、L267 の ERROR + rc=1 経路に到達しない)
+# state file を作成する (state file 不在では cmd_get の "state file not found" WARNING + default + rc=0
+# 分岐に流れて `--field or --jq-filter required` ERROR + rc=1 経路に到達しないため、本 TC では事前に
+# state file を生成しておく)
 (cd "$d" && bash "$HOOK" set --phase plan --issue 1 --branch "b" --pr 0 --next "n") >/dev/null
 # get は意図的に rc=1 を返す経路 → 外側 set -e で abort しないよう || true を付与し
 # subshell 内で得た rc を直接 capture する

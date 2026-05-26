@@ -33,7 +33,7 @@ rite ワークフロー各フェーズで自動注入することも、手動で
 
 ### 1.1 Wiki 設定の確認
 
-`rite-config.yml` の `wiki.enabled` を確認する ([Wiki 有効判定パターン](../../references/wiki-patterns.md#wiki-有効判定パターン))。`wiki-query-inject.sh` 内で同じチェックを行うため、ここでは UX 上の早期メッセージ専用の probe 用簡易パーサとして読み取る (`ingest.md` ステップ 1.1 の堅牢版とは挙動が異なる。値の真の採用は `wiki-query-inject.sh` 内の `_extract_yaml_value` が行う):
+`rite-config.yml` の `wiki.enabled` を確認する ([Wiki 有効判定パターン](../../references/wiki-patterns.md#wiki-有効判定パターン))。`wiki-query-inject.sh` 内で同じチェックを行うため、ここでは UX 上の早期メッセージ専用の probe 用簡易パーサとして読み取る (`ingest.md` ステップ 1.1 の YAML パース (set 解除済み probe ブロック) と機能的にはほぼ同等の lenient パーサ。値の真の採用は `wiki-query-inject.sh` 内の `_extract_yaml_value` が行う):
 
 ```bash
 wiki_enabled=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \

@@ -406,7 +406,8 @@ while IFS= read -r page_path; do
 
   date_err=$(mktemp /tmp/rite-wiki-lint-date-err-XXXXXX 2>/dev/null) || {
     echo "WARNING: stderr 退避 tempfile (date_err) の mktemp に失敗しました。$page_path の date エラー詳細は失われます" >&2
-    echo "  影響: 日付パース失敗の根本原因が不可視になります" >&2
+    echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
+    echo "  影響: stderr pattern match が実行不能になり、日付パース失敗の根本原因が不可視になります" >&2
     date_err=""
   }
   if updated_epoch=$(date -d "$updated_str" +%s 2>"${date_err:-/dev/null}"); then

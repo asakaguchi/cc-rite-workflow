@@ -228,7 +228,7 @@ fi
 # when the lib's parse contract changes:
 #   1. this script (wiki-ingest-trigger.sh) — lenient (only false/no/0 reject)
 #   2. hooks/scripts/wiki-growth-check.sh — lenient (layer 3 growth stall detection)
-#   3. commands/wiki/ingest.md Phase 1.1 — strict 4-way branch (page integration)
+#   3. commands/wiki/ingest.md ステップ 1.1 — strict 4-way branch (page integration)
 # The lib-using scripts (wiki-ingest-commit.sh / wiki-worktree-commit.sh /
 # wiki-worktree-setup.sh) source the canonical implementation directly.
 if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then

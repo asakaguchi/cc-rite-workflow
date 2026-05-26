@@ -141,19 +141,19 @@ _rite_<scope>_<phase>_cleanup() {
 
 #### 採用 site (canonical 参照実装)
 
-- `plugins/rite/commands/wiki/lint.md` Phase 2.2 / 6.0 / 6.2 / 8.3
-- `plugins/rite/commands/wiki/ingest.md` Phase 2.2 / 2.3 / 5.2
+- `plugins/rite/commands/wiki/lint.md` ステップ 2.2 / 6.0 / 6.2 / 8.3
+- `plugins/rite/commands/wiki/ingest.md` ステップ 2.2 / 2.3 / 5.2
 
 #### 命名規約
 
 - 形式: `_rite_<scope>_<phase>_cleanup`
 - `<scope>`: site 識別の接頭辞 (例: `wiki_lint`, `wiki_ingest`, `fix`, `review`, `start`)
-- `<phase>`: Phase 番号の**小数点を除いた連結形式** (drift 防止)。例: `Phase 2.2` → `phase22`、
-  `Phase 6.0` → `phase60`、`Phase 2` → `phase2`
+- `<phase>`: ステップ番号の**小数点を除いた連結形式** (drift 防止)。例: `ステップ 2.2` → `phase22`、
+  `ステップ 6.0` → `phase60`、`ステップ 2` → `phase2`
 - 短縮形 `_rite_p{NN}_cleanup` は使用しない (scope 不在で複数 site と衝突する)
 
 > **Note**: 既存 site の旧命名 (`_rite_wiki_lint_phase2_cleanup` 等) は維持し、一括リネームは行わない。
-> Phase 2.2 site (`wiki/lint.md`) は `phase22` 規約確立前の実装で `_rite_wiki_lint_phase2_cleanup`
+> ステップ 2.2 site (`wiki/lint.md`) は `phase22` 規約確立前の実装で `_rite_wiki_lint_phase2_cleanup`
 > として実装されているため、新規 site では `phase22` を採用すること (旧名と規約名が共存しても衝突は起きない)。
 > 同一 site に新規 cleanup 関数を追加する場合は必ず規約形式 (`phase22` 等) を採用すること。
 
@@ -230,11 +230,11 @@ esac
 
 ### 参照実装
 
-canonical 確立先は `plugins/rite/commands/wiki/lint.md` (Phase 6.0 / 6.2 / 8.2 / 8.3 の dispatch
+canonical 確立先は `plugins/rite/commands/wiki/lint.md` (ステップ 6.0 / 6.2 / 8.2 / 8.3 の dispatch
 構造 case 文)。**Scope**: dispatch 構造の case 文 (placeholder substitute validation gate /
 strategy dispatch / rc dispatch) を対象とし、他 case arm 内にネストした dispatch case も含む。
 while loop の inner case (per-iteration 状態判定) は scope 外。新規 case 追加時は本 pattern を
-採用すること。Phase 番号 + case label の semantic anchor 形式で参照する (line 番号参照は drift する
+採用すること。ステップ番号 + case label の semantic anchor 形式で参照する (line 番号参照は drift する
 ため禁止)。
 
 ### Anti-patterns

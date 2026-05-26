@@ -179,25 +179,35 @@ check_file() {
     {
       line = $0
       # P1: space-separated dialect.
-      #   "Downstream reference: " + <non-space-run> + " Phase " + <digits>.<digits>
-      # The [^ ]+ run must NOT itself end in ":Phase" — otherwise
+      #   "Downstream reference: " + <non-space-run> + " (Phase|ステップ) " + <digits>.<digits>
+      # The [^ ]+ run must NOT itself end in ":Phase" / ":ステップ" — otherwise
       #   "Downstream reference: lint.md:Phase 8.3, same file:Phase 5.1"
       # would match at the "same file Phase 5.1" substring (false positive).
-      # We guard this by requiring the token right before " Phase " to not
-      # contain ":Phase" already.
+      # We guard this by requiring the token right before " Phase " / " ステップ " to not
+      # contain ":Phase" / ":ステップ" already.
+      # ステップ token: Issue #1150 wiki commands rename で導入された日本語 step token を
+      # 同等に扱うため Phase|ステップ 両対応に拡張 (silent coverage loss 防止)。
       pos = 1
       while (pos <= length(line)) {
         sub_s = substr(line, pos)
-        if (!match(sub_s, /Downstream reference: [^ ]+ Phase [0-9]+\.[0-9.]*[0-9]/)) break
+        if (!match(sub_s, /Downstream reference: [^ ]+ (Phase|ステップ) [0-9]+\.[0-9.]*[0-9]/)) break
         hit = substr(sub_s, RSTART, RLENGTH)
-        # False-positive filter: canonical sequences include "Phase X.Y, same file:Phase Z.W".
-        # Extract the token between "reference: " and " Phase" — if it contains ":Phase"
-        # (e.g. "lint.md:Phase 8.3,") the hit is the tail of a canonical comma-separated
-        # list, not a space-separated dialect.
+        # False-positive filter: canonical sequences include "Phase X.Y, same file:Phase Z.W"
+        # or "ステップ X.Y, same file:ステップ Z.W" (Issue #1150 wiki commands)。
+        # Extract the token between "reference: " and " Phase" / " ステップ" — if it contains
+        # ":Phase" or ":ステップ" (e.g. "lint.md:Phase 8.3," or "lint.md:ステップ 8.3,") the hit
+        # is the tail of a canonical comma-separated list, not a space-separated dialect.
         tail = substr(hit, length("Downstream reference: ") + 1)
-        sp_idx = index(tail, " Phase")
+        sp_idx_phase = index(tail, " Phase")
+        sp_idx_step = index(tail, " ステップ")
+        # 先に出現する keyword を採用 (両方ある場合は小さい方)
+        if (sp_idx_phase > 0 && (sp_idx_step == 0 || sp_idx_phase < sp_idx_step)) {
+          sp_idx = sp_idx_phase
+        } else {
+          sp_idx = sp_idx_step
+        }
         token = substr(tail, 1, sp_idx - 1)
-        if (index(token, ":Phase") == 0) {
+        if (index(token, ":Phase") == 0 && index(token, ":ステップ") == 0) {
           print "[backlink-format][P1] " F ":" NR ": space-separated dialect (expected colon): " hit
         }
         pos = pos + RSTART + RLENGTH - 1

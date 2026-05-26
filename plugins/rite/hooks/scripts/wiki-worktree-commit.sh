@@ -3,7 +3,7 @@
 #
 # Responsibility: commit pending changes in the `.rite/wiki-worktree`
 # worktree (checked out to the configured `wiki.branch_name`) and push
-# to origin. Used by commands/wiki/ingest.md Phase 5 after the LLM has
+# to origin. Used by commands/wiki/ingest.md ステップ 5 after the LLM has
 # written raw-source `ingested: true` updates, new pages under
 # `.rite/wiki/pages/**`, index.md updates, and log.md appendices
 # directly into the worktree tree.

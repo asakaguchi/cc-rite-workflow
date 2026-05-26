@@ -217,16 +217,16 @@ Wiki 初期化時にテンプレートを `.rite/wiki/` に展開します。
 | `{summary}` | ページ概要（1-2文、Ingest 時） |
 | `{details}` | 詳細説明（Ingest 時） |
 | `{related_page_title}` | 関連ページのタイトル（Ingest 時） |
-| `{related_page_path}` | 関連ページへの **page-dir 相対パス**（Ingest 時）。新規 page 格納位置 `.rite/wiki/pages/{domain}/{slug}.md` の格納ディレクトリ `.rite/wiki/pages/{domain}/` を起点として resolve される。同ドメイン内は `./other.md` または `other.md`、別ドメインは `../{other_domain}/other.md` の形式で substitute する。`{source_ref}` (wiki-root 起点、template 側で `../../` prefix を hardcode) とは **起点が異なる** 点に注意。詳細は `plugins/rite/commands/wiki/ingest.md` Phase 5.3 の「設計意図 (#941 fix)」を参照 |
+| `{related_page_path}` | 関連ページへの **page-dir 相対パス**（Ingest 時）。新規 page 格納位置 `.rite/wiki/pages/{domain}/{slug}.md` の格納ディレクトリ `.rite/wiki/pages/{domain}/` を起点として resolve される。同ドメイン内は `./other.md` または `other.md`、別ドメインは `../{other_domain}/other.md` の形式で substitute する。`{source_ref}` (wiki-root 起点、template 側で `../../` prefix を hardcode) とは **起点が異なる** 点に注意。詳細は `plugins/rite/commands/wiki/ingest.md` ステップ 5.3 の「設計意図 (#941 fix)」を参照 |
 | `{source_description}` | ソースの説明文（Ingest 時） |
 
 > **F-14 fix（関連ページなし時の操作契約、Issue #944 由来）**: 確信ある関連ページが特定できない場合、`{related_page_title}` / `{related_page_path}` の両 placeholder への substitute は行わず、`## 関連ページ` セクション全体を Edit で `- （関連ページなし）` の平文 1 行に差し替える（空 placeholder のままにすると Markdown リンク `[]()` が破綻するため）。
 
-> **canonical 階層** (ingest.md 内の 2 種 canonical の概念分離): ingest.md には (a) Phase 4.3 = `{related_page_title}` / `{related_page_path}` の**値決定手順** canonical (L530 で明示宣言) と (b) Phase 5.3 placeholder 表 = **F-14 fix 動作契約** canonical (Phase 4.3 内 L559 で明示宣言、実体行は L821) が共存する。両者は別概念 (手順 vs 動作契約) で並立。本 NOTE は (b) を扱うため canonical = `plugins/rite/commands/wiki/ingest.md` L821 (Phase 5.3 placeholder 表内の該当行)。なお #944 fix により Phase 4.3 (詳細手順、L557-567) と Phase 5.3 placeholder 表 (要約、L821) は同一の操作契約を併記する dual-site として維持される (L569 で dual-site 備考)。references → ingest.md 方向は本 NOTE のように要約参照に集約する方針 (ingest.md 内 dual-site 維持とは別方針)。
+> **canonical 階層** (ingest.md 内の 2 種 canonical の概念分離): ingest.md には (a) ステップ 4.3 = `{related_page_title}` / `{related_page_path}` の**値決定手順** canonical (L530 で明示宣言) と (b) ステップ 5.3 placeholder 表 = **F-14 fix 動作契約** canonical (ステップ 4.3 内 L559 で明示宣言、実体行は L821) が共存する。両者は別概念 (手順 vs 動作契約) で並立。本 NOTE は (b) を扱うため canonical = `plugins/rite/commands/wiki/ingest.md` L821 (ステップ 5.3 placeholder 表内の該当行)。なお #944 fix により ステップ 4.3 (詳細手順、L557-567) と ステップ 5.3 placeholder 表 (要約、L821) は同一の操作契約を併記する dual-site として維持される (L569 で dual-site 備考)。references → ingest.md 方向は本 NOTE のように要約参照に集約する方針 (ingest.md 内 dual-site 維持とは別方針)。
 
 > **F-14 fix 識別子の disambiguation**: lint.md にも別文脈の F-14 fix (`{log_entry}` placeholder 残留検知、PR #564 由来) があるため、識別子のみで参照する場合は本 NOTE が指す F-14 fix が「関連ページなし時の操作契約」(Issue #944 由来) であることに注意。
 
-> **confidence フィールド**: page-template.md の `confidence: medium` はリテラル値であり `{confidence}` プレースホルダーではない。Write 後に Edit で Phase 4 の判定値 (`high` / `medium` / `low`) に置換する。
+> **confidence フィールド**: page-template.md の `confidence: medium` はリテラル値であり `{confidence}` プレースホルダーではない。Write 後に Edit で ステップ 4 の判定値 (`high` / `medium` / `low`) に置換する。
 
 ## Wiki 有効判定パターン
 

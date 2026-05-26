@@ -2,7 +2,7 @@
 title: "極小対称化 PR は sibling site Grep 照合で短時間・高確信レビューできる"
 domain: "heuristics"
 created: "2026-04-19T06:45:00Z"
-updated: "2026-05-14T22:40:21Z"
+updated: "2026-05-27T01:30:00Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260419T062330Z-pr-592.md"
@@ -12,6 +12,8 @@ sources:
     ref: "raw/fixes/20260514T223534Z-pr-967.md"
   - type: "reviews"
     ref: "raw/reviews/20260514T224021Z-pr-967.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260526T154013Z-pr-1151.md"
 tags: []
 confidence: high
 ---
@@ -52,6 +54,8 @@ confidence: high
 
 **PR #967 累積 evidence (2-site work memory lockdir 別系統対称化、PR #963 follow-up の sibling separation case)**: PR #963 cycle 1 で reviewer が「scope 外推奨事項 / 別 Issue 候補」として挙げた「cleanup-work-memory.sh の per-file lockdir 非対称」を Issue #964 として切り出した follow-up PR (+13/-3, 2 files)。global state lockdir (4 site、`from=cleanup_work_memory`) と per-issue work memory lockdir (2 site、`from=cleanup_work_memory_wm_dir` / `cleanup_work_memory_issue`) を **別系列として明示分離** したマッピング表を start-finalize.md に追加。cycle 1 で prompt-engineer reviewer が 1 MEDIUM (note 引用の consumer scope 不正確 — `pre-compact.sh:82` global state vs `work-memory-update.sh:153` per-issue の取り違え) を独立検出し、cycle 2 で 1-line wording fix により 3 reviewer 全員 0-finding mergeable 着地。本 case は (a) 別 Issue 化された scope 外推奨が次 PR で自然に消化される運用パターン、(b) 「対称化」と並行して「別系列の明示分離」が必要な場合の note 文言精度 (consumer 引用の scope 一致) が独立 finding として浮上する sub 技法を実証。`{n}-site mapping note を追加する PR では同名類似 idiom (例: lockdir cleanup) の consumer も grep で照合して引用 scope を verify する` という追加 hint を canonical 化。
 
+**PR #1151 累積 evidence (大規模 rename PR の cross-product grep 必須化)**: 16 files / +484/-484 の Phase → ステップ rename PR で、cycle 1 で 18 件の callee→caller drift を fix した後、cycle 2 で 3 件の追加見落とし (`wiki/query.md` 9 site + `wiki/lint.md:1406`) が検出された。cycle 1 reviewer の scan scope が systematic でなかったため、partial scan が tail residue を生んだ典型例。教訓: **cycle N で 1 件の callee→caller drift を発見したら、同 PR 内の `全 callee × 全 Phase-maintaining caller` の cross-product grep を即座に実行する**。`for caller in {out_of_scope_callers}; do for callee in {scope_files}; do grep -n "$caller" "$callee" | grep -E "(Phase|ステップ) [0-9]"; done; done` のような全 cross-product を 1 commit で fix することで、cycle 2 の追加 finding を pre-empt できる。本 hint は本ページの「sibling site の全量列挙」を「caller × callee 行列の全量列挙」へ拡張する一般化 (sibling 数が 5+ の大規模 PR で特に有効)。詳細な anti-pattern 解説は [Rename PR の callee → caller 片方向 over-translation で Out-of-Scope の broken cross-ref を生成する](../anti-patterns/rename-pr-callee-caller-over-translation.md) を参照。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -64,3 +68,4 @@ confidence: high
 - [PR #963 review results](../../raw/reviews/20260514T182616Z-pr-963.md)
 - [PR #967 fix results](../../raw/fixes/20260514T223534Z-pr-967.md)
 - [PR #967 review results (cycle 2 mergeable)](../../raw/reviews/20260514T224021Z-pr-967.md)
+- [PR #1151 fix cycle 2 (cross-product grep hint)](../../raw/fixes/20260526T154013Z-pr-1151.md)

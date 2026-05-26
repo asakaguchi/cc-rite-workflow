@@ -2,7 +2,7 @@
 title: "累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable"
 domain: "heuristics"
 created: "2026-05-17T13:40:00Z"
-updated: "2026-05-21T08:45:00Z"
+updated: "2026-05-27T01:30:00Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260521T083746Z-pr-1078.md"
@@ -20,6 +20,10 @@ sources:
     ref: "raw/reviews/20260517T133901Z-pr-1011-cycle-1.md"
   - type: "reviews"
     ref: "raw/reviews/20260517T133937Z-pr-1011-cycle-2.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260526T161411Z-pr-1151.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260526T160217Z-pr-1151.md"
 tags: []
 confidence: high
 ---
@@ -126,6 +130,22 @@ PR #1078 (`start-execute.md` / `checklist-auto-check.md` / `cleanup.md` の 3 si
 3. **Shrinking trajectory 8 → 3 → 2 → 1 → 0 は initial detection completeness の指標**: cycle 1 で 8 findings 検出は 2 reviewer 並列の最大検出力。各 cycle で半減未満 (8→3 で 5/8 削減、3→2 で 2/3 維持、2→1 で 1/2 削減) のシリアル shrinking は、各 cycle fix が partial structural anchor 化 (`Asymmetric Fix Transcription` の sub-pattern 段階解消) を意味する
 4. **Wiki 経験則の自己実証**: 本 PR の review-fix loop 自体が `accumulated-pr-three-cycle-convergence` / `asymmetric-fix-transcription` / `fix-induced-drift-in-cumulative-defense` / `phase-number-structural-symmetry` の 4 既存 Wiki 経験則の **実測再現**。Wiki 経験則がワークフロー自身の品質改善に feed back する self-reinforcing loop が cycle 5 で完結
 
+### PR #1151 (Issue #1150): 大規模 rename PR の 4-cycle 累積収束 + tail residue pattern
+
+PR #1151 (`wiki/*` commands の `Phase N` → `ステップ N` heading rename、16 files / +484/-484) は、本ページが記録してきた累積収束 pattern の **大規模 rename PR 版** 事例。18 findings を **18 → 3 → 2 → 0** の 4 cycle shrinking trajectory で収束:
+
+- **Cycle 1 (18 findings: 14 HIGH / 4 MEDIUM)**: 3 reviewer (prompt-engineer / code-quality / tech-writer) 並列。Asymmetric Fix Transcription anti-pattern の自己違反 (cleanup-wiki-ingest-turn-boundary.md で 8 件中 1 件のみ rename)、callee → caller 片方向 over-translation (3 callers 参照 in SKILL.md + bash-cross-boundary 2 sites + ingest.md L9)、AC verification grep の盲点 (`Phase [0-9]+` で bare prose 13+ 件残留)、canonical regex silent coverage loss (backlink-format-check.sh:191) の 4 大 finding pattern
+- **Cycle 2 (3 findings: 2 MEDIUM + 1 LOW-MEDIUM)**: cycle 1 fix の scan scope が non-systematic だったため `wiki/query.md` 9 sites + `wiki/lint.md:1406` 1 site の over-translation 取りこぼし。F-21 は archive doc front-matter declaration を尊重する逆方向 revert (cycle 1 F-14 fix を撤回)
+- **Cycle 3 (2 HIGH: cross-validation で 1 件 MEDIUM→HIGH boost)**: cycle 2 で 6 件 revert したが、隣接行 2 件 (L26 `wiki/lint.md ステップ 9.2` + L35 `ingest.md ... ステップ 8`) の tail residue。L35 は同 doc L114 `Phase 8` と intra-document contradiction を形成
+- **Cycle 4 (0 findings, mergeable)**: 3 reviewer 全員「評価: 可」「指摘事項なし」、4 cycle 完全収束
+
+**PR #1011 / #1032 / #1049 / #1064 / #1078 との対比による新観点**:
+
+1. **rename PR は drift class の分散度合いが特殊**: 通常の累積対策 PR (PR #1011, #1032 等) は単一 SoT との対称化責務 (format token / bash structure 等) の層数で cycle 数が決まるが、rename PR は **同 file 内の類似 violation の分散度合い** で cycle 数が決まる。本 PR では archive doc 1 file 内に 8 件の同型 violation が散在し、cycle ごとに 1-2 件単位の tail residue が surface する `tail-end pattern` を実証
+2. **AC verification grep の narrow pattern 盲点が cycle 数を伸ばす**: AC を `Phase [0-9]+(\.[0-9]+)?` で定義したことで、bare prose / 表ヘッダ / 命名規約 prose の 13+ 件残留が cycle 0 で検出できず cycle 1 で初めて発火。**AC を word boundary (`Phase\b`) で再定義すれば cycle 1 finding 数を 18 → 5 程度に圧縮できた可能性** (PR #1151 fix cycle 1 から導出された hint)
+3. **archive doc の front-matter policy violation が cycle 1↔2 revert を発生させる**: cycle 1 fix で over-translation → cycle 2 で F-21 revert → cycle 3 で revert 漏れ tail residue という往復が発生。**reviewer 間で document classification (archive vs current) の認識を共有する仕組み** がないと、同一 file の同一行が cycle を往復する経路を生む (詳細は [Archive doc の front-matter で宣言した preservation policy を body 編集が無視して矛盾を生む](../anti-patterns/archive-doc-frontmatter-policy-violation.md) 参照)
+4. **大規模 rename PR の収束式は `cycle_count ≈ 1 + ⌈log2(tail_residue_density)⌉`**: 本 PR では同 file 内に 8 件分散 → cycle 1 で 6 件 fix → 2 件 tail residue → cycle 2 で 1 件 → cycle 3 で残 1 件、と log2 オーダーで shrinking。経験則として、rename PR の cycle 1 完了時点で **同 file 内の全 `(Phase|ステップ) [0-9]` を pre-fix scan + audit** を導入すれば 4 cycle → 2 cycle に圧縮できる可能性
+
 ## 関連ページ
 
 - [Spec-vs-spec 矛盾は canonical SoT 表記のある側を優先する](../heuristics/spec-vs-spec-canonical-priority.md)
@@ -141,3 +161,5 @@ PR #1078 (`start-execute.md` / `checklist-auto-check.md` / `cleanup.md` の 3 si
 - [PR #1064 cycle 2 re-review (mergeable — 14-finding mass batch fix の 1-cycle convergence 上限事例、4 reviewer 並列で 14 findings → cycle 1 一括 structural fix → cycle 2 で 1-nit-noted (Issue #1019 M5 受け流し経路) + 2 recommendations のみ。`spec-vs-spec-canonical-priority` heuristic の origin 事例と連動)](../../raw/reviews/20260519T164439Z-pr-1064-cycle2.md)
 - [PR #1078 cycle 5 mergeable (5-cycle shrinking convergence、13 findings を 8→3→2→1→0 で収束、cycle 4 reviewer disagreement (Quality Signal 3) を実装による合意形成で解消、Wiki 経験則 4 件の self-reinforcing 実測再現)](../../raw/reviews/20260521T083746Z-pr-1078.md)
 - [PR #1078 cycle 1 fix patterns (累積 13 findings の 7 件 batch fix、cycle 1 で Simplification Charter cross-validated 違反検出、printf vs echo 同一 SoT 内 style consistency、Step 0 → AskUserQuestion silent fall-through 防止 MUST 句強化、Phase 5.4.4.1 detector 不在主張の prose 誤記訂正の 4 fix pattern)](../../raw/fixes/20260521T073426Z-pr-1078.md)
+- [PR #1151 cycle 4 mergeable (大規模 rename PR の 4-cycle 累積収束、18→3→2→0 trajectory、archive doc tail residue pattern + intra-document contradiction の実測)](../../raw/reviews/20260526T161411Z-pr-1151.md)
+- [PR #1151 cycle 3 fix (archive doc 2 箇所最終 revert、front-matter policy preservation 軸の cycle 1↔2↔3 往復解消)](../../raw/fixes/20260526T160217Z-pr-1151.md)

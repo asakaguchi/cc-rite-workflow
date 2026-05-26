@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-26T13:30:00Z"
+updated: "2026-05-27T01:30:00Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260525T170549Z-pr-1143.md"
@@ -254,7 +254,11 @@ sources:
     ref: "raw/fixes/20260526T111157Z-pr-1149-cycle3.md"
   - type: "fixes"
     ref: "raw/fixes/20260526T113809Z-pr-1149-cycle4.md"
-tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration"]
+  - type: "reviews"
+    ref: "raw/reviews/20260526T155823Z-pr-1151.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260526T160217Z-pr-1151.md"
+tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration", "archive-doc-tail-residue", "intra-document-contradiction"]
 confidence: high
 ---
 
@@ -265,6 +269,8 @@ confidence: high
 fix を 1 箇所に適用したとき、同じパターンを持つ「対称位置」（ペア/トリオの兄弟スクリプト、同型 idiom の別 phase、相互参照の Phase 番号等）に同じ fix を伝播させ忘れる failure mode。次サイクルの review で片割れが「新規」findings として浮上し、収束サイクル数を膨張させる。
 
 > **PR #1043 (Issue #1042、累積 35 回目相当、4 cycle 構造的収束)**: aggregate-recommendation-label-evasion anti-pattern を解消する meta-PR でありながら、対策コード自身が同 anti-pattern を再現した self-referential failure mode を実測。「禁止 phrase 列挙」を canonical (start-finalize.md の 4 phrase) と subset (他 7 file の 2-3 phrase) の **8 箇所で drift** させた。Self-violation cascade × Recursive Recurrence in Fix Layer × Sentinel Visibility Rule × Self-meta drift (legacy `recommendation_issue_candidates` vs 新 `candidate_count` の semantic 不一致) の 4 軸が並行発火。cycle 1-3 で「deprecate + 残置」戦略を採用したことで textual contradiction が連続 3 回再発、cycle 4 で legacy field を **完全削除** することで構造的閉塞を実現し 0 findings 到達。詳細な戦略対比は [Legacy field の「deprecate + 残置」よりも「完全削除」が構造的閉塞を実現する](../heuristics/complete-deletion-over-deprecation-for-structural-closure.md) を参照。
+
+> **PR #1151 (Issue #1150、累積 archive doc tail residue × intra-document contradiction)**: `docs/anti-patterns/cleanup-wiki-ingest-turn-boundary.md` (Asymmetric Fix Transcription anti-pattern を記述する doc 自身) で本 anti-pattern を **自己違反** した実例。PR description が「同期対象として明示列挙」していたにも関わらず実 diff は 8 件中 L23 1 件のみ修正、残り 7 件未変換 (cycle 1)。cycle 2 で 6 件 revert (over-translation 修正)、cycle 3 で隣接行 2 件 (L26 lint.md 参照 + L35 ingest.md 参照) の tail residue を最終 revert。L35 は同 doc L114 の `Phase 8` と **intra-document contradiction** を形成していた。教訓: 同 file 内に類似 violation が分散する場合、cycle ごとに 1-2 件単位の tail residue が発生する経験的傾向 (cycle 1→2→3 で 18→3→2→0)。次回大規模 rename PR では cycle 1 完了直後に同 file 内の全 `(Phase|ステップ) [0-9]` を grep + audit する pre-fix scan を導入すべき。詳細は [Archive doc の front-matter で宣言した preservation policy を body 編集が無視して矛盾を生む](./archive-doc-frontmatter-policy-violation.md) も参照。
 
 ## 詳細
 

@@ -272,7 +272,7 @@ git ls-remote --heads origin {branch_name} && git push origin --delete {branch_n
 
 ---
 
-## ステップ 6: PR-specific state ファイルを削除
+## ステップ 6: PR-specific state ファイルを削除 <!-- AC-7 -->
 
 マージ済み PR に紐づく state ファイルを削除する。**他 PR 誤削除防止のため glob は `{pr_number}-` prefix 固定**。
 
@@ -398,9 +398,14 @@ ingest の成否に関わらずステップ 10 へ進む。
 
 ---
 
-## ステップ 11: 作業メモリを最終更新
+## ステップ 11: 作業メモリを最終更新 + ローカルファイル削除
 
-詳細は [archive-procedures.md](./references/archive-procedures.md) (Work Memory final update セクション)。
+詳細は [archive-procedures.md](./references/archive-procedures.md) の以下 2 セクション両方を実行する:
+
+- **Work Memory final update セクション** (= `### 3.5`): Issue comment への完了マーク追記 (gh API PATCH)
+- **State reset セクション** (= `## Phase 4: Reset State and Delete Local Work Memory`): `cleanup-work-memory.sh` 実行による local `.rite-work-memory/issue-*.md` ファイル削除 + flow state `active: false` リセット
+
+両方を実行しないと、Issue comment は最終化されるがローカル file は永続蓄積し `post-tool-wm-sync.sh` が次セッションで file を再生成する race 経路が開く。
 
 ---
 

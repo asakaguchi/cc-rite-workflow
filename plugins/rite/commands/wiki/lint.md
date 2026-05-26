@@ -1403,7 +1403,7 @@ n_missing_concept={n_missing_concept}
 n_broken_refs={n_broken_refs}
 # 参考: n_unregistered_raw={n_unregistered_raw} — 判定式から意図的に除外 (informational)
 
-# Placeholder residue fail-fast gate (ステップ 8.3 F-14 / review.md ステップ 6.1.b json_saved_from_p61a
+# Placeholder residue fail-fast gate (ステップ 8.3 F-14 / review.md Phase 6.1.b json_saved_from_p61a
 # gate と同型、5 site 対称化: ステップ 1.1 / 1.3 / 6.2 / 8.3 / 本 8.1)。
 # LLM が literal substitute を忘れると `[ "{n_contradictions}" -gt 0 ]` が rc=2 を返し、
 # `set -o pipefail` のみでは検知できず `else` 分岐に流れて `lint_action="lint:clean"` が

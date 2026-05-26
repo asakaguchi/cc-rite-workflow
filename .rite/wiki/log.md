@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-05-26T14:05:00+09:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=11, unregistered_raw=177, broken_refs=0 |
 | 2026-05-26T14:00:00+09:00 | ingest:create | pages/heuristics/reviewer-zero-finding-as-legitimate-convergence.md | PR #1146 cycle 6 → cycle 8 (Doc-Heavy PR 8 cycle 完全収束): 累積対策 PR の収束相で「真に finding が無いときに何か挙げないと bias と見なされる」認知傾向が false-positive 捏造の経路となり review-fix loop を永久化させる。`0 件 = 正常終了` を恐れない姿勢を canonical 化する新規 heuristic。明示的な収束宣言 / healthy self-assessment / 未検証領域 sweep / 複数 reviewer 独立 0 件の 4 規範 |
 | 2026-05-26T14:00:00+09:00 | ingest:update | pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md | PR #1146 (Issue #1141 = Doc-Heavy investigation PR、8 cycle 完全収束 11→0、累積 44 回目相当): Failure mode 7-9 (Parent vs sub-section SoT 同期見落とし / 「孤立 nit」の systemic 化 / auto_demote_low policy override 判断基準) と「systemic 一斉対応」収束戦略 (cycle 5 で line ref 統一・行数実値化・セクション補完・symmetric qualifier の 4 軸 mass fix) を追加。Doc-Heavy 軸での fractal pattern 再現と 2 reviewer cross-validation effectiveness を実証 |
 | 2026-05-26T14:00:00+09:00 | ingest:skip | raw/reviews/20260526T014903Z-pr-1146.md | PR #1146 cycle 1 review: Doc-Heavy PR の 5 カテゴリ verification protocol 検証 / phantom step ref / markdown table column drift / line ref off-by-1。主要観点は更新済 `fix-induced-drift-in-cumulative-defense.md` Failure mode 7-9 に統合 |

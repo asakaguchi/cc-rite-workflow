@@ -391,6 +391,15 @@ got=$(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sid" bash "$H
 assert "TC-13.2: CLAUDE_CODE_SESSION_ID resolves set --if-exists correctly" "pr" "$got"
 got=$(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" get --field next_action --default "EMPTY")
 assert "TC-13.3: --if-exists write was not silently skipped" "after-fix" "$got"
+# TC-13.4: 両 env-var 同時 set 時の precedence (CLAUDE_CODE_SESSION_ID が primary)
+# 2 種類の sid を用意し、CCSID 側の state file が選択されることを assert する。
+# これにより `_resolve_session_id` の if-branch 順序入れ替え regression を catch する。
+result2=$(new_sandbox); d2="${result2%|*}"; sid2="${result2#*|}"
+(cd "$d2" && bash "$HOOK" set --phase ready --issue 9999 --branch "br-ccsid" --pr 0 --next "ccsid-state")
+rm -f "$d2/.rite-session-id"
+# 別 sid (= 別 state file path) を CLAUDE_SESSION_ID に渡し、CCSID 側が勝つことを確認
+got=$(cd "$d2" && env CLAUDE_CODE_SESSION_ID="$sid2" CLAUDE_SESSION_ID="deadbeef-0000-0000-0000-000000000000" bash "$HOOK" get --field next_action --default "EMPTY")
+assert "TC-13.4: CLAUDE_CODE_SESSION_ID takes precedence over CLAUDE_SESSION_ID (primary)" "ccsid-state" "$got"
 
 # --- TC-14: AC-4 backwards-compat — CLAUDE_SESSION_ID still works ---
 echo ""
@@ -429,8 +438,8 @@ echo "=== TC-16: AC-3 cmd_get WARNs on stale .rite-session-id drift ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 echo "deadbeef-0000-0000-0000-000000000000" > "$d/.rite-session-id"
 err=$( (cd "$d" && bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 )
-# ERE pattern で文言 drift に耐性。F-09 修正で `path:` → `file:` (basename only) に
-# リネームしたが、ERE は両方マッチ可能 (`(path|file):` を含めない柔軟な anchor)。
+# ERE pattern で文言 drift に耐性 (`(path|file):` を含めない柔軟な anchor で
+# WARNING 文言が path/file/その他に変わっても match する)。
 if echo "$err" | grep -qE 'WARNING:.*cmd_get.*state file not found'; then
   pass "TC-16.1: cmd_get WARNs on stale sid drift"
 else
@@ -466,8 +475,7 @@ fi
 # First-time session (no .rite-session-id, no env): cmd_set returns rc=1 + ERROR
 # (resolution failure surfaces). The --if-exists silent-skip contract applies AFTER
 # sid resolution succeeds, not before. First-time graceful means "no WARNING about
-# --if-exists skip", not "rc=0". 旧 L455 コメントの "rc=0 graceful" 記述は obsolete
-# だったため Issue #1019 で修正 (実機: env 両方 unset で set --if-exists → rc=1 + ERROR)。
+# --if-exists skip", not "rc=0" (実機: env 両方 unset で set --if-exists → rc=1 + ERROR)。
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 rm -f "$d/.rite-session-id"
 combined=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" set --phase plan --issue 1 --branch "b" --pr 0 --next "n" --if-exists) 2>&1 || true )
@@ -478,13 +486,16 @@ else
   pass "TC-17.2: silent about --if-exists skip when sid resolution failed (ERROR surfaces instead)"
 fi
 
-# --- TC-18: F-02 path traversal regression guard (Issue #1148) ---
+# --- TC-18: env-var session_id path-traversal validation ---
 echo ""
-echo "=== TC-18: F-02 env-var session_id path-traversal validation ==="
-# Why: CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID env-var paths were resolving sid
-# without validation, allowing CLAUDE_CODE_SESSION_ID="../../tmp/owned" to write
-# state files outside .rite/sessions/. Pin the validator with negative tests for
-# both env vars and direct override.
+echo "=== TC-18: env-var session_id path-traversal validation ==="
+# Why: env-var paths and override path were resolving sid without validation,
+# allowing "../../tmp/owned" to write state files outside .rite/sessions/.
+# Pin the validator with negative tests for 4 entry points:
+#  TC-18.1/2: env-var (CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID)
+#  TC-18.3:   --session override
+#  TC-18.4:   SESSION_ID_FILE content
+# This ensures `_validate_session_id` chokepoint protects all 4 sources symmetrically.
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 rm -f "$d/.rite-session-id"
 err=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="../../tmp/pwned" bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
@@ -499,14 +510,35 @@ if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*path-traversal'; then
 else
   fail "TC-18.2: path traversal not rejected: '$err'"
 fi
+# TC-18.3: --session override 経路。validator が chokepoint で発火することを pin
+err=$( (cd "$d" && bash "$HOOK" get --session "../../tmp/pwned" --field phase --default "DEF" >/dev/null) 2>&1 || true )
+if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*path-traversal'; then
+  pass "TC-18.3: --session override rejects '..' path traversal"
+else
+  fail "TC-18.3: override path traversal not rejected: '$err'"
+fi
+# TC-18.4: SESSION_ID_FILE 経路。.rite-session-id 内容も同じ validator を通る
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+echo "../../tmp/pwned-from-file" > "$d/.rite-session-id"
+err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
+if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*path-traversal'; then
+  pass "TC-18.4: SESSION_ID_FILE content rejects '..' path traversal"
+else
+  fail "TC-18.4: SESSION_ID_FILE path traversal not rejected: '$err'"
+fi
 
-# --- TC-19: F-03 log injection regression guard (Issue #1148) ---
+# --- TC-19: env-var session_id control-character validation (log injection guard) ---
 echo ""
-echo "=== TC-19: F-03 env-var session_id control-character validation ==="
+echo "=== TC-19: env-var session_id control-character validation (log injection guard) ==="
 # Why: WARNING messages embedded $sid without escaping, allowing
 # CLAUDE_CODE_SESSION_ID=$'innocent\nWARNING: fake injected' to inject fake
-# WARNING lines into stderr (log injection vector). Pin rejection of newline /
-# tab / NUL etc.
+# WARNING lines into stderr (CRLF / log injection vector). Pin rejection of
+# the 4 main control-char vectors:
+#  TC-19.1: \n (newline — CRLF splitting primary vector)
+#  TC-19.2: \t (tab)
+#  TC-19.3: \r (CR — HTTP-style CRLF injection primary vector)
+# Plus TC-19.5: 「reject 発生」だけでなく fake WARNING 行が **stderr に存在しない** ことを negative-assert
+# (validator が partial regression した場合に injection が漏出しても rejection が出れば pass する穴を塞ぐ)
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 rm -f "$d/.rite-session-id"
 err=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID=$'sid-with\nnewline' bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
@@ -515,12 +547,26 @@ if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*control characters'; then
 else
   fail "TC-19.1: newline not rejected: '$err'"
 fi
-# tab も same code path (any [[:cntrl:]] char) で reject される
 err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID=$'sid\twith-tab' bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
 if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*control characters'; then
   pass "TC-19.2: CLAUDE_SESSION_ID rejects embedded tab (log injection)"
 else
   fail "TC-19.2: tab not rejected: '$err'"
+fi
+# TC-19.3: \r (CR) — CRLF splitting attack の primary vector
+err=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID=$'sid\rwith-cr' bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
+if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*control characters'; then
+  pass "TC-19.3: CLAUDE_CODE_SESSION_ID rejects embedded CR (CRLF injection)"
+else
+  fail "TC-19.3: CR not rejected: '$err'"
+fi
+# TC-19.4 (negative assertion): injection 内容が stderr に**漏出していない**ことを assert
+# validator partial regression (例: [[:cntrl:]] を `\n` のみに狭めた変更) に対する直接 guard
+inj_err=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID=$'sid\nWARNING: fake injected by attacker' bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
+if echo "$inj_err" | grep -qE 'WARNING:.*fake injected by attacker'; then
+  fail "TC-19.4: injection content leaked into stderr (validator regression): '$inj_err'"
+else
+  pass "TC-19.4: injection content not present in stderr (validator chokepoint pin)"
 fi
 
 if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + Issue #1148 security/observability fixes"; then

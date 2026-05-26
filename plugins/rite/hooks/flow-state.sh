@@ -46,15 +46,17 @@ _phase_migrate() {
 # env var to e.g. $'innocent\nWARNING: fake injected'. Path-traversal rejection prevents
 # CLAUDE_CODE_SESSION_ID="../../tmp/owned" from writing state files outside .rite/sessions/.
 _validate_session_id() {
-  local sid="$1" source="$2"
+  # `origin` (引数 2) は session_id の出所 (override / SESSION_ID_FILE / env var) を識別する
+  # エラーメッセージ用ラベル。bash builtin `source` の shadow を避けるため `origin` を採用。
+  local sid="$1" origin="$2"
   case "$sid" in
     *..*|*/*)
-      echo "ERROR: invalid session_id from $source: contains path-traversal characters ('..' or '/')" >&2
+      echo "ERROR: invalid session_id from $origin: contains path-traversal characters ('..' or '/')" >&2
       return 1
       ;;
   esac
   if [[ "$sid" =~ [[:cntrl:]] ]]; then
-    echo "ERROR: invalid session_id from $source: contains control characters (newline / tab / etc.)" >&2
+    echo "ERROR: invalid session_id from $origin: contains control characters (newline / tab / etc.)" >&2
     return 1
   fi
   return 0
@@ -157,7 +159,8 @@ cmd_set() {
     # `.rite-session-id`) stay silent to preserve the graceful no-op contract that
     # `commands/wiki/ingest.md` / `commands/issue/create.md` / etc. depend on.
     if [ -f "$SESSION_ID_FILE" ]; then
-      echo "WARNING: flow-state.sh cmd_set: --if-exists skipped (resolved session_id=$sid has no state file at $path; possible stale .rite-session-id or sid drift)" >&2
+      # basename only — multi-tenant 環境での絶対 path leakage を最小化 (cmd_get と対称化)
+      echo "WARNING: flow-state.sh cmd_set: --if-exists skipped (resolved session_id=$sid has no state file at file: $(basename "$path"); possible stale .rite-session-id or sid drift)" >&2
     fi
     return 0
   fi
@@ -177,9 +180,7 @@ cmd_set() {
   if [ -f "$path" ]; then
     local _cur_jq_err="" _cur_data _cur_rc=0
     _cur_jq_err=$(mktemp 2>/dev/null) || _cur_jq_err=""
-    # SIGINT / set -e / 関数 early return のいずれでも tempfile 削除を保証する RETURN trap。
-    # 旧実装は L158 の `[ -n "$_cur_jq_err" ] && rm -f "$_cur_jq_err"` インライン rm のみで、
-    # set -e 経由の途中 exit や signal 中断で orphan が残る経路があった (F-05 対応)。
+    # インライン rm では set -e / signal 中断時に orphan tempfile が残るため RETURN trap で保証する。
     trap '[ -n "${_cur_jq_err:-}" ] && rm -f "${_cur_jq_err:-}"' RETURN
     _cur_data=$(jq -r '[(.issue_number // 0 | tostring),
                        (.branch // ""),
@@ -189,12 +190,13 @@ cmd_set() {
                        (.error_count // 0 | tostring),
                        (.last_synced_phase // "")] | join("")' "$path" 2>"${_cur_jq_err:-/dev/null}") || _cur_rc=$?
     if [ "$_cur_rc" -ne 0 ]; then
-      echo "WARNING: flow-state.sh cmd_set: existing state read failed for $path (may be corrupt; merged write will use defaults)" >&2
+      # basename only — multi-tenant 環境での絶対 path leakage を最小化 (cmd_get / cmd_set --if-exists と対称化)
+      echo "WARNING: flow-state.sh cmd_set: existing state read failed for $(basename "$path") (may be corrupt; merged write will use defaults)" >&2
       [ -n "$_cur_jq_err" ] && [ -s "$_cur_jq_err" ] && head -3 "$_cur_jq_err" | sed 's/^/  /' >&2
     else
       IFS=$'\x1f' read -r cur_issue cur_branch cur_pr cur_parent cur_active cur_err cur_last_synced <<< "$_cur_data"
     fi
-    [ -n "$_cur_jq_err" ] && rm -f "$_cur_jq_err"
+    # インライン rm は RETURN trap が cover するため削除済 (dead-effect duplication 防止)
   fi
   [ -z "$issue" ] && issue=$cur_issue
   [ -z "$branch" ] && branch=$cur_branch

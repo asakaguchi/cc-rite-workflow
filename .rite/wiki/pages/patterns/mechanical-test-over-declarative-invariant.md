@@ -1,0 +1,60 @@
+---
+title: "Wording 層の self-referential loop は mechanical test 化で構造解消する"
+domain: "patterns"
+created: "2026-05-26T00:30:00Z"
+updated: "2026-05-26T00:30:00Z"
+sources:
+  - type: "fixes"
+    ref: "pr-1143"
+tags: []
+confidence: high
+---
+
+# Wording 層の self-referential loop は mechanical test 化で構造解消する
+
+## 概要
+
+SoT 集約 PR で declarative invariant note (両者の集合差を 0 にする 等) を追加すると、note 文言自身が次 cycle の review finding 源になる self-referential loop が発生する。canonical 対策は (a) **mechanical test の green を contract に置換**、(b) **cross-axis declarative mapping は書かない**。文書上の宣言を実行可能な test に格上げすることで、wording 層の new claim ↔ 実装 gap 経路を構造的に断つ。
+
+## 詳細
+
+### 適用 PR
+
+PR #1143 cycle 6-7 で確立:
+
+- **cycle 6**: `hooks/tests/comment-best-practices-parity.test.sh` を新規作成し、SoT 22 entry 全部が Heuristics regex で match することを assert (forward subset の test 化)。declarative invariant が文書上の宣言から実行可能な test に格上げされた
+- **cycle 7**: `1 対 1 mapping` 等の cross-axis declarative mapping を **削除** し、「parity test の green が contract」に統一。wording 層の self-referential loop を構造的に閉塞
+
+### 適用条件
+
+| 条件 | 説明 |
+|------|------|
+| **複数 list 間 parity 契約** | SoT (canonical) と Heuristics (regex) 等、2 ファイル / 2 表で同期維持が必要な場合 |
+| **declarative wording で 2 cycle 以上 finding が再発** | wording 追加で連鎖 finding が出始めたら mechanical test 化を検討する signal |
+| **invariant が機械検証可能** | 集合等価性 / forward subset / 全 entry の regex match 等、shell script で表現できる契約 |
+
+### 設計手順
+
+1. **wording 層 invariant の最小化**: 「forward subset」のみ主張し、bidirectional は best-effort と明示
+2. **mechanical test の作成**: SoT 全 entry を loop し Heuristics regex に対する match を assert する shell script を `hooks/tests/` 配下に追加
+3. **Contract 宣言**: 「parity test の green が contract」と SoT / Heuristics 両方の Maintenance Note で明記し、wording による cross-axis mapping は書かない
+4. **Cross-axis declarative mapping の削除**: 「N 対 M mapping」「composite case の対応」等の散文 mapping を削除し test に委譲
+
+### 関連パターン
+
+- [[drift-check-anchor-prose-code-sync]] の 3 重契約 (AC anchor / reasons table / Eval-order enumeration / bash 実装) も同じ「文書 → mechanical 検証への格上げ」doctrine の一部
+- [[canonical-list-count-claim-drift-anchor]] の `N site 対称化 counter 宣言` も drift 検出 anchor として grep 機械検証可能化する同型パターン
+- [[declarative-invariant-wording-layer-escalation]] (本 pattern が解こうとしている anti-pattern の親 page)
+
+### 注意
+
+mechanical test 化自体も新たな declarative 層を生む経路を持つ (PR #1143 cycle 6-7 で実測: test 追加によって「test が何を検証しているか」「test と invariant の対応関係」という新しい declarative 層が増えた)。Maintenance Note で test 設計意図を明示し、cross-axis declarative mapping を test green = contract green に統一する rollback path を確保すること。
+
+## 関連ページ
+
+- [[declarative-invariant-wording-layer-escalation]] ([../anti-patterns/declarative-invariant-wording-layer-escalation.md](../anti-patterns/declarative-invariant-wording-layer-escalation.md))
+
+## ソース
+
+- [PR #1143 cycle 6 fix (mechanical parity test 追加 + 3 列 column schema 拡張)](../../raw/fixes/20260525T221902Z-pr-1143.md)
+- [PR #1143 cycle 7 fix (declarative mapping を mechanical test に委譲、wording 層 self-meta-conflict 構造解消)](../../raw/fixes/20260525T233957Z-pr-1143.md)

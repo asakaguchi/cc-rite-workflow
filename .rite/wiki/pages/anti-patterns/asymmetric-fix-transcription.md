@@ -2,8 +2,16 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-26T00:00:00Z"
+updated: "2026-05-26T00:30:00Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260525T170549Z-pr-1143.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260525T175021Z-pr-1143.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260525T171342Z-pr-1143.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260525T175258Z-pr-1143.md"
   - type: "reviews"
     ref: "raw/reviews/20260524T182630Z-pr-1133.md"
   - type: "reviews"
@@ -837,13 +845,28 @@ PR #1139 (v0.5.0 リリース前ドキュメント見直し) は 14 cycle / 51 f
 - **Multi-Source-of-Truth Phase Enum Drift** (cycle 4 F-04): 同一 SPEC 文書内で phase enum を 3 箇所 (prose / Phase 表 / Retired note) で個別に記述しており、片方の prose 追加時に他箇所との同期が漏れた。enum は **単一 SoT** (`PHASE_ENUM_V3` in `flow-state.sh`) を参照する形に統一すべき (本 PR では prose に直接列挙する形のまま、参照を明示するに留めた)。
 - **canonical 対策**: 大規模 retire 系 PR (`#1117` i18n 廃止、`#1118` scaffolding 削除、`#1136` /rite:issue:start 4 分解 など) の事後 docs 整備 PR では、(a) CHANGELOG `# wave` enumeration で削除対象全 keys/features の docs grep sweep、(b) `removed in #N` claim 全件の `ls` / `git show {sha}:{path}` fact-check、(c) JA/EN pair grep、(d) implementation side (`commands/` / `scripts/`) grep を 4 点セットで必須化する。
 
-### Cumulative cycle count update (PR #1139 後)
+### Bidirectional parity verification (SoT 集約 PR の forward + reverse 双方検証義務) (PR #1143 — Issue #1140、累積 43 回目、cycle 10 / 30+ findings)
 
-累積 1-42 回 (PR #548〜#1139): 構造的予防の連続再現は PR #968 → #973 → #984 → #992 → #996 (5 PR / 累積 28-32) を maximum 記録として、PR #1124 (累積 39)・PR #1128 (累積 40)・PR #1130 (累積 41)・PR #1133 (0 findings)・PR #1139 (累積 42 / 14 cycle / 51 findings) と続く。**PR #1139 は cycle 数で最長記録** (14 cycle、累積 33-38 の 3-5 cycle convergence 帯から大幅拡張)。要因: (a) v0.5.0 リリース直前という period が「pre-existing drift も current-pr scope」と判定されるバイアスを生んだ、(b) 大規模 retire 系 PR (#1117/#1118/#1136) の事後 docs 整備が同 PR 内で重なった、(c) implementation grep gap が cycle 5 まで未明文化だった。長期 cycle PR の analyse は別 heuristic [Documentation review は対応する実装側の grep verify を必須 step とする](../heuristics/docs-review-implementation-grep-verification.md) で詳述。
+PR #1143 (`/rite:pr:fix` の Comment Quality Gate 強化 + 禁止句リスト SoT 集約) で 10 cycle にわたる review-fix loop の dominant pattern として **Bidirectional parity verification gap** を実測。SoT を「集約」する PR で 2 つのリスト (canonical list + Detection heuristics) を **両方向** で比較しないと、片方にのみ存在する legacy entry を見落とす failure mode:
+
+- **cycle 3 — forward 方向のみ verify**: Generator-Reviewer regex parity 化を「SoT → Heuristics」方向のみで宣言。SoT (cycle 1 で新設、英語 5 行 + 日本語 2 行) と reviewer Heuristics 表 (`comment-best-practices.md:382` の regex) の forward 一致は確認したが reverse 方向の verify を怠った
+- **cycle 4 — reverse 方向で gap 顕在化**: tech-writer が「Heuristics → SoT」方向で `旧実装は` カテゴリの SoT 欠落を HIGH/current-pr で検出。Detection Heuristics 側にのみ存在していた legacy entry が、cycle 3 の forward 方向 verify では構造的に検出不可能だった
+- **canonical 対策**: SoT 集約 PR では「**両 list の集合差を 0 にする**」を mandatory acceptance test に含める。`grep -rn` で両方向の差分を機械検証し、片方向 verify では legacy entry が silent に残置される経路を構造的に塞ぐ
+
+### Generator-Reviewer regex parity drift sub-pattern
+
+本 PR では「生成側 (LLM 駆動 Apply gate) + reviewer 側 (regex 駆動 Detection Heuristics) 両方を SoT と parity にする」契約も初検出。生成側は SoT 全項目を見るが、reviewer 側 (regex 駆動) は古い regex のままで auto-flag 範囲が SoT と乖離する。cycle 1 で SoT を追加 (英語 5 行 + 日本語 2 行) した時に reviewer regex の拡張を忘れたため cycle 3 で finding 浮上。「SoT 集約 PR では生成側 + reviewer 側両方の検出範囲を SoT と parity にする」を mandatory check に含めるべき。[[self-contradicting-rule-declaration]] とは異なる軸 (declaration 本文自身の self-violation vs file 間の sync gap)。
+
+### Cumulative cycle count update (PR #1143 後)
+
+累積 1-43 回 (PR #548〜#1143): 構造的予防の連続再現は PR #968 → #973 → #984 → #992 → #996 (5 PR / 累積 28-32) を maximum 記録として、PR #1124 (累積 39)・PR #1128 (累積 40)・PR #1130 (累積 41)・PR #1133 (0 findings)・PR #1139 (累積 42 / 14 cycle / 51 findings)・PR #1143 (累積 43 / 10 cycle / 30+ findings) と続く。**PR #1139 は cycle 数で最長記録 (14 cycle)、PR #1143 は cycle 数 2 位 (10 cycle)** で「累積対策 PR の長期 cycle 帯 (10-14 cycle) は構造的解消が遅れる軸が複数並走する」mode を実測。PR #1143 の長期化要因: (a) declarative invariant の wording 層 self-meta-conflict trap が cycle 4-7 で連鎖、(b) mechanical test 化 (cycle 6) でも新たな declarative 層が発生、(c) cycle 8 mergeable 後の boundary 推奨吸収で portability factual claim layer (cycle 9-10) という新 fractal layer が出現 ([[declarative-invariant-wording-layer-escalation]] で詳述)。長期 cycle PR の構造解消には [[mechanical-test-over-declarative-invariant]] が canonical 対策として確立 (PR #1143 cycle 6-7)。
 
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
+- [Declarative invariant の wording 追加は self-meta-conflict trap (fractal pattern は layer を変えて再発する)](./declarative-invariant-wording-layer-escalation.md)
+- [Self-contradicting rule declaration: 新規ルール宣言時にルール本文自身がルール違反を含む](./self-contradicting-rule-declaration.md)
+- [Wording 層の self-referential loop は mechanical test 化で構造解消する](../patterns/mechanical-test-over-declarative-invariant.md)
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
 - [新規 file 命名と既存 find glob が collision して silent 削除を起こす](./find-glob-naming-collision-silent-removal.md)
 - [Markdown table 内に HTML コメントを挿入すると GFM table boundary が破壊される](./html-comment-breaks-gfm-table-boundary.md)
@@ -855,6 +878,10 @@ PR #1139 (v0.5.0 リリース前ドキュメント見直し) は 14 cycle / 51 f
 
 ## ソース
 
+- [PR #1143 cycle 3 review (Generator-Reviewer regex parity drift 初検出、follow-up scope)](../../raw/reviews/20260525T170549Z-pr-1143.md)
+- [PR #1143 cycle 3 fix (user-upgrade で current-pr 化、Detection Heuristics regex 拡張)](../../raw/fixes/20260525T171342Z-pr-1143.md)
+- [PR #1143 cycle 4 review (Bidirectional parity gap HIGH 検出 — `旧実装は` カテゴリの SoT 欠落)](../../raw/reviews/20260525T175021Z-pr-1143.md)
+- [PR #1143 cycle 4 fix (SoT に旧版表現 row 追加 + Heuristics regex を 4 pattern に拡張 + Maintenance Invariant note 追加)](../../raw/fixes/20260525T175258Z-pr-1143.md)
 - [PR #1133 review (Issue #1131、0 findings mergeable: docs schema フィールド表の v2→v3 整理 PR で、表セル値更新が同セクション直下の migration prose の閾値 `< 2` を stale 化させる + 散文の dead ref `migrate-flow-state.sh` を tech-writer Doc-Heavy + code-quality が調査推奨で cross-validation 検出。structured-element ↔ same-section prose 軸を追加、pre-existing drift を #1134 化)](../../raw/reviews/20260524T182630Z-pr-1133.md)
 - [PR #1130 review (累積 41 回目: ファイル削除整理 PR で inbound 参照の行番号付き dangling citation を tech-writer + code-quality が cross-validation 検出 → cycle 2 で 0 findings 収束。削除前 `grep -rn` で inbound 参照を検証する learning、design doc の pre-existing dead ref を #1129 化)](../../raw/reviews/20260524T170425Z-pr-1130.md)
 - [PR #1130 fix (stop-guard.test.md 削除に伴う multi-session-state.md:78 の dangling citation 除去 + live 根拠への集約。ファイル削除を含む整理 PR では outbound だけでなく inbound 参照を削除前 grep で確認すべき learning)](../../raw/fixes/20260524T165749Z-pr-1130.md)

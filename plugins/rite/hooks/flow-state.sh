@@ -196,7 +196,6 @@ cmd_set() {
     else
       IFS=$'\x1f' read -r cur_issue cur_branch cur_pr cur_parent cur_active cur_err cur_last_synced <<< "$_cur_data"
     fi
-    # インライン rm は RETURN trap が cover するため削除済 (dead-effect duplication 防止)
   fi
   [ -z "$issue" ] && issue=$cur_issue
   [ -z "$branch" ] && branch=$cur_branch
@@ -235,10 +234,8 @@ cmd_get() {
     *) echo "ERROR: unknown option: $1" >&2; return 1 ;;
   esac; done
   local sid path jq_err=""
-  # mktemp tempfile cleanup を RETURN trap に集約する。SIGINT / set -e / 関数 early
-  # return / 関数末尾 fall-through のいずれでも確実に削除される。インライン rm -f を
-  # 関数末尾に置く旧実装は最終 statement が rc=1 を返した際に関数 rc に漏れる silent
-  # failure (Issue #1142 を作った同型 bug の再導入リスク) を持っていた。
+  # RETURN trap で mktemp tempfile cleanup を集約する。SIGINT / set -e / 関数 early
+  # return / 関数末尾 fall-through すべての経路で確実に削除される。
   trap '[ -n "${jq_err:-}" ] && rm -f "${jq_err:-}"' RETURN
   # Do not silence _resolve_session_id stderr: when neither `.rite-session-id` nor
   # the env vars are usable, the helper's ERROR message must surface so the silent

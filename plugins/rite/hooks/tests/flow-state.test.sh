@@ -537,7 +537,7 @@ echo "=== TC-19: env-var session_id control-character validation (log injection 
 #  TC-19.1: \n (newline — CRLF splitting primary vector)
 #  TC-19.2: \t (tab)
 #  TC-19.3: \r (CR — HTTP-style CRLF injection primary vector)
-# Plus TC-19.5: 「reject 発生」だけでなく fake WARNING 行が **stderr に存在しない** ことを negative-assert
+# Plus TC-19.4: 「reject 発生」だけでなく fake WARNING 行が **stderr に存在しない** ことを negative-assert
 # (validator が partial regression した場合に injection が漏出しても rejection が出れば pass する穴を塞ぐ)
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 rm -f "$d/.rite-session-id"
@@ -569,6 +569,105 @@ else
   pass "TC-19.4: injection content not present in stderr (validator chokepoint pin)"
 fi
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + Issue #1148 security/observability fixes"; then
+# --- TC-20: cmd_get jq failure WARNING paths (corrupt JSON state file) ---
+echo ""
+echo "=== TC-20: cmd_get jq failure WARNING paths (silent-failure regression guard) ==="
+# Why: Phase 4.5.1 で追加された jq-filter failure / field-read failure の WARNING 経路は
+# Issue #1142 root cause と同型の silent-failure 解消経路。corrupt JSON で発火させ、
+# 将来 `2>/dev/null || printf '%s\n' "$default"` の旧パターンへ silent revert された場合の
+# regression を catch する。
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+# state file を作成してから内容を corrupt JSON に上書きする
+(cd "$d" && bash "$HOOK" set --phase plan --issue 1 --branch "b" --pr 0 --next "n") >/dev/null
+state_file="$d/.rite/sessions/${sid}.flow-state"
+echo "{this is not valid JSON" > "$state_file"
+# TC-20.1: --field path で jq read failed WARNING + rc=0 + stdout に default 返却
+combined=$( (cd "$d" && bash "$HOOK" get --field phase --default "DEF") 2>&1 )
+get_rc=$?
+if echo "$combined" | grep -qE 'WARNING:.*cmd_get: jq read failed'; then
+  pass "TC-20.1: corrupt JSON で --field 経路の jq read failed WARNING が発火"
+else
+  fail "TC-20.1: WARNING missing on corrupt JSON --field: '$combined'"
+fi
+if [ "$get_rc" = "0" ]; then
+  pass "TC-20.1: jq read failed でも rc=0 (silent-failure 解消経路の non-blocking 契約)"
+else
+  fail "TC-20.1: jq read failure で rc=$get_rc (expected 0)"
+fi
+if echo "$combined" | grep -qE '^DEF$'; then
+  pass "TC-20.1: jq read failure でも stdout に default 返却"
+else
+  fail "TC-20.1: default not returned on jq read failure: '$combined'"
+fi
+# TC-20.2: --jq-filter 経路の jq filter failed WARNING + rc=0 + stdout に default 返却
+combined=$( (cd "$d" && bash "$HOOK" get --jq-filter '.phase' --default "DEF") 2>&1 )
+get_rc=$?
+if echo "$combined" | grep -qE 'WARNING:.*cmd_get: jq filter failed'; then
+  pass "TC-20.2: corrupt JSON で --jq-filter 経路の jq filter failed WARNING が発火"
+else
+  fail "TC-20.2: WARNING missing on corrupt JSON --jq-filter: '$combined'"
+fi
+if [ "$get_rc" = "0" ]; then
+  pass "TC-20.2: jq filter failed でも rc=0"
+else
+  fail "TC-20.2: jq filter failure で rc=$get_rc (expected 0)"
+fi
+if echo "$combined" | grep -qE '^DEF$'; then
+  pass "TC-20.2: jq filter failure でも stdout に default 返却"
+else
+  fail "TC-20.2: default not returned on jq filter failure: '$combined'"
+fi
+
+# --- TC-21: cmd_get --field/--jq-filter 両方未指定の ERROR rc=1 経路 ---
+echo ""
+echo "=== TC-21: cmd_get --field/--jq-filter required (contract pin) ==="
+# Why: --field / --jq-filter 両方未指定時の ERROR + rc=1 経路 (flow-state.sh L267-270) は
+# Phase 4.5.1 で if 文形式に refactor された契約。将来引数 parser を loose にして default field
+# を導入した場合の silent な behavioral drift を pin する。
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+# state file を作成する (state file 不在では L245 の `[ ! -f "$path" ]` 分岐で WARNING + default + rc=0
+# に流れるため、L267 の ERROR + rc=1 経路に到達しない)
+(cd "$d" && bash "$HOOK" set --phase plan --issue 1 --branch "b" --pr 0 --next "n") >/dev/null
+# get は意図的に rc=1 を返す経路 → 外側 set -e で abort しないよう || true を付与し
+# subshell 内で得た rc を直接 capture する
+combined=$( (cd "$d" && bash "$HOOK" get --default "DEF"; echo "__RC=$?") 2>&1 || true )
+get_rc=$(printf '%s' "$combined" | sed -n 's/.*__RC=\([0-9]*\).*/\1/p')
+combined="${combined%__RC=*}"
+if echo "$combined" | grep -qE 'ERROR: --field or --jq-filter required'; then
+  pass "TC-21.1: --field/--jq-filter 両方未指定で ERROR メッセージが stderr に出る"
+else
+  fail "TC-21.1: ERROR missing: '$combined'"
+fi
+if [ "$get_rc" = "1" ]; then
+  pass "TC-21.1: --field/--jq-filter 両方未指定で rc=1 (契約 pin)"
+else
+  fail "TC-21.1: rc=$get_rc (expected 1)"
+fi
+
+# --- TC-22: env-set + state file 不在 + .rite-session-id 不在 の graceful 沈黙契約 ---
+echo ""
+echo "=== TC-22: env-set first-time silent contract (wiki/ingest.md / issue/create.md 依存) ==="
+# Why: env で sid 解決成功 + state file 不在 + .rite-session-id 不在 (Claude Code 起動直後 /
+# wiki/ingest.md 初回呼び出し) では `[ -f "$SESSION_ID_FILE" ]` gate が false で graceful silent。
+# 将来 gate が除去され「path 不在で常に WARN」に変わると、依存先で WARNING ノイズが大量発生
+# する silent contract break を pin する。symmetric pin として cmd_set / cmd_get 両方を test する。
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+rm -f "$d/.rite-session-id"
+# TC-22.1: cmd_set --if-exists の symmetric pin
+combined=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" set --phase plan --issue 1 --branch "b" --pr 0 --next "n" --if-exists) 2>&1 )
+if echo "$combined" | grep -qE 'WARNING:.*cmd_set:.*if-exists skipped'; then
+  fail "TC-22.1: env-set first-time で if-exists skipped WARNING が漏出 (gate 除去 regression): '$combined'"
+else
+  pass "TC-22.1: env-set first-time で cmd_set --if-exists が graceful silent (依存先契約保持)"
+fi
+# TC-22.2: cmd_get の symmetric pin (gate は cmd_get L252 の同 [ -f "$SESSION_ID_FILE" ])
+combined=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" get --field phase --default "DEF") 2>&1 )
+if echo "$combined" | grep -qE 'WARNING:.*cmd_get:.*state file not found'; then
+  fail "TC-22.2: env-set first-time で state-file-not-found WARNING が漏出 (gate 除去 regression): '$combined'"
+else
+  pass "TC-22.2: env-set first-time で cmd_get が graceful silent (依存先契約保持)"
+fi
+
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + PR #1148 security/observability fixes"; then
   exit 1
 fi

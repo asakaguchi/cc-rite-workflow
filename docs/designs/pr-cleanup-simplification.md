@@ -1,5 +1,11 @@
 # `/rite:pr:cleanup` Simplification — Phase 0-C (charter 適用)
 
+> **Status: Implemented by Issue #1144 / PR #1149**
+>
+> 本 design doc は cleanup.md の Phase 階層構造 (Phase 1.0/1/1.7/2/3/4.W/5) を前提とした simplification plan として書かれているが、最終的に Issue #1144 の構造的解消 (defense 層物理排除 + フラットなステップ 1-12 化) で **本 plan より大胆な refactor が実施された** ため、本文中の Phase 番号は historical reference として保持されている。現行 cleanup.md の構造は本 plan の Phase 構造とは異なり、フラットなステップ列。
+>
+> 詳細な現行構造は `plugins/rite/commands/pr/cleanup.md` の冒頭 "やることは以下のシーケンシャルなタスク列" を参照。
+
 <!-- Section ID: SPEC-OVERVIEW -->
 ## 1. 概要
 

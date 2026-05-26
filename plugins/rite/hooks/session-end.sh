@@ -166,13 +166,11 @@ WARN_MSG
         cleanup)
             cat >&2 <<WARN_MSG
 ⚠️  rite: /rite:pr:cleanup lifecycle was not completed (phase=$_state_phase).
-    The cleanup workflow halted before Phase 5 Completion Report.
-    Depending on phase: cleanup → Phase 1-4 incomplete; cleanup_pre_ingest → wiki ingest
-    not invoked or mid-execution; cleanup_post_ingest → wiki ingest returned but Phase 5
-    completion report was never emitted; ingest_pre_lint → caller 経由 wiki ingest の
-    Phase 8.2 Pre-write 直後または rite:wiki:lint --auto 実行中 (ring transient pin);
-    ingest_post_lint → lint return 後 Phase 9 completion report が未出力 (ring transient pin,
-    Phase 9.1 Step 3 terminal patch 未到達).
+    cleanup.md はフラットな ステップ 1-12 構造で、途中で中断されると flow-state に
+    phase=cleanup, active=true が残ります。legacy phase 値 (cleanup_pre_ingest /
+    cleanup_post_ingest / ingest_pre_lint / ingest_post_lint) は旧 ring 機構で書き込まれた
+    state の resume routing 用途のみ残存しており、現行の cleanup.md / ingest.md は
+    これらの transient phase を書き込みません。
     Re-run /rite:pr:cleanup or use /rite:resume to recover.
 WARN_MSG
             ;;

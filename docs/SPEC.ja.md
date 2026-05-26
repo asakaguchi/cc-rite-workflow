@@ -795,7 +795,7 @@ _レビュー対応はありません_
 | `ready` | Ready 成功 (`/rite:pr:ready` 完了、後続の Status / 親 Issue 完結待ち) | `/rite:pr:ready` (旧 ステップ 8.3) |
 | `ready_error` | Ready 失敗 (PR は作成済み、Ready 遷移のみ rollback。`/rite:pr:create` を再実行してはならない) | `/rite:pr:ready` retry (旧 ステップ 8) |
 | `cleanup` | `/rite:pr:cleanup` 実行中 (ingest 前のブランチ / worktree cleanup) | `/rite:pr:cleanup` Steps 1-3 |
-| `ingest` | Wiki ingest 実行中 (cleanup 後の `/rite:wiki:ingest` 統合) | `/rite:pr:cleanup` Phase 4.W → `/rite:wiki:ingest` |
+| `ingest` | Wiki ingest 実行中 (cleanup 後の `/rite:wiki:ingest` 統合) | `/rite:pr:cleanup` ステップ 9 → `/rite:wiki:ingest` |
 | `completed` | ワークフロー完了 (`active: false`) | `/rite:pr:merge` / `/rite:pr:cleanup` 完了 (旧 ステップ 8 終端) |
 
 **legacy phase (forward-compat 受容のみ、新規書き込みなし):**

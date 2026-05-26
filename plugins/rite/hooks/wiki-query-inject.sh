@@ -268,8 +268,9 @@ index_content=""
 # On fresh clones / separate worktrees, the local wiki branch may not exist
 # even when origin/wiki is available. Reading content via the bare branch
 # name (`git show wiki:...`) fails in that case with "fatal: invalid object
-# name 'wiki'". Mirror the ref-selection pattern used by cleanup.md Phase
-# 4.W.1 Step 2 and wiki-growth-check.sh to fall back to origin.
+# name 'wiki'". Mirror the ref-selection pattern used by cleanup.md
+# ステップ 9 (Wiki Ingest 条件付き、旧 Phase 4.W.1 Step 2) and wiki-growth-check.sh
+# to fall back to origin.
 ref=""
 if [[ "$branch_strategy" == "separate_branch" ]]; then
   if git rev-parse --verify "$wiki_branch" >/dev/null 2>&1; then

@@ -779,7 +779,7 @@ The Session Info section of the work memory includes phase information indicatin
 | `ready` | `/rite:pr:ready` succeeded; awaiting Projects Status In Review → completion report | `/rite:pr:ready` (formerly step 8.3) |
 | `ready_error` | `/rite:pr:ready` failed inside e2e flow; `/rite:resume` re-enters `/rite:pr:ready` retry | `/rite:pr:ready` retry (formerly step 8) |
 | `cleanup` | `/rite:pr:cleanup` in progress (branch / worktree cleanup pre-ingest) | `/rite:pr:cleanup` Steps 1-3 |
-| `ingest` | Wiki ingest in progress (post-cleanup `/rite:wiki:ingest` integration) | `/rite:pr:cleanup` Phase 4.W → `/rite:wiki:ingest` |
+| `ingest` | Wiki ingest in progress (post-cleanup `/rite:wiki:ingest` integration) | `/rite:pr:cleanup` ステップ 9 → `/rite:wiki:ingest` |
 | `completed` | Workflow finished | `/rite:pr:merge` / `/rite:pr:cleanup` completed (formerly step 8 end) |
 
 Lifecycle sub-rings (legacy granular phases — lifecycle-incomplete detection now lives in `session-end.sh`'s inline glob; see the retired Phase Transition Whitelist note below):
@@ -1733,7 +1733,7 @@ Violating this contract leaves the workflow partially executed: no Issue created
 
 | Layer | Mechanism | Enforced by |
 |-------|-----------|------------|
-| **1. Prompt contract** | Anti-pattern / correct-pattern examples + "same response turn" / "DO NOT stop" phrases + Mandatory After prose | `commands/pr/cleanup.md` Sub-skill Return Protocol + Mandatory After Wiki Ingest, `commands/wiki/ingest.md` Mandatory After Auto-Lint. (Layer 1 enforcement is required only where a sub-skill chain still hands off across turn boundaries; the flat `commands/issue/create.md` workflow and the four `commands/pr/{open,iterate,ready,merge}.md` orchestrators each invoke sub-skills within a single file and do not rely on this layer for cross-orchestrator hand-off. The legacy reference `plugins/rite/skills/rite-workflow/references/sub-skill-return-protocol.md` is retired. The former `commands/issue/start.md` orchestrator was deleted in #1136.) |
+| ~~**1. Prompt contract**~~ (retired by #1144) | (Historical) Anti-pattern / correct-pattern examples + "same response turn" / "DO NOT stop" phrases + Mandatory After prose enforced caller chain continuation across sub-skill boundaries. The enforcement source sections (`commands/pr/cleanup.md` Sub-skill Return Protocol + Mandatory After Wiki Ingest, `commands/wiki/ingest.md` Mandatory After Auto-Lint Step 0/1) have been **physically removed** as the structural solution to Issue #1144 — declarative defense layers triggered `declarative-invariant-wording-layer-escalation` anti-pattern. cleanup.md is now a flat ステップ 1-12 task list and ingest/lint use minimum HTML sentinels. Continuation now relies on caller-continuation hints (Layer 3) + the orchestrator's flat sequential structure rather than imperative prose. | (historical: deleted from cleanup.md / ingest.md by Issue #1144) |
 | ~~**2. Flow state hard gate**~~ (retired) | (Historical) Sub-skills write `*_post_*` phase markers with `active: true` before return; `stop-guard.sh` blocked stop attempts until terminal phase. flow-state still records phase markers for observability but no longer enforces stops. | (historical: `hooks/stop-guard.sh`) |
 | **3. Caller-continuation hints** (3 sub-layers 3a/3b/3c) | Plain-text reminder + HTML comment immediately before the sub-skill's result pattern. The plain-text line renders in user-facing output; the HTML comment is visible to the LLM via conversation context but does NOT render in Markdown. Dual form ensures robustness against rendering modes that strip comments. 3a = plain-text caller line, 3b = HTML comment caller mirror, 3c = sub-skill terminal sentinel comment. | Defense-in-Depth sections in `commands/issue/create.md` (flat workflow ステップ 4.4 / 5.6), `commands/wiki/ingest.md`, `commands/pr/cleanup.md`. |
 | **4a. Pre-check list (#552)** | 4-item self-check the orchestrator runs before ending any response turn: (a) `[create:completed:{N}]` output? (b) `✅ Issue #{N} を作成しました` shown? (c) `.rite-flow-state` deactivated? (d) last sub-skill tag handled as continuation trigger? A single `NO` means the workflow is mid-flight. Renamed from "Layer 4" to "Layer 4a" by Issue #923 to avoid numbering collision with the new mechanical enforcement layer (4b below). | `commands/issue/create.md` "Pre-check list" section |
@@ -1741,7 +1741,7 @@ Violating this contract leaves the workflow partially executed: no Issue created
 | ~~**4. Mechanical enforcement**~~ (retired) | (Historical) PostToolUse hook `auto-fire-step0.sh` (matcher `Skill`) fired after sub-skill Skill tool completion to patch `*_post_*` flow-state phases and inject continuation context. The mechanical enforcement layer was removed along with the implicit-stop guard layer; recovery now relies on `/rite:resume` rather than a runtime continuation hook. | (historical: `hooks/auto-fire-step0.sh`) |
 | ~~**6. stop-guard incident emit**~~ (retired) | (Historical) When `stop-guard.sh` blocked an implicit stop, it emitted a `manual_fallback_adopted` workflow-incident sentinel for post-hoc visibility. Both the Stop hook and the workflow-incident mechanism (PR 2b, #1088) have since been removed; an implicit stop now simply leaves the workflow mid-flight for the user to recover via `/rite:resume`. | (historical: `hooks/stop-guard.sh`) |
 
-The remaining **primary active layers** are the prompt contract (Layer 1), the caller HTML hint (Layer 3), and the orchestrator-side reinforcements (Layer 4a pre-check list, Layer 4b completion message). Layers 2, 4, and 6 are retired and shown above only as historical context. Weakening any active layer (e.g., relaxing Layer 1 imperative phrasing without compensating at Layer 3) re-opens the original implicit-stop failure mode. The flat-workflow refactor traded the mechanical enforcement layer for a simpler "user runs `/rite:resume` to recover" philosophy, accepting that occasional implicit stops will surface to the user; the trade-off was deemed favorable because the mechanical enforcement layer was itself a frequent failure source (auto-fire-step0.sh state mutations were hard to recover from when wrong).
+The remaining **primary active layers** are the caller HTML hint (Layer 3) and the orchestrator-side reinforcements (Layer 4a pre-check list, Layer 4b completion message). Layers 1, 2, 4, and 6 are retired and shown above only as historical context (Layer 1 retired by #1144 as part of cleanup.md flat-化 refactor — declarative defense 層を物理排除した)。Weakening any active layer (e.g., loosening Layer 3 caller-continuation hints without strengthening Layer 4a/4b) re-opens the original implicit-stop failure mode. The flat-workflow refactor traded the mechanical enforcement layer for a simpler "user runs `/rite:resume` to recover" philosophy, accepting that occasional implicit stops will surface to the user; the trade-off was deemed favorable because the mechanical enforcement layer was itself a frequent failure source (auto-fire-step0.sh state mutations were hard to recover from when wrong).
 
 ### Contract specification
 
@@ -1751,7 +1751,7 @@ For every Skill tool invocation within an orchestrator:
 2. The orchestrator **MUST NOT** re-invoke the completed sub-skill.
 3. The orchestrator **MUST** execute its 🚨 Mandatory After section for the current phase, beginning with the `.rite-flow-state` update, then proceeding to the next phase — all in the same response turn.
 
-> **Historical note (item 4, retired)**: A former item 4 instructed the orchestrator to follow `ACTION:` instructions on `stop-guard.sh` exit 2. With the Stop hook removed, this branch is unreachable at runtime — Layer 1 (this prose) and Layer 3 (caller HTML hint) are the active enforcement.
+> **Historical note (item 4, retired)**: A former item 4 instructed the orchestrator to follow `ACTION:` instructions on `stop-guard.sh` exit 2. With the Stop hook removed, this branch is unreachable at runtime — Layer 3 (caller HTML hint) and Layer 4a/4b (orchestrator-side reinforcements) are the active enforcement after #1144 retired Layer 1.
 
 The contract ends only when the orchestrator's terminal completion marker has been output:
 
@@ -1765,7 +1765,7 @@ The contract ends only when the orchestrator's terminal completion marker has be
 
 ### Phase-aware continuation hints (#525)
 
-> **Historical note**: Before the Stop hook was retired, these phase-specific continuation hints were emitted by the Stop hook (`stop-guard.sh`) when a stop attempt was blocked with an active per-session flow state. the hint table below is preserved as **prompt-level guidance** that the orchestrator surfaces directly when a sub-skill returns without producing the expected terminal marker. These hints are now part of the prompt contract (Layer 1) rather than a runtime enforcement mechanism.
+> **Historical note**: Before the Stop hook was retired, these phase-specific continuation hints were emitted by the Stop hook (`stop-guard.sh`) when a stop attempt was blocked with an active per-session flow state. The hint table below is preserved as **prompt-level guidance** that the orchestrator surfaces directly when a sub-skill returns without producing the expected terminal marker. After Layer 1 retire (#1144) これらの hints は Layer 3 (caller HTML hint) + Layer 4a/4b (orchestrator-side reinforcements) を介して伝達される。
 
 | Active phase | Hint content |
 |-------------|-------------|
@@ -1773,7 +1773,7 @@ The contract ends only when the orchestrator's terminal completion marker has be
 | ~~`create_delegation`~~ (retired) | (Historical) Delegation phase は flat-workflow 統合で create.md 内部に取り込まれた |
 | ~~`create_post_delegation`~~ (retired) | (Historical) Same as above |
 
-These hints are **best-effort**: the primary enforcement is the prompt contract (Layer 1) — the orchestrator's 🚨 Mandatory After scaffolding ensures the workflow does not end mid-flight regardless of any runtime hook layer.
+These hints are **best-effort**: the primary enforcement is the orchestrator's flat sequential structure (cleanup.md ステップ 1-12 / pr/iterate.md ステップ 7 review-fix loop 等) と Layer 3 caller-continuation hints。Layer 1 prompt contract と「🚨 Mandatory After scaffolding」は #1144 で物理排除され、現行は flat 構造そのものが mid-flight 中断を構造的に防ぐ責務を負う。
 
 ### Contract violation recovery (`auto_continuation_failed`, obsolete)
 

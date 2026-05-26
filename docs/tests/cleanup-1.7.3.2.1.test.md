@@ -1,8 +1,14 @@
 # テスト仕様書: cleanup.md 1.7.3.2.1 Projects への追加とフィールド設定
 
+> **Status: Orphan after Issue #1144 / PR #1149** (構造的解消で対象 Phase 消失)
+>
+> 本テスト仕様書は cleanup.md の旧 Phase 1.7.3.2.1 (`未完了タスク Issue 化時の Projects 追加 + フィールド設定`) に対するテストとして書かれているが、Issue #1144 / PR #1149 の cleanup.md フラット化で **対象 Phase 1.7.3.2.1 は消失** した。同等機能は現行 cleanup.md ステップ 3 (未完了タスクのチェック → 残作業 Issue 化) で `create-issue-with-projects.sh` script を直接呼び出す形で実装されている (Phase 構造ではなくフラット step)。
+>
+> 本仕様書は historical reference として保持されているが、現行 cleanup.md ステップ 3 を対象にした test rewriting が別 Issue で扱われる予定。Phase 1.7.3.2.1 への参照はすべて旧構造の歴史的記述として読むこと。
+
 ## 概要
 
-`plugins/rite/commands/pr/cleanup.md` の Phase 1.7.3.2.1「Projects への追加とフィールド設定」セクションに対するテスト仕様書。
+`plugins/rite/commands/pr/cleanup.md` の Phase 1.7.3.2.1「Projects への追加とフィールド設定」セクションに対するテスト仕様書 (旧構造の歴史的仕様)。
 
 ## 対象機能
 

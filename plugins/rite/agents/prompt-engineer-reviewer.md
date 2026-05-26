@@ -126,9 +126,9 @@ Read `plugins/rite/agents/_reviewer-base.md` for format specification.
 ```
 ### 評価: 要修正
 ### 所見
-Phase 3.2 で使用するプレースホルダー `{comment_id}` の取得元が Phase 3.1 の Bash ツール呼び出しですが、Bash ツール間でシェル変数は引き継がれません。
+bash block X で使用するプレースホルダー `{comment_id}` の取得元が bash block Y の Bash ツール呼び出しですが、Bash ツール間でシェル変数は引き継がれません。
 ### 指摘事項
 | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
 |--------|----------|------------|------|----------|
-| CRITICAL | current-pr | commands/pr/cleanup.md:145 | Phase 3.2 で `$comment_id` を参照しているが、この変数は Phase 3.1 の別の Bash ツール呼び出しで定義されている。Bash ツール間でシェル状態は保持されないため、変数が空になり API 呼び出しが失敗する | Phase 3.1 で `echo "comment_id=$comment_id"` で出力し、Phase 3.2 でリテラル値として埋め込むか、単一の Bash ブロックに統合する |
+| CRITICAL | current-pr | commands/<orchestrator>.md:<line> | bash block X で `$comment_id` を参照しているが、この変数は bash block Y の別の Bash ツール呼び出しで定義されている。Bash ツール間でシェル状態は保持されないため、変数が空になり API 呼び出しが失敗する | block Y で `echo "comment_id=$comment_id"` で出力し、block X でリテラル値として埋め込むか、単一の Bash ブロックに統合する |
 ```

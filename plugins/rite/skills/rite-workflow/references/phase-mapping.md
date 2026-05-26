@@ -58,4 +58,4 @@ Work memory session information section:
 
 - [Session Detection](./session-detection.md) - Auto-detection at session start
 - [Work Memory Format](./work-memory-format.md) - Work memory format
-- [Sub-skill Return Auto-Continuation Contract (Retired)](./sub-skill-return-protocol.md) - migration map
+- [Sub-skill Return Auto-Continuation Contract (Retired by #1144)](./sub-skill-return-protocol.md) - historical migration map only (Layer 1 prompt contract は cleanup.md flat 化と同時に物理排除済)

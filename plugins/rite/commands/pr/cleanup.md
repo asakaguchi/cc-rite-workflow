@@ -123,6 +123,20 @@ incomplete=$(printf '%s\n' "$comment_body" | sed -n '/### 進捗/,/### /p' \
 
 未完了タスクがあれば `AskUserQuestion` で「未完了タスクを Issue 化 (推奨) / 無視して続行 / キャンセル」を確認。Issue 化選択時は各タスクを `残作業` label 付きで作成する。
 
+**Placeholder Legend** (cleanup.md ステップ 3 specific、bash skeleton で使用する placeholder の source):
+
+| Placeholder | Source | 例 |
+|-------------|--------|----|
+| `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md) | `/home/user/.claude/plugins/rite` |
+| `{pr_number}` | ステップ 1 で取得した PR 番号 | `1149` |
+| `{pr_title}` | `gh pr view --json title --jq '.title'` | `fix(workflow): ...` |
+| `{issue_number}` | ステップ 2 で識別した関連 Issue 番号 | `1144` |
+| `{task_title}` | work memory 進捗セクションの未完了タスク見出し | `step-5: references/ 整理` |
+| `{task_text}` | 同上の本文 (チェックボックス行のテキスト) | `step-5: references/ 整理` |
+| `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` (boolean) | `true` |
+| `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
+| `{owner}` | `rite-config.yml` → `github.projects.owner` | `B16B1RD` |
+
 **Issue 本文テンプレート** (cleanup-specific、各タスクごとに以下の形式で生成):
 
 ```markdown
@@ -149,17 +163,47 @@ PR #{pr_number} ({pr_title}) のマージ時点で未完了だったタスクを
 - [ ] {task_text}
 ```
 
-**bash skeleton** (タスクごとに以下を反復実行):
+**bash skeleton** (タスクごとに以下を反復実行、`{plugin_root}` / `{pr_number}` / `{pr_title}` / `{issue_number}` / `{task_title}` / `{task_text}` / `{projects_enabled}` / `{project_number}` / `{owner}` は Claude が事前 substitute):
 
 ```bash
-# {plugin_root} は冒頭で resolve 済み (Plugin Path Resolution)
-tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
-cat > "$tmpfile" << BODY_EOF
+# 0. `残作業` label を冪等に事前作成 (gh issue create --label X は X 未存在時に
+# `could not add label: 'X' not found` で fail し Issue creation 自体が失敗するため必須)
+gh label create 残作業 --description "PR マージ後の残作業" --color "fbca04" 2>/dev/null || true
+
+# 1. Issue 本文を tempfile に書き出し
+# trap 設置順は references/bash-trap-patterns.md#signal-specific-trap-template と統一。
+# HEREDOC delimiter は single-quoted ('BODY_EOF') を必須化する:
+#   - peer file convention (commands/issue/create.md L157,287,348 / commands/pr/{create,review,fix}.md) に対称
+#   - {task_text} / {pr_title} は work memory / PR title 由来 (外部入力) で `$VAR` / `$(cmd)` / backtick を含み得る
+#   - unquoted delimiter は shell expansion と command injection リスクを生む
+tmpfile=""
+_rite_cleanup_step3_cleanup() {
+  rm -f "${tmpfile:-}"
+}
+trap 'rc=$?; _rite_cleanup_step3_cleanup; exit $rc' EXIT
+trap '_rite_cleanup_step3_cleanup; exit 130' INT
+trap '_rite_cleanup_step3_cleanup; exit 143' TERM
+trap '_rite_cleanup_step3_cleanup; exit 129' HUP
+
+tmpfile=$(mktemp) || {
+  echo "ERROR: ステップ 3 残作業 Issue body tempfile の mktemp に失敗" >&2
+  continue  # loop 次タスクへ
+}
+cat > "$tmpfile" <<'BODY_EOF'
 {Issue 本文テンプレート (上記) を実値で展開}
 BODY_EOF
 
-bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+# mktemp 0-byte ガード: cat 成功でも空ファイルなら create-issue script が
+# 空 body Issue を作成する silent regression を防ぐ
+if [ ! -s "$tmpfile" ]; then
+  echo "ERROR: ステップ 3 Issue 本文の生成に失敗 (tmpfile が空)" >&2
+  continue
+fi
+
+# 2. create-issue-with-projects.sh 呼び出し (result capture + rc check)
+# iter_mode は "none" hardcode (peer file commands/issue/create.md と対称、
+# 残作業 Issue を特定 iteration に紐付ける要件なし — default Todo backlog で十分)
+result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
   --arg title "残作業: {task_title}" \
   --arg body_file "$tmpfile" \
   --argjson projects_enabled {projects_enabled} \
@@ -167,7 +211,7 @@ bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
   --arg owner "{owner}" \
   --arg priority "Medium" \
   --arg complexity "S" \
-  --arg iter_mode "{iteration_mode}" \
+  --arg iter_mode "none" \
   '{
     issue: { title: $title, body_file: $body_file, labels: ["残作業"] },
     projects: {
@@ -180,10 +224,29 @@ bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
       iteration: { mode: $iter_mode }
     },
     options: { source: "cleanup", non_blocking_projects: true }
-  }')"
+  }')")
+if [ -z "$result" ]; then
+  echo "WARNING: ステップ 3 create-issue-with-projects.sh が空 result を返しました (タスク: {task_title})" >&2
+  echo "  対処: スクリプト stderr / GitHub API 認証 / Projects 設定を確認してください" >&2
+  continue  # 次タスクへ続行 (loop kill しない)
+fi
+
+# 3. 作成 Issue の番号 / URL / Projects 警告を表示
+new_issue_number=$(printf '%s' "$result" | jq -r '.issue_number // empty')
+new_issue_url=$(printf '%s' "$result" | jq -r '.issue_url // empty')
+project_reg=$(printf '%s' "$result" | jq -r '.project_registration // empty')
+printf '✅ 残作業 Issue 作成: #%s %s\n' "$new_issue_number" "$new_issue_url" >&2
+printf '%s' "$result" | jq -r '.warnings[]?' 2>/dev/null | while read -r w; do
+  echo "  ⚠️ $w" >&2
+done
+case "$project_reg" in
+  partial|failed)
+    echo "  ⚠️ Projects 登録: $project_reg (手動登録: gh project item-add {project_number} --owner {owner} --url $new_issue_url)" >&2
+    ;;
+esac
 ```
 
-汎用的な argument structure・mapping 表は [Issue Creation with Projects Integration](../../references/issue-create-with-projects.md) を参照。`source: "cleanup"` 引数は本 caller の識別子として必須 (将来 metrics 集計で起点 caller を区別するため)。`残作業` label は初回作成時に GitHub が自動生成する (`gh label create 残作業` を事前実行する必要はない)。
+汎用的な argument structure・mapping 表は [Issue Creation with Projects Integration](../../references/issue-create-with-projects.md) を参照。`source: "cleanup"` 引数は本 caller の識別子として必須 (将来 metrics 集計で起点 caller を区別するため)。`残作業` label は **step 0 で `gh label create 残作業` を冪等に事前作成する** ことが必須 (`gh issue create --label X` は X 未存在時に fail するため。`2>/dev/null || true` で既存ラベル時のエラーを無視)。
 
 ---
 
@@ -391,13 +454,21 @@ Status: {projects_status_result}
 - 結果: {parent_close_result}
 ```
 
+`{parent_close_result}` の値域 (ステップ 10 で決定された 4 種類のいずれか):
+- `✅ 自動クローズ完了 (全 sub-issue clear)` — 親 Issue が全 sub-issue 完了で自動 close
+- `🟡 sub-issue 残あり (close 保留)` — 残 sub-issue があり親は open のまま
+- `⚠️ 手動確認推奨` — 親 Issue 状態が判定不能で manual triage 推奨
+- `(該当なし)` — 親 Issue が識別されなかった (ステップ 2 で見つからず)
+
 未完了タスク Issue 化結果 (該当する場合のみ):
 ```
 未完了タスク処理 — 作成した Issue:
 | Issue | タイトル |
 |-------|----------|
-| #{new_issue_number} | {task_name}（#{original_issue_number} 残作業） |
+| #{new_issue_number} | {task_title}（#{issue_number} 残作業） |
 ```
+
+`{new_issue_number}` の source: ステップ 3 の `create-issue-with-projects.sh` 出力 `issue_number` フィールド (`jq -r '.issue_number'` で抽出した値)。`{task_title}` / `{issue_number}` は ステップ 3 Placeholder Legend と同一定義 (work memory 進捗セクションの未完了タスク見出し / ステップ 2 で識別した関連 Issue 番号)。
 
 stash した変更があれば「復元する (`git stash pop`) / 後で手動で復元」を確認する。
 

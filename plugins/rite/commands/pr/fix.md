@@ -3040,16 +3040,52 @@ finding を出して fix ループが永久化する。
    / CHANGELOG など) も grep 対象に含める。コード以外で型・仕様が宣言されている
    場合、修正がドキュメント側と drift しないか確認する。
 
-4. **省略可能なケース**: 修正範囲が **同一ファイル内の純粋に局所的な変更**
-   (e.g., typo 修正、コメント追加、未参照 import 削除) と Claude が判断した場合に
-   限り、step 1-3 を省略してよい。判断根拠 (`local-only: {根拠}`) を chat に明示
-   出力する。
+4. **省略可能なケース** (極めて限定): 修正範囲が **typo 修正のみ** (文字列リテラル
+   1 箇所の誤字、Markdown 内の typo、docstring 内の typo) と Claude が判断した
+   場合に限り、step 1-3 を省略してよい。「コメント追加」「未参照 import 削除」
+   「同一ファイル内の小規模変更」は省略対象から除外し、必ず step 1-3 を実行する
+   (これらは過去 fix-introduced regression の主要発生源)。
+
+   省略経路に入る場合も、判断根拠 (`local-only: typo-only: {対象文字列}`) を
+   chat に明示出力する。判断根拠の verbalize は省略不可。
+
+   省略しなかった場合 (= step 1-3 を実行する場合) も、「同一ファイル内のみで影響なし」
+   と早期確定するのは禁止。step 1 の grep 結果と step 2 の影響範囲 verbalize は
+   **同一ファイル内変更であっても必須**。これは scope_discipline と
+   no_journal_comment の前提条件 (修正の影響を caller / test / sibling まで追える
+   状態にしてから Apply する) を満たすために必要。
 
 **Why mandatory**: Doc-Heavy PR 以外でも fix が破壊的変更を起こした場合、本 PR
 内の review-fix ループは指摘ゼロにならず、結果として無限ループ + reviewer の
 context 消費という最悪結果になる。修正前の影響範囲確認で予防できる。
 
 ### 2.3 Apply the Fix
+
+> **Comment Quality Gate (Apply 前必読)**: Edit/Write で生成するコード内コメント
+> は [Comment Best Practices](../../skills/rite-workflow/references/comment-best-practices.md)
+> の 6 原則すべてに従う。特に Apply 時点で次の 3 原則を declarative に gate する:
+>
+> - **`why_over_what`**: コメントは「なぜそうするか」のみ。「何をするか」は識別子で
+>   表現する (記述するなら identifier rename を検討する)
+> - **`no_journal_comment`**: cycle 番号 / finding ID / PR 番号 / Issue 番号を参照
+>   するコメントを生成しない。修正経緯は本 Phase ではなく commit message / PR
+>   description に書く。禁止句リストの SoT は comment-best-practices.md
+>   「禁止句リスト (SoT)」節を参照
+> - **`no_line_or_cycle_reference`**: ファイル内の行番号 / cycle 番号を参照する
+>   コメントを生成しない。他ファイル参照は semantic anchor (関数名・section 見出し)
+>   で行う
+>
+> 違反コメントを含む Edit/Write を生成しそうになったら、Apply 前に rewrite する。
+> Phase 3.1.1 (Pre-Commit Drift Lint Gate) は **構造的 drift** (retained-flag /
+> reason-table / if-wrap / anchor / eval-table / schema-version) のみを catch する
+> 設計で、コメント原則違反 (`why_over_what` / `no_journal_comment` /
+> `no_line_or_cycle_reference`) は検出しない。**Apply 時点** におけるコメント原則違反の
+> declarative gate としては本 Phase 2.3 が唯一であり、skip 不可。
+>
+> 別位相の gate との関係: review 時点では `_reviewer-base.md` Finding Gate と
+> `tech-writer.md` Detection Checklist が独立した declarative gate として機能するが、
+> これらは reviewer 側で発火する post-hoc 検出経路で、本 Phase 2.3 の Apply 時点 gate とは
+> 位相 (Apply 時点 / review 時点) が異なる。両者は独立に動作し、本 Phase は前者のみを担当する。
 
 Present the proposed fix and apply with Edit tool after confirmation:
 
@@ -3114,10 +3150,14 @@ If `propagated_count == 0` and `already_applied_count == 0`, output a single lin
 
 ### 2.4 Create Reply (Optional)
 
-**Reply 本文の SoT**: 返信は `templates/review/reply.md` の Why-only テンプレート
-+ 禁止句リストに従う。本文は **Why の 1〜3 文** で、Issue 番号 / PR 番号 / 修正
-履歴 (`Fixed in commit ...` / `See PR #...` / `Closes #...` 等) は記載しない。
-詳細は `{plugin_root}/templates/review/reply.md` 参照。
+**Reply 本文の SoT**: 返信は `templates/review/reply.md` の Why-only テンプレートに従う。
+本文は **Why の 1〜3 文** で、Issue 番号 / PR 番号 / 修正履歴を記載しない。
+
+**禁止句リスト SoT**:
+`{plugin_root}/skills/rite-workflow/references/comment-best-practices.md` の
+「禁止句リスト (SoT)」節 (原則 2 `no_journal_comment` 内) を唯一の SoT とする。
+本 Phase 2.4 (reply 本文) と Phase 2.3 (in-source コメント) は **同一の禁止句リスト**
+を共有する。reply.md は本 SoT への参照に簡略化済。
 
 After completing the fix, propose a reply to the reviewer:
 
@@ -3136,9 +3176,8 @@ After completing the fix, propose a reply to the reviewer:
 ```
 
 `{why_only_explanation}` は「なぜそう直したか」を 1〜3 文で表現する。
-**禁止句** (reply.md 参照): `Fixed in commit {sha}` / `See PR #{N}` /
-`Related to #{issue}` / `In commit {sha}` / 日本語版「コミット {sha} で対応」
-「PR #{N} で対応」「#{N} で別途対応」等。
+**禁止句**: `{plugin_root}/skills/rite-workflow/references/comment-best-practices.md`
+の「禁止句リスト (SoT)」節を参照 (in-source コメントと共通)。
 
 When posting the reply:
 

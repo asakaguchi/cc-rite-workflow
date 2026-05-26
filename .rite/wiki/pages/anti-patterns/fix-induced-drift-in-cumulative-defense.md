@@ -2,7 +2,7 @@
 title: "累積対策 PR の review-fix loop で fix 自体が drift を導入する"
 domain: "anti-patterns"
 created: "2026-04-21T10:35:00+00:00"
-updated: "2026-05-26T05:00:00+00:00"
+updated: "2026-05-26T13:30:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260518T084056Z-pr-1043-cycle4-mergeable.md"
@@ -118,6 +118,20 @@ sources:
     ref: "raw/fixes/20260526T033648Z-pr-1146.md"
   - type: "fixes"
     ref: "raw/fixes/20260526T021038Z-pr-1146.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260526T114956Z-pr-1149-cycle5.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260526T121902Z-pr-1149-cycle6.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260526T131113Z-pr-1149-cycle7-converged.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260526T131927Z-pr-1149-cycle8-final-converged.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260526T120733Z-pr-1149-cycle5.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260526T125406Z-pr-1149-cycle6.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260526T131458Z-pr-1149-cycle7-converged.md"
 tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain", "review-attention-bias-blind-spot", "anchor-specificity-retreat", "doc-precision-regression-cascade", "self-referential-prevention-violation", "section-relative-prevention-success", "successive-prevention-replication", "doc-heavy-fractal-pattern", "systemic-mass-fix", "auto-demote-low-override"]
 confidence: high
 ---

@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-26T00:30:00Z"
+updated: "2026-05-26T13:30:00Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260525T170549Z-pr-1143.md"
@@ -242,6 +242,18 @@ sources:
     ref: "raw/fixes/20260525T094610Z-pr-1139.md"
   - type: "fixes"
     ref: "raw/fixes/20260525T142741Z-pr-1139.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260526T101559Z-pr-1149.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260526T105538Z-pr-1149-cycle2.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260526T113035Z-pr-1149-cycle4.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260526T103246Z-pr-1149.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260526T111157Z-pr-1149-cycle3.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260526T113809Z-pr-1149-cycle4.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration"]
 confidence: high
 ---

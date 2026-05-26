@@ -4,7 +4,7 @@ source_ref: "pr-1149-cycle8-final-converged"
 captured_at: "2026-05-26T13:19:27+00:00"
 pr_number: 1149
 title: "PR #1149 cycle 8 — 完全収束"
-ingested: false
+ingested: true
 ---
 
 ## Review Results — Final Convergence

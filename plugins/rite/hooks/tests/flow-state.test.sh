@@ -445,6 +445,12 @@ if echo "$err" | grep -qE 'WARNING:.*cmd_get.*state file not found'; then
 else
   fail "TC-16.1: cmd_get silent on stale sid drift: '$err'"
 fi
+# basename leak 抑制 (multi-tenant 環境での絶対 path leak を防ぐ negative-assert)
+if echo "$err" | grep -qE 'WARNING:.*\.rite/sessions/'; then
+  fail "TC-16.1: stale sid WARNING に絶対 path (.rite/sessions/) が leak: '$err'"
+else
+  pass "TC-16.1: stale sid WARNING に絶対 path leak なし"
+fi
 # Truly first-time (no .rite-session-id) must stay silent (graceful contract).
 rm -f "$d/.rite-session-id"
 err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
@@ -471,6 +477,12 @@ if echo "$err" | grep -qE 'WARNING:.*cmd_set:.*if-exists skipped'; then
   pass "TC-17.1: cmd_set --if-exists WARNs on stale sid drift"
 else
   fail "TC-17.1: cmd_set --if-exists silent on stale sid drift: '$err'"
+fi
+# basename leak 抑制 (multi-tenant 環境での絶対 path leak を防ぐ negative-assert)
+if echo "$err" | grep -qE 'WARNING:.*\.rite/sessions/'; then
+  fail "TC-17.1: stale sid WARNING に絶対 path (.rite/sessions/) が leak: '$err'"
+else
+  pass "TC-17.1: stale sid WARNING に絶対 path leak なし"
 fi
 # First-time session (no .rite-session-id, no env): cmd_set returns rc=1 + ERROR
 # (resolution failure surfaces). The --if-exists silent-skip contract applies AFTER
@@ -568,20 +580,39 @@ if echo "$inj_err" | grep -qE 'WARNING:.*fake injected by attacker'; then
 else
   pass "TC-19.4: injection content not present in stderr (validator chokepoint pin)"
 fi
+# TC-19.5: --session override 経路 control-char rejection (TC-18 と symmetric な 4 entry point pin)
+err=$( (cd "$d" && bash "$HOOK" get --session $'sid\nwith-newline' --field phase --default "DEF" >/dev/null) 2>&1 || true )
+if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*control characters'; then
+  pass "TC-19.5: --session override rejects embedded newline (control-char chokepoint)"
+else
+  fail "TC-19.5: --session override で control-char not rejected: '$err'"
+fi
+# TC-19.6: SESSION_ID_FILE 経路 control-char rejection
+# 注: _resolve_session_id は SESSION_ID_FILE 内容に `tr -d '[:space:]'` を適用するため、
+# tab / newline / CR は事前削除される。non-whitespace control char (\x01 = SOH、ASCII control) を使い、
+# tr では削除されず validator に到達することを確認する (cntrl class chokepoint の symmetric pin)
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+printf 'sid\x01with-soh' > "$d/.rite-session-id"
+err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
+if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*control characters'; then
+  pass "TC-19.6: SESSION_ID_FILE 内容 rejects embedded SOH (4 entry point の対称 pin 完成)"
+else
+  fail "TC-19.6: SESSION_ID_FILE control-char not rejected: '$err'"
+fi
 
 # --- TC-20: cmd_get jq failure WARNING paths (corrupt JSON state file) ---
 echo ""
 echo "=== TC-20: cmd_get jq failure WARNING paths (silent-failure regression guard) ==="
-# Why: Phase 4.5.1 で追加された jq-filter failure / field-read failure の WARNING 経路は
-# Issue #1142 root cause と同型の silent-failure 解消経路。corrupt JSON で発火させ、
-# 将来 `2>/dev/null || printf '%s\n' "$default"` の旧パターンへ silent revert された場合の
-# regression を catch する。
+# Why: cmd_get の jq 失敗経路 (--field / --jq-filter 両方) は WARNING + rc=0 + default 出力の
+# 3 点を契約とする。corrupt JSON で発火させて 3 点同時に pin することで、stderr suppress +
+# silent fallback への regression を検出する。診断 stderr の indented 行 (jq エラー内容) も
+# 別 assert で pin し、診断行 silent 欠落も catch する。
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 # state file を作成してから内容を corrupt JSON に上書きする
 (cd "$d" && bash "$HOOK" set --phase plan --issue 1 --branch "b" --pr 0 --next "n") >/dev/null
 state_file="$d/.rite/sessions/${sid}.flow-state"
 echo "{this is not valid JSON" > "$state_file"
-# TC-20.1: --field path で jq read failed WARNING + rc=0 + stdout に default 返却
+# TC-20.1: --field path で jq read failed WARNING + rc=0 + stdout に default 返却 + 診断行 (2-space indent)
 combined=$( (cd "$d" && bash "$HOOK" get --field phase --default "DEF") 2>&1 )
 get_rc=$?
 if echo "$combined" | grep -qE 'WARNING:.*cmd_get: jq read failed'; then
@@ -599,7 +630,19 @@ if echo "$combined" | grep -qE '^DEF$'; then
 else
   fail "TC-20.1: default not returned on jq read failure: '$combined'"
 fi
-# TC-20.2: --jq-filter 経路の jq filter failed WARNING + rc=0 + stdout に default 返却
+# 診断 stderr の indented 行 (jq error 内容、`sed 's/^/  /'` で prefix される) が出ること
+if echo "$combined" | grep -qE '^  [^ ]'; then
+  pass "TC-20.1: jq read failure 時に診断 stderr の indented 行が出力される (observability 確保)"
+else
+  fail "TC-20.1: 診断 stderr の indented 行が欠落: '$combined'"
+fi
+# basename leak 抑制 (multi-tenant 環境での絶対 path leak を防ぐ negative-assert)
+if echo "$combined" | grep -qE 'WARNING:.*\.rite/sessions/'; then
+  fail "TC-20.1: WARNING に絶対 path (.rite/sessions/) が leak: '$combined'"
+else
+  pass "TC-20.1: WARNING に絶対 path leak なし (basename 化が機能している)"
+fi
+# TC-20.2: --jq-filter 経路の jq filter failed WARNING + rc=0 + stdout に default 返却 + 診断行
 combined=$( (cd "$d" && bash "$HOOK" get --jq-filter '.phase' --default "DEF") 2>&1 )
 get_rc=$?
 if echo "$combined" | grep -qE 'WARNING:.*cmd_get: jq filter failed'; then
@@ -617,13 +660,24 @@ if echo "$combined" | grep -qE '^DEF$'; then
 else
   fail "TC-20.2: default not returned on jq filter failure: '$combined'"
 fi
+if echo "$combined" | grep -qE '^  [^ ]'; then
+  pass "TC-20.2: jq filter failure 時に診断 stderr の indented 行が出力される"
+else
+  fail "TC-20.2: 診断 stderr の indented 行が欠落: '$combined'"
+fi
+if echo "$combined" | grep -qE 'WARNING:.*\.rite/sessions/'; then
+  fail "TC-20.2: WARNING に絶対 path (.rite/sessions/) が leak: '$combined'"
+else
+  pass "TC-20.2: WARNING に絶対 path leak なし"
+fi
 
 # --- TC-21: cmd_get --field/--jq-filter 両方未指定の ERROR rc=1 経路 ---
 echo ""
 echo "=== TC-21: cmd_get --field/--jq-filter required (contract pin) ==="
-# Why: --field / --jq-filter 両方未指定時の ERROR + rc=1 経路 (flow-state.sh L267-270) は
-# Phase 4.5.1 で if 文形式に refactor された契約。将来引数 parser を loose にして default field
-# を導入した場合の silent な behavioral drift を pin する。
+# Why: --field / --jq-filter 両方未指定時は cmd_get が ERROR + rc=1 を返す契約。state file が
+# 存在する経路で発火させないと「state file 不在」分岐の WARNING + rc=0 path に流れて契約 pin が
+# 成立しないため、事前に set で state file を作成する。将来引数 parser を loose にして default
+# field を導入した場合の silent な behavioral drift を pin する。
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 # state file を作成する (state file 不在では L245 の `[ ! -f "$path" ]` 分岐で WARNING + default + rc=0
 # に流れるため、L267 の ERROR + rc=1 経路に到達しない)
@@ -660,12 +714,26 @@ if echo "$combined" | grep -qE 'WARNING:.*cmd_set:.*if-exists skipped'; then
 else
   pass "TC-22.1: env-set first-time で cmd_set --if-exists が graceful silent (依存先契約保持)"
 fi
-# TC-22.2: cmd_get の symmetric pin (gate は cmd_get L252 の同 [ -f "$SESSION_ID_FILE" ])
-combined=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" get --field phase --default "DEF") 2>&1 )
+# TC-22.2: cmd_get の symmetric pin (gate は cmd_get 側の同 [ -f "$SESSION_ID_FILE" ] 判定)
+combined=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sid" bash "$HOOK" get --field phase --default "DEF"; echo "__RC=$?") 2>&1 || true )
+get_rc=$(printf '%s' "$combined" | sed -n 's/.*__RC=\([0-9]*\).*/\1/p')
+combined="${combined%__RC=*}"
 if echo "$combined" | grep -qE 'WARNING:.*cmd_get:.*state file not found'; then
   fail "TC-22.2: env-set first-time で state-file-not-found WARNING が漏出 (gate 除去 regression): '$combined'"
 else
   pass "TC-22.2: env-set first-time で cmd_get が graceful silent (依存先契約保持)"
+fi
+# graceful 完了 invariant: rc=0 + stdout に default 返却 (依存先 wiki/ingest.md / issue/create.md の契約)
+if [ "$get_rc" = "0" ]; then
+  pass "TC-22.2: env-set first-time で cmd_get が rc=0 (graceful contract)"
+else
+  fail "TC-22.2: env-set first-time で cmd_get rc=$get_rc (expected 0)"
+fi
+stdout_only=$(printf '%s' "$combined" | grep -E '^DEF$' || true)
+if [ -n "$stdout_only" ]; then
+  pass "TC-22.2: env-set first-time で stdout に default 返却 (graceful contract)"
+else
+  fail "TC-22.2: env-set first-time で stdout に default 返却なし: '$combined'"
 fi
 
 if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + PR #1148 security/observability fixes"; then

@@ -2,7 +2,7 @@
 title: "累積対策 PR の review-fix loop で fix 自体が drift を導入する"
 domain: "anti-patterns"
 created: "2026-04-21T10:35:00+00:00"
-updated: "2026-05-18T09:00:00Z"
+updated: "2026-05-26T05:00:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260518T084056Z-pr-1043-cycle4-mergeable.md"
@@ -108,7 +108,17 @@ sources:
     ref: "raw/reviews/20260517T004634Z-pr-1004.md"
   - type: "fixes"
     ref: "raw/fixes/20260517T020335Z-pr-1004.md"
-tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain", "review-attention-bias-blind-spot", "anchor-specificity-retreat", "doc-precision-regression-cascade", "self-referential-prevention-violation", "section-relative-prevention-success", "successive-prevention-replication"]
+  - type: "reviews"
+    ref: "raw/reviews/20260526T041118Z-pr-1146.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260526T034356Z-pr-1146.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260526T032658Z-pr-1146.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260526T033648Z-pr-1146.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260526T021038Z-pr-1146.md"
+tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain", "review-attention-bias-blind-spot", "anchor-specificity-retreat", "doc-precision-regression-cascade", "self-referential-prevention-violation", "section-relative-prevention-success", "successive-prevention-replication", "doc-heavy-fractal-pattern", "systemic-mass-fix", "auto-demote-low-override"]
 confidence: high
 ---
 
@@ -630,3 +640,60 @@ PR #1043 の観察から、本ページの failure mode 群に追加:
 #### Dogfooding evidence — Mechanical gate の必要性を逆説的に実証
 
 PR #1043 は `/rite:pr:review` Phase 7 の AskUserQuestion 起動を **prose enforcement only から mechanical gate に強化** する meta-PR でもあった。cycle 1-3 で「deprecate + 残置」戦略により self-violation cascade を 3 回連続で踏んだ実測は、本 PR の前提仮定 ("prose enforcement only では silent skip が必ず発生する") を逆説的に裏付ける dogfooding 観察となった。**累積対策 PR が解決対象の anti-pattern を fix 自身で再現する経験は、その mechanical gate の必要性の最も強い証拠** である。本観察は本ページの canonical 対策 4 施策 (3 点セット / twin site / sibling symmetry / opt-in flag) に「**5. 構造的閉塞戦略 (= 対称化対象そのものを消滅させる)**」を 5 つ目の canonical mitigation として追加する根拠を提供する。
+
+### PR #1146 (Issue #1141 = Doc-Heavy investigation PR、8 cycle 完全収束) — fractal pattern の Doc-Heavy 系での再現と「systemic 一斉対応」収束
+
+PR #1146 (調査レポート 1 ファイル +238/-0 の Doc-Heavy PR) は累積 44 回目相当の Doc-Heavy 軸で **8 cycle 完全収束 (累計 11 件 → 0)** を達成。本ページの fractal pattern が code PR ではなく **documentation 系 PR でも同型再現** することと、cycle 5 の **systemic 一斉対応** が収束を加速する canonical 戦略を実証。
+
+#### Convergence trajectory (shrinking + spike + decay)
+
+```
+cycle 1 (5: HIGH×1 + MEDIUM×1 + LOW×3 auto-demoted)
+  → cycle 2 (1 fix-introduced regression、auto_demote_low override で fix 決定)
+    → cycle 3 (2: MEDIUM×1 + LOW-MEDIUM×1、再 review 深掘りで past LOW 復活)
+      → cycle 4 (3: MEDIUM×1 + LOW-MEDIUM×1 + LOW×1、L62-70 line ref 4 件が systemic 化)
+        → cycle 5 (7 件 mass fix: line ref 統一・行数実値化・セクション補完・symmetric qualifier)
+          → cycle 6 (1: LOW-MEDIUM 末端 nit 1 件、commit date drift)
+            → cycle 7 (1 件 fix、1 文字修正のみ)
+              → cycle 8 (0 件、両 reviewer mergeable)
+```
+
+#### Failure mode 7 (新規記録): Parent vs sub-section SoT 同期見落とし (Doc-Heavy 軸)
+
+cycle 2 で検出された fix-introduced regression は、cycle 1 fix で Markdown table の cell 値を SoT と同期させる修正中、SoT 表 (`default.md:33-47`) を「sub-section 行のみ」で完結させ **parent 行 (line 37) を読み飛ばした** ことで発生。Parent 行は全 Complexity で M 固定だが、sub-section 4.1-4.5 で初めて S/O が分岐する 2 段構造。memory ベースで sub-section 値を集約推測した結果の precision drift。
+
+**canonical 対策**: Markdown table の cell 値を SoT と同期させる修正では、**SoT の全 row を Read で表全体として scan** する義務がある。parent vs sub-section の意味論を SoT の structure (どの行が parent でどの行が children か) で確認する。[Asymmetric Fix Transcription](./asymmetric-fix-transcription.md) の発展形 — 「fix した部分のみで判断せず、SoT 表全体の構造的関係を Read で視野に入れる」。
+
+#### Failure mode 8: 「孤立 nit」の systemic 化 (cycle 3 → cycle 4 → cycle 5 一斉対応)
+
+cycle 3 で R-3 (L70 :277-284 → 実 278) **単独 nit** として nit-noted 扱いだった issue が、cycle 4 で reviewer が L62-70 範囲を再 scan した結果 **4 件の同型 drift** に拡張 → cycle 5 で全 10 件を heading line に統一する **mass fix** で systemic 化を構造的解消。「孤立 nit」が cycle 跨ぎで systemic finding に格上げされる pattern が Doc-Heavy 軸で実測。
+
+**canonical 対策**: 「孤立 nit」を cycle N で nit-noted にする際、reviewer が cycle N+1 で同型 pattern を grep verify する step を inline する。systemic 化が確認されたら **一斉修正 (mass fix)** で cycle 内 ad-hoc 修正の累積を避ける。
+
+#### Failure mode 9: auto_demote_low policy override 判断基準の明示化
+
+`rite-config.yml` の `review.scope_assignment.auto_demote_low: true` 設定下では LOW × current-pr は機械的に nit-noted へ降格されるが、PR #1146 cycle 2 で以下 **2 条件のいずれかに該当する場合は policy override で proper fix を選ぶ** 正当な経路が canonical 化された:
+
+| Override 条件 | 根拠 |
+|--------------|------|
+| **cycle N で自分が混入させた precision drift** | reply-only で受け流すと PR レポートの信頼性が失われ調査結果が価値を失う |
+| **PR の主要成果物 (本件は AC-2 差分表) の正確性に直接影響** | informational nature の PR で deliverable の正確性は mergeability 以上の優先度を持つ |
+
+cycle 1 で auto_demote_low が dogfooding の現実的な blocking 件数を **5 → 2 に削減** した観測値も併せて記録。
+
+#### 「systemic 一斉対応」収束戦略 (cycle 5)
+
+cycle 5 fix では以下 4 軸の一斉対応で 7 件を 1 commit で landing:
+
+1. **line ref 統一**: 10 件の line 番号引用を heading line に統一 (off-by-1 drift を mass fix で解消)
+2. **行数実値化**: factual claim (700 行 → 実 576 行 22% drift) を `wc -l` 実測で訂正
+3. **セクション補完**: AC-1 集計表で hedged label による表記揺れ吸収 (集計の意味論を破壊せず情報量を維持)
+4. **symmetric qualifier 統一**: cycle 3 で「6 セクション inline 形式」列のみに qualifier 追加 → cycle 4 で IC 形式列の symmetric drift 指摘 → cycle 5 で両列に symmetric qualifier 統一 (asymmetric fix transcription pattern の累積対策完了)
+
+**Lesson**: 累積対策 PR で fractal pattern が systemic 化したら、ad-hoc 単発修正ではなく **同型 pattern を 1 commit で mass fix** することで cycle 数を短縮できる。本 PR では cycle 4 → cycle 5 の transition でこの戦略を採用し、cycle 6-8 の収束相に到達。
+
+#### Doc-Heavy mode 5 カテゴリ verification protocol の有効性
+
+PR #1146 は tech-writer reviewer の Doc-Heavy mode (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) と code-quality reviewer の fenced block detection の **2 reviewer 体制** で cross-validation が機能。F-A2 (L62-70 line ref) を tech-writer (recommendation 1) と code-quality (LOW-MEDIUM finding) が独立検出した実例が、Doc-Heavy + fenced block の 2 reviewer 体制の effectiveness を実証 ([`docs-review-implementation-grep-verification.md`](../heuristics/docs-review-implementation-grep-verification.md) と相補)。
+
+cycle 8 の完全収束時には reviewer が **「真に finding がないときに何か挙げないと bias」を抑制し、0 件 = 正常終了を恐れない姿勢が loop 永久化を回避** と明言。詳細は [0 件 finding = 正常終了として受容する (false-positive 回避義務)](../heuristics/reviewer-zero-finding-as-legitimate-convergence.md) を参照。

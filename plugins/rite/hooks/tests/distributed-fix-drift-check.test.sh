@@ -89,21 +89,30 @@ fi
 # --- TC-2: shell variable expansion is skipped (emit-side + table-side) ---
 echo ""
 echo "=== TC-2: reason=trigger_exit_\$var is skipped (truncation artifact) ==="
-# fixture には table-side variant も含める。
-# `| \`python_unexpected_exit_$py_exit\` |` のような table cell は cycle 2 で実装側
-# script:230 に追加された `[_-]$` filter (table-side asymmetric skip) を exercise する。
-# この fixture がないと filter 削除 regression を test が検出できない。
+# cycle 4 mutation test 修正 (F-01 + F-02):
+# F-01: 旧 fixture `| \`python_unexpected_exit_$py_exit\` | placeholder reason ... |` は
+#   table-side awk の `break` 構造により最初の matching field が `placeholder` になり
+#   `python_unexpected_exit_` が table_reasons に決して入らない false positive test だった
+#   (awk 仕様: `$py_exit` を含む field は identifier regex に match せず continue、次の
+#   `placeholder` が match して print + break)。fixture を literal trailing `_` (シェル変数
+#   展開なし) に変更することで `[_-]$` filter を真に exercise する:
+#   - filter あり (現実装): `python_unexpected_exit_` matches identifier → `[_-]$` continue → 次の `placeholder` 採用
+#   - filter 削除 mutation: `python_unexpected_exit_` matches → print + break → table_reasons 入り → drift 発火
+# F-02: emit-side `[_-]$` filter は `after == "$"` filter の二重防御に隠れて単独 mutation を
+#   catch できなかった。`after` が `;` で `[_-]$` のみが skip すべき input
+#   (reason=trailing_underscore_) を追加し、独立 regression guard を成立させる。
 d=$(make_fixture_sandbox '# Test
 
 ## reason table
 | `something_else` | spec |
-| `python_unexpected_exit_$py_exit` | placeholder reason (cycle 2 F-02 — table-side `[_-]$` filter coverage) |
+| `python_unexpected_exit_` | placeholder |
 
 ```bash
 echo "[CONTEXT] X=1; reason=trigger_exit_$trigger_exit; exit_code=$trigger_exit"
 echo "[CONTEXT] Y=1; reason=commit_rc_$commit_rc"
 echo "[CONTEXT] Z=1; reason=$reason"
 echo "[CONTEXT] W=1; reason=hyphen-test-$some_var"
+echo "[CONTEXT] V=1; reason=trailing_underscore_; other=value"
 ```
 ')
 cleanup_dirs+=("$d")
@@ -115,7 +124,7 @@ if printf '%s\n' "$out" | grep -Eq "reason '(trigger_exit_|commit_rc_)'"; then
   fail "TC-2: shell variable expansion still produces bogus identifier (emit-side)"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 else
-  pass "TC-2: shell variable expansion correctly skipped (emit-side)"
+  pass "TC-2: shell variable expansion correctly skipped (emit-side, after==\$)"
 fi
 # `-$` 形式 (例: reason=hyphen-test-$var) も同様に skip されることを確認
 # (emit-side regex `[_-]$` の両側 alternation を test 化、片側除去 regression 防止)
@@ -125,10 +134,23 @@ if printf '%s\n' "$out" | grep -Eq "reason 'hyphen-test-'"; then
 else
   pass "TC-2: hyphen suffix variant correctly skipped"
 fi
-# table-side `[_-]$` filter regression guard (cycle 2 F-02):
-# script:230 の `if ($i ~ /[_-]$/) continue` を削除すると table_reasons に
-# `python_unexpected_exit_` が残り、emit-side では同じ filter で skip されるため
-# 「table has X but never emitted」drift が誤発火する。本 assert はその経路を catch する。
+# emit-side `[_-]$` filter independent regression guard (cycle 4 F-02):
+# `reason=trailing_underscore_; other=value` は val=`trailing_underscore_`, after=`;` (≠ `$`)。
+# `after == "$"` filter は skip しないため、`[_-]$` filter のみが skip 責務を負う独立 input。
+# script の emit-side `if (val ~ /[_-]$/) continue` を削除すると emit_reasons に
+# `trailing_underscore_` が入り、table_reasons には存在しないため drift 「emit has X but table doesn't」が誤発火する。
+if printf '%s\n' "$out" | grep -Fq "trailing_underscore_"; then
+  fail "TC-2: emit-side [_-]\$ filter regression — trailing_underscore_ should be skipped (after=';', not '\$')"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+else
+  pass "TC-2: emit-side [_-]\$ filter correctly skips trailing_underscore_ (independent of after==\$)"
+fi
+# table-side `[_-]$` filter regression guard (cycle 4 F-01 修正版):
+# fixture row `| \`python_unexpected_exit_\` | placeholder |` の table-side awk:
+# - filter あり: `python_unexpected_exit_` matches identifier → `[_-]$` continue → `placeholder` 採用
+# - filter 削除 mutation: `python_unexpected_exit_` matches → print + break → table_reasons 入り
+# emit-side では `python_unexpected_exit_` を含む emit がないため、drift output に
+# 「table 'python_unexpected_exit_' never emitted」が現れる → 本 assert が catch する。
 if printf '%s\n' "$out" | grep -Fq "python_unexpected_exit_"; then
   fail "TC-2: table-side [_-]$ filter regression — python_unexpected_exit_ should be skipped from table_reasons"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"

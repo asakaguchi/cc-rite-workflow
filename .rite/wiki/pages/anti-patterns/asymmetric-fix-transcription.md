@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-27T01:30:00Z"
+updated: "2026-05-27T05:00:00Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260525T170549Z-pr-1143.md"
@@ -12,6 +12,14 @@ sources:
     ref: "raw/fixes/20260525T171342Z-pr-1143.md"
   - type: "fixes"
     ref: "raw/fixes/20260525T175258Z-pr-1143.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260526T175307Z-pr-1155.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260526T182658Z-pr-1155-cycle2.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260526T180309Z-pr-1155.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260526T183041Z-pr-1155-cycle2-fix.md"
   - type: "reviews"
     ref: "raw/reviews/20260524T182630Z-pr-1133.md"
   - type: "reviews"
@@ -879,6 +887,38 @@ PR #1143 (`/rite:pr:fix` の Comment Quality Gate 強化 + 禁止句リスト So
 
 累積 1-43 回 (PR #548〜#1143): 構造的予防の連続再現は PR #968 → #973 → #984 → #992 → #996 (5 PR / 累積 28-32) を maximum 記録として、PR #1124 (累積 39)・PR #1128 (累積 40)・PR #1130 (累積 41)・PR #1133 (0 findings)・PR #1139 (累積 42 / 14 cycle / 51 findings)・PR #1143 (累積 43 / 10 cycle / 30+ findings) と続く。**PR #1139 は cycle 数で最長記録 (14 cycle)、PR #1143 は cycle 数 2 位 (10 cycle)** で「累積対策 PR の長期 cycle 帯 (10-14 cycle) は構造的解消が遅れる軸が複数並走する」mode を実測。PR #1143 の長期化要因: (a) declarative invariant の wording 層 self-meta-conflict trap が cycle 4-7 で連鎖、(b) mechanical test 化 (cycle 6) でも新たな declarative 層が発生、(c) cycle 8 mergeable 後の boundary 推奨吸収で portability factual claim layer (cycle 9-10) という新 fractal layer が出現 ([[declarative-invariant-wording-layer-escalation]] で詳述)。長期 cycle PR の構造解消には [[mechanical-test-over-declarative-invariant]] が canonical 対策として確立 (PR #1143 cycle 6-7)。
 
+### Flatten refactor の 6 site 対称セット partial fix トラップ (PR #1155 cycle 1-2 での evidence、累積 44 回目)
+
+PR #1155 (Issue #1154 — `wiki:* commands` の cleanup.md スタイル本格フラット化、PR #1151 取りこぼし回収) で本 anti-pattern が **「対称性回収を目的とする fix 自身が新たな対称性違反を生む」** mode として再発:
+
+#### cycle 1: 2/6 site のみの partial fix
+
+cycle 1 review で `ingest.md` L248 (cat_err) と L535 (_reset_err) の 2 site で Pattern 3 規範 (mktemp 失敗時 WARNING) が silent fallback に格下げされた regression を 3 reviewer 独立 HIGH 検出。cycle 1 fix で 2 site を復元したが、**同 PR フラット化 commit で同時 regression した `lint.md` の sort_err / add_err / commit_err の 3 site を見落とした**。
+
+#### cycle 2: 残り 3 site が surface
+
+cycle 2 review で残り 3 site が「F-01/F-02 と同じ revert test 基準で復元すべき」と独立指摘。結果として **6 site 対称セットのうち cycle 1 で 2/6、cycle 2 で残り 4/6 を完了** する 2-cycle pattern。
+
+#### 経験則の精緻化
+
+- **対称性回収 fix の grep 網羅検査義務**: 「対称性回収」修正は同 PR 内の **全 site を grep で網羅検査してから fix する**。1 ファイルだけ修正して「対称性が達成された」と評価しない
+- **同型 pattern の機械的列挙**: `grep -rn 'mktemp.*|| .*=""'` のような mechanical pattern で同型 anti-pattern を網羅化。reviewer の手動 spot check に依存しない
+- **flatten refactor の Keep カテゴリ判定との結合**: Pattern 規範 WARNING の格下げは [[flatten-refactor-deletion-scope-classification]] の Keep カテゴリ違反でもあり、削除前 classification と対称性 grep の 2 段防御で構造的予防
+
+#### SoT 初稿 factual error の cluster 形成 (cycle 2 で 3 reviewer 合意)
+
+cycle 1 fix で `wiki-patterns.md` に新規 SoT セクション (YAML パース helper の分散実装一覧) を documentation 化したが、3 reviewer (prompt-engineer / error-handling / code-quality) 全員が cycle 2 で同 cluster の指摘を出した:
+
+- (a) 列挙する site の実在を grep で 0-hit verify しなかった
+- (b) 実装 case 文 (`*) wiki_enabled=true` の lenient 2-arm) を読まずに「strict 4 分岐 / fail-fast」と推測で記述
+- (c) helper 関数名を別ファイルのローカル名 (`_extract_yaml_value`) から複製したまま canonical (`parse_wiki_scalar`) と取り違え
+
+「SoT 化」は「実装に対するリンク」と「実装の semantic 要約」の 2 役割を兼ねるが、後者は実装 verbatim verify を怠ると即座に「単独で誤った仕様書」になる。経験則: **SoT 新設時は site 一覧の grep 0-hit check と semantic 記述の case 文 verbatim diff を最低 2 reviewer が独立検証する** ([[design-doc-current-head-verification]] の grep verification 義務の SoT-creation 方向への一般化)。
+
+#### Inline 要約への false claim 拡散
+
+cycle 1 で SoT へ集約した直後、SoT への forward-pointer link を `ingest.md` L64 / `lint.md` L93 に追加した際、forward-pointer 直後の「本ファイルは strict 4 分岐 + helper 経路」のインライン要約も同じ false claim を 2 ファイルに複製。SoT 集約と inline summary の責務分離が曖昧で、SoT 誤記が 3 site (wiki-patterns.md + ingest.md + lint.md) に拡散した。経験則: **SoT 化方針なら inline での性質再宣言は「削除」が drift-free** ([[single-sot-on-references-extract]] の anchor 参照のみ規約に従う)。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -1004,3 +1044,7 @@ PR #1143 (`/rite:pr:fix` の Comment Quality Gate 強化 + 禁止句リスト So
 - [PR #1124 cycle 2 fix (累積 39 回目の起点: 削除済み helper の dead comment 整理で NOTE ブロックを書き換えたが同一コメントブロックの見出し行 (case arm 前提) を取りこぼし、ブロック内で自己矛盾。tech-writer + code-quality cross-validation 検出。コメント整理時は touched 行だけでなく同一論理ブロック全体を整合対象とする学習)](../../raw/fixes/20260524T122022Z-pr-1124.md)
 - [PR #1124 cycle 3 fix (累積 39 回目の横展開チェック semantic variant 取りこぼし: 削除済みコンポーネントの横展開を literal filename grep のみで実施し、case 構造を前提にした framing (ファイル名を含まない記述) を検出できず再レビューで tech-writer 検出。横展開は literal filename だけでなく削除済みコンポーネントの構造・概念記述も対象に含め、同一論理グループを一括整合する学習)](../../raw/fixes/20260524T123235Z-pr-1124.md)
 - [PR #1128 review (累積 40 回目: 削除済み phase-transition-whitelist.sh dead reference 横断整理 PR、0 blocking findings。検出 grep scope の範囲漏れ — Issue #1123 の検出 grep が docs/ plugins/rite/{commands,skills,references,agents} 限定で tests/regression/issue-634-repro.md の同種 dead rot を取りこぼし #1127 化。横断整理 PR の検出 grep は repo 全体 (tests/ 含む) を scope にすべき。retired コンポーネントの doc 整理は節削除より Retired 節へ書き換えが既存パターンと整合し migration-guide 参照を保全する learning)](../../raw/reviews/20260524T161242Z-pr-1128.md)
+- [PR #1155 cycle 1 review (累積 44 回目の起点: flatten refactor PR で 6 site 対称セット (ingest.md cat_err / _reset_err / find_err + lint.md sort_err / add_err / commit_err) のうち 2 site のみ Pattern 3 規範 WARNING が silent fallback に格下げ regression、3 reviewer 独立 HIGH 検出)](../../raw/reviews/20260526T175307Z-pr-1155.md)
+- [PR #1155 cycle 2 review (累積 44 回目の partial fix トラップ surface: cycle 1 fix が 2/6 site のみで残り 3 site (lint.md sort_err / add_err / commit_err) が cycle 2 で同根 regression として検出。3 reviewer 全員が独立に同 cluster の SoT 初稿 factual error も同時指摘 — 列挙 site の grep 実在検証なし / 実装 case 文 verbatim verify なし / helper 関数名 取り違え)](../../raw/reviews/20260526T182658Z-pr-1155-cycle2.md)
+- [PR #1155 cycle 1 fix (累積 44 回目: 「対称性回収」修正は同 PR 内全 site を grep 網羅検査してから fix する経験則、helper 化前後の key 別挙動 bit-identical verify ルール確立)](../../raw/fixes/20260526T180309Z-pr-1155.md)
+- [PR #1155 cycle 2 fix (累積 44 回目の 6 site 対称セット完了 + SoT 新設時の verify 義務 3 種 (site grep / case 文 verbatim / helper 名 grep) を最低 2 reviewer 独立検証する経験則、inline 性質再宣言は SoT 化方針なら「削除」が drift-free)](../../raw/fixes/20260526T183041Z-pr-1155-cycle2-fix.md)

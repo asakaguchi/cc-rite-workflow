@@ -144,4 +144,42 @@ else
   fail "TC-6 [create:returned-to-caller:{N}] HTML sentinel missing or below 2 sites (count=$sentinel_count). Expected: Single Issue path (ステップ 4.4) + Decompose path (ステップ 5.6)"
 fi
 
+# ──────────────────────────────────────────────────────────────────────
+# TC-7: active disambiguation marker `<!-- skill return signal: caller must continue next step -->`
+#       が sentinel と同数以上 emit され、かつ各 sentinel 直前に隣接配置されている
+# ──────────────────────────────────────────────────────────────────────
+# Issue #1165 で sentinel rename と同時に導入された active disambiguation marker。
+# LLM の turn-boundary heuristic に対する明示的な「これは return signal であって turn 終了ではない」
+# 宣言として、各 sentinel の直前行に必ず配置する契約。silent strip (rename 漏れ等で marker のみ
+# 落ちた状態) を検出するため、(a) marker 出現数 >= sentinel 出現数、(b) 各 sentinel 直前行が
+# marker であること、の 2 つを pin する。
+# 実 emit site は line head が `<!--` で始まり、prose 内 literal は他のテキストの後に出現するため
+# 行頭 anchor `^<!--` で実 emit site のみを scope する。これにより prose 内引用との誤検出を防ぐ。
+emit_site_sentinel_count=$(grep -cE '^<!-- \[create:returned-to-caller:\{(issue_number|parent_issue_number)\}\] -->$' "$CREATE_MD" || true)
+emit_site_disambiguator_count=$(grep -cE '^<!-- skill return signal: caller must continue next step -->$' "$CREATE_MD" || true)
+if [ "$emit_site_disambiguator_count" -ge "$emit_site_sentinel_count" ]; then
+  pass "TC-7a disambiguator marker (emit site only) count >= sentinel emit site count (disambiguator=$emit_site_disambiguator_count, sentinel=$emit_site_sentinel_count)"
+else
+  fail "TC-7a disambiguator marker (emit site only) count < sentinel emit site count (disambiguator=$emit_site_disambiguator_count, sentinel=$emit_site_sentinel_count). Each emit site sentinel must be preceded by '<!-- skill return signal: caller must continue next step -->'"
+fi
+
+# 隣接配置 check: 実 emit site (line head が `^<!--`) の sentinel に対してのみ、
+# 直前行が disambiguator marker であることを awk で検査。prose 内引用は行頭 anchor で除外される。
+adjacency_violations=$(awk '
+  { lines[NR] = $0 }
+  /^<!-- \[create:returned-to-caller:\{(issue_number|parent_issue_number)\}\] -->$/ {
+    prev = lines[NR-1]
+    if (prev !~ /^<!-- skill return signal: caller must continue next step -->$/) {
+      print NR ":" $0 " (prev line " (NR-1) ": " prev ")"
+    }
+  }
+' "$CREATE_MD" || true)
+if [ -z "$adjacency_violations" ]; then
+  pass "TC-7b each emit site sentinel is preceded by disambiguator marker on the immediately previous line"
+else
+  echo "  Adjacency violations:"
+  printf '%s\n' "$adjacency_violations" | sed 's/^/    /' >&2
+  fail "TC-7b emit site sentinel without adjacent disambiguator marker found (silent marker strip suspected)"
+fi
+
 print_summary "create-md-invocation-symmetry.test.sh"

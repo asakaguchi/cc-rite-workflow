@@ -177,7 +177,7 @@ Each caller determines Priority using its own logic before passing it to the scr
 ### 旧 caller (retired)
 
 - `parent-routing.md` Phase 1.5.4 (When No Child Issues Exist: Decomposition Proposal) — flat 化に伴い child issue 自動作成経路自体が廃止された
-- `start.md` (workflow-incident-emit.sh 経由の auto-Issue 起票経路) — workflow-incident 機構ごと #1088 (実装 PR #1091) で廃止された
+- `start.md` ステップ 8.5 (Workflow Incident Detection、workflow-incident-emit.sh 経由の auto-Issue 起票経路) — workflow-incident 機構ごと #1088 で廃止された (実装: #1091、renumber により start.md から ステップ 8.5 自体が消失)
 
 ---
 

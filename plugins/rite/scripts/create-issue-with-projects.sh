@@ -26,7 +26,8 @@
 #       }
 #     },
 #     "options": {
-#       "source": "interactive|pr_review|pr_fix|cleanup|lint|parent_routing|xl_decomposition|fingerprint_split",
+#       "source": "interactive|pr_review|pr_create|cleanup|lint|parent_routing|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split",
+#                # Note: `pr_fix` is legacy (PR #506 で fix.md 由来の別 Issue 化 logic は廃止済、現行 caller なし)
 #       "non_blocking_projects": true  # default: true
 #     }
 #   }

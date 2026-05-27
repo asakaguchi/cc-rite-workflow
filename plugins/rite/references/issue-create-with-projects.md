@@ -15,6 +15,7 @@ Referenced from:
 - `commands/issue/create.md` ステップ 4.3 (Single Issue creation)
 - `commands/issue/create.md` ステップ 5.3 (parent Issue creation in XL decomposition)
 - `commands/issue/create.md` ステップ 5.4 (Sub-Issue bulk creation in XL decomposition)
+- `commands/issue/references/fingerprint-cycling.md` (Quality Signal 1/3/4 由来の split → `fingerprint_split` / `quality_signal_3_split` / `quality_signal_4_split`)
 
 Related documents:
 - [projects-integration.md](./projects-integration.md) - Existing Issue Status update / Iteration assignment (this document covers new Issue creation with Projects registration)
@@ -110,7 +111,8 @@ projects:
  mode: "none|auto" # Default: "none". "auto" assigns to current iteration
  field_name: "Sprint" # Default: "Sprint"
 options:
- source: string # Caller identifier (pr_review|pr_fix|pr_create|cleanup|lint|interactive|parent_routing|xl_decomposition)
+ source: string # Caller identifier (pr_review|pr_create|cleanup|lint|interactive|parent_routing|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split)
+                # Note: `pr_fix` は legacy 互換のため enum に含めない (PR #506 で fix.md 由来の別 Issue 化 logic は廃止済、現行 caller は存在しない)
  non_blocking_projects: true # Default: true. Projects failure doesn't block Issue creation
 ```
 

@@ -166,9 +166,9 @@ for file in "$@"; do
   #   - any path containing `tests/` (via grep --exclude-dir=tests below).
   #     This covers plugins/rite/hooks/tests/ + plugins/rite/scripts/tests/
   #     + any other tests/ subtree under the search dirs (e.g., docs/tests/
-  #     which currently holds 9 markdown test fixtures and is excluded the
-  #     same way). test_pin_count tracks plugins/rite/hooks/tests/ and
-  #     plugins/rite/scripts/tests/ only — those are the official test pin
+  #     which currently holds 8 markdown test fixtures plus 1 README and is
+  #     excluded the same way). test_pin_count tracks plugins/rite/hooks/tests/
+  #     and plugins/rite/scripts/tests/ only — those are the official test pin
   #     locations. Other tests/ directories are simply excluded from inbound
   #     count to avoid double-counting and to keep the (inbound=N, test_pin=M)
   #     annotation semantically clean.

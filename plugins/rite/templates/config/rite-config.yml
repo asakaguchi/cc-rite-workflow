@@ -117,7 +117,7 @@ review:
   # _reviewer-base.md) がハードコードで挙動を強制しており、これらのキーを false にしても
   # 挙動は変わりません (opt-out は動作しません)。runtime wiring は follow-up Issue で追跡されます。
   # Separate Issue Creation (#506): 別 Issue 化は人間判定必須、Source C（既存問題）報告廃止
-  # 詳細: plugins/rite/commands/pr/fix.md ステップ 4.3.3
+  # 詳細: plugins/rite/commands/pr/review.md ステップ 7 (別 Issue 化は review-side に移行済、fix.md からは廃止)
   separate_issue_creation:
     require_user_confirmation: true   # true で E2E でも AskUserQuestion をスキップせず常に確認（default: true）
     report_pre_existing_issues: false # false で Source C (既存問題) の reviewer 報告を抑止（default: false）

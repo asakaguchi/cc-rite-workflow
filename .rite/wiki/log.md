@@ -820,3 +820,4 @@
 | 2026-05-28T03:00:00+00:00 | ingest:skip | raw/reviews/20260527T172656Z-pr-1164.md | PR #1164 cycle 4 review。経験則は phase-7-recommendation-promotion-workflow に統合済 |
 | 2026-05-28T03:00:00+00:00 | ingest:skip | raw/reviews/20260527T174107Z-pr-1164.md | PR #1164 cycle 6 review。経験則は phase-7-recommendation-promotion-workflow に統合済 |
 | 2026-05-28T03:00:00+00:00 | ingest:skip | raw/reviews/20260527T174507Z-pr-1164.md | PR #1164 cycle 8 review。経験則は phase-7-recommendation-promotion-workflow に統合済 |
+| 2026-05-28T03:00:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=11, unregistered_raw=210, broken_refs=0 |

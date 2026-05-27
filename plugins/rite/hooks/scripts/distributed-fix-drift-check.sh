@@ -305,9 +305,10 @@ check_pattern_2() {
 
   # AC-4 (Issue #1158): expose extracted reason lists so the user can
   # differentiate true positives from regex artifacts at a glance.
-  # `${var//$'\n'/ }` で改行を space に置換することで IFS split + pathname expansion を回避する
-  # (旧 `printf '%s ' $table_reasons` は word-splitting と同時に glob 展開も発生し、
-  # 将来 reason regex に glob char を許可した際 silent corrupt するリスクがあった)。
+  # `${var//$'\n'/ }` で改行を space に置換し、parameter expansion 形で渡す設計:
+  # 引数渡し形 (`printf '%s ' $var`) は word-splitting と glob 展開が同時発生するため、将来
+  # reason regex に glob char (`*` / `?` / `[` 等) を許可した際に silent corrupt するリスクがある。
+  # parameter expansion 形に統一することでこの経路を構造的に排除する。
   if [ "${SHOW_EXTRACTED_REASONS:-0}" -eq 1 ]; then
     log "  [P2 extracted] ${file}: table_reasons=$(printf '%s' "${table_reasons//$'\n'/ }" | sed 's/[[:space:]]*$//')"
     log "  [P2 extracted] ${file}: emit_reasons=$(printf '%s' "${emit_reasons//$'\n'/ }" | sed 's/[[:space:]]*$//')"

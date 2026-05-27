@@ -46,8 +46,10 @@ make_fixture_sandbox() {
 
 # 各 TC で checker invocation 後に呼ぶ helper。
 # drift 検出 (rc=1) と no drift (rc=0) は受理、それ以外 (rc=2: invocation error 等) は fail させる。
-# 旧 `|| true` パターンは exit 2 を silent に空文字列に潰し、後段 grep no-match が false negative
-# pass を生んでいた。本 helper で invocation error を明示分岐検出する。
+# rc=2 を 0/1 と同列に扱う設計は禁止: invocation error が silent に空文字列へ潰されると、後段 grep の
+# no-match が false negative pass を生み、checker 本体の degradation を test が検出できなくなる。
+# 本 helper で rc=2 (invocation error) を明示分岐検出することで、意味論的 result (drift / no drift) と
+# infrastructure error (binary 異常 / OOM / 引数異常) を構造的に区別する。
 assert_checker_rc() {
   local tc_label="$1"
   local rc="$2"

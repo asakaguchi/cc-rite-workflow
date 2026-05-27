@@ -1,8 +1,8 @@
 #!/bin/bash
 # orphan-reference-check.sh
 # Detect orphan reference files in plugins/rite/ — files that exist but are
-# not referenced from any other plugin / docs / tests / scripts file and have
-# no test pin protecting their content.
+# not referenced from any other plugin / docs file (test pins are tracked
+# separately as a distinct axis) and have no test pin protecting their content.
 #
 # Motivation: PR #1162 cycle 15 revealed that
 # `plugins/rite/commands/issue/references/projects-status-update-callsites.md`
@@ -160,9 +160,10 @@ for file in "$@"; do
   esac
 
   # Count inbound references from active scope.
-  # Search in: plugins/rite/, docs/, .github/, README* — exclude:
+  # Search in: plugins/rite/, docs/, .github/ — exclude:
   #   - the file itself (self-reference)
-  #   - .git/, node_modules/, .rite/ (local artifacts)
+  #   - plugins/rite/hooks/tests/, plugins/rite/scripts/tests/ (tracked
+  #     separately as test_pin_count below to avoid double-counting)
   inbound_count=0
   search_dirs=()
   [ -d "$REPO_ROOT/plugins/rite" ] && search_dirs+=("$REPO_ROOT/plugins/rite")

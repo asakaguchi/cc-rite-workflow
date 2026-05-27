@@ -80,7 +80,9 @@ while [ $# -gt 0 ]; do
     *) echo "ERROR: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
-export SHOW_EXTRACTED_REASONS
+# SHOW_EXTRACTED_REASONS は check_pattern_2 が同一シェル内 `[ ... ]` builtin で参照するため
+# export 不要 (将来 awk 内で `ENVIRON["SHOW_EXTRACTED_REASONS"]` を参照する誤拡張を誘発するリスクがある
+# ため export を削除し、parent shell scope のみで運用する)。
 
 if [ -z "$REPO_ROOT" ]; then
   REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -185,27 +187,74 @@ check_pattern_1() {
 # Robustness notes (Issue #1158):
 #   - Both extractors accept hyphens in identifiers ([a-z_][a-z0-9_-]*) so that
 #     reasons such as `no-pending` are not truncated to `no`.
-#   - emit_reasons skips matches that are truncation artifacts:
-#       (a) followed immediately by `$` — shell variable expansion ends the value
-#           (e.g. `reason=trigger_exit_$trigger_exit` would otherwise yield the
-#           bogus reason `trigger_exit_`)
-#       (b) ending in `_` or `-` — these are stub residues of (a) or hyphenated
-#           values that got chopped at a non-identifier boundary
+#   - Both extractors skip matches that are truncation artifacts:
+#       (a) emit-side: followed immediately by `$` — shell variable expansion
+#           ends the value (e.g. `reason=trigger_exit_$trigger_exit` would
+#           otherwise yield the bogus reason `trigger_exit_`)
+#       (b) both sides: ending in `_` or `-` — these are stub residues of (a)
+#           or hyphenated/underscored values that got chopped at a
+#           non-identifier boundary. table-side also applies this filter so that
+#           Markdown table cells like `| `python_unexpected_exit_$py_exit` |`
+#           do not pollute `table_reasons` with `python_unexpected_exit_` and
+#           generate a false "table has X but emit doesn't" drift entry against
+#           the emit-side `[_-]$` skip.
 #     Static literals like `reason=commit_rc_4` are preserved (they end in a
 #     digit, not `_/-`, and have no trailing `$`).
+#
+# Silent-failure guard (Pattern 2 awk rc check):
+#   awk のバイナリ異常 / syntax error / IO 失敗で `table_reasons` / `emit_reasons` が
+#   空文字列 silent fallback すると、後段 `[ -z "$table_reasons" ] && return 0` で
+#   Pattern 2 全体が暗黙 skip され drift があっても見逃される。awk の exit code を
+#   tempfile 経由で明示捕捉し、失敗時は WARNING + skip するように guard する。
 check_pattern_2() {
   local file="$1"
   [ -f "$file" ] || return 0
   local table_reasons emit_reasons missing extra
-  table_reasons=$(awk '
+  local awk_table_out awk_table_err awk_table_rc
+  local awk_emit_out awk_emit_err awk_emit_rc
+
+  # table-side awk: rc capture for silent-failure guard + asymmetric [_-]$ skip
+  awk_table_out=$(mktemp /tmp/rite-drift-awk-table-out-XXXXXX) || awk_table_out=""
+  awk_table_err=$(mktemp /tmp/rite-drift-awk-table-err-XXXXXX) || awk_table_err=""
+  if [ -z "$awk_table_out" ]; then
+    log "  [P2] Pattern 2 skipped on $file: mktemp for table-side awk output failed"
+    rm -f "${awk_table_err:-}"
+    return 0
+  fi
+  awk_table_rc=0
+  awk '
     /^\| `[a-z_][a-z0-9_-]*`/ {
       gsub(/[|`]/, " ")
       for (i = 1; i <= NF; i++) {
-        if ($i ~ /^[a-z_][a-z0-9_-]*$/) { print $i; break }
+        if ($i ~ /^[a-z_][a-z0-9_-]*$/) {
+          if ($i ~ /[_-]$/) continue
+          print $i
+          break
+        }
       }
     }
-  ' "$file" | sort -u)
-  emit_reasons=$(awk '
+  ' "$file" >"$awk_table_out" 2>"${awk_table_err:-/dev/null}" || awk_table_rc=$?
+  if [ "$awk_table_rc" -ne 0 ]; then
+    log "  [P2] Pattern 2 skipped on $file: table-side awk rc=$awk_table_rc"
+    if [ -n "$awk_table_err" ] && [ -s "$awk_table_err" ]; then
+      log "    awk stderr: $(head -1 "$awk_table_err")"
+    fi
+    rm -f "$awk_table_out" "${awk_table_err:-}"
+    return 0
+  fi
+  table_reasons=$(sort -u "$awk_table_out")
+  rm -f "$awk_table_out" "${awk_table_err:-}"
+
+  # emit-side awk: rc capture for silent-failure guard
+  awk_emit_out=$(mktemp /tmp/rite-drift-awk-emit-out-XXXXXX) || awk_emit_out=""
+  awk_emit_err=$(mktemp /tmp/rite-drift-awk-emit-err-XXXXXX) || awk_emit_err=""
+  if [ -z "$awk_emit_out" ]; then
+    log "  [P2] Pattern 2 skipped on $file: mktemp for emit-side awk output failed"
+    rm -f "${awk_emit_err:-}"
+    return 0
+  fi
+  awk_emit_rc=0
+  awk '
     {
       rest = $0
       while (match(rest, /reason=[a-z_][a-z0-9_-]*/)) {
@@ -217,12 +266,26 @@ check_pattern_2() {
         print val
       }
     }
-  ' "$file" | sort -u)
+  ' "$file" >"$awk_emit_out" 2>"${awk_emit_err:-/dev/null}" || awk_emit_rc=$?
+  if [ "$awk_emit_rc" -ne 0 ]; then
+    log "  [P2] Pattern 2 skipped on $file: emit-side awk rc=$awk_emit_rc"
+    if [ -n "$awk_emit_err" ] && [ -s "$awk_emit_err" ]; then
+      log "    awk stderr: $(head -1 "$awk_emit_err")"
+    fi
+    rm -f "$awk_emit_out" "${awk_emit_err:-}"
+    return 0
+  fi
+  emit_reasons=$(sort -u "$awk_emit_out")
+  rm -f "$awk_emit_out" "${awk_emit_err:-}"
+
   # AC-4 (Issue #1158): expose extracted reason lists so the user can
   # differentiate true positives from regex artifacts at a glance.
+  # `${var//$'\n'/ }` で改行を space に置換することで IFS split + pathname expansion を回避する
+  # (旧 `printf '%s ' $table_reasons` は word-splitting と同時に glob 展開も発生し、
+  # 将来 reason regex に glob char を許可した際 silent corrupt するリスクがあった)。
   if [ "${SHOW_EXTRACTED_REASONS:-0}" -eq 1 ]; then
-    log "  [P2 extracted] ${file}: table_reasons=$(printf '%s ' $table_reasons | sed 's/[[:space:]]*$//')"
-    log "  [P2 extracted] ${file}: emit_reasons=$(printf '%s ' $emit_reasons | sed 's/[[:space:]]*$//')"
+    log "  [P2 extracted] ${file}: table_reasons=$(printf '%s' "${table_reasons//$'\n'/ }" | sed 's/[[:space:]]*$//')"
+    log "  [P2 extracted] ${file}: emit_reasons=$(printf '%s' "${emit_reasons//$'\n'/ }" | sed 's/[[:space:]]*$//')"
   fi
   # If the file has no reason table at all, Pattern-2 does not apply.
   # Skipping here prevents false "never emitted" flags for emit-only files.

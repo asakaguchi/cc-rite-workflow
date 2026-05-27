@@ -127,7 +127,7 @@ Failure reason: `finding_id_format_or_uniqueness_violation`
 
 <a id="hook-lock-contention-classification-canonical"></a>
 
-`local-wm-update.sh` / `issue-comment-wm-sync.sh` などの hook が stderr に出力するメッセージから「lock contention (best-effort skip 許容)」と「non-lock failure (WARNING + stderr 表示義務)」を分類する canonical pattern。`review.md` ステップ 6.2 / 6.4 と `fix.md` ステップ 4.5 / 8.1 の 4 箇所から参照される (verified-review cycle 12 H-1 対応で canonicalize)。
+`local-wm-update.sh` / `issue-comment-wm-sync.sh` などの hook が stderr に出力するメッセージから「lock contention (best-effort skip 許容)」と「non-lock failure (WARNING + stderr 表示義務)」を分類する canonical pattern。`review.md` ステップ 6.2 / 6.4 と `fix.md` ステップ 5.1 の 3 箇所から参照される (verified-review cycle 12 H-1 対応で canonicalize)。
 
 **Canonical pattern** (grep 式):
 

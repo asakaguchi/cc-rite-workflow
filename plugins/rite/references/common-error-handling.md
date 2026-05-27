@@ -63,7 +63,7 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 
 ## Non-blocking Contract (canonical 定義)
 
-「Non-blocking Contract」とは、特定の sub-phase の失敗が **upstream phase 全体を失敗扱いにしない** ことを保証する設計上の契約。`/rite:pr:review` Phase 6.1.a (ローカル JSON 保存) や `/rite:pr:cleanup` ステップ 6 (review 結果ファイル削除、旧 Phase 2.5) など複数 phase で参照される。両方とも本セクションの定義を SoT とすること。
+「Non-blocking Contract」とは、特定の sub-phase の失敗が **upstream phase 全体を失敗扱いにしない** ことを保証する設計上の契約。`/rite:pr:review` ステップ 6.1.a (ローカル JSON 保存) や `/rite:pr:cleanup` ステップ 6 (review 結果ファイル削除、旧 Phase 2.5) など複数 phase で参照される。両方とも本セクションの定義を SoT とすること。
 
 **契約の構成要素**:
 
@@ -72,23 +72,23 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 | **失敗時の戻り値** | sub-phase は WARNING を stderr に出して `exit 0` で early return する (upstream の `||` chain を発火させない)。`set -e` 環境下でも upstream を kill しない |
 | **retained flag emit** | `[CONTEXT] {SCOPE}_FAILED=1; reason={reason}` を stderr に必ず emit する。reason 値は各 phase の reason 表で列挙される |
 | **IO エラーの可視化** | ファイル不在は silent no-op で OK だが、`rm` / `mkdir` / `mv` 等の **真の IO 失敗** (permission denied / disk full / readonly filesystem) は WARNING + stderr 5 行以上で必ず可視化する。`2>/dev/null` 等の silent suppression は禁止 |
-| **Phase 全体の exit code** | 本 sub-phase 単独の失敗では Phase 全体の exit code を変更しない。downstream phase は retained flag を見て分岐する |
+| **ステップ全体の exit code** | 本 sub-phase 単独の失敗では ステップ全体の exit code を変更しない。downstream の ステップ は retained flag を見て分岐する |
 | **observability emit の必須化** | 異常終了経路 (signal trap 経由含む) でも `[CONTEXT]` flag が emit されるよう、trap handler 内で flag emit を行う (skip notification phase が flag を読む前提で動作する) |
 
 **適用箇所**:
-- `/rite:pr:review` Phase 6.1.a (Local JSON File Save)
+- `/rite:pr:review` ステップ 6.1.a (Local JSON File Save)
 - `/rite:pr:cleanup` ステップ 6 (Review Results File Cleanup、旧 Phase 2.5)
 - 将来追加される sub-phase で「失敗しても upstream を kill しない」契約が必要なものは本セクションを参照すること
 
-**Soft failure との違い**: `/rite:pr:fix` Phase 4.5 で使用される「soft failure」は **致命的だが exit 1 で fix loop を kill せず retained flag で caller に通知する**パターンで、本 Non-blocking Contract と類似する。両者の違いは: Non-blocking Contract は「sub-phase 失敗 = upstream 続行」で **本来非致命的な処理** (ローカル保存、削除) に適用、soft failure は「致命的だが loop 終了させない」で **コミット済み変更を保護したい** ケースに適用する。
+**Soft failure との違い**: `/rite:pr:fix` ステップ 4.5 で使用される「soft failure」は **致命的だが exit 1 で fix loop を kill せず retained flag で caller に通知する**パターンで、本 Non-blocking Contract と類似する。両者の違いは: Non-blocking Contract は「sub-phase 失敗 = upstream 続行」で **本来非致命的な処理** (ローカル保存、削除) に適用、soft failure は「致命的だが loop 終了させない」で **コミット済み変更を保護したい** ケースに適用する。
 
-**例外: Phase 内の retained flag 集計による hard fail 昇格**: Non-blocking Contract に従う sub-phase が複数存在し、それらの retained flag を Phase 内の後段 sub-phase (例: `/rite:pr:review` Phase 6.1.c) が集計して `exit 2` 等の hard fail に昇格させることは許容される。この場合、個々の sub-phase は `exit 0` (Non-blocking) を守るが、**Phase 全体として** retained flag の組み合わせにより hard fail するケースが発生しうる。これは Non-blocking Contract の違反ではなく、「sub-phase 単独の失敗」と「Phase 全体の判定」が別レイヤであるという設計上の意図的な区別である。
+**例外: ステップ内の retained flag 集計による hard fail 昇格**: Non-blocking Contract に従う sub-phase が複数存在し、それらの retained flag を ステップ内の後段 sub-phase (例: `/rite:pr:review` ステップ 6.1.c) が集計して `exit 2` 等の hard fail に昇格させることは許容される。この場合、個々の sub-phase は `exit 0` (Non-blocking) を守るが、**ステップ全体として** retained flag の組み合わせにより hard fail するケースが発生しうる。これは Non-blocking Contract の違反ではなく、「sub-phase 単独の失敗」と「ステップ全体の判定」が別レイヤであるという設計上の意図的な区別である。
 
 ## Review Result JSON Schema Validation (canonical snippet)
 
 <a id="jq-required-fields-snippet-canonical"></a>
 
-`review-result-schema.md` で定義される JSON スキーマの必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) を検証する canonical jq snippet。Phase 6.1.a (review.md) と Phase 1.2.0 Priority 0 / 2 / 3 (fix.md) の 4 箇所から参照される (verified-review cycle 8 M-8 対応で canonicalize)。
+`review-result-schema.md` で定義される JSON スキーマの必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) を検証する canonical jq snippet。ステップ 6.1.a (review.md) と ステップ 1.2.0 Priority 0 / 2 / 3 (fix.md) の 4 箇所から参照される (verified-review cycle 8 M-8 対応で canonicalize)。
 
 **Canonical snippet** (jq 式):
 
@@ -102,16 +102,16 @@ and (.findings | type == "array")
 
 | Site | Purpose | Failure Reason |
 |------|---------|----------------|
-| `review.md` Phase 6.1.a | JSON tmpfile の post-condition 検証 | `schema_required_fields_missing` |
-| `fix.md` Phase 1.2.0 Priority 0 (`--review-file`) | ユーザー明示ファイルの必須フィールド検証 | `explicit_file_schema_required_fields_missing` |
-| `fix.md` Phase 1.2.0 Priority 2 (local file) | 最新 timestamp ファイルの必須フィールド検証 | `local_file_schema_required_fields_missing` |
-| `fix.md` Phase 1.2.0 Priority 3 (PR comment Raw JSON) | PR コメント Raw JSON の必須フィールド検証 | `pr_comment_schema_required_fields_missing` |
+| `review.md` ステップ 6.1.a | JSON tmpfile の post-condition 検証 | `schema_required_fields_missing` |
+| `fix.md` ステップ 1.2.0 Priority 0 (`--review-file`) | ユーザー明示ファイルの必須フィールド検証 | `explicit_file_schema_required_fields_missing` |
+| `fix.md` ステップ 1.2.0 Priority 2 (local file) | 最新 timestamp ファイルの必須フィールド検証 | `local_file_schema_required_fields_missing` |
+| `fix.md` ステップ 1.2.0 Priority 3 (PR comment Raw JSON) | PR コメント Raw JSON の必須フィールド検証 | `pr_comment_schema_required_fields_missing` |
 
 **Rationale for type-explicit validation**: jq の and / truthiness 仕様 (`false` / `null` のみが falsy、空文字列 `""` / `0` / `[]` / `{}` はすべて truthy) のため、旧実装の `.schema_version and .pr_number` は `schema_version: ""` や `pr_number: "123"` (文字列型) を silent pass させる抜け穴があった。明示的に `type == "string" and length > 0` / `type == "number"` / `type == "array"` を要求することで、型違反と空文字列のすべてを reject する。
 
 **Source検証**: [jq Manual](https://jqlang.org/manual/) — "false and null are considered 'false values', and anything else is a 'true value'. Everything else is 'true', even the number zero and the empty string, array and object." (`jq --help` or interactive `jq .` で確認可能)
 
-**Finding ID validation (Phase 6.1.a のみ追加検証)**: 本 canonical snippet に加えて Phase 6.1.a では finding id の書式 (`^F-[0-9]{2,}$`) と一意性も検証する。これは write 側 (review.md) でのみ enforce される「生成規則」であり、read 側 (fix.md) では既に書き込まれた JSON を信頼するため検証不要。
+**Finding ID validation (ステップ 6.1.a のみ追加検証)**: 本 canonical snippet に加えて ステップ 6.1.a では finding id の書式 (`^F-[0-9]{2,}$`) と一意性も検証する。これは write 側 (review.md) でのみ enforce される「生成規則」であり、read 側 (fix.md) では既に書き込まれた JSON を信頼するため検証不要。
 
 ```jq
 (.findings | length == 0)
@@ -127,7 +127,7 @@ Failure reason: `finding_id_format_or_uniqueness_violation`
 
 <a id="hook-lock-contention-classification-canonical"></a>
 
-`local-wm-update.sh` / `issue-comment-wm-sync.sh` などの hook が stderr に出力するメッセージから「lock contention (best-effort skip 許容)」と「non-lock failure (WARNING + stderr 表示義務)」を分類する canonical pattern。`review.md` Phase 6.2 / 6.4 と `fix.md` Phase 4.5 / 8.1 の 4 箇所から参照される (verified-review cycle 12 H-1 対応で canonicalize)。
+`local-wm-update.sh` / `issue-comment-wm-sync.sh` などの hook が stderr に出力するメッセージから「lock contention (best-effort skip 許容)」と「non-lock failure (WARNING + stderr 表示義務)」を分類する canonical pattern。`review.md` ステップ 6.2 / 6.4 と `fix.md` ステップ 5.1 の 3 箇所から参照される (verified-review cycle 12 H-1 対応で canonicalize)。
 
 **Canonical pattern** (grep 式):
 
@@ -139,9 +139,9 @@ grep -qiE '(file is locked|lock contention|resource busy)' "$err_file"
 
 | Site | Purpose |
 |------|---------|
-| `review.md` Phase 6.2 Step 2 (`issue-comment-wm-sync`) | Phase 遷移時の backup sync |
-| `review.md` Phase 6.4 (`_rite_review_p64_run_sync` helper) | Phase 6.4 の 3 step 全てで本 helper が参照 |
-| `fix.md` Phase 8.1 (`local-wm-update.sh`) | E2E flow 経路の post-fix local work memory 更新 |
+| `review.md` ステップ 6.2 Step 2 (`issue-comment-wm-sync`) | ステップ遷移時の backup sync |
+| `review.md` ステップ 6.4 (`_rite_review_p64_run_sync` helper) | ステップ 6.4 の 3 step 全てで本 helper が参照 |
+| `fix.md` ステップ 5.1 (`local-wm-update.sh`) | E2E flow 経路の post-fix local work memory 更新 |
 
 **Rationale for exact phrase match**: 旧 loose pattern `grep -qiE 'lock|contention|busy'` は以下の silent suppression 問題を抱えていた:
 

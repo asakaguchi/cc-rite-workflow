@@ -164,7 +164,7 @@ Escalate to user (via `AskUserQuestion`) when:
 
 ### Debate Metrics
 
-Record the following metrics for each debate (appended to review metrics in `review.md` Phase 6.1.2):
+Record the following metrics for each debate (appended to review metrics in `review.md` ステップ 6.1.2):
 
 | Metric | Description |
 |--------|-------------|

@@ -11,7 +11,7 @@
 #         LOW severity yields nit-noted per default-mapping table)
 #   T-4: pre_existing=false × nit-noted auto-correct (invariant #5)
 #        — schema-level contract test (canonical jq mutation の動作のみを assert する。
-#         fix.md Phase 1.2.0 の read-side integration は本 test で検証しない。
+#         fix.md ステップ 1.2.0 の read-side integration は本 test で検証しない。
 #         read-side との bit-exact 一致は別 E2E test の責務 [follow-up scope])
 #
 # Usage: bash plugins/rite/hooks/tests/scope-enum-check.test.sh
@@ -192,7 +192,7 @@ fi
 echo "=== T-4: pre_existing=false × nit-noted auto-correct (schema-level contract test) ==="
 # Schema-level contract test: This test verifies the canonical jq expression from
 # review-result-schema.md invariant #5 in isolation. It does NOT verify the actual
-# read-side integration in fix.md Phase 1.2.0. If fix.md ever drifts from this
+# read-side integration in fix.md ステップ 1.2.0. If fix.md ever drifts from this
 # canonical jq expression, T-4 alone would not catch it — that bit-exact alignment
 # is the responsibility of a separate E2E test (follow-up scope, Issue #1021 F-12).
 T4_FILE="$sandbox/T4.json"

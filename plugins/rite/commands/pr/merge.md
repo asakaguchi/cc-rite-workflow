@@ -66,7 +66,7 @@ gh pr view {pr_number} --json mergeable,mergeStateStatus,isDraft
 ## ステップ 3: マージ実行
 
 ```bash
-# canonical signal-specific trap pattern (references/bash-trap-patterns.md 参照、fix.md Phase 2.4 と対称)
+# canonical signal-specific trap pattern (references/bash-trap-patterns.md 参照、fix.md ステップ 2.4 と対称)
 gh_err=""
 _rite_merge_cleanup() {
   rm -f "${gh_err:-}"

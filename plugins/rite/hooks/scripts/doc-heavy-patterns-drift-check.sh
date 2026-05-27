@@ -6,14 +6,14 @@
 #
 #   1. plugins/rite/skills/reviewers/tech-writer.md  (Activation section;
 #      treated as the source of truth)
-#   2. plugins/rite/commands/pr/review.md            (Phase 1.2.7
+#   2. plugins/rite/commands/pr/review.md            (ステップ 1.2.7
 #      `doc_file_patterns` pseudo-code block)
 #   3. plugins/rite/skills/reviewers/SKILL.md        (Reviewers table,
 #      Technical Writer row)
 #
 # Issue #353 covers 系統 1 of the drift invariants catalogued in
 # commands/pr/references/internal-consistency.md. 系統 2 (canonical category
-# name literal match) and 系統 3 (review.md Phase 5.4 Doc-Heavy section 2-place
+# name literal match) and 系統 3 (review.md ステップ 5.4 Doc-Heavy section 2-place
 # duplication) are out of scope for this checker.
 #
 # The 3 files encode the same pattern list in 3 different textual forms (list
@@ -148,7 +148,7 @@ extract_tw() {
   ' "$TW_FILE"
 }
 
-# review.md: the Phase 1.2.7 pseudo-code block between `doc_file_patterns = [`
+# review.md: the ステップ 1.2.7 pseudo-code block between `doc_file_patterns = [`
 # and the next line consisting of `]` at column 0.
 extract_review() {
   awk '
@@ -263,8 +263,8 @@ report_diff() {
 }
 
 report_diff "$WORK_DIR/tw.set"     "tech-writer.md Activation" \
-            "$WORK_DIR/review.set" "review.md Phase 1.2.7 doc_file_patterns"
-report_diff "$WORK_DIR/review.set" "review.md Phase 1.2.7 doc_file_patterns" \
+            "$WORK_DIR/review.set" "review.md ステップ 1.2.7 doc_file_patterns"
+report_diff "$WORK_DIR/review.set" "review.md ステップ 1.2.7 doc_file_patterns" \
             "$WORK_DIR/tw.set"     "tech-writer.md Activation"
 
 report_diff "$WORK_DIR/tw.set"     "tech-writer.md Activation" \
@@ -272,10 +272,10 @@ report_diff "$WORK_DIR/tw.set"     "tech-writer.md Activation" \
 report_diff "$WORK_DIR/skill.set"  "SKILL.md Technical Writer row" \
             "$WORK_DIR/tw.set"     "tech-writer.md Activation"
 
-report_diff "$WORK_DIR/review.set" "review.md Phase 1.2.7 doc_file_patterns" \
+report_diff "$WORK_DIR/review.set" "review.md ステップ 1.2.7 doc_file_patterns" \
             "$WORK_DIR/skill.set"  "SKILL.md Technical Writer row"
 report_diff "$WORK_DIR/skill.set"  "SKILL.md Technical Writer row" \
-            "$WORK_DIR/review.set" "review.md Phase 1.2.7 doc_file_patterns"
+            "$WORK_DIR/review.set" "review.md ステップ 1.2.7 doc_file_patterns"
 
 log "==> Total doc-heavy-patterns-drift findings: ${diff_count}"
 

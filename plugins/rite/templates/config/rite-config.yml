@@ -111,13 +111,13 @@ review:
     # ロールアウト戦略: テンプレートは新規 init ユーザ向けに保守的 default として **false** を維持
     # (本プロジェクト rite-config.yml は #1022 検証 pass 後に true 化済、テンプレ側の bump は別 Issue で再評価)。
     enabled: false           # scope-based routing 全体の opt-in/out (template default; 新規 init では false 維持)
-    auto_demote_low: true    # LOW × current-pr の finding を fix.md Phase 1.2.0 で自動的に nit-noted へ降格 (default: true)。false で opt-out した場合は LOW × current-pr が通常通り blocking 扱いで fix loop に流れる。`enabled: false` の場合は本キーは effectively false 扱い (将来の runtime gating で wiring 予定)
+    auto_demote_low: true    # LOW × current-pr の finding を fix.md ステップ 1.2.0 で自動的に nit-noted へ降格 (default: true)。false で opt-out した場合は LOW × current-pr が通常通り blocking 扱いで fix loop に流れる。`enabled: false` の場合は本キーは effectively false 扱い (将来の runtime gating で wiring 予定)
   # NOTE (#506 known limitation): separate_issue_creation と下記 fix.fail_fast_response は
   # config scaffolding (宣言のみ) です。現時点では prompt 側 (fix.md / review.md /
   # _reviewer-base.md) がハードコードで挙動を強制しており、これらのキーを false にしても
   # 挙動は変わりません (opt-out は動作しません)。runtime wiring は follow-up Issue で追跡されます。
   # Separate Issue Creation (#506): 別 Issue 化は人間判定必須、Source C（既存問題）報告廃止
-  # 詳細: plugins/rite/commands/pr/fix.md Phase 4.3.3
+  # 詳細: plugins/rite/commands/pr/fix.md ステップ 4.3.3
   separate_issue_creation:
     require_user_confirmation: true   # true で E2E でも AskUserQuestion をスキップせず常に確認（default: true）
     report_pre_existing_issues: false # false で Source C (既存問題) の reviewer 報告を抑止（default: false）
@@ -125,7 +125,7 @@ review:
 # Fix settings (#506)
 fix:
   # Fail-Fast Response Principle: throw/raise 優先の修正方針を必須化
-  # 詳細: plugins/rite/commands/pr/fix.md Phase 2 Fail-Fast Response Principle
+  # 詳細: plugins/rite/commands/pr/fix.md ステップ 2 Fail-Fast Response Principle
   fail_fast_response: true            # true で Fail-Fast Response Principle を有効化（default: true）
 
 # Notification settings

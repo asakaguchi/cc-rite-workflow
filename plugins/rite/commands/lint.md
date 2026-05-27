@@ -543,7 +543,7 @@ fi
 
 ### 3.7 Plugin-specific Checks (Doc-Heavy Patterns Drift Detection)
 
-Execute the doc-heavy patterns drift check script to detect divergence between the `doc_file_patterns` declared in 3 files that MUST stay in sync: `plugins/rite/skills/reviewers/tech-writer.md` (Activation section), `plugins/rite/commands/pr/review.md` (Phase 1.2.7 `doc_file_patterns` pseudo-code block), and `plugins/rite/skills/reviewers/SKILL.md` (Reviewers table Technical Writer row). Drift between these files silently changes tech-writer activation and Doc-Heavy PR detection — Issue #353 系統 1. See the script header at `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` for the extraction contract.
+Execute the doc-heavy patterns drift check script to detect divergence between the `doc_file_patterns` declared in 3 files that MUST stay in sync: `plugins/rite/skills/reviewers/tech-writer.md` (Activation section), `plugins/rite/commands/pr/review.md` (ステップ 1.2.7 `doc_file_patterns` pseudo-code block), and `plugins/rite/skills/reviewers/SKILL.md` (Reviewers table Technical Writer row). Drift between these files silently changes tech-writer activation and Doc-Heavy PR detection — Issue #353 系統 1. See the script header at `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` for the extraction contract.
 
 **Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
 
@@ -578,7 +578,7 @@ fi
 
 ### 3.8 Plugin-specific Checks (Wiki Growth Check) — Issue #524 layer 3
 
-Execute the Wiki growth check script to detect "Phase X.X.W silently skipped" regressions. The script warns (non-blocking) when the wiki branch has gone unchanged for `wiki.growth_check.threshold_prs` consecutive merged PRs on the development base branch — strong evidence that `pr/review.md` Phase 6.5.W / `pr/fix.md` Phase 4.6.W / `issue/close.md` Phase 4.4.W are being skipped silently. See `plugins/rite/hooks/scripts/wiki-growth-check.sh` header for the detection contract and Issue #524 specification for the 3-layer defense rationale.
+Execute the Wiki growth check script to detect "Phase X.X.W silently skipped" regressions. The script warns (non-blocking) when the wiki branch has gone unchanged for `wiki.growth_check.threshold_prs` consecutive merged PRs on the development base branch — strong evidence that `pr/review.md` ステップ 6.5.W / `pr/fix.md` ステップ 4.6.W / `issue/close.md` Phase 4.4.W are being skipped silently. See `plugins/rite/hooks/scripts/wiki-growth-check.sh` header for the detection contract and Issue #524 specification for the 3-layer defense rationale.
 
 **Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
 

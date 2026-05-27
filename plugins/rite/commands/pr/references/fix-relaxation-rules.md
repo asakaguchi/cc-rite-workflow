@@ -73,7 +73,7 @@ The review-fix loop exits via:
 
 `/rite:pr:iterate` には cycle counter / N 回上限 / quality-signal escalation / ping-pong サーキットブレーカー は**存在しない** (Issue #1136 で全廃)。「指摘ゼロまでループする」の契約に忠実で、停止する場合はユーザー判断のみ。
 
-`fix.md` Phase 3 の Root Cause Gate (#557) は引き続き **fix commit 側の品質ゲート**として機能する (root-cause-missing fix を reject)。loop 制御とは別経路。
+`fix.md` ステップ 3 の Root Cause Gate (#557) は引き続き **fix commit 側の品質ゲート**として機能する (root-cause-missing fix を reject)。loop 制御とは別経路。
 
 ## Caller Detection
 

@@ -9,8 +9,8 @@
 | Signal | 検出 phase | 内容 |
 |--------|-----------|------|
 | **Signal 1** — 同一 finding cycling | Phase 5.4.1.0 (本 reference) | review サイクル間で同 fingerprint の finding が残存 |
-| **Signal 2** — root-cause-missing fix | `fix.md` Phase 3.2.1 | 根本原因を捉えない fix がコミットされる経路の検出 |
-| **Signal 3** — cross-validation disagreement | `review.md` Phase 5.2 + debate fails | レビュアー間の disagreement が debate でも解消されない |
+| **Signal 2** — root-cause-missing fix | `fix.md` ステップ 3.2.1 | 根本原因を捉えない fix がコミットされる経路の検出 |
+| **Signal 3** — cross-validation disagreement | `review.md` ステップ 5.2 + debate fails | レビュアー間の disagreement が debate でも解消されない |
 | **Signal 4** — finding quality gate failure | `_reviewer-base.md` Finding Quality Guardrail | reviewer 自身が self-degraded 状態を宣言 |
 
 Signal 1 は Phase 5.4.1.0 (本 reference §1)、Signal 3 と Signal 4 は Phase 5.4.3 Step 3.1 (本 reference §2) で検出する。4 signal すべてに対して **同じ 4-option AskUserQuestion** (本 reference §3) で escalation する。
@@ -127,7 +127,7 @@ review が return した後、最新の `📜 rite レビュー結果` PR コメ
 
 | Marker | Source | Signal |
 |--------|--------|--------|
-| `[CONTEXT] QUALITY_SIGNAL=3_cross_validation_disagreement` | `review.md` Phase 5.2 (cross-validation disagreement + debate fails) | Signal 3 — cross-validation disagreement |
+| `[CONTEXT] QUALITY_SIGNAL=3_cross_validation_disagreement` | `review.md` ステップ 5.2 (cross-validation disagreement + debate fails) | Signal 3 — cross-validation disagreement |
 | `### Reviewer self-assessment` section + `Status: degraded (quality-gate failure)` (review body 内) | 任意の reviewer 出力 (`_reviewer-base.md` Finding Quality Guardrail 経由) | Signal 4 — reviewer self-degraded |
 
 ### Detection bash (Signal 4)

@@ -848,6 +848,48 @@ fi
 - `direct_gh_issue_finding_count`: Extract from `direct_gh_issue_output` by matching the line `Total files with violations: N` (regex: `/Total files with violations: (\d+)/`). If no match found, default to 0
 - `direct_gh_issue_output`: Script output (truncated if >50 lines)
 
+### 3.15 Plugin-specific Checks (Orphan Reference File Detection) — Issue #1159
+
+Execute the orphan reference lint guard to detect reference files (`plugins/rite/{commands,references,skills,agents}/**/*.md`) that exist but have zero inbound references AND no test pin protection. The motivation comes from PR #1162 cycle 15, where `plugins/rite/commands/issue/references/projects-status-update-callsites.md` (146 lines) was found to be a complete orphan — no other file referenced it, no test pinned its content, and it survived multiple workflow refactorings undetected. This check catches the same class of orphan accumulation mechanically before it grows into a maintenance burden.
+
+Detection logic (see `plugins/rite/hooks/scripts/orphan-reference-check.sh` for the exact algorithm):
+
+- Inbound references searched in `plugins/rite/`, `docs/`, `.github/` (excluding self-references)
+- Test pin searched in `plugins/rite/hooks/tests/` and `plugins/rite/scripts/tests/` (any `assert_grep` / `contains` containing the filename)
+- Skip well-known static assets (`.gitkeep`, `__init__.py`, `LICENSE`, `CHANGELOG.md`)
+- A file is flagged as **orphan** only when inbound count == 0 AND test pin count == 0
+
+**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
+
+**Skip condition**: Script file does not exist (e.g., marketplace install without scripts directory).
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/orphan-reference-check.sh ]; then
+  orphan_check_output=$(bash {plugin_root}/hooks/scripts/orphan-reference-check.sh --all 2>&1)
+  orphan_check_exit_code=$?
+else
+  orphan_check_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `orphan_check_status` | Action |
+|-----------|------------------------|--------|
+| 0 | `success` | No orphans — continue to Phase 4 |
+| 1 | `warning` | Orphan(s) detected — record as **warning** (does NOT cause `[lint:error]`). Display orphan list but allow flow to continue |
+| 2 | `error` | Invocation error (usage error / missing repo-root / empty `--all` expansion) — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Orphan reference check results are treated as **warnings**, not errors — same policy as Phase 3.5–3.14 checks. A finding does NOT change `[lint:success]`. Orphan files are not actively harmful (they don't break workflow execution), but their accumulation degrades plugin maintainability over time. Warning-level surfacing on each lint run is sufficient to redirect contributors to either remove the orphan or add an inbound reference / test pin before merge.
+
+**Record orphan check results** for Phase 4 reporting:
+- `orphan_check_status`: `success` / `warning` / `error` / `skipped`
+- `orphan_check_finding_count`: Extract from `orphan_check_output` by matching the summary line `[orphan-reference-check] checked=N orphans=M` (regex: `/orphans=(\d+)/`). If no match found, default to 0
+- `orphan_check_output`: Script output (truncated if >50 lines)
+
 ---
 
 ## Phase 4: Report Results

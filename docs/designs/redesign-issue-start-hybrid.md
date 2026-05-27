@@ -125,7 +125,7 @@ plugins/rite/commands/issue/start.md (orchestrator, ~700 行)
   ├ fingerprint-cycling.md     (Phase 5.4.1.0 + Quality Signal SoT)
   ├ checklist-auto-check.md    (Phase 5.2.1 + Auto-Check SoT)
   ├ metrics-recording.md       (Phase 5.5.2 SoT)
-  └ projects-status-update-callsites.md (Phase 2.4/5.5.1/5.7.2 SoT) [削除済、#1162 で removed]
+  └ projects-status-update-callsites.md (Phase 2.4/5.5.1/5.7.2 SoT) (※ 削除済 — #1162 で removed)
 ```
 
 <!-- Section ID: SPEC-ARCH-DATAFLOW -->

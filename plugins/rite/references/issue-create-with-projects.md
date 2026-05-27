@@ -220,11 +220,11 @@ bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh \
 
 # Mode 2: --all auto-expansion (#958)
 # Scans every plugins/rite/commands/**/*.md file under the resolved repository root.
-# Used by /rite:lint ステップ 3.14 to enforce the guard across every command/sub-skill.
+# Used by /rite:lint Phase 3.14 to enforce the guard across every command/sub-skill.
 bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh --all
 ```
 
-Exit 0 = no violations. Exit 1 = direct `gh issue create -...` / `gh issue create $...` / `gh issue create "..."` / `gh issue create '...'` invocation found (after stripping fenced code blocks, blockquotes, Markdown comments, and inline backticks). Exit 2 = usage error (no arguments, missing file, `--all` expansion empty / commands directory absent, or `--repo-root` argument missing / non-existent directory). Tests live at `plugins/rite/scripts/tests/check-no-direct-gh-issue-create.test.sh` and include positive, negative, false-positive-avoidance, `--all` mode, and `--repo-root` override cases (happy path / missing argument / non-existent directory) (TC-001 through TC-015). `/rite:lint` ステップ 3.14 invokes the script with `--all` on every lint run and records findings as warning-level (does not change `[lint:success]`); see [lint.md ステップ 3.14](../commands/lint.md#314-plugin-specific-checks-direct-gh-issue-create-invocation--issue-958) for the lint integration details.
+Exit 0 = no violations. Exit 1 = direct `gh issue create -...` / `gh issue create $...` / `gh issue create "..."` / `gh issue create '...'` invocation found (after stripping fenced code blocks, blockquotes, Markdown comments, and inline backticks). Exit 2 = usage error (no arguments, missing file, `--all` expansion empty / commands directory absent, or `--repo-root` argument missing / non-existent directory). Tests live at `plugins/rite/scripts/tests/check-no-direct-gh-issue-create.test.sh` and include positive, negative, false-positive-avoidance, `--all` mode, and `--repo-root` override cases (happy path / missing argument / non-existent directory) (TC-001 through TC-015). `/rite:lint` Phase 3.14 invokes the script with `--all` on every lint run and records findings as warning-level (does not change `[lint:success]`); see [lint.md Phase 3.14](../commands/lint.md#314-plugin-specific-checks-direct-gh-issue-create-invocation--issue-958) for the lint integration details.
 
 ---
 

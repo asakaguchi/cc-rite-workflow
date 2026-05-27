@@ -59,11 +59,11 @@ E2E output format (ステップ 6, replaces full display):
 
 ## Invocation Context and End-to-End Flow
 
-本コマンドは standalone と `/rite:pr:iterate` ステップ 7 review-fix loop からの E2E 呼び出しの 2 経路がある。
+本コマンドは standalone と `/rite:pr:iterate` ステップ 1 review-fix loop からの E2E 呼び出しの 2 経路がある。
 
 | Invocation Source | Subsequent Action |
 |-----------|---------------|
-| End-to-end flow (invoked from `/rite:pr:iterate` ステップ 7) | **Output pattern and return control to caller** |
+| End-to-end flow (invoked from `/rite:pr:iterate` ステップ 1) | **Output pattern and return control to caller** |
 | Standalone execution | Confirm the next action with `AskUserQuestion` |
 
 Claude は conversation context から `rite:pr:review` が同一セッション内で直前に Skill ツール経由で invoke されたかどうかで判定する。前者は E2E、それ以外は standalone。E2E 時は machine-readable output pattern (`[review:mergeable]` / `[review:fix-needed:{n}]`) を emit し caller (`/rite:pr:iterate`) に制御を返す。caller が output pattern を見て次のアクションを決定する。

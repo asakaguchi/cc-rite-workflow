@@ -220,7 +220,7 @@ All `gh` commands that accept `--body` or `--comment` parameters **MUST** use sa
 
 When a step of `/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge` fails or is skipped (Skill load failure, hook abnormal exit, Wiki ingest skip/failure, etc.), the affected skill or hook emits a plain `WARNING` / `ERROR` line to **stderr**. The orchestrator surfaces it in the conversation context, and the user re-runs the affected step via `/rite:resume`. Failures are visible but not auto-registered as Issues; the user decides whether to file one.
 
-> The earlier auto-registration mechanism (`workflow-incident-emit.sh` sentinel + `/rite:issue:start` detection + `workflow_incident:` config key) was removed in PR 2b (#1088) in favor of this single-layer plain-stderr design. See `docs/SPEC.md` "Workflow Failure Surfacing" for details.
+> The earlier auto-registration mechanism (`workflow-incident-emit.sh` sentinel + `/rite:issue:start` detection + `workflow_incident:` config key) was removed in #1088 (実装: #1091、PR 2b リファクタリングシリーズ) in favor of this single-layer plain-stderr design. See `docs/SPEC.md` "Workflow Failure Surfacing" for details.
 
 ## Integration
 

@@ -2,7 +2,7 @@
 title: "Fix 修正コメント自身が canonical convention を破る self-drift"
 domain: "anti-patterns"
 created: "2026-04-18T12:00:00+00:00"
-updated: "2026-05-01T03:27:29Z"
+updated: "2026-05-27T08:31:07Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T114056Z-pr-578.md"
@@ -16,6 +16,10 @@ sources:
     ref: "raw/reviews/20260501T012144Z-pr-756.md"
   - type: "fixes"
     ref: "raw/fixes/20260501T020145Z-pr-756.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260527T082452Z-pr-1161.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260527T083107Z-pr-1161.md"
 tags: ["self-drift", "canonical-convention", "grep-self-check", "review-fix-loop", "lint-rule-self-meta-drift"]
 confidence: high
 ---
@@ -117,6 +121,18 @@ PR #756 cycle 2 で commit message が「F-NN/F-XX journal markers を semantic 
 
 PR #756 cycle 3 で 2 件、cycle 4 で 1 件 (line-number drift と複合) の self-drift が累積検出され、cycle 5 で finally 0 finding 収束。本累積パターンは「commit message が claim する変換は機械検証する」doctrine の SoT 化の必要性を実証する。
 
+### 「旧 X は Y していた」journal phrase の同 PR 別箇所残存 (PR #1161 で追加)
+
+PR #1161 cycle 8 で `comment-best-practices.md` 原則 2 (`no_journal_comment`) 整備 commit を landed させたが、cycle 9 で同 PR の別箇所 (script:309 / test:49) に `旧 X は Y していた` 構造の journal phrase が残存し HIGH × 2 で検出された。cycle 1-3 で導入された journal phrase が cycle 8 の sweep で取りこぼされた事例。
+
+cycle 7 で同種違反 3 件 → cycle 9 で 2 件 → cycle 11 で 0 件と単調収束 (3 → 2 → 0)、3 reviewer (code-quality / error-handling / test) cross-validation を経て mergeable へ。`旧 X は Y していた` 形式は日本語 prose 中に自然に混入しやすく、英語前提の `grep -E 'F-[0-9]+'` 系では検出できない。
+
+教訓:
+
+- **整備 commit の対象 commit は cycle 全体ではなく PR 全体**: cycle 8 で「comment doctrine 整備」commit を行う場合、対象は同 cycle で touched された行に限らず、PR 全体の prose / コメントを scope に含める。`git diff ${base_branch}...HEAD` で PR 全体の追加行を出してから journal phrase を grep する
+- **多言語 journal phrase の grep pattern 拡張**: `comment-best-practices.md` の no_journal_comment 禁止句リストに「日本語 / 旧版表現」(`旧 X (は|を) Y (している|していた)` 構造) を canonical 化し、`journal-marker-check.sh` 同型 lint script で `grep -E '旧[^[:space:]]+(は|を)[^[:space:]]+(している|していた)'` のような多言語パターンを CI 化する
+- **shrinking convergence の signal**: 3 → 2 → 0 のような単調減少 trajectory は「整備 commit による積み残しの順次解消」を示す。drift class が cycle ごとに細粒度化せず単純減少しているなら、機械検証 (lint script) ではなく per-cycle reviewer scan で十分閉塞可能と判断できる
+
 ## 関連ページ
 
 - [canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する](../patterns/canonical-reference-sample-code-strict-sync.md)
@@ -133,3 +149,5 @@ PR #756 cycle 3 で 2 件、cycle 4 で 1 件 (line-number drift と複合) の 
 - [PR #671 fix (新規 lint rule 自身の self-meta drift)](../../raw/fixes/20260426T015356Z-pr-671.md)
 - [PR #756 cycle 3 review (journal marker 二重検出 HIGH × 2)](../../raw/reviews/20260501T012144Z-pr-756.md)
 - [PR #756 cycle 4 fix (全置換 claim の機械検証必須化)](../../raw/fixes/20260501T020145Z-pr-756.md)
+- [PR #1161 cycle 9 review (`旧 X は Y していた` journal phrase の同 PR 別箇所残存 HIGH × 2)](../../raw/reviews/20260527T082452Z-pr-1161.md)
+- [PR #1161 cycle 11 review (3 → 2 → 0 単調収束で mergeable)](../../raw/reviews/20260527T083107Z-pr-1161.md)

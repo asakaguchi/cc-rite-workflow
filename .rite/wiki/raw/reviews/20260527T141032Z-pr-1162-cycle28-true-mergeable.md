@@ -4,7 +4,7 @@ source_ref: "pr-1162-cycle28-TRUE-MERGEABLE"
 captured_at: "2026-05-27T14:10:32+00:00"
 pr_number: 1162
 title: "PR #1162 review results (cycle 28 — TRUE MERGEABLE after 27 cycles)"
-ingested: false
+ingested: true
 ---
 
 ## Review Results (cycle 28 — TRUE MERGEABLE convergence)

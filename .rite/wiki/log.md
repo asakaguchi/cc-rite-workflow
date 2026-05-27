@@ -784,3 +784,24 @@
 | 2026-05-27T08:45:00Z | ingest:update | pages/anti-patterns/fix-comment-self-drift.md | PR #1161 cycle 9 で「整備 commit による積み残しの同 PR 別箇所残存」+「`旧 X は Y していた` 日本語 journal phrase の多言語 grep pattern 拡張」+「3 → 2 → 0 単調収束 (cycle 7 → 9 → 11) の signal」を追加。整備 commit の対象 scope は cycle 内 touched 行ではなく PR 全体の追加行とする canonical (source_ref: pr-1161 reviews cycle 9 + cycle 11) |
 | 2026-05-27T08:45:00Z | ingest:skip | raw/reviews/20260527T083107Z-pr-1161.md | PR #1161 cycle 11 mergeable record (3 reviewer 0 件 / 3 → 2 → 0 単調収束)。経験則は cycle 9 raw と統合して fix-comment-self-drift.md update にまとめたため独立 ingest はせず skip |
 | 2026-05-27T08:46:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=11, unregistered_raw=189, broken_refs=0 |
+| 2026-05-28T00:00:00Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1162 (Issue #1159、累積 45 回目、28 cycle) で cleanup PR 自身での Asymmetric Fix Transcription 再発 / pre-deletion state 定義の精密性 / 新規 hook + doc 同時整備義務 / PR/Issue type prefix 完全削除 / literal section 名引用慣習 / cleanup policy 適用時の同 staleness class 全 entity 同時適用契約 を 5 軸並列で追加。代表 raw: reviews/20260527T093918Z-pr-1162.md, fixes/20260527T095229Z-pr-1162.md, reviews/20260527T105550Z-pr-1162-cycle6.md, fixes/20260527T111102Z-pr-1162-cycle9-fix.md, reviews/20260527T130811Z-pr-1162-cycle18.md |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/reviews/20260527T100211Z-pr-1162-cycle2.md | PR #1162 cycle 2 convergence record。経験則は asymmetric-fix-transcription.md update に統合済 |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/reviews/20260527T102324Z-pr-1162-cycle3.md | PR #1162 cycle 3 (新 cleanup policy 1 entity 適用の連鎖 setup)。経験則は asymmetric-fix-transcription.md update の cycle 3-5 段に統合 |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/reviews/20260527T104628Z-pr-1162-cycle4.md | PR #1162 cycle 4 (同 staleness class 連鎖検出 parent_routing / lint)。経験則は asymmetric-fix-transcription.md update の cycle 3-5 段に統合 |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/reviews/20260527T110942Z-pr-1162-cycle8.md | PR #1162 cycle 8 (Note precision、cycle 4-6 caller catalog rejuvenation scope)。経験則は asymmetric-fix-transcription.md update の cycle 8-12 段に統合 |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/reviews/20260527T112141Z-pr-1162-cycle10.md | PR #1162 cycle 10 (reviewer 自己修正、累積 20 回目相当)。経験則は asymmetric-fix-transcription.md update の cycle 8-12 段に統合 |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/reviews/20260527T112807Z-pr-1162-cycle12.md | PR #1162 cycle 12 (2 回連続 self-correction、累積 21 回目)。経験則は asymmetric-fix-transcription.md update の cycle 8-12 段に統合 |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/reviews/20260527T113529Z-pr-1162-cycle14-mergeable.md | PR #1162 cycle 14 mergeable record。経験則は新規なし |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/reviews/20260527T115633Z-pr-1162-cycle16-mergeable.md | PR #1162 cycle 16 mergeable record。経験則は新規なし |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/reviews/20260527T141032Z-pr-1162-cycle28-true-mergeable.md | PR #1162 cycle 28 true mergeable record。経験則は新規なし |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/fixes/20260527T101621Z-pr-1162-cycle2.md | PR #1162 cycle 2 fix (semantic owner vs parent heading 精度向上)。経験則は asymmetric-fix-transcription.md update に統合 |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/fixes/20260527T103004Z-pr-1162-cycle3-fix.md | PR #1162 cycle 3 fix (schema doc / script header / 実 caller 3 sites symmetric update)。経験則は既存 canonical-list-count-claim-drift-anchor.md でカバー、本 PR 累積観測としては asymmetric-fix-transcription.md に統合 |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/fixes/20260527T104812Z-pr-1162-cycle5-fix.md | PR #1162 cycle 5 fix (source enum cleanup policy 連鎖、累積 17 回目相当)。経験則は asymmetric-fix-transcription.md update の cycle 3-5 段に統合 |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/fixes/20260527T105739Z-pr-1162-cycle7-fix.md | PR #1162 cycle 7 fix (Issue/PR 区別 fact-check、PR prefix 削除、累積 18 回目相当)。経験則は asymmetric-fix-transcription.md update の cycle 6-7 段に統合 |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/fixes/20260527T112300Z-pr-1162-cycle11-fix.md | PR #1162 cycle 11 fix (renumber 経緯併記、累積 20 回目)。経験則は asymmetric-fix-transcription.md update の cycle 8-12 段に統合 |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/fixes/20260527T112912Z-pr-1162-cycle13-fix.md | PR #1162 cycle 13 fix。経験則は新規なし |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/fixes/20260527T115008Z-pr-1162-cycle15-fix.md | PR #1162 cycle 15 fix。経験則は新規なし |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/fixes/20260527T130028Z-pr-1162-cycle17-fix.md | PR #1162 cycle 17 fix (docs/designs/ partial fix の起点)。経験則は asymmetric-fix-transcription.md update の cycle 18 段に統合 |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/fixes/20260527T131333Z-pr-1162-cycle19-fix.md | PR #1162 cycle 19 fix。経験則は新規なし |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/fixes/20260527T132209Z-pr-1162-cycle21-fix.md | PR #1162 cycle 21 fix。経験則は新規なし |
+| 2026-05-28T00:00:00Z | ingest:skip | raw/fixes/20260527T134032Z-pr-1162-cycle23-fix.md | PR #1162 cycle 23 fix。経験則は新規なし |

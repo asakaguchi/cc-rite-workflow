@@ -2,8 +2,18 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-27T05:00:00Z"
+updated: "2026-05-28T00:00:00Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260527T093918Z-pr-1162.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260527T095229Z-pr-1162.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260527T105550Z-pr-1162-cycle6.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260527T111102Z-pr-1162-cycle9-fix.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260527T130811Z-pr-1162-cycle18.md"
   - type: "reviews"
     ref: "raw/reviews/20260525T170549Z-pr-1143.md"
   - type: "reviews"
@@ -919,6 +929,26 @@ cycle 1 fix で `wiki-patterns.md` に新規 SoT セクション (YAML パース
 
 cycle 1 で SoT へ集約した直後、SoT への forward-pointer link を `ingest.md` L64 / `lint.md` L93 に追加した際、forward-pointer 直後の「本ファイルは strict 4 分岐 + helper 経路」のインライン要約も同じ false claim を 2 ファイルに複製。SoT 集約と inline summary の責務分離が曖昧で、SoT 誤記が 3 site (wiki-patterns.md + ingest.md + lint.md) に拡散した。経験則: **SoT 化方針なら inline での性質再宣言は「削除」が drift-free** ([[single-sot-on-references-extract]] の anchor 参照のみ規約に従う)。
 
+### Dangling reference cleanup PR 自身での再発 + pre-deletion state 定義の精密性 (PR #1162 cycle 1-18 累積 45 回目)
+
+PR #1162 (Issue #1159 — pre-existing dangling references cleanup PR、`Phase X.Y → ステップ X.Y` rename / cross-reference 整理) は **cleanup PR 自身が同じ anti-pattern を再発した最たる事例**。`/rite:pr:iterate` の review-fix loop で 28 cycle にわたり段階的に新サブパターンが surface した:
+
+- **cycle 1**: review.md 冒頭 (line 62, 66) で `iterate.md ステップ 7 → ステップ 1` rename を適用したが、同一ファイル内 line 4344 / 4736 の同型 dangling reference を sanity check で取りこぼし。`references/issue-create-with-projects.md` で `Phase 3.14 → ステップ 3.14` rename を caller 側のみ適用し destination file (lint.md は `## Phase 3:` 階層維持) を変更せず片方向 rename。教訓: AC-2 `grep -rE` sanity check の実装は **reference 先 file の heading 一覧との突き合わせ** を必須化しないと同型 dangling を取りこぼす。
+- **cycle 3-5 (累積 17 回目相当)**: 新規 cleanup policy (廃止 caller は enum 削除 + Note 化) を `pr_fix` のみに適用 → cycle 4 で同 staleness class の `parent_routing` / `lint` も連鎖 finding → cycle 5 で 3 値統合 Note ブロックに拡張。教訓: **新規 policy 導入時は同 type の全 entity に同時適用する pre-condition を明示する**。
+- **cycle 6-7 (累積 18 回目)**: cycle 5 で導入した Note 内の 2 件の事実誤認 (`PR #506` → Issue/PR 区別 + #1136 / `start.md / parent-routing.md` 併記 → PR #1079 で廃止されたのは parent-routing.md のみ) を tech-writer が `gh CLI + git log -S` で fact-check。教訓: **PR/Issue 番号は `gh pr view N` / `gh issue view N` 両方で type 確認、`PR` prefix を完全削除 (`#N` のみ表記) して type 誤記リスクを構造的に排除**。
+- **cycle 8-12 (累積 19-21 回目)**: cycle 9 で `(E2E 別 Issue 化 logic)` 略称 → `(Automatic Separate Issue Creation)` literal 引用に修正、tech-writer 自身が cycle 10 / cycle 12 と **2 回連続で直前 cycle の自分の主張を訂正**。実態は `pre-deletion state 定義` を「deletion commit ^1」と「renumber commit ^1」のどちらにとるかで誤読が反復していた。教訓: **retired caller catalog では (a) deletion commit と (b) renumber commit の 2 系列を区別し、retired caller が実際に呼ばれていた最終状態 (= renumber 直前の commit ^1) を `git show` で verify**。略称ではなく **literal な section 名を引用** する。
+- **cycle 18 (累積 25 回目)**: 新規 hook (orphan-reference-check.sh) を作る際に lint.md Phase 4 integration (appendix / summary row / closing policy の 3 連動) を同時整備せず CRITICAL × 3 sites として surface。教訓: **新規 hook + documentation の 3 連動更新は canonical pattern (Phase 3.5-3.14) を踏襲する義務**。
+
+#### 経験則の精緻化
+
+- **AC-2 sanity check の運用契約**: `grep -rE '(ステップ|Phase) [0-9]+\.[0-9]+'` の grep ヒット件数だけでなく reference 先 file の heading 一覧との突き合わせ verify を必須化
+- **片方向 rename の禁止**: rename 適用前に destination file の terminology convention を確認、destination が変更不可なら caller 側も変更しない
+- **PR/Issue type prefix 完全削除**: GitHub auto-resolution が type を判定するため Note では `#N` のみで記述
+- **pre-deletion state の 2 系列定義**: deletion commit と renumber commit を `git show` で verify、retired caller catalog は renumber 直前の commit ^1 を採用
+- **新規 hook + doc 3 連動 (新 site)**: lint.md / SPEC.md / canonical pattern documentation のいずれも欠落させない pre-condition gate
+
+連続再現: PR #968 → #973 → #984 → #992 → #996 (5 PR / 累積 28-32) を maximum、PR #1124 (39)・#1128 (40)・#1130 (41)・#1133 (0 findings)・#1139 (42)・#1143 (43)・#1155 (44)・**#1162 (45、28 cycle / 多軸 surface)** と continuum。本 PR は cycle 数で PR #1139 (14 cycle) を上回り **累積対策 PR で最長 cycle 数を実測**、self-application × pre-deletion 精密性 × policy 適用連鎖 × fact-check 義務 × hook 整備 incomplete の 5 軸並列発火。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -1047,4 +1077,9 @@ cycle 1 で SoT へ集約した直後、SoT への forward-pointer link を `ing
 - [PR #1155 cycle 1 review (累積 44 回目の起点: flatten refactor PR で 6 site 対称セット (ingest.md cat_err / _reset_err / find_err + lint.md sort_err / add_err / commit_err) のうち 2 site のみ Pattern 3 規範 WARNING が silent fallback に格下げ regression、3 reviewer 独立 HIGH 検出)](../../raw/reviews/20260526T175307Z-pr-1155.md)
 - [PR #1155 cycle 2 review (累積 44 回目の partial fix トラップ surface: cycle 1 fix が 2/6 site のみで残り 3 site (lint.md sort_err / add_err / commit_err) が cycle 2 で同根 regression として検出。3 reviewer 全員が独立に同 cluster の SoT 初稿 factual error も同時指摘 — 列挙 site の grep 実在検証なし / 実装 case 文 verbatim verify なし / helper 関数名 取り違え)](../../raw/reviews/20260526T182658Z-pr-1155-cycle2.md)
 - [PR #1155 cycle 1 fix (累積 44 回目: 「対称性回収」修正は同 PR 内全 site を grep 網羅検査してから fix する経験則、helper 化前後の key 別挙動 bit-identical verify ルール確立)](../../raw/fixes/20260526T180309Z-pr-1155.md)
+- [PR #1162 cycle 1 review (累積 45 回目の起点: cleanup PR 自身での Asymmetric Fix Transcription 再発 — review.md 冒頭 line 62/66 で適用した `iterate.md ステップ 7 → ステップ 1` rename が同一ファイル内 line 4344/4736 の同型 dangling reference を sanity check で取りこぼし、`issue-create-with-projects.md` の `Phase 3.14 → ステップ 3.14` rename が destination file lint.md `## Phase 3:` 階層維持と非対称、CRITICAL × 2 + HIGH × 1。教訓: AC-2 `grep -rE` sanity check の実装は reference 先 file の heading 一覧との突き合わせ verify を必須化)](../../raw/reviews/20260527T093918Z-pr-1162.md)
+- [PR #1162 cycle 1 fix (累積 45 回目の起点 fix: 同一ファイル内対称位置 dangling 取りこぼし F-01/F-02 + destination convention 違反による terminology drift F-03 を pure rename で対応。grep ヒット件数だけでなく reference 先 file heading 一覧突き合わせを sanity check に含める義務化)](../../raw/fixes/20260527T095229Z-pr-1162.md)
+- [PR #1162 cycle 6 review (累積 18 回目相当 — 文書化された事実の verify 義務: cycle 5 で導入した Note 内の `PR #506` → 実際は Issue/PR 区別 + #1136 / `start.md / parent-routing.md` 併記 → PR #1079 で廃止されたのは parent-routing.md のみ、を tech-writer が gh CLI + git log -S で fact-check 検出。教訓: `PR` type prefix を完全削除し `#N` のみ表記、GitHub auto-resolution に type 判定を委ねて誤記リスクを構造的に排除)](../../raw/reviews/20260527T105550Z-pr-1162-cycle6.md)
+- [PR #1162 cycle 9 fix (累積 19 回目 — literal section 名引用慣習の確立: `(E2E 別 Issue 化 logic)` 略称 → `(Automatic Separate Issue Creation)` literal 引用、`Phase 1.5.4 (Child Issue creation...)` → `Phase 1.5.4 (When No Child Issues Exist: Decomposition Proposal)` 正式 section 名 literal 引用に置換。Note 文言内で過去 section 名を parenthetical 修飾参照する場合は要約せず literal な section 名を引用する canonical 慣習を確立)](../../raw/fixes/20260527T111102Z-pr-1162-cycle9-fix.md)
+- [PR #1162 cycle 18 review (累積 25 回目 — infrastructure 新設の incomplete: 新規 hook orphan-reference-check.sh を作る際に lint.md Phase 4 integration (appendix / summary row / closing policy) を同時整備せず CRITICAL × 3 sites として surface、docs/designs/ の partial fix (cycle 17 で line 128 のみ修正、sibling 4 件未対応) も並行発火。教訓: 新規 hook 作成時は関連 documentation (lint.md Phase 4 integration) を canonical pattern (Phase 3.5-3.14 の 3 連動) を踏襲して同時整備しないと「動くが見えない」dead path が発生)](../../raw/reviews/20260527T130811Z-pr-1162-cycle18.md)
 - [PR #1155 cycle 2 fix (累積 44 回目の 6 site 対称セット完了 + SoT 新設時の verify 義務 3 種 (site grep / case 文 verbatim / helper 名 grep) を最低 2 reviewer 独立検証する経験則、inline 性質再宣言は SoT 化方針なら「削除」が drift-free)](../../raw/fixes/20260526T183041Z-pr-1155-cycle2-fix.md)

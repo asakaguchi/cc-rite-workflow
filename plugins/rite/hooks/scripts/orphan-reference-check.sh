@@ -12,21 +12,23 @@
 #
 # An orphan is defined as:
 #   1. File exists under plugins/rite/ (typically a reference doc)
-#   2. Inbound references from active scope (plugins/rite/ + docs/ + tests/)
-#      excluding self-references and HISTORICAL/retired markers
-#      total exactly 0
+#   2. Inbound references from active scope (plugins/rite/ + docs/ + .github/)
+#      excluding self-references total exactly 0
 #   3. No test pin (assert_grep / assert_contains for this filename) exists
 #      in plugins/rite/hooks/tests/ or plugins/rite/scripts/tests/
 #
 # False-positive defense:
 #   - Self-references (the file's own absolute or relative path mentioned
 #     inside itself) are excluded from the inbound count.
-#   - References inside fenced code blocks of historical / retired sections
-#     (lines matching `(※\s*削除済|\[削除済|HISTORICAL|retired)`) still count
-#     as inbound — these annotations indicate intentional documentation of a
-#     past relationship, not orphan status.
+#   - References inside HISTORICAL/retired/deletion annotations (e.g.,
+#     `(※ 削除済 — #N で removed)`) still count as inbound — this script
+#     does NOT distinguish marker context, treating any plain-text mention
+#     as a legitimate documentation reference of past relationship.
 #   - Files matching common static asset patterns (`.gitkeep`, `__init__.py`,
 #     `LICENSE`, `CHANGELOG.md`) are skipped entirely.
+#   - --all mode excludes runtime/local artifact directories (`.git/`,
+#     `.rite/`, `.rite-work-memory/`, `.rite-flow-state*`,
+#     `.rite-compact-state*`, `node_modules/`) from the find walk.
 #
 # Usage:
 #   orphan-reference-check.sh <file> [<file> ...]
@@ -38,6 +40,12 @@
 #
 #   --repo-root DIR overrides the repository root resolution (default:
 #   `git rev-parse --show-toplevel`, falling back to `pwd`).
+#
+# Note: `--quiet` is not implemented (unlike sibling lint scripts such as
+# `distributed-fix-drift-check.sh`). lint.md Phase 3.15 captures both the
+# `[orphan-reference-check] checked=N orphans=M` summary line and the
+# `ORPHAN: path (...)` per-orphan lines into the warning appendix, so
+# suppressing the summary is not desirable for the canonical use case.
 #
 # Exit codes:
 #   0 - No orphans found
@@ -90,6 +98,8 @@ done
 if [ -z "$REPO_ROOT" ]; then
   REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 fi
+# Strip trailing slash for consistent ${abs_path#$REPO_ROOT/} stripping
+REPO_ROOT="${REPO_ROOT%/}"
 if [ ! -d "$REPO_ROOT" ]; then
   echo "ERROR: repo-root not a directory: $REPO_ROOT" >&2
   exit 2
@@ -100,6 +110,12 @@ if [ "$USE_ALL" -eq 1 ]; then
   while IFS= read -r f; do
     FILES+=("$f")
   done < <(find "$REPO_ROOT/plugins/rite" \
+    -not -path "*/.git/*" \
+    -not -path "*/.rite/*" \
+    -not -path "*/.rite-work-memory/*" \
+    -not -path "*/.rite-flow-state*" \
+    -not -path "*/.rite-compact-state*" \
+    -not -path "*/node_modules/*" \
     \( -path "*/commands/*" -o -path "*/references/*" -o -path "*/skills/*" -o -path "*/agents/*" \) \
     -name "*.md" -type f 2>/dev/null | sort)
   if [ ${#FILES[@]} -eq 0 ]; then
@@ -167,7 +183,12 @@ for file in "$@"; do
     done < <(grep -rn -F "$basename" "${search_dirs[@]}" \
                 --include='*.md' --include='*.sh' --include='*.json' \
                 --include='*.yml' --include='*.yaml' --include='*.txt' \
+                --exclude-dir=tests \
                 2>/dev/null || true)
+    # --exclude-dir=tests prevents double-counting: test pin matches are
+    # tracked separately below and would otherwise be reported as both
+    # inbound and test_pin, making the `(inbound=N, test_pin=M)` annotation
+    # misleading. Inbound count reflects production references only.
   fi
 
   # Check for test pin (assert_grep / contains with filename in tests/)

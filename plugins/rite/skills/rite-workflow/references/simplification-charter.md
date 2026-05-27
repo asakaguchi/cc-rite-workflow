@@ -74,3 +74,7 @@ rite workflow 自体および rite workflow が生成する成果物（commit me
 - bash literal そのもの（`commands/issue/create.md` ステップ 5.3-5.4 の Decompose Path bash literal 等）
 
 ただし、これら適用範囲外のファイル**内でも上記『禁止パターン』は適用される** (`Issue #` 本文引用 / cycle # 記録 / 散文対称化契約 / `🚨` 濫用 等)。「適用範囲外」とは「ファイル丸ごと削除しない」の意味であり、ファイル内の歴史記述ノイズの整理は対象。
+
+## 関連
+
+- [Anchor 命名規約 (Asymmetric Fix Transcription 予防)](../../../commands/pr/references/anchor-naming-convention.md) — `# === ... ===` 形式 grep anchor の構造規約 + 対称位置への伝播漏れ failure mode の予防策。本 Charter の「散文重複禁止」を anchor 形式で機械的に担保するための運用規約。

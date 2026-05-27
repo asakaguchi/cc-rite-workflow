@@ -118,10 +118,13 @@ plugins/rite/commands/issue/start.md (orchestrator, ~700 行)
           └── sentinel: [start:finalize:completed]  (workflow 終端)
 
 新規 references (commands/issue/references/):
-  ├ flow-state-scaffolding.md  (Pre-write + Mandatory After 契約 SoT)
-  ├ pre-condition-gate.md      (state-read.sh fail-fast SoT)
-  ├ workflow-incident-detection.md      (Phase 5.4.4.1 SoT)
-  ├ workflow-incident-emit-pattern.md   (5 caller 用 emit pattern SoT)
+  <!-- ※ 本 tree は start.md hybrid redesign 提案時の予定 file 一覧。実装後の現状とは乖離している。
+       4 entry は後の refactoring で削除済 — 注記参照。残り 3 entry (fingerprint-cycling.md /
+       checklist-auto-check.md / metrics-recording.md) のみ現存。-->
+  ├ flow-state-scaffolding.md  (Pre-write + Mandatory After 契約 SoT) (※ 削除済 — #1136 で start.md 廃止時に orphan 削除)
+  ├ pre-condition-gate.md      (state-read.sh fail-fast SoT) (※ 削除済 — #1136 で start.md 廃止時に orphan 削除)
+  ├ workflow-incident-detection.md      (Phase 5.4.4.1 SoT) (※ 削除済 — #1091 で workflow-incident-emit 機構撤去時に削除)
+  ├ workflow-incident-emit-pattern.md   (5 caller 用 emit pattern SoT) (※ 削除済 — #1091 で workflow-incident-emit 機構撤去時に削除)
   ├ fingerprint-cycling.md     (Phase 5.4.1.0 + Quality Signal SoT)
   ├ checklist-auto-check.md    (Phase 5.2.1 + Auto-Check SoT)
   ├ metrics-recording.md       (Phase 5.5.2 SoT)

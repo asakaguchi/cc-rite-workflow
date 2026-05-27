@@ -231,6 +231,12 @@ rc=0
 out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
   --repo-root "$d" 2>/dev/null) || rc=$?
 assert_checker_rc "TC-5" "$rc"
+if [ "$rc" -ne 0 ]; then
+  fail "TC-5: expected no drift (rc=0), got rc=$rc (table/emit が一致する fixture で drift 検出すべきでない)"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+else
+  pass "TC-5: no drift confirmed with rc=0 as expected"
+fi
 # Drift should be empty here: emit and table both contain `no-pending`.
 if printf '%s\n' "$out" | grep -Eq "reason '(no-pending|no)'"; then
   fail "TC-5: hyphenated emit/table pair still produces drift (regex did not match table side)"

@@ -119,7 +119,7 @@ fi
 
 DRIFT_COUNT_FILE="$(mktemp)" || { echo "ERROR: mktemp failed" >&2; exit 2; }
 # Pattern 6 (Issue #1021) で使用する stderr capture tempfile を script-level で宣言し、
-# 統合 trap で signal interrupt 時の orphan を防ぐ (F-08)。
+# 統合 trap で signal interrupt 時の orphan を防ぐ。
 PATTERN6_STDERR=""
 # Pattern 2 awk tempfile も script-level で宣言して統合 trap で signal interrupt 時の
 # orphan を防ぐ (Pattern 6 stderr capture と同様に script-level 宣言 + 統合 trap で回収する doctrine)。
@@ -440,10 +440,14 @@ done
 # (independent of the TARGETS loop above, since the JSON files are scanned by
 # the delegate). Captures stderr to surface drift details via report().
 #
-# Issue #1021 F-03/F-08 fix: delegate を 1 回のみ invoke し (旧実装は --quiet + verbose
-# の 2 回 invoke で I/O 2 倍化)、`|| true` で exit code を握りつぶす代わりに rc を明示
-# capture して unexpected exit code を log に残す。`PATTERN6_STDERR` は script-level
-# 変数で trap (上記) が EXIT/INT/TERM/HUP 全てで cleanup する。
+# delegate を 1 回のみ invoke する設計: --quiet + verbose の 2 回 invoke では stderr を
+# 2 回読み出すため I/O コストが倍増する。1 回の invoke で stderr に drift 行を出力させて
+# 後段で parse する形に統合することで I/O コストを最小化する。
+# rc を `|| true` で握りつぶさず明示 capture する設計: 黙殺すると unexpected exit code
+# (binary 異常 / OOM / IO 失敗) が trace から消え、checker の degradation を後から
+# 追えなくなるため。`PATTERN6_STDERR` を script-level 変数として宣言する設計: signal
+# interrupt 時の orphan tempfile を本 script 冒頭の signal interrupt cleanup ハンドラで
+# 確実に回収するため。
 check_pattern_6() {
   local checker_script="$REPO_ROOT/plugins/rite/hooks/scripts/review-schema-version-check.sh"
   if [ ! -x "$checker_script" ]; then

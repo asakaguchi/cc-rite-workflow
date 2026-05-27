@@ -3245,7 +3245,7 @@ nit-noted は「修正不要の informational 指摘」のため code 変更 (Ed
 
 **Eval-order enumeration** (ステップ 2.4.N 独立 namespace、ステップ 1.2.0 enumeration とは別): emit reasons sequence = (`already_replied` / `mktemp_failed` / `gh_api_post_failure`)
 
-これらの reason は ステップ 1.2.0 の `FIX_FALLBACK_FAILED` / `REVIEW_SOURCE_*` 系列とは独立した namespace で、`/rite:pr:iterate` 側の ステップ 7 review-fix 判定では情報提示のみに使われる (ステップ 4.6 の `acknowledged_nit_count > 0` を超える詳細 routing には参加しない)。
+これらの reason は ステップ 1.2.0 の `FIX_FALLBACK_FAILED` / `REVIEW_SOURCE_*` 系列とは独立した namespace で、`/rite:pr:iterate` 側の ステップ 4 (fix sentinel 判定) では情報提示のみに使われる (ステップ 4.6 の `acknowledged_nit_count > 0` を超える詳細 routing には参加しない)。
 
 ---
 
@@ -4763,7 +4763,7 @@ ACTION: Return to ステップ 4.6.W and execute the Wiki Ingest Trigger before 
 
 ### 5.1 Output Pattern (Return Control to Caller)
 
-The `fix` flow-state write below records the v3 phase so a `/rite:resume` started after a fix iteration classifies the resume point correctly (`commands/resume.md` Phase 5.3 で `fix` → ステップ 7.2 へ routing):
+The `fix` flow-state write below records the v3 phase so a `/rite:resume` started after a fix iteration classifies the resume point correctly (`commands/resume.md` Phase 5.3 の `fix` 行で `/rite:pr:iterate {pr_number}` が invoke される):
 
 ```bash
 bash {plugin_root}/hooks/flow-state.sh set \

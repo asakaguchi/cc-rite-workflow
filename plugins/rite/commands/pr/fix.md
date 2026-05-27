@@ -4730,7 +4730,7 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 | 2 | Work memory contains `コマンド: /rite:pr:open` (or legacy `rite:pr:open` without prefix slash — writer hook が prefix なしで書く時期の互換) AND any `フェーズ:` value (具体値は writer 実装に依存。Priority 1 が catch しない context-compaction 経路の defensive fallback) | Within loop → Execute ステップ 5 |
 | 3 | Otherwise (user directly input `/rite:pr:fix`) | Standalone execution → Skip ステップ 5 |
 
-### 8.0 W Phase Completion Gate (Defense-in-Depth, #535)
+### 5.0 W Phase Completion Gate (Defense-in-Depth, #535)
 
 
 **Condition**: Execute only when flow state file exists (indicating e2e flow) AND `wiki.enabled: true` in `rite-config.yml`. When wiki is disabled, W Phase is legitimately skipped (no sentinel expected) — pass the gate unconditionally.
@@ -4761,7 +4761,7 @@ ACTION: Return to ステップ 4.6.W and execute the Wiki Ingest Trigger before 
 ```
 
 
-### 8.1 Output Pattern (Return Control to Caller)
+### 5.1 Output Pattern (Return Control to Caller)
 
 The `fix` flow-state write below records the v3 phase so a `/rite:resume` started after a fix iteration classifies the resume point correctly (`commands/resume.md` ステップ 5.3 で `fix` → ステップ 7.2 へ routing):
 
@@ -4866,7 +4866,7 @@ Then, based on the ステップ 4.6 completion report content **and the WM_UPDAT
 comm -3 \
   <(grep -oE 'WM_UPDATE_FAILED=1; reason=[a-z_][a-z_0-9]*' plugins/rite/commands/pr/fix.md \
     | sed 's/.*reason=//' | sort -u) \
-  <(awk '/^\*\*`reason` フィールド/{in_table=1; next} in_table && /^\*\*/{in_table=0} in_table && /^\| `[a-z_]/{match($0, /`[a-z_][a-z_0-9]*[^`]*`/); print substr($0, RSTART+1, RLENGTH-2)}' plugins/rite/commands/pr/fix.md \
+  <(awk '/^\| reason \| 発生/{in_table=1; next} in_table && /^[^\|]/{in_table=0} in_table && /^\| `[a-z_]/{match($0, /`[a-z_][a-z_0-9]*[^`]*`/); print substr($0, RSTART+1, RLENGTH-2)}' plugins/rite/commands/pr/fix.md \
     | sed 's/\$.*//' | sort -u)
 # → 空出力 (完全一致)
 ```
@@ -4874,7 +4874,7 @@ comm -3 \
 設計上の要点:
 
 - `grep` 側は `WM_UPDATE_FAILED=1; reason=` で prefix を絞り、`CONFIDENCE_OVERRIDE_READ_FAILED` / `REPLY_POST_FAILED` / `REPORT_POST_FAILED` / `ISSUE_CREATE_FAILED` の別 context flag を自動除外する (前方一致による一発フィルタ)
-- `awk` 側は `**\`reason\` フィールド` セクションから次の `**` heading までを `in_table=1` 範囲とし、fix.md 内の他テーブル (`auto` / `en` / `ja` / `confidence_override_count` / `confidence_override_findings` / `project_registration` 等) を拾わない
+- `awk` 側は `| reason | 発生 Phase | 発生条件 |` の table header 行を起点として `in_table=1` を開始し、非 `|` 行で `in_table=0` に戻すことで reason 表のみを対象とする。fix.md 内の他テーブル (`auto` / `en` / `ja` / `confidence_override_count` / `confidence_override_findings` / `project_registration` 等) を拾わない。section 見出し (`**\`reason\` フィールド ...`) や周辺の段落 (`**完全性保証** — ...`) を起点／終点トリガーにしないため、Pattern B (defense blockquote 物理排除) で blockquote が `**` 強調に格上げされても in_table 範囲を壊さない
 - `sed 's/\$.*//'` で `python_unexpected_exit_$py_exit` のような shell 変数展開部分を切り落とし、両側で同じ prefix (`python_unexpected_exit_`) として比較する
 
 | reason | 発生 Phase | 発生条件 |
@@ -5007,7 +5007,7 @@ PR #123 のレビュー指摘対応を完了しました
 
 ---
 
-### 8.2 Standalone Execution Behavior
+### 5.2 Standalone Execution Behavior
 
 For standalone execution, ステップ 5 is not executed. The completion report from ステップ 4.6 will guide the user.
 

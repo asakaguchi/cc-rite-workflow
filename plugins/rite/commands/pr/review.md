@@ -4645,8 +4645,8 @@ Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:
 
 | Result | Phase | Next Action |
 |--------|-------|-------------|
-| `[review:mergeable]` | `review` | `rite:pr:review completed. Result: [review:mergeable]. Proceed to ステップ 5.5 (Ready for Review). Do NOT stop.` |
-| `[review:fix-needed:{n}]` | `review` | `rite:pr:review completed. Result: [review:fix-needed:{n}]. Proceed to ステップ 5.4.4 (fix). Do NOT stop.` |
+| `[review:mergeable]` | `review` | `rite:pr:review completed. Result: [review:mergeable]. Proceed to /rite:pr:ready (caller の review-fix loop が ready 遷移を起動). Do NOT stop.` |
+| `[review:fix-needed:{n}]` | `review` | `rite:pr:review completed. Result: [review:fix-needed:{n}]. Proceed to /rite:pr:fix (caller の review-fix loop が fix 起動). Do NOT stop.` |
 
 ```bash
 bash {plugin_root}/hooks/flow-state.sh set \

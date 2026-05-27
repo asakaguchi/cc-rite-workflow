@@ -28,6 +28,7 @@ set -uo pipefail
 REPO_ROOT=""
 QUIET=0
 PATTERN_FILTER=""
+SHOW_EXTRACTED_REASONS=0
 declare -a TARGETS=()
 USE_ALL=0
 
@@ -43,12 +44,14 @@ usage() {
 Usage: distributed-fix-drift-check.sh [options]
 
 Options:
-  --all              Check the default target set (fix.md, review.md, tech-writer.md)
-  --target FILE      Check FILE (repeatable). Path relative to repo root.
-  --pattern N        Only run pattern N (1-6). Default: all patterns.
-  --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
-  --quiet            Suppress per-finding output (still exit non-zero on drift)
-  -h, --help         Show this help
+  --all                       Check the default target set (fix.md, review.md, tech-writer.md)
+  --target FILE               Check FILE (repeatable). Path relative to repo root.
+  --pattern N                 Only run pattern N (1-6). Default: all patterns.
+  --repo-root DIR             Repository root (default: git rev-parse --show-toplevel)
+  --show-extracted-reasons    Print the extracted table_reasons / emit_reasons lists for Pattern 2.
+                              Useful for differentiating real drift from regex artifacts (Issue #1158 AC-4).
+  --quiet                     Suppress per-finding output (still exit non-zero on drift)
+  -h, --help                  Show this help
 
 Combining --all and --target:
   --all and --target can be used together. When both are specified, the
@@ -71,11 +74,15 @@ while [ $# -gt 0 ]; do
     --target) TARGETS+=("$2"); shift 2 ;;
     --pattern) PATTERN_FILTER="$2"; shift 2 ;;
     --repo-root) REPO_ROOT="$2"; shift 2 ;;
+    --show-extracted-reasons) SHOW_EXTRACTED_REASONS=1; shift ;;
     --quiet) QUIET=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "ERROR: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
+# SHOW_EXTRACTED_REASONS は check_pattern_2 が同一シェル内 `[ ... ]` builtin で参照するため
+# export 不要 (将来 awk 内で `ENVIRON["SHOW_EXTRACTED_REASONS"]` を参照する誤拡張を誘発するリスクがある
+# ため export を削除し、parent shell scope のみで運用する)。
 
 if [ -z "$REPO_ROOT" ]; then
   REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -112,10 +119,20 @@ fi
 
 DRIFT_COUNT_FILE="$(mktemp)" || { echo "ERROR: mktemp failed" >&2; exit 2; }
 # Pattern 6 (Issue #1021) で使用する stderr capture tempfile を script-level で宣言し、
-# 統合 trap で signal interrupt 時の orphan を防ぐ (F-08)。
+# 統合 trap で signal interrupt 時の orphan を防ぐ。
 PATTERN6_STDERR=""
+# Pattern 2 awk tempfile も script-level で宣言して統合 trap で signal interrupt 時の
+# orphan を防ぐ (Pattern 6 stderr capture と同様に script-level 宣言 + 統合 trap で回収する doctrine)。
+# check_pattern_2 関数内で AWK_TABLE_OUT 等に mktemp 結果を代入し、正常完了時に明示 rm + ""
+# reset することで二重 rm を避ける。signal interrupt 経路では本 trap が rm -f で回収する。
+AWK_TABLE_OUT=""
+AWK_TABLE_ERR=""
+AWK_EMIT_OUT=""
+AWK_EMIT_ERR=""
 _drift_check_cleanup() {
-  rm -f "${DRIFT_COUNT_FILE:-}" "${PATTERN6_STDERR:-}"
+  rm -f "${DRIFT_COUNT_FILE:-}" "${PATTERN6_STDERR:-}" \
+        "${AWK_TABLE_OUT:-}" "${AWK_TABLE_ERR:-}" \
+        "${AWK_EMIT_OUT:-}" "${AWK_EMIT_ERR:-}"
 }
 trap 'rc=$?; _drift_check_cleanup; exit $rc' EXIT
 trap '_drift_check_cleanup; exit 130' INT
@@ -176,20 +193,126 @@ check_pattern_1() {
 
 # ----- Pattern 2: reason-table drift -----------------------------------------
 # Markdown table cells like `| `reason_name` ...` vs `reason=reason_name` emits.
+#
+# Robustness notes (Issue #1158):
+#   - Both extractors accept hyphens in identifiers ([a-z_][a-z0-9_-]*) so that
+#     reasons such as `no-pending` are not truncated to `no`.
+#   - Both extractors skip matches that are truncation artifacts:
+#       (a) emit-side: followed immediately by `$` — shell variable expansion
+#           ends the value (e.g. `reason=trigger_exit_$trigger_exit` would
+#           otherwise yield the bogus reason `trigger_exit_`)
+#       (b) both sides: ending in `_` or `-` — these are stub residues of (a)
+#           or hyphenated/underscored values that got chopped at a
+#           non-identifier boundary. table-side also applies this filter so that
+#           Markdown table cells like `| `python_unexpected_exit_$py_exit` |`
+#           do not pollute `table_reasons` with `python_unexpected_exit_` and
+#           generate a false "table has X but emit doesn't" drift entry against
+#           the emit-side `[_-]$` skip.
+#     Static literals like `reason=commit_rc_4` are preserved (they end in a
+#     digit, not `_/-`, and have no trailing `$`).
+#
+# Silent-failure guard (Pattern 2 awk rc check):
+#   awk のバイナリ異常 / syntax error / IO 失敗で `table_reasons` / `emit_reasons` が
+#   空文字列 silent fallback すると、後段 `[ -z "$table_reasons" ] && return 0` で
+#   Pattern 2 全体が暗黙 skip され drift があっても見逃される。awk の exit code を
+#   tempfile 経由で明示捕捉し、失敗時は WARNING + skip するように guard する。
 check_pattern_2() {
   local file="$1"
   [ -f "$file" ] || return 0
   local table_reasons emit_reasons missing extra
-  table_reasons=$(awk '
-    /^\| `[a-z_][a-z0-9_]*`/ {
+  local awk_table_rc awk_emit_rc
+
+  # tempfile は script-level の AWK_TABLE_OUT / AWK_TABLE_ERR / AWK_EMIT_OUT / AWK_EMIT_ERR
+  # 4 変数で管理し、_drift_check_cleanup trap (本 script 冒頭の signal interrupt cleanup ハンドラ)
+  # で orphan を回収する。正常完了時は明示 rm + "" reset で trap 二重 rm を避ける。
+  # mktemp に 2>/dev/null を付け sibling (pr-cycle-cleanup.sh 等) と統一 (bare stderr leak 防止)。
+  # table-side awk: rc capture for silent-failure guard + asymmetric [_-]$ skip
+  AWK_TABLE_OUT=$(mktemp /tmp/rite-drift-awk-table-out-XXXXXX 2>/dev/null) || AWK_TABLE_OUT=""
+  AWK_TABLE_ERR=$(mktemp /tmp/rite-drift-awk-table-err-XXXXXX 2>/dev/null) || AWK_TABLE_ERR=""
+  if [ -z "$AWK_TABLE_OUT" ]; then
+    log "  [P2] Pattern 2 skipped on $file: mktemp for table-side awk output failed"
+    # skip を distinct prefix で stdout にも emit して CI grep で区別可能にする
+    # ([drift][P2] と区別する [drift-check-skip][P2] prefix)
+    out "[drift-check-skip][P2] ${file}: mktemp_failed (table_out)"
+    rm -f "${AWK_TABLE_ERR:-}"
+    AWK_TABLE_ERR=""
+    return 0
+  fi
+  awk_table_rc=0
+  awk '
+    /^\| `[a-z_][a-z0-9_-]*`/ {
       gsub(/[|`]/, " ")
       for (i = 1; i <= NF; i++) {
-        if ($i ~ /^[a-z_][a-z0-9_]*$/) { print $i; break }
+        if ($i ~ /^[a-z_][a-z0-9_-]*$/) {
+          if ($i ~ /[_-]$/) continue
+          print $i
+          break
+        }
       }
     }
-  ' "$file" | sort -u)
-  emit_reasons=$(grep -oE 'reason=[a-z_][a-z0-9_]*' "$file" 2>/dev/null \
-    | sed 's/reason=//' | sort -u)
+  ' "$file" >"$AWK_TABLE_OUT" 2>"${AWK_TABLE_ERR:-/dev/null}" || awk_table_rc=$?
+  if [ "$awk_table_rc" -ne 0 ]; then
+    log "  [P2] Pattern 2 skipped on $file: table-side awk rc=$awk_table_rc"
+    if [ -n "$AWK_TABLE_ERR" ] && [ -s "$AWK_TABLE_ERR" ]; then
+      log "    awk stderr: $(head -1 "$AWK_TABLE_ERR")"
+    fi
+    out "[drift-check-skip][P2] ${file}: awk_rc=${awk_table_rc} (table)"
+    rm -f "$AWK_TABLE_OUT" "${AWK_TABLE_ERR:-}"
+    AWK_TABLE_OUT="" AWK_TABLE_ERR=""
+    return 0
+  fi
+  table_reasons=$(sort -u "$AWK_TABLE_OUT")
+  rm -f "$AWK_TABLE_OUT" "${AWK_TABLE_ERR:-}"
+  AWK_TABLE_OUT="" AWK_TABLE_ERR=""
+
+  # emit-side awk: rc capture for silent-failure guard
+  AWK_EMIT_OUT=$(mktemp /tmp/rite-drift-awk-emit-out-XXXXXX 2>/dev/null) || AWK_EMIT_OUT=""
+  AWK_EMIT_ERR=$(mktemp /tmp/rite-drift-awk-emit-err-XXXXXX 2>/dev/null) || AWK_EMIT_ERR=""
+  if [ -z "$AWK_EMIT_OUT" ]; then
+    log "  [P2] Pattern 2 skipped on $file: mktemp for emit-side awk output failed"
+    out "[drift-check-skip][P2] ${file}: mktemp_failed (emit_out)"
+    rm -f "${AWK_EMIT_ERR:-}"
+    AWK_EMIT_ERR=""
+    return 0
+  fi
+  awk_emit_rc=0
+  awk '
+    {
+      rest = $0
+      while (match(rest, /reason=[a-z_][a-z0-9_-]*/)) {
+        val = substr(rest, RSTART + 7, RLENGTH - 7)
+        after = substr(rest, RSTART + RLENGTH, 1)
+        rest = substr(rest, RSTART + RLENGTH)
+        if (after == "$") continue
+        if (val ~ /[_-]$/) continue
+        print val
+      }
+    }
+  ' "$file" >"$AWK_EMIT_OUT" 2>"${AWK_EMIT_ERR:-/dev/null}" || awk_emit_rc=$?
+  if [ "$awk_emit_rc" -ne 0 ]; then
+    log "  [P2] Pattern 2 skipped on $file: emit-side awk rc=$awk_emit_rc"
+    if [ -n "$AWK_EMIT_ERR" ] && [ -s "$AWK_EMIT_ERR" ]; then
+      log "    awk stderr: $(head -1 "$AWK_EMIT_ERR")"
+    fi
+    out "[drift-check-skip][P2] ${file}: awk_rc=${awk_emit_rc} (emit)"
+    rm -f "$AWK_EMIT_OUT" "${AWK_EMIT_ERR:-}"
+    AWK_EMIT_OUT="" AWK_EMIT_ERR=""
+    return 0
+  fi
+  emit_reasons=$(sort -u "$AWK_EMIT_OUT")
+  rm -f "$AWK_EMIT_OUT" "${AWK_EMIT_ERR:-}"
+  AWK_EMIT_OUT="" AWK_EMIT_ERR=""
+
+  # AC-4 (Issue #1158): expose extracted reason lists so the user can
+  # differentiate true positives from regex artifacts at a glance.
+  # `${var//$'\n'/ }` で改行を space に置換し、parameter expansion 形で渡す設計:
+  # 引数渡し形 (`printf '%s ' $var`) は word-splitting と glob 展開が同時発生するため、将来
+  # reason regex に glob char (`*` / `?` / `[` 等) を許可した際に silent corrupt するリスクがある。
+  # parameter expansion 形に統一することでこの経路を構造的に排除する。
+  if [ "${SHOW_EXTRACTED_REASONS:-0}" -eq 1 ]; then
+    log "  [P2 extracted] ${file}: table_reasons=$(printf '%s' "${table_reasons//$'\n'/ }" | sed 's/[[:space:]]*$//')"
+    log "  [P2 extracted] ${file}: emit_reasons=$(printf '%s' "${emit_reasons//$'\n'/ }" | sed 's/[[:space:]]*$//')"
+  fi
   # If the file has no reason table at all, Pattern-2 does not apply.
   # Skipping here prevents false "never emitted" flags for emit-only files.
   [ -z "$table_reasons" ] && return 0
@@ -318,10 +441,14 @@ done
 # (independent of the TARGETS loop above, since the JSON files are scanned by
 # the delegate). Captures stderr to surface drift details via report().
 #
-# Issue #1021 F-03/F-08 fix: delegate を 1 回のみ invoke し (旧実装は --quiet + verbose
-# の 2 回 invoke で I/O 2 倍化)、`|| true` で exit code を握りつぶす代わりに rc を明示
-# capture して unexpected exit code を log に残す。`PATTERN6_STDERR` は script-level
-# 変数で trap (上記) が EXIT/INT/TERM/HUP 全てで cleanup する。
+# delegate を 1 回のみ invoke する設計: --quiet + verbose の 2 回 invoke では stderr を
+# 2 回読み出すため I/O コストが倍増する。1 回の invoke で stderr に drift 行を出力させて
+# 後段で parse する形に統合することで I/O コストを最小化する。
+# rc を `|| true` で握りつぶさず明示 capture する設計: 黙殺すると unexpected exit code
+# (binary 異常 / OOM / IO 失敗) が trace から消え、checker の degradation を後から
+# 追えなくなるため。`PATTERN6_STDERR` を script-level 変数として宣言する設計: signal
+# interrupt 時の orphan tempfile を本 script 冒頭の signal interrupt cleanup ハンドラで
+# 確実に回収するため。
 check_pattern_6() {
   local checker_script="$REPO_ROOT/plugins/rite/hooks/scripts/review-schema-version-check.sh"
   if [ ! -x "$checker_script" ]; then

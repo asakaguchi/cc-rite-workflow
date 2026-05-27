@@ -805,3 +805,4 @@
 | 2026-05-28T00:00:00Z | ingest:skip | raw/fixes/20260527T131333Z-pr-1162-cycle19-fix.md | PR #1162 cycle 19 fix。経験則は新規なし |
 | 2026-05-28T00:00:00Z | ingest:skip | raw/fixes/20260527T132209Z-pr-1162-cycle21-fix.md | PR #1162 cycle 21 fix。経験則は新規なし |
 | 2026-05-28T00:00:00Z | ingest:skip | raw/fixes/20260527T134032Z-pr-1162-cycle23-fix.md | PR #1162 cycle 23 fix。経験則は新規なし |
+| 2026-05-28T00:00:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=11, unregistered_raw=208, broken_refs=0 |

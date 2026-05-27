@@ -72,7 +72,7 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 | **失敗時の戻り値** | sub-phase は WARNING を stderr に出して `exit 0` で early return する (upstream の `||` chain を発火させない)。`set -e` 環境下でも upstream を kill しない |
 | **retained flag emit** | `[CONTEXT] {SCOPE}_FAILED=1; reason={reason}` を stderr に必ず emit する。reason 値は各 phase の reason 表で列挙される |
 | **IO エラーの可視化** | ファイル不在は silent no-op で OK だが、`rm` / `mkdir` / `mv` 等の **真の IO 失敗** (permission denied / disk full / readonly filesystem) は WARNING + stderr 5 行以上で必ず可視化する。`2>/dev/null` 等の silent suppression は禁止 |
-| **Phase 全体の exit code** | 本 sub-phase 単独の失敗では Phase 全体の exit code を変更しない。downstream phase は retained flag を見て分岐する |
+| **ステップ全体の exit code** | 本 sub-phase 単独の失敗では ステップ全体の exit code を変更しない。downstream の ステップ は retained flag を見て分岐する |
 | **observability emit の必須化** | 異常終了経路 (signal trap 経由含む) でも `[CONTEXT]` flag が emit されるよう、trap handler 内で flag emit を行う (skip notification phase が flag を読む前提で動作する) |
 
 **適用箇所**:

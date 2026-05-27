@@ -578,7 +578,7 @@ fi
 
 ### 3.8 Plugin-specific Checks (Wiki Growth Check) — Issue #524 layer 3
 
-Execute the Wiki growth check script to detect "Phase X.X.W silently skipped" regressions. The script warns (non-blocking) when the wiki branch has gone unchanged for `wiki.growth_check.threshold_prs` consecutive merged PRs on the development base branch — strong evidence that `pr/review.md` ステップ 6.5.W / `pr/fix.md` ステップ 4.6.W / `issue/close.md` ステップ 4.4.W are being skipped silently. See `plugins/rite/hooks/scripts/wiki-growth-check.sh` header for the detection contract and Issue #524 specification for the 3-layer defense rationale.
+Execute the Wiki growth check script to detect "Phase X.X.W silently skipped" regressions. The script warns (non-blocking) when the wiki branch has gone unchanged for `wiki.growth_check.threshold_prs` consecutive merged PRs on the development base branch — strong evidence that `pr/review.md` ステップ 6.5.W / `pr/fix.md` ステップ 4.6.W / `issue/close.md` Phase 4.4.W are being skipped silently. See `plugins/rite/hooks/scripts/wiki-growth-check.sh` header for the detection contract and Issue #524 specification for the 3-layer defense rationale.
 
 **Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
 

@@ -566,7 +566,7 @@ YAML パーサーの仕様により `count_ratio_threshold: "0.7"` (quoted strin
 # `commands/pr/references/internal-consistency.md` Cross-Reference セクション「drift 検出の invariant
 # (3 ファイル等価性)」に集約されている。drift 検出 lint は
 # `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` として実装済み
-# (Issue #353 系統 1; /rite:lint ステップ 3.7 から呼び出される)。
+# (Issue #353 系統 1; /rite:lint Phase 3.7 から呼び出される)。
 # Do not duplicate the invariant rules here — update internal-consistency.md instead.
 doc_file_patterns = [
  **/*.md (excluding commands/**/*.md, skills/**/*.md, agents/**/*.md),
@@ -928,7 +928,7 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
 
 1. **tech-writer 必須昇格**: ステップ 2.2 で tech-writer が候補に含まれている場合、その selection_type を現在値 (`detected` / `recommended` のいずれか) から `mandatory` に昇格する (昇格パスは ステップ 3.2 selection_type と同じ語彙: `detected → recommended → mandatory`)。含まれていない場合は mandatory として新規追加する
  - **到達可能性 note**: doc_heavy_pr = true でかつ tech-writer が候補にないケースは、tech-writer.md Activation と review.md `doc_file_patterns` の集合等価性が保たれている限り発生しない。しかし将来両者が drift する可能性に備え、新規追加経路を残す (防御的フォールバック)
- - **自動検証 (Issue #353 系統 1)**: 両ファイルの Activation patterns 等価性は `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` で自動検証される (/rite:lint ステップ 3.7 から呼び出し)。SKILL.md Reviewers テーブルの tech-writer 行も同検証対象に含まれる (3 ファイル集合等価性)。過去に SKILL.md と review.md / tech-writer.md の drift が発生した実例に基づき実装
+ - **自動検証 (Issue #353 系統 1)**: 両ファイルの Activation patterns 等価性は `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` で自動検証される (/rite:lint Phase 3.7 から呼び出し)。SKILL.md Reviewers テーブルの tech-writer 行も同検証対象に含まれる (3 ファイル集合等価性)。過去に SKILL.md と review.md / tech-writer.md の drift が発生した実例に基づき実装
 2. **code-quality co-reviewer 条件付き追加**: doc-heavy PR でも `commands/`, `skills/`, `agents/` 以外の `.md` 内に bash/yaml/code blocks が含まれることがあり、これらを構造的に検証するため code-quality を co-reviewer として追加する。**ただし純粋散文 (README 文言修正のみ等) PR で空所見の reviewer がトリガーされノイズ化することを防ぐため、ステップ 2.3 「Code block detection in `.md` files」と同じスキャンロジックを再利用し、diff 内に fenced code block (` ```bash `, ` ```yaml `, ` ```python ` 等) が検出された場合のみ追加する**。
 
  **scan ロジック** (ステップ 2.3 と **同じ fenced code block 検出正規表現** (`^\+[[:space:]]*` + tagged fence `` ``` `` + 言語 tag) を使う。ただし **scope は異なる** — ステップ 2.2.1 は Doc-Heavy PR の性質上 `*.md` 全体を scan 対象とするのに対し、ステップ 2.3 の Code block detection は Prompt Engineer の Activation patterns (`commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`) のみを scan 対象とする。さらに ステップ 2.3 が untyped fence ` ``` ` も検出するのに対し、本 ステップ 2.2.1 では tagged fence のみに限定する。理由は本 phase が code-quality 追加判定の先取りであり、untyped fence は ステップ 2.3 で同じ目的を達成するため。CHANGELOG の "fenced code blocks (` ```bash ` / ` ```yaml ` / ` ```python ` etc.)" 文言とも一致):

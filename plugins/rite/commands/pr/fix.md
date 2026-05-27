@@ -4763,7 +4763,7 @@ ACTION: Return to ステップ 4.6.W and execute the Wiki Ingest Trigger before 
 
 ### 5.1 Output Pattern (Return Control to Caller)
 
-The `fix` flow-state write below records the v3 phase so a `/rite:resume` started after a fix iteration classifies the resume point correctly (`commands/resume.md` ステップ 5.3 で `fix` → ステップ 7.2 へ routing):
+The `fix` flow-state write below records the v3 phase so a `/rite:resume` started after a fix iteration classifies the resume point correctly (`commands/resume.md` Phase 5.3 で `fix` → ステップ 7.2 へ routing):
 
 ```bash
 bash {plugin_root}/hooks/flow-state.sh set \

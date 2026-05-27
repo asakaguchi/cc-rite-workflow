@@ -111,8 +111,11 @@ projects:
  mode: "none|auto" # Default: "none". "auto" assigns to current iteration
  field_name: "Sprint" # Default: "Sprint"
 options:
- source: string # Caller identifier (pr_review|pr_create|cleanup|lint|interactive|parent_routing|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split)
-                # Note: `pr_fix` は legacy 互換のため enum に含めない (PR #506 で fix.md 由来の別 Issue 化 logic は廃止済、現行 caller は存在しない)
+ source: string # Caller identifier (pr_review|pr_create|cleanup|interactive|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split)
+                # Note: 以下の値は legacy 互換のため enum に含めない (caller 消失済、`grep -rn 'source: "<value>"' plugins/rite/` で 0 件確認):
+                #   - `pr_fix`:          PR #506 で fix.md 由来の別 Issue 化 logic が廃止
+                #   - `parent_routing`:  PR #1079 で start.md / parent-routing.md sub-skill が廃止
+                #   - `lint`:            commands/lint.md は guard 用途のみで create-issue-with-projects.sh を invoke しない
  non_blocking_projects: true # Default: true. Projects failure doesn't block Issue creation
 ```
 

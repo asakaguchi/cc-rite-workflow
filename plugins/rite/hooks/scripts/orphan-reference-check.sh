@@ -1,8 +1,8 @@
 #!/bin/bash
 # orphan-reference-check.sh
 # Detect orphan reference files in plugins/rite/ — files that exist but are
-# not referenced from any other plugin / docs / .github file and have no test
-# pin (tracked separately in plugins/rite/hooks/tests/ and
+# not referenced from any other file under plugins/rite/, docs/, or .github/
+# and have no test pin (tracked separately in plugins/rite/hooks/tests/ and
 # plugins/rite/scripts/tests/) protecting their content.
 #
 # Motivation: PR #1162 cycle 15 revealed that
@@ -166,7 +166,8 @@ for file in "$@"; do
   #   - any path containing `tests/` (via grep --exclude-dir=tests below).
   #     This covers plugins/rite/hooks/tests/ + plugins/rite/scripts/tests/
   #     + any other tests/ subtree under the search dirs (e.g., docs/tests/
-  #     if it existed). test_pin_count tracks plugins/rite/hooks/tests/ and
+  #     which currently holds 9 markdown test fixtures and is excluded the
+  #     same way). test_pin_count tracks plugins/rite/hooks/tests/ and
   #     plugins/rite/scripts/tests/ only — those are the official test pin
   #     locations. Other tests/ directories are simply excluded from inbound
   #     count to avoid double-counting and to keep the (inbound=N, test_pin=M)

@@ -806,3 +806,17 @@
 | 2026-05-28T00:00:00Z | ingest:skip | raw/fixes/20260527T132209Z-pr-1162-cycle21-fix.md | PR #1162 cycle 21 fix。経験則は新規なし |
 | 2026-05-28T00:00:00Z | ingest:skip | raw/fixes/20260527T134032Z-pr-1162-cycle23-fix.md | PR #1162 cycle 23 fix。経験則は新規なし |
 | 2026-05-28T00:00:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=11, unregistered_raw=208, broken_refs=0 |
+| 2026-05-28T03:00:00+00:00 | ingest:create | pages/patterns/phase-7-recommendation-promotion-workflow.md | PR #1164 cycle 4-8 の Phase 7 user-escalated recommendation 経路 |
+| 2026-05-28T03:00:00+00:00 | ingest:create | pages/anti-patterns/contradicted-finding-variant-resurrection.md | PR #1164 cycle 1-3 の fact-check variant 再提起 + reviewer observability gap |
+| 2026-05-28T03:00:00+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1164 累積 46 回目 bullet 化 rewrite sentence boundary asymmetry (index summary 行のみ追記) |
+| 2026-05-28T03:00:00+00:00 | ingest:skip | raw/fixes/20260527T164851Z-pr-1164.md | PR #1164 cycle 1 fix。経験則は新規 2 ページに統合済 |
+| 2026-05-28T03:00:00+00:00 | ingest:skip | raw/fixes/20260527T170259Z-pr-1164.md | PR #1164 cycle 2 fix。経験則は新規 2 ページに統合済 |
+| 2026-05-28T03:00:00+00:00 | ingest:skip | raw/fixes/20260527T171413Z-pr-1164.md | PR #1164 cycle 3 fix。経験則は asymmetric-fix-transcription 累積 46 回目に集約 |
+| 2026-05-28T03:00:00+00:00 | ingest:skip | raw/fixes/20260527T172902Z-pr-1164.md | PR #1164 cycle 5 fix。経験則は phase-7-recommendation-promotion-workflow に統合済 |
+| 2026-05-28T03:00:00+00:00 | ingest:skip | raw/fixes/20260527T174222Z-pr-1164.md | PR #1164 cycle 7 fix。経験則は phase-7-recommendation-promotion-workflow に統合済 |
+| 2026-05-28T03:00:00+00:00 | ingest:skip | raw/reviews/20260527T163952Z-pr-1164.md | PR #1164 cycle 1 review。経験則は contradicted-finding-variant-resurrection に統合済 |
+| 2026-05-28T03:00:00+00:00 | ingest:skip | raw/reviews/20260527T165719Z-pr-1164.md | PR #1164 cycle 2 review。経験則は contradicted-finding-variant-resurrection に統合済 |
+| 2026-05-28T03:00:00+00:00 | ingest:skip | raw/reviews/20260527T170947Z-pr-1164.md | PR #1164 cycle 3 review。経験則は asymmetric-fix-transcription 累積 46 回目に集約 |
+| 2026-05-28T03:00:00+00:00 | ingest:skip | raw/reviews/20260527T172656Z-pr-1164.md | PR #1164 cycle 4 review。経験則は phase-7-recommendation-promotion-workflow に統合済 |
+| 2026-05-28T03:00:00+00:00 | ingest:skip | raw/reviews/20260527T174107Z-pr-1164.md | PR #1164 cycle 6 review。経験則は phase-7-recommendation-promotion-workflow に統合済 |
+| 2026-05-28T03:00:00+00:00 | ingest:skip | raw/reviews/20260527T174507Z-pr-1164.md | PR #1164 cycle 8 review。経験則は phase-7-recommendation-promotion-workflow に統合済 |

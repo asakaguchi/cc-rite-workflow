@@ -28,6 +28,7 @@ set -uo pipefail
 REPO_ROOT=""
 QUIET=0
 PATTERN_FILTER=""
+SHOW_EXTRACTED_REASONS=0
 declare -a TARGETS=()
 USE_ALL=0
 
@@ -43,12 +44,14 @@ usage() {
 Usage: distributed-fix-drift-check.sh [options]
 
 Options:
-  --all              Check the default target set (fix.md, review.md, tech-writer.md)
-  --target FILE      Check FILE (repeatable). Path relative to repo root.
-  --pattern N        Only run pattern N (1-6). Default: all patterns.
-  --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
-  --quiet            Suppress per-finding output (still exit non-zero on drift)
-  -h, --help         Show this help
+  --all                       Check the default target set (fix.md, review.md, tech-writer.md)
+  --target FILE               Check FILE (repeatable). Path relative to repo root.
+  --pattern N                 Only run pattern N (1-6). Default: all patterns.
+  --repo-root DIR             Repository root (default: git rev-parse --show-toplevel)
+  --show-extracted-reasons    Print the extracted table_reasons / emit_reasons lists for Pattern 2.
+                              Useful for differentiating real drift from regex artifacts (Issue #1158 AC-4).
+  --quiet                     Suppress per-finding output (still exit non-zero on drift)
+  -h, --help                  Show this help
 
 Combining --all and --target:
   --all and --target can be used together. When both are specified, the
@@ -71,11 +74,13 @@ while [ $# -gt 0 ]; do
     --target) TARGETS+=("$2"); shift 2 ;;
     --pattern) PATTERN_FILTER="$2"; shift 2 ;;
     --repo-root) REPO_ROOT="$2"; shift 2 ;;
+    --show-extracted-reasons) SHOW_EXTRACTED_REASONS=1; shift ;;
     --quiet) QUIET=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "ERROR: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
+export SHOW_EXTRACTED_REASONS
 
 if [ -z "$REPO_ROOT" ]; then
   REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -176,20 +181,49 @@ check_pattern_1() {
 
 # ----- Pattern 2: reason-table drift -----------------------------------------
 # Markdown table cells like `| `reason_name` ...` vs `reason=reason_name` emits.
+#
+# Robustness notes (Issue #1158):
+#   - Both extractors accept hyphens in identifiers ([a-z_][a-z0-9_-]*) so that
+#     reasons such as `no-pending` are not truncated to `no`.
+#   - emit_reasons skips matches that are truncation artifacts:
+#       (a) followed immediately by `$` — shell variable expansion ends the value
+#           (e.g. `reason=trigger_exit_$trigger_exit` would otherwise yield the
+#           bogus reason `trigger_exit_`)
+#       (b) ending in `_` or `-` — these are stub residues of (a) or hyphenated
+#           values that got chopped at a non-identifier boundary
+#     Static literals like `reason=commit_rc_4` are preserved (they end in a
+#     digit, not `_/-`, and have no trailing `$`).
 check_pattern_2() {
   local file="$1"
   [ -f "$file" ] || return 0
   local table_reasons emit_reasons missing extra
   table_reasons=$(awk '
-    /^\| `[a-z_][a-z0-9_]*`/ {
+    /^\| `[a-z_][a-z0-9_-]*`/ {
       gsub(/[|`]/, " ")
       for (i = 1; i <= NF; i++) {
-        if ($i ~ /^[a-z_][a-z0-9_]*$/) { print $i; break }
+        if ($i ~ /^[a-z_][a-z0-9_-]*$/) { print $i; break }
       }
     }
   ' "$file" | sort -u)
-  emit_reasons=$(grep -oE 'reason=[a-z_][a-z0-9_]*' "$file" 2>/dev/null \
-    | sed 's/reason=//' | sort -u)
+  emit_reasons=$(awk '
+    {
+      rest = $0
+      while (match(rest, /reason=[a-z_][a-z0-9_-]*/)) {
+        val = substr(rest, RSTART + 7, RLENGTH - 7)
+        after = substr(rest, RSTART + RLENGTH, 1)
+        rest = substr(rest, RSTART + RLENGTH)
+        if (after == "$") continue
+        if (val ~ /[_-]$/) continue
+        print val
+      }
+    }
+  ' "$file" | sort -u)
+  # AC-4 (Issue #1158): expose extracted reason lists so the user can
+  # differentiate true positives from regex artifacts at a glance.
+  if [ "${SHOW_EXTRACTED_REASONS:-0}" -eq 1 ]; then
+    log "  [P2 extracted] ${file}: table_reasons=$(printf '%s ' $table_reasons | sed 's/[[:space:]]*$//')"
+    log "  [P2 extracted] ${file}: emit_reasons=$(printf '%s ' $emit_reasons | sed 's/[[:space:]]*$//')"
+  fi
   # If the file has no reason table at all, Pattern-2 does not apply.
   # Skipping here prevents false "never emitted" flags for emit-only files.
   [ -z "$table_reasons" ] && return 0

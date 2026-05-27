@@ -9,13 +9,13 @@ Guide for using the common shell script that creates a GitHub Issue and register
 **Script location**: `{plugin_root}/scripts/create-issue-with-projects.sh`
 
 Referenced from:
-- `commands/pr/fix.md` ステップ 4.3.4 Step 2
 - `commands/pr/review.md` ステップ 7.4.2
 - `commands/pr/create.md` Phase 2.5.5
 - `commands/pr/cleanup.md` ステップ 3 (未完了タスクのチェック → 残作業 Issue 化)
 - `commands/issue/create.md` ステップ 4.3 (Single Issue creation)
 - `commands/issue/create.md` ステップ 5.3 (parent Issue creation in XL decomposition)
 - `commands/issue/create.md` ステップ 5.4 (Sub-Issue bulk creation in XL decomposition)
+- `commands/issue/references/fingerprint-cycling.md` (Quality Signal 1/3/4 由来の split → `fingerprint_split` / `quality_signal_3_split` / `quality_signal_4_split`)
 
 Related documents:
 - [projects-integration.md](./projects-integration.md) - Existing Issue Status update / Iteration assignment (this document covers new Issue creation with Projects registration)
@@ -111,7 +111,11 @@ projects:
  mode: "none|auto" # Default: "none". "auto" assigns to current iteration
  field_name: "Sprint" # Default: "Sprint"
 options:
- source: string # Caller identifier (pr_review|pr_fix|pr_create|cleanup|lint|interactive|parent_routing|xl_decomposition)
+ source: string # Caller identifier (pr_review|pr_create|cleanup|interactive|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split)
+                # Note: 以下の値は legacy 互換のため enum に含めない (caller 消失済、`grep -rn 'source: "<value>"' plugins/rite/` で 0 件確認):
+                #   - `pr_fix`:          #1136 で fix.md Phase 4.3 (Automatic Separate Issue Creation) が廃止
+                #   - `parent_routing`:  #1079 で parent-routing.md sub-skill が廃止
+                #   - `lint`:            commands/lint.md は guard 用途のみで create-issue-with-projects.sh を invoke しない
  non_blocking_projects: true # Default: true. Projects failure doesn't block Issue creation
 ```
 
@@ -143,13 +147,6 @@ options:
 
 Each caller determines Priority using its own logic before passing it to the script.
 
-### fix.md (ステップ 4.3.4): Skip Reason Keyword Matching
-
-| Skip Reason Keyword | Issue Priority | Reason |
-|---------------------|----------------|--------|
-| `緊急`, `重大`, `urgent`, `critical` | High | Requires priority attention |
-| All others | Medium | Normal priority (default) |
-
 ### review.md (ステップ 7.4): Severity-Based Mapping
 
 | Finding Severity | Issue Priority | Reason |
@@ -179,8 +176,8 @@ Each caller determines Priority using its own logic before passing it to the scr
 
 ### 旧 caller (retired)
 
-- `parent-routing.md` Phase 1.5.4 (Child Issue creation, Inherited from Parent) — flat 化に伴い child issue 自動作成経路自体が廃止された
-- `start.md` ステップ 8.5 (Workflow Incident Detection の auto-Issue 起票経路) — workflow-incident 機構ごと PR 2b / #1088 で廃止された
+- `parent-routing.md` Phase 1.5.4 (When No Child Issues Exist: Decomposition Proposal) — flat 化に伴い child issue 自動作成経路自体が廃止された
+- `start.md` ステップ 8.5 (Workflow Incident Detection、workflow-incident-emit.sh 経由の auto-Issue 起票経路) — workflow-incident 機構ごと #1088 で廃止された (実装: #1091)
 
 ---
 

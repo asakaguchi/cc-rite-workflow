@@ -113,7 +113,7 @@ projects:
 options:
  source: string # Caller identifier (pr_review|pr_create|cleanup|interactive|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split)
                 # Note: 以下の値は legacy 互換のため enum に含めない (caller 消失済、`grep -rn 'source: "<value>"' plugins/rite/` で 0 件確認):
-                #   - `pr_fix`:          #1136 で fix.md Phase 4.3 (E2E 別 Issue 化 logic) が廃止
+                #   - `pr_fix`:          #1136 で fix.md Phase 4.3 (Automatic Separate Issue Creation) が廃止
                 #   - `parent_routing`:  #1079 で parent-routing.md sub-skill が廃止
                 #   - `lint`:            commands/lint.md は guard 用途のみで create-issue-with-projects.sh を invoke しない
  non_blocking_projects: true # Default: true. Projects failure doesn't block Issue creation
@@ -176,8 +176,8 @@ Each caller determines Priority using its own logic before passing it to the scr
 
 ### 旧 caller (retired)
 
-- `parent-routing.md` Phase 1.5.4 (Child Issue creation, Inherited from Parent) — flat 化に伴い child issue 自動作成経路自体が廃止された
-- `start.md` ステップ 8.5 (Workflow Incident Detection の auto-Issue 起票経路) — workflow-incident 機構ごと PR 2b / #1088 で廃止された
+- `parent-routing.md` Phase 1.5.4 (When No Child Issues Exist: Decomposition Proposal) — flat 化に伴い child issue 自動作成経路自体が廃止された
+- `start.md` (workflow-incident-emit.sh 経由の auto-Issue 起票経路) — workflow-incident 機構ごと #1088 (実装 PR #1091) で廃止された
 
 ---
 

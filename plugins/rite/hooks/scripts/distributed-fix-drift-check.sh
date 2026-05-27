@@ -121,8 +121,18 @@ DRIFT_COUNT_FILE="$(mktemp)" || { echo "ERROR: mktemp failed" >&2; exit 2; }
 # Pattern 6 (Issue #1021) で使用する stderr capture tempfile を script-level で宣言し、
 # 統合 trap で signal interrupt 時の orphan を防ぐ (F-08)。
 PATTERN6_STDERR=""
+# Pattern 2 awk tempfile も script-level で宣言して統合 trap で signal interrupt 時の
+# orphan を防ぐ (Issue #1161 cycle 2 F-01 — script line 121 PATTERN6_STDERR doctrine と同型)。
+# check_pattern_2 関数内で AWK_TABLE_OUT 等に mktemp 結果を代入し、正常完了時に明示 rm + ""
+# reset することで二重 rm を避ける。signal interrupt 経路では本 trap が rm -f で回収する。
+AWK_TABLE_OUT=""
+AWK_TABLE_ERR=""
+AWK_EMIT_OUT=""
+AWK_EMIT_ERR=""
 _drift_check_cleanup() {
-  rm -f "${DRIFT_COUNT_FILE:-}" "${PATTERN6_STDERR:-}"
+  rm -f "${DRIFT_COUNT_FILE:-}" "${PATTERN6_STDERR:-}" \
+        "${AWK_TABLE_OUT:-}" "${AWK_TABLE_ERR:-}" \
+        "${AWK_EMIT_OUT:-}" "${AWK_EMIT_ERR:-}"
 }
 trap 'rc=$?; _drift_check_cleanup; exit $rc' EXIT
 trap '_drift_check_cleanup; exit 130' INT
@@ -210,15 +220,22 @@ check_pattern_2() {
   local file="$1"
   [ -f "$file" ] || return 0
   local table_reasons emit_reasons missing extra
-  local awk_table_out awk_table_err awk_table_rc
-  local awk_emit_out awk_emit_err awk_emit_rc
+  local awk_table_rc awk_emit_rc
 
+  # tempfile は script-level の AWK_TABLE_OUT / AWK_TABLE_ERR / AWK_EMIT_OUT / AWK_EMIT_ERR
+  # 4 変数で管理し、_drift_check_cleanup trap (script line 124-133) で signal interrupt 時に
+  # orphan を回収する。正常完了時は明示 rm + "" reset で trap 二重 rm を避ける。
+  # mktemp に 2>/dev/null を付け sibling (pr-cycle-cleanup.sh 等) と統一 (bare stderr leak 防止)。
   # table-side awk: rc capture for silent-failure guard + asymmetric [_-]$ skip
-  awk_table_out=$(mktemp /tmp/rite-drift-awk-table-out-XXXXXX) || awk_table_out=""
-  awk_table_err=$(mktemp /tmp/rite-drift-awk-table-err-XXXXXX) || awk_table_err=""
-  if [ -z "$awk_table_out" ]; then
+  AWK_TABLE_OUT=$(mktemp /tmp/rite-drift-awk-table-out-XXXXXX 2>/dev/null) || AWK_TABLE_OUT=""
+  AWK_TABLE_ERR=$(mktemp /tmp/rite-drift-awk-table-err-XXXXXX 2>/dev/null) || AWK_TABLE_ERR=""
+  if [ -z "$AWK_TABLE_OUT" ]; then
     log "  [P2] Pattern 2 skipped on $file: mktemp for table-side awk output failed"
-    rm -f "${awk_table_err:-}"
+    # skip を distinct prefix で stdout にも emit して CI grep で区別可能にする
+    # ([drift][P2] と区別する [drift-check-skip][P2] prefix)
+    out "[drift-check-skip][P2] ${file}: mktemp_failed (table_out)"
+    rm -f "${AWK_TABLE_ERR:-}"
+    AWK_TABLE_ERR=""
     return 0
   fi
   awk_table_rc=0
@@ -233,24 +250,29 @@ check_pattern_2() {
         }
       }
     }
-  ' "$file" >"$awk_table_out" 2>"${awk_table_err:-/dev/null}" || awk_table_rc=$?
+  ' "$file" >"$AWK_TABLE_OUT" 2>"${AWK_TABLE_ERR:-/dev/null}" || awk_table_rc=$?
   if [ "$awk_table_rc" -ne 0 ]; then
     log "  [P2] Pattern 2 skipped on $file: table-side awk rc=$awk_table_rc"
-    if [ -n "$awk_table_err" ] && [ -s "$awk_table_err" ]; then
-      log "    awk stderr: $(head -1 "$awk_table_err")"
+    if [ -n "$AWK_TABLE_ERR" ] && [ -s "$AWK_TABLE_ERR" ]; then
+      log "    awk stderr: $(head -1 "$AWK_TABLE_ERR")"
     fi
-    rm -f "$awk_table_out" "${awk_table_err:-}"
+    out "[drift-check-skip][P2] ${file}: awk_rc=${awk_table_rc} (table)"
+    rm -f "$AWK_TABLE_OUT" "${AWK_TABLE_ERR:-}"
+    AWK_TABLE_OUT="" AWK_TABLE_ERR=""
     return 0
   fi
-  table_reasons=$(sort -u "$awk_table_out")
-  rm -f "$awk_table_out" "${awk_table_err:-}"
+  table_reasons=$(sort -u "$AWK_TABLE_OUT")
+  rm -f "$AWK_TABLE_OUT" "${AWK_TABLE_ERR:-}"
+  AWK_TABLE_OUT="" AWK_TABLE_ERR=""
 
   # emit-side awk: rc capture for silent-failure guard
-  awk_emit_out=$(mktemp /tmp/rite-drift-awk-emit-out-XXXXXX) || awk_emit_out=""
-  awk_emit_err=$(mktemp /tmp/rite-drift-awk-emit-err-XXXXXX) || awk_emit_err=""
-  if [ -z "$awk_emit_out" ]; then
+  AWK_EMIT_OUT=$(mktemp /tmp/rite-drift-awk-emit-out-XXXXXX 2>/dev/null) || AWK_EMIT_OUT=""
+  AWK_EMIT_ERR=$(mktemp /tmp/rite-drift-awk-emit-err-XXXXXX 2>/dev/null) || AWK_EMIT_ERR=""
+  if [ -z "$AWK_EMIT_OUT" ]; then
     log "  [P2] Pattern 2 skipped on $file: mktemp for emit-side awk output failed"
-    rm -f "${awk_emit_err:-}"
+    out "[drift-check-skip][P2] ${file}: mktemp_failed (emit_out)"
+    rm -f "${AWK_EMIT_ERR:-}"
+    AWK_EMIT_ERR=""
     return 0
   fi
   awk_emit_rc=0
@@ -266,17 +288,20 @@ check_pattern_2() {
         print val
       }
     }
-  ' "$file" >"$awk_emit_out" 2>"${awk_emit_err:-/dev/null}" || awk_emit_rc=$?
+  ' "$file" >"$AWK_EMIT_OUT" 2>"${AWK_EMIT_ERR:-/dev/null}" || awk_emit_rc=$?
   if [ "$awk_emit_rc" -ne 0 ]; then
     log "  [P2] Pattern 2 skipped on $file: emit-side awk rc=$awk_emit_rc"
-    if [ -n "$awk_emit_err" ] && [ -s "$awk_emit_err" ]; then
-      log "    awk stderr: $(head -1 "$awk_emit_err")"
+    if [ -n "$AWK_EMIT_ERR" ] && [ -s "$AWK_EMIT_ERR" ]; then
+      log "    awk stderr: $(head -1 "$AWK_EMIT_ERR")"
     fi
-    rm -f "$awk_emit_out" "${awk_emit_err:-}"
+    out "[drift-check-skip][P2] ${file}: awk_rc=${awk_emit_rc} (emit)"
+    rm -f "$AWK_EMIT_OUT" "${AWK_EMIT_ERR:-}"
+    AWK_EMIT_OUT="" AWK_EMIT_ERR=""
     return 0
   fi
-  emit_reasons=$(sort -u "$awk_emit_out")
-  rm -f "$awk_emit_out" "${awk_emit_err:-}"
+  emit_reasons=$(sort -u "$AWK_EMIT_OUT")
+  rm -f "$AWK_EMIT_OUT" "${AWK_EMIT_ERR:-}"
+  AWK_EMIT_OUT="" AWK_EMIT_ERR=""
 
   # AC-4 (Issue #1158): expose extracted reason lists so the user can
   # differentiate true positives from regex artifacts at a glance.

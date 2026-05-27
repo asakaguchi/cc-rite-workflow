@@ -72,7 +72,7 @@ cleanup_dirs+=("$d")
 rc=0
 out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
   --repo-root "$d" 2>/dev/null) || rc=$?
-assert_checker_rc "TC" "$rc"
+assert_checker_rc "TC-1" "$rc"
 if printf '%s\n' "$out" | grep -Fq "reason 'no-pending'"; then
   pass "TC-1: no-pending extracted as full hyphenated value"
 else
@@ -86,13 +86,18 @@ else
   pass "TC-1: no spurious truncated 'no' emitted"
 fi
 
-# --- TC-2: shell variable expansion is skipped ---
+# --- TC-2: shell variable expansion is skipped (emit-side + table-side) ---
 echo ""
 echo "=== TC-2: reason=trigger_exit_\$var is skipped (truncation artifact) ==="
+# fixture には table-side variant も含める。
+# `| \`python_unexpected_exit_$py_exit\` |` のような table cell は cycle 2 で実装側
+# script:230 に追加された `[_-]$` filter (table-side asymmetric skip) を exercise する。
+# この fixture がないと filter 削除 regression を test が検出できない。
 d=$(make_fixture_sandbox '# Test
 
 ## reason table
 | `something_else` | spec |
+| `python_unexpected_exit_$py_exit` | placeholder reason (cycle 2 F-02 — table-side `[_-]$` filter coverage) |
 
 ```bash
 echo "[CONTEXT] X=1; reason=trigger_exit_$trigger_exit; exit_code=$trigger_exit"
@@ -105,12 +110,12 @@ cleanup_dirs+=("$d")
 rc=0
 out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
   --repo-root "$d" 2>/dev/null) || rc=$?
-assert_checker_rc "TC" "$rc"
+assert_checker_rc "TC-2" "$rc"
 if printf '%s\n' "$out" | grep -Eq "reason '(trigger_exit_|commit_rc_)'"; then
-  fail "TC-2: shell variable expansion still produces bogus identifier"
+  fail "TC-2: shell variable expansion still produces bogus identifier (emit-side)"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 else
-  pass "TC-2: shell variable expansion correctly skipped"
+  pass "TC-2: shell variable expansion correctly skipped (emit-side)"
 fi
 # `-$` 形式 (例: reason=hyphen-test-$var) も同様に skip されることを確認
 # (emit-side regex `[_-]$` の両側 alternation を test 化、片側除去 regression 防止)
@@ -119,6 +124,16 @@ if printf '%s\n' "$out" | grep -Eq "reason 'hyphen-test-'"; then
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 else
   pass "TC-2: hyphen suffix variant correctly skipped"
+fi
+# table-side `[_-]$` filter regression guard (cycle 2 F-02):
+# script:230 の `if ($i ~ /[_-]$/) continue` を削除すると table_reasons に
+# `python_unexpected_exit_` が残り、emit-side では同じ filter で skip されるため
+# 「table has X but never emitted」drift が誤発火する。本 assert はその経路を catch する。
+if printf '%s\n' "$out" | grep -Fq "python_unexpected_exit_"; then
+  fail "TC-2: table-side [_-]$ filter regression — python_unexpected_exit_ should be skipped from table_reasons"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+else
+  pass "TC-2: table-side [_-]$ filter correctly skips truncation-artifact reason"
 fi
 
 # --- TC-3: static literal with digit suffix is preserved ---
@@ -137,7 +152,7 @@ cleanup_dirs+=("$d")
 rc=0
 out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
   --repo-root "$d" 2>/dev/null) || rc=$?
-assert_checker_rc "TC" "$rc"
+assert_checker_rc "TC-3" "$rc"
 if printf '%s\n' "$out" | grep -Fq "reason 'commit_rc_4'"; then
   pass "TC-3: static literal commit_rc_4 still detected as drift candidate"
 else
@@ -161,7 +176,7 @@ cleanup_dirs+=("$d")
 rc=0
 out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
   --repo-root "$d" 2>/dev/null) || rc=$?
-assert_checker_rc "TC" "$rc"
+assert_checker_rc "TC-4" "$rc"
 if printf '%s\n' "$out" | grep -Fq "reason 'mkdir_failed' emitted but not in reason table"; then
   pass "TC-4: true positive mkdir_failed correctly flagged"
 else
@@ -185,7 +200,7 @@ cleanup_dirs+=("$d")
 rc=0
 out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
   --repo-root "$d" 2>/dev/null) || rc=$?
-assert_checker_rc "TC" "$rc"
+assert_checker_rc "TC-5" "$rc"
 # Drift should be empty here: emit and table both contain `no-pending`.
 if printf '%s\n' "$out" | grep -Eq "reason '(no-pending|no)'"; then
   fail "TC-5: hyphenated emit/table pair still produces drift (regex did not match table side)"
@@ -230,6 +245,19 @@ fi
 # --- TC-7: --show-extracted-reasons silent without flag ---
 echo ""
 echo "=== TC-7: extracted reasons NOT printed without flag (default behavior) ==="
+# TC-6 の $d 再利用を回避し独立 fixture を作成する (cycle 2 F-06)。
+# TC-6 削除や fixture 変更 (例: reason table を空にする) で TC-7 が誤った理由で pass する
+# (Pattern 2 が script:292 で早期 return し SHOW_EXTRACTED_REASONS block に到達しない) のを防ぐ。
+d=$(make_fixture_sandbox '# Test
+
+## reason table
+| `gamma_reason` | spec |
+
+```bash
+echo "[CONTEXT] X=1; reason=delta_reason"
+```
+')
+cleanup_dirs+=("$d")
 rc=0
 err=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
   --repo-root "$d" 2>&1 >/dev/null) || rc=$?

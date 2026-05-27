@@ -137,7 +137,7 @@ tail -20 .rite-flow-state-diag.log
 
 # 2. 前セッション会話の grep
 # Claude Code の会話履歴 (assistant response の保存先) から sentinel を grep
-# manual_fallback_adopted / [create:completed:*] / [ready:completed] 等の sentinel literal を確認
+# manual_fallback_adopted / [create:returned-to-caller:*] / [ready:returned-to-caller] 等の sentinel literal を確認 (旧: `:completed`, #1165 で rename)
 ```
 
 ### 失敗時の確認項目

@@ -6,11 +6,11 @@ description: PR を Ready for review に変更
 
 ## Contract
 **Input**: PR number (or auto-detected), flow state (optional, e2e flow)
-**Output**: `[ready:completed]` | `[ready:error]`
+**Output**: `[ready:returned-to-caller]` | `[ready:error]`
 
 Change PR to Ready for review and update the related Issue's Status
 
-> **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[ready:completed]` or `[ready:error]`) and **returns control to the caller** (orchestrator — caller-name agnostic, e.g. `sprint/execute.md` 等). The caller determines the next action based on this output pattern.
+> **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[ready:returned-to-caller]` or `[ready:error]`) and **returns control to the caller** (orchestrator — caller-name agnostic, e.g. `sprint/execute.md` 等). The caller determines the next action based on this output pattern.
 
 ---
 
@@ -123,7 +123,7 @@ case "$bang_rc" in
 esac
 ```
 
-> **On exit 1 from this bash block**: The bash block exits before any `pr/ready.md` result pattern (`[ready:completed]` / `[ready:error]`) is emitted, so the orchestrator treats this as a missing-result-pattern Skill invocation — default 経路は `WARNING` を stderr に出力し、AskUserQuestion で「再試行 / 強制続行 / 中止」を提示する — **NOT** a `[ready:error]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
+> **On exit 1 from this bash block**: The bash block exits before any `pr/ready.md` result pattern (`[ready:returned-to-caller]` / `[ready:error]`) is emitted, so the orchestrator treats this as a missing-result-pattern Skill invocation — default 経路は `WARNING` を stderr に出力し、AskUserQuestion で「再試行 / 強制続行 / 中止」を提示する — **NOT** a `[ready:error]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
 
 ### 1.1 Check Arguments
 
@@ -470,7 +470,7 @@ Inspect the script's stdout JSON and route by `.result`:
 
 ### 4.6 Defense-in-Depth: State Update Before Output (End-to-End Flow)
 
-Before outputting the result pattern (`[ready:completed]`) or skipping output, update flow state to reflect the post-ready phase (defense-in-depth, fixes #17). This prevents intermittent flow interruptions when the fork context returns to the caller — even if the LLM churns after fork return and the system forcibly terminates the turn (bypassing the Stop hook), the state file will already contain the correct `next_action` for resumption.
+Before outputting the result pattern (`[ready:returned-to-caller]`) or skipping output, update flow state to reflect the post-ready phase (defense-in-depth, fixes #17). This prevents intermittent flow interruptions when the fork context returns to the caller — even if the LLM churns after fork return and the system forcibly terminates the turn (bypassing the Stop hook), the state file will already contain the correct `next_action` for resumption.
 
 **Condition**: Execute only when flow state file exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
 
@@ -478,7 +478,7 @@ Before outputting the result pattern (`[ready:completed]`) or skipping output, u
 
 | Result | Phase | Phase Detail | Next Action |
 |--------|-------|-------------|-------------|
-| `[ready:completed]` | `ready` | `Ready処理完了` | `rite:pr:ready completed. Standalone 起動の場合は次に /rite:pr:merge {pr_number} を実行。orchestrator (sprint flow 等) 経由なら caller に制御を戻す。Do NOT stop.` |
+| `[ready:returned-to-caller]` | `ready` | `Ready処理完了` | `rite:pr:ready completed. Standalone 起動の場合は次に /rite:pr:merge {pr_number} を実行。orchestrator (sprint flow 等) 経由なら caller に制御を戻す。Do NOT stop.` |
 
 ```bash
 bash {plugin_root}/hooks/flow-state.sh set \
@@ -534,15 +534,16 @@ Check the conversation history and determine "within end-to-end flow" if any of 
 
 When called within the end-to-end flow (detected in Phase 5.0), **do NOT output any completion report**. The completion report is the responsibility of the caller orchestrator (e.g. `sprint/execute.md` の sequential 実行末尾) — outputting it here causes duplicate reports.
 
-**Instead, output the following machine-readable signal** to indicate successful completion to the caller:
+**Instead, output the following 2-line machine-readable signal** to indicate successful return to the caller:
 
 ```
-[ready:completed]
+<!-- skill return signal: caller must continue next step -->
+[ready:returned-to-caller]
 ```
 
-This pattern is **mandatory** in e2e flow. It allows the caller orchestrator (e.g. `sprint/execute.md`) to detect that `rite:pr:ready` has completed successfully and immediately proceed to caller-specific 完了処理 (sprint なら次 Issue の処理、独立 orchestrator なら completion report)。Without this signal, the caller may incorrectly interpret the lack of output as task completion.
+This pattern is **mandatory** in e2e flow. It allows the caller orchestrator (e.g. `sprint/execute.md`) to detect that `rite:pr:ready` has returned to the caller and immediately proceed to caller-specific 完了処理 (sprint なら次 Issue の処理、独立 orchestrator なら completion report)。Without this signal, the caller may incorrectly interpret the lack of output as task completion.
 
-No template loading, no inline format, no completion table — only the `[ready:completed]` pattern.
+The signal comment + sentinel pair replaces the older `ready:completed` form. The new naming makes explicit that the sub-skill is *returning to caller* (and the caller must continue), not *terminating the workflow* — this prevents LLM turn-boundary heuristic misfires (Issue #1165).
 
 #### 5.1.2 Standalone Execution
 

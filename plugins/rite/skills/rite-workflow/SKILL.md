@@ -62,9 +62,11 @@ When activated, this skill provides:
 
 rite workflow の identity は「定義された step を全て実行し、生成物の品質を担保する」ことである。**時間的制約や context 残量を理由にした step の省略は禁止**。残量の推論も禁止。context が実際に枯渇した場合の正規経路は `/clear` + `/rite:resume` の組合せであり、LLM が自己判断でワークフローを短縮する経路は存在しない。
 
-**さらに、workflow は途中で止まらない。そして最後のわけのわからない出力で終わらない。** sub-skill の return tag (`[lint:*]` / `[pr:created:N]` / `[review:*]` / `[fix:*]` / `[ready:completed]`) は **turn 境界ではなく継続トリガ** である。ユーザー介入 (`continue` 入力) を要求せずに、同 turn 内で次 phase へ進む。
+**さらに、workflow は途中で止まらない。そして最後のわけのわからない出力で終わらない。** sub-skill の return tag (`[lint:*]` / `[pr:created:N]` / `[review:*]` / `[fix:*]` / `[ready:returned-to-caller]`) は **turn 境界ではなく継続トリガ** である。ユーザー介入 (`continue` 入力) を要求せずに、同 turn 内で次 phase へ進む。
 
-`create.md` の flat workflow 終端で出力される `[create:completed:{N}]` HTML コメント marker は sub-skill return tag ではなく、create.md 内で完結する terminal sentinel である (hook / grep 契約のため必須)。ワークフロー完了時の user-visible な最終行は sentinel marker ではなく「✅ Issue #{N} を作成しました: {url}」のような人間可読な完了メッセージとし、sentinel は HTML コメント化等で user-visible な末端に孤立させない。
+`create.md` の flat workflow 終端で出力される `[create:returned-to-caller:{N}]` HTML コメント marker も sub-skill return tag と同様、turn 境界ではなく caller skill (典型的には `/rite:pr:open` 等) への return signal である (hook / grep 契約のため必須)。ワークフロー完了時の user-visible な最終行は sentinel marker ではなく「✅ Issue #{N} を作成しました: {url}」のような人間可読な完了メッセージとし、sentinel は HTML コメント化等で user-visible な末端に孤立させない。
+
+> **Sentinel naming policy (Issue #1165)**: skill return signal の literal は `:returned-to-caller` 形式で統一する。旧 `:completed` 形式は LLM の turn-boundary heuristic と衝突し、caller skill の次 step を skip して turn が暗黙終了する事象を構造的に誘発する (PR #1164 等で実測)。新形式は「caller に return した = caller の次 step に進む」という semantic に置換することで terminal vocabulary を構造的に排除する。各 emit site では sentinel 直前に `<!-- skill return signal: caller must continue next step -->` を併記して active disambiguation を提供する。
 
 | 禁止事項 | 正規経路 |
 |---------|---------|
@@ -179,8 +181,8 @@ LLM が途中で停止した場合の正規復帰経路は `/rite:resume` で、
 | `rite:pr:create` | `[pr:created:N]` / `[pr:create-failed]` | `pr:open` Step 6 |
 | `rite:pr:review` | `[review:mergeable]` / `[review:fix-needed:N]` / `[review:error]` | `pr:iterate` 内ループ |
 | `rite:pr:fix` | `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:replied-only]` / `[fix:cancelled-by-user]` / `[fix:error]` | `pr:iterate` 内ループ |
-| `rite:pr:ready` | `[ready:completed]` / `[ready:error]` | ユーザーが直接 invoke (orchestrator 経由なし) |
-| `rite:pr:merge` | `[merge:completed]` / `[merge:not-ready]` / `[merge:error]` | ユーザーが直接 invoke (orchestrator 経由なし) |
+| `rite:pr:ready` | `[ready:returned-to-caller]` / `[ready:error]` | ユーザーが直接 invoke (orchestrator 経由なし) |
+| `rite:pr:merge` | `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]` | ユーザーが直接 invoke (orchestrator 経由なし) |
 
 orchestrator (`pr:open` / `pr:iterate`) が sub-skill 出力の sentinel を grep で routing する。`pr:ready` / `pr:merge` は self-contained で他 sub-skill を起動しない。
 

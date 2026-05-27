@@ -165,7 +165,7 @@ FIX_CLEAN="$TMPDIR_ROOT/clean.md"
 cat > "$FIX_CLEAN" <<'EOF'
 # Clean structural references (no line numbers, no findings)
 
-- 本セクション直前の Output format example sections (`[interview:skipped]` / `[interview:completed]`) 内の caller HTML inline literal を参照。
+- 本セクション直前の Output format example sections (`[interview:skipped]` / `[interview:returned-to-caller]`) 内の caller HTML inline literal を参照。
 - create.md 🚨 Mandatory After Interview Step 0 直後の DRIFT-CHECK ANCHOR と pair 同期する。
 - See [link](path/file.md#some-anchor) for the canonical reference.
 

@@ -11,11 +11,11 @@ resolution_pr: 1149
 resolution_issue: 1144
 ---
 
-> **Status: 構造的に解消済 (Issue #1144 / PR #1149)**
+> **Status: 構造的に解消済 (Issue #1144 / PR #1149 + Issue #1165 sentinel rename)**
 >
-> 本 anti-pattern は cleanup.md / ingest.md / lint.md から defense 層 (🚨 Mandatory After / Step 0/1 idempotent patch / 三点セット blockquote / Phase 9.1 caller continuation HTML comment / flow-state ring) を **物理排除** することで構造的に解消された。本文中の Phase 番号 (Phase 1.5 / 1.7 / 3.2 / 4.W / 4.W.2 / 5 / 5.2 / 8.2 / 9.1 / 9.2 等) は **PR #1149 以前の旧構造** の歴史的記述として保持されており、現行の cleanup.md は フラットなステップ 1-12 構造、ingest.md は最小限の HTML sentinel 出力のみ。
+> 本 anti-pattern は cleanup.md / ingest.md / lint.md から defense 層 (🚨 Mandatory After / Step 0/1 idempotent patch / 三点セット blockquote / Phase 9.1 caller continuation HTML comment / flow-state ring) を **物理排除** することで構造的に解消された (#1149)。さらに PR #1164 cleanup 実行時に同種の再発が観測されたため、Issue #1165 で sentinel 命名規約自体を `:completed` → `:returned-to-caller` に rename し、literal `completed` が LLM turn-boundary heuristic と衝突する根本要因を vocabulary レベルで撤廃した。本文中の `[*:completed*]` literal references は **歴史的記述** として保持しており、現行の sentinel は `:returned-to-caller` 形式。
 >
-> 詳細な対応経緯は [docs/designs/pr-cleanup-simplification.md](../designs/pr-cleanup-simplification.md) を参照。
+> 詳細な対応経緯は [docs/designs/pr-cleanup-simplification.md](../designs/pr-cleanup-simplification.md) および Issue #1165 を参照。
 
 # `/rite:pr:cleanup` の Wiki ingest sub-skill return 後に implicit stop が発生する regression
 

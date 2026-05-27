@@ -7,7 +7,7 @@ description: PR を squash merge する（cleanup は別コマンド /rite:pr:cl
 ## Contract
 
 **Input**: PR number (required)
-**Output**: `[merge:completed]` / `[merge:not-ready]` / `[merge:error]`
+**Output**: `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]`
 
 `gh pr merge --squash` を叩いて PR をマージするだけ。**cleanup は走らせない**。マージ後の cleanup (ブランチ削除 / Projects 更新 / Wiki ingest 等) は `/rite:pr:cleanup` を別途実行する。
 
@@ -87,7 +87,8 @@ else
 fi
 
 if gh pr merge {pr_number} --squash --delete-branch=false 2>"${gh_err:-/dev/null}"; then
-  echo "[merge:completed]"
+  echo "<!-- skill return signal: caller must continue next step -->"
+  echo "[merge:returned-to-caller]"
   # 成功時のみ stderr の warning (deprecation / rate-limit) を surface する。
   # 失敗時に同 stderr を head -5 で再表示すると、下の else block の head -10 と二重出力に
   # なるため、warning surface は then-branch 内に閉じ込める。
@@ -110,7 +111,7 @@ fi
 
 | 終了 status | アクション |
 |------------|-----------|
-| `[merge:completed]` emit | ステップ 4 完了通知へ |
+| `[merge:returned-to-caller]` emit | ステップ 4 完了通知へ |
 | `[merge:error]` emit | bash block が stderr に gh error 詳細を出力済み。LLM は AskUserQuestion で「再試行 / 中止」を提示 |
 
 ## ステップ 4: 完了通知
@@ -128,7 +129,8 @@ fi
 - クリーンアップ: /rite:pr:cleanup {pr_number}
   (ブランチ削除 / Projects Status → Done / Issue close / Wiki ingest 等)
 
-[merge:completed]
+<!-- skill return signal: caller must continue next step -->
+[merge:returned-to-caller]
 ```
 
 ---

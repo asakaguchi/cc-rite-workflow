@@ -206,7 +206,7 @@ fi
 
 ### 4.4 完了レポート
 
-完了レポートの最終行は `<!-- [create:completed:{issue_number}] -->` HTML コメント sentinel とし、user-visible な末端は `✅ ...` 完了メッセージで終わる。sentinel は hook / grep 契約のため必須だが、HTML コメント化することでユーザーに「完了したのか途中なのか」の判別を阻害しない。
+完了レポートの最終 2 行は `<!-- skill return signal: caller must continue next step -->` + `<!-- [create:returned-to-caller:{issue_number}] -->` HTML コメント sentinel とし、user-visible な末端は `✅ ...` 完了メッセージで終わる。sentinel は hook / grep 契約のため必須だが、HTML コメント化することでユーザーに「完了したのか途中なのか」の判別を阻害しない。
 
 ```markdown
 ✅ Issue #{issue_number} を作成しました
@@ -223,7 +223,8 @@ fi
 - `/rite:pr:open {issue_number}` で作業を開始
 - または `/rite:pr:create` で Issue なしで PR を作成
 
-<!-- [create:completed:{issue_number}] -->
+<!-- skill return signal: caller must continue next step -->
+<!-- [create:returned-to-caller:{issue_number}] -->
 ```
 
 ステップ 6（共通完結処理）へ。
@@ -496,7 +497,7 @@ fi
 
 ### 5.6 完了レポート
 
-Decompose path も完了レポートの最終行は `<!-- [create:completed:{parent_issue_number}] -->` HTML コメント sentinel で終わる。Single Issue path と同じく、sentinel は hook / grep 契約のため必須で、HTML コメント化することで user-visible な末端は `✅ ...` 完了メッセージとなる。`link_failures > 0` 時の警告ブロックは sentinel より前に挿入する。
+Decompose path も完了レポートの最終 2 行は `<!-- skill return signal: caller must continue next step -->` + `<!-- [create:returned-to-caller:{parent_issue_number}] -->` HTML コメント sentinel で終わる。Single Issue path と同じく、sentinel は hook / grep 契約のため必須で、HTML コメント化することで user-visible な末端は `✅ ...` 完了メッセージとなる。`link_failures > 0` 時の警告ブロックは sentinel より前に挿入する。
 
 ```markdown
 ✅ Issue #{parent_issue_number} を分解して {sub_count} 件の Sub-Issue を作成しました
@@ -513,7 +514,8 @@ Decompose path も完了レポートの最終行は `<!-- [create:completed:{par
 - `/rite:pr:open {first_sub_issue}` で最初の Sub-Issue から作業を開始
 - `/rite:issue:list` で全 Sub-Issue 一覧を確認
 
-<!-- [create:completed:{parent_issue_number}] -->
+<!-- skill return signal: caller must continue next step -->
+<!-- [create:returned-to-caller:{parent_issue_number}] -->
 ```
 
 `link_failures > 0` の場合は完了メッセージと sentinel の間に以下を併記し、ユーザーに復旧を促す:

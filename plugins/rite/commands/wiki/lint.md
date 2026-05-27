@@ -92,7 +92,7 @@ echo "wiki_branch=$wiki_branch"
 
 分散実装の完全一覧と設計差異は [Wiki 有効判定パターン §分散実装ファイル一覧](../../references/wiki-patterns.md#分散実装ファイル一覧-single-source-of-truth) を SoT として参照する。本ファイルは ingest.md と対称な `extract_yaml_key` helper 経由の lenient 2-arm 経路 (#483 opt-out default)。
 
-**Wiki が無効の場合**: 早期 return (`--auto` モードでは ステップ 9.2 の 2 行出力契約を必ず守る):
+**Wiki が無効の場合**: 早期 return (`--auto` モードでは ステップ 9.2 の 3 行出力契約を必ず守る):
 
 ```bash
 # Claude placeholder {mode} 残留 fail-fast gate (glob pattern 版、5 site で同型)
@@ -105,9 +105,11 @@ case "$mode" in
     ;;
 esac
 if printf '%s' "$mode" | grep -qE '(^|[[:space:]])--auto([[:space:]]|$)'; then
-  # ステップ 9.2 contract: Lint 1 行 + HTML sentinel の 2 行を出力 (stdout 空は ingest 側で「Lint 実行失敗」扱い)
+  # ステップ 9.2 contract: Lint 1 行 + return signal comment + HTML sentinel の 3 行を出力
+  # (stdout 空は ingest 側で「Lint 実行失敗」扱い)
   echo "Lint: contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0"
-  echo "<!-- [lint:completed:auto] -->"
+  echo "<!-- skill return signal: caller must continue next step -->"
+  echo "<!-- [lint:returned-to-caller:auto] -->"
 else
   echo "Wiki 機能が無効です（wiki.enabled: false）。" >&2
   echo "有効化するには rite-config.yml の wiki.enabled を true にしてから /rite:wiki:init を実行してください。" >&2
@@ -158,7 +160,7 @@ else
 fi
 ```
 
-**Wiki 未初期化の場合**: 早期 return (`--auto` モードでは ステップ 9.2 の 2 行出力契約を必ず守る):
+**Wiki 未初期化の場合**: 早期 return (`--auto` モードでは ステップ 9.2 の 3 行出力契約を必ず守る):
 
 ```bash
 mode="{mode}"
@@ -171,7 +173,8 @@ case "$mode" in
 esac
 if printf '%s' "$mode" | grep -qE '(^|[[:space:]])--auto([[:space:]]|$)'; then
   echo "Lint: contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0"
-  echo "<!-- [lint:completed:auto] -->"
+  echo "<!-- skill return signal: caller must continue next step -->"
+  echo "<!-- [lint:returned-to-caller:auto] -->"
 else
   echo "Wiki が初期化されていません。先に /rite:wiki:init を実行してください。" >&2
 fi
@@ -1340,17 +1343,21 @@ LLM は ステップ 6.0 stdout から `log_read_ok={value}`、ステップ 6.2 
 
 ### 9.2 `--auto` モードの出力
 
-Ingest 完了直後に呼ばれる場合、出力は最小化される。`--auto` モードの stdout は次の 2 行を **この順序で** 出力する:
+Ingest 完了直後に呼ばれる場合、出力は最小化される。`--auto` モードの stdout は次の 3 行を **この順序で** 出力する:
 
 ```
 Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, missing_concept={n_missing_concept}, unregistered_raw={n_unregistered_raw}, broken_refs={n_broken_refs}
-<!-- [lint:completed:auto] -->
+<!-- skill return signal: caller must continue next step -->
+<!-- [lint:returned-to-caller:auto] -->
 ```
 
 1. **6 フィールド 1 行** (`Lint: contradictions=N, ...`): ingest 側の `^Lint: contradictions=` regex parser 互換 (形式不変)
-2. **HTML コメント sentinel** (`<!-- [lint:completed:auto] -->`): 最終行に出力。rendered view では不可視で `grep -F '[lint:completed:auto]'` で検出可能
+2. **Return signal comment** (`<!-- skill return signal: caller must continue next step -->`): caller (ingest 等) が次 step を skip しないよう active disambiguation
+3. **HTML コメント sentinel** (`<!-- [lint:returned-to-caller:auto] -->`): 最終行に出力。rendered view では不可視で `grep -F '[lint:returned-to-caller:auto]'` で検出可能
 
-検出件数が全て 0 の場合も含めて常にこの 2 行を出力する。空 stdout は ingest 側で「lint 実行失敗」として扱われる。
+検出件数が全て 0 の場合も含めて常にこの 3 行を出力する。空 stdout は ingest 側で「lint 実行失敗」として扱われる。
+
+> **Why `returned-to-caller` (not `completed`)**: 旧 `lint:completed:auto` 形式は literal `completed` が LLM の turn-boundary heuristic と衝突し、caller skill (ingest 等) の次 step を skip して turn が暗黙終了する事象が複数回再発した (Issue #1165)。`returned-to-caller` は「caller に return した = caller の次 step に進む」という semantic に置換することで、terminal vocabulary を構造的に排除する。
 
 ### 9.3 exit code
 
@@ -1369,9 +1376,9 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 
 | エラー | 対処 | ステップ |
 |--------|------|---------|
-| `wiki.enabled: false` | 早期 return (`--auto` モード時は ステップ 9.2 の 2 行出力後 exit 0、それ以外は警告のみ exit 0) | ステップ 1.1 |
+| `wiki.enabled: false` | 早期 return (`--auto` モード時は ステップ 9.2 の 3 行出力後 exit 0、それ以外は警告のみ exit 0) | ステップ 1.1 |
 | GNU date 非互換環境 | ステップ 4 skip（exit 0 + WARNING） | ステップ 1.2 |
-| Wiki 未初期化 | `/rite:wiki:init` を案内 (`--auto` モード時は ステップ 9.2 の 2 行出力後 exit 0) | ステップ 1.3 |
+| Wiki 未初期化 | `/rite:wiki:init` を案内 (`--auto` モード時は ステップ 9.2 の 3 行出力後 exit 0) | ステップ 1.3 |
 | `{mode}` placeholder 残留 (2 箇所で同型) | **exit 1 で fail-fast** | ステップ 1.1 / 1.3 |
 | ステップ 6.2 の placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{pages_list}` の 3 種 + partial pollution) | **exit 1 で fail-fast** (silent `missing_concept` 誤分類防止) | ステップ 6.2 |
 | ステップ 8.1 の counter placeholder (`n_*` 5 種) 残留 / 非整数 | **exit 1 で fail-fast** (silent `lint:clean` 誤 emit 防止) | ステップ 8.1 |

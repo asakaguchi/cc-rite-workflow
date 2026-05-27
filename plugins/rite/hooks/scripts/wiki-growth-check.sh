@@ -380,7 +380,7 @@ check_pr_raw_correspondence() {
   if [ "$missing_count" -ge "$pr_raw_thresh" ]; then
     echo "==> PR↔raw correspondence gap: $missing_count of $total_checked recent merged PRs have no raw source on '$wiki_branch' (threshold: $pr_raw_thresh)"
     echo "==> Missing PRs: $missing_prs"
-    echo "==> Hint: Phase X.X.W (Wiki Ingest Trigger) may not be firing for these PRs. Verify review.md Phase 6.5.W.2 / fix.md Phase 4.6.W.2 / close.md Phase 4.4.W.2 execution."
+    echo "==> Hint: Phase X.X.W (Wiki Ingest Trigger) may not be firing for these PRs. Verify review.md ステップ 6.5.W.2 / fix.md ステップ 4.6.W.2 / close.md ステップ 4.4.W.2 execution."
     return 1
   fi
 

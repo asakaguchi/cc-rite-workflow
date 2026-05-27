@@ -42,7 +42,7 @@ The table below shows primary file patterns. Each skill file's Activation sectio
 | Error Handling Expert | `error-handling.md` | Files containing `try`, `catch`, `throw`, `Error`, `reject`, `fallback` keywords (JS/TS); `set -e`, `pipefail`, `trap`, `|| true`, `|| :`, `2>/dev/null` keywords (Bash); `**/*.sh` |
 | Type Design Expert | `type-design.md` | `**/*.ts`, `**/*.tsx`, `**/*.rs`, `**/*.go` with `interface`, `type`, `enum`, `class`, `struct` |
 
-**Note**: The table above shows representative patterns only. Each skill file's Activation section is the source of truth. The tech-writer row is kept in sync with `plugins/rite/commands/pr/review.md` Phase 1.2.7 `doc_file_patterns` and `plugins/rite/skills/reviewers/tech-writer.md` Activation section; see [`plugins/rite/commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md#cross-reference) Cross-Reference section for the drift-prevention invariant. Automated drift detection is implemented by `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` (Issue #353 系統 1; invoked from `/rite:lint` Phase 3.7 as a warning/non-blocking check). The tech-writer row uses **set semantics** (file matching equivalence), not pattern syntax equality — the order of patterns and exact glob syntax may differ across the 3 files (this file, `tech-writer.md`, `review.md`) as long as the matched file set is identical. See `tech-writer.md` Activation section's note for the canonical equivalence statement.
+**Note**: The table above shows representative patterns only. Each skill file's Activation section is the source of truth. The tech-writer row is kept in sync with `plugins/rite/commands/pr/review.md` ステップ 1.2.7 `doc_file_patterns` and `plugins/rite/skills/reviewers/tech-writer.md` Activation section; see [`plugins/rite/commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md#cross-reference) Cross-Reference section for the drift-prevention invariant. Automated drift detection is implemented by `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` (Issue #353 系統 1; invoked from `/rite:lint` ステップ 3.7 as a warning/non-blocking check). The tech-writer row uses **set semantics** (file matching equivalence), not pattern syntax equality — the order of patterns and exact glob syntax may differ across the 3 files (this file, `tech-writer.md`, `review.md`) as long as the matched file set is identical. See `tech-writer.md` Activation section's note for the canonical equivalence statement.
 
 **Code Quality co-reviewer rule**: Code Quality reviewer is additionally selected as a co-reviewer in the following cases:
 
@@ -146,7 +146,7 @@ When citing external specifications (library behavior, tool configuration, versi
 | **Flag uncertainty** | If unsure about external behavior, note "要検証" in the recommendation column to signal that fact-checking should prioritize this claim |
 | **Avoid speculation** | Do not claim specific library/tool behavior without concrete evidence from investigation or documentation |
 
-**Note**: External specification claims in findings are verified by the Fact-Checking Phase (`review.md` Phase 5 Critic Phase) using WebSearch/WebFetch against official documentation. Claims found to contradict official documentation are removed from the review report and recorded in a dedicated section. Reviewers benefit from accuracy here because contradicted findings are flagged as errors, reducing overall review quality.
+**Note**: External specification claims in findings are verified by the Fact-Checking Phase (`review.md` ステップ 5 Critic Phase) using WebSearch/WebFetch against official documentation. Claims found to contradict official documentation are removed from the review report and recorded in a dedicated section. Reviewers benefit from accuracy here because contradicted findings are flagged as errors, reducing overall review quality.
 
 ## Reviewer Type Identifiers
 
@@ -168,7 +168,7 @@ Mapping of reviewer identifiers (`reviewer_type`) to display names. Update this 
 | error-handling | エラーハンドリング専門家 | `error-handling.md` |
 | type-design | 型設計専門家 | `type-design.md` |
 
-**Note**: This table is the source of truth. `commands/pr/review.md` also references this table. The `code-quality` reviewer is used as a fallback when no other reviewers match (see "No Reviewers Match" section below and `review.md` Phase 3.2), as a co-reviewer for Prompt Engineer files containing fenced code blocks, and as a sole reviewer guard co-reviewer (see "Code Quality co-reviewer rule" above).
+**Note**: This table is the source of truth. `commands/pr/review.md` also references this table. The `code-quality` reviewer is used as a fallback when no other reviewers match (see "No Reviewers Match" section below and `review.md` ステップ 3.2), as a co-reviewer for Prompt Engineer files containing fenced code blocks, and as a sole reviewer guard co-reviewer (see "Code Quality co-reviewer rule" above).
 
 ## Reviewer Selection Algorithm
 
@@ -192,7 +192,7 @@ Analyze diff content for:
   - Type design keywords (representative): interface, type, enum, class, struct, readonly, generic
 ```
 
-**Note**: The above are representative keyword examples. The authoritative keyword list is defined in `commands/pr/review.md` Phase 2.3 ("Security keyword detection" section). Detailed activation patterns are defined in each reviewer skill file (`security.md`, `database.md`, etc.) under the Activation section.
+**Note**: The above are representative keyword examples. The authoritative keyword list is defined in `commands/pr/review.md` ステップ 2.3 ("Security keyword detection" section). Detailed activation patterns are defined in each reviewer skill file (`security.md`, `database.md`, etc.) under the Activation section.
 
 ### Phase 3: Select All Matching Reviewers
 
@@ -212,11 +212,11 @@ Apply constraints from rite-config.yml:
   - min_reviewers: Minimum reviewers to select
 
 Special rules:
-  - Security reviewer inclusion depends on rite-config.yml security_reviewer settings (see review.md Phase 3.2)
+  - Security reviewer inclusion depends on rite-config.yml security_reviewer settings (see review.md ステップ 3.2)
   - If no reviewers match, use code-quality reviewer as fallback (min_reviewers)
 ```
 
-**Note**: For detailed mandatory selection conditions for Security Expert, see [`commands/pr/review.md` Phase 3.2 (Reviewer Selection)](../../commands/pr/review.md#32-reviewer-selection).
+**Note**: For detailed mandatory selection conditions for Security Expert, see [`commands/pr/review.md` ステップ 3.2 (Reviewer Selection)](../../commands/pr/review.md#32-reviewer-selection).
 
 ## Skill Loading Strategy (Progressive Disclosure)
 
@@ -271,8 +271,8 @@ If PR changed files are `src/api/users.ts` and `src/auth/login.ts`:
 This skill implements the Generator-Critic pattern for enhanced review quality.
 
 **Phase mapping:**
-- **Generator Phase** = `commands/pr/review.md` **Phase 4** (Parallel review execution)
-- **Critic Phase** = `commands/pr/review.md` **Phase 5** (Result validation & integration)
+- **Generator Phase** = `commands/pr/review.md` **ステップ 4** (Parallel review execution)
+- **Critic Phase** = `commands/pr/review.md` **ステップ 5** (Result validation & integration)
 
 ### Generator Phase
 
@@ -351,12 +351,12 @@ If reviewer task exceeds internal timeout:
 
 ### No Reviewers Match
 
-When no file patterns match, use code-quality reviewer as fallback. Security Expert inclusion follows `rite-config.yml` settings (see `review.md` Phase 3.2).
+When no file patterns match, use code-quality reviewer as fallback. Security Expert inclusion follows `rite-config.yml` settings (see `review.md` ステップ 3.2).
 
 ```text
 If no file patterns match:
   1. Use code-quality reviewer as fallback (min_reviewers)
-  2. Apply Security Expert selection rules from rite-config.yml (see review.md Phase 3.2)
+  2. Apply Security Expert selection rules from rite-config.yml (see review.md ステップ 3.2)
   3. Warn user about limited review scope
   4. Suggest manual reviewer selection if needed
 ```

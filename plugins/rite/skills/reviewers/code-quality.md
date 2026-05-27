@@ -21,8 +21,8 @@ This skill is activated as a **fallback reviewer** when:
 - General code changes that need quality assessment
 
 Additionally, this skill is activated as a **co-reviewer** when:
-- `.md` files matching Prompt Engineer patterns (`commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`) contain fenced code blocks in the diff (see `review.md` Phase 2.3 "Code block detection")
-- Exactly 1 reviewer has been selected after all Phase 2.3 detection rules — **sole reviewer guard** (see `review.md` Phase 2.3 "Sole reviewer guard"). Does not activate when Code Quality is already the sole reviewer (fallback case)
+- `.md` files matching Prompt Engineer patterns (`commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`) contain fenced code blocks in the diff (see `review.md` ステップ 2.3 "Code block detection")
+- Exactly 1 reviewer has been selected after all ステップ 2.3 detection rules — **sole reviewer guard** (see `review.md` ステップ 2.3 "Sole reviewer guard"). Does not activate when Code Quality is already the sole reviewer (fallback case)
 
 This is a catch-all reviewer that ensures all PRs receive at least one review perspective, and a co-reviewer that prevents single-reviewer blind spots.
 

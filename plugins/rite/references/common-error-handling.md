@@ -88,7 +88,7 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 
 <a id="jq-required-fields-snippet-canonical"></a>
 
-`review-result-schema.md` で定義される JSON スキーマの必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) を検証する canonical jq snippet。Phase 6.1.a (review.md) と Phase 1.2.0 Priority 0 / 2 / 3 (fix.md) の 4 箇所から参照される (verified-review cycle 8 M-8 対応で canonicalize)。
+`review-result-schema.md` で定義される JSON スキーマの必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) を検証する canonical jq snippet。ステップ 6.1.a (review.md) と ステップ 1.2.0 Priority 0 / 2 / 3 (fix.md) の 4 箇所から参照される (verified-review cycle 8 M-8 対応で canonicalize)。
 
 **Canonical snippet** (jq 式):
 
@@ -102,16 +102,16 @@ and (.findings | type == "array")
 
 | Site | Purpose | Failure Reason |
 |------|---------|----------------|
-| `review.md` Phase 6.1.a | JSON tmpfile の post-condition 検証 | `schema_required_fields_missing` |
-| `fix.md` Phase 1.2.0 Priority 0 (`--review-file`) | ユーザー明示ファイルの必須フィールド検証 | `explicit_file_schema_required_fields_missing` |
-| `fix.md` Phase 1.2.0 Priority 2 (local file) | 最新 timestamp ファイルの必須フィールド検証 | `local_file_schema_required_fields_missing` |
-| `fix.md` Phase 1.2.0 Priority 3 (PR comment Raw JSON) | PR コメント Raw JSON の必須フィールド検証 | `pr_comment_schema_required_fields_missing` |
+| `review.md` ステップ 6.1.a | JSON tmpfile の post-condition 検証 | `schema_required_fields_missing` |
+| `fix.md` ステップ 1.2.0 Priority 0 (`--review-file`) | ユーザー明示ファイルの必須フィールド検証 | `explicit_file_schema_required_fields_missing` |
+| `fix.md` ステップ 1.2.0 Priority 2 (local file) | 最新 timestamp ファイルの必須フィールド検証 | `local_file_schema_required_fields_missing` |
+| `fix.md` ステップ 1.2.0 Priority 3 (PR comment Raw JSON) | PR コメント Raw JSON の必須フィールド検証 | `pr_comment_schema_required_fields_missing` |
 
 **Rationale for type-explicit validation**: jq の and / truthiness 仕様 (`false` / `null` のみが falsy、空文字列 `""` / `0` / `[]` / `{}` はすべて truthy) のため、旧実装の `.schema_version and .pr_number` は `schema_version: ""` や `pr_number: "123"` (文字列型) を silent pass させる抜け穴があった。明示的に `type == "string" and length > 0` / `type == "number"` / `type == "array"` を要求することで、型違反と空文字列のすべてを reject する。
 
 **Source検証**: [jq Manual](https://jqlang.org/manual/) — "false and null are considered 'false values', and anything else is a 'true value'. Everything else is 'true', even the number zero and the empty string, array and object." (`jq --help` or interactive `jq .` で確認可能)
 
-**Finding ID validation (Phase 6.1.a のみ追加検証)**: 本 canonical snippet に加えて Phase 6.1.a では finding id の書式 (`^F-[0-9]{2,}$`) と一意性も検証する。これは write 側 (review.md) でのみ enforce される「生成規則」であり、read 側 (fix.md) では既に書き込まれた JSON を信頼するため検証不要。
+**Finding ID validation (ステップ 6.1.a のみ追加検証)**: 本 canonical snippet に加えて ステップ 6.1.a では finding id の書式 (`^F-[0-9]{2,}$`) と一意性も検証する。これは write 側 (review.md) でのみ enforce される「生成規則」であり、read 側 (fix.md) では既に書き込まれた JSON を信頼するため検証不要。
 
 ```jq
 (.findings | length == 0)
@@ -127,7 +127,7 @@ Failure reason: `finding_id_format_or_uniqueness_violation`
 
 <a id="hook-lock-contention-classification-canonical"></a>
 
-`local-wm-update.sh` / `issue-comment-wm-sync.sh` などの hook が stderr に出力するメッセージから「lock contention (best-effort skip 許容)」と「non-lock failure (WARNING + stderr 表示義務)」を分類する canonical pattern。`review.md` Phase 6.2 / 6.4 と `fix.md` Phase 4.5 / 8.1 の 4 箇所から参照される (verified-review cycle 12 H-1 対応で canonicalize)。
+`local-wm-update.sh` / `issue-comment-wm-sync.sh` などの hook が stderr に出力するメッセージから「lock contention (best-effort skip 許容)」と「non-lock failure (WARNING + stderr 表示義務)」を分類する canonical pattern。`review.md` ステップ 6.2 / 6.4 と `fix.md` ステップ 4.5 / 8.1 の 4 箇所から参照される (verified-review cycle 12 H-1 対応で canonicalize)。
 
 **Canonical pattern** (grep 式):
 
@@ -139,9 +139,9 @@ grep -qiE '(file is locked|lock contention|resource busy)' "$err_file"
 
 | Site | Purpose |
 |------|---------|
-| `review.md` Phase 6.2 Step 2 (`issue-comment-wm-sync`) | Phase 遷移時の backup sync |
-| `review.md` Phase 6.4 (`_rite_review_p64_run_sync` helper) | Phase 6.4 の 3 step 全てで本 helper が参照 |
-| `fix.md` Phase 8.1 (`local-wm-update.sh`) | E2E flow 経路の post-fix local work memory 更新 |
+| `review.md` ステップ 6.2 Step 2 (`issue-comment-wm-sync`) | Phase 遷移時の backup sync |
+| `review.md` ステップ 6.4 (`_rite_review_p64_run_sync` helper) | ステップ 6.4 の 3 step 全てで本 helper が参照 |
+| `fix.md` ステップ 8.1 (`local-wm-update.sh`) | E2E flow 経路の post-fix local work memory 更新 |
 
 **Rationale for exact phrase match**: 旧 loose pattern `grep -qiE 'lock|contention|busy'` は以下の silent suppression 問題を抱えていた:
 

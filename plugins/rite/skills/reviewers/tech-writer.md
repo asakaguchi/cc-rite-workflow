@@ -22,7 +22,7 @@ This skill is activated when reviewing files matching:
 - `i18n/**/*.md`, `i18n/**/*.mdx` (excluding `plugins/rite/i18n/**` — rite plugin's own translations are dogfooding artifacts)
 - `*.rst`, `*.adoc`
 
-> **Note — 3 ファイル等価性**: These patterns must remain equivalent across **3 files** (this file as source of truth, plus `plugins/rite/commands/pr/review.md` Phase 1.2.7 `doc_file_patterns`, plus `plugins/rite/skills/reviewers/SKILL.md` Reviewers table tech-writer row). The **invariant definition and drift detection rules** live in a single source: see [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md#drift-detection-invariants) section "drift 検出の invariant (3 系統の drift 監視対象)". Automated drift detection for this 系統 is implemented by `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` (Issue #353 系統 1; invoked from `/rite:lint` Phase 3.7). Do not duplicate the invariant rules here — update internal-consistency.md instead.
+> **Note — 3 ファイル等価性**: These patterns must remain equivalent across **3 files** (this file as source of truth, plus `plugins/rite/commands/pr/review.md` ステップ 1.2.7 `doc_file_patterns`, plus `plugins/rite/skills/reviewers/SKILL.md` Reviewers table tech-writer row). The **invariant definition and drift detection rules** live in a single source: see [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md#drift-detection-invariants) section "drift 検出の invariant (3 系統の drift 監視対象)". Automated drift detection for this 系統 is implemented by `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` (Issue #353 系統 1; invoked from `/rite:lint` ステップ 3.7). Do not duplicate the invariant rules here — update internal-consistency.md instead.
 
 **Note**: `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` (and corresponding `.mdx`) are handled by the Prompt Engineer. This exclusion is managed by the pattern priority rules in [`SKILL.md`](./SKILL.md) (Prompt Engineer takes highest priority). Similarly, `plugins/rite/i18n/**` is excluded because the rite plugin's own i18n files are dogfooding artifacts that should not trigger doc-heavy PR mode against the rite plugin itself. The `i18n/**` pattern is restricted to `.md` / `.mdx` files only because tech-writer reviews Markdown-style documentation; other translation formats (`.yml`, `.json`, `.po`) are out of scope.
 
@@ -46,11 +46,11 @@ The diff contains additions or deletions of comment/docstring tokens, including:
 
 **Review scope under this conditional activation**: When activated by comment/docstring changes (not by file type), tech-writer reviews **only** the modified comments/docstrings and their surrounding code — not the entire file. Use the `## Comment Accuracy Review` section below as the primary checklist. The standard Documentation Critical/Important/Recommendations checklists still apply to the comment content itself, but implementation-consistency checks (`Doc-Heavy PR Mode`) do NOT activate because this conditional path is independent of the doc-heavy PR ratio calculation.
 
-**Invariant note**: This conditional activation does **not** expand the `doc_file_patterns` invariant tracked across the 3 files listed above. The doc_file_patterns invariant governs **file-type matching** for doc-heavy PR detection and tech-writer's base activation; the conditional activation described here is a **diff-content condition** orthogonal to file-type matching. When a code file with comment changes is reviewed, the `doc_file_patterns` check still classifies the file as non-documentation (so doc-heavy PR detection is unaffected), but tech-writer is additionally invoked for the comment scope. Do **not** add code file globs to the doc_file_patterns invariant in `review.md` Phase 1.2.7 or `SKILL.md` Reviewers table — those remain strictly file-type-based.
+**Invariant note**: This conditional activation does **not** expand the `doc_file_patterns` invariant tracked across the 3 files listed above. The doc_file_patterns invariant governs **file-type matching** for doc-heavy PR detection and tech-writer's base activation; the conditional activation described here is a **diff-content condition** orthogonal to file-type matching. When a code file with comment changes is reviewed, the `doc_file_patterns` check still classifies the file as non-documentation (so doc-heavy PR detection is unaffected), but tech-writer is additionally invoked for the comment scope. Do **not** add code file globs to the doc_file_patterns invariant in `review.md` ステップ 1.2.7 or `SKILL.md` Reviewers table — those remain strictly file-type-based.
 
-**Reviewer selection integration (follow-up note)**: Actual invocation of tech-writer on code PRs with comment changes depends on `review.md` Phase 2.2 (File Pattern Analysis) and Phase 2.3 (Content Analysis) detecting comment/docstring diffs as part of the reviewer selection logic. The Phase 2.2/2.3 selection logic may need a follow-up extension to honor this conditional activation (for example, adding a content-keyword detection branch in Phase 2.3 that flags comment/docstring token changes as a tech-writer trigger); until then, tech-writer is selected only when a doc file is also in the diff via Phase 2.2's file-type matching. This is tracked informally — Issue #359 Phase C's scope is limited to the reviewer definition itself.
+**Reviewer selection integration (follow-up note)**: Actual invocation of tech-writer on code PRs with comment changes depends on `review.md` ステップ 2.2 (File Pattern Analysis) and ステップ 2.3 (Content Analysis) detecting comment/docstring diffs as part of the reviewer selection logic. The ステップ 2.2/2.3 selection logic may need a follow-up extension to honor this conditional activation (for example, adding a content-keyword detection branch in ステップ 2.3 that flags comment/docstring token changes as a tech-writer trigger); until then, tech-writer is selected only when a doc file is also in the diff via ステップ 2.2's file-type matching. This is tracked informally — Issue #359 Phase C's scope is limited to the reviewer definition itself.
 
-> **Phase reference note**: `review.md` Phase 4.3 is "Review Execution" (Task tool sub-agent invocation), not reviewer selection. Reviewer selection happens in Phase 2 — specifically Phase 2.2 (File Pattern Analysis against the SKILL.md reviewer table) and Phase 2.3 (Content Analysis for keyword/code-block detection), plus Phase 3.2 (Reviewer Selection for the Security Expert conditional logic).
+> **Phase reference note**: `review.md` ステップ 4.3 is "Review Execution" (Task tool sub-agent invocation), not reviewer selection. Reviewer selection happens in ステップ 2 — specifically ステップ 2.2 (File Pattern Analysis against the SKILL.md reviewer table) and ステップ 2.3 (Content Analysis for keyword/code-block detection), plus ステップ 3.2 (Reviewer Selection for the Security Expert conditional logic).
 
 ## Expertise Areas
 
@@ -66,7 +66,7 @@ The diff contains additions or deletions of comment/docstring tokens, including:
 
 文書-実装整合性 (Doc-Impl Consistency) — **Doc-Heavy mode 限定 (`{doc_heavy_pr} == true` のときのみ評価)**:
 
-> **適用条件**: 以下 5 項目は **Doc-Heavy PR Mode が activated されている場合のみ**評価する (`{doc_heavy_pr} == true` の伝達経路は `commands/pr/review.md` Phase 1.2.7 / Phase 2.2.1 を参照)。通常の PR レビューでは適用されない。
+> **適用条件**: 以下 5 項目は **Doc-Heavy PR Mode が activated されている場合のみ**評価する (`{doc_heavy_pr} == true` の伝達経路は `commands/pr/review.md` ステップ 1.2.7 / ステップ 2.2.1 を参照)。通常の PR レビューでは適用されない。
 >
 > **理由**: これら 5 項目の検証プロトコルは [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md) の "Verification Protocol" セクションに定義されており、その protocol は Doc-Heavy mode の Activation 条件下でのみ tech-writer prompt に注入される (Phase 2.2.1 step 3)。non-Doc-Heavy mode では protocol が伝達されないため、これら 5 項目を強制すると「protocol なしで Must Fix を判定する」状態になり speculative 指摘の温床になる。
 >
@@ -143,7 +143,7 @@ Generate findings in table format with severity, location, issue, and recommenda
 
 ## Doc-Heavy PR Mode (Conditional)
 
-**Activation**: This section applies only when the review caller passes `{doc_heavy_pr} == true`. The flag is computed in [`commands/pr/review.md`](../../commands/pr/review.md) Phase 1.2.7 (Doc-Heavy PR Detection) and propagated to tech-writer by Phase 2.2.1 (Doc-Heavy Reviewer Override).
+**Activation**: This section applies only when the review caller passes `{doc_heavy_pr} == true`. The flag is computed in [`commands/pr/review.md`](../../commands/pr/review.md) ステップ 1.2.7 (Doc-Heavy PR Detection) and propagated to tech-writer by ステップ 2.2.1 (Doc-Heavy Reviewer Override).
 
 In doc-heavy PR mode, the **detailed 5-category verification protocol** in [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md) becomes mandatory **on top of** the standard Critical (Must Fix) checklist. That file is the **single source of truth** for verification procedures, severity mapping, and confidence gating — read it first before reporting findings under this mode.
 
@@ -178,7 +178,7 @@ Documentation PRs may describe an external product whose implementation lives in
    ```
 
    **Failure signal の値**: 上記 7 種から 1 つを選択する。各値の意味は [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md#implementation-source-not-in-this-repository-silent-skip-prohibited) の "Failure signal の値" 見出し直下の判定条件テーブルを参照 (404 = リポジトリ非存在 / 401 / 403 = 認証・権限不足 (2 値を区別して記録) / 5xx = HTTP サーバーエラー全般 / timeout = タイムアウト (2 回連続) / empty = 空レスポンス / name-unresolved = 外部 repo 名特定不能)。
-3. The reviewer caller (review.md Phase 5.1.3) will surface this meta-finding and require explicit user acknowledgement before treating the review as complete
+3. The reviewer caller (review.md ステップ 5.1.3) will surface this meta-finding and require explicit user acknowledgement before treating the review as complete
 
 ### Doc-Heavy mode finding requirements
 
@@ -190,17 +190,17 @@ Every finding emitted under this mode **MUST** include an `evidence` line in the
 
 Accepted tool values: `Grep`, `Read`, `Glob`, `WebFetch`. Replace `path=` and `line=` values with the actual verification target (file path relative to the repository root, and the line number or range you consulted during verification).
 
-> **⚠️ Do not copy angle-bracket meta syntax literally**: Earlier versions of this guidance wrote `tool=<Grep|Read|Glob|WebFetch>` where `<...>` was meta syntax indicating "pick one". Some reviewers copied the angle brackets verbatim, producing `tool=<Grep>` in their findings, which then failed the `review.md` Phase 5.1.3 Evidence regex. The current literal form removes this ambiguity. The Phase 5.1.3 regex tolerates optional surrounding angle brackets (`tool=<?(Grep|Read|Glob|WebFetch)>?`) as a safety net, but you should still emit the bare form shown above.
+> **⚠️ Do not copy angle-bracket meta syntax literally**: Earlier versions of this guidance wrote `tool=<Grep|Read|Glob|WebFetch>` where `<...>` was meta syntax indicating "pick one". Some reviewers copied the angle brackets verbatim, producing `tool=<Grep>` in their findings, which then failed the `review.md` ステップ 5.1.3 Evidence regex. The current literal form removes this ambiguity. The ステップ 5.1.3 regex tolerates optional surrounding angle brackets (`tool=<?(Grep|Read|Glob|WebFetch)>?`) as a safety net, but you should still emit the bare form shown above.
 
 Markdown テーブルのセル内で `- Evidence: ...` を書く場合、セル内改行が使えない環境 (GitHub の標準テーブル描画等) では `<br>` を使うか、`推奨対応` カラムの後ろに続けて単一行で記述してもよい。Phase 5.1.3 の正規表現は `<br>` / `|` / 空白のいずれかを Evidence 行の直前 anchor として許容する。
 
-Findings without an `evidence` line will be rejected by review.md Phase 5.1.3 (Doc-Heavy post-condition check) and the review will be marked incomplete.
+Findings without an `evidence` line will be rejected by review.md ステップ 5.1.3 (Doc-Heavy post-condition check) and the review will be marked incomplete.
 
 **Important**: The `ファイル:行` column of the standard reviewer output table indicates the **target location** of the finding, not the evidence. Evidence is a separate concept: it documents which tool was used to verify the claim against the implementation. Do not rely on the `ファイル:行` column alone to satisfy the evidence requirement.
 
 ### Doc-Heavy mode finding-count rules
 
-Under Doc-Heavy mode, you **MUST** emit a META line at the top of your findings section **regardless of finding count** (0 件でも 1+ 件でも). This allows `review.md` Phase 5.1.3 post-condition check to verify that all 5 verification categories were actually executed, not just a subset (silent non-compliance prevention — this is the root purpose of the Doc-Heavy PR Mode post-condition check).
+Under Doc-Heavy mode, you **MUST** emit a META line at the top of your findings section **regardless of finding count** (0 件でも 1+ 件でも). This allows `review.md` ステップ 5.1.3 post-condition check to verify that all 5 verification categories were actually executed, not just a subset (silent non-compliance prevention — this is the root purpose of the Doc-Heavy PR Mode post-condition check).
 
 Emit **one** of the following META lines based on your execution outcome:
 
@@ -222,7 +222,7 @@ This negative/positive confirmation distinguishes "protocol was fully executed" 
 
 For the full 5-category verification protocol (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence), see [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md). The Critical Checklist items in this skill file are the **entry points**; `internal-consistency.md` is the **detailed protocol** and the source of truth for severity mapping.
 
-> **Canonical category naming**: The 5 categories above use the canonical hyphenated form (`Order-Emphasis Consistency`). This form is **literal-substring matched** by the Phase 5.1.3 Step 2 META check in `commands/pr/review.md`. Do not introduce variants like `Order / Emphasis Consistency` or `Order/Emphasis Consistency` — they will fail the META check and trigger a `doc_heavy_post_condition: warning` false positive.
+> **Canonical category naming**: The 5 categories above use the canonical hyphenated form (`Order-Emphasis Consistency`). This form is **literal-substring matched** by the ステップ 5.1.3 Step 2 META check in `commands/pr/review.md`. Do not introduce variants like `Order / Emphasis Consistency` or `Order/Emphasis Consistency` — they will fail the META check and trigger a `doc_heavy_post_condition: warning` false positive.
 
 ## Comment Accuracy Review
 

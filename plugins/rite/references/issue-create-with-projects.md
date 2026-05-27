@@ -9,8 +9,8 @@ Guide for using the common shell script that creates a GitHub Issue and register
 **Script location**: `{plugin_root}/scripts/create-issue-with-projects.sh`
 
 Referenced from:
-- `commands/pr/fix.md` Phase 4.3.4 Step 2
-- `commands/pr/review.md` Phase 7.4.2
+- `commands/pr/fix.md` ステップ 4.3.4 Step 2
+- `commands/pr/review.md` ステップ 7.4.2
 - `commands/pr/create.md` Phase 2.5.5
 - `commands/pr/cleanup.md` ステップ 3 (未完了タスクのチェック → 残作業 Issue 化)
 - `commands/issue/create.md` ステップ 4.3 (Single Issue creation)
@@ -143,14 +143,14 @@ options:
 
 Each caller determines Priority using its own logic before passing it to the script.
 
-### fix.md (Phase 4.3.4): Skip Reason Keyword Matching
+### fix.md (ステップ 4.3.4): Skip Reason Keyword Matching
 
 | Skip Reason Keyword | Issue Priority | Reason |
 |---------------------|----------------|--------|
 | `緊急`, `重大`, `urgent`, `critical` | High | Requires priority attention |
 | All others | Medium | Normal priority (default) |
 
-### review.md (Phase 7.4): Severity-Based Mapping
+### review.md (ステップ 7.4): Severity-Based Mapping
 
 | Finding Severity | Issue Priority | Reason |
 |-----------------|----------------|--------|

@@ -17,7 +17,7 @@ rite workflow 独自の主張 (Contract Rigour / Output Contract / Naming is doc
 
 > **本 MVP のスコープ**: 6 原則の各 Where to Apply 節は Phase 5.1 / 5.4 の 2 フェーズのみを対象とする。Phase 3 (Implementation Plan) での適用は「Implementation Plan 内で本 SoT を参照する」という宣言レベルに留め、各原則の具体的な Phase 3 ステップ (例: 計画段階で生成予定コメントの方針を declarative に記述する仕組み) は後続 Issue で reviewer Detection Checklist 統合と合わせて定義する。
 >
-> **`commands/pr/fix.md` Phase 2.3 / 2.4 の適用について**: 禁止句リスト (SoT) サブ節 (原則 2 `no_journal_comment` 内) の「適用範囲」表は in-source コメント / reviewer 返信 / docstring が共通の禁止句リストを参照することを明示する。各原則本体の Where to Apply 節 (Phase 5.1 / 5.4 列挙) には Phase 2.3 / 2.4 を含めない設計選択を採用している (各原則 Where to Apply は principle ごとの適用 phase 宣言、禁止句リストの適用範囲表は禁止句 SoT の参照ファイル一覧)。Phase 2.3 / 2.4 の declarative gate は `fix.md` 側で `comment-best-practices.md` を参照する形で実装され、本ファイル各原則の Where to Apply 節への enumerate は行わない。
+> **`commands/pr/fix.md` ステップ 2.3 / 2.4 の適用について**: 禁止句リスト (SoT) サブ節 (原則 2 `no_journal_comment` 内) の「適用範囲」表は in-source コメント / reviewer 返信 / docstring が共通の禁止句リストを参照することを明示する。各原則本体の Where to Apply 節 (ステップ 5.1 / 5.4 列挙) には ステップ 2.3 / 2.4 を含めない設計選択を採用している (各原則 Where to Apply は principle ごとの適用 phase 宣言、禁止句リストの適用範囲表は禁止句 SoT の参照ファイル一覧)。ステップ 2.3 / 2.4 の declarative gate は `fix.md` 側で `comment-best-practices.md` を参照する形で実装され、本ファイル各原則の Where to Apply 節への enumerate は行わない。
 
 ## 原則一覧
 
@@ -125,7 +125,7 @@ def get_user_id(email: str) -> int:
 |--------|------|
 | in-source コメント (Edit/Write で生成するコード内コメント全般) | 本ドキュメント (SoT) |
 | `templates/review/reply.md` のレビュアー返信本文 | 本ドキュメントを参照 |
-| `commands/pr/fix.md` Phase 2.3 / 2.4 の修正生成時 | 本ドキュメントを参照 |
+| `commands/pr/fix.md` ステップ 2.3 / 2.4 の修正生成時 | 本ドキュメントを参照 |
 
 **理由**: コメントに番号や履歴を書くと、後追いで読むレビュアーが GitHub の commit / PR / Issue ページを行き来する負担が増える。番号は将来の rename / squash で意味を失う。**「なぜそうしたか」(Why) が分かれば commit history は code から辿れる** ため、本文は Why に集中する。
 

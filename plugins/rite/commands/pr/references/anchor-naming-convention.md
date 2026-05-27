@@ -123,7 +123,7 @@ set +o pipefail
 
 | File | Line | anchor literal |
 |------|------|----------------|
-| `commands/pr/fix.md` | 1084 | `# === Phase 1.2.0 Selection logic block end ===` |
+| `commands/pr/fix.md` | 1084 | `# === ステップ 1.2.0 Selection logic block end ===` |
 | `commands/pr/review.md` | 668 | `# === all_files_excluded bash impl ===` |
 
 ---

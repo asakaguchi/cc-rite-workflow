@@ -122,7 +122,7 @@ DRIFT_COUNT_FILE="$(mktemp)" || { echo "ERROR: mktemp failed" >&2; exit 2; }
 # 統合 trap で signal interrupt 時の orphan を防ぐ (F-08)。
 PATTERN6_STDERR=""
 # Pattern 2 awk tempfile も script-level で宣言して統合 trap で signal interrupt 時の
-# orphan を防ぐ (Issue #1161 cycle 2 F-01 — script line 121 PATTERN6_STDERR doctrine と同型)。
+# orphan を防ぐ (Pattern 6 stderr capture と同様に script-level 宣言 + 統合 trap で回収する doctrine)。
 # check_pattern_2 関数内で AWK_TABLE_OUT 等に mktemp 結果を代入し、正常完了時に明示 rm + ""
 # reset することで二重 rm を避ける。signal interrupt 経路では本 trap が rm -f で回収する。
 AWK_TABLE_OUT=""
@@ -223,8 +223,8 @@ check_pattern_2() {
   local awk_table_rc awk_emit_rc
 
   # tempfile は script-level の AWK_TABLE_OUT / AWK_TABLE_ERR / AWK_EMIT_OUT / AWK_EMIT_ERR
-  # 4 変数で管理し、_drift_check_cleanup trap (script line 124-133) で signal interrupt 時に
-  # orphan を回収する。正常完了時は明示 rm + "" reset で trap 二重 rm を避ける。
+  # 4 変数で管理し、_drift_check_cleanup trap (本 script 冒頭の signal interrupt cleanup ハンドラ)
+  # で orphan を回収する。正常完了時は明示 rm + "" reset で trap 二重 rm を避ける。
   # mktemp に 2>/dev/null を付け sibling (pr-cycle-cleanup.sh 等) と統一 (bare stderr leak 防止)。
   # table-side awk: rc capture for silent-failure guard + asymmetric [_-]$ skip
   AWK_TABLE_OUT=$(mktemp /tmp/rite-drift-awk-table-out-XXXXXX 2>/dev/null) || AWK_TABLE_OUT=""

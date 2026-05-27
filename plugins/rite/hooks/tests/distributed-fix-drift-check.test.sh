@@ -89,18 +89,15 @@ fi
 # --- TC-2: shell variable expansion is skipped (emit-side + table-side) ---
 echo ""
 echo "=== TC-2: reason=trigger_exit_\$var is skipped (truncation artifact) ==="
-# cycle 4 mutation test 修正 (F-01 + F-02):
-# F-01: 旧 fixture `| \`python_unexpected_exit_$py_exit\` | placeholder reason ... |` は
-#   table-side awk の `break` 構造により最初の matching field が `placeholder` になり
-#   `python_unexpected_exit_` が table_reasons に決して入らない false positive test だった
-#   (awk 仕様: `$py_exit` を含む field は identifier regex に match せず continue、次の
-#   `placeholder` が match して print + break)。fixture を literal trailing `_` (シェル変数
-#   展開なし) に変更することで `[_-]$` filter を真に exercise する:
-#   - filter あり (現実装): `python_unexpected_exit_` matches identifier → `[_-]$` continue → 次の `placeholder` 採用
-#   - filter 削除 mutation: `python_unexpected_exit_` matches → print + break → table_reasons 入り → drift 発火
-# F-02: emit-side `[_-]$` filter は `after == "$"` filter の二重防御に隠れて単独 mutation を
-#   catch できなかった。`after` が `;` で `[_-]$` のみが skip すべき input
-#   (reason=trailing_underscore_) を追加し、独立 regression guard を成立させる。
+# Mutation test design intent (table-side + emit-side regression guards):
+# - table-side fixture `| \`python_unexpected_exit_\` | placeholder |` は literal trailing `_` で終わる
+#   identifier 形式。table-side awk の `break` 構造下では fixture の最初の matching field のみが
+#   exercise されるため、`placeholder` cell の前に `[_-]$` で終わる identifier を置くことで
+#   filter を真に評価する。`$var` 形式の値は awk identifier regex に match せず continue されるため、
+#   filter exercise 不可能 (false positive test) になる罠を避ける。
+# - emit-side の独立 regression guard: `after == "$"` filter (二重防御) が同じ input
+#   (`reason=trigger_exit_$var`) を skip するため、`[_-]$` filter のみが skip 責務を負う input
+#   (`reason=trailing_underscore_; other=value`) を追加して独立性を保証する。
 d=$(make_fixture_sandbox '# Test
 
 ## reason table
@@ -120,6 +117,17 @@ rc=0
 out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
   --repo-root "$d" 2>/dev/null) || rc=$?
 assert_checker_rc "TC-2" "$rc"
+# TC-2 fixture では `something_else` / `placeholder` (および `python_unexpected_exit_` を
+# `[_-]$` filter で skip した後の table_reasons) は emit-side に対応エントリを持たないため、
+# drift detected の rc=1 が決定的に返る設計。assert_checker_rc は rc=0/1 両方を受理する loose
+# 設計 (他 TC との共通利用のため) だが、TC-2 については「無 drift を誤って rc=0 で返す regression」
+# を catch するため厳格な rc=1 期待値 assertion を追加する。
+if [ "$rc" -ne 1 ]; then
+  fail "TC-2: expected drift detected (rc=1), got rc=$rc (table_reasons に対応する emit がない fixture)"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+else
+  pass "TC-2: drift detected with rc=1 as expected"
+fi
 if printf '%s\n' "$out" | grep -Eq "reason '(trigger_exit_|commit_rc_)'"; then
   fail "TC-2: shell variable expansion still produces bogus identifier (emit-side)"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
@@ -134,7 +142,7 @@ if printf '%s\n' "$out" | grep -Eq "reason 'hyphen-test-'"; then
 else
   pass "TC-2: hyphen suffix variant correctly skipped"
 fi
-# emit-side `[_-]$` filter independent regression guard (cycle 4 F-02):
+# emit-side `[_-]$` filter independent regression guard:
 # `reason=trailing_underscore_; other=value` は val=`trailing_underscore_`, after=`;` (≠ `$`)。
 # `after == "$"` filter は skip しないため、`[_-]$` filter のみが skip 責務を負う独立 input。
 # script の emit-side `if (val ~ /[_-]$/) continue` を削除すると emit_reasons に
@@ -145,7 +153,7 @@ if printf '%s\n' "$out" | grep -Fq "trailing_underscore_"; then
 else
   pass "TC-2: emit-side [_-]\$ filter correctly skips trailing_underscore_ (independent of after==\$)"
 fi
-# table-side `[_-]$` filter regression guard (cycle 4 F-01 修正版):
+# table-side `[_-]$` filter regression guard:
 # fixture row `| \`python_unexpected_exit_\` | placeholder |` の table-side awk:
 # - filter あり: `python_unexpected_exit_` matches identifier → `[_-]$` continue → `placeholder` 採用
 # - filter 削除 mutation: `python_unexpected_exit_` matches → print + break → table_reasons 入り
@@ -267,9 +275,9 @@ fi
 # --- TC-7: --show-extracted-reasons silent without flag ---
 echo ""
 echo "=== TC-7: extracted reasons NOT printed without flag (default behavior) ==="
-# TC-6 の $d 再利用を回避し独立 fixture を作成する (cycle 2 F-06)。
+# TC-6 fixture の $d 再利用を回避し独立 fixture を作成する。
 # TC-6 削除や fixture 変更 (例: reason table を空にする) で TC-7 が誤った理由で pass する
-# (Pattern 2 が script:292 で早期 return し SHOW_EXTRACTED_REASONS block に到達しない) のを防ぐ。
+# (Pattern 2 が table_reasons 空時に早期 return し SHOW_EXTRACTED_REASONS block に到達しない) のを防ぐ。
 d=$(make_fixture_sandbox '# Test
 
 ## reason table

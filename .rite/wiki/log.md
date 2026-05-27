@@ -783,3 +783,4 @@
 | 2026-05-27T05:05:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=11, unregistered_raw=188, broken_refs=0 |
 | 2026-05-27T08:45:00Z | ingest:update | pages/anti-patterns/fix-comment-self-drift.md | PR #1161 cycle 9 で「整備 commit による積み残しの同 PR 別箇所残存」+「`旧 X は Y していた` 日本語 journal phrase の多言語 grep pattern 拡張」+「3 → 2 → 0 単調収束 (cycle 7 → 9 → 11) の signal」を追加。整備 commit の対象 scope は cycle 内 touched 行ではなく PR 全体の追加行とする canonical (source_ref: pr-1161 reviews cycle 9 + cycle 11) |
 | 2026-05-27T08:45:00Z | ingest:skip | raw/reviews/20260527T083107Z-pr-1161.md | PR #1161 cycle 11 mergeable record (3 reviewer 0 件 / 3 → 2 → 0 単調収束)。経験則は cycle 9 raw と統合して fix-comment-self-drift.md update にまとめたため独立 ingest はせず skip |
+| 2026-05-27T08:46:00Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=11, unregistered_raw=189, broken_refs=0 |

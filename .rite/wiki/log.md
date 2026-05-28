@@ -857,3 +857,6 @@
 | 2026-05-28T15:05:43Z | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1169 fix (raw/fixes/20260528T143720Z): correctness invariant 導入 fix には mutation-fail test (TC-H6) を同 PR で添える義務を適用 9-A として追記 |
 | 2026-05-28T15:05:43Z | ingest:update | pages/anti-patterns/fix-comment-self-drift.md | PR #1169 fix (raw/fixes/20260528T144526Z): TC-H6 コメントの `cycle-2 fix` 参照を HIGH 検出、テストコードのコメントも no_journal MUST を追記 |
 | 2026-05-28T15:05:43Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=11, unregistered_raw=225, broken_refs=0 |
+| 2026-05-28T16:12:48Z | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1172 review (raw/reviews/20260528T154013Z): 「対称化」claim の片側 (happy-path 非発火) 未 pin を mutation で検出、無条件 WARNING emit mutant が 103 assert 全 pass する coverage gap。適用 10 として追記 |
+| 2026-05-28T16:12:48Z | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1172 review cycle 2 (raw/reviews/20260528T155654Z): TC-H4 negative-assert 追加が gap を解消したことを双方向 mutation で実証 (無条件 emit → TC-H4 fail / WARNING 削除 → TC-H7 fail)。適用 10 に統合 |
+| 2026-05-28T16:12:48Z | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1172 fix (raw/fixes/20260528T155033Z): happy-path 非発火を pin する negative-assert を positive-assert と対に追加、mutant を hooks/ 内配置で sibling source 解決を再現。適用 10 に統合 |

@@ -2,8 +2,14 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-05-28T15:05:43Z"
+updated: "2026-05-28T16:12:48Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260528T155654Z-pr-1172.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260528T154013Z-pr-1172.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260528T155033Z-pr-1172.md"
   - type: "fixes"
     ref: "raw/fixes/20260528T143720Z-pr-1169.md"
   - type: "reviews"
@@ -28,7 +34,7 @@ sources:
     ref: "raw/fixes/20260520T022118Z-pr-1066-cycle1.md"
   - type: "reviews"
     ref: "raw/reviews/20260528T122742Z-pr-1167.md"
-tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage"]
+tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage", "symmetry-claim-bidirectional-pin", "negative-assert"]
 confidence: high
 ---
 
@@ -346,6 +352,44 @@ cycle 2 で test-reviewer が、TC の positional 引数誤配置 (`stop_payload
 
 教訓: bash positional helper を呼ぶ test は、引数順の誤配置が silent false-positive を生む。helper の中核ロジックを mutate して該当 TC が FAIL するかを確認する mutation gate に加え、**positional 引数を意図的に 1 つずらした mutation でも TC が FAIL する**ことを確認すると、引数スロット誤配置を decisive に catch できる。適用 5 の Self-grep tautology / 件数判定片側 mutation 隠蔽と同じ「test が実装の正否を検出できない」identification power 0 の系統。
 
+### 適用 10: 「対称化」claim は positive / negative 両側を独立 assert で pin し双方向 mutation で検証する (PR #1172 で実証)
+
+PR #1172 (Issue #1170 — `consume-handoff` の corrupt JSON 読取時 WARNING を `cmd_set` / `cmd_get` と対称化) は、適用 9 (PR #1169) と同じ `flow-state.sh` consume-handoff 領域の直接 follow-up であり、**「対称化」(symmetrization) を謳う変更の test 真正性**を新しい軸として実測した。
+
+#### 失敗の構造 — 片側 pin は無条件 emit mutant を見逃す
+
+「対称化」とは「**corrupt 側では WARNING が発火し、happy-path 側では発火しない**」という双方向の invariant である。ところが cycle 1 時点の test は corrupt 側の発火 (TC-H7 相当) だけを assert しており、**happy-path 側の非発火を pin していなかった**。test reviewer が mutation testing で gap を実証:
+
+```bash
+# Mutation: 関数を「無条件 WARNING emit」に改変 (corrupt 判定を外す)
+# 期待: 対称性が壊れるので test が FAIL すべき
+# 実測: 既存 103 assert が全 PASS → coverage gap
+#   corrupt 側 assert は無条件 emit mutant でも当然 PASS し、
+#   happy-path 側の非発火を見る assert が無いため mutant を catch できない
+```
+
+→ corrupt 側だけの assert は、無条件 emit mutant に対し identification power 0。これは適用 5 Pattern 5-B (件数判定の片側 mutation 隠蔽) / 適用 7 (alternation の片側 positive coverage 欠落) と同型の **「対称性主張の片側のみ pin」coverage gap** で、対象を grep -c 閾値や regex branch から **動作の対称性 (発火 / 非発火)** へ一般化したもの。
+
+#### Fix 方針 — negative-assert で非発火側を pin し双方向 mutation で確認
+
+cycle 1 fix で happy-path (handoff キー欠落の正常系) で corrupt-read WARNING が**非発火**であることを pin する negative-assert (TC-H4) を追加し、TC-H7 (corrupt 側発火) と対にした。さらに**双方向 mutation で両 assert の identification power を実証**:
+
+| Mutation | 期待 | 検出する test |
+|----------|------|--------------|
+| 無条件 WARNING emit (corrupt 判定除去) | happy-path でも発火 → 非発火 assert が FAIL | TC-H4 (negative-assert) |
+| WARNING 行削除 | corrupt 側でも非発火 → 発火 assert が FAIL | TC-H7 (positive-assert) |
+
+両 mutation がそれぞれ別の test を FAIL させることで、対称性の両側が独立に pin されたことが保証される。
+
+#### Canonical 対策
+
+1. **対称化 claim は両側を独立 assert で pin する**: 「A 条件で発火 / B 条件で非発火」を謳う変更は、発火側 (positive-assert) だけでなく**非発火側 (negative-assert)** も必ず assert する。片側だけでは無条件 emit / 無条件 silent のいずれかの mutant が必ず通り抜ける。
+2. **positive / negative の grep regex は同一文言で対にする**: 両 assert が同じ canonical phrase を検査することで、文言 drift による片側の取りこぼしを防ぐ (発火側は「phrase が出る」、非発火側は「phrase が出ない」を pin)。
+3. **双方向 mutation で両 assert を検証する**: 「無条件 emit mutant → negative-assert が FAIL」「emit 削除 mutant → positive-assert が FAIL」の双方を実機で確認する。片方向の mutation だけでは対の片側が dead のまま残りうる。
+4. **sibling script を source する hook の mutant は hooks/ ディレクトリ内に配置する**: mutation 対象を `/tmp` にコピーすると sibling script (`*.sh`) の source 解決が相対 path で壊れる。`hooks/` ツリー内に mutant を置いて実環境の source 解決を再現する (適用 9-A の「実装本体を実環境で mutate」と同じ運用要件)。
+
+本 sub-pattern は [[asymmetric-fix-transcription]] (対称位置への fix 伝播漏れ) の **test 側双対**にあたる: 前者は「対称な実装サイトへ fix を伝播し忘れる」失敗、本適用は「対称な動作 invariant の片側を pin し忘れる」失敗。実装の対称化を謳ったら、その対称性を守る test も両側対称に置く。
+
 ## 関連ページ
 
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
@@ -354,6 +398,7 @@ cycle 2 で test-reviewer が、TC の positional 引数誤配置 (`stop_payload
 - [Enum 拡張時の few-shot coverage completeness](../heuristics/enum-extension-few-shot-coverage-completeness.md)
 - [Lint の見出し抽出はコードフェンス内行を除外してから行う (検証ツール自身の false-negative 防止)](./lint-strip-code-fence-before-extraction.md)
 - [consume 操作 (read+delete+return) は delete-then-return 順で fail-closed にする](./consume-operation-delete-then-return-fail-closed.md)
+- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 
 ## ソース
 
@@ -369,3 +414,6 @@ cycle 2 で test-reviewer が、TC の positional 引数誤配置 (`stop_payload
 - [PR #1167 cycle 2 review — 新規 helper strip_code_fences を cat に mutate しても test 11/11 PASS する identification power 0 を mutation 観点で指摘 (non-blocking follow-up)](../../raw/reviews/20260528T122742Z-pr-1167.md)
 - [PR #1169 fix results (cycle 3) — consume-handoff の fail-closed invariant を守る TC-H6 を追加し、print-then-delete への mutation で FAIL することを確認 (correctness invariant 導入 fix には mutation-fail test を同 PR で添える)](../../raw/fixes/20260528T143720Z-pr-1169.md)
 - [PR #1169 review results (cycle 2) — bash positional 引数誤配置 (`stop_payload "$d" true`) が test 常時 PASS の silent false-positive を生み mutation testing でのみ検出可能だった事例](../../raw/reviews/20260528T141817Z-pr-1169.md)
+- [PR #1172 review results (cycle 1) — 「対称化」claim の片側 (happy-path 非発火) を pin する test 欠落を mutation で検出、無条件 WARNING emit mutant が全 103 assert を pass する coverage gap](../../raw/reviews/20260528T154013Z-pr-1172.md)
+- [PR #1172 review results (cycle 2) — cycle 1 fix (TC-H4 negative-assert) が gap を解消したことを双方向 mutation で実証 (無条件 emit → TC-H4 fail / WARNING 削除 → TC-H7 fail)](../../raw/reviews/20260528T155654Z-pr-1172.md)
+- [PR #1172 fix results — happy-path 非発火を pin する negative-assert (TC-H4) を TC-H7 と対に追加、mutant を hooks/ 内に配置して sibling script source 解決を再現し gap 捕捉を確認](../../raw/fixes/20260528T155033Z-pr-1172.md)

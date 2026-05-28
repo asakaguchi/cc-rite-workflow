@@ -45,9 +45,12 @@ fi
 # ──────────────────────────────────────────────────────────────────────
 # TC-1: lint.md 側の line-count 宣言が抽出可能
 # ──────────────────────────────────────────────────────────────────────
-# lint.md ステップ 9.2 / 1.1 / 1.3 は `stdout は次の N 行 (...)` または
-# `stdout は次の N 行を出力する` 形式で出力契約を宣言する。最初に出現した N を採用する
-# (early-return 後の重複宣言が許容されているため SoT は先頭行)。
+# lint.md ステップ 9.2 が `stdout は次の N 行 (...)` または `stdout は次の N 行を出力する`
+# 形式で出力契約を **declarative に宣言** する SoT 行。本 test はこの SoT 行のみを assert する。
+# 早期 return path (ステップ 1.1 / 1.3) は SoT に従って 3 行 echo を実行するが、行数を
+# declarative に宣言する記述ではなく `# ステップ 9.2 contract: ...3 行を出力` の inline コメント
+# のみで参照する形のため、本 regex (`stdout は次の N 行`) はマッチせず assert 対象外。
+# 最初に出現した N を採用する (SoT は ステップ 9.2 の 1 site のみのため head -1 で十分)。
 lint_n=$(grep -oE 'stdout は次の [0-9]+ 行' "$LINT_MD" 2>/dev/null \
   | head -1 \
   | grep -oE '[0-9]+' \
@@ -56,7 +59,7 @@ lint_n=$(grep -oE 'stdout は次の [0-9]+ 行' "$LINT_MD" 2>/dev/null \
 if [ -n "$lint_n" ]; then
   pass "TC-1 lint.md から line-count 宣言を抽出: $lint_n 行"
 else
-  fail "TC-1 lint.md から 'stdout は次の N 行' パターンが見つかりません (drift suspected: lint.md ステップ 9.2 / 1.1 / 1.3 の出力契約宣言が削除/破損された可能性)"
+  fail "TC-1 lint.md から 'stdout は次の N 行' パターンが見つかりません (drift suspected: lint.md ステップ 9.2 の declarative 出力契約宣言が削除/破損された可能性。ステップ 1.1 / 1.3 早期 return path は ステップ 9.2 contract を参照するのみで本 regex の検出対象外)"
 fi
 
 # ──────────────────────────────────────────────────────────────────────
@@ -91,4 +94,4 @@ else
   echo "  ⏭️  TC-3 skipped (TC-1 または TC-2 の抽出失敗のため比較不能)"
 fi
 
-print_summary "wiki-lint-ingest-contract-sync.test.sh" "drift hint: lint.md ステップ 9.2 / 1.1 / 1.3 と ingest.md ステップ 8.2 の line-count 宣言を同期させてください"
+print_summary "wiki-lint-ingest-contract-sync.test.sh" "drift hint: lint.md ステップ 9.2 (declarative 宣言行) と ingest.md ステップ 8.2 の line-count 宣言を同期させてください (本 test は ステップ 9.2 の SoT 行のみを assert。ステップ 1.1 / 1.3 早期 return path は ステップ 9.2 contract を参照するのみで本 test の対象外)"

@@ -76,7 +76,7 @@ lint_n_count=$(grep -cE 'stdout は次の [0-9]+ 行' "$LINT_MD" 2>/dev/null || 
 if [ "$lint_n_count" = "1" ]; then
   pass "TC-1b lint.md の declarative 宣言 site 数が単一 ($lint_n_count 件)"
 else
-  fail "TC-1b SoT site count != 1 (count=$lint_n_count). lint.md に declarative 宣言が複数 site 存在すると TC-1 が最初の 1 site のみ assert する silent drift リスクが生じます (ステップ 9.2 を SoT として保ち、ステップ 1.1 / 1.3 早期 return path は inline コメントで contract を参照するのみに留めてください)"
+  fail "TC-1b SoT site count != 1 (count=$lint_n_count)。count=0 は ステップ 9.2 の declarative 宣言行の削除/破損、count>=2 は複数 site 化を示します。後者の場合 TC-1 が最初の 1 site のみ assert する silent drift リスクが生じます (ステップ 9.2 を SoT として保ち、ステップ 1.1 / 1.3 早期 return path は inline コメントで contract を参照するのみに留めてください)"
 fi
 
 # ──────────────────────────────────────────────────────────────────────

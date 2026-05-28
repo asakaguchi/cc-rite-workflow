@@ -3,9 +3,9 @@ title: cleanup-wiki-ingest-turn-boundary
 domain: anti-patterns
 confidence: high
 source_refs:
-  issues: [621, 604, 618, 561, 652, 1144]
-  prs: [655, 1149]
-last_updated: 2026-05-26T00:00:00+09:00
+  issues: [621, 604, 618, 561, 652, 1144, 1165]
+  prs: [655, 1149, 1166]
+last_updated: 2026-05-28T00:00:00+09:00
 status: structurally_resolved
 resolution_pr: 1149
 resolution_issue: 1144

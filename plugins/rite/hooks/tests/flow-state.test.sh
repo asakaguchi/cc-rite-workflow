@@ -847,7 +847,7 @@ else
     assert "TC-H6: value withheld on write failure (stdout empty)" "" "$val"
     assert "TC-H6: rc 0 on write failure (Stop hook will allow stop)" "0" "$rc"
     assert "TC-H6: handoff retained in file (delete not persisted)" "/rite:pr:review 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
-    # 診断 ERROR が stderr に出ること (cycle-2 fix の observability 半分: cmd_set / _atomic_write と対称)
+    # 診断 ERROR が stderr に出ること (observability: write 失敗時の triage 用。cmd_set / _atomic_write の ERROR emission と対称)
     if [ "$_tch6_stderr" = "/dev/null" ]; then
       pass "TC-H6: 診断 ERROR assert を skip (stderr capture tempfile 取得不可)"
     elif grep -qE 'ERROR:.*consume-handoff.*handoff clear failed' "$_tch6_stderr"; then

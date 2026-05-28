@@ -1147,10 +1147,11 @@ iteration:
 | SessionEnd | Session end | Save final state |
 | PreToolUse | Before tool execution | Block tool usage after compact, detect dangerous command patterns |
 | PostToolUse | After tool execution | Auto-recover local work memory |
+| Stop | Turn end | Re-inject the `/rite:pr:iterate` review↔fix loop command (`consume-handoff` → `decision:block`) so the loop continues after a continuation sentinel |
 
 > **Note:** `notification.sh` is not a Claude Code hook type but a utility script called directly from within commands. It is invoked by command scripts during events such as PR creation, Ready status change, and Issue close to send external notifications. See the [Notification Integration](#notification-integration) section for details.
 >
-> **Note:** The Stop hook (`stop-guard.sh`) has been removed. Workflow stop prevention is now handled by the per-session state structure (`.rite/sessions/{session_id}.flow-state`) and the orchestrator-level scaffolding contract (Pre-write + 🚨 Mandatory After). See the [Multi-Session State Management](#multi-session-state-management) section for details.
+> **Note:** The legacy stop-prevention hook (`stop-guard.sh`) has been removed; workflow stop prevention itself is now handled by the per-session state structure (`.rite/sessions/{session_id}.flow-state`) and the orchestrator-level scaffolding contract (Pre-write + 🚨 Mandatory After). A **distinct** `Stop` hook (`stop-loop-continuation.sh`, Issue #1168) is registered for a different purpose: it consumes the one-shot `handoff` marker and re-injects the next review↔fix loop command. See the [Multi-Session State Management](#multi-session-state-management) section for details.
 
 ### Hook Execution Order
 
@@ -1158,6 +1159,8 @@ iteration:
 SessionStart
  ↓
 PreToolUse → Tool Execution → PostToolUse
+ ↓
+Stop (on turn end — review↔fix loop handoff continuation)
  ↓
 PreCompact (on compact)
  ↓
@@ -1424,7 +1427,7 @@ Legacy state files (flat JSON without `schema_version`, or any file with `schema
 
 The Issue series that delivered this feature (#672 epic with children #678 / #679 / #680 / #681 / #682 / #683 / #684 / #685 + follow-up #749) used GitHub's native Sub-Issues API to maintain the parent-child relation. `/rite:pr:open` Step 1.2 (previously `start.md` Phase 0.3 before the #1136 decomposition) detects parent Issues via three OR-combined methods (trackedIssues API → body tasklist `- [ ] #N` → label-based `epic`/`parent`/`umbrella`). The child→parent Status promotion (Todo → In Progress) is propagated in the same OR-combined order (`## 親 Issue` body meta → Sub-Issues API `trackedInIssues` → tasklist search) by `/rite:pr:open` Step 2.4 (`### 2.4 GitHub Projects Status 更新`, sub-step 2.4.7 — see [`references/projects-integration.md`](../plugins/rite/references/projects-integration.md) §2.4.7 Parent Issue Status Update for the SoT).
 
-> **Hook list canonical SoT**: The hooks that read or write per-session state are registered in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json) — currently 6 events (`SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse`). To re-enumerate the live registration, run `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`. The `Stop` event has been removed and is not part of the current registration. The library script `session-ownership.sh` is sourced (not registered) and therefore does not appear in `hooks.json`.
+> **Hook list canonical SoT**: The hooks that read or write per-session state are registered in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json) — currently 7 events (`SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse` / `Stop`). To re-enumerate the live registration, run `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`. The `Stop` event is registered to `stop-loop-continuation.sh` (Issue #1168) for review↔fix loop continuation; the legacy `stop-guard.sh` stop-prevention hook remains removed (see the retired-layers note below). The library script `session-ownership.sh` is sourced (not registered) and therefore does not appear in `hooks.json`.
 
 ### Local Work Memory + Compact Resilience
 

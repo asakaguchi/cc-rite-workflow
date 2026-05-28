@@ -479,11 +479,13 @@ Status: {projects_status_result}
 
 stash した変更があれば「復元する (`git stash pop`) / 後で手動で復元」を確認する。
 
-次のステップ (通常 ordered list として出力 — fenced code block 禁止。`<!-- [cleanup:completed] -->` は最終 list item 末尾に半角スペース区切りで inline 付加):
+次のステップ (通常 ordered list として出力 — fenced code block 禁止。`<!-- skill return signal: caller must continue next step -->` + `<!-- [cleanup:returned-to-caller] -->` は最終 list item 末尾に半角スペース区切りで inline 付加):
 
 次のステップ:
 1. `/rite:issue:list` で次の Issue を確認
-2. `/rite:pr:open <issue_number>` で新しい作業を開始 <!-- [cleanup:completed] -->
+2. `/rite:pr:open <issue_number>` で新しい作業を開始 <!-- skill return signal: caller must continue next step --> <!-- [cleanup:returned-to-caller] -->
+
+> **Why `returned-to-caller` (not `completed`)**: 旧 `cleanup:completed` 形式は literal `completed` が LLM の turn-boundary heuristic と衝突し、cleanup → wiki:ingest → wiki:lint のネストで lint 直後に turn が暗黙終了する事象が複数回再発した (Issue #1164 / #1165)。`returned-to-caller` で terminal vocabulary を構造的に排除する。
 
 最後に flow state を terminal state に落とす:
 

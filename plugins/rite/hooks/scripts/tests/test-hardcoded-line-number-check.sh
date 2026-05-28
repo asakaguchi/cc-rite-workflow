@@ -161,6 +161,10 @@ assert "backtick: exits 1" "1" "$rc"
 assert "backtick: only 1 finding (outside backticks)" "1" "$total_count"
 
 # --- Test 9: structural reference (no line numbers) - clean case --------------
+# Note: 本 fixture 内の `[interview:*]` は historical 化済の sub-skill 名のサンプル placeholder
+# (interview sub-skill は flat workflow refactor で廃止済、`workflow-identity.md` に historical 記載あり)。
+# 本 test の意図は「prose 内に line number `:NN` が無い structural reference が drift 検出から除外される」
+# ことのみを assert することで、`[interview:*]` literal の実在性には依存しない。
 FIX_CLEAN="$TMPDIR_ROOT/clean.md"
 cat > "$FIX_CLEAN" <<'EOF'
 # Clean structural references (no line numbers, no findings)

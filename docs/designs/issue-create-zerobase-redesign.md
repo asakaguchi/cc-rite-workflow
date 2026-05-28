@@ -1,5 +1,7 @@
 # `/rite:issue:create` ゼロベース再設計 — Phase E (charter 5 自問ベース)
 
+> **Note (sentinel literal の歴史的記述)**: 本文中の `[interview:*]` / `[create:completed:N]` / `create_completed` 等の sentinel literal および acceptance criteria の grep コマンドは、設計当時 (pre-#1165) の記述として保持する（Issue #1165 で skill return sentinel は `:returned-to-caller` 形式に rename されたが、本 doc が記述していたのは当時の `:completed` 形式であり、historical 正確性のため書き換えない）。現行 sentinel 命名規約は `plugins/rite/commands/issue/create.md` ステップ 4.4 / 5.6 の `[create:returned-to-caller:{N}]` を参照。
+
 <!-- Section ID: SPEC-OVERVIEW -->
 ## 1. 概要
 

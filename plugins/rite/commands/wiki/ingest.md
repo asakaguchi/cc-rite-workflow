@@ -632,7 +632,7 @@ echo "auto_lint=$auto_lint"
 
 LLM は `skill: "rite:wiki:lint", args: "--auto"` 形式で `/rite:wiki:lint` を `--auto` モードで呼び出す。`--auto` モードの契約:
 
-- `Lint: contradictions={n}, stale={n}, orphans={n}, missing_concept={n}, unregistered_raw={n}, broken_refs={n}` 形式の 1 行 + `<!-- [lint:completed:auto] -->` HTML コメント sentinel の 2 行を出力する (0 件でも必ず出力)
+- `Lint: contradictions={n}, stale={n}, orphans={n}, missing_concept={n}, unregistered_raw={n}, broken_refs={n}` 形式の 1 行 + `<!-- skill return signal: caller must continue next step -->` + `<!-- [lint:returned-to-caller:auto] -->` HTML コメント sentinel の 3 行を出力する (0 件でも必ず出力)。本 phase の parser (ステップ 8.3) は 1 行目の `^Lint: contradictions=` regex のみに依存するため、2 行目以降の disambiguator marker 追加 (#1165) は互換性に影響しない
 - log.md への追記は lint.md 側がブランチ状態を判定し自律実行する
 - 常に exit 0 (非ブロッキング)
 
@@ -694,7 +694,7 @@ LLM は Skill 応答テキスト (= `lint.md` ステップ 9.2 の最終 stdout 
 
    全行 scan + 最初の match 採用とすることで、lint.md 側で preamble の echo / debug 出力が混入しても決定論的に `Lint:` 行を拾う (`set -x` debug / observability echo / informational banner 等の追加変更に対する resilience)。
 
-3. **stdout が空の場合**: **Lint 実行失敗として扱う** (lint.md の契約では 0 件でも必ず 1 行出力するため、stdout 空は bash syntax error / 未捕捉 fatal error / SIGPIPE / OOM 等の異常経路):
+3. **stdout が空の場合**: **Lint 実行失敗として扱う** (lint.md の契約では regex-matchable な `Lint:` data 行を 0 件でも必ず 1 行出力するため、stdout 空は bash syntax error / 未捕捉 fatal error / SIGPIPE / OOM 等の異常経路。lint.md の総出力は disambiguator marker + sentinel を含めて 3 行だが、本 phase の parser が依存するのは regex `^Lint:` でマッチする 1 行目の data 行のみ):
 
    - `n_warnings += 1` + `n_lint_anomaly += 1`
    - 6 変数を `0` に fallback
@@ -784,15 +784,18 @@ Wiki Ingest が完了しました。
 
 **等式**: `n_warnings = n_contradictions + n_stale + n_orphans + n_missing_concept + n_broken_refs + n_lint_anomaly`。step 2 成功時は `n_lint_anomaly=0` のため 5 カテゴリ合計が `n_warnings` と一致。step 1/3/4 anomaly 経路では 5 カテゴリは 0 fallback だが `n_lint_anomaly >= 1` のため `n_warnings >= 1` となる。
 
-### 9.1 Terminal Completion
+### 9.1 Return-to-Caller Signal
 
-完了レポート本体 (処理サマリー + 新規/更新ページ + 次のステップ) を出力した後、**最終行**に HTML コメント sentinel を出力する:
+完了レポート本体 (処理サマリー + 新規/更新ページ + 次のステップ) を出力した後、**最終 2 行**に HTML コメント sentinel を出力する:
 
 ```
-<!-- [ingest:completed] -->
+<!-- skill return signal: caller must continue next step -->
+<!-- [ingest:returned-to-caller] -->
 ```
 
-sentinel は grep 可能 (`grep -F '[ingest:completed]'`) で rendered view では不可視。bare bracket `[ingest:completed]` は LLM turn-boundary heuristic 誤発火のため禁止 (Issue #561)、HTML コメント形式のみ許容する。
+sentinel は grep 可能 (`grep -F '[ingest:returned-to-caller]'`) で rendered view では不可視。bare bracket `[ingest:returned-to-caller]` は LLM turn-boundary heuristic 誤発火のため禁止 (Issue #561)、HTML コメント形式のみ許容する。
+
+> **Why `returned-to-caller` (not `completed`)**: 旧 `ingest:completed` 形式は literal `completed` が LLM の turn-boundary heuristic と衝突し、caller skill (cleanup / pr:open 等) の次 step を skip して turn が暗黙終了する事象が複数回再発した (Issue #1165)。`returned-to-caller` は「caller skill に return した = caller の次 step に進む」というネスト構造を semantic に内包し、terminal vocabulary を構造的に排除する。
 
 ---
 

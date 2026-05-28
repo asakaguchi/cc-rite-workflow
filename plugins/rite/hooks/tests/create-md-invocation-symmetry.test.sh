@@ -128,18 +128,58 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────
-# TC-6: `[create:completed:{N}]` HTML sentinel が Single Issue path と Decompose path の
+# TC-6: `[create:returned-to-caller:{N}]` HTML sentinel が Single Issue path と Decompose path の
 #       両完了レポートに含まれている
 # ──────────────────────────────────────────────────────────────────────
 # 完了レポート末尾の HTML コメント sentinel は SKILL.md / workflow-identity.md / SPEC.md 等
 # 複数 SoT が grep 契約として依存している load-bearing artifact。flat workflow refactor で
 # silent に欠落する経路を防ぐため、リテラル grep で 2 site (Single Issue 4.4 / Decompose 5.6)
 # 以上の存在を pin する。
-sentinel_count=$(grep -cE '<!-- \[create:completed:\{(issue_number|parent_issue_number)\}\] -->' "$CREATE_MD" || true)
+# Issue #1165 で sentinel naming を `:completed` → `:returned-to-caller` へ rename
+# (turn-boundary heuristic 誤発火を構造的に予防)。
+sentinel_count=$(grep -cE '<!-- \[create:returned-to-caller:\{(issue_number|parent_issue_number)\}\] -->' "$CREATE_MD" || true)
 if [ "$sentinel_count" -ge 2 ]; then
-  pass "TC-6 [create:completed:{N}] HTML sentinel present in both paths (count=$sentinel_count)"
+  pass "TC-6 [create:returned-to-caller:{N}] HTML sentinel present in both paths (count=$sentinel_count)"
 else
-  fail "TC-6 [create:completed:{N}] HTML sentinel missing or below 2 sites (count=$sentinel_count). Expected: Single Issue path (ステップ 4.4) + Decompose path (ステップ 5.6)"
+  fail "TC-6 [create:returned-to-caller:{N}] HTML sentinel missing or below 2 sites (count=$sentinel_count). Expected: Single Issue path (ステップ 4.4) + Decompose path (ステップ 5.6)"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-7: active disambiguation marker `<!-- skill return signal: caller must continue next step -->`
+#       が sentinel と同数以上 emit され、かつ各 sentinel 直前に隣接配置されている
+# ──────────────────────────────────────────────────────────────────────
+# Issue #1165 で sentinel rename と同時に導入された active disambiguation marker。
+# LLM の turn-boundary heuristic に対する明示的な「これは return signal であって turn 終了ではない」
+# 宣言として、各 sentinel の直前行に必ず配置する契約。silent strip (rename 漏れ等で marker のみ
+# 落ちた状態) を検出するため、(a) marker 出現数 >= sentinel 出現数、(b) 各 sentinel 直前行が
+# marker であること、の 2 つを pin する。
+# 実 emit site は line head が `<!--` で始まり、prose 内 literal は他のテキストの後に出現するため
+# 行頭 anchor `^<!--` で実 emit site のみを scope する。これにより prose 内引用との誤検出を防ぐ。
+emit_site_sentinel_count=$(grep -cE '^<!-- \[create:returned-to-caller:\{(issue_number|parent_issue_number)\}\] -->$' "$CREATE_MD" || true)
+emit_site_disambiguator_count=$(grep -cE '^<!-- skill return signal: caller must continue next step -->$' "$CREATE_MD" || true)
+if [ "$emit_site_disambiguator_count" -ge "$emit_site_sentinel_count" ]; then
+  pass "TC-7a disambiguator marker (emit site only) count >= sentinel emit site count (disambiguator=$emit_site_disambiguator_count, sentinel=$emit_site_sentinel_count)"
+else
+  fail "TC-7a disambiguator marker (emit site only) count < sentinel emit site count (disambiguator=$emit_site_disambiguator_count, sentinel=$emit_site_sentinel_count). Each emit site sentinel must be preceded by '<!-- skill return signal: caller must continue next step -->'"
+fi
+
+# 隣接配置 check: 実 emit site (line head が `^<!--`) の sentinel に対してのみ、
+# 直前行が disambiguator marker であることを awk で検査。prose 内引用は行頭 anchor で除外される。
+adjacency_violations=$(awk '
+  { lines[NR] = $0 }
+  /^<!-- \[create:returned-to-caller:\{(issue_number|parent_issue_number)\}\] -->$/ {
+    prev = lines[NR-1]
+    if (prev !~ /^<!-- skill return signal: caller must continue next step -->$/) {
+      print NR ":" $0 " (prev line " (NR-1) ": " prev ")"
+    }
+  }
+' "$CREATE_MD" || true)
+if [ -z "$adjacency_violations" ]; then
+  pass "TC-7b each emit site sentinel is preceded by disambiguator marker on the immediately previous line"
+else
+  echo "  Adjacency violations:"
+  printf '%s\n' "$adjacency_violations" | sed 's/^/    /' >&2
+  fail "TC-7b emit site sentinel without adjacent disambiguator marker found (silent marker strip suspected)"
 fi
 
 print_summary "create-md-invocation-symmetry.test.sh"

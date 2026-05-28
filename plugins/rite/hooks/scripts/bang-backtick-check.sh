@@ -44,16 +44,22 @@
 #                  also matches the P1 cases (intentional double-counting —
 #                  the slash command parser triggers on bang+backtick
 #                  adjacency regardless of upstream whitespace). Empirically
-#                  required after the cycle 35 fix series — the parser was
-#                  still triggering on `` `!` `` lone-bang inline spans
+#                  required — the parser was observed still triggering on
+#                  `` `!` `` lone-bang inline spans
 #                  because they form bang+backtick adjacency at the closing
 #                  boundary.
 #
 # These patterns were chosen conservatively to produce zero false positives on
 # the existing commands/skills tree (verified at creation time on 70 files).
-# Innocent patterns such as Rustdoc inner doc `slash-slash-bang`, Markdown image
-# `bang-bracket-alt-paren-url`, regex literal `bang-backslash-bracket`, and
-# bash negation `if-space-bang-space-cmd` are intentionally NOT matched.
+# Innocent patterns such as Markdown image `bang-bracket-alt-paren-url`, regex
+# literal `bang-backslash-bracket`, and bash negation `if-space-bang-space-cmd`
+# are intentionally NOT matched — in all of these the bang stays away from a
+# backtick boundary.
+# Note: an inline-code Rustdoc inner-doc span (`slash-slash-bang`) was innocent
+# under the original P1/P2-only design, but P3 (the generic catch-all)
+# now matches it, because it forms a bang+backtick adjacency at the closing
+# boundary of the inline code span — see the P3 description above which lists
+# Rustdoc inner-doc as a P3 target.
 #
 # Safe equivalents (writing convention)
 # -------------------------------------

@@ -342,7 +342,7 @@ Skill ツール呼び出し (順次):
   3. skill: "rite:pr:ready"
      args: "{pr_number}"
      → Ready for review に遷移、親判定 + 完了レポート出力。
-       [ready:completed] or [ready:error] を観測。
+       [ready:returned-to-caller] or [ready:error] を観測。
 ```
 
 **Wait for completion**. The 3 sub-skills run the full end-to-end flow (branch → implement → lint → draft PR → review-fix loop → ready)。After completion, capture the PR number from the `[pr:created:{number}]` pattern in the conversation context for use in Phase 3.1.3 and Phase 4.1.

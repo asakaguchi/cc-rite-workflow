@@ -2,7 +2,7 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-05-20T03:11:31Z"
+updated: "2026-05-28T12:42:26Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260426T235945Z-pr-688.md"
@@ -22,6 +22,8 @@ sources:
     ref: "raw/reviews/20260520T011841Z-pr-1066.md"
   - type: "fixes"
     ref: "raw/fixes/20260520T022118Z-pr-1066-cycle1.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260528T122742Z-pr-1167.md"
 tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage"]
 confidence: high
 ---
@@ -304,12 +306,30 @@ PR #1066 fix (cycle 1) では positive 6 + negative 6 case で alternation 各 b
 
 本 sub-pattern は適用 5 の 3 種 dead code 化 pattern (Self-grep tautology / 件数判定片側 mutation 隠蔽 / Path filter coverage gap) と並列し、**regex 構造 (alternation / quantifier / flag) を test 真正性 mutation で守る canonical 防御** の系統として位置付ける。
 
+### 適用 8: 新規 lint helper の regression test が implementation を mutate しても PASS する (PR #1167 cycle 2 follow-up)
+
+PR #1167 (Issue #1160 — `sh-cross-ref-check.sh` 新規 lint 追加) cycle 2 review で、新規ヘルパー `strip_code_fences` (コードフェンス内行を除外する awk in_fence toggle) に **identification power を持つ回帰テストが無い** ことを reviewer が mutation 観点で指摘:
+
+```bash
+# Mutation: strip_code_fences の中身を no-op (cat) に置換
+strip_code_fences() { cat "$1"; }   # ← フェンス除去を無効化
+
+# 実測: test suite 11/11 PASS のまま
+#   → 既存 11 ケースの fixture にフェンス内ノイズ行が含まれず、
+#     フェンス除去の有無で結果が変わらない = strip_code_fences が dead path
+```
+
+→ helper の中核機能 (フェンス除去) を完全に無効化しても test が通るため、**test は実装の正否を検出できない**。これは「新規 lint helper を追加する PR で helper 単体の mutation 耐性 test を欠く」failure mode で、適用 5 の「Self-grep tautology / path filter coverage gap」と同型 (実装を kill しても TC が FAIL しない identification power 0)。
+
+本件は cycle 2 で **non-blocking follow-up** として surface した (Observed Likelihood Gate で hypothetical 寄りに降格、本 PR scope 外)。教訓は適用 5 の 共通教訓に集約される通り: **新規 lint rule / hook / helper を導入する PR では、その helper の中核ロジックを no-op に mutate して該当 TC が FAIL することを CI で確認する**。フェンス除去ヘルパー自体の設計は [[lint-strip-code-fence-before-extraction]] を参照。
+
 ## 関連ページ
 
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
 - [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](../anti-patterns/test-pin-protection-theater.md)
 - [HINT-specific 文言 pin で case arm 削除 regression を検知する](../patterns/hint-specific-assertion-pin.md)
 - [Enum 拡張時の few-shot coverage completeness](../heuristics/enum-extension-few-shot-coverage-completeness.md)
+- [Lint の見出し抽出はコードフェンス内行を除外してから行う (検証ツール自身の false-negative 防止)](./lint-strip-code-fence-before-extraction.md)
 
 ## ソース
 
@@ -322,3 +342,4 @@ PR #1066 fix (cycle 1) では positive 6 + negative 6 case で alternation 各 b
 - [PR #915 review — M6 fixture trailing whitespace の load-bearing 性検出 + pre-check による self-pin canonical 化](../../raw/reviews/20260509T071343Z-pr-915.md)
 - [PR #1066 review — regex alternation の片側 positive coverage 欠落 + quantifier `\s*` semantic 片側のみテスト (2 種 cross-validated HIGH)](../../raw/reviews/20260520T011841Z-pr-1066.md)
 - [PR #1066 cycle 1 fix — alternation 各 branch + quantifier 境界値 + flag 必須 case + 大文字小文字混在 case で positive 6 + negative 6 に拡張](../../raw/fixes/20260520T022118Z-pr-1066-cycle1.md)
+- [PR #1167 cycle 2 review — 新規 helper strip_code_fences を cat に mutate しても test 11/11 PASS する identification power 0 を mutation 観点で指摘 (non-blocking follow-up)](../../raw/reviews/20260528T122742Z-pr-1167.md)

@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-28T00:00:00Z"
+updated: "2026-05-28T12:42:26Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260527T093918Z-pr-1162.md"
@@ -276,6 +276,10 @@ sources:
     ref: "raw/reviews/20260526T155823Z-pr-1151.md"
   - type: "fixes"
     ref: "raw/fixes/20260526T160217Z-pr-1151.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260528T112627Z-pr-1167.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260528T121938Z-pr-1167.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration", "archive-doc-tail-residue", "intra-document-contradiction"]
 confidence: high
 ---
@@ -949,6 +953,22 @@ PR #1162 (Issue #1159 — pre-existing dangling references cleanup PR、`Phase X
 
 連続再現: PR #968 → #973 → #984 → #992 → #996 (5 PR / 累積 28-32) を maximum、PR #1124 (39)・#1128 (40)・#1130 (41)・#1133 (0 findings)・#1139 (42)・#1143 (43)・#1155 (44)・**#1162 (45、28 cycle / 多軸 surface)** と continuum。本 PR は cycle 数で PR #1139 (14 cycle) を上回り **累積対策 PR で最長 cycle 数を実測**、self-application × pre-deletion 精密性 × policy 適用連鎖 × fact-check 義務 × hook 整備 incomplete の 5 軸並列発火。
 
+### 新規 lint step 追加時の 4-site 対称更新契約の再発 (PR #1167 — Issue #1160、累積 47 回目、2 cycle 収束)
+
+PR #1167 (Issue #1160 — `sh-cross-ref-check.sh` を新規 lint として `lint.md` へ Phase 3.16 統合) で、PR #631 で確立した **「pipeline 新規 step 追加時の 4-site 対称更新契約」がそのまま再発**。新規 step の Phase 手順 (a) と Phase 4 appendix display (b) は追加されたが、残り 3 site が欠落:
+
+- (c) Phase 4.3 サマリー表の row
+- (d) `[lint:success]` enum
+- (e) 末尾 Note の prose 列挙
+
+直前に merge された Orphan check (Issue #1159 / PR #1162 の orphan-reference-check.sh) が全 site に出現済みで契約を確立していたにもかかわらず欠落したため、cycle 1 review で 2 reviewer 独立 HIGH cross-validation で検出。cycle 1 fix で **#1159 Orphan check を雛形に 3 site を対称化**して構造的解消、cycle 2 で 0 blocking findings に収束。
+
+#### 経験則の精緻化
+
+- **新規 lint step 追加 PR の 4-site 機械チェック**: lint pipeline に step を 1 つ足す PR は (a) Phase 手順 / (b) appendix display / (c) summary table row / (d) `[lint:success]` enum + Note 列挙 の 4 site を必ず同時更新する。直前に merge された同型 step (本件は #1162 の Orphan check) を grep で雛形にして site 一覧を導出するのが decisive な detection 経路
+- これは PR #631 (4 reviewer CRITICAL × 2) の同型再発であり、`pipeline-step-addition` tag が示す通り **新規 lint step は反復的に本 anti-pattern の trigger になる** ことを再確認 ([[drift-check-anchor-prose-code-sync]] の lint emit 順 3 重契約と同系統)
+- 本 PR が追加した検証ツール自身も別 anti-pattern (コードフェンス内 shell コメントの見出し誤認 false-negative) を内包しており [[lint-strip-code-fence-before-extraction]] として独立化
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -966,6 +986,8 @@ PR #1162 (Issue #1159 — pre-existing dangling references cleanup PR、`Phase X
 
 ## ソース
 
+- [PR #1167 cycle 1 review (累積 47 回目の起点: 新規 lint step Phase 3.16 追加で PR #631 確立の 4-site 対称更新契約のうち 3 site (summary table / [lint:success] enum / Note prose) が欠落、2 reviewer 独立 HIGH cross-validation)](../../raw/reviews/20260528T112627Z-pr-1167.md)
+- [PR #1167 fix (F-01: #1159 Orphan check を雛形に 3 site を対称化して構造的解消、2 cycle で 0 blocking 収束。新規 lint step 追加 PR の 4-site 機械チェック義務)](../../raw/fixes/20260528T121938Z-pr-1167.md)
 - [PR #1143 cycle 3 review (Generator-Reviewer regex parity drift 初検出、follow-up scope)](../../raw/reviews/20260525T170549Z-pr-1143.md)
 - [PR #1143 cycle 3 fix (user-upgrade で current-pr 化、Detection Heuristics regex 拡張)](../../raw/fixes/20260525T171342Z-pr-1143.md)
 - [PR #1143 cycle 4 review (Bidirectional parity gap HIGH 検出 — `旧実装は` カテゴリの SoT 欠落)](../../raw/reviews/20260525T175021Z-pr-1143.md)

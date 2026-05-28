@@ -846,3 +846,6 @@
 | 2026-05-28T08:53:59+00:00 | ingest:skip | raw/reviews/20260528T074236Z-pr-1166.md | cycle 17 review: fix-introduced loose end 検出。asymmetric-fix-transcription に集約済 |
 | 2026-05-28T08:53:59+00:00 | ingest:skip | raw/reviews/20260528T075543Z-pr-1166.md | cycle 18 review: 収束後 cosmetic 推奨 + push_back_when_warranted。phase-7 系に集約済 |
 | 2026-05-28T08:53:59+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=11, unregistered_raw=225, broken_refs=0 |
+| 2026-05-28T12:42:26Z | ingest:create | pages/patterns/lint-strip-code-fence-before-extraction.md | PR #1167 cycle 1 review (MEDIUM) + fix (F-02): 検証ツールが code fence 内 shell コメントを見出し誤認する false-negative を新規ページ化。strip_code_fences ヘルパーで解消 |
+| 2026-05-28T12:42:26Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1167 cycle 1 review (HIGH) + fix (F-01): 新規 lint step (Phase 3.16) 追加時の 4-site 対称更新契約再発 (累積 47 回目、2 cycle 収束) を追記 |
+| 2026-05-28T12:42:26Z | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1167 cycle 2 review (follow-up): 新規 helper strip_code_fences の regression test が mutation (cat 置換) で PASS する identification power 0 を適用 8 として追記 |

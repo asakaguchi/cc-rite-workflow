@@ -4769,6 +4769,8 @@ The `fix` flow-state write below records the v3 phase so a `/rite:resume` starte
 
 判定は本ステップ時点で**既に確定している入力**で行う (sentinel 評価テーブルより前だが、push 状態と fatal フラグは ステップ 4.6 / 4.5 / 2.4 / 1.0.1 で既知): **`プッシュ: 完了` かつ fatal フラグ (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED` / `REPORT_POST_FAILED`) が context に未 set なら継続 = `--handoff` あり**。push 無し (reply のみ) または fatal フラグ有りなら `--handoff` なし。`WM_UPDATE_FAILED` は `[fix:pushed-wm-stale]` (= 継続) に縮退するため handoff を打ち消さない。
 
+> **Note (review がセットした handoff の消去経路)**: 上記の判定が責務とするのは fix.md が**自身でセットする** `/rite:pr:review` handoff のみ。review.md Step 8.0 が**セットした** `/rite:pr:fix` handoff は `[fix:error]` 早期 exit (本 Step 5.1 不到達) では fix.md 側で消去されず、その default-clear は iterate.md ステップ3 の clearing set (`flow-state.sh set --phase fix` を `--handoff` なしで実行) にのみ依存する。iterate.md ステップ3 の set を変更/削除すると stale な `/rite:pr:fix` handoff が残存し誤った再注入を招きうるため、そちらを触る際は本依存に注意すること。
+
 ```bash
 # 継続 ([fix:pushed] / [fix:pushed-wm-stale]: push 完了 & fatal フラグ無し) の場合:
 bash {plugin_root}/hooks/flow-state.sh set \

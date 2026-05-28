@@ -27,8 +27,8 @@ PR #1177 (`/rite:pr:iterate` 終了点の FINALIZE handoff backstop) で、Stop 
 ### canonical 対策
 
 - prefix 名前空間が拡張前提なら、`*)` を「既知の継続 prefix の明示列挙」+「真に未知の値は WARNING/fail-loud」に分離する。catch-all に正規動作を載せない。
-- 既知 prefix を allowed values として明示し、想定外値は sentinel/WARNING で可視化する ([[bash-initial-value-aligns-with-allowed-values]] と同じ defensive 方針)。
-- case dispatch は語彙を潰さず保持する ([[exit-code-semantic-preservation]] の「caller は case で語彙を保持する」と同根 — exit code でも prefix でも、default arm への意味集約は semantic loss を生む)。
+- 既知 prefix を allowed values として明示し、想定外値は sentinel/WARNING で可視化する ([bash 文字列変数の初期値は allowed values 列挙に含めるか fail-loud sentinel で defensive に倒す](../patterns/bash-initial-value-aligns-with-allowed-values.md) と同じ defensive 方針)。
+- case dispatch は語彙を潰さず保持する ([Exit code semantic preservation: caller は case で語彙を保持する](../patterns/exit-code-semantic-preservation.md) と同根 — exit code でも prefix でも、default arm への意味集約は semantic loss を生む)。
 
 ### 併発した comment 責務分離の乖離
 
@@ -36,7 +36,7 @@ PR #1177 (`/rite:pr:iterate` 終了点の FINALIZE handoff backstop) で、Stop 
 
 ## 関連ページ
 
-- [bash 文字列変数の初期値は allowed values 列挙に含めるか fail-loud sentinel で defensive に倒す](./bash-initial-value-aligns-with-allowed-values.md)
+- [bash 文字列変数の初期値は allowed values 列挙に含めるか fail-loud sentinel で defensive に倒す](../patterns/bash-initial-value-aligns-with-allowed-values.md)
 
 ## ソース
 

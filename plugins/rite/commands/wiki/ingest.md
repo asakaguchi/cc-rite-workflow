@@ -694,7 +694,7 @@ LLM は Skill 応答テキスト (= `lint.md` ステップ 9.2 の最終 stdout 
 
    全行 scan + 最初の match 採用とすることで、lint.md 側で preamble の echo / debug 出力が混入しても決定論的に `Lint:` 行を拾う (`set -x` debug / observability echo / informational banner 等の追加変更に対する resilience)。
 
-3. **stdout が空の場合**: **Lint 実行失敗として扱う** (lint.md の契約では 0 件でも必ず 1 行出力するため、stdout 空は bash syntax error / 未捕捉 fatal error / SIGPIPE / OOM 等の異常経路):
+3. **stdout が空の場合**: **Lint 実行失敗として扱う** (lint.md の契約では regex-matchable な `Lint:` data 行を 0 件でも必ず 1 行出力するため、stdout 空は bash syntax error / 未捕捉 fatal error / SIGPIPE / OOM 等の異常経路。lint.md の総出力は disambiguator marker + sentinel を含めて 3 行だが、本 phase の parser が依存するのは regex `^Lint:` でマッチする 1 行目の data 行のみ):
 
    - `n_warnings += 1` + `n_lint_anomaly += 1`
    - 6 変数を `0` に fallback

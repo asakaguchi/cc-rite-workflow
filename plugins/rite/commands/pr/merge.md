@@ -88,7 +88,7 @@ fi
 
 if gh pr merge {pr_number} --squash --delete-branch=false 2>"${gh_err:-/dev/null}"; then
   echo "<!-- skill return signal: caller must continue next step -->"
-  echo "[merge:returned-to-caller]"
+  echo "<!-- [merge:returned-to-caller] -->"
   # 成功時のみ stderr の warning (deprecation / rate-limit) を surface する。
   # 失敗時に同 stderr を head -5 で再表示すると、下の else block の head -10 と二重出力に
   # なるため、warning surface は then-branch 内に閉じ込める。
@@ -130,7 +130,7 @@ fi
   (ブランチ削除 / Projects Status → Done / Issue close / Wiki ingest 等)
 
 <!-- skill return signal: caller must continue next step -->
-[merge:returned-to-caller]
+<!-- [merge:returned-to-caller] -->
 ```
 
 ---

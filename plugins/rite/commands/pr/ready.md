@@ -538,12 +538,12 @@ When called within the end-to-end flow (detected in Phase 5.0), **do NOT output 
 
 ```
 <!-- skill return signal: caller must continue next step -->
-[ready:returned-to-caller]
+<!-- [ready:returned-to-caller] -->
 ```
 
 This pattern is **mandatory** in e2e flow. It allows the caller orchestrator (e.g. `sprint/execute.md`) to detect that `rite:pr:ready` has returned to the caller and immediately proceed to caller-specific 完了処理 (sprint なら次 Issue の処理、独立 orchestrator なら completion report)。Without this signal, the caller may incorrectly interpret the lack of output as task completion.
 
-The signal comment + sentinel pair replaces the older `ready:completed` form. The new naming makes explicit that the sub-skill is *returning to caller* (and the caller must continue), not *terminating the workflow* — this prevents LLM turn-boundary heuristic misfires (Issue #1165).
+The signal comment + sentinel pair replaces the older `ready:completed` form. The new naming makes explicit that the sub-skill is *returning to caller* (and the caller must continue), not *terminating the workflow* — this prevents LLM turn-boundary heuristic misfires (Issue #1165). The sentinel is wrapped in an HTML comment to match the canonical emit style used by `create.md` / `cleanup.md` / `ingest.md` so that the user-visible terminus is never a bare bracket sentinel — disambiguator marker と sentinel が共に HTML コメント化されることで「ユーザー向けに見える最終行」と「caller への signal 行」が完全に分離される (Issue #1166 cycle 3 F-03)。
 
 #### 5.1.2 Standalone Execution
 

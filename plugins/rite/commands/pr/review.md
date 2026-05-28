@@ -4639,7 +4639,7 @@ commands:
 
 Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:{n}]`), update flow state to reflect the post-review phase (defense-in-depth, fixes #719). これはループ継続を支える **2 層構造のうち secondary (resume 用の網)** であり、フォークコンテキストが caller に戻った後に LLM が turn を終了しても、state file に正しい `next_action` が残るため `/rite:resume` で復帰できる。
 
-継続 (`[review:fix-needed:{n}]`) の場合はさらに `--handoff "/rite:pr:fix {pr_number}"` で **自動継続マーカー (primary)** をセットする: `Stop` hook (`stop-loop-continuation.sh`) が turn 終了時にこれを consume し、停止を差し戻して `/rite:pr:fix` を再注入する (Issue #1168 — 旧 prose が前提にしていた "Stop hook" が本 Issue で実装された)。終了 (`[review:mergeable]`) の場合は `--handoff` を**付けない**: caller の review-fix loop は mergeable で終了し ready 遷移へ進むため、誤って fix を再注入してはならない (handoff はデフォルトクリアされる)。
+継続 (`[review:fix-needed:{n}]`) の場合はさらに `--handoff "/rite:pr:fix {pr_number}"` で **自動継続マーカー (primary)** をセットする: `Stop` hook (`stop-loop-continuation.sh`) が turn 終了時にこれを consume し、停止を差し戻して `/rite:pr:fix` を再注入する (Issue #1168 — 旧 prose が前提にしていた "Stop hook" が本 Issue で実装された)。終了 (`[review:mergeable]`) の場合は `--handoff "FINALIZE:review:mergeable:{pr_number}"` で **終了通知マーカー (FINALIZE handoff)** をセットする (Issue #1176): Stop hook が prefix `FINALIZE:` を検出し、停止を差し戻して「`/rite:pr:iterate` ステップ5 の完了通知を出力してから終えよ」と **1 回だけ** 再注入する。これにより mergeable 到達直後に完了通知を出さず停止する早期終了を構造的に防ぐ。one-shot consume のため完了通知出力後はクリーン終了する (無限 block しない)。
 
 **Condition**: Execute only when flow state file exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
 
@@ -4647,15 +4647,16 @@ Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:
 
 | Result | Phase | Handoff (`--handoff`) | Next Action |
 |--------|-------|-----------------------|-------------|
-| `[review:mergeable]` | `review` | (付けない — handoff クリア) | `rite:pr:review completed. Result: [review:mergeable]. Proceed to /rite:pr:ready (caller の review-fix loop が ready 遷移を起動). Do NOT stop.` |
+| `[review:mergeable]` | `review` | `FINALIZE:review:mergeable:{pr_number}` | `rite:pr:review completed. Result: [review:mergeable]. Proceed to /rite:pr:ready (caller の review-fix loop が ready 遷移を起動). Do NOT stop.` |
 | `[review:fix-needed:{n}]` | `review` | `/rite:pr:fix {pr_number}` | `rite:pr:review completed. Result: [review:fix-needed:{n}]. Proceed to /rite:pr:fix (caller の review-fix loop が fix 起動). Do NOT stop.` |
 
 ```bash
-# [review:mergeable] の場合 (--handoff 行を省略 = handoff クリア):
+# [review:mergeable] の場合 (--handoff で FINALIZE 終了通知マーカーをセット):
 bash {plugin_root}/hooks/flow-state.sh set \
  --phase "review" \
  --active true \
  --next "{next_action_value}" \
+ --handoff "FINALIZE:review:mergeable:{pr_number}" \
  --if-exists
 
 # [review:fix-needed:{n}] の場合 (--handoff で fix への継続マーカーをセット):
@@ -4667,7 +4668,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
  --if-exists
 ```
 
-Replace `{next_action_value}` with the value from the table above based on the review result, and `{pr_number}` with the actual PR number. Choose the bash variant by result: `[review:fix-needed:{n}]` uses the `--handoff` form; `[review:mergeable]` uses the no-handoff form. Also replace `{n}` in the next_action string with the actual finding count from the review result (e.g., if the result is `[review:fix-needed:3]`, then `{n}` = `3`).
+Replace `{next_action_value}` with the value from the table above based on the review result, and `{pr_number}` with the actual PR number. Choose the bash variant by result: `[review:fix-needed:{n}]` uses the continuation `--handoff "/rite:pr:fix {pr_number}"` form; `[review:mergeable]` uses the FINALIZE `--handoff "FINALIZE:review:mergeable:{pr_number}"` form (Issue #1176 — both variants always set `--handoff`). Also replace `{n}` in the next_action string with the actual finding count from the review result (e.g., if the result is `[review:fix-needed:3]`, then `{n}` = `3`).
 
 **Note on `error_count`**: `flow-state.sh set` resets `error_count` to 0 by default on every phase transition, and preserves the existing value only when `--preserve-error-count` is passed. `error_count` is currently a reserved/legacy schema slot with no production reader; resetting on transition keeps the slot well-defined for future re-introduction without carrying stale counts.
 

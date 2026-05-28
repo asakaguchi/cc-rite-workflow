@@ -205,13 +205,16 @@ cmd_set() {
   [ -z "$active" ] && active=$cur_active
   local err_count=0
   [ $preserve_error -eq 1 ] && err_count=$cur_err
-  # `handoff` は review↔fix loop の one-shot 継続マーカー (Issue #1168)。`error_count` と同様に
+  # `handoff` は review↔fix loop の one-shot マーカー (Issue #1168 / #1176)。`error_count` と同様に
   # **phase transition (= 毎 set) でデフォルトクリア** する設計のため、merge-read (cur_*) に含めず
   # `--handoff` が明示指定された時だけ書き込む。`--handoff` 省略時は key 自体を付与しない
-  # (= 空) ことで、終了 sentinel (mergeable / replied-only / cancelled) や loop 外の set が
-  # 自動的に handoff をクリアし、stale handoff が次サイクルに漏れない。継続 sentinel
-  # (review:fix-needed / fix:pushed) を出す sub-skill のみが `--handoff "/rite:pr:..."` を渡す。
-  # Stop hook (stop-loop-continuation.sh) が `consume-handoff` で読み取り + 削除して block する。
+  # (= 空) ことで、loop 外の set が自動的に handoff をクリアし、stale handoff が次サイクルに漏れない。
+  # handoff には 2 種類の値が入る:
+  #   - 継続 handoff "/rite:pr:..." : 継続 sentinel (review:fix-needed / fix:pushed) を出す sub-skill が渡す。
+  #   - 終了 handoff "FINALIZE:{result}:{pr}" : 終了 sentinel (mergeable / replied-only / cancelled) を
+  #     出す sub-skill が渡す (Issue #1176)。`flow-state.sh` 自体は任意文字列を verbatim 格納するため
+  #     機構変更は不要 — prefix 分岐は Stop hook (stop-loop-continuation.sh) 側の reason 生成で行う。
+  # Stop hook が `consume-handoff` で読み取り + 削除し、prefix で分岐して block する。
   local now new; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   new=$(jq -n \
     --argjson schema "$SCHEMA_VERSION_V3" --arg session "$sid" \

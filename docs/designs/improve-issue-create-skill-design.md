@@ -1,6 +1,8 @@
 # `/rite:issue:create` ワークフロー全面改善 — PDF Skill ガイド + Claude Code 公式仕様準拠
 
 > **Status: superseded**. 本 design doc が想定していた sub-skill アーキテクチャ (`create-interview` / `create-decompose` / `create-register`) は flat single-file workflow (`create.md` ステップ 1-6) に統合され retire された。歴史的設計判断の参照用として残置。
+>
+> 本文中の `[create:completed:N]` / `[interview:skipped]` 等の sentinel literal は **pre-#1165 naming の歴史的記述** として保持する（Issue #1165 で skill return sentinel は `:returned-to-caller` 形式に rename されたが、本 doc が記述していたのは当時の `:completed` 形式であり、historical 正確性のため書き換えない）。現行 sentinel 命名規約は `plugins/rite/commands/issue/create.md` ステップ 4.4 / 5.6 の `[create:returned-to-caller:{N}]` を参照。
 
 <!-- Section ID: SPEC-OVERVIEW -->
 ## 概要

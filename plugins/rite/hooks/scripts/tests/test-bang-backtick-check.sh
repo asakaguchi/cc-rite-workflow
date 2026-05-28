@@ -176,17 +176,28 @@ assert "P2 multi-trigger reports exactly 3 hits" "3" "$p2_multi"
 p1_in_p2_multi=$(grep -c '^\[bang-backtick\]\[P1\]' <<< "$out")
 assert "P2 multi-trigger does NOT bleed into P1" "0" "$p1_in_p2_multi"
 
-# --- Test 8: tab+! is NOT matched (pins the "space-only" semantics) ----------
-# Pinning this intentionally excluded boundary prevents future regex widening
-# (e.g. changing space to `[[:space:]]`) from silently bleeding detection into
-# tab-delimited inline code.
+# --- Test 8: tab+! before a closing backtick is caught by P3, not P1 ---------
+# Two invariants are pinned at once here:
+#   (1) P1 stays literal-space-only — its regex is ` !` (a literal space before
+#       the bang-backtick), so a tab does NOT satisfy P1. This guards against a
+#       future widening of P1's space to `[[:space:]]`.
+#   (2) P3 (the bang-immediately-before-backtick catch-all added in the cycle 35
+#       fix series) matches the `!`+backtick adjacency regardless of the
+#       preceding whitespace, so the fixture IS flagged (by P3) and the script
+#       exits 1. P3 subsumes the P1 cases by design (see bang-backtick-check.sh
+#       header — P3 is the generic catch-all), so any `!`+backtick adjacency is
+#       a real Skill-loader trigger and must be reported.
 FIXTURE_TAB=$(mktemp_md)
 TMPFILES+=("$FIXTURE_TAB")
 printf '# Fixture: tab before bang\n\nThis line has `if\t!` with a tab, not a space.\n' > "$FIXTURE_TAB"
 
 out=$("$SCRIPT" --target "$FIXTURE_TAB" 2>&1)
 rc=$?
-assert "tab+! fixture exits 0 (tab is NOT treated as space)" "0" "$rc"
+assert "tab+! fixture exits 1 (caught by P3 catch-all)" "1" "$rc"
+tab_p1=$(grep -c '^\[bang-backtick\]\[P1\]' <<< "$out")
+assert "tab+! is NOT matched by P1 (P1 stays literal-space-only)" "0" "$tab_p1"
+tab_p3=$(grep -c '^\[bang-backtick\]\[P3\]' <<< "$out")
+assert_ge "tab+! IS matched by P3 (catch-all)" 1 "$tab_p3"
 
 # --- Test 9: double-space+! IS matched (the last space satisfies "space+!") --
 FIXTURE_DOUBLE_SPACE=$(mktemp_md)
@@ -202,12 +213,16 @@ rc=$?
 assert "double-space+! fixture exits 1 (last space matches)" "1" "$rc"
 
 # --- Test 10: innocent patterns remain clean (includes fenced code block) ----
+# NOTE: an inline-code Rustdoc inner-doc span (`//!`) is intentionally NOT part
+# of this innocent set — it forms a `!`+backtick adjacency at its closing
+# boundary, which P3 (the catch-all) is designed to flag (see the bang-backtick-
+# check.sh header P3 description, which lists Rustdoc //! as a P3 target). The
+# genuinely innocent patterns below all keep the bang away from a backtick.
 FIXTURE_CLEAN=$(mktemp_md)
 TMPFILES+=("$FIXTURE_CLEAN")
 cat > "$FIXTURE_CLEAN" << 'EOF'
 # Fixture: innocent patterns (should NOT trigger)
 
-Rustdoc inner: `//!` comment.
 Markdown image: `![alt](url)`.
 Regex literal: `!\[[^\]]*\]`.
 Negation in code: `x != y`.

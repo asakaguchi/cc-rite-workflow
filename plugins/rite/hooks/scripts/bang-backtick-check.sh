@@ -51,9 +51,15 @@
 #
 # These patterns were chosen conservatively to produce zero false positives on
 # the existing commands/skills tree (verified at creation time on 70 files).
-# Innocent patterns such as Rustdoc inner doc `slash-slash-bang`, Markdown image
-# `bang-bracket-alt-paren-url`, regex literal `bang-backslash-bracket`, and
-# bash negation `if-space-bang-space-cmd` are intentionally NOT matched.
+# Innocent patterns such as Markdown image `bang-bracket-alt-paren-url`, regex
+# literal `bang-backslash-bracket`, and bash negation `if-space-bang-space-cmd`
+# are intentionally NOT matched — in all of these the bang stays away from a
+# backtick boundary.
+# Note: an inline-code Rustdoc inner-doc span (`slash-slash-bang`) was innocent
+# under the original P1/P2-only design, but P3 (added in the cycle 35 fix series)
+# now matches it, because it forms a bang+backtick adjacency at the closing
+# boundary of the inline code span — see the P3 description above which lists
+# Rustdoc inner-doc as a P3 target.
 #
 # Safe equivalents (writing convention)
 # -------------------------------------

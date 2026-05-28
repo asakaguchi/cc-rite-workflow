@@ -115,10 +115,18 @@ for entry in "${PRODUCERS[@]}"; do
   if [ "$disambig_count" -ge "$sentinel_count" ]; then
     pass "TC-${name}: ${rel_path} disambiguator emit site (${disambig_count}) >= sentinel emit site (${sentinel_count})"
   else
+    # 診断出力は grep を pipe で直接流さず変数に捕捉する。disambig_count == 0 (本 test の主検出
+    # シナリオ = disambiguator 完全 strip) のとき grep は rc=1 を返し、`set -euo pipefail` 配下では
+    # `grep ... | sed >&2` の pipeline rc=1 が set -e を発火させ fail() 到達前に loop を中断する
+    # (診断・summary が render されず後続 producer も skip される)。`|| true` で grep の no-match を
+    # 吸収してから printf | sed で出力し、fail() を確実に到達させる (姉妹 test
+    # create-md-invocation-symmetry.test.sh の pipefail-safe パターンと同形)。
+    sentinel_sites=$(grep -nE "$sentinel_pattern" "$abs_path" 2>/dev/null || true)
+    disambig_sites=$(grep -nE "$disambig_pattern" "$abs_path" 2>/dev/null || true)
     echo "  sentinel emit sites:" >&2
-    grep -nE "$sentinel_pattern" "$abs_path" 2>/dev/null | sed 's/^/    /' >&2
+    printf '%s\n' "$sentinel_sites" | sed 's/^/    /' >&2
     echo "  disambiguator emit sites:" >&2
-    grep -nE "$disambig_pattern" "$abs_path" 2>/dev/null | sed 's/^/    /' >&2
+    printf '%s\n' "$disambig_sites" | sed 's/^/    /' >&2
     fail "TC-${name}: ${rel_path} disambiguator (${disambig_count}) < sentinel (${sentinel_count}) — silent marker strip suspected (rename 漏れで marker のみ落ちた状態の可能性)"
   fi
 done

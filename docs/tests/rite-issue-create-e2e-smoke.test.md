@@ -98,15 +98,18 @@
 # (#1165 で旧 `:completed` 形式から rename。本コマンドは新形式の存在を grep で pin する。)
 grep -rn '\[create:returned-to-caller:' plugins/ docs/ 2>/dev/null
 
-# 旧形式の残存がないことも確認 (AC-1: `:completed]` 0 件)
-grep -rnF ':completed]' plugins/rite/commands/ plugins/rite/skills/ 2>/dev/null
+# 旧形式の残存がないことも確認 (AC-1: 旧 sentinel literal 0 件)
+# suffix を持つ形式 (`[create:completed:{N}]` / `[lint:completed:auto]`) も含めて全形式を捕捉するため
+# 固定文字列 (`grep -rnF ':completed]'`) ではなく regex を使う。固定文字列 `:completed]` は末尾 `]` が
+# `completed` 直後の形式 (`[ingest:completed]` 等) しかマッチせず、suffix を持つ create/lint 形式を取り逃す。
+grep -rnE '\[[a-z]+:completed(:[^]]*)?\]' plugins/rite/commands/ plugins/rite/skills/ 2>/dev/null
 ```
 
 ### 期待される動作
 
 - 全ての出現箇所で `[create:returned-to-caller:{数字}]` または `[create:returned-to-caller:{N}]` のプレースホルダー形式 (#1165 で旧 `:completed` 形式から rename)
 - 形式変更 (例: `[create:done:...]` / `[issue:created:...]` / `[create:completed:...]` (旧形式の意図しない残存) 等) が存在しない
-- 2 つ目の `grep -rnF ':completed]'` コマンドが 0 件を返す (AC-1: `plugins/rite/commands/` および `plugins/rite/skills/` 配下に旧 sentinel literal の残存なし)
+- 2 つ目の `grep -rnE '\[[a-z]+:completed(:[^]]*)?\]'` コマンドが 0 件を返す (AC-1: `plugins/rite/commands/` および `plugins/rite/skills/` 配下に旧 sentinel literal の残存なし)。本 regex は suffix なし形式 (`[ingest:completed]` / `[cleanup:completed]` / `[ready:completed]` / `[merge:completed]`) と suffix あり形式 (`[create:completed:{N}]` / `[lint:completed:auto]`) の両方を捕捉する
 
 ## シナリオ 4: AC-7 retrospective scan による `manual_fallback_adopted` 検出
 

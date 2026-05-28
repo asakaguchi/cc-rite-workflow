@@ -44,8 +44,8 @@
 #                  also matches the P1 cases (intentional double-counting —
 #                  the slash command parser triggers on bang+backtick
 #                  adjacency regardless of upstream whitespace). Empirically
-#                  required after the cycle 35 fix series — the parser was
-#                  still triggering on `` `!` `` lone-bang inline spans
+#                  required — the parser was observed still triggering on
+#                  `` `!` `` lone-bang inline spans
 #                  because they form bang+backtick adjacency at the closing
 #                  boundary.
 #
@@ -56,7 +56,7 @@
 # are intentionally NOT matched — in all of these the bang stays away from a
 # backtick boundary.
 # Note: an inline-code Rustdoc inner-doc span (`slash-slash-bang`) was innocent
-# under the original P1/P2-only design, but P3 (added in the cycle 35 fix series)
+# under the original P1/P2-only design, but P3 (the generic catch-all)
 # now matches it, because it forms a bang+backtick adjacency at the closing
 # boundary of the inline code span — see the P3 description above which lists
 # Rustdoc inner-doc as a P3 target.

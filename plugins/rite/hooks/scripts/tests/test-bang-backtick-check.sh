@@ -185,8 +185,8 @@ assert "P2 multi-trigger does NOT bleed into P1" "0" "$p1_in_p2_multi"
 #   (1) P1 stays literal-space-only — its regex is ` !` (a literal space before
 #       the bang-backtick), so a tab does NOT satisfy P1. This guards against a
 #       future widening of P1's space to `[[:space:]]`.
-#   (2) P3 (the bang-immediately-before-backtick catch-all added in the cycle 35
-#       fix series) matches the `!`+backtick adjacency regardless of the
+#   (2) P3 (the bang-immediately-before-backtick catch-all) matches the
+#       `!`+backtick adjacency regardless of the
 #       preceding whitespace, so the fixture IS flagged (by P3) and the script
 #       exits 1. P3 subsumes the P1 cases by design (see bang-backtick-check.sh
 #       header — P3 is the generic catch-all), so any `!`+backtick adjacency is

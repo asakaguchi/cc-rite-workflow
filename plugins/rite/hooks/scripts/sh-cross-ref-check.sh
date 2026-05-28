@@ -160,12 +160,23 @@ REF_RE="${FILE_RE}[[:space:]]+(ステップ|Phase)[[:space:]]+${NUM_RE}"
 declare -A CONV_CACHE=()   # path -> "ステップ" | "Phase" | "" (unknown)
 declare -A NUMS_CACHE=()   # path -> newline-joined heading numbers ("" if none)
 
+# Emit a file's content with fenced code blocks removed. A heading scan that
+# reads the raw file would treat shell comments inside ```bash fences (e.g.
+# `# 1401-1404 ...`) as markdown headings, polluting the heading-number set and
+# masking dangling references. Toggling on any line whose first non-space run is
+# a code fence (3+ backticks/tildes) drops fence delimiters and their contents,
+# while genuine top-level headings (outside fences) pass through unchanged.
+strip_code_fences() {
+  awk '/^[[:space:]]*(```|~~~)/ { in_fence = !in_fence; next } !in_fence { print }' "$1" 2>/dev/null
+}
+
 # Derive a file's keyword convention from the majority of its keyword-bearing
 # headings. Empty result = no clear convention (keyword check is skipped).
 derive_convention() {
-  local path="$1" s p
-  s=$(grep -cE '^#{1,6}[[:space:]]+ステップ[[:space:]]' "$path" 2>/dev/null || true)
-  p=$(grep -cE '^#{1,6}[[:space:]]+Phase[[:space:]]' "$path" 2>/dev/null || true)
+  local path="$1" s p stripped
+  stripped=$(strip_code_fences "$path")
+  s=$(printf '%s\n' "$stripped" | grep -cE '^#{1,6}[[:space:]]+ステップ[[:space:]]' || true)
+  p=$(printf '%s\n' "$stripped" | grep -cE '^#{1,6}[[:space:]]+Phase[[:space:]]' || true)
   if [ "$s" -gt "$p" ]; then printf 'ステップ'
   elif [ "$p" -gt "$s" ]; then printf 'Phase'
   else printf ''
@@ -177,7 +188,8 @@ derive_convention() {
 # keyword prefix stripped. Headings without a number contribute nothing.
 extract_heading_numbers() {
   local path="$1"
-  grep -E '^#{1,6}[[:space:]]' "$path" 2>/dev/null \
+  strip_code_fences "$path" \
+    | grep -E '^#{1,6}[[:space:]]' \
     | sed -E 's/^#+[[:space:]]+//' \
     | grep -oE "^((ステップ|Phase)[[:space:]]+)?${NUM_RE}" \
     | sed -E 's/^(ステップ|Phase)[[:space:]]+//' \

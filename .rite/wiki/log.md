@@ -860,3 +860,4 @@
 | 2026-05-28T16:12:48Z | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1172 review (raw/reviews/20260528T154013Z): 「対称化」claim の片側 (happy-path 非発火) 未 pin を mutation で検出、無条件 WARNING emit mutant が 103 assert 全 pass する coverage gap。適用 10 として追記 |
 | 2026-05-28T16:12:48Z | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1172 review cycle 2 (raw/reviews/20260528T155654Z): TC-H4 negative-assert 追加が gap を解消したことを双方向 mutation で実証 (無条件 emit → TC-H4 fail / WARNING 削除 → TC-H7 fail)。適用 10 に統合 |
 | 2026-05-28T16:12:48Z | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1172 fix (raw/fixes/20260528T155033Z): happy-path 非発火を pin する negative-assert を positive-assert と対に追加、mutant を hooks/ 内配置で sibling source 解決を再現。適用 10 に統合 |
+| 2026-05-28T16:17:05Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=11, unregistered_raw=225, broken_refs=0 |

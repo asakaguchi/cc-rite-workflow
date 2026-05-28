@@ -1,26 +1,28 @@
 #!/bin/bash
-# rite workflow - Stop Hook: review↔fix loop continuation (Issue #1168)
+# rite workflow - Stop Hook: review↔fix loop continuation + terminal finalize (Issue #1168 / #1176)
 #
-# Guarantees that /rite:pr:iterate の review↔fix ループが、LLM が継続 sentinel
-# ([review:fix-needed:N] / [fix:pushed] / [fix:pushed-wm-stale]) を出した直後に
-# turn を終了してしまっても自動継続するよう、構造的な層を提供する。
+# Guarantees that /rite:pr:iterate の review↔fix ループが、LLM が継続/終了 sentinel を
+# 出した直後に turn を終了してしまっても、構造的な層で差し戻すことを保証する。
+#   - 継続 sentinel ([review:fix-needed:N] / [fix:pushed] / [fix:pushed-wm-stale]) → 次ループへ自動継続
+#   - 終了 sentinel ([review:mergeable] / [fix:replied-only] / [fix:cancelled-by-user]) → 完了通知を強制
 #
 # 仕組み (one-shot consume / stop_hook_active に依存しない設計):
 #   - 継続 sentinel を出す sub-skill (review.md Step 8.0 / fix.md Step 5.1) が
-#     flow-state に handoff マーカー (例 "/rite:pr:fix 99") をセットする。
+#     flow-state に継続 handoff (例 "/rite:pr:fix 99") をセットする。
+#   - 終了 sentinel を出す sub-skill (review.md Step 8.0 / fix.md Step 5.1 / Step 1.4 cancel) が
+#     flow-state に終了 handoff (例 "FINALIZE:review:mergeable:99") をセットする (Issue #1176)。
 #   - 本 hook は turn 終了時に flow-state.sh consume-handoff で handoff を
-#     **読み取り + 削除** する (one-shot)。非空なら decision:block で停止を差し戻し、
-#     handoff のコマンドを reason として再注入する。
-#   - 削除済みのため、進捗なく再度停止すれば handoff は空 → block しない
-#     (無限 block ループ防止 / Issue #1168 AC-3)。
-#   - 各継続点で handoff が再セットされるため複数サイクル継続する (AC-1)。
-#   - 終了 sentinel ([review:mergeable] / [fix:replied-only] / [fix:cancelled-by-user])
-#     は handoff をセットしない (cmd_set がデフォルトクリア) → handoff 空 → block しない
-#     (誤継続防止 / AC-2)。
+#     **読み取り + 削除** する (one-shot)。非空なら decision:block で停止を差し戻す。
+#     handoff の prefix で reason を分岐する: "/rite:..." は次コマンド再注入、"FINALIZE:..." は
+#     /rite:pr:iterate ステップ5 完了通知の出力を要求する。
+#   - 削除済みのため、進捗 (次コマンド実行 / 完了通知出力) の後に再度停止すれば handoff は空
+#     → block しない (無限 block ループ防止 / Issue #1168 AC-3 / #1176 AC-2)。
+#   - 各継続点で継続 handoff が再セットされるため複数サイクル継続する (#1168 AC-1)。
+#     終了点では FINALIZE handoff が 1 回だけ block し、完了通知出力後はクリーン終了する (#1176 AC-1)。
 #
 # Exit behavior:
 #   exit 0 (no stdout)        — allow stop (handoff 不在 / loop 外 / 解決失敗 = fail-open)
-#   stdout {"decision":"block"} — block stop and re-inject the loop continuation command
+#   stdout {"decision":"block"} — block stop and re-inject the continuation command or finalize directive
 set -euo pipefail
 
 # Double-execution guard (hooks.json + settings.local.json migration 由来の二重登録対策)
@@ -57,13 +59,25 @@ else
   HANDOFF=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" consume-handoff --session "$SESSION_ID" 2>/dev/null) || HANDOFF=""
 fi
 
-# handoff 不在 → review↔fix ループの継続待ちではない → 停止許可。
+# handoff 不在 → 継続待ちでも終了通知待ちでもない → 停止許可。
 [ -n "$HANDOFF" ] || exit 0
 
-# handoff pending: 停止を差し戻し、次のループコマンドを再注入する。
-_reason="rite の review↔fix ループ (/rite:pr:iterate) が継続中です。停止せず、次を実行してください: ${HANDOFF}
+# handoff pending: 停止を差し戻す。handoff の prefix で reason を分岐する (Issue #1176)。
+#   FINALIZE:{result}:{pr} = 終了 sentinel 到達 → /rite:pr:iterate ステップ5 完了通知を強制
+#   /rite:...             = 継続 sentinel 到達 → 次ループコマンドを再注入 (Issue #1168)
+case "$HANDOFF" in
+  FINALIZE:*)
+    _result="${HANDOFF#FINALIZE:}"
+    _reason="rite の review↔fix ループ (/rite:pr:iterate) が終了 sentinel (${_result}) に到達しました。停止する前に /rite:pr:iterate ステップ5 の完了通知 (終了理由 + 次ステップ案内) を必ず出力してください。
+
+handoff は consume 済みのため、完了通知を出力した後に再度停止すれば停止が許可されます (無限 block しません / Issue #1176)。"
+    ;;
+  *)
+    _reason="rite の review↔fix ループ (/rite:pr:iterate) が継続中です。停止せず、次を実行してください: ${HANDOFF}
 
 このループは [review:mergeable] / [fix:replied-only] / [fix:cancelled-by-user] のいずれかに到達するか、ユーザーが Ctrl+C で中断するまで継続します (Issue #1136 / #1168)。handoff は consume 済みのため、進捗なく再度停止した場合は次回は停止が許可されます。"
+    ;;
+esac
 
 # decision:block を JSON で emit。jq 失敗時は literal JSON にフォールバックして継続意図を保つ
 # (pre-tool-bash-guard.sh の fail-closed フォールバックと同様の堅牢化)。

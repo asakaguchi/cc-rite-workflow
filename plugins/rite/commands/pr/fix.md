@@ -2028,9 +2028,9 @@ echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
    ```
 
    この cleanup を実行する 3 つの経路:
-   - Cancel 選択 → cleanup → `[fix:cancelled-by-user]` 出力 → exit 0
-   - Re-run 選択 → cleanup → ステップ 1.0 から新しい引数で再実行
-   - Step C 「2 回目も解釈不能」→ cleanup → `[fix:error]` 出力 → exit 1
+   - Cancel 選択 → cleanup → **(E2E flow 時) FINALIZE handoff set** → `[fix:cancelled-by-user]` 出力 → exit 0。FINALIZE handoff (`FINALIZE:fix:cancelled-by-user:{pr_number}`) は ステップ 1.4 cancel と同一 — ステップ 1.4 の「FINALIZE handoff の設定 (E2E flow 時のみ — Issue #1176)」bash を参照し、standalone では実行しない (AC-4)
+   - Re-run 選択 → cleanup → ステップ 1.0 から新しい引数で再実行 (handoff は set しない — 終了ではなく再実行のため)
+   - Step C 「2 回目も解釈不能」→ cleanup → `[fix:error]` 出力 → exit 1 (handoff は set しない — `[fix:error]` は clean terminal ではないため)
 
    **解釈不能の判定基準と再質問ループ** (silent fall-through 防止):
 
@@ -2539,8 +2539,22 @@ rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
       "/tmp/rite-fix-intermediate-skip-{pr_number}-{target_comment_id}.txt" \
       "/tmp/rite-fix-pr-comment-{pr_number}.txt"
 # pr-comment tempfile も cleanup 対象に追加
+```
 
-# cleanup 後に exit
+**FINALIZE handoff の設定 (E2E flow 時のみ — Issue #1176)**: `[fix:cancelled-by-user]` は終了 sentinel のため、`/rite:pr:iterate` ステップ5 中断通知を構造的に強制する FINALIZE handoff をセットする。`[fix:cancelled-by-user]` は本ステップ (ステップ 1.4 cancel) の早期 exit で emit され Step 5.1 を経由しないため、handoff は**ここで**セットする。**E2E flow の場合のみ** (ステップ 5 Flow detection 表と同一判定: `rite:pr:fix` が Skill 経由で invoke された / work memory に `コマンド: /rite:pr:open`) 下記 bash を `[fix:cancelled-by-user]` 出力の直前に実行する。standalone 実行 (ユーザーが `/rite:pr:fix` を直接入力) では実行しない (`--if-exists` も二次的に gate するが、prose 判定が primary = AC-4)。
+
+```bash
+# E2E flow 時のみ: FINALIZE 終了通知 handoff をセット (Stop hook が ステップ5 中断通知を 1 回だけ強制)
+bash {plugin_root}/hooks/flow-state.sh set \
+  --phase "fix" \
+  --active true \
+  --next "rite:pr:fix cancelled by user. caller (/rite:pr:iterate ステップ5) で中断通知を出力する。Do NOT stop before 出力." \
+  --handoff "FINALIZE:fix:cancelled-by-user:{pr_number}" \
+  --if-exists
+```
+
+```bash
+# cleanup + (E2E 時は handoff set) 後に exit
 echo "[fix:cancelled-by-user]"
 exit 0
 ```
@@ -4765,14 +4779,17 @@ ACTION: Return to ステップ 4.6.W and execute the Wiki Ingest Trigger before 
 
 The `fix` flow-state write below records the v3 phase so a `/rite:resume` started after a fix iteration classifies the resume point correctly (`commands/resume.md` Phase 5.3 の `fix` 行で `/rite:pr:iterate {pr_number}` が invoke される):
 
-**Handoff マーカー (Issue #1168)**: 継続 (`[fix:pushed]` / `[fix:pushed-wm-stale]`) になる場合は `--handoff "/rite:pr:review {pr_number}"` を付けてループ継続マーカーをセットする。`Stop` hook (`stop-loop-continuation.sh`) が turn 終了時にこれを consume し、LLM が re-review に進まず停止しても `/rite:pr:review` を再注入する (review.md Step 8.0 の fix 方向版)。終了/エラー (`[fix:replied-only]` / `[fix:error]`) の場合は付けない (handoff はデフォルトクリアされ、誤って re-review を再注入しない = AC-2)。
+**Handoff マーカー (Issue #1168 / #1176)**: 結果に応じて 3 種類に分岐する。
+- **継続** (`[fix:pushed]` / `[fix:pushed-wm-stale]`): `--handoff "/rite:pr:review {pr_number}"` で**ループ継続マーカー**をセットする。`Stop` hook (`stop-loop-continuation.sh`) が turn 終了時にこれを consume し、LLM が re-review に進まず停止しても `/rite:pr:review` を再注入する (review.md Step 8.0 の fix 方向版)。
+- **正常終了** (`[fix:replied-only]`): `--handoff "FINALIZE:fix:replied-only:{pr_number}"` で**終了通知マーカー (FINALIZE handoff)** をセットする (Issue #1176)。Stop hook が prefix `FINALIZE:` を検出し、「`/rite:pr:iterate` ステップ5 の完了通知を出力してから終えよ」と **1 回だけ** 再注入する。one-shot consume のため完了通知出力後はクリーン終了する (無限 block しない)。
+- **エラー** (`[fix:error]`): `--handoff` を**付けない** (handoff はデフォルトクリア)。`[fix:error]` は clean terminal ではなく caller (`/rite:pr:iterate` ステップ4) で AskUserQuestion (再試行/中止) に分岐するため、完了通知を強制してはならない。
 
-判定は本ステップ時点で**既に確定している入力**で行う (sentinel 評価テーブルより前だが、push 状態と fatal フラグは ステップ 4.6 / 4.5 / 2.4 / 1.0.1 で既知): **`プッシュ: 完了` かつ fatal フラグ (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED` / `REPORT_POST_FAILED`) が context に未 set なら継続 = `--handoff` あり**。push 無し (reply のみ) または fatal フラグ有りなら `--handoff` なし。`WM_UPDATE_FAILED` は `[fix:pushed-wm-stale]` (= 継続) に縮退するため handoff を打ち消さない。
+判定は本ステップ時点で**既に確定している入力**で行う (sentinel 評価テーブルより前だが、push 状態と fatal フラグは ステップ 4.6 / 4.5 / 2.4 / 1.0.1 で既知): **`プッシュ: 完了` かつ fatal フラグ (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED` / `REPORT_POST_FAILED`) が context に未 set なら継続 = `--handoff "/rite:pr:review {pr_number}"`**。push 無し (reply のみ) かつ fatal フラグ未 set なら正常終了 = `--handoff "FINALIZE:fix:replied-only:{pr_number}"`。fatal フラグ有り (`[fix:error]`) なら `--handoff` なし。`WM_UPDATE_FAILED` は `[fix:pushed-wm-stale]` (= 継続) に縮退するため継続 handoff を打ち消さない。
 
-> **Note (review がセットした handoff の消去経路)**: 上記の判定が責務とするのは fix.md が**自身でセットする** `/rite:pr:review` handoff のみ。review.md Step 8.0 が**セットした** `/rite:pr:fix` handoff は `[fix:error]` 早期 exit (本 Step 5.1 不到達) では fix.md 側で消去されず、その default-clear は iterate.md ステップ3 の clearing set (`flow-state.sh set --phase fix` を `--handoff` なしで実行) にのみ依存する。iterate.md ステップ3 の set を変更/削除すると stale な `/rite:pr:fix` handoff が残存し誤った再注入を招きうるため、そちらを触る際は本依存に注意すること。
+> **Note (review がセットした handoff の消去経路)**: 上記の判定が責務とするのは fix.md が**自身でセットする** handoff (継続 `/rite:pr:review` / 終了 `FINALIZE:fix:replied-only`) のみ。review.md Step 8.0 が**セットした** `/rite:pr:fix` handoff は `[fix:error]` 早期 exit (本 Step 5.1 不到達) では fix.md 側で消去されず、その default-clear は iterate.md ステップ3 の clearing set (`flow-state.sh set --phase fix` を `--handoff` なしで実行) にのみ依存する。iterate.md ステップ3 の set を変更/削除すると stale な `/rite:pr:fix` handoff が残存し誤った再注入を招きうるため、そちらを触る際は本依存に注意すること。
 
 ```bash
-# 継続 ([fix:pushed] / [fix:pushed-wm-stale]: push 完了 & fatal フラグ無し) の場合:
+# 継続 ([fix:pushed] / [fix:pushed-wm-stale]: push 完了 & fatal フラグ無し) の場合 (継続 handoff):
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \
@@ -4780,7 +4797,15 @@ bash {plugin_root}/hooks/flow-state.sh set \
   --handoff "/rite:pr:review {pr_number}" \
   --if-exists
 
-# 終了/エラー ([fix:replied-only] / [fix:error]: push 無し or fatal フラグ有り) の場合 (--handoff 行を省略):
+# 正常終了 ([fix:replied-only]: push 無し & fatal フラグ無し) の場合 (FINALIZE 終了通知 handoff):
+bash {plugin_root}/hooks/flow-state.sh set \
+  --phase "fix" \
+  --active true \
+  --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]->caller の review-fix loop (FULL re-review — スコープ縮退禁止、/rite:pr:review と同等のフルレビューを実行). [fix:pushed-wm-stale]->caller の review-fix loop (FULL re-review after AskUserQuestion — スコープ縮退禁止) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:replied-only]->caller の Ready & 完結 step. Do NOT stop." \
+  --handoff "FINALIZE:fix:replied-only:{pr_number}" \
+  --if-exists
+
+# エラー ([fix:error]: fatal フラグ有り) の場合 (--handoff 行を省略 = handoff クリア):
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \

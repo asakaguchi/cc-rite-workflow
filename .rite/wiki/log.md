@@ -845,3 +845,4 @@
 | 2026-05-28T08:53:59+00:00 | ingest:skip | raw/reviews/20260528T072255Z-pr-1166.md | cycle 16 review: 収束後 boundary 推奨と scope 拡大 (push_back)。phase-7 系に集約済 |
 | 2026-05-28T08:53:59+00:00 | ingest:skip | raw/reviews/20260528T074236Z-pr-1166.md | cycle 17 review: fix-introduced loose end 検出。asymmetric-fix-transcription に集約済 |
 | 2026-05-28T08:53:59+00:00 | ingest:skip | raw/reviews/20260528T075543Z-pr-1166.md | cycle 18 review: 収束後 cosmetic 推奨 + push_back_when_warranted。phase-7 系に集約済 |
+| 2026-05-28T08:53:59+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=11, unregistered_raw=225, broken_refs=0 |

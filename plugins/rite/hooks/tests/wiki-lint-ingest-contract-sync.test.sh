@@ -63,6 +63,23 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────
+# TC-1b: lint.md 側の declarative 宣言 site 数が単一であることを assert
+# ──────────────────────────────────────────────────────────────────────
+# TC-1 は `head -1` で最初の出現のみを採用する設計のため、lint.md に 2 site 目の
+# declarative 宣言が誤って追加された場合 (例: ステップ 9.2 を修正中に ステップ 1.1 / 1.3 の
+# 早期 return path も declarative 形式に書き換え、各 path で異なる行数を宣言したケース)、
+# TC-1 はその drift を検出できず最初の site のみ assert する silent gap が生じる。
+# 本 TC-1b は `grep -c = 1` で SoT 出現件数を機械検証し、複数 site 化を早期検出する。
+# Issue #1166 cycle 5 F-01 対応 (user-approved boundary を MEDIUM finding として転換)。
+lint_n_count=$(grep -c 'stdout は次の [0-9]\+ 行' "$LINT_MD" 2>/dev/null || true)
+
+if [ "$lint_n_count" = "1" ]; then
+  pass "TC-1b lint.md の declarative 宣言 site 数が単一 ($lint_n_count 件)"
+else
+  fail "TC-1b SoT site count != 1 (count=$lint_n_count). lint.md に declarative 宣言が複数 site 存在すると TC-1 が最初の 1 site のみ assert する silent drift リスクが生じます (ステップ 9.2 を SoT として保ち、ステップ 1.1 / 1.3 早期 return path は inline コメントで contract を参照するのみに留めてください)"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
 # TC-2: ingest.md 側の consumer spec 参照が抽出可能
 # ──────────────────────────────────────────────────────────────────────
 # ingest.md ステップ 8.2 は `HTML コメント sentinel の N 行を出力する` 形式で

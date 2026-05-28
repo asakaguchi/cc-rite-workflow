@@ -133,7 +133,7 @@ cmd_set() {
   # Merge semantics: unspecified scalar fields preserve existing values (旧 patch 互換).
   # Required: --phase, --next. Optional fields fall back to existing JSON or defaults.
   local phase="" next="" session="" if_exists=0 preserve_error=0
-  local issue="" branch="" pr="" parent_issue="" active=""
+  local issue="" branch="" pr="" parent_issue="" active="" handoff=""
   while [ $# -gt 0 ]; do case "$1" in
     --phase) phase="$2"; shift 2 ;;
     --issue) issue="$2"; shift 2 ;;
@@ -142,6 +142,7 @@ cmd_set() {
     --parent-issue) parent_issue="$2"; shift 2 ;;
     --next) next="$2"; shift 2 ;;
     --active) active="$2"; shift 2 ;;
+    --handoff) handoff="$2"; shift 2 ;;
     --session) session="$2"; shift 2 ;;
     --if-exists) if_exists=1; shift ;;
     --preserve-error-count) preserve_error=1; shift ;;
@@ -204,6 +205,13 @@ cmd_set() {
   [ -z "$active" ] && active=$cur_active
   local err_count=0
   [ $preserve_error -eq 1 ] && err_count=$cur_err
+  # `handoff` は review↔fix loop の one-shot 継続マーカー (Issue #1168)。`error_count` と同様に
+  # **phase transition (= 毎 set) でデフォルトクリア** する設計のため、merge-read (cur_*) に含めず
+  # `--handoff` が明示指定された時だけ書き込む。`--handoff` 省略時は key 自体を付与しない
+  # (= 空) ことで、終了 sentinel (mergeable / replied-only / cancelled) や loop 外の set が
+  # 自動的に handoff をクリアし、stale handoff が次サイクルに漏れない。継続 sentinel
+  # (review:fix-needed / fix:pushed) を出す sub-skill のみが `--handoff "/rite:pr:..."` を渡す。
+  # Stop hook (stop-loop-continuation.sh) が `consume-handoff` で読み取り + 削除して block する。
   local now new; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   new=$(jq -n \
     --argjson schema "$SCHEMA_VERSION_V3" --arg session "$sid" \
@@ -211,12 +219,13 @@ cmd_set() {
     --argjson pr "$pr" --argjson parent "$parent_issue" \
     --arg next "$next" --argjson active "$active" \
     --argjson err "$err_count" --arg ts "$now" \
-    --arg lsp "$cur_last_synced" \
+    --arg lsp "$cur_last_synced" --arg handoff "$handoff" \
     '{schema_version:$schema, session_id:$session, phase:$phase,
       issue_number:$issue, branch:$branch, pr_number:$pr,
       parent_issue_number:$parent, next_action:$next, active:$active,
       error_count:$err, updated_at:$ts}
-     | (if $lsp != "" then .last_synced_phase = $lsp else . end)') || return 1
+     | (if $lsp != "" then .last_synced_phase = $lsp else . end)
+     | (if $handoff != "" then .handoff = $handoff else . end)') || return 1
   # `_atomic_write` の header コメント ("Callers MUST check rc") を遵守。現状は cmd_set の
   # 最終 statement のため set -e で rc が暗黙伝播するが、将来 `_atomic_write` の後に log 行を
   # 1 つ足す等の小修正で silent failure path が即復活する fragile pattern を避けるため、明示的
@@ -290,6 +299,40 @@ cmd_deactivate() {
     '.active = $a | (if $n != "" then .next_action = $n else . end) | .updated_at = $ts' "$path") || return 1
   # `_atomic_write` rc 伝播 (cmd_set / `_migrate_file` と対称、header 契約遵守)。
   _atomic_write "$path" "$updated" || return 1
+}
+
+# consume-handoff: review↔fix loop の one-shot 継続マーカーを **読み取り + 削除** する (Issue #1168)。
+# Stop hook (stop-loop-continuation.sh) が turn 終了時に呼ぶ。`handoff` が非空ならその値を stdout に
+# 出力し、同じ呼び出しで file から削除 (atomic) する。これにより:
+#   - handoff 非空 → 値を出力 → hook が block + 再注入。削除済みなので次に LLM が何もせず止まれば
+#     handoff は空 → block しない (無限 block ループ防止 / AC-3)。
+#   - 継続 sentinel を出すたびに sub-skill が handoff を再セットするため複数サイクル継続する (AC-1)。
+# session 解決失敗 / state file 不在 / handoff 空 のいずれも「出力なし + rc=0」(= block しない) に縮退する。
+# 削除を **値の出力より前** に行う (fail-closed 順序): 削除に成功した周回だけ値を stdout に出す。
+# これにより `_atomic_write` が永続的に失敗する環境 (read-only FS / ENOSPC / EACCES) でも、削除できない
+# 周回は値を出さない = hook が block しないため、stale handoff による無限 block (AC-3 違反) を起こさない。
+# 削除失敗は rc=0 で握るが、診断 ERROR を stderr に emit する (cmd_set / `_atomic_write` の他経路と対称化し、
+# fail-open を無診断にしない)。"print してから削除する" 旧順序では削除失敗時に値が既に出力済みで block が
+# 確定するため、回収不能な永続障害下で無限 block する経路があった。
+cmd_consume_handoff() {
+  local session=""
+  while [ $# -gt 0 ]; do case "$1" in
+    --session) session="$2"; shift 2 ;;
+    *) echo "ERROR: unknown option: $1" >&2; return 1 ;;
+  esac; done
+  local sid path; sid=$(_resolve_session_id "$session") || return 0
+  path=$(_state_path "$sid"); [ ! -f "$path" ] && return 0
+  local handoff; handoff=$(jq -r '.handoff // ""' "$path" 2>/dev/null) || handoff=""
+  [ -z "$handoff" ] && return 0
+  local updated; updated=$(jq 'del(.handoff)' "$path" 2>/dev/null) || {
+    echo "ERROR: consume-handoff: jq del(.handoff) failed for $(basename "$path") (handoff not cleared; value withheld to avoid re-block)" >&2
+    return 0
+  }
+  _atomic_write "$path" "$updated" || {
+    echo "ERROR: consume-handoff: handoff clear failed for $(basename "$path") (stale handoff may re-block under persistent FS failure; value withheld)" >&2
+    return 0
+  }
+  printf '%s\n' "$handoff"
 }
 
 # Returns:
@@ -368,16 +411,18 @@ case "${1:-}" in
   set) shift; cmd_set "$@" ;;
   get) shift; cmd_get "$@" ;;
   deactivate) shift; cmd_deactivate "$@" ;;
+  consume-handoff) shift; cmd_consume_handoff "$@" ;;
   migrate) shift; cmd_migrate "$@" ;;
   path) shift; cmd_path "$@" ;;
   *)
     cat >&2 <<EOF
-Usage: $0 {set|get|deactivate|migrate|path} [options]
+Usage: $0 {set|get|deactivate|consume-handoff|migrate|path} [options]
   set --phase <P> --next <T> [--issue N] [--branch S] [--pr N] [--parent-issue N]
-      [--active true|false] [--session UUID] [--if-exists] [--preserve-error-count]
+      [--active true|false] [--handoff CMD] [--session UUID] [--if-exists] [--preserve-error-count]
   get --field <F> [--default V] [--session UUID]
       | --jq-filter <FILTER> [--default V] [--session UUID]
   deactivate [--next T] [--session UUID]
+  consume-handoff [--session UUID]   # print + clear the one-shot review↔fix loop handoff (Issue #1168)
   migrate [--dry-run] [--verbose]
   path [--session UUID]
 Phase enum (v3): $PHASE_ENUM_V3

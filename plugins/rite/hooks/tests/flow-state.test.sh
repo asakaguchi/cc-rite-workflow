@@ -751,6 +751,119 @@ else
   fail "TC-22.2: env-set first-time で stdout に default 返却なし: '$combined'"
 fi
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + security/observability hardening"; then
+# --- TC-H1..H5: handoff one-shot marker (Issue #1168) ---
+echo ""
+echo "=== TC-H1: set --handoff writes handoff field ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase review --issue 1168 --branch b --pr 99 --next n --handoff "/rite:pr:fix 99")
+state_file="$d/.rite/sessions/${sid}.flow-state"
+assert "TC-H1: handoff set" "/rite:pr:fix 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+
+echo ""
+echo "=== TC-H2: set WITHOUT --handoff default-clears (no handoff key) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase review --issue 1168 --branch b --pr 99 --next n)
+state_file="$d/.rite/sessions/${sid}.flow-state"
+assert "TC-H2: handoff absent when --handoff omitted" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+
+echo ""
+echo "=== TC-H3: consume-handoff prints value + deletes it (one-shot) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:pr:review 99")
+state_file="$d/.rite/sessions/${sid}.flow-state"
+first=$(cd "$d" && bash "$HOOK" consume-handoff)
+assert "TC-H3: first consume returns value" "/rite:pr:review 99" "$first"
+assert "TC-H3: handoff deleted after consume" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+second=$(cd "$d" && bash "$HOOK" consume-handoff)
+assert "TC-H3: second consume is empty (one-shot)" "" "$second"
+# Other fields must survive the consume (del only touches .handoff)
+assert "TC-H3: phase preserved through consume" "fix" "$(jq -r .phase "$state_file")"
+assert "TC-H3: pr_number preserved through consume" "99" "$(jq -r .pr_number "$state_file")"
+
+echo ""
+echo "=== TC-H4: consume-handoff on file without handoff → empty + rc 0 ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase review --issue 1168 --branch b --pr 99 --next n)
+out=$(cd "$d" && bash "$HOOK" consume-handoff; echo "__RC=$?")
+rc=$(printf '%s' "$out" | sed -n 's/.*__RC=\([0-9]*\).*/\1/p')
+val="${out%__RC=*}"; val="${val%$'\n'}"
+assert "TC-H4: no handoff → empty output" "" "$val"
+assert "TC-H4: no handoff → rc 0" "0" "$rc"
+
+echo ""
+echo "=== TC-H5: set --handoff then set without --handoff clears it (terminal transition) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+state_file="$d/.rite/sessions/${sid}.flow-state"
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:pr:review 99")
+assert "TC-H5: handoff present after continuation set" "/rite:pr:review 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next "terminal")
+assert "TC-H5: handoff cleared by subsequent no-handoff set" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+
+echo ""
+echo "=== TC-H6: consume-handoff fail-closed on _atomic_write failure (Issue #1168 AC-3) ==="
+# Why: cmd_consume_handoff の順序は jq del → _atomic_write → printf (delete-then-print)。
+# 永続 FS 書込失敗下では _atomic_write が失敗し、printf に到達せず値が withhold される (stdout 空) +
+# handoff が file に残存 + rc=0 に縮退する。これにより Stop hook は空 HANDOFF を読んで停止を許可し、
+# print-then-delete 旧順序なら起きる「値出力済み + 削除失敗 → 無限 re-block」(AC-3 違反) を防ぐ。
+# この correctness path に test がないと print-then-delete への revert を検出できないため pin する。
+# 書込失敗の強制は TC-8b-e/g と同じ DAC-probe (chmod 0555) を流用する。
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:pr:review 99")
+state_file="$d/.rite/sessions/${sid}.flow-state"
+# DAC probe (同 TC-8b-e/g): root / fakeroot / CAP_DAC_OVERRIDE 環境では chmod 0555 が無効化され
+# write-failure path を強制できないため、実機 write probe で強制可能性を検出し silent false-pass を防ぐ。
+_dac_probe_err=$(mktemp /tmp/rite-dac-probe-err-XXXXXX 2>/dev/null) || _dac_probe_err=""
+if ! _dac_probe_parent=$(mktemp -d "$d/_dac_probe.XXXXXX" 2>"${_dac_probe_err:-/dev/null}"); then
+  _dac_probe_diag=""
+  [ -n "$_dac_probe_err" ] && [ -s "$_dac_probe_err" ] && _dac_probe_diag=" ($(head -1 "$_dac_probe_err"))"
+  [ -n "$_dac_probe_err" ] && rm -f "$_dac_probe_err"
+  fail "TC-H6: mktemp -d failed for DAC probe parent under $d$_dac_probe_diag"
+else
+  [ -n "$_dac_probe_err" ] && rm -f "$_dac_probe_err"
+  _dac_probe="$_dac_probe_parent/probe"
+  mkdir -p "$_dac_probe"
+  chmod 0555 "$_dac_probe"
+  if ( echo x > "$_dac_probe/_probe_file" ) 2>/dev/null; then
+    chmod +w "$_dac_probe" 2>/dev/null || true
+    rm -rf "$_dac_probe_parent"
+    pass "TC-H6: skipped (chmod 0555 ineffective in this env — DAC override / root / fakeroot; fail-closed path unverifiable)"
+  else
+    chmod +w "$_dac_probe" 2>/dev/null || true
+    rm -rf "$_dac_probe_parent"
+    # trap save/restore (TC-8b-e/g と同形): hard-fail / signal kill で sessions dir が readonly のまま
+    # 残ると後続 test が clean state を得られないため restore を保証する。
+    _tch6_saved_trap=$(trap -p EXIT INT TERM HUP)
+    _tch6_stderr=$(mktemp /tmp/rite-tch6-stderr-XXXXXX 2>/dev/null) || _tch6_stderr="/dev/null"
+    _tch6_test_cleanup() {
+      chmod +w "$d/.rite/sessions" 2>/dev/null || true
+      [ "${_tch6_stderr:-/dev/null}" != "/dev/null" ] && rm -f "$_tch6_stderr"
+    }
+    trap _tch6_test_cleanup EXIT INT TERM HUP
+    chmod 0555 "$d/.rite/sessions"
+    out=$( (cd "$d" && bash "$HOOK" consume-handoff 2>"$_tch6_stderr"); echo "__RC=$?" )
+    chmod +w "$d/.rite/sessions"
+    rc=$(printf '%s' "$out" | sed -n 's/.*__RC=\([0-9]*\).*/\1/p')
+    val="${out%__RC=*}"; val="${val%$'\n'}"
+    assert "TC-H6: value withheld on write failure (stdout empty)" "" "$val"
+    assert "TC-H6: rc 0 on write failure (Stop hook will allow stop)" "0" "$rc"
+    assert "TC-H6: handoff retained in file (delete not persisted)" "/rite:pr:review 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+    # 診断 ERROR が stderr に出ること (observability: write 失敗時の triage 用。cmd_set / _atomic_write の ERROR emission と対称)
+    if [ "$_tch6_stderr" = "/dev/null" ]; then
+      pass "TC-H6: 診断 ERROR assert を skip (stderr capture tempfile 取得不可)"
+    elif grep -qE 'ERROR:.*consume-handoff.*handoff clear failed' "$_tch6_stderr"; then
+      pass "TC-H6: write failure 時に診断 ERROR が stderr に emit される (observability)"
+    else
+      fail "TC-H6: write failure 時の診断 ERROR が欠落: '$(cat "$_tch6_stderr" 2>/dev/null)'"
+    fi
+    trap - EXIT INT TERM HUP
+    eval "$_tch6_saved_trap"
+    [ "${_tch6_stderr:-/dev/null}" != "/dev/null" ] && rm -f "$_tch6_stderr"
+    unset -f _tch6_test_cleanup
+    unset _tch6_saved_trap _tch6_stderr
+  fi
+fi
+unset _dac_probe_err _dac_probe_parent _dac_probe _dac_probe_diag 2>/dev/null || true
+
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + security/observability hardening + Issue #1168 handoff marker"; then
   exit 1
 fi

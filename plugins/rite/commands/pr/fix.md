@@ -4765,7 +4765,20 @@ ACTION: Return to ステップ 4.6.W and execute the Wiki Ingest Trigger before 
 
 The `fix` flow-state write below records the v3 phase so a `/rite:resume` started after a fix iteration classifies the resume point correctly (`commands/resume.md` Phase 5.3 の `fix` 行で `/rite:pr:iterate {pr_number}` が invoke される):
 
+**Handoff マーカー (Issue #1168)**: 継続 (`[fix:pushed]` / `[fix:pushed-wm-stale]`) になる場合は `--handoff "/rite:pr:review {pr_number}"` を付けてループ継続マーカーをセットする。`Stop` hook (`stop-loop-continuation.sh`) が turn 終了時にこれを consume し、LLM が re-review に進まず停止しても `/rite:pr:review` を再注入する (review.md Step 8.0 の fix 方向版)。終了/エラー (`[fix:replied-only]` / `[fix:error]`) の場合は付けない (handoff はデフォルトクリアされ、誤って re-review を再注入しない = AC-2)。
+
+判定は本ステップ時点で**既に確定している入力**で行う (sentinel 評価テーブルより前だが、push 状態と fatal フラグは ステップ 4.6 / 4.5 / 2.4 / 1.0.1 で既知): **`プッシュ: 完了` かつ fatal フラグ (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED` / `REPORT_POST_FAILED`) が context に未 set なら継続 = `--handoff` あり**。push 無し (reply のみ) または fatal フラグ有りなら `--handoff` なし。`WM_UPDATE_FAILED` は `[fix:pushed-wm-stale]` (= 継続) に縮退するため handoff を打ち消さない。
+
 ```bash
+# 継続 ([fix:pushed] / [fix:pushed-wm-stale]: push 完了 & fatal フラグ無し) の場合:
+bash {plugin_root}/hooks/flow-state.sh set \
+  --phase "fix" \
+  --active true \
+  --next "rite:pr:fix completed. Check recent result pattern in context: [fix:pushed]->caller の review-fix loop (FULL re-review — スコープ縮退禁止、/rite:pr:review と同等のフルレビューを実行). [fix:pushed-wm-stale]->caller の review-fix loop (FULL re-review after AskUserQuestion — スコープ縮退禁止) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:replied-only]->caller の Ready & 完結 step. Do NOT stop." \
+  --handoff "/rite:pr:review {pr_number}" \
+  --if-exists
+
+# 終了/エラー ([fix:replied-only] / [fix:error]: push 無し or fatal フラグ有り) の場合 (--handoff 行を省略):
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \

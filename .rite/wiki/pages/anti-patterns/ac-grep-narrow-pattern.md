@@ -2,13 +2,17 @@
 title: "AC 検証 grep を狭い正規表現で定義すると bare prose / 表ヘッダ / 副詞句が捕捉できない"
 domain: "anti-patterns"
 created: "2026-05-27T01:30:00Z"
-updated: "2026-05-27T01:30:00Z"
+updated: "2026-05-28T08:53:59+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260526T152327Z-pr-1151.md"
   - type: "reviews"
     ref: "raw/reviews/20260526T151003Z-pr-1151.md"
-tags: ["acceptance-criteria", "verification-grep", "word-boundary", "rename-pr", "definition-of-done"]
+  - type: "reviews"
+    ref: "raw/reviews/20260528T043041Z-pr-1166.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260528T050131Z-pr-1166.md"
+tags: ["acceptance-criteria", "verification-grep", "word-boundary", "rename-pr", "definition-of-done", "fixed-string-grep", "suffix-bearing-token"]
 confidence: high
 ---
 
@@ -62,6 +66,14 @@ grep -rnE "Phase\b" {target_dirs}/
 | 命名規約の `phase` token | コメントで「規約確立 history のため `phase` を保持」と明示 |
 | Archive doc の historical reference | front-matter で preservation policy を declare し、AC から除外 |
 
+### PR #1166: 固定文字列 grep と suffix-bearing sentinel の衝突ジレンマ
+
+同じ盲点は **固定文字列 (`grep -F`)** を AC に採った場合にも別形で現れる。sentinel rename PR #1166 (`:completed` → `:returned-to-caller`) の AC-1 は `grep -rnF ':completed]'` を残存チェックに使ったが、固定文字列 `':completed]'` は **bracket 終端形** (`[lint:completed]`) しか捕捉できず、**suffix を持つ形** (`[create:completed:{N}]` / `[lint:completed:auto]`) を取り逃す。AC が「0 件」を満たしても colon 終端形が残留する silent coverage gap が生じる。
+
+ここで難しいのは、両形を catch する regex (`\[[a-z]+:completed(:[^]]*)?\]`) に切り替えると、今度は historical preservation prose (`旧 create:completed:{N} を…`) を過剰マッチしてしまう点。**「functional sentinel と historical prose の literal 形が衝突する」設計的ジレンマ**であり、単一の残存 grep では両立しない。
+
+clean な解は negative grep 単独に頼らず、**positive check (新形式 `:returned-to-caller` の存在を pin) + meta-test との併用**に倒すこと。AC の literal を盲目的に転記せず、実際に捕捉すべき全形式 (bracket 終端 / colon 終端 / suffix 付き) を網羅できるか・historical prose と衝突しないかを着手前に検証する。
+
 ### 派生する命名規約の semantic mismatch
 
 PR #1151 の fix cycle 1 で関連する別 anti-pattern も発見された: bash function 命名規約 (`_rite_<scope>_<phase>_cleanup` の `<phase>` token) が「ステップ番号の小数点除外連結形式 → `phase22`」という semantic mismatch を含む。`<phase>` token を「Step N.M の concat」として残すか「規約由来の固定 token」として扱うかを規約 prose で明示しないと、LLM が「ステップ 2.2 → step22」と誤読する経路を生む。
@@ -75,3 +87,5 @@ PR #1151 の fix cycle 1 で関連する別 anti-pattern も発見された: bas
 
 - [PR #1151 fix cycle 1 (18 fixes)](../../raw/fixes/20260526T152327Z-pr-1151.md)
 - [PR #1151 review cycle 0](../../raw/reviews/20260526T151003Z-pr-1151.md)
+- [PR #1166 review cycle 12 (固定文字列 grep の suffix under-match MEDIUM)](../../raw/reviews/20260528T043041Z-pr-1166.md)
+- [PR #1166 fix cycle 12 (suffix 許容 regex への切替)](../../raw/fixes/20260528T050131Z-pr-1166.md)

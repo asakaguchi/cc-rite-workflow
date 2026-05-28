@@ -821,3 +821,27 @@
 | 2026-05-28T03:00:00+00:00 | ingest:skip | raw/reviews/20260527T174107Z-pr-1164.md | PR #1164 cycle 6 review。経験則は phase-7-recommendation-promotion-workflow に統合済 |
 | 2026-05-28T03:00:00+00:00 | ingest:skip | raw/reviews/20260527T174507Z-pr-1164.md | PR #1164 cycle 8 review。経験則は phase-7-recommendation-promotion-workflow に統合済 |
 | 2026-05-28T03:00:00+00:00 | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=11, unregistered_raw=210, broken_refs=0 |
+| 2026-05-28T08:53:59+00:00 | ingest:update | pages/anti-patterns/declarative-enforcement-cannot-prevent-llm-end-turn.md | PR #1166 cycle 10 review: terminal vocabulary 撤廃 (案 E) を解決手段として追加 (raw/reviews/20260528T025244Z-pr-1166.md) |
+| 2026-05-28T08:53:59+00:00 | ingest:update | pages/anti-patterns/declarative-enforcement-cannot-prevent-llm-end-turn.md | PR #1166 cycle 21 converged: vocabulary 撤廃で収束 (raw/reviews/20260528T084055Z-pr-1166.md) |
+| 2026-05-28T08:53:59+00:00 | ingest:update | pages/anti-patterns/ac-grep-narrow-pattern.md | PR #1166 cycle 12 review: 固定文字列 grep が suffix-bearing sentinel を取り逃す + historical prose 衝突ジレンマ (raw/reviews/20260528T043041Z-pr-1166.md) |
+| 2026-05-28T08:53:59+00:00 | ingest:update | pages/anti-patterns/ac-grep-narrow-pattern.md | PR #1166 cycle 12 fix: suffix 許容 regex への切替 (raw/fixes/20260528T050131Z-pr-1166.md) |
+| 2026-05-28T08:53:59+00:00 | ingest:update | pages/heuristics/dead-ref-cleanup-live-vs-historical-citation.md | PR #1166 cycle 16 fix: historical disclaimer + active emit vs retired 参照の峻別 (raw/fixes/20260528T073410Z-pr-1166.md) |
+| 2026-05-28T08:53:59+00:00 | ingest:update | pages/heuristics/dead-ref-cleanup-live-vs-historical-citation.md | PR #1166 cycle 20 fix: retired fixture の over-rename を develop 形式へ revert (raw/fixes/20260528T083422Z-pr-1166.md) |
+| 2026-05-28T08:53:59+00:00 | ingest:update | pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md | PR #1166 cycle 14 review: CHANGELOG enforcement-locus stale (raw/reviews/20260528T055956Z-pr-1166.md) |
+| 2026-05-28T08:53:59+00:00 | ingest:update | pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md | PR #1166 cycle 15 review: fix-over-correction 連鎖 (raw/reviews/20260528T060938Z-pr-1166.md) |
+| 2026-05-28T08:53:59+00:00 | ingest:update | pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md | PR #1166 cycle 15 fix: over-correction 再訂正 / 3 層 enforcement locus 区別 (raw/fixes/20260528T061125Z-pr-1166.md) |
+| 2026-05-28T08:53:59+00:00 | ingest:skip | raw/fixes/20260528T020725Z-pr-1166.md | cycle 5 fix: user-approved boundary→MEDIUM 転換。declarative-enforcement / phase-7 系に集約済 |
+| 2026-05-28T08:53:59+00:00 | ingest:skip | raw/fixes/20260528T022953Z-pr-1166.md | cycle 7 fix: cross-producer test coverage symmetry。asymmetric-fix-transcription に集約済 |
+| 2026-05-28T08:53:59+00:00 | ingest:skip | raw/fixes/20260528T023906Z-pr-1166.md | cycle 9 fix: CHANGELOG i18n parity。既存 docs-completeness 系に集約済 |
+| 2026-05-28T08:53:59+00:00 | ingest:skip | raw/fixes/20260528T025705Z-pr-1166.md | cycle 10 fix: literal/semantic 分離 + 列挙 SoT。declarative-enforcement 更新に集約 |
+| 2026-05-28T08:53:59+00:00 | ingest:skip | raw/fixes/20260528T041758Z-pr-1166.md | cycle 11 fix: user-approved recommendation を fix-needed 昇格。phase-7 系に集約済 |
+| 2026-05-28T08:53:59+00:00 | ingest:skip | raw/fixes/20260528T051950Z-pr-1166.md | cycle 13 fix: meta-test fail メッセージ全分岐記述 + prose↔metadata 同期。既存に集約済 |
+| 2026-05-28T08:53:59+00:00 | ingest:skip | raw/fixes/20260528T060234Z-pr-1166.md | cycle 14 fix: CHANGELOG enforcement 主体誤記。fix-induced-drift 更新に集約 |
+| 2026-05-28T08:53:59+00:00 | ingest:skip | raw/fixes/20260528T074550Z-pr-1166.md | cycle 17 fix: header/summary 同時更新義務 + sibling disclaimer 網羅。asymmetric-fix / dead-ref に集約済 |
+| 2026-05-28T08:53:59+00:00 | ingest:skip | raw/fixes/20260528T080529Z-pr-1166.md | cycle 18 fix: meta-test scope gap 拡張 + 段階 doc 表記 drift。asymmetric-fix に集約済 |
+| 2026-05-28T08:53:59+00:00 | ingest:skip | raw/fixes/20260528T081733Z-pr-1166.md | cycle 19 fix: journal comment の WHY 保持 reword。既存 comment 系に集約済 |
+| 2026-05-28T08:53:59+00:00 | ingest:skip | raw/reviews/20260528T030959Z-pr-1166.md | cycle 11 review: AC grep coverage gap (LOW)。ac-grep-narrow-pattern 更新に集約 |
+| 2026-05-28T08:53:59+00:00 | ingest:skip | raw/reviews/20260528T051125Z-pr-1166.md | cycle 13 review: 収束確認 + frontmatter 同期。既存に集約済 |
+| 2026-05-28T08:53:59+00:00 | ingest:skip | raw/reviews/20260528T072255Z-pr-1166.md | cycle 16 review: 収束後 boundary 推奨と scope 拡大 (push_back)。phase-7 系に集約済 |
+| 2026-05-28T08:53:59+00:00 | ingest:skip | raw/reviews/20260528T074236Z-pr-1166.md | cycle 17 review: fix-introduced loose end 検出。asymmetric-fix-transcription に集約済 |
+| 2026-05-28T08:53:59+00:00 | ingest:skip | raw/reviews/20260528T075543Z-pr-1166.md | cycle 18 review: 収束後 cosmetic 推奨 + push_back_when_warranted。phase-7 系に集約済 |

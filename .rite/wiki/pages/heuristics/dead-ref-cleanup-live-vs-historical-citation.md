@@ -2,11 +2,15 @@
 title: "dead reference 整理では live citation と historical 記述を区別する"
 domain: "heuristics"
 created: "2026-05-24T18:01:50Z"
-updated: "2026-05-24T18:01:50Z"
+updated: "2026-05-28T08:53:59+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260524T175056Z-pr-1132.md"
-tags: []
+  - type: "fixes"
+    ref: "raw/fixes/20260528T073410Z-pr-1166.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260528T083422Z-pr-1166.md"
+tags: ["historical-preservation", "rename-pr", "retired-fixture"]
 confidence: medium
 ---
 
@@ -38,6 +42,14 @@ writer 列などを find/replace で一括 rename すると、従来は dead fil
 ### schema drift は別種として切り出す
 
 dead-ref 整理の最中に発見した別種の drift（`schema_version: 2→3` / phase enum 11→13 / `previous_phase` 削除等の schema drift）は、dead reference とは異なる問題種別のため同 PR に混ぜず別 Issue（#1131）に切り出す。スコープを混在させると検証範囲と収束 cycle が膨らむ。
+
+### rename PR では active emit site と retired/historical 参照を峻別する
+
+同じ判別軸は dead-ref 整理に限らず **rename refactor 全般**に適用される。sentinel rename PR #1166 (`:completed` → `:returned-to-caller`) は「旧 literal を歴史的記録として保持 (rewrite しない)」を原則としたが、cycle 16 で retired sub-skill (interview) の test fixture `[interview:completed]` をうっかり新形式に over-rename し、cycle 20 で develop 形式へ revert した。教訓:
+
+- **rename 対象は「現行の active emit site」のみ**。retired / historical な対象 (引退した sub-skill の fixture、design-snapshot、AC の grep コマンド記録) は rename 対象外で、disclaimer 付き保持か旧形式 revert が正しい。
+- **historical-preservation の網羅性**: 1 つの doc 群 (例 `docs/designs/`) に disclaimer を追加したら、同じ理由で残る sibling (`issue-622-repro.md` ↔ `issue-634-repro.md` 等) にも網羅追加して一貫性を保つ (cycle 16 → 17 で実施)。
+- **scope 確認**: test fixture が `commands/`・`skills/` scope 外であることを grep で確認すれば、AC の残存チェック grep にも影響しない (over-rename は AC を満たしたまま historical 正確性だけ壊す silent regression)。
 
 ### 検証
 

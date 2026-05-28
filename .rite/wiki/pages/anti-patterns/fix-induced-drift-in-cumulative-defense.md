@@ -2,7 +2,7 @@
 title: "累積対策 PR の review-fix loop で fix 自体が drift を導入する"
 domain: "anti-patterns"
 created: "2026-04-21T10:35:00+00:00"
-updated: "2026-05-26T13:30:00+00:00"
+updated: "2026-05-28T08:53:59+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260518T084056Z-pr-1043-cycle4-mergeable.md"
@@ -132,7 +132,13 @@ sources:
     ref: "raw/fixes/20260526T125406Z-pr-1149-cycle6.md"
   - type: "fixes"
     ref: "raw/fixes/20260526T131458Z-pr-1149-cycle7-converged.md"
-tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain", "review-attention-bias-blind-spot", "anchor-specificity-retreat", "doc-precision-regression-cascade", "self-referential-prevention-violation", "section-relative-prevention-success", "successive-prevention-replication", "doc-heavy-fractal-pattern", "systemic-mass-fix", "auto-demote-low-override"]
+  - type: "reviews"
+    ref: "raw/reviews/20260528T055956Z-pr-1166.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260528T060938Z-pr-1166.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260528T061125Z-pr-1166.md"
+tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain", "review-attention-bias-blind-spot", "anchor-specificity-retreat", "doc-precision-regression-cascade", "self-referential-prevention-violation", "section-relative-prevention-success", "successive-prevention-replication", "doc-heavy-fractal-pattern", "systemic-mass-fix", "auto-demote-low-override", "fix-over-correction", "enforcement-locus-misattribution"]
 confidence: high
 ---
 
@@ -140,7 +146,7 @@ confidence: high
 
 ## 概要
 
-同種 regression への N 回目の累積対策 PR では、review-fix loop の各 cycle で適用した fix 自体が次 cycle の新規 drift を生む fractal pattern が顕在化する。PR #636 (Issue #634 = implicit stop regression の 8 回目対策) は 13 cycle 回って収束し、cycle 2 findings の 60% が cycle 1 fix 起因、cycle 3 で cycle 1-2 review では見えなかった architectural HIGH finding (`--preserve-error-count`) が初めて surface した。cycle 数による hard limit ではなく、quality signal (同一パターン反復 / dead marker 追加 / description-impl drift / architectural bug surface) による escalate 判断が canonical。
+同種 regression への N 回目の累積対策 PR では、review-fix loop の各 cycle で適用した fix 自体が次 cycle の新規 drift を生む fractal pattern が顕在化する。PR #636 (Issue #634 = implicit stop regression の 8 回目対策) は 13 cycle 回って収束し、cycle 2 findings の 60% が cycle 1 fix 起因、cycle 3 で cycle 1-2 review では見えなかった architectural HIGH finding (`--preserve-error-count`) が初めて surface した。cycle 数による hard limit ではなく、quality signal (同一パターン反復 / dead marker 追加 / description-impl drift / architectural bug surface) による escalate 判断が canonical。PR #1166 (sentinel rename) でも `cycle-14-15-chain` の典型例が再発: cycle 14 で CHANGELOG の「hook が旧 literal を reject」という stale 文言を「正確に」修正する過程で、検出主体を誤って meta-test に帰属させる新たな事実誤認を導入し、cycle 15 で再訂正した。教訓: finding を「正確に」直す際、修正文が新たに導入する事実主張 (どの機構が何を検出するか) も実体 grep で検証する。とくに enforcement 機構の所在は (runtime hook / 自動 meta-test / 手動 smoke 手順) の 3 層を厳密に区別し、粒度の粗い「test レベル」訂正で test の具体的責務 (新 sentinel assert vs 旧 literal residual grep) を取り違えない。
 
 ## 詳細
 
@@ -464,6 +470,9 @@ cycle 4 で初検出された 2 件 (1 HIGH F-01: `flow-state-update-trap-isolat
 - [PR #1004 cycle 2 review (累積 32 回目 / CRITICAL 2 + HIGH 7 / F-01 fix syntax error self-application)](../../raw/reviews/20260517T000446Z-pr-1004.md)
 - [PR #1004 cycle 3 review (4 軸混在 anti-pattern / Self-violation × N-site × observability × no_journal_comment)](../../raw/reviews/20260517T004634Z-pr-1004.md)
 - [PR #1004 cycle 3 fix (8 件本 PR fix + 3 件別 Issue 化 scope-creep gate)](../../raw/fixes/20260517T020335Z-pr-1004.md)
+- [PR #1166 cycle 14 review (CHANGELOG enforcement-locus stale → 修正で新誤認導入)](../../raw/reviews/20260528T055956Z-pr-1166.md)
+- [PR #1166 cycle 15 review (fix-over-correction: enforcement 主体取り違え)](../../raw/reviews/20260528T060938Z-pr-1166.md)
+- [PR #1166 cycle 15 fix (over-correction 再訂正 / 3 層 enforcement locus 区別)](../../raw/fixes/20260528T061125Z-pr-1166.md)
 
 ## PR #754 (累積 17 回目、4 cycle 収束) で観測した sub-pattern: anchor specificity retreat doctrine
 

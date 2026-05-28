@@ -2,11 +2,15 @@
 title: "Declarative enforcement で LLM の stop_reason: end_turn は抑制できない"
 domain: "anti-patterns"
 created: "2026-04-25T12:30:00+00:00"
-updated: "2026-04-25T12:30:00+00:00"
+updated: "2026-05-28T08:53:59+00:00"
 sources:
   - type: "retrospectives"
     ref: "raw/retrospectives/20260425T122746Z-meta-issue-create-stuck-rootcause.md"
-tags: [llm-turn-boundary, declarative-enforcement, stop-reason, end-turn, sub-skill-return, sentinel, mode-b]
+  - type: "reviews"
+    ref: "raw/reviews/20260528T025244Z-pr-1166.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260528T084055Z-pr-1166.md"
+tags: [llm-turn-boundary, declarative-enforcement, stop-reason, end-turn, sub-skill-return, sentinel, mode-b, vocabulary-level-enforcement, sentinel-rename]
 confidence: high
 ---
 
@@ -71,8 +75,17 @@ declarative では足りないと判明した場合の選択肢:
 | **B. hook 層 context injection** | PostToolUse hook + `additionalContext` で次 turn の system prompt に強制注入 (Claude Code 公式仕様) | 中 (hook 仕様依存) |
 | **C. continue 自動化受容** | end_turn を許容し `/loop` などで `continue` を自動入力 | 中 (運用回避) |
 | **D. stop hook の reactive block** | Stop hook で exit 2 + JSON stderr `decision: block` で再起動強制 | 中 (前提条件成立が必須、bug #10412 リスクあり) |
+| **E. terminal vocabulary 撤廃 (active enforcement)** | sentinel literal から `completed` 等の turn-end heuristic を誘発する語彙を撤廃し、`returned-to-caller` のような「caller へ return した = 次 step へ進む」ネスト構造を semantic に内包する語彙へ rename。`DO NOT stop` を *追加* する declarative 強化ではなく、誤発火トリガそのものを vocabulary レベルで除去する | 中〜高 (誤発火の主要トリガを構造的に除去。ただし周辺 context の完了感までは消せない) |
 
 A/B はそれぞれトレードオフ (modular 性 / hook 仕様の調査コスト) があるため、対策決定前に **必ず一次情報で根本仮説検証**を行うこと。
+
+### 解決アプローチの実証 (PR #1165 / #1166): terminal vocabulary 撤廃
+
+本 anti-pattern の延長として、cleanup → wiki:ingest → wiki:lint の 3 段ネストで lint の sentinel が LLM 発話の最終行になると、literal `completed` が turn-boundary heuristic を発火させ caller の残 step が skip される事象が #604 / #618 / #923 / #1144 / #1163 と繰り返し再発した。これらはすべて passive な multi-layer defense (HTML コメント化 / disambiguation marker 追加 / 「TaskCreate + return 時 TaskList 確認」SKILL.md ルール) であり `completed` semantic 自体は保持していた。
+
+PR #1166 (#1165) は上表 **案 E** を採り、sentinel 命名規約から `completed` literal を **vocabulary レベルで撤廃** した (`[lint:completed:auto]` → `[lint:returned-to-caller:auto]` 等 24 site rename)。さらに各 emit site で sentinel 直前に `<!-- skill return signal: caller must continue next step -->` を併記し active disambiguation marker とした。`returned-to-caller` は「caller skill に return した = caller の次 step に進む」ネスト構造を semantic に内包するため、turn-end heuristic を誘発する terminal vocabulary が構造的に存在しなくなる。
+
+教訓: declarative 層を *積み増す* (案の外) のではなく、誤発火の **トリガ語彙そのもの** を rename で除去する方が active enforcement に近い。ただしこれも「周辺 context の完了感」までは消せないため、案 A (inline 化) のような構造保証とは確実性が異なる (上表で中〜高)。なお rename を行う際は literal 機械置換に留め、prose semantic の再定義 (role の拡大解釈) を混ぜると相互参照 SoT 間で定義が割れる ([[variable-rename-contaminates-sentinel-literal-contract]] / [[rename-pr-callee-caller-over-translation]] 参照)。
 
 ### 検証手順 (declarative が効いていないことの実証)
 
@@ -96,3 +109,5 @@ jq -c 'select(.type=="assistant" and .message.stop_reason=="end_turn") |
 ## ソース
 
 - [meta-investigation: /rite:issue:create が累積 9 件の対策後も止まり続けた meta-retrospective](../../raw/retrospectives/20260425T122746Z-meta-issue-create-stuck-rootcause.md)
+- [PR #1166 review results (cycle 10, rename の literal/semantic 分離指摘)](../../raw/reviews/20260528T025244Z-pr-1166.md)
+- [PR #1166 review results (cycle 21, converged — vocabulary 撤廃で収束)](../../raw/reviews/20260528T084055Z-pr-1166.md)

@@ -98,6 +98,11 @@ for entry in "${PRODUCERS[@]}"; do
   case "$sentinel_count" in ''|*[!0-9]*) sentinel_count=0 ;; esac
 
   # disambiguator emit site count (3 format 同様に capture)
+  # 規約 — prose mention は backtick wrap 必須: 第 3 alternative ` <!-- skill return signal: ... -->`
+  # (leading space anchor) は inline emit site を捕捉するため、prose 文中で marker literal を
+  # backtick なしで言及すると count が inflate し real strip を mask しうる。本 test 群を含む
+  # ドキュメント/prose で disambiguator marker literal を言及する際は必ず backtick で囲むこと
+  # (現行 producer の prose mention は全て backtick 内で正しく除外される)。
   disambig_pattern='(^<!-- skill return signal: caller must continue next step -->$)|(^[[:space:]]*echo "<!-- skill return signal: caller must continue next step -->"$)|( <!-- skill return signal: caller must continue next step -->)'
   disambig_count=$(grep -cE "$disambig_pattern" "$abs_path" 2>/dev/null || true)
   case "$disambig_count" in ''|*[!0-9]*) disambig_count=0 ;; esac
@@ -118,4 +123,6 @@ for entry in "${PRODUCERS[@]}"; do
   fi
 done
 
-print_summary "sentinel-disambiguator-adjacency.test.sh" "drift hint: 失敗 producer の sentinel と disambiguator の数を合わせてください。silent strip は rename 中に echo 行の片方だけ更新したケースで発生します"
+if ! print_summary "sentinel-disambiguator-adjacency.test.sh" "drift hint: 失敗 producer の sentinel と disambiguator の数を合わせてください。silent strip は rename 中に echo 行の片方だけ更新したケースで発生します"; then
+  exit 1
+fi

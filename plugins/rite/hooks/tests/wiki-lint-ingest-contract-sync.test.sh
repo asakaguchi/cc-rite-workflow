@@ -111,4 +111,6 @@ else
   echo "  ⏭️  TC-3 skipped (TC-1 または TC-2 の抽出失敗のため比較不能)"
 fi
 
-print_summary "wiki-lint-ingest-contract-sync.test.sh" "drift hint: lint.md ステップ 9.2 (declarative 宣言行) と ingest.md ステップ 8.2 の line-count 宣言を同期させてください (本 test は ステップ 9.2 の SoT 行のみを assert。ステップ 1.1 / 1.3 早期 return path は ステップ 9.2 contract を参照するのみで本 test の対象外)"
+if ! print_summary "wiki-lint-ingest-contract-sync.test.sh" "drift hint: lint.md ステップ 9.2 (declarative 宣言行) と ingest.md ステップ 8.2 の line-count 宣言を同期させてください (本 test は ステップ 9.2 の SoT 行のみを assert。ステップ 1.1 / 1.3 早期 return path は ステップ 9.2 contract を参照するのみで本 test の対象外)"; then
+  exit 1
+fi

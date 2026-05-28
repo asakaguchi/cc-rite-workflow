@@ -5,9 +5,9 @@
 # `--auto` モード sentinel 出力契約 (n 行構造) が同期していることを assert する meta-test。
 #
 # 背景 — Asymmetric Fix Transcription anti-pattern:
-#   Issue #1166 cycle 2 で発生した F-01 (lint.md ステップ 9.2 / 1.1 / 1.3 を「3 行出力」に
-#   拡張した際、ingest.md ステップ 8.2 の consumer spec が「2 行出力」のまま残った drift) は
-#   自動検出経路が無く、人手レビューに依存していた。同型 drift の再発を構造的に予防するため、
+#   producer (lint.md ステップ 9.2 / 1.1 / 1.3) の出力行数を「3 行出力」へ拡張した際、
+#   consumer (ingest.md ステップ 8.2) の参照宣言が「2 行出力」のまま残る drift は自動検出経路が
+#   無く人手レビューに依存していた。同型 drift の再発を構造的に予防するため、
 #   producer 側の line-count 宣言と consumer 側の参照宣言を行数で照合する。
 #
 # 検出する drift:
@@ -17,7 +17,7 @@
 # 検出しない drift (本 test の scope 外、他 hook が担当):
 #   - sentinel literal (`[lint:returned-to-caller:auto]`) の rename 漏れ → CHANGELOG + grep で別途検出
 #   - disambiguator marker の adjacency 違反 → create-md-invocation-symmetry.test.sh TC-7 で別途検出
-#   - HTML コメント形式 / bare bracket 形式の混在 → 別 test で対応 (cycle 3 F-03)
+#   - HTML コメント形式 / bare bracket 形式の混在 → 別 test で対応
 #
 # When this test fails:
 #   lint.md と ingest.md のいずれかが片方に追従していない可能性が高い。両ファイルの
@@ -70,7 +70,6 @@ fi
 # 早期 return path も declarative 形式に書き換え、各 path で異なる行数を宣言したケース)、
 # TC-1 はその drift を検出できず最初の site のみ assert する silent gap が生じる。
 # 本 TC-1b は `grep -c = 1` で SoT 出現件数を機械検証し、複数 site 化を早期検出する。
-# Issue #1166 cycle 5 F-01 対応 (user-approved boundary を MEDIUM finding として転換)。
 lint_n_count=$(grep -cE 'stdout は次の [0-9]+ 行' "$LINT_MD" 2>/dev/null || true)
 
 if [ "$lint_n_count" = "1" ]; then
@@ -99,12 +98,12 @@ fi
 # TC-3: lint.md と ingest.md の line-count が一致 (Asymmetric Fix Transcription 検出)
 # ──────────────────────────────────────────────────────────────────────
 # 両者の数値が一致しない場合、producer / consumer の一方が他方に追従していない drift。
-# Issue #1166 cycle 2 F-01 と同型の drift を機械的に検出する。
+# Asymmetric Fix Transcription drift を機械的に検出する。
 if [ -n "$lint_n" ] && [ -n "$ingest_n" ]; then
   if [ "$lint_n" = "$ingest_n" ]; then
     pass "TC-3 lint.md ($lint_n 行) と ingest.md ($ingest_n 行) の line-count contract が一致"
   else
-    fail "TC-3 contract drift: lint.md=$lint_n 行 / ingest.md=$ingest_n 行 (Asymmetric Fix Transcription suspected — Issue #1166 cycle 2 F-01 と同型)"
+    fail "TC-3 contract drift: lint.md=$lint_n 行 / ingest.md=$ingest_n 行 (Asymmetric Fix Transcription suspected)"
   fi
 else
   # TC-1 / TC-2 のいずれかが既に fail しているため、TC-3 は skip (重複 fail を避ける)

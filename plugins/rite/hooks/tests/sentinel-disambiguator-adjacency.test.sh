@@ -46,7 +46,7 @@
 #   (2) Bash echo (lint.md ステップ 1.1/1.3 / merge.md ステップ 3):
 #         echo "<!-- skill return signal: caller must continue next step -->"
 #         echo "<!-- [skill:returned-to-caller] -->"
-#   (3) Inline single-line (cleanup.md:486 ordered list item):
+#   (3) Inline single-line (cleanup.md の ordered list item):
 #         2. <list item text> <!-- skill return signal: ... --> <!-- [cleanup:returned-to-caller] -->
 #
 # When this test fails:

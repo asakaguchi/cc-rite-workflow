@@ -890,6 +890,48 @@ fi
 - `orphan_check_finding_count`: Extract from `orphan_check_output` by matching the summary line `[orphan-reference-check] checked=N orphans=M` (regex: `/orphans=(\d+)/`). If no match found, default to 0
 - `orphan_check_output`: Script output (truncated if >50 lines)
 
+### 3.16 Plugin-specific Checks (Shell-prose Cross-file Step Reference) — Issue #1160
+
+Execute the shell-prose cross-file step reference check to detect `<file>.(md|sh) (ステップ|Phase) <number>` references inside echo strings and comments under **`plugins/rite/**/*.sh`** that are inconsistent with the referenced markdown file's actual headings. This complements the Phase 3.13 comment line-number check (which targets raw `<file>:<NN>` references) and the markdown-side anchor check in `distributed-fix-drift-check.sh` Pattern 4 (which only scans `.md` prose). PR #1157 cycle 4 surfaced `wiki-growth-check.sh` referencing a `close.md` step with the wrong keyword (`close.md` uses the `Phase` convention, but the prose said the in-scope `ステップ` convention) — a drift that escaped cycles 1-3 because they never scanned `.sh` prose. See the script header at `plugins/rite/hooks/scripts/sh-cross-ref-check.sh` for the heading-convention model and resolution rules.
+
+Two independent checks per reference:
+
+- **dangling number**: the referenced number is not present as a heading number in the target file
+- **keyword mismatch**: the number exists, but the prose keyword (`ステップ` / `Phase`) conflicts with the target file's own convention (derived from its headings, not a hardcoded path map)
+
+Exclusions: this script's own file (self), `plugins/rite/hooks/tests/` (fixtures), lines containing the `drift-check-ignore` marker, unresolvable file references (out of scope — Issue #1159), and targets with no numbered step/phase headings.
+
+**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
+
+**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/sh-cross-ref-check.sh ]; then
+  sh_cross_ref_output=$(bash {plugin_root}/hooks/scripts/sh-cross-ref-check.sh --all 2>&1)
+  sh_cross_ref_exit_code=$?
+else
+  sh_cross_ref_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `sh_cross_ref_status` | Action |
+|-----------|------------------------|--------|
+| 0 | `success` | No inconsistent references — continue to Phase 4 |
+| 1 | `warning` | Inconsistency detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| 2 | `error` | Invocation error (usage error / missing repo-root / empty `--all` expansion) — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Shell-prose cross-file step reference check results are treated as **warnings**, not errors — same policy as Phase 3.5–3.15 checks. A finding does NOT change `[lint:success]`. Pre-existing inconsistencies are surfaced for cleanup (tracked in Issue #1159); intentional or historical references can be exempted with an inline `drift-check-ignore` marker.
+
+**Record shell-prose cross-ref check results** for Phase 4 reporting:
+- `sh_cross_ref_status`: `success` / `warning` / `error` / `skipped`
+- `sh_cross_ref_finding_count`: Extract from `sh_cross_ref_output` by matching the summary line `==> Total sh-cross-ref findings: N` (regex: `/Total sh-cross-ref findings: (\d+)/`). If no match found, default to 0
+- `sh_cross_ref_output`: Script output (truncated if >50 lines)
+
 ---
 
 ## Phase 4: Report Results
@@ -1033,6 +1075,13 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the flo
 ```
 ⚠️ Orphan reference check: {orphan_check_finding_count} findings detected ({orphan_check_status}, non-blocking)
 {orphan_check_output}
+```
+
+**Shell-prose cross-ref check appendix (Issue #1160)** (both standalone and E2E): When `sh_cross_ref_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as Phase 3.5–3.15 checks. When status is `warning` (exit 1, inconsistency detected), the appendix output includes each finding line (`[sh-cross-ref] file:NN: dangling number ...` / `[sh-cross-ref] file:NN: keyword mismatch ...`) so reviewers can correct the reference or exempt an intentional/historical one with `drift-check-ignore`:
+
+```
+⚠️ Shell-prose cross-ref check: {sh_cross_ref_finding_count} findings detected ({sh_cross_ref_status}, non-blocking)
+{sh_cross_ref_output}
 ```
 
 These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, terminal-output, gitignore-health, backlink-format, hardcoded-line-number, comment-journal, comment-line-ref, direct-gh-issue-create, or orphan-reference-check warnings/invocation errors.

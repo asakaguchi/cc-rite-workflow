@@ -57,7 +57,7 @@ echo ""
 echo "=== TC-2: handoff is deleted from flow-state after block (one-shot consume) ==="
 sf=$(state_file_for "$d")
 assert "TC-2: handoff deleted after block" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$sf")"
-out2=$(stop_payload "$d" true | bash "$HOOK")
+out2=$(stop_payload "$d" "$SID" true | bash "$HOOK")
 assert "TC-2: second stop allows (no output)" "" "$out2"
 
 # --- TC-3: no flow-state file → allow stop ---

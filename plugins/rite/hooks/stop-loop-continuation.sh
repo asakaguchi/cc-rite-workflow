@@ -47,9 +47,15 @@ IFS=$'\x1f' read -r SESSION_ID CWD <<< "$_jq_out"
 # Resolve state root (git root or CWD) — post-tool-wm-sync.sh と同じ解決経路。
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
-# Read + clear the one-shot handoff marker. stderr は握る (loop 外セッションでは
-# state file 不在が常態のため diagnostic を出さない)。RITE_DEBUG 時のみ後段で観測可能。
-HANDOFF=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" consume-handoff --session "$SESSION_ID" 2>/dev/null) || HANDOFF=""
+# Read + clear the one-shot handoff marker. 通常は stderr を握る (loop 外セッションでは
+# state file 不在が常態で diagnostic がノイズになるため)。RITE_DEBUG set 時のみ consume-handoff の
+# 診断 ERROR (handoff clear 失敗等) を surface する — flow-state.sh consume-handoff は削除失敗時に
+# stderr へ ERROR を emit するため、RITE_DEBUG gate を通せば永続 FS 障害の triage が可能になる。
+if [ -n "${RITE_DEBUG:-}" ]; then
+  HANDOFF=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" consume-handoff --session "$SESSION_ID") || HANDOFF=""
+else
+  HANDOFF=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" consume-handoff --session "$SESSION_ID" 2>/dev/null) || HANDOFF=""
+fi
 
 # handoff 不在 → review↔fix ループの継続待ちではない → 停止許可。
 [ -n "$HANDOFF" ] || exit 0

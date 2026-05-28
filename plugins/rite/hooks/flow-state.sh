@@ -308,8 +308,12 @@ cmd_deactivate() {
 #     handoff は空 → block しない (無限 block ループ防止 / AC-3)。
 #   - 継続 sentinel を出すたびに sub-skill が handoff を再セットするため複数サイクル継続する (AC-1)。
 # session 解決失敗 / state file 不在 / handoff 空 のいずれも「出力なし + rc=0」(= block しない) に縮退する。
-# 削除 (`del(.handoff)`) は失敗しても rc=0 で握る: hook の継続判断は **stdout に値を出したか** で決まり、
-# 削除に失敗しても次サイクルの cmd_set デフォルトクリアが stale を回収するため fail-open で安全。
+# 削除を **値の出力より前** に行う (fail-closed 順序): 削除に成功した周回だけ値を stdout に出す。
+# これにより `_atomic_write` が永続的に失敗する環境 (read-only FS / ENOSPC / EACCES) でも、削除できない
+# 周回は値を出さない = hook が block しないため、stale handoff による無限 block (AC-3 違反) を起こさない。
+# 削除失敗は rc=0 で握るが、診断 ERROR を stderr に emit する (cmd_set / `_atomic_write` の他経路と対称化し、
+# fail-open を無診断にしない)。"print してから削除する" 旧順序では削除失敗時に値が既に出力済みで block が
+# 確定するため、回収不能な永続障害下で無限 block する経路があった。
 cmd_consume_handoff() {
   local session=""
   while [ $# -gt 0 ]; do case "$1" in
@@ -320,9 +324,15 @@ cmd_consume_handoff() {
   path=$(_state_path "$sid"); [ ! -f "$path" ] && return 0
   local handoff; handoff=$(jq -r '.handoff // ""' "$path" 2>/dev/null) || handoff=""
   [ -z "$handoff" ] && return 0
+  local updated; updated=$(jq 'del(.handoff)' "$path" 2>/dev/null) || {
+    echo "ERROR: consume-handoff: jq del(.handoff) failed for $(basename "$path") (handoff not cleared; value withheld to avoid re-block)" >&2
+    return 0
+  }
+  _atomic_write "$path" "$updated" || {
+    echo "ERROR: consume-handoff: handoff clear failed for $(basename "$path") (stale handoff may re-block under persistent FS failure; value withheld)" >&2
+    return 0
+  }
   printf '%s\n' "$handoff"
-  local updated; updated=$(jq 'del(.handoff)' "$path" 2>/dev/null) || return 0
-  _atomic_write "$path" "$updated" || return 0
 }
 
 # Returns:

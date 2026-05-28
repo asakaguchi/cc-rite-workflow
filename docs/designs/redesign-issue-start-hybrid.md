@@ -1,6 +1,8 @@
 # refactor(rite): /rite:issue:start を再設計 — ハイブリッド方針で 9 PR 段階的 slim・Phase 5 分割
 
 > **Status: superseded**. 本 design doc が想定していた sub-skill アーキテクチャ (`start-execute` / `start-publish` / `start-finalize`、および Phase 5.x の分割) は flat single-file workflow (`start.md` ステップ 1-8) に統合され retire された。歴史的設計判断の参照用として残置。
+>
+> 本文中の `[start:execute:completed]` / `[start:publish:completed]` / `[start:finalize:completed]` 等の sentinel literal は **pre-#1165 naming の歴史的記述** として保持する（Issue #1165 で skill return sentinel は `:returned-to-caller` 形式に rename されたが、本 doc が記述していたのは設計当時の `:completed` 形式であり、historical 正確性のため書き換えない）。現行 sentinel 命名規約は `commands/issue/create.md` ステップ 4.4 / 5.6 の `[create:returned-to-caller:{N}]` を参照。
 
 <!-- Section ID: SPEC-OVERVIEW -->
 ## 概要

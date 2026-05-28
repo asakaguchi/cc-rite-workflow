@@ -14,13 +14,17 @@
 #   5. P1 multi-trigger on a single line reports N findings (Issue #369 H-1 regression)
 #   6. P2 fixture with `!foo` triggers detection (AC-4) AND bleed-check: P1 must be 0
 #   7. P2 multi-trigger on a single line reports N findings (Issue #369 H-1 regression)
-#   8. Boundary: tab+! is NOT matched (the P1 regex is literal space, not `[[:space:]]`)
+#   8. Boundary: tab+! is caught by P3 (the catch-all), not P1 (P1 regex is a
+#      literal space, not `[[:space:]]`, so the tab does not satisfy P1 — but the
+#      bang+backtick adjacency is still flagged by P3)
 #   9. Boundary: double-space+! IS matched (the P1 regex is `space+!`, which matches
 #      the last space in " "+"!")
-#  10. Innocent patterns stay clean: Rustdoc `//!`, Markdown image `![alt](url)`,
+#  10. Innocent patterns stay clean: Markdown image `![alt](url)`,
 #      regex literal `!\[...\]`, bash negation `x != y`, `if ! cmd`, AND a fenced
 #      code block containing `if !` (scanner is per-line, so block context does not
-#      change semantics, but pinning the behavior prevents future regex widening)
+#      change semantics, but pinning the behavior prevents future regex widening).
+#      Note: an inline-code Rustdoc `//!` span is NOT in this innocent set — it
+#      forms a bang+backtick adjacency that P3 flags (see Test 8 / P3 description)
 
 set -uo pipefail
 

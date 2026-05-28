@@ -51,6 +51,13 @@ if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "/rite:pr:fix 99"; then
 else
   fail "TC-1: reason missing handoff command: $out"
 fi
+# Symmetric to TC-7 (AC-3 bidirectional): the continuation branch must NOT use the
+# FINALIZE completion-notice phrasing — pins both sides of the prefix split.
+if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "完了通知"; then
+  fail "TC-1: continuation reason wrongly used the FINALIZE completion-notice phrasing: $out"
+else
+  pass "TC-1: continuation reason is distinct from the FINALIZE branch"
+fi
 
 # --- TC-2: handoff consumed (deleted) after the block (one-shot) ---
 echo ""
@@ -97,6 +104,13 @@ if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "/rite:pr:review 99"; th
   pass "TC-6: reason contains the review command"
 else
   fail "TC-6: reason missing review command: $out"
+fi
+# Symmetric to TC-7 (AC-3 bidirectional): the fix→review continuation branch must NOT
+# use the FINALIZE completion-notice phrasing.
+if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "完了通知"; then
+  fail "TC-6: continuation reason wrongly used the FINALIZE completion-notice phrasing: $out"
+else
+  pass "TC-6: continuation reason is distinct from the FINALIZE branch"
 fi
 
 # --- TC-7: FINALIZE handoff present → block with completion-notice reason (Issue #1176 AC-1/AC-3) ---
@@ -152,6 +166,26 @@ for _ho in "FINALIZE:fix:replied-only:99" "FINALIZE:fix:cancelled-by-user:99"; d
   out_b=$(stop_payload "$d9" "$SID" true | bash "$HOOK")
   assert "TC-9: ${_ho} second stop allows (one-shot)" "" "$out_b"
 done
+
+# --- TC-10: FINALIZE handoff with empty result part still blocks once (edge case) ---
+# ${HANDOFF#FINALIZE:} becomes "" when a sub-skill emits a malformed "FINALIZE:" handoff
+# (e.g. a typo dropping the {result}:{pr} suffix). The hook must still take the FINALIZE
+# branch and force the completion notice rather than silently allowing the stop.
+echo ""
+echo "=== TC-10: FINALIZE: (empty result part) still blocks with the completion-notice reason ==="
+d10=$(new_sandbox)
+RITE_STATE_ROOT="$d10" bash "$FS" set --phase review --issue 1176 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:" --session "$SID" >/dev/null
+out=$(stop_payload "$d10" | bash "$HOOK")
+assert "TC-10: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "完了通知"; then
+  pass "TC-10: empty-result FINALIZE still requests the completion notice"
+else
+  fail "TC-10: empty-result FINALIZE missing completion-notice directive: $out"
+fi
+# one-shot: second stop allows (no infinite block even for the malformed handoff)
+out_b=$(stop_payload "$d10" "$SID" true | bash "$HOOK")
+assert "TC-10: second stop allows (one-shot)" "" "$out_b"
 
 if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (Issue #1168 review↔fix loop continuation + #1176 FINALIZE terminal backstop)"; then
   exit 1

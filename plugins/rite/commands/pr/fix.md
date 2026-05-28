@@ -2548,7 +2548,7 @@ rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \
-  --next "rite:pr:fix cancelled by user. caller (/rite:pr:iterate ステップ5) で中断通知を出力する。Do NOT stop before出力." \
+  --next "rite:pr:fix cancelled by user. caller (/rite:pr:iterate ステップ5) で中断通知を出力する。Do NOT stop before 出力." \
   --handoff "FINALIZE:fix:cancelled-by-user:{pr_number}" \
   --if-exists
 ```

@@ -214,7 +214,8 @@ cmd_set() {
   #   - 終了 handoff "FINALIZE:{result}:{pr}" : 終了 sentinel (mergeable / replied-only / cancelled) を
   #     出す sub-skill が渡す (Issue #1176)。`flow-state.sh` 自体は任意文字列を verbatim 格納するため
   #     機構変更は不要 — prefix 分岐は Stop hook (stop-loop-continuation.sh) 側の reason 生成で行う。
-  # Stop hook が `consume-handoff` で読み取り + 削除し、prefix で分岐して block する。
+  # Stop hook が `consume-handoff` で読み取り + 削除し、prefix で reason を分岐して block する
+  # (block 可否は handoff 非空かどうかで決まり、prefix は再注入する reason の選択にのみ影響する)。
   local now new; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   new=$(jq -n \
     --argjson schema "$SCHEMA_VERSION_V3" --arg session "$sid" \

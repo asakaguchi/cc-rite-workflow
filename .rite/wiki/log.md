@@ -856,3 +856,4 @@
 | 2026-05-28T15:05:43Z | ingest:create | pages/patterns/consume-operation-delete-then-return-fail-closed.md | PR #1169 review (raw/reviews/20260528T141817Z): 表層の診断欠落の奥に潜む ordering バグ (AC-3 break) を runtime 再現で HIGH 昇格。consume page に統合 |
 | 2026-05-28T15:05:43Z | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1169 fix (raw/fixes/20260528T143720Z): correctness invariant 導入 fix には mutation-fail test (TC-H6) を同 PR で添える義務を適用 9-A として追記 |
 | 2026-05-28T15:05:43Z | ingest:update | pages/anti-patterns/fix-comment-self-drift.md | PR #1169 fix (raw/fixes/20260528T144526Z): TC-H6 コメントの `cycle-2 fix` 参照を HIGH 検出、テストコードのコメントも no_journal MUST を追記 |
+| 2026-05-28T15:05:43Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=11, unregistered_raw=225, broken_refs=0 |

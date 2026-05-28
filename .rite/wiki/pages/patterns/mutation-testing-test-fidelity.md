@@ -2,8 +2,12 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-05-28T12:42:26Z"
+updated: "2026-05-28T15:05:43Z"
 sources:
+  - type: "fixes"
+    ref: "raw/fixes/20260528T143720Z-pr-1169.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260528T141817Z-pr-1169.md"
   - type: "reviews"
     ref: "raw/reviews/20260426T235945Z-pr-688.md"
   - type: "fixes"
@@ -323,6 +327,25 @@ strip_code_fences() { cat "$1"; }   # ← フェンス除去を無効化
 
 本件は cycle 2 で **non-blocking follow-up** として surface した (Observed Likelihood Gate で hypothetical 寄りに降格、本 PR scope 外)。教訓は適用 5 の 共通教訓に集約される通り: **新規 lint rule / hook / helper を導入する PR では、その helper の中核ロジックを no-op に mutate して該当 TC が FAIL することを CI で確認する**。フェンス除去ヘルパー自体の設計は [[lint-strip-code-fence-before-extraction]] を参照。
 
+### 適用 9: bug fix が correctness invariant を導入したら同 PR で mutation-fail test を添える + bash positional 引数誤配置の silent false-positive (PR #1169 で実証)
+
+PR #1169 (Issue #1168 — Stop hook loop-continuation) で 2 つの mutation testing 観点が実測された。
+
+#### 9-A: correctness invariant を導入する fix には回帰検出 test を同 PR で添える
+
+cycle 2 の bug fix が `consume-handoff` の fail-closed ordering (delete-then-return) という correctness invariant を導入したが、その invariant を守る回帰検出ネットが無かった (test gap)。これは「**fix が新たな test gap を残す**」pattern。cycle 3 で test-reviewer が MEDIUM (scope=follow-up) で指摘し、対応として:
+
+- 既存 TC の DAC-probe (chmod 0555 で `_atomic_write` を強制失敗) を流用し、書込失敗時の **値 withhold / handoff 残存 / rc≠0 / 診断 ERROR emit** を assert する TC-H6 を追加。
+- さらに **print-then-delete への mutation で TC-H6 が実際に FAIL する**ことを確認し、false-positive test でないことを保証した。
+
+教訓: **bug fix が correctness invariant を導入したら、同 PR 内で「その invariant を壊す mutation で FAIL する」test を必ず添える**。invariant 導入 commit と回帰検出 commit は不可分。invariant を導入したのに mutation-fail test を欠くと、後続改修で invariant が静かに巻き戻っても誰も気付かない。fail-closed ordering の本体は [[consume-operation-delete-then-return-fail-closed]] を参照。
+
+#### 9-B: bash positional 引数誤配置は test が常に PASS する silent false-positive
+
+cycle 2 で test-reviewer が、TC の positional 引数誤配置 (`stop_payload "$d" true` で `true` が session-id スロットに入る) を検出した。引数がずれていても test が **常に PASS する silent false positive** を生んでおり、**mutation testing でのみ検出可能**だった (正常 input では assertion が偶然成立する)。
+
+教訓: bash positional helper を呼ぶ test は、引数順の誤配置が silent false-positive を生む。helper の中核ロジックを mutate して該当 TC が FAIL するかを確認する mutation gate に加え、**positional 引数を意図的に 1 つずらした mutation でも TC が FAIL する**ことを確認すると、引数スロット誤配置を decisive に catch できる。適用 5 の Self-grep tautology / 件数判定片側 mutation 隠蔽と同じ「test が実装の正否を検出できない」identification power 0 の系統。
+
 ## 関連ページ
 
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
@@ -330,6 +353,7 @@ strip_code_fences() { cat "$1"; }   # ← フェンス除去を無効化
 - [HINT-specific 文言 pin で case arm 削除 regression を検知する](../patterns/hint-specific-assertion-pin.md)
 - [Enum 拡張時の few-shot coverage completeness](../heuristics/enum-extension-few-shot-coverage-completeness.md)
 - [Lint の見出し抽出はコードフェンス内行を除外してから行う (検証ツール自身の false-negative 防止)](./lint-strip-code-fence-before-extraction.md)
+- [consume 操作 (read+delete+return) は delete-then-return 順で fail-closed にする](./consume-operation-delete-then-return-fail-closed.md)
 
 ## ソース
 
@@ -343,3 +367,5 @@ strip_code_fences() { cat "$1"; }   # ← フェンス除去を無効化
 - [PR #1066 review — regex alternation の片側 positive coverage 欠落 + quantifier `\s*` semantic 片側のみテスト (2 種 cross-validated HIGH)](../../raw/reviews/20260520T011841Z-pr-1066.md)
 - [PR #1066 cycle 1 fix — alternation 各 branch + quantifier 境界値 + flag 必須 case + 大文字小文字混在 case で positive 6 + negative 6 に拡張](../../raw/fixes/20260520T022118Z-pr-1066-cycle1.md)
 - [PR #1167 cycle 2 review — 新規 helper strip_code_fences を cat に mutate しても test 11/11 PASS する identification power 0 を mutation 観点で指摘 (non-blocking follow-up)](../../raw/reviews/20260528T122742Z-pr-1167.md)
+- [PR #1169 fix results (cycle 3) — consume-handoff の fail-closed invariant を守る TC-H6 を追加し、print-then-delete への mutation で FAIL することを確認 (correctness invariant 導入 fix には mutation-fail test を同 PR で添える)](../../raw/fixes/20260528T143720Z-pr-1169.md)
+- [PR #1169 review results (cycle 2) — bash positional 引数誤配置 (`stop_payload "$d" true`) が test 常時 PASS の silent false-positive を生み mutation testing でのみ検出可能だった事例](../../raw/reviews/20260528T141817Z-pr-1169.md)

@@ -2,8 +2,12 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-28T12:42:26Z"
+updated: "2026-05-28T15:05:43Z"
 sources:
+  - type: "fixes"
+    ref: "raw/fixes/20260528T140809Z-pr-1169.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260528T140415Z-pr-1169.md"
   - type: "reviews"
     ref: "raw/reviews/20260527T093918Z-pr-1162.md"
   - type: "fixes"
@@ -969,6 +973,20 @@ PR #1167 (Issue #1160 — `sh-cross-ref-check.sh` を新規 lint として `lint
 - これは PR #631 (4 reviewer CRITICAL × 2) の同型再発であり、`pipeline-step-addition` tag が示す通り **新規 lint step は反復的に本 anti-pattern の trigger になる** ことを再確認 ([[drift-check-anchor-prose-code-sync]] の lint emit 順 3 重契約と同系統)
 - 本 PR が追加した検証ツール自身も別 anti-pattern (コードフェンス内 shell コメントの見出し誤認 false-negative) を内包しており [[lint-strip-code-fence-before-extraction]] として独立化
 
+### hooks.json registration 変更時の doc hook 列挙 multi-location drift + helper fail-closed 非対称 (PR #1169 — Issue #1168、累積 48 回目)
+
+PR #1169 (新規 `stop-loop-continuation.sh` + `flow-state.sh` の `--handoff`/`consume-handoff` 追加) で、本 anti-pattern が **2 層**で発火した。
+
+**層 1 — doc hook 列挙 multi-location drift (PR #677 系の再演)**: `hooks.json` に `Stop` イベントを追加した (6→7 events) が、同一 doc (`docs/SPEC.md`) 内の hook を列挙する **4 箇所** (Supported Hook Types テーブル / Note / Hook Execution Order 図 / Hook list canonical SoT ブロック) を再生成し忘れ、「6 events」「Stop removed」と live registration (7 events) に矛盾する記述が残った。preamble に「registration 変更時に `jq .hooks|keys[]` から regenerate 必須」と自己宣言していたにもかかわらず未実行。同じファイルの handoff field 追記 (+1 行) は更新されたのに hook 列挙群は drift。cycle 1 で devops reviewer が hooks.json 整合性チェックで検出 (tech-writer は handoff 行のみ確認し列挙 drift を見逃した)。
+
+**層 2 — helper fail-closed の非対称 transcription**: `flow-state.sh` 内で `cmd_set` は `_atomic_write` を `|| return 1` で fail-closed 伝播 + 診断 emit するのに、新規 `consume-handoff` だけ `|| return 0` 無診断という非対称。consume の正当性を壊す behavioral bug ([[consume-operation-delete-then-return-fail-closed]] で独立化) として cycle 2 で HIGH 昇格。
+
+#### 経験則の精緻化
+
+- **registration 変更 PR の doc 同期は grep で全 site 洗い出す**: `hooks.json` 等の registration を変更する PR は、同一 doc 内の hook / event / handler を列挙する全箇所 (テーブル / Note / 実行順序図 / canonical SoT ブロック) を grep で洗い出して同期する。tech-writer には diff の +/- 行だけでなく「変更した config/registration を参照する全 doc 箇所」を確認させる
+- **同名概念だが別 artifact は区別して過剰修正を避ける**: 新 Stop hook (`stop-loop-continuation.sh`、loop-continuation 目的) 追加時、Historical note の retired layer に残る legacy `stop-guard.sh` (stop-prevention 目的) 言及は **別 hook の履歴として正確**なため scope 外として保持する。「Stop hook 削除済」記述が複数箇所に分散している場合、canonical SoT で stop-prevention vs loop-continuation を明示区別し、同名概念を一括書き換えする過剰修正を避ける
+- helper 層の fail-closed 非対称は [[consume-operation-delete-then-return-fail-closed]] を参照
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -986,6 +1004,8 @@ PR #1167 (Issue #1160 — `sh-cross-ref-check.sh` を新規 lint として `lint
 
 ## ソース
 
+- [PR #1169 review results (累積 48 回目の起点: hooks.json に Stop 追加 6→7 events したが docs/SPEC.md 内の hook 列挙 4 箇所 drift、devops reviewer が hooks.json 整合性チェックで検出。registration 変更時は doc の全列挙箇所を grep 同期する learning)](../../raw/reviews/20260528T140415Z-pr-1169.md)
+- [PR #1169 fix results (docs/SPEC.md hook 列挙 4 箇所を hooks.json への Stop 追加に同期。新 Stop hook と legacy stop-guard.sh を stop-prevention vs loop-continuation で canonical 区別し、同名概念の過剰修正を回避)](../../raw/fixes/20260528T140809Z-pr-1169.md)
 - [PR #1167 cycle 1 review (累積 47 回目の起点: 新規 lint step Phase 3.16 追加で PR #631 確立の 4-site 対称更新契約のうち 3 site (summary table / [lint:success] enum / Note prose) が欠落、2 reviewer 独立 HIGH cross-validation)](../../raw/reviews/20260528T112627Z-pr-1167.md)
 - [PR #1167 fix (F-01: #1159 Orphan check を雛形に 3 site を対称化して構造的解消、2 cycle で 0 blocking 収束。新規 lint step 追加 PR の 4-site 機械チェック義務)](../../raw/fixes/20260528T121938Z-pr-1167.md)
 - [PR #1143 cycle 3 review (Generator-Reviewer regex parity drift 初検出、follow-up scope)](../../raw/reviews/20260525T170549Z-pr-1143.md)

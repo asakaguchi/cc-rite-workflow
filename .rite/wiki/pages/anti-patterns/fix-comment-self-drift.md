@@ -2,8 +2,10 @@
 title: "Fix 修正コメント自身が canonical convention を破る self-drift"
 domain: "anti-patterns"
 created: "2026-04-18T12:00:00+00:00"
-updated: "2026-05-27T08:31:07Z"
+updated: "2026-05-28T15:05:43Z"
 sources:
+  - type: "fixes"
+    ref: "raw/fixes/20260528T144526Z-pr-1169.md"
   - type: "reviews"
     ref: "raw/reviews/20260418T114056Z-pr-578.md"
   - type: "fixes"
@@ -133,6 +135,15 @@ cycle 7 で同種違反 3 件 → cycle 9 で 2 件 → cycle 11 で 0 件と単
 - **多言語 journal phrase の grep pattern 拡張**: `comment-best-practices.md` の no_journal_comment 禁止句リストに「日本語 / 旧版表現」(`旧 X (は|を) Y (している|していた)` 構造) を canonical 化し、`journal-marker-check.sh` 同型 lint script で `grep -E '旧[^[:space:]]+(は|を)[^[:space:]]+(している|していた)'` のような多言語パターンを CI 化する
 - **shrinking convergence の signal**: 3 → 2 → 0 のような単調減少 trajectory は「整備 commit による積み残しの順次解消」を示す。drift class が cycle ごとに細粒度化せず単純減少しているなら、機械検証 (lint script) ではなく per-cycle reviewer scan で十分閉塞可能と判断できる
 
+### テストコードのコメントでも no_journal / no_cycle_reference は MUST (PR #1169 で追加)
+
+PR #1169 cycle 5 で、cycle 4 で追加した TC-H6 (consume-handoff の fail-closed 回帰 test) の **コメントに `cycle-2 fix` という review cycle 番号参照が混入**していた点を code-quality reviewer が HIGH (current-pr) で検出した。「fix 自体が新たな drift (journal comment) を持ち込む」典型例で、ドッグフーディング repo では特に出やすい。対策はコメントから cycle 文脈を削除し、observability の目的のみを残す恒久記述への書き換え (1 行)。
+
+教訓:
+
+- **テストコードのコメントも本 anti-pattern の対象**: prose / commit message / 本体コメントだけでなく、**test fixture / assertion のコメント**でも `no_journal_comment` / `no_line_or_cycle_reference` は MUST。fix で新規追加するコメントには cycle / PR / Issue 番号や review cycle 文脈を書かず、WHY (observability の目的等) のみを stable に記述する
+- **新規 diff 行の違反は scope 内で必ず修正する**: 蔓延している pre-existing パターンの retrofit (別 Issue 化可) と、**新規 diff 行が違反を導入する**ケースは区別される。後者は本 PR の責務として scope 内で必ず修正する。「既存も違反しているから」を新規違反の言い訳にしない
+
 ## 関連ページ
 
 - [canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する](../patterns/canonical-reference-sample-code-strict-sync.md)
@@ -151,3 +162,4 @@ cycle 7 で同種違反 3 件 → cycle 9 で 2 件 → cycle 11 で 0 件と単
 - [PR #756 cycle 4 fix (全置換 claim の機械検証必須化)](../../raw/fixes/20260501T020145Z-pr-756.md)
 - [PR #1161 cycle 9 review (`旧 X は Y していた` journal phrase の同 PR 別箇所残存 HIGH × 2)](../../raw/reviews/20260527T082452Z-pr-1161.md)
 - [PR #1161 cycle 11 review (3 → 2 → 0 単調収束で mergeable)](../../raw/reviews/20260527T083107Z-pr-1161.md)
+- [PR #1169 fix results (cycle 5) — TC-H6 のコメントに混入した `cycle-2 fix` review cycle 番号参照を削除し observability 目的のみの恒久記述へ。テストコードのコメントも no_journal / no_cycle_reference MUST、新規 diff 行の違反は scope 内修正](../../raw/fixes/20260528T144526Z-pr-1169.md)

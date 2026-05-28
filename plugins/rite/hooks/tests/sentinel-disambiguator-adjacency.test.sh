@@ -12,20 +12,32 @@
 #   一方で他 5 producer (cleanup.md / merge.md / ready.md / wiki/lint.md / wiki/ingest.md)
 #   には同等の自動検査が存在せず、wiki/lint.md ステップ 1.1/1.3 早期 return path で echo 順序が
 #   sentinel → disambiguator に swap されても既存 test 群は通過する非対称 gap があった。
-#   本 meta-test は全 producer 横断で **count parity** (disambiguator count >= sentinel count)
-#   を機械検証することで silent marker strip (rename 漏れ等で disambiguator のみ落ちた状態) を
-#   構造的に予防する。
+#   本 meta-test は全 producer 横断で 2 つの検査を機械化する:
+#     (a) count parity (disambiguator count >= sentinel count) — silent marker strip
+#         (rename 漏れ等で disambiguator のみ落ちた状態) を構造的に予防する (TC-{name})
+#     (b) order-swap detection — marker pair の順序逆転 (sentinel が disambiguator より前に
+#         emit される状態) を予防する (TC-{name}-order)。3 emit format それぞれに format 固有の
+#         anchor で判定する (下記「検出する drift」参照)
+#   これにより wiki/lint.md 早期 return path 等の echo 順序 swap を構造的に検出する。
 #
 # 検出する drift:
-#   - 各 producer で sentinel 数 > disambiguator 数 になっていれば silent strip suspected
+#   - count parity (TC-{name}): 各 producer で sentinel 数 > disambiguator 数 になっていれば
+#     silent strip suspected
+#   - order-swap (TC-{name}-order): 各 producer で marker pair の順序逆転 (sentinel が
+#     disambiguator より前) を検出。正しい順序は「disambiguator → sentinel」。format 別判定:
+#       * inline (format 3): 行末が disambiguator marker (` <!-- skill return signal... -->$`)
+#         かつ同一行に sentinel marker を含む → sentinel が先 = swap
+#       * multi-line / echo (format 1,2): sentinel emit 行 (whole-line / echo) の直後行が
+#         disambiguator emit 行 → sentinel が先 = swap
+#     create.md は create-md-invocation-symmetry.test.sh の TC-7b (line-head anchor 方式) で
+#     covered のため本 test の対象外。
 #
 # 検出しない drift (本 test の scope 外):
 #   - sentinel literal の rename 漏れ → CHANGELOG / grep / 他 test で別途検出
-#   - adjacency 順序の swap (sentinel → disambiguator) → 各 emit site の format 多様性
-#     (multi-line markdown / bash echo / inline cleanup) により単一 awk pattern で
-#     表現困難。本 test の count parity でも「片方が落ちた状態」は検出可能だが、両方残って
-#     順序のみ swap した状態は対象外 (create-md TC-7b の line-head anchor 方式で create.md は
-#     covered、他 producer は本 test の count parity でカバー)
+#   - marker pair が非隣接 (sentinel と disambiguator の間に無関係行が挟まる) ケース →
+#     emit site は隣接前提 (同一行 inline / 連続行 multi-line・echo) のため order-swap 判定は
+#     隣接時のみ発火する。非隣接な状態は count parity か rename 漏れの別 drift として他 check が
+#     検出する
 #
 # 対応する 3 emit format:
 #   (1) Multi-line markdown (ready.md / merge.md ステップ 4 / lint.md ステップ 9.2 / ingest.md):
@@ -131,6 +143,76 @@ for entry in "${PRODUCERS[@]}"; do
   fi
 done
 
-if ! print_summary "sentinel-disambiguator-adjacency.test.sh" "drift hint: 失敗 producer の sentinel と disambiguator の数を合わせてください。silent strip は rename 中に echo 行の片方だけ更新したケースで発生します"; then
+# ──────────────────────────────────────────────────────────────────────
+# Per-producer order-swap test (TC-{name}-order)
+# ──────────────────────────────────────────────────────────────────────
+# marker pair の順序逆転 (sentinel が disambiguator より前に emit される) を検出する。
+# 正しい順序は「disambiguator → sentinel」。3 emit format それぞれに format 固有の anchor で
+# swap を判定する (prose mention は backtick wrap 規約により bare ` -->$` で行を終えないため除外):
+#   - inline (format 3): 行末が disambiguator marker (` <!-- skill return signal... -->$`) かつ
+#     同一行に sentinel marker を含む → sentinel が先 = swap
+#   - multi-line / echo (format 1,2): sentinel emit 行 (whole-line / echo) の直後行が
+#     disambiguator emit 行 → sentinel が先 = swap
+#
+# awk regex 注記: BEGIN で動的に組み立てる sentinel pattern は producer 名 (`name`) を埋め込む。
+# awk 文字列リテラル内の `\\[` / `\\]` は実 regex の `\[` / `\]` (literal bracket) に解決され、
+# count parity loop の grep -E pattern と同じ emit-site anchor を再現する。
+for entry in "${PRODUCERS[@]}"; do
+  name="${entry%%:*}"
+  rel_path="${entry##*:}"
+  abs_path="$PLUGIN_ROOT/$rel_path"
+
+  if [ ! -f "$abs_path" ]; then
+    fail "TC-${name}-order: Producer file not found: $rel_path"
+    continue
+  fi
+
+  order_swap_out=$(awk -v name="$name" '
+    BEGIN {
+      sent_re_line = "^<!-- \\[" name ":returned-to-caller[^]]*\\] -->$"
+      sent_re_echo = "^[[:space:]]*echo \"<!-- \\[" name ":returned-to-caller[^]]*\\] -->\"$"
+      sent_re_any  = "<!-- \\[" name ":returned-to-caller[^]]*\\] -->"
+      disg_re_line = "^<!-- skill return signal: caller must continue next step -->$"
+      disg_re_echo = "^[[:space:]]*echo \"<!-- skill return signal: caller must continue next step -->\"$"
+      disg_re_endinline = " <!-- skill return signal: caller must continue next step -->$"
+      swaps = 0
+    }
+    { lines[NR] = $0 }
+    END {
+      for (i = 1; i <= NR; i++) {
+        ln = lines[i]
+        # inline same-line swap: 行末が disambiguator かつ同一行に sentinel marker を含む
+        if (ln ~ disg_re_endinline && ln ~ sent_re_any) {
+          swaps++
+          print "  SWAP(inline) line " i ": sentinel marker が disambiguator より前 (disambiguator が行末)"
+          continue
+        }
+        # multi-line / echo consecutive swap: sentinel emit 行の直後行が disambiguator emit 行
+        if ((ln ~ sent_re_line || ln ~ sent_re_echo) && i < NR) {
+          nxt = lines[i+1]
+          if (nxt ~ disg_re_line || nxt ~ disg_re_echo) {
+            swaps++
+            print "  SWAP(multiline) lines " i "-" (i+1) ": sentinel emit が disambiguator emit より前"
+          }
+        }
+      }
+      print "SWAPCOUNT=" swaps
+    }
+  ' "$abs_path")
+
+  swap_count=$(printf '%s\n' "$order_swap_out" | sed -n 's/^SWAPCOUNT=//p')
+  case "$swap_count" in ''|*[!0-9]*) swap_count=0 ;; esac
+
+  if [ "$swap_count" -eq 0 ]; then
+    pass "TC-${name}-order: ${rel_path} marker pair の順序 swap なし (disambiguator -> sentinel)"
+  else
+    # 診断行 (`  SWAP...`) を stderr に出力。grep no-match (rc=1) は `|| true` で吸収して
+    # set -euo pipefail 下で fail() 到達前に中断しないようにする (count parity loop と同形)。
+    printf '%s\n' "$order_swap_out" | grep -E '^  SWAP' >&2 || true
+    fail "TC-${name}-order: ${rel_path} で marker pair の順序逆転 ${swap_count} 件検出 — sentinel が disambiguator より前に emit されています (正しい順序: disambiguator -> sentinel)"
+  fi
+done
+
+if ! print_summary "sentinel-disambiguator-adjacency.test.sh" "drift hint: count parity 失敗は sentinel と disambiguator の数を合わせてください (silent strip は rename 中に echo 行の片方だけ更新したケースで発生)。order-swap 失敗は marker pair の順序を disambiguator -> sentinel に修正してください"; then
   exit 1
 fi

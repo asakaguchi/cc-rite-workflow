@@ -10,7 +10,7 @@
 >
 > したがって以下の検証コマンドのうち `stop-guard.sh` / `stop-guard.test.sh` / `phase-transition-whitelist.sh` / `create-interview.md` / `create-register.md` / `create-decompose.md` / `.rite-stop-guard-diag.log` を参照するものは **すべて実行不能**であり、#634 を含む同型 regression シリーズの**歴史的記録**として残置する。現在の implicit-stop 対策は orchestrator レベルの scaffolding 契約（Pre-write + 🚨 Mandatory After）と `/rite:resume` による復帰が担い、lifecycle phase の分類は `session-end.sh` の inline glob が行う。
 >
-> 本文中の `[create:completed:` / `[interview:completed]` sentinel literal は **pre-#1165 naming の歴史的記述** として保持する（Issue #1165 で skill return sentinel は `:returned-to-caller` 形式に rename されたが、#634 repro が検証していたのは当時の `:completed` 形式の sentinel であり、historical 正確性のため書き換えない）。現行 sentinel 命名規約は `commands/issue/create.md` ステップ 4.4 / 5.6 の `[create:returned-to-caller:{N}]` を参照。
+> 本文中の `[create:completed:` / `[interview:completed]` sentinel literal は **pre-#1165 naming の歴史的記述** として保持する（Issue #1165 で skill return sentinel は `:returned-to-caller` 形式に rename されたが、#634 repro が検証していたのは当時の `:completed` 形式の sentinel であり、historical 正確性のため書き換えない）。現行 sentinel 命名規約は `plugins/rite/commands/issue/create.md` ステップ 4.4 / 5.6 の `[create:returned-to-caller:{N}]` を参照。
 
 ## 0. このドキュメントの位置づけ
 

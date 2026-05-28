@@ -71,7 +71,7 @@ fi
 # TC-1 はその drift を検出できず最初の site のみ assert する silent gap が生じる。
 # 本 TC-1b は `grep -c = 1` で SoT 出現件数を機械検証し、複数 site 化を早期検出する。
 # Issue #1166 cycle 5 F-01 対応 (user-approved boundary を MEDIUM finding として転換)。
-lint_n_count=$(grep -c 'stdout は次の [0-9]\+ 行' "$LINT_MD" 2>/dev/null || true)
+lint_n_count=$(grep -cE 'stdout は次の [0-9]+ 行' "$LINT_MD" 2>/dev/null || true)
 
 if [ "$lint_n_count" = "1" ]; then
   pass "TC-1b lint.md の declarative 宣言 site 数が単一 ($lint_n_count 件)"

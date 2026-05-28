@@ -861,3 +861,4 @@
 | 2026-05-28T16:12:48Z | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1172 review cycle 2 (raw/reviews/20260528T155654Z): TC-H4 negative-assert 追加が gap を解消したことを双方向 mutation で実証 (無条件 emit → TC-H4 fail / WARNING 削除 → TC-H7 fail)。適用 10 に統合 |
 | 2026-05-28T16:12:48Z | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1172 fix (raw/fixes/20260528T155033Z): happy-path 非発火を pin する negative-assert を positive-assert と対に追加、mutant を hooks/ 内配置で sibling source 解決を再現。適用 10 に統合 |
 | 2026-05-28T16:17:05Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=11, unregistered_raw=225, broken_refs=0 |
+| 2026-05-28T22:51:23Z | ingest:skip | raw/reviews/20260528T164633Z-pr-1175.md | PR #1175 review (0 findings): docs-only の 1 行 Note 追加に対する clean review。cross-file 主張の整合確認のみで、既存 asymmetric-fix-transcription / prose-design-without-backing-implementation 等を超える新規一般化経験則なし。skip |

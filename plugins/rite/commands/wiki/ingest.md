@@ -632,7 +632,7 @@ echo "auto_lint=$auto_lint"
 
 LLM は `skill: "rite:wiki:lint", args: "--auto"` 形式で `/rite:wiki:lint` を `--auto` モードで呼び出す。`--auto` モードの契約:
 
-- `Lint: contradictions={n}, stale={n}, orphans={n}, missing_concept={n}, unregistered_raw={n}, broken_refs={n}` 形式の 1 行 + `<!-- [lint:returned-to-caller:auto] -->` HTML コメント sentinel の 2 行を出力する (0 件でも必ず出力)
+- `Lint: contradictions={n}, stale={n}, orphans={n}, missing_concept={n}, unregistered_raw={n}, broken_refs={n}` 形式の 1 行 + `<!-- skill return signal: caller must continue next step -->` + `<!-- [lint:returned-to-caller:auto] -->` HTML コメント sentinel の 3 行を出力する (0 件でも必ず出力)。本 phase の parser (ステップ 8.3) は 1 行目の `^Lint: contradictions=` regex のみに依存するため、2 行目以降の disambiguator marker 追加 (#1165) は互換性に影響しない
 - log.md への追記は lint.md 側がブランチ状態を判定し自律実行する
 - 常に exit 0 (非ブロッキング)
 

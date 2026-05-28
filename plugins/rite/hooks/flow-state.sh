@@ -322,7 +322,21 @@ cmd_consume_handoff() {
   esac; done
   local sid path; sid=$(_resolve_session_id "$session") || return 0
   path=$(_state_path "$sid"); [ ! -f "$path" ] && return 0
-  local handoff; handoff=$(jq -r '.handoff // ""' "$path" 2>/dev/null) || handoff=""
+  # corrupt JSON でも空 handoff に縮退して停止を許可するのは AC-3 の fail-open (安全側) で正しい。
+  # 欠落しているのは observability のみ — 無診断だと corrupt を検出できないため、jq rc を捕捉し
+  # cmd_set / cmd_get と対称に WARNING + stderr スニペットを emit する。関数内は無条件 emit とし、
+  # RITE_DEBUG gate は唯一の呼び出し元 stop-loop-continuation.sh の 2>/dev/null に委譲する
+  # (本関数の handoff-clear ERROR と同じ方式)。`handoff` キー欠落の正常系は `// ""` で rc=0 のまま
+  # WARNING を出さない。
+  local handoff _ho_jq_err="" _ho_rc=0
+  _ho_jq_err=$(mktemp 2>/dev/null) || _ho_jq_err=""
+  trap '[ -n "${_ho_jq_err:-}" ] && rm -f "${_ho_jq_err:-}"' RETURN
+  handoff=$(jq -r '.handoff // ""' "$path" 2>"${_ho_jq_err:-/dev/null}") || _ho_rc=$?
+  if [ "$_ho_rc" -ne 0 ]; then
+    echo "WARNING: flow-state.sh consume-handoff: handoff read failed for $(basename "$path") (may be corrupt; treating as empty → stop allowed)" >&2
+    [ -n "$_ho_jq_err" ] && [ -s "$_ho_jq_err" ] && head -3 "$_ho_jq_err" | sed 's/^/  /' >&2
+    handoff=""
+  fi
   [ -z "$handoff" ] && return 0
   local updated; updated=$(jq 'del(.handoff)' "$path" 2>/dev/null) || {
     echo "ERROR: consume-handoff: jq del(.handoff) failed for $(basename "$path") (handoff not cleared; value withheld to avoid re-block)" >&2

@@ -781,14 +781,28 @@ assert "TC-H3: phase preserved through consume" "fix" "$(jq -r .phase "$state_fi
 assert "TC-H3: pr_number preserved through consume" "99" "$(jq -r .pr_number "$state_file")"
 
 echo ""
-echo "=== TC-H4: consume-handoff on file without handoff → empty + rc 0 ==="
+echo "=== TC-H4: consume-handoff on file without handoff → empty + rc 0, WARNING 非発火 ==="
+# Why: valid JSON だが handoff キー欠落の正常系。`// ""` で rc=0 のまま空 handoff を返し WARNING を出さない
+# (corrupt 側 TC-H7 の WARNING 発火と対になる happy-path 側)。corrupt-read 対称化 (cmd_set / cmd_get /
+# consume-handoff) の片側だけを pin すると、無条件 WARNING emit への revert を検出できないため、
+# stderr を capture して WARNING 非発火を negative-assert する。
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 (cd "$d" && bash "$HOOK" set --phase review --issue 1168 --branch b --pr 99 --next n)
-out=$(cd "$d" && bash "$HOOK" consume-handoff; echo "__RC=$?")
+_tch4_stderr=$(mktemp /tmp/rite-tch4-stderr-XXXXXX 2>/dev/null) || _tch4_stderr="/dev/null"
+out=$( (cd "$d" && bash "$HOOK" consume-handoff 2>"$_tch4_stderr"); echo "__RC=$?" )
 rc=$(printf '%s' "$out" | sed -n 's/.*__RC=\([0-9]*\).*/\1/p')
 val="${out%__RC=*}"; val="${val%$'\n'}"
 assert "TC-H4: no handoff → empty output" "" "$val"
 assert "TC-H4: no handoff → rc 0" "0" "$rc"
+if [ "$_tch4_stderr" = "/dev/null" ]; then
+  pass "TC-H4: WARNING 非発火 assert を skip (stderr capture tempfile 取得不可)"
+elif grep -qE 'WARNING:.*consume-handoff.*handoff read failed' "$_tch4_stderr"; then
+  fail "TC-H4: handoff キー欠落の正常系で corrupt-read WARNING が誤発火: '$(cat "$_tch4_stderr" 2>/dev/null)'"
+else
+  pass "TC-H4: handoff キー欠落の正常系で WARNING 非発火 (cmd_set / cmd_get 対称化の happy-path 側を pin)"
+fi
+[ "${_tch4_stderr:-/dev/null}" != "/dev/null" ] && rm -f "$_tch4_stderr"
+unset _tch4_stderr
 
 echo ""
 echo "=== TC-H5: set --handoff then set without --handoff clears it (terminal transition) ==="
@@ -864,6 +878,33 @@ else
 fi
 unset _dac_probe_err _dac_probe_parent _dac_probe _dac_probe_diag 2>/dev/null || true
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + security/observability hardening + Issue #1168 handoff marker"; then
+echo ""
+echo "=== TC-H7: consume-handoff on corrupt JSON → WARNING + empty + rc 0 (Issue #1170 observability) ==="
+# Why: corrupt JSON 時の fail-open (空 + rc=0 → Stop hook が停止許可) は AC-3 上正しい安全側挙動だが、
+# 旧実装 (`|| handoff=""`) は無診断で corrupt を検出できなかった。cmd_set / cmd_get と対称に WARNING を
+# stderr へ emit することを pin し、silent fallback への revert を検出する。stdout 空 + rc=0 の
+# fail-open 不変も同時に固定する (WARNING 追加で停止許可挙動が崩れていないこと)。
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+state_file="$d/.rite/sessions/${sid}.flow-state"
+# 正規 set で sessions dir + valid file を作ってから corrupt JSON で上書き (実際の FS corruption を模倣)
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1170 --branch b --pr 99 --next n --handoff "/rite:pr:review 99")
+printf '{ this is not valid json' > "$state_file"
+_tch7_stderr=$(mktemp /tmp/rite-tch7-stderr-XXXXXX 2>/dev/null) || _tch7_stderr="/dev/null"
+out=$( (cd "$d" && bash "$HOOK" consume-handoff 2>"$_tch7_stderr"); echo "__RC=$?" )
+rc=$(printf '%s' "$out" | sed -n 's/.*__RC=\([0-9]*\).*/\1/p')
+val="${out%__RC=*}"; val="${val%$'\n'}"
+assert "TC-H7: corrupt JSON → empty output (fail-open)" "" "$val"
+assert "TC-H7: corrupt JSON → rc 0 (Stop hook will allow stop)" "0" "$rc"
+if [ "$_tch7_stderr" = "/dev/null" ]; then
+  pass "TC-H7: WARNING assert を skip (stderr capture tempfile 取得不可)"
+elif grep -qE 'WARNING:.*consume-handoff.*handoff read failed' "$_tch7_stderr"; then
+  pass "TC-H7: corrupt JSON 時に WARNING が stderr に emit される (cmd_set / cmd_get と対称)"
+else
+  fail "TC-H7: corrupt JSON 時の WARNING が欠落: '$(cat "$_tch7_stderr" 2>/dev/null)'"
+fi
+[ "${_tch7_stderr:-/dev/null}" != "/dev/null" ] && rm -f "$_tch7_stderr"
+unset _tch7_stderr
+
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + security/observability hardening + Issue #1168 handoff marker + Issue #1170 consume-handoff corrupt-read WARNING"; then
   exit 1
 fi

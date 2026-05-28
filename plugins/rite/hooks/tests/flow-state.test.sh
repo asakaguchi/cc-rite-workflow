@@ -751,6 +751,54 @@ else
   fail "TC-22.2: env-set first-time で stdout に default 返却なし: '$combined'"
 fi
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + security/observability hardening"; then
+# --- TC-H1..H5: handoff one-shot marker (Issue #1168) ---
+echo ""
+echo "=== TC-H1: set --handoff writes handoff field ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase review --issue 1168 --branch b --pr 99 --next n --handoff "/rite:pr:fix 99")
+state_file="$d/.rite/sessions/${sid}.flow-state"
+assert "TC-H1: handoff set" "/rite:pr:fix 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+
+echo ""
+echo "=== TC-H2: set WITHOUT --handoff default-clears (no handoff key) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase review --issue 1168 --branch b --pr 99 --next n)
+state_file="$d/.rite/sessions/${sid}.flow-state"
+assert "TC-H2: handoff absent when --handoff omitted" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+
+echo ""
+echo "=== TC-H3: consume-handoff prints value + deletes it (one-shot) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:pr:review 99")
+state_file="$d/.rite/sessions/${sid}.flow-state"
+first=$(cd "$d" && bash "$HOOK" consume-handoff)
+assert "TC-H3: first consume returns value" "/rite:pr:review 99" "$first"
+assert "TC-H3: handoff deleted after consume" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+second=$(cd "$d" && bash "$HOOK" consume-handoff)
+assert "TC-H3: second consume is empty (one-shot)" "" "$second"
+# Other fields must survive the consume (del only touches .handoff)
+assert "TC-H3: phase preserved through consume" "fix" "$(jq -r .phase "$state_file")"
+assert "TC-H3: pr_number preserved through consume" "99" "$(jq -r .pr_number "$state_file")"
+
+echo ""
+echo "=== TC-H4: consume-handoff on file without handoff → empty + rc 0 ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase review --issue 1168 --branch b --pr 99 --next n)
+out=$(cd "$d" && bash "$HOOK" consume-handoff; echo "__RC=$?")
+rc=$(printf '%s' "$out" | sed -n 's/.*__RC=\([0-9]*\).*/\1/p')
+val="${out%__RC=*}"; val="${val%$'\n'}"
+assert "TC-H4: no handoff → empty output" "" "$val"
+assert "TC-H4: no handoff → rc 0" "0" "$rc"
+
+echo ""
+echo "=== TC-H5: set --handoff then set without --handoff clears it (terminal transition) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+state_file="$d/.rite/sessions/${sid}.flow-state"
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:pr:review 99")
+assert "TC-H5: handoff present after continuation set" "/rite:pr:review 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next "terminal")
+assert "TC-H5: handoff cleared by subsequent no-handoff set" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + security/observability hardening + Issue #1168 handoff marker"; then
   exit 1
 fi

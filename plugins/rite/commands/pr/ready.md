@@ -470,7 +470,7 @@ Inspect the script's stdout JSON and route by `.result`:
 
 ### 4.6 Defense-in-Depth: State Update Before Output (End-to-End Flow)
 
-Before outputting the result pattern (`[ready:returned-to-caller]`) or skipping output, update flow state to reflect the post-ready phase (defense-in-depth, fixes #17). This prevents intermittent flow interruptions when the fork context returns to the caller — even if the LLM churns after fork return and the system forcibly terminates the turn (bypassing the Stop hook), the state file will already contain the correct `next_action` for resumption.
+Before outputting the result pattern (`[ready:returned-to-caller]`) or skipping output, update flow state to reflect the post-ready phase (defense-in-depth, fixes #17). This prevents intermittent flow interruptions when the fork context returns to the caller — LLM が fork return 後に turn を終了しても、state file に正しい `next_action` が残るため `/rite:resume` で復帰できる。なお `Stop` hook (`stop-loop-continuation.sh`, Issue #1168) は review↔fix ループの handoff マーカーが set されている時だけ停止を差し戻すが、ready は handoff をセットしない (ready はループの出口でありユーザー判断で merge へ進むため) — よってここでは Stop hook は停止を妨げず、継続保証は flow-state の `next_action` (resume 用) に委ねる。
 
 **Condition**: Execute only when flow state file exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
 

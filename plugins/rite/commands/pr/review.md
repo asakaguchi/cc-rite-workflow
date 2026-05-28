@@ -4637,26 +4637,37 @@ commands:
 
 ### 8.0 Defense-in-Depth: State Update Before Output (End-to-End Flow)
 
-Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:{n}]`), update flow state to reflect the post-review phase (defense-in-depth, fixes #719). This prevents intermittent flow interruptions when the fork context returns to the caller — even if the LLM churns after fork return and the system forcibly terminates the turn (bypassing the Stop hook), the state file will already contain the correct `next_action` for resumption.
+Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:{n}]`), update flow state to reflect the post-review phase (defense-in-depth, fixes #719). これはループ継続を支える **2 層構造のうち secondary (resume 用の網)** であり、フォークコンテキストが caller に戻った後に LLM が turn を終了しても、state file に正しい `next_action` が残るため `/rite:resume` で復帰できる。
+
+継続 (`[review:fix-needed:{n}]`) の場合はさらに `--handoff "/rite:pr:fix {pr_number}"` で **自動継続マーカー (primary)** をセットする: `Stop` hook (`stop-loop-continuation.sh`) が turn 終了時にこれを consume し、停止を差し戻して `/rite:pr:fix` を再注入する (Issue #1168 — 旧 prose が前提にしていた "Stop hook" が本 Issue で実装された)。終了 (`[review:mergeable]`) の場合は `--handoff` を**付けない**: caller の review-fix loop は mergeable で終了し ready 遷移へ進むため、誤って fix を再注入してはならない (handoff はデフォルトクリアされる)。
 
 **Condition**: Execute only when flow state file exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
 
 **State update by result**:
 
-| Result | Phase | Next Action |
-|--------|-------|-------------|
-| `[review:mergeable]` | `review` | `rite:pr:review completed. Result: [review:mergeable]. Proceed to /rite:pr:ready (caller の review-fix loop が ready 遷移を起動). Do NOT stop.` |
-| `[review:fix-needed:{n}]` | `review` | `rite:pr:review completed. Result: [review:fix-needed:{n}]. Proceed to /rite:pr:fix (caller の review-fix loop が fix 起動). Do NOT stop.` |
+| Result | Phase | Handoff (`--handoff`) | Next Action |
+|--------|-------|-----------------------|-------------|
+| `[review:mergeable]` | `review` | (付けない — handoff クリア) | `rite:pr:review completed. Result: [review:mergeable]. Proceed to /rite:pr:ready (caller の review-fix loop が ready 遷移を起動). Do NOT stop.` |
+| `[review:fix-needed:{n}]` | `review` | `/rite:pr:fix {pr_number}` | `rite:pr:review completed. Result: [review:fix-needed:{n}]. Proceed to /rite:pr:fix (caller の review-fix loop が fix 起動). Do NOT stop.` |
 
 ```bash
+# [review:mergeable] の場合 (--handoff 行を省略 = handoff クリア):
 bash {plugin_root}/hooks/flow-state.sh set \
  --phase "review" \
  --active true \
  --next "{next_action_value}" \
  --if-exists
+
+# [review:fix-needed:{n}] の場合 (--handoff で fix への継続マーカーをセット):
+bash {plugin_root}/hooks/flow-state.sh set \
+ --phase "review" \
+ --active true \
+ --next "{next_action_value}" \
+ --handoff "/rite:pr:fix {pr_number}" \
+ --if-exists
 ```
 
-Replace `{next_action_value}` with the value from the table above based on the review result. Also replace `{n}` in the next_action string with the actual finding count from the review result (e.g., if the result is `[review:fix-needed:3]`, then `{n}` = `3`).
+Replace `{next_action_value}` with the value from the table above based on the review result, and `{pr_number}` with the actual PR number. Choose the bash variant by result: `[review:fix-needed:{n}]` uses the `--handoff` form; `[review:mergeable]` uses the no-handoff form. Also replace `{n}` in the next_action string with the actual finding count from the review result (e.g., if the result is `[review:fix-needed:3]`, then `{n}` = `3`).
 
 **Note on `error_count`**: `flow-state.sh set` resets `error_count` to 0 by default on every phase transition, and preserves the existing value only when `--preserve-error-count` is passed. `error_count` is currently a reserved/legacy schema slot with no production reader; resetting on transition keeps the slot well-defined for future re-introduction without carrying stale counts.
 

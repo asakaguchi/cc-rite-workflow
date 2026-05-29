@@ -2,12 +2,10 @@
 # rite workflow - Review Result Local Save
 # Deterministic helper for commands/pr/review.md ステップ 6.1.a (Local JSON File Save).
 #
-# 旧実装は review.md 本文に ~300 行の operational bash (heredoc で
-# `{review_result_json_heredoc_body}` を埋め込み + jq timestamp injection + 多段
-# validation + collision 処理) を「単一 Bash invocation で実行」する設計で、巨大ブロックが
-# LLM のツール呼び出し解析を malform させる主要因だった (Issue #1193 #3)。本 helper は同契約を
-# verbatim 引き継ぎ、JSON body は caller が Write tool で tmpfile に書き出して `--content-file`
-# で渡す (heredoc malform 源を撤廃)。
+# review.md ステップ 6.1.a のローカル JSON 保存処理 (timestamp 注入 / 多段 jq validation /
+# 同秒衝突回避 / atomic mv) を担う。本文側の巨大 inline bash を helper に切り出すことで、単一 Bash
+# invocation での malform 無言停止を回避する (Issue #1193 #3、背景は PR 説明参照)。JSON body は
+# caller が Write tool で tmpfile に書き出し `--content-file` で渡す (heredoc malform 源を撤廃)。
 #
 # Usage:
 #   bash review-result-save.sh --pr <number> --content-file <path> [--results-dir <dir>]

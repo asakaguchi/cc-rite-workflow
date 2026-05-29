@@ -2,12 +2,11 @@
 # rite workflow - Review Result PR Comment Post
 # Deterministic helper for commands/pr/review.md ステップ 6.1.b (PR Comment Post)。
 #
-# 旧実装は review.md 本文に ~270 行の operational bash (post_comment_mode gate + 複数 case gate +
-# comment body heredoc + scope 限定 awk sentinel 置換 + 2 つの post-condition + atomic mv +
-# gh pr comment + signal 検出) を「単一 Bash invocation で実行」する設計で、巨大ブロックが LLM の
-# ツール呼び出し解析を malform させる要因だった (Issue #1193 #4)。本 helper は同契約を verbatim
-# 引き継ぎ、PR コメント本文 (Markdown + Raw JSON section) は caller が Write tool で tmpfile に
-# 書き出して `--content-file` で渡す (heredoc malform 源を撤廃)。
+# review.md ステップ 6.1.b の PR コメント投稿処理 (post_comment_mode gate + 複数 case gate +
+# scope 限定 awk sentinel 置換 + 2 つの post-condition + atomic mv + gh pr comment + signal 検出)
+# を担う。本文側の巨大 inline bash を helper に切り出すことで、単一 Bash invocation での malform
+# 無言停止を回避する (Issue #1193 #4、背景は PR 説明参照)。PR コメント本文 (Markdown + Raw JSON
+# section) は caller が Write tool で tmpfile に書き出し `--content-file` で渡す (heredoc malform 源を撤廃)。
 #
 # Usage:
 #   bash review-comment-post.sh \

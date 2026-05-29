@@ -190,7 +190,7 @@ elif jq --arg ts "$iso_timestamp" '.timestamp = $ts' "$json_tmp" > "$json_ts_inj
 else
   echo "WARNING: jq による timestamp 注入に失敗しました (sentinel 置換不可)" >&2
   [ -n "$jq_ts_err" ] && [ -s "$jq_ts_err" ] && head -3 "$jq_ts_err" | sed 's/^/  /' >&2
-  echo "  対処: review_result_json_heredoc_body が valid JSON で、.timestamp フィールドを持つか確認してください" >&2
+  echo "  対処: --content-file で渡した JSON body ($CONTENT_FILE) が valid JSON で、.timestamp フィールド (sentinel __RITE_TS_PLACEHOLDER_7f3a9b2c__) を持つか確認してください" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=write_failure" >&2
   rm -f "$json_ts_injected"
   [ -n "$jq_ts_err" ] && rm -f "$jq_ts_err"

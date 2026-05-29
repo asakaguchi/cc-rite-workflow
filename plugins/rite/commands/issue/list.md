@@ -154,17 +154,19 @@ Display Projects information when `rite-config.yml` exists and Projects integrat
 Read `rite-config.yml` using the Read tool to check if Projects integration is enabled (`github.projects.enabled: true`).
 If the file does not exist, skip Phase 4 entirely.
 
+Also read `github.projects.project_number` and `github.projects.owner` from `rite-config.yml`. These two values are substituted into the `{project_number}` / `{owner}` placeholders on the `gh project view` line of Phase 4.2 Tool call 1 before the script runs (the only substitution the verbatim script permits).
+
 ### 4.2 Fetch Projects Data and Build Status Map
 
-> **CRITICAL**: Execute Tool call 1 exactly as written — copy the entire script block verbatim. Do NOT edit the GraphQL query, change the `jq` filters, add `--jq` flags to `gh api graphql`, insert inline comments, or alter any line. The script pages through **all** Project items via GraphQL cursor pagination, so Projects with more than 100/500 items are not silently truncated (the bug that a fixed `--limit` caused).
+> **CRITICAL**: Execute Tool call 1 exactly as written — copy the entire script block verbatim. The **only** edit allowed is substituting the `{project_number}` and `{owner}` placeholders on the `gh project view` line with the values from `rite-config.yml` (`github.projects.project_number` / `github.projects.owner`, read in Phase 4.1). Do NOT edit the GraphQL query, change the `jq` filters, add `--jq` flags to `gh api graphql`, insert inline comments, or alter any other line. The script pages through **all** Project items via GraphQL cursor pagination, so Projects with more than 100/500 items are not silently truncated (the bug that a fixed `--limit` caused).
 
 **Tool call 1 (Bash)**: Run this script verbatim. It resolves the Project node ID (owner-type agnostic — works for both user and organization owners), pages through every item with `pageInfo.hasNextPage` / `endCursor`, normalizes each node to `{content:{number}, status}`, and prints the temp file path on success. On any failure it prints `[projects:fetch-failed] <reason>` and no path.
 
 ```bash
-tmpfile=$(mktemp); pages=$(mktemp)
-pid=$(gh project view {project_number} --owner {owner} --format json 2>/dev/null | jq -r '.id')
-if [ -z "$pid" ] || [ "$pid" = "null" ]; then echo "[projects:fetch-failed] could not resolve project id"; rm -f "$tmpfile" "$pages"; exit 0; fi
-cursor=""; : > "$pages"; ok=1
+tmpfile=$(mktemp); pages=$(mktemp); err=$(mktemp)
+pid=$(gh project view {project_number} --owner {owner} --format json 2>"$err" | jq -r '.id')
+if [ -z "$pid" ] || [ "$pid" = "null" ]; then echo "[projects:fetch-failed] could not resolve project id: $(tr '\n' ' ' < "$err")"; rm -f "$tmpfile" "$pages" "$err"; exit 0; fi
+cursor=""; : > "$pages"; ok=1; fail_reason=""
 QUERY='
 query($pid: ID!, $cursor: String) {
   node(id: $pid) {
@@ -188,19 +190,21 @@ query($pid: ID!, $cursor: String) {
 }'
 while : ; do
   if [ -n "$cursor" ]; then
-    page=$(gh api graphql -f query="$QUERY" -F pid="$pid" -F cursor="$cursor" 2>/dev/null) || { ok=0; break; }
+    page=$(gh api graphql -f query="$QUERY" -f pid="$pid" -f cursor="$cursor" 2>"$err") || { ok=0; fail_reason="gh api graphql failed: $(tr '\n' ' ' < "$err")"; break; }
   else
-    page=$(gh api graphql -f query="$QUERY" -F pid="$pid" 2>/dev/null) || { ok=0; break; }
+    page=$(gh api graphql -f query="$QUERY" -f pid="$pid" 2>"$err") || { ok=0; fail_reason="gh api graphql failed: $(tr '\n' ' ' < "$err")"; break; }
   fi
-  echo "$page" | jq -e '.data.node.items' >/dev/null 2>&1 || { ok=0; break; }
+  gqe=$(echo "$page" | jq -r '.errors // [] | map(.message) | join("; ")' 2>/dev/null)
+  if [ -n "$gqe" ]; then ok=0; fail_reason="graphql errors: $gqe"; break; fi
+  echo "$page" | jq -e '.data.node.items' >/dev/null 2>&1 || { ok=0; fail_reason="missing .data.node.items (possible partial response)"; break; }
   echo "$page" | jq -c '.data.node.items.nodes[]?' >> "$pages"
   hn=$(echo "$page" | jq -r '.data.node.items.pageInfo.hasNextPage')
   cursor=$(echo "$page" | jq -r '.data.node.items.pageInfo.endCursor')
   [ "$hn" = "true" ] && [ -n "$cursor" ] && [ "$cursor" != "null" ] || break
 done
-if [ "$ok" != "1" ]; then echo "[projects:fetch-failed] graphql paging error"; rm -f "$tmpfile" "$pages"; exit 0; fi
+if [ "$ok" != "1" ]; then echo "[projects:fetch-failed] ${fail_reason:-graphql paging error}"; rm -f "$tmpfile" "$pages" "$err"; exit 0; fi
 jq -s '{items: ([ .[] | { content: { number: (.content.number // null) }, status: ([ .fieldValues.nodes[]? | select(.field.name? == "Status") | .name ] | first // null) } ] | map(select(.content.number == null | not)))}' "$pages" > "$tmpfile"
-rm -f "$pages"
+rm -f "$pages" "$err"
 echo "$tmpfile"
 ```
 

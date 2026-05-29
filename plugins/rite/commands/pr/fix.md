@@ -4399,10 +4399,10 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 
 | 用語 | 定義 | 対応する fix.md の挙動 |
 |------|------|----------------------|
-| **soft failure** | 致命的だが exit 1 で fix loop を kill せず、retained flag (`[CONTEXT] WM_UPDATE_FAILED=1` 等) を emit してから caller に判断を委ねる失敗 | ステップ 4.5 の grep IO エラー / current_body 空 / PATCH 失敗 / Issue create 失敗 等。ステップ 5.1 評価順テーブル (現行値) で `[fix:error]` または `[fix:pushed-wm-stale]` に昇格する。詳細な行番号は ステップ 5.1 のテーブルを参照すること (literal 行参照は drift 防止のため意図的に省略)。 |
+| **soft failure** | 致命的だが exit 1 で fix loop を kill せず、retained flag (`[CONTEXT] WM_UPDATE_FAILED=1` 等) を emit してから caller に判断を委ねる失敗 | ステップ 4.5 の grep IO エラー / git diff 失敗 (git_diff_failed) / helper status 失敗 (wm_sync_progress_failed / wm_sync_history_failed) / Issue create 失敗 等。ステップ 5.1 評価順テーブル (現行値) で `[fix:error]` または `[fix:pushed-wm-stale]` に昇格する。詳細な行番号は ステップ 5.1 のテーブルを参照すること (literal 行参照は drift 防止のため意図的に省略)。 |
 | **silent regression** | soft failure を caller が silent に handle した結果 (例: `[fix:pushed]` と誤判定して次の iteration に進む)。本 PR で防止対象とする root cause | 本 PR 全体の防止対象。retained flag 機構と ステップ 5.1 評価順により caller に必ず通知される |
 | **stale (work memory stale)** | work memory comment が最新の fix 内容を反映していない状態 | `[fix:pushed-wm-stale]` 出力時の semantics。caller は AskUserQuestion で続行/中断を選択 |
-| **hard fail-fast** | 即座に exit 1 で fix loop を kill し、コミット済み fix も含めて全停止する失敗 | ステップ 1.0 引数 parse 失敗 / mktemp 失敗 / git diff 失敗 (Python sentinel 経路) 等。bash の `exit 1` だけでは Claude flow control にならないため retained flag も併用する |
+| **hard fail-fast** | 即座に exit 1 で fix loop を kill し、コミット済み fix も含めて全停止する失敗 | ステップ 1.0 引数 parse 失敗 / mktemp 失敗 等。bash の `exit 1` だけでは Claude flow control にならないため retained flag も併用する |
 
 **Flow detection method:** Claude determines the caller from the conversation context using mechanical pattern matching:
 

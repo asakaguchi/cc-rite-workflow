@@ -3,7 +3,8 @@
 # Common core script for creating a GitHub Issue and registering it in GitHub Projects.
 #
 # Usage:
-#   bash create-issue-with-projects.sh '<json_args>'
+#   bash create-issue-with-projects.sh '<json_args>'        # positional (canonical)
+#   jq -n '...' | bash create-issue-with-projects.sh        # stdin (引数なし時, additive)
 #
 # Input JSON schema:
 #   {
@@ -129,13 +130,21 @@ output_result() {
 }
 
 # --- Argument parsing ---
-if [ $# -lt 1 ]; then
+# JSON は positional arg ($1, canonical) または stdin (引数なし時) で受け取る。
+# stdin 対応は既存の positional-JSON 契約を温存したまま additive に追加したもので、
+# 新しい caller は `jq -n ... | bash create-issue-with-projects.sh` と書くことで
+# `$(bash ... "$(jq -n ...)")` の入れ子 $() を 1 段に削減できる (Issue #1193 #5)。
+if [ $# -ge 1 ]; then
+  INPUT_JSON="$1"
+else
+  INPUT_JSON="$(cat)"
+fi
+
+if [ -z "$INPUT_JSON" ]; then
   add_warning "No JSON argument provided"
   output_result "" 0 "" "" "failed"
   exit 1
 fi
-
-INPUT_JSON="$1"
 
 # Extract all fields in a single jq invocation (1 subprocess instead of 13)
 eval "$(printf '%s\n' "$INPUT_JSON" | jq -r '

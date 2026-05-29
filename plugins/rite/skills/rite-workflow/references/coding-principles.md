@@ -487,6 +487,26 @@ OK patterns:
 
 ---
 
+### operational bash block heaviness convention
+
+**Summary**: command / reference 本文の operational bash ブロックは軽量に保つ — **1 ブロック 1 目的・<= 25 行を目安**とし、python inline (`python3 -c`)・入れ子 `$()`・複数 heredoc を 1 ブロックに密集させない。tmpfile や中間変数を process 境界を跨いで渡す必要がある場合は、1 本の Bash invocation に詰め込まず `hooks/` または `scripts/` の helper script へ切り出す。
+
+**Failure pattern** (observed incident): Issue #1193 で、複数のコマンド本文 (`pr/ready.md` / `pr/fix.md` / `pr/review.md` 等) が 40〜360 行規模の operational bash ブロックを抱えており、各々「⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること」と注記した上で `python3 -c` heredoc・多引数 `jq -n`・入れ子 `$()`・`trap` + `mktemp` を密集させていた。Claude のツール呼び出し解析がこの巨大ブロックで malform し、**エラーすら出さず無言でターンが終了（停止）する**事象が `/rite:pr:ready` 実行中および scout 1 行で計 3 回以上観測された。ブロックを phase ごとに分割する／重いロジックを helper script へ切り出して本文を数行の呼び出しにする、のいずれかで停止は解消した。
+
+**Rules**:
+1. 1 ブロック = 1 目的。operational bash ブロックは <= 25 行を目安とする。
+2. command 本文 bash に `python3 -c` heredoc を埋め込まない。テキスト変換は helper (`*.py` を `*.sh` wrapper 経由で呼ぶ) に移す — 先例: `issue-comment-wm-update.py` / `issue-comment-wm-sync.sh`。
+3. 入れ子 `$()` (`$(cmd "$(jq -n ...)")` 等) を避ける。pipe (`jq -n ... | cmd`) もしくは stdin / tmpfile を読む helper を優先する。
+4. 1 ブロック内の複数 heredoc を避ける。file body が必要なら Write tool で tmpfile に書き出し、helper には `--content-file <tmp>` / `--body-file <tmp>` で渡す。
+5. 値を process 境界を跨いで渡す必要があるときは helper へ切り出す (work-memory / state 系は `hooks/`、issue / projects 系は `scripts/`)。その際**既存のワークフロー契約 (sentinel emit / non-blocking / trap cleanup) を verbatim で引き継ぐ**こと。
+
+**Precedents**: `projects-status-update.sh` / `local-wm-update.sh` / `issue-body-safe-update.sh` / `issue-comment-wm-sync.sh` / `create-issue-with-projects.sh` — 重い操作を positional-JSON または stdin 入力 + tmpfile body file で helper に委譲済の前例。
+
+**Where to Apply**:
+- `commands/**/*.md` の operational bash ブロックを新規記述 / 編集するとき。
+
+---
+
 ## Phase Checklists
 
 ### All Phases (Common)
@@ -534,7 +554,7 @@ OK patterns:
 - [PR Open Workflow](../../../commands/pr/open.md) - pr/open.md (Issue → branch → 実装 → lint → draft PR)
 - [PR Create Command](../../../commands/pr/create.md) - Unaddressed issues check before PR creation (Phase 2.5)
 - [PR Review](../../../commands/pr/review.md) - review.md
-- [Markdown Authoring Conventions](#markdown-authoring-conventions) - Skill loader に load される Markdown ファイルの記述規約 (bash negation operator inline code convention)
+- [Markdown Authoring Conventions](#markdown-authoring-conventions) - Skill loader に load される Markdown ファイルの記述規約 (bash negation operator inline code convention / operational bash block heaviness convention)
 - [gh-cli-patterns.md](../../../references/gh-cli-patterns.md) - Related bang character (U+0021) handling in bash command contexts (Shell Escaping Notes)
 - [graphql-helpers.md](../../../references/graphql-helpers.md) - Related bang character handling in GraphQL query / jq contexts (History Expansion and Special Character Prevention)
 - [gh-cli-error-catalog.md](../../../references/gh-cli-error-catalog.md) - Related bang character handling error catalog (Category 6)

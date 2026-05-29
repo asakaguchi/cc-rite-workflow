@@ -29,6 +29,16 @@
 # Exit codes:
 #   0: Success or non-blocking skip (WARNING on stderr)
 #   1: Argument error
+#
+# Status output (stdout, update mode) — caller shim 用の機械可読 1 行:
+#   status=success                          PATCH 成功
+#   status=skipped; reason=no_comment       作業メモリ comment 不在 (初回 fix 等, legitimate no-op)
+#   status=skipped; reason=body_fetch_failed gh api での body 取得失敗 (auth/rate/network/404)
+#   status=skipped; reason=safety_check_failed body 空 / header 欠落 / <50% で PATCH 拒否
+#   status=error; reason=transform_failed   Python transform が非ゼロ exit
+#   status=error; reason=patch_failed       jq | gh api PATCH が失敗
+#   commands/pr/fix.md ステップ 4.5.2 はこの行を read し、no_comment 以外の skipped/error を
+#   `[CONTEXT] WM_UPDATE_FAILED=1` にマップする (`[fix:pushed-wm-stale]` routing 用)。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -374,7 +384,9 @@ fi
 # Step 1: Get comment ID
 COMMENT_ID=$(get_comment_id "$ISSUE" "$OWNER_REPO") || {
   echo "WARNING: Work memory comment not found for Issue #${ISSUE}. Skipping update." >&2
-  echo "status=skipped"
+  # reason=no_comment は legitimate no-op (初回 fix / コメント削除済み)。caller の WM_UPDATE_FAILED
+  # shim はこの reason のみ flag を立てない (他の skipped/error reason とは区別する必要がある)。
+  echo "status=skipped; reason=no_comment"
   exit 0
 }
 
@@ -416,7 +428,9 @@ fi
 
 if [ -z "$current_body" ]; then
   echo "WARNING: Could not retrieve comment body. Skipping update." >&2
-  echo "status=skipped"
+  # reason=body_fetch_failed は gh api 失敗 (auth/rate/network/404)。comment は存在するが更新
+  # 不可のため、caller の shim は WM_UPDATE_FAILED を立てる (no_comment とは区別する)。
+  echo "status=skipped; reason=body_fetch_failed"
   exit 0
 fi
 
@@ -436,13 +450,15 @@ if [ "$transform_status" -ne 0 ]; then
   py_err=$(cat "$py_err_tmp" 2>/dev/null)
   echo "WARNING: Python transform failed (exit $transform_status). Skipping PATCH. Backup: $backup_file" >&2
   [ -n "$py_err" ] && echo "  Detail: $py_err" >&2
-  echo "status=error"
+  echo "status=error; reason=transform_failed"
   exit 0
 fi
 
 # Step 5: Safety checks
 if ! safety_check "$updated_tmp" "$original_length" "$backup_file" "$TRANSFORM"; then
-  echo "status=skipped"
+  # safety_check 失敗は body が空 / header 欠落 / <50% で PATCH を拒否したケース。caller の
+  # shim は WM_UPDATE_FAILED を立てる (no_comment とは区別する)。
+  echo "status=skipped; reason=safety_check_failed"
   exit 0
 fi
 
@@ -459,7 +475,7 @@ if [ "$patch_status" -ne 0 ]; then
   echo "[rite] WARNING: issue-comment-wm-sync: PATCH failed (rc=$patch_status, Backup: $backup_file)" >&2
   [ -n "$patch_err" ] && [ -s "$patch_err" ] && head -3 "$patch_err" | sed 's/^/  /' >&2
   [ -n "$patch_err" ] && rm -f "$patch_err"
-  echo "status=error"
+  echo "status=error; reason=patch_failed"
   exit 0
 fi
 [ -n "$patch_err" ] && rm -f "$patch_err"

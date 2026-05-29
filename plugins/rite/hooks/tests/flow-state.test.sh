@@ -905,6 +905,46 @@ fi
 [ "${_tch7_stderr:-/dev/null}" != "/dev/null" ] && rm -f "$_tch7_stderr"
 unset _tch7_stderr
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + security/observability hardening + Issue #1168 handoff marker + Issue #1170 consume-handoff corrupt-read WARNING"; then
+# --- TC-23: jq stderr スニペットの control-char 中和 (Issue #1173) ---
+echo ""
+echo "=== TC-23: _emit_jq_err_snippet が jq stderr の制御文字を中和する (Issue #1173) ==="
+# Why: corrupt state file 断片には ANSI escape / 制御バイトが含まれうる。これが jq stderr スニペット
+# 経由で operator terminal に生のまま到達すると、カーソル移動 / 色 / タイトル書換え等で端末を駆動され
+# うる。cmd_set / cmd_get(×2) / cmd_consume_handoff の 4 emission site を共通 helper
+# `_emit_jq_err_snippet` に集約し `sed 's/[[:cntrl:]]/?/g'` で `?` に 1:1 中和する。4 site が同一
+# helper 経由のため 1 経路で中和ロジックを pin すれば全 site を固定できる (対称位置への伝播漏れを
+# 構造的に回避)。jq 1.7 の parse error は入力バイトを echo しないため、`--jq-filter 'error("...")'`
+# で jq の error builtin に生 ESC を載せて確実に jq stderr (= スニペット) へ出させる。
+# assertion は 2-space indent の snippet 行に限定する: WARNING 行の `(filter: ...)` echo は caller
+# 供給の filter 文字列 (corrupt-file 由来ではない) を含むため #1173 のスコープ外。
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+# valid な state file を作成 (error() は valid JSON に対しても runtime error を起こす)
+(cd "$d" && bash "$HOOK" set --phase plan --issue 1173 --branch "b" --pr 0 --next "n") >/dev/null
+esc=$(printf '\033')  # ESC (0x1b) を runtime 構築 —  等の表記揺れに依存せず決定論的
+filter="error(\"${esc}[31mINJECTED${esc}[0m\")"
+combined=$( (cd "$d" && bash "$HOOK" get --jq-filter "$filter" --default "DEF") 2>&1 )
+# snippet = helper が emit する 2-space indent 診断行 (= jq stderr の corrupt-fragment 相当)
+snippet=$(printf '%s\n' "$combined" | grep '^  ' || true)
+# TC-23.1: jq filter failed WARNING 発火 (中和 helper を呼ぶ経路に到達した sanity pin)
+if echo "$combined" | grep -qE 'WARNING:.*cmd_get: jq filter failed'; then
+  pass "TC-23.1: jq filter failed WARNING 発火 (中和 helper 経路に到達)"
+else
+  fail "TC-23.1: WARNING missing: '$combined'"
+fi
+# TC-23.2 (core): snippet 行に生 ESC (0x1b) が残らない = 制御文字が中和されている
+if printf '%s' "$snippet" | LC_ALL=C grep -q "$esc"; then
+  fail "TC-23.2: snippet 行に生 ESC が残存 (control-char 中和が機能していない): '$(printf '%s' "$snippet" | cat -v)'"
+else
+  pass "TC-23.2: snippet 行の生 ESC が中和されている (Issue #1173)"
+fi
+# TC-23.3: 制御文字が中和マーカー '?' へ 1:1 置換され可読テキストは保持される
+# (空削除 `s/[[:cntrl:]]//g` への revert と snippet 全体 drop の両方を catch する)
+if printf '%s' "$snippet" | grep -qF '?[31mINJECTED?[0m'; then
+  pass "TC-23.3: 制御文字が '?' へ 1:1 置換され可読テキストが保持される"
+else
+  fail "TC-23.3: 中和マーカー '?' パターンが不在: '$(printf '%s' "$snippet" | cat -v)'"
+fi
+
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + security/observability hardening + Issue #1168 handoff marker + Issue #1170 consume-handoff corrupt-read WARNING + Issue #1173 jq stderr snippet control-char neutralization"; then
   exit 1
 fi

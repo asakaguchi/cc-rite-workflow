@@ -129,6 +129,20 @@ _atomic_write() {
   return $rc
 }
 
+# Emit up to 3 lines of a jq stderr capture ($1 = error file) to stderr, 2-space
+# indented, with control characters neutralized to '?'. Centralizes the diagnostic-
+# snippet idiom shared by cmd_set / cmd_get / cmd_consume_handoff so the control-char
+# neutralization lives in one place: a corrupt state file fragment can carry ANSI
+# escape / control bytes that, echoed raw, would let the corrupt content drive the
+# operator's terminal (cursor moves, color, title rewrites) via the diagnostic path.
+# No-op when the file is unset or empty (preserves the prior -n/-s guard); always
+# returns 0 so a caller under `set -e` never aborts on the diagnostic line.
+_emit_jq_err_snippet() {
+  if [ -n "${1:-}" ] && [ -s "$1" ]; then
+    head -3 "$1" | sed 's/^/  /; s/[[:cntrl:]]/?/g' >&2 || true
+  fi
+}
+
 cmd_set() {
   # Merge semantics: unspecified scalar fields preserve existing values (旧 patch 互換).
   # Required: --phase, --next. Optional fields fall back to existing JSON or defaults.
@@ -193,7 +207,7 @@ cmd_set() {
     if [ "$_cur_rc" -ne 0 ]; then
       # basename only — multi-tenant 環境での絶対 path leakage を最小化 (cmd_get / cmd_set --if-exists と対称化)
       echo "WARNING: flow-state.sh cmd_set: existing state read failed for $(basename "$path") (may be corrupt; merged write will use defaults)" >&2
-      [ -n "$_cur_jq_err" ] && [ -s "$_cur_jq_err" ] && head -3 "$_cur_jq_err" | sed 's/^/  /' >&2
+      _emit_jq_err_snippet "$_cur_jq_err"
     else
       IFS=$'\x1f' read -r cur_issue cur_branch cur_pr cur_parent cur_active cur_err cur_last_synced <<< "$_cur_data"
     fi
@@ -272,7 +286,7 @@ cmd_get() {
   if [ -n "$jq_filter" ]; then
     if ! jq -r "$jq_filter" "$path" 2>"${jq_err:-/dev/null}"; then
       echo "WARNING: flow-state.sh cmd_get: jq filter failed for $(basename "$path") (filter: $jq_filter); returning --default" >&2
-      [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+      _emit_jq_err_snippet "$jq_err"
       printf '%s\n' "$default"
     fi
     return 0
@@ -283,7 +297,7 @@ cmd_get() {
   fi
   if ! jq -r --arg d "$default" ".${field} // \$d" "$path" 2>"${jq_err:-/dev/null}"; then
     echo "WARNING: flow-state.sh cmd_get: jq read failed for $(basename "$path") (field: $field); returning --default" >&2
-    [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+    _emit_jq_err_snippet "$jq_err"
     printf '%s\n' "$default"
   fi
   return 0
@@ -338,7 +352,7 @@ cmd_consume_handoff() {
   handoff=$(jq -r '.handoff // ""' "$path" 2>"${_ho_jq_err:-/dev/null}") || _ho_rc=$?
   if [ "$_ho_rc" -ne 0 ]; then
     echo "WARNING: flow-state.sh consume-handoff: handoff read failed for $(basename "$path") (may be corrupt; treating as empty → stop allowed)" >&2
-    [ -n "$_ho_jq_err" ] && [ -s "$_ho_jq_err" ] && head -3 "$_ho_jq_err" | sed 's/^/  /' >&2
+    _emit_jq_err_snippet "$_ho_jq_err"
     handoff=""
   fi
   [ -z "$handoff" ] && return 0

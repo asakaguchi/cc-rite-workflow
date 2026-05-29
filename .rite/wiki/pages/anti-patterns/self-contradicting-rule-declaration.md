@@ -5,9 +5,9 @@ created: "2026-05-26T00:30:00Z"
 updated: "2026-05-26T00:30:00Z"
 sources:
   - type: "reviews"
-    ref: "pr-1143"
+    ref: "raw/reviews/20260525T162232Z-pr-1143.md"
   - type: "fixes"
-    ref: "pr-1143"
+    ref: "raw/fixes/20260525T162704Z-pr-1143.md"
 tags: []
 confidence: high
 ---

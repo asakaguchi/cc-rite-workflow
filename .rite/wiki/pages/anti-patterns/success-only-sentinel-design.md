@@ -4,8 +4,10 @@ domain: "anti-patterns"
 created: "2026-05-14T05:30:00+00:00"
 updated: "2026-05-14T05:30:00+00:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260514T043949Z-pr-951.md"
   - type: "fixes"
-    ref: "pr-951"
+    ref: "raw/fixes/20260514T045140Z-pr-951.md"
 tags: []
 confidence: medium
 ---

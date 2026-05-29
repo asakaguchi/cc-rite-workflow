@@ -3938,7 +3938,8 @@ The work memory comment update is delegated to `issue-comment-wm-sync.sh` (canon
 changed_files_tmp=""
 history_tmp=""
 diff_err=""
-_rite_fix_phase452_cleanup() { rm -f "${changed_files_tmp:-}" "${history_tmp:-}" "${diff_err:-}"; }
+wm_sync_err=""
+_rite_fix_phase452_cleanup() { rm -f "${changed_files_tmp:-}" "${history_tmp:-}" "${diff_err:-}" "${wm_sync_err:-}"; }
 trap 'rc=$?; _rite_fix_phase452_cleanup; exit $rc' EXIT
 trap '_rite_fix_phase452_cleanup; exit 130' INT
 trap '_rite_fix_phase452_cleanup; exit 143' TERM
@@ -3999,13 +4000,18 @@ wm_state_of() { printf '%s\n' "$1" | sed -n 's/^status=\([a-z]*\).*/\1/p' | head
 wm_reason_of() { printf '%s\n' "$1" | sed -n 's/.*reason=\([a-z_]*\).*/\1/p' | head -1; }
 
 if [ "$git_diff_failed" -eq 0 ]; then
+  # helper の stderr (root-cause 診断: auth/rate/network/safety-check 詳細 + backup path) を退避する。
+  # review.md ステップ 6.2 (本 4.5 と対称化済みの Update Work Memory Phase) と同じ stderr-capture 規約。
+  # 旧実装は 2>/dev/null で helper stderr を破棄し、WM_UPDATE_FAILED 時に operator が失敗理由を
+  # 追えなかった (status reason カテゴリのみ表示)。mktemp 失敗時は /dev/null に fallback する。
+  wm_sync_err=$(mktemp 2>/dev/null) || wm_sync_err=""
   # --- transform 1: 進捗サマリー + 変更ファイル更新 ---
   # {impl_status} / {test_status} / {doc_status} は Claude が git diff 結果から判定して substitute する。
   wm_progress_out=$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
     --issue {issue_number} \
     --transform update-progress \
     --impl-status "{impl_status}" --test-status "{test_status}" --doc-status "{doc_status}" \
-    --changed-files-file "$changed_files_tmp" 2>/dev/null)
+    --changed-files-file "$changed_files_tmp" 2>"${wm_sync_err:-/dev/null}")
   wm_p_state=$(wm_state_of "$wm_progress_out")
   wm_p_reason=$(wm_reason_of "$wm_progress_out")
 
@@ -4013,6 +4019,7 @@ if [ "$git_diff_failed" -eq 0 ]; then
     # update-progress が no_comment 以外の skipped/error (body 取得失敗 / safety check 失敗 /
     # transform 失敗 / PATCH 失敗を helper が内部処理し status= で通知) → stale guard。
     echo "ERROR: 進捗サマリー更新 (issue-comment-wm-sync update-progress) が失敗 (helper status: $wm_progress_out)" >&2
+    [ -n "$wm_sync_err" ] && [ -s "$wm_sync_err" ] && { echo "  helper stderr (root-cause、先頭 5 行):" >&2; head -5 "$wm_sync_err" | sed 's/^/    /' >&2; }
     echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
     echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=wm_sync_progress_failed; issue_number={issue_number}" >&2
   elif [ "$wm_p_reason" = "no_comment" ]; then
@@ -4029,11 +4036,12 @@ if [ "$git_diff_failed" -eq 0 ]; then
 HISTORY_EOF
       wm_history_out=$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
         --issue {issue_number} \
-        --transform append-section --section "レビュー対応履歴" --content-file "$history_tmp" 2>/dev/null)
+        --transform append-section --section "レビュー対応履歴" --content-file "$history_tmp" 2>"${wm_sync_err:-/dev/null}")
       wm_h_state=$(wm_state_of "$wm_history_out")
       wm_h_reason=$(wm_reason_of "$wm_history_out")
       if [ "$wm_h_state" != "success" ] && [ "$wm_h_reason" != "no_comment" ]; then
         echo "ERROR: レビュー対応履歴の追記 (issue-comment-wm-sync append-section) が失敗 (helper status: $wm_history_out)" >&2
+        [ -n "$wm_sync_err" ] && [ -s "$wm_sync_err" ] && { echo "  helper stderr (root-cause、先頭 5 行):" >&2; head -5 "$wm_sync_err" | sed 's/^/    /' >&2; }
         echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
         echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=wm_sync_history_failed; issue_number={issue_number}" >&2
       fi

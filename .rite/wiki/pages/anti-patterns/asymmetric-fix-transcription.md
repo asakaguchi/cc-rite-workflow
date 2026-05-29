@@ -2,7 +2,7 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-29T03:25:57Z"
+updated: "2026-05-29T08:13:32Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260529T023008Z-pr-1181.md"
@@ -286,7 +286,9 @@ sources:
     ref: "raw/reviews/20260528T112627Z-pr-1167.md"
   - type: "fixes"
     ref: "raw/fixes/20260528T121938Z-pr-1167.md"
-tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration", "archive-doc-tail-residue", "intra-document-contradiction"]
+  - type: "reviews"
+    ref: "raw/reviews/20260529T081332Z-pr-1192.md"
+tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration", "archive-doc-tail-residue", "intra-document-contradiction", "reference-path-depth-drift", "grep-at-start-preventive-application"]
 confidence: high
 ---
 
@@ -1002,6 +1004,17 @@ PR #1181 (`flow-state.sh` の 4 つの jq stderr 診断スニペット emission 
 - **集約は scope 規律と両立させる**: sibling hooks 約 60-80 箇所に同型の未中和 idiom が残存していたが、revert test fail (pre-existing) かつ Issue #1173 のスコープ (flow-state.sh 限定) 外として全 reviewer が「指摘」ではなく「調査推奨 / boundary 推奨」に正しく分類した。helper 集約の価値を認めつつ横展開は別 Issue に切り出す判断が CLAUDE.md「スコープを越えない」原則と整合 ([[shell-script-shared-lib-extraction]] の scope 基準判断と同系統)
 - **中和テストは revert 耐性を二重 assertion で確保する**: TC-23 は「生 ESC 不在」(空削除 revert `s///g` を catch) + 「`?` への 1:1 置換」(snippet 全 drop mutation を catch) の二重 assertion で、helper の中和ロジックを mutation testing 視点で pin した ([[mutation-testing-test-fidelity]] と同系統)
 
+### Reference path depth drift の着手時全 scan による successful preventive application (PR #1192 — Issue #1191、0 blocking findings)
+
+PR #1192 (Issue #1191、rite command / reference / skill / template 内の相対参照パス drift を一括解消) は、本 anti-pattern の **着手時 grep (grep-at-start) detection heuristic を相対パス depth drift class に適用した successful preventive application**。0 blocking findings / 即時 mergeable に到達した (prompt-engineer / tech-writer の 2 reviewer)。
+
+全 `.md` を機械的にスキャンして相対パス解決をチェックし、PR description で named された 4 箇所に加え scan で検出した 6 箇所 = **計 10 箇所を同一 PR 内で全件修正**。PR #1102→#1105 / #1128 / #1130 で確立した「fix 後 grep ではなく着手時 grep」+「breadth × direction の 2 軸検出」を、line-number citation drift ([[drift-check-anchor-semantic-name]]) ではなく `../references/` vs `../../../references/` 等の **depth 誤りパス drift** class に転用して multi-cycle drift を構造的に予防した reproducibility evidence。
+
+#### 経験則の精緻化
+
+- **「真の drift」と「意図的慣習」を区別してスコープを確定する**: rite docs の参照パスには解決規約の異なる 2 クラスがある — (a) clickable な markdown link / `../` 相対パスは **file 相対**で解決され、depth 誤り (`../references/` を depth-3 で使う等) は壊れたリンク = 真の drift として修正対象、(b) bare inline-code の記述的パス (`commands/foo.md` 等) は **plugin-root 相対の記述慣習**で clickable link ではないため drift ではなく意図的に据え置く。網羅修正 PR ではこの 2 クラス判定を先に確定させることが、慣習側まで「修正」して逆に別 drift を導入する scope creep を回避する前提条件になる。本 PR では修正後の再スキャンで新規 drift を 1 件も導入していないことを確認済み。
+- **文体不整合の design_confirmation は即時 fix せず観察に留める**: reviewer は open.md の sibling bare 引用 (L104) の文体不整合を design_confirmation として観察したが、(b) クラスの記述慣習であり壊れていないため即時対応不要と判定。0-finding PR でも surface した観察を「修正必須」と「観察のみ」に分離する gate ([[observed-likelihood-gate-with-evidence-anchors]] と同系統) が cycle 膨張を防ぐ。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -1019,6 +1032,7 @@ PR #1181 (`flow-state.sh` の 4 つの jq stderr 診断スニペット emission 
 
 ## ソース
 
+- [PR #1192 review results (Issue #1191、0 blocking findings: rite command/reference の参照パス drift 一括解消。着手時の全 `.md` scan で named 4 + 検出 6 = 10 箇所を全件修正する successful preventive application。markdown link (file 相対) は真の drift、bare inline-code prose (plugin-root 相対) は意図的慣習として区別しスコープを確定)](../../raw/reviews/20260529T081332Z-pr-1192.md)
 - [PR #1181 review results (Issue #1173、0 findings の successful preventive application: flow-state.sh の 4 jq stderr emission site を helper `_emit_jq_err_snippet()` に集約し control-char 中和を追加。散在 idiom の事前 helper 集約で対称化義務そのものを消す intra-file 版 Option B を 4 reviewer 全員 0 件合意で実測。exit-code 等価性の実機検証 + scope 規律 (sibling 60-80 site は別 Issue boundary) + TC-23 二重 assertion による revert 耐性)](../../raw/reviews/20260529T023008Z-pr-1181.md)
 - [PR #1169 review results (累積 48 回目の起点: hooks.json に Stop 追加 6→7 events したが docs/SPEC.md 内の hook 列挙 4 箇所 drift、devops reviewer が hooks.json 整合性チェックで検出。registration 変更時は doc の全列挙箇所を grep 同期する learning)](../../raw/reviews/20260528T140415Z-pr-1169.md)
 - [PR #1169 fix results (docs/SPEC.md hook 列挙 4 箇所を hooks.json への Stop 追加に同期。新 Stop hook と legacy stop-guard.sh を stop-prevention vs loop-continuation で canonical 区別し、同名概念の過剰修正を回避)](../../raw/fixes/20260528T140809Z-pr-1169.md)

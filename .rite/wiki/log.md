@@ -867,3 +867,4 @@
 | 2026-05-28T23:42:28Z | ingest:update | pages/anti-patterns/catch-all-case-arm-absorbs-future-prefix.md | PR #1177 fix (raw/fixes/20260528T232834Z): 「prefix で block を分岐」コメントの直交 2 軸混同 (block 可否 = handoff 非空 / reason = prefix) を責務分離明示に補正。catch-all 脆さと同根の comment 責務分離乖離として同ページに統合 |
 | 2026-05-28T23:42:28Z | ingest:skip | raw/reviews/20260528T233233Z-pr-1177.md | PR #1177 review cycle 2 (0 findings): 軽微 fix の 2 cycle 収束確認 + 対称 negative test assert の再観測。既存 asymmetric-fix-transcription / hint-specific-assertion-pin / test-pin-protection-theater で網羅済みで新規一般化経験則なし。skip |
 | 2026-05-28T23:42:28Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=11, unregistered_raw=227, broken_refs=0 |
+| 2026-05-29T00:16:53Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=225, broken_refs=0 |

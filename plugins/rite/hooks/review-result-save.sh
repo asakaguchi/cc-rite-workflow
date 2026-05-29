@@ -60,10 +60,9 @@ if [ -z "$CONTENT_FILE" ]; then
   echo "ERROR: review-result-save: --content-file is required" >&2
   exit 1
 fi
-if [ ! -f "$CONTENT_FILE" ]; then
-  echo "ERROR: review-result-save: --content-file not found: $CONTENT_FILE" >&2
-  exit 1
-fi
+# 注: --content-file の存在チェック (`! -f`) は trap 登録 + pr_number gate の後ろ (下記) に移動した。
+# D-04 非ブロッキング契約 (全失敗で exit 0 + EXIT trap での FILE_TIMESTAMP/ISO_TIMESTAMP/JSON_SAVED
+# 必須 emit) を満たすため。引数自体の未指定 (上記 -z) は caller bug の fail-fast として exit 1 を維持する。
 
 # --- trap 保護対象 + observability emit ---
 # json_tmp / mktemp_err / jq_val_err_r は trap 保護 (orphan 防止)。file_timestamp /
@@ -100,6 +99,19 @@ case "$PR_NUMBER" in
     exit 0
     ;;
 esac
+
+# --content-file 存在チェック (trap 登録後 = 非ブロッキング経路)。
+# Issue #1193 follow-up review F-01: 旧実装は本チェックを trap 登録前 (arg parse 直後) に置き
+# exit 1 していたため、(a) D-04「全失敗経路で exit 0」契約を破り、(b) EXIT trap が emit する
+# FILE_TIMESTAMP/ISO_TIMESTAMP/JSON_SAVED (ステップ 6.1.c が前提) を skip していた。
+# caller が Write tool での JSON body 書き出しを忘れる / Write 先 path と --content-file path が
+# 食い違う runtime 失敗を write_failure (JSON body を読めない = write 系失敗) として非ブロッキングに扱う。
+if [ ! -f "$CONTENT_FILE" ]; then
+  echo "WARNING: review-result-save: --content-file not found: $CONTENT_FILE" >&2
+  echo "  caller (ステップ 6.1.a) が Write tool での JSON body 書き出しを忘れたか、Write 先 path と --content-file path が食い違っている可能性があります" >&2
+  echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=write_failure" >&2
+  exit 0
+fi
 
 # ISO 8601 timestamp (TZ=Asia/Tokyo, JST 固定, BSD/GNU date 両対応)。
 # 単一 date 呼出から iso/file 両 timestamp を導出し秒跨ぎズレを排除する。

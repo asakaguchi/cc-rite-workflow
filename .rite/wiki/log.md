@@ -897,3 +897,4 @@
 | 2026-05-29T15:59:38+00:00 | ingest:create | pages/heuristics/drift-gate-exit1-before-after-set-comparison.md | PR #1201 fix cycle 1 (raw/fixes/20260529T150155Z-pr-1201.md, Issue #1194): drift gate exit 1 を git-stash before/after 64=64 で pre-existing 確定する技法を新規ページの core に統合 |
 | 2026-05-29T15:59:38+00:00 | ingest:update | pages/heuristics/stderr-selective-surface-over-truncate.md | PR #1201 fix cycle 2 (raw/fixes/20260529T151834Z-pr-1201.md, Issue #1194): shim を status + stderr 両 capture へ修正、対称 counterpart pattern に整合させる learning を統合 |
 | 2026-05-29T15:59:38+00:00 | ingest:create | pages/heuristics/drift-gate-exit1-before-after-set-comparison.md | PR #1201 fix cycle 3 (raw/fixes/20260529T153627Z-pr-1201.md, Issue #1194): 用語定義表 stale 同期 + 64=64 実測 + Issue create 失敗の scope discipline 保持を新規ページに統合 |
+| 2026-05-29T16:01:00+00:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=227, broken_refs=0 |

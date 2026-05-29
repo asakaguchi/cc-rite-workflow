@@ -95,54 +95,43 @@ If a work memory comment exists on the Issue, automatically append a completion 
 
 #### 3.5.1 Retrieve and Update Work Memory Comment
 
+完了情報の追記は `issue-comment-wm-sync.sh` の `append-eof` transform へ委譲する（canonical caller パターン: `commands/pr/create.md` 4.1.2 / `commands/pr/fix.md` 4.5.2）。comment 取得・backup・空body/ヘッダー/50% safety check・PATCH は helper 内部で完結するため、cleanup 側は完了情報の content-file を生成して helper を呼び、機械可読な `status=...` 行を読むだけでよい。
+
+`### 完了情報` は WM 初期テンプレに存在しない**新規セクション**のため、既存セクション専用の `append-section`（不在時 no-op）ではなく EOF へ raw 追記する `append-eof` を用いる（原 inline 実装の heredoc 追記挙動を忠実に再現）。
+
 ```bash
-# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること（クロスプロセス変数参照を防止）
-# comment_data の取得・追記内容の heredoc 定義・PATCH を分割すると変数が失われる
-comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
-comment_id=$(echo "$comment_data" | jq -r '.id // empty')
-current_body=$(echo "$comment_data" | jq -r '.body // empty')
+# 完了情報セクションを content-file に生成し append-eof transform で委譲追記する。
+# {merged_at} 等は cleanup.md コンテキストの実値で置換する（heredoc malform 回避のため printf を使用）。
+completion_tmp=$(mktemp)
+trap 'rm -f "$completion_tmp"' EXIT
+printf '%s\n' \
+  "### 完了情報" \
+  "- **マージ日時**: {merged_at}" \
+  "- **PR**: #{pr_number} - {pr_title}" \
+  "- **PR URL**: {pr_url}" \
+  "- **クリーンアップ完了**: {timestamp}" \
+  "- **削除したブランチ**: {branch_name}" \
+  "- **最終 Status**: Done" > "$completion_tmp"
 
-if [ -n "$comment_id" ]; then
-  if [ -z "$current_body" ]; then
-    echo "ERROR: 作業メモリの本文取得に失敗。更新をスキップします。" >&2
-  else
-    backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
-    printf '%s' "$current_body" > "$backup_file"
-    original_length=$(printf '%s' "$current_body" | wc -c)
+wm_status=$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform append-eof --content-file "$completion_tmp" 2>/dev/null) || true
+rm -f "$completion_tmp"
 
-    tmpfile=$(mktemp)
-    trap 'rm -f "$tmpfile"' EXIT
-    printf '%s\n\n' "$current_body" > "$tmpfile"
-    cat >> "$tmpfile" << 'NEW_SECTION_EOF'
-{3.5.2の内容を実際の値で置換して記述}
-NEW_SECTION_EOF
-
-    # Safety checks before PATCH (see gh-cli-patterns.md)
-    if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
-      echo "ERROR: Updated body is empty or too short. Aborting PATCH. Backup: $backup_file" >&2
-      exit 1
-    fi
-    if ! grep -q '📜 rite 作業メモリ' "$tmpfile"; then
-      echo "ERROR: Updated body missing work memory header. Backup: $backup_file" >&2
-      exit 1
-    fi
-    updated_length=$(wc -c < "$tmpfile")
-    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
-      echo "ERROR: Updated body < 50% of original (${updated_length}/${original_length}). Aborting PATCH. Backup: $backup_file" >&2
-      exit 1
-    fi
-
-    jq -n --rawfile body "$tmpfile" '{"body": $body}' \
-      | gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
-        -X PATCH --input -
-  fi
-fi
+# 非ブロッキング: cleanup は work memory 更新失敗で停止してはならない（§3.5 は automatic final update）。
+# no_comment（作業メモリ不在 = legitimate no-op）以外の skipped/error は WARNING 表示にとどめる。
+case "$wm_status" in
+  status=success)      echo "作業メモリに完了情報を追記しました" ;;
+  *reason=no_comment*) echo "作業メモリ comment が無いため完了情報の追記をスキップしました" ;;
+  *)                   echo "警告: 作業メモリ更新が完了しませんでした (${wm_status:-no-status})。cleanup は続行します。" >&2 ;;
+esac
 ```
 
-**Note for Claude**: ⚠️ このブロック全体を**1つの Bash ツール呼び出し**で実行すること。`current_body` 取得・追記内容の heredoc 定義・PATCH を別の Bash ツール呼び出しに分割すると、前の呼び出しのシェル変数（`current_body` 等）が失われてヘッダーが消失する。`{3.5.2の内容を実際の値で置換して記述}` を 3.5.2 のテンプレートから生成した実際の追記内容で置換し、**すべてを1ブロックで**実行する。
+**Note for Claude**: comment 取得・body 変換・safety check・PATCH・backup はすべて helper 内部で完結するため、本ブロックを単一 Bash 呼び出しに収める必要はない（旧 inline 実装のクロスプロセス変数参照制約は解消済み）。`{merged_at}` / `{pr_number}` / `{pr_title}` / `{pr_url}` / `{timestamp}` / `{branch_name}` を cleanup.md コンテキストの実値で置換すること。`{plugin_root}` はリテラル値で埋め込む。
 
 #### 3.5.2 Update Content
+
+> **委譲状況（#1195）**: §3.5.1 は本節「Standard update template」の `### 完了情報` ブロックを `append-eof` transform で委譲追記する（実装済み）。下記の **進捗チェックリスト merge**（`### 進捗` への dedup 追記）は未委譲で、`issue-comment-wm-sync.sh` の transform 化を **#1195 #8** で対応する。それまで progress-checklist merge は cleanup 実行経路に組み込まれず、§3.5.1 は `### 完了情報` の追記のみを行う。
 
 Automatically append the following to the work memory:
 
@@ -168,9 +157,9 @@ The progress section update in Phase 3.5.2 follows this logic:
 **Bash implementation (Python-based section merge):**
 
 ```bash
-# ⚠️ 以下の処理は 3.5.1 の単一 Bash ブロック内に組み込むこと。
-# 挿入位置: 3.5.1 の current_body=$(echo "$comment_data" | jq -r '.body // empty') の直後。
-# こうすることで $current_body を再利用し、追加の API コールを回避できる。
+# ⚠️ 未委譲（#1195 #8 の参照仕様）。§3.5.1 は append-eof で `### 完了情報` のみを追記し、
+# この progress-checklist merge は現状 cleanup 実行経路に組み込まれていない。
+# #8 で issue-comment-wm-sync.sh の transform として委譲する（下記ロジックがその仕様）。
 body_tmp=$(mktemp)
 filtered_items_file=$(mktemp)
 updated_tmp=$(mktemp)

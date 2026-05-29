@@ -21,6 +21,9 @@ Usage:
     cat body.txt | python3 issue-comment-wm-update.py replace-section \
         --section "次のステップ" --content-file /tmp/next.md > updated.txt
 
+    cat body.txt | python3 issue-comment-wm-update.py append-eof \
+        --content-file /tmp/completion.md > updated.txt
+
     cat body.txt | python3 issue-comment-wm-update.py update-checkboxes \
         --tasks "task1,task2" > updated.txt
 
@@ -170,6 +173,18 @@ def replace_section(body: str, section_name: str, content: str) -> str:
     return body
 
 
+def append_eof(body: str, content: str) -> str:
+    """Append raw content at end-of-body, after a blank-line separator.
+
+    Unlike append_section (which appends *within* an existing section and is a
+    no-op when the section is absent), this adds a brand-new section that does
+    not yet exist in the work memory. Replicates the heredoc behaviour of the
+    original archive-procedures §3.5.1 inline block
+    (`printf '%s\\n\\n' "$body"` followed by `cat >> ... <<EOF`).
+    """
+    return body.rstrip("\n") + "\n\n" + content.rstrip("\n") + "\n"
+
+
 def update_checkboxes(body: str, task_names: list[str]) -> str:
     """Update specified tasks from - [ ] to - [x]."""
     for task_name in task_names:
@@ -297,6 +312,13 @@ def main():
             sys.exit(1)
         content = read_file_content(opts["content_file"])
         body = replace_section(body, opts["section"], content)
+
+    elif subcommand == "append-eof":
+        if "content_file" not in opts:
+            print("ERROR: --content-file is required for append-eof", file=sys.stderr)
+            sys.exit(1)
+        content = read_file_content(opts["content_file"])
+        body = append_eof(body, content)
 
     elif subcommand == "update-checkboxes":
         if "tasks" not in opts:

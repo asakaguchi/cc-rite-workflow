@@ -257,7 +257,7 @@ fi
 current_body=$(cat "$updated_tmp")
 ```
 
-**Note for Claude**: ⚠️ awk は使用禁止。Python インラインスクリプトでセクション追記を行うこと。更新前バックアップ・空body検証・ヘッダー検証を必ず実行すること。参照: [gh-cli-patterns.md の Work Memory Update Safety Patterns](../../references/gh-cli-patterns.md#work-memory-update-safety-patterns)。
+**Note for Claude**: ⚠️ awk は使用禁止。Python インラインスクリプトでセクション追記を行うこと。更新前バックアップ・空body検証・ヘッダー検証を必ず実行すること。参照: [gh-cli-patterns.md の Work Memory Update Safety Patterns](../../../references/gh-cli-patterns.md#work-memory-update-safety-patterns)。
 
 **Standard update template:**
 
@@ -330,7 +330,7 @@ When a child Issue's PR is merged and cleanup runs, update the parent Issue's Ta
 
 Replace `- [ ] #{issue_number}` with `- [x] #{issue_number}` in the parent Issue body. The pattern matches any text after the Issue number on the same line (e.g., `- [ ] #661 - description text`).
 
-**Implementation**: Use the 3-step pattern (Bash → Read+Write → Bash) per [gh-cli-patterns.md](../../references/gh-cli-patterns.md).
+**Implementation**: Use the 3-step pattern (Bash → Read+Write → Bash) per [gh-cli-patterns.md](../../../references/gh-cli-patterns.md).
 
 **Step 1: Bash tool call -- retrieve and validate the body**
 
@@ -568,7 +568,7 @@ if ls .rite-work-memory/issue-*.md 1>/dev/null 2>&1; then
 fi
 ```
 
-Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) if not already resolved.
+Resolve `{plugin_root}` per [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script-full-version) if not already resolved.
 
 **Note**: This is a defense-in-depth mechanism. If Phase 4 executes correctly, this check is a no-op.
 
@@ -579,7 +579,7 @@ After the Fail-Closed Gate, run the cleanup-work-memory script. This script perf
 3. Deletes ALL `.rite-work-memory/issue-*.md` files and their lockdirs (both current Issue and stale leftovers)
 4. Reports deletion results (deleted/failed/remaining counts)
 
-Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) if not already resolved.
+Resolve `{plugin_root}` per [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script-full-version) if not already resolved.
 
 ```bash
 bash {plugin_root}/hooks/cleanup-work-memory.sh

@@ -62,7 +62,7 @@ Issue: #288 - checkpoint.json を廃止し Issue 作業メモリに統合
 
 ## Prerequisites
 
-- The `/rite:resume` command must be available (defined in [resume.md](../../commands/resume.md))
+- The `/rite:resume` command must be available (defined in [resume.md](../../../commands/resume.md))
 
 ## Related
 

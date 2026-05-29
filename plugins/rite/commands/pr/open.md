@@ -134,11 +134,11 @@ git switch {base_branch} && git pull --ff-only origin {base_branch} && git switc
 
 ### 2.4 GitHub Projects Status 更新
 
-`rite-config.yml.github.projects.enabled: true` の場合、Projects の Status を `In Progress` に更新。詳細は `references/projects-integration.md` 参照。
+`rite-config.yml.github.projects.enabled: true` の場合、Projects の Status を `In Progress` に更新。詳細は `../../references/projects-integration.md` 参照。
 
 ### 2.5 Work Memory 初期化
 
-Issue の comment として work memory を初期投稿する。`コマンド:` 行は `rite:pr:open` を記載。詳細は `skills/rite-workflow/references/work-memory-format.md` 参照。
+Issue の comment として work memory を初期投稿する。`コマンド:` 行は `rite:pr:open` を記載。詳細は `../../skills/rite-workflow/references/work-memory-format.md` 参照。
 
 ### 2.6 flow-state 更新
 

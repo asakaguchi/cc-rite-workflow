@@ -570,7 +570,7 @@ fi
 | `{domain}` | `patterns` / `heuristics` / `anti-patterns` |
 | `{created}` / `{updated}` | 現在の ISO 8601 タイムスタンプ |
 | `{source_type}` | Raw Source の `type` フィールド (`reviews` / `retrospectives` / `fixes` の 3 値のみ — `wiki-ingest-trigger.sh` が受理する値と一致) |
-| `{source_ref}` | Raw Source の wiki-root 起点ファイル相対パス（例: `raw/reviews/20260413T...md`）。template 側で `../../` prefix を hardcode するため、placeholder 値自体には prefix を含めない。**⚠️ raw frontmatter の `source_ref` フィールド値（PR 識別子、例: `pr-1143`）をそのまま使ってはならない** — page の `sources[].ref` は常に Raw Source の**ファイルパス形式** `raw/{type}/{filename}` であり、PR 識別子形式ではない（同名 placeholder と raw フィールドの dual-use 混同による drift。詳細は anti-pattern `placeholder-dual-use-resolution-drift`）。lint はこの `ref` をファイルパス形式で raw と突合するため、PR 識別子だと raw→page 追跡が切れ false `missing_concept` を量産する（Issue #1178 実測） |
+| `{source_ref}` | Raw Source の wiki-root 起点ファイル相対パス（例: `raw/reviews/20260413T...md`）。template 側で `../../` prefix を hardcode するため、placeholder 値自体には prefix を含めない。**⚠️ raw frontmatter の `source_ref` フィールド値（PR 識別子、例: `pr-1143`）をそのまま使ってはならない** — page の `sources[].ref` は常に Raw Source の**ファイルパス形式** `raw/{type}/{filename}` であり、PR 識別子形式ではない（同名 placeholder と raw フィールドの dual-use 混同による drift。背景は Issue #1178、概念は Wiki anti-pattern `placeholder-dual-use-resolution-drift`〔wiki ブランチに蓄積される経験則ページ。develop ツリーには実体なし〕）。lint はこの `ref` をファイルパス形式で raw と突合するため、PR 識別子だと raw→page 追跡が切れ false `missing_concept` を量産する（Issue #1178 実測） |
 | `{summary}` | ステップ 4.1 のサマリー |
 | `{details}` | ステップ 4.1 の詳細 |
 | `{related_page_title}` / `{related_page_path}` | ステップ 4.3 で決定した値。**該当ページがない場合は `## 関連ページ` セクション全体を `- （関連ページなし）` の平文 1 行に Edit で書き換える** (空 placeholder のままにすると Markdown link `[]()` が破綻) |

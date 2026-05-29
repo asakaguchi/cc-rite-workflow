@@ -2,7 +2,7 @@
 title: "SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する"
 domain: "heuristics"
 created: "2026-04-29T02:55:00+00:00"
-updated: "2026-05-23T14:56:07Z"
+updated: "2026-05-29T07:40:04Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260428T171940Z-pr-705.md"
@@ -16,7 +16,9 @@ sources:
     ref: "raw/fixes/20260504T040558Z-pr-801.md"
   - type: "reviews"
     ref: "raw/reviews/20260523T144332Z-pr-1102.md"
-tags: ["sot-document", "path-reference", "broken-ref", "self-violation", "cross-pr-fragility", "identifier-consistency"]
+  - type: "reviews"
+    ref: "raw/reviews/20260529T072948Z-pr-1190.md"
+tags: ["sot-document", "path-reference", "broken-ref", "self-violation", "cross-pr-fragility", "identifier-consistency", "relative-path-depth"]
 confidence: high
 ---
 
@@ -98,6 +100,26 @@ PR #1102 (累積、`phase-mapping.md` の broken cross-reference 修正 doc PR) 
 
 加えて PR #1102 で観測された **pre-existing 同型 broken reference の残存**: 同じ「Phase 3.2 legacy table」への broken 参照が `sub-skill-return-protocol.md` / `docs/SPEC.md` / `docs/SPEC.ja.md` にも残存していることが調査で surface した (本 PR scope 外として別途調査推奨)。これは [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の broken-reference 版であり、1 箇所の broken ref を直す際に同型参照を repo 全体で `grep` して残存件数を確認する pre-flight が canonical 対策となる。
 
+### relative reference の検証は『file 存在』だけでなく『depth-aware な相対 path 解決』まで含む (PR #1190)
+
+PR #1190 (`commands/pr/open.md` ステップ3.5 の dangling reference `references/issue-body-checklist.md` を実在の `../../references/gh-cli-patterns.md#safe-checklist-operation-patterns` へ差し替える doc PR) は、本経験則の逆方向 (PR #1102) を再実測しつつ、**relative reference 特有の検証軸**を追加した: 0 blocking finding / 1 cycle 着地で、両 reviewer (prompt-engineer + code-quality) が以下 4 点を機械検証した:
+
+1. **file 存在**: 差し替え先 `plugins/rite/references/gh-cli-patterns.md` の実在 (find / test -e)
+2. **anchor 一致**: `## Safe Checklist Operation Patterns` 見出しが GitHub slug 規則で `#safe-checklist-operation-patterns` に一致 (唯一見出し)
+3. **相対 path 解決**: `readlink -f` で `commands/pr/open.md` から `../../references/` が canonical target に byte-identical に解決
+4. **codebase 全体での anchor 一貫性**: 同一 anchor が `checklist-auto-check.md` の既存参照と一致
+
+この (3) が relative reference 固有の検証軸である。SoT の path 参照が **bare** (`references/foo.md`) の場合は「plugin-root 起点なら解決するが file 居場所からは解決しない」曖昧さを持ち、**relative** の場合は file の depth に応じて prefix を使い分ける必要がある:
+
+| file の位置 (rite/ からの depth) | 正しい `references/` への相対 prefix |
+|---|---|
+| `commands/{X}/foo.md` (depth-2) | `../../references/` |
+| `commands/{X}/references/foo.md` (depth-3) | `../../../references/` |
+
+bare `references/` と depth 別 relative prefix の混在が drift 源になる。reviewer は副次的に pre-existing な同型不整合を 2 件検出した: (1) `commands/pr/open.md` L137/L141 が bare `references/...`、(2) `commands/pr/references/archive-procedures.md` L260/L333 が depth-3 から `../../references/` で broken (正しくは `../../../references/`)。これらは Issue scope 外として boundary 推奨に分類され、follow-up Issue #1191 (「rite command/reference ファイルの参照パス drift を一括解消」) として切り出した — line 99 の「同型参照を repo 全体で grep して残存件数を確認する」canonical 対策 ([Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の broken-reference 版) を実運用した実例。
+
+教訓: relative reference を含む doc を書く / 直すときの existence check は、`git ls-tree` での file 存在確認に加えて、**参照元 file の depth から相対 prefix が正しく解決するか** (`readlink -f` / `cd $(dirname) && ls $ref`) と **anchor slug が target 見出しに実在するか** (`grep -E '^##+ '`) の 3 点をセットで verify する。
+
 ## 関連ページ
 
 - [散文で宣言した設計は対応する実装契約がなければ機能しない](../anti-patterns/prose-design-without-backing-implementation.md)
@@ -113,3 +135,4 @@ PR #1102 (累積、`phase-mapping.md` の broken cross-reference 修正 doc PR) 
 - [PR #801 review (新規 reference の inter-file anchor `./complexity-gate.md#complexity-gate-section-inclusion` が target ファイルに存在せず、両 reviewer (prompt-engineer + code-quality) で cross-validated。経験則: 新規 anchor 記述前に `grep -E '^##+ ' <target>` で実在 heading slug を検証してから書く)](../../raw/reviews/20260504T040112Z-pr-801.md)
 - [PR #801 fix (broken anchor 解消、grep ベースの heading slug 検証を anchor 記述前 pre-flight check として明示化)](../../raw/fixes/20260504T040558Z-pr-801.md)
 - [PR #1102 review (phase-mapping.md の broken cross-reference 修正 doc PR、0 blocking findings / 1 cycle 着地。修正後参照先 (resume.md Phase 3.5 / Phase 5.3) の実在を両 reviewer が Read で independently verify。同型 broken ref が sub-skill-return-protocol.md / docs/SPEC.md / docs/SPEC.ja.md に pre-existing 残存)](../../raw/reviews/20260523T144332Z-pr-1102.md)
+- [PR #1190 review (commands/pr/open.md ステップ3.5 の dangling reference 差し替え doc PR、0 blocking / 1 cycle 着地。relative reference の depth-aware path 解決検証 (`../../references/` depth-2 / `../../../references/` depth-3) + anchor slug 実在 + codebase 一貫性の 4 点機械検証。pre-existing 同型不整合 2 件を follow-up Issue #1191 に切り出し)](../../raw/reviews/20260529T072948Z-pr-1190.md)

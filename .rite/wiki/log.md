@@ -868,3 +868,4 @@
 | 2026-05-28T23:42:28Z | ingest:skip | raw/reviews/20260528T233233Z-pr-1177.md | PR #1177 review cycle 2 (0 findings): 軽微 fix の 2 cycle 収束確認 + 対称 negative test assert の再観測。既存 asymmetric-fix-transcription / hint-specific-assertion-pin / test-pin-protection-theater で網羅済みで新規一般化経験則なし。skip |
 | 2026-05-28T23:42:28Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=11, unregistered_raw=227, broken_refs=0 |
 | 2026-05-29T00:16:53Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=225, broken_refs=0 |
+| 2026-05-29T00:45:00Z | ingest:skip | raw/reviews/20260529T004445Z-pr-1180.md | PR #1180 review cycle 3 (0 findings): sources.ref のフルパス制約 + dual-use 警告追加 (doc-only) の clean review。3 site defense-in-depth 契約・dual-use 混同は既存 anti-pattern placeholder-dual-use-resolution-drift で網羅済みで新規一般化経験則なし。skip |

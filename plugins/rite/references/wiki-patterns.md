@@ -213,7 +213,7 @@ Wiki 初期化時にテンプレートを `.rite/wiki/` に展開します。
 | `{created}` | 作成日時（Ingest 時） |
 | `{updated}` | 更新日時（Ingest 時） |
 | `{source_type}` | ソースタイプ（reviews/retrospectives/fixes） |
-| `{source_ref}` | ソースファイルへの相対パス |
+| `{source_ref}` | Raw Source へのファイルパス形式 (`raw/{type}/{filename}`、wiki-root 起点) の相対パス。**PR 識別子形式 (`pr-NNNN`) は禁止**。詳細は `plugins/rite/commands/wiki/ingest.md` ステップ 5.3 の `{source_ref}` 行 (dual-use 警告) を SoT として参照 |
 | `{summary}` | ページ概要（1-2文、Ingest 時） |
 | `{details}` | 詳細説明（Ingest 時） |
 | `{related_page_title}` | 関連ページのタイトル（Ingest 時） |

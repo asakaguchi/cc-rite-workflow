@@ -4503,7 +4503,9 @@ if [ ! -s "$tmpfile" ]; then
  exit 1
 fi
 
-result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+# jq -n の出力を stdin で create-issue-with-projects.sh に渡す (Issue #1193 #5)。
+# 旧 `$(bash ... "$(jq -n ...)")` の入れ子 $() を 1 段に削減し malform 確率を下げる。
+result=$(jq -n \
  --arg title "{type}: {summary}" \
  --arg body_file "$tmpfile" \
  --argjson projects_enabled {projects_enabled} \
@@ -4524,8 +4526,7 @@ result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
  iteration: { mode: $iter_mode }
  },
  options: { source: "pr_review", non_blocking_projects: true }
- }'
-)")
+ }' | bash {plugin_root}/scripts/create-issue-with-projects.sh)
 
 if [ -z "$result" ]; then
  echo "ERROR: create-issue-with-projects.sh returned empty result" >&2

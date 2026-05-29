@@ -3975,8 +3975,10 @@ if [ "$git_diff_failed" -eq 0 ]; then
         *) echo "- \`${file}\` - ${status}" ;;
       esac
     done > "$changed_files_tmp"
-    # 変更が無い場合は空ファイル。helper の update-progress は空 changed-files-file を受けても
-    # セクションの placeholder を維持するため、ここでの追加処理は不要。
+    # 変更が無い場合は空ファイル。helper の update-progress は空 changed-files-file を受けると
+    # `### 変更ファイル` セクション本文を空文字に置換する (placeholder `_まだ変更はありません_` は
+    # 維持されない)。ただし 4.5.2 は fix commit 後に走るため git diff は全コミットを含み、変更ゼロは
+    # 実運用で発生しない。よってここでの追加処理は不要。
   else
     echo "WARNING: git diff --name-status \"origin/${base_branch}...HEAD\" が失敗しました。" >&2
     [ -n "$diff_err" ] && [ -s "$diff_err" ] && head -3 "$diff_err" | sed 's/^/  /' >&2

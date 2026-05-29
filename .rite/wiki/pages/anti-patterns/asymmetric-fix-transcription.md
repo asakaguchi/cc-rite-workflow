@@ -2,8 +2,18 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-29T08:13:32Z"
+updated: "2026-05-29T13:45:29+00:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260529T102422Z-pr-1198.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260529T103315Z-pr-1198.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260529T104210Z-pr-1198.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260529T104446Z-pr-1198.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260529T105335Z-pr-1198.md"
   - type: "reviews"
     ref: "raw/reviews/20260529T023008Z-pr-1181.md"
   - type: "fixes"
@@ -1015,6 +1025,20 @@ PR #1192 (Issue #1191、rite command / reference / skill / template 内の相対
 - **「真の drift」と「意図的慣習」を区別してスコープを確定する**: rite docs の参照パスには解決規約の異なる 2 クラスがある — (a) clickable な markdown link / `../` 相対パスは **file 相対**で解決され、depth 誤り (`../references/` を depth-3 で使う等) は壊れたリンク = 真の drift として修正対象、(b) bare inline-code の記述的パス (`commands/foo.md` 等) は **plugin-root 相対の記述慣習**で clickable link ではないため drift ではなく意図的に据え置く。網羅修正 PR ではこの 2 クラス判定を先に確定させることが、慣習側まで「修正」して逆に別 drift を導入する scope creep を回避する前提条件になる。本 PR では修正後の再スキャンで新規 drift を 1 件も導入していないことを確認済み。
 - **文体不整合の design_confirmation は即時 fix せず観察に留める**: reviewer は open.md の sibling bare 引用 (L104) の文体不整合を design_confirmation として観察したが、(b) クラスの記述慣習であり壊れていないため即時対応不要と判定。0-finding PR でも surface した観察を「修正必須」と「観察のみ」に分離する gate ([[observed-likelihood-gate-with-evidence-anchors]] と同系統) が cycle 膨張を防ぐ。
 
+### inline → helper 委譲時の「メッセージ文言次元」再発と content-file 失敗モードの契約統合 (PR #1198 — Issue #1193、累積 49 回目、3 cycle 収束)
+
+PR #1198 (重量 inline bash ブロックを helper へ委譲: `review.md` 6.1.a/6.1.b → `review-result-save.sh` / `review-comment-post.sh`、`ready.md` 3.2 → `issue-comment-wm-sync.sh`) は、inline heredoc を「Write tool で別ファイル保存 → helper が `--content-file` で読む」へ decouple する refactor で本 anti-pattern が **3 つの次元で段階的に surface** し、cycle 1 (HIGH + MEDIUM) → cycle 2 (LOW-MEDIUM、cross-validation) → cycle 3 (0 blocking) で構造的に収束した。helper 委譲リファクタの典型的な収束軌跡で、各 cycle の finding が「委譲時の契約・参照・文言の同期漏れ」に集中する。
+
+#### 3 次元の同期漏れ
+
+- **契約次元 (cycle 1 HIGH)**: inline → helper `--content-file` decouple は新たな failure mode (content-file 引数の不在 / 空) を導入する。この新規経路を元の **non-blocking 契約 (全失敗 exit 0 + trap での必須 `[CONTEXT]` emit)** に統合し損ねると、helper が新 failure mode で契約外の exit / silent drop を起こす。canonical 対策: content-file 検証を **trap 登録の後ろ** に置き、失敗時も `exit 0` + reason emit に合流させる (input validation の配置順 = trap 前 vs 後 が契約適合性を左右する。[[trap-register-before-mktemp]] / [[exit-code-semantic-preservation]] と同系統)。
+- **参照次元 (cycle 1 MEDIUM)**: command 本文から inline placeholder 定義 (heredoc body) を削除する際、別 Phase からの placeholder 参照 (metrics-append / suppression 除外の接続点) が dangling 化する。委譲時は同一 placeholder の **全参照を grep で洗い出して同期更新** する (本 fix では本文 4 箇所同期 + 対称 helper `review-comment-post.sh` の意図的非対称を検証して非伝播と確認)。
+- **文言次元 (cycle 2 LOW-MEDIUM、cross-validation)**: 本文の placeholder dangling 参照を cycle 1 で修正しても、**helper 内の diagnostic / 対処メッセージ文言が旧 placeholder 名 (heredoc body 変数名) を参照したまま残る** stale-message が漏れる。これは Asymmetric Fix Transcription の **「メッセージ文言」次元** で、prompt-engineer + error-handling の 2 reviewer が独立検出 (cross-validation)。
+
+#### 教訓
+
+委譲リファクタで「片方修正」を防ぐ propagation scan は、**(1) command 本文の placeholder 参照 + (2) helper 内のロジック + (3) helper 内の WARNING / 対処メッセージ文言** の 3 site すべてを旧用語 grep の対象にする。文言次元は「動作には影響しないが診断を誤らせる」silent な drift で、本文 placeholder の grep だけでは取りこぼす。新 failure mode を導入する decouple では、それを既存の non-blocking 契約に合流させる検証 ([[prose-design-without-backing-implementation]] の逆 — 宣言だけでなく新経路の契約適合を verify) を fix workflow に含める。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -1032,6 +1056,11 @@ PR #1192 (Issue #1191、rite command / reference / skill / template 内の相対
 
 ## ソース
 
+- [PR #1198 cycle 1 review (累積 49 回目の起点: inline heredoc → helper `--content-file` decouple refactor で content-file 不在 failure mode を non-blocking 契約に統合し損ねる HIGH + 本文 placeholder 削除による別 Phase 参照 dangling MEDIUM。委譲時の契約次元 + 参照次元の同期漏れ)](../../raw/reviews/20260529T102422Z-pr-1198.md)
+- [PR #1198 cycle 1 fix (2 finding 全件対応: content-file 検証を trap 登録の後ろに置き exit 0 + reason emit に合流 / 本文 placeholder 4 箇所を grep 同期 + 対称 helper review-comment-post.sh の意図的非対称を検証して非伝播と確認)](../../raw/fixes/20260529T103315Z-pr-1198.md)
+- [PR #1198 cycle 2 review (文言次元の再発: helper 内 diagnostic / 対処メッセージが旧 placeholder 名を参照したまま残る stale-message を prompt-engineer + error-handling が cross-validation 検出。本文 placeholder dangling 修正後も helper 内メッセージ文言の同種参照が漏れる = Asymmetric Fix Transcription のメッセージ文言次元)](../../raw/reviews/20260529T104210Z-pr-1198.md)
+- [PR #1198 cycle 2 fix (helper 内 stale diagnostic message を修正。委譲時は本文 placeholder だけでなく helper 内 WARNING / 対処メッセージ文言も旧用語 grep で同期更新する learning)](../../raw/fixes/20260529T104446Z-pr-1198.md)
+- [PR #1198 cycle 3 review (累積 49 回目の収束: blocking 0 で mergeable 到達。3 cycle 収束パターン — cycle1 で 2 件 (契約 HIGH + 参照 MEDIUM)、cycle2 で 1 件 (文言 LOW-MEDIUM cross-validation)、cycle3 で 0。helper 委譲リファクタの finding は「委譲時の契約・参照・文言の同期漏れ」に集中する典型収束)](../../raw/reviews/20260529T105335Z-pr-1198.md)
 - [PR #1192 review results (Issue #1191、0 blocking findings: rite command/reference の参照パス drift 一括解消。着手時の全 `.md` scan で named 4 + 検出 6 = 10 箇所を全件修正する successful preventive application。markdown link (file 相対) は真の drift、bare inline-code prose (plugin-root 相対) は意図的慣習として区別しスコープを確定)](../../raw/reviews/20260529T081332Z-pr-1192.md)
 - [PR #1181 review results (Issue #1173、0 findings の successful preventive application: flow-state.sh の 4 jq stderr emission site を helper `_emit_jq_err_snippet()` に集約し control-char 中和を追加。散在 idiom の事前 helper 集約で対称化義務そのものを消す intra-file 版 Option B を 4 reviewer 全員 0 件合意で実測。exit-code 等価性の実機検証 + scope 規律 (sibling 60-80 site は別 Issue boundary) + TC-23 二重 assertion による revert 耐性)](../../raw/reviews/20260529T023008Z-pr-1181.md)
 - [PR #1169 review results (累積 48 回目の起点: hooks.json に Stop 追加 6→7 events したが docs/SPEC.md 内の hook 列挙 4 箇所 drift、devops reviewer が hooks.json 整合性チェックで検出。registration 変更時は doc の全列挙箇所を grep 同期する learning)](../../raw/reviews/20260528T140415Z-pr-1169.md)

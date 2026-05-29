@@ -2,8 +2,10 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-28T15:05:43Z"
+updated: "2026-05-29T03:25:57Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260529T023008Z-pr-1181.md"
   - type: "fixes"
     ref: "raw/fixes/20260528T140809Z-pr-1169.md"
   - type: "reviews"
@@ -987,6 +989,19 @@ PR #1169 (新規 `stop-loop-continuation.sh` + `flow-state.sh` の `--handoff`/`
 - **同名概念だが別 artifact は区別して過剰修正を避ける**: 新 Stop hook (`stop-loop-continuation.sh`、loop-continuation 目的) 追加時、Historical note の retired layer に残る legacy `stop-guard.sh` (stop-prevention 目的) 言及は **別 hook の履歴として正確**なため scope 外として保持する。「Stop hook 削除済」記述が複数箇所に分散している場合、canonical SoT で stop-prevention vs loop-continuation を明示区別し、同名概念を一括書き換えする過剰修正を避ける
 - helper 層の fail-closed 非対称は [[consume-operation-delete-then-return-fail-closed]] を参照
 
+### Helper consolidation による構造的回避 — intra-file 版 (PR #1181 — Issue #1173、0 findings、防御的 refactor の successful preventive application)
+
+PR #1181 (`flow-state.sh` の 4 つの jq stderr 診断スニペット emission site = `cmd_set` / `cmd_get` ×2 / `cmd_consume_handoff` を共通 helper `_emit_jq_err_snippet()` に集約し control-char `[[:cntrl:]]`→`?` 中和を加える) は、本 anti-pattern を **発生させずに構造的に回避した positive evidence**。security / code-quality / error-handling / test の 4 reviewer 全員が「可 / 指摘 0 件」で合意し 0 findings / 即時 mergeable に到達した。
+
+これまでの累積 evidence の多くは「対称位置への伝播漏れが発生 → review-fix loop で収束」という failure→resolution の軌跡だが、PR #1181 は **着手段階で散在 4 site を単一 helper に集約**することで「中和ロジックを 1 経路に集中させ、そもそも対称化義務を消す」approach を取った。これは [[asymmetric-fix-resolution-via-hub-creation]] の Option B (hub 化) の **コードレイヤー版** に相当する (doc-level SoT 集約ではなく同一ファイル内の helper 抽出)。
+
+#### 経験則の精緻化
+
+- **散在 idiom の事前 helper 集約は対称化義務そのものを消す**: 同一ファイル内に同型 idiom が N site 散在する場合、各 site を個別に修正する (= 将来の伝播漏れ経路を温存) のではなく、着手時に単一 helper へ集約すれば「N site 対称化」契約自体が不要になる。テストも helper 1 経路を pin すれば全 site をカバーできる設計になる (PR #1181 では TC-23 が helper 単体を pin)
+- **集約 refactor では exit-code 等価性を実機検証する**: 旧短絡 AND 連鎖 (`[ -n ] && [ -s ] && head|sed`、空ファイルで rc=1) → 新 helper (`if ...; then head|sed || true; fi`、no-op rc=0) のような置換は、helper の rc が後続から参照されないこと・`set -e` が if/&& condition 位置で abort しないことを実機検証して挙動等価を確認する ([[bash-if-bang-rc-capture]] / [[exit-code-semantic-preservation]] と同系統の検証義務)
+- **集約は scope 規律と両立させる**: sibling hooks 約 60-80 箇所に同型の未中和 idiom が残存していたが、revert test fail (pre-existing) かつ Issue #1173 のスコープ (flow-state.sh 限定) 外として全 reviewer が「指摘」ではなく「調査推奨 / boundary 推奨」に正しく分類した。helper 集約の価値を認めつつ横展開は別 Issue に切り出す判断が CLAUDE.md「スコープを越えない」原則と整合 ([[shell-script-shared-lib-extraction]] の scope 基準判断と同系統)
+- **中和テストは revert 耐性を二重 assertion で確保する**: TC-23 は「生 ESC 不在」(空削除 revert `s///g` を catch) + 「`?` への 1:1 置換」(snippet 全 drop mutation を catch) の二重 assertion で、helper の中和ロジックを mutation testing 視点で pin した ([[mutation-testing-test-fidelity]] と同系統)
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -1004,6 +1019,7 @@ PR #1169 (新規 `stop-loop-continuation.sh` + `flow-state.sh` の `--handoff`/`
 
 ## ソース
 
+- [PR #1181 review results (Issue #1173、0 findings の successful preventive application: flow-state.sh の 4 jq stderr emission site を helper `_emit_jq_err_snippet()` に集約し control-char 中和を追加。散在 idiom の事前 helper 集約で対称化義務そのものを消す intra-file 版 Option B を 4 reviewer 全員 0 件合意で実測。exit-code 等価性の実機検証 + scope 規律 (sibling 60-80 site は別 Issue boundary) + TC-23 二重 assertion による revert 耐性)](../../raw/reviews/20260529T023008Z-pr-1181.md)
 - [PR #1169 review results (累積 48 回目の起点: hooks.json に Stop 追加 6→7 events したが docs/SPEC.md 内の hook 列挙 4 箇所 drift、devops reviewer が hooks.json 整合性チェックで検出。registration 変更時は doc の全列挙箇所を grep 同期する learning)](../../raw/reviews/20260528T140415Z-pr-1169.md)
 - [PR #1169 fix results (docs/SPEC.md hook 列挙 4 箇所を hooks.json への Stop 追加に同期。新 Stop hook と legacy stop-guard.sh を stop-prevention vs loop-continuation で canonical 区別し、同名概念の過剰修正を回避)](../../raw/fixes/20260528T140809Z-pr-1169.md)
 - [PR #1167 cycle 1 review (累積 47 回目の起点: 新規 lint step Phase 3.16 追加で PR #631 確立の 4-site 対称更新契約のうち 3 site (summary table / [lint:success] enum / Note prose) が欠落、2 reviewer 独立 HIGH cross-validation)](../../raw/reviews/20260528T112627Z-pr-1167.md)

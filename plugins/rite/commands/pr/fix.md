@@ -4653,7 +4653,7 @@ rm -f "/tmp/rite-fix-confidence-override-{pr_number}.txt" \
       "/tmp/rite-fix-acknowledged-nit-{pr_number}.txt"
 ```
 
-> **Note (work memory backup)**: 旧実装はステップ 4.5.2 で `current_body` を `/tmp/rite-wm-backup-*` に backup し、ステップ 5.1 の output pattern に応じて手動 cleanup していた。委譲後は backup の生成・成功時削除・失敗時 preserve をすべて `issue-comment-wm-sync.sh` が内部で管理する (helper の Step 3/6 参照) ため、caller 側の backup 生成と手動 cleanup は不要になった。
+> **Note (work memory backup)**: work memory body の backup (生成・成功時削除・失敗時 preserve) は `issue-comment-wm-sync.sh` が内部で完結させる (helper の Step 3/6 参照)。本コマンドの caller 側では backup を生成・cleanup しないため、ステップ 5.1 の output pattern に応じた手動 backup cleanup も行わない。
 
 **Example output:**
 ```

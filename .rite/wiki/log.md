@@ -869,3 +869,4 @@
 | 2026-05-28T23:42:28Z | lint:warning | — | contradictions=0, stale=0, orphans=0, missing_concept=11, unregistered_raw=227, broken_refs=0 |
 | 2026-05-29T00:16:53Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=225, broken_refs=0 |
 | 2026-05-29T00:45:00Z | ingest:skip | raw/reviews/20260529T004445Z-pr-1180.md | PR #1180 review cycle 3 (0 findings): sources.ref のフルパス制約 + dual-use 警告追加 (doc-only) の clean review。3 site defense-in-depth 契約・dual-use 混同は既存 anti-pattern placeholder-dual-use-resolution-drift で網羅済みで新規一般化経験則なし。skip |
+| 2026-05-29T00:50:00Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=226, broken_refs=0 |

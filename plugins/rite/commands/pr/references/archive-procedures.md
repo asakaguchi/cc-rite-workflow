@@ -97,7 +97,7 @@ If a work memory comment exists on the Issue, automatically append a completion 
 
 完了情報の追記は `issue-comment-wm-sync.sh` の `append-eof` transform へ委譲する（canonical caller パターン: `commands/pr/create.md` 4.1.2 / `commands/pr/fix.md` 4.5.2）。comment 取得・backup・空body/ヘッダー/50% safety check・PATCH は helper 内部で完結するため、cleanup 側は完了情報の content-file を生成して helper を呼び、機械可読な `status=...` 行を読むだけでよい。
 
-`### 完了情報` は WM 初期テンプレに存在しない**新規セクション**のため、既存セクション専用の `append-section`（不在時 no-op）ではなく EOF へ raw 追記する `append-eof` を用いる（原 inline 実装の heredoc 追記挙動を忠実に再現）。
+`### 完了情報` は WM 初期テンプレに存在しない**新規セクション**のため、既存セクション専用の `append-section`（不在時 no-op）ではなく EOF へ raw 追記する `append-eof` を用いる（原 inline 実装の heredoc 追記挙動を再現。末尾改行は `\n\n` セパレータに正規化する意図的差異があるが、レンダリング結果は同一）。
 
 ```bash
 # 完了情報セクションを content-file に生成し append-eof transform で委譲追記する。

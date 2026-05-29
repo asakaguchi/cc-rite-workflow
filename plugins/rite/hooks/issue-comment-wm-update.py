@@ -178,9 +178,14 @@ def append_eof(body: str, content: str) -> str:
 
     Unlike append_section (which appends *within* an existing section and is a
     no-op when the section is absent), this adds a brand-new section that does
-    not yet exist in the work memory. Replicates the heredoc behaviour of the
+    not yet exist in the work memory. Reproduces the heredoc behaviour of the
     original archive-procedures §3.5.1 inline block
-    (`printf '%s\\n\\n' "$body"` followed by `cat >> ... <<EOF`).
+    (`printf '%s\\n\\n' "$body"` followed by `cat >> ... <<EOF`), with one
+    intentional difference: trailing newlines on ``body`` are normalised to a
+    single ``\\n\\n`` separator instead of being preserved. The original could
+    emit a stray extra blank line when ``body`` already ended in a newline; the
+    rendered Markdown is identical either way, so this only suppresses the
+    redundant blank line.
     """
     return body.rstrip("\n") + "\n\n" + content.rstrip("\n") + "\n"
 

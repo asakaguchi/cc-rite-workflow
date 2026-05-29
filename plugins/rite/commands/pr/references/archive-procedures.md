@@ -103,7 +103,10 @@ If a work memory comment exists on the Issue, automatically append a completion 
 # 完了情報セクションを content-file に生成し append-eof transform で委譲追記する。
 # {merged_at} 等は cleanup.md コンテキストの実値で置換する（heredoc malform 回避のため printf を使用）。
 completion_tmp=$(mktemp)
-trap 'rm -f "$completion_tmp"' EXIT
+# helper stderr（auth/rate/network/safety-check 詳細 + backup path）を退避し、失敗時に surface する。
+# canonical caller fix.md 4.5.2 / review.md 6.2 と同じ stderr-capture 規約（2>/dev/null 破棄をしない）。
+wm_sync_err=$(mktemp 2>/dev/null) || wm_sync_err=""
+trap 'rm -f "$completion_tmp" "${wm_sync_err:-}"' EXIT
 printf '%s\n' \
   "### 完了情報" \
   "- **マージ日時**: {merged_at}" \
@@ -115,16 +118,19 @@ printf '%s\n' \
 
 wm_status=$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
   --issue {issue_number} \
-  --transform append-eof --content-file "$completion_tmp" 2>/dev/null) || true
+  --transform append-eof --content-file "$completion_tmp" 2>"${wm_sync_err:-/dev/null}") || true
 rm -f "$completion_tmp"
 
 # 非ブロッキング: cleanup は work memory 更新失敗で停止してはならない（§3.5 は automatic final update）。
 # no_comment（作業メモリ不在 = legitimate no-op）以外の skipped/error は WARNING 表示にとどめる。
+# 失敗時は helper stderr の root-cause（先頭 5 行）も surface し、backup path / API エラー詳細を operator に残す。
 case "$wm_status" in
   status=success)      echo "作業メモリに完了情報を追記しました" ;;
   *reason=no_comment*) echo "作業メモリ comment が無いため完了情報の追記をスキップしました" ;;
-  *)                   echo "警告: 作業メモリ更新が完了しませんでした (${wm_status:-no-status})。cleanup は続行します。" >&2 ;;
+  *)                   echo "警告: 作業メモリ更新が完了しませんでした (${wm_status:-no-status})。cleanup は続行します。" >&2
+                       [ -n "$wm_sync_err" ] && [ -s "$wm_sync_err" ] && { echo "  helper stderr (root-cause、先頭 5 行):" >&2; head -5 "$wm_sync_err" | sed 's/^/    /' >&2; } ;;
 esac
+rm -f "${wm_sync_err:-}"
 ```
 
 **Note for Claude**: comment 取得・body 変換・safety check・PATCH・backup はすべて helper 内部で完結するため、本ブロックを単一 Bash 呼び出しに収める必要はない（旧 inline 実装のクロスプロセス変数参照制約は解消済み）。`{merged_at}` / `{pr_number}` / `{pr_title}` / `{pr_url}` / `{timestamp}` / `{branch_name}` を cleanup.md コンテキストの実値で置換すること。`{plugin_root}` はリテラル値で埋め込む。

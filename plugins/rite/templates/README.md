@@ -202,7 +202,7 @@ Commands should check for these variables and handle their absence gracefully.
 
 ## References
 
-- [Work Memory Format](../references/work-memory-format.md) — Work memory structure
+- [Work Memory Format](../skills/rite-workflow/references/work-memory-format.md) — Work memory structure
 - [gh CLI Patterns](../references/gh-cli-patterns.md) — GitHub CLI command patterns
 
 ---

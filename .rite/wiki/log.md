@@ -877,3 +877,4 @@
 | 2026-05-29T04:21:34+00:00 | ingest:skip | raw/reviews/20260529T042134Z-pr-1185.md | PR #1185 review cycle 2 (0 findings): cycle 1 の 4 finding 全解消の verification-only re-review。stderr truncate-on-open / domain-authority dedup は既存経験則で網羅済みで新規 durable heuristic なし。skip |
 | 2026-05-29T04:21:34+00:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=227, broken_refs=0 |
 | 2026-05-29T06:05:00+00:00 | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #1187 review (raw/reviews/20260529T055839Z-pr-1187.md, Issue #1153): reference 文書 NOTE 内 cross-file 行番号 citation の全件 stale 化 + target 消失事例を追記。第 4 表記コンテキスト (reference 散文 NOTE) として canonical page に統合 |
+| 2026-05-29T06:06:00+00:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=227, broken_refs=0 |

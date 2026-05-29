@@ -156,11 +156,55 @@ If the file does not exist, skip Phase 4 entirely.
 
 ### 4.2 Fetch Projects Data and Build Status Map
 
-> **CRITICAL**: Execute each tool call exactly as described. Do NOT add `--jq` flags, inline comments, or any extra text to bash commands.
+> **CRITICAL**: Execute Tool call 1 exactly as written — copy the entire script block verbatim. Do NOT edit the GraphQL query, change the `jq` filters, add `--jq` flags to `gh api graphql`, insert inline comments, or alter any line. The script pages through **all** Project items via GraphQL cursor pagination, so Projects with more than 100/500 items are not silently truncated (the bug that a fixed `--limit` caused).
 
-**Tool call 1 (Bash)**: Run this single-line command verbatim — `tmpfile=$(mktemp) && gh project item-list {project_number} --owner {owner} --format json --limit 500 > "$tmpfile" && echo "$tmpfile"`
+**Tool call 1 (Bash)**: Run this script verbatim. It resolves the Project node ID (owner-type agnostic — works for both user and organization owners), pages through every item with `pageInfo.hasNextPage` / `endCursor`, normalizes each node to `{content:{number}, status}`, and prints the temp file path on success. On any failure it prints `[projects:fetch-failed] <reason>` and no path.
 
-**Tool call 2 (Read)**: Use the Read tool to open the temp file path printed by Tool call 1. The JSON contains an `items` array; each element has `.status` (string) and `.content.number` (int). Build an in-memory map of Issue number → Status. On failure, skip Projects info and show the Phase 3 list without a Status column.
+```bash
+tmpfile=$(mktemp); pages=$(mktemp)
+pid=$(gh project view {project_number} --owner {owner} --format json 2>/dev/null | jq -r '.id')
+if [ -z "$pid" ] || [ "$pid" = "null" ]; then echo "[projects:fetch-failed] could not resolve project id"; rm -f "$tmpfile" "$pages"; exit 0; fi
+cursor=""; : > "$pages"; ok=1
+QUERY='
+query($pid: ID!, $cursor: String) {
+  node(id: $pid) {
+    ... on ProjectV2 {
+      items(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          content { ... on Issue { number } ... on PullRequest { number } }
+          fieldValues(first: 20) {
+            nodes {
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                name
+                field { ... on ProjectV2SingleSelectField { name } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}'
+while : ; do
+  if [ -n "$cursor" ]; then
+    page=$(gh api graphql -f query="$QUERY" -F pid="$pid" -F cursor="$cursor" 2>/dev/null) || { ok=0; break; }
+  else
+    page=$(gh api graphql -f query="$QUERY" -F pid="$pid" 2>/dev/null) || { ok=0; break; }
+  fi
+  echo "$page" | jq -e '.data.node.items' >/dev/null 2>&1 || { ok=0; break; }
+  echo "$page" | jq -c '.data.node.items.nodes[]?' >> "$pages"
+  hn=$(echo "$page" | jq -r '.data.node.items.pageInfo.hasNextPage')
+  cursor=$(echo "$page" | jq -r '.data.node.items.pageInfo.endCursor')
+  [ "$hn" = "true" ] && [ -n "$cursor" ] && [ "$cursor" != "null" ] || break
+done
+if [ "$ok" != "1" ]; then echo "[projects:fetch-failed] graphql paging error"; rm -f "$tmpfile" "$pages"; exit 0; fi
+jq -s '{items: ([ .[] | { content: { number: (.content.number // null) }, status: ([ .fieldValues.nodes[]? | select(.field.name? == "Status") | .name ] | first // null) } ] | map(select(.content.number == null | not)))}' "$pages" > "$tmpfile"
+rm -f "$pages"
+echo "$tmpfile"
+```
+
+**Tool call 2 (Read)**: Use the Read tool to open the temp file path printed by Tool call 1. The JSON contains an `items` array; each element has `.status` (string or null) and `.content.number` (int). Build an in-memory map of Issue number → Status. If Tool call 1 printed `[projects:fetch-failed]` instead of a path (or the Read fails), skip Projects info and show the Phase 3 list without a Status column.
 
 Add a Status column to the list display:
 

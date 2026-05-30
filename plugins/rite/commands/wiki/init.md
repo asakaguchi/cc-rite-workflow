@@ -250,125 +250,30 @@ Edit ツールで `.gitignore` の既存 anchor `# <<< gitignore-wiki-section-en
 
 #### 1.3.4 verification
 
-> **Reference**: `.gitignore` の `DRIFT-CHECK ANCHOR: negation verification canonical` 節（「動作確認の正典」 + `git check-ignore -v` を sanity check に使わない理由）。`git add --dry-run` を使用し、`git check-ignore -v` は使わない（rc と出力の両方が negation 成立と単純 match で同じ値を取り得るため決定論的判別不能）。canonical impl は `plugins/rite/hooks/scripts/gitignore-health-check.sh` の `DRIFT-CHECK ANCHOR: same_branch negation grep-qF healthy check` 節の `grep -qF` パターン参照。
+> **Reference**: negation 注入が効いているかの検証は `plugins/rite/hooks/scripts/gitignore-health-check.sh --verify-negation` に委譲する。`git add --dry-run` を使い `git check-ignore -v` は使わない理由（rc と出力の両方が negation 成立と不在で同じ値を取り得るため決定論的判別不能）・canonical impl は同 helper の `DRIFT-CHECK ANCHOR: same_branch negation grep-qF healthy check` 節（および対の `(verify-negation copy)` 節）と `.gitignore` の `DRIFT-CHECK ANCHOR: negation verification canonical` 節を参照。
+
+ステップ 1.3.3 の Edit が完了したら、negation override が実際に効いているかを helper で検証する。helper は probe ファイルの作成・`git add --dry-run` 検証・signal-specific trap cleanup・non-blocking 判定をすべて内包する（旧 ~110 行 inline 実装を `--verify-negation` モードへ委譲）。`plugin_root` はステップ 2.1 で解決されるが本ステップ (1.3) はそれより前にあるため、ここで前倒し解決する:
 
 ```bash
-# signal-specific trap で probe ファイルの残留を防ぐ
-# (canonical: plugins/rite/commands/pr/references/bash-trap-patterns.md
-#  の `#signal-specific-trap-template` anchor)。
-#
-# SIGINT/SIGTERM/SIGHUP で rm -f がスキップされ、ステップ 3.1 の same_branch ブロックの
-# `git add .rite/wiki/` に probe (.negation-probe) が混入する経路を塞ぐ。
-# 関数名は上記 canonical の命名規約 `_rite_<scope>_<phase>_cleanup` に準拠。
-# (ステップ 3.1 の `_rite_wiki_init_cleanup` は規約確立前の旧命名維持対象。本 ステップ 1.3 は
-#  新規追加なので規約準拠の `_rite_wiki_init_phase13_cleanup` を採用。)
-#
-# canonical instantiation 順序 (re-review cycle 3 F-A 対応):
-#   (1) パス変数を空文字で先行宣言
-#   (2) cleanup 関数と 4 行 trap を設定
-#   (3) その後で mktemp を実行
-# これにより trap arm と mktemp の間に signal が到達しても、cleanup 関数が未定義変数
-# を参照する経路を閉じる。
-probe_mkdir_err=""
-probe_touch_err=""
-dry_run_err=""
+# plugin_root 解決 (ステップ 2.1 の inline one-liner を前倒し。
+#  canonical: references/plugin-path-resolution.md#inline-one-liner-for-command-files)
+plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 
-_rite_wiki_init_phase13_cleanup() {
-  rm -f "${probe_mkdir_err:-}" "${probe_touch_err:-}" "${dry_run_err:-}" .rite/wiki/raw/.negation-probe
-}
-trap 'rc=$?; _rite_wiki_init_phase13_cleanup; exit $rc' EXIT
-trap '_rite_wiki_init_phase13_cleanup; exit 130' INT
-trap '_rite_wiki_init_phase13_cleanup; exit 143' TERM
-trap '_rite_wiki_init_phase13_cleanup; exit 129' HUP
-
-# mkdir / touch の失敗を明示的にハンドリング + stderr を退避。
-# permission/disk full/readonly 等で probe 作成失敗時、verification 自体を skip して
-# WARNING を表示する (non-blocking、ステップ 2 へ進行)。silent に `git add --dry-run` を
-# 実行して pathspec mismatch 警告 (rc=128) を「negation 不在」と誤認することを防ぐ。
-# stderr は tempfile に退避し、失敗時に head -3 で先頭行を stderr に流す
-# (canonical: plugins/rite/hooks/scripts/gitignore-health-check.sh の probe 作成 +
-#  stderr 退避パターン参照)。
-probe_mkdir_err=$(mktemp /tmp/rite-wiki-init-p13-mkdir-err-XXXXXX 2>/dev/null) || probe_mkdir_err=""
-probe_touch_err=$(mktemp /tmp/rite-wiki-init-p13-touch-err-XXXXXX 2>/dev/null) || probe_touch_err=""
-probe_created="false"
-if mkdir -p .rite/wiki/raw 2>"${probe_mkdir_err:-/dev/null}" && \
-   touch .rite/wiki/raw/.negation-probe 2>"${probe_touch_err:-/dev/null}"; then
-  probe_created="true"
-else
-  echo "WARNING: negation probe の作成に失敗しました (read-only fs / permission / disk full の可能性)" >&2
-  if [ -n "$probe_mkdir_err" ] && [ -s "$probe_mkdir_err" ]; then
-    echo "  mkdir stderr (先頭 3 行):" >&2
-    head -3 "$probe_mkdir_err" | sed 's/^/    /' >&2
-  fi
-  if [ -n "$probe_touch_err" ] && [ -s "$probe_touch_err" ]; then
-    echo "  touch stderr (先頭 3 行):" >&2
-    head -3 "$probe_touch_err" | sed 's/^/    /' >&2
-  fi
-  echo "  verification を skip して ステップ 2 に進行します (non-blocking)" >&2
+if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/gitignore-health-check.sh" ]; then
+  # non-blocking: plugin_root 解決失敗時も verification を skip して ステップ 2 へ進行する
+  # (ステップ 3.1 の git add で negation 不在ならそこで改めてエラーが出る)。
+  echo "WARNING: plugin_root 解決に失敗したため negation verification を skip します (non-blocking)" >&2
   echo "  ステップ 3.1 の git add で negation が効いていなければそこで改めてエラーが出ます" >&2
+else
+  bash "$plugin_root/hooks/scripts/gitignore-health-check.sh" --verify-negation
 fi
-
-if [ "$probe_created" = "true" ]; then
-  # verification: rc=0 かつ stdout に canonical pattern `add '<path>'` (probe フルパス) を含めば OK
-  # `grep -q "^add '"` (単純プレフィックス) では偶然 `add '...'` で始まる任意パスが出ると
-  # false positive になるため、`grep -qF "add '<probe path 全体>'"` で完全パス fixed-string
-  # match に統一する (canonical: plugins/rite/hooks/scripts/gitignore-health-check.sh の
-  # `grep -qF "add '${negation_probe}'"` パターン)。
-  #
-  # PR #586 F-02 対応: stderr を独立 tempfile に退避し stdout に merge しない。
-  # 同一ファイル内 ステップ 3.5.1 のプロジェクト規約「2>&1 は付けない: 構造化 stdout と WARNING stderr
-  # の分離を維持する」に準拠する。canonical 参照実装 gitignore-health-check.sh の
-  # `DRIFT-CHECK ANCHOR: same_branch add_dry_run rc capture` 節の
-  # `add_dry_err=$(mktemp ...) ... if add_dry_out=$(...); then add_dry_rc=0; else add_dry_rc=$?; fi`
-  # パターンに **rc capture 構造ごと** 揃える (canonical drift 防止)。実害として、success path で
-  # git が emit する stderr 警告 (例: `warning: in the working copy of '...', LF will be replaced
-  # by CRLF`) が success メッセージに混入することを防ぎ、`grep -qF "add '...'"` の false positive
-  # リスクを排除する。
-  #
-  # PR #586 F-01 (cycle 5) 対応: cycle 4 で stderr 退避部分のみ canonical に揃え rc capture
-  # 構造を簡略な `var=$(cmd); rc=$?` に留めていたが、コメントは「一字一句揃える」と謳っており
-  # 主張と実装が乖離していた。cycle 6 で if-wrapper 構造に統一して drift を解消する。
-  # `set -e` 不在の bash block 内では機能等価だが、Wiki 経験則「canonical reference 文書の
-  # サンプルコードは canonical 実装と一字一句同期する」(patterns/high) を厳守する。
-  dry_run_err=$(mktemp /tmp/rite-wiki-init-p13-dryrun-err-XXXXXX 2>/dev/null) || dry_run_err=""
-  dry_run_out=""
-  dry_run_rc=0
-  if dry_run_out=$(git add --dry-run -- .rite/wiki/raw/.negation-probe 2>"${dry_run_err:-/dev/null}"); then
-    dry_run_rc=0
-  else
-    dry_run_rc=$?
-  fi
-
-  if [ "$dry_run_rc" -eq 0 ] && printf '%s' "$dry_run_out" | grep -qF "add '.rite/wiki/raw/.negation-probe'"; then
-    echo "✅ .gitignore negation verification OK: $dry_run_out"
-  else
-    echo "WARNING: .gitignore negation verification failed (rc=$dry_run_rc)" >&2
-    echo "  stdout: $dry_run_out" >&2
-    if [ -n "$dry_run_err" ] && [ -s "$dry_run_err" ]; then
-      echo "  stderr (先頭 3 行):" >&2
-      head -3 "$dry_run_err" | sed 's/^/    /' >&2
-    fi
-    echo "  対処: .gitignore の .rite/wiki/ 行直後 (gitignore-wiki-section-end anchor 直後) に" >&2
-    echo "        !.rite/wiki/ と !.rite/wiki/** が配置されているか確認してください" >&2
-  fi
-fi
-
-# 明示 rm → trap 解除 の順序 (canonical: bash-trap-patterns.md `#signal-specific-trap-template`)。
-# 役割分離:
-#   - 明示 rm (通常パス): ステップ 1.3.4 の処理完了時点で同期的に probe を削除。script は
-#     ステップ 2 以降を継続するため、EXIT trap に delegate するだけでは処理途中の cleanup
-#     にならない (EXIT trap は script 終了時のみ発火する)。
-#   - trap cleanup (signal 経路 defense-in-depth): SIGINT/SIGTERM/SIGHUP で明示 rm に
-#     到達できなかった場合の保険として動作する。
-# 明示 rm を trap 解除より前に置くことで、rm〜trap 解除間の micro-race window を排除する。
-# trap 解除後は EXIT trap が発火しないため、script 終了時に冗長 rm が走らない。
-rm -f "${probe_mkdir_err:-}" "${probe_touch_err:-}" "${dry_run_err:-}" .rite/wiki/raw/.negation-probe
-trap - EXIT INT TERM HUP
 ```
 
-**成功時**: `✅ .gitignore に negation エントリを追記しました` を追加で表示し ステップ 2 へ。
+`--verify-negation` モードは post-injection 専用で、config 読込・strategy 判定・parent-exclusion check をスキップし、全分岐 non-blocking (exit 0) で結果を stdout / stderr に出す。probe の親ディレクトリ (`.rite/wiki/raw/`) は rmdir せず残すため、後続ステップ 2 のディレクトリ作成と衝突しない。
 
-**失敗時 (non-blocking)**: WARNING 表示のみで ステップ 2 に進行する。ステップ 3.1 の `git add .rite/wiki/` で改めてエラーが出れば、そこでユーザーに手動対応を促す。
+**成功時**: helper が `✅ .gitignore negation verification OK: ...` を **stdout** に出力する。続けて `✅ .gitignore に negation エントリを追記しました` を表示して ステップ 2 へ。
+
+**失敗時 (non-blocking)**: helper が `WARNING: .gitignore negation verification failed ...` を **stderr** に出力する。WARNING 表示のみで ステップ 2 に進行する。ステップ 3.1 の `git add .rite/wiki/` で改めてエラーが出れば、そこでユーザーに手動対応を促す。
 
 ## ステップ 2: ディレクトリ構造の作成
 

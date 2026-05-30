@@ -34,23 +34,36 @@
 #
 # Usage:
 #   gitignore-health-check.sh [--repo-root DIR] [--quiet]
-#                             [--branch-strategy-override STRATEGY] [-h|--help]
+#                             [--branch-strategy-override STRATEGY]
+#                             [--verify-negation] [-h|--help]
 #
 # Options:
 #   --repo-root DIR                   Repository root (default: git rev-parse --show-toplevel)
 #   --quiet                           Suppress informational output
 #   --branch-strategy-override VAL    Override wiki.branch_strategy from rite-config.yml
 #                                     (one of: separate_branch | same_branch) — smoke test only
+#   --verify-negation                 Post-injection negation verification mode for
+#                                     wiki/init.md ステップ 1.3.4 (delegation target).
+#                                     Skips config/strategy/parent-exclusion checks (caller
+#                                     is same_branch + just injected the negation) and is
+#                                     fully non-blocking: every outcome exits 0 and the
+#                                     result is surfaced via stdout `✅ ... OK` / stderr
+#                                     `WARNING`. See the dedicated block below.
 #   -h, --help                        Show this help
 #
 # Exit codes (non-blocking contract, identical to drift-check / wiki-growth-check):
 #   0  Health verified (or wiki disabled / legitimate no-op — skip silently)
 #   1  Drift detected (warning — caller MUST keep [lint:success])
 #   2  Invocation error (bad args, missing repo)
+#   NOTE: --verify-negation overrides this table — it ALWAYS exits 0 (non-blocking),
+#         matching wiki/init.md ステップ 1.3.4 which proceeds to ステップ 2 regardless.
 #
 # Output:
-#   Always prints `==> Total gitignore-health-check findings: N` on stdout.
-#   On drift (exit 1), additionally prints a plain `WARNING: ...` line to stderr.
+#   Default (lint) mode: always prints `==> Total gitignore-health-check findings: N`
+#   on stdout; on drift (exit 1) additionally prints a plain `WARNING: ...` to stderr.
+#   --verify-negation mode: prints `✅ .gitignore negation verification OK: ...` to stdout
+#   on success, or `WARNING: ...` to stderr on failure/skip. Does NOT print the
+#   `==> Total ... findings: N` line (it is not a drift-count aggregator).
 #
 set -uo pipefail
 
@@ -71,7 +84,15 @@ _rite_gitignore_cleanup() {
   # Also remove the probe parent directories (.rite/wiki/raw/, .rite/wiki/) if this
   # script created them and they are empty. `rmdir` fails on non-empty directories,
   # which protects pre-existing raw source files from being unintentionally removed.
-  rmdir .rite/wiki/raw .rite/wiki 2>/dev/null || true
+  #
+  # rmdir suppression for --verify-negation (rmdir 副作用抑止): wiki/init.md ステップ
+  # 1.3.4 runs DURING init, right before ステップ 2 creates the wiki directory tree.
+  # Its original inline block removed only the probe file (not the dirs) so the
+  # freshly-created .rite/wiki/raw/ survives for downstream steps. Skip rmdir here to
+  # preserve that contract; default (lint) mode keeps the empty-dir cleanup.
+  if [ "${VERIFY_NEGATION:-0}" -eq 0 ]; then
+    rmdir .rite/wiki/raw .rite/wiki 2>/dev/null || true
+  fi
 }
 trap 'rc=$?; _rite_gitignore_cleanup; exit $rc' EXIT
 trap '_rite_gitignore_cleanup; exit 130' INT
@@ -81,6 +102,7 @@ trap '_rite_gitignore_cleanup; exit 129' HUP
 REPO_ROOT=""
 QUIET=0
 STRATEGY_OVERRIDE=""
+VERIFY_NEGATION=0
 
 usage() {
   cat <<'EOF'
@@ -91,10 +113,12 @@ Options:
   --quiet                           Suppress informational output
   --branch-strategy-override VAL    Override wiki.branch_strategy (separate_branch | same_branch)
                                     Used for smoke testing only; production runs read rite-config.yml.
+  --verify-negation                 Post-injection negation verification for wiki/init.md
+                                    ステップ 1.3.4 (non-blocking, always exits 0).
   -h, --help                        Show this help
 
 Exit codes:
-  0  Health verified (or wiki disabled / legitimate no-op)
+  0  Health verified (or wiki disabled / legitimate no-op; --verify-negation always)
   1  Drift detected (warning, non-blocking)
   2  Invocation error
 EOF
@@ -105,6 +129,7 @@ while [ $# -gt 0 ]; do
     --repo-root)                 REPO_ROOT="$2"; shift 2 ;;
     --quiet)                     QUIET=1; shift ;;
     --branch-strategy-override)  STRATEGY_OVERRIDE="$2"; shift 2 ;;
+    --verify-negation)           VERIFY_NEGATION=1; shift ;;
     -h|--help)                   usage; exit 0 ;;
     *) echo "ERROR: Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -127,6 +152,61 @@ cd "$REPO_ROOT" || {
   echo "==> Total gitignore-health-check findings: 0"
   exit 2
 }
+
+# --- --verify-negation mode (wiki/init.md ステップ 1.3.4 delegation target) ---
+# init.md §1.3.4 は same_branch 戦略の negation 注入「直後」に呼ばれる post-injection
+# verification。caller が same_branch 確定 + negation を inject 済みなので、config 読込 /
+# strategy 判定 / Layer 1 parent-exclusion は不要 — それらを全てスキップして early-exit する。
+# lint.md Phase 3.9 経路 (drift guard; exit 1=drift / exit 2=env error) とは契約が異なり、
+# 本モードは全分岐 non-blocking (exit 0) で、結果は stdout `✅ ... OK` / stderr `WARNING`
+# として surface する (init.md は exit code を読まず stdout/stderr で分岐し ステップ 2 へ進む)。
+#
+# コア検証 (git add --dry-run + grep -qF "add '<probe>'") は同ファイル same_branch case の
+# `DRIFT-CHECK ANCHOR: same_branch ...` 節と意図的に同型。旧構成では init.md がこのロジックの
+# inline copy を持ち両者を「一字一句同期」していたが、本モード導入で init.md は委譲呼び出しに
+# 置換され、同期対象は同一ファイル内の 2 箇所に閉じた (cross-file drift を解消)。
+if [ "$VERIFY_NEGATION" -eq 1 ]; then
+  negation_probe=".rite/wiki/raw/.rite-lint-negation-probe"
+  # probe 作成失敗は non-blocking skip (init.md §1.3.4 契約: WARNING + ステップ 2 進行)。
+  # lint 経路の same_branch case が exit 2 (invocation error) にするのとは対照的に exit 0。
+  if ! { mkdir -p "$(dirname "$negation_probe")" 2>/dev/null && touch "$negation_probe" 2>/dev/null; }; then
+    echo "WARNING: negation probe の作成に失敗しました (read-only fs / permission / disk full の可能性)" >&2
+    echo "  negation verification を skip して呼び出し元の次ステップに進行します (non-blocking)" >&2
+    echo "  same_branch 戦略の git add で negation が効いていなければそこで改めてエラーが出ます" >&2
+    exit 0
+  fi
+
+  # >>> DRIFT-CHECK ANCHOR: same_branch add_dry_run rc capture (verify-negation copy) <<<
+  # Keep one-for-one with the same_branch case copy below (mktemp stderr capture +
+  # if-wrapper rc capture). Wiki 経験則 patterns/high「canonical 実装と一字一句同期」.
+  add_dry_err=$(mktemp /tmp/rite-gitignore-adddry-XXXXXX 2>/dev/null) || add_dry_err=""
+  add_dry_out=""
+  add_dry_rc=0
+  if add_dry_out=$(git add --dry-run -- "$negation_probe" 2>"${add_dry_err:-/dev/null}"); then
+    add_dry_rc=0
+  else
+    add_dry_rc=$?
+  fi
+  # >>> DRIFT-CHECK ANCHOR END: same_branch add_dry_run rc capture (verify-negation copy) <<<
+
+  # >>> DRIFT-CHECK ANCHOR: same_branch negation grep-qF healthy check (verify-negation copy) <<<
+  if [ "$add_dry_rc" -eq 0 ] && printf '%s' "$add_dry_out" | grep -qF "add '${negation_probe}'"; then
+    echo "✅ .gitignore negation verification OK: $add_dry_out"
+  else
+    echo "WARNING: .gitignore negation verification failed (rc=$add_dry_rc)" >&2
+    echo "  stdout: $add_dry_out" >&2
+    if [ -n "$add_dry_err" ] && [ -s "$add_dry_err" ]; then
+      echo "  stderr (先頭 3 行):" >&2
+      head -3 "$add_dry_err" | sed 's/^/    /' >&2
+    fi
+    echo "  対処: .gitignore の .rite/wiki/ 行直後 (gitignore-wiki-section-end anchor 直後) に" >&2
+    echo "        !.rite/wiki/ と !.rite/wiki/** が配置されているか確認してください" >&2
+  fi
+  # >>> DRIFT-CHECK ANCHOR END: same_branch negation grep-qF healthy check (verify-negation copy) <<<
+  # probe + tempfile cleanup は EXIT trap が担う (rmdir は VERIFY_NEGATION ガードで抑止し、
+  # init.md が後続ステップで使う .rite/wiki/raw/ を残す)。
+  exit 0
+fi
 
 # --- Read config ---
 config_file="rite-config.yml"
@@ -259,10 +339,11 @@ case "$branch_strategy" in
     }
 
     # >>> DRIFT-CHECK ANCHOR: same_branch add_dry_run rc capture <<<
-    # Downstream reference: plugins/rite/commands/wiki/init.md:ステップ 1.3.4 verification
-    # block. Keep the mktemp stderr capture + if-wrapper rc capture structure one-for-one
-    # with init.md's copy — Wiki 経験則 patterns/high「canonical reference 文書のサンプル
-    # コードは canonical 実装と一字一句同期する」.
+    # Sibling reference: the `--verify-negation` early-exit block above (its
+    # `(verify-negation copy)` ANCHOR). Keep the mktemp stderr capture + if-wrapper rc
+    # capture structure one-for-one with that copy — Wiki 経験則 patterns/high
+    # 「canonical 実装と一字一句同期」. (wiki/init.md ステップ 1.3.4 no longer holds an
+    # inline copy; it delegates here via `gitignore-health-check.sh --verify-negation`.)
     add_dry_err=$(mktemp /tmp/rite-gitignore-adddry-XXXXXX 2>/dev/null) || add_dry_err=""
     add_dry_out=""
     add_dry_rc=0
@@ -274,10 +355,10 @@ case "$branch_strategy" in
     # >>> DRIFT-CHECK ANCHOR END: same_branch add_dry_run rc capture <<<
 
     # >>> DRIFT-CHECK ANCHOR: same_branch negation grep-qF healthy check <<<
-    # Downstream reference: plugins/rite/commands/wiki/init.md:ステップ 1.3.4 verification
-    # block. Keep the `grep -qF "add '${negation_probe}'"` full-path fixed-string match
-    # one-for-one with init.md's copy — simple `grep -q "^add '"` 単純 prefix は
-    # false positive を招く.
+    # Sibling reference: the `--verify-negation` early-exit block above (its
+    # `(verify-negation copy)` ANCHOR). Keep the `grep -qF "add '${negation_probe}'"`
+    # full-path fixed-string match one-for-one with that copy — simple `grep -q "^add '"`
+    # 単純 prefix は false positive を招く. (wiki/init.md ステップ 1.3.4 delegates here.)
     # Healthy negation: rc=0 + stdout like `add '.rite/wiki/raw/.rite-lint-negation-probe'`
     # Broken negation: rc=1 + stderr contains "paths are ignored"
     if [ "$add_dry_rc" -eq 0 ] && printf '%s' "$add_dry_out" | grep -qF "add '${negation_probe}'"; then

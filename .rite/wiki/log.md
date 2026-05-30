@@ -903,3 +903,4 @@
 | 2026-05-30T00:33:20+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1202 review cycle 2 (raw/reviews/20260529T235417Z-pr-1202.md, Issue #1195 #7): cycle 1 fix の片落ち (docstring 訂正・prose 残置) を累積 50 回目 evidence として統合 |
 | 2026-05-30T00:33:20+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1202 fix cycle 2 (raw/fixes/20260529T235653Z-pr-1202.md, Issue #1195 #7): git grep '忠実に再現' 確認後の対称ペア完結 (grep-before-commit) を統合 |
 | 2026-05-30T00:33:20+00:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1202 review cycle 3 (raw/reviews/20260530T000246Z-pr-1202.md, Issue #1195 #7, mergeable): stderr 規約遵守 + 不正確記述対称ペア完結の 2 軸 3 cycle 収束記録を統合 |
+| 2026-05-30T00:40:01+00:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=227, broken_refs=0 |

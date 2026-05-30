@@ -2,7 +2,7 @@
 title: "stderr ノイズ削減: truncate ではなく selective surface で解く"
 domain: "heuristics"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-29T15:59:38Z"
+updated: "2026-05-30T00:33:20Z"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md"
@@ -16,6 +16,10 @@ sources:
     ref: "raw/reviews/20260529T151325Z-pr-1201.md"
   - type: "fixes"
     ref: "raw/fixes/20260529T151834Z-pr-1201.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260529T233836Z-pr-1202.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260529T234453Z-pr-1202.md"
 tags: ["bash", "stderr", "observability", "noise-reduction", "per-step-diagnostic", "delegation-shim", "status-and-stderr-dual-capture"]
 confidence: high
 ---
@@ -118,6 +122,12 @@ fi
 
 実装時は **対称 counterpart (review.md 6.2 = fix.md 4.5) が既に確立した stderr-capture + head -5 surface パターン**を Read してそれに揃える (独自実装の逸脱を避ける)。PR #1201 cycle 2 fix は WM_UPDATE_FAILED routing と reason 語彙を一切変えず、trap に stderr tempfile を追加する形で「追加のみ」で適用した。
 
+### 同一 helper の別 caller で同 anti-pattern が再発する (PR #1202 での evidence)
+
+PR #1201 で確立した本拡張は、**直後の sibling PR #1202 (#1195 #7) で同一 helper (`issue-comment-wm-sync.sh`) の別 caller (`archive-procedures.md` §3.5.1 の WM 完了情報追記委譲) が同じ `2>/dev/null` 破棄を再演**した。委譲 shim が helper status を制御フローに consume しつつ helper stderr を握り潰す構造で、prompt-engineer + error-handling の 2 reviewer が cycle 1 で独立検出 (MEDIUM)。cycle 1 fix で canonical caller `fix.md 4.5.2` / `review.md 6.2` の **tempfile capture + `*)` arm で `head -5` surface** パターンに揃え、status 行による非ブロッキング判定 (`append-eof` への委譲) は不変のまま「追加のみ」で修正した。
+
+教訓: **canonical caller が既に修正済みでも、同一 helper の新規 caller を追加するたびに stderr-discard が再導入される** ([[asymmetric-fix-transcription]] の「canonical pattern の対称伝播漏れ」と同根)。helper への新規委譲を書くときは、先に同 helper の既存 caller を grep して stderr-capture 規約の有無を確認し、それに揃えてから commit する。
+
 ## 関連ページ
 
 - [`if ! cmd; then rc=$?` は常に 0 を捕捉する](../anti-patterns/bash-if-bang-rc-capture.md)
@@ -130,3 +140,5 @@ fi
 - [PR #550 cycle 1 fix (per-step tempfile 分離の一般化)](../../raw/fixes/20260416T202213Z-pr-550.md)
 - [PR #1201 review cycle 2 (委譲 shim の stderr 破棄 diagnostic-degradation 検出)](../../raw/reviews/20260529T151325Z-pr-1201.md)
 - [PR #1201 fix cycle 2 (status + stderr 両 capture へ修正)](../../raw/fixes/20260529T151834Z-pr-1201.md)
+- [PR #1202 review cycle 1 (同一 helper の別 caller §3.5.1 が 2>/dev/null 破棄を再演、2 reviewer 独立検出 MEDIUM)](../../raw/reviews/20260529T233836Z-pr-1202.md)
+- [PR #1202 fix cycle 1 (canonical stderr-capture 規約へ整合、status 非ブロッキング判定は不変)](../../raw/fixes/20260529T234453Z-pr-1202.md)

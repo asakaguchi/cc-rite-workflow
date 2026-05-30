@@ -2,8 +2,14 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-29T13:45:29+00:00"
+updated: "2026-05-30T00:33:20Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260530T000246Z-pr-1202.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260529T235417Z-pr-1202.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260529T235653Z-pr-1202.md"
   - type: "reviews"
     ref: "raw/reviews/20260529T102422Z-pr-1198.md"
   - type: "fixes"
@@ -1039,6 +1045,12 @@ PR #1198 (重量 inline bash ブロックを helper へ委譲: `review.md` 6.1.a
 
 委譲リファクタで「片方修正」を防ぐ propagation scan は、**(1) command 本文の placeholder 参照 + (2) helper 内のロジック + (3) helper 内の WARNING / 対処メッセージ文言** の 3 site すべてを旧用語 grep の対象にする。文言次元は「動作には影響しないが診断を誤らせる」silent な drift で、本文 placeholder の grep だけでは取りこぼす。新 failure mode を導入する decouple では、それを既存の non-blocking 契約に合流させる検証 ([[prose-design-without-backing-implementation]] の逆 — 宣言だけでなく新経路の契約適合を verify) を fix workflow に含める。
 
+### 委譲 refactor の fix が cycle 2 で片落ち (docstring 訂正・prose 残置) を起こす (PR #1202 — Issue #1195 #7、累積 50 回目、3 cycle 収束)
+
+PR #1202 (#1195 #7: `archive-procedures.md` §3.5.1 の WM 完了情報追記を `issue-comment-wm-sync.sh` へ委譲) は、同一不正確記述が **prose (`archive-procedures.md`) と docstring (`issue-comment-wm-update.py`) の対称ペア** に散在する finding を、cycle 2 fix で **docstring のみ訂正し prose を残置** する片落ちを起こした。cycle 1 finding は両箇所を named していたにもかかわらず fix が 1 箇所だけに適用された、本 anti-pattern の最も基本的な失敗形 (named された 2 箇所のうち 1 箇所だけ fix)。reviewer は cross-file consistency check で「docstring 訂正済 / prose 未訂正」を cycle 2 で LOW 検出し、cycle 3 fix で `git grep '忠実に再現'` により残存が 1 箇所のみであることを確認してから prose を docstring と整合させ、対称ペアを完結 (0 findings 収束)。
+
+教訓 (再確認): 同一文言 / 同一不正確記述を複数 file・箇所に持つ finding を修正する際は、**修正前に `git grep '<該当文言>'` で全出現を列挙し、全てに伝播させてから commit** する。cycle 3 fix はこの教訓に従い grep で残存箇所を確認してから修正することで再度の片落ちを防いだ。本 PR は同一 helper 委譲 refactor で **stderr-discard の sibling-caller 再演** も併発しており ([[stderr-selective-surface-over-truncate]] PR #1202 evidence)、helper 委譲 refactor が「stderr 規約の対称伝播漏れ」と「不正確記述の対称伝播漏れ」を同時に踏む典型例となった。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -1060,6 +1072,9 @@ PR #1198 (重量 inline bash ブロックを helper へ委譲: `review.md` 6.1.a
 - [PR #1198 cycle 1 fix (2 finding 全件対応: content-file 検証を trap 登録の後ろに置き exit 0 + reason emit に合流 / 本文 placeholder 4 箇所を grep 同期 + 対称 helper review-comment-post.sh の意図的非対称を検証して非伝播と確認)](../../raw/fixes/20260529T103315Z-pr-1198.md)
 - [PR #1198 cycle 2 review (文言次元の再発: helper 内 diagnostic / 対処メッセージが旧 placeholder 名を参照したまま残る stale-message を prompt-engineer + error-handling が cross-validation 検出。本文 placeholder dangling 修正後も helper 内メッセージ文言の同種参照が漏れる = Asymmetric Fix Transcription のメッセージ文言次元)](../../raw/reviews/20260529T104210Z-pr-1198.md)
 - [PR #1198 cycle 2 fix (helper 内 stale diagnostic message を修正。委譲時は本文 placeholder だけでなく helper 内 WARNING / 対処メッセージ文言も旧用語 grep で同期更新する learning)](../../raw/fixes/20260529T104446Z-pr-1198.md)
+- [PR #1202 cycle 2 review (累積 50 回目の起点: cycle 1 F-02 fix が docstring のみ訂正・prose 残置の片落ち。named された 2 箇所のうち 1 箇所だけ fix した最も基本的な本 anti-pattern を cross-file consistency check で LOW 検出)](../../raw/reviews/20260529T235417Z-pr-1202.md)
+- [PR #1202 cycle 2 fix (prose を docstring と整合させ対称ペア完結。`git grep '忠実に再現'` で残存が 1 箇所のみと確認してから修正し再片落ちを防止する grep-before-commit を実践)](../../raw/fixes/20260529T235653Z-pr-1202.md)
+- [PR #1202 cycle 3 review (累積 50 回目の収束: mergeable / 0 findings。stderr-capture 規約遵守 + 不正確記述対称ペア完結の 2 軸を 3 cycle で構造収束、helper 委譲 refactor の典型軌跡)](../../raw/reviews/20260530T000246Z-pr-1202.md)
 - [PR #1198 cycle 3 review (累積 49 回目の収束: blocking 0 で mergeable 到達。3 cycle 収束パターン — cycle1 で 2 件 (契約 HIGH + 参照 MEDIUM)、cycle2 で 1 件 (文言 LOW-MEDIUM cross-validation)、cycle3 で 0。helper 委譲リファクタの finding は「委譲時の契約・参照・文言の同期漏れ」に集中する典型収束)](../../raw/reviews/20260529T105335Z-pr-1198.md)
 - [PR #1192 review results (Issue #1191、0 blocking findings: rite command/reference の参照パス drift 一括解消。着手時の全 `.md` scan で named 4 + 検出 6 = 10 箇所を全件修正する successful preventive application。markdown link (file 相対) は真の drift、bare inline-code prose (plugin-root 相対) は意図的慣習として区別しスコープを確定)](../../raw/reviews/20260529T081332Z-pr-1192.md)
 - [PR #1181 review results (Issue #1173、0 findings の successful preventive application: flow-state.sh の 4 jq stderr emission site を helper `_emit_jq_err_snippet()` に集約し control-char 中和を追加。散在 idiom の事前 helper 集約で対称化義務そのものを消す intra-file 版 Option B を 4 reviewer 全員 0 件合意で実測。exit-code 等価性の実機検証 + scope 規律 (sibling 60-80 site は別 Issue boundary) + TC-23 二重 assertion による revert 耐性)](../../raw/reviews/20260529T023008Z-pr-1181.md)

@@ -906,3 +906,4 @@
 | 2026-05-30T00:40:01+00:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=227, broken_refs=0 |
 | 2026-05-30T03:59:27+00:00 | ingest:update | pages/heuristics/asymmetric-fix-resolution-via-hub-creation.md | PR #1203 review (raw/reviews/20260530T024611Z-pr-1203.md, Issue #1195 #11, mergeable): wiki/init.md §1.3.4 の inline copy を gitignore-health-check.sh --verify-negation 委譲へ縮約し cross-file 同期を同一ファイル sibling 同期化する Option B 適用拡張を統合 (全 5 reviewer 0 findings) |
 | 2026-05-30T04:01:03+00:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=227, broken_refs=0 |
+| 2026-05-30T09:32:00Z | ingest:create | pages/heuristics/delegation-refactor-differential-test-equivalence.md | PR #1204 review (raw/reviews/20260530T064117Z-pr-1204.md, Issue #1195 #8, mergeable): 委譲リファクタの verbatim 保持を原実装との差分 byte 一致テストで立証する heuristic を新規作成 (全 5 reviewer 0 findings, 差分 7 エッジケース byte 一致) |

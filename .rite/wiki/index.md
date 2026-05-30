@@ -133,9 +133,10 @@
 | [prefix 分岐 case の `*)` catch-all は未知の将来 prefix を silent に default 動作へ吸収する](pages/anti-patterns/catch-all-case-arm-absorbs-future-prefix.md) | anti-patterns | prefix で分岐する `case "$VAR" in FINALIZE:*) ;; *) ;; esac` の `*)` catch-all に「意味のある既定動作」(継続再注入等) を置くと、prefix 名前空間拡張時に未知の新 prefix が silent に default 動作へ吸収され、分岐漏れがエラーにならず誤動作が表面化しない。PR #1177 で Stop hook (stop-loop-continuation.sh) の FINALIZE handoff 分岐を code-quality / error-handling 2 reviewer が独立検出 (high-confidence consensus)。canonical 対策は既知 prefix を明示列挙し真に未知の値は WARNING/fail-loud で可視化する (catch-all に正規動作を載せない)。併発して「prefix で block を分岐」という説明コメントが直交 2 軸 (block 可否 = handoff 非空 / reason 選択 = prefix) を混同させる責務分離の乖離も実測。 | 2026-05-28T23:42:28Z | high |
 | [gh api graphql は HTTP 200 + .errors[] で partial failure を返す (exit code では検知できない)](pages/anti-patterns/gh-api-graphql-http200-partial-errors.md) | anti-patterns | gh api graphql は GraphQL エラーでも HTTP 200 (exit 0) を返し .data と .errors を併存させるため、items guard の前に .errors[] を検査しないと partial response を権威データとして握り潰す。opaque string 変数 (ID!/String!) への -F (typed coercion) 誤用も同 PR で同時 surface (-f raw-field を使う)。PR #1185 で error-handling reviewer が HIGH cross-validation 検出、2 cycle 収束。 | 2026-05-29T04:21:34+00:00 | medium |
 | [Mechanical drift gate の exit 1 は git-stash before/after 集合比較で pre-existing 判定する](pages/heuristics/drift-gate-exit1-before-after-set-comparison.md) | heuristics | 機械的 drift gate (distributed-fix-drift-check 等) が exit 1 で drift 検出を返したとき、自分の変更起因か pre-existing detector noise (P5 false-positive 等) かを git-stash before/after の findings 集合比較 (sort + diff) で機械的に確定する。完全一致 (N=N) なら drift-neutral と確定し gate を push back して commit、AFTER > BEFORE なら新規 drift を fix。件数だけでなく正規化集合の同一性まで確認する (1 解消 + 1 新規導入の入れ替えを件数比較が見逃すため)。reason 完全性は DoD 埋め込み comm -23 で独立担保。PR #1201 の 4 cycle で 3 回適用し毎回 64=64 を実測。 | 2026-05-29T15:59:38Z | high |
+| [委譲リファクタの動作保持は原実装との差分テストで機械的に立証する](pages/heuristics/delegation-refactor-differential-test-equivalence.md) | heuristics | 動作を verbatim 保持する委譲リファクタ (inline→helper/transform) は、原アルゴリズムを参照実装として再現し新実装と同一エッジケースで出力を byte 比較する differential equivalence test で等価性を機械的に立証する。期待値ハードコードの unit test と違い原実装の非自明な暗黙挙動 (silent drop / 末尾改行正規化等) まで保証。PR #1204 で 5 reviewer 中複数が独立に同手法を採用、0 finding 1 cycle 収束。 | 2026-05-30T09:32:00Z | medium |
 
 ## 統計
 
-- 総ページ数: 126
-- ドメイン別: patterns=43, heuristics=36, anti-patterns=47
-- 最終更新: 2026-05-29T15:59:38Z
+- 総ページ数: 127
+- ドメイン別: patterns=43, heuristics=37, anti-patterns=47
+- 最終更新: 2026-05-30T09:32:00Z

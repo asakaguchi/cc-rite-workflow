@@ -20,6 +20,9 @@
 #     bash issue-comment-wm-sync.sh update --issue 42 \
 #       --transform append-section --section "品質チェック履歴" --content-file /tmp/lint.md
 #
+#     bash issue-comment-wm-sync.sh update --issue 42 \
+#       --transform append-eof --content-file /tmp/completion.md
+#
 # Options:
 #   --issue          Issue number (required)
 #   --branch         Branch name (init mode)
@@ -193,9 +196,9 @@ safety_check() {
   fi
 
   # 50% rule (only for update-progress, update-phase, update-plan-status, update-checkboxes)
-  # Skip for append-section and replace-section (content grows or changes size unpredictably)
+  # Skip for append-section, replace-section, and append-eof (content grows or changes size unpredictably)
   case "$transform" in
-    append-section|replace-section)
+    append-section|replace-section|append-eof)
       ;;
     *)
       local updated_length

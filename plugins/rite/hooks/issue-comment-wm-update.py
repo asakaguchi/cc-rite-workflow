@@ -24,6 +24,9 @@ Usage:
     cat body.txt | python3 issue-comment-wm-update.py append-eof \
         --content-file /tmp/completion.md > updated.txt
 
+    cat body.txt | python3 issue-comment-wm-update.py merge-checklist \
+        --section 進捗 --content-file /tmp/items.md > updated.txt
+
     cat body.txt | python3 issue-comment-wm-update.py update-checkboxes \
         --tasks "task1,task2" > updated.txt
 
@@ -190,6 +193,45 @@ def append_eof(body: str, content: str) -> str:
     return body.rstrip("\n") + "\n\n" + content.rstrip("\n") + "\n"
 
 
+def merge_checklist(body: str, section_name: str, items: list[str]) -> str:
+    """Merge checklist items into the end of a named section, skipping any item
+    already present as an exact full line anywhere in the body.
+
+    Ports the progress-section merge from archive-procedures.md §3.5.2: full-body
+    exact-line dedup (matching the original ``grep -qxF``), insertion at the end
+    of the section (before the next ``### `` header, or at EOF when the section is
+    last). When the section is absent the items are dropped and the body returned
+    unchanged — matching both the original block and append_section's
+    no-op-on-absent contract. Idempotent: re-running with the same items is a
+    no-op. Trailing-newline state of the input is preserved.
+    """
+    existing = set(body.split("\n"))
+    new_items = [item for item in items if item not in existing]
+    if not new_items:
+        return body
+
+    result: list[str] = []
+    in_section = False
+    for line in body.split("\n"):
+        if line.rstrip() == "### " + section_name:
+            in_section = True
+            result.append(line)
+            continue
+        if in_section and line.startswith("### "):
+            result.extend(new_items)
+            in_section = False
+            result.append(line)
+            continue
+        result.append(line)
+    if in_section:
+        result.extend(new_items)
+
+    output = "\n".join(result)
+    if body.endswith("\n") and not output.endswith("\n"):
+        output += "\n"
+    return output
+
+
 def update_checkboxes(body: str, task_names: list[str]) -> str:
     """Update specified tasks from - [ ] to - [x]."""
     for task_name in task_names:
@@ -324,6 +366,14 @@ def main():
             sys.exit(1)
         content = read_file_content(opts["content_file"])
         body = append_eof(body, content)
+
+    elif subcommand == "merge-checklist":
+        if "section" not in opts or "content_file" not in opts:
+            print("ERROR: --section and --content-file are required for merge-checklist", file=sys.stderr)
+            sys.exit(1)
+        content = read_file_content(opts["content_file"])
+        items = [line for line in content.split("\n") if line.strip()]
+        body = merge_checklist(body, opts["section"], items)
 
     elif subcommand == "update-checkboxes":
         if "tasks" not in opts:

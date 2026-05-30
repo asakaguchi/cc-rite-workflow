@@ -23,6 +23,9 @@
 #     bash issue-comment-wm-sync.sh update --issue 42 \
 #       --transform append-eof --content-file /tmp/completion.md
 #
+#     bash issue-comment-wm-sync.sh update --issue 42 \
+#       --transform merge-checklist --section 進捗 --content-file /tmp/items.md
+#
 # Options:
 #   --issue          Issue number (required)
 #   --branch         Branch name (init mode)
@@ -196,9 +199,9 @@ safety_check() {
   fi
 
   # 50% rule (only for update-progress, update-phase, update-plan-status, update-checkboxes)
-  # Skip for append-section, replace-section, and append-eof (content grows or changes size unpredictably)
+  # Skip for append-section, replace-section, append-eof, and merge-checklist (content grows or changes size unpredictably)
   case "$transform" in
-    append-section|replace-section|append-eof)
+    append-section|replace-section|append-eof|merge-checklist)
       ;;
     *)
       local updated_length

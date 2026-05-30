@@ -2,8 +2,14 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-30T00:33:20Z"
+updated: "2026-05-30T16:52:44Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260530T114942Z-pr-1205.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260530T121422Z-pr-1205.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260530T115725Z-pr-1205.md"
   - type: "reviews"
     ref: "raw/reviews/20260530T000246Z-pr-1202.md"
   - type: "reviews"
@@ -1051,6 +1057,15 @@ PR #1202 (#1195 #7: `archive-procedures.md` §3.5.1 の WM 完了情報追記を
 
 教訓 (再確認): 同一文言 / 同一不正確記述を複数 file・箇所に持つ finding を修正する際は、**修正前に `git grep '<該当文言>'` で全出現を列挙し、全てに伝播させてから commit** する。cycle 3 fix はこの教訓に従い grep で残存箇所を確認してから修正することで再度の片落ちを防いだ。本 PR は同一 helper 委譲 refactor で **stderr-discard の sibling-caller 再演** も併発しており ([[stderr-selective-surface-over-truncate]] PR #1202 evidence)、helper 委譲 refactor が「stderr 規約の対称伝播漏れ」と「不正確記述の対称伝播漏れ」を同時に踏む典型例となった。
 
+### inline 委譲 refactor における周辺 reference doc の dead-reference 化 + verbatim 保持スコープの尊重 (PR #1205 — Issue #1195 #9、累積 51 回目、2 cycle 収束)
+
+PR #1205 (#1195 #9: `issue/create.md` §5.3-5.5 の親+Sub-Issue 一括作成を新規 `decompose-issues.sh` へ委譲) は、本 anti-pattern の最頻形である **「委譲元コマンド (.md) を更新しても、その旧構造を SoT として記述する周辺 reference doc が同期されず dead reference 化する」** を cycle 1 で再演した (HIGH ×1)。`bulk-create-pattern.md` が create.md から既に削除済みの `{REPEAT_FOR_EACH_SUB_ISSUE}` placeholder protocol / 単一 Bash invocation 要件を依然 SoT として主張していた。修正は DELETE ではなく UPDATE を選択 — 並行 reference (`sub-issue-link-handler.md`) が同 PR 内で caller 更新された方針と対称化し、かつ `docs/designs/` からの inbound 参照を壊さないため。load-bearing な設計理由 (bash scope 連続性 = silent-skip 防止、2 種 sanity check) は保持したまま実装媒体の記述のみ追従した。cycle 2 で再発・新規 drift なしを確認し mergeable。委譲先 shell script (`decompose-issues.sh`) 自体は marker fidelity・Issue #514 non-blocking link 契約・trap cleanup・`jq --arg` による安全な変数注入が verbatim 保持され、code-quality / error-handling / security 観点の指摘は 0 件 (注入面は heredoc 撤廃で旧 inline 版より改善)。
+
+#### 教訓 (2 つの副次観点)
+
+1. **verbatim 保持スコープの尊重 = rite scope rule と整合**: cycle 2 で error-handling reviewer が helper (`create-issue-with-projects.sh`) の Projects 部分失敗 non-blocking 経路で `add_warning_with_stderr` 系 (stdout=JSON / stderr=ERROR / exit 0) を返すため、これを `$(... 2>&1)` で capture して `jq -r .issue_number` すると JSON に ERROR 行が混入し parse error → 空 → failed 誤カウントになる silent miscounting を runtime 再現付きで検出した。しかし revert test で「inline block から verbatim 移設された pre-existing バグ」(revert しても消えず create.md に戻るだけ) と判定され、scope judgment rule に従い blocking finding ではなく調査推奨に再分類された。委譲リファクタは「verbatim 保持」スコープを明示的に尊重し、pre-existing バグの修正をスコープに含めない判断が rite の scope rule と整合する (混入させると cycle 収束 risk が上がる)。
+2. **`$(... 2>&1)` capture による silent miscounting は横断 investigate 対象**: stdout=JSON / stderr=診断 / exit 0 を返す helper を `$(... 2>&1)` で capture して jq parse する全 caller は同型の silent failure リスクを持つ ([[stderr-selective-surface-over-truncate]] の「制御 (status) と診断 (stderr) を分離 capture する」契約の逆方向 — `2>&1` で channel を merge すると JSON が汚染される)。本 PR では verbatim 保持のためスコープ外としたが、follow-up の横断 investigate が妥当。委譲元 .md だけでなく caller として参照する周辺 doc (`issue-create-with-projects.md` / `link-sub-issue.test.sh` の summary message) も cross-ref drift しうる (PR diff 外なので follow-up Issue 化)。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -1068,6 +1083,9 @@ PR #1202 (#1195 #7: `archive-procedures.md` §3.5.1 の WM 完了情報追記を
 
 ## ソース
 
+- [PR #1205 cycle 1 review (累積 51 回目の起点: inline → helper 委譲 refactor で `bulk-create-pattern.md` が create.md 削除済みの旧構造を SoT 主張する dead reference HIGH。委譲先 decompose-issues.sh は marker fidelity / Issue #514 link 契約 / trap / jq --arg 注入安全性を verbatim 保持し shell script 観点の指摘 0 件)](../../raw/reviews/20260530T114942Z-pr-1205.md)
+- [PR #1205 cycle 2 review (累積 51 回目の収束: HIGH 解消・再発なし mergeable。`$(... 2>&1)` capture で helper の stdout=JSON / stderr=ERROR が混入し jq parse error → failed 誤カウントになる silent miscounting を runtime 再現で検出したが、revert test で pre-existing バグと判定し scope judgment rule で調査推奨に再分類 = verbatim 保持スコープ尊重)](../../raw/reviews/20260530T121422Z-pr-1205.md)
+- [PR #1205 cycle 1 fix (F-01: bulk-create-pattern.md の dead reference を DELETE ではなく UPDATE で解消。並行 reference sub-issue-link-handler.md の caller 更新方針と対称化し docs/designs/ inbound 参照を保全、load-bearing な設計理由を保持したまま実装媒体記述のみ decompose-issues.sh native loop に追従)](../../raw/fixes/20260530T115725Z-pr-1205.md)
 - [PR #1198 cycle 1 review (累積 49 回目の起点: inline heredoc → helper `--content-file` decouple refactor で content-file 不在 failure mode を non-blocking 契約に統合し損ねる HIGH + 本文 placeholder 削除による別 Phase 参照 dangling MEDIUM。委譲時の契約次元 + 参照次元の同期漏れ)](../../raw/reviews/20260529T102422Z-pr-1198.md)
 - [PR #1198 cycle 1 fix (2 finding 全件対応: content-file 検証を trap 登録の後ろに置き exit 0 + reason emit に合流 / 本文 placeholder 4 箇所を grep 同期 + 対称 helper review-comment-post.sh の意図的非対称を検証して非伝播と確認)](../../raw/fixes/20260529T103315Z-pr-1198.md)
 - [PR #1198 cycle 2 review (文言次元の再発: helper 内 diagnostic / 対処メッセージが旧 placeholder 名を参照したまま残る stale-message を prompt-engineer + error-handling が cross-validation 検出。本文 placeholder dangling 修正後も helper 内メッセージ文言の同種参照が漏れる = Asymmetric Fix Transcription のメッセージ文言次元)](../../raw/reviews/20260529T104210Z-pr-1198.md)

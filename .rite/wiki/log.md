@@ -911,3 +911,4 @@
 | 2026-05-30T16:52:44Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1205 review cycle 1 (raw/reviews/20260530T114942Z-pr-1205.md, Issue #1195 #9): inline 委譲 refactor で bulk-create-pattern.md が create.md 削除済み旧 protocol を SoT 主張する dead reference HIGH を累積 51 回目 evidence として統合 |
 | 2026-05-30T16:52:44Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1205 review cycle 2 (raw/reviews/20260530T121422Z-pr-1205.md, Issue #1195 #9, mergeable): verbatim 保持スコープ尊重 + $(... 2>&1) capture silent miscounting の調査推奨再分類を副次教訓として統合 |
 | 2026-05-30T16:52:44Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1205 fix cycle 1 (raw/fixes/20260530T115725Z-pr-1205.md, Issue #1195 #9): dead reference を DELETE でなく UPDATE で解消し並行 reference と対称化する fix 方針を統合 |
+| 2026-05-30T16:52:44Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=227, broken_refs=0 |

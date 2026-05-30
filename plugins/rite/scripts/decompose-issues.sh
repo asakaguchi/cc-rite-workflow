@@ -1,0 +1,272 @@
+#!/bin/bash
+# rite workflow - Decompose Issue into Parent + Sub-Issues
+# Creates an "epic" parent Issue plus N child (Sub-)Issues, links each child
+# to the parent via the Sub-issues API, then fetches the parent body so the
+# caller can append a Sub-Issues section.
+#
+# Extracted from `commands/issue/create.md` ステップ 5.3+5.4+5.5 Step 1
+# (refs #1193 / #1195 item #9). The old inline block expanded a
+# `{REPEAT_FOR_EACH_SUB_ISSUE}` placeholder and embedded each body via heredoc;
+# both were heredoc/placeholder malform sources. This helper takes a spec JSON
+# whose `body_file` fields point at raw files the caller wrote with the Write
+# tool — the bash loop is now native (no placeholder expansion).
+#
+# Usage:
+#   bash decompose-issues.sh --spec <spec.json>
+#   jq -n '...' | bash decompose-issues.sh --spec -      # stdin (spec = "-")
+#
+# Input JSON schema (--spec):
+#   {
+#     "parent":     { "title": "string", "body_file": "path to raw body md" },
+#     "sub_issues": [ { "title": "string", "body_file": "path", "complexity": "XS|S|M|L|XL" } ],
+#     "labels_csv": "comma,separated",      # shared; parent prepends "epic"
+#     "projects": {
+#       "enabled": true,                    # default: true
+#       "project_number": 6,
+#       "owner": "B16B1RD",
+#       "status": "Todo",                   # default: "Todo"
+#       "priority": "High|Medium|Low"
+#     },
+#     "repo": "cc-rite-workflow",           # for link-sub-issue.sh
+#     "workdir": "path"                     # optional; rm -rf'd on EXIT if a dir
+#   }
+#
+# Output (stdout) — marker fidelity contract with create.md ステップ 5.5 Step 2/3.
+# These three CONTEXT markers + the raw fetch_output MUST be emitted verbatim
+# so the caller can literal-parse PARENT_ISSUE_NUMBER / SUB_ISSUE_NUMBERS and
+# the fetch tmpfile paths:
+#   [CONTEXT] PARENT_ISSUE_NUMBER=<n>
+#   [CONTEXT] SUB_ISSUE_RESULT created=<n> failed=<n> link_failures=<n>
+#   [CONTEXT] SUB_ISSUE_NUMBERS=<space-separated child numbers>
+#   <fetch_output: original_length= / tmpfile_read= / tmpfile_write= lines>
+#
+# Exit codes:
+#   0 = decomposition completed (per-sub create/link failures are non-blocking
+#       and counted, NOT fatal — Issue #514 contract)
+#   1 = fatal (missing/invalid spec, empty parent body, parent create failed)
+#   2 = usage error
+#
+# NOTE: `set -e` is intentionally omitted. The Sub-Issue loop counts per-item
+# create/link failures and continues (non-blocking, mirroring the original
+# create.md inline block). `set -e` would abort on the first non-zero
+# `create_rc` capture and break the Issue #514 counting contract.
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CREATE_SCRIPT="$SCRIPT_DIR/create-issue-with-projects.sh"
+LINK_SCRIPT="$SCRIPT_DIR/link-sub-issue.sh"
+ISSUE_BODY_SCRIPT="$SCRIPT_DIR/../hooks/issue-body-safe-update.sh"
+
+# --- Argument parsing ---
+SPEC=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --spec) SPEC="${2:-}"; shift 2 ;;
+    *) echo "ERROR: unknown argument: $1" >&2; echo "Usage: $0 --spec <spec.json>" >&2; exit 2 ;;
+  esac
+done
+
+if [ -z "$SPEC" ]; then
+  echo "Usage: $0 --spec <spec.json>" >&2
+  exit 2
+fi
+
+for dep in "$CREATE_SCRIPT" "$ISSUE_BODY_SCRIPT"; do
+  if [ ! -f "$dep" ]; then
+    echo "ERROR: required helper not found: $dep" >&2
+    exit 1
+  fi
+done
+
+# --- Read spec (file path or stdin via "-") ---
+if [ "$SPEC" = "-" ]; then
+  SPEC_JSON=$(cat)
+else
+  if [ ! -f "$SPEC" ]; then
+    echo "ERROR: spec file not found: $SPEC" >&2
+    exit 1
+  fi
+  SPEC_JSON=$(cat "$SPEC")
+fi
+
+if ! printf '%s' "$SPEC_JSON" | jq -e . >/dev/null 2>&1; then
+  echo "ERROR: spec is not valid JSON: $SPEC" >&2
+  exit 1
+fi
+
+spec_get() { printf '%s' "$SPEC_JSON" | jq -r "$1"; }
+
+# --- Centralized cleanup: remove the caller-owned workdir on every exit path.
+# A single EXIT/INT/TERM trap mirrors the original inline block's `trap 'rm -rf
+# "$tmpdir"' EXIT INT TERM`. The fetch tmpfiles (tmpfile_read/tmpfile_write)
+# live under /tmp/rite-issue-body-* — outside workdir — so they survive for the
+# caller's apply step. ---
+workdir=$(spec_get '.workdir // empty')
+if [ -n "$workdir" ] && [ -d "$workdir" ]; then
+  trap 'rm -rf "$workdir"' EXIT INT TERM
+fi
+
+# --- Resolve shared projects fields ---
+proj_enabled=$(spec_get '.projects.enabled // true')
+project_number=$(spec_get '.projects.project_number')
+owner=$(spec_get '.projects.owner')
+status=$(spec_get '.projects.status // "Todo"')
+priority=$(spec_get '.projects.priority // "Medium"')
+repo=$(spec_get '.repo // empty')
+labels_csv=$(spec_get '.labels_csv // ""')
+
+# build_payload <title> <body_file> <labels_json> <complexity>
+# Constructs the create-issue-with-projects.sh JSON. Identical shape to the
+# original inline `jq -n` calls (issue / projects / options).
+build_payload() {
+  jq -n \
+    --arg title "$1" \
+    --arg body_file "$2" \
+    --argjson labels "$3" \
+    --argjson enabled "$proj_enabled" \
+    --argjson project_number "$project_number" \
+    --arg owner "$owner" \
+    --arg status "$status" \
+    --arg priority "$priority" \
+    --arg complexity "$4" \
+    --arg iter_mode "none" \
+    --arg source "xl_decomposition" \
+    '{
+      issue: { title: $title, body_file: $body_file, labels: $labels },
+      projects: {
+        enabled: $enabled,
+        project_number: $project_number,
+        owner: $owner,
+        status: $status,
+        priority: $priority,
+        complexity: $complexity,
+        iteration: { mode: $iter_mode }
+      },
+      options: { source: $source, non_blocking_projects: true }
+    }'
+}
+
+# ============================================================
+# Step 5.3 親 Issue 作成
+# ============================================================
+parent_title=$(spec_get '.parent.title')
+parent_body_file=$(spec_get '.parent.body_file')
+
+[ -s "$parent_body_file" ] || { echo "ERROR: parent Issue body is empty" >&2; exit 1; }
+
+# Parent labels = "epic" prepended to the shared CSV (gsub trims whitespace,
+# select(length>0) drops empties — e.g. a trailing comma when labels_csv="").
+labels_json=$(printf '%s' "epic,${labels_csv}" | jq -R 'split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))')
+
+parent_result=$(bash "$CREATE_SCRIPT" "$(build_payload "$parent_title" "$parent_body_file" "$labels_json" "XL")") || {
+  echo "ERROR: 親 Issue 作成失敗" >&2
+  exit 1
+}
+
+parent_issue_number=$(printf '%s' "$parent_result" | jq -r '.issue_number // empty')
+[ -z "$parent_issue_number" ] && { echo "ERROR: 親 Issue の issue_number 取得失敗: $parent_result" >&2; exit 1; }
+
+# ============================================================
+# Step 5.4 Sub-Issue 一括作成
+# ============================================================
+created_count=0
+failed_count=0
+link_failures=0
+created_numbers=()
+expected_sub_count=$(printf '%s' "$SPEC_JSON" | jq '.sub_issues | length')
+# Surface jq parse failure (malformed CSV / embedded newline) instead of
+# silently falling back to an empty labels array — a silent empty would
+# strip the user's intended labels without any visible signal.
+sub_labels_json=$(printf '%s' "$labels_csv" | jq -R 'split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))' 2>/dev/null) || {
+  echo "WARNING: labels_csv の jq パースに失敗。labels を空で続行: $labels_csv" >&2
+  sub_labels_json="[]"
+}
+
+while IFS= read -r sub_json; do
+  sub_title=$(printf '%s' "$sub_json" | jq -r '.title')
+  sub_body_file=$(printf '%s' "$sub_json" | jq -r '.body_file')
+  sub_complexity=$(printf '%s' "$sub_json" | jq -r '.complexity')
+  if [ ! -s "$sub_body_file" ]; then
+    echo "WARNING: Sub-Issue '$sub_title' body が空、skip" >&2
+    failed_count=$((failed_count + 1))
+  else
+    sub_result=$(bash "$CREATE_SCRIPT" "$(build_payload "$sub_title" "$sub_body_file" "$sub_labels_json" "$sub_complexity")" 2>&1)
+    create_rc=$?
+    if [ $create_rc -ne 0 ]; then
+      echo "WARNING: Sub-Issue '$sub_title' の作成に失敗: $sub_result" >&2
+      failed_count=$((failed_count + 1))
+    else
+      sub_number=$(printf '%s' "$sub_result" | jq -r '.issue_number // empty')
+      if [ -z "$sub_number" ] || [ "$sub_number" = "null" ]; then
+        echo "WARNING: Sub-Issue '$sub_title' の result に issue_number 無し: $sub_result" >&2
+        failed_count=$((failed_count + 1))
+      else
+        # Sub-issues API linkage — canonical SoT [`sub-issue-link-handler.md`](../references/sub-issue-link-handler.md)
+        # Variant B (counting). link-sub-issue.sh は非 blocking failure 時に exit 0 + status="failed"
+        # を返す契約のため、bash exit code ではなく JSON stdout の `.status` を inspect すること。
+        # ⚠️ DRIFT 警告: 本 case 文を編集する際は SoT `references/sub-issue-link-handler.md`
+        # Variant B を同時に更新する責務がある。
+        # link-sub-issue.sh normally returns JSON on stdout (status="failed" for
+        # non-blocking failures). Only construct fallback JSON on fatal exit.
+        # Build it via `jq -n --arg` so embedded `"` in stderr cannot break the
+        # JSON the caller will parse.
+        link_result=$(bash "$LINK_SCRIPT" \
+            "$owner" "$repo" "$parent_issue_number" "$sub_number" 2>&1) || link_result=$(jq -n \
+              --arg err "$link_result" \
+              '{status:"failed",message:"link-sub-issue.sh fatal exit",warnings:[$err]}')
+        link_status=$(printf '%s' "$link_result" | jq -r '.status // "failed"' 2>/dev/null || echo "failed")
+        link_msg=$(printf '%s' "$link_result" | jq -r '.message // ""' 2>/dev/null || echo "")
+        case "$link_status" in
+          ok|already-linked)
+            echo "✅ $link_msg"
+            ;;
+          failed)
+            printf '%s' "$link_result" | jq -r '.warnings[]?' 2>/dev/null \
+              | while read -r w; do echo "⚠️ $w" >&2; done
+            echo "⚠️ Sub-issues API linkage failed for #$sub_number; body meta fallback in place" >&2
+            link_failures=$((link_failures + 1))
+            ;;
+          *)
+            # 未知 status を silent 通過させない (Issue #514 MUST NOT)
+            echo "⚠️ Unexpected link status '$link_status' for #$sub_number (msg: $link_msg)" >&2
+            link_failures=$((link_failures + 1))
+            ;;
+        esac
+
+        created_numbers+=("$sub_number")
+        created_count=$((created_count + 1))
+      fi
+    fi
+  fi
+done < <(printf '%s' "$SPEC_JSON" | jq -c '.sub_issues[]')
+
+# ============================================================
+# zero-iteration guard (silent placeholder expansion failure 検出)
+# ============================================================
+if [ "$created_count" -eq 0 ] && [ "$expected_sub_count" -gt 0 ]; then
+  echo "WARNING: Expected $expected_sub_count Sub-Issues but created 0 (placeholder expansion or shell loop failure). parent=#$parent_issue_number" >&2
+fi
+
+# ============================================================
+# Loop-abort sanity check: if created+failed != expected, the loop dropped
+# iterations to an unexpected shell error (set -e upstream, jq crash, signal),
+# and the partial state would otherwise go silently missing from the report.
+# ============================================================
+loop_processed=$((created_count + failed_count))
+if [ "$loop_processed" -ne "$expected_sub_count" ] && [ "$expected_sub_count" -gt 0 ]; then
+  echo "WARNING: Loop processed $loop_processed of $expected_sub_count expected Sub-Issues (created=$created_count, failed=$failed_count). Possible mid-loop abort. parent=#$parent_issue_number" >&2
+fi
+
+# ============================================================
+# Step 5.5 Step 1: fetch (親 Issue body の取得)
+# ============================================================
+fetch_output=$(bash "$ISSUE_BODY_SCRIPT" fetch --issue "$parent_issue_number" --parent 2>&1) || fetch_output=""
+
+# ============================================================
+# CONTEXT markers — 後続 Step 2 (LLM 編集) と Step 3 (apply) に値を受け渡す
+# ============================================================
+echo "[CONTEXT] PARENT_ISSUE_NUMBER=$parent_issue_number"
+echo "[CONTEXT] SUB_ISSUE_RESULT created=$created_count failed=$failed_count link_failures=$link_failures"
+echo "[CONTEXT] SUB_ISSUE_NUMBERS=${created_numbers[*]:-}"
+# tmpfile_read=, tmpfile_write=, original_length= は fetch_output に含まれる
+printf '%s\n' "$fetch_output"

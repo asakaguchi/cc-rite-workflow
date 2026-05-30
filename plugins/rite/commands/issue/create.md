@@ -269,197 +269,56 @@ fi
 
 AskUserQuestion で「この分解で進める / 分解を修正 / 中止」を選択。修正の場合は仕様書を再提示。
 
-### 5.3 + 5.4 + 5.5 Step 1: 親 Issue 作成 + Sub-Issue 一括作成 + fetch（単一 bash block）
+### 5.3 + 5.4 + 5.5 Step 1: 親 Issue 作成 + Sub-Issue 一括作成 + fetch（helper 委譲）
 
-> **⚠️ CRITICAL — Bash tool invocation 境界**: 本セクションの bash code block は **単一の Bash tool invocation で連続実行する**。`tmpdir` / `parent_issue_number` / `created_count` 等のシェル変数は Bash 呼び出しを跨ぐと消失する (Claude Code Bash tool は呼び出しごとに新シェルプロセス)。LLM は本 block を分割実行してはならない。次の Step 2 (LLM 編集) と Step 3 (apply) は CONTEXT marker 経由で値を受け渡す。
->
-> Sub-Issue ループの placeholder protocol: `{sub_count}` / `{REPEAT_FOR_EACH_SUB_ISSUE}` ... `{END_REPEAT}` の間を、LLM が反復回数だけ実値展開して bash literal を生成する。`{sub_N_title}` `{sub_N_body}` `{sub_N_complexity}` を各反復で実値置換。
+> **3 段プロトコル**: 親作成・Sub 一括作成・link・fetch は `scripts/decompose-issues.sh` に委譲する。LLM は (A) workdir を `mktemp` で確保 → (B) **Write tool** で各 body を raw ファイル化＋spec.json 生成（heredoc malform 源を撤廃、refs #1193）→ (C) helper を単一呼び出し、の 3 段で実行する。helper が spec の `workdir` を trap で cleanup し、3 つの `[CONTEXT]` marker と fetch_output を emit するので、Step 5.5 Step 2/3 はそれを literal parse する。
+
+**(A) workdir 確保**
 
 ```bash
-# ============================================================
-# Step 5.3 親 Issue 作成
-# ============================================================
-tmpdir=$(mktemp -d -t rite-create-XXXXXX)
-# Centralize cleanup via trap so every exit path (success, error, SIGINT, SIGTERM)
-# removes the tmpdir. Per-branch `rm -rf` calls in early-exit arms are easy to
-# forget and leak the tmpdir on signal-interrupt.
-trap 'rm -rf "$tmpdir"' EXIT INT TERM
-parent_tmpfile="$tmpdir/parent_body.md"
-cat > "$parent_tmpfile" <<'PARENT_BODY_EOF'
-{spec_document}
-PARENT_BODY_EOF
-
-[ -s "$parent_tmpfile" ] || { echo "ERROR: parent Issue body is empty" >&2; rm -rf "$tmpdir"; exit 1; }
-
-labels_json=$(printf '%s' "epic,{labels_csv}" | jq -R 'split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))')
-
-parent_result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
-  --arg title "{parent_title}" \
-  --arg body_file "$parent_tmpfile" \
-  --argjson labels "$labels_json" \
-  --argjson enabled true \
-  --argjson project_number {project_number} \
-  --arg owner "{owner}" \
-  --arg status "Todo" \
-  --arg priority "{priority}" \
-  --arg complexity "XL" \
-  --arg iter_mode "none" \
-  --arg source "xl_decomposition" \
-  '{
-    issue: { title: $title, body_file: $body_file, labels: $labels },
-    projects: {
-      enabled: $enabled,
-      project_number: $project_number,
-      owner: $owner,
-      status: $status,
-      priority: $priority,
-      complexity: $complexity,
-      iteration: { mode: $iter_mode }
-    },
-    options: { source: $source, non_blocking_projects: true }
-  }')") || {
-  echo "ERROR: 親 Issue 作成失敗" >&2
-  rm -rf "$tmpdir"
-  exit 1
-}
-
-parent_issue_number=$(printf '%s' "$parent_result" | jq -r '.issue_number // empty')
-[ -z "$parent_issue_number" ] && { echo "ERROR: 親 Issue の issue_number 取得失敗: $parent_result" >&2; rm -rf "$tmpdir"; exit 1; }
-
-# ============================================================
-# Step 5.4 Sub-Issue 一括作成
-# ============================================================
-created_count=0
-failed_count=0
-link_failures=0
-created_numbers=()
-expected_sub_count={sub_count}
-# Surface jq parse failure (malformed CSV / embedded newline) instead of
-# silently falling back to an empty labels array — a silent empty would
-# strip the user's intended labels without any visible signal.
-sub_labels_json=$(printf '%s' "{labels_csv}" | jq -R 'split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))' 2>/dev/null) || {
-  echo "WARNING: labels_csv の jq パースに失敗。labels を空で続行: {labels_csv}" >&2
-  sub_labels_json="[]"
-}
-
-i=0
-{REPEAT_FOR_EACH_SUB_ISSUE}
-i=$((i + 1))
-sub_tmpfile="$tmpdir/sub_${i}_body.md"
-cat > "$sub_tmpfile" <<'SUB_BODY_EOF'
-{sub_N_body}
-SUB_BODY_EOF
-if [ ! -s "$sub_tmpfile" ]; then
-  echo "WARNING: Sub-Issue '{sub_N_title}' body が空、skip" >&2
-  failed_count=$((failed_count + 1))
-else
-  sub_result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
-      --arg title "{sub_N_title}" \
-      --arg body_file "$sub_tmpfile" \
-      --argjson labels "$sub_labels_json" \
-      --argjson enabled true \
-      --argjson project_number {project_number} \
-      --arg owner "{owner}" \
-      --arg status "Todo" \
-      --arg priority "{priority}" \
-      --arg complexity "{sub_N_complexity}" \
-      --arg iter_mode "none" \
-      --arg source "xl_decomposition" \
-      '{
-        issue: { title: $title, body_file: $body_file, labels: $labels },
-        projects: {
-          enabled: $enabled,
-          project_number: $project_number,
-          owner: $owner,
-          status: $status,
-          priority: $priority,
-          complexity: $complexity,
-          iteration: { mode: $iter_mode }
-        },
-        options: { source: $source, non_blocking_projects: true }
-      }')" 2>&1)
-  create_rc=$?
-  if [ $create_rc -ne 0 ]; then
-    echo "WARNING: Sub-Issue '{sub_N_title}' の作成に失敗: $sub_result" >&2
-    failed_count=$((failed_count + 1))
-  else
-    sub_number=$(printf '%s' "$sub_result" | jq -r '.issue_number // empty')
-    if [ -z "$sub_number" ] || [ "$sub_number" = "null" ]; then
-      echo "WARNING: Sub-Issue '{sub_N_title}' の result に issue_number 無し: $sub_result" >&2
-      failed_count=$((failed_count + 1))
-    else
-      # Sub-issues API linkage — canonical SoT [`sub-issue-link-handler.md`](../../references/sub-issue-link-handler.md)
-      # Variant B (counting). link-sub-issue.sh は非 blocking failure 時に exit 0 + status="failed"
-      # を返す契約のため、bash exit code ではなく JSON stdout の `.status` を inspect すること。
-      # ⚠️ DRIFT 警告: 本 case 文を編集する際は SoT `references/sub-issue-link-handler.md`
-      # Variant B を同時に更新する責務がある。
-      # link-sub-issue.sh normally returns JSON on stdout (status="failed" for
-      # non-blocking failures). Only construct fallback JSON on fatal exit.
-      # Build it via `jq -n --arg` so embedded `"` in stderr cannot break the
-      # JSON the caller will parse.
-      link_result=$(bash {plugin_root}/scripts/link-sub-issue.sh \
-          "{owner}" "{repo}" "$parent_issue_number" "$sub_number" 2>&1) || link_result=$(jq -n \
-            --arg err "$link_result" \
-            '{status:"failed",message:"link-sub-issue.sh fatal exit",warnings:[$err]}')
-      link_status=$(printf '%s' "$link_result" | jq -r '.status // "failed"' 2>/dev/null || echo "failed")
-      link_msg=$(printf '%s' "$link_result" | jq -r '.message // ""' 2>/dev/null || echo "")
-      case "$link_status" in
-        ok|already-linked)
-          echo "✅ $link_msg"
-          ;;
-        failed)
-          printf '%s' "$link_result" | jq -r '.warnings[]?' 2>/dev/null \
-            | while read -r w; do echo "⚠️ $w" >&2; done
-          echo "⚠️ Sub-issues API linkage failed for #$sub_number; body meta fallback in place" >&2
-          link_failures=$((link_failures + 1))
-          ;;
-        *)
-          # 未知 status を silent 通過させない (Issue #514 MUST NOT)
-          echo "⚠️ Unexpected link status '$link_status' for #$sub_number (msg: $link_msg)" >&2
-          link_failures=$((link_failures + 1))
-          ;;
-      esac
-
-      created_numbers+=("$sub_number")
-      created_count=$((created_count + 1))
-    fi
-  fi
-fi
-{END_REPEAT}
-
-# ============================================================
-# zero-iteration guard (silent placeholder expansion failure 検出)
-# ============================================================
-if [ "$created_count" -eq 0 ] && [ "$expected_sub_count" -gt 0 ]; then
-  echo "WARNING: Expected $expected_sub_count Sub-Issues but created 0 (placeholder expansion or shell loop failure). parent=#$parent_issue_number" >&2
-fi
-
-# ============================================================
-# Loop-abort sanity check: if created+failed != expected, the loop dropped
-# iterations to an unexpected shell error (set -e upstream, jq crash, signal),
-# and the partial state would otherwise go silently missing from the report.
-# ============================================================
-loop_processed=$((created_count + failed_count))
-if [ "$loop_processed" -ne "$expected_sub_count" ] && [ "$expected_sub_count" -gt 0 ]; then
-  echo "WARNING: Loop processed $loop_processed of $expected_sub_count expected Sub-Issues (created=$created_count, failed=$failed_count). Possible mid-loop abort. parent=#$parent_issue_number" >&2
-fi
-
-# ============================================================
-# Step 5.5 Step 1: fetch (親 Issue body の取得)
-# ============================================================
-fetch_output=$(bash {plugin_root}/hooks/issue-body-safe-update.sh fetch --issue "$parent_issue_number" --parent 2>&1) || fetch_output=""
-
-# ============================================================
-# CONTEXT markers — 後続 Step 2 (LLM 編集) と Step 3 (apply) に値を受け渡す
-# ============================================================
-echo "[CONTEXT] PARENT_ISSUE_NUMBER=$parent_issue_number"
-echo "[CONTEXT] SUB_ISSUE_RESULT created=$created_count failed=$failed_count link_failures=$link_failures"
-echo "[CONTEXT] SUB_ISSUE_NUMBERS=${created_numbers[*]}"
-# tmpfile_read=, tmpfile_write=, original_length= は fetch_output に含まれる
-printf '%s\n' "$fetch_output"
+workdir=$(mktemp -d -t rite-decompose-XXXXXX)
+echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 ```
 
-> **シェル変数の受け渡し**: 上記 block 内では `tmpdir` / `parent_issue_number` / `created_count` 等が連続して使われる。Step 5.5 Step 2-3 では Block 外に出るため、`[CONTEXT] PARENT_ISSUE_NUMBER=N` と fetch_output 内の `tmpfile_read=...` 等を marker として LLM が literal 置換する。
+**(B) body / spec の生成（Write tool）**
+
+直前の `[CONTEXT] DECOMPOSE_WORKDIR=` から `{DECOMPOSE_WORKDIR}` を読み取り、以下を **Write tool** で書く（heredoc を使わない）:
+
+1. `{DECOMPOSE_WORKDIR}/parent_body.md` ← §5.1 で生成した設計仕様書（`{spec_document}`）の raw 内容
+2. 各 Sub-Issue について `{DECOMPOSE_WORKDIR}/sub_{i}_body.md`（i = 1..{sub_count}）← 各 Sub-Issue body の raw 内容
+3. `{DECOMPOSE_WORKDIR}/spec.json` ← 下記スキーマ。`body_file` は上記で書いた絶対パスを指す:
+
+```json
+{
+  "parent": { "title": "{parent_title}", "body_file": "{DECOMPOSE_WORKDIR}/parent_body.md" },
+  "sub_issues": [
+    { "title": "{sub_1_title}", "body_file": "{DECOMPOSE_WORKDIR}/sub_1_body.md", "complexity": "{sub_1_complexity}" }
+  ],
+  "labels_csv": "{labels_csv}",
+  "projects": {
+    "enabled": true,
+    "project_number": {project_number},
+    "owner": "{owner}",
+    "status": "Todo",
+    "priority": "{priority}"
+  },
+  "repo": "{repo}",
+  "workdir": "{DECOMPOSE_WORKDIR}"
+}
+```
+
+> `sub_issues` 配列は Sub-Issue 件数 `{sub_count}` だけ要素を持たせる（各反復で `{sub_N_title}` / `{sub_N_complexity}` と body ファイルパスを実値置換）。親 labels には helper が `epic` を自動付与する（spec へ付与不要）。親 complexity は helper 内で `XL` 固定。
+
+**(C) helper 呼び出し（単一 bash block）**
+
+```bash
+bash {plugin_root}/scripts/decompose-issues.sh --spec "{DECOMPOSE_WORKDIR}/spec.json" || {
+  echo "ERROR: Issue 分解失敗 (decompose-issues.sh 非ゼロ終了)" >&2
+  exit 1
+}
+```
+
+> **marker 受け渡し**: helper は stdout に `[CONTEXT] PARENT_ISSUE_NUMBER=N` / `[CONTEXT] SUB_ISSUE_RESULT created=… failed=… link_failures=…` / `[CONTEXT] SUB_ISSUE_NUMBERS=…` を emit し、続けて fetch_output（`original_length=` / `tmpfile_read=` / `tmpfile_write=`）を出力する。Step 5.5 Step 2-3 はこれらを marker として LLM が literal 置換する。Sub-Issue 作成・link の失敗は helper 内で非 blocking にカウントされ（Issue #514 契約）、parent 作成失敗のみ helper が `exit 1` を返し上記 caller ガードで停止する。
 
 ### 5.5 Step 2: LLM 編集
 

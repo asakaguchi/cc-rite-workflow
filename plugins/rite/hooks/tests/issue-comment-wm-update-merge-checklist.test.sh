@@ -119,6 +119,53 @@ else
 fi
 echo ""
 
+# ─── TC-006: empty content-file → body unchanged (no-op) ─────────────────
+echo "TC-006: empty content-file → no-op"
+: > "$TEST_DIR/empty.txt"
+body6=$'## 📜 rite 作業メモリ\n\n### 進捗\n- [x] 実装完了\n'
+printf '%s' "$body6" > "$TEST_DIR/body6"
+python3 "$PY" merge-checklist --section 進捗 --content-file "$TEST_DIR/empty.txt" < "$TEST_DIR/body6" > "$TEST_DIR/out6"
+if cmp -s "$TEST_DIR/body6" "$TEST_DIR/out6"; then
+  pass "TC-006: body unchanged when content-file is empty"
+else
+  fail "TC-006: body changed despite empty content-file"
+fi
+echo ""
+
+# ─── TC-007: input without trailing newline → output also lacks it ───────
+echo "TC-007: no trailing newline preserved (negative branch of the newline guard)"
+body7=$'## 📜 rite 作業メモリ\n\n### 進捗\n- [x] 実装完了'
+printf '%s' "$body7" | python3 "$PY" merge-checklist --section 進捗 --content-file "$items_file" > "$TEST_DIR/out7"
+if grep -qxF -- "- [x] クリーンアップ完了" "$TEST_DIR/out7"; then
+  pass "TC-007a: items appended (EOF section, no trailing newline input)"
+else
+  fail "TC-007a: items not appended"
+fi
+if [ -n "$(tail -c1 "$TEST_DIR/out7")" ]; then
+  pass "TC-007b: no trailing newline added when input had none"
+else
+  fail "TC-007b: a trailing newline was incorrectly added"
+fi
+echo ""
+
+# ─── TC-008: multiple ### 進捗 sections → items go to the LAST block ──────
+echo "TC-008: multiple 進捗 sections → insert at last block (verbatim with original)"
+body8=$'## 📜 rite 作業メモリ\n\n### 進捗\n- [x] 古い進捗\n\n### 進捗\n- [x] 新しい進捗\n\n### 完了情報\n- x\n'
+printf '%s' "$body8" | python3 "$PY" merge-checklist --section 進捗 --content-file "$items_file" > "$TEST_DIR/out8"
+old_ln=$(grep -nF -- "- [x] 古い進捗" "$TEST_DIR/out8" | head -1 | cut -d: -f1 || true)
+new_ln=$(grep -nF -- "- [x] 新しい進捗" "$TEST_DIR/out8" | head -1 | cut -d: -f1 || true)
+item_ln8=$(grep -nF -- "- [x] レビュー完了" "$TEST_DIR/out8" | head -1 | cut -d: -f1 || true)
+done_ln8=$(grep -nF -- "### 完了情報" "$TEST_DIR/out8" | head -1 | cut -d: -f1 || true)
+# items must land after the SECOND (last) 進捗 block's content (after 新しい進捗) and before 完了情報,
+# NOT immediately after the first block (古い進捗)
+if [ -n "$item_ln8" ] && [ -n "$new_ln" ] && [ -n "$done_ln8" ] \
+   && [ "$item_ln8" -gt "$new_ln" ] && [ "$item_ln8" -lt "$done_ln8" ]; then
+  pass "TC-008: items inserted at last 進捗 block (after 新しい進捗, before 完了情報)"
+else
+  fail "TC-008: insertion at wrong 進捗 block (古い=$old_ln, 新しい=$new_ln, item=$item_ln8, 完了情報=$done_ln8)"
+fi
+echo ""
+
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then
   exit 1

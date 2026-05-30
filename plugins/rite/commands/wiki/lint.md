@@ -716,249 +716,38 @@ fi
    - **(b) 未登録だが skip 記録あり**: ステップ 6.0 の `skipped_refs` 集合に含まれる → ステップ 6.3 の `unregistered_raw` として記録
    - **(c) 真の欠落**: 上記いずれにも該当しない → LLM が Raw Source 本文を読み経験則として価値がある内容か判定した上で ステップ 6.3 の `missing_concept` として記録 (単なるエラーログや空コメントは除外)
 
-**`all_source_refs` の bash 実装** (ステップ 6.0 の `skipped_refs` と対称な marker block + io_error 3 値 enum):
+**`all_source_refs` の集合構築** (ステップ 6.0 の `skipped_refs` と対称な marker block + io_error 3 値 enum) は `wiki-lint-source-refs.sh` に委譲する。
+
+> **Reference**: 集合構築の canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-source-refs.sh`。helper は per-page の `git show`(separate_branch) / `cat`(same_branch) 読出・`sources[].ref` 抽出 (legacy 単行形式 `- ref:` と canonical multi-line 形式 ` ref:` の両対応)・legitimate absence と真の io_error の `LC_ALL=C` 固定 stderr pattern 判別・`sort -u` 重複排除・marker block / read_ok enum 出力・signal-specific trap cleanup をすべて内包する (旧 ~240 行 inline 実装を委譲)。placeholder residue gate / partial pollution gate も helper 内に移設済み。state machine 契約 (marker block + io_error 3 値 enum) は `references/bash-cross-boundary-state-transfer.md` の Pattern 1/2 を参照。
+
+**Bash tool 呼び出し境界での state 伝達**: ステップ 1.1 の `branch_strategy` / `wiki_branch` と ステップ 2.2 の `pages_list` は別 Bash tool 呼び出しで定義されているため、Claude は会話コンテキストから literal substitute する。`branch_strategy` / `wiki_branch` は helper の `--branch-strategy` / `--wiki-branch` arg、`pages_list` は stdin (HEREDOC、single-quoted delimiter で shell expansion 抑制) で渡す。
+
+**`{pages_list}` substitute 契約**: ステップ 2.2 stdout は「pages_list 行 → '---' separator → raw_list 行」の 3 部構成。LLM は **pages_list ブロックのみ** (separator より前の `.rite/wiki/pages/...` 行のみ) を HEREDOC に substitute する。`.rite/wiki/raw/...` 行を含めると helper の partial pollution gate が fail-fast (exit 1) する (旧 silent missing_concept 誤分類の再発防止契約)。空 HEREDOC は Wiki 初期化直後 / 0 件で legitimate。
 
 ```bash
-# signal-specific trap (per-iteration mktemp の orphan 防止)
-page_err=""
-awk_diag=""
-sort_err=""
-_cleanup() {
-  [ -n "${page_err:-}" ] && rm -f "$page_err"
-  [ -n "${awk_diag:-}" ] && rm -f "$awk_diag"
-  [ -n "${sort_err:-}" ] && rm -f "$sort_err"
-  return 0
-}
-trap 'rc=$?; _cleanup; exit $rc' EXIT
-trap '_cleanup; exit 130' INT
-trap '_cleanup; exit 143' TERM
-trap '_cleanup; exit 129' HUP
+# plugin_root 解決 (ステップ 2.1 の inline one-liner。
+#  canonical: references/plugin-path-resolution.md#inline-one-liner-for-command-files)
+plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 
-# Bash tool 呼び出し境界での state 伝達: ステップ 1.1 の wiki_branch / branch_strategy と ステップ 2.2 の
-# pages_list は別 Bash tool 呼び出しで定義されているため、Claude は会話コンテキストから literal substitute する。
-# pages_list は複数行のため HEREDOC (single-quoted delimiter) で shell expansion を抑制する。
-#
-# `{pages_list}` substitute 契約: ステップ 2.2 stdout は「pages_list 行 → '---' separator → raw_list 行」
-# の 3 部構成。LLM は **pages_list ブロックのみ** (separator より前の `.rite/wiki/pages/...` 行のみ) を
-# 本 HEREDOC に substitute する。`.rite/wiki/raw/...` 行を含めると全 ingested raw が step 3(c) で
-# missing_concept に誤分類される silent regression が再発する。
-branch_strategy="{branch_strategy}"
-wiki_branch="{wiki_branch}"
-pages_list=$(cat <<'PAGES_LIST_EOF'
+if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/wiki-lint-source-refs.sh" ]; then
+  # helper 不在: all_source_refs を io_error 扱いにして ステップ 9.1 の false positive note を展開する。
+  # silent 空集合だと真の欠落 (missing_concept) 判定が false positive になるため、
+  # 「marker 未受信 → io_error 同等扱い」契約 (本節末尾) と整合する形で io_error を明示出力する。
+  echo "WARNING: wiki-lint-source-refs.sh が見つからないため all_source_refs を io_error 扱いにします (plugin_root='${plugin_root:-<empty>}')" >&2
+  echo "  対処: rite プラグインのソースツリーから実行するか、.rite-plugin-root を確認してください" >&2
+  echo "---all_source_refs_begin---"
+  echo "---all_source_refs_end---"
+  echo "all_source_refs_read_ok=io_error"
+  echo "all_source_refs_read_errors=0"
+else
+  # branch_strategy / wiki_branch は arg、pages_list は stdin。
+  # placeholder residue gate / partial pollution gate は helper 内で実行される。
+  bash "$plugin_root/hooks/scripts/wiki-lint-source-refs.sh" \
+    --branch-strategy "{branch_strategy}" \
+    --wiki-branch "{wiki_branch}" <<'PAGES_LIST_EOF'
 {pages_list}
 PAGES_LIST_EOF
-)
-
-# Placeholder residue fail-fast gate (5 site で同型: ステップ 1.1 / 1.3 / 6.2 / 8.1 / 8.3)
-case "$branch_strategy" in
-  "{"*"}")
-    echo "ERROR: ステップ 6.2 の {branch_strategy} placeholder が literal substitute されていません (値: '$branch_strategy')" >&2
-    echo "  LLM は ステップ 1.1 の stdout から会話コンテキストに保持された branch_strategy 値を literal substitute する必要があります" >&2
-    echo "[CONTEXT] LINT_PHASE_6_2_PLACEHOLDER_RESIDUE=1; reason=branch_strategy_unsubstituted; value=$branch_strategy" >&2
-    exit 1
-    ;;
-esac
-case "$wiki_branch" in
-  "{"*"}")
-    echo "ERROR: ステップ 6.2 の {wiki_branch} placeholder が literal substitute されていません (値: '$wiki_branch')" >&2
-    exit 1
-    ;;
-esac
-# pages_list は空 HEREDOC が legitimate (Wiki 初期化直後 / 0 件) のため、literal 完全一致のみ error
-case "$pages_list" in
-  "{pages_list}")
-    echo "ERROR: ステップ 6.2 の {pages_list} placeholder が literal substitute されていません (値: '$pages_list')" >&2
-    echo "  LLM は ステップ 2.2 stdout から separator より前の '.rite/wiki/pages/...' 行のみを substitute する必要があります" >&2
-    exit 1
-    ;;
-esac
-
-# Partial pollution 検出 gate (silent missing_concept 誤分類再発防止): LLM が ステップ 2.2 stdout の 3 部構造を
-# 全体 substitute すると `.rite/wiki/raw/...` path が混入し、本来 pages 用の git show で legitimate
-# absence (blob not found) として処理され、全 ingested raw が step 3(c) で missing_concept 誤分類される。
-# 既存の literal 残留 gate は「未 substitute」のみ検出し partial pollution を捕捉できないため、本 runtime 契約を追加。
-if [ -n "$pages_list" ]; then
-  partial_pollution_line=""
-  while IFS= read -r pollution_check_line; do
-    [ -z "$pollution_check_line" ] && continue  # blank line guard
-    case "$pollution_check_line" in
-      .rite/wiki/pages/*) ;;  # OK: 正当な pages_list 行
-      *)
-        partial_pollution_line="$pollution_check_line"
-        break
-        ;;
-    esac
-  done <<< "$pages_list"
-  if [ -n "$partial_pollution_line" ]; then
-    echo "ERROR: ステップ 6.2 の \$pages_list に '.rite/wiki/pages/' prefix を持たない行が含まれています (partial pollution 検出)" >&2
-    echo "  違反行: '$partial_pollution_line'" >&2
-    echo "  原因: LLM が ステップ 2.2 stdout の separator ('---') より後 (raw_list) を含めて HEREDOC に substitute した可能性があります" >&2
-    echo "  対処: ステップ 2.2 stdout から separator より前の '.rite/wiki/pages/...' 行のみを substitute してください" >&2
-    exit 1
-  fi
 fi
-
-all_source_refs_read_ok="unknown"  # 3 値 enum: unknown / true / io_error
-all_source_refs_read_errors=0
-all_source_refs=""
-awk_diag_mktemp_failed=0  # accumulator (失敗件数)
-page_err_mktemp_failed=0  # accumulator (失敗件数)
-
-# `while IFS= read -r` 形式: ページパスに空白が含まれた場合の word-split 脆弱性排除
-while IFS= read -r page; do
-  [ -z "$page" ] && continue  # blank line guard
-
-  page_err=$(mktemp /tmp/rite-lint-page-err-XXXXXX 2>/dev/null) || { page_err=""; page_err_mktemp_failed=$((page_err_mktemp_failed + 1)); }
-
-  # branch_strategy ごとに 2 経路:
-  #   separate_branch: git show (worktree には存在しない、ref から読取)
-  #   same_branch:     cat (filesystem 上の tracked file を直接読む)
-  # 分岐欠落で全 ingested raw が missing_concept 誤分類される regression を防ぐ。
-  # LC_ALL=C で locale 固定 (legitimate absence regex との不一致による誤分類防止)
-  case "$branch_strategy" in
-    separate_branch)
-      page_read_cmd_result=$(LC_ALL=C git show "${wiki_branch}:$page" 2>"${page_err:-/dev/null}")
-      page_read_cmd_rc=$?
-      ;;
-    same_branch)
-      page_read_cmd_result=$(LC_ALL=C cat "$page" 2>"${page_err:-/dev/null}")
-      page_read_cmd_rc=$?
-      ;;
-    *)
-      echo "ERROR: 未知の branch_strategy 値を検出しました: '$branch_strategy' (ステップ 6.2)" >&2
-      [ -n "$page_err" ] && rm -f "$page_err"
-      exit 1
-      ;;
-  esac
-
-  if [ "$page_read_cmd_rc" -eq 0 ]; then
-    page_content="$page_read_cmd_result"
-    # frontmatter YAML list から sources[].ref を抽出。
-    # awk diag mktemp で sources_seen / extracted のカウントを stderr 経由で per-page 可視化
-    # (「sources: 節は検出したが ref が 0 件」という YAML 破損を可視化)
-    awk_diag=$(mktemp /tmp/rite-lint-p62-awk-diag-XXXXXX 2>/dev/null) || awk_diag=""
-    if [ -z "$awk_diag" ]; then
-      awk_diag_mktemp_failed=$((awk_diag_mktemp_failed + 1))
-    fi
-    # page-template.md の canonical YAML は multi-line 形式 (`- type: "..."\n  ref: "..."`)。
-    # 同一行 `- ref:` の legacy 単行形式と multi-line 形式 ` ref:` (dash なしインデント付き) の両方を support する。
-    page_refs=$(printf '%s\n' "$page_content" | awk -v diag="${awk_diag:-/dev/null}" -v page="$page" '
-      /^sources:/ { in_sources=1; sources_seen++; next }
-      # frontmatter terminator (`---`) を明示検出。
-      # minimal frontmatter (sources: 直後に `---` で閉じる、tags:/confidence: なし) でも
-      # sources 節が確実に閉じ、body 内 YAML code block の ` ref:` 誤抽出を防ぐ。
-      in_sources && /^---[[:space:]]*$/ { in_sources=0; next }
-      in_sources && /^[a-zA-Z]/ { in_sources=0 }
-      in_sources && /^[[:space:]]*-[[:space:]]*ref:[[:space:]]/ {
-        # legacy 単行形式: `- ref: "..."`
-        sub(/^[[:space:]]*-[[:space:]]*ref:[[:space:]]*/, "")
-        gsub(/["\x27]/, "")
-        sub(/^\.rite\/wiki\//, "")  # prefix 正規化
-        extracted++
-        print
-        next
-      }
-      in_sources && /^[[:space:]]+ref:[[:space:]]/ {
-        # canonical multi-line 形式: `  ref: "..."` (前行が `- type: ...`)
-        sub(/^[[:space:]]+ref:[[:space:]]*/, "")
-        gsub(/["\x27]/, "")
-        sub(/^\.rite\/wiki\//, "")
-        extracted++
-        print
-      }
-      END {
-        if (sources_seen > 0 && extracted == 0) {
-          if (diag == "/dev/null") {
-            # mktemp 失敗 fallback: bash 側 check が false になるため awk から直接 stderr に emit
-            printf "WARNING: %s の frontmatter に sources: 節が存在しますが ref が 1 件も抽出できませんでした (awk_diag mktemp 失敗経路 fallback)\n", page > "/dev/stderr"
-            printf "  原因候補: YAML 構造破損 (改行混入 / quote 不整合 / インデント不正)\n" > "/dev/stderr"
-            printf "  影響: 本ページが参照する raw source が all_source_refs 集合から欠落し、登録済み raw が missing_concept に誤分類される可能性\n" > "/dev/stderr"
-          } else {
-            printf "sources_section_empty\n" > diag
-          }
-        }
-      }
-    ')
-    if [ -n "$awk_diag" ] && [ -s "$awk_diag" ]; then
-      echo "WARNING: $page の frontmatter に sources: 節が存在しますが ref が 1 件も抽出できませんでした" >&2
-      echo "  原因候補: YAML 構造破損 (改行混入 / quote 不整合 / インデント不正)" >&2
-      echo "  影響: 本ページが参照する raw source が all_source_refs 集合から欠落し、登録済み raw が missing_concept に誤分類される可能性" >&2
-    fi
-    [ -n "$awk_diag" ] && rm -f "$awk_diag"
-    awk_diag=""  # 次 iteration の trap cleanup で stale path を二重 rm しないため明示 reset
-    if [ -n "$page_refs" ]; then
-      all_source_refs=$(printf '%s\n%s' "$all_source_refs" "$page_refs")
-    fi
-  else
-    # ステップ 6.0 と同じ stderr pattern matching で legitimate absence と io_error を判別。
-    # branch_strategy ごとに legitimate absence の文言が異なるため両経路の pattern を OR する:
-    #   separate_branch (git show): blob 不在
-    #   same_branch (cat):          ENOENT / No such file
-    if [ -n "$page_err" ] && [ -s "$page_err" ] && grep -qE "does not exist|path '.+' exists on disk, but not in|Not a valid object name|fatal: invalid object name '[^']*:|No such file or directory|cannot open .* for reading" "$page_err"; then
-      # legitimate absence: 集合には追加しないが read_ok は下げない
-      :
-    else
-      # 真の IO error: all_source_refs_read_errors を increment (後段で io_error に畳み込み)
-      all_source_refs_read_errors=$((all_source_refs_read_errors + 1))
-      echo "WARNING: $page の sources[].ref 抽出に失敗 (rc=$page_read_cmd_rc, branch_strategy=$branch_strategy)" >&2
-      [ -n "$page_err" ] && [ -s "$page_err" ] && head -3 "$page_err" | sed 's/^/  /' >&2
-    fi
-  fi
-  [ -n "$page_err" ] && rm -f "$page_err"
-  page_err=""
-done <<< "$pages_list"
-
-# mktemp 失敗の集約 WARNING (per-iteration spam 回避のため post-loop で 1 回のみ emit)
-if [ "$awk_diag_mktemp_failed" -gt 0 ]; then
-  echo "WARNING: awk_diag tempfile の mktemp が $awk_diag_mktemp_failed 件失敗しました。per-page WARNING は awk END block から /dev/stderr 経由で emit 済みです" >&2
-  echo "  対処: /tmp の容量 / 権限 / readonly filesystem を確認してください" >&2
-fi
-if [ "$page_err_mktemp_failed" -gt 0 ]; then
-  echo "WARNING: page_err tempfile の mktemp が $page_err_mktemp_failed 件失敗しました" >&2
-  echo "  対処: /tmp の容量 / 権限 / inode 枯渇 / readonly filesystem を確認してください" >&2
-  echo "  影響: 本 Block の legitimate absence / io_error 判別は失敗経路でのみ精度低下 (io_error 側に倒す defense で silent 0 件は防止済み)" >&2
-fi
-
-# 終状態の enum 決定 (部分成功を silent に 0 件扱いしない)
-if [ "$all_source_refs_read_errors" -gt 0 ]; then
-  all_source_refs_read_ok="io_error"
-else
-  all_source_refs_read_ok="true"
-fi
-
-# sort -u で重複排除 (ステップ 6.0 awk/sort と対称に pipefail + stderr 捕捉)
-if [ -n "$all_source_refs" ]; then
-  set -o pipefail
-  sort_err=$(mktemp /tmp/rite-lint-p62-sort-err-XXXXXX 2>/dev/null) || {
-    echo "WARNING: stderr 退避 tempfile (sort_err) の mktemp に失敗しました。sort/awk pipeline の詳細エラー情報は失われます" >&2
-    echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
-    echo "  影響: pipeline 失敗時の根本原因 (sort バイナリ異常 / OOM / SIGPIPE 等) が不可視になり、all_source_refs が io_error 降格しても理由が追えません" >&2
-    sort_err=""
-  }
-  # 末尾 `awk 'NF>0'` は grep -c の no-match (rc=1) 問題を回避 (空行 only の edge case 対応)
-  normalized=$(printf '%s\n' "$all_source_refs" | LC_ALL=C sort -u 2>"${sort_err:-/dev/null}" | awk 'NF>0' 2>>"${sort_err:-/dev/null}")
-  sort_rc=$?
-  if [ "$sort_rc" -ne 0 ]; then
-    echo "WARNING: ステップ 6.2 の all_source_refs 正規化 pipeline が失敗しました (rc=$sort_rc)" >&2
-    [ -n "$sort_err" ] && [ -s "$sort_err" ] && head -3 "$sort_err" | sed 's/^/  /' >&2
-    echo "  対処: sort バイナリ / /tmp の容量 / 権限を確認してください" >&2
-    echo "  影響: all_source_refs が部分出力で populate されると真の欠落判定が false positive になるため io_error に降格します" >&2
-    all_source_refs_read_ok="io_error"
-  else
-    all_source_refs="$normalized"
-  fi
-  [ -n "$sort_err" ] && rm -f "$sort_err"
-  sort_err=""
-  set +o pipefail
-fi
-
-# marker block で集合を出力 (ステップ 6.0 の skipped_refs と同じパターン)
-echo "---all_source_refs_begin---"
-[ -n "$all_source_refs" ] && printf '%s\n' "$all_source_refs"
-echo "---all_source_refs_end---"
-
-echo "all_source_refs_read_ok=$all_source_refs_read_ok"
-echo "all_source_refs_read_errors=$all_source_refs_read_errors"
 ```
 
 **`skipped_refs` 集合の参照方法**: ステップ 6.0 の bash block 終了後、LLM は stdout から `---skipped_refs_begin---` と `---skipped_refs_end---` で囲まれた行を抽出して会話コンテキストに集合として保持する。ファイルパスの比較は両辺を `raw/{type}/{filename}` 形式に正規化してから完全一致で判定する。

@@ -137,17 +137,17 @@ rm -f "${wm_sync_err:-}"
 
 #### 3.5.2 Update Content
 
-> **委譲状況（#1195）**: §3.5.1 は本節「Standard update template」の `### 完了情報` ブロックを `append-eof` transform で委譲追記する（実装済み）。下記の **進捗チェックリスト merge**（`### 進捗` への dedup 追記）は未委譲で、`issue-comment-wm-sync.sh` の transform 化を **#1195 #8** で対応する。それまで progress-checklist merge は cleanup 実行経路に組み込まれず、§3.5.1 は `### 完了情報` の追記のみを行う。
+> **委譲状況（#1195 #8 完了）**: §3.5.1（`### 完了情報` の `append-eof` 追記）に続き、本節の **進捗チェックリスト merge**（`### 進捗` への dedup 追記）も `issue-comment-wm-sync.sh` の `merge-checklist` transform へ委譲済み。cleanup ステップ 11 が §3.5 全体を実行する経路で wired され、§3.5.1（完了情報）とは独立した fetch→transform→PATCH として走る（touch するセクションが異なるため順序非依存）。
 
 Automatically append the following to the work memory:
 
 **Progress section merge method:**
 
-The progress section update in Phase 3.5.2 follows this logic:
+The progress section update in Phase 3.5.2 follows this logic（`merge-checklist` transform 内 Python が担う）:
 
 1. Retrieve the existing progress section
 2. Preserve all existing checklist items
-3. Append new items (`- [x] レビュー完了`, `- [x] マージ完了`, `- [x] クリーンアップ完了`) at the end (do not duplicate if already present)
+3. Append new items (`- [x] レビュー完了`, `- [x] マージ完了`, `- [x] クリーンアップ完了`) at the end (do not duplicate if already present anywhere in the body — full-line exact match, 冪等)
 
 **Example:**
 
@@ -160,99 +160,43 @@ The progress section update in Phase 3.5.2 follows this logic:
 - [x] クリーンアップ完了     ← Phase 3.5.2 で追加
 ```
 
-**Bash implementation (Python-based section merge):**
+**Bash implementation (helper 委譲):**
+
+進捗チェックリストの完了項目を `merge-checklist` transform で委譲追記する。全文・完全行 dedup（既出項目スキップ＝冪等）・`### 進捗` セクション末尾への挿入・backup・空body/ヘッダー/safety check・PATCH はすべて helper 内部で完結する（§3.5.1 と同じ canonical caller パターン）。
 
 ```bash
-# ⚠️ 未委譲（#1195 #8 の参照仕様）。§3.5.1 は append-eof で `### 完了情報` のみを追記し、
-# この progress-checklist merge は現状 cleanup 実行経路に組み込まれていない。
-# #8 で issue-comment-wm-sync.sh の transform として委譲する（下記ロジックがその仕様）。
-body_tmp=$(mktemp)
-filtered_items_file=$(mktemp)
-updated_tmp=$(mktemp)
-# backup_file is intentionally excluded from trap — preserved for post-mortem investigation
-backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
-trap 'rm -f "$body_tmp" "$filtered_items_file" "$updated_tmp"' EXIT
+# 進捗セクションの完了項目を content-file に生成し merge-checklist transform で委譲追記する。
+# {issue_number} は cleanup.md コンテキストの実値で置換する（heredoc malform 回避のため printf を使用）。
+progress_tmp=$(mktemp)
+# helper stderr（auth/rate/network/safety-check 詳細 + backup path）を退避し、失敗時に surface する。
+# canonical caller §3.5.1 / fix.md 4.5.2 と同じ stderr-capture 規約（2>/dev/null 破棄をしない）。
+wm_sync_err=$(mktemp 2>/dev/null) || wm_sync_err=""
+trap 'rm -f "$progress_tmp" "${wm_sync_err:-}"' EXIT
+printf '%s\n' \
+  "- [x] レビュー完了" \
+  "- [x] マージ完了" \
+  "- [x] クリーンアップ完了" > "$progress_tmp"
 
-# Step 1: Backup current body
-printf '%s' "$current_body" > "$backup_file"
-printf '%s' "$current_body" > "$body_tmp"
+wm_progress_status=$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform merge-checklist --section 進捗 --content-file "$progress_tmp" 2>"${wm_sync_err:-/dev/null}") || true
+rm -f "$progress_tmp"
 
-# 追加済みでない項目のみを filtered_items_file に書き込む（完全行マッチで重複防止）
-for item in "- [x] レビュー完了" "- [x] マージ完了" "- [x] クリーンアップ完了"; do
-  if ! grep -qxF "$item" "$body_tmp"; then
-    printf '%s\n' "$item" >> "$filtered_items_file"
-  fi
-done
-
-# Step 2: Python-based section append (awk-free)
-python3 -c '
-import sys
-
-body_path = sys.argv[1]
-items_path = sys.argv[2]
-out_path = sys.argv[3]
-
-with open(body_path, "r") as f:
-    body = f.read()
-
-try:
-    with open(items_path, "r") as f:
-        new_items = [l for l in f.read().strip().split("\n") if l.strip()]
-except FileNotFoundError:
-    new_items = []
-
-if not new_items:
-    with open(out_path, "w") as f:
-        f.write(body)
-    sys.exit(0)
-
-lines = body.split("\n")
-result = []
-in_section = False
-
-for i, line in enumerate(lines):
-    if line.rstrip() == "### 進捗":
-        in_section = True
-        result.append(line)
-        continue
-    if in_section and line.startswith("### "):
-        for item in new_items:
-            result.append(item)
-        in_section = False
-        result.append(line)
-        continue
-    result.append(line)
-
-# If section was at EOF, append items
-if in_section:
-    for item in new_items:
-        result.append(item)
-
-output = "\n".join(result)
-if body.endswith("\n") and not output.endswith("\n"):
-    output += "\n"
-with open(out_path, "w") as f:
-    f.write(output)
-' "$body_tmp" "$filtered_items_file" "$updated_tmp"
-
-# Step 3: Validate updated content
-# On failure: restore backup and continue — section append failure is non-critical,
-# the original content is still valid for subsequent PATCH
-if [ ! -s "$updated_tmp" ] || [[ "$(wc -c < "$updated_tmp")" -lt 10 ]]; then
-  echo "WARNING: Updated body is empty or too short. Restoring backup." >&2
-  cp "$backup_file" "$updated_tmp"
-fi
-if grep -q -- '📜 rite 作業メモリ' "$updated_tmp"; then
-  : # Header present, proceed
-else
-  echo "WARNING: Updated body missing header. Restoring backup." >&2
-  cp "$backup_file" "$updated_tmp"
-fi
-
-current_body=$(cat "$updated_tmp")
+# 非ブロッキング: cleanup は work memory 更新失敗で停止してはならない（§3.5 は automatic final update）。
+# no_comment（作業メモリ不在 = legitimate no-op）以外の skipped/error は WARNING 表示にとどめる。
+# 失敗時は helper stderr の root-cause（先頭 5 行）も surface し、backup path / API エラー詳細を operator に残す。
+case "$wm_progress_status" in
+  status=success)      echo "作業メモリの進捗セクションを更新しました" ;;
+  *reason=no_comment*) echo "作業メモリ comment が無いため進捗更新をスキップしました" ;;
+  *)                   echo "警告: 作業メモリ進捗更新が完了しませんでした (${wm_progress_status:-no-status})。cleanup は続行します。" >&2
+                       [ -n "$wm_sync_err" ] && [ -s "$wm_sync_err" ] && { echo "  helper stderr (root-cause、先頭 5 行):" >&2; head -5 "$wm_sync_err" | sed 's/^/    /' >&2; } ;;
+esac
+rm -f "${wm_sync_err:-}"
 ```
 
-**Note for Claude**: ⚠️ awk は使用禁止。Python インラインスクリプトでセクション追記を行うこと。更新前バックアップ・空body検証・ヘッダー検証を必ず実行すること。参照: [gh-cli-patterns.md の Work Memory Update Safety Patterns](../../../references/gh-cli-patterns.md#work-memory-update-safety-patterns)。
+**Note for Claude**: comment 取得・body 変換（全文 dedup + `### 進捗` セクション末尾挿入）・safety check・PATCH・backup はすべて helper 内部で完結するため、本ブロックを単一 Bash 呼び出しに収める必要はない（旧 inline 実装のクロスプロセス変数 `$current_body` 参照制約は解消済み）。`{plugin_root}` はリテラル値で埋め込み、`{issue_number}` を cleanup.md コンテキストの実値で置換すること。`### 進捗` セクション不在時は項目を drop し body を変更しない（既存 §3.5 の no-op 契約。`merge-checklist` transform がこれを保証）。参照: §3.5.1 の canonical caller パターン。
+
+> **適用範囲の注記**: `### 進捗` は **v1 (legacy) WM フォーマット限定**のセクションで、現行 default フォーマットは `### 進捗サマリー` (table) である（SoT: `skills/rite-workflow/references/work-memory-format.md`、init テンプレ: `issue-comment-wm-sync.sh`、v1/v2 分岐: `issue-comment-wm-update.py` の `update_progress` v1 fallback `"### 進捗" in body and "### 進捗サマリー" not in body`）。したがって **v2 WM では本 merge は常に no-op** になり、`### 進捗` を持つ v1 WM が残存する Issue でのみ実効する。これは原 §3.5.2 inline 実装の target section (`### 進捗`) を verbatim 保持した結果であり、`### 進捗サマリー` table 対応への変更は本委譲のスコープ外（§3.5.1 が section-novelty を明記しているのと対称の適用範囲記述）。
 
 **Standard update template:**
 

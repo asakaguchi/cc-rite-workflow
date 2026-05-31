@@ -2,12 +2,18 @@
 title: "委譲リファクタの動作保持は原実装との差分テストで機械的に立証する"
 domain: "heuristics"
 created: "2026-05-30T09:32:00Z"
-updated: "2026-05-31T04:09:58Z"
+updated: "2026-05-31T17:12:40Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260530T064117Z-pr-1204.md"
   - type: "reviews"
     ref: "raw/reviews/20260531T004233Z-pr-1208.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260531T163857Z-pr-1218.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260531T164546Z-pr-1218.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260531T165600Z-pr-1218.md"
 tags: ["refactor", "verification", "testing", "delegation"]
 confidence: high
 ---
@@ -38,6 +44,20 @@ PR #1208 (#1195 #10) は `wiki/lint.md` §6.2 の `all_source_refs` 集合構築
 
 同 PR で prompt-engineer が surface した非ブロッキング推奨: §3.5.1 (完了情報 / append-eof 委譲) は「`### 完了情報` は WM 初期テンプレに存在しない新規セクション」と section-novelty を明記していたが、対称位置の §3.5.2 (進捗 merge) は「対象 `### 進捗` が v1 legacy 限定で、default v2 WM (`### 進捗サマリー` table) では merge が常に no-op になる」という適用範囲を記述していなかった。委譲リファクタでは **(a) 動作の等価性 (差分テスト) と (b) doc の適用範囲記述の対称性** の両方を verify する。(b) は [[asymmetric-fix-transcription]] の doc レイヤー版。
 
+### 抽出境界に取り残されるデッドコードも検出対象 (PR #1218)
+
+PR #1218 (#1195 #2) は `pr/fix.md` ステップ1.2.0 Hybrid Review Source Resolution の Selection logic (~550 行) を新規 `review-source-resolve.sh` へ verbatim 抽出した。同 umbrella #1195 内 **3 例目** の faithful-port 委譲で、検証は (a) `git show develop:...fix.md` の inline block との byte-level diff、(b) 同梱 test 37 assertions pass、(c) `distributed-fix-drift-check.sh` の新規 drift 0 (stash before/after 比較で delta=0) の **3 点セットを #1204 / #1208 と同型に再現**し、cycle 2 で 0 findings 収束。
+
+本 PR が新たに surface した failure mode は、差分検証では「意味論的差分ゼロ」と判定される一方で **抽出境界に取り残されるデッドコード** が混入する点。cycle 1 で 3 reviewer が独立検出した 3 件はすべて「抽出時に上流境界からコピーされたが、対になる依存が抽出範囲外に残ったため宙に浮いた」コード:
+
+- **cleanup 変数の no-op 化**: `norm_tmp` / `handed_off_norm_tmp` の宣言 + trap 参照だけが helper にコピーされたが、対になる非空代入 (`norm_tmp=$(mktemp ...)`) は schema normalization block (fix.md 側の **別 bash fence = 別プロセス**) に残ったため、helper 内では cleanup が常に `rm -f "" ""` の no-op になる。Claude Code の Bash tool は呼び出しごとに別プロセスで shell 変数も trap も継承されないため、「block 終了時 trap で削除」というコメントの主張が cross-process で成立しない。
+- **未使用変数の習慣的混入**: standalone 化の際に習慣で追加した `SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"` は、helper が sibling script を source/invoke しないため未使用。develop の inline block には存在しなかった。
+- **誤った namespace の enumeration への reason 追加**: caller reason を、本来属する 1.2.0 `FIX_FALLBACK_FAILED` 系列ではなく、別 step (2.4.N `NIT_NOTED_REPLY_*`) の独立 namespace enumeration に重複追加していた (drift Pattern-5 の file-level union では hook error にならないが、表と enumeration の同期契約に違反)。
+
+canonical 対策: faithful-port 委譲の review checklist に「コピーした **cleanup 変数の非空代入 site が helper 内に存在するか** (別 fence に残っていないか)」「standalone 化で追加した変数が実際に使われるか」「reason を **正しい step の namespace** に追加したか」を加える。これらは runtime 挙動を変えないため差分テスト・test pass では検出されず、reviewer の cross-file grep でのみ surface する。
+
+加えて、cycle 2 で reviewer が検出した **pre-existing 事項** (severity_map fence の `norm_tmp` orphan / `json_commit_sha_err` の signal-window leak) は、いずれも develop 時点から存在し本 PR diff が原因でない (revert test FAIL) ため指摘事項から除外し、investigation 推奨 / follow-up Issue (#1219 / #1220) に再分類した。faithful-port 委譲のレビューでは **verbatim 保持スコープを尊重し pre-existing バグを current-pr 指摘に混ぜない** scope 規律が重要 ([[scope-creep-rejection-empirical-gate]] / PR #1205 #1195 #9 の verbatim 保持スコープ尊重と同型)。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -46,3 +66,6 @@ PR #1208 (#1195 #10) は `wiki/lint.md` §6.2 の `all_source_refs` 集合構築
 
 - [PR #1204 review results](../../raw/reviews/20260530T064117Z-pr-1204.md)
 - [PR #1208 review results](../../raw/reviews/20260531T004233Z-pr-1208.md)
+- [PR #1218 review results (cycle 1)](../../raw/reviews/20260531T163857Z-pr-1218.md)
+- [PR #1218 fix results](../../raw/fixes/20260531T164546Z-pr-1218.md)
+- [PR #1218 review results (cycle 2)](../../raw/reviews/20260531T165600Z-pr-1218.md)

@@ -483,7 +483,7 @@ echo "=== TC-17: AC-2/AC-3 cmd_set --if-exists WARNs on stale sid; first-time si
 # that did not exist (stale `.rite-session-id`). Caller's intent (update active
 # session state) was violated without any signal. Fix emits WARNING only when
 # `.rite-session-id` exists (caller expected a session), staying silent for the
-# truly first-time case that wiki/ingest.md and issue/create.md rely on.
+# truly first-time case that wiki/ingest.md (get) and pr:ready 等 --if-exists caller rely on.
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 echo "deadbeef-0000-0000-0000-000000000000" > "$d/.rite-session-id"
 err=$( (cd "$d" && bash "$HOOK" set --phase plan --issue 1 --branch "b" --pr 0 --next "n" --if-exists) 2>&1 )

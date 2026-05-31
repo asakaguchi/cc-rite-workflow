@@ -411,561 +411,39 @@ Terminate processing.
 
 **⚠️ Selection logic — Claude substitution required**:
 
-下記 bash block は ステップ 1.0.1 の別 Bash tool invocation で stderr に emit された `[CONTEXT] REVIEW_FILE_PATH=...` 値を参照する必要がある。シェル変数は Bash tool 呼び出し間で継承されないため、Claude は下記 bash block を生成する前に **会話コンテキストから `[CONTEXT] REVIEW_FILE_PATH=...` の値を読み取り、`review_file_path="<実値>"` の literal 代入文として bash 冒頭に埋め込む** こと。もし ステップ 1.0.1 で `review_file_path="__RITE_UNSET__"` だった場合は `review_file_path="__RITE_UNSET__"` を literal に埋め込む。
+ステップ 1.2.0 の Selection logic (Priority 0/1/2/3 + fallback の解決) は `scripts/review-source-resolve.sh` に委譲する (#1195 item #2)。シェル変数は Bash tool 呼び出し間で継承されないため、Claude は下記 bash block を生成する前に、ステップ 1.0 / 1.0.1 の値と Priority 1 会話判定を **helper の引数として literal substitute** すること:
+
+- `{pr_number}` — ステップ 1.0 で正規化された PR 番号 (数値)。非数値は「未 substitute」として `reason=pr_number_placeholder_residue` で fail-fast。
+- `{review_file_path_from_phase_1_0_1}` — ステップ 1.0.1 の `[CONTEXT] REVIEW_FILE_PATH=...` 値を会話コンテキストから読み取る (未指定時は `__RITE_UNSET__`)。
+- `{conversation_review_decision}` — **Priority 1 判定**: Priority 0 が未発火の前提で、同一 session の直前 assistant turn に `## 📜 rite レビュー結果` を含む `/rite:pr:review` 出力が残っていれば、その findings を会話コンテキストから読み取り `use` を渡す。なければ `none` を渡す。
+- `{p1_scan_turns}` / `{p1_scan_found}` — Priority 1 receipt: scan した assistant turn 数 (use 時 1 以上) と発見有無 (`use`→`true` / `none`→`false`)。
+
+helper は全 `[CONTEXT] REVIEW_SOURCE*` marker を **stderr** に emit し、解決完了時に最終 marker `[CONTEXT] REVIEW_SOURCE=<source>; review_source_path=<path or empty>; pr_number=<n>` を emit する。下流の severity_map build ブロックはこの marker を読んで `review_source` / `review_source_path` を literal 置換する (**marker フォーマット不変が hard constraint**)。fatal 時は helper が `[CONTEXT] FIX_FALLBACK_FAILED=1; reason=...` を stderr emit + 非ゼロ exit し、caller が `[fix:error]` を stdout 出力する (**[fix:error] stdout 分離**)。helper の Priority chain / 各 `REVIEW_SOURCE_*` reason / corrupt-file rename 副作用 / trap cleanup は旧 inline block から verbatim 移設済み。
 
 **Selection logic**:
 
-
 ```bash
-# ⚠️ Claude は以下の literal 代入を ステップ 1.0 / 1.0.1 の値に基づいて substitute すること
-# pr_number は本 block 内で `find -name "${pr_number}-*.json"` 等で参照されるため、placeholder の
-# まま substitute 漏れすると find が literal `{pr_number}-*.json` を探して常に 0 件を返す
-# silent fallthrough を起こす。block 冒頭で明示的に literal substitute する。
-pr_number="{pr_number}"
-
-# pr_number の数値 fail-fast gate。
-# cleanup.md ステップ 6 の pr_number guard および review.md ステップ 6.1.a と対称化。
-# Claude が literal substitute を忘れた場合、find が literal `{pr_number}-*.json` を探して常に
-# 0 件を返し Priority 2 が silent fallthrough する経路を早期に閉じる。retained flag
-# FIX_FALLBACK_FAILED を emit して ステップ 5.1 が `[fix:error]` を出力するように昇格させる。
-case "$pr_number" in
-  ''|*[!0-9]*)
-    echo "ERROR: ステップ 1.2.0 の pr_number が literal substitute されていません (値: '$pr_number', 期待: 数値のみ非空)" >&2
-    echo "  Claude は ステップ 1.0 で正規化された pr_number を本 bash block 冒頭で literal substitute する必要があります" >&2
-    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=pr_number_placeholder_residue" >&2
-    echo "[fix:error]"
-    exit 1
-    ;;
-esac
-# sentinel が `null` から `__RITE_UNSET__` に変更された
-# (`null` という名前のファイルを literal に渡された場合の衝突を回避するため)
-# 例: [CONTEXT] REVIEW_FILE_PATH=__RITE_UNSET__ → `review_file_path="__RITE_UNSET__"`
-# 例: [CONTEXT] REVIEW_FILE_PATH=./foo.json → `review_file_path="./foo.json"`
-# 例: [CONTEXT] REVIEW_FILE_PATH=null → `review_file_path="null"` (literal "null" file name、Priority 0 で読み込まれる)
-review_file_path="{review_file_path_from_phase_1_0_1}"
-review_source=""
-review_source_path=""
-
-# review_file_path placeholder 残留の fail-fast。
-# Claude が literal substitute を忘れて `{review_file_path_from_phase_1_0_1}` のまま残ると、
-# `-f "{review_file_path_from_phase_1_0_1}"` 試行 → ENOENT → `explicit_file_not_found` で
-# fallback に流れる誤診断を起こす (真因は substitution 忘れ)。
-# 完全一致で placeholder 文字列を検出し、`{` `}` を含む legitimate path (Template 系プロジェクト
-# 等で `{{var}}` を含むファイル名が作成可能) の誤検出を防ぐ。
-case "$review_file_path" in
-  "{review_file_path_from_phase_1_0_1}")
-    echo "ERROR: review_file_path placeholder が literal substitute されていません: '$review_file_path'" >&2
-    echo "  Claude は ステップ 1.0.1 の [CONTEXT] REVIEW_FILE_PATH=... 値を会話コンテキストから" >&2
-    echo "  読み取り、この bash block 冒頭の review_file_path=... 行を実際の値で置換する必要があります。" >&2
-    echo "  substitute 値の例: __RITE_UNSET__ (default) / ./foo.json / /abs/path/bar.json" >&2
-    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=review_file_path_placeholder_residue" >&2
-    echo "[fix:error]"
-    exit 1
-    ;;
-esac
-
-# signal-specific trap を block 冒頭で設置する (find_err tempfile の orphan 防止)。
-# canonical pattern: references/bash-trap-patterns.md#signal-specific-trap-template を参照。
-# Block 全体の scope を cover するため Priority 2 のネスト内ではなく block 冒頭に配置する。
-#
-# 旧実装の `local _saved_rc=$?; rm -f ...; return $_saved_rc` は
-# 意図と実挙動が乖離していた。trap handler が `'rc=$?; _rite_fix_p120_cleanup; exit $rc'` 形式で
-# 関数を呼ぶとき、関数入場時の `$?` は trap handler 内の直前 assignment `rc=$?` の exit code
-# (= 0) であり、真のエラーコードは既に trap handler 側の `rc` 変数に捕捉されている。したがって
-# 関数内で `$?` を保存しても常に 0 となり、`return $_saved_rc` は常に 0 を返していた (コメントと
-# 実挙動の乖離)。trap handler が最終 `exit $rc` で outer rc を使うため運用上は無害だが、将来
-# 関数を直接呼び出す拡張で silent regression する罠を残していた。簡素化して trap handler の
-# rc 捕捉に一本化する。
-find_err=""
-jq_val_err_p0=""
-jq_val_err_p2=""
-norm_tmp=""
-# Issue #1026: norm_tmp hand-off 後の path を保持する registry variable。
-# hand-off 完了時 `norm_tmp=""` で trap 対象から外す既存 semantic を維持しつつ、
-# downstream (severity_map build 等) が `review_source_path` 経由で参照を終えた後の
-# block 終了タイミング (EXIT/INT/TERM/HUP) で本変数経由で必ず削除されるようにし、
-# `/tmp/rite-fix-normalized-XXXXXX` orphan を解消する。
-handed_off_norm_tmp=""
-_rite_fix_p120_cleanup() {
-  rm -f "${find_err:-}" "${jq_val_err_p0:-}" "${jq_val_err_p2:-}" "${norm_tmp:-}" \
-        "${handed_off_norm_tmp:-}"
+# ステップ 1.2.0 Hybrid Review Source Resolution — scripts/review-source-resolve.sh へ委譲 (#1195 item #2)
+# ⚠️ Claude は以下4つの引数を ステップ 1.0 / 1.0.1 / Priority 1 会話判定に基づき literal substitute すること。
+#   {pr_number}                          : ステップ 1.0 正規化済み PR 番号 (数値)
+#   {review_file_path_from_phase_1_0_1}  : ステップ 1.0.1 の [CONTEXT] REVIEW_FILE_PATH=... 値 (未指定: __RITE_UNSET__)
+#   {conversation_review_decision}       : Priority 1 — 直前 assistant turn に `## 📜 rite レビュー結果` があれば use、なければ none
+#   {p1_scan_turns} / {p1_scan_found}    : Priority 1 receipt (use→turns>=1,found=true / none→found=false)
+# {plugin_root} は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) で解決する。
+# caller guard: helper の非ゼロ exit で `[fix:error]` を stdout 出力する (helper 自身は [fix:error] を出さない = stdout 分離)。
+# helper は fatal の具体 reason を `[CONTEXT] FIX_FALLBACK_FAILED=1; reason=...` で stderr に emit 済み。
+# 下の caller 側 `[CONTEXT] FIX_FALLBACK_FAILED=1; reason=review_source_resolve_failed` は drift Pattern 1
+# (retained-flag: `exit 1` の前に `*_FAILED=1` emit を要求) を満たすための emit。
+bash {plugin_root}/scripts/review-source-resolve.sh \
+  --pr-number "{pr_number}" \
+  --review-file-path "{review_file_path_from_phase_1_0_1}" \
+  --conversation-decision "{conversation_review_decision}" \
+  --p1-scan-turns "{p1_scan_turns}" \
+  --p1-scan-found "{p1_scan_found}" || {
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=review_source_resolve_failed" >&2
+  echo "[fix:error]"
+  exit 1
 }
-trap 'rc=$?; _rite_fix_p120_cleanup; exit $rc' EXIT
-trap '_rite_fix_p120_cleanup; exit 130' INT
-trap '_rite_fix_p120_cleanup; exit 143' TERM
-trap '_rite_fix_p120_cleanup; exit 129' HUP
-
-# pipefail を有効化して pipeline 末尾以外のコマンド失敗も捕捉する
-set -o pipefail
-
-# Priority 0: Explicit --review-file (from ステップ 1.0.1)
-# sentinel `__RITE_UNSET__` (旧 `null` から変更) 以外で
-# かつ非空の場合に Priority 0 を発火させる。`null` という literal 文字列を持つファイル名
-# (`./null` ではない `null` 単独) も legitimate な path として処理される。
-if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; then
-  if [ ! -f "$review_file_path" ]; then
-    echo "エラー: --review-file で指定されたパスが存在しません: $review_file_path" >&2
-    echo "[CONTEXT] REVIEW_SOURCE_MISSING=1; reason=explicit_file_not_found" >&2
-    review_source="fallback"
-    review_source_path=""
-  elif jq_val_err_p0=$(mktemp /tmp/rite-jq-val-err-p0-XXXXXX 2>/dev/null) || true; ! jq empty "$review_file_path" 2>"${jq_val_err_p0:-/dev/null}"; then
-    echo "エラー: --review-file で指定されたファイルが有効な JSON ではありません: $review_file_path" >&2
-    [ -n "${jq_val_err_p0:-}" ] && [ -s "$jq_val_err_p0" ] && head -3 "$jq_val_err_p0" | sed 's/^/  /' >&2
-    echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_parse" >&2
-    rm -f "${jq_val_err_p0:-}"
-    review_source="fallback"
-    review_source_path=""
-  elif ! jq -e '
-    (.schema_version | type == "string" and length > 0)
-    and (.pr_number | type == "number")
-    and (.findings | type == "array")
-  ' "$review_file_path" >/dev/null 2>&1; then
-    # canonical jq validation (see common-error-handling.md#jq-required-fields-snippet-canonical)
-    echo "エラー: --review-file の必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落: $review_file_path" >&2
-    echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_schema_required_fields_missing" >&2
-    review_source="fallback"
-    review_source_path=""
-  elif ! jq -e '
-    (.overall_assessment != "mergeable")
-    or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open")))
-  ' "$review_file_path" >/dev/null 2>&1; then
-    # Cross-field invariant (review-result-schema.md): overall_assessment=="mergeable" のときは
-    # CRITICAL/HIGH かつ status==open の finding が存在してはならない。違反時は手書き JSON で
-    # fix ループを silent に 0 件脱出させる bypass になるため fallback 経路に route する。
-    echo "エラー: --review-file の cross-field invariant 違反: overall_assessment=\"mergeable\" だが CRITICAL/HIGH で status=\"open\" の finding が存在します" >&2
-    echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=mergeable_has_open_blockers" >&2
-    review_source="fallback"
-    review_source_path=""
-  elif ! jq -e '
-    [.findings[]? | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length == 0
-  ' "$review_file_path" >/dev/null 2>&1; then
-    # Cross-field invariant #4 (Issue #1016, review-result-schema.md):
-    # severity ∈ {CRITICAL, HIGH} ∧ scope == "nit-noted" は禁止 (blocker を nit に降格できない)。
-    # 違反時は fallback 経路に route (invariant #2 と同じ FAIL routing)。
-    # 1.0/1.0.0 JSON では .scope が欠落しているため `null == "nit-noted"` は false、本 check は
-    # 規約的に発火しない (後方互換)。reviewer が CRITICAL を nit に降格させたい場合は severity を
-    # MEDIUM/LOW へ自己降格し、original_severity フィールドに元値を保持すること。
-    violation_count=$(jq '[.findings[]? | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length' "$review_file_path" 2>/dev/null || echo "?")
-    echo "エラー: --review-file の cross-field invariant #4 違反: severity ∈ {CRITICAL, HIGH} で scope=\"nit-noted\" の finding が $violation_count 件存在します" >&2
-    echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=explicit_file_critical_high_scope_nit_noted; count=$violation_count" >&2
-    review_source="fallback"
-    review_source_path=""
-  elif ! jq -e '.overall_assessment == "mergeable" or .overall_assessment == "fix-needed"' "$review_file_path" >/dev/null 2>&1; then
-    # overall_assessment enum validation (review-result-schema.md)
-    oa_val=$(jq -r '.overall_assessment // "(null)"' "$review_file_path" 2>/dev/null)
-    echo "WARNING: --review-file の overall_assessment が未知値です: $oa_val (受理値: mergeable / fix-needed)" >&2
-    echo "[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value; value=$oa_val" >&2
-    review_source="fallback"
-    review_source_path=""
-  else
-    # Priority 0: schema_version も Priority 2 と同じく検証するが、失敗時は直接 fallback へ
-    # (ユーザーの明示意図を尊重 — Priority 1-3 に silent fall-through しない)
-    # jq exit code を明示捕捉 (commit_sha 抽出と対称化)
-    # `if ! var=$(cmd); then rc=$?` では 「!」 演算子が cmd の exit code を反転するため、
-    # then ブランチ内の `$?` は 「!」 の結果 (= 0) を返す。`if cmd; then :; else rc=$?; fi` で取得する。
-    if schema_version=$(jq -r '.schema_version // "unknown"' "$review_file_path" 2>/dev/null); then
-      : # jq 成功
-    else
-      jq_sv_rc=$?
-      echo "WARNING: --review-file の schema_version 抽出で jq が失敗 (rc=$jq_sv_rc)" >&2
-      echo "  原因候補: jq バイナリ異常 / OOM / ファイル IO エラー" >&2
-      echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_schema_version_jq_failed; rc=$jq_sv_rc" >&2
-      schema_version="unknown"
-    fi
-    case "$schema_version" in
-      "1.0.0"|"1.0"|"1.1.0")
-        # Issue #1016: schema 1.1.0 を accept list に追加。
-        # 1.0/1.0.0 受信時は後段の ステップ 1.2.0.s に近接した default mapping ステップで
-        # findings[].scope の severity ベース補完を実施する (review-result-schema.md
-        # 後方互換性セクション参照)。本 case 内では schema_version をブロックレベルで
-        # 受理するだけで、scope 補完は severity_map 構築の直前に集中させる。
-        #
-        # commit_sha stale detection (verified-review silent-failure C-1)
-        # schema で `commit_sha` が required field として記録されているため、現 HEAD との比較で
-        # stale file を検出する。mismatch 時は Priority 4 Interactive Fallback へ routing する
-        # (ユーザーは「レビュー実行 / 別ファイル指定 / 中止」を選択可能)。
-        # [CONTEXT] REVIEW_SOURCE_STALE=1 を emit して observability は維持する。
-        # jq バイナリ異常 / I/O エラーと「.commit_sha フィールド不在 (legacy schema)」を区別する。
-        # 旧実装 `2>/dev/null || echo ""` はこの 2 ケースを silent に融合させ、stale detection を silent 無効化していた。
-        json_commit_sha_err=$(mktemp /tmp/rite-fix-p0-commit-sha-err-XXXXXX 2>/dev/null) || json_commit_sha_err=""
-        if json_commit_sha=$(jq -r '.commit_sha // empty' "$review_file_path" 2>"${json_commit_sha_err:-/dev/null}"); then
-          : # jq 成功 (空 or 非空)
-        else
-          jq_p0_commit_sha_rc=$?
-          echo "WARNING: --review-file の commit_sha 抽出で jq が失敗 (rc=$jq_p0_commit_sha_rc)" >&2
-          [ -n "$json_commit_sha_err" ] && [ -s "$json_commit_sha_err" ] && head -3 "$json_commit_sha_err" | sed 's/^/  /' >&2
-          echo "[CONTEXT] REVIEW_SOURCE_STALE_CHECK_FAILED=1; reason=jq_error_on_commit_sha; priority=0" >&2
-          json_commit_sha=""
-        fi
-        [ -n "$json_commit_sha_err" ] && rm -f "$json_commit_sha_err"
-        if ! head_sha=$(git rev-parse HEAD 2>/dev/null); then
-          echo "WARNING: git rev-parse HEAD に失敗しました。commit_sha stale detection を skip します" >&2
-          echo "[CONTEXT] REVIEW_SOURCE_STALE_CHECK_FAILED=1; reason=git_rev_parse_head_failed" >&2
-          head_sha=""
-        fi
-        if [ -n "$json_commit_sha" ] && [ -n "$head_sha" ] && [ "$json_commit_sha" != "$head_sha" ]; then
-          # stale file 検出時は fallback 経路に route する。旧実装は `RITE_FIX_ACKNOWLEDGE_STALE=1` 環境変数による
-          # opt-in 続行経路を持っていたが、Claude Code Bash tool は呼び出し境界で env var を継承しないため
-          # (anthropics/claude-code#2508)、ユーザーが env var を set する手段がなく dead code だった。
-          # stale を承知で続行したいユーザーは Priority 4 Interactive fallback の「レビュー実行」or「別ファイル指定」
-          # を選択する。stale な検出結果を無視したい特殊ケースは Priority 4 で「別ファイル指定」に同じ path を
-          # 再入力することで実質的に対応可能 (ただし再度 stale warning が出る — 設計意図通り)。
-          echo "⛔ ERROR: --review-file の commit_sha ($json_commit_sha) が現 HEAD ($head_sha) と不一致です" >&2
-          echo "  このファイルは古い commit に対して生成されました。既修正項目を再指摘する可能性があります。" >&2
-          echo "  対処 (いずれかを選択):" >&2
-          echo "    1. /rite:pr:review を再実行して新しい review を生成する (推奨)" >&2
-          echo "    2. 生成時点の commit ($json_commit_sha) に git checkout してから /rite:pr:fix を実行する" >&2
-          echo "[CONTEXT] REVIEW_SOURCE_STALE=1; reason=explicit_file_commit_sha_mismatch; json_sha=$json_commit_sha; head_sha=$head_sha" >&2
-          echo "  fallback 経路に route します (Priority 4 Interactive fallback)" >&2
-          review_source="fallback"
-          review_source_path=""
-        else
-          review_source="explicit_file"
-          review_source_path="$review_file_path"
-        fi
-        ;;
-      *)
-        echo "エラー: --review-file で指定されたファイルの schema_version が未知です: $schema_version" >&2
-        echo "[CONTEXT] REVIEW_SOURCE_SCHEMA_UNKNOWN=1; reason=explicit_file_schema_version_unknown" >&2
-        review_source="fallback"
-        review_source_path=""
-        ;;
-    esac
-  fi
-fi
-
-# Priority 1: Conversation context (Claude が判断)
-# ⚠️ Claude への指示: Priority 0 が未発火 (review_source="") の状態で、同一 session 内の直前
-# assistant turn に `## 📜 rite レビュー結果` を含む /rite:pr:review 出力が残っていれば、下記 bash
-# 実行前に会話コンテキストから findings を読み取り `conversation_review_decision="use"` を literal
-# substitute する。会話に review 結果がなければ `conversation_review_decision="none"` を substitute する。
-# substitute 漏れ (literal placeholder 残留) は silent fallthrough / silent P1 hijack を起こすため fail-fast する。
-if [ -z "$review_source" ]; then
-  conversation_review_decision="__RITE_CONVERSATION_DECISION_UNSET__"
-  # machine-readable receipt を必須化する。Claude は decision と同時に substitute すること:
-  #   - use:  p1_scan_turns=<N> (scan した assistant turn 数、最低 1)、p1_scan_found="true"
-  #   - none: p1_scan_turns=<N> (0 以上)、p1_scan_found="false"
-  p1_scan_turns="__RITE_P1_SCAN_TURNS_UNSET__"
-  p1_scan_found="__RITE_P1_SCAN_FOUND_UNSET__"
-  case "$conversation_review_decision" in
-    use)
-      case "$p1_scan_turns" in
-        __RITE_P1_SCAN_TURNS_UNSET__|"")
-          echo "ERROR: Priority 1 receipt p1_scan_turns が literal substitute されていません (decision=use)" >&2
-          echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_receipt_missing" >&2
-          exit 1
-          ;;
-        *[!0-9]*)
-          echo "ERROR: Priority 1 receipt p1_scan_turns が数値ではありません: '$p1_scan_turns'" >&2
-          echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_receipt_invalid" >&2
-          exit 1
-          ;;
-      esac
-      if [ "$p1_scan_found" != "true" ]; then
-        echo "ERROR: Priority 1 decision=use だが p1_scan_found!=true ('$p1_scan_found')" >&2
-        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_receipt_inconsistent" >&2
-        exit 1
-      fi
-      review_source="conversation"
-      echo "[CONTEXT] REVIEW_SOURCE=conversation; pr_number=${pr_number}; p1_scan_turns=$p1_scan_turns; p1_scan_found=$p1_scan_found" >&2
-      ;;
-    none)
-      # legitimate な「会話に review 結果なし」経路。receipt 不整合は observability 欠落として
-      # WARNING のみ (fail-fast しない — Priority 2 以降に fallthrough)。
-      case "$p1_scan_turns" in
-        __RITE_P1_SCAN_TURNS_UNSET__|"") echo "WARNING: Priority 1 decision=none だが receipt p1_scan_turns が未設定" >&2 ;;
-        *[!0-9]*) echo "WARNING: Priority 1 decision=none だが p1_scan_turns が非数値 ('$p1_scan_turns')" >&2 ;;
-      esac
-      case "$p1_scan_found" in
-        true|false) ;;
-        *) echo "WARNING: Priority 1 decision=none だが p1_scan_found が不正/未設定 ('$p1_scan_found')" >&2 ;;
-      esac
-      :  # Priority 2 以降に fallthrough
-      ;;
-    __RITE_CONVERSATION_DECISION_UNSET__)
-      echo "ERROR: Priority 1 conversation_review_decision が literal substitute されていません" >&2
-      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_decision_unset" >&2
-      exit 1
-      ;;
-    *)
-      echo "ERROR: Priority 1 conversation_review_decision に未知の値: '$conversation_review_decision'" >&2
-      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=priority1_decision_invalid" >&2
-      exit 1
-      ;;
-  esac
-fi
-
-# Priority 2: Local file — lexicographic sort で最新 timestamp を選択
-# ファイル名は {pr_number}-YYYYMMDDHHMMSS.json 形式で timestamp が zero-padded のため
-# 文字列 sort = 時系列 sort が成立する。BSD find 非互換の -printf を回避し portable に。
-#
-# SIGPIPE 対策: `find | sort -r | head -1` は pipefail 有効下で
-# `head -1` 早期終了により `sort` が SIGPIPE (rc=141) を受け pipeline 失敗扱いとなる
-# (bash-defensive-patterns.md Pattern 5 で禁止された anti-pattern)。
-# mapfile + process substitution で pipeline を分離し、配列経由で先頭要素を取得する。
-if [ -z "$review_source" ]; then
-  # .rite/review-results/ dir 不在を初回実行の正常経路として silent pass-through する
-  # (初回 fix / fresh clone で確実に再現する UX bug の修正)。cleanup.md ステップ 6 と対称。
-  if [ ! -d .rite/review-results ]; then
-    # dir 不在 = 正常経路。Priority 3 へ silent fall-through。
-    :
-  else
-    # mktemp 失敗時も WARNING を emit (format 概形は cleanup.md ステップ 6 と共有、rc capture は
-    # reason=`mktemp_failure_norm_tmp` の SoT block (ステップ 1.2.0 schema 1.1.0 normalization 内の
-    # `if norm_tmp=$(mktemp ...); then ... else mktemp_norm_rc=$?; fi` 構造) と semantic 同期)。
-    # 構造: bash の 「!」否定 pipeline では then 節内 $? が常に 0 になるため、SoT と同じ
-    # `if cmd; then :; else rc=$?; fi` 形式を採用する。mktemp の native stderr は SoT (norm_tmp) と
-    # 揃えて `2>/dev/null` で抑制する (本ファイル内の他 mktemp capture site と同じ pattern)。
-    if find_err=$(mktemp /tmp/rite-fix-find-err-XXXXXX 2>/dev/null); then
-      : # mktemp 成功 — find_err は valid path
-    else
-      mktemp_find_err_rc=$?
-      echo "WARNING: find stderr 退避用 tempfile の mktemp に失敗しました (rc=$mktemp_find_err_rc)。find の IO エラー詳細は失われます" >&2
-      echo "  対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
-      echo "[CONTEXT] REVIEW_SOURCE_FIND_FAILED=1; reason=mktemp_failure_find_err; rc=$mktemp_find_err_rc" >&2
-      find_err=""
-    fi
-
-    # mapfile + process substitution で SIGPIPE 経路を断ち、pipefail 下でも安全に動作する
-    # sort の stderr も find_err に append して捕捉する (sort OOM / /tmp full を検出)。
-    files_arr=()
-    mapfile -t files_arr < <(find .rite/review-results -maxdepth 1 -type f -name "${pr_number}-*.json" 2>"${find_err:-/dev/null}" | sort -r 2>>"${find_err:-/dev/null}")
-    latest_file="${files_arr[0]:-}"
-
-    if [ -n "$find_err" ] && [ -s "$find_err" ]; then
-      echo "WARNING: .rite/review-results/ 検索時にエラー発生:" >&2
-      head -3 "$find_err" | sed 's/^/  /' >&2
-      echo "  Priority 2 を IO エラーにより skip し、Priority 3 (PR コメント) に明示 routing します" >&2
-      echo "[CONTEXT] REVIEW_SOURCE_FIND_FAILED=1; reason=local_file_find_io_error" >&2
-      review_source="pr_comment"
-      review_source_path=""
-    fi
-    # process substitution では内部コマンドの exit code が親に伝播しない。
-    # ファイルが存在するのに配列が空の場合は sort/find failure を疑い WARNING を emit する。
-    if [ ${#files_arr[@]} -eq 0 ] && [ -d .rite/review-results ]; then
-      _p2_glob_check=(.rite/review-results/"${pr_number}"-*.json)
-      if [ -e "${_p2_glob_check[0]:-}" ]; then
-        echo "WARNING: .rite/review-results/ にマッチするファイルが存在しますが mapfile 結果が空です (sort/find failure の可能性)" >&2
-        echo "[CONTEXT] REVIEW_SOURCE_FIND_FAILED=1; reason=sort_or_mapfile_failure" >&2
-      fi
-      unset _p2_glob_check
-    fi
-    # 旧 `[ -n "$find_err" ] && rm -f && find_err=""` の short-circuit は
-    # rm 失敗時に find_err="" 代入に到達せず、後続の trap cleanup が同じ rm を再実行する重複処理になっていた
-    # (実害は軽微だが、rm 失敗が silent 抑制される問題は本 PR 全体の指摘事項と矛盾する)。
-    # 改行 + rm 失敗時 WARNING + find_err="" を独立 statement で実行する。
-    if [ -n "$find_err" ]; then
-      if ! rm -f "$find_err"; then
-        echo "WARNING: find_err tempfile の削除に失敗 ($find_err)。trap cleanup が後で再試行します" >&2
-      fi
-      find_err=""
-    fi
-
-    # find で見つかった latest_file が -f check で脱落した経路を silent にしない。
-    # permission denied / symlink 破壊 / TOCTOU で stat 不能な場合、ユーザーは Priority 3 routing 理由を debug できない。
-    if [ -n "$latest_file" ] && [ ! -f "$latest_file" ]; then
-      echo "WARNING: find で発見した latest_file が -f check で失敗 ($latest_file)。permission / symlink 破壊の可能性" >&2
-      echo "[CONTEXT] REVIEW_SOURCE_STAT_FAILED=1; reason=latest_file_stat_failure" >&2
-      # Priority 2 stat failure branch で review_source を
-      # 明示 set する (他の Priority 2 failure branch 〈jq parse / schema / commit_sha mismatch〉は
-      # 全て `review_source="pr_comment"; review_source_path=""` を明示 set するが、stat failure
-      # のみ最終強制昇格経路に依存していた非対称を解消)。
-      review_source="pr_comment"
-      review_source_path=""
-    fi
-    if [ -z "$review_source" ] && [ -n "$latest_file" ] && [ -f "$latest_file" ]; then
-      # canonical jq validation (see common-error-handling.md#jq-required-fields-snippet-canonical)
-      jq_val_err_p2=$(mktemp /tmp/rite-jq-val-err-p2-XXXXXX 2>/dev/null) || jq_val_err_p2=""
-      if ! jq empty "$latest_file" 2>"${jq_val_err_p2:-/dev/null}"; then
-        echo "WARNING: $latest_file は有効な JSON ではありません。Priority 3 (PR コメント) に routing します。" >&2
-        [ -n "${jq_val_err_p2:-}" ] && [ -s "$jq_val_err_p2" ] && head -3 "$jq_val_err_p2" | sed 's/^/  /' >&2
-        echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_json_parse_failure" >&2
-        # verified-review M-6 (M10) 対応: corrupted file を .corrupt-{epoch} にリネームし、
-        # 次回の lexicographic sort で選ばれないようにする。旧実装は WARNING を出すだけで
-        # corrupted file を残していたため、次回呼び出し時も同じファイルが最新 timestamp として
-        # 選ばれ、同一 WARNING が繰り返される無限 ring を起こしていた。
-        # ⚠️ corrupt file rename ロジック (Instance 1/2 — jq parse failure path)
-        # 同一ロジックが下の schema_required_fields_missing path (Instance 2/2) にも複製されている。
-        # 変更時は両方を同時に更新すること (ドリフト防止)。
-        # mv の stderr を tempfile に退避し、失敗時に原因を可視化する。
-        corrupt_epoch=$(date +%s 2>/dev/null || printf '%s-%04x' "unknown" "$((RANDOM & 0xffff))")
-        corrupt_suffix=".corrupt-${corrupt_epoch}"
-        mv_err=$(mktemp /tmp/rite-fix-corrupt-mv-err-XXXXXX 2>/dev/null) || mv_err=""
-        if mv "$latest_file" "${latest_file}${corrupt_suffix}" 2>"${mv_err:-/dev/null}"; then
-          echo "  corrupted file をリネームしました: ${latest_file}${corrupt_suffix}" >&2
-          echo "  対処: 内容を確認後、手動で削除するか新しい review を生成してください" >&2
-        else
-          mv_corrupt_jq_rc=$?
-          echo "  WARNING: corrupted file の rename に失敗 (rc=$mv_corrupt_jq_rc)。次回 fix で同じ WARNING が再発します" >&2
-          if [ -n "$mv_err" ] && [ -s "$mv_err" ]; then
-            echo "    詳細 (mv stderr):" >&2
-            head -3 "$mv_err" | sed 's/^/      /' >&2
-          fi
-          echo "    対処: permission denied / read-only filesystem / cross-filesystem / target exists のいずれかを確認" >&2
-          echo "    手動削除: rm \"$latest_file\"" >&2
-        fi
-        [ -n "$mv_err" ] && rm -f "$mv_err"
-        review_source="pr_comment"
-        review_source_path=""
-      elif ! jq -e '
-        (.schema_version | type == "string" and length > 0)
-        and (.pr_number | type == "number")
-        and (.findings | type == "array")
-      ' "$latest_file" >/dev/null 2>&1; then
-        # canonical jq validation (see common-error-handling.md#jq-required-fields-snippet-canonical)
-        echo "WARNING: $latest_file の必須フィールドが欠落。Priority 3 (PR コメント) に routing します。" >&2
-        echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_schema_required_fields_missing" >&2
-        corrupt_epoch=$(date +%s 2>/dev/null || printf '%s-%04x' "unknown" "$((RANDOM & 0xffff))")
-        corrupt_suffix=".corrupt-${corrupt_epoch}"
-        mv_err=$(mktemp /tmp/rite-fix-corrupt-mv-err-XXXXXX 2>/dev/null) || mv_err=""
-        if mv "$latest_file" "${latest_file}${corrupt_suffix}" 2>"${mv_err:-/dev/null}"; then
-          echo "  schema-invalid file をリネームしました: ${latest_file}${corrupt_suffix}" >&2
-        else
-          mv_corrupt_schema_rc=$?
-          echo "  WARNING: schema-invalid file の rename に失敗 (rc=$mv_corrupt_schema_rc)。次回 fix で同じ WARNING が再発します" >&2
-          if [ -n "$mv_err" ] && [ -s "$mv_err" ]; then
-            head -3 "$mv_err" | sed 's/^/    /' >&2
-          fi
-          echo "    手動削除: rm \"$latest_file\"" >&2
-        fi
-        [ -n "$mv_err" ] && rm -f "$mv_err"
-        review_source="pr_comment"
-        review_source_path=""
-      elif ! jq -e '
-        (.overall_assessment != "mergeable")
-        or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open")))
-      ' "$latest_file" >/dev/null 2>&1; then
-        # Cross-field invariant (review-result-schema.md): overall_assessment=="mergeable" のときは
-        # CRITICAL/HIGH かつ status==open の finding が存在してはならない。
-        # corrupt rename はしない (データは構造的に valid、ビジネスルール違反のみ)。
-        echo "WARNING: $latest_file の cross-field invariant 違反 (mergeable だが open の CRITICAL/HIGH finding あり)。Priority 3 に routing します。" >&2
-        echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=local_file_cross_field_invariant_violated" >&2
-        review_source="pr_comment"
-        review_source_path=""
-      elif ! jq -e '
-        [.findings[]? | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length == 0
-      ' "$latest_file" >/dev/null 2>&1; then
-        # Cross-field invariant #4 (Issue #1016, review-result-schema.md):
-        # severity ∈ {CRITICAL, HIGH} ∧ scope == "nit-noted" は禁止。
-        # corrupt rename はしない (データは構造的に valid、ビジネスルール違反のみ)。
-        # 1.0/1.0.0 JSON では .scope が欠落しているため本 check は規約的に発火しない (後方互換)。
-        violation_count=$(jq '[.findings[]? | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length' "$latest_file" 2>/dev/null || echo "?")
-        echo "WARNING: $latest_file の cross-field invariant #4 違反 (severity ∈ {CRITICAL, HIGH} で scope=\"nit-noted\" の finding が $violation_count 件)。Priority 3 に routing します。" >&2
-        echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=local_file_critical_high_scope_nit_noted; count=$violation_count" >&2
-        review_source="pr_comment"
-        review_source_path=""
-      elif ! jq -e '.overall_assessment == "mergeable" or .overall_assessment == "fix-needed"' "$latest_file" >/dev/null 2>&1; then
-        # overall_assessment enum validation (review-result-schema.md)
-        oa_val=$(jq -r '.overall_assessment // "(null)"' "$latest_file" 2>/dev/null)
-        echo "WARNING: $latest_file の overall_assessment が未知値です: $oa_val (受理値: mergeable / fix-needed)。Priority 3 に routing します。" >&2
-        echo "[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value; value=$oa_val" >&2
-        review_source="pr_comment"
-        review_source_path=""
-      else
-        # schema_version 検証 (Priority 2 success 内で実施)
-        # jq exit code を明示捕捉 (commit_sha 抽出と対称化)
-        # `if ! var=$(cmd); then rc=$?` では 「!」 演算子が cmd の exit code を反転するため、
-        # then ブランチ内の `$?` は 「!」 の結果 (= 0) を返す。`if cmd; then :; else rc=$?; fi` で取得する。
-        if schema_version=$(jq -r '.schema_version // "unknown"' "$latest_file" 2>/dev/null); then
-          : # jq 成功
-        else
-          jq_sv_rc=$?
-          echo "WARNING: $latest_file の schema_version 抽出で jq が失敗 (rc=$jq_sv_rc)" >&2
-          echo "  原因候補: jq バイナリ異常 / OOM / ファイル IO エラー" >&2
-          echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_schema_version_jq_failed; rc=$jq_sv_rc" >&2
-          schema_version="unknown"
-        fi
-        case "$schema_version" in
-          "1.0.0"|"1.0"|"1.1.0")
-            # Issue #1016: schema 1.1.0 を accept list に追加 (Priority 2 case 文)。
-            # Priority 0/2/3 の 3 sites を symmetric に保つ (review-result-schema.md
-            # Schema Version SoT セクションの「読取側 (3 値受理義務、3 箇所で完全同期)」契約)。
-            #
-            # commit_sha stale detection (verified-review silent-failure C-1)
-            # Priority 2 は lexicographic 最新ファイルを機械的に選ぶため、古い commit に対する
-            # review 結果を silent に使用するリスクがある。現 HEAD と比較し、mismatch 時は Priority 3
-            # (PR コメント) に routing する (Priority 2 の他の失敗経路と同じ扱い)。
-            # 古い local file には fallback しない (Priority 2 schema doc の設計判断と整合)。
-            # jq IO エラーを silent 化しない。
-            json_commit_sha_err=$(mktemp /tmp/rite-fix-p2-commit-sha-err-XXXXXX 2>/dev/null) || json_commit_sha_err=""
-            if json_commit_sha=$(jq -r '.commit_sha // empty' "$latest_file" 2>"${json_commit_sha_err:-/dev/null}"); then
-              :
-            else
-              jq_p2_commit_sha_rc=$?
-              echo "WARNING: $latest_file の commit_sha 抽出で jq が失敗 (rc=$jq_p2_commit_sha_rc)" >&2
-              [ -n "$json_commit_sha_err" ] && [ -s "$json_commit_sha_err" ] && head -3 "$json_commit_sha_err" | sed 's/^/  /' >&2
-              echo "[CONTEXT] REVIEW_SOURCE_STALE_CHECK_FAILED=1; reason=jq_error_on_commit_sha; priority=2" >&2
-              json_commit_sha=""
-            fi
-            [ -n "$json_commit_sha_err" ] && rm -f "$json_commit_sha_err"
-            if ! head_sha=$(git rev-parse HEAD 2>/dev/null); then
-              echo "WARNING: git rev-parse HEAD に失敗しました。commit_sha stale detection を skip します" >&2
-              echo "[CONTEXT] REVIEW_SOURCE_STALE_CHECK_FAILED=1; reason=git_rev_parse_head_failed" >&2
-              head_sha=""
-            fi
-            if [ -n "$json_commit_sha" ] && [ -n "$head_sha" ] && [ "$json_commit_sha" != "$head_sha" ]; then
-              echo "WARNING: $latest_file の commit_sha ($json_commit_sha) が現 HEAD ($head_sha) と不一致です (stale)" >&2
-              echo "  本ファイルは古い commit に対して生成されました。Priority 3 (PR コメント) に routing します。" >&2
-              echo "  対処: /rite:pr:review を再実行すれば新しい timestamp + 現 HEAD の commit_sha を持つファイルが生成されます。" >&2
-              echo "[CONTEXT] REVIEW_SOURCE_STALE=1; reason=local_file_commit_sha_mismatch; json_sha=$json_commit_sha; head_sha=$head_sha" >&2
-              review_source="pr_comment"
-              review_source_path=""
-            else
-              review_source="local_file"
-              review_source_path="$latest_file"
-              # 成功メッセージも stderr に統一する
-              # ([CONTEXT] emit と stdout/stderr 規約を揃え、observability ログ専用ストリームを stderr に集約)
-              echo "✅ ローカルファイルからレビュー結果を読み込みます: $latest_file" >&2
-            fi
-            ;;
-          *)
-            echo "WARNING: 未知の schema_version: $schema_version ($latest_file)" >&2
-            echo "  対処: schema 定義は plugins/rite/references/review-result-schema.md を参照" >&2
-            echo "  本ファイルをスキップし、次の優先順位のソース (Priority 3) を試行します。" >&2
-            echo "[CONTEXT] REVIEW_SOURCE_SCHEMA_UNKNOWN=1; reason=local_file_schema_version_unknown" >&2
-            # 明示的に Priority 3 (pr_comment) に routing する (dead state 防止)
-            review_source="pr_comment"
-            review_source_path=""
-            ;;
-        esac
-      fi
-    fi
-  fi
-fi
-
-# Priority 3: PR comment (fall through to existing Broad Retrieval path if still unresolved)
-if [ -z "$review_source" ]; then
-  review_source="pr_comment"  # Existing ステップ 1.2 Broad Retrieval / Fast Path handles this
-fi
-
-# Priority 0/2/3/fallback の最終 review_source 値を
-# machine-readable marker として emit する。旧実装は Priority 1 `use` branch のみが
-# `[CONTEXT] REVIEW_SOURCE=conversation` を emit しており、他 4 経路は observability 欠落だった。
-# schema.md `読取優先順位` セクションは「ステップ 4.5.3 / 4.6 で `{review_source}` を log に出すため
-# conversation 経由で取り込んだ場合も他の Priority と同様に provenance を残す必要がある」と
-# 明記するが、実装は Priority 1 のみで契約違反。本修正で全経路に展開する。
-# 対象: explicit_file (Priority 0)、conversation (Priority 1、既存 emit は残し defense-in-depth
-# として後段でも emit)、local_file (Priority 2)、pr_comment (Priority 3)、fallback (Priority 0
-# 失敗 → Interactive Fallback 経路)。
-case "${review_source:-}" in
-  explicit_file|local_file|pr_comment|conversation|fallback)
-    echo "[CONTEXT] REVIEW_SOURCE=${review_source}; review_source_path=${review_source_path:-}; pr_number=${pr_number}" >&2
-    ;;
-  "")
-    echo "ERROR: review_source が ステップ 1.2.0 終了時に空です (Priority chain の設計契約違反)" >&2
-    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=review_source_unset_post_chain" >&2
-    exit 1
-    ;;
-  *)
-    echo "ERROR: review_source に未知の値: '$review_source' (Priority chain の設計契約違反)" >&2
-    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=review_source_invalid_post_chain" >&2
-    exit 1
-    ;;
-esac
-
-# (Block 1, referenced by Block 2 continuity note)
-# === ステップ 1.2.0 Selection logic block end ===
-set +o pipefail
 ```
 
 **`review_source` state transitions within pr_comment path**: `review_source="pr_comment"` に設定された後、Priority 3 処理 (下記 awk block) における state 遷移と意味論は以下の通り:
@@ -1491,21 +969,11 @@ exit 1
 
 **ステップ 1.0.1 / 1.2.0 / 1.2.0.1 failure reasons** (reason table drift prevention — see [distributed-fix-drift-check](../../hooks/scripts/distributed-fix-drift-check.sh) Pattern-2 / Pattern-5):
 
+> **注**: ステップ 1.2.0 Selection logic (Priority 0/1/2/3 + fallback) の reason は `scripts/review-source-resolve.sh` へ移設済み (#1195 item #2)。本表は ステップ 1.0.1 / 1.2.0 caller guard / 1.2.0.1 Interactive Fallback / Priority 3 pr_comment / severity_map の reason を扱う。
+
 | reason | Description |
 |--------|-------------|
-| `explicit_file_not_found` | `--review-file` で指定されたパスが存在しない (Priority 0, triggers fallback) |
-| `explicit_file_parse` | `--review-file` で指定されたファイルが valid JSON ではない (Priority 0, triggers fallback) |
-| `explicit_file_schema_required_fields_missing` | `--review-file` で指定されたファイルが parse 可能だが必須フィールド (schema_version / pr_number / findings[] 配列型) が欠落 (Priority 0, triggers fallback) |
-| `mergeable_has_open_blockers` | Priority 0 で指定されたファイルの cross-field invariant 違反: `overall_assessment=="mergeable"` だが CRITICAL/HIGH かつ status==open の finding が存在 (Priority 0, `REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag, triggers fallback) |
-| `explicit_file_critical_high_scope_nit_noted` | Priority 0 で指定されたファイルの cross-field invariant #4 違反 (Issue #1016): `severity ∈ {CRITICAL, HIGH}` × `scope == "nit-noted"` の finding が存在 (Priority 0, `REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag, triggers fallback) |
 | `overall_assessment_unknown_value` | Priority 0/2/3 で `overall_assessment` が受理値 (`mergeable` / `fix-needed`) 以外 (review-result-schema.md enum 違反、`REVIEW_SOURCE_ENUM_UNKNOWN` flag。P0: fallback、P2: Priority 3 routing、P3: legacy parser fallthrough) |
-| `explicit_file_schema_version_unknown` | `--review-file` で指定されたファイルの schema_version が未知 (Priority 0, triggers fallback) |
-| `local_file_json_parse_failure` | Priority 2 で選ばれた最新 local file が `jq empty` で syntax invalid (Priority 3 pr_comment へ routing) |
-| `local_file_schema_required_fields_missing` | Priority 2 で選ばれた最新 local file が parse 可能だが必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落 (Priority 3 pr_comment へ routing) |
-| `local_file_cross_field_invariant_violated` | Priority 2 で選ばれた最新 local file の cross-field invariant 違反: `overall_assessment=="mergeable"` だが CRITICAL/HIGH かつ status==open の finding が存在 (Priority 3 pr_comment へ routing、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
-| `local_file_critical_high_scope_nit_noted` | Priority 2 で選ばれた最新 local file の cross-field invariant #4 違反 (Issue #1016): `severity ∈ {CRITICAL, HIGH}` × `scope == "nit-noted"` の finding が存在 (Priority 3 pr_comment へ routing、`REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED` flag) |
-| `sort_or_mapfile_failure` | Priority 2 の `find ... | sort -r` pipeline が process substitution 内で失敗 (OOM / IO エラー、`REVIEW_SOURCE_FIND_FAILED` flag) |
-| `local_file_schema_version_unknown` | Priority 2 で選ばれた最新 local file の schema_version が未知 (Priority 3 pr_comment へ routing) |
 | `pr_comment_raw_json_parse_failure` | Priority 3 で取得した PR コメント Raw JSON が `jq empty` で syntax invalid (legacy Markdown parser へ fallthrough) |
 | `pr_comment_raw_json_awk_failed` | Priority 3 で PR コメントからの Raw JSON 抽出 awk が失敗 (rc 非 0、`REVIEW_SOURCE_PARSE_FAILED` flag、legacy Markdown parser へ fallthrough) |
 | `pr_comment_schema_required_fields_missing` | Priority 3 で取得した PR コメント Raw JSON が parse 可能だが必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) が欠落 (legacy Markdown parser へ fallthrough) |
@@ -1514,28 +982,15 @@ exit 1
 | `pr_comment_schema_version_unknown` | Priority 3 で取得した PR コメント Raw JSON の schema_version が未知 (legacy Markdown parser へ fallthrough) |
 | `user_cancelled` | Interactive fallback で「中止」option が選択された (ステップ 5.1 評価順 1 で `[fix:error]` に昇格) |
 | `user_file_path_invalid` | Interactive fallback の「ファイルパス指定」で再実行した path でもレビュー結果を取得できなかった (one-shot、retry ループなし、`[fix:error]` 昇格) |
-| `review_source_unset_post_chain` | ステップ 1.2.0 Priority chain 終了時に `review_source` が空 (未設定) のまま block 末尾に到達 (設計契約違反、Priority chain の routing bug) |
-| `review_source_invalid_post_chain` | ステップ 1.2.0 Priority chain 終了時に `review_source` に未知の値が設定されている (許容値: `explicit_file` / `conversation` / `local_file` / `pr_comment` / `fallback`) |
 | `review_file_path_empty_value` | ステップ 1.0.1 で値を持たない `--review-file` が指定された。Pattern 1 (equals style: `--review-file=`) と Pattern 2 (space style: `--review-file <末尾>`) の両方で検出される。`flag_style=equals` / `flag_style=space` として retained flag に付記される |
 | `comment_body_tempfile_empty` | ステップ 1.2.0 Priority 3 で `/tmp/rite-fix-pr-comment-{pr_number}.txt` が存在するが空 (Broad Retrieval が異常終了したか PR コメント本文が完全に空) |
 | `bash_version_incompatible` | Prerequisites の `command -v mapfile` チェックが失敗 (bash 3.2 等の旧バージョン) |
-| `priority1_decision_unset` | ステップ 1.2.0 Priority 1 で `conversation_review_decision` が literal substitute されていない (silent fallthrough 防止) |
-| `priority1_decision_invalid` | ステップ 1.2.0 Priority 1 で `conversation_review_decision` に許容値 (`use` / `none`) 以外が指定された |
-| `priority1_receipt_missing` | ステップ 1.2.0 Priority 1 で decision=use だが machine-readable receipt (`p1_scan_turns`) が literal substitute されていない (verified-review H-3 対応) |
-| `priority1_receipt_invalid` | ステップ 1.2.0 Priority 1 で `p1_scan_turns` が数値ではない (verified-review H-3 対応) |
-| `priority1_receipt_inconsistent` | ステップ 1.2.0 Priority 1 で decision=use だが `p1_scan_found != "true"` (receipt 整合性違反、verified-review H-3 対応) |
-| `explicit_file_commit_sha_mismatch` | Priority 0 で指定された file の `commit_sha` が現 HEAD と不一致 (stale detection、Priority 4 Interactive Fallback へ routing) |
-| `local_file_commit_sha_mismatch` | Priority 2 で選ばれた最新 local file の `commit_sha` が現 HEAD と不一致 (stale detection、Priority 3 へ routing) |
 | `pr_comment_commit_sha_mismatch` | Priority 3 の PR コメント Raw JSON の `commit_sha` が現 HEAD と不一致 (stale detection、WARNING のみで continue) |
 | `jq_error_on_commit_sha` | Priority 0/2/3 の `.commit_sha` 抽出 jq が IO/binary エラーで失敗 (I-4 対応。stale detection 無効化を silent にしない。`priority=0|2|3` として retained flag に付記される) |
-| `local_file_find_io_error` | Priority 2 の `find .rite/review-results/` が IO エラーで failed (L-3 対応) |
-| `mktemp_failure_find_err` | Priority 2 の find stderr 退避用 tempfile の mktemp が失敗 (C-5 対応、cleanup.md ステップ 6 と対称)。silent skip 防止のため WARNING + retained flag を必ず emit する (Issue #1025 対応) |
-| `latest_file_stat_failure` | Priority 2 で find が見つけた `latest_file` が `-f` check で脱落 (M-4 対応、permission denied / symlink 破壊) |
 | `jq_duplicate_check_failed` | Priority 0/2 で重複 file:line 検出用 jq が失敗 (silent data loss 検出を skip、非ブロッキング) |
 | `severity_map_build_failed` | Priority 0/2 で severity_map 構築用 jq が失敗 (0 件で正常終了する silent regression 防止、`[fix:error]` 昇格) |
 | `pr_comment_severity_map_build_failed` | Priority 3 で PR コメント Raw JSON からの severity_map 構築用 jq が失敗 (legacy Markdown parser へ fallthrough) |
 | `pr_comment_tempfile_read_io_error` | Priority 3 で `pr_comment_body_file` の cat が IO エラーで失敗 (permission 変更 / NFS timeout / TOCTOU truncate) |
-| `review_file_path_placeholder_residue` | Priority 0 で `review_file_path="{review_file_path_from_phase_1_0_1}"` placeholder が literal substitute されていない (fail-fast) |
 | `pr_number_placeholder_residue` | ステップ 1.2.0 冒頭の `pr_number="{pr_number}"` literal substitute が忘れられ、数値以外 (空文字 / placeholder 残留) のまま bash block に入った (cleanup.md ステップ 6 / review.md ステップ 6.1.a と対称化、`[fix:error]` 昇格) |
 | `scope_omitted_in_v1_0` | Issue #1016: schema 1.0/1.0.0 受信時に findings[].scope が欠落しているため severity ベースの default mapping で補完した (`REVIEW_SOURCE_SCOPE_DEFAULTED` flag、非ブロッキング、observability のみ) |
 | `pre_existing_false_scope_nit_noted` | Issue #1016: cross-field invariant #5 違反 — `pre_existing == false` × `scope == "nit-noted"` の finding を検出し、scope を `current-pr` に auto-correct した (`REVIEW_SOURCE_AUTO_CORRECTED` flag、非ブロッキング、auto-correct + observability) |
@@ -1544,8 +999,9 @@ exit 1
 | `low_current_pr_demoted_to_nit_noted` | Issue #1018 M2: `review.scope_assignment.auto_demote_low: true` (default) で `severity == "LOW"` ∧ `scope == "current-pr"` の finding scope を `nit-noted` に自動降格した (`REVIEW_SOURCE_AUTO_DEMOTED_LOW` flag、非ブロッキング、auto-demote + observability)。`auto_demote_low: false` で opt-out すると本 reason は emit されない |
 | `scope_map_build_failed` | Issue #1018 M2: Priority 0/2 (file-based) で scope_map_json 構築用 jq が失敗 (`REVIEW_SOURCE_PARSE_FAILED` flag、非ブロッキング、`scope_map_json="{}"` で legacy blocking 扱いに fallback) |
 | `pr_comment_scope_map_build_failed` | Issue #1018 M2: Priority 3 (pr_comment Raw JSON) で scope_map_json 構築用 jq が失敗 (`REVIEW_SOURCE_PARSE_FAILED` flag、非ブロッキング、`scope_map_json="{}"` で legacy blocking 扱いに fallback) |
+| `review_source_resolve_failed` | ステップ 1.2.0 caller が `scripts/review-source-resolve.sh` の非ゼロ exit を検知した際の caller-side retained-flag (helper が具体 reason を `FIX_FALLBACK_FAILED` で stderr emit 済み、本 reason は drift Pattern 1 充足用の generic guard、`[fix:error]` 昇格) |
 
-**Eval-order enumeration** (for Pattern-5 drift check): 本 enumeration は Pattern-5 drift check の **唯一の入力源** であり、上の ステップ 1.2.0 / 1.2.0.1 reason 表と必ず同期させること。reason を追加・削除する際は表と本 enumeration の両方を同時に更新する。emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `explicit_file_not_found` / `explicit_file_parse` / `explicit_file_schema_required_fields_missing` / `mergeable_has_open_blockers` / `explicit_file_critical_high_scope_nit_noted` / `overall_assessment_unknown_value` / `explicit_file_schema_version_unknown` / `priority1_decision_unset` / `priority1_decision_invalid` / `priority1_receipt_missing` / `priority1_receipt_invalid` / `priority1_receipt_inconsistent` / `sort_or_mapfile_failure` / `local_file_json_parse_failure` / `local_file_schema_required_fields_missing` / `local_file_cross_field_invariant_violated` / `local_file_critical_high_scope_nit_noted` / `local_file_schema_version_unknown` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_source_unset_post_chain` / `review_source_invalid_post_chain` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `explicit_file_commit_sha_mismatch` / `local_file_commit_sha_mismatch` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `local_file_find_io_error` / `mktemp_failure_find_err` / `latest_file_stat_failure` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `review_file_path_placeholder_residue` / `scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `mktemp_failure_norm_tmp` / `low_current_pr_demoted_to_nit_noted` / `scope_map_build_failed` / `pr_comment_scope_map_build_failed`)
+**Eval-order enumeration** (for Pattern-5 drift check): 本 enumeration は Pattern-5 drift check の **唯一の入力源** であり、上の ステップ 1.2.0 / 1.2.0.1 reason 表と必ず同期させること。reason を追加・削除する際は表と本 enumeration の両方を同時に更新する。emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `mktemp_failure_norm_tmp` / `low_current_pr_demoted_to_nit_noted` / `scope_map_build_failed` / `pr_comment_scope_map_build_failed` / `review_source_resolve_failed`)
 
 #### Legacy Branching (PR Comment Path Only)
 

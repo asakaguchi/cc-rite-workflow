@@ -715,7 +715,7 @@ fi
 
 # --- TC-22: env-set + state file 不在 + .rite-session-id 不在 の graceful 沈黙契約 ---
 echo ""
-echo "=== TC-22: env-set first-time silent contract (wiki/ingest.md / issue/create.md 依存) ==="
+echo "=== TC-22: env-set first-time silent contract (wiki/ingest.md get / pr:ready 等 --if-exists caller 依存) ==="
 # Why: env で sid 解決成功 + state file 不在 + .rite-session-id 不在 (Claude Code 起動直後 /
 # wiki/ingest.md 初回呼び出し) では `[ -f "$SESSION_ID_FILE" ]` gate が false で graceful silent。
 # 将来 gate が除去され「path 不在で常に WARN」に変わると、依存先で WARNING ノイズが大量発生
@@ -738,7 +738,7 @@ if echo "$combined" | grep -qE 'WARNING:.*cmd_get:.*state file not found'; then
 else
   pass "TC-22.2: env-set first-time で cmd_get が graceful silent (依存先契約保持)"
 fi
-# graceful 完了 invariant: rc=0 + stdout に default 返却 (依存先 wiki/ingest.md / issue/create.md の契約)
+# graceful 完了 invariant: rc=0 + stdout に default 返却 (依存先 wiki/ingest.md get / pr:ready 等 --if-exists caller の契約)
 if [ "$get_rc" = "0" ]; then
   pass "TC-22.2: env-set first-time で cmd_get が rc=0 (graceful contract)"
 else

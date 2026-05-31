@@ -256,4 +256,18 @@ else
   fail "TC-7b emit site sentinel without adjacent disambiguator marker found (silent marker strip suspected)"
 fi
 
+# ──────────────────────────────────────────────────────────────────────
+# TC-8: create.md は flow-state ライフサイクルに関与しない (Issue #1184)
+#       ステップ6 (flow-state completed 化) 削除の regression を pin する。
+#       create.md に flow-state.sh set / --phase completed が再混入したら検出し、
+#       「別の active な work フローの flow-state を誤って上書きする」回帰を防ぐ。
+# ──────────────────────────────────────────────────────────────────────
+flow_state_set_count=$(grep -cE 'flow-state\.sh set' "$CREATE_MD" || true)
+phase_completed_count=$(grep -cE '\-\-phase completed' "$CREATE_MD" || true)
+if [ "$flow_state_set_count" -eq 0 ] && [ "$phase_completed_count" -eq 0 ]; then
+  pass "TC-8 create.md は flow-state を init/所有しない (flow-state.sh set=$flow_state_set_count, --phase completed=$phase_completed_count; Issue #1184)"
+else
+  fail "TC-8 create.md に flow-state 操作が再混入 (flow-state.sh set=$flow_state_set_count, --phase completed=$phase_completed_count). Issue #1184: issue:create は flow-state ライフサイクルに関与してはならない"
+fi
+
 print_summary "create-md-invocation-symmetry.test.sh"

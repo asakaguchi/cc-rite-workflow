@@ -227,7 +227,7 @@ fi
 <!-- [create:returned-to-caller:{issue_number}] -->
 ```
 
-ステップ 6（共通完結処理）へ。
+以上で `/rite:issue:create` は完了（flow-state には触れない — Issue #1184）。
 
 ---
 
@@ -386,23 +386,9 @@ Decompose path も完了レポートの最終 2 行は `<!-- skill return signal
 - 復旧: `bash {plugin_root}/scripts/link-sub-issue.sh {owner} {repo} {parent_issue_number} {sub_X_number}` を該当 Sub-Issue ごとに手動再実行してください
 ```
 
-ステップ 6 へ。
+以上で `/rite:issue:create` は完了。
 
----
-
-## ステップ 6: 共通完結処理
-
-### 6.1 flow-state 完結
-
-`--preserve-error-count` はこの patch で `.error_count` を 0 にリセットせず保持する general flag。現時点で `.error_count` を読む reader は無いが、再導入時の累積カウントが意図せずリセットされないよう reserved API として保持する。
-
-```bash
-bash {plugin_root}/hooks/flow-state.sh set \
-  --phase completed --active false --next "none" \
-  --if-exists --preserve-error-count 2>/dev/null || true
-```
-
-create.md は作業 phase ではなく Issue 作成のみなので、flow-state は必ずしも必要ない（`patch --if-exists` で file 不在時は no-op）。
+> **Note (Issue #1184)**: 本コマンドは Issue 作成のみで work phase を持たず、flow-state を init / 所有しない。したがって完結時に flow-state を completed/inactive 化する処理は持たない。これは別の active な work フロー（`/rite:pr:open` 等）の途中で本コマンドが sub-task として呼ばれたとき、親セッションの flow-state を誤って上書きしないための設計（standalone 実行でも flow-state には一切触れない）。
 
 ---
 

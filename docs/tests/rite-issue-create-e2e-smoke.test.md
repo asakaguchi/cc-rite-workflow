@@ -46,7 +46,6 @@
   4. ステップ 4.3 `create-issue-with-projects.sh` 実行
   5. ステップ 4.4 `✅ Issue #{N} を作成しました` テーブル + 次のアクション
   6. `<!-- skill return signal: caller must continue next step -->` + `<!-- [create:returned-to-caller:{N}] -->` の 2 行 HTML コメント sentinel (ステップ 4.4 末尾、user-visible な最終行は完了メッセージ。#1165 で旧 `[create:completed:{N}]` から rename + active disambiguation marker を併記)
-  7. ステップ 6 flow-state 完結 (silent)
 
 - ユーザーが `continue` を入力する必要がない
 - Issue が GitHub 上に実際に作成され、Projects に Status=Todo / Priority / Complexity が設定される
@@ -57,7 +56,7 @@
 |------|--------|
 | ステップ 4 到達後 turn が終了 | `.rite-flow-state-diag.log` の `flow_state_*` 行を確認し、`start.md ステップ 8.5 retrospective scan` 相当の遡及検出が `manual_fallback_adopted` を拾ったか会話コンテキストを grep |
 | `✅ Issue #{N}` が出力されない | `commands/issue/create.md` ステップ 4.4 のテンプレートが現行版か確認 |
-| `[create:returned-to-caller:{N}]` が user-visible な最終行になる | ステップ 6 共通完結処理の出力順序を確認（sentinel は HTML コメント化されているか。#1165 で旧 `[create:completed:{N}]` から rename） |
+| `[create:returned-to-caller:{N}]` が user-visible な最終行になる | ステップ 4.4 / 5.6 完了レポート末尾の出力順序を確認（sentinel は HTML コメント化されているか。#1165 で旧 `[create:completed:{N}]` から rename） |
 | Projects 登録が `failed` | `create-issue-with-projects.sh` の戻り値 `project_registration` を確認、AskUserQuestion で retry / skip を選択 |
 
 ## シナリオ 2: Decompose path（ステップ 5 経路）
@@ -84,7 +83,7 @@
 
 - ステップ 3.2 選択後、同 turn 内でステップ 5 に進行
 - ステップ 5.6 `✅ Issue #{parent_issue_number} を分解して {sub_count} 件の Sub-Issue を作成しました` テーブル出力
-- ステップ 6 共通完結処理 + `<!-- skill return signal: caller must continue next step -->` + `<!-- [create:returned-to-caller:{parent_issue_number}] -->` の 2 行 HTML sentinel (#1165 で旧 `[create:completed:{N}]` から rename + active disambiguation marker を併記)
+- ステップ 5.6 完了レポート末尾 + `<!-- skill return signal: caller must continue next step -->` + `<!-- [create:returned-to-caller:{parent_issue_number}] -->` の 2 行 HTML sentinel (#1165 で旧 `[create:completed:{N}]` から rename + active disambiguation marker を併記)
 - ユーザーの `continue` 介入なし
 
 ## シナリオ 3: AC-4 後方互換性 grep 確認

@@ -172,7 +172,8 @@ cmd_set() {
     # active session. Resolved path missing means stale/drifted session_id (Issue #1142)
     # — emit a WARNING so the silent skip is observable. Truly first-time sessions (no
     # `.rite-session-id`) stay silent to preserve the graceful no-op contract that
-    # `commands/wiki/ingest.md` / `commands/issue/create.md` / etc. depend on.
+    # `commands/wiki/ingest.md` / `commands/pr/ready.md` 等の `--if-exists` caller が depend on
+    # (issue:create は Issue #1184 で flow-state 非依存化され、本契約の依存者ではなくなった)。
     if [ -f "$SESSION_ID_FILE" ]; then
       # basename only — multi-tenant 環境での絶対 path leakage を最小化 (cmd_get と対称化)
       echo "WARNING: flow-state.sh cmd_set: --if-exists skipped (resolved session_id=$sid has no state file at file: $(basename "$path"); possible stale .rite-session-id or sid drift)" >&2

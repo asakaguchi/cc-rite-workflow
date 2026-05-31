@@ -6,8 +6,11 @@
 # call the gh API with a literal placeholder), arg-count validation, and the
 # JSON output skeleton shape. Runtime gh calls are not mocked here.
 #
-# Caller side: also verify create.md's Variant B JSON fallback keeps a
-# JSON-valid escape so the caller can parse the fallback result.
+# Caller side: also verify the Variant B JSON fallback keeps a JSON-valid escape
+# so the caller can parse the fallback result. After PR #1205 (refs #1195 item
+# #9) the parent+Sub-Issue create/link logic was extracted from create.md into
+# `scripts/decompose-issues.sh`, so the Variant B fallback now lives there
+# (the Decompose path) rather than inline in create.md.
 
 set -euo pipefail
 
@@ -15,10 +18,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 TARGET="$PLUGIN_ROOT/scripts/link-sub-issue.sh"
-CREATE_MD="$PLUGIN_ROOT/commands/issue/create.md"
+DECOMPOSE_SH="$PLUGIN_ROOT/scripts/decompose-issues.sh"
 HANDLER_REF="$PLUGIN_ROOT/references/sub-issue-link-handler.md"
 
-for f in "$TARGET" "$CREATE_MD" "$HANDLER_REF"; do
+for f in "$TARGET" "$DECOMPOSE_SH" "$HANDLER_REF"; do
   [ -f "$f" ] || { echo "ERROR: required file not found: $f" >&2; exit 1; }
 done
 
@@ -49,13 +52,15 @@ else
   fail "TC-03 missing 4th positional arg silently passed"
 fi
 
-echo "=== Phase 3: create.md Variant B JSON fallback safety ==="
+echo "=== Phase 3: decompose-issues.sh Variant B JSON fallback safety ==="
 # Hand-built JSON in the fallback path was historically prone to quote-escape
 # breakage; the canonical `jq -n --arg err "$link_result" ...` form prevents that.
+# This fallback was moved from create.md into decompose-issues.sh (the Decompose
+# path) by PR #1205 — assert it against its new home, NOT delete the contract.
 # Assert (a) the "fatal exit" message is preserved, (b) construction goes through
 # `jq -n`, (c) the produced JSON actually parses.
-assert_grep "create.md Variant B fallback has JSON status=failed" "$CREATE_MD" 'link-sub-issue\.sh fatal exit'
-assert_grep "create.md Variant B fallback builds JSON via jq -n" "$CREATE_MD" 'link_result=.\(jq -n'
+assert_grep "decompose-issues.sh Variant B fallback has JSON status=failed" "$DECOMPOSE_SH" 'link-sub-issue\.sh fatal exit'
+assert_grep "decompose-issues.sh Variant B fallback builds JSON via jq -n" "$DECOMPOSE_SH" 'link_result=.\(jq -n'
 
 # Runtime sanity: the fallback pattern's output JSON must parse via jq.
 # Simulate the fallback locally with a stderr containing tricky characters.

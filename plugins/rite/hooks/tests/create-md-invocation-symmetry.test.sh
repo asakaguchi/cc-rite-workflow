@@ -66,7 +66,7 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────
-# TC-1c: build_payload itself is the canonical `jq -n` constructor (the
+# TC-1d: build_payload itself is the canonical `jq -n` constructor (the
 #        decompose path's create JSON shape). Pins that the moved logic still
 #        builds the JSON via jq -n rather than a hand-built/flag-style string.
 # ──────────────────────────────────────────────────────────────────────

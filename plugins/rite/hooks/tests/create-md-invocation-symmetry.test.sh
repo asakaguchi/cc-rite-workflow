@@ -1,22 +1,32 @@
 #!/bin/bash
 # create-md-invocation-symmetry.test.sh
 #
-# Every `create-issue-with-projects.sh` callsite in `commands/issue/create.md`
-# must use the canonical JSON pattern (single `"$(jq -n ...)"` argument). The
-# flag-style alternative (`--title --body --labels ...`) is not supported by
-# the script and would only surface at runtime as a fatal exit when a user
-# actually creates an Issue — too late to catch in review.
+# Every `create-issue-with-projects.sh` callsite must use the canonical JSON
+# pattern (single `"$(jq -n ...)"` argument). The flag-style alternative
+# (`--title --body --labels ...`) is not supported by the script and would only
+# surface at runtime as a fatal exit when a user actually creates an Issue —
+# too late to catch in review.
 #
-# Coverage:
-#   - every `create-issue-with-projects.sh` call is followed by `"$(jq -n`
-#   - no flag-style `--title` / `--body` / `--labels` appears within 5 lines
-#     of a `create-issue-with-projects.sh` invocation
-#   - the callsite count matches the SoT (`references/issue-create-with-projects.md`):
-#     at least 3 sites (single create, parent create, sub-issue loop)
+# Two-path architecture (PR #1205 / refs #1195 item #9):
+#   - Single-Issue path  = `commands/issue/create.md` ステップ 4.3
+#                          → 1 direct `create-issue-with-projects.sh "$(jq -n ...)"` callsite.
+#                            (A single Issue has no children, so NO link-sub-issue.sh here.)
+#   - Decompose path     = `scripts/decompose-issues.sh`
+#                          → parent + sub-issue loop both call
+#                            `bash "$CREATE_SCRIPT" "$(build_payload ...)"` (2 callsites),
+#                            where build_payload is the canonical `jq -n` constructor,
+#                            and links each child via `bash "$LINK_SCRIPT" ...` (positional args).
 #
-# When this test fails: a flag-style invocation has likely been introduced.
+# The invocation-symmetry contract therefore holds across BOTH files combined:
+#   - create-issue-with-projects.sh: 1 (create.md) + 2 (decompose-issues.sh) = 3 canonical sites
+#   - link-sub-issue.sh: 1 canonical site (decompose-issues.sh), never in create.md anymore
+# This test asserts each path independently and pins the combined total so a
+# future re-inlining or silent removal in either file is caught.
+#
+# When this test fails: a flag-style invocation has likely been introduced, or
+# a callsite was removed without moving the contract to the other path.
 # Cross-reference `references/issue-create-with-projects.md` for the canonical
-# JSON pattern and fix create.md to match.
+# JSON pattern.
 
 set -euo pipefail
 
@@ -25,75 +35,131 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 CREATE_MD="$PLUGIN_ROOT/commands/issue/create.md"
+DECOMPOSE_SH="$PLUGIN_ROOT/scripts/decompose-issues.sh"
 SOT_MD="$PLUGIN_ROOT/references/issue-create-with-projects.md"
 
-if [ ! -f "$CREATE_MD" ]; then
-  echo "ERROR: $CREATE_MD not found" >&2
-  exit 1
-fi
-if [ ! -f "$SOT_MD" ]; then
-  echo "ERROR: $SOT_MD not found" >&2
-  exit 1
-fi
+for f in "$CREATE_MD" "$DECOMPOSE_SH" "$SOT_MD"; do
+  [ -f "$f" ] || { echo "ERROR: required file not found: $f" >&2; exit 1; }
+done
 
 # ──────────────────────────────────────────────────────────────────────
-# TC-1: callsite が canonical JSON pattern (`"$(jq -n`) で呼ばれている
+# TC-1: Single-Issue path (create.md ステップ 4.3) has exactly 1 canonical
+#       create-issue-with-projects.sh callsite using `"$(jq -n` pattern.
 # ──────────────────────────────────────────────────────────────────────
-# `create-issue-with-projects.sh "$(jq -n` literal が存在することを assert。
-canonical_count=$(grep -c 'create-issue-with-projects\.sh "\$(jq -n' "$CREATE_MD" || true)
-
-if [ "$canonical_count" -ge 3 ]; then
-  pass "TC-1 canonical JSON pattern callsite count >= 3 (actual=$canonical_count)"
+create_md_canonical=$(grep -c 'create-issue-with-projects\.sh "\$(jq -n' "$CREATE_MD" || true)
+if [ "$create_md_canonical" -ge 1 ]; then
+  pass "TC-1 Single-Issue path (create.md 4.3) has canonical JSON callsite (count=$create_md_canonical)"
 else
-  fail "TC-1 canonical JSON pattern callsite count < 3 (actual=$canonical_count). Expected >= 3 (single create, parent create, sub-issue loop)"
+  fail "TC-1 Single-Issue path (create.md 4.3) missing canonical 'create-issue-with-projects.sh \"\$(jq -n' callsite (count=$create_md_canonical)"
 fi
 
 # ──────────────────────────────────────────────────────────────────────
-# TC-2: 全 `create-issue-with-projects.sh` 行が canonical pattern と一致
-#       (flag-style が混ざっていない)
+# TC-1b: Decompose path (decompose-issues.sh) routes both its create
+#        invocations through the canonical `build_payload` (jq -n) constructor.
+#        Parent + sub-issue loop = 2 callsites.
 # ──────────────────────────────────────────────────────────────────────
-total_invocations=$(grep -c 'bash.*create-issue-with-projects\.sh' "$CREATE_MD" || true)
-# 説明的言及 (`create-issue-with-projects.sh に委譲`、`ERROR: create-issue-with-projects.sh failed` 等の
-# 説明テキスト) は除外して、実 invocation 行のみを数える。`bash ...create-issue-with-projects.sh` パターン
-# が実 invocation の signature。
-non_canonical=$((total_invocations - canonical_count))
-
-if [ "$non_canonical" -eq 0 ]; then
-  pass "TC-2 all create-issue-with-projects.sh invocations use canonical JSON pattern (total=$total_invocations)"
+decompose_canonical=$(grep -cE 'bash "\$CREATE_SCRIPT" "\$\(build_payload' "$DECOMPOSE_SH" || true)
+if [ "$decompose_canonical" -ge 2 ]; then
+  pass "TC-1b Decompose path (decompose-issues.sh) has both canonical build_payload callsites (count=$decompose_canonical)"
 else
-  # 非 canonical 行を診断出力
-  echo "  Non-canonical invocations:"
-  grep -n 'bash.*create-issue-with-projects\.sh' "$CREATE_MD" \
+  fail "TC-1b Decompose path (decompose-issues.sh) canonical build_payload callsite count < 2 (actual=$decompose_canonical). Expected parent + sub-issue loop"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-1c: build_payload itself is the canonical `jq -n` constructor (the
+#        decompose path's create JSON shape). Pins that the moved logic still
+#        builds the JSON via jq -n rather than a hand-built/flag-style string.
+# ──────────────────────────────────────────────────────────────────────
+if grep -qE '^build_payload\(\) \{' "$DECOMPOSE_SH" && grep -qE '^[[:space:]]*jq -n' "$DECOMPOSE_SH"; then
+  pass "TC-1d build_payload constructs the create JSON via jq -n (canonical)"
+else
+  fail "TC-1d build_payload missing or not built via jq -n in $DECOMPOSE_SH"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-1e: Combined invariant — total canonical create-issue callsites across
+#        both paths is >= 3 (1 single + 2 decompose). Catches a silent removal
+#        in either file without re-homing the contract.
+# ──────────────────────────────────────────────────────────────────────
+combined_canonical=$((create_md_canonical + decompose_canonical))
+if [ "$combined_canonical" -ge 3 ]; then
+  pass "TC-1e combined canonical create-issue callsite count >= 3 (create.md=$create_md_canonical + decompose=$decompose_canonical = $combined_canonical)"
+else
+  fail "TC-1e combined canonical create-issue callsite count < 3 (create.md=$create_md_canonical + decompose=$decompose_canonical = $combined_canonical). Expected single create + parent create + sub-issue loop"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-2: All actual `create-issue-with-projects.sh` invocations (the bash
+#       callsite signature `bash .../create-issue-with-projects.sh` or via the
+#       $CREATE_SCRIPT var) use the canonical pattern in BOTH files.
+# ──────────────────────────────────────────────────────────────────────
+# Single-Issue path: in create.md the only real invocation signature is the
+# `bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n` line.
+# A prose mention like `ERROR: create-issue-with-projects.sh failed` is NOT a
+# `bash .../create-issue-with-projects.sh` callsite and is excluded by anchoring
+# on `bash` followed by the script path.
+create_md_invocations=$(grep -cE 'bash [^|]*create-issue-with-projects\.sh ' "$CREATE_MD" || true)
+create_md_non_canonical=$((create_md_invocations - create_md_canonical))
+if [ "$create_md_non_canonical" -eq 0 ]; then
+  pass "TC-2 create.md: all create-issue-with-projects.sh invocations are canonical (total=$create_md_invocations)"
+else
+  echo "  Non-canonical invocations in create.md:"
+  grep -nE 'bash [^|]*create-issue-with-projects\.sh ' "$CREATE_MD" \
     | grep -v 'create-issue-with-projects\.sh "\$(jq -n' \
-    | sed 's/^/    /' >&2
-  fail "TC-2 $non_canonical create-issue-with-projects.sh invocations are NOT canonical JSON pattern (total=$total_invocations)"
+    | sed 's/^/    /'
+  fail "TC-2 create.md: $create_md_non_canonical create-issue-with-projects.sh invocation(s) NOT canonical (total=$create_md_invocations)"
 fi
 
-# ──────────────────────────────────────────────────────────────────────
-# TC-3: flag-style な `--title` flag が create-issue-with-projects.sh と近接していない
-#       (近傍 5 行内に同居していたら fail)
-# ──────────────────────────────────────────────────────────────────────
-# 近傍検査: create-issue-with-projects.sh を含む行から 5 行以内に `--title` flag があれば
-# flag-style 呼び出しの suspect として fail。canonical pattern では `--arg title` を使うため
-# `--title` flag は出現しないはず。
-suspect_blocks=$(awk '
-  /create-issue-with-projects\.sh/ { trigger_line=NR; window_start=NR; window_end=NR+5 }
-  trigger_line && NR >= window_start && NR <= window_end {
-    if ($0 ~ /[[:space:]]--title[[:space:]]/) { print trigger_line ":" NR ":" $0 }
-  }
-' "$CREATE_MD" || true)
-
-if [ -z "$suspect_blocks" ]; then
-  pass "TC-3 no flag-style --title near create-issue-with-projects.sh callsites"
+# Decompose path: every `bash "$CREATE_SCRIPT"` invocation must go through
+# `"$(build_payload`. A flag-style invocation would NOT match the build_payload form.
+decompose_invocations=$(grep -cE 'bash "\$CREATE_SCRIPT"' "$DECOMPOSE_SH" || true)
+decompose_non_canonical=$((decompose_invocations - decompose_canonical))
+if [ "$decompose_non_canonical" -eq 0 ]; then
+  pass "TC-2b decompose-issues.sh: all \$CREATE_SCRIPT invocations route through build_payload (total=$decompose_invocations)"
 else
-  echo "  Suspect flag-style proximity:"
-  printf '%s\n' "$suspect_blocks" | sed 's/^/    /' >&2
-  fail "TC-3 found flag-style --title near create-issue-with-projects.sh callsites (probable regression)"
+  echo "  Non-canonical \$CREATE_SCRIPT invocations in decompose-issues.sh:"
+  grep -nE 'bash "\$CREATE_SCRIPT"' "$DECOMPOSE_SH" \
+    | grep -v 'bash "\$CREATE_SCRIPT" "\$(build_payload' \
+    | sed 's/^/    /'
+  fail "TC-2b decompose-issues.sh: $decompose_non_canonical \$CREATE_SCRIPT invocation(s) bypass build_payload (total=$decompose_invocations)"
 fi
 
 # ──────────────────────────────────────────────────────────────────────
-# TC-4: SoT (references/issue-create-with-projects.md) との表面的一致
-#       SoT が canonical JSON pattern を示していることを確認
+# TC-3: flag-style `--title` flag is not adjacent to any
+#       create-issue-with-projects.sh / $CREATE_SCRIPT callsite (within 5 lines).
+#       canonical pattern uses `--arg title`, so a bare `--title` flag near a
+#       callsite signals a regression in either path.
+# ──────────────────────────────────────────────────────────────────────
+check_no_flag_title_proximity() {
+  local label="$1"
+  local file="$2"
+  local trigger_pat="$3"
+  local suspects
+  suspects=$(awk -v trig="$trigger_pat" '
+    $0 ~ trig { trigger_line=NR; window_start=NR; window_end=NR+5 }
+    trigger_line && NR >= window_start && NR <= window_end {
+      if ($0 ~ /[[:space:]]--title[[:space:]]/) { print trigger_line ":" NR ":" $0 }
+    }
+  ' "$file" || true)
+  if [ -z "$suspects" ]; then
+    pass "$label"
+  else
+    echo "  Suspect flag-style proximity:"
+    printf '%s\n' "$suspects" | sed 's/^/    /'
+    fail "$label (probable flag-style regression)"
+  fi
+}
+# awk regex (passed via -v) uses POSIX ERE: a literal dot is escaped as [.] and
+# a literal `$` via [$] so awk does not emit "escape sequence treated as ..."
+# warnings to stderr (which would otherwise pollute CI logs).
+check_no_flag_title_proximity "TC-3 no flag-style --title near create.md create callsite" \
+  "$CREATE_MD" 'create-issue-with-projects[.]sh'
+check_no_flag_title_proximity "TC-3b no flag-style --title near decompose-issues.sh \$CREATE_SCRIPT callsite" \
+  "$DECOMPOSE_SH" 'bash "[$]CREATE_SCRIPT"'
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-4: SoT (references/issue-create-with-projects.md) demonstrates the
+#       canonical JSON pattern.
 # ──────────────────────────────────────────────────────────────────────
 if grep -qE 'create-issue-with-projects\.sh "\$\(jq -n' "$SOT_MD"; then
   pass "TC-4 SoT (references/issue-create-with-projects.md) demonstrates canonical JSON pattern"
@@ -102,41 +168,57 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────
-# TC-5: link-sub-issue.sh callsite が positional 4 args pattern を維持
+# TC-5: link-sub-issue.sh invocation now lives in the Decompose path
+#       (decompose-issues.sh), called with positional args. A single Issue has
+#       no children, so create.md must NOT invoke link-sub-issue.sh.
 # ──────────────────────────────────────────────────────────────────────
-# Real callsites end the first line with `\` and pass the positional args on
-# the next line. A docstring example (single line, inside prose) is allowed —
-# the assertion below requires at least one canonical call but does not block
-# additional documentation mentions.
-link_actual_calls=$(grep -cE 'link-sub-issue\.sh[[:space:]]+\\$' "$CREATE_MD" || true)
-link_total_mentions=$(grep -c 'bash.*link-sub-issue\.sh' "$CREATE_MD" || true)
-
-# A mere `>=1` mention assertion would pass if every real invocation were
-# replaced by a single comment line. Require both: at least one canonical
-# callsite (line-continuation form, the runtime shape) AND total mentions
-# strictly greater than or equal to that callsite count (every real call
-# also appears in the total).
-if [ "$link_actual_calls" -ge 1 ] && [ "$link_total_mentions" -ge "$link_actual_calls" ]; then
-  pass "TC-5 link-sub-issue.sh has $link_actual_calls canonical callsite(s) and $link_total_mentions total mention(s)"
+# Canonical decompose callsite: `bash "$LINK_SCRIPT" \` (line-continuation form,
+# args on the next line — the runtime shape). Documentation/prose mentions are
+# allowed but the real invocation must exist.
+link_canonical=$(grep -cE 'bash "\$LINK_SCRIPT"[[:space:]]*\\$' "$DECOMPOSE_SH" || true)
+link_total=$(grep -cE 'bash "\$LINK_SCRIPT"' "$DECOMPOSE_SH" || true)
+if [ "$link_canonical" -ge 1 ] && [ "$link_total" -ge "$link_canonical" ]; then
+  pass "TC-5 decompose-issues.sh has $link_canonical canonical link-sub-issue.sh callsite(s), $link_total total"
 else
-  fail "TC-5 link-sub-issue.sh integrity broken (canonical_callsites=$link_actual_calls, total_mentions=$link_total_mentions) — silent removal suspected if total<canonical"
-fi
-if [ "$link_actual_calls" -ge 1 ]; then
-  pass "TC-5b at least one link-sub-issue.sh callsite uses canonical line-continuation form (count=$link_actual_calls)"
-else
-  fail "TC-5b no canonical line-continuation form found (refactor to flag form?)"
+  fail "TC-5 decompose-issues.sh link-sub-issue.sh integrity broken (canonical=$link_canonical, total=$link_total) — silent removal suspected"
 fi
 
+# TC-5b: the positional 4-arg contract is visible at the canonical callsite.
+# link-sub-issue.sh takes <owner> <repo> <parent> <child>; assert the callsite
+# passes "$owner" "$repo" "$parent_issue_number" "$sub_number" so an accidental
+# switch to a flag/JSON form (which the script does not accept) is caught.
+if grep -qE 'bash "\$LINK_SCRIPT"' "$DECOMPOSE_SH" \
+   && grep -qE '"\$owner" "\$repo" "\$parent_issue_number" "\$sub_number"' "$DECOMPOSE_SH"; then
+  pass "TC-5b link-sub-issue.sh canonical callsite passes positional 4 args (owner repo parent child)"
+else
+  fail "TC-5b link-sub-issue.sh positional 4-arg form not found at the decompose callsite"
+fi
+
+# TC-5c: create.md no longer runs link-sub-issue.sh in its create flow (the
+# runtime invocation moved to decompose-issues.sh — TC-5/TC-5b). The ONLY
+# remaining mention in create.md is the manual-recovery guidance line in the
+# Decompose completion report (ステップ 5.6, shown when link_failures > 0):
+#   - 復旧: `bash {plugin_root}/scripts/link-sub-issue.sh {owner} {repo} ...`
+# That recovery hint is an intended fallback contract, not a runtime callsite, so
+# we (a) require every link-sub-issue.sh mention in create.md to be that recovery
+# line, and (b) pin the recovery line's presence so it cannot be silently dropped.
+link_mentions_total=$(grep -cE 'link-sub-issue\.sh' "$CREATE_MD" || true)
+link_recovery_mentions=$(grep -cE '復旧:.*scripts/link-sub-issue\.sh' "$CREATE_MD" || true)
+if [ "$link_mentions_total" -eq "$link_recovery_mentions" ] && [ "$link_recovery_mentions" -ge 1 ]; then
+  pass "TC-5c create.md's only link-sub-issue.sh mention is the manual-recovery guidance (recovery=$link_recovery_mentions, total=$link_mentions_total); no runtime callsite in the create flow"
+else
+  echo "  link-sub-issue.sh mentions in create.md:"
+  grep -nE 'link-sub-issue\.sh' "$CREATE_MD" | sed 's/^/    /'
+  fail "TC-5c create.md link-sub-issue.sh mentions are not solely the recovery guidance (recovery=$link_recovery_mentions, total=$link_mentions_total). A runtime callsite leaked back, or the recovery hint was dropped."
+fi
+
 # ──────────────────────────────────────────────────────────────────────
-# TC-6: `[create:returned-to-caller:{N}]` HTML sentinel が Single Issue path と Decompose path の
-#       両完了レポートに含まれている
+# TC-6: `[create:returned-to-caller:{N}]` HTML sentinel present in both
+#       completion reports (Single Issue 4.4 / Decompose 5.6) of create.md.
 # ──────────────────────────────────────────────────────────────────────
-# 完了レポート末尾の HTML コメント sentinel は SKILL.md / workflow-identity.md / SPEC.md 等
-# 複数 SoT が grep 契約として依存している load-bearing artifact。flat workflow refactor で
-# silent に欠落する経路を防ぐため、リテラル grep で 2 site (Single Issue 4.4 / Decompose 5.6)
-# 以上の存在を pin する。
-# Issue #1165 で sentinel naming を `:completed` → `:returned-to-caller` へ rename
-# (turn-boundary heuristic 誤発火を構造的に予防)。
+# Completion-report sentinels remain in create.md (the report templates were
+# NOT moved to decompose-issues.sh — only the create/link logic was). Multiple
+# SoT (SKILL.md / workflow-identity.md / SPEC.md) depend on this grep contract.
 sentinel_count=$(grep -cE '<!-- \[create:returned-to-caller:\{(issue_number|parent_issue_number)\}\] -->' "$CREATE_MD" || true)
 if [ "$sentinel_count" -ge 2 ]; then
   pass "TC-6 [create:returned-to-caller:{N}] HTML sentinel present in both paths (count=$sentinel_count)"
@@ -146,15 +228,9 @@ fi
 
 # ──────────────────────────────────────────────────────────────────────
 # TC-7: active disambiguation marker `<!-- skill return signal: caller must continue next step -->`
-#       が sentinel と同数以上 emit され、かつ各 sentinel 直前に隣接配置されている
+#       emitted >= sentinel count, and each emit-site sentinel is immediately
+#       preceded by it.
 # ──────────────────────────────────────────────────────────────────────
-# Issue #1165 で sentinel rename と同時に導入された active disambiguation marker。
-# LLM の turn-boundary heuristic に対する明示的な「これは return signal であって turn 終了ではない」
-# 宣言として、各 sentinel の直前行に必ず配置する契約。silent strip (rename 漏れ等で marker のみ
-# 落ちた状態) を検出するため、(a) marker 出現数 >= sentinel 出現数、(b) 各 sentinel 直前行が
-# marker であること、の 2 つを pin する。
-# 実 emit site は line head が `<!--` で始まり、prose 内 literal は他のテキストの後に出現するため
-# 行頭 anchor `^<!--` で実 emit site のみを scope する。これにより prose 内引用との誤検出を防ぐ。
 emit_site_sentinel_count=$(grep -cE '^<!-- \[create:returned-to-caller:\{(issue_number|parent_issue_number)\}\] -->$' "$CREATE_MD" || true)
 emit_site_disambiguator_count=$(grep -cE '^<!-- skill return signal: caller must continue next step -->$' "$CREATE_MD" || true)
 if [ "$emit_site_disambiguator_count" -ge "$emit_site_sentinel_count" ]; then
@@ -163,8 +239,6 @@ else
   fail "TC-7a disambiguator marker (emit site only) count < sentinel emit site count (disambiguator=$emit_site_disambiguator_count, sentinel=$emit_site_sentinel_count). Each emit site sentinel must be preceded by '<!-- skill return signal: caller must continue next step -->'"
 fi
 
-# 隣接配置 check: 実 emit site (line head が `^<!--`) の sentinel に対してのみ、
-# 直前行が disambiguator marker であることを awk で検査。prose 内引用は行頭 anchor で除外される。
 adjacency_violations=$(awk '
   { lines[NR] = $0 }
   /^<!-- \[create:returned-to-caller:\{(issue_number|parent_issue_number)\}\] -->$/ {
@@ -178,7 +252,7 @@ if [ -z "$adjacency_violations" ]; then
   pass "TC-7b each emit site sentinel is preceded by disambiguator marker on the immediately previous line"
 else
   echo "  Adjacency violations:"
-  printf '%s\n' "$adjacency_violations" | sed 's/^/    /' >&2
+  printf '%s\n' "$adjacency_violations" | sed 's/^/    /'
   fail "TC-7b emit site sentinel without adjacent disambiguator marker found (silent marker strip suspected)"
 fi
 

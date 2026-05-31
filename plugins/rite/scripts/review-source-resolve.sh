@@ -58,8 +58,6 @@
 # abort してはならない。`set -o pipefail` のみ block 本体で有効化する (旧 block と同一)。
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 # --- bash 4+ compat guard (mapfile builtin; Priority 2 で使用) ---
 # fix.md ステップ 1.0.1 の canonical guard と対称。helper は独立プロセスのため
 # defense-in-depth として再掲する。bash 3.2 (macOS default) では mapfile が無く
@@ -145,16 +143,8 @@ review_source_path=""
 find_err=""
 jq_val_err_p0=""
 jq_val_err_p2=""
-norm_tmp=""
-# Issue #1026: norm_tmp hand-off 後の path を保持する registry variable。
-# hand-off 完了時 `norm_tmp=""` で trap 対象から外す既存 semantic を維持しつつ、
-# downstream (severity_map build 等) が `review_source_path` 経由で参照を終えた後の
-# block 終了タイミング (EXIT/INT/TERM/HUP) で本変数経由で必ず削除されるようにし、
-# `/tmp/rite-fix-normalized-XXXXXX` orphan を解消する。
-handed_off_norm_tmp=""
 _rite_fix_p120_cleanup() {
-  rm -f "${find_err:-}" "${jq_val_err_p0:-}" "${jq_val_err_p2:-}" "${norm_tmp:-}" \
-        "${handed_off_norm_tmp:-}"
+  rm -f "${find_err:-}" "${jq_val_err_p0:-}" "${jq_val_err_p2:-}"
 }
 trap 'rc=$?; _rite_fix_p120_cleanup; exit $rc' EXIT
 trap '_rite_fix_p120_cleanup; exit 130' INT

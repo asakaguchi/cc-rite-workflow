@@ -2713,7 +2713,7 @@ nit-noted は「修正不要の informational 指摘」のため code 変更 (Ed
 | `NIT_NOTED_REPLY_FAILED` | `mktemp_failed` | reply body 用 tempfile (`/tmp/rite-fix-nit-reply-${pr_number}-${comment_id}-XXXXXX.md`) の mktemp が失敗 (disk full / inode 枯渇 / permission denied)。non-blocking、当該 finding は skip して次へ進む |
 | `NIT_NOTED_REPLY_FAILED` | `gh_api_post_failure` | `jq -n --rawfile body | gh api POST` の pipe が pipefail で exit 非ゼロ (network / auth / rate-limit / `in_reply_to` 不正値)。non-blocking、当該 finding は skip して次へ進む |
 
-**Eval-order enumeration** (ステップ 2.4.N 独立 namespace、ステップ 1.2.0 enumeration とは別): emit reasons sequence = (`already_replied` / `mktemp_failed` / `gh_api_post_failure` / `review_source_resolve_failed`)
+**Eval-order enumeration** (ステップ 2.4.N 独立 namespace、ステップ 1.2.0 enumeration とは別): emit reasons sequence = (`already_replied` / `mktemp_failed` / `gh_api_post_failure`)
 
 これらの reason は ステップ 1.2.0 の `FIX_FALLBACK_FAILED` / `REVIEW_SOURCE_*` 系列とは独立した namespace で、`/rite:pr:iterate` 側の ステップ 4 (fix sentinel 判定) では情報提示のみに使われる (ステップ 4.6 の `acknowledged_nit_count > 0` を超える詳細 routing には参加しない)。
 

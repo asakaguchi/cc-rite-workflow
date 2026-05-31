@@ -102,9 +102,15 @@ spec_get() { printf '%s' "$SPEC_JSON" | jq -r "$1"; }
 # live under /tmp/rite-issue-body-* — outside workdir — so they survive for the
 # caller's apply step. ---
 workdir=$(spec_get '.workdir // empty')
-if [ -n "$workdir" ] && [ -d "$workdir" ]; then
-  trap 'rm -rf "$workdir"' EXIT INT TERM
-fi
+# Per-iteration helper stderr is captured to this scratch file so it is never
+# merged into the helper's stdout JSON (Issue #1206): create-issue-with-projects.sh
+# emits `ERROR: ...` on stderr while still printing valid JSON on stdout with
+# exit 0 on partial-Projects failures (Issue #669). A `2>&1` capture would splice
+# that ERROR ahead of the JSON and break the downstream `jq -r .issue_number`,
+# silently miscounting an actually-created Sub-Issue as failed (#514 contract break).
+helper_err_file=$(mktemp "${TMPDIR:-/tmp}/rite-decompose-helper-err.XXXXXX") \
+  || helper_err_file="${TMPDIR:-/tmp}/rite-decompose-helper-err.$$"
+trap 'rm -f "$helper_err_file"; if [ -n "$workdir" ] && [ -d "$workdir" ]; then rm -rf "$workdir"; fi' EXIT INT TERM
 
 # --- Resolve shared projects fields ---
 proj_enabled=$(spec_get '.projects.enabled // true')
@@ -190,10 +196,14 @@ while IFS= read -r sub_json; do
     echo "WARNING: Sub-Issue '$sub_title' body が空、skip" >&2
     failed_count=$((failed_count + 1))
   else
-    sub_result=$(bash "$CREATE_SCRIPT" "$(build_payload "$sub_title" "$sub_body_file" "$sub_labels_json" "$sub_complexity")" 2>&1)
+    # stderr を helper_err_file へ分離する (Issue #1206)。`2>&1` だと partial-Projects
+    # 失敗時の stderr ERROR が stdout JSON 前方へ混入し、直後の jq parse が壊れて
+    # 実際には作成された Sub-Issue を failed_count に誤カウントする (silent data loss)。
+    sub_result=$(bash "$CREATE_SCRIPT" "$(build_payload "$sub_title" "$sub_body_file" "$sub_labels_json" "$sub_complexity")" 2>"$helper_err_file")
     create_rc=$?
     if [ $create_rc -ne 0 ]; then
-      echo "WARNING: Sub-Issue '$sub_title' の作成に失敗: $sub_result" >&2
+      create_err=$(cat "$helper_err_file" 2>/dev/null)
+      echo "WARNING: Sub-Issue '$sub_title' の作成に失敗: ${sub_result}${create_err:+ | stderr: $create_err}" >&2
       failed_count=$((failed_count + 1))
     else
       sub_number=$(printf '%s' "$sub_result" | jq -r '.issue_number // empty')
@@ -201,6 +211,12 @@ while IFS= read -r sub_json; do
         echo "WARNING: Sub-Issue '$sub_title' の result に issue_number 無し: $sub_result" >&2
         failed_count=$((failed_count + 1))
       else
+        # 成功時でも create-issue-with-projects.sh は partial-Projects 失敗を
+        # exit 0 + JSON の .warnings[] で返す (Issue #669)。jq parse が clean に
+        # なった今、その warning を silent に捨てず link-warning と同形式で surface
+        # する (Wiki: stderr ノイズは truncate でなく selective surface で解く)。
+        printf '%s' "$sub_result" | jq -r '.warnings[]?' 2>/dev/null \
+          | while read -r w; do echo "⚠️ Sub-Issue #$sub_number 作成時の警告: $w" >&2; done
         # Sub-issues API linkage — canonical SoT [`sub-issue-link-handler.md`](../references/sub-issue-link-handler.md)
         # Variant B (counting). link-sub-issue.sh は非 blocking failure 時に exit 0 + status="failed"
         # を返す契約のため、bash exit code ではなく JSON stdout の `.status` を inspect すること。
@@ -210,9 +226,13 @@ while IFS= read -r sub_json; do
         # non-blocking failures). Only construct fallback JSON on fatal exit.
         # Build it via `jq -n --arg` so embedded `"` in stderr cannot break the
         # JSON the caller will parse.
+        # 対称修正 (Issue #1206 / Wiki: Asymmetric Fix Transcription)。link-sub-issue.sh は
+        # 現状 stderr に書かないため JSON 破損は起きないが、create と同じく stderr を
+        # helper_err_file へ分離して将来の regression を防ぐ。fatal exit 時の fallback err は
+        # stdout (link_result) と stderr を結合し、診断情報を取りこぼさない。
         link_result=$(bash "$LINK_SCRIPT" \
-            "$owner" "$repo" "$parent_issue_number" "$sub_number" 2>&1) || link_result=$(jq -n \
-              --arg err "$link_result" \
+            "$owner" "$repo" "$parent_issue_number" "$sub_number" 2>"$helper_err_file") || link_result=$(jq -n \
+              --arg err "${link_result}$(cat "$helper_err_file" 2>/dev/null)" \
               '{status:"failed",message:"link-sub-issue.sh fatal exit",warnings:[$err]}')
         link_status=$(printf '%s' "$link_result" | jq -r '.status // "failed"' 2>/dev/null || echo "failed")
         link_msg=$(printf '%s' "$link_result" | jq -r '.message // ""' 2>/dev/null || echo "")

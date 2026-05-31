@@ -52,6 +52,15 @@ if [ -n "${STUB_CREATE_FAIL_TITLE:-}" ] && [ "$title" = "$STUB_CREATE_FAIL_TITLE
 fi
 n=$(cat "$STUB_NUM_FILE")
 echo "$((n + 1))" > "$STUB_NUM_FILE"
+# Partial-Projects mode (#1206 / #669 reproduction): emit `ERROR: ...` on stderr
+# AND a valid JSON (with issue_number + warnings) on stdout, then exit 0. A caller
+# that captures with `2>&1` would splice the ERROR ahead of the JSON and break the
+# downstream `jq -r .issue_number`, miscounting this created sub as failed.
+if [ -n "${STUB_CREATE_PARTIAL_TITLE:-}" ] && [ "$title" = "$STUB_CREATE_PARTIAL_TITLE" ]; then
+  printf 'ERROR: Projects registration failed: stub partial for %s\n' "$title" >&2
+  jq -n --argjson num "$n" '{issue_number:$num, issue_url:("https://example/\($num)"), project_registration:"failed", warnings:["stub partial projects warning"]}'
+  exit 0
+fi
 jq -n --argjson num "$n" '{issue_number:$num, issue_url:("https://example/\($num)"), project_registration:"ok", warnings:[]}'
 STUB_CREATE
 
@@ -200,6 +209,25 @@ run_decompose "$spec5"
 assert_rc 1 "exit 1 on parent create failure"
 assert_err_contains "親 Issue 作成失敗" "parent create failure ERROR"
 unset STUB_CREATE_FAIL_TITLE
+
+# -----------------------------------------------------------------
+echo "--- Test 7: partial-Projects (stderr ERROR + stdout JSON + exit 0) counts as created, not failed (#1206) ---"
+wd7="$TEST_DIR/wd7"; mkdir -p "$wd7"
+printf '%s' "Parent" > "$wd7/parent.md"; printf '%s' "Sub 1" > "$wd7/s1.md"; printf '%s' "Sub 2" > "$wd7/s2.md"
+spec7=$(build_spec "$wd7" "Epic7" "$wd7/parent.md" "refactor" \
+  "Sub One" "$wd7/s1.md" "M" "Sub Partial" "$wd7/s2.md" "S")
+STUB_NUM_FILE="$TEST_DIR/num7"; echo 700 > "$STUB_NUM_FILE"; export STUB_NUM_FILE
+STUB_CREATE_PARTIAL_TITLE="Sub Partial"; export STUB_CREATE_PARTIAL_TITLE
+unset STUB_CREATE_LOG STUB_CREATE_FAIL_TITLE STUB_LINK_FAIL_CHILD 2>/dev/null || true
+run_decompose "$spec7"
+# parent=700, Sub One=701, Sub Partial=702 → both subs created (partial-Projects is exit 0), none failed
+assert_rc 0 "exit 0 on partial-Projects sub"
+assert_out_contains "[CONTEXT] SUB_ISSUE_RESULT created=2 failed=0 link_failures=0" "partial-Projects sub counted as created, not failed"
+assert_out_contains "[CONTEXT] SUB_ISSUE_NUMBERS=701 702" "partial-Projects sub present in SUB_ISSUE_NUMBERS (no silent drop)"
+assert_err_contains "stub partial projects warning" "partial-Projects warning surfaced on stderr (selective surface, not silent)"
+# The create stderr ERROR must NOT corrupt stdout (no jq parse-error leakage into markers)
+assert_out_missing "parse error" "no jq parse error leaked into stdout markers"
+unset STUB_CREATE_PARTIAL_TITLE
 
 # -----------------------------------------------------------------
 echo "--- Test 6: usage / spec validation errors ---"

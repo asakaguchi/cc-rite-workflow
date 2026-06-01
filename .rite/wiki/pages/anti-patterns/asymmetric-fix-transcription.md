@@ -2,8 +2,10 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-05-30T16:52:44Z"
+updated: "2026-06-01T04:52:48Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260601T045248Z-pr-1225.md"
   - type: "reviews"
     ref: "raw/reviews/20260530T114942Z-pr-1205.md"
   - type: "reviews"
@@ -1066,6 +1068,23 @@ PR #1205 (#1195 #9: `issue/create.md` §5.3-5.5 の親+Sub-Issue 一括作成を
 1. **verbatim 保持スコープの尊重 = rite scope rule と整合**: cycle 2 で error-handling reviewer が helper (`create-issue-with-projects.sh`) の Projects 部分失敗 non-blocking 経路で `add_warning_with_stderr` 系 (stdout=JSON / stderr=ERROR / exit 0) を返すため、これを `$(... 2>&1)` で capture して `jq -r .issue_number` すると JSON に ERROR 行が混入し parse error → 空 → failed 誤カウントになる silent miscounting を runtime 再現付きで検出した。しかし revert test で「inline block から verbatim 移設された pre-existing バグ」(revert しても消えず create.md に戻るだけ) と判定され、scope judgment rule に従い blocking finding ではなく調査推奨に再分類された。委譲リファクタは「verbatim 保持」スコープを明示的に尊重し、pre-existing バグの修正をスコープに含めない判断が rite の scope rule と整合する (混入させると cycle 収束 risk が上がる)。
 2. **`$(... 2>&1)` capture による silent miscounting は横断 investigate 対象**: stdout=JSON / stderr=診断 / exit 0 を返す helper を `$(... 2>&1)` で capture して jq parse する全 caller は同型の silent failure リスクを持つ ([[stderr-selective-surface-over-truncate]] の「制御 (status) と診断 (stderr) を分離 capture する」契約の逆方向 — `2>&1` で channel を merge すると JSON が汚染される)。本 PR では verbatim 保持のためスコープ外としたが、follow-up の横断 investigate が妥当。委譲元 .md だけでなく caller として参照する周辺 doc (`issue-create-with-projects.md` / `link-sub-issue.test.sh` の summary message) も cross-ref drift しうる (PR diff 外なので follow-up Issue 化)。
 
+### 横展開 hardening を着手時の grep + 個別条件照合で 0-finding 収束させる (PR #1225 — Issue #1224、successful preventive application)
+
+PR #1225 (`shift 2` → `shift; shift` hardening を sibling helper 5 スクリプト 18 箇所へ横展開、PR #1223 の reference fix を踏襲) は、本 anti-pattern の最頻形である **「同型脆弱性を持つ全 site のうち一部だけ修正し残りを取りこぼす asymmetric propagation」を着手時の機械検証で構造的に予防した successful preventive application**。code-quality / error-handling / test / security の 4 reviewer 全員が独立に 0 件 (可) 評価、回帰テスト 12/12 pass で 1 cycle mergeable に到達した。
+
+横展開 (horizontal propagation) PR は本 anti-pattern を踏みやすい構造を持つ — 元レビュー推奨 / Issue body の file glob は `hooks/scripts/*.sh` のみを named していたが、同型脆弱性は sibling ディレクトリ (`hooks/` / `scripts/`) にも存在した。named された scope だけを修正すると、列挙漏れした sibling に既知の hang が残る片肺修正になる。本 PR はこれを次の機械的網羅検証で潰した:
+
+1. **全 site 列挙**: `Grep -rn 'shift 2' plugins/` で残存する実 statement を repo 全体から全件洗い出す (named scope ではなく grep evidence ベース)。
+2. **個別条件照合**: 各 site を 3 つの脆弱性成立条件 — (a) グローバル `set -e` 不在 / (b) 値代入が `"${2:-}"` (default 展開で `set -u` の nounset が発火しない) / (c) `shift 2` 到達前の required-value ガード不在 — に照合し、3 条件が全て揃う site のみを脆弱と判定。
+3. **残存の安全性証明**: 修正しなかった残存 `shift 2` がなぜ伝播不要かを全件理由記録 (`set -euo` で即 exit / `set -u` + bare `$2` で nounset fail-fast / 明示ガード exit)。
+
+全 reviewer がこの Grep + timeout revert test (修正前 exit 124 = hang / 修正後 no-hang = required は exit 2・optional は exit 1) を独立に再現し、残存 site がすべて安全条件を満たすことを cross-validation した。横展開漏れゼロを事前に保証したことで review-fix loop は発生しなかった。
+
+#### 経験則の精緻化
+
+- **横展開 PR は「全 site 列挙 + 個別条件照合 + 残存の安全性証明」を着手時に行う**: 単に named された site を修正するのではなく、repo 全体の grep で同型 statement を全件洗い出し、各 site が脆弱か安全かを明示判定する。安全と判断した site は「なぜ伝播不要か」を PR body / Issue に理由記録することで、後続レビューでの「ここはなぜ直さないのか」再質問と取りこぼし疑義を構造的に潰す。これは [[observed-likelihood-gate-with-evidence-anchors]] の evidence anchor 提示を横展開スコープ判定に転用した形 — 「修正対象」と「意図的に据え置く安全 site」を grep evidence + 条件照合で分離する。
+- **faithful hardening + reference fix 準拠 + 網羅性の機械検証が揃うと 0-cycle 収束する**: PR #1192 / #1181 の「着手時 grep」successful preventive application 系譜に連なる。reference (PR #1223) への faithful 準拠 (同一 `shift; shift` idiom を verbatim 適用し新規 drift 源を持ち込まない) + Grep + timeout revert test で横展開網羅性を実証する 3 条件が揃うと、構造化された review-fix loop なしに 0-finding 収束に到達する reproducibility evidence。recommendation は TC-6 anti-pattern guard regex の非標準形カバレッジ境界等、本 PR scope 外の boundary / design_confirmation に留まった。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -1083,6 +1102,7 @@ PR #1205 (#1195 #9: `issue/create.md` §5.3-5.5 の親+Sub-Issue 一括作成を
 
 ## ソース
 
+- [PR #1225 review results (Issue #1224、0 findings の successful preventive application: `shift 2` → `shift; shift` hardening を sibling helper 5 スクリプト 18 箇所へ横展開。4 reviewer (code-quality / error-handling / test / security) 全員が独立に `Grep -rn 'shift 2' plugins/` で残存実 statement を全件 3 脆弱性条件 (set -e 不在 / `"${2:-}"` default 展開 / required-value ガード不在) に照合 + timeout revert test (修正前 exit 124 hang / 修正後 no-hang) を実機検証して横展開漏れゼロを cross-validation。faithful hardening + reference fix #1223 準拠 + 網羅性機械検証の 3 条件が揃い 1 cycle mergeable、回帰テスト 12/12 pass。recommendation は TC-6 anti-pattern guard regex 境界等 scope 外の design_confirmation に留まる)](../../raw/reviews/20260601T045248Z-pr-1225.md)
 - [PR #1205 cycle 1 review (累積 51 回目の起点: inline → helper 委譲 refactor で `bulk-create-pattern.md` が create.md 削除済みの旧構造を SoT 主張する dead reference HIGH。委譲先 decompose-issues.sh は marker fidelity / Issue #514 link 契約 / trap / jq --arg 注入安全性を verbatim 保持し shell script 観点の指摘 0 件)](../../raw/reviews/20260530T114942Z-pr-1205.md)
 - [PR #1205 cycle 2 review (累積 51 回目の収束: HIGH 解消・再発なし mergeable。`$(... 2>&1)` capture で helper の stdout=JSON / stderr=ERROR が混入し jq parse error → failed 誤カウントになる silent miscounting を runtime 再現で検出したが、revert test で pre-existing バグと判定し scope judgment rule で調査推奨に再分類 = verbatim 保持スコープ尊重)](../../raw/reviews/20260530T121422Z-pr-1205.md)
 - [PR #1205 cycle 1 fix (F-01: bulk-create-pattern.md の dead reference を DELETE ではなく UPDATE で解消。並行 reference sub-issue-link-handler.md の caller 更新方針と対称化し docs/designs/ inbound 参照を保全、load-bearing な設計理由を保持したまま実装媒体記述のみ decompose-issues.sh native loop に追従)](../../raw/fixes/20260530T115725Z-pr-1205.md)

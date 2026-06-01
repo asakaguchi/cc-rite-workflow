@@ -58,10 +58,14 @@ LINK_SCRIPT="$SCRIPT_DIR/link-sub-issue.sh"
 ISSUE_BODY_SCRIPT="$SCRIPT_DIR/../hooks/issue-body-safe-update.sh"
 
 # --- Argument parsing ---
+# 各値付きフラグは `shift; shift` で消費する。値なしフラグが末尾に来た場合 ($#=1)、
+# `shift 2` は $# を減らせず set -e 非設定 + `${2:-}` (nounset 非発火) の下で無限ループに
+# 陥る (Issue #1224)。1 回目の shift で $# を確実に 0 にし、2 回目は no-op で安全に抜ける
+# (--spec 欠落はループ後の必須チェックが exit 2 で検出)。
 SPEC=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --spec) SPEC="${2:-}"; shift 2 ;;
+    --spec) SPEC="${2:-}"; shift; shift ;;
     *) echo "ERROR: unknown argument: $1" >&2; echo "Usage: $0 --spec <spec.json>" >&2; exit 2 ;;
   esac
 done

@@ -47,11 +47,14 @@ PR_NUMBER=""
 CONTENT_FILE=""
 REVIEW_RESULTS_DIR=".rite/review-results"
 
+# 各値付きフラグは `shift; shift` で消費する。値なしフラグが末尾に来た場合 ($#=1)、
+# `shift 2` は $# を減らせず set -e 非設定 + `${2:-}` (nounset 非発火) の下で無限ループに
+# 陥る (Issue #1224)。1 回目の shift で $# を確実に 0 にし、2 回目は no-op で安全に抜ける。
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --pr)           PR_NUMBER="${2:-}"; shift 2 ;;
-    --content-file) CONTENT_FILE="${2:-}"; shift 2 ;;
-    --results-dir)  REVIEW_RESULTS_DIR="${2:-}"; shift 2 ;;
+    --pr)           PR_NUMBER="${2:-}"; shift; shift ;;
+    --content-file) CONTENT_FILE="${2:-}"; shift; shift ;;
+    --results-dir)  REVIEW_RESULTS_DIR="${2:-}"; shift; shift ;;
     *) echo "ERROR: review-result-save: unknown option: $1" >&2; exit 1 ;;
   esac
 done

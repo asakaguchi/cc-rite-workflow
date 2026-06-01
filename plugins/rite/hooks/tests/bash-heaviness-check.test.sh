@@ -245,6 +245,45 @@ if [ "$rc" -eq 0 ] && ! echo "$output" | grep -q "bad-fixture.md"; then
 else fail "expected rc=0 with no tests/ finding, got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
+# TC-015: long-block boundary — body of exactly 24 lines (< threshold 25).
+#         python-inline is the only other signal, so long-block alone decides
+#         the outcome: 24 lines must NOT fire long-block → 1 signal → exit 0.
+#         Pins the LINE_THRESHOLD off-by-one (a 25→24 regression would fire
+#         long-block here, reaching 2 signals → exit 1, failing this TC).
+# --------------------------------------------------------------------------
+echo "TC-015: long-block boundary 24 lines (< 25) → exit 0"
+{
+  echo '```bash'
+  echo "python3 -c 'print(1)'"   # body line 1 (python-inline)
+  filler 23                       # body lines 2-24 → nlines = 24
+  echo '```'
+} > "$F"
+rc=0; output=$(run "$REL") || rc=$?
+if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0" \
+   && ! echo "$output" | grep -q "long-block"; then
+  pass "24-line body below threshold → exit 0, no long-block"
+else fail "expected rc=0 + no long-block (24 lines), got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
+# TC-016: long-block boundary — body of exactly 25 lines (== threshold 25).
+#         python-inline + long-block → 2 signals → exit 1. Asserts the
+#         labelled line count long-block(25) to pin both the `>=` boundary
+#         (a >=25→>=26 regression would leave 25 lines at 1 signal → exit 0,
+#         failing this TC) and the nlines counting logic.
+# --------------------------------------------------------------------------
+echo "TC-016: long-block boundary 25 lines (== 25) → exit 1"
+{
+  echo '```bash'
+  echo "python3 -c 'print(1)'"   # body line 1 (python-inline)
+  filler 24                       # body lines 2-25 → nlines = 25
+  echo '```'
+} > "$F"
+rc=0; output=$(run "$REL") || rc=$?
+if [ "$rc" -eq 1 ] && echo "$output" | grep -q "long-block(25)"; then
+  pass "25-line body at threshold → exit 1 + long-block(25)"
+else fail "expected rc=1 + long-block(25), got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo ""

@@ -448,6 +448,8 @@ Issue テンプレートの作成を推奨します
 
 > **Placeholder convention**: All `{hooks_dir}` occurrences in fenced code blocks within Phase 4.5 are **templates**, not literal commands. Replace `{hooks_dir}` with the absolute path resolved in Phase 4.5.0 before executing each command via the Bash tool.
 
+> **rite hook command の判定基準 (SoT)**: Phase 4.5 の各サブフェーズで hook command が「rite 自身の hook か」を判定する箇所では、command path 中で `rite` が **hooks ディレクトリ直上の完全な path segment** である場合のみ rite hook とみなす（その間に version segment を 1 個まで許容）。具体的には dev/relative の `…/rite/hooks/` と cache install の `…/rite-marketplace/rite/<version>/hooks/` がマッチし、`favorite/hooks/`・`prerite/hooks/`・`rite-something/hooks/` のように `rite` が別 segment の部分文字列にすぎない look-alike はマッチしない。これは helper `scripts/settings-local-rite-hook-cleanup.sh`（および `session-start.sh`）が共有する正規表現 `(?:^|/)rite/(?:[^/]+/)?hooks/`（`RITE_HOOK_RE`）と同一基準であり、本ドキュメントで **「rite hook command」** と表記する箇所はすべてこの基準を指す。素朴な substring `rite/hooks/` 一致は `favorite/hooks/` 等を over-match するため使わない（Issue #1231 / #1237）。
+
 ### 4.5.0 Resolve Hook Script Directory
 
 Run the following bash command to detect the hook scripts directory. This command assumes CWD is the project root (Claude Code's Bash tool resets CWD to the project root on each invocation):
@@ -629,7 +631,7 @@ Read `.claude/settings.json` (the project-level, non-local settings file) and ch
 
 1. Read `.claude/settings.json` with the Read tool. If the file does not exist or has no `.hooks` section (empty `{}` or missing), skip this sub-phase entirely and proceed to Phase 4.5.0.2.
 2. For each hook event in `.hooks`, examine all `.hooks.{EventName}[*].hooks[*].command` values.
-3. **Exclude** commands containing `rite/hooks/` (these are rite's own hooks, which may be registered here in older installations).
+3. **Exclude** **rite hook commands** (per the 判定基準 above — `rite` as a full path segment above the hooks dir; these are rite's own hooks, which may be registered here in older installations). Look-alikes such as `favorite/hooks/` are **not** excluded — they are genuine non-rite hooks and must be reported as conflicts.
 4. Collect remaining (non-rite) hook commands as **conflicting hooks**.
 
 **If conflicting hooks are found**, display:
@@ -675,7 +677,7 @@ fi
    ✅ hooks.json によるネイティブ hook 管理を検出。settings.local.json の hook 登録をスキップします。
    ```
 
-2. **Clean up stale rite hooks from `settings.local.json`**: Read `.claude/settings.local.json` and remove all hook entries whose command contains `rite/hooks/`. Non-rite hooks must be preserved. If the file does not exist or has no rite hooks, skip this step silently.
+2. **Clean up stale rite hooks from `settings.local.json`**: Read `.claude/settings.local.json` and remove all hook entries whose command is a **rite hook command** (per the 判定基準 above; the helper below enforces this via `RITE_HOOK_RE`). Non-rite hooks — including look-alikes such as `favorite/hooks/` — must be preserved. If the file does not exist or has no rite hooks, skip this step silently.
 
    ```bash
    # settings.local.json から rite hook エントリを削除 (python3 guard・atomic write・JSON 変換は helper に委譲)
@@ -711,7 +713,7 @@ Read `.claude/settings.local.json` and check for existing hooks section. If the 
 If the file already contains hooks, check each hook command for rite hook patterns:
 
 1. Scan all `.hooks.{EventName}[*].hooks[*].command` values across PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, and PostToolUse events
-2. Identify commands containing `rite/hooks/` (this covers both `plugins/rite/hooks/` relative paths and any previous absolute paths)
+2. Identify **rite hook commands** (per the 判定基準 above — `rite` as a full path segment above the hooks dir; this covers both `plugins/rite/hooks/` relative paths and any previous absolute paths, while excluding look-alikes such as `favorite/hooks/`)
 3. For each matching command, construct the expected full command string `bash {hooks_dir}/{script_name}` (where `{hooks_dir}` is the absolute path resolved in Phase 4.5.0 and `{script_name}` is the filename like `pre-tool-bash-guard.sh`). Compare the existing command string with the expected one
 4. If the existing command does NOT match the expected command, mark it as **needs update**
 
@@ -748,7 +750,7 @@ After validating existing hook paths in 4.5.1.1, verify that **all** required ri
 **Check procedure**:
 
 1. For each required hook event above, check if `.hooks.{EventName}` exists in `.claude/settings.local.json`. If the event is not present, mark it as **missing**.
-2. For each required hook event that **exists** in `.hooks`, check if any hook command contains `rite/hooks/{script_name}`. If no matching command is found, mark it as **missing**.
+2. For each required hook event that **exists** in `.hooks`, check if any hook command is a **rite hook command** (per the 判定基準 above) ending in `{script_name}`. If no matching command is found, mark it as **missing**.
 3. Collect all **missing** hook events from steps 1 and 2.
 
 **Note**: If no required hooks are missing, no output is displayed from this sub-phase. The decision is deferred to the combined Decision logic below.
@@ -867,8 +869,8 @@ Add the following hooks to `.claude/settings.local.json`:
 ```
 
 **Important**:
-- **Non-rite hooks**: If `.claude/settings.local.json` already has hooks that do NOT contain `rite/hooks/` in their command, preserve them as-is. Do not overwrite or remove user-defined hooks.
-- **rite hooks (path update)**: If existing hooks contain `rite/hooks/` in their command but use an outdated path (detected in Phase 4.5.1.1), **replace** those hook entries with the updated `{hooks_dir}` path. This ensures re-running `/rite:init` always corrects stale paths.
+- **Non-rite hooks**: If `.claude/settings.local.json` already has hooks whose command is NOT a **rite hook command** (per the 判定基準 above — this includes look-alikes such as `favorite/hooks/`), preserve them as-is. Do not overwrite or remove user-defined hooks.
+- **rite hooks (path update)**: If existing hooks are **rite hook commands** (per the 判定基準 above) but use an outdated path (detected in Phase 4.5.1.1), **replace** those hook entries with the updated `{hooks_dir}` path. This ensures re-running `/rite:init` always corrects stale paths.
 - **Missing rite hooks**: If any of the required rite hooks (PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, PostToolUse) are not present, add them. PostToolUse has two matchers (`Bash` and `Edit|Write|MultiEdit`) — both entries must coexist.
 - **Obsolete hooks**: If `post-compact-guard.sh` (PreToolUse) または `context-pressure.sh` (PostToolUse) exists, **remove** it. `post-compact-guard.sh` は #133 で `post-compact.sh` に置き換え済み。`context-pressure.sh` は #481 で廃止済み。
 - **Matcher rules**: `post-tool-wm-sync.sh` and `pre-tool-bash-guard.sh` use `"matcher": "Bash"` to fire only on Bash tool calls. `scripts/bang-backtick-edit-hook.sh` uses `"matcher": "Edit|Write|MultiEdit"` to fire only on file-edit tool calls. All other hooks use `"matcher": ""`.

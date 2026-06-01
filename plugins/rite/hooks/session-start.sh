@@ -193,7 +193,12 @@ hooks = data.get("hooks", {})
 if not hooks:
     sys.exit(1)
 
-rite_hook_re = re.compile(r"rite.*?/hooks/")
+# Anchor `rite` to a full path segment (optional version segment between it and
+# the hooks dir) so cache `.../rite/<version>/hooks/` and dev `.../rite/hooks/`
+# match while look-alikes (favorite/, prerite/, rite-something/) do not — the old
+# `rite.*?/hooks/` over-matched user non-rite hooks. Kept in sync with
+# scripts/settings-local-rite-hook-cleanup.py:RITE_HOOK_RE (Issue #1231).
+rite_hook_re = re.compile(r"(?:^|/)rite/(?:[^/]+/)?hooks/")
 changed = False
 
 for event_name in list(hooks.keys()):

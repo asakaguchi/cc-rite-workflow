@@ -44,23 +44,27 @@ ORIGINAL_STASH_COUNT=""
 ORIGINAL_BRANCH_LIST_HASH=""
 AUTO_RECOVER="true"
 
+# 各値付きフラグは `shift; shift` で消費する。値なしフラグが末尾に来た場合 ($#=1)、
+# `shift 2` は $# を減らせず set -e 非設定 + `${2:-}` (nounset 非発火) の下で無限ループに
+# 陥る (Issue #1224)。1 回目の shift で $# を確実に 0 にし、2 回目は no-op で安全に抜ける
+# (--original-branch 欠落はループ後の必須チェックが exit 2 で検出)。
 while [ $# -gt 0 ]; do
   case "$1" in
     --original-branch)
       ORIGINAL_BRANCH="${2:-}"
-      shift 2
+      shift; shift
       ;;
     --original-stash-count)
       ORIGINAL_STASH_COUNT="${2:-}"
-      shift 2
+      shift; shift
       ;;
     --original-branch-list-hash)
       ORIGINAL_BRANCH_LIST_HASH="${2:-}"
-      shift 2
+      shift; shift
       ;;
     --auto-recover)
       AUTO_RECOVER="${2:-true}"
-      shift 2
+      shift; shift
       ;;
     *)
       echo "ERROR: unknown argument: $1" >&2

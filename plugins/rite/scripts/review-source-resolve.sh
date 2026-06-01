@@ -75,13 +75,16 @@ review_file_path=""
 conversation_review_decision=""
 p1_scan_turns=""
 p1_scan_found=""
+# 各値付きフラグは `shift; shift` で消費する。値なしフラグが末尾に来た場合 ($#=1)、
+# `shift 2` は $# を減らせず set -e 非設定 + `${2:-}` (nounset 非発火) の下で無限ループに
+# 陥る (Issue #1224)。1 回目の shift で $# を確実に 0 にし、2 回目は no-op で安全に抜ける。
 while [ $# -gt 0 ]; do
   case "$1" in
-    --pr-number)             pr_number="${2:-}"; shift 2 ;;
-    --review-file-path)      review_file_path="${2:-}"; shift 2 ;;
-    --conversation-decision) conversation_review_decision="${2:-}"; shift 2 ;;
-    --p1-scan-turns)         p1_scan_turns="${2:-}"; shift 2 ;;
-    --p1-scan-found)         p1_scan_found="${2:-}"; shift 2 ;;
+    --pr-number)             pr_number="${2:-}"; shift; shift ;;
+    --review-file-path)      review_file_path="${2:-}"; shift; shift ;;
+    --conversation-decision) conversation_review_decision="${2:-}"; shift; shift ;;
+    --p1-scan-turns)         p1_scan_turns="${2:-}"; shift; shift ;;
+    --p1-scan-found)         p1_scan_found="${2:-}"; shift; shift ;;
     *)
       echo "ERROR: review-source-resolve.sh: 未知の引数: $1" >&2
       exit 2

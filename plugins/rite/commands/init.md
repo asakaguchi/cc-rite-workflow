@@ -448,7 +448,7 @@ Issue テンプレートの作成を推奨します
 
 > **Placeholder convention**: All `{hooks_dir}` occurrences in fenced code blocks within Phase 4.5 are **templates**, not literal commands. Replace `{hooks_dir}` with the absolute path resolved in Phase 4.5.0 before executing each command via the Bash tool.
 
-> **rite hook command の判定基準 (SoT)**: Phase 4.5 の各サブフェーズで hook command が「rite 自身の hook か」を判定する箇所では、command path 中で `rite` が **hooks ディレクトリ直上の完全な path segment** である場合のみ rite hook とみなす（その間に version segment を 1 個まで許容）。具体的には dev/relative の `…/rite/hooks/` と cache install の `…/rite-marketplace/rite/<version>/hooks/` がマッチし、`favorite/hooks/`・`prerite/hooks/`・`rite-something/hooks/` のように `rite` が別 segment の部分文字列にすぎない look-alike はマッチしない。これは helper `scripts/settings-local-rite-hook-cleanup.sh`（および `session-start.sh`）が共有する正規表現 `(?:^|/)rite/(?:[^/]+/)?hooks/`（`RITE_HOOK_RE`）と同一基準であり、本ドキュメントで **「rite hook command」** と表記する箇所はすべてこの基準を指す。素朴な substring `rite/hooks/` 一致は `favorite/hooks/` 等を over-match するため使わない（Issue #1231 / #1237）。
+> **rite hook command の判定基準 (SoT)**: Phase 4.5 の各サブフェーズで hook command が「rite 自身の hook か」を判定する箇所では、command path 中で `rite` が **hooks ディレクトリ直上の完全な path segment** である場合のみ rite hook とみなす（その間に version segment を 1 個まで許容）。具体的には dev/relative の `…/rite/hooks/` と cache install の `…/rite-marketplace/rite/<version>/hooks/` がマッチし、`favorite/hooks/`・`prerite/hooks/`・`rite-something/hooks/` のように `rite` が別 segment の部分文字列にすぎない look-alike はマッチしない。これは helper の正規表現実体 `scripts/settings-local-rite-hook-cleanup.py` の `RITE_HOOK_RE`（同名 `.sh` は python3 guard・atomic write を担う wrapper で、JSON 変換＝regex 適用を `.py` に委譲する）および `session-start.sh` の `rite_hook_re` が共有する正規表現 `(?:^|/)rite/(?:[^/]+/)?hooks/` と同一基準であり、本ドキュメントで **「rite hook command」** と表記する箇所はすべてこの基準を指す。素朴な substring `rite/hooks/` 一致は `favorite/hooks/` 等を over-match するため使わない（Issue #1231 / #1237）。
 
 ### 4.5.0 Resolve Hook Script Directory
 
@@ -677,7 +677,7 @@ fi
    ✅ hooks.json によるネイティブ hook 管理を検出。settings.local.json の hook 登録をスキップします。
    ```
 
-2. **Clean up stale rite hooks from `settings.local.json`**: Read `.claude/settings.local.json` and remove all hook entries whose command is a **rite hook command** (per the 判定基準 above; the helper below enforces this via `RITE_HOOK_RE`). Non-rite hooks — including look-alikes such as `favorite/hooks/` — must be preserved. If the file does not exist or has no rite hooks, skip this step silently.
+2. **Clean up stale rite hooks from `settings.local.json`**: Read `.claude/settings.local.json` and remove all hook entries whose command is a **rite hook command** (per the 判定基準 above; the helper below is a `.sh` wrapper that enforces this via the `RITE_HOOK_RE` defined in `settings-local-rite-hook-cleanup.py`). Non-rite hooks — including look-alikes such as `favorite/hooks/` — must be preserved. If the file does not exist or has no rite hooks, skip this step silently.
 
    ```bash
    # settings.local.json から rite hook エントリを削除 (python3 guard・atomic write・JSON 変換は helper に委譲)

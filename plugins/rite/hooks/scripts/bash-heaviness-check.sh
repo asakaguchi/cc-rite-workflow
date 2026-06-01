@@ -206,7 +206,7 @@ else
   total=0
 fi
 total=$(printf '%s' "$total" | tr -d '[:space:]')
-echo "==> Total bash-heaviness findings: ${total}"
+log "==> Total bash-heaviness findings: ${total}"
 
 if [ "$total" -gt 0 ]; then
   exit 1

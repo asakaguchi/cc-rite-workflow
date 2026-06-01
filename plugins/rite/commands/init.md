@@ -682,7 +682,7 @@ fi
    bash "{hooks_dir}/scripts/settings-local-rite-hook-cleanup.sh" ".claude/settings.local.json"
    ```
 
-   > **Helper contract**: `settings-local-rite-hook-cleanup.sh` は python3 不在・file 不在・対象 hook 不在のいずれでも `NO_RITE_HOOKS` を返し silent skip 相当となる。rite hook を実際に除去したときのみ `CLEANED` を返す (`*.py` を `*.sh` wrapper 経由で呼ぶ先例 `issue-comment-wm-update.py` / `issue-comment-wm-sync.sh` に準拠)。
+   > **Helper contract**: `settings-local-rite-hook-cleanup.sh` は **rite hook を実際に除去したときのみ** `CLEANED` を返し、それ以外の安全側ケース (python3 不在・file 不在・対象 hook 不在・不正 JSON・mktemp/mv 失敗を含む) ではすべて `NO_RITE_HOOKS` を返して silent skip 相当となる。`*.py` を `*.sh` wrapper 経由で呼ぶ先例 `issue-comment-wm-update.py` / `issue-comment-wm-sync.sh` に準拠。
 
    - If `CLEANED` → display `ℹ️ settings.local.json からレガシー rite hook エントリを削除しました。`
    - If `NO_RITE_HOOKS` → no output (already clean)

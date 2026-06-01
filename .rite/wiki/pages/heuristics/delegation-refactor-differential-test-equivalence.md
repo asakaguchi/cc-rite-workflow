@@ -2,7 +2,7 @@
 title: "委譲リファクタの動作保持は原実装との差分テストで機械的に立証する"
 domain: "heuristics"
 created: "2026-05-30T09:32:00Z"
-updated: "2026-05-31T17:12:40Z"
+updated: "2026-06-01T10:06:41Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260530T064117Z-pr-1204.md"
@@ -14,6 +14,12 @@ sources:
     ref: "raw/fixes/20260531T164546Z-pr-1218.md"
   - type: "reviews"
     ref: "raw/reviews/20260531T165600Z-pr-1218.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260601T090546Z-pr-1229.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260601T093706Z-pr-1229.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260601T094425Z-pr-1229.md"
 tags: ["refactor", "verification", "testing", "delegation"]
 confidence: high
 ---
@@ -58,6 +64,16 @@ canonical 対策: faithful-port 委譲の review checklist に「コピーした
 
 加えて、cycle 2 で reviewer が検出した **pre-existing 事項** (severity_map fence の `norm_tmp` orphan / `json_commit_sha_err` の signal-window leak) は、いずれも develop 時点から存在し本 PR diff が原因でない (revert test FAIL) ため指摘事項から除外し、investigation 推奨 / follow-up Issue (#1219 / #1220) に再分類した。faithful-port 委譲のレビューでは **verbatim 保持スコープを尊重し pre-existing バグを current-pr 指摘に混ぜない** scope 規律が重要 ([[scope-creep-rejection-empirical-gate]] / PR #1205 #1195 #9 の verbatim 保持スコープ尊重と同型)。
 
+### caller-doc の挙動列挙は helper の全 return 経路を catch-all で網羅する (PR #1229)
+
+PR #1229 (#1221 部分対応) は `commands/init.md` の inline Python (~44 行、`settings.local.json` から rite hook エントリを除去する JSON 編集) を `settings-local-rite-hook-cleanup.{py,sh}` へ委譲した。同 umbrella 外だが faithful-port 委譲の **4 例目** の独立再現で、検証は (a) 旧 inline `python3 -c` と新 helper の 5 fixture 差分比較 (出力・exit code 完全一致)、(b) `bash-heaviness-check.sh --all` の findings 8→7、(c) `/rite:lint` Phase 3.5-3.17 で新規 warning ゼロ、の 3 点セットを #1204 / #1208 / #1218 と同型に再現し、全 4 reviewer 0 blocking / 2 cycle 収束。差分テスト等価性手法が umbrella を跨いで安定再現することを示す。
+
+本 PR が新たに surface した facet は、差分テストでは「動作等価」と判定される一方で **caller-doc の挙動列挙が helper の全 return 経路を catch-all で網羅していない** drift。cycle 1 で F-01 として検出された唯一の finding は、`init.md` の Helper contract 注記が `NO_RITE_HOOKS` を返す条件を「python3 不在・file 不在・対象 hook 不在」の **閉じたリスト** で列挙していたが、helper の実挙動はそれ以外の安全側ケース (不正 JSON / mktemp・mv 失敗) も全て `NO_RITE_HOOKS` に畳み込む **catch-all** だった点。cycle 1 fix で注記を「rite hook を実際に除去したときのみ `CLEANED`、それ以外の安全側ケースは全て `NO_RITE_HOOKS`」という catch-all 表現へ補強し (helper の全 `NO_RITE_HOOKS` 経路 .sh L27/34/44/47 を網羅)、cycle 2 で 0 finding 収束。
+
+canonical 対策: 委譲リファクタの review checklist に **「caller-doc が列挙する helper の挙動が、helper の全 return 経路 (特に error/edge: 不正入力・mktemp/mv 失敗) を catch-all で網羅しているか」** を加える。閉じたリスト形式の列挙は helper の catch-all 実挙動と drift しやすく、symptom (列挙不足) でなく root-cause (注記が全 return 経路を網羅しない構造) に対処する。本 facet は #1226 / #1228 の `json_invalid` doc 精度ポリシー (実挙動を安全側表現で記述する) と同系統であり、§3.5.1 の「doc 適用範囲の対称記述」(PR #1208) が *両 site の適用範囲記述の対称性* を扱うのに対し、本 facet は *caller doc 単体の return-path 網羅性* を扱う直交軸。
+
+副次的に surface した非ブロッキング観察 (いずれも pre-existing / follow-up 候補、revert test FAIL のため current-pr 指摘から除外): helper の自動テスト (.test.sh) 未追加 (先例 `issue-comment-wm-sync.test.sh` あり)、mv 失敗時の stderr WARNING 欠如、`CLEANED` 経路で結果 file permission が mktemp 由来 0600 に厳格化。これらは [[scope-creep-rejection-empirical-gate]] の verbatim 保持スコープ尊重に従い follow-up に再分類した。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -69,3 +85,6 @@ canonical 対策: faithful-port 委譲の review checklist に「コピーした
 - [PR #1218 review results (cycle 1)](../../raw/reviews/20260531T163857Z-pr-1218.md)
 - [PR #1218 fix results](../../raw/fixes/20260531T164546Z-pr-1218.md)
 - [PR #1218 review results (cycle 2)](../../raw/reviews/20260531T165600Z-pr-1218.md)
+- [PR #1229 review results (cycle 1)](../../raw/reviews/20260601T090546Z-pr-1229.md)
+- [PR #1229 fix results](../../raw/fixes/20260601T093706Z-pr-1229.md)
+- [PR #1229 review results (cycle 2)](../../raw/reviews/20260601T094425Z-pr-1229.md)

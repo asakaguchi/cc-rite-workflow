@@ -923,3 +923,4 @@
 | 2026-06-01T10:48:51+09:00 | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1222 cycle 2 review (raw/reviews/20260601T011012Z-pr-1222.md): 適用 11 として「閾値 off-by-one 境界の single-signal isolation pin」を追加。long-block 25 行境界 TC 欠落を mutation で実証し MEDIUM 昇格した事例 (filler overshoot で off-by-one すり抜け) |
 | 2026-06-01T10:48:51+09:00 | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1222 cycle 2 fix (raw/fixes/20260601T011318Z-pr-1222.md): python-inline を第 2 シグナル固定で long-block を単独の結果決定要因にし 24/25 行両側 + long-block(25) ラベルを pin、>=25→>=26 / 25→24 両 mutation で捕捉を実証した canonical 手順を統合 |
 | 2026-06-01T10:48:51+09:00 | ingest:skip | raw/reviews/20260601T011935Z-pr-1222.md | PR #1222 cycle 3 review (mergeable 収束): 全 5 reviewer 0 blocking で収束確認のみ。新規経験則なし (Page 1 出力チャネル規約 / 適用 11 境界 pin の再確認) のため skip |
+| 2026-06-01T10:57:45+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=228, broken_refs=0 |

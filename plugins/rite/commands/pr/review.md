@@ -3036,9 +3036,9 @@ Output the review results via two independent paths. Use `mktemp` + `--body-file
 - `date_command_failure`: `TZ='Asia/Tokyo' date` の実行が失敗 (空 timestamp による file 上書きを防止)
 - `mkdir_failure`: `.rite/review-results/` directory creation failed
 - `mktemp_failure`: JSON tmpfile allocation failed
-- `write_failure`: JSON content の tmpfile への書き込み失敗、または jq timestamp 注入失敗 (sentinel 置換不可 = invalid JSON)
+- `write_failure`: JSON content の tmpfile への書き込み失敗、または jq timestamp 注入 (`jq '.timestamp = $ts'`) の失敗。後者は注入が入力 JSON を parse するため発火する経路で、**syntactically invalid JSON / literal JSON body substitute 漏れの実検出 reason はこちら** (後続 `json_invalid` の `jq empty` より先に評価される)
 - `timestamp_injection_mv_failure`: timestamp 注入後 inner mv (`mv "$json_ts_injected" "$json_tmp"`) が失敗 (sentinel 残留 JSON を final path に書かないため後続処理を skip)
-- `json_invalid`: JSON tmpfile が `jq empty` post-condition check で fail (literal JSON body substitute 漏れの可能性)
+- `json_invalid`: timestamp 注入成功後の `jq empty` post-condition backstop。注入段階 (`write_failure`) が入力 JSON を parse・再シリアライズして valid JSON を保証するため、syntactic invalidity はこの check に到達せず実際は `write_failure` として発火する。defense-in-depth の保険として残置 (effectively unreachable)
 - `schema_required_fields_missing`: JSON は parse 可能だが必須フィールド (schema_version / pr_number / findings[] 配列型) が欠落
 - `finding_id_format_or_uniqueness_violation`: findings[].id が `^F-[0-9]{2,}$` 書式違反または重複
 - `scope_enum_violation`: schema 1.1.0 JSON で findings[].scope が enum 違反 (期待: `current-pr` / `follow-up` / `nit-noted`) (Issue #1018 M2)
@@ -3074,7 +3074,7 @@ Output the review results via two independent paths. Use `mktemp` + `--body-file
 Save review results as a timestamped JSON file per [review-result-schema.md](../../references/review-result-schema.md). This is executed **regardless** of `{post_comment_mode}` so that `/rite:pr:fix` can read results via the local-file path.
 
 **Claude substitution requirements**:
-- **JSON 本文**: Claude が review-result-schema.md に従って JSON 本文を生成し、**Write tool で `/tmp/rite-review-result-{pr_number}.json` に保存**する (Issue #1193 #3 で `RITE_JSON_EOF` heredoc 埋め込みを廃止)。生成漏れ / 不正 JSON は `review-result-save.sh` 内の jq timestamp 注入 (`write_failure`) と `jq empty` post-condition check (`json_invalid`) で非ブロッキングに fail-fast 検出される (defense-in-depth)。
+- **JSON 本文**: Claude が review-result-schema.md に従って JSON 本文を生成し、**Write tool で `/tmp/rite-review-result-{pr_number}.json` に保存**する (Issue #1193 #3 で `RITE_JSON_EOF` heredoc 埋め込みを廃止)。生成漏れ / 不正 JSON は `review-result-save.sh` 内の jq timestamp 注入が `write_failure` として非ブロッキングに fail-fast 検出する (後続の `jq empty` post-condition `json_invalid` は注入成功後に走る defense-in-depth backstop で、syntactic invalidity では実挙動上ここに到達しない)。
  - **Issue #1019 M5 — Accepted Fingerprint Suppression 契約**: ステップ 5.1.2.A で識別された `suppressed_findings` (前 cycle で `accept (認知のみ)` 選択された finding が再出現) は、本 JSON 本文の `findings[]` 配列から **除外** する。Markdown 側 (ステップ 5.4 統合レポート / ステップ 6.1.b PR コメント本文) には audit log として残すが、JSON output (本 phase / ステップ 6.1.b Raw JSON section) には含めない。これにより `/rite:pr:fix` が JSON を読み込んだ際、accepted finding は fix loop に entered せず、decision-replay 系の同一 finding 再出現が断たれる。除外は finding 単位 (`F-NN`) で行い、各除外について ステップ 5.1.2.A Step 3 で `[CONTEXT] FINDING_SUPPRESSED_BY_ACCEPT=1; finding_id=...; original_severity=...; fingerprint=...` を emit 済 (本 phase で重複 emit は不要)。
 - `{pr_number}`: ステップ 1.0 で正規化済み。`review-result-save.sh` の `--pr {pr_number}` 引数および Write 先パス (`/tmp/rite-review-result-{pr_number}.json`) に literal substitute する。helper が数値 fail-fast gate (`pr_number_placeholder_residue`) を持つ。
 - Required JSON fields: `schema_version: "1.0.0"`, `pr_number`, `timestamp` (literal sentinel `"__RITE_TS_PLACEHOLDER_7f3a9b2c__"` を書き、helper が ISO 8601 JST 値に注入), `commit_sha`, `overall_assessment` (`mergeable` / `fix-needed`), `findings[]`. Each finding の必須フィールドは以下の通り — 完全なスキーマは [review-result-schema.md](../../references/review-result-schema.md#json-schema) を真実の源として参照すること:

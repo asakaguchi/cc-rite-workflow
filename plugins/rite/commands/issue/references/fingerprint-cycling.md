@@ -187,7 +187,8 @@ cat <<'BODY_EOF' > "$tmpfile"
 - 元の PR: #{pr_number}
 BODY_EOF
 
-result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+# jq -n の出力を stdin で create-issue-with-projects.sh に渡す (pr/review.md §3992 / Issue #1193 #5 と同じ pipe 形式、入れ子 $() を回避)
+result=$(jq -n \
   --arg title "review-split: {short_summary}" \
   --arg body_file "$tmpfile" \
   --argjson projects_enabled {projects_enabled} \
@@ -207,8 +208,7 @@ result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
       iteration: { mode: "none" }
     },
     options: { source: "fingerprint_split", non_blocking_projects: true }
-  }'
-)")
+  }' | bash {plugin_root}/scripts/create-issue-with-projects.sh)
 new_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
 echo "✅ Fingerprint 循環 finding を #$(printf '%s' "$result" | jq -r '.issue_number') として切り出しました: $new_issue_url"
 ```

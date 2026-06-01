@@ -541,6 +541,9 @@ fi
 
 ```bash
 set -uo pipefail
+# drift-check-ignore: 親 Status→Done + close + 不整合サマリ (Step 1-3) を単一 atomic block に
+#   保つのは意図的な設計 (#517 silent-corruption 可視化 / #658 substep 間 attention 喪失回避)。
+#   phase 分割は両不変条件を壊すため不可。refs #1221。
 parent_number="{parent_number}"
 owner="{owner}"
 repo="{repo}"

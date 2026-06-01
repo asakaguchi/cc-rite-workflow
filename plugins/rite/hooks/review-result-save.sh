@@ -202,6 +202,10 @@ fi
 [ -n "$jq_ts_err" ] && rm -f "$jq_ts_err"
 
 # --- Validation chain (全て非ブロッキング: WARNING + reason emit + exit 0) ---
+# 直前の jq timestamp 注入が入力 JSON を parse・再シリアライズして valid JSON を保証するため、
+# syntactically invalid JSON (literal substitute 漏れ含む) はそこで write_failure として既に fail する。
+# 下記 json_invalid は注入成功後に走る defense-in-depth backstop であり、syntactic invalidity 経由では
+# effectively unreachable (その経路の実発火 reason は write_failure)。
 jq_val_err_r=$(mktemp /tmp/rite-jq-val-err-r-XXXXXX 2>/dev/null) || jq_val_err_r=""
 if ! jq empty "$json_tmp" 2>"${jq_val_err_r:-/dev/null}"; then
   echo "WARNING: JSON 一時ファイルが syntactically invalid です (literal substitute 漏れの可能性)" >&2

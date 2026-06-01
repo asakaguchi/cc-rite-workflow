@@ -2,7 +2,7 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-05-28T16:12:48Z"
+updated: "2026-06-01T10:48:51+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260528T155654Z-pr-1172.md"
@@ -34,6 +34,10 @@ sources:
     ref: "raw/fixes/20260520T022118Z-pr-1066-cycle1.md"
   - type: "reviews"
     ref: "raw/reviews/20260528T122742Z-pr-1167.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260601T011012Z-pr-1222.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260601T011318Z-pr-1222.md"
 tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage", "symmetry-claim-bidirectional-pin", "negative-assert"]
 confidence: high
 ---
@@ -390,6 +394,19 @@ cycle 1 fix で happy-path (handoff キー欠落の正常系) で corrupt-read W
 
 本 sub-pattern は [[asymmetric-fix-transcription]] (対称位置への fix 伝播漏れ) の **test 側双対**にあたる: 前者は「対称な実装サイトへ fix を伝播し忘れる」失敗、本適用は「対称な動作 invariant の片側を pin し忘れる」失敗。実装の対称化を謳ったら、その対称性を守る test も両側対称に置く。
 
+### 適用 11: 閾値の off-by-one 境界は「測定対象シグナルを単独の結果決定要因」にして pin し mutation で実証する (PR #1222 で実証)
+
+`nlines >= 25` のような閾値比較の off-by-one (`>=` ↔ `>` / 閾値 `25` ↔ `24`) は、fixture が閾値から離れた値 (本文 26 行以上) で overshoot していると、どの mutation も既存 TC を全 PASS のまますり抜ける。PR #1222 の `bash-heaviness-check` では全 long-block fixture が `filler 26` 以上で、ちょうど 24 / 25 行の境界が未カバーだったため、cycle 1 では「境界値テスト欠落」が推奨に留まっていたが、cycle 2 で reviewer が mutation testing を実施して off-by-one が捕捉されないことを実証し MEDIUM に昇格した。
+
+canonical な解消手順:
+
+1. **測定対象シグナルを単独の結果決定要因にする**: 評価対象 (long-block) 以外のシグナル (python-inline) を第 2 シグナルに固定し、評価対象の発火有無のみが exit code を決める構成にする。これで閾値の `>=` 境界だけが TC の合否を分ける。
+2. **境界の両側を別 TC で pin する**: (a) 本文 24 行 (閾値未満) → 非検知 + ラベル非出力 / (b) 本文 25 行 (閾値ちょうど) → 検知 + `long-block(25)` のラベル付き値まで assert。後者は閾値だけでなく行カウントロジックの回帰も同時に pin する。
+3. **fixture の行数が SUT のカウント定義と一致することを確認する**: fence 行を含む / 含まない、heredoc body を数える / 数えない等のカウント定義差で 1 行ずれると境界 TC が無意味になるため、`filler N` の N を実機で逆算検証する。
+4. **commit 前に mutation で非 vacuous を実証する**: 隔離 worktree で `>= 25` → `>= 26` と `LINE_THRESHOLD 25 → 24` の両 mutation を適用し、それぞれ追加した境界 TC が FAIL することを確認してから commit する。
+
+これは「detection 完全性 (off-by-one) を test で守る」適用であり、適用 7 (regex quantifier の semantic 境界) や適用 10 (対称化の双方向 pin) と同じ「片側だけ / 境界の外側だけ pin して中身が dead」失敗の数値閾値版にあたる。
+
 ## 関連ページ
 
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
@@ -417,3 +434,5 @@ cycle 1 fix で happy-path (handoff キー欠落の正常系) で corrupt-read W
 - [PR #1172 review results (cycle 1) — 「対称化」claim の片側 (happy-path 非発火) を pin する test 欠落を mutation で検出、無条件 WARNING emit mutant が全 103 assert を pass する coverage gap](../../raw/reviews/20260528T154013Z-pr-1172.md)
 - [PR #1172 review results (cycle 2) — cycle 1 fix (TC-H4 negative-assert) が gap を解消したことを双方向 mutation で実証 (無条件 emit → TC-H4 fail / WARNING 削除 → TC-H7 fail)](../../raw/reviews/20260528T155654Z-pr-1172.md)
 - [PR #1172 fix results — happy-path 非発火を pin する negative-assert (TC-H4) を TC-H7 と対に追加、mutant を hooks/ 内に配置して sibling script source 解決を再現し gap 捕捉を確認](../../raw/fixes/20260528T155033Z-pr-1172.md)
+- [PR #1222 review results (cycle 2) — long-block 25 行境界 TC 欠落を mutation で実証し MEDIUM 昇格 (filler overshoot で off-by-one がすり抜け)](../../raw/reviews/20260601T011012Z-pr-1222.md)
+- [PR #1222 fix results (cycle 2) — python-inline を第 2 シグナルに固定し long-block を単独の結果決定要因にして 24/25 行境界を pin、`long-block(25)` ラベルまで assert、`>=25→>=26` / `25→24` 両 mutation で捕捉を実証](../../raw/fixes/20260601T011318Z-pr-1222.md)

@@ -208,7 +208,7 @@ fi
 # effectively unreachable (その経路の実発火 reason は write_failure)。
 jq_val_err_r=$(mktemp /tmp/rite-jq-val-err-r-XXXXXX 2>/dev/null) || jq_val_err_r=""
 if ! jq empty "$json_tmp" 2>"${jq_val_err_r:-/dev/null}"; then
-  echo "WARNING: JSON 一時ファイルが syntactically invalid です (literal substitute 漏れの可能性)" >&2
+  echo "WARNING: JSON 一時ファイルが syntactically invalid です (注入後に外部要因で破損した稀ケース。通常の literal substitute 漏れは upstream の write_failure で検出済)" >&2
   [ -n "${jq_val_err_r:-}" ] && [ -s "$jq_val_err_r" ] && head -3 "$jq_val_err_r" | sed 's/^/  jq: /' >&2
   echo "  内容 preview (先頭 5 行):" >&2
   head -5 "$json_tmp" 2>/dev/null | sed 's/^/  /' >&2

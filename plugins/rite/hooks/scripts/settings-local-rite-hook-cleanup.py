@@ -2,7 +2,8 @@
 """rite workflow - settings.local.json rite hook cleanup transform
 
 Pure JSON transformation: reads .claude/settings.local.json from stdin, removes
-every hook entry whose command references a rite hook (matches `rite.../hooks/`),
+every hook entry whose command references a rite hook (command path contains
+`rite` as a full segment immediately above the hooks dir — see RITE_HOOK_RE),
 and writes the cleaned JSON to stdout. Non-rite hooks are preserved. Hook events
 left with no entries are dropped. No file I/O, no API calls — the atomic write is
 handled by the calling bash wrapper (settings-local-rite-hook-cleanup.sh).
@@ -22,7 +23,14 @@ import json
 import re
 import sys
 
-RITE_HOOK_RE = re.compile(r"rite.*?/hooks/")
+# Match `rite` only as a complete path segment directly above the hooks dir,
+# allowing one optional segment (the plugin version) in between. This covers both
+# real command shapes — cache install `.../rite-marketplace/rite/<version>/hooks/`
+# and dev/relative `.../rite/hooks/` — while rejecting look-alikes where `rite` is
+# merely a substring of another segment (`favorite/hooks/`, `prerite/hooks/`,
+# `rite-something/hooks/`), which the old `rite.*?/hooks/` over-matched and could
+# silently strip user-defined non-rite hooks from settings.local.json (Issue #1231).
+RITE_HOOK_RE = re.compile(r"(?:^|/)rite/(?:[^/]+/)?hooks/")
 
 
 def main():

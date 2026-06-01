@@ -11,6 +11,9 @@
 #   2. `.py` selective removal of mixed rite/non-rite entries + event-key deletion
 #   3. `.sh` token folding: python3 exit 1/2 both collapse to NO_RITE_HOOKS
 #   4. `.sh` mv-failure path (guarded mv → NO_RITE_HOOKS), atomic write, trap cleanup
+#   5. RITE_HOOK_RE over-match boundary (#1231): `rite` must be a full path segment,
+#      so look-alikes (favorite/, prerite/, rite-something/) are preserved while the
+#      real cache form `rite-marketplace/rite/<version>/hooks/` is still removed
 #
 # The mv-failure case reuses the PATH-shimmed `mv` technique from the precedent
 # test issue-comment-wm-sync.test.sh (a `bin/mv` that exits non-zero, prepended to
@@ -140,6 +143,39 @@ assert_not_grep "P-5: rite entry (pre-tool-bash-guard) は除去" "$out" 'pre-to
 assert_grep     "P-5: 混在 event key (PreToolUse) は残存" "$out" 'PreToolUse'
 assert_not_grep "P-6: 全 rite event key (SessionStart) は削除" "$out" 'SessionStart'
 
+# ─── over-match 境界 (#1231): look-alike 保持 / cache version 形除去 (B-1〜B-3) ─
+echo ""
+echo "=== over-match 境界 regex (#1231) (B-1〜B-3) ==="
+
+# B-1: `rite` を部分文字列に含むだけの非 rite hook は除去対象外 (exit 1, 無出力)。
+# 旧 regex `rite.*?/hooks/` はこれらを誤マッチしユーザー hook を silent 除去していた。
+out="$(fresh)/out.json"
+printf '%s' '{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"bash /home/u/projects/favorite/hooks/foo.sh"}]},{"hooks":[{"type":"command","command":"node /opt/prerite/hooks/lint.js"}]},{"hooks":[{"type":"command","command":"bash /path/rite-something/hooks/bar.sh"}]}]}}' \
+  | python3 "$PY" > "$out" 2>/dev/null
+rc=$?
+assert "B-1: look-alike (favorite/prerite/rite-something) は非 rite → exit 1" "1" "$rc"
+assert_empty_file "B-1: stdout 空 (誤除去なし)" "$out"
+
+# B-2: 実 cache install 形 `.../rite-marketplace/rite/<version>/hooks/` は除去対象
+# (false-negative ガード — version segment を挟んでも rite segment を正しく検出)。
+out="$(fresh)/out.json"
+printf '%s' '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"bash /home/u/.claude/plugins/cache/rite-marketplace/rite/0.2.0/hooks/session-start.sh"}]}]}}' \
+  | python3 "$PY" > "$out" 2>/dev/null
+rc=$?
+assert "B-2: cache version 形 (rite/0.2.0/hooks/) は除去 → exit 0" "0" "$rc"
+
+# B-3: cache 形 rite hook と 3 種の look-alike を混在 → rite のみ除去、look-alike は保持。
+out="$(fresh)/out.json"
+printf '%s' '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash /home/u/.claude/plugins/cache/rite-marketplace/rite/0.2.0/hooks/pre-tool-bash-guard.sh"}]},{"matcher":"A","hooks":[{"type":"command","command":"bash /home/u/projects/favorite/hooks/foo.sh"}]},{"matcher":"B","hooks":[{"type":"command","command":"node /opt/prerite/hooks/lint.js"}]},{"matcher":"C","hooks":[{"type":"command","command":"bash /path/rite-something/hooks/bar.sh"}]}]}}' \
+  | python3 "$PY" > "$out" 2>/dev/null
+rc=$?
+assert "B-3: 混在 (cache rite + look-alike) → exit 0" "0" "$rc"
+assert_valid_json "B-3: cleaned JSON valid" "$out"
+assert_not_grep "B-3: cache rite hook (rite-marketplace) は除去" "$out" 'rite-marketplace'
+assert_grep     "B-3: look-alike favorite は保持" "$out" 'favorite'
+assert_grep     "B-3: look-alike prerite は保持" "$out" 'prerite'
+assert_grep     "B-3: look-alike rite-something は保持" "$out" 'rite-something'
+
 # ─── .sh token folding + atomic write (S-1〜S-3) ─────────────────────────
 echo ""
 echo "=== .sh token 畳み込み / atomic write (S-1〜S-3) ==="
@@ -215,6 +251,6 @@ assert_no_leftover_tmp "S-5: trap cleanup で残留 tmp なし" "$f"
 
 echo ""
 if ! print_summary "$(basename "$0")" \
-  "drift: settings-local-rite-hook-cleanup helper (#1230) の挙動契約が後退した可能性。.py の exit code (0=削除 / 1=変更なし / 2=不正JSON)、混在時の選択的除去・全 rite event の key 削除、.sh の token 畳み込み (py exit 1/2 → NO_RITE_HOOKS)・検査付き mv 失敗経路・atomic write・trap cleanup を確認。"; then
+  "drift: settings-local-rite-hook-cleanup helper (#1230 / #1231) の挙動契約が後退した可能性。.py の exit code (0=削除 / 1=変更なし / 2=不正JSON)、混在時の選択的除去・全 rite event の key 削除、over-match 境界 (#1231: look-alike favorite/prerite/rite-something は保持・cache version 形 rite/0.2.0/hooks/ は除去)、.sh の token 畳み込み (py exit 1/2 → NO_RITE_HOOKS)・検査付き mv 失敗経路・atomic write・trap cleanup を確認。"; then
   exit 1
 fi

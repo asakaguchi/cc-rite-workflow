@@ -229,6 +229,7 @@ else
   pass "TC-12 timeout なし (無限ループ回避)"
 fi
 assert "TC-12 exit 2 (値なしフラグは branch_strategy 空 → 必須チェックで exit 2)" "2" "$rc"
+assert_grep "TC-12 branch-strategy 必須エラー (経路固定)" "$errf" 'branch-strategy は必須'
 
 if ! print_summary "$(basename "$0")" \
   "drift: wiki-lint-source-refs.sh の挙動が変わった可能性。wiki/lint.md ステップ 6.2 委譲契約 (Issue #1195 #10) と marker block / io_error enum の出力契約を参照。"; then

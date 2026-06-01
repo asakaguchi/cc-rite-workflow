@@ -16,6 +16,8 @@
 #   TC-8  separate_branch 抽出 (git show)
 #   TC-9  separate_branch io_error (存在しない wiki_branch ref) → read_ok=io_error
 #   TC-10 --branch-strategy 欠落 → exit 2 (invocation error)
+#   TC-11 separate_branch + 空 --wiki-branch → exit 2 (invocation error)
+#   TC-12 値なしフラグ末尾 (--branch-strategy 値なし) → exit 2、無限ループしない (timeout ガード)
 #
 # NOT covered (environment-dependent): mktemp failure on read-only /tmp,
 # sort/awk pipeline OOM. Both downgrade to io_error and are verified by reading.
@@ -203,6 +205,31 @@ printf '%s\n' ".rite/wiki/pages/p1.md" | bash "$SCRIPT" 2>"$errf" >/dev/null
 rc=$?
 assert "TC-10 exit 2 (invocation error)" "2" "$rc"
 assert_grep "TC-10 --branch-strategy 必須エラー" "$errf" 'branch-strategy は必須'
+
+# === TC-11: separate_branch + 空 --wiki-branch → exit 2 (invocation error) ===
+# (空のまま git show ":$page" が index を読む別 semantics に陥るのを fail-fast で防ぐ)
+echo "=== TC-11: separate_branch + 空 --wiki-branch ==="
+errf=$(mk_tmp)
+printf '%s\n' ".rite/wiki/pages/p1.md" \
+  | bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch "" 2>"$errf" >/dev/null
+rc=$?
+assert "TC-11 exit 2 (invocation error)" "2" "$rc"
+assert_grep "TC-11 --wiki-branch 必須エラー" "$errf" 'separate_branch では --wiki-branch が必須'
+
+# === TC-12: 値なしフラグ末尾 → exit 2、無限ループしない (timeout ガード) ===
+# (`shift 2` のままだと $# を減らせず set -e 非設定下で無限ループ。timeout で hang を検出)
+echo "=== TC-12: 値なしフラグ末尾 (無限ループ耐性) ==="
+errf=$(mk_tmp)
+printf '%s\n' ".rite/wiki/pages/p1.md" \
+  | timeout 5 bash "$SCRIPT" --branch-strategy 2>"$errf" >/dev/null
+rc=$?
+if [ "$rc" -eq 124 ]; then
+  fail "TC-12 timeout (無限ループ検出) — shift 2 retが残存している可能性"
+else
+  pass "TC-12 timeout なし (無限ループ回避)"
+fi
+assert "TC-12 exit 2 (値なしフラグは branch_strategy 空 → 必須チェックで exit 2)" "2" "$rc"
+assert_grep "TC-12 branch-strategy 必須エラー (経路固定)" "$errf" 'branch-strategy は必須'
 
 if ! print_summary "$(basename "$0")" \
   "drift: wiki-lint-source-refs.sh の挙動が変わった可能性。wiki/lint.md ステップ 6.2 委譲契約 (Issue #1195 #10) と marker block / io_error enum の出力契約を参照。"; then

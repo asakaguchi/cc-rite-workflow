@@ -505,6 +505,17 @@ OK patterns:
 **Where to Apply**:
 - `commands/**/*.md` の operational bash ブロックを新規記述 / 編集するとき。
 
+**Mechanical enforcement** (Issue #1197): 上記 Rules は `/rite:lint` Phase 3.17 (`hooks/scripts/bash-heaviness-check.sh`) が `commands/**/*.md` を走査して非ブロッキング warning として機械的に surface する (`[lint:success]` は不変)。各 bash ブロックを 4 シグナルで評価し、これは Rules と対応する:
+
+| シグナル | 判定 | 対応 Rule |
+|---------|------|----------|
+| `python-inline` | `python3 -c` / python heredoc を含む | Rule 2 |
+| `nested-cmdsub` | 入れ子 `$( … $( … )`（同一行） | Rule 3 |
+| `multi-heredoc` | heredoc が 2 つ以上 | Rule 4 |
+| `long-block` | ブロック本文が >= 25 行 | Rule 1 |
+
+**2 シグナル以上**該当したブロックのみ flag する (single signal — 単発の helper 呼び出し + 1 個の JSON heredoc、または 1 個の長文テンプレート heredoc — は誤検知を避けるため flag しない)。heredoc 本文はデータ扱いで python-inline / nested-cmdsub の評価対象外。意図的・レビュー済の重いブロックは行内 `drift-check-ignore` marker で除外できる。既存の重いブロックの helper 切り出しは段階的 cleanup であり、本 guard は awareness のための warning に留める。
+
 ---
 
 ## Phase Checklists

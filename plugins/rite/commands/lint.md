@@ -932,6 +932,52 @@ fi
 - `sh_cross_ref_finding_count`: Extract from `sh_cross_ref_output` by matching the summary line `==> Total sh-cross-ref findings: N` (regex: `/Total sh-cross-ref findings: (\d+)/`). If no match found, default to 0
 - `sh_cross_ref_output`: Script output (truncated if >50 lines)
 
+### 3.17 Plugin-specific Checks (Operational Bash Block Heaviness) — Issue #1197
+
+Execute the operational bash block heaviness check to detect "heavy" bash blocks in command markdown under **`plugins/rite/commands/**/*.md`** that violate the "operational bash block heaviness convention" added to `skills/rite-workflow/references/coding-principles.md` by PR #1193. Issue #1193 observed that large operational bash blocks (python inline / nested `$()` / multiple heredocs / long line counts) malformed Claude's tool-call parsing and silently ended the turn with no error. The convention was added as prose, but prose-only enforcement cannot stop new drift — this check surfaces it mechanically. See the script header at `plugins/rite/hooks/scripts/bash-heaviness-check.sh` for the heaviness model.
+
+A block is flagged only when it exhibits **2 or more** of these signals (a single signal — e.g. a lone helper call passing one JSON heredoc, or one block writing a long template — is intentionally not flagged, keeping false positives low):
+
+- **python-inline**: a line invokes python with inline code (`python3 -c ...` or a python heredoc)
+- **nested-cmdsub**: a line nests command substitution, e.g. `$(cmd "$(inner)")`
+- **multi-heredoc**: the block opens 2 or more heredocs
+- **long-block**: the block body is >= 25 lines (the convention 目安)
+
+Heredoc bodies are treated as data: the python-inline / nested-cmdsub signals are evaluated only on real shell lines, so a template heredoc containing `$(...)` or `python3 -c` example text does not produce a finding.
+
+Exclusions: `plugins/rite/commands/**/tests/` fixtures, and any block containing the `drift-check-ignore` marker on one of its lines (exempts intentional / already-reviewed heavy blocks).
+
+**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
+
+**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/bash-heaviness-check.sh ]; then
+  bash_heaviness_output=$(bash {plugin_root}/hooks/scripts/bash-heaviness-check.sh --all 2>&1)
+  bash_heaviness_exit_code=$?
+else
+  bash_heaviness_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `bash_heaviness_status` | Action |
+|-----------|-------------------------|--------|
+| 0 | `success` | No heavy blocks — continue to Phase 4 |
+| 1 | `warning` | Heavy block(s) detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| 2 | `error` | Invocation error (usage error / missing repo-root / empty `--all` expansion) — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Operational bash block heaviness check results are treated as **warnings**, not errors — same policy as Phase 3.5–3.16 checks. A finding does NOT change `[lint:success]`. Pre-existing heavy blocks are surfaced for incremental cleanup (refactoring an existing heavy block to a helper call is separate work, out of scope for the block's owning change); intentional or already-reviewed heavy blocks can be exempted with an inline `drift-check-ignore` marker.
+
+**Record bash heaviness check results** for Phase 4 reporting:
+- `bash_heaviness_status`: `success` / `warning` / `error` / `skipped`
+- `bash_heaviness_finding_count`: Extract from `bash_heaviness_output` by matching the summary line `==> Total bash-heaviness findings: N` (regex: `/Total bash-heaviness findings: (\d+)/`). If no match found, default to 0
+- `bash_heaviness_output`: Script output (truncated if >50 lines)
+
 ---
 
 ## Phase 4: Report Results
@@ -1084,7 +1130,14 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the flo
 {sh_cross_ref_output}
 ```
 
-These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, terminal-output, gitignore-health, backlink-format, hardcoded-line-number, comment-journal, comment-line-ref, direct-gh-issue-create, orphan-reference-check, or sh-cross-ref warnings/invocation errors.
+**Operational bash block heaviness appendix (Issue #1197)** (both standalone and E2E): When `bash_heaviness_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as Phase 3.5–3.16 checks. When status is `warning` (exit 1, heavy block detected), the appendix output includes each finding line (`[bash-heaviness] file:NN: heavy operational bash block — N signals: ...`) so authors can refactor the heavy block to a helper call or exempt an intentional one with `drift-check-ignore`:
+
+```
+⚠️ Operational bash block heaviness check: {bash_heaviness_finding_count} findings detected ({bash_heaviness_status}, non-blocking)
+{bash_heaviness_output}
+```
+
+These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, terminal-output, gitignore-health, backlink-format, hardcoded-line-number, comment-journal, comment-line-ref, direct-gh-issue-create, orphan-reference-check, sh-cross-ref, or bash-heaviness warnings/invocation errors.
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 
@@ -1167,6 +1220,7 @@ Analyze the error content and present fix suggestions when possible:
 | Direct gh issue create check (#958) | {direct_gh_issue_status} ({direct_gh_issue_finding_count} findings) |
 | Orphan reference check (#1159) | {orphan_check_status} ({orphan_check_finding_count} findings) |
 | Shell-prose cross-ref check (#1160) | {sh_cross_ref_status} ({sh_cross_ref_finding_count} findings) |
+| Operational bash block heaviness check (#1197) | {bash_heaviness_status} ({bash_heaviness_finding_count} findings) |
 | 所要時間 | {duration} |
 
 次のステップ:
@@ -1177,7 +1231,7 @@ Analyze the error content and present fix suggestions when possible:
 > **注**: `/rite:pr:open` の一気通貫フローから呼び出された場合、この「次のステップ」案内は**スキップ**されます。呼び出し元が出力パターン（`[lint:success]` 等）を検出し、自動的に次のアクション（PR 作成）に進みます。**この案内は単独実行時のみ参照してください**。
 ```
 
-**Note**: The `テスト` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `Drift チェック` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Wiki growth check (#524)` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). The `Gitignore health check (#567)` row follows the same policy: omit when `gitignore_health_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = healthy rule / legitimate no-op; `warning` = drift detected; `error` = invocation failure). The `Backlink format check (#627)` row follows the same policy: omit when `backlink_format_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no dialect violations; `warning` = legacy dialect detected; `error` = invocation failure). The `Hardcoded line-number check (#666)` row follows the same policy: omit when `hardcoded_line_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no hardcoded references; `warning` = P-A/P-B/P-C reference detected; `error` = invocation failure). **Asymmetry note**: The `Drift チェック` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. The `Comment journal narration (#702)` row follows the same policy: omit when `comment_journal_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no journal narration; `warning` = P1/P2/P3/P4 pattern detected; `error` = invocation failure). The `Comment line-ref check (#702)` row follows the same policy: omit when `comment_line_ref_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no comment line-number references; `warning` = `<file>.<ext>:<NN>` pattern detected in shell comments; `error` = invocation failure). The `Direct gh issue create check (#958)` row follows the same policy: omit when `direct_gh_issue_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no direct invocations; `warning` = direct `gh issue create` invocation detected; `error` = invocation failure / usage error / missing commands directory). The `Orphan reference check (#1159)` row follows the same policy: omit when `orphan_check_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no orphans; `warning` = orphan file(s) detected; `error` = invocation failure / usage error / missing repo-root / empty --all expansion). The `Shell-prose cross-ref check (#1160)` row follows the same policy: omit when `sh_cross_ref_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no inconsistent references; `warning` = dangling number / keyword mismatch detected; `error` = invocation failure / usage error / missing repo-root / empty --all expansion). All Phase 3.x lint checks added after Phase 3.5 (3.7 `Doc-heavy patterns drift check`, 3.8 `Wiki growth check`, 3.9 `Gitignore health check`, 3.10 `Backlink format check`, 3.11 `Hardcoded line-number check`, 3.12 `Comment journal narration`, 3.13 `Comment line-ref check`, 3.14 `Direct gh issue create check`, 3.15 `Orphan reference check`, 3.16 `Shell-prose cross-ref check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
+**Note**: The `テスト` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `Drift チェック` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Wiki growth check (#524)` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). The `Gitignore health check (#567)` row follows the same policy: omit when `gitignore_health_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = healthy rule / legitimate no-op; `warning` = drift detected; `error` = invocation failure). The `Backlink format check (#627)` row follows the same policy: omit when `backlink_format_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no dialect violations; `warning` = legacy dialect detected; `error` = invocation failure). The `Hardcoded line-number check (#666)` row follows the same policy: omit when `hardcoded_line_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no hardcoded references; `warning` = P-A/P-B/P-C reference detected; `error` = invocation failure). **Asymmetry note**: The `Drift チェック` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. The `Comment journal narration (#702)` row follows the same policy: omit when `comment_journal_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no journal narration; `warning` = P1/P2/P3/P4 pattern detected; `error` = invocation failure). The `Comment line-ref check (#702)` row follows the same policy: omit when `comment_line_ref_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no comment line-number references; `warning` = `<file>.<ext>:<NN>` pattern detected in shell comments; `error` = invocation failure). The `Direct gh issue create check (#958)` row follows the same policy: omit when `direct_gh_issue_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no direct invocations; `warning` = direct `gh issue create` invocation detected; `error` = invocation failure / usage error / missing commands directory). The `Orphan reference check (#1159)` row follows the same policy: omit when `orphan_check_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no orphans; `warning` = orphan file(s) detected; `error` = invocation failure / usage error / missing repo-root / empty --all expansion). The `Shell-prose cross-ref check (#1160)` row follows the same policy: omit when `sh_cross_ref_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no inconsistent references; `warning` = dangling number / keyword mismatch detected; `error` = invocation failure / usage error / missing repo-root / empty --all expansion). The `Operational bash block heaviness check (#1197)` row follows the same policy: omit when `bash_heaviness_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no heavy blocks; `warning` = block with >= 2 heaviness signals detected; `error` = invocation failure / usage error / missing repo-root / empty --all expansion). All Phase 3.x lint checks added after Phase 3.5 (3.7 `Doc-heavy patterns drift check`, 3.8 `Wiki growth check`, 3.9 `Gitignore health check`, 3.10 `Backlink format check`, 3.11 `Hardcoded line-number check`, 3.12 `Comment journal narration`, 3.13 `Comment line-ref check`, 3.14 `Direct gh issue create check`, 3.15 `Orphan reference check`, 3.16 `Shell-prose cross-ref check`, 3.17 `Operational bash block heaviness check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
 
 ### 4.4 Automatic Work Memory Update (Conditional)
 

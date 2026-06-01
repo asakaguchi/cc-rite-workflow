@@ -2,7 +2,7 @@
 title: "HINT-specific 文言 pin で case arm 削除 regression を検知する"
 domain: "patterns"
 created: "2026-04-20T13:20:00+00:00"
-updated: "2026-04-21T10:35:00+00:00"
+updated: "2026-06-01T03:07:26+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260420T104328Z-pr-623.md"
@@ -10,7 +10,13 @@ sources:
     ref: "raw/fixes/20260420T105116Z-pr-623.md"
   - type: "fixes"
     ref: "raw/fixes/20260421T033138Z-pr-636-cycle-3.md"
-tags: [testing, regression-detection, bash, hook-assertion, twin-site-contract]
+  - type: "reviews"
+    ref: "raw/reviews/20260601T023442Z-pr-1223.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260601T023854Z-pr-1223.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260601T024546Z-pr-1223.md"
+tags: [testing, regression-detection, bash, hook-assertion, twin-site-contract, exit-code-path-pin]
 confidence: high
 ---
 
@@ -75,13 +81,29 @@ PR #636 cycle 3 fix で twin site contract verification という拡張パター
 
 3 点のいずれかを欠く marker は「dead signal」となり、次 cycle で削除推奨される (PR #636 cycle 1 F-06 = `MANDATORY_AFTER_INTERVIEW_STEP_0`、cycle 2 F-05 = `STEP_0_PATCH_FAILED` の同型再発)。詳細は [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md) の「Fix 側の予防契約」参照。
 
+### Exit-code 経路判別への拡張 (PR #1223 で実測)
+
+同じ構造が **同一 exit code を共有する複数経路** のテストにも当てはまる。`assert_contains "Phase:"` が複数経路で silent-pass するのと同型に、複数の path がすべて同じ exit code を返すスクリプトでは **bare な `assert <exit code>` だけでは「どの経路が発火したか」を pin できない**。exit code は fallback STOP_MSG の `Phase:` に相当する汎用シグナルで、回帰の検出はできても経路の特定はできない。
+
+`wiki-lint-source-refs.sh` は invocation error として `exit 2` する path を 4 つ持つ。cycle 1 の test reviewer が、TC-12 が error 出力 (`errf`) を capture しているのに `assert_grep` で消費せず `exit 2` のみ assert していたため、**4 経路のうち branch_strategy 必須チェック経路を pin できていない** LOW/follow-up を検出した (回帰検出自体は成立するが経路特定力が無い)。
+
+cycle 1 fix は、TC-10 / TC-11 と対称な `assert_grep "branch-strategy は必須"` を 1 行追加し、capture 済みの `errf` を消費して特定経路を pin した。near-zero コストで test の特定性を上げる修正。
+
+→ **heuristic: 同一スクリプト内に同じ exit code を返す経路が複数ある場合、その経路テストは `assert <exit code>` + `assert_grep <経路固有のエラー文言>` の対称ペアで一貫させる**。bare exit-code assert は exit-code 版の「汎用シグナル false-pass」であり、HINT-specific 文言 pin と同じく **path-specific 文言を pin して初めて経路を判別できる** (本ページ冒頭の `Phase:` ↔ HINT 文言の二層構造と同型)。
+
+cycle 2 re-review は本修正の identification power を mutation testing で実証した: 必須エラー文言を書き換えると新 assert が FAIL し、bare な `assert exit 2` は誤って PASS する (mutation による真正性検証の詳細は [[mutation-testing-test-fidelity]] を参照)。指摘ゼロで 2 cycle 収束した。
+
 ## 関連ページ
 
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md)
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
+- [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](mutation-testing-test-fidelity.md)
 
 ## ソース
 
 - [PR #623 review results (cycle 1)](../../raw/reviews/20260420T104328Z-pr-623.md)
 - [PR #623 fix results (cycle 1)](../../raw/fixes/20260420T105116Z-pr-623.md)
 - [PR #636 cycle 3 fix (twin site contract verification + --preserve-error-count flag)](../../raw/fixes/20260421T033138Z-pr-636-cycle-3.md)
+- [PR #1223 cycle 1 review — TC-12 が exit 2 のみ assert し 4 経路を区別しない LOW/follow-up](../../raw/reviews/20260601T023442Z-pr-1223.md)
+- [PR #1223 fix — TC-10/TC-11 対称の assert_grep "branch-strategy は必須" を追加し特定 exit-2 経路を pin](../../raw/fixes/20260601T023854Z-pr-1223.md)
+- [PR #1223 cycle 2 review — mutation testing で経路 pin の identification power を実証、0 findings / 2 cycle 収束](../../raw/reviews/20260601T024546Z-pr-1223.md)

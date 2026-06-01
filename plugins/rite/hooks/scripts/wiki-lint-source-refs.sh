@@ -69,11 +69,14 @@ Exit codes:
 EOF
 }
 
+# 各値付きフラグは `shift; shift` で消費する。値なしフラグが末尾に来た場合 ($#=1)、
+# `shift 2` は $# を減らせず set -e 非設定下で無限ループに陥る。1 回目の shift で $# を
+# 確実に 0 にし、2 回目は no-op で安全に抜ける (値欠落は下流の必須チェックが exit 2 で検出)。
 while [ $# -gt 0 ]; do
   case "$1" in
-    --branch-strategy) branch_strategy="${2:-}"; shift 2 ;;
-    --wiki-branch) wiki_branch="${2:-}"; shift 2 ;;
-    --repo-root) REPO_ROOT="${2:-}"; shift 2 ;;
+    --branch-strategy) branch_strategy="${2:-}"; shift; shift ;;
+    --wiki-branch) wiki_branch="${2:-}"; shift; shift ;;
+    --repo-root) REPO_ROOT="${2:-}"; shift; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "ERROR: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -152,6 +155,16 @@ case "$branch_strategy" in
     exit 1
     ;;
 esac
+
+# separate_branch では --wiki-branch が必須。空のまま進むと git show "${wiki_branch}:$page" が
+# git show ":$page" となり、ref ではなく git index (staging area) を読む別 semantics に陥り、
+# legitimate absence と区別できない誤集合を構築する。header の "required for separate_branch"
+# 契約を runtime で enforce する (引数欠落 → exit 2)。
+if [ "$branch_strategy" = "separate_branch" ] && [ -z "$wiki_branch" ]; then
+  echo "ERROR: branch_strategy=separate_branch では --wiki-branch が必須です (空のため fail-fast)" >&2
+  usage >&2
+  exit 2
+fi
 
 # repo root へ移動 (separate_branch の git show / same_branch の cat はいずれも
 # repo-relative path を前提とする)。

@@ -963,6 +963,119 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-1241-INVALID-JSON (Issue #1241, subtask 2a): behavioral verification that an
+# invalid settings.local.json drives the cleanup script's rc=2 path WITHOUT
+# aborting the hook (set -e regression guard), surfaces the corruption WARNING,
+# and shows the JSON-format hint (the cleanup script writes nothing to stderr on
+# invalid JSON, so _py_err is empty → the hint is the correct disambiguation).
+# Pre-fix (python3 as a bare statement under set -e) the hook aborted rc=2 here.
+# --------------------------------------------------------------------------
+echo "TC-1241-INVALID-JSON: invalid settings.local.json → hook continues + corruption surfaces + JSON hint"
+dir_1241a="$TEST_DIR/tc1241a"
+mkdir -p "$dir_1241a/.claude"
+# No .rite-settings-hooks-cleaned marker → _needs_cleanup=true; source=startup gates the repair path.
+# Run the hook directly in the main shell rather than via the run_hook_* helpers:
+# those capture stderr into LAST_STDERR_FILE *inside* a command-substitution subshell,
+# so the assignment never reaches this shell and a later cat would read a stale file.
+printf '%s' '{ this is not valid json' > "$dir_1241a/.claude/settings.local.json"
+stderr_1241a="$(mktemp "$TEST_DIR/stderr.1241a.XXXXXX")"
+echo "{\"cwd\": \"$dir_1241a\", \"source\": \"startup\"}" \
+  | bash "$HOOK" >/dev/null 2>"$stderr_1241a" && rc_1241a=0 || rc_1241a=$?
+err_1241a="$(cat "$stderr_1241a")"
+if [ "$rc_1241a" -eq 0 ]; then
+  pass "TC-1241-INVALID-JSON: hook exits 0 (set -e did not abort on python3 rc=2)"
+else
+  fail "TC-1241-INVALID-JSON: hook aborted (rc=$rc_1241a) — set -e regression on python3 non-zero exit"
+fi
+if printf '%s' "$err_1241a" | grep -qF 'settings.local.json repair python3 failed (rc=2)'; then
+  pass "TC-1241-INVALID-JSON: invalid JSON corruption surfaces on stderr (rc=2 reported, not dead code)"
+else
+  fail "TC-1241-INVALID-JSON: corruption not surfaced (report branch is dead code); stderr: $err_1241a"
+fi
+if printf '%s' "$err_1241a" | grep -qF 'settings.local.json の JSON 形式 / encoding'; then
+  pass "TC-1241-INVALID-JSON: JSON-format hint shown for genuine invalid JSON (empty script stderr)"
+else
+  fail "TC-1241-INVALID-JSON: JSON hint missing for invalid JSON; stderr: $err_1241a"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-1241-NOOP-DOWNSTREAM (Issue #1241, subtask 2b): behavioral verification that
+# a rc=1 no-op repair (valid settings.local.json with no rite hooks) does NOT
+# abort, stays silent (no failure WARNING), and lets the hook proceed to the
+# downstream STATE_FILE resolution + defensive reset (the reset message proves
+# the post-repair code path executed). Pre-fix the hook aborted rc=1 at python3.
+# --------------------------------------------------------------------------
+echo "TC-1241-NOOP-DOWNSTREAM: rc=1 no-op repair → hook continues silently to STATE_FILE resolution"
+dir_1241b="$TEST_DIR/tc1241b"
+sid_1241b="11112222-3333-4444-5555-666677778888"
+mkdir -p "$dir_1241b/.claude"
+# Valid JSON with no rite hook entries → cleanup script returns rc=1 (intentional no-op).
+printf '%s' '{"permissions":{"allow":["Bash(ls:*)"]}}' > "$dir_1241b/.claude/settings.local.json"
+# Active flow-state so the downstream defensive reset (line ~414) fires and prints a
+# reset message — the observable proof that the hook reached past the repair block.
+create_state_file "$dir_1241b" '{"active":true,"issue_number":1241,"phase":"implement","branch":"fix/issue-1241-test","session_id":"'"$sid_1241b"'"}' "$sid_1241b"
+# Direct main-shell invocation (see TC-1241-INVALID-JSON note on LAST_STDERR_FILE/subshell).
+stderr_1241b="$(mktemp "$TEST_DIR/stderr.1241b.XXXXXX")"
+out_1241b=$(jq -n --arg cwd "$dir_1241b" --arg src "startup" --arg sid "$sid_1241b" \
+  '{cwd: $cwd, source: $src, session_id: $sid}' \
+  | bash "$HOOK" 2>"$stderr_1241b") && rc_1241b=0 || rc_1241b=$?
+err_1241b="$(cat "$stderr_1241b")"
+if [ "$rc_1241b" -eq 0 ]; then
+  pass "TC-1241-NOOP-DOWNSTREAM: hook exits 0 (set -e did not abort on python3 rc=1)"
+else
+  fail "TC-1241-NOOP-DOWNSTREAM: hook aborted (rc=$rc_1241b) — set -e regression on rc=1 no-op"
+fi
+if printf '%s' "$err_1241b" | grep -qF 'settings.local.json repair python3 failed'; then
+  fail "TC-1241-NOOP-DOWNSTREAM: rc=1 no-op misreported as failure; stderr: $err_1241b"
+else
+  pass "TC-1241-NOOP-DOWNSTREAM: rc=1 no-op stays silent (no false failure WARNING)"
+fi
+if printf '%s' "$out_1241b" | grep -qF '前回のセッション状態が残っていたためリセットしました' \
+   && printf '%s' "$out_1241b" | grep -qF 'Issue #1241'; then
+  pass "TC-1241-NOOP-DOWNSTREAM: downstream STATE_FILE resolution + defensive reset reached"
+else
+  fail "TC-1241-NOOP-DOWNSTREAM: downstream not reached (hook stopped before reset); stdout: $out_1241b"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-1241-MISSING-SCRIPT (Issue #1241, subtask 3): behavioral verification that a
+# missing/unreadable cleanup script (python3 emits its OWN diagnostic to stderr,
+# exit 2) is reported WITHOUT the JSON-format hint — that hint is invalid-JSON
+# specific and would misdirect here. Run against a sandbox copy with the cleanup
+# script removed so python3 fails to open it.
+# --------------------------------------------------------------------------
+echo "TC-1241-MISSING-SCRIPT: missing cleanup script → reported without misdirecting JSON hint"
+HOOKS_REAL_DIR_1241="$(cd "$SCRIPT_DIR/.." && pwd)"
+sbx_1241c="$(mktemp -d "$TEST_DIR/sbx-1241c-XXXXXX")"
+cp -a "$HOOKS_REAL_DIR_1241/." "$sbx_1241c/"
+rm -f "$sbx_1241c/scripts/settings-local-rite-hook-cleanup.py"
+dir_1241c="$TEST_DIR/tc1241c"
+mkdir -p "$dir_1241c/.claude"
+printf '%s' '{"permissions":{"allow":[]}}' > "$dir_1241c/.claude/settings.local.json"
+stderr_1241c="$(mktemp "$TEST_DIR/stderr.1241c.XXXXXX")"
+echo "{\"cwd\": \"$dir_1241c\", \"source\": \"startup\"}" \
+  | bash "$sbx_1241c/session-start.sh" >/dev/null 2>"$stderr_1241c" && rc_1241c=0 || rc_1241c=$?
+err_1241c="$(cat "$stderr_1241c")"
+if [ "$rc_1241c" -eq 0 ]; then
+  pass "TC-1241-MISSING-SCRIPT: hook exits 0 (set -e did not abort on missing-script python3 rc)"
+else
+  fail "TC-1241-MISSING-SCRIPT: hook aborted (rc=$rc_1241c) — set -e regression on missing script"
+fi
+if printf '%s' "$err_1241c" | grep -qF 'settings.local.json repair python3 failed'; then
+  pass "TC-1241-MISSING-SCRIPT: python3 failure reported on stderr"
+else
+  fail "TC-1241-MISSING-SCRIPT: missing-script failure not reported; stderr: $err_1241c"
+fi
+if printf '%s' "$err_1241c" | grep -qF 'settings.local.json の JSON 形式 / encoding'; then
+  fail "TC-1241-MISSING-SCRIPT: JSON hint misdirects on missing-script (subtask 3 regression); stderr: $err_1241c"
+else
+  pass "TC-1241-MISSING-SCRIPT: JSON hint suppressed when python3 emits its own stderr (no misdirection)"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # TC-YAML-LITERAL-PREFIX: _rite_read_yaml_key uses literal-prefix match
 # --------------------------------------------------------------------------
 # A regression to the regex form `$0 ~ k` would let YAML keys containing regex

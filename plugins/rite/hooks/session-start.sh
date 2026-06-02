@@ -185,9 +185,16 @@ if [ "$SOURCE" = "startup" ]; then
       _repair_tmp=$(mktemp "${_settings_local}.XXXXXX" 2>/dev/null) || _repair_tmp=""
       _py_err=$(mktemp 2>/dev/null) || _py_err=""
       if [ -n "$_repair_tmp" ]; then
-        python3 "$SCRIPT_DIR/scripts/settings-local-rite-hook-cleanup.py" \
-          < "$_settings_local" > "$_repair_tmp" 2>"${_py_err:-/dev/null}"
-        _py_rc=$?
+        # python3 must run in a set -e-exempt context (an if-condition) so a non-zero
+        # exit (rc=1 no-op / rc=2 invalid JSON / missing script) does NOT abort the
+        # whole hook before the rc branches below run. A bare statement here would trip
+        # `set -euo pipefail` and turn the entire else branch into dead code (Issue #1241).
+        if python3 "$SCRIPT_DIR/scripts/settings-local-rite-hook-cleanup.py" \
+          < "$_settings_local" > "$_repair_tmp" 2>"${_py_err:-/dev/null}"; then
+          _py_rc=0
+        else
+          _py_rc=$?
+        fi
         if [ "$_py_rc" -eq 0 ]; then
           # mv must capture both rc and stderr so EXDEV / EACCES / ENOSPC / EROFS
           # / SELinux deny is distinguishable; silent failure here would leave
@@ -206,14 +213,18 @@ if [ "$SOURCE" = "startup" ]; then
         else
           rm -f "$_repair_tmp" 2>/dev/null
           # rc=1 is the intentional no-op branch (no hooks key / no rite entries).
-          # Any other rc indicates a real failure — invalid JSON surfaces as rc=2 from
-          # the cleanup script (a missing/unreadable script yields its own non-zero rc),
-          # so report whenever rc != 1, and also when stderr is non-empty, letting the
-          # user disambiguate corruption from the no-op.
+          # Any other rc indicates a real failure — report whenever rc != 1, and also
+          # when stderr is non-empty, letting the user disambiguate corruption from the no-op.
           if [ "$_py_rc" -ne 1 ] || { [ -n "$_py_err" ] && [ -s "$_py_err" ]; }; then
             echo "rite: session-start: settings.local.json repair python3 failed (rc=$_py_rc)" >&2
             if [ -n "$_py_err" ] && [ -s "$_py_err" ]; then
+              # Non-empty stderr means python3 itself failed (missing/unreadable cleanup
+              # script, import error) — surface its diagnostic but NOT the JSON hint, which
+              # would misdirect: the fault is not the settings.local.json content (Issue #1241).
               head -3 "$_py_err" | sed 's/^/  /' >&2
+            elif [ "$_py_rc" -eq 2 ]; then
+              # The cleanup script ran, returned 2, and wrote nothing to stderr → invalid
+              # JSON (its only rc=2 path). This is the one case where the JSON hint is correct.
               echo "  hint: settings.local.json の JSON 形式 / encoding を確認してください" >&2
             fi
           fi

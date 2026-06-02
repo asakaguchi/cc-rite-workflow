@@ -2,7 +2,7 @@
 title: "委譲リファクタの動作保持は原実装との差分テストで機械的に立証する"
 domain: "heuristics"
 created: "2026-05-30T09:32:00Z"
-updated: "2026-06-01T10:06:41Z"
+updated: "2026-06-02T16:52:36Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260530T064117Z-pr-1204.md"
@@ -20,6 +20,12 @@ sources:
     ref: "raw/fixes/20260601T093706Z-pr-1229.md"
   - type: "reviews"
     ref: "raw/reviews/20260601T094425Z-pr-1229.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260602T101920Z-pr-1249.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260602T102600Z-pr-1249.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260602T103357Z-pr-1249.md"
 tags: ["refactor", "verification", "testing", "delegation"]
 confidence: high
 ---
@@ -74,9 +80,19 @@ canonical 対策: 委譲リファクタの review checklist に **「caller-doc 
 
 副次的に surface した非ブロッキング観察 (いずれも pre-existing / follow-up 候補、revert test FAIL のため current-pr 指摘から除外): helper の自動テスト (.test.sh) 未追加 (先例 `issue-comment-wm-sync.test.sh` あり)、mv 失敗時の stderr WARNING 欠如、`CLEANED` 経路で結果 file permission が mktemp 由来 0600 に厳格化。これらは [[scope-creep-rejection-empirical-gate]] の verbatim 保持スコープ尊重に従い follow-up に再分類した。
 
+### 採用した hardening pattern に対応する sibling 回帰テストの登録対称性も差分テストの盲点 (PR #1249)
+
+PR #1249 (#1221 部分対応) は `pr/review.md` の 6.1.c Skip Notification (~142 行 inline bash) を `review-skip-notification.sh` へ委譲した。faithful-port 委譲の **5 例目** の独立再現で、検証は (a) develop 版 inline block との byte-level diff (gate 順序 / reason 語彙 6 種 / exit code 0/1/2 / heredoc 文言が byte-identical)、(b) `bash-heaviness-check.sh --all` の findings 2→0、(c) `distributed-fix-drift-check.sh` の新規 drift 0 (6.1.c reason の table→bullet 変換に中立) の 3 点セットを #1204 / #1208 / #1218 / #1229 と同型に再現し、cycle 2 で 5 reviewer 全員 0 blocking / 2 cycle 収束。
+
+本 PR が新たに surface した facet は、差分テストでは「動作等価」と判定される一方で、**新規 helper が採用した hardening pattern に対応する sibling 回帰テストへの登録対称性**が片落ちする drift。cycle 1 で唯一検出された F-01 (MEDIUM) は、helper が Issue #1224 の `shift; shift` (value-less flag による無限ループ予防) を当初から正しく採用していたにもかかわらず、対応する回帰テスト `shift2-loop-hardening.test.sh` への登録という対称契約 (helper file 内 test coverage 対称性 contract / PR #1049) を見落としていた点。「helper 本体の動作正しさ (runtime no-hang)」と「sibling 回帰テストへの登録」は独立した対称軸であり、後者は 3 reviewer (prompt-engineer / code-quality / error-handling) が独立検出する high-signal finding になった。cycle 1 fix は同一ファイル内 3 site の対称更新 (header Coverage コメント / run_no_hang リスト TC-6 追加 / anti-pattern guard ループ TC-6→TC-7 renumber + script list 追加) で完結し、着手時に外部からの TC 番号・ファイル参照ゼロを git grep で確認して cross-file 影響なしを立証してから renumber した。cycle 2 では test reviewer が mutation testing (`shift; shift` → `shift 2` 改変) により TC-6 (timeout 124) / TC-7 (実 shift 2 検出) の dual-layer 回帰検知を kill-test で実証した ([[mutation-testing-test-fidelity]])。
+
+canonical 対策: 委譲リファクタの review checklist に **「新規 helper が採用した既存 hardening pattern (shift;shift 等) について、対応する sibling 回帰テストへの登録が helper 本体の実装と対称になっているか」** を加える。helper の動作正しさは回帰テスト登録の有無とは別軸であり、登録漏れは runtime 挙動を変えないため差分テスト・既存 test pass では検出されず、reviewer の sibling 照合でのみ surface する ([[asymmetric-fix-transcription]] の test レイヤー版、[[small-symmetric-pr-sibling-site-grep-review]] の sibling grep 手法と同系統)。本 facet は #1218 の「抽出境界デッドコード」・#1229 の「caller-doc return-path 網羅」と並ぶ、差分テストが捕捉しない第 3 の直交軸 (test coverage 対称性) である。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
+- [Mutation testing で test の真正性を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
+- [極小対称化 PR は sibling site Grep 照合で短時間・高確信レビューできる](./small-symmetric-pr-sibling-site-grep-review.md)
 
 ## ソース
 
@@ -88,3 +104,6 @@ canonical 対策: 委譲リファクタの review checklist に **「caller-doc 
 - [PR #1229 review results (cycle 1)](../../raw/reviews/20260601T090546Z-pr-1229.md)
 - [PR #1229 fix results](../../raw/fixes/20260601T093706Z-pr-1229.md)
 - [PR #1229 review results (cycle 2)](../../raw/reviews/20260601T094425Z-pr-1229.md)
+- [PR #1249 review results (cycle 1)](../../raw/reviews/20260602T101920Z-pr-1249.md)
+- [PR #1249 fix results](../../raw/fixes/20260602T102600Z-pr-1249.md)
+- [PR #1249 review results (cycle 2)](../../raw/reviews/20260602T103357Z-pr-1249.md)

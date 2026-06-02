@@ -2,7 +2,7 @@
 title: "Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする"
 domain: "heuristics"
 created: "2026-05-26T00:00:00Z"
-updated: "2026-05-26T00:00:00Z"
+updated: "2026-06-02T08:57:02Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260525T070727Z-pr-1139.md"
@@ -14,6 +14,8 @@ sources:
     ref: "raw/fixes/20260525T124932Z-pr-1139.md"
   - type: "fixes"
     ref: "raw/fixes/20260525T141022Z-pr-1139.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260602T082558Z-pr-1248.md"
 tags: ["docs-drift", "verification-protocol", "implementation-grep", "release-prep", "deprecated-sync", "fact-check"]
 confidence: high
 ---
@@ -65,6 +67,10 @@ documentation review の verification protocol が **「内的整合 (CHANGELOG 
 - migration-guide 更新 PR (旧 → 新 phase mapping を含むため特に implementation grep が critical)
 - CONFIGURATION.md / SPEC.md / CHANGELOG.md / README.md の cross-doc 整合 PR
 
+### Successful application — prose 散文括弧書きの正確性 review (PR #1248)
+
+PR #1248 (Issue #1247、0 findings / 1 cycle) で本 protocol の **prose 散文 ↔ helper 実装出力語彙の cross-check** 側面を successful preventive application として実測。`commands/init.md` の NO_RITE_HOOKS routing 行の括弧書き `(already clean)` → `(no rite hooks removed)` という 1 行文言修正レビューで、両 reviewer (prompt-engineer / code-quality) が (1) 説明対象 helper `settings-local-rite-hook-cleanup.sh:15` の実出力語彙 `nothing removed` を SoT として括弧書きの正確性を裏取り (mv 失敗サブケースで `already clean` が不正確になる nuance を実装側で確認)、(2) 同 doc 内の対称注記行 (`no output (...)` 形式、line 650/756) への伝播漏れを `grep "clean)"` で機械検証 (0 件 = 旧語彙残存なし) し、0 findings で確認。**散文括弧書きの正確性 review は、説明対象実装の出力語彙・コメントを implementation grep の SoT に含める**という protocol step の小規模 application であり、同時に [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の「同 doc 内対称注記行の grep verify」と pair で機能した。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -76,3 +82,4 @@ documentation review の verification protocol が **「内的整合 (CHANGELOG 
 - [PR #1139 fix cycle 5 (Verification Cross-Reference Gap 確立: review.md Phase 7 live を 5 cycle 経て初検出)](../../raw/fixes/20260525T104719Z-pr-1139.md)
 - [PR #1139 fix cycle 8 (Implementation-Grep Verification Gap: fix 履歴の遡及 grep 必須化)](../../raw/fixes/20260525T124932Z-pr-1139.md)
 - [PR #1139 fix cycle 12 (SPEC Multi-Section Same-Topic Drift: SPEC 全文 1 度通読の必要性)](../../raw/fixes/20260525T141022Z-pr-1139.md)
+- [PR #1248 review (prose 散文括弧書きの正確性を helper 出力語彙と cross-check、0 findings の successful application)](../../raw/reviews/20260602T082558Z-pr-1248.md)

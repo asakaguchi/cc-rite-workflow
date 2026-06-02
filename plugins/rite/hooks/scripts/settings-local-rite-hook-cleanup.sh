@@ -13,7 +13,10 @@
 # Output (stdout) — machine-readable token for the init.md caller:
 #   CLEANED        rite hook entries removed; file rewritten atomically
 #   NO_RITE_HOOKS  nothing removed (no hooks / no rite hooks / file absent /
-#                  python3 unavailable / invalid JSON) — file left untouched
+#                  python3 unavailable / invalid JSON / mv failed) — file left
+#                  untouched. On mv failure a stderr WARNING is also emitted:
+#                  the cleaned content was computed but could not be swapped in,
+#                  so stale rite hooks remain (not actually "already clean").
 #
 # Exit codes:
 #   0  always (non-blocking; status conveyed via the stdout token)
@@ -38,11 +41,22 @@ trap 'rm -f "$tmp"' EXIT
 
 # python3 exit 0 = changed (cleaned JSON on stdout); non-zero = no change / invalid
 if python3 "$PYTHON_SCRIPT" < "$settings" > "$tmp" 2>/dev/null; then
-  if mv "$tmp" "$settings" 2>/dev/null; then
+  # Capture mv's stderr so EXDEV / EACCES / ENOSPC / SELinux deny stays
+  # distinguishable (mktemp may fail under disk pressure — fall back to /dev/null).
+  mv_err=$(mktemp 2>/dev/null) || mv_err=""
+  if mv "$tmp" "$settings" 2>"${mv_err:-/dev/null}"; then
     echo "CLEANED"
   else
+    # $? must be grabbed first — any later command would overwrite it. The file
+    # is NOT clean here (stale rite hooks remain), so surface the failure on
+    # stderr instead of silently folding to a misleading "already clean" token.
+    # Pattern per issue-comment-wm-sync.sh:99-104.
+    mv_rc=$?
     echo "NO_RITE_HOOKS"
+    echo "[rite] WARNING: settings-local-rite-hook-cleanup: mv failed (rc=$mv_rc); legacy rite hooks left in place" >&2
+    [ -n "$mv_err" ] && [ -s "$mv_err" ] && head -3 "$mv_err" | sed 's/^/  /' >&2
   fi
+  [ -n "$mv_err" ] && rm -f "$mv_err"
 else
   echo "NO_RITE_HOOKS"
 fi

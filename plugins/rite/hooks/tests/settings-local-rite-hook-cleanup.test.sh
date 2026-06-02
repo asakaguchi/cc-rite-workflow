@@ -14,6 +14,10 @@
 #   5. RITE_HOOK_RE over-match boundary (#1231): `rite` must be a full path segment,
 #      so look-alikes (favorite/, prerite/, rite-something/) are preserved while the
 #      real cache form `rite-marketplace/rite/<version>/hooks/` is still removed
+#   6. `.sh` mv-failure stderr WARNING (#1232): mv failure keeps the NO_RITE_HOOKS
+#      token + exit 0, but must surface a `[rite] WARNING: ... mv failed` diagnostic
+#      (the file is NOT actually clean — stale rite hooks remain), so the failure is
+#      not silently indistinguishable from "already clean"
 #
 # The mv-failure case reuses the PATH-shimmed `mv` technique from the precedent
 # test issue-comment-wm-sync.test.sh (a `bin/mv` that exits non-zero, prepended to
@@ -249,8 +253,32 @@ assert "S-5: exit 0" "0" "$rc"
 assert_unchanged "S-5: 原ファイル保持 (mv 失敗で未置換)" "$f" "$d/ref"
 assert_no_leftover_tmp "S-5: trap cleanup で残留 tmp なし" "$f"
 
+# ─── .sh mv failure stderr WARNING (#1232) (S-6) ─────────────────────────
+echo ""
+echo "=== .sh mv 失敗時 stderr WARNING (#1232) (S-6) ==="
+
+# Same PATH-shimmed mv as S-5, but this time capture stderr. On mv failure the
+# helper must surface a diagnostic WARNING — the file is NOT actually clean (stale
+# rite hooks remain) — while keeping the NO_RITE_HOOKS token + exit 0 non-blocking
+# contract. Without it the failure is indistinguishable from "already clean"; this
+# case pins the surfacing (per the issue-comment-wm-sync.sh canonical pattern).
+d="$(fresh)"; f="$d/settings.local.json"
+mkdir -p "$d/bin"
+cat > "$d/bin/mv" <<'MV_SHIM'
+#!/bin/bash
+exit 1
+MV_SHIM
+chmod +x "$d/bin/mv"
+printf '%s' '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"bash /opt/rite/hooks/session-start.sh"}]}]}}' > "$f"
+err="$d/stderr.txt"
+out=$(PATH="$d/bin:$PATH" bash "$SH" "$f" 2>"$err"); rc=$?
+assert "S-6: mv 失敗でも token = NO_RITE_HOOKS (契約不変)" "NO_RITE_HOOKS" "$out"
+assert "S-6: exit 0 (非ブロッキング契約維持)" "0" "$rc"
+assert_grep "S-6: mv 失敗が stderr WARNING に surface される" "$err" 'WARNING.*mv failed'
+assert_no_leftover_tmp "S-6: trap cleanup で残留 tmp なし" "$f"
+
 echo ""
 if ! print_summary "$(basename "$0")" \
-  "drift: settings-local-rite-hook-cleanup helper (#1230 / #1231) の挙動契約が後退した可能性。.py の exit code (0=削除 / 1=変更なし / 2=不正JSON)、混在時の選択的除去・全 rite event の key 削除、over-match 境界 (#1231: look-alike favorite/prerite/rite-something は保持・cache version 形 rite/0.2.0/hooks/ は除去)、.sh の token 畳み込み (py exit 1/2 → NO_RITE_HOOKS)・検査付き mv 失敗経路・atomic write・trap cleanup を確認。"; then
+  "drift: settings-local-rite-hook-cleanup helper (#1230 / #1231 / #1232) の挙動契約が後退した可能性。.py の exit code (0=削除 / 1=変更なし / 2=不正JSON)、混在時の選択的除去・全 rite event の key 削除、over-match 境界 (#1231: look-alike favorite/prerite/rite-something は保持・cache version 形 rite/0.2.0/hooks/ は除去)、.sh の token 畳み込み (py exit 1/2 → NO_RITE_HOOKS)・検査付き mv 失敗経路・atomic write・trap cleanup・mv 失敗時の stderr WARNING surfacing (#1232) を確認。"; then
   exit 1
 fi

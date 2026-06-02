@@ -55,7 +55,7 @@ The command prefix `rite` was chosen for:
 | `/rite:getting-started` | Interactive onboarding guide | None |
 | `/rite:workflow` | Show workflow guide | None |
 | `/rite:investigate` | Structured code investigation | `<topic or question>` |
-| `/rite:learn` | Socratic quiz to verify deep understanding of a finished session | `[issue/pr number]` |
+| `/rite:learn` | Socratic quiz to verify deep understanding of a finished session | `[issue/pr number] [eli5\|eli14\|intern]` |
 | `/rite:issue:list` | List Issues | `[filter]` |
 | `/rite:issue:create` | Create new Issue | `<title or description>` |
 | `/rite:issue:update` | Update work memory | `[memo]` |

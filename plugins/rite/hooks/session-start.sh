@@ -170,9 +170,14 @@ if [ "$SOURCE" = "startup" ]; then
     fi
 
     # Remove rite hook entries from settings.local.json (hooks.json handles them natively).
-    # The python3 script uses sys.exit(1) for the intentional no-op cases (no hooks key,
-    # no rite entries to remove). Distinguishing those from real failures (JSONDecodeError,
-    # FileNotFoundError, etc.) is required so settings.local.json corruption surfaces
+    # The JSON transform (rite-hook detection via RITE_HOOK_RE + selective removal) is
+    # delegated to the shared scripts/settings-local-rite-hook-cleanup.py — the same
+    # single-source script the .sh wrapper uses — so the regex lives in exactly one place
+    # (Issue #1239; previously an inline python3 copy duplicated both the regex and the
+    # whole transform). Its documented exit codes are reused here: 0 = rite hooks removed
+    # (cleaned JSON on stdout → captured into _repair_tmp), 1 = intentional no-op (no
+    # hooks key / no rite entries), 2 = invalid JSON. Distinguishing the no-op (rc=1) from
+    # real failures (rc=2, etc.) is required so settings.local.json corruption surfaces
     # instead of silently retrying on every session start.
     _auto_cleaned=false
     _settings_local="$STATE_ROOT/.claude/settings.local.json"
@@ -180,51 +185,8 @@ if [ "$SOURCE" = "startup" ]; then
       _repair_tmp=$(mktemp "${_settings_local}.XXXXXX" 2>/dev/null) || _repair_tmp=""
       _py_err=$(mktemp 2>/dev/null) || _py_err=""
       if [ -n "$_repair_tmp" ]; then
-        python3 -c '
-import json, sys, re
-
-settings_path = sys.argv[1]
-out_path = sys.argv[2]
-
-with open(settings_path, "r") as f:
-    data = json.load(f)
-
-hooks = data.get("hooks", {})
-if not hooks:
-    sys.exit(1)
-
-# Anchor `rite` to a full path segment (optional version segment between it and
-# the hooks dir) so cache `.../rite/<version>/hooks/` and dev `.../rite/hooks/`
-# match while look-alikes (favorite/, prerite/, rite-something/) do not — the old
-# `rite.*?/hooks/` over-matched user non-rite hooks. Kept in sync with
-# scripts/settings-local-rite-hook-cleanup.py:RITE_HOOK_RE (Issue #1231).
-rite_hook_re = re.compile(r"(?:^|/)rite/(?:[^/]+/)?hooks/")
-changed = False
-
-for event_name in list(hooks.keys()):
-    entries = hooks[event_name]
-    if not isinstance(entries, list):
-        continue
-    new_entries = []
-    for entry in entries:
-        hook_list = entry.get("hooks", [])
-        has_rite = any(rite_hook_re.search(h.get("command", "")) for h in hook_list)
-        if has_rite:
-            changed = True
-        else:
-            new_entries.append(entry)
-    if new_entries:
-        hooks[event_name] = new_entries
-    else:
-        del hooks[event_name]
-
-if not changed:
-    sys.exit(1)
-
-with open(out_path, "w") as f:
-    json.dump(data, f, indent=2, ensure_ascii=False)
-    f.write("\n")
-' "$_settings_local" "$_repair_tmp" 2>"${_py_err:-/dev/null}"
+        python3 "$SCRIPT_DIR/scripts/settings-local-rite-hook-cleanup.py" \
+          < "$_settings_local" > "$_repair_tmp" 2>"${_py_err:-/dev/null}"
         _py_rc=$?
         if [ "$_py_rc" -eq 0 ]; then
           # mv must capture both rc and stderr so EXDEV / EACCES / ENOSPC / EROFS
@@ -244,9 +206,10 @@ with open(out_path, "w") as f:
         else
           rm -f "$_repair_tmp" 2>/dev/null
           # rc=1 is the intentional no-op branch (no hooks key / no rite entries).
-          # Any other rc indicates a real failure — JSONDecodeError surfaces as rc=1
-          # with a traceback on stderr, so emit the captured stderr unconditionally
-          # when it is non-empty so the user can disambiguate corruption from no-op.
+          # Any other rc indicates a real failure — invalid JSON surfaces as rc=2 from
+          # the cleanup script (a missing/unreadable script yields its own non-zero rc),
+          # so report whenever rc != 1, and also when stderr is non-empty, letting the
+          # user disambiguate corruption from the no-op.
           if [ "$_py_rc" -ne 1 ] || { [ -n "$_py_err" ] && [ -s "$_py_err" ]; }; then
             echo "rite: session-start: settings.local.json repair python3 failed (rc=$_py_rc)" >&2
             if [ -n "$_py_err" ] && [ -s "$_py_err" ]; then

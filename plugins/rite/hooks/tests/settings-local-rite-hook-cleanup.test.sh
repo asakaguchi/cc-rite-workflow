@@ -277,8 +277,35 @@ assert "S-6: exit 0 (非ブロッキング契約維持)" "0" "$rc"
 assert_grep "S-6: mv 失敗が stderr WARNING に surface される" "$err" 'WARNING.*mv failed'
 assert_no_leftover_tmp "S-6: trap cleanup で残留 tmp なし" "$f"
 
+# ─── .sh CLEANED path + mv_err mktemp failure → exit 0 contract (#1232) (S-7) ──
+echo ""
+echo "=== .sh CLEANED 経路で mv_err 用 mktemp 失敗時も exit 0 (#1232) (S-7) ==="
+
+# Regression guard for the exit-code leak: on the CLEANED path the wrapper allocates
+# a second mktemp (no-arg) to capture mv's stderr. If that mktemp fails, the trailing
+# `[ -n "$mv_err" ] && rm` evaluates false (rc=1) and — without the explicit final
+# `exit 0` — leaks a non-zero script status even though the file was rewritten
+# correctly (token=CLEANED). This shim fails only the no-arg mktemp (mv_err); the
+# template-form mktemp (atomic temp) and the real mv still succeed, so the wrapper
+# reaches CLEANED and must still exit 0. Pins the non-blocking contract end-to-end.
+d="$(fresh)"; f="$d/settings.local.json"
+mkdir -p "$d/bin"
+real_mktemp="$(command -v mktemp)"
+cat > "$d/bin/mktemp" <<MKTEMP_SHIM
+#!/bin/bash
+# Fail the no-arg form (mv_err capture); delegate the template form (atomic temp).
+if [ \$# -eq 0 ]; then exit 1; fi
+exec "$real_mktemp" "\$@"
+MKTEMP_SHIM
+chmod +x "$d/bin/mktemp"
+printf '%s' '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"bash /opt/rite/hooks/session-start.sh"}]}]}}' > "$f"
+out=$(PATH="$d/bin:$PATH" bash "$SH" "$f" 2>/dev/null); rc=$?
+assert "S-7: CLEANED 経路で mv_err mktemp 失敗でも token = CLEANED" "CLEANED" "$out"
+assert "S-7: exit 0 (末尾 exit 0 がないと rc=1 に leak する非ブロッキング契約)" "0" "$rc"
+assert_no_leftover_tmp "S-7: trap cleanup で残留 tmp なし" "$f"
+
 echo ""
 if ! print_summary "$(basename "$0")" \
-  "drift: settings-local-rite-hook-cleanup helper (#1230 / #1231 / #1232) の挙動契約が後退した可能性。.py の exit code (0=削除 / 1=変更なし / 2=不正JSON)、混在時の選択的除去・全 rite event の key 削除、over-match 境界 (#1231: look-alike favorite/prerite/rite-something は保持・cache version 形 rite/0.2.0/hooks/ は除去)、.sh の token 畳み込み (py exit 1/2 → NO_RITE_HOOKS)・検査付き mv 失敗経路・atomic write・trap cleanup・mv 失敗時の stderr WARNING surfacing (#1232) を確認。"; then
+  "drift: settings-local-rite-hook-cleanup helper (#1230 / #1231 / #1232) の挙動契約が後退した可能性。.py の exit code (0=削除 / 1=変更なし / 2=不正JSON)、混在時の選択的除去・全 rite event の key 削除、over-match 境界 (#1231: look-alike favorite/prerite/rite-something は保持・cache version 形 rite/0.2.0/hooks/ は除去)、.sh の token 畳み込み (py exit 1/2 → NO_RITE_HOOKS)・検査付き mv 失敗経路・atomic write・trap cleanup・mv 失敗時の stderr WARNING surfacing (#1232)・CLEANED 経路で mv_err 用 mktemp 失敗時も末尾 exit 0 で非ブロッキング契約維持 (#1232) を確認。"; then
   exit 1
 fi

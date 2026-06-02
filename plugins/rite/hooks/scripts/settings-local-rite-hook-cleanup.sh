@@ -60,3 +60,8 @@ if python3 "$PYTHON_SCRIPT" < "$settings" > "$tmp" 2>/dev/null; then
 else
   echo "NO_RITE_HOOKS"
 fi
+
+# Non-blocking contract: exit 0 explicitly so the script status never leaks the
+# trailing `[ -n "$mv_err" ] && rm` result, which is 1 when the mv_err mktemp
+# failed on the CLEANED path (the settings file was still rewritten correctly).
+exit 0

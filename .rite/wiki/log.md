@@ -961,3 +961,4 @@
 | 2026-06-02T03:50:58Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1244 review cycle 6 mergeable (raw/reviews/20260602T033737Z-pr-1244.md): 4 reviewer 全員 mergeable・6 cycle 収束。reviewer severity 一貫性ガードが振動収束に寄与した収束 narrative を累積 52 回目エントリに収録 |
 | 2026-06-02T03:58:37Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=228, broken_refs=0 |
 | 2026-06-02T04:59:29Z | ingest:create | pages/anti-patterns/bare-statement-under-set-e-dead-code-rc-branch.md | PR #1242 review (raw/reviews/20260602T045929Z-pr-1242.md): set -euo pipefail 下の外部コマンド単独文が set -e abort で後続 rc=$? 分岐を dead code 化する anti-pattern を新規ページ化。bash-if-bang-rc-capture (rc 常時 0、到達するが誤値) とは別 root cause (到達不能)。4 reviewer 0 findings、Issue #1241 subtask4 で他 hook 横断調査済 |
+| 2026-06-02T05:31:32Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=228, broken_refs=0 |

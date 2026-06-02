@@ -144,9 +144,10 @@
 | [現在ブランチ取得は git branch --show-current で統一する (rev-parse --abbrev-ref HEAD は detached HEAD で挙動分岐)](pages/patterns/git-current-branch-idiom-detached-head.md) | patterns | `git rev-parse --abbrev-ref HEAD` は detached HEAD で文字列 `HEAD` を、`git branch --show-current` は空文字を出力する挙動差を持つ。downstream で空文字前提のフォールバック (AskUserQuestion 等) を組むと前者使用時に silent に機能不全になる。codebase 支配的 idiom (production 24 箇所の `git branch --show-current`) に新規ファイルを揃える。PR #1244 cycle 4 で実測。 | 2026-06-02T03:50:58Z | high |
 | [外部コマンド (gh) 失敗時に not-found と一時障害を区別せず別経路へ落とすのは silent failure](pages/anti-patterns/external-command-failure-origin-distinction.md) | anti-patterns | `gh pr view N` 失敗時に not-found (404 `Could not resolve to a PullRequest`) と一時障害 (network/auth/rate-limit) を区別せず無条件に「別番号空間とみなす」分岐は silent failure。not-found のみ再分類を正当化し transient は中断、silent な scope 縮退 (PR 解決失敗→Issue のみ続行) はユーザー通知必須。house rule は pr/fix.md が canonical 警告として保持。PR #1244 cycle 5 で実測。 | 2026-06-02T03:50:58Z | high |
 | [LLM 向けコマンド spec の placeholder は解決元 entity を一意化する (単一 {number} を {issue_number}/{pr_number} に分離)](pages/patterns/llm-command-spec-placeholder-entity-disambiguation.md) | patterns | LLM 実行 command spec で単一 `{number}` を `gh issue view` / `gh pr view` 双方の代入先に流用すると、issue/pr 単一番号空間ゆえ代入先 entity が非一意で 404・誤参照を招く。`{issue_number}` / `{pr_number}` に分離し verify-then-fallback 解決を明記、位置引数の振り分けは決定テーブルで明示、SPEC 表の英日 Arguments 列も対称追記する。PR #1244 cycle 1 で実測。 | 2026-06-02T03:50:58Z | high |
+| [set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する](pages/anti-patterns/bare-statement-under-set-e-dead-code-rc-branch.md) | anti-patterns | `set -euo pipefail` 下で外部コマンド (python3/jq/grep 等) を単独文 (bare statement) として実行すると非ゼロ終了で set -e が script を abort し、直後の `rc=$?` 以降の rc 分岐 (rc=1 no-op / rc=2 corruption 報告) が dead code 化する。`if cmd; then rc=0; else rc=$?; fi` の set -e 免除文脈へ移すのが canonical。`if ! cmd; then rc=$?` 版 (rc 常時 0、到達するが誤値) とは root cause の異なる別の壊れ方 (到達不能)。Asymmetric Fix Transcription の inline→delegate guard 解体 sub-pattern の逆方向 (修復) 適用例。PR #1242 で 4 reviewer 0 findings、Issue #1241 subtask4 で他 hook 横断調査し session-start.sh:188 が唯一の該当と確認。 | 2026-06-02T04:59:29Z | high |
 
 ## 統計
 
-- 総ページ数: 138
-- ドメイン別: patterns=46, heuristics=42, anti-patterns=50
-- 最終更新: 2026-06-02T03:50:58Z
+- 総ページ数: 139
+- ドメイン別: patterns=46, heuristics=42, anti-patterns=51
+- 最終更新: 2026-06-02T04:59:29Z

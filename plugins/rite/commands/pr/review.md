@@ -3167,153 +3167,25 @@ bash {plugin_root}/hooks/review-comment-post.sh \
 
 When `{post_comment_mode}=false`, inform the user that PR comment posting was skipped (for observability — this is not an error).
 
-下記 bash block は machine-enforced gate として `[CONTEXT] LOCAL_SAVE_FAILED=...` flag を bash 側で読み取りケース分岐する (Claude が自然言語で読み取る設計は flag 見落としで silent fallthrough する経路があり silent data loss 防止が骨抜きになるため bash 側に gate を昇格)。Claude は下記 block を実行するだけで適切なメッセージが stderr に emit される。
+下記 bash block (`hooks/review-skip-notification.sh` 呼び出し) は machine-enforced gate として `[CONTEXT] LOCAL_SAVE_FAILED=...` flag を helper 側で読み取りケース分岐する (Claude が自然言語で読み取る設計は flag 見落としで silent fallthrough する経路があり silent data loss 防止が骨抜きになるため helper 側に gate を昇格)。Claude は下記 block を実行するだけで適切なメッセージが stderr に emit される。
 
 **Machine-enforced case selection**:
 
 ```bash
-# ステップ 6.1.c: Skip Notification (machine-enforced case split)
-#
-# 実行条件: {post_comment_mode}=false の経路のみ (true 経路では ステップ 6.1.b の成功/失敗ログで完結する)
-# 依存: ステップ 6.1.a が [CONTEXT] FILE_TIMESTAMP=... / LOCAL_SAVE_FAILED=... を emit 済み
-#
-# Claude は以下 4 変数を literal substitute する:
-# - post_comment_mode: ステップ 1.0 の [CONTEXT] POST_COMMENT_MODE= の値 (Issue #510 対応)
-# - pr_number: {pr_number}
-# - file_timestamp: ステップ 6.1.a の [CONTEXT] FILE_TIMESTAMP= の値 (成功時: YYYYMMDDHHMMSS、失敗時: "unknown")
-# - local_save_failed: ステップ 6.1.a の [CONTEXT] LOCAL_SAVE_FAILED= の値 ("1" または未 emit=空)
-#
-# 変数宣言順序: 「1 変数 1 gate」原則で fail-fast の局所性を最大化する (6.1.b と対称化)。
-# post_comment_mode を先行宣言 → gate 通過後に残り 3 変数を宣言することで、gate 失敗時の
-# 観測値混線リスクを最小化する (gate で exit 1 する経路では pr_number / file_timestamp /
-# local_save_failed は参照されないため、未宣言で問題ない)。
-post_comment_mode="{post_comment_mode}"
-
-# post_comment_mode machine-enforced gate (Issue #510 対応、6.1.b と対称)。
-# 6.1.c は post_comment_mode=false 経路専用。true 経路で誤呼出された場合、本来 6.1.b で
-# 成功/失敗ログが完結すべきところ skip notification を出すと観測値が混線する。caller の
-# branch selection ミスを bash レベルで fail-fast 遮断する。
-case "$post_comment_mode" in
- false)
- ;;
- true)
- echo "ERROR: ステップ 6.1.c が post_comment_mode=true の経路で呼び出されました (本来 6.1.b の成功/失敗ログで完結すべき経路)" >&2
- echo " 真因: caller (LLM) が ステップ 6.1 の branch selection を誤りました。post_comment_mode=true の場合は 6.1.b のみを実行し 6.1.c は skip すべきです。" >&2
- echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_post_comment_mode_invalid; value=true" >&2
- echo "[review:error]"
- exit 1
- ;;
- *)
- echo "ERROR: ステップ 6.1.c の post_comment_mode が literal substitute されていません (値: '$post_comment_mode', 期待: true/false)" >&2
- echo " Claude は ステップ 1.0 の [CONTEXT] POST_COMMENT_MODE=true|false emit 値を会話コンテキストから読み取り、" >&2
- echo " この bash block 冒頭の post_comment_mode=... 行を実際の値で置換する必要があります。" >&2
- echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_post_comment_mode_invalid; value=$post_comment_mode" >&2
- echo "[review:error]"
- exit 1
- ;;
-esac
-
-# gate 通過後、残り 3 変数を宣言 (legitimate false 経路でのみ評価される)
-pr_number="{pr_number}"
-file_timestamp="{file_timestamp_from_p61a}"
-local_save_failed="{local_save_failed_from_p61a}"
-
-# pr_number の数値 fail-fast gate (ステップ 6.1.a の pr_number guard と対称化)。
-# Claude が substitute を忘れると、ケース 1 のローカルファイル path が
-# `.rite/review-results/{pr_number}-...json` (literal) となり、ユーザー向けメッセージに placeholder
-# がそのまま出力される silent UX regression を防ぐ。file_timestamp / local_save_failed は下記の
-# sentinel check で保護される。
-#
-# reason drift 対策: ステップ 6.1.a が pr_number 不正を検出した場合は `LOCAL_SAVE_FAILED=1;
-# reason=pr_number_placeholder_residue` を emit して exit 0 (non-blocking) するが、ステップ 6.1.c
-# は別 bash invocation のため ステップ 6.1.a の retained flag を参照できない。pr_number が不正なまま
-# ステップ 6.1.c まで到達した場合、真因は ステップ 6.1.a の Claude substitution 忘れなので、エラー
-# メッセージで 6.1.a の再実行を明示的に促す (真因が 6.1.c の bug ではないことを root cause
-# 伝達する)。
-case "$pr_number" in
- ''|*[!0-9]*)
- echo "ERROR: ステップ 6.1.c の pr_number が literal substitute されていません (値: '$pr_number', 期待: 数値のみ非空)" >&2
- echo " 真因: ステップ 6.1.a の bash block で Claude が pr_number を literal substitute せず、同じ placeholder が" >&2
- echo " 本 block まで連鎖している可能性が高いです。" >&2
- echo " 対処: ステップ 1.0 で正規化された pr_number を ステップ 6.1.a の bash block 冒頭で literal substitute" >&2
- echo " してから再実行してください (ステップ 6.1.a が exit 0 non-blocking で完了すると ステップ 6.1.c に" >&2
- echo " substitution 忘れが連鎖します)" >&2
- echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_pr_number_invalid; upstream_hint=phase_6_1_a_substitution_missing" >&2
- exit 1
- ;;
-esac
-
-# sentinel check: placeholder 残留は silent fallthrough せず fail-fast (H-5 と同パターン)
-case "$file_timestamp" in
- "{"*|*"}")
- echo "ERROR: ステップ 6.1.c の file_timestamp が literal substitute されていません (値: '$file_timestamp')" >&2
- echo " Claude は ステップ 6.1.a の [CONTEXT] FILE_TIMESTAMP=... を読み取って substitute する必要があります" >&2
- echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_file_timestamp_unset" >&2
- exit 1
- ;;
- "unknown")
- # ステップ 6.1.a の trap handler は date 失敗時に `[CONTEXT] FILE_TIMESTAMP=unknown` を emit する。
- # その経路では LOCAL_SAVE_FAILED=1 も併設される設計だが、万一片方だけが set された不整合状態
- # (観測値混線 / race) では、ケース 1 に流れると
- # `.rite/review-results/${pr_number}-unknown.json` という実在しないファイルパスをユーザーに
- # 誤提示する UX regression が起きる。整合性違反として明示的に ERROR 化する。
- if [ "$local_save_failed" != "1" ]; then
- echo "ERROR: ステップ 6.1.c の file_timestamp='unknown' だが local_save_failed が '1' ではありません (整合性違反)" >&2
- echo " ステップ 6.1.a の trap handler は date 失敗時に FILE_TIMESTAMP=unknown と LOCAL_SAVE_FAILED=1 を同時に emit するはずです" >&2
- echo " 単独 emit 経路は観測値混線 / race の兆候であり、ユーザーに誤ったファイルパスを提示する経路を遮断します" >&2
- echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_file_timestamp_unknown_without_failure" >&2
- exit 1
- fi
- # local_save_failed=1 が併設されている場合は legitimate な失敗経路のため、下流のケース 2 分岐
- # (LOCAL_SAVE_FAILED=1 hard fail) に流す。case 文は何もせず pass する。
- ;;
-esac
-case "$local_save_failed" in
- ""|0|1) ;;
- *)
- echo "ERROR: ステップ 6.1.c の local_save_failed が不正 (許容: 空文字 / 0 / 1、値: '$local_save_failed')" >&2
- echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_local_save_failed_invalid" >&2
- exit 1
- ;;
-esac
-
-# ケース分岐: LOCAL_SAVE_FAILED=1 が set されていればケース 2 (WARNING 昇格 + hard fail)、それ以外はケース 1 (INFO)
-if [ "$local_save_failed" = "1" ]; then
- # ケース 2: local save 失敗 (findings が会話コンテキストにのみ存在する異常経路)
- #
- # silent data loss 防止のため WARNING のみの exit 0 ではなく、以下 2 段階で hard fail させる:
- # 1. WARNING + 復旧方法 4 種を表示 (ユーザー可視性の維持)
- # 2. `[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_persistence_unrecoverable` を retained flag
- # として emit し、ステップ 6.1 全体を `exit 2` で fail させる (CI / caller が silent pass しない)
- #
- # 「review 成功 = findings が観測可能な場所に届いた」という invariant を維持する。
- # `exit 2` は retained flag mapping table で documented された hard fail 経路。
- cat >&2 <<EOF
-⚠️ ERROR: レビュー結果が永続化されませんでした (silent data loss 防止のため ステップ 6 を fail させます)
- PR コメント: スキップ (pr_review.post_comment=false)
- ローカルファイル: 保存失敗 ([CONTEXT] LOCAL_SAVE_FAILED の reason を確認してください)
-
- 影響: 本レビュー結果は現在の会話コンテキストのみに存在します。
- 次のセッション開始時 (会話 compaction / terminal close / session restart) に完全に失われます。
- この経路を silent pass にしないため、ステップ 6 全体を exit 2 で fail させます。
-
- 復旧方法 (いずれかを選択):
- 1. このセッション内で即座に /rite:pr:fix を実行する (Priority 1: 会話コンテキストから直接読取)
- 2. /rite:pr:review --post-comment で PR コメントに投稿して永続化する
- 3. rite-config.yml で pr_review.post_comment: true を設定して全 review を永続化する
- 4. LOCAL_SAVE_FAILED の reason を解決してから /rite:pr:review を再実行する
-EOF
- echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_persistence_unrecoverable; local_save_failed=1; post_comment_mode=false" >&2
- echo "[review:error]"
- exit 2
-else
- # ケース 1: local save 成功 (通常経路)
- cat >&2 <<EOF
-ℹ️ PR コメント記録はスキップされました (pr_review.post_comment=false)
- ローカルファイル: .rite/review-results/${pr_number}-${file_timestamp}.json
- コメント記録を有効化するには --post-comment フラグまたは rite-config.yml で pr_review.post_comment: true を設定してください
-EOF
-fi
+# ステップ 6.1.c: Skip Notification (post_comment_mode=false 経路専用)。
+# 旧 ~142 行の inline bash (4 gate + 2 ケース分岐 heredoc) は hooks/review-skip-notification.sh へ
+# 委譲済 (Issue #1221、6.1.b の review-comment-post.sh 切り出しと対称)。契約 (post_comment_mode gate /
+# pr_number・file_timestamp・local_save_failed の fail-fast gate / reason 語彙 p61c_* / ケース 1 INFO
+# exit 0 / ケース 2 ⚠️ + reason=p61c_persistence_unrecoverable + exit 2 で ステップ 6 全体を fail) は
+# helper header と下記 Prose spec 参照。
+# Claude は [CONTEXT] marker から 4 値を literal substitute する (local_save_failed は空文字を渡すため
+# 必ずクォートすること): post_comment_mode=ステップ 1.0 の POST_COMMENT_MODE / pr_number /
+# file_timestamp=ステップ 6.1.a の FILE_TIMESTAMP / local_save_failed=ステップ 6.1.a の LOCAL_SAVE_FAILED。
+bash {plugin_root}/hooks/review-skip-notification.sh \
+  --post-comment-mode {post_comment_mode} \
+  --pr {pr_number} \
+  --file-timestamp "{file_timestamp_from_p61a}" \
+  --local-save-failed "{local_save_failed_from_p61a}"
 ```
 
 **Prose spec (参考)**:
@@ -3321,7 +3193,7 @@ fi
 - **ケース 1** (`LOCAL_SAVE_FAILED` 未 emit、通常経路): `ℹ️ PR コメント記録はスキップされました` + ローカルファイル path を表示、`exit 0`
 - **ケース 2** (`LOCAL_SAVE_FAILED=1` ∧ `post_comment_mode=false`、findings が会話コンテキストにのみ存在する異常経路): `⚠️ ERROR: レビュー結果が永続化されませんでした` + 復旧方法 4 種を表示、`[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_persistence_unrecoverable` を emit、**`exit 2` で ステップ 6 を fail させる** (silent data loss 防止のため hard fail)
 
-**`post_comment_mode=false` と `LOCAL_SAVE_FAILED=1` が同時に成立する場合**: 上記 bash block の machine-enforced gate により必ずケース 2 (⚠️ ERROR) が選択され、ステップ 6 は `exit 2` で終了する。Claude の自然言語判断には依存しない (silent data loss 防止)。WARNING のみの exit 0 経路はユーザー可視性と CI 検出性を両立できないため hard fail に統一する。
+**`post_comment_mode=false` と `LOCAL_SAVE_FAILED=1` が同時に成立する場合**: `review-skip-notification.sh` の machine-enforced gate により必ずケース 2 (⚠️ ERROR) が選択され、ステップ 6 は `exit 2` で終了する。Claude の自然言語判断には依存しない (silent data loss 防止)。WARNING のみの exit 0 経路はユーザー可視性と CI 検出性を両立できないため hard fail に統一する。
 
 ### 6.2 Update Work Memory Phase
 
@@ -3967,7 +3839,8 @@ if [ ! -s "$tmpfile" ]; then
 fi
 
 # jq -n の出力を stdin で create-issue-with-projects.sh に渡す (Issue #1193 #5)。
-# 旧 `$(bash ... "$(jq -n ...)")` の入れ子 $() を 1 段に削減し malform 確率を下げる。
+# 旧コードは jq 出力をコマンド置換でスクリプト引数に入れ子展開していたが、パイプ + 1 段の
+# コマンド置換に削減して malform 確率を下げた (入れ子コマンド置換の literal 例は除去済 — Issue #1221)。
 result=$(jq -n \
  --arg title "{type}: {summary}" \
  --arg body_file "$tmpfile" \

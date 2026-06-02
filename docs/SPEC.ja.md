@@ -54,6 +54,7 @@
 | `/rite:getting-started` | 対話型オンボーディングガイド | なし |
 | `/rite:workflow` | ワークフロー全体の案内 | なし |
 | `/rite:investigate` | 構造化コード調査 | `<トピックまたは質問>` |
+| `/rite:learn` | 完了セッションの理解度を Socratic 方式で確認 | `[issue/pr 番号]` |
 | `/rite:issue:list` | Issue 一覧表示 | `[フィルタ条件]` |
 | `/rite:issue:create` | 新規 Issue 作成 | `<タイトルまたは説明>` |
 | `/rite:issue:update` | 作業メモリ更新 | `[メモ]` |
@@ -143,6 +144,7 @@ rite-workflow/
 │ ├── getting-started.md # /rite:getting-started
 │ ├── workflow.md # /rite:workflow
 │ ├── investigate.md # /rite:investigate
+│ ├── learn.md # /rite:learn
 │ ├── lint.md # /rite:lint
 │ ├── resume.md # /rite:resume
 │ ├── issue/

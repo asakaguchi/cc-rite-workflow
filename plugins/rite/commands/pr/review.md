@@ -3019,17 +3019,11 @@ Output the review results via two independent paths. Use `mktemp` + `--body-file
 
 ステップ 6 failure reasons (reason 表の本文は `common-error-handling.md#jq-required-fields-snippet-canonical` の canonical jq snippet を参照):
 
-| reason (ステップ 5.1.2.A / 6.1.c、review.md 本文が emit) | Description |
+| reason (ステップ 5.1.2.A、review.md 本文が emit) | Description |
 |--------|-------------|
 | `pr_number_placeholder_residue` | ステップ 5.1.2.A (fingerprint, `FINGERPRINT_COMPUTE_FAILED`) で `pr_number` が数値以外のとき emit。ステップ 6.1.a (`review-result-save.sh`, `LOCAL_SAVE_FAILED`) も同名 reason を emit する (下記 6.1.a bullet 参照) |
-| `p61c_pr_number_invalid` | ステップ 6.1.c の `pr_number` が literal substitute されていない / 数値以外 |
-| `p61c_post_comment_mode_invalid` | ステップ 6.1.c の `post_comment_mode` が literal substitute されていない / `true` (誤呼出) / 不正値 (Issue #510 対応、`p61b_post_comment_mode_invalid` と対称) |
-| `p61c_persistence_unrecoverable` | ステップ 6.1.c ケース 2 (`post_comment_mode=false` ∧ `LOCAL_SAVE_FAILED=1`) で silent data loss 防止のため ステップ 6 全体を `exit 2` で fail させる |
-| `p61c_file_timestamp_unset` | ステップ 6.1.c で `file_timestamp` placeholder が literal substitute されていない |
-| `p61c_local_save_failed_invalid` | ステップ 6.1.c で `local_save_failed` が不正値 (空文字/0/1 以外) |
-| `p61c_file_timestamp_unknown_without_failure` | ステップ 6.1.c で `file_timestamp='unknown'` だが `local_save_failed != '1'` (整合性違反、ケース 1 での `.../unknown.json` 誤提示を遮断) |
 
-> **Note (Issue #1193 #3/#4)**: ステップ 6.1.a / 6.1.b の reason は委譲先 helper が emit する (`hooks/review-result-save.sh` / `hooks/review-comment-post.sh`、SoT は各 helper の docstring)。`distributed-fix-drift-check.sh` Pattern 2 は「同一ファイル内に `| reason |` table 行があれば同ファイル内で `reason=` emit される」ことを前提とするため、委譲済 reason は **markdown table 行にせず bullet 形式**で列挙する (emit 先が helper へ移ったことを反映)。helper の stderr `[CONTEXT]` emit は caller の bash 出力として LLM コンテキストに surface するため、下記 reason はレビュー flow 上で従来どおり観測される。
+> **Note (Issue #1193 #3/#4 / #1221)**: ステップ 6.1.a / 6.1.b / 6.1.c の reason は委譲先 helper が emit する (`hooks/review-result-save.sh` / `hooks/review-comment-post.sh` / `hooks/review-skip-notification.sh`、SoT は各 helper の docstring)。`distributed-fix-drift-check.sh` Pattern 2 は「同一ファイル内に `| reason |` table 行があれば同ファイル内で `reason=` emit される」ことを前提とするため、委譲済 reason は **markdown table 行にせず bullet 形式**で列挙する (emit 先が helper へ移ったことを反映)。同じ理由で、委譲済 reason は本文 prose でも `reason=...` 構文を使わず bare backtick 名で参照する (`reason=X` 構文は emit-side 検出に拾われ「table にあるが emit されない」逆 drift を誘発するため)。helper の stderr `[CONTEXT]` emit は caller の bash 出力として LLM コンテキストに surface するため、下記 reason はレビュー flow 上で従来どおり観測される。
 
 **ステップ 6.1.a reasons** (`review-result-save.sh` が `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を emit、全て **WARNING only / 非ブロッキング**):
 - `pr_number_placeholder_residue`: `--pr` が数値以外 (空文字 / placeholder 残留) のまま渡された (cleanup.md ステップ 6 の numeric gate と対称化し永久 orphan 化を防ぐ)
@@ -3056,13 +3050,21 @@ Output the review results via two independent paths. Use `mktemp` + `--body-file
 - `raw_json_timestamp_injection_failed`: Raw JSON セクション内 sentinel の awk 置換 / post-condition (Raw JSON 内残留なし / Markdown 不変) が失敗
 - `gh_comment_post_failure`: `gh pr comment` 投稿が exit != 0 で失敗 (network / auth / rate-limit / permission、rc>=128 時は signal 番号併記)
 
+**ステップ 6.1.c reasons** (`review-skip-notification.sh` が `[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=...` を emit。ケース 2 の `p61c_persistence_unrecoverable` は **hard error として ステップ 6 を `exit 2` で fail**、その他の gate 違反は exit 1。正常経路 `post_comment_mode=false` は続行):
+- `p61c_post_comment_mode_invalid`: `--post-comment-mode` が `false` 以外 (`true` 誤呼出 / 不正値、Issue #510 対応、`p61b_post_comment_mode_invalid` と対称)
+- `p61c_pr_number_invalid`: `--pr` が literal substitute されていない / 数値以外 (`p61b_pr_number_invalid` と対称)
+- `p61c_file_timestamp_unset`: `--file-timestamp` placeholder が literal substitute されていない
+- `p61c_file_timestamp_unknown_without_failure`: `file_timestamp='unknown'` だが `local_save_failed != '1'` (整合性違反、ケース 1 での `.../unknown.json` 誤提示を遮断)
+- `p61c_local_save_failed_invalid`: `--local-save-failed` が不正値 (空文字/0/1 以外)
+- `p61c_persistence_unrecoverable`: ケース 2 (`post_comment_mode=false` ∧ `LOCAL_SAVE_FAILED=1`) で silent data loss 防止のため ステップ 6 全体を `exit 2` で fail
+
 **Non-blocking contract**: ステップ 6.1.a の全 14 種の reason (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `mv_failure` / `collision_resolution_exhausted`) are all logged as WARNING and MUST NOT cause ステップ 6 to fail. Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error. Canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../references/common-error-handling.md#non-blocking-contract-canonical-定義) を参照。
 
 **Retained flag mapping**:
 
 - **ステップ 6.1.a** は `[CONTEXT] LOCAL_SAVE_FAILED=1` flag を emit する。reason 値は以下 14 種のいずれか: `pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `mv_failure` / `collision_resolution_exhausted`。この flag は ステップ 6.1.c の skip notification で「ローカル保存失敗」メッセージを表示する条件として参照される。ステップ 6 全体の exit code には影響しない (非ブロッキング契約)。
 - **ステップ 6.1.b** は `[CONTEXT] REVIEW_OUTPUT_FAILED=1` flag を emit する。reason 値は `tmpfile_write_failure` / `gh_comment_post_failure` / `json_saved_from_p61a_unset` / `p61b_post_comment_mode_invalid` のいずれか。この flag は PR コメント投稿経路の失敗を示し、hard error として ステップ 6 を fail させる (ステップ 6.1.a の非ブロッキング契約とは対照的)。なお `post_comment_mode=false` で 6.1.b に誤呼出された場合は gate が **silent skip (exit 0)** するため、caller branch selection ミスは retained flag emit せずに吸収される (データ破壊なし、gh pr comment も実行されない)。
-- **ステップ 6.1.c** は case 2 (`post_comment_mode=false` ∧ `LOCAL_SAVE_FAILED=1` の組み合わせ) で `[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_persistence_unrecoverable` を emit し、ステップ 6 全体を `exit 2` で fail させる (silent data loss 防止)。
+- **ステップ 6.1.c** は case 2 (`post_comment_mode=false` ∧ `LOCAL_SAVE_FAILED=1` の組み合わせ) で `[CONTEXT] REVIEW_OUTPUT_FAILED=1` (reason 値 `p61c_persistence_unrecoverable`) を emit し、ステップ 6 全体を `exit 2` で fail させる (silent data loss 防止)。
 
 **Eval-order enumeration** (for Pattern-5 drift check): ステップ 6.1.a emit sequence = (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `collision_resolution_exhausted` / `mv_failure`) — 14 件、bash block 内の実 emit 順 (`scope_enum_violation` / `critical_high_scope_nit_noted_invariant` は Issue #1018 M2 で finding_id_format_or_uniqueness_violation の直後に elif chain で配置); ステップ 6.1.b emit = (`p61b_post_comment_mode_invalid` / `p61b_pr_number_invalid` / `tmpfile_write_failure` / `iso_timestamp_from_p61a_unset` / `raw_json_timestamp_injection_failed` / `gh_comment_post_failure` / `json_saved_from_p61a_unset`) — `p61b_post_comment_mode_invalid` は post_comment_mode gate が bash block 冒頭で最初に評価されるため先頭に配置; ステップ 6.1.c emit = (`p61c_post_comment_mode_invalid` / `p61c_pr_number_invalid` / `p61c_file_timestamp_unset` / `p61c_file_timestamp_unknown_without_failure` / `p61c_local_save_failed_invalid` / `p61c_persistence_unrecoverable`) — `p61c_post_comment_mode_invalid` を先頭に配置 (6.1.b と対称).
 
@@ -3176,7 +3178,7 @@ When `{post_comment_mode}=false`, inform the user that PR comment posting was sk
 # 旧 ~142 行の inline bash (4 gate + 2 ケース分岐 heredoc) は hooks/review-skip-notification.sh へ
 # 委譲済 (Issue #1221、6.1.b の review-comment-post.sh 切り出しと対称)。契約 (post_comment_mode gate /
 # pr_number・file_timestamp・local_save_failed の fail-fast gate / reason 語彙 p61c_* / ケース 1 INFO
-# exit 0 / ケース 2 ⚠️ + reason=p61c_persistence_unrecoverable + exit 2 で ステップ 6 全体を fail) は
+# exit 0 / ケース 2 ⚠️ + reason 値 p61c_persistence_unrecoverable + exit 2 で ステップ 6 全体を fail) は
 # helper header と下記 Prose spec 参照。
 # Claude は [CONTEXT] marker から 4 値を literal substitute する (local_save_failed は空文字を渡すため
 # 必ずクォートすること): post_comment_mode=ステップ 1.0 の POST_COMMENT_MODE / pr_number /
@@ -3191,7 +3193,7 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
 **Prose spec (参考)**:
 
 - **ケース 1** (`LOCAL_SAVE_FAILED` 未 emit、通常経路): `ℹ️ PR コメント記録はスキップされました` + ローカルファイル path を表示、`exit 0`
-- **ケース 2** (`LOCAL_SAVE_FAILED=1` ∧ `post_comment_mode=false`、findings が会話コンテキストにのみ存在する異常経路): `⚠️ ERROR: レビュー結果が永続化されませんでした` + 復旧方法 4 種を表示、`[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_persistence_unrecoverable` を emit、**`exit 2` で ステップ 6 を fail させる** (silent data loss 防止のため hard fail)
+- **ケース 2** (`LOCAL_SAVE_FAILED=1` ∧ `post_comment_mode=false`、findings が会話コンテキストにのみ存在する異常経路): `⚠️ ERROR: レビュー結果が永続化されませんでした` + 復旧方法 4 種を表示、`[CONTEXT] REVIEW_OUTPUT_FAILED=1` (reason 値 `p61c_persistence_unrecoverable`) を emit、**`exit 2` で ステップ 6 を fail させる** (silent data loss 防止のため hard fail)
 
 **`post_comment_mode=false` と `LOCAL_SAVE_FAILED=1` が同時に成立する場合**: `review-skip-notification.sh` の machine-enforced gate により必ずケース 2 (⚠️ ERROR) が選択され、ステップ 6 は `exit 2` で終了する。Claude の自然言語判断には依存しない (silent data loss 防止)。WARNING のみの exit 0 経路はユーザー可視性と CI 検出性を両立できないため hard fail に統一する。
 

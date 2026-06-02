@@ -2,7 +2,7 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-06-01T10:48:51+09:00"
+updated: "2026-06-02T07:42:13Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260528T155654Z-pr-1172.md"
@@ -38,7 +38,11 @@ sources:
     ref: "raw/reviews/20260601T011012Z-pr-1222.md"
   - type: "fixes"
     ref: "raw/fixes/20260601T011318Z-pr-1222.md"
-tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage", "symmetry-claim-bidirectional-pin", "negative-assert"]
+  - type: "reviews"
+    ref: "raw/reviews/20260602T070147Z-pr-1246.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260602T065355Z-pr-1246.md"
+tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage", "symmetry-claim-bidirectional-pin", "negative-assert", "non-blocking-contract-mutation"]
 confidence: high
 ---
 
@@ -407,6 +411,15 @@ canonical な解消手順:
 
 これは「detection 完全性 (off-by-one) を test で守る」適用であり、適用 7 (regex quantifier の semantic 境界) や適用 10 (対称化の双方向 pin) と同じ「片側だけ / 境界の外側だけ pin して中身が dead」失敗の数値閾値版にあたる。
 
+### 適用 12: 非ブロッキング契約の回帰防止に「実装末尾 exit 0 削除」mutation で revert test を立証する (PR #1246 で実証)
+
+PR #1246 (Issue #1232 — `settings-local-rite-hook-cleanup.sh` の非ブロッキング契約) cycle 1 で「CLEANED 経路 + 内側 mktemp 失敗時の exit code leak」HIGH を末尾 `exit 0` 明示で fix し、cycle 2 で 0 findings に収束した。収束を支えたのは **fix の回帰防止 test (S-7) を mutation/revert test で立証**したこと:
+
+- 複数 reviewer が隔離 worktree で **実装末尾の `exit 0` を削除する mutation** を適用し、S-7 が `expected=0 actual=1` で FAIL することを確認 → 「test が偽陽性 (実装が壊れても pass) でない」ことを実機で否定。
+- edge-case (CLEANED 経路 + 内側 no-arg mktemp 失敗) を再現する S-7 の pin 方法: PATH-shim した mktemp を **引数で分岐** (`[ $# -eq 0 ]` の no-arg call のみ exit 1、テンプレート付き呼び出しは real mktemp へ delegate) させる。S-5/S-6 の mv-shim 技法の拡張。
+
+教訓: 非ブロッキング契約 (exit 0 always) のような「正常系では observable な差が出ない」invariant の回帰防止 test は、正常 input で PASS するだけでは identification power 0 になりやすい。**契約を壊す mutation (末尾 exit 0 削除) で該当 TC が FAIL する**ことを実機で確認して初めて回帰検出力が保証される。本族の exit-code leak 自体は [[trailing-and-shortcircuit-exit-code-leak]] を参照。
+
 ## 関連ページ
 
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
@@ -436,3 +449,5 @@ canonical な解消手順:
 - [PR #1172 fix results — happy-path 非発火を pin する negative-assert (TC-H4) を TC-H7 と対に追加、mutant を hooks/ 内に配置して sibling script source 解決を再現し gap 捕捉を確認](../../raw/fixes/20260528T155033Z-pr-1172.md)
 - [PR #1222 review results (cycle 2) — long-block 25 行境界 TC 欠落を mutation で実証し MEDIUM 昇格 (filler overshoot で off-by-one がすり抜け)](../../raw/reviews/20260601T011012Z-pr-1222.md)
 - [PR #1222 fix results (cycle 2) — python-inline を第 2 シグナルに固定し long-block を単独の結果決定要因にして 24/25 行境界を pin、`long-block(25)` ラベルまで assert、`>=25→>=26` / `25→24` 両 mutation で捕捉を実証](../../raw/fixes/20260601T011318Z-pr-1222.md)
+- [PR #1246 review results (cycle 2) — 0 findings 収束を支えた mutation/revert test (実装末尾 exit 0 削除 → S-7 FAIL) の立証](../../raw/reviews/20260602T070147Z-pr-1246.md)
+- [PR #1246 fix results — CLEANED 経路 + 内側 mktemp 失敗の exit 0 を pin する S-7 の mktemp 引数分岐 shim 技法](../../raw/fixes/20260602T065355Z-pr-1246.md)

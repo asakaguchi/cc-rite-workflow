@@ -2,7 +2,7 @@
 title: "「invariant は logic 上成立」を信頼せず empirical reproduction で verify する"
 domain: "heuristics"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-05-03T18:46:59Z"
+updated: "2026-06-02T07:42:13Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260427T115727Z-pr-688.md"
@@ -16,6 +16,10 @@ sources:
     ref: "raw/fixes/20260503T182831Z-pr-799-cycle3.md"
   - type: "fixes"
     ref: "raw/fixes/20260503T183643Z-pr-799-cycle4.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260602T064758Z-pr-1246.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260602T065355Z-pr-1246.md"
 tags: ["verification", "empirical-reproduction", "invariant", "reviewer-discipline", "silent-regression"]
 confidence: high
 ---
@@ -90,6 +94,7 @@ LLM reviewer は invariant の logical consistency を高速に reasoning でき
 - `rejected(...)` judgment: reject 理由 (scope-creep / out-of-scope / minor) を empirical revert test で gate する。
 - **Documentation factual claim**: canonical reference に書かれた CLI ツール / shell ビルトインの挙動 claim (例: 「`realpath -m` は symlink を解決しない」「`realpath --relative-to` は wiki_root 外で空文字列を返す」) は実機で `man` / runtime invoke で裏付ける。
 - **Prose 内の「実用上の影響はない」断定**: 「コードブロック内のリンクは行頭 ``` 慣習なので影響なし」のような prose claim は repo 内 grep で反例の有無を確認してから出す。
+- **Reviewer 評価の割れ**: 複数 reviewer の verdict が正面から割れたとき、それは多くが coverage gap (各 reviewer が異なる path をテスト) であり真の矛盾ではない。より具体的な runtime evidence を持つ finding を実機再現で確証して採否を決める。
 
 ### Documentation factual claim 検証の実例 (PR #799 cycle 1-4)
 
@@ -101,6 +106,15 @@ PR #799 で reviewer が canonical reference (`broken-ref-resolution.md`) の fa
 4. **Edge Case 表の factual error 訂正 (cycle 3 で訂正)**: cycle 1-2 で書かれた `realpath -m -s --relative-to=.rite/wiki ./pages/foo.md` の結果予測が cycle 3 reviewer の実機検証で `pages/heuristics/pages/foo.md` (`./` 相対は page_dir 起点で展開される) と立証され、Edge Case 注を訂正。
 
 **学習**: canonical reference 内の factual claim (CLI 挙動 / 実観測 / repo 状態) は **必ず実機検証を伴う**。prose-only で claim を出すと連鎖的に Edge Case 表の挙動予測を誤らせ、cycle 境界で reviewer による反証 → 再 fix → 再 review の循環を生む。reviewer は「prose 内の factual claim」を rhetorical claim として受け流さず、必ず repo 内 grep / `man` / runtime invoke で裏付ける discipline を持つ。
+
+### Reviewer 評価の割れは coverage gap として runtime evidence で確証する (PR #1246 cycle 1)
+
+複数 reviewer の verdict が正面から割れたとき、それは多くの場合 **真の矛盾ではなく coverage gap** (各 reviewer が異なる code path をテストした結果) である。PR #1246 で error-handling reviewer が「CLEANED 経路 + 内側 mktemp 失敗で exit 1 を leak する」HIGH を runtime observation (mktemp-shim で no-arg call のみ失敗させる) で検出した一方、code-quality / security reviewer は normal path (normal CLEANED / mv-failure) のみテストして「exit 0 維持」と評価していた。
+
+- 後者の評価は **彼らがテストした path では正しい**。特定 edge case (CLEANED + 内側 mktemp 失敗) が未カバーだっただけで、真の contradiction ではない。
+- 解決は「どちらの reviewer が正しいか」を reasoning で決めるのではなく、**より具体的な runtime evidence を持つ finding を実機再現で確証**し採否を決める。reasoning ベースで「exit 0 は維持される」と早合点せず、reviewer が指摘した specific scenario を実機で reproduce して観測する。
+
+→ reviewer disagreement を「矛盾」と受け取って一方を棄却するのではなく、各 reviewer がカバーした path を整理し、未カバー edge を runtime evidence で埋めるのが canonical。empirical reproduction over invariant reasoning の multi-reviewer 版。exit-code leak 自体の機構は [[trailing-and-shortcircuit-exit-code-leak]] を参照。
 
 ## 関連ページ
 
@@ -117,3 +131,5 @@ PR #799 で reviewer が canonical reference (`broken-ref-resolution.md`) の fa
 - [PR #799 cycle 1 fix (realpath -m symlink 挙動 / prose 断定の grep 反証)](../../raw/fixes/20260503T181755Z-pr-799.md)
 - [PR #799 cycle 3 fix (Edge Case 表 factual error 訂正)](../../raw/fixes/20260503T182831Z-pr-799-cycle3.md)
 - [PR #799 cycle 4 fix (realpath --relative-to wiki_root 外挙動の実機反証)](../../raw/fixes/20260503T183643Z-pr-799-cycle4.md)
+- [PR #1246 review results (cycle 1) — reviewer 評価の割れ (exit 0 維持 vs leak) は coverage gap であり runtime observation で確証](../../raw/reviews/20260602T064758Z-pr-1246.md)
+- [PR #1246 fix results — 複数 reviewer 評価の割れを実機再現で確証して採否を決める](../../raw/fixes/20260602T065355Z-pr-1246.md)

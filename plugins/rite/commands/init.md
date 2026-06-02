@@ -687,7 +687,7 @@ fi
    > **Helper contract**: `settings-local-rite-hook-cleanup.sh` は **rite hook を実際に除去したときのみ** `CLEANED` を返し、それ以外の安全側ケース (python3 不在・file 不在・対象 hook 不在・不正 JSON・mktemp/mv 失敗を含む) ではすべて `NO_RITE_HOOKS` を返す。ただし **mv 失敗** だけは「変換は成功したが swap-in できず stale な rite hook が残る」ケースであり真の silent skip ではないため、`NO_RITE_HOOKS` (+ exit 0 非ブロッキング) を保ったまま stderr に `[rite] WARNING: ... mv failed` を emit する (Issue #1232、先例 `issue-comment-wm-sync.sh:99-104` の error-surfacing pattern 準拠)。`*.py` を `*.sh` wrapper 経由で呼ぶ先例 `issue-comment-wm-update.py` / `issue-comment-wm-sync.sh` に準拠。
 
    - If `CLEANED` → display `ℹ️ settings.local.json からレガシー rite hook エントリを削除しました。`
-   - If `NO_RITE_HOOKS` → no output (already clean)
+   - If `NO_RITE_HOOKS` → no output (no rite hooks removed)
 
 3. Write cleanup marker:
    ```bash

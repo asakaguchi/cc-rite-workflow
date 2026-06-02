@@ -174,7 +174,7 @@ Signal 3 または Signal 4 が発火した場合、**§3 の 4-option AskUserQu
 tmpfile=$(mktemp)
 trap 'rm -f "$tmpfile"' EXIT
 
-cat <<'BODY_EOF' > "$tmpfile"
+if ! cat <<'BODY_EOF' > "$tmpfile"
 ## 概要
 
 レビューサイクル中に持続した finding を別 Issue として切り出しました (Quality Signal 1 発火)。
@@ -186,6 +186,17 @@ cat <<'BODY_EOF' > "$tmpfile"
 
 - 元の PR: #{pr_number}
 BODY_EOF
+then
+  echo "ERROR: Issue 本文テンプレートの一時ファイル書き込みに失敗" >&2
+  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; reason=body_tmpfile_write_failure" >&2
+  exit 1
+fi
+
+if [ ! -s "$tmpfile" ]; then
+  echo "ERROR: Issue 本文の生成に失敗" >&2
+  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; reason=empty_body_tmpfile" >&2
+  exit 1
+fi
 
 # jq -n の出力を stdin で create-issue-with-projects.sh に渡す (pr/review.md §3992 / Issue #1193 #5 と同じ pipe 形式、入れ子 $() を回避)
 result=$(jq -n \
@@ -209,6 +220,12 @@ result=$(jq -n \
     },
     options: { source: "fingerprint_split", non_blocking_projects: true }
   }' | bash {plugin_root}/scripts/create-issue-with-projects.sh)
+
+if [ -z "$result" ]; then
+  echo "ERROR: create-issue-with-projects.sh returned empty result" >&2
+  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; reason=empty_script_result" >&2
+  exit 1
+fi
 new_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
 echo "✅ Fingerprint 循環 finding を #$(printf '%s' "$result" | jq -r '.issue_number') として切り出しました: $new_issue_url"
 ```

@@ -2,8 +2,10 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-06-03T03:29:02Z"
+updated: "2026-06-03T10:08:59Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260603T100859Z-pr-1260.md"
   - type: "reviews"
     ref: "raw/reviews/20260603T014204Z-pr-1254.md"
   - type: "reviews"
@@ -1130,6 +1132,14 @@ PR #1254 は、PR #1251 (Issue #1234) で 3 reviewer が boundary recommendation
 
 本 PR は **successful symmetrization の連鎖が複数 PR にまたがって完結する** 系譜パターンの実測でもある: PR #1251 が前半 (3 ガード) を移植し boundary recommendation を別 Issue 化 → PR #1254 が後半 (post-result surfacing) を移植して完結。error-handling reviewer は design_confirmation 推奨 1 件 (§4 は先例より厳格な `empty_issue_url` の明示 `exit 1` ガードを持つ — review.md 7.4.2 は複数候補ループ context のため doc-table 契約に委譲、§4 は単一 finding context のため bash fail-fast) を出したが、この非対称は context-appropriate な強化であり blind transcription ではないと両 reviewer が合意 (将来 review.md 側への逆移植は follow-up 余地、現スコープ対応不要)。2 reviewer (prompt-engineer / error-handling) が success-path bash 2 行の byte-identical (cat -A / diff)、failed-JSON 出力契約と `empty_issue_url` ガードの整合、placeholder 規約 (`{project_number}` / `{owner}`) の §4 既存規約一致、成功時 stdout / 失敗時 stderr の出力先非対称が意図的、success-path の `2>/dev/null` が well-formed JSON 保証下のため silent failure にならない、を独立 verify し 0 findings / 1 cycle mergeable。
 
+### step-renumber refactor の 0-finding 検証 — repo-wide grep + impact test による successful preventive application (PR #1260 — Issue #1258、0 findings)
+
+PR #1260 は `commands/pr/merge.md` の旧 Step 1 (flow-state 前提チェック) を削除し残りの step を 1/2/3 へ繰り上げる **step-renumber refactor** (Step 1〜4 → ステップ 1〜3)。本 anti-pattern の最重要 trigger である renumber 伝播漏れ (旧番号への参照が同期されず stale 化する) を、2 reviewer (prompt-engineer / code-quality) が独立に **Grep + 全文確認** で検証し、merge.md 内・cross-file ともに同期漏れゼロを確認した (指摘 0 件 / 1 cycle mergeable)。
+
+検証手法の 3 点セットが本 anti-pattern の予防的 detection protocol として実測された: (1) merge.md 全文を `git show` / Read で旧番号 (ステップ4 / 英語 Step N) 残存ゼロ確認、(2) `grep -rn "merge.md" plugins/ docs/` で step 番号付き cross-file 参照を洗い出し、(3) 影響テスト `sentinel-disambiguator-adjacency.test.sh` を実行し PASS 10/0。これは PR #1102→#1105 で確立した「fix 後 grep」から「着手時 grep」への前倒し protocol を renumber refactor に適用し、PR #1162 の「cleanup PR 自身での再発」リスク (renumber が同一ファイル内対称位置を sanity check で取りこぼす) を repo-wide grep + impact test で構造的に閉塞した successful application。
+
+加えて 2 つの boundary 判断を併せて記録: (a) decision-record (`docs/designs/clear-per-command-flow-state-decoupling.md`) は **as-was 状態を記述する性質上、後続 renumber を追従させない** 運用が妥当という reviewer 合意 (PR #1133 の「表更新 PR は同セクション散文の依存値も着手時 grep scope に含める」と対をなす — design doc は意図的に renumber 射程外)。(b) flow-state 撤去後の完了通知 branch 名供給を `gh pr view --json headRefName` へ一本化する変更は、sibling コマンド `ready.md` / `cleanup.md` と同じ raw `--json` + LLM context 消費パターンで baseline 整合を確認 (新規導入する supply 経路が既存 sibling と非対称にならないことの verify)。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -1150,6 +1160,7 @@ PR #1254 は、PR #1251 (Issue #1234) で 3 reviewer が boundary recommendation
 
 ## ソース
 
+- [PR #1260 review results (Issue #1258、0 findings の successful preventive application: merge.md 旧 Step 1 削除 + 残り step を 1/2/3 へ繰り上げる step-renumber refactor で、2 reviewer (prompt-engineer / code-quality) が renumber 伝播漏れを独立に検証。(1) merge.md 全文 git show/Read で旧番号残存ゼロ、(2) `grep -rn "merge.md" plugins/ docs/` で cross-file step 参照を洗い出し、(3) 影響テスト sentinel-disambiguator-adjacency.test.sh PASS 10/0 の 3 点セットで同期漏れゼロを確認。decision-record は as-was 記述のため renumber 追従不要 (boundary)、完了通知 branch 名を `gh pr view --json headRefName` へ一本化し sibling ready.md/cleanup.md と baseline 整合。指摘 0 件 / 1 cycle mergeable)](../../raw/reviews/20260603T100859Z-pr-1260.md)
 - [PR #1254 review results (Issue #1252、0 findings の successful symmetrization application: PR #1251 が #1234 スコープ外に切り出した post-result error surfacing を fingerprint-cycling.md §4 split に移植して完結。`issue_url==""` failed-JSON ガード (空 URL での `✅` echo 遮断 + `[CONTEXT] ISSUE_CREATE_FAILED=1; reason=empty_issue_url` emit + exit 1) と project_registration / warnings[] surfacing を先例 review.md ステップ 7.4.2 と同等移植 (16 add / 0 del、PR #1251 の 3 ガードは温存)。§4 単一 finding context の明示 exit 1 ガードは複数候補ループの review.md より厳格だが context-appropriate な強化と両 reviewer 合意、blind transcription ではない。2 reviewer 全員 0 件で 1 cycle mergeable)](../../raw/reviews/20260603T014204Z-pr-1254.md)
 - [PR #1251 review results (Issue #1234、0 findings の successful symmetrization application: fingerprint-cycling.md §4 split が先例 pr/review.md ステップ 7.4.2 の 3 silent-failure guard (heredoc write-failure / empty-body / empty-result) を欠く pre-existing 非対称を、reason 文字列 / `[CONTEXT] ISSUE_CREATE_FAILED` marker / exit code を byte 一致で移植し解消。§4 固有要素は保持。3 reviewer 全員「可」「指摘 0 件」で 1 cycle mergeable。pre-existing ガード欠如 (PR #1233 pipe refactor は invocation 形のみ変更) を revert test で確認し #1221 スコープ外として #1234 へ別 Issue 化済み)](../../raw/reviews/20260602T172745Z-pr-1251.md)
 - [PR #1244 review results cycle 3 (累積 52 回目: cycle 2 fix が `--state all` を `#N` 経路 line 54 にだけ付与し対称な `(なし)` 経路 line 55 への伝播を忘れた典型 Asymmetric Fix Transcription を code-quality が LOW-MEDIUM 検出。house pattern cleanup.md:64 / close.md:103 と line 54 に揃えて解消)](../../raw/reviews/20260602T031333Z-pr-1244.md)

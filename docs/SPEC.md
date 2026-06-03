@@ -1381,6 +1381,8 @@ A system that performs unified pre-validation before every `/rite:*` command exe
 
 The flow state for `/rite:*` workflows uses a **per-session file** structure (`.rite/sessions/{session_id}.flow-state`) introduced by Issue #672 and landed across PR #686 / #747 / #748 + #756 / #750 / #751 / #757 / #759. Each Claude Code session writes only to its own file, so concurrent sessions on the same repository are structurally race-free without lock acquisition.
 
+> **Authority scope — session-scoped continuation hint, not a cross-`/clear` source of truth**: flow state is **session-scoped** and treats `/clear` as its continuation terminus — a session started after a `/clear` resolves a fresh `session_id` and therefore reads a different (structurally empty) state file. Consequently, **discrete commands** invoked standalone across a `/clear` (e.g. `/rite:pr:merge`) **must not** treat flow state as the authoritative cross-`/clear` state. Their authority lives in the persistent SoT — `gh pr view` (`isDraft` / `mergeable` / `mergeStateStatus`), GitHub Projects Status, and `.rite-work-memory/issue-{n}.md`. flow state, when present, is consumed only as a **same-session continuation hint**, and its absence is the normal (un-warned) case for discrete operation. Conversely, the **continuation-loop subsystems** — `/rite:pr:iterate`'s review↔fix loop, the `Stop` hook + `handoff` field, `/rite:pr:review` / `/rite:pr:fix`, sprint e2e orchestration, compact recovery, and `/rite:resume` — are single-session by nature and are precisely the domain where session-scoped flow state functions correctly; they are left untouched. See [`docs/designs/clear-per-command-flow-state-decoupling.md`](designs/clear-per-command-flow-state-decoupling.md) (Issue #1256) for the full discrete-command-vs-continuation-loop decoupling analysis and per-command breakdown; `commands/pr/merge.md` Step 1 is the first application of this boundary.
+
 **File path:**
 
 ```
@@ -1839,7 +1841,7 @@ Long-running commands such as the end-to-end flow `/rite:pr:open` → `/rite:pr:
 
 **Why this works:**
 
-- Work memory (Issue comments) and the per-session flow state file persist workflow state across sessions
+- Work memory (Issue comments + the local `.rite-work-memory/issue-{n}.md` file) and git/PR artifacts persist workflow state across sessions. The per-session flow state file is session-scoped (see [Multi-Session State Management](#multi-session-state-management)), so the post-`/clear` session reads a fresh empty file; `/rite:resume` reconstructs the resume point from work memory + git/PR cross-check, using flow state only as the same-session signal when present
 - All git artifacts (branches, commits, PRs) are preserved — nothing is lost
 - `/rite:resume` reads the persisted state and resumes the appropriate phase
 
@@ -1851,7 +1853,7 @@ Long-running commands such as the end-to-end flow `/rite:pr:open` → `/rite:pr:
 | Commits | Git | Yes |
 | Draft PR | GitHub | Yes |
 | Work memory | Issue comment | Yes |
-| Flow state | `.rite/sessions/{session_id}.flow-state` (see [Multi-Session State Management](#multi-session-state-management)) | Yes |
+| Flow state | `.rite/sessions/{session_id}.flow-state` (see [Multi-Session State Management](#multi-session-state-management)) | Partial — the file persists on disk, but the post-`/clear` session reads a fresh empty file (session-scoped); `/rite:resume` falls back to work memory + git/PR |
 
 ### API Error Handling
 

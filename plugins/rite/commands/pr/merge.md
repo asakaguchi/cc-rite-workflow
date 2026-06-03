@@ -22,48 +22,30 @@ description: PR を squash merge する（cleanup は別コマンド /rite:pr:cl
 | Placeholder | Source |
 |-------------|--------|
 | `{pr_number}` | 引数 |
-| `{branch_name}` | Step 1 で `flow-state.sh get --field branch` から取得、`[CONTEXT] MERGE_STATE_BRANCH=` で emit |
+| `{branch_name}` | ステップ 1 の `gh pr view --json headRefName` から取得 |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 
 ---
 
-## ステップ 1: flow-state 前提条件確認
+## ステップ 1: mergeable 判定
 
-Bash tool 呼び出し境界では shell 変数が消失するため、判定値を `[CONTEXT]` marker で emit して後段の LLM が読み取れる形にする。
-
-```bash
-# pr/open.md Step 0 の方針 (stderr は WARNING channel として残し、2>/dev/null で握りつぶさない) と
-# 整合させる。flow-state.sh の `--default ""` は session 解決失敗 / file 不在 / jq parse 失敗を
-# すべて吸収するため、外側 `|| var=""` は helper validation 失敗経路のみを catch する defensive
-# fallback。stderr は redirect せず WARNING を context に残す。
-phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default "") || phase=""
-state_pr=$(bash {plugin_root}/hooks/flow-state.sh get --field pr_number --default "0") || state_pr="0"
-state_branch=$(bash {plugin_root}/hooks/flow-state.sh get --field branch --default "") || state_branch=""
-
-echo "[CONTEXT] MERGE_STATE_PHASE=$phase; MERGE_STATE_PR=$state_pr; MERGE_STATE_BRANCH=$state_branch"
-```
-
-**LLM 判定** (会話 context の `[CONTEXT] MERGE_STATE_*` marker を grep して評価):
-
-`MERGE_STATE_PHASE != "ready"` または `MERGE_STATE_PR != "{pr_number}"` の場合は AskUserQuestion で「Ready 化されていない可能性があります。それでも merge しますか？」を提示 (yes / abort)。
-
-`MERGE_STATE_BRANCH` の値は Step 4 完了通知の `{branch_name}` 展開に使用する。
-
-## ステップ 2: mergeable 判定
+Ready/merge 可否の権威判定はここ (`gh pr view`) に一本化する。flow-state は離散コマンド運用 (`/clear` 毎) では writer (`pr:open`) と reader (本コマンド) が別セッションになり常に空を読むため、前提チェックは設けず不在を正常系として扱う (設計ドキュメント `docs/designs/clear-per-command-flow-state-decoupling.md` §AC-4)。
 
 ```bash
-gh pr view {pr_number} --json mergeable,mergeStateStatus,isDraft
+gh pr view {pr_number} --json mergeable,mergeStateStatus,isDraft,headRefName
 ```
+
+`headRefName` の値は完了通知 (ステップ 3) の `{branch_name}` 展開に使うため retain する (flow-state 不在でもブランチ名が空にならない)。
 
 | 状態 | アクション |
 |------|-----------|
 | `isDraft == true` | `[merge:not-ready]` emit + 「先に `/rite:pr:ready {pr_number}` を実行してください」案内 + 終了 |
-| `mergeable != "MERGEABLE"` | `[merge:not-ready]` emit + 原因 (`mergeStateStatus`) 表示 + AskUserQuestion で「再判定 (`mergeStateStatus` を再取得して Step 2 をもう一度実行、1 回のみ) / 中止」を提示 |
-| `mergeable == "MERGEABLE"` | ステップ 3 へ |
+| `mergeable != "MERGEABLE"` | `[merge:not-ready]` emit + 原因 (`mergeStateStatus`) 表示 + AskUserQuestion で「再判定 (`mergeStateStatus` を再取得して ステップ 1 をもう一度実行、1 回のみ) / 中止」を提示 |
+| `mergeable == "MERGEABLE"` | ステップ 2 へ |
 
 > **「再判定」option の挙動**: 再判定は **1 回のみ**。再判定後も `MERGEABLE` でなければ `[merge:not-ready]` で確定終了する (ping-pong 防止)。`gh pr view` の mergeable 計算は数秒〜数十秒遅延するため、再判定前に短時間待機 (sleep / 手動 wait) するかはユーザー判断に委ねる。自動 sleep は提供しない (cycle counter なし原則と整合)。
 
-## ステップ 3: マージ実行
+## ステップ 2: マージ実行
 
 ```bash
 # canonical signal-specific trap pattern (references/bash-trap-patterns.md 参照、fix.md ステップ 2.4 と対称)
@@ -96,7 +78,7 @@ if gh pr merge {pr_number} --squash --delete-branch=false 2>"${gh_err:-/dev/null
     echo "  WARNING (gh stderr):" >&2
     head -5 "$gh_err" | sed 's/^/    /' >&2
   fi
-  # 完了通知は Step 4 で表示
+  # 完了通知は ステップ 3 で表示
 else
   merge_rc=$?
   echo "[merge:error]"
@@ -111,12 +93,12 @@ fi
 
 | 終了 status | アクション |
 |------------|-----------|
-| `[merge:returned-to-caller]` emit | ステップ 4 完了通知へ |
+| `[merge:returned-to-caller]` emit | ステップ 3 完了通知へ |
 | `[merge:error]` emit | bash block が stderr に gh error 詳細を出力済み。LLM は AskUserQuestion で「再試行 / 中止」を提示 |
 
-## ステップ 4: 完了通知
+## ステップ 3: 完了通知
 
-`MERGE_STATE_BRANCH` を `{branch_name}` placeholder に展開して以下を表示:
+ステップ 1 の `gh pr view --json headRefName` で取得した値を `{branch_name}` placeholder に展開して以下を表示:
 
 ```
 ## /rite:pr:merge 完了

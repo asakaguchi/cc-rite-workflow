@@ -40,10 +40,10 @@
 #     検出する
 #
 # 対応する 3 emit format:
-#   (1) Multi-line markdown (ready.md / merge.md ステップ 4 / lint.md ステップ 9.2 / ingest.md):
+#   (1) Multi-line markdown (ready.md / merge.md ステップ 3 / lint.md ステップ 9.2 / ingest.md):
 #         <!-- skill return signal: caller must continue next step -->
 #         <!-- [skill:returned-to-caller] -->
-#   (2) Bash echo (lint.md ステップ 1.1/1.3 / merge.md ステップ 3):
+#   (2) Bash echo (lint.md ステップ 1.1/1.3 / merge.md ステップ 2):
 #         echo "<!-- skill return signal: caller must continue next step -->"
 #         echo "<!-- [skill:returned-to-caller] -->"
 #   (3) Inline single-line (cleanup.md の ordered list item):

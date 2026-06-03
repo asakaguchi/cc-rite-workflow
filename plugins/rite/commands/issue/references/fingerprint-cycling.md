@@ -227,7 +227,23 @@ if [ -z "$result" ]; then
   exit 1
 fi
 new_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
+# create-issue-with-projects.sh は失敗時も非空の failed JSON (issue_url=="") を emit してから
+# exit する契約のため、上の empty-result ガードは通過する。空 URL のまま ✅ を echo する silent
+# failure を防ぐため issue_url を guard し warnings[] を surface する (先例 review.md ステップ
+# 7.4.2 の post-result handling を移植、refs #1252)
+if [ -z "$new_issue_url" ] || [ "$new_issue_url" = "null" ]; then
+  echo "ERROR: Fingerprint 循環 finding の Issue 化に失敗しました (issue_url が空)" >&2
+  printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w" >&2; done
+  echo "[CONTEXT] ISSUE_CREATE_FAILED=1; reason=empty_issue_url" >&2
+  exit 1
+fi
 echo "✅ Fingerprint 循環 finding を #$(printf '%s' "$result" | jq -r '.issue_number') として切り出しました: $new_issue_url"
+# Issue 作成は成功。Projects 登録の partial/failed と warnings[] を surface する (silent にしない)
+project_reg=$(printf '%s' "$result" | jq -r '.project_registration')
+printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w"; done
+if [ "$project_reg" = "partial" ] || [ "$project_reg" = "failed" ]; then
+  echo "⚠️ Projects 登録が完全に完了しませんでした（status: $project_reg）。手動登録: gh project item-add {project_number} --owner {owner} --url $new_issue_url"
+fi
 ```
 
 Signal 3 / Signal 4 由来の split では title prefix を `review-split:` のまま (Signal 1 と統一)、body の冒頭 "Quality Signal 1 発火" を実発火 signal 名に置換する。`options.source` も `fingerprint_split` → `quality_signal_3_split` / `quality_signal_4_split` に変更する。

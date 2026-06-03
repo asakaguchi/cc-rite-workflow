@@ -170,7 +170,7 @@ Signal 3 または Signal 4 が発火した場合、**§3 の 4-option AskUserQu
 
 ## §4 — Split bash for "別 Issue として切り出す"
 
-**Important**: 以下の bash ブロックは **単一の Bash tool 呼び出し** で実行すること。本ブロックは一時ファイル cleanup の `trap 'rm -f "$tmpfile"' EXIT` と、write / empty / empty-result / empty-url の各失敗で中断する `exit 1` ガード (PR #1251 で追加) を含む。複数の Bash 呼び出しに分割すると trap が中間状態で発火して cleanup 契約が崩れ、`exit 1` も後続呼び出しへ伝播せず guard が機能しなくなる (先例 review.md ステップ 7.4.2 の single-invocation 注記と同契約)。
+**Important**: 以下の bash ブロックは **単一の Bash tool 呼び出し** で実行すること。本ブロックは一時ファイル cleanup の `trap 'rm -f "$tmpfile"' EXIT` と、write / empty / empty-result の各失敗で中断する `exit 1` ガード (PR #1251) および empty-url 失敗で中断する `exit 1` ガード (PR #1252) を含む。複数の Bash 呼び出しに分割すると trap が中間状態で発火して cleanup 契約が崩れ、`exit 1` も後続呼び出しへ伝播せず guard が機能しなくなる (先例 review.md ステップ 7.4.2 の single-invocation 注記と同契約)。
 
 **Placeholder value sources** (Claude はスクリプト生成前に必ず以下のソースから値を取得してプレースホルダーを置換すること。これらはシェル変数ではない):
 

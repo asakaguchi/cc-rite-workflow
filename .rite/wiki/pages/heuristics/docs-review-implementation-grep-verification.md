@@ -2,7 +2,7 @@
 title: "Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする"
 domain: "heuristics"
 created: "2026-05-26T00:00:00Z"
-updated: "2026-06-03T16:49:29Z"
+updated: "2026-06-03T23:10:10Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260525T070727Z-pr-1139.md"
@@ -18,6 +18,8 @@ sources:
     ref: "raw/reviews/20260602T082558Z-pr-1248.md"
   - type: "reviews"
     ref: "raw/reviews/20260603T162350Z-pr-1261.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260603T174323Z-pr-1263.md"
 tags: ["docs-drift", "verification-protocol", "implementation-grep", "release-prep", "deprecated-sync", "fact-check"]
 confidence: high
 ---
@@ -79,6 +81,10 @@ PR #1261 (Issue #1259、0 findings / 1 cycle、`docs/SPEC.md` +4/-2 の Doc-Heav
 
 加えて、両 reviewer が独立に **`docs/SPEC.ja.md` の per-session 構造への i18n parity drift (pre-existing)** を検出し、protocol step 6 (JA/EN pair grep) の観点で `grep "sessions/" docs/SPEC.ja.md` → 0 hits / legacy `.rite-flow-state` 全面記述を確認したうえで、**revert test により本 PR diff 由来でないと判定して blocking finding から除外し follow-up Issue (#1262) へ routing** した。JA/EN parity drift が検出されても pre-existing なら current-pr blocker にせず follow-up 化する scope judgment が、本 protocol の grep verify と revert test の組み合わせで正しく機能した実例。
 
+### Successful application — 翻訳 PR での実装突合により原本 (EN) 由来の誤り転写を表面化 (PR #1263)
+
+PR #1263 (Issue #1262、#1261 の follow-up にあたる SPEC.ja.md per-session 全面同期 PR) で、**翻訳 PR でも原本への盲目的信頼をせず実装突合を行う価値** が実証された。Doc-Heavy mode の 5 カテゴリ検証で大半の主張 (hooks.json 7 events / PHASE_ENUM_V3 13 値 / session-ownership.sh 4 関数・4 source caller / loop_count writer 0 hits 等) を実装側 grep verify した結果、EN SPEC.md に既存する 2 件の事実誤り (存在しないファイル `state-read.sh` / `_resolve-flow-state-path.sh`+`STATE_FILE_PATH` への参照) が JA 版へ忠実翻訳で転写されていたことが表面化した (revert test pass で本 PR diff 由来と判定、HIGH × 2)。JA 単独修正は i18n parity を破壊するため scope=follow-up (EN+JA 両側同時修正の別 Issue) が適切と両レビュアーが独立に収束し、本 protocol の grep verify が「原本の誤りは fact 検証で初めて表面化する」という翻訳 PR 特有の検出経路として機能した。決着パターンの詳細は [i18n 同期 PR の忠実翻訳は原本の誤りを転写する — 検出時は accept + 両側同時修正 follow-up で決着する](./i18n-faithful-translation-source-error-accept-followup.md) を参照。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -92,3 +98,4 @@ PR #1261 (Issue #1259、0 findings / 1 cycle、`docs/SPEC.md` +4/-2 の Doc-Heav
 - [PR #1139 fix cycle 12 (SPEC Multi-Section Same-Topic Drift: SPEC 全文 1 度通読の必要性)](../../raw/fixes/20260525T141022Z-pr-1139.md)
 - [PR #1248 review (prose 散文括弧書きの正確性を helper 出力語彙と cross-check、0 findings の successful application)](../../raw/reviews/20260602T082558Z-pr-1248.md)
 - [PR #1261 review (Doc-Heavy mode 5 カテゴリ検証で全実装主張を grep verify + pre-existing SPEC.ja.md i18n drift を revert-test で follow-up #1262 化、0 findings の successful application)](../../raw/reviews/20260603T162350Z-pr-1261.md)
+- [PR #1263 review (翻訳 PR での実装突合により EN 原本由来の事実誤り 2 件の転写を表面化、両レビュアー独立で follow-up 収束)](../../raw/reviews/20260603T174323Z-pr-1263.md)

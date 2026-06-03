@@ -146,9 +146,10 @@
 | [LLM 向けコマンド spec の placeholder は解決元 entity を一意化する (単一 {number} を {issue_number}/{pr_number} に分離)](pages/patterns/llm-command-spec-placeholder-entity-disambiguation.md) | patterns | LLM 実行 command spec で単一 `{number}` を `gh issue view` / `gh pr view` 双方の代入先に流用すると、issue/pr 単一番号空間ゆえ代入先 entity が非一意で 404・誤参照を招く。`{issue_number}` / `{pr_number}` に分離し verify-then-fallback 解決を明記、位置引数の振り分けは決定テーブルで明示、SPEC 表の英日 Arguments 列も対称追記する。PR #1244 cycle 1 で実測。 | 2026-06-02T03:50:58Z | high |
 | [set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する](pages/anti-patterns/bare-statement-under-set-e-dead-code-rc-branch.md) | anti-patterns | `set -euo pipefail` 下で外部コマンド (python3/jq/grep 等) を単独文 (bare statement) として実行すると非ゼロ終了で set -e が script を abort し、直後の `rc=$?` 以降の rc 分岐 (rc=1 no-op / rc=2 corruption 報告) が dead code 化する。`if cmd; then rc=0; else rc=$?; fi` の set -e 免除文脈へ移すのが canonical。`if ! cmd; then rc=$?` 版 (rc 常時 0、到達するが誤値) とは root cause の異なる別の壊れ方 (到達不能)。Asymmetric Fix Transcription の inline→delegate guard 解体 sub-pattern の逆方向 (修復) 適用例。PR #1242 で 4 reviewer 0 findings、Issue #1241 subtask4 で他 hook 横断調査し session-start.sh:188 が唯一の該当と確認。 | 2026-06-02T04:59:29Z | high |
 | [末尾の && 短絡文が非ブロッキング script の exit code を leak する (末尾 exit 0 を明示する)](pages/anti-patterns/trailing-and-shortcircuit-exit-code-leak.md) | anti-patterns | `set -e` なしの helper で `[ -n "$var" ] && cmd` が script 最終文になると、var 空時に compound rc=1 が exit code に leak し「Exit codes: 0 always」契約に違反する。canonical fix は末尾 `exit 0` 明示 (sibling 規約)。`if ! cmd`(rc 常時 0、到達するが誤値) / bare statement under set -e(到達不能) とは別機構の第 3 族。PR #1246 で CLEANED 経路 + 内側 mktemp 失敗時に実測、mutation (末尾 exit 0 削除→S-7 FAIL) で回帰防止を立証。 | 2026-06-02T07:42:13Z | high |
+| [複数 PR にまたがる incremental 追加履歴を単一 PR に誤集約する (multi-PR provenance aggregation error)](pages/anti-patterns/multi-pr-provenance-aggregation-error.md) | anti-patterns | 対称化 / 要約 PR で先行 PR のガード移植履歴を要約する際、複数 PR にまたがる incremental な追加を単一 PR に誤集約し、同一ファイル内の正しい帰属と矛盾 (intra-file contradiction) を生む。git pickaxe (`git log -S`) + 同一ファイル内 cross-reference + propagation scan (`git grep`) の 3 点で検証する。PR #1255 の §4↔7.4.2 対称化シリーズで LOW finding として実測 (1 cycle fix → cycle 2 で 0 finding mergeable)。 | 2026-06-03T08:38:00Z | medium |
 
 ## 統計
 
-- 総ページ数: 140
-- ドメイン別: patterns=46, heuristics=42, anti-patterns=52
-- 最終更新: 2026-06-02T07:42:13Z
+- 総ページ数: 141
+- ドメイン別: patterns=46, heuristics=42, anti-patterns=53
+- 最終更新: 2026-06-03T08:38:00Z

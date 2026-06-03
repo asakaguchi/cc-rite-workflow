@@ -2,7 +2,7 @@
 title: "Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする"
 domain: "heuristics"
 created: "2026-05-26T00:00:00Z"
-updated: "2026-06-02T08:57:02Z"
+updated: "2026-06-03T16:49:29Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260525T070727Z-pr-1139.md"
@@ -16,6 +16,8 @@ sources:
     ref: "raw/fixes/20260525T141022Z-pr-1139.md"
   - type: "reviews"
     ref: "raw/reviews/20260602T082558Z-pr-1248.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260603T162350Z-pr-1261.md"
 tags: ["docs-drift", "verification-protocol", "implementation-grep", "release-prep", "deprecated-sync", "fact-check"]
 confidence: high
 ---
@@ -71,6 +73,12 @@ documentation review の verification protocol が **「内的整合 (CHANGELOG 
 
 PR #1248 (Issue #1247、0 findings / 1 cycle) で本 protocol の **prose 散文 ↔ helper 実装出力語彙の cross-check** 側面を successful preventive application として実測。`commands/init.md` の NO_RITE_HOOKS routing 行の括弧書き `(already clean)` → `(no rite hooks removed)` という 1 行文言修正レビューで、両 reviewer (prompt-engineer / code-quality) が (1) 説明対象 helper `settings-local-rite-hook-cleanup.sh:15` の実出力語彙 `nothing removed` を SoT として括弧書きの正確性を裏取り (mv 失敗サブケースで `already clean` が不正確になる nuance を実装側で確認)、(2) 同 doc 内の対称注記行 (`no output (...)` 形式、line 650/756) への伝播漏れを `grep "clean)"` で機械検証 (0 件 = 旧語彙残存なし) し、0 findings で確認。**散文括弧書きの正確性 review は、説明対象実装の出力語彙・コメントを implementation grep の SoT に含める**という protocol step の小規模 application であり、同時に [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の「同 doc 内対称注記行の grep verify」と pair で機能した。
 
+### Successful application — Doc-Heavy mode 5 カテゴリ検証の全主張 grep verify + pre-existing i18n drift の revert-test routing (PR #1261)
+
+PR #1261 (Issue #1259、0 findings / 1 cycle、`docs/SPEC.md` +4/-2 の Doc-Heavy PR) で本 protocol の **「prose が言及する実装主張を悉皆 grep verify する」中核** を successful preventive application として実測。tech-writer (Doc-Heavy mode) と code-quality (sole-reviewer guard co-reviewer) が、SPEC.md に追加した flow-state 権威スコープ再定義ノートの全実装主張を独立に grep/Read 裏取りし全件一致を確認した: (1) per-session 構造 `.rite/sessions/{session_id}.flow-state` を `flow-state.sh` の `SESSION_DIR` 定義で確認、(2) 「`commands/pr/merge.md` Step 1 is the first application of this boundary」を `merge.md` Step 1 の `gh pr view --json mergeable,mergeStateStatus,isDraft` 権威化実装で確認、(3) 相互参照リンク先 `docs/designs/clear-per-command-flow-state-decoupling.md` の実在を確認、(4) work-memory パス `.rite-work-memory/issue-{n}.md` を SPEC architecture table と照合、(5) 継続ループ系列挙 (`iterate.md` review↔fix / `stop-loop-continuation.sh` + handoff / `pr:review` / `pr:fix` / `resume.md`) の実在を確認。Doc-Heavy mode の 5 カテゴリ verification protocol は本 heuristic の「documentation ↔ implementation cross-reference 検証」を mode-gated に強制する構造であり、本 PR はその構造が clean PR で 1 cycle 収束を達成した positive evidence。
+
+加えて、両 reviewer が独立に **`docs/SPEC.ja.md` の per-session 構造への i18n parity drift (pre-existing)** を検出し、protocol step 6 (JA/EN pair grep) の観点で `grep "sessions/" docs/SPEC.ja.md` → 0 hits / legacy `.rite-flow-state` 全面記述を確認したうえで、**revert test により本 PR diff 由来でないと判定して blocking finding から除外し follow-up Issue (#1262) へ routing** した。JA/EN parity drift が検出されても pre-existing なら current-pr blocker にせず follow-up 化する scope judgment が、本 protocol の grep verify と revert test の組み合わせで正しく機能した実例。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -83,3 +91,4 @@ PR #1248 (Issue #1247、0 findings / 1 cycle) で本 protocol の **prose 散文
 - [PR #1139 fix cycle 8 (Implementation-Grep Verification Gap: fix 履歴の遡及 grep 必須化)](../../raw/fixes/20260525T124932Z-pr-1139.md)
 - [PR #1139 fix cycle 12 (SPEC Multi-Section Same-Topic Drift: SPEC 全文 1 度通読の必要性)](../../raw/fixes/20260525T141022Z-pr-1139.md)
 - [PR #1248 review (prose 散文括弧書きの正確性を helper 出力語彙と cross-check、0 findings の successful application)](../../raw/reviews/20260602T082558Z-pr-1248.md)
+- [PR #1261 review (Doc-Heavy mode 5 カテゴリ検証で全実装主張を grep verify + pre-existing SPEC.ja.md i18n drift を revert-test で follow-up #1262 化、0 findings の successful application)](../../raw/reviews/20260603T162350Z-pr-1261.md)

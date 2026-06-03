@@ -170,6 +170,20 @@ Signal 3 または Signal 4 が発火した場合、**§3 の 4-option AskUserQu
 
 ## §4 — Split bash for "別 Issue として切り出す"
 
+**Important**: 以下の bash ブロックは **単一の Bash tool 呼び出し** で実行すること。本ブロックは一時ファイル cleanup の `trap 'rm -f "$tmpfile"' EXIT` と、write / empty / empty-result の各失敗で中断する `exit 1` ガード (PR #1251) および empty-url 失敗で中断する `exit 1` ガード (PR #1252) を含む。複数の Bash 呼び出しに分割すると trap が中間状態で発火して cleanup 契約が崩れ、`exit 1` も後続呼び出しへ伝播せず guard が機能しなくなる (先例 review.md ステップ 7.4.2 の single-invocation 注記と同契約)。
+
+**Placeholder value sources** (Claude はスクリプト生成前に必ず以下のソースから値を取得してプレースホルダーを置換すること。これらはシェル変数ではない):
+
+| Placeholder | Source | Example |
+|-------------|--------|---------|
+| `{persistent_finding_body}` | 持続した finding の body (review 結果コンテキスト) | (finding 本文) |
+| `{short_summary}` | finding の要約 (動詞始まり、50 文字以内) | `fix XYZ guard` |
+| `{pr_number}` | 現在の PR 番号 (review-fix ループのコンテキスト) | `1253` |
+| `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` | `true` |
+| `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
+| `{owner}` | `rite-config.yml` → `github.projects.owner` | `B16B1RD` |
+| `{plugin_root}` | [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script-full-version) | `/home/user/.claude/plugins/rite` |
+
 ```bash
 tmpfile=$(mktemp)
 trap 'rm -f "$tmpfile"' EXIT

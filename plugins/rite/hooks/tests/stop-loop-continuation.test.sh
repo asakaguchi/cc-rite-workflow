@@ -187,6 +187,84 @@ fi
 out_b=$(stop_payload "$d10" "$SID" true | bash "$HOOK")
 assert "TC-10: second stop allows (one-shot)" "" "$out_b"
 
-if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (Issue #1168 review↔fix loop continuation + #1176 FINALIZE terminal backstop)"; then
+# --- TC-11: WIKICHAIN handoff → block with the cleanup-chain continuation reason (Issue #1245 AC-2/AC-3) ---
+echo ""
+echo "=== TC-11: WIKICHAIN handoff → decision:block re-injects the cleanup chain continuation ==="
+d11=$(new_sandbox)
+RITE_STATE_ROOT="$d11" bash "$FS" set --phase cleanup --issue 1245 --branch b --pr 99 \
+  --next n --handoff "WIKICHAIN:cleanup:99" --session "$SID" >/dev/null
+out=$(stop_payload "$d11" | bash "$HOOK")
+assert "TC-11: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+_reason11=$(printf '%s' "$out" | jq -r '.reason // ""')
+if printf '%s' "$_reason11" | grep -q "wiki:lint チェーン"; then
+  pass "TC-11: reason identifies the cleanup → ingest → lint chain"
+else
+  fail "TC-11: reason missing the chain identification: $out"
+fi
+if printf '%s' "$_reason11" | grep -q "PR #99"; then
+  pass "TC-11: reason surfaces the PR number from the handoff"
+else
+  fail "TC-11: reason missing the PR number: $out"
+fi
+if printf '%s' "$_reason11" | grep -q "ステップ 10"; then
+  pass "TC-11: reason directs continuation to cleanup ステップ 10-12"
+else
+  fail "TC-11: reason missing the cleanup step continuation directive: $out"
+fi
+# Distinctness pins (symmetric to TC-1/TC-7 bidirectional checks): the WIKICHAIN branch must
+# use neither the FINALIZE completion-notice phrasing nor the review↔fix loop phrasing.
+if printf '%s' "$_reason11" | grep -q "完了通知"; then
+  fail "TC-11: WIKICHAIN reason wrongly used the FINALIZE completion-notice phrasing: $out"
+else
+  pass "TC-11: WIKICHAIN reason is distinct from the FINALIZE branch"
+fi
+if printf '%s' "$_reason11" | grep -q "review↔fix"; then
+  fail "TC-11: WIKICHAIN reason wrongly used the review↔fix loop phrasing: $out"
+else
+  pass "TC-11: WIKICHAIN reason is distinct from the continuation branch"
+fi
+
+# --- TC-12: WIKICHAIN handoff consumed one-shot → second stop allows (Issue #1245 AC-3) ---
+echo ""
+echo "=== TC-12: WIKICHAIN handoff is one-shot — second stop allows (no infinite block) ==="
+sf12=$(state_file_for "$d11")
+assert "TC-12: WIKICHAIN handoff deleted after block" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$sf12")"
+out12=$(stop_payload "$d11" "$SID" true | bash "$HOOK")
+assert "TC-12: second stop allows (no output)" "" "$out12"
+
+# --- TC-13: unknown handoff prefix → fail-loud WARNING + verbatim re-inject (PR #1177 lesson) ---
+# The case catch-all must not silently absorb future prefixes into a named-branch behavior:
+# it blocks (handoff non-empty → block axis) but surfaces a WARNING on stderr so a missing
+# case arm is observable instead of masquerading as the review↔fix continuation.
+echo ""
+echo "=== TC-13: unknown handoff prefix → block + WARNING (no silent default absorption) ==="
+d13=$(new_sandbox)
+RITE_STATE_ROOT="$d13" bash "$FS" set --phase cleanup --issue 1245 --branch b --pr 99 \
+  --next n --handoff "FUTUREPREFIX:something:99" --session "$SID" >/dev/null
+err13=$(mktemp)
+out=$(stop_payload "$d13" | bash "$HOOK" 2>"$err13")
+assert "TC-13: decision=block (handoff non-empty axis preserved)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "FUTUREPREFIX:something:99"; then
+  pass "TC-13: reason re-injects the handoff verbatim"
+else
+  fail "TC-13: reason missing the verbatim handoff: $out"
+fi
+if grep -q "unknown handoff prefix" "$err13"; then
+  pass "TC-13: WARNING surfaced on stderr for the unknown prefix"
+else
+  fail "TC-13: missing unknown-prefix WARNING on stderr: $(cat "$err13")"
+fi
+# The unknown-prefix branch must not claim the review↔fix loop identity.
+if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "review↔fix"; then
+  fail "TC-13: unknown-prefix reason wrongly claimed the review↔fix loop identity: $out"
+else
+  pass "TC-13: unknown-prefix reason avoids the review↔fix loop phrasing"
+fi
+rm -f "$err13"
+# one-shot: second stop allows
+out_b=$(stop_payload "$d13" "$SID" true | bash "$HOOK")
+assert "TC-13: second stop allows (one-shot)" "" "$out_b"
+
+if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (Issue #1168 review↔fix loop continuation + #1176 FINALIZE terminal backstop + #1245 WIKICHAIN cleanup-chain gate)"; then
   exit 1
 fi

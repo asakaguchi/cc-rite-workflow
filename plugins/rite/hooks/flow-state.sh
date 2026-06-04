@@ -220,15 +220,19 @@ cmd_set() {
   [ -z "$active" ] && active=$cur_active
   local err_count=0
   [ $preserve_error -eq 1 ] && err_count=$cur_err
-  # `handoff` は review↔fix loop の one-shot マーカー (Issue #1168 / #1176)。`error_count` と同様に
+  # `handoff` は review↔fix loop / cleanup wiki チェーンの one-shot マーカー (Issue #1168 / #1176 /
+  # #1245)。`error_count` と同様に
   # **phase transition (= 毎 set) でデフォルトクリア** する設計のため、merge-read (cur_*) に含めず
   # `--handoff` が明示指定された時だけ書き込む。`--handoff` 省略時は key 自体を付与しない
   # (= 空) ことで、loop 外の set が自動的に handoff をクリアし、stale handoff が次サイクルに漏れない。
-  # handoff には 2 種類の値が入る:
+  # handoff には 3 種類の値が入る:
   #   - 継続 handoff "/rite:pr:..." : 継続 sentinel (review:fix-needed / fix:pushed) を出す sub-skill が渡す。
   #   - 終了 handoff "FINALIZE:{result}:{pr}" : 終了 sentinel (mergeable / replied-only / cancelled) を
-  #     出す sub-skill が渡す (Issue #1176)。`flow-state.sh` 自体は任意文字列を verbatim 格納するため
-  #     機構変更は不要 — prefix 分岐は Stop hook (stop-loop-continuation.sh) 側の reason 生成で行う。
+  #     出す sub-skill が渡す (Issue #1176)。
+  #   - チェーン handoff "WIKICHAIN:{caller}:{pr}" : cleanup.md ステップ 9 が wiki:ingest invoke 直前に
+  #     渡す (Issue #1245)。チェーン完走時はステップ 12 の set (--handoff なし) が default-clear する。
+  #   `flow-state.sh` 自体は任意文字列を verbatim 格納するため
+  #   機構変更は不要 — prefix 分岐は Stop hook (stop-loop-continuation.sh) 側の reason 生成で行う。
   # Stop hook が `consume-handoff` で読み取り + 削除し、prefix で reason を分岐して block する
   # (block 可否は handoff 非空かどうかで決まり、prefix は再注入する reason の選択にのみ影響する)。
   local now new; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -320,7 +324,8 @@ cmd_deactivate() {
   _atomic_write "$path" "$updated" || return 1
 }
 
-# consume-handoff: review↔fix loop の one-shot 継続マーカーを **読み取り + 削除** する (Issue #1168)。
+# consume-handoff: review↔fix loop / cleanup wiki チェーンの one-shot 継続マーカーを
+# **読み取り + 削除** する (Issue #1168 / #1245)。
 # Stop hook (stop-loop-continuation.sh) が turn 終了時に呼ぶ。`handoff` が非空ならその値を stdout に
 # 出力し、同じ呼び出しで file から削除 (atomic) する。これにより:
 #   - handoff 非空 → 値を出力 → hook が block + 再注入。削除済みなので次に LLM が何もせず止まれば
@@ -455,7 +460,7 @@ Usage: $0 {set|get|deactivate|consume-handoff|migrate|path} [options]
   get --field <F> [--default V] [--session UUID]
       | --jq-filter <FILTER> [--default V] [--session UUID]
   deactivate [--next T] [--session UUID]
-  consume-handoff [--session UUID]   # print + clear the one-shot review↔fix loop handoff (Issue #1168)
+  consume-handoff [--session UUID]   # print + clear the one-shot handoff marker (Issue #1168 / #1245)
   migrate [--dry-run] [--verbose]
   path [--session UUID]
 Phase enum (v3): $PHASE_ENUM_V3

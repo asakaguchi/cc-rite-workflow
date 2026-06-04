@@ -1149,11 +1149,11 @@ iteration:
 | SessionEnd | Session end | Save final state |
 | PreToolUse | Before tool execution | Block tool usage after compact, detect dangerous command patterns |
 | PostToolUse | After tool execution | Auto-recover local work memory |
-| Stop | Turn end | Re-inject the `/rite:pr:iterate` review↔fix loop command (`consume-handoff` → `decision:block`) so the loop continues after a continuation sentinel |
+| Stop | Turn end | Re-inject the `/rite:pr:iterate` review↔fix loop command or the `/rite:pr:cleanup` wiki-chain continuation (`consume-handoff` → `decision:block`) so the loop / chain continues after a continuation sentinel |
 
 > **Note:** `notification.sh` is not a Claude Code hook type but a utility script called directly from within commands. It is invoked by command scripts during events such as PR creation, Ready status change, and Issue close to send external notifications. See the [Notification Integration](#notification-integration) section for details.
 >
-> **Note:** The legacy stop-prevention hook (`stop-guard.sh`) has been removed; workflow stop prevention itself is now handled by the per-session state structure (`.rite/sessions/{session_id}.flow-state`) and the orchestrator-level scaffolding contract (Pre-write + 🚨 Mandatory After). A **distinct** `Stop` hook (`stop-loop-continuation.sh`, Issue #1168) is registered for a different purpose: it consumes the one-shot `handoff` marker and re-injects the next review↔fix loop command. See the [Multi-Session State Management](#multi-session-state-management) section for details.
+> **Note:** The legacy stop-prevention hook (`stop-guard.sh`) has been removed; workflow stop prevention itself is now handled by the per-session state structure (`.rite/sessions/{session_id}.flow-state`) and the orchestrator-level scaffolding contract (Pre-write + 🚨 Mandatory After). A **distinct** `Stop` hook (`stop-loop-continuation.sh`, Issue #1168) is registered for a different purpose: it consumes the one-shot `handoff` marker and re-injects the next review↔fix loop command, or — for the `WIKICHAIN:` prefix set by `/rite:pr:cleanup` Step 9 (Issue #1245) — the continuation of the cleanup → wiki:ingest → wiki:lint chain. See the [Multi-Session State Management](#multi-session-state-management) section for details.
 
 ### Hook Execution Order
 
@@ -1162,7 +1162,7 @@ SessionStart
  ↓
 PreToolUse → Tool Execution → PostToolUse
  ↓
-Stop (on turn end — review↔fix loop handoff continuation)
+Stop (on turn end — review↔fix loop / cleanup wiki-chain handoff continuation)
  ↓
 PreCompact (on compact)
  ↓
@@ -1412,7 +1412,7 @@ The `session_id` is the same UUID stored in `.rite-session-id` and propagated to
 | Optional | `wm_comment_id` | `issue-comment-wm-sync.sh` (cache write) | GitHub comment ID for the work memory backup |
 | Optional | `loop_count` | **Reader-only legacy field** — no production writer in `flow-state.sh` (verify with `grep -n loop_count plugins/rite/hooks/flow-state.sh` → 0 hits). Consumers (`pre-compact.sh` / `post-compact.sh` / `session-start.sh` / `work-memory-update.sh`) read it as best-effort; `work-memory-update.sh` increments the work-memory document copy, not the flow-state field. Schema slot retained for forward compatibility | Review-fix loop counter |
 | Optional | `error_count` | `flow-state.sh set` (resets to `0` on phase transition; `--preserve-error-count` retains the existing value) | Half-legacy field — incrementer was removed with `stop-guard.sh`; writer is reset-only. Schema retained for forward compatibility |
-| Optional | `handoff` | `flow-state.sh set --handoff <cmd>` (writer; **default-clears on every set** — present only when `--handoff` is passed) / `flow-state.sh consume-handoff` (reader+deleter) | One-shot review↔fix loop continuation marker (Issue #1168). Set by `review.md` Step 8.0 (`/rite:pr:fix {pr}` on `[review:fix-needed]`) and `fix.md` Step 5.1 (`/rite:pr:review {pr}` on `[fix:pushed]`/`[fix:pushed-wm-stale]`). Consumed (printed + deleted) by the `Stop` hook `stop-loop-continuation.sh`, which emits `decision:block` to re-inject the command. Default-clear semantics mirror `error_count`; no `schema_version` bump (additive, backward-compatible via `.handoff // ""`) |
+| Optional | `handoff` | `flow-state.sh set --handoff <cmd>` (writer; **default-clears on every set** — present only when `--handoff` is passed) / `flow-state.sh consume-handoff` (reader+deleter) | One-shot continuation marker (Issue #1168 / #1176 / #1245) with three value families: continuation `/rite:...` set by `review.md` Step 8.0 (`/rite:pr:fix {pr}` on `[review:fix-needed]`) and `fix.md` Step 5.1 (`/rite:pr:review {pr}` on `[fix:pushed]`/`[fix:pushed-wm-stale]`); terminal `FINALIZE:{result}:{pr}` set by the same steps on terminal sentinels (Issue #1176); chain `WIKICHAIN:{caller}:{pr}` set by `cleanup.md` Step 9 before invoking `rite:wiki:ingest` (Issue #1245 — cleared by the Step 12 terminal set's default-clear when the chain completes). Consumed (printed + deleted) by the `Stop` hook `stop-loop-continuation.sh`, which emits `decision:block` with a prefix-selected reason. Default-clear semantics mirror `error_count`; no `schema_version` bump (additive, backward-compatible via `.handoff // ""`) |
 | Optional | `schema_version` | `flow-state.sh set` | `3` for the per-session structure; absent or `!= 3` triggers migration |
 
 > **`needs_clear` field**: Removed. The previous compact-recovery design discussed `needs_clear` as a flag, but production code never had a writer or non-test reader. Test fixtures (`pre-compact.test.sh` TC-014 / TC-014b) actively assert that `pre-compact does NOT set needs_clear`. The new schema does not include this field.

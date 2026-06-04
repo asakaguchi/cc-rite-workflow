@@ -20,6 +20,9 @@
 #   (d) cleanup.md ステップ 12 の terminal set に `--handoff` が付与された (default-clear 喪失
 #       = 完走後も handoff が残存し、次の停止で誤 block する)
 #   (e) チェーン各段 (lint / ingest / cleanup) の returned-to-caller sentinel 宣言の削除/rename 漏れ
+#   (f) ステップ 9 の handoff set とステップ 12 の terminal set の間に `--handoff` なしの
+#       executable な flow-state.sh set が追加された (handoff の premature default-clear —
+#       gate が silent に外れる。prose の「制約」note のみが guard だった経路の機械化、Issue #1268)
 #
 # 検出しない drift (本 test の scope 外、他 test が担当):
 #   - hook の block / one-shot consume / reason 文面の runtime 挙動
@@ -126,6 +129,40 @@ for f in "$LINT_MD" "$INGEST_MD" "$CLEANUP_MD"; do
   fi
 done
 
-if ! print_summary "cleanup-wikichain-handoff-parity.test.sh" "drift hint: cleanup.md ステップ 9 (WIKICHAIN handoff set) / ステップ 12 (terminal set の default-clear) と stop-loop-continuation.sh の WIKICHAIN:* case arm、チェーン 3 段の return sentinel を同期させてください (Issue #1245)"; then
+# ──────────────────────────────────────────────────────────────────────
+# TC-6: ステップ 9〜12 間に --handoff なしの executable intervening set が存在しない
+# ──────────────────────────────────────────────────────────────────────
+# ステップ 9 直下の「制約」note (prose guard) の機械版 (Issue #1268)。intervening
+# `flow-state.sh set` (--handoff なし) が挟まると handoff が premature default-clear され
+# gate が silent に外れる。anchor は TC-2 の handoff_line / TC-4 の terminal_set_line を
+# 再利用し、新規 anchor 追加による drift コストを避ける (anchor 不在時は skip して
+# TC-1/TC-4 の fail と重複させない)。
+# 判定対象は executable 行のみ: prose の backtick 言及 (`flow-state.sh set`) は
+# `{plugin_root}/hooks/` path prefix を持たないため、path 付き literal で区別する。
+terminal_line=""
+if [ -n "$terminal_set_line" ]; then
+  terminal_line=$(printf '%s' "$terminal_set_line" | cut -d: -f1)
+fi
+
+if [ -z "$handoff_line" ] || [ -z "$terminal_line" ]; then
+  echo "  ⏭️  TC-6 skipped (TC-1/TC-4 で anchor 不在を検出済み)"
+elif [ "$handoff_line" -ge "$terminal_line" ]; then
+  fail "TC-6 handoff set (line $handoff_line) が terminal set (line $terminal_line) より後にあります (ステップ 9 → 12 の構造順序が崩れています)"
+else
+  # 行末 \ の継続行を join してから判定する (multi-line set の継続行に --handoff が
+  # ある場合、行単位 grep では --handoff なしと誤判定されるため)
+  intervening_sets=$(sed -n "$((handoff_line + 1)),$((terminal_line - 1))p" "$CLEANUP_MD" \
+    | sed -e ':a' -e '/\\$/N; s/\\\n//; ta' \
+    | grep -F -- '/hooks/flow-state.sh set' \
+    | grep -vF -- '--handoff' || true)
+
+  if [ -z "$intervening_sets" ]; then
+    pass "TC-6 ステップ 9〜12 間に --handoff なしの intervening flow-state.sh set は存在しない"
+  else
+    fail "TC-6 ステップ 9〜12 間に --handoff なしの executable flow-state.sh set が存在します (handoff が premature default-clear され gate が silent に外れます)。cleanup.md ステップ 9 の「制約」note に従い、同じ WIKICHAIN handoff 値を --handoff で再指定してください: $intervening_sets"
+  fi
+fi
+
+if ! print_summary "cleanup-wikichain-handoff-parity.test.sh" "drift hint: cleanup.md ステップ 9 (WIKICHAIN handoff set) / ステップ 12 (terminal set の default-clear) と stop-loop-continuation.sh の WIKICHAIN:* case arm、チェーン 3 段の return sentinel を同期させてください (Issue #1245)。ステップ 9〜12 間に新規 flow-state.sh set を挟む場合は同じ WIKICHAIN handoff 値の --handoff 再指定が必要です (cleanup.md ステップ 9 の制約 note / Issue #1268)"; then
   exit 1
 fi

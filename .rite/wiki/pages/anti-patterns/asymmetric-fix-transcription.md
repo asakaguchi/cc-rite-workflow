@@ -2,8 +2,10 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-06-03T10:08:59Z"
+updated: "2026-06-04T08:51:09Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260604T061732Z-pr-1267.md"
   - type: "reviews"
     ref: "raw/reviews/20260603T100859Z-pr-1260.md"
   - type: "reviews"
@@ -1140,6 +1142,12 @@ PR #1260 は `commands/pr/merge.md` の旧 Step 1 (flow-state 前提チェック
 
 加えて 2 つの boundary 判断を併せて記録: (a) decision-record (`docs/designs/clear-per-command-flow-state-decoupling.md`) は **as-was 状態を記述する性質上、後続 renumber を追従させない** 運用が妥当という reviewer 合意 (PR #1133 の「表更新 PR は同セクション散文の依存値も着手時 grep scope に含める」と対をなす — design doc は意図的に renumber 射程外)。(b) flow-state 撤去後の完了通知 branch 名供給を `gh pr view --json headRefName` へ一本化する変更は、sibling コマンド `ready.md` / `cleanup.md` と同じ raw `--json` + LLM context 消費パターンで baseline 整合を確認 (新規導入する supply 経路が既存 sibling と非対称にならないことの verify)。
 
+### 新規 enum 値追加時の全コピー site 同時同期 — handoff 3 系統 8 site の事前回避 (PR #1267 — Issue #1245、0 findings)
+
+PR #1267 (cleanup→wiki:ingest→wiki:lint チェーンの Stop-hook 継続保証) は、handoff 値域への新系統 `WIKICHAIN:{caller}:{pr}` 追加にあたり、値域列挙が分散する **全 8 コピー site** (flow-state.sh コメント・usage / stop-loop-continuation.sh ヘッダ・case 分岐コメント / SPEC.md / SPEC.ja.md / multi-session-state.md / clear-per-command-flow-state-decoupling.md / cleanup.md / ready.md) を同一 PR 内で 3 系統 (継続 `/rite:` / 終了 `FINALIZE:` / チェーン `WIKICHAIN:`) へ同時更新し、code-quality / tech-writer の 2 reviewer が `git grep WIKICHAIN` + JA/EN parity grep で drift ゼロを独立に機械検証した (0 findings / 1 cycle mergeable)。
+
+successful preventive application としての特徴: (a) PR #1169 (hooks.json Stop 追加時に SPEC 内 4 箇所 drift) の同型シナリオを、着手時から「enum 値追加 = 全コピー site 同時更新契約」として扱うことで cycle 消費ゼロで回避、(b) iterate ループの既存機構 (#1168/#1176) の同型移植という設計方針 (新規抽象なし) が同期対象 site の予見可能性を高めた、(c) scope 的に WIKICHAIN を列挙**しない**のが正しい site (iterate.md — iterate ループ専用 scope の記述) を reviewer が boundary 判断で明示的に「正しい非対称」と確認し、過剰同期 (over-transcription) も回避した。enum/値域の追加では「同期すべき site の網羅」と「scope 的に同期すべきでない site の識別」の両方が検証対象になることを示した実測例。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -1160,6 +1168,7 @@ PR #1260 は `commands/pr/merge.md` の旧 Step 1 (flow-state 前提チェック
 
 ## ソース
 
+- [PR #1267 review results (Issue #1245、0 findings の successful preventive application: handoff 値域への WIKICHAIN 系統追加で全 8 コピー site (flow-state.sh / stop-loop-continuation.sh / SPEC ja・en / design docs 2 件 / cleanup.md / ready.md) を同一 PR 内で 3 系統列挙へ同時同期、code-quality / tech-writer が grep + JA/EN parity で drift ゼロを独立機械検証。iterate.md は scope 的に正しい非対称として boundary 確認、over-transcription も回避。1 cycle mergeable)](../../raw/reviews/20260604T061732Z-pr-1267.md)
 - [PR #1260 review results (Issue #1258、0 findings の successful preventive application: merge.md 旧 Step 1 削除 + 残り step を 1/2/3 へ繰り上げる step-renumber refactor で、2 reviewer (prompt-engineer / code-quality) が renumber 伝播漏れを独立に検証。(1) merge.md 全文 git show/Read で旧番号残存ゼロ、(2) `grep -rn "merge.md" plugins/ docs/` で cross-file step 参照を洗い出し、(3) 影響テスト sentinel-disambiguator-adjacency.test.sh PASS 10/0 の 3 点セットで同期漏れゼロを確認。decision-record は as-was 記述のため renumber 追従不要 (boundary)、完了通知 branch 名を `gh pr view --json headRefName` へ一本化し sibling ready.md/cleanup.md と baseline 整合。指摘 0 件 / 1 cycle mergeable)](../../raw/reviews/20260603T100859Z-pr-1260.md)
 - [PR #1254 review results (Issue #1252、0 findings の successful symmetrization application: PR #1251 が #1234 スコープ外に切り出した post-result error surfacing を fingerprint-cycling.md §4 split に移植して完結。`issue_url==""` failed-JSON ガード (空 URL での `✅` echo 遮断 + `[CONTEXT] ISSUE_CREATE_FAILED=1; reason=empty_issue_url` emit + exit 1) と project_registration / warnings[] surfacing を先例 review.md ステップ 7.4.2 と同等移植 (16 add / 0 del、PR #1251 の 3 ガードは温存)。§4 単一 finding context の明示 exit 1 ガードは複数候補ループの review.md より厳格だが context-appropriate な強化と両 reviewer 合意、blind transcription ではない。2 reviewer 全員 0 件で 1 cycle mergeable)](../../raw/reviews/20260603T014204Z-pr-1254.md)
 - [PR #1251 review results (Issue #1234、0 findings の successful symmetrization application: fingerprint-cycling.md §4 split が先例 pr/review.md ステップ 7.4.2 の 3 silent-failure guard (heredoc write-failure / empty-body / empty-result) を欠く pre-existing 非対称を、reason 文字列 / `[CONTEXT] ISSUE_CREATE_FAILED` marker / exit code を byte 一致で移植し解消。§4 固有要素は保持。3 reviewer 全員「可」「指摘 0 件」で 1 cycle mergeable。pre-existing ガード欠如 (PR #1233 pipe refactor は invocation 形のみ変更) を revert test で確認し #1221 スコープ外として #1234 へ別 Issue 化済み)](../../raw/reviews/20260602T172745Z-pr-1251.md)

@@ -2,8 +2,10 @@
 title: "prefix 分岐 case の `*)` catch-all は未知の将来 prefix を silent に default 動作へ吸収する"
 domain: "anti-patterns"
 created: "2026-05-28T23:42:28Z"
-updated: "2026-05-28T23:42:28Z"
+updated: "2026-06-04T08:51:09Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260604T061732Z-pr-1267.md"
   - type: "reviews"
     ref: "raw/reviews/20260528T232433Z-pr-1177.md"
   - type: "fixes"
@@ -34,11 +36,18 @@ PR #1177 (`/rite:pr:iterate` 終了点の FINALIZE handoff backstop) で、Stop 
 
 同 hook の説明コメントが「prefix で **block を分岐**」と書かれていたが、実装上 prefix が分岐するのは **reason** のみで、block 可否は「handoff が非空かどうか」という別軸で決まる。曖昧表現が直交する 2 軸 (block 可否 / reason 選択) を混同させ、後続編集者の誤読を招く。fix では「prefix で reason を分岐 (block 可否は別軸)」と機構の責務を明示する形に補正した。catch-all 脆さと同じく「prefix dispatch の意味を正確に書く」doctrine の一部。
 
+### Successful application — prefix 名前空間拡張時の canonical 対策実装 (PR #1267 / Issue #1245、0 findings)
+
+PR #1177 が予見した「handoff prefix の 3 種類目拡張」が PR #1267 (cleanup→wiki:ingest→wiki:lint チェーンの Stop-hook 継続保証) で実際に発生し、本 canonical 対策がそのまま実装された: `WIKICHAIN:*` prefix 追加と**同時に**既知 prefix (`FINALIZE:*` / `WIKICHAIN:*` / `/rite:*`) を明示列挙し、`*)` catch-all から正規動作 (旧: 継続再注入文面) を排除して「WARNING (stderr) + verbatim 再注入」の fail-loud 経路へ変更した。block 自体は「handoff 非空」軸で維持され、未知 prefix も block はするが review↔fix loop の identity を僭称しない。runtime TC-13 が未知 prefix の WARNING surface + verbatim 再注入 + one-shot consume を機械検証する。
+
+PR #1267 review では error-handling / code-quality / security の 3 reviewer が独立に canonical 準拠 (直交 2 軸責務分離の維持を含む) を検証し、0 findings / 1 cycle mergeable で landing。anti-pattern 記録から 1 週間以内に同一 hook の名前空間拡張で対策が再現適用された positive evidence であり、「拡張と同時に明示 arm を追加する」運用が catch-all 縮退を構造的に防ぐことを実証した。
+
 ## 関連ページ
 
 - [bash 文字列変数の初期値は allowed values 列挙に含めるか fail-loud sentinel で defensive に倒す](../patterns/bash-initial-value-aligns-with-allowed-values.md)
 
 ## ソース
 
+- [PR #1267 review results (Issue #1245、0 findings の successful application: WIKICHAIN prefix 追加と同時に既知 prefix 明示列挙 + 未知 prefix fail-loud 化を実装、3 reviewer 独立検証 + TC-13 機械検証で 1 cycle mergeable)](../../raw/reviews/20260604T061732Z-pr-1267.md)
 - [PR #1177 review results](../../raw/reviews/20260528T232433Z-pr-1177.md)
 - [PR #1177 fix results](../../raw/fixes/20260528T232834Z-pr-1177.md)

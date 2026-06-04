@@ -2,12 +2,14 @@
 title: "Wording 層の self-referential loop は mechanical test 化で構造解消する"
 domain: "patterns"
 created: "2026-05-26T00:30:00Z"
-updated: "2026-05-26T00:30:00Z"
+updated: "2026-06-04T08:51:09Z"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260525T221902Z-pr-1143.md"
   - type: "fixes"
     ref: "raw/fixes/20260525T233957Z-pr-1143.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260604T061732Z-pr-1267.md"
 tags: []
 confidence: high
 ---
@@ -26,6 +28,12 @@ PR #1143 cycle 6-7 で確立:
 
 - **cycle 6**: `hooks/tests/comment-best-practices-parity.test.sh` を新規作成し、SoT 22 entry 全部が Heuristics regex で match することを assert (forward subset の test 化)。declarative invariant が文書上の宣言から実行可能な test に格上げされた
 - **cycle 7**: `1 対 1 mapping` 等の cross-axis declarative mapping を **削除** し、「parity test の green が contract」に統一。wording 層の self-referential loop を構造的に閉塞
+
+PR #1267 (Issue #1245、0 findings / 1 cycle) で **初回実装時からの preventive 適用 + mutation 検証による test 検出力の実証** を追加:
+
+- Issue 側 AC が「declarative wording / sentinel 命名のみの修正は reject」(#1144 AC-4 継承) と明示し、WIKICHAIN handoff gate の実装と**同時に**静的 parity test (`cleanup-wikichain-handoff-parity.test.sh` TC-1〜5: writer / consumer / terminal set default-clear / チェーン 3 段 return sentinel) + runtime TC-11〜13 を追加。grep anchor 5 件は実装 literal と byte 一致 (anchor / context 分離の canonical 準拠)
+- test reviewer が isolated worktree (`git worktree add --detach`) で **6 種の mutation 検証** (case arm 削除 / handoff set 削除 / terminal set への `--handoff` 付与 / reason 補間除去 / WARNING 削除 / reason 文面 copy-paste) を実施し、全 mutation で該当 TC が FAIL することを確認 — 「test が green であること」だけでなく「実装を壊せば red になること」(false positive 不在) を review 段階で実証する手法として記録
+- 「2 cycle 以上 finding 再発後に test 化する」remediation 経路ではなく、**着手時から mechanical test を実装と同梱する** preventive 経路でも本 pattern が成立し、0 findings / 1 cycle 収束に寄与することを実測
 
 ### 適用条件
 
@@ -60,3 +68,4 @@ mechanical test 化自体も新たな declarative 層を生む経路を持つ (P
 
 - [PR #1143 cycle 6 fix (mechanical parity test 追加 + 3 列 column schema 拡張)](../../raw/fixes/20260525T221902Z-pr-1143.md)
 - [PR #1143 cycle 7 fix (declarative mapping を mechanical test に委譲、wording 層 self-meta-conflict 構造解消)](../../raw/fixes/20260525T233957Z-pr-1143.md)
+- [PR #1267 review results (Issue #1245、0 findings: WIKICHAIN handoff gate を静的 parity test TC-1〜5 + runtime TC-11〜13 と同梱実装、mutation 検証 6 種で全 TC の検出力を実証した preventive 適用)](../../raw/reviews/20260604T061732Z-pr-1267.md)

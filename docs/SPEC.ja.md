@@ -1292,11 +1292,11 @@ iteration:
 | SessionEnd | セッション終了時 | 最終状態の保存 |
 | PreToolUse | ツール実行前 | compact 後のツール使用ブロック、危険なコマンドパターンの検出 |
 | PostToolUse | ツール実行後 | ローカル作業メモリの自動復旧 |
-| Stop | ターン終了時 | `/rite:pr:iterate` の review↔fix ループコマンドを再注入する（`consume-handoff` → `decision:block`）。継続 sentinel の後にループを継続させる |
+| Stop | ターン終了時 | `/rite:pr:iterate` の review↔fix ループコマンドまたは `/rite:pr:cleanup` の wiki チェーン継続を再注入する（`consume-handoff` → `decision:block`）。継続 sentinel の後にループ / チェーンを継続させる |
 
 > **注:** `notification.sh` は Claude Code のフックタイプではなく、コマンド内から直接呼び出されるユーティリティスクリプトである。PR 作成・Ready 変更・Issue クローズなどのイベント時にコマンドスクリプトが `notification.sh` を呼び出して外部通知を送信する。詳細は[通知連携](#通知連携)セクションを参照。
 >
-> **注:** レガシーな停止防止 hook（`stop-guard.sh`）は撤去済みで、ワークフローの停止防止自体は per-session 状態構造（`.rite/sessions/{session_id}.flow-state`）と orchestrator レベルの scaffolding 契約（Pre-write + 🚨 Mandatory After）が担う。**別個の** `Stop` hook（`stop-loop-continuation.sh`, Issue #1168）が異なる目的で登録されている: one-shot の `handoff` marker を消費し、次の review↔fix ループコマンドを再注入する。詳細は[マルチセッション状態管理](#マルチセッション状態管理)セクションを参照。
+> **注:** レガシーな停止防止 hook（`stop-guard.sh`）は撤去済みで、ワークフローの停止防止自体は per-session 状態構造（`.rite/sessions/{session_id}.flow-state`）と orchestrator レベルの scaffolding 契約（Pre-write + 🚨 Mandatory After）が担う。**別個の** `Stop` hook（`stop-loop-continuation.sh`, Issue #1168）が異なる目的で登録されている: one-shot の `handoff` marker を消費し、次の review↔fix ループコマンド、または `WIKICHAIN:` prefix（`/rite:pr:cleanup` ステップ 9 が set、Issue #1245）の場合は cleanup → wiki:ingest → wiki:lint チェーンの継続を再注入する。詳細は[マルチセッション状態管理](#マルチセッション状態管理)セクションを参照。
 
 ### フック実行順序
 
@@ -1305,7 +1305,7 @@ SessionStart
  ↓
 PreToolUse → ツール実行 → PostToolUse
  ↓
-Stop（ターン終了時 — review↔fix ループの handoff 継続）
+Stop（ターン終了時 — review↔fix ループ / cleanup wiki チェーンの handoff 継続）
  ↓
 PreCompact（コンパクト時）
  ↓
@@ -1555,7 +1555,7 @@ tdd:
 | 任意 | `wm_comment_id` | `issue-comment-wm-sync.sh`（キャッシュ書き込み） | 作業メモリバックアップ用の GitHub コメント ID |
 | 任意 | `loop_count` | **読み取り専用の legacy フィールド** — `flow-state.sh` に production writer なし（`grep -n loop_count plugins/rite/hooks/flow-state.sh` → 0 hits）。消費者（`pre-compact.sh` / `post-compact.sh` / `session-start.sh` / `work-memory-update.sh`）が best-effort で読む。`work-memory-update.sh` は作業メモリ文書側のコピーをインクリメントするのであって flow-state フィールドではない。前方互換のためスキーマスロットを保持 | review-fix ループカウンタ |
 | 任意 | `error_count` | `flow-state.sh set`（phase 遷移時に `0` にリセット。`--preserve-error-count` で既存値を保持） | 半 legacy フィールド — incrementer は `stop-guard.sh` とともに撤去済み。writer は reset のみ。前方互換のためスキーマを保持 |
-| 任意 | `handoff` | `flow-state.sh set --handoff <cmd>`（writer。**set ごとにデフォルトでクリア** — `--handoff` 指定時のみ存在）/ `flow-state.sh consume-handoff`（reader + deleter） | one-shot の review↔fix ループ継続 marker（Issue #1168）。`review.md` Step 8.0（`[review:fix-needed]` 時の `/rite:pr:fix {pr}`）と `fix.md` Step 5.1（`[fix:pushed]` / `[fix:pushed-wm-stale]` 時の `/rite:pr:review {pr}`）が set する。`Stop` hook `stop-loop-continuation.sh` が消費（print + 削除）し、`decision:block` を emit してコマンドを再注入する。デフォルトクリアの意味論は `error_count` をミラー。`schema_version` のバンプなし（`.handoff // ""` 経由で additive・後方互換） |
+| 任意 | `handoff` | `flow-state.sh set --handoff <cmd>`（writer。**set ごとにデフォルトでクリア** — `--handoff` 指定時のみ存在）/ `flow-state.sh consume-handoff`（reader + deleter） | one-shot の継続 marker（Issue #1168 / #1176 / #1245）。値は 3 系統: 継続 `/rite:...` は `review.md` Step 8.0（`[review:fix-needed]` 時の `/rite:pr:fix {pr}`）と `fix.md` Step 5.1（`[fix:pushed]` / `[fix:pushed-wm-stale]` 時の `/rite:pr:review {pr}`）が set。終了 `FINALIZE:{result}:{pr}` は同 Step が終了 sentinel 時に set（Issue #1176）。チェーン `WIKICHAIN:{caller}:{pr}` は `cleanup.md` ステップ 9 が `rite:wiki:ingest` invoke 前に set（Issue #1245 — チェーン完走時はステップ 12 の terminal set の default-clear で消える）。`Stop` hook `stop-loop-continuation.sh` が消費（print + 削除）し、prefix で選択した reason とともに `decision:block` を emit する。デフォルトクリアの意味論は `error_count` をミラー。`schema_version` のバンプなし（`.handoff // ""` 経由で additive・後方互換） |
 | 任意 | `schema_version` | `flow-state.sh set` | per-session 構造では `3`。不在または `!= 3` で移行をトリガ |
 
 > **`needs_clear` フィールド**: 撤去済み。以前の compact 復旧設計は `needs_clear` をフラグとして議論したが、production コードには writer も（テスト以外の）reader も存在しなかった。テストフィクスチャ（`pre-compact.test.sh` TC-014 / TC-014b）は `pre-compact が needs_clear を設定しない`ことを能動的にアサートしている。新スキーマはこのフィールドを含まない。

@@ -1437,7 +1437,7 @@ legacy `create_*` / `cleanup_*` phase の lifecycle 未完了検出は現在 `se
 
 マルチセッション競合防止のためにライフサイクル hook から source される共有ライブラリ。per-session 状態構造（#672 / Issue #685 / PR #686 + #747 + #748 + #750 + #751 + #756 + #757 + #759）により、所有権はファイル命名（`.rite/sessions/{session_id}.flow-state`）によって**構造的に保証**される。本ライブラリは現在、ランタイムガードではなくパス / エントリ解決レイヤとして機能する。
 
-> **Canonical SoT（source caller）**: 実際の `source` ディレクティブは `plugins/rite/hooks/*.sh` 内にある（`grep -rn "source.*session-ownership.sh" plugins/rite/hooks/ --include='*.sh' | grep -v tests/` で検証）。現時点では次に解決される: `session-start.sh` / `session-end.sh` / `pre-compact.sh` / `post-tool-wm-sync.sh`。（`flow-state.sh` は本ライブラリの `source` caller ではなく `state-path-resolve.sh` のみを source する。`stop-guard.sh` は撤去済み。`post-compact.sh` は本ライブラリを直接 source しない。`pre-tool-bash-guard.sh` は `STATE_FILE_PATH` を `_resolve-flow-state-path.sh` 経由で解決し、本ライブラリの `source` caller であったことはない。）
+> **Canonical SoT（source caller）**: 実際の `source` ディレクティブは `plugins/rite/hooks/*.sh` 内にある（`grep -rn "source.*session-ownership.sh" plugins/rite/hooks/ --include='*.sh' | grep -v tests/` で検証）。現時点では次に解決される: `session-start.sh` / `session-end.sh` / `pre-compact.sh` / `post-tool-wm-sync.sh`。（`flow-state.sh` は本ライブラリの `source` caller ではなく `state-path-resolve.sh` のみを source する。`stop-guard.sh` は撤去済み。`post-compact.sh` は本ライブラリを直接 source しない。`pre-tool-bash-guard.sh` は `hook-preamble.sh` のみを source し、flow-state パス解決には関与せず、本ライブラリの `source` caller であったことはない。）
 
 **提供する関数:**
 
@@ -1553,7 +1553,7 @@ tdd:
 | 必須 | `session_id` | `flow-state.sh set` | `.rite-session-id` をミラーし、ファイル名として使用 |
 | 必須 | `last_synced_phase` | `flow-state.sh set`（既存値を merge-preserve）/ `post-tool-wm-sync.sh`（phase 差分時の実際の writer。`jq '.last_synced_phase = $p'` 経由） | 最後の作業メモリ同期点を追跡。`flow-state.sh set` は merge-preserve するがこのフィールドを author しない — author するのは per-tool sync hook のみ（`grep -n last_synced_phase plugins/rite/hooks/*.sh` で検証） |
 | 任意 | `wm_comment_id` | `issue-comment-wm-sync.sh`（キャッシュ書き込み） | 作業メモリバックアップ用の GitHub コメント ID |
-| 任意 | `loop_count` | **読み取り専用の legacy フィールド** — `flow-state.sh` に production writer なし（`grep -n loop_count plugins/rite/hooks/flow-state.sh` → 0 hits）。消費者（`post-compact.sh` / `session-start.sh` / `state-read.sh`）が best-effort で読む。`work-memory-update.sh` は作業メモリ文書側のコピーをインクリメントするのであって flow-state フィールドではない。前方互換のためスキーマスロットを保持 | review-fix ループカウンタ |
+| 任意 | `loop_count` | **読み取り専用の legacy フィールド** — `flow-state.sh` に production writer なし（`grep -n loop_count plugins/rite/hooks/flow-state.sh` → 0 hits）。消費者（`pre-compact.sh` / `post-compact.sh` / `session-start.sh` / `work-memory-update.sh`）が best-effort で読む。`work-memory-update.sh` は作業メモリ文書側のコピーをインクリメントするのであって flow-state フィールドではない。前方互換のためスキーマスロットを保持 | review-fix ループカウンタ |
 | 任意 | `error_count` | `flow-state.sh set`（phase 遷移時に `0` にリセット。`--preserve-error-count` で既存値を保持） | 半 legacy フィールド — incrementer は `stop-guard.sh` とともに撤去済み。writer は reset のみ。前方互換のためスキーマを保持 |
 | 任意 | `handoff` | `flow-state.sh set --handoff <cmd>`（writer。**set ごとにデフォルトでクリア** — `--handoff` 指定時のみ存在）/ `flow-state.sh consume-handoff`（reader + deleter） | one-shot の review↔fix ループ継続 marker（Issue #1168）。`review.md` Step 8.0（`[review:fix-needed]` 時の `/rite:pr:fix {pr}`）と `fix.md` Step 5.1（`[fix:pushed]` / `[fix:pushed-wm-stale]` 時の `/rite:pr:review {pr}`）が set する。`Stop` hook `stop-loop-continuation.sh` が消費（print + 削除）し、`decision:block` を emit してコマンドを再注入する。デフォルトクリアの意味論は `error_count` をミラー。`schema_version` のバンプなし（`.handoff // ""` 経由で additive・後方互換） |
 | 任意 | `schema_version` | `flow-state.sh set` | per-session 構造では `3`。不在または `!= 3` で移行をトリガ |

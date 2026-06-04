@@ -159,10 +159,10 @@ else
   if [ -z "$intervening_sets" ]; then
     pass "TC-6 ステップ 9〜12 間に --handoff なしの intervening flow-state.sh set は存在しない"
   else
-    fail "TC-6 ステップ 9〜12 間に --handoff なしの executable flow-state.sh set が存在します (handoff が premature default-clear され gate が silent に外れます)。cleanup.md ステップ 9 の「制約」note に従い、同じ WIKICHAIN handoff 値を --handoff で再指定してください: $intervening_sets"
+    fail "TC-6 ステップ 9〜12 間に --handoff なしの executable flow-state.sh set が存在します (handoff が premature default-clear され gate が silent に外れます)。cleanup.md ステップ 9 の「制約」note によりステップ 10-11 への flow-state.sh set 追加自体が禁止です — 該当 set を削除してください (--handoff 再指定は TC-1 の単一 SoT 制約と矛盾するため不可。intervening set が必要な設計変更は制約 note と TC-1/TC-6 を同時に見直すこと): $intervening_sets"
   fi
 fi
 
-if ! print_summary "cleanup-wikichain-handoff-parity.test.sh" "drift hint: cleanup.md ステップ 9 (WIKICHAIN handoff set) / ステップ 12 (terminal set の default-clear) と stop-loop-continuation.sh の WIKICHAIN:* case arm、チェーン 3 段の return sentinel を同期させてください (Issue #1245)。ステップ 9〜12 間に新規 flow-state.sh set を挟む場合は同じ WIKICHAIN handoff 値の --handoff 再指定が必要です (cleanup.md ステップ 9 の制約 note / Issue #1268)"; then
+if ! print_summary "cleanup-wikichain-handoff-parity.test.sh" "drift hint: cleanup.md ステップ 9 (WIKICHAIN handoff set) / ステップ 12 (terminal set の default-clear) と stop-loop-continuation.sh の WIKICHAIN:* case arm、チェーン 3 段の return sentinel を同期させてください (Issue #1245)。ステップ 9〜12 間への新規 flow-state.sh set 追加は禁止です — --handoff 再指定は TC-1 の単一 SoT と矛盾するため不可 (cleanup.md ステップ 9 の制約 note / Issue #1268, #1271)"; then
   exit 1
 fi

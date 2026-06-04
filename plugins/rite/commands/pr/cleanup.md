@@ -382,7 +382,7 @@ bash {plugin_root}/hooks/flow-state.sh set --phase "cleanup" --active true \
 
 > **Why (mechanical gate)**: cleanup → wiki:ingest → wiki:lint の 2 段ネスト skill return 直後に LLM が turn を閉じる implicit stop が累積再発している (#604〜#1144 lineage、#1245)。iterate ループの Stop-hook 継続保証 (#1168 / #1176) と同型の one-shot handoff を移植し、チェーン途中で turn が閉じた場合は Stop hook (`stop-loop-continuation.sh`) が `WIKICHAIN:*` を consume して停止を差し戻し、残り step (ingest 残処理 → ステップ 10-12) の継続を強制する。チェーンがステップ 12 まで完走した場合はステップ 12 末尾の `flow-state.sh set` (`--handoff` なし) が handoff を default-clear するため block は発生しない。consume は one-shot のため無限 block しない。
 >
-> **制約**: 本 set からステップ 12 末尾の set までの間に別の `flow-state.sh set` を挟むと handoff が default-clear されて gate が外れる。本コマンドのステップ 10-11 に `flow-state.sh set` を追加する変更を入れる場合は、同じ WIKICHAIN チェーン handoff 値を `--handoff` で再指定すること。
+> **制約**: 本 set からステップ 12 末尾の set までの間に別の `flow-state.sh set` を挟むと handoff が default-clear されて gate が外れる。このため、ステップ 10-11 への `flow-state.sh set` の追加自体を禁止する (`--handoff` 再指定での回避は TC-1 の単一 SoT 制約と矛盾するため不可)。intervening set が必要になる設計変更では、本 note と `cleanup-wikichain-handoff-parity.test.sh` TC-1/TC-6 を含む handoff lifecycle 全体を同時に見直すこと。
 
 handoff セット後に invoke する:
 

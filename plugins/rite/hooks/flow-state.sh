@@ -57,8 +57,11 @@ _validate_session_id() {
       return 1
       ;;
   esac
-  if [[ "$sid" =~ [[:cntrl:]] ]]; then
-    echo "ERROR: invalid session_id from $origin: contains control characters (newline / tab / etc.)" >&2
+  # contains_ctrl (control-char-neutralize.sh) は C0 + DEL + C1 8-bit (0x80-0x9f)
+  # をバイト単位で検出する。旧 `=~ [[:cntrl:]]` は glibc が C1 を cntrl と分類しない
+  # ため 0x9b (8-bit CSI) 入り session_id を素通ししていた (Issue #1276)。
+  if contains_ctrl "$sid"; then
+    echo "ERROR: invalid session_id from $origin: contains control characters (newline / tab / C1 8-bit bytes / etc.)" >&2
     return 1
   fi
   return 0

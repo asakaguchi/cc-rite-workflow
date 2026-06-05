@@ -20,6 +20,10 @@
 #   TC-7: --keep-newline: \n は保持、他の制御文字は ? (旧 sed 行指向挙動と同じ)
 #   TC-8: 可読 ASCII は無傷 + 1:1 置換 (削除ではない — 長さ保存)
 #   TC-9: NUL バイト (0x00) → ? (LC_ALL=C tr のバイトストリーム性 pin)
+#   TC-10: --c0-only: C0 (0x01 / TAB / ESC) + DEL → ? (Issue #1275)
+#   TC-11: --c0-only: C1 境界 (0x80 / 0x9b / 0x9f) は素通し (default との差分 pin)
+#   TC-12: --c0-only: UTF-8 マルチバイト (日本語) が無傷 (JSON フォールバック reason 保護の本丸 pin)
+#   TC-13: --c0-only: \n も ? 化 (C0 範囲 — caller は改行を先にエスケープしてから呼ぶ契約)
 #
 # Usage: bash plugins/rite/hooks/tests/control-char-neutralize.test.sh
 set -euo pipefail
@@ -80,6 +84,27 @@ assert "TC-8: 1:1 replacement preserves byte length" "3" "$(printf 'A\x9bB' | ne
 echo ""
 echo "=== TC-9: NUL バイト (0x00) → ? (バイトストリーム性 pin) ==="
 assert "TC-9: NUL neutralized" "413f42" "$(printf 'A\x00B' | neutralize_ctrl | to_hex)"
+
+echo ""
+echo "=== TC-10: --c0-only — C0 (0x01 / TAB / ESC) + DEL → ? (Issue #1275) ==="
+assert "TC-10: C0 bytes neutralized" "A?B?C?D?E" "$(printf 'A\x01B\tC\x1bD\x7fE' | neutralize_ctrl --c0-only)"
+
+echo ""
+echo "=== TC-11: --c0-only — C1 境界 (0x80 / 0x9b / 0x9f) は素通し (default との差分 pin) ==="
+# RFC 8259 が JSON 文字列内で生バイトを禁じるのは C0 のみで、--c0-only は 0x80 以上に
+# 触れない (default は ? 化する)。jq と対称なのは valid UTF-8 の C1 (0xc2 0x9b) のみ —
+# 本 TC の raw 8-bit 単独 C1 は jq なら U+FFFD に置換されるため、素通しは --c0-only 固有。
+assert "TC-11: C1 range preserved (hex)" "4180429b439f44" "$(printf 'A\x80B\x9bC\x9fD' | neutralize_ctrl --c0-only | to_hex)"
+
+echo ""
+echo "=== TC-12: --c0-only — UTF-8 マルチバイト (日本語) が無傷 (本丸 pin) ==="
+# default モードは「停」(0xe5 0x81 0x9c) の継続バイト 0x81/0x9c を ? 化して本文を破壊する。
+# --c0-only は 0x80 以上に触れないため、JSON フォールバック reason の日本語指示文が保持される。
+assert "TC-12: Japanese text untouched" "停止せず継続" "$(printf '停止せず継続' | neutralize_ctrl --c0-only)"
+
+echo ""
+echo "=== TC-13: --c0-only — \\n も ? 化 (C0 範囲 — caller は改行を先にエスケープする契約) ==="
+assert "TC-13: newline neutralized in c0-only mode" "l1?l2" "$(printf 'l1\nl2' | neutralize_ctrl --c0-only)"
 
 if ! print_summary "$(basename "$0")" "control-char-neutralize.sh — Issue #1274 C0+DEL+C1 byte-wise neutralization shared helper"; then
   exit 1

@@ -11,7 +11,7 @@
 # — an ESC-free 8-bit escape path some terminals interpret as `ESC [`. The
 # replacement set here is C0 (0x00-0x1f) + DEL (0x7f) + C1 (0x80-0x9f), applied
 # byte-wise under LC_ALL=C so both the raw-byte path (latin1-style terminals)
-# and the UTF-8 U+0080-U+009B encoding path (0xc2 0x80-0x9f — its second byte
+# and the UTF-8 U+0080-U+009F encoding path (0xc2 0x80-0x9f — its second byte
 # falls in the C1 range) are closed at once.
 #
 # Trade-off (accepted, Issue #1274): byte-wise replacement also hits UTF-8

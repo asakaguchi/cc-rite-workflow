@@ -122,7 +122,9 @@ esac
 # 手動エスケープは \ / " / 改行のみのため、HANDOFF 由来の C0 生バイト (raw ESC 等) が残ると
 # RFC 8259 違反の invalid JSON になる — neutralize_ctrl --c0-only で ? 化する (Issue #1275)。
 # default モードを使わないのは、バイト単位の C1 置換が _reason の UTF-8 日本語 (モデルへの
-# 継続指示文) を破壊するため。C1 素通しは jq プライマリ経路の JSON エンコードと対称。
+# 継続指示文) を破壊するため。C1 素通しが jq プライマリ経路と対称なのは valid UTF-8 の
+# C1 (0xc2 0x9b 等) のみで、raw 8-bit 単独の C1 バイト (0x9b 等) は jq が U+FFFD に
+# 置換するのに対し本経路は素通しする (非対称 — control-char-neutralize.sh の Contract 参照)。
 # neutralize 失敗時は raw を emit せず placeholder へ縮退 (fail-closed — unknown-prefix
 # WARNING 経路と同じ規約)。
 if ! jq -n --arg r "$_reason" '{decision:"block", reason:$r}'; then

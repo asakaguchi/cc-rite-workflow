@@ -91,8 +91,9 @@ assert "TC-10: C0 bytes neutralized" "A?B?C?D?E" "$(printf 'A\x01B\tC\x1bD\x7fE'
 
 echo ""
 echo "=== TC-11: --c0-only — C1 境界 (0x80 / 0x9b / 0x9f) は素通し (default との差分 pin) ==="
-# C1 (valid UTF-8 の U+0080-009F) は RFC 8259 では JSON 文字列内で合法であり、jq の
-# JSON エンコードも素通しする。--c0-only はこの jq 挙動と対称 (default は ? 化する)。
+# RFC 8259 が JSON 文字列内で生バイトを禁じるのは C0 のみで、--c0-only は 0x80 以上に
+# 触れない (default は ? 化する)。jq と対称なのは valid UTF-8 の C1 (0xc2 0x9b) のみ —
+# 本 TC の raw 8-bit 単独 C1 は jq なら U+FFFD に置換されるため、素通しは --c0-only 固有。
 assert "TC-11: C1 range preserved (hex)" "4180429b439f44" "$(printf 'A\x80B\x9bC\x9fD' | neutralize_ctrl --c0-only | to_hex)"
 
 echo ""

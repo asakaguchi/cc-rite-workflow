@@ -1195,6 +1195,57 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-116: deny fallback (jq -n emit failure) → valid JSON, deny preserved (Issue #1278)
+#   stop-loop-continuation.test.sh TC-16 と同じ fake jq パターン: `jq -n` のみ exit 1 させ、
+#   それ以外 (hook 冒頭の payload parse 等) は real jq へ委譲する。jq 全欠落は payload parse が
+#   先に失敗して fail-open するため、現実的な fallback トリガーは emit-only の jq 失敗。
+#   _deny_reason の構成要素は現状ハードコード文字列だが、fallback が改行 \n エスケープ +
+#   neutralize_ctrl --c0-only を経由して valid JSON を emit し deny + exit 2 を維持することを pin する。
+# --------------------------------------------------------------------------
+echo "TC-116: deny fallback (jq -n emit failure) → valid JSON, deny preserved"
+rc=0
+real_jq=$(command -v jq)
+tc116_input=$("$real_jq" -n '{tool_name: "Bash", tool_input: {command: "gh pr diff 123 --stat"}, cwd: "/tmp"}')
+fake_bin_116=$(mktemp -d)
+cat > "$fake_bin_116/jq" <<EOF
+#!/bin/bash
+if [ "\$1" = "-n" ]; then exit 1; fi
+exec "$real_jq" "\$@"
+EOF
+chmod +x "$fake_bin_116/jq"
+output=$(echo "$tc116_input" | PATH="$fake_bin_116:$PATH" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+# Sanity pin: fallback 経路が emit した (primary jq 経路ではない)
+if [ -n "$output" ]; then
+  pass "TC-116 fallback emitted output despite jq -n failure"
+else
+  fail "TC-116 no output — fallback path not reached: $(cat -v "$STDERR_FILE")"
+fi
+if [ "$rc" = "2" ]; then
+  pass "TC-116 fallback exits 2 (fail-closed deny contract)"
+else
+  fail "TC-116 expected rc=2, got rc=$rc"
+fi
+# RFC 8259 validity — 改行/C0 生バイトが文字列リテラルに残ると parse が失敗する
+if printf '%s' "$output" | "$real_jq" -e . >/dev/null 2>&1; then
+  pass "TC-116 fallback output is valid JSON"
+else
+  fail "TC-116 fallback output is not parseable JSON: $(printf '%s' "$output" | cat -v)"
+fi
+decision=$(printf '%s' "$output" | "$real_jq" -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(printf '%s' "$output" | "$real_jq" -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"gh-pr-diff-stat"* ]]; then
+  pass "TC-116 deny decision and pattern name survive the fallback"
+else
+  fail "TC-116 expected deny with gh-pr-diff-stat via fallback, got decision=$decision reason=$reason"
+fi
+# raw C0 バイト (ESC 等) の非漏出 — neutralize_ctrl --c0-only の挙動 pin
+if printf '%s' "$output" | LC_ALL=C grep -q $'\x1b'; then
+  fail "TC-116 fallback JSON leaked a raw ESC byte: $(printf '%s' "$output" | cat -v)"
+else
+  pass "TC-116 fallback JSON contains no raw ESC byte"
+fi
+rm -rf "$fake_bin_116"
+echo ""
 
 # --------------------------------------------------------------------------
 # Summary

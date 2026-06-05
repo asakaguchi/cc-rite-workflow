@@ -22,6 +22,8 @@ export _RITE_HOOK_RUNNING_PRETOOL=1
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+# neutralize_ctrl --c0-only (deny フォールバックの JSON エスケープ用 — Issue #1278)
+source "$SCRIPT_DIR/control-char-neutralize.sh"
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 
@@ -525,6 +527,12 @@ echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] bash-guard: BLOCKED pattern=$BLOCKED_PA
 # Deny with reason and alternative. jq is required to emit the final permission
 # payload; an intermittent jq failure here would silently downgrade the deny to
 # allow. Fall back to a literal JSON envelope + exit 2 so the deny is fail-closed.
+# 手動エスケープが \ / " のみだと、reason 内の改行・C0 生バイトが JSON 文字列リテラルに
+# 残り RFC 8259 違反の invalid JSON になる — 改行は \n エスケープ、残存 C0+DEL は
+# neutralize_ctrl --c0-only で ? 化する (stop-loop-continuation.sh の JSON emit
+# フォールバックと対称 — Issue #1278 / #1275)。default モードを使わないのは、バイト単位の
+# C1 置換が UTF-8 マルチバイト本文を破壊するため。neutralize 失敗時は raw を emit せず
+# static placeholder へ縮退し、deny + exit 2 の fail-closed 契約を維持する。
 _deny_reason="BLOCKED ($BLOCKED_PATTERN): $BLOCKED_REASON $BLOCKED_ALTERNATIVE"
 if ! jq -n --arg reason "$_deny_reason" '{
     hookSpecificOutput: {
@@ -535,6 +543,9 @@ if ! jq -n --arg reason "$_deny_reason" '{
   }'; then
   _deny_reason_escaped="${_deny_reason//\\/\\\\}"
   _deny_reason_escaped="${_deny_reason_escaped//\"/\\\"}"
+  _deny_reason_escaped="${_deny_reason_escaped//$'\n'/\\n}"
+  _deny_reason_escaped=$(printf '%s' "$_deny_reason_escaped" | neutralize_ctrl --c0-only) \
+    || _deny_reason_escaped="BLOCKED: command denied (reason neutralization failed, fail-closed). Check the bash-guard stderr log for the blocked pattern."
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$_deny_reason_escaped"
   exit 2
 fi

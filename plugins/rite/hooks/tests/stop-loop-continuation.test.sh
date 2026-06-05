@@ -324,6 +324,69 @@ else
 fi
 rm -f "$err15"
 
-if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (Issue #1168 review↔fix loop continuation + #1176 FINALIZE terminal backstop + #1245 WIKICHAIN cleanup-chain gate + #1274 C1 8-bit coverage via shared neutralize_ctrl)"; then
+# --- TC-16: JSON emit fallback neutralizes raw C0 bytes → valid JSON (Issue #1275) ---
+# The manual-escape fallback (taken when the final `jq -n` emit fails) only escaped
+# \ / " / \n, letting raw C0 bytes (e.g. ESC from a control-byte handoff) through into
+# the JSON string literal — invalid JSON per RFC 8259. The fix appends
+# `neutralize_ctrl --c0-only` after the manual escapes: C0+DEL → ?, while UTF-8
+# multibyte text (the Japanese continuation directive) stays intact (the default
+# neutralize mode would byte-wise destroy it — that asymmetry is why --c0-only exists).
+# jq full absence is NOT testable here: the payload parse at the top of the hook would
+# fail first and the hook fail-opens. The realistic fallback trigger is an emit-only jq
+# failure, simulated by a fake jq that fails only for `jq -n` and delegates the rest
+# (payload parse / consume-handoff) to the real jq.
+echo ""
+echo "=== TC-16: JSON emit fallback — raw C0 neutralized, valid JSON, Japanese preserved ==="
+d16=$(new_sandbox)
+RITE_STATE_ROOT="$d16" bash "$FS" set --phase cleanup --issue 1275 --branch b --pr 99 \
+  --next n --handoff "$(printf 'EVILPREFIX:\x1b[31mred\x1b[0m:99')" --session "$SID" >/dev/null
+fake_bin=$(mktemp -d)
+real_jq=$(command -v jq)
+cat > "$fake_bin/jq" <<EOF
+#!/bin/bash
+if [ "\$1" = "-n" ]; then exit 1; fi
+exec "$real_jq" "\$@"
+EOF
+chmod +x "$fake_bin/jq"
+err16=$(mktemp)
+out16=$(stop_payload "$d16" | PATH="$fake_bin:$PATH" bash "$HOOK" 2>"$err16")
+# Sanity pin: the fallback path actually emitted (not the primary jq path).
+if [ -n "$out16" ]; then
+  pass "TC-16: fallback emitted output despite jq -n failure"
+else
+  fail "TC-16: no output — fallback path not reached: $(cat -v "$err16")"
+fi
+if printf '%s' "$out16" | LC_ALL=C grep -q $'\x1b'; then
+  fail "TC-16: fallback JSON leaked a raw ESC byte: $(printf '%s' "$out16" | cat -v)"
+else
+  pass "TC-16: fallback JSON contains no raw C0 bytes"
+fi
+# RFC 8259 validity — raw C0 in a string literal would make this parse fail.
+if printf '%s' "$out16" | "$real_jq" -e . >/dev/null 2>&1; then
+  pass "TC-16: fallback output is valid JSON"
+else
+  fail "TC-16: fallback output is not parseable JSON: $(printf '%s' "$out16" | cat -v)"
+fi
+assert "TC-16: decision=block survives the fallback" "block" "$(printf '%s' "$out16" | "$real_jq" -r '.decision // "NONE"')"
+_reason16=$(printf '%s' "$out16" | "$real_jq" -r '.reason // ""')
+# The Japanese continuation directive must survive (--c0-only does not touch UTF-8
+# multibyte bytes; the default neutralize mode would shred it into ? runs).
+if printf '%s' "$_reason16" | grep -q "停止せず"; then
+  pass "TC-16: Japanese directive text preserved in the fallback reason"
+else
+  fail "TC-16: Japanese directive text lost from the fallback reason: $out16"
+fi
+# The handoff's ESC bytes are ?-neutralized inside the re-injected reason.
+if printf '%s' "$_reason16" | grep -qF 'EVILPREFIX:?[31mred?[0m:99'; then
+  pass "TC-16: handoff control bytes neutralized to ? in the fallback reason"
+else
+  fail "TC-16: neutralized handoff missing from the fallback reason: $out16"
+fi
+rm -rf "$fake_bin" "$err16"
+# one-shot: second stop allows (fallback path still consumes the handoff)
+out_b=$(stop_payload "$d16" "$SID" true | bash "$HOOK")
+assert "TC-16: second stop allows (one-shot)" "" "$out_b"
+
+if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (Issue #1168 review↔fix loop continuation + #1176 FINALIZE terminal backstop + #1245 WIKICHAIN cleanup-chain gate + #1274 C1 8-bit coverage via shared neutralize_ctrl + #1275 JSON emit fallback C0 neutralization)"; then
   exit 1
 fi

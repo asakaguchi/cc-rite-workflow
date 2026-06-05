@@ -119,10 +119,18 @@ esac
 
 # decision:block を JSON で emit。jq 失敗時は literal JSON にフォールバックして継続意図を保つ
 # (pre-tool-bash-guard.sh の fail-closed フォールバックと同様の堅牢化)。
+# 手動エスケープは \ / " / 改行のみのため、HANDOFF 由来の C0 生バイト (raw ESC 等) が残ると
+# RFC 8259 違反の invalid JSON になる — neutralize_ctrl --c0-only で ? 化する (Issue #1275)。
+# default モードを使わないのは、バイト単位の C1 置換が _reason の UTF-8 日本語 (モデルへの
+# 継続指示文) を破壊するため。C1 素通しは jq プライマリ経路の JSON エンコードと対称。
+# neutralize 失敗時は raw を emit せず placeholder へ縮退 (fail-closed — unknown-prefix
+# WARNING 経路と同じ規約)。
 if ! jq -n --arg r "$_reason" '{decision:"block", reason:$r}'; then
   _r_esc="${_reason//\\/\\\\}"
   _r_esc="${_r_esc//\"/\\\"}"
   _r_esc="${_r_esc//$'\n'/\\n}"
+  _r_esc=$(printf '%s' "$_r_esc" | neutralize_ctrl --c0-only) \
+    || _r_esc="rite handoff continuation pending (reason neutralization failed). Re-run the previous /rite command or run /rite:resume."
   printf '{"decision":"block","reason":"%s"}\n' "$_r_esc"
 fi
 exit 0

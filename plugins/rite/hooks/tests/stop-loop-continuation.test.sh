@@ -265,6 +265,38 @@ rm -f "$err13"
 out_b=$(stop_payload "$d13" "$SID" true | bash "$HOOK")
 assert "TC-13: second stop allows (one-shot)" "" "$out_b"
 
+# --- TC-14: unknown-prefix WARNING neutralizes control bytes (Issue #1269) ---
+# The stderr WARNING must not pass raw control bytes (ANSI escapes etc.) to the operator's
+# terminal — same [[:cntrl:]] → ? convention as flow-state.sh _emit_jq_err_snippet. The
+# decision:block reason keeps the handoff verbatim (TC-13 contract): neutralize scope is
+# the WARNING line only.
+echo ""
+echo "=== TC-14: unknown-prefix WARNING neutralizes control bytes (WARNING-only scope) ==="
+d14=$(new_sandbox)
+RITE_STATE_ROOT="$d14" bash "$FS" set --phase cleanup --issue 1269 --branch b --pr 99 \
+  --next n --handoff "$(printf 'EVILPREFIX:\x1b[31mred\x1b[0m:99')" --session "$SID" >/dev/null
+err14=$(mktemp)
+out14=$(stop_payload "$d14" | bash "$HOOK" 2>"$err14")
+assert "TC-14: decision=block (block axis unaffected by neutralize)" "block" "$(printf '%s' "$out14" | jq -r '.decision // "NONE"')"
+if grep -q $'\x1b' "$err14"; then
+  fail "TC-14: WARNING leaked a raw ESC byte to stderr: $(cat -v "$err14")"
+else
+  pass "TC-14: WARNING contains no raw control bytes"
+fi
+if grep -qF 'EVILPREFIX:?[31mred?[0m:99' "$err14"; then
+  pass "TC-14: control bytes replaced with ? in the WARNING"
+else
+  fail "TC-14: neutralized handoff missing from WARNING: $(cat -v "$err14")"
+fi
+# Scope pin: the reason keeps the raw handoff verbatim (re-injection contract). If the
+# neutralize scope is ever widened to the reason, update this pin deliberately.
+if printf '%s' "$out14" | jq -r '.reason // ""' | grep -q $'\x1b'; then
+  pass "TC-14: reason keeps the handoff verbatim (neutralize does not widen to re-injection)"
+else
+  fail "TC-14: reason lost the verbatim handoff bytes: $out14"
+fi
+rm -f "$err14"
+
 if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (Issue #1168 review↔fix loop continuation + #1176 FINALIZE terminal backstop + #1245 WIKICHAIN cleanup-chain gate)"; then
   exit 1
 fi

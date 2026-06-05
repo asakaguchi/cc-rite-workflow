@@ -43,6 +43,11 @@ export _RITE_HOOK_RUNNING_STOP=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 
+# Shared control-char neutralization (C0 + DEL + C1 0x80-0x9f → ?) — Issue #1274。
+# flow-state.sh と同じ必須依存扱い (unguarded source): 同 dir に無い = プラグイン破損であり、
+# set -e による hook 全体終了は「解決失敗 = fail-open (停止許可)」の既存設計軸に収束する。
+source "$SCRIPT_DIR/control-char-neutralize.sh"
+
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 
@@ -100,9 +105,12 @@ handoff は consume 済みのため、進捗なく再度停止した場合は次
   *)
     # 未知 prefix: 新 prefix 追加時の case 分岐漏れを silent 吸収しない (fail-loud)。block 自体は
     # 「handoff 非空 → block」の設計軸を維持し、handoff 値を verbatim で差し戻す。
-    # WARNING への埋め込みは制御文字を neutralize する (flow-state.sh _emit_jq_err_snippet の
-    # [[:cntrl:]] → ? 規約と対称。ANSI escape による operator 端末乗っ取り防止 / Issue #1269)。
-    echo "WARNING: stop-loop-continuation: unknown handoff prefix (re-injecting verbatim; add an explicit case arm for new prefixes): ${HANDOFF//[[:cntrl:]]/?}" >&2
+    # WARNING への埋め込みは共通ヘルパー neutralize_ctrl で制御文字を neutralize する
+    # (flow-state.sh _emit_jq_err_snippet と同一規約。旧 ${HANDOFF//[[:cntrl:]]/?} が素通し
+    # していた C1 0x80-0x9f もカバー / ANSI escape による operator 端末乗っ取り防止 /
+    # Issue #1269 / #1274)。neutralize 失敗時は raw 値を echo せず placeholder へ縮退 (fail-closed)。
+    _handoff_safe=$(printf '%s' "$HANDOFF" | neutralize_ctrl) || _handoff_safe="(neutralize failed)"
+    echo "WARNING: stop-loop-continuation: unknown handoff prefix (re-injecting verbatim; add an explicit case arm for new prefixes): ${_handoff_safe}" >&2
     _reason="rite の handoff マーカーが未消化のまま残っていました。停止せず、次を実行してください: ${HANDOFF}
 
 handoff は consume 済みのため、進捗なく再度停止した場合は次回は停止が許可されます (無限 block しません)。"

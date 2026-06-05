@@ -265,9 +265,10 @@ rm -f "$err13"
 out_b=$(stop_payload "$d13" "$SID" true | bash "$HOOK")
 assert "TC-13: second stop allows (one-shot)" "" "$out_b"
 
-# --- TC-14: unknown-prefix WARNING neutralizes control bytes (Issue #1269) ---
+# --- TC-14: unknown-prefix WARNING neutralizes control bytes (Issue #1269 / #1274) ---
 # The stderr WARNING must not pass raw control bytes (ANSI escapes etc.) to the operator's
-# terminal — same [[:cntrl:]] → ? convention as flow-state.sh _emit_jq_err_snippet. The
+# terminal — same neutralize_ctrl shared-helper convention (control-char-neutralize.sh) as
+# flow-state.sh _emit_jq_err_snippet, covering C0 + DEL + C1 0x80-0x9f byte-wise. The
 # decision:block reason keeps the handoff verbatim (TC-13 contract): neutralize scope is
 # the WARNING line only.
 echo ""
@@ -297,6 +298,32 @@ else
 fi
 rm -f "$err14"
 
-if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (Issue #1168 review↔fix loop continuation + #1176 FINALIZE terminal backstop + #1245 WIKICHAIN cleanup-chain gate)"; then
+# --- TC-15: unknown-prefix WARNING neutralizes C1 8-bit control bytes (Issue #1274) ---
+# U+009B (UTF-8: 0xc2 0x9b) is valid UTF-8, so it survives the flow-state JSON round-trip
+# (raw 0x9b would be replaced with U+FFFD by jq) and reaches the WARNING line — the realistic
+# C1 attack byte sequence (xterm-class terminals interpret C1 as control even in UTF-8 mode).
+# The former ${HANDOFF//[[:cntrl:]]/?} let the 0x9b byte through because glibc does not
+# classify C1 as cntrl; byte-wise neutralize_ctrl replaces it, so no raw 0x9b on stderr.
+echo ""
+echo "=== TC-15: unknown-prefix WARNING neutralizes C1 bytes (U+009B via JSON round-trip) ==="
+d15=$(new_sandbox)
+RITE_STATE_ROOT="$d15" bash "$FS" set --phase cleanup --issue 1274 --branch b --pr 99 \
+  --next n --handoff "$(printf 'EVILPREFIX:\xc2\x9bCSI:99')" --session "$SID" >/dev/null
+err15=$(mktemp)
+out15=$(stop_payload "$d15" | bash "$HOOK" 2>"$err15")
+assert "TC-15: decision=block (block axis unaffected by C1 neutralize)" "block" "$(printf '%s' "$out15" | jq -r '.decision // "NONE"')"
+if grep -qE 'WARNING:.*unknown handoff prefix' "$err15"; then
+  pass "TC-15: unknown-prefix WARNING emitted (C1 経路に到達した sanity pin)"
+else
+  fail "TC-15: missing unknown-prefix WARNING on stderr: $(cat -v "$err15")"
+fi
+if LC_ALL=C grep -q $'\x9b' "$err15"; then
+  fail "TC-15: WARNING leaked a raw C1 0x9b byte to stderr: $(cat -v "$err15")"
+else
+  pass "TC-15: WARNING contains no raw C1 0x9b byte (Issue #1274)"
+fi
+rm -f "$err15"
+
+if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (Issue #1168 review↔fix loop continuation + #1176 FINALIZE terminal backstop + #1245 WIKICHAIN cleanup-chain gate + #1274 C1 8-bit coverage via shared neutralize_ctrl)"; then
   exit 1
 fi

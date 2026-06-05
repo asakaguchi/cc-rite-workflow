@@ -1027,6 +1027,42 @@ rm -rf "$dir48"
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-049: C1 8-bit byte (0x9b CSI) in --source-ref → exit 1 (Issue #1276)
+# --------------------------------------------------------------------------
+# 旧 `=~ [[:cntrl:]]` は glibc が C1 (0x80-0x9f) を cntrl と分類しないため
+# 0x9b 入り SOURCE_REF が validation を素通りしていた (TC-017 の newline pin と
+# 対になる C1 側 pin)。contains_ctrl (control-char-neutralize.sh) への置換で
+# reject されることを確認する。
+echo "TC-049: C1 0x9b in --source-ref → exit 1 (Issue #1276)"
+dir49="$TEST_DIR/tc49"
+mkdir -p "$dir49"
+echo "x" > "$dir49/body.md"
+( cd "$dir49" && bash "$HOOK" --type reviews --source-ref $'pr-1\x9bcsi' --content-file body.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'control characters' "$dir49/err.log"; then
+  pass "C1 0x9b in source-ref → exit 1 (formerly slipped through [[:cntrl:]])"
+else
+  fail "Expected exit 1 'control characters', got rc=$rc, stderr=$(cat "$dir49/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-050: C1 8-bit byte (0x9b CSI) in --title → exit 1 (Issue #1276)
+# --------------------------------------------------------------------------
+# TC-018 (newline in title) と対になる C1 側 pin。SOURCE_REF / TITLE は隣接する
+# YAML キーに着地するため、検出範囲も対称であることを保証する。
+echo "TC-050: C1 0x9b in --title → exit 1 (Issue #1276)"
+dir50="$TEST_DIR/tc50"
+mkdir -p "$dir50"
+echo "x" > "$dir50/body.md"
+( cd "$dir50" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --title $'foo\x9bbar' >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'control characters' "$dir50/err.log"; then
+  pass "C1 0x9b in title → exit 1 (SOURCE_REF と対称の C1 reject)"
+else
+  fail "Expected exit 1 'control characters', got rc=$rc, stderr=$(cat "$dir50/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

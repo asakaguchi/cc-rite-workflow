@@ -613,6 +613,18 @@ if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*control characters'; then
 else
   fail "TC-19.6: SESSION_ID_FILE control-char not rejected: '$err'"
 fi
+# TC-19.7: C1 8-bit 制御バイト (0x9b = 8-bit CSI introducer) rejection (Issue #1276)
+# 旧 `=~ [[:cntrl:]]` は glibc が C/UTF-8 両ロケールで C1 (0x80-0x9f) を cntrl と
+# 分類しないため 0x9b 入り session_id を素通ししていた。contains_ctrl
+# (control-char-neutralize.sh と共有のバイト範囲定義) への置換で reject されることを pin。
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+rm -f "$d/.rite-session-id"
+err=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID=$'sid\x9bwith-csi' bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
+if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*control characters'; then
+  pass "TC-19.7: CLAUDE_CODE_SESSION_ID rejects C1 0x9b byte (Issue #1276 detection-side pin)"
+else
+  fail "TC-19.7: C1 0x9b not rejected: '$err'"
+fi
 
 # --- TC-20: cmd_get jq failure WARNING paths (corrupt JSON state file) ---
 echo ""

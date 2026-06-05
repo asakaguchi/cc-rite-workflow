@@ -2,8 +2,12 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-06-05T02:39:38Z"
+updated: "2026-06-05T10:33:05Z"
 sources:
+  - type: "fixes"
+    ref: "raw/fixes/20260605T090238Z-pr-1279.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260605T085618Z-pr-1279.md"
   - type: "reviews"
     ref: "raw/reviews/20260605T021638Z-pr-1273.md"
   - type: "reviews"
@@ -1156,6 +1160,15 @@ PR #1273 (stop-loop-continuation.sh の未知 prefix WARNING に制御文字 neu
 
 successful preventive application としての特徴: (a) 4 reviewer (security / error-handling / test / performance) 全員が独立に `${HANDOFF}` raw sink を Grep 全数検査し、stderr への raw 出力は修正対象の 1 箇所のみ = 伝播漏れなしを確認、(b) test reviewer は worktree-only mutation pattern (`git worktree add --detach`) で neutralize fix を revert し TC-14 の 2 assert が正しく FAIL することを実機立証 (false positive 検査)、(c) security reviewer が `[[:cntrl:]]` の C1 8-bit 制御バイト (0x9b CSI) 非カバーを発見したが、これは規約全体 (`flow-state.sh` `_emit_jq_err_snippet` 含む) の pre-existing 限界であり「本 PR 単独で WARNING 行だけ C1 対応すると逆に Asymmetric Fix を生む」と判断して boundary 推奨事項 → 別 Issue (#1274 共通ヘルパー化 + C1 対応) 化した — 片肺修正を避けるために**意図的に修正しない**判断 (規約全体への対称適用を別 Issue で行う) も本 anti-pattern の防御の一形態。PR #1267 の「同期すべきでない site の識別」を **test pin で機械的に固定する手法**へ前進させた実測例 (pin の正当な活用 — 形骸化 pin の anti-pattern は [test-pin-protection-theater](./test-pin-protection-theater.md) を参照)。
 
+### コメント claim 層での 3 箇所同時訂正 + 同型 site 監査の別 Issue 化 (PR #1279 — Issue #1275、2 cycle 収束)
+
+PR #1279 (`stop-loop-continuation.sh` の JSON emit フォールバックに `neutralize_ctrl --c0-only` を適用) では、本 anti-pattern が **コメント内の設計判断 claim 層** で予防的に処理された 2 つの実測を記録:
+
+- **同一 claim の複製 site 全列挙 → 1 commit 同時訂正**: cycle 1 で検出された「C1 素通しは jq と対称」claim の Comment Rot (raw 8-bit C1 では偽 — 詳細は [sanitization 対称性 claim は入力クラス別に runtime byte-level 検証してから書く](../heuristics/symmetry-claim-input-class-runtime-verification.md)) は、同一 claim が実装 2 ファイル + テストコメント (TC-11) の 3 箇所に複製存在していた。fix では `git grep -E '(C1|c0-only).*対称'` で全 site を列挙してから 1 commit で同時訂正し、コメント claim 層での片肺訂正 (1 箇所のみ直して他 2 箇所に偽 claim が残る) を予防した。テスト assert は挙動 pin として正しいため不変 (訂正対象は claim 文言のみ)。
+- **同型 manual-escape JSON emit の対称位置監査 → スコープ外は別 Issue 化**: review cycle 1 の Asymmetric Fix Transcription 監査で、同型の手動エスケープ JSON emit が `pre-tool-bash-guard.sh:536-538` (#1278 起票済) と `wiki-ingest-trigger.sh:360-361,387-388` (pre-existing) に存在することを列挙。PR #1273 の (c) と同じく「本 PR scope 内で全対称 site を修正する」のではなく、検出した同型 site を明示列挙して別 Issue 境界で対称適用を追跡する運用を継続。
+
+cycle 2 で前 cycle F-01 の 3 箇所同時訂正が FIXED と byte-level 再検証で確認され 0 findings 収束 (1 → 0)。共通ヘルパー SoT 規約 (#1274 で確立した `control-char-neutralize.sh` 集約) の直接の後続 PR として、helper consolidation (PR #1181 の intra-file 版 Option B と同系) が対称化義務を構造的に縮減した上で、残る claim 文言層の対称性を grep 列挙で守った実測例。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -1176,6 +1189,8 @@ successful preventive application としての特徴: (a) 4 reviewer (security /
 
 ## ソース
 
+- [PR #1279 fix results (Issue #1275、コメント claim 層の 3 箇所同時訂正: 「C1 素通しは jq と対称」claim の Comment Rot が実装 2 ファイル + テストコメント TC-11 の 3 箇所に複製存在、`git grep -E '(C1|c0-only).*対称'` で全列挙し 1 commit で同時訂正。テスト assert は挙動 pin として不変)](../../raw/fixes/20260605T090238Z-pr-1279.md)
+- [PR #1279 review results (Issue #1275、cycle 1: 同型 manual-escape JSON emit の対称位置監査で pre-tool-bash-guard.sh:536-538 (#1278 起票済) + wiki-ingest-trigger.sh:360-361,387-388 (pre-existing) を列挙し別 Issue 境界で追跡)](../../raw/reviews/20260605T085618Z-pr-1279.md)
 - [PR #1273 review results (Issue #1269、0 findings の successful preventive application: stop-loop-continuation.sh の未知 prefix WARNING への制御文字 neutralize 適用で、`${HANDOFF}` raw sink を 4 reviewer が独立 Grep 全数検査 (stderr 1 site のみ = 伝播漏れなし)。`_reason` verbatim 維持の意図的非対称を TC-14 scope pin でテスト宣言として機械固定、test reviewer は worktree-only mutation で fix revert 時の TC-14 FAIL を実機立証。C1 制御バイト (0x9b) の規約全体 pre-existing 限界は片肺修正回避のため #1274 へ別 Issue 化。1 cycle mergeable)](../../raw/reviews/20260605T021638Z-pr-1273.md)
 - [PR #1267 review results (Issue #1245、0 findings の successful preventive application: handoff 値域への WIKICHAIN 系統追加で全 8 コピー site (flow-state.sh / stop-loop-continuation.sh / SPEC ja・en / design docs 2 件 / cleanup.md / ready.md) を同一 PR 内で 3 系統列挙へ同時同期、code-quality / tech-writer が grep + JA/EN parity で drift ゼロを独立機械検証。iterate.md は scope 的に正しい非対称として boundary 確認、over-transcription も回避。1 cycle mergeable)](../../raw/reviews/20260604T061732Z-pr-1267.md)
 - [PR #1260 review results (Issue #1258、0 findings の successful preventive application: merge.md 旧 Step 1 削除 + 残り step を 1/2/3 へ繰り上げる step-renumber refactor で、2 reviewer (prompt-engineer / code-quality) が renumber 伝播漏れを独立に検証。(1) merge.md 全文 git show/Read で旧番号残存ゼロ、(2) `grep -rn "merge.md" plugins/ docs/` で cross-file step 参照を洗い出し、(3) 影響テスト sentinel-disambiguator-adjacency.test.sh PASS 10/0 の 3 点セットで同期漏れゼロを確認。decision-record は as-was 記述のため renumber 追従不要 (boundary)、完了通知 branch 名を `gh pr view --json headRefName` へ一本化し sibling ready.md/cleanup.md と baseline 整合。指摘 0 件 / 1 cycle mergeable)](../../raw/reviews/20260603T100859Z-pr-1260.md)

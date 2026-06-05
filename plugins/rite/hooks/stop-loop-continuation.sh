@@ -100,7 +100,9 @@ handoff は consume 済みのため、進捗なく再度停止した場合は次
   *)
     # 未知 prefix: 新 prefix 追加時の case 分岐漏れを silent 吸収しない (fail-loud)。block 自体は
     # 「handoff 非空 → block」の設計軸を維持し、handoff 値を verbatim で差し戻す。
-    echo "WARNING: stop-loop-continuation: unknown handoff prefix (re-injecting verbatim; add an explicit case arm for new prefixes): ${HANDOFF}" >&2
+    # WARNING への埋め込みは制御文字を neutralize する (flow-state.sh _emit_jq_err_snippet の
+    # [[:cntrl:]] → ? 規約と対称。ANSI escape による operator 端末乗っ取り防止 / Issue #1269)。
+    echo "WARNING: stop-loop-continuation: unknown handoff prefix (re-injecting verbatim; add an explicit case arm for new prefixes): ${HANDOFF//[[:cntrl:]]/?}" >&2
     _reason="rite の handoff マーカーが未消化のまま残っていました。停止せず、次を実行してください: ${HANDOFF}
 
 handoff は consume 済みのため、進捗なく再度停止した場合は次回は停止が許可されます (無限 block しません)。"

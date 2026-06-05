@@ -228,7 +228,7 @@ rite-workflow/
 │ ├── pre-compact.sh / post-compact.sh # #133
 │ ├── preflight-check.sh
 │ ├── pre-tool-bash-guard.sh / post-tool-wm-sync.sh
-│ ├── hook-preamble.sh / state-path-resolve.sh # 共通ヘルパー
+│ ├── hook-preamble.sh / state-path-resolve.sh / control-char-neutralize.sh # 共通ヘルパー
 │ ├── flow-state.sh / local-wm-update.sh
 │ ├── work-memory-lock.sh / work-memory-update.sh / work-memory-parse.py
 │ ├── cleanup-work-memory.sh
@@ -1437,7 +1437,7 @@ legacy `create_*` / `cleanup_*` phase の lifecycle 未完了検出は現在 `se
 
 マルチセッション競合防止のためにライフサイクル hook から source される共有ライブラリ。per-session 状態構造（#672 / Issue #685 / PR #686 + #747 + #748 + #750 + #751 + #756 + #757 + #759）により、所有権はファイル命名（`.rite/sessions/{session_id}.flow-state`）によって**構造的に保証**される。本ライブラリは現在、ランタイムガードではなくパス / エントリ解決レイヤとして機能する。
 
-> **Canonical SoT（source caller）**: 実際の `source` ディレクティブは `plugins/rite/hooks/*.sh` 内にある（`grep -rn "source.*session-ownership.sh" plugins/rite/hooks/ --include='*.sh' | grep -v tests/` で検証）。現時点では次に解決される: `session-start.sh` / `session-end.sh` / `pre-compact.sh` / `post-tool-wm-sync.sh`。（`flow-state.sh` は本ライブラリの `source` caller ではなく `state-path-resolve.sh` のみを source する。`stop-guard.sh` は撤去済み。`post-compact.sh` は本ライブラリを直接 source しない。`pre-tool-bash-guard.sh` は `hook-preamble.sh` のみを source し、flow-state パス解決には関与せず、本ライブラリの `source` caller であったことはない。）
+> **Canonical SoT（source caller）**: 実際の `source` ディレクティブは `plugins/rite/hooks/*.sh` 内にある（`grep -rn "source.*session-ownership.sh" plugins/rite/hooks/ --include='*.sh' | grep -v tests/` で検証）。現時点では次に解決される: `session-start.sh` / `session-end.sh` / `pre-compact.sh` / `post-tool-wm-sync.sh`。（`flow-state.sh` は本ライブラリの `source` caller ではなく `state-path-resolve.sh` と `control-char-neutralize.sh` (Issue #1274) のみを source する。`stop-guard.sh` は撤去済み。`post-compact.sh` は本ライブラリを直接 source しない。`pre-tool-bash-guard.sh` は `hook-preamble.sh` のみを source し、flow-state パス解決には関与せず、本ライブラリの `source` caller であったことはない。）
 
 **提供する関数:**
 

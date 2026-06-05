@@ -5,6 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=state-path-resolve.sh
 source "$SCRIPT_DIR/state-path-resolve.sh"
+# shellcheck source=control-char-neutralize.sh
+source "$SCRIPT_DIR/control-char-neutralize.sh"
 
 # Callers may pre-resolve STATE_ROOT (e.g., session-start.sh resolves it from
 # the hook payload's `cwd` field, which differs from flow-state.sh's own CWD)
@@ -130,16 +132,19 @@ _atomic_write() {
 }
 
 # Emit up to 3 lines of a jq stderr capture ($1 = error file) to stderr, 2-space
-# indented, with control characters neutralized to '?'. Centralizes the diagnostic-
-# snippet idiom shared by cmd_set / cmd_get / cmd_consume_handoff so the control-char
-# neutralization lives in one place: a corrupt state file fragment can carry ANSI
-# escape / control bytes that, echoed raw, would let the corrupt content drive the
-# operator's terminal (cursor moves, color, title rewrites) via the diagnostic path.
+# indented, with control characters neutralized to '?' via the shared
+# neutralize_ctrl helper (control-char-neutralize.sh) — covers C0 + DEL + C1
+# 0x80-0x9f, which the former inline `s/[[:cntrl:]]/?/g` missed (Issue #1274).
+# Shared with the stop-loop-continuation.sh unknown-prefix WARNING so the
+# neutralization convention lives in one place: a corrupt state file fragment can
+# carry ANSI escape / control bytes that, echoed raw, would let the corrupt
+# content drive the operator's terminal (cursor moves, color, title rewrites)
+# via the diagnostic path. --keep-newline preserves the 3-line snippet structure.
 # No-op when the file is unset or empty (preserves the prior -n/-s guard); always
 # returns 0 so a caller under `set -e` never aborts on the diagnostic line.
 _emit_jq_err_snippet() {
   if [ -n "${1:-}" ] && [ -s "$1" ]; then
-    head -3 "$1" | sed 's/^/  /; s/[[:cntrl:]]/?/g' >&2 || true
+    head -3 "$1" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2 || true
   fi
 }
 

@@ -387,6 +387,71 @@ rm -rf "$fake_bin" "$err16"
 out_b=$(stop_payload "$d16" "$SID" true | bash "$HOOK")
 assert "TC-16: second stop allows (one-shot)" "" "$out_b"
 
-if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (Issue #1168 review↔fix loop continuation + #1176 FINALIZE terminal backstop + #1245 WIKICHAIN cleanup-chain gate + #1274 C1 8-bit coverage via shared neutralize_ctrl + #1275 JSON emit fallback C0 neutralization)"; then
+# --- TC-17: JSON emit fallback neutralize failure → static placeholder, block preserved (Issue #1282) ---
+# TC-16 pins the escape-succeeded side of the fallback (handoff re-injected with C0 → ?).
+# This TC pins the next failure layer: the fallback's own `neutralize_ctrl --c0-only` (a
+# fixed-argument tr pipe the helper header calls "実質失敗しない") also fails, forcing the
+# `_r_esc` static placeholder degradation. Forced via a fake tr that exits 1 only when $1
+# carries the neutralize_ctrl `\000-` range string — other tr uses inside the hook chain
+# (flow-state contains_ctrl's `tr -d ...` has $1=-d) delegate to the real tr, so the
+# consume-handoff path stays intact. A known prefix (`/rite:pr:fix 99`) is used instead of
+# TC-16's EVILPREFIX: the unknown-prefix arm would hit the WARNING-side neutralize (its own
+# placeholder) first, entangling two degradations — the known prefix isolates the JSON emit
+# placeholder. Non-vacuous proof (TC-116 vacuous lesson): the normal reason carries the
+# handoff command + Japanese directive, so asserting "placeholder text present + normal
+# reason absent" proves the degradation actually fired.
+echo ""
+echo "=== TC-17: JSON emit fallback neutralize failure → placeholder degradation, block preserved ==="
+d17=$(new_sandbox)
+RITE_STATE_ROOT="$d17" bash "$FS" set --phase review --issue 1282 --branch b --pr 99 \
+  --next n --handoff "/rite:pr:fix 99" --session "$SID" >/dev/null
+fake_bin17=$(mktemp -d)
+real_jq=$(command -v jq)
+real_tr=$(command -v tr)
+cat > "$fake_bin17/jq" <<EOF
+#!/bin/bash
+if [ "\$1" = "-n" ]; then exit 1; fi
+exec "$real_jq" "\$@"
+EOF
+cat > "$fake_bin17/tr" <<EOF
+#!/bin/bash
+case "\$1" in *000-*) exit 1 ;; esac
+exec "$real_tr" "\$@"
+EOF
+chmod +x "$fake_bin17/jq" "$fake_bin17/tr"
+err17=$(mktemp)
+out17=$(stop_payload "$d17" | PATH="$fake_bin17:$PATH" bash "$HOOK" 2>"$err17")
+# Sanity pin: the placeholder path still emitted (did not degrade into a silent allow).
+if [ -n "$out17" ]; then
+  pass "TC-17: placeholder path emitted output despite jq -n + tr failure"
+else
+  fail "TC-17: no output — placeholder path not reached: $(cat -v "$err17")"
+fi
+if printf '%s' "$out17" | "$real_jq" -e . >/dev/null 2>&1; then
+  pass "TC-17: placeholder output is valid JSON"
+else
+  fail "TC-17: placeholder output is not parseable JSON: $(printf '%s' "$out17" | cat -v)"
+fi
+assert "TC-17: decision=block survives the placeholder degradation" "block" "$(printf '%s' "$out17" | "$real_jq" -r '.decision // "NONE"')"
+_reason17=$(printf '%s' "$out17" | "$real_jq" -r '.reason // ""')
+# 縮退の発生証明 (非 vacuous): placeholder 文言 + /rite:resume 案内あり、通常 reason
+# (handoff コマンド再注入 / 日本語継続指示) なし。
+if printf '%s' "$_reason17" | grep -q "rite handoff continuation pending (reason neutralization failed)" \
+   && printf '%s' "$_reason17" | grep -qF "/rite:resume"; then
+  pass "TC-17: reason degraded to the static placeholder with recovery guidance"
+else
+  fail "TC-17: expected static placeholder reason, got: $out17"
+fi
+if printf '%s' "$_reason17" | grep -qF "/rite:pr:fix 99" || printf '%s' "$_reason17" | grep -q "停止せず"; then
+  fail "TC-17: normal-path reason leaked into the placeholder degradation: $out17"
+else
+  pass "TC-17: normal-path reason absent (degradation actually fired, non-vacuous)"
+fi
+rm -rf "$fake_bin17" "$err17"
+# one-shot: second stop allows (the placeholder path still consumes the handoff)
+out17b=$(stop_payload "$d17" "$SID" true | bash "$HOOK")
+assert "TC-17: second stop allows (one-shot consume preserved through placeholder path)" "" "$out17b"
+
+if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (Issue #1168 review↔fix loop continuation + #1176 FINALIZE terminal backstop + #1245 WIKICHAIN cleanup-chain gate + #1274 C1 8-bit coverage via shared neutralize_ctrl + #1275 JSON emit fallback C0 neutralization + #1282 neutralize-failure placeholder degradation)"; then
   exit 1
 fi

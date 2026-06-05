@@ -2,7 +2,7 @@
 title: "「invariant は logic 上成立」を信頼せず empirical reproduction で verify する"
 domain: "heuristics"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-06-02T07:42:13Z"
+updated: "2026-06-05T05:45:26Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260427T115727Z-pr-688.md"
@@ -20,6 +20,8 @@ sources:
     ref: "raw/reviews/20260602T064758Z-pr-1246.md"
   - type: "fixes"
     ref: "raw/fixes/20260602T065355Z-pr-1246.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260605T045347Z-pr-1277.md"
 tags: ["verification", "empirical-reproduction", "invariant", "reviewer-discipline", "silent-regression"]
 confidence: high
 ---
@@ -116,6 +118,18 @@ PR #799 で reviewer が canonical reference (`broken-ref-resolution.md`) の fa
 
 → reviewer disagreement を「矛盾」と受け取って一方を棄却するのではなく、各 reviewer がカバーした path を整理し、未カバー edge を runtime evidence で埋めるのが canonical。empirical reproduction over invariant reasoning の multi-reviewer 版。exit-code leak 自体の機構は [[trailing-and-shortcircuit-exit-code-leak]] を参照。
 
+### 全 reviewer の実測検証規律が low-noise 収束を生む positive evidence (PR #1277)
+
+security 修正 PR (制御文字 neutralize の C1 8-bit 対応) で 5 reviewer (security / error-handling / test / performance / tech-writer) × 2 cycles の全員が実測検証を実施した:
+
+- **security**: 256 バイト全数 sweep でバイトフィルタの置換範囲を網羅確認
+- **error-handling**: PIPESTATUS / pipefail 挙動の実証
+- **test**: 3 種 mutation test による pin の識別力実証
+- **performance**: µs 単位ベンチ
+- **tech-writer**: python3 による UTF-8 エンコード確認 (コードポイント範囲ラベルの検証)
+
+結果、hypothetical finding が 1 件も出ず実証ベースの指摘のみで構成され、唯一の指摘は cycle 1 の MEDIUM 1 件 (コメント内コードポイント範囲ラベルと実装バイト範囲の不整合) → cycle 2 で 0 findings mergeable の low-noise 2-cycle 収束。empirical verification discipline が全 reviewer に行き渡ると、reasoning ベースの憶測 finding によるノイズと cycle 浪費が構造的に消えることを示す positive evidence (本ページが規範とする検出規範の全員適用形)。
+
 ## 関連ページ
 
 - [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](../heuristics/observed-likelihood-gate-with-evidence-anchors.md)
@@ -133,3 +147,4 @@ PR #799 で reviewer が canonical reference (`broken-ref-resolution.md`) の fa
 - [PR #799 cycle 4 fix (realpath --relative-to wiki_root 外挙動の実機反証)](../../raw/fixes/20260503T183643Z-pr-799-cycle4.md)
 - [PR #1246 review results (cycle 1) — reviewer 評価の割れ (exit 0 維持 vs leak) は coverage gap であり runtime observation で確証](../../raw/reviews/20260602T064758Z-pr-1246.md)
 - [PR #1246 fix results — 複数 reviewer 評価の割れを実機再現で確証して採否を決める](../../raw/fixes/20260602T065355Z-pr-1246.md)
+- [PR #1277 review results — 全 reviewer の実測検証規律による low-noise 2-cycle 収束](../../raw/reviews/20260605T045347Z-pr-1277.md)

@@ -1201,6 +1201,7 @@ echo ""
 #   先に失敗して fail-open するため、現実的な fallback トリガーは emit-only の jq 失敗。
 #   _deny_reason の構成要素は現状ハードコード文字列だが、fallback が改行 \n エスケープ +
 #   neutralize_ctrl --c0-only を経由して valid JSON を emit し deny + exit 2 を維持することを pin する。
+#   エスケープ連鎖そのものの非 vacuous 検証 (改行 / raw C0 実入力) は TC-117 が担う。
 # --------------------------------------------------------------------------
 echo "TC-116: deny fallback (jq -n emit failure) → valid JSON, deny preserved"
 rc=0
@@ -1245,6 +1246,61 @@ else
   pass "TC-116 fallback JSON contains no raw ESC byte"
 fi
 rm -rf "$fake_bin_116"
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-117: _bash_guard_escape_deny_reason — 改行/C0 実入力の非 vacuous 変換 pin (Issue #1278)
+#   TC-116 は fallback 経路の構造契約 (到達 / rc=2 / deny 生存) を pin するが、現行の
+#   _deny_reason は静的 ASCII のみで構成されるため、エスケープ連鎖そのものは no-op の
+#   まま pass する (vacuous)。本 TC は hook から関数定義を境界行
+#   (`_bash_guard_escape_deny_reason() {` 〜 `}`) で抽出し、改行 + raw ESC + CR + TAB +
+#   backslash + double-quote を含む入力を直接流して変換を非 vacuous に検証する。
+#   エスケープ連鎖のどの 1 行を欠落させても assertion が落ちる (mutation 耐性):
+#   \\ 行欠落 → (3) invalid JSON (\s は invalid escape)、\" 行欠落 → (3) 構造破壊、
+#   \n 行欠落 → (1) literal \n 不在 (改行は --c0-only で ? 化されるため)、
+#   neutralize 行欠落 → (2) raw ESC 残存。
+# --------------------------------------------------------------------------
+echo "TC-117: _bash_guard_escape_deny_reason neutralizes newline/C0 input (non-vacuous)"
+real_jq=$(command -v jq)
+# 依存 helper (neutralize_ctrl) を source し、関数定義を hook から抽出して取り込む
+source "$SCRIPT_DIR/../control-char-neutralize.sh"
+eval "$(awk '/^_bash_guard_escape_deny_reason\(\) \{$/,/^\}$/' "$HOOK")"
+if declare -f _bash_guard_escape_deny_reason >/dev/null 2>&1; then
+  pass "TC-117 function extracted from hook"
+  tc117_input=$(printf 'line1 "quoted" back\\slash\nline2 \x1b[31mred\x1b[0m tab:\there cr:\r.')
+  tc117_out=$(_bash_guard_escape_deny_reason "$tc117_input") || tc117_out=""
+  # (1) raw 改行ゼロ + literal \n 保存 (改行が neutralize で ? 化される mutation も検出)
+  tc117_nl_count=$(printf '%s' "$tc117_out" | LC_ALL=C wc -l | tr -d ' ')
+  if [ "$tc117_nl_count" = "0" ] && [[ "$tc117_out" == *'line1'*'\n'*'line2'* ]]; then
+    pass "TC-117 newline escaped to literal \\n (no raw newline)"
+  else
+    fail "TC-117 newline not escaped (raw_nl=$tc117_nl_count): $(printf '%s' "$tc117_out" | cat -v)"
+  fi
+  # (2) raw ESC/TAB/CR バイトの非漏出 (? 化)
+  tc117_c0_count=$(printf '%s' "$tc117_out" | LC_ALL=C tr -cd '\033\011\015' | LC_ALL=C wc -c | tr -d ' ')
+  if [ "$tc117_c0_count" = "0" ]; then
+    pass "TC-117 raw C0 bytes (ESC/TAB/CR) neutralized"
+  else
+    fail "TC-117 $tc117_c0_count raw C0 byte(s) leaked: $(printf '%s' "$tc117_out" | cat -v)"
+  fi
+  # (3) JSON 文字列リテラル埋め込みで valid JSON (RFC 8259)
+  tc117_json=$(printf '{"reason":"%s"}' "$tc117_out")
+  if printf '%s' "$tc117_json" | "$real_jq" -e . >/dev/null 2>&1; then
+    pass "TC-117 escaped output embeds as valid JSON"
+  else
+    fail "TC-117 invalid JSON after embedding: $(printf '%s' "$tc117_json" | cat -v)"
+  fi
+  # (4) decode round-trip: " と \ の構造保持 + \n の実改行復元 + ESC の ? 化
+  tc117_decoded=$(printf '%s' "$tc117_json" | "$real_jq" -r '.reason // empty' 2>/dev/null) || tc117_decoded=""
+  if [[ "$tc117_decoded" == *'"quoted"'* ]] && [[ "$tc117_decoded" == *'back\slash'* ]] \
+     && [[ "$tc117_decoded" == *$'\n'* ]] && [[ "$tc117_decoded" == *'?[31mred?[0m'* ]]; then
+    pass "TC-117 quote/backslash/newline survive round-trip, ESC degraded to ?"
+  else
+    fail "TC-117 round-trip mismatch: $(printf '%s' "$tc117_decoded" | cat -v)"
+  fi
+else
+  fail "TC-117 could not extract _bash_guard_escape_deny_reason from hook (boundary lines changed?)"
+fi
 echo ""
 
 # --------------------------------------------------------------------------

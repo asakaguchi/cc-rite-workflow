@@ -22,8 +22,32 @@ export _RITE_HOOK_RUNNING_PRETOOL=1
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
-# neutralize_ctrl --c0-only (deny フォールバックの JSON エスケープ用 — Issue #1278)
+# neutralize_ctrl --c0-only (deny フォールバックの JSON エスケープ用 — Issue #1278)。
+# guard なし source は意図的な設計判断: 本 hook は Pattern 1-3 の ERR trap
+# (_rite_btg_pattern13_fail_open) が exit 0 = allow を選ぶ設計上 fail-open であり、helper
+# 欠落 (= plugin 破損) による source 失敗の exit 1 も PreToolUse では non-blocking = allow
+# として同じ fail-open に収束する (flow-state.sh / stop-loop-continuation.sh の必須依存
+# precedent と同一)。`|| true` を付けてはならない — neutralize_ctrl 未定義のまま deny
+# フォールバックに到達すると command not found で reason を失い placeholder へ縮退する
+# だけで、guard を付ける利点がない。
 source "$SCRIPT_DIR/control-char-neutralize.sh"
+
+# Deny フォールバック JSON 用の reason エスケープ (Issue #1278)。適用順序が契約:
+# backslash → double-quote → 改行 \n 化 → neutralize_ctrl --c0-only (残存 C0+DEL を ? 化)。
+# backslash エスケープが先頭でないと、後続が生成する \" / \n の backslash を二重に
+# エスケープしてしまう。--c0-only なのは byte 単位の C1 置換が UTF-8 マルチバイト本文を
+# 破壊するため (RFC 8259 が生バイトを禁じるのは U+0000-001F のみ)。neutralize_ctrl 失敗時は
+# 非ゼロ exit し、caller が static placeholder へ縮退する (fail-closed)。
+# tests/pre-tool-bash-guard.test.sh の TC-117 が本関数定義を境界行
+# (`_bash_guard_escape_deny_reason() {` / `}`) で抽出して改行 / raw C0 実入力の変換を
+# 直接 pin する — シグネチャ・境界行を変える際はテスト側の抽出パターンも更新すること。
+_bash_guard_escape_deny_reason() {
+  local _r="$1"
+  _r="${_r//\\/\\\\}"
+  _r="${_r//\"/\\\"}"
+  _r="${_r//$'\n'/\\n}"
+  printf '%s' "$_r" | neutralize_ctrl --c0-only
+}
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 
@@ -527,11 +551,9 @@ echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] bash-guard: BLOCKED pattern=$BLOCKED_PA
 # Deny with reason and alternative. jq is required to emit the final permission
 # payload; an intermittent jq failure here would silently downgrade the deny to
 # allow. Fall back to a literal JSON envelope + exit 2 so the deny is fail-closed.
-# 手動エスケープが \ / " のみだと、reason 内の改行・C0 生バイトが JSON 文字列リテラルに
-# 残り RFC 8259 違反の invalid JSON になる — 改行は \n エスケープ、残存 C0+DEL は
-# neutralize_ctrl --c0-only で ? 化する (stop-loop-continuation.sh の JSON emit
-# フォールバックと対称 — Issue #1278 / #1275)。default モードを使わないのは、バイト単位の
-# C1 置換が UTF-8 マルチバイト本文を破壊するため。neutralize 失敗時は raw を emit せず
+# reason のエスケープ連鎖 (改行 \n 化 + 残存 C0 の ? 化 — Issue #1278 / #1275、
+# stop-loop-continuation.sh の JSON emit フォールバックと対称) は
+# _bash_guard_escape_deny_reason に集約。neutralize 失敗時は raw を emit せず
 # static placeholder へ縮退し、deny + exit 2 の fail-closed 契約を維持する。
 _deny_reason="BLOCKED ($BLOCKED_PATTERN): $BLOCKED_REASON $BLOCKED_ALTERNATIVE"
 if ! jq -n --arg reason "$_deny_reason" '{
@@ -541,10 +563,7 @@ if ! jq -n --arg reason "$_deny_reason" '{
       permissionDecisionReason: $reason
     }
   }'; then
-  _deny_reason_escaped="${_deny_reason//\\/\\\\}"
-  _deny_reason_escaped="${_deny_reason_escaped//\"/\\\"}"
-  _deny_reason_escaped="${_deny_reason_escaped//$'\n'/\\n}"
-  _deny_reason_escaped=$(printf '%s' "$_deny_reason_escaped" | neutralize_ctrl --c0-only) \
+  _deny_reason_escaped=$(_bash_guard_escape_deny_reason "$_deny_reason") \
     || _deny_reason_escaped="BLOCKED: command denied (reason neutralization failed, fail-closed). Check the bash-guard stderr log for the blocked pattern."
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$_deny_reason_escaped"
   exit 2

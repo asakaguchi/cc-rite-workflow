@@ -2,8 +2,12 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-06-05T10:33:05Z"
+updated: "2026-06-05T18:33:35Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260605T182035Z-pr-1281-cycle2.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260605T181146Z-pr-1281.md"
   - type: "reviews"
     ref: "raw/reviews/20260605T091117Z-pr-1279.md"
   - type: "reviews"
@@ -457,6 +461,16 @@ PR #1279 (Issue #1275 — JSON emit フォールバックの C0 neutralize) cycl
 
 教訓: **fix の種別 (挙動変更 / コメント訂正) に関わらず、再レビューでは対象 TC への mutation で弁別力を再確認する**。コメント訂正 PR では「コメントが主張する設計判断を test が pin しているか」が mutation の検証対象になる。claim 自体の事実性検証は [[symmetry-claim-input-class-runtime-verification]] を参照。
 
+### 適用 16: fix 側の mutation claim を reviewer が独立再実証する — 観測数差異は核心一致で合意 (PR #1281 で実証)
+
+PR #1281 (Issue #1278 — pre-tool-bash-guard deny フォールバックのエスケープ連鎖対称化) で、mutation testing が **fix workflow と review workflow の両側で対になって機能する** 形が完成形として実測された:
+
+- **fix 側 (commit 前の runtime 実証)**: cycle 1 で検出された vacuous assertion (静的 reason のみで fallback を発火させた TC-116) を関数抽出 + 境界行 extract で非 vacuous 化した際、隔離 worktree で核心行削除 → 2 assertion fail を確認してから commit した。「非 vacuous 化した」という claim を commit 前に mutation で実証する手順 (適用 9-A の系譜)。
+- **review 側 (claim の独立再実証)**: cycle 2 の test reviewer は fix 側の mutation claim を鵜呑みにせず、独立に 4 種の mutation 実験 (各エスケープ行の個別削除 + neutralize→cat 置換) を worktree-only pattern (適用 13) で再実施し、4 段連鎖のどの 1 行を壊しても assertion が落ちることを再実証した。
+- **観測数差異の取り扱い**: fix 側 claim (2 assertion fail) と reviewer 観測 (mutation 種別ごとに異なる fail 数) は一致しなかったが、「非 vacuous である」という **核心の一致** を確認して合意した。mutation 再実証の合意条件は fail 数の literal 一致ではなく「実装を壊すと test が落ちる」という identification power の確認である。
+
+教訓: fix が mutation 検証を claim する場合、reviewer は同じ mutation をなぞるのではなく **独立に設計した mutation セット** で再実証するのが cross-validation として強い (fix 側の mutation 設計自体の盲点も検出できる)。観測数の差異は核心 (非 vacuous 性) が一致していれば合意条件を満たす。vacuous 化の根本原因と解決手法は [[static-input-chain-function-extraction-non-vacuous-test]] を参照。
+
 ## 関連ページ
 
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
@@ -466,6 +480,7 @@ PR #1279 (Issue #1275 — JSON emit フォールバックの C0 neutralize) cycl
 - [Lint の見出し抽出はコードフェンス内行を除外してから行う (検証ツール自身の false-negative 防止)](./lint-strip-code-fence-before-extraction.md)
 - [consume 操作 (read+delete+return) は delete-then-return 順で fail-closed にする](./consume-operation-delete-then-return-fail-closed.md)
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
+- [入力注入経路のない静的文字列処理連鎖は関数抽出 + 境界行 extract で非 vacuous unit テスト化する](./static-input-chain-function-extraction-non-vacuous-test.md)
 
 ## ソース
 
@@ -491,3 +506,5 @@ PR #1279 (Issue #1275 — JSON emit フォールバックの C0 neutralize) cycl
 - [PR #1266 review results — reviewer 2 名が READ-ONLY 制約下の detached worktree mutation test を独立実施し新規 self-test 87 アサーションの behavioral 性を実証、0 findings / 1 cycle mergeable](../../raw/reviews/20260604T032559Z-pr-1266.md)
 - [PR #1270 review results — worktree-only mutation 6 種で TC-6 検出力を実証、mutation 検証の過程で TC-6 remediation 指示と TC-1 の latent SoT guidance 矛盾を発見 (0 findings / 1 cycle mergeable)](../../raw/reviews/20260604T160823Z-pr-1270.md)
 - [PR #1279 review results (cycle 2) — コメント訂正のみの fix に対し mutation 2 種 (fix 行削除 → TC-16 の 3 assert FAIL / --c0-only → default 改変 → 日本語保持 pin FAIL) で test の弁別力を再実証、前 cycle nit (sanity pin コメント精度) も同実測で自然消滅 (0 findings / 2 cycle 収束)](../../raw/reviews/20260605T091117Z-pr-1279.md)
+- [PR #1281 fix results — vacuous assertion を関数抽出 + 境界行 extract で非 vacuous 化し、隔離 worktree での核心行削除 mutation (2 assertion fail) を commit 前に実施して runtime 実証](../../raw/fixes/20260605T181146Z-pr-1281.md)
+- [PR #1281 review results (cycle 2) — test reviewer が fix 側 mutation claim を独立に設計した 4 種 mutation (各エスケープ行個別削除 + neutralize→cat 置換) で再実証、観測数差異は「非 vacuous」核心一致で合意 (0 findings / 2 cycle 収束)](../../raw/reviews/20260605T182035Z-pr-1281-cycle2.md)

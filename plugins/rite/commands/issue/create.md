@@ -151,9 +151,10 @@ AskUserQuestion で Issue の以下を確認/補完する:
 `create-issue-with-projects.sh` に委譲（Issue 作成 + Projects 追加 + status / priority / complexity 設定を 1 ステップで実行）。実 interface は JSON 単一引数 + body は tmpfile 経由（canonical SoT: [`issue-create-with-projects.md`](../../references/issue-create-with-projects.md)）:
 
 ```bash
-# drift-check-ignore: この canonical な「JSON を helper へ単一引数で渡す nested 形態」は
-#   create-md-invocation-symmetry.test.sh (TC-1/TC-2/TC-4/TC-1e) と SoT が test 強制しているため
-#   pipe 形式へ書き換えられない。heaviness は意図的に許容する (refs #1221)。
+# drift-check-ignore: canonical な「JSON を helper へ単一引数で渡す」契約は
+#   create-md-invocation-symmetry.test.sh (TC-1/TC-2/TC-4/TC-1e) と SoT が test 強制している。
+#   tmpfile / args_json を同一プロセスで参照するため block 分割はできず、
+#   long-block heaviness は意図的に許容する (refs #1221 / #1196)。
 # body を tmpfile に書く (LLM が {body} 部分を実 markdown に展開してから heredoc に流す)
 tmpfile=$(mktemp)
 trap 'rm -f "$tmpfile"' EXIT
@@ -166,7 +167,9 @@ ISSUE_BODY_EOF
 # {labels_csv} (例: "bug,fix") を JSON array に変換 (空 CSV は空配列)
 labels_json=$(printf '%s' "{labels_csv}" | jq -R 'split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))')
 
-result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+# args_json を入れ子 $() から分離して構築する (Issue #1196 — 深い入れ子 quoting の malform 源を削減。
+# 単一 JSON 引数契約は不変)
+args_json=$(jq -n \
   --arg title "{title}" \
   --arg body_file "$tmpfile" \
   --argjson labels "$labels_json" \
@@ -190,7 +193,9 @@ result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
       iteration: { mode: $iter_mode }
     },
     options: { source: $source, non_blocking_projects: true }
-  }')") || {
+  }') || { echo "ERROR: args_json の jq 構築に失敗しました" >&2; exit 1; }
+
+result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$args_json") || {
   echo "ERROR: create-issue-with-projects.sh failed (exit $?)" >&2
   exit 1
 }

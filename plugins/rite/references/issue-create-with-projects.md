@@ -44,8 +44,11 @@ fi
 
 ### Step 2: Invoke the Script
 
+The script accepts the input JSON either as a **single positional argument** or via **stdin**. Command markdown callers MUST avoid nesting the `jq -n` command substitution inside the invocation (`"$(jq -n ...)"` 形式) — deep nested quoting is a known LLM tool-call malform source (Issue #1193 / #1196). Build `args_json` first, then pass it:
+
 ```bash
-result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+# args_json を入れ子 $() から分離して構築する (単一 JSON 引数契約は不変)
+args_json=$(jq -n \
  --arg title "{title}" \
  --arg body_file "$tmpfile" \
  --argjson labels '["label1"]' \
@@ -69,9 +72,12 @@ result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
  iteration: { mode: $iter_mode }
  },
  options: { source: $source, non_blocking_projects: true }
- }'
-)")
+ }') || { echo "ERROR: args_json の jq 構築に失敗しました" >&2; exit 1; }
+
+result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$args_json")
 ```
+
+**Accepted alternative (pipe-stdin form)**: `jq -n ... | bash {plugin_root}/scripts/create-issue-with-projects.sh` — used by `commands/pr/review.md` ステップ 7.4.2 / `commands/issue/references/fingerprint-cycling.md` (Issue #1193 #5)。Either form keeps the single-JSON contract; do not introduce flag-style (`--title` 等) invocations.
 
 ### Step 3: Parse the Result
 

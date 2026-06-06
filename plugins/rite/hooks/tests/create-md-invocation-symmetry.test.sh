@@ -2,14 +2,16 @@
 # create-md-invocation-symmetry.test.sh
 #
 # Every `create-issue-with-projects.sh` callsite must use the canonical JSON
-# pattern (single `"$(jq -n ...)"` argument). The flag-style alternative
+# pattern (single JSON argument, built by `jq -n`). The flag-style alternative
 # (`--title --body --labels ...`) is not supported by the script and would only
 # surface at runtime as a fatal exit when a user actually creates an Issue —
 # too late to catch in review.
 #
 # Two-path architecture (PR #1205 / refs #1195 item #9):
 #   - Single-Issue path  = `commands/issue/create.md` ステップ 4.3
-#                          → 1 direct `create-issue-with-projects.sh "$(jq -n ...)"` callsite.
+#                          → `args_json=$(jq -n ...)` constructor + 1 direct
+#                            `create-issue-with-projects.sh "$args_json"` callsite
+#                            (Issue #1196 で入れ子 $() を分離。単一 JSON 引数契約は不変)。
 #                            (A single Issue has no children, so NO link-sub-issue.sh here.)
 #   - Decompose path     = `scripts/decompose-issues.sh`
 #                          → parent + sub-issue loop both call
@@ -44,13 +46,22 @@ done
 
 # ──────────────────────────────────────────────────────────────────────
 # TC-1: Single-Issue path (create.md ステップ 4.3) has exactly 1 canonical
-#       create-issue-with-projects.sh callsite using `"$(jq -n` pattern.
+#       create-issue-with-projects.sh callsite using the separated
+#       `"$args_json"` pattern (Issue #1196).
 # ──────────────────────────────────────────────────────────────────────
-create_md_canonical=$(grep -c 'create-issue-with-projects\.sh "\$(jq -n' "$CREATE_MD" || true)
+create_md_canonical=$(grep -c 'create-issue-with-projects\.sh "\$args_json"' "$CREATE_MD" || true)
 if [ "$create_md_canonical" -ge 1 ]; then
   pass "TC-1 Single-Issue path (create.md 4.3) has canonical JSON callsite (count=$create_md_canonical)"
 else
-  fail "TC-1 Single-Issue path (create.md 4.3) missing canonical 'create-issue-with-projects.sh \"\$(jq -n' callsite (count=$create_md_canonical)"
+  fail "TC-1 Single-Issue path (create.md 4.3) missing canonical 'create-issue-with-projects.sh \"\$args_json\"' callsite (count=$create_md_canonical)"
+fi
+
+# TC-1c: the args_json constructor itself is the canonical `jq -n` form
+#        (TC-1d の build_payload と対称 — 手組み文字列 / flag-style への退行を pin する)。
+if grep -qE '^args_json=\$\(jq -n' "$CREATE_MD"; then
+  pass "TC-1c create.md args_json is constructed via jq -n (canonical)"
+else
+  fail "TC-1c create.md args_json constructor missing or not built via jq -n"
 fi
 
 # ──────────────────────────────────────────────────────────────────────
@@ -94,7 +105,7 @@ fi
 #       $CREATE_SCRIPT var) use the canonical pattern in BOTH files.
 # ──────────────────────────────────────────────────────────────────────
 # Single-Issue path: in create.md the only real invocation signature is the
-# `bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n` line.
+# `bash {plugin_root}/scripts/create-issue-with-projects.sh "$args_json"` line.
 # A prose mention like `ERROR: create-issue-with-projects.sh failed` is NOT a
 # `bash .../create-issue-with-projects.sh` callsite and is excluded by anchoring
 # on `bash` followed by the script path.
@@ -105,7 +116,7 @@ if [ "$create_md_non_canonical" -eq 0 ]; then
 else
   echo "  Non-canonical invocations in create.md:"
   grep -nE 'bash [^|]*create-issue-with-projects\.sh ' "$CREATE_MD" \
-    | grep -v 'create-issue-with-projects\.sh "\$(jq -n' \
+    | grep -v 'create-issue-with-projects\.sh "\$args_json"' \
     | sed 's/^/    /'
   fail "TC-2 create.md: $create_md_non_canonical create-issue-with-projects.sh invocation(s) NOT canonical (total=$create_md_invocations)"
 fi
@@ -159,9 +170,10 @@ check_no_flag_title_proximity "TC-3b no flag-style --title near decompose-issues
 
 # ──────────────────────────────────────────────────────────────────────
 # TC-4: SoT (references/issue-create-with-projects.md) demonstrates the
-#       canonical JSON pattern.
+#       canonical JSON pattern (args_json constructor + single-arg callsite)。
 # ──────────────────────────────────────────────────────────────────────
-if grep -qE 'create-issue-with-projects\.sh "\$\(jq -n' "$SOT_MD"; then
+if grep -qE '^args_json=\$\(jq -n' "$SOT_MD" \
+   && grep -qE 'create-issue-with-projects\.sh "\$args_json"' "$SOT_MD"; then
   pass "TC-4 SoT (references/issue-create-with-projects.md) demonstrates canonical JSON pattern"
 else
   fail "TC-4 SoT does NOT show canonical JSON pattern (SoT drift suspected)"

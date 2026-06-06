@@ -14,7 +14,7 @@
 # Called from:
 #   - commands/pr/fix.md ステップ 1.2.0 "On Priority 2 success" (旧 ~154 行 inline block を委譲:
 #     Issue #1196 / #1193 MEDIUM #12)。Priority 3 (pr_comment) の string-based 鏡像は
-#     fix.md ステップ 1.2.0.s に inline のまま残る (同 logic の鏡像。jq filter を変更する際は両方を同期すること)
+#     fix.md 内の 1.2.0.s 節に inline のまま残る (同 logic の鏡像。jq filter を変更する際は両方を同期すること)
 #
 # Usage:
 #   bash review-findings-maps.sh --review-source <local_file|explicit_file|...> \
@@ -126,7 +126,7 @@ trap '_cleanup; exit 129' HUP
 # Issue #1016: schema 1.1.0 後方互換 normalization (scope default mapping + invariant #5 auto-correct)。
 # Issue #1018 (M2): auto_demote_low 適用 (LOW × current-pr → nit-noted)。
 # 本 script は file-based path 用 (Priority 0/2 共通)。Priority 3 (pr_comment, raw_json string) には
-# 別途 string-based 版が fix.md ステップ 1.2.0.s に近接して実装されている (同 logic の鏡像)。
+# 別途 string-based 版が fix.md 内の 1.2.0.s 節に近接して実装されている (同 logic の鏡像)。
 #
 # 動作:
 # (a) schema_version == "1.0"|"1.0.0" の場合、findings[] に欠落している scope を severity から

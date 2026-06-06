@@ -451,163 +451,19 @@ bash {plugin_root}/scripts/review-source-resolve.sh \
 
 **On Priority 0 failure** (explicit file missing/invalid/schema_unknown): `review_source="fallback"` triggers ステップ 1.2.0.1 interactive fallback. Do NOT fall through to Priority 1-3 silently when `--review-file` was explicitly requested but unusable — the user's intent was to use that specific file.
 
-**On Priority 2 success**: Skip the existing "Target Comment Fast Path" and "Broad Comment Retrieval" sub-sections below. Parse the JSON file per [review-result-schema.md](../../references/review-result-schema.md#json-schema) and construct `severity_map` directly from `findings[]`:
+**On Priority 2 success**: Skip the existing "Target Comment Fast Path" and "Broad Comment Retrieval" sub-sections below. `severity_map` / `scope_map` の構築 + schema 1.1.0 normalization は `scripts/review-findings-maps.sh` に委譲する (Issue #1196 / #1193 MEDIUM #12)。helper は schema 1.0/1.0.0 の scope default mapping (a)・invariant #5 auto-correct (b)・auto_demote_low 降格 (e, `rite-config.yml` 読込含む)・重複 file:line 検出・line null/0 の `anchor` sentinel 正規化・severity_map/scope_map 構築検証・normalized tempfile の trap 削除 (Issue #1026 hand-off 契約) をすべて内包し、`[CONTEXT] REVIEW_SOURCE_*` retained flag を **stderr** に旧 inline block から verbatim emit する (reason SoT は helper docstring。fix.md 側は下記 bullet 列挙で参照)。file-based source (local_file / explicit_file) 以外を渡した場合は no-op exit 0 (旧 if guard と同一)。
 
+`{review_source}` / `{review_source_path}` は ステップ 1.2.0 の最終 marker `[CONTEXT] REVIEW_SOURCE=...` から literal substitute する。severity_map 構築失敗時のみ helper が非ゼロ exit し、caller が `[fix:error]` を stdout 出力する (**[fix:error] stdout 分離** — 上記 review-source-resolve.sh caller と同型):
 
 ```bash
-# Build severity_map from JSON findings array (schema_version 検証は Selection logic 内で既に完了済み)
-#
-# 重複 file:line 検出: jq の from_entries は同一 key を後勝ちで畳み込むため、
-# (例: src/auth.ts:42 に code_quality HIGH と security CRITICAL の 2 件) では
-# 後者のみを保持し前者の severity が silent に消失する (silent data loss)。
-# 重複が検出された場合は WARNING を emit して可視化し、後段で人間が判断できるようにする。
-# Source: jq manual (https://jqlang.github.io/jq/manual/) — from_entries duplicate key behavior
-# === severity_map build (local_file/explicit_file only — referenced by pr_comment state transitions note) ===
-if [ "$review_source" = "local_file" ] || [ "$review_source" = "explicit_file" ]; then
-  # Issue #1016: schema 1.1.0 後方互換 normalization (scope default mapping + invariant #5 auto-correct)。
-  # Issue #1018 (M2): auto_demote_low 適用 (LOW × current-pr → nit-noted)。
-  # 本 step は file-based path 用 (Priority 0/2 共通)。Priority 3 (pr_comment, raw_json string) には
-  # 別途 string-based 版が後段の ステップ 1.2.0.s に近接して実装されている (同 logic の鏡像)。
-  #
-  # 動作:
-  # (a) schema_version == "1.0"|"1.0.0" の場合、findings[] に欠落している scope を severity から
-  #     default mapping (CRITICAL/HIGH/MEDIUM → current-pr、LOW-MEDIUM/LOW → nit-noted) で補完。
-  #     1 件以上補完したら [CONTEXT] REVIEW_SOURCE_SCOPE_DEFAULTED=1 を emit。
-  # (b) invariant #5: pre_existing == false ∧ scope == "nit-noted" の finding を検出。
-  #     1 件以上あれば WARNING + [CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1 を emit し、
-  #     scope を current-pr に自動書き換え。
-  # (c) (a) または (b) または (e) で mutation が発生した場合のみ、normalized tempfile に書き出し、
-  #     review_source_path を tempfile path に差し替えて downstream で参照させる。
-  # (d) 後方互換: invariant #5 は pre_existing フィールドが存在する 1.1.0 JSON のみで発火する
-  #     (1.0/1.0.0 では default mapping は scope を補完するのみで pre_existing は補完しない)。
-  # (e) Issue #1018 M2: review.scope_assignment.auto_demote_low (default true) が true の場合、
-  #     severity == "LOW" ∧ scope == "current-pr" の finding の scope を "nit-noted" に降格する。
-  #     1 件以上降格したら WARNING + [CONTEXT] REVIEW_SOURCE_AUTO_DEMOTED_LOW=1 を emit。
-  #     auto_demote_low: false で opt-out 可能 (LOW × current-pr が通常通り blocking として fix loop に流れる)。
-  norm_sv=$(jq -r '.schema_version // "unknown"' "$review_source_path" 2>/dev/null || echo "unknown")
-  norm_defaulted_count=0
-  norm_corrected_count=0
-  norm_demoted_low_count=0
-  # auto_demote_low config 読込 (Issue #1018 M2)。section absent → default true。
-  auto_demote_low=$(awk '/^review:/{r=1;next} r && /^  scope_assignment:/{s=1;next} s && /^    auto_demote_low:/{print $2; exit}' rite-config.yml 2>/dev/null | tr -d '"' | tr -d "'" | tr '[:upper:]' '[:lower:]')
-  case "$auto_demote_low" in false|no|0) auto_demote_low=false ;; *) auto_demote_low=true ;; esac
-  case "$norm_sv" in
-    "1.0.0"|"1.0")
-      norm_defaulted_count=$(jq '[.findings[]? | select(has("scope") | not)] | length' "$review_source_path" 2>/dev/null || echo 0)
-      ;;
-  esac
-  norm_corrected_count=$(jq '[.findings[]? | select(.pre_existing == false and .scope == "nit-noted")] | length' "$review_source_path" 2>/dev/null || echo 0)
-  if [ "$auto_demote_low" = "true" ]; then
-    norm_demoted_low_count=$(jq '[.findings[]? | select(.severity == "LOW" and .scope == "current-pr")] | length' "$review_source_path" 2>/dev/null || echo 0)
-  fi
-  if [ "${norm_defaulted_count:-0}" -gt 0 ] || [ "${norm_corrected_count:-0}" -gt 0 ] || [ "${norm_demoted_low_count:-0}" -gt 0 ]; then
-    if norm_tmp=$(mktemp /tmp/rite-fix-normalized-XXXXXX 2>/dev/null); then
-      # auto_demote_low jq filter: bash 変数を jq 引数で渡し、jq 内で動的判定
-      if jq --arg demote_low "$auto_demote_low" '
-        .findings |= map(
-          (if has("scope") then . else .scope = (
-            if .severity == "CRITICAL" or .severity == "HIGH" or .severity == "MEDIUM" then "current-pr"
-            else "nit-noted"
-            end
-          ) end)
-          | (if .pre_existing == false and .scope == "nit-noted" then .scope = "current-pr" else . end)
-          | (if $demote_low == "true" and .severity == "LOW" and .scope == "current-pr" then .scope = "nit-noted" else . end)
-        )
-      ' "$review_source_path" > "$norm_tmp" 2>/dev/null; then
-        if [ "${norm_defaulted_count:-0}" -gt 0 ]; then
-          echo "WARNING: $norm_defaulted_count findings の scope を schema 1.0 後方互換で severity-based default mapping により補完しました" >&2
-          echo "[CONTEXT] REVIEW_SOURCE_SCOPE_DEFAULTED=1; reason=scope_omitted_in_v1_0; count=$norm_defaulted_count; schema_version=$norm_sv" >&2
-        fi
-        if [ "${norm_corrected_count:-0}" -gt 0 ]; then
-          echo "WARNING: $norm_corrected_count findings が invariant #5 違反 (pre_existing=false × scope=nit-noted) のため scope を current-pr に auto-correct しました" >&2
-          echo "[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1; reason=pre_existing_false_scope_nit_noted; count=$norm_corrected_count" >&2
-        fi
-        if [ "${norm_demoted_low_count:-0}" -gt 0 ]; then
-          echo "WARNING: $norm_demoted_low_count findings (LOW × current-pr) を Issue #1018 M2 auto_demote_low により scope=nit-noted に降格しました" >&2
-          echo "[CONTEXT] REVIEW_SOURCE_AUTO_DEMOTED_LOW=1; reason=low_current_pr_demoted_to_nit_noted; count=$norm_demoted_low_count" >&2
-        fi
-        review_source_path="$norm_tmp"
-        # hand-off 完了: 下流の severity_map 構築が review_source_path 経由で参照するため、
-        # trap cleanup 対象から外す (二重 rm 回避 + downstream 参照保護)。
-        # Issue #1026: hand-off pattern 統一 — block 終了時 (EXIT/INT/TERM/HUP) に trap で
-        # `/tmp/rite-fix-normalized-XXXXXX` を必ず削除するため、`handed_off_norm_tmp` に path を保持する
-        # (severity_map build 完了後、bash block 終了の trap EXIT で削除される)。
-        handed_off_norm_tmp="$norm_tmp"
-        norm_tmp=""
-      else
-        rm -f "$norm_tmp"
-        norm_tmp=""
-        echo "WARNING: schema 1.1.0 normalization jq が失敗 — 原 JSON のまま続行します" >&2
-        echo "[CONTEXT] REVIEW_SOURCE_NORMALIZATION_FAILED=1; reason=jq_mutation_failed" >&2
-      fi
-    else
-      mktemp_norm_rc=$?
-      echo "WARNING: schema 1.1.0 normalization 用 mktemp が失敗しました (rc=$mktemp_norm_rc) — 原 JSON のまま続行します" >&2
-      echo "  対処: /tmp の容量 / inode 枯渇 / read-only filesystem / permission denied を確認してください" >&2
-      echo "[CONTEXT] REVIEW_SOURCE_NORMALIZATION_FAILED=1; reason=mktemp_failure_norm_tmp; rc=$mktemp_norm_rc" >&2
-    fi
-  fi
-
-  # verified-review H-1/H-2 対応: jq の exit code を明示捕捉する。
-  # 旧実装 `duplicate_keys=$(jq ...)` / `severity_map_json=$(jq -c ...)` は exit code を一切
-  # check せず、jq バイナリ異常 / OOM / TOCTOU (別プロセスが file を rm / truncate) で
-  # silent に空文字になっていた。重複警告が silent skip し、severity_map 構築が無音で空にな
-  # る regression を防ぐため、if-else で exit code を独立 capture する。
-  jq_err=$(mktemp /tmp/rite-fix-jq-err-XXXXXX 2>/dev/null) || jq_err=""
-
-  # line フィールドの nullable sentinel 正規化
-  # review-result-schema.md L92 で line は `integer | null` (null が行非依存指摘の sentinel) に変更。
-  # 旧実装は `(.line | tostring)` で `null` が `"null"` 文字列に変換される (jq `tostring` の仕様) ため
-  # `src/foo.ts:null` のような key が生成され、従来の `line: 0` legacy と混在すると key 衝突するリスクがあった。
-  # 後方互換で `line == 0` / `line == null` の両方を `"anchor"` sentinel に正規化することで、
-  # 同一ファイル複数の行非依存指摘が key 衝突で silent に畳み込まれるのを防ぐ。
-  if duplicate_keys=$(jq -r '[.findings[] | (.file + ":" + (if .line == null or .line == 0 then "anchor" else (.line | tostring) end))] | group_by(.) | map(select(length > 1) | .[0]) | .[]' "$review_source_path" 2>"${jq_err:-/dev/null}"); then
-    if [ -n "$duplicate_keys" ]; then
-      echo "WARNING: 重複 file:line を持つ finding を検出しました (severity 上書きの可能性):" >&2
-      printf '%s\n' "$duplicate_keys" | sed 's/^/  - /' >&2
-      echo "  jq from_entries は同一 key を後勝ちで畳み込みます。重複行に対する severity は最後の finding の値が採用されます。" >&2
-      echo "  対処: review-result JSON 内の重複 file:line を手動確認してください。" >&2
-    fi
-  else
-    jq_dup_rc=$?
-    echo "WARNING: 重複 file:line 検出用 jq が失敗しました (rc=$jq_dup_rc) — silent data loss 検出を skip します" >&2
-    [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
-    echo "  影響: 同一 file:line の重複 severity 警告が出ないため、後段で最後勝ち畳み込みが silent に発生する可能性があります" >&2
-    echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=jq_duplicate_check_failed; rc=$jq_dup_rc" >&2
-    # severity_map 構築は続行する (重複警告の喪失は non-blocking 失敗として扱う)
-  fi
-
-  # duplicate_keys と同じ nullable sentinel 正規化を適用
-  if severity_map_json=$(jq -c '[.findings[] | {key: (.file + ":" + (if .line == null or .line == 0 then "anchor" else (.line | tostring) end)), value: .severity}] | from_entries' "$review_source_path" 2>"${jq_err:-/dev/null}"); then
-    :
-  else
-    jq_smap_rc=$?
-    echo "ERROR: severity_map 構築用 jq が失敗しました (rc=$jq_smap_rc)" >&2
-    [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
-    echo "  対処: review-result JSON ($review_source_path) の内容と jq バイナリを確認してください" >&2
-    echo "  影響: severity_map が空のまま後段に流れ、指摘 0 件と誤認される silent regression を防ぐため fail-fast します" >&2
-    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=severity_map_build_failed; rc=$jq_smap_rc" >&2
-    [ -n "$jq_err" ] && rm -f "$jq_err"
-    echo "[fix:error]"
-    exit 1
-  fi
-  # Issue #1018 M2: scope_map を severity_map と並行構築。
-  # findings[].scope は schema 1.1.0 で導入され、1.0/1.0.0 JSON では ステップ 1.2.0 normalization 段階で
-  # severity-based default mapping により補完済み (上記 (a))。本 step では normalization 後の
-  # review_source_path から scope を file:line key で map 化する。
-  # 後段の ステップ 1.3 (classification) / ステップ 1.4 (display) / ステップ 2.1 (entry routing) /
-  # ステップ 4.6 (acknowledged_nit_count 計算) で参照される。
-  if scope_map_json=$(jq -c '[.findings[] | {key: (.file + ":" + (if .line == null or .line == 0 then "anchor" else (.line | tostring) end)), value: .scope}] | from_entries' "$review_source_path" 2>"${jq_err:-/dev/null}"); then
-    :
-  else
-    jq_scmap_rc=$?
-    echo "WARNING: scope_map 構築用 jq が失敗しました (rc=$jq_scmap_rc) — scope-based routing が無効化されます (legacy blocking 扱い)" >&2
-    [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
-    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=scope_map_build_failed; rc=$jq_scmap_rc" >&2
-    scope_map_json="{}"
-  fi
-  [ -n "$jq_err" ] && rm -f "$jq_err"
-fi
+# ステップ 1.2.0 severity_map/scope_map build — scripts/review-findings-maps.sh へ委譲 (Issue #1196)
+bash {plugin_root}/scripts/review-findings-maps.sh \
+  --review-source "{review_source}" \
+  --review-source-path "{review_source_path}" || {
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=findings_maps_build_failed" >&2
+  echo "[fix:error]"
+  exit 1
+}
 ```
 
 **On Priority 3 (PR comment, backward-compat)**: After the existing Broad Retrieval retrieves the comment body, check for a `### 📄 Raw JSON` section with code fence. Scope the awk parser to after the `### 📄 Raw JSON` section marker so that sample JSON blocks in findings' suggestion columns (which appear earlier in the comment) are not mistakenly captured.
@@ -818,7 +674,8 @@ else
       # Issue #1016: schema 1.1.0 後方互換 normalization (scope default mapping + invariant #5 auto-correct)。
       # Issue #1018 (M2): auto_demote_low 適用 (LOW × current-pr → nit-noted)。
       # 本 step は Priority 3 (pr_comment, raw_json string) 用。Priority 0/2 (file-based) は
-      # 前段の severity_map build block で同 logic の鏡像を実装している。
+      # scripts/review-findings-maps.sh へ委譲済 (Issue #1196) で同 logic の鏡像。
+      # jq filter / normalization 動作を変更する際は helper と本 block の両方を同期すること。
       #
       # 動作:
       # (a) schema_version == "1.0"|"1.0.0" の場合、findings[] に欠落している scope を severity から
@@ -969,7 +826,7 @@ exit 1
 
 **ステップ 1.0.1 / 1.2.0 / 1.2.0.1 failure reasons** (reason table drift prevention — see [distributed-fix-drift-check](../../hooks/scripts/distributed-fix-drift-check.sh) Pattern-2 / Pattern-5):
 
-> **注**: ステップ 1.2.0 Selection logic (Priority 0/1/2/3 + fallback) の reason は `scripts/review-source-resolve.sh` へ移設済み (#1195 item #2)。本表は ステップ 1.0.1 / 1.2.0 caller guard / 1.2.0.1 Interactive Fallback / Priority 3 pr_comment / severity_map の reason を扱う。
+> **注**: ステップ 1.2.0 Selection logic (Priority 0/1/2/3 + fallback) の reason は `scripts/review-source-resolve.sh` へ移設済み (#1195 item #2)。Priority 0/2 (file-based) の severity_map build / normalization の reason は `scripts/review-findings-maps.sh` へ移設済み (#1196、下記 bullet 列挙)。本表は ステップ 1.0.1 / 1.2.0 caller guard / 1.2.0.1 Interactive Fallback / Priority 3 pr_comment (string-based 鏡像含む) の reason を扱う。
 
 | reason | Description |
 |--------|-------------|
@@ -987,21 +844,26 @@ exit 1
 | `bash_version_incompatible` | Prerequisites の `command -v mapfile` チェックが失敗 (bash 3.2 等の旧バージョン) |
 | `pr_comment_commit_sha_mismatch` | Priority 3 の PR コメント Raw JSON の `commit_sha` が現 HEAD と不一致 (stale detection、WARNING のみで continue) |
 | `jq_error_on_commit_sha` | Priority 0/2/3 の `.commit_sha` 抽出 jq が IO/binary エラーで失敗 (I-4 対応。stale detection 無効化を silent にしない。`priority=0|2|3` として retained flag に付記される) |
-| `jq_duplicate_check_failed` | Priority 0/2 で重複 file:line 検出用 jq が失敗 (silent data loss 検出を skip、非ブロッキング) |
-| `severity_map_build_failed` | Priority 0/2 で severity_map 構築用 jq が失敗 (0 件で正常終了する silent regression 防止、`[fix:error]` 昇格) |
 | `pr_comment_severity_map_build_failed` | Priority 3 で PR コメント Raw JSON からの severity_map 構築用 jq が失敗 (legacy Markdown parser へ fallthrough) |
 | `pr_comment_tempfile_read_io_error` | Priority 3 で `pr_comment_body_file` の cat が IO エラーで失敗 (permission 変更 / NFS timeout / TOCTOU truncate) |
 | `pr_number_placeholder_residue` | ステップ 1.2.0 冒頭の `pr_number="{pr_number}"` literal substitute が忘れられ、数値以外 (空文字 / placeholder 残留) のまま bash block に入った (cleanup.md ステップ 6 / review.md ステップ 6.1.a と対称化、`[fix:error]` 昇格) |
-| `scope_omitted_in_v1_0` | Issue #1016: schema 1.0/1.0.0 受信時に findings[].scope が欠落しているため severity ベースの default mapping で補完した (`REVIEW_SOURCE_SCOPE_DEFAULTED` flag、非ブロッキング、observability のみ) |
-| `pre_existing_false_scope_nit_noted` | Issue #1016: cross-field invariant #5 違反 — `pre_existing == false` × `scope == "nit-noted"` の finding を検出し、scope を `current-pr` に auto-correct した (`REVIEW_SOURCE_AUTO_CORRECTED` flag、非ブロッキング、auto-correct + observability) |
-| `jq_mutation_failed` | Issue #1016: schema 1.1.0 normalization (default mapping + invariant #5 auto-correct) を行う jq mutation が失敗 (`REVIEW_SOURCE_NORMALIZATION_FAILED` flag、非ブロッキング、原 JSON のまま続行) |
-| `mktemp_failure_norm_tmp` | Issue #1016: schema 1.1.0 normalization 用 tempfile (`/tmp/rite-fix-normalized-XXXXXX`) の mktemp が失敗 (disk full / inode 枯渇 / read-only filesystem / permission denied、`REVIEW_SOURCE_NORMALIZATION_FAILED` flag、非ブロッキング、原 JSON のまま続行)。silent skip 防止のため WARNING + retained flag を必ず emit する (PR #1023 review F-01 対応) |
-| `low_current_pr_demoted_to_nit_noted` | Issue #1018 M2: `review.scope_assignment.auto_demote_low: true` (default) で `severity == "LOW"` ∧ `scope == "current-pr"` の finding scope を `nit-noted` に自動降格した (`REVIEW_SOURCE_AUTO_DEMOTED_LOW` flag、非ブロッキング、auto-demote + observability)。`auto_demote_low: false` で opt-out すると本 reason は emit されない |
-| `scope_map_build_failed` | Issue #1018 M2: Priority 0/2 (file-based) で scope_map_json 構築用 jq が失敗 (`REVIEW_SOURCE_PARSE_FAILED` flag、非ブロッキング、`scope_map_json="{}"` で legacy blocking 扱いに fallback) |
+| `scope_omitted_in_v1_0` | Issue #1016: schema 1.0/1.0.0 受信時に findings[].scope が欠落しているため severity ベースの default mapping で補完した (`REVIEW_SOURCE_SCOPE_DEFAULTED` flag、非ブロッキング、observability のみ)。本表の emit 元は Priority 3 string-based 鏡像 (ステップ 1.2.0.s)。file-based 版は `review-findings-maps.sh` が同名 reason を emit する (下記 bullet 参照) |
+| `pre_existing_false_scope_nit_noted` | Issue #1016: cross-field invariant #5 違反 — `pre_existing == false` × `scope == "nit-noted"` の finding を検出し、scope を `current-pr` に auto-correct した (`REVIEW_SOURCE_AUTO_CORRECTED` flag、非ブロッキング)。emit 元は Priority 3 鏡像 + `review-findings-maps.sh` の dual (下記 bullet 参照) |
+| `jq_mutation_failed` | Issue #1016: schema 1.1.0 normalization (default mapping + invariant #5 auto-correct) を行う jq mutation が失敗 (`REVIEW_SOURCE_NORMALIZATION_FAILED` flag、非ブロッキング、原 JSON のまま続行)。emit 元は Priority 3 鏡像 + `review-findings-maps.sh` の dual (下記 bullet 参照) |
+| `low_current_pr_demoted_to_nit_noted` | Issue #1018 M2: `review.scope_assignment.auto_demote_low: true` (default) で `severity == "LOW"` ∧ `scope == "current-pr"` の finding scope を `nit-noted` に自動降格した (`REVIEW_SOURCE_AUTO_DEMOTED_LOW` flag、非ブロッキング)。`auto_demote_low: false` で opt-out 可。emit 元は Priority 3 鏡像 + `review-findings-maps.sh` の dual (下記 bullet 参照) |
 | `pr_comment_scope_map_build_failed` | Issue #1018 M2: Priority 3 (pr_comment Raw JSON) で scope_map_json 構築用 jq が失敗 (`REVIEW_SOURCE_PARSE_FAILED` flag、非ブロッキング、`scope_map_json="{}"` で legacy blocking 扱いに fallback) |
 | `review_source_resolve_failed` | ステップ 1.2.0 caller が `scripts/review-source-resolve.sh` の非ゼロ exit を検知した際の caller-side retained-flag (helper が具体 reason を `FIX_FALLBACK_FAILED` で stderr emit 済み、本 reason は drift Pattern 1 充足用の generic guard、`[fix:error]` 昇格) |
+| `findings_maps_build_failed` | ステップ 1.2.0 caller が `scripts/review-findings-maps.sh` の非ゼロ exit を検知した際の caller-side retained-flag (helper が具体 reason — 典型は `severity_map_build_failed` — を `FIX_FALLBACK_FAILED` で stderr emit 済み、本 reason は drift Pattern 1 充足用の generic guard、`[fix:error]` 昇格。`review_source_resolve_failed` と同型) |
 
-**Eval-order enumeration** (for Pattern-5 drift check): 本 enumeration は Pattern-5 drift check の **唯一の入力源** であり、上の ステップ 1.2.0 / 1.2.0.1 reason 表と必ず同期させること。reason を追加・削除する際は表と本 enumeration の両方を同時に更新する。emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `mktemp_failure_norm_tmp` / `low_current_pr_demoted_to_nit_noted` / `scope_map_build_failed` / `pr_comment_scope_map_build_failed` / `review_source_resolve_failed`)
+> **Note (Issue #1196 / #1221 規約)**: Priority 0/2 (file-based) の severity_map build / normalization の reason は委譲先 helper `scripts/review-findings-maps.sh` が emit する (SoT は helper docstring)。`distributed-fix-drift-check.sh` Pattern 2 は「同一ファイル内に `| reason |` table 行があれば同ファイル内で `reason=` emit される」ことを前提とするため、委譲済 reason は **markdown table 行にせず bullet 形式**で列挙する。同じ理由で本文 prose では bare backtick 名で参照する。helper の stderr `[CONTEXT]` emit は caller の bash 出力として LLM コンテキストに surface するため、下記 reason は fix flow 上で従来どおり観測される。helper は `distributed-fix-drift-check.sh` の DEFAULT_ALL_TARGETS に登録済みで、helper docstring 内の Eval-order enumeration が Pattern-5 で機械検証される。
+
+**review-findings-maps.sh reasons** (helper が `[CONTEXT] REVIEW_SOURCE_*` / `FIX_FALLBACK_FAILED` を emit。normalization 系 4 reason — `scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `low_current_pr_demoted_to_nit_noted` / `jq_mutation_failed` — は Priority 3 鏡像も同名 emit するため上の table 行にも存在する):
+- `mktemp_failure_norm_tmp`: Issue #1016: schema 1.1.0 normalization 用 tempfile (`/tmp/rite-fix-normalized-XXXXXX`) の mktemp が失敗 (disk full / inode 枯渇 / read-only filesystem / permission denied、`REVIEW_SOURCE_NORMALIZATION_FAILED` flag、非ブロッキング、原 JSON のまま続行)。silent skip 防止のため WARNING + retained flag を必ず emit する (PR #1023 review F-01 対応)
+- `jq_duplicate_check_failed`: Priority 0/2 で重複 file:line 検出用 jq が失敗 (silent data loss 検出を skip、非ブロッキング)
+- `severity_map_build_failed`: Priority 0/2 で severity_map 構築用 jq が失敗 (0 件で正常終了する silent regression 防止、helper exit 1 → caller が `findings_maps_build_failed` + `[fix:error]` に昇格)
+- `scope_map_build_failed`: Issue #1018 M2: Priority 0/2 (file-based) で scope_map_json 構築用 jq が失敗 (`FIX_FALLBACK_FAILED` flag、非ブロッキング、`scope_map_json="{}"` で legacy blocking 扱いに fallback)
+
+**Eval-order enumeration** (for Pattern-5 drift check): 本 enumeration は fix.md に対する Pattern-5 drift check の **唯一の入力源** であり、上の ステップ 1.2.0 / 1.2.0.1 reason 表と必ず同期させること。reason を追加・削除する際は表と本 enumeration の両方を同時に更新する (`scripts/review-findings-maps.sh` へ委譲済の reason は helper docstring 側の enumeration で機械検証されるため本 enumeration には含めない)。emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `low_current_pr_demoted_to_nit_noted` / `pr_comment_scope_map_build_failed` / `review_source_resolve_failed` / `findings_maps_build_failed`)
 
 #### Legacy Branching (PR Comment Path Only)
 

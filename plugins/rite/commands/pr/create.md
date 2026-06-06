@@ -562,7 +562,9 @@ if [ ! -s "$tmpfile" ]; then
   exit 1
 fi
 
-result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+# args_json を入れ子 $() から分離して構築する (Issue #1284 — 深い入れ子 quoting の malform 源を削減。
+# 単一 JSON 引数契約は不変)
+args_json=$(jq -n \
   --arg title "fix: {problem_summary}" \
   --arg body_file "$tmpfile" \
   --argjson projects_enabled {projects_enabled} \
@@ -583,8 +585,9 @@ result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
       iteration: { mode: $iter_mode }
     },
     options: { source: "pr_create", non_blocking_projects: true }
-  }'
-)")
+  }') || { echo "ERROR: args_json の jq 構築に失敗しました" >&2; exit 1; }
+
+result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$args_json")
 
 if [ -z "$result" ]; then
   echo "ERROR: create-issue-with-projects.sh returned empty result" >&2

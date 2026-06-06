@@ -336,107 +336,21 @@ sed "s/{initialized_at}/$initialized_at/g" \
 
 ステップ 1.2 で取得した `branch_strategy` と `wiki_branch` の値をリテラルに埋め込んで実行すること。
 
-### 3.1 separate_branch 戦略の場合
+### 3.1 初期コミット (wiki-branch-init.sh へ委譲)
 
 > **Reference**: [separate_branch 戦略のブランチ操作](../../references/wiki-patterns.md#separate_branch-戦略のブランチ操作)
 
+ステップ 2 で展開した `.rite/wiki/` の初期コミットは `wiki-branch-init.sh` に委譲する (Issue #1196)。helper は separate_branch (orphan ブランチ作成 + push + 元ブランチ復帰、dirty tree の stash 退避/復帰、異常終了時の trap による元ブランチ復帰保証) / same_branch (現在ブランチへコミット) の両戦略と、未知 strategy の fail-fast をすべて内包する (旧 ~95 行 inline block を委譲)。
+
+**出力契約** (旧 inline block と同一): 成功時は `✅ Wiki ブランチ '{wiki_branch}' を作成しました` (separate_branch) または `✅ Wiki を現在のブランチに初期化しました` (same_branch) を stdout 出力。失敗時は `ERROR: ...` (stderr) + exit 1 (blocking)。
+
 ```bash
-# ステップ 1.2 の値をリテラルで埋め込む（例: branch_strategy="separate_branch", wiki_branch="wiki"）
-branch_strategy="{branch_strategy}"
-wiki_branch="{wiki_branch}"
+# ステップ 1.2 の値と ステップ 2.1 で解決済みの plugin_root をリテラルで埋め込む
+plugin_root="{plugin_root}"
 
-if [ "$branch_strategy" = "separate_branch" ]; then
-  current_branch=$(git branch --show-current)
-
-  # cleanup trap: 異常終了時に元のブランチに復帰を保証
-  # canonical signal-specific trap パターン (references/bash-trap-patterns.md 準拠)
-  _rite_wiki_init_cleanup() {
-    git checkout "$current_branch" 2>/dev/null || true
-    if [ "${stash_needed:-false}" = true ]; then
-      git stash pop 2>/dev/null || echo "WARNING: git stash pop failed in cleanup — manual recovery needed: git stash list" >&2
-    fi
-  }
-  trap 'rc=$?; _rite_wiki_init_cleanup; exit $rc' EXIT
-  trap '_rite_wiki_init_cleanup; exit 130' INT
-  trap '_rite_wiki_init_cleanup; exit 143' TERM
-  trap '_rite_wiki_init_cleanup; exit 129' HUP
-
-  # dirty tree チェック（未コミットの変更を保護）
-  if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
-    echo "WARNING: 未コミットの変更があります。git stash で退避します。"
-    git stash push -m "rite-wiki-init-stash"
-    stash_needed=true
-  else
-    stash_needed=false
-  fi
-
-  # orphan ブランチを作成
-  git checkout --orphan "$wiki_branch" || {
-    echo "ERROR: git checkout --orphan '$wiki_branch' failed" >&2
-    exit 1
-  }
-  git rm -rf . 2>/dev/null || true
-
-  # Wiki ファイルのみをステージング
-  git add .rite/wiki/ || {
-    echo "ERROR: git add .rite/wiki/ failed" >&2
-    exit 1
-  }
-
-  git commit -m "feat(wiki): initialize Wiki structure
-
-- 3-layer structure: Raw Sources / Wiki Pages / Schema
-- Templates: SCHEMA.md, index.md, log.md
-- Directories: raw/{reviews,retrospectives,fixes}, pages/{patterns,heuristics,anti-patterns}" || {
-    echo "ERROR: git commit failed" >&2
-    exit 1
-  }
-
-  git push -u origin "$wiki_branch" || {
-    echo "ERROR: git push failed for branch '$wiki_branch'" >&2
-    echo "  対処: gh auth status / ネットワーク接続 / リモートリポジトリの権限を確認してください" >&2
-    exit 1
-  }
-
-  # 元のブランチに戻る
-  git checkout "$current_branch" || {
-    echo "ERROR: git checkout '$current_branch' failed — wiki ブランチ上に残っている可能性があります" >&2
-    exit 1
-  }
-
-  # stash した場合のみ pop
-  if [ "$stash_needed" = true ]; then
-    git stash pop
-    stash_needed=false  # EXIT trap での二重 pop を防止
-  fi
-
-  # cleanup trap を解除（正常完了時は不要）
-  trap - EXIT INT TERM HUP
-
-  echo "✅ Wiki ブランチ '$wiki_branch' を作成しました"
-
-elif [ "$branch_strategy" = "same_branch" ]; then
-  git add .rite/wiki/ || {
-    echo "ERROR: git add .rite/wiki/ failed" >&2
-    exit 1
-  }
-  git commit -m "feat(wiki): initialize Wiki structure
-
-- 3-layer structure: Raw Sources / Wiki Pages / Schema
-- Templates: SCHEMA.md, index.md, log.md
-- Directories: raw/{reviews,retrospectives,fixes}, pages/{patterns,heuristics,anti-patterns}" || {
-    echo "ERROR: git commit failed" >&2
-    exit 1
-  }
-
-  echo "✅ Wiki を現在のブランチに初期化しました"
-
-else
-  echo "ERROR: 未知の branch_strategy: '$branch_strategy'" >&2
-  echo "  受け付け可能な値: separate_branch / same_branch" >&2
-  echo "  対処: rite-config.yml の wiki.branch_strategy を確認してください" >&2
-  exit 1
-fi
+bash "$plugin_root/hooks/scripts/wiki-branch-init.sh" \
+  --branch-strategy "{branch_strategy}" \
+  --wiki-branch "{wiki_branch}"
 ```
 
 ## ステップ 3.5: Wiki Worktree セットアップ (Issue #547)

@@ -154,58 +154,26 @@ Display Projects information when `rite-config.yml` exists and Projects integrat
 Read `rite-config.yml` using the Read tool to check if Projects integration is enabled (`github.projects.enabled: true`).
 If the file does not exist, skip Phase 4 entirely.
 
-Also read `github.projects.project_number` and `github.projects.owner` from `rite-config.yml`. These two values are substituted into the `{project_number}` / `{owner}` placeholders on the `gh project view` line of Phase 4.2 Tool call 1 before the script runs (the only substitution the verbatim script permits).
+Also read `github.projects.project_number` and `github.projects.owner` from `rite-config.yml`. These two values are substituted into the `{project_number}` / `{owner}` placeholders of the Phase 4.2 Tool call 1 helper invocation before the script runs.
 
 ### 4.2 Fetch Projects Data and Build Status Map
 
-> **CRITICAL**: Execute Tool call 1 exactly as written — copy the entire script block verbatim. The **only** edit allowed is substituting the `{project_number}` and `{owner}` placeholders on the `gh project view` line with the values from `rite-config.yml` (`github.projects.project_number` / `github.projects.owner`, read in Phase 4.1). Do NOT edit the GraphQL query, change the `jq` filters, add `--jq` flags to `gh api graphql`, insert inline comments, or alter any other line. The script pages through **all** Project items via GraphQL cursor pagination, so Projects with more than 100/500 items are not silently truncated (the bug that a fixed `--limit` caused).
+Projects 全 item の取得と正規化は `scripts/projects-items-fetch.sh` に委譲する (Issue #1196)。helper は Project node ID 解決 (owner-type agnostic — user / organization 両対応)・`pageInfo.hasNextPage` / `endCursor` による全件 cursor pagination (固定 `--limit` が起こしていた 100/500 件超の silent truncation を防止)・各 node の `{content:{number}, status}` への正規化・signal-specific trap cleanup をすべて内包する (旧 ~44 行 inline 実装を委譲)。
 
-**Tool call 1 (Bash)**: Run this script verbatim. It resolves the Project node ID (owner-type agnostic — works for both user and organization owners), pages through every item with `pageInfo.hasNextPage` / `endCursor`, normalizes each node to `{content:{number}, status}`, and prints the temp file path on success. On any failure it prints `[projects:fetch-failed] <reason>` and no path.
+**出力契約** (旧 inline 実装と同一): 成功時は正規化 JSON tempfile の path を 1 行 stdout 出力。失敗時は `[projects:fetch-failed] <reason>` を出力し path は出力しない。**全経路 exit 0** (non-blocking — Phase 4 の失敗は一覧表示自体を止めない)。
+
+**Tool call 1 (Bash)**: `{project_number}` / `{owner}` は Phase 4.1 で読んだ値を literal substitute する:
 
 ```bash
-tmpfile=$(mktemp); pages=$(mktemp); err=$(mktemp)
-pid=$(gh project view {project_number} --owner {owner} --format json 2>"$err" | jq -r '.id')
-if [ -z "$pid" ] || [ "$pid" = "null" ]; then echo "[projects:fetch-failed] could not resolve project id: $(tr '\n' ' ' < "$err")"; rm -f "$tmpfile" "$pages" "$err"; exit 0; fi
-cursor=""; : > "$pages"; ok=1; fail_reason=""
-QUERY='
-query($pid: ID!, $cursor: String) {
-  node(id: $pid) {
-    ... on ProjectV2 {
-      items(first: 100, after: $cursor) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          content { ... on Issue { number } ... on PullRequest { number } }
-          fieldValues(first: 20) {
-            nodes {
-              ... on ProjectV2ItemFieldSingleSelectValue {
-                name
-                field { ... on ProjectV2SingleSelectField { name } }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}'
-while : ; do
-  if [ -n "$cursor" ]; then
-    page=$(gh api graphql -f query="$QUERY" -f pid="$pid" -f cursor="$cursor" 2>"$err") || { ok=0; fail_reason="gh api graphql failed: $(tr '\n' ' ' < "$err")"; break; }
-  else
-    page=$(gh api graphql -f query="$QUERY" -f pid="$pid" 2>"$err") || { ok=0; fail_reason="gh api graphql failed: $(tr '\n' ' ' < "$err")"; break; }
-  fi
-  gqe=$(echo "$page" | jq -r '.errors // [] | map(.message) | join("; ")' 2>/dev/null)
-  if [ -n "$gqe" ]; then ok=0; fail_reason="graphql errors: $gqe"; break; fi
-  echo "$page" | jq -e '.data.node.items' >/dev/null 2>&1 || { ok=0; fail_reason="missing .data.node.items (possible partial response)"; break; }
-  echo "$page" | jq -c '.data.node.items.nodes[]?' >> "$pages"
-  hn=$(echo "$page" | jq -r '.data.node.items.pageInfo.hasNextPage')
-  cursor=$(echo "$page" | jq -r '.data.node.items.pageInfo.endCursor')
-  [ "$hn" = "true" ] && [ -n "$cursor" ] && [ "$cursor" != "null" ] || break
-done
-if [ "$ok" != "1" ]; then echo "[projects:fetch-failed] ${fail_reason:-graphql paging error}"; rm -f "$tmpfile" "$pages" "$err"; exit 0; fi
-jq -s '{items: ([ .[] | { content: { number: (.content.number // null) }, status: ([ .fieldValues.nodes[]? | select(.field.name? == "Status") | .name ] | first // null) } ] | map(select(.content.number == null | not)))}' "$pages" > "$tmpfile"
-rm -f "$pages" "$err"
-echo "$tmpfile"
+# plugin_root 解決 (canonical: references/plugin-path-resolution.md#inline-one-liner-for-command-files)
+plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+
+if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/scripts/projects-items-fetch.sh" ]; then
+  # helper 不在も旧実装の失敗契約と同じ sentinel に倒し、Status 列なし表示への fallback を発火させる
+  echo "[projects:fetch-failed] projects-items-fetch.sh not found (plugin_root='${plugin_root:-<empty>}')"
+else
+  bash "$plugin_root/scripts/projects-items-fetch.sh" --project-number {project_number} --owner {owner}
+fi
 ```
 
 **Tool call 2 (Read)**: Use the Read tool to open the temp file path printed by Tool call 1. The JSON contains an `items` array; each element has `.status` (string or null) and `.content.number` (int). Build an in-memory map of Issue number → Status. If Tool call 1 printed `[projects:fetch-failed]` instead of a path (or the Read fails), skip Projects info and show the Phase 3 list without a Status column.

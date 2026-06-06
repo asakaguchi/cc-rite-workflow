@@ -37,6 +37,15 @@
 #   "psu_no_status_option"     - Status field exists but requested option name missing
 #   "psu_item_edit_fail"       - gh project item-edit fails
 #
+# Scenarios (projects-items-fetch.sh):
+#   "pif_success"              - project view + 1-page items query succeed
+#   "pif_multi_page"           - 2-page pagination (state file in MOCK_GH_STATE_DIR)
+#   "pif_project_view_fail"    - gh project view fails (stderr + exit 1)
+#   "pif_view_null_id"         - project view succeeds but id is null
+#   "pif_graphql_fail"         - items query fails (stderr + exit 1)
+#   "pif_graphql_errors"       - items query returns top-level errors array
+#   "pif_missing_items"        - items query returns data.node = null (partial response)
+#
 # The projects-status-update.sh script uses a different GraphQL shape
 # (`data.repository.issue.projectItems`) than create-issue-with-projects.sh
 # (`data.{user|organization}.projectV2`), so this mock detects the query shape
@@ -77,6 +86,19 @@ case "$1" in
 
   project)
     case "$2" in
+      view)
+        # `gh project view PROJECT_NUMBER --owner OWNER --format json`
+        # Used by projects-items-fetch.sh to resolve the ProjectV2 node ID.
+        if [ "$SCENARIO" = "pif_project_view_fail" ]; then
+          echo "error: could not view project" >&2
+          exit 1
+        fi
+        if [ "$SCENARIO" = "pif_view_null_id" ]; then
+          printf '{"id": null, "title": "Mock Project"}\n'
+          exit 0
+        fi
+        printf '{"id": "%s", "title": "Mock Project"}\n' "$MOCK_PROJECT_ID"
+        ;;
       field-list)
         # New: `gh project field-list PROJECT_NUMBER --owner OWNER --format json`
         # Used by projects-status-update.sh to resolve Status field + option ids.
@@ -197,6 +219,8 @@ ITEMJSON
         is_repository_query=false
         is_mutation=false
         is_items_lookup_only=false
+        is_items_pagination_query=false
+        has_cursor_arg=false
         for arg in "$@"; do
           if [[ "$arg" == query=* ]]; then
             if [[ "$arg" == *"repository(owner:"* ]]; then
@@ -208,13 +232,53 @@ ITEMJSON
             if [[ "$arg" == *"items(last: 20)"* ]] && [[ "$arg" != *"fields(first: 20)"* ]]; then
               is_items_lookup_only=true
             fi
-            break
+            # projects-items-fetch.sh queries `node(id: $pid)` + `items(first: 100, after: $cursor)`
+            if [[ "$arg" == *"items(first: 100, after:"* ]]; then
+              is_items_pagination_query=true
+            fi
+          fi
+          if [[ "$arg" == cursor=* ]]; then
+            has_cursor_arg=true
           fi
         done
 
         if [ "$SCENARIO" = "gql_items_lookup_fail" ] && [ "$is_items_lookup_only" = true ]; then
           echo "error: GraphQL items lookup query failed" >&2
           exit 1
+        fi
+
+        # --- projects-items-fetch.sh path (node(id:) + items(first: 100) pagination) ---
+        if [ "$is_items_pagination_query" = true ]; then
+          case "$SCENARIO" in
+            pif_graphql_fail)
+              echo "error: GraphQL items query failed" >&2
+              exit 1
+              ;;
+            pif_graphql_errors)
+              printf '{"errors":[{"message":"Something went wrong"},{"message":"Rate limited"}],"data":null}\n'
+              exit 0
+              ;;
+            pif_missing_items)
+              printf '{"data":{"node":null}}\n'
+              exit 0
+              ;;
+            pif_multi_page)
+              # Page 1 (no cursor arg): hasNextPage=true + item #101.
+              # Page 2 (cursor arg present): hasNextPage=false + item #102.
+              if [ "$has_cursor_arg" = true ]; then
+                printf '{"data":{"node":{"items":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"content":{"number":102},"fieldValues":{"nodes":[{"name":"Done","field":{"name":"Status"}}]}}]}}}}\n'
+              else
+                printf '{"data":{"node":{"items":{"pageInfo":{"hasNextPage":true,"endCursor":"CURSOR1"},"nodes":[{"content":{"number":101},"fieldValues":{"nodes":[{"name":"Todo","field":{"name":"Status"}}]}}]}}}}\n'
+              fi
+              exit 0
+              ;;
+            *)
+              # pif_success (default): single page with a Status item, a status-less
+              # item, and a draft item (content {}) that the normalizer must exclude.
+              printf '{"data":{"node":{"items":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"content":{"number":101},"fieldValues":{"nodes":[{"name":"In Progress","field":{"name":"Status"}},{}]}},{"content":{"number":102},"fieldValues":{"nodes":[{}]}},{"content":{},"fieldValues":{"nodes":[]}}]}}}}\n'
+              exit 0
+              ;;
+          esac
         fi
 
         if [ "$is_mutation" = true ]; then

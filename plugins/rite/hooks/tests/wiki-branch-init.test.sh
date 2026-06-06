@@ -181,11 +181,16 @@ dump_state() {
     if git rev-parse --verify -q wiki >/dev/null; then
       echo "wiki_tree=$(git ls-tree -r --name-only wiki | sort | tr '\n' ',')"
       echo "wiki_subject=$(git log -1 --format=%s wiki)"
+      # subject (%s) だけでは commit message body (verbatim 契約の一部) の drift を
+      # 検出できないため、%B (full message) も '|' 区切りの 1 行に正規化して捕捉する
+      echo "wiki_body=$(git log -1 --format=%B wiki | tr '\n' '|')"
     else
       echo "wiki_tree=<none>"
       echo "wiki_subject=<none>"
+      echo "wiki_body=<none>"
     fi
     echo "main_subject=$(git log -1 --format=%s main 2>/dev/null || echo '<none>')"
+    echo "main_body=$( (git log -1 --format=%B main 2>/dev/null || echo '<none>') | tr '\n' '|')"
     echo "stash_count=$(git stash list | wc -l)"
     echo "base_content=$(cat base.txt 2>/dev/null || echo '<missing>')"
   )
@@ -237,6 +242,14 @@ if grep -q "wiki_tree=.rite/wiki/index.md,.rite/wiki/log.md," <<<"$state"; then
 else
   fail "wiki tree mismatch: $state"
 fi
+# commit message の full body (subject + body) を verbatim contract として pin する。
+# subject のみの比較では helper 側 WIKI_INIT_COMMIT_MSG の body drift が素通りするため
+expected_wiki_body="wiki_body=feat(wiki): initialize Wiki structure||- 3-layer structure: Raw Sources / Wiki Pages / Schema|- Templates: SCHEMA.md, index.md, log.md|- Directories: raw/{reviews,retrospectives,fixes}, pages/{patterns,heuristics,anti-patterns}||"
+if grep -qF "$expected_wiki_body" <<<"$state"; then
+  pass "wiki commit full message (subject + body) matches verbatim contract"
+else
+  fail "wiki commit body mismatch: $state"
+fi
 
 # --------------------------------------------------------------------------
 # TC-2: separate_branch (dirty tree) — stash 退避/復帰で変更を保護
@@ -273,6 +286,14 @@ if grep -q "main_subject=feat(wiki): initialize Wiki structure" <<<"$state" && g
   pass "committed on current branch, no wiki branch created"
 else
   fail "end state mismatch: $state"
+fi
+# same_branch 経路でも commit message full body を verbatim contract として pin する
+# (wiki_body assert と対称 — 片側のみの pin は対称位置の drift を素通りさせる)
+expected_main_body="main_body=feat(wiki): initialize Wiki structure||- 3-layer structure: Raw Sources / Wiki Pages / Schema|- Templates: SCHEMA.md, index.md, log.md|- Directories: raw/{reviews,retrospectives,fixes}, pages/{patterns,heuristics,anti-patterns}||"
+if grep -qF "$expected_main_body" <<<"$state"; then
+  pass "same_branch commit full message (subject + body) matches verbatim contract"
+else
+  fail "same_branch commit body mismatch: $state"
 fi
 
 # --------------------------------------------------------------------------

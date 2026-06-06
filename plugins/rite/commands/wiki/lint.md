@@ -95,7 +95,7 @@ echo "wiki_branch=$wiki_branch"
 **Wiki が無効の場合**: 早期 return (`--auto` モードでは ステップ 9.2 の 3 行出力契約を必ず守る):
 
 ```bash
-# Claude placeholder {mode} 残留 fail-fast gate (glob pattern 版、5 site で同型)
+# Claude placeholder {mode} 残留 fail-fast gate (glob pattern 版、7 site で同型)
 mode="{mode}"
 case "$mode" in
   "{"*"}")
@@ -505,174 +505,33 @@ echo "orphan_check_ok=$orphan_check_ok"
 
 ### 6.0 `ingest:skip` 済み raw source の集合構築
 
-ステップ 6.2 で参照する `skipped_refs` 集合を `log.md` から抽出する。`branch_strategy` に応じて読み出し元を切り替え、非ブロッキング契約に従い読み出し失敗時は空集合で継続するが、**legitimate absence** (fresh branch / ENOENT / blob not found) と **真の IO error** (permission / 破損 / wiki_branch race) を stderr pattern matching で区別する:
+ステップ 6.2 で参照する `skipped_refs` 集合の構築 (ステップ 6.2 の `all_source_refs` と対称な marker block + `log_read_ok` 4 値 enum) は `wiki-lint-skipped-refs.sh` に委譲する。
+
+> **Reference**: 集合構築の canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-skipped-refs.sh`。helper は `branch_strategy` 別の `log.md` 読出 (`git show`(separate_branch) / `cat`(same_branch))・**legitimate absence** (fresh branch / ENOENT / blob not found) と**真の IO error** (permission / 破損 / wiki_branch race) の `LC_ALL=C` 固定 stderr pattern 判別・`ingest:skip` レコード抽出 (field 3 厳密一致 / field 4 prefix 正規化)・`sort -u` 重複排除・awk/sort pipeline 失敗時の io_error 降格・marker block / `log_read_ok` 4 値 enum 出力・signal-specific trap cleanup をすべて内包する (旧 ~165 行 inline 実装を委譲: Issue #1196)。placeholder residue gate も helper 内で実行される。state machine 契約 (marker block + 4 値 enum) は `references/bash-cross-boundary-state-transfer.md` の Pattern 1/2 を参照。
+
+**Bash tool 呼び出し境界での state 伝達**: ステップ 1.1 の `branch_strategy` / `wiki_branch` は別 Bash tool 呼び出しで定義されているため、Claude は会話コンテキストから helper の `--branch-strategy` / `--wiki-branch` arg に literal substitute する (ステップ 6.2 の `wiki-lint-source-refs.sh` 呼び出しと同じ契約)。
 
 ```bash
-# signal-specific trap (canonical 4 行パターン)。
-# 詳細は ../pr/references/bash-trap-patterns.md#signal-specific-trap-template 参照。
-log_err=""
-awk_sort_err=""
-_cleanup() {
-  [ -n "${log_err:-}" ] && rm -f "$log_err"
-  [ -n "${awk_sort_err:-}" ] && rm -f "$awk_sort_err"
-  return 0
-}
-trap 'rc=$?; _cleanup; exit $rc' EXIT
-trap '_cleanup; exit 130' INT
-trap '_cleanup; exit 143' TERM
-trap '_cleanup; exit 129' HUP
+# plugin_root 解決 (ステップ 2.1 の inline one-liner。
+#  canonical: references/plugin-path-resolution.md#inline-one-liner-for-command-files)
+plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 
-# skipped_refs 空継続時の「影響」文言 helper (4 site の literal duplicate を集約)
-_rite_log_read_impact_advice() {
-  echo "  影響: skipped_refs を空として継続するため、skip 済み raw が誤って missing_concept に計上される可能性あり" >&2
-}
-
-# stderr 退避失敗 + tool 失敗の複合経路の helper (separate_branch / same_branch で tool 名のみ異なる)
-_rite_log_read_sub_path_warning() {
-  local tool_desc="$1" remedy_target="$2" rc="$3"
-  echo "WARNING: .rite/wiki/log.md の ${tool_desc} に失敗し、かつ stderr 退避も失敗しました (rc=${rc}、原因区別不能のため io_error 扱い)" >&2
-  _rite_log_read_impact_advice
-  echo "  対処: /tmp の容量 / permission と ${remedy_target} を確認してください" >&2
-}
-
-log_err=$(mktemp /tmp/rite-wiki-lint-p60-err-XXXXXX 2>/dev/null) || {
-  echo "WARNING: stderr 退避 tempfile (log_err) の mktemp に失敗しました。log.md 読み出しの詳細エラー情報は失われます" >&2
-  echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
-  echo "  影響: stderr pattern match が実行不能になり io_error 側に倒れ、false positive note が常に表示される regression が起き得ます" >&2
-  log_err=""
-}
-
-branch_strategy="{branch_strategy}"
-wiki_branch="{wiki_branch}"
-
-skipped_refs=""
-log_content=""
-# log_read_ok は 4 値 enum (unknown / true / absent / io_error)。
-#   unknown: 初期値 (branch_strategy fail-fast 経路でのみ残る、後段未到達)
-#   true:    log.md 読出成功
-#   absent:  legitimate absence (fresh branch / ENOENT / blob not found) — skipped_refs="" は妥当
-#   io_error: 真の IO error — false positive リスクあり、ステップ 9.1 完了レポートで note 表示
-# canonical 定義: references/bash-cross-boundary-state-transfer.md#pattern-1-multi-value-enum-via-key-value-stdout
-log_read_ok="unknown"
-
-# branch_strategy を case で検証 (5 site で同型の fail-fast)
-case "$branch_strategy" in
-  separate_branch)
-    # LC_ALL=C で locale 固定 — ja_JP.UTF-8 等で git の stderr メッセージが翻訳されると legitimate
-    # absence 判別 regex (does not exist / No such file) と不一致になり io_error に誤分類される silent regression を防ぐ。
-    if log_content=$(LC_ALL=C git show "${wiki_branch}:.rite/wiki/log.md" 2>"${log_err:-/dev/null}"); then
-      log_read_ok="true"
-      # selective surface pattern: 成功時でも ambiguous ref hint 等の git stderr を surface する
-      [ -n "$log_err" ] && [ -s "$log_err" ] && head -3 "$log_err" | sed 's/^/  WARNING(git hint): /' >&2
-    else
-      rc=$?
-      # legitimate absence 判別 (4 pattern を OR):
-      #   - "does not exist": blob not found (標準的な legitimate absence)
-      #   - "path '...' exists on disk, but not in": git show の path 対 ref 不整合
-      #   - "Not a valid object name": 古い git の revspec 不正メッセージ
-      #   - "fatal: invalid object name '<ref>:<path>'": blob path 指定形式
-      # 4 pattern いずれも match しない場合 (典型: blob path なしの "fatal: invalid object name 'wiki'") は
-      # wiki_branch 自体の race 消失として io_error 扱いとする (ステップ 1.3 後の race 検出)。
-      if [ -n "$log_err" ] && [ -s "$log_err" ] && \
-         grep -qE "does not exist|path '.+' exists on disk, but not in|Not a valid object name|fatal: invalid object name '[^']*:\\.rite/wiki/log\\.md'" "$log_err"; then
-        log_read_ok="absent"
-      elif [ -n "$log_err" ] && [ -s "$log_err" ]; then
-        log_read_ok="io_error"
-        echo "WARNING: .rite/wiki/log.md の git show に失敗しました (rc=$rc)" >&2
-        head -3 "$log_err" | sed 's/^/  /' >&2
-        _rite_log_read_impact_advice
-        echo "  対処: wiki branch の integrity / 権限を確認してください" >&2
-      else
-        log_read_ok="io_error"
-        _rite_log_read_sub_path_warning "git show" "wiki branch の integrity / 権限" "$rc"
-      fi
-      log_content=""
-    fi
-    ;;
-  same_branch)
-    if log_content=$(LC_ALL=C cat .rite/wiki/log.md 2>"${log_err:-/dev/null}"); then
-      log_read_ok="true"
-      [ -n "$log_err" ] && [ -s "$log_err" ] && head -3 "$log_err" | sed 's/^/  WARNING(cat hint): /' >&2
-    else
-      rc=$?
-      if [ -n "$log_err" ] && [ -s "$log_err" ] && grep -qE "No such file or directory|cannot open" "$log_err"; then
-        log_read_ok="absent"
-      elif [ -n "$log_err" ] && [ -s "$log_err" ]; then
-        log_read_ok="io_error"
-        echo "WARNING: .rite/wiki/log.md の cat に失敗しました (rc=$rc)" >&2
-        head -3 "$log_err" | sed 's/^/  /' >&2
-        _rite_log_read_impact_advice
-        echo "  対処: .rite/wiki/log.md の存在 / 権限を確認してください" >&2
-      else
-        log_read_ok="io_error"
-        _rite_log_read_sub_path_warning "cat" ".rite/wiki/log.md の存在 / 権限" "$rc"
-      fi
-      log_content=""
-    fi
-    ;;
-  *)
-    echo "ERROR: 未知の branch_strategy 値を検出しました: '$branch_strategy' (ステップ 6.0)" >&2
-    echo "  対処: rite-config.yml の wiki.branch_strategy を 'separate_branch' または 'same_branch' に設定してください" >&2
-    exit 1
-    ;;
-esac
-
-# log.md から ingest:skip レコードを抽出 (field 3 厳密一致、field 4 prefix 正規化)
-if [ -n "$log_content" ]; then
-  set -o pipefail
-  awk_sort_err=$(mktemp /tmp/rite-wiki-lint-p60-awk-err-XXXXXX 2>/dev/null) || {
-    echo "WARNING: awk/sort stderr 退避 tempfile の mktemp に失敗しました" >&2
-    echo "  対処: /tmp の容量 / inode 枯渇 / read-only filesystem / permission を確認してください" >&2
-    echo "  影響: pipeline 失敗時の詳細エラー情報 (awk syntax error / sort OOM 等) が失われます" >&2
-    awk_sort_err=""
-  }
-  skipped_refs=$(printf '%s\n' "$log_content" \
-    | awk -F'|' 'NF >= 4 {
-        action=$3
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", action)
-        if (action == "ingest:skip") {
-          target=$4
-          gsub(/^[[:space:]]+|[[:space:]]+$/, "", target)
-          sub(/^\.rite\/wiki\//, "", target)
-          if (length(target) > 0) print target
-        }
-      }' 2>"${awk_sort_err:-/dev/null}" \
-    | LC_ALL=C sort -u 2>>"${awk_sort_err:-/dev/null}")
-  rc=$?
-  if [ "$rc" -ne 0 ]; then
-    echo "WARNING: ステップ 6.0 の awk/sort pipeline が失敗しました (rc=$rc)" >&2
-    [ -n "$awk_sort_err" ] && [ -s "$awk_sort_err" ] && head -3 "$awk_sort_err" | sed 's/^/  /' >&2
-    echo "  対処: awk / sort バイナリと /tmp の容量を確認してください" >&2
-    _rite_log_read_impact_advice
-    skipped_refs=""
-    # log_read_ok="true" のまま据え置くと ステップ 9.1 で false positive note が展開されず silent 表示
-    # になる。awk/sort 失敗経路でも io_error に降格させ note 展開を発火させる
-    # (canonical: references/bash-cross-boundary-state-transfer.md Pattern 3 の「後段 pipeline 失敗も同 enum の io_error 側に降格する」)。
-    log_read_ok="io_error"
-  fi
-  set +o pipefail
-fi
-
-# 集合本体を marker block で stdout 出力 (ステップ 6.2 の (b) 分岐で LLM が会話コンテキストに保持する)。
-# canonical: references/bash-cross-boundary-state-transfer.md#pattern-2-marker-delimited-multi-value-block
-if [ -n "$skipped_refs" ]; then
-  count=$(printf '%s\n' "$skipped_refs" | awk 'NF>0 {n++} END {print n+0}')
-  echo "skipped_refs_count=$count"
-  echo "---skipped_refs_begin---"
-  printf '%s\n' "$skipped_refs"
-  echo "---skipped_refs_end---"
-else
+if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/wiki-lint-skipped-refs.sh" ]; then
+  # helper 不在: skipped_refs を io_error 扱いにして ステップ 9.1 の false positive note を展開する。
+  # silent 空集合だと skip 済み raw が missing_concept に誤計上されるため、
+  # 「marker 未受信 → io_error 同等扱い」契約 (ステップ 6.2 末尾) と整合する形で io_error を明示出力する。
+  echo "WARNING: wiki-lint-skipped-refs.sh が見つからないため skipped_refs を io_error 扱いにします (plugin_root='${plugin_root:-<empty>}')" >&2
+  echo "  対処: rite プラグインのソースツリーから実行するか、.rite-plugin-root を確認してください" >&2
   echo "skipped_refs_count=0"
   echo "---skipped_refs_begin---"
   echo "---skipped_refs_end---"
+  echo "log_read_ok=io_error"
+else
+  # branch_strategy / wiki_branch は arg。placeholder residue gate は helper 内で実行される。
+  bash "$plugin_root/hooks/scripts/wiki-lint-skipped-refs.sh" \
+    --branch-strategy "{branch_strategy}" \
+    --wiki-branch "{wiki_branch}"
 fi
-
-# log_read_ok を stdout 出力 (LLM が ステップ 9.1 完了レポートで参照する契約)
-echo "log_read_ok=$log_read_ok"
-
-# 明示的 tempfile rm + 変数 reset (trap と冗長だが defense-in-depth: 後続 block の同名 path re-mktemp 競合防止)
-[ -n "$log_err" ] && rm -f "$log_err"; log_err=""
-[ -n "$awk_sort_err" ] && rm -f "$awk_sort_err"; awk_sort_err=""
 ```
 
 **`log_read_ok` 4 値 enum による状態伝達**: bash 変数は Bash tool 呼び出し境界を超えて失われるため、`log_read_ok` を stdout に `log_read_ok={value}` 形式で出力する:
@@ -879,7 +738,7 @@ n_missing_concept={n_missing_concept}
 n_broken_refs={n_broken_refs}
 # 参考: n_unregistered_raw={n_unregistered_raw} — 判定式から意図的に除外 (informational、Issue #563)
 
-# Placeholder residue fail-fast gate (5 site で同型): LLM が literal substitute を忘れると
+# Placeholder residue fail-fast gate (7 site で同型): LLM が literal substitute を忘れると
 # `[ "{n_contradictions}" -gt 0 ]` が rc=2 を返し、set -o pipefail のみでは検知できず else 分岐に
 # 流れて `lint_action="lint:clean"` が silent emit される fail-silent regression を防ぐ。
 for _n_var in n_contradictions n_stale n_orphans n_missing_concept n_broken_refs; do
@@ -958,7 +817,7 @@ if [ -z "$plugin_root" ] || [ ! -d "$plugin_root/templates/wiki" ]; then
   exit 0
 fi
 
-# {log_entry} placeholder 残留検知 fail-fast gate (5 site で同型)
+# {log_entry} placeholder 残留検知 fail-fast gate (7 site で同型)
 log_entry="{log_entry}"
 case "$log_entry" in
   "{"*"}")

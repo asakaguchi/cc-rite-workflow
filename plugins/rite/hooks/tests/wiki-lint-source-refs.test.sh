@@ -18,6 +18,7 @@
 #   TC-10 --branch-strategy 欠落 → exit 2 (invocation error)
 #   TC-11 separate_branch + 空 --wiki-branch → exit 2 (invocation error)
 #   TC-12 値なしフラグ末尾 (--branch-strategy 値なし) → exit 2、無限ループしない (timeout ガード)
+#   TC-13 same_branch io_error (page path が directory で cat 失敗) → read_ok=io_error
 #
 # NOT covered (environment-dependent): mktemp failure on read-only /tmp,
 # sort/awk pipeline OOM. Both downgrade to io_error and are verified by reading.
@@ -230,6 +231,22 @@ else
 fi
 assert "TC-12 exit 2 (値なしフラグは branch_strategy 空 → 必須チェックで exit 2)" "2" "$rc"
 assert_grep "TC-12 branch-strategy 必須エラー (経路固定)" "$errf" 'branch-strategy は必須'
+
+# === TC-13: same_branch io_error (page path が directory) → read_ok=io_error ===
+# cat は rc≠0 で stderr "Is a directory" を出し、absent 判別 regex に match しない
+# ため read_errors increment → io_error に降格する (Issue #1287。TC-9 の separate_branch
+# io_error と対になる same_branch 側 fault injection — sibling skipped-refs TC-12 と対称)。
+echo "=== TC-13: same_branch io_error (fault injection) ==="
+sbx=$(make_sandbox); cleanup_dirs+=("$sbx")
+mkdir -p "$sbx/.rite/wiki/pages/dirpage.md"
+errf=$(mk_tmp); outf=$(mk_tmp)
+printf '%s\n' ".rite/wiki/pages/dirpage.md" \
+  | bash "$SCRIPT" --branch-strategy same_branch --repo-root "$sbx" >"$outf" 2>"$errf"
+rc=$?
+assert "TC-13 exit 0 (非ブロッキング、io_error は stdout enum で表現)" "0" "$rc"
+assert_grep "TC-13 read_ok=io_error" "$outf" '^all_source_refs_read_ok=io_error$'
+assert_grep "TC-13 errors=1" "$outf" '^all_source_refs_read_errors=1$'
+assert_grep "TC-13 抽出失敗 WARNING" "$errf" '抽出に失敗'
 
 if ! print_summary "$(basename "$0")" \
   "drift: wiki-lint-source-refs.sh の挙動が変わった可能性。wiki/lint.md ステップ 6.2 委譲契約 (Issue #1195 #10) と marker block / io_error enum の出力契約を参照。"; then

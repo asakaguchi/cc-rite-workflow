@@ -2,7 +2,7 @@
 title: "委譲リファクタの動作保持は原実装との差分テストで機械的に立証する"
 domain: "heuristics"
 created: "2026-05-30T09:32:00Z"
-updated: "2026-06-02T16:52:36Z"
+updated: "2026-06-06T04:16:52Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260530T064117Z-pr-1204.md"
@@ -26,6 +26,8 @@ sources:
     ref: "raw/fixes/20260602T102600Z-pr-1249.md"
   - type: "reviews"
     ref: "raw/reviews/20260602T103357Z-pr-1249.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260606T030501Z-pr-1286.md"
 tags: ["refactor", "verification", "testing", "delegation"]
 confidence: high
 ---
@@ -88,6 +90,17 @@ PR #1249 (#1221 部分対応) は `pr/review.md` の 6.1.c Skip Notification (~1
 
 canonical 対策: 委譲リファクタの review checklist に **「新規 helper が採用した既存 hardening pattern (shift;shift 等) について、対応する sibling 回帰テストへの登録が helper 本体の実装と対称になっているか」** を加える。helper の動作正しさは回帰テスト登録の有無とは別軸であり、登録漏れは runtime 挙動を変えないため差分テスト・既存 test pass では検出されず、reviewer の sibling 照合でのみ surface する ([[asymmetric-fix-transcription]] の test レイヤー版、[[small-symmetric-pr-sibling-site-grep-review]] の sibling grep 手法と同系統)。本 facet は #1218 の「抽出境界デッドコード」・#1229 の「caller-doc return-path 網羅」と並ぶ、差分テストが捕捉しない第 3 の直交軸 (test coverage 対称性) である。
 
+### 観測捕捉は外部観測可能な挙動の全域、in-process 中間変数は契約対象外 (PR #1286)
+
+PR #1286 (Issue #1196、#1193 follow-up) は `pr/fix.md` 1.2.0 severity_map build (~154 行) の `review-findings-maps.sh` 委譲を含む MEDIUM 5 + LOW 1 件の重量 inline bash を helper 委譲 / args_json 分離で解消した。faithful-port 委譲の **6 例目** の独立再現で、3 cycle (1→2→0 blocking) 収束。本 PR は差分テストの**観測範囲そのもの**について双方向の線引きを確立した:
+
+- **観測捕捉範囲の穴 (捕捉拡張方向)**: cycle 1 で test reviewer が、wiki-branch-init 差分テストの dump_state が commit subject (`%s`) のみ捕捉し **commit body の drift が観測網を素通りする**ことを mutation で実証 (MEDIUM) → wiki_body/main_body の捕捉追加 + verbatim assert pin で構造的解消。差分テストは「比較している」だけでは不十分で、比較対象が外部観測可能な挙動の全域 (rc / stdout / stderr / file / commit body) を捕捉しているかが独立の検証軸になる。
+- **契約対象外の確定 (観測除外方向)**: cycle 3 で test reviewer の「helper 内部 validation 変数 (`severity_map_json`) が test で観測不能」MEDIUM が、prompt-engineer / code-quality / error-handling の「旧 inline でも stdout 非 emit の in-process validation 変数 = verbatim 契約」検証と衝突 → 討論フェーズで合意降格 (機能 regression なし、改変値は production 非消費)。**differential equivalence test の観測範囲は「外部観測可能な挙動 (rc/stdout/stderr/file)」であり、in-process 中間変数は契約対象外**という線引きを確立。
+
+両者は同じ「観測範囲」軸の両端: 前者は外部観測可能なのに捕捉していなかった穴 (拡張すべき)、後者はそもそも外部観測不能な非契約対象 (要求すべきでない)。canonical 対策として、委譲リファクタの review checklist に「dump/capture helper が外部観測可能な全 channel を捕捉しているか (subject-only のような部分捕捉になっていないか)」を加え、逆に in-process 中間変数の観測可能性要求は demote する。
+
+副次観察: 委譲 refactor で validation gate は片落ちせず純増 (numeric gate / placeholder gate 追加)、silent-failure hole 2 件解消 (projects の `jq -s` 未チェック / create.md の nested jq マスク)。cycle 2 の SoT universal MUST 文 vs 未移行 caller 2 件の矛盾は漸進移行 note (Option B: 責務分離の文書化、#1284 を SoT 本文に明記) で解消 ([[asymmetric-fix-resolution-via-hub-creation]] の SoT-caller 軸適用例)。nit-noted 受け流し経路 (LOW 級 enumeration stale) は countdown 対象外として loop を阻害せず mergeable 到達 ([[respect-reviewer-no-action-recommendation]])。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -107,3 +120,4 @@ canonical 対策: 委譲リファクタの review checklist に **「新規 help
 - [PR #1249 review results (cycle 1)](../../raw/reviews/20260602T101920Z-pr-1249.md)
 - [PR #1249 fix results](../../raw/fixes/20260602T102600Z-pr-1249.md)
 - [PR #1249 review results (cycle 2)](../../raw/reviews/20260602T103357Z-pr-1249.md)
+- [PR #1286 review results](../../raw/reviews/20260606T030501Z-pr-1286.md)

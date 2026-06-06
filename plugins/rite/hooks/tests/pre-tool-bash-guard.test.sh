@@ -1304,6 +1304,75 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-118: deny fallback neutralize 失敗 → static placeholder 縮退、deny + exit 2 維持 (Issue #1282)
+#   TC-116 は fallback 経路のエスケープ成功側 (reason に pattern 名が残る) を pin する。本 TC は
+#   その先の二重障害 — fallback 内で _bash_guard_escape_deny_reason (neutralize_ctrl = 固定引数の
+#   tr パイプ) まで失敗した場合 — の static placeholder 縮退を pin する。helper header が
+#   「実質失敗しない」と明記する経路のため、fake tr で強制発火させる: neutralize_ctrl の
+#   3 モードはいずれも第 1 引数に `\000-` レンジ文字列を持つので $1 マッチでのみ exit 1 し、
+#   hook 内の他の tr 用途 (jq parse error path の `tr '\n' ' '` / flow-state contains_ctrl の
+#   `tr -d ...` は $1=-d) は real tr へ委譲して巻き添えを防ぐ。
+#   非 vacuous 性 (TC-116 の vacuous 教訓): neutralize 成功時は reason に pattern 名
+#   (gh-pr-diff-stat) が入るため、「placeholder 文言あり + pattern 名なし」の両方向 assert で
+#   縮退の発生そのものを証明する。
+# --------------------------------------------------------------------------
+echo "TC-118: deny fallback neutralize failure → static placeholder, deny + exit 2 preserved"
+rc=0
+real_jq=$(command -v jq)
+real_tr=$(command -v tr)
+tc118_input=$("$real_jq" -n '{tool_name: "Bash", tool_input: {command: "gh pr diff 123 --stat"}, cwd: "/tmp"}')
+fake_bin_118=$(mktemp -d)
+cat > "$fake_bin_118/jq" <<EOF
+#!/bin/bash
+if [ "\$1" = "-n" ]; then exit 1; fi
+exec "$real_jq" "\$@"
+EOF
+cat > "$fake_bin_118/tr" <<EOF
+#!/bin/bash
+case "\$1" in *000-*) exit 1 ;; esac
+exec "$real_tr" "\$@"
+EOF
+chmod +x "$fake_bin_118/jq" "$fake_bin_118/tr"
+output=$(echo "$tc118_input" | PATH="$fake_bin_118:$PATH" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+# Sanity pin: placeholder 縮退経路でも JSON を emit した (silent allow へ降格していない)
+if [ -n "$output" ]; then
+  pass "TC-118 placeholder path emitted output despite jq -n + tr failure"
+else
+  fail "TC-118 no output — placeholder path not reached: $(cat -v "$STDERR_FILE")"
+fi
+if [ "$rc" = "2" ]; then
+  pass "TC-118 placeholder path exits 2 (fail-closed deny contract)"
+else
+  fail "TC-118 expected rc=2, got rc=$rc"
+fi
+if printf '%s' "$output" | "$real_jq" -e . >/dev/null 2>&1; then
+  pass "TC-118 placeholder output is valid JSON"
+else
+  fail "TC-118 placeholder output is not parseable JSON: $(printf '%s' "$output" | cat -v)"
+fi
+decision=$(printf '%s' "$output" | "$real_jq" -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(printf '%s' "$output" | "$real_jq" -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "TC-118 deny decision survives the placeholder degradation"
+else
+  fail "TC-118 expected deny via placeholder path, got decision=$decision"
+fi
+# 縮退の発生証明 (非 vacuous): placeholder 文言あり + 通常 fallback の pattern 名なし
+if [[ "$reason" == *"reason neutralization failed, fail-closed"* ]] && [[ "$reason" != *"gh-pr-diff-stat"* ]]; then
+  pass "TC-118 reason degraded to the static placeholder (no pattern name leak)"
+else
+  fail "TC-118 expected static placeholder reason, got: $reason"
+fi
+# placeholder が案内する stderr ログの前提を pin (pattern 名はこちらに残る)
+if grep -q "BLOCKED pattern=gh-pr-diff-stat" "$STDERR_FILE"; then
+  pass "TC-118 stderr BLOCKED log keeps the pattern name (placeholder's referenced log)"
+else
+  fail "TC-118 stderr missing BLOCKED log: $(cat -v "$STDERR_FILE")"
+fi
+rm -rf "$fake_bin_118"
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

@@ -238,6 +238,7 @@ rite-workflow/
 │ ├── wiki-ingest-trigger.sh / wiki-query-inject.sh # Wiki auto-integration
 │ ├── scripts/ # Helper scripts invoked by hooks
 │ │ ├── wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh
+│ │ ├── wiki-branch-init.sh / wiki-lint-skipped-refs.sh # #1196 inline bash 委譲
 │ │ ├── wiki-growth-check.sh # #524 lint layer-3
 │ │ ├── backlink-format-check.sh / bang-backtick-check.sh
 │ │ ├── distributed-fix-drift-check.sh / doc-heavy-patterns-drift-check.sh
@@ -263,7 +264,8 @@ rite-workflow/
 │ ├── create-issue-with-projects.sh
 │ ├── backfill-sub-issues.sh / link-sub-issue.sh
 │ ├── extract-verified-review-findings.sh / measure-review-findings.sh
-│ ├── projects-status-update.sh
+│ ├── projects-status-update.sh / projects-items-fetch.sh # #1196 で items-fetch 追加
+│ ├── review-findings-maps.sh # #1196 fix.md severity_map build 委譲
 │ └── tests/ # Script-level test suite
 ├── references/ # Cross-cutting references used by commands/skills
 │ ├── gh-cli-patterns.md / gh-cli-commands.md / gh-cli-error-catalog.md
@@ -1337,6 +1339,8 @@ Non-hook helper scripts invoked either directly from orchestrator commands or by
 | `distributed-fix-drift-check.sh` | Catch inconsistent partial application of the same fix across files | `review.loop.pre_commit_drift_check` |
 | `doc-heavy-patterns-drift-check.sh` | Detect Doc-Heavy PR Mode drift signals | #349 |
 | `gitignore-health-check.sh` | Verify the `.rite/wiki/` last-line-of-defense `.gitignore` rule, emit `gitignore_drift` sentinel on mismatch | #564 / #567 |
+| `wiki-branch-init.sh` | `/rite:wiki:init` ステップ 3.1 — orphan wiki ブランチ作成 + push + 元ブランチ復帰 (stash 退避/復帰、same_branch 両対応) | #1196 |
+| `wiki-lint-skipped-refs.sh` | `/rite:wiki:lint` ステップ 6.0 — log.md の `ingest:skip` 集合を marker block + `log_read_ok` 4 値 enum で構築 (6.2 `wiki-lint-source-refs.sh` と対称) | #1196 |
 
 ---
 

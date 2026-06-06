@@ -149,12 +149,12 @@ silent に「0 件」と誤認する。
 stderr を tempfile に退避し、**stderr pattern matching** で legitimate absence / io_error を区別する:
 
 ```bash
-# F-21 対応: 2 文分割形式 (lint.md ステップ 6.0 の R-03 推奨形式) に統一する。
+# F-21 対応: 2 文分割形式 (lint.md ステップ 6.0 の委譲先 wiki-lint-skipped-refs.sh の R-03 推奨形式) に統一する。
 # 旧 `if ! log_err=$(...); then` 形式は bash 既知の罠「`if ! cmd; then` は `$?` が常に 0」と隣接した形で、
 # 規範文書として読者を混乱させる。本 Pattern 3 の説明本文 (R-03 対応) では明示的に「2 文分割形式」を
 # 推奨しているのに、Pattern 3 例自体が `if ! var=$(...); then` 形式を使うのは内部矛盾の見え方だった。
 # F-16 対応: mktemp 失敗時の WARNING + 対処 + 影響 の 3 行 loud emit を canonical とする
-# (lint.md ステップ 6.0 の log_err mktemp 失敗 WARNING 部と同じ defense-in-depth — silent fallback 禁止)。
+# (lint.md ステップ 6.0 の委譲先 wiki-lint-skipped-refs.sh の log_err mktemp 失敗 WARNING 部と同じ defense-in-depth — silent fallback 禁止)。
 # 知らないエラー (mktemp 失敗で stderr 取得不能) を silent に absence と誤認するより、
 # WARNING で可視化して io_error 経路に流す方が正しい。
 log_err=$(mktemp /tmp/rite-XXXXXX 2>/dev/null) || {
@@ -171,7 +171,7 @@ else
  # 旧実装は `rc=$?` を欠落させ、後段の `[ -n "..." ] && [ -s "..." ] && grep -qE ...` で `$?` が
  # grep の rc に上書きされた状態で `echo "...(rc=$rc)..."` が表示され、`rc=` が常に grep の
  # 0/1/2 を表示する silent failure 例になっていた。本 reference は canonical 教材なので、
- # lint.md ステップ 6.0 (`else rc=$?;` と明示 capture する実装) と一字一句揃える。
+ # lint.md ステップ 6.0 の委譲先 wiki-lint-skipped-refs.sh (`else rc=$?;` と明示 capture する実装) と一字一句揃える。
  rc=$?
  # 2 primary pattern + 2 safety pattern = 4 pattern 網羅
  # [ -n "$log_err" ] && [ -s "$log_err" ] の 2 段ガード: mktemp 失敗経路 (log_err="")

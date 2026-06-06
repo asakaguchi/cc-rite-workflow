@@ -15,8 +15,8 @@
 #   (Pattern 2: marker-delimited block, Pattern 1: multi-value enum via
 #   key=value stdout).
 #
-# Symmetry note: this is the step 6.2 counterpart to step 6.0's `skipped_refs`
-# block (Issue #1195 #14, still inline in lint.md and out of this PR's scope).
+# Symmetry note: this is the step 6.2 counterpart to step 6.0's
+# `wiki-lint-skipped-refs.sh` (Issue #1195 #14, delegated in Issue #1196).
 # Both share the marker block + io_error enum shape; keep them aligned.
 #
 # Inputs:
@@ -93,7 +93,7 @@ fi
 pages_list="$(cat)"
 
 # ---- Placeholder residue fail-fast gate -------------------------------------
-# (lint.md の 5 site 同型 gate: ステップ 1.1 / 1.3 / 6.2 / 8.1 / 8.3。
+# (lint.md の 7 site 同型 gate: ステップ 1.1 / 1.3 / 4.2 / 6.0 / 6.2 / 8.1 / 8.3。
 #  LLM が `{branch_strategy}` / `{wiki_branch}` / `{pages_list}` を literal
 #  substitute せずに helper を呼んだ場合の検出。)
 case "$branch_strategy" in

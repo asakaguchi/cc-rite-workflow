@@ -28,6 +28,25 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
+# jq fault-injection shim: pif_normalize_fail シナリオでのみ最終正規化の `jq -s` を失敗させる。
+# 最終 jq -s は gh の出力ではなく中間 pages file を読むため mock-gh.sh では駆動できない
+# (helper 固有 hardening — 旧 inline block に jq -s 失敗 handling が無いため TC-D 対象外。Issue #1287)。
+# 他のシナリオ / `-s` なしの jq 呼び出しは real jq に pass-through する。
+REAL_JQ="$(command -v jq)"
+cat > "$MOCK_BIN_DIR/jq" <<SHIM_EOF
+#!/bin/bash
+if [ "\${MOCK_GH_SCENARIO:-}" = "pif_normalize_fail" ]; then
+  for arg in "\$@"; do
+    if [ "\$arg" = "-s" ]; then
+      echo "jq: error: simulated normalization failure (pif_normalize_fail)" >&2
+      exit 2
+    fi
+  done
+fi
+exec "$REAL_JQ" "\$@"
+SHIM_EOF
+chmod +x "$MOCK_BIN_DIR/jq"
+
 cleanup() {
   rm -rf "$TEST_DIR"
 }
@@ -262,6 +281,25 @@ if [ "$remain_count" = "1" ] && [ -f "$LAST_OUTPUT" ]; then
   pass "success path hands off exactly one result file"
 else
   fail "expected exactly 1 handed-off file, got $remain_count"
+fi
+
+# --------------------------------------------------------------------------
+# TC-12: jq normalization 失敗 → fetch-failed sentinel + tempfile 非 leak
+#        (jq shim による fault injection。旧 inline block は jq -s 失敗を
+#         handling しないため TC-D 差分比較の対象外 — Issue #1287)
+# --------------------------------------------------------------------------
+echo "TC-12: jq normalization failure"
+run_fetch pif_normalize_fail --project-number 6 --owner test-owner
+if [ "$LAST_RC" = "0" ] && [[ "$LAST_OUTPUT" == "[projects:fetch-failed] jq normalization failed:"* ]]; then
+  pass "fetch-failed sentinel on jq normalization failure"
+else
+  fail "unexpected (rc=$LAST_RC): $LAST_OUTPUT"
+fi
+norm_leak_count=$(find "$ISOLATED_TMP" -type f | wc -l)
+if [ "$norm_leak_count" = "0" ]; then
+  pass "normalization failure path leaves no tempfiles"
+else
+  fail "normalization failure path leaked $norm_leak_count tempfile(s): $(find "$ISOLATED_TMP" -type f)"
 fi
 
 # --------------------------------------------------------------------------

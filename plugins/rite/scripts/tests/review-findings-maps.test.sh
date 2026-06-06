@@ -363,15 +363,20 @@ fi
 # TC-9: normalization tempfile が leak しない (script 終了時 trap 削除契約)
 # --------------------------------------------------------------------------
 echo "TC-9: norm_tmp leak なし"
-before_count=$(ls /tmp/rite-fix-normalized-* 2>/dev/null | wc -l)
+# 共有 /tmp glob の count delta は並列実行時に他プロセスの同 glob tempfile 生成/削除で
+# 両方向に flaky 化する (Issue #1287)。helper の mktemp template は
+# /tmp/rite-fix-normalized-XXXXXX の絶対 path 固定で TMPDIR 隔離が効かないため、
+# before/after の path 集合差分 (after にのみ存在する path) で leak を判定する。
+before_paths=$(ls /tmp/rite-fix-normalized-* 2>/dev/null | LC_ALL=C sort || true)
 repo=$(make_sandbox tc9 default)
 write_fixture "$repo/review.json" v10_missing_scope
 run_helper "$repo" local_file "$repo/review.json"
-after_count=$(ls /tmp/rite-fix-normalized-* 2>/dev/null | wc -l)
-if [ "$before_count" = "$after_count" ]; then
+after_paths=$(ls /tmp/rite-fix-normalized-* 2>/dev/null | LC_ALL=C sort || true)
+leaked_paths=$(LC_ALL=C comm -13 <(printf '%s\n' "$before_paths") <(printf '%s\n' "$after_paths"))
+if [ -z "$leaked_paths" ]; then
   pass "handed_off_norm_tmp が trap EXIT で削除される (leak なし)"
 else
-  fail "norm_tmp leaked (before=$before_count after=$after_count)"
+  fail "norm_tmp leaked: $(tr '\n' ' ' <<<"$leaked_paths")"
 fi
 
 # --------------------------------------------------------------------------

@@ -45,6 +45,8 @@
 #   "pif_graphql_fail"         - items query fails (stderr + exit 1)
 #   "pif_graphql_errors"       - items query returns top-level errors array
 #   "pif_missing_items"        - items query returns data.node = null (partial response)
+#   "pif_normalize_fail"       - gh succeeds (default shapes); the failure is injected by the
+#                                jq shim in projects-items-fetch.test.sh (final `jq -s` exits 2)
 #
 # The projects-status-update.sh script uses a different GraphQL shape
 # (`data.repository.issue.projectItems`) than create-issue-with-projects.sh

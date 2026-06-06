@@ -18,10 +18,13 @@
 #   TC-9  --branch-strategy 欠落 → exit 2 (invocation error)
 #   TC-10 separate_branch + 空 --wiki-branch → exit 2 (invocation error)
 #   TC-11 値なしフラグ末尾 → no-hang (timeout ガード)
+#   TC-12 same_branch io_error (log.md が directory で cat 失敗) → log_read_ok=io_error
+#   TC-13 separate_branch io_error (blob path なし invalid object name) → log_read_ok=io_error
 #   TC-D  differential equivalence — 旧 inline block (参照実装) と stdout byte 一致
 #
 # NOT covered (environment-dependent): mktemp failure on read-only /tmp,
-# awk/sort pipeline OOM。いずれも io_error 降格経路で reading により検証済み。
+# awk/sort pipeline OOM。これらの io_error 降格経路は reading により検証済み
+# (log.md 読出失敗の io_error 経路自体は TC-12/TC-13 の fault injection でカバー)。
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -392,6 +395,36 @@ else
   fail "hang detected (timeout)"
 fi
 
+# === TC-12: same_branch io_error (log.md が directory) → log_read_ok=io_error ===
+# cat は rc≠0 で stderr "Is a directory" を出し、absent 判別 regex
+# (No such file or directory|cannot open) に match しないため io_error に降格する (Issue #1287)。
+echo "TC-12: same_branch io_error (fault injection)"
+repo=$(make_same_branch_sandbox tc12 0)
+mkdir -p "$repo/.rite/wiki/log.md"
+run_helper "$repo" --branch-strategy same_branch --wiki-branch wiki
+if [ "$HELPER_RC" = "0" ] && grep -q '^log_read_ok=io_error$' <<<"$HELPER_STDOUT" \
+   && grep -q '^skipped_refs_count=0$' <<<"$HELPER_STDOUT" \
+   && grep -q 'cat に失敗しました' <<<"$HELPER_STDERR"; then
+  pass "io_error + 空集合 + WARNING (exit 0 非ブロッキング)"
+else
+  fail "unexpected (rc=$HELPER_RC): stdout=$HELPER_STDOUT / stderr=$HELPER_STDERR"
+fi
+
+# === TC-13: separate_branch io_error (不在 wiki branch) → log_read_ok=io_error ===
+# blob path なしの "fatal: invalid object name '<branch>'" は absent 4 pattern の
+# いずれにも match しない (helper コメント記載の典型例: wiki_branch 自体の race 消失) ため
+# io_error に降格する (Issue #1287)。
+echo "TC-13: separate_branch io_error (fault injection)"
+repo=$(make_separate_branch_sandbox tc13 1)
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch no-such-branch
+if [ "$HELPER_RC" = "0" ] && grep -q '^log_read_ok=io_error$' <<<"$HELPER_STDOUT" \
+   && grep -q '^skipped_refs_count=0$' <<<"$HELPER_STDOUT" \
+   && grep -q 'git show に失敗しました' <<<"$HELPER_STDERR"; then
+  pass "io_error + 空集合 + WARNING (exit 0 非ブロッキング)"
+else
+  fail "unexpected (rc=$HELPER_RC): stdout=$HELPER_STDOUT / stderr=$HELPER_STDERR"
+fi
+
 # === TC-D: differential equivalence — 旧 inline block と stdout/stderr/rc 一致 ===
 echo "TC-D: differential equivalence vs original inline block"
 # シナリオ: <label> <sandbox-kind> <with_log> <strategy> <wiki>
@@ -418,6 +451,7 @@ run_differential "same-with-log"     same 1 same_branch wiki
 run_differential "same-absent"       same 0 same_branch wiki
 run_differential "separate-with-log" sep  1 separate_branch wiki
 run_differential "separate-absent"   sep  0 separate_branch wiki
+run_differential "separate-io-error" sep  1 separate_branch no-such-branch
 run_differential "unknown-strategy"  same 1 bogus_strategy wiki
 
 echo ""

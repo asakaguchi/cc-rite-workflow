@@ -46,8 +46,6 @@ fi
 
 The script accepts the input JSON either as a **single positional argument** or via **stdin**. Command markdown callers MUST avoid nesting the `jq -n` command substitution inside the invocation (`"$(jq -n ...)"` 形式) — deep nested quoting is a known LLM tool-call malform source (Issue #1193 / #1196). Build `args_json` first, then pass it:
 
-> **Note (漸進移行)**: 上記 "Referenced from" に列挙した caller のうち `commands/pr/create.md` Phase 2.5.5 と `commands/pr/cleanup.md` ステップ 3 は依然 nested `"$(jq -n ...)"` 形式を使用している (#1196 のスコープ外、#1284 で移行を追跡中)。本 MUST は新規・改修するコマンドに適用される — 未移行 caller を編集する際は args_json 分離形 (または下記 pipe-stdin 形) へ移行すること。
-
 ```bash
 # args_json を入れ子 $() から分離して構築する (単一 JSON 引数契約は不変)
 args_json=$(jq -n \

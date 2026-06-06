@@ -204,7 +204,9 @@ fi
 # 2. create-issue-with-projects.sh 呼び出し (result capture + rc check)
 # iter_mode は "none" hardcode (peer file commands/issue/create.md と対称、
 # 残作業 Issue を特定 iteration に紐付ける要件なし — default Todo backlog で十分)
-result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+# args_json を入れ子 $() から分離して構築する (Issue #1284 — 深い入れ子 quoting の malform 源を削減。
+# 単一 JSON 引数契約は不変)
+args_json=$(jq -n \
   --arg title "残作業: {task_title}" \
   --arg body_file "$tmpfile" \
   --argjson projects_enabled {projects_enabled} \
@@ -225,7 +227,11 @@ result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
       iteration: { mode: $iter_mode }
     },
     options: { source: "cleanup", non_blocking_projects: true }
-  }')")
+  }') || {
+  echo "ERROR: ステップ 3 args_json の jq 構築に失敗しました (タスク: {task_title})" >&2
+  exit 1  # fail-fast (peer file commands/issue/create.md と対称)
+}
+result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$args_json")
 if [ -z "$result" ]; then
   echo "ERROR: ステップ 3 create-issue-with-projects.sh が空 result を返しました (タスク: {task_title})" >&2
   echo "  対処: スクリプト stderr / GitHub API 認証 / Projects 設定を確認してください" >&2

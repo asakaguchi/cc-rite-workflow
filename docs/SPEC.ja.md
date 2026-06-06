@@ -228,19 +228,36 @@ rite-workflow/
 │ ├── pre-compact.sh / post-compact.sh # #133
 │ ├── preflight-check.sh
 │ ├── pre-tool-bash-guard.sh / post-tool-wm-sync.sh
+│ ├── stop-loop-continuation.sh # Stop hook: review↔fix ループ継続 + 終端 finalize (#1168 / #1176 / #1245)
 │ ├── hook-preamble.sh / state-path-resolve.sh / control-char-neutralize.sh # 共通ヘルパー
+│ ├── _resolve-session-id.sh / _resolve-session-id-from-file.sh # private session-id 解決ヘルパー
+│ ├── _resolve-cross-session-guard.sh # private legacy-state 引き継ぎ分類器
+│ ├── _validate-helpers.sh / _validate-state-root.sh / _mktemp-stderr-guard.sh # private fail-fast バリデータ
 │ ├── flow-state.sh / local-wm-update.sh
 │ ├── work-memory-lock.sh / work-memory-update.sh / work-memory-parse.py
 │ ├── cleanup-work-memory.sh
 │ ├── issue-body-safe-update.sh / issue-comment-wm-sync.sh / issue-comment-wm-update.py
+│ ├── review-result-save.sh / review-comment-post.sh / review-skip-notification.sh # pr/review.md 6.1.a/b/c 委譲 (#1193 / #1221)
 │ ├── notification.sh # 外部通知ディスパッチャ (Claude hook ではない)
 │ ├── wiki-ingest-trigger.sh / wiki-query-inject.sh # Wiki 自動統合
 │ ├── scripts/ # フックから呼び出されるヘルパースクリプト
 │ │ ├── wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh
+│ │ ├── wiki-branch-init.sh / wiki-lint-skipped-refs.sh # #1196 inline bash 委譲
+│ │ ├── wiki-lint-source-refs.sh # #1195 wiki/lint.md 6.2 委譲
 │ │ ├── wiki-growth-check.sh # #524 lint layer-3
 │ │ ├── backlink-format-check.sh / bang-backtick-check.sh
+│ │ ├── bang-backtick-edit-hook.sh # bang-backtick-check.sh の PostToolUse wrapper (hooks.json 登録、#691)
+│ │ ├── bash-heaviness-check.sh # #1197 commands/**/*.md の heavy bash block 検出
+│ │ ├── hardcoded-line-number-check.sh / comment-line-ref-check.sh # ハードコード行番号参照 lint (md / sh comment)
+│ │ ├── comment-journal-check.sh / sh-cross-ref-check.sh # comment 規約 lint (journal 語法 #702 / cross-file 参照 #1160)
+│ │ ├── orphan-reference-check.sh # #1162 未参照ファイル検出
+│ │ ├── post-review-state-verify.sh / pr-cycle-cleanup.sh # #995 reviewer 逸脱検出 / cycle worktree 掃除
+│ │ ├── review-schema-version-check.sh # #1021 review-result schema drift 検出
+│ │ ├── settings-local-rite-hook-cleanup.sh / settings-local-rite-hook-cleanup.py # legacy hook entry 掃除 (.sh wrapper + .py 実体)
 │ │ ├── distributed-fix-drift-check.sh / doc-heavy-patterns-drift-check.sh
-│ │ └── gitignore-health-check.sh # #567
+│ │ ├── gitignore-health-check.sh # #567
+│ │ ├── lib/ # 共有ライブラリ (wiki-config.sh / worktree-git.sh)
+│ │ └── tests/ # hooks/scripts レベルのテストスイート
 │ └── tests/ # フックレベルのテストスイート (シェルベース)
 ├── templates/
 │ ├── README.md
@@ -260,9 +277,15 @@ rite-workflow/
 │ ├── page-template.md / schema-template.md
 ├── scripts/ # Projects 統合 / Sub-Issue / レビューメトリクス
 │ ├── create-issue-with-projects.sh
+│ ├── check-no-direct-gh-issue-create.sh # 直接 `gh issue create` 禁止の static guard
+│ ├── decompose-issues.sh # #1195 親 + Sub-Issues 一括作成
 │ ├── backfill-sub-issues.sh / link-sub-issue.sh
 │ ├── extract-verified-review-findings.sh / measure-review-findings.sh
-│ ├── projects-status-update.sh
+│ ├── projects-status-update.sh / projects-items-fetch.sh # #1196 で items-fetch 追加
+│ ├── review-findings-maps.sh # #1196 fix.md severity_map build 委譲
+│ ├── review-source-resolve.sh # #1195 fix.md 1.2.0 review source Priority chain 解決
+│ ├── migrate-review-state-to-1.1.sh # #1021 review-result schema 1.1.0 移行
+│ ├── watchdog-status-mismatch.sh # #1003 Projects Status 不整合 watchdog
 │ └── tests/ # スクリプトレベルのテストスイート
 ├── references/ # commands / skills が共通参照する reference 群
 │ ├── gh-cli-patterns.md / gh-cli-commands.md / gh-cli-error-catalog.md
@@ -1480,6 +1503,22 @@ orchestrator コマンドや他の hook から呼び出される non-hook ヘル
 | `distributed-fix-drift-check.sh` | 同一 fix が複数ファイルに部分適用された不整合を検出 | `review.loop.pre_commit_drift_check` |
 | `doc-heavy-patterns-drift-check.sh` | Doc-Heavy PR Mode の drift シグナルを検出 | #349 |
 | `gitignore-health-check.sh` | `.rite/wiki/` 最終防衛線の `.gitignore` ルールを検証、drift 時に `gitignore_drift` sentinel を emit | #564 / #567 |
+| `wiki-branch-init.sh` | `/rite:wiki:init` ステップ 3.1 — orphan wiki ブランチ作成 + push + 元ブランチ復帰 (stash 退避/復帰、same_branch 両対応) | #1196 |
+| `wiki-lint-skipped-refs.sh` | `/rite:wiki:lint` ステップ 6.0 — log.md の `ingest:skip` 集合を marker block + `log_read_ok` 4 値 enum で構築 (6.2 `wiki-lint-source-refs.sh` と対称) | #1196 |
+| `wiki-lint-source-refs.sh` | `/rite:wiki:lint` ステップ 6.2 — Wiki ページの Sources 行から `all_source_refs` 集合を構築 (6.0 `wiki-lint-skipped-refs.sh` と対称) | #1195 |
+| `bang-backtick-edit-hook.sh` | `bang-backtick-check.sh` の PostToolUse(Edit\|Write\|MultiEdit) wrapper — `hooks.json` 登録済 (`tool_input.file_path` でスコープを絞る) | #691 |
+| `bash-heaviness-check.sh` | `commands/**/*.md` 内の heavy operational bash block を non-blocking warning で検出 | #1197 |
+| `hardcoded-line-number-check.sh` | procedural markdown (`commands/**/*.md`) 内のハードコード行番号参照を検出 | — |
+| `comment-line-ref-check.sh` | shell comment 内の `<file>.<ext>:<NN>` 行番号参照を検出 (`hardcoded-line-number-check.sh` の companion) | #702 |
+| `comment-journal-check.sh` | `plugins/rite/**/*.{sh,md}` の journal 語法 comment 違反を機械検出 | #702 |
+| `sh-cross-ref-check.sh` | shell prose (echo 文字列 / comment) 内の cross-file step/phase 参照の実在を検証 | #1160 |
+| `orphan-reference-check.sh` | plugins/rite/ 配下の未参照 (orphan) ファイル検出 | #1162 |
+| `post-review-state-verify.sh` | reviewer subagent の READ-ONLY 契約違反 (working tree / branch / stash 変更) の検出 + recovery | #995 |
+| `pr-cycle-cleanup.sh` | 残留 `pr-{N}-cycle{X}` worktree / branch の冪等掃除 | #995 |
+| `review-schema-version-check.sh` | review-result JSON の `schema_version` drift 検出 | #1021 |
+| `settings-local-rite-hook-cleanup.sh` | `.claude/settings.local.json` の stale legacy rite hook entry 削除 (`.py` 実体への wrapper、init.md Phase 4.5.0.2) | — |
+| `lib/` (`wiki-config.sh` / `worktree-git.sh`) | wiki 系 helper の共有ライブラリ (config 読取 / worktree git 操作) | #549 |
+| `tests/` | hooks/scripts レベルのテストスイート | — |
 
 ---
 

@@ -364,7 +364,8 @@ if [ -z "$review_source" ]; then
     :
   else
     # mktemp 失敗時も WARNING を emit (format 概形は cleanup.md ステップ 6 と共有、rc capture は
-    # reason=`mktemp_failure_norm_tmp` の SoT block (ステップ 1.2.0 schema 1.1.0 normalization 内の
+    # reason=`mktemp_failure_norm_tmp` の SoT block (ステップ 1.2.0 schema 1.1.0 normalization、
+    # 現在は scripts/review-findings-maps.sh へ委譲済みの
     # `if norm_tmp=$(mktemp ...); then ... else mktemp_norm_rc=$?; fi` 構造) と semantic 同期)。
     # 構造: bash の 「!」否定 pipeline では then 節内 $? が常に 0 になるため、SoT と同じ
     # `if cmd; then :; else rc=$?; fi` 形式を採用する。mktemp の native stderr は SoT (norm_tmp) と

@@ -155,7 +155,7 @@ skipped_refs=""
 log_content=""
 log_read_ok="unknown"
 
-# branch_strategy を case で検証 (5 site で同型の fail-fast)
+# branch_strategy を case で検証 (lint.md ステップ 2.2 / 6.0 / 6.2 / 8.2 / 8.3 と同型の fail-fast)
 case "$branch_strategy" in
   separate_branch)
     if log_content=$(LC_ALL=C git show "${wiki_branch}:.rite/wiki/log.md" 2>"${log_err:-/dev/null}"); then

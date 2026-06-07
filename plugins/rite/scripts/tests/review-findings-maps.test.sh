@@ -384,6 +384,11 @@ fi
 # 注: 旧 block は fail-fast 時に [fix:error] を stdout に emit していたが、委譲後は
 #     caller 責務に分離した ([fix:error] stdout 分離契約)。比較時は参照実装の stdout
 #     から [fix:error] 行のみを除外する (それ以外は byte 一致を要求)。
+# 注: 本 test が比較するのは外部観測可能な挙動 (rc/stdout/stderr/file) のみで、
+#     in-process validation 変数 severity_map_json / scope_map_json の値は観測できない。
+#     当該値は production で非消費 (helper の stdout contract: なし) のため、現契約では
+#     機能 regression の検出漏れにはならない。将来 map を stdout emit する契約に変更する
+#     場合は、clean fixture に対する期待 map 値 assert (test pin) を同時整備すること。
 # --------------------------------------------------------------------------
 echo "TC-D: differential equivalence vs original inline block"
 run_differential() {

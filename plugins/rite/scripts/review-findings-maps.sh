@@ -24,6 +24,9 @@
 #   local_file / explicit_file : normalization + maps build を実行
 #   その他 (pr_comment 等)      : no-op で exit 0 (旧 inline block の外側 if guard と同一)
 #
+# stdout contract: なし (severity_map_json / scope_map_json は構築検証のみ、値は emit しない。
+#   fix.md 下流の map 参照は LLM が review JSON から conceptual map を再構築する契約)
+#
 # stderr contract (旧 inline block から verbatim 移設。LLM は caller の bash 出力として観測する):
 #   [CONTEXT] REVIEW_SOURCE_SCOPE_DEFAULTED=1; reason=scope_omitted_in_v1_0; ...
 #   [CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1; reason=pre_existing_false_scope_nit_noted; ...

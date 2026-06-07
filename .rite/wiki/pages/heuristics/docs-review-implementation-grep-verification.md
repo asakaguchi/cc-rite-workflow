@@ -2,7 +2,7 @@
 title: "Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする"
 domain: "heuristics"
 created: "2026-05-26T00:00:00Z"
-updated: "2026-06-03T23:10:10Z"
+updated: "2026-06-07T03:10:16Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260525T070727Z-pr-1139.md"
@@ -20,6 +20,8 @@ sources:
     ref: "raw/reviews/20260603T162350Z-pr-1261.md"
   - type: "reviews"
     ref: "raw/reviews/20260603T174323Z-pr-1263.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260607T013821Z-pr-1296.md"
 tags: ["docs-drift", "verification-protocol", "implementation-grep", "release-prep", "deprecated-sync", "fact-check"]
 confidence: high
 ---
@@ -85,6 +87,10 @@ PR #1261 (Issue #1259、0 findings / 1 cycle、`docs/SPEC.md` +4/-2 の Doc-Heav
 
 PR #1263 (Issue #1262、#1261 の follow-up にあたる SPEC.ja.md per-session 全面同期 PR) で、**翻訳 PR でも原本への盲目的信頼をせず実装突合を行う価値** が実証された。Doc-Heavy mode の 5 カテゴリ検証で大半の主張 (hooks.json 7 events / PHASE_ENUM_V3 13 値 / session-ownership.sh 4 関数・4 source caller / loop_count writer 0 hits 等) を実装側 grep verify した結果、EN SPEC.md に既存する 2 件の事実誤り (存在しないファイル `state-read.sh` / `_resolve-flow-state-path.sh`+`STATE_FILE_PATH` への参照) が JA 版へ忠実翻訳で転写されていたことが表面化した (revert test pass で本 PR diff 由来と判定、HIGH × 2)。JA 単独修正は i18n parity を破壊するため scope=follow-up (EN+JA 両側同時修正の別 Issue) が適切と両レビュアーが独立に収束し、本 protocol の grep verify が「原本の誤りは fact 検証で初めて表面化する」という翻訳 PR 特有の検出経路として機能した。決着パターンの詳細は [i18n 同期 PR の忠実翻訳は原本の誤りを転写する — 検出時は accept + 両側同時修正 follow-up で決着する](./i18n-faithful-translation-source-error-accept-followup.md) を参照。
 
+### Successful application — docstring contract 追記 PR の claim-実装整合全数検証 (PR #1296)
+
+PR #1296 (Issue #1288、0 findings / 1 cycle、コメント/docstring のみの +8/-0 docs PR) で、本 protocol が **script docstring に追記した契約 claim の層** にも適用されることを successful preventive application として実測。`review-findings-maps.sh` docstring への stdout contract 追記 (severity_map_json / scope_map_json は構築検証のみで stdout に emit しない) と TC-D 観測性制約注記 (in-process validation 変数は differential test では観測できない) について、4 reviewer (test / error-handling / performance / security) 全員が「追加コメントの主張と実装の整合」を Grep/Read/テスト実行 (review-findings-maps.test.sh 19/19 pass) で独立に全数検証し、claim-実装乖離ゼロを確認した。[Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の懸念 (claim 文言の片肺化・vacuous claim 化) も非該当と判定。推奨事項 3 件 (usage() の `--help` 時 stdout 出力と「stdout contract: なし」文言の境界注記余地 — 2 reviewer が独立言及 / 将来 stdout emit 契約変更時の test pin 整備方針の defer 妥当性) はいずれも本 PR スコープ外の任意改善として扱われた。コメント追加 only の PR でも「コメントが宣言する契約」は implementation grep verify の対象であり、本 protocol が prose / CHANGELOG / SPEC に加えて docstring contract 層でも 1 cycle 収束を支えることを示す positive evidence。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -99,3 +105,4 @@ PR #1263 (Issue #1262、#1261 の follow-up にあたる SPEC.ja.md per-session 
 - [PR #1248 review (prose 散文括弧書きの正確性を helper 出力語彙と cross-check、0 findings の successful application)](../../raw/reviews/20260602T082558Z-pr-1248.md)
 - [PR #1261 review (Doc-Heavy mode 5 カテゴリ検証で全実装主張を grep verify + pre-existing SPEC.ja.md i18n drift を revert-test で follow-up #1262 化、0 findings の successful application)](../../raw/reviews/20260603T162350Z-pr-1261.md)
 - [PR #1263 review (翻訳 PR での実装突合により EN 原本由来の事実誤り 2 件の転写を表面化、両レビュアー独立で follow-up 収束)](../../raw/reviews/20260603T174323Z-pr-1263.md)
+- [PR #1296 review (docstring stdout contract / TC-D 観測性制約 claim の実装整合を 4 reviewer 独立全数検証、0 findings の successful application)](../../raw/reviews/20260607T013821Z-pr-1296.md)

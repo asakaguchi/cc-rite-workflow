@@ -93,7 +93,7 @@ fi
 pages_list="$(cat)"
 
 # ---- Placeholder residue fail-fast gate -------------------------------------
-# (lint.md の 7 site 同型 gate: ステップ 1.1 / 1.3 / 4.2 / 6.0 / 6.2 / 8.1 / 8.3。
+# (lint.md の同型 gate: ステップ 1.1 / 1.3 / 4.2 / 6.0 / 6.2 / 8.1 / 8.3。
 #  LLM が `{branch_strategy}` / `{wiki_branch}` / `{pages_list}` を literal
 #  substitute せずに helper を呼んだ場合の検出。)
 case "$branch_strategy" in

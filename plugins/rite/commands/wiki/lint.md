@@ -25,7 +25,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 | **壊れた相互参照** | ページ本文の Markdown リンク `](...)` が `pages/` 配下の実在ファイルを指していない | Yes |
 | **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、`log.md` に `ingest:skip` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
 
-**設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 6.0 / 6.2 / 8.2 / 8.3 の 5 箇所で同型 fail-fast)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)。いずれも設定ミス / 実装ミスを silent に通過させないための設計判断。
+**設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 6.0 / 6.2 / 8.2 / 8.3 で同型 fail-fast。うち 6.0 / 6.2 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)。いずれも設定ミス / 実装ミスを silent に通過させないための設計判断。
 
 矛盾検出 (ステップ 3) と欠落概念検出 (ステップ 6) は LLM のセマンティック読解に依存する。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md) で解決する。共通パターン (ディレクトリ構造 / ブランチ管理 / テンプレート展開) は [Wiki Patterns](../../references/wiki-patterns.md) を参照。
 
@@ -68,7 +68,7 @@ branch_strategy=$(extract_yaml_key branch_strategy)
 case "$wiki_enabled" in false|no|0) wiki_enabled=false ;; *) wiki_enabled=true ;; esac  # opt-out default
 wiki_branch="${wiki_branch:-wiki}"
 
-# branch_strategy: 空文字列は legitimate fallback、未知値は fail-fast (5 site の case * fail-fast と対称化)
+# branch_strategy: 空文字列は legitimate fallback、未知値は fail-fast (ステップ 2.2 / 6.0 / 6.2 / 8.2 / 8.3 の case * fail-fast と対称化)
 case "$branch_strategy" in
   "")
     echo "WARNING: rite-config.yml に wiki.branch_strategy が未設定のため 'separate_branch' を使用します" >&2
@@ -95,7 +95,7 @@ echo "wiki_branch=$wiki_branch"
 **Wiki が無効の場合**: 早期 return (`--auto` モードでは ステップ 9.2 の 3 行出力契約を必ず守る):
 
 ```bash
-# Claude placeholder {mode} 残留 fail-fast gate (glob pattern 版、7 site で同型)
+# Claude placeholder {mode} 残留 fail-fast gate (glob pattern 版、同型 gate: ステップ 1.1 / 1.3 / 4.2 / 6.0 / 6.2 / 8.1 / 8.3)
 mode="{mode}"
 case "$mode" in
   "{"*"}")
@@ -255,7 +255,7 @@ case "$branch_strategy" in
   *)
     echo "ERROR: 未知の branch_strategy 値を検出しました: '$branch_strategy' (ステップ 2.2)" >&2
     echo "  対処: rite-config.yml の wiki.branch_strategy を 'separate_branch' または 'same_branch' に設定してください" >&2
-    echo "  本エラーは設定ミスを silent に通過させないための fail-fast です（5 箇所で同型）" >&2
+    echo "  本エラーは設定ミスを silent に通過させないための fail-fast です（ステップ 2.2 / 6.0 / 6.2 / 8.2 / 8.3 で同型）" >&2
     exit 1
     ;;
 esac
@@ -738,7 +738,7 @@ n_missing_concept={n_missing_concept}
 n_broken_refs={n_broken_refs}
 # 参考: n_unregistered_raw={n_unregistered_raw} — 判定式から意図的に除外 (informational、Issue #563)
 
-# Placeholder residue fail-fast gate (7 site で同型): LLM が literal substitute を忘れると
+# Placeholder residue fail-fast gate (同型 gate: ステップ 1.1 / 1.3 / 4.2 / 6.0 / 6.2 / 8.1 / 8.3): LLM が literal substitute を忘れると
 # `[ "{n_contradictions}" -gt 0 ]` が rc=2 を返し、set -o pipefail のみでは検知できず else 分岐に
 # 流れて `lint_action="lint:clean"` が silent emit される fail-silent regression を防ぐ。
 for _n_var in n_contradictions n_stale n_orphans n_missing_concept n_broken_refs; do
@@ -767,7 +767,7 @@ echo "[CONTEXT] lint_action=$lint_action"
 
 ### 8.2 書き込み先パスの決定
 
-`branch_strategy` の値に応じて書き込み先パスを決定する (5 site で同型の case 文 + fail-fast):
+`branch_strategy` の値に応じて書き込み先パスを決定する (ステップ 2.2 / 6.0 / 6.2 / 8.2 / 8.3 で同型の case 文 + fail-fast。うち 6.0 / 6.2 は helper 内):
 
 ```bash
 branch_strategy="{branch_strategy}"
@@ -817,7 +817,7 @@ if [ -z "$plugin_root" ] || [ ! -d "$plugin_root/templates/wiki" ]; then
   exit 0
 fi
 
-# {log_entry} placeholder 残留検知 fail-fast gate (7 site で同型)
+# {log_entry} placeholder 残留検知 fail-fast gate (同型 gate: ステップ 1.1 / 1.3 / 4.2 / 6.0 / 6.2 / 8.1 / 8.3)
 log_entry="{log_entry}"
 case "$log_entry" in
   "{"*"}")
@@ -1011,8 +1011,8 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 
 - **原則 exit 0**: 検出件数・事前チェック失敗・ブランチ読取失敗のいずれも非ブロッキング
 - **例外 (`exit 1` fail-fast)**:
-  - `branch_strategy` 未知値 (ステップ 2.2 / 6.0 / 6.2 / 8.2 / 8.3 の 5 箇所で同型、設定ミスの silent 通過防止)
-  - `{mode}` placeholder 残留 (ステップ 1.1 / 1.3 の 2 箇所)
+  - `branch_strategy` 未知値 (ステップ 2.2 / 6.0 / 6.2 / 8.2 / 8.3 で同型、うち 6.0 / 6.2 は helper 内。設定ミスの silent 通過防止)
+  - `{mode}` placeholder 残留 (ステップ 1.1 / 1.3)
   - ステップ 6.2 の placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{pages_list}` の 3 種 + partial pollution gate、LLM substitute 忘れによる silent `missing_concept` 誤分類防止)
   - ステップ 8.1 の counter placeholder (`n_*` 5 種) 残留 / 非整数検知 (silent `lint:clean` 誤 emit 防止)
   - ステップ 8.3 の placeholder 残留 (`{log_entry}` / `{branch_strategy}` の 2 種、literal 残留 commit landed 防止)
@@ -1027,12 +1027,12 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 | `wiki.enabled: false` | 早期 return (`--auto` モード時は ステップ 9.2 の 3 行出力後 exit 0、それ以外は警告のみ exit 0) | ステップ 1.1 |
 | GNU date 非互換環境 | ステップ 4 skip（exit 0 + WARNING） | ステップ 1.2 |
 | Wiki 未初期化 | `/rite:wiki:init` を案内 (`--auto` モード時は ステップ 9.2 の 3 行出力後 exit 0) | ステップ 1.3 |
-| `{mode}` placeholder 残留 (2 箇所で同型) | **exit 1 で fail-fast** | ステップ 1.1 / 1.3 |
+| `{mode}` placeholder 残留 (各 site で同型) | **exit 1 で fail-fast** | ステップ 1.1 / 1.3 |
 | ステップ 6.2 の placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{pages_list}` の 3 種 + partial pollution) | **exit 1 で fail-fast** (silent `missing_concept` 誤分類防止) | ステップ 6.2 |
 | ステップ 8.1 の counter placeholder (`n_*` 5 種) 残留 / 非整数 | **exit 1 で fail-fast** (silent `lint:clean` 誤 emit 防止) | ステップ 8.1 |
 | ステップ 8.3 の placeholder 残留 (`{log_entry}` / `{branch_strategy}` の 2 種) | **exit 1 で fail-fast** (literal 残留 commit landed 防止) | ステップ 8.3 |
 | `git ls-tree` 失敗 | WARNING + `pages_list=""`/`raw_list=""` で継続（exit 0） | ステップ 2.2 |
-| `branch_strategy` 未知値 (5 箇所で同型) | **exit 1 で fail-fast** | ステップ 2.2 / 6.0 / 6.2 / 8.2 / 8.3 |
+| `branch_strategy` 未知値 (各 site で同型) | **exit 1 で fail-fast** | ステップ 2.2 / 6.0 / 6.2 / 8.2 / 8.3 (6.0 / 6.2 は helper 内) |
 | `index.md` 読出失敗 | WARNING + ステップ 5 skip（exit 0） | ステップ 2.3 |
 | `log.md` 読出失敗 (legitimate absence) | WARNING 抑制 + `skipped_refs=""` + `log_read_ok=absent`（exit 0） | ステップ 6.0 |
 | `log.md` 読出失敗 (真の IO error) | WARNING + `skipped_refs=""` + `log_read_ok=io_error` + ステップ 9.1 で false positive note 表示（exit 0） | ステップ 6.0 |

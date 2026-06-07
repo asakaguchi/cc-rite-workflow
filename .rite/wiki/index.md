@@ -154,9 +154,10 @@
 | [入力注入経路のない静的文字列処理連鎖は関数抽出 + 境界行 extract で非 vacuous unit テスト化する](pages/patterns/static-input-chain-function-extraction-non-vacuous-test.md) | patterns | 静的入力のみに適用される文字列処理連鎖 (エスケープ等) は統合テストでは exercise できず assertion が vacuous 化する。連鎖を関数に抽出し、テスト側で awk 境界行抽出 + eval + declare -f gate で関数だけを load して実 C0 入力を直接流す方式で非 vacuous unit テスト化。commit 前 mutation 検証 (核心行削除 → assertion fail) で runtime 実証する。PR #1281 で確立。 | 2026-06-05T18:33:35Z | high |
 | [責務境界外 finding は boundary 申し送り → 管轄 reviewer の follow-up 評価で確定する](pages/patterns/sole-reviewer-guard-cross-boundary-referral.md) | patterns | sole reviewer guard で追加された co-reviewer が他 reviewer 管轄の checklist 項目 (例: CFIC #6 は tech-writer 管轄) に該当する defect を検出した場合、自分で severity 確定せず boundary 推奨として申し送り、orchestrator が管轄 reviewer に follow-up 評価を依頼して確定ゲート (Confidence / Demonstrable / revert test) で確定する。PR #1294 で tech-writer の CFIC #6 実行漏れを code-quality の Cross-File Impact Check が補完し HIGH 確定 — sole reviewer guard の盲点防止が実際に機能した実例。 | 2026-06-06T15:31:02Z | medium |
 | [共有 /tmp の leak 検査は count delta ではなく path 集合差分 (comm -13) で行う](pages/patterns/shared-tmp-leak-check-path-set-difference.md) | patterns | 共有 /tmp 上の tempfile leak 検査を実行前後のファイル数 count delta で行うと、並列プロセスの削除で false-fail し、leak と削除の相殺で false-PASS する。実行前後の path 集合を `comm -13` で差分化すると自テストが新規出現させた path のみを決定論的に検出でき両方向の誤判定を排除。helper の mktemp template が絶対 path 固定で TMPDIR 隔離が効かない場合の canonical 次善策。PR #1295 で leak 注入 (正方向) / 他プロセス削除 (逆方向) の双方向 mutation により count delta 方式への厳密な上位互換性を実証。並列他プロセスが同 template で追加した場合の add-direction ambiguity は残存 (根治は helper 側 TMPDIR 対応 = 別 scope)。 | 2026-06-06T17:33:06Z | medium |
+| [leading-dash 引数注入 gate は git 操作前に配置し代表 1 値の非 vacuous test で検証する](pages/patterns/leading-dash-arg-injection-gate-pre-git.md) | patterns | 外部由来の値 (branch 名等) を git に flag 位置で渡す script の leading-dash 引数注入を、引数解析直後・全 git 操作前の `case -*) fail` fail-fast gate で塞ぐ。bypass 耐性は入力クラス別に確認 (空文字列は既存 -z へ fall-through / 先頭 whitespace は git の literal refspec reject)。検証は兄弟 script の同型注入経路 grep 監査 + 単一 `-*` case の代表 1 値 test (値ごと分岐なしのため境界値網羅不要) + rc/ERROR substring/end-state の 3 軸非 vacuous assertion + 既存 differential-equivalence test と gate 非発火値で非干渉。PR #1299 (Issue #1290、PR #1286 security follow-up) で 5 reviewer cross-validation・指摘 0 件 cycle 1 収束。 | 2026-06-07T19:38:45Z | high |
 
 ## 統計
 
-- 総ページ数: 147
-- ドメイン別: patterns=49, heuristics=44, anti-patterns=54
-- 最終更新: 2026-06-06T17:33:06Z
+- 総ページ数: 148
+- ドメイン別: patterns=50, heuristics=44, anti-patterns=54
+- 最終更新: 2026-06-07T19:38:45Z

@@ -352,6 +352,27 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-8: leading-`-` の wiki_branch → fail-fast gate + exit 1 (Issue #1290)
+#   `--force` が `git push -u origin` の option として解釈される argument injection
+#   経路を git 操作到達前に遮断することの検証。gate は git 操作より前に発火するため
+#   ブランチ未作成・main 滞在の end state も pin する。
+# --------------------------------------------------------------------------
+echo "TC-8: leading-dash wiki-branch rejected"
+repo=$(make_sandbox tc8)
+run_helper "$repo" --branch-strategy separate_branch --wiki-branch "--force"
+state=$(dump_state "$repo")
+if [ "$HELPER_RC" = "1" ] && [[ "$HELPER_OUTPUT" == *"ERROR: --wiki-branch が '-' で始まる値は受け付けられません"* ]]; then
+  pass "leading-dash value → ERROR + exit 1"
+else
+  fail "unexpected (rc=$HELPER_RC): $HELPER_OUTPUT"
+fi
+if grep -q "^current=main$" <<<"$state" && grep -q "^branches=main,$" <<<"$state" && grep -q "wiki_tree=<none>" <<<"$state"; then
+  pass "no branch created, still on main"
+else
+  fail "unexpected end state: $state"
+fi
+
+# --------------------------------------------------------------------------
 # TC-D: differential equivalence — 旧 inline block (参照実装) と出力 / end state 一致
 # --------------------------------------------------------------------------
 echo "TC-D: differential equivalence vs original inline block"

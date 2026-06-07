@@ -172,7 +172,7 @@ if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/scripts/projects-items-fetch.sh
   # helper 不在も旧実装の失敗契約と同じ sentinel に倒し、Status 列なし表示への fallback を発火させる
   echo "[projects:fetch-failed] projects-items-fetch.sh not found (plugin_root='${plugin_root:-<empty>}')"
 else
-  bash "$plugin_root/scripts/projects-items-fetch.sh" --project-number {project_number} --owner {owner}
+  bash "$plugin_root/scripts/projects-items-fetch.sh" --project-number "{project_number}" --owner "{owner}"
 fi
 ```
 

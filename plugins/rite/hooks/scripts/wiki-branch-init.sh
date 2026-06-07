@@ -20,7 +20,8 @@
 #
 # Exit codes:
 #   0  初期コミット完了
-#   1  git 操作失敗 / 未知の branch_strategy / 引数異常 (旧 inline block と同じ blocking 契約)
+#   1  git 操作失敗 / 未知の branch_strategy / 引数異常 (leading-`-` の wiki_branch 拒否を
+#      含む; 旧 inline block と同じ blocking 契約)
 #
 # Notes:
 #   - 旧 inline block と同じく global `set -e` は使わない (各 git 操作の失敗を
@@ -47,6 +48,20 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+# --- Leading-dash fail-fast gate (Issue #1290) ---
+# wiki_branch は rite-config.yml の wiki.branch_name 由来 (開発者管理) だが、leading-`-` の
+# 値は `git push -u origin` で refspec ではなく option として解釈される (例: `--force`; 実測)。
+# `git checkout --orphan` 側は git 自身の branch name validation で fail するため実害はないが、
+# エラー文言が本 helper の契約外経路になる。両 call site への到達前にここで引数異常として
+# 統一的に fail-fast する (wiki-lint-skipped-refs.sh の placeholder residue gate と同型)。
+case "$wiki_branch" in
+  -*)
+    echo "ERROR: --wiki-branch が '-' で始まる値は受け付けられません (値: '$wiki_branch')" >&2
+    echo "  対処: rite-config.yml の wiki.branch_name を確認してください" >&2
+    exit 1
+    ;;
+esac
 
 # 共通の初期コミットメッセージ (separate_branch / same_branch で同一 — 旧 inline block から verbatim)
 WIKI_INIT_COMMIT_MSG="feat(wiki): initialize Wiki structure

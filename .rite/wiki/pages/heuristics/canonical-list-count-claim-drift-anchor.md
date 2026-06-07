@@ -2,7 +2,7 @@
 title: "新規 exit 1 経路 / sentinel type 追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する"
 domain: "heuristics"
 created: "2026-04-18T12:50:00+00:00"
-updated: "2026-05-20T03:11:31+00:00"
+updated: "2026-06-07T16:06:04Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T123408Z-pr-579.md"
@@ -38,6 +38,8 @@ sources:
     ref: "raw/reviews/20260520T011841Z-pr-1066.md"
   - type: "fixes"
     ref: "raw/fixes/20260520T022118Z-pr-1066-cycle1.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260607T115501Z-pr-1298.md"
 tags: []
 confidence: high
 ---
@@ -160,6 +162,16 @@ PR #1066 cycle 11 で 3 reviewer (prompt-engineer + code-quality + error-handlin
 
 本件は 3 reviewer が独立に同手順を実施し cross-validated として収束。fix (cycle 1) で「3-site 対称化」+ watchdog footnote へ narration を訂正し、reasoning prose は保持しつつ counter 表現と peer scope 限定を分離した。本 sub-pattern は本ページの拡張群 (parallelism suffix drift / caller list drift / cross-file 数値 commitment drift / refactor 対象外 reference の stale claim) と並列し、「**narration 内の数値 / counter が読者に含意するシステム全体 scope と実 PR scope の乖離**」という新カテゴリを追加する。
 
+### 転換: hand-maintained counter の撤廃と step enumeration 列挙への統一 (PR #1298 / Issue #1289 で実証)
+
+本ページの canonical rule は counter 宣言を「drift 検出アンカー」として活用する方向だったが、PR #1298 (0 findings / 初回 mergeable) で **hand-maintained counter 自体が drift 源になる構造的限界** が確認され、counter を撤廃して grep で各 site を直接検証可能な **step enumeration 列挙** に統一する転換が successful application として実測された:
+
+- **counter の構造的曖昧さ**: 「5 site」「7 site」「N 箇所」のような counter は **計数規則の曖昧さ** (inline 実装のみを数えるか helper 委譲分を含むか) を内包する。`wiki/lint.md` の branch_strategy fail-fast 5 site のうち 6.0 / 6.2 が helper 委譲済みになった時点で「5 site」の解釈が二義的になり、counter の update 義務が judgment call 化して silent drift する
+- **enumeration の構造的優位**: counter `5 site` を step 列挙 (`1.3 / 2.2 / 6.0 / 6.2 / 8.1` のような enumeration) に置換すると、計数規則の曖昧さが**構造的に消滅**し、各 site を `grep` で直接実在検証できる (counter は「数の一致」しか検証できないが enumeration は「各 site の実在」を検証できる)
+- **検証 protocol**: 5 reviewer が独立に enumeration の全数検証 (列挙された各 step の実在 grep + helper 委譲注記の helper 実在確認) を実施し全員一致で正確と確認。counter 残存ゼロを repo 横断 grep (`5 site / 7 site / N 箇所で同型`) で機械検証
+- **qualitative 表現の残置基準**: 「各 site で同型」のような **数を主張しない qualitative 表現** は、具体的 step 集合の併記があれば drift 源にならないため意図的残置が妥当
+- **本ページ canonical rule との関係**: counter を drift 検出アンカーとして活用する rule は「counter が正確に維持される」前提に立つが、計数規則が曖昧になった counter はアンカー機能自体を失う。**counter 活用 (本ページ原 rule) → enumeration 列挙 (PR #1298 転換)** は、`drift-check-anchor-semantic-name.md` の「line 番号 literal 禁止 → semantic name 参照」と同型の構造的閉塞であり、counter は line 番号と同じ「書いた時点から陳腐化が始まる」hand-maintained literal の一種として扱う
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -185,3 +197,4 @@ PR #1066 cycle 11 で 3 reviewer (prompt-engineer + code-quality + error-handlin
 - [PR #950 cycle 1 fix (pre-condition-gate.md 内の stale site count を SoT 移管と同 cycle で同期更新)](../../raw/fixes/20260514T010559Z-pr-950.md)
 - [PR #1066 review (3 reviewer cross-validated: '4-site 対称化' narration claim vs 実 3-site 不一致 + watchdog peer 経路含意の漏れ)](../../raw/reviews/20260520T011841Z-pr-1066.md)
 - [PR #1066 cycle 1 fix ('3-site 対称化' + watchdog footnote で peer scope 限定を narration に明示)](../../raw/fixes/20260520T022118Z-pr-1066-cycle1.md)
+- [PR #1298 review (hand-maintained counter 撤廃 → step enumeration 列挙統一の successful application、0 findings 初回 mergeable)](../../raw/reviews/20260607T115501Z-pr-1298.md)

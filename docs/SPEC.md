@@ -257,6 +257,7 @@ rite-workflow/
 │ │ ├── settings-local-rite-hook-cleanup.sh / settings-local-rite-hook-cleanup.py # legacy hook entry 掃除 (.sh wrapper + .py 実体)
 │ │ ├── distributed-fix-drift-check.sh / doc-heavy-patterns-drift-check.sh
 │ │ ├── gitignore-health-check.sh # #567
+│ │ ├── projects-board-drift-check.sh # #1305 lint Phase 3.18 CLOSED+COMPLETED board≠Done 検出
 │ │ ├── lib/ # 共有ライブラリ (wiki-config.sh / worktree-git.sh)
 │ │ └── tests/ # hooks/scripts レベルのテストスイート
 │ └── tests/ # Hook-level test suite (shell-based)
@@ -1360,6 +1361,7 @@ Non-hook helper scripts invoked either directly from orchestrator commands or by
 | `distributed-fix-drift-check.sh` | Catch inconsistent partial application of the same fix across files | `review.loop.pre_commit_drift_check` |
 | `doc-heavy-patterns-drift-check.sh` | Detect Doc-Heavy PR Mode drift signals | #349 |
 | `gitignore-health-check.sh` | Verify the `.rite/wiki/` last-line-of-defense `.gitignore` rule, emit `gitignore_drift` sentinel on mismatch | #564 / #567 |
+| `projects-board-drift-check.sh` | `/rite:lint` Phase 3.18 — detect CLOSED+COMPLETED Issues whose Projects board Status is not `Done` (NOT_PLANNED excluded), optionally reconcile via `--reconcile` | #1305 |
 | `wiki-branch-init.sh` | `/rite:wiki:init` ステップ 3.1 — orphan wiki ブランチ作成 + push + 元ブランチ復帰 (stash 退避/復帰、same_branch 両対応) | #1196 |
 | `wiki-lint-skipped-refs.sh` | `/rite:wiki:lint` ステップ 6.0 — log.md の `ingest:skip` 集合を marker block + `log_read_ok` 4 値 enum で構築 (6.2 `wiki-lint-source-refs.sh` と対称) | #1196 |
 | `wiki-lint-source-refs.sh` | `/rite:wiki:lint` ステップ 6.2 — Wiki ページの Sources 行から `all_source_refs` 集合を構築 (6.0 `wiki-lint-skipped-refs.sh` と対称) | #1195 |

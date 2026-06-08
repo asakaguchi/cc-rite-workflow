@@ -2,8 +2,10 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-06-06T17:33:06Z"
+updated: "2026-06-08T05:59:49Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260608T032933Z-pr-1301.md"
   - type: "reviews"
     ref: "raw/reviews/20260606T171726Z-pr-1295.md"
   - type: "reviews"
@@ -497,6 +499,24 @@ PR #1295 (Issue #1287 — 委譲 helper テストの網羅性 follow-up、+101/-
 
 教訓: 適用 17 の fake binary 設計 checklist は jq のような構造化データ処理 binary にも同型適用でき、テストのみ変更 PR の 1 cycle 収束を再現する。boundary 推奨 (mktemp template の TMPDIR 非対応による add-direction ambiguity 残存等) を reviewer 自身が non-blocking と明示判断する運用も 1 cycle 収束に寄与した。
 
+### 適用 19: 既存 TC を byte-identical に一般化した新 helper の teeth を双方向退行 mutation で立証 + 「既存 TC との対称性 byte 比較」を review 検証手段に併設 (PR #1301 で実証)
+
+PR #1301 (Issue #1293 — symmetry test の保護対象に `pr/create.md` / `pr/cleanup.md` の `create-issue-with-projects.sh` caller を追加、テストのみ変更) は 0 findings / 全 4 レビュアー「可」で初回 mergeable に到達し、適用 13 / 18 の「テストのみ追加 PR を reviewer 側 worktree-only mutation で非 vacuous 立証」系譜を継続した。新 helper `assert_single_create_caller` の 3 assertion (a: canonical callsite 存在 / b: `args_json=$(jq -n` 分離 constructor / c: 全 invocation が canonical) を、test / code-quality / error-handling の 3 reviewer が worktree-isolated mutation で検証:
+
+| Mutation | 期待 | 検出する assert |
+|----------|------|----------------|
+| caller を nested `"$(jq -n ...)"` 形式へ退行 | 分離 constructor 不在 → FAIL | (b)(c) |
+| callsite 近傍に flag-style `--title` を再導入 | non-canonical invocation → FAIL | (c) / TC-11 |
+
+→ 新 assertion が nested cmdsub 退行と flag-style `--title` 退行の**両方を実際に FAIL 検出**することで、teeth (非 vacuous 性) を実機実証した。
+
+本 PR の固有観点 2 つ:
+
+1. **既存 TC との対称性 byte 比較を review 検証手段に併設**: 新 helper は既存 TC-1 / TC-1c / TC-2 の grep パターン・arithmetic を **byte-identical に一般化**している。reviewer は mutation testing (teeth 確認) に加えて「新 helper の grep/arithmetic が既存 canonical TC と byte 一致するか」を照合することで、create.md 系と**対称な検証強度**を持つことを確認した。テスト追加 PR のレビューでは「mutation test による teeth 確認」と「既存 TC との対称性 byte 比較」が対の有効な検証手段になる ([[asymmetric-fix-transcription]] の test 側双対 — 適用 10 が「対称な動作 invariant の両側 pin」だったのに対し、本適用は「既存 canonical TC との実装対称性 byte 照合」)。
+2. **mutation 過程で surface した構造的観察を pre-existing と判定し scope 外化**: canonical grep の `bash` anchor 非対称により non_canonical が負値化しうる理論経路が観察されたが、revert test で TC-2 にも存在する pre-existing と判定 → 本 PR scope 外、「anchor 非対称を TC-2 と同時に別 Issue で統一」を follow-up 候補に記録 (適用 14 の「mutation 過程での latent guidance 矛盾発見」と同じ、mutation が test 設計の隣接欠陥を可視化する系譜)。
+
+教訓: 既存 canonical TC を一般化して新 helper を作るテスト追加 PR では、(a) 新 assertion が想定退行で FAIL する teeth 確認、(b) 新 helper の grep/arithmetic が既存 TC と byte 一致する対称性照合、の 2 軸を reviewer 検証手段として併用すると、create.md 系と同等の検証強度を保ったまま 1 cycle 収束できる。byte-identical generalization の対称性側面は [[asymmetric-fix-transcription]] を参照。
+
 ## 関連ページ
 
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
@@ -536,3 +556,4 @@ PR #1295 (Issue #1287 — 委譲 helper テストの網羅性 follow-up、+101/-
 - [PR #1281 review results (cycle 2) — test reviewer が fix 側 mutation claim を独立に設計した 4 種 mutation (各エスケープ行個別削除 + neutralize→cat 置換) で再実証、観測数差異は「非 vacuous」核心一致で合意 (0 findings / 2 cycle 収束)](../../raw/reviews/20260605T182035Z-pr-1281-cycle2.md)
 - [PR #1283 review results — TC-116 vacuous 教訓を設計段階から反映した fail-closed テスト追加、4 reviewer 独立 mutation 実験で非 vacuous 性を実証、fake tr 引数精密スコープで巻き添えゼロ (0 findings / 1 cycle mergeable)](../../raw/reviews/20260606T002556Z-pr-1283.md)
 - [PR #1295 review results — テストのみ変更 follow-up PR で新規 assert 4 件の非 vacuous 性を worktree-only mutation で立証、path 集合差分化の双方向 mutation 検証 + jq fault-injection shim の `-s` 完全一致 + scenario gate 二重ガード (0 findings / 1 cycle mergeable)](../../raw/reviews/20260606T171726Z-pr-1295.md)
+- [PR #1301 review results — symmetry test 保護対象拡張のテストのみ変更 PR で新 helper assert_single_create_caller の (a)(b)(c) 3 assertion を 3 reviewer が worktree-isolated mutation (nested cmdsub 退行 + flag-style --title 退行) で teeth 立証、既存 TC との byte-identical 対称性照合を検証手段に併設 (0 findings / 全 4 レビュアー可で初回 mergeable)](../../raw/reviews/20260608T032933Z-pr-1301.md)

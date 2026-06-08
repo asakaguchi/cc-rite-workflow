@@ -327,7 +327,7 @@ gh issue view {issue_number} --json body --jq '.body' | grep -E '^- \[[ xX]\] ' 
 
 ### Checkbox Update
 
-Execute in 3 stages (Bash → Read+Write → Bash). Since `trap` is only effective within the same process, all sub-steps in Step 1 must be executed within the same Bash tool call.
+Execute in 3 stages (Bash → Read+Write → Bash). Shell variables do not persist across Bash tool calls, so all of Step 1 (`mktemp` + fetch + validation) must run within a single Bash tool call, and the resulting temp file paths are passed to Step 3 as literals.
 
 > **🔴 CRITICAL**: NEVER use `echo "$body" | sed` for checkbox updates. See [gh CLI Error Catalog - Category 1](./gh-cli-error-catalog.md#category-1-nil-is-not-an-object-http-422--27-sessions).
 
@@ -335,15 +335,19 @@ Execute in 3 stages (Bash → Read+Write → Bash). Since `trap` is only effecti
 
 ```bash
 # Create temp files (for reading and writing)
+# Do NOT set an EXIT trap here: Step 1 is its own Bash tool call, so an EXIT trap
+# would fire when Step 1 exits and delete the temp files before Step 2's Read tool
+# can read them. The files are cleaned up explicitly instead — in Step 3 on success,
+# and in the failure branch below on a Step 1 failure.
 tmpfile_read=$(mktemp)
 tmpfile_write=$(mktemp)
-trap 'rm -f "$tmpfile_read" "$tmpfile_write"' EXIT
 
 gh issue view {issue_number} --json body --jq '.body' > "$tmpfile_read"
 
 # Validate retrieval result
 if [ ! -s "$tmpfile_read" ]; then
   echo "ERROR: Failed to retrieve Issue body" >&2
+  rm -f "$tmpfile_read" "$tmpfile_write"
   exit 1  # May be overridden by the calling workflow (pr/open.md / pr/iterate.md 等)
 fi
 
@@ -368,12 +372,13 @@ tmpfile_write="/tmp/tmp.XXXXXXXXXX"  # ← Replace with the tmpfile_write= value
 # Validate update content before applying
 if [ ! -s "$tmpfile_write" ]; then
   echo "ERROR: Updated content is empty" >&2
+  rm -f "$tmpfile_read" "$tmpfile_write"
   exit 1
 fi
 
 gh issue edit {issue_number} --body-file "$tmpfile_write"
 
-# trap does not carry over between processes (Bash tool calls), so delete explicitly
+# No EXIT trap is set in Step 1 (it would delete these before Step 2), so clean up here
 rm -f "$tmpfile_read" "$tmpfile_write"
 ```
 

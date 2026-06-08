@@ -91,13 +91,17 @@ Root Cause を調査しますか?
 
    ```bash
    # Step 1: Retrieve current body and validate
+   # Do NOT set an EXIT trap here: Step 1 is its own Bash tool call, so an EXIT trap
+   # would fire when Step 1 exits and delete the temp files before Step 2's Read tool
+   # can read them. The files are cleaned up explicitly instead — in Step 3 on success,
+   # and in the failure branch below on a Step 1 failure.
    tmpfile_read=$(mktemp)
    tmpfile_write=$(mktemp)
-   trap 'rm -f "$tmpfile_read" "$tmpfile_write"' EXIT
    gh issue view {issue_number} --json body --jq '.body' > "$tmpfile_read"
 
    if [ ! -s "$tmpfile_read" ]; then
      echo "ERROR: Issue body の取得に失敗" >&2
+     rm -f "$tmpfile_read" "$tmpfile_write"
      exit 1
    fi
 
@@ -112,14 +116,19 @@ Root Cause を調査しますか?
 
    ```bash
    # Replace with actual paths from Step 1 output (e.g., /tmp/tmp.XXXXXXXXXX)
-   tmpfile_write="/tmp/tmp.XXXXXXXXXX"  # ← Step 1 の出力値に置換
+   tmpfile_read="/tmp/tmp.XXXXXXXXXX"   # ← Step 1 の tmpfile_read= 出力値に置換
+   tmpfile_write="/tmp/tmp.XXXXXXXXXX"  # ← Step 1 の tmpfile_write= 出力値に置換
 
    if [ ! -s "$tmpfile_write" ]; then
      echo "ERROR: Updated content is empty" >&2
+     rm -f "$tmpfile_read" "$tmpfile_write"
      exit 1
    fi
 
    gh issue edit {issue_number} --body-file "$tmpfile_write"
+
+   # No EXIT trap is set in Step 1 (it would delete these before Step 2), so clean up here
+   rm -f "$tmpfile_read" "$tmpfile_write"
    ```
 
 4. **Re-check**: After updating, re-run the checklist check:

@@ -34,6 +34,19 @@
 # the literal content inside a heredoc, so a template heredoc that happens to
 # contain `$(...)` or `python3 -c` example text does not produce a finding.
 #
+# Standalone detection (Issue #1307 — separate from the >= 2 score model):
+#   inline-gh-create-title — a real shell line that runs `gh {pr,issue} create`
+#     with a LITERAL `--title "..."` / `--title '...'` (the first char inside the
+#     quote is not `$`). `--title "$var"` is sanctioned and NOT flagged. Unlike
+#     the four heaviness signals, a single inline special-char/long title on one
+#     line is itself a dominant malformed-tool-call trigger (#1307), so it is
+#     flagged on its own — it does not need a second signal. The canonical fix is
+#     to write the title via the Write tool to a file and read it into a variable
+#     (`pr_title=$(cat title.txt)` → `--title "$pr_title"`), or pass it through a
+#     helper's `--arg title`. As with the heaviness signals, the detection runs
+#     only on real shell lines (heredoc bodies are data), so example titles in a
+#     heredoc body or a non-```bash fence do not produce a finding.
+#
 # Exclusions:
 #   - plugins/rite/commands/**/tests/ (any test fixtures, if present).
 #   - Any block containing the marker `drift-check-ignore` on one of its lines
@@ -72,6 +85,10 @@ Detected (heavy operational bash blocks; flagged at >= 2 signals):
   nested-cmdsub  — nested command substitution `$( ... $( ... )`
   multi-heredoc  — 2 or more heredocs opened in one block
   long-block     — block body >= 25 lines
+
+Detected standalone (flagged on its own, separate from the >= 2 score model):
+  inline-gh-create-title — `gh {pr,issue} create` with a literal `--title "..."`
+                           (`--title "$var"` is allowed)
 
 Exclusions: tests/ fixtures / blocks containing 'drift-check-ignore'.
 
@@ -148,6 +165,7 @@ BEGIN { in_block = 0 }
     if (line ~ /^[[:space:]]*(```|~~~)[[:space:]]*(bash|sh|shell)[[:space:]]*$/) {
       in_block = 1; block_start = NR
       nlines = 0; has_python = 0; heredoc_count = 0; nested = 0; exempt = 0
+      gh_title_inline = 0; gh_title_line = 0
       in_heredoc = 0; heredoc_delim = ""
     }
     next
@@ -166,6 +184,11 @@ BEGIN { in_block = 0 }
   if (line ~ /drift-check-ignore/) exempt = 1
   if (line ~ /python3?[[:space:]]+.*(-c([[:space:]]|=|$)|<<)/) has_python = 1
   if (line ~ /\$\([^)]*\$\(/) nested = 1
+  # Standalone trigger (#1307): inline `gh {pr,issue} create` with a LITERAL
+  # --title. `--title "$var"` (first char after the quote is `$`) is allowed.
+  if (line ~ /gh[[:space:]]+(pr|issue)[[:space:]]+create/ && line ~ /--title[[:space:]=]+["'][^$]/) {
+    gh_title_inline = 1; gh_title_line = NR
+  }
   if (line ~ /<</ && line !~ /<<</ && line ~ /<<-?[^A-Za-z0-9_]*[A-Za-z_]/) {
     heredoc_count++
     if (match(line, /<<-?[^A-Za-z0-9_]*[A-Za-z_][A-Za-z0-9_]*/)) {
@@ -178,6 +201,10 @@ BEGIN { in_block = 0 }
 END { if (in_block == 1) evaluate() }
 function evaluate(   score, parts) {
   if (exempt == 1) return
+  # Standalone finding (#1307): independent of the >= 2 heaviness score.
+  if (gh_title_inline == 1) {
+    printf "[bash-heaviness] %s:%d: inline-gh-create-title — literal --title in gh {pr,issue} create; delegate the title to a file (Write tool) or a variable to avoid malformed tool-call (refs #1307)\n", fname, gh_title_line
+  }
   score = 0; parts = ""
   if (has_python == 1)            { score++; parts = parts (parts == "" ? "" : ", ") "python-inline" }
   if (nested == 1)                { score++; parts = parts (parts == "" ? "" : ", ") "nested-cmdsub" }

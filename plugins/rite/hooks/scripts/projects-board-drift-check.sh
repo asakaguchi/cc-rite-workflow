@@ -112,7 +112,7 @@ while [ "$REPO_ROOT" != "/" ] && [ ! -f "$REPO_ROOT/rite-config.yml" ] && [ ! -d
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# hooks/scripts/<this> -> plugin root is three levels up
+# SCRIPT_DIR is .../hooks/scripts; plugin root (plugins/rite) is its grandparent (../..)
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 emit_noop() {

@@ -263,7 +263,22 @@ git push -u origin {branch_name}
 skill: rite:pr:create
 ```
 
-`[pr:created:N]` sentinel から PR 番号を抽出して `{pr_number}` として retain。`[pr:create-failed]` の場合は AskUserQuestion で「再試行 / 中止」を提示。
+`rite:pr:create` の出力 sentinel を会話 context から検証する:
+
+| Sentinel | 次のアクション |
+|---------|--------------|
+| `[pr:created:N]` | PR 番号 `N` を `{pr_number}` として retain → ステップ 6.3 へ |
+| `[pr:create-failed]` | AskUserQuestion で「再試行 / 中止」を提示 |
+| **sentinel 不在 (missing-sentinel)** | `[pr:created:N]` / `[pr:create-failed]` のいずれも context に無い。Phase 3.4 の `gh pr create` が malformed tool-call で無言終了した可能性 (Cause A: harness/transport 側ゆらぎ、rite では除去不能 — 詳細は下記「malformed tool-call 回復契約」)。下記手順で回復する |
+
+**malformed tool-call 回復契約** (refs #1307):
+
+sub-skill (`rite:pr:create` / `rite:issue:implement` / `rite:lint`) のターンが sentinel を 1 つも emit せず無言で終了した場合、flow-state には直前 phase が保持されているため作業は失われない。orchestrator は以下で回復する:
+
+1. **既存 draft PR の検出**: `gh pr list --head {branch_name} --json number,url,isDraft` で当該ブランチの PR が既に作成済みか確認する。存在すれば実質 `[pr:created:N]` 相当として `{pr_number}` を再構成し、ステップ 6.3 へ進む (push/PR は冪等に再開可能)
+2. **未作成の場合**: AskUserQuestion で「PR 作成を再試行 / 中止」を提示する。中止時は flow-state の phase が保持されるため `/rite:resume` で本ステップから再開できる旨を案内する
+
+> Phase 3.4 の Write tool 委譲 (#1307) は Cause B (インライン heredoc / 特殊文字 title による malform 増幅) を除去して発生確率を下げる対策であり、Cause A 自体は消せない。そのため本回復契約が最終的な堅牢化の担保となる。
 
 ### 6.3 flow-state 更新
 
@@ -302,3 +317,4 @@ draft PR の作成が完了したら、ユーザーに以下を案内する:
 - どこで止まっても flow-state.json に phase が記録されている
 - `/rite:resume` 経由で本コマンドの該当ステップから再開する
 - sub-skill (`rite:issue:implement` / `rite:lint` / `rite:pr:create`) の sentinel drop に備え、各 invoke 後に sentinel 検出を確認、不在なら AskUserQuestion で「再試行 / 中止」
+- **malformed tool-call による無言終了** (sub-skill が sentinel を 1 つも emit せずターン終了。Cause A: harness/transport 側ゆらぎ、rite では除去不能) も missing-sentinel として同様に扱う。PR 作成ステップの具体的な回復手順 (既存 draft PR 検出 → `/rite:resume`) はステップ 6.2「malformed tool-call 回復契約」を参照 (refs #1307)

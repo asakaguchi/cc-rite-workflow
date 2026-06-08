@@ -284,6 +284,151 @@ if [ "$rc" -eq 1 ] && echo "$output" | grep -q "long-block(25)"; then
 else fail "expected rc=1 + long-block(25), got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
+# TC-017: inline-gh-create-title — literal --title in a single short block must
+#         flag ON ITS OWN (no second signal needed). Issue #1307.
+# --------------------------------------------------------------------------
+echo "TC-017: literal --title standalone → exit 1"
+{
+  echo '```bash'
+  echo 'gh pr create --draft --base develop --title "feat(pr): 全角 (≠) コロン: 実装"'
+  echo '```'
+} > "$F"
+rc=0; output=$(run "$REL") || rc=$?
+if [ "$rc" -eq 1 ] && echo "$output" | grep -q "inline-gh-create-title"; then
+  pass "literal --title flagged standalone → exit 1"
+else fail "expected rc=1 + inline-gh-create-title, got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
+# TC-018: variable --title ("$var") is the sanctioned form → NOT flagged.
+#         Pins that the refactored pr/create.md Phase 3.4 stays clean.
+# --------------------------------------------------------------------------
+echo "TC-018: variable --title → exit 0"
+{
+  echo '```bash'
+  echo 'pr_title=$(cat title.txt)'
+  echo 'gh pr create --draft --base develop --title "$pr_title" --body-file body.md'
+  echo '```'
+} > "$F"
+rc=0; output=$(run "$REL") || rc=$?
+if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+  pass "variable --title not flagged → exit 0"
+else fail "expected rc=0 (variable title), got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
+# TC-019: `gh issue create` with a literal --title is flagged too (both
+#         pr and issue create are covered). Also `--title=` equals form.
+# --------------------------------------------------------------------------
+echo "TC-019: gh issue create + --title= equals form → exit 1"
+{
+  echo '```bash'
+  echo 'gh issue create --title="fix: bug" --body-file b.md'
+  echo '```'
+} > "$F"
+rc=0; output=$(run "$REL") || rc=$?
+if [ "$rc" -eq 1 ] && echo "$output" | grep -q "inline-gh-create-title"; then
+  pass "gh issue create literal (equals form) flagged → exit 1"
+else fail "expected rc=1 + inline-gh-create-title, got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
+# TC-020: a literal --title inside a heredoc BODY is data, not a real shell
+#         line → NOT flagged. Mirrors the heredoc-body-as-data rule.
+# --------------------------------------------------------------------------
+echo "TC-020: literal --title in heredoc body → exit 0"
+{
+  echo '```bash'
+  echo "cat > tpl <<'EOF'"
+  echo 'gh pr create --title "example literal title"'
+  echo 'EOF'
+  echo '```'
+} > "$F"
+rc=0; output=$(run "$REL") || rc=$?
+if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+  pass "heredoc-body literal title ignored → exit 0"
+else fail "expected rc=0 (body is data), got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
+# TC-021: drift-check-ignore exempts inline-gh-create-title too (same exempt
+#         path as the heaviness signals).
+# --------------------------------------------------------------------------
+echo "TC-021: drift-check-ignore exempts literal --title → exit 0"
+{
+  echo '```bash'
+  echo '# drift-check-ignore — intentional inline title example'
+  echo 'gh pr create --title "feat: documented example"'
+  echo '```'
+} > "$F"
+rc=0; output=$(run "$REL") || rc=$?
+if [ "$rc" -eq 0 ]; then pass "exempted inline title skipped → exit 0"
+else fail "expected rc=0 (exempted), got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
+# TC-022: `gh issue edit` with a literal --title must NOT be flagged — the
+#         `create` anchor is load-bearing (it guards real `gh issue edit
+#         --title "{new_title}"` lines in commands/issue/edit.md). Pins that a
+#         regression loosening `(pr|issue) create` → `(pr|issue)` does not start
+#         flagging edit. Issue #1307 (F-02).
+# --------------------------------------------------------------------------
+echo "TC-022: gh issue edit literal --title → exit 0 (not flagged)"
+{
+  echo '```bash'
+  echo 'gh issue edit 12 --title "literal: x"'
+  echo '```'
+} > "$F"
+rc=0; output=$(run "$REL") || rc=$?
+if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+  pass "gh issue edit literal title not flagged → exit 0"
+else fail "expected rc=0 (edit is not create), got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
+# TC-023: `gh pr edit` with a literal --title must NOT be flagged either (same
+#         create-anchor guard, pr variant). Issue #1307 (F-02).
+# --------------------------------------------------------------------------
+echo "TC-023: gh pr edit literal --title → exit 0 (not flagged)"
+{
+  echo '```bash'
+  echo 'gh pr edit 34 --title "feat: rename"'
+  echo '```'
+} > "$F"
+rc=0; output=$(run "$REL") || rc=$?
+if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+  pass "gh pr edit literal title not flagged → exit 0"
+else fail "expected rc=0 (edit is not create), got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
+# TC-024: backslash line-continuation — a `gh pr create` whose literal --title is
+#         on a continuation line (the canonical multi-line form) MUST be flagged.
+#         Pins that the detection is armed across `\`-terminated lines. Issue
+#         #1307 (F-04).
+# --------------------------------------------------------------------------
+echo "TC-024: multi-line gh create + continuation literal --title → exit 1"
+{
+  echo '```bash'
+  echo 'gh pr create --draft --base develop \'
+  echo '  --title "feat: special (≠) title" \'
+  echo '  --body-file body.md'
+  echo '```'
+} > "$F"
+rc=0; output=$(run "$REL") || rc=$?
+if [ "$rc" -eq 1 ] && echo "$output" | grep -q "inline-gh-create-title"; then
+  pass "continuation-line literal --title flagged → exit 1"
+else fail "expected rc=1 + inline-gh-create-title, got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
+# TC-025: empty `--title ""` is a degenerate non-special title → NOT flagged.
+#         The `[^$"']` bracket excludes the closing quote. Issue #1307 (F-06).
+# --------------------------------------------------------------------------
+echo "TC-025: empty --title \"\" → exit 0 (not flagged)"
+{
+  echo '```bash'
+  echo 'gh pr create --draft --title "" --body-file body.md'
+  echo '```'
+} > "$F"
+rc=0; output=$(run "$REL") || rc=$?
+if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+  pass "empty --title not flagged → exit 0"
+else fail "expected rc=0 (empty title), got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo ""

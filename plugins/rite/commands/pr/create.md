@@ -730,24 +730,50 @@ git push -u origin {branch_name}
 
 ### 3.4 Create Draft PR
 
-**Sanitization**: Explicit escaping is not required here. The 3-layer defense pattern (mktemp + HEREDOC with quoted delimiter + empty check + --body-file) prevents shell variable expansion issues. Claude substitutes placeholders directly without manual escaping.
+> **3 段プロトコル** (refs #1307 / 先例: `issue/create.md` 5.5 decompose path): PR title / body をインライン heredoc・インライン `--title` で bash ブロックに埋め込むと、特殊文字（全角記号・`≠`・括弧・コロン等）を含む長文で Claude のツールコール解析が malform し、エラーなく無言でターンが終了する（Issue #1193 と同一 failure mode）。これを構造的に避けるため、LLM は (A) workdir を `mktemp -d` で確保 → (B) **Write tool** で title / body を raw ファイル化（heredoc を使わない）→ (C) bash は変数 / `--body-file` 経由で `gh pr create` を実行、の 3 段で行う。title 特殊文字を bash ブロックに一切インライン展開しないのがこの設計の要点。
+
+**(A) workdir 確保**
 
 ```bash
-# Generate body content from Phase 3.2 template and work memory (structure is consistent regardless of optimization)
-# Note: Empty check is required because {body} is dynamically generated.
-tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
+pr_workdir=$(mktemp -d -t rite-pr-create-XXXXXX)
+echo "[CONTEXT] PR_CREATE_WORKDIR=$pr_workdir"
+```
 
-cat <<'BODY_EOF' > "$tmpfile"
-{body}
-BODY_EOF
+**(B) title / body の生成（Write tool）**
 
-if [ ! -s "$tmpfile" ]; then
+直前の `[CONTEXT] PR_CREATE_WORKDIR=` から `{PR_CREATE_WORKDIR}` を読み取り、以下を **Write tool** で書く（heredoc を使わない）:
+
+1. `{PR_CREATE_WORKDIR}/pr_title.txt` ← Phase 3.1 で生成した PR title の raw 内容（1 行）
+2. `{PR_CREATE_WORKDIR}/pr_body.md` ← Phase 3.2 で生成した PR body の raw 内容
+
+**(C) gh pr create（単一 bash block）**
+
+> `{PR_CREATE_WORKDIR}` は (A) の CONTEXT marker から literal 置換する（`mktemp -d` 生成パスのため特殊文字を含まない）。冒頭で literal を shell 変数 `pr_workdir` に束縛し、以降の cat / `--body-file` / cleanup すべてで `$pr_workdir` を参照する（literal placeholder 置換漏れ時の `rm -rf "{...}"` 誤動作を防ぐ）。title は変数（ファイル読込）経由のため bash ブロックに inline しない。workdir の cleanup は inline `rm -rf` ではなく **signal-specific trap** で行い、空 body / 空 title / `gh` 失敗 / SIGINT/TERM/HUP のすべての exit 経路で確実に削除する（同一ファイル他ブロック・`coding-principles.md` Rule 5・[bash-trap-patterns.md](references/bash-trap-patterns.md#signal-specific-trap-template) の canonical 形に準拠）。空 body / 空 title チェックは title / body が動的生成のため必須（body と title は対称にガードする）。
+>
+> **既知の trade-off (Cause A、refs #1307 AC-5)**: 3 段プロトコルは workdir を (A)/(B Write)/(C) の **別プロセス**に跨がせるため、malformed tool-call で (A) 確保後・(C) 到達前に無言終了した場合（Cause A: harness/transport 側ゆらぎ、rite では除去不能）、`mktemp -d` した空 workdir が orphan として残る。本 trap は (C) 自身の中断のみカバーし、この cross-process orphan は救えない（OS の `/tmp` reaping と `/rite:resume` 再開で実害は限定的）。`rite-pr-create-*` 孤児 workdir の能動的 GC（`pr-cycle-cleanup.sh` への追加等）は本 PR scope 外の follow-up とする。
+
+```bash
+pr_workdir="{PR_CREATE_WORKDIR}"
+_rite_create_phase34_cleanup() {
+  [ -n "${pr_workdir:-}" ] && [ -d "$pr_workdir" ] && rm -rf "$pr_workdir"
+  return 0
+}
+trap 'rc=$?; _rite_create_phase34_cleanup; exit $rc' EXIT
+trap '_rite_create_phase34_cleanup; exit 130' INT
+trap '_rite_create_phase34_cleanup; exit 143' TERM
+trap '_rite_create_phase34_cleanup; exit 129' HUP
+
+pr_title=$(cat "$pr_workdir/pr_title.txt")
+if [ -z "$pr_title" ]; then
+  echo "ERROR: PR title is empty (pr_title.txt missing or empty — (B) Write step 漏れの可能性)" >&2
+  exit 1
+fi
+if [ ! -s "$pr_workdir/pr_body.md" ]; then
   echo "ERROR: PR body is empty" >&2
   exit 1
 fi
 
-gh pr create --draft --base "{base_branch}" --title "{title}" --body-file "$tmpfile"
+gh pr create --draft --base "{base_branch}" --title "$pr_title" --body-file "$pr_workdir/pr_body.md"
 ```
 
 ### 3.5 Update Work Memory Phase
@@ -941,6 +967,8 @@ Output the following pattern based on PR creation result:
 - Do **NOT** invoke `rite:pr:review` via the Skill tool
 - Return control to the caller (orchestrator — caller-name agnostic, e.g. `/rite:pr:open` / `sprint/execute.md`)
 - The caller determines the next action based on this output pattern
+
+> **Missing-sentinel recovery contract** (refs #1307): Phase 3.4 で `gh pr create` が malformed tool-call により sentinel を 1 つも emit せず無言でターンが終了する（Cause A: harness/transport 側のゆらぎ。rite では除去不能）ことがある。この場合 caller（orchestrator）は `[pr:created:{N}]` / `[pr:create-failed]` のいずれも context に観測できないため **missing-sentinel** として扱う。本 Skill は flow-state を所有せず caller が `phase` を保持するため、caller 側の missing-sentinel 検出 → `/rite:resume` 再開で PR 作成ステップを安全にやり直せる（重複 draft PR の検出・再構成は orchestrator の resume 経路が担う。`commands/pr/open.md` ステップ 0 phase=pr / ステップ 6 参照）。Phase 3.4 の Write tool 委譲はこの Cause A 自体を消すものではなく、Cause B（インライン heredoc / 特殊文字 title による malform 増幅）を除去して発生確率を下げる対策である。
 
 **Example output:**
 ```

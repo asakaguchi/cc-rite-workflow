@@ -106,7 +106,10 @@ github:
     enabled: false
     project_number: 6
 CFG
-noop_out=$( (cd "$tmpd/disabled" && bash "$DRIFT_SH" --quiet) 2>/dev/null ); noop_rc=$?
+# set +e around the assignment so a script regression (non-zero exit) does not abort
+# the harness at the command-substitution line under `set -euo pipefail` — otherwise the
+# `[ "$noop_rc" -eq 0 ]` failure branch below becomes dead code and failure attribution is lost.
+set +e; noop_out=$( (cd "$tmpd/disabled" && bash "$DRIFT_SH" --quiet) 2>/dev/null ); noop_rc=$?; set -e
 if [ "$noop_rc" -eq 0 ] && printf '%s' "$noop_out" | grep -q '==> Total projects-board-drift findings: 0'; then
   PASS=$((PASS + 1)); echo "  ✓ projects disabled → exit 0, 0 findings"
 else
@@ -114,7 +117,7 @@ else
 fi
 # rite-config absent (walks up to a .git boundary with no config)
 mkdir -p "$tmpd/noconfig/.git"
-noop2_out=$( (cd "$tmpd/noconfig" && bash "$DRIFT_SH" --quiet) 2>/dev/null ); noop2_rc=$?
+set +e; noop2_out=$( (cd "$tmpd/noconfig" && bash "$DRIFT_SH" --quiet) 2>/dev/null ); noop2_rc=$?; set -e
 if [ "$noop2_rc" -eq 0 ] && printf '%s' "$noop2_out" | grep -q '==> Total projects-board-drift findings: 0'; then
   PASS=$((PASS + 1)); echo "  ✓ rite-config absent → exit 0, 0 findings"
 else

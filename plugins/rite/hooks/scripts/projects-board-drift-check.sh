@@ -56,7 +56,16 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run)   RECONCILE=false; shift ;;
     --reconcile) RECONCILE=true; shift ;;
-    --limit)     LIMIT="${2:-}"; shift 2 ;;
+    --limit)
+      # A bare trailing `--limit` (no value) leaves only 1 positional, so `shift 2`
+      # would fail under `set -e` and abort with exit 1 — which lint Phase 3.18 maps to
+      # "drift detected" (warning). Guard the value's presence so a missing --limit value
+      # exits 2 (invocation error) like the other bad-args paths below.
+      if [ "$#" -lt 2 ]; then
+        echo "ERROR: --limit requires a value" >&2
+        exit 2
+      fi
+      LIMIT="$2"; shift 2 ;;
     --quiet)     QUIET=true; shift ;;
     -h|--help)
       cat <<'USAGE_EOF'

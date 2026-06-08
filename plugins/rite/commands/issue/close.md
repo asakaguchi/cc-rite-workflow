@@ -25,11 +25,12 @@ Phase 1.3.2 / 4.2 / 4.6.3 はいずれも Projects Status を **Done** に更新
 **委譲呼び出し**（`{issue}` は対象 Issue 番号、`auto_add false`・`non_blocking true`）:
 
 ```bash
-bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+status_json_args=$(jq -n \
   --argjson issue {issue} --arg owner "{owner}" --arg repo "{repo}" \
   --argjson project_number {project_number} --arg status "Done" \
   --argjson auto_add false --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"
 ```
 
 **`.result` による分岐**（全分岐 non-blocking — Status 更新失敗は close フローを止めない）:

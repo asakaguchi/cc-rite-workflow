@@ -24,7 +24,7 @@ github:
 Skip Phase 3.2 if `github.projects.enabled: false` in `rite-config.yml` or if no related Issue was identified in `cleanup.md` ステップ 2, and proceed to Phase 3.5 (work memory update). Otherwise, invoke the shared script to transition the Issue Status to **Done**:
 
 ```bash
-bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+status_json_args=$(jq -n \
   --argjson issue {issue_number} \
   --arg owner "{owner}" \
   --arg repo "{repo}" \
@@ -32,7 +32,8 @@ bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
   --arg status "Done" \
   --argjson auto_add false \
   --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"
 ```
 
 `auto_add: false` because by cleanup time the Issue is already registered in the Project (`pr/open.md` ステップ 2.4 auto-added it if missing).
@@ -360,7 +361,7 @@ If all child Issues are complete, auto-close the parent Issue without user confi
 Skip this substep if `github.projects.enabled: false` in `rite-config.yml` and proceed to 3.7.2.2 (close processing). Otherwise, invoke the shared script to transition the parent Issue Status to **Done** (same delegate pattern as Phase 3.2):
 
 ```bash
-bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+status_json_args=$(jq -n \
   --argjson issue {parent_issue_number} \
   --arg owner "{owner}" \
   --arg repo "{repo}" \
@@ -368,7 +369,8 @@ bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
   --arg status "Done" \
   --argjson auto_add false \
   --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"
 ```
 
 Inspect the script's stdout JSON:

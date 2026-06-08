@@ -506,7 +506,7 @@ OK patterns:
 **Where to Apply**:
 - `commands/**/*.md` の operational bash ブロックを新規記述 / 編集するとき。
 
-**Mechanical enforcement** (Issue #1197): 上記 Rules は `/rite:lint` Phase 3.17 (`hooks/scripts/bash-heaviness-check.sh`) が `commands/**/*.md` を走査して非ブロッキング warning として機械的に surface する (`[lint:success]` は不変)。各 bash ブロックを 4 シグナルで評価し、これは Rules と対応する:
+**Mechanical enforcement** (Issue #1197): 上記 Rules は `/rite:lint` Phase 3.17 (`hooks/scripts/bash-heaviness-check.sh`) が `commands/**/*.md` を走査して非ブロッキング warning として機械的に surface する (`[lint:success]` は不変)。各 bash ブロックを 4 つの heaviness シグナル (+ standalone 検出 `inline-gh-create-title`) で評価し、これは Rules と対応する:
 
 | シグナル | 判定 | 対応 Rule |
 |---------|------|----------|

@@ -62,7 +62,7 @@ done
 #       create-issue-with-projects.sh callsite using the separated
 #       `"$args_json"` pattern (Issue #1196).
 # ──────────────────────────────────────────────────────────────────────
-create_md_canonical=$(grep -c 'create-issue-with-projects\.sh "\$args_json"' "$CREATE_MD" || true)
+create_md_canonical=$(grep -cE 'bash [^|]*create-issue-with-projects\.sh "\$args_json"' "$CREATE_MD" || true)
 if [ "$create_md_canonical" -ge 1 ]; then
   pass "TC-1 Single-Issue path (create.md 4.3) has canonical JSON callsite (count=$create_md_canonical)"
 else
@@ -197,7 +197,7 @@ assert_single_create_caller() {
   local file="$2"
   # (a) canonical single-arg callsite present (>= 1)
   local canonical
-  canonical=$(grep -c 'create-issue-with-projects\.sh "\$args_json"' "$file" || true)
+  canonical=$(grep -cE 'bash [^|]*create-issue-with-projects\.sh "\$args_json"' "$file" || true)
   if [ "$canonical" -ge 1 ]; then
     pass "$label: canonical 'create-issue-with-projects.sh \"\$args_json\"' callsite present (count=$canonical)"
   else

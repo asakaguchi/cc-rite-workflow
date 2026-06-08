@@ -2,8 +2,10 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-06-06T15:31:02Z"
+updated: "2026-06-08T02:21:11Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260608T021133Z-pr-1300.md"
   - type: "reviews"
     ref: "raw/reviews/20260606T134627Z-pr-1294.md"
   - type: "fixes"
@@ -1207,6 +1209,16 @@ fix では **完全同期 > 最小修正** を採択: F-01 推奨対応 (本 PR 
 
 検出経路も記録に値する: tech-writer (Doc-Heavy mandatory) が CFIC #6 を初回実行漏れ → sole reviewer guard で追加された co-reviewer (code-quality) が Cross-File Impact Check で検出し、責務境界に従い boundary 推奨として申し送り → orchestrator が tech-writer に follow-up 評価を依頼 → 3 ゲート (Confidence 95 / Demonstrable / revert test PASS) 通過で HIGH 確定。検出・確定の分離 workflow は [責務境界外 finding は boundary 申し送り → 管轄 reviewer の follow-up 評価で確定する](../patterns/sole-reviewer-guard-cross-boundary-referral.md) に独立化。bilingual-sync 慣行の根拠として a4fffea7 (#1265) が SPEC 両版を同時修正しており、**SPEC.md を変更する PR は SPEC.ja.md の対称更新を必須チェックとする** (PR #1139 で確立した JA/EN parity grep 必須化の SPEC ペアへの再適用)。
 
+### nested cmdsub → status_json_args 分離形式の 4 caller 統一 (projects-status-update.sh) — PR #1292 系譜の継続 (PR #1300 — Issue #1291、0 findings の successful symmetrization application)
+
+PR #1300 (projects-status-update.sh を呼ぶ command markdown caller のうち nested `"$(jq -n ...)"` 形態で残っていた 4 箇所 — close.md / ready.md / archive-procedures.md ×2 — を `status_json_args` 分離形式へ統一) は 0 findings で初回 mergeable に到達した、PR #1292 / Issue #1284 系譜の対称適用 refactor。#1292 が `create-issue-with-projects.sh` caller を統一したのに対し、本 PR は同型の nested-cmdsub 残存を `projects-status-update.sh` caller 側で解消する sibling 適用。3 つの検証観点が prevention に寄与:
+
+- **全数監査**: `grep -rn 'projects-status-update.sh "\$(jq'` で nested cmdsub 残存 0 件を確認 — 対称位置の伝播漏れ (本 anti-pattern の最大リスク) を潰す。
+- **byte 等価性**: 生成 JSON の jq filter object が develop と byte 等価であることを確認 (single-quote object body は文字一致、変化点は outer-quote `}')"` → `}')` 除去のみ)。
+- **変数名 intra-file 一貫性**: SoT の `args_json` ではなく各ファイルの既存 skeleton が参照する `status_json_args` を採用 — 従来 nested 形では未定義だった下流参照変数が delegate 側で定義され、潜在的不整合が解消する改善方向。同一ファイル内に 2 変数名が併存する drift をあえて作らない判断 ([Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする](../heuristics/identity-reference-documentation-unification.md) の intra-file 一貫性軸)。
+
+副次的に out-of-scope 判定の正当性も確認: `watchdog-status-mismatch.sh` 内の同パターンは `.sh` shell script のため SoT MUST スコープ (command markdown caller) 外と判定。intra-file arg-packing スタイル差 (close.md は複数 arg/行、ready/archive は 1 arg/行) は pre-existing かつ各ファイル内一貫のため bikeshedding filter で除外 (各ファイルの既存スタイル踏襲が正 = PR #1267/#1273/#1292 の「同期すべきでない site の識別」系譜)。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -1227,6 +1239,7 @@ fix では **完全同期 > 最小修正** を採択: F-01 推奨対応 (本 PR 
 
 ## ソース
 
+- [PR #1300 review results (Issue #1291、0 findings の successful symmetrization application: projects-status-update.sh caller の nested `"$(jq -n ...)"` を status_json_args 分離形式へ 4 caller 統一 (close.md / ready.md / archive-procedures.md ×2)、PR #1292 / #1284 系譜の継続。grep 全数監査で nested cmdsub 残存 0 件 / jq filter object の develop byte 等価性 / 既存 skeleton 参照の status_json_args 採用で下流参照変数の潜在的不整合解消。watchdog-status-mismatch.sh は .sh のため SoT MUST 外、arg-packing style 差は file-local 一貫で bikeshedding filter。prompt-engineer / code-quality 2 reviewer 0 件 1 cycle mergeable)](../../raw/reviews/20260608T021133Z-pr-1300.md)
 - [PR #1294 review results (Issue #1285、locale pair 変種: pre-existing doc drift 修正 PR が SPEC.md (en) のみ補完し SPEC.ja.md 据え置きで CFIC #6 違反 HIGH を新規導入。revert test PASS で current-pr 帰属立証、sole reviewer guard 追加の co-reviewer が boundary 申し送り → tech-writer follow-up 評価で確定)](../../raw/reviews/20260606T134627Z-pr-1294.md)
 - [PR #1294 fix results (F-01: 完全同期 > 最小修正 — 本 PR 追加 27 ファイル + 2 dirs / 16 表エントリに加え pre-existing #1196 期欠落 (tree 4 + 表 2) も同一 commit で同期。部分同期は CFIC #6 違反残置で次 cycle 再指摘を招く。en↔ja 機械抽出 diff 照合 (TREE_SYNC_OK / TABLE_SYNC_OK)、対称転記のみで防御コード追加ゼロ)](../../raw/fixes/20260606T135607Z-pr-1294.md)
 - [PR #1292 review results (Issue #1284、0 findings の successful symmetrization application: pr/cleanup.md / pr/create.md の create-issue 呼び出しを args_json 分離形式へ統一 + SoT 漸進移行 Note 削除。nested `"$(jq -n ...)"` 残存 0 件 grep 全数監査 / guard 多行・単行差のファイルローカル style 意図的整合判定 / SoT Note 削除前の全 5 caller 実地検証 (separated 3 + pipe-stdin 2)。symmetry test の pin scope boundary (issue/create.md 系のみ、pr/* caller は bash-heaviness-check 間接保護) を記録。初回 mergeable)](../../raw/reviews/20260606T053909Z-pr-1292.md)

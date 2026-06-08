@@ -1058,3 +1058,4 @@
 | 2026-06-09T00:00:00Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1310 review cycle 3 (raw/reviews/20260608T151334Z-pr-1310.md): enumeration count drift — signal 表に 5 行目追加時に導入文「4 シグナル」count 据え置き (表 5 vs 文 4 矛盾、LOW) |
 | 2026-06-09T00:00:00Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1310 fix cycle 2 (raw/fixes/20260608T150442Z-pr-1310.md): 「canonical 準拠」注記変更の link path / 命名規約逸脱を解消。doc 内 link は実 sibling 相対形を実在確認、cleanup 関数名は規約を grep 突合してから書く |
 | 2026-06-09T00:00:00Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1310 fix cycle 3 (raw/fixes/20260608T151908Z-pr-1310.md): propagation-completeness 典型例。表に行を追加するときは表を導入・要約する散文の count 表記も symmetric に更新する |
+| 2026-06-09T00:00:00Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |

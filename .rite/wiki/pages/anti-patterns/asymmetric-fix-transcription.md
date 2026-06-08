@@ -2,8 +2,16 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-06-08T08:55:15Z"
+updated: "2026-06-09T00:00:00Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260608T150104Z-pr-1310.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260608T151334Z-pr-1310.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260608T150442Z-pr-1310.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260608T151908Z-pr-1310.md"
   - type: "reviews"
     ref: "raw/reviews/20260608T080632Z-pr-1304.md"
   - type: "reviews"
@@ -1250,6 +1258,8 @@ prevention に寄与した 2 観点:
 
 PR #992 (Wiki 経験則を蓄積した repo で test 追加 PR がまさに本 anti-pattern を踏む self-application 経路) の test-infrastructure 版として連なり、successful symmetrization application の連続再現 (PR #1292/#1300/#1303 → #1304) を継続。
 
+PR #1310 (Issue #1307、累積 53 回目相当) で **inline → Write tool 委譲 refactor における self-inconsistency 連鎖** を実測。pr/create.md の inline heredoc + 特殊文字 title を 3 段プロトコル (workdir mktemp -d → Write tool で raw 化 → 変数/`--body-file`) へ委譲する PR で、本 anti-pattern の解決手段そのもの (inline → delegate refactor) が本 anti-pattern の trigger を 3 cycle 連続で再演した: cycle 1 は旧 `trap ... EXIT` cleanup 契約を落とす退行 (HIGH × 2、PR #659 の wrapper guard drop 再演)。cycle 2 は「canonical に準拠」と注記しながら (a) markdown link を `../../references/` で書く (pr/*.md は sibling `references/` 形が正、broken outbound link は orphan-reference-check が inbound のみ検査するため lint 漏れ) + (b) cleanup 関数名 `pr_workdir_cleanup` が canonical `_rite_<scope>_<phase>_cleanup` 規約 (同 dir 12 site すべて `_rite_*` prefix) に非準拠の 2 件 self-inconsistency を新規導入。cycle 3 は signal 表に 5 行目 (inline-gh-create-title) を追加した際に導入文 (coding-principles.md:509) の「4 シグナル」count を据え置いた enumeration count drift。教訓: 「canonical に準拠」と宣言する変更は link path / 命名規約 / 件数表記まで既存 sibling を grep で突合してから書く (propagation-completeness の派生)。3 段プロトコル自体の構造的価値 (Cause B の malformed tool-call 除去 + Cause A の honest scope-out) は別途 [インライン特殊文字 content (title/body) は Write tool・--body-file 委譲で malformed tool-call を構造的に除去する](../patterns/inline-content-delegation-avoids-malformed-toolcall.md) に独立化。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -1267,6 +1277,7 @@ PR #992 (Wiki 経験則を蓄積した repo で test 追加 PR がまさに本 a
 - [path セグメントの substring マッチが look-alike を誤マッチし対象を silent に over-remove する](./path-segment-substring-over-match.md)
 - [散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする](../heuristics/prose-cited-implementation-behavioral-verification.md)
 - [関連 PR 探索は gh pr list --head (exact-match) ではなく --state all + client-side headRefName filter で行う](../heuristics/gh-pr-list-related-pr-resolution.md)
+- [インライン特殊文字 content (title/body) は Write tool・--body-file 委譲で malformed tool-call を構造的に除去する](../patterns/inline-content-delegation-avoids-malformed-toolcall.md)
 
 ## ソース
 
@@ -1426,3 +1437,7 @@ PR #992 (Wiki 経験則を蓄積した repo で test 追加 PR がまさに本 a
 - [PR #1155 cycle 2 fix (累積 44 回目の 6 site 対称セット完了 + SoT 新設時の verify 義務 3 種 (site grep / case 文 verbatim / helper 名 grep) を最低 2 reviewer 独立検証する経験則、inline 性質再宣言は SoT 化方針なら「削除」が drift-free)](../../raw/fixes/20260526T183041Z-pr-1155-cycle2-fix.md)
 - [PR #1281 review results (cycle 1 — テスト assertion 層での発生: 対称転記元 TC-16 は実 ESC バイト注入で exercise するが転記先 TC-116 は静的 reason のみで vacuous false positive 化 (HIGH)、fail 方向設計判断コメントの転記非対称 (MEDIUM)、production コード自体は 4 reviewer 独立検証で健全)](../../raw/reviews/20260605T180128Z-pr-1281.md)
 - [PR #1281 fix results (関数抽出 + 境界行 extract で非 vacuous 化、討論合意をコメント記録に縮退、対称元への propagation 不要判断を commit message decision 行に記録 — 「同期すべきでない site の識別」の系譜)](../../raw/fixes/20260605T181146Z-pr-1281.md)
+- [PR #1310 review results (cycle 2 — inline → delegate refactor の fix-introduced self-inconsistency 2 件: bash-trap-patterns.md への markdown link を `../../references/` で書いたが pr/*.md は sibling `references/` 形が正 + cleanup 関数名 `pr_workdir_cleanup` が canonical `_rite_*` 規約に非準拠、2 reviewer 独立 MEDIUM)](../../raw/reviews/20260608T150104Z-pr-1310.md)
+- [PR #1310 review results (cycle 3 — enumeration count drift: signal 表へ 5 行目を追加した際に導入文の「4 シグナル」count を据え置き、表 5 行 vs 導入文 4 が矛盾、LOW)](../../raw/reviews/20260608T151334Z-pr-1310.md)
+- [PR #1310 fix results (cycle 2 — 「canonical に準拠」注記変更の link path / 命名規約逸脱を解消: doc 内 markdown link は実 sibling 相対形を実在確認、cleanup 関数名は `_rite_<scope>_<phase>_cleanup` 規約を grep で既存 site と突合してから書く)](../../raw/fixes/20260608T150442Z-pr-1310.md)
+- [PR #1310 fix results (cycle 3 — propagation-completeness anti-pattern 典型例: 表に行を追加するときは表を導入・要約する散文の count 表記も symmetric に更新する。count を含む導入文は表サイズ変更に対する fragile な同期ポイント)](../../raw/fixes/20260608T151908Z-pr-1310.md)

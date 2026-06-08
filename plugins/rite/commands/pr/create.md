@@ -748,20 +748,20 @@ echo "[CONTEXT] PR_CREATE_WORKDIR=$pr_workdir"
 
 **(C) gh pr create（単一 bash block）**
 
-> `{PR_CREATE_WORKDIR}` は (A) の CONTEXT marker から literal 置換する（`mktemp -d` 生成パスのため特殊文字を含まない）。冒頭で literal を shell 変数 `pr_workdir` に束縛し、以降の cat / `--body-file` / cleanup すべてで `$pr_workdir` を参照する（literal placeholder 置換漏れ時の `rm -rf "{...}"` 誤動作を防ぐ）。title は変数（ファイル読込）経由のため bash ブロックに inline しない。workdir の cleanup は inline `rm -rf` ではなく **signal-specific trap** で行い、空 body / 空 title / `gh` 失敗 / SIGINT/TERM/HUP のすべての exit 経路で確実に削除する（同一ファイル他ブロック・`coding-principles.md` Rule 5・[bash-trap-patterns.md](../../references/bash-trap-patterns.md#signal-specific-trap-template) の canonical 形に準拠）。空 body / 空 title チェックは title / body が動的生成のため必須（body と title は対称にガードする）。
+> `{PR_CREATE_WORKDIR}` は (A) の CONTEXT marker から literal 置換する（`mktemp -d` 生成パスのため特殊文字を含まない）。冒頭で literal を shell 変数 `pr_workdir` に束縛し、以降の cat / `--body-file` / cleanup すべてで `$pr_workdir` を参照する（literal placeholder 置換漏れ時の `rm -rf "{...}"` 誤動作を防ぐ）。title は変数（ファイル読込）経由のため bash ブロックに inline しない。workdir の cleanup は inline `rm -rf` ではなく **signal-specific trap** で行い、空 body / 空 title / `gh` 失敗 / SIGINT/TERM/HUP のすべての exit 経路で確実に削除する（同一ファイル他ブロック・`coding-principles.md` Rule 5・[bash-trap-patterns.md](references/bash-trap-patterns.md#signal-specific-trap-template) の canonical 形に準拠）。空 body / 空 title チェックは title / body が動的生成のため必須（body と title は対称にガードする）。
 >
 > **既知の trade-off (Cause A、refs #1307 AC-5)**: 3 段プロトコルは workdir を (A)/(B Write)/(C) の **別プロセス**に跨がせるため、malformed tool-call で (A) 確保後・(C) 到達前に無言終了した場合（Cause A: harness/transport 側ゆらぎ、rite では除去不能）、`mktemp -d` した空 workdir が orphan として残る。本 trap は (C) 自身の中断のみカバーし、この cross-process orphan は救えない（OS の `/tmp` reaping と `/rite:resume` 再開で実害は限定的）。`rite-pr-create-*` 孤児 workdir の能動的 GC（`pr-cycle-cleanup.sh` への追加等）は本 PR scope 外の follow-up とする。
 
 ```bash
 pr_workdir="{PR_CREATE_WORKDIR}"
-pr_workdir_cleanup() {
+_rite_create_phase34_cleanup() {
   [ -n "${pr_workdir:-}" ] && [ -d "$pr_workdir" ] && rm -rf "$pr_workdir"
   return 0
 }
-trap 'rc=$?; pr_workdir_cleanup; exit $rc' EXIT
-trap 'pr_workdir_cleanup; exit 130' INT
-trap 'pr_workdir_cleanup; exit 143' TERM
-trap 'pr_workdir_cleanup; exit 129' HUP
+trap 'rc=$?; _rite_create_phase34_cleanup; exit $rc' EXIT
+trap '_rite_create_phase34_cleanup; exit 130' INT
+trap '_rite_create_phase34_cleanup; exit 143' TERM
+trap '_rite_create_phase34_cleanup; exit 129' HUP
 
 pr_title=$(cat "$pr_workdir/pr_title.txt")
 if [ -z "$pr_title" ]; then

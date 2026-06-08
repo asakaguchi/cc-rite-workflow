@@ -1050,3 +1050,4 @@
 | 2026-06-08T13:10:25Z | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #1306 cycle 3 review (raw/reviews/20260608T121819Z-pr-1306.md): SCRIPT_DIR (ディレクトリ) 基点の相対パス `../..` (2 hop) コメントが「三階層上」(file 基点) と 1 ずれる drift を追記。同 comment-nit の severity が reviewer 間で LOW/nit-noted↔MEDIUM/current-pr に非決定 |
 | 2026-06-08T13:10:25Z | ingest:update | pages/patterns/drift-check-anchor-semantic-name.md | PR #1306 cycle 3 fix (raw/fixes/20260608T122037Z-pr-1306.md): hop 数カウントをやめ「基点 (SCRIPT_DIR) + 到達先 (plugins/rite) + 相対式 (../..)」を固有名で明示 (code 不変、hand-maintained 数値の drift 経路を閉塞) |
 | 2026-06-08T13:10:25Z | ingest:skip | raw/reviews/20260608T122654Z-pr-1306.md | PR #1306 cycle 4 review (mergeable, 0 findings): 3 軸 (exit-code 契約 / 静的 test の load-bearing 性 / 相対パス hop コメント基点) の収束確認のみで新規経験則なし。cycle 1-3 で各ページへ統合済のため skip |
+| 2026-06-08T13:20:34Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |

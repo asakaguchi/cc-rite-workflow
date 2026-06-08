@@ -62,18 +62,30 @@ else
 fi
 
 echo ""
-echo "[T-4] --limit input validation"
-# Non-numeric should exit non-zero (2)
-if bash "$DRIFT_SH" --limit abc --quiet >/dev/null 2>&1; then
-  FAIL=$((FAIL + 1)); FAILURES+=("--limit abc should fail"); echo "  ✗ --limit abc should fail" >&2
+echo "[T-4] --limit input validation (must exit exactly 2 = invocation error)"
+# exit 2 = invocation error; exit 1 = "drift detected" (lint Phase 3.18). A bad --limit arg
+# must exit exactly 2, never 1, or lint would misread a usage error as drift. Capture the exact
+# code (not just non-zero). set +e around the capture so set -euo pipefail does not abort the
+# harness on the script's intentional non-zero exit.
+set +e; bash "$DRIFT_SH" --limit abc --quiet >/dev/null 2>&1; rc=$?; set -e
+if [ "$rc" -eq 2 ]; then
+  PASS=$((PASS + 1)); echo "  ✓ --limit non-numeric exits 2"
 else
-  PASS=$((PASS + 1)); echo "  ✓ --limit non-numeric is rejected"
+  FAIL=$((FAIL + 1)); FAILURES+=("--limit abc should exit 2 (got $rc)"); echo "  ✗ --limit abc should exit 2 (got $rc)" >&2
 fi
-# Zero should also be rejected
-if bash "$DRIFT_SH" --limit 0 --quiet >/dev/null 2>&1; then
-  FAIL=$((FAIL + 1)); FAILURES+=("--limit 0 should fail"); echo "  ✗ --limit 0 should fail" >&2
+set +e; bash "$DRIFT_SH" --limit 0 --quiet >/dev/null 2>&1; rc=$?; set -e
+if [ "$rc" -eq 2 ]; then
+  PASS=$((PASS + 1)); echo "  ✓ --limit 0 exits 2"
 else
-  PASS=$((PASS + 1)); echo "  ✓ --limit 0 is rejected"
+  FAIL=$((FAIL + 1)); FAILURES+=("--limit 0 should exit 2 (got $rc)"); echo "  ✗ --limit 0 should exit 2 (got $rc)" >&2
+fi
+# Bare trailing --limit (missing value) must exit 2 — directly guards the exit-code contract:
+# without the value-presence gate, `shift 2` under set -e aborts with exit 1 (= drift warning).
+set +e; bash "$DRIFT_SH" --limit >/dev/null 2>&1; rc=$?; set -e
+if [ "$rc" -eq 2 ]; then
+  PASS=$((PASS + 1)); echo "  ✓ bare --limit (missing value) exits 2"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("bare --limit should exit 2 (got $rc)"); echo "  ✗ bare --limit should exit 2 (got $rc)" >&2
 fi
 
 echo ""
@@ -83,9 +95,12 @@ assert_file_contains "$DRIFT_SH" '\-\-reconcile\)' "case clause handles --reconc
 assert_file_contains "$DRIFT_SH" '\-\-limit\)' "case clause handles --limit flag"
 assert_file_contains "$DRIFT_SH" '\-\-quiet\)' "case clause handles --quiet flag"
 assert_file_contains "$DRIFT_SH" 'Issue #1305' "header references Issue #1305"
-# Detection: stateReason COMPLETED && on board && Status != Done (AC-1, AC-2)
-assert_file_contains "$DRIFT_SH" 'COMPLETED' "checks stateReason == COMPLETED (AC-2)"
-assert_file_contains "$DRIFT_SH" '"Done"' "checks Status against Done"
+# Detection: anchor asserts to the load-bearing jq predicates (with quotes), NOT to the header
+# comments (which spell COMPLETED/Done without the jq quoting), so deleting the detection logic
+# actually fails the suite. The quoted `stateReason == "COMPLETED"` predicate also pins the AC-2
+# NOT_PLANNED exclusion: rewriting it to a wrong form (e.g. `!= "NOT_PLANNED"`) drops this literal.
+assert_file_contains "$DRIFT_SH" 'stateReason == "COMPLETED"' "AC-2: includes only COMPLETED (NOT_PLANNED excluded)"
+assert_file_contains "$DRIFT_SH" 'select.*\$st.*!= "Done"' "AC-1: drift when board Status != Done"
 assert_file_contains "$DRIFT_SH" 'projectItems' "queries projectItems for board membership"
 # AC-4: projects-enabled gate
 assert_file_contains "$DRIFT_SH" 'PROJECTS_ENABLED' "gates on github.projects.enabled (AC-4)"

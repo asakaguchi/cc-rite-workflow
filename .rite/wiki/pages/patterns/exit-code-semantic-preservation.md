@@ -2,12 +2,16 @@
 title: "Exit code semantic preservation: caller は case で語彙を保持する"
 domain: "patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-16T19:37:16Z"
+updated: "2026-06-08T13:10:25Z"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md"
   - type: "reviews"
     ref: "raw/reviews/20260415T094007Z-pr-529.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260608T112156Z-pr-1306.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260608T112705Z-pr-1306.md"
 tags: ["bash", "exit-code", "api-contract", "sentinel"]
 confidence: high
 ---
@@ -79,12 +83,25 @@ skip 経路では `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=...` のような sen
 
 本パターンは「独自定義 exit code を持つスクリプト」を対象とする。`git diff --quiet` のような標準コマンドの 3 値 exit code (0/1/>1) も case で扱うが、そちらは [`if ! cmd` anti-pattern](../anti-patterns/bash-if-bang-rc-capture.md) が別軸で混在するので区別して扱うこと。
 
+### script 自身の失敗経路も宣言した exit-code 契約に従う (PR #1306 で追加)
+
+caller 側の case routing だけでなく、**script 自身のすべての内部失敗経路** が header で宣言した exit-code 語彙に従う必要がある。peer script から arg-parse を copy-paste すると、peer と異なる exit-code 契約のもとで失敗経路が契約違反の code を emit する。
+
+PR #1306 の `projects-board-drift-check.sh` は `watchdog-status-mismatch.sh` から作法を踏襲したが、exit-code 契約を再設計した (watchdog: `exit 1=fatal` / 本 script: **`exit 1=drift warning` / `exit 2=invocation error`**)。arg-parse の `--limit) LIMIT="${2:-}"; shift 2` を verbatim copy-paste した結果、`--limit` に値が無いと `set -e` 下で `shift 2` が exit 1 abort → **usage error が exit 1 (=「drift 検出」warning) として誤分類** され、lint 上で実在しない drift を報告する経路が生まれた (code-quality + error-handling の cross-validated MEDIUM)。
+
+- **`${2:-}` は防御にならない**: `${2:-}` は `set -u` の unset 参照だけを防ぐ。`shift 2` が引数不足で失敗する経路は防げない。
+- **canonical fix**: `[ "$#" -lt 2 ]` で値の存在を gate し、欠落時は契約どおり exit 2 (invocation error) へ統一する。
+- **教訓**: 独自 exit-code 契約を持つ script では「全失敗経路 (arg-parse 含む) が契約の code を emit するか」を runtime で検証する。peer からの copy-paste 同形性は exit-code 契約一致を保証しない (Asymmetric Fix Transcription の peer script flag 契約 runtime 検証 sub-pattern (PR #631) の再演)。新規 lint step 追加 PR では exit-code 契約が反復 trigger になる (PR #1306 は cycle 1 の dominant finding として検出、4 cycle で mergeable)。
+
 ## 関連ページ
 
 - [`if ! cmd; then rc=$?` は常に 0 を捕捉する](../anti-patterns/bash-if-bang-rc-capture.md)
+- [set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する](../anti-patterns/bare-statement-under-set-e-dead-code-rc-branch.md)
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 
 ## ソース
 
 - [PR #529 fix cycle 1 (exit 2 semantic preservation)](../../raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md)
 - [PR #529 review (6-reviewer による exit code mismatch 検出)](../../raw/reviews/20260415T094007Z-pr-529.md)
+- [PR #1306 review cycle 1 (peer copy-paste の exit-code 契約非対称 + shift 2/set -e abort)](../../raw/reviews/20260608T112156Z-pr-1306.md)
+- [PR #1306 fix cycle 1 (`[ "$#" -lt 2 ]` gate で欠落時 exit 2 へ統一)](../../raw/fixes/20260608T112705Z-pr-1306.md)

@@ -2,7 +2,7 @@
 title: "DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）"
 domain: "patterns"
 created: "2026-04-18T12:50:00+00:00"
-updated: "2026-05-29T06:53:41+00:00"
+updated: "2026-06-08T13:10:25Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T122454Z-pr-579.md"
@@ -58,6 +58,10 @@ sources:
     ref: "raw/reviews/20260529T055839Z-pr-1187.md"
   - type: "reviews"
     ref: "raw/reviews/20260529T065341Z-pr-1188.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260608T121819Z-pr-1306.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260608T122037Z-pr-1306.md"
 tags: []
 confidence: high
 ---
@@ -371,6 +375,14 @@ PR #1187 が follow-up Issue #1186 へ分離した同一ファイル `wiki-patte
 2. **Doc-Heavy mode Implementation Coverage 検証が anchor の実在性・一意性の独立検証として機能**: review で tech-writer (Doc-Heavy mode) + code-quality の 2 reviewer が、新 anchor が参照する識別子 (self-comment 文言 / `case "$wiki_enabled"` の出現 1 回・`*) exit 2` 分岐 / lint.md ステップ 1.1 見出し + branch_strategy case) を全件 Grep/Read で照合し、実在かつ一意に解決可能であることを確認 (0 findings / 1 cycle mergeable)。semantic anchor 採用後の「見出しリネームで切れる残存 drift 経路」(PR #1187 design_confirmation) に対する review-time の機械検証層として機能する。
 3. **pre-existing boundary recommendation の revert test 分離**: 同一 doc 行 (`branch_strategy` 検証 bullet) の pre-existing 部分 (ingest.md fail-fast を「`*` arm」と記述) に reviewer が boundary recommendation を出したが、revert test で diff 変更箇所外と判定し別 Issue #1189 へ分離 (scope creep 回避)。citation 整備 PR でも本体スコープ (行番号 → anchor) に集中し、隣接 pre-existing 事項は別 Issue 化するのが clean。
 
+### 相対パス hop 数コメントは基点 (file vs directory) で 1 ずれる — hop 数でなく基点+到達先を書く (PR #1306 で追加)
+
+`L[0-9]+` 行番号と同様、**相対パスの hop 数をコメントで「N 階層上」と数える**のも hand-maintained な数値であり drift 源になる。特に **ディレクトリ変数** (例: `SCRIPT_DIR`) を基点とする `../..` のような相対式は、「ファイル基点で N 階層」と「ディレクトリ基点で N hop」で数え方が 1 ずれ、comment/code 矛盾を生みやすい。
+
+PR #1306 では `SCRIPT_DIR` (= `hooks/scripts/` ディレクトリ) を基点とする `$SCRIPT_DIR/../..` (2 hop) のコードに対し、コメントが「三階層上」(ファイル基点の数え方) と記述していた。code は正しいが comment が 1 ずれており、cycle 2 reviewer は LOW/nit-noted、cycle 3 reviewer は「将来コメントを信じて `../../..` に誤修正 → PLUGIN_ROOT 破綻 (reconcile / self-ref path 両方)」とより強い current-pr 根拠で MEDIUM 昇格した (同一 comment-nit の severity/scope が reviewer 間で LOW/nit-noted ↔ MEDIUM/current-pr に非決定に振れた例)。
+
+**fix (drift-free 表現)**: hop 数のカウントをやめ、「基点 (`SCRIPT_DIR`) + 到達先 (`plugins/rite`) + 相対式 (`../..`)」を名前で明示する (code は不変)。本ページ canonical の「行番号の代わりに到達先 code slice を書く」(PR #600) と同型で、hand-maintained な hop 数を到達先の固有名に置換することで drift 経路を閉じる。
+
 ## 関連ページ
 
 - [Peer pattern の drift 判定は canonical schema 不変条件で cross-check する](./canonical-schema-invariant-peer-cross-check.md)
@@ -409,3 +421,5 @@ PR #1187 が follow-up Issue #1186 へ分離した同一ファイル `wiki-patte
 - [PR #1035 review cycle 4 converged (symbolic anchor 化で line drift class 終結 + 0 findings)](../../raw/reviews/20260518T035931Z-pr-1035.md)
 - [PR #1187 review (Issue #1153 — reference 文書 NOTE 内 cross-file 行番号 citation の全件 stale 化 + target 消失)](../../raw/reviews/20260529T055839Z-pr-1187.md)
 - [PR #1188 review (Issue #1186 — sibling citation 3 件完遂 + Doc-Heavy Implementation Coverage による anchor 独立検証 + 引用文言 drift 補正)](../../raw/reviews/20260529T065341Z-pr-1188.md)
+- [PR #1306 review cycle 3 (SCRIPT_DIR 基点の相対パス hop 数コメントが file/directory 基点で 1 ずれ)](../../raw/reviews/20260608T121819Z-pr-1306.md)
+- [PR #1306 fix cycle 3 (hop 数を基点+到達先の固有名に置換して drift-free 化)](../../raw/fixes/20260608T122037Z-pr-1306.md)

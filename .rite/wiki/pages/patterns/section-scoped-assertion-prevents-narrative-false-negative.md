@@ -2,12 +2,16 @@
 title: "Test assertion は section-scoped で行頭 prefix を必須にし narrative mention の false negative を防ぐ"
 domain: "patterns"
 created: "2026-05-12T15:29:45Z"
-updated: "2026-05-12T15:29:45Z"
+updated: "2026-06-08T13:10:25Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260512T134356Z-pr-936.md"
   - type: "fixes"
     ref: "raw/fixes/20260512T134908Z-pr-936.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260608T113726Z-pr-1306.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260608T121039Z-pr-1306.md"
 tags: ["test-design", "grep", "false-negative", "section-scoped", "assertion-strictness"]
 confidence: high
 ---
@@ -43,14 +47,25 @@ PR #936 で 3 件 MEDIUM (F-03/F-04/F-05) として実測。具体的には:
 3. **件数 assert**: 「N 行存在する」を claim するなら `[ "$(awk ... | grep -cE '...')" = "N" ]` で件数も pin する (substring の有無だけでなく)
 4. **Mutation test の併設**: assertion 強度の empirical 検証として、契約 row を意図的に 1 行削除した mutation で test が FAIL することを CI で確認する (test fidelity の正味)
 
+### 変種: source-code を grep する静的 test は header comment でなく load-bearing logic 行に anchor する (PR #1306 で追加)
+
+被テストスクリプトを実行せず source を grep して「特定ロジックが存在する」ことを確認する**静的 test** も同じ false negative を起こす。grep が **header comment にマッチする** と「文字列の存在」を検証しているだけになり、肝心の検出ロジックが消えても test が pass する。
+
+PR #1306 では `projects-board-drift-check.sh` の検出ロジックを検証する静的 test が `COMPLETED` / `"Done"` を素朴に grep していた。これらの文字列は header comment にも現れるため、quoted jq 述語 (`stateReason == "COMPLETED"` / `select($st != "Done")`) という **load-bearing logic 行に anchor** する形へ強化した。quoted/predicate 形は header comment の散文と区別でき、述語を削除する mutation で assert が FAIL することを確認した (quoted `COMPLETED` 述語は AC-2 の NOT_PLANNED 除外も同時に pin する — 誤形化で literal が消えるため)。「narrative mention の false negative」が prose だけでなく **code comment** にも生じる、本ページ canonical の code 版。
+
+**sibling 教訓 — exit-code 契約を持つスクリプトの test は exact code を assert する**: `exit 1=drift warning` / `exit 2=invocation error` のような独自 exit-code 契約を持つ script の test は、「非ゼロ」ではなく **「exit 2」を明示 assert** すべき。「非ゼロ」判定では exit 1 ↔ exit 2 の取り違え (Exit code semantic preservation の F-01 type regression) を捕捉できない。PR #1306 では bare `--limit` 値欠落ケースを追加し exit 2 を明示 assert することで契約 regression を test で固定した。capture 行は `set +e`/`set -e` で囲み `set -euo pipefail` 下の harness abort を回避する。
+
 ## 関連ページ
 
 - [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](../anti-patterns/test-pin-protection-theater.md)
 - [Mutation testing で test の fidelity を empirical に測る](mutation-testing-test-fidelity.md)
 - [ratchet test では occurrence 単位 (`grep -oE | wc -l`) を原則とし line 単位は混在させない](test-counting-occurrence-vs-line-unit.md)
 - [`grep -oE | wc -l` が ratchet ideal 値到達時に pipefail で silent abort](../anti-patterns/grep-oe-wc-pipefail-silent-abort.md)
+- [Exit code semantic preservation: caller は case で語彙を保持する](exit-code-semantic-preservation.md)
 
 ## ソース
 
 - [PR #936 review results](../../raw/reviews/20260512T134356Z-pr-936.md)
 - [PR #936 fix cycle 1 results](../../raw/fixes/20260512T134908Z-pr-936.md)
+- [PR #1306 review cycle 2 (静的 grep が header comment にマッチする弱点 / exit 2 明示 assert)](../../raw/reviews/20260608T113726Z-pr-1306.md)
+- [PR #1306 fix cycle 2 (quoted jq 述語への anchor + T-4 exit 2 明示化 + mutation 確認)](../../raw/fixes/20260608T121039Z-pr-1306.md)

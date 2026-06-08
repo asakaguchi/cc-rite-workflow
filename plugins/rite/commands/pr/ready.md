@@ -374,7 +374,7 @@ gh pr view {pr_number} --json body,headRefName
 Skip Phase 4.2 if `github.projects.enabled: false` in `rite-config.yml` or if no related Issue was identified in Phase 4.1, and proceed to Phase 4.6. Otherwise, invoke the shared script to transition the Issue Status to **In Review**:
 
 ```bash
-bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
+status_json_args=$(jq -n \
   --argjson issue {issue_number} \
   --arg owner "{owner}" \
   --arg repo "{repo}" \
@@ -382,7 +382,8 @@ bash {plugin_root}/scripts/projects-status-update.sh "$(jq -n \
   --arg status "In Review" \
   --argjson auto_add false \
   --argjson non_blocking true \
-  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')"
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"
 ```
 
 `auto_add: false` because by ready time the Issue is already registered in the Project (`pr/open.md` ステップ 2.4 auto-added it if missing). The script internally executes the GraphQL `projectItems` query → `gh project field-list` → `gh project item-edit` triple in a single fail-fast pipeline. The query uses GraphQL の `repository(owner:)` 形式 (User / Organization どちらの owner でも透過的に解決されるため、client-side type detection は不要)。旧 ready.md inline 経路は `user(login:)` を直接 query して Organization fallback を行う実装だったが、`repository(owner:)` への delegation でこの分岐自体が不要になった。

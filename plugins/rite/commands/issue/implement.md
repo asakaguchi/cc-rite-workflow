@@ -743,7 +743,7 @@ git push -u origin {branch_name}
 
 **Update procedure** (3-step safe update pattern):
 
-Execute in 3 stages (Bash → Read+Write → Bash). Since `trap` is only effective within the same process, all sub-steps in Step 1 must be executed within the same Bash tool call. On any validation failure, output a WARNING and skip remaining steps (do NOT `exit 1` — subsequent phase processing must continue).
+Execute in 3 stages (Bash → Read+Write → Bash). Shell variables do not persist across Bash tool calls, so the temp file paths output by Step 1 are passed to Step 3 as literals. On any validation failure, output a WARNING and skip remaining steps (do NOT `exit 1` — subsequent phase processing must continue).
 
 **Step 1: Bash tool call — Fetch body and validate**
 
@@ -902,15 +902,19 @@ Execute in 3 stages (Bash → Read+Write → Bash). On any validation failure, o
 
 ```bash
 # Create temp files (for reading and writing)
+# Do NOT set an EXIT trap here: Step 1 is its own Bash tool call, so an EXIT trap
+# would fire when Step 1 exits and delete the temp files before Step 2's Read tool
+# can read them. The files are cleaned up explicitly instead — in Step 3 on success,
+# and in the failure branch below on a Step 1 failure.
 tmpfile_read=$(mktemp)
 tmpfile_write=$(mktemp)
-trap 'rm -f "$tmpfile_read" "$tmpfile_write"' EXIT
 
 gh issue view {parent_issue_number} --json body --jq '.body' > "$tmpfile_read"
 
 # Validate retrieval result
 if [ ! -s "$tmpfile_read" ]; then
   echo "WARNING: Parent Issue body の取得に失敗。タスクリスト更新をスキップします" >&2
+  rm -f "$tmpfile_read" "$tmpfile_write"
   exit 0  # Skip — do not abort workflow
 fi
 
@@ -956,7 +960,7 @@ fi
 
 gh issue edit {parent_issue_number} --body-file "$tmpfile_write"
 
-# trap does not carry over between processes (Bash tool calls), so delete explicitly
+# No EXIT trap is set in Step 1 (it would delete these before Step 2), so clean up here
 rm -f "$tmpfile_read" "$tmpfile_write"
 ```
 

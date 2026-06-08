@@ -25,6 +25,15 @@
 # This test asserts each path independently and pins the combined total so a
 # future re-inlining or silent removal in either file is caught.
 #
+# Additional single-create callers (PR #1292 / refs #1293):
+#   - commands/pr/create.md Phase 2.5.5 → scope-out (検出問題) Issue 起票
+#   - commands/pr/cleanup.md ステップ 3  → 残作業 Issue 起票
+# Both migrated to the args_json 分離形式 in PR #1292 and share the Single-Issue
+# canonical contract (`args_json=$(jq -n ...)` constructor + a single
+# `create-issue-with-projects.sh "$args_json"` callsite). TC-9..TC-11 pin them so
+# a regression to the nested `"$(jq -n ...)"` form is caught directly here, not
+# only indirectly via bash-heaviness-check.sh (heaviness finding 再発) の間接保護.
+#
 # When this test fails: a flag-style invocation has likely been introduced, or
 # a callsite was removed without moving the contract to the other path.
 # Cross-reference `references/issue-create-with-projects.md` for the canonical
@@ -39,8 +48,12 @@ PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 CREATE_MD="$PLUGIN_ROOT/commands/issue/create.md"
 DECOMPOSE_SH="$PLUGIN_ROOT/scripts/decompose-issues.sh"
 SOT_MD="$PLUGIN_ROOT/references/issue-create-with-projects.md"
+# Additional single-create callers migrated to the args_json 分離形式 in PR #1292
+# (pinned by TC-9..TC-11)。
+PR_CREATE_MD="$PLUGIN_ROOT/commands/pr/create.md"
+PR_CLEANUP_MD="$PLUGIN_ROOT/commands/pr/cleanup.md"
 
-for f in "$CREATE_MD" "$DECOMPOSE_SH" "$SOT_MD"; do
+for f in "$CREATE_MD" "$DECOMPOSE_SH" "$SOT_MD" "$PR_CREATE_MD" "$PR_CLEANUP_MD"; do
   [ -f "$f" ] || { echo "ERROR: required file not found: $f" >&2; exit 1; }
 done
 
@@ -167,6 +180,59 @@ check_no_flag_title_proximity "TC-3 no flag-style --title near create.md create 
   "$CREATE_MD" 'create-issue-with-projects[.]sh'
 check_no_flag_title_proximity "TC-3b no flag-style --title near decompose-issues.sh \$CREATE_SCRIPT callsite" \
   "$DECOMPOSE_SH" 'bash "[$]CREATE_SCRIPT"'
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-9 / TC-10: Additional single-create callers (PR #1292 で args_json 分離形式
+#   へ移行) も Single-Issue path (create.md 4.3) と同一の canonical 契約を持つ:
+#     - commands/pr/create.md Phase 2.5.5 → scope-out Issue 起票
+#     - commands/pr/cleanup.md ステップ 3  → 残作業 Issue 起票
+#   両 caller が nested `"$(jq -n ...)"` 形式へ戻る回帰を直接 pin する
+#   (従来は bash-heaviness-check.sh の間接保護のみ — Issue #1293)。各 caller につき
+#   (a) canonical 単一引数 callsite の存在、(b) args_json が jq -n の 分離形式で
+#   構築されること、(c) 全 create-issue-with-projects.sh 呼び出しが canonical で
+#   あること、を assert する (create.md の TC-1 / TC-1c / TC-2 と対称)。
+# ──────────────────────────────────────────────────────────────────────
+assert_single_create_caller() {
+  local label="$1"
+  local file="$2"
+  # (a) canonical single-arg callsite present (>= 1)
+  local canonical
+  canonical=$(grep -c 'create-issue-with-projects\.sh "\$args_json"' "$file" || true)
+  if [ "$canonical" -ge 1 ]; then
+    pass "$label: canonical 'create-issue-with-projects.sh \"\$args_json\"' callsite present (count=$canonical)"
+  else
+    fail "$label: missing canonical 'create-issue-with-projects.sh \"\$args_json\"' callsite (count=$canonical)"
+  fi
+  # (b) args_json constructed via jq -n on its own line (分離形式 — 入れ子 $() 退行を pin)
+  if grep -qE '^args_json=\$\(jq -n' "$file"; then
+    pass "$label: args_json is constructed via jq -n (canonical 分離形式)"
+  else
+    fail "$label: args_json constructor missing or not built via jq -n (nested \$() regression suspected)"
+  fi
+  # (c) every actual create-issue-with-projects.sh invocation is canonical
+  local invocations non_canonical
+  invocations=$(grep -cE 'bash [^|]*create-issue-with-projects\.sh ' "$file" || true)
+  non_canonical=$((invocations - canonical))
+  if [ "$non_canonical" -eq 0 ]; then
+    pass "$label: all create-issue-with-projects.sh invocations are canonical (total=$invocations)"
+  else
+    echo "  Non-canonical invocations in $label:"
+    grep -nE 'bash [^|]*create-issue-with-projects\.sh ' "$file" \
+      | grep -v 'create-issue-with-projects\.sh "\$args_json"' \
+      | sed 's/^/    /'
+    fail "$label: $non_canonical create-issue-with-projects.sh invocation(s) NOT canonical (total=$invocations)"
+  fi
+}
+
+assert_single_create_caller "TC-9 pr/create.md Phase 2.5.5" "$PR_CREATE_MD"
+assert_single_create_caller "TC-10 pr/cleanup.md ステップ 3" "$PR_CLEANUP_MD"
+
+# TC-11: no flag-style --title near the create callsite in either new caller
+#        (reuses the proximity scanner defined above for TC-3)。
+check_no_flag_title_proximity "TC-11 no flag-style --title near pr/create.md create callsite" \
+  "$PR_CREATE_MD" 'create-issue-with-projects[.]sh'
+check_no_flag_title_proximity "TC-11b no flag-style --title near pr/cleanup.md create callsite" \
+  "$PR_CLEANUP_MD" 'create-issue-with-projects[.]sh'
 
 # ──────────────────────────────────────────────────────────────────────
 # TC-4: SoT (references/issue-create-with-projects.md) demonstrates the

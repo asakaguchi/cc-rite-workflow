@@ -2,8 +2,10 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-06-08T02:21:11Z"
+updated: "2026-06-08T07:19:05Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260608T065135Z-pr-1303.md"
   - type: "reviews"
     ref: "raw/reviews/20260608T021133Z-pr-1300.md"
   - type: "reviews"
@@ -1219,6 +1221,18 @@ PR #1300 (projects-status-update.sh を呼ぶ command markdown caller のうち 
 
 副次的に out-of-scope 判定の正当性も確認: `watchdog-status-mismatch.sh` 内の同パターンは `.sh` shell script のため SoT MUST スコープ (command markdown caller) 外と判定。intra-file arg-packing スタイル差 (close.md は複数 arg/行、ready/archive は 1 arg/行) は pre-existing かつ各ファイル内一貫のため bikeshedding filter で除外 (各ファイルの既存スタイル踏襲が正 = PR #1267/#1273/#1292 の「同期すべきでない site の識別」系譜)。
 
+### gh CLI 3 段階 checklist 更新パターンの Step 1 EXIT trap 削除を SoT + 複製 2 ファイルへ対称適用 (PR #1303 — Issue #1297、0 findings の successful symmetrization application)
+
+PR #1303 (gh CLI で Issue body の checklist を更新する 3 段階安全更新パターン (Step 1: Bash → Step 2: Read/Write → Step 3: Bash) の Step 1 から `trap 'rm -f ...' EXIT` を削除し、注記コメント + 失敗パス明示 rm + Step 3 明示 rm へ置換) は、SoT (`references/gh-cli-patterns.md`) + 複製先 2 ファイル (`commands/issue/implement.md` 5.1.2.1 / `commands/issue/references/checklist-auto-check.md`) へ同型修正を対称適用した successful symmetrization application。4 reviewer (prompt-engineer / tech-writer / code-quality / error-handling) 全員が評価=可、blocking 0 件で初回 mergeable に到達。
+
+修正の技術的核心 — **EXIT trap が Bash tool プロセス境界で早期発火する**: Claude Code の Bash tool は呼び出しごとに新プロセスで実行されるため、Step 1 で `trap ... EXIT` を設定すると Step 1 の Bash 呼び出し**成功終了時**に EXIT trap が発火し tmpfile を即削除する → 別 Bash 呼び出しである Step 2 (Read tool) が「File does not exist」で失敗する (Issue #1289 で実測)。trap はそもそもプロセス境界を越えず Step 3 (別呼び出し) の cleanup にも効かないため「無益かつ有害」であり、削除して明示 rm に置換するのが正しい設計。これは [`trap 登録 → mktemp の順序で tempfile lifecycle を守る`](../patterns/trap-register-before-mktemp.md) の **単一プロセス内 trap 順序** とは別軸の、**cross-Bash-tool-call プロセス境界** での trap 無効化パターン。正しい helper `issue-body-safe-update.sh` は単一プロセス内で trap を安全網に設定し success path で `trap - EXIT` 解除する別設計のため対象外 (boundary 判定)。
+
+3 つの対称性検証観点が prevention に寄与:
+
+- **対称転記の全数監査**: `grep` で残存 raw 3 段階 trap = 0 件、旧 rationale 文 "Since trap is only effective within the same process" = repo-wide 0 件を確認。trap 削除 / 注記コメント 2 種 (「Do NOT set an EXIT trap here...」「No EXIT trap is set in Step 1...」) / 失敗パス rm / Step 3 明示 rm の **4 修正要素を 3 site すべてが備える**ことを確認 — 本 anti-pattern の最大リスク (片肺修正) を潰す。
+- **pre-existing leak の副次的修正**: `checklist-auto-check.md` の Step 2/3 ブロックに `tmpfile_read` リテラル行を新設したことで、同ブロック末尾の `rm -f "$tmpfile_read" "$tmpfile_write"` が両変数を解決できるようになった。修正前は `tmpfile_read` が unbound で `rm -f ""` の no-op となり tmpfile_read が leak していた既存バグを併せて解消。
+- **intro rationale 非対称の revert test 判定 (「同期すべきでない / pre-existing site の識別」系譜)**: tech-writer が `implement.md:899` (5.1.2.1 intro) の変数スコープ rationale 欠落を LOW/follow-up で指摘したが、revert test 適用により pre-existing と判定し推奨事項へ降格 (L899 は revert 前後とも rationale なし、旧 rationale は L746/SoT のみに存在し本 PR が非対称を新規導入したものではない)。3/4 reviewer が同領域を「回帰ではない / 意図的簡潔さ」と評価した cross-validation consensus と一致し、PR #1267/#1273/#1292/#1300 の「同期すべきでない site の識別」系譜に連なる。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -1239,6 +1253,7 @@ PR #1300 (projects-status-update.sh を呼ぶ command markdown caller のうち 
 
 ## ソース
 
+- [PR #1303 review results (Issue #1297、0 findings の successful symmetrization application: gh CLI 3 段階 checklist 更新パターンの Step 1 EXIT trap を SoT (gh-cli-patterns.md) + 複製 2 ファイル (implement.md 5.1.2.1 / checklist-auto-check.md) へ対称削除。EXIT trap が Bash tool プロセス境界 (呼び出しごとに新プロセス) で Step 1 成功終了時に発火し tmpfile を Step 2 Read 前に削除する「無益かつ有害」trap を明示 rm へ置換。grep 全数監査で残存 raw 3 段階 trap 0 件 / 旧 rationale "Since trap is only effective" repo-wide 0 件、4 修正要素 (trap 削除 / 注記 2 種 / 失敗パス rm / Step 3 明示 rm) を 3 site 対称、checklist-auto-check.md の tmpfile_read リテラル新設で旧 `rm -f ""` no-op leak も解消。implement.md:899 intro の rationale 欠落は revert test FAIL (pre-existing) で推奨事項降格 = 「同期すべきでない site の識別」系譜。helper issue-body-safe-update.sh は単一プロセス trap + `trap - EXIT` 解除の正設計で対象外。4 reviewer 0 件 1 cycle mergeable)](../../raw/reviews/20260608T065135Z-pr-1303.md)
 - [PR #1300 review results (Issue #1291、0 findings の successful symmetrization application: projects-status-update.sh caller の nested `"$(jq -n ...)"` を status_json_args 分離形式へ 4 caller 統一 (close.md / ready.md / archive-procedures.md ×2)、PR #1292 / #1284 系譜の継続。grep 全数監査で nested cmdsub 残存 0 件 / jq filter object の develop byte 等価性 / 既存 skeleton 参照の status_json_args 採用で下流参照変数の潜在的不整合解消。watchdog-status-mismatch.sh は .sh のため SoT MUST 外、arg-packing style 差は file-local 一貫で bikeshedding filter。prompt-engineer / code-quality 2 reviewer 0 件 1 cycle mergeable)](../../raw/reviews/20260608T021133Z-pr-1300.md)
 - [PR #1294 review results (Issue #1285、locale pair 変種: pre-existing doc drift 修正 PR が SPEC.md (en) のみ補完し SPEC.ja.md 据え置きで CFIC #6 違反 HIGH を新規導入。revert test PASS で current-pr 帰属立証、sole reviewer guard 追加の co-reviewer が boundary 申し送り → tech-writer follow-up 評価で確定)](../../raw/reviews/20260606T134627Z-pr-1294.md)
 - [PR #1294 fix results (F-01: 完全同期 > 最小修正 — 本 PR 追加 27 ファイル + 2 dirs / 16 表エントリに加え pre-existing #1196 期欠落 (tree 4 + 表 2) も同一 commit で同期。部分同期は CFIC #6 違反残置で次 cycle 再指摘を招く。en↔ja 機械抽出 diff 照合 (TREE_SYNC_OK / TABLE_SYNC_OK)、対称転記のみで防御コード追加ゼロ)](../../raw/fixes/20260606T135607Z-pr-1294.md)

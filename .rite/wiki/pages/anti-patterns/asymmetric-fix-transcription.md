@@ -2,8 +2,10 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-06-09T10:52:17Z"
+updated: "2026-06-09T18:38:00Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260609T182954Z-pr-1323.md"
   - type: "reviews"
     ref: "raw/reviews/20260609T094812Z-pr-1320.md"
   - type: "reviews"
@@ -1277,6 +1279,10 @@ PR #1304 と同じ self-referential test (`create-md-invocation-symmetry.test.sh
 本 PR が示す核心的教訓は PR #1281 で確立した「対称転記時はテストが注入する入力の性質も対称性監査対象に含める」の **mutation による non-vacuity 検証の実践例**である。test / code-quality / error-handling の複数 reviewer が独立に worktree-only mutation を実機注入 (4-arg を callsite から分離 / flag・JSON 形式へ置換 / arg 順序入替 / arg 欠落) し、新アサーションが旧 grep-AND では pass していたケースを確実に FAIL させること (= vacuous/tautological でないこと) を立証した。「TC-7b / TC-5c と構造が同型」という見た目の対称性だけを根拠にせず、mutation で「意図した回帰を実際に検出できるか」を確かめるのが symmetrization application の検証の決定打。security reviewer はデータフローを entry-to-sink で追跡し attack surface 不在を確認、4 reviewer 全員 0 件 1 cycle mergeable。PR #992 (self-application) → #1304 (test-infrastructure 自身の対称化) に連なる self-referential successful application の系譜で、今回は「対称化対象がアサーションロジック自体」である点が新しい。
 
 推奨事項 2 件 (EOF theoretical false-negative: callsite が file 最終行のとき次行不在で見逃すが `$()` 行継続構造により実ファイルでは到達不能、TC-5 の link_total 整合性 pin が二重保護 / `awk ... || true` の silent false-negative: 全失敗モードが前提ガード + 静的 awk プログラム + SIGPIPE 面なしで Hypothetical、TC-3/TC-7b 確立済みパターンのため 3 箇所一括の別 Issue が整合的) はいずれも boundary / design_confirmation 分類で、Phase 7 でユーザーが「無視」を選択 (Issue 化なし)。
+
+### doc / deny message / case 列挙の 3 箇所 literal 重複を実測 verify した 0 findings application (PR #1323 — Issue #1322)
+
+security hook `pre-tool-bash-guard.sh` の (Z) shell-wrapper deny メッセージ是正 PR で、wrapper 一覧 7 種 (`eval` / `bash -c` / `sh -c` / `zsh -c` / `ksh -c` / `dash -c` / `fish -c`) と read-only 代替 3 種 (直接実行 / subshell `( ... )` / `bash <script.sh>`) が doc (`_reviewer-base.md` 新節) / hook deny message / hook case 文の **3 箇所に literal 重複**する構造を prompt-engineer reviewer が実測検証し、完全一致 (伝播漏れなし) を確認して 5 reviewer 全員 0 findings / 1 cycle mergeable。将来 wrapper 追加時の 3 箇所同時更新義務を boundary 推奨事項として注記したが、SoT 化 (共有変数化) は hook が POSIX sh ベースで doc が markdown のため現実的でなく、**literal 重複維持 + レビュー時の 3 箇所突合実測が妥当**と reviewer 自身が結論 (ユーザーも「無視」を選択、Issue 化なし)。test reviewer は新規 message-content assertion (deny + 4 reason token AND) の non-vacuity を worktree-only mutation 2 種 (`BLOCKED_SUBKIND` 代入無効化 / `subshell` 文言改変 → いずれも対象 TC が FAIL) で立証 — PR #1320 の mutation 検証実践の連続再現で、message 層の対称転記 (doc ↔ deny message ↔ case 列挙) でも mutation 検証が assertion の load-bearing 性を確かめる決定打となることを示した。メッセージ/判定分離の設計面は [security guard の deny メッセージ改善は判定ロジック不変の subkind タグ分岐で行う](../patterns/security-guard-message-only-subkind-branching.md) を参照。
 
 ## 関連ページ
 

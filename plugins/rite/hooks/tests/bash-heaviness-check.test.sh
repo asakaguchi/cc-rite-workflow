@@ -429,6 +429,62 @@ if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0
 else fail "expected rc=0 (empty title), got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
+# TC-026: inline-gh-create-title — a SINGLE-QUOTE literal --title flags standalone
+#         too. Pins the opening-quote `["']` `'` alternative, which TC-017/019/024
+#         (all double-quote) never exercise: a `["']`→`["]` regression would still
+#         pass every existing TC. The equals separator is already pinned by TC-019,
+#         so this is the space+single-quote twin of TC-017. Issue #1312.
+# --------------------------------------------------------------------------
+echo "TC-026: single-quote literal --title standalone → exit 1"
+{
+  echo '```bash'
+  echo "gh pr create --draft --base develop --title 'feat(pr): single-quote literal'"
+  echo '```'
+} > "$F"
+rc=0; output=$(run "$REL") || rc=$?
+if [ "$rc" -eq 1 ] && echo "$output" | grep -q "inline-gh-create-title"; then
+  pass "single-quote literal --title flagged standalone → exit 1"
+else fail "expected rc=1 + inline-gh-create-title, got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
+# TC-027: a single-quoted `--title '$pr_title'` is, in bash, a LITERAL `$pr_title`
+#         (single quotes suppress expansion). The detector nonetheless treats the
+#         leading `$` as a variable sentinel — the `[^$"']` bracket excludes `$` on
+#         the single-quote path too — so it is NOT flagged. This errs toward a false
+#         negative (safe: it never blocks a real variable form). Pinning it records
+#         that intentional choice rather than leaving it as undocumented behavior.
+#         Issue #1312.
+# --------------------------------------------------------------------------
+echo "TC-027: single-quote '\$pr_title' (literal but sentinel-skipped) → exit 0"
+{
+  echo '```bash'
+  echo "gh pr create --draft --title '\$pr_title' --body-file body.md"
+  echo '```'
+} > "$F"
+rc=0; output=$(run "$REL") || rc=$?
+if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+  pass "single-quote \$-title sentinel-skipped → exit 0"
+else fail "expected rc=0 (single-quote \$ skipped), got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
+# TC-028: a literal `gh pr create --title "..."` inside a NON-bash fence (```text)
+#         is documentation data, not a real shell line, so it is NOT flagged.
+#         TC-013 pins the non-bash fence skip for the heaviness signals; this is the
+#         title-specific twin, completing AC-3 ("fenced code is data") traceability
+#         for inline-gh-create-title. Issue #1312.
+# --------------------------------------------------------------------------
+echo "TC-028: literal --title inside non-bash fence → exit 0"
+{
+  echo '```text'
+  echo 'gh pr create --title "feat: documented example title"'
+  echo '```'
+} > "$F"
+rc=0; output=$(run "$REL") || rc=$?
+if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0"; then
+  pass "non-bash fence literal title skipped → exit 0"
+else fail "expected rc=0 (non-bash fence), got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo ""

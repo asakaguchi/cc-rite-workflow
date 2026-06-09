@@ -1091,3 +1091,8 @@
 | 2026-06-09T19:53:08Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |
 | 2026-06-09T19:56:00Z | ingest:update | pages/heuristics/future-note-issue-premise-revalidation.md | Issue #1211 retrospective (raw/retrospectives/20260609T195524Z-issue-1211.md): 前提失効の 2 例目 (起票翌日の PR #1223 が逆方向で解消、変更ゼロ close) を sources 統合 |
 | 2026-06-09T19:55:56Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |
+| 2026-06-10T07:55:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | raw/reviews/20260609T213816Z-pr-1328.md (PR #1328 cycle 1: head -5 数値変種盲点) |
+| 2026-06-10T07:55:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | raw/fixes/20260609T214236Z-pr-1328.md (PR #1328 fix c1: sweep 一般化 + site 修正順序) |
+| 2026-06-10T07:55:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | raw/fixes/20260609T215243Z-pr-1328-c2.md (PR #1328 fix c2: fabricated safety claim 訂正) |
+| 2026-06-10T07:55:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | raw/fixes/20260609T220103Z-pr-1328-c3.md (PR #1328 fix c3: head -n N 綴り変種 + alternation doctrine) |
+| 2026-06-10T07:55:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | raw/reviews/20260609T220829Z-pr-1328-c4.md (PR #1328 cycle 4 mergeable: mutation 検証 + Issue #1329 切り出し) |

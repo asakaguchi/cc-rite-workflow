@@ -220,6 +220,10 @@ assert_grep "TC-2.6d reason=iso_timestamp_from_p61a_unset emit" "$ERR" 'REVIEW_O
 run_post --pr 123 --post-comment-mode true --json-saved true --iso-timestamp '2026-01-02T03:04:05+09:00&\evil' --content-file "$DUMMY_CONTENT"
 assert "TC-2.6e iso_timestamp metachar 注入形: exit 1" "1" "$RC"
 assert_grep "TC-2.6e reason=iso_timestamp_from_p61a_unset emit" "$ERR" 'REVIEW_OUTPUT_FAILED=1; reason=iso_timestamp_from_p61a_unset'
+# TC-2.6f 複数行値 bypass 防止 (cycle 1 fix): grep 行単位マッチでは 2 行目の valid ISO で素通りしていた
+run_post --pr 123 --post-comment-mode true --json-saved true --iso-timestamp "$(printf 'garbage\n2026-01-02T03:04:05Z')" --content-file "$DUMMY_CONTENT"
+assert "TC-2.6f iso_timestamp 複数行値: exit 1" "1" "$RC"
+assert_grep "TC-2.6f reason=iso_timestamp_from_p61a_unset emit" "$ERR" 'REVIEW_OUTPUT_FAILED=1; reason=iso_timestamp_from_p61a_unset'
 
 # TC-2.7 happy path: 全 gate 通過 + Raw JSON 内 sentinel のみ scope 限定置換
 POST_CONTENT="$TMP_ROOT/post-content.md"

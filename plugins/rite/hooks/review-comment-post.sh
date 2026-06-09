@@ -118,7 +118,11 @@ fi
 # sentinel 残留 / 空文字 / placeholder 形式 / 非 ISO 形状をすべて同一 reason で reject する
 # (substitute 漏れ時 sentinel が Raw JSON に残留し、fix.md Priority 3 が sentinel 付き timestamp で
 # findings を解釈する silent regression を防ぐ機械的強制)。
-if ! printf '%s' "$ISO_TIMESTAMP" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([+-][0-9]{2}:[0-9]{2}|Z)$'; then
+# bash 組込み `[[ =~ ]]` を使う: `printf | grep -qE` は行単位マッチのため複数行値の
+# いずれか 1 行が ISO 形状なら gate を通過する bypass 穴がある。`[[ =~ ]]` の `^`/`$` は
+# 文字列全体に anchor され、改行を含む値を構造的に reject する (hooks/ の支配的 gate パターンとも整合)。
+_iso8601_re='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([+-][0-9]{2}:[0-9]{2}|Z)$'
+if ! [[ "$ISO_TIMESTAMP" =~ $_iso8601_re ]]; then
   echo "ERROR: review-comment-post: iso_timestamp が ISO 8601 形状ではありません (値: '$ISO_TIMESTAMP')" >&2
   echo "  caller は ステップ 6.1.a の [CONTEXT] ISO_TIMESTAMP=... emit 値を --iso-timestamp に渡す必要があります (例: 2026-04-11T12:34:56+09:00)" >&2
   echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=iso_timestamp_from_p61a_unset" >&2
@@ -146,7 +150,7 @@ tmpfile_patched=$(mktemp /tmp/rite-review-p61b-comment-patched-XXXXXX.md) || {
 # $ISO_TIMESTAMP に置換する (Markdown 本文の literal sentinel には触れない scope 限定置換)。
 # State machine: 全行を buffer し END block で最後の heading 以降の fence 内のみ gsub する
 # (finding 列に literal `### 📄 Raw JSON` が含まれる反例に備え fix.md Priority 3 と同じ「last」方式)。
-awk -v ts="$ISO_TIMESTAMP" '
+awk -v ts="$ISO_TIMESTAMP" -v sentinel="$SENTINEL" '
   { lines[NR] = $0 }
   /^### 📄 Raw JSON/ { last_heading = NR }
   END {
@@ -159,7 +163,9 @@ awk -v ts="$ISO_TIMESTAMP" '
         # index()/substr() ベースのリテラル置換 (Issue #1200)。gsub の replacement に ts を
         # 直接埋め込むと `&` (マッチ全体に展開) / `\` (エスケープ) が metacharacter として
         # 解釈され置換結果が壊れる。index/substr は needle / replacement とも純リテラル扱い。
-        needle = "\"__RITE_TS_PLACEHOLDER_7f3a9b2c__\""
+        # needle は SENTINEL 変数を -v で受け取り literal 重複を解消 (値は backslash を含まないため
+        # -v の escape 解釈は安全)。
+        needle = "\"" sentinel "\""
         repl = "\"" ts "\""
         line = lines[i]
         out = ""

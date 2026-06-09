@@ -12,9 +12,10 @@
 #   0: Lock acquired
 #   1: Lock acquisition failed (timeout or stale removal failed)
 
-# Stale lock threshold in seconds (default: 120s for compact, 300s for issue)
 # shellcheck source=control-char-neutralize.sh
 source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
+
+# Stale lock threshold in seconds (default: 120s for compact, 300s for issue)
 WM_LOCK_STALE_THRESHOLD="${WM_LOCK_STALE_THRESHOLD:-120}"
 
 acquire_wm_lock() {

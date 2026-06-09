@@ -26,6 +26,9 @@
 # to short-circuit ownership checks (e.g., when reading a path that has just
 # been resolved by `_resolve-flow-state-path.sh`).
 
+# shellcheck source=control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
+
 # Extract session_id from hook JSON payload
 # Args: $1 = hook JSON string (from stdin of the hook)
 # Output: session_id string, or empty string if not found
@@ -35,8 +38,6 @@
 #   under RITE_DEBUG would let a corrupt hook payload silently grant ownership.
 #   The stderr snippet stays behind RITE_DEBUG to keep the WARNING one line on
 #   the hot path.
-# shellcheck source=control-char-neutralize.sh
-source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
 extract_session_id() {
   local hook_json="$1"
   local sid jq_err

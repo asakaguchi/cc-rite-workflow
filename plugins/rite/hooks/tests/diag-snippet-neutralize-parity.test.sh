@@ -36,7 +36,9 @@ fi
 echo "=== TC-1: head -N emission site は全て neutralize_ctrl を経由 ==="
 # 除外: tests/ (fixture/assertion 内の出現)、コメント行、定義元 helper の usage コメント
 # `head -[0-9]+` (行指向 snippet) を対象とする。`head -c` (byte 指向 inline 埋め込み) は
-# 1 行 WARNING への embed で別イディオム (default モード中和や iconv sanitize を併用) のため対象外
+# 1 行 WARNING への embed で行構造が異なる別イディオムのため本 sweep の対象外。
+# 注意: head -c site は現状中和未適用 (Issue #1183 の対象は行指向 head -N snippet のみ)。
+# 横展開する場合は別 Issue で扱う
 violations=$(grep -rnE 'head -[0-9]+ ' "$HOOKS_DIR" --include='*.sh' \
   | grep '>&2' \
   | grep -v "$HOOKS_DIR/tests/" \
@@ -51,8 +53,9 @@ fi
 
 echo ""
 echo "=== TC-2: neutralize_ctrl の caller は helper を source 済み ==="
-# `neutralize_ctrl` を実行コードとして含むファイル一覧 (コメント行のみの言及は除外)
-caller_files=$(grep -rl 'neutralize_ctrl' "$HOOKS_DIR" --include='*.sh' \
+# `neutralize_ctrl` / `contains_ctrl` を実行コードとして含むファイル一覧 (コメント行のみの言及は除外)
+# 収集側も両関数対応にする — contains_ctrl のみを使う hook が将来追加された場合の検査漏れ防止
+caller_files=$(grep -rlE 'neutralize_ctrl|contains_ctrl' "$HOOKS_DIR" --include='*.sh' \
   | grep -v "$HOOKS_DIR/tests/" \
   | grep -v '/control-char-neutralize.sh$' \
   || true)
@@ -76,6 +79,6 @@ else
 fi
 
 if ! print_summary "$(basename "$0")" \
-  "診断スニペット emission site を hook に追加するときは control-char-neutralize.sh を source し、head -3 の直後に '| neutralize_ctrl --keep-newline' を挿入すること (Issue #1183)"; then
+  "診断スニペット emission site を hook に追加するときは control-char-neutralize.sh を source し、head -N の直後に '| neutralize_ctrl --keep-newline' を挿入すること (Issue #1183)"; then
   exit 1
 fi

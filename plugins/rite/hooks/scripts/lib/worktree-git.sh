@@ -77,6 +77,9 @@
 # * COMMIT_MSG has been checked for newline/CR injection
 # * BRANCH matches the expected wiki.branch_name
 
+# shellcheck source=../../control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../control-char-neutralize.sh"
+
 # -----------------------------------------------------------------------
 # verify_worktree_branch: confirm a worktree's HEAD is on an expected branch.
 #
@@ -109,8 +112,6 @@
 # 0 worktree is on expected branch
 # 2 rev-parse failed (worktree corrupt / permission / git binary issue)
 # 3 worktree is on a different branch
-# shellcheck source=../../control-char-neutralize.sh
-source "$(dirname "${BASH_SOURCE[0]}")/../../control-char-neutralize.sh"
 verify_worktree_branch() {
  local worktree="$1"
  local expected_branch="$2"

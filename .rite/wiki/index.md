@@ -156,9 +156,10 @@
 | [共有 /tmp の leak 検査は count delta ではなく path 集合差分 (comm -13) で行う](pages/patterns/shared-tmp-leak-check-path-set-difference.md) | patterns | 共有 /tmp 上の tempfile leak 検査を実行前後のファイル数 count delta で行うと、並列プロセスの削除で false-fail し、leak と削除の相殺で false-PASS する。実行前後の path 集合を `comm -13` で差分化すると自テストが新規出現させた path のみを決定論的に検出でき両方向の誤判定を排除。helper の mktemp template が絶対 path 固定で TMPDIR 隔離が効かない場合の canonical 次善策。PR #1295 で leak 注入 (正方向) / 他プロセス削除 (逆方向) の双方向 mutation により count delta 方式への厳密な上位互換性を実証。並列他プロセスが同 template で追加した場合の add-direction ambiguity は残存 (根治は helper 側 TMPDIR 対応 = 別 scope)。 | 2026-06-06T17:33:06Z | medium |
 | [leading-dash 引数注入 gate は git 操作前に配置し代表 1 値の非 vacuous test で検証する](pages/patterns/leading-dash-arg-injection-gate-pre-git.md) | patterns | 外部由来の値 (branch 名等) を git に flag 位置で渡す script の leading-dash 引数注入を、引数解析直後・全 git 操作前の `case -*) fail` fail-fast gate で塞ぐ。bypass 耐性は入力クラス別に確認 (空文字列は既存 -z へ fall-through / 先頭 whitespace は git の literal refspec reject)。検証は兄弟 script の同型注入経路 grep 監査 + 単一 `-*` case の代表 1 値 test (値ごと分岐なしのため境界値網羅不要) + rc/ERROR substring/end-state の 3 軸非 vacuous assertion + 既存 differential-equivalence test と gate 非発火値で非干渉。PR #1299 (Issue #1290、PR #1286 security follow-up) で 5 reviewer cross-validation・指摘 0 件 cycle 1 収束。 | 2026-06-07T19:38:45Z | high |
 | [インライン特殊文字 content (title/body) は Write tool・--body-file 委譲で malformed tool-call を構造的に除去する](pages/patterns/inline-content-delegation-avoids-malformed-toolcall.md) | patterns | command spec 内で gh CLI に渡す title/body をインライン展開 (特殊文字 title 素埋め込み / heredoc body) すると LLM の tool-call 生成を malform させ workflow が停止する。content を Write tool でファイルへ raw 出力し変数・`--body-file` で渡す 3 段プロトコル (workdir mktemp -d → Write tool で raw 化 → 変数/--body-file で gh) で停止経路 (Cause B) を構造的に除去、構造的除去不能な Cause A (transport ゆらぎ) は honest に scope-out。PR #1310 で確立。 | 2026-06-09T00:00:00Z | high |
+| [rc 観測が必要な find は process substitution でなく command substitution + here-string で呼ぶ](pages/patterns/find-rc-via-command-substitution-here-string.md) | patterns | cleanup/GC スクリプトで `find` を process substitution `< <(find ...)` で呼ぶと find の wholesale 失敗 (TMPDIR 不在/権限/IO エラー) の rc がシェルに伝播せず `2>/dev/null` 併用で完全に silent な no-op になる。sibling ブロックが `if out=$(cmd); then ...; else rc=$?; WARNING; errors++` で rc 捕捉している文脈では、新規ブロックも command substitution `out=$(find ...)` + here-string `<<<` に揃え rc を観測可能にして sibling 対称性を保つ (空 stdout は `[ -z ]` ガードで skip、failure path は TMPDIR override で誘発)。`mapfile -t < <(...)` pipefail-safe pattern とは『非ゼロ exit を吸収すべきか観測すべきか』で使い分ける。PR #1315 で確立。 | 2026-06-09T04:36:49+00:00 | high |
 
 ## 統計
 
-- 総ページ数: 149
-- ドメイン別: patterns=51, heuristics=44, anti-patterns=54
-- 最終更新: 2026-06-09T00:00:00Z
+- 総ページ数: 150
+- ドメイン別: patterns=52, heuristics=44, anti-patterns=54
+- 最終更新: 2026-06-09T04:36:49+00:00

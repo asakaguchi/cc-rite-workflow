@@ -24,6 +24,8 @@
 # Exit codes: 0 = clean, 1 = drift detected, 2 = invocation error.
 
 set -uo pipefail
+# shellcheck source=../control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"
 
 REPO_ROOT=""
 QUIET=0
@@ -477,7 +479,7 @@ check_pattern_6() {
     # rc != 0/1 (delegate invocation error / jq missing 等): silent に握りつぶさず log + stderr 内容を表示
     log "Pattern 6 delegate exited with unexpected code $rc; check delegate diagnostics:"
     if [ -s "$PATTERN6_STDERR" ]; then
-      head -5 "$PATTERN6_STDERR" | sed 's/^/    /' >&2
+      head -5 "$PATTERN6_STDERR" | neutralize_ctrl --keep-newline | sed 's/^/    /' >&2
     fi
   fi
   # trap が cleanup を保証するが、明示 reset で次回 invocation 時の stale 参照を防ぐ

@@ -7,12 +7,15 @@
 #   neutralize_ctrl を経由して emit する」規約を、hooks/ 配下の全
 #   `head -3` emission site に対称適用したことを保証する
 #   (Wiki 経験則 Asymmetric Fix Transcription — 対称位置への伝播漏れ防止)。
-#   将来 hook に新しい `head -3 ... >&2` 診断 site が中和なしで追加された
+#   sweep は `head -3` 限定ではなく `head -N` (任意行数) を対象とする —
+#   PR #1328 cycle 1 で head -5 変種の兄弟イディオムが同一ファイル内に
+#   未中和で残存し literal `head -3` sweep では検出できないことが実証された。
+#   将来 hook に新しい `head -N ... >&2` 診断 site が中和なしで追加された
 #   場合も TC-1 が検出する。
 #
 # Test cases:
 #   TC-1: hooks/ 配下 (tests/ 除く) に neutralize_ctrl を経由しない
-#         `head -3` emission site が存在しない (コメント行は除外)
+#         `head -N` 行指向 emission site が存在しない (コメント行は除外)
 #   TC-2: neutralize_ctrl を call する全 hook ファイルが
 #         control-char-neutralize.sh を source している
 #         (定義元 control-char-neutralize.sh 自身は除外)
@@ -30,16 +33,19 @@ if [ ! -d "$HOOKS_DIR" ]; then
   exit 1
 fi
 
-echo "=== TC-1: head -3 emission site は全て neutralize_ctrl を経由 ==="
+echo "=== TC-1: head -N emission site は全て neutralize_ctrl を経由 ==="
 # 除外: tests/ (fixture/assertion 内の出現)、コメント行、定義元 helper の usage コメント
-violations=$(grep -rn 'head -3' "$HOOKS_DIR" --include='*.sh' \
+# `head -[0-9]+` (行指向 snippet) を対象とする。`head -c` (byte 指向 inline 埋め込み) は
+# 1 行 WARNING への embed で別イディオム (default モード中和や iconv sanitize を併用) のため対象外
+violations=$(grep -rnE 'head -[0-9]+ ' "$HOOKS_DIR" --include='*.sh' \
+  | grep '>&2' \
   | grep -v "$HOOKS_DIR/tests/" \
   | grep -v 'neutralize_ctrl' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
   || true)
-assert "TC-1: un-neutralized head -3 emission sites" "" "$violations"
+assert "TC-1: un-neutralized head -N emission sites" "" "$violations"
 if [ -n "$violations" ]; then
-  echo "  検出された未中和 site (head -3 の直後に '| neutralize_ctrl --keep-newline' を挿入すること):"
+  echo "  検出された未中和 site (head -N の直後に '| neutralize_ctrl --keep-newline' を挿入すること):"
   printf '%s\n' "$violations" | sed 's/^/    /'
 fi
 

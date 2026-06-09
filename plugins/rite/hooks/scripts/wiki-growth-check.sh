@@ -255,7 +255,7 @@ if gh_json_out=$(gh pr list \
 else
   gh_rc=$?
   echo "WARNING: gh pr list failed (rc=$gh_rc) — wiki-growth-check skipped" >&2
-  [ -n "$gh_pr_list_err" ] && [ -s "$gh_pr_list_err" ] && head -5 "$gh_pr_list_err" | sed 's/^/  /' >&2
+  [ -n "$gh_pr_list_err" ] && [ -s "$gh_pr_list_err" ] && head -5 "$gh_pr_list_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   echo "  対処: gh auth status (auth error) / network 接続 / rate limit を確認してください" >&2
   [ -n "$gh_pr_list_err" ] && rm -f "$gh_pr_list_err"
   gh_pr_list_err=""

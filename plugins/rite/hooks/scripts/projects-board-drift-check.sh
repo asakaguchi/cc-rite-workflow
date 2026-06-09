@@ -112,6 +112,8 @@ while [ "$REPO_ROOT" != "/" ] && [ ! -f "$REPO_ROOT/rite-config.yml" ] && [ ! -d
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../control-char-neutralize.sh
+source "$SCRIPT_DIR/../control-char-neutralize.sh"
 # SCRIPT_DIR is .../hooks/scripts; plugin root (plugins/rite) is its grandparent (../..)
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
@@ -154,7 +156,7 @@ repo_view_err=$(mktemp /tmp/rite-board-drift-repo-err-XXXXXX) || repo_view_err="
 if ! REPO_INFO=$(gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
   echo "ERROR: gh repo view failed" >&2
   if [ -n "$repo_view_err" ] && [ -s "$repo_view_err" ]; then
-    head -5 "$repo_view_err" | sed 's/^/  /' >&2
+    head -5 "$repo_view_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   echo "  対処: gh auth status / network 接続を確認してください" >&2
   exit 2
@@ -207,8 +209,8 @@ query($owner: String!, $repo: String!, $first: Int!) {
       | "\($i.number)\t\($st)\t\($i.title)"
     ' 2>"${jq_err:-/dev/null}"); then
   echo "ERROR: gh api graphql or jq pipeline failed while scanning CLOSED Issues" >&2
-  if [ -n "$gql_err" ] && [ -s "$gql_err" ]; then head -5 "$gql_err" | sed 's/^/  gh: /' >&2; fi
-  if [ -n "$jq_err" ] && [ -s "$jq_err" ]; then head -5 "$jq_err" | sed 's/^/  jq: /' >&2; fi
+  if [ -n "$gql_err" ] && [ -s "$gql_err" ]; then head -5 "$gql_err" | neutralize_ctrl --keep-newline | sed 's/^/  gh: /' >&2; fi
+  if [ -n "$jq_err" ] && [ -s "$jq_err" ]; then head -5 "$jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  jq: /' >&2; fi
   echo "  対処: gh auth status / network 接続 / repository 権限を確認してください" >&2
   exit 2
 fi

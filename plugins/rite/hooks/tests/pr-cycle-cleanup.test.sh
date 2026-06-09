@@ -522,11 +522,15 @@ echo "T-13: Step 3 orphan workdir rm 失敗で status=failed (refs #1316)"
 if [ "$IS_ROOT" = "1" ]; then
   skip "T-13: root では perms がバイパスされ強制失敗にならないためスキップ"
 else
-  LOCKED_BASE=$(mktemp -d /tmp/rite-pr-cleanup-locked-XXXXXX)
-  # Guard against mktemp failure: a simple assignment is exempt from `set -e`, so
-  # LOCKED_BASE could be empty. Without this guard, `mkdir -p "$LOCKED_BASE/..."`
-  # would target the filesystem root (`/rite-pr-create-victim`). Fail the test
-  # instead of proceeding.
+  # `|| LOCKED_BASE=""` keeps a mktemp failure from aborting the suite under
+  # `set -e`: a plain `VAR=$(cmd)` propagates the command-substitution exit status
+  # (unlike `local VAR=$(cmd)`, where `local` masks it), so without the `||` a
+  # failed mktemp would `exit 1` here and never reach the guard below. With it,
+  # LOCKED_BASE is empty on failure and the guard fails the test instead of
+  # letting `mkdir -p "$LOCKED_BASE/..."` target the filesystem root
+  # (`/rite-pr-create-victim`). Matches the sibling `|| var=""` convention in
+  # pr-cycle-cleanup.sh.
+  LOCKED_BASE=$(mktemp -d /tmp/rite-pr-cleanup-locked-XXXXXX) || LOCKED_BASE=""
   if [ -z "$LOCKED_BASE" ]; then
     fail "T-13: mktemp -d による locked base 作成に失敗"
   else

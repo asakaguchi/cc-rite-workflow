@@ -916,6 +916,10 @@ else
 fi
 [ "${_tch7_stderr:-/dev/null}" != "/dev/null" ] && rm -f "$_tch7_stderr"
 unset _tch7_stderr
+# ⚠️ sandbox 隔離の留意 (Issue #1174): TC-H7 は corrupt JSON を state_file に書き込んだまま終了する
+# (corrupt 状態の観測が目的のため cleanup しないのは意図的)。本 TC より後ろに TC を追加する場合は、
+# 残置された corrupt state_file を引き継がないよう必ず new_sandbox で独立 sandbox を取得すること
+# (直後の TC-23 は準拠済み)。
 
 # --- TC-23: jq stderr スニペットの control-char 中和 (Issue #1173) ---
 echo ""

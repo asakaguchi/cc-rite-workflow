@@ -1097,3 +1097,7 @@
 | 2026-06-10T07:55:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | raw/fixes/20260609T220103Z-pr-1328-c3.md (PR #1328 fix c3: head -n N 綴り変種 + alternation doctrine) |
 | 2026-06-10T07:55:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | raw/reviews/20260609T220829Z-pr-1328-c4.md (PR #1328 cycle 4 mergeable: mutation 検証 + Issue #1329 切り出し) |
 | 2026-06-10T07:16:01+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |
+| 2026-06-10T10:10:00+09:00 | ingest:create | pages/heuristics/allowlist-gate-hardening-checklist.md | raw/fixes/20260609T223122Z-pr-1330.md (PR #1330 fix c1) |
+| 2026-06-10T10:10:00+09:00 | ingest:create | pages/heuristics/allowlist-gate-hardening-checklist.md | raw/fixes/20260609T223943Z-pr-1330-c2.md (PR #1330 fix c2) |
+| 2026-06-10T10:10:00+09:00 | ingest:create | pages/heuristics/allowlist-gate-hardening-checklist.md | raw/fixes/20260609T224734Z-pr-1330-c3.md (PR #1330 fix c3) |
+| 2026-06-10T10:10:00+09:00 | ingest:create | pages/heuristics/allowlist-gate-hardening-checklist.md | raw/reviews/20260609T225247Z-pr-1330-c4.md (PR #1330 review c4 mergeable) |

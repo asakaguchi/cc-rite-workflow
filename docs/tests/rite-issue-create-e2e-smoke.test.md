@@ -2,7 +2,7 @@
 
 **Issue**: #552 / Extends: #525
 
-本書は `/rite:issue:create` の「sub-skill return 直後の自動継続」と「ユーザー向け完了メッセージ」を検証するための手動 smoke test 手順を定める。既存の `start.md` ステップ 8.5 sentinel detection と異なり、回帰検出のために人間の目視確認が必要な項目を列挙する。
+本書は `/rite:issue:create` の「sub-skill return 直後の自動継続」と「ユーザー向け完了メッセージ」を検証するための手動 smoke test 手順を定める。既存の (当時の) `start.md` ステップ 8.5 sentinel detection (#1088 で機構撤去、start.md 自体も #1136 で削除済) と異なり、回帰検出のために人間の目視確認が必要な項目を列挙する。
 
 ## 目的
 
@@ -54,7 +54,7 @@
 
 | 症状 | 確認先 |
 |------|--------|
-| ステップ 4 到達後 turn が終了 | `.rite-flow-state-diag.log` の `flow_state_*` 行を確認し、`start.md ステップ 8.5 retrospective scan` 相当の遡及検出が `manual_fallback_adopted` を拾ったか会話コンテキストを grep |
+| ステップ 4 到達後 turn が終了 | `.rite-flow-state-diag.log` の `flow_state_*` 行を確認し、(当時の) `start.md ステップ 8.5 retrospective scan` 相当の遡及検出 (#1088 / #1136 で削除済 — 現行は手動で会話コンテキストを grep) が `manual_fallback_adopted` を拾ったか確認 |
 | `✅ Issue #{N}` が出力されない | `commands/issue/create.md` ステップ 4.4 のテンプレートが現行版か確認 |
 | `[create:returned-to-caller:{N}]` が user-visible な最終行になる | ステップ 4.4 / 5.6 完了レポート末尾の出力順序を確認（sentinel は HTML コメント化されているか。#1165 で旧 `[create:completed:{N}]` から rename） |
 | Projects 登録が `failed` | `create-issue-with-projects.sh` の戻り値 `project_registration` を確認、AskUserQuestion で retry / skip を選択 |
@@ -114,7 +114,9 @@ grep -rnE '\[[a-z]+:completed(:[^]]*)?\]' plugins/rite/commands/ plugins/rite/sk
 
 **AC-7 を検証する（implicit stop が起きた場合に次セッションが retrospective scan で sentinel を拾えるか）**
 
-flat workflow への移行後、Stop hook による exit-2 block は廃止された。AC-7 の責務は `start.md ステップ 8.5 retrospective scan` が次セッションの会話コンテキストを grep して `manual_fallback_adopted` 系 sentinel を検出し tracking Issue を auto-register する経路に移行している。
+> **⚠️ Historical (廃止済機構のテスト手順)**: 本シナリオが前提とする `start.md ステップ 8.5 retrospective scan` は #1088 で機構撤去され、start.md 自体も #1136 で削除済。v3 では各 caller が plain な `WARNING` / `ERROR` を stderr に出力し、中断作業は `/rite:resume` で復帰する (docs/migration-guides/v2-to-v3.md 参照)。tracking Issue の auto-register 経路は現行体系に存在しないため、本シナリオの手順 3 / 期待される動作 1 行目は実行不能。session-end.sh の legacy glob fallback 契約 (Scenario 4a の本来の検証対象) のみ現行でも有効。
+
+flat workflow への移行後、Stop hook による exit-2 block は廃止された。AC-7 の責務は (当時の) `start.md ステップ 8.5 retrospective scan` が次セッションの会話コンテキストを grep して `manual_fallback_adopted` 系 sentinel を検出し tracking Issue を auto-register する経路に移行していた (同経路も上記の通り削除済)。
 
 ### 共通前提
 
@@ -128,11 +130,11 @@ flow-state は `flow-state.sh` 経由で生成する (手動作成は schema dri
 
 1. flow-state を `create_post_interview` で初期化 (上記コマンド)。phase 名が legacy であることは意図的な setup
 2. Claude Code で `/clear` → `/rite:issue:start <N>` を再実行し、前セッションの implicit stop を模した state を残したまま再開
-3. start.md ステップ 8.5 retrospective scan が `manual_fallback_adopted` キーワードを会話コンテキストから検出し、tracking Issue を auto-register することを確認
+3. (当時の) start.md ステップ 8.5 retrospective scan が `manual_fallback_adopted` キーワードを会話コンテキストから検出し、tracking Issue を auto-register することを確認 (削除済 — 冒頭の Historical 注記参照。現行体系では実行不能)
 
 ### 期待される動作
 
-- `start.md ステップ 8.5` 実行中に `manual_fallback_adopted` を含む sentinel が前セッション会話に存在する場合、tracking Issue が GitHub に作成される
+- (当時の) `start.md ステップ 8.5` 実行中に `manual_fallback_adopted` を含む sentinel が前セッション会話に存在する場合、tracking Issue が GitHub に作成される (削除済 — 現行体系では発生しない)
 - `.rite-flow-state-diag.log` に `flow_state_*` 行が記録され、phase transition の経過が監査可能
 - `session-end.sh` の inline glob fallback が legacy create_* phase を正しく detect する (`session-end.test.sh` TC-475-WARN-A〜D で覆われる契約)
 
@@ -151,7 +153,7 @@ tail -20 .rite-flow-state-diag.log
 
 | 症状 | 確認先 |
 |------|--------|
-| retrospective scan が sentinel を取り逃す | `start.md ステップ 8.5` の grep パターンが現行 sentinel literal を網羅しているか確認 |
+| retrospective scan が sentinel を取り逃す | (当時の) `start.md ステップ 8.5` の grep パターン確認 (削除済 — 現行は手動 grep で代替) |
 | diag log に flow-state 行が全く残らない | `flow-state.sh` の write path で mv/jq が silent fail していないか — 全 mv site で rc capture + WARNING が出ている前提で、欠落がないか確認する |
 | `session-end.sh` の inline glob が legacy create_* phase を取り逃す | `session-end.test.sh` TC-475-WARN-A〜D が PASS しているか確認 |
 
@@ -160,7 +162,7 @@ tail -20 .rite-flow-state-diag.log
 以下の修正 PR 後に本 smoke test を最低 1 回実施すること:
 
 - `plugins/rite/commands/issue/create.md`
-- `plugins/rite/commands/issue/start.md` (ステップ 8.5 retrospective scan)
+- (当時の) `plugins/rite/commands/issue/start.md` (ステップ 8.5 retrospective scan — #1136 で削除済、historical 参照)
 - `plugins/rite/hooks/session-end.sh`（lifecycle 未完了検出の inline glob）
 - `plugins/rite/hooks/flow-state.sh`
 

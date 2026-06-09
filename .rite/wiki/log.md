@@ -1088,3 +1088,4 @@
 | 2026-06-09T19:45:00Z | ingest:create | pages/heuristics/future-note-issue-premise-revalidation.md | PR #1326 review (raw/reviews/20260609T193647Z-pr-1326.md): future-note Issue の前提再検証 heuristic を新規確立 (0 findings 1 cycle mergeable、TC-23 既追加の前提変化を実装前検出) |
 | 2026-06-09T19:39:17Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |
 | 2026-06-09T19:55:00Z | ingest:create | pages/patterns/fail-fast-description-three-axis-separation.md | PR #1327 review (raw/reviews/20260609T195111Z-pr-1327.md): fail-fast 記述の 3 軸分離 (構文/検証対象/場所) + case arm 2 種別の区別 pattern を新規確立 (2 cycle mergeable、同一行 trivial 推奨の即時採用) |
+| 2026-06-09T19:53:08Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |

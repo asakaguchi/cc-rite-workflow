@@ -2,8 +2,10 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-06-09T09:01:30Z"
+updated: "2026-06-09T12:34:26Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260609T115303Z-pr-1321.md"
   - type: "reviews"
     ref: "raw/reviews/20260609T085210Z-pr-1319.md"
   - type: "reviews"
@@ -564,6 +566,15 @@ test / error-handling reviewer はともに、新規 9 件の `assert_err_has ".
 
 教訓: 能動 mutation を回せない READ-ONLY reviewer でも、(a) match/mismatch の差分ペア構造 (positive ケースが negative assertion の非 vacuity を保証)、(b) 入力決定性の理論保証 (all-zeros SHA 等の構造的に衝突しない値)、(c) assert literal と実装 emit の byte 一致照合 の 3 点で error-path behavioral test の identification power を構造的に立証できる。差分ペアによる非 vacuity 担保は active mutation (適用 10/13) の構造的代替として、対称転記の vacuous リスク ([[asymmetric-fix-transcription]] の test 側双対) を回避する。
 
+### 適用 22: dedup assertion の非 vacuity を重複 fixture で立証 + section-scoped 静的契約 test の helper rename 検出を mutation で実証 (PR #1321 で実証)
+
+PR #1321 (Issue #1209 — `wiki-lint-source-refs.test.sh` の dedup assertion と lint.md 6.2 fallback 回帰追加、+35/-2 でテストのみ変更・helper / lint.md 本体無変更) は test / code-quality 2 reviewer が独立 mutation で 0 findings / 1 cycle mergeable に到達し、適用 13/18/19/20/21 の「テストのみ変更 PR を reviewer 側で非 vacuous 立証」系譜を継続した。本 PR の固有観点は 2 種の vacuity 解消手法を 1 PR で併用した点にある:
+
+1. **dedup assertion の非 vacuity は「入力に重複を実在させる」ことで担保する**: TC-1 の label は `sort -u` を謳うが、入力 (p1/p2) に重複 ref が 1 件もないため helper の `sort -u` を `cat` に置換しても全 assert が PASS する vacuous 構造だった (適用 5 Pattern 5-A の dedup 版 — 機構が input に対し no-op だと dead path 化)。fixture `write_pages` の p2 に p1 と同一の**正規化済み** ref を重複追加し、「当該 ref の出力行数 = 1」を assert することで `sort -u`→`cat` mutation が count=2 を生んで FAIL する load-bearing 化を達成。両 ref を prefix なし正規化済み形式に揃え normalization を no-op にすることで、`sort -u` のみが結果決定要因になるよう isolation した (適用 11「測定対象シグナルを単独の結果決定要因にする」の dedup 版)。
+2. **section-scoped 静的契約 test の helper rename 検出を empty-section fail で構造化**: TC-14 は lint.md 6.2 の helper-不在 fallback (`[ ! -f ...wiki-lint-source-refs.sh ]` branch) の io_error 出力契約 4 行を `assert_grep_in_section` で if-branch scoped に pin する。reviewer が io_error→true / helper rename の 2 mutation を実機適用し、前者は read_ok assert が FAIL、後者は guard 内 filename 変化で section 抽出が空になり empty-section fail で surface することを確認。section start_pattern を guard の helper filename に anchor することで「rename しても test が更新を強制される」rename-detection 機構を実装した ([[section-scoped-assertion-prevents-narrative-false-negative]] の rename 検出への応用)。
+
+教訓: 機構 (dedup / sort -u) を test する assertion は、その機構が input に対し実際に作用する fixture (重複を実在させる) を用意しないと no-op mutation をすり抜ける vacuous 構造になる。md 契約の静的回帰 test では section anchor を契約の load-bearing identifier (helper filename 等) に置くことで、anchor 対象の rename を empty-section fail として強制 surface できる。lint.md のような LLM 実行手順書 (bash として直接起動されない) の fallback 分岐は behavioral test 不能なため、section-scoped 静的契約 test が canonical な回帰防御になる ([[static-input-chain-function-extraction-non-vacuous-test]] の md 契約版)。
+
 ## 関連ページ
 
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
@@ -606,3 +617,4 @@ test / error-handling reviewer はともに、新規 9 件の `assert_err_has ".
 - [PR #1301 review results — symmetry test 保護対象拡張のテストのみ変更 PR で新 helper assert_single_create_caller の (a)(b)(c) 3 assertion を 3 reviewer が worktree-isolated mutation (nested cmdsub 退行 + flag-style --title 退行) で teeth 立証、既存 TC との byte-identical 対称性照合を検証手段に併設 (0 findings / 全 4 レビュアー可で初回 mergeable)](../../raw/reviews/20260608T032933Z-pr-1301.md)
 - [PR #1317 review results — inline-gh-create-title の開始引用符 alternation `["']` の single-quote branch を pin する TC-026/027/028 を test/error-handling reviewer が独立 mutation (`["']`→`["]` で TC-026 のみ FAIL / `$` 除外撤去で TC-018+TC-027 FAIL) で非 vacuous 立証、Asymmetric Fix Transcription の test 側監査も適用 (0 findings / 1 cycle mergeable)](../../raw/reviews/20260609T052136Z-pr-1317.md)
 - [PR #1319 review results — review-source-resolve error 経路 assertion 追加で、negative assertion (`assert_err_lacks STALE`) の非 vacuity を match/mismatch 差分ペア構造 + all-zeros SHA 決定性で立証 (能動 mutation を READ-ONLY guard で回せない構造的代替)、reason 文字列の実装 emit byte 一致照合を test 正しさの核心と確認 (4 reviewer 可 / 0 findings / 1 cycle mergeable)](../../raw/reviews/20260609T085210Z-pr-1319.md)
+- [PR #1321 review results — dedup assertion の非 vacuity を重複 fixture (p2 に p1 と同一の正規化済み ref) で担保し `sort -u`→`cat` mutation で count=2 FAIL を立証、section-scoped 静的契約 test (TC-14) の helper rename を empty-section fail で検出する rename-detection 機構を io_error→true / rename 2 mutation で実証 (test/code-quality 2 reviewer 可 / 0 findings / 1 cycle mergeable)](../../raw/reviews/20260609T115303Z-pr-1321.md)

@@ -42,6 +42,17 @@ trap '_cleanup_all_test_repos; exit 130' INT
 trap '_cleanup_all_test_repos; exit 143' TERM
 trap '_cleanup_all_test_repos; exit 129' HUP
 
+# Isolate TMPDIR so the orphan-workdir GC (Step 3 of the cleanup script, #1311)
+# scans an empty, test-owned directory instead of the developer's real /tmp.
+# Without this, a real /tmp/rite-pr-create-* orphan on the host would make T-05
+# (noop assertion) flaky and could even delete a developer's in-flight workdir.
+# The workdir tests (T-06+) populate this directory explicitly. `mktemp -d
+# /tmp/...` and make_temp_repo both use explicit /tmp paths, so they are
+# unaffected by the TMPDIR export below.
+WORKDIR_SCAN_TMP=$(mktemp -d /tmp/rite-pr-cleanup-tmpdir-XXXXXX)
+TEST_REPOS+=("$WORKDIR_SCAN_TMP")
+export TMPDIR="$WORKDIR_SCAN_TMP"
+
 # -----------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------
@@ -290,6 +301,118 @@ if echo "$output" | grep -q 'status=noop'; then
   pass "T-05: noop status returned on clean repo"
 else
   fail "T-05: expected status=noop, got: $output"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-06: orphan workdir reaping (refs #1311)
+# Given: aged `rite-pr-create-*` workdirs (one empty = after-(A) orphan, one with
+#        files = after-(B) orphan) older than the age threshold exist in TMPDIR
+# When: Cleanup runs
+# Then: Both are reaped via rm -rf and the status line reports workdirs=2
+# Uses `touch -t 202001010000` (POSIX-portable, far older than 24h) to backdate
+# the directory mtime AFTER writing contents (writing a file bumps the dir mtime).
+# -----------------------------------------------------------------------
+echo "T-06: 古い orphan workdir 回収 (refs #1311)"
+rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
+mkdir -p "$WORKDIR_SCAN_TMP/rite-pr-create-old1"
+echo "stale title" > "$WORKDIR_SCAN_TMP/rite-pr-create-old1/pr_title.txt"  # after-(B) orphan: has files
+mkdir -p "$WORKDIR_SCAN_TMP/rite-pr-create-old2"                          # after-(A) orphan: empty
+touch -t 202001010000 "$WORKDIR_SCAN_TMP/rite-pr-create-old1" "$WORKDIR_SCAN_TMP/rite-pr-create-old2"
+TEST_REPO=$(make_temp_repo)
+t06_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+if [ ! -d "$WORKDIR_SCAN_TMP/rite-pr-create-old1" ] && [ ! -d "$WORKDIR_SCAN_TMP/rite-pr-create-old2" ] \
+   && echo "$t06_output" | grep -q 'status=cleaned' && echo "$t06_output" | grep -q 'workdirs=2'; then
+  pass "T-06: 古い orphan workdir 2 件 (空 + 非空) が回収され workdirs=2"
+else
+  fail "T-06: old1=$([ -d "$WORKDIR_SCAN_TMP/rite-pr-create-old1" ] && echo present || echo gone), old2=$([ -d "$WORKDIR_SCAN_TMP/rite-pr-create-old2" ] && echo present || echo gone). Output: $t06_output"
+fi
+rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-07: age 未満の workdir は保護 (in-flight 誤回収防止) (refs #1311)
+# Given: a freshly-created `rite-pr-create-*` workdir (mtime = now) exists
+# When: Cleanup runs
+# Then: The workdir survives (age guard) and status=noop (nothing reaped)
+# This is the core safety assertion: a concurrent session's in-flight workdir is
+# never reaped by another session's cleanup.
+# -----------------------------------------------------------------------
+echo "T-07: age 未満の workdir は保護 (in-flight 誤回収防止) (refs #1311)"
+rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
+mkdir -p "$WORKDIR_SCAN_TMP/rite-pr-create-fresh"  # just created -> mtime now -> must survive
+TEST_REPO=$(make_temp_repo)
+t07_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+if [ -d "$WORKDIR_SCAN_TMP/rite-pr-create-fresh" ] && echo "$t07_output" | grep -q 'status=noop'; then
+  pass "T-07: age 未満の workdir が保護され status=noop"
+else
+  fail "T-07: fresh=$([ -d "$WORKDIR_SCAN_TMP/rite-pr-create-fresh" ] && echo present || echo gone). Output: $t07_output"
+fi
+rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-08: 無関係 prefix のディレクトリは age 超過でも保護 (refs #1311)
+# Given: an aged matching `rite-pr-create-victim` plus aged non-matching dirs
+#        (`rite-pr-cleanup-test-*` — the test-repo prefix — and `unrelated-dir`)
+# When: Cleanup runs
+# Then: Only `rite-pr-create-*` is reaped; the name-glob boundary protects others
+# -----------------------------------------------------------------------
+echo "T-08: 無関係 prefix のディレクトリは age 超過でも保護 (refs #1311)"
+rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* "$WORKDIR_SCAN_TMP/rite-pr-cleanup-test-xyz" "$WORKDIR_SCAN_TMP/unrelated-dir" 2>/dev/null || true
+mkdir -p "$WORKDIR_SCAN_TMP/rite-pr-create-victim"      # match -> reaped
+mkdir -p "$WORKDIR_SCAN_TMP/rite-pr-cleanup-test-xyz"   # different prefix -> survive
+mkdir -p "$WORKDIR_SCAN_TMP/unrelated-dir"             # unrelated -> survive
+touch -t 202001010000 "$WORKDIR_SCAN_TMP/rite-pr-create-victim" "$WORKDIR_SCAN_TMP/rite-pr-cleanup-test-xyz" "$WORKDIR_SCAN_TMP/unrelated-dir"
+TEST_REPO=$(make_temp_repo)
+( cd "$TEST_REPO" && bash "$CLEANUP" >/dev/null 2>&1 )
+if [ ! -d "$WORKDIR_SCAN_TMP/rite-pr-create-victim" ] \
+   && [ -d "$WORKDIR_SCAN_TMP/rite-pr-cleanup-test-xyz" ] \
+   && [ -d "$WORKDIR_SCAN_TMP/unrelated-dir" ]; then
+  pass "T-08: rite-pr-create-* のみ回収、無関係 prefix は保護"
+else
+  fail "T-08: victim=$([ -d "$WORKDIR_SCAN_TMP/rite-pr-create-victim" ] && echo present || echo gone), test-xyz=$([ -d "$WORKDIR_SCAN_TMP/rite-pr-cleanup-test-xyz" ] && echo present || echo gone), unrelated=$([ -d "$WORKDIR_SCAN_TMP/unrelated-dir" ] && echo present || echo gone)"
+fi
+rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* "$WORKDIR_SCAN_TMP/rite-pr-cleanup-test-xyz" "$WORKDIR_SCAN_TMP/unrelated-dir" 2>/dev/null || true
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-09: --dry-run は orphan workdir を削除しない (refs #1311)
+# Given: an aged matching `rite-pr-create-*` workdir exists
+# When: Cleanup runs with --dry-run
+# Then: The workdir survives and a `[dry-run] would reap ...` line is printed
+# -----------------------------------------------------------------------
+echo "T-09: --dry-run は orphan workdir を削除しない (refs #1311)"
+rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
+mkdir -p "$WORKDIR_SCAN_TMP/rite-pr-create-dry"
+touch -t 202001010000 "$WORKDIR_SCAN_TMP/rite-pr-create-dry"
+TEST_REPO=$(make_temp_repo)
+t09_output=$( cd "$TEST_REPO" && bash "$CLEANUP" --dry-run 2>&1 )
+if [ -d "$WORKDIR_SCAN_TMP/rite-pr-create-dry" ] && echo "$t09_output" | grep -q 'would reap orphan workdir'; then
+  pass "T-09: dry-run は削除せず候補をリスト"
+else
+  fail "T-09: dry=$([ -d "$WORKDIR_SCAN_TMP/rite-pr-create-dry" ] && echo present || echo gone). Output: $t09_output"
+fi
+rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-10: find wholesale 失敗が silent でない (refs #1311)
+# Given: TMPDIR が存在しないパスを指し、Step 3 の find が wholesale 失敗する
+# When: Cleanup runs
+# Then: find 失敗は WARNING + errors++ で surface され status=failed になる
+#       (process substitution の rc 非伝播による silent no-op 化を防ぐ回帰テスト)
+# TMPDIR override はこの 1 実行に限定する。cleanup script の mktemp は /tmp 直書きのため
+# bogus TMPDIR の影響を受けず、find の base 走査のみが失敗する。
+# -----------------------------------------------------------------------
+echo "T-10: find wholesale 失敗が silent でない (refs #1311)"
+TEST_REPO=$(make_temp_repo)
+t10_output=$( cd "$TEST_REPO" && TMPDIR=/nonexistent/rite-pr-cleanup-does-not-exist bash "$CLEANUP" 2>&1 )
+if echo "$t10_output" | grep -q 'status=failed' \
+   && echo "$t10_output" | grep -q 'find による orphan workdir 走査が失敗'; then
+  pass "T-10: find 失敗が WARNING + status=failed で surface される (silent 化しない)"
+else
+  fail "T-10: status=failed と find WARNING を期待。Output: $t10_output"
 fi
 cleanup_temp_repo "$TEST_REPO"
 

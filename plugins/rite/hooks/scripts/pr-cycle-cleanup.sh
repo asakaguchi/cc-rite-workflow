@@ -8,6 +8,15 @@
 # READ-ONLY contract forbids `git worktree remove` / `git branch -D`, so
 # cleanup MUST run from the orchestrator side.
 #
+# Additionally, reaps orphaned `rite-pr-create-*` workdirs left in
+# `${TMPDIR:-/tmp}` by pr/create.md Phase 3.4 (Issue #1311). Its 3-step protocol
+# (mktemp -d -> Write tool -> gh pr create) spans separate processes, so a
+# malformed tool-call between workdir allocation and `gh pr create` leaves an
+# empty (or partially written) workdir behind. create.md's own signal-specific
+# trap only covers the gh-create block, so this cross-process orphan is swept
+# here. An age guard (mtime > 24h) ensures only true orphans are reaped, never
+# an in-flight workdir held by a paused concurrent session.
+#
 # Strict regex `^pr-[0-9]+-(cycle[0-9]+|test|experiment|mutation|verify|check|sandbox)$`
 # protects unrelated branches (e.g. `pr-918-cycle4-feature`,
 # `feature/pr-918-cycle4`, `pr-994-testing-suite`) from accidental deletion
@@ -30,7 +39,7 @@
 #   bash pr-cycle-cleanup.sh [--dry-run]
 #
 # Output (stdout): one structured status line per invocation
-#   [pr-cycle-cleanup] status=<cleaned|noop|failed>; worktrees=<N>; branches=<N>
+#   [pr-cycle-cleanup] status=<cleaned|noop|failed>; worktrees=<N>; branches=<N>; workdirs=<N>
 #
 # Exit codes:
 #   0  cleanup completed (or nothing to clean)
@@ -77,6 +86,7 @@ readonly WIKI_WORKTREE_PATH=".rite/wiki-worktree"
 
 worktrees_removed=0
 branches_deleted=0
+workdirs_reaped=0
 errors=0
 
 # trap + cleanup パターン (canonical: references/bash-trap-patterns.md#signal-specific-trap-template)
@@ -85,8 +95,9 @@ errors=0
 wt_list_err=""
 prune_err=""
 ref_err=""
+workdir_find_err=""
 _rite_pr_cycle_cleanup() {
-  rm -f "${wt_list_err:-}" "${prune_err:-}" "${ref_err:-}"
+  rm -f "${wt_list_err:-}" "${prune_err:-}" "${ref_err:-}" "${workdir_find_err:-}"
 }
 trap 'rc=$?; _rite_pr_cycle_cleanup; exit $rc' EXIT
 trap '_rite_pr_cycle_cleanup; exit 130' INT
@@ -197,16 +208,67 @@ else
 fi
 
 # -----------------------------------------------------------------------
+# Step 3: Reap orphaned `rite-pr-create-*` workdirs (refs #1311).
+# pr/create.md Phase 3.4 の 3 段プロトコル (A: mktemp -d -> B: Write tool ->
+# C: gh pr create) は workdir を別プロセスに跨がせるため、(A) 確保後・(C) 到達前の
+# malformed tool-call 無言終了 (Cause A) で `${TMPDIR:-/tmp}/rite-pr-create-*` が
+# orphan として残る。create.md の signal-specific trap は (C) 自身の中断しか
+# カバーできないため、この cross-process orphan は orchestrator 側の本 GC で回収する。
+#
+# age ガード (mtime > WORKDIR_REAP_AGE_MINUTES) が安全性の核心: 健全な実行では
+# workdir は当該ターン (数分) で trap 削除されるため、閾値を超える workdir は確実に
+# orphan。マルチセッションで session A が (A)->(C) 間で長時間ポーズしている in-flight
+# workdir を session B の cleanup が誤回収しないよう、24h の保守的マージンを取る。
+# 内容の有無 (空 / title・body ファイル入り) を問わず `rm -rf` で回収する —
+# (B) Write 後に中断した non-empty orphan も age ガードで in-flight 非該当が保証
+# されるため安全に掃除できる。走査先は `mktemp -d -t` と同じ `${TMPDIR:-/tmp}` を
+# 尊重し create.md と一致させる (テスト時の隔離も可能になる)。
+# -----------------------------------------------------------------------
+readonly WORKDIR_REAP_AGE_MINUTES=1440  # 24h
+workdir_tmp_base="${TMPDIR:-/tmp}"
+workdir_tmp_base="${workdir_tmp_base%/}"  # strip trailing slash
+# find は process substitution `< <(find ...)` ではなく command substitution + here-string で
+# 呼ぶ。process substitution は subshell の exit code がシェルに伝播しないため、$TMPDIR 不在 /
+# 権限なし / IO エラーで find が wholesale 失敗しても空ループ → 無言 no-op になり、本ファイルが
+# Step 1/2 (wt_list / prune / ref) で確立した「失敗を silent に握り潰さず errors カウンタに加算する」
+# 方針 (上記 prune block 参照) と非対称になる。command substitution で rc を捕捉し、失敗時は
+# WARNING + errors++ で sibling と対称化する。空 stdout 時の here-string は単一空行を生むが、
+# ループ先頭の `[ -z ]` ガードが branch-loop と同様に skip する。
+workdir_find_err=$(mktemp /tmp/rite-pr-cycle-cleanup-workdir-err-XXXXXX 2>/dev/null) || workdir_find_err=""
+if workdir_list=$(find "$workdir_tmp_base" -maxdepth 1 -type d -name 'rite-pr-create-*' -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>"${workdir_find_err:-/dev/null}"); then
+  while IFS= read -r orphan_workdir; do
+    [ -z "$orphan_workdir" ] && continue
+    if [ "$DRY_RUN" = "1" ]; then
+      echo "[dry-run] would reap orphan workdir: $orphan_workdir"
+    else
+      if rm -rf "$orphan_workdir" 2>/dev/null; then
+        workdirs_reaped=$((workdirs_reaped + 1))
+      else
+        echo "WARNING: failed to reap orphan workdir '$orphan_workdir'" >&2
+        errors=$((errors + 1))
+      fi
+    fi
+  done <<< "$workdir_list"
+else
+  workdir_find_rc=$?
+  echo "WARNING: find による orphan workdir 走査が失敗しました (rc=$workdir_find_rc, base=$workdir_tmp_base)" >&2
+  if [ -n "$workdir_find_err" ] && [ -s "$workdir_find_err" ]; then
+    head -3 "$workdir_find_err" | sed 's/^/  /' >&2
+  fi
+  errors=$((errors + 1))
+fi
+
+# -----------------------------------------------------------------------
 # Status line
 # -----------------------------------------------------------------------
 if [ "$DRY_RUN" = "1" ]; then
   echo "[pr-cycle-cleanup] status=dry-run; pattern=$PATTERN"
 elif [ "$errors" -gt 0 ]; then
-  echo "[pr-cycle-cleanup] status=failed; worktrees=$worktrees_removed; branches=$branches_deleted; errors=$errors"
-elif [ "$worktrees_removed" -eq 0 ] && [ "$branches_deleted" -eq 0 ]; then
-  echo "[pr-cycle-cleanup] status=noop; worktrees=0; branches=0"
+  echo "[pr-cycle-cleanup] status=failed; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; errors=$errors"
+elif [ "$worktrees_removed" -eq 0 ] && [ "$branches_deleted" -eq 0 ] && [ "$workdirs_reaped" -eq 0 ]; then
+  echo "[pr-cycle-cleanup] status=noop; worktrees=0; branches=0; workdirs=0"
 else
-  echo "[pr-cycle-cleanup] status=cleaned; worktrees=$worktrees_removed; branches=$branches_deleted"
+  echo "[pr-cycle-cleanup] status=cleaned; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped"
 fi
 
 exit 0

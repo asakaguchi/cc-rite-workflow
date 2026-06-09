@@ -161,9 +161,10 @@
 | [security guard の deny メッセージ改善は判定ロジック不変の subkind タグ分岐で行う](pages/patterns/security-guard-message-only-subkind-branching.md) | patterns | security hook の over-broad block 体験を改善する際、deny 判定を一切緩和せず subkind タグでメッセージのみ分岐する (パターン名は既存テスト互換のため不変に pin)。代替案内が bypass 経路にならないことの実プローブ + message assertion の mutation non-vacuity 検証 + 「緩和しない」方針自体の回帰テスト pin が検証 3 点セット (PR #1323 / Issue #1322)。 | 2026-06-09T18:38:00Z | medium |
 | [Issue 対応案の番号参照を未検証のまま転記すると事実誤認が伝播する](pages/anti-patterns/unverified-issue-proposal-reference-transcription.md) | anti-patterns | Issue body の対応案文字列を verbatim 転記すると、対応案自体の事実誤認 (Issue を PR とラベルする参照種別の取り違え) が成果物へ伝播する。番号参照は転記前に gh issue/pr view で種別を実機検証し、repo 既存記法 (#1088 (実装: #1091) 形式) と整合させる。PR #1325 で実測 (2 reviewer High Confidence 検出、2 cycle 収束)。 | 2026-06-09T19:40:00Z | high |
 | [future-note Issue は実装前に前提の現在性を再検証する](pages/heuristics/future-note-issue-premise-revalidation.md) | heuristics | 「将来 X が起きたら留意」型 Issue は起票から実装までに前提が変わりうる。実装前に前提コード状態を Read/Grep で現 HEAD と突合し、変わっていれば記録に現在の事実 (準拠例) を織り込む。PR #1326 で実測 (TC-23 が既に追加済みだった)。 | 2026-06-09T19:45:00Z | medium |
+| [fail-fast 構造の記述は構文・検証対象・場所の 3 軸で分離する](pages/patterns/fail-fast-description-three-axis-separation.md) | patterns | bash fail-fast の記述は構文 (case `*)` vs else 分岐)・検証対象 (どの変数か)・場所 (どの step に分岐が実在するか) の 3 軸を分離して書く。case arm は bare `*)` と glob パターン arm を区別する。PR #1327 で旧記述の二重不正確 (構文+場所) を実測修正。 | 2026-06-09T19:55:00Z | medium |
 
 ## 統計
 
-- 総ページ数: 154
-- ドメイン別: patterns=53, heuristics=46, anti-patterns=55
-- 最終更新: 2026-06-09T19:45:00+00:00
+- 総ページ数: 155
+- ドメイン別: patterns=54, heuristics=46, anti-patterns=55
+- 最終更新: 2026-06-09T19:55:00+00:00

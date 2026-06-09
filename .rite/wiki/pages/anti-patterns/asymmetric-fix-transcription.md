@@ -2,8 +2,10 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-06-09T00:24:03Z"
+updated: "2026-06-09T10:52:17Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260609T094812Z-pr-1320.md"
   - type: "reviews"
     ref: "raw/reviews/20260608T233406Z-pr-1313.md"
   - type: "reviews"
@@ -1268,6 +1270,14 @@ PR #631 / #1167 が確立した「新規 lint step 追加時の 4-site 対称更
 
 検出・収束の特徴: orphan は PR #1306 (Issue #1305 board drift guard) review で prompt-engineer reviewer が scope-out 指摘として surface し Issue #1308 化。cleanup PR #1313 は prompt-engineer / code-quality 両 reviewer とも 0 findings で、Grep ファクトチェックにより `terminal-output` 0 件・別トークン `verify-terminal-output` 非干渉・区切り構造整合・cross-ref 破損なし・残存トークンが実在 Phase 3.x チェックと整合を確認。教訓: check entity を撤去する PR は、その entity を列挙する不変 enumeration (result-pattern / appendix cross-ref 等) を旧トークン名で grep し、orphan 残存ゼロを着手時に verify する ([[prose-design-without-backing-implementation]] の逆方向 = 実装撤去後に宣言だけ残るケース)。
 
+### symmetry test の assertion 強化を mutation 注入で non-vacuous 検証する — 転記先の入力性質 (静的/動的) 監査の実践 (PR #1320 — Issue #1215、0 findings の successful symmetrization application)
+
+PR #1304 と同じ self-referential test (`create-md-invocation-symmetry.test.sh`) の TC-5b を、file-wide な独立 `grep -qE` 2 本の AND から TC-7b / TC-5c と同型の **awk 隣接検査** へ強化した successful symmetrization application。旧 grep-AND は「`bash "$LINK_SCRIPT"` と positional 4-arg がファイル内のどこかに両方存在する」ことしか保証せず、コメントが主張する「同一 callsite に隣接」を強制できない vacuous な弱点を持っていた (4-arg が callsite から分離しても pass)。awk は `bash "[$]LINK_SCRIPT" \`(行継続) callsite 行の直後行に 4-arg があることを pin し、コメントの主張とアサーションの精度を一致させる。
+
+本 PR が示す核心的教訓は PR #1281 で確立した「対称転記時はテストが注入する入力の性質も対称性監査対象に含める」の **mutation による non-vacuity 検証の実践例**である。test / code-quality / error-handling の複数 reviewer が独立に worktree-only mutation を実機注入 (4-arg を callsite から分離 / flag・JSON 形式へ置換 / arg 順序入替 / arg 欠落) し、新アサーションが旧 grep-AND では pass していたケースを確実に FAIL させること (= vacuous/tautological でないこと) を立証した。「TC-7b / TC-5c と構造が同型」という見た目の対称性だけを根拠にせず、mutation で「意図した回帰を実際に検出できるか」を確かめるのが symmetrization application の検証の決定打。security reviewer はデータフローを entry-to-sink で追跡し attack surface 不在を確認、4 reviewer 全員 0 件 1 cycle mergeable。PR #992 (self-application) → #1304 (test-infrastructure 自身の対称化) に連なる self-referential successful application の系譜で、今回は「対称化対象がアサーションロジック自体」である点が新しい。
+
+推奨事項 2 件 (EOF theoretical false-negative: callsite が file 最終行のとき次行不在で見逃すが `$()` 行継続構造により実ファイルでは到達不能、TC-5 の link_total 整合性 pin が二重保護 / `awk ... || true` の silent false-negative: 全失敗モードが前提ガード + 静的 awk プログラム + SIGPIPE 面なしで Hypothetical、TC-3/TC-7b 確立済みパターンのため 3 箇所一括の別 Issue が整合的) はいずれも boundary / design_confirmation 分類で、Phase 7 でユーザーが「無視」を選択 (Issue 化なし)。
+
 ## 関連ページ
 
 - [Asymmetric Fix の解決は hub 化 + 責務分離文書化 (Option B) を選ぶ](../heuristics/asymmetric-fix-resolution-via-hub-creation.md)
@@ -1289,6 +1299,7 @@ PR #631 / #1167 が確立した「新規 lint step 追加時の 4-site 対称更
 
 ## ソース
 
+- [PR #1320 review results (Issue #1215、0 findings の successful symmetrization application: PR #1304 と同じ self-referential test `create-md-invocation-symmetry.test.sh` の TC-5b を file-wide grep-AND から TC-7b/TC-5c 同型の awk 隣接検査へ強化。旧 grep-AND の「両文字列が同ファイルに存在」しか保証しない vacuous な弱点を、callsite 直後行 pin で解消。複数 reviewer が worktree-only mutation (4-arg 分離 / flag・JSON 置換 / arg 順序入替 / arg 欠落) を実機注入し non-vacuous/non-tautological を立証 = PR #1281 「転記先の入力性質を対称性監査対象に含める」の mutation 検証実践例。4 reviewer 0 件 1 cycle mergeable、推奨 2 件は boundary/design_confirmation で Phase 7 ユーザー「無視」選択)](../../raw/reviews/20260609T094812Z-pr-1320.md)
 - [PR #1313 review results (Issue #1308、0 findings の successful symmetrization application: result-pattern 不変列挙の orphan token `terminal-output` が backing Phase 3.x チェック実体撤去後に sweep されず残存した cleanup PR。PR #631/#1167 の lint step 4-site 対称更新契約の撤去方向対称例。prompt-engineer / code-quality 両 reviewer 0 件、Grep ファクトチェックで `terminal-output` 0 件・別トークン `verify-terminal-output` 非干渉・cross-ref 破損なしを確認)](../../raw/reviews/20260608T233406Z-pr-1313.md)
 - [PR #1304 review results (Issue #1302、0 findings の self-referential successful symmetrization application: 本 anti-pattern 検出用 symmetry test (`create-md-invocation-symmetry.test.sh`) 自身の canonical callsite カウント grep 2 箇所 (TC-1/TC-2 共用 L65 / TC-9/TC-10 共用 helper L200) に invocation grep と同一の `bash [^|]*` anchor を付与し canonical ⊆ invocation の subset 関係を構造保証 → `non_canonical = invocations - canonical` の負値化 (誤 FAIL) を解消。`grep -c` (BRE) → `grep -cE` (ERE) でも `\.`/`\$` エスケープ意味保持を実機検証、TC-1/TC-2/TC-9/TC-10 を同一 commit で同時統一 (片方 TC のみ修正の対称崩れを回避)。error-handling reviewer が pre-existing な `grep -c ... || true` exit 2 握り潰し (17 箇所) を revert test FAIL で調査推奨へ正分類、全 25 TC pass を実機確認。4 reviewer 0 件 1 cycle mergeable、PR #992 self-application 経路の test-infrastructure 版)](../../raw/reviews/20260608T080632Z-pr-1304.md)
 - [PR #1303 review results (Issue #1297、0 findings の successful symmetrization application: gh CLI 3 段階 checklist 更新パターンの Step 1 EXIT trap を SoT (gh-cli-patterns.md) + 複製 2 ファイル (implement.md 5.1.2.1 / checklist-auto-check.md) へ対称削除。EXIT trap が Bash tool プロセス境界 (呼び出しごとに新プロセス) で Step 1 成功終了時に発火し tmpfile を Step 2 Read 前に削除する「無益かつ有害」trap を明示 rm へ置換。grep 全数監査で残存 raw 3 段階 trap 0 件 / 旧 rationale "Since trap is only effective" repo-wide 0 件、4 修正要素 (trap 削除 / 注記 2 種 / 失敗パス rm / Step 3 明示 rm) を 3 site 対称、checklist-auto-check.md の tmpfile_read リテラル新設で旧 `rm -f ""` no-op leak も解消。implement.md:899 intro の rationale 欠落は revert test FAIL (pre-existing) で推奨事項降格 = 「同期すべきでない site の識別」系譜。helper issue-body-safe-update.sh は単一プロセス trap + `trap - EXIT` 解除の正設計で対象外。4 reviewer 0 件 1 cycle mergeable)](../../raw/reviews/20260608T065135Z-pr-1303.md)

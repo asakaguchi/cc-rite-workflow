@@ -1085,3 +1085,4 @@
 | 2026-06-09T19:40:00Z | ingest:update | pages/anti-patterns/unverified-issue-proposal-reference-transcription.md | PR #1325 fix (raw/fixes/20260609T191759Z-pr-1325.md): repo 既存記法への正規化 fix と gh 実機検証手法、同一行 nit 同梱で cycle 数抑制の教訓を sources 統合 |
 | 2026-06-09T19:40:00Z | ingest:update | pages/anti-patterns/unverified-issue-proposal-reference-transcription.md | PR #1325 review cycle 2 (raw/reviews/20260609T192157Z-pr-1325.md): 0 findings で 2 cycle mergeable 収束、Grep 突合 + gh 照合が検証の決定打である根拠を sources 統合 |
 | 2026-06-09T19:27:20Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |
+| 2026-06-09T19:45:00Z | ingest:create | pages/heuristics/future-note-issue-premise-revalidation.md | PR #1326 review (raw/reviews/20260609T193647Z-pr-1326.md): future-note Issue の前提再検証 heuristic を新規確立 (0 findings 1 cycle mergeable、TC-23 既追加の前提変化を実装前検出) |

@@ -1,0 +1,36 @@
+---
+title: "future-note Issue は実装前に前提の現在性を再検証する"
+domain: "heuristics"
+created: "2026-06-09T19:45:00+00:00"
+updated: "2026-06-09T19:45:00+00:00"
+sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260609T193647Z-pr-1326.md"
+tags: []
+confidence: medium
+---
+
+# future-note Issue は実装前に前提の現在性を再検証する
+
+## 概要
+
+「将来 X が起きたら留意」型の future-note Issue は、起票から実装までの間にコードベースが進み前提が変わっていることがある。実装前に前提（本件: 「TC-H7 が最後の TC」）を再検証すると、記録コメントが実際の参照対象を持つ形で書け、レビューでの正確性検証も一発で通る。
+
+## 詳細
+
+PR #1326（Issue #1174、flow-state.test.sh TC-H7 の corrupt state_file sandbox 隔離留意コメント追加、+4/-0）で実測:
+
+- **前提変化の検出**: Issue 起票時は TC-H7 がファイル末尾の最後の TC で「将来 TC を追加する場合の留意」だったが、実装時点では TC-23 (Issue #1173/#1274) が既に TC-H7 の後ろに追加済みだった（TC-23 は new_sandbox を正しく取得しており実害なし）。実装前の対象ファイル Read でこれを検出し、コメントに「直後の TC-23 は準拠済み」という現在性のある参照を含められた。
+- **レビュー観点**: コメントのみの追加 PR では、コメントの全主張（corrupt file 残置 / new_sandbox の隔離効果 / TC-23 の準拠）を実コード Read で突合する Comment Rot 検査がレビューの中心になる。主張を実装前に実機検証しておけば 1 cycle で 0 findings mergeable に収束する。
+- **記録形式**: symbolic anchor（TC-H7 / TC-23）は行番号参照と異なり refactor 耐性があり、comment quality gate（no_line_or_cycle_reference）を通過する記録形式として有効。
+
+適用指針: future-note 系 Issue（「現状問題なし、将来の留意点として記録」）に着手するときは、(1) Issue が前提とするコード状態（位置・件数・最終要素）を Read/Grep で現在の HEAD と突合し、(2) 前提が変わっていれば記録内容に現在の事実（準拠例・違反例）を織り込む。
+
+## 関連ページ
+
+- [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](../patterns/drift-check-anchor-semantic-name.md)
+- [Design doc は現 HEAD の SoT (registration / writer-reader grep) を verify してから書く](./design-doc-current-head-verification.md)
+
+## ソース
+
+- [PR #1326 review results](../../raw/reviews/20260609T193647Z-pr-1326.md)

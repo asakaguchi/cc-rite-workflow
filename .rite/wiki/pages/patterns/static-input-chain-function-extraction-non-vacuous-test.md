@@ -2,7 +2,7 @@
 title: "入力注入経路のない静的文字列処理連鎖は関数抽出 + 境界行 extract で非 vacuous unit テスト化する"
 domain: "patterns"
 created: "2026-06-05T18:33:35Z"
-updated: "2026-06-05T18:33:35Z"
+updated: "2026-06-09T02:35:18Z"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260605T181146Z-pr-1281.md"
@@ -10,6 +10,8 @@ sources:
     ref: "raw/reviews/20260605T180128Z-pr-1281.md"
   - type: "reviews"
     ref: "raw/reviews/20260605T182035Z-pr-1281-cycle2.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260609T010819Z-pr-1314.md"
 tags: ["test", "vacuous-assertion", "function-extraction", "mutation-testing", "bash", "unit-test", "awk-boundary-extract", "intentional-asymmetry"]
 confidence: high
 ---
@@ -60,6 +62,16 @@ cycle 1 の「source ガード追加 (fail-closed 化)」という defensive cod
 ### 検証の独立再実証 (cycle 2)
 
 cycle 2 の test reviewer は fix 側の mutation claim を鵜呑みにせず、独立に 4 種の mutation 実験 (各エスケープ行の個別削除 + neutralize→cat 置換) を worktree-only pattern で再実施し、4 段連鎖のどの 1 行を壊しても assertion が落ちることを再実証した。fix 側 claim (2 assertion fail) と観測数は異なったが「非 vacuous」という核心の一致を確認して合意 — 詳細は [[mutation-testing-test-fidelity]] を参照。
+
+### detection program 抽出への拡張 (PR #1314 で確認, 0 findings)
+
+本 pattern の「関数抽出」は **検出ロジック (jq filter / detection program) の抽出** にも一般化される。PR #1314 (T-7 behavioral fixture) は `projects-board-drift-check.sh` の jq 検出 program を **コピーではなく awk で実体抽出** し、`gh api graphql` 出力を模した GraphQL-shaped JSON fixture (6 分類ケース) を stdin で流して classification を検証した。これにより、jq 述語の literal を保持したまま周囲の scoping を反転させる semantic break (`$pitem != null` → `== null`、`select($st != "Done")` → `== "Done"`、`.project.number == $pn` board scoping 削除) — 静的 grep (T-5) では literal 一致のため見えない break — が behavioral assert で捕捉される。4 reviewer (test / code-quality / error-handling / security) が全員「可」、mutation 検証で検出能力を実証し 0 findings / 1 cycle mergeable。
+
+確認された 3 つの設計点:
+
+1. **awk marker/terminator boundary で実 program を抽出**: `/jq -r --argjson pn/` を開始 marker、post-marker 最初の `jq_err` 行を terminator として jq filter 本体を byte-complete に抽出する。マーカー一意性・境界選択は固定 +N 行 window ではなく state machine 的に追う ([[awk-bash-block-termination-tracking]] と同系)。抽出失敗時は `[ -z "$jq_prog" ]` fail-safe ガードで明示 FAIL させ silent pass を防ぐ。
+2. **fixture 到達不能層は静的 assert で分担補完**: jq fixture では到達できない GraphQL レイヤの break (`projectItems(first: 10)` → `first: 0` は jq 実行前に結果を空にする) は behavioral test では捕捉できないため、`assert_file_contains "$DRIFT_SH" 'projectItems\(first: [1-9]'` の静的 assert で補完する。behavioral test と static assert の責務分担を意図的に設計する。
+3. **過検出ガードの絶対値 assert**: 「drift 行が厳密に 2 行」を TAB 担持行カウントで assert し、board-membership scoping 破壊 (not-on-board / other-project の取りこぼし) による over-detection を捕捉する。
 
 ## 関連ページ
 

@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-06-09T05:36:54Z | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1317 (Issue #1312) review: 適用 20 を追記。inline-gh-create-title の開始引用符 alternation `["']` の single-quote branch を pin する TC-026/027/028 を test/error-handling reviewer が独立 mutation で非 vacuous 立証 (`["']`→`["]` で TC-026 のみ FAIL / `$` 除外撤去で TC-018+TC-027 FAIL)、0 findings / 1 cycle mergeable |
 | 2026-05-26T17:30:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=212, broken_refs=0 |
 | 2026-05-26T17:25:00+09:00 | ingest:skip | raw/reviews/20260526T060527Z-pr-1148.md | PR #1148 cycle 1 review: 主要観察 (silent failure 解消経路 / control-char matrix / RETURN trap) は既存 patterns/heuristics に集約済。loop convergence pattern (cycle counter なし設計) は新規 page 候補だが本 ingest セッションでは context 制約のため skip、手動 `/rite:wiki:ingest` 推奨 |
 | 2026-05-26T17:25:00+09:00 | ingest:skip | raw/reviews/20260526T063702Z-pr-1148-cycle-2.md | PR #1148 cycle 2 review: journal comment doctrine 違反検出。観点は既存 `comment-best-practices` 系列に集約済 |

@@ -2,8 +2,10 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-06-08T05:59:49Z"
+updated: "2026-06-09T05:36:54Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260609T052136Z-pr-1317.md"
   - type: "reviews"
     ref: "raw/reviews/20260608T032933Z-pr-1301.md"
   - type: "reviews"
@@ -517,6 +519,31 @@ PR #1301 (Issue #1293 — symmetry test の保護対象に `pr/create.md` / `pr/
 
 教訓: 既存 canonical TC を一般化して新 helper を作るテスト追加 PR では、(a) 新 assertion が想定退行で FAIL する teeth 確認、(b) 新 helper の grep/arithmetic が既存 TC と byte 一致する対称性照合、の 2 軸を reviewer 検証手段として併用すると、create.md 系と同等の検証強度を保ったまま 1 cycle 収束できる。byte-identical generalization の対称性側面は [[asymmetric-fix-transcription]] を参照。
 
+### 適用 20: regex alternation の片側 branch を pin する positive TC を reviewer 側 mutation で非 vacuous 立証 (PR #1317 で実証)
+
+PR #1317 (Issue #1312 — `bash-heaviness-check` の standalone signal `inline-gh-create-title` に single-quote / 非 bash フェンス TC を補強、+56/-0 でテストのみ変更・検出器本体無変更) は 0 findings / 1 cycle mergeable に到達し、適用 7 (regex alternation per-branch coverage) と 適用 13/18/19 (テストのみ変更 PR を reviewer 側 worktree mutation で非 vacuous 立証) が**同一 PR で合流**した successful preventive application。
+
+#### 検証構造 — 開始引用符 alternation の `'` branch が既存 TC で dead range だった
+
+検出 regex `--title[[:space:]=]+["'][^$"']` の開始引用符クラス `["']` は、既存 TC-017/019/024 が**全て double-quote** だったため `'` branch の positive coverage を持たず、`["']`→`["]` の劣化 mutation が 25 TC を全 PASS のまますり抜ける状態だった (適用 7-A「alternation の片側 positive coverage 欠落」と同型、対象が gh stderr regex から検出器の opening-quote class に変わった版)。test-reviewer と error-handling-reviewer が**それぞれ独立に**隔離環境で 2 種の mutation を実機適用し、追加 TC の teeth を実証:
+
+| Mutation | 期待 | 検出する TC |
+|----------|------|------------|
+| `["']` → `["]` (single-quote branch 除去) | 28 TC 中 TC-026 のみ FAIL (既存 double-quote TC-017/019/024 は全 PASS) | TC-026 (single-quote positive) |
+| `[^$"']` から `$` 除外を撤去 | TC-018 (double-quote `"$var"`) + TC-027 (single-quote `'$pr_title'`) が FAIL | TC-027 (single-quote `$` sentinel) |
+
+→ single-quote branch の追加 TC が「double-quote TC では捕捉不能な劣化」を**単独で**検出することを 2 reviewer が cross-validation で確認。
+
+#### Asymmetric Fix Transcription 監査の test 側適用
+
+test-reviewer は Wiki anti-pattern [[asymmetric-fix-transcription]] の「転記先が静的 reason のみで vacuous 化していないか」観点を本 PR の対称転記 TC (double-quote → single-quote への転記) に適用し、**TC-026 fixture から `--title` を除くとアサーション (rc=1 + signal) が崩れる (falsifiable = 非 vacuous)** ことを確認した。適用 16 (PR #1281) の TC-116 vacuous 教訓が、転記元/転記先の「注入する入力の性質 (静的 vs 動的)」を対称性監査対象に含める形で test 追加 PR の review に定着している。
+
+#### 設計判断の test pin
+
+TC-027 は single-quote 内 `$` (`--title '$pr_title'`) が bash では literal だが検出器は `$` を変数 sentinel とみなし not-flag する**意図的 false-negative** を pin する。「real variable form を決してブロックしない安全側の選択」という設計判断をコメントで明文化したうえで test = 実行可能仕様として固定しており、適用 12 (非ブロッキング契約のような observable な差が出にくい invariant) と同じく「設計意図を test で pin する」系譜。
+
+教訓: 検出 regex の alternation / negated bracket の各 branch は、それぞれ独立の positive/negative TC で pin しないと片側が dead range のまま劣化 mutation をすり抜ける。テストのみ変更 PR では reviewer 側の独立 mutation 再現 (2 reviewer 以上) が teeth の cross-validation として 1 cycle 収束を支える (適用 13/18/19 の連続再現)。boundary 推奨 (equals × single-quote の 2×2 完全網羅) は区切り文字クラス `[[:space:]=]` と開始引用符クラス `["']` が独立文字クラスで直交 pin 済みのため reviewer が「実害なし・スコープ外」と非 blocking 判定し、user も Phase 7 で「無視」を選択した — alternation の各因子が独立なら直交 pin で十分という判断の実測。
+
 ## 関連ページ
 
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
@@ -557,3 +584,4 @@ PR #1301 (Issue #1293 — symmetry test の保護対象に `pr/create.md` / `pr/
 - [PR #1283 review results — TC-116 vacuous 教訓を設計段階から反映した fail-closed テスト追加、4 reviewer 独立 mutation 実験で非 vacuous 性を実証、fake tr 引数精密スコープで巻き添えゼロ (0 findings / 1 cycle mergeable)](../../raw/reviews/20260606T002556Z-pr-1283.md)
 - [PR #1295 review results — テストのみ変更 follow-up PR で新規 assert 4 件の非 vacuous 性を worktree-only mutation で立証、path 集合差分化の双方向 mutation 検証 + jq fault-injection shim の `-s` 完全一致 + scenario gate 二重ガード (0 findings / 1 cycle mergeable)](../../raw/reviews/20260606T171726Z-pr-1295.md)
 - [PR #1301 review results — symmetry test 保護対象拡張のテストのみ変更 PR で新 helper assert_single_create_caller の (a)(b)(c) 3 assertion を 3 reviewer が worktree-isolated mutation (nested cmdsub 退行 + flag-style --title 退行) で teeth 立証、既存 TC との byte-identical 対称性照合を検証手段に併設 (0 findings / 全 4 レビュアー可で初回 mergeable)](../../raw/reviews/20260608T032933Z-pr-1301.md)
+- [PR #1317 review results — inline-gh-create-title の開始引用符 alternation `["']` の single-quote branch を pin する TC-026/027/028 を test/error-handling reviewer が独立 mutation (`["']`→`["]` で TC-026 のみ FAIL / `$` 除外撤去で TC-018+TC-027 FAIL) で非 vacuous 立証、Asymmetric Fix Transcription の test 側監査も適用 (0 findings / 1 cycle mergeable)](../../raw/reviews/20260609T052136Z-pr-1317.md)

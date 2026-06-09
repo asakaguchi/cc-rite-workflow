@@ -2,8 +2,10 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-06-09T05:36:54Z"
+updated: "2026-06-09T09:01:30Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260609T085210Z-pr-1319.md"
   - type: "reviews"
     ref: "raw/reviews/20260609T052136Z-pr-1317.md"
   - type: "reviews"
@@ -544,6 +546,24 @@ TC-027 は single-quote 内 `$` (`--title '$pr_title'`) が bash では literal 
 
 教訓: 検出 regex の alternation / negated bracket の各 branch は、それぞれ独立の positive/negative TC で pin しないと片側が dead range のまま劣化 mutation をすり抜ける。テストのみ変更 PR では reviewer 側の独立 mutation 再現 (2 reviewer 以上) が teeth の cross-validation として 1 cycle 収束を支える (適用 13/18/19 の連続再現)。boundary 推奨 (equals × single-quote の 2×2 完全網羅) は区切り文字クラス `[[:space:]=]` と開始引用符クラス `["']` が独立文字クラスで直交 pin 済みのため reviewer が「実害なし・スコープ外」と非 blocking 判定し、user も Phase 7 で「無視」を選択した — alternation の各因子が独立なら直交 pin で十分という判断の実測。
 
+### 適用 21: negative assertion の非 vacuity を「差分ペア構造 + 入力決定性」で立証する — 能動 mutation を回せない READ-ONLY reviewer の構造的代替 (PR #1319 で実証)
+
+PR #1319 (Issue #1220 — `review-source-resolve.sh` の未カバー error 経路 5 件に behavioral assertion を追加、+125/-0 でテストのみ変更・検出器本体無変更) は 4 reviewer (test / performance / error-handling / security) 全員「可」/ 指摘 0 件 / 1 cycle mergeable に到達し、適用 13/16/18/19/20 の「テストのみ変更 PR を reviewer 側で非 vacuous 立証」系譜を継続した。本 PR の固有観点は **能動 mutation を回せない状況での negative assertion 非 vacuity 立証手法** にある。
+
+#### 観点 1: differential ペア構造が negative assertion の非 vacuity を構造的に保証する
+
+新規 `assert_err_lacks "REVIEW_SOURCE_STALE=1"` (match ケースで STALE marker が**出ない**ことを pin する negative assertion) は、単独では「STALE がそもそも当該経路で発火し得ない」だけでも trivially pass する vacuous リスクを持つ (適用 17 #3 の「negative assertion 単独は空出力 mutation で trivially pass」と同型)。本 PR の Test 6/8 は **同一 emitter に対し match ケース (STALE 不在を assert) と mismatch ケース (STALE 存在を assert) を対で配置**しており、mismatch ケースが「STALE は本経路で emit され得る」ことを実証するため、match ケースの negative assertion は「equality 分岐が STALE を実際に抑止している」ことを検証する非 vacuous なものになる。これは適用 10 (対称化の positive/negative 双方向 pin) を、**能動 mutation の代わりに「正常入力で発火する positive ケースを差分ペアとして併設する」構造的論証**へ展開したもの。reviewer (security) は「mismatch ケースが positive proof として働くため match ケースの negative assertion は trivially-passing ではない」と差分構造から非 vacuity を導いた。
+
+#### 観点 2: 入力決定性の理論的保証が runtime mutation の代替になりうる
+
+test-reviewer は READ-ONLY guard によりサンドボックス内の能動 git mutation を block されたが、`BOGUS_SHA` = all-zeros (Git の予約 null-object sentinel、実 commit object の content hash には成り得ない) と match ケースの sandbox 実 HEAD (`git rev-parse HEAD`) の組み合わせから `BOGUS_SHA != HEAD_SHA` が**決定論的に保証される**ことを理論的に立証し、mismatch 分岐が確実に発火することを runtime mutation なしで担保した。能動 mutation が制約で回せない場合、(a) 差分ペア構造 + (b) 入力値の決定性の理論保証 の 2 点で identification power を代替立証できる (適用 13 の worktree-only mutation が使えない READ-ONLY 経路の補完)。
+
+#### 観点 3: assert する reason 文字列の実装 emit との byte 一致照合が test 正しさの核心
+
+test / error-handling reviewer はともに、新規 9 件の `assert_err_has "...reason=..."` の reason 文字列 (`explicit_file_commit_sha_mismatch` / `local_file_critical_high_scope_nit_noted` / `local_file_schema_required_fields_missing` 等) を実装 `review-source-resolve.sh` の `echo "[CONTEXT] ..."` emit 行と 1 件ずつ突合し全一致を確認した。assert する literal が実装 emit と byte 乖離していれば test は壊れた実装でも green になる (vacuous) ため、**reason 文字列の実装 emit との byte 一致照合**が error-path behavioral test の正しさの核心になる (適用 19 の「既存 TC との byte-identical 対称性照合」を test↔実装 emit 方向へ向けた版)。
+
+教訓: 能動 mutation を回せない READ-ONLY reviewer でも、(a) match/mismatch の差分ペア構造 (positive ケースが negative assertion の非 vacuity を保証)、(b) 入力決定性の理論保証 (all-zeros SHA 等の構造的に衝突しない値)、(c) assert literal と実装 emit の byte 一致照合 の 3 点で error-path behavioral test の identification power を構造的に立証できる。差分ペアによる非 vacuity 担保は active mutation (適用 10/13) の構造的代替として、対称転記の vacuous リスク ([[asymmetric-fix-transcription]] の test 側双対) を回避する。
+
 ## 関連ページ
 
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
@@ -585,3 +605,4 @@ TC-027 は single-quote 内 `$` (`--title '$pr_title'`) が bash では literal 
 - [PR #1295 review results — テストのみ変更 follow-up PR で新規 assert 4 件の非 vacuous 性を worktree-only mutation で立証、path 集合差分化の双方向 mutation 検証 + jq fault-injection shim の `-s` 完全一致 + scenario gate 二重ガード (0 findings / 1 cycle mergeable)](../../raw/reviews/20260606T171726Z-pr-1295.md)
 - [PR #1301 review results — symmetry test 保護対象拡張のテストのみ変更 PR で新 helper assert_single_create_caller の (a)(b)(c) 3 assertion を 3 reviewer が worktree-isolated mutation (nested cmdsub 退行 + flag-style --title 退行) で teeth 立証、既存 TC との byte-identical 対称性照合を検証手段に併設 (0 findings / 全 4 レビュアー可で初回 mergeable)](../../raw/reviews/20260608T032933Z-pr-1301.md)
 - [PR #1317 review results — inline-gh-create-title の開始引用符 alternation `["']` の single-quote branch を pin する TC-026/027/028 を test/error-handling reviewer が独立 mutation (`["']`→`["]` で TC-026 のみ FAIL / `$` 除外撤去で TC-018+TC-027 FAIL) で非 vacuous 立証、Asymmetric Fix Transcription の test 側監査も適用 (0 findings / 1 cycle mergeable)](../../raw/reviews/20260609T052136Z-pr-1317.md)
+- [PR #1319 review results — review-source-resolve error 経路 assertion 追加で、negative assertion (`assert_err_lacks STALE`) の非 vacuity を match/mismatch 差分ペア構造 + all-zeros SHA 決定性で立証 (能動 mutation を READ-ONLY guard で回せない構造的代替)、reason 文字列の実装 emit byte 一致照合を test 正しさの核心と確認 (4 reviewer 可 / 0 findings / 1 cycle mergeable)](../../raw/reviews/20260609T085210Z-pr-1319.md)

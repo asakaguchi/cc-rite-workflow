@@ -1108,3 +1108,5 @@
 | 2026-06-10T12:50:00+09:00 | ingest:create | pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md | raw/fixes/20260609T232051Z-pr-1332-c4.md (PR #1332 fix c4) |
 | 2026-06-10T12:50:00+09:00 | ingest:create | pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md | raw/reviews/20260609T232442Z-pr-1332-c5.md (PR #1332 review c5 mergeable) |
 | 2026-06-10T08:26:48+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |
+| 2026-06-10T13:50:00+09:00 | ingest:update | pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md | raw/reviews/20260609T233431Z-pr-1334.md (PR #1334 review mergeable) |
+| 2026-06-10T13:52:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |

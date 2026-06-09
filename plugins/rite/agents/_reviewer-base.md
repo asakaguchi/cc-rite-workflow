@@ -43,6 +43,15 @@ Reviewer subagents **may** use the following read-only commands for evidence gat
 
 **Rationale**: The `[READ-ONLY RULE]` is not just a tool-level (`Edit`/`Write`) restriction — it is a **state-level** guarantee. A reviewer that runs `git checkout develop -- path/to/file` silently pollutes the parent session's index, which later surfaces as a "ghost diff" the parent session cannot attribute. Always compare blobs via `git show <ref>:<file>` or `git diff <ref> -- <file>` instead. 同様に、`git stash` は「undo すれば戻る」ように見えるが、stash entry の作成自体が parent session の working tree をクリアし、並列レビュアー間で race を起こす。`git add` / `git reset` も index を汚染し、後続の `/rite:pr:fix` が diff を誤認する根本原因になる。`git fetch --prune` は remote-tracking branch を削除するため、後続の `git diff origin/<branch>` が「unknown revision」で壊れる silent regression を引き起こす。
 
+### Shell-command wrappers are blocked — even for read-only probes
+
+`hooks/pre-tool-bash-guard.sh` は reviewer subagent からの **shell-command wrapper** (`eval`, `bash -c`, `sh -c`, `zsh -c`, `ksh -c`, `dash -c`, `fish -c`) を**中身に関係なく一律 block** する。これは「中身が read-only な挙動プローブなら許可してほしい」という直感に反するように見えるが、意図的な設計である。
+
+- **理由**: guard は Bash 組み込みの word-boundary マッチで state-mutating git を検出するが、quote の中身 (`bash -c '...'` の `...`) はこのマッチから opaque で、`bash -c 'git reset --hard'` のような state-mutating git を隠して bypass できてしまう。quote 内を信頼できる形で解析するのは fragile で新たな bypass 面を生むため、wrapper 自体を一律 block する方が安全側に倒せる。
+- **read-only プローブの代替**: wrapper を外す。コマンドを直接実行する / 複数コマンドは subshell `( cmd1; cmd2 )` でまとめる / スクリプト化して `bash <script.sh>` で実行する (上記 "Allowed Bash/Git commands" の `bash <test>` と同じ経路)。これらは block されない。
+
+> 補足: read-only な挙動プローブのために `bash -c` を使うと block されるが、`( ... )` / 直接実行 / `bash <script.sh>` で検証強度を落とさず代替できる (Issue #1322)。block 時の deny メッセージにもこの代替が表示される。
+
 ### Mutation experiments and verification (worktree-only)
 
 Reviewer が **mutation testing / verification experiment** (例: 「ある line を `return 1` から `exit 1` に変えたら test が失敗するか」「helper を inline 展開したら sibling test が落ちるか」) を実行する必要がある場合、**parent repo の working tree / branch を絶対に変更してはならない**。正規経路は以下の **worktree-only mutation pattern** に限定される。

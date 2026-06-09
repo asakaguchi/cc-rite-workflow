@@ -6,7 +6,8 @@
 # from Wiki page frontmatter and emits a marker block + io_error 3-value enum.
 #
 # Coverage:
-#   TC-1  same_branch 抽出 (canonical multi-line + legacy 単行、prefix 正規化、sort -u)
+#   TC-1  same_branch 抽出 (canonical multi-line + legacy 単行、prefix 正規化、sort -u dedup
+#         を p2 の重複 ref + 出力行数=1 assert で load-bearing 化)
 #   TC-2  same_branch 欠落ページ (legitimate absence) → read_ok=true, 空集合
 #   TC-3  空 pages_list → 空 marker block, read_ok=true, errors=0
 #   TC-4  placeholder residue (--branch-strategy "{...}") → exit 1 + LINT_PHASE_6_2_PLACEHOLDER_RESIDUE marker
@@ -19,6 +20,8 @@
 #   TC-11 separate_branch + 空 --wiki-branch → exit 2 (invocation error)
 #   TC-12 値なしフラグ末尾 (--branch-strategy 値なし) → exit 2、無限ループしない (timeout ガード)
 #   TC-13 same_branch io_error (page path が directory で cat 失敗) → read_ok=io_error
+#   TC-14 lint.md 6.2 helper-不在 fallback の io_error 出力契約 (静的回帰、Issue #1209)。
+#         TC-1..13 は helper (.sh) を、TC-14 は delegation 元 lint.md (.md) の fallback 分岐を守る
 #
 # NOT covered (environment-dependent): mktemp failure on read-only /tmp,
 # sort/awk pipeline OOM. Both downgrade to io_error and are verified by reading.
@@ -68,12 +71,16 @@ tags: ["x"]
 ---
 body
 EOF
-  # legacy 単行形式 `- ref:`
+  # legacy 単行形式 `- ref:`。2 本目は p1 と同一の正規化済み `raw/fixes/...` ref で、
+  # TC-1 の sort -u dedup assertion 用の意図的な重複 fixture。両ページとも prefix なしの
+  # 正規化済み形式のため正規化は no-op で、helper の `sort -u` だけが重複を 1 行に集約する
+  # (sort -u を cat に置換すると当該 ref が 2 行になり TC-1 dedup assert が fail する)。
   cat > "$root/.rite/wiki/pages/p2.md" <<'EOF'
 ---
 title: "Page 2"
 sources:
 - ref: "raw/issues/20260412T000000Z.md"
+- ref: "raw/fixes/20260411T000000Z.md"
 ---
 EOF
 }
@@ -95,6 +102,11 @@ assert_grep     "TC-1 marker begin"  "$outf" '^---all_source_refs_begin---$'
 assert_grep     "TC-1 marker end"    "$outf" '^---all_source_refs_end---$'
 assert_grep     "TC-1 read_ok=true"  "$outf" '^all_source_refs_read_ok=true$'
 assert_grep     "TC-1 errors=0"      "$outf" '^all_source_refs_read_errors=0$'
+# p1 と p2 が同一 ref `raw/fixes/20260411T000000Z.md` を持つため、sort -u dedup が効けば
+# 出力に 1 行だけ残る。helper の `sort -u` を `cat` に退化させると 2 行になりこの assert が
+# fail する (dedup 分岐を load-bearing 化する。label が謳う sort -u を実証)。
+dup_count=$(grep -c '^raw/fixes/20260411T000000Z\.md$' "$outf")
+assert "TC-1 sort -u dedup (p1/p2 重複 ref が 1 行に集約)" "1" "$dup_count"
 
 # === TC-2: same_branch 欠落ページ (legitimate absence) → read_ok=true ===
 echo "=== TC-2: same_branch legitimate absence ==="
@@ -247,6 +259,27 @@ assert "TC-13 exit 0 (非ブロッキング、io_error は stdout enum で表現
 assert_grep "TC-13 read_ok=io_error" "$outf" '^all_source_refs_read_ok=io_error$'
 assert_grep "TC-13 errors=1" "$outf" '^all_source_refs_read_errors=1$'
 assert_grep "TC-13 抽出失敗 WARNING" "$errf" '抽出に失敗'
+
+# === TC-14: lint.md 6.2 helper-不在 fallback の io_error 出力契約 (静的回帰) ===
+# helper (wiki-lint-source-refs.sh) が削除/rename されると lint.md ステップ 6.2 の
+# `if [ -z "$plugin_root" ] || [ ! -f ".../wiki-lint-source-refs.sh" ]` fallback が発火し、
+# all_source_refs を io_error 扱いにして空 marker block + read_ok=io_error を明示出力する
+# (silent 空集合だと真の欠落 missing_concept が false positive 化するため)。この fallback 経路は
+# helper 単体テスト (TC-1..13) の対象外で、契約行の削除 / io_error→true 改変 / marker 欠落 /
+# emit が else 側へ流出する regression をどのテストも検出しなかった (Issue #1209 task 2)。
+# 本 TC は fallback if-branch ([! -f ...wiki-lint-source-refs.sh] .. else) 内に出力契約 4 行が
+# 存在することを静的検証する。helper rename 時は guard 内の filename も変わり section 抽出が空に
+# なる → assert_grep_in_section の empty-section fail で surface する (rename 漏れ検出)。
+echo "=== TC-14: lint.md 6.2 helper-不在 fallback 契約 ==="
+LINT_MD="$PLUGIN_ROOT/commands/wiki/lint.md"
+assert_grep_in_section "TC-14 fallback marker begin (if-branch 内)" "$LINT_MD" \
+  '! -f .*wiki-lint-source-refs\.sh' '^else$' '"---all_source_refs_begin---"'
+assert_grep_in_section "TC-14 fallback marker end (if-branch 内)" "$LINT_MD" \
+  '! -f .*wiki-lint-source-refs\.sh' '^else$' '"---all_source_refs_end---"'
+assert_grep_in_section "TC-14 fallback read_ok=io_error (if-branch 内)" "$LINT_MD" \
+  '! -f .*wiki-lint-source-refs\.sh' '^else$' '"all_source_refs_read_ok=io_error"'
+assert_grep_in_section "TC-14 fallback read_errors=0 (if-branch 内)" "$LINT_MD" \
+  '! -f .*wiki-lint-source-refs\.sh' '^else$' '"all_source_refs_read_errors=0"'
 
 if ! print_summary "$(basename "$0")" \
   "drift: wiki-lint-source-refs.sh の挙動が変わった可能性。wiki/lint.md ステップ 6.2 委譲契約 (Issue #1195 #10) と marker block / io_error enum の出力契約を参照。"; then

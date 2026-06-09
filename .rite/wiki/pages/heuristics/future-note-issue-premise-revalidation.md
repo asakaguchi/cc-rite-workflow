@@ -2,10 +2,12 @@
 title: "future-note Issue は実装前に前提の現在性を再検証する"
 domain: "heuristics"
 created: "2026-06-09T19:45:00+00:00"
-updated: "2026-06-09T19:45:00+00:00"
+updated: "2026-06-09T19:56:00+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260609T193647Z-pr-1326.md"
+  - type: "retrospectives"
+    ref: "raw/retrospectives/20260609T195524Z-issue-1211.md"
 tags: []
 confidence: medium
 ---
@@ -26,6 +28,8 @@ PR #1326（Issue #1174、flow-state.test.sh TC-H7 の corrupt state_file sandbox
 
 適用指針: future-note 系 Issue（「現状問題なし、将来の留意点として記録」）に着手するときは、(1) Issue が前提とするコード状態（位置・件数・最終要素）を Read/Grep で現在の HEAD と突合し、(2) 前提が変わっていれば記録内容に現在の事実（準拠例・違反例）を織り込む。
 
+**2 例目 (Issue #1211、起票翌日に前提失効)**: 「usage 文言が実挙動 (未指定 → io_error 降格) と乖離」を前提に文言緩和を提案した Issue が、起票翌日の PR #1223 で逆方向 (実挙動を文言に合わせて runtime enforce) により解消済みだった。提案どおり文言を緩和すると事実誤認を導入するところで、対象行の現 HEAD Read + `git log -S "<guard 文言>"` による enforcement 追加日と起票日の突合が決定打となり、変更ゼロで close した。「文言 vs 実挙動の乖離」系 Issue は文言側・挙動側のどちらでも解消しうるため、着手時に両方向の解消有無を確認する。
+
 ## 関連ページ
 
 - [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](../patterns/drift-check-anchor-semantic-name.md)
@@ -34,3 +38,4 @@ PR #1326（Issue #1174、flow-state.test.sh TC-H7 の corrupt state_file sandbox
 ## ソース
 
 - [PR #1326 review results](../../raw/reviews/20260609T193647Z-pr-1326.md)
+- [Issue #1211 close retrospective](../../raw/retrospectives/20260609T195524Z-issue-1211.md)

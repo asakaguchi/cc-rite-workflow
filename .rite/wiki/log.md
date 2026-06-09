@@ -1089,3 +1089,4 @@
 | 2026-06-09T19:39:17Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |
 | 2026-06-09T19:55:00Z | ingest:create | pages/patterns/fail-fast-description-three-axis-separation.md | PR #1327 review (raw/reviews/20260609T195111Z-pr-1327.md): fail-fast 記述の 3 軸分離 (構文/検証対象/場所) + case arm 2 種別の区別 pattern を新規確立 (2 cycle mergeable、同一行 trivial 推奨の即時採用) |
 | 2026-06-09T19:53:08Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |
+| 2026-06-09T19:56:00Z | ingest:update | pages/heuristics/future-note-issue-premise-revalidation.md | Issue #1211 retrospective (raw/retrospectives/20260609T195524Z-issue-1211.md): 前提失効の 2 例目 (起票翌日の PR #1223 が逆方向で解消、変更ゼロ close) を sources 統合 |

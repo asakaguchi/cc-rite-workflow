@@ -90,4 +90,4 @@ assert_grep "link-sub-issue.sh handles 'ok' status (successful link)" "$TARGET" 
 assert_grep "link-sub-issue.sh handles 'already-linked' status (idempotency)" "$TARGET" '"already-linked"'
 assert_grep "link-sub-issue.sh handles 'failed' status (gh fatal)" "$TARGET" '"failed"'
 
-print_summary "$(basename "$0")" "If you change the link-sub-issue.sh argument contract (4 positional args), JSON output schema, or remove the placeholder rejection, update both this test and the consuming create.md ステップ 5.4 + sub-issue-link-handler.md."
+print_summary "$(basename "$0")" "If you change the link-sub-issue.sh argument contract (4 positional args), JSON output schema, or remove the placeholder rejection, update both this test and the consuming scripts/decompose-issues.sh + sub-issue-link-handler.md."

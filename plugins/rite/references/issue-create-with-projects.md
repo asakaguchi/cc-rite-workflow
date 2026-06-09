@@ -13,8 +13,7 @@ Referenced from:
 - `commands/pr/create.md` Phase 2.5.5
 - `commands/pr/cleanup.md` ステップ 3 (未完了タスクのチェック → 残作業 Issue 化)
 - `commands/issue/create.md` ステップ 4.3 (Single Issue creation)
-- `commands/issue/create.md` ステップ 5.3 (parent Issue creation in XL decomposition)
-- `commands/issue/create.md` ステップ 5.4 (Sub-Issue bulk creation in XL decomposition)
+- `scripts/decompose-issues.sh` (XL decomposition の decompose path — 親 Issue 作成 + Sub-Issue 一括作成を内包。`commands/issue/create.md` の「5.3 + 5.4 + 5.5 Step 1」から単一呼び出しで委譲される)
 - `commands/issue/references/fingerprint-cycling.md` (Quality Signal 1/3/4 由来の split → `fingerprint_split` / `quality_signal_3_split` / `quality_signal_4_split`)
 
 Related documents:
@@ -173,12 +172,14 @@ Each caller determines Priority using its own logic before passing it to the scr
 |---------|----------------|--------|
 | Incomplete tasks from merged PR | Medium | Default for remaining work |
 
-### create.md ステップ 5.3-5.4 (XL Decomposition, 旧 `create-decompose.md` Phase 3.3 を flat workflow に統合)
+### decompose path: `scripts/decompose-issues.sh` (XL Decomposition — create.md「5.3 + 5.4 + 5.5 Step 1」から委譲)
+
+decompose path の本スクリプト呼び出しは `scripts/decompose-issues.sh` 内に集約されている (create.md からの直接呼び出しは single-Issue path のステップ 4.3 のみ)。Priority mapping は helper 内の親作成 / Sub-Issue 一括作成の各段で適用される:
 
 | Context | Issue Priority | Reason |
 |---------|----------------|--------|
-| Parent Issue creation (ステップ 5.3 — Create the Parent Issue) | Determined in interview phase | Use Priority value decided during Issue creation |
-| Sub-Issue bulk creation (ステップ 5.4 — Bulk Creation of Sub-Issues) | Inherited from parent | Use parent Issue's Priority value |
+| Parent Issue creation (decompose-issues.sh 内の親作成段) | Determined in interview phase | Use Priority value decided during Issue creation |
+| Sub-Issue bulk creation (decompose-issues.sh 内の一括作成段) | Inherited from parent | Use parent Issue's Priority value |
 
 ### 旧 caller (retired)
 

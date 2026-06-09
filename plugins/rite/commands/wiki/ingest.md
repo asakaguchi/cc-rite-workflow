@@ -811,7 +811,7 @@ sentinel は grep 可能 (`grep -F '[ingest:returned-to-caller]'`) で rendered 
 | `wiki-worktree-commit.sh` exit 3 (git add/commit 失敗) | exit 1 で fail-fast。`git -C .rite/wiki-worktree status` で worktree の状態を確認 |
 | `wiki-worktree-commit.sh` exit 4 (push 失敗) | 非 fatal で継続。`git -C .rite/wiki-worktree push origin {wiki_branch}` で手動回復 |
 | `wiki-worktree-commit.sh` 未知の exit code | exit 1 で fail-fast |
-| `branch_strategy` が未知の値 | ステップ 5.1 / 5.2 末尾の else 分岐で fail-fast (`rite-config.yml` の `wiki.branch_strategy` を確認) |
+| `branch_strategy` が未知の値 | ステップ 5.1 の if/elif/else 末尾 else 分岐で fail-fast (ステップ 5.2 の bash block は same_branch 単独分岐のため未知値はステップ 5.1 の else が catch する。`rite-config.yml` の `wiki.branch_strategy` を確認) |
 | LLM が経験則を抽出できない | 該当 Raw Source は `ingest:skip` として log.md に記録、`ingested: true` に変更、`n_skipped` を +1 |
 
 ---

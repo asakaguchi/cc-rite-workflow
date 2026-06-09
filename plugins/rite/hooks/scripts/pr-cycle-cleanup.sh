@@ -95,8 +95,9 @@ errors=0
 wt_list_err=""
 prune_err=""
 ref_err=""
+workdir_find_err=""
 _rite_pr_cycle_cleanup() {
-  rm -f "${wt_list_err:-}" "${prune_err:-}" "${ref_err:-}"
+  rm -f "${wt_list_err:-}" "${prune_err:-}" "${ref_err:-}" "${workdir_find_err:-}"
 }
 trap 'rc=$?; _rite_pr_cycle_cleanup; exit $rc' EXIT
 trap '_rite_pr_cycle_cleanup; exit 130' INT
@@ -226,19 +227,36 @@ fi
 readonly WORKDIR_REAP_AGE_MINUTES=1440  # 24h
 workdir_tmp_base="${TMPDIR:-/tmp}"
 workdir_tmp_base="${workdir_tmp_base%/}"  # strip trailing slash
-while IFS= read -r orphan_workdir; do
-  [ -z "$orphan_workdir" ] && continue
-  if [ "$DRY_RUN" = "1" ]; then
-    echo "[dry-run] would reap orphan workdir: $orphan_workdir"
-  else
-    if rm -rf "$orphan_workdir" 2>/dev/null; then
-      workdirs_reaped=$((workdirs_reaped + 1))
+# find は process substitution `< <(find ...)` ではなく command substitution + here-string で
+# 呼ぶ。process substitution は subshell の exit code がシェルに伝播しないため、$TMPDIR 不在 /
+# 権限なし / IO エラーで find が wholesale 失敗しても空ループ → 無言 no-op になり、本ファイルが
+# Step 1/2 (wt_list / prune / ref) で確立した「失敗を silent に握り潰さず errors カウンタに加算する」
+# 方針 (上記 prune block 参照) と非対称になる。command substitution で rc を捕捉し、失敗時は
+# WARNING + errors++ で sibling と対称化する。空 stdout 時の here-string は単一空行を生むが、
+# ループ先頭の `[ -z ]` ガードが branch-loop と同様に skip する。
+workdir_find_err=$(mktemp /tmp/rite-pr-cycle-cleanup-workdir-err-XXXXXX 2>/dev/null) || workdir_find_err=""
+if workdir_list=$(find "$workdir_tmp_base" -maxdepth 1 -type d -name 'rite-pr-create-*' -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>"${workdir_find_err:-/dev/null}"); then
+  while IFS= read -r orphan_workdir; do
+    [ -z "$orphan_workdir" ] && continue
+    if [ "$DRY_RUN" = "1" ]; then
+      echo "[dry-run] would reap orphan workdir: $orphan_workdir"
     else
-      echo "WARNING: failed to reap orphan workdir '$orphan_workdir'" >&2
-      errors=$((errors + 1))
+      if rm -rf "$orphan_workdir" 2>/dev/null; then
+        workdirs_reaped=$((workdirs_reaped + 1))
+      else
+        echo "WARNING: failed to reap orphan workdir '$orphan_workdir'" >&2
+        errors=$((errors + 1))
+      fi
     fi
+  done <<< "$workdir_list"
+else
+  workdir_find_rc=$?
+  echo "WARNING: find による orphan workdir 走査が失敗しました (rc=$workdir_find_rc, base=$workdir_tmp_base)" >&2
+  if [ -n "$workdir_find_err" ] && [ -s "$workdir_find_err" ]; then
+    head -3 "$workdir_find_err" | sed 's/^/  /' >&2
   fi
-done < <(find "$workdir_tmp_base" -maxdepth 1 -type d -name 'rite-pr-create-*' -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>/dev/null)
+  errors=$((errors + 1))
+fi
 
 # -----------------------------------------------------------------------
 # Status line

@@ -397,6 +397,26 @@ rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
+# T-10: find wholesale 失敗が silent でない (refs #1311)
+# Given: TMPDIR が存在しないパスを指し、Step 3 の find が wholesale 失敗する
+# When: Cleanup runs
+# Then: find 失敗は WARNING + errors++ で surface され status=failed になる
+#       (process substitution の rc 非伝播による silent no-op 化を防ぐ回帰テスト)
+# TMPDIR override はこの 1 実行に限定する。cleanup script の mktemp は /tmp 直書きのため
+# bogus TMPDIR の影響を受けず、find の base 走査のみが失敗する。
+# -----------------------------------------------------------------------
+echo "T-10: find wholesale 失敗が silent でない (refs #1311)"
+TEST_REPO=$(make_temp_repo)
+t10_output=$( cd "$TEST_REPO" && TMPDIR=/nonexistent/rite-pr-cleanup-does-not-exist bash "$CLEANUP" 2>&1 )
+if echo "$t10_output" | grep -q 'status=failed' \
+   && echo "$t10_output" | grep -q 'find による orphan workdir 走査が失敗'; then
+  pass "T-10: find 失敗が WARNING + status=failed で surface される (silent 化しない)"
+else
+  fail "T-10: status=failed と find WARNING を期待。Output: $t10_output"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
 # Summary
 # -----------------------------------------------------------------------
 echo

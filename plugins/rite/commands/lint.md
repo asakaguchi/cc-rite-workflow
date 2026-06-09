@@ -1109,14 +1109,14 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the flo
 {wiki_growth_output}
 ```
 
-**Gitignore health check appendix (Issue #567)** (both standalone and E2E): When `gitignore_health_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth / terminal-output. When status is `warning` (exit 1, drift detected), the appendix output includes the stderr WARNING describing the drift so the operator can triage it. When status is `error` (exit 2, invocation failure), the appendix contains the stderr ERROR diagnostic:
+**Gitignore health check appendix (Issue #567)** (both standalone and E2E): When `gitignore_health_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth. When status is `warning` (exit 1, drift detected), the appendix output includes the stderr WARNING describing the drift so the operator can triage it. When status is `error` (exit 2, invocation failure), the appendix contains the stderr ERROR diagnostic:
 
 ```
 ⚠️ Gitignore health check: {gitignore_health_finding_count} findings detected ({gitignore_health_status}, non-blocking)
 {gitignore_health_output}
 ```
 
-**Backlink format check appendix (Issue #627)** (both standalone and E2E): When `backlink_format_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth / terminal-output / gitignore-health. When status is `warning` (exit 1, dialect violations detected), the appendix output includes each violation line (`[backlink-format][P1] file:NN: ...`) so reviewers can identify and fix the offending backlink format. When status is `error` (exit 2, invocation failure), the appendix contains the stderr diagnostic:
+**Backlink format check appendix (Issue #627)** (both standalone and E2E): When `backlink_format_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth / gitignore-health. When status is `warning` (exit 1, dialect violations detected), the appendix output includes each violation line (`[backlink-format][P1] file:NN: ...`) so reviewers can identify and fix the offending backlink format. When status is `error` (exit 2, invocation failure), the appendix contains the stderr diagnostic:
 
 ```
 ⚠️ Backlink format check: {backlink_format_finding_count} findings detected ({backlink_format_status}, non-blocking)
@@ -1179,7 +1179,7 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the flo
 {projects_board_drift_output}
 ```
 
-These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, terminal-output, gitignore-health, backlink-format, hardcoded-line-number, comment-journal, comment-line-ref, direct-gh-issue-create, orphan-reference-check, sh-cross-ref, bash-heaviness, or projects-board-drift warnings/invocation errors.
+These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, gitignore-health, backlink-format, hardcoded-line-number, comment-journal, comment-line-ref, direct-gh-issue-create, orphan-reference-check, sh-cross-ref, bash-heaviness, or projects-board-drift warnings/invocation errors.
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 

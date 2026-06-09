@@ -3045,7 +3045,7 @@ Output the review results via two independent paths. Use `mktemp` + `--body-file
 - `p61b_post_comment_mode_invalid`: `--post-comment-mode` が `true`/`false` 以外 (Issue #510 対応、caller branch selection ミスの machine-enforced 遮断、`p61c_post_comment_mode_invalid` と対称)
 - `p61b_pr_number_invalid`: `--pr` が literal substitute されていない / 数値以外 (`p61c_pr_number_invalid` と対称)
 - `json_saved_from_p61a_unset`: `--json-saved` が `true`/`false` 以外 (ステップ 6.1.a の `[CONTEXT] JSON_SAVED=` 読取漏れ)
-- `iso_timestamp_from_p61a_unset`: `--iso-timestamp` が sentinel 残留 / 空文字 / placeholder 形式 (ステップ 6.1.a の `[CONTEXT] ISO_TIMESTAMP=` 読取漏れ)
+- `iso_timestamp_from_p61a_unset`: `--iso-timestamp` が ISO 8601 形状でない (sentinel 残留 / 空文字 / placeholder 形式 / 非 ISO 形状を allowlist で一括 reject — ステップ 6.1.a の `[CONTEXT] ISO_TIMESTAMP=` 読取漏れ、Issue #1200)
 - `tmpfile_write_failure`: PR コメント本文の中間 tmpfile (mktemp) 失敗、または `--content-file` 不在
 - `raw_json_timestamp_injection_failed`: Raw JSON セクション内 sentinel の awk 置換 / post-condition (Raw JSON 内残留なし / Markdown 不変) が失敗
 - `gh_comment_post_failure`: `gh pr comment` 投稿が exit != 0 で失敗 (network / auth / rate-limit / permission、rc>=128 時は signal 番号併記)

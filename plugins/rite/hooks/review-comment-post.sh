@@ -111,17 +111,19 @@ if [ -z "$CONTENT_FILE" ] || [ ! -f "$CONTENT_FILE" ]; then
   exit 1
 fi
 
-# iso_timestamp sentinel fail-fast gate。
-# substitute 漏れ時 sentinel が Raw JSON に残留し、fix.md Priority 3 が sentinel 付き timestamp で
-# findings を解釈する silent regression を持つため機械的に強制。
-case "$ISO_TIMESTAMP" in
-  "{"*|*"}"|""|"$SENTINEL")
-    echo "ERROR: review-comment-post: iso_timestamp が literal substitute されていません (値: '$ISO_TIMESTAMP')" >&2
-    echo "  caller は ステップ 6.1.a の [CONTEXT] ISO_TIMESTAMP=... emit 値を --iso-timestamp に渡す必要があります (例: 2026-04-11T12:34:56+09:00)" >&2
-    echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=iso_timestamp_from_p61a_unset" >&2
-    exit 1
-    ;;
-esac
+# iso_timestamp fail-fast gate (ISO 8601 allowlist — Issue #1200)。
+# 旧 denylist (`{`-prefix / `}`-suffix / 空 / sentinel 完全一致のみ reject) は placeholder 残留の
+# 典型形しか弾けず、`&`/`\` 等の awk replacement metacharacter や任意の不正値を素通ししていた。
+# ISO 8601 形状 (`YYYY-MM-DDTHH:MM:SS` + `±HH:MM` または `Z`) の allowlist 検証に置換し、
+# sentinel 残留 / 空文字 / placeholder 形式 / 非 ISO 形状をすべて同一 reason で reject する
+# (substitute 漏れ時 sentinel が Raw JSON に残留し、fix.md Priority 3 が sentinel 付き timestamp で
+# findings を解釈する silent regression を防ぐ機械的強制)。
+if ! printf '%s' "$ISO_TIMESTAMP" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([+-][0-9]{2}:[0-9]{2}|Z)$'; then
+  echo "ERROR: review-comment-post: iso_timestamp が ISO 8601 形状ではありません (値: '$ISO_TIMESTAMP')" >&2
+  echo "  caller は ステップ 6.1.a の [CONTEXT] ISO_TIMESTAMP=... emit 値を --iso-timestamp に渡す必要があります (例: 2026-04-11T12:34:56+09:00)" >&2
+  echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=iso_timestamp_from_p61a_unset" >&2
+  exit 1
+fi
 
 # --- trap 保護 ---
 tmpfile_patched=""
@@ -154,7 +156,18 @@ awk -v ts="$ISO_TIMESTAMP" '
       if (past && lines[i] ~ /^```json$/) { in_fence = 1; print lines[i]; continue }
       if (past && in_fence && lines[i] ~ /^```$/) { in_fence = 0; print lines[i]; continue }
       if (in_fence) {
-        gsub(/"__RITE_TS_PLACEHOLDER_7f3a9b2c__"/, "\"" ts "\"", lines[i])
+        # index()/substr() ベースのリテラル置換 (Issue #1200)。gsub の replacement に ts を
+        # 直接埋め込むと `&` (マッチ全体に展開) / `\` (エスケープ) が metacharacter として
+        # 解釈され置換結果が壊れる。index/substr は needle / replacement とも純リテラル扱い。
+        needle = "\"__RITE_TS_PLACEHOLDER_7f3a9b2c__\""
+        repl = "\"" ts "\""
+        line = lines[i]
+        out = ""
+        while ((pos = index(line, needle)) > 0) {
+          out = out substr(line, 1, pos - 1) repl
+          line = substr(line, pos + length(needle))
+        }
+        lines[i] = out line
       }
       print lines[i]
     }

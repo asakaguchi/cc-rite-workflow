@@ -37,6 +37,8 @@
 #   (parsed by lint.md Phase 3.8 to populate `wiki_growth_finding_count`).
 #
 set -uo pipefail
+# shellcheck source=../control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"
 
 # Signal-specific trap (canonical signal-specific trap pattern from references/bash-trap-patterns.md):
 # - EXIT preserves the original exit code via `rc=$?`
@@ -198,7 +200,7 @@ if [ -n "$git_log_target" ]; then
   else
     git_log_rc=$?
     echo "WARNING: git log on '$git_log_target' failed (rc=$git_log_rc) — wiki-growth-check skipped" >&2
-    [ -n "$git_log_err" ] && [ -s "$git_log_err" ] && head -3 "$git_log_err" | sed 's/^/  /' >&2
+    [ -n "$git_log_err" ] && [ -s "$git_log_err" ] && head -3 "$git_log_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     echo "  対処: repository の整合性 (.git permission / corrupt object) を確認してください" >&2
     [ -n "$git_log_err" ] && rm -f "$git_log_err"
     git_log_err=""
@@ -273,7 +275,7 @@ jq_rc=$?
 
 if [ -z "$merged_count" ] || ! [[ "$merged_count" =~ ^[0-9]+$ ]]; then
   echo "WARNING: gh pr list の JSON 解析に失敗しました (jq rc=$jq_rc) — wiki-growth-check skipped" >&2
-  [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  jq: /' >&2
+  [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  jq: /' >&2
   echo "  raw stdout (先頭 200 文字): $(printf '%s' "$gh_json_out" | head -c 200)" >&2
   [ -n "$jq_err" ] && rm -f "$jq_err"
   echo "==> Total wiki-growth-check findings: 0"
@@ -330,7 +332,7 @@ check_pr_raw_correspondence() {
     --json number \
     --limit "$threshold" 2>"${gh_pr_err:-/dev/null}") || {
     echo "WARNING: wiki-growth-check: pr-raw-correspondence: gh pr list failed, skipping" >&2
-    [ -n "$gh_pr_err" ] && [ -s "$gh_pr_err" ] && head -3 "$gh_pr_err" | sed 's/^/  /' >&2
+    [ -n "$gh_pr_err" ] && [ -s "$gh_pr_err" ] && head -3 "$gh_pr_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     [ -n "$gh_pr_err" ] && rm -f "$gh_pr_err"
     return 0
   }
@@ -340,7 +342,7 @@ check_pr_raw_correspondence() {
   jq_pr_err=$(mktemp /tmp/rite-wiki-growth-jq-err-XXXXXX 2>/dev/null) || jq_pr_err=""
   recent_pr_numbers=$(printf '%s' "$recent_prs_json" | jq -r '.[].number' 2>"${jq_pr_err:-/dev/null}") || {
     echo "WARNING: wiki-growth-check: pr-raw-correspondence: jq parse failed, skipping" >&2
-    [ -n "$jq_pr_err" ] && [ -s "$jq_pr_err" ] && head -3 "$jq_pr_err" | sed 's/^/  /' >&2
+    [ -n "$jq_pr_err" ] && [ -s "$jq_pr_err" ] && head -3 "$jq_pr_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     [ -n "$jq_pr_err" ] && rm -f "$jq_pr_err"
     return 0
   }

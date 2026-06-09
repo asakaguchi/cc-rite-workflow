@@ -109,6 +109,8 @@
 # 0 worktree is on expected branch
 # 2 rev-parse failed (worktree corrupt / permission / git binary issue)
 # 3 worktree is on a different branch
+# shellcheck source=../../control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../control-char-neutralize.sh"
 verify_worktree_branch() {
  local worktree="$1"
  local expected_branch="$2"
@@ -145,7 +147,7 @@ verify_worktree_branch() {
  if [ "$wt_head_rc" -ne 0 ]; then
  echo "ERROR: git -C '$worktree' rev-parse --abbrev-ref HEAD が失敗しました (rc=$wt_head_rc)" >&2
  if [ -n "$rev_parse_err" ] && [ -s "$rev_parse_err" ]; then
- head -3 "$rev_parse_err" | sed 's/^/ git: /' >&2
+ head -3 "$rev_parse_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
  fi
  echo " 原因候補: worktree corrupt (.git file 破損) / permission denied / git binary 異常" >&2
  echo " 対処: git worktree remove '$worktree' && bash plugins/rite/hooks/scripts/wiki-worktree-setup.sh" >&2

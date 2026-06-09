@@ -108,6 +108,8 @@ fi
 # for rationale — `$(dirname "$0")` after `cd` breaks under relative
 # invocation paths.
 _SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../control-char-neutralize.sh
+source "$_SCRIPT_DIR/../control-char-neutralize.sh"
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
@@ -227,7 +229,7 @@ set -e
 if [ "$lsf_rc" -ne 0 ]; then
  echo "ERROR: git -C '$worktree_path' ls-files --others が失敗しました (rc=$lsf_rc)" >&2
  if [ -n "$lsf_err" ] && [ -s "$lsf_err" ]; then
- head -3 "$lsf_err" | sed 's/^/ git: /' >&2
+ head -3 "$lsf_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
  fi
  echo " 原因候補: broken worktree (.git file 破損) / permission denied / git binary 異常" >&2
  echo " 影響: untracked file 検出が skip されると pending change を誤って 'なし' と判定する経路があるため fail-fast" >&2

@@ -41,6 +41,8 @@
 #   0: 常に (success / 非ブロッキング失敗どちらも)。caller は LOCAL_SAVE_FAILED / JSON_SAVED で判定。
 #   1: 引数エラー (--pr / --content-file 欠落、--content-file 不在)。
 set -uo pipefail
+# shellcheck source=control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
 
 # --- Argument parsing ---
 PR_NUMBER=""
@@ -192,7 +194,7 @@ elif jq --arg ts "$iso_timestamp" '.timestamp = $ts' "$json_tmp" > "$json_ts_inj
   fi
 else
   echo "WARNING: jq による timestamp 注入に失敗しました (sentinel 置換不可)" >&2
-  [ -n "$jq_ts_err" ] && [ -s "$jq_ts_err" ] && head -3 "$jq_ts_err" | sed 's/^/  /' >&2
+  [ -n "$jq_ts_err" ] && [ -s "$jq_ts_err" ] && head -3 "$jq_ts_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   echo "  対処: --content-file で渡した JSON body ($CONTENT_FILE) が valid JSON で、.timestamp フィールド (sentinel __RITE_TS_PLACEHOLDER_7f3a9b2c__) を持つか確認してください" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=write_failure" >&2
   rm -f "$json_ts_injected"
@@ -209,7 +211,7 @@ fi
 jq_val_err_r=$(mktemp /tmp/rite-jq-val-err-r-XXXXXX 2>/dev/null) || jq_val_err_r=""
 if ! jq empty "$json_tmp" 2>"${jq_val_err_r:-/dev/null}"; then
   echo "WARNING: JSON 一時ファイルが syntactically invalid です (注入後に外部要因で破損した稀ケース。通常の literal substitute 漏れは upstream の write_failure で検出済)" >&2
-  [ -n "${jq_val_err_r:-}" ] && [ -s "$jq_val_err_r" ] && head -3 "$jq_val_err_r" | sed 's/^/  jq: /' >&2
+  [ -n "${jq_val_err_r:-}" ] && [ -s "$jq_val_err_r" ] && head -3 "$jq_val_err_r" | neutralize_ctrl --keep-newline | sed 's/^/  jq: /' >&2
   echo "  内容 preview (先頭 5 行):" >&2
   head -5 "$json_tmp" 2>/dev/null | sed 's/^/  /' >&2
   echo "  対処: review-result-schema.md に従った正しい JSON が生成されているか確認してください" >&2

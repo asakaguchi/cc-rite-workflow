@@ -18,6 +18,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=control-char-neutralize.sh
+source "$SCRIPT_DIR/control-char-neutralize.sh"
 
 # Resolve repository root
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$(pwd)" 2>/dev/null) || STATE_ROOT="$(pwd)"
@@ -64,7 +66,7 @@ if [ "$CLOSE_MODE" = false ]; then
       _isn_tag=""
       [ -z "$_isn_err" ] && _isn_tag=" stderr_capture=disabled"
       echo "[rite] WARNING: cleanup-work-memory: .rite-flow-state の .issue_number 取得失敗 (rc=$_isn_rc — FLOW_STATE may be corrupt${_isn_tag})" >&2
-      [ -n "$_isn_err" ] && [ -s "$_isn_err" ] && head -3 "$_isn_err" | sed 's/^/  /' >&2
+      [ -n "$_isn_err" ] && [ -s "$_isn_err" ] && head -3 "$_isn_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       ISSUE_NUMBER=""
     fi
     [ -n "$_isn_err" ] && rm -f "$_isn_err"
@@ -99,13 +101,13 @@ if [ "$CLOSE_MODE" = false ]; then
         else
           _mv_rc=$?
           echo "WARNING: .rite-flow-state の更新に失敗しました (mv rc=$_mv_rc)" >&2
-          [ -n "$_mv_err" ] && [ -s "$_mv_err" ] && head -3 "$_mv_err" | sed 's/^/  /' >&2
+          [ -n "$_mv_err" ] && [ -s "$_mv_err" ] && head -3 "$_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
         fi
         [ -n "$_mv_err" ] && rm -f "$_mv_err"
       else
         _jq_rc=$?
         echo "WARNING: .rite-flow-state のリセットに失敗しました (jq rc=$_jq_rc — missing in PATH / locale / parse error を区別)" >&2
-        [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | sed 's/^/  /' >&2
+        [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       fi
       [ -n "$_jq_err" ] && rm -f "$_jq_err"
     else
@@ -157,7 +159,7 @@ if [ -d "$WM_DIR" ]; then
   _find_out=$(find "$WM_DIR" -name 'issue-*.md' -type f 2>"${_find_err:-/dev/null}" | wc -l | tr -d ' ') || _find_out=""
   if [ -n "$_find_err" ] && [ -s "$_find_err" ]; then
     echo "WARNING: cleanup-work-memory: find $WM_DIR で stderr を観測 (permission denied / IO error 等)。残存件数は信頼できません。" >&2
-    head -3 "$_find_err" | sed 's/^/  /' >&2
+    head -3 "$_find_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     remaining="unknown"
   else
     remaining="${_find_out:-0}"

@@ -35,6 +35,8 @@
 #   under RITE_DEBUG would let a corrupt hook payload silently grant ownership.
 #   The stderr snippet stays behind RITE_DEBUG to keep the WARNING one line on
 #   the hot path.
+# shellcheck source=control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
 extract_session_id() {
   local hook_json="$1"
   local sid jq_err
@@ -47,7 +49,7 @@ extract_session_id() {
   else
     local _jq_rc=$?
     echo "[rite] WARNING: extract_session_id: jq parse failed on hook payload (rc=$_jq_rc, returning empty — ownership check falls back to backward-compat path)" >&2
-    [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+    [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     sid=""
   fi
   [ -n "$jq_err" ] && rm -f "$jq_err"
@@ -74,7 +76,7 @@ get_state_session_id() {
   else
     local _jq_rc=$?
     echo "[rite] WARNING: get_state_session_id: jq parse failed on $state_file (rc=$_jq_rc, returning empty — may classify a corrupt state file as legacy)" >&2
-    [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+    [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     sid=""
   fi
   [ -n "$jq_err" ] && rm -f "$jq_err"
@@ -184,7 +186,7 @@ check_session_ownership() {
   else
     local _jq_rc=$?
     echo "[rite] WARNING: check_session_ownership: jq parse failed on $state_file (rc=$_jq_rc, treating as stale — may overwrite another active session)" >&2
-    [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+    [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     updated_at=""
   fi
   [ -n "$jq_err" ] && rm -f "$jq_err"

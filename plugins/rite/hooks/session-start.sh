@@ -17,6 +17,8 @@ fi
 
 # Source session ownership helper for session_id extraction and ownership checks
 source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
+# shellcheck source=control-char-neutralize.sh
+source "$SCRIPT_DIR/control-char-neutralize.sh"
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
@@ -91,7 +93,7 @@ _rite_read_yaml_key() {
   _val=$(set -o pipefail; awk -v k="${_key}:" 'index($0, k) == 1 {print $2}' "$_file" 2>"${_err:-/dev/null}" | tr -d '[:space:]"') || _rc=$?
   if [ "$_rc" -ne 0 ]; then
     echo "[rite] WARNING: session-start: ${_label} 読み取り失敗 (rc=$_rc) — ${_file}" >&2
-    [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | sed 's/^/  /' >&2
+    [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   [ -n "$_err" ] && rm -f "$_err"
   printf '%s' "$_val"
@@ -207,7 +209,7 @@ if [ "$SOURCE" = "startup" ]; then
             _mv_rc=$?
             rm -f "$_repair_tmp" 2>/dev/null
             echo "rite: session-start: mv settings.local.json repair failed (rc=$_mv_rc)" >&2
-            [ -n "$_settings_mv_err" ] && [ -s "$_settings_mv_err" ] && head -3 "$_settings_mv_err" | sed 's/^/  /' >&2
+            [ -n "$_settings_mv_err" ] && [ -s "$_settings_mv_err" ] && head -3 "$_settings_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
           fi
           [ -n "$_settings_mv_err" ] && rm -f "$_settings_mv_err"
         else
@@ -221,7 +223,7 @@ if [ "$SOURCE" = "startup" ]; then
               # Non-empty stderr means python3 itself failed (missing/unreadable cleanup
               # script, import error) — surface its diagnostic but NOT the JSON hint, which
               # would misdirect: the fault is not the settings.local.json content (Issue #1241).
-              head -3 "$_py_err" | sed 's/^/  /' >&2
+              head -3 "$_py_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
             elif [ "$_py_rc" -eq 2 ]; then
               # The cleanup script ran, returned 2, and wrote nothing to stderr → invalid
               # JSON (its only rc=2 path). This is the one case where the JSON hint is correct.
@@ -324,7 +326,7 @@ if [ -n "$_active_err" ] && [ -s "$_active_err" ]; then
   # silent fallback to "inactive" だと corrupt JSON が見えず post-compact recovery が消失する
   # 経路を operator が triage できない。stderr を expose する。
   echo "rite: session-start: WARNING: jq parse of .active failed (STATE_FILE may be corrupt)" >&2
-  head -3 "$_active_err" | sed 's/^/  /' >&2
+  head -3 "$_active_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
 fi
 [ -n "$_active_err" ] && rm -f "$_active_err"
 if [ "$ACTIVE" != "true" ]; then
@@ -361,7 +363,7 @@ _reset_active_state() {
     "$STATE_FILE" 2>"${_reset_jq_err:-/dev/null}") || _composite=$'\t\t'
   if [ -n "$_reset_jq_err" ] && [ -s "$_reset_jq_err" ]; then
     echo "rite: session-start: WARNING: _reset_active_state jq read failed (STATE_FILE may be corrupt)" >&2
-    head -3 "$_reset_jq_err" | sed 's/^/  /' >&2
+    head -3 "$_reset_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   [ -n "$_reset_jq_err" ] && rm -f "$_reset_jq_err"
   IFS=$'\t' read -r _phase _issue _branch <<< "$_composite"
@@ -399,13 +401,13 @@ _reset_active_state() {
       _mv_rc=$?
       rm -f "$_tmp" 2>/dev/null
       echo "rite: session-start: mv defensive reset failed (rc=$_mv_rc)" >&2
-      [ -n "$_reset_mv_err" ] && [ -s "$_reset_mv_err" ] && head -3 "$_reset_mv_err" | sed 's/^/  /' >&2
+      [ -n "$_reset_mv_err" ] && [ -s "$_reset_mv_err" ] && head -3 "$_reset_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
     [ -n "$_reset_mv_err" ] && rm -f "$_reset_mv_err"
   else
     _reset_jq_rc=$?
     echo "rite: session-start: jq defensive reset failed (rc=$_reset_jq_rc; STATE_FILE may be corrupt)" >&2
-    [ -n "$_reset_jq_err" ] && [ -s "$_reset_jq_err" ] && head -3 "$_reset_jq_err" | sed 's/^/  /' >&2
+    [ -n "$_reset_jq_err" ] && [ -s "$_reset_jq_err" ] && head -3 "$_reset_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     rm -f "$_tmp" 2>/dev/null
   fi
   [ -n "$_reset_jq_err" ] && rm -f "$_reset_jq_err"
@@ -461,7 +463,7 @@ _tsv_output=$(jq -r '[
 ] | join("\u001f")' "$STATE_FILE" 2>"${_tsv_err:-/dev/null}") || _tsv_rc=$?
 if [ "$_tsv_rc" -ne 0 ]; then
   echo "rite: Warning - state file contains invalid JSON. Use /rite:resume to recover." >&2
-  [ -n "$_tsv_err" ] && [ -s "$_tsv_err" ] && head -3 "$_tsv_err" | sed 's/^/  /' >&2
+  [ -n "$_tsv_err" ] && [ -s "$_tsv_err" ] && head -3 "$_tsv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   [ -n "$_tsv_err" ] && rm -f "$_tsv_err"
   exit 0
 fi

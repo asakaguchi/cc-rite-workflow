@@ -8,6 +8,8 @@ set -euo pipefail
 command -v jq >/dev/null 2>&1 || exit 0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=control-char-neutralize.sh
+source "$SCRIPT_DIR/control-char-neutralize.sh"
 
 # Read CWD from stdin JSON (consistent with other hooks).
 # CWD is provided by the Claude Code runtime and is already an absolute path;
@@ -27,7 +29,7 @@ if CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>"${_cwd_jq_err:-/dev/null}"); t
 else
     _cwd_rc=$?
     echo "[rite] WARNING: notification: hook stdin jq parse failed (rc=$_cwd_rc) — notification dispatch skipped for this event" >&2
-    [ -n "${RITE_DEBUG:-}" ] && [ -n "$_cwd_jq_err" ] && [ -s "$_cwd_jq_err" ] && head -3 "$_cwd_jq_err" | sed 's/^/  /' >&2
+    [ -n "${RITE_DEBUG:-}" ] && [ -n "$_cwd_jq_err" ] && [ -s "$_cwd_jq_err" ] && head -3 "$_cwd_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     CWD=""
 fi
 [ -n "$_cwd_jq_err" ] && rm -f "$_cwd_jq_err"
@@ -85,7 +87,7 @@ _send_webhook() {
     else
         local _rc=$?
         echo "[rite] WARNING: notification($channel): curl failed (rc=$_rc) — webhook may be expired or unreachable" >&2
-        [ -n "$_curl_err" ] && [ -s "$_curl_err" ] && head -3 "$_curl_err" | sed 's/^/  /' >&2
+        [ -n "$_curl_err" ] && [ -s "$_curl_err" ] && head -3 "$_curl_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
     [ -n "$_curl_err" ] && rm -f "$_curl_err"
 }

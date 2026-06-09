@@ -1,11 +1,14 @@
 #!/bin/bash
 # rite workflow - Control Character Neutralization (shared)
 # Provides the single source of truth for the "control chars → ?" diagnostic
-# neutralization convention shared by flow-state.sh (_emit_jq_err_snippet),
-# stop-loop-continuation.sh (unknown handoff prefix WARNING / JSON emit
-# fallback), and pre-tool-bash-guard.sh (deny fallback JSON — Issue #1278),
-# plus the detection-side counterpart contains_ctrl() for reject-purpose
-# validation (flow-state.sh _validate_session_id, wiki-ingest-trigger.sh
+# neutralization convention shared by all hooks/ diagnostic snippet emission
+# sites (`head -3 "$err_file" | neutralize_ctrl --keep-newline | sed ... >&2`
+# — Issue #1183 rollout; the parity is pinned by
+# tests/diag-snippet-neutralize-parity.test.sh), by stop-loop-continuation.sh
+# (unknown handoff prefix WARNING / JSON emit fallback) and
+# pre-tool-bash-guard.sh (deny fallback JSON — Issue #1278), plus the
+# detection-side counterpart contains_ctrl() for reject-purpose validation
+# (flow-state.sh _validate_session_id, wiki-ingest-trigger.sh
 # SOURCE_REF / TITLE — Issue #1276).
 #
 # WHY a shared helper (Issue #1274): the POSIX class [[:cntrl:]] on glibc

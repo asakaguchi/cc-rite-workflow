@@ -252,7 +252,7 @@ if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
   else
     _sed_rc=$?
     echo "ERROR: sed による rite-config.yml wiki セクション抽出が失敗 (rc=$_sed_rc)" >&2
-    [ -n "$_yaml_err" ] && [ -s "$_yaml_err" ] && head -3 "$_yaml_err" | sed 's/^/  /' >&2
+    [ -n "$_yaml_err" ] && [ -s "$_yaml_err" ] && head -3 "$_yaml_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     echo "  safe-default: config parse 失敗のため staging を中止します (silent policy-violation 防止)" >&2
     [ -n "$_yaml_err" ] && rm -f "$_yaml_err"
     exit 2
@@ -267,7 +267,7 @@ if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
     else
       _awk_rc=$?
       echo "ERROR: awk による wiki.enabled 行抽出が失敗 (rc=$_awk_rc)" >&2
-      [ -n "$_yaml_err" ] && [ -s "$_yaml_err" ] && head -3 "$_yaml_err" | sed 's/^/  /' >&2
+      [ -n "$_yaml_err" ] && [ -s "$_yaml_err" ] && head -3 "$_yaml_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       echo "  safe-default: awk parse 失敗のため staging を中止します (silent policy-violation 防止)" >&2
       [ -n "$_yaml_err" ] && rm -f "$_yaml_err"
       exit 2

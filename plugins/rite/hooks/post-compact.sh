@@ -11,6 +11,8 @@ export _RITE_HOOK_RUNNING_POSTCOMPACT=1
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
+# shellcheck source=control-char-neutralize.sh
+source "$SCRIPT_DIR/control-char-neutralize.sh"
 
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
@@ -83,7 +85,7 @@ _flow_active_err=$(mktemp 2>/dev/null) || _flow_active_err=""
 FLOW_ACTIVE=$(jq -r '.active // false' "$FLOW_STATE" 2>"${_flow_active_err:-/dev/null}") || FLOW_ACTIVE="false"
 if [ -n "$_flow_active_err" ] && [ -s "$_flow_active_err" ]; then
   echo "[rite] WARNING: post-compact: jq parse of .active failed (FLOW_STATE may be corrupt)" >&2
-  head -3 "$_flow_active_err" | sed 's/^/  /' >&2
+  head -3 "$_flow_active_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
 fi
 [ -n "$_flow_active_err" ] && rm -f "$_flow_active_err"
 if [ "$FLOW_ACTIVE" != "true" ]; then
@@ -106,7 +108,7 @@ if [ "$_compact_val_rc" -ne 0 ]; then
   _compact_val_tag=""
   [ -z "$_compact_val_err" ] && _compact_val_tag=" stderr_capture=disabled"
   echo "[rite] WARNING: post-compact: jq parse of .compact_state failed (rc=$_compact_val_rc — COMPACT_STATE may be corrupt${_compact_val_tag})" >&2
-  [ -n "$_compact_val_err" ] && [ -s "$_compact_val_err" ] && head -3 "$_compact_val_err" | sed 's/^/  /' >&2
+  [ -n "$_compact_val_err" ] && [ -s "$_compact_val_err" ] && head -3 "$_compact_val_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
 fi
 [ -n "$_compact_val_err" ] && rm -f "$_compact_val_err"
 if [ "$COMPACT_VAL" != "recovering" ]; then
@@ -134,7 +136,7 @@ if [ -n "$_flow_data_err" ] && [ -s "$_flow_data_err" ]; then
   # concurrent writer race) を、上流 WARNING ではカバーできない経路として独立に expose する。
   # silent fall-through すると recovery が phase=unknown で再開する。
   echo "[rite] WARNING: post-compact: jq parse of flow-state composite fields failed (FLOW_STATE may be partially corrupt)" >&2
-  head -3 "$_flow_data_err" | sed 's/^/  /' >&2
+  head -3 "$_flow_data_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
 fi
 [ -n "$_flow_data_err" ] && rm -f "$_flow_data_err"
 
@@ -179,13 +181,13 @@ if acquire_wm_lock "$LOCKDIR"; then
       rm -f "$TMP_COMPACT"
       TMP_COMPACT=""
       echo "rite: post-compact: mv compact_state failed (rc=$_mv_rc)" >&2
-      [ -n "$_mv_err" ] && [ -s "$_mv_err" ] && head -3 "$_mv_err" | sed 's/^/  /' >&2
+      [ -n "$_mv_err" ] && [ -s "$_mv_err" ] && head -3 "$_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
     [ -n "$_mv_err" ] && rm -f "$_mv_err"
   else
     _jq_norm_rc=$?
     echo "rite: post-compact: jq normalize compact_state failed (rc=$_jq_norm_rc)" >&2
-    [ -n "$_jq_norm_err" ] && [ -s "$_jq_norm_err" ] && head -3 "$_jq_norm_err" | sed 's/^/  /' >&2
+    [ -n "$_jq_norm_err" ] && [ -s "$_jq_norm_err" ] && head -3 "$_jq_norm_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     rm -f "$TMP_COMPACT"
     TMP_COMPACT=""
   fi

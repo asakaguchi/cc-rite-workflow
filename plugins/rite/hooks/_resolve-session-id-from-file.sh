@@ -45,6 +45,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=control-char-neutralize.sh
+source "$SCRIPT_DIR/control-char-neutralize.sh"
 
 # verified-review (PR #688 cycle 39 H-01) MEDIUM (silent-failure-hunter):
 # `_resolve-session-id.sh` の存在 check を upfront で実施する。
@@ -136,7 +138,7 @@ else
   _tr_rc=$?
   echo "WARNING: _resolve-session-id-from-file.sh: tr が IO/permission エラーで失敗しました (rc=$_tr_rc)" >&2
   if [ -n "$_tr_err" ] && [ -s "$_tr_err" ]; then
-    head -3 "$_tr_err" | sed 's/^/  /' >&2
+    head -3 "$_tr_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   echo "  対処: $sid_file の permission / inode 健全性を確認してください" >&2
   echo "  影響: graceful degradation で空文字復帰しますが、cross-session guard が空 SID で経路判定する可能性があります" >&2

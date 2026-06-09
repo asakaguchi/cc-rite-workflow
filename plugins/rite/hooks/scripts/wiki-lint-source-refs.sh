@@ -45,6 +45,8 @@
 # the sort/awk pipelines exactly as the inline block did. `set -u` is likewise
 # omitted to preserve verbatim behavior; all variable refs are `${var:-}`-guarded.
 
+# shellcheck source=../control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"
 branch_strategy=""
 wiki_branch=""
 REPO_ROOT=""
@@ -287,7 +289,7 @@ while IFS= read -r page; do
       # 真の IO error: all_source_refs_read_errors を increment (後段で io_error に畳み込み)
       all_source_refs_read_errors=$((all_source_refs_read_errors + 1))
       echo "WARNING: $page の sources[].ref 抽出に失敗 (rc=$page_read_cmd_rc, branch_strategy=$branch_strategy)" >&2
-      [ -n "$page_err" ] && [ -s "$page_err" ] && head -3 "$page_err" | sed 's/^/  /' >&2
+      [ -n "$page_err" ] && [ -s "$page_err" ] && head -3 "$page_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
   fi
   [ -n "$page_err" ] && rm -f "$page_err"
@@ -326,7 +328,7 @@ if [ -n "$all_source_refs" ]; then
   sort_rc=$?
   if [ "$sort_rc" -ne 0 ]; then
     echo "WARNING: ステップ 6.2 の all_source_refs 正規化 pipeline が失敗しました (rc=$sort_rc)" >&2
-    [ -n "$sort_err" ] && [ -s "$sort_err" ] && head -3 "$sort_err" | sed 's/^/  /' >&2
+    [ -n "$sort_err" ] && [ -s "$sort_err" ] && head -3 "$sort_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     echo "  対処: sort バイナリ / /tmp の容量 / 権限を確認してください" >&2
     echo "  影響: all_source_refs が部分出力で populate されると真の欠落判定が false positive になるため io_error に降格します" >&2
     all_source_refs_read_ok="io_error"

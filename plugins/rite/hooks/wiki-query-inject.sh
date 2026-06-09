@@ -44,6 +44,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=control-char-neutralize.sh
+source "$SCRIPT_DIR/control-char-neutralize.sh"
 
 # Resolve project root (git root anchored). Matches session-start.sh /
 # _resolve-schema-version.sh / notification.sh convention. `$PWD`-based
@@ -174,7 +176,7 @@ if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
   else
     _sed_rc=$?
     echo "WARNING: failed to read wiki section from rite-config.yml (sed rc=$_sed_rc)" >&2
-    [ -n "$_yaml_err" ] && [ -s "$_yaml_err" ] && head -3 "$_yaml_err" | sed 's/^/  /' >&2
+    [ -n "$_yaml_err" ] && [ -s "$_yaml_err" ] && head -3 "$_yaml_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     echo "  lenient fallback: treating wiki as disabled and exiting silently" >&2
     exit 0
   fi
@@ -230,7 +232,7 @@ else
   _awk_rc=$?
   if [ "$_awk_rc" -ne 1 ]; then
     echo "WARNING: awk failed unexpectedly while detecting wiki.enabled line (rc=$_awk_rc)" >&2
-    [ -n "$_awk_err" ] && [ -s "$_awk_err" ] && head -3 "$_awk_err" | sed 's/^/  /' >&2
+    [ -n "$_awk_err" ] && [ -s "$_awk_err" ] && head -3 "$_awk_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     echo "  lenient fallback: treating wiki.enabled as absent" >&2
   fi
   # rc == 1 is the intentional "not found" path — no warning.
@@ -297,7 +299,7 @@ if [[ "$branch_strategy" == "separate_branch" ]]; then
   else
     _index_rc=$?
     echo "WARNING: cannot read index.md from ref '$ref' (git show rc=$_index_rc)" >&2
-    [ -n "$_index_err" ] && [ -s "$_index_err" ] && head -3 "$_index_err" | sed 's/^/  /' >&2
+    [ -n "$_index_err" ] && [ -s "$_index_err" ] && head -3 "$_index_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     exit 0
   fi
 else
@@ -474,7 +476,7 @@ while IFS=$'\x1f' read -r score title path domain summary updated confidence; do
       else
         _git_show_rc=$?
         echo "WARNING: cannot read ${path} from ref '${ref}' — index.md may be stale (git show rc=${_git_show_rc})" >&2
-        [ -n "$_git_show_err" ] && [ -s "$_git_show_err" ] && head -3 "$_git_show_err" | sed 's/^/  /' >&2
+        [ -n "$_git_show_err" ] && [ -s "$_git_show_err" ] && head -3 "$_git_show_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
         page_body=""
       fi
     else

@@ -66,6 +66,8 @@
 #   `==> Total ... findings: N` line (it is not a drift-count aggregator).
 #
 set -uo pipefail
+# shellcheck source=../control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"
 
 # Signal-specific trap (canonical pattern from references/bash-trap-patterns.md):
 # - EXIT preserves original exit code via `rc=$?`
@@ -197,7 +199,7 @@ if [ "$VERIFY_NEGATION" -eq 1 ]; then
     echo "  stdout: $add_dry_out" >&2
     if [ -n "$add_dry_err" ] && [ -s "$add_dry_err" ]; then
       echo "  stderr (先頭 3 行):" >&2
-      head -3 "$add_dry_err" | sed 's/^/    /' >&2
+      head -3 "$add_dry_err" | neutralize_ctrl --keep-newline | sed 's/^/    /' >&2
     fi
     echo "  対処: .gitignore の .rite/wiki/ 行直後 (gitignore-wiki-section-end anchor 直後) に" >&2
     echo "        !.rite/wiki/ と !.rite/wiki/** が配置されているか確認してください" >&2
@@ -280,7 +282,7 @@ fi
 #   2+ = git error
 if [ "$check_ignore_rc" -ge 2 ]; then
   echo "WARNING: gitignore-health-check: git check-ignore failed (rc=$check_ignore_rc) — skipping separate_branch verify" >&2
-  [ -n "$check_ignore_err" ] && [ -s "$check_ignore_err" ] && head -3 "$check_ignore_err" | sed 's/^/  /' >&2
+  [ -n "$check_ignore_err" ] && [ -s "$check_ignore_err" ] && head -3 "$check_ignore_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   # Report "unknown" (not "0") so lint aggregators don't mistake an invocation
   # failure for a clean run. exit 2 still signals invocation error to callers.
   echo "==> Total gitignore-health-check findings: unknown (verification failed)"
@@ -366,7 +368,7 @@ case "$branch_strategy" in
     else
       echo "==> gitignore-health-check: DRIFT DETECTED (same_branch): negation override for '.rite/wiki/' missing or broken" >&2
       echo "==> git add --dry-run $negation_probe returned rc=$add_dry_rc" >&2
-      [ -n "$add_dry_err" ] && [ -s "$add_dry_err" ] && head -3 "$add_dry_err" | sed 's/^/  /' >&2
+      [ -n "$add_dry_err" ] && [ -s "$add_dry_err" ] && head -3 "$add_dry_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       echo "==> Hint: same_branch strategy requires '!.rite/wiki/' negation entry in .gitignore (see section 'DRIFT-CHECK ANCHOR: same_branch verification-first setup steps' in .gitignore for setup steps)." >&2
       findings=$((findings + 1))
     fi

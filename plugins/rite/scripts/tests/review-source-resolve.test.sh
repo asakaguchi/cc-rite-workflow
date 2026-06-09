@@ -41,6 +41,11 @@ mkdir -p "$SANDBOX"
   git config user.name test
   git commit -q --allow-empty -m init
 )
+# Real HEAD of the sandbox — commit_sha stale detection compares the JSON's
+# commit_sha against this (#1220). BOGUS_SHA is a valid-shaped SHA guaranteed
+# to differ from HEAD so the mismatch branch fires deterministically.
+HEAD_SHA=$(cd "$SANDBOX" && git rev-parse HEAD)
+BOGUS_SHA="0000000000000000000000000000000000000000"
 
 OUT=""; ERR=""; RC=0
 run() {
@@ -58,12 +63,23 @@ assert_rc()        { [ "$RC" = "$1" ] && pass "$2 (rc=$RC)" || fail "$2 (rc=$RC,
 assert_err_has()   { printf '%s' "$ERR" | grep -qF "$1" && pass "$2" || fail "$2 — stderr missing: $1"; }
 assert_stdout_empty() { [ -z "$OUT" ] && pass "$1 (stdout empty)" || fail "$1 — stdout NOT empty: [$OUT]"; }
 assert_no_fixerror_stdout() { printf '%s' "$OUT" | grep -qF "[fix:error]" && fail "$1 — [fix:error] leaked to stdout" || pass "$1 ([fix:error] not on stdout)"; }
+assert_err_lacks() { printf '%s' "$ERR" | grep -qF "$1" && fail "$2 — stderr unexpectedly has: $1" || pass "$2"; }
 
 valid_json() {
   # $1 = path, $2 = overall_assessment (default fix-needed). No commit_sha => stale skip.
   local p="$1" oa="${2:-fix-needed}"
   cat > "$p" <<JSON
 {"schema_version":"1.1.0","pr_number":123,"overall_assessment":"$oa","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr"}]}
+JSON
+}
+
+valid_json_sha() {
+  # $1 = path, $2 = commit_sha, $3 = overall_assessment (default fix-needed).
+  # Same shape as valid_json but carries an explicit commit_sha so the stale
+  # detection branch (verified-review C-1) is exercised (#1220).
+  local p="$1" sha="$2" oa="${3:-fix-needed}"
+  cat > "$p" <<JSON
+{"schema_version":"1.1.0","pr_number":123,"commit_sha":"$sha","overall_assessment":"$oa","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr"}]}
 JSON
 }
 
@@ -79,14 +95,17 @@ assert_no_fixerror_stdout "pr_number fatal"
 run --pr-number 123 --review-file-path "{review_file_path_from_phase_1_0_1}" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
 assert_rc 1 "review_file_path placeholder -> exit 1"
 assert_err_has "reason=review_file_path_placeholder_residue" "review_file_path placeholder reason"
+assert_no_fixerror_stdout "review_file_path fatal"
 
 run --pr-number 123 --review-file-path "$UNSET" --conversation-decision "{conversation_review_decision}" --p1-scan-turns 0 --p1-scan-found false
 assert_rc 1 "conversation_decision unsubstituted -> exit 1"
 assert_err_has "reason=priority1_decision_unset" "decision unset reason"
+assert_no_fixerror_stdout "decision unset fatal"
 
 run --pr-number 123 --review-file-path "$UNSET" --conversation-decision bogus --p1-scan-turns 0 --p1-scan-found false
 assert_rc 1 "conversation_decision invalid -> exit 1"
 assert_err_has "reason=priority1_decision_invalid" "decision invalid reason"
+assert_no_fixerror_stdout "decision invalid fatal"
 
 RC=0; { (cd "$SANDBOX" && bash "$TARGET" --bogus x) >/dev/null 2>&1; } || RC=$?
 [ "$RC" = 2 ] && pass "unknown arg -> exit 2" || fail "unknown arg -> exit 2 (rc=$RC)"
@@ -97,14 +116,17 @@ echo "--- Test 2: Priority 1 conversation receipt ---"
 run --pr-number 123 --review-file-path "$UNSET" --conversation-decision use --p1-scan-turns "{p1_scan_turns}" --p1-scan-found true
 assert_rc 1 "use + receipt missing -> exit 1"
 assert_err_has "reason=priority1_receipt_missing" "receipt missing reason"
+assert_no_fixerror_stdout "receipt missing fatal"
 
 run --pr-number 123 --review-file-path "$UNSET" --conversation-decision use --p1-scan-turns abc --p1-scan-found true
 assert_rc 1 "use + receipt non-numeric -> exit 1"
 assert_err_has "reason=priority1_receipt_invalid" "receipt invalid reason"
+assert_no_fixerror_stdout "receipt invalid fatal"
 
 run --pr-number 123 --review-file-path "$UNSET" --conversation-decision use --p1-scan-turns 1 --p1-scan-found false
 assert_rc 1 "use + found!=true -> exit 1"
 assert_err_has "reason=priority1_receipt_inconsistent" "receipt inconsistent reason"
+assert_no_fixerror_stdout "receipt inconsistent fatal"
 
 run --pr-number 123 --review-file-path "$UNSET" --conversation-decision use --p1-scan-turns 2 --p1-scan-found true
 assert_rc 0 "use valid -> exit 0"
@@ -165,6 +187,109 @@ assert_rc 0 "no source -> exit 0 (pr_comment)"
 assert_err_has "[CONTEXT] REVIEW_SOURCE=pr_comment;" "pr_comment marker"
 assert_stdout_empty "pr_comment fall-through"
 assert_no_fixerror_stdout "pr_comment path"
+
+# -----------------------------------------------------------------
+echo "--- Test 6: Priority 0 commit_sha stale detection (#1220) ---"
+# match: commit_sha == HEAD -> explicit_file resolves, no STALE marker
+valid_json_sha "$SANDBOX/sha-match.json" "$HEAD_SHA"
+run --pr-number 123 --review-file-path "$SANDBOX/sha-match.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 commit_sha match -> exit 0"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=explicit_file;" "p0 match resolves explicit_file"
+assert_err_lacks "REVIEW_SOURCE_STALE=1" "p0 match does NOT emit STALE"
+
+# mismatch: commit_sha != HEAD -> fallback + STALE marker
+valid_json_sha "$SANDBOX/sha-stale.json" "$BOGUS_SHA"
+run --pr-number 123 --review-file-path "$SANDBOX/sha-stale.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 commit_sha mismatch -> exit 0 (fallback)"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=fallback;" "p0 mismatch -> fallback marker"
+assert_err_has "REVIEW_SOURCE_STALE=1; reason=explicit_file_commit_sha_mismatch" "p0 stale reason"
+assert_no_fixerror_stdout "p0 stale path"
+
+# -----------------------------------------------------------------
+echo "--- Test 7: Priority 0 invariant #4 / enum / schema_version unknown (#1220) ---"
+# invariant #4: severity HIGH + scope nit-noted -> fallback
+cat > "$SANDBOX/p0-inv4.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"nit-noted"}]}
+JSON
+run --pr-number 123 --review-file-path "$SANDBOX/p0-inv4.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 invariant #4 -> exit 0 (fallback)"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=fallback;" "p0 invariant #4 -> fallback marker"
+assert_err_has "REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=explicit_file_critical_high_scope_nit_noted" "p0 invariant #4 reason"
+
+# enum_unknown: overall_assessment bogus -> fallback
+cat > "$SANDBOX/p0-enum.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":123,"overall_assessment":"bogus","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr"}]}
+JSON
+run --pr-number 123 --review-file-path "$SANDBOX/p0-enum.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 enum unknown -> exit 0 (fallback)"
+assert_err_has "REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value" "p0 enum unknown reason"
+
+# schema_version unknown: 9.9.9 -> fallback
+cat > "$SANDBOX/p0-sv.json" <<'JSON'
+{"schema_version":"9.9.9","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr"}]}
+JSON
+run --pr-number 123 --review-file-path "$SANDBOX/p0-sv.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
+assert_rc 0 "p0 schema_version unknown -> exit 0 (fallback)"
+assert_err_has "REVIEW_SOURCE_SCHEMA_UNKNOWN=1; reason=explicit_file_schema_version_unknown" "p0 schema_version unknown reason"
+
+# -----------------------------------------------------------------
+echo "--- Test 8: Priority 2 commit_sha stale detection (#1220) ---"
+RR="$SANDBOX/.rite/review-results"
+mkdir -p "$RR"
+# Distinct pr_number per case so the ${pr_number}-*.json glob isolates each file
+# from Test 4's leftovers and from sibling cases.
+
+# match: commit_sha == HEAD -> local_file resolves, no STALE
+valid_json_sha "$RR/600-20260101000000.json" "$HEAD_SHA"
+run --pr-number 600 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 commit_sha match -> exit 0"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=local_file;" "p2 match resolves local_file"
+assert_err_lacks "REVIEW_SOURCE_STALE=1" "p2 match does NOT emit STALE"
+
+# mismatch: commit_sha != HEAD -> pr_comment + STALE
+valid_json_sha "$RR/601-20260101000000.json" "$BOGUS_SHA"
+run --pr-number 601 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 commit_sha mismatch -> exit 0 (pr_comment)"
+assert_err_has "[CONTEXT] REVIEW_SOURCE=pr_comment;" "p2 mismatch -> pr_comment marker"
+assert_err_has "REVIEW_SOURCE_STALE=1; reason=local_file_commit_sha_mismatch" "p2 stale reason"
+assert_no_fixerror_stdout "p2 stale path"
+
+# -----------------------------------------------------------------
+echo "--- Test 9: Priority 2 invariant #4 / enum / schema / corrupt-rename Instance 2/2 (#1220) ---"
+# invariant #4: severity CRITICAL + scope nit-noted -> pr_comment
+cat > "$RR/700-20260101000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":700,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"CRITICAL","status":"open","scope":"nit-noted"}]}
+JSON
+run --pr-number 700 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 invariant #4 -> exit 0 (pr_comment)"
+assert_err_has "REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=local_file_critical_high_scope_nit_noted" "p2 invariant #4 reason"
+
+# enum_unknown: overall_assessment bogus -> pr_comment
+cat > "$RR/701-20260101000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":701,"overall_assessment":"bogus","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr"}]}
+JSON
+run --pr-number 701 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 enum unknown -> exit 0 (pr_comment)"
+assert_err_has "REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value" "p2 enum unknown reason"
+
+# schema_version unknown: 9.9.9 -> pr_comment
+cat > "$RR/702-20260101000000.json" <<'JSON'
+{"schema_version":"9.9.9","pr_number":702,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr"}]}
+JSON
+run --pr-number 702 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 schema_version unknown -> exit 0 (pr_comment)"
+assert_err_has "REVIEW_SOURCE_SCHEMA_UNKNOWN=1; reason=local_file_schema_version_unknown" "p2 schema_version unknown reason"
+
+# corrupt-rename Instance 2/2: valid JSON but required fields missing -> rename + pr_comment
+printf '{"foo":"bar"}' > "$RR/703-20260101000000.json"
+run --pr-number 703 --review-file-path "$UNSET" --conversation-decision none --p1-scan-turns 1 --p1-scan-found false
+assert_rc 0 "p2 schema_required_fields_missing -> exit 0 (pr_comment)"
+assert_err_has "REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_schema_required_fields_missing" "p2 schema_required_fields_missing reason"
+if ls "$RR"/703-20260101000000.json.corrupt-* >/dev/null 2>&1; then
+  pass "schema-invalid file renamed to .corrupt-* (Instance 2/2)"
+else
+  fail "schema-invalid file NOT renamed (Instance 2/2)"
+fi
 
 # -----------------------------------------------------------------
 echo ""

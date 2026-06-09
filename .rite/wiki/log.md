@@ -1102,3 +1102,8 @@
 | 2026-06-10T10:10:00+09:00 | ingest:create | pages/heuristics/allowlist-gate-hardening-checklist.md | raw/fixes/20260609T224734Z-pr-1330-c3.md (PR #1330 fix c3) |
 | 2026-06-10T10:10:00+09:00 | ingest:create | pages/heuristics/allowlist-gate-hardening-checklist.md | raw/reviews/20260609T225247Z-pr-1330-c4.md (PR #1330 review c4 mergeable) |
 | 2026-06-10T07:55:48+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |
+| 2026-06-10T12:50:00+09:00 | ingest:create | pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md | raw/fixes/20260609T230419Z-pr-1332.md (PR #1332 fix c1) |
+| 2026-06-10T12:50:00+09:00 | ingest:create | pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md | raw/fixes/20260609T230945Z-pr-1332-c2.md (PR #1332 fix c2) |
+| 2026-06-10T12:50:00+09:00 | ingest:create | pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md | raw/fixes/20260609T231510Z-pr-1332-c3.md (PR #1332 fix c3) |
+| 2026-06-10T12:50:00+09:00 | ingest:create | pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md | raw/fixes/20260609T232051Z-pr-1332-c4.md (PR #1332 fix c4) |
+| 2026-06-10T12:50:00+09:00 | ingest:create | pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md | raw/reviews/20260609T232442Z-pr-1332-c5.md (PR #1332 review c5 mergeable) |

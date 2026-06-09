@@ -864,6 +864,48 @@ assert_subagent_allow "subagent git -C log allowed (-C with read-only verb)" \
   "git -C /tmp log --oneline"
 
 # --------------------------------------------------------------------------
+# TC-057ad〜af: Issue #1322 — shell-wrapper の deny message に read-only probe 用の
+# 代替ガイダンス (subshell / 直接実行 / bash <script>) を付加する。
+# pattern 名 (reviewer-state-mutating-git) は既存テスト互換のため不変で、wrapper 専用の
+# 理由・代替が reason に出ることを pin する。「(Z) bash -c 一律 block は緩和しない」判断のため、
+# read-only git を包む wrapper も依然 deny されること、wrapper block が subagent 限定で
+# main session は非影響であることも併せて固定する。
+# --------------------------------------------------------------------------
+
+# Helper: subagent deny かつ reason に wrapper guidance が含まれることを確認
+assert_subagent_deny_wrapper_guidance() {
+  local label="$1"
+  local cmd="$2"
+  local rc=0
+  local output
+  output=$(run_guard_with_transcript "Bash" "$cmd" "$SUBAGENT_TRANSCRIPT") || rc=$?
+  local decision reason
+  decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+  if [ "$decision" = "deny" ] \
+    && [[ "$reason" == *"reviewer-state-mutating-git"* ]] \
+    && [[ "$reason" == *"Shell-command wrappers"* ]] \
+    && [[ "$reason" == *"subshell"* ]] \
+    && [[ "$reason" == *"bash <script.sh>"* ]]; then
+    pass "$label"
+  else
+    fail "$label — expected deny with shell-wrapper guidance, got decision=$decision reason=$reason"
+  fi
+}
+
+echo "TC-057ad: subagent + 'bash -c \"echo readonly-probe\"' (no git) → deny + wrapper guidance (Issue #1322)"
+assert_subagent_deny_wrapper_guidance "subagent non-git bash -c probe denied with wrapper guidance" \
+  'bash -c "echo readonly-probe"'
+
+echo "TC-057ae: subagent + 'bash -c \"git status\"' (read-only git wrapped) → deny + wrapper guidance (no relaxation)"
+assert_subagent_deny_wrapper_guidance "subagent read-only-git bash -c probe still denied (policy: no relaxation)" \
+  'bash -c "git status"'
+
+echo "TC-057af: main session + 'bash -c \"echo readonly-probe\"' → allow (wrapper block is subagent-scoped)"
+assert_main_allow "main session non-git bash -c allowed (wrapper block subagent-scoped)" \
+  'bash -c "echo readonly-probe"'
+
+# --------------------------------------------------------------------------
 # TC-058: git fetch (bare) allowed, --prune denied
 # --------------------------------------------------------------------------
 echo "TC-058a: subagent + 'git fetch origin' (bare) → allow"

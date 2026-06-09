@@ -145,6 +145,10 @@ CMD_CHECK="${COMMAND%%<<*}"
 BLOCKED_PATTERN=""
 BLOCKED_REASON=""
 BLOCKED_ALTERNATIVE=""
+# Sub-kind tag for the deny message. Stays empty for git-verb blocks (A)-(G);
+# the (Z) shell-wrapper sub-block sets it to "shell-wrapper" so the final deny
+# message can explain why a read-only wrapper probe is blocked (Issue #1322).
+BLOCKED_SUBKIND=""
 
 # Pattern 1: gh pr diff --stat
 case "$CMD_CHECK" in
@@ -315,6 +319,10 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     *" dash -c "*|\
     *" fish -c "*)
       BLOCKED_PATTERN="reviewer-state-mutating-git"
+      # 中身が read-only でも block するため、deny message 側で理由を明示する (Issue #1322)。
+      # pattern 名は既存テスト (assert_subagent_deny が reason に "reviewer-state-mutating-git"
+      # を要求) との互換のため変えず、subkind タグで message だけを分岐する。
+      BLOCKED_SUBKIND="shell-wrapper"
       ;;
   esac
 
@@ -534,6 +542,15 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   if [ -n "$BLOCKED_PATTERN" ]; then
     BLOCKED_REASON="Reviewer subagents must not mutate the working tree, index, or refs. State-changing git commands (checkout/reset/add/stash push/restore/commit/push/merge/rebase/cherry-pick/revert/tag -a -d -f/clean/gc/branch -D --delete/update-ref/symbolic-ref/am/apply/mv/notes/config/remote/bisect/filter-branch/replace/reflog expire/worktree remove/fetch --prune/--force/etc.) are forbidden inside reviewer contexts."
     BLOCKED_ALTERNATIVE="Use read-only alternatives: 'git show <ref>:<file>' to read a blob, 'git diff <ref> -- <file>' to compare, 'git worktree add <path> <ref>' to inspect a different ref in an isolated directory, 'git tag -l' / 'git stash list' / 'git reflog' / 'git branch --list' for display-only queries, or bare 'git fetch' (without --prune/--force) for ref sync. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the full list. If this block fires on a main session (not a reviewer subagent), check whether CLAUDE_SUBAGENT_TYPE / CLAUDE_AGENT_TYPE env vars are accidentally set; recover with: unset CLAUDE_SUBAGENT_TYPE CLAUDE_AGENT_TYPE"
+    # (Z) shell-wrapper の場合は、wrapper 専用の理由・代替を前置する (Issue #1322)。
+    # 汎用 git message だけだと、git を含まない read-only probe (例: `bash -c 'echo x'`) が
+    # "State-changing git commands ... forbidden" と表示され、reviewer には over-broad で
+    # 不可解な block に見える。なぜ wrapper を一律 block するか / read-only probe をどう書き
+    # 直すかを先頭で説明する (既存 git ガイダンスは wrapper が git を包む場合に有効なので残す)。
+    if [ "$BLOCKED_SUBKIND" = "shell-wrapper" ]; then
+      BLOCKED_REASON="Shell-command wrappers (eval / bash -c / sh -c / zsh -c / ksh -c / dash -c / fish -c) are blocked in reviewer contexts because their quoted argument is opaque to this guard's word-boundary matching and can hide state-mutating git commands. They are therefore blocked unconditionally — even when the wrapped command is read-only. $BLOCKED_REASON"
+      BLOCKED_ALTERNATIVE="For a read-only probe, drop the wrapper: run the command directly, group multiple commands in a subshell '( cmd1; cmd2 )', or put them in a file and run 'bash <script.sh>'. $BLOCKED_ALTERNATIVE"
+    fi
   fi
 fi
 

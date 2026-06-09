@@ -54,7 +54,7 @@ resolution_issue: 1144
 | anti-pattern / correct-pattern 契約 | `cleanup.md` 冒頭 | sub-skill return = continuation trigger である旨を明示 |
 | Pre-check list Item 0-3 | `cleanup.md` | LLM の self-check で routing dispatcher + state check |
 | 🚨 Mandatory After Wiki Ingest Step 1 | `cleanup.md` Phase 4.W 末尾 | `cleanup_post_ingest` patch を即時実行 |
-| `workflow_incident` 検出 | `start.md` ステップ 8.5 (PR #1088 / #1136 で削除済) | post-hoc で Issue 自動登録（機構撤去済）|
+| `workflow_incident` 検出 | `start.md` ステップ 8.5 (#1088 で機構撤去 (実装: #1091)、start.md 自体も #1136 で削除済) | post-hoc で Issue 自動登録（機構撤去済） |
 
 ## 根本原因 evidence（Issue #621 S1 Decision Log）
 

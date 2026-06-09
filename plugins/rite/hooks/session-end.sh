@@ -11,6 +11,8 @@ export _RITE_HOOK_RUNNING_SESSIONEND=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
+# shellcheck source=control-char-neutralize.sh
+source "$SCRIPT_DIR/control-char-neutralize.sh"
 # session-ownership.sh provides the ownership guard consumed below. Sourcing is
 # fail-open (2>/dev/null || true) so a missing or unparsable helper cannot block
 # session-end's main job: persisting / deactivating the flow state.
@@ -80,7 +82,7 @@ _br_rc=0
 BRANCH=$(cd "$CWD" && git branch --show-current 2>"${_br_err:-/dev/null}") || _br_rc=$?
 if [ "$_br_rc" -ne 0 ]; then
   echo "[rite] WARNING: session-end: git branch --show-current 失敗 (rc=$_br_rc — corrupt .git / permission denied / git unavailable の可能性)" >&2
-  [ -n "$_br_err" ] && [ -s "$_br_err" ] && head -3 "$_br_err" | sed 's/^/  /' >&2
+  [ -n "$_br_err" ] && [ -s "$_br_err" ] && head -3 "$_br_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   BRANCH=""
 fi
 [ -n "$_br_err" ] && rm -f "$_br_err"
@@ -122,14 +124,14 @@ if [ -f "$STATE_FILE" ]; then
     _state_phase=$(jq -r '.phase // empty' "$STATE_FILE" 2>"${_lifecycle_phase_err:-/dev/null}") || _state_phase=""
     if [ -n "$_lifecycle_phase_err" ] && [ -s "$_lifecycle_phase_err" ]; then
         echo "rite: session-end: WARNING: jq parse of .phase failed (STATE_FILE may be corrupt) — lifecycle WARN suppressed" >&2
-        head -3 "$_lifecycle_phase_err" | sed 's/^/  /' >&2
+        head -3 "$_lifecycle_phase_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
     [ -n "$_lifecycle_phase_err" ] && rm -f "$_lifecycle_phase_err"
     _lifecycle_active_err=$(mktemp 2>/dev/null) || _lifecycle_active_err=""
     _state_active=$(jq -r '.active // false' "$STATE_FILE" 2>"${_lifecycle_active_err:-/dev/null}") || _state_active="false"
     if [ -n "$_lifecycle_active_err" ] && [ -s "$_lifecycle_active_err" ]; then
         echo "rite: session-end: WARNING: jq parse of .active failed (STATE_FILE may be corrupt)" >&2
-        head -3 "$_lifecycle_active_err" | sed 's/^/  /' >&2
+        head -3 "$_lifecycle_active_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
     [ -n "$_lifecycle_active_err" ] && rm -f "$_lifecycle_active_err"
     _lifecycle_unfinished_kind=""
@@ -197,7 +199,7 @@ WARN_MSG
             _log_flow_diag "session_end_mv_failed rc=$_mv_rc state=$STATE_FILE"
           fi
           echo "rite: session-end: mv deactivation state failed (rc=$_mv_rc)" >&2
-          [ -n "$_deact_mv_err" ] && [ -s "$_deact_mv_err" ] && head -3 "$_deact_mv_err" | sed 's/^/  /' >&2
+          [ -n "$_deact_mv_err" ] && [ -s "$_deact_mv_err" ] && head -3 "$_deact_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
         fi
         [ -n "$_deact_mv_err" ] && rm -f "$_deact_mv_err"
     else
@@ -208,7 +210,7 @@ WARN_MSG
         # state_file path を WARNING に含めることで、Issue 番号が解決できない経路 (detached HEAD /
         # non-issue branch / git 未初期化) でも debug 情報を残せる。
         echo "rite: session-end: WARNING: failed to deactivate state file (jq rc=$_deact_jq_rc): $STATE_FILE${ISSUE_NUMBER:+ (Issue #$ISSUE_NUMBER)}" >&2
-        [ -n "$_deact_jq_err" ] && [ -s "$_deact_jq_err" ] && head -3 "$_deact_jq_err" | sed 's/^/  /' >&2
+        [ -n "$_deact_jq_err" ] && [ -s "$_deact_jq_err" ] && head -3 "$_deact_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
         rm -f "$TMP_FILE"
     fi
     [ -n "$_deact_jq_err" ] && rm -f "$_deact_jq_err"

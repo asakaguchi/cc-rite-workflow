@@ -41,6 +41,8 @@
 #   0: 常に (success / 非ブロッキング失敗どちらも)。caller は LOCAL_SAVE_FAILED / JSON_SAVED で判定。
 #   1: 引数エラー (--pr / --content-file 欠落、--content-file 不在)。
 set -uo pipefail
+# shellcheck source=control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
 
 # --- Argument parsing ---
 PR_NUMBER=""
@@ -135,7 +137,7 @@ json_path="${REVIEW_RESULTS_DIR}/${PR_NUMBER}-${file_timestamp}.json"
 mkdir_err=$(mktemp /tmp/rite-review-p61a-mkdir-err-XXXXXX 2>/dev/null) || mkdir_err=""
 if ! mkdir -p "$REVIEW_RESULTS_DIR" 2>"${mkdir_err:-/dev/null}"; then
   echo "WARNING: .rite/review-results/ ディレクトリの作成に失敗しました。会話コンテキストのみで続行します。" >&2
-  [ -n "$mkdir_err" ] && [ -s "$mkdir_err" ] && head -5 "$mkdir_err" | sed 's/^/  /' >&2
+  [ -n "$mkdir_err" ] && [ -s "$mkdir_err" ] && head -5 "$mkdir_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   echo "  対処: 親ディレクトリの permission / disk space / read-only filesystem を確認してください" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=mkdir_failure" >&2
   [ -n "$mkdir_err" ] && rm -f "$mkdir_err"
@@ -152,7 +154,7 @@ fi
 
 if ! json_tmp=$(mktemp /tmp/rite-review-p61a-json-XXXXXX.json 2>"${mktemp_err:-/dev/null}"); then
   echo "WARNING: JSON 一時ファイルの作成に失敗しました" >&2
-  [ -n "$mktemp_err" ] && [ -s "$mktemp_err" ] && { echo "  詳細 (mktemp stderr):" >&2; head -5 "$mktemp_err" | sed 's/^/  /' >&2; }
+  [ -n "$mktemp_err" ] && [ -s "$mktemp_err" ] && { echo "  詳細 (mktemp stderr):" >&2; head -5 "$mktemp_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2; }
   echo "  対処: /tmp の容量 / permission / readonly filesystem を確認してください" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=mktemp_failure" >&2
   [ -n "$mktemp_err" ] && rm -f "$mktemp_err"
@@ -192,7 +194,7 @@ elif jq --arg ts "$iso_timestamp" '.timestamp = $ts' "$json_tmp" > "$json_ts_inj
   fi
 else
   echo "WARNING: jq による timestamp 注入に失敗しました (sentinel 置換不可)" >&2
-  [ -n "$jq_ts_err" ] && [ -s "$jq_ts_err" ] && head -3 "$jq_ts_err" | sed 's/^/  /' >&2
+  [ -n "$jq_ts_err" ] && [ -s "$jq_ts_err" ] && head -3 "$jq_ts_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   echo "  対処: --content-file で渡した JSON body ($CONTENT_FILE) が valid JSON で、.timestamp フィールド (sentinel __RITE_TS_PLACEHOLDER_7f3a9b2c__) を持つか確認してください" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=write_failure" >&2
   rm -f "$json_ts_injected"
@@ -209,9 +211,9 @@ fi
 jq_val_err_r=$(mktemp /tmp/rite-jq-val-err-r-XXXXXX 2>/dev/null) || jq_val_err_r=""
 if ! jq empty "$json_tmp" 2>"${jq_val_err_r:-/dev/null}"; then
   echo "WARNING: JSON 一時ファイルが syntactically invalid です (注入後に外部要因で破損した稀ケース。通常の literal substitute 漏れは upstream の write_failure で検出済)" >&2
-  [ -n "${jq_val_err_r:-}" ] && [ -s "$jq_val_err_r" ] && head -3 "$jq_val_err_r" | sed 's/^/  jq: /' >&2
+  [ -n "${jq_val_err_r:-}" ] && [ -s "$jq_val_err_r" ] && head -3 "$jq_val_err_r" | neutralize_ctrl --keep-newline | sed 's/^/  jq: /' >&2
   echo "  内容 preview (先頭 5 行):" >&2
-  head -5 "$json_tmp" 2>/dev/null | sed 's/^/  /' >&2
+  head -5 "$json_tmp" 2>/dev/null | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   echo "  対処: review-result-schema.md に従った正しい JSON が生成されているか確認してください" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=json_invalid" >&2
   exit 0
@@ -308,7 +310,7 @@ else
   echo "WARNING: JSON ファイルの配置に失敗しました" >&2
   echo "  from: $json_tmp" >&2
   echo "  to:   $json_path" >&2
-  [ -n "$mv_err" ] && [ -s "$mv_err" ] && { echo "  詳細 (mv stderr 先頭 5 行):" >&2; head -5 "$mv_err" | sed 's/^/  /' >&2; }
+  [ -n "$mv_err" ] && [ -s "$mv_err" ] && { echo "  詳細 (mv stderr 先頭 5 行):" >&2; head -5 "$mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2; }
   echo "  対処: cross-filesystem / permission denied / read-only FS / path-too-long / TOCTOU のいずれかを確認してください" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=mv_failure" >&2
   [ -n "$mv_err" ] && rm -f "$mv_err"

@@ -65,6 +65,8 @@ fi
 # symlinks to the script's physical location — both are supersets of
 # the sibling convention rather than drifts away from it.
 _SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../control-char-neutralize.sh
+source "$_SCRIPT_DIR/../control-char-neutralize.sh"
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
@@ -183,7 +185,7 @@ else
   wt_list_rc=$?
   echo "WARNING: git worktree list --porcelain が失敗しました (rc=$wt_list_rc)" >&2
   if [ -n "$wt_list_err" ] && [ -s "$wt_list_err" ]; then
-    head -3 "$wt_list_err" | sed 's/^/  git: /' >&2
+    head -3 "$wt_list_err" | neutralize_ctrl --keep-newline | sed 's/^/  git: /' >&2
   fi
   echo "  原因候補: corrupt .git/worktrees/ / permission denied / git binary 異常" >&2
   echo "  影響: idempotency check が空結果として進み、後段の git worktree add で初めて顕在化する可能性" >&2
@@ -196,7 +198,7 @@ if [[ "$existing_prunable" == "true" ]]; then
   if ! git worktree prune 2>"${wt_list_err:-/dev/null}"; then
     echo "ERROR: git worktree prune に失敗しました" >&2
     if [ -n "$wt_list_err" ] && [ -s "$wt_list_err" ]; then
-      head -3 "$wt_list_err" | sed 's/^/  git: /' >&2
+      head -3 "$wt_list_err" | neutralize_ctrl --keep-newline | sed 's/^/  git: /' >&2
     fi
     echo "  手動回復: git worktree prune を直接実行してから本 script を再実行してください" >&2
     exit 3
@@ -239,7 +241,7 @@ fi
 if ! git worktree add --quiet "$target_path" "$wiki_branch" 2>"${add_err:-/dev/null}"; then
   echo "ERROR: git worktree add '$target_path' '$wiki_branch' failed" >&2
   if [[ -n "$add_err" ]] && [[ -s "$add_err" ]]; then
-    head -n 10 "$add_err" | sed 's/^/  git: /' >&2
+    head -n 10 "$add_err" | neutralize_ctrl --keep-newline | sed 's/^/  git: /' >&2
   fi
   echo "  hint: ensure the wiki branch is not already checked out elsewhere (git worktree list)" >&2
   exit 3

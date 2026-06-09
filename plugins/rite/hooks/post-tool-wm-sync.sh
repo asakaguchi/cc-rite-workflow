@@ -13,6 +13,8 @@ export _RITE_HOOK_RUNNING_POSTTOOL=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
+# shellcheck source=control-char-neutralize.sh
+source "$SCRIPT_DIR/control-char-neutralize.sh"
 
 # Recursion guard
 [ -z "${RITE_WM_HOOK_ACTIVE:-}" ] || exit 0
@@ -149,7 +151,7 @@ if [ "$_pd_rc" -ne 0 ]; then
   _pd_tag=""
   [ -z "$_pd_err" ] && _pd_tag=" stderr_capture=disabled"
   echo "[rite] WARNING: post-tool-wm-sync: phase_detail 取得失敗 (rc=$_pd_rc${_pd_tag}) — phase 名に縮退" >&2
-  [ -n "$_pd_err" ] && [ -s "$_pd_err" ] && head -3 "$_pd_err" | sed 's/^/  /' >&2
+  [ -n "$_pd_err" ] && [ -s "$_pd_err" ] && head -3 "$_pd_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   _phase_detail=""
 fi
 [ -n "$_pd_err" ] && rm -f "$_pd_err"
@@ -179,7 +181,7 @@ if "$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
 else
   _rc=$?
   echo "[rite] WARNING: post-tool-wm-sync: update-phase failed (rc=$_rc${_phase_sync_stderr_tag}) — last_synced_phase will NOT be advanced so next hook invocation retries" >&2
-  [ -n "$_phase_sync_err" ] && [ -s "$_phase_sync_err" ] && head -3 "$_phase_sync_err" | sed 's/^/  /' >&2
+  [ -n "$_phase_sync_err" ] && [ -s "$_phase_sync_err" ] && head -3 "$_phase_sync_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
 fi
 [ -n "$_phase_sync_err" ] && rm -f "$_phase_sync_err"
 
@@ -210,7 +212,7 @@ case "$_phase" in
     _diff_raw=$(git diff --name-status "origin/${_base_branch}...HEAD" 2>"${_git_diff_err:-/dev/null}") || _diff_raw=""
     if [ -n "$_git_diff_err" ] && [ -s "$_git_diff_err" ]; then
       echo "[rite] WARNING: post-tool-wm-sync: git diff failed — progress table may show stale or empty file list:" >&2
-      head -3 "$_git_diff_err" | sed 's/^/  /' >&2
+      head -3 "$_git_diff_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
     [ -n "$_git_diff_err" ] && rm -f "$_git_diff_err"
 
@@ -249,7 +251,7 @@ case "$_phase" in
     else
       _rc=$?
       echo "[rite] WARNING: post-tool-wm-sync: update-progress failed (rc=$_rc${_progress_sync_stderr_tag}) — last_synced_phase will NOT be advanced" >&2
-      [ -n "$_progress_sync_err" ] && [ -s "$_progress_sync_err" ] && head -3 "$_progress_sync_err" | sed 's/^/  /' >&2
+      [ -n "$_progress_sync_err" ] && [ -s "$_progress_sync_err" ] && head -3 "$_progress_sync_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       _phase_sync_ok=0
     fi
     [ -n "$_progress_sync_err" ] && rm -f "$_progress_sync_err"
@@ -266,7 +268,7 @@ case "$_phase" in
     else
       _rc=$?
       echo "[rite] WARNING: post-tool-wm-sync: update-plan-status failed (rc=$_rc${_plan_sync_stderr_tag}) — last_synced_phase will NOT be advanced" >&2
-      [ -n "$_plan_sync_err" ] && [ -s "$_plan_sync_err" ] && head -3 "$_plan_sync_err" | sed 's/^/  /' >&2
+      [ -n "$_plan_sync_err" ] && [ -s "$_plan_sync_err" ] && head -3 "$_plan_sync_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       _phase_sync_ok=0
     fi
     [ -n "$_plan_sync_err" ] && rm -f "$_plan_sync_err"
@@ -296,14 +298,14 @@ if [ "$_phase_sync_ok" = "1" ]; then
       _mv_rc=$?
       rm -f "$_tmp_fs"
       echo "rite: post-tool-wm-sync: mv last_synced_phase failed (rc=$_mv_rc)" >&2
-      [ -n "$_lp_mv_err" ] && [ -s "$_lp_mv_err" ] && head -3 "$_lp_mv_err" | sed 's/^/  /' >&2
+      [ -n "$_lp_mv_err" ] && [ -s "$_lp_mv_err" ] && head -3 "$_lp_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
     [ -n "$_lp_mv_err" ] && rm -f "$_lp_mv_err"
   else
     _last_phase_jq_rc=$?
     rm -f "$_tmp_fs"
     echo "rite: post-tool-wm-sync: WARNING: jq write of last_synced_phase failed (rc=$_last_phase_jq_rc) — next hook invocation will re-run all transformers" >&2
-    [ -n "$_last_phase_jq_err" ] && [ -s "$_last_phase_jq_err" ] && head -3 "$_last_phase_jq_err" | sed 's/^/  /' >&2
+    [ -n "$_last_phase_jq_err" ] && [ -s "$_last_phase_jq_err" ] && head -3 "$_last_phase_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   [ -n "$_last_phase_jq_err" ] && rm -f "$_last_phase_jq_err"
 fi

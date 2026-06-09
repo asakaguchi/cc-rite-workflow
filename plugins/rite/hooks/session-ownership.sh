@@ -26,6 +26,9 @@
 # to short-circuit ownership checks (e.g., when reading a path that has just
 # been resolved by `_resolve-flow-state-path.sh`).
 
+# shellcheck source=control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
+
 # Extract session_id from hook JSON payload
 # Args: $1 = hook JSON string (from stdin of the hook)
 # Output: session_id string, or empty string if not found
@@ -47,7 +50,7 @@ extract_session_id() {
   else
     local _jq_rc=$?
     echo "[rite] WARNING: extract_session_id: jq parse failed on hook payload (rc=$_jq_rc, returning empty — ownership check falls back to backward-compat path)" >&2
-    [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+    [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     sid=""
   fi
   [ -n "$jq_err" ] && rm -f "$jq_err"
@@ -74,7 +77,7 @@ get_state_session_id() {
   else
     local _jq_rc=$?
     echo "[rite] WARNING: get_state_session_id: jq parse failed on $state_file (rc=$_jq_rc, returning empty — may classify a corrupt state file as legacy)" >&2
-    [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+    [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     sid=""
   fi
   [ -n "$jq_err" ] && rm -f "$jq_err"
@@ -184,7 +187,7 @@ check_session_ownership() {
   else
     local _jq_rc=$?
     echo "[rite] WARNING: check_session_ownership: jq parse failed on $state_file (rc=$_jq_rc, treating as stale — may overwrite another active session)" >&2
-    [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+    [ -n "${RITE_DEBUG:-}" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     updated_at=""
   fi
   [ -n "$jq_err" ] && rm -f "$jq_err"

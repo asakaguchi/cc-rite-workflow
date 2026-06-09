@@ -48,6 +48,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=control-char-neutralize.sh
+source "$SCRIPT_DIR/control-char-neutralize.sh"
 PYTHON_SCRIPT="$SCRIPT_DIR/issue-comment-wm-update.py"
 
 # Resolve repository root for .rite-flow-state access
@@ -66,7 +68,7 @@ get_owner_repo() {
   if [ "$_rc" -ne 0 ] || [ -z "$_out" ]; then
     if [ -n "$_err" ] && [ -s "$_err" ]; then
       echo "[rite] WARNING: issue-comment-wm-sync: gh repo view failed (rc=$_rc)" >&2
-      head -3 "$_err" | sed 's/^/  /' >&2
+      head -3 "$_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
     _out=""
   fi
@@ -101,14 +103,14 @@ cache_comment_id() {
     else
       local _mv_rc=$?
       echo "[rite] WARNING: issue-comment-wm-sync: cache_comment_id mv failed (rc=$_mv_rc)" >&2
-      [ -n "$_cid_mv_err" ] && [ -s "$_cid_mv_err" ] && head -3 "$_cid_mv_err" | sed 's/^/  /' >&2
+      [ -n "$_cid_mv_err" ] && [ -s "$_cid_mv_err" ] && head -3 "$_cid_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       rm -f "$tmp"
     fi
     [ -n "$_cid_mv_err" ] && rm -f "$_cid_mv_err"
   else
     _jq_rc=$?
     echo "[rite] WARNING: issue-comment-wm-sync: cache_comment_id jq failed (rc=$_jq_rc — FLOW_STATE may be corrupt or cid='$cid' not numeric)" >&2
-    [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | sed 's/^/  /' >&2
+    [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     rm -f "$tmp"
   fi
   [ -n "$_jq_err" ] && rm -f "$_jq_err"
@@ -130,7 +132,7 @@ get_comment_id() {
     cached=$(jq -r '.wm_comment_id // empty' "$FLOW_STATE" 2>"${_err:-/dev/null}") || _rc=$?
     if [ "$_rc" -ne 0 ]; then
       echo "[rite] WARNING: issue-comment-wm-sync: cache 読み取り jq 失敗 (rc=$_rc — FLOW_STATE may be corrupt)" >&2
-      [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | sed 's/^/  /' >&2
+      [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       cached=""
     fi
     [ -n "$_err" ] && rm -f "$_err"
@@ -145,7 +147,7 @@ get_comment_id() {
         # 失敗を区別する。auth / rate limit エラーは WARNING で operator に通知。
         if [ -n "$_err" ] && [ -s "$_err" ] && grep -qiE 'rate limit|HTTP 401|HTTP 403|network' "$_err"; then
           echo "[rite] WARNING: issue-comment-wm-sync: cache 検証 gh api 失敗 (rc=$_rc, auth/rate/network 系)" >&2
-          head -3 "$_err" | sed 's/^/  /' >&2
+          head -3 "$_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
         fi
         verify=""
       fi
@@ -164,7 +166,7 @@ get_comment_id() {
     --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .id // empty' 2>"${_err:-/dev/null}") || _rc=$?
   if [ "$_rc" -ne 0 ]; then
     echo "[rite] WARNING: issue-comment-wm-sync: comment 一覧取得 gh api 失敗 (rc=$_rc — auth/rate/network 系の可能性)" >&2
-    [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | sed 's/^/  /' >&2
+    [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     comment_id=""
   fi
   [ -n "$_err" ] && rm -f "$_err"
@@ -342,7 +344,7 @@ INIT_EOF
   result=$(gh issue comment "$ISSUE" --body-file "$tmpfile" 2>"${_init_err:-/dev/null}") || _init_rc=$?
   if [ "$_init_rc" -ne 0 ]; then
     echo "[rite] WARNING: issue-comment-wm-sync: gh issue comment 作成失敗 (rc=$_init_rc)" >&2
-    [ -n "$_init_err" ] && [ -s "$_init_err" ] && head -3 "$_init_err" | sed 's/^/  /' >&2
+    [ -n "$_init_err" ] && [ -s "$_init_err" ] && head -3 "$_init_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     [ -n "$_init_err" ] && rm -f "$_init_err"
     exit 0
   fi
@@ -364,7 +366,7 @@ INIT_EOF
       _verify_tag=""
       [ -z "$_verify_err" ] && _verify_tag=" stderr_capture=disabled"
       echo "[rite] WARNING: issue-comment-wm-sync: validation gh api 失敗 (attempt=$attempt, rc=$_verify_rc${_verify_tag})" >&2
-      [ -n "$_verify_err" ] && [ -s "$_verify_err" ] && head -3 "$_verify_err" | sed 's/^/  /' >&2
+      [ -n "$_verify_err" ] && [ -s "$_verify_err" ] && head -3 "$_verify_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       created_id=""
     fi
     [ -n "$_verify_err" ] && rm -f "$_verify_err"
@@ -427,7 +429,7 @@ _cb_rc=0
 current_body=$(gh api "repos/${OWNER_REPO}/issues/comments/${COMMENT_ID}" --jq '.body // empty' 2>"${_cb_err:-/dev/null}") || _cb_rc=$?
 if [ "$_cb_rc" -ne 0 ]; then
   echo "[rite] WARNING: issue-comment-wm-sync: comment body 取得 gh api 失敗 (rc=$_cb_rc — auth/rate/network/404 系)" >&2
-  [ -n "$_cb_err" ] && [ -s "$_cb_err" ] && head -3 "$_cb_err" | sed 's/^/  /' >&2
+  [ -n "$_cb_err" ] && [ -s "$_cb_err" ] && head -3 "$_cb_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   current_body=""
 fi
 [ -n "$_cb_err" ] && rm -f "$_cb_err"
@@ -479,7 +481,7 @@ patch_status=0
 
 if [ "$patch_status" -ne 0 ]; then
   echo "[rite] WARNING: issue-comment-wm-sync: PATCH failed (rc=$patch_status, Backup: $backup_file)" >&2
-  [ -n "$patch_err" ] && [ -s "$patch_err" ] && head -3 "$patch_err" | sed 's/^/  /' >&2
+  [ -n "$patch_err" ] && [ -s "$patch_err" ] && head -3 "$patch_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   [ -n "$patch_err" ] && rm -f "$patch_err"
   echo "status=error; reason=patch_failed"
   exit 0

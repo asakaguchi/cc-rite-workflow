@@ -42,6 +42,8 @@
 #   0: PR コメント投稿成功、または post_comment_mode=false の silent skip。
 #   1: gate 違反 / 操作失敗 (REVIEW_OUTPUT_FAILED emit 済)。引数エラー (--content-file 欠落等)。
 set -uo pipefail
+# shellcheck source=control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
 
 SENTINEL='__RITE_TS_PLACEHOLDER_7f3a9b2c__'
 
@@ -215,7 +217,7 @@ if gh pr comment "$PR_NUMBER" --body-file "$tmpfile_patched" 2>"${gh_err:-/dev/n
 else
   gh_rc=$?
   echo "ERROR: PR コメント投稿に失敗しました (gh rc=$gh_rc)" >&2
-  [ -n "$gh_err" ] && [ -s "$gh_err" ] && { echo "  詳細 (gh stderr 先頭 5 行):" >&2; head -5 "$gh_err" | sed 's/^/  /' >&2; }
+  [ -n "$gh_err" ] && [ -s "$gh_err" ] && { echo "  詳細 (gh stderr 先頭 5 行):" >&2; head -5 "$gh_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2; }
   echo "  対処: gh auth status / network 接続 / PR #${PR_NUMBER} の権限を確認してください" >&2
   if [ "$JSON_SAVED" = "true" ]; then
     echo "ℹ️ ただし、レビュー結果はローカルファイルに保存済みです (ステップ 6.1.a)" >&2

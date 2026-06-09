@@ -12,6 +12,8 @@ export _RITE_HOOK_RUNNING_PRECOMPACT=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
+# shellcheck source=control-char-neutralize.sh
+source "$SCRIPT_DIR/control-char-neutralize.sh"
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
@@ -103,14 +105,14 @@ if acquire_wm_lock "$LOCKDIR"; then
         _mv_rc=$?
         rm -f "$TMP_FILE"
         echo "rite: pre-compact: mv flow-state updated_at failed (rc=$_mv_rc)" >&2
-        [ -n "$_hb_mv_err" ] && [ -s "$_hb_mv_err" ] && head -3 "$_hb_mv_err" | sed 's/^/  /' >&2
+        [ -n "$_hb_mv_err" ] && [ -s "$_hb_mv_err" ] && head -3 "$_hb_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       fi
       [ -n "$_hb_mv_err" ] && rm -f "$_hb_mv_err"
     else
       _heartbeat_rc=$?
       rm -f "$TMP_FILE"
       echo "rite: pre-compact: WARNING: heartbeat jq failed (rc=$_heartbeat_rc) — session-ownership staleness check may misclassify this session as stale" >&2
-      [ -n "$_heartbeat_err" ] && [ -s "$_heartbeat_err" ] && head -3 "$_heartbeat_err" | sed 's/^/  /' >&2
+      [ -n "$_heartbeat_err" ] && [ -s "$_heartbeat_err" ] && head -3 "$_heartbeat_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
     [ -n "$_heartbeat_err" ] && rm -f "$_heartbeat_err"
     TMP_FILE=""
@@ -126,7 +128,7 @@ if acquire_wm_lock "$LOCKDIR"; then
     ACTIVE_ISSUE=$(jq -r '.issue_number // "null"' "$FLOW_STATE" 2>"${_ai_err:-/dev/null}") || _ai_rc=$?
     if [ "$_ai_rc" -ne 0 ] || [ -z "$ACTIVE_ISSUE" ]; then
       [ -n "${RITE_DEBUG:-}" ] && echo "[rite] DEBUG: pre-compact: .issue_number jq 失敗 (rc=$_ai_rc) — branch name fallback へ降格" >&2
-      [ -n "${RITE_DEBUG:-}" ] && [ -n "$_ai_err" ] && [ -s "$_ai_err" ] && head -3 "$_ai_err" | sed 's/^/  /' >&2
+      [ -n "${RITE_DEBUG:-}" ] && [ -n "$_ai_err" ] && [ -s "$_ai_err" ] && head -3 "$_ai_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       ACTIVE_ISSUE="null"
     fi
     [ -n "$_ai_err" ] && rm -f "$_ai_err"
@@ -146,7 +148,7 @@ if acquire_wm_lock "$LOCKDIR"; then
     BRANCH=$(cd "$CWD" && git branch --show-current 2>"${_pc_br_err:-/dev/null}") || _pc_br_rc=$?
     if [ "$_pc_br_rc" -ne 0 ]; then
       echo "[rite] WARNING: pre-compact: git branch --show-current 失敗 (rc=$_pc_br_rc)" >&2
-      [ -n "$_pc_br_err" ] && [ -s "$_pc_br_err" ] && head -3 "$_pc_br_err" | sed 's/^/  /' >&2
+      [ -n "$_pc_br_err" ] && [ -s "$_pc_br_err" ] && head -3 "$_pc_br_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       BRANCH=""
     fi
     [ -n "$_pc_br_err" ] && rm -f "$_pc_br_err"
@@ -184,7 +186,7 @@ if acquire_wm_lock "$LOCKDIR"; then
       else
         _chmod_rc=$?
         echo "rite: pre-compact: chmod 600 $COMPACT_STATE failed (rc=$_chmod_rc)" >&2
-        [ -n "$_chmod_err" ] && [ -s "$_chmod_err" ] && head -3 "$_chmod_err" | sed 's/^/  /' >&2
+        [ -n "$_chmod_err" ] && [ -s "$_chmod_err" ] && head -3 "$_chmod_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       fi
       [ -n "$_chmod_err" ] && rm -f "$_chmod_err"
     else
@@ -192,7 +194,7 @@ if acquire_wm_lock "$LOCKDIR"; then
       rm -f "$TMP_COMPACT"
       TMP_COMPACT=""
       echo "rite: pre-compact: mv compact state failed (rc=$_mv_rc)" >&2
-      [ -n "$_cs_mv_err" ] && [ -s "$_cs_mv_err" ] && head -3 "$_cs_mv_err" | sed 's/^/  /' >&2
+      [ -n "$_cs_mv_err" ] && [ -s "$_cs_mv_err" ] && head -3 "$_cs_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
     [ -n "$_cs_mv_err" ] && rm -f "$_cs_mv_err"
   else
@@ -200,7 +202,7 @@ if acquire_wm_lock "$LOCKDIR"; then
     rm -f "$TMP_COMPACT"
     TMP_COMPACT=""
     echo "rite: pre-compact: failed to write compact state (jq rc=$_jq_compact_rc)" >&2
-    [ -n "$_jq_compact_err" ] && [ -s "$_jq_compact_err" ] && head -3 "$_jq_compact_err" | sed 's/^/  /' >&2
+    [ -n "$_jq_compact_err" ] && [ -s "$_jq_compact_err" ] && head -3 "$_jq_compact_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   [ -n "$_jq_compact_err" ] && rm -f "$_jq_compact_err"
 
@@ -217,7 +219,7 @@ if acquire_wm_lock "$LOCKDIR"; then
   else
     _flow_active_rc=$?
     echo "rite: pre-compact: WARNING: failed to parse .active from $FLOW_STATE (jq rc=$_flow_active_rc) — workflow snapshot will be skipped, recovery may lose context" >&2
-    [ -n "$_flow_active_err" ] && [ -s "$_flow_active_err" ] && head -3 "$_flow_active_err" | sed 's/^/  /' >&2
+    [ -n "$_flow_active_err" ] && [ -s "$_flow_active_err" ] && head -3 "$_flow_active_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     FLOW_ACTIVE="false"
   fi
   [ -n "$_flow_active_err" ] && rm -f "$_flow_active_err"
@@ -233,7 +235,7 @@ if acquire_wm_lock "$LOCKDIR"; then
     FLOW_DATA=$(jq -r '[.phase // "unknown", .pr_number // "null", .loop_count // 0, .next_action // ""] | join("\u001f")' "$FLOW_STATE" 2>"${_flow_data_snap_err:-/dev/null}") || FLOW_DATA=""
     if [ -n "$_flow_data_snap_err" ] && [ -s "$_flow_data_snap_err" ]; then
       echo "rite: pre-compact: WARNING: snapshot jq failed — post-compact recovery may resume with phase=unknown" >&2
-      head -3 "$_flow_data_snap_err" | sed 's/^/  /' >&2
+      head -3 "$_flow_data_snap_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
     [ -n "$_flow_data_snap_err" ] && rm -f "$_flow_data_snap_err"
     if [ -n "$FLOW_DATA" ]; then

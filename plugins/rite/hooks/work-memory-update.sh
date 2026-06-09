@@ -59,6 +59,8 @@
 # Source lock helper at file load time (not inside the function)
 # This avoids re-sourcing on every function call and prevents BASH_SOURCE issues.
 source "$(dirname "${BASH_SOURCE[0]}")/work-memory-lock.sh"
+# shellcheck source=control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
 
 # verified-review F-04 MEDIUM: flow-state.sh 呼び出し boilerplate を helper 関数に抽出。
 # 旧実装は (a) helper executable check と (b) `if cmd; then :; else rc=$?; ...; return 2; fi` 形式の
@@ -313,7 +315,7 @@ update_local_work_memory() {
   fi
   local _mv_rc=$?
   echo "rite: ${WM_SOURCE}: mv failed (rc=$_mv_rc): $tmp_wm -> $local_wm" >&2
-  [ -n "$_mv_err" ] && [ -s "$_mv_err" ] && head -3 "$_mv_err" | sed 's/^/  /' >&2
+  [ -n "$_mv_err" ] && [ -s "$_mv_err" ] && head -3 "$_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   [ -n "$_mv_err" ] && rm -f "$_mv_err"
   rm -f "$tmp_wm"
   return 2

@@ -45,6 +45,8 @@
 # likewise omitted to preserve verbatim behavior; all variable refs are
 # `${var:-}`-guarded.
 
+# shellcheck source=../control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"
 branch_strategy=""
 wiki_branch=""
 REPO_ROOT=""
@@ -186,7 +188,7 @@ case "$branch_strategy" in
     if log_content=$(LC_ALL=C git show "${wiki_branch}:.rite/wiki/log.md" 2>"${log_err:-/dev/null}"); then
       log_read_ok="true"
       # selective surface pattern: 成功時でも ambiguous ref hint 等の git stderr を surface する
-      [ -n "$log_err" ] && [ -s "$log_err" ] && head -3 "$log_err" | sed 's/^/  WARNING(git hint): /' >&2
+      [ -n "$log_err" ] && [ -s "$log_err" ] && head -3 "$log_err" | neutralize_ctrl --keep-newline | sed 's/^/  WARNING(git hint): /' >&2
     else
       rc=$?
       # legitimate absence 判別 (4 pattern を OR):
@@ -202,7 +204,7 @@ case "$branch_strategy" in
       elif [ -n "$log_err" ] && [ -s "$log_err" ]; then
         log_read_ok="io_error"
         echo "WARNING: .rite/wiki/log.md の git show に失敗しました (rc=$rc)" >&2
-        head -3 "$log_err" | sed 's/^/  /' >&2
+        head -3 "$log_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
         _rite_log_read_impact_advice
         echo "  対処: wiki branch の integrity / 権限を確認してください" >&2
       else
@@ -215,7 +217,7 @@ case "$branch_strategy" in
   same_branch)
     if log_content=$(LC_ALL=C cat .rite/wiki/log.md 2>"${log_err:-/dev/null}"); then
       log_read_ok="true"
-      [ -n "$log_err" ] && [ -s "$log_err" ] && head -3 "$log_err" | sed 's/^/  WARNING(cat hint): /' >&2
+      [ -n "$log_err" ] && [ -s "$log_err" ] && head -3 "$log_err" | neutralize_ctrl --keep-newline | sed 's/^/  WARNING(cat hint): /' >&2
     else
       rc=$?
       if [ -n "$log_err" ] && [ -s "$log_err" ] && grep -qE "No such file or directory|cannot open" "$log_err"; then
@@ -223,7 +225,7 @@ case "$branch_strategy" in
       elif [ -n "$log_err" ] && [ -s "$log_err" ]; then
         log_read_ok="io_error"
         echo "WARNING: .rite/wiki/log.md の cat に失敗しました (rc=$rc)" >&2
-        head -3 "$log_err" | sed 's/^/  /' >&2
+        head -3 "$log_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
         _rite_log_read_impact_advice
         echo "  対処: .rite/wiki/log.md の存在 / 権限を確認してください" >&2
       else
@@ -259,7 +261,7 @@ if [ -n "$log_content" ]; then
   rc=$?
   if [ "$rc" -ne 0 ]; then
     echo "WARNING: ステップ 6.0 の awk/sort pipeline が失敗しました (rc=$rc)" >&2
-    [ -n "$awk_sort_err" ] && [ -s "$awk_sort_err" ] && head -3 "$awk_sort_err" | sed 's/^/  /' >&2
+    [ -n "$awk_sort_err" ] && [ -s "$awk_sort_err" ] && head -3 "$awk_sort_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     echo "  対処: awk / sort バイナリと /tmp の容量を確認してください" >&2
     _rite_log_read_impact_advice
     skipped_refs=""

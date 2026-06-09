@@ -52,6 +52,8 @@
 #     subsequent branch deletion attempts.
 
 set -euo pipefail
+# shellcheck source=../control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"
 
 export GIT_TERMINAL_PROMPT=0
 
@@ -152,7 +154,7 @@ else
   wt_rc=$?
   echo "WARNING: git worktree list --porcelain が失敗しました (rc=$wt_rc)" >&2
   if [ -n "$wt_list_err" ] && [ -s "$wt_list_err" ]; then
-    head -3 "$wt_list_err" | sed 's/^/  /' >&2
+    head -3 "$wt_list_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   errors=$((errors + 1))
 fi
@@ -170,7 +172,7 @@ if [ "$DRY_RUN" = "0" ]; then
     prune_rc=$?
     echo "WARNING: git worktree prune が失敗しました (rc=$prune_rc)" >&2
     if [ -n "$prune_err" ] && [ -s "$prune_err" ]; then
-      head -3 "$prune_err" | sed 's/^/  /' >&2
+      head -3 "$prune_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
     errors=$((errors + 1))
   fi
@@ -202,7 +204,7 @@ else
   ref_rc=$?
   echo "WARNING: git for-each-ref refs/heads/ が失敗しました (rc=$ref_rc)" >&2
   if [ -n "$ref_err" ] && [ -s "$ref_err" ]; then
-    head -3 "$ref_err" | sed 's/^/  /' >&2
+    head -3 "$ref_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   errors=$((errors + 1))
 fi
@@ -253,7 +255,7 @@ else
   workdir_find_rc=$?
   echo "WARNING: find による orphan workdir 走査が失敗しました (rc=$workdir_find_rc, base=$workdir_tmp_base)" >&2
   if [ -n "$workdir_find_err" ] && [ -s "$workdir_find_err" ]; then
-    head -3 "$workdir_find_err" | sed 's/^/  /' >&2
+    head -3 "$workdir_find_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   errors=$((errors + 1))
 fi

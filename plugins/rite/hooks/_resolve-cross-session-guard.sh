@@ -44,6 +44,8 @@
 # Exit codes:
 #   0 — always (classification printed to stdout)
 set -euo pipefail
+# shellcheck source=control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
 
 LEGACY_PATH="${1:-}"
 CURRENT_SID="${2:-}"
@@ -149,7 +151,7 @@ else
   # observability that was traded away when stdout pollution forced removal
   # of an earlier `cat "$_jq_err" >&2` block; details in
   # references/state-read-evolution.md.
-  [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" >&2
+  [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | neutralize_ctrl --keep-newline >&2
   printf 'corrupt:%d' "$jq_rc"
   exit 0
 fi

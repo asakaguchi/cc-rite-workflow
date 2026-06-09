@@ -12,6 +12,9 @@
 #   0: Lock acquired
 #   1: Lock acquisition failed (timeout or stale removal failed)
 
+# shellcheck source=control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
+
 # Stale lock threshold in seconds (default: 120s for compact, 300s for issue)
 WM_LOCK_STALE_THRESHOLD="${WM_LOCK_STALE_THRESHOLD:-120}"
 
@@ -39,7 +42,7 @@ acquire_wm_lock() {
         lock_mtime=$(stat -c %Y "$lockdir" 2>"${stat_err:-/dev/null}" || stat -f %m "$lockdir" 2>"${stat_err:-/dev/null}")
         if [ -z "$lock_mtime" ] || [ "$lock_mtime" = "0" ]; then
           echo "[rite] WARNING: acquire_wm_lock: stat failed on $lockdir — staleness undetectable, treating as fresh lock" >&2
-          [ -n "$stat_err" ] && [ -s "$stat_err" ] && head -3 "$stat_err" | sed 's/^/  /' >&2
+          [ -n "$stat_err" ] && [ -s "$stat_err" ] && head -3 "$stat_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
           [ -n "$stat_err" ] && rm -f "$stat_err"
           return 1
         fi

@@ -23,6 +23,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../control-char-neutralize.sh
+source "$SCRIPT_DIR/../control-char-neutralize.sh"
 PYTHON_SCRIPT="$SCRIPT_DIR/settings-local-rite-hook-cleanup.py"
 
 settings="${1:-}"
@@ -54,7 +56,7 @@ if python3 "$PYTHON_SCRIPT" < "$settings" > "$tmp" 2>/dev/null; then
     mv_rc=$?
     echo "NO_RITE_HOOKS"
     echo "[rite] WARNING: settings-local-rite-hook-cleanup: mv failed (rc=$mv_rc); legacy rite hooks left in place" >&2
-    [ -n "$mv_err" ] && [ -s "$mv_err" ] && head -3 "$mv_err" | sed 's/^/  /' >&2
+    [ -n "$mv_err" ] && [ -s "$mv_err" ] && head -3 "$mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   [ -n "$mv_err" ] && rm -f "$mv_err"
 else

@@ -1060,3 +1060,4 @@
 | 2026-06-09T00:00:00Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1310 fix cycle 3 (raw/fixes/20260608T151908Z-pr-1310.md): propagation-completeness 典型例。表に行を追加するときは表を導入・要約する散文の count 表記も symmetric に更新する |
 | 2026-06-09T00:00:00Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |
 | 2026-06-09T00:24:03Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1313 review (raw/reviews/20260608T233406Z-pr-1313.md): 撤去方向の対称 sweep 契約を追加 — result-pattern 不変列挙の orphan token `terminal-output` が backing Phase 3.x チェック実体撤去後に sweep されず残存。PR #631/#1167 lint step 4-site 対称更新契約の撤去方向対称例、prompt-engineer/code-quality 0 findings |
+| 2026-06-09T00:28:27Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |

@@ -8,6 +8,13 @@
 #   T-03 → AC-3: 異常終了時の回復経路
 #   T-04 → AC-4: 無関係ブランチの保護
 #
+# Per-item failure-branch coverage (Issue #1316) — the `status=failed; errors=N`
+# path of each step's individual delete failure (T-10 covers only Step 3's find
+# *wholesale* failure):
+#   T-11 → Step 1: `git worktree remove --force` failure (locked worktree)
+#   T-12 → Step 2: `git branch -D` failure (read-only refs/heads)
+#   T-13 → Step 3: `rm -rf` failure (read-only orphan-workdir parent)
+#
 # Each test creates an isolated temp git repository, simulates branch /
 # worktree creation, runs the cleanup script, and asserts the result.
 
@@ -65,6 +72,18 @@ fail() {
   FAIL=$((FAIL + 1))
   echo "  ❌ FAIL: $1"
 }
+
+skip() {
+  echo "  ⏭️  SKIP: $1"
+}
+
+# T-12 / T-13 force a delete failure via read-only permission bits (chmod 0500).
+# root bypasses DAC permission checks, so the forced failure would not occur and
+# the test would report a misleading FAIL. Detect root to skip those two tests
+# explicitly rather than emit a false failure. (T-11 uses a git worktree lock,
+# which is enforced by git regardless of uid, so it is not gated.)
+IS_ROOT=0
+if [ "$(id -u)" = "0" ]; then IS_ROOT=1; fi
 
 # Create a fresh temp git repository with an initial commit.
 # Returns the absolute path on stdout.
@@ -415,6 +434,104 @@ else
   fail "T-10: status=failed と find WARNING を期待。Output: $t10_output"
 fi
 cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-11: Step 1 per-item worktree removal failure -> status=failed (refs #1316)
+# Given: a matching `pr-N-cycleX` worktree that is git-locked
+# When: cleanup runs — `git worktree remove --force` uses a SINGLE --force, which
+#       refuses to remove a locked worktree (`-f -f` would be required)
+# Then: the per-item failure branch fires (WARNING "failed to remove worktree" +
+#       errors++) -> status=failed, and the worktree survives intact
+# A git lock — not chmod — is used here: chmod 0500 on the parent would let
+# `git worktree remove` delete the worktree CONTENTS before failing at the final
+# rmdir, leaving a half-removed tree; the lock makes the removal refuse up-front
+# with the worktree fully intact, and is enforced regardless of uid. The matching
+# branch stays checked out in the locked worktree, so Step 2 additionally emits a
+# "failed to delete branch" WARNING — that cascade is expected; this test pins the
+# Step 1 branch by asserting the worktree-specific WARNING.
+# -----------------------------------------------------------------------
+echo "T-11: Step 1 worktree 削除失敗で status=failed (refs #1316)"
+TEST_REPO=$(make_temp_repo)
+(
+  cd "$TEST_REPO"
+  git worktree add --quiet -b pr-100-cycle1 .wt-locked main >/dev/null 2>&1
+  git worktree lock .wt-locked
+)
+t11_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+if echo "$t11_output" | grep -q 'status=failed' \
+   && echo "$t11_output" | grep -q 'failed to remove worktree' \
+   && [ -d "$TEST_REPO/.wt-locked" ]; then
+  pass "T-11: locked worktree の削除失敗が WARNING + status=failed で surface"
+else
+  fail "T-11: status=failed と worktree WARNING を期待。wt=$([ -d "$TEST_REPO/.wt-locked" ] && echo present || echo gone). Output: $t11_output"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-12: Step 2 per-item branch deletion failure -> status=failed (refs #1316)
+# Given: a matching `pr-N-cycleX` branch whose `.git/refs/heads` is read-only
+#        (chmod 0500), with NO worktree (so Step 1 is a clean no-op and only the
+#        Step 2 branch was the failure source)
+# When: cleanup runs
+# Then: `git branch -D` cannot unlink the loose ref -> WARNING "failed to delete
+#       branch" + errors++ -> status=failed, and the branch survives
+# -----------------------------------------------------------------------
+echo "T-12: Step 2 branch 削除失敗で status=failed (refs #1316)"
+if [ "$IS_ROOT" = "1" ]; then
+  skip "T-12: root では perms がバイパスされ強制失敗にならないためスキップ"
+else
+  TEST_REPO=$(make_temp_repo)
+  ( cd "$TEST_REPO" && git branch pr-200-cycle1 main && chmod 0500 .git/refs/heads )
+  t12_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+  # Restore write permission so the survival check and repo cleanup can proceed.
+  ( cd "$TEST_REPO" && chmod 0700 .git/refs/heads )
+  t12_br=$(cd "$TEST_REPO" && git for-each-ref --format='%(refname:short)' refs/heads/ \
+    | { grep -c '^pr-200-cycle1$' || true; })
+  if echo "$t12_output" | grep -q 'status=failed' \
+     && echo "$t12_output" | grep -q 'failed to delete branch' \
+     && [ "$t12_br" = "1" ]; then
+    pass "T-12: read-only refs/heads での branch -D 失敗が WARNING + status=failed で surface"
+  else
+    fail "T-12: status=failed と branch WARNING を期待。branch_present=$t12_br (expect 1). Output: $t12_output"
+  fi
+  cleanup_temp_repo "$TEST_REPO"
+fi
+
+# -----------------------------------------------------------------------
+# T-13: Step 3 per-item orphan workdir reap failure -> status=failed (refs #1316)
+# Given: an aged matching `rite-pr-create-*` workdir whose PARENT dir is read-only
+#        (chmod 0500), so `rm -rf` cannot rmdir the workdir
+# When: cleanup runs with TMPDIR pointed at that locked base
+# Then: WARNING "failed to reap orphan workdir" + errors++ -> status=failed, and
+#       the workdir survives. (T-10 covers the find *wholesale* failure; this is
+#       the symmetric Step 3 gap: the per-item rm failure.)
+# A dedicated locked base (not the shared WORKDIR_SCAN_TMP) is used so the 0500
+# chmod never blocks the other tests; the cleanup script's err-file mktemp uses
+# explicit /tmp paths, so only the find/rm base is affected by the TMPDIR override.
+# -----------------------------------------------------------------------
+echo "T-13: Step 3 orphan workdir rm 失敗で status=failed (refs #1316)"
+if [ "$IS_ROOT" = "1" ]; then
+  skip "T-13: root では perms がバイパスされ強制失敗にならないためスキップ"
+else
+  LOCKED_BASE=$(mktemp -d /tmp/rite-pr-cleanup-locked-XXXXXX)
+  TEST_REPOS+=("$LOCKED_BASE")
+  mkdir -p "$LOCKED_BASE/rite-pr-create-victim"
+  touch -t 202001010000 "$LOCKED_BASE/rite-pr-create-victim"
+  chmod 0500 "$LOCKED_BASE"
+  TEST_REPO=$(make_temp_repo)
+  t13_output=$( cd "$TEST_REPO" && TMPDIR="$LOCKED_BASE" bash "$CLEANUP" 2>&1 )
+  # Restore write permission so the survival check and cleanup can proceed.
+  chmod 0700 "$LOCKED_BASE"
+  if echo "$t13_output" | grep -q 'status=failed' \
+     && echo "$t13_output" | grep -q 'failed to reap orphan workdir' \
+     && [ -d "$LOCKED_BASE/rite-pr-create-victim" ]; then
+    pass "T-13: read-only 親での orphan workdir rm 失敗が WARNING + status=failed で surface"
+  else
+    fail "T-13: status=failed と reap WARNING を期待。victim=$([ -d "$LOCKED_BASE/rite-pr-create-victim" ] && echo present || echo gone). Output: $t13_output"
+  fi
+  rm -rf "$LOCKED_BASE" 2>/dev/null || true
+  cleanup_temp_repo "$TEST_REPO"
+fi
 
 # -----------------------------------------------------------------------
 # Summary

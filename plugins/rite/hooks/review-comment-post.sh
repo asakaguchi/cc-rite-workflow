@@ -121,6 +121,15 @@ fi
 # bash 組込み `[[ =~ ]]` を使う: `printf | grep -qE` は行単位マッチのため複数行値の
 # いずれか 1 行が ISO 形状なら gate を通過する bypass 穴がある。`[[ =~ ]]` の `^`/`$` は
 # 文字列全体に anchor され、改行を含む値を構造的に reject する (hooks/ の支配的 gate パターンとも整合)。
+# `unknown` は ステップ 6.1.a の EXIT trap が timestamp 算出前の早期失敗時に emit する正規の
+# degraded 値 (review-result-save.sh の `${iso_timestamp:-unknown}`)。読取漏れではないため、
+# 「emit 値を渡せ」という誤診断で caller を同一値の再投入ループに誘導しないよう専用診断で reject する。
+if [ "$ISO_TIMESTAMP" = "unknown" ]; then
+  echo "ERROR: review-comment-post: iso_timestamp が degraded 値 'unknown' です (ステップ 6.1.a が timestamp 算出前に失敗)" >&2
+  echo "  --iso-timestamp の再投入では解決しません。ステップ 6.1.a の [CONTEXT] LOCAL_SAVE_FAILED=1; reason=... を確認し、原因 (date 失敗 / 書込失敗等) を解消してから review をやり直してください" >&2
+  echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=iso_timestamp_from_p61a_unset" >&2
+  exit 1
+fi
 _iso8601_re='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([+-][0-9]{2}:[0-9]{2}|Z)$'
 if ! [[ "$ISO_TIMESTAMP" =~ $_iso8601_re ]]; then
   echo "ERROR: review-comment-post: iso_timestamp が ISO 8601 形状ではありません (値: '$ISO_TIMESTAMP')" >&2
@@ -148,7 +157,7 @@ tmpfile_patched=$(mktemp /tmp/rite-review-p61b-comment-patched-XXXXXX.md) || {
 
 # Raw JSON section 内 (`### 📄 Raw JSON` 見出し後の ```json fence 内) の sentinel のみを
 # $ISO_TIMESTAMP に置換する (Markdown 本文の literal sentinel には触れない scope 限定置換)。
-# State machine: 全行を buffer し END block で最後の heading 以降の fence 内のみ gsub する
+# State machine: 全行を buffer し END block で最後の heading 以降の fence 内のみリテラル置換する
 # (finding 列に literal `### 📄 Raw JSON` が含まれる反例に備え fix.md Priority 3 と同じ「last」方式)。
 awk -v ts="$ISO_TIMESTAMP" -v sentinel="$SENTINEL" '
   { lines[NR] = $0 }

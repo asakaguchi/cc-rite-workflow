@@ -2,7 +2,7 @@
 title: "function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差で writer/reader 非対称が偶然 mask される"
 domain: "anti-patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-04-27T23:01:24+00:00"
+updated: "2026-06-09T07:58:52+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260426T231807Z-pr-688.md"
@@ -10,6 +10,8 @@ sources:
     ref: "raw/fixes/20260426T232316Z-pr-688.md"
   - type: "fixes"
     ref: "raw/fixes/20260426T233931Z-pr-688.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260609T071104Z-pr-1318.md"
 tags: ["bash", "set-e", "pipefail", "writer-reader-asymmetry", "silent-failure"]
 confidence: high
 ---
@@ -84,6 +86,35 @@ assert_eq "$output" ""  # default 値が返る
 - ただし scope が膨張するため別 Issue 推奨 (security reviewer が「writer 側にも同形 guard を追加する別 Issue」として記録)。
 - reader 側だけ explicit guard で対称化する fix が当該 PR の scope に最適。
 
+### 追加事例: guard dead-code + 誤コメント (PR #1318)
+
+同原理が **「後続 guard を dead code 化する」** 別の発現形として再観測された。bash test スクリプト (`set -euo pipefail`) で mktemp 失敗をハンドリングするつもりの guard:
+
+```bash
+LOCKED_BASE=$(mktemp -d /tmp/rite-pr-cleanup-locked-XXXXXX)
+# Guard against mktemp failure: a simple assignment is exempt from `set -e`, so
+# LOCKED_BASE could be empty. ...(誤った前提)...
+if [ -z "$LOCKED_BASE" ]; then
+  fail "mktemp failed"
+else
+  mkdir -p "$LOCKED_BASE/..."   # 空なら /... を作りかねない、と作者は想定
+  ...
+fi
+```
+
+ここで `LOCKED_BASE=$(mktemp ...)` は **top-level の plain 代入**なので、mktemp 失敗 (非ゼロ exit) は `set -e` で伝播し **その行で abort する**。よって `if [ -z "$LOCKED_BASE" ]` guard には**到達しない (dead code)**。実際の失敗時挙動は「graceful な fail + Summary 出力」ではなく「suite 全体が rc=1 で中断・Summary 未出力」。
+
+加えてコメントの **「a simple assignment is exempt from `set -e`」は誤り**。`set -e` を免除する (exit status を mask する) のは `local v=$(...)` / `declare` / `export` などの builtin 経由代入のみで、plain な top-level 代入は exempt ではない (本ページ Root cause と同一)。
+
+canonical fix は本ページと同じ `|| v=""` 対称化:
+
+```bash
+LOCKED_BASE=$(mktemp -d /tmp/rite-pr-cleanup-locked-XXXXXX) || LOCKED_BASE=""
+if [ -z "$LOCKED_BASE" ]; then fail ...; else ...; fi
+```
+
+`|| LOCKED_BASE=""` を付けて初めて、mktemp 失敗時に abort せず空文字へ畳まれ guard が機能する。sibling script (`pr-cycle-cleanup.sh`) は元々 `wt_list_err=$(mktemp ...) || wt_list_err=""` の慣習だったため、それに揃える形で解消した。教訓: **「guard を書いた」だけでは到達可能性を保証しない。guard の手前の代入が `set -e` で abort しないことを `|| v=""` で明示せよ。コメントで set -e 免除を主張する場合は local/plain の区別を正確に書く** (誤った mental model はレビューで [Comment Rot](./fix-comment-self-drift.md) として検出される)。3 cycle 収束 (cycle 2 で error-handling reviewer が LOW 指摘 → cycle 3 で `|| v=""` 化)。
+
 ## 関連ページ
 
 - [`if ! cmd; then rc=$?` は常に 0 を捕捉する](../anti-patterns/bash-if-bang-rc-capture.md)
@@ -95,3 +126,4 @@ assert_eq "$output" ""  # default 値が返る
 - [PR #688 review results (cycle 1)](../../raw/reviews/20260426T231807Z-pr-688.md)
 - [PR #688 fix results (cycle 1)](../../raw/fixes/20260426T232316Z-pr-688.md)
 - [PR #688 fix results (cycle 3 — user scope expansion)](../../raw/fixes/20260426T233931Z-pr-688.md)
+- [PR #1318 review results (cycle 3 — guard dead-code 発現形)](../../raw/reviews/20260609T071104Z-pr-1318.md)

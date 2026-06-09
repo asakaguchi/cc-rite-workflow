@@ -241,7 +241,7 @@ fi
 if ! git worktree add --quiet "$target_path" "$wiki_branch" 2>"${add_err:-/dev/null}"; then
   echo "ERROR: git worktree add '$target_path' '$wiki_branch' failed" >&2
   if [[ -n "$add_err" ]] && [[ -s "$add_err" ]]; then
-    head -n 10 "$add_err" | sed 's/^/  git: /' >&2
+    head -n 10 "$add_err" | neutralize_ctrl --keep-newline | sed 's/^/  git: /' >&2
   fi
   echo "  hint: ensure the wiki branch is not already checked out elsewhere (git worktree list)" >&2
   exit 3

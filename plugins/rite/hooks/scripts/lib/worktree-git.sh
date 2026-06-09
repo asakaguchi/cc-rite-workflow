@@ -238,7 +238,7 @@ worktree_commit_push() {
  local _first_path="$1"
  if ! git -C "$worktree" add -- "$@" 2>"${add_err:-/dev/null}"; then
  echo "ERROR: git add '$_first_path' failed in worktree '$worktree'" >&2
- [ -n "$add_err" ] && [ -s "$add_err" ] && head -n 10 "$add_err" | sed 's/^/ git: /' >&2
+ [ -n "$add_err" ] && [ -s "$add_err" ] && head -n 10 "$add_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
  echo " hint: index lock / path error / permission denied のいずれかを確認してください" >&2
  rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}"
  _wtgp_restore_caller_state
@@ -266,7 +266,7 @@ worktree_commit_push() {
  1) ;; # staged diff present, proceed
  *)
  echo "ERROR: git diff --cached failed in worktree '$worktree' (rc=$cached_rc)" >&2
- [ -n "$diff_err" ] && [ -s "$diff_err" ] && head -n 10 "$diff_err" | sed 's/^/ git: /' >&2
+ [ -n "$diff_err" ] && [ -s "$diff_err" ] && head -n 10 "$diff_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
  rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}"
  _wtgp_restore_caller_state
  return 3
@@ -276,7 +276,7 @@ worktree_commit_push() {
  # Step 3: commit
  if ! git -C "$worktree" commit --quiet -m "$commit_msg" 2>"${commit_err:-/dev/null}"; then
  echo "ERROR: git commit failed in worktree '$worktree'" >&2
- [ -n "$commit_err" ] && [ -s "$commit_err" ] && head -n 10 "$commit_err" | sed 's/^/ git: /' >&2
+ [ -n "$commit_err" ] && [ -s "$commit_err" ] && head -n 10 "$commit_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
  echo " hint: pre-commit hook / gpg sign / author config / permission のいずれかを確認" >&2
  rm -f "${add_err:-}" "${diff_err:-}" "${commit_err:-}" "${push_err:-}"
  _wtgp_restore_caller_state
@@ -298,7 +298,7 @@ worktree_commit_push() {
  else
  local head_rc=$?
  echo "WARNING: git -C '$worktree' rev-parse HEAD failed post-commit (rc=$head_rc)" >&2
- [ -n "$head_err" ] && [ -s "$head_err" ] && head -n 5 "$head_err" | sed 's/^/ git: /' >&2
+ [ -n "$head_err" ] && [ -s "$head_err" ] && head -n 5 "$head_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
  echo " head SHA will be reported as 'unknown' — the commit itself succeeded but the worktree may be corrupt" >&2
  head_sha="unknown"
  fi
@@ -312,7 +312,7 @@ worktree_commit_push() {
  if ! git -C "$worktree" push --quiet origin "$branch" 2>"${push_err:-/dev/null}"; then
  push_status="failed"
  echo "WARNING: git push origin '$branch' failed in worktree '$worktree' — commit is local only" >&2
- [ -n "$push_err" ] && [ -s "$push_err" ] && head -n 10 "$push_err" | sed 's/^/ git: /' >&2
+ [ -n "$push_err" ] && [ -s "$push_err" ] && head -n 10 "$push_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
  echo " manual recovery: git -C '$worktree' push origin '$branch'" >&2
  fi
 

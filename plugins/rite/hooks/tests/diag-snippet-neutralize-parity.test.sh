@@ -7,10 +7,11 @@
 #   neutralize_ctrl を経由して emit する」規約を、hooks/ 配下の全
 #   `head -3` emission site に対称適用したことを保証する
 #   (Wiki 経験則 Asymmetric Fix Transcription — 対称位置への伝播漏れ防止)。
-#   sweep は `head -3` 限定ではなく `head -N` (任意行数) を対象とする —
-#   PR #1328 cycle 1 で head -5 変種の兄弟イディオムが同一ファイル内に
-#   未中和で残存し literal `head -3` sweep では検出できないことが実証された。
-#   将来 hook に新しい `head -N ... >&2` 診断 site が中和なしで追加された
+#   sweep は `head -3` 限定ではなく `head -N` / `head -n N` (任意行数・両綴り)
+#   を対象とする — literal パターン限定の sweep は数値違い (head -5) や
+#   綴り違い (head -n 10) の同型イディオムを構造的に見逃すことが
+#   実証されている (Asymmetric Fix Transcription の変種)。
+#   将来 hook に新しい行指向 head 診断 site が中和なしで追加された
 #   場合も TC-1 が検出する。
 #
 # Test cases:
@@ -35,11 +36,13 @@ fi
 
 echo "=== TC-1: head -N emission site は全て neutralize_ctrl を経由 ==="
 # 除外: tests/ (fixture/assertion 内の出現)、コメント行、定義元 helper の usage コメント
-# `head -[0-9]+` (行指向 snippet) を対象とする。`head -c` (byte 指向 inline 埋め込み) は
-# 1 行 WARNING への embed で行構造が異なる別イディオムのため本 sweep の対象外。
-# 注意: head -c site は現状中和未適用 (Issue #1183 の対象は行指向 head -N snippet のみ)。
-# 横展開する場合は別 Issue で扱う
-violations=$(grep -rnE 'head -[0-9]+ ' "$HOOKS_DIR" --include='*.sh' \
+# `head -[0-9]+` / `head -n [0-9]+` (行指向 snippet、両綴り) を対象とする。
+# `head -c` (byte 指向 inline 埋め込み) は 1 行 WARNING への embed で行構造が異なる
+# 別イディオムのため本 sweep の対象外。
+# 注意: head -c site は現状中和未適用 (Issue #1183 の対象は行指向 head snippet のみ)。
+# 横展開する場合は別 Issue で扱う。同様に、`>&2` が log() 等の関数内部に隠れて
+# 同一行に現れない emission 経路も本 sweep の検出対象外 (別 Issue の横展開対象候補)
+violations=$(grep -rnE 'head (-[0-9]+|-n +[0-9]+) ' "$HOOKS_DIR" --include='*.sh' \
   | grep '>&2' \
   | grep -v "$HOOKS_DIR/tests/" \
   | grep -v 'neutralize_ctrl' \
@@ -61,8 +64,8 @@ caller_files=$(grep -rlE 'neutralize_ctrl|contains_ctrl' "$HOOKS_DIR" --include=
   || true)
 checked=0
 for f in $caller_files; do
-  # コメント行を除いた実 call site があるファイルのみ検査
-  if ! grep -vE '^[[:space:]]*#' "$f" | grep -q 'neutralize_ctrl\|contains_ctrl'; then
+  # コメント行を除いた実 call site があるファイルのみ検査 (収集側 grep -rlE と書式統一)
+  if ! grep -vE '^[[:space:]]*#' "$f" | grep -qE 'neutralize_ctrl|contains_ctrl'; then
     continue
   fi
   checked=$((checked + 1))

@@ -115,6 +115,8 @@ fi
 # for rationale — `$(dirname "$0")` after `cd` breaks under relative
 # invocation paths.
 _SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../control-char-neutralize.sh
+source "$_SCRIPT_DIR/../control-char-neutralize.sh"
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
@@ -237,7 +239,7 @@ if [[ -d ".rite/wiki/raw" ]]; then
  ' "$f" 2>"${fm_err:-/dev/null}" || true)
  if [[ -n "$fm_err" ]] && [[ -s "$fm_err" ]]; then
  echo "WARNING: frontmatter parse produced stderr for '$f' — treating as pending" >&2
- head -n 3 "$fm_err" | sed 's/^/ awk: /' >&2
+ head -n 3 "$fm_err" | neutralize_ctrl --keep-newline | sed 's/^/ awk: /' >&2
  : > "$fm_err" 2>/dev/null || true
  fi
  ingested_norm=$(printf '%s' "$ingested_val" | tr -d '"'"'" | tr '[:upper:]' '[:lower:]')
@@ -279,7 +281,7 @@ if [[ "$branch_strategy" == "same_branch" ]]; then
  _sb_dump() {
   local label="$1"
   if [ -n "$_sb_git_err" ] && [ -s "$_sb_git_err" ]; then
-   head -n 10 "$_sb_git_err" | sed 's/^/  git ('"$label"'): /' >&2
+   head -n 10 "$_sb_git_err" | neutralize_ctrl --keep-newline | sed 's/^/  git ('"$label"'): /' >&2
    : > "$_sb_git_err" 2>/dev/null || true
   fi
  }
@@ -674,7 +676,7 @@ fi
 dump_git_err() {
  local label="$1"
  if [[ -n "$git_err" ]] && [[ -s "$git_err" ]]; then
- head -n 10 "$git_err" | sed 's/^/ git ('"$label"'): /' >&2
+ head -n 10 "$git_err" | neutralize_ctrl --keep-newline | sed 's/^/ git ('"$label"'): /' >&2
  : > "$git_err" 2>/dev/null || true
  fi
 }

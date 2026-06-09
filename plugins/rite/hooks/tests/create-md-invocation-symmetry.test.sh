@@ -261,15 +261,32 @@ else
   fail "TC-5 decompose-issues.sh link-sub-issue.sh integrity broken (canonical=$link_canonical, total=$link_total) — silent removal suspected"
 fi
 
-# TC-5b: the positional 4-arg contract is visible at the canonical callsite.
-# link-sub-issue.sh takes <owner> <repo> <parent> <child>; assert the callsite
-# passes "$owner" "$repo" "$parent_issue_number" "$sub_number" so an accidental
-# switch to a flag/JSON form (which the script does not accept) is caught.
-if grep -qE 'bash "\$LINK_SCRIPT"' "$DECOMPOSE_SH" \
-   && grep -qE '"\$owner" "\$repo" "\$parent_issue_number" "\$sub_number"' "$DECOMPOSE_SH"; then
-  pass "TC-5b link-sub-issue.sh canonical callsite passes positional 4 args (owner repo parent child)"
+# TC-5b: the positional 4-arg contract is visible AT the canonical callsite —
+# on the line immediately following `bash "$LINK_SCRIPT" \`. link-sub-issue.sh
+# takes <owner> <repo> <parent> <child>; pinning the 4-arg form *adjacent to* the
+# callsite (rather than two independent file-wide greps that only prove both
+# strings exist somewhere) catches an accidental switch to a flag/JSON form (which
+# the script does not accept) AND a relocation of the 4-arg away from the callsite.
+# Mirrors TC-7b (sentinel↔disambiguator adjacency) / TC-5c (recovery-line pin).
+# awk regex uses [$] for a literal `$` to avoid escape-sequence warnings (see the
+# TC-3 note above). `link_canonical` (callsite count) is reused from TC-5.
+tc5b_violations=$(awk '
+  prev_is_callsite {
+    if ($0 !~ /"[$]owner" "[$]repo" "[$]parent_issue_number" "[$]sub_number"/) {
+      print (NR-1) ": bash \"$LINK_SCRIPT\" not immediately followed by positional 4 args (next line " NR ": " $0 ")"
+    }
+    prev_is_callsite = 0
+  }
+  /bash "[$]LINK_SCRIPT"[[:space:]]*\\$/ { prev_is_callsite = 1 }
+' "$DECOMPOSE_SH" || true)
+if [ "$link_canonical" -ge 1 ] && [ -z "$tc5b_violations" ]; then
+  pass "TC-5b link-sub-issue.sh canonical callsite is immediately followed by positional 4 args (owner repo parent child) at $link_canonical callsite(s)"
+elif [ "$link_canonical" -lt 1 ]; then
+  fail "TC-5b no canonical 'bash \"\$LINK_SCRIPT\" \\' callsite found in $DECOMPOSE_SH (TC-5 should have caught this)"
 else
-  fail "TC-5b link-sub-issue.sh positional 4-arg form not found at the decompose callsite"
+  echo "  Callsite / 4-arg adjacency violations:"
+  printf '%s\n' "$tc5b_violations" | sed 's/^/    /'
+  fail "TC-5b positional 4-arg form not adjacent to the link-sub-issue.sh callsite (relocation or flag/JSON regression suspected)"
 fi
 
 # TC-5c: create.md no longer runs link-sub-issue.sh in its create flow (the

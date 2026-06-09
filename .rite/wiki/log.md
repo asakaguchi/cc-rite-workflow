@@ -1101,3 +1101,4 @@
 | 2026-06-10T10:10:00+09:00 | ingest:create | pages/heuristics/allowlist-gate-hardening-checklist.md | raw/fixes/20260609T223943Z-pr-1330-c2.md (PR #1330 fix c2) |
 | 2026-06-10T10:10:00+09:00 | ingest:create | pages/heuristics/allowlist-gate-hardening-checklist.md | raw/fixes/20260609T224734Z-pr-1330-c3.md (PR #1330 fix c3) |
 | 2026-06-10T10:10:00+09:00 | ingest:create | pages/heuristics/allowlist-gate-hardening-checklist.md | raw/reviews/20260609T225247Z-pr-1330-c4.md (PR #1330 review c4 mergeable) |
+| 2026-06-10T07:55:48+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |

@@ -111,17 +111,32 @@ if [ -z "$CONTENT_FILE" ] || [ ! -f "$CONTENT_FILE" ]; then
   exit 1
 fi
 
-# iso_timestamp sentinel fail-fast gate。
-# substitute 漏れ時 sentinel が Raw JSON に残留し、fix.md Priority 3 が sentinel 付き timestamp で
-# findings を解釈する silent regression を持つため機械的に強制。
-case "$ISO_TIMESTAMP" in
-  "{"*|*"}"|""|"$SENTINEL")
-    echo "ERROR: review-comment-post: iso_timestamp が literal substitute されていません (値: '$ISO_TIMESTAMP')" >&2
-    echo "  caller は ステップ 6.1.a の [CONTEXT] ISO_TIMESTAMP=... emit 値を --iso-timestamp に渡す必要があります (例: 2026-04-11T12:34:56+09:00)" >&2
-    echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=iso_timestamp_from_p61a_unset" >&2
-    exit 1
-    ;;
-esac
+# iso_timestamp fail-fast gate (ISO 8601 allowlist — Issue #1200)。
+# 旧 denylist (`{`-prefix / `}`-suffix / 空 / sentinel 完全一致のみ reject) は placeholder 残留の
+# 典型形しか弾けず、`&`/`\` 等の awk replacement metacharacter や任意の不正値を素通ししていた。
+# ISO 8601 形状 (`YYYY-MM-DDTHH:MM:SS` + `±HH:MM` または `Z`) の allowlist 検証に置換し、
+# sentinel 残留 / 空文字 / placeholder 形式 / 非 ISO 形状をすべて同一 reason で reject する
+# (substitute 漏れ時 sentinel が Raw JSON に残留し、fix.md Priority 3 が sentinel 付き timestamp で
+# findings を解釈する silent regression を防ぐ機械的強制)。
+# bash 組込み `[[ =~ ]]` を使う: `printf | grep -qE` は行単位マッチのため複数行値の
+# いずれか 1 行が ISO 形状なら gate を通過する bypass 穴がある。`[[ =~ ]]` の `^`/`$` は
+# 文字列全体に anchor され、改行を含む値を構造的に reject する (hooks/ の支配的 gate パターンとも整合)。
+# `unknown` は ステップ 6.1.a の EXIT trap が timestamp 算出前の早期失敗時に emit する正規の
+# degraded 値 (review-result-save.sh の `${iso_timestamp:-unknown}`)。読取漏れではないため、
+# 「emit 値を渡せ」という誤診断で caller を同一値の再投入ループに誘導しないよう専用診断で reject する。
+if [ "$ISO_TIMESTAMP" = "unknown" ]; then
+  echo "ERROR: review-comment-post: iso_timestamp が degraded 値 'unknown' です (ステップ 6.1.a が timestamp 算出前に失敗)" >&2
+  echo "  --iso-timestamp の再投入では解決しません。ステップ 6.1.a の [CONTEXT] LOCAL_SAVE_FAILED=1; reason=... を確認し、原因 (date 失敗 / 書込失敗等) を解消してから review をやり直してください" >&2
+  echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=iso_timestamp_from_p61a_unset" >&2
+  exit 1
+fi
+_iso8601_re='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([+-][0-9]{2}:[0-9]{2}|Z)$'
+if ! [[ "$ISO_TIMESTAMP" =~ $_iso8601_re ]]; then
+  echo "ERROR: review-comment-post: iso_timestamp が ISO 8601 形状ではありません (値: '$ISO_TIMESTAMP')" >&2
+  echo "  caller は ステップ 6.1.a の [CONTEXT] ISO_TIMESTAMP=... emit 値を --iso-timestamp に渡す必要があります (例: 2026-04-11T12:34:56+09:00)" >&2
+  echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=iso_timestamp_from_p61a_unset" >&2
+  exit 1
+fi
 
 # --- trap 保護 ---
 tmpfile_patched=""
@@ -142,9 +157,9 @@ tmpfile_patched=$(mktemp /tmp/rite-review-p61b-comment-patched-XXXXXX.md) || {
 
 # Raw JSON section 内 (`### 📄 Raw JSON` 見出し後の ```json fence 内) の sentinel のみを
 # $ISO_TIMESTAMP に置換する (Markdown 本文の literal sentinel には触れない scope 限定置換)。
-# State machine: 全行を buffer し END block で最後の heading 以降の fence 内のみ gsub する
+# State machine: 全行を buffer し END block で最後の heading 以降の fence 内のみリテラル置換する
 # (finding 列に literal `### 📄 Raw JSON` が含まれる反例に備え fix.md Priority 3 と同じ「last」方式)。
-awk -v ts="$ISO_TIMESTAMP" '
+awk -v ts="$ISO_TIMESTAMP" -v sentinel="$SENTINEL" '
   { lines[NR] = $0 }
   /^### 📄 Raw JSON/ { last_heading = NR }
   END {
@@ -154,7 +169,20 @@ awk -v ts="$ISO_TIMESTAMP" '
       if (past && lines[i] ~ /^```json$/) { in_fence = 1; print lines[i]; continue }
       if (past && in_fence && lines[i] ~ /^```$/) { in_fence = 0; print lines[i]; continue }
       if (in_fence) {
-        gsub(/"__RITE_TS_PLACEHOLDER_7f3a9b2c__"/, "\"" ts "\"", lines[i])
+        # index()/substr() ベースのリテラル置換 (Issue #1200)。gsub の replacement に ts を
+        # 直接埋め込むと `&` (マッチ全体に展開) / `\` (エスケープ) が metacharacter として
+        # 解釈され置換結果が壊れる。index/substr は needle / replacement とも純リテラル扱い。
+        # needle は SENTINEL 変数を -v で受け取る (値は backslash を含まないため -v の
+        # escape 解釈は安全)。post-condition 側の awk は regex literal のため別管理。
+        needle = "\"" sentinel "\""
+        repl = "\"" ts "\""
+        line = lines[i]
+        out = ""
+        while ((pos = index(line, needle)) > 0) {
+          out = out substr(line, 1, pos - 1) repl
+          line = substr(line, pos + length(needle))
+        }
+        lines[i] = out line
       }
       print lines[i]
     }

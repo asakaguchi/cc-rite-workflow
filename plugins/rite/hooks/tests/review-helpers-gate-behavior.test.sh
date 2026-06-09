@@ -15,7 +15,8 @@
 #        file_timestamp 整合性 (unknown ∧ local_save_failed≠1 遮断) / local_save_failed 値検証 /
 #        ケース 1 (INFO, exit 0) vs ケース 2 (p61c_persistence_unrecoverable, exit 2 hard-fail)
 #   TC-2 review-comment-post.sh — post_comment_mode gate (false silent skip は gh 不実行まで検証) /
-#        pr_number / json_saved / content-file / iso_timestamp の各 gate /
+#        pr_number / json_saved / content-file / iso_timestamp の各 gate
+#        (iso_timestamp は ISO 8601 allowlist — 非 ISO 形状 / awk metachar 注入形も reject、Issue #1200) /
 #        stub gh での happy path (Raw JSON 内 sentinel 置換 + Markdown 本文 sentinel 保存) /
 #        gh 失敗時の gh_comment_post_failure emit
 #   TC-3 review-result-save.sh — D-04 非ブロッキング契約 (gate 失敗でも exit 0 + EXIT trap が
@@ -211,6 +212,24 @@ assert_grep "TC-2.6b reason=iso_timestamp_from_p61a_unset emit" "$ERR" 'REVIEW_O
 run_post --pr 123 --post-comment-mode true --json-saved true --iso-timestamp "$SENTINEL" --content-file "$DUMMY_CONTENT"
 assert "TC-2.6c iso_timestamp が sentinel そのもの: exit 1" "1" "$RC"
 assert_grep "TC-2.6c reason=iso_timestamp_from_p61a_unset emit" "$ERR" 'REVIEW_OUTPUT_FAILED=1; reason=iso_timestamp_from_p61a_unset'
+# TC-2.6d ISO 8601 allowlist (Issue #1200): 非 ISO 形状は旧 denylist 通過形でも reject
+run_post --pr 123 --post-comment-mode true --json-saved true --iso-timestamp "not-a-timestamp" --content-file "$DUMMY_CONTENT"
+assert "TC-2.6d iso_timestamp 非 ISO 形状: exit 1" "1" "$RC"
+assert_grep "TC-2.6d reason=iso_timestamp_from_p61a_unset emit" "$ERR" 'REVIEW_OUTPUT_FAILED=1; reason=iso_timestamp_from_p61a_unset'
+# TC-2.6e awk replacement metachar 注入形 (`&` / `\`) も allowlist が reject (gsub metachar 防御の第一層)
+run_post --pr 123 --post-comment-mode true --json-saved true --iso-timestamp '2026-01-02T03:04:05+09:00&\evil' --content-file "$DUMMY_CONTENT"
+assert "TC-2.6e iso_timestamp metachar 注入形: exit 1" "1" "$RC"
+assert_grep "TC-2.6e reason=iso_timestamp_from_p61a_unset emit" "$ERR" 'REVIEW_OUTPUT_FAILED=1; reason=iso_timestamp_from_p61a_unset'
+# TC-2.6f 複数行値 bypass 防止: grep -qE は行単位マッチのため 2 行目の valid ISO で素通りする (=~ の文字列全体 anchor を検証)
+run_post --pr 123 --post-comment-mode true --json-saved true --iso-timestamp "$(printf 'garbage\n2026-01-02T03:04:05Z')" --content-file "$DUMMY_CONTENT"
+assert "TC-2.6f iso_timestamp 複数行値: exit 1" "1" "$RC"
+assert_grep "TC-2.6f reason=iso_timestamp_from_p61a_unset emit" "$ERR" 'REVIEW_OUTPUT_FAILED=1; reason=iso_timestamp_from_p61a_unset'
+# TC-2.6g degraded 値 `unknown` (6.1.a EXIT trap の正規 emit) は専用診断で reject — 「emit 値を渡せ」の誤診断で再投入ループに誘導しない
+run_post --pr 123 --post-comment-mode true --json-saved true --iso-timestamp "unknown" --content-file "$DUMMY_CONTENT"
+assert "TC-2.6g iso_timestamp=unknown: exit 1" "1" "$RC"
+assert_grep "TC-2.6g reason=iso_timestamp_from_p61a_unset emit" "$ERR" 'REVIEW_OUTPUT_FAILED=1; reason=iso_timestamp_from_p61a_unset'
+assert_grep "TC-2.6g 専用診断 (degraded 値) を表示" "$ERR" "degraded 値 'unknown'"
+assert_grep "TC-2.6g 再投入では解決しない旨を案内" "$ERR" '再投入では解決しません'
 
 # TC-2.7 happy path: 全 gate 通過 + Raw JSON 内 sentinel のみ scope 限定置換
 POST_CONTENT="$TMP_ROOT/post-content.md"

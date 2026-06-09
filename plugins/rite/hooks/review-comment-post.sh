@@ -163,8 +163,8 @@ awk -v ts="$ISO_TIMESTAMP" -v sentinel="$SENTINEL" '
         # index()/substr() ベースのリテラル置換 (Issue #1200)。gsub の replacement に ts を
         # 直接埋め込むと `&` (マッチ全体に展開) / `\` (エスケープ) が metacharacter として
         # 解釈され置換結果が壊れる。index/substr は needle / replacement とも純リテラル扱い。
-        # needle は SENTINEL 変数を -v で受け取り literal 重複を解消 (値は backslash を含まないため
-        # -v の escape 解釈は安全)。
+        # needle は SENTINEL 変数を -v で受け取る (値は backslash を含まないため -v の
+        # escape 解釈は安全)。post-condition 側の awk は regex literal のため別管理。
         needle = "\"" sentinel "\""
         repl = "\"" ts "\""
         line = lines[i]

@@ -159,9 +159,10 @@
 | [rc 観測が必要な find は process substitution でなく command substitution + here-string で呼ぶ](pages/patterns/find-rc-via-command-substitution-here-string.md) | patterns | cleanup/GC スクリプトで `find` を process substitution `< <(find ...)` で呼ぶと find の wholesale 失敗 (TMPDIR 不在/権限/IO エラー) の rc がシェルに伝播せず `2>/dev/null` 併用で完全に silent な no-op になる。sibling ブロックが `if out=$(cmd); then ...; else rc=$?; WARNING; errors++` で rc 捕捉している文脈では、新規ブロックも command substitution `out=$(find ...)` + here-string `<<<` に揃え rc を観測可能にして sibling 対称性を保つ (空 stdout は `[ -z ]` ガードで skip、failure path は TMPDIR override で誘発)。`mapfile -t < <(...)` pipefail-safe pattern とは『非ゼロ exit を吸収すべきか観測すべきか』で使い分ける。PR #1315 で確立。 | 2026-06-09T04:36:49+00:00 | high |
 | [新規 test helper は同ディレクトリ sibling test の既存 helper 慣習を踏襲する (counter + summary 報告)](pages/heuristics/test-helper-follows-sibling-convention.md) | heuristics | bash test に新規 helper (skip 等) を追加するときは echo のみの最小実装ではなく、同ディレクトリ sibling test file の確立済み helper 慣習 (counter init + increment + Summary 報告) を踏襲する。最小実装だと CI ログで skip 件数と全 PASS を判別できず observability が劣化する。表示文言の逐語コピーではなく「counter + summary 報告」という構造的慣習を踏襲し、Summary 行形式は file-local 既存形式を優先する。PR #1318 で code-quality が actionable 検出。 | 2026-06-09T07:58:52+00:00 | medium |
 | [security guard の deny メッセージ改善は判定ロジック不変の subkind タグ分岐で行う](pages/patterns/security-guard-message-only-subkind-branching.md) | patterns | security hook の over-broad block 体験を改善する際、deny 判定を一切緩和せず subkind タグでメッセージのみ分岐する (パターン名は既存テスト互換のため不変に pin)。代替案内が bypass 経路にならないことの実プローブ + message assertion の mutation non-vacuity 検証 + 「緩和しない」方針自体の回帰テスト pin が検証 3 点セット (PR #1323 / Issue #1322)。 | 2026-06-09T18:38:00Z | medium |
+| [Issue 対応案の番号参照を未検証のまま転記すると事実誤認が伝播する](pages/anti-patterns/unverified-issue-proposal-reference-transcription.md) | anti-patterns | Issue body の対応案文字列を verbatim 転記すると、対応案自体の事実誤認 (Issue を PR とラベルする参照種別の取り違え) が成果物へ伝播する。番号参照は転記前に gh issue/pr view で種別を実機検証し、repo 既存記法 (#1088 (実装: #1091) 形式) と整合させる。PR #1325 で実測 (2 reviewer High Confidence 検出、2 cycle 収束)。 | 2026-06-09T19:40:00Z | high |
 
 ## 統計
 
-- 総ページ数: 152
-- ドメイン別: patterns=53, heuristics=45, anti-patterns=54
-- 最終更新: 2026-06-09T18:38:00+00:00
+- 総ページ数: 153
+- ドメイン別: patterns=53, heuristics=45, anti-patterns=55
+- 最終更新: 2026-06-09T19:40:00+00:00

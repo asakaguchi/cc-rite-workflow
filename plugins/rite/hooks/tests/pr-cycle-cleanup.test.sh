@@ -24,6 +24,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CLEANUP="$SCRIPT_DIR/../scripts/pr-cycle-cleanup.sh"
 PASS=0
 FAIL=0
+SKIP=0
 
 if [ ! -f "$CLEANUP" ]; then
   echo "ERROR: $CLEANUP not found" >&2
@@ -74,7 +75,8 @@ fail() {
 }
 
 skip() {
-  echo "  ⏭️  SKIP: $1"
+  SKIP=$((SKIP + 1))
+  echo "  ⏭️ SKIP: $1"
 }
 
 # T-12 / T-13 force a delete failure via read-only permission bits (chmod 0500).
@@ -84,6 +86,13 @@ skip() {
 # which is enforced by git regardless of uid, so it is not gated.)
 IS_ROOT=0
 if [ "$(id -u)" = "0" ]; then IS_ROOT=1; fi
+
+# The per-item failure tests below capture cleanup output with
+# `t*_output=$( cd "$REPO" && bash "$CLEANUP" 2>&1 )`. This relies on the cleanup
+# script's contract of always returning exit 0 (it reports failure via the
+# `status=failed` line, not a non-zero exit — see pr-cycle-cleanup.sh `exit 0`).
+# If that contract ever changes, these command substitutions would abort under
+# `set -e` before the restore/assert lines; the global trap still restores perms.
 
 # Create a fresh temp git repository with an initial commit.
 # Returns the absolute path on stdout.
@@ -514,23 +523,31 @@ if [ "$IS_ROOT" = "1" ]; then
   skip "T-13: root では perms がバイパスされ強制失敗にならないためスキップ"
 else
   LOCKED_BASE=$(mktemp -d /tmp/rite-pr-cleanup-locked-XXXXXX)
-  TEST_REPOS+=("$LOCKED_BASE")
-  mkdir -p "$LOCKED_BASE/rite-pr-create-victim"
-  touch -t 202001010000 "$LOCKED_BASE/rite-pr-create-victim"
-  chmod 0500 "$LOCKED_BASE"
-  TEST_REPO=$(make_temp_repo)
-  t13_output=$( cd "$TEST_REPO" && TMPDIR="$LOCKED_BASE" bash "$CLEANUP" 2>&1 )
-  # Restore write permission so the survival check and cleanup can proceed.
-  chmod 0700 "$LOCKED_BASE"
-  if echo "$t13_output" | grep -q 'status=failed' \
-     && echo "$t13_output" | grep -q 'failed to reap orphan workdir' \
-     && [ -d "$LOCKED_BASE/rite-pr-create-victim" ]; then
-    pass "T-13: read-only 親での orphan workdir rm 失敗が WARNING + status=failed で surface"
+  # Guard against mktemp failure: a simple assignment is exempt from `set -e`, so
+  # LOCKED_BASE could be empty. Without this guard, `mkdir -p "$LOCKED_BASE/..."`
+  # would target the filesystem root (`/rite-pr-create-victim`). Fail the test
+  # instead of proceeding.
+  if [ -z "$LOCKED_BASE" ]; then
+    fail "T-13: mktemp -d による locked base 作成に失敗"
   else
-    fail "T-13: status=failed と reap WARNING を期待。victim=$([ -d "$LOCKED_BASE/rite-pr-create-victim" ] && echo present || echo gone). Output: $t13_output"
+    TEST_REPOS+=("$LOCKED_BASE")
+    mkdir -p "$LOCKED_BASE/rite-pr-create-victim"
+    touch -t 202001010000 "$LOCKED_BASE/rite-pr-create-victim"
+    chmod 0500 "$LOCKED_BASE"
+    TEST_REPO=$(make_temp_repo)
+    t13_output=$( cd "$TEST_REPO" && TMPDIR="$LOCKED_BASE" bash "$CLEANUP" 2>&1 )
+    # Restore write permission so the survival check and cleanup can proceed.
+    chmod 0700 "$LOCKED_BASE"
+    if echo "$t13_output" | grep -q 'status=failed' \
+       && echo "$t13_output" | grep -q 'failed to reap orphan workdir' \
+       && [ -d "$LOCKED_BASE/rite-pr-create-victim" ]; then
+      pass "T-13: read-only 親での orphan workdir rm 失敗が WARNING + status=failed で surface"
+    else
+      fail "T-13: status=failed と reap WARNING を期待。victim=$([ -d "$LOCKED_BASE/rite-pr-create-victim" ] && echo present || echo gone). Output: $t13_output"
+    fi
+    rm -rf "$LOCKED_BASE" 2>/dev/null || true
+    cleanup_temp_repo "$TEST_REPO"
   fi
-  rm -rf "$LOCKED_BASE" 2>/dev/null || true
-  cleanup_temp_repo "$TEST_REPO"
 fi
 
 # -----------------------------------------------------------------------
@@ -540,6 +557,7 @@ echo
 echo "=== Summary ==="
 echo "  PASS: $PASS"
 echo "  FAIL: $FAIL"
+echo "  SKIP: $SKIP"
 
 if [ "$FAIL" -gt 0 ]; then
   exit 1

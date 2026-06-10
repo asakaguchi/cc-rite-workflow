@@ -25,8 +25,9 @@
 #   TC-4: `cat ... >&2` 形式の full-file 直接 emission も neutralize_ctrl
 #         を経由する (Issue #1329)。TC-3 と対称の fail-closed sweep:
 #         unquoted (`cat $f >&2`) / `1>&2` 綴り / 複数引数 (`cat "$a" "$b" >&2`)
-#         も検出し、非 emission の静的 heredoc / 文字列内 "cat" 語は明示
-#         allowlist で除外する (Issue #1339 — #1329 fail-open 余地の閉塞)
+#         も検出する。cat を command 位置に anchor して散文中の "cat" 語を構造的に
+#         除外し、静的 heredoc は allowlist で除外する。subshell/group redirect 等の
+#         構造的死角は TC-4 ブロックのコメント参照 (Issue #1339 — #1329 fail-open 余地の閉塞)
 #   TC-5: `>&2` が log() / surface_git_warnings() 等の関数内部に隠れる emission
 #         経路は静的 sweep で構造的に検出不能のため、既知 site を個別に pin する
 #         (Issue #1329)
@@ -125,15 +126,27 @@ echo "=== TC-4: cat full-file 直接 emission site は全て neutralize_ctrl を
 #   - cat を **コマンド位置** に anchor する。すなわち content 行頭 (インデント許容) または
 #     command 区切り (`;` / `|` / `&` / `{`) の直後にある cat のみを対象とする
 #     (`grep -rnE` の regex は `path:line:` prefix を含まない **ファイル内容** に適用されるため
-#     `^` は content 行頭を指す)。これにより `echo "...cat 成功だが..." >&2` や `(cat ...) >&2`
-#     のような **散文中の "cat" 語** (cat コマンドではない) を構造的に除外でき、content-keyed
-#     allowlist を増やす whack-a-mole を回避する。
+#     `^` は content 行頭を指す)。これにより `echo "...cat 成功だが..." >&2` のような
+#     **散文中の "cat" 語** (cat コマンドではない) を構造的に除外でき、content-keyed allowlist を
+#     増やす whack-a-mole を回避する。
 #   - `[^|;&]*` で cat の後続 redirect が cat 自身のもの (後続コマンドの redirect でない) ことを
 #     保証する (pipe/semicolon/ampersand を跨がない)。末尾 `(1)?>&2` で `>&2` / `1>&2` 両綴りを受ける。
 #
+# 既知の構造的死角 (cat-anchored sweep の限界、本 sweep では検出不能):
+#   - subshell / group redirect: `(cat "$f") >&2` / `{ cat "$f"; } >&2` — redirect が cat ではなく
+#     subshell / brace-group に付くため、cat 直後の `[^|;&]*(1)?>&2` 経路で `>&2` に到達しない。
+#     これらは「散文」ではなく **本物の full-file emission** だが anchor では捕捉できない。
+#     (一方 `{ cat "$f" >&2; }` のように redirect が cat に付く形は `{` 区切り経由で検出される)
+#   - keyword 前置 inline: `then cat "$f" >&2` / `do cat "$f" >&2` — `then`/`do` は command 区切り
+#     文字 (`;|&{`) でないため anchor から漏れる。
+#   現状コードベースに上記 3 形の cat emission site はゼロ (grep 全数確認済)。将来追加された場合は
+#   TC-5 と同様に個別 pin する必要がある (anchor に `(` 等を足すと散文除外と両立しないため非採用)。
+#
 # allowlist (非 emission の既知 site):
-#   - `>&2[[:space:]]*<<`: 静的 heredoc (`cat >&2 <<EOF`)。開発者記述の静的リテラルで
-#     untrusted control-char を含まないため中和不要 (Issue #1339 が明示)
+#   - `>&2[[:space:]]*<<`: 静的 heredoc の **redirect-first 綴り** (`cat >&2 <<EOF`)。開発者記述の
+#     静的リテラルで untrusted control-char を含まないため中和不要 (Issue #1339 が明示)。
+#     なお body-first 綴り (`cat <<EOF >&2`) は本 allowlist では除外されず false positive になるが、
+#     現状 hooks の heredoc は全て redirect-first のため実害はない (追加時は本 allowlist を拡張する)。
 violations_cat=$(grep -rnE '(^[[:space:]]*|[;|&{][[:space:]]*)cat [^|;&]*(1)?>&2' "$HOOKS_DIR" --include='*.sh' \
   | grep -v "$HOOKS_DIR/tests/" \
   | grep -v 'neutralize_ctrl' \

@@ -166,9 +166,10 @@
 | [「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる](pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md) | heuristics | contract consumer 等の網羅列挙を reviewer 指摘任せに増築すると cycle ごとに漏れが見つかり発散する。grep 全数棚卸し → 包含基準で分類 → 全数列挙 + scope note (基準と棚卸し方法) の明記で 1 cycle 収束。PR #1332 の 5 cycle 発散→収束で実測。 | 2026-06-10 | high |
 | [同一 PR 内の設計 pivot 後に cross-reference コメントが旧設計の説明のまま残る](pages/anti-patterns/design-pivot-stale-cross-reference-comment.md) | anti-patterns | 設計 pivot した実装を参照する離れた箇所のコメントが旧設計の説明のまま残り同一 PR 内で自己矛盾、将来の「修正」で防御が silent 弱体化する。PR #1343 で helper 委譲後の canonical 参照 drift へ拡張、reviewer の Cross-File Impact Check が同型 drift (L236↔L144) を横断検出し別 Issue #1344 化した positive evidence を追加 | 2026-06-10T01:19:36Z | high |
 | [節の表示条件を変えたら inbound の位置参照を grep して文言同期する](pages/heuristics/display-condition-change-inbound-ref-sync.md) | heuristics | ドキュメント / command の節を on-demand / Optional 化すると、その節を「below」等の位置含意で参照する常時表示テキストが dangling reference 化する。表示条件変更時は inbound 参照を grep し参照側文言も同 cycle で同期する。PR #1387 で Phase 4.5 の on-demand 化が常時表示の Troubleshooting 項目8「See the FAQ below」(F-03) を誘発した実測。線形実行 command への条件付き Phase 追加は Optional/On-Demand マーカーで矛盾防止 (F-01)、Decision Log エントリ誤参照 (D-9 を無関係主張に引用、F-02) は隣接 anti-pattern。 | 2026-06-10T12:41:54Z | high |
+| [config テンプレートの default-on 設定は Advanced マーカーより上に配置する](pages/patterns/template-config-active-block-above-advanced-marker.md) | patterns | テンプレで「新規プロジェクトで default ON」にしたい設定は active ブロックを `# --- Advanced ---` マーカーより上に置く。マーカー下は /rite:init 新規生成で omit され parse fallback で逆値に落ちる。PR #1392 で multi_session.enabled default-on 化時に cycle 2 code-quality が HIGH 検出。wiki #491 (active block をマーカー上へ移動) が SoT 先例。検証は実機シミュレート (sed Q 抽出 + parse 再現) で行う。 | 2026-06-11T00:57:13Z | high |
 
 ## 統計
 
-- 総ページ数: 159
-- ドメイン別: patterns=54, heuristics=47, anti-patterns=56
-- 最終更新: 2026-06-10T12:41:54Z
+- 総ページ数: 160
+- ドメイン別: patterns=55, heuristics=47, anti-patterns=56
+- 最終更新: 2026-06-11T00:57:13Z

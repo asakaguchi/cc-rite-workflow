@@ -146,7 +146,9 @@ echo "=== TC-4: cat full-file 直接 emission site は全て neutralize_ctrl を
 #   - `>&2[[:space:]]*<<`: 静的 heredoc の **redirect-first 綴り** (`cat >&2 <<EOF`)。開発者記述の
 #     静的リテラルで untrusted control-char を含まないため中和不要 (Issue #1339 が明示)。
 #     なお body-first 綴り (`cat <<EOF >&2`) は本 allowlist では除外されず false positive になるが、
-#     現状 hooks の heredoc は全て redirect-first のため実害はない (追加時は本 allowlist を拡張する)。
+#     現状 hooks の **stderr 向け cat heredoc** は全て redirect-first のため実害はない
+#     (stdout / tmpfile 向けの body-first heredoc は主 regex の `>&2` 要件で元々マッチしない。
+#     追加で stderr 向け body-first heredoc を書く場合は本 allowlist を拡張する)。
 violations_cat=$(grep -rnE '(^[[:space:]]*|[;|&{][[:space:]]*)cat [^|;&]*(1)?>&2' "$HOOKS_DIR" --include='*.sh' \
   | grep -v "$HOOKS_DIR/tests/" \
   | grep -v 'neutralize_ctrl' \

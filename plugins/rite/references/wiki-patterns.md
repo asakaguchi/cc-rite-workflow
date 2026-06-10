@@ -226,7 +226,7 @@ Wiki 初期化時にテンプレートを `.rite/wiki/` に展開します。
 
 > **canonical 階層** (ingest.md 内の 2 種 canonical の概念分離): ingest.md には (a) ステップ 4.3「関連ページの特定」= `{related_page_title}` / `{related_page_path}` の**値決定手順** canonical (同セクション冒頭で「本セクションが値決定手順の canonical source」と明示宣言) と (b) ステップ 5.3 placeholder 表の `{related_page_title}` / `{related_page_path}` 行 = **F-14 fix 動作契約** canonical (動作契約の詳細はステップ 4.3「該当ページなし時の処理」で記述され、実体はステップ 5.3 placeholder 表の同 placeholder 行) が共存する。両者は別概念 (手順 vs 動作契約) で並立。本 NOTE は (b) を扱うため canonical = `plugins/rite/commands/wiki/ingest.md` ステップ 5.3 placeholder 表の `{related_page_title}` / `{related_page_path}` 行。なお #944 fix により ステップ 4.3「該当ページなし時の処理」(詳細手順) と ステップ 5.3 placeholder 表 (要約) は同一の操作契約を併記する dual-site として維持される。references → ingest.md 方向は本 NOTE のように要約参照に集約する方針 (ingest.md 内 dual-site 維持とは別方針)。
 
-> **F-14 fix 識別子の disambiguation**: lint.md にも別文脈の F-14 fix (`{log_entry}` placeholder 残留検知、PR #564 由来) があるため、識別子のみで参照する場合は本 NOTE が指す F-14 fix が「関連ページなし時の操作契約」(Issue #944 由来) であることに注意。
+> **F-14 fix 識別子の disambiguation**: lint.md にも別文脈の F-14 fix (`{log_entry}` placeholder 残留検知、PR #564 由来) があるため、識別子のみで参照する場合は本 NOTE が指す F-14 fix が「関連ページなし時の操作契約」 であることに注意。
 
 > **confidence フィールド**: page-template.md の `confidence: medium` はリテラル値であり `{confidence}` プレースホルダーではない。Write 後に Edit で ステップ 4 の判定値 (`high` / `medium` / `low`) に置換する。
 
@@ -273,7 +273,7 @@ fi
 - `plugins/rite/hooks/scripts/lib/wiki-config.sh` (共通 helper `parse_wiki_scalar`、lenient — callers: wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh が `source` 経由で再利用)
 
 **設計差異**:
-- **lenient 経路**: ingest.md / lint.md / query.md / inject.sh / wiki-config.sh / 各 caller (cleanup.md / fix.md / review.md / implement.md / close.md / init.md) と独立 inline 実装 (growth-check.sh / gitignore-health-check.sh) は **lenient** — `false`/`no`/`0` のみ reject、それ以外 (`true`/`yes`/`1` も不明値も空文字も) は `true` として opt-out default 化する (#483)。ingest.md / lint.md は `case "$wiki_enabled" in false|no|0) wiki_enabled=false ;; *) wiki_enabled=true ;; esac` の 2-arm 形式
+- **lenient 経路**: ingest.md / lint.md / query.md / inject.sh / wiki-config.sh / 各 caller (cleanup.md / fix.md / review.md / implement.md / close.md / init.md) と独立 inline 実装 (growth-check.sh / gitignore-health-check.sh) は **lenient** — `false`/`no`/`0` のみ reject、それ以外 (`true`/`yes`/`1` も不明値も空文字も) は `true` として opt-out default 化する。ingest.md / lint.md は `case "$wiki_enabled" in false|no|0) wiki_enabled=false ;; *) wiki_enabled=true ;; esac` の 2-arm 形式
 - **fail-fast 経路**: `wiki-ingest-trigger.sh` のみ意図的に **strict 3-arm with fail-fast `*`** (`case "$wiki_enabled"` の `*) ... exit 2` 分岐) — staging hook の safe-default policy violation 防止のため、`ture` / `yse` 等の typo / 不明値を即座に reject する。本 site だけが lenient ファミリと意図的に非対称
 - **`branch_strategy` 検証**: ingest.md ステップ 1.1 では silent default で fill (probe 段階)、ステップ 5.1 (separate_branch 戦略) の if/elif/else 末尾 `else` 分岐で fail-fast 検証 (`ERROR: 未知の branch_strategy ... exit 1`) を行う 2 段階構造。ステップ 5.2 (same_branch 戦略) の bash block は `if [ "$branch_strategy" = "same_branch" ]` 単独分岐で branch_strategy の fail-fast を持たない (未知値は先行するステップ 5.1 の else が catch する)。ステップ 5.1 内の case 文 fail-fast (`commit_msg` placeholder gate は placeholder パターン arm、`commit_rc` は `*)` arm) は branch_strategy 検証ではない。lint.md ステップ 1.1 (Wiki 設定の読み取りとブランチ戦略判定) の `branch_strategy` 検証は case-based (`*) ... exit 1`) で、ingest.md の else-based とは構文が異なるが同じ fail-fast 契約
 

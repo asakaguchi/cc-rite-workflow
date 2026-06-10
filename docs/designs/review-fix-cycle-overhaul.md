@@ -179,7 +179,7 @@ fix.md Phase 4.3 (別 Issue 化)
 | max_claims=20 で cost 増 | Likelihood claim は Grep ベースで無料、external のみ上限 |
 | 既存 hooks が Source C / severity_gating を参照 | PR #4 で事前調査 (Pre-flight Check) + 参照削除 |
 
-**Pre-flight Checks** (PR #1 のキックオフタスクとして実施):
+**Pre-flight Checks**:
 
 1. `hooks/` 配下を `grep -rn "Source C\|severity_gating\|既存問題"` で参照箇所を列挙
 2. 既存 E2E テストで review-fix ループ終了条件が検証されているか確認

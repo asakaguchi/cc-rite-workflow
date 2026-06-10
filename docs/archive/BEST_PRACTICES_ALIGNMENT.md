@@ -4,7 +4,7 @@
 > Practices alignment history and is kept for reference only. Some tables
 > (notably "Current Agents" and "Current Structure") reflect the state at
 > the time they were written and no longer match v0.4.0+ implementation —
-> `tools: frontmatter` has been removed from all reviewer agents (#357),
+> `tools: frontmatter` has been removed from all reviewer agents,
 > 13 reviewer agents are in use (not 3), and the CLAUDE.md example shown
 > is from the 20-line era. For the current specification see
 > [`docs/SPEC.md`](../SPEC.md) and [`docs/CONFIGURATION.md`](../CONFIGURATION.md).
@@ -75,9 +75,9 @@ Commands that display information without state changes use `context: fork`:
 | Read-only Display | `/rite:workflow` | ✅ Applied | Information display only |
 | Interactive | `/rite:issue:create`, `/rite:issue:start` | ❌ Not Applied | User interaction required |
 | State-changing | `/rite:pr:cleanup`, `/rite:pr:ready` | ❌ Not Applied | Modifies repository state |
-| Interactive + State-changing | `/rite:pr:review`, `/rite:pr:fix`, `/rite:lint`, `/rite:pr:create` | ❌ Not Applied | `AskUserQuestion` required in e2e flow (#436) |
+| Interactive + State-changing | `/rite:pr:review`, `/rite:pr:fix`, `/rite:lint`, `/rite:pr:create` | ❌ Not Applied | `AskUserQuestion` required in e2e flow |
 
-> **Note**: `context: fork` と `AskUserQuestion` は非互換です。`context: fork` 環境では `AskUserQuestion` がユーザーとの対話を完了できず、skill が accumulated output を返して終了します（#436）。Interactive なコマンドには `context: fork` を適用しないでください。
+> **Note**: `context: fork` と `AskUserQuestion` は非互換です。`context: fork` 環境では `AskUserQuestion` がユーザーとの対話を完了できず、skill が accumulated output を返して終了します。Interactive なコマンドには `context: fork` を適用しないでください。
 
 ### Output Pattern Standardization
 

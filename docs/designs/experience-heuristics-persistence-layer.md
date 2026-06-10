@@ -106,7 +106,7 @@ rite ワークフロー実行時に関連経験則を自動参照し、コンテ
 ```
 plugins/rite/
 ├── commands/wiki/           # Wiki 操作コマンド
-│   ├── init.md              #   Wiki 初期化 ✅ (#468)
+│   ├── init.md              #   Wiki 初期化 ✅
 │   ├── ingest.md            #   経験則の蓄積 (後続 Issue)
 │   ├── query.md             #   経験則の参照 (後続 Issue)
 │   └── lint.md              #   Wiki の品質チェック (後続 Issue)
@@ -115,8 +115,8 @@ plugins/rite/
 │   ├── wiki-ingest-trigger.sh  # Ingest トリガーフック (後続 Issue)
 │   └── wiki-query-inject.sh    # Query 注入フック (後続 Issue)
 ├── references/
-│   └── wiki-patterns.md      # Wiki 操作の共通パターン ✅ (#468)
-└── templates/wiki/           # Wiki ページテンプレート ✅ (#468)
+│   └── wiki-patterns.md      # Wiki 操作の共通パターン ✅
+└── templates/wiki/           # Wiki ページテンプレート ✅
     ├── page-template.md      #   知識ページのテンプレート
     ├── schema-template.md    #   Schema の初期テンプレート
     ├── index-template.md     #   インデックス初期テンプレート

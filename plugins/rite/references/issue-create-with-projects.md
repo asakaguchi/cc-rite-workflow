@@ -43,7 +43,7 @@ fi
 
 ### Step 2: Invoke the Script
 
-The script accepts the input JSON either as a **single positional argument** or via **stdin**. Command markdown callers MUST avoid nesting the `jq -n` command substitution inside the invocation (`"$(jq -n ...)"` 形式) — deep nested quoting is a known LLM tool-call malform source (Issue #1193 / #1196). Build `args_json` first, then pass it:
+The script accepts the input JSON either as a **single positional argument** or via **stdin**. Command markdown callers MUST avoid nesting the `jq -n` command substitution inside the invocation (`"$(jq -n ...)"` 形式) — deep nested quoting is a known LLM tool-call malform source. Build `args_json` first, then pass it:
 
 ```bash
 # args_json を入れ子 $() から分離して構築する (単一 JSON 引数契約は不変)
@@ -76,7 +76,7 @@ args_json=$(jq -n \
 result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$args_json")
 ```
 
-**Accepted alternative (pipe-stdin form)**: `jq -n ... | bash {plugin_root}/scripts/create-issue-with-projects.sh` — used by `commands/pr/review.md` ステップ 7.4.2 / `commands/issue/references/fingerprint-cycling.md` (Issue #1193 #5)。Either form keeps the single-JSON contract; do not introduce flag-style (`--title` 等) invocations.
+**Accepted alternative (pipe-stdin form)**: `jq -n ... | bash {plugin_root}/scripts/create-issue-with-projects.sh` — used by `commands/pr/review.md` ステップ 7.4.2 / `commands/issue/references/fingerprint-cycling.md`。Either form keeps the single-JSON contract; do not introduce flag-style (`--title` 等) invocations.
 
 ### Step 3: Parse the Result
 
@@ -211,7 +211,7 @@ The script handles errors internally with the following behavior:
 - Warnings are collected in the `warnings` array for caller to display
 - If `result` is empty (script crashed), callers should check `$?` and handle gracefully
 
-### Silent Fail Prohibition (#669)
+### Silent Fail Prohibition
 
 Issue #669 strengthens the script so that **Projects registration failures are never silently absorbed** by the warnings array alone. Two reinforcement layers are in place:
 
@@ -230,7 +230,7 @@ bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh \
  plugins/rite/commands/pr/open.md \
  plugins/rite/commands/issue/create.md
 
-# Mode 2: --all auto-expansion (#958)
+# Mode 2: --all auto-expansion
 # Scans every plugins/rite/commands/**/*.md file under the resolved repository root.
 # Used by /rite:lint Phase 3.14 to enforce the guard across every command/sub-skill.
 bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh --all
@@ -247,5 +247,5 @@ The script automatically handles:
 - Item ID retrieval with fallback (last: 10 → last: 20)
 - Field ID and option ID resolution from project field metadata
 - Iteration auto-assignment when `iteration.mode: "auto"`
-- 3-attempt exponential backoff retry on transient API failures (#669)
-- stderr emit for every Projects registration failure (#669)
+- 3-attempt exponential backoff retry on transient API failures
+- stderr emit for every Projects registration failure

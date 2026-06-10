@@ -1,8 +1,8 @@
 # PR #334 pre-fix replay 実測レポート
 
-> **位置づけ**: Issue #416 (親 Issue #392 の後続) の成果物。**pre-fix replay 手法** (PR #334 の inverse diff を develop に適用) により、Phase C2 (#361 分散伝播漏れ検出) の **検出感度** を定量検証する。
+> **位置づけ**: Issue #416 (親 Issue #392 の後続) の成果物。**pre-fix replay 手法** により、Phase C2 の **検出感度** を定量検証する。
 >
-> **sibling との対比 (重要)**: [pr334-replay-findings.md](./pr334-replay-findings.md) (Issue #403 / PR #407) は **post-fix replay** であり、修正後コードに対する誤検出がないかを検証した。本レポートは **pre-fix replay** であり、修正前コードに含まれるバグを reviewer が検出できるかを検証する。両者は PR #334 の同じ 2 ファイル / 5 行に対する **signed-inverse** の diff を reviewer に提示している。
+> **sibling との対比 (重要)**: [pr334-replay-findings.md](./pr334-replay-findings.md) は **post-fix replay** であり、修正後コードに対する誤検出がないかを検証した。本レポートは **pre-fix replay** であり、修正前コードに含まれるバグを reviewer が検出できるかを検証する。両者は PR #334 の同じ 2 ファイル / 5 行に対する **signed-inverse** の diff を reviewer に提示している。
 >
 > **実測セッション**: 2026-04-10
 > **対象 PR**: #334 `fix(hooks): context-pressure.sh の堅牢性改善 — silent abort 防止 + コメント精度修正`
@@ -12,7 +12,7 @@
 > **手法**: `gh pr diff 334 --patch | git apply --reverse` (develop 上で inverse 適用)
 > **設計書**: Issue #416 本文
 > **親レポート**: [review-quality-gap-results.md](./review-quality-gap-results.md)
-> **sibling (post-fix)**: [pr334-replay-findings.md](./pr334-replay-findings.md) (Issue #403 / PR #407)
+> **sibling (post-fix)**: [pr334-replay-findings.md](./pr334-replay-findings.md)
 
 ## 0. サマリー
 
@@ -29,8 +29,8 @@
 
 **主要結論**:
 
-1. **Phase C2 (#361) の検出感度が実証された**: error-handling reviewer は `|| CWD=""` フォールバック削除 (= silent abort 経路復活) を **CRITICAL** で検出し、`set -euo pipefail` 下での具体的な失敗経路と他 7 フックとの一貫性逸脱を根拠として報告した。
-2. **post-fix replay (#403) で「検出機会なし」だった問題が解決**: post-fix replay では PR #334 の diff が「fix 適用後」のコードであるため検出対象が存在しなかった。pre-fix replay により diff に「fix 適用前のバグ」が含まれ、reviewer の検出能力を直接テストできた。
+1. **Phase C2 の検出感度が実証された**: error-handling reviewer は `|| CWD=""` フォールバック削除 (= silent abort 経路復活) を **CRITICAL** で検出し、`set -euo pipefail` 下での具体的な失敗経路と他 7 フックとの一貫性逸脱を根拠として報告した。
+2. **post-fix replay で「検出機会なし」だった問題が解決**: post-fix replay では PR #334 の diff が「fix 適用後」のコードであるため検出対象が存在しなかった。pre-fix replay により diff に「fix 適用前のバグ」が含まれ、reviewer の検出能力を直接テストできた。
 3. **devops reviewer も同一箇所を MEDIUM で検出**: error-handling だけでなく devops も `|| CWD=""` 削除の影響を指摘。Phase 2 の reviewer 選定と Phase C2 の検出機構の両方が機能している証拠。
 4. **security reviewer は「改善方向」と評価**: fail-closed (jq 失敗時にスクリプト中断) はセキュリティ的にはむしろ安全であるとの見解。これは perspective の違いであり、error-handling / devops の「silent abort = hook 機能喪失」との評価と矛盾しない (availability vs security の trade-off)。
 
@@ -38,7 +38,7 @@
 
 ### 1.1 対象 PR
 
-- **PR #334**: `fix(hooks): context-pressure.sh の堅牢性改善 — silent abort 防止 + コメント精度修正` (#323)
+- **PR #334**: `fix(hooks): context-pressure.sh の堅牢性改善 — silent abort 防止 + コメント精度修正`
 - **ファイル数**: 2 (両方とも MODIFIED)
   - `plugins/rite/hooks/context-pressure.sh` (+2 / -2)
   - `plugins/rite/templates/config/rite-config.yml` (+1 / -0)
@@ -62,7 +62,7 @@ git apply --reverse /tmp/pr334.patch
 git commit -m "investigate: pre-fix replay — revert PR #334 to reintroduce pre-fix state"
 git push -u origin investigate/pr334-prefix-replay
 gh pr create --draft --base develop --head investigate/pr334-prefix-replay \
-  --title "investigate: pre-fix replay for PR #334 Phase C2 detection sensitivity (#416)"
+  --title "investigate: pre-fix replay for PR #334 Phase C2 detection sensitivity"
 # → PR #417 (https://github.com/B16B1RD/cc-rite-workflow/pull/417)
 
 # Step 4: /rite:pr:review 417
@@ -77,7 +77,7 @@ gh pr create --draft --base develop --head investigate/pr334-prefix-replay \
 
 ### 1.3 レビュアー構成
 
-改善後 `rite:pr:review` の自動選定結果 (PR #407 post-fix replay と同一構成):
+改善後 `rite:pr:review` の自動選定結果:
 
 | # | Reviewer | 選定理由 | selection_type |
 |---|----------|---------|----------------|
@@ -90,7 +90,7 @@ gh pr create --draft --base develop --head investigate/pr334-prefix-replay \
 - **Doc-Heavy PR**: false
 - **fact-check**: 実施せず (external claim 0 件)
 
-### 1.4 PR #417 の diff 内容 (PR #334 の inverse)
+### 1.4 PR #417 の diff 内容
 
 #### 変更 1: `context-pressure.sh` line 10 — コメント文言 revert (cosmetic)
 
@@ -169,12 +169,12 @@ Issue #416 の判定基準:
 
 | 方式 | 分子 | 分母 | 結果 | 判定 |
 |------|------|------|------|------|
-| strict (finding のみ) | 1 (silent abort CRITICAL) | 1 (PR #334 の主要 bug = silent abort) | **100%** | ✅ ≥70% 目標達成 |
+| strict (finding のみ) | 1 (silent abort CRITICAL) | 1 | **100%** | ✅ ≥70% 目標達成 |
 | broad (推奨含む) | 2 (silent abort + コメント不整合) | 2 (silent abort + コメント不整合) | **100%** | ✅ |
 
 **分母の定義**: PR #334 が修正した bugs = (1) silent abort 経路 (= `|| CWD=""` 削除で復活)、(2) コメント不正確 (`flow split` → `/compact`)。config コメント追加 (変更 3) は bug fix ではなくドキュメント追加のため分母に含めない。
 
-### 4.4 post-fix replay (#403) との対比
+### 4.4 post-fix replay との対比
 
 | 指標 | post-fix (#403/PR #407) | **pre-fix (#416/PR #417)** | 差分の解釈 |
 |------|------------------------|---------------------------|-----------|
@@ -212,9 +212,9 @@ Issue #416 の判定基準:
 
 ## 6. 親 Issue #392 集約への引き継ぎ事項
 
-1. **Phase C2 (#361) の検出感度が実証された**: error-handling reviewer が pre-fix code の silent abort 経路を CRITICAL で検出。post-fix replay (#403) の「検出機会なし」問題を解決。
+1. **Phase C2 の検出感度が実証された**: error-handling reviewer が pre-fix code の silent abort 経路を CRITICAL で検出。post-fix replay の「検出機会なし」問題を解決。
 2. **pre-fix replay 手法の有効性が確認された**: Issue #416 spec からの逸脱 (worktree-from-base-commit → inverse diff 適用) により、reviewer が検出可能な diff を生成できた。この手法は他の bug fix PR にも適用可能。
-3. **Phase C2 は rollback 候補ではない**: 検出率 100%、FP rate 0% の結果により、Phase C2 (#361) の有効性が定量的に確認された。
+3. **Phase C2 は rollback 候補ではない**: 検出率 100%、FP rate 0% の結果により、Phase C2 の有効性が定量的に確認された。
 4. **post-fix + pre-fix の組み合わせで包括的評価が可能**: post-fix は FP (誤検出) の不在、pre-fix は TP (真陽性) の存在をそれぞれ検証。両手法を組み合わせることで F1 score 的な包括的評価が可能になった。
 5. **security reviewer の perspective**: fail-closed をセキュリティ的に「改善方向」と評価した点は、availability vs security の trade-off 分析として有用。Phase C2 の error-handling 観点 (silent abort = hook 機能喪失) と矛盾しない。
 
@@ -225,6 +225,6 @@ Issue #416 の判定基準:
 - 元 PR: [#334](https://github.com/B16B1RD/cc-rite-workflow/pull/334) (`fix(hooks): context-pressure.sh の堅牢性改善`)
 - pre-fix replay draft PR: [#417](https://github.com/B16B1RD/cc-rite-workflow/pull/417) (`investigate: pre-fix replay for PR #334`)
 - review コメント: https://github.com/B16B1RD/cc-rite-workflow/pull/417#issuecomment-4220297563
-- sibling (post-fix replay): [pr334-replay-findings.md](./pr334-replay-findings.md) (Issue #403 / PR #407)
+- sibling (post-fix replay): [pr334-replay-findings.md](./pr334-replay-findings.md)
 - 親レポート: [review-quality-gap-results.md](./review-quality-gap-results.md)
 - Phase C2 実装: [#361](https://github.com/B16B1RD/cc-rite-workflow/issues/361)

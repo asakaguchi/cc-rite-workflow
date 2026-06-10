@@ -98,7 +98,7 @@ rite workflow はコードベースではなく、Claude Code 用のプロンプ
 | `start-5.1.1.test.md` | `start.md` 5.1.1 | Phase 5.1.1 完了後の必須アクションボックスの動作確認 |
 | `start-5.2.0.1.test.md` | `start.md` 5.2.0.1 | 範囲外警告の自動 Issue 化 + Projects フィールド設定 |
 | `start-5.2.1.test.md` | `start.md` 5.2.1 | チェックリスト完了確認（PR 作成前バリデーション） |
-| `start-flow-continuation.test.md` | `start.md` Phase 5 | フロー継続の責任パターンの検証（Issue #377） |
+| `start-flow-continuation.test.md` | `start.md` Phase 5 | フロー継続の責任パターンの検証 |
 | `start-pr-detection.test.md` | `start.md` 再開時 | 既存 PR 検出時の自動遷移 |
 | `cleanup-1.7.3.2.1.test.md` | `cleanup.md` 1.7.3.2.1 | Projects への追加とフィールド設定 |
 | `skill-structure-358.test.md` | Issue #358 | スキル構造改善の検証テスト |

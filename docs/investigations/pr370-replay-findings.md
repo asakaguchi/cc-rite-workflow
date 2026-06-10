@@ -209,7 +209,7 @@ blocking 指摘なし。推奨事項のみ。
 
 PR #370 は親 Issue #392 の対照実測 3 件で「mixed (code + docs)」カテゴリに割り当てられたが、実際には **Doc-Heavy mode が activate しなかった**。この結果は Issue #404 の判定基準 2 の観測対象そのもの:
 
-> **判定基準 2** (Issue #404 より引用): mixed でも doc-heavy mode だけが activate する場合、doc-heavy 検出閾値 (`lines_ratio_threshold` / `count_ratio_threshold`) の調整が必要
+> **判定基準 2**: mixed でも doc-heavy mode だけが activate する場合、doc-heavy 検出閾値 (`lines_ratio_threshold` / `count_ratio_threshold`) の調整が必要
 
 **観察**: PR #370 は 13 ファイル中 4 ファイル (`docs/SPEC.md`, `docs/SPEC.ja.md`, `CHANGELOG.md`, `CHANGELOG.ja.md`) が人間向け documentation で、残り 9 ファイルは commands/skills/hooks/scripts/config 系。
 
@@ -262,7 +262,7 @@ PR #370 は 3 cycles のレビュー修正を経てマージされた。本 repl
 
 ### 6.2 Issue #404 の判定基準 1 (FP rate > 30%) への照合
 
-本 replay の FP rate = 8% は threshold 30% を大きく下回る。Phase A/B/C/C2 のいずれも本 replay データでは rollback 候補にならない。ただし sibling #407 (PR #334 replay, 0 findings) / #405 (PR #373 replay, 未測定) と合わせて初めて **親 Issue #392 の集約判定** が可能になる。
+本 replay の FP rate = 8% は threshold 30% を大きく下回る。Phase A/B/C/C2 のいずれも本 replay データでは rollback 候補にならない。ただし sibling #407 / #405 と合わせて初めて **親 Issue #392 の集約判定** が可能になる。
 
 ### 6.3 replay の選択バイアス
 

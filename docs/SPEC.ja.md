@@ -133,7 +133,7 @@ Todo → In Progress → In Review → Done
 
 ## プラグイン構造
 
-> **Architecture**: `/rite:issue:create` は単一ファイル flat workflow として動作する。旧 `/rite:issue:start` flat workflow は #1136 で 4 つの責務単位コマンド (`/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge`) に分解され、`commands/issue/start.md` は削除済み。旧 sub-skill ファイル (`commands/issue/start-execute` / `start-publish` / `start-finalize` / `create-interview` / `create-register` / `create-decompose` / `parent-routing` 等) と implicit-stop ガード 3 hook (`auto-fire-step0.sh` / `verify-terminal-output.sh` / `stop-create-interview-block.sh`) は先行する flat workflow 化 (#1079) で統合済み (start.md 分解はその後)。本文書中の retired コンポーネント参照箇所は移行 anchor として残置。
+> **Architecture**: `/rite:issue:create` は単一ファイル flat workflow として動作する。旧 `/rite:issue:start` flat workflow は #1136 で 4 つの責務単位コマンド (`/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge`) に分解され、`commands/issue/start.md` は削除済み。旧 sub-skill ファイル (`commands/issue/start-execute` / `start-publish` / `start-finalize` / `create-interview` / `create-register` / `create-decompose` / `parent-routing` 等) と implicit-stop ガード 3 hook (`auto-fire-step0.sh` / `verify-terminal-output.sh` / `stop-create-interview-block.sh`) は先行する flat workflow 化で統合済み (start.md 分解はその後)。本文書中の retired コンポーネント参照箇所は移行 anchor として残置。
 
 ```
 rite-workflow/
@@ -228,7 +228,7 @@ rite-workflow/
 │ ├── pre-compact.sh / post-compact.sh # #133
 │ ├── preflight-check.sh
 │ ├── pre-tool-bash-guard.sh / post-tool-wm-sync.sh
-│ ├── stop-loop-continuation.sh # Stop hook: review↔fix ループ継続 + 終端 finalize (#1168 / #1176 / #1245)
+│ ├── stop-loop-continuation.sh # Stop hook: review↔fix ループ継続 + 終端 finalize
 │ ├── hook-preamble.sh / state-path-resolve.sh / control-char-neutralize.sh # 共通ヘルパー
 │ ├── _resolve-session-id.sh / _resolve-session-id-from-file.sh # private session-id 解決ヘルパー
 │ ├── _resolve-cross-session-guard.sh # private legacy-state 引き継ぎ分類器
@@ -237,7 +237,7 @@ rite-workflow/
 │ ├── work-memory-lock.sh / work-memory-update.sh / work-memory-parse.py
 │ ├── cleanup-work-memory.sh
 │ ├── issue-body-safe-update.sh / issue-comment-wm-sync.sh / issue-comment-wm-update.py
-│ ├── review-result-save.sh / review-comment-post.sh / review-skip-notification.sh # pr/review.md 6.1.a/b/c 委譲 (#1193 / #1221)
+│ ├── review-result-save.sh / review-comment-post.sh / review-skip-notification.sh # pr/review.md 6.1.a/b/c 委譲
 │ ├── notification.sh # 外部通知ディスパッチャ (Claude hook ではない)
 │ ├── wiki-ingest-trigger.sh / wiki-query-inject.sh # Wiki 自動統合
 │ ├── scripts/ # フックから呼び出されるヘルパースクリプト
@@ -413,7 +413,7 @@ model: opus # opus | sonnet | haiku (optional — 省略時は親セッション
 | `model` | いいえ | モデル選択（デフォルト: 親セッションから継承） |
 | `tools` | いいえ | 利用可能なツールのリスト（デフォルト: 親セッションの全ツールを継承。省略で全ツール有効） |
 
-**`tools` フィールドに関する注記**: Reviewer agent は v0.3 (#358) で導入された named subagent (`rite:{reviewer_type}-reviewer`、例: `rite:security-reviewer`) で呼び出される。以前の `subagent_type: general-purpose` は使われていない。named subagent 呼び出しでは `model` と `tools` frontmatter が runtime に反映される。`tools` フィールドはオプショナルで、reviewer agent では省略することで親セッションの全ツールを継承している。背景・opus 推奨の理由・rollback シナリオは [`docs/migration-guides/review-named-subagent.md`](migration-guides/review-named-subagent.md) を参照。
+**`tools` フィールドに関する注記**: Reviewer agent は v0.3 で導入された named subagent (`rite:{reviewer_type}-reviewer`、例: `rite:security-reviewer`) で呼び出される。以前の `subagent_type: general-purpose` は使われていない。named subagent 呼び出しでは `model` と `tools` frontmatter が runtime に反映される。`tools` フィールドはオプショナルで、reviewer agent では省略することで親セッションの全ツールを継承している。背景・opus 推奨の理由・rollback シナリオは [`docs/migration-guides/review-named-subagent.md`](migration-guides/review-named-subagent.md) を参照。
 
 **現在のエージェント:**
 
@@ -447,20 +447,20 @@ model: opus # opus | sonnet | haiku (optional — 省略時は親セッション
 
 | セクション | 用途 |
 |-----------|------|
-| ~~`project.type`~~ | **DEPRECATED (#1118)** — 完全削除済 / project 固有設定は YAML 個別キー直書きで表現する設計に統一。CONFIGURATION.ja.md の project セクション Deprecated 注記を参照 |
+| ~~`project.type`~~ | **DEPRECATED** — 完全削除済 / project 固有設定は YAML 個別キー直書きで表現する設計に統一。CONFIGURATION.ja.md の project セクション Deprecated 注記を参照 |
 | `github.projects.*` | GitHub Projects 連携（`field_ids`, `fields`, `project_number`, `owner`） |
 | `branch.*` | `base`, `pattern`, `recognized_patterns` |
 | `commit.contextual` | コミット本文への Contextual Commits アクション行付与 |
 | `commands.{build,test,lint}` | ビルド・テスト・リントの自動検出上書き |
 | `issue.auto_decompose_threshold` | 分解プロンプトをスキップする閾値 |
-| `review.*` | `loop.*`（convergence_monitoring / auto_propagation_scan / pre_commit_drift_check）、`doc_heavy.*`、`fact_check.*`（`use_context7` 含む）、`debate.*`、`security_reviewer.*`、`confidence_threshold`。**DEPRECATED (#1118)**: `observed_likelihood_gate.*` / `fail_fast_first.*` は完全削除済 — CONFIGURATION.ja.md の Deprecated 注記を参照。`separate_issue_creation.*` キーは #1136 で完全削除され、`[fix:issues-created:N]` sentinel と `fix.md` Phase 4.3 も併せて撤去された |
-| `fix.*` | `fail_fast_response`（#506）。**DEPRECATED (#1118)**: `severity_gating.*` は完全削除済 — CONFIGURATION.ja.md の Deprecated 注記を参照 |
+| `review.*` | `loop.*`（convergence_monitoring / auto_propagation_scan / pre_commit_drift_check）、`doc_heavy.*`、`fact_check.*`（`use_context7` 含む）、`debate.*`、`security_reviewer.*`、`confidence_threshold`。**DEPRECATED**: `observed_likelihood_gate.*` / `fail_fast_first.*` は完全削除済 — CONFIGURATION.ja.md の Deprecated 注記を参照。`separate_issue_creation.*` キーは #1136 で完全削除され、`[fix:issues-created:N]` sentinel と `fix.md` Phase 4.3 も併せて撤去された |
+| `fix.*` | `fail_fast_response`。**DEPRECATED**: `severity_gating.*` は完全削除済 — CONFIGURATION.ja.md の Deprecated 注記を参照 |
 | `verification.*` | `run_tests_before_pr`, `acceptance_criteria_check` |
 | `tdd.*` | TDD Light モード（`off` / `light`） |
 | `parallel.*`, `team.*` | 並列実装 + Sprint チーム実行 |
 | `iteration.*` | GitHub Projects Iteration フィールド連携 |
 | `safety.*` | fail-closed 閾値（`max_implementation_rounds`, `time_budget_minutes` 等） |
-| `pr_review.post_comment` | PR レビュー出力先（#443） |
+| `pr_review.post_comment` | PR レビュー出力先 |
 | `wiki.*` | Experience Wiki — `enabled`（opt-out）、`branch_strategy`、`auto_ingest`、`auto_query`、`auto_lint`、`growth_check.*` |
 | `metrics.*` | 実行メトリクス記録 |
 | `notifications.{slack,discord,teams}` | 外部通知 |
@@ -1362,7 +1362,7 @@ SessionEnd
 bash plugins/rite/hooks/preflight-check.sh --command-id "/rite:pr:open" --cwd "$PWD"
 ```
 
-### Post-Compact Recovery（`post-compact.sh`）(#133)
+### Post-Compact Recovery（`post-compact.sh`）
 
 PostCompact フックとして登録。compact イベント後に現在の per-session flow state（`.rite/sessions/{session_id}.flow-state`）と作業メモリ状態を stdout に出力し、Claude Code がそれをモデルコンテキストに注入することで、ユーザー介入なしにワークフローを自動継続させる。
 
@@ -1461,7 +1461,7 @@ legacy `create_*` / `cleanup_*` phase の lifecycle 未完了検出は現在 `se
 
 マルチセッション競合防止のためにライフサイクル hook から source される共有ライブラリ。per-session 状態構造（#672 / Issue #685 / PR #686 + #747 + #748 + #750 + #751 + #756 + #757 + #759）により、所有権はファイル命名（`.rite/sessions/{session_id}.flow-state`）によって**構造的に保証**される。本ライブラリは現在、ランタイムガードではなくパス / エントリ解決レイヤとして機能する。
 
-> **Canonical SoT（source caller）**: 実際の `source` ディレクティブは `plugins/rite/hooks/*.sh` 内にある（`grep -rn "source.*session-ownership.sh" plugins/rite/hooks/ --include='*.sh' | grep -v tests/` で検証）。現時点では次に解決される: `session-start.sh` / `session-end.sh` / `pre-compact.sh` / `post-tool-wm-sync.sh`。（`flow-state.sh` は本ライブラリの `source` caller ではなく `state-path-resolve.sh` と `control-char-neutralize.sh` (Issue #1274) のみを source する。`stop-guard.sh` は撤去済み。`post-compact.sh` は本ライブラリを直接 source しない。`pre-tool-bash-guard.sh` は `hook-preamble.sh` のみを source し、flow-state パス解決には関与せず、本ライブラリの `source` caller であったことはない。）
+> **Canonical SoT（source caller）**: 実際の `source` ディレクティブは `plugins/rite/hooks/*.sh` 内にある（`grep -rn "source.*session-ownership.sh" plugins/rite/hooks/ --include='*.sh' | grep -v tests/` で検証）。現時点では次に解決される: `session-start.sh` / `session-end.sh` / `pre-compact.sh` / `post-tool-wm-sync.sh`。（`flow-state.sh` は本ライブラリの `source` caller ではなく `state-path-resolve.sh` と `control-char-neutralize.sh` のみを source する。`stop-guard.sh` は撤去済み。`post-compact.sh` は本ライブラリを直接 source しない。`pre-tool-bash-guard.sh` は `hook-preamble.sh` のみを source し、flow-state パス解決には関与せず、本ライブラリの `source` caller であったことはない。）
 
 **提供する関数:**
 
@@ -1472,7 +1472,7 @@ legacy `create_*` / `cleanup_*` phase の lifecycle 未完了検出は現在 `se
 | `check_session_ownership <hook_json> <state_file>` | `own` / `legacy` / `other` / `stale` を返す（legacy / other / stale はファイル命名が構造的に `own` を強制するため定常運用ではほぼ到達しない。移行互換性とクラッシュ復旧シナリオのために保持） |
 | `parse_iso8601_to_epoch <timestamp>` | クロスプラットフォーム ISO 8601 → epoch パーサー |
 
-### Issue Comment WM Sync（`issue-comment-wm-sync.sh`）(#161 / #167)
+### Issue Comment WM Sync（`issue-comment-wm-sync.sh`）
 
 PostToolUse フックとして登録。phase 変化検知時に Issue コメントへ作業メモリの更新を同期する。決定的な JSON / body 構築は `issue-comment-wm-update.py` に委譲し、inline jq + atomic write の脆さを回避している。
 
@@ -1565,7 +1565,7 @@ tdd:
 
 `/rite:*` ワークフローの flow state は、Issue #672 で導入され PR #686 / #747 / #748 + #756 / #750 / #751 / #757 / #759 にまたがって着地した **per-session ファイル**構造（`.rite/sessions/{session_id}.flow-state`）を使用する。各 Claude Code セッションは自身のファイルにのみ書き込むため、同一リポジトリ上の並行セッションはロック取得なしで構造的に競合フリーとなる。
 
-> **権威スコープ — session-scoped な継続ヒントであり、`/clear` をまたぐ真実のソースではない**: flow state は **session-scoped** であり、`/clear` を継続の終端として扱う — `/clear` 後に開始されたセッションは新しい `session_id` を解決するため、別の（構造的に空の）状態ファイルを読む。したがって、`/clear` をまたいで単独起動される**離散コマンド**（例: `/rite:pr:merge`）は、flow state を `/clear` をまたぐ権威ある状態として扱っては**ならない**。それらの権威は永続的な SoT — `gh pr view`（`isDraft` / `mergeable` / `mergeStateStatus`）、GitHub Projects Status、`.rite-work-memory/issue-{n}.md` — にある。flow state は存在する場合に限り**同一セッションの継続ヒント**としてのみ消費され、その不在は離散操作における正常（警告なし）ケースである。逆に、**継続ループサブシステム** — `/rite:pr:iterate` の review↔fix ループ、`Stop` hook + `handoff` フィールド、`/rite:pr:review` / `/rite:pr:fix`、sprint e2e オーケストレーション、compact 復旧、`/rite:resume` — は本質的に単一セッションであり、まさに session-scoped な flow state が正しく機能する領域であるため、変更されない。離散コマンド対継続ループの decoupling 分析の全体とコマンド別の内訳は [`docs/designs/clear-per-command-flow-state-decoupling.md`](designs/clear-per-command-flow-state-decoupling.md)（Issue #1256）を参照。`commands/pr/merge.md` Step 1 がこの境界の最初の適用である。
+> **権威スコープ — session-scoped な継続ヒントであり、`/clear` をまたぐ真実のソースではない**: flow state は **session-scoped** であり、`/clear` を継続の終端として扱う — `/clear` 後に開始されたセッションは新しい `session_id` を解決するため、別の（構造的に空の）状態ファイルを読む。したがって、`/clear` をまたいで単独起動される**離散コマンド**（例: `/rite:pr:merge`）は、flow state を `/clear` をまたぐ権威ある状態として扱っては**ならない**。それらの権威は永続的な SoT — `gh pr view`（`isDraft` / `mergeable` / `mergeStateStatus`）、GitHub Projects Status、`.rite-work-memory/issue-{n}.md` — にある。flow state は存在する場合に限り**同一セッションの継続ヒント**としてのみ消費され、その不在は離散操作における正常（警告なし）ケースである。逆に、**継続ループサブシステム** — `/rite:pr:iterate` の review↔fix ループ、`Stop` hook + `handoff` フィールド、`/rite:pr:review` / `/rite:pr:fix`、sprint e2e オーケストレーション、compact 復旧、`/rite:resume` — は本質的に単一セッションであり、まさに session-scoped な flow state が正しく機能する領域であるため、変更されない。離散コマンド対継続ループの decoupling 分析の全体とコマンド別の内訳は [`docs/designs/clear-per-command-flow-state-decoupling.md`](designs/clear-per-command-flow-state-decoupling.md)を参照。`commands/pr/merge.md` Step 1 がこの境界の最初の適用である。
 
 **ファイルパス:**
 
@@ -1596,7 +1596,7 @@ tdd:
 | 任意 | `wm_comment_id` | `issue-comment-wm-sync.sh`（キャッシュ書き込み） | 作業メモリバックアップ用の GitHub コメント ID |
 | 任意 | `loop_count` | **読み取り専用の legacy フィールド** — `flow-state.sh` に production writer なし（`grep -n loop_count plugins/rite/hooks/flow-state.sh` → 0 hits）。消費者（`pre-compact.sh` / `post-compact.sh` / `session-start.sh` / `work-memory-update.sh`）が best-effort で読む。`work-memory-update.sh` は作業メモリ文書側のコピーをインクリメントするのであって flow-state フィールドではない。前方互換のためスキーマスロットを保持 | review-fix ループカウンタ |
 | 任意 | `error_count` | `flow-state.sh set`（phase 遷移時に `0` にリセット。`--preserve-error-count` で既存値を保持） | 半 legacy フィールド — incrementer は `stop-guard.sh` とともに撤去済み。writer は reset のみ。前方互換のためスキーマを保持 |
-| 任意 | `handoff` | `flow-state.sh set --handoff <cmd>`（writer。**set ごとにデフォルトでクリア** — `--handoff` 指定時のみ存在）/ `flow-state.sh consume-handoff`（reader + deleter） | one-shot の継続 marker（Issue #1168 / #1176 / #1245）。値は 3 系統: 継続 `/rite:...` は `review.md` Step 8.0（`[review:fix-needed]` 時の `/rite:pr:fix {pr}`）と `fix.md` Step 5.1（`[fix:pushed]` / `[fix:pushed-wm-stale]` 時の `/rite:pr:review {pr}`）が set。終了 `FINALIZE:{result}:{pr}` は同 Step が終了 sentinel 時に set（Issue #1176）。チェーン `WIKICHAIN:{caller}:{pr}` は `cleanup.md` ステップ 9 が `rite:wiki:ingest` invoke 前に set（Issue #1245 — チェーン完走時はステップ 12 の terminal set の default-clear で消える）。`Stop` hook `stop-loop-continuation.sh` が消費（print + 削除）し、prefix で選択した reason とともに `decision:block` を emit する。デフォルトクリアの意味論は `error_count` をミラー。`schema_version` のバンプなし（`.handoff // ""` 経由で additive・後方互換） |
+| 任意 | `handoff` | `flow-state.sh set --handoff <cmd>`（writer。**set ごとにデフォルトでクリア** — `--handoff` 指定時のみ存在）/ `flow-state.sh consume-handoff`（reader + deleter） | one-shot の継続 marker。値は 3 系統: 継続 `/rite:...` は `review.md` Step 8.0（`[review:fix-needed]` 時の `/rite:pr:fix {pr}`）と `fix.md` Step 5.1（`[fix:pushed]` / `[fix:pushed-wm-stale]` 時の `/rite:pr:review {pr}`）が set。終了 `FINALIZE:{result}:{pr}` は同 Step が終了 sentinel 時に set。チェーン `WIKICHAIN:{caller}:{pr}` は `cleanup.md` ステップ 9 が `rite:wiki:ingest` invoke 前に set(チェーン完走時はステップ 12 の terminal set の default-clear で消える)。`Stop` hook `stop-loop-continuation.sh` が消費（print + 削除）し、prefix で選択した reason とともに `decision:block` を emit する。デフォルトクリアの意味論は `error_count` をミラー。`schema_version` のバンプなし（`.handoff // ""` 経由で additive・後方互換） |
 | 任意 | `schema_version` | `flow-state.sh set` | per-session 構造では `3`。不在または `!= 3` で移行をトリガ |
 
 > **`needs_clear` フィールド**: 撤去済み。以前の compact 復旧設計は `needs_clear` をフラグとして議論したが、production コードには writer も（テスト以外の）reader も存在しなかった。テストフィクスチャ（`pre-compact.test.sh` TC-014 / TC-014b）は `pre-compact が needs_clear を設定しない`ことを能動的にアサートしている。新スキーマはこのフィールドを含まない。
@@ -1615,7 +1615,7 @@ legacy state ファイル（`schema_version` なしの flat JSON、または `sc
 
 本機能を届けた Issue 系列（#672 epic と子 #678 / #679 / #680 / #681 / #682 / #683 / #684 / #685 + フォローアップ #749）は、親子関係の維持に GitHub ネイティブの Sub-Issues API を使用した。`/rite:pr:open` Step 1.2（#1136 分解前は `start.md` Phase 0.3）は、3 つの OR 結合手法（trackedIssues API → body タスクリスト `- [ ] #N` → ラベルベース `epic` / `parent` / `umbrella`）で親 Issue を検出する。子→親の Status 昇格（Todo → In Progress）は、`/rite:pr:open` Step 2.4（`### 2.4 GitHub Projects Status 更新`、サブステップ 2.4.7）によって同じ OR 結合順（`## 親 Issue` body メタ → Sub-Issues API `trackedInIssues` → タスクリスト検索）で伝播される — SoT は [`references/projects-integration.md`](../plugins/rite/references/projects-integration.md) §2.4.7 Parent Issue Status Update を参照。
 
-> **Hook list canonical SoT**: per-session state を読み書きする hook は [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json) に登録されている — 現在 7 イベント（`SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse` / `Stop`）。ライブ登録を再列挙するには `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json` を実行。`Stop` イベントは review↔fix ループ継続のため `stop-loop-continuation.sh`（Issue #1168）に登録されている。legacy の `stop-guard.sh` 停止防止 hook は撤去されたまま（下記の retired-layers ノート参照）。ライブラリスクリプト `session-ownership.sh` は source されるだけ（登録されない）ため `hooks.json` には現れない。
+> **Hook list canonical SoT**: per-session state を読み書きする hook は [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json) に登録されている — 現在 7 イベント（`SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse` / `Stop`）。ライブ登録を再列挙するには `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json` を実行。`Stop` イベントは review↔fix ループ継続のため `stop-loop-continuation.sh`に登録されている。legacy の `stop-guard.sh` 停止防止 hook は撤去されたまま（下記の retired-layers ノート参照）。ライブラリスクリプト `session-ownership.sh` は source されるだけ（登録されない）ため `hooks.json` には現れない。
 
 ### ローカル作業メモリ + Compact 耐性
 

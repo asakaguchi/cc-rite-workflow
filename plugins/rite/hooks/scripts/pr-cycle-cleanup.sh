@@ -109,8 +109,14 @@ prune_err=""
 ref_err=""
 workdir_find_err=""
 mutation_find_err=""
+# Step 3/4 の find -print0 出力を保持する NUL-delimited 一時ファイル (refs #1351)。
+# command substitution は NUL バイトを除去するため list を変数に持てない。find rc 捕捉を
+# 保ちつつ改行安全に読むには、出力を一時ファイルに退避して `read -r -d ''` で読む。
+workdir_find_out=""
+mutation_find_out=""
 _rite_pr_cycle_cleanup() {
-  rm -f "${wt_list_err:-}" "${prune_err:-}" "${ref_err:-}" "${workdir_find_err:-}" "${mutation_find_err:-}"
+  rm -f "${wt_list_err:-}" "${prune_err:-}" "${ref_err:-}" "${workdir_find_err:-}" "${mutation_find_err:-}" \
+        "${workdir_find_out:-}" "${mutation_find_out:-}"
 }
 trap 'rc=$?; _rite_pr_cycle_cleanup; exit $rc' EXIT
 trap '_rite_pr_cycle_cleanup; exit 130' INT
@@ -240,16 +246,25 @@ fi
 readonly WORKDIR_REAP_AGE_MINUTES=1440  # 24h
 workdir_tmp_base="${TMPDIR:-/tmp}"
 workdir_tmp_base="${workdir_tmp_base%/}"  # strip trailing slash
-# find は process substitution `< <(find ...)` ではなく command substitution + here-string で
-# 呼ぶ。process substitution は subshell の exit code がシェルに伝播しないため、$TMPDIR 不在 /
+# find は process substitution `< <(find ...)` ではなく、出力を一時ファイルに退避して呼ぶ。
+# process substitution は subshell の exit code がシェルに伝播しないため、$TMPDIR 不在 /
 # 権限なし / IO エラーで find が wholesale 失敗しても空ループ → 無言 no-op になり、本ファイルが
 # Step 1/2 (wt_list / prune / ref) で確立した「失敗を silent に握り潰さず errors カウンタに加算する」
-# 方針 (上記 prune block 参照) と非対称になる。command substitution で rc を捕捉し、失敗時は
-# WARNING + errors++ で sibling と対称化する。空 stdout 時の here-string は単一空行を生むが、
-# ループ先頭の `[ -z ]` ガードが branch-loop と同様に skip する。
+# 方針 (上記 prune block 参照) と非対称になる。`if find ... -print0 > "$out"; then` 形式なら
+# find が if の直接コマンドのため rc を捕捉でき、失敗時は WARNING + errors++ で sibling と対称化
+# できる。出力の保持に command substitution を使わない理由は、bash の `$(...)` が NUL バイトを
+# 除去してしまい -print0 の区切りが失われるため (refs #1351)。代わりに一時ファイル + NUL 区切り
+# の `read -r -d ''` で、ディレクトリ名に改行を含む病的ケースでも 1 エントリを分割せず読む。
 workdir_find_err=$(mktemp /tmp/rite-pr-cycle-cleanup-workdir-err-XXXXXX 2>/dev/null) || workdir_find_err=""
-if workdir_list=$(find "$workdir_tmp_base" -maxdepth 1 -type d -name 'rite-pr-create-*' -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>"${workdir_find_err:-/dev/null}"); then
-  while IFS= read -r orphan_workdir; do
+workdir_find_out=$(mktemp /tmp/rite-pr-cycle-cleanup-workdir-out-XXXXXX 2>/dev/null) || workdir_find_out=""
+# find 出力先 mktemp が失敗すると `> /dev/null` fallback で find 成功 (rc=0) でも reap 対象を
+# 空読みで silent 取りこぼす。本ファイルの「失敗を errors に加算して silent 化しない」方針と
+# 対称化するため WARNING + errors++ で surface する (age ガードにより次回正常実行で回収される)。
+if [ -z "$workdir_find_out" ]; then
+  echo "WARNING: orphan workdir 走査の出力先 mktemp に失敗しました。今回の回収をスキップします (次回 age 超過で回収)" >&2
+  errors=$((errors + 1))
+elif find "$workdir_tmp_base" -maxdepth 1 -type d -name 'rite-pr-create-*' -mmin +"$WORKDIR_REAP_AGE_MINUTES" -print0 > "$workdir_find_out" 2>"${workdir_find_err:-/dev/null}"; then
+  while IFS= read -r -d '' orphan_workdir; do
     [ -z "$orphan_workdir" ] && continue
     if [ "$DRY_RUN" = "1" ]; then
       echo "[dry-run] would reap orphan workdir: $orphan_workdir"
@@ -261,7 +276,7 @@ if workdir_list=$(find "$workdir_tmp_base" -maxdepth 1 -type d -name 'rite-pr-cr
         errors=$((errors + 1))
       fi
     fi
-  done <<< "$workdir_list"
+  done < "${workdir_find_out:-/dev/null}"
 else
   workdir_find_rc=$?
   echo "WARNING: find による orphan workdir 走査が失敗しました (rc=$workdir_find_rc, base=$workdir_tmp_base)" >&2
@@ -297,10 +312,17 @@ fi
 # -----------------------------------------------------------------------
 mutation_tmp_base="${TMPDIR:-/tmp}"
 mutation_tmp_base="${mutation_tmp_base%/}"  # strip trailing slash
+# Step 3 と同型: find -print0 を一時ファイルに退避して rc 捕捉と改行安全な NUL 区切り読みを両立
+# する (command substitution は NUL を除去するため使えない、refs #1351)。
 mutation_find_err=$(mktemp /tmp/rite-pr-cycle-cleanup-mutation-err-XXXXXX 2>/dev/null) || mutation_find_err=""
-if mutation_list=$(find "$mutation_tmp_base" -maxdepth 1 -type d -name 'rite-review-mutation-*' -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>"${mutation_find_err:-/dev/null}"); then
+mutation_find_out=$(mktemp /tmp/rite-pr-cycle-cleanup-mutation-out-XXXXXX 2>/dev/null) || mutation_find_out=""
+# Step 3 と同型: 出力先 mktemp 失敗時の silent 取りこぼしを WARNING + errors++ で surface する。
+if [ -z "$mutation_find_out" ]; then
+  echo "WARNING: orphan mutation worktree 走査の出力先 mktemp に失敗しました。今回の回収をスキップします (次回 age 超過で回収)" >&2
+  errors=$((errors + 1))
+elif find "$mutation_tmp_base" -maxdepth 1 -type d -name 'rite-review-mutation-*' -mmin +"$WORKDIR_REAP_AGE_MINUTES" -print0 > "$mutation_find_out" 2>"${mutation_find_err:-/dev/null}"; then
   mutation_reaped_any=0
-  while IFS= read -r orphan_wt; do
+  while IFS= read -r -d '' orphan_wt; do
     [ -z "$orphan_wt" ] && continue
     if [ "$DRY_RUN" = "1" ]; then
       echo "[dry-run] would reap orphan mutation worktree: $orphan_wt"
@@ -314,7 +336,7 @@ if mutation_list=$(find "$mutation_tmp_base" -maxdepth 1 -type d -name 'rite-rev
         errors=$((errors + 1))
       fi
     fi
-  done <<< "$mutation_list"
+  done < "${mutation_find_out:-/dev/null}"
   # rm -rf fallback で残った stale worktree メタデータを掃除する (remove --force 経路では不要だが冪等)
   if [ "$DRY_RUN" = "0" ] && [ "$mutation_reaped_any" = "1" ]; then
     git worktree prune 2>/dev/null || true

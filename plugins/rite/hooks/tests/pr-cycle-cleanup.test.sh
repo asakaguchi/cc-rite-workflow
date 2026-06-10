@@ -670,6 +670,49 @@ else
 fi
 
 # -----------------------------------------------------------------------
+# T-17: Step 3 newline-in-name workdir is reaped as a single entry (refs #1351)
+# Given: an aged `rite-pr-create-*` workdir whose directory name contains an
+#        embedded newline (the pathological case the find -print0 migration targets)
+# When: cleanup runs
+# Then: the workdir is reaped (status=cleaned, workdirs=1) and the directory is gone.
+# Regression intent: under the prior `find | while IFS= read -r` + here-string code,
+# the newline split the single path into two non-existent partial paths, so `rm -rf`
+# no-op'd on both (rm -f ignores missing) — the real dir survived while workdirs was
+# miscounted. The `find -print0` + `read -r -d ''` migration reads the whole path as
+# one NUL-delimited entry, so the real dir is removed and counted once.
+# -----------------------------------------------------------------------
+echo "T-17: Step 3 改行入り名の workdir が単一エントリで回収される (refs #1351)"
+rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
+# ANSI-C quoting ($'\n') で **literal 改行** を埋め込む。`$(printf '\n')` は command
+# substitution の末尾改行ストリップで改行が消え、テストが病的入力を生成しない false
+# positive (旧実装でも PASS) になるため使わない。
+t17_nl_name="rite-pr-create-nl"$'\n'"evil"
+# 前提条件 self-check: フィクスチャ名が本当に改行を含むことを固定する。将来 $'\n' が
+# 誤って書き換えられても、この guard が「病的入力を生成していない」状態を即座に検出する。
+# 注: `case ... in *"$(printf '\n')"*` は command substitution の改行ストリップで pattern が
+# 空になり常時マッチする欠陥があるため使わない。tr+wc で改行バイト数を直接数える。
+t17_nl_count=$(printf '%s' "$t17_nl_name" | tr -dc '\n' | wc -c | tr -d '[:space:]')
+if [ "$t17_nl_count" -lt 1 ]; then
+  fail "T-17: フィクスチャ名に改行が含まれていません (テスト前提崩壊、nl_count=$t17_nl_count)"
+  t17_nl_name=""
+fi
+if [ -n "$t17_nl_name" ]; then
+  mkdir -p "$WORKDIR_SCAN_TMP/$t17_nl_name"
+  touch -t 202001010000 "$WORKDIR_SCAN_TMP/$t17_nl_name"
+  TEST_REPO=$(make_temp_repo)
+  t17_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+  if [ ! -d "$WORKDIR_SCAN_TMP/$t17_nl_name" ] \
+     && echo "$t17_output" | grep -q 'status=cleaned' \
+     && echo "$t17_output" | grep -q 'workdirs=1'; then
+    pass "T-17: 改行入り名の workdir が単一エントリとして回収され workdirs=1"
+  else
+    fail "T-17: dir=$([ -d "$WORKDIR_SCAN_TMP/$t17_nl_name" ] && echo present || echo gone) を期待 gone / workdirs=1。Output: $t17_output"
+  fi
+  rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
+  cleanup_temp_repo "$TEST_REPO"
+fi
+
+# -----------------------------------------------------------------------
 # Summary
 # -----------------------------------------------------------------------
 echo

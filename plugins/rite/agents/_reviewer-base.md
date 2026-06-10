@@ -274,7 +274,7 @@ scope 値は Likelihood (Observed / Demonstrable / Hypothetical) とは **独立
 
 1. `git diff {base_branch}...HEAD` で diff hunks を取得 (`{base_branch}` は `rite-config.yml` の `branch.base`、デフォルト `develop`)
 2. 追加行 (`+` で始まる行) のみを判定対象にする (`-` 行・context 行は対象外)
-3. 抽出した追加行に対して [`tech-writer.md` の (a)-(e) heuristics](../skills/reviewers/tech-writer.md#6-comment-quality-heuristics) を適用
+3. 抽出した追加行に対して [`tech-writer.md` の (a)-(f) heuristics](../skills/reviewers/tech-writer.md#6-comment-quality-heuristics) を適用
 
 > **既存違反の retrofit は本 Gate のスコープ外**: pre-existing comment に対する finding は `/rite:investigate` 系・retrofit Epic で別経路で扱う。本 reviewer は revert test (Necessary conditions §3) も「新規 diff 由来であること」を担保する — diff の `+` 行に対象コメントが含まれていなければ revert test fail として finding を破棄する。
 
@@ -284,6 +284,7 @@ scope 値は Likelihood (Observed / Demonstrable / Hypothetical) とは **独立
 |------------|-----------|----------------|
 | Comment Rot (security/correctness 主張が現コードと不一致) | tech-writer #3 critical pattern | **CRITICAL** |
 | ジャーナルコメント (例示は [SoT 原則 2 — no_journal_comment](../skills/rite-workflow/references/comment-best-practices.md#2-no_journal_comment-ジャーナルコメント禁止) を参照) | tech-writer #6 (a) | **HIGH** |
+| 変更動機の散文 (番号なしの経緯コメント — 変更動機 Why は commit message が受け皿) | tech-writer #6 (f) | **MEDIUM** |
 | 行番号・cycle 番号参照 (`file:42` / `cycle 35 F-04`) | tech-writer #6 (b) | **HIGH** |
 | 過剰冗長 (内部 helper のコメント密度逆転、公開 API の docstring 0 行) | tech-writer #6 (d)/(e) | **MEDIUM** |
 | 独自ジャーゴン濫用 (Whitelist 外の造語) | tech-writer #6 (c) | **LOW-MEDIUM** |

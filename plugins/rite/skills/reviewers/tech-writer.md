@@ -335,6 +335,7 @@ This explains both the non-obvious choice and the historical reason — clearly 
 - **(c) 独自社内ジャーゴン濫用検出** (SoT 原則 4 `no_jargon_abuse` / Severity LOW-MEDIUM): コメント内のトークンで、(i) SoT [`## Whitelist (プロジェクト固有ジャーゴン)`](../../skills/rite-workflow/references/comment-best-practices.md#whitelist-プロジェクト固有ジャーゴン) 表に存在せず、(ii) 一般辞書にも存在しない造語を flag。**Verification**: Whitelist 表との突合 (substring match) → 不一致トークンを LLM 判定で確認 (プロジェクト内 3 回以上の独立登場の有無)。
 - **(d) WHY 過剰記述の密度判定** (SoT 原則 5 `density_by_audience` / Severity MEDIUM): SoT [`## D. Density Guideline`](../../skills/rite-workflow/references/comment-best-practices.md#d-density-guideline-公開-api-vs-内部-helper) に従い、内部 helper のコメント密度が公開 API より高い場合 (逆転) を flag。**Verification**: 関数本体行数とコメント行数の比を `Read` + line-count で算出 (空行・閉じ括弧のみの行は分母から除く)。
 - **(e) 公開 API と内部で密度差なし** (SoT 原則 5 派生 / Severity MEDIUM): 公開 API (`export` / `pub` / `public` / docstring 0 行など) のコメント密度が内部 helper の 1.5 倍未満の場合を flag。docstring が薄く、内部 helper の方が WHY 説明が厚い分布になっていないか。**Verification**: API-facing 判定は本 reviewer の既存 Comment Accuracy Finding Severity の API-facing rules を再利用。
+- **(f) 変更動機散文（番号なし）の検出** (SoT [原則 2 — 変更動機散文サブ分類](../../skills/rite-workflow/references/comment-best-practices.md#変更動機散文番号なしのサブ分類) / Severity MEDIUM): 番号・cycle・旧版表現を伴わなくても、コメントが「この変更を行った理由・経緯」（変更イベント）を語っている場合に flag (例: 「〜対応のため追加」「リファクタに伴い変更」「新機能 X 用に導入」)。変更動機 (Why) の受け皿は commit message の action lines。**Verification**: 対象コメントの主語が「変更イベント (過去の行為)」か「コードの現在の性質・制約」かを LLM 判定し、前者のみ flag。番号参照を伴う場合は (a) が先に適用される (二重 flag 禁止)。How の逐語訳は #5 WHY vs WHAT Balance の責務であり対象外 (重複定義しない)。推奨対応は「commit message への移送 + コメント側は現在形の制約のみ残す (または削除)」。
 
 **SoT との対応関係**:
 
@@ -342,6 +343,7 @@ This explains both the non-obvious choice and the historical reason — clearly 
 |---------|------------------------|------------------|
 | 1. why_over_what | (本 reviewer #5 WHY vs WHAT Balance に統合) | LOW (既存) |
 | 2. no_journal_comment | (a) | **HIGH** |
+| 2. no_journal_comment（変更動機散文サブ分類） | (f) | **MEDIUM** |
 | 3. no_line_or_cycle_reference | (b) | **HIGH** |
 | 4. no_jargon_abuse | (c) | LOW-MEDIUM |
 | 5. density_by_audience | (d) (e) | MEDIUM |
@@ -355,7 +357,7 @@ This explains both the non-obvious choice and the historical reason — clearly 
 |----------|---------|
 | **CRITICAL** | Comment documents security/correctness properties that no longer hold (e.g., "this function sanitizes SQL input" above code that no longer sanitizes). Comment actively misleads about safety. |
 | **HIGH** | Comment rot that contradicts current behavior (check #3 critical pattern). Orphan TODO referencing CLOSED Issue in a production path (check #4). Signature-docstring drift on an **API-facing** function/method/class (exported module members, public class methods, CLI command handlers, route handlers, event handler registrations, published REST/GraphQL endpoints — see "API-facing determination" rules below for the authoritative list) that would mislead external callers (check #1). **ジャーナルコメント** (`cycle N`, `verified-review`, `PR #N`, `旧実装は`, `cycle N F-X で確立` 等の review-history メタ情報がコード内コメントに残存) — check #6 (a)。**行番号・cycle 番号参照** (`file.sh:42` / `cycle 35 F-04` 等の位置依存参照) — check #6 (b)。 |
-| **MEDIUM** | Reference to non-existent identifier (check #2). Unassigned TODO in non-critical path (check #4). WHY-WHAT imbalance in a publicly-documented API. Signature-docstring drift on a **non-API-facing** function (private helpers, internal-only utilities, test fixtures) where the drift is contained to the file or module (check #1). **コメント密度逆転** (内部 helper のコメント密度が公開 API より高い — すなわち公開 API のコメント密度が内部 helper の 1.5 倍未満、あるいは公開 API の docstring が空) — check #6 (d)/(e)。SoT D セクション「公開 API は内部 helper の 1.5 倍以上の密度を持つことを目安」の逆転検出と整合。 |
+| **MEDIUM** | Reference to non-existent identifier (check #2). Unassigned TODO in non-critical path (check #4). WHY-WHAT imbalance in a publicly-documented API. Signature-docstring drift on a **non-API-facing** function (private helpers, internal-only utilities, test fixtures) where the drift is contained to the file or module (check #1). **コメント密度逆転** (内部 helper のコメント密度が公開 API より高い — すなわち公開 API のコメント密度が内部 helper の 1.5 倍未満、あるいは公開 API の docstring が空) — check #6 (d)/(e)。SoT D セクション「公開 API は内部 helper の 1.5 倍以上の密度を持つことを目安」の逆転検出と整合。**変更動機散文** (番号なしの経緯コメント — 変更動機 Why は commit message が受け皿) — check #6 (f)。 |
 | **LOW** | Redundant WHAT comment in private helper (check #5). Stale TODO with no clear expiry. Minor wording drift that doesn't change meaning. **独自社内ジャーゴン濫用** (Whitelist にも一般辞書にもない造語) — check #6 (c)。 |
 
 **API-facing determination**: Use the following rules to classify signature-docstring drift severity:

@@ -15,7 +15,7 @@
 #   ownership=$(check_session_ownership "$INPUT" "$STATE_FILE")
 #   # ownership: "own" | "legacy" | "other" | "stale"
 #
-# Role transition (Issue #681): With schema_version=2 (per-session files),
+# Role transition: With schema_version=2 (per-session files),
 # session ownership is structurally guaranteed by the session_id encoded in
 # the filename — the resolver (`_resolve-flow-state-path.sh`) only returns
 # a per-session path that matches the current session. `check_session_ownership`
@@ -89,7 +89,7 @@ get_state_session_id() {
 # Returns: 0 (true) if path matches `*/.rite/sessions/*.flow-state`, 1 otherwise.
 # Exit code: 0 or 1 (boolean — usable in `if is_per_session_state_file ...`)
 #
-# Why this exists (Issue #681): With schema_version=2 the resolver
+# Why this exists: With schema_version=2 the resolver
 # (`_resolve-flow-state-path.sh`) only returns a per-session path whose session_id
 # segment matches the current session, so the file is structurally owned by
 # this session and the 4-state legacy classification is unnecessary. Callers
@@ -123,7 +123,7 @@ is_per_session_state_file() {
 #
 # Issue #681: the per-session fast-path replaces the schema-2 portion of the
 # legacy 4-state classification with a structural check. The remaining branches
-# preserve schema-1 behavior unchanged so lifecycle hooks (#680) and pre-compact
+# preserve schema-1 behavior unchanged so lifecycle hooks and pre-compact
 # that depend on "legacy"/"other"/"stale" outputs continue to work.
 check_session_ownership() {
   local hook_json="$1"

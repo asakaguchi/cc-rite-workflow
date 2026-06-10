@@ -7,7 +7,7 @@
 # same_branch), extract frontmatter `sources[].ref` entries, dedup, and emit
 # the set inside a marker block alongside a 3-value read_ok enum.
 #
-# Why a helper (Issue #1195 #10 / #1193 Where #10):
+# Why a helper:
 #   The inline implementation in lint.md was a ~240-line HIGH-weight bash
 #   block. Delegating it removes a heredoc-malform / drift source while
 #   keeping the cross-Bash-tool-boundary state-transfer contract verbatim.
@@ -16,7 +16,7 @@
 #   key=value stdout).
 #
 # Symmetry note: this is the step 6.2 counterpart to step 6.0's
-# `wiki-lint-skipped-refs.sh` (Issue #1195 #14, delegated in Issue #1196).
+# `wiki-lint-skipped-refs.sh`.
 # Both share the marker block + io_error enum shape; keep them aligned.
 #
 # Inputs:

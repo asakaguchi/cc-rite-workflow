@@ -16,7 +16,7 @@
 #     --local-save-failed <0|1|"">
 #
 #   caller (review.md ステップ 6.1.c) は以下を会話コンテキストから読み取り literal substitute する:
-#     - --post-comment-mode: ステップ 1.0 の [CONTEXT] POST_COMMENT_MODE= の値 (Issue #510)
+#     - --post-comment-mode: ステップ 1.0 の [CONTEXT] POST_COMMENT_MODE= の値
 #     - --pr: 正規化済 pr_number
 #     - --file-timestamp: ステップ 6.1.a の [CONTEXT] FILE_TIMESTAMP= の値 (成功時 YYYYMMDDHHMMSS、失敗時 "unknown")
 #     - --local-save-failed: ステップ 6.1.a の [CONTEXT] LOCAL_SAVE_FAILED= の値 ("1" または未 emit=空文字)。
@@ -24,7 +24,7 @@
 #
 # 契約 (review.md ステップ 6.1.c と verbatim 一致):
 #   - 実行条件: post_comment_mode=false の経路専用 (true 経路は 6.1.b の成功/失敗ログで完結する)。
-#   - post_comment_mode machine-enforced gate (Issue #510、6.1.b と対称): false→続行 /
+#   - post_comment_mode machine-enforced gate: false→続行 /
 #     true→ERROR + [review:error] + exit 1 / その他→ERROR + [review:error] + exit 1。
 #   - 「1 変数 1 gate」原則で fail-fast の局所性を最大化 (post_comment_mode gate 通過後に
 #     pr_number / file_timestamp / local_save_failed を順に検証)。reason 語彙:
@@ -52,7 +52,7 @@ LOCAL_SAVE_FAILED=""
 
 # 各値付きフラグは `shift; shift` で消費する。値なしフラグが末尾に来た場合 ($#=1)、
 # `shift 2` は $# を減らせず set -e 非設定 + `${2:-}` (nounset 非発火) の下で無限ループに
-# 陥る (Issue #1224、review-comment-post.sh と対称)。1 回目の shift で $# を確実に 0 にし、
+# 陥る。1 回目の shift で $# を確実に 0 にし、
 # 2 回目は no-op で安全に抜ける。
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -64,7 +64,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# post_comment_mode machine-enforced gate (Issue #510 対応、6.1.b と対称)。
+# post_comment_mode machine-enforced gate。
 # 6.1.c は post_comment_mode=false 経路専用。true 経路で誤呼出された場合、本来 6.1.b で
 # 成功/失敗ログが完結すべきところ skip notification を出すと観測値が混線する。caller の
 # branch selection ミスを fail-fast 遮断する。

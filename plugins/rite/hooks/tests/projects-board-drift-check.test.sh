@@ -1,5 +1,5 @@
 #!/bin/bash
-# Static + offline tests for Issue #1305: projects-board-drift-check.sh
+# Static + offline tests for projects-board-drift-check.sh
 #
 # Verifies:
 #   T-1: script exists and is executable
@@ -54,7 +54,7 @@ assert_absent() {
   fi
 }
 
-echo "=== T: projects-board-drift-check.sh (Issue #1305) ==="
+echo "=== T: projects-board-drift-check.sh ==="
 
 echo ""
 echo "[T-1] Script exists and is executable"
@@ -118,7 +118,7 @@ assert_file_contains "$DRIFT_SH" '\-\-dry-run\)' "case clause handles --dry-run 
 assert_file_contains "$DRIFT_SH" '\-\-reconcile\)' "case clause handles --reconcile flag"
 assert_file_contains "$DRIFT_SH" '\-\-limit\)' "case clause handles --limit flag"
 assert_file_contains "$DRIFT_SH" '\-\-quiet\)' "case clause handles --quiet flag"
-assert_file_contains "$DRIFT_SH" 'Issue #1305' "header references Issue #1305"
+assert_file_contains "$DRIFT_SH" 'Reconciliation drift-guard' "header documents drift-guard purpose"
 # Detection: anchor asserts to the load-bearing jq predicates (with quotes), NOT to the header
 # comments (which spell COMPLETED/Done without the jq quoting), so deleting the detection logic
 # actually fails the suite. The quoted `stateReason == "COMPLETED"` predicate also pins the AC-2

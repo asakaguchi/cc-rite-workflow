@@ -6,7 +6,7 @@
 # - wiki-worktree-commit.sh (pages/index/log commits on wiki branch)
 # - wiki-ingest-commit.sh (worktree fast path for raw-source ingest)
 #
-# Design rationale (Issue #549): PR #548 cycle 4 F-06 identified that the
+# Design rationale: PR #548 cycle 4 F-06 identified that the
 # add/commit/push block + error handling (stderr tempfile -> head -n 10
 # -> sed prefix) was structurally identical across the two scripts. A
 # shared helper removes that drift vector. PR #550 review further

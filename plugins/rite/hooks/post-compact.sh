@@ -65,7 +65,7 @@ fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 
 # Derive the per-session compact-state path from the resolved flow-state path
-# (Issue #1371): must mirror pre-compact.sh so the snapshot written by PreCompact
+# It must mirror pre-compact.sh so the snapshot written by PreCompact
 # is the one consumed and normalized here. Falls back to the legacy shared path
 # only when the session id is unresolvable.
 if [ -n "$FLOW_STATE" ]; then

@@ -97,7 +97,7 @@ fi
 
 # Deactivate flow state if it exists
 if [ -f "$STATE_FILE" ]; then
-    # Session ownership check (#173): only deactivate own/legacy/stale state.
+    # Session ownership check: only deactivate own/legacy/stale state.
     # Other session's fresh state (within 2h) must not be modified.
     # See pre-compact.sh: caller-side `2>/dev/null` would mute the corrupt-
     # state WARNING that exists to flag state-overwrite risk against another
@@ -215,7 +215,7 @@ WARN_MSG
     fi
     [ -n "$_deact_jq_err" ] && rm -f "$_deact_jq_err"
 
-    # AC-10 (Issue #680): clean up per-session flow-state file on session end.
+    # AC-10: clean up per-session flow-state file on session end.
     # Note: this block also runs after the jq deactivation `else` arm above —
     # i.e. when the .active=false update failed. The per-session file is unique
     # to this session, so even a corrupt one has no value post-termination, and

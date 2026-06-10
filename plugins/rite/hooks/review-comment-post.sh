@@ -5,7 +5,7 @@
 # review.md ステップ 6.1.b の PR コメント投稿処理 (post_comment_mode gate + 複数 case gate +
 # scope 限定 awk sentinel 置換 + 2 つの post-condition + atomic mv + gh pr comment + signal 検出)
 # を担う。本文側の巨大 inline bash を helper に切り出すことで、単一 Bash invocation での malform
-# 無言停止を回避する (Issue #1193 #4、背景は PR 説明参照)。PR コメント本文 (Markdown + Raw JSON
+# 無言停止を回避する。PR コメント本文 (Markdown + Raw JSON
 # section) は caller が Write tool で tmpfile に書き出し `--content-file` で渡す (heredoc malform 源を撤廃)。
 #
 # Usage:
@@ -25,7 +25,7 @@
 #     3. 本 helper を実行する。
 #
 # 契約 (review.md ステップ 6.1.b と verbatim 一致):
-#   - post_comment_mode machine-enforced gate (Issue #510): true→続行 / false→exit 0 silent skip
+#   - post_comment_mode machine-enforced gate: true→続行 / false→exit 0 silent skip
 #     (gh pr comment を絶対に実行しない) / その他→ERROR + [review:error] + exit 1。
 #   - ブロッキング: 失敗は `[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=...` を emit し exit 1
 #     (ステップ 6.1.a の非ブロッキング契約とは対照的)。reason 語彙:
@@ -56,7 +56,7 @@ CONTENT_FILE=""
 
 # 各値付きフラグは `shift; shift` で消費する。値なしフラグが末尾に来た場合 ($#=1)、
 # `shift 2` は $# を減らせず set -e 非設定 + `${2:-}` (nounset 非発火) の下で無限ループに
-# 陥る (Issue #1224)。1 回目の shift で $# を確実に 0 にし、2 回目は no-op で安全に抜ける。
+# 陥る。1 回目の shift で $# を確実に 0 にし、2 回目は no-op で安全に抜ける。
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --pr)                PR_NUMBER="${2:-}"; shift; shift ;;
@@ -68,7 +68,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# post_comment_mode machine-enforced gate (Issue #510)。
+# post_comment_mode machine-enforced gate。
 # true→続行 / false→silent skip (gh pr comment 遮断、データ破壊なし) / その他→fail-fast。
 case "$POST_COMMENT_MODE" in
   true) ;;
@@ -169,7 +169,7 @@ awk -v ts="$ISO_TIMESTAMP" -v sentinel="$SENTINEL" '
       if (past && lines[i] ~ /^```json$/) { in_fence = 1; print lines[i]; continue }
       if (past && in_fence && lines[i] ~ /^```$/) { in_fence = 0; print lines[i]; continue }
       if (in_fence) {
-        # index()/substr() ベースのリテラル置換 (Issue #1200)。gsub の replacement に ts を
+        # index()/substr() ベースのリテラル置換。gsub の replacement に ts を
         # 直接埋め込むと `&` (マッチ全体に展開) / `\` (エスケープ) が metacharacter として
         # 解釈され置換結果が壊れる。index/substr は needle / replacement とも純リテラル扱い。
         # needle は SENTINEL 変数を -v で受け取る (値は backslash を含まないため -v の

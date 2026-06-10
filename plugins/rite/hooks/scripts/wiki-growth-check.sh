@@ -24,7 +24,7 @@
 #   --repo-root DIR        Repository root (default: git rev-parse --show-toplevel)
 #   --quiet                Suppress informational output (still emits findings line)
 #   --threshold N          Override growth-stall threshold from rite-config.yml
-#   --pr-raw-threshold N   Override PR↔raw correspondence threshold (Issue #536)
+#   --pr-raw-threshold N   Override PR↔raw correspondence threshold
 #   -h, --help             Show this help
 #
 # Exit codes (drift-check と同一の非ブロッキング契約):
@@ -70,7 +70,7 @@ Options:
   --threshold N            Override growth-stall threshold (default: read from
                            rite-config.yml, fallback 5)
   --pr-raw-threshold N     Override PR↔raw correspondence threshold (default:
-                           read from rite-config.yml, fallback 3) (Issue #536)
+                           read from rite-config.yml, fallback 3)
   -h, --help               Show this help
 
 Exit codes:
@@ -294,7 +294,7 @@ else
   log_info "wiki-growth-check: growth-stall: healthy ($merged_count merged PRs since last '$wiki_branch' commit, threshold: $threshold)"
 fi
 
-# --- PR ↔ raw source correspondence check (Issue #536) ---
+# --- PR ↔ raw source correspondence check ---
 # For each of the last N merged PRs, check whether at least one raw source
 # file exists on the wiki branch with a matching `pr-{number}` in its name.
 # This detects regressions where PRs are merged but Phase X.X.W never fires,
@@ -394,7 +394,7 @@ if ! check_pr_raw_correspondence; then
   findings=$((findings + 1))
 fi
 
-# --- Comprehensive health check: raw count, page count, pending count, page stall (Issue #538) ---
+# --- Comprehensive health check: raw count, page count, pending count, page stall ---
 # DRY: git ls-tree for .rite/wiki/raw/ is called once in check_page_stall and
 # passed to helper functions to avoid 3x duplication of the same git ls-tree call.
 

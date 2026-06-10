@@ -6,7 +6,7 @@
 # `cat` for same_branch), extract `ingest:skip` records, dedup, and emit the
 # set inside a marker block alongside a 4-value log_read_ok enum.
 #
-# Why a helper (Issue #1196 / #1193 MEDIUM #14):
+# Why a helper:
 #   The inline implementation in lint.md ステップ 6.0 was a ~165-line bash
 #   block. Delegating it removes a malform / drift source while keeping the
 #   cross-Bash-tool-boundary state-transfer contract verbatim.
@@ -15,7 +15,7 @@
 #   marker-delimited block).
 #
 # Symmetry note: this is the step 6.0 counterpart to step 6.2's
-# `wiki-lint-source-refs.sh` (Issue #1195 #10). Both share the marker block +
+# `wiki-lint-source-refs.sh`. Both share the marker block +
 # io_error enum shape and the legitimate-absence stderr pattern matching;
 # keep them aligned.
 #

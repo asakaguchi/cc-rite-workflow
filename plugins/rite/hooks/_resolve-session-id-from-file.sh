@@ -48,7 +48,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=control-char-neutralize.sh
 source "$SCRIPT_DIR/control-char-neutralize.sh"
 
-# verified-review (PR #688 cycle 39 H-01) MEDIUM (silent-failure-hunter):
+# verified-review MEDIUM (silent-failure-hunter):
 # `_resolve-session-id.sh` の存在 check を upfront で実施する。
 # 旧実装 (cycle 39 helper check 追加前) は本ファイル末尾の `_resolve-session-id.sh` invocation
 # (`if validated=$(bash "$SCRIPT_DIR/_resolve-session-id.sh" "$raw" 2>/dev/null); then ...`) で
@@ -106,7 +106,7 @@ fi
 # stderr を tempfile に退避し、IO error は WARNING を emit してから空文字復帰する (caller の
 # graceful degradation 動作は維持しつつ、observability を確保)。
 # cycle 43 F-08 (MEDIUM) 対応: mktemp 失敗 WARNING 統一 + chmod 600 + canonical 4 行 trap。
-# verified-review (PR #688 cycle 14) F-03 (MEDIUM) 対応:
+# verified-review F-03 (MEDIUM) 対応:
 # 旧コメントに含まれていた hardcoded 行番号 (state-read.sh:267 / _resolve-cross-session-guard.sh:93 /
 # flow-state-update.sh:282,422 / resume-active-flag-restore.sh:180) は本 PR で導入した「DRIFT-CHECK
 # ANCHOR は semantic name 参照、line 番号禁止」doctrine (cycle 38 F-04 / cycle 40) に違反する。
@@ -126,7 +126,7 @@ trap '_rite_resolve_sid_cleanup; exit 143' TERM
 trap '_rite_resolve_sid_cleanup; exit 129' HUP
 
 # F-02 (MEDIUM) consolidation: 共通 helper `_mktemp-stderr-guard.sh` 経由で
-# Stderr emit + chmod 600 + path return を集約 (PR #688 cycle 9 F-02)。
+# Stderr emit + chmod 600 + path return を集約。
 # chmod 600 (cycle 41 F-14 と対称化、multi-user 環境で session_id leak 防止) は helper 内に内蔵済。
 _tr_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "_resolve-session-id-from-file" "resolve-sid-tr-err" \

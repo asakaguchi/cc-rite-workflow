@@ -40,7 +40,7 @@ fi
 # Resolve project root (git root anchored). Matches session-start.sh /
 # _resolve-schema-version.sh / post-tool-wm-sync.sh convention; `$CWD` based
 # lookup would silently miss rite-config.yml when Claude Code is launched from
-# a subdirectory (Issue #976).
+# a subdirectory.
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
 CONFIG_FILE="$STATE_ROOT/rite-config.yml"

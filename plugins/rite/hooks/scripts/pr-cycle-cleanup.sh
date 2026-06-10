@@ -4,12 +4,12 @@
 # Responsibility: remove residual `pr-{N}-cycle{X}` worktrees and branches
 # that leak after reviewer subagent `git worktree add` invocations, plus
 # `pr-{N}-{test,experiment,mutation,verify,check,sandbox}` variations that
-# reviewers create for verification experiments (Issue #995). The reviewer's
+# reviewers create for verification experiments. The reviewer's
 # READ-ONLY contract forbids `git worktree remove` / `git branch -D`, so
 # cleanup MUST run from the orchestrator side.
 #
 # Additionally, reaps orphaned `rite-pr-create-*` workdirs left in
-# `${TMPDIR:-/tmp}` by pr/create.md Phase 3.4 (Issue #1311). Its 3-step protocol
+# `${TMPDIR:-/tmp}` by pr/create.md Phase 3.4. Its 3-step protocol
 # (mktemp -d -> Write tool -> gh pr create) spans separate processes, so a
 # malformed tool-call between workdir allocation and `gh pr create` leaves an
 # empty (or partially written) workdir behind. create.md's own signal-specific
@@ -18,7 +18,7 @@
 # an in-flight workdir held by a paused concurrent session.
 #
 # Also reaps orphaned `rite-review-mutation-*` detached worktrees left in
-# `${TMPDIR:-/tmp}` by reviewer subagents (Issue #1340). `_reviewer-base.md`'s
+# `${TMPDIR:-/tmp}` by reviewer subagents. `_reviewer-base.md`'s
 # worktree-only mutation pattern (`mktemp -d -t rite-review-mutation-XXXXXX`
 # + `git worktree add --detach`) lets reviewers run verification experiments
 # without mutating the parent working tree, but the reviewer's READ-ONLY
@@ -36,8 +36,7 @@
 # Variation history:
 #   - `cycle{N}`: orchestrator-created (`/rite:pr:review` cycle worktrees)
 #   - `test` / `experiment` / `mutation` / `verify` / `check` / `sandbox`:
-#     reviewer-subagent verification experiments. Observed in Issue #995
-#     (PR #994 cycle 3 review where a reviewer created `pr-994-test`).
+#     reviewer-subagent verification experiments (observed in practice).
 #     The reviewer's READ-ONLY contract is enforced primarily by
 #     `pre-tool-bash-guard.sh` Pattern 4 (PreToolUse hook block), and these
 #     names should normally never be created. This regex serves as the
@@ -119,7 +118,7 @@ prune_err=""
 ref_err=""
 workdir_find_err=""
 mutation_find_err=""
-# Step 3/4 の find -print0 出力を保持する NUL-delimited 一時ファイル (refs #1351)。
+# Step 3/4 の find -print0 出力を保持する NUL-delimited 一時ファイル。
 # command substitution は NUL バイトを除去するため list を変数に持てない。find rc 捕捉を
 # 保ちつつ改行安全に読むには、出力を一時ファイルに退避して `read -r -d ''` で読む。
 workdir_find_out=""
@@ -244,7 +243,7 @@ else
 fi
 
 # -----------------------------------------------------------------------
-# Step 3: Reap orphaned `rite-pr-create-*` workdirs (refs #1311).
+# Step 3: Reap orphaned `rite-pr-create-*` workdirs.
 # pr/create.md Phase 3.4 の 3 段プロトコル (A: mktemp -d -> B: Write tool ->
 # C: gh pr create) は workdir を別プロセスに跨がせるため、(A) 確保後・(C) 到達前の
 # malformed tool-call 無言終了 (Cause A) で `${TMPDIR:-/tmp}/rite-pr-create-*` が
@@ -263,18 +262,18 @@ fi
 readonly WORKDIR_REAP_AGE_MINUTES=1440  # 24h
 
 # ---------------------------------------------------------------------------
-# reap_orphan_dirs (refs #1352): Step 3 (workdir) / Step 4 (mutation worktree) で
+# reap_orphan_dirs: Step 3 (workdir) / Step 4 (mutation worktree) で
 # 同型だった orphan ディレクトリ走査を 1 箇所に集約する。両 Step は「tmp_base 正規化 →
 # err/out mktemp → mktemp 失敗ガード → find rc 捕捉 → NUL 区切り (-print0) ループ →
 # find wholesale 失敗時の err surface」という subtle な不変条件群を共有しており、過去に
-# per-item 失敗分岐 (#1349) と find 出力先 mktemp 失敗 surface (#1351) を両 Step へ二重
+# per-item 失敗分岐 と find 出力先 mktemp 失敗 surface を両 Step へ二重
 # 修正する copy-paste drift が実際に発生した。本ヘルパーで不変条件を集約し drift を防ぐ。
 #
 # find は process substitution `< <(find ...)` ではなく出力を一時ファイルに退避して呼ぶ。
 # process substitution は subshell の exit code が伝播せず find wholesale 失敗が無言 no-op
 # になるため。`if find ... -print0 > "$out"; then` 形式なら find が if の直接コマンドで rc を
 # 捕捉でき、失敗を WARNING + errors++ で surface できる。出力保持に command substitution を
-# 使わないのは bash の `$(...)` が NUL バイトを除去して -print0 区切りが失われるため (#1351)。
+# 使わないのは bash の `$(...)` が NUL バイトを除去して -print0 区切りが失われるため。
 #
 # Args: $1 label (WARNING 用) / $2 base / $3 name_pattern / $4 reaper_fn /
 #       $5 find_out (mktemp 済み、空=失敗) / $6 find_err (mktemp 済み、stderr 退避用)
@@ -312,7 +311,7 @@ reap_orphan_dirs() {
 }
 
 # Step 3 reaper: orphan workdir を rm -rf で回収。失敗時は rm の stderr を診断として surface
-# する (refs #1352、従来は `2>/dev/null` で失敗理由が落ちていた)。
+# する。
 _reap_workdir() {
   local orphan="$1" rm_err=""
   if rm_err=$(rm -rf "$orphan" 2>&1); then
@@ -328,7 +327,7 @@ _reap_workdir() {
 }
 
 # Step 4 reaper: mutation worktree を `git worktree remove --force` 第一手・`rm -rf` fallback で
-# 回収。両手の失敗理由 (stderr) を surface する (refs #1352、Step 1/4 の診断性向上)。
+# 回収。両手の失敗理由 (stderr) を surface する。
 # 成功時に mutation_reaped_any=1 を立て、呼び出し側の post-loop prune を起動する。
 _reap_mutation_worktree() {
   local orphan="$1" wt_err="" rm_err=""
@@ -363,7 +362,7 @@ reap_orphan_dirs "orphan workdir" "$workdir_tmp_base" 'rite-pr-create-*' \
   _reap_workdir "$workdir_find_out" "$workdir_find_err"
 
 # -----------------------------------------------------------------------
-# Step 4: Reap orphaned `rite-review-mutation-*` worktrees (refs #1340).
+# Step 4: Reap orphaned `rite-review-mutation-*` worktrees.
 # reviewer subagent の mutation/verification 検証は `_reviewer-base.md` の
 # worktree-only mutation pattern (`mktemp -d -t rite-review-mutation-XXXXXX`
 # + `git worktree add --detach`) に従って detached worktree を作るが、reviewer は

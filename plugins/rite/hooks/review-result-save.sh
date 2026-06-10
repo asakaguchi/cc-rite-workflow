@@ -4,7 +4,7 @@
 #
 # review.md ステップ 6.1.a のローカル JSON 保存処理 (timestamp 注入 / 多段 jq validation /
 # 同秒衝突回避 / atomic mv) を担う。本文側の巨大 inline bash を helper に切り出すことで、単一 Bash
-# invocation での malform 無言停止を回避する (Issue #1193 #3、背景は PR 説明参照)。JSON body は
+# invocation での malform 無言停止を回避する。JSON body は
 # caller が Write tool で tmpfile に書き出し `--content-file` で渡す (heredoc malform 源を撤廃)。
 #
 # Usage:
@@ -51,7 +51,7 @@ REVIEW_RESULTS_DIR=".rite/review-results"
 
 # 各値付きフラグは `shift; shift` で消費する。値なしフラグが末尾に来た場合 ($#=1)、
 # `shift 2` は $# を減らせず set -e 非設定 + `${2:-}` (nounset 非発火) の下で無限ループに
-# 陥る (Issue #1224)。1 回目の shift で $# を確実に 0 にし、2 回目は no-op で安全に抜ける。
+# 陥る。1 回目の shift で $# を確実に 0 にし、2 回目は no-op で安全に抜ける。
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --pr)           PR_NUMBER="${2:-}"; shift; shift ;;
@@ -230,7 +230,7 @@ if ! jq -e '
   exit 0
 fi
 
-# NOTE (Issue #1193 #3 委譲時に発見・修正した precedence バグ):
+# NOTE:
 #   review.md ステップ 6.1.a の原実装は `[.findings[].id] | unique | length == (.findings | length)`
 #   と書いており、jq では `length == (.findings | length)` の `.findings` がパイプ後の配列
 #   (unique 結果) に対して評価され "Cannot index array with string findings" でエラーになる。
@@ -261,7 +261,7 @@ if [ "$_schema_ver" = "1.1.0" ] && ! jq -e '
   )
   ' "$json_tmp" >/dev/null 2>&1; then
   echo "WARNING: JSON の findings[].scope が enum 違反 (期待: current-pr / follow-up / nit-noted)" >&2
-  echo "  対処: reviewer が schema 1.1.0 の scope 列を正しく出力しているか確認 (Issue #1018 M2)" >&2
+  echo "  対処: reviewer が schema 1.1.0 の scope 列を正しく出力しているか確認" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=scope_enum_violation" >&2
   exit 0
 fi

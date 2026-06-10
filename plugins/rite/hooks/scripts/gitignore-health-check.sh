@@ -5,7 +5,7 @@
 # rule added in PR #564 that prevents wiki-ingest-trigger.sh temporary writes from
 # silently leaking into the develop branch PR diff. If a future `.gitignore`
 # cleanup PR inadvertently removes this rule, the regression must be detected
-# immediately (Issue #567).
+# immediately.
 #
 # Detection strategy (strategy-aware, per `.gitignore` header L101-113 spec):
 #

@@ -42,7 +42,7 @@
 #   bash が exit 127 を silent suppression する経路が散在する。本 helper で upfront
 #   fail-fast 検査することで Issue #687 同型の deploy regression を構造的に塞ぐ。
 #
-# DEFAULT_HELPERS scope (PR #688 cycle 13 F-01):
+# DEFAULT_HELPERS scope:
 #   state-read.sh と flow-state-update.sh が依存する core helper set。両 caller は
 #   `bash <missing>` invocation 経路でこれらを direct/transitive に依存する。
 #   resume-active-flag-restore.sh は別 scope (resume layer の独自依存) のため、

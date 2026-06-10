@@ -20,7 +20,7 @@
 #     # validation failed; treat as missing/invalid
 #   fi
 #
-# Why this exists (PR #688 cycle 34 fix F-01 CRITICAL):
+# Why this exists:
 #   The same UUID regex literal `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`
 #   was duplicated across 5 sites (state-read.sh:85, flow-state-update.sh:70/77/83,
 #   resume-active-flag-restore.sh:87). DRY-ifying eliminates the drift risk where

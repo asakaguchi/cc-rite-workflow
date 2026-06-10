@@ -1,5 +1,5 @@
 #!/bin/bash
-# rite workflow - Status Mismatch Watchdog (Issue #1003 AC-9)
+# rite workflow - Status Mismatch Watchdog
 #
 # Scans repository Issues that are linked to OPEN, Ready-for-review PRs (isDraft=false)
 # and detects ones whose GitHub Projects Status is still "In Progress" — the symptom
@@ -52,7 +52,7 @@ while [ $# -gt 0 ]; do
     -h|--help)
       # here-doc usage で BSD head 互換性問題 (head -n -1) を回避
       cat <<'USAGE_EOF'
-watchdog-status-mismatch.sh - Status Mismatch Watchdog (Issue #1003 AC-9)
+watchdog-status-mismatch.sh - Status Mismatch Watchdog
 
 Scans repository Issues that are linked to OPEN, Ready-for-review PRs (isDraft=false)
 and detects ones whose GitHub Projects Status is still "In Progress" — the symptom

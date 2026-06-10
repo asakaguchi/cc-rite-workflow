@@ -46,7 +46,7 @@ AUTO_RECOVER="true"
 
 # 各値付きフラグは `shift; shift` で消費する。値なしフラグが末尾に来た場合 ($#=1)、
 # `shift 2` は $# を減らせず set -e 非設定 + `${2:-}` (nounset 非発火) の下で無限ループに
-# 陥る (Issue #1224)。1 回目の shift で $# を確実に 0 にし、2 回目は no-op で安全に抜ける
+# 陥る。1 回目の shift で $# を確実に 0 にし、2 回目は no-op で安全に抜ける
 # (--original-branch 欠落はループ後の必須チェックが exit 2 で検出)。
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -197,7 +197,7 @@ fi
 
 # --- JSON summary ---
 # `drift_detail` / `drift_type` は他 hook script 由来の長文メッセージを内包する可能性があるため、
-# printf で JSON value に直接埋め込むのではなく jq で escape する (Issue #999 LOW follow-up)。
+# printf で JSON value に直接埋め込むのではなく jq で escape する。
 # `recovered` は "true"/"false" 文字列を JSON boolean に変換する。
 jq -nc --arg t "$drift_type" --arg d "$drift_detail" --arg r "$recovered" \
   '{drift: true, type: $t, detail: $d, recovered: ($r == "true")}'

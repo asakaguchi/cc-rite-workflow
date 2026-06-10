@@ -1,13 +1,13 @@
 #!/bin/bash
-# rite workflow - Stop Hook: review↔fix loop continuation + terminal finalize (Issue #1168 / #1176)
-#                 + cleanup → wiki:ingest → wiki:lint チェーン継続保証 (Issue #1245)
+# rite workflow - Stop Hook: review↔fix loop continuation + terminal finalize
+#                 + cleanup → wiki:ingest → wiki:lint チェーン継続保証
 #
 # Guarantees that /rite:pr:iterate の review↔fix ループが、LLM が継続/終了 sentinel を
 # 出した直後に turn を終了してしまっても、構造的な層で差し戻すことを保証する。
 #   - 継続 sentinel ([review:fix-needed:N] / [fix:pushed] / [fix:pushed-wm-stale]) → 次ループへ自動継続
 #   - 終了 sentinel ([review:mergeable] / [fix:replied-only] / [fix:cancelled-by-user]) → 完了通知を強制
 # 同じ one-shot handoff 機構で /rite:pr:cleanup の wiki チェーン (cleanup → wiki:ingest →
-# wiki:lint --auto) の未完走も差し戻す (Issue #1245):
+# wiki:lint --auto) の未完走も差し戻す:
 #   - ネスト最深部の [lint:returned-to-caller:auto] / [ingest:returned-to-caller] 直後に
 #     turn が閉じても、cleanup ステップ 10-12 までの継続を 1 回だけ強制する
 #
@@ -15,9 +15,9 @@
 #   - 継続 sentinel を出す sub-skill (review.md Step 8.0 / fix.md Step 5.1) が
 #     flow-state に継続 handoff (例 "/rite:pr:fix 99") をセットする。
 #   - 終了 sentinel を出す sub-skill (review.md Step 8.0 / fix.md Step 5.1 / Step 1.4 cancel) が
-#     flow-state に終了 handoff (例 "FINALIZE:review:mergeable:99") をセットする (Issue #1176)。
+#     flow-state に終了 handoff (例 "FINALIZE:review:mergeable:99") をセットする。
 #   - cleanup.md ステップ 9 が wiki:ingest invoke 直前にチェーン handoff
-#     (例 "WIKICHAIN:cleanup:99") をセットする (Issue #1245)。チェーンがステップ 12 まで
+#     (例 "WIKICHAIN:cleanup:99") をセットする。チェーンがステップ 12 まで
 #     完走した場合はステップ 12 末尾の flow-state.sh set (--handoff なし) が default-clear する。
 #   - 本 hook は turn 終了時に flow-state.sh consume-handoff で handoff を
 #     **読み取り + 削除** する (one-shot)。非空なら decision:block で停止を差し戻す。
@@ -77,11 +77,11 @@ fi
 # handoff 不在 → 継続待ちでも終了通知待ちでもない → 停止許可。
 [ -n "$HANDOFF" ] || exit 0
 
-# handoff pending: 停止を差し戻す。handoff の prefix で reason を分岐する (Issue #1176 / #1245)。
+# handoff pending: 停止を差し戻す。handoff の prefix で reason を分岐する。
 # block 可否は「handoff 非空」の軸のみで決まり、prefix は reason 文面の選択にのみ影響する。
 #   FINALIZE:{result}:{pr}  = 終了 sentinel 到達 → /rite:pr:iterate ステップ5 完了通知を強制
-#   WIKICHAIN:{caller}:{pr} = cleanup チェーン未完走 → 残り step の継続を強制 (Issue #1245)
-#   /rite:...               = 継続 sentinel 到達 → 次ループコマンドを再注入 (Issue #1168)
+#   WIKICHAIN:{caller}:{pr} = cleanup チェーン未完走 → 残り step の継続を強制
+#   /rite:...               = 継続 sentinel 到達 → 次ループコマンドを再注入
 #   それ以外                 = 未知 prefix。silent に既定動作へ吸収せず WARNING で可視化した上で
 #                             verbatim 再注入する (prefix 名前空間拡張時の分岐漏れ検出 / PR #1177 教訓)
 case "$HANDOFF" in
@@ -93,14 +93,14 @@ handoff は consume 済みのため、完了通知を出力した後に再度停
     ;;
   WIKICHAIN:*)
     _pr="${HANDOFF##*:}"
-    _reason="rite の cleanup → wiki:ingest → wiki:lint チェーン (PR #${_pr}) がまだ完走していません。停止せず、未実行の step を順に継続してください: wiki:ingest の残り step (lint 結果 parse → 完了レポート + [ingest:returned-to-caller]) → /rite:pr:cleanup ステップ 10 (関連 Issue close) → ステップ 11 (作業メモリ最終化 + ローカルファイル削除) → ステップ 12 (完了報告 + flow-state terminal)。wiki:ingest / wiki:lint の成否に関わらず cleanup ステップ 10 以降へ進むのが契約です (Issue #1245)。
+    _reason="rite の cleanup → wiki:ingest → wiki:lint チェーン (PR #${_pr}) がまだ完走していません。停止せず、未実行の step を順に継続してください: wiki:ingest の残り step (lint 結果 parse → 完了レポート + [ingest:returned-to-caller]) → /rite:pr:cleanup ステップ 10 (関連 Issue close) → ステップ 11 (作業メモリ最終化 + ローカルファイル削除) → ステップ 12 (完了報告 + flow-state terminal)。wiki:ingest / wiki:lint の成否に関わらず cleanup ステップ 10 以降へ進むのが契約です。
 
 handoff は consume 済みのため、進捗なく再度停止した場合は次回は停止が許可されます (無限 block しません)。"
     ;;
   /rite:*)
     _reason="rite の review↔fix ループ (/rite:pr:iterate) が継続中です。停止せず、次を実行してください: ${HANDOFF}
 
-このループは [review:mergeable] / [fix:replied-only] / [fix:cancelled-by-user] のいずれかに到達するか、ユーザーが Ctrl+C で中断するまで継続します (Issue #1136 / #1168)。handoff は consume 済みのため、進捗なく再度停止した場合は次回は停止が許可されます。"
+このループは [review:mergeable] / [fix:replied-only] / [fix:cancelled-by-user] のいずれかに到達するか、ユーザーが Ctrl+C で中断するまで継続します。handoff は consume 済みのため、進捗なく再度停止した場合は次回は停止が許可されます。"
     ;;
   *)
     # 未知 prefix: 新 prefix 追加時の case 分岐漏れを silent 吸収しない (fail-loud)。block 自体は
@@ -120,7 +120,7 @@ esac
 # decision:block を JSON で emit。jq 失敗時は literal JSON にフォールバックして継続意図を保つ
 # (pre-tool-bash-guard.sh の fail-closed フォールバックと同様の堅牢化)。
 # 手動エスケープは \ / " / 改行のみのため、HANDOFF 由来の C0 生バイト (raw ESC 等) が残ると
-# RFC 8259 違反の invalid JSON になる — neutralize_ctrl --c0-only で ? 化する (Issue #1275)。
+# RFC 8259 違反の invalid JSON になる — neutralize_ctrl --c0-only で ? 化する。
 # default モードを使わないのは、バイト単位の C1 置換が _reason の UTF-8 日本語 (モデルへの
 # 継続指示文) を破壊するため。C1 素通しが jq プライマリ経路と対称なのは valid UTF-8 の
 # C1 (0xc2 0x9b 等) のみで、raw 8-bit 単独の C1 バイト (0x9b 等) は jq が U+FFFD に

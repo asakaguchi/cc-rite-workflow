@@ -1,5 +1,5 @@
 #!/bin/bash
-# Static tests for Issue #1003 AC-9: watchdog-status-mismatch.sh
+# Static tests for watchdog-status-mismatch.sh
 #
 # Verifies:
 #   T-9a: script exists and is executable
@@ -46,7 +46,7 @@ assert_file_contains() {
   fi
 }
 
-echo "=== T-9: watchdog-status-mismatch.sh (Issue #1003 AC-9) ==="
+echo "=== T-9: watchdog-status-mismatch.sh ==="
 
 echo ""
 echo "[T-9a] Script exists and is executable"
@@ -110,9 +110,9 @@ assert_file_contains "$WATCHDOG_SH" '\-\-limit\)' \
   "Script case clause handles --limit flag"
 assert_file_contains "$WATCHDOG_SH" '\-\-quiet\)' \
   "Script case clause handles --quiet flag"
-# Issue #1003 AC-9 marker
-assert_file_contains "$WATCHDOG_SH" 'Issue #1003 AC-9' \
-  "Script header references Issue #1003 AC-9"
+# header purpose marker
+assert_file_contains "$WATCHDOG_SH" 'Status Mismatch Watchdog' \
+  "header documents watchdog purpose"
 # Detection logic: isDraft=false && Status="In Progress"
 assert_file_contains "$WATCHDOG_SH" 'isDraft' \
   "Script checks PR isDraft"

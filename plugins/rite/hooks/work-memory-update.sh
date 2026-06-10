@@ -67,7 +67,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
 # fail-fast capture を 3 箇所 (line 96-110 / 175-186 / 187-193) で完全に同一構造で複製していた。
 # 共通 helper に集約することで spec 変更を 1 箇所で完結させる。
 #
-# verified-review (PR #688 cycle 14) F-05 (MEDIUM) 対応: 旧コメントは
+# verified-review F-05 (MEDIUM) 対応: 旧コメントは
 # 「resume-active-flag-restore.sh にも 2 site 存在し計 5 site の boilerplate 重複を集約する
 # (writer/reader/resume 3 layer DRY 化)」と主張していたが、resume layer の 2 site
 # (resume-active-flag-restore.sh の curr_phase / curr_next 抽出ブロック) は **本 PR では consolidate
@@ -264,10 +264,10 @@ update_local_work_memory() {
   _branch_san=$(_sanitize_yaml_value "$branch")
   _last_commit_san=$(_sanitize_yaml_value "$last_commit")
 
-  # verified-review (PR #688 cycle 15) F-04 (MEDIUM) 対応 + post-review F-01 (MEDIUM) DRY 化:
+  # verified-review F-04 (MEDIUM) 対応 + post-review F-01 (MEDIUM) DRY 化:
   # pr_num / loop_cnt は flow-state.sh 経由で flow-state JSON から取得されるが、jq -r は raw string を
   # 返すため、tampered/corrupt な flow-state file (例: `{"pr_number": "123\nmalicious: injection"}`) で
-  # 改行込みの値が返ると YAML frontmatter parse が破壊される (Issue #687 同型の writer/reader 対称化破綻)。
+  # 改行込みの値が返ると YAML frontmatter parse が破壊される。
   # 数値型 validation を _validate_numeric_yaml_value() helper に集約し、新規数値フィールド追加時の
   # 片肺更新リスクを構造的に解消した (本 PR review F-01)。
   local _pr_num_san _loop_cnt_san

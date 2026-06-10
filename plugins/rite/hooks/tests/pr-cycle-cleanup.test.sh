@@ -18,6 +18,12 @@
 #                  mutation-worktree parent) — extends the symmetry to the
 #                  mutation-worktree reap added in #1340
 #
+# Step 4 mutation worktree reaping (Issue #1340) — path-based sweep of orphan
+# detached `rite-review-mutation-*` worktrees that the Step 1 branch sweep cannot
+# catch (they have no named branch):
+#   T-14 → Step 4: aged orphan mutation worktree reaped (mutation_worktrees=1)
+#   T-15 → Step 4: age guard protects a fresh mutation worktree (in-flight safety)
+#
 # Each test creates an isolated temp git repository, simulates branch /
 # worktree creation, runs the cleanup script, and asserts the result.
 

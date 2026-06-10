@@ -305,16 +305,52 @@ worktree_commit_push() {
  [ -n "$head_err" ] && rm -f "$head_err"
 
  # Step 4: push using the caller-supplied branch (no silent
- # `rev-parse --abbrev-ref HEAD` fallback to literal "HEAD"). Push
- # failure is incident-observable (return 4) but the caller owns the
- # policy decision (continue workflow vs. hard fail).
- local push_status="ok"
- if ! git -C "$worktree" push --quiet origin "$branch" 2>"${push_err:-/dev/null}"; then
- push_status="failed"
+ # `rev-parse --abbrev-ref HEAD` fallback to literal "HEAD"). On a
+ # non-fast-forward rejection (a concurrent session advanced
+ # origin/<branch>), fetch + rebase onto origin/<branch> and retry,
+ # up to 3 push attempts (multi-session design §9). wiki commits are
+ # append-mostly (new raw / new pages / log appends) so the rebase is
+ # almost always conflict-free; a rebase conflict aborts and falls
+ # through to the existing rc=4. Non-NFF failures (auth / network) do
+ # NOT retry — they fail immediately, preserving the prior behavior.
+ # The 0/3/4/5 exit-code contract is unchanged (return 4 on any push
+ # failure; the caller owns the continue-vs-hard-fail policy).
+ local push_status="failed" _push_max=3 _push_i=0
+ while [ "$_push_i" -lt "$_push_max" ]; do
+ _push_i=$((_push_i + 1))
+ [ -n "$push_err" ] && : > "$push_err"
+ if git -C "$worktree" push --quiet origin "$branch" 2>"${push_err:-/dev/null}"; then
+ push_status="ok"
+ break
+ fi
+ # Classify the failure. Only a non-fast-forward rejection is retried.
+ if ! { [ -n "$push_err" ] && grep -qiE 'rejected|non-fast-forward|fetch first|behind' "$push_err"; }; then
  echo "WARNING: git push origin '$branch' failed in worktree '$worktree' — commit is local only" >&2
  [ -n "$push_err" ] && [ -s "$push_err" ] && head -n 10 "$push_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
  echo " manual recovery: git -C '$worktree' push origin '$branch'" >&2
+ break
  fi
+ if [ "$_push_i" -ge "$_push_max" ]; then
+ echo "WARNING: git push origin '$branch' rejected (non-fast-forward) after $_push_max attempts — commit is local only" >&2
+ [ -n "$push_err" ] && [ -s "$push_err" ] && head -n 10 "$push_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
+ echo " manual recovery: git -C '$worktree' fetch origin '$branch' && git -C '$worktree' rebase 'origin/$branch' && git -C '$worktree' push origin '$branch'" >&2
+ break
+ fi
+ echo "WARNING: push rejected (non-fast-forward) — fetch + rebase onto origin/$branch + retry (attempt $_push_i/$_push_max)" >&2
+ if ! git -C "$worktree" fetch --quiet origin "$branch" 2>"${push_err:-/dev/null}"; then
+ echo "WARNING: fetch origin '$branch' failed during non-fast-forward retry — commit is local only" >&2
+ [ -n "$push_err" ] && [ -s "$push_err" ] && head -n 10 "$push_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
+ break
+ fi
+ if ! git -C "$worktree" rebase --quiet "origin/$branch" 2>"${push_err:-/dev/null}"; then
+ git -C "$worktree" rebase --abort 2>/dev/null || true
+ echo "WARNING: rebase onto origin/$branch failed (conflict) — aborted; push not retried (commit is local only)" >&2
+ [ -n "$push_err" ] && [ -s "$push_err" ] && head -n 10 "$push_err" | neutralize_ctrl --keep-newline | sed 's/^/ git: /' >&2
+ echo " manual recovery: git -C '$worktree' fetch origin '$branch' && git -C '$worktree' rebase 'origin/$branch'" >&2
+ break
+ fi
+ # rebase succeeded — loop back and retry the push.
+ done
 
  echo "head=${head_sha}; push=${push_status}"
 

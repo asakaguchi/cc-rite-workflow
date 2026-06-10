@@ -5,6 +5,13 @@
 # hyphens at fixed positions). Returns 0 with the validated UUID on stdout
 # when input matches; returns 1 with empty stdout when invalid.
 #
+# Contract (SoT: references/session-id-validation-contract.md): this is the Layer 2
+# format/identity validator. It answers "is this a canonical UUID?" so a caller can
+# choose between the per-session state file and the legacy single-file fallback (see
+# _resolve-session-id-from-file.sh). It is intentionally distinct from flow-state.sh's
+# Layer 1 `_validate_session_id` (security-boundary, format-agnostic). Do NOT unify the
+# two: flow-state.sh's path must keep accepting non-UUID opaque sids.
+#
 # Usage:
 #   bash plugins/rite/hooks/_resolve-session-id.sh "$candidate_uuid"
 #   if validated_sid=$(bash _resolve-session-id.sh "$raw"); then

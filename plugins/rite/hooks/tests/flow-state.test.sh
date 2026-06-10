@@ -1004,6 +1004,64 @@ result=$(new_sandbox); d2="${result%|*}"; sid2="${result#*|}"
 state_file2="$d2/.rite/sessions/${sid2}.flow-state"
 assert "no worktree key when --worktree never passed" "false" "$(jq 'has("worktree")' "$state_file2")"
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + security/observability hardening + Issue #1168 handoff marker + Issue #1170 consume-handoff corrupt-read WARNING + Issue #1173 jq stderr snippet control-char neutralization + Issue #1274 C1 8-bit coverage via shared neutralize_ctrl + Issue #1362 --worktree merge-preserve field"; then
+# --- TC-24: non-UUID opaque session_id is ACCEPTED (Layer 1 format-agnostic contract) ---
+# Why (Issue #1383): `_validate_session_id` is the Layer 1 security-boundary validator and is
+# format-agnostic BY DESIGN — it rejects path-traversal / control chars (pinned by TC-18/TC-19)
+# but MUST keep ACCEPTING non-UUID opaque sids. pre-compact.test.sh TC-1371-AC1 sets
+# CLAUDE_CODE_SESSION_ID="session-aaaa-1371" and relies on `flow-state.sh path` resolving it to a
+# per-session file. If this were ever routed through `_resolve-session-id.sh` (strict RFC 4122 /
+# Layer 2), such sids would degrade to legacy fallback and the dependent tests would go SILENTLY
+# vacuous. These positive assertions convert that silent-vacuous risk into a loud failure.
+# SoT: references/session-id-validation-contract.md.
+echo ""
+echo "=== TC-24: non-UUID opaque session_id accepted (format-agnostic Layer 1 contract pin) ==="
+opaque="session-aaaa-1371"
+
+# TC-24.1: env-var (CLAUDE_CODE_SESSION_ID) — the exact at-risk path from pre-compact.test.sh
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+rm -f "$d/.rite-session-id"
+err=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$opaque" \
+  bash "$HOOK" set --phase implement --issue 1383 --branch "refactor/issue-1383" --pr 0 --next "n") 2>&1 || true )
+state_file="$d/.rite/sessions/${opaque}.flow-state"
+if [ -f "$state_file" ]; then
+  pass "TC-24.1: set accepts non-UUID env sid → .rite/sessions/${opaque}.flow-state"
+else
+  fail "TC-24.1: non-UUID env sid rejected/degraded (no per-session file). stderr: '$err'"
+fi
+got=$(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$opaque" bash "$HOOK" get --field phase --default "MISS")
+assert "TC-24.1b: phase round-trips under non-UUID sid" "implement" "$got"
+
+# TC-24.2: `path` resolves the non-UUID sid to the per-session file (not a legacy fallback path)
+got_path=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$opaque" bash "$HOOK" path) 2>/dev/null || true )
+case "$got_path" in
+  */.rite/sessions/"${opaque}".flow-state)
+    pass "TC-24.2: path resolves non-UUID sid to per-session file (no Layer 2 strict downgrade)" ;;
+  *)
+    fail "TC-24.2: path did not resolve to per-session file for non-UUID sid: '$got_path'" ;;
+esac
+
+# TC-24.3: SESSION_ID_FILE (.rite-session-id) content path also accepts non-UUID
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+printf '%s\n' "$opaque" > "$d/.rite-session-id"
+err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID \
+  bash "$HOOK" set --phase plan --issue 1383 --branch "b" --pr 0 --next "n") 2>&1 || true )
+if [ -f "$d/.rite/sessions/${opaque}.flow-state" ]; then
+  pass "TC-24.3: SESSION_ID_FILE non-UUID content accepted → per-session file"
+else
+  fail "TC-24.3: SESSION_ID_FILE non-UUID content rejected/degraded. stderr: '$err'"
+fi
+
+# TC-24.4: --session override path also accepts non-UUID (4-source symmetry with TC-18/TC-19)
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+rm -f "$d/.rite-session-id"
+err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID \
+  bash "$HOOK" set --session "$opaque" --phase review --issue 1383 --branch "b" --pr 0 --next "n") 2>&1 || true )
+if [ -f "$d/.rite/sessions/${opaque}.flow-state" ]; then
+  pass "TC-24.4: --session override non-UUID accepted → per-session file"
+else
+  fail "TC-24.4: --session override non-UUID rejected/degraded. stderr: '$err'"
+fi
+
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + security/observability hardening + Issue #1168 handoff marker + Issue #1170 consume-handoff corrupt-read WARNING + Issue #1173 jq stderr snippet control-char neutralization + Issue #1274 C1 8-bit coverage via shared neutralize_ctrl + Issue #1362 --worktree merge-preserve field + Issue #1383 non-UUID acceptance (Layer 1 format-agnostic contract pin)"; then
   exit 1
 fi

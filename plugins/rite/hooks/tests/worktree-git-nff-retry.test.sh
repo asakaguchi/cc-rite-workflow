@@ -29,6 +29,14 @@ setup_remote() {
   ( cd "$base/seed" && echo "line1" > shared.txt && $GIT add shared.txt && $GIT commit -qm seed && $GIT push -q "$base/remote.git" wiki ) >/dev/null 2>&1
   $GIT clone -q -b wiki "$base/remote.git" "$base/under_test" >/dev/null 2>&1
   $GIT clone -q -b wiki "$base/remote.git" "$base/rival" >/dev/null 2>&1
+  # worktree_commit_push commits via plain `git commit` (no -c flags), so the
+  # under-test clone needs a persistent identity — CI runners have no global
+  # git user.name/email. (rival/seed use the $GIT alias and don't need it.)
+  for clone in under_test rival; do
+    git -C "$base/$clone" config user.email t@test.local
+    git -C "$base/$clone" config user.name test
+    git -C "$base/$clone" config commit.gpgsign false
+  done
   printf '%s' "$base"
 }
 

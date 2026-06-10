@@ -838,14 +838,15 @@ lf_stderr="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 lf_rc=0
 echo "{\"cwd\": \"$dirlf\"}" | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" 2>"$lf_stderr" || lf_rc=$?
 LAST_STDERR_FILE="$lf_stderr"
+cs_state=$(jq -r '.compact_state' "$dirlf/.rite-compact-state" 2>/dev/null)
 if [ "$lf_rc" -ne 0 ]; then
   fail "Hook should exit 0 on legacy fallback (got rc=$lf_rc)"
 elif [ ! -f "$dirlf/.rite-compact-state" ]; then
   fail "legacy .rite-compact-state should be written when session id is unresolvable"
 elif [ -e "$dirlf/.rite/sessions" ]; then
   fail "per-session .rite/sessions must not be created on the legacy fallback path"
-elif [ "$(jq -r '.compact_state' "$dirlf/.rite-compact-state" 2>/dev/null)" != "recovering" ]; then
-  fail "legacy compact_state should be 'recovering', got '$(jq -r '.compact_state' "$dirlf/.rite-compact-state" 2>/dev/null)'"
+elif [ "$cs_state" != "recovering" ]; then
+  fail "legacy compact_state should be 'recovering', got '$cs_state'"
 elif ! grep -q 'flow-state.sh path resolution failed' "$lf_stderr"; then
   fail "expected resolver-failure WARNING on stderr"
 else

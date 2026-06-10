@@ -318,6 +318,12 @@ echo ""
 # --------------------------------------------------------------------------
 # TC-LEGACY-FALLBACK-RESUME: sid unresolvable + legacy recovering + /rite:resume → allow
 # --------------------------------------------------------------------------
+# Note: /rite:resume is allowed regardless of compact-state (even when the file is
+# absent — preflight-check.sh exits 0 for /rite:resume at the no-file and resume gates
+# alike), so this case ALONE does not discriminate the legacy fallback read. Its value
+# is as the complement to the preceding block TC: together they pin that under the
+# legacy fallback a recovering state blocks non-resume commands while /rite:resume stays
+# exempt. Reuses $dirlf and its seeded legacy .rite-compact-state from that block.
 echo "TC-LEGACY-FALLBACK-RESUME: sid unresolvable + legacy recovering + /rite:resume → exit 0"
 if env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" --command-id "/rite:resume" --cwd "$dirlf" >/dev/null 2>&1; then
   pass "/rite:resume allowed even on legacy fallback block"

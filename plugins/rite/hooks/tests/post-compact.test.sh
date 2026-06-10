@@ -546,14 +546,16 @@ echo "TC-LEGACY-FALLBACK: sid unresolvable → legacy .rite-compact-state cleane
 TC_DIR=$(setup_test "tc-legacy-fallback")
 printf '%s\n' '{"compact_state": "recovering", "compact_state_set_at": "2026-03-14T12:00:00Z", "active_issue": 55}' > "$TC_DIR/.rite-compact-state"
 lf_rc=0
-echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" >/dev/null 2>&1 || lf_rc=$?
+lf_err=$(mktemp "$TEST_DIR/stderr.XXXXXX")
+echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" >/dev/null 2>"$lf_err" || lf_rc=$?
 if [ "$lf_rc" -ne 0 ]; then
-  fail "TC-LEGACY-FALLBACK: hook should exit 0 (got rc=$lf_rc)"
+  fail "TC-LEGACY-FALLBACK: hook should exit 0 (got rc=$lf_rc); stderr: $(cat "$lf_err")"
 elif [ -f "$TC_DIR/.rite-compact-state" ]; then
   fail "TC-LEGACY-FALLBACK: legacy .rite-compact-state should be cleaned up when session id is unresolvable"
 else
   pass "TC-LEGACY-FALLBACK: legacy .rite-compact-state removed via fallback cleanup path"
 fi
+rm -f "$lf_err"
 
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

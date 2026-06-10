@@ -321,3 +321,53 @@ parallel:
 **When `mode: "shared"`**: The existing parallel implementation behavior (Phase 5.1.0.2) is used. No worktree operations are performed.
 
 **When `mode: "worktree"`**: The orchestrator creates worktrees per this document's patterns. Agents are constrained to their worktree directories.
+
+---
+
+## Multi-Session Patterns
+
+These patterns apply to the **session worktree** layer introduced by `multi_session.enabled: true`
+(see [docs/designs/multi-session-worktree.md](../../../docs/designs/multi-session-worktree.md)).
+This is a **separate axis** from the `parallel.mode: "worktree"` patterns above:
+`parallel` is per-Issue sub-agent fan-out within one session; `multi_session` is
+session-wide lifecycle isolation. `/rite:pr:open` creates a session worktree and
+`EnterWorktree`-s into it; `/rite:pr:cleanup` exits and removes it; orphans are
+reaped lazily by `pr-cycle-cleanup.sh` Step 5.
+
+### Worktree namespaces (4 kinds — do not cross-contaminate)
+
+| Namespace | Purpose | Lifecycle |
+|---|---|---|
+| `.rite/worktrees/issue-{N}` | **Session worktree** (multi_session) | `pr:open` creates → `pr:cleanup` removes (orphans reaped via Step 5) |
+| `.worktrees/{issue}/{task}` | parallel / team-execute sub-agent worktree | per-batch create/remove |
+| `pr-{N}-cycle{X}` etc. | reviewer transient worktree | idempotently swept by `pr-cycle-cleanup.sh` |
+| `.rite/wiki-worktree` | persistent wiki-branch worktree | manual removal only (reap-excluded) |
+
+The session-worktree reap (`pr-cycle-cleanup.sh` Step 5) matches **only** the strict
+`^issue-[0-9]+$` directory name under `multi_session.worktree_base`, so it never
+touches the other three namespaces.
+
+### Concurrent `git fetch` — ref-lock retry (3 attempts)
+
+`refs` / `objects` / `config` are shared across all worktrees, so two sessions
+running `git fetch` at the same time can transiently fail on a ref lock. Retry up
+to 3 times:
+
+```bash
+n=0; until git fetch origin "$base" 2>/dev/null; do n=$((n+1)); [ "$n" -ge 3 ] && break; sleep 1; done
+```
+
+### main-checkout-不可侵 (inviolability) convention
+
+In `multi_session` mode rite **never switches the main checkout's current branch**
+(`git switch {base}` from a session is impossible anyway — the main checkout holds it).
+Consequences enforced across the workflow:
+
+- New session branches are created with their base as **`origin/{base}` directly**
+  (`git worktree add -b {branch} {path} origin/{base}`), not via a local `{base}`
+  that another worktree may have checked out.
+- A branch is deleted **only after** its worktree is removed (a branch checked out
+  in a worktree cannot be deleted or fetch-updated).
+- `pr:cleanup`'s base pull runs **only when the main checkout is on `{base}`**; on any
+  other branch it WARNINGs and skips (it must not yank the main checkout off a
+  human's working branch). Moving the main checkout's branch is a **human-only** action.

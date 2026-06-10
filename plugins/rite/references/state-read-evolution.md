@@ -70,6 +70,11 @@ helper を追加する際は `_validate-helpers.sh` 内 `DEFAULT_HELPERS` への
 | `_validate-state-root.sh` | STATE_ROOT path traversal + shell metacharacter + control character 検証 | post-cycle-44 re-review (M-1) |
 | `state-path-resolve.sh` (参考: base resolver) | STATE_ROOT 解決の入口 (集約ではないが `DEFAULT_HELPERS` には登録) | (該当なし — base resolver) |
 
+> **Layer 区別 (Issue #1383)**: `_resolve-session-id.sh` は **strict RFC 4122 (Layer 2)** validator。
+> `flow-state.sh` の `_validate_session_id`（path-traversal / 制御文字のみ拒否する **format-agnostic** な
+> Layer 1 validator）とは別契約であり、**統一してはならない**。両者の責務分担と乖離を維持する理由の SoT は
+> [session-id-validation-contract.md](./session-id-validation-contract.md) を参照。
+
 ---
 
 ## Cycle 別の主要な修正

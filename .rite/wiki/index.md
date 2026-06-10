@@ -164,7 +164,7 @@
 | [fail-fast 構造の記述は構文・検証対象・場所の 3 軸で分離する](pages/patterns/fail-fast-description-three-axis-separation.md) | patterns | bash fail-fast の記述は構文 (case `*)` vs else 分岐)・検証対象 (どの変数か)・場所 (どの step に分岐が実在するか) の 3 軸を分離して書く。case arm は bare `*)` と glob パターン arm を区別する。PR #1327 で旧記述の二重不正確 (構文+場所) を実測修正。 | 2026-06-09T19:55:00Z | medium |
 | [形状検証 gate の allowlist 化は複数行 bypass・上流 degraded 値・コメント同期をセットで棚卸しする](pages/heuristics/allowlist-gate-hardening-checklist.md) | heuristics | 入力検証 gate の denylist→allowlist 強化では (1) grep 行単位マッチの複数行 bypass ([[ =~ ]] が正解形)、(2) 上流が正規に emit する degraded sentinel 値への専用診断、(3) 置換機構変更時の同一ブロック内コメント同期、を着手時に棚卸しする。PR #1330 の 4 cycle 収束で 3 点すべて実測。 | 2026-06-10 | high |
 | [「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる](pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md) | heuristics | contract consumer 等の網羅列挙を reviewer 指摘任せに増築すると cycle ごとに漏れが見つかり発散する。grep 全数棚卸し → 包含基準で分類 → 全数列挙 + scope note (基準と棚卸し方法) の明記で 1 cycle 収束。PR #1332 の 5 cycle 発散→収束で実測。 | 2026-06-10 | high |
-| [同一 PR 内の設計 pivot 後に cross-reference コメントが旧設計の説明のまま残る](pages/anti-patterns/design-pivot-stale-cross-reference-comment.md) | anti-patterns | 設計 pivot した実装を参照する離れた箇所のコメントが旧設計の説明のまま残り同一 PR 内で自己矛盾、将来の「修正」で防御が silent 弱体化する | 2026-06-10 | high |
+| [同一 PR 内の設計 pivot 後に cross-reference コメントが旧設計の説明のまま残る](pages/anti-patterns/design-pivot-stale-cross-reference-comment.md) | anti-patterns | 設計 pivot した実装を参照する離れた箇所のコメントが旧設計の説明のまま残り同一 PR 内で自己矛盾、将来の「修正」で防御が silent 弱体化する。PR #1343 で helper 委譲後の canonical 参照 drift へ拡張、reviewer の Cross-File Impact Check が同型 drift (L236↔L144) を横断検出し別 Issue #1344 化した positive evidence を追加 | 2026-06-10T01:19:36Z | high |
 
 ## 統計
 

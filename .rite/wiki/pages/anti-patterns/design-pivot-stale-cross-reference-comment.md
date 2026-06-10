@@ -2,13 +2,15 @@
 title: "同一 PR 内の設計 pivot 後に cross-reference コメントが旧設計の説明のまま残る"
 domain: "anti-patterns"
 created: "2026-06-10T00:38:14Z"
-updated: "2026-06-10T00:38:14Z"
+updated: "2026-06-10T01:19:36Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260610T001830Z-pr-1337.md"
   - type: "fixes"
     ref: "raw/fixes/20260610T002120Z-pr-1337.md"
-tags: ["comment-rot", "design-pivot", "cross-reference", "self-inconsistency", "sweep-test"]
+  - type: "reviews"
+    ref: "raw/reviews/20260610T011729Z-pr-1343.md"
+tags: ["comment-rot", "design-pivot", "cross-reference", "self-inconsistency", "sweep-test", "helper-delegation", "cross-file-impact-check"]
 confidence: high
 ---
 
@@ -40,6 +42,18 @@ review cycle 1 で code-quality reviewer が MEDIUM (current-pr) として検出
 2. **propagation scan に「説明文」も含める**: fix の伝播スキャンはコードの同型 idiom だけでなく、変更対象を説明する prose / コメントも対象にする
 3. **コメントは実装の設計判断を二重記述しない**: cross-reference コメントには「TC-3 が別途 sweep する」程度の存在参照に留め、検出方式の詳細 (同一行条件 / 全行 sweep) は TC-3 側コメントに一元化する — 詳細の重複が drift 面積を生む
 
+### helper 委譲後の cross-ref drift と reviewer 横断検出 (PR #1343 で実測)
+
+bash 実体を helper script へ委譲した後、その実体を説明する離れた箇所の「canonical 確立先」参照が**委譲前の旧 site (command 本体) を指したまま**残る、という同系統の drift が docs でも起きる。PR #1343 は `bash-trap-patterns.md` L236 の canonical 参照に「6.0 / 6.2 の case 文実体は `wiki-lint-skipped-refs.sh` / `wiki-lint-source-refs.sh` へ移設済み」という委譲注記を 1 行追記する修正で、指摘ゼロ・1 cycle で mergeable に到達した。
+
+注目すべきは review の副産物だった。code-quality reviewer が `_reviewer-base.md` の **Cross-File Impact Check #5 (横断検証)** を働かせ、修正対象 L236 と**同型の drift が同一ファイルの L144** (「採用 site (canonical 参照実装)」節が `wiki/lint.md ステップ 2.2 / 6.0 / 6.2 / 8.3` を列挙、うち trap/cleanup 実体は helper 側) に残存していることを発見した。これは「修正対象と同型の参照が同一ファイル内の別箇所に複数存在する」典型で、現 PR スコープ外として別 Issue (#1344) に切り出した。
+
+要点:
+
+- **委譲は drift の発生源**: 実体を helper へ移すと、その実体を指す参照 (canonical 確立先 / 採用 site / cross-reference コメント) はすべて潜在 drift 候補になる。委譲を完了扱いにする前に、移送対象の識別子を同一ファイル全体で grep する
+- **同型 drift は単発で終わらない**: 1 箇所の stale 参照を見つけたら、同じファイル内に同型の参照節が他にないか必ず確認する (L236 を直す PR が L144 を見落とす)。reviewer の Cross-File Impact Check はこの「横の漏れ」を発掘する装置として機能する
+- **スコープ判断**: 横断検出した同型 drift は、現 PR の最小スコープを守るなら別 Issue 化が適切 (#1344)。「ついでに直す」とスコープが膨らみ review 面積が広がる
+
 ### 関連する既知 anti-pattern との区別
 
 - [fix-comment-self-drift](./fix-comment-self-drift.md): fix で書いたコメント自身が convention を破る話。本ページは**設計 pivot による同一 PR 内の記述自己矛盾**で、コメント自体は convention 準拠でも内容が実装と矛盾する
@@ -54,3 +68,4 @@ review cycle 1 で code-quality reviewer が MEDIUM (current-pr) として検出
 
 - [PR #1337 review results (cycle 1) — TC-1 コメントと TC-3 実装の矛盾を code-quality reviewer が MEDIUM で検出](../../raw/reviews/20260610T001830Z-pr-1337.md)
 - [PR #1337 fix results — コメント 4 行の書き換えで解消、root cause は設計 pivot 後の cross-reference コメント追随漏れ](../../raw/fixes/20260610T002120Z-pr-1337.md)
+- [PR #1343 review results — helper 委譲後の canonical 参照注記追記。reviewer の Cross-File Impact Check が同型 drift (L236↔L144) を横断検出し別 Issue #1344 化](../../raw/reviews/20260610T011729Z-pr-1343.md)

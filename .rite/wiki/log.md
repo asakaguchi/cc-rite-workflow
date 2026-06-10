@@ -1119,3 +1119,4 @@
 | 2026-06-10T00:55:27Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=230, broken_refs=0 |
 | 2026-06-10T01:03:44Z | ingest:update | pages/heuristics/sot-path-reference-existence-check.md | raw/reviews/20260610T010210Z-pr-1342.md (PR #1342, Issue #1333 — 委譲後 cross-ref drift 修正の 3 点検証適用例) |
 | 2026-06-10T01:04:41Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=230, broken_refs=0 |
+| 2026-06-10T01:19:36Z | ingest:update | pages/anti-patterns/design-pivot-stale-cross-reference-comment.md | raw/reviews/20260610T011729Z-pr-1343.md (PR #1343, Issue #1335 — helper 委譲後 cross-ref drift + reviewer Cross-File Impact Check 横断検出による別 Issue #1344 化) |

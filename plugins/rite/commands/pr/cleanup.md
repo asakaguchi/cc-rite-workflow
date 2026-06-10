@@ -400,9 +400,10 @@ skill return 後、出力から以下のいずれかの sentinel を発火させ
 
 - 成功: `[CONTEXT] WIKI_INGEST_DONE=1; pr={pr_number}`
 - push 失敗併存 (ingest 出力に `push=failed`): 上記 + `[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; source=cleanup_step9`
+- 並行 ingest スキップ (ingest 出力に `WIKI_INGEST_SKIPPED reason=concurrent_ingest`): `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=concurrent_ingest`（別 live セッションが ingest 中。pending raw は wiki branch に残り次回 ingest が冪等回収する — multi-session §9）
 - 失敗: `[CONTEXT] WIKI_INGEST_FAILED=1; reason=ingest_error`
 
-ingest の成否に関わらずステップ 10 へ進む。
+ingest の成否（skip 含む）に関わらずステップ 10 へ進む。
 
 ---
 
@@ -465,6 +466,7 @@ Status: {projects_status_result}
   | `WIKI_INGEST_SKIPPED=1; reason=disabled` | `x` | `ℹ️ Wiki ingest スキップ (wiki.enabled=false)` |
   | `WIKI_INGEST_SKIPPED=1; reason=auto_ingest_off` | `x` | `ℹ️ Wiki ingest スキップ (wiki.auto_ingest=false)` |
   | `WIKI_INGEST_SKIPPED=1; reason=no_pending` | `x` | `ℹ️ Wiki ingest スキップ (pending raw source なし)` |
+  | `WIKI_INGEST_SKIPPED=1; reason=concurrent_ingest` | `x` | `ℹ️ Wiki ingest スキップ (別セッションが ingest 中。pending raw は次回回収)` |
   | `WIKI_INGEST_FAILED=1` | ` ` | `⚠️ Wiki ingest が失敗しました。raw source は wiki branch に保持されています。` |
 
   push 失敗警告 (`{wiki_branch}` はステップ 9 で解決済):

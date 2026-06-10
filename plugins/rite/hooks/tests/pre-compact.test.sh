@@ -821,6 +821,38 @@ if [ "$ac1_ok" = true ]; then
 fi
 echo ""
 
+# --- TC-LEGACY-FALLBACK: sid unresolvable → legacy .rite-compact-state written ---
+# Complement of AC-1 (per-session isolation): when the session id cannot be resolved
+# (no .rite-session-id file AND no CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID env),
+# flow-state.sh path exits non-zero, FLOW_STATE="", and pre-compact.sh falls back to
+# the legacy shared "$STATE_ROOT/.rite-compact-state". This pins the "preserving
+# pre-per-session behavior" claim in the COMPACT_STATE derivation: the compact-state
+# write is NOT guarded by [ -f "$FLOW_STATE" ], so the legacy path is actually written
+# with compact_state=recovering. env -u strips any ambient session id so the fallback
+# is reproduced regardless of the test runner's environment (.rite-session-id always
+# wins over env, so existing fixture-based TCs are unaffected).
+echo "TC-LEGACY-FALLBACK: sid unresolvable → legacy .rite-compact-state written (recovering)"
+dirlf="$TEST_DIR/tc-legacy-fallback"
+mkdir -p "$dirlf"
+lf_stderr="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+lf_rc=0
+echo "{\"cwd\": \"$dirlf\"}" | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" 2>"$lf_stderr" || lf_rc=$?
+LAST_STDERR_FILE="$lf_stderr"
+if [ "$lf_rc" -ne 0 ]; then
+  fail "Hook should exit 0 on legacy fallback (got rc=$lf_rc)"
+elif [ ! -f "$dirlf/.rite-compact-state" ]; then
+  fail "legacy .rite-compact-state should be written when session id is unresolvable"
+elif [ -e "$dirlf/.rite/sessions" ]; then
+  fail "per-session .rite/sessions must not be created on the legacy fallback path"
+elif [ "$(jq -r '.compact_state' "$dirlf/.rite-compact-state" 2>/dev/null)" != "recovering" ]; then
+  fail "legacy compact_state should be 'recovering', got '$(jq -r '.compact_state' "$dirlf/.rite-compact-state" 2>/dev/null)'"
+elif ! grep -q 'flow-state.sh path resolution failed' "$lf_stderr"; then
+  fail "expected resolver-failure WARNING on stderr"
+else
+  pass "sid unresolvable → legacy .rite-compact-state written with compact_state=recovering + resolver WARNING"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed, $SKIP skipped ==="
 if [ "$FAIL" -gt 0 ]; then

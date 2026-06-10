@@ -533,5 +533,27 @@ else
   fail "TC-COMPACT-STATE-CORRUPT: expected WARNING with rc on corrupt compact-state; got: $STDERR_OUT"
 fi
 
+# --- TC-LEGACY-FALLBACK: sid unresolvable → legacy .rite-compact-state cleaned up ---
+# When the session id cannot be resolved (no .rite-session-id file AND no
+# CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID env), flow-state.sh path exits non-zero,
+# FLOW_STATE="", and post-compact.sh falls back to the legacy shared
+# "$STATE_ROOT/.rite-compact-state". With no flow-state file the "no flow state →
+# clean up and exit" branch removes that legacy file. Seeding it and asserting removal
+# pins that the fallback targets the legacy path: a per-session COMPACT_STATE would
+# leave this seeded file untouched. env -u strips any ambient session id so the
+# fallback is deterministic (fixture-based TCs write .rite-session-id, which wins).
+echo "TC-LEGACY-FALLBACK: sid unresolvable → legacy .rite-compact-state cleaned up"
+TC_DIR=$(setup_test "tc-legacy-fallback")
+printf '%s\n' '{"compact_state": "recovering", "compact_state_set_at": "2026-03-14T12:00:00Z", "active_issue": 55}' > "$TC_DIR/.rite-compact-state"
+lf_rc=0
+echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" >/dev/null 2>&1 || lf_rc=$?
+if [ "$lf_rc" -ne 0 ]; then
+  fail "TC-LEGACY-FALLBACK: hook should exit 0 (got rc=$lf_rc)"
+elif [ -f "$TC_DIR/.rite-compact-state" ]; then
+  fail "TC-LEGACY-FALLBACK: legacy .rite-compact-state should be cleaned up when session id is unresolvable"
+else
+  pass "TC-LEGACY-FALLBACK: legacy .rite-compact-state removed via fallback cleanup path"
+fi
+
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

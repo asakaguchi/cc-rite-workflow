@@ -1,5 +1,5 @@
 ---
-description: Wiki Lint — Wiki の品質チェック（5 ブロッキング: 矛盾・陳腐化・孤児・欠落概念・壊れた相互参照 + 1 informational: 未登録 raw）
+description: Wiki Lint — Wiki の品質チェック（5 ブロッキング: 矛盾・陳腐化・孤児・欠落概念・壊れた相互参照 + 2 informational: 未登録 raw・説明的番号参照）
 ---
 
 # /rite:wiki:lint
@@ -13,6 +13,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 5. 孤児ページ検出 (`index.md` 未登録)
 6. 欠落概念検出 (`missing_concept` + `unregistered_raw` の 3 分岐)
 7. 壊れた相互参照検出 (Markdown link 解決失敗)
+7.5. 説明的番号参照検出 (ページ本文の Issue/PR/commit 番号参照、informational)
 8. log.md 追記 (`lint:clean` / `lint:warning`)
 9. 完了レポート (通常モード / `--auto` モード)
 
@@ -24,6 +25,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 | **欠落概念 (missing_concept)** | `raw/` に `ingested: true` の Raw Source があるが、対応ページも `sources.ref` 登録も `ingest:skip` 記録も存在しない真の欠落 | Yes |
 | **壊れた相互参照** | ページ本文の Markdown リンク `](...)` が `pages/` 配下の実在ファイルを指していない | Yes |
 | **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、`log.md` に `ingest:skip` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
+| **説明的番号参照 (descriptive_number_ref)** | ページ本文に残った説明目的の Issue/PR/commit 番号参照（「PR #N で対応」「(refs #N)」等）。Wiki は番号の受け皿ではなく Why 散文の場のため surface する。frontmatter `sources.ref` と TODO/FIXME は除外 | **No** (`n_warnings` 不加算、ステップ 7.5) |
 
 **設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 6.0 / 6.2 / 8.2 / 8.3 で同型 fail-fast。うち 6.0 / 6.2 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)。いずれも設定ミス / 実装ミスを silent に通過させないための設計判断。
 
@@ -200,6 +202,7 @@ exit 0
 | `n_missing_concept` | 0 | ステップ 6.2 で真の欠落（`ingest:skip` 記録も `sources.ref` 登録も無い）を検出するごとに +1。ingest から呼ばれた場合、ingest 側 ステップ 8.5 で `n_warnings` に加算される（ブロッキング相当） |
 | `n_unregistered_raw` | 0 | ステップ 6.2 で `ingest:skip` 記録ありの未登録 raw を検出するごとに +1。意図的に経験則化しなかった raw の informational 指標で `n_warnings` には加算しない |
 | `n_broken_refs` | 0 | ステップ 7 で壊れた相互参照検出するごとに +1 |
+| `n_descriptive_refs` | 0 | ステップ 7.5 でページ本文の説明的 Issue/PR/commit 番号参照を検出した hits 合計。informational 指標で `n_warnings` には加算しない。canonical `Lint:` summary 行には含めない |
 | `issues[]` | `[]` | 各検出結果を `{category, page, detail}` として append |
 
 ---
@@ -705,6 +708,40 @@ set +o pipefail
 
 ---
 
+## ステップ 7.5: 説明的番号参照検出 (informational)
+
+Wiki ページ本文に残った**説明目的の Issue/PR/commit 番号参照**を検出する。Wiki は番号の受け皿ではなく経験則を Why 散文で残す場であり（Comment Best Practices SoT の[適用スコープ](../../skills/rite-workflow/references/comment-best-practices.md#適用スコープ)が Wiki ページを含む）、本文に「PR #N で対応」「詳細は #N 参照」「(refs #N)」等が残っていれば finding として surface する。[廃止判定ルール](../../skills/rite-workflow/references/comment-best-practices.md#廃止判定ルール-説明的参照-vs-前方ポインタ)に従い、TODO/FIXME 追跡番号は検出除外する。
+
+**検出対象と除外**:
+- 対象: ステップ 2 で収集した `pages_list` の各ページ**本文**（YAML frontmatter を除く）
+- 除外: frontmatter の `sources:` / `ref:`（Raw Source ファイルパス参照は番号ではなく provenance のため維持）、TODO/FIXME を含む行（前方追跡ポインタ）
+
+**検出ロジック** (`pages_list` の各ページに対して):
+
+```bash
+# {plugin_root} はリテラル値で埋め込む。pages_list の各ページパス $page に対して実行。
+# frontmatter(先頭の --- ブロック) を除いた本文のみを対象に、SoT 由来の説明的参照パターンを grep。
+n_descriptive_refs=0
+for page in "${pages_list[@]}"; do
+  # frontmatter を除去 (先頭 --- から次の --- まで)、TODO/FIXME 行を除外
+  body=$(awk 'NR==1 && /^---$/{infm=1; next} infm && /^---$/{infm=0; next} !infm' "$page" 2>/dev/null \
+    | grep -vE 'TODO|FIXME')
+  # SoT 禁止句リスト由来の説明的参照: (Issue/PR/refs #N)・refs/see PR #N・#N で対応・詳細は #N
+  hits=$(printf '%s\n' "$body" | grep -coE '[（(](Issue|PR|refs|Refs)[^)）]*#[0-9]+|(refs|Refs|see PR|See PR) #[0-9]+|(PR )?#[0-9]+ ?で(別途)?対応|詳細は ?#[0-9]+' 2>/dev/null || echo 0)
+  if [ "${hits:-0}" -gt 0 ]; then
+    echo "WikiDescriptiveRef: page=${page#*.rite/wiki/}, hits=$hits" >&2
+    n_descriptive_refs=$((n_descriptive_refs + hits))
+  fi
+done
+echo "[CONTEXT] WIKI_DESCRIPTIVE_REFS=$n_descriptive_refs"
+```
+
+**扱い**: `n_descriptive_refs` は **informational 指標**（`unregistered_raw` と同様に `n_warnings` に加算しない）。canonical な `Lint: contradictions=...` summary 行（ステップ 9）の形式は **変更しない**（ingest 側の `^Lint: contradictions=...broken_refs=([0-9]+)$` parser 互換を維持するため）。検出結果はステップ 9 完了レポートの専用行で別途 surface する。
+
+> **検出機構との関係**: 同じ説明的参照は `/rite:lint` Phase 3.12（`comment-journal-check.sh`、`.rite/wiki/**/*.md` をスコープに含む）でも検出される。本ステップは `/rite:wiki:lint` 単体実行時にも Wiki ページの番号参照を可視化するための Wiki レイヤ固有のチェックである。
+
+---
+
 ## ステップ 8: log.md 追記
 
 ### 8.1 検出結果の log.md 記録
@@ -928,6 +965,7 @@ Wiki Lint が完了しました。
 - 欠落概念: {n_missing_concept} 件{log_read_ok_note}{all_source_refs_read_ok_note}
 - 壊れた相互参照: {n_broken_refs} 件
 - 未登録 raw（skip 済）: {n_unregistered_raw} 件（informational、`n_warnings` 不加算）
+- 説明的番号参照: {n_descriptive_refs} 件（informational、`n_warnings` 不加算。ページ本文の Issue/PR/commit 番号参照。ステップ 7.5）
 
 {log_read_ok_warning}{all_source_refs_read_ok_warning}
 
@@ -941,6 +979,7 @@ Wiki Lint が完了しました。
 - 欠落概念は /rite:wiki:ingest で該当 Raw Source を再処理してください
 - 壊れた相互参照は該当ページを手動で修正してください
 - 未登録 raw（skip 済）は意図的な `ingest:skip` なら放置で OK。skip 記録を取り消して経験則化したい場合は /rite:wiki:ingest で再処理してください
+- 説明的番号参照は該当ページ本文の番号を削除し、背景を Why 散文へ書き換えてください（出所は frontmatter `sources.ref` で辿れます）
 ```
 
 **`{n_pages}` / `{n_raw}` 展開ルール**: LLM は ステップ 2.2 bash block stdout から `pages_list` / `raw_list` を会話コンテキストに保持している。各配列の要素数（空行と `---` separator を除いた非空行の数）を数えて展開する。両 list が空の場合は `0`。

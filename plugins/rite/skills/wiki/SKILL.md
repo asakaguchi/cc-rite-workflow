@@ -43,16 +43,25 @@ description: |
 
 | コマンド | 説明 | 状態 |
 |---------|------|------|
-| `/rite:wiki:init` | Wiki 初期化（ディレクトリ・テンプレート・ブランチ） | 実装済み (#468) |
-| `/rite:wiki:ingest` | Raw Source から経験則を抽出・統合 | 実装済み (#469) |
-| `/rite:wiki:query` | 経験則の参照・コンテキスト注入 | 実装済み (#470) |
-| `/rite:wiki:lint` | Wiki の品質チェック（5 ブロッキング: 矛盾・陳腐化・孤児・欠落概念・壊れた相互参照 + 1 informational: 未登録 raw） | 実装済み (#471) |
+| `/rite:wiki:init` | Wiki 初期化（ディレクトリ・テンプレート・ブランチ） | 実装済み |
+| `/rite:wiki:ingest` | Raw Source から経験則を抽出・統合 | 実装済み |
+| `/rite:wiki:query` | 経験則の参照・コンテキスト注入 | 実装済み |
+| `/rite:wiki:lint` | Wiki の品質チェック（5 ブロッキング: 矛盾・陳腐化・孤児・欠落概念・壊れた相互参照 + 2 informational: 未登録 raw・説明的番号参照） | 実装済み |
 
 ## 関連ファイル
 
 - [Wiki Patterns](../../references/wiki-patterns.md) — ディレクトリ構造・ブランチ操作・テンプレート展開の共通パターン
 - [page-template.md](../../templates/wiki/page-template.md) — Wiki ページの YAML frontmatter
 - [SCHEMA テンプレート](../../templates/wiki/schema-template.md) — 蓄積規約の初期テンプレート
+
+## Ingest 方針: 番号ではなく Why 散文を残す
+
+`/rite:wiki:ingest` で Raw Source から経験則を抽出してページ本文（概要・詳細）を書く際は、**説明目的の Issue/PR/commit 番号参照を本文に持ち込まない**。Wiki は番号の受け皿ではなく、経験則そのものを**自己完結した Why 散文**で残す場である（Comment Best Practices SoT の[適用スコープ](../../skills/rite-workflow/references/comment-best-practices.md#適用スコープ)が Wiki ページを含む）。
+
+- ❌ 「PR #1234 で導入された pattern」「詳細は #567 参照」「(refs #890)」のように番号で出所を示す
+- ✅ 「なぜこの pattern が適切か」「どの罠を回避するか」を散文で説明する
+
+知見の出所（provenance）は frontmatter の `sources.ref`（Raw Source ファイルパス、例: `raw/reviews/pr-1234-...md`）でのみ辿れるようにする。`sources.ref` は番号ではなくファイル参照であり、ingest の bookkeeping として維持する。本文の Why は番号なしで読み手が理解できる自己完結した記述にすること。番号を辿っても背景は得られず、辿る手間に見合わないため、背景は本文の散文に残す。
 
 ## 設定
 

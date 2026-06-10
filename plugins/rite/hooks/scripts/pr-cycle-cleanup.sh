@@ -257,7 +257,13 @@ workdir_tmp_base="${workdir_tmp_base%/}"  # strip trailing slash
 # の `read -r -d ''` で、ディレクトリ名に改行を含む病的ケースでも 1 エントリを分割せず読む。
 workdir_find_err=$(mktemp /tmp/rite-pr-cycle-cleanup-workdir-err-XXXXXX 2>/dev/null) || workdir_find_err=""
 workdir_find_out=$(mktemp /tmp/rite-pr-cycle-cleanup-workdir-out-XXXXXX 2>/dev/null) || workdir_find_out=""
-if find "$workdir_tmp_base" -maxdepth 1 -type d -name 'rite-pr-create-*' -mmin +"$WORKDIR_REAP_AGE_MINUTES" -print0 > "${workdir_find_out:-/dev/null}" 2>"${workdir_find_err:-/dev/null}"; then
+# find 出力先 mktemp が失敗すると `> /dev/null` fallback で find 成功 (rc=0) でも reap 対象を
+# 空読みで silent 取りこぼす。本ファイルの「失敗を errors に加算して silent 化しない」方針と
+# 対称化するため WARNING + errors++ で surface する (age ガードにより次回正常実行で回収される)。
+if [ -z "$workdir_find_out" ]; then
+  echo "WARNING: orphan workdir 走査の出力先 mktemp に失敗しました。今回の回収をスキップします (次回 age 超過で回収)" >&2
+  errors=$((errors + 1))
+elif find "$workdir_tmp_base" -maxdepth 1 -type d -name 'rite-pr-create-*' -mmin +"$WORKDIR_REAP_AGE_MINUTES" -print0 > "$workdir_find_out" 2>"${workdir_find_err:-/dev/null}"; then
   while IFS= read -r -d '' orphan_workdir; do
     [ -z "$orphan_workdir" ] && continue
     if [ "$DRY_RUN" = "1" ]; then
@@ -310,7 +316,11 @@ mutation_tmp_base="${mutation_tmp_base%/}"  # strip trailing slash
 # する (command substitution は NUL を除去するため使えない、refs #1351)。
 mutation_find_err=$(mktemp /tmp/rite-pr-cycle-cleanup-mutation-err-XXXXXX 2>/dev/null) || mutation_find_err=""
 mutation_find_out=$(mktemp /tmp/rite-pr-cycle-cleanup-mutation-out-XXXXXX 2>/dev/null) || mutation_find_out=""
-if find "$mutation_tmp_base" -maxdepth 1 -type d -name 'rite-review-mutation-*' -mmin +"$WORKDIR_REAP_AGE_MINUTES" -print0 > "${mutation_find_out:-/dev/null}" 2>"${mutation_find_err:-/dev/null}"; then
+# Step 3 と同型: 出力先 mktemp 失敗時の silent 取りこぼしを WARNING + errors++ で surface する。
+if [ -z "$mutation_find_out" ]; then
+  echo "WARNING: orphan mutation worktree 走査の出力先 mktemp に失敗しました。今回の回収をスキップします (次回 age 超過で回収)" >&2
+  errors=$((errors + 1))
+elif find "$mutation_tmp_base" -maxdepth 1 -type d -name 'rite-review-mutation-*' -mmin +"$WORKDIR_REAP_AGE_MINUTES" -print0 > "$mutation_find_out" 2>"${mutation_find_err:-/dev/null}"; then
   mutation_reaped_any=0
   while IFS= read -r -d '' orphan_wt; do
     [ -z "$orphan_wt" ] && continue

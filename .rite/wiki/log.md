@@ -1112,3 +1112,5 @@
 | 2026-06-10T13:52:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |
 | 2026-06-10T14:45:00+09:00 | ingest:skip | raw/reviews/20260609T234220Z-pr-1336.md | PR #1336 review (廃止注記 PR の 1 cycle 収束。教訓は既存ページ群 — 対称位置 grep / 既存注記形流用 — で被覆済みのため独立ページ化せず skip) |
 | 2026-06-10T14:46:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=230, broken_refs=0 |
+| 2026-06-10T00:38:14Z | ingest:create | pages/anti-patterns/design-pivot-stale-cross-reference-comment.md | raw/reviews/20260610T001830Z-pr-1337.md + raw/fixes/20260610T002120Z-pr-1337.md (PR #1337, Issue #1329) |
+| 2026-06-10T00:38:14Z | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | raw/reviews/20260610T003030Z-pr-1337-c2.md (PR #1337 cycle 2 — 適用 23 追加) |

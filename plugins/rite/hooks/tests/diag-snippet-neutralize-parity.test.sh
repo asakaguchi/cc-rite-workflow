@@ -22,8 +22,11 @@
 #         (定義元 control-char-neutralize.sh 自身は除外)
 #   TC-3: `head -c N` byte 指向 inline 埋め込み (1 行 WARNING への embed) も
 #         neutralize_ctrl を経由する (Issue #1329 — #1183 follow-up 横展開)
-#   TC-4: `cat "$file" >&2` 形式の full-file 直接 emission も neutralize_ctrl
-#         を経由する (Issue #1329)
+#   TC-4: `cat ... >&2` 形式の full-file 直接 emission も neutralize_ctrl
+#         を経由する (Issue #1329)。TC-3 と対称の fail-closed sweep:
+#         unquoted (`cat $f >&2`) / `1>&2` 綴り / 複数引数 (`cat "$a" "$b" >&2`)
+#         も検出し、非 emission の静的 heredoc / 文字列内 "cat" 語は明示
+#         allowlist で除外する (Issue #1339 — #1329 fail-open 余地の閉塞)
 #   TC-5: `>&2` が log() / surface_git_warnings() 等の関数内部に隠れる emission
 #         経路は静的 sweep で構造的に検出不能のため、既知 site を個別に pin する
 #         (Issue #1329)
@@ -109,12 +112,33 @@ fi
 
 echo ""
 echo "=== TC-4: cat full-file 直接 emission site は全て neutralize_ctrl を経由 ==="
-# `cat "$file" >&2` 形式の full-file stderr 直接 emission (RITE_DEBUG triage 経路等)
+# `cat <fileargs> >&2` 形式の full-file stderr 直接 emission (RITE_DEBUG triage 経路等)
 # を sweep する (Issue #1329)。中和版は `neutralize_ctrl --keep-newline < "$file" >&2`。
-violations_cat=$(grep -rnE 'cat "[^"]+" *>&2' "$HOOKS_DIR" --include='*.sh' \
+#
+# 旧 fail-open 版 (`cat "[^"]+" *>&2`) は double-quote 単一引数 + `>&2` 形のみ検出し、
+# unquoted (`cat $f >&2`) / `1>&2` 綴り / 複数引数 (`cat "$a" "$b" >&2`) の同型 idiom を
+# 構造的に見逃した (Issue #1339)。TC-3 と対称の fail-closed 設計へ拡張: `cat ... (>&2|1>&2)`
+# を広く sweep し、非 emission の既知 site のみ明示 allowlist で除外する。新規の cat emission
+# が非中和なら必ず検出され、非該当パターンを追加する場合は本 allowlist に追記すること。
+#
+# regex `(^[[:space:]]*|[;|&{][[:space:]]*)cat [^|;&]*(1)?>&2`:
+#   - cat を **コマンド位置** に anchor する。すなわち content 行頭 (インデント許容) または
+#     command 区切り (`;` / `|` / `&` / `{`) の直後にある cat のみを対象とする
+#     (`grep -rnE` の regex は `path:line:` prefix を含まない **ファイル内容** に適用されるため
+#     `^` は content 行頭を指す)。これにより `echo "...cat 成功だが..." >&2` や `(cat ...) >&2`
+#     のような **散文中の "cat" 語** (cat コマンドではない) を構造的に除外でき、content-keyed
+#     allowlist を増やす whack-a-mole を回避する。
+#   - `[^|;&]*` で cat の後続 redirect が cat 自身のもの (後続コマンドの redirect でない) ことを
+#     保証する (pipe/semicolon/ampersand を跨がない)。末尾 `(1)?>&2` で `>&2` / `1>&2` 両綴りを受ける。
+#
+# allowlist (非 emission の既知 site):
+#   - `>&2[[:space:]]*<<`: 静的 heredoc (`cat >&2 <<EOF`)。開発者記述の静的リテラルで
+#     untrusted control-char を含まないため中和不要 (Issue #1339 が明示)
+violations_cat=$(grep -rnE '(^[[:space:]]*|[;|&{][[:space:]]*)cat [^|;&]*(1)?>&2' "$HOOKS_DIR" --include='*.sh' \
   | grep -v "$HOOKS_DIR/tests/" \
   | grep -v 'neutralize_ctrl' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
+  | grep -vE 'cat [^|;&]*(1)?>&2[[:space:]]*<<' \
   || true)
 assert "TC-4: un-neutralized cat full-file emission sites" "" "$violations_cat"
 if [ -n "$violations_cat" ]; then

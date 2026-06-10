@@ -64,3 +64,4 @@ confidence: high | medium | low
 - **根拠付き**: 必ず Raw Source（レビュー結果、Issue 振り返り等）への参照を持つ
 - **更新性**: 矛盾する新しい知見が得られたらページを更新する（append-only ではない）
 - **重複排除**: 同じ知見は1ページに統合する（Lint サイクルで検出）
+- **番号ではなく Why 散文**: ページ本文（概要・詳細）に説明目的の Issue/PR/commit 番号参照（「PR #N で対応」「詳細は #N 参照」「(refs #N)」等）を書かない。Wiki は番号の受け皿ではなく、経験則そのものを**自己完結した Why 散文**で残す場である（Comment Best Practices SoT の[適用スコープ](../../skills/rite-workflow/references/comment-best-practices.md#適用スコープ)が Wiki ページを含む）。知見の出所は frontmatter の `sources.ref`（Raw Source ファイルパス）でのみ辿れるようにし、本文には番号を持ち込まない。番号で「ここで決まった」と示すのではなく「なぜそうするのか」を散文で書く。

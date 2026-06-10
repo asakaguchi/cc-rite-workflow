@@ -54,7 +54,7 @@ _phase_migrate() {
 # route this through `_resolve-session-id.sh` (strict RFC 4122 / Layer 2) or add UUID-shape
 # checks here: hook tests pass non-UUID sids directly to flow-state.sh and would silently
 # go vacuous if this validator were tightened. The acceptance side is pinned by
-# flow-state.test.sh TC-21.
+# flow-state.test.sh TC-24.
 _validate_session_id() {
   # `origin` (引数 2) は session_id の出所 (override / SESSION_ID_FILE / env var) を識別する
   # エラーメッセージ用ラベル。bash builtin `source` の shadow を避けるため `origin` を採用。

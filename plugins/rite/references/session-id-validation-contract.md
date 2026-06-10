@@ -55,9 +55,9 @@
 2. **2 つの validator を統一（DRY 化）してはならない。** 上記のとおり別レイヤー・別関心事であり、
    統一は safe-path-construction を UUID-shape に結合させ silent-vacuous リスクを再導入する。
 
-3. **正の契約は executable test で pin する。** `flow-state.test.sh` の TC-21 が、非 UUID opaque
+3. **正の契約は executable test で pin する。** `flow-state.test.sh` の TC-24 が、非 UUID opaque
    sid が `flow-state.sh` の `path` / `set` / `get` を round-trip することを assert する。将来 Layer 1
-   を strict 化すると TC-21 が loud に落ち、silent-vacuous リスクを **CI 失敗に変換**する。
+   を strict 化すると TC-24 が loud に落ち、silent-vacuous リスクを **CI 失敗に変換**する。
 
 ## Layer 1（緩い契約）に依存するテスト
 
@@ -66,7 +66,7 @@
 - `pre-compact.test.sh` — `session-aaaa-1371` / `session-bbbb-1371`（TC-1371-AC1、Issue 名指しの代表例）
 - `pre-compact.test.sh` / `post-compact.test.sh` / `preflight-check.test.sh` / `session-start.test.sh` —
   test helper の default sid `test-sid-<dir>`（非 UUID 形）
-- `flow-state.test.sh` — TC-21（本契約を pin する正のテスト）
+- `flow-state.test.sh` — TC-24（本契約を pin する正のテスト）
 
 > 将来これらを UUID sid へ移行する場合は、本一覧を更新し、Layer 1 契約を format-agnostic に
 > 保つ必要が依然あるかを再評価すること。

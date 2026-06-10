@@ -340,7 +340,8 @@ Common Issues and Solutions:
    Check: projects.enabled and projects.project_number fields
 
 8. Running multiple Claude Code sessions on the same repository
-   Solution: Enable multi_session in rite-config.yml (opt-in, default off)
+   Solution: multi_session is ON by default (rite-config.yml) — session
+   worktrees are created automatically; set enabled: false to opt out
    Ask about running multiple sessions to see the on-demand FAQ with the
    operating rules (start each session from the repo root; keep the main
    checkout on the base branch)
@@ -361,16 +362,16 @@ repository in parallel (e.g. one terminal per Issue):
 
 Q: Can I work on two different Issues in two terminals at the same time?
 
-A: Yes — enable Worktree Mode (opt-in). In rite-config.yml:
+A: Yes — Worktree Mode is ON by default. In rite-config.yml:
 
      multi_session:
-       enabled: true                   # default false (zero change when off)
+       enabled: true                   # default true (#1391); set false to opt out
        worktree_base: ".rite/worktrees" # session worktrees: issue-{N} subdirs
 
-   With it enabled, /rite:pr:open N creates a per-session Git worktree at
-   .rite/worktrees/issue-{N} and enters it via Claude Code's EnterWorktree
-   tool, so each session keeps its own working tree and current branch.
-   /rite:pr:cleanup exits and removes the worktree after merge.
+   With it enabled (the default), /rite:pr:open N creates a per-session Git
+   worktree at .rite/worktrees/issue-{N} and enters it via Claude Code's
+   EnterWorktree tool, so each session keeps its own working tree and current
+   branch. /rite:pr:cleanup exits and removes the worktree after merge.
 
 Operating rules (important):
 

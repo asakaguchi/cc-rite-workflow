@@ -344,7 +344,8 @@ Compare current config against the template and classify each key:
 |---------------|--------|
 | **User-customized value** (project_number, owner, iteration settings, branch.base, language, etc.) | **Preserve** — keep the user's value |
 | **Deprecated key** (`project.name`, `commit.style`, `commit.enforce`, `branch.release`, `branch.types`, `version`) | **Remove** — delete from config |
-| **Missing section** (review.debate, review.fact_check, verification, etc. — **excluding wiki**) | **Add** — insert from template with default values |
+| **Missing section** (review.debate, review.fact_check, verification, etc. — **excluding wiki and multi_session**) | **Add** — insert from template with default values |
+| **`multi_session:` section** | **Do NOT back-add on --upgrade**. `multi_session:` is declared above the `--- Advanced ---` marker (active, #1391) so new generation (Phase 4.1.2 Step 2) emits it with `enabled: true`. On the `--upgrade` path it is intentionally **left absent** when missing from an existing config, so the `pr:open` parser fallback keeps it `false` — this preserves backward compat for projects created before #1391 ("the default-on change takes effect only at new /rite:init generation"). If a user's config already has a `multi_session:` block, it is preserved as a User-customized value (no overwrite) |
 | **Advanced section** (tdd, parallel, team, metrics, safety, investigate) | **Add as comments** — insert commented-out with default values |
 | **`wiki:` section** | **Step 3/4 は扱わない**。wiki セクションの追加は **Phase 4.1.2 Step 2 (新規生成: template の Advanced 境界より上にある active block が自動コピーされる) および Phase 4.1.3 Step 3.5 / Step 6 item 5 (Upgrade path: 未存在時に active block として append) の専権**。template 側にはコメント形式の `# wiki:` ブロックは存在しない (`#491` で active 位置に移動済み) ため、重複追加経路はない |
 | **Unknown key** (user-added keys not in template) | **Preserve with warning** — keep but display warning |

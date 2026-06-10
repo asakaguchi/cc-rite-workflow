@@ -126,10 +126,9 @@ parallel:
 # 複数の Claude Code セッションが同一リポジトリで別 Issue を並行して進められるようにする。
 # /rite:pr:open がセッション worktree (.rite/worktrees/issue-{N}) を作成し EnterWorktree で入場する。
 # `parallel`（1 セッション内の Issue 別サブエージェント並列）とは直交する別軸のため統合しない。
-# opt-in 機能で default `enabled: false` のときは挙動変化ゼロ。
-# dogfood 有効化（enabled: true）は全 Sub-Issue 完了後に別途判断する。
+# default `enabled: true`（#1391 でデフォルト ON 化）。false にすると従来の単一セッション挙動に戻る。
 multi_session:
-  enabled: false                   # true でセッション別 worktree を有効化
+  enabled: true                    # セッション別 worktree（default ON、#1391）。false で無効化
   worktree_base: ".rite/worktrees" # セッション worktree のベース（issue-{N} サブディレクトリ）
 
 # Sprint チーム実行

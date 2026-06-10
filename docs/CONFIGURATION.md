@@ -713,7 +713,7 @@ Settings for per-session Git worktree isolation, letting multiple Claude Code se
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | boolean | `false` | Enable per-session worktrees. Opt-in — when `false`, behavior is identical to single-session (zero change) |
+| `enabled` | boolean | `true` | Enable per-session worktrees (on by default since #1391). Set to `false` to restore single-session behavior (identical to pre-#1391, zero change). New projects get `enabled: true` from the `/rite:init` template; existing configs that predate the feature and omit the `multi_session` block fall back to `false` for backward compatibility |
 | `worktree_base` | string | `".rite/worktrees"` | Base directory for session worktrees (each Issue gets an `issue-{N}` subdirectory) |
 
 **Separate axis from `parallel`:** `parallel.*` governs per-Issue sub-agent fan-out *within a single session*; `multi_session.*` governs lifecycle isolation *across whole sessions*. The two are orthogonal and intentionally not merged — `parallel.mode: "worktree"` uses `.worktrees/{issue}/{task}`, while `multi_session` uses `.rite/worktrees/issue-{N}`.
@@ -728,7 +728,7 @@ Settings for per-session Git worktree isolation, letting multiple Claude Code se
 
 ```yaml
 multi_session:
-  enabled: true                    # opt-in
+  enabled: true                    # on by default (#1391); set false to opt out
   worktree_base: ".rite/worktrees"
 ```
 

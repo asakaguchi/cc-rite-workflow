@@ -46,7 +46,7 @@ FLOW_STATE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>"$
 # any new resolver prefix (INFO:/DIAG:/...) would silently drop without the counter.
 if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
   if [ -n "${RITE_DEBUG:-}" ]; then
-    cat "$_resolve_err" >&2
+    neutralize_ctrl --keep-newline < "$_resolve_err" >&2
   else
     # `grep -c ''` agrees with the filter `grep -c` below regardless of trailing
     # newline; `wc -l` would undercount and let `_dropped` go negative.
@@ -274,8 +274,8 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       :
     else
       pr_rc=$?
-      pr_view_err_oneline=$(head -c 200 "${pr_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
-      pr_cd_err_oneline=$(head -c 200 "${_pr_cd_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+      pr_view_err_oneline=$(head -c 200 "${pr_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl --c0-only)
+      pr_cd_err_oneline=$(head -c 200 "${_pr_cd_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl --c0-only)
       if [ -n "$pr_cd_err_oneline" ]; then
         echo "[rite] WARNING: post-compact: Issue #$ISSUE — cd STATE_ROOT failed inside gh pr view subshell (rc=$pr_rc, stderr=$pr_cd_err_oneline); TOCTOU race between -d check and cd (state_root_toctou_race)" >&2
       else
@@ -305,7 +305,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
         :
       else
         repo_rc=$?
-        repo_err_oneline=$(head -c 200 "${repo_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+        repo_err_oneline=$(head -c 200 "${repo_view_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl --c0-only)
         REPO_INFO=""
       fi
       # Capture jq stderr separately so JSON parse failure (gh succeeded but JSON
@@ -328,13 +328,13 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
       awk_parse_failed=0
       if [ "$awk_pe_rc" -ne 0 ] || { [ -n "${awk_pe_err:-}" ] && [ -s "$awk_pe_err" ]; }; then
         awk_pe_oneline=""
-        [ -n "${awk_pe_err:-}" ] && [ -s "$awk_pe_err" ] && awk_pe_oneline=$(head -c 200 "$awk_pe_err" | tr '\n' ' ')
+        [ -n "${awk_pe_err:-}" ] && [ -s "$awk_pe_err" ] && awk_pe_oneline=$(head -c 200 "$awk_pe_err" | tr '\n' ' ' | neutralize_ctrl --c0-only)
         echo "[rite] WARNING: post-compact: awk parse of projects.enabled failed (rc=$awk_pe_rc, stderr=$awk_pe_oneline)" >&2
         awk_parse_failed=1
       fi
       if [ "$awk_pn_rc" -ne 0 ] || { [ -n "${awk_pn_err:-}" ] && [ -s "$awk_pn_err" ]; }; then
         awk_pn_oneline=""
-        [ -n "${awk_pn_err:-}" ] && [ -s "$awk_pn_err" ] && awk_pn_oneline=$(head -c 200 "$awk_pn_err" | tr '\n' ' ')
+        [ -n "${awk_pn_err:-}" ] && [ -s "$awk_pn_err" ] && awk_pn_oneline=$(head -c 200 "$awk_pn_err" | tr '\n' ' ' | neutralize_ctrl --c0-only)
         echo "[rite] WARNING: post-compact: awk parse of projects.project_number failed (rc=$awk_pn_rc, stderr=$awk_pn_oneline)" >&2
         awk_parse_failed=1
       fi
@@ -358,8 +358,8 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
         _owner_repo_ok=0
         jq_owner_err_oneline=""
         jq_name_err_oneline=""
-        [ -n "${jq_owner_err:-}" ] && [ -s "$jq_owner_err" ] && jq_owner_err_oneline=$(head -c 200 "$jq_owner_err" | tr '\n' ' ')
-        [ -n "${jq_name_err:-}" ] && [ -s "$jq_name_err" ] && jq_name_err_oneline=$(head -c 200 "$jq_name_err" | tr '\n' ' ')
+        [ -n "${jq_owner_err:-}" ] && [ -s "$jq_owner_err" ] && jq_owner_err_oneline=$(head -c 200 "$jq_owner_err" | tr '\n' ' ' | neutralize_ctrl --c0-only)
+        [ -n "${jq_name_err:-}" ] && [ -s "$jq_name_err" ] && jq_name_err_oneline=$(head -c 200 "$jq_name_err" | tr '\n' ' ' | neutralize_ctrl --c0-only)
         if [ -z "$REPO_INFO" ]; then
           echo "[rite] WARNING: post-compact: Issue #$ISSUE — gh repo view failed (rc=${repo_rc:-NA}, stderr=${repo_err_oneline:-NA}); PR Status reconciliation could not run (post_compact_gh_repo_view_failed)" >&2
         else
@@ -396,8 +396,8 @@ query($owner: String!, $repo: String!, $number: Int!) {
           :
         else
           gql_rc=$?
-          gql_err_oneline=$(head -c 200 "${gql_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
-          jq_err_oneline=$(head -c 200 "${jq_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+          gql_err_oneline=$(head -c 200 "${gql_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl --c0-only)
+          jq_err_oneline=$(head -c 200 "${jq_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl --c0-only)
           echo "[rite] WARNING: post-compact: Issue #$ISSUE — gh api graphql failed (rc=$gql_rc, gh_stderr=$gql_err_oneline, jq_stderr=$jq_err_oneline); PR Status reconciliation could not run (post_compact_gh_api_failed)" >&2
           CURRENT_STATUS=""
         fi
@@ -424,7 +424,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
             --argjson auto_add false --argjson non_blocking true \
             '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}' 2>"${reconcile_jq_err:-/dev/null}") || JQ_PAYLOAD_RC=$?
           if [ "$JQ_PAYLOAD_RC" -ne 0 ] || [ -z "$JQ_PAYLOAD" ]; then
-            jq_err_oneline=$(head -c 200 "${reconcile_jq_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+            jq_err_oneline=$(head -c 200 "${reconcile_jq_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl --c0-only)
             echo "[rite] ❌ post-compact reconciliation jq payload build failed (rc=$JQ_PAYLOAD_RC, jq_stderr=$jq_err_oneline, post_compact_jq_payload_build_failed)" >&2
           else
             RECONCILE_RESULT=$(cd "$STATE_ROOT" && bash "$PLUGIN_ROOT_PC/scripts/projects-status-update.sh" "$JQ_PAYLOAD" 2>"${reconcile_err:-/dev/null}") || RECONCILE_RC=$?
@@ -432,14 +432,14 @@ query($owner: String!, $repo: String!, $number: Int!) {
             if [ "$RECONCILE_STATUS" = "updated" ]; then
               echo "[rite] ✅ post-compact reconciliation succeeded: Issue #$ISSUE Status → In Review" >&2
             else
-              reconcile_err_oneline=$(head -c 200 "${reconcile_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+              reconcile_err_oneline=$(head -c 200 "${reconcile_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl --c0-only)
               # RECONCILE_STATUS が空で RECONCILE_RESULT が非空なら、reconcile script は応答したが
               # result field を抽出できなかった (= JSON shape drift)。これは reconcile 自体の失敗とは
               # 別の triage が必要なので、empty/non-empty で区別する。
               if [ -z "$RECONCILE_STATUS" ] && [ -n "$RECONCILE_RESULT" ]; then
                 parse_err_snippet=""
-                [ -n "$reconcile_parse_err" ] && [ -s "$reconcile_parse_err" ] && parse_err_snippet=$(head -c 200 "$reconcile_parse_err" 2>/dev/null | tr '\n' ' ')
-                echo "[rite] ❌ post-compact reconciliation result parse failed (jq err=$parse_err_snippet, stdout snippet=$(printf '%s' "$RECONCILE_RESULT" | head -c 200))" >&2
+                [ -n "$reconcile_parse_err" ] && [ -s "$reconcile_parse_err" ] && parse_err_snippet=$(head -c 200 "$reconcile_parse_err" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl --c0-only)
+                echo "[rite] ❌ post-compact reconciliation result parse failed (jq err=$parse_err_snippet, stdout snippet=$(printf '%s' "$RECONCILE_RESULT" | head -c 200 | tr '\n' ' ' | neutralize_ctrl --c0-only))" >&2
                 RECONCILE_STATUS="parse_failed"
               else
                 RECONCILE_STATUS="${RECONCILE_STATUS:-failed}"

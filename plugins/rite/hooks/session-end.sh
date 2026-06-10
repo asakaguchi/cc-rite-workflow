@@ -50,7 +50,7 @@ if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
   # adds (INFO:/DIAG:/Notice:/...) would be silently dropped without the counter.
   # RITE_DEBUG bypasses filtering entirely for triage.
   if [ -n "${RITE_DEBUG:-}" ]; then
-    cat "$_resolve_err" >&2
+    neutralize_ctrl --keep-newline < "$_resolve_err" >&2
   else
     # Use `grep -c ''` (matches every line, ignores trailing-newline differences)
     # so the total agrees with the filter `grep -c` below. `wc -l` undercounts

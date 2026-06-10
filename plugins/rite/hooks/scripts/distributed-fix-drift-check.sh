@@ -259,7 +259,7 @@ check_pattern_2() {
   if [ "$awk_table_rc" -ne 0 ]; then
     log "  [P2] Pattern 2 skipped on $file: table-side awk rc=$awk_table_rc"
     if [ -n "$AWK_TABLE_ERR" ] && [ -s "$AWK_TABLE_ERR" ]; then
-      log "    awk stderr: $(head -1 "$AWK_TABLE_ERR")"
+      log "    awk stderr: $(head -1 "$AWK_TABLE_ERR" | tr -d '\n' | neutralize_ctrl --c0-only)"
     fi
     out "[drift-check-skip][P2] ${file}: awk_rc=${awk_table_rc} (table)"
     rm -f "$AWK_TABLE_OUT" "${AWK_TABLE_ERR:-}"
@@ -297,7 +297,7 @@ check_pattern_2() {
   if [ "$awk_emit_rc" -ne 0 ]; then
     log "  [P2] Pattern 2 skipped on $file: emit-side awk rc=$awk_emit_rc"
     if [ -n "$AWK_EMIT_ERR" ] && [ -s "$AWK_EMIT_ERR" ]; then
-      log "    awk stderr: $(head -1 "$AWK_EMIT_ERR")"
+      log "    awk stderr: $(head -1 "$AWK_EMIT_ERR" | tr -d '\n' | neutralize_ctrl --c0-only)"
     fi
     out "[drift-check-skip][P2] ${file}: awk_rc=${awk_emit_rc} (emit)"
     rm -f "$AWK_EMIT_OUT" "${AWK_EMIT_ERR:-}"

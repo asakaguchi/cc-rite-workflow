@@ -698,7 +698,7 @@ surface_git_warnings() {
  local label="$1"
  if [[ -n "$git_err" ]] && [[ -s "$git_err" ]]; then
  local warnings
- warnings=$(head -n 10 "$git_err" | grep -iE '^(warning|hint|error):' || true)
+ warnings=$(head -n 10 "$git_err" | grep -iE '^(warning|hint|error):' | neutralize_ctrl --keep-newline || true)
  if [[ -n "$warnings" ]]; then
  printf '%s\n' "$warnings" | sed 's/^/ git ('"$label"'): /' >&2
  fi

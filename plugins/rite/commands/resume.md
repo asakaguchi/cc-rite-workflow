@@ -129,7 +129,7 @@ esac
 
 # Emit [CONTEXT] markers so Phase 5.2 (separate Bash tool invocation) can read these values.
 # Claude Code Bash tool 境界でシェル状態は失われるため、Phase 5.2 で `$state_phase` を直接参照しても
-# 常に空文字となり active=true 復元経路が dead になる (PR #1089 review C2)。後続ステップは本 [CONTEXT]
+# 常に空文字となり active=true 復元経路が dead になる。後続ステップは本 [CONTEXT]
 # marker を読み、{resolved_phase} / {state_next} placeholder を実値に置換して bash block を出力する。
 echo "[CONTEXT] STATE_PHASE=$state_phase"
 echo "[CONTEXT] STATE_BRANCH=$state_branch"
@@ -319,7 +319,7 @@ fi
 
 中断時 (例: クラッシュ / context 枯渇) で active=false になっている可能性があるため、resume では active=true に復元。merge semantics により他のフィールドは保持される。
 
-> **重要 — Bash tool 境界での変数消失** (PR #1089 review C2): 本 step は Phase 3.1 とは別の Bash tool 呼び出しとなるため、`$state_phase` / `$resolved_phase` / `$state_next` 等のシェル変数を直接参照できない (Claude Code の Bash tool 境界でシェル状態は失われる)。LLM は Phase 3.1 末尾で stdout に emit された `[CONTEXT] STATE_PHASE=...` / `[CONTEXT] STATE_NEXT=...` marker と Phase 3.5 の cross-check 結果 `{resolved_phase}` を読み、下記 bash block 内の placeholder を実値に置換してから実行すること。`--if-exists` フラグにより flow state file 不在時は no-op (idempotent)、merge semantics により未指定フィールドは既存値を保持する:
+> **重要 — Bash tool 境界での変数消失**: 本 step は Phase 3.1 とは別の Bash tool 呼び出しとなるため、`$state_phase` / `$resolved_phase` / `$state_next` 等のシェル変数を直接参照できない (Claude Code の Bash tool 境界でシェル状態は失われる)。LLM は Phase 3.1 末尾で stdout に emit された `[CONTEXT] STATE_PHASE=...` / `[CONTEXT] STATE_NEXT=...` marker と Phase 3.5 の cross-check 結果 `{resolved_phase}` を読み、下記 bash block 内の placeholder を実値に置換してから実行すること。`--if-exists` フラグにより flow state file 不在時は no-op (idempotent)、merge semantics により未指定フィールドは既存値を保持する:
 
 ```bash
 # Placeholder substitution rule:

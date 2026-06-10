@@ -365,7 +365,7 @@ Q: Can I work on two different Issues in two terminals at the same time?
 A: Yes — Worktree Mode is ON by default. In rite-config.yml:
 
      multi_session:
-       enabled: true                   # default true (#1391); set false to opt out
+       enabled: true                   # default true; set false to opt out
        worktree_base: ".rite/worktrees" # session worktrees: issue-{N} subdirs
 
    With it enabled (the default), /rite:pr:open N creates a per-session Git

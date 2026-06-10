@@ -6,11 +6,11 @@ Defines how fix targets are determined in the `/rite:pr:iterate` review-fix loop
 
 ## Overview
 
-All findings whose `scope ∈ {current-pr, follow-up}` are always blocking regardless of severity. The review-fix loop continues until all such findings are resolved (**0 blocking findings remaining is the only normal exit**). Findings with `scope == "nit-noted"` are **not blocking** — they are handled via the reply-only path (Issue #1018 / M2) and never participate in `/rite:pr:fix` Phase 2.1 selection nor in mergeable countdown. **別 Issue 化の経路は廃止済み** (Issue #1136) — current-pr / follow-up 指摘は本 PR で対応するか accept (認知のみ) で受け流すかの 2 択になる。
+All findings whose `scope ∈ {current-pr, follow-up}` are always blocking regardless of severity. The review-fix loop continues until all such findings are resolved (**0 blocking findings remaining is the only normal exit**). Findings with `scope == "nit-noted"` are **not blocking** — they are handled via the reply-only path and never participate in `/rite:pr:fix` Phase 2.1 selection nor in mergeable countdown. **別 Issue 化の経路は廃止済み** — current-pr / follow-up 指摘は本 PR で対応するか accept (認知のみ) で受け流すかの 2 択になる。
 
 ## Fix Target Classification
 
-Findings are classified by **severity × scope**. Scope was added in schema 1.1.0 (Issue #1016); the M2 receive-flow path (Issue #1018) routes `nit-noted` findings out of the blocking set entirely.
+Findings are classified by **severity × scope**. Scope was added in schema 1.1.0; the M2 receive-flow path routes `nit-noted` findings out of the blocking set entirely.
 
 | Severity | Scope | Classification | Action |
 |----------|-------|----------------|--------|
@@ -62,7 +62,7 @@ review:
 
 `auto_demote_low: false` の場合、LOW × current-pr / 実害なし MEDIUM × current-pr / 実害なし LOW-MEDIUM × current-pr は通常通り blocking 扱いになる。
 
-## Loop Termination (Issue #1136)
+## Loop Termination
 
 The review-fix loop exits via:
 
@@ -71,9 +71,9 @@ The review-fix loop exits via:
 | **Normal** | 0 blocking findings remaining | `[review:mergeable]` → `/rite:pr:iterate` がループ終了 |
 | **Manual abort** | ユーザーが Ctrl+C で中断 | `flow-state` に現 phase が残るので `/rite:resume` で復帰 |
 
-`/rite:pr:iterate` には cycle counter / N 回上限 / quality-signal escalation / ping-pong サーキットブレーカー は**存在しない** (Issue #1136 で全廃)。「指摘ゼロまでループする」の契約に忠実で、停止する場合はユーザー判断のみ。
+`/rite:pr:iterate` には cycle counter / N 回上限 / quality-signal escalation / ping-pong サーキットブレーカー は**存在しない**。「指摘ゼロまでループする」の契約に忠実で、停止する場合はユーザー判断のみ。
 
-`fix.md` ステップ 3 の Root Cause Gate (#557) は引き続き **fix commit 側の品質ゲート**として機能する (root-cause-missing fix を reject)。loop 制御とは別経路。
+`fix.md` ステップ 3 の Root Cause Gate は引き続き **fix commit 側の品質ゲート**として機能する (root-cause-missing fix を reject)。loop 制御とは別経路。
 
 ## Caller Detection
 

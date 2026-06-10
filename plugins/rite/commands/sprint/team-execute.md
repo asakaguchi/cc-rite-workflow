@@ -393,7 +393,7 @@ Generate structured action lines in the commit body following the Contextual Com
 **Example (language: ja):**
 
 ```
-feat(#149): team-execute のコミットテンプレートに Contextual Commits を追加
+feat: team-execute のコミットテンプレートに Contextual Commits を追加
 
 intent(team-execute): 並列実行時のコミットにも意思決定の永続記録を埋め込む
 decision(source): teammate の Task 結果サマリーを最優先ソースとして使用（worktree 内の作業メモリは存在しない場合がある）

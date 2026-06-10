@@ -22,7 +22,7 @@ This skill is activated when reviewing files matching:
 - `i18n/**/*.md`, `i18n/**/*.mdx` (excluding `plugins/rite/i18n/**` — rite plugin's own translations are dogfooding artifacts)
 - `*.rst`, `*.adoc`
 
-> **Note — 3 ファイル等価性**: These patterns must remain equivalent across **3 files** (this file as source of truth, plus `plugins/rite/commands/pr/review.md` ステップ 1.2.7 `doc_file_patterns`, plus `plugins/rite/skills/reviewers/SKILL.md` Reviewers table tech-writer row). The **invariant definition and drift detection rules** live in a single source: see [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md#drift-detection-invariants) section "drift 検出の invariant (3 系統の drift 監視対象)". Automated drift detection for this 系統 is implemented by `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` (Issue #353 系統 1; invoked from `/rite:lint` ステップ 3.7). Do not duplicate the invariant rules here — update internal-consistency.md instead.
+> **Note — 3 ファイル等価性**: These patterns must remain equivalent across **3 files** (this file as source of truth, plus `plugins/rite/commands/pr/review.md` ステップ 1.2.7 `doc_file_patterns`, plus `plugins/rite/skills/reviewers/SKILL.md` Reviewers table tech-writer row). The **invariant definition and drift detection rules** live in a single source: see [`commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md#drift-detection-invariants) section "drift 検出の invariant (3 系統の drift 監視対象)". Automated drift detection for this 系統 is implemented by `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` (drift-check 系統 1; invoked from `/rite:lint` ステップ 3.7). Do not duplicate the invariant rules here — update internal-consistency.md instead.
 
 **Note**: `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` (and corresponding `.mdx`) are handled by the Prompt Engineer. This exclusion is managed by the pattern priority rules in [`SKILL.md`](./SKILL.md) (Prompt Engineer takes highest priority). Similarly, `plugins/rite/i18n/**` is excluded because the rite plugin's own i18n files are dogfooding artifacts that should not trigger doc-heavy PR mode against the rite plugin itself. The `i18n/**` pattern is restricted to `.md` / `.mdx` files only because tech-writer reviews Markdown-style documentation; other translation formats (`.yml`, `.json`, `.po`) are out of scope.
 
@@ -318,7 +318,7 @@ The comment adds nothing the code doesn't already say. Recommend deletion OR rew
 
 ```javascript
 // Use loose equality because legacy API returns "1" (string) for boolean true.
-// Tightening to === would break users on v1.x clients (see PR #342).
+// Tightening to === would break users on v1.x clients.
 if (response.success == 1) { ... }
 ```
 

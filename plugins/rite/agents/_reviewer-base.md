@@ -50,13 +50,13 @@ Reviewer subagents **may** use the following read-only commands for evidence gat
 - **理由**: guard は Bash 組み込みの word-boundary マッチで state-mutating git を検出するが、quote の中身 (`bash -c '...'` の `...`) はこのマッチから opaque で、`bash -c 'git reset --hard'` のような state-mutating git を隠して bypass できてしまう。quote 内を信頼できる形で解析するのは fragile で新たな bypass 面を生むため、wrapper 自体を一律 block する方が安全側に倒せる。
 - **read-only プローブの代替**: wrapper を外す。コマンドを直接実行する / 複数コマンドは subshell `( cmd1; cmd2 )` でまとめる / スクリプト化して `bash <script.sh>` で実行する (上記 "Allowed Bash/Git commands" の `bash <test>` と同じ経路)。これらは block されない。
 
-> 補足: read-only な挙動プローブのために `bash -c` を使うと block されるが、`( ... )` / 直接実行 / `bash <script.sh>` で検証強度を落とさず代替できる (Issue #1322)。block 時の deny メッセージにもこの代替が表示される。
+> 補足: read-only な挙動プローブのために `bash -c` を使うと block されるが、`( ... )` / 直接実行 / `bash <script.sh>` で検証強度を落とさず代替できる。block 時の deny メッセージにもこの代替が表示される。
 
 ### Mutation experiments and verification (worktree-only)
 
 Reviewer が **mutation testing / verification experiment** (例: 「ある line を `return 1` から `exit 1` に変えたら test が失敗するか」「helper を inline 展開したら sibling test が落ちるか」) を実行する必要がある場合、**parent repo の working tree / branch を絶対に変更してはならない**。正規経路は以下の **worktree-only mutation pattern** に限定される。
 
-**Rationale**: PR #994 cycle 3 で reviewer subagent が「mutation 検証」のために `pr-994-test` という新規 named branch を作成し、`git checkout pr-994-test` → file 変更 → `git checkout develop` という遷移を行った結果、parent session の working tree が `develop` のクリーン状態に置き換わり、後続の `/rite:pr:fix` が PR ブランチ (`refactor/issue-990-test-helpers-consolidation`) を見失った (Issue #995)。prose レベルの「禁止」だけでは LLM agent は mutation 検証の必要性を過大評価して bypass する傾向があるため、**正規経路を明示**し、`hooks/pre-tool-bash-guard.sh` の structural enforcement と組み合わせて多層防御する。
+**Rationale**: 過去に reviewer subagent が「mutation 検証」のために新規 named branch を作成し、`git checkout <test-branch>` → file 変更 → `git checkout develop` という遷移を行った結果、parent session の working tree が `develop` のクリーン状態に置き換わり、後続の `/rite:pr:fix` が PR ブランチを見失う事故が起きた。prose レベルの「禁止」だけでは LLM agent は mutation 検証の必要性を過大評価して bypass する傾向があるため、**正規経路を明示**し、`hooks/pre-tool-bash-guard.sh` の structural enforcement と組み合わせて多層防御する。
 
 **正規パターン (detached HEAD / 既存 branch)**:
 
@@ -138,7 +138,7 @@ Before including a finding in the issues table, assign an internal confidence sc
 - 60-79: The issue is plausible but you haven't verified all assumptions
 - <60: Speculation or stylistic preference without project-specific justification
 
-**Important**: The confidence score is an internal decision aid. Do NOT add a confidence column to the output table. The table structure `| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |` (schema 1.1.0+, 5 columns including the `scope` column added in Issue #1016) must remain stable for fix.md parser compatibility — adding extra columns beyond this 5-column structure is prohibited. The `scope` column accepts the 3 enum values defined in `references/review-result-schema.md`: `current-pr` / `follow-up` / `nit-noted`. See [Scope Assignment Flowchart](#scope-assignment-flowchart) for the assignment procedure.
+**Important**: The confidence score is an internal decision aid. Do NOT add a confidence column to the output table. The table structure `| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |` (schema 1.1.0+, 5 columns including the `scope` column) must remain stable for fix.md parser compatibility — adding extra columns beyond this 5-column structure is prohibited. The `scope` column accepts the 3 enum values defined in `references/review-result-schema.md`: `current-pr` / `follow-up` / `nit-noted`. See [Scope Assignment Flowchart](#scope-assignment-flowchart) for the assignment procedure.
 
 The default confidence threshold is 80. This value is also recorded in `review.confidence_threshold` in `rite-config.yml` for reference.
 
@@ -204,7 +204,7 @@ The following patterns are typical Hypothetical claims that MUST be downgraded (
 
 ## Scope Assignment Flowchart
 
-> **Reference**: scope enum 定義と Cross-field invariants は [`review-result-schema.md` §findings.scope](../references/review-result-schema.md) を参照 (Issue #1016 で schema 1.1.0 から導入)。severity × scope の禁止セルは [`severity-levels.md` §Severity × Scope Matrix](../references/severity-levels.md#severity--scope-matrix) を参照。
+> **Reference**: scope enum 定義と Cross-field invariants は [`review-result-schema.md` §findings.scope](../references/review-result-schema.md) を参照 (schema 1.1.0 で導入)。severity × scope の禁止セルは [`severity-levels.md` §Severity × Scope Matrix](../references/severity-levels.md#severity--scope-matrix) を参照。
 
 各 finding には **重要度 (severity)** とは独立に **スコープ (scope)** を assign する。scope は 3 値 enum:
 
@@ -256,7 +256,7 @@ scope の決定は **必ず以下の順序** で行う。順序逆転は finding
 | `devops.md` | deploy / rollback / infra path は exercise 頻度が低い。「nit」受け流しが本番障害時に silent failure として顕在化 |
 | `dependencies.md` | CVE / supply chain / license は「いつ起きるか」が攻撃者依存。nit 化は許容できないリスクモデル |
 
-**実装契機** (本 PR scope 外、後続 Sub-Issue (#1018) で実施予定): 4 agent ファイル (`security-reviewer.md` / `database-reviewer.md` / `devops-reviewer.md` / `dependencies-reviewer.md` — agent file naming) または対応 skill ファイル (`security.md` / `database.md` / `devops.md` / `dependencies.md` — skill file naming、`plugins/rite/skills/reviewers/` 配下) に `scope == "nit-noted"` の出力を禁止する記述を追加し、Sub-Issue (#1018 = M2 scope=nit-noted 受け流し経路) の hook 層で機械的に reject する (CRITICAL/HIGH × nit-noted の FAIL invariant と同質の防衛層)。**本 PR (#1017) では本 reference のみを記述し、4 reviewer ファイル本体への記述追加と hook enforcement は #1018 で行う**。reviewer が「nit として受け流したい」と判断した finding は、本 4 reviewer では `follow-up` (別 Issue 化) または `current-pr` (本 PR で修正) のいずれかに必ず assign し直すこと。
+**実装契機** (本 reference 制定時点では記述のみで、reviewer ファイル本体への禁止記述追加と hook enforcement は後続 Sub-Issue で実施予定): 4 agent ファイル (`security-reviewer.md` / `database-reviewer.md` / `devops-reviewer.md` / `dependencies-reviewer.md` — agent file naming) または対応 skill ファイル (`security.md` / `database.md` / `devops.md` / `dependencies.md` — skill file naming、`plugins/rite/skills/reviewers/` 配下) に `scope == "nit-noted"` の出力を禁止する記述を追加し、hook 層で機械的に reject する (CRITICAL/HIGH × nit-noted の FAIL invariant と同質の防衛層)。reviewer が「nit として受け流したい」と判断した finding は、本 4 reviewer では `follow-up` (別 Issue 化) または `current-pr` (本 PR で修正) のいずれかに必ず assign し直すこと。
 
 ### Likelihood-Evidence との関係
 
@@ -268,7 +268,7 @@ scope 値は Likelihood (Observed / Demonstrable / Hypothetical) とは **独立
 
 ### Scope: 新規 diff の追加行限定
 
-本 Gate は **新規 diff の追加行コメント** (`git diff {base_branch}...HEAD` の `+` 行に出現するコメント / docstring) のみを対象とする。既存ファイルに pre-existing で残存しているジャーナル / 行番号参照 / ジャーゴンは本 Gate の finding 対象外とし、retrofit Epic (Issue #704) 系で別途対応する。これは初回適用時の finding 爆発を防ぎ、reviewer の signal-to-noise 比を保つための設計上の明示制約。
+本 Gate は **新規 diff の追加行** (`git diff {base_branch}...HEAD` の `+` 行に出現するコメント / docstring、および command/skill markdown の手順書本文・ドキュメント散文・Wiki ページの追加行) を対象とする。既存ファイルに pre-existing で残存しているジャーナル / 行番号参照 / ジャーゴンは本 Gate の finding 対象外とし、retrofit 系の cleanup Epic で別途対応する。これは初回適用時の finding 爆発を防ぎ、reviewer の signal-to-noise 比を保つための設計上の明示制約。
 
 **Verification 手順**:
 
@@ -367,7 +367,7 @@ If the Wiki documents a project-specific allowance for the fallback pattern in q
 | Try/catch swallow | "`try { ... } catch {}` で安全化" | "catch ブロックを削除し、上位の error boundary に到達させる。silent swallow は CRITICAL anti-pattern" |
 | Retry + give-up | "3 回 retry 後 default を返す" | "3 回 retry 後 throw。caller が retry 戦略を決定すべき" |
 
-## Finding Quality Guardrail (#557)
+## Finding Quality Guardrail
 
 Reviewers MUST filter out the following categories of findings **before** writing them to the output table. The filter is applied after Observed Likelihood Gate and Fail-Fast First but before Confidence Scoring. Filtered findings are logged to the reviewer's `監査ログ` section (optional) but MUST NOT appear in `指摘事項`.
 
@@ -440,7 +440,7 @@ Output using this format with evaluation (可/条件付き/要修正), findings 
 | Column | Structure | Description |
 |--------|-----------|-------------|
 | **重要度** | enum | `CRITICAL` / `HIGH` / `MEDIUM` / `LOW-MEDIUM` / `LOW` — Impact 軸（[Severity Levels](../references/severity-levels.md) 参照） |
-| **スコープ** | enum | `current-pr` / `follow-up` / `nit-noted` — 指摘の scope 分類。値の決定は [Scope Assignment Flowchart](#scope-assignment-flowchart) に従う。schema 1.1.0+ (Issue #1016) |
+| **スコープ** | enum | `current-pr` / `follow-up` / `nit-noted` — 指摘の scope 分類。値の決定は [Scope Assignment Flowchart](#scope-assignment-flowchart) に従う。schema 1.1.0+ |
 | **内容** | WHAT + WHY | 何が問題か（1文目）→ なぜそれが問題か（2文目: 影響、リスク、既存パターンとの比較） |
 | **推奨対応** | FIX + EXAMPLE | 具体的な修正方法 → インラインコード例（コード変更が伴う場合） |
 

@@ -109,7 +109,7 @@ fix(typo): correct variable name in auth handler
 
 **`root-cause(scope)` action type (v0.4.0 #557)**: Quality Signal 2 (root-cause-missing fix detection) を満たすため、レビュー指摘の修正で **なぜその問題が起きたか** を明示する action line。`decision(scope)` が「何を選択したか」を表すのに対し、`root-cause(scope)` は「なぜ修正が必要になったか」を表す。commit body に `root-cause(scope): ...` 行が 1 行含まれていれば fix.md ステップ 3.2.1 Root Cause Gate を通過する。`decision(scope)` のテキスト中で root cause を明示している場合も通過する (両方書く必要はない)。対症 fix (symptom-only、例: null check 追加) は `root-cause` を書けないため、このゲートで自然に検出される。
 
-**`comment-update(scope)` action type (#703)**: コードコメントの修正単独 (実装変更を伴わない) を表す action line。`scope` 例: `comment-update(state-read)`, `comment-update(reviewer-base)`。ジャーナルコメント削除、Comment Rot 修正、WHY > WHAT への書き換え等のコメント保守作業を `git log --grep="^comment-update("` で独立に追跡可能にする。修正経緯を commit message body に書ける場所として明示することで、コード内ジャーナルコメントへの圧力を逃がす役割も担う (Issue #699 で確立した「修正経緯はコード内ではなく commit message に書く」原則を受け止める commit 規約)。
+**`comment-update(scope)` action type**: コードコメントの修正単独 (実装変更を伴わない) を表す action line。`scope` 例: `comment-update(state-read)`, `comment-update(reviewer-base)`。ジャーナルコメント削除、Comment Rot 修正、WHY > WHAT への書き換え等のコメント保守作業を `git log --grep="^comment-update("` で独立に追跡可能にする。修正経緯を commit message body に書ける場所として明示することで、コード内ジャーナルコメントへの圧力を逃がす役割も担う (「修正経緯はコード内ではなく commit message に書く」原則を受け止める commit 規約)。
 
 使用ガイドライン:
 

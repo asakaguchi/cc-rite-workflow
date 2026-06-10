@@ -499,14 +499,14 @@ OK patterns:
 3. 入れ子 `$()` (`$(cmd "$(jq -n ...)")` 等) を避ける。pipe (`jq -n ... | cmd`) もしくは stdin / tmpfile を読む helper を優先する。
 4. 1 ブロック内の複数 heredoc を避ける。file body が必要なら Write tool で tmpfile に書き出し、helper には `--content-file <tmp>` / `--body-file <tmp>` で渡す。
 5. 値を process 境界を跨いで渡す必要があるときは helper へ切り出す (work-memory / state 系は `hooks/`、issue / projects 系は `scripts/`)。その際**既存のワークフロー契約 (sentinel emit / non-blocking / trap cleanup) を verbatim で引き継ぐ**こと。
-6. `gh {pr,issue} create` の `--title` に長文 / 特殊文字（全角記号・`≠`・括弧・コロン等）の literal を**インライン展開しない**。title を **Write tool** でファイル化して bash で変数に読み込む（`pr_title=$(cat title.txt)` → `--title "$pr_title"`）か、helper の `--arg title` 経由で渡す。`gh` に `--title-file` は無い（body の `--body-file` と非対称）ため「変数経由」が canonical。先例: `pr/create.md` Phase 3.4 / `issue/create.md` 5.5 decompose path（refs #1307 — `gh {pr,issue} create` のインライン特殊文字 title が malformed tool-call の dominant trigger だった）。
+6. `gh {pr,issue} create` の `--title` に長文 / 特殊文字（全角記号・`≠`・括弧・コロン等）の literal を**インライン展開しない**。title を **Write tool** でファイル化して bash で変数に読み込む（`pr_title=$(cat title.txt)` → `--title "$pr_title"`）か、helper の `--arg title` 経由で渡す。`gh` に `--title-file` は無い（body の `--body-file` と非対称）ため「変数経由」が canonical。先例: `pr/create.md` Phase 3.4 / `issue/create.md` 5.5 decompose path（`gh {pr,issue} create` のインライン特殊文字 title が malformed tool-call の dominant trigger だった）。
 
 **Precedents**: `projects-status-update.sh` / `local-wm-update.sh` / `issue-body-safe-update.sh` / `issue-comment-wm-sync.sh` / `create-issue-with-projects.sh` — 重い操作を positional-JSON または stdin 入力 + tmpfile body file で helper に委譲済の前例。
 
 **Where to Apply**:
 - `commands/**/*.md` の operational bash ブロックを新規記述 / 編集するとき。
 
-**Mechanical enforcement** (Issue #1197): 上記 Rules は `/rite:lint` Phase 3.17 (`hooks/scripts/bash-heaviness-check.sh`) が `commands/**/*.md` を走査して非ブロッキング warning として機械的に surface する (`[lint:success]` は不変)。各 bash ブロックを 4 つの heaviness シグナル (+ standalone 検出 `inline-gh-create-title`) で評価し、これは Rules と対応する:
+**Mechanical enforcement**: 上記 Rules は `/rite:lint` Phase 3.17 (`hooks/scripts/bash-heaviness-check.sh`) が `commands/**/*.md` を走査して非ブロッキング warning として機械的に surface する (`[lint:success]` は不変)。各 bash ブロックを 4 つの heaviness シグナル (+ standalone 検出 `inline-gh-create-title`) で評価し、これは Rules と対応する:
 
 | シグナル | 判定 | 対応 Rule |
 |---------|------|----------|
@@ -518,7 +518,7 @@ OK patterns:
 
 **2 シグナル以上**該当したブロックのみ flag する (single signal — 単発の helper 呼び出し + 1 個の JSON heredoc、または 1 個の長文テンプレート heredoc — は誤検知を避けるため flag しない)。heredoc 本文はデータ扱いで python-inline / nested-cmdsub の評価対象外。意図的・レビュー済の重いブロックは行内 `drift-check-ignore` marker で除外できる。既存の重いブロックの helper 切り出しは段階的 cleanup であり、本 guard は awareness のための warning に留める。
 
-**例外: `inline-gh-create-title` は単独でも flag する**。これは複数シグナルの密集（heaviness）ではなく、単一行でも malform を誘発する高確度の独立パターンのため、2-signal モデルとは別に扱う（refs #1307）。example / template の title は plain ` ``` ` fence（` ```bash ` 以外は走査対象外）や heredoc 本文（データ扱い）に置くことで誤検知を避ける。`drift-check-ignore` marker による除外は他シグナルと同様に効く。
+**例外: `inline-gh-create-title` は単独でも flag する**。これは複数シグナルの密集（heaviness）ではなく、単一行でも malform を誘発する高確度の独立パターンのため、2-signal モデルとは別に扱う。example / template の title は plain ` ``` ` fence（` ```bash ` 以外は走査対象外）や heredoc 本文（データ扱い）に置くことで誤検知を避ける。`drift-check-ignore` marker による除外は他シグナルと同様に効く。
 
 ---
 

@@ -257,18 +257,61 @@ esac
 
 ---
 
-## ステップ 4: base ブランチに切り替えて pull
+## ステップ 4: セッション worktree の退出・削除 + base 更新
+
+### 4-W セッション worktree の退出・削除（multi_session 有効 + worktree 内から呼ばれた場合）
+
+まず multi_session の有効性と、現在 cwd がこの Issue のセッション worktree かどうかを判定する:
 
 ```bash
-git checkout {base_branch}
-git pull origin {base_branch}
+ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
+ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \
+  | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+case "$ms_enabled" in true|yes|1) ms_enabled=true ;; *) ms_enabled=false ;; esac
+flow_wt=$(bash {plugin_root}/hooks/flow-state.sh get --field worktree --default "") || flow_wt=""
+cur_top=$(git rev-parse --show-toplevel 2>/dev/null) || cur_top=""
+if [ "$ms_enabled" = "true" ] && [ -n "$flow_wt" ] && [ "$flow_wt" = "$cur_top" ]; then
+  dirty=$(git status --porcelain 2>/dev/null)
+  echo "[CONTEXT] CLEANUP_WT=in_worktree; worktree=$flow_wt; dirty=$([ -n "$dirty" ] && echo yes || echo no)"
+else
+  echo "[CONTEXT] CLEANUP_WT=$([ "$ms_enabled" = "true" ] && [ -n "$flow_wt" ] && echo in_main || echo none); worktree=$flow_wt"
+fi
 ```
 
-base branch 以外にいる場合 checkout 時に未コミット変更があれば「stash して続行 / キャンセル」を確認 (`git stash push -m "rite-cleanup: auto-stash before cleanup"`)。pull コンフリクト時は `git status` で確認・解決後の再実行を案内し terminate。
+- `CLEANUP_WT=in_worktree`（cwd がセッション worktree）:
+  1. `dirty=yes` なら **AskUserQuestion**（「`git stash push` して続行 / 中止」）。stash は common git dir に格納されるため worktree 削除後も `git stash pop` 可能（完了報告の stash 案内は従来文面を流用）。
+  2. `ExitWorktree` ツールを `action: "keep"` で呼び出し、main checkout に復帰する（path 入場した worktree は remove でも消えない仕様のため**常に keep**）。
+  3. main から worktree を削除する:
+     ```bash
+     git worktree remove "{flow_wt}" 2>/dev/null || git worktree remove --force "{flow_wt}" 2>/dev/null || echo "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path={flow_wt}" >&2
+     git worktree prune 2>/dev/null || true
+     ```
+  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）は **WARNING を表示して続行**（non-blocking。S4 の遅延 reap へ委譲。ステップ 12 報告に失敗と手動コマンドを表示）。
+- `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。
+- `CLEANUP_WT=none`（multi_session 無効 or worktree 未記録）: 4-W 全体を no-op でスキップ。
+
+### 4 base ブランチの更新（安全化）
+
+main checkout の不可侵規約（[git-worktree-patterns.md](../../references/git-worktree-patterns.md#multi-checkout-不可侵-inviolability-convention)）に従い、**main checkout が `{base_branch}` 上にある場合のみ** pull する。別 branch 上では切り替えず WARNING + skip する:
+
+```bash
+cur_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || cur_branch=""
+if [ "$cur_branch" = "{base_branch}" ]; then
+  # index.lock 競合 3 回リトライ
+  n=0; until git pull --ff-only origin {base_branch} 2>/dev/null; do n=$((n+1)); [ "$n" -ge 3 ] && { echo "WARNING: git pull --ff-only origin {base_branch} が失敗しました (index.lock 競合 / コンフリクトの可能性)。git status で確認してください。" >&2; break; }; sleep 1; done
+else
+  echo "WARNING: main checkout が '{base_branch}' ではなく '$cur_branch' 上にあるため base pull を skip しました。" >&2
+  echo "  復旧手順: 別の作業が無いことを確認のうえ 'git switch {base_branch}' で main checkout を base に戻してから再実行してください（rite は multi_session モードで main checkout のカレントブランチを切り替えません）。" >&2
+fi
+```
+
+> **multi_session 無効（従来モード）の場合**: 従来どおり `git checkout {base_branch} && git pull origin {base_branch}` を実行する（base branch 以外にいて未コミット変更があれば「stash して続行 / キャンセル」を確認。stash は `git stash push -m "rite-cleanup: auto-stash before cleanup"`）。pull コンフリクト時は `git status` で確認・解決後の再実行を案内し terminate。
 
 ---
 
 ## ステップ 5: ローカル / リモートブランチを削除
+
+> **順序**: branch 削除は **worktree 削除後にのみ成功する**（Git 制約: worktree で checkout 中の branch は削除不可）。multi_session 時は必ずステップ 4-W → 本ステップの順で実行する。
 
 ```bash
 git branch -d {branch_name}
@@ -428,6 +471,12 @@ ingest の成否（skip 含む）に関わらずステップ 10 へ進む。
 
 両方を実行しないと、Issue comment は最終化されるがローカル file は永続蓄積し `post-tool-wm-sync.sh` が次セッションで file を再生成する race 経路が開く。
 
+あわせて Issue claim を解放する（`multi_session.enabled` に依らず常時実行。claim 取得は pr:open Step 1.6）。`issue-claim.sh release` は flow-state を変更しないため、ステップ 9 の `WIKICHAIN:` handoff 契約（ステップ 9〜12 間で `flow-state.sh set` を挟まない）に抵触しない:
+
+```bash
+bash {plugin_root}/hooks/issue-claim.sh release --issue {issue_number} 2>&1 || echo "WARNING: issue-claim release が失敗しました（claim は stale 判定 + reap で回収されます）。" >&2
+```
+
 ---
 
 ## ステップ 12: 完了報告
@@ -441,18 +490,25 @@ Status: {projects_status_result}
 
 実行した処理:
 - [x] base ブランチに切替・pull
+- [{session_worktree_check}] セッション worktree 退出・削除 (multi_session)
 - [x] ローカル/リモートブランチ削除
 - [{review_cleanup_check}] PR-specific state ファイル削除
 - [{projects_check}] Projects Status を Done に更新
 - [{wiki_ingest_check}] Wiki ingest (pending raw source のページ統合)
 - [x] flow state リセット
 - [x] 作業メモリを最終更新 + ローカルファイル削除
+- [x] Issue claim 解放
 - [x] 関連 Issue をクローズ
 - [x] 親 Issue の Tasklist 更新・自動クローズ (該当する場合)
 ```
 
 各チェックボックスおよび placeholder の判定:
 
+- `{session_worktree_check}`: multi_session 無効 or worktree 未使用なら行ごと省略。worktree 削除成功なら `x`。`WORKTREE_REMOVE_FAILED=1` のときは ` ` + 手動コマンドを付記:
+  ```
+  ⚠️ セッション worktree の削除に失敗しました（遅延 reap が後で回収します）。
+    手動削除: git worktree remove --force {flow_wt} && git worktree prune
+  ```
 - `{projects_status_result}`: `projects_status_updated=true` なら `Done`、false なら `⚠️ 更新失敗（手動確認が必要）`
 - `{review_cleanup_check}`: `REVIEW_CLEANUP_PARTIAL_FAILURE=1` なら ` ` + 警告付記、なければ `x`
 - `{projects_check}`: `projects_status_updated=true` なら `x`、false なら ` ` + 「GitHub Projects 画面で Issue #{issue_number} の Status を Done に変更」を付記

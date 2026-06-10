@@ -39,8 +39,11 @@ WIKI_OK=$'wiki:\n  enabled: true\n  branch_strategy: separate_branch\n'
 WIKI_OFF=$'wiki:\n  enabled: false\n'
 MS_ON=$'multi_session:\n  enabled: true\n  worktree_base: ".rite/worktrees"\n'
 MS_OFF=$'multi_session:\n  enabled: false\n'
-GI_WIKI=$'.rite/wiki/\n'
-GI_WIKI_WT=$'.rite/wiki/\n.rite/worktrees/\n'
+# All fixtures include `.rite/sessions/` so the always-on sessions check (added for
+# Issue #1389) passes and these cases test the `.rite/worktrees/` behavior in isolation.
+# The dedicated sessions drift behavior lives in gitignore-health-check-sessions.test.sh.
+GI_WIKI=$'.rite/wiki/\n.rite/sessions/\n'
+GI_WIKI_WT=$'.rite/wiki/\n.rite/worktrees/\n.rite/sessions/\n'
 
 echo "=== TC-1: ms enabled + worktrees NOT ignored → drift (exit 1) ==="
 run_case "${WIKI_OK}${MS_ON}" "$GI_WIKI"
@@ -59,11 +62,11 @@ run_case "${WIKI_OK}${MS_OFF}" "$GI_WIKI"
 assert "TC-3 exit 0" "0" "$RUN_RC"
 
 echo "=== TC-4: wiki disabled + ms enabled + worktrees NOT ignored → still drift (exit 1) ==="
-run_case "${WIKI_OFF}${MS_ON}" $'# no rules\n'
+run_case "${WIKI_OFF}${MS_ON}" $'# no rules\n.rite/sessions/\n'
 assert "TC-4 exit 1 (check not gated on wiki.enabled)" "1" "$RUN_RC"
 
 echo "=== TC-5: wiki disabled + ms enabled + worktrees ignored → healthy (exit 0) ==="
-run_case "${WIKI_OFF}${MS_ON}" $'.rite/worktrees/\n'
+run_case "${WIKI_OFF}${MS_ON}" $'.rite/worktrees/\n.rite/sessions/\n'
 assert "TC-5 exit 0" "0" "$RUN_RC"
 
 print_summary "$(basename "$0")" \

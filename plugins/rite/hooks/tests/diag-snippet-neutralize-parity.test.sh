@@ -45,10 +45,10 @@ echo "=== TC-1: head -N emission site は全て neutralize_ctrl を経由 ==="
 # 除外: tests/ (fixture/assertion 内の出現)、コメント行、定義元 helper の usage コメント
 # `head -[0-9]+` / `head -n [0-9]+` (行指向 snippet、両綴り) を対象とする。
 # `head -c` (byte 指向 inline 埋め込み) は 1 行 WARNING への embed で行構造が異なる
-# 別イディオムのため本 sweep の対象外 — TC-3 が同一行 `>&2` 条件で別途 sweep する
-# (Issue #1329 で中和を横展開済み)。`>&2` が log() 等の関数内部に隠れて同一行に
-# 現れない emission 経路は静的 sweep で構造的に検出できないため、TC-5 が既知 site を
-# 個別に pin する (Issue #1329)
+# 別イディオムのため本 sweep の対象外 — TC-3 が head -c 全行を fail-closed sweep する
+# (非 emission site は明示 allowlist で除外、Issue #1329 で中和を横展開済み)。
+# `>&2` が log() 等の関数内部に隠れて同一行に現れない emission 経路は静的 sweep で
+# 構造的に検出できないため、TC-5 が既知 site を個別に pin する (Issue #1329)
 violations=$(grep -rnE 'head (-[0-9]+|-n +[0-9]+) ' "$HOOKS_DIR" --include='*.sh' \
   | grep '>&2' \
   | grep -v "$HOOKS_DIR/tests/" \

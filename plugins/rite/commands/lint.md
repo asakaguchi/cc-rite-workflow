@@ -724,7 +724,7 @@ fi
 
 ### 3.12 Plugin-specific Checks (Comment Journal Narration) — Issue #702
 
-Execute the comment journal check to detect high-confidence narrative comment violations in **`plugins/rite/**/*.sh`** and **`plugins/rite/**/*.md`**. This is the fast-fail mechanical layer below the LLM reviewers (Issues #700, #701) — patterns that are 100%-mechanically detectable get killed here so the reviewer queue stays focused on WHY > WHAT semantic judgments. See the script header at `plugins/rite/hooks/scripts/comment-journal-check.sh` for the exact regex literals and whitelist rules.
+Execute the comment journal check to detect high-confidence narrative comment violations **and descriptive Issue/PR number references** in **`plugins/rite/**/*.{sh,md}`**, repo-root **`docs/**/*.md`**, and **`.rite/wiki/**/*.md`** (ドキュメント散文・Wiki ページまでスコープ拡張 — SoT [適用スコープ](../skills/rite-workflow/references/comment-best-practices.md#適用スコープ) の永続成果物全般)。This is the fast-fail mechanical layer below the LLM reviewers (Issues #700, #701) — patterns that are 100%-mechanically detectable get killed here so the reviewer queue stays focused on WHY > WHAT semantic judgments. See the script header at `plugins/rite/hooks/scripts/comment-journal-check.sh` for the exact regex literals and whitelist rules.
 
 Detected patterns:
 
@@ -732,8 +732,10 @@ Detected patterns:
 - **P2** `旧実装(は|では)` — comments explaining what the previous version did (belongs in commit/PR history)
 - **P3** `PR #N cycle N fix` — comments tagging a fix to a specific PR review cycle
 - **P4** `cycle N F-N で(導入|確立|集約)` — comments referencing review-finding identifiers
+- **P5** descriptive Issue/PR ref `See / Refs / Related to / Closes / Fixes / Resolves #N` — Why の代替として貼られた説明的参照
+- **P6** descriptive Issue/PR ref (ja) `#N で(別途)対応` / `詳細は #N` — 同上 (日本語)
 
-Whitelist (line-level skip): `<!-- example:` / `# example:` / `// example:` markers anywhere on the line.
+Whitelist (line-level skip): `<!-- example:` / `# example:` / `// example:` markers, and **`TODO` / `FIXME` lines** (追跡番号は前方ポインタ=維持). ファイル名アンカー (`xxx.test.sh` 等) は `#N` を含まないため P5/P6 に該当せず自然に除外される。Self-exclude: the script itself, `comment-best-practices.md` SoT, and the parity test (禁止句を例示として保持するため)。
 
 **Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
 

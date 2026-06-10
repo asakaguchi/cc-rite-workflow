@@ -11,6 +11,13 @@
 # Reverse subset (Heuristics ⊆ SoT) is intentionally best-effort and NOT tested
 # here — Heuristics may catch broader patterns than the SoT enumerates.
 #
+# Scope-expansion invariant: the SoT 適用スコープ was expanded to ドキュメント散文 /
+# Wiki ページ, but the 禁止句リスト *entries* themselves are unchanged. The forward
+# subset (SoT 禁止句リスト ⊆ §C Heuristics) therefore holds under the expanded scope
+# without any probe/regex change here — application scope and the banned-phrase
+# enumeration are independent axes. lint Phase 3.12 / tech-writer の検出スコープ拡張は
+# このリスト整合とは別経路 (comment-journal-check.sh / Detection Checklist) で行う。
+#
 # Usage:
 #   bash plugins/rite/hooks/tests/comment-best-practices-parity.test.sh
 #   exit 0: all SoT entries matched by at least one Heuristics regex

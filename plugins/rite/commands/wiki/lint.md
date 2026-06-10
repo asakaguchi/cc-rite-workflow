@@ -719,20 +719,29 @@ Wiki ページ本文に残った**説明目的の Issue/PR/commit 番号参照**
 **検出ロジック** (`pages_list` の各ページに対して):
 
 ```bash
-# {plugin_root} はリテラル値で埋め込む。pages_list の各ページパス $page に対して実行。
+# `pages_list` は改行区切りの scalar 文字列のため、ステップ 4.2 / 6.2 と同型の
+# `while IFS= read -r ... <<< "$pages_list"` で 1 ページずつ走査する (配列展開は不可)。
+# ページ本文は separate_branch 戦略で working tree に無いため、ステップ 4.2 と同じく
+# `git show "${wiki_branch}:$page" || cat "$page"` で取得する ({wiki_branch} はリテラル substitute)。
 # frontmatter(先頭の --- ブロック) を除いた本文のみを対象に、SoT 由来の説明的参照パターンを grep。
 n_descriptive_refs=0
-for page in "${pages_list[@]}"; do
+while IFS= read -r page; do
+  [ -z "$page" ] && continue
+  page_content=$(git show "${wiki_branch}:$page" 2>/dev/null || cat "$page" 2>/dev/null)
   # frontmatter を除去 (先頭 --- から次の --- まで)、TODO/FIXME 行を除外
-  body=$(awk 'NR==1 && /^---$/{infm=1; next} infm && /^---$/{infm=0; next} !infm' "$page" 2>/dev/null \
+  body=$(printf '%s\n' "$page_content" \
+    | awk 'NR==1 && /^---$/{infm=1; next} infm && /^---$/{infm=0; next} !infm' \
     | grep -vE 'TODO|FIXME')
   # SoT 禁止句リスト由来の説明的参照: (Issue/PR/refs #N)・refs/see PR #N・#N で対応・詳細は #N
-  hits=$(printf '%s\n' "$body" | grep -coE '[（(](Issue|PR|refs|Refs)[^)）]*#[0-9]+|(refs|Refs|see PR|See PR) #[0-9]+|(PR )?#[0-9]+ ?で(別途)?対応|詳細は ?#[0-9]+' 2>/dev/null || echo 0)
-  if [ "${hits:-0}" -gt 0 ]; then
+  # grep -c は no-match 時に stdout へ `0` を出力し exit 1 を返すため、`|| echo 0` だと
+  # `0\n0` 二重出力になる。`|| true` で rc のみ正規化し grep 自身の単一行 `0` を活かす。
+  hits=$(printf '%s\n' "$body" | grep -coE '[（(](Issue|PR|refs|Refs)[^)）]*#[0-9]+|(refs|Refs|see PR|See PR) #[0-9]+|(PR )?#[0-9]+ ?で(別途)?対応|詳細は ?#[0-9]+' || true)
+  case "$hits" in ''|*[!0-9]*) hits=0 ;; esac
+  if [ "$hits" -gt 0 ]; then
     echo "WikiDescriptiveRef: page=${page#*.rite/wiki/}, hits=$hits" >&2
     n_descriptive_refs=$((n_descriptive_refs + hits))
   fi
-done
+done <<< "$pages_list"
 echo "[CONTEXT] WIKI_DESCRIPTIVE_REFS=$n_descriptive_refs"
 ```
 
@@ -983,6 +992,8 @@ Wiki Lint が完了しました。
 ```
 
 **`{n_pages}` / `{n_raw}` 展開ルール**: LLM は ステップ 2.2 bash block stdout から `pages_list` / `raw_list` を会話コンテキストに保持している。各配列の要素数（空行と `---` separator を除いた非空行の数）を数えて展開する。両 list が空の場合は `0`。
+
+**`{n_descriptive_refs}` 展開ルール**: LLM は ステップ 7.5 bash block stdout の `[CONTEXT] WIKI_DESCRIPTIVE_REFS=` 行から値を読み取り `{n_descriptive_refs}` に展開する。ステップ 7.5 が skip された（`pages_list` 空）場合は `0`。
 
 **`{log_read_ok_note}` / `{log_read_ok_warning}` / `{all_source_refs_read_ok_note}` / `{all_source_refs_read_ok_warning}` 展開ルール**:
 

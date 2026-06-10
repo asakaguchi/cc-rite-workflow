@@ -185,6 +185,19 @@ multi_session:
 - 他セッションの live claim 検出時は**常に AskUserQuestion**（無人での奪取はしない）。
 - **既知の限界**: phase 遷移なしで 2h を超える implement 中は stale 誤判定しうる → 自動奪取は reap（§8）のみ、かつ clean worktree 条件付き。
 
+#### S3 確定 CLI 契約（S6/S7/S9 配線仕様 — Issue #1363 で確定）
+
+`bash hooks/issue-claim.sh {claim|release|check} --issue N [--worktree PATH] [--session UUID]`
+
+| サブコマンド | stdout | exit code | 挙動 |
+|---|---|---|---|
+| `claim` | `claimed` / `own` / `other` | `0`（claimed/own/stale-steal）/ `10`（other=live）/ `1`（usage/env エラー） | free→noclobber 取得 / own→冪等 refresh / stale→flock 奪取 / **other(live)→取得せず rc 10**（呼び出し側が AskUserQuestion） |
+| `release` | `released` / `skipped` | `0`（冪等。不在でも `released`）/ `1` | 自セッションの claim のみ削除。他セッション保持時は `skipped`（触らない） |
+| `check` | `own` / `free` / `other` / `stale` | `0` | 読み取りのみ。corrupt/空 holder は `stale`（再取得可能） |
+
+- **session_id 解決**: `_resolve-session-id-from-file.sh`（`.rite-session-id` ファイル優先）→ env（`CLAUDE_CODE_SESSION_ID` / `CLAUDE_SESSION_ID`）の順で、`flow-state.sh` の解決順と**一致**させる（claim の session_id が holder の per-session flow-state ファイル名と一致することが liveness 判定の前提）。テスト・明示制御は `--session` override。
+- **配線挿入点**: pr:open Step 1.6 = `claim`（rc 10 → AskUserQuestion / rc 0 → 続行、`--worktree {path}` で worktree path も記録）。cleanup Step 11-12 = `release`。sprint execute/team-execute = `check`（`other` のみスキップ、`stale` はスキップせず pr:open の claim に委ねる）。
+
 ### §8 セッション worktree の遅延 reap（pr-cycle-cleanup.sh Step 5 追加）
 
 責務分担: **正常系は cleanup.md が即時削除**、reap は**異常終了の残骸回収のみ**。

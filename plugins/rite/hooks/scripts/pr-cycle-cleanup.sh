@@ -152,10 +152,15 @@ if wt_list=$(git worktree list --porcelain 2>"${wt_list_err:-/dev/null}"); then
           if [ "$DRY_RUN" = "1" ]; then
             echo "[dry-run] would remove worktree: $current_path (branch=$branch_name)"
           else
-            if git worktree remove --force "$current_path" 2>/dev/null; then
+            # 失敗時は git の stderr を診断として surface する (refs #1352、従来は
+            # `2>/dev/null` で失敗理由 — lock / 権限 / submodule 等 — が落ちていた)。
+            if wt_rm_err=$(git worktree remove --force "$current_path" 2>&1); then
               worktrees_removed=$((worktrees_removed + 1))
             else
               echo "WARNING: failed to remove worktree '$current_path'" >&2
+              if [ -n "$wt_rm_err" ]; then
+                head -3 <<< "$wt_rm_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+              fi
               errors=$((errors + 1))
             fi
           fi
@@ -244,47 +249,106 @@ fi
 # 尊重し create.md と一致させる (テスト時の隔離も可能になる)。
 # -----------------------------------------------------------------------
 readonly WORKDIR_REAP_AGE_MINUTES=1440  # 24h
-workdir_tmp_base="${TMPDIR:-/tmp}"
-workdir_tmp_base="${workdir_tmp_base%/}"  # strip trailing slash
-# find は process substitution `< <(find ...)` ではなく、出力を一時ファイルに退避して呼ぶ。
-# process substitution は subshell の exit code がシェルに伝播しないため、$TMPDIR 不在 /
-# 権限なし / IO エラーで find が wholesale 失敗しても空ループ → 無言 no-op になり、本ファイルが
-# Step 1/2 (wt_list / prune / ref) で確立した「失敗を silent に握り潰さず errors カウンタに加算する」
-# 方針 (上記 prune block 参照) と非対称になる。`if find ... -print0 > "$out"; then` 形式なら
-# find が if の直接コマンドのため rc を捕捉でき、失敗時は WARNING + errors++ で sibling と対称化
-# できる。出力の保持に command substitution を使わない理由は、bash の `$(...)` が NUL バイトを
-# 除去してしまい -print0 の区切りが失われるため (refs #1351)。代わりに一時ファイル + NUL 区切り
-# の `read -r -d ''` で、ディレクトリ名に改行を含む病的ケースでも 1 エントリを分割せず読む。
-workdir_find_err=$(mktemp /tmp/rite-pr-cycle-cleanup-workdir-err-XXXXXX 2>/dev/null) || workdir_find_err=""
-workdir_find_out=$(mktemp /tmp/rite-pr-cycle-cleanup-workdir-out-XXXXXX 2>/dev/null) || workdir_find_out=""
-# find 出力先 mktemp が失敗すると `> /dev/null` fallback で find 成功 (rc=0) でも reap 対象を
-# 空読みで silent 取りこぼす。本ファイルの「失敗を errors に加算して silent 化しない」方針と
-# 対称化するため WARNING + errors++ で surface する (age ガードにより次回正常実行で回収される)。
-if [ -z "$workdir_find_out" ]; then
-  echo "WARNING: orphan workdir 走査の出力先 mktemp に失敗しました。今回の回収をスキップします (次回 age 超過で回収)" >&2
-  errors=$((errors + 1))
-elif find "$workdir_tmp_base" -maxdepth 1 -type d -name 'rite-pr-create-*' -mmin +"$WORKDIR_REAP_AGE_MINUTES" -print0 > "$workdir_find_out" 2>"${workdir_find_err:-/dev/null}"; then
-  while IFS= read -r -d '' orphan_workdir; do
-    [ -z "$orphan_workdir" ] && continue
-    if [ "$DRY_RUN" = "1" ]; then
-      echo "[dry-run] would reap orphan workdir: $orphan_workdir"
-    else
-      if rm -rf "$orphan_workdir" 2>/dev/null; then
-        workdirs_reaped=$((workdirs_reaped + 1))
+
+# ---------------------------------------------------------------------------
+# reap_orphan_dirs (refs #1352): Step 3 (workdir) / Step 4 (mutation worktree) で
+# 同型だった orphan ディレクトリ走査を 1 箇所に集約する。両 Step は「tmp_base 正規化 →
+# err/out mktemp → mktemp 失敗ガード → find rc 捕捉 → NUL 区切り (-print0) ループ →
+# find wholesale 失敗時の err surface」という subtle な不変条件群を共有しており、過去に
+# per-item 失敗分岐 (#1349) と find 出力先 mktemp 失敗 surface (#1351) を両 Step へ二重
+# 修正する copy-paste drift が実際に発生した。本ヘルパーで不変条件を集約し drift を防ぐ。
+#
+# find は process substitution `< <(find ...)` ではなく出力を一時ファイルに退避して呼ぶ。
+# process substitution は subshell の exit code が伝播せず find wholesale 失敗が無言 no-op
+# になるため。`if find ... -print0 > "$out"; then` 形式なら find が if の直接コマンドで rc を
+# 捕捉でき、失敗を WARNING + errors++ で surface できる。出力保持に command substitution を
+# 使わないのは bash の `$(...)` が NUL バイトを除去して -print0 区切りが失われるため (#1351)。
+#
+# Args: $1 label (WARNING 用) / $2 base / $3 name_pattern / $4 reaper_fn /
+#       $5 find_out (mktemp 済み、空=失敗) / $6 find_err (mktemp 済み、stderr 退避用)
+# reaper_fn: orphan path を $1 で受け取るコールバック。成功時にカウンタ加算、失敗時に
+#            WARNING + errors++ を自身で行う (戻り値は使わない)。
+# Globals: errors (加算) / DRY_RUN / WORKDIR_REAP_AGE_MINUTES
+# find_out/find_err は呼び出し側が pre-declare + trap 登録した一時ファイルを渡すため、中断時
+# の cleanup は呼び出し側の signal-specific trap が担う (本ヘルパーは local temp を作らない)。
+# ---------------------------------------------------------------------------
+reap_orphan_dirs() {
+  local label="$1" base="$2" pattern="$3" reaper_fn="$4" find_out="$5" find_err="$6"
+  if [ -z "$find_out" ]; then
+    echo "WARNING: ${label} 走査の出力先 mktemp に失敗しました。今回の回収をスキップします (次回 age 超過で回収)" >&2
+    errors=$((errors + 1))
+    return 0
+  fi
+  if find "$base" -maxdepth 1 -type d -name "$pattern" -mmin +"$WORKDIR_REAP_AGE_MINUTES" -print0 > "$find_out" 2>"${find_err:-/dev/null}"; then
+    local orphan
+    while IFS= read -r -d '' orphan; do
+      [ -z "$orphan" ] && continue
+      if [ "$DRY_RUN" = "1" ]; then
+        echo "[dry-run] would reap ${label}: $orphan"
       else
-        echo "WARNING: failed to reap orphan workdir '$orphan_workdir'" >&2
-        errors=$((errors + 1))
+        "$reaper_fn" "$orphan"
       fi
+    done < "$find_out"
+  else
+    local rc=$?
+    echo "WARNING: find による ${label} 走査が失敗しました (rc=$rc, base=$base)" >&2
+    if [ -n "$find_err" ] && [ -s "$find_err" ]; then
+      head -3 "$find_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
-  done < "${workdir_find_out:-/dev/null}"
-else
-  workdir_find_rc=$?
-  echo "WARNING: find による orphan workdir 走査が失敗しました (rc=$workdir_find_rc, base=$workdir_tmp_base)" >&2
-  if [ -n "$workdir_find_err" ] && [ -s "$workdir_find_err" ]; then
-    head -3 "$workdir_find_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    errors=$((errors + 1))
+  fi
+}
+
+# Step 3 reaper: orphan workdir を rm -rf で回収。失敗時は rm の stderr を診断として surface
+# する (refs #1352、従来は `2>/dev/null` で失敗理由が落ちていた)。
+_reap_workdir() {
+  local orphan="$1" rm_err=""
+  if rm_err=$(rm -rf "$orphan" 2>&1); then
+    workdirs_reaped=$((workdirs_reaped + 1))
+    return 0
+  fi
+  echo "WARNING: failed to reap orphan workdir '$orphan'" >&2
+  if [ -n "$rm_err" ]; then
+    head -3 <<< "$rm_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   errors=$((errors + 1))
-fi
+  return 0
+}
+
+# Step 4 reaper: mutation worktree を `git worktree remove --force` 第一手・`rm -rf` fallback で
+# 回収。両手の失敗理由 (stderr) を surface する (refs #1352、Step 1/4 の診断性向上)。
+# 成功時に mutation_reaped_any=1 を立て、呼び出し側の post-loop prune を起動する。
+_reap_mutation_worktree() {
+  local orphan="$1" wt_err="" rm_err=""
+  if wt_err=$(git worktree remove --force "$orphan" 2>&1); then
+    mutation_worktrees_reaped=$((mutation_worktrees_reaped + 1))
+    mutation_reaped_any=1
+    return 0
+  fi
+  if rm_err=$(rm -rf "$orphan" 2>&1); then
+    mutation_worktrees_reaped=$((mutation_worktrees_reaped + 1))
+    mutation_reaped_any=1
+    return 0
+  fi
+  echo "WARNING: failed to reap orphan mutation worktree '$orphan'" >&2
+  if [ -n "$wt_err" ]; then
+    echo "  git worktree remove --force:" >&2
+    head -2 <<< "$wt_err" | neutralize_ctrl --keep-newline | sed 's/^/    /' >&2
+  fi
+  if [ -n "$rm_err" ]; then
+    echo "  rm -rf:" >&2
+    head -2 <<< "$rm_err" | neutralize_ctrl --keep-newline | sed 's/^/    /' >&2
+  fi
+  errors=$((errors + 1))
+  return 0
+}
+
+workdir_tmp_base="${TMPDIR:-/tmp}"
+workdir_tmp_base="${workdir_tmp_base%/}"  # strip trailing slash
+workdir_find_err=$(mktemp /tmp/rite-pr-cycle-cleanup-workdir-err-XXXXXX 2>/dev/null) || workdir_find_err=""
+workdir_find_out=$(mktemp /tmp/rite-pr-cycle-cleanup-workdir-out-XXXXXX 2>/dev/null) || workdir_find_out=""
+reap_orphan_dirs "orphan workdir" "$workdir_tmp_base" 'rite-pr-create-*' \
+  _reap_workdir "$workdir_find_out" "$workdir_find_err"
 
 # -----------------------------------------------------------------------
 # Step 4: Reap orphaned `rite-review-mutation-*` worktrees (refs #1340).
@@ -312,42 +376,16 @@ fi
 # -----------------------------------------------------------------------
 mutation_tmp_base="${TMPDIR:-/tmp}"
 mutation_tmp_base="${mutation_tmp_base%/}"  # strip trailing slash
-# Step 3 と同型: find -print0 を一時ファイルに退避して rc 捕捉と改行安全な NUL 区切り読みを両立
-# する (command substitution は NUL を除去するため使えない、refs #1351)。
 mutation_find_err=$(mktemp /tmp/rite-pr-cycle-cleanup-mutation-err-XXXXXX 2>/dev/null) || mutation_find_err=""
 mutation_find_out=$(mktemp /tmp/rite-pr-cycle-cleanup-mutation-out-XXXXXX 2>/dev/null) || mutation_find_out=""
-# Step 3 と同型: 出力先 mktemp 失敗時の silent 取りこぼしを WARNING + errors++ で surface する。
-if [ -z "$mutation_find_out" ]; then
-  echo "WARNING: orphan mutation worktree 走査の出力先 mktemp に失敗しました。今回の回収をスキップします (次回 age 超過で回収)" >&2
-  errors=$((errors + 1))
-elif find "$mutation_tmp_base" -maxdepth 1 -type d -name 'rite-review-mutation-*' -mmin +"$WORKDIR_REAP_AGE_MINUTES" -print0 > "$mutation_find_out" 2>"${mutation_find_err:-/dev/null}"; then
-  mutation_reaped_any=0
-  while IFS= read -r -d '' orphan_wt; do
-    [ -z "$orphan_wt" ] && continue
-    if [ "$DRY_RUN" = "1" ]; then
-      echo "[dry-run] would reap orphan mutation worktree: $orphan_wt"
-    else
-      # git worktree remove --force を第一手、失敗時のみ rm -rf へ fallback
-      if git worktree remove --force "$orphan_wt" >/dev/null 2>&1 || rm -rf "$orphan_wt" 2>/dev/null; then
-        mutation_worktrees_reaped=$((mutation_worktrees_reaped + 1))
-        mutation_reaped_any=1
-      else
-        echo "WARNING: failed to reap orphan mutation worktree '$orphan_wt'" >&2
-        errors=$((errors + 1))
-      fi
-    fi
-  done < "${mutation_find_out:-/dev/null}"
-  # rm -rf fallback で残った stale worktree メタデータを掃除する (remove --force 経路では不要だが冪等)
-  if [ "$DRY_RUN" = "0" ] && [ "$mutation_reaped_any" = "1" ]; then
-    git worktree prune 2>/dev/null || true
-  fi
-else
-  mutation_find_rc=$?
-  echo "WARNING: find による orphan mutation worktree 走査が失敗しました (rc=$mutation_find_rc, base=$mutation_tmp_base)" >&2
-  if [ -n "$mutation_find_err" ] && [ -s "$mutation_find_err" ]; then
-    head -3 "$mutation_find_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  fi
-  errors=$((errors + 1))
+# mutation_reaped_any は reaper (_reap_mutation_worktree) が成功時に 1 を立てるグローバル。
+# 走査前に 0 で初期化し、回収が 1 件でも成功したら下記 post-loop prune を起動する。
+mutation_reaped_any=0
+reap_orphan_dirs "orphan mutation worktree" "$mutation_tmp_base" 'rite-review-mutation-*' \
+  _reap_mutation_worktree "$mutation_find_out" "$mutation_find_err"
+# rm -rf fallback で残った stale worktree メタデータを掃除する (remove --force 経路では不要だが冪等)
+if [ "$DRY_RUN" = "0" ] && [ "$mutation_reaped_any" = "1" ]; then
+  git worktree prune 2>/dev/null || true
 fi
 
 # -----------------------------------------------------------------------

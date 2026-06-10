@@ -555,7 +555,8 @@ elif [ -f "$TC_DIR/.rite-compact-state" ]; then
 else
   pass "TC-LEGACY-FALLBACK: legacy .rite-compact-state removed via fallback cleanup path"
 fi
-rm -f "$lf_err"
+# $lf_err lives under $TEST_DIR and is reclaimed by the file-level `trap cleanup EXIT`,
+# matching the other stderr-tempfile sites in this file (no per-TC rm).
 
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

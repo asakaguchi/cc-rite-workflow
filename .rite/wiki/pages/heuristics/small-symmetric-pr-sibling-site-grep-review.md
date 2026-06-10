@@ -2,8 +2,10 @@
 title: "極小対称化 PR は sibling site Grep 照合で短時間・高確信レビューできる"
 domain: "heuristics"
 created: "2026-04-19T06:45:00Z"
-updated: "2026-06-06T15:31:02Z"
+updated: "2026-06-10T00:54:18Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260610T005202Z-pr-1341.md"
   - type: "reviews"
     ref: "raw/reviews/20260606T143925Z-pr-1294.md"
   - type: "fixes"
@@ -62,6 +64,16 @@ confidence: high
 
 **PR #1151 累積 evidence (大規模 rename PR の cross-product grep 必須化)**: 16 files / +484/-484 の Phase → ステップ rename PR で、cycle 1 で 18 件の callee→caller drift を fix した後、cycle 2 で 3 件の追加見落とし (`wiki/query.md` 9 site + `wiki/lint.md:1406`) が検出された。cycle 1 reviewer の scan scope が systematic でなかったため、partial scan が tail residue を生んだ典型例。教訓: **cycle N で 1 件の callee→caller drift を発見したら、同 PR 内の `全 callee × 全 Phase-maintaining caller` の cross-product grep を即座に実行する**。`for caller in {out_of_scope_callers}; do for callee in {scope_files}; do grep -n "$caller" "$callee" | grep -E "(Phase|ステップ) [0-9]"; done; done` のような全 cross-product を 1 commit で fix することで、cycle 2 の追加 finding を pre-empt できる。本 hint は本ページの「sibling site の全量列挙」を「caller × callee 行列の全量列挙」へ拡張する一般化 (sibling 数が 5+ の大規模 PR で特に有効)。詳細な anti-pattern 解説は [Rename PR の callee → caller 片方向 over-translation で Out-of-Scope の broken cross-ref を生成する](../anti-patterns/rename-pr-callee-caller-over-translation.md) を参照。
 
+### 適用例: 置換側↔検証側の参照経路対称化 (PR #1341、+8/-3、1 cycle mergeable)
+
+review-comment-post.sh の post-condition awk sentinel を置換側と同じ `-v` 変数参照に統一する +8/-3 の対称化 refactor で、3 reviewer (security / error-handling / code-quality) が独立に以下を実施して cycle 1 で 0 findings / mergeable に到達:
+
+- **sibling site 照合**: 置換側 awk と検証側 awk の needle 構築式 (`"\"" sentinel "\""`) の byte 一致を Grep + Read で確認、同ファイル内の SENTINEL literal 残存 (変数定義 / docstring のみ) を網羅
+- **検出力等価性の実機比較**: 旧 regex `~` と新 index() を同一入力で実行し出力一致を確認 (SENTINEL 値が metacharacter 非含有のため等価)
+- **mutation 注入**: 置換ループを neuter して post-condition の発火 (ERROR + exit 1) を runtime 確認
+
+対称化 PR では「両 site の構造照合 + 等価性実機比較 + 検証ゲートの mutation」の 3 点セットが 1 cycle 収束の決め手になる。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -77,3 +89,4 @@ confidence: high
 - [PR #967 fix results](../../raw/fixes/20260514T223534Z-pr-967.md)
 - [PR #967 review results (cycle 2 mergeable)](../../raw/reviews/20260514T224021Z-pr-967.md)
 - [PR #1151 fix cycle 2 (cross-product grep hint)](../../raw/fixes/20260526T154013Z-pr-1151.md)
+- [PR #1341 review results — 置換側↔検証側 sentinel 参照対称化を 3 reviewer が sibling 照合 + 等価性実機比較 + mutation で 1 cycle mergeable 判定](../../raw/reviews/20260610T005202Z-pr-1341.md)

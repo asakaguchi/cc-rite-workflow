@@ -457,7 +457,7 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 | How (current behavior) | The code itself (naming, structure) | Code is executed, so it is always true — it cannot drift from the running reality |
 | What (specification, behavior) | Test code (test name + assertion) | Tests are executable specification — the name states What, the assertion proves it |
 | Why (motive at change time) | Commit message (Contextual Commits action lines) | The commit is the immutable record of the context at the moment of change |
-| Why not (rejected alternative, hidden constraint) | Code comments | The comment is the only document that stays in the same place as the code it guards |
+| Why not (rejected alternative) — and the Why that must stay beside the code (hidden constraint, invariant, workaround) | Code comments | The comment is the only document that stays in the same place as the code it guards |
 
 **Failure Patterns**:
 - A comment describes How the code works (comment rot — the comment lies as soon as the code changes; promote it to naming instead)

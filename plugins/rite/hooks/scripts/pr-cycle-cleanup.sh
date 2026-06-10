@@ -150,14 +150,16 @@ if wt_list=$(git worktree list --porcelain 2>"${wt_list_err:-/dev/null}"); then
         fi
         if [[ "$branch_name" =~ $PATTERN ]]; then
           if [ "$DRY_RUN" = "1" ]; then
-            echo "[dry-run] would remove worktree: $current_path (branch=$branch_name)"
+            safe_path=$(printf '%s' "$current_path" | neutralize_ctrl)
+            safe_branch=$(printf '%s' "$branch_name" | neutralize_ctrl)
+            echo "[dry-run] would remove worktree: $safe_path (branch=$safe_branch)"
           else
             # 失敗時は git の stderr を診断として surface する (refs #1352、従来は
             # `2>/dev/null` で失敗理由 — lock / 権限 / submodule 等 — が落ちていた)。
             if wt_rm_err=$(git worktree remove --force "$current_path" 2>&1); then
               worktrees_removed=$((worktrees_removed + 1))
             else
-              echo "WARNING: failed to remove worktree '$current_path'" >&2
+              echo "WARNING: failed to remove worktree '$(printf '%s' "$current_path" | neutralize_ctrl)'" >&2
               if [ -n "$wt_rm_err" ]; then
                 head -3 <<< "$wt_rm_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
               fi
@@ -211,12 +213,12 @@ if branches=$(git for-each-ref --format='%(refname:short)' refs/heads/ 2>"${ref_
     [ -z "$br" ] && continue
     if [[ "$br" =~ $PATTERN ]]; then
       if [ "$DRY_RUN" = "1" ]; then
-        echo "[dry-run] would delete branch: $br"
+        echo "[dry-run] would delete branch: $(printf '%s' "$br" | neutralize_ctrl)"
       else
         if git branch -D "$br" >/dev/null 2>&1; then
           branches_deleted=$((branches_deleted + 1))
         else
-          echo "WARNING: failed to delete branch '$br'" >&2
+          echo "WARNING: failed to delete branch '$(printf '%s' "$br" | neutralize_ctrl)'" >&2
           errors=$((errors + 1))
         fi
       fi
@@ -284,7 +286,7 @@ reap_orphan_dirs() {
     while IFS= read -r -d '' orphan; do
       [ -z "$orphan" ] && continue
       if [ "$DRY_RUN" = "1" ]; then
-        echo "[dry-run] would reap ${label}: $orphan"
+        echo "[dry-run] would reap ${label}: $(printf '%s' "$orphan" | neutralize_ctrl)"
       else
         "$reaper_fn" "$orphan"
       fi
@@ -307,7 +309,7 @@ _reap_workdir() {
     workdirs_reaped=$((workdirs_reaped + 1))
     return 0
   fi
-  echo "WARNING: failed to reap orphan workdir '$orphan'" >&2
+  echo "WARNING: failed to reap orphan workdir '$(printf '%s' "$orphan" | neutralize_ctrl)'" >&2
   if [ -n "$rm_err" ]; then
     head -3 <<< "$rm_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
@@ -330,7 +332,7 @@ _reap_mutation_worktree() {
     mutation_reaped_any=1
     return 0
   fi
-  echo "WARNING: failed to reap orphan mutation worktree '$orphan'" >&2
+  echo "WARNING: failed to reap orphan mutation worktree '$(printf '%s' "$orphan" | neutralize_ctrl)'" >&2
   if [ -n "$wt_err" ]; then
     echo "  git worktree remove --force:" >&2
     head -2 <<< "$wt_err" | neutralize_ctrl --keep-newline | sed 's/^/    /' >&2

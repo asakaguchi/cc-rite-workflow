@@ -34,6 +34,9 @@
 #   1: Argument error
 set -euo pipefail
 
+# shellcheck source=control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
+
 # Persistent body-update failures must not vanish silently. The safety guards
 # (empty write / <50% shrinkage / gh edit failure / diff IO error) all exit 0 so
 # the caller's workflow continues, but the caller cannot detect a "guard tripped"
@@ -119,7 +122,7 @@ case "$MODE" in
       :
     else
       rc=$?
-      err_snippet=$(head -c 500 "$tmpfile_err" 2>/dev/null | tr -d '\r' || echo "")
+      err_snippet=$(head -c 500 "$tmpfile_err" 2>/dev/null | tr -d '\r' | tr '\n' ' ' | neutralize_ctrl --c0-only || echo "")
       echo "${err_level}: gh issue view 失敗 (rc=$rc): ${err_snippet}" >&2
       echo "fetch_failure_reason=gh_view_failed"
       _emit_body_update_incident "issue_body_fetch_failed" "gh_view_failed" "$rc" "$err_snippet"
@@ -221,7 +224,7 @@ case "$MODE" in
       :
     else
       rc=$?
-      err_snippet=$(head -c 500 "${apply_err:-/dev/null}" 2>/dev/null | tr -d '\r' || echo "")
+      err_snippet=$(head -c 500 "${apply_err:-/dev/null}" 2>/dev/null | tr -d '\r' | tr '\n' ' ' | neutralize_ctrl --c0-only || echo "")
       echo "${err_level}: gh issue edit 失敗 (rc=$rc): ${err_snippet}" >&2
       echo "apply_failure_reason=gh_edit_failed"
       _emit_body_update_incident "issue_body_fetch_failed" "gh_edit_failed" "$rc" "$err_snippet"

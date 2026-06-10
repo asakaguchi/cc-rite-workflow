@@ -276,7 +276,7 @@ jq_rc=$?
 if [ -z "$merged_count" ] || ! [[ "$merged_count" =~ ^[0-9]+$ ]]; then
   echo "WARNING: gh pr list の JSON 解析に失敗しました (jq rc=$jq_rc) — wiki-growth-check skipped" >&2
   [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  jq: /' >&2
-  echo "  raw stdout (先頭 200 文字): $(printf '%s' "$gh_json_out" | head -c 200)" >&2
+  echo "  raw stdout (先頭 200 文字): $(printf '%s' "$gh_json_out" | head -c 200 | tr '\n' ' ' | neutralize_ctrl --c0-only)" >&2
   [ -n "$jq_err" ] && rm -f "$jq_err"
   echo "==> Total wiki-growth-check findings: 0"
   exit 0

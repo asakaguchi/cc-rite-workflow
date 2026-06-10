@@ -98,7 +98,7 @@ _jq_input_err=$(mktemp 2>/dev/null) || _jq_input_err=""
 JQ_OUT=$(echo "$INPUT" | jq -r '[(.transcript_path // ""), (.subagent_type | strings // ""), (.agent_type | strings // "")] | @tsv' 2>"${_jq_input_err:-/dev/null}") || JQ_OUT=$'\t\t'
 if [ -n "${RITE_DEBUG:-}" ] && [ -n "$_jq_input_err" ] && [ -s "$_jq_input_err" ]; then
   printf '[%s] pre-tool-bash-guard: jq input parse stderr: %s\n' \
-    "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$(head -c 200 "$_jq_input_err" | tr '\n' ' ')" \
+    "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$(head -c 200 "$_jq_input_err" | tr '\n' ' ' | neutralize_ctrl --c0-only)" \
     >> "${STATE_ROOT:-/tmp}/.rite-flow-debug.log" 2>/dev/null || true
 fi
 [ -n "$_jq_input_err" ] && rm -f "$_jq_input_err"

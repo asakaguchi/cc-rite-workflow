@@ -244,7 +244,7 @@ if [ -n "$DRIFT_TSV" ]; then
         RECONCILE_FAILURES=$((RECONCILE_FAILURES + 1))
         reconcile_suffix=" -> reconcile FAILED ($reconcile_result)"
         if [ "$QUIET" != "true" ] && [ -n "$reconcile_err" ] && [ -s "$reconcile_err" ]; then
-          echo "projects-board-drift: reconcile failed for #$issue_number: $(head -c 200 "$reconcile_err" | tr '\n' ' ')" >&2
+          echo "projects-board-drift: reconcile failed for #$issue_number: $(head -c 200 "$reconcile_err" | tr '\n' ' ' | neutralize_ctrl --c0-only)" >&2
         fi
       fi
       [ -n "$reconcile_err" ] && rm -f "$reconcile_err"; reconcile_err=""

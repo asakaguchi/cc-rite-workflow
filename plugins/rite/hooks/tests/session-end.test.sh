@@ -668,10 +668,10 @@ if grep -qE '_resolve_err_dropped|resolver stderr lines filtered' "$SESSION_END_
 else
   fail "TC-024 resolver stderr filter / drop counter wiring absent"
 fi
-if grep -qE 'if \[ -n "\$\{RITE_DEBUG:-\}" \].*then.*cat "\$_resolve_err"' "$SESSION_END_SCRIPT" \
+if grep -qE 'if \[ -n "\$\{RITE_DEBUG:-\}" \].*then.*neutralize_ctrl --keep-newline < "\$_resolve_err"' "$SESSION_END_SCRIPT" \
   || awk '
       /if \[ -n "\$\{RITE_DEBUG:-\}" \]; then/ { matched=1 }
-      matched && /cat "\$_resolve_err"/ { found=1; exit }
+      matched && /neutralize_ctrl --keep-newline < "\$_resolve_err"/ { found=1; exit }
       END { exit !found }
     ' "$SESSION_END_SCRIPT"; then
   pass "TC-025 RITE_DEBUG bypass branch anchored to resolver stderr handler"

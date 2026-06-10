@@ -20,6 +20,13 @@
 #   TC-2: neutralize_ctrl を call する全 hook ファイルが
 #         control-char-neutralize.sh を source している
 #         (定義元 control-char-neutralize.sh 自身は除外)
+#   TC-3: `head -c N` byte 指向 inline 埋め込み (1 行 WARNING への embed) も
+#         neutralize_ctrl を経由する (Issue #1329 — #1183 follow-up 横展開)
+#   TC-4: `cat "$file" >&2` 形式の full-file 直接 emission も neutralize_ctrl
+#         を経由する (Issue #1329)
+#   TC-5: `>&2` が log() / surface_git_warnings() 等の関数内部に隠れる emission
+#         経路は静的 sweep で構造的に検出不能のため、既知 site を個別に pin する
+#         (Issue #1329)
 #
 # Usage: bash plugins/rite/hooks/tests/diag-snippet-neutralize-parity.test.sh
 set -euo pipefail
@@ -38,10 +45,10 @@ echo "=== TC-1: head -N emission site は全て neutralize_ctrl を経由 ==="
 # 除外: tests/ (fixture/assertion 内の出現)、コメント行、定義元 helper の usage コメント
 # `head -[0-9]+` / `head -n [0-9]+` (行指向 snippet、両綴り) を対象とする。
 # `head -c` (byte 指向 inline 埋め込み) は 1 行 WARNING への embed で行構造が異なる
-# 別イディオムのため本 sweep の対象外。
-# 注意: head -c site は現状中和未適用 (Issue #1183 の対象は行指向 head snippet のみ)。
-# 横展開する場合は別 Issue で扱う。同様に、`>&2` が log() 等の関数内部に隠れて
-# 同一行に現れない emission 経路も本 sweep の検出対象外 (別 Issue の横展開対象候補)
+# 別イディオムのため本 sweep の対象外 — TC-3 が同一行 `>&2` 条件で別途 sweep する
+# (Issue #1329 で中和を横展開済み)。`>&2` が log() 等の関数内部に隠れて同一行に
+# 現れない emission 経路は静的 sweep で構造的に検出できないため、TC-5 が既知 site を
+# 個別に pin する (Issue #1329)
 violations=$(grep -rnE 'head (-[0-9]+|-n +[0-9]+) ' "$HOOKS_DIR" --include='*.sh' \
   | grep '>&2' \
   | grep -v "$HOOKS_DIR/tests/" \
@@ -80,6 +87,54 @@ if [ "$checked" -ge 24 ]; then
 else
   fail "TC-2: sweep coverage too small ($checked files — rollout 対象が grep から漏れている可能性)"
 fi
+
+echo ""
+echo "=== TC-3: head -c byte 指向 embed site は全て neutralize_ctrl を経由 ==="
+# `head -c N` snippet の大半は `var=$(... | head -c 200 ...)` の代入行で、emission の
+# `>&2` は後続 echo 行に分離している — `>&2` 同一行条件では構造的に検出できない
+# (Issue #1329 mutation 検証で実証)。そのため head -c 全行を sweep し、非 emission の
+# 既知 site のみ明示 allowlist で除外する fail-closed 設計とする。新規の head -c が
+# 非 emission 用途なら本 allowlist に追記すること。
+violations_c=$(grep -rnE 'head -c [0-9]+' "$HOOKS_DIR" --include='*.sh' \
+  | grep -v "$HOOKS_DIR/tests/" \
+  | grep -v 'neutralize_ctrl' \
+  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
+  | grep -v 'work-memory-lock.sh:.*lock_pid=' \
+  || true)
+assert "TC-3: un-neutralized head -c emission sites" "" "$violations_c"
+if [ -n "$violations_c" ]; then
+  echo "  検出された未中和 site (head -c の直後に '| tr '\\''\\n'\\'' '\\'' '\\'' | neutralize_ctrl --c0-only' を挿入すること):"
+  printf '%s\n' "$violations_c" | sed 's/^/    /'
+fi
+
+echo ""
+echo "=== TC-4: cat full-file 直接 emission site は全て neutralize_ctrl を経由 ==="
+# `cat "$file" >&2` 形式の full-file stderr 直接 emission (RITE_DEBUG triage 経路等)
+# を sweep する (Issue #1329)。中和版は `neutralize_ctrl --keep-newline < "$file" >&2`。
+violations_cat=$(grep -rnE 'cat "[^"]+" *>&2' "$HOOKS_DIR" --include='*.sh' \
+  | grep -v "$HOOKS_DIR/tests/" \
+  | grep -v 'neutralize_ctrl' \
+  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
+  || true)
+assert "TC-4: un-neutralized cat full-file emission sites" "" "$violations_cat"
+if [ -n "$violations_cat" ]; then
+  echo "  検出された未中和 site ('neutralize_ctrl --keep-newline < \"\$file\" >&2' へ置換すること):"
+  printf '%s\n' "$violations_cat" | sed 's/^/    /'
+fi
+
+echo ""
+echo "=== TC-5: 関数内 >&2 経由の既知 emission site は個別 pin ==="
+# log() / surface_git_warnings() 内部の >&2 は同一行 sweep で構造的に検出できない。
+# Issue #1329 で中和を適用した既知 site が回帰しないことを行単位で pin する。
+assert_grep "TC-5: distributed-fix-drift-check.sh table-side awk stderr log" \
+  "$HOOKS_DIR/scripts/distributed-fix-drift-check.sh" \
+  'head -1 "\$AWK_TABLE_ERR" \| tr -d .\\n. \| neutralize_ctrl --c0-only'
+assert_grep "TC-5: distributed-fix-drift-check.sh emit-side awk stderr log" \
+  "$HOOKS_DIR/scripts/distributed-fix-drift-check.sh" \
+  'head -1 "\$AWK_EMIT_ERR" \| tr -d .\\n. \| neutralize_ctrl --c0-only'
+assert_grep "TC-5: wiki-ingest-commit.sh surface_git_warnings" \
+  "$HOOKS_DIR/scripts/wiki-ingest-commit.sh" \
+  'grep -iE .\^\(warning\|hint\|error\):. \| neutralize_ctrl --keep-newline'
 
 if ! print_summary "$(basename "$0")" \
   "診断スニペット emission site を hook に追加するときは control-char-neutralize.sh を source し、head -N の直後に '| neutralize_ctrl --keep-newline' を挿入すること (Issue #1183)"; then

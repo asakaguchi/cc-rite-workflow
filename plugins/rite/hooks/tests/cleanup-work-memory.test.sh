@@ -219,6 +219,28 @@ else
 fi
 echo ""
 
+# ─── TC-1371: full cleanup removes the per-session compact-state ──────────
+# Issue #1371: full-cleanup mode must reap the current session's per-session
+# compact-state (.rite/sessions/<sid>.compact-state), not just the legacy
+# shared file. Non-vacuous: a regression that drops the per-session removal
+# block leaves the per-session file behind and fails this assertion.
+echo "TC-1371: full cleanup removes per-session compact-state (#1371)"
+dir1371="$TEST_DIR/tc1371"
+sid1371="test-sid-tc1371"
+mkdir -p "$dir1371/.rite/sessions"
+printf '%s' "$sid1371" > "$dir1371/.rite-session-id"
+echo '{"active":true,"issue_number":1371,"phase":"completed"}' > "$dir1371/.rite-flow-state"
+echo '{"compact_state":"recovering","active_issue":1371}' > "$dir1371/.rite-compact-state"
+cs1371_session="$dir1371/.rite/sessions/${sid1371}.compact-state"
+echo '{"compact_state":"recovering","active_issue":1371}' > "$cs1371_session"
+( cd "$dir1371" && bash "$HOOK" >/dev/null 2>&1 ) || true
+if [ ! -f "$cs1371_session" ] && [ ! -f "$dir1371/.rite-compact-state" ]; then
+  pass "TC-1371: per-session and legacy compact-state both removed on full cleanup"
+else
+  fail "TC-1371: cleanup incomplete: per_session_exists=$([ -f "$cs1371_session" ] && echo y || echo n), legacy_exists=$([ -f "$dir1371/.rite-compact-state" ] && echo y || echo n)"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

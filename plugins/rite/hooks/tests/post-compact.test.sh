@@ -62,6 +62,24 @@ write_per_session_state() {
   printf '%s\n' "$merged" > "$dir/.rite/sessions/${sid}.flow-state"
 }
 
+# Helper: path to the per-session compact-state file (Issue #1371). Mirrors
+# post-compact.sh's derivation: .rite/sessions/<sid>.flow-state → .compact-state.
+compact_state_path() {
+  local dir="$1"
+  local sid="${2:-test-sid-$(basename "$dir")}"
+  echo "$dir/.rite/sessions/${sid}.compact-state"
+}
+
+# Helper: register a per-session id WITHOUT a flow-state file. Used by cleanup
+# tests that need a deterministic per-session compact-state path but no active
+# (or any) flow-state file.
+write_session_id_only() {
+  local dir="$1"
+  local sid="${2:-test-sid-$(basename "$dir")}"
+  mkdir -p "$dir/.rite/sessions"
+  printf '%s' "$sid" > "$dir/.rite-session-id"
+}
+
 echo "=== post-compact.sh tests ==="
 
 # --- TC-001: active flow + recovering → stdout output + normal transition ---
@@ -69,7 +87,8 @@ echo "TC-001: Active flow + recovering → auto-recovery"
 TC_DIR=$(setup_test "tc001")
 write_per_session_state "$TC_DIR" \
   '{"active": true, "issue_number": 42, "phase": "implement", "next_action": "Continue coding", "loop_count": 1, "pr_number": 10, "branch": "feat/issue-42-test"}'
-jq -n '{compact_state: "recovering", compact_state_set_at: "2026-03-14T12:00:00Z", active_issue: 42}' > "$TC_DIR/.rite-compact-state"
+CS_TC001="$(compact_state_path "$TC_DIR")"
+jq -n '{compact_state: "recovering", compact_state_set_at: "2026-03-14T12:00:00Z", active_issue: 42}' > "$CS_TC001"
 
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
 if echo "$OUTPUT" | grep -q "Auto-compact recovery"; then
@@ -82,7 +101,7 @@ if echo "$OUTPUT" | grep -q "Issue #42"; then
 else
   fail "stdout missing issue number"
 fi
-COMPACT_VAL=$(jq -r '.compact_state' "$TC_DIR/.rite-compact-state" 2>/dev/null) || COMPACT_VAL=""
+COMPACT_VAL=$(jq -r '.compact_state' "$CS_TC001" 2>/dev/null) || COMPACT_VAL=""
 if [ "$COMPACT_VAL" = "normal" ]; then
   pass "compact_state transitioned to normal"
 else
@@ -94,7 +113,7 @@ echo "TC-002: Manual compact → no auto-continue instruction"
 TC_DIR=$(setup_test "tc002")
 write_per_session_state "$TC_DIR" \
   '{"active": true, "issue_number": 42, "phase": "review", "next_action": "Review PR", "loop_count": 0, "pr_number": 5, "branch": "feat/issue-42-test"}'
-jq -n '{compact_state: "recovering", compact_state_set_at: "2026-03-14T12:00:00Z", active_issue: 42}' > "$TC_DIR/.rite-compact-state"
+jq -n '{compact_state: "recovering", compact_state_set_at: "2026-03-14T12:00:00Z", active_issue: 42}' > "$(compact_state_path "$TC_DIR")"
 
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "manual"}' | bash "$HOOK" 2>/dev/null) || true
 if echo "$OUTPUT" | grep -q "Compact recovery"; then
@@ -111,7 +130,11 @@ fi
 # --- TC-003: no flow state → cleanup + no stdout ---
 echo "TC-003: No flow state → cleanup, no output"
 TC_DIR=$(setup_test "tc003")
-jq -n '{compact_state: "recovering"}' > "$TC_DIR/.rite-compact-state"
+# Register a session id (no flow-state file) so the per-session compact-state
+# path is deterministic; the missing flow-state drives the cleanup branch.
+write_session_id_only "$TC_DIR"
+CS_TC003="$(compact_state_path "$TC_DIR")"
+jq -n '{compact_state: "recovering"}' > "$CS_TC003"
 
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
 if [ -z "$OUTPUT" ]; then
@@ -119,7 +142,7 @@ if [ -z "$OUTPUT" ]; then
 else
   fail "unexpected stdout: $OUTPUT"
 fi
-if [ ! -f "$TC_DIR/.rite-compact-state" ]; then
+if [ ! -f "$CS_TC003" ]; then
   pass "compact state cleaned up"
 else
   fail "compact state not cleaned up"
@@ -129,7 +152,8 @@ fi
 echo "TC-004: Active=false → cleanup, no output"
 TC_DIR=$(setup_test "tc004")
 write_per_session_state "$TC_DIR" '{"active": false, "issue_number": 42}'
-jq -n '{compact_state: "recovering"}' > "$TC_DIR/.rite-compact-state"
+CS_TC004="$(compact_state_path "$TC_DIR")"
+jq -n '{compact_state: "recovering"}' > "$CS_TC004"
 
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
 if [ -z "$OUTPUT" ]; then
@@ -137,7 +161,7 @@ if [ -z "$OUTPUT" ]; then
 else
   fail "unexpected stdout: $OUTPUT"
 fi
-if [ ! -f "$TC_DIR/.rite-compact-state" ]; then
+if [ ! -f "$CS_TC004" ]; then
   pass "compact state cleaned up"
 else
   fail "compact state not cleaned up"
@@ -147,7 +171,7 @@ fi
 echo "TC-005: compact_state=normal → no action"
 TC_DIR=$(setup_test "tc005")
 write_per_session_state "$TC_DIR" '{"active": true, "issue_number": 42}'
-jq -n '{compact_state: "normal"}' > "$TC_DIR/.rite-compact-state"
+jq -n '{compact_state: "normal"}' > "$(compact_state_path "$TC_DIR")"
 
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
 if [ -z "$OUTPUT" ]; then
@@ -171,7 +195,8 @@ flow_state:
 EOF
 per_session_file="$TC_DIR/.rite/sessions/${sid680a}.flow-state"
 jq -n '{active: true, issue_number: 680, phase: "phase5_review", next_action: "review", loop_count: 0, pr_number: 0, branch: "refactor/issue-680-test", session_id: "'"$sid680a"'"}' > "$per_session_file"
-jq -n '{compact_state: "recovering", compact_state_set_at: "2026-04-30T12:00:00Z", active_issue: 680}' > "$TC_DIR/.rite-compact-state"
+cs680a="$(compact_state_path "$TC_DIR" "$sid680a")"
+jq -n '{compact_state: "recovering", compact_state_set_at: "2026-04-30T12:00:00Z", active_issue: 680}' > "$cs680a"
 
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
 if echo "$OUTPUT" | grep -q "Auto-compact recovery" && echo "$OUTPUT" | grep -q "Issue #680"; then
@@ -180,7 +205,7 @@ else
   fail "TC-680-A: expected Auto-compact recovery for Issue #680 from per-session, got: $OUTPUT"
 fi
 # Counter-assertion: compact_state transitioned to normal
-cs_state=$(jq -r '.compact_state' "$TC_DIR/.rite-compact-state" 2>/dev/null)
+cs_state=$(jq -r '.compact_state' "$cs680a" 2>/dev/null)
 if [ "$cs_state" = "normal" ]; then
   pass "TC-680-A: compact_state transitioned to normal after per-session recovery"
 else
@@ -198,7 +223,8 @@ flow_state:
   schema_version: 2
 EOF
 jq -n '{active: false, issue_number: 681}' > "$TC_DIR/.rite/sessions/${sid680b}.flow-state"
-jq -n '{compact_state: "recovering"}' > "$TC_DIR/.rite-compact-state"
+cs680b="$(compact_state_path "$TC_DIR" "$sid680b")"
+jq -n '{compact_state: "recovering"}' > "$cs680b"
 
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
 if [ -z "$OUTPUT" ]; then
@@ -206,7 +232,7 @@ if [ -z "$OUTPUT" ]; then
 else
   fail "TC-680-B: expected silent exit on active=false, got: $OUTPUT"
 fi
-if [ ! -f "$TC_DIR/.rite-compact-state" ]; then
+if [ ! -f "$cs680b" ]; then
   pass "TC-680-B: compact_state cleaned up on per-session inactive flow"
 else
   fail "TC-680-B: compact_state not cleaned up"
@@ -274,7 +300,7 @@ _setup_recon_env() {
   write_per_session_state "$dir" \
     '{"active": true, "issue_number": 42, "phase": "ready", "next_action": "Ready", "loop_count": 0, "pr_number": 42, "branch": "feat/issue-42-recon"}'
   jq -n '{compact_state: "recovering", compact_state_set_at: "2026-04-01T00:00:00Z", active_issue: 42}' \
-    > "$dir/.rite-compact-state"
+    > "$(compact_state_path "$dir")"
   # Minimal rite-config so awk projects.enabled detection picks up `true`
   cat > "$dir/rite-config.yml" <<'YAML'
 github:
@@ -499,13 +525,38 @@ echo "TC-COMPACT-STATE-CORRUPT: corrupt .rite-compact-state surfaces WARNING wit
 TC_DIR=$(setup_test "tc-compact-corrupt")
 write_per_session_state "$TC_DIR" \
   '{"active": true, "issue_number": 99, "phase": "implement", "branch": "feat/issue-99-test"}'
-printf 'not-valid-json{{' > "$TC_DIR/.rite-compact-state"
+printf 'not-valid-json{{' > "$(compact_state_path "$TC_DIR")"
 STDERR_OUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>&1 >/dev/null) || true
 if printf '%s' "$STDERR_OUT" | grep -qE 'post-compact: jq parse of \.compact_state failed \(rc=[1-9]'; then
   pass "TC-COMPACT-STATE-CORRUPT: WARNING surfaces real jq rc on corrupt compact-state"
 else
   fail "TC-COMPACT-STATE-CORRUPT: expected WARNING with rc on corrupt compact-state; got: $STDERR_OUT"
 fi
+
+# --- TC-LEGACY-FALLBACK: sid unresolvable → legacy .rite-compact-state cleaned up ---
+# When the session id cannot be resolved (no .rite-session-id file AND no
+# CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID env), flow-state.sh path exits non-zero,
+# FLOW_STATE="", and post-compact.sh falls back to the legacy shared
+# "$STATE_ROOT/.rite-compact-state". With no flow-state file the "no flow state →
+# clean up and exit" branch removes that legacy file. Seeding it and asserting removal
+# pins that the fallback targets the legacy path: a per-session COMPACT_STATE would
+# leave this seeded file untouched. env -u strips any ambient session id so the
+# fallback is deterministic (fixture-based TCs write .rite-session-id, which wins).
+echo "TC-LEGACY-FALLBACK: sid unresolvable → legacy .rite-compact-state cleaned up"
+TC_DIR=$(setup_test "tc-legacy-fallback")
+printf '%s\n' '{"compact_state": "recovering", "compact_state_set_at": "2026-03-14T12:00:00Z", "active_issue": 55}' > "$TC_DIR/.rite-compact-state"
+lf_rc=0
+lf_err=$(mktemp "$TEST_DIR/stderr.XXXXXX")
+echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" >/dev/null 2>"$lf_err" || lf_rc=$?
+if [ "$lf_rc" -ne 0 ]; then
+  fail "TC-LEGACY-FALLBACK: hook should exit 0 (got rc=$lf_rc); stderr: $(cat "$lf_err")"
+elif [ -f "$TC_DIR/.rite-compact-state" ]; then
+  fail "TC-LEGACY-FALLBACK: legacy .rite-compact-state should be cleaned up when session id is unresolvable"
+else
+  pass "TC-LEGACY-FALLBACK: legacy .rite-compact-state removed via fallback cleanup path"
+fi
+# $lf_err lives under $TEST_DIR and is reclaimed by the file-level `trap cleanup EXIT`,
+# matching the other stderr-tempfile sites in this file (no per-TC rm).
 
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

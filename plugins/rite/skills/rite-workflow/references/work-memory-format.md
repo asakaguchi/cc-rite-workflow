@@ -377,7 +377,7 @@ Issue-level locking prevents concurrent access to local work memory files from i
 | `is_wm_locked "$lockdir"` | Check if locked |
 
 **Lock paths**:
-- Compact state lock: `.rite-compact-state.lockdir` (used by pre-compact.sh)
+- Compact state lock: `.rite/sessions/{session_id}.compact-state.lockdir` (per-session, used by pre-compact.sh; legacy shared `.rite-compact-state.lockdir` only when the session id is unresolvable)
 - Issue work memory lock: `.rite-work-memory/issue-{n}.md.lockdir` (used by commands)
 
 **Stale lock detection**: Controlled by `WM_LOCK_STALE_THRESHOLD` (default: 120s for compact, 300s for issue). When lock age exceeds the threshold, force-remove and retry once.

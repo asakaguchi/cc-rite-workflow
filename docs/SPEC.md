@@ -1204,7 +1204,7 @@ Pre-validation script called before every `/rite:*` command execution. Detects b
 
 **Behavior:**
 
-1. Reads `.rite-compact-state` (if file doesn't exist, allows execution)
+1. Reads the per-session compact-state (`.rite/sessions/{session_id}.compact-state`, falling back to the legacy shared `.rite-compact-state` only when the session id is unresolvable; if the file doesn't exist, allows execution)
 2. If `compact_state` is `normal` or `resuming`, allows execution
 3. If the command is `/rite:resume`, always allows execution
 4. All other commands are blocked (exit 1)
@@ -1228,14 +1228,14 @@ Registered as a PostCompact hook. After a compact event, restores workflow conte
 
 **Behavior:**
 
-1. Reads `.rite-compact-state` and the per-session flow state file under the resolved state root (delegates resolution to `state-path-resolve.sh`; see [Multi-Session State Management](#multi-session-state-management))
-2. If no flow state exists, cleans `.rite-compact-state` and exits 0 (self-healing for orphaned compact markers)
+1. Reads the per-session compact-state (`.rite/sessions/{session_id}.compact-state`, derived from the resolved per-session flow-state path) and the per-session flow state file under the resolved state root (delegates resolution to `state-path-resolve.sh`; see [Multi-Session State Management](#multi-session-state-management))
+2. If no flow state exists, cleans the per-session compact-state and exits 0 (self-healing for orphaned compact markers)
 3. Otherwise, emits a recovery block to stdout containing Issue number, phase, and next-action hints so the orchestrator can resume from the compact boundary
 4. Double-execution is guarded via `_RITE_HOOK_RUNNING_POSTCOMPACT` (hooks.json + legacy `settings.local.json` migration safety)
 
 **Self-Healing Mechanism:**
 
-If the workflow has ended but `.rite-compact-state` remains (e.g., due to crash), the hook cleans it up and exits silently so that a fresh session is not blocked.
+If the workflow has ended but a per-session compact-state remains (e.g., due to crash), the hook cleans it up and exits silently so that a fresh session is not blocked. `session-start.sh` additionally reaps the legacy shared `.rite-compact-state` as a migration path for pre-per-session residue.
 
 ### Pre-Tool Bash Guard (`pre-tool-bash-guard.sh`)
 
@@ -1415,7 +1415,7 @@ A system that performs unified pre-validation before every `/rite:*` command exe
 **How It Works:**
 
 - Each command calls `preflight-check.sh` at its start
-- Compact state is managed via the `.rite-compact-state` file
+- Compact state is managed per-session via `.rite/sessions/{session_id}.compact-state` (legacy shared `.rite-compact-state` retained for migration)
 - In `blocked` state, all commands except `/rite:resume` are blocked
 - Normal state is restored via `/clear` → `/rite:resume`
 
@@ -1514,7 +1514,7 @@ In addition to Issue comment backups, work memory is maintained on the local fil
 | Local work memory (SoT) | Source of truth | `.rite-work-memory/issue-{n}.md` |
 | Issue comment (backup) | Cross-session backup | GitHub Issue comment |
 | Flow state | Workflow control | `.rite/sessions/{session_id}.flow-state` (per-session; see [Multi-Session State Management](#multi-session-state-management)) |
-| Compact state | Post-compact state management | `.rite-compact-state` |
+| Compact state | Post-compact state management | `.rite/sessions/{session_id}.compact-state` (per-session; legacy shared `.rite-compact-state` retained for migration) |
 
 **Local Work Memory Features:**
 
@@ -1553,7 +1553,7 @@ A test framework for ensuring Hook script quality. Located in `plugins/rite/hook
 | Script | Test Content |
 |--------|-------------|
 | `preflight-check.sh` | Command blocking by compact state |
-| `post-compact.sh` | Recovery context emission, `.rite-compact-state` self-healing |
+| `post-compact.sh` | Recovery context emission, per-session compact-state self-healing |
 | `pre-compact.sh` | State capture before compact |
 | `pre-tool-bash-guard.sh` | Dangerous pattern detection, heredoc safety |
 | `post-tool-wm-sync.sh` | Work memory auto-recovery after Bash tool calls |

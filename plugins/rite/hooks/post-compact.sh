@@ -25,7 +25,6 @@ fi
 # Resolve state root (git root or CWD)
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
-COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
 # Resolve the active flow-state file: per-session for schema_version=2 with a
 # valid SID, otherwise legacy. Stderr is captured via the canonical
 # _mktemp-stderr-guard.sh helper (see session-start.sh for the same pattern)
@@ -64,6 +63,16 @@ if [ "$_resolve_failed" -eq 1 ]; then
   FLOW_STATE=""
 fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
+
+# Derive the per-session compact-state path from the resolved flow-state path
+# (Issue #1371): must mirror pre-compact.sh so the snapshot written by PreCompact
+# is the one consumed and normalized here. Falls back to the legacy shared path
+# only when the session id is unresolvable.
+if [ -n "$FLOW_STATE" ]; then
+  COMPACT_STATE="${FLOW_STATE%.flow-state}.compact-state"
+else
+  COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
+fi
 LOCKDIR="$COMPACT_STATE.lockdir"
 
 # --- Cleanup helper ---

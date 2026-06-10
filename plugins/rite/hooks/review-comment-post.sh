@@ -173,7 +173,8 @@ awk -v ts="$ISO_TIMESTAMP" -v sentinel="$SENTINEL" '
         # 直接埋め込むと `&` (マッチ全体に展開) / `\` (エスケープ) が metacharacter として
         # 解釈され置換結果が壊れる。index/substr は needle / replacement とも純リテラル扱い。
         # needle は SENTINEL 変数を -v で受け取る (値は backslash を含まないため -v の
-        # escape 解釈は安全)。post-condition 側の awk は regex literal のため別管理。
+        # escape 解釈は安全)。post-condition (a) 側の awk も同じ -v sentinel +
+        # index() 検査で統一されている (参照経路の対称性)。
         needle = "\"" sentinel "\""
         repl = "\"" ts "\""
         line = lines[i]
@@ -196,16 +197,20 @@ if [ "$awk_rc" -ne 0 ]; then
 fi
 
 # Post-condition (a): Raw JSON section 内に sentinel が残留していないこと。
-remaining_in_raw_json=$(awk '
+# needle は置換側 awk と同じく SENTINEL 変数を -v で受け取り index() でリテラル検査する
+# (置換側と検証側の sentinel 参照を変数経由に統一 — 片側だけ literal だと SENTINEL 値の
+# 変更時に検証側が旧 literal を検索して空振り pass する silent drift の余地が生じる)。
+remaining_in_raw_json=$(awk -v sentinel="$SENTINEL" '
   { lines[NR] = $0 }
   /^### 📄 Raw JSON/ { last_heading = NR }
   END {
     in_fence = 0
+    needle = "\"" sentinel "\""
     for (i = 1; i <= NR; i++) {
       if (i == last_heading) { past = 1; continue }
       if (past && lines[i] ~ /^```json$/) { in_fence = 1; continue }
       if (past && in_fence && lines[i] ~ /^```$/) { in_fence = 0; continue }
-      if (in_fence && lines[i] ~ /"__RITE_TS_PLACEHOLDER_7f3a9b2c__"/) { print lines[i] }
+      if (in_fence && index(lines[i], needle) > 0) { print lines[i] }
     }
   }
 ' "$tmpfile_patched")

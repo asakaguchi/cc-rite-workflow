@@ -459,7 +459,7 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 | `verification.*` | `run_tests_before_pr`, `acceptance_criteria_check` |
 | `tdd.*` | TDD Light mode (`off` / `light`) |
 | `parallel.*`, `team.*` | Parallel implementation and Sprint team execution |
-| `multi_session.*` | Per-session Git worktree isolation — `enabled` (opt-in, default `false`), `worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are not merged. See [docs/designs/multi-session-worktree.md](./designs/multi-session-worktree.md) |
+| `multi_session.*` | Per-session Git worktree isolation — `enabled` (default `true` since #1391; set `false` to opt out), `worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are not merged. See [docs/designs/multi-session-worktree.md](./designs/multi-session-worktree.md) |
 | `iteration.*` | GitHub Projects Iteration field integration |
 | `safety.*` | Fail-closed thresholds (`max_implementation_rounds`, `time_budget_minutes`, etc.) |
 | `pr_review.post_comment` | PR review output destination (#443) |
@@ -1480,7 +1480,7 @@ The Issue series that delivered this feature (#672 epic with children #678 / #67
 
 #### Worktree Mode (session worktree isolation)
 
-The per-session flow-state structure above isolates the **state** layer; **Worktree Mode** (opt-in via `multi_session.enabled: true`) additionally isolates the **working-tree / current-branch** layer so that multiple sessions can run *different* Issues in the same repository without their `git switch` operations destroying each other's working tree. When `multi_session.enabled: false` (default) none of the paths below activate and behavior is byte-identical to single-session. Full design rationale + Decision Log: [`docs/designs/multi-session-worktree.md`](designs/multi-session-worktree.md) (Epic #1360).
+The per-session flow-state structure above isolates the **state** layer; **Worktree Mode** (`multi_session.enabled: true`, the default since #1391) additionally isolates the **working-tree / current-branch** layer so that multiple sessions can run *different* Issues in the same repository without their `git switch` operations destroying each other's working tree. When `multi_session.enabled: false` (explicit opt-out, or a legacy config that omits the `multi_session` block) none of the paths below activate and behavior is byte-identical to single-session. Full design rationale + Decision Log: [`docs/designs/multi-session-worktree.md`](designs/multi-session-worktree.md) (Epic #1360, default-on flip #1391).
 
 **Session worktree lifecycle:**
 
@@ -1501,7 +1501,7 @@ The session worktree is one of **four non-overlapping worktree namespaces** (`.r
 
 **Crash recovery / `/rite:resume`:** After a crash a new session starts at the repository root. `/rite:resume` re-enters the worktree *before* any branch-dependent cross-check (flow-state `worktree` → else issue-number → path derivation), and reconstructs a missing worktree from the branch (local → `git worktree add`; remote-only → `git fetch` + `--track -b`; nowhere → AskUserQuestion). The `worktree` flow-state field is a **same-session hint only** — the canonical session↔worktree correspondence is the issue-number → path derivation, because `session_id` changes on crash (see the schema table's `worktree` row above).
 
-**Configuration:** `multi_session.enabled` (opt-in, default `false`) and `multi_session.worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are orthogonal and intentionally not merged. `.gitignore` must include `.rite/worktrees/` (added by `/rite:init`; `gitignore-health-check.sh` emits a non-blocking warning if it is missing while `multi_session.enabled: true`). Disk cost: each session worktree is a full working-tree clone, so build artifacts (`node_modules`, etc.) may need rebuilding per worktree. See [`docs/CONFIGURATION.md` → multi_session](CONFIGURATION.md#multi_session).
+**Configuration:** `multi_session.enabled` (default `true` since #1391; set `false` to opt out — a legacy config that omits the block also falls back to `false`) and `multi_session.worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are orthogonal and intentionally not merged. `.gitignore` must include `.rite/worktrees/` (added by `/rite:init`; `gitignore-health-check.sh` emits a non-blocking warning if it is missing while `multi_session.enabled: true`). Disk cost: each session worktree is a full working-tree clone, so build artifacts (`node_modules`, etc.) may need rebuilding per worktree. See [`docs/CONFIGURATION.md` → multi_session](CONFIGURATION.md#multi_session).
 
 ### Local Work Memory + Compact Resilience
 

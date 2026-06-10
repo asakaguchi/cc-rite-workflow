@@ -49,7 +49,7 @@ Claude Code 組み込みツール `EnterWorktree(path)` でセッションの作
 - `EnterWorktree(path)`: **手動 `git worktree add` で作成済み**の worktree に入場できる（`git worktree list` 登録済みが条件）。
   `name` 指定は `.claude/worktrees/` 配下に origin/<デフォルトブランチ> 起点で新規作成され、branch 命名・base ref（rite は `origin/develop`）を制御できないため**使わない**。
 - `ExitWorktree(action)`: 元のディレクトリへ戻る。**path 入場した worktree は `remove` でも削除されない** → 常に `keep` で戻り、main checkout 側から `git worktree remove` する。
-- EnterWorktree のツール側ガード「ユーザーまたはプロジェクト指示で明示された場合のみ」は、`rite-config.yml` の `multi_session.enabled: true`（ユーザーの明示的 opt-in）+ コマンド定義内の明示指示で満たす。
+- EnterWorktree のツール側ガード「ユーザーまたはプロジェクト指示で明示された場合のみ」は、`rite-config.yml` の `multi_session.enabled: true`（リポジトリにコミットされたプロジェクト指示。#1391 でデフォルト ON 化したが、値がテンプレートのデフォルト由来かユーザーの明示編集由来かに依らずプロジェクト指示として成立する）+ コマンド定義内の明示指示で満たす。pr:open は marker 経由で `enabled: true` を確認した分岐内でのみ EnterWorktree を呼ぶため、ガードの根拠は default off 時と変わらない。
 - セッションのクラッシュ/再起動後、新セッションはリポジトリルートで開始される → `/rite:resume` が再入場経路を持つ（§5）。
 
 ### Git の構造的制約（設計が守るルール）
@@ -106,9 +106,11 @@ common=$(git rev-parse --path-format=absolute --git-common-dir)
 
 ```yaml
 multi_session:
-  enabled: false                     # デフォルト false = 挙動変化ゼロ
+  enabled: true                      # デフォルト true（#1391）。false で従来の単一セッション挙動
   worktree_base: ".rite/worktrees"   # セッション worktree 配置（issue-{N} サブディレクトリ）
 ```
+
+> **デフォルト ON 化（#1391）**: 新規 `/rite:init` 生成 config は `enabled: true` を含む。`multi_session:` ブロックを持たない旧 config では pr:open の parse fallback が `false` となり、既存プロジェクトの挙動は不変（後方互換）。`false` を明示設定すれば従来どおり挙動変化ゼロ。
 
 - `parallel:` セクションと**統合しない**: `parallel.mode/worktree_base` は「1 Issue 内の並列実装サブエージェント」の軸、
   `multi_session` は「セッション全体のライフサイクル分離」の軸で直交する。
@@ -261,7 +263,7 @@ teammate の git 禁止・team lead の `git -C` 集約は無変更。
 | D-6 | 一過性アーティファクトの配置 | `review-results` / `fix-cycle-state` / `tmp` は**セッション cwd 相対のまま** | worktree 削除と同時に消えセッション間混線を構造的に防ぐ。共有 root へ寄せると pr 番号 + timestamp の衝突管理が新たに必要になる |
 | D-7 | claim の heartbeat | **新機構を作らず flow-state `updated_at` を再利用** | `flow-state.sh set` が全 phase 遷移で更新する既存挙動がそのまま heartbeat。session-ownership.sh の 2h 閾値と判定関数も再利用 |
 | D-8 | スコープ | コア lifecycle + Wiki 完全対応 + **sprint 系は claim スキップのみ** | 複数セッションでの sprint 分担実行（協調スケジューリング）はスコープ過大。将来 Issue に切り出す |
-| D-9 | rite-config.yml top-level `schema_version` bump（2→3） | **省略**（S2 で 2 のまま据え置き） | `multi_session` は additive かつ `enabled: false` default で挙動変化ゼロ → migration 不要。bump すると session-start.sh の upgrade prompt が全既存ユーザーに発火するが、S2 時点では pr:open/cleanup 統合（S6/S7）が develop 未マージで機能が半完成。半統合機能を全ユーザーに告知する弊害が告知価値を上回るため bump しない。`flow-state` の `worktree` field も conditional-write で非 worktree セッションの state を byte 不変に保つため schema 系のいかなる bump も不要（Issue #1362 §4.5 の「省略可」判断を確定）|
+| D-9 | rite-config.yml top-level `schema_version` bump（2→3） | **省略**（S2 で 2 のまま据え置き） | `multi_session` は additive で migration 不要（S2 時点では `enabled: false` default、#1391 でデフォルト ON 化後も `multi_session:` ブロック欠落時の parse fallback は `false` のままで既存 config の挙動は不変）。bump すると session-start.sh の upgrade prompt が全既存ユーザーに発火するが、S2 時点では pr:open/cleanup 統合（S6/S7）が develop 未マージで機能が半完成。半統合機能を全ユーザーに告知する弊害が告知価値を上回るため bump しない。`flow-state` の `worktree` field も conditional-write で非 worktree セッションの state を byte 不変に保つため schema 系のいかなる bump も不要（Issue #1362 §4.5 の「省略可」判断を確定）。#1391 のデフォルト ON 化はテンプレート config 経由の配布であり schema 変更を伴わないため、本判断は維持される |
 
 <!-- Section ID: SPEC-AC -->
 ## Acceptance Criteria

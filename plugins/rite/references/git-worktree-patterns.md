@@ -326,8 +326,8 @@ parallel:
 
 ## Multi-Session Patterns
 
-These patterns apply to the **session worktree** layer introduced by `multi_session.enabled: true`
-(see [docs/designs/multi-session-worktree.md](../../../docs/designs/multi-session-worktree.md)).
+These patterns apply to the **session worktree** layer governed by `multi_session.enabled`
+(default `true` since #1391; see [docs/designs/multi-session-worktree.md](../../../docs/designs/multi-session-worktree.md)).
 This is a **separate axis** from the `parallel.mode: "worktree"` patterns above:
 `parallel` is per-Issue sub-agent fan-out within one session; `multi_session` is
 session-wide lifecycle isolation. `/rite:pr:open` creates a session worktree and

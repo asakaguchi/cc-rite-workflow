@@ -55,7 +55,7 @@ rite workflow 独自の主張 (Contract Rigour / Output Contract / Naming is doc
 | **test 契約・semantic アンカーとしてのファイル名参照**（`xxx.test.sh` 等） | **維持** | 番号ではない。drift-check や test 契約のアンカーとして機能し、rename 追従可能 |
 | **commit message / PR description 内の番号** | **対象外**（許可） | git/PR メタデータは番号の正しい受け皿。永続成果物（コード・ドキュメント・Wiki）ではない |
 
-この分類が全 Sub-Issue 共通の契約となる。検出機構（lint / reviewer / parity test）も本ルールに従い、「説明的参照=検出対象」「TODO/FIXME 追跡番号・ファイル名アンカー=検出除外」を区別する。
+この分類が全 Sub-Issue 共通の契約となる。検出機構（lint / reviewer）は本ルールに**従うべきであり**、「説明的参照=検出対象」「TODO/FIXME 追跡番号・ファイル名アンカー=検出除外」を区別することを目標とする（検出側の regex 同期・誤検出除外の具体実装は検出機械化タスクの責務であり、本 SoT 改訂時点では §C Detection Heuristics の正規表現は未同期）。なお parity test は禁止句リスト（SoT）と §C Detection Heuristics の forward 包含（SoT ⊆ Heuristics）を検証するリスト整合テストであり、コメントの検出対象/除外そのものを区別する機構ではない。
 
 ---
 

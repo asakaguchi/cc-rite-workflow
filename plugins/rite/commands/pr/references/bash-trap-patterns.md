@@ -234,7 +234,8 @@ esac
 ### 参照実装
 
 canonical 確立先は `plugins/rite/commands/wiki/lint.md` (ステップ 6.0 / 6.2 / 8.2 / 8.3 の dispatch
-構造 case 文)。**Scope**: dispatch 構造の case 文 (placeholder substitute validation gate /
+構造 case 文。うち 6.0 / 6.2 の case 文実体は `hooks/scripts/wiki-lint-skipped-refs.sh` /
+`wiki-lint-source-refs.sh` へ移設済みで helper 内にある — lint.md 側の注記と同一の委譲実態)。**Scope**: dispatch 構造の case 文 (placeholder substitute validation gate /
 strategy dispatch / rc dispatch) を対象とし、他 case arm 内にネストした dispatch case も含む。
 while loop の inner case (per-iteration 状態判定) は scope 外。新規 case 追加時は本 pattern を
 採用すること。ステップ番号 + case label の semantic anchor 形式で参照する (line 番号参照は drift する

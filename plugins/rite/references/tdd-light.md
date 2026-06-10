@@ -138,6 +138,8 @@ trap 'rm -f "$output_file"' EXIT
 
 Framework detection is based on project files and `commands.test` configuration.
 
+> **Test-name discipline (What, not How)**: skeleton のテスト名/タイトルは acceptance criterion の文言（既に What 文）をそのまま使う設計である。skeleton を実装で肉付けする際も、テスト名を実装手段（使用ライブラリ・内部構造・ストア）を語る名前に書き換えないこと。テスト名が仕様文として読める限り、テストはリファクタを跨いで真実であり続ける（test reviewer の **Spec-Readable Test Names** 基準と対応）。
+
 ### Jest / Vitest
 
 ```typescript

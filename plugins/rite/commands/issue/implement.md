@@ -159,6 +159,7 @@ For each criterion (up to `tdd.max_skeletons`):
 2. Sanitize summary per [Criterion Summary Sanitization](../../references/tdd-light.md#criterion-summary-sanitization)
 3. Check per-criterion idempotency (tag exists in test files → skip)
 4. Generate skeleton using framework-appropriate template (see [Skeleton Templates](../../references/tdd-light.md#skeleton-templates))
+   - テスト名は criterion の What 文言を維持する。実装で肉付けする際も実装手段を語る名前に書き換えない — [tdd-light.md の test-name discipline note](../../references/tdd-light.md#skeleton-templates) を参照。
 
 If framework cannot be determined, skip generation and record skip stub.
 

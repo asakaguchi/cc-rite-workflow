@@ -54,7 +54,7 @@ fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 
 # Derive the per-session compact-state path from the resolved flow-state path
-#: .rite/sessions/{sid}.flow-state → .rite/sessions/{sid}.compact-state.
+# .rite/sessions/{sid}.flow-state → .rite/sessions/{sid}.compact-state.
 # This makes each session's compact snapshot independent, removing the
 # last-writer-wins race on the previously shared single file. Falls back to the
 # legacy shared path only when the session id is unresolvable, preserving

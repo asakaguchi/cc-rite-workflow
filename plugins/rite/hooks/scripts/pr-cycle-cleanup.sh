@@ -36,8 +36,7 @@
 # Variation history:
 #   - `cycle{N}`: orchestrator-created (`/rite:pr:review` cycle worktrees)
 #   - `test` / `experiment` / `mutation` / `verify` / `check` / `sandbox`:
-#     reviewer-subagent verification experiments. Observed in Issue #995
-#    .
+#     reviewer-subagent verification experiments (observed in practice).
 #     The reviewer's READ-ONLY contract is enforced primarily by
 #     `pre-tool-bash-guard.sh` Pattern 4 (PreToolUse hook block), and these
 #     names should normally never be created. This regex serves as the

@@ -5,7 +5,7 @@
 # caller can append a Sub-Issues section.
 #
 # Extracted from `commands/issue/create.md` ステップ 5.3+5.4+5.5 Step 1
-#. The old inline block expanded a
+# The old inline block expanded a
 # `{REPEAT_FOR_EACH_SUB_ISSUE}` placeholder and embedded each body via heredoc;
 # both were heredoc/placeholder malform sources. This helper takes a spec JSON
 # whose `body_file` fields point at raw files the caller wrote with the Write

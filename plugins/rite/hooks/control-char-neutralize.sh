@@ -74,7 +74,7 @@ neutralize_ctrl() {
 #     unreachable here (the stdin-filter neutralize_ctrl still covers it)
 #   - byte-wise under LC_ALL=C: UTF-8 continuation bytes overlapping 0x80-0x9f
 #     (e.g. most Japanese characters) are detected as control bytes — accepted
-#    : all call sites are ASCII-identifier / ASCII-title
+#     設計判断: all call sites are ASCII-identifier / ASCII-title
 #     fields. 日本語 TITLE が必要になったら UTF-8 セーフモードを別途追加する
 #   - implementation reuses the exact neutralize_ctrl default tr range and
 #     compares byte counts before/after deletion. grep は使わない — grep 実装に

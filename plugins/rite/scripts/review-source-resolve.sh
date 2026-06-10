@@ -10,7 +10,7 @@
 #   fallback  : none usable → caller routes to interactive fallback (ステップ 1.2.0.1)
 #
 # Extracted from `commands/pr/fix.md` ステップ 1.2.0 Selection logic block
-#. The old ~550-line inline bash block required
+# The old ~550-line inline bash block required
 # the LLM to literal-substitute pr_number / review_file_path / Priority 1
 # decision+receipt directly into the markdown fence; those substitution points
 # are now this helper's CLI arguments. The Priority chain logic, observability

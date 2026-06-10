@@ -14,7 +14,7 @@ Initial setup wizard for rite workflow
 |----------|-------------|
 | `--upgrade` | Upgrade existing rite-config.yml to the latest schema version |
 
-When `--upgrade` is specified, skip to [Phase 4.1.3 (Upgrade)](upgrade-existing-configuration). Otherwise, run the following phases in order.
+When `--upgrade` is specified, skip to [Phase 4.1.3 (Upgrade)](#413-upgrade-existing-configuration). Otherwise, run the following phases in order.
 
 ## Phase 1: Environment Check
 

@@ -566,7 +566,7 @@ YAML パーサーの仕様により `count_ratio_threshold: "0.7"` (quoted strin
 # `commands/pr/references/internal-consistency.md` Cross-Reference セクション「drift 検出の invariant
 # (3 ファイル等価性)」に集約されている。drift 検出 lint は
 # `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` として実装済み
-#。
+# drift-check 系統 1; /rite:lint Phase 3.7 から呼び出される。
 # Do not duplicate the invariant rules here — update internal-consistency.md instead.
 doc_file_patterns = [
  **/*.md (excluding commands/**/*.md, skills/**/*.md, agents/**/*.md),
@@ -3101,7 +3101,7 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
 # ステップ 6.1.a: ローカルファイル保存 (JSON、非ブロッキング)。
 # 旧 ~300 行の inline bash (RITE_JSON_EOF heredoc + jq timestamp injection + 多段 jq validation +
 # 同秒衝突回避 + atomic mv + signal-specific trap) は hooks/review-result-save.sh に委譲済
-#。helper は以下の契約を verbatim 保持する:
+# helper は以下の契約を verbatim 保持する:
 #   - D-04 非ブロッキング: 全失敗経路で exit 0 (ステップ 6 全体を fail させない)
 #   - 14 種 [CONTEXT] LOCAL_SAVE_FAILED=1; reason=... 語彙 (ステップ 6.1.a Non-blocking contract と一致)
 #   - 同秒衝突の `~$RANDOM` suffix + 再衝突検出 (collision_resolution_exhausted) + LOCAL_SAVE_COLLISION emit
@@ -3502,7 +3502,7 @@ The review content includes: PR number, reviewer types, finding categories, seve
 ```bash
 # {plugin_root} はリテラル値で埋め込む
 # ⚠️ wiki-ingest-trigger.sh は --content-file に $PWD 配下 または /tmp/rite-* prefix のみを受容する
-#。mktemp デフォルトの /tmp/tmp.* では trigger が exit 1 で silent fail する
+# mktemp デフォルトの /tmp/tmp.* では trigger が exit 1 で silent fail する
 tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX)
 trigger_stderr=$(mktemp /tmp/rite-wiki-trigger-err-XXXXXX) || trigger_stderr=/dev/null
 # rm -f /dev/null は EPERM (exit 1) を返すため trap で条件分岐する (F-07 対応)

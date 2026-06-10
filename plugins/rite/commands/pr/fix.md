@@ -674,7 +674,7 @@ else
       # Issue #1016: schema 1.1.0 後方互換 normalization (scope default mapping + invariant #5 auto-correct)。
       # Issue #1018 (M2): auto_demote_low 適用 (LOW × current-pr → nit-noted)。
       # 本 step は Priority 3 (pr_comment, raw_json string) 用。Priority 0/2 (file-based) は
-      # scripts/review-findings-maps.sh へ委譲済 で同 logic の鏡像。
+      # scripts/review-findings-maps.sh へ委譲済で同 logic の鏡像。
       # jq filter / normalization 動作を変更する際は helper と本 block の両方を同期すること。
       #
       # 動作:
@@ -2427,7 +2427,7 @@ if ! jq -n --rawfile body "$tmpfile" --argjson in_reply_to "$comment_id" \
   -X POST \
   --input -; then
   echo "ERROR: reply 投稿 (jq | gh api POST) に失敗しました" >&2
-  echo "  対処: gh auth status / network 接続 / rate limit / PR #{pr_number} の存在 を確認してください" >&2
+  echo "  対処: gh auth status / network 接続 / rate limit / PR #{pr_number} の存在を確認してください" >&2
   echo "  影響: レビュアーへの返信が PR に残らないまま fix loop が完了扱いになる silent regression のリスク" >&2
   # Rationale: bash の `exit 1` は Claude のフロー制御にならず、ステップ 5.1 が REPLY_POST_FAILED を
   # 検出しないと silent に [fix:replied-only] / [fix:pushed] と判定される。retained flag を
@@ -3019,7 +3019,7 @@ fi
 # 投稿失敗が silent に発生すると、レビュアーには通知されないまま fix loop が完了と判定される
 if ! gh pr comment {pr_number} --body-file "$tmpfile"; then
   echo "ERROR: gh pr comment による報告投稿に失敗しました" >&2
-  echo "  対処: gh auth status / network 接続 / PR #{pr_number} の存在 を確認してください" >&2
+  echo "  対処: gh auth status / network 接続 / PR #{pr_number} の存在を確認してください" >&2
   echo "  影響: 対応完了報告コメントが PR に残らないまま fix loop が完了扱いになる silent regression のリスク" >&2
   # Rationale: ステップ 5.1 で REPORT_POST_FAILED=1 を検出し [fix:error] へ昇格させる。
   # bash の `exit 1` だけでは Claude のフロー制御にならないため、retained flag を併用する。
@@ -3561,7 +3561,7 @@ The fix content includes: PR number, findings addressed, fix strategies used, an
 ```bash
 # {plugin_root} はリテラル値で埋め込む
 # ⚠️ wiki-ingest-trigger.sh は --content-file に $PWD 配下 または /tmp/rite-* prefix のみを受容する
-#。mktemp デフォルトの /tmp/tmp.* では trigger が exit 1 で silent fail する
+# mktemp デフォルトの /tmp/tmp.* では trigger が exit 1 で silent fail する
 tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX)
 trigger_stderr=$(mktemp /tmp/rite-wiki-trigger-err-XXXXXX) || trigger_stderr=/dev/null
 # rm -f /dev/null は EPERM (exit 1) を返すため trap で条件分岐する (F-07 対応)

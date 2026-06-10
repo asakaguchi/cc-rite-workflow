@@ -135,6 +135,9 @@ Display the following list:
   /rite:resume          中断した作業を再開
 
 💡 Tips: Context limit reached で中断した場合は /clear → /rite:resume で再開できます
+💡 Tips: 複数セッションで別 Issue を並行する場合は rite-config.yml の
+         multi_session.enabled: true でセッション別 worktree
+         (.rite/worktrees/issue-{N}) に分離できます（opt-in・既定 off）
 ```
 
 ---
@@ -159,6 +162,13 @@ Based on the state confirmed in Phase 1, suggest the next action.
   3. 完了したら /rite:lint で品質チェック
   4. /rite:pr:create でドラフト PR を作成
 ```
+
+> **multi-session 時の注意**: `multi_session.enabled: true` の場合、この作業は
+> セッション worktree（`.rite/worktrees/issue-{N}`）内で進行しています。中断後は
+> `/rite:resume` がその worktree へ自動で再入場します（消失していればブランチから
+> 再構築）。main checkout のカレントブランチは base（`branch.base`）のままにしておく
+> こと — rite は main checkout のブランチを切り替えません。詳細は
+> `docs/designs/multi-session-worktree.md` 参照。
 
 Retrieve and display the Issue details:
 

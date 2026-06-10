@@ -338,6 +338,67 @@ Common Issues and Solutions:
 7. Unable to update Issue status
    Solution: Verify Projects integration in rite-config.yml
    Check: projects.enabled and projects.project_number fields
+
+8. Running multiple Claude Code sessions on the same repository
+   Solution: Enable multi_session in rite-config.yml (opt-in, default off)
+   See the "Multiple sessions at once" FAQ below for the operating rules
+```
+
+---
+
+## Phase 4.5: Multiple Sessions at Once (multi_session)
+
+Display this FAQ when the user asks about running several Claude Code sessions
+on the same repository in parallel (e.g. one terminal per Issue):
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              FAQ: Multiple Sessions at Once                  │
+└─────────────────────────────────────────────────────────────┘
+
+Q: Can I work on two different Issues in two terminals at the same time?
+
+A: Yes — enable Worktree Mode (opt-in). In rite-config.yml:
+
+     multi_session:
+       enabled: true                   # default false (zero change when off)
+       worktree_base: ".rite/worktrees" # session worktrees: issue-{N} subdirs
+
+   With it enabled, /rite:pr:open N creates a per-session Git worktree at
+   .rite/worktrees/issue-{N} and enters it via Claude Code's EnterWorktree
+   tool, so each session keeps its own working tree and current branch.
+   /rite:pr:cleanup exits and removes the worktree after merge.
+
+Operating rules (important):
+
+  • Start every session from the repository ROOT (not inside a worktree).
+    /rite:pr:open does the worktree creation + entry for you.
+
+  • Keep the main checkout on your base branch ({branch.base}, e.g. develop).
+    rite never moves the main checkout's branch — that is a human-only action,
+    and /rite:pr:cleanup's "git pull" of the base only runs when the main
+    checkout is actually on the base branch (otherwise it warns and skips).
+
+  • Disk cost: each session worktree is a FULL working-tree clone. Build
+    environments (node_modules, venv, build caches, etc.) are NOT shared and
+    may need rebuilding inside each worktree.
+
+  • Same Issue, twice: an Issue claim (.rite/state/issue-claims/) prevents two
+    sessions from starting the SAME Issue. The second session is asked what to
+    do (it never silently steals the claim). Claims are always on, even when
+    multi_session is off.
+
+  • After a crash / restart: just run /rite:resume — it re-enters the session
+    worktree (or rebuilds it from the branch if it was removed) and continues.
+
+  • .gitignore must contain .rite/worktrees/ (/rite:init adds it; /rite:lint
+    warns if it is missing while multi_session is enabled).
+
+Note: multi_session is a SEPARATE axis from parallel.mode: "worktree".
+  - parallel  → multiple sub-agents within ONE session (.worktrees/{issue}/{task})
+  - multi_session → whole-session isolation across terminals (.rite/worktrees/issue-{N})
+
+Full design: docs/designs/multi-session-worktree.md
 ```
 
 ---

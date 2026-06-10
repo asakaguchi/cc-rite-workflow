@@ -252,6 +252,19 @@ For each Issue, check for dependencies:
 
 Build a simple dependency graph. If Issue A depends on Issue B, ensure B appears before A in the execution order. If circular dependencies exist, warn and use the priority-based order.
 
+### 2.3.5 Claim フィルタ（他セッション live claim の除外）
+
+multi_session 環境で他セッションが既に着手中の Issue を二重実行しないよう、各 Issue を `issue-claim.sh check` で確認し、`other`（他の live セッションが claim 中）のものを実行対象から除外する。`stale` の Issue は除外しない（pr:open 側の claim 取得 + AskUserQuestion に委ねる）。claim が 1 件もなければ全 Issue が対象のまま = 現行と完全一致:
+
+```bash
+for n in {sorted_issue_numbers}; do
+  st=$(bash {plugin_root}/hooks/issue-claim.sh check --issue "$n" 2>/dev/null) || st=""
+  [ "$st" = "other" ] && echo "[CONTEXT] SPRINT_SKIP_CLAIM=$n"
+done
+```
+
+`[CONTEXT] SPRINT_SKIP_CLAIM=` marker に挙がった Issue を実行対象から除外し、2.4 実行計画表に「スキップ（他セッション作業中）」行として**明示する（無音にしない）**。
+
 ### 2.4 Display Execution Plan
 
 ```
@@ -264,6 +277,13 @@ Build a simple dependency graph. If Issue A depends on Issue B, ensure B appears
 | 3 | #{number} {title} | {priority} | {complexity} | - |
 
 合計: {count} 件の Issue を実行予定
+```
+
+`SPRINT_SKIP_CLAIM` で除外した Issue がある場合は、計画表の下にスキップ一覧を付記する:
+
+```
+スキップ（他セッション作業中）:
+- #{number} {title}
 ```
 
 ### 2.5 User Confirmation
@@ -324,6 +344,12 @@ Priority: {priority} | Complexity: {complexity}
 ```
 
 #### 3.1.2 Execute Issue
+
+> **Claim 再チェック（TOCTOU 窓対策）**: Phase 2.3.5 のフィルタから本ループの実行までに別セッションが claim する窓があるため、pr:open invoke の直前に再確認する。`other`（他 live セッションが claim 中）なら本 Issue を `skipped`（理由: 他セッション作業中）として Phase 3.1.3 に記録し、次の Issue へ進む。最終ガードは pr:open Step 2.2-W の branch 衝突検出:
+> ```bash
+> st=$(bash {plugin_root}/hooks/issue-claim.sh check --issue {issue_number} 2>/dev/null) || st=""
+> [ "$st" = "other" ] && echo "[CONTEXT] SPRINT_SKIP_CLAIM_TOCTOU={issue_number}"
+> ```
 
 Invoke the new per-Issue flow as 3 sequential Skill tool calls:
 

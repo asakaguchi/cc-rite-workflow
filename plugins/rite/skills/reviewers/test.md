@@ -47,7 +47,7 @@ This skill is activated when reviewing files matching:
 - [ ] **Error Path Coverage**: Only testing happy paths
 - [ ] **Mock Overuse**: Mocking so much that tests don't verify real behavior
 - [ ] **Spec-Readable Test Names (What, not How)**: テスト名が実装詳細（How）を語っている場合に指摘する。テストは実行可能な仕様であり、テスト名は検証している振る舞い（What）を語るべき。実装手段（使用ストア・内部構造・ライブラリ）に結合した名前は、ストアやライブラリを替えただけで嘘になる（例: `test_uses_redis_cache` → 振る舞いベースの「TTL 内の再リクエストはキャッシュ済み結果を返す」を提案）。判定軸は「この仕様は実装手段を替えても不変か」。本項目は How/What の取り違えのみを対象とし、名前の明瞭さ一般（読みやすさ・命名規約）を扱う Recommendations の **Test Naming** とは責務が異なる
-- [ ] **AC Traceability**: 新規機能のテストがどの Acceptance Criteria の仕様文を検証しているか、テスト名・アサーション・配置から判別できない場合に指摘する。判定はタグの有無に依存せず、テスト名・構造からどの AC に対応するかを読み取れるかを主軸とする。`tdd.mode: light` のプロジェクトでは補助として `{tag_prefix}[{hash}]` タグと criterion の対応も確認する（`tdd.mode: off` のプロジェクトではタグがなくとも名前・構造での判別可否で評価する）
+- [ ] **AC Traceability**: 新規機能のテストがどの Acceptance Criteria の仕様文を検証しているか、テスト名・アサーション・配置から判別できない場合に指摘する。判定はタグの有無に依存せず、テスト名・構造からどの AC に対応するかを読み取れるかを主軸とする。`tdd.mode: light` のプロジェクトでは補助として `{tag_prefix}[{criterion_hash}]` タグと criterion の対応も確認する（`tdd.mode: off` のプロジェクトではタグがなくとも名前・構造での判別可否で評価する）
 
 ### Recommendations
 

@@ -2,8 +2,10 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-06-10T07:55:00+09:00"
+updated: "2026-06-10T18:10:00+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260610T090543Z-pr-1381.md"
   - type: "reviews"
     ref: "raw/reviews/20260609T213816Z-pr-1328.md"
   - type: "reviews"
@@ -1293,6 +1295,10 @@ PR #1304 と同じ self-referential test (`create-md-invocation-symmetry.test.sh
 ### doc / deny message / case 列挙の 3 箇所 literal 重複を実測 verify した 0 findings application (PR #1323 — Issue #1322)
 
 security hook `pre-tool-bash-guard.sh` の (Z) shell-wrapper deny メッセージ是正 PR で、wrapper 一覧 7 種 (`eval` / `bash -c` / `sh -c` / `zsh -c` / `ksh -c` / `dash -c` / `fish -c`) と read-only 代替 3 種 (直接実行 / subshell `( ... )` / `bash <script.sh>`) が doc (`_reviewer-base.md` 新節) / hook deny message / hook case 文の **3 箇所に literal 重複**する構造を prompt-engineer reviewer が実測検証し、完全一致 (伝播漏れなし) を確認して 5 reviewer 全員 0 findings / 1 cycle mergeable。将来 wrapper 追加時の 3 箇所同時更新義務を boundary 推奨事項として注記したが、SoT 化 (共有変数化) は hook が POSIX sh ベースで doc が markdown のため現実的でなく、**literal 重複維持 + レビュー時の 3 箇所突合実測が妥当**と reviewer 自身が結論 (ユーザーも「無視」を選択、Issue 化なし)。test reviewer は新規 message-content assertion (deny + 4 reason token AND) の non-vacuity を worktree-only mutation 2 種 (`BLOCKED_SUBKIND` 代入無効化 / `subshell` 文言改変 → いずれも対象 TC が FAIL) で立証 — PR #1320 の mutation 検証実践の連続再現で、message 層の対称転記 (doc ↔ deny message ↔ case 列挙) でも mutation 検証が assertion の load-bearing 性を確かめる決定打となることを示した。メッセージ/判定分離の設計面は [security guard の deny メッセージ改善は判定ロジック不変の subkind タグ分岐で行う](../patterns/security-guard-message-only-subkind-branching.md) を参照。
+
+### shared-state の identity (path) 変更時は全 consumer (read/write/cleanup) を grep で洗い出す — Issue Target Files の writer-only 列挙を信用しない (PR #1381 — Issue #1371、0 findings の successful preventive application)
+
+`.rite-compact-state` (セッション間共有の単一ファイル) を per-session `.rite/sessions/{sid}.compact-state` へ移行する hardening PR。Issue の Target Files は writer (`pre-compact.sh` / `post-compact.sh`) のみを列挙し、**compact ブロック判定の reader である `preflight-check.sh` を欠いていた**。書き込み先を per-session 化するなら reader も同じ path 導出ルールに追従しないと「pre-compact が per-session に書く → preflight が書かれない旧共有 path を読む → compact 後ブロックが永久に効かない」silent regression になる。着手時に「この state を read / write / cleanup する全 consumer」を grep で洗い出して 5 hooks (pre/post-compact = writer、preflight = reader、session-start / cleanup-work-memory = cleaner) を全件スコープに含め、`COMPACT_STATE="${FLOW_STATE%.flow-state}.compact-state"` (解決不能時のみ legacy fallback) の単一ルールに統一。これは breadth × direction 軸 (PR #1128 breadth / PR #1130 inbound direction) の **resource-consumer 列挙への適用**で、「fix transcription (片方修正の伝播漏れ)」ではなく「scope definition (Issue の宣言スコープが consumer set を undercount)」という上流形態。canonical 対策: state-file / 共有リソースの identity (path / 命名) を変える変更では、Issue の Target Files を信用せず `grep -rn '<resource-literal>'` で read/write/cleanup の全 consumer を着手時に列挙してスコープ確定する (legacy fallback の `else` 分岐や migration reap も consumer として数える)。test reviewer は 5 hooks の実装を旧共有 path へ差し戻す mutation で対応 TC が必ず FAIL することを実機立証 (last-writer-wins 回帰を捕捉する AC-1 二セッション独立 test の non-vacuity)。docs (SPEC ja/en バイリンガル) の対称更新も同 PR 内で完遂、6 reviewer 全員 0 findings / 1 cycle mergeable。
 
 ## 関連ページ
 

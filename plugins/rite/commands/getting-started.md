@@ -341,7 +341,9 @@ Common Issues and Solutions:
 
 8. Running multiple Claude Code sessions on the same repository
    Solution: Enable multi_session in rite-config.yml (opt-in, default off)
-   See the "Multiple sessions at once" FAQ below for the operating rules
+   Ask about running multiple sessions to see the on-demand FAQ with the
+   operating rules (start each session from the repo root; keep the main
+   checkout on the base branch)
 ```
 
 ---

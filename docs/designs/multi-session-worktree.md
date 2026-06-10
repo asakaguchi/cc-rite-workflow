@@ -304,7 +304,7 @@ teammate の git 禁止・team lead の `git -C` 集約は無変更。
 <!-- Section ID: SPEC-E2E -->
 ## E2E 検証手順と結果（S10 / #1370）
 
-> **実施方法**: マルチセッションは 2 つの独立した Claude Code ターミナルの並行起動を要するため、単一の自動エージェントでは完遂できない。以下の手順を人手（坂口さん）が実行し、結果を本節の結果表に記録する。実施前提として `rite-config.yml` の `multi_session.enabled: true` を設定する（検証後に `false` へ戻す手順 5 を含む）。dogfood 有効化（恒久的な `enabled: true`）は本 E2E の結果を踏まえて別途判断する（design D-9）。
+> **実施方法**: マルチセッションは 2 つの独立した Claude Code ターミナルの並行起動を要するため、単一の自動エージェントでは完遂できない。以下の手順を人手（坂口さん）が実行し、結果を本節の結果表に記録する。実施前提として `rite-config.yml` の `multi_session.enabled: true` を設定する（検証後に `false` へ戻す手順 5 を含む）。dogfood 有効化（恒久的な `enabled: true`）は本 E2E の結果を踏まえて別途判断する（本 PR 時点では既定 `false` へ復帰。恒久有効化の決定エントリは Decision Log 未登録 — 必要時に新設する）。
 
 ### 手順
 

@@ -618,9 +618,14 @@ cleanup_temp_repo "$TEST_REPO"
 #        `git worktree remove --force` nor the `rm -rf` fallback can rmdir it
 # When: cleanup runs with TMPDIR pointed at that locked base
 # Then: WARNING "failed to reap orphan mutation worktree" + errors++ -> status=failed,
-#       and the worktree survives. This is the Step 4 analogue of T-13's Step 3 gap:
-#       Step 1/2/3 pin per-item delete failures (T-11/T-12/T-13); Step 4's mutation
-#       reap (#1340) was the missing symmetric case.
+#       mutation_worktrees=0 (nothing reaped), and the worktree directory survives.
+#       Note: `git worktree remove --force` deletes the worktree *contents* before
+#       its final rmdir is blocked by the read-only parent, so what survives is a
+#       contents-removed husk (same mechanism T-11's docblock warns about) — the
+#       assertion checks directory *presence* (`-d`), not intactness. This is the
+#       Step 4 analogue of T-13's Step 3 gap: Step 1/2/3 pin per-item delete
+#       failures (T-11/T-12/T-13); Step 4's mutation reap (#1340) was the missing
+#       symmetric case.
 # Mirrors T-13's dedicated locked base + TMPDIR override so the 0500 chmod never
 # blocks other tests (the script's err-file mktemp uses explicit /tmp paths).
 # -----------------------------------------------------------------------
@@ -645,9 +650,10 @@ else
     # Restore write permission so the survival check and cleanup can proceed.
     chmod 0700 "$LOCKED_BASE"
     if echo "$t16_output" | grep -q 'status=failed' \
+       && echo "$t16_output" | grep -q 'mutation_worktrees=0' \
        && echo "$t16_output" | grep -q 'failed to reap orphan mutation worktree' \
        && [ -d "$LOCKED_BASE/rite-review-mutation-victim" ]; then
-      pass "T-16: read-only 親での mutation worktree reap 失敗が WARNING + status=failed で surface"
+      pass "T-16: read-only 親での mutation worktree reap 失敗が WARNING + status=failed (mutation_worktrees=0) で surface"
     else
       fail "T-16: status=failed と reap WARNING を期待。victim=$([ -d "$LOCKED_BASE/rite-review-mutation-victim" ] && echo present || echo gone). Output: $t16_output"
     fi

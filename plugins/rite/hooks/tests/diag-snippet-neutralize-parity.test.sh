@@ -137,6 +137,10 @@ assert_grep "TC-5: wiki-ingest-commit.sh surface_git_warnings" \
   'grep -iE .\^\(warning\|hint\|error\):. \| neutralize_ctrl --keep-newline'
 
 if ! print_summary "$(basename "$0")" \
-  "診断スニペット emission site を hook に追加するときは control-char-neutralize.sh を source し、head -N の直後に '| neutralize_ctrl --keep-newline' を挿入すること (Issue #1183)"; then
+  "診断スニペット emission site を hook に追加するときは control-char-neutralize.sh を source し、emission site の構造に応じて中和を挿入すること (Issue #1183/#1329): \
+TC-1 (head -N 行指向) は直後に '| neutralize_ctrl --keep-newline'; \
+TC-3 (head -c byte 指向 embed) は '| tr '\\''\\n'\\'' '\\'' '\\'' | neutralize_ctrl --c0-only'; \
+TC-4 (cat full-file 直接 emission) は 'neutralize_ctrl --keep-newline < \"\$file\" >&2' へ置換; \
+TC-5 (log()/surface_git_warnings() 等の関数内 >&2) は静的 sweep で検出不能のため中和適用後に本テストへ個別 pin を追記すること"; then
   exit 1
 fi

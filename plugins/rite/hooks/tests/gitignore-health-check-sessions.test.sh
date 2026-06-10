@@ -57,8 +57,10 @@ run_case "${WIKI_OK}${MS_OFF}" "$GI_WIKI_SESS"
 assert "TC-2 exit 0" "0" "$RUN_RC"
 
 echo "=== TC-3: ms enabled + worktrees ignored + sessions NOT ignored → sessions drift (exit 1) ==="
-# Proves the sessions check is independent of (and fires before) the worktrees check:
-# worktrees is healthy here, yet the missing sessions rule still drifts.
+# Proves the sessions check is INDEPENDENT of the worktrees check: worktrees is healthy
+# here (ignored), yet the missing sessions rule still drifts. This does NOT exercise
+# ordering — both checks could run in either order and worktrees would still pass. The
+# strict "sessions fires before worktrees" ordering is proven separately by TC-6.
 run_case "${WIKI_OK}${MS_ON}" $'.rite/wiki/\n.rite/worktrees/\n'
 assert "TC-3 exit 1" "1" "$RUN_RC"
 case "$RUN_OUT" in
@@ -74,6 +76,19 @@ assert "TC-4 exit 1 (check not gated on wiki.enabled)" "1" "$RUN_RC"
 echo "=== TC-5: wiki disabled + sessions ignored → healthy (exit 0) ==="
 run_case "${WIKI_OFF}${MS_OFF}" $'.rite/sessions/\n'
 assert "TC-5 exit 0" "0" "$RUN_RC"
+
+echo "=== TC-6: ms enabled + BOTH sessions and worktrees NOT ignored → sessions fires first ==="
+# Genuine ordering proof: when BOTH the sessions rule AND the worktrees rule are missing
+# (and multi_session is enabled so the worktrees check is active), the script must emit
+# the sessions drift — NOT the multi_session/worktrees drift — because the sessions block
+# runs before, and exits at, the worktrees block. If a future change moves the sessions
+# block after the worktrees block, this case would emit "(multi_session)" instead and fail.
+run_case "${WIKI_OK}${MS_ON}" "$GI_WIKI"
+assert "TC-6 exit 1" "1" "$RUN_RC"
+case "$RUN_OUT" in
+  *"DRIFT DETECTED (sessions)"*) pass "TC-6 sessions drift fires before worktrees" ;;
+  *) fail "TC-6 expected sessions drift first, got: $RUN_OUT" ;;
+esac
 
 print_summary "$(basename "$0")" \
   "Drift hint: gitignore-health-check.sh always-on .rite/sessions/ check (Issue #1389) — runs before the wiki early-exits and is NOT gated on multi_session.enabled."

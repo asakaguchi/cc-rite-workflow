@@ -108,6 +108,7 @@ worktrees_removed=0
 branches_deleted=0
 workdirs_reaped=0
 mutation_worktrees_reaped=0
+session_worktrees_reaped=0
 errors=0
 
 # trap + cleanup パターン (canonical: references/bash-trap-patterns.md#signal-specific-trap-template)
@@ -400,16 +401,113 @@ if [ "$DRY_RUN" = "0" ] && [ "$mutation_reaped_any" = "1" ]; then
 fi
 
 # -----------------------------------------------------------------------
+# Step 5: Lazy reap of orphaned SESSION worktrees (multi-session design §8).
+# 責務分担: 正常系の即時削除は cleanup.md (S7) の責務、本 reap は **異常終了の
+# 残骸回収のみ**。`.rite/worktrees/issue-{N}` (multi_session.worktree_base 配下)
+# を `git worktree list` から列挙し、**3 ゲート全通過時のみ** reap する:
+#   1. ディレクトリ名が `^issue-[0-9]+$` に完全一致 (strict regex doctrine。
+#      parallel/team-execute の `.worktrees/` 名前空間や `.rite/wiki-worktree`
+#      とは交差しない)
+#   2. claim liveness (S3) が live でない (issue-claim.sh check が stale、または
+#      claim 不在 free のとき mtime > 24h の age guard を再利用)
+#   3. `git -C <wt> status --porcelain` が空 (dirty worktree は絶対に auto-reap
+#      しない — WARNING + 手動コマンド提示で skip)
+# 処理は Step 1/4 と同型: `git worktree remove --force` → fallback `rm -rf` →
+# ループ後 `git worktree prune` + 対応 claim ファイル削除。**branch は削除しない**
+# (push 済み / 未 push 作業の保全。branch 掃除は正常系 cleanup.md の責務のまま)。
+# -----------------------------------------------------------------------
+session_wt_base=""
+if [ -f "$repo_root/rite-config.yml" ]; then
+  _ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' "$repo_root/rite-config.yml" 2>/dev/null) || _ms_section=""
+  session_wt_base=$(printf '%s\n' "$_ms_section" | awk '/^[[:space:]]+worktree_base:/ {print; exit}' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+fi
+[ -n "$session_wt_base" ] || session_wt_base=".rite/worktrees"
+session_wt_root="$repo_root/$session_wt_base"
+
+if [ -d "$session_wt_root" ]; then
+  while IFS= read -r _wt_line; do
+    case "$_wt_line" in
+      "worktree "*) wt_path="${_wt_line#worktree }" ;;
+      *) continue ;;
+    esac
+    # Must be a DIRECT child of the session worktree base.
+    [ "$(dirname "$wt_path")" = "$session_wt_root" ] || continue
+    [ -d "$wt_path" ] || continue
+    wt_base=$(basename "$wt_path")
+    # Gate 1: strict `^issue-[0-9]+$` (excludes .rite/wiki-worktree, .worktrees/*).
+    [[ "$wt_base" =~ ^issue-[0-9]+$ ]] || continue
+    issue_num="${wt_base#issue-}"
+
+    # Gate 3: dirty worktree is NEVER auto-reaped. An indeterminate status
+    # (rc != 0) is treated conservatively as "do not reap" to avoid data loss.
+    _st_out=$(git -C "$wt_path" status --porcelain 2>/dev/null)
+    _st_rc=$?
+    if [ "$_st_rc" -ne 0 ]; then
+      echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' の status を判定できません (rc=$_st_rc) — 安全側で reap をスキップします" >&2
+      continue
+    fi
+    if [ -n "$_st_out" ]; then
+      echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' は未コミット変更があるため auto-reap をスキップします。" >&2
+      echo "  手動確認: git -C '$wt_path' status / 不要なら git worktree remove '$wt_path'" >&2
+      continue
+    fi
+
+    # Gate 2: claim liveness. issue-claim.sh resolves its own session_id.
+    claim_state=$(bash "$SCRIPT_DIR/../issue-claim.sh" check --issue "$issue_num" 2>/dev/null) || claim_state=""
+    case "$claim_state" in
+      other|own)
+        # A live session holds the claim — leave the worktree intact.
+        continue
+        ;;
+      stale)
+        : # holder is not live → reapable
+        ;;
+      free|"")
+        # No claim recorded → conservative mtime age guard (24h) so an in-flight
+        # worktree that simply has not written a claim yet is not reaped.
+        if [ -z "$(find "$wt_path" -maxdepth 0 -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>/dev/null)" ]; then
+          continue
+        fi
+        ;;
+      *)
+        continue
+        ;;
+    esac
+
+    if [ "$DRY_RUN" = "1" ]; then
+      echo "[pr-cycle-cleanup] would reap session worktree: $wt_path (claim=${claim_state:-none})"
+      continue
+    fi
+
+    # Reap: remove --force first (drops worktree metadata + dir atomically),
+    # rm -rf fallback for dirs whose registration was already lost. The branch
+    # is intentionally preserved.
+    if git worktree remove --force "$wt_path" 2>/dev/null || rm -rf "$wt_path" 2>/dev/null; then
+      session_worktrees_reaped=$((session_worktrees_reaped + 1))
+      rm -f "$repo_root/.rite/state/issue-claims/issue-${issue_num}.json" 2>/dev/null || true
+    else
+      echo "WARNING: failed to reap session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)'" >&2
+      errors=$((errors + 1))
+    fi
+  done < <(git worktree list --porcelain 2>/dev/null)
+
+  if [ "$DRY_RUN" = "0" ] && [ "$session_worktrees_reaped" -gt 0 ]; then
+    git worktree prune 2>/dev/null || true
+  fi
+fi
+
+# -----------------------------------------------------------------------
 # Status line
 # -----------------------------------------------------------------------
 if [ "$DRY_RUN" = "1" ]; then
   echo "[pr-cycle-cleanup] status=dry-run; pattern=$PATTERN"
 elif [ "$errors" -gt 0 ]; then
-  echo "[pr-cycle-cleanup] status=failed; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; errors=$errors"
-elif [ "$worktrees_removed" -eq 0 ] && [ "$branches_deleted" -eq 0 ] && [ "$workdirs_reaped" -eq 0 ] && [ "$mutation_worktrees_reaped" -eq 0 ]; then
-  echo "[pr-cycle-cleanup] status=noop; worktrees=0; branches=0; workdirs=0; mutation_worktrees=0"
+  echo "[pr-cycle-cleanup] status=failed; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped; errors=$errors"
+elif [ "$worktrees_removed" -eq 0 ] && [ "$branches_deleted" -eq 0 ] && [ "$workdirs_reaped" -eq 0 ] && [ "$mutation_worktrees_reaped" -eq 0 ] && [ "$session_worktrees_reaped" -eq 0 ]; then
+  echo "[pr-cycle-cleanup] status=noop; worktrees=0; branches=0; workdirs=0; mutation_worktrees=0; session_worktrees=0"
 else
-  echo "[pr-cycle-cleanup] status=cleaned; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped"
+  echo "[pr-cycle-cleanup] status=cleaned; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped"
 fi
 
 exit 0

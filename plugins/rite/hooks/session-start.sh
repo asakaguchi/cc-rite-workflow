@@ -275,6 +275,18 @@ fi
 # quiet session starts (only v3 files → verbose-gated skip) stay silent.
 RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" migrate >/dev/null || true
 
+# --- Best-effort lazy reap of orphaned session worktrees (multi-session §8) ---
+# Only when the session starts at the main checkout root (CWD == shared root):
+# sessions start at the repo root (D-1), so a worktree-rooted CWD means we are
+# inside a linked worktree and must NOT drive the reap (cannot remove a worktree
+# you are standing in — though the reap's own gates already protect live/dirty
+# trees). pr-cycle-cleanup.sh resolves repo_root to the main checkout and reaps
+# only stale + clean `.rite/worktrees/issue-{N}` trees. Fully non-blocking:
+# stdout discarded, `|| true` keeps a slow/failed GC from blocking session start.
+if [ "$CWD" = "$STATE_ROOT" ]; then
+  ( cd "$CWD" && bash "$SCRIPT_DIR/scripts/pr-cycle-cleanup.sh" ) >/dev/null 2>&1 || true
+fi
+
 # Resolve active flow-state file path (Issue #680).
 # `_resolve-flow-state-path.sh` returns the per-session file
 # (`.rite/sessions/<sid>.flow-state`) when schema_version=2 and a valid

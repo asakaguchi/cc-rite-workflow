@@ -68,7 +68,14 @@ _SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../control-char-neutralize.sh
 source "$_SCRIPT_DIR/../control-char-neutralize.sh"
 
-repo_root=$(git rev-parse --show-toplevel)
+# Resolve to the SHARED state root (main checkout) so that — when this script
+# runs from a linked worktree session — `.rite/wiki-worktree` and its advisory
+# flock resolve to a single inode across all sessions (multi-session design §1;
+# flock excludes only on a shared inode). state-path-resolve.sh returns
+# `git rev-parse --show-toplevel` verbatim for non-worktree sessions, so this is
+# byte-identical outside multi-session use.
+repo_root=$("$_SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || repo_root=""
+[ -n "$repo_root" ] || repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
 # Advisory lock to serialise concurrent setup invocations against the

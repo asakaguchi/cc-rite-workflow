@@ -61,8 +61,9 @@
 #     subsequent branch deletion attempts.
 
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../control-char-neutralize.sh
-source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"
+source "$SCRIPT_DIR/../control-char-neutralize.sh"
 
 export GIT_TERMINAL_PROMPT=0
 
@@ -82,7 +83,15 @@ if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
   exit 1
 fi
 
-repo_root=$(git rev-parse --show-toplevel)
+# Resolve to the SHARED state root (main checkout). When invoked from a linked
+# worktree session, GC of `pr-{N}-cycle{X}` worktrees/branches AND the §8 session
+# worktree reap (Step 5) MUST run from the main checkout — you cannot
+# `git worktree remove` a worktree you are standing in, and a branch checked out
+# in another worktree cannot be deleted. state-path-resolve.sh returns
+# `git rev-parse --show-toplevel` verbatim for non-worktree sessions, so this is
+# byte-identical outside multi-session use (multi-session design §1).
+repo_root=$("$SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || repo_root=""
+[ -n "$repo_root" ] || repo_root=$(git rev-parse --show-toplevel)
 if [ -z "$repo_root" ]; then
   echo "ERROR: empty repo_root (git rev-parse race / permission change の可能性)" >&2
   exit 1

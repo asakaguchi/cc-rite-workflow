@@ -209,7 +209,13 @@ case "$_phase" in
     # Claude Code sessions share a PID; pure $$ on /tmp is race-prone.
     _changed_files_tmp=$(mktemp 2>/dev/null) || _changed_files_tmp="/tmp/rite-wm-sync-files.$$.${RANDOM}"
     _git_diff_err=$(mktemp 2>/dev/null) || _git_diff_err=""
-    _diff_raw=$(git diff --name-status "origin/${_base_branch}...HEAD" 2>"${_git_diff_err:-/dev/null}") || _diff_raw=""
+    # State access uses STATE_ROOT (shared main checkout, via the `cd` above), but
+    # the progress-table diff MUST run in the SESSION's working tree: under
+    # multi-session, STATE_ROOT resolves to the main checkout while the session's
+    # commits live in its linked worktree ($CWD). `git -C "$CWD"` targets that
+    # tree (design §1). Non-worktree sessions have $CWD inside the same checkout,
+    # so diff output (repo-root-relative paths) is unchanged.
+    _diff_raw=$(git -C "$CWD" diff --name-status "origin/${_base_branch}...HEAD" 2>"${_git_diff_err:-/dev/null}") || _diff_raw=""
     if [ -n "$_git_diff_err" ] && [ -s "$_git_diff_err" ]; then
       echo "[rite] WARNING: post-tool-wm-sync: git diff failed — progress table may show stale or empty file list:" >&2
       head -3 "$_git_diff_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2

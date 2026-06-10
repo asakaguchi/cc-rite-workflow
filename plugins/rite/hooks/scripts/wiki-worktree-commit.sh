@@ -111,7 +111,12 @@ _SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../control-char-neutralize.sh
 source "$_SCRIPT_DIR/../control-char-neutralize.sh"
 
-repo_root=$(git rev-parse --show-toplevel)
+# Resolve to the SHARED state root (main checkout). See wiki-worktree-setup.sh
+# for rationale — a linked-worktree session must land its wiki worktree + flock
+# on the main checkout's single inode (multi-session design §1). Byte-identical
+# to `git rev-parse --show-toplevel` for non-worktree sessions.
+repo_root=$("$_SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || repo_root=""
+[ -n "$repo_root" ] || repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
 # Advisory lock (same pattern as wiki-ingest-commit.sh). flock may be

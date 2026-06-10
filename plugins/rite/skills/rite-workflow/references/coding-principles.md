@@ -2,6 +2,7 @@
 
 A collection of principles to avoid common failure patterns in AI coding agents.
 Structured for rite workflow based on Andrej Karpathy's "Issues with AI Coding".
+The `knowledge_routing` principle additionally draws on t-wada's four quadrants of where knowledge lives: code = How, test code = What, commit log = Why, code comments = Why not.
 
 ## Principle List
 
@@ -19,6 +20,7 @@ Structured for rite workflow based on Andrej Karpathy's "Issues with AI Coding".
 | `reference_discovery` | Discover Reference Implementations | Phase 3 |
 | `question_self_check` | Self-Check Before Asking | All Phases |
 | `documentation_consistency` | Sync Documentation with Specification Changes | Phase 5.1 |
+| `knowledge_routing` | Route Knowledge to Its Durable Medium | Phase 5.1, PR Review |
 
 ---
 
@@ -444,6 +446,43 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 
 ---
 
+### knowledge_routing (Route Knowledge to Its Durable Medium)
+
+**Summary**: Every implementation produces four kinds of knowledge, and each has one medium where it survives. The medium's properties — lifespan, visibility, verifiability — decide the routing. Knowledge placed in the wrong medium rots, goes unread, or becomes a lie. For an LLM agent whose session memory vanishes, these four channels are the only persistent memory, so routing them correctly is a first-class discipline. Each channel's detailed rules live in its own SoT; this principle only routes.
+
+**Four Channels**:
+
+| Knowledge | Medium | Why this medium |
+|-----------|--------|-----------------|
+| How (current behavior) | The code itself (naming, structure) | Code is executed, so it is always true — it cannot drift from the running reality |
+| What (specification, behavior) | Test code (test name + assertion) | Tests are executable specification — the name states What, the assertion proves it |
+| Why (motive at change time) | Commit message (Contextual Commits action lines) | The commit is the immutable record of the context at the moment of change |
+| Why not (rejected alternative) — and the Why that must stay beside the code (hidden constraint, invariant, workaround) | Code comments | The comment is the only document that stays in the same place as the code it guards |
+
+**Failure Patterns**:
+- A comment describes How the code works (comment rot — the comment lies as soon as the code changes; promote it to naming instead)
+- A comment narrates the change history / motive (journal comment — that belongs in the commit message)
+- A commit body records only What changed, with no Why (the rationale is lost at the next read)
+- A rejected alternative lives only in the commit, leaving no trace on the code side (a future reader "improves" the code straight back into the rejected shape)
+- A test name describes How (an implementation detail), so it becomes a lie the moment the implementation changes
+
+**Routing flowchart** (when unsure where to record a finding):
+- Current behavior of the code → let the code say it (naming, structure)
+- Specification or behavior → a test, with the test name written as a specification sentence
+- Motive / choice / rejected alternative → if a future reader would be tempted to rewrite the code back to the naive shape, a comment (Why not); otherwise the commit message
+- Hidden constraint / invariant / workaround → a comment (Why)
+
+**Rules**:
+1. Route each kind of knowledge to its one channel; do not record the same knowledge in two channels.
+2. Defer each channel's detailed rules to its SoT — do not duplicate them here: comments → [comment-best-practices.md](./comment-best-practices.md), commits → [contextual-commits.md](./contextual-commits.md), tests → [tdd-light.md](../../../references/tdd-light.md) and [reviewers/test.md](../../reviewers/test.md).
+3. Transport misplaced knowledge to its correct medium rather than leaving it: change history found in a comment → move it to the commit; How found in a comment → promote it to naming and delete the comment.
+
+**Where to Apply**:
+- Phase 5.1 (Implementation): Route each finding to its channel while coding
+- PR Review: Flag misplaced knowledge with this principle's ID as the rationale
+
+---
+
 ## Markdown Authoring Conventions
 
 > **Note**: このセクションは Markdown 記述規約であり、上記の `## Principle List` テーブルに登録されているコード規約 (AI Coding Principles) とは別軸のため、独立セクションとして配置している。`## Related` からも参照される。
@@ -544,6 +583,7 @@ OK patterns:
 - [ ] `no_unnecessary_fallback`: Are there fallbacks that hide failure causes?
 - [ ] `issue_accountability`: Are any discovered problems being ignored?
 - [ ] `documentation_consistency`: Has related documentation been updated for any user-visible spec changes?
+- [ ] `knowledge_routing`: Is each finding routed to its durable medium (How → code, What → tests, Why → commit, Why not → comments)?
 
 ### PR Review
 
@@ -552,6 +592,7 @@ OK patterns:
 - [ ] `scope_discipline`: Are there out-of-scope changes?
 - [ ] `no_unnecessary_fallback`: Are there fallbacks that hide failure causes?
 - [ ] `issue_accountability`: Are review comments being addressed genuinely?
+- [ ] `knowledge_routing`: Is any knowledge in the wrong medium (How in a comment, change history in a comment, Why missing from the commit body, a test name describing How)?
 
 ### Before PR Creation
 

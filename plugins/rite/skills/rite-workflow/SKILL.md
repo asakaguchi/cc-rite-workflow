@@ -190,7 +190,7 @@ orchestrator (`pr:open` / `pr:iterate`) が sub-skill 出力の sentinel を gre
 
 ## AI Coding Principles (Summary)
 
-Avoid common AI coding failure patterns: surface assumptions, manage confusion, push back when warranted, enforce simplicity, maintain scope discipline, clean dead code, plan inline, address all discovered issues, and keep documentation in sync with specification changes (`documentation_consistency`) — when the implementation changes user-visible behavior, update related README / docs / CLAUDE.md / plugin .md files in the same PR rather than deferring to a follow-up Issue.
+Avoid common AI coding failure patterns: surface assumptions, manage confusion, push back when warranted, enforce simplicity, maintain scope discipline, clean dead code, plan inline, address all discovered issues, and keep documentation in sync with specification changes (`documentation_consistency`) — when the implementation changes user-visible behavior, update related README / docs / CLAUDE.md / plugin .md files in the same PR rather than deferring to a follow-up Issue. Route each kind of knowledge to its durable medium (`knowledge_routing`): How → code, What → tests, Why → commit log, Why not → code comments.
 
 See [references/coding-principles.md](./references/coding-principles.md) for the full principle list and details.
 

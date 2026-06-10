@@ -8,7 +8,7 @@
 # `.rite/wiki/pages/**`, index.md updates, and log.md appendices
 # directly into the worktree tree.
 #
-# Design rationale (Issue #547): this script replaces the Block A/B
+# Design rationale: this script replaces the Block A/B
 # shell contract in ingest.md. Because the worktree lives at a stable
 # path alongside the dev-branch tree, there is no need for:
 # - `git stash push -u` (dev-branch work is untouched)
@@ -156,7 +156,7 @@ if [[ ! -f "rite-config.yml" ]]; then
 fi
 
 # -----------------------------------------------------------------------
-# Shared lib (Issue #549): parser/validator + worktree add/commit/push helper.
+# Shared lib: parser/validator + worktree add/commit/push helper.
 # -----------------------------------------------------------------------
 # shellcheck source=lib/wiki-config.sh
 source "$_SCRIPT_DIR/lib/wiki-config.sh"

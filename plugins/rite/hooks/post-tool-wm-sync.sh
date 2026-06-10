@@ -1,7 +1,7 @@
 #!/bin/bash
 # rite workflow - PostToolUse Work Memory Sync Hook
 # Auto-creates local work memory when missing during an active workflow.
-# Also auto-syncs Issue comment work memory when phase changes (Issue #167).
+# Also auto-syncs Issue comment work memory when phase changes.
 # Fires after every Bash tool use; quick-exits in most cases.
 set -euo pipefail
 
@@ -56,9 +56,9 @@ _flow_data=$(jq -r '[(.active // false | tostring), (.issue_number // "" | tostr
 IFS=$'\x1f' read -r _active issue_number _phase _last_synced_phase <<< "$_flow_data"
 [ "$_active" = "true" ] || exit 0
 [ -n "$issue_number" ] || exit 0
-# Session ownership check (#173): skip sync for other session's state.
+# Session ownership check: skip sync for other session's state.
 #
-# Note (Issue #681 F-04): under schema_version=2 with a per-session $FLOW_STATE,
+# Note: under schema_version=2 with a per-session $FLOW_STATE,
 # `check_session_ownership` returns "own" via its schema-2 fast-path without
 # invoking jq, so the failure path is structurally absent and the
 # `|| _ownership="own"` defensive default is dead code in that branch. The
@@ -67,7 +67,7 @@ IFS=$'\x1f' read -r _active issue_number _phase _last_synced_phase <<< "$_flow_d
 # environmental issues (jq error, IO error). Keep both branches.
 _ownership=$(check_session_ownership "$INPUT" "$FLOW_STATE") || _ownership="own"
 [ "$_ownership" != "other" ] || exit 0
-# Defense-in-depth: don't recreate WM for completed workflows (#776)
+# Defense-in-depth: don't recreate WM for completed workflows
 [ "$_phase" != "completed" ] || exit 0
 [ "$_phase" != "cleanup" ] || exit 0
 
@@ -128,7 +128,7 @@ if [ ! -f "$LOCAL_WM" ]; then
   exit 0
 fi
 
-# === Phase diff detection & Issue comment auto-sync (Issue #167) ===
+# === Phase diff detection & Issue comment auto-sync ===
 # Scope: phase changes only. next_action and loop_count changes are
 # handled by explicit calls in command files (Phase 2 follow-up).
 [ -n "$_phase" ] || exit 0

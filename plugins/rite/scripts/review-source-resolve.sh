@@ -10,7 +10,7 @@
 #   fallback  : none usable → caller routes to interactive fallback (ステップ 1.2.0.1)
 #
 # Extracted from `commands/pr/fix.md` ステップ 1.2.0 Selection logic block
-# (refs #1193 / #1195 item #2). The old ~550-line inline bash block required
+#. The old ~550-line inline bash block required
 # the LLM to literal-substitute pr_number / review_file_path / Priority 1
 # decision+receipt directly into the markdown fence; those substitution points
 # are now this helper's CLI arguments. The Priority chain logic, observability
@@ -77,7 +77,7 @@ p1_scan_turns=""
 p1_scan_found=""
 # 各値付きフラグは `shift; shift` で消費する。値なしフラグが末尾に来た場合 ($#=1)、
 # `shift 2` は $# を減らせず set -e 非設定 + `${2:-}` (nounset 非発火) の下で無限ループに
-# 陥る (Issue #1224)。1 回目の shift で $# を確実に 0 にし、2 回目は no-op で安全に抜ける。
+# 陥る。1 回目の shift で $# を確実に 0 にし、2 回目は no-op で安全に抜ける。
 while [ $# -gt 0 ]; do
   case "$1" in
     --pr-number)             pr_number="${2:-}"; shift; shift ;;
@@ -198,7 +198,7 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
   elif ! jq -e '
     [.findings[]? | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length == 0
   ' "$review_file_path" >/dev/null 2>&1; then
-    # Cross-field invariant #4 (Issue #1016, review-result-schema.md):
+    # Cross-field invariant #4:
     # severity ∈ {CRITICAL, HIGH} ∧ scope == "nit-noted" は禁止 (blocker を nit に降格できない)。
     # 違反時は fallback 経路に route (invariant #2 と同じ FAIL routing)。
     # 1.0/1.0.0 JSON では .scope が欠落しているため `null == "nit-noted"` は false、本 check は
@@ -499,7 +499,7 @@ if [ -z "$review_source" ]; then
       elif ! jq -e '
         [.findings[]? | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length == 0
       ' "$latest_file" >/dev/null 2>&1; then
-        # Cross-field invariant #4 (Issue #1016, review-result-schema.md):
+        # Cross-field invariant #4:
         # severity ∈ {CRITICAL, HIGH} ∧ scope == "nit-noted" は禁止。
         # corrupt rename はしない (データは構造的に valid、ビジネスルール違反のみ)。
         # 1.0/1.0.0 JSON では .scope が欠落しているため本 check は規約的に発火しない (後方互換)。

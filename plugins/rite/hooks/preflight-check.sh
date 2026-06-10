@@ -35,7 +35,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
-# Resolve the per-session compact-state path (Issue #1371). pre-compact.sh writes
+# Resolve the per-session compact-state path. pre-compact.sh writes
 # the "recovering" marker to .rite/sessions/{sid}.compact-state; this gate MUST read
 # the same per-session path or the compact block would never trigger after the
 # per-session migration. Falls back to the legacy shared path only when the session

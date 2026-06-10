@@ -5,7 +5,7 @@
 # caller can append a Sub-Issues section.
 #
 # Extracted from `commands/issue/create.md` ステップ 5.3+5.4+5.5 Step 1
-# (refs #1193 / #1195 item #9). The old inline block expanded a
+#. The old inline block expanded a
 # `{REPEAT_FOR_EACH_SUB_ISSUE}` placeholder and embedded each body via heredoc;
 # both were heredoc/placeholder malform sources. This helper takes a spec JSON
 # whose `body_file` fields point at raw files the caller wrote with the Write
@@ -60,7 +60,7 @@ ISSUE_BODY_SCRIPT="$SCRIPT_DIR/../hooks/issue-body-safe-update.sh"
 # --- Argument parsing ---
 # 各値付きフラグは `shift; shift` で消費する。値なしフラグが末尾に来た場合 ($#=1)、
 # `shift 2` は $# を減らせず set -e 非設定 + `${2:-}` (nounset 非発火) の下で無限ループに
-# 陥る (Issue #1224)。1 回目の shift で $# を確実に 0 にし、2 回目は no-op で安全に抜ける
+# 陥る。1 回目の shift で $# を確実に 0 にし、2 回目は no-op で安全に抜ける
 # (--spec 欠落はループ後の必須チェックが exit 2 で検出)。
 SPEC=""
 while [ $# -gt 0 ]; do
@@ -107,9 +107,9 @@ spec_get() { printf '%s' "$SPEC_JSON" | jq -r "$1"; }
 # caller's apply step. ---
 workdir=$(spec_get '.workdir // empty')
 # Per-iteration helper stderr is captured to this scratch file so it is never
-# merged into the helper's stdout JSON (Issue #1206): create-issue-with-projects.sh
+# merged into the helper's stdout JSON: create-issue-with-projects.sh
 # emits `ERROR: ...` on stderr while still printing valid JSON on stdout with
-# exit 0 on partial-Projects failures (Issue #669). A `2>&1` capture would splice
+# exit 0 on partial-Projects failures. A `2>&1` capture would splice
 # that ERROR ahead of the JSON and break the downstream `jq -r .issue_number`,
 # silently miscounting an actually-created Sub-Issue as failed (#514 contract break).
 helper_err_file=$(mktemp "${TMPDIR:-/tmp}/rite-decompose-helper-err.XXXXXX") \
@@ -200,7 +200,7 @@ while IFS= read -r sub_json; do
     echo "WARNING: Sub-Issue '$sub_title' body が空、skip" >&2
     failed_count=$((failed_count + 1))
   else
-    # stderr を helper_err_file へ分離する (Issue #1206)。`2>&1` だと partial-Projects
+    # stderr を helper_err_file へ分離する。`2>&1` だと partial-Projects
     # 失敗時の stderr ERROR が stdout JSON 前方へ混入し、直後の jq parse が壊れて
     # 実際には作成された Sub-Issue を failed_count に誤カウントする (silent data loss)。
     sub_result=$(bash "$CREATE_SCRIPT" "$(build_payload "$sub_title" "$sub_body_file" "$sub_labels_json" "$sub_complexity")" 2>"$helper_err_file")
@@ -216,7 +216,7 @@ while IFS= read -r sub_json; do
         failed_count=$((failed_count + 1))
       else
         # 成功時でも create-issue-with-projects.sh は partial-Projects 失敗を
-        # exit 0 + JSON の .warnings[] で返す (Issue #669)。jq parse が clean に
+        # exit 0 + JSON の .warnings[] で返す。jq parse が clean に
         # なった今、その warning を silent に捨てず link-warning と同形式で surface
         # する (Wiki: stderr ノイズは truncate でなく selective surface で解く)。
         printf '%s' "$sub_result" | jq -r '.warnings[]?' 2>/dev/null \
@@ -230,7 +230,7 @@ while IFS= read -r sub_json; do
         # non-blocking failures). Only construct fallback JSON on fatal exit.
         # Build it via `jq -n --arg` so embedded `"` in stderr cannot break the
         # JSON the caller will parse.
-        # 対称修正 (Issue #1206 / Wiki: Asymmetric Fix Transcription)。link-sub-issue.sh は
+        # 対称修正。link-sub-issue.sh は
         # 現状 stderr に書かないため JSON 破損は起きないが、create と同じく stderr を
         # helper_err_file へ分離して将来の regression を防ぐ。fatal exit 時の fallback err は
         # stdout (link_result) と stderr を結合し、診断情報を取りこぼさない。
@@ -251,7 +251,7 @@ while IFS= read -r sub_json; do
             link_failures=$((link_failures + 1))
             ;;
           *)
-            # 未知 status を silent 通過させない (Issue #514 MUST NOT)
+            # 未知 status を silent 通過させない
             echo "⚠️ Unexpected link status '$link_status' for #$sub_number (msg: $link_msg)" >&2
             link_failures=$((link_failures + 1))
             ;;

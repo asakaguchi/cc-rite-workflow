@@ -5,7 +5,7 @@
 # checked out to the configured `wiki.branch_name`. Idempotent — running
 # this script repeatedly is safe and cheap.
 #
-# Design rationale (Issue #547): the legacy Block A/B pattern in
+# Design rationale: the legacy Block A/B pattern in
 # commands/wiki/ingest.md relied on `git stash + git checkout wiki` on
 # the current working tree, which loses access to the dev-branch
 # `plugins/rite/templates/wiki/page-template.md` during the LLM

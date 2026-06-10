@@ -169,7 +169,7 @@ if [[ ! -f "rite-config.yml" ]]; then
 fi
 
 # -----------------------------------------------------------------------
-# Shared lib (Issue #549): parse_wiki_scalar / validate_wiki_branch_name /
+# Shared lib: parse_wiki_scalar / validate_wiki_branch_name /
 # worktree_commit_push. Extracted to lib/ so wiki-worktree-setup.sh /
 # wiki-worktree-commit.sh / wiki-ingest-commit.sh share a single source
 # of truth for the `wiki.branch_name` parsing contract and the worktree-
@@ -314,7 +314,7 @@ if [[ "$branch_strategy" == "same_branch" ]]; then
 fi
 
 # -----------------------------------------------------------------------
-# separate_branch strategy — Worktree fast path (Issue #547 / cycle 2 fix).
+# separate_branch strategy — Worktree fast path.
 #
 # When `.rite/wiki-worktree/` exists and is checked out to wiki_branch,
 # the legacy `git checkout wiki` path below would FAIL with

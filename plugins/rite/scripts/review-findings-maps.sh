@@ -81,7 +81,7 @@ Exit codes:
 EOF
 }
 
-# 各値付きフラグは `shift; shift` で消費する (Issue #1224 の値なしフラグ無限ループ素因を回避)
+# 各値付きフラグは `shift; shift` で消費する
 while [ $# -gt 0 ]; do
   case "$1" in
     --review-source) review_source="${2:-}"; shift; shift ;;
@@ -110,7 +110,7 @@ fi
 cd "$REPO_ROOT" || { echo "ERROR: cannot cd to repo root '$REPO_ROOT'" >&2; exit 2; }
 
 # tempfile cleanup trap: norm_tmp は同一プロセス内で hand-off されるため、旧 inline block の
-# 「bash block 終了の trap EXIT で削除される」契約 (Issue #1026) をそのまま script 終了時に履行する
+# 「bash block 終了の trap EXIT で削除される」契約をそのまま script 終了時に履行する
 norm_tmp=""
 handed_off_norm_tmp=""
 jq_err=""
@@ -150,7 +150,7 @@ norm_sv=$(jq -r '.schema_version // "unknown"' "$review_source_path" 2>/dev/null
 norm_defaulted_count=0
 norm_corrected_count=0
 norm_demoted_low_count=0
-# auto_demote_low config 読込 (Issue #1018 M2)。section absent → default true。
+# auto_demote_low config 読込。section absent → default true。
 auto_demote_low=$(awk '/^review:/{r=1;next} r && /^  scope_assignment:/{s=1;next} s && /^    auto_demote_low:/{print $2; exit}' rite-config.yml 2>/dev/null | tr -d '"' | tr -d "'" | tr '[:upper:]' '[:lower:]')
 case "$auto_demote_low" in false|no|0) auto_demote_low=false ;; *) auto_demote_low=true ;; esac
 case "$norm_sv" in
@@ -191,7 +191,7 @@ if [ "${norm_defaulted_count:-0}" -gt 0 ] || [ "${norm_corrected_count:-0}" -gt 
       review_source_path="$norm_tmp"
       # hand-off 完了: 下流の severity_map 構築が review_source_path 経由で参照するため、
       # 二重 rm 回避 + downstream 参照保護として handed_off_norm_tmp に path を保持する
-      # (Issue #1026: severity_map build 完了後、script 終了の trap EXIT で削除される)。
+      # (severity_map build 完了後、script 終了の trap EXIT で削除される)。
       handed_off_norm_tmp="$norm_tmp"
       norm_tmp=""
     else

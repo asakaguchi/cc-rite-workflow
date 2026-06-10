@@ -11,7 +11,7 @@
 # (flow-state.sh _validate_session_id, wiki-ingest-trigger.sh
 # SOURCE_REF / TITLE — Issue #1276).
 #
-# WHY a shared helper (Issue #1274): the POSIX class [[:cntrl:]] on glibc
+# WHY a shared helper: the POSIX class [[:cntrl:]] on glibc
 # (C and UTF-8 locales, byte-wise verified) does NOT classify C1 8-bit control
 # bytes (0x80-0x9f, notably the CSI introducer 0x9b) as cntrl, so the previous
 # per-site `s/[[:cntrl:]]/?/g` / `${var//[[:cntrl:]]/?}` idioms let 0x9b through
@@ -38,7 +38,7 @@
 #   - stdin → stdout byte filter; LC_ALL=C tr なので NUL を含む任意バイト列を扱える
 #   - default: C0 + DEL + C1 をすべて `?` へ (改行含む — 旧 `${var//[[:cntrl:]]/?}` と同じ 1 行化挙動)
 #   - --keep-newline: \n (0x0a) のみ素通し (旧 `sed 's/[[:cntrl:]]/?/g'` の行指向挙動と同じ)
-#   - --c0-only: C0 (0x00-0x1f) + DEL (0x7f) のみ `?` へ、0x80 以上は素通し (Issue #1275)。
+#   - --c0-only: C0 (0x00-0x1f) + DEL (0x7f) のみ `?` へ、0x80 以上は素通し。
 #     RFC 8259 が JSON 文字列リテラル内で生バイトを禁じるのは C0 のみで、0x80-0x9f を
 #     バイト単位で潰す default は UTF-8 継続バイト (例: 日本語) を巻き込んで本文を破壊する。
 #     モデル/consumer が読む実テキストを保持したまま invalid-JSON バイトだけを除去する
@@ -59,7 +59,7 @@ neutralize_ctrl() {
   fi
 }
 
-# Detection-side counterpart (Issue #1276): reject-purpose call sites
+# Detection-side counterpart: reject-purpose call sites
 # (flow-state.sh _validate_session_id, wiki-ingest-trigger.sh SOURCE_REF /
 # TITLE) previously used bash `=~ [[:cntrl:]]`, which on glibc misses the same
 # C1 8-bit range the neutralize side closes — letting e.g. 0x9b slip through
@@ -74,7 +74,7 @@ neutralize_ctrl() {
 #     unreachable here (the stdin-filter neutralize_ctrl still covers it)
 #   - byte-wise under LC_ALL=C: UTF-8 continuation bytes overlapping 0x80-0x9f
 #     (e.g. most Japanese characters) are detected as control bytes — accepted
-#     (Issue #1276 設計判断): all call sites are ASCII-identifier / ASCII-title
+#    : all call sites are ASCII-identifier / ASCII-title
 #     fields. 日本語 TITLE が必要になったら UTF-8 セーフモードを別途追加する
 #   - implementation reuses the exact neutralize_ctrl default tr range and
 #     compares byte counts before/after deletion. grep は使わない — grep 実装に

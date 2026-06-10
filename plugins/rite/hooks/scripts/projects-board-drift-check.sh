@@ -1,5 +1,5 @@
 #!/bin/bash
-# rite workflow - Projects Board "Done" Drift Check (Issue #1305)
+# rite workflow - Projects Board "Done" Drift Check
 #
 # Reconciliation drift-guard for the "CLOSED+COMPLETED but board != Done" gap.
 # A Done transition is only wired into /rite:pr:cleanup and /rite:issue:close, but
@@ -69,7 +69,7 @@ while [ $# -gt 0 ]; do
     --quiet)     QUIET=true; shift ;;
     -h|--help)
       cat <<'USAGE_EOF'
-projects-board-drift-check.sh - Projects Board "Done" Drift Check (Issue #1305)
+projects-board-drift-check.sh - Projects Board "Done" Drift Check
 
 Scans recently-updated CLOSED Issues and reports the ones whose closure reason is
 COMPLETED yet whose GitHub Projects board Status is not "Done" — the symptom of a

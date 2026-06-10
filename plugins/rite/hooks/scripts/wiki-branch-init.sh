@@ -49,7 +49,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# --- Leading-dash fail-fast gate (Issue #1290) ---
+# --- Leading-dash fail-fast gate ---
 # wiki_branch は rite-config.yml の wiki.branch_name 由来 (開発者管理) だが、leading-`-` の
 # 値は `git push -u origin` で refspec ではなく option として解釈される (例: `--force`; 実測)。
 # `git checkout --orphan` 側は git 自身の branch name validation で fail するため実害はないが、

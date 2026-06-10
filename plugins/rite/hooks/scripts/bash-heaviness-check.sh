@@ -7,7 +7,7 @@
 # documented in skills/rite-workflow/references/coding-principles.md (added by
 # PR #1193), which prose-only enforcement cannot prevent from drifting.
 #
-# Why a separate hook (Issue #1197 / #1193 提案 c):
+# Why a separate hook:
 #   Issue #1193 observed that large operational bash blocks in command bodies
 #   (python inline / nested $() / multiple heredocs / long line counts) caused
 #   Claude's tool-call parsing to malform and silently end the turn with no
@@ -34,7 +34,7 @@
 # the literal content inside a heredoc, so a template heredoc that happens to
 # contain `$(...)` or `python3 -c` example text does not produce a finding.
 #
-# Standalone detection (Issue #1307 — separate from the >= 2 score model):
+# Standalone detection (separate from the >= 2 score model):
 #   inline-gh-create-title — a real shell line that runs `gh {pr,issue} create`
 #     with a LITERAL `--title "..."` / `--title '...'` (the first char inside the
 #     quote is neither `$` nor the closing quote). `--title "$var"` is sanctioned
@@ -44,7 +44,7 @@
 #     in references/gh-cli-commands.md), so the literal-title check stays armed across
 #     continuation lines until the logical line ends. Unlike the four heaviness
 #     signals, a single inline special-char/long title is itself a dominant
-#     malformed-tool-call trigger (#1307), so it is flagged on its own — it does not
+#     malformed-tool-call trigger, so it is flagged on its own — it does not
 #     need a second signal. The canonical fix is to write the title via the Write
 #     tool to a file and read it into a variable
 #     (`pr_title=$(cat title.txt)` → `--title "$pr_title"`), or pass it through a
@@ -191,7 +191,7 @@ BEGIN { in_block = 0 }
   if (line ~ /drift-check-ignore/) exempt = 1
   if (line ~ /python3?[[:space:]]+.*(-c([[:space:]]|=|$)|<<)/) has_python = 1
   if (line ~ /\$\([^)]*\$\(/) nested = 1
-  # Standalone trigger (#1307): inline `gh {pr,issue} create` with a LITERAL
+  # Standalone trigger: inline `gh {pr,issue} create` with a LITERAL
   # --title. `--title "$var"` (first char after the quote is `$`) and an empty
   # `--title ""` / `--title ''` (first char after the quote is the closing quote)
   # are both allowed — the bracket expression `[^$"']` excludes `$` and both quote
@@ -222,9 +222,9 @@ BEGIN { in_block = 0 }
 END { if (in_block == 1) evaluate() }
 function evaluate(   score, parts) {
   if (exempt == 1) return
-  # Standalone finding (#1307): independent of the >= 2 heaviness score.
+  # Standalone finding: independent of the >= 2 heaviness score.
   if (gh_title_inline == 1) {
-    printf "[bash-heaviness] %s:%d: inline-gh-create-title — literal --title in gh {pr,issue} create; delegate the title to a file (Write tool) or a variable to avoid malformed tool-call (refs #1307)\n", fname, gh_title_line
+    printf "[bash-heaviness] %s:%d: inline-gh-create-title — literal --title in gh {pr,issue} create; delegate the title to a file (Write tool) or a variable to avoid malformed tool-call\n", fname, gh_title_line
   }
   score = 0; parts = ""
   if (has_python == 1)            { score++; parts = parts (parts == "" ? "" : ", ") "python-inline" }

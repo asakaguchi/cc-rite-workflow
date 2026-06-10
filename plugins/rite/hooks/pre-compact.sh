@@ -28,7 +28,7 @@ fi
 # SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
-# Resolve active flow-state file path (Issue #680).
+# Resolve active flow-state file path.
 # Returns the per-session file when schema_version=2 with a valid SID; otherwise legacy.
 #
 # Issue #749: stderr pass-through for diagnostic visibility, via canonical helper
@@ -54,7 +54,7 @@ fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 
 # Derive the per-session compact-state path from the resolved flow-state path
-# (Issue #1371): .rite/sessions/{sid}.flow-state → .rite/sessions/{sid}.compact-state.
+#: .rite/sessions/{sid}.flow-state → .rite/sessions/{sid}.compact-state.
 # This makes each session's compact snapshot independent, removing the
 # last-writer-wins race on the previously shared single file. Falls back to the
 # legacy shared path only when the session id is unresolvable, preserving
@@ -82,7 +82,7 @@ source "$SCRIPT_DIR/work-memory-update.sh"
 
 trap cleanup EXIT TERM INT
 
-# Session ownership check (#173): skip state updates for other session's state.
+# Session ownership check: skip state updates for other session's state.
 # Must run before lock to avoid holding the lock while doing nothing.
 if [ -f "$FLOW_STATE" ]; then
   # Pass-through helper stderr so corrupt-state WARNINGs reach triage; the
@@ -168,8 +168,8 @@ if acquire_wm_lock "$LOCKDIR"; then
     fi
   fi
 
-  # Write compact state — always set to "recovering" regardless of current state (#854, #133)
-  # The previous "skip if resuming" guard (#851) was insufficient: when
+  # Write compact state — always set to "recovering" regardless of current state
+  # The previous "skip if resuming" guard was insufficient: when
   # post-compact-guard transitioned blocked→resuming on first denial, a second
   # compact would see "resuming" and skip, leaving all guards permissive.
   # Now PostCompact hook handles auto-recovery (recovering→normal), and pre-compact
@@ -288,7 +288,7 @@ if acquire_wm_lock "$LOCKDIR"; then
   release_wm_lock "$LOCKDIR"
 fi
 
-# Output advisory message only when workflow is active (#842, #776)
+# Output advisory message only when workflow is active
 # FLOW_ACTIVE is set inside the lock block; defaults to "false" if lock was not acquired.
 if [ "${FLOW_ACTIVE:-false}" = "true" ]; then
   # Provide defaults: PHASE may be unset when ACTIVE_ISSUE is null (line 96 guard)
@@ -298,7 +298,7 @@ if [ "${FLOW_ACTIVE:-false}" = "true" ]; then
   # stderr: displayed directly to user's terminal (guaranteed visibility)
   echo "[rite] ⚠️ compact detected (Issue #${_ISSUE}, Phase: ${_PHASE}). Auto-recovery will proceed via PostCompact." >&2
 
-  # stdout: fed to model as hook output (#887, #889)
+  # stdout: fed to model as hook output
   # Minimal message to reduce post-compaction token overhead.
   # System prompt alone is ~200K tokens; every token saved here helps stay under API limit.
   # PostCompact hook will restore full context after compaction completes.

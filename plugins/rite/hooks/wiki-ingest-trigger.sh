@@ -128,7 +128,7 @@ fi
 # 0x00-0x08 / 0x0B / 0x0C / 0x0E-0x1F / 0x7F as bypass vectors.
 # contains_ctrl (control-char-neutralize.sh) は C0 + DEL に加え C1 8-bit
 # (0x80-0x9f) もバイト単位で検出する — 旧 `=~ [[:cntrl:]]` は glibc が C1 を
-# cntrl と分類しないため 0x9b (8-bit CSI) を素通ししていた (Issue #1276)。
+# cntrl と分類しないため 0x9b (8-bit CSI) を素通ししていた。
 if contains_ctrl "$SOURCE_REF"; then
   echo "ERROR: --source-ref must not contain control characters (newlines, tabs, or other C0/DEL/C1 control bytes)" >&2
   echo "  reason: control characters can break YAML frontmatter (early --- close, key injection, escape sequences)" >&2
@@ -158,7 +158,7 @@ fi
 # in adjacent YAML keys, so an asymmetric guard would leak the same injection
 # class through whichever side is unprotected. Byte-wise C1 detection also
 # rejects multibyte (e.g. Japanese) titles via their 0x80-0x9f continuation
-# bytes — accepted: all in-repo callers pass ASCII-fixed titles (Issue #1276).
+# bytes — accepted: all in-repo callers pass ASCII-fixed titles.
 if [[ -n "$TITLE" ]]; then
   if contains_ctrl "$TITLE"; then
     echo "ERROR: --title must not contain control characters (newlines, tabs, or other C0/DEL/C1 control bytes)" >&2

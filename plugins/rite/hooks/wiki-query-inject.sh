@@ -153,7 +153,7 @@ esac
 # Same YAML parse pattern as wiki-ingest-trigger.sh (F-23 compliant):
 # awk + section range + inline-comment strip + quote strip.
 #
-# Default policy (#483): Wiki is opt-out. When `wiki:` section is absent
+# Default policy: Wiki is opt-out. When `wiki:` section is absent
 # or `wiki.enabled` key is not specified, treat as enabled. The downstream
 # index.md fetch step exits silently with empty stdout when Wiki is not
 # initialized, so opt-out remains non-blocking for fresh repositories.
@@ -182,7 +182,7 @@ if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
   fi
 fi
 
-# Note (#483): wiki_section may legitimately be empty when:
+# Note: wiki_section may legitimately be empty when:
 #   1. rite-config.yml does not exist
 #   2. rite-config.yml has no `wiki:` section
 # In both cases, opt-out policy treats wiki as enabled. The downstream

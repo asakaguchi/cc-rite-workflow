@@ -27,7 +27,7 @@ source "$SCRIPT_DIR/control-char-neutralize.sh"
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 
-# Plugin dual-load collision guard (#591)
+# Plugin dual-load collision guard
 # Only warn when this script is running from a local plugin-dir (not from
 # the marketplace cache). Normal marketplace users should have it enabled.
 # SCRIPT_DIR already set in preamble block above (replaces SCRIPT_PATH)
@@ -62,7 +62,7 @@ if [ -d "$_plugin_root/hooks" ]; then
   printf '%s' "$_plugin_root" > "$STATE_ROOT/.rite-plugin-root" 2>/dev/null || true
 fi
 
-# Save session_id to .rite-session-id for flow-state.sh auto-read (#216)
+# Save session_id to .rite-session-id for flow-state.sh auto-read
 if [ -n "$SESSION_ID" ]; then
   (umask 077; printf '%s' "$SESSION_ID" > "$STATE_ROOT/.rite-session-id") 2>/dev/null || {
     [ -n "${RITE_DEBUG:-}" ] && echo "[rite] WARNING: Failed to write .rite-session-id" >&2
@@ -70,7 +70,7 @@ if [ -n "$SESSION_ID" ]; then
   }
 fi
 
-# Helper: remove stale compact-state when no active flow (#756, #1371)
+# Helper: remove stale compact-state when no active flow
 # Called on startup when the flow-state is absent or inactive, to prevent stale
 # "recovering" state from persisting across sessions.
 #
@@ -205,7 +205,7 @@ if [ "$SOURCE" = "startup" ]; then
         # python3 must run in a set -e-exempt context (an if-condition) so a non-zero
         # exit (rc=1 no-op / rc=2 invalid JSON / missing script) does NOT abort the
         # whole hook before the rc branches below run. A bare statement here would trip
-        # `set -euo pipefail` and turn the entire else branch into dead code (Issue #1241).
+        # `set -euo pipefail` and turn the entire else branch into dead code.
         if python3 "$SCRIPT_DIR/scripts/settings-local-rite-hook-cleanup.py" \
           < "$_settings_local" > "$_repair_tmp" 2>"${_py_err:-/dev/null}"; then
           _py_rc=0
@@ -237,7 +237,7 @@ if [ "$SOURCE" = "startup" ]; then
             if [ -n "$_py_err" ] && [ -s "$_py_err" ]; then
               # Non-empty stderr means python3 itself failed (missing/unreadable cleanup
               # script, import error) — surface its diagnostic but NOT the JSON hint, which
-              # would misdirect: the fault is not the settings.local.json content (Issue #1241).
+              # would misdirect: the fault is not the settings.local.json content.
               head -3 "$_py_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
             elif [ "$_py_rc" -eq 2 ]; then
               # The cleanup script ran, returned 2, and wrote nothing to stderr → invalid
@@ -302,7 +302,7 @@ if [ "$CWD" = "$STATE_ROOT" ]; then
   ( cd "$CWD" && bash "$SCRIPT_DIR/scripts/pr-cycle-cleanup.sh" ) >/dev/null 2>&1 || true
 fi
 
-# Resolve active flow-state file path (Issue #680).
+# Resolve active flow-state file path.
 # `_resolve-flow-state-path.sh` returns the per-session file
 # (`.rite/sessions/<sid>.flow-state`) when schema_version=2 and a valid
 # session_id is present, otherwise the legacy `.rite-flow-state`. The
@@ -342,7 +342,7 @@ fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
 
 if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
-  # Clean stale compact state on startup/clear when no flow state exists (#756, #800)
+  # Clean stale compact state on startup/clear when no flow state exists
   _cleanup_stale_compact
   exit 0
 fi
@@ -361,7 +361,7 @@ if [ "$ACTIVE" != "true" ]; then
   exit 0
 fi
 
-# --- Defensive reset helper (#558, #761, #173, #206) ---
+# --- Defensive reset helper ---
 # Shared by startup and clear blocks. Resets active=false on phase != completed.
 #
 # When the state is owned by another active session (check_session_ownership
@@ -372,7 +372,7 @@ fi
 # For "own" / "legacy" / "stale" / fail-safe paths, proceed with reset
 # (crash-recovery and backward-compat take priority over multi-instance protection).
 #
-# Regression note (#558): a prior commit moved the check_session_ownership call
+# Regression note: a prior commit moved the check_session_ownership call
 # inside an RITE_DEBUG block as a "performance" optimization, silently disabling
 # multi-instance protection in normal runs. DO NOT re-enclose check_session_ownership
 # in conditional gates — it must run on every reset path so the "other" branch can fire.
@@ -395,7 +395,7 @@ _reset_active_state() {
   [ -n "$_reset_jq_err" ] && rm -f "$_reset_jq_err"
   IFS=$'\t' read -r _phase _issue _branch <<< "$_composite"
 
-  # Session ownership check runs on the normal execution path (#558), not just RITE_DEBUG.
+  # Session ownership check runs on the normal execution path, not just RITE_DEBUG.
   # Fail-safe: if the helper isn't sourced or returns non-zero, treat as "unknown"
   # and proceed with reset — crash-recovery takes priority over multi-instance protection.
   if command -v check_session_ownership >/dev/null 2>&1; then
@@ -439,7 +439,7 @@ _reset_active_state() {
   fi
   [ -n "$_reset_jq_err" ] && rm -f "$_reset_jq_err"
   _cleanup_stale_compact
-  # Silent reset for completed workflows (#772): no message, no /rite:resume suggestion
+  # Silent reset for completed workflows: no message, no /rite:resume suggestion
   if [ "$_phase" = "completed" ]; then
     exit 0
   fi
@@ -449,12 +449,12 @@ _reset_active_state() {
   exit 0
 }
 
-# --- Defensive reset on new session startup (#761, #173) ---
+# --- Defensive reset on new session startup ---
 if [ "$SOURCE" = "startup" ]; then
   _reset_active_state
 fi
 
-# --- Defensive reset on /clear (#781, #133, #173) ---
+# --- Defensive reset on /clear ---
 if [ "$SOURCE" = "clear" ]; then
   _reset_active_state
 fi
@@ -515,7 +515,7 @@ If the user provides a different instruction, respect it but mention the pending
 Use \`bash {plugin_root}/hooks/flow-state.sh get --field <field>\` for full state details.
 EOF
 
-# --- Session ID notification (#173, #221) ---
+# --- Session ID notification ---
 # session_id is now auto-read from .rite-session-id by flow-state.sh.
 # stdout output removed to prevent Claude from fabricating inconsistent values
 # via the {session_id} placeholder. See Issue #221.

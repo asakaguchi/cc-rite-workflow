@@ -67,7 +67,7 @@ _validate_session_id() {
   esac
   # contains_ctrl (control-char-neutralize.sh) は C0 + DEL + C1 8-bit (0x80-0x9f)
   # をバイト単位で検出する。旧 `=~ [[:cntrl:]]` は glibc が C1 を cntrl と分類しない
-  # ため 0x9b (8-bit CSI) 入り session_id を素通ししていた (Issue #1276)。
+  # ため 0x9b (8-bit CSI) 入り session_id を素通ししていた。
   if contains_ctrl "$sid"; then
     echo "ERROR: invalid session_id from $origin: contains control characters (newline / tab / C1 8-bit bytes / etc.)" >&2
     return 1
@@ -91,7 +91,7 @@ _resolve_session_id() {
   fi
   # Claude Code runtime exposes CLAUDE_CODE_SESSION_ID; older / non-Code clients used
   # CLAUDE_SESSION_ID. Accept both so cmd_get / cmd_set --if-exists do not silently
-  # degrade when `.rite-session-id` is absent but the runtime env IS set (Issue #1142).
+  # degrade when `.rite-session-id` is absent but the runtime env IS set.
   # 両 env-var 経路にも _validate_session_id を適用し、無検証で _state_path に渡る
   # path-traversal / log-injection 経路を遮断する。
   if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
@@ -145,7 +145,7 @@ _atomic_write() {
 # Emit up to 3 lines of a jq stderr capture ($1 = error file) to stderr, 2-space
 # indented, with control characters neutralized to '?' via the shared
 # neutralize_ctrl helper (control-char-neutralize.sh) — covers C0 + DEL + C1
-# 0x80-0x9f, which the former inline `s/[[:cntrl:]]/?/g` missed (Issue #1274).
+# 0x80-0x9f, which the former inline `s/[[:cntrl:]]/?/g` missed.
 # Shared with the stop-loop-continuation.sh unknown-prefix WARNING so the
 # neutralization convention lives in one place: a corrupt state file fragment can
 # carry ANSI escape / control bytes that, echoed raw, would let the corrupt
@@ -186,7 +186,7 @@ cmd_set() {
   path=$(_state_path "$sid")
   if [ $if_exists -eq 1 ] && [ ! -f "$path" ]; then
     # `.rite-session-id` exists ⇒ a session-start hook ran and the caller expects an
-    # active session. Resolved path missing means stale/drifted session_id (Issue #1142)
+    # active session. Resolved path missing means stale/drifted session_id
     # — emit a WARNING so the silent skip is observable. Truly first-time sessions (no
     # `.rite-session-id`) stay silent to preserve the graceful no-op contract that
     # `commands/wiki/ingest.md` / `commands/pr/ready.md` 等の `--if-exists` caller が depend on
@@ -204,7 +204,7 @@ cmd_set() {
   # 既存値が無い場合は空文字 → null として書き込み、wm-sync 側の `// "" | tostring` で
   # 空文字に縮退する (空 vs 非空 を別値として扱う wm-sync の diff guard と整合)。
   #
-  # Single composite jq read (PR #1089 H3): 6 つの独立 jq 呼び出しの silent fallback chain
+  # Single composite jq read: 6 つの独立 jq 呼び出しの silent fallback chain
   # では既存 state が corrupt JSON でも全フィールドが default に縮退して silent overwrite
   # される。1 回の composite jq + stderr capture に集約し、jq 失敗時に WARNING を stderr emit
   # して operator が corrupt overwrite を検出できるようにする。Unit separator () で field
@@ -252,9 +252,9 @@ cmd_set() {
   # handoff には 3 種類の値が入る:
   #   - 継続 handoff "/rite:pr:..." : 継続 sentinel (review:fix-needed / fix:pushed) を出す sub-skill が渡す。
   #   - 終了 handoff "FINALIZE:{result}:{pr}" : 終了 sentinel (mergeable / replied-only / cancelled) を
-  #     出す sub-skill が渡す (Issue #1176)。
+  #     出す sub-skill が渡す。
   #   - チェーン handoff "WIKICHAIN:{caller}:{pr}" : cleanup.md ステップ 9 が wiki:ingest invoke 直前に
-  #     渡す (Issue #1245)。チェーン完走時はステップ 12 の set (--handoff なし) が default-clear する。
+  #     渡す。チェーン完走時はステップ 12 の set (--handoff なし) が default-clear する。
   #   `flow-state.sh` 自体は任意文字列を verbatim 格納するため
   #   機構変更は不要 — prefix 分岐は Stop hook (stop-loop-continuation.sh) 側の reason 生成で行う。
   # Stop hook が `consume-handoff` で読み取り + 削除し、prefix で reason を分岐して block する
@@ -350,7 +350,7 @@ cmd_deactivate() {
 }
 
 # consume-handoff: review↔fix loop / cleanup wiki チェーンの one-shot 継続マーカーを
-# **読み取り + 削除** する (Issue #1168 / #1245)。
+# **読み取り + 削除** する。
 # Stop hook (stop-loop-continuation.sh) が turn 終了時に呼ぶ。`handoff` が非空ならその値を stdout に
 # 出力し、同じ呼び出しで file から削除 (atomic) する。これにより:
 #   - handoff 非空 → 値を出力 → hook が block + 再注入。削除済みなので次に LLM が何もせず止まれば
@@ -420,7 +420,7 @@ _migrate_file() {
   local now updated; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   # v3 schema: drop legacy `previous_phase` (replaced by step name discrimination in v3) and
   # normalize legacy `branch_name` → `branch`. `last_synced_phase` is preserved because
-  # post-tool-wm-sync.sh continues to use it as a runtime-only diff guard field (PR #1089 H1);
+  # post-tool-wm-sync.sh continues to use it as a runtime-only diff guard field;
   # dropping it during migrate would cause one round of unnecessary GitHub API spam right after
   # migration.
   updated=$(jq --argjson s "$SCHEMA_VERSION_V3" --arg p "$np" --arg ts "$now" \
@@ -485,7 +485,7 @@ Usage: $0 {set|get|deactivate|consume-handoff|migrate|path} [options]
   get --field <F> [--default V] [--session UUID]
       | --jq-filter <FILTER> [--default V] [--session UUID]
   deactivate [--next T] [--session UUID]
-  consume-handoff [--session UUID]   # print + clear the one-shot handoff marker (Issue #1168 / #1245)
+  consume-handoff [--session UUID]   # print + clear the one-shot handoff marker
   migrate [--dry-run] [--verbose]
   path [--session UUID]
 Phase enum (v3): $PHASE_ENUM_V3

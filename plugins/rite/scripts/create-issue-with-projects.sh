@@ -63,7 +63,7 @@ add_warning() {
   WARNINGS_ARR+=("$1")
 }
 
-# add_warning_with_stderr (#669): Projects registration failures must NOT be silent.
+# add_warning_with_stderr: Projects registration failures must NOT be silent.
 # Caller contract: only invoke for failures within the Projects registration phase
 # (after PROJECTS_ENABLED=true gate at L171). Do NOT use for the enabled=false skip
 # path or for informational Iteration-not-configured cases — those use add_warning.
@@ -78,7 +78,7 @@ if ! [[ "$RETRY_DELAY" =~ ^[0-9]+$ ]]; then
   RETRY_DELAY=1
 fi
 
-# retry_with_backoff (#669): exponential backoff retry for transient API failures.
+# retry_with_backoff: exponential backoff retry for transient API failures.
 # Usage: result=$(retry_with_backoff <max_attempts> <stderr_file> <command...>)
 # Sleeps RETRY_DELAY * 2^(n-1) seconds between attempts (1s, 2s, 4s for default delay).
 # Set RETRY_DELAY=0 in tests to skip sleep entirely.
@@ -133,7 +133,7 @@ output_result() {
 # JSON は positional arg ($1, canonical) または stdin (引数なし時) で受け取る。
 # stdin 対応は既存の positional-JSON 契約を温存したまま additive に追加したもので、
 # 新しい caller は `jq -n ... | bash create-issue-with-projects.sh` と書くことで
-# `$(bash ... "$(jq -n ...)")` の入れ子 $() を 1 段に削減できる (Issue #1193 #5)。
+# `$(bash ... "$(jq -n ...)")` の入れ子 $() を 1 段に削減できる。
 if [ $# -ge 1 ]; then
   INPUT_JSON="$1"
 else
@@ -206,7 +206,7 @@ ISSUE_URL=$(gh "${GH_ARGS[@]}" 2>"$GH_ERR_FILE") || {
   exit 1
 }
 
-# SIGPIPE 防止 (#398): printf | grep パターンを here-string に置換。
+# SIGPIPE 防止: printf | grep パターンを here-string に置換。
 # ISSUE_URL は短い文字列だが、pipefail 下での一貫性のため統一。
 ISSUE_NUMBER=$(grep -oE '[0-9]+$' <<< "$ISSUE_URL" || true)
 

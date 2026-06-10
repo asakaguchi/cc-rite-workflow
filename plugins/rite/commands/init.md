@@ -933,7 +933,7 @@ Add `.rite-work-memory/` and `.rite-compact-state*` to `.gitignore` if not alrea
 
 ```bash
 # Check and add entries if missing
-for entry in ".rite-work-memory/" ".rite-compact-state" ".rite-compact-state.lockdir/" ".rite-compact-state.tmp.*" ".rite-initialized-version" ".rite-settings-hooks-cleaned"; do
+for entry in ".rite-work-memory/" ".rite-compact-state" ".rite-compact-state.lockdir/" ".rite-compact-state.tmp.*" ".rite-initialized-version" ".rite-settings-hooks-cleaned" ".rite/worktrees/"; do
   if ! grep -qF "$entry" .gitignore 2>/dev/null; then
     echo "$entry" >> .gitignore
   fi

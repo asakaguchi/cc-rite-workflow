@@ -153,6 +153,12 @@ temp/
 # wiki page が漏出する。
 .rite/wiki-worktree/
 
+# Per-session worktrees created by /rite:pr:open when multi_session.enabled=true
+# (multi-session design §2). Each is a full working-tree clone at
+# .rite/worktrees/issue-{N}; ignoring keeps the worktree metadata file
+# (.rite/worktrees/issue-{N}/.git) out of dev-branch diffs.
+.rite/worktrees/
+
 # Git worktrees for parallel agents
 .worktrees/
 

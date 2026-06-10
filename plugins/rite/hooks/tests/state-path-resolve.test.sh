@@ -17,7 +17,9 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 RESOLVER="$SCRIPT_DIR/../state-path-resolve.sh"
 
 cleanup_dirs=()
-cleanup() { for d in "${cleanup_dirs[@]:-}"; do [ -n "$d" ] && rm -rf "$d"; done; }
+# `return 0` so an empty array (loop body `[ -n "" ]` → rc 1) cannot leak into the
+# script exit code via the EXIT trap.
+cleanup() { local d; for d in "${cleanup_dirs[@]:-}"; do [ -n "$d" ] && rm -rf "$d"; done; return 0; }
 trap cleanup EXIT
 
 # --- Build a main checkout + a linked worktree -------------------------------

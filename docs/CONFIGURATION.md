@@ -707,6 +707,35 @@ parallel:
 - The main workflow proceeds with successful results
 - Failed tasks can be retried manually or addressed in subsequent commits
 
+### multi_session
+
+Settings for per-session Git worktree isolation, letting multiple Claude Code sessions work different Issues in the same repository concurrently. See [docs/designs/multi-session-worktree.md](./designs/multi-session-worktree.md) for the full design.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | `false` | Enable per-session worktrees. Opt-in — when `false`, behavior is identical to single-session (zero change) |
+| `worktree_base` | string | `".rite/worktrees"` | Base directory for session worktrees (each Issue gets an `issue-{N}` subdirectory) |
+
+**Separate axis from `parallel`:** `parallel.*` governs per-Issue sub-agent fan-out *within a single session*; `multi_session.*` governs lifecycle isolation *across whole sessions*. The two are orthogonal and intentionally not merged — `parallel.mode: "worktree"` uses `.worktrees/{issue}/{task}`, while `multi_session` uses `.rite/worktrees/issue-{N}`.
+
+**How it works (`enabled: true`):**
+
+1. `/rite:pr:open N` creates a session worktree at `.rite/worktrees/issue-{N}` and enters it via Claude Code's `EnterWorktree(path)` tool, so each session keeps its own working tree and current branch.
+2. rite state / locks / wiki worktree still resolve to the shared main checkout root (`state-path-resolve.sh` is worktree-aware), so cross-session exclusion stays intact.
+3. `/rite:pr:cleanup` exits the worktree (`ExitWorktree`), removes it, and releases the Issue claim. Abnormally-orphaned worktrees are reaped lazily by `pr-cycle-cleanup.sh`.
+
+**Example:**
+
+```yaml
+multi_session:
+  enabled: true                    # opt-in
+  worktree_base: ".rite/worktrees"
+```
+
+**`.gitignore` requirement:** add `.rite/worktrees/` so session worktrees do not leak into dev-branch diffs. `/rite:init` adds this automatically, and `/rite:lint` (via `gitignore-health-check.sh`) emits a non-blocking warning if it is missing while `multi_session.enabled: true`.
+
+**Disk cost:** each session worktree is a full working-tree clone. Build artifacts (`node_modules`, etc.) may need rebuilding per worktree.
+
 ### team
 
 Settings for team-based Sprint execution using `/rite:sprint:team-execute`.

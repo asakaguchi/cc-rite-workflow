@@ -248,6 +248,7 @@ teammate の git 禁止・team lead の `git -C` 集約は無変更。
 | D-6 | 一過性アーティファクトの配置 | `review-results` / `fix-cycle-state` / `tmp` は**セッション cwd 相対のまま** | worktree 削除と同時に消えセッション間混線を構造的に防ぐ。共有 root へ寄せると pr 番号 + timestamp の衝突管理が新たに必要になる |
 | D-7 | claim の heartbeat | **新機構を作らず flow-state `updated_at` を再利用** | `flow-state.sh set` が全 phase 遷移で更新する既存挙動がそのまま heartbeat。session-ownership.sh の 2h 閾値と判定関数も再利用 |
 | D-8 | スコープ | コア lifecycle + Wiki 完全対応 + **sprint 系は claim スキップのみ** | 複数セッションでの sprint 分担実行（協調スケジューリング）はスコープ過大。将来 Issue に切り出す |
+| D-9 | rite-config.yml top-level `schema_version` bump（2→3） | **省略**（S2 で 2 のまま据え置き） | `multi_session` は additive かつ `enabled: false` default で挙動変化ゼロ → migration 不要。bump すると session-start.sh の upgrade prompt が全既存ユーザーに発火するが、S2 時点では pr:open/cleanup 統合（S6/S7）が develop 未マージで機能が半完成。半統合機能を全ユーザーに告知する弊害が告知価値を上回るため bump しない。`flow-state` の `worktree` field も conditional-write で非 worktree セッションの state を byte 不変に保つため schema 系のいかなる bump も不要（Issue #1362 §4.5 の「省略可」判断を確定）|
 
 <!-- Section ID: SPEC-AC -->
 ## Acceptance Criteria

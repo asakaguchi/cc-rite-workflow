@@ -291,7 +291,7 @@ teammate の git 禁止・team lead の `git -C` 集約は無変更。
 | V-1 | EnterWorktree 後の hook payload `.cwd` が worktree を指すか main のままか | state 解決は git ベースでどちらでも安全。`post-tool-wm-sync.sh` の git diff 分割（§1）のみ作業ツリー依存のため実機確認必須 | 🔬 作業ツリー依存箇所（git diff）は `git -C "$CWD"` 分割で実装済。hook `.cwd` の実値は S10 E2E で確認 |
 | V-2 | `${CLAUDE_PLUGIN_ROOT}` が EnterWorktree 後も plugin install パスを指すか | cwd 非依存のはずだが未検証 | ⬜ S10 E2E へ委譲（cwd 非依存の想定は変えず） |
 | V-3 | worktree 内での `/clear`（SessionStart source=clear）の ownership 判定 | per-session パス形状 fast-path は root 非依存で機能する想定 | ⬜ S10 E2E へ委譲 |
-| V-4 | `.rite-compact-state` が単一ファイル（セッション間 last-writer-wins）の既存ギャップ | 統一 root 化で顕在化しうる → per-session 化を S11（optional）に切り出し | ⬜ 既知ギャップ。S11（#1371）へ切り出し済 |
+| V-4 | `.rite-compact-state` が単一ファイル（セッション間 last-writer-wins）の既存ギャップ | 統一 root 化で顕在化しうる → per-session 化を S11（optional）に切り出し | ✅ #1371 で per-session 化を実装。`.rite/sessions/{sid}.compact-state` を pre/post-compact・preflight・session-start・cleanup-work-memory で統一ルール（flow-state パスから suffix-swap、解決不能時のみ legacy fallback）で参照。レガシー共有ファイルは session-start / cleanup が移行用に reap |
 | V-5 | ExitWorktree 失敗 / 不可時の縮退 | worktree を残して終了 → reap（§8）が回収する縮退経路を仕様化済み | 🔬 縮退経路（§8 reap）は S4 で実装。ツール失敗の実観察は S10 E2E |
 | V-6 | git < 2.31 での `--path-format=absolute` 非対応 | cd + pwd 正規化 fallback を実装に含める | ✅ 検証済。`state-path-resolve.test.sh` T-5 が git<2.31 を shim で再現し worktree→main root を自動テスト化 |
 | V-7 | worktree 内からの wiki-worktree-setup.sh が「already checked out」exit 3 になる経路 | §1 の resolver 統一で根治。実機再現で裏取り | ✅ 根治確認。worktree 内から `wiki-worktree-setup.sh` を実行すると repo_root が main checkout に解決され（resolver 経由化）、第二 wiki-worktree の作成を試みない。`state-path-resolve.test.sh` T-2/T-3 が解決を固定 |

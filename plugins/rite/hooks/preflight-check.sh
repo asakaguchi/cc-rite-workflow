@@ -35,7 +35,17 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
-COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
+# Resolve the per-session compact-state path (Issue #1371). pre-compact.sh writes
+# the "recovering" marker to .rite/sessions/{sid}.compact-state; this gate MUST read
+# the same per-session path or the compact block would never trigger after the
+# per-session migration. Falls back to the legacy shared path only when the session
+# id is unresolvable (matches the fallback in pre/post-compact.sh).
+FLOW_STATE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>/dev/null) || FLOW_STATE=""
+if [ -n "$FLOW_STATE" ]; then
+  COMPACT_STATE="${FLOW_STATE%.flow-state}.compact-state"
+else
+  COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
+fi
 
 # File not present → normal (allow)
 if [ ! -f "$COMPACT_STATE" ]; then

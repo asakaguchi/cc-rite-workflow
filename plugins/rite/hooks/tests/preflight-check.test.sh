@@ -47,11 +47,24 @@ run_hook() {
   return $rc
 }
 
-# Helper: create compact state file
+# Helper: path to the per-session compact-state file (Issue #1371). Mirrors
+# preflight-check.sh's derivation: .rite/sessions/<sid>.flow-state → .compact-state.
+compact_state_path() {
+  local dir="$1"
+  local sid="${2:-test-sid-$(basename "$dir")}"
+  echo "$dir/.rite/sessions/${sid}.compact-state"
+}
+
+# Helper: create per-session compact state file (Issue #1371). Writes a
+# deterministic .rite-session-id so preflight-check.sh resolves the same
+# per-session path that pre-compact.sh would write to.
 create_compact_state() {
   local dir="$1"
   local content="$2"
-  echo "$content" > "$dir/.rite-compact-state"
+  local sid="${3:-test-sid-$(basename "$dir")}"
+  mkdir -p "$dir/.rite/sessions"
+  printf '%s' "$sid" > "$dir/.rite-session-id"
+  echo "$content" > "$dir/.rite/sessions/${sid}.compact-state"
 }
 
 echo "=== preflight-check.sh tests ==="
@@ -143,7 +156,7 @@ stale_ts=$(date -u -d "10 minutes ago" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date
 create_compact_state "$dir006" "{\"compact_state\": \"resuming\", \"compact_state_set_at\": \"$stale_ts\", \"active_issue\": 99}"
 if run_hook "$dir006"; then
   # Verify state is still resuming (not reset to blocked)
-  new_state=$(jq -r '.compact_state' "$dir006/.rite-compact-state" 2>/dev/null)
+  new_state=$(jq -r '.compact_state' "$(compact_state_path "$dir006")" 2>/dev/null)
   if [ "$new_state" = "resuming" ]; then
     pass "Stale resuming → still allowed, state unchanged"
   else
@@ -173,8 +186,9 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-008: Invalid JSON in compact state → exit 1 (fail-closed)"
 dir008="$TEST_DIR/tc008"
-mkdir -p "$dir008"
-echo "NOT-VALID-JSON" > "$dir008/.rite-compact-state"
+mkdir -p "$dir008/.rite/sessions"
+printf '%s' "test-sid-$(basename "$dir008")" > "$dir008/.rite-session-id"
+echo "NOT-VALID-JSON" > "$(compact_state_path "$dir008")"
 output=$(bash "$HOOK" --command-id "/rite:pr:open" --cwd "$dir008" 2>/dev/null) && rc=0 || rc=$?
 if [ $rc -eq 1 ]; then
   # Verify error message mentions read failure

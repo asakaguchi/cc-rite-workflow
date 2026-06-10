@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # comment-journal-check.sh
 #
-# Detect high-confidence "journal" narration patterns in plugins/rite/**/*.sh
-# and plugins/rite/**/*.md. These are mechanical comment violations that
-# accumulate when authors paste review-cycle / fix-history wording into
-# in-tree comments instead of into commit messages or PR descriptions.
+# Detect high-confidence "journal" narration patterns and descriptive
+# Issue/PR number references in plugins/rite/**/*.{sh,md}, repo-root docs/**/*.md,
+# and .rite/wiki/**/*.md (ドキュメント散文・Wiki ページまでスコープ拡張). These are
+# mechanical comment violations that accumulate when authors paste review-cycle /
+# fix-history wording, or "詳細は #N 参照" 系の説明的番号参照, into persistent
+# artifacts (code / docs prose / Wiki) instead of into commit messages or PR
+# descriptions (= 番号の正しい受け皿). 廃止判定ルール (comment-best-practices.md)
+# に従い、説明的参照のみを検出し、TODO/FIXME 追跡番号 (前方ポインタ=維持) と
+# ファイル名アンカー (xxx.test.sh 等、番号ではない) は検出から除外する。
 #
 # Layered defense (Issue #702):
 #   This script is the fast-fail layer below the LLM reviewers (Issues #700,
@@ -41,15 +46,30 @@
 #                  Finding IDs are scoped to one review run; the reference
 #                  decays the moment that review is closed.
 #
-# Whitelist (initial — Issue #699 SoT integration is a future extension):
+#   P5: descriptive Issue/PR reference (English, SoT 禁止句リスト由来)
+#       regex: ([Ss]ee|[Rr]efs|Related to|Closes|Fixes|Resolves)( +PR)? +#[0-9]+
+#       semantics: "See #N" / "Closes #N" / "(refs #N)" 等、Why の代替として貼られた
+#                  説明的参照。番号を辿っても背景は得られないため、Why を散文で残すべき。
+#
+#   P6: descriptive Issue/PR reference (Japanese, SoT 禁止句リスト由来)
+#       regex: (PR )?#[0-9]+ ?で(別途)?対応  および  詳細は ?#[0-9]+
+#       semantics: 「PR #N で対応」「#N で別途対応」「詳細は #N」等の説明的参照。
+#
+# Whitelist (line-level skip):
 #
 #   Lines containing any of the following markers are skipped entirely:
 #     - <!-- example: ...    (markdown HTML-comment example marker)
 #     - # example: ...        (shell / Python comment example marker)
 #     - // example: ...       (TypeScript / JavaScript comment example marker)
+#     - TODO / FIXME          (追跡番号は前方ポインタ=維持。廃止判定ルールで検出除外)
+#
+#   ファイル名アンカー (xxx.test.sh 等) は #N を含まないため P5/P6 に該当せず自然に除外される。
 #
 #   Self-exclusion: this script's own regex literals would otherwise match.
-#   When --all is requested the find walk skips this script's own path.
+#   When --all is requested the find walk skips (1) this script's own path,
+#   (2) the SoT 本体 comment-best-practices.md, and (3) parity test
+#   comment-best-practices-parity.test.sh — 後二者は禁止句を「定義・例示」する
+#   性質上、走査すると Bad 例の語句が本物の違反として誤検出されるため除外する。
 #
 # Future extension: rite-config.yml workflow.lint.comment_journal.whitelist
 # can list extra prefix tokens. Not implemented in this revision; the prefix
@@ -84,9 +104,15 @@ Detected patterns:
   P2  旧実装(は|では)
   P3  PR #N cycle N fix
   P4  cycle N F-N で(導入|確立|集約)
+  P5  descriptive Issue/PR ref (See/Refs/Related to/Closes/Fixes/Resolves #N)
+  P6  descriptive Issue/PR ref ja (#N で(別途)対応 / 詳細は #N)
 
 Whitelist markers (line-level skip):
-  <!-- example:    /    # example:    /    // example:
+  <!-- example:    /    # example:    /    // example:    /    TODO / FIXME
+
+Scan scope (--all):
+  plugins/rite/**/*.{sh,md}, docs/**/*.md, .rite/wiki/**/*.md
+  (self-exclude: this script, comment-best-practices.md SoT, parity test)
 
 Exit codes:
   0  No journal narration detected
@@ -121,17 +147,28 @@ if [ "$USE_ALL" -eq 1 ]; then
     echo "  Recovery: run from the rite plugin source tree, or pass --target FILE explicitly" >&2
     exit 2
   fi
+  # 説明的番号参照は永続成果物全般 (in-source コメント + ドキュメント散文 + Wiki ページ) が対象であり、
+  # plugins/rite に加えて repo-root の docs/ と .rite/wiki/ も走査する。後二者は存在するときのみ加える
+  # (marketplace install や Wiki 無効プロジェクトでは plugins/rite のみで走査が成立する)。
+  scan_roots=("$base")
+  [ -d "docs" ] && scan_roots+=("docs")
+  [ -d ".rite/wiki" ] && scan_roots+=(".rite/wiki")
   self_abs="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/$(basename "$0")"
   self_rel=""
   case "$self_abs" in
     "$REPO_ROOT"/*) self_rel="${self_abs#"$REPO_ROOT"/}" ;;
   esac
   while IFS= read -r f; do
-    if [ -n "$self_rel" ] && [ "$f" = "$self_rel" ]; then
-      continue
-    fi
+    # 定義ファイルの self-exclusion: スクリプト自身に加え、禁止句を「例示として保持する」SoT 本体と
+    # parity test を除外する。これらは禁止句リストを定義する性質上、走査すると definitional な例
+    # (Bad 例の語句) が本物の違反として誤検出される。
+    case "$f" in
+      "$self_rel") continue ;;
+      plugins/rite/skills/rite-workflow/references/comment-best-practices.md) continue ;;
+      plugins/rite/hooks/tests/comment-best-practices-parity.test.sh) continue ;;
+    esac
     TARGETS+=("$f")
-  done < <(find "$base" -type f \( -name '*.sh' -o -name '*.md' \) 2>/dev/null | sort)
+  done < <(find "${scan_roots[@]}" -type f \( -name '*.sh' -o -name '*.md' \) 2>/dev/null | sort)
 fi
 
 if [ "${#TARGETS[@]}" -eq 0 ]; then
@@ -151,7 +188,7 @@ trap '_rite_journal_cleanup; exit 129' HUP
 
 FINDINGS_FILE="$(mktemp)" || { echo "ERROR: mktemp failed" >&2; exit 2; }
 
-# Single awk pass per file. Whitelist check happens up-front; the four pattern
+# Single awk pass per file. Whitelist check happens up-front; the six pattern
 # scans share the same while-match loop idiom so multi-match per line is
 # preserved (parity with bang-backtick-check.sh post-#369).
 check_file() {
@@ -165,6 +202,10 @@ check_file() {
       line = $0
       # Whitelist: any line carrying an "example:" marker is skipped wholesale.
       if (line ~ /(<!--[[:space:]]*example:|#[[:space:]]+example:|\/\/[[:space:]]+example:)/) next
+      # 廃止判定ルール (comment-best-practices.md): TODO/FIXME に添えた追跡番号は
+      # 「前方追跡ポインタ (維持)」であり説明的参照ではないため、TODO/FIXME 行は走査からスキップする。
+      # これにより `# TODO(#123): ...` / `<!-- FIXME #99 -->` 等を誤検出しない。
+      if (line ~ /(TODO|FIXME)/) next
 
       # P1: verified-review cycle N
       pos = 1
@@ -199,6 +240,32 @@ check_file() {
         rest = substr(line, pos)
         if (!match(rest, /cycle [0-9]+ F-[0-9]+ で(導入|確立|集約)/)) break
         print "[comment-journal][P4] " F ":" NR ": review-finding narration: " substr(rest, RSTART, RLENGTH)
+        pos = pos + RSTART + RLENGTH - 1
+      }
+
+      # P5: 英語の説明的 Issue/PR 参照 (SoT 禁止句リスト由来): See / Refs / Related to / Closes / Fixes / Resolves #N
+      #     ファイル名アンカー (xxx.test.sh 等) は #N を含まないため本パターンに該当せず、自然に除外される。
+      pos = 1
+      while (pos <= length(line)) {
+        rest = substr(line, pos)
+        if (!match(rest, /([Ss]ee|[Rr]efs|Related to|Closes|Fixes|Resolves)( +PR)? +#[0-9]+/)) break
+        print "[comment-journal][P5] " F ":" NR ": descriptive issue/PR reference: " substr(rest, RSTART, RLENGTH)
+        pos = pos + RSTART + RLENGTH - 1
+      }
+
+      # P6: 日本語の説明的 Issue/PR 参照 (SoT 禁止句リスト由来): (PR )#N で(別途)対応 / 詳細は #N
+      pos = 1
+      while (pos <= length(line)) {
+        rest = substr(line, pos)
+        if (!match(rest, /(PR )?#[0-9]+ ?で(別途)?対応/)) break
+        print "[comment-journal][P6] " F ":" NR ": descriptive issue/PR reference (ja): " substr(rest, RSTART, RLENGTH)
+        pos = pos + RSTART + RLENGTH - 1
+      }
+      pos = 1
+      while (pos <= length(line)) {
+        rest = substr(line, pos)
+        if (!match(rest, /詳細は ?#[0-9]+/)) break
+        print "[comment-journal][P6] " F ":" NR ": descriptive issue/PR reference (ja): " substr(rest, RSTART, RLENGTH)
         pos = pos + RSTART + RLENGTH - 1
       }
     }

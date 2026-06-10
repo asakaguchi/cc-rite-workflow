@@ -37,6 +37,8 @@ commit:
 | `learned(scope)` | 実装中に発見した知見 | API の癖、ドキュメントにない挙動、パフォーマンス特性など |
 | `comment-update(scope)` | コードコメント単独の修正 (実装変更を伴わない) | ジャーナルコメント削除、Comment Rot 修正、WHY > WHAT への書き換え等のコメント保守作業を git log で独立追跡したい場合 (#703 で新規追加) |
 
+> **`rejected(scope)` とコード側 Why not コメントの振り分け**: 却下した代替案のうち、**将来の読者がコードを見てその却下案へ「改善」し直すリスクがあるもの**は、`rejected(scope)` を commit body に書くことに加えて、コード側にも Why not コメント（現在形の制約文）を残す。判定基準は [comment-best-practices.md](./comment-best-practices.md#why-not却下した代替案の明示とルーティング基準) の Why not 節を参照。退行リスクがなければ `rejected(scope)` の履歴で十分。
+
 ## Examples
 
 ### language: ja

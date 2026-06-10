@@ -690,6 +690,7 @@ Generate structured action lines in the commit body following the Contextual Com
 2. **Extract from Issue body**: Derive `intent` from Issue purpose/motivation, `constraint` from acceptance criteria and technical restrictions (Priority 2)
 3. **Infer from diff**: When the diff shows clear technical choices (new dependencies, library switches, API design), infer `decision` (Priority 3 — use only when evident)
 4. **Apply mapping table**: Map each extracted item to action types using the [Work Memory → Action Line Mapping](../../skills/rite-workflow/references/contextual-commits.md#work-memory--action-line-mapping) table
+   > **Routing note (Why not)**: `rejected` に mapping した却下案のうち、将来の読者がコードを見てその却下案へ「改善」し直すリスクがあるものは、コード側に Why not コメント（現在形の制約文）が残っているか確認する。判定基準は [comment-best-practices.md の Why not 節](../../skills/rite-workflow/references/comment-best-practices.md#why-not却下した代替案の明示とルーティング基準) を参照。
 5. **Filter to 10-line limit**: If action lines exceed 10, trim in order: `learned` → `constraint` → `rejected` → `decision` → `root-cause` → `intent` (intent is preserved last as the core "why"; `comment-update` is out of scope — single-purpose commits do not exceed 10 lines)
 
 **Output rules**:

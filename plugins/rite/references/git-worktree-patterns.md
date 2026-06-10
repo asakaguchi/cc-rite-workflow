@@ -371,3 +371,26 @@ Consequences enforced across the workflow:
 - `pr:cleanup`'s base pull runs **only when the main checkout is on `{base}`**; on any
   other branch it WARNINGs and skips (it must not yank the main checkout off a
   human's working branch). Moving the main checkout's branch is a **human-only** action.
+
+### Issue claim + lazy reap (lifecycle bookends)
+
+Two helper-driven patterns bracket the session-worktree lifecycle:
+
+- **Issue claim** (`hooks/issue-claim.sh`, always-on regardless of the flag): `/rite:pr:open`
+  Step 1.6 claims the Issue **before** creating the branch/worktree (fail-fast against
+  double-starting), and `/rite:pr:cleanup` releases it. Claims live under the
+  gitignored `.rite/state/issue-claims/`; liveness reuses the flow-state heartbeat
+  (`active=true` ∧ `updated_at` within 2h) rather than a new heartbeat file. A live
+  `other` claim is surfaced via AskUserQuestion — never an unattended steal.
+- **Lazy reap** (`pr-cycle-cleanup.sh` Step 5): normal cleanup removes the worktree
+  immediately; reap only collects **abnormally-orphaned** worktrees, and only when all
+  3 gates pass — strict `^issue-[0-9]+$` name under `worktree_base`, claim not live
+  (or absent + mtime > 24h), and a clean `git status --porcelain` (a dirty worktree is
+  never auto-reaped). Reap **never deletes the branch** (push-pending / unpushed work is
+  preserved; branch cleanup stays the responsibility of the normal `pr:cleanup` path).
+
+> **Canonical spec**: This file documents the operational *patterns*; the canonical
+> runtime specification for the session-worktree layer (lifecycle, claim, reap,
+> shared-state-root resolution, crash recovery) lives in
+> [`docs/SPEC.md` → Multi-Session State Management → Worktree Mode](../../../docs/SPEC.md#worktree-mode-session-worktree-isolation),
+> with the full Decision Log in [`docs/designs/multi-session-worktree.md`](../../../docs/designs/multi-session-worktree.md).

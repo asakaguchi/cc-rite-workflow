@@ -1,6 +1,6 @@
 # マルチセッション Git Worktree 対応 — セッション別作業ツリー分離
 
-> **Status**: 📐 設計確定（Phase 1 Decision Log 済み・実装前）
+> **Status**: ✅ 実装完了 + E2E 検証完了（S1–S9 + S11 land 済み・#1361–#1369 / #1371 CLOSED、S10=#1370 でドキュメント整備 + 2 セッション E2E 実施 → V-1〜V-8 反映済み）
 >
 > **関連 Issue**: 親 Issue #1360（Sub-Issue: S1=#1361 / S2=#1362 / S3=#1363 / S4=#1364 / S5=#1365 / S6=#1366 / S7=#1367 / S8=#1368 / S9=#1369 / S10=#1370 / S11=#1371 — 末尾の「Sub-Issue 分解」参照）
 >
@@ -285,17 +285,50 @@ teammate の git 禁止・team lead の `git -C` 集約は無変更。
 > **検証ステータス凡例**: ✅ = 自動テスト or 実機で確認済 / 🔬 = resolver 層で構造的に担保（EnterWorktree 依存の実値は S10 の 2 セッション E2E で確認） / ⬜ = 未検証（S10 へ委譲）
 >
 > **S1 時点の総括（2026-06-10）**: resolver 層で検証可能な V-6 / V-7 はいずれも設計どおりに動作し、§1 の前提を**確認**した（設計前提を崩す発見はなし）。EnterWorktree のツール挙動に依存する V-1/V-2/V-3/V-5/V-8 は live セッションでの観察が必要なため、S10（#1370）の 2 セッション E2E に委譲する。post-tool-wm-sync.sh の git diff 分割（§1、V-1 が影響する唯一の作業ツリー依存箇所）は `git -C "$CWD"` で実装済。V-4 は既知ギャップで S11（#1371）へ切り出し済。
+>
+> **S10 時点の状況（2026-06-10）**: S1–S9 がすべて land し（#1361–#1369 CLOSED）、EnterWorktree 依存経路（pr:open Step 2.2-W / 2.3-W = #1366、cleanup Step 4-W = #1367、resume 再入場 = #1368）も実装済み。残る V-1/V-2/V-3/V-5/V-8 の live 観察は本 Issue（#1370）の 2 セッション E2E で実施し、結果を下記「[E2E 検証手順と結果](#e2e-検証手順と結果s10--1370)」に記録した上で本 V 表へ転記する（AC-10）。
+>
+> **S10 E2E 完了（2026-06-10）**: 2 セッション（`1b5dbaef…` / `e6171fd1…`）の並行 lifecycle を実施し、Issue #1382→PR #1385 / #1383→PR #1386 が並行マージ・セッション worktree 残骸ゼロ・並行 wiki ingest の skip 縮退を**痕跡で確認**。EnterWorktree 依存の crash→resume（V-5）と非回帰（V-1）は `crash-resume.test.sh` 7 PASS / `state-path-resolve.test.sh` 6 PASS / `issue-claim` 20 / `pr-cycle-cleanup-session-reap` 11 / `worktree-git-nff-retry` 9 PASS の自動テストで担保。V-4 は S11（#1371 / PR #1381）の compact-state per-session 化で解消。V-1〜V-8 を下表へ反映済み（AC-10 達成）。V-3（worktree 内 `/clear`）は本 E2E で明示実施せず — 構造的担保に留める。
 
 | ID | 検証項目（推測を含む） | 設計上の担保 | 結果 |
 |----|----------------------|--------------|------|
-| V-1 | EnterWorktree 後の hook payload `.cwd` が worktree を指すか main のままか | state 解決は git ベースでどちらでも安全。`post-tool-wm-sync.sh` の git diff 分割（§1）のみ作業ツリー依存のため実機確認必須 | 🔬 作業ツリー依存箇所（git diff）は `git -C "$CWD"` 分割で実装済。hook `.cwd` の実値は S10 E2E で確認 |
-| V-2 | `${CLAUDE_PLUGIN_ROOT}` が EnterWorktree 後も plugin install パスを指すか | cwd 非依存のはずだが未検証 | ⬜ S10 E2E へ委譲（cwd 非依存の想定は変えず） |
-| V-3 | worktree 内での `/clear`（SessionStart source=clear）の ownership 判定 | per-session パス形状 fast-path は root 非依存で機能する想定 | ⬜ S10 E2E へ委譲 |
-| V-4 | `.rite-compact-state` が単一ファイル（セッション間 last-writer-wins）の既存ギャップ | 統一 root 化で顕在化しうる → per-session 化を S11（optional）に切り出し | ✅ #1371 で per-session 化を実装。`.rite/sessions/{sid}.compact-state` を pre/post-compact・preflight・session-start・cleanup-work-memory で統一ルール（flow-state パスから suffix-swap、解決不能時のみ legacy fallback）で参照。レガシー共有ファイルは session-start / cleanup が移行用に reap |
-| V-5 | ExitWorktree 失敗 / 不可時の縮退 | worktree を残して終了 → reap（§8）が回収する縮退経路を仕様化済み | 🔬 縮退経路（§8 reap）は S4 で実装。ツール失敗の実観察は S10 E2E |
+| V-1 | EnterWorktree 後の hook payload `.cwd` が worktree を指すか main のままか | state 解決は git ベースでどちらでも安全。`post-tool-wm-sync.sh` の git diff 分割（§1）のみ作業ツリー依存のため実機確認必須 | ✅ S10 E2E で確認。2 セッション並行 lifecycle が完走し state は破壊なく main root に解決。git diff 分割は `git -C "$CWD"` で実装済。`state-path-resolve.test.sh` 6 PASS（非 worktree byte 一致 pin） |
+| V-2 | `${CLAUDE_PLUGIN_ROOT}` が EnterWorktree 後も plugin install パスを指すか | cwd 非依存のはずだが未検証 | ✅ 間接確認。worktree 内で pr:open〜cleanup（plugin file を読む）が解決エラーなく完走 → plugin root は worktree 入場後も正しく解決。`.rite-plugin-root` の worktree コピー + fallback が機能 |
+| V-3 | worktree 内での `/clear`（SessionStart source=clear）の ownership 判定 | per-session パス形状 fast-path は root 非依存で機能する想定 | 🔬 構造的担保（per-session パス fast-path は root 非依存）。本 E2E では worktree 内 `/clear` 経路を明示的には実施せず。`crash-resume.test.sh` の後続セッション起動（TC-3.1）で隣接経路を担保 |
+| V-4 | `.rite-compact-state` が単一ファイル（セッション間 last-writer-wins）の既存ギャップ | 統一 root 化で顕在化しうる → per-session 化を S11（optional）に切り出し | ✅ #1371（PR #1381）で per-session 化を実装。`.rite/sessions/{sid}.compact-state` を pre/post-compact・preflight・session-start・cleanup-work-memory で統一ルール（flow-state パスから suffix-swap、解決不能時のみ legacy fallback）で参照。レガシー共有ファイルは session-start / cleanup が移行用に reap。S10 E2E: `crash-resume.test.sh` 7 PASS が並行 SIGKILL 下の state 整合を担保 |
+| V-5 | ExitWorktree 失敗 / 不可時の縮退 | worktree を残して終了 → reap（§8）が回収する縮退経路を仕様化済み | ✅ reap 縮退経路を `pr-cycle-cleanup-session-reap.test.sh` 11 PASS で担保。live E2E でも cleanup 後にセッション worktree 残骸ゼロ（正常系で ExitWorktree→remove 成功） |
 | V-6 | git < 2.31 での `--path-format=absolute` 非対応 | cd + pwd 正規化 fallback を実装に含める | ✅ 検証済。`state-path-resolve.test.sh` T-5 が git<2.31 を shim で再現し worktree→main root を自動テスト化 |
 | V-7 | worktree 内からの wiki-worktree-setup.sh が「already checked out」exit 3 になる経路 | §1 の resolver 統一で根治。実機再現で裏取り | ✅ 根治確認。worktree 内から `wiki-worktree-setup.sh` を実行すると repo_root が main checkout に解決され（resolver 経由化）、第二 wiki-worktree の作成を試みない。`state-path-resolve.test.sh` T-2/T-3 が解決を固定 |
-| V-8 | ExitWorktree(keep) の戻り先 = EnterWorktree 時の cwd（サブディレクトリで起動した場合の挙動） | リポジトリルート起動が前提（D-1）だが、逸脱時の挙動を確認 | ⬜ S10 E2E へ委譲（リポジトリルート起動前提は D-1 で固定） |
+| V-8 | ExitWorktree(keep) の戻り先 = EnterWorktree 時の cwd（サブディレクトリで起動した場合の挙動） | リポジトリルート起動が前提（D-1）だが、逸脱時の挙動を確認 | ✅ live E2E で cleanup が main checkout へ復帰しセッション worktree を削除（戻り先 = 起動時 main root）。リポジトリルート起動前提（D-1）は維持。サブディレクトリ起動の逸脱挙動は範囲外 |
+
+<!-- Section ID: SPEC-E2E -->
+## E2E 検証手順と結果（S10 / #1370）
+
+> **実施方法**: マルチセッションは 2 つの独立した Claude Code ターミナルの並行起動を要するため、単一の自動エージェントでは完遂できない。以下の手順を人手（坂口さん）が実行し、結果を本節の結果表に記録する。実施前提として `rite-config.yml` の `multi_session.enabled: true` を設定する（検証後に `false` へ戻す手順 5 を含む）。dogfood 有効化（恒久的な `enabled: true`）は本 E2E の結果を踏まえて別途判断する（本 PR 時点では既定 `false` へ復帰。恒久有効化の決定エントリは Decision Log 未登録 — 必要時に新設する）。
+
+### 手順
+
+1. 2 つのターミナルで Claude Code をリポジトリルートから起動する（両者とも main checkout = base ブランチ上で開始）。
+2. 各ターミナルで**別々の Issue** に対して `/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:merge` → `/rite:pr:cleanup` を並行完走させ、相互の作業ツリー / ブランチ破壊が起きないことを確認する（AC-2 / AC-8）。
+3. 両セッションがほぼ同時に cleanup → wiki ingest に到達するよう仕向け、並行 ingest が直列化 / skip / 次回回収のいずれかで安全に縮退することを確認する（AC-7）。
+4. 片方のセッションを実装中にクラッシュ（プロセス kill / ターミナル強制終了）させ、新ターミナルで `/rite:resume {issue}` を実行 → セッション worktree への再入場、worktree 消失時のブランチからの再構築を確認する（AC-4）。
+5. `multi_session.enabled: false` に戻し、従来フロー（単一セッション）が非回帰であることを確認する（AC-1）。
+
+### 結果（2026-06-10 実施 — 坂口さんの 2 セッション並行実施 + 痕跡 / テストによる裏取り）
+
+> 凡例: ✅ = pass / ⚠️ = 発見事項あり（別 Issue 化）。「痕跡」= `git worktree list` / merged PR / `.rite/state/issue-claims/` / wiki branch log の事後検証、「テスト」= `plugins/rite/hooks/tests/` の自動テスト実走。
+
+| 手順 | 対応 AC / V | 結果 | 根拠・発見事項 |
+|---|---|---|---|
+| 1 起動 | — | ✅ | 2 セッション（`1b5dbaef-96ec-4fdb-815c-f5ad345fb9ca` / `e6171fd1-d921-43b6-9b0d-d4ca0bd71e30`）がリポジトリルートから起動し、別 Issue を並行実行 |
+| 2 並行 lifecycle | AC-2 / AC-8 / V-1 / V-2 / V-8 | ✅ | Issue #1382→PR #1385、#1383→PR #1386 が約 7 分差で develop に並行マージ（相互の branch / 作業ツリー破壊なし）。`git worktree list` にセッション worktree（`.rite/worktrees/issue-*`）の残骸ゼロ＝cleanup Step 4-W が正常削除。worktree 内で pr:open〜cleanup が plugin file 解決エラーなく完走（V-2 間接確認） |
+| 3 並行 ingest | AC-7 | ✅ | wiki branch に `ingest 1 raw source(s) (worktree path)` 連続コミット + `ingest 0 new / 0 updated …(skipped: 1)` のスキップ事象＝直列化 / skip 縮退が発火、絶対パス契約も動作。`worktree-git-nff-retry.test.sh` 9 PASS で NFF push リトライを担保 |
+| 4 クラッシュ→resume | AC-4 / V-5 | ✅（テスト + コードパス担保） | `crash-resume.test.sh` 7 PASS（TC-2.1: resume path で active/phase/issue/branch を復元、TC-3.1: セッション A の SIGKILL 後にセッション B 起動成功）。resume.md Phase 3.1.5 の worktree 再入場・再構築（reenter / residue / missing+branch_local）コードパス確認。真のプロセス crash の live 実施は本 E2E では未実施 |
+| 5 false 復帰の非回帰 | AC-1 | ✅ | `multi_session.enabled: false` へ復帰。`state-path-resolve.test.sh` 6 PASS（非 worktree で resolver 出力が byte 一致する pin テスト）。本ドキュメント整備セッションも非 worktree 標準フローで正常動作 |
+
+**補助テスト**: `issue-claim.test.sh` 20 PASS（AC-5 claim/release/check + stale 判定）/ `pr-cycle-cleanup-session-reap.test.sh` 11 PASS（AC-6 reap 3 ゲート）も全 green。
+
+> **V 表への転記**: 上記結果を「[検証項目](#検証項目実装フェーズ冒頭-s1-で実機確認し結果を本表に追記する)」の V 表 結果欄（V-1 / V-2 / V-3 / V-5 / V-8）へ転記済み（AC-10 達成）。本 E2E で blocking な発見事項はなし（V-3 の `/clear` live 経路のみ未実施で構造的担保に留置）。
 
 <!-- Section ID: SPEC-SUBISSUES -->
 ## Sub-Issue 分解

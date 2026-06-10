@@ -8,7 +8,7 @@ Getting Started guide for rite workflow
 
 ---
 
-When this command is executed, run the following phases in order.
+When this command is executed, run the following phases in order. Phase 4.5 is an **on-demand reference** — display it only when the user asks about running multiple Claude Code sessions in parallel, not during the normal onboarding sweep.
 
 ## Phase 1: Display Welcome Message
 
@@ -346,10 +346,11 @@ Common Issues and Solutions:
 
 ---
 
-## Phase 4.5: Multiple Sessions at Once (multi_session)
+## Phase 4.5: Multiple Sessions at Once (multi_session) (On Demand)
 
-Display this FAQ when the user asks about running several Claude Code sessions
-on the same repository in parallel (e.g. one terminal per Issue):
+This phase is **not** part of the normal onboarding sweep. Display this FAQ only
+when the user asks about running several Claude Code sessions on the same
+repository in parallel (e.g. one terminal per Issue):
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -374,7 +375,7 @@ Operating rules (important):
   • Start every session from the repository ROOT (not inside a worktree).
     /rite:pr:open does the worktree creation + entry for you.
 
-  • Keep the main checkout on your base branch ({branch.base}, e.g. develop).
+  • Keep the main checkout on your base branch (rite-config.yml branch.base, e.g. develop).
     rite never moves the main checkout's branch — that is a human-only action,
     and /rite:pr:cleanup's "git pull" of the base only runs when the main
     checkout is actually on the base branch (otherwise it warns and skips).

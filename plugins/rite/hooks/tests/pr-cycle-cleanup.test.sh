@@ -14,6 +14,9 @@
 #   T-11 → Step 1: `git worktree remove --force` failure (locked worktree)
 #   T-12 → Step 2: `git branch -D` failure (read-only refs/heads)
 #   T-13 → Step 3: `rm -rf` failure (read-only orphan-workdir parent)
+#   T-16 → Step 4: `git worktree remove --force || rm -rf` failure (read-only
+#                  mutation-worktree parent) — extends the symmetry to the
+#                  mutation-worktree reap added in #1340
 #
 # Each test creates an isolated temp git repository, simulates branch /
 # worktree creation, runs the cleanup script, and asserts the result.
@@ -79,11 +82,11 @@ skip() {
   echo "  ⏭️ SKIP: $1"
 }
 
-# T-12 / T-13 force a delete failure via read-only permission bits (chmod 0500).
-# root bypasses DAC permission checks, so the forced failure would not occur and
-# the test would report a misleading FAIL. Detect root to skip those two tests
-# explicitly rather than emit a false failure. (T-11 uses a git worktree lock,
-# which is enforced by git regardless of uid, so it is not gated.)
+# T-12 / T-13 / T-16 force a delete failure via read-only permission bits
+# (chmod 0500). root bypasses DAC permission checks, so the forced failure would
+# not occur and the test would report a misleading FAIL. Detect root to skip
+# those tests explicitly rather than emit a false failure. (T-11 uses a git
+# worktree lock, which is enforced by git regardless of uid, so it is not gated.)
 IS_ROOT=0
 if [ "$(id -u)" = "0" ]; then IS_ROOT=1; fi
 
@@ -607,6 +610,52 @@ fi
 ( cd "$TEST_REPO" && git worktree remove --force "$WORKDIR_SCAN_TMP/rite-review-mutation-fresh" 2>/dev/null ) || true
 rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-16: Step 4 per-item mutation worktree reap failure -> status=failed (refs #1340)
+# Given: an aged registered detached `rite-review-mutation-*` worktree (as in T-14)
+#        whose PARENT dir is read-only (chmod 0500), so neither
+#        `git worktree remove --force` nor the `rm -rf` fallback can rmdir it
+# When: cleanup runs with TMPDIR pointed at that locked base
+# Then: WARNING "failed to reap orphan mutation worktree" + errors++ -> status=failed,
+#       and the worktree survives. This is the Step 4 analogue of T-13's Step 3 gap:
+#       Step 1/2/3 pin per-item delete failures (T-11/T-12/T-13); Step 4's mutation
+#       reap (#1340) was the missing symmetric case.
+# Mirrors T-13's dedicated locked base + TMPDIR override so the 0500 chmod never
+# blocks other tests (the script's err-file mktemp uses explicit /tmp paths).
+# -----------------------------------------------------------------------
+echo "T-16: Step 4 mutation worktree reap 失敗で status=failed (refs #1340)"
+if [ "$IS_ROOT" = "1" ]; then
+  skip "T-16: root では perms がバイパスされ強制失敗にならないためスキップ"
+else
+  # `|| LOCKED_BASE=""` — see T-13's note: a plain `VAR=$(cmd)` propagates the
+  # command-substitution exit status under `set -e`, so the `||` keeps a failed
+  # mktemp from aborting the suite and lets the guard fail this test instead.
+  LOCKED_BASE=$(mktemp -d /tmp/rite-pr-cleanup-mut-locked-XXXXXX) || LOCKED_BASE=""
+  if [ -z "$LOCKED_BASE" ]; then
+    fail "T-16: mktemp -d による locked base 作成に失敗"
+  else
+    TEST_REPOS+=("$LOCKED_BASE")
+    TEST_REPO=$(make_temp_repo)
+    # Register the detached mutation worktree inside the base BEFORE locking it.
+    ( cd "$TEST_REPO" && git worktree add --detach -q "$LOCKED_BASE/rite-review-mutation-victim" HEAD )
+    touch -t 202001010000 "$LOCKED_BASE/rite-review-mutation-victim"
+    chmod 0500 "$LOCKED_BASE"
+    t16_output=$( cd "$TEST_REPO" && TMPDIR="$LOCKED_BASE" bash "$CLEANUP" 2>&1 )
+    # Restore write permission so the survival check and cleanup can proceed.
+    chmod 0700 "$LOCKED_BASE"
+    if echo "$t16_output" | grep -q 'status=failed' \
+       && echo "$t16_output" | grep -q 'failed to reap orphan mutation worktree' \
+       && [ -d "$LOCKED_BASE/rite-review-mutation-victim" ]; then
+      pass "T-16: read-only 親での mutation worktree reap 失敗が WARNING + status=failed で surface"
+    else
+      fail "T-16: status=failed と reap WARNING を期待。victim=$([ -d "$LOCKED_BASE/rite-review-mutation-victim" ] && echo present || echo gone). Output: $t16_output"
+    fi
+    ( cd "$TEST_REPO" && git worktree remove --force "$LOCKED_BASE/rite-review-mutation-victim" 2>/dev/null ) || true
+    rm -rf "$LOCKED_BASE" 2>/dev/null || true
+    cleanup_temp_repo "$TEST_REPO"
+  fi
+fi
 
 # -----------------------------------------------------------------------
 # Summary

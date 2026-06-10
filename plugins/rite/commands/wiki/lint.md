@@ -722,8 +722,18 @@ Wiki ページ本文に残った**説明目的の Issue/PR/commit 番号参照**
 # `pages_list` は改行区切りの scalar 文字列のため、ステップ 4.2 / 6.2 と同型の
 # `while IFS= read -r ... <<< "$pages_list"` で 1 ページずつ走査する (配列展開は不可)。
 # ページ本文は separate_branch 戦略で working tree に無いため、ステップ 4.2 と同じく
-# `git show "${wiki_branch}:$page" || cat "$page"` で取得する ({wiki_branch} はリテラル substitute)。
+# `git show "${wiki_branch}:$page" || cat "$page"` で取得する。
 # frontmatter(先頭の --- ブロック) を除いた本文のみを対象に、SoT 由来の説明的参照パターンを grep。
+#
+# 本 bash block は独立した Bash tool 呼び出しで shell state が persist しないため、ステップ 4.2 と
+# 同型に `wiki_branch` をブロック先頭で literal substitute し、placeholder 残留を fail-fast する
+# (未 substitute だと separate_branch で git show / cat 双方が空を返し silent no-op に倒れるため)。
+wiki_branch="{wiki_branch}"
+case "$wiki_branch" in
+  "{"*"}")
+    echo "ERROR: ステップ 7.5 の {wiki_branch} placeholder が literal substitute されていません" >&2
+    exit 1 ;;
+esac
 n_descriptive_refs=0
 while IFS= read -r page; do
   [ -z "$page" ] && continue

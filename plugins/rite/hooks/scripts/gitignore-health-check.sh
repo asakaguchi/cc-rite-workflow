@@ -218,6 +218,32 @@ if [ ! -f "$config_file" ]; then
   exit 0
 fi
 
+# --- Always-on: verify .rite/sessions/ is ignored (per-session state leak guard) ---
+# Unlike the .rite/worktrees/ block below, this is NOT gated on multi_session.enabled:
+# `.rite/sessions/{session_id}.flow-state` (per-session flow/compact state, #1381/#1384)
+# is written on EVERY rite session regardless of multi_session, so the leak surface is
+# always present. Placed BEFORE the wiki early-exits so a wiki.enabled=false config is
+# still verified. Non-blocking & always-on: drift → WARNING + exit 1; healthy → fall
+# through. Mirrors the separate_branch Layer-1 probe: a static `git check-ignore -v` (no
+# file created) asks git whether a session state path is ignored. If not, per-session
+# state files (.rite/sessions/{session_id}.flow-state) would leak into dev-branch diffs.
+sessions_probe=".rite/sessions/.rite-lint-probe"
+sessions_ci_out=""
+sessions_ci_rc=0
+if sessions_ci_out=$(git check-ignore -v "$sessions_probe" 2>/dev/null); then sessions_ci_rc=0; else sessions_ci_rc=$?; fi
+if [ "$sessions_ci_rc" -eq 0 ] && printf '%s' "$sessions_ci_out" | grep -qE ':\.rite/sessions/'; then
+  log_info "gitignore-health-check: sessions layer healthy — .rite/sessions/ ignored (${sessions_ci_out})"
+elif [ "$sessions_ci_rc" -ge 2 ]; then
+  echo "WARNING: gitignore-health-check: git check-ignore failed (rc=$sessions_ci_rc) for .rite/sessions/ verify — skipping sessions check" >&2
+else
+  echo "==> gitignore-health-check: DRIFT DETECTED (sessions): '.rite/sessions/' rule missing from .gitignore" >&2
+  echo "==> per-session state files (.rite/sessions/{session_id}.flow-state) would leak into dev-branch diffs." >&2
+  echo "==> Hint: add '.rite/sessions/' to .gitignore (init.md gitignore generation adds it; see #1384/#1389)." >&2
+  echo "WARNING: gitignore-health-check: .rite/sessions/ rule missing" >&2
+  echo "==> Total gitignore-health-check findings: 1"
+  exit 1
+fi
+
 # --- Multi-session: verify .rite/worktrees/ is ignored when enabled (design §2) ---
 # Independent of wiki settings — placed BEFORE the wiki early-exits so a
 # wiki.enabled=false + multi_session.enabled=true config is still verified.

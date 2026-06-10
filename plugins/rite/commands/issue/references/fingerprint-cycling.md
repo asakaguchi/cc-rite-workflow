@@ -170,7 +170,7 @@ Signal 3 または Signal 4 が発火した場合、**§3 の 4-option AskUserQu
 
 ## §4 — Split bash for "別 Issue として切り出す"
 
-**Important**: 以下の bash ブロックは **単一の Bash tool 呼び出し** で実行すること。本ブロックは一時ファイル cleanup の `trap 'rm -f "$tmpfile"' EXIT` と、write / empty / empty-result の各失敗で中断する `exit 1` ガード (PR #1251) および empty-url 失敗で中断する `exit 1` ガード (PR #1252) を含む。複数の Bash 呼び出しに分割すると trap が中間状態で発火して cleanup 契約が崩れ、`exit 1` も後続呼び出しへ伝播せず guard が機能しなくなる (先例 review.md ステップ 7.4.2 の single-invocation 注記と同契約)。
+**Important**: 以下の bash ブロックは **単一の Bash tool 呼び出し** で実行すること。本ブロックは一時ファイル cleanup の `trap 'rm -f "$tmpfile"' EXIT` と、write / empty / empty-result の各失敗で中断する `exit 1` ガード および empty-url 失敗で中断する `exit 1` ガード を含む。複数の Bash 呼び出しに分割すると trap が中間状態で発火して cleanup 契約が崩れ、`exit 1` も後続呼び出しへ伝播せず guard が機能しなくなる (先例 review.md ステップ 7.4.2 の single-invocation 注記と同契約)。
 
 **Placeholder value sources** (Claude はスクリプト生成前に必ず以下のソースから値を取得してプレースホルダーを置換すること。これらはシェル変数ではない):
 
@@ -244,7 +244,7 @@ new_issue_url=$(printf '%s' "$result" | jq -r '.issue_url')
 # create-issue-with-projects.sh は失敗時も非空の failed JSON (issue_url=="") を emit してから
 # exit する契約のため、上の empty-result ガードは通過する。空 URL のまま ✅ を echo する silent
 # failure を防ぐため issue_url を guard し warnings[] を surface する (先例 review.md ステップ
-# 7.4.2 の post-result handling を移植、refs #1252)
+# 7.4.2 の post-result handling を移植)
 if [ -z "$new_issue_url" ] || [ "$new_issue_url" = "null" ]; then
   echo "ERROR: Fingerprint 循環 finding の Issue 化に失敗しました (issue_url が空)" >&2
   printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do echo "⚠️ $w" >&2; done

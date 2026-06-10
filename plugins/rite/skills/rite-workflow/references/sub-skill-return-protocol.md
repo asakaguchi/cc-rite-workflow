@@ -38,7 +38,7 @@ If you reached this file from a runtime documentation link, the surviving
 that the flat orchestrator captures and branches on. No HTML comment or
 hook-side enforcement is involved.
 
-> **Sentinel naming policy (Issue #1165)**: `:returned-to-caller` 形式は旧
+> **Sentinel naming policy**: `:returned-to-caller` 形式は旧
 > `:completed` 形式の置換語彙。旧形式は LLM の turn-boundary heuristic と
 > 衝突し caller の次 step を skip する事象を構造的に誘発したため、新形式
 > で terminal vocabulary を排除した。各 emit site では sentinel 直前に

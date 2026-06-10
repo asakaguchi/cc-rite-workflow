@@ -606,7 +606,7 @@ fi
 | `{domain}` | `patterns` / `heuristics` / `anti-patterns` |
 | `{created}` / `{updated}` | 現在の ISO 8601 タイムスタンプ |
 | `{source_type}` | Raw Source の `type` フィールド (`reviews` / `retrospectives` / `fixes` の 3 値のみ — `wiki-ingest-trigger.sh` が受理する値と一致) |
-| `{source_ref}` | Raw Source の wiki-root 起点ファイル相対パス（例: `raw/reviews/20260413T...md`）。template 側で `../../` prefix を hardcode するため、placeholder 値自体には prefix を含めない。**⚠️ raw frontmatter の `source_ref` フィールド値（PR 識別子、例: `pr-1143`）をそのまま使ってはならない** — page の `sources[].ref` は常に Raw Source の**ファイルパス形式** `raw/{type}/{filename}` であり、PR 識別子形式ではない（同名 placeholder と raw フィールドの dual-use 混同による drift。背景は Issue #1178、概念は Wiki anti-pattern `placeholder-dual-use-resolution-drift`〔wiki ブランチに蓄積される経験則ページ。develop ツリーには実体なし〕）。lint はこの `ref` をファイルパス形式で raw と突合するため、PR 識別子だと raw→page 追跡が切れ false `missing_concept` を量産する（Issue #1178 実測） |
+| `{source_ref}` | Raw Source の wiki-root 起点ファイル相対パス（例: `raw/reviews/20260413T...md`）。template 側で `../../` prefix を hardcode するため、placeholder 値自体には prefix を含めない。**⚠️ raw frontmatter の `source_ref` フィールド値（PR 識別子、例: `pr-1143`）をそのまま使ってはならない** — page の `sources[].ref` は常に Raw Source の**ファイルパス形式** `raw/{type}/{filename}` であり、PR 識別子形式ではない（同名 placeholder と raw フィールドの dual-use 混同による drift。背景は Issue #1178、概念は Wiki anti-pattern `placeholder-dual-use-resolution-drift`〔wiki ブランチに蓄積される経験則ページ。develop ツリーには実体なし〕）。lint はこの `ref` をファイルパス形式で raw と突合するため、PR 識別子だと raw→page 追跡が切れ false `missing_concept` を量産する |
 | `{summary}` | ステップ 4.1 のサマリー |
 | `{details}` | ステップ 4.1 の詳細 |
 | `{related_page_title}` / `{related_page_path}` | ステップ 4.3 で決定した値。**該当ページがない場合は `## 関連ページ` セクション全体を `- （関連ページなし）` の平文 1 行に Edit で書き換える** (空 placeholder のままにすると Markdown link `[]()` が破綻) |
@@ -670,7 +670,7 @@ echo "auto_lint=$auto_lint"
 
 LLM は `skill: "rite:wiki:lint", args: "--auto"` 形式で `/rite:wiki:lint` を `--auto` モードで呼び出す。`--auto` モードの契約:
 
-- `Lint: contradictions={n}, stale={n}, orphans={n}, missing_concept={n}, unregistered_raw={n}, broken_refs={n}` 形式の 1 行 + `<!-- skill return signal: caller must continue next step -->` + `<!-- [lint:returned-to-caller:auto] -->` HTML コメント sentinel の 3 行を出力する (0 件でも必ず出力)。本 phase の parser (ステップ 8.3) は 1 行目の `^Lint: contradictions=` regex のみに依存するため、2 行目以降の disambiguator marker 追加 (#1165) は互換性に影響しない
+- `Lint: contradictions={n}, stale={n}, orphans={n}, missing_concept={n}, unregistered_raw={n}, broken_refs={n}` 形式の 1 行 + `<!-- skill return signal: caller must continue next step -->` + `<!-- [lint:returned-to-caller:auto] -->` HTML コメント sentinel の 3 行を出力する (0 件でも必ず出力)。本 phase の parser (ステップ 8.3) は 1 行目の `^Lint: contradictions=` regex のみに依存するため、2 行目以降の disambiguator marker 追加 は互換性に影響しない
 - log.md への追記は lint.md 側がブランチ状態を判定し自律実行する
 - 常に exit 0 (非ブロッキング)
 
@@ -839,9 +839,9 @@ Wiki Ingest が完了しました。
 <!-- [ingest:returned-to-caller] -->
 ```
 
-sentinel は grep 可能 (`grep -F '[ingest:returned-to-caller]'`) で rendered view では不可視。bare bracket `[ingest:returned-to-caller]` は LLM turn-boundary heuristic 誤発火のため禁止 (Issue #561)、HTML コメント形式のみ許容する。
+sentinel は grep 可能 (`grep -F '[ingest:returned-to-caller]'`) で rendered view では不可視。bare bracket `[ingest:returned-to-caller]` は LLM turn-boundary heuristic 誤発火のため禁止、HTML コメント形式のみ許容する。
 
-> **Why `returned-to-caller` (not `completed`)**: 旧 `ingest:completed` 形式は literal `completed` が LLM の turn-boundary heuristic と衝突し、caller skill (cleanup / pr:open 等) の次 step を skip して turn が暗黙終了する事象が複数回再発した (Issue #1165)。`returned-to-caller` は「caller skill に return した = caller の次 step に進む」というネスト構造を semantic に内包し、terminal vocabulary を構造的に排除する。
+> **Why `returned-to-caller` (not `completed`)**: 旧 `ingest:completed` 形式は literal `completed` が LLM の turn-boundary heuristic と衝突し、caller skill (cleanup / pr:open 等) の次 step を skip して turn が暗黙終了する事象が複数回再発した。`returned-to-caller` は「caller skill に return した = caller の次 step に進む」というネスト構造を semantic に内包し、terminal vocabulary を構造的に排除する。
 
 ---
 

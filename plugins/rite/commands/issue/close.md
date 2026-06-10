@@ -20,7 +20,7 @@ Check the completion status of an Issue and guide necessary actions.
 
 ## Shared: Projects Status → Done (delegate pattern)
 
-Phase 1.3.2 / 4.2 / 4.6.3 はいずれも Projects Status を **Done** に更新する。直接の `gh api graphql` + `field-list` + `item-edit` インライン呼び出しは substep 間で LLM attention が失われ silent skip を生む（Issue #658）ため、共通スクリプト `projects-status-update.sh` に委譲する（`pr/open.md` ステップ 2.4 / `pr/ready.md` Phase 4 と同一）。スクリプトは冪等で、API 詳細は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) を参照。
+Phase 1.3.2 / 4.2 / 4.6.3 はいずれも Projects Status を **Done** に更新する。直接の `gh api graphql` + `field-list` + `item-edit` インライン呼び出しは substep 間で LLM attention が失われ silent skip を生むため、共通スクリプト `projects-status-update.sh` に委譲する（`pr/open.md` ステップ 2.4 / `pr/ready.md` Phase 4 と同一）。スクリプトは冪等で、API 詳細は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) を参照。
 
 **委譲呼び出し**（`{issue}` は対象 Issue 番号、`auto_add false`・`non_blocking true`）:
 
@@ -260,7 +260,7 @@ echo "wiki_enabled=$wiki_enabled auto_ingest=$auto_ingest reason=${reason:-<run>
 
 `reason` が非空なら Step 2 / Phase 4.4.W.2 をスキップして Phase 4.5 へ。
 
-**Step 2**: Issue コンテキストから retrospective Raw Source を生成する。`wiki-ingest-trigger.sh` は `--content-file` に `$PWD` 配下または `/tmp/rite-*` prefix のみを受容する（Issue #518 — mktemp デフォルトの `/tmp/tmp.*` では silent fail する）:
+**Step 2**: Issue コンテキストから retrospective Raw Source を生成する。`wiki-ingest-trigger.sh` は `--content-file` に `$PWD` 配下または `/tmp/rite-*` prefix のみを受容する（mktemp デフォルトの `/tmp/tmp.*` では silent fail する）:
 
 ```bash
 tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX)
@@ -299,7 +299,7 @@ fi
 
 ### 4.4.W.2 Wiki Raw Commit
 
-> raw source の commit を単一スクリプト `wiki-ingest-commit.sh`（stash→checkout→add→commit→push→checkout-back→stash-pop を 1 プロセスで完結）に委譲する。LLM の multi-step orchestration に依存した旧 Skill 設計が E2E で fragile だった（Issue #525）ため。**本 block は raw source のみ commit**（page 統合は `/rite:wiki:ingest`）。
+> raw source の commit を単一スクリプト `wiki-ingest-commit.sh`（stash→checkout→add→commit→push→checkout-back→stash-pop を 1 プロセスで完結）に委譲する。LLM の multi-step orchestration に依存した旧 Skill 設計が E2E で fragile だったため。**本 block は raw source のみ commit**（page 統合は `/rite:wiki:ingest`）。
 
 **Condition**: `wiki_enabled=true` AND `auto_ingest=true` AND `trigger_exit=0` の場合のみ実行。満たさなければスキップして Phase 4.5 へ。
 
@@ -544,7 +544,7 @@ fi
 set -uo pipefail
 # drift-check-ignore: 親 Status→Done + close + 不整合サマリ (Step 1-3) を単一 atomic block に
 #   保つのは意図的な設計 (#517 silent-corruption 可視化 / #658 substep 間 attention 喪失回避)。
-#   phase 分割は両不変条件を壊すため不可。refs #1221。
+#   phase 分割は両不変条件を壊すため不可。
 parent_number="{parent_number}"
 owner="{owner}"
 repo="{repo}"

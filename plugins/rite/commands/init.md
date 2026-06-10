@@ -282,7 +282,7 @@ Generate `rite-config.yml` from the template config file.
 
 **Step 4**: Write the result to `rite-config.yml` in the project root using the Write tool.
 
-> **Note on wiki section (#491)**: `templates/config/rite-config.yml` declares the `wiki:` section **above** the `# --- Advanced ---` boundary as an active (non-commented) block. Step 2 (extract content up to the Advanced boundary) therefore includes the active `wiki:` section automatically in the generated `rite-config.yml`. No additional append step is required for new-generation path. The Advanced boundary is the single source of truth for what gets emitted vs commented-out.
+> **Note on wiki section**: `templates/config/rite-config.yml` declares the `wiki:` section **above** the `# --- Advanced ---` boundary as an active (non-commented) block. Step 2 (extract content up to the Advanced boundary) therefore includes the active `wiki:` section automatically in the generated `rite-config.yml`. No additional append step is required for new-generation path. The Advanced boundary is the single source of truth for what gets emitted vs commented-out.
 
 #### 4.1.3 Upgrade Existing Configuration
 
@@ -382,7 +382,7 @@ If the user confirms:
 2. Remove deprecated keys using the Edit tool. Display "廃止キーを削除しました: {keys}".
 3. Add missing sections from the template using the Edit tool. Display "新しいセクションを追加しました: {sections}".
 4. Add Advanced sections as comments (prefixed with `#`) using the Edit tool
-5. **If `wiki:` section is absent** (#491): append the active `wiki:` block from the template (single source of truth) so Phase 4.7 can auto-initialize Wiki.
+5. **If `wiki:` section is absent**: append the active `wiki:` block from the template (single source of truth) so Phase 4.7 can auto-initialize Wiki.
 
    **Wiki block source (SSOT)**: Read `{plugin_root}/templates/config/rite-config.yml` and extract the block from `# Wiki settings` through the end of the `wiki:` section (the lines above the `# --- Advanced (below this line) ---` marker). This avoids literal duplication between `init.md` and the template — any change to default values (e.g., `auto_ingest`, `branch_strategy`) in the template automatically propagates to both new-install and `--upgrade` paths.
 
@@ -403,7 +403,7 @@ If the user confirms:
 
 Display "rite-config.yml をアップグレードしました (v{current} → v{latest})".
 
-**Step 7: Run Phase 4.7 and display status (#491)**
+**Step 7: Run Phase 4.7 and display status**
 
 Step 7 has two sub-steps:
 
@@ -449,7 +449,7 @@ Issue テンプレートの作成を推奨します
 
 > **Placeholder convention**: All `{hooks_dir}` occurrences in fenced code blocks within Phase 4.5 are **templates**, not literal commands. Replace `{hooks_dir}` with the absolute path resolved in Phase 4.5.0 before executing each command via the Bash tool.
 
-> **rite hook command の判定基準 (SoT)**: Phase 4.5 の各サブフェーズで hook command が「rite 自身の hook か」を判定する箇所では、command path 中で `rite` が **hooks ディレクトリ直上の完全な path segment** である場合のみ rite hook とみなす（その間に version segment を 1 個まで許容）。具体的には dev/relative の `…/rite/hooks/` と cache install の `…/rite-marketplace/rite/<version>/hooks/` がマッチし、`favorite/hooks/`・`prerite/hooks/`・`rite-something/hooks/` のように `rite` が別 segment の部分文字列にすぎない look-alike はマッチしない。これは helper の正規表現の**単一定義実体** `scripts/settings-local-rite-hook-cleanup.py` の `RITE_HOOK_RE`（正規表現 `(?:^|/)rite/(?:[^/]+/)?hooks/`）と同一基準であり、本ドキュメントで **「rite hook command」** と表記する箇所はすべてこの基準を指す。同名 `.sh` wrapper（python3 guard・atomic write を担う）も `session-start.sh` の settings.local.json 修復経路も、JSON 変換＝regex 適用をこの `.py` に委譲するため、正規表現の定義は `.py` 1 箇所のみに存在する（Issue #1239 で session-start.sh のインライン複製を解消）。素朴な substring `rite/hooks/` 一致は `favorite/hooks/` 等を over-match するため使わない（Issue #1231 / #1237 / #1239）。
+> **rite hook command の判定基準 (SoT)**: Phase 4.5 の各サブフェーズで hook command が「rite 自身の hook か」を判定する箇所では、command path 中で `rite` が **hooks ディレクトリ直上の完全な path segment** である場合のみ rite hook とみなす（その間に version segment を 1 個まで許容）。具体的には dev/relative の `…/rite/hooks/` と cache install の `…/rite-marketplace/rite/<version>/hooks/` がマッチし、`favorite/hooks/`・`prerite/hooks/`・`rite-something/hooks/` のように `rite` が別 segment の部分文字列にすぎない look-alike はマッチしない。これは helper の正規表現の**単一定義実体** `scripts/settings-local-rite-hook-cleanup.py` の `RITE_HOOK_RE`（正規表現 `(?:^|/)rite/(?:[^/]+/)?hooks/`）と同一基準であり、本ドキュメントで **「rite hook command」** と表記する箇所はすべてこの基準を指す。同名 `.sh` wrapper（python3 guard・atomic write を担う）も `session-start.sh` の settings.local.json 修復経路も、JSON 変換＝regex 適用をこの `.py` に委譲するため、正規表現の定義は `.py` 1 箇所のみに存在する（session-start.sh のインライン複製を解消）。素朴な substring `rite/hooks/` 一致は `favorite/hooks/` 等を over-match するため使わない。
 
 ### 4.5.0 Resolve Hook Script Directory
 
@@ -685,7 +685,7 @@ fi
    bash "{hooks_dir}/scripts/settings-local-rite-hook-cleanup.sh" ".claude/settings.local.json"
    ```
 
-   > **Helper contract**: `settings-local-rite-hook-cleanup.sh` は **rite hook を実際に除去したときのみ** `CLEANED` を返し、それ以外の安全側ケース (python3 不在・file 不在・対象 hook 不在・不正 JSON・mktemp/mv 失敗を含む) ではすべて `NO_RITE_HOOKS` を返す。ただし **mv 失敗** だけは「変換は成功したが swap-in できず stale な rite hook が残る」ケースであり真の silent skip ではないため、`NO_RITE_HOOKS` (+ exit 0 非ブロッキング) を保ったまま stderr に `[rite] WARNING: ... mv failed` を emit する (Issue #1232、先例 `issue-comment-wm-sync.sh:99-104` の error-surfacing pattern 準拠)。`*.py` を `*.sh` wrapper 経由で呼ぶ先例 `issue-comment-wm-update.py` / `issue-comment-wm-sync.sh` に準拠。
+   > **Helper contract**: `settings-local-rite-hook-cleanup.sh` は **rite hook を実際に除去したときのみ** `CLEANED` を返し、それ以外の安全側ケース (python3 不在・file 不在・対象 hook 不在・不正 JSON・mktemp/mv 失敗を含む) ではすべて `NO_RITE_HOOKS` を返す。ただし **mv 失敗** だけは「変換は成功したが swap-in できず stale な rite hook が残る」ケースであり真の silent skip ではないため、`NO_RITE_HOOKS` (+ exit 0 非ブロッキング) を保ったまま stderr に `[rite] WARNING: ... mv failed` を emit する。`*.py` を `*.sh` wrapper 経由で呼ぶ先例 `issue-comment-wm-update.py` / `issue-comment-wm-sync.sh` に準拠。
 
    - If `CLEANED` → display `ℹ️ settings.local.json からレガシー rite hook エントリを削除しました。`
    - If `NO_RITE_HOOKS` → no output (no rite hooks removed)
@@ -945,7 +945,7 @@ Display: `✅ Work memory directory initialized (.rite-work-memory/)`
 
 ---
 
-## Phase 4.7: Wiki Initialization (#491)
+## Phase 4.7: Wiki Initialization
 
 Auto-initialize the Experience Wiki so the user does not need to run `/rite:wiki:init` manually. Executed after Phase 4.6 (new install) and after the Phase 4.1.3 Apply step (`--upgrade` path).
 
@@ -1109,7 +1109,7 @@ rite workflow セットアップが完了しました
 - Hooks: pre-compact, session-start, session-end (registered)
 <!-- If hooks were skipped due to NOT_FOUND in Phase 4.5.0: -->
 - Hooks: スキップ（未検出）
-<!-- Wiki status line from Phase 4.7 (#491). Select exactly one of the following
+<!-- Wiki status line from Phase 4.7. Select exactly one of the following
      based on the wiki_status value retained in LLM context via explicit if/else.
      Do not construct the message dynamically from wiki_status: -->
 <!-- If wiki_status == "initialized":         -->

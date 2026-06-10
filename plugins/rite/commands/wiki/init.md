@@ -111,7 +111,7 @@ PR #564 で `.rite/wiki/` が `.gitignore` に追加されたため、`same_bran
 |---|------|
 | 1 | ステップ 1.2 で取得した `branch_strategy == "same_branch"` |
 | 2 | `.gitignore` が存在する |
-| 3 | `.gitignore` に `^\.rite/wiki/[[:space:]]*$` に match する行が存在する（PR #564 以降のリポジトリ。末尾 whitespace 許容で手動編集された `.gitignore` との衝突耐性を確保） |
+| 3 | `.gitignore` に `^\.rite/wiki/[[:space:]]*$` に match する行が存在する（末尾 whitespace 許容で手動編集された `.gitignore` との衝突耐性を確保） |
 | 4 | `.gitignore` に `# <<< gitignore-wiki-section-end` anchor が存在する（ステップ 1.3.3 Edit ツールが anchor を `old_string` に hardcode するため、不在の場合 hard fail する。consumer project は本 anchor を持たないため early skip + 手動追記案内へ分岐する） |
 
 **Skip 条件** (idempotent):
@@ -207,10 +207,10 @@ echo "GITIGNORE_NEGATION_REASON=$reason"
 
 #### 1.3.3 `.gitignore` への追記
 
-Edit ツールで `.gitignore` の既存 anchor `# <<< gitignore-wiki-section-end (anchor / F-09 対応)` 行の **直後** に以下のブロックを挿入する（PR #564 で配置された wiki section の直後を指定することで、関連コメントと配置を近接させる）:
+Edit ツールで `.gitignore` の既存 anchor `# <<< gitignore-wiki-section-end (anchor / F-09 対応)` 行の **直後** に以下のブロックを挿入する（wiki section の直後を指定することで、関連コメントと配置を近接させる）:
 
 ```
-# >>> gitignore-wiki-negation-start (Issue #568 — same_branch 戦略用 negation 自動注入)
+# >>> gitignore-wiki-negation-start (same_branch 戦略用 negation 自動注入)
 # 本プロジェクトは same_branch 戦略のため、.rite/wiki/ 配下を再包含する。
 # verification 手順は本 .gitignore 上部の Step 1-5 コメントを参照。
 !.rite/wiki/
@@ -231,7 +231,7 @@ Edit ツールで `.gitignore` の既存 anchor `# <<< gitignore-wiki-section-en
 
 ```
 # <<< gitignore-wiki-section-end (anchor / F-09 対応)
-# >>> gitignore-wiki-negation-start (Issue #568 — same_branch 戦略用 negation 自動注入)
+# >>> gitignore-wiki-negation-start (same_branch 戦略用 negation 自動注入)
 # 本プロジェクトは same_branch 戦略のため、.rite/wiki/ 配下を再包含する。
 # verification 手順は本 .gitignore 上部の Step 1-5 コメントを参照。
 !.rite/wiki/
@@ -294,7 +294,7 @@ echo "plugin_root=$plugin_root"
 
 ### 2.2 ディレクトリ作成と `.gitkeep` 配置
 
-Issue #547 で追加: `pages/{patterns,heuristics,anti-patterns}/` は初期状態ではファイルを持たないため、`.gitkeep` を配置して git tree に保持する。これがないと `/rite:wiki:ingest` が page を書き込もうとした際に親ディレクトリ不在で Write が失敗する。
+`pages/{patterns,heuristics,anti-patterns}/` は初期状態ではファイルを持たないため、`.gitkeep` を配置して git tree に保持する。これがないと `/rite:wiki:ingest` が page を書き込もうとした際に親ディレクトリ不在で Write が失敗する。
 
 ```bash
 mkdir -p .rite/wiki/raw/reviews
@@ -304,7 +304,7 @@ mkdir -p .rite/wiki/pages/patterns
 mkdir -p .rite/wiki/pages/heuristics
 mkdir -p .rite/wiki/pages/anti-patterns
 
-# .gitkeep で空ディレクトリを tracked に保持 (Issue #547)
+# .gitkeep で空ディレクトリを tracked に保持
 touch .rite/wiki/pages/patterns/.gitkeep
 touch .rite/wiki/pages/heuristics/.gitkeep
 touch .rite/wiki/pages/anti-patterns/.gitkeep
@@ -340,7 +340,7 @@ sed "s/{initialized_at}/$initialized_at/g" \
 
 > **Reference**: [separate_branch 戦略のブランチ操作](../../references/wiki-patterns.md#separate_branch-戦略のブランチ操作)
 
-ステップ 2 で展開した `.rite/wiki/` の初期コミットは `wiki-branch-init.sh` に委譲する (Issue #1196)。helper は separate_branch (orphan ブランチ作成 + push + 元ブランチ復帰、dirty tree の stash 退避/復帰、異常終了時の trap による元ブランチ復帰保証) / same_branch (現在ブランチへコミット) の両戦略と、未知 strategy の fail-fast をすべて内包する (旧 ~95 行 inline block を委譲)。
+ステップ 2 で展開した `.rite/wiki/` の初期コミットは `wiki-branch-init.sh` に委譲する。helper は separate_branch (orphan ブランチ作成 + push + 元ブランチ復帰、dirty tree の stash 退避/復帰、異常終了時の trap による元ブランチ復帰保証) / same_branch (現在ブランチへコミット) の両戦略と、未知 strategy の fail-fast をすべて内包する (旧 ~95 行 inline block を委譲)。
 
 **出力契約** (旧 inline block と同一): 成功時は `✅ Wiki ブランチ '{wiki_branch}' を作成しました` (separate_branch) または `✅ Wiki を現在のブランチに初期化しました` (same_branch) を stdout 出力。失敗時は `ERROR: ...` (stderr) + exit 1 (blocking)。
 
@@ -353,7 +353,7 @@ bash "$plugin_root/hooks/scripts/wiki-branch-init.sh" \
   --wiki-branch "{wiki_branch}"
 ```
 
-## ステップ 3.5: Wiki Worktree セットアップ (Issue #547)
+## ステップ 3.5: Wiki Worktree セットアップ
 
 `separate_branch` 戦略の場合、ステップ 3.1 で wiki ブランチを作成した直後に `.rite/wiki-worktree/` worktree を作成します。これにより `/rite:wiki:ingest` は dev ブランチを離脱することなく wiki ブランチのツリーに Write/Edit できるようになります。
 
@@ -399,7 +399,7 @@ if [ "$branch_strategy" = "separate_branch" ] && [ -d .rite/wiki-worktree/.rite/
   done
 
   if [ "$migration_needed" = "true" ]; then
-    commit_msg="chore(wiki): migrate pages/ directories with .gitkeep (Issue #547)"
+    commit_msg="chore(wiki): migrate pages/ directories with .gitkeep"
     # 2>&1 は付けない: 構造化 stdout (committed= 行) と WARNING stderr の分離を維持する
     commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --message "$commit_msg")
     commit_rc=$?

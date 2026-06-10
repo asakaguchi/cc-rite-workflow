@@ -369,7 +369,7 @@ gh pr view {pr_number} --json body,headRefName
 
 ### 4.2 Update Status via Shared Script
 
-> **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `commands/pr/open.md` ステップ 2.4 / 後続 Projects Status callsite。Direct inline `gh api graphql` (Organization-aware) + `gh project item-edit` calls have been removed because the multi-stage inline pipeline produced silent skips when LLM attention was lost between substeps, leaving Issue Status at "In Progress" instead of advancing to "In Review" (Issue #658 — observed on #652 stuck at "In Progress" through subsequent cleanup).
+> **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `commands/pr/open.md` ステップ 2.4 / 後続 Projects Status callsite。Direct inline `gh api graphql` (Organization-aware) + `gh project item-edit` calls have been removed because the multi-stage inline pipeline produced silent skips when LLM attention was lost between substeps, leaving Issue Status at "In Progress" instead of advancing to "In Review" (observed on #652 stuck at "In Progress" through subsequent cleanup).
 
 Skip Phase 4.2 if `github.projects.enabled: false` in `rite-config.yml` or if no related Issue was identified in Phase 4.1, and proceed to Phase 4.6. Otherwise, invoke the shared script to transition the Issue Status to **In Review**:
 
@@ -400,7 +400,7 @@ Inspect the script's stdout JSON and route by `.result`:
 
 **All result branches are non-blocking** — the ready-for-review transition is already complete (Phase 3 `gh pr ready` succeeded); a Status update issue MUST NOT abort the workflow.
 
-> **失敗 surface MUST (Issue #1003 AC-4)**: 旧仕様では `skipped_not_in_project` / `failed` の両経路で **silent skip** していたため、observation log がどこにも残らず、user が手動確認するまで Status が `In Progress` に滞留する事象 (Issue #1003) が発生していた。本契約により、両経路は必ず `WARNING` を stderr に出力する。Status 更新失敗はブロッキングではなく、ユーザーが stderr を見て手動回復 (`/rite:resume` または手動 `gh project item-edit`) する。
+> **失敗 surface MUST**: 旧仕様では `skipped_not_in_project` / `failed` の両経路で **silent skip** していたため、observation log がどこにも残らず、user が手動確認するまで Status が `In Progress` に滞留する事象 が発生していた。本契約により、両経路は必ず `WARNING` を stderr に出力する。Status 更新失敗はブロッキングではなく、ユーザーが stderr を見て手動回復 (`/rite:resume` または手動 `gh project item-edit`) する。
 
 > **Bash 実装 minimal skeleton (delegate-only 経路の標準形)**:
 >
@@ -501,7 +501,7 @@ When called within the end-to-end flow (detected in Phase 5.0), **do NOT output 
 
 This pattern is **mandatory** in e2e flow. It allows the caller orchestrator (e.g. `sprint/execute.md`) to detect that `rite:pr:ready` has returned to the caller and immediately proceed to caller-specific 完了処理 (sprint なら次 Issue の処理、独立 orchestrator なら completion report)。Without this signal, the caller may incorrectly interpret the lack of output as task completion.
 
-The signal comment + sentinel pair replaces the older `ready:completed` form. The new naming makes explicit that the sub-skill is *returning to caller* (and the caller must continue), not *terminating the workflow* — this prevents LLM turn-boundary heuristic misfires (Issue #1165). The sentinel is wrapped in an HTML comment to match the canonical emit style used by `create.md` / `cleanup.md` / `ingest.md` so that the user-visible terminus is never a bare bracket sentinel — disambiguator marker と sentinel が共に HTML コメント化されることで「ユーザー向けに見える最終行」と「caller への signal 行」が完全に分離される (Issue #1165)。
+The signal comment + sentinel pair replaces the older `ready:completed` form. The new naming makes explicit that the sub-skill is *returning to caller* (and the caller must continue), not *terminating the workflow* — this prevents LLM turn-boundary heuristic misfires. The sentinel is wrapped in an HTML comment to match the canonical emit style used by `create.md` / `cleanup.md` / `ingest.md` so that the user-visible terminus is never a bare bracket sentinel — disambiguator marker と sentinel が共に HTML コメント化されることで「ユーザー向けに見える最終行」と「caller への signal 行」が完全に分離される。
 
 #### 5.1.2 Standalone Execution
 

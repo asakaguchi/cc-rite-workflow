@@ -860,7 +860,7 @@ WM_SOURCE="implement" \
 
 #### 5.1.2 Parent Issue Progress Update (only when working on child Issue)
 
-**Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically via `flow-state.sh` (Issue #687 AC-4) so per-session state is consulted instead of the legacy state file snapshot (#497 — also survives context compaction):
+**Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically via `flow-state.sh` so per-session state is consulted instead of the legacy state file snapshot (also survives context compaction):
 
 ```bash
 # `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を

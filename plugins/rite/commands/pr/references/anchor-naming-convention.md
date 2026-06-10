@@ -90,7 +90,7 @@ set +o pipefail
 
 ```bash
 # === severity_map build (see L1090 note) ===
-# === Phase 1.2.0 (PR #1028 cycle 2 で確立) ===
+# === Phase 1.2.0 ===
 ```
 
 **何が問題か**:

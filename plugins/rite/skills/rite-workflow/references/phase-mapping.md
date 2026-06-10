@@ -8,9 +8,9 @@ Mapping information for phase details. Used in work memory session information.
 
 ### `/rite:issue:create` (flat workflow)
 
-`/rite:issue:create` は Issue 作成のみで work phase を持たず、flow-state を init / 所有しない (Issue #1184)。本コマンドは flow-state に phase を書き込まない (`completed` を含む) ため、phase detail mapping のエントリを持たない。完了は sentinel `[create:returned-to-caller:{N}]` (ステップ 4.4 / 5.6) で表現される。
+`/rite:issue:create` は Issue 作成のみで work phase を持たず、flow-state を init / 所有しない。本コマンドは flow-state に phase を書き込まない (`completed` を含む) ため、phase detail mapping のエントリを持たない。完了は sentinel `[create:returned-to-caller:{N}]` (ステップ 4.4 / 5.6) で表現される。
 
-### 新 4 コマンド (Issue #1136)
+### 新 4 コマンド
 
 `/rite:resume` の routing は `commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) を SoT とする。
 

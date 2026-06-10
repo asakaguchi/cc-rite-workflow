@@ -7,6 +7,18 @@ rite workflow 独自の主張 (Contract Rigour / Output Contract / Naming is doc
 > **MVP スコープ**: 本ドキュメントは Issue #699 の MVP として 6 原則 + Bad/Good 例 + Detection Heuristics (含 Maintenance Invariant note) + Density Guideline + 禁止句リスト (SoT) + Whitelist 条文を提供する。
 > reviewer 側の Detection Checklist 統合は後続 Issue (Issue 2a) の責務。
 
+## 適用スコープ
+
+本 SoT が扱う「説明・ジャーナル目的の Issue/PR/commit 番号参照」の廃止は、コード内コメントに限らず**永続成果物全般**を対象とする。具体的には次を含む。
+
+| スコープ | 対象例 |
+|---------|--------|
+| in-source コメント | Edit/Write で生成するコード内コメント全般 |
+| ドキュメント散文 | `docs/`（SPEC ほか）・command/skill markdown の手順書本文・各種 reference・成果物テンプレート |
+| Wiki ページ | `.rite/wiki/` の経験則ページ・テンプレート |
+
+「番号を辿っても得るものが少なく、辿る手間に見合わない」ため、永続成果物には番号を残さず、残すべき背景（Why）は**散文として成果物そのものに書く**。番号リンクは commit message / PR description（git/PR メタデータ）にのみ残す。どの参照を削除し、どれを維持するかは次節「廃止判定ルール」で分類する。
+
 ## 適用フェーズ
 
 | Phase | 適用箇所 |
@@ -29,6 +41,21 @@ rite workflow 独自の主張 (Contract Rigour / Output Contract / Naming is doc
 | `no_jargon_abuse` | 独自社内ジャーゴン濫用禁止 (whitelist 経由で除外) | SHOULD |
 | `density_by_audience` | 公開 API と内部で密度を変える | SHOULD |
 | `comment_rot_is_critical` | Comment Rot は CRITICAL (嘘のコメントは無コメントより悪い) | MUST |
+
+---
+
+## 廃止判定ルール (説明的参照 vs 前方ポインタ)
+
+番号参照は一律に削除するのではなく、次のルールで分類して扱う。各参照について「説明的か（削除）／前方ポインタか（維持）」を**個別判定**する。判定は文脈読解を要するため、機械的な一括 grep 置換にはできない。
+
+| 参照の種類 | 判定 | 理由 |
+|-----------|------|------|
+| **説明的参照**（「詳細は #N 参照」「PR #N で対応」「(refs #N)」等、Why の代替として貼られたもの） | **削除** → Why を散文化 | 番号を辿っても背景は得られず、辿る手間に見合わない。背景が必要なら Why を散文で残す |
+| **TODO / FIXME に添えた追跡番号** | **維持** | 未来の取り扱い経路を示す前方ポインタ。これから来る読み手が次の作業を辿るための実用情報であり、過去の説明ではない |
+| **test 契約・semantic アンカーとしてのファイル名参照**（`xxx.test.sh` 等） | **維持** | 番号ではない。drift-check や test 契約のアンカーとして機能し、rename 追従可能 |
+| **commit message / PR description 内の番号** | **対象外**（許可） | git/PR メタデータは番号の正しい受け皿。永続成果物（コード・ドキュメント・Wiki）ではない |
+
+この分類が全 Sub-Issue 共通の契約となる。検出機構（lint / reviewer / parity test）も本ルールに従い、「説明的参照=検出対象」「TODO/FIXME 追跡番号・ファイル名アンカー=検出除外」を区別する。
 
 ---
 
@@ -77,7 +104,7 @@ def get_user_id(email: str) -> int:
 
 ### 2. no_journal_comment (ジャーナルコメント禁止)
 
-**Summary**: 個別の review cycle / fix / PR / Issue の経緯をコード内コメントに残してはならない。それらは PR description / commit message / Wiki / 経験則ページに書く。
+**Summary**: 個別の review cycle / fix / PR / Issue の経緯をコード内コメントやドキュメント散文・Wiki ページに残してはならない。番号を伴う経緯は PR description / commit message（git/PR メタデータ）に書く。経験則として一般化できる Why は Wiki に**散文で**（番号を持ち込まず）残す。
 
 **Failure Patterns**:
 
@@ -94,18 +121,18 @@ def get_user_id(email: str) -> int:
 
 1. **Comment Rot の温床**: 該当 cycle / PR の文脈は時間経過で失われ、未来の読み手にとっては意味不明な暗号になる
 2. **ノイズ比率の暴走**: 1 つの修正で数 cycle 経るたびにジャーナルが累積し、コード:コメント比が逆転する (PR #688 `state-read.sh` で 60% コメント、うち 70% がレビュー経緯)
-3. **正しい場所が空洞化**: PR description / commit message / Wiki がジャーナル受け皿として機能していれば、コード内コメントには WHY のみが残るべき
+3. **正しい場所が空洞化**: 番号を伴うジャーナルは PR description / commit message（git/PR メタデータ）が受け皿として機能していれば、コード内コメントには WHY のみが残るべき。Wiki は番号の受け皿ではなく、経験則を Why 散文として持つ場所
 
 **Rules**:
 
 1. cycle / fix / review finding / PR 番号 を参照するコメントは原則禁止
-2. その変更の動機を残したい場合は、commit message → PR description → (経験則化に値するなら) Wiki に書く
+2. その変更の動機を残したい場合は、commit message → PR description に書く。経験則化に値する Why は Wiki に**散文で**残す（番号は持ち込まず、Why そのものを書く）
 3. コードに残してよいのは「未来の読み手が同じ罠にハマらないための WHY」(原則 1) のみ。「過去にハマった」記録ではなく「これから来る読み手への警告」として書く
 
 #### 禁止句リスト (SoT)
 
 本原則の機械的検出ガイドライン (Detection Heuristics) を補完する **禁止句リスト**。
-以下の語句は **in-source コメント** / **レビュアー返信** / **docstring** いずれの場面でも記述してはならない (commit message / PR description / Wiki への記載は許可)。
+以下の語句は **in-source コメント** / **レビュアー返信** / **docstring** / **ドキュメント散文** / **Wiki ページ** いずれの場面でも記述してはならない (commit message / PR description への記載のみ許可)。Wiki は番号の受け皿ではなく、経験則を自己完結した Why 散文で残す場所であるため番号参照の許可先から除く。
 
 | 言語 | カテゴリ | 禁止句 |
 |------|---------|--------|
@@ -126,8 +153,10 @@ def get_user_id(email: str) -> int:
 | in-source コメント (Edit/Write で生成するコード内コメント全般) | 本ドキュメント (SoT) |
 | `templates/review/reply.md` のレビュアー返信本文 | 本ドキュメントを参照 |
 | `commands/pr/fix.md` ステップ 2.3 / 2.4 の修正生成時 | 本ドキュメントを参照 |
+| ドキュメント散文 (`docs/`・command/skill markdown 手順書本文・reference・成果物テンプレート) | 本ドキュメントを参照 |
+| Wiki ページ (`.rite/wiki/` の経験則ページ・テンプレート) | 本ドキュメントを参照（具体反映は Wiki レイヤ整合タスク） |
 
-**理由**: コメントに番号や履歴を書くと、後追いで読むレビュアーが GitHub の commit / PR / Issue ページを行き来する負担が増える。番号は将来の rename / squash で意味を失う。**「なぜそうしたか」(Why) が分かれば commit history は code から辿れる** ため、本文は Why に集中する。
+**理由**: コメントやドキュメント散文・Wiki に番号や履歴を書くと、後追いで読むレビュアーが GitHub の commit / PR / Issue ページを行き来する負担が増える。番号は将来の rename / squash で意味を失う。**「なぜそうしたか」(Why) が分かれば commit history は code から辿れる** ため、本文は Why に集中する。
 
 **Where to Apply**:
 
@@ -269,7 +298,7 @@ if val=$(bash state-read.sh --field foo); then ...
 
 1. コードを変更したら、影響範囲のコメントも同 commit 内で更新する (commit に閉じる)
 2. 削除されたコードへのコメント参照を残してはならない
-3. 「TODO」「FIXME」を書くなら必ず関連 Issue / PR 番号を添えて未来の取り扱い経路を明示する。野良 TODO は禁止
+3. 「TODO」「FIXME」を書くなら必ず関連 Issue / PR 番号を添えて未来の取り扱い経路を明示する。野良 TODO は禁止。この追跡番号は廃止判定ルールの**前方追跡ポインタ（維持）**に該当し、Why の代替として貼る説明的参照（削除対象）とは区別される — 番号廃止方針と矛盾しない（過去の説明ではなく、これから来る読み手が次の作業を辿るための前方ポインタだから維持する）
 4. レビュー時、コメントが現コードと整合しているかを必ず確認する (severity: CRITICAL)
 
 **Where to Apply**:

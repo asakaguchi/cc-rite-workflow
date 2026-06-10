@@ -241,7 +241,7 @@ teammate の git 禁止・team lead の `git -C` 集約は無変更。
 
 ### §11 後方互換とマイグレーション
 
-- `multi_session.enabled: false`（デフォルト）で worktree 経路・EnterWorktree・reap Step 5 の対象がすべて不活性。
+- `multi_session.enabled: false`（明示 opt-out、または `multi_session:` ブロックを持たない旧 config）で worktree 経路・EnterWorktree・reap Step 5 の対象がすべて不活性。#1391 でデフォルトは `true` に変更されたが、ブロック欠落時の parse fallback は `false` のままのため既存 config の挙動は不変。
 - §1 の resolver 変更は非 worktree セッションで出力 byte 一致 → 状態ファイルの移動・migration は一切発生しない。
 - claim のみ常時有効（衝突がない限り無音。`.rite/state/` 配下へのファイル作成のみで既存ユーザーの体験は不変）。
 - rite-config.yml top-level `schema_version` bump（2→3）で session-start.sh の既存 upgrade prompt 機構が自動案内。
@@ -306,7 +306,7 @@ teammate の git 禁止・team lead の `git -C` 集約は無変更。
 <!-- Section ID: SPEC-E2E -->
 ## E2E 検証手順と結果（S10 / #1370）
 
-> **実施方法**: マルチセッションは 2 つの独立した Claude Code ターミナルの並行起動を要するため、単一の自動エージェントでは完遂できない。以下の手順を人手（坂口さん）が実行し、結果を本節の結果表に記録する。実施前提として `rite-config.yml` の `multi_session.enabled: true` を設定する（検証後に `false` へ戻す手順 5 を含む）。dogfood 有効化（恒久的な `enabled: true`）は本 E2E の結果を踏まえて別途判断する（本 PR 時点では既定 `false` へ復帰。恒久有効化の決定エントリは Decision Log 未登録 — 必要時に新設する）。
+> **実施方法**: マルチセッションは 2 つの独立した Claude Code ターミナルの並行起動を要するため、単一の自動エージェントでは完遂できない。以下の手順を人手（坂口さん）が実行し、結果を本節の結果表に記録する。実施前提として `rite-config.yml` の `multi_session.enabled: true` を設定する（検証後に `false` へ戻す手順 5 を含む）。dogfood 有効化（恒久的な `enabled: true`）は本 E2E の結果を踏まえて別途判断する（S10/#1370 当時は検証後に既定 `false` へ復帰した）。**追記（#1391）**: その後 #1391 でテンプレートのデフォルトを `true` に変更し、dogfood リポジトリの `rite-config.yml` も恒久的に `enabled: true` 化した（決定根拠は D-9 / CHANGELOG #1391 参照）。
 
 ### 手順
 

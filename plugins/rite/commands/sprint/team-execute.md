@@ -125,6 +125,19 @@ Same as execute.md Phase 2.2.
 
 Same as execute.md Phase 2.3. Additionally, identify which Issues can run in parallel (no mutual dependencies) and which must run sequentially (dependency chain).
 
+### 2.3.5 Claim フィルタ（他セッション live claim の除外）
+
+[execute.md](./execute.md) Phase 2.3.5 と同様に、各 Issue を `issue-claim.sh check` で確認し `other`（他の live セッションが claim 中）の Issue を**バッチ割当の前に除外**する。`stale` は除外しない。除外した Issue は 2.5 実行計画表に「スキップ（他セッション作業中）」として明示する:
+
+```bash
+for n in {sorted_issue_numbers}; do
+  st=$(bash {plugin_root}/hooks/issue-claim.sh check --issue "$n" 2>/dev/null) || st=""
+  [ "$st" = "other" ] && echo "[CONTEXT] SPRINT_SKIP_CLAIM=$n"
+done
+```
+
+`SPRINT_SKIP_CLAIM` の Issue は 2.4 Parallel Batch Planning のバッチ割当対象から外す。
+
 ### 2.4 Parallel Batch Planning
 
 Group Issues into parallel batches based on:
@@ -240,6 +253,12 @@ Batch {current} の Issue:
 #### 3.1.2 Create Worktrees and Branches
 
 For each Issue in the current batch:
+
+> **Claim 再チェック（TOCTOU 窓対策）**: Phase 2.3.5 のフィルタからバッチ実行までに別セッションが claim する窓があるため、worktree / branch 作成の直前に再確認する。`other`（他 live セッションが claim 中）なら本 Issue をバッチからスキップし `skipped`（理由: 他セッション作業中）として Phase 3.1.8 に記録する（既存の branch-already-exists エラーハンドリングの手前での早期 skip）。最終ガードは pr:open Step 2.2-W の branch 衝突検出:
+> ```bash
+> st=$(bash {plugin_root}/hooks/issue-claim.sh check --issue {issue_number} 2>/dev/null) || st=""
+> [ "$st" = "other" ] && echo "[CONTEXT] SPRINT_SKIP_CLAIM_TOCTOU={issue_number}"
+> ```
 
 **Step 1**: Generate branch name (same as [pr/open.md](../pr/open.md) ステップ 2):
 

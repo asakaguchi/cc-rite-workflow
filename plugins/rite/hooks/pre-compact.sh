@@ -28,7 +28,6 @@ fi
 # SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
-COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
 # Resolve active flow-state file path (Issue #680).
 # Returns the per-session file when schema_version=2 with a valid SID; otherwise legacy.
 #
@@ -53,6 +52,18 @@ if [ "$_resolve_failed" -eq 1 ]; then
   echo "[rite] WARNING: flow-state.sh path resolution failed — skip" >&2
 fi
 [ -n "$_resolve_err" ] && rm -f "$_resolve_err"
+
+# Derive the per-session compact-state path from the resolved flow-state path
+# (Issue #1371): .rite/sessions/{sid}.flow-state → .rite/sessions/{sid}.compact-state.
+# This makes each session's compact snapshot independent, removing the
+# last-writer-wins race on the previously shared single file. Falls back to the
+# legacy shared path only when the session id is unresolvable, preserving
+# pre-per-session behavior for sessions without a session id.
+if [ -n "$FLOW_STATE" ]; then
+  COMPACT_STATE="${FLOW_STATE%.flow-state}.compact-state"
+else
+  COMPACT_STATE="$STATE_ROOT/.rite-compact-state"
+fi
 LOCKDIR="$COMPACT_STATE.lockdir"
 
 # --- Cleanup function (covers all temp files) ---

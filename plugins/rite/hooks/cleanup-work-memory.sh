@@ -116,9 +116,18 @@ if [ "$CLOSE_MODE" = false ]; then
     fi
   fi
 
-  # Step 2: Clean up .rite-compact-state
+  # Step 2: Clean up compact-state (legacy shared + this session's per-session file)
+  # Legacy shared path removal is retained for pre-#1371 migration residue.
   rm -f "$STATE_ROOT/.rite-compact-state" 2>/dev/null || true
   rm -rf "$STATE_ROOT/.rite-compact-state.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=cleanup_work_memory" >&2
+  # Per-session compact-state (Issue #1371): derive from the resolved flow-state
+  # path so full cleanup also reaps the current session's snapshot.
+  _cwm_flow_state=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>/dev/null) || _cwm_flow_state=""
+  if [ -n "$_cwm_flow_state" ]; then
+    _cwm_compact="${_cwm_flow_state%.flow-state}.compact-state"
+    rm -f "$_cwm_compact" 2>/dev/null || true
+    rm -rf "$_cwm_compact.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=cleanup_work_memory_per_session" >&2
+  fi
 
   # Step 3: Delete ALL work memory files
   if [ -d "$WM_DIR" ]; then

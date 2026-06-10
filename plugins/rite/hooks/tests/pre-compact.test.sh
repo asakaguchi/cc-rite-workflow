@@ -75,6 +75,14 @@ state_file_path() {
   echo "$dir/.rite/sessions/${sid}.flow-state"
 }
 
+# Helper: path to the per-session compact-state file (Issue #1371). Mirrors
+# pre-compact.sh's derivation: .rite/sessions/<sid>.flow-state → .compact-state.
+compact_state_path() {
+  local dir="$1"
+  local sid="${2:-test-sid-$(basename "$dir")}"
+  echo "$dir/.rite/sessions/${sid}.compact-state"
+}
+
 # Helper: run pre-compact hook with given CWD, capture stderr
 # Note: JSON is constructed via string concatenation for simplicity.
 # $cwd is always a mktemp-generated path (no special chars), so this is safe in test context.
@@ -276,7 +284,7 @@ echo "TC-008: Lock delegation — lockdir cleaned up after hook execution"
 dir008="$TEST_DIR/tc008"
 mkdir -p "$dir008"
 create_state_file "$dir008" '{"active": true, "phase": "impl", "issue_number": 100}'
-lockdir="$dir008/.rite-compact-state.lockdir"
+lockdir="$(compact_state_path "$dir008").lockdir"
 
 if run_hook "$dir008"; then
   # After hook completes, lockdir should be released (cleaned up)
@@ -297,9 +305,10 @@ mkdir -p "$dir009"
 create_state_file "$dir009" '{"active": true, "phase": "review", "issue_number": 55}'
 
 if run_hook "$dir009"; then
-  if [ -f "$dir009/.rite-compact-state" ]; then
-    cs_state=$(jq -r '.compact_state' "$dir009/.rite-compact-state" 2>/dev/null)
-    cs_issue=$(jq -r '.active_issue' "$dir009/.rite-compact-state" 2>/dev/null)
+  cs009="$(compact_state_path "$dir009")"
+  if [ -f "$cs009" ]; then
+    cs_state=$(jq -r '.compact_state' "$cs009" 2>/dev/null)
+    cs_issue=$(jq -r '.active_issue' "$cs009" 2>/dev/null)
     if [ "$cs_state" = "recovering" ] && [ "$cs_issue" = "55" ]; then
       pass "Compact state written: state=recovering, issue=55"
     else
@@ -339,9 +348,10 @@ if [ $rc1 -ne 0 ] && [ $rc2 -ne 0 ]; then
   LAST_STDERR_FILE="$stderr1"
   fail "Both concurrent hooks failed (rc1=$rc1, rc2=$rc2). stderr1: $(cat "$stderr1") stderr2: $(cat "$stderr2")"
 # Verify compact state is valid JSON and has expected fields
-elif [ -f "$dir010/.rite-compact-state" ]; then
-  if jq . "$dir010/.rite-compact-state" >/dev/null 2>&1; then
-    cs_state=$(jq -r '.compact_state' "$dir010/.rite-compact-state" 2>/dev/null)
+elif [ -f "$(compact_state_path "$dir010")" ]; then
+  cs010="$(compact_state_path "$dir010")"
+  if jq . "$cs010" >/dev/null 2>&1; then
+    cs_state=$(jq -r '.compact_state' "$cs010" 2>/dev/null)
     if [ "$cs_state" = "recovering" ]; then
       pass "Concurrent invocations produce valid state: compact_state=recovering"
     else
@@ -395,8 +405,9 @@ mkdir -p "$dir012"
 create_state_file "$dir012" '{"active": true, "phase": "impl"}'
 
 if run_hook "$dir012"; then
-  if [ -f "$dir012/.rite-compact-state" ]; then
-    cs_issue=$(jq -r '.active_issue' "$dir012/.rite-compact-state" 2>/dev/null)
+  cs012="$(compact_state_path "$dir012")"
+  if [ -f "$cs012" ]; then
+    cs_issue=$(jq -r '.active_issue' "$cs012" 2>/dev/null)
     if [ "$cs_issue" = "null" ]; then
       # Verify no work memory snapshot was created
       if [ ! -d "$dir012/.rite-work-memory" ]; then
@@ -430,8 +441,9 @@ if run_hook "$dir013"; then
     tc013_ok=false
   fi
   # Verify compact state IS still written (compact state records state regardless of active flag)
-  if [ -f "$dir013/.rite-compact-state" ]; then
-    cs_state=$(jq -r '.compact_state' "$dir013/.rite-compact-state" 2>/dev/null)
+  cs013="$(compact_state_path "$dir013")"
+  if [ -f "$cs013" ]; then
+    cs_state=$(jq -r '.compact_state' "$cs013" 2>/dev/null)
     if [ "$cs_state" != "recovering" ]; then
       fail "Compact state should be 'recovering', got: $cs_state"
       tc013_ok=false
@@ -493,11 +505,12 @@ dir015="$TEST_DIR/tc015"
 mkdir -p "$dir015"
 create_state_file "$dir015" '{"active": true, "phase": "phase5_lint", "issue_number": 851}'
 # Pre-create compact state with "resuming" (simulates /clear transition)
-echo '{"compact_state":"resuming","compact_state_set_at":"2026-01-01T00:00:00Z","active_issue":851}' > "$dir015/.rite-compact-state"
+cs015="$(compact_state_path "$dir015")"
+echo '{"compact_state":"resuming","compact_state_set_at":"2026-01-01T00:00:00Z","active_issue":851}' > "$cs015"
 
 if run_hook "$dir015"; then
-  cs_state=$(jq -r '.compact_state' "$dir015/.rite-compact-state" 2>/dev/null)
-  cs_ts=$(jq -r '.compact_state_set_at' "$dir015/.rite-compact-state" 2>/dev/null)
+  cs_state=$(jq -r '.compact_state' "$cs015" 2>/dev/null)
+  cs_ts=$(jq -r '.compact_state_set_at' "$cs015" 2>/dev/null)
   tc015_ok=true
   if [ "$cs_state" != "recovering" ]; then
     fail "compact_state should be overwritten to 'recovering', got '$cs_state'"
@@ -520,13 +533,14 @@ echo "TC-016: resuming→recovering overwrite still saves work memory snapshot (
 dir016="$TEST_DIR/tc016"
 mkdir -p "$dir016"
 create_state_file "$dir016" '{"active": true, "phase": "phase5_review", "issue_number": 160, "branch": "fix/issue-160-test"}'
-echo '{"compact_state":"resuming","compact_state_set_at":"2026-01-01T00:00:00Z","active_issue":160}' > "$dir016/.rite-compact-state"
+cs016="$(compact_state_path "$dir016")"
+echo '{"compact_state":"resuming","compact_state_set_at":"2026-01-01T00:00:00Z","active_issue":160}' > "$cs016"
 
 if run_hook "$dir016"; then
   wm_file="$dir016/.rite-work-memory/issue-160.md"
   tc016_ok=true
   # compact_state should now be recovering (overwritten from resuming — #854)
-  cs_state=$(jq -r '.compact_state' "$dir016/.rite-compact-state" 2>/dev/null)
+  cs_state=$(jq -r '.compact_state' "$cs016" 2>/dev/null)
   if [ "$cs_state" != "recovering" ]; then
     fail "compact_state should be 'recovering', got '$cs_state'"
     tc016_ok=false
@@ -556,10 +570,11 @@ echo "TC-017: corrupted compact state JSON → falls back to recovering (#851)"
 dir017="$TEST_DIR/tc017"
 mkdir -p "$dir017"
 create_state_file "$dir017" '{"active": true, "phase": "phase5_fix", "issue_number": 170}'
-echo '{broken json' > "$dir017/.rite-compact-state"
+cs017="$(compact_state_path "$dir017")"
+echo '{broken json' > "$cs017"
 
 if run_hook "$dir017"; then
-  cs_state=$(jq -r '.compact_state' "$dir017/.rite-compact-state" 2>/dev/null)
+  cs_state=$(jq -r '.compact_state' "$cs017" 2>/dev/null)
   if [ "$cs_state" = "recovering" ]; then
     pass "Corrupted compact state overwritten with 'recovering' (AC-4, fail-closed)"
   else
@@ -575,10 +590,11 @@ echo "TC-018: normal compact state → recovering (#133)"
 dir018="$TEST_DIR/tc018"
 mkdir -p "$dir018"
 create_state_file "$dir018" '{"active": true, "phase": "phase5_impl", "issue_number": 180}'
-echo '{"compact_state":"normal","compact_state_set_at":"2026-01-01T00:00:00Z","active_issue":180}' > "$dir018/.rite-compact-state"
+cs018="$(compact_state_path "$dir018")"
+echo '{"compact_state":"normal","compact_state_set_at":"2026-01-01T00:00:00Z","active_issue":180}' > "$cs018"
 
 if run_hook "$dir018"; then
-  cs_state=$(jq -r '.compact_state' "$dir018/.rite-compact-state" 2>/dev/null)
+  cs_state=$(jq -r '.compact_state' "$cs018" 2>/dev/null)
   if [ "$cs_state" = "recovering" ]; then
     pass "normal compact_state transitions to 'recovering' (AC-2)"
   else
@@ -756,6 +772,52 @@ if grep -qE '^[[:space:]]*echo .*PRE_COMPACT_SNAPSHOT_RECORDED=1' "$HOOK_SRC" \
   pass "TC-SENTINEL-PIN: both sentinels emitted from echo lines"
 else
   fail "TC-SENTINEL-PIN: one or both sentinels are not emitted (renamed, commented, or moved) in $HOOK_SRC"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-1371-AC1: two sessions in the same state root write INDEPENDENT
+# compact-state files (Issue #1371 — last-writer-wins resolved).
+# --------------------------------------------------------------------------
+# Drives two compacts in one state root under two distinct session ids (via
+# CLAUDE_CODE_SESSION_ID, no .rite-session-id file so the env var wins). Each
+# must land in its own .rite/sessions/<sid>.compact-state with its own
+# active_issue. Before #1371 both wrote the single shared .rite-compact-state
+# and the second clobbered the first — this test would have caught that.
+echo "TC-1371-AC1: two sessions → independent compact-state files (no last-writer-wins)"
+dirac1="$TEST_DIR/tc1371ac1"
+mkdir -p "$dirac1/.rite/sessions"
+sidA="session-aaaa-1371"
+sidB="session-bbbb-1371"
+printf '%s\n' '{"active": true, "phase": "implement", "issue_number": 100, "schema_version": 3, "session_id": "'"$sidA"'"}' > "$dirac1/.rite/sessions/${sidA}.flow-state"
+printf '%s\n' '{"active": true, "phase": "review", "issue_number": 200, "schema_version": 3, "session_id": "'"$sidB"'"}' > "$dirac1/.rite/sessions/${sidB}.flow-state"
+
+errA="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+errB="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+echo "{\"cwd\": \"$dirac1\"}" | CLAUDE_CODE_SESSION_ID="$sidA" bash "$HOOK" 2>"$errA" || true
+echo "{\"cwd\": \"$dirac1\"}" | CLAUDE_CODE_SESSION_ID="$sidB" bash "$HOOK" 2>"$errB" || true
+
+csA="$dirac1/.rite/sessions/${sidA}.compact-state"
+csB="$dirac1/.rite/sessions/${sidB}.compact-state"
+ac1_ok=true
+if [ ! -f "$csA" ] || [ ! -f "$csB" ]; then
+  fail "AC-1: expected both per-session compact-state files; A_exists=$([ -f "$csA" ] && echo y || echo n), B_exists=$([ -f "$csB" ] && echo y || echo n)"
+  ac1_ok=false
+else
+  issueA=$(jq -r '.active_issue' "$csA" 2>/dev/null)
+  issueB=$(jq -r '.active_issue' "$csB" 2>/dev/null)
+  if [ "$issueA" != "100" ] || [ "$issueB" != "200" ]; then
+    fail "AC-1: per-session snapshots clobbered — A.active_issue=$issueA (want 100), B.active_issue=$issueB (want 200)"
+    ac1_ok=false
+  fi
+  # The legacy shared path must NOT be written by either per-session run.
+  if [ -f "$dirac1/.rite-compact-state" ]; then
+    fail "AC-1: legacy shared .rite-compact-state was written (per-session migration leaked to shared path)"
+    ac1_ok=false
+  fi
+fi
+if [ "$ac1_ok" = true ]; then
+  pass "AC-1: sid A→issue 100 and sid B→issue 200 snapshots are independent (no last-writer-wins)"
 fi
 echo ""
 

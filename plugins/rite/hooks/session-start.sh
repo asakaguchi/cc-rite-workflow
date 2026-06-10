@@ -70,14 +70,29 @@ if [ -n "$SESSION_ID" ]; then
   }
 fi
 
-# Helper: remove stale .rite-compact-state when no active flow (#756)
-# Called on startup when .rite-flow-state is absent or inactive, to prevent
-# stale recovering state from persisting across sessions.
+# Helper: remove stale compact-state when no active flow (#756, #1371)
+# Called on startup when the flow-state is absent or inactive, to prevent stale
+# "recovering" state from persisting across sessions.
+#
+# Cleans both the per-session compact-state (.rite/sessions/{sid}.compact-state,
+# derived from the resolved STATE_FILE) and the legacy shared path
+# (.rite-compact-state). Removing the legacy file here is the migration path for
+# pre-#1371 residue (AC-3): a leftover shared snapshot is no longer consumed by
+# post-compact.sh (which now reads the per-session path), so it must be reaped
+# here. Both are stale recovery snapshots once no active flow exists — there is
+# no silent destruction of live state.
 _cleanup_stale_compact() {
-  if [ -f "$STATE_ROOT/.rite-compact-state" ]; then
-    rm -f "$STATE_ROOT/.rite-compact-state" 2>/dev/null || true
-    rm -rf "$STATE_ROOT/.rite-compact-state.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=session_start_cleanup" >&2
-  fi
+  local _legacy="$STATE_ROOT/.rite-compact-state"
+  local _per_session=""
+  [ -n "${STATE_FILE:-}" ] && _per_session="${STATE_FILE%.flow-state}.compact-state"
+  local _cs
+  for _cs in "$_per_session" "$_legacy"; do
+    [ -n "$_cs" ] || continue
+    if [ -f "$_cs" ]; then
+      rm -f "$_cs" 2>/dev/null || true
+      rm -rf "$_cs.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=session_start_cleanup" >&2
+    fi
+  done
 }
 
 # Read a single top-level YAML key from a config file. Captures awk stderr so that

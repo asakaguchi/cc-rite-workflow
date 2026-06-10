@@ -80,6 +80,15 @@ state_file_path() {
   echo "$dir/.rite/sessions/${sid}.flow-state"
 }
 
+# Helper: path to the per-session compact-state file (Issue #1371). Mirrors
+# session-start.sh's _cleanup_stale_compact derivation from the resolved
+# STATE_FILE: .rite/sessions/<sid>.flow-state → .compact-state.
+compact_state_path() {
+  local dir="$1"
+  local sid="${2:-test-sid-$(basename "$dir")}"
+  echo "$dir/.rite/sessions/${sid}.compact-state"
+}
+
 # Helper: run session-start hook with given CWD, capture stdout and stderr
 run_hook() {
   local cwd="$1"
@@ -429,6 +438,30 @@ if [ "$ACTIVE_VAL" = "false" ] && \
   pass "source=clear + recovering → defensive reset (active=false, compact state cleaned)"
 else
   fail "Expected defensive reset, got active=$ACTIVE_VAL, compact_exists=$([ -f "$dir015/.rite-compact-state" ] && echo yes || echo no), output: $output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-1371: source=clear → _cleanup_stale_compact removes BOTH the per-session
+# compact-state and the legacy shared file (Issue #1371).
+# Non-vacuous: seeds the per-session file so a regression that only cleans the
+# legacy shared path (the pre-#1371 behavior) would leave the per-session file
+# behind and fail this assertion.
+# --------------------------------------------------------------------------
+echo "TC-1371: source=clear → per-session AND legacy compact-state both cleaned (#1371)"
+dir1371="$TEST_DIR/tc1371"
+mkdir -p "$dir1371"
+create_state_file "$dir1371" '{"active": true, "issue_number": 1371, "phase": "implement"}'
+cs1371_session="$(compact_state_path "$dir1371")"
+cs1371_legacy="$dir1371/.rite-compact-state"
+echo '{"compact_state": "recovering", "active_issue": 1371}' > "$cs1371_session"
+echo '{"compact_state": "recovering", "active_issue": 1371}' > "$cs1371_legacy"
+
+run_hook_with_source "$dir1371" "clear" >/dev/null
+if ! [ -f "$cs1371_session" ] && ! [ -f "$cs1371_legacy" ]; then
+  pass "Both per-session and legacy compact-state removed on defensive reset"
+else
+  fail "Compact-state not fully cleaned: per_session_exists=$([ -f "$cs1371_session" ] && echo yes || echo no), legacy_exists=$([ -f "$cs1371_legacy" ] && echo yes || echo no)"
 fi
 echo ""
 

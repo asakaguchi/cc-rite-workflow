@@ -17,6 +17,15 @@
 # here. An age guard (mtime > 24h) ensures only true orphans are reaped, never
 # an in-flight workdir held by a paused concurrent session.
 #
+# Also reaps orphaned `rite-review-mutation-*` detached worktrees left in
+# `${TMPDIR:-/tmp}` by reviewer subagents (Issue #1340). `_reviewer-base.md`'s
+# worktree-only mutation pattern (`mktemp -d -t rite-review-mutation-XXXXXX`
+# + `git worktree add --detach`) lets reviewers run verification experiments
+# without mutating the parent working tree, but the reviewer's READ-ONLY
+# contract forbids `git worktree remove`, so these detached worktrees (no named
+# branch -> not matched by the Step 1 branch sweep) are swept here by path name
+# with the same 24h age guard.
+#
 # Strict regex `^pr-[0-9]+-(cycle[0-9]+|test|experiment|mutation|verify|check|sandbox)$`
 # protects unrelated branches (e.g. `pr-918-cycle4-feature`,
 # `feature/pr-918-cycle4`, `pr-994-testing-suite`) from accidental deletion
@@ -39,7 +48,7 @@
 #   bash pr-cycle-cleanup.sh [--dry-run]
 #
 # Output (stdout): one structured status line per invocation
-#   [pr-cycle-cleanup] status=<cleaned|noop|failed>; worktrees=<N>; branches=<N>; workdirs=<N>
+#   [pr-cycle-cleanup] status=<cleaned|noop|failed>; worktrees=<N>; branches=<N>; workdirs=<N>; mutation_worktrees=<N>
 #
 # Exit codes:
 #   0  cleanup completed (or nothing to clean)
@@ -89,6 +98,7 @@ readonly WIKI_WORKTREE_PATH=".rite/wiki-worktree"
 worktrees_removed=0
 branches_deleted=0
 workdirs_reaped=0
+mutation_worktrees_reaped=0
 errors=0
 
 # trap + cleanup パターン (canonical: references/bash-trap-patterns.md#signal-specific-trap-template)
@@ -98,8 +108,9 @@ wt_list_err=""
 prune_err=""
 ref_err=""
 workdir_find_err=""
+mutation_find_err=""
 _rite_pr_cycle_cleanup() {
-  rm -f "${wt_list_err:-}" "${prune_err:-}" "${ref_err:-}" "${workdir_find_err:-}"
+  rm -f "${wt_list_err:-}" "${prune_err:-}" "${ref_err:-}" "${workdir_find_err:-}" "${mutation_find_err:-}"
 }
 trap 'rc=$?; _rite_pr_cycle_cleanup; exit $rc' EXIT
 trap '_rite_pr_cycle_cleanup; exit 130' INT
@@ -261,16 +272,73 @@ else
 fi
 
 # -----------------------------------------------------------------------
+# Step 4: Reap orphaned `rite-review-mutation-*` worktrees (refs #1340).
+# reviewer subagent の mutation/verification 検証は `_reviewer-base.md` の
+# worktree-only mutation pattern (`mktemp -d -t rite-review-mutation-XXXXXX`
+# + `git worktree add --detach`) に従って detached worktree を作るが、reviewer は
+# READ-ONLY 契約で `git worktree remove` を実行禁止のため自己回収できず、
+# orchestrator 側の本 GC が回収する (doc と実装の drift 解消)。
+#
+# Step 1 の branch-pattern sweep では捕捉できない: mutation worktree は
+# `--detach` で named branch を持たないため porcelain 出力に `branch refs/heads/...`
+# 行が無く、Step 1 の `$PATTERN` (branch 名マッチ) を素通りする。よって path 命名
+# (`rite-review-mutation-*`) を find で直接 sweep する。
+#
+# age ガード (mtime > WORKDIR_REAP_AGE_MINUTES) は Step 3 workdir reap と同一閾値
+# (24h) を共有する: 健全な mutation 検証は reviewer subagent の当該ターン (数分) で
+# 完結するため、閾値超過の worktree は確実に orphan。並行 session の in-flight worktree
+# を誤回収しないための保守的マージン。走査先は create.md / `mktemp -d -t` と同じ
+# `${TMPDIR:-/tmp}` を尊重する (テスト時の TMPDIR 隔離も効く)。
+#
+# 回収は `git worktree remove --force` を第一手とする (worktree 登録メタデータと
+# ディレクトリを atomically 除去)。登録が既に失われた dir には `rm -rf` で fallback し、
+# ループ後の `git worktree prune` で stale メタデータを掃除する。Step 1/3 と同様、
+# 失敗は WARNING + errors++ で surface し silent 化しない。
+# -----------------------------------------------------------------------
+mutation_tmp_base="${TMPDIR:-/tmp}"
+mutation_tmp_base="${mutation_tmp_base%/}"  # strip trailing slash
+mutation_find_err=$(mktemp /tmp/rite-pr-cycle-cleanup-mutation-err-XXXXXX 2>/dev/null) || mutation_find_err=""
+if mutation_list=$(find "$mutation_tmp_base" -maxdepth 1 -type d -name 'rite-review-mutation-*' -mmin +"$WORKDIR_REAP_AGE_MINUTES" 2>"${mutation_find_err:-/dev/null}"); then
+  mutation_reaped_any=0
+  while IFS= read -r orphan_wt; do
+    [ -z "$orphan_wt" ] && continue
+    if [ "$DRY_RUN" = "1" ]; then
+      echo "[dry-run] would reap orphan mutation worktree: $orphan_wt"
+    else
+      # git worktree remove --force を第一手、失敗時のみ rm -rf へ fallback
+      if git worktree remove --force "$orphan_wt" >/dev/null 2>&1 || rm -rf "$orphan_wt" 2>/dev/null; then
+        mutation_worktrees_reaped=$((mutation_worktrees_reaped + 1))
+        mutation_reaped_any=1
+      else
+        echo "WARNING: failed to reap orphan mutation worktree '$orphan_wt'" >&2
+        errors=$((errors + 1))
+      fi
+    fi
+  done <<< "$mutation_list"
+  # rm -rf fallback で残った stale worktree メタデータを掃除する (remove --force 経路では不要だが冪等)
+  if [ "$DRY_RUN" = "0" ] && [ "$mutation_reaped_any" = "1" ]; then
+    git worktree prune 2>/dev/null || true
+  fi
+else
+  mutation_find_rc=$?
+  echo "WARNING: find による orphan mutation worktree 走査が失敗しました (rc=$mutation_find_rc, base=$mutation_tmp_base)" >&2
+  if [ -n "$mutation_find_err" ] && [ -s "$mutation_find_err" ]; then
+    head -3 "$mutation_find_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  fi
+  errors=$((errors + 1))
+fi
+
+# -----------------------------------------------------------------------
 # Status line
 # -----------------------------------------------------------------------
 if [ "$DRY_RUN" = "1" ]; then
   echo "[pr-cycle-cleanup] status=dry-run; pattern=$PATTERN"
 elif [ "$errors" -gt 0 ]; then
-  echo "[pr-cycle-cleanup] status=failed; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; errors=$errors"
-elif [ "$worktrees_removed" -eq 0 ] && [ "$branches_deleted" -eq 0 ] && [ "$workdirs_reaped" -eq 0 ]; then
-  echo "[pr-cycle-cleanup] status=noop; worktrees=0; branches=0; workdirs=0"
+  echo "[pr-cycle-cleanup] status=failed; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; errors=$errors"
+elif [ "$worktrees_removed" -eq 0 ] && [ "$branches_deleted" -eq 0 ] && [ "$workdirs_reaped" -eq 0 ] && [ "$mutation_worktrees_reaped" -eq 0 ]; then
+  echo "[pr-cycle-cleanup] status=noop; worktrees=0; branches=0; workdirs=0; mutation_worktrees=0"
 else
-  echo "[pr-cycle-cleanup] status=cleaned; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped"
+  echo "[pr-cycle-cleanup] status=cleaned; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped"
 fi
 
 exit 0

@@ -555,6 +555,60 @@ else
 fi
 
 # -----------------------------------------------------------------------
+# T-14: orphan mutation worktree reaping (refs #1340)
+# Given: an aged registered detached `rite-review-mutation-*` worktree (created
+#        via `git worktree add --detach`, mirroring _reviewer-base.md's
+#        worktree-only mutation pattern) older than the age threshold in TMPDIR
+# When: Cleanup runs from the owning repo
+# Then: It is reaped via `git worktree remove --force` and the status line
+#       reports mutation_worktrees=1 / status=cleaned, and the worktree is
+#       deregistered (git worktree list no longer shows it).
+# These detached worktrees have no named branch, so the Step 1 branch sweep
+# cannot catch them — this asserts the path-based Step 4 sweep.
+# -----------------------------------------------------------------------
+echo "T-14: 古い orphan mutation worktree 回収 (refs #1340)"
+rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
+TEST_REPO=$(make_temp_repo)
+( cd "$TEST_REPO" && git worktree add --detach -q "$WORKDIR_SCAN_TMP/rite-review-mutation-old" HEAD )
+touch -t 202001010000 "$WORKDIR_SCAN_TMP/rite-review-mutation-old"
+t14_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+t14_registered=$( cd "$TEST_REPO" && git worktree list | { grep -c 'rite-review-mutation-old' || true; } )
+if [ ! -e "$WORKDIR_SCAN_TMP/rite-review-mutation-old" ] \
+   && echo "$t14_output" | grep -q 'status=cleaned' \
+   && echo "$t14_output" | grep -q 'mutation_worktrees=1' \
+   && [ "$t14_registered" = "0" ]; then
+  pass "T-14: 古い orphan mutation worktree が回収され mutation_worktrees=1 + deregistered"
+else
+  fail "T-14: dir=$([ -e "$WORKDIR_SCAN_TMP/rite-review-mutation-old" ] && echo present || echo gone), registered=$t14_registered. Output: $t14_output"
+fi
+rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-15: age 未満の mutation worktree は保護 (in-flight 誤回収防止) (refs #1340)
+# Given: a freshly-created registered `rite-review-mutation-*` worktree (mtime now)
+# When: Cleanup runs
+# Then: The worktree survives (age guard) and status=noop / mutation_worktrees=0.
+# Core safety assertion: a concurrent reviewer's in-flight mutation worktree is
+# never reaped mid-experiment by another session's cleanup.
+# -----------------------------------------------------------------------
+echo "T-15: age 未満の mutation worktree は保護 (in-flight 誤回収防止) (refs #1340)"
+rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
+TEST_REPO=$(make_temp_repo)
+( cd "$TEST_REPO" && git worktree add --detach -q "$WORKDIR_SCAN_TMP/rite-review-mutation-fresh" HEAD )
+t15_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+if [ -d "$WORKDIR_SCAN_TMP/rite-review-mutation-fresh" ] \
+   && echo "$t15_output" | grep -q 'status=noop' \
+   && echo "$t15_output" | grep -q 'mutation_worktrees=0'; then
+  pass "T-15: age 未満の mutation worktree が保護され status=noop"
+else
+  fail "T-15: fresh=$([ -d "$WORKDIR_SCAN_TMP/rite-review-mutation-fresh" ] && echo present || echo gone). Output: $t15_output"
+fi
+( cd "$TEST_REPO" && git worktree remove --force "$WORKDIR_SCAN_TMP/rite-review-mutation-fresh" 2>/dev/null ) || true
+rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
 # Summary
 # -----------------------------------------------------------------------
 echo

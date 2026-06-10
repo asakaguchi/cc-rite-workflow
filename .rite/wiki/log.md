@@ -1117,3 +1117,4 @@
 | 2026-06-10T00:45:00Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=230, broken_refs=0 |
 | 2026-06-10T00:54:18Z | ingest:update | pages/heuristics/small-symmetric-pr-sibling-site-grep-review.md | raw/reviews/20260610T005202Z-pr-1341.md (PR #1341, Issue #1331 — 対称化 PR の 3 点セット検証適用例) |
 | 2026-06-10T00:55:27Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=230, broken_refs=0 |
+| 2026-06-10T01:03:44Z | ingest:update | pages/heuristics/sot-path-reference-existence-check.md | raw/reviews/20260610T010210Z-pr-1342.md (PR #1342, Issue #1333 — 委譲後 cross-ref drift 修正の 3 点検証適用例) |

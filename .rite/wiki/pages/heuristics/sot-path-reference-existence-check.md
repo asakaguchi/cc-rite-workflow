@@ -2,8 +2,10 @@
 title: "SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する"
 domain: "heuristics"
 created: "2026-04-29T02:55:00+00:00"
-updated: "2026-05-29T07:40:04Z"
+updated: "2026-06-10T01:03:44Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260610T010210Z-pr-1342.md"
   - type: "reviews"
     ref: "raw/reviews/20260428T171940Z-pr-705.md"
   - type: "reviews"
@@ -120,6 +122,16 @@ bare `references/` と depth 別 relative prefix の混在が drift 源になる
 
 教訓: relative reference を含む doc を書く / 直すときの existence check は、`git ls-tree` での file 存在確認に加えて、**参照元 file の depth から相対 prefix が正しく解決するか** (`readlink -f` / `cd $(dirname) && ls $ref`) と **anchor slug が target 見出しに実在するか** (`grep -E '^##+ '`) の 3 点をセットで verify する。
 
+### 適用例: 委譲後 cross-ref drift 修正の 3 点検証 (PR #1342、1 行 docs 修正、1 cycle mergeable)
+
+helper 委譲 (PR #1205) 後に stale 化した cross-ref を更新する 1 行 docs PR で、2 reviewer (prompt-engineer / code-quality) が以下の 3 点検証で cycle 1 mergeable を判定:
+
+1. **新参照の実在性**: 更新後の見出し参照が対象ファイルの実見出しと文字列レベルで完全一致すること + 委譲先 script の実在を Read/Grep で確認
+2. **旧参照の stale 性 (revert test)**: revert すると stale 参照が復活する = 本 diff 由来の修正として正当
+3. **同型 stale の残存 grep**: 旧表記パターンを repo 全体で grep し、他ファイルが既に委譲後形式へ更新済みであることを確認
+
+委譲 refactor の後追い docs 修正はこの 3 点で検証が完結する — existence check (本ページの主題) を「参照先見出しの文字列一致」まで強めるのが委譲後 drift 修正の決め手。
+
 ## 関連ページ
 
 - [散文で宣言した設計は対応する実装契約がなければ機能しない](../anti-patterns/prose-design-without-backing-implementation.md)
@@ -136,3 +148,4 @@ bare `references/` と depth 別 relative prefix の混在が drift 源になる
 - [PR #801 fix (broken anchor 解消、grep ベースの heading slug 検証を anchor 記述前 pre-flight check として明示化)](../../raw/fixes/20260504T040558Z-pr-801.md)
 - [PR #1102 review (phase-mapping.md の broken cross-reference 修正 doc PR、0 blocking findings / 1 cycle 着地。修正後参照先 (resume.md Phase 3.5 / Phase 5.3) の実在を両 reviewer が Read で independently verify。同型 broken ref が sub-skill-return-protocol.md / docs/SPEC.md / docs/SPEC.ja.md に pre-existing 残存)](../../raw/reviews/20260523T144332Z-pr-1102.md)
 - [PR #1190 review (commands/pr/open.md ステップ3.5 の dangling reference 差し替え doc PR、0 blocking / 1 cycle 着地。relative reference の depth-aware path 解決検証 (`../../references/` depth-2 / `../../../references/` depth-3) + anchor slug 実在 + codebase 一貫性の 4 点機械検証。pre-existing 同型不整合 2 件を follow-up Issue #1191 に切り出し)](../../raw/reviews/20260529T072948Z-pr-1190.md)
+- [PR #1342 review results — 委譲後 cross-ref drift 修正を 3 点検証 (実在性 / stale 性 / 同型残存 grep) で 1 cycle mergeable 判定](../../raw/reviews/20260610T010210Z-pr-1342.md)

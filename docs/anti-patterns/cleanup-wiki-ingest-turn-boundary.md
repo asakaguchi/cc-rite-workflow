@@ -11,9 +11,9 @@ resolution_pr: 1149
 resolution_issue: 1144
 ---
 
-> **Status: 構造的に解消済 (Issue #1144 / PR #1149 + Issue #1165 sentinel rename)**
+> **Status: 構造的に解消済**
 >
-> 本 anti-pattern は cleanup.md / ingest.md / lint.md から defense 層 (🚨 Mandatory After / Step 0/1 idempotent patch / 三点セット blockquote / Phase 9.1 caller continuation HTML comment / flow-state ring) を **物理排除** することで構造的に解消された (#1149)。さらに PR #1164 cleanup 実行時に同種の再発が観測されたため、Issue #1165 で sentinel 命名規約自体を `:completed` → `:returned-to-caller` に rename し、literal `completed` が LLM turn-boundary heuristic と衝突する根本要因を vocabulary レベルで撤廃した。本文中の `[*:completed*]` literal references は **歴史的記述** として保持しており、現行の sentinel は `:returned-to-caller` 形式。
+> 本 anti-pattern は cleanup.md / ingest.md / lint.md から defense 層 (🚨 Mandatory After / Step 0/1 idempotent patch / 三点セット blockquote / Phase 9.1 caller continuation HTML comment / flow-state ring) を **物理排除** することで構造的に解消された。さらに PR #1164 cleanup 実行時に同種の再発が観測されたため、Issue #1165 で sentinel 命名規約自体を `:completed` → `:returned-to-caller` に rename し、literal `completed` が LLM turn-boundary heuristic と衝突する根本要因を vocabulary レベルで撤廃した。本文中の `[*:completed*]` literal references は **歴史的記述** として保持しており、現行の sentinel は `:returned-to-caller` 形式。
 >
 > 詳細な対応経緯は [docs/designs/pr-cleanup-simplification.md](../designs/pr-cleanup-simplification.md) および Issue #1165 を参照。
 
@@ -25,9 +25,9 @@ resolution_issue: 1144
 
 `/rite:pr:cleanup` Phase 4.W.2 で `rite:wiki:ingest` を Skill 経由で invoke する。ingest.md Phase 9.1 は三点セット（完了レポート本体 / caller 継続 HTML コメント / `<!-- [ingest:completed] -->` sentinel）を返し、caller である `cleanup.md` は直後に 🚨 Mandatory After Wiki Ingest → Phase 5 完了レポート (#652 対応により Phase 5.2 最終 list item 末尾に `<!-- [cleanup:completed] -->` を inline HTML sentinel として含む形で出力。cleanup.md は `wiki/lint.md` Phase 9.2 三点セット規約から意図的 divergence した 2 ブロック構造を採用) を出力する契約になっている。
 
-しかし Issue #604 の対策（defense-in-depth）を導入した後にも、sub-skill return 後に LLM が implicit stop を起こし、ユーザーが手動で `continue` 入力しなければ Phase 5 に進まない regression が観測されている（Issue #621）。
+しかし Issue #604 の対策（defense-in-depth）を導入した後にも、sub-skill return 後に LLM が implicit stop を起こし、ユーザーが手動で `continue` 入力しなければ Phase 5 に進まない regression が観測されている。
 
-## 再現手順（PR #619 cleanup 実行時の実観測）
+## 再現手順
 
 1. `/rite:pr:cleanup #619` を実行
 2. cleanup.md Phase 1-4（branch delete / Projects Status update / Issue close / 作業メモリ削除）完了
@@ -56,7 +56,7 @@ resolution_issue: 1144
 | 🚨 Mandatory After Wiki Ingest Step 1 | `cleanup.md` Phase 4.W 末尾 | `cleanup_post_ingest` patch を即時実行 |
 | `workflow_incident` 検出 | `start.md` ステップ 8.5 (#1088 で機構撤去 (実装: #1091)、start.md 自体も #1136 で削除済) | post-hoc で Issue 自動登録（機構撤去済） |
 
-## 根本原因 evidence（Issue #621 S1 Decision Log）
+## 根本原因 evidence
 
 diag log (`.rite-stop-guard-diag.log`) の 2026-04-20 window 集計:
 
@@ -72,19 +72,19 @@ diag log (`.rite-stop-guard-diag.log`) の 2026-04-20 window 集計:
 | ID | 仮説 | 結論 |
 |---|---|---|
 | H1 | ingest.md Phase 9.1 の三点セットが turn-boundary heuristic を強化 | **Likely (primary)** |
-| H2 | `stop-guard.sh` の block が発火していない | **部分否定**（Issue #611 cleanup 実行時に block 観測[^611-ref]） |
+| H2 | `stop-guard.sh` の block が発火していない | **部分否定** |
 | H3 | Pre-check list が LLM self-introspection に依存 | **Likely (co-primary)** |
 | H4 | sub-skill stack の depth が深く「最深 = 全体完了」誤認 | **Possibly (H1 複合)** |
 
 **primary root cause: H1 + H3 の複合**。stop-guard 自体は機能するが、Pre-check list の self-check 依存が silent 失敗経路を温存する。
 
-## 対策（Issue #621 で実施）
+## 対策
 
 1. **cleanup.md Pre-check list Item 0 の機械化**: `[routing-check] ingest=matched|unmatched` / `[routing-check] cleanup=matched|unmatched` の 1 行出力義務化で LLM の silent skip を検出可能にする
 2. **ingest.md Phase 9.1 の三点セット #2/#3 間 recap 挿入禁止**: MUST NOT 行を追加し、caller 継続 HTML コメント直後に即 sentinel を出力する規約を reinforce
 3. **unit test fixture**（当時 `plugins/rite/hooks/tests/stop-guard-cleanup.test.sh`、4 tests / 14 assertions）: stop-guard.sh を `cleanup_pre_ingest` / `cleanup_post_ingest` / `cleanup` phase で invoke、exit 2 + stderr に Phase 情報 + HINT-specific 文言が出力されることを assert していた（Test 4 は active:false 時の正常終了を negative assertion で検証）。既存 `stop-guard.test.sh` TC-608-A〜H とは役割分担し（前者は fixture ベースで独立実行可能、後者は HINT-specific 文言 pin）、両者は同一 HINT 文言を pin して相補関係を形成していた。**いずれの fixture も stop-guard.sh とともに PR #675 で撤去済みであり、現在は `run-tests.sh` の対象ではない（上記 Note 参照）。**
 
-## INTENTIONAL DIVERGENCE Rationale (#652) — cleanup 系 vs ingest 系の terminal 規約
+## INTENTIONAL DIVERGENCE Rationale — cleanup 系 vs ingest 系の terminal 規約
 
 #652 対応で `cleanup` 系 arm (`cleanup_pre_ingest` / `cleanup_post_ingest`) と `ingest` 系 arm (`ingest_pre_lint` / `ingest_post_lint`) は意図的に異なる terminal 規約を採用している。`stop-guard.sh` の両 arm 系列から本セクションへ cross-reference している。
 
@@ -103,7 +103,7 @@ cleanup 側 (#652 旧仕様) は Phase 5.3 Step 1 bash (deactivate) を Step 2 s
 
 両者の divergence は本 anti-pattern.md 側 (INTENTIONAL DIVERGENCE Rationale セクション) で canonical に記録される。
 
-> ※ 本セクションは #652 Bug 対応作業中に新設。cross-reference の正確性は #655 F-C6-04 cycle 6 対応で修正 (Issue #652 本文には「Known Issues」セクションは存在しないため、`#652 Known Issues` 参照は anti-pattern.md 側の record に訂正)。narrative 構造化は F-C8-13 cycle 9 対応。
+> ※ 本セクションは #652 Bug 対応作業中に新設。cross-reference の正確性は #655 F-C6-04 cycle 6 対応で修正。narrative 構造化は F-C8-13 cycle 9 対応。
 
 将来両 arm の terminal 規約を unify する場合は、(a) cleanup 側も **ingest.md Phase 9.1 と対称の構造** (sentinel を markdown text の absolute last line に独立行で出力し、flow-state deactivate bash を sentinel 出力**後**に meta-step として実行、markdown channel separation を活用) に戻す構造変更、または (b) ingest 側も inline sentinel 方式に統一し三点セット規約を改定、のいずれかの選択になる。
 

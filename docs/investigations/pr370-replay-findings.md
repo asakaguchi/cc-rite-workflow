@@ -3,7 +3,7 @@
 > **位置づけ**: Issue #404 (親 Issue #392 の対照実測サブタスク) の成果物。改善後 `rite:pr:review` を mixed (code + docs) PR #370 に対して適用し、**doc-heavy mode と code-reviewer 群の活性化バランス**がどのように振る舞うかを定量的に検証する。
 >
 > **実測セッション**: 2026-04-10
-> **対象 PR**: #370 `feat(workflow): workflow incident 自動 Issue 登録機構を追加 (#366)`
+> **対象 PR**: #370 `feat(workflow): workflow incident 自動 Issue 登録機構を追加`
 > **baseRefOid**: `dfcabe3a0fc09de57756eb8c854e46b0e553832e`
 > **mergeCommit**: `b071a36715626add139215dd48dd1a14f445369e`
 > **replay draft PR**: #409 (`investigate/pr370-replay`, commit `8a5296a`)
@@ -37,7 +37,7 @@
 
 ### 1.1 対象 PR
 
-- **PR #370**: `feat(workflow): workflow incident 自動 Issue 登録機構を追加 (#366)`
+- **PR #370**: `feat(workflow): workflow incident 自動 Issue 登録機構を追加`
 - **ファイル数**: 13
 - **変更規模**: +923 / -28 (medium)
 - **変更内訳**:
@@ -64,7 +64,7 @@
 2. Worktree 作成: `git worktree add ../rite-investigate-pr370 dfcabe3a` → branch `investigate/pr370-replay`
 3. PR #370 の diff を取得: `gh pr diff 370 > /tmp/pr370.patch`
 4. diff を適用: `git apply --3way /tmp/pr370.patch` (13 files clean apply)
-5. 単一 commit として commit: `investigate: replay PR #370 for mixed (code+docs) review measurement (#404)`
+5. 単一 commit として commit: `investigate: replay PR #370 for mixed (code+docs) review measurement`
 6. Force-push: `git push --force-with-lease origin investigate/pr370-replay`
 7. Draft PR 作成: **#409** (base: develop, head: investigate/pr370-replay)
 8. `/rite:pr:review 409` 実行
@@ -209,7 +209,7 @@ blocking 指摘なし。推奨事項のみ。
 
 PR #370 は親 Issue #392 の対照実測 3 件で「mixed (code + docs)」カテゴリに割り当てられたが、実際には **Doc-Heavy mode が activate しなかった**。この結果は Issue #404 の判定基準 2 の観測対象そのもの:
 
-> **判定基準 2** (Issue #404 より引用): mixed でも doc-heavy mode だけが activate する場合、doc-heavy 検出閾値 (`lines_ratio_threshold` / `count_ratio_threshold`) の調整が必要
+> **判定基準 2**: mixed でも doc-heavy mode だけが activate する場合、doc-heavy 検出閾値 (`lines_ratio_threshold` / `count_ratio_threshold`) の調整が必要
 
 **観察**: PR #370 は 13 ファイル中 4 ファイル (`docs/SPEC.md`, `docs/SPEC.ja.md`, `CHANGELOG.md`, `CHANGELOG.ja.md`) が人間向け documentation で、残り 9 ファイルは commands/skills/hooks/scripts/config 系。
 
@@ -262,7 +262,7 @@ PR #370 は 3 cycles のレビュー修正を経てマージされた。本 repl
 
 ### 6.2 Issue #404 の判定基準 1 (FP rate > 30%) への照合
 
-本 replay の FP rate = 8% は threshold 30% を大きく下回る。Phase A/B/C/C2 のいずれも本 replay データでは rollback 候補にならない。ただし sibling #407 (PR #334 replay, 0 findings) / #405 (PR #373 replay, 未測定) と合わせて初めて **親 Issue #392 の集約判定** が可能になる。
+本 replay の FP rate = 8% は threshold 30% を大きく下回る。Phase A/B/C/C2 のいずれも本 replay データでは rollback 候補にならない。ただし sibling #407 / #405 と合わせて初めて **親 Issue #392 の集約判定** が可能になる。
 
 ### 6.3 replay の選択バイアス
 

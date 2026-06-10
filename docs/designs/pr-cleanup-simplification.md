@@ -6,7 +6,7 @@
 >
 > 詳細な現行構造は `plugins/rite/commands/pr/cleanup.md` の冒頭 "やることは以下のシーケンシャルなタスク列" を参照。
 >
-> 本文中の `[cleanup:completed]` sentinel literal は **pre-#1165 naming の歴史的記述** として保持する（Issue #1165 で skill return sentinel は `:returned-to-caller` 形式に rename されたが、本 doc が記述していたのは当時の `:completed` 形式であり、historical 正確性のため書き換えない）。現行 sentinel 命名規約は `plugins/rite/commands/pr/cleanup.md` の `[cleanup:returned-to-caller]` を参照。
+> 本文中の `[cleanup:completed]` sentinel literal は **pre-#1165 naming の歴史的記述** として保持する。現行 sentinel 命名規約は `plugins/rite/commands/pr/cleanup.md` の `[cleanup:returned-to-caller]` を参照。
 
 <!-- Section ID: SPEC-OVERVIEW -->
 ## 1. 概要

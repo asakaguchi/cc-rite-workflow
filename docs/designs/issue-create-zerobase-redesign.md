@@ -1,6 +1,6 @@
 # `/rite:issue:create` ゼロベース再設計 — Phase E (charter 5 自問ベース)
 
-> **Note (sentinel literal の歴史的記述)**: 本文中の `[interview:*]` / `[create:completed:N]` / `create_completed` 等の sentinel literal および acceptance criteria の grep コマンドは、設計当時 (pre-#1165) の記述として保持する（Issue #1165 で skill return sentinel は `:returned-to-caller` 形式に rename されたが、本 doc が記述していたのは当時の `:completed` 形式であり、historical 正確性のため書き換えない）。現行 sentinel 命名規約は `plugins/rite/commands/issue/create.md` ステップ 4.4 / 5.6 の `[create:returned-to-caller:{N}]` を参照。
+> **Note (sentinel literal の歴史的記述)**: 本文中の `[interview:*]` / `[create:completed:N]` / `create_completed` 等の sentinel literal および acceptance criteria の grep コマンドは、設計当時 (pre-#1165) の記述として保持する。現行 sentinel 命名規約は `plugins/rite/commands/issue/create.md` ステップ 4.4 / 5.6 の `[create:returned-to-caller:{N}]` を参照。
 
 <!-- Section ID: SPEC-OVERVIEW -->
 ## 1. 概要
@@ -130,7 +130,7 @@
 | 6 | sub-skill 3 分離 (`interview` / `decompose` / `register`) | 自問 4 (重複) + 推奨パターン (sub-skill 分離は最小限): Bug Fix/Chore preset で interview を skip してそのまま register へ行くだけの場合、interview の delegate コストに見合わない | **統合候補** (interview を本体内ヘルパー化、decompose のみ別 sub-skill 維持) |
 | 7 | Phase 番号 0.6.1 / 0.6.2 / 0.7.1-3 / 0.8.1-4 / 0.9.1-6 / 1.0.1-3 / 1.5.1-5 (3 階層) | 自問 5 (人間向け長文 = 詳細記述ノイズ): runtime に効くが LLM への階層的指示としては 1 階層で十分 | **整理候補** (整数 Phase + 0.x 1 階層に collapse、3 階層 → 1 階層 collapse) |
 | 8 | references/ 配下 7 ファイル 815 行 | 自問 1/3 (runtime decision tree か説明か) | **保持 (charter 適用範囲外)** decision tree 系 reference は適用範囲外 (charter §「適用範囲外」) |
-| 9 | 経緯記述 (Issue #444-#660 防御層導入経緯、cycle 番号付き review 記録、PR # 本文引用) が `create*.md` 本文に散在 | 自問 2 (git log で代替可) + 自問 5 (人間向け長文) + charter 禁止パターン (`Issue #N` / `PR #N` / `cycle N` 本文引用、対称化契約の散文記述) | **削除候補** (commit message + close 済み Issue で代替、本文からは grep で機械的に削除可能) |
+| 9 | 経緯記述 が `create*.md` 本文に散在 | 自問 2 (git log で代替可) + 自問 5 (人間向け長文) + charter 禁止パターン (`Issue #N` / `PR #N` / `cycle N` 本文引用、対称化契約の散文記述) | **削除候補** (commit message + close 済み Issue で代替、本文からは grep で機械的に削除可能) |
 | 10 | EDGE-2 / EDGE-3 / EDGE-4 / EDGE-5 (edge-cases-create.md) | 自問 1 (runtime decision tree) | **保持 (適用範囲外)** |
 
 ### 3.1 charter MUST NOT (適用範囲外) の確認
@@ -336,7 +336,7 @@ grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' \
 
 | 自問 | 判定 | 根拠 |
 |------|------|------|
-| 1. runtime に効くか? | ✅ | 削除した行は (a) 経緯記述 / (b) 重複 patch / (c) 散文契約 のみ |
+| 1. runtime に効くか? | ✅ | 削除した行は (a) 経緯記述 / (b) 重複 patch / (c) 散文契約のみ |
 | 2. git log で代替可? | ✅ | 削除した経緯記述は commit message #N に保持 |
 | 3. 説明か手順か? | ✅ | 削除は説明のみ、手順は維持 |
 | 4. 重複 confirmation? | ✅ | Phase X の 重複 patch を統合 |
@@ -418,11 +418,11 @@ grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' \
 
 | PR | Q1: runtime に効くか? | Q2: git log で代替可? | Q3: 説明か手順か? | Q4: 重複 confirmation? | Q5: LLM 向けか人間向けか? |
 |----|----------------------|----------------------|------------------|-----------------------|--------------------------|
-| PR-E1 (#830) | ✅ test/hook で担保 | ✅ git log で参照可 | ✅ 削除のみ | ✅ 該当なし | ✅ LLM 向け SoT 集約 |
-| PR-E2 (#833) | ✅ flow-state token 不変 | ✅ 旧番号 git log 追跡可 | ✅ 手順構造整理 | ✅ 重複 patch なし | ✅ 整数 + 0.x で構造把握改善 |
-| PR-E3 (#834) | ✅ context flag で fast-path | ✅ ambiguity fallback 残存で代替可 | ✅ 手順 (preview / fast-path) | ✅ Phase 0.3 既承認判断を Phase 2.2 で再確認しない | ✅ user UX 向上 |
-| PR-E4 (#837) | ✅ 機能契約保持 (4-site test) | ✅ 抽出経緯は git log | ✅ slim 化のみ | ✅ historical site 削除 | ✅ SoT 単一化 |
-| PR-E5 (#838) | ✅ docs only (CHANGELOG + retrospective)、runtime 動作変更なし | ✅ E1-E4 詳細経緯は git log + 各 PR description で参照可 | ✅ retrospective + e2e test manual 手順 | ✅ Section 11 単一 SoT、cross-reference のみ | ⚖️ retrospective は人間向けだが Issue close 時の DoD 確認 / e2e test 実行時の参照点として実用価値あり |
+| PR-E1 | ✅ test/hook で担保 | ✅ git log で参照可 | ✅ 削除のみ | ✅ 該当なし | ✅ LLM 向け SoT 集約 |
+| PR-E2 | ✅ flow-state token 不変 | ✅ 旧番号 git log 追跡可 | ✅ 手順構造整理 | ✅ 重複 patch なし | ✅ 整数 + 0.x で構造把握改善 |
+| PR-E3 | ✅ context flag で fast-path | ✅ ambiguity fallback 残存で代替可 | ✅ 手順 (preview / fast-path) | ✅ Phase 0.3 既承認判断を Phase 2.2 で再確認しない | ✅ user UX 向上 |
+| PR-E4 | ✅ 機能契約保持 (4-site test) | ✅ 抽出経緯は git log | ✅ slim 化のみ | ✅ historical site 削除 | ✅ SoT 単一化 |
+| PR-E5 | ✅ docs only (CHANGELOG + retrospective)、runtime 動作変更なし | ✅ E1-E4 詳細経緯は git log + 各 PR description で参照可 | ✅ retrospective + e2e test manual 手順 | ✅ Section 11 単一 SoT、cross-reference のみ | ⚖️ retrospective は人間向けだが Issue close 時の DoD 確認 / e2e test 実行時の参照点として実用価値あり |
 
 ### 11.3 AC 達成 evidence
 
@@ -486,14 +486,14 @@ grep -cE '^### [0-9]+\.[0-9]+\.[0-9]+' \
 | DoD 項目 | 状態 | 証跡 |
 |---------|------|------|
 | (1) plan ドキュメント作成 → user 合意 | ✅ 達成 | PR #829 merged |
-| (2) 段階的リファクタ PR (3〜5 本想定) 全 merge | ✅ 達成 (2026-05-05) | E1-E5 (#830 / #833 / #834 / #837 / #838) all merged |
+| (2) 段階的リファクタ PR (3〜5 本想定) 全 merge | ✅ 達成 (2026-05-05) | E1-E5 all merged |
 | (3) charter 5 自問の条件を全 PR で通過 | ✅ 達成 | Section 11.2 consolidated 表 |
 | (4) e2e test 3 経路 pass | ✅ 達成 (2026-05-05) | Section 11.4 手順を Issue #823 close 直前に manual 実行、結果を Issue コメントとして記録 |
 | (5) PR description / commit message に再設計の方向性を明記 | ✅ 達成 | 各 PR description / 本 Section 11 / CHANGELOG entry |
 
 ### 11.6 完了サマリー
 
-Phase E (Issue #823) は 2026-05-05 に全 DoD 達成・Issue close 完了:
+Phase E は 2026-05-05 に全 DoD 達成・Issue close 完了:
 
 - **PR 集合**: #829 (plan) + #830 (E1) + #833 (E2) + #834 (E3) + #837 (E4) + #838 (E5、retrospective + CHANGELOG)、計 6 PR で構成
 - **AC 達成**: AC-1〜AC-5 すべて達成 (Section 11.3)

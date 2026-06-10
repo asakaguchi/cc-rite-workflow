@@ -17,7 +17,7 @@
 # Claude Code Rite Workflow 設定ファイル
 schema_version: 2
 
-# DEPRECATED (#1118): project.type プリセット機能は完全に削除されました。
+# DEPRECATED: project.type プリセット機能は完全に削除されました。
 # `generic` / `webapp` / `library` / `cli` / `documentation` のプリセットと
 # `templates/project-types/*.yml` は #1118 で削除済。プロジェクト固有設定は
 # 個別キー (`branch.pattern`, `commands.*`, `iteration.*` 等) を YAML で
@@ -114,7 +114,7 @@ review:
     #   (b) Ctrl+C 中断 → /rite:resume (または fix.md AskUserQuestion 「中止」 → [fix:cancelled-by-user])
     # 以下のキーは historical 互換性のため config scaffolding として残置されているが、
     # ループ終了に対する runtime 効果はない — live spec は commands/pr/iterate.md ループ仕様 と
-    # commands/pr/references/fix-relaxation-rules.md 「Loop Termination」節 を参照。
+    # commands/pr/references/fix-relaxation-rules.md 「Loop Termination」節を参照。
     convergence_monitoring: true          # (post-#1136 では scaffolding のみ — 上記コメント参照)
     auto_propagation_scan: true           # fix 後に類似パターンの propagation スキャンを実行 (default: true)
     pre_commit_drift_check: true          # commit 前に distributed-fix-drift-check を実行 (default: true)
@@ -135,7 +135,7 @@ review:
     max_claims: 20                     # 1 回のレビューで検証する External claim の最大数 (default: 20)。Internal Likelihood claim は Grep ベースで、この上限の対象外
     use_context7: true                 # 検証に context7 MCP ツールを使う (default: true)。context7 が利用不可な場合は WebSearch に自動フォールバック
     verify_internal_likelihood: true   # Grep ベースで Sub-Phase B (Internal Likelihood Claim Verification) を有効化 (default: true)
-  # DEPRECATED (#1118): observed_likelihood_gate キーは無視される。
+  # DEPRECATED: observed_likelihood_gate キーは無視される。
   # これらは #506 で導入された scaffolding キーで、conditional runtime logic に
   # 一度も配線されないまま削除された。Observed Likelihood Gate の挙動 (Observed /
   # Demonstrable / Hypothetical 軸の強制) は `_reviewer-base.md` / `fix.md` /
@@ -150,7 +150,7 @@ review:
   #     - devops
   #     - dependencies
   #   minimum: "demonstrable"
-  # DEPRECATED (#1118): fail_fast_first キーは無視される。
+  # DEPRECATED: fail_fast_first キーは無視される。
   # これらは #506 で導入された scaffolding キーで、conditional runtime logic に
   # 一度も配線されないまま削除された。Fail-Fast First 原則 (フォールバック推奨前の
   # throw/raise 伝播考慮) は `_reviewer-base.md` / `fix.md` の prose にハードコード
@@ -159,7 +159,7 @@ review:
   #   enabled: true
   #   allow_skill_exceptions: true
   #   wiki_query_required: true
-  # DEPRECATED (#1136): separate_issue_creation キーは無視される。
+  # DEPRECATED: separate_issue_creation キーは無視される。
   # 「Automatic Separate Issue Creation」機構 (fix.md Phase 4.3) と
   # [fix:issues-created:N] sentinel は完全に削除された。レビュアーの推奨は
   # ループ内で処理される (fix / accept / reply) のみで、review 出力からの
@@ -169,11 +169,11 @@ review:
   #   require_user_confirmation: true
   #   report_pre_existing_issues: false
 
-# Fix 設定 (#506)
+# Fix 設定
 fix:
   fail_fast_response: true             # fix.md Phase 2 で Fail-Fast Response Principle を有効化 (default: true)
-  # DEPRECATED (#1118): fix.severity_gating キーは無視される。
-  # severity_gating 収束戦略 (#506) は #1118 で完全に削除された。
+  # DEPRECATED: fix.severity_gating キーは無視される。
+  # severity_gating 収束戦略 は #1118 で完全に削除された。
   # 現行のレビュー・フィックスループは非収束の自動処理機構を持たない —
   # 残り finding が 0 件 (normal exit) か、ユーザーが Ctrl+C で中断 (manual exit、
   # /rite:resume で復帰) のいずれかでのみ終了する。終了条件は commands/pr/iterate.md
@@ -218,7 +218,7 @@ team:
   teammate_model: "sonnet"   # teammate agent のモデル (default: "sonnet")
   auto_review: true          # すべての PR 作成後に /rite:pr:review を自動実行 (default: true)
 
-# PR レビュー結果の記録 (#443)
+# PR レビュー結果の記録
 # 上の `review:` セクションは PR レビューの**実行** (reviewer 選定 / debate / fact_check 等) を、
 # この `pr_review:` セクションは PR レビューの**出力** (post_comment) を設定する。
 # 既定ではレビュー結果はタイムスタンプ付きローカルファイル
@@ -230,7 +230,7 @@ pr_review:
 # Safety 設定 (fail-closed しきい値)
 safety:
   max_implementation_rounds: 20    # 1 Issue あたりの implementation round の上限 (default: 20)
-  # max_review_fix_loops は v0.4.0 (#557) で廃止、それを置き換えた 4 シグナル escalation も #1136 で全廃済。
+  # max_review_fix_loops は v0.4.0 で廃止、それを置き換えた 4 シグナル escalation も #1136 で全廃済。
   # 現行ループは 0 件の finding (正常終了) または Ctrl+C 中断 (/rite:resume で再開) のみで終了する。
   time_budget_minutes: 120         # 1 Issue あたりの time budget (アドバイザリ) (default: 120)
   auto_stop_on_repeated_failure: true   # 同一クラスの失敗が連続したら停止 (default: true)
@@ -272,7 +272,7 @@ language: auto  # auto | ja | en
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| ~~`project.type`~~ | — | — | **DEPRECATED (#1118)**: 完全に削除済み。`generic` / `webapp` / `library` / `cli` / `documentation` のプリセットと `templates/project-types/*.yml` は #1118 で削除済。プロジェクト固有設定は個別キー (`branch.pattern`, `commands.*`, `iteration.*` 等) を YAML で直接指定する方式に統一された。`rite-config.yml` から `project:` ブロックを削除して構わない (キーは効果を持たない) |
+| ~~`project.type`~~ | — | — | **DEPRECATED**: 完全に削除済み。`generic` / `webapp` / `library` / `cli` / `documentation` のプリセットと `templates/project-types/*.yml` は #1118 で削除済。プロジェクト固有設定は個別キー (`branch.pattern`, `commands.*`, `iteration.*` 等) を YAML で直接指定する方式に統一された。`rite-config.yml` から `project:` ブロックを削除して構わない (キーは効果を持たない) |
 
 ### github.projects
 
@@ -521,9 +521,9 @@ issue:
 | `fact_check.max_claims` | integer | `20` | 1 回のレビューで検証する **External** claim の最大数 (Sub-Phase A)。Internal Likelihood claim は Grep ベースで、この上限の対象外 |
 | `fact_check.use_context7` | boolean | `true` | 検証に context7 MCP ツールを使う。context7 が利用不可な場合は WebSearch に自動フォールバック |
 | `fact_check.verify_internal_likelihood` | boolean | `true` | Grep ベースの呼び出し箇所 / エントリポイントチェックで Sub-Phase B (Internal Likelihood Claim Verification) を有効化 |
-| ~~`observed_likelihood_gate.*`~~ | — | — | **DEPRECATED (#1118)**: 完全に削除済み。これらは #506 で導入された scaffolding キーで、conditional runtime logic に一度も配線されないまま削除された。Observed Likelihood Gate の挙動 (Observed / Demonstrable / Hypothetical 軸の強制) は `_reviewer-base.md` / `fix.md` / `review.md` の prose にハードコードされている。`rite-config.yml` から `observed_likelihood_gate:` を削除して構わない (キーは効果を持たない) |
-| ~~`fail_fast_first.*`~~ | — | — | **DEPRECATED (#1118)**: 完全に削除済み。これらは #506 で導入された scaffolding キーで、conditional runtime logic に一度も配線されないまま削除された。Fail-Fast First 原則 (fallback 推奨前の throw/raise 伝播考慮) は `_reviewer-base.md` / `fix.md` の prose にハードコードされている。`rite-config.yml` から `fail_fast_first:` を削除して構わない (キーは効果を持たない) |
-| ~~`separate_issue_creation.*`~~ | — | — | **DEPRECATED (#1136)**: **runtime 機構**を完全削除済み — fix-side の post-loop 経路 `fix.md` Phase 4.3 (「Automatic Separate Issue Creation」) と `[fix:issues-created:N]` sentinel を撤去した。**Note**: review-side の `pr/review.md` Phase 7 (Automatic Issue Creation、`source: pr_review`、`AskUserQuestion` 承認 gate 付き) は依然 live で、reviewer の「別 Issue として作成」推奨を tracking Issue に変換する canonical な経路。`/rite:pr:fix` のレビュー・フィックスループ内では reviewer recommendation は per-finding で fix / accept / reply (Phase 2.1 menu) として処理され、fix-side の post-loop auto-creation は無い。**Template 状態**: `templates/config/rite-config.yml` には v0.5.0 時点で `separate_issue_creation:` の scaffolding block が残置されている — runtime 効果は無く、follow-up PR で削除予定。既存ユーザーは local `rite-config.yml` から本 block を安全に削除できる |
+| ~~`observed_likelihood_gate.*`~~ | — | — | **DEPRECATED**: 完全に削除済み。これらは #506 で導入された scaffolding キーで、conditional runtime logic に一度も配線されないまま削除された。Observed Likelihood Gate の挙動 (Observed / Demonstrable / Hypothetical 軸の強制) は `_reviewer-base.md` / `fix.md` / `review.md` の prose にハードコードされている。`rite-config.yml` から `observed_likelihood_gate:` を削除して構わない (キーは効果を持たない) |
+| ~~`fail_fast_first.*`~~ | — | — | **DEPRECATED**: 完全に削除済み。これらは #506 で導入された scaffolding キーで、conditional runtime logic に一度も配線されないまま削除された。Fail-Fast First 原則 (fallback 推奨前の throw/raise 伝播考慮) は `_reviewer-base.md` / `fix.md` の prose にハードコードされている。`rite-config.yml` から `fail_fast_first:` を削除して構わない (キーは効果を持たない) |
+| ~~`separate_issue_creation.*`~~ | — | — | **DEPRECATED**: **runtime 機構**を完全削除済み — fix-side の post-loop 経路 `fix.md` Phase 4.3 (「Automatic Separate Issue Creation」) と `[fix:issues-created:N]` sentinel を撤去した。**Note**: review-side の `pr/review.md` Phase 7 (Automatic Issue Creation、`source: pr_review`、`AskUserQuestion` 承認 gate 付き) は依然 live で、reviewer の「別 Issue として作成」推奨を tracking Issue に変換する canonical な経路。`/rite:pr:fix` のレビュー・フィックスループ内では reviewer recommendation は per-finding で fix / accept / reply (Phase 2.1 menu) として処理され、fix-side の post-loop auto-creation は無い。**Template 状態**: `templates/config/rite-config.yml` には v0.5.0 時点で `separate_issue_creation:` の scaffolding block が残置されている — runtime 効果は無く、follow-up PR で削除予定。既存ユーザーは local `rite-config.yml` から本 block を安全に削除できる |
 
 **レビュー・フィックスループの終了 (post-#1136):**
 
@@ -534,14 +534,14 @@ issue:
 | Normal | 残り finding が 0 件 → `[review:mergeable]` |
 | Manual abort | ユーザーが `Ctrl+C` で中断 → `/rite:resume` (または `fix.md` AskUserQuestion で「中止」選択 → `[fix:cancelled-by-user]`) |
 
-> **Historical note (#557 → #1136)**: v0.4.0 (#557) で 4 つの品質シグナル (フィンガープリント cycling / 根本原因欠落 / クロスバリデーション不一致 / レビュアー自己 degraded) を異常終了機構として導入し、発火時に `AskUserQuestion` で `本 PR 内で再試行 / 別 Issue として切り出す / PR を取り下げる / 手動レビューへエスカレーション` のオプションを提示していた。#1136 でこの機構全体を撤去 — 設計判断は「指摘ゼロになるまでループ + 手動中断のみ」(`commands/pr/iterate.md` 設計判断 (Issue #1136) 参照)。4 つの検出ポイント自体は依然 reviewer-side ヒューリスティクスとしてコードに残存する (フィンガープリント cycling: `commands/issue/references/fingerprint-cycling.md`、根本原因欠落: `fix.md` Phase 3.2.1 commit body gate、クロスバリデーション: `review.md` Phase 5.2 + debate フェーズ、レビュアー自己 degraded: `_reviewer-base.md` Finding Quality Guardrail) が、`AskUserQuestion` への escalation や early loop exit は発生しない。
+> **Historical note (#557 → #1136)**: v0.4.0 で 4 つの品質シグナル (フィンガープリント cycling / 根本原因欠落 / クロスバリデーション不一致 / レビュアー自己 degraded) を異常終了機構として導入し、発火時に `AskUserQuestion` で `本 PR 内で再試行 / 別 Issue として切り出す / PR を取り下げる / 手動レビューへエスカレーション` のオプションを提示していた。#1136 でこの機構全体を撤去 — 設計判断は「指摘ゼロになるまでループ + 手動中断のみ」(`commands/pr/iterate.md` 設計判断 参照)。4 つの検出ポイント自体は依然 reviewer-side ヒューリスティクスとしてコードに残存する (フィンガープリント cycling: `commands/issue/references/fingerprint-cycling.md`、根本原因欠落: `fix.md` Phase 3.2.1 commit body gate、クロスバリデーション: `review.md` Phase 5.2 + debate フェーズ、レビュアー自己 degraded: `_reviewer-base.md` Finding Quality Guardrail) が、`AskUserQuestion` への escalation や early loop exit は発生しない。
 
-**Fix 設定 (#506):**
+**Fix 設定:**
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `fix.fail_fast_response` | boolean | `true` | `fix.md` Phase 2 で Fail-Fast Response Principle を有効化。fix アプローチ採用前に 4 項目チェックリスト (throw/raise 伝播 / 既存のエラー境界 / null-check で隠していないか / テスト側を修正すべきでないか) を要求する。fallback 採用はコミットメッセージで正当化が要求される。**⚠️ Known limitation (#506)**: 設定スキャフォールドのみで、まだ wired されていない。原則は `fix.md` Phase 2 のプロンプトで強制されている。`false` に設定しても現状効果がない |
-| ~~`fix.severity_gating.*`~~ | — | — | **DEPRECATED (#1118)**: 完全に削除済み。severity_gating 収束戦略 (#506) は #1118 で削除された。非収束緩和は #1136 までは 4 つの品質シグナル (#557) で処理されていたが、#1136 で quality-signal escalation 全廃済 — 現行のレビュー・フィックスループは残り finding が 0 件 (normal exit) か、ユーザーが Ctrl+C で中断 (manual exit、`/rite:resume` で復帰) のいずれかでのみ終了する (`commands/pr/iterate.md` ループ仕様 / `commands/pr/references/fix-relaxation-rules.md` 「Loop Termination」節 参照)。`rite-config.yml` から `fix.severity_gating:` を削除して構わない (キーは効果を持たない) |
+| `fix.fail_fast_response` | boolean | `true` | `fix.md` Phase 2 で Fail-Fast Response Principle を有効化。fix アプローチ採用前に 4 項目チェックリスト (throw/raise 伝播 / 既存のエラー境界 / null-check で隠していないか / テスト側を修正すべきでないか) を要求する。fallback 採用はコミットメッセージで正当化が要求される。**⚠️ Known limitation**: 設定スキャフォールドのみで、まだ wired されていない。原則は `fix.md` Phase 2 のプロンプトで強制されている。`false` に設定しても現状効果がない |
+| ~~`fix.severity_gating.*`~~ | — | — | **DEPRECATED**: 完全に削除済み。severity_gating 収束戦略 は #1118 で削除された。非収束緩和は #1136 までは 4 つの品質シグナルで処理されていたが、#1136 で quality-signal escalation 全廃済 — 現行のレビュー・フィックスループは残り finding が 0 件 (normal exit) か、ユーザーが Ctrl+C で中断 (manual exit、`/rite:resume` で復帰) のいずれかでのみ終了する (`commands/pr/iterate.md` ループ仕様 / `commands/pr/references/fix-relaxation-rules.md` 「Loop Termination」節 参照)。`rite-config.yml` から `fix.severity_gating:` を削除して構わない (キーは効果を持たない) |
 
 **Doc-Heavy PR モード** (`doc_heavy.enabled: true` がデフォルト): PR は `doc_lines / total_diff_lines >= lines_ratio_threshold` の場合、または小規模 diff (`total_diff_lines < max_diff_lines_for_count`) では `doc_files / total_files >= count_ratio_threshold` の場合に doc-heavy として分類される。doc-heavy モードでは `tech-writer-reviewer` が Grep/Read/Glob を使って 5 種類の整合性 (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) を実装と照合する。完全なプロトコルは `plugins/rite/commands/pr/references/internal-consistency.md` を参照。
 
@@ -841,7 +841,7 @@ wiki:
   enabled: true
   growth_check:
     threshold_prs: 20   # 前回の wiki commit 以降に 20 PR 累積するまで warning を出さない
-    pr_raw_threshold: 5  # 直近 20 PR のうち 5 件以上に raw source が無い時に warning (Issue #536)
+    pr_raw_threshold: 5  # 直近 20 PR のうち 5 件以上に raw source が無い時に warning
 ```
 
 **関連コマンド:** `/rite:wiki:init` (初回セットアップ), `/rite:wiki:ingest`, `/rite:wiki:query`, `/rite:wiki:lint`.
@@ -875,7 +875,7 @@ schema_version: 2
 
 ## ~~プロジェクトタイプのプリセット~~ (DEPRECATED in #1118 — historical reference only)
 
-> **DEPRECATED (#1118)**: `project.type` プリセット機能 (`generic` / `webapp` / `library` / `cli` / `documentation`) は #1118 で廃止された。`templates/project-types/*.yml` のプリセットファイルと `templates/pr/{cli,library,webapp,documentation,fix-report}.md` の PR テンプレートも削除済。プロジェクト固有設定は個別キー直書きの方式に統一された。以下のサブセクションは、廃止前にサポートされていたプリセット挙動の歴史的リファレンスとして残置する。
+> **DEPRECATED**: `project.type` プリセット機能 (`generic` / `webapp` / `library` / `cli` / `documentation`) は #1118 で廃止された。`templates/project-types/*.yml` のプリセットファイルと `templates/pr/{cli,library,webapp,documentation,fix-report}.md` の PR テンプレートも削除済。プロジェクト固有設定は個別キー直書きの方式に統一された。以下のサブセクションは、廃止前にサポートされていたプリセット挙動の歴史的リファレンスとして残置する。
 
 ### ~~webapp~~ (retired)
 

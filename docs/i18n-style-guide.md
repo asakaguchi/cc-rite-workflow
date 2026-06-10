@@ -63,4 +63,4 @@
 
 ## 4. 改訂履歴
 
-- **2026-05-23 (Issue #1083)**: 初版作成。`finding` を kept-English term に追加 (Option A 採用)。
+- **2026-05-23**: 初版作成。`finding` を kept-English term に追加 (Option A 採用)。

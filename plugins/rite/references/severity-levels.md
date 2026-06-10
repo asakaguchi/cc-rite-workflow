@@ -110,7 +110,7 @@ All other reviewers MUST apply the matrix above and downgrade Hypothetical findi
 
 ## Severity × Scope Matrix
 
-> **Reference**: scope enum 定義と Cross-field invariants は [`review-result-schema.md` §findings.scope](./review-result-schema.md) を参照 (Issue #1016 で schema 1.1.0 から追加)。scope assign 手順の SoT は [`_reviewer-base.md` §Scope Assignment Flowchart](../agents/_reviewer-base.md#scope-assignment-flowchart)。
+> **Reference**: scope enum 定義と Cross-field invariants は [`review-result-schema.md` §findings.scope](./review-result-schema.md) を参照。scope assign 手順の SoT は [`_reviewer-base.md` §Scope Assignment Flowchart](../agents/_reviewer-base.md#scope-assignment-flowchart)。
 
 各 finding は Impact 軸 (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) に加えて **scope 軸 (current-pr / follow-up / nit-noted)** を持つ。両軸の許容組み合わせは以下のマトリクスで定義する。
 

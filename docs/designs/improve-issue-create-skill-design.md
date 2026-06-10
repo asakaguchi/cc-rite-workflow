@@ -2,7 +2,7 @@
 
 > **Status: superseded**. 本 design doc が想定していた sub-skill アーキテクチャ (`create-interview` / `create-decompose` / `create-register`) は flat single-file workflow (`create.md` ステップ 1-6) に統合され retire された。歴史的設計判断の参照用として残置。
 >
-> 本文中の `[create:completed:N]` / `[interview:skipped]` 等の sentinel literal は **pre-#1165 naming の歴史的記述** として保持する（Issue #1165 で skill return sentinel は `:returned-to-caller` 形式に rename されたが、本 doc が記述していたのは当時の `:completed` 形式であり、historical 正確性のため書き換えない）。現行 sentinel 命名規約は `plugins/rite/commands/issue/create.md` ステップ 4.4 / 5.6 の `[create:returned-to-caller:{N}]` を参照。
+> 本文中の `[create:completed:N]` / `[interview:skipped]` 等の sentinel literal は **pre-#1165 naming の歴史的記述** として保持する。現行 sentinel 命名規約は `plugins/rite/commands/issue/create.md` ステップ 4.4 / 5.6 の `[create:returned-to-caller:{N}]` を参照。
 
 <!-- Section ID: SPEC-OVERVIEW -->
 ## 概要
@@ -50,7 +50,7 @@ PDF (33 ページ) と Claude Code 公式仕様確認の結果、`/rite:issue:cr
   - `edge-cases-create.md` (EDGE-2 / 3 / 4 / 5 の正規定義)
   - `complexity-gate.md` (XS/S/M/L/XL 判定基準と Heuristics Scoring)
   - `slug-generation.md` (slug 生成ルール SoT)
-  - `regression-history.md` (Issue #444-#660 の防御層導入経緯)
+  - `regression-history.md`
   - `contract-section-mapping.md` (Implementation Contract Section 1-9 への interview 結果 mapping)
   - `bulk-create-pattern.md` (単一 Bash invocation での連結パターン)
 - **FR-2.2**: `create.md` 冒頭に Happy Path Overview (≤30 行) を追加し、5 ステップのフロー図で全体像を即座に把握可能にする。
@@ -60,7 +60,7 @@ PDF (33 ページ) と Claude Code 公式仕様確認の結果、`/rite:issue:cr
 #### FR-3: P2 PDF 推奨セクション追加 (中優先、UX 改善)
 
 - **FR-3.1**: `references/troubleshooting-create.md` を新設し、症状→原因→対処の表形式で 6 項目以上を整備する。対象: gh issue create blocked / Sub-issues API linkage 失敗 / sentinel 後 turn 終了 / Projects 未登録警告 / 重複作成 / sub-skill 誤 auto-trigger。
-- **FR-3.2**: `create.md` 末尾に `## Examples` セクション (3-4 ケース、≤80 行) を追加する。User says → Actions → Result 形式で、単一機能追加 (M) / XL auto-decompose / Bug Fix (interview skip) / 重複検出 を網羅する。
+- **FR-3.2**: `create.md` 末尾に `## Examples` セクション (3-4 ケース、≤80 行) を追加する。User says → Actions → Result 形式で、単一機能追加 (M) / XL auto-decompose / Bug Fix (interview skip) / 重複検出を網羅する。
 
 #### FR-4: P3 UX 最適化 (低優先、影響限定)
 
@@ -71,7 +71,7 @@ PDF (33 ページ) と Claude Code 公式仕様確認の結果、`/rite:issue:cr
 
 - **FR-5.1**: `plugins/rite/skills/rite-workflow/tests/issue-create-triggers.md` を新設し、Should trigger / Should NOT trigger の 7+7 クエリを記録する (Triggering test)。
 - **FR-5.2**: `plugins/rite/scripts/measure-create-metrics.sh` を新設し、5 項目の rite 固有運用 metrics (Implicit-stop 発生率 / Sub-skill chain 完走率 / AskUserQuestion 平均回数 / 重複検出率 / Examples coverage) を測定可能にする。
-- **FR-5.3**: 既存の `plugins/rite/hooks/tests/4-site-symmetry.test.sh` (Issue #771 で導入済み) を rite empirical defense の監視点として保護対象とする。同 test は `create.md` / `create-interview.md` の 2 site 横断で `--phase` / `--active` / `--next` / `--preserve-error-count` の引数 symmetry を grep 検証する。`stop-guard.sh` は Issue #674 で removal 済みのため対象外。`phase-transition-whitelist.sh` は sourced library で CLI 引数を取らないため対象外 (test 内の SCOPE adjustment コメント参照)。本 sub-issue では新設ではなく既存 test の保護を担当する。
+- **FR-5.3**: 既存の `plugins/rite/hooks/tests/4-site-symmetry.test.sh` を rite empirical defense の監視点として保護対象とする。同 test は `create.md` / `create-interview.md` の 2 site 横断で `--phase` / `--active` / `--next` / `--preserve-error-count` の引数 symmetry を grep 検証する。`stop-guard.sh` は Issue #674 で removal 済みのため対象外。`phase-transition-whitelist.sh` は sourced library で CLI 引数を取らないため対象外 (test 内の SCOPE adjustment コメント参照)。本 sub-issue では新設ではなく既存 test の保護を担当する。
 - **FR-5.4**: `docs/measurements/issue-create-baseline.md` を新設し、P0-1 + P0-2 適用前/後の 3 ケース (M / XL / Bug Fix) の metrics 比較を記録する。
 
 <!-- Section ID: SPEC-REQ-NFR -->
@@ -163,7 +163,7 @@ Issue 作成完了 + [create:completed:{N}] sentinel emit
 
 #### 既存ファイル (修正)
 
-下記「baseline 行数」は設計着手時 (Issue #768 起票時) のスナップショット。PR 進行に伴い実際の行数は変動する (例: PR 3/8 完了時点で `create.md`=757 / `create-interview.md`=534)。改修進捗の 1 次 source は **Issue #773 のチェックリスト** を参照すること。
+下記「baseline 行数」は設計着手時のスナップショット。PR 進行に伴い実際の行数は変動する (例: PR 3/8 完了時点で `create.md`=757 / `create-interview.md`=534)。改修進捗の 1 次 source は **Issue #773 のチェックリスト** を参照すること。
 
 | パス | baseline 行数 (設計着手時) | 改修内容 | 関連 Sub-Issue |
 |---|---|---|---|
@@ -198,7 +198,7 @@ Issue 作成完了 + [create:completed:{N}] sentinel emit
 #### エッジケース / リスク (本プラン §「Risks & Mitigations」と Rollback 戦略から抜粋)
 
 1. **Auto-trigger over-trigger 副作用 (P0)**: description にトリガーフレーズ追加で Issue 起票無関係なクエリでも auto-fire するリスク。**Mitigation**: P4-10 trigger test で should-NOT-trigger ケース (例: 「今ある Issue 一覧見せて」 → /rite:issue:list、「PR を作って」 → /rite:pr:create) を整備し、偽陽性 0% を目標。
-2. **AC-3 grep 検証 / 4-site 対称化破壊 (P1)**: P1-3 の references 抽出で `anti-pattern` / `correct-pattern` / `same response turn` / `DO NOT stop` 4 phrase を本体から削ると CI grep 検証が落ちる。**Mitigation**: NFR-2 で「本体に必ず残す」を明文化。**P4-12 (Issue #771 で導入済みの `4-site-symmetry.test.sh`)** を pre-merge gate として運用し、references 抽出 PR ごとに `bash plugins/rite/hooks/tests/4-site-symmetry.test.sh` の pass を確認する。
+2. **AC-3 grep 検証 / 4-site 対称化破壊 (P1)**: P1-3 の references 抽出で `anti-pattern` / `correct-pattern` / `same response turn` / `DO NOT stop` 4 phrase を本体から削ると CI grep 検証が落ちる。**Mitigation**: NFR-2 で「本体に必ず残す」を明文化。**P4-12** を pre-merge gate として運用し、references 抽出 PR ごとに `bash plugins/rite/hooks/tests/4-site-symmetry.test.sh` の pass を確認する。
 3. **内部リンク破壊 (P1-3)**: `./create.md#section` 参照が `./references/*.md#section` に変わる。**Mitigation**: refactor 中に `grep -r 'create.md#'` で全箇所書き換え対象を網羅。各 references PR で個別検証。
 4. **dogfooding 中の inconsistent state (P1-3)**: 大規模 refactor 中に `/rite:issue:create` を実行すると create.md と references/ の整合不良で workflow が壊れる可能性。**Mitigation**: Phase 2 中は `/rite:issue:create` を使わない、または `develop` 以外の feature branch で作業。問題発生時は `main` から hotfix を切る運用。
 5. **Examples coverage の代理指標としての偏り (P4-11)**: 「Examples coverage ≥70%」は数値最適化に偏ると質的改善が後回しになる。**Mitigation**: 数値 metrics と並行して、月次の質的レビュー (実 Issue を 5 件サンプリング) を併用。

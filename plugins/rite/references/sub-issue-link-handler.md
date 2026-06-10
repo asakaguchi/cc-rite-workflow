@@ -34,7 +34,7 @@ case "$link_status" in
  echo "⚠️ Sub-issues API linkage failed for #$sub_number; body meta fallback in place" >&2
  ;;
  *)
- # 未知 status を silent 通過させない (Issue #514 MUST NOT)
+ # 未知 status を silent 通過させない
  echo "⚠️ Unexpected link status '$link_status' for #$sub_number (msg: $link_msg)" >&2
  ;;
 esac
@@ -56,7 +56,7 @@ case "$link_status" in
  link_failures=$((link_failures + 1))
  ;;
  *)
- # 未知 status を silent 通過させない (Issue #514 MUST NOT)
+ # 未知 status を silent 通過させない
  echo "⚠️ Unexpected link status '$link_status' for #$sub_number (msg: $link_msg)" >&2
  link_failures=$((link_failures + 1))
  ;;

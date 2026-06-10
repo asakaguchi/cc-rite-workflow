@@ -5,7 +5,7 @@
 > 契約の Source of Truth (SoT) である。判定ロジックそのものの SoT は各実装ファイルだが、
 > **なぜ 2 つに分かれているか / 統一してはいけない理由**の SoT は本書とする。
 >
-> **背景 Issue**: #1383（PR #1381 test-reviewer follow-up）。
+> **背景 Issue**: #1383。
 
 ---
 

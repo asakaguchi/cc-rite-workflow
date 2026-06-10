@@ -22,7 +22,7 @@
 
 Issue #773 (#768 P1-3) PR 1-8 で 8 references の抽出は完了したが、本体側の重複削除は部分着手にとどまっている。本体スリム化により PDF 原則「Critical instructions at the top」「Move detailed reference to separate files」(p.13) の本来の効果 (LLM 認知負荷削減 / context 占有量削減) を達成する。
 
-create.md の本体スリム化は別 Issue (#803) で扱うため、本 Umbrella は残り 3 ファイルを対象とする。
+create.md の本体スリム化は別 Issue で扱うため、本 Umbrella は残り 3 ファイルを対象とする。
 
 ## 要件
 
@@ -45,7 +45,7 @@ create.md の本体スリム化は別 Issue (#803) で扱うため、本 Umbrell
 <!-- Section ID: SPEC-TECH-DECISIONS -->
 ## 技術的決定事項
 
-- スリム化方針: 各 references への参照リンク (Markdown blockquote 形式 `> **Moved (Issue #773 P1-3 PR N/8)**:`) で重複削除
+- スリム化方針: 各 references への参照リンク (Markdown blockquote 形式 `> **Moved**:`) で重複削除
 - PR 戦略: 各 Sub-Issue は独立 PR で実施、cross-link 整合性チェックを各 PR 内で完結
 - Sub-Issue 分解基準: ファイル単位 (各 sub-skill ファイル = 1 Sub-Issue)
 

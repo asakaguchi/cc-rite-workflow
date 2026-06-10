@@ -97,8 +97,8 @@ git log --oneline refactor/issue-358-named-subagent-switch ^develop
 
 # Example output — the exact SHAs and count depend on how many review-fix cycles ran:
 #   69f9080 fix(review): cycle 1 レビュー指摘 3 件対応 (#371 #358)
-#   9e93a71 docs(migration): named subagent 切替の Migration Guide + CHANGELOG + README 更新 (#358)
-#   763166a refactor(review): named subagent 切替で reviewer 呼び出しを刷新 (#358)
+#   9e93a71 docs(migration): named subagent 切替の Migration Guide + CHANGELOG + README 更新
+#   763166a refactor(review): named subagent 切替で reviewer 呼び出しを刷新
 
 # Revert ALL listed commits in reverse chronological order (newest first)
 # For the example output above:
@@ -116,7 +116,7 @@ This repository uses merge commits (not squash merges) by default, so the Phase 
 
 ```bash
 # Find the Phase B merge commit on the target branch.
-# Search by the Phase B PR number (#371) for the most reliable match —
+# Search by the Phase B PR number for the most reliable match —
 # searching by #358 (Issue number) can also match unrelated merge commits that reference the Issue in passing.
 git log --merges --grep='#371' develop
 
@@ -134,7 +134,7 @@ In both cases, the Phase A fixes (Part A bug fix, tools/model frontmatter cleanu
 
 **Symptom**: `/rite:pr:review` works for most reviewers but `tech-writer-reviewer` fails in Doc-Heavy PR Mode because it cannot execute `gh api` or `Bash` commands.
 
-**Cause**: `plugins/rite/agents/tech-writer-reviewer.md` frontmatter does not inherit `tools` correctly. This should not happen because Phase A (#357) removed the `tools:` key from all 13 reviewer frontmatters, making them inherit session defaults.
+**Cause**: `plugins/rite/agents/tech-writer-reviewer.md` frontmatter does not inherit `tools` correctly. This should not happen because Phase A removed the `tools:` key from all 13 reviewer frontmatters, making them inherit session defaults.
 
 **Workaround (hotfix)**: Add an explicit `tools:` field to the tech-writer-reviewer frontmatter:
 

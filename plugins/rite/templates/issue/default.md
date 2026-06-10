@@ -55,7 +55,7 @@ Legend: `M` = MUST (required), `S` = SHOULD (recommended), `O` = OMIT (skip)
 
 ## Complexity Heuristics
 
-> **Moved (Issue #773 P1-3 PR 4/8)**: 本セクションの定義は [`../../commands/issue/references/complexity-gate.md#complexity-heuristics-scoring`](../../commands/issue/references/complexity-gate.md#complexity-heuristics-scoring) に移動しました。Score テーブル (6 条件、各 +1) と Score → complexity mapping (0-1=XS / 2=S / 3-4=M / 5=L / 6+=XL) を参照してください。本テンプレート内の Heuristics 表は SoT (`references/complexity-gate.md`) の単一定義に集約されています。
+> **Moved**: 本セクションの定義は [`../../commands/issue/references/complexity-gate.md#complexity-heuristics-scoring`](../../commands/issue/references/complexity-gate.md#complexity-heuristics-scoring) に移動しました。Score テーブル (6 条件、各 +1) と Score → complexity mapping (0-1=XS / 2=S / 3-4=M / 5=L / 6+=XL) を参照してください。本テンプレート内の Heuristics 表は SoT (`references/complexity-gate.md`) の単一定義に集約されています。
 
 ---
 
@@ -84,7 +84,7 @@ Legend: `M` = MUST (required), `S` = SHOULD (recommended), `O` = OMIT (skip)
 
 ## Interview to Template Mapping
 
-> **Moved (Issue #773 P1-3 PR 7/8)**: Interview Perspective → Target Sections の正規 mapping table は [`commands/issue/references/contract-section-mapping.md#step-3-perspective--target-sections-mapping`](../../commands/issue/references/contract-section-mapping.md#step-3-perspective--target-sections-mapping) に移動しました。本 template から interview mapping を参照する場合は本 reference を経由すること。
+> **Moved**: Interview Perspective → Target Sections の正規 mapping table は [`commands/issue/references/contract-section-mapping.md#step-3-perspective--target-sections-mapping`](../../commands/issue/references/contract-section-mapping.md#step-3-perspective--target-sections-mapping) に移動しました。本 template から interview mapping を参照する場合は本 reference を経由すること。
 
 ---
 

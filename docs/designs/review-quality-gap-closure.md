@@ -1,8 +1,8 @@
 # /rite:pr:review の品質ギャップ解消（verified-review parity）
 
-> **位置づけ**: `docs/designs/reviewer-quality-improvement.md`（PR #285 発、agent 定義の自己完結化）の**後続改善**。本設計書は PR #350 のドッグフーディングで発見された追加課題に対応する。
+> **位置づけ**: `docs/designs/reviewer-quality-improvement.md`の**後続改善**。本設計書は PR #350 のドッグフーディングで発見された追加課題に対応する。
 
-> **⚠️ スナップショット注記 (#387)**: 本設計書は Phase 0 調査時点（Phase A/B/C 適用前）のコードベースを前提に記述されており、「### 真の Root Cause（調査で判明）」セクションを含む本文中のコード引用・ファイル名:行番号参照（例: `plugins/rite/commands/pr/review.md:1192-1195`、`_reviewer-base.md` の `L22 ## Confidence Scoring` / `L42 ## Input`、`review.md:1237` の `subagent_type: general-purpose` 等）はすべて当時のスナップショットです。Phase A/B/C 適用後の現行コードとは行番号・構造がズレており、たとえば `_reviewer-base.md` の見出しは Phase C の `#6 Documentation i18n parity` / `#7 Pattern portability` 追加により約 9 行シフト済みで、`review.md` の reviewer 呼び出しも named subagent (`rite:{reviewer_type}-reviewer`) に移行済みです。現行仕様は `plugins/rite/commands/pr/review.md` および `plugins/rite/agents/_reviewer-base.md` 本体を直接参照してください。
+> **⚠️ スナップショット注記**: 本設計書は Phase 0 調査時点（Phase A/B/C 適用前）のコードベースを前提に記述されており、「### 真の Root Cause（調査で判明）」セクションを含む本文中のコード引用・ファイル名:行番号参照（例: `plugins/rite/commands/pr/review.md:1192-1195`、`_reviewer-base.md` の `L22 ## Confidence Scoring` / `L42 ## Input`、`review.md:1237` の `subagent_type: general-purpose` 等）はすべて当時のスナップショットです。Phase A/B/C 適用後の現行コードとは行番号・構造がズレており、たとえば `_reviewer-base.md` の見出しは Phase C の `#6 Documentation i18n parity` / `#7 Pattern portability` 追加により約 9 行シフト済みで、`review.md` の reviewer 呼び出しも named subagent (`rite:{reviewer_type}-reviewer`) に移行済みです。現行仕様は `plugins/rite/commands/pr/review.md` および `plugins/rite/agents/_reviewer-base.md` 本体を直接参照してください。
 
 <!-- Section ID: SPEC-OVERVIEW -->
 ## 概要
@@ -215,7 +215,7 @@ named subagent (agent body が system prompt として自動注入)
 
 **配置**:
 - `plugins/rite/hooks/scripts/distributed-fix-drift-check.sh`（新規）
-- `rite-config.yml` の `commands.lint` に統合するか CI のみで動かすかは Phase 0 (#356) の結果で決定
+- `rite-config.yml` の `commands.lint` に統合するか CI のみで動かすかは Phase 0 の結果で決定
 
 <!-- Section ID: SPEC-IMPL-CONSIDERATIONS -->
 ### 考慮事項
@@ -259,7 +259,7 @@ named subagent (agent body が system prompt として自動注入)
 
 ### Phase D への反映
 
-この観察は Phase 0 の症例研究 (項目 6) で定量化され、Phase D の signal rate 監査 AC で検証される。OOS7 (Issue #355 の scope 外事項) とは別の次元の問題として扱う。具体的な measurement は以下:
+この観察は Phase 0 の症例研究 (項目 6) で定量化され、Phase D の signal rate 監査 AC で検証される。OOS7 とは別の次元の問題として扱う。具体的な measurement は以下:
 
 - **baseline_V の signal rate** = (実コードと突き合わせて true positive と判定された指摘数) / (verified-review が報告した全指摘数)
 - **signal rate < 90% の場合**: baseline_V から FP を除外した baseline_V' を新たな分母とし、coverage_rate = (rite:pr:review での検出) / baseline_V' で判定する
@@ -276,13 +276,13 @@ named subagent (agent body が system prompt として自動注入)
 - **OOS4**: 13 reviewer の分割粒度の見直し（別 Issue: reviewer 再編成）
 - **OOS5**: verification mode 以外のレビューサイクル最適化（別 Issue: review-fix loop 効率化）
 - **OOS6**: fact-check.md の外部仕様検証の強化（既に機能しているため対象外）
-- **OOS7**: PR #350 自体の追加修正（Issue #349 のスコープで完結扱い）
-  - **補足 (本セッション 2026-04-08 で追加)**: ただし PR #350 の `/verified-review` 再実行で検出された以下 **7 件のマージブロッカー**は Issue #349 の scope 内として最終修正する (commit `d36f80f` で対応済み): C1 (output_pattern 未定義) / C3+H1 (Phase 2.4 cat HEREDOC wrap + mktemp retained flag) / H2 (Phase 4.2 report retained flag) / H3 (Phase 4.3.4 Issue 作成 retained flag) / H5 (pr_body_tmp_empty_or_missing issue_number suffix) / H6 (tech-writer anchor drift)。**非ブロッカー defer**: C2 (reason table 16 件 drift, runtime 非影響) は本設計ドキュメントの Phase A (#357) に吸収、H4 (Broad Retrieval gh api exit code) は Issue #354 で deferred 宣言済み。
+- **OOS7**: PR #350 自体の追加修正
+  - **補足 (本セッション 2026-04-08 で追加)**: ただし PR #350 の `/verified-review` 再実行で検出された以下 **7 件のマージブロッカー**は Issue #349 の scope 内として最終修正する (commit `d36f80f` で対応済み): C1 (output_pattern 未定義) / C3+H1 (Phase 2.4 cat HEREDOC wrap + mktemp retained flag) / H2 (Phase 4.2 report retained flag) / H3 (Phase 4.3.4 Issue 作成 retained flag) / H5 (pr_body_tmp_empty_or_missing issue_number suffix) / H6 (tech-writer anchor drift)。**非ブロッカー defer**: C2 (reason table 16 件 drift, runtime 非影響) は本設計ドキュメントの Phase A に吸収、H4 (Broad Retrieval gh api exit code) は Issue #354 で deferred 宣言済み。
 
 ## 関連資料
 
 - プランファイル: `~/.claude/plans/lively-percolating-pnueli.md`（本 Issue 作成時の詳細設計メモ）
 - PR #350: Issue #349 doc-heavy-review-mode（本改善のきっかけとなった PR）
-- `docs/designs/reviewer-quality-improvement.md`（PR #285 発の前段改善）
+- `docs/designs/reviewer-quality-improvement.md`
 - `~/.claude/commands/verified-review.md`（比較対象の user command）
 - `~/.claude/plugins/marketplaces/claude-plugins-official/plugins/pr-review-toolkit/agents/*.md`（参考にする外部 agent 群）

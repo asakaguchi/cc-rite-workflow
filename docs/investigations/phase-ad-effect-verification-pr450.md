@@ -121,7 +121,7 @@ rite:pr:review は Confidence Scoring (80+ = 指摘事項、60-79 = 推奨事項
 
 1. **Part A 抽出バグ修正 (Phase A)**: `## Cross-File Impact Check` が reviewer に届くようになり、stale cross-reference と enumeration count mismatch を検出
 2. **Named subagent 切替 (Phase B)**: reviewer 固有の Detection Process が system prompt として強制適用され、error handling anti-pattern の検出精度が向上
-3. **Code duplication 検出**: code-quality reviewer が独立 agent として動作し、大規模な構造的複製 を cross-file で検出
+3. **Code duplication 検出**: code-quality reviewer が独立 agent として動作し、大規模な構造的複製を cross-file で検出
 
 ### 6.2 件数基準と実質カバレッジの乖離
 

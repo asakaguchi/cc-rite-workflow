@@ -104,8 +104,7 @@ helper 内で吸収する。
 - **Cycle 12**: helper existence check の **validation logic** を `_validate-helpers.sh` に集約。
 - **Cycle 13**: helper 名 list 自体も `_validate-helpers.sh` 内の `DEFAULT_HELPERS` 配列に集約。
   state-read.sh と flow-state-update.sh の helper-list 重複が構造的に解消され、helper 追加時は
-  `_validate-helpers.sh` 内 `DEFAULT_HELPERS` への 1 行追加のみで両 caller に反映される
- 。
+  `_validate-helpers.sh` 内 `DEFAULT_HELPERS` への 1 行追加のみで両 caller に反映される。片肺更新 drift（helper-list が一方の caller でしか更新されない不整合）を別 layer で再発させないための構造的実装である。
 
 ### Cycle 14（F-04 MEDIUM）: hardcoded 行番号 → semantic anchor
 

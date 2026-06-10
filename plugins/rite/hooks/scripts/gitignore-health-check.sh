@@ -218,6 +218,44 @@ if [ ! -f "$config_file" ]; then
   exit 0
 fi
 
+# --- Multi-session: verify .rite/worktrees/ is ignored when enabled (design §2) ---
+# Independent of wiki settings — placed BEFORE the wiki early-exits so a
+# wiki.enabled=false + multi_session.enabled=true config is still verified.
+# Non-blocking & opt-in: drift → WARNING + exit 1; healthy or disabled → fall
+# through to the wiki checks. Mirrors the separate_branch Layer-1 probe: a static
+# `git check-ignore -v` (no file created) asks git whether session worktree paths
+# are ignored. If not, session worktrees (.rite/worktrees/issue-{N}) would leak
+# into dev-branch diffs.
+ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' "$config_file" 2>/dev/null) || ms_section=""
+ms_enabled="false"
+if [ -n "$ms_section" ]; then
+  ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' \
+    | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+  case "$ms_enabled" in
+    true|yes|1) ms_enabled="true" ;;
+    *)          ms_enabled="false" ;;
+  esac
+fi
+if [ "$ms_enabled" = "true" ]; then
+  ms_probe=".rite/worktrees/issue-0/.rite-lint-probe"
+  ms_ci_out=""
+  ms_ci_rc=0
+  if ms_ci_out=$(git check-ignore -v "$ms_probe" 2>/dev/null); then ms_ci_rc=0; else ms_ci_rc=$?; fi
+  if [ "$ms_ci_rc" -eq 0 ] && printf '%s' "$ms_ci_out" | grep -qE ':\.rite/worktrees/'; then
+    log_info "gitignore-health-check: multi_session layer healthy — .rite/worktrees/ ignored (${ms_ci_out})"
+  elif [ "$ms_ci_rc" -ge 2 ]; then
+    echo "WARNING: gitignore-health-check: git check-ignore failed (rc=$ms_ci_rc) for .rite/worktrees/ verify — skipping multi_session check" >&2
+  else
+    echo "==> gitignore-health-check: DRIFT DETECTED (multi_session): '.rite/worktrees/' rule missing from .gitignore" >&2
+    echo "==> multi_session.enabled=true but session worktrees (.rite/worktrees/issue-{N}) would leak into dev-branch diffs." >&2
+    echo "==> Hint: add '.rite/worktrees/' to .gitignore (see multi-session design §2)." >&2
+    echo "WARNING: gitignore-health-check: .rite/worktrees/ rule missing while multi_session.enabled=true" >&2
+    echo "==> Total gitignore-health-check findings: 1"
+    exit 1
+  fi
+fi
+
 wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$config_file" 2>/dev/null) || wiki_section=""
 if [ -z "$wiki_section" ]; then
   log_info "gitignore-health-check: wiki section absent in rite-config.yml — skipping (exit 0)"

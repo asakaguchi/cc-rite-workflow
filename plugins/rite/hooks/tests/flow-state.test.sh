@@ -980,6 +980,30 @@ else
   pass "TC-23.4: C1 0x9b (U+009B 経由) が snippet 行で中和されている (Issue #1274)"
 fi
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + security/observability hardening + Issue #1168 handoff marker + Issue #1170 consume-handoff corrupt-read WARNING + Issue #1173 jq stderr snippet control-char neutralization + Issue #1274 C1 8-bit coverage via shared neutralize_ctrl"; then
+# --- TC-WT: --worktree field (multi-session §2 / Issue #1362) ---
+echo ""
+echo "=== TC-WT1: set --worktree then get returns the path ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase implement --issue 1362 --branch "feat/issue-1362" \
+  --pr 0 --next "n" --worktree "/abs/worktrees/issue-1362")
+state_file="$d/.rite/sessions/${sid}.flow-state"
+assert "worktree field written" "/abs/worktrees/issue-1362" "$(jq -r .worktree "$state_file")"
+got=$(cd "$d" && bash "$HOOK" get --field worktree)
+assert "get --field worktree returns path" "/abs/worktrees/issue-1362" "$got"
+
+echo ""
+echo "=== TC-WT2: worktree is merge-preserved across a set without --worktree ==="
+(cd "$d" && bash "$HOOK" set --phase lint --next "next")
+assert "worktree preserved (merge-preserve like branch)" "/abs/worktrees/issue-1362" "$(jq -r .worktree "$state_file")"
+assert "branch preserved alongside" "feat/issue-1362" "$(jq -r .branch "$state_file")"
+
+echo ""
+echo "=== TC-WT3: non-worktree session never gains the key (byte-identical / additive) ==="
+result=$(new_sandbox); d2="${result%|*}"; sid2="${result#*|}"
+(cd "$d2" && bash "$HOOK" set --phase implement --issue 999 --branch "x" --pr 0 --next "n")
+state_file2="$d2/.rite/sessions/${sid2}.flow-state"
+assert "no worktree key when --worktree never passed" "false" "$(jq 'has("worktree")' "$state_file2")"
+
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + security/observability hardening + Issue #1168 handoff marker + Issue #1170 consume-handoff corrupt-read WARNING + Issue #1173 jq stderr snippet control-char neutralization + Issue #1274 C1 8-bit coverage via shared neutralize_ctrl + Issue #1362 --worktree merge-preserve field"; then
   exit 1
 fi

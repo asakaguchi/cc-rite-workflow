@@ -193,6 +193,18 @@ pr_review:
 #   mode: "shared"  # "shared" (default) or "worktree"
 #   worktree_base: ".worktrees"
 
+# Multi-session settings (per-session Git worktree isolation)
+# See docs/designs/multi-session-worktree.md for full specification.
+# Lets multiple Claude Code sessions work different Issues in the same repo
+# concurrently: /rite:pr:open creates a session worktree (.rite/worktrees/issue-{N})
+# and EnterWorktree-s into it, so each session keeps its own working tree /
+# current branch. Opt-in — default `enabled: false` = zero behavior change.
+# NOTE: this is a SEPARATE axis from `parallel` (which is per-Issue sub-agent
+# fan-out within a single session). Do not merge the two.
+# multi_session:
+#   enabled: false                   # true to enable per-session worktrees
+#   worktree_base: ".rite/worktrees" # session worktree base (issue-{N} subdirs)
+
 # Team-based sprint execution settings
 # team:
 #   enabled: true

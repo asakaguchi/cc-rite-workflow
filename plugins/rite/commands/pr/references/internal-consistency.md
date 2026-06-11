@@ -281,7 +281,7 @@ review.md ステップ 5.1.3 Step 2 (件数非依存 META check) は、上記 (a
 
 本ファイルは以下から参照される:
 
-- [`../../../skills/reviewers/tech-writer.md`](../../../skills/reviewers/tech-writer.md) — 文書-実装整合性 5 項目 / Doc-Heavy PR Mode セクション
+- [`../../../agents/tech-writer-reviewer.md`](../../../agents/tech-writer-reviewer.md) — 文書-実装整合性 5 項目 / Doc-Heavy PR Mode セクション
 - [`../review.md`](../review.md) — ステップ 1.2.7 Detection / ステップ 2.2.1 Override / ステップ 5.1.3 Post-Condition Check
 - [`../../../skills/reviewers/SKILL.md`](../../../skills/reviewers/SKILL.md) — Reviewers 一覧 tech-writer 行
 

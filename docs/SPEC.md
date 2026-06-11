@@ -166,8 +166,7 @@ rite-workflow/
 │ │ ├── fact-check.md # External fact-checking protocol
 │ │ ├── fix-relaxation-rules.md # Fix relaxation / 4 quality signals
 │ │ ├── internal-consistency.md # Doc-implementation consistency protocol
-│ │ ├── review-context-optimization.md # Review context optimization
-│ │ └── reviewer-fallbacks.md # Reviewer fallback profiles
+│ │ └── review-context-optimization.md # Review context optimization
 │ ├── wiki/
 │ │ ├── init.md # /rite:wiki:init
 │ │ ├── query.md # /rite:wiki:query
@@ -199,11 +198,9 @@ rite-workflow/
 │ │ ├── SKILL.md # Main workflow skill (auto-activated)
 │ │ └── references/ # Coding principles, context management, etc.
 │ ├── reviewers/
-│ │ ├── SKILL.md # Reviewer skill (auto-activated)
-│ │ ├── {api,code-quality,database,dependencies,devops,error-handling,
-│ │ │ frontend,performance,prompt-engineer,security,tech-writer,
-│ │ │ test,type-design}.md # Per-reviewer criteria
+│ │ ├── SKILL.md # Reviewer coordinator skill (selection + tables)
 │ │ └── references/ # Shared reviewer references
+│ │ # (per-reviewer profiles live in agents/{type}-reviewer.md)
 │ ├── investigate/
 │ │ └── SKILL.md # Structured code investigation skill
 │ └── wiki/

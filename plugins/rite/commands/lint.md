@@ -500,7 +500,7 @@ fi
 
 ### 3.7 Plugin-specific Checks (Doc-Heavy Patterns Drift Detection)
 
-Execute the doc-heavy patterns drift check script to detect divergence between the `doc_file_patterns` declared in 3 files that MUST stay in sync: `plugins/rite/skills/reviewers/tech-writer.md` (Activation section), `plugins/rite/commands/pr/review.md` (ステップ 1.2.7 `doc_file_patterns` pseudo-code block), and `plugins/rite/skills/reviewers/SKILL.md` (Reviewers table Technical Writer row). Drift between these files silently changes tech-writer activation and Doc-Heavy PR detection — Issue #353 系統 1. See the script header at `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` for the extraction contract.
+Execute the doc-heavy patterns drift check script to detect divergence between the `doc_file_patterns` declared in 2 files that MUST stay in sync: `plugins/rite/commands/pr/review.md` (ステップ 1.2.7 `doc_file_patterns` pseudo-code block) and `plugins/rite/skills/reviewers/SKILL.md` (Reviewers table Technical Writer row). Drift between these files silently changes tech-writer activation and Doc-Heavy PR detection — Issue #353 系統 1. See the script header at `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` for the extraction contract.
 
 **Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
 

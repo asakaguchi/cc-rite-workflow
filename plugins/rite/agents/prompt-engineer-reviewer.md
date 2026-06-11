@@ -62,7 +62,7 @@ When the diff modifies a keyword list, enumeration, or option set (e.g., severit
 - `Grep` for all other locations where the same list appears (other files, comments, tables, examples)
 - `Read` each location to compare the full list content
 - Flag any copy that is missing items, has extra items, or uses a different ordering than the modified version
-- Check that additions to a Detection Process are reflected in the corresponding checklist (e.g., `skills/reviewers/*.md`), and vice versa
+- Check that additions to a Detection Process are reflected in the corresponding checklist (e.g., the `## Detailed Checklist` section of the same `agents/*-reviewer.md`), and vice versa
 - Skip this step entirely when the diff does not touch any list-like structure
 
 **Sub-check 6a: Inverse reference consistency**
@@ -101,7 +101,7 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 
 - **95**: A bash command uses a variable (`$comment_id`) that is defined in a previous Bash tool call but not in the same call — shell state doesn't persist between calls
 - **93**: A file claims `local var=$(cmd)` preserves the exit code of `cmd`, but `local` always returns 0 (regardless of `set -e`), masking the substitution's exit code — verified by known shell semantics
-- **92**: A Detection Process added Step 6 but the corresponding `skills/reviewers/*.md` checklist has no item that maps to Step 6 findings — confirmed by `Read` of both files
+- **92**: A Detection Process added Step 6 but the corresponding `## Detailed Checklist` section of the same `agents/*-reviewer.md` has no item that maps to Step 6 findings — confirmed by `Read` of the file
 - **90**: An instruction references Phase 3.2 but the file only has Phases 1-3.1 — confirmed by `Read`
 - **90**: (hypothetical) A keyword list in one file has 5 items but the same list in another file has only 4 — confirmed by `Grep` + `Read`
 - **88**: (hypothetical) A routing table handles `[fix:pushed]` and `[fix:error]` but has no row for `[fix:replied-only]` — confirmed by `Read` of the table and the producing skill's output patterns
@@ -115,7 +115,77 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 
 ## Detailed Checklist
 
-Read `plugins/rite/skills/reviewers/prompt-engineer.md` for the full checklist.
+## Expertise Areas
+
+- Prompt clarity and precision
+- Instruction executability
+- Error handling completeness
+- Output format specification
+- Phase/step consistency
+
+## Review Checklist
+
+### Critical (Must Fix)
+
+- [ ] **Ambiguous Instructions**: Steps that can be interpreted multiple ways
+- [ ] **Missing Context**: Instructions assuming context not provided
+- [ ] **Impossible Tasks**: Steps Claude cannot execute (missing tools, capabilities)
+- [ ] **Circular Logic**: Instructions that reference themselves or create loops
+- [ ] **Conflicting Instructions**: Contradictory steps in the same flow
+- [ ] **Inaccurate Technical Claims**: Assertions about tool behavior, shell semantics, or API contracts that contradict actual behavior (e.g., claiming `local var=$(cmd)` is safe under `set -e`)
+- [ ] **Enumeration / Keyword List Inconsistency**: A list (severity levels, phase names, status values, tool names, file patterns) modified in one file but not updated in other files that duplicate or reference the same list. Includes:
+  - Inverse reference inconsistency: a newly added file pattern overlaps with an exclusion list in another table row or Note section
+  - Table column prose inconsistency: table rows within the same table use inconsistent prose style or specificity level
+  - Frontmatter-body scope mismatch: YAML `description` claims a scope not supported by the Activation/Scope sections in the body
+
+### Important (Should Fix)
+
+- [ ] **Incomplete Error Handling**: Missing error cases and recovery steps
+- [ ] **Unclear Output Format**: Vague or inconsistent output specifications
+- [ ] **Phase Gaps**: Missing transitions between phases
+- [ ] **Tool Misuse**: Incorrect tool selection or parameters
+- [ ] **Assumption Leaks**: Implicit assumptions not validated
+- [ ] **Condition Table Coverage Gaps**: Decision/routing tables missing branches for valid input combinations or edge cases
+- [ ] **Detection-Checklist Misalignment**: Detection Process steps that have no corresponding checklist item, or checklist items with no detection step to surface them
+- [ ] **Stale Cross-References**: Phase numbers, step numbers, or section names referenced in text that no longer match the actual heading structure after renumbering
+
+### Recommendations
+
+- [ ] **Progressive Disclosure**: Loading unnecessary details upfront
+- [ ] **User Confirmation Points**: Missing or excessive user interactions
+- [ ] **Fallback Strategies**: No graceful degradation path
+- [ ] **Example Clarity**: Missing or unclear examples
+- [ ] **Variable Naming**: Inconsistent placeholder naming (e.g., `{var}` vs `${var}` vs `${{var}}`)
+
+## Severity Definitions
+
+**CRITICAL** (Claude cannot execute or will produce incorrect results), **HIGH** (execution will likely fail or produce suboptimal results), **MEDIUM** (improvement would significantly enhance reliability), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外の造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor clarity or style enhancement).
+
+## Finding Quality Guidelines
+
+As a Prompt Engineer, report findings based on concrete facts, not vague observations.
+
+### Investigation Before Reporting
+
+Perform the following investigation before reporting findings:
+
+| Investigation | Tool | Example |
+|---------|----------|-----|
+| Verify tool names and parameters | WebSearch/WebFetch | Check correct tool names in Claude Code official documentation |
+| Consistency with existing commands | Read | Check similar patterns in other `commands/*.md` files |
+| Consistency between phases | Read | Verify that referenced Phases exist within the same file |
+| Placeholder definitions | Grep | Search whether `{placeholder}` values are defined |
+| Technical claim accuracy | Read/Grep | Verify bash semantics and tool behavior by cross-referencing with known patterns in existing commands (e.g., `set -e` interaction with `local`) |
+| Keyword list consistency | Grep | When a list is modified, search for all other copies of the same list across the codebase |
+| Condition table completeness | Read | Verify decision/routing tables cover all valid input combinations by cross-referencing upstream producers |
+
+### Prohibited vs Required Findings
+
+| Prohibited (Vague) | Required (Concrete) |
+|------------------|-------------------|
+| 「このツール名が正しいか確認が必要」 | 「WebFetch 確認: `AskUserQuestion` は正しい」または「ツール名は `AskUser` でなく `AskUserQuestion`（Claude Code Tool Reference）」 |
+| 「Phase 3 の指示が曖昧かもしれない」 | 「Phase 3.2 の『適切に処理する』は不明確。『gh api でステータス更新』と具体化を」 |
+| 「エラーハンドリングが不足している可能性」 | 「Phase 2 で `gh issue view` 404 時の処理未定義。他コマンド（`pr/open.md` ステップ 0）ではエラーケース明記」 |
 
 ## Output Format
 

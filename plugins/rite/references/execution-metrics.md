@@ -97,7 +97,7 @@ When an Issue has threshold violations:
 
 ### Work Memory Metrics Section
 
-Appended to the Issue work memory comment at workflow completion (caller orchestrator の 完了レポート — sprint flow なら sprint/execute.md sequential 末尾、standalone なら user が `/rite:pr:cleanup` 実行時):
+Appended to the Issue work memory comment at workflow completion (caller orchestrator の 完了レポート、standalone なら user が `/rite:pr:cleanup` 実行時):
 
 ```markdown
 ### 📊 メトリクス

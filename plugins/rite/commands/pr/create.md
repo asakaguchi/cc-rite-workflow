@@ -14,7 +14,7 @@ description: ドラフト Pull Request を作成
 
 ## E2E Output Minimization
 
-When called from an orchestrator's end-to-end flow (e.g. `/rite:pr:open` ステップ 6 / `sprint/execute.md` sequential), minimize output to reduce context window consumption:
+When called from an orchestrator's end-to-end flow (e.g. `/rite:pr:open` ステップ 6), minimize output to reduce context window consumption:
 
 | Phase | Standalone | E2E Flow |
 |-------|-----------|----------|
@@ -31,7 +31,7 @@ Execute the following phases in order when this command is invoked.
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
 
-This command can be invoked in two ways: standalone execution or from an orchestrator's end-to-end flow (e.g. `/rite:pr:open` ステップ 6 / sprint sequential execution).
+This command can be invoked in two ways: standalone execution or from an orchestrator's end-to-end flow (e.g. `/rite:pr:open` ステップ 6).
 
 | Caller | Subsequent Action |
 |-----------|---------------|
@@ -42,7 +42,7 @@ This command can be invoked in two ways: standalone execution or from an orchest
 
 | Condition | Determination |
 |------|---------|
-| Invoked via `Skill` tool from any orchestrator within the same session (caller-name agnostic — `/rite:pr:open` / sprint flow / etc.) | Within end-to-end flow |
+| Invoked via `Skill` tool from any orchestrator within the same session (caller-name agnostic — e.g. `/rite:pr:open`) | Within end-to-end flow |
 | All other cases (user directly typed `/rite:pr:create`) | Standalone execution |
 
 > **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[pr:created:{number}]` or `[pr:create-failed]`) and **returns control to the caller** (orchestrator). The caller determines the next action based on this output pattern.
@@ -714,9 +714,9 @@ Information to include in the PR body: summary, related Issue (`Closes #{number}
 
 #### 3.2.1 Context Optimization During End-to-End Flow
 
-When executed via an orchestrator's end-to-end flow (e.g. `/rite:pr:open` ステップ 6 / `sprint/execute.md`), apply the following optimizations to reduce context usage.
+When executed via an orchestrator's end-to-end flow (e.g. `/rite:pr:open` ステップ 6), apply the following optimizations to reduce context usage.
 
-**Optimization conditions (OR evaluation):** During end-to-end flow execution / 20 or more changed files / Over 30 tool invocations. 30 invocations is lightweight optimization for PR creation alone; 50 invocations (see `pr/open.md` / `sprint/execute.md` 等の上位 orchestrator) is full-scale mitigation.
+**Optimization conditions (OR evaluation):** During end-to-end flow execution / 20 or more changed files / Over 30 tool invocations. 30 invocations is lightweight optimization for PR creation alone; 50 invocations (see `pr/open.md` 等の上位 orchestrator) is full-scale mitigation.
 
 **Optimization content:** Changes -> file list and summary only (show top 3 files), Work memory -> progress summary only, Checklist -> mandatory items only. Applied automatically without user confirmation.
 
@@ -965,7 +965,7 @@ Output the following pattern based on PR creation result:
 
 **Important**:
 - Do **NOT** invoke `rite:pr:review` via the Skill tool
-- Return control to the caller (orchestrator — caller-name agnostic, e.g. `/rite:pr:open` / `sprint/execute.md`)
+- Return control to the caller (orchestrator — caller-name agnostic, e.g. `/rite:pr:open`)
 - The caller determines the next action based on this output pattern
 
 > **Missing-sentinel recovery contract**: Phase 3.4 で `gh pr create` が malformed tool-call により sentinel を 1 つも emit せず無言でターンが終了する（Cause A: harness/transport 側のゆらぎ。rite では除去不能）ことがある。この場合 caller（orchestrator）は `[pr:created:{N}]` / `[pr:create-failed]` のいずれも context に観測できないため **missing-sentinel** として扱う。本 Skill は flow-state を所有せず caller が `phase` を保持するため、caller 側の missing-sentinel 検出 → `/rite:resume` 再開で PR 作成ステップを安全にやり直せる（重複 draft PR の検出・再構成は orchestrator の resume 経路が担う。`commands/pr/open.md` ステップ 0 phase=pr / ステップ 6 参照）。Phase 3.4 の Write tool 委譲はこの Cause A 自体を消すものではなく、Cause B（インライン heredoc / 特殊文字 title による malform 増幅）を除去して発生確率を下げる対策である。

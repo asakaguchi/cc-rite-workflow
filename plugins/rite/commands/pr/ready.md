@@ -10,7 +10,7 @@ description: PR を Ready for review に変更
 
 Change PR to Ready for review and update the related Issue's Status
 
-> **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[ready:returned-to-caller]` or `[ready:error]`) and **returns control to the caller** (orchestrator — caller-name agnostic, e.g. `sprint/execute.md` 等). The caller determines the next action based on this output pattern.
+> **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[ready:returned-to-caller]` or `[ready:error]`) and **returns control to the caller** (orchestrator — caller-name agnostic). The caller determines the next action based on this output pattern.
 
 ---
 
@@ -34,7 +34,7 @@ When this command is executed, run the following phases in order.
 
 ## Phase 0: Load Work Memory (End-to-End Flow Only)
 
-> **This phase is only executed within an orchestrator's end-to-end flow (e.g. `sprint/execute.md` 経由). Skip when running standalone.**
+> **This phase is only executed within an orchestrator's end-to-end flow. Skip when running standalone.**
 
 > **Warning**: Work memory is published as Issue comments. In public repositories, third parties can view it. Do not record sensitive information (credentials, personal data, internal URLs, etc.) in work memory.
 
@@ -351,7 +351,7 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
 
 ## Phase 4: Update Issue Status
 
-> **Note**: 新 4 コマンドアーキテクチャでは `pr/ready.md` が Projects Status In Review 更新の **唯一の writer**。本 Phase 4 は standalone / orchestrator (sprint flow 等) 両経路で必須。
+> **Note**: 新 4 コマンドアーキテクチャでは `pr/ready.md` が Projects Status In Review 更新の **唯一の writer**。本 Phase 4 は standalone / orchestrator 経由の両経路で必須。
 
 **Critical**: Do NOT skip this phase. After `gh pr ready` succeeds in Phase 3, this Status update MUST be executed before proceeding to Phase 5.
 
@@ -436,13 +436,13 @@ Before outputting the result pattern (`[ready:returned-to-caller]`) or skipping 
 
 | Result | Phase | Phase Detail | Next Action |
 |--------|-------|-------------|-------------|
-| `[ready:returned-to-caller]` | `ready` | `Ready処理完了` | `rite:pr:ready completed. Standalone 起動の場合は次に /rite:pr:merge {pr_number} を実行。orchestrator (sprint flow 等) 経由なら caller に制御を戻す。Do NOT stop.` |
+| `[ready:returned-to-caller]` | `ready` | `Ready処理完了` | `rite:pr:ready completed. Standalone 起動の場合は次に /rite:pr:merge {pr_number} を実行。orchestrator 経由なら caller に制御を戻す。Do NOT stop.` |
 
 ```bash
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "ready" \
   --active true \
-  --next "rite:pr:ready completed. Standalone 起動の場合は次に /rite:pr:merge {pr_number} を実行。orchestrator (sprint flow 等) 経由なら caller に制御を戻す。Do NOT stop." \
+  --next "rite:pr:ready completed. Standalone 起動の場合は次に /rite:pr:merge {pr_number} を実行。orchestrator 経由なら caller に制御を戻す。Do NOT stop." \
   --if-exists
 ```
 
@@ -454,7 +454,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 WM_SOURCE="ready" \
   WM_PHASE="ready" \
   WM_PHASE_DETAIL="Ready処理完了" \
-  WM_NEXT_ACTION="Standalone なら /rite:pr:merge {pr_number} を実行。orchestrator 経由なら caller に制御を戻す (sprint flow 等)" \
+  WM_NEXT_ACTION="Standalone なら /rite:pr:merge {pr_number} を実行。orchestrator 経由なら caller に制御を戻す" \
   WM_BODY_TEXT="Post-ready phase sync." \
   WM_REQUIRE_FLOW_STATE="true" \
   WM_READ_FROM_FLOW_STATE="true" \
@@ -474,23 +474,23 @@ Determine the caller from the conversation context:
 
 | Condition | Result | Action |
 |------|---------|---------------------|
-| Called via Skill tool from any orchestrator (legacy `/rite:issue:start` / sprint flow / etc.) | Within end-to-end flow | **Skip completion report** — return control to caller (orchestrator handles the report) |
+| Called via Skill tool from an orchestrator (caller-name agnostic) | Within end-to-end flow | **Skip completion report** — return control to caller (orchestrator handles the report) |
 | `/rite:pr:ready` executed standalone | Standalone complete | Output Phase 5.1.2 format |
 
-> **Note**: 新 4 コマンドアーキテクチャ (`/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge`) では `pr:ready` は self-contained command として user が直接 invoke するのが標準経路。e2e flow からの呼び出しは `commands/sprint/execute.md` (Sprint sequential 実行) 等で残るため、本表の "Within end-to-end flow" 行は legacy compatibility として保持する。
+> **Note**: 新 4 コマンドアーキテクチャ (`/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge`) では `pr:ready` は self-contained command として user が直接 invoke するのが標準経路。本表の "Within end-to-end flow" 行は caller-name agnostic な return-to-caller 契約として保持し、任意の orchestrator が Skill tool 経由で `pr:ready` を呼んだ場合に機能する。
 
 **Detection method:**
 
 Check the conversation history and determine "within end-to-end flow" if any of the following apply:
 
 1. `rite:pr:ready` was invoked via the Skill tool (not as a standalone user command)
-2. A caller orchestrator (`commands/sprint/execute.md` 等) の Skill invocation marker が会話履歴に存在
+2. A caller orchestrator の Skill invocation marker が会話履歴に存在
 
 ### 5.1 Output the Completion Report
 
 #### 5.1.1 End-to-End Flow (Skip Completion Report, Output Signal)
 
-When called within the end-to-end flow (detected in Phase 5.0), **do NOT output any completion report**. The completion report is the responsibility of the caller orchestrator (e.g. `sprint/execute.md` の sequential 実行末尾) — outputting it here causes duplicate reports.
+When called within the end-to-end flow (detected in Phase 5.0), **do NOT output any completion report**. The completion report is the responsibility of the caller orchestrator — outputting it here causes duplicate reports.
 
 **Instead, output the following 2-line machine-readable signal** to indicate successful return to the caller:
 
@@ -499,7 +499,7 @@ When called within the end-to-end flow (detected in Phase 5.0), **do NOT output 
 <!-- [ready:returned-to-caller] -->
 ```
 
-This pattern is **mandatory** in e2e flow. It allows the caller orchestrator (e.g. `sprint/execute.md`) to detect that `rite:pr:ready` has returned to the caller and immediately proceed to caller-specific 完了処理 (sprint なら次 Issue の処理、独立 orchestrator なら completion report)。Without this signal, the caller may incorrectly interpret the lack of output as task completion.
+This pattern is **mandatory** in e2e flow. It allows the caller orchestrator to detect that `rite:pr:ready` has returned to the caller and immediately proceed to caller-specific 完了処理。Without this signal, the caller may incorrectly interpret the lack of output as task completion.
 
 The signal comment + sentinel pair replaces the older `ready:completed` form. The new naming makes explicit that the sub-skill is *returning to caller* (and the caller must continue), not *terminating the workflow* — this prevents LLM turn-boundary heuristic misfires. The sentinel is wrapped in an HTML comment to match the canonical emit style used by `create.md` / `cleanup.md` / `ingest.md` so that the user-visible terminus is never a bare bracket sentinel — disambiguator marker と sentinel が共に HTML コメント化されることで「ユーザー向けに見える最終行」と「caller への signal 行」が完全に分離される。
 

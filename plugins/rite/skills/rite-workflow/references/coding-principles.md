@@ -456,7 +456,7 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 |-----------|--------|-----------------|
 | How (current behavior) | The code itself (naming, structure) | Code is executed, so it is always true — it cannot drift from the running reality |
 | What (specification, behavior) | Test code (test name + assertion) | Tests are executable specification — the name states What, the assertion proves it |
-| Why (motive at change time) | Commit message (Contextual Commits action lines) | The commit is the immutable record of the context at the moment of change |
+| Why (motive at change time) | Commit message body | The commit is the immutable record of the context at the moment of change |
 | Why not (rejected alternative) — and the Why that must stay beside the code (hidden constraint, invariant, workaround) | Code comments | The comment is the only document that stays in the same place as the code it guards |
 
 **Failure Patterns**:
@@ -474,7 +474,7 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 
 **Rules**:
 1. Route each kind of knowledge to its one channel; do not record the same knowledge in two channels.
-2. Defer each channel's detailed rules to its SoT — do not duplicate them here: comments → [comment-best-practices.md](./comment-best-practices.md), commits → [contextual-commits.md](./contextual-commits.md), tests → [tdd-light.md](../../../references/tdd-light.md) and [reviewers/test.md](../../reviewers/test.md).
+2. Defer each channel's detailed rules to its SoT — do not duplicate them here: comments → [comment-best-practices.md](./comment-best-practices.md), tests → [reviewers/test.md](../../reviewers/test.md). For commits, record the "why" in the commit message body (free-form prose).
 3. Transport misplaced knowledge to its correct medium rather than leaving it: change history found in a comment → move it to the commit; How found in a comment → promote it to naming and delete the comment.
 
 **Where to Apply**:

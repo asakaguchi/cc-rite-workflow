@@ -42,10 +42,6 @@ branch:
   base: "develop"    # 開発ベースブランチ（Git Flow）
   pattern: "{type}/issue-{number}-{slug}"
 
-# コミットメッセージ
-commit:
-  contextual: true    # コミット body に Contextual Commits の action ラインを入れる
-
 # ビルド / テスト / lint コマンド
 commands:
   build: null
@@ -56,13 +52,6 @@ commands:
 verification:
   run_tests_before_pr: true          # commit / PR 前にテスト実行（commands.test が必要）
   acceptance_criteria_check: true    # PR 前に Issue body の受入基準を確認
-
-# TDD Light モード
-tdd:
-  mode: "off"              # off | light (default: off)
-  tag_prefix: "AC"         # テスト skeleton マーカーのタグプレフィックス
-  run_baseline: true       # skeleton 生成前にベースラインテストを実行
-  max_skeletons: 20        # Issue 1 件あたりの最大 skeleton 数
 
 # Issue 設定
 issue:
@@ -130,13 +119,6 @@ parallel:
 multi_session:
   enabled: true                    # セッション別 worktree（default ON、#1391）。false で無効化
   worktree_base: ".rite/worktrees" # セッション worktree のベース（issue-{N} サブディレクトリ）
-
-# Sprint チーム実行
-team:
-  enabled: true              # /rite:sprint:team-execute を有効化
-  max_concurrent_issues: 3   # 1 バッチあたりの並列 Issue 数の上限（未設定なら parallel.max_agents）
-  teammate_model: "sonnet"   # teammate エージェントが使うモデル
-  auto_review: true          # 全 PR 作成後に /rite:pr:review を自動実行
 
 # メトリクス
 metrics:

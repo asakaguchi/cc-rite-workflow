@@ -14,15 +14,6 @@ The configuration file should be named `rite-config.yml` and placed in:
 # Claude Code Rite Workflow configuration file
 schema_version: 2
 
-# DEPRECATED: project.type preset feature was removed entirely.
-# The `generic` / `webapp` / `library` / `cli` / `documentation` presets and
-# `templates/project-types/*.yml` were dropped in #1118. Project-specific
-# configuration is now expressed via the per-key YAML structure directly
-# (e.g. configure `branch.pattern`, `commands.*`, `iteration.*` individually).
-# Remove `project:` from rite-config.yml — the key has no effect.
-# project:
-#   type: webapp
-
 # GitHub Projects integration
 github:
   projects:
@@ -81,10 +72,6 @@ branch:
   base: "main"       # Base branch for feature branches (use "develop" for Git Flow)
   pattern: "{type}/issue-{number}-{slug}"
 
-# Commit message
-commit:
-  contextual: true    # Contextual Commits action lines in commit body
-
 # Build/test/lint commands
 commands:
   build: null  # Auto-detect
@@ -132,58 +119,12 @@ review:
     max_claims: 20                     # Maximum number of External claims to verify per review (default: 20). Internal Likelihood claims are Grep-based and counted outside this cap
     use_context7: true                 # Use context7 MCP tool for verification (default: true). Auto-falls back to WebSearch when context7 is unavailable
     verify_internal_likelihood: true   # Enable Sub-Phase B (Internal Likelihood Claim Verification) via Grep (default: true)
-  # DEPRECATED: observed_likelihood_gate keys are ignored.
-  # These keys were scaffolding that never got wired to conditional runtime logic.
-  # The Observed Likelihood Gate behavior is hardcoded in `_reviewer-base.md` /
-  # `fix.md` prose and cannot currently be disabled via config. Remove these keys
-  # from rite-config.yml — they no longer have any effect.
-  # observed_likelihood_gate:
-  #   enabled: true
-  #   security_exception: true
-  #   hypothetical_exception_reviewers:
-  #     - security
-  #     - database
-  #     - devops
-  #     - dependencies
-  #   minimum: "demonstrable"
-  # DEPRECATED: fail_fast_first keys are ignored.
-  # These keys were scaffolding that never got wired to conditional runtime logic.
-  # The Fail-Fast First principle is hardcoded in `_reviewer-base.md` / `fix.md` prose
-  # and cannot currently be disabled via config. Remove these keys from rite-config.yml
-  # — they no longer have any effect.
-  # fail_fast_first:
-  #   enabled: true
-  #   allow_skill_exceptions: true
-  #   wiki_query_required: true
-  # DEPRECATED: separate_issue_creation keys are ignored.
-  # The "Automatic Separate Issue Creation" mechanism (fix.md Phase 4.3) and the
-  # [fix:issues-created:N] sentinel were removed entirely. Reviewers' recommendations
-  # are handled in-loop only (fix code / accept / reply); no automatic Issue creation
-  # happens from review output. Remove these keys from rite-config.yml — they no
-  # longer have any effect. The report_pre_existing_issues knob is kept only as a
-  # historical reference and is similarly ignored.
-  # separate_issue_creation:
-  #   require_user_confirmation: true
-  #   report_pre_existing_issues: false
 
 # Fix settings
 fix:
   fail_fast_response: true             # Enable Fail-Fast Response Principle in fix.md Phase 2 (default: true)
-  # DEPRECATED: fix.severity_gating keys are ignored.
-  # The severity_gating convergence strategy was removed entirely in #1118.
-  # The review-fix loop now has no automatic non-convergence handling — it simply
-  # continues until 0 findings remain (normal exit) or the user aborts via Ctrl+C
-  # (manual exit, resume with /rite:resume). See commands/pr/iterate.md (loop spec)
-  # and commands/pr/references/fix-relaxation-rules.md ("Loop Termination" section)
-  # for exit conditions. Both the severity_gating strategy and the previous
-  # Phase 4.3.3 AskUserQuestion (retry / separate issue / withdraw) mechanism were
-  # removed in #1118 / #1136 — neither cycle counter, N-retry cap, nor
-  # quality-signal escalation exists in the current loop.
-  # Remove these keys from rite-config.yml — they no longer have any effect.
-  # severity_gating:
-  #   enabled: false
 
-# Iteration/Sprint settings (optional)
+# Iteration settings (optional)
 iteration:
   enabled: false          # true to enable iteration features (default: false)
   field_name: "Sprint"    # Name of the iteration field in Projects (default: "Sprint")
@@ -195,26 +136,12 @@ verification:
   run_tests_before_pr: true          # Run tests before commit/PR (requires commands.test) (default: true)
   acceptance_criteria_check: true    # Check acceptance criteria from Issue body before PR (default: true)
 
-# TDD Light mode settings
-tdd:
-  mode: "off"              # off | light (default: off)
-  tag_prefix: "AC"         # Tag prefix for test skeleton markers (default: "AC")
-  run_baseline: true       # Run baseline test before skeleton generation (default: true)
-  max_skeletons: 20        # Maximum number of skeletons to generate per Issue (default: 20)
-
 # Parallel implementation settings
 parallel:
   enabled: true          # Enable parallel implementation (default: true)
   max_agents: 3          # Maximum concurrent agents (default: 3)
   mode: "shared"         # "shared" (default) or "worktree"
   worktree_base: ".worktrees"  # Base directory for worktrees when mode is "worktree" (default: ".worktrees")
-
-# Team-based sprint execution settings
-team:
-  enabled: true              # Enable /rite:sprint:team-execute (default: true)
-  max_concurrent_issues: 3   # Max Issues to process in parallel per batch (default: 3)
-  teammate_model: "sonnet"   # Model for teammate agents (default: "sonnet")
-  auto_review: true          # Auto-run /rite:pr:review after all PRs created (default: true)
 
 # PR review result recording
 # The `review:` section above configures PR review **execution** (reviewer selection, debate,
@@ -253,12 +180,6 @@ language: auto  # auto | ja | en
 ```
 
 ## Configuration Sections
-
-### ~~project~~ (DEPRECATED in #1118)
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| ~~`project.type`~~ | — | — | **DEPRECATED**: removed entirely. The `generic` / `webapp` / `library` / `cli` / `documentation` presets and `templates/project-types/*.yml` were dropped in #1118. Project-specific configuration is now expressed via the per-key YAML structure directly (`branch.pattern`, `commands.*`, `iteration.*` etc.). Remove `project:` from `rite-config.yml` — the key has no effect |
 
 ### github.projects
 
@@ -433,12 +354,6 @@ These variables are used in `branch.pattern` to generate new branch names:
 | `{date}` | Current date (YYYYMMDD) | `20250103` |
 | `{user}` | GitHub username | `octocat` |
 
-### commit
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `contextual` | boolean | `true` | Include Contextual Commits action lines in commit body |
-
 ### commands
 
 | Field | Type | Default | Description |
@@ -507,9 +422,6 @@ issue:
 | `fact_check.max_claims` | integer | `20` | Maximum number of **External** claims to verify per review (Sub-Phase A). Internal Likelihood claims are Grep-based and counted outside this cap |
 | `fact_check.use_context7` | boolean | `true` | Use context7 MCP tool for verification. Auto-falls back to WebSearch when context7 is unavailable |
 | `fact_check.verify_internal_likelihood` | boolean | `true` | Enable Sub-Phase B (Internal Likelihood Claim Verification) via Grep-based call site / entry point checks |
-| ~~`observed_likelihood_gate.*`~~ | — | — | **DEPRECATED**: removed entirely. These keys were scaffolding that never got wired to conditional runtime logic. The Observed Likelihood Gate behavior (Observed / Demonstrable / Hypothetical axis enforcement) is hardcoded in `_reviewer-base.md` / `fix.md` / `review.md` prose. Remove `observed_likelihood_gate:` from `rite-config.yml` — the keys have no effect |
-| ~~`fail_fast_first.*`~~ | — | — | **DEPRECATED**: removed entirely. These keys were scaffolding that never got wired to conditional runtime logic. The Fail-Fast First principle (require throw/raise propagation consideration before fallback) is hardcoded in `_reviewer-base.md` / `fix.md` prose. Remove `fail_fast_first:` from `rite-config.yml` — the keys have no effect |
-| ~~`separate_issue_creation.*`~~ | — | — | **DEPRECATED**: the **runtime mechanism** was removed entirely — the fix-side post-loop `fix.md` Phase 4.3 ("Automatic Separate Issue Creation") was deleted along with the `[fix:issues-created:N]` sentinel. **Note**: The review-side `pr/review.md` Phase 7 (Automatic Issue Creation with `source: pr_review`, gated by `AskUserQuestion` confirmation) remains live and is the canonical path for converting reviewer "別 Issue として作成" recommendations into tracked Issues. Inside the `/rite:pr:fix` review-fix loop, reviewer recommendations are handled per-finding via fix / accept / reply (Phase 2.1 menu) — no fix-side post-loop auto-creation. **Template state**: `templates/config/rite-config.yml` still contains the `separate_issue_creation:` scaffolding block as of v0.5.0 — it has no runtime effect and is scheduled for removal in a follow-up PR. Existing users may safely remove the block from their local `rite-config.yml` |
 
 **Review-fix loop exit (post-#1136):**
 
@@ -527,7 +439,6 @@ The review-fix loop has two exit paths and no automatic abnormal-exit mechanism:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `fix.fail_fast_response` | boolean | `true` | Enable Fail-Fast Response Principle in `fix.md` Phase 2. Requires a 4-item checklist (throw/raise propagation / existing error boundaries / not hiding via null-check / fix the test instead) before adopting a fix approach. Fallback adoption requires a commit message justification. **⚠️ Known limitation**: config scaffolding only — not yet wired. The principle is enforced via prose in `fix.md` Phase 2; setting this to `false` currently has no effect |
-| ~~`fix.severity_gating.*`~~ | — | — | **DEPRECATED**: removed entirely. The severity_gating convergence strategy was removed in #1118; non-convergence mitigation was handled by the 4 quality signals until #1136, which removed quality-signal escalation entirely. The current review-fix loop terminates only on 0 findings (normal exit) or manual `Ctrl+C` / `/rite:resume` (see `commands/pr/iterate.md` ループ仕様 and `commands/pr/references/fix-relaxation-rules.md` "Loop Termination"). Remove `fix.severity_gating:` from `rite-config.yml` — the keys have no effect |
 
 **Doc-Heavy PR Mode** (`doc_heavy.enabled: true` by default): A PR is classified as doc-heavy when `doc_lines / total_diff_lines >= lines_ratio_threshold`, or — for small diffs (`total_diff_lines < max_diff_lines_for_count`) — when `doc_files / total_files >= count_ratio_threshold`. In doc-heavy mode, `tech-writer-reviewer` verifies the five consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) against the actual implementation using Grep/Read/Glob. See `plugins/rite/commands/pr/references/internal-consistency.md` for the full protocol.
 
@@ -573,7 +484,7 @@ If a subagent fails or times out:
 
 ### iteration
 
-Settings for Sprint/Iteration integration with GitHub Projects.
+Settings for GitHub Projects Iteration field integration.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -592,7 +503,7 @@ iteration:
   show_in_list: true
 ```
 
-When enabled, `/rite:pr:open` will automatically assign the Issue to the current active iteration when starting work. Use `/rite:sprint:list` to view iterations and `/rite:sprint:current` to see the current sprint details.
+When enabled, `/rite:pr:open` will automatically assign the Issue to the current active iteration when starting work. Use `/rite:issue:list --sprint current` to list Issues in the current iteration, or `--backlog` for unassigned Issues.
 
 ### verification
 
@@ -610,34 +521,6 @@ verification:
   run_tests_before_pr: true
   acceptance_criteria_check: true
 ```
-
-### tdd
-
-Settings for TDD (Test-Driven Development) Light mode. When enabled, test skeletons are generated from acceptance criteria before implementation.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `mode` | string | `"off"` | TDD mode: `"off"` (disabled) or `"light"` (generate test skeletons from acceptance criteria) |
-| `tag_prefix` | string | `"AC"` | Tag prefix for test skeleton markers (e.g., `AC-1`, `AC-2`) |
-| `run_baseline` | boolean | `true` | Run baseline test suite before generating skeletons to ensure existing tests pass |
-| `max_skeletons` | integer | `20` | Maximum number of test skeletons to generate per Issue |
-
-**Example:**
-
-```yaml
-tdd:
-  mode: "light"
-  tag_prefix: "AC"
-  run_baseline: true
-  max_skeletons: 20
-```
-
-**How TDD Light works:**
-
-1. Acceptance criteria are extracted from the Issue body
-2. Test skeletons are generated with markers (e.g., `// AC-1: User can log in`)
-3. Implementation proceeds to make the skeleton tests pass
-4. Test results are verified before PR creation
 
 ### parallel
 
@@ -721,34 +604,6 @@ multi_session:
 **`.gitignore` requirement:** add `.rite/worktrees/` so session worktrees do not leak into dev-branch diffs. `/rite:init` adds this automatically, and `/rite:lint` (via `gitignore-health-check.sh`) emits a non-blocking warning if it is missing while `multi_session.enabled: true`.
 
 **Disk cost:** each session worktree is a full working-tree clone. Build artifacts (`node_modules`, etc.) may need rebuilding per worktree.
-
-### team
-
-Settings for team-based Sprint execution using `/rite:sprint:team-execute`.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | boolean | `true` | Enable `/rite:sprint:team-execute` command |
-| `max_concurrent_issues` | integer | `3` | Maximum Issues to process in parallel per batch (falls back to `parallel.max_agents` if not set) |
-| `teammate_model` | string | `"sonnet"` | Model for teammate agents: `"sonnet"`, `"opus"`, `"haiku"` |
-| `auto_review` | boolean | `true` | Automatically run `/rite:pr:review` after all PRs are created |
-
-**Example:**
-
-```yaml
-team:
-  enabled: true
-  max_concurrent_issues: 3
-  teammate_model: "sonnet"
-  auto_review: true
-```
-
-**How team execution works:**
-
-1. `/rite:sprint:team-execute` spawns multiple teammate agents
-2. Each teammate picks up an Issue from the Sprint and executes the new 3-command chain (`/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:ready`); the previous `/rite:issue:start` orchestrator was retired in #1136
-3. Teammates work in parallel, each in their own worktree (if `parallel.mode` is `"worktree"`)
-4. After all PRs are created, reviews are run automatically if `auto_review` is `true`
 
 ### safety
 
@@ -878,35 +733,3 @@ schema_version: 2
 ```
 
 All settings use sensible defaults or auto-detection. Override specific keys (`branch.pattern`, `commands.*`, `iteration.*` etc.) as needed.
-
-## ~~Project Type Presets~~ (DEPRECATED in #1118 — historical reference only)
-
-> **DEPRECATED**: The `project.type` preset feature (`generic` / `webapp` / `library` / `cli` / `documentation`) was retired in #1118. The `templates/project-types/*.yml` preset files and `templates/pr/{cli,library,webapp,documentation,fix-report}.md` PR templates were removed. Project-specific configuration is now expressed via the per-key YAML structure directly. The sections below are kept as a historical reference of the previously-supported preset behaviors.
-
-### ~~webapp~~ (retired)
-
-Optimized for web applications:
-- Frontend/Backend/Database change tracking
-- Screenshot requests in PR template
-- E2E test checklist
-
-### ~~library~~ (retired)
-
-Optimized for OSS libraries:
-- Breaking change tracking
-- Migration guide prompts
-- CHANGELOG reminders
-
-### ~~cli~~ (retired)
-
-Optimized for CLI tools:
-- Command change tracking
-- Backward compatibility checks
-- Help/manual update reminders
-
-### ~~documentation~~ (retired)
-
-Optimized for documentation sites:
-- Build verification
-- Link checking
-- Style guide compliance

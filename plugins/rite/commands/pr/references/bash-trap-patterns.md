@@ -168,7 +168,7 @@ _rite_<scope>_<phase>_cleanup() {
 
 mktemp を先に実行して trap を後追いで設定すると、**mktemp 成功〜trap 設定間の race window**で
 SIGTERM/SIGINT/SIGHUP が到達した場合に tmp ファイルが orphan として残る。並列 fix/review セッション
-(sprint team-execute 等) で /tmp に累積し、wildcard glob 掃除の誘惑から他セッション破壊につながる
+や手動の複数セッションで /tmp に累積し、wildcard glob 掃除の誘惑から他セッション破壊につながる
 構造的リスクを生む。必ず以下の順序で記述する:
 
 1. cleanup 対象変数を空文字列で先行宣言

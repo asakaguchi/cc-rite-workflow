@@ -155,7 +155,7 @@ What /rite:init configures:
   ✓ Creates rite-config.yml with project settings
   ✓ Configures GitHub Projects integration (optional)
   ✓ Sets up branch naming conventions
-  ✓ Configures iteration/sprint settings (optional)
+  ✓ Configures iteration settings (optional)
   ✓ Installs workflow hooks for state management
 
 This is a one-time setup. You can reconfigure later by running /rite:init again.
@@ -432,7 +432,7 @@ Now that you understand the basics:
   - Check current workflow state with /rite:workflow
 
 🔧 Advanced features:
-  - Sprint planning: /rite:sprint:plan (if iterations enabled)
+  - Iteration tracking: enable `iteration` in rite-config.yml (auto-assign on /rite:pr:open, --sprint / --backlog filters in /rite:issue:list)
   - Template customization: Edit template files in the plugin's templates/ directory
   - Multi-agent PR reviews: Automatic in /rite:pr:review
 

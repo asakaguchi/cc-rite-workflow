@@ -339,7 +339,7 @@ reaped lazily by `pr-cycle-cleanup.sh` Step 5.
 | Namespace | Purpose | Lifecycle |
 |---|---|---|
 | `.rite/worktrees/issue-{N}` | **Session worktree** (multi_session) | `pr:open` creates → `pr:cleanup` removes (orphans reaped via Step 5) |
-| `.worktrees/{issue}/{task}` | parallel / team-execute sub-agent worktree | per-batch create/remove |
+| `.worktrees/{issue}/{task}` | parallel implementation sub-agent worktree | per-batch create/remove |
 | `pr-{N}-cycle{X}` etc. | reviewer transient worktree | idempotently swept by `pr-cycle-cleanup.sh` |
 | `.rite/wiki-worktree` | persistent wiki-branch worktree | manual removal only (reap-excluded) |
 

@@ -89,8 +89,8 @@ git rev-parse --verify {base_branch} 2>/dev/null \
    git log {base_branch}..HEAD --format="%n--- %s ---%n%b"
    ```
 
-   抽出できた `decision` / `rejected` / `constraint` / `root-cause` を「検討された別アプローチ」
-   「なぜその解決か」「設計判断」に充てる。ヒットが無ければ黙ってスキップ（diff/Issue/PR で十分）。
+   commit body から読み取れた「検討された別アプローチ」「なぜその解決か」「設計判断」を
+   クイズ題材に充てる。読み取れる材料が無ければ黙ってスキップ（diff/Issue/PR で十分）。
 
 題材が薄い（diff が極小、Issue/PR 本文がほぼ空）の場合は、その旨を伝え、無理にクイズを膨らませない。
 

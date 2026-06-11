@@ -250,18 +250,6 @@ metrics:
   enabled: true            # メトリクス記録の有効/無効 (default: true)
   baseline_issues: 3       # ベースライン収集の Issue 数 (default: 3)
 
-# 通知設定
-notifications:
-  slack:
-    enabled: false
-    webhook_url: null
-  discord:
-    enabled: false
-    webhook_url: null
-  teams:
-    enabled: false
-    webhook_url: null
-
 # 言語設定
 language: auto  # auto | ja | en
 ```
@@ -845,15 +833,6 @@ wiki:
 ```
 
 **関連コマンド:** `/rite:wiki:init` (初回セットアップ), `/rite:wiki:ingest`, `/rite:wiki:query`, `/rite:wiki:lint`.
-
-### notifications
-
-各通知サービス (slack, discord, teams) は以下を持つ:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `enabled` | boolean | この通知サービスを有効化 |
-| `webhook_url` | string | サービスの webhook URL |
 
 ### language
 

@@ -39,10 +39,10 @@ The command prefix `rite` was chosen for:
 11. [Sub-skill Return Auto-Continuation Contract](#sub-skill-return-auto-continuation-contract)
 12. [Error Handling](#error-handling)
 13. [Migration](#migration)
-15. [~~Internationalization~~ (Retired in #1117)](#internationalization-retired-in-1117)
-16. [Dependencies](#dependencies)
-17. [Distribution](#distribution)
-18. [~~Project Types~~ (Retired in #1118)](#project-types-retired-in-1118)
+14. [~~Internationalization~~ (Retired in #1117)](#internationalization-retired-in-1117)
+15. [Dependencies](#dependencies)
+16. [Distribution](#distribution)
+17. [~~Project Types~~ (Retired in #1118)](#project-types-retired-in-1118)
 
 ---
 
@@ -290,14 +290,14 @@ rite-workflow/
 ├── references/ # Cross-cutting references used by commands/skills
 │ ├── gh-cli-patterns.md / gh-cli-commands.md / gh-cli-error-catalog.md
 │ ├── graphql-helpers.md / projects-integration.md
-│ ├── priority-markers.md / severity-levels.md / epic-detection.md
+│ ├── severity-levels.md / epic-detection.md
 │ ├── review-result-schema.md / investigation-protocol.md
 │ ├── wiki-patterns.md
 │ ├── bash-compat-guard.md / bash-defensive-patterns.md
 │ ├── sub-issue-link-handler.md / issue-create-with-projects.md
-│ ├── output-patterns.md / execution-metrics.md
+│ ├── execution-metrics.md
 │ ├── plugin-path-resolution.md / git-worktree-patterns.md
-│ ├── common-error-handling.md / error-codes.md
+│ ├── common-error-handling.md
 │ ├── tdd-light.md
 │ └── bottleneck-detection.md
 │ # Note: references/i18n-usage.md and plugins/rite/i18n/ directory (ja.yml,
@@ -465,7 +465,7 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 | `metrics.*` | Execution metrics recording |
 | `language` | `auto` / `ja` / `en` |
 
-**Migration**: `schema_version` (currently `2`) is bumped when breaking schema changes ship. `/rite:init --upgrade` performs a non-destructive merge for compatible upgrades, and `/rite:lint` emits deprecation warnings for removed keys — see the [CHANGELOG](../CHANGELOG.md) for the current deprecation set (v0.4.0 removed `review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, and `safety.max_review_fix_loops` per #557).
+**Migration**: `schema_version` (currently `2`) is bumped when breaking schema changes ship. `/rite:init --upgrade` performs a non-destructive merge for compatible upgrades; removed keys are silently ignored at runtime — see the [CHANGELOG](../CHANGELOG.md) for the current deprecation set (v0.4.0 removed `review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, and `safety.max_review_fix_loops` per #557).
 
 ---
 

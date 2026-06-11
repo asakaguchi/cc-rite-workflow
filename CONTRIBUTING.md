@@ -173,7 +173,7 @@ fi
 - Read JSON input from stdin using `INPUT=$(cat)` and parse with `jq`
 - Use `state-path-resolve.sh` to resolve the state root directory
 - For guard hooks (e.g., `pre-tool-bash-guard.sh`): exit code `0` means "allow", non-zero means "block"
-- For non-guard hooks (e.g., `session-start.sh`, `notification.sh`): exit code `0` indicates successful execution
+- For non-guard hooks (e.g., `session-start.sh`, `session-end.sh`): exit code `0` indicates successful execution
 - Use `mktemp` for temporary files with `trap 'rm -f "$tmpfile"' EXIT` for cleanup
 - Keep hooks fast — they run on every matching event
 

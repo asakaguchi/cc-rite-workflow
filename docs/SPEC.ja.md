@@ -34,15 +34,14 @@
 6. [Iteration/スプリント管理（オプション）](#iterationスプリント管理オプション)
 7. [フック仕様](#フック仕様)
 8. [機能](#機能)
-9. [通知連携](#通知連携)
-10. [ビルド・テスト・リント自動検出](#ビルドテストリント自動検出)
-11. [動的レビュアー生成](#動的レビュアー生成)
-12. [エラーハンドリング](#エラーハンドリング)
-13. [マイグレーション](#マイグレーション)
-14. [~~多言語対応~~ (Retired in #1117)](#多言語対応-retired-in-1117)
-15. [依存関係](#依存関係)
-16. [配布方法](#配布方法)
-17. [~~プロジェクト種別~~ (Retired in #1118)](#プロジェクト種別-retired-in-1118)
+9. [ビルド・テスト・リント自動検出](#ビルドテストリント自動検出)
+10. [動的レビュアー生成](#動的レビュアー生成)
+11. [エラーハンドリング](#エラーハンドリング)
+12. [マイグレーション](#マイグレーション)
+13. [~~多言語対応~~ (Retired in #1117)](#多言語対応-retired-in-1117)
+14. [依存関係](#依存関係)
+15. [配布方法](#配布方法)
+16. [~~プロジェクト種別~~ (Retired in #1118)](#プロジェクト種別-retired-in-1118)
 
 ---
 
@@ -238,7 +237,6 @@ rite-workflow/
 │ ├── cleanup-work-memory.sh
 │ ├── issue-body-safe-update.sh / issue-comment-wm-sync.sh / issue-comment-wm-update.py
 │ ├── review-result-save.sh / review-comment-post.sh / review-skip-notification.sh # pr/review.md 6.1.a/b/c 委譲
-│ ├── notification.sh # 外部通知ディスパッチャ (Claude hook ではない)
 │ ├── wiki-ingest-trigger.sh / wiki-query-inject.sh # Wiki 自動統合
 │ ├── scripts/ # フックから呼び出されるヘルパースクリプト
 │ │ ├── wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh
@@ -291,14 +289,14 @@ rite-workflow/
 ├── references/ # commands / skills が共通参照する reference 群
 │ ├── gh-cli-patterns.md / gh-cli-commands.md / gh-cli-error-catalog.md
 │ ├── graphql-helpers.md / projects-integration.md
-│ ├── priority-markers.md / severity-levels.md / epic-detection.md
+│ ├── severity-levels.md / epic-detection.md
 │ ├── review-result-schema.md / investigation-protocol.md
 │ ├── wiki-patterns.md
 │ ├── bash-compat-guard.md / bash-defensive-patterns.md
 │ ├── sub-issue-link-handler.md / issue-create-with-projects.md
-│ ├── output-patterns.md / execution-metrics.md
+│ ├── execution-metrics.md
 │ ├── plugin-path-resolution.md / git-worktree-patterns.md
-│ ├── common-error-handling.md / error-codes.md
+│ ├── common-error-handling.md
 │ ├── tdd-light.md
 │ └── bottleneck-detection.md
 │ # 注: references/i18n-usage.md と plugins/rite/i18n/ ディレクトリ (ja.yml,
@@ -463,10 +461,9 @@ model: opus # opus | sonnet | haiku (optional — 省略時は親セッション
 | `pr_review.post_comment` | PR レビュー出力先 |
 | `wiki.*` | Experience Wiki — `enabled`（opt-out）、`branch_strategy`、`auto_ingest`、`auto_query`、`auto_lint`、`growth_check.*` |
 | `metrics.*` | 実行メトリクス記録 |
-| `notifications.{slack,discord,teams}` | 外部通知 |
 | `language` | `auto` / `ja` / `en` |
 
-**マイグレーション**: 破壊的スキーマ変更が入るたびに `schema_version`（現在は `2`）がバンプされる。`/rite:init --upgrade` は互換アップグレードに対して非破壊的 merge を行い、削除済みキーに対しては `/rite:lint` が deprecation warning を出す — 現行の deprecation 対象は [CHANGELOG](../CHANGELOG.ja.md) 参照（v0.4.0 で #557 により `review.loop.severity_gating_cycle_threshold` / `review.loop.scope_lock_cycle_threshold` / `safety.max_review_fix_loops` の 3 キーが削除済み）。
+**マイグレーション**: 破壊的スキーマ変更が入るたびに `schema_version`（現在は `2`）がバンプされる。`/rite:init --upgrade` は互換アップグレードに対して非破壊的 merge を行い、削除済みキーは runtime で silent に無視される — 現行の deprecation 対象は [CHANGELOG](../CHANGELOG.ja.md) 参照（v0.4.0 で #557 により `review.loop.severity_gating_cycle_threshold` / `review.loop.scope_lock_cycle_threshold` / `safety.max_review_fix_loops` の 3 キーが削除済み）。
 
 ---
 
@@ -1318,8 +1315,6 @@ iteration:
 | PostToolUse | ツール実行後 | ローカル作業メモリの自動復旧 |
 | Stop | ターン終了時 | `/rite:pr:iterate` の review↔fix ループコマンドまたは `/rite:pr:cleanup` の wiki チェーン継続を再注入する（`consume-handoff` → `decision:block`）。継続 sentinel の後にループ / チェーンを継続させる |
 
-> **注:** `notification.sh` は Claude Code のフックタイプではなく、コマンド内から直接呼び出されるユーティリティスクリプトである。PR 作成・Ready 変更・Issue クローズなどのイベント時にコマンドスクリプトが `notification.sh` を呼び出して外部通知を送信する。詳細は[通知連携](#通知連携)セクションを参照。
->
 > **注:** レガシーな停止防止 hook（`stop-guard.sh`）は撤去済みで、ワークフローの停止防止自体は per-session 状態構造（`.rite/sessions/{session_id}.flow-state`）と orchestrator レベルの scaffolding 契約（Pre-write + 🚨 Mandatory After）が担う。**別個の** `Stop` hook（`stop-loop-continuation.sh`, Issue #1168）が異なる目的で登録されている: one-shot の `handoff` marker を消費し、次の review↔fix ループコマンド、または `WIKICHAIN:` prefix（`/rite:pr:cleanup` ステップ 9 が set、Issue #1245）の場合は cleanup → wiki:ingest → wiki:lint チェーンの継続を再注入する。詳細は[マルチセッション状態管理](#マルチセッション状態管理)セクションを参照。
 
 ### フック実行順序
@@ -1675,52 +1670,12 @@ Hook スクリプトの品質を保証するためのテストフレームワー
 | `work-memory-lock.sh` | ロック取得・解放 + stale 検出 |
 | `wiki-ingest-trigger.sh` | raw-source 書き出し契約 |
 | `parent-child-sync-static` | 親子 Issue 状態同期 |
-| `notification.sh` | 通知ディスパッチャ契約 |
 
 **実行方法:**
 
 ```bash
 bash plugins/rite/hooks/tests/run-tests.sh
 ```
-
----
-
-## 通知連携
-
-### Slack
-
-```yaml
-notifications:
- slack:
- enabled: true
- webhook_url: "https://hooks.slack.com/services/..."
-```
-
-### Discord
-
-```yaml
-notifications:
- discord:
- enabled: true
- webhook_url: "https://discord.com/api/webhooks/..."
-```
-
-### Microsoft Teams
-
-```yaml
-notifications:
- teams:
- enabled: true
- webhook_url: "https://outlook.office.com/webhook/..."
-```
-
-### 通知イベント一覧
-
-| イベント | 説明 |
-|---------|------|
-| `pr_created` | PR 作成時 |
-| `pr_ready` | Ready for review 時 |
-| `issue_closed` | Issue クローズ時 |
 
 ---
 

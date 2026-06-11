@@ -186,7 +186,7 @@ LLM が途中で停止した場合の正規復帰経路は `/rite:resume` で、
 
 orchestrator (`pr:open` / `pr:iterate`) が sub-skill 出力の sentinel を grep で routing する。`pr:ready` / `pr:merge` は self-contained で他 sub-skill を起動しない。
 
-過去の defense-in-depth model (Layer 1/3/4) と移行マップは [references/sub-skill-return-protocol.md](./references/sub-skill-return-protocol.md) を参照 (**retired by #1144**, historical reference only — Layer 1 prompt contract は cleanup.md flat 化と同時に物理排除されており、現行は Layer 3 caller-continuation hints + Layer 4a/4b orchestrator-side reinforcements + flat sequential structure が active enforcement)。
+現行の continuation enforcement は Layer 3 caller-continuation hints + Layer 4a/4b orchestrator-side reinforcements + flat sequential structure による (旧 Layer 1 prompt contract は #1144 で cleanup.md flat 化と同時に物理排除済)。
 
 ## AI Coding Principles (Summary)
 

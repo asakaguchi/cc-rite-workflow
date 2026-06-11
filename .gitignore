@@ -162,3 +162,13 @@ temp/
 # Git worktrees for parallel agents
 .worktrees/
 
+# Python bytecode cache (hooks/ ships Python helpers such as work-memory-parse.py)
+__pycache__/
+*.pyc
+
+# rite runtime state that leaks into plugins/ when a /rite: command or reviewer
+# agent runs with a plugin subdir as cwd (observed: plugins/rite/.rite/,
+# plugins/rite/skills/reviewers/.rite/). Anchored under plugins/ so the carefully
+# negated root .rite/ wiki rules above are left untouched.
+plugins/**/.rite/
+

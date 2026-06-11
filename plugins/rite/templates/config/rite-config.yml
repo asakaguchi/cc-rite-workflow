@@ -128,18 +128,6 @@ fix:
   # 詳細: plugins/rite/commands/pr/fix.md ステップ 2 Fail-Fast Response Principle
   fail_fast_response: true            # true で Fail-Fast Response Principle を有効化（default: true）
 
-# Notification settings
-notifications:
-  slack:
-    enabled: false
-    webhook_url: null
-  discord:
-    enabled: false
-    webhook_url: null
-  teams:
-    enabled: false
-    webhook_url: null
-
 # Language setting (auto = auto-detect)
 language: auto  # auto | ja | en
 

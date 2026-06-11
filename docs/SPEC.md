@@ -34,16 +34,15 @@ The command prefix `rite` was chosen for:
 6. [Iteration/Sprint Management (Optional)](#iterationsprint-management-optional)
 7. [Hook Specification](#hook-specification)
 8. [Features](#features)
-9. [Notification Integration](#notification-integration)
-10. [Build/Test/Lint Auto-Detection](#buildtestlint-auto-detection)
-11. [Dynamic Reviewer Generation](#dynamic-reviewer-generation)
-12. [Sub-skill Return Auto-Continuation Contract](#sub-skill-return-auto-continuation-contract)
-13. [Error Handling](#error-handling)
-14. [Migration](#migration)
-15. [~~Internationalization~~ (Retired in #1117)](#internationalization-retired-in-1117)
-16. [Dependencies](#dependencies)
-17. [Distribution](#distribution)
-18. [~~Project Types~~ (Retired in #1118)](#project-types-retired-in-1118)
+9. [Build/Test/Lint Auto-Detection](#buildtestlint-auto-detection)
+10. [Dynamic Reviewer Generation](#dynamic-reviewer-generation)
+11. [Sub-skill Return Auto-Continuation Contract](#sub-skill-return-auto-continuation-contract)
+12. [Error Handling](#error-handling)
+13. [Migration](#migration)
+14. [~~Internationalization~~ (Retired in #1117)](#internationalization-retired-in-1117)
+15. [Dependencies](#dependencies)
+16. [Distribution](#distribution)
+17. [~~Project Types~~ (Retired in #1118)](#project-types-retired-in-1118)
 
 ---
 
@@ -239,7 +238,6 @@ rite-workflow/
 │ ├── cleanup-work-memory.sh
 │ ├── issue-body-safe-update.sh / issue-comment-wm-sync.sh / issue-comment-wm-update.py
 │ ├── review-result-save.sh / review-comment-post.sh / review-skip-notification.sh # pr/review.md 6.1.a/b/c 委譲
-│ ├── notification.sh # External notification dispatcher (not a Claude hook)
 │ ├── wiki-ingest-trigger.sh / wiki-query-inject.sh # Wiki auto-integration
 │ ├── scripts/ # Helper scripts invoked by hooks
 │ │ ├── wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh
@@ -292,14 +290,14 @@ rite-workflow/
 ├── references/ # Cross-cutting references used by commands/skills
 │ ├── gh-cli-patterns.md / gh-cli-commands.md / gh-cli-error-catalog.md
 │ ├── graphql-helpers.md / projects-integration.md
-│ ├── priority-markers.md / severity-levels.md / epic-detection.md
+│ ├── severity-levels.md / epic-detection.md
 │ ├── review-result-schema.md / investigation-protocol.md
 │ ├── wiki-patterns.md
 │ ├── bash-compat-guard.md / bash-defensive-patterns.md
 │ ├── sub-issue-link-handler.md / issue-create-with-projects.md
-│ ├── output-patterns.md / execution-metrics.md
+│ ├── execution-metrics.md
 │ ├── plugin-path-resolution.md / git-worktree-patterns.md
-│ ├── common-error-handling.md / error-codes.md
+│ ├── common-error-handling.md
 │ ├── tdd-light.md
 │ └── bottleneck-detection.md
 │ # Note: references/i18n-usage.md and plugins/rite/i18n/ directory (ja.yml,
@@ -465,10 +463,9 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 | `pr_review.post_comment` | PR review output destination |
 | `wiki.*` | Experience Wiki — `enabled` (opt-out), `branch_strategy`, `auto_ingest`, `auto_query`, `auto_lint`, `growth_check.*` |
 | `metrics.*` | Execution metrics recording |
-| `notifications.{slack,discord,teams}` | External notifications |
 | `language` | `auto` / `ja` / `en` |
 
-**Migration**: `schema_version` (currently `2`) is bumped when breaking schema changes ship. `/rite:init --upgrade` performs a non-destructive merge for compatible upgrades, and `/rite:lint` emits deprecation warnings for removed keys — see the [CHANGELOG](../CHANGELOG.md) for the current deprecation set (v0.4.0 removed `review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, and `safety.max_review_fix_loops` per #557).
+**Migration**: `schema_version` (currently `2`) is bumped when breaking schema changes ship. `/rite:init --upgrade` performs a non-destructive merge for compatible upgrades; removed keys are silently ignored at runtime — see the [CHANGELOG](../CHANGELOG.md) for the current deprecation set (v0.4.0 removed `review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, and `safety.max_review_fix_loops` per #557).
 
 ---
 
@@ -1178,8 +1175,6 @@ iteration:
 | PostToolUse | After tool execution | Auto-recover local work memory |
 | Stop | Turn end | Re-inject the `/rite:pr:iterate` review↔fix loop command or the `/rite:pr:cleanup` wiki-chain continuation (`consume-handoff` → `decision:block`) so the loop / chain continues after a continuation sentinel |
 
-> **Note:** `notification.sh` is not a Claude Code hook type but a utility script called directly from within commands. It is invoked by command scripts during events such as PR creation, Ready status change, and Issue close to send external notifications. See the [Notification Integration](#notification-integration) section for details.
->
 > **Note:** The legacy stop-prevention hook (`stop-guard.sh`) has been removed; workflow stop prevention itself is now handled by the per-session state structure (`.rite/sessions/{session_id}.flow-state`) and the orchestrator-level scaffolding contract (Pre-write + 🚨 Mandatory After). A **distinct** `Stop` hook (`stop-loop-continuation.sh`, Issue #1168) is registered for a different purpose: it consumes the one-shot `handoff` marker and re-injects the next review↔fix loop command, or — for the `WIKICHAIN:` prefix set by `/rite:pr:cleanup` Step 9 (Issue #1245) — the continuation of the cleanup → wiki:ingest → wiki:lint chain. See the [Multi-Session State Management](#multi-session-state-management) section for details.
 
 ### Hook Execution Order
@@ -1561,52 +1556,12 @@ A test framework for ensuring Hook script quality. Located in `plugins/rite/hook
 | `work-memory-lock.sh` | Lock acquire/release + stale detection |
 | `wiki-ingest-trigger.sh` | Raw-source write contract |
 | `parent-child-sync-static` | Parent/child Issue state synchronization |
-| `notification.sh` | Notification dispatcher contract |
 
 **Execution:**
 
 ```bash
 bash plugins/rite/hooks/tests/run-tests.sh
 ```
-
----
-
-## Notification Integration
-
-### Slack
-
-```yaml
-notifications:
- slack:
- enabled: true
- webhook_url: "https://hooks.slack.com/services/..."
-```
-
-### Discord
-
-```yaml
-notifications:
- discord:
- enabled: true
- webhook_url: "https://discord.com/api/webhooks/..."
-```
-
-### Microsoft Teams
-
-```yaml
-notifications:
- teams:
- enabled: true
- webhook_url: "https://outlook.office.com/webhook/..."
-```
-
-### Notification Events
-
-| Event | Description |
-|-------|-------------|
-| `pr_created` | When PR created |
-| `pr_ready` | When Ready for review |
-| `issue_closed` | When Issue closed |
 
 ---
 

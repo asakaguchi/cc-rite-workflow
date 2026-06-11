@@ -428,13 +428,13 @@ When skipped, no output needed (silent skip).
 - `test_error_count`: Number of failed tests (0 if success)
 - `test_output`: Test command output (truncated if >500 lines)
 
+**Common contract for the plugin-specific checks (3.5–3.18)**: each check below runs its `{plugin_root}/hooks/scripts/*.sh` script when that script exists, is **independent of `commands.lint` configuration** (a rite-workflow internal quality check), and is **skipped silently** when the script file is absent (e.g., marketplace install without the `hooks/scripts/` directory). Unless a check states otherwise, its findings are recorded as **warnings** (they do NOT change the overall `[lint:success]` result). Each check's section below states only its script-specific execution and result handling.
+
 ### 3.5 Plugin-specific Checks (Distributed Fix Drift Detection)
 
 Execute the distributed fix drift check script to detect documentation drift patterns in rite-workflow procedural markdown files.
 
-**Condition**: Always execute when `{plugin_root}/hooks/scripts/distributed-fix-drift-check.sh` exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
-
-**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+**Condition**: Always execute when `{plugin_root}/hooks/scripts/distributed-fix-drift-check.sh` exists.
 
 **Execution:**
 
@@ -467,9 +467,7 @@ fi
 
 Execute the bang-backtick check script to detect Skill loader triggering patterns (backtick + bang adjacency) in **`plugins/rite/commands/**/*.md`** and **`plugins/rite/skills/**/*.md`** (plugin-scoped; the script walks the rite plugin tree specifically and does not scan repository-root `commands/` or `skills/` directories that may belong to other plugins). This is the static lint counterpart to Issue #365 / PR #367 where inline-code bang adjacency broke Skill loading via bash history expansion. See the script header comment at `plugins/rite/hooks/scripts/bang-backtick-check.sh` for concrete detection patterns.
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
-
-**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+**Condition**: Always execute when the script exists.
 
 **Execution:**
 
@@ -502,9 +500,7 @@ fi
 
 Execute the doc-heavy patterns drift check script to detect divergence between the `doc_file_patterns` declared in 2 files that MUST stay in sync: `plugins/rite/commands/pr/review.md` (ステップ 1.2.7 `doc_file_patterns` pseudo-code block) and `plugins/rite/skills/reviewers/SKILL.md` (Reviewers table Technical Writer row). Drift between these files silently changes tech-writer activation and Doc-Heavy PR detection — Issue #353 系統 1. See the script header at `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` for the extraction contract.
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
-
-**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+**Condition**: Always execute when the script exists.
 
 **Execution:**
 
@@ -537,7 +533,7 @@ fi
 
 Execute the Wiki growth check script to detect "Phase X.X.W silently skipped" regressions. The script warns (non-blocking) when the wiki branch has gone unchanged for `wiki.growth_check.threshold_prs` consecutive merged PRs on the development base branch — strong evidence that `pr/review.md` ステップ 6.5.W / `pr/fix.md` ステップ 4.6.W / `issue/close.md` Phase 4.4.W are being skipped silently. See `plugins/rite/hooks/scripts/wiki-growth-check.sh` header for the detection contract and Issue #524 specification for the 3-layer defense rationale.
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
+**Condition**: Always execute when the script exists.
 
 **Skip condition**: Only the script's own absence (e.g., marketplace install without `hooks/scripts/` directory) makes lint.md skip the entire Phase 3.8. All other no-op cases (wiki disabled / wiki branch absent / `gh` CLI missing / `rite-config.yml` absent) are handled **inside** `wiki-growth-check.sh`, which still returns exit 0 → `wiki_growth_status=success` (with `findings_count=0`). lint.md does NOT need to detect these cases — the script's exit-0 contract takes care of them and the Phase 4 summary row will simply show `success (0 findings)` for any of these legitimate no-op states.
 
@@ -572,7 +568,7 @@ fi
 
 Execute the gitignore health check script to detect regressions of the `.rite/wiki/` exclusion rule that PR #564 added as the last line of defense against wiki-ingest-trigger.sh silent leaks on the develop branch. If a future `.gitignore` cleanup PR removes the rule, this check surfaces the drift before the leak reaches production. See `plugins/rite/hooks/scripts/gitignore-health-check.sh` header for the strategy-aware detection contract (separate_branch uses `git check-ignore`; same_branch uses `git add --dry-run` because negation rules make `git check-ignore` non-deterministic per `.gitignore` L101-113 spec).
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
+**Condition**: Always execute when the script exists.
 
 **Skip condition**: Only the script's own absence (e.g., marketplace install without `hooks/scripts/` directory) makes lint.md skip the entire Phase 3.9. All other no-op cases (`wiki.enabled=false`, `rite-config.yml` absent, wiki section absent) are handled **inside** `gitignore-health-check.sh`, which returns exit 0 with `findings: 0`.
 
@@ -607,9 +603,7 @@ fi
 
 Execute the backlink format check script to detect bidirectional backlink format invariant violations. Colon notation (file-path-colon-phase-number) is the canonical format for `Downstream reference:` backlink comments. This lint check detects regressions to two legacy dialects (a space-separated dialect and a parenthetical DRIFT-CHECK ANCHOR dialect). See `plugins/rite/hooks/scripts/backlink-format-check.sh` header and `.rite/wiki/pages/patterns/drift-check-anchor-semantic-name.md` for the canonical format specification.
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
-
-**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+**Condition**: Always execute when the script exists.
 
 **Execution:**
 
@@ -648,9 +642,7 @@ Execute the hardcoded line-number check script to detect prose-level hardcoded l
 
 See the script header at `plugins/rite/hooks/scripts/hardcoded-line-number-check.sh` for the exact regex literals and exclusion rules (fenced code blocks, range form `:N-M`, backtick-quoted spans, self-exclusion).
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
-
-**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+**Condition**: Always execute when the script exists.
 
 **Execution:**
 
@@ -694,9 +686,7 @@ Detected patterns:
 
 Whitelist (line-level skip): `<!-- example:` / `# example:` / `// example:` markers, and **`TODO` / `FIXME` lines** (追跡番号は前方ポインタ=維持). ファイル名アンカー (`xxx.test.sh` 等) は `#N` を含まないため P5/P6 に該当せず自然に除外される。Self-exclude: the script itself, `comment-best-practices.md` SoT, and the parity test (禁止句を例示として保持するため)。
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
-
-**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+**Condition**: Always execute when the script exists.
 
 **Execution:**
 
@@ -735,9 +725,7 @@ Detected pattern (in shell comments only, with shebang excluded):
 
 Exclusions: shebang 「#!」, fenced code blocks, range form `:N-M`, backtick-quoted spans, whitelist markers (`# example:` / `<!-- example: -->` / `// example:`), self.
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
-
-**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+**Condition**: Always execute when the script exists.
 
 **Execution:**
 
@@ -776,9 +764,7 @@ Detected pattern (after stripping fenced code blocks / blockquotes / Markdown co
 
 Exclusions handled by the script: fenced code blocks (``` and ~~~), blockquote lines (`> ...`), Markdown comments (`<!-- ... -->` single-line and multi-line), inline backtick spans (`` `...` ``).
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
-
-**Skip condition**: Script file does not exist (e.g., marketplace install without scripts directory).
+**Condition**: Always execute when the script exists.
 
 **Execution:**
 
@@ -818,9 +804,7 @@ Detection logic (see `plugins/rite/hooks/scripts/orphan-reference-check.sh` for 
 - Skip well-known static assets (`.gitkeep`, `__init__.py`, `LICENSE`, `CHANGELOG.md`)
 - A file is flagged as **orphan** only when inbound count == 0 AND test pin count == 0
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
-
-**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+**Condition**: Always execute when the script exists.
 
 **Execution:**
 
@@ -860,9 +844,7 @@ Two independent checks per reference:
 
 Exclusions: this script's own file (self), `plugins/rite/hooks/tests/` (fixtures), lines containing the `drift-check-ignore` marker, unresolvable file references (out of scope — Issue #1159), and targets with no numbered step/phase headings.
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
-
-**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+**Condition**: Always execute when the script exists.
 
 **Execution:**
 
@@ -906,9 +888,7 @@ Heredoc bodies are treated as data: the python-inline / nested-cmdsub signals ar
 
 Exclusions: `plugins/rite/commands/**/tests/` fixtures, and any block containing the `drift-check-ignore` marker on one of its lines (exempts intentional / already-reviewed heavy blocks).
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
-
-**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+**Condition**: Always execute when the script exists.
 
 **Execution:**
 
@@ -941,7 +921,7 @@ fi
 
 Execute the projects board drift check to detect the "CLOSED+COMPLETED but board != Done" reconciliation gap. A `Done` transition is only wired into `/rite:pr:cleanup` (ステップ8 → `commands/pr/references/archive-procedures.md` Phase 3.2) and `/rite:issue:close` (Shared: Projects Status → Done), but GitHub auto-closes an Issue the moment a PR carrying `Closes #N` merges. When `/rite:pr:cleanup` is not run afterwards, the board freezes at its last value (In Review for a ready Issue, Todo for an untouched one) and no reconciler picks it back up. The check scans recently-updated CLOSED Issues whose `stateReason` is `COMPLETED` and reports those that are on the project board with Status != "Done". Closure reason `NOT_PLANNED` (wontfix / duplicate) is intentionally excluded, and Issues that are not on the board are not drift (no board Status to reconcile). See the script header at `plugins/rite/hooks/scripts/projects-board-drift-check.sh` for the detection and reconcile contract.
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
+**Condition**: Always execute when the script exists.
 
 **Skip condition**: Only the script's own absence (e.g., marketplace install without `hooks/scripts/` directory) makes lint.md skip the entire Phase 3.18. All other no-op cases (`github.projects.enabled: false` / `project_number` unset / `rite-config.yml` absent) are handled **inside** `projects-board-drift-check.sh`, which still returns exit 0 → `projects_board_drift_status=success` (with `findings: 0`). This satisfies Issue #1305 AC-4 (skip when Projects integration is disabled) without lint.md reading the config itself.
 

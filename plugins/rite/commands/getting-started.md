@@ -118,25 +118,12 @@ Stop here if not a valid repository.
 ### 3.1 Display Workflow Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                  Quick Start Workflow                        │
-└─────────────────────────────────────────────────────────────┘
+Quick Start (3 steps):
+  1. Setup (one-time):   /rite:init
+  2. Start an Issue:     /rite:issue:create → /rite:pr:open <番号>
+  3. Complete & submit:  /rite:pr:iterate <PR> → /rite:pr:ready <PR> → /rite:pr:merge <PR> → /rite:pr:cleanup <PR>
 
-The typical workflow consists of three main steps:
-
-1. Setup (one-time)
-   └─ /rite:init
-
-2. Start working on an Issue
-   ├─ /rite:issue:list         (view existing Issues)
-   ├─ /rite:issue:create       (create new Issue)
-   └─ /rite:pr:open <番号>  (start working)
-
-3. Complete and submit
-   ├─ /rite:pr:iterate <PR>    (review ⇄ fix loop until mergeable)
-   ├─ /rite:pr:ready <PR>      (mark as ready for review)
-   ├─ /rite:pr:merge <PR>      (squash merge)
-   └─ /rite:pr:cleanup <PR>    (branch delete + Wiki ingest + Projects Done)
+詳細なフロー図とコマンド一覧は /rite:workflow で表示できます。
 ```
 
 ### 3.2 Step 1: Initial Setup

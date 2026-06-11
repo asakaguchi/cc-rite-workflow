@@ -95,6 +95,15 @@ if [ -z "$repo_root" ]; then
   echo "ERROR: empty repo_root (git rev-parse race / permission change の可能性)" >&2
   exit 1
 fi
+
+# Capture the invocation directory BEFORE `cd` to repo_root below. Step 5's
+# self-exclusion guard needs to know which session worktree this run was launched
+# from, but the `cd` overwrites $PWD with repo_root (the main checkout). $PWD (a
+# string) is preferred over `pwd` so the value survives even when the invocation
+# cwd was already deleted (the lost-cwd edge case Step 5 must tolerate).
+rite_invocation_pwd="${PWD:-}"
+[ -n "$rite_invocation_pwd" ] || rite_invocation_pwd=$(pwd 2>/dev/null) || rite_invocation_pwd=""
+
 cd -- "$repo_root"
 
 # Single source of truth (cycle 1 fix): `PATTERN` 変数を [[ =~ $PATTERN ]] で
@@ -403,7 +412,11 @@ fi
 # Step 5: Lazy reap of orphaned SESSION worktrees (multi-session design §8).
 # 責務分担: 正常系の即時削除は cleanup.md (S7) の責務、本 reap は **異常終了の
 # 残骸回収のみ**。`.rite/worktrees/issue-{N}` (multi_session.worktree_base 配下)
-# を `git worktree list` から列挙し、**3 ゲート全通過時のみ** reap する:
+# を `git worktree list` から列挙し、**Gate 0 + 3 ゲート全通過時のみ** reap する:
+#   0. self-exclusion: 実行中の自セッション worktree (起動時 cwd または
+#      RITE_WORKTREE env が wt_path と一致/配下) は reap しない。3 ゲートとは独立した
+#      第 4 の保護層 — long-lived セッションが review 開始時に自分の作業中 worktree を
+#      消す事故を防ぐ。dirty(3)/claim(2) より前段で skip する
 #   1. ディレクトリ名が `^issue-[0-9]+$` に完全一致 (strict regex doctrine。
 #      `.rite/wiki-worktree` などの非 issue worktree 名前空間
 #      とは交差しない)
@@ -424,6 +437,42 @@ fi
 [ -n "$session_wt_base" ] || session_wt_base=".rite/worktrees"
 session_wt_root="$repo_root/$session_wt_base"
 
+# Gate 0 (self-exclusion) helpers. Canonicalize via `cd && pwd -P` rather than
+# GNU `realpath` so the macOS bash 3.2 target (this script's portability floor)
+# is preserved. The raw string is returned for paths that are not accessible
+# directories (already-removed worktree, or a lost invocation cwd) so a plain
+# string comparison still has a value to fall back on.
+_rite_canonical_dir() {
+  local p="$1"
+  [ -n "$p" ] || { printf ''; return 0; }
+  if [ -d "$p" ]; then
+    ( cd -- "$p" 2>/dev/null && pwd -P ) || printf '%s' "$p"
+  else
+    printf '%s' "$p"
+  fi
+}
+
+# rc 0 when $1 (the invoking session's dir) is the same directory as $2 (a reap
+# candidate worktree) or nested beneath it. Both args must already be
+# canonicalized. The trailing-slash prefix test avoids `issue-1` matching
+# `issue-12` (a bare prefix test would).
+_rite_dir_is_self() {
+  local self="$1" wt="$2"
+  [ -n "$self" ] && [ -n "$wt" ] || return 1
+  [ "$self" = "$wt" ] && return 0
+  case "$self/" in
+    "$wt"/*) return 0 ;;
+  esac
+  return 1
+}
+
+# Resolve the self worktree once: explicit RITE_WORKTREE env wins (callers that
+# know their worktree can set it; robust even when the invocation cwd was lost),
+# otherwise the invocation directory captured before the cd to repo_root. Empty
+# when neither is resolvable, which disables the guard (no false skips).
+rite_self_dir="${RITE_WORKTREE:-$rite_invocation_pwd}"
+rite_self_canon=$(_rite_canonical_dir "$rite_self_dir")
+
 if [ -d "$session_wt_root" ]; then
   while IFS= read -r _wt_line; do
     case "$_wt_line" in
@@ -437,6 +486,17 @@ if [ -d "$session_wt_root" ]; then
     # Gate 1: strict `^issue-[0-9]+$` (excludes .rite/wiki-worktree, .worktrees/*).
     [[ "$wt_base" =~ ^issue-[0-9]+$ ]] || continue
     issue_num="${wt_base#issue-}"
+
+    # Gate 0: self-exclusion. Never reap the worktree THIS invocation is running
+    # from (cwd == wt_path, or cwd nested under it) — a long-lived session must
+    # not delete its own active worktree mid-flight. Independent of and evaluated
+    # before the dirty (Gate 3) and claim (Gate 2) protections, so
+    # even a clean + free + aged self worktree is preserved. Skip is logged (not
+    # silent) per AC-2.
+    if [ -n "$rite_self_canon" ] && _rite_dir_is_self "$rite_self_canon" "$(_rite_canonical_dir "$wt_path")"; then
+      echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' は実行中の自セッション worktree のため reap をスキップします (self-exclusion)。" >&2
+      continue
+    fi
 
     # Gate 3: dirty worktree is NEVER auto-reaped. An indeterminate status
     # (rc != 0) is treated conservatively as "do not reap" to avoid data loss.

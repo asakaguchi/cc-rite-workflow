@@ -29,7 +29,7 @@
 #     "options": {
 #       "source": "interactive|pr_review|pr_create|cleanup|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split",
 #                # Note: 以下の値は legacy 互換のため enum に含めない (caller 消失済):
-#                #   - `pr_fix`:          #1136 で fix.md Phase 4.3 (Automatic Separate Issue Creation) が廃止
+#                #   - `pr_fix`:          #1136 で fix.md の Automatic Separate Issue Creation が廃止
 #                #   - `parent_routing`:  #1079 で parent-routing.md sub-skill が廃止
 #                #   - `lint`:            commands/lint.md は guard 用途のみで invoke しない
 #       "non_blocking_projects": true  # default: true

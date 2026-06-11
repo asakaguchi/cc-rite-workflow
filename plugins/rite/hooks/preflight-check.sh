@@ -71,7 +71,7 @@ if [ "$COMPACT_VAL" = "normal" ]; then
 fi
 
 # resuming → always allow (clean up guidance flag)
-# resume.md Phase 3.0 runs Steps 1-3 sequentially before Skill invocation,
+# resume.md runs its cross-check phases sequentially before Skill invocation,
 # so "resuming" is only a transient intermediate state.
 # Orphaned "resuming" (e.g., from a crash) is cleaned up by session-start.sh startup cleanup.
 if [ "$COMPACT_VAL" = "resuming" ]; then

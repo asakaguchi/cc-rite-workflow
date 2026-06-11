@@ -200,7 +200,7 @@ The following patterns are typical Hypothetical claims that MUST be downgraded (
 - "もし null が渡されたら crash するかもしれない" — without showing a call site that can pass null
 - "race condition の可能性がある" — without showing two concurrent paths that actually reach the shared state
 - "メモリリークするかもしれない" — without showing a long-running entrypoint that exercises the leak
-- "悪意あるユーザーが ... できる" — without an entrypoint exposing the surface (this is exception-category-eligible if `security.md` is the reviewer)
+- "悪意あるユーザーが ... できる" — without an entrypoint exposing the surface (this is exception-category-eligible if `security-reviewer.md` is the reviewer)
 
 ## Scope Assignment Flowchart
 
@@ -251,10 +251,10 @@ scope の決定は **必ず以下の順序** で行う。順序逆転は finding
 
 | Reviewer | nit-noted 禁止の根拠 |
 |----------|---------------------|
-| `security.md` | 攻撃者が「いつ exploit を demonstrate するか選ぶ」性質上、nit (修正不要) として受け流すと CRITICAL リスクが silent に蓄積する。`acknowledged` 経路で見落とすことを阻止 |
-| `database.md` | migration は production で 1 回しか実行されない。「nit」として受け流した destructive migration が後続 PR で取り返しのつかない state にする可能性 |
-| `devops.md` | deploy / rollback / infra path は exercise 頻度が低い。「nit」受け流しが本番障害時に silent failure として顕在化 |
-| `dependencies.md` | CVE / supply chain / license は「いつ起きるか」が攻撃者依存。nit 化は許容できないリスクモデル |
+| `security-reviewer.md` | 攻撃者が「いつ exploit を demonstrate するか選ぶ」性質上、nit (修正不要) として受け流すと CRITICAL リスクが silent に蓄積する。`acknowledged` 経路で見落とすことを阻止 |
+| `database-reviewer.md` | migration は production で 1 回しか実行されない。「nit」として受け流した destructive migration が後続 PR で取り返しのつかない state にする可能性 |
+| `devops-reviewer.md` | deploy / rollback / infra path は exercise 頻度が低い。「nit」受け流しが本番障害時に silent failure として顕在化 |
+| `dependencies-reviewer.md` | CVE / supply chain / license は「いつ起きるか」が攻撃者依存。nit 化は許容できないリスクモデル |
 
 **実装契機** (本 reference 制定時点では記述のみで、reviewer ファイル本体への禁止記述追加と hook enforcement は後続 Sub-Issue で実施予定): 4 agent ファイル (`security-reviewer.md` / `database-reviewer.md` / `devops-reviewer.md` / `dependencies-reviewer.md`) に `scope == "nit-noted"` の出力を禁止する記述を追加し、hook 層で機械的に reject する (CRITICAL/HIGH × nit-noted の FAIL invariant と同質の防衛層)。reviewer が「nit として受け流したい」と判断した finding は、本 4 reviewer では `follow-up` (別 Issue 化) または `current-pr` (本 PR で修正) のいずれかに必ず assign し直すこと。
 
@@ -264,7 +264,7 @@ scope 値は Likelihood (Observed / Demonstrable / Hypothetical) とは **独立
 
 ## Comment Quality Finding Gate
 
-> **Reference**: 検出基準の本文と原則は SoT である [`comment-best-practices.md`](../skills/rite-workflow/references/comment-best-practices.md) を参照。本セクションは reviewer 側の **Finding Gate** (重要度プリセット・スコープ限定・Hypothetical 昇格 signal・whitelist 適用順序) を一元化する。検出パターンの一覧は [`tech-writer.md` の `#### 6. Comment Quality Heuristics`](./tech-writer-reviewer.md#6-comment-quality-heuristics) を参照。
+> **Reference**: 検出基準の本文と原則は SoT である [`comment-best-practices.md`](../skills/rite-workflow/references/comment-best-practices.md) を参照。本セクションは reviewer 側の **Finding Gate** (重要度プリセット・スコープ限定・Hypothetical 昇格 signal・whitelist 適用順序) を一元化する。検出パターンの一覧は [`tech-writer-reviewer.md` の `#### 6. Comment Quality Heuristics`](./tech-writer-reviewer.md#6-comment-quality-heuristics) を参照。
 
 ### Scope: 新規 diff の追加行限定
 
@@ -274,7 +274,7 @@ scope 値は Likelihood (Observed / Demonstrable / Hypothetical) とは **独立
 
 1. `git diff {base_branch}...HEAD` で diff hunks を取得 (`{base_branch}` は `rite-config.yml` の `branch.base`、デフォルト `develop`)
 2. 追加行 (`+` で始まる行) のみを判定対象にする (`-` 行・context 行は対象外)
-3. 抽出した追加行に対して [`tech-writer.md` の (a)-(f) heuristics](./tech-writer-reviewer.md#6-comment-quality-heuristics) を適用
+3. 抽出した追加行に対して [`tech-writer-reviewer.md` の (a)-(f) heuristics](./tech-writer-reviewer.md#6-comment-quality-heuristics) を適用
 
 > **既存違反の retrofit は本 Gate のスコープ外**: pre-existing comment に対する finding は `/rite:investigate` 系・retrofit Epic で別経路で扱う。本 reviewer は revert test (Necessary conditions §3) も「新規 diff 由来であること」を担保する — diff の `+` 行に対象コメントが含まれていなければ revert test fail として finding を破棄する。
 
@@ -290,7 +290,7 @@ scope 値は Likelihood (Observed / Demonstrable / Hypothetical) とは **独立
 | 独自ジャーゴン濫用 (Whitelist 外の造語) | tech-writer #6 (c) | **LOW-MEDIUM** |
 | 内部 helper の些末 WHAT コメント | tech-writer #5 (既存) | **LOW** |
 
-このプリセットは reviewer 単独判断の finding にも適用する。reviewer は SoT / check 参照を `Likelihood-Evidence:` 行に示し、上記重要度プリセットに従って finding を発行する。重要度のずれが [`tech-writer.md` `#### 6` の SoT 対応表](./tech-writer-reviewer.md#6-comment-quality-heuristics) と本 Gate で発生した場合、本 Finding Gate を主、tech-writer 側のクイックリファレンスを従とする。
+このプリセットは reviewer 単独判断の finding にも適用する。reviewer は SoT / check 参照を `Likelihood-Evidence:` 行に示し、上記重要度プリセットに従って finding を発行する。重要度のずれが [`tech-writer-reviewer.md` `#### 6` の SoT 対応表](./tech-writer-reviewer.md#6-comment-quality-heuristics) と本 Gate で発生した場合、本 Finding Gate を主、tech-writer 側のクイックリファレンスを従とする。
 
 ### Hypothetical → Demonstrable 昇格 signal
 

@@ -294,7 +294,7 @@ Display only skills in a specific category:
 
 Categories are dynamically retrieved from the directory structure of `{plugin_root}/skills/` (resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version)):
 - `skills/{category}/SKILL.md` -> category name is `{category}`
-- `skills/reviewers/*.md` -> included in category `review`
+- `skills/reviewers/*.md` -> included in category `review` (現状は coordination `SKILL.md` のみ。個別 reviewer 定義は `agents/*-reviewer.md` に移動済み)
 
 **Note**: When a skill is not assigned to a category or a non-existent category is specified:
 

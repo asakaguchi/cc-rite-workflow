@@ -48,7 +48,7 @@ Rich template (Section 1-9) を生成する場合の 4 step 構成:
 | Chore | Operational Context | [`3-Chore: Operational Context`](../../../templates/issue/template-structure.md#3-chore-operational-context) |
 | Docs | Documentation Target | [`3-Docs: Documentation Target`](../../../templates/issue/template-structure.md#3-docs-documentation-target) |
 
-**Type 判定の優先順位**: Labels > title keywords > body content analysis。`create.md` ステップ 4.1 の AskUserQuestion option (`feat / fix / docs / refactor / chore`) は LLM がこの優先順位で推定したものを提示する。
+**Type 判定の優先順位**: Labels > title keywords > body content analysis。`create.md` ステップ 4.1 の AskUserQuestion で確定する type は **Commit Type**（feat/fix/...）で、LLM がこの優先順位で推定したものを提示する。本表の `Type` 列は対応する **Contract Type**（Feature/BugFix/...）であり、Commit Type ↔ Contract Type の crosswalk は [`templates/issue/default.md` Type Definitions](../../../templates/issue/default.md#type-definitions) が SoT（本 reference では対応関係を再定義しない）。
 
 ## Step 3: Perspective → Target Sections Mapping
 

@@ -4,7 +4,7 @@ This file contains the section-by-section template structure for Issue body gene
 Extracted from `default.md` for targeted reading — `create.md` reads this file
 only when generating the Issue body (ステップ 4.2), reducing context consumption.
 
-For the Complexity Gate, Type Definitions, and overview, see [default.md](./default.md).
+For the Complexity Gate, Type Definitions (incl. the Commit Type ↔ Contract Type crosswalk SoT), and overview, see [default.md](./default.md).
 
 ---
 
@@ -46,7 +46,7 @@ For the Complexity Gate, Type Definitions, and overview, see [default.md](./defa
 
 ### 3. Type Core Section
 
-Select ONE matching the Issue type.
+Select ONE matching the Issue type. The type confirmed in `create.md` ステップ 4.1 is a **Commit Type** (feat/fix/...); map it to the **Contract Type** (the `3-Feature` / `3-BugFix` / ... subsections below) via the Commit Type ↔ Contract Type crosswalk in [default.md Type Definitions](./default.md#type-definitions) — the single SoT, not redefined here.
 
 #### 3-Feature: User Scenarios
 

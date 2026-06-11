@@ -10,7 +10,7 @@
 # sentinel.
 #
 # Why a helper:
-#   The inline implementation in lint.md ステップ 7.1/7.2 was a per-page ×
+#   The inline implementation in lint.md ステップ 7 was a per-page ×
 #   per-link bash loop the LLM had to drive manually — the category with the
 #   worst track record (218 件検出例のある broken_refs バグを「走らせたフリ」で
 #   見逃し得る)。Delegating the whole category makes the count
@@ -22,7 +22,7 @@
 #   The old `sed -E '/^```/,/^```/d'` only removed fences starting at column 0.
 #   This helper tracks fence open/close indent-agnostically with awk
 #   (`/^[[:space:]]*```/`), so list-indented fences no longer leak their
-#   contents into link extraction (旧ステップ 7.1 既知の限界の解消)。
+#   contents into link extraction (旧 lint.md ステップ 7 リンク抽出の既知の限界の解消)。
 #
 # Inputs:
 #   --branch-strategy {separate_branch|same_branch}  (required)
@@ -176,7 +176,7 @@ while IFS= read -r page_path; do
     continue
   fi
 
-  # リンク抽出順序 (旧ステップ 7.1 と同じ骨格。1 と 2 は false positive 解消の改善):
+  # リンク抽出順序 (旧 lint.md ステップ 7 リンク抽出と同じ骨格。1 と 2 は false positive 解消の改善):
   #   1. コードフェンス除去 — indent 不問で開閉をトグル追跡 (旧 sed 行頭限定の改善)
   #   2. インライン code span 除去 — `` `[desc](path)` `` のような説明文中の引用が
   #      リンク抽出に混入する false positive を除去 (実 Wiki ページで実測)

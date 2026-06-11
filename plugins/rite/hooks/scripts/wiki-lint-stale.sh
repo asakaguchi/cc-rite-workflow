@@ -7,7 +7,7 @@
 # a marker block alongside a stale_check_ok enum + [CONTEXT] sentinel.
 #
 # Why a helper:
-#   The inline implementation in lint.md ステップ 4.2 was a per-page bash loop
+#   The inline implementation in lint.md ステップ 4 was a per-page bash loop
 #   the LLM had to drive manually. A lint run that never executes the loop can
 #   still claim "stale=0" — the count is unverifiable from the transcript.
 #   Delegating the whole category to this helper makes the count
@@ -22,8 +22,8 @@
 #   --repo-root DIR                                   (default: git rev-parse --show-toplevel)
 #   stdin: pages_list (改行区切り、`.rite/wiki/pages/...` 形式。空なら 0 件)
 #
-# stdout contract (LLM holds these in conversation context; lint.md ステップ 4.3 の
-# issues[] append と ステップ 9.1 完了レポートが参照する):
+# stdout contract (LLM holds these in conversation context; lint.md ステップ 4 の
+# issues[] append と ステップ 9 完了レポートが参照する):
 #   n_stale={n}
 #   ---stale_pages_begin---
 #   {page}|{updated}|{days_since_update}   # 0..N lines
@@ -34,7 +34,7 @@
 # stale_check_ok enum:
 #   true                 通常実行 (n_stale は信頼可能)
 #   skipped_no_gnu_date  GNU date 非互換環境 (macOS/BSD)。n_stale=0 のまま skip
-#                        (旧 lint.md ステップ 1.2 の事前検査を本 helper に内包)
+#                        (旧 lint.md の GNU date 事前検査を本 helper に内包)
 #
 # Exit codes:
 #   0  正常 (GNU date 非互換 skip 含む — 非ブロッキング契約)
@@ -142,7 +142,7 @@ if [ -z "$REPO_ROOT" ]; then
 fi
 cd "$REPO_ROOT" || { echo "ERROR: cannot cd to repo root '$REPO_ROOT'" >&2; exit 2; }
 
-# ---- GNU date 事前検査 (旧 lint.md ステップ 1.2 を内包) ----------------------
+# ---- GNU date 事前検査 (旧 lint.md の GNU date 事前検査ステップを内包) --------
 # `date -d "ISO 8601"` は GNU coreutils 拡張。macOS/BSD では silent に誤動作
 # しないよう skip し、enum で skip 理由を機械可読にする (非ブロッキング契約)。
 if ! date -d "2025-01-01" +%s >/dev/null 2>&1; then
@@ -159,7 +159,7 @@ fi
 current_epoch=$(date +%s)
 cutoff_epoch=$((current_epoch - stale_days * 86400))
 
-# ---- 走査本体 (旧 lint.md ステップ 4.2 inline loop の faithful port) ----------
+# ---- 走査本体 (旧 lint.md ステップ 4 inline loop の faithful port) -------------
 n_stale=0
 stale_lines=""
 

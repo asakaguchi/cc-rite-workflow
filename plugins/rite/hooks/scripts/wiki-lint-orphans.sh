@@ -7,7 +7,7 @@
 # block alongside an orphan_check_ok enum + [CONTEXT] sentinel.
 #
 # Why a helper:
-#   The inline implementation in lint.md ステップ 2.3 + 5 was a 2-step manual
+#   The inline implementation of index.md read + lint.md ステップ 5 was a 2-step manual
 #   flow (index.md read → LLM computes the set difference). A lint run that
 #   never executes it can still claim "orphans=0" — the count is unverifiable
 #   from the transcript. Delegating the whole category (index.md read included)
@@ -22,7 +22,7 @@
 #   stdin: pages_list (改行区切り、`.rite/wiki/pages/...` 形式。空なら 0 件)
 #
 # stdout contract (LLM holds these in conversation context; lint.md ステップ 5 の
-# issues[] append と ステップ 9.1 完了レポートが参照する):
+# issues[] append と ステップ 9 完了レポートが参照する):
 #   n_orphans={n}
 #   ---orphans_begin---
 #   {page}                                 # 0..N lines (`.rite/wiki/pages/...` 形式)
@@ -33,11 +33,11 @@
 # orphan_check_ok enum:
 #   true              通常実行 (n_orphans は信頼可能)
 #   index_unreadable  index.md 読出失敗 (ENOENT / blob not found / IO error)。
-#                     n_orphans=0 のまま skip (旧 lint.md ステップ 2.3 の
-#                     index_read_ok=false 経路を本 helper に内包)
+#                     n_orphans=0 のまま skip (旧 lint.md の index.md 事前読出
+#                     ステップの index_read_ok=false 経路を本 helper に内包)
 #   index_empty       index.md は読めたがページ一覧テーブルから登録ページを
 #                     抽出できなかった。全ページ orphan 誤検出を防ぐため skip
-#                     (旧 lint.md ステップ 5.2 の orphan_check_ok=false 経路)
+#                     (旧 lint.md ステップ 5 の orphan_check_ok=false 経路)
 #
 # Exit codes:
 #   0  正常 (index 読出失敗 / 抽出 0 件の skip 含む — 非ブロッキング契約)
@@ -140,7 +140,7 @@ _emit_skipped() {
   echo "[CONTEXT] WIKI_LINT_ORPHANS=0"
 }
 
-# ---- index.md 読出 (旧 lint.md ステップ 2.3 を内包) --------------------------
+# ---- index.md 読出 (旧 lint.md の index.md 事前読出ステップを内包) ------------
 # LC_ALL=C で locale 固定 (localize された diagnostic による stderr pattern 不一致を予防 —
 # sibling helpers と同じ規約)。読出失敗は legitimate absence / IO error を区別せず
 # index_unreadable に一本化する (旧 inline 実装も index_read_ok=false の単一経路だった。
@@ -181,7 +181,7 @@ case "$branch_strategy" in
     ;;
 esac
 
-# ---- 登録済みページの抽出 (旧 lint.md ステップ 5.2 の faithful port) ----------
+# ---- 登録済みページの抽出 (旧 lint.md ステップ 5 の登録ページ抽出の faithful port) --
 # `./pages/...` / `../pages/...` 形式にも対応する緩和 regex + grep no-match の明示処理。
 set -o pipefail
 indexed_pages=$(printf '%s\n' "$index_content" \
@@ -199,7 +199,7 @@ if [ -z "$indexed_pages" ]; then
   exit 0
 fi
 
-# ---- 集合差分 (旧 lint.md ステップ 5.3 の faithful port) ----------------------
+# ---- 集合差分 (旧 lint.md ステップ 5 の孤児判定の faithful port) ---------------
 # pages_list は `.rite/wiki/` プレフィックス付きのため、indexed_pages (`pages/...`
 # 形式) と比較する前に正規化する。orphan は元の `.rite/wiki/...` 形式で出力する
 # (issues[] の page フィールドと同形式)。

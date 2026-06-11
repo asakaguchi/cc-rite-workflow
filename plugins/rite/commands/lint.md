@@ -500,7 +500,7 @@ fi
 
 ### 3.7 Plugin-specific Checks (Doc-Heavy Patterns Drift Detection)
 
-Execute the doc-heavy patterns drift check script to detect divergence between the `doc_file_patterns` declared in 3 files that MUST stay in sync: `plugins/rite/skills/reviewers/tech-writer.md` (Activation section), `plugins/rite/commands/pr/review.md` (ステップ 1.2.7 `doc_file_patterns` pseudo-code block), and `plugins/rite/skills/reviewers/SKILL.md` (Reviewers table Technical Writer row). Drift between these files silently changes tech-writer activation and Doc-Heavy PR detection — Issue #353 系統 1. See the script header at `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` for the extraction contract.
+Execute the doc-heavy patterns drift check script to detect divergence between the `doc_file_patterns` declared in 2 files that MUST stay in sync: `plugins/rite/commands/pr/review.md` (ステップ 1.2.7 `doc_file_patterns` pseudo-code block) and `plugins/rite/skills/reviewers/SKILL.md` (Reviewers table Technical Writer row). Drift between these files silently changes tech-writer activation and Doc-Heavy PR detection — Issue #353 系統 1. See the script header at `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` for the extraction contract.
 
 **Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
 
@@ -521,12 +521,12 @@ fi
 
 | Exit Code | `doc_heavy_drift_status` | Action |
 |-----------|--------------------------|--------|
-| 0 | `success` | No drift across the 3 files — continue to Phase 4 |
+| 0 | `success` | No drift across the 2 files — continue to Phase 4 |
 | 1 | `warning` | Drift detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
 | 2 | `error` | Invocation error — record as warning, display error message |
 | -1 | `skipped` | Script not found — skip silently |
 
-**Important**: Drift detection results are treated as **warnings**, not errors — same policy as Phase 3.5 drift check and Phase 3.6 bang-backtick check. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). Reason: existing checks stay non-blocking during staged rollout, and the 3-file invariant should be fixed promptly by the author of the diverging change but not gate CI until coverage is validated across the rite plugin's self-hosting workflow.
+**Important**: Drift detection results are treated as **warnings**, not errors — same policy as Phase 3.5 drift check and Phase 3.6 bang-backtick check. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). Reason: existing checks stay non-blocking during staged rollout, and the 2-file invariant should be fixed promptly by the author of the diverging change but not gate CI until coverage is validated across the rite plugin's self-hosting workflow.
 
 **Record drift results** for Phase 4 reporting:
 - `doc_heavy_drift_status`: `success` / `warning` / `error` / `skipped`

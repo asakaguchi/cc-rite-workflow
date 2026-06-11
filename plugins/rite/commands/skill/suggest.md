@@ -112,7 +112,7 @@ For each skill, calculate a score based on the following factors:
 2. If the section does not exist -> infer from keywords:
    - `workflow`, `Issue`, `PR` -> `commands/**/*.md`, `*.yml`
    - `review`, `lint` -> all files
-   - Reviewer skills (`skills/reviewers/`) -> refer to each skill file's `Activation` section
+   - Reviewer skills (`skills/reviewers/`) -> refer to the Available Reviewers table's `Activation` column in `skills/reviewers/SKILL.md`
 
 **Inferring related labels:**
 

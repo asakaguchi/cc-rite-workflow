@@ -20,7 +20,7 @@ plugins/rite/
 │   └── init.md / getting-started.md / investigate.md / lint.md / resume.md / workflow.md
 ├── skills/           # Claude Code が自動検出するスキル定義（SKILL.md）
 │   ├── rite-workflow/  #   メインスキル + references/（コーディング原則、コンテキスト管理）
-│   ├── reviewers/      #   レビュアースキル + 13 種別の基準ファイル + references/
+│   ├── reviewers/      #   レビュアー調整スキル（SKILL.md = 選定 + テーブル）+ references/（各 reviewer の profile は agents/{type}-reviewer.md に集約）
 │   ├── investigate/    #   コード調査スキル
 │   └── wiki/           #   Experience Wiki スキル（opt-out）
 ├── agents/           # PR レビュー用サブエージェント定義

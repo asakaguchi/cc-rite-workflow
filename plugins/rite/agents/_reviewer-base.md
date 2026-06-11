@@ -189,7 +189,7 @@ Where `<evidence_type>` is one of the following literal labels:
 
 The `Likelihood-Evidence:` prefix is the required anchor for downstream mechanical detection of the Observed Likelihood Gate (Phase 5 fact-check, dedup, Layer 2 assessment-rules). Findings that do not contain a `Likelihood-Evidence: <label> ...` line in the `内容` column are treated as Hypothetical and downgraded per the Impact × Likelihood Matrix.
 
-**Relationship with tech-writer Doc-Heavy Mode `Evidence:`**: Doc-Heavy Mode findings MUST still include the separate `Evidence: tool=<Grep|Read|Glob|WebFetch>, path=..., line=...` line for the 5-category verification protocol (see `skills/reviewers/tech-writer.md`). Both prefixes may coexist in the same `内容` cell — they are orthogonal checks (Observed Likelihood Gate vs. Doc-Heavy verification execution). Phase 5.1.3 post-condition only requires the tech-writer `Evidence: tool=...` form; the Observed Likelihood Gate check detects `Likelihood-Evidence:` separately.
+**Relationship with tech-writer Doc-Heavy Mode `Evidence:`**: Doc-Heavy Mode findings MUST still include the separate `Evidence: tool=<Grep|Read|Glob|WebFetch>, path=..., line=...` line for the 5-category verification protocol (see `tech-writer-reviewer.md`). Both prefixes may coexist in the same `内容` cell — they are orthogonal checks (Observed Likelihood Gate vs. Doc-Heavy verification execution). Phase 5.1.3 post-condition only requires the tech-writer `Evidence: tool=...` form; the Observed Likelihood Gate check detects `Likelihood-Evidence:` separately.
 
 **Hypothetical Exception Category interaction**: Reviewers in the Hypothetical Exception Categories (security / database migration / devops infra / dependencies) MAY omit the `Likelihood-Evidence:` line when the finding is explicitly Hypothetical — in that case the required marker instead is `Likelihood: Hypothetical (例外カテゴリ: <name>)` in the `内容` column, as specified in each of those reviewer skill files. This is the single exception to the mandatory `Likelihood-Evidence:` rule.
 
@@ -256,7 +256,7 @@ scope の決定は **必ず以下の順序** で行う。順序逆転は finding
 | `devops.md` | deploy / rollback / infra path は exercise 頻度が低い。「nit」受け流しが本番障害時に silent failure として顕在化 |
 | `dependencies.md` | CVE / supply chain / license は「いつ起きるか」が攻撃者依存。nit 化は許容できないリスクモデル |
 
-**実装契機** (本 reference 制定時点では記述のみで、reviewer ファイル本体への禁止記述追加と hook enforcement は後続 Sub-Issue で実施予定): 4 agent ファイル (`security-reviewer.md` / `database-reviewer.md` / `devops-reviewer.md` / `dependencies-reviewer.md` — agent file naming) または対応 skill ファイル (`security.md` / `database.md` / `devops.md` / `dependencies.md` — skill file naming、`plugins/rite/skills/reviewers/` 配下) に `scope == "nit-noted"` の出力を禁止する記述を追加し、hook 層で機械的に reject する (CRITICAL/HIGH × nit-noted の FAIL invariant と同質の防衛層)。reviewer が「nit として受け流したい」と判断した finding は、本 4 reviewer では `follow-up` (別 Issue 化) または `current-pr` (本 PR で修正) のいずれかに必ず assign し直すこと。
+**実装契機** (本 reference 制定時点では記述のみで、reviewer ファイル本体への禁止記述追加と hook enforcement は後続 Sub-Issue で実施予定): 4 agent ファイル (`security-reviewer.md` / `database-reviewer.md` / `devops-reviewer.md` / `dependencies-reviewer.md`) に `scope == "nit-noted"` の出力を禁止する記述を追加し、hook 層で機械的に reject する (CRITICAL/HIGH × nit-noted の FAIL invariant と同質の防衛層)。reviewer が「nit として受け流したい」と判断した finding は、本 4 reviewer では `follow-up` (別 Issue 化) または `current-pr` (本 PR で修正) のいずれかに必ず assign し直すこと。
 
 ### Likelihood-Evidence との関係
 
@@ -264,7 +264,7 @@ scope 値は Likelihood (Observed / Demonstrable / Hypothetical) とは **独立
 
 ## Comment Quality Finding Gate
 
-> **Reference**: 検出基準の本文と原則は SoT である [`comment-best-practices.md`](../skills/rite-workflow/references/comment-best-practices.md) を参照。本セクションは reviewer 側の **Finding Gate** (重要度プリセット・スコープ限定・Hypothetical 昇格 signal・whitelist 適用順序) を一元化する。検出パターンの一覧は [`tech-writer.md` の `#### 6. Comment Quality Heuristics`](../skills/reviewers/tech-writer.md#6-comment-quality-heuristics) を参照。
+> **Reference**: 検出基準の本文と原則は SoT である [`comment-best-practices.md`](../skills/rite-workflow/references/comment-best-practices.md) を参照。本セクションは reviewer 側の **Finding Gate** (重要度プリセット・スコープ限定・Hypothetical 昇格 signal・whitelist 適用順序) を一元化する。検出パターンの一覧は [`tech-writer.md` の `#### 6. Comment Quality Heuristics`](./tech-writer-reviewer.md#6-comment-quality-heuristics) を参照。
 
 ### Scope: 新規 diff の追加行限定
 
@@ -274,7 +274,7 @@ scope 値は Likelihood (Observed / Demonstrable / Hypothetical) とは **独立
 
 1. `git diff {base_branch}...HEAD` で diff hunks を取得 (`{base_branch}` は `rite-config.yml` の `branch.base`、デフォルト `develop`)
 2. 追加行 (`+` で始まる行) のみを判定対象にする (`-` 行・context 行は対象外)
-3. 抽出した追加行に対して [`tech-writer.md` の (a)-(f) heuristics](../skills/reviewers/tech-writer.md#6-comment-quality-heuristics) を適用
+3. 抽出した追加行に対して [`tech-writer.md` の (a)-(f) heuristics](./tech-writer-reviewer.md#6-comment-quality-heuristics) を適用
 
 > **既存違反の retrofit は本 Gate のスコープ外**: pre-existing comment に対する finding は `/rite:investigate` 系・retrofit Epic で別経路で扱う。本 reviewer は revert test (Necessary conditions §3) も「新規 diff 由来であること」を担保する — diff の `+` 行に対象コメントが含まれていなければ revert test fail として finding を破棄する。
 
@@ -290,7 +290,7 @@ scope 値は Likelihood (Observed / Demonstrable / Hypothetical) とは **独立
 | 独自ジャーゴン濫用 (Whitelist 外の造語) | tech-writer #6 (c) | **LOW-MEDIUM** |
 | 内部 helper の些末 WHAT コメント | tech-writer #5 (既存) | **LOW** |
 
-このプリセットは reviewer 単独判断の finding にも適用する。reviewer は SoT / check 参照を `Likelihood-Evidence:` 行に示し、上記重要度プリセットに従って finding を発行する。重要度のずれが [`tech-writer.md` `#### 6` の SoT 対応表](../skills/reviewers/tech-writer.md#6-comment-quality-heuristics) と本 Gate で発生した場合、本 Finding Gate を主、tech-writer 側のクイックリファレンスを従とする。
+このプリセットは reviewer 単独判断の finding にも適用する。reviewer は SoT / check 参照を `Likelihood-Evidence:` 行に示し、上記重要度プリセットに従って finding を発行する。重要度のずれが [`tech-writer.md` `#### 6` の SoT 対応表](./tech-writer-reviewer.md#6-comment-quality-heuristics) と本 Gate で発生した場合、本 Finding Gate を主、tech-writer 側のクイックリファレンスを従とする。
 
 ### Hypothetical → Demonstrable 昇格 signal
 
@@ -342,10 +342,10 @@ The default response to a missing error path is therefore:
 
 ### When a fallback IS justified (skill-side exceptions)
 
-A fallback recommendation is acceptable only when the **reviewer's own skill file** explicitly lists the case as an allowed fallback. Examples:
+A fallback recommendation is acceptable only when the **reviewer's own agent definition** explicitly lists the case as an allowed fallback. Examples:
 
-- `error-handling.md` may list "graceful degradation in non-critical UI render paths" as an allowed fallback.
-- `frontend.md` may list "default avatar image when user upload fails" as an allowed fallback.
+- `error-handling-reviewer.md` may list "graceful degradation in non-critical UI render paths" as an allowed fallback.
+- `frontend-reviewer.md` may list "default avatar image when user upload fails" as an allowed fallback.
 
 If the reviewer's skill file does NOT list the case, the reviewer MUST recommend `throw` / `raise` and document the recommendation in the `推奨対応` column with explicit reasoning (e.g., "throw して呼び出し元の error boundary に伝播。fallback は silent failure を生むため非推奨").
 
@@ -411,6 +411,19 @@ The orchestrator interprets this as Signal 4 of the four quality signals and esc
 | Fail-Fast First | Per-fallback recommendation | Prefer throw over fallback |
 | **Finding Quality Guardrail** | After per-finding evaluation, before output | **Filter bikeshedding / defensive / style-only**, degrade reviewer if nothing remains |
 | Confidence Scoring | Final output | Assign 0-100 confidence to surviving findings |
+
+## External Claim Awareness
+
+When citing external specifications (library behavior, tool configuration, version compatibility, API behavior, CVE/vulnerability information) in findings, reviewers should follow these guidelines:
+
+| Guideline | Description |
+|-----------|-------------|
+| **Cite specific versions** | Include the version number when claiming version-specific behavior (e.g., "npm v11.10.0 introduced..." instead of "npm supports...") |
+| **Prefer observable facts** | Reference behavior observable in the codebase (package.json versions, config files) rather than general claims about external tools |
+| **Flag uncertainty** | If unsure about external behavior, note "要検証" in the recommendation column to signal that fact-checking should prioritize this claim |
+| **Avoid speculation** | Do not claim specific library/tool behavior without concrete evidence from investigation or documentation |
+
+**Note**: External specification claims in findings are verified by the Fact-Checking Phase (`review.md` ステップ 5 Critic Phase) using WebSearch/WebFetch against official documentation. Claims found to contradict official documentation are removed from the review report and recorded in a dedicated section. Reviewers benefit from accuracy here because contradicted findings are flagged as errors, reducing overall review quality.
 
 ## Input
 

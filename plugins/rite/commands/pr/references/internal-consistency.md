@@ -2,7 +2,7 @@
 
 > **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
 
-> **Source**: Referenced from `tech-writer.md` Critical (Must Fix) checklist の「文書-実装整合性」5 項目。本ファイルは**ドキュメント記述とプロダクト実装の整合性**を検証するための "source of truth" である。
+> **Source**: Referenced from `tech-writer-reviewer.md` Critical (Must Fix) checklist の「文書-実装整合性」5 項目。本ファイルは**ドキュメント記述とプロダクト実装の整合性**を検証するための "source of truth" である。
 >
 > **用語統一**: canonical 表記は **「文書-実装整合性」** (英訳: `Doc-Impl Consistency`)。「ドキュメント-実装整合性」/「内部事実」/「内部整合性」/「Internal Consistency」は同義。新規記述は canonical 表記を優先する。
 >
@@ -56,7 +56,7 @@ Read `review.doc_heavy` from `rite-config.yml`:
 
 ## Verification Protocol
 
-本プロトコルは **5 項目** の検証カテゴリで構成される。各カテゴリは `tech-writer.md` の Critical Checklist 同名項目と 1:1 対応する。
+本プロトコルは **5 項目** の検証カテゴリで構成される。各カテゴリは `tech-writer-reviewer.md` の Critical Checklist 同名項目と 1:1 対応する。
 
 ### 1. Implementation Coverage
 
@@ -196,7 +196,7 @@ Inconclusive: Implementation Coverage
 
 ### Inconclusive 集計 と META 行への反映
 
-reviewer は finding 出力末尾の META 行に、inconclusive となった category 数を集計して報告する義務がある。tech-writer.md の Doc-Heavy mode finding-count rules セクションで定義された 3 種類の正規 META 行 (variant a / b / c) に加え、**variant a / b に inconclusive が含まれる場合は以下の追加形式**を使う:
+reviewer は finding 出力末尾の META 行に、inconclusive となった category 数を集計して報告する義務がある。tech-writer-reviewer.md の Doc-Heavy mode finding-count rules セクションで定義された 3 種類の正規 META 行 (variant a / b / c) に加え、**variant a / b に inconclusive が含まれる場合は以下の追加形式**を使う:
 
 - **(a + inconclusive)** `META: All 5 verification categories executed, 0 inconsistencies found, but {N} categories were inconclusive. Inconclusive: [category_1, category_2, ...]. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]`
 - **(b + inconclusive)** `META: All 5 verification categories executed, but {N} categories were inconclusive. Inconclusive: [category_1, category_2, ...]. Findings below.`
@@ -281,7 +281,7 @@ review.md ステップ 5.1.3 Step 2 (件数非依存 META check) は、上記 (a
 
 本ファイルは以下から参照される:
 
-- [`../../../skills/reviewers/tech-writer.md`](../../../skills/reviewers/tech-writer.md) — 文書-実装整合性 5 項目 / Doc-Heavy PR Mode セクション
+- [`../../../agents/tech-writer-reviewer.md`](../../../agents/tech-writer-reviewer.md) — 文書-実装整合性 5 項目 / Doc-Heavy PR Mode セクション
 - [`../review.md`](../review.md) — ステップ 1.2.7 Detection / ステップ 2.2.1 Override / ステップ 5.1.3 Post-Condition Check
 - [`../../../skills/reviewers/SKILL.md`](../../../skills/reviewers/SKILL.md) — Reviewers 一覧 tech-writer 行
 

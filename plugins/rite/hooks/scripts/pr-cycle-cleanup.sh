@@ -405,7 +405,7 @@ fi
 # 残骸回収のみ**。`.rite/worktrees/issue-{N}` (multi_session.worktree_base 配下)
 # を `git worktree list` から列挙し、**3 ゲート全通過時のみ** reap する:
 #   1. ディレクトリ名が `^issue-[0-9]+$` に完全一致 (strict regex doctrine。
-#      parallel/team-execute の `.worktrees/` 名前空間や `.rite/wiki-worktree`
+#      `.rite/wiki-worktree` などの非 issue worktree 名前空間
 #      とは交差しない)
 #   2. claim liveness (S3) が live でない (issue-claim.sh check が stale、または
 #      claim 不在 free のとき mtime > 24h の age guard を再利用)

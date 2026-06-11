@@ -661,7 +661,7 @@ metrics:
 
 ### pr_review
 
-Settings for PR review **output** recording. This section is intentionally separated from the `review:` section (which configures review **execution**) so that future output destinations (Slack notifications, etc.) can be added without a breaking change to `review:` child keys.
+Settings for PR review **output** recording. This section is intentionally separated from the `review:` section (which configures review **execution**) so that future output destinations can be added without a breaking change to `review:` child keys.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|

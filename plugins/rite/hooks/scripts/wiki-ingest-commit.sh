@@ -127,7 +127,7 @@ repo_root=$("$_SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || repo_root=""
 cd "$repo_root"
 
 # advisory lock for parallel safety.
-# Multiple concurrent invocations (e.g. sprint team-execute running fix /
+# Multiple concurrent invocations (e.g. multiple sessions running fix /
 # review / close on different issues in parallel terminals) share the same
 # working tree and cannot safely run git checkout/stash/commit concurrently.
 # Acquire a non-blocking advisory lock; on contention, exit 0 with an

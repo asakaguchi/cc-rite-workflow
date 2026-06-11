@@ -250,18 +250,6 @@ metrics:
   enabled: true            # Enable/disable metrics recording (default: true)
   baseline_issues: 3       # Number of Issues for baseline collection (default: 3)
 
-# Notification settings
-notifications:
-  slack:
-    enabled: false
-    webhook_url: null
-  discord:
-    enabled: false
-    webhook_url: null
-  teams:
-    enabled: false
-    webhook_url: null
-
 # Language setting
 language: auto  # auto | ja | en
 ```
@@ -874,15 +862,6 @@ wiki:
 ```
 
 **Related commands:** `/rite:wiki:init` (one-time setup), `/rite:wiki:ingest`, `/rite:wiki:query`, `/rite:wiki:lint`.
-
-### notifications
-
-Each notification service (slack, discord, teams) can have:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `enabled` | boolean | Enable this notification service |
-| `webhook_url` | string | Webhook URL for the service |
 
 ### language
 

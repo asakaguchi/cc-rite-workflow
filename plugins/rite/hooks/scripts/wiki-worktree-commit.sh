@@ -49,7 +49,7 @@
 # - All git operations run with `git -C "$worktree_path"` to scope
 # them to the worktree's HEAD. The dev-branch tree is never touched.
 # - Advisory locking via flock ensures parallel invocations
-# (e.g. sprint team-execute) do not race on the same worktree.
+# (e.g. multiple concurrent sessions) do not race on the same worktree.
 # - Credential prompts are suppressed via GIT_TERMINAL_PROMPT=0 so
 # hook-invoked runs do not hang on missing auth.
 # --- END HEADER ---

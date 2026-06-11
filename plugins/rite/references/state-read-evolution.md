@@ -63,7 +63,7 @@ helper を追加する際は `_validate-helpers.sh` 内 `DEFAULT_HELPERS` への
 | `_validate-helpers.sh` | helper 存在検査 + DEFAULT_HELPERS 配列（helper-list の SoT） | cycle 12 F-04 / 13 F-01 / 38 F-01 |
 | `_resolve-session-id.sh` | UUID validation（RFC 4122 strict pattern） | cycle 34 F-01 CRITICAL |
 | `_resolve-session-id-from-file.sh` | tr + UUID validate + fallback の compound sequence | cycle 38 F-05 MEDIUM |
-| `_resolve-schema-version.sh` | schema_version 解決 + pipefail silent failure 対策 | cycle 5 review |
+| `_resolve-schema-version.sh`（廃止） | schema_version 解決 + pipefail silent failure 対策（helper は後に削除。schema_version 解決自体は flow-state.sh 等に残存） | cycle 5 review |
 | `_resolve-cross-session-guard.sh` | foreign / corrupt / invalid_uuid classification | cycle 34 F-02 / 35 F-01 / 41 F-01 / 14 F-04 |
 | `_emit-cross-session-incident.sh` | 3 classification × 2 caller の workflow-incident-emit 集約（helper・呼び出し先とも #1088 で廃止、実装: #1091） | PR #688 followup F-01 MEDIUM |
 | `_mktemp-stderr-guard.sh` | mktemp + WARNING 3 行 + chmod 600 のパターン集約 | cycle 9 F-02 / 15 F-05 / 38 F-06 |

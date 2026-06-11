@@ -51,11 +51,10 @@ chore: maintenance
 ```
 plugins/rite/
 ├── commands/         # Slash command execution procedures (Markdown)
-│   ├── issue/        #   Issue operations (create, list, edit, close, update, recall, implement, ...)
+│   ├── issue/        #   Issue operations (create, list, edit, close, update, implement, ...)
 │   │   └── references/  # Edge-case rules, complexity gates, bulk-create patterns
 │   ├── pr/           #   PR operations (open, iterate, merge, ready, create, review, fix, cleanup)
 │   │   └── references/  # Assessment rules, archive procedures
-│   ├── sprint/       #   Sprint operations (plan, list, current, execute, team-execute)
 │   ├── wiki/         #   Experience Wiki operations (init, query, ingest, lint)
 │   ├── skill/        #   Skill operations (suggest)
 │   ├── template/     #   Template operations (reset)

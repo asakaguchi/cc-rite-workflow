@@ -383,11 +383,15 @@ Two helper-driven patterns bracket the session-worktree lifecycle:
   (`active=true` ∧ `updated_at` within 2h) rather than a new heartbeat file. A live
   `other` claim is surfaced via AskUserQuestion — never an unattended steal.
 - **Lazy reap** (`pr-cycle-cleanup.sh` Step 5): normal cleanup removes the worktree
-  immediately; reap only collects **abnormally-orphaned** worktrees, and only when all
-  3 gates pass — strict `^issue-[0-9]+$` name under `worktree_base`, claim not live
-  (or absent + mtime > 24h), and a clean `git status --porcelain` (a dirty worktree is
-  never auto-reaped). Reap **never deletes the branch** (push-pending / unpushed work is
-  preserved; branch cleanup stays the responsibility of the normal `pr:cleanup` path).
+  immediately; reap only collects **abnormally-orphaned** worktrees, and only when a
+  self-exclusion guard plus all 3 gates pass — the guard (Gate 0) never reaps the
+  worktree the cleanup is itself running in (invocation cwd or `RITE_WORKTREE` matching
+  or nested under the candidate), so a long-lived session cannot delete its own active
+  worktree mid-flight; then strict `^issue-[0-9]+$` name under
+  `worktree_base`, claim not live (or absent + mtime > 24h), and a clean
+  `git status --porcelain` (a dirty worktree is never auto-reaped). Reap **never deletes
+  the branch** (push-pending / unpushed work is preserved; branch cleanup stays the
+  responsibility of the normal `pr:cleanup` path).
 
 > **Canonical spec**: This file documents the operational *patterns*; the canonical
 > runtime specification for the session-worktree layer (lifecycle, claim, reap,

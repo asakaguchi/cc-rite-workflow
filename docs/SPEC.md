@@ -226,6 +226,7 @@ rite-workflow/
 │ │ ├── wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh
 │ │ ├── wiki-branch-init.sh / wiki-lint-skipped-refs.sh # #1196 inline bash 委譲
 │ │ ├── wiki-lint-source-refs.sh # #1195 wiki/lint.md 6.2 委譲
+│ │ ├── wiki-lint-stale.sh / wiki-lint-orphans.sh / wiki-lint-broken-refs.sh # #1345 wiki/lint.md 4/5/7 委譲
 │ │ ├── wiki-growth-check.sh # #524 lint layer-3
 │ │ ├── backlink-format-check.sh / bang-backtick-check.sh
 │ │ ├── bang-backtick-edit-hook.sh # PostToolUse wrapper for bang-backtick-check.sh (hooks.json 登録、#691)
@@ -1331,6 +1332,9 @@ Non-hook helper scripts invoked either directly from orchestrator commands or by
 | `wiki-branch-init.sh` | `/rite:wiki:init` ステップ 3.1 — orphan wiki ブランチ作成 + push + 元ブランチ復帰 (stash 退避/復帰、same_branch 両対応) | #1196 |
 | `wiki-lint-skipped-refs.sh` | `/rite:wiki:lint` ステップ 6.0 — log.md の `ingest:skip` 集合を marker block + `log_read_ok` 4 値 enum で構築 (6.2 `wiki-lint-source-refs.sh` と対称) | #1196 |
 | `wiki-lint-source-refs.sh` | `/rite:wiki:lint` ステップ 6.2 — Wiki ページの Sources 行から `all_source_refs` 集合を構築 (6.0 `wiki-lint-skipped-refs.sh` と対称) | #1195 |
+| `wiki-lint-stale.sh` | `/rite:wiki:lint` ステップ 4 — frontmatter `updated` と cutoff 比較で陳腐化集合を marker block + `stale_check_ok` enum で構築 (GNU date 検査内包) | #1345 |
+| `wiki-lint-orphans.sh` | `/rite:wiki:lint` ステップ 5 — index.md 登録ページと pages_list の集合差分を marker block + `orphan_check_ok` enum で構築 (index.md 読出内包) | #1345 |
+| `wiki-lint-broken-refs.sh` | `/rite:wiki:lint` ステップ 7 — Markdown link の page-dir 起点 `realpath -m -s` 解決で壊れた相互参照集合を構築 (awk indent 不問 fence tracking) | #1345 |
 | `bang-backtick-edit-hook.sh` | `bang-backtick-check.sh` の PostToolUse(Edit\|Write\|MultiEdit) wrapper — `hooks.json` 登録済 (`tool_input.file_path` でスコープを絞る) | #691 |
 | `bash-heaviness-check.sh` | `commands/**/*.md` 内の heavy operational bash block を non-blocking warning で検出 | #1197 |
 | `hardcoded-line-number-check.sh` | procedural markdown (`commands/**/*.md`) 内のハードコード行番号参照を検出 | — |

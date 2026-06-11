@@ -256,7 +256,7 @@ scope の決定は **必ず以下の順序** で行う。順序逆転は finding
 | `devops.md` | deploy / rollback / infra path は exercise 頻度が低い。「nit」受け流しが本番障害時に silent failure として顕在化 |
 | `dependencies.md` | CVE / supply chain / license は「いつ起きるか」が攻撃者依存。nit 化は許容できないリスクモデル |
 
-**実装契機** (本 reference 制定時点では記述のみで、reviewer ファイル本体への禁止記述追加と hook enforcement は後続 Sub-Issue で実施予定): 4 agent ファイル (`security-reviewer.md` / `database-reviewer.md` / `devops-reviewer.md` / `dependencies-reviewer.md` — agent file naming) または対応 skill ファイル (`security.md` / `database.md` / `devops.md` / `dependencies.md` — skill file naming、`plugins/rite/skills/reviewers/` 配下) に `scope == "nit-noted"` の出力を禁止する記述を追加し、hook 層で機械的に reject する (CRITICAL/HIGH × nit-noted の FAIL invariant と同質の防衛層)。reviewer が「nit として受け流したい」と判断した finding は、本 4 reviewer では `follow-up` (別 Issue 化) または `current-pr` (本 PR で修正) のいずれかに必ず assign し直すこと。
+**実装契機** (本 reference 制定時点では記述のみで、reviewer ファイル本体への禁止記述追加と hook enforcement は後続 Sub-Issue で実施予定): 4 agent ファイル (`security-reviewer.md` / `database-reviewer.md` / `devops-reviewer.md` / `dependencies-reviewer.md`) に `scope == "nit-noted"` の出力を禁止する記述を追加し、hook 層で機械的に reject する (CRITICAL/HIGH × nit-noted の FAIL invariant と同質の防衛層)。reviewer が「nit として受け流したい」と判断した finding は、本 4 reviewer では `follow-up` (別 Issue 化) または `current-pr` (本 PR で修正) のいずれかに必ず assign し直すこと。
 
 ### Likelihood-Evidence との関係
 
@@ -342,10 +342,10 @@ The default response to a missing error path is therefore:
 
 ### When a fallback IS justified (skill-side exceptions)
 
-A fallback recommendation is acceptable only when the **reviewer's own skill file** explicitly lists the case as an allowed fallback. Examples:
+A fallback recommendation is acceptable only when the **reviewer's own agent definition** explicitly lists the case as an allowed fallback. Examples:
 
-- `error-handling.md` may list "graceful degradation in non-critical UI render paths" as an allowed fallback.
-- `frontend.md` may list "default avatar image when user upload fails" as an allowed fallback.
+- `error-handling-reviewer.md` may list "graceful degradation in non-critical UI render paths" as an allowed fallback.
+- `frontend-reviewer.md` may list "default avatar image when user upload fails" as an allowed fallback.
 
 If the reviewer's skill file does NOT list the case, the reviewer MUST recommend `throw` / `raise` and document the recommendation in the `推奨対応` column with explicit reasoning (e.g., "throw して呼び出し元の error boundary に伝播。fallback は silent failure を生むため非推奨").
 

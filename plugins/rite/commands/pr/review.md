@@ -905,13 +905,13 @@ Read: skills/reviewers/SKILL.md
 ```
 
 **Fallback on load failure:**
-If the skill file is not found, use the built-in pattern table from ステップ 2.2 and the fallback profiles from ステップ 4.2.
+If the skill file (`skills/reviewers/SKILL.md`) is not found, fall back to the built-in pattern table from ステップ 2.2 for reviewer selection. Reviewer profiles always load as each named subagent's system prompt (`agents/{reviewer_type}-reviewer.md`), so no profile fallback is needed.
 
 ### 2.2 File Pattern Analysis
 
 Match changed files against the pattern table in SKILL.md.
 
-Match changed files against the Available Reviewers table in `skills/reviewers/SKILL.md` (source of truth for file patterns). Each skill file's Activation section defines detailed patterns.
+Match changed files against the Available Reviewers table in `skills/reviewers/SKILL.md` (source of truth for file patterns). The table's `Activation` column defines the detailed patterns.
 
 **Pattern priority rules:**
 1. `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` -> Prompt Engineer (highest priority)
@@ -1153,7 +1153,7 @@ Analyze the diff content to determine if additional expertise is needed:
 
 **`reviewer_type` format:**
 - Use English slugs (e.g., `security`, `devops`, `prompt-engineer`, `tech-writer`)
-- Matches the skill file name without extension (e.g., `security.md` -> `security`)
+- Matches the agent file basename without the `-reviewer` suffix (e.g., `security-reviewer.md` -> `security`)
 
 ```
 検出された専門領域:
@@ -1526,7 +1526,7 @@ If the following issues occur with the sub-agent approach:
 - `description`: "セキュリティ専門家 PR レビュー" (short description)
 - `subagent_type`: `rite:{reviewer_type}-reviewer` — scoped name derived from the reviewer selected in ステップ 2 (see table below)
 - `prompt`:
- - `review_mode == "full"`: ステップ 4.5 format (diff, spec, shared reviewer principles, skill profile, checklist)
+ - `review_mode == "full"`: ステップ 4.5 format (diff, spec, shared reviewer principles)
  - `review_mode == "verification"`: ステップ 4.5.1 verification template + ステップ 4.5 full template, concatenated in a single prompt. Include previous findings table and incremental diff (from ステップ 1.2.4) in addition to the standard inputs.
 
 **`reviewer_type` → `subagent_type` mapping:**
@@ -1564,7 +1564,7 @@ Retry procedure when a Task tool returns an error:
 | Timeout | Yes (up to 1 time) | Re-execute with the same prompt |
 | Network error | Yes (up to 1 time) | Re-execute with the same prompt |
 | Invalid output format | Yes (up to 1 time) | Re-execute with "output in the exact format" appended to the prompt |
-| Skill file load failure | No | Substitute with fallback profile |
+| Skill file load failure | No | Fall back to the built-in pattern table (ステップ 2.2) for reviewer selection |
 | subagent resolution failure | No | Fail immediately. Display the scoped name used (`rite:{reviewer_type}-reviewer`) and the error message. Do NOT silently fall back to `general-purpose` — that would defeat the Phase B quality improvement. Mark the reviewer as "incomplete" and continue with other reviewers. If all reviewers fail this way, prompt the user with `AskUserQuestion` (retry / rollback to `general-purpose` temporarily / abort review) |
 
 **Error type determination method:**
@@ -3902,7 +3902,7 @@ failure mode being blocked here.
 | Error | Action |
 |--------|------|
 | PR not found | Check with `gh pr list` and re-run with the correct number |
-| Skill file load failure | Fallback using built-in profiles (WARNING を stderr に出力) |
+| Skill file load failure | Fall back to the built-in pattern table (ステップ 2.2) for reviewer selection (WARNING を stderr に出力) |
 | Review execution error | Choose skip/retry/cancel (skip 時は WARNING を stderr に出力) |
 | Comment post failure | Display review results as text (WARNING を stderr に出力) |
 

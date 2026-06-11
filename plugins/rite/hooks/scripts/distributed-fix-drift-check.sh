@@ -2,7 +2,7 @@
 # distributed-fix-drift-check.sh
 #
 # Detect "distributed fix drift" patterns in large rite-workflow procedural
-# markdown files (fix.md, review.md, tech-writer.md, etc.).
+# markdown files (fix.md, review.md, tech-writer-reviewer.md, etc.).
 #
 # This is the static lint counterpart to LLM agent-based review, which has
 # been observed to miss distributed/asymmetric fix patterns (PR #350 / Issue #361).
@@ -40,7 +40,7 @@ USE_ALL=0
 DEFAULT_ALL_TARGETS=(
   "plugins/rite/commands/pr/fix.md"
   "plugins/rite/commands/pr/review.md"
-  "plugins/rite/agents/tech-writer.md"
+  "plugins/rite/agents/tech-writer-reviewer.md"
   "plugins/rite/scripts/review-findings-maps.sh"
 )
 
@@ -49,7 +49,7 @@ usage() {
 Usage: distributed-fix-drift-check.sh [options]
 
 Options:
-  --all                       Check the default target set (fix.md, review.md, tech-writer.md, review-findings-maps.sh)
+  --all                       Check the default target set (fix.md, review.md, tech-writer-reviewer.md, review-findings-maps.sh)
   --target FILE               Check FILE (repeatable). Path relative to repo root.
   --pattern N                 Only run pattern N (1-6). Default: all patterns.
   --repo-root DIR             Repository root (default: git rev-parse --show-toplevel)

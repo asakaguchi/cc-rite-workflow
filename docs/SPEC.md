@@ -412,7 +412,7 @@ Agent documentation...
 | `model` | No | Model selection (default: inherit from parent session) |
 | `tools` | No | List of available tools (default: inherit all tools from parent; omit to enable all tools) |
 
-**Note on `tools`**: Reviewer agents are invoked via named subagents (`rite:{reviewer_type}-reviewer`, e.g. `rite:security-reviewer`), introduced in v0.3. The previous `subagent_type: general-purpose` invocation is no longer used. Under named subagent invocation, both `model` and `tools` frontmatter are honored by the runtime. The `tools` field is optional — reviewer agents omit it to inherit all parent-session tools by default. See [`docs/migration-guides/review-named-subagent.md`](migration-guides/review-named-subagent.md) for the full rationale, opus recommendation, and rollback scenarios.
+**Note on `tools`**: Reviewer agents are invoked via named subagents (`rite:{reviewer_type}-reviewer`, e.g. `rite:security-reviewer`), introduced in v0.3. The previous `subagent_type: general-purpose` invocation is no longer used. Under named subagent invocation, both `model` and `tools` frontmatter are honored by the runtime. The `tools` field is optional — reviewer agents omit it to inherit all parent-session tools by default. 9 of the 13 reviewers are pinned to `model: opus`; users can override per-agent frontmatter to opt out.
 
 **Current Agents:**
 
@@ -528,7 +528,7 @@ followed by AskUserQuestion confirmation)
 **When to use:**
 
 - When a warning that `rite-config.yml` schema is outdated appears after upgrading the rite workflow plugin and running `/rite:init` or starting a session. The exact Japanese message emitted by `/rite:init` is: `rite-config.yml のスキーマが古くなっています (v{current} → v{latest})。/rite:init --upgrade でアップグレードできます。` The session-start hook emits a slightly different variant ending in `/rite:init --upgrade を実行してください。` ("run `/rite:init --upgrade`")
-- When release notes (`CHANGELOG.md`, or migration notes referenced from the release notes — e.g., `docs/migration-guides/` when present) announce new configuration sections (e.g., `wiki:`, `review.debate:`) that are missing from your local `rite-config.yml`
+- When release notes (`CHANGELOG.md`) announce new configuration sections (e.g., `wiki:`, `review.debate:`) that are missing from your local `rite-config.yml`
 - When the `schema_version` at the top of your `rite-config.yml` diverges from the `schema_version` in the bundled template (`plugins/rite/templates/config/rite-config.yml`)
 
 **Example:**
@@ -1304,7 +1304,7 @@ If a lock's `mtime` exceeds the threshold (default: 120 seconds), the PID file i
 
 ### Phase Transition Whitelist (retired)
 
-> **Status: Retired**. The `phase-transition-whitelist.sh` library (and its `phase-transition-whitelist.test.sh` suite) were removed in the v2→v3 migration (see [`docs/migration-guides/v2-to-v3.md`](migration-guides/v2-to-v3.md)). The canonical phase enum is now `PHASE_ENUM_V3` in `flow-state.sh` (`init branch plan implement lint pr review fix ready ready_error cleanup ingest completed`), validated by its `_phase_is_valid` helper; legacy phase names are resolved by `_phase_migrate` plus the `/rite:resume` cross-check rather than a transition graph.
+> **Status: Retired**. The `phase-transition-whitelist.sh` library (and its `phase-transition-whitelist.test.sh` suite) were removed in the v2→v3 migration. The canonical phase enum is now `PHASE_ENUM_V3` in `flow-state.sh` (`init branch plan implement lint pr review fix ready ready_error cleanup ingest completed`), validated by its `_phase_is_valid` helper; legacy phase names are resolved by `_phase_migrate` plus the `/rite:resume` cross-check rather than a transition graph.
 
 Lifecycle-incomplete detection for the legacy `create_*` / `cleanup_*` phases now lives inline in `session-end.sh` (the `[[ "$_state_phase" == create_* ]]` / `cleanup_*` glob branches). The former `rite_phase_is_create_lifecycle_in_progress` / `rite_phase_is_cleanup_lifecycle_in_progress` predicates no longer exist, so the `type … >/dev/null` guard in that hook always falls through to the inline glob, which is the sole active path (pinned by `session-end.test.sh` TC-475-WARN-A〜D / TC-608-WARN-A〜E). The `rite_phase_transition_allowed` / `rite_phase_expected_next` / `rite_phase_is_known` functions and the `hooks.stop_guard.phase_transitions` override merging they backed are gone — no current hook, script, or template reads that config key.
 
@@ -1461,7 +1461,7 @@ The `session_id` is the same UUID stored in `.rite-session-id` and propagated to
 
 **Migration from legacy single-file format:**
 
-Legacy state files (flat JSON without `schema_version`, or any file with `schema_version != 3`) are auto-migrated to v3 on session start by [`flow-state.sh migrate`](../plugins/rite/hooks/flow-state.sh) — the `cmd_migrate` / `_migrate_file` path — invoked from [`session-start.sh`](../plugins/rite/hooks/session-start.sh). `_migrate_file` rewrites each file **in place** via `mktemp + flock + atomic mv` (`_atomic_write`): it strips the legacy `previous_phase` field, normalizes `branch_name` → `branch`, reduces the legacy `phase` value to the v3 enum, bumps `schema_version` to `3`, and refreshes `updated_at`, while preserving `last_synced_phase`. There is no separate `.rite-flow-state.legacy.{timestamp}` backup — the rewrite is in place. A performed migration always prints an explicit `migrated:` line to stderr (unconditional, not gated on `--verbose`, so the session-start auto path surfaces it — silent skip is forbidden, AC-8); the no-op already-v3 case stays quiet unless `--verbose`. The `--dry-run` preview (`would migrate:`) also goes to stderr for symmetry with the `migrated:` announcement, so dry-run output surfaces alongside real migrations under the session-start stdout-only silence policy. The phase reduction matrix and the manual `--dry-run` fallback are documented in [`docs/migration-guides/v2-to-v3.md`](migration-guides/v2-to-v3.md); the multi-session atomicity / glob-collision rationale is in [`docs/designs/multi-session-state.md`](designs/multi-session-state.md#migration-戦略).
+Legacy state files (flat JSON without `schema_version`, or any file with `schema_version != 3`) are auto-migrated to v3 on session start by [`flow-state.sh migrate`](../plugins/rite/hooks/flow-state.sh) — the `cmd_migrate` / `_migrate_file` path — invoked from [`session-start.sh`](../plugins/rite/hooks/session-start.sh). `_migrate_file` rewrites each file **in place** via `mktemp + flock + atomic mv` (`_atomic_write`): it strips the legacy `previous_phase` field, normalizes `branch_name` → `branch`, reduces the legacy `phase` value to the v3 enum, bumps `schema_version` to `3`, and refreshes `updated_at`, while preserving `last_synced_phase`. There is no separate `.rite-flow-state.legacy.{timestamp}` backup — the rewrite is in place. A performed migration always prints an explicit `migrated:` line to stderr (unconditional, not gated on `--verbose`, so the session-start auto path surfaces it — silent skip is forbidden, AC-8); the no-op already-v3 case stays quiet unless `--verbose`. The `--dry-run` preview (`would migrate:`) also goes to stderr for symmetry with the `migrated:` announcement, so dry-run output surfaces alongside real migrations under the session-start stdout-only silence policy. The multi-session atomicity / glob-collision rationale is in [`docs/designs/multi-session-state.md`](designs/multi-session-state.md#migration-戦略).
 
 **Rollback strategy:**
 
@@ -1941,7 +1941,25 @@ Details: {technical details for debugging}
 
 > **Status: Retired**. The runtime i18n mechanism (`{i18n:key_name}` placeholder substitution, the `plugins/rite/i18n/` directory tree with `ja.yml` / `en.yml` legacy monolithic files and `ja/` / `en/` per-domain split files, and the `references/i18n-usage.md` reference doc) was deleted entirely in #1117 (commit `d3a105f1`). All 364 placeholders across 10 remaining command/sub-skill files were resolved to inline Japanese, removing the runtime i18n resolution dependency. No language file structure remains in the plugin source tree.
 >
-> The remaining language-related controls are documentation-side conventions only — see `docs/i18n-style-guide.md` for the kept-English term list (Issue / PR / Sprint / Iteration / finding / fingerprint / severity / etc.) and the document-vs-inline split that replaces the deleted UI string store. The `language` setting in `rite-config.yml` (still live) controls the output language of LLM-generated content — including commit messages (`commands/issue/implement.md`, `commands/pr/fix.md`), PR title and body (`commands/pr/create.md`), Issue creation prompts (`commands/issue/create.md`), workflow / list output (`commands/workflow.md`, `commands/issue/list.md`), and sprint team-execute reports (`commands/sprint/team-execute.md`). It does not select a runtime UI message catalog (no such catalog exists post-#1117).
+> The remaining language-related controls are documentation-side conventions only. The `language` setting in `rite-config.yml` (still live) controls the output language of LLM-generated content — including commit messages (`commands/issue/implement.md`, `commands/pr/fix.md`), PR title and body (`commands/pr/create.md`), Issue creation prompts (`commands/issue/create.md`), workflow / list output (`commands/workflow.md`, `commands/issue/list.md`), and sprint team-execute reports (`commands/sprint/team-execute.md`). It does not select a runtime UI message catalog (no such catalog exists post-#1117).
+
+### Documentation language conventions
+
+When authoring Japanese documentation or UI wording, the following terms are **kept in English** (not translated). `finding` was added per the #1083 decision.
+
+| Term | Note |
+|------|------|
+| `Issue` / `PR` (`Pull Request` も可) | GitHub の固有概念 |
+| `Sprint` / `Iteration` | Iteration は GitHub Projects のフィールド名 |
+| `finding` / `fingerprint` / `severity` / `confidence` | レビュー概念。「指摘」(UI の行為表現) とは概念的に別物 |
+| `blocking` / `non-blocking` | finding の merge gate 効果 |
+| `review-fix loop` | 一語のみ片仮名化可 (慣用) |
+| GitHub Projects フィールド名 (`Status`, `Todo`, `In Progress`, `In Review`, `Done` 等) | GitHub UI と一致させる |
+| `rite-config.yml` キー名 / コマンド名 (`/rite:pr:open` 等) | 原文ママ |
+
+`worktree` / `hook` / `sentinel` / `marker` 等の英語固有概念も、意味を保つ必要があれば英語のまま使用してよい。文体は常体 (である調)、半角英数字と日本語の間は半角スペース、YAML キー名・コマンド名・Projects フィールド名は翻訳しない。
+
+**document-vs-inline split**: ドキュメント (`*.ja.md`) では `finding` を英語のまま使う。一方 commands / sub-skills の UI 文言では、ユーザーに見せる行為的表現として「指摘」を使い、技術識別子としては素の `finding` を保持する (旧 `plugins/rite/i18n/ja/` の使い分けを #1117 削除後も日本語直書きで継承)。
 
 ---
 

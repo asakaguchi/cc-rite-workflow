@@ -179,8 +179,7 @@ When to run it:
   (v{current} → v{latest})。/rite:init --upgrade でアップグレードできます。`
   and the session-start hook emits a variant ending in
   `/rite:init --upgrade を実行してください。` Both signal the same situation
-- When release notes (`CHANGELOG.md`, or migration notes referenced from the
-  release notes — e.g., `docs/migration-guides/` when present) announce new
+- When release notes (`CHANGELOG.md`) announce new
   configuration sections (e.g., `wiki:`, `review.debate:`) that are missing from
   your local `rite-config.yml`
 - When the `schema_version` value at the top of your `rite-config.yml` diverges

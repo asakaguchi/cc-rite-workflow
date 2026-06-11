@@ -2299,7 +2299,7 @@ Present the proposed fix and apply with Edit tool after confirmation:
 
 ### 2.3.1 Propagation Scan (#453 Component B)
 
-After applying a fix (ステップ 2.3), perform a mandatory scan for similar patterns to prevent distributed propagation failures (Pattern-1 from `fix-cycle-pattern-analysis.md`).
+After applying a fix (ステップ 2.3), perform a mandatory scan for similar patterns to prevent distributed propagation failures.
 
 Check if `review.loop.auto_propagation_scan` is enabled in `rite-config.yml` (default: `true`). If disabled, skip to ステップ 2.4.
 

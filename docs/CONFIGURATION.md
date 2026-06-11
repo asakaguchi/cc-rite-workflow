@@ -81,10 +81,6 @@ branch:
   base: "main"       # Base branch for feature branches (use "develop" for Git Flow)
   pattern: "{type}/issue-{number}-{slug}"
 
-# Commit message
-commit:
-  contextual: true    # Contextual Commits action lines in commit body
-
 # Build/test/lint commands
 commands:
   build: null  # Auto-detect
@@ -418,12 +414,6 @@ These variables are used in `branch.pattern` to generate new branch names:
 | `{slug}` | Slugified Issue title | `add-auth-feature` |
 | `{date}` | Current date (YYYYMMDD) | `20250103` |
 | `{user}` | GitHub username | `octocat` |
-
-### commit
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `contextual` | boolean | `true` | Include Contextual Commits action lines in commit body |
 
 ### commands
 

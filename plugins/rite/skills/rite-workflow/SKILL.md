@@ -25,7 +25,6 @@ This skill provides context for rite workflow operations.
 - branch, commit
 - GitHub Projects
 - review, lint
-- recall, 決定事項検索, コンテキスト, なぜ
 
 ## Context
 
@@ -108,7 +107,6 @@ Detect current state from:
 | Review mergeable, want to mark Ready | `/rite:pr:ready <pr>` then `/rite:pr:merge <pr>` |
 | Merge 完了、branch 削除 / Wiki ingest / Projects Status Done 後処理が必要 | `/rite:pr:cleanup <pr>` |
 | Long session (30+ minutes elapsed) | `/rite:issue:update` |
-| Want to recall past decisions or context | `/rite:issue:recall` or `/rite:issue:recall {scope}` |
 
 ## Question Management
 

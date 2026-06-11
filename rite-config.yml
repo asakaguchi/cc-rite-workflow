@@ -42,10 +42,6 @@ branch:
   base: "develop"    # 開発ベースブランチ（Git Flow）
   pattern: "{type}/issue-{number}-{slug}"
 
-# コミットメッセージ
-commit:
-  contextual: true    # コミット body に Contextual Commits の action ラインを入れる
-
 # ビルド / テスト / lint コマンド
 commands:
   build: null

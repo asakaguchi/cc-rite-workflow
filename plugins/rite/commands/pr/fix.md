@@ -2644,7 +2644,7 @@ printf '[CONTEXT] PRE_COMMIT_DRIFT_CHECK exit=%d changed_targets=%d\n' "$drift_e
 
 Generate a commit message based on the addressed findings.
 
-**Fail-Fast Response Principle linkage**: If the fix adopted a **fallback** path (rather than throw/raise propagation) after passing the ステップ 2 Fail-Fast Response checklist, the commit message MUST include a `decision(scope): fallback を採択した理由 — ...` / `decision(scope): adopted fallback — reason ...` action line in the commit body (via the Contextual Commits action-line mapping below). LLM: when you detect that any finding's fix introduced defensive code (null check / try-catch wrap / optional chaining / default return), add an explicit `decision(scope)` line naming the skill exception clause or requirement that justified the fallback. Unannotated fallbacks will be re-flagged in ステップ 5 re-review.
+**Fail-Fast Response Principle linkage**: If the fix adopted a **fallback** path (rather than throw/raise propagation) after passing the ステップ 2 Fail-Fast Response checklist, the commit body MUST state the reason the fallback was adopted. LLM: when you detect that any finding's fix introduced defensive code (null check / try-catch wrap / optional chaining / default return), add an explicit sentence naming the skill exception clause or requirement that justified the fallback. Unannotated fallbacks will be re-flagged in ステップ 5 re-review.
 
 **Commit message language:**
 
@@ -2676,49 +2676,7 @@ Before generating the commit message, check the `language` field in `rite-config
 
 **Commit body:**
 
-> **Reference**: [Contextual Commits Reference](../../skills/rite-workflow/references/contextual-commits.md) for action line specification, mapping tables, output rules, and scope derivation.
-
-Check `commit.contextual` in `rite-config.yml` to determine the commit body format.
-
-**When `commit.contextual: true` (default):**
-
-Generate structured action lines in the commit body following the Contextual Commits format. Review-fix commits are rich in decisions, making action lines particularly valuable.
-
-- Leave a blank line between the description line and the action lines
-- Can be omitted for trivial changes (typo fixes, formatting, etc.)
-
-**Generation procedure:**
-
-1. **Read review findings**: Extract from the review findings being addressed — the review指摘 and chosen対応方針 are the primary source for `decision` (Priority 1 — highest reliability for review-fix commits)
-2. **Read work memory**: Extract from `決定事項・メモ`, `計画逸脱ログ`, `要確認事項` sections (Priority 2)
-3. **Infer from diff**: When the diff shows clear technical choices, infer `decision` (Priority 3 — use only when evident)
-4. **Apply review-fix mapping table**: Map each extracted item to action types using the [Review-Fix Commit Mapping](../../skills/rite-workflow/references/contextual-commits.md) table:
-   - レビュー指摘の対応方針 → `decision(scope)`
-   - 対応しなかった指摘とその理由 → `rejected(scope)`
-   - 対応中に発見した制約 → `constraint(scope)`
-   - 対応中の発見事項 → `learned(scope)`
-   - **レビューソースの provenance** → `decision(review-source): {review_source}` (ステップ 1.2.0 Priority chain で決定された `review_source` 値を commit body に記録。schema.md Priority 1 emit 義務の provenance 契約を ステップ 3.2 commit message でも履行する)
-5. **Filter to 10-line limit**: If action lines exceed 10, trim in order: `learned` → `constraint` → `rejected` → `decision` → `root-cause` → `intent` (intent is preserved last as the core "why"; `root-cause` is preserved at higher priority than `decision` because ステップ 3.2.1 Root Cause Gate prefers an explicit `root-cause(scope)` action line as the canonical pass signal — other pass forms (`decision(scope)` naming the root cause, or a `Root cause:` paragraph) also satisfy the gate; `comment-update` is out of scope — single-purpose commits do not exceed 10 lines)
-
-**Output rules:**
-- Action type names are always in English (`intent`, `decision`, `root-cause`, `rejected`, `constraint`, `learned`, `comment-update`)
-- Description follows the `language` setting in `rite-config.yml`
-- Do not repeat information already visible in the diff
-- Do not fabricate action lines without evidence from review findings, work memory, or diff
-
-**Example (language: ja):**
-
-```
-fix(review): レビュー指摘に対応
-
-decision(validation): 入力バリデーションを追加（レビュー指摘: 未検証の入力がエラーを引き起こす可能性）
-rejected(refactor): ハンドラー全体のリファクタリングは見送り — スコープ外、別 Issue で対応
-learned(error-handling): エラーレスポンスのフォーマットは既存の middleware と統一する必要あり
-```
-
-**When `commit.contextual: false`:**
-
-Use free-form commit body. Include the reason for the change ("why") in the commit body.
+Use a free-form commit body. Include the reason for the change ("why") in the commit body. For review-fix commits, state the chosen対応方針 and, when a fix addresses a root cause, name that root cause explicitly (the ステップ 3.2.1 Root Cause Gate looks for a `Root cause:` / `根本原因:` paragraph).
 
 - Leave a blank line between the description line and the body
 - Write in free-form — no specific prefix or template required
@@ -2753,8 +2711,8 @@ Acknowledged-finding: F-NN (file:line) — reason
 ```
 fix(review): レビュー指摘に対応 (acknowledged 含む)
 
-decision(validation): 入力バリデーションを追加 (F-01 対応)
-decision(scope): F-02 は accept として受け流し — reviewer の指摘範囲を本 PR scope 外と判断
+F-01 の入力バリデーションを追加。F-02 は reviewer の指摘範囲を本 PR scope 外と
+判断し accept として受け流した。
 
 Acknowledged-finding: F-02 (src/foo.ts:42) — reviewer scope: out-of-current-pr; user decision: accept
 Acknowledged-finding: F-05 (src/bar.ts:88) — user decision: accept (no reason given)
@@ -2769,7 +2727,7 @@ Addresses review comments from @reviewer1
 
 fix(review): {description}
 
-{action_lines (when commit.contextual: true)}
+{free-form body — "why" + Root cause paragraph when applicable}
 
 {acknowledged_finding_lines (展開ルール: accept finding 0 件 → 完全省略 (前後 blank line も削除、conventional commits lint の連続空行 fail を防ぐ)。1 件以上 → 各 `Acknowledged-finding:` 行を `\n` 区切りで連結、末尾改行なし)}
 
@@ -2789,11 +2747,7 @@ Before committing a fix, the commit body **MUST** include a root-cause explanati
 
 **Step 1 — Semantic LLM check (no shell variable dependency)**: The LLM examines the commit body it generated in ステップ 3.2 and determines whether a root-cause explanation is present. Because shell variables do not persist across Bash tool invocations, this gate is intentionally LLM-semantic rather than bash-automated.
 
-A commit body passes the gate when **any** of the following is true:
-
-- It contains a `root-cause(scope): ...` action line (see `contextual-commits.md` Review-Fix Commit Mapping — new action type added for this gate)
-- It contains a `decision(scope): ...` action line whose text explicitly names the root cause (not just the symptom fixed)
-- A free-form body with a `Root cause:` / `根本原因:` prefix paragraph is present
+A commit body passes the gate when it contains a `Root cause:` / `根本原因:` prefix paragraph that explicitly names the root cause (not just the symptom fixed).
 
 Emit one of the two context markers so downstream logic can route:
 
@@ -2808,8 +2762,8 @@ echo "[CONTEXT] ROOT_CAUSE_GATE=missing"
 
 | Option | Action |
 |--------|--------|
-| Root cause を追記して再コミット（推奨） | Ask the user for a short root-cause paragraph; prepend `root-cause: {paragraph}` (or `decision(scope): ...` naming the root cause) to the commit body; re-invoke Step 1. The retry count is tracked in conversation context by the LLM — after one retry the LLM falls through to the second option to avoid an infinite prompt loop |
-| 意図的な補足コミットとして通過 | Prepend `decision(scope): root-cause gate を意図的に bypass — {理由}` to the commit body (this is the bypass rationale recorded alongside the commit for machine-traceability) AND append the same rationale to work memory `決定事項・メモ`. The "bypass" is still recorded — just via `decision(scope)` instead of `root-cause(scope)` |
+| Root cause を追記して再コミット（推奨） | Ask the user for a short root-cause paragraph; prepend a `Root cause: {paragraph}` / `根本原因: {paragraph}` paragraph to the commit body; re-invoke Step 1. The retry count is tracked in conversation context by the LLM — after one retry the LLM falls through to the second option to avoid an infinite prompt loop |
+| 意図的な補足コミットとして通過 | Prepend a `Root cause (bypass): {理由}` paragraph to the commit body (the bypass rationale recorded alongside the commit for machine-traceability) AND append the same rationale to work memory `決定事項・メモ`. The bypass is still recorded |
 | Abort | Skip this fix cycle; emit `[fix:error]` and return control to the caller |
 
 **Step 3**: Purely cosmetic fixes (typo in a docstring with no functional change) may legitimately select option 2. The bypass MUST be recorded so a later auditor can distinguish "no root cause needed" from "author forgot to identify root cause".

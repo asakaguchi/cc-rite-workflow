@@ -60,7 +60,6 @@ The command prefix `rite` was chosen for:
 | `/rite:issue:update` | Update work memory | `[memo]` |
 | `/rite:issue:close` | Check Issue completion | `<Issue number>` |
 | `/rite:issue:edit` | Interactively edit existing Issue | `<Issue number>` |
-| `/rite:issue:recall` | Search Contextual Commit history for past decisions | `[{scope}\|{action}({scope})]` |
 | `/rite:pr:open` | Start work end-to-end (branch → plan → implement → lint → draft PR) | `<Issue number>` |
 | `/rite:pr:iterate` | Loop review ⇄ fix until mergeable | `<PR number>` |
 | `/rite:pr:merge` | Squash-merge the PR | `<PR number>` |
@@ -148,7 +147,6 @@ rite-workflow/
 │ │ ├── update.md # /rite:issue:update
 │ │ ├── close.md # /rite:issue:close
 │ │ ├── edit.md # /rite:issue:edit
-│ │ ├── recall.md # /rite:issue:recall
 │ │ ├── implement.md # /rite:issue:implement (sub-skill, invoked from /rite:pr:open)
 │ │ └── references/ # Edge cases, complexity gates, bulk-create patterns
 │ ├── pr/
@@ -434,7 +432,6 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 | ~~`project.type`~~ | **DEPRECATED** — Removed entirely; project-specific configuration is now expressed via per-key YAML directly. See CONFIGURATION.md project section for deprecation note |
 | `github.projects.*` | GitHub Projects integration (`field_ids`, `fields`, `project_number`, `owner`) |
 | `branch.*` | `base`, `pattern`, `recognized_patterns` |
-| `commit.contextual` | Contextual Commits action lines in commit body |
 | `commands.{build,test,lint}` | Build/test/lint auto-detection overrides |
 | `issue.auto_decompose_threshold` | Threshold for skipping the decomposition prompt |
 | `review.*` | `loop.*` (convergence_monitoring / auto_propagation_scan / pre_commit_drift_check), `doc_heavy.*`, `fact_check.*` (incl. `use_context7`), `debate.*`, `security_reviewer.*`, `confidence_threshold`. **DEPRECATED**: `observed_likelihood_gate.*` / `fail_fast_first.*` were removed entirely — see CONFIGURATION.md for the deprecation note. The `separate_issue_creation.*` keys were removed entirely in #1136 along with the `[fix:issues-created:N]` sentinel and `fix.md` Phase 4.3 |

@@ -74,7 +74,6 @@ This will:
 | `/rite:issue:update` | Update work memory |
 | `/rite:issue:close` | Check Issue completion |
 | `/rite:issue:edit` | Edit existing Issue interactively |
-| `/rite:issue:recall` | Search Contextual Commit history for past decisions |
 | `/rite:pr:open` | Start work end-to-end (branch → plan → implement → lint → draft PR) |
 | `/rite:pr:iterate` | Loop review ⇄ fix until mergeable |
 | `/rite:pr:merge` | Squash-merge the PR |
@@ -127,9 +126,6 @@ github:
 branch:
   base: "main"       # Base branch for feature branches (use "develop" for Git Flow)
   pattern: "{type}/issue-{number}-{slug}"
-
-commit:
-  contextual: true
 
 # Optional: Iteration (GitHub Projects Iteration field) integration
 iteration:

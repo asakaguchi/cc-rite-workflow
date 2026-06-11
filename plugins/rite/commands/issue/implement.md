@@ -597,47 +597,7 @@ Follow the `language` setting in `rite-config.yml` (`auto`: detect user input la
 
 **Commit body:**
 
-> **Reference**: [Contextual Commits Reference](../../skills/rite-workflow/references/contextual-commits.md) for action line specification, mapping tables, output rules, and scope derivation.
-
-Check `commit.contextual` in `rite-config.yml` to determine the commit body format.
-
-**When `commit.contextual: true` (default):**
-
-Generate structured action lines in the commit body following the Contextual Commits format. This embeds decision records directly in git history.
-
-- Leave a blank line between the description line and the action lines
-- Can be omitted for trivial changes (typo fixes, formatting, dependency bumps, etc.)
-
-**Generation procedure:**
-
-1. **Read work memory**: Extract from `決定事項・メモ`, `計画逸脱ログ`, `要確認事項` sections (Priority 1 — highest reliability)
-2. **Extract from Issue body**: Derive `intent` from Issue purpose/motivation, `constraint` from acceptance criteria and technical restrictions (Priority 2)
-3. **Infer from diff**: When the diff shows clear technical choices (new dependencies, library switches, API design), infer `decision` (Priority 3 — use only when evident)
-4. **Apply mapping table**: Map each extracted item to action types using the [Work Memory → Action Line Mapping](../../skills/rite-workflow/references/contextual-commits.md#work-memory--action-line-mapping) table
-   > **Routing note (Why not)**: `rejected` に mapping した却下案のうち、将来の読者がコードを見てその却下案へ「改善」し直すリスクがあるものは、コード側に Why not コメント（現在形の制約文）が残っているか確認する。判定基準は [comment-best-practices.md の Why not 節](../../skills/rite-workflow/references/comment-best-practices.md#why-not却下した代替案の明示とルーティング基準) を参照。
-5. **Filter to 10-line limit**: If action lines exceed 10, trim in order: `learned` → `constraint` → `rejected` → `decision` → `root-cause` → `intent` (intent is preserved last as the core "why"; `comment-update` is out of scope — single-purpose commits do not exceed 10 lines)
-
-**Output rules**:
-
-- Action type names are always in English (`intent`, `decision`, `root-cause`, `rejected`, `constraint`, `learned`, `comment-update`)
-- Description follows the `language` setting in `rite-config.yml`
-- Do not repeat information already visible in the diff
-- Do not fabricate action lines without evidence from work memory, Issue body, or diff
-- Conversation context is supplementary only (Priority 4 — lowest, lost after `/clear`)
-
-**Example (language: ja):**
-
-```
-feat(commit): implement.md のコミット body に Contextual Commits を追加
-
-intent(commit): コミット履歴に意思決定の永続記録を埋め込み、セッション消失後も判断理由を参照可能にする
-decision(format): Conventional Commits の subject line を維持し body のみ拡張（既存ツールチェーンとの互換性）
-constraint(body): アクションライン最大10行（コミットメッセージの肥大化防止）
-```
-
-**When `commit.contextual: false`:**
-
-Use free-form commit body. Include the reason for the change ("why") in the commit body.
+Use a free-form commit body. Include the reason for the change ("why") in the commit body.
 
 - Leave a blank line between the description line and the body
 - Write in free-form — no specific prefix or template required

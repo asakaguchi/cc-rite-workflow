@@ -61,10 +61,6 @@ branch:
   #   - "i18n/{locale}"                    # e.g., i18n/zh-tw
   #   - "hotfix/{date}-{description}"      # e.g., hotfix/20250109-critical-fix
 
-# Commit message
-commit:
-  contextual: true     # Contextual Commits action lines in commit body (true | false)
-
 # Build/test/lint commands (null = auto-detect)
 commands:
   build: null

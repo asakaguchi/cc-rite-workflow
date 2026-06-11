@@ -26,7 +26,6 @@ The name comes from the English word **rite**, meaning "ritual" or "ceremony." I
 - **Smart Reviews**: Dynamic multi-reviewer code review with **Doc-Heavy PR Mode** for documentation-centric PRs. When a PR is detected as doc-heavy, the tech-writer reviewer verifies five doc-implementation consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) using Grep/Read/Glob. See [`plugins/rite/commands/pr/references/internal-consistency.md`](plugins/rite/commands/pr/references/internal-consistency.md) for the full verification protocol
 - **External Review Integration**: `/rite:pr:fix` accepts PR URL or comment URL arguments, so output from external review tools can feed directly into the fix loop
 - **Iteration Tracking**: Optional GitHub Projects Iteration field integration (auto-assign on `/rite:pr:open`, `--sprint` / `--backlog` filters in `/rite:issue:list`)
-- **TDD Light Mode**: Generate test skeletons from acceptance criteria before implementation
 - **Preflight Check**: Unified pre-execution verification across all commands
 - **Local Work Memory**: Compact-resilient work state management with lock/resuming support
 - **Implementation Contract**: Structured Issue template format for clear specifications

@@ -268,7 +268,6 @@ If this fails, fall back to the content retained from Phase 1. Retain this conte
 
 - `Issue` / `開始` / `ブランチ` (in セッション情報)
 - `実装計画` (if exists)
-- `TDD 状態` (if exists — added by Phase 5.1.0.T, conditional)
 - `計画逸脱ログ` (if exists)
 - `ボトルネック検出ログ` (if exists)
 - `レビュー対応履歴` (if exists)

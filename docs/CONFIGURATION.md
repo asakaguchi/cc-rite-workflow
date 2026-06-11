@@ -195,13 +195,6 @@ verification:
   run_tests_before_pr: true          # Run tests before commit/PR (requires commands.test) (default: true)
   acceptance_criteria_check: true    # Check acceptance criteria from Issue body before PR (default: true)
 
-# TDD Light mode settings
-tdd:
-  mode: "off"              # off | light (default: off)
-  tag_prefix: "AC"         # Tag prefix for test skeleton markers (default: "AC")
-  run_baseline: true       # Run baseline test before skeleton generation (default: true)
-  max_skeletons: 20        # Maximum number of skeletons to generate per Issue (default: 20)
-
 # Parallel implementation settings
 parallel:
   enabled: true          # Enable parallel implementation (default: true)
@@ -603,34 +596,6 @@ verification:
   run_tests_before_pr: true
   acceptance_criteria_check: true
 ```
-
-### tdd
-
-Settings for TDD (Test-Driven Development) Light mode. When enabled, test skeletons are generated from acceptance criteria before implementation.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `mode` | string | `"off"` | TDD mode: `"off"` (disabled) or `"light"` (generate test skeletons from acceptance criteria) |
-| `tag_prefix` | string | `"AC"` | Tag prefix for test skeleton markers (e.g., `AC-1`, `AC-2`) |
-| `run_baseline` | boolean | `true` | Run baseline test suite before generating skeletons to ensure existing tests pass |
-| `max_skeletons` | integer | `20` | Maximum number of test skeletons to generate per Issue |
-
-**Example:**
-
-```yaml
-tdd:
-  mode: "light"
-  tag_prefix: "AC"
-  run_baseline: true
-  max_skeletons: 20
-```
-
-**How TDD Light works:**
-
-1. Acceptance criteria are extracted from the Issue body
-2. Test skeletons are generated with markers (e.g., `// AC-1: User can log in`)
-3. Implementation proceeds to make the skeleton tests pass
-4. Test results are verified before PR creation
 
 ### parallel
 

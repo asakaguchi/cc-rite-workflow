@@ -178,13 +178,6 @@ multi_session:
 # They are added as comments during --upgrade.
 # Uncomment and configure as needed.
 
-# TDD Light mode settings (off by default)
-# tdd:
-#   mode: "off"              # off | light (default: off)
-#   tag_prefix: "AC"         # Tag prefix for test skeleton markers
-#   run_baseline: true       # Run baseline test before skeleton generation
-#   max_skeletons: 20        # Maximum number of skeletons to generate per Issue
-
 # PR review result recording (#443)
 # デフォルトではレビュー結果を PR コメントには記録せず、タイムスタンプ付き
 # ローカルファイル (.rite/review-results/{pr_number}-{timestamp}.json) に保存する。

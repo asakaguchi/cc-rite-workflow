@@ -57,13 +57,6 @@ verification:
   run_tests_before_pr: true          # commit / PR 前にテスト実行（commands.test が必要）
   acceptance_criteria_check: true    # PR 前に Issue body の受入基準を確認
 
-# TDD Light モード
-tdd:
-  mode: "off"              # off | light (default: off)
-  tag_prefix: "AC"         # テスト skeleton マーカーのタグプレフィックス
-  run_baseline: true       # skeleton 生成前にベースラインテストを実行
-  max_skeletons: 20        # Issue 1 件あたりの最大 skeleton 数
-
 # Issue 設定
 issue:
   auto_decompose_threshold: M  # XS | S | M | L | XL | none — この規模を超える Issue を自動分解

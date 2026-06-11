@@ -286,7 +286,6 @@ rite-workflow/
 │ ├── execution-metrics.md
 │ ├── plugin-path-resolution.md / git-worktree-patterns.md
 │ ├── common-error-handling.md
-│ ├── tdd-light.md
 │ └── bottleneck-detection.md
 │ # Note: references/i18n-usage.md and plugins/rite/i18n/ directory (ja.yml,
 │ # en.yml, and the ja/ + en/ split files) were deleted entirely in #1117 —
@@ -441,7 +440,6 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 | `review.*` | `loop.*` (convergence_monitoring / auto_propagation_scan / pre_commit_drift_check), `doc_heavy.*`, `fact_check.*` (incl. `use_context7`), `debate.*`, `security_reviewer.*`, `confidence_threshold`. **DEPRECATED**: `observed_likelihood_gate.*` / `fail_fast_first.*` were removed entirely — see CONFIGURATION.md for the deprecation note. The `separate_issue_creation.*` keys were removed entirely in #1136 along with the `[fix:issues-created:N]` sentinel and `fix.md` Phase 4.3 |
 | `fix.*` | `fail_fast_response`. **DEPRECATED**: `severity_gating.*` was removed entirely — see CONFIGURATION.md for the deprecation note |
 | `verification.*` | `run_tests_before_pr`, `acceptance_criteria_check` |
-| `tdd.*` | TDD Light mode (`off` / `light`) |
 | `parallel.*` | Parallel implementation (per-Issue sub-agent fan-out within one session) |
 | `multi_session.*` | Per-session Git worktree isolation — `enabled` (default `true` since #1391; set `false` to opt out), `worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are not merged. See [docs/designs/multi-session-worktree.md](./designs/multi-session-worktree.md) |
 | `iteration.*` | GitHub Projects Iteration field integration |
@@ -538,7 +536,7 @@ followed by AskUserQuestion confirmation)
  - **User-customized value** (preserve): `project_number`, `owner`, `iteration` settings, `branch.base`, `language`, etc.
  - **Deprecated key** (remove): `project.name`, `commit.style`, `commit.enforce`, `branch.release`, `branch.types`, `version`
  - **Missing section** (add with template defaults): `review.debate`, `review.fact_check`, `verification`, etc.
- - **Advanced section** (add as commented-out block): `tdd`, `parallel`, `team`, `metrics`, `safety`, `investigate`
+ - **Advanced section** (add as commented-out block): `parallel`, `metrics`, `safety`, `investigate`
  - **Unknown key** (preserve with warning): user-added keys not present in the template
 5. **Preview and confirm** (Step 5)
  Display deprecated keys to be removed, sections to be added, and preserved existing settings; ask via `AskUserQuestion` to either apply or cancel.
@@ -1356,28 +1354,6 @@ Non-hook helper scripts invoked either directly from orchestrator commands or by
 ---
 
 ## Features
-
-### TDD Light Mode
-
-A lightweight TDD mode that auto-generates test skeletons from acceptance criteria, preparing test structure before implementation.
-
-**Configuration:**
-
-```yaml
-# rite-config.yml
-tdd:
- mode: "off" # off | light (default: off)
- tag_prefix: "AC" # Tag prefix for test markers
- run_baseline: true # Run baseline tests before skeleton generation
- max_skeletons: 20 # Maximum skeletons per Issue
-```
-
-**Workflow:**
-
-1. Analyze Issue acceptance criteria
-2. Assign hashtags (`AC[a1b2c3d4]`) to each criterion
-3. Generate test skeletons (with `skip` / `pending` / `todo` markers)
-4. Fill in skeletons sequentially during implementation
 
 ### Preflight Check System
 

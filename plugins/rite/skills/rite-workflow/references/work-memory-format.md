@@ -170,51 +170,6 @@ Records bottleneck detection and Oracle-based re-decomposition events during Pha
 
 **Recording timing**: At the next bulk update point (commit time), per implement.md 5.1.0.5. This avoids excessive API calls during active implementation.
 
-## TDD State Section
-
-Tracks TDD Light mode state during implementation. Added by Phase 5.1.0.T when `tdd.mode: "light"` is configured. Not present during initialization (added at first skeleton generation).
-
-```markdown
-### TDD 状態
-- **skeleton_generated**: {true/false}
-- **classification**: {TDD_RED_CONFIRMED/TDD_TRIVIALLY_PASSING/...}
-- **criteria_count**: {n}
-- **generated_count**: {n}
-- **skipped_count**: {n}
-- **skip_reason**: {reason or null}
-```
-
-**Field definitions:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `skeleton_generated` | bool | Whether skeletons have been generated |
-| `classification` | string | Classification result from Phase B (see [tdd-light.md](../../../references/tdd-light.md#classification-logic)) |
-| `criteria_count` | int | Total acceptance criteria extracted |
-| `generated_count` | int | Number of skeletons actually generated |
-| `skipped_count` | int | Number of criteria skipped (idempotency or limit) |
-| `skip_reason` | string/null | Reason if entire generation was skipped (e.g., `commands.test: null`, `no acceptance criteria`, `framework not detected`) |
-
-**Skip stub schema** (when generation is skipped entirely):
-
-```markdown
-### TDD 状態
-- **skeleton_generated**: false
-- **classification**: N/A
-- **criteria_count**: 0
-- **generated_count**: 0
-- **skipped_count**: 0
-- **skip_reason**: {reason}
-```
-
-**Idempotency rules**:
-
-- Global skip: `skeleton_generated: true` AND tags exist in codebase → skip generation
-- Per-criterion skip: tag already exists in test file → skip individual criterion
-- Tag disappearance: `skeleton_generated: true` but tags not found → WARNING + regenerate
-
-**Conditional preservation in update.md**: Preserve `### TDD 状態` section when it exists. Do not add during initial work memory creation (Phase 2.6) — only added by Phase 5.1.0.T.
-
 ## Review Response History Section
 
 Tracks the review-fix loop count. Updated by `/rite:pr:review` Phase 6.2 after each review cycle.

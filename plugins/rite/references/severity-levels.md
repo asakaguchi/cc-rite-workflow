@@ -97,10 +97,10 @@ Four reviewer categories MAY retain **CRITICAL / HIGH / MEDIUM / LOW-MEDIUM** se
 
 | Category | Reviewer | Rationale |
 |---|---|---|
-| **Security** | `security.md` | Adversarial input is the reviewer's job. A SQL injection vector that has no observed exploit today is still a CRITICAL risk because the attacker chooses when to demonstrate it. |
-| **Database migration** | `database.md` | A migration runs once in production. A destructive or irreversible migration cannot be retried. The blast radius is the entire production dataset. |
-| **Infrastructure** | `devops.md` | Deployment, rollback, and infra-as-code paths are exercised rarely but failure leaves production in a broken state with no rollback. |
-| **Dependencies** | `dependencies.md` | Known CVEs, supply-chain compromise, and license violations are inherently "could happen any time" risks. Waiting for observed exploitation is wrong. |
+| **Security** | `security-reviewer.md` | Adversarial input is the reviewer's job. A SQL injection vector that has no observed exploit today is still a CRITICAL risk because the attacker chooses when to demonstrate it. |
+| **Database migration** | `database-reviewer.md` | A migration runs once in production. A destructive or irreversible migration cannot be retried. The blast radius is the entire production dataset. |
+| **Infrastructure** | `devops-reviewer.md` | Deployment, rollback, and infra-as-code paths are exercised rarely but failure leaves production in a broken state with no rollback. |
+| **Dependencies** | `dependencies-reviewer.md` | Known CVEs, supply-chain compromise, and license violations are inherently "could happen any time" risks. Waiting for observed exploitation is wrong. |
 
 Reviewers in these categories MUST still record the Likelihood classification in the finding's `内容` column (e.g., "Likelihood: Hypothetical (例外カテゴリ: security)") so the reader knows the severity was not auto-downgraded.
 
@@ -150,10 +150,10 @@ schema 1.0 / 1.0.0 の review-results JSON は `scope` フィールドを持た�
 
 | Reviewer | scope=`nit-noted` | 許容 scope |
 |----------|------------------|----------|
-| `security.md` | ❌ 禁止 | `current-pr` / `follow-up` |
-| `database.md` | ❌ 禁止 | `current-pr` / `follow-up` |
-| `devops.md` | ❌ 禁止 | `current-pr` / `follow-up` |
-| `dependencies.md` | ❌ 禁止 | `current-pr` / `follow-up` |
+| `security-reviewer.md` | ❌ 禁止 | `current-pr` / `follow-up` |
+| `database-reviewer.md` | ❌ 禁止 | `current-pr` / `follow-up` |
+| `devops-reviewer.md` | ❌ 禁止 | `current-pr` / `follow-up` |
+| `dependencies-reviewer.md` | ❌ 禁止 | `current-pr` / `follow-up` |
 
 ## Evaluation Criteria
 

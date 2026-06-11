@@ -474,7 +474,7 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 
 **Rules**:
 1. Route each kind of knowledge to its one channel; do not record the same knowledge in two channels.
-2. Defer each channel's detailed rules to its SoT — do not duplicate them here: comments → [comment-best-practices.md](./comment-best-practices.md), tests → [reviewers/test.md](../../reviewers/test.md). For commits, record the "why" in the commit message body (free-form prose).
+2. Defer each channel's detailed rules to its SoT — do not duplicate them here: comments → [comment-best-practices.md](./comment-best-practices.md), tests → [test-reviewer.md](../../../agents/test-reviewer.md). For commits, record the "why" in the commit message body (free-form prose).
 3. Transport misplaced knowledge to its correct medium rather than leaving it: change history found in a comment → move it to the commit; How found in a comment → promote it to naming and delete the comment.
 
 **Where to Apply**:

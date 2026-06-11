@@ -149,7 +149,7 @@ Phase 番号取扱方針: エントリは機能名レベルで変更を記述し
     4. finding quality gate 不通過 — `_reviewer-base.md` に新規追加された `Finding Quality Guardrail` が bikeshedding / 防衛コード / hypothetical / style-only findings を output 前にフィルタ。survivor が 0 件になった reviewer は `### Reviewer self-assessment` セクションで "degraded" を明示的に self-report し escalate する。
   - **finding fingerprint 仕様**: `sha1(normalize(file_path) + ":" + category + ":" + normalize(message))`。identifier マスキングと Jaccard token 類似度 > 0.7 による near-match 検出を含む。完全仕様は `start.md` Phase 5.4.1.0 を参照。
   - **minor version bump**: 0.3.10 → 0.4.0 (6 version files 同期)。
-  - **deprecation warning**: `/rite:lint` (Phase 0.5) が `rite-config.yml` に削除済み 3 キーが残存するかをスキャンし、検出時は stderr と最終レポートに警告を出力。値は runtime で silent に無視される。
+  - **削除キーの扱い**: 削除済み 3 キーは runtime で silent に無視される。これらに対する `/rite:lint` の deprecation scan や警告は行われない。
   - **サイクル数の安全上限は設けない (意図的)**: 非公開ガードを含めて cycle-count ベースの上限は一切存在しない。4 品質シグナルが唯一の終了メカニズムとして設計されており、隠し iteration counter の導入は本リリースのコア目的 (サイクル数縮退の全廃) と矛盾するため採用しない。
 
 ### 移行ガイド
@@ -166,7 +166,7 @@ safety:
   max_review_fix_loops: 7
 ```
 
-v0.4.0 では値は silent に無視されますが、`/rite:lint` は削除されるまで警告を出し続けます。機能的な代替はありません — 非収束は 4 つの品質シグナルが自動検出するため、サイクル数の閾値設定は不要になりました。
+v0.4.0 では値は silent に無視されます。機能的な代替はありません — 非収束は 4 つの品質シグナルが自動検出するため、サイクル数の閾値設定は不要になりました。
 
 これまで `max_review_fix_loops` の hard limit で暴走ループから脱出していた場合、同等の安全性は Quality Signal 1 (fingerprint 循環検知) が提供します。**2 回目**の同一 finding 出現で発火するため、cycle-count による抑制よりも早く escalate します。
 

@@ -48,7 +48,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/control-char-neutralize.sh"
 
 # Resolve project root (git root anchored). Matches session-start.sh /
-# _resolve-schema-version.sh convention. `$PWD`-based
+# state-path-resolve.sh convention. `$PWD`-based
 # rite-config.yml lookup would silently miss the config file when this script
 # is invoked from a subdirectory. This script is a CLI tool (not a Claude Code
 # hook), so $PWD is used in place of the stdin-supplied CWD that hook scripts

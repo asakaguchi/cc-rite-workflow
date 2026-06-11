@@ -22,8 +22,7 @@
 #   # 後方互換形式 (明示 list 使用):
 #   bash "$SCRIPT_DIR/_validate-helpers.sh" "$SCRIPT_DIR" \
 #     state-path-resolve.sh _resolve-session-id.sh _resolve-session-id-from-file.sh \
-#     _resolve-schema-version.sh _resolve-cross-session-guard.sh \
-#     _mktemp-stderr-guard.sh
+#     _resolve-cross-session-guard.sh _mktemp-stderr-guard.sh _validate-state-root.sh
 #
 # Arguments:
 #   $1       script_dir   : Caller の SCRIPT_DIR (helper 群が存在するディレクトリ)

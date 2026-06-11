@@ -20,8 +20,8 @@
 #
 # Why this exists:
 #   The same validation block (case glob + tr -d '[:cntrl:]' check + 4 ERROR
-#   lines) was duplicated byte-for-byte across two helpers
-#   (_resolve-session-id-from-file.sh / _resolve-schema-version.sh). This helper
+#   lines) was duplicated byte-for-byte across the state-read helpers
+#   (_resolve-session-id-from-file.sh ほか). This helper
 #   is the single source of truth for STATE_ROOT validation. The original
 #   threat model (defence-in-depth against future callers passing untrusted
 #   path values) is preserved verbatim.

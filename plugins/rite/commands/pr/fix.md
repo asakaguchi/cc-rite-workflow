@@ -1901,7 +1901,7 @@ Terminate processing.
 **Purpose**: ステップ 1.2 Fast Path で作成した一時ファイル (ハンドオフ 3 + raw_json + intermediate 3、合計 7 本) を明示的に削除する。**ステップ 1.5 として独立に実行する** (ステップ 1 の最終サブフェーズ、ステップ 2 遷移直前のタイミング)。これにより `/tmp` 累積汚染と再実行時の stale data 参照を防ぐ。
 
 **Important — specific path 必須** (並列 fix 実行の他セッション破壊防止):
-- wildcard glob (`/tmp/rite-fix-target-body-*.txt` 等) は**絶対に使わない**。並行 terminal / sprint team-execute / 手動複数セッションで他セッションの一時ファイルも silent に消す事故になる
+- wildcard glob (`/tmp/rite-fix-target-body-*.txt` 等) は**絶対に使わない**。並行 terminal / 手動複数セッションで他セッションの一時ファイルも silent に消す事故になる
 - 必ず `{pr_number}-{target_comment_id}` suffix を含む specific path で削除する
 
 ```bash

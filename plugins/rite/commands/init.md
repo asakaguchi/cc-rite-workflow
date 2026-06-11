@@ -1127,10 +1127,10 @@ rite workflow セットアップが完了しました
 3. /rite:pr:open <番号> で作業開始
 
 <!-- Iteration が有効な場合のみ表示 -->
-## スプリント管理（有効な場合）
-- /rite:sprint:list でスプリント一覧を表示
-- /rite:sprint:current で現在のスプリントを確認
-- /rite:sprint:plan でスプリント計画を実行
+## Iteration 管理（有効な場合）
+- /rite:pr:open 時に現在の active iteration へ自動 assign（`iteration.auto_assign: true`）
+- /rite:issue:list --sprint current で現在の iteration の Issue を一覧
+- /rite:issue:list --backlog で未割当の Issue を一覧
 
 詳細は /rite:workflow でワークフロー全体を確認できます。
 

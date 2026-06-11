@@ -183,7 +183,7 @@ fix:
   # severity_gating:
   #   enabled: false
 
-# Iteration/Sprint settings (optional)
+# Iteration settings (optional)
 iteration:
   enabled: false          # true to enable iteration features (default: false)
   field_name: "Sprint"    # Name of the iteration field in Projects (default: "Sprint")
@@ -208,13 +208,6 @@ parallel:
   max_agents: 3          # Maximum concurrent agents (default: 3)
   mode: "shared"         # "shared" (default) or "worktree"
   worktree_base: ".worktrees"  # Base directory for worktrees when mode is "worktree" (default: ".worktrees")
-
-# Team-based sprint execution settings
-team:
-  enabled: true              # Enable /rite:sprint:team-execute (default: true)
-  max_concurrent_issues: 3   # Max Issues to process in parallel per batch (default: 3)
-  teammate_model: "sonnet"   # Model for teammate agents (default: "sonnet")
-  auto_review: true          # Auto-run /rite:pr:review after all PRs created (default: true)
 
 # PR review result recording
 # The `review:` section above configures PR review **execution** (reviewer selection, debate,
@@ -573,7 +566,7 @@ If a subagent fails or times out:
 
 ### iteration
 
-Settings for Sprint/Iteration integration with GitHub Projects.
+Settings for GitHub Projects Iteration field integration.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -592,7 +585,7 @@ iteration:
   show_in_list: true
 ```
 
-When enabled, `/rite:pr:open` will automatically assign the Issue to the current active iteration when starting work. Use `/rite:sprint:list` to view iterations and `/rite:sprint:current` to see the current sprint details.
+When enabled, `/rite:pr:open` will automatically assign the Issue to the current active iteration when starting work. Use `/rite:issue:list --sprint current` to list Issues in the current iteration, or `--backlog` for unassigned Issues.
 
 ### verification
 
@@ -721,34 +714,6 @@ multi_session:
 **`.gitignore` requirement:** add `.rite/worktrees/` so session worktrees do not leak into dev-branch diffs. `/rite:init` adds this automatically, and `/rite:lint` (via `gitignore-health-check.sh`) emits a non-blocking warning if it is missing while `multi_session.enabled: true`.
 
 **Disk cost:** each session worktree is a full working-tree clone. Build artifacts (`node_modules`, etc.) may need rebuilding per worktree.
-
-### team
-
-Settings for team-based Sprint execution using `/rite:sprint:team-execute`.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | boolean | `true` | Enable `/rite:sprint:team-execute` command |
-| `max_concurrent_issues` | integer | `3` | Maximum Issues to process in parallel per batch (falls back to `parallel.max_agents` if not set) |
-| `teammate_model` | string | `"sonnet"` | Model for teammate agents: `"sonnet"`, `"opus"`, `"haiku"` |
-| `auto_review` | boolean | `true` | Automatically run `/rite:pr:review` after all PRs are created |
-
-**Example:**
-
-```yaml
-team:
-  enabled: true
-  max_concurrent_issues: 3
-  teammate_model: "sonnet"
-  auto_review: true
-```
-
-**How team execution works:**
-
-1. `/rite:sprint:team-execute` spawns multiple teammate agents
-2. Each teammate picks up an Issue from the Sprint and executes the new 3-command chain (`/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:ready`); the previous `/rite:issue:start` orchestrator was retired in #1136
-3. Teammates work in parallel, each in their own worktree (if `parallel.mode` is `"worktree"`)
-4. After all PRs are created, reviews are run automatically if `auto_review` is `true`
 
 ### safety
 

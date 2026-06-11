@@ -200,13 +200,6 @@ pr_review:
 #   mode: "shared"  # "shared" (default) or "worktree"
 #   worktree_base: ".worktrees"
 
-# Team-based sprint execution settings
-# team:
-#   enabled: true
-#   max_concurrent_issues: 3
-#   teammate_model: "sonnet"
-#   auto_review: true
-
 # Metrics settings
 # metrics:
 #   enabled: true

@@ -201,7 +201,27 @@ also display the Iteration column:
 
 ### 5.1 When `--sprint current` is Used
 
-1. Identify the current iteration (same logic as `/rite:sprint:current`)
+1. Identify the current iteration:
+   - Query the Projects Iteration field for its `id` and the `configuration.iterations` list (`title` / `startDate` / `duration`):
+     ```bash
+     gh api graphql -f query='
+     query($projectId: ID!) {
+       node(id: $projectId) {
+         ... on ProjectV2 {
+           fields(first: 20) {
+             nodes {
+               ... on ProjectV2IterationField {
+                 id
+                 name
+                 configuration { iterations { id title startDate duration } }
+               }
+             }
+           }
+         }
+       }
+     }' -f projectId="{project_id}"
+     ```
+   - For each iteration compute `endDate = startDate + duration` (days). The iteration where `startDate <= today < endDate` is the current one. If none matches, report "現在アクティブなスプリントがありません" and exit.
 2. Fetch only Issues assigned to that iteration
 
 ```bash
@@ -303,7 +323,7 @@ Display items where the Iteration field value is null as "backlog":
   合計: 2 件の Issue（バックログ）
 
 【操作】
-- /rite:sprint:plan でスプリントに割り当て
+- GitHub Projects の Iteration フィールドでスプリントに割り当て（`iteration.auto_assign: true` の場合 /rite:pr:open 時に自動割当）
 ```
 
 ---

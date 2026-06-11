@@ -132,7 +132,7 @@ echo "[CONTEXT] MULTI_SESSION_ENABLED=$ms_enabled; WORKTREE_BASE=$ms_base"
 
 ### 1.5 Iteration 自動 assign
 
-`iteration.enabled: true` かつ `iteration.auto_assign: true` の場合、現在の active iteration を取得して Issue を assign する (Sprint workflow との統合)。詳細は `commands/sprint/plan.md` 参照。
+`iteration.enabled: true` かつ `iteration.auto_assign: true` の場合、現在の active iteration を取得して Issue を assign する。手順: Projects の Iteration フィールド (`iteration.field_name`、既定 `Sprint`) の `configuration.iterations` を取得し、`startDate <= today < startDate + duration` を満たす iteration を「現在」とみなす。該当 iteration の `id` を `updateProjectV2ItemFieldValue` mutation で対象 Issue の Iteration フィールドに設定する。該当なしの場合は assign をスキップする。
 
 ### 1.6 flow-state 初期化 + Issue claim 取得
 

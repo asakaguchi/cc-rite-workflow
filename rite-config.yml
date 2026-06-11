@@ -131,13 +131,6 @@ multi_session:
   enabled: true                    # セッション別 worktree（default ON、#1391）。false で無効化
   worktree_base: ".rite/worktrees" # セッション worktree のベース（issue-{N} サブディレクトリ）
 
-# Sprint チーム実行
-team:
-  enabled: true              # /rite:sprint:team-execute を有効化
-  max_concurrent_issues: 3   # 1 バッチあたりの並列 Issue 数の上限（未設定なら parallel.max_agents）
-  teammate_model: "sonnet"   # teammate エージェントが使うモデル
-  auto_review: true          # 全 PR 作成後に /rite:pr:review を自動実行
-
 # メトリクス
 metrics:
   enabled: true            # メトリクス収集の有効/無効

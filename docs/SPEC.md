@@ -31,7 +31,7 @@ The command prefix `rite` was chosen for:
 3. [Plugin Structure](#plugin-structure)
 4. [Configuration File Specification](#configuration-file-specification)
 5. [Command Specifications](#command-specifications)
-6. [Iteration/Sprint Management (Optional)](#iterationsprint-management-optional)
+6. [Iteration Management (Optional)](#iteration-management-optional)
 7. [Hook Specification](#hook-specification)
 8. [Features](#features)
 9. [Build/Test/Lint Auto-Detection](#buildtestlint-auto-detection)
@@ -71,11 +71,6 @@ The command prefix `rite` was chosen for:
 | `/rite:pr:cleanup` | Post-merge cleanup | `[branch name]` |
 | `/rite:lint` | Run quality checks | `[file path]` |
 | `/rite:template:reset` | Regenerate templates | `[--force]` |
-| `/rite:sprint:list` | List Sprints/Iterations | `[--all\|--current\|--past]` |
-| `/rite:sprint:current` | Show current sprint details | None |
-| `/rite:sprint:plan` | Execute sprint planning | `[current\|next\|"Sprint name"]` |
-| `/rite:sprint:execute` | Sequentially execute Todo Issues in Sprint | `[Sprint name]` |
-| `/rite:sprint:team-execute` | Parallel team execution of Todo Issues in Sprint | `[Sprint name]` |
 | `/rite:wiki:init` | Initialize Experience Wiki (branch, directories, templates) | None |
 | `/rite:wiki:query` | Search Wiki pages for heuristics by keyword and inject into context | `<keywords>` |
 | `/rite:wiki:ingest` | Extract heuristics from raw sources and update Wiki pages | `[source]` |
@@ -175,12 +170,6 @@ rite-workflow/
 │ │ ├── internal-consistency.md # Doc-implementation consistency protocol
 │ │ ├── review-context-optimization.md # Review context optimization
 │ │ └── reviewer-fallbacks.md # Reviewer fallback profiles
-│ ├── sprint/
-│ │ ├── list.md # /rite:sprint:list
-│ │ ├── current.md # /rite:sprint:current
-│ │ ├── plan.md # /rite:sprint:plan
-│ │ ├── execute.md # /rite:sprint:execute
-│ │ └── team-execute.md # /rite:sprint:team-execute
 │ ├── wiki/
 │ │ ├── init.md # /rite:wiki:init
 │ │ ├── query.md # /rite:wiki:query
@@ -206,8 +195,7 @@ rite-workflow/
 │ ├── prompt-engineer-reviewer.md
 │ ├── tech-writer-reviewer.md
 │ ├── error-handling-reviewer.md
-│ ├── type-design-reviewer.md
-│ └── sprint-teammate.md # /rite:sprint:team-execute teammate agent
+│ └── type-design-reviewer.md
 ├── skills/ # Claude Code auto-discovered skills
 │ ├── rite-workflow/
 │ │ ├── SKILL.md # Main workflow skill (auto-activated)
@@ -355,8 +343,6 @@ Commands that display information without modifying state use `context: fork` fo
 | Command | context: fork | Reason |
 |---------|---------------|--------|
 | `/rite:issue:list` | ✅ | Information display only |
-| `/rite:sprint:list` | ✅ | Information display only |
-| `/rite:sprint:current` | ✅ | Information display only |
 | `/rite:skill:suggest` | ✅ | Independent analysis |
 | Others | ❌ | Require user interaction or state changes |
 
@@ -456,7 +442,7 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 | `fix.*` | `fail_fast_response`. **DEPRECATED**: `severity_gating.*` was removed entirely — see CONFIGURATION.md for the deprecation note |
 | `verification.*` | `run_tests_before_pr`, `acceptance_criteria_check` |
 | `tdd.*` | TDD Light mode (`off` / `light`) |
-| `parallel.*`, `team.*` | Parallel implementation and Sprint team execution |
+| `parallel.*` | Parallel implementation (per-Issue sub-agent fan-out within one session) |
 | `multi_session.*` | Per-session Git worktree isolation — `enabled` (default `true` since #1391; set `false` to opt out), `worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are not merged. See [docs/designs/multi-session-worktree.md](./designs/multi-session-worktree.md) |
 | `iteration.*` | GitHub Projects Iteration field integration |
 | `safety.*` | Fail-closed thresholds (`max_implementation_rounds`, `time_budget_minutes`, etc.) |
@@ -737,7 +723,7 @@ If `branch.recognized_patterns` is configured in rite-config.yml, detect existin
 
 ##### Phase 2.5: Iteration Assignment (Optional)
 
-When `iteration.enabled: true` and `iteration.auto_assign: true` in rite-config.yml, automatically assigns the Issue to the current active Iteration/Sprint in GitHub Projects.
+When `iteration.enabled: true` and `iteration.auto_assign: true` in rite-config.yml, automatically assigns the Issue to the current active iteration in GitHub Projects.
 
 **Work Memory Comment Format:**
 
@@ -1093,9 +1079,9 @@ Next steps:
 
 ---
 
-## Iteration/Sprint Management (Optional)
+## Iteration Management (Optional)
 
-Sprint management feature using GitHub Projects Iteration field.
+GitHub Projects Iteration field integration.
 
 ### Overview
 
@@ -1107,12 +1093,10 @@ Sprint management feature using GitHub Projects Iteration field.
 
 | Aspect | Iteration Disabled | Iteration Enabled |
 |--------|-------------------|-------------------|
-| Issue Creation | Status/Priority/Complexity fields | + Sprint assignment option |
-| Issue Start | Branch creation, Status update | + Auto-assign to current Sprint |
-| Issue List | Filter by Status/Priority | + Sprint/Backlog filters |
-| Available Commands | 12 core commands | + 3 Sprint commands |
-| Planning Style | Ad-hoc | Sprint-based planning |
-| Progress Visibility | By Status only | + By Sprint progress |
+| Issue Creation | Status/Priority/Complexity fields | + Iteration assignment option |
+| `/rite:pr:open` | Branch creation, Status update | + Auto-assign to current iteration |
+| Issue List | Filter by Status/Priority | + `--sprint` / `--backlog` filters |
+| Progress Visibility | By Status only | + By iteration (via `/rite:issue:list` filters) |
 
 ### Configuration
 
@@ -1124,14 +1108,6 @@ iteration:
  auto_assign: true # Auto-assign on /rite:pr:open
  show_in_list: true # Show Iteration column in issue:list
 ```
-
-### Sprint Commands
-
-| Command | Description |
-|---------|-------------|
-| `/rite:sprint:list` | List all Iterations |
-| `/rite:sprint:current` | Current sprint details |
-| `/rite:sprint:plan` | Sprint planning (assign Issues from backlog) |
 
 ### Iteration Support in Existing Commands
 
@@ -1420,7 +1396,7 @@ A system that performs unified pre-validation before every `/rite:*` command exe
 
 The flow state for `/rite:*` workflows uses a **per-session file** structure (`.rite/sessions/{session_id}.flow-state`) introduced by Issue #672 and landed across PR #686 / #747 / #748 + #756 / #750 / #751 / #757 / #759. Each Claude Code session writes only to its own file, so concurrent sessions on the same repository are structurally race-free without lock acquisition.
 
-> **Authority scope — session-scoped continuation hint, not a cross-`/clear` source of truth**: flow state is **session-scoped** and treats `/clear` as its continuation terminus — a session started after a `/clear` resolves a fresh `session_id` and therefore reads a different (structurally empty) state file. Consequently, **discrete commands** invoked standalone across a `/clear` (e.g. `/rite:pr:merge`) **must not** treat flow state as the authoritative cross-`/clear` state. Their authority lives in the persistent SoT — `gh pr view` (`isDraft` / `mergeable` / `mergeStateStatus`), GitHub Projects Status, and `.rite-work-memory/issue-{n}.md`. flow state, when present, is consumed only as a **same-session continuation hint**, and its absence is the normal (un-warned) case for discrete operation. Conversely, the **continuation-loop subsystems** — `/rite:pr:iterate`'s review↔fix loop, the `Stop` hook + `handoff` field, `/rite:pr:review` / `/rite:pr:fix`, sprint e2e orchestration, compact recovery, and `/rite:resume` — are single-session by nature and are precisely the domain where session-scoped flow state functions correctly; they are left untouched. See [`docs/designs/clear-per-command-flow-state-decoupling.md`](designs/clear-per-command-flow-state-decoupling.md) for the full discrete-command-vs-continuation-loop decoupling analysis and per-command breakdown; `commands/pr/merge.md` Step 1 is the first application of this boundary.
+> **Authority scope — session-scoped continuation hint, not a cross-`/clear` source of truth**: flow state is **session-scoped** and treats `/clear` as its continuation terminus — a session started after a `/clear` resolves a fresh `session_id` and therefore reads a different (structurally empty) state file. Consequently, **discrete commands** invoked standalone across a `/clear` (e.g. `/rite:pr:merge`) **must not** treat flow state as the authoritative cross-`/clear` state. Their authority lives in the persistent SoT — `gh pr view` (`isDraft` / `mergeable` / `mergeStateStatus`), GitHub Projects Status, and `.rite-work-memory/issue-{n}.md`. flow state, when present, is consumed only as a **same-session continuation hint**, and its absence is the normal (un-warned) case for discrete operation. Conversely, the **continuation-loop subsystems** — `/rite:pr:iterate`'s review↔fix loop, the `Stop` hook + `handoff` field, `/rite:pr:review` / `/rite:pr:fix`, compact recovery, and `/rite:resume` — are single-session by nature and are precisely the domain where session-scoped flow state functions correctly; they are left untouched. See [`docs/designs/clear-per-command-flow-state-decoupling.md`](designs/clear-per-command-flow-state-decoupling.md) for the full discrete-command-vs-continuation-loop decoupling analysis and per-command breakdown; `commands/pr/merge.md` Step 1 is the first application of this boundary.
 
 **File path:**
 
@@ -1490,7 +1466,7 @@ The session worktree is one of **four non-overlapping worktree namespaces** (`.r
 
 **Shared state root (worktree-aware resolution):** `state-path-resolve.sh` detects a linked worktree (via `git rev-parse --git-common-dir`) and resolves state / locks / wiki-worktree to the **main checkout root** even when the session cwd is inside a worktree, so cross-session exclusion (work-memory lock, the `.rite/state/` flock group, the single `.rite/wiki-worktree`) stays intact. Non-worktree sessions resolve byte-identically to today (pinned by `state-path-resolve.test.sh`). Transient per-session artifacts (`.rite/review-results/`, `.rite/fix-cycle-state/`, `.rite/tmp/`) intentionally stay **cwd-relative (worktree-local)** so they vanish with the worktree and never cross-contaminate sessions.
 
-**Issue claim mechanism (always-on):** Independently of `multi_session.enabled`, `/rite:pr:open` Step 1.6 acquires an Issue claim *before* any branch / worktree side-effect (fail-fast against double-starting the same Issue), and `/rite:pr:cleanup` releases it. Claims live at `.rite/state/issue-claims/issue-{N}.json` and are managed by `hooks/issue-claim.sh {claim|release|check} --issue N`. **Liveness** reuses the flow-state heartbeat — a claim is live iff the holding session's flow-state is `active=true` and `updated_at` is within 2h (the same threshold and `parse_iso8601_to_epoch` as `session-ownership.sh`); no new heartbeat file is introduced. On detecting another **live** claim, `/rite:pr:open` always surfaces an AskUserQuestion (never an unattended steal); a stale claim is reclaimed only by the reap path under the clean-worktree gate. Claims are **not** released at session end, so a crashed session's work stays resumable. Because claims only ever create files under the already-gitignored `.rite/state/`, the mechanism is silent and backward-compatible when there is no conflict (Decision D-3: always-on regardless of the worktree flag). `sprint:execute` / `team-execute` use `check` to skip Issues with a live `other` claim.
+**Issue claim mechanism (always-on):** Independently of `multi_session.enabled`, `/rite:pr:open` Step 1.6 acquires an Issue claim *before* any branch / worktree side-effect (fail-fast against double-starting the same Issue), and `/rite:pr:cleanup` releases it. Claims live at `.rite/state/issue-claims/issue-{N}.json` and are managed by `hooks/issue-claim.sh {claim|release|check} --issue N`. **Liveness** reuses the flow-state heartbeat — a claim is live iff the holding session's flow-state is `active=true` and `updated_at` is within 2h (the same threshold and `parse_iso8601_to_epoch` as `session-ownership.sh`); no new heartbeat file is introduced. On detecting another **live** claim, `/rite:pr:open` always surfaces an AskUserQuestion (never an unattended steal); a stale claim is reclaimed only by the reap path under the clean-worktree gate. Claims are **not** released at session end, so a crashed session's work stays resumable. Because claims only ever create files under the already-gitignored `.rite/state/`, the mechanism is silent and backward-compatible when there is no conflict (Decision D-3: always-on regardless of the worktree flag).
 
 **main-checkout inviolability convention:** In Worktree Mode rite **never switches the main checkout's current branch** (moving it is a human-only action). Consequences enforced across the workflow: new session branches are based on `origin/{base}` directly (not a local `{base}` another worktree may hold); a branch is deleted only *after* its worktree is removed (a checked-out branch can be neither deleted nor fetch-updated); `/rite:pr:cleanup`'s base pull runs **only when the main checkout is on `{base}`** and otherwise WARNINGs + skips with a recovery hint. See the `/rite:pr:cleanup` Phase 2 note and [`references/git-worktree-patterns.md`](../plugins/rite/references/git-worktree-patterns.md#multi-session-patterns).
 
@@ -1941,7 +1917,7 @@ Details: {technical details for debugging}
 
 > **Status: Retired**. The runtime i18n mechanism (`{i18n:key_name}` placeholder substitution, the `plugins/rite/i18n/` directory tree with `ja.yml` / `en.yml` legacy monolithic files and `ja/` / `en/` per-domain split files, and the `references/i18n-usage.md` reference doc) was deleted entirely in #1117 (commit `d3a105f1`). All 364 placeholders across 10 remaining command/sub-skill files were resolved to inline Japanese, removing the runtime i18n resolution dependency. No language file structure remains in the plugin source tree.
 >
-> The remaining language-related controls are documentation-side conventions only. The `language` setting in `rite-config.yml` (still live) controls the output language of LLM-generated content — including commit messages (`commands/issue/implement.md`, `commands/pr/fix.md`), PR title and body (`commands/pr/create.md`), Issue creation prompts (`commands/issue/create.md`), workflow / list output (`commands/workflow.md`, `commands/issue/list.md`), and sprint team-execute reports (`commands/sprint/team-execute.md`). It does not select a runtime UI message catalog (no such catalog exists post-#1117).
+> The remaining language-related controls are documentation-side conventions only. The `language` setting in `rite-config.yml` (still live) controls the output language of LLM-generated content — including commit messages (`commands/issue/implement.md`, `commands/pr/fix.md`), PR title and body (`commands/pr/create.md`), Issue creation prompts (`commands/issue/create.md`), workflow / list output (`commands/workflow.md`, `commands/issue/list.md`). It does not select a runtime UI message catalog (no such catalog exists post-#1117).
 
 ### Documentation language conventions
 

@@ -2,8 +2,6 @@
 
 This document describes all configuration options for Claude Code Rite Workflow.
 
-> 🇯🇵 日本語版: [CONFIGURATION.ja.md](./CONFIGURATION.ja.md)
-
 ## Configuration File
 
 The configuration file should be named `rite-config.yml` and placed in:

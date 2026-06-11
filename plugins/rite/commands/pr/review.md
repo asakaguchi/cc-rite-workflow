@@ -1554,7 +1554,7 @@ If the following issues occur with the sub-agent approach:
 
 ### 4.3.1 Task Tool Sub-Agent Invocation
 
-**⚠️ IMPORTANT — Named Subagent Invocation**: Since Phase B, reviewers are invoked as **named subagents** using the scoped format `rite:{reviewer_type}-reviewer`. This activates the agent body as the **system prompt** (rather than a user-prompt injection), giving reviewer discipline stronger enforcement. See [Migration Guide: Named Subagent Switch](../../../../docs/migration-guides/review-named-subagent.md) for rationale and rollback.
+**⚠️ IMPORTANT — Named Subagent Invocation**: Since Phase B, reviewers are invoked as **named subagents** using the scoped format `rite:{reviewer_type}-reviewer`. This activates the agent body as the **system prompt** (rather than a user-prompt injection), giving reviewer discipline stronger enforcement.
 
 **Parallel execution:** Invoke multiple Task tools within a single message for all selected reviewers. Each Task uses:
 - `description`: "セキュリティ専門家 PR レビュー" (short description)
@@ -1581,7 +1581,7 @@ If the following issues occur with the sub-agent approach:
 | `error-handling` | `rite:error-handling-reviewer` |
 | `type-design` | `rite:type-design-reviewer` |
 
-**Formula**: `subagent_type = "rite:" + reviewer_type + "-reviewer"` (the `rite:` prefix is mandatory in plugin distribution; bare `{reviewer_type}-reviewer` fails agent resolution — verified empirically in ステップ 0 Item 2, see `docs/investigations/review-quality-gap-baseline.md` Section 2).
+**Formula**: `subagent_type = "rite:" + reviewer_type + "-reviewer"` (the `rite:` prefix is mandatory in plugin distribution; bare `{reviewer_type}-reviewer` fails agent resolution).
 
 Task results are returned automatically upon completion. No explicit wait handling is needed.
 

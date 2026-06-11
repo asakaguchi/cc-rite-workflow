@@ -1,6 +1,6 @@
 # Implementation Contract Section Mapping — Type → Section 3 / Perspective → Section 1-9
 
-> **SoT scope**: Issue body の rich template (Section 1-9 structure) における **Type → Section 3 mapping** と **Perspective → Section 1-9 mapping** の rubric。`templates/issue/default.md` から SoT として参照される。`create.md` ステップ 4.2 が emit する minimal body (`What / Why / Where / Acceptance Criteria / Implementation Notes / Out of Scope`) は本 rubric の subset であり、rich template への切替が必要な場合に本 reference を参照する。
+> **SoT scope**: Issue body の rich template (Section 1-9 structure) における **Type → Section 3 mapping** と **Perspective → Section 1-9 mapping** の rubric。`templates/issue/default.md` から SoT として参照される。`create.md` ステップ 4.2 はこの rubric に従い Implementation Contract (Section 0-9) を生成する（Complexity Gate で確定 Complexity に応じてセクションをスケールする）。`create.md` ステップ 1.3 / 4.1 で得た入力をどの Section に反映するかは本 reference の Step 2-3 と Section Inclusion Rules で定める。
 
 ## 位置づけ
 

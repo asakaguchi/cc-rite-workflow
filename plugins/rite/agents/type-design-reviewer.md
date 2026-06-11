@@ -100,6 +100,17 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 
 **CRITICAL** (type allows invalid states in critical paths), **HIGH** (encapsulation broken or invariant not expressed), **MEDIUM** (type usability issue or missing constraint), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外の造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor type design improvement).
 
+## Four-Dimension Evaluation
+
+When reviewing types, assess each dimension:
+
+| Dimension | Question | Indicator |
+|-----------|----------|-----------|
+| **Encapsulation** | Can internal state be mutated to invalid values? | public mutable fields, missing readonly |
+| **Invariant Expression** | Does the type reject invalid values at compile time? | string vs union, number vs branded type |
+| **Usefulness** | Do consumers need frequent casts or assertions? | `as Type` count, type guard frequency |
+| **Enforcement** | Can the type's contract be bypassed? | direct field assignment, missing constructors |
+
 ## Finding Quality Guidelines
 
 As a Type Design Expert, report findings based on concrete type system weaknesses, not stylistic preferences.

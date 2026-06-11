@@ -115,6 +115,32 @@ The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-
 
 **CRITICAL** (deployment will fail or expose secrets), **HIGH** (significant operational risk or inefficiency), **MEDIUM** (suboptimal configuration), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外の造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor improvement).
 
+## Activation
+
+This skill is activated when reviewing files matching:
+- `.github/**` (GitHub Actions, workflows)
+- `Dockerfile*`, `docker-compose*`
+- `*.yml`, `*.yaml` (CI/CD configurations)
+
+**Note**: The `*.yml`/`*.yaml` pattern is broad, so non-CI/CD files (e.g., i18n/ja.yml) may also match.
+
+**Evaluation order:**
+1. **Execute path exclusion first**: Files within `i18n/`, `locales/`, `translations/` paths are excluded from DevOps Expert scope
+2. **Keyword detection**: For non-excluded files, determine CI/CD relevance using the following keywords
+
+| Criteria | Keyword Examples |
+|---------|-------------|
+| GitHub Actions | `jobs:`, `runs-on:`, `steps:`, `uses:`, `workflow_dispatch` |
+| Docker | `FROM`, `RUN`, `COPY`, `EXPOSE`, `ENTRYPOINT` |
+| CI/CD General | `deploy`, `build`, `test`, `pipeline`, `stage` |
+
+YAML files where none of the above keywords are detected are excluded from DevOps Expert scope.
+
+**Additional patterns (non-YAML):**
+- `Makefile`, `Taskfile*`
+- `terraform/**`, `*.tf`
+- `kubernetes/**`, `k8s/**`, `*.k8s.yml`
+
 ## Finding Quality Guidelines
 
 As a DevOps Expert, report findings based on concrete facts, not vague observations.

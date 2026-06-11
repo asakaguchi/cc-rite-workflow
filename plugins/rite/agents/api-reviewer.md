@@ -101,6 +101,36 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 
 **CRITICAL** (breaking change or security issue), **HIGH** (significant API design flaw), **MEDIUM** (convention violation), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外の造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor enhancement).
 
+## REST Design Guidelines
+
+### Resource Naming
+- Use plural nouns (`/users`, not `/user`)
+- Use kebab-case for multi-word resources (`/user-profiles`)
+- Nest related resources (`/users/{id}/orders`)
+
+### HTTP Methods
+| Method | Use Case |
+|--------|----------|
+| GET | Retrieve resource(s), no side effects |
+| POST | Create new resource |
+| PUT | Replace entire resource |
+| PATCH | Partial update |
+| DELETE | Remove resource |
+
+### Status Codes
+| Code | Use Case |
+|------|----------|
+| 200 | Success with body |
+| 201 | Created |
+| 204 | Success, no content |
+| 400 | Bad request (client error) |
+| 401 | Unauthorized |
+| 403 | Forbidden |
+| 404 | Not found |
+| 409 | Conflict |
+| 422 | Validation failed |
+| 500 | Server error |
+
 ## Finding Quality Guidelines
 
 As an API Design Expert, report findings based on concrete facts, not vague observations.

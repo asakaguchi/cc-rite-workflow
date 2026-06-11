@@ -114,6 +114,26 @@ The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-
 
 **CRITICAL** (data loss risk or major performance issue), **HIGH** (significant query performance or integrity issue), **MEDIUM** (suboptimal design or missing optimization), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外の造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor improvement).
 
+## Migration Safety Guidelines
+
+### Safe Operations
+- Adding nullable columns
+- Adding indexes (e.g., `CREATE INDEX CONCURRENTLY` in PostgreSQL, `ALTER TABLE ... ADD INDEX` in MySQL)
+- Adding tables
+- Adding constraints with NOT VALID (PostgreSQL) or equivalent (syntax varies by RDBMS)
+
+### Risky Operations (Require Review)
+- Dropping columns
+- Changing data types
+- Adding NOT NULL to existing columns
+- Dropping indexes
+
+### Dangerous Operations (Require Approval)
+- Dropping tables
+- Truncating tables
+- Bulk updates/deletes
+- Schema changes during peak hours
+
 ## Finding Quality Guidelines
 
 As a Database Expert, report findings based on concrete facts, not vague observations.

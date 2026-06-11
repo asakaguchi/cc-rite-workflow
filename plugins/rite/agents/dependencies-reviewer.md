@@ -115,6 +115,31 @@ The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-
 
 **CRITICAL** (security vulnerability or license violation), **HIGH** (unmaintained dependency or major incompatibility), **MEDIUM** (suboptimal dependency choice), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外の造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor improvement).
 
+## License Compatibility Quick Reference
+
+### Permissive (Generally Safe)
+- MIT, BSD-2-Clause, BSD-3-Clause
+- Apache-2.0 (with patent clause)
+- ISC, Unlicense, CC0
+
+### Copyleft (Requires Review)
+- GPL-2.0, GPL-3.0 (viral)
+- LGPL (library exception)
+- MPL-2.0 (file-level copyleft)
+
+### Problematic
+- AGPL (network copyleft)
+- SSPL (not OSI approved)
+- Custom/Unknown licenses
+
+### License Classification Criteria
+
+| Category | Criteria | Action Required |
+|----------|----------|-----------------|
+| Permissive | No distribution requirements, patent grants | Safe to use |
+| Copyleft | Must share source under same license | Legal review for distribution |
+| Problematic | Strong copyleft or non-OSI | Avoid or obtain explicit legal approval |
+
 ## Finding Quality Guidelines
 
 As a Dependencies Expert, report findings based on concrete facts, not vague observations.

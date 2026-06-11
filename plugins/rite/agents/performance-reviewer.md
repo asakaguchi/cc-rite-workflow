@@ -103,6 +103,40 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 
 **CRITICAL** (causes noticeable delays or crashes in production), **HIGH** (perceptible performance degradation), **MEDIUM** (potential performance concerns), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外の造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor optimization opportunities).
 
+## Detection Patterns
+
+### Database Queries
+
+| Issue | Detection Pattern | Example |
+|-------|------------------|---------|
+| N+1 queries | DB call inside loop | `users.forEach(u => db.query(...))` |
+| Inefficient queries | `SELECT *`, unindexed columns | `SELECT * FROM large_table WHERE unindexed_col = ?` |
+| Missing eager loading | Individual related data fetch | `user.posts` called N times |
+
+### Frontend Performance
+
+| Issue | Detection Pattern | Example |
+|-------|------------------|---------|
+| Unnecessary re-renders | Missing/incorrect deps | `onClick={() => handler()}` inline |
+| Heavy computation | Expensive calc in render | `items.filter().map().sort()` in JSX |
+| Missing memoization | Frequently recomputed values | Missing `useMemo`/`computed` |
+
+### Memory Management
+
+| Issue | Detection Pattern | Example |
+|-------|------------------|---------|
+| Memory leaks | Missing cleanup | `useEffect` without return |
+| Large object retention | Unbounded cache growth | `cache[key] = obj` (no limit) |
+| Circular references | Mutual references | `a.ref = b; b.ref = a;` |
+
+### Algorithm Efficiency
+
+| Issue | Detection Pattern | Example |
+|-------|------------------|---------|
+| O(n^2) or worse | Nested loops with array ops | `arr.forEach(a => arr.includes(a))` |
+| Inefficient data structures | Array for lookups | `array.find()` vs `Map.get()` |
+| Redundant computation | Repeated calculations | Recursion without caching |
+
 ## Finding Quality Guidelines
 
 As a Performance Expert, report findings based on concrete facts, not vague observations.

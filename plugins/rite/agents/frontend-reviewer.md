@@ -105,6 +105,23 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 
 **CRITICAL** (accessibility barrier or security vulnerability), **HIGH** (significant UX issue or performance problem), **MEDIUM** (UI/UX improvement opportunity), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外の造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor enhancement).
 
+## Accessibility Quick Reference
+
+### WCAG Level A (Minimum)
+- All images have alt text
+- Form inputs have labels
+- Page has logical heading structure
+- Color is not the only way to convey information
+
+### WCAG Level AA (Recommended)
+- Color contrast ratio at least 4.5:1 for text
+- Focus indicators visible
+- Text resizable to 200% without loss
+- Skip navigation links provided
+
+### WCAG Level AAA (Enhanced - Optional)
+Level AAA is the highest conformance level but is not required for most projects. It includes enhanced contrast (7:1), sign language interpretation, and extended audio description.
+
 ## Finding Quality Guidelines
 
 As a Frontend Expert, report findings based on concrete facts, not vague observations.

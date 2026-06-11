@@ -16,13 +16,24 @@ and dynamically generates the Issue body based on Type and Complexity.
 
 ## Type Definitions
 
-| Type | Characteristic Section | Heuristics |
-|------|----------------------|------------|
-| Feature | User Scenarios | New user-facing functionality or workflow |
-| BugFix | Bug Details (Reproduction, Root Cause) | Symptom + repro steps + incorrect current behavior |
-| Refactor | Before/After Contract, Compatibility Policy | Internal structure improvement, compatibility considerations |
-| Chore | Operational Context | Maintenance/tooling/dependency update, no behavior change |
-| Docs | Documentation Target | Documentation addition/update is the primary deliverable |
+> **Type 表記の SoT (crosswalk)**: 下表の `Commit Type` 列が、Issue body 構造で用いる **Contract Type** (Feature/BugFix/...) と Conventional Commits 系の **Commit Type** (feat/fix/...) の対応を定義する単一の Source of Truth。`commands/issue/create.md` (Step 4.1 / 4.2)、`commands/issue/references/contract-section-mapping.md`、`templates/issue/template-structure.md` Section 3 はこの crosswalk を参照する（各箇所で対応関係を再定義しない）。
+
+| Type (Contract) | Commit Type | Characteristic Section | Heuristics |
+|-----------------|-------------|----------------------|------------|
+| Feature | feat | User Scenarios | New user-facing functionality or workflow |
+| BugFix | fix | Bug Details (Reproduction, Root Cause) | Symptom + repro steps + incorrect current behavior |
+| Refactor | refactor | Before/After Contract, Compatibility Policy | Internal structure improvement, compatibility considerations |
+| Chore | chore | Operational Context | Maintenance/tooling/dependency update, no behavior change |
+| Docs | docs | Documentation Target | Documentation addition/update is the primary deliverable |
+
+### Type Notation Policy
+
+rite には 2 つの正当な type 語彙が併存する:
+
+- **Contract Type** (Feature/BugFix/Refactor/Chore/Docs): Issue body の Section 3 名・本テーブルなど **body 構造選択**の語彙。
+- **Commit Type** (feat/fix/refactor/chore/docs): commit message / branch 名 / PR title の語彙（CLAUDE.md が必須と規定する Conventional Commits 由来。`pr/open.md` の branch type 派生もこの系列）。
+
+**判断**: どちらか一方へ統一せず、両系列を残し上表 `Commit Type` 列を単一 crosswalk SoT とする。**根拠**: 統一しても seam は消えず別境界（Issue body ↔ commit/branch）へ移動するだけで、Conventional Commits は外部標準として commit/branch に不可欠、Contract Type は section 名として可読。境界マッピングを 1 箇所で明示するのが drift を最小化する。非自明な対応は `feat↔Feature` / `fix↔BugFix` のみ（他は大文字小文字差）。
 
 ## Complexity Gate
 

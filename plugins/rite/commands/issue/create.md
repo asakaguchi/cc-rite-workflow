@@ -116,7 +116,7 @@ title 類似度 / label 一致 / 更新日時 / state（OPEN > CLOSED）で top 
 AskUserQuestion で Issue の以下を確認/補完する:
 
 - title（slug ベース）
-- type（feat / fix / docs / refactor / chore）
+- type（feat / fix / docs / refactor / chore — これは **Commit Type**。Issue body 構造で使う Contract Type との対応は [`default.md` Type Definitions](../../templates/issue/default.md#type-definitions) の crosswalk が SoT）
 - priority（High / Medium / Low）
 - complexity（XS / S / M / L / XL）
 - labels（推測されたもの + 追加）
@@ -137,7 +137,7 @@ Read tool で以下を読み込む:
 [`references/contract-section-mapping.md`](./references/contract-section-mapping.md) の 4-step rubric に従う:
 
 1. **Complexity Gate 適用**: 確定 Complexity の列で `M`(MUST) を必ず含め、`S`(SHOULD) は Step 1.3 で情報が得られた場合のみ含め、`O`(OMIT) は省略
-2. **Type Core Section (Section 3) 選択**: 確定 Type に対応する Section 3 を [Step 2 mapping](./references/contract-section-mapping.md#step-2-type--type-core-section-section-3-mapping) で 1 つ選択（Feature: User Scenarios / BugFix: Bug Details / Refactor: Before-After Contract / Chore: Operational Context / Docs: Documentation Target）
+2. **Type Core Section (Section 3) 選択**: Step 4.1 で確定した値は **Commit Type**（feat/fix/...）。[`default.md` Type Definitions](../../templates/issue/default.md#type-definitions) の crosswalk で **Contract Type**（Feature/BugFix/...）へ対応付け、その Contract Type に対応する Section 3 を [Step 2 mapping](./references/contract-section-mapping.md#step-2-type--type-core-section-section-3-mapping) で 1 つ選択する。Section 0 Meta の `**Type**` には Step 4.1 で確定した Commit Type をそのまま記載し、Step 4.4 完了レポートの Type と一致させる（crosswalk は Section 3 選択のためにのみ用い、Meta 値は変換しない）
 3. **入力のマッピング**: Step 1.3 で抽出した What/Why/Where/Scope/Constraints を [Step 3 mapping](./references/contract-section-mapping.md#step-3-perspective--target-sections-mapping) と [Section Inclusion Rules](./references/contract-section-mapping.md#section-inclusion-rules) に従って各 Section へ反映（What → Section 1 Goal / Why → Section 1-2 / Where → Section 4.1 Target Files / Scope → Section 2 Scope(In/Out) / Constraints → Section 4.5 / Section 7）
 4. **MUST だが情報未収集の Section**: 空見出しを残さず `<!-- 情報未収集 -->` プレースホルダーを挿入
 

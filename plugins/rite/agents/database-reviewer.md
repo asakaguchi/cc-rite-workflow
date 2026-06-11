@@ -66,7 +66,7 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 
 ## Hypothetical Exception Category (migration)
 
-This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../../references/severity-levels.md#hypothetical-exception-categories), but **only for migration-related findings** (destructive changes, irreversible schema mutations, breaking column drops, missing rollback paths). Migration findings MAY retain **CRITICAL / HIGH / MEDIUM** severity even when the Observed Likelihood is **Hypothetical**.
+This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../references/severity-levels.md#hypothetical-exception-categories), but **only for migration-related findings** (destructive changes, irreversible schema mutations, breaking column drops, missing rollback paths). Migration findings MAY retain **CRITICAL / HIGH / MEDIUM** severity even when the Observed Likelihood is **Hypothetical**.
 
 **Rationale**: A migration runs once in production. A destructive or irreversible migration cannot be retried. The blast radius is the entire production dataset. "Wait until we observe data loss in production" is not an acceptable risk model.
 
@@ -74,7 +74,7 @@ This reviewer is in the **Hypothetical Exception Category** defined in [`referen
 
 **Reporting requirement**: When using this exception, the reviewer MUST record `Likelihood: Hypothetical (例外カテゴリ: database migration)` in the `内容` column.
 
-The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md) still apply.
+The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-base.md`](./_reviewer-base.md) still apply.
 
 ## Expertise Areas
 

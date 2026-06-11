@@ -105,6 +105,11 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 
 **CRITICAL** (tests give false confidence, bugs will slip through), **HIGH** (significant test quality issue), **MEDIUM** (test improvement opportunity), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外の造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor enhancement suggestion).
 
+## Test Framework References
+
+- `*.test.config.*`: Configuration files for Jest (jest.config.ts), Vitest (vitest.config.ts), Mocha (mocharc.json), etc.
+- `cypress/**`, `playwright/**`: E2E test framework directories
+
 ## Finding Quality Guidelines
 
 As a Test Expert, report findings based on concrete facts, not vague observations.

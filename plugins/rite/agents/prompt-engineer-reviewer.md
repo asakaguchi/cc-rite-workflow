@@ -161,6 +161,28 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 
 **CRITICAL** (Claude cannot execute or will produce incorrect results), **HIGH** (execution will likely fail or produce suboptimal results), **MEDIUM** (improvement would significantly enhance reliability), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外の造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor clarity or style enhancement).
 
+## Prompt Quality Guidelines
+
+### Clear Instructions
+- Use imperative mood ("Execute", not "You should execute")
+- One action per step
+- Specify exact tools and parameters
+
+### Proper Context
+- Define all placeholders
+- List required inputs
+- Specify preconditions
+
+### Robust Error Handling
+- Cover all failure modes
+- Provide recovery actions
+- Include user escalation paths
+
+### Consistent Structure
+- Use numbered phases/steps
+- Maintain consistent formatting
+- Link related sections
+
 ## Finding Quality Guidelines
 
 As a Prompt Engineer, report findings based on concrete facts, not vague observations.

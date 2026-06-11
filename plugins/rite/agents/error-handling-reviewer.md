@@ -210,7 +210,7 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 
 ### Inverse Pattern Prohibition: reviewer 自身の fallback 推奨禁止
 
-> **Reference**: [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md) "Fail-Fast First" 節を必ず参照すること。
+> **Reference**: [`agents/_reviewer-base.md`](./_reviewer-base.md) "Fail-Fast First" 節を必ず参照すること。
 
 silent swallow を CRITICAL として検出するのと **同じ理由** で、reviewer 自身が「null 返却を追加せよ」「catch して default を返せ」「`?? 0` で安全化せよ」と推奨することも **silent failure の共犯行為** であり、本 reviewer の禁止事項である。
 

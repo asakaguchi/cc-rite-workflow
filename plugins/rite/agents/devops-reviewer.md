@@ -67,7 +67,7 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 
 ## Hypothetical Exception Category (deployment / rollback / IaC)
 
-This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../../references/severity-levels.md#hypothetical-exception-categories) for **deployment, rollback, and infrastructure-as-code** findings. These MAY retain **CRITICAL / HIGH / MEDIUM** severity even when the Observed Likelihood is **Hypothetical**.
+This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../references/severity-levels.md#hypothetical-exception-categories) for **deployment, rollback, and infrastructure-as-code** findings. These MAY retain **CRITICAL / HIGH / MEDIUM** severity even when the Observed Likelihood is **Hypothetical**.
 
 **Rationale**: Deployment and rollback paths are exercised rarely but failure leaves production in a broken state with no rollback. A misconfigured IaC change runs once and the resulting drift may persist invisibly. "Wait until we observe a failed rollout" is not an acceptable risk model.
 
@@ -75,7 +75,7 @@ This reviewer is in the **Hypothetical Exception Category** defined in [`referen
 
 **Reporting requirement**: When using this exception, the reviewer MUST record `Likelihood: Hypothetical (例外カテゴリ: devops infra)` in the `内容` column.
 
-The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md) still apply.
+The Confidence ≥ 80 gate and Fail-Fast First protocol from [`agents/_reviewer-base.md`](./_reviewer-base.md) still apply.
 
 ## Expertise Areas
 

@@ -1,7 +1,7 @@
 # Issue Template: Implementation Contract
 
 This template defines the "Implementation Contract" format for Issue body generation.
-Claude reads this template when creating Issues via `/rite:issue:create` (Phase 2.2)
+Claude reads this template when creating Issues via `/rite:issue:create` (ステップ 4.2)
 and dynamically generates the Issue body based on Type and Complexity.
 
 ## Usage Instructions
@@ -63,7 +63,7 @@ Legend: `M` = MUST (required), `S` = SHOULD (recommended), `O` = OMIT (skip)
 
 > **Extracted to separate file**: The full section-by-section template (Sections 0-9) has been
 > moved to [template-structure.md](./template-structure.md) to reduce context consumption.
-> Read that file only when generating the Issue body (Phase 2.2 Step 2+).
+> Read that file only when generating the Issue body (ステップ 4.2).
 
 ### Section Overview
 

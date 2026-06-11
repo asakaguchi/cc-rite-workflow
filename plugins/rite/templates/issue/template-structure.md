@@ -2,7 +2,7 @@
 
 This file contains the section-by-section template structure for Issue body generation.
 Extracted from `default.md` for targeted reading — `create.md` reads this file
-only when generating the Issue body (Phase 2.2 Step 2+), reducing context consumption.
+only when generating the Issue body (ステップ 4.2), reducing context consumption.
 
 For the Complexity Gate, Type Definitions, and overview, see [default.md](./default.md).
 

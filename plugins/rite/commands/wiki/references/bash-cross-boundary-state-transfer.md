@@ -68,7 +68,9 @@ LLM は会話コンテキストから `log_read_ok=XXX` を grep し、後続ス
 - 同 ステップ 6.2 — `all_source_refs_read_ok` 3 値 enum (unknown / true / io_error)。ステップ 6.0 の 4 値から
  `absent` を除いた variant (per-page で legitimate absence を吸収するため集合レベルでは absent 状態に
  ならない)。実装実体は `hooks/scripts/wiki-lint-source-refs.sh` へ委譲済 (#1208、lint.md は契約を記述)
-- 同 ステップ 2.3 — `index_read_ok` (true / false) の 2 値 enum (簡易版、absent / io_error の区別なし)
+- 同 ステップ 4 / 5 / 7 — `stale_check_ok` / `orphan_check_ok` / `broken_refs_read_ok` enum + 件数転記契約。
+ 実装実体は `hooks/scripts/wiki-lint-stale.sh` / `wiki-lint-orphans.sh` / `wiki-lint-broken-refs.sh` へ
+ 委譲済 (#1345、lint.md は契約を記述)
 - 同 ステップ 8.1 — `lint_action` 2 値 enum (`lint:clean` / `lint:warning`) の `[CONTEXT]` prefix 版。
  5 ブロッキングカテゴリ (`n_contradictions`, `n_stale`, `n_orphans`, `n_missing_concept`, `n_broken_refs`)
  が全 0 なら `lint:clean`、1 つ以上 `>0` なら `lint:warning`。`n_unregistered_raw` は informational の
@@ -212,7 +214,7 @@ fi
 - `plugins/rite/commands/wiki/lint.md` ステップ 6.0 — `log_read_ok` 4 値 enum (unknown / true / absent / io_error) の絶対的 absence / io_error 判別 (完全実装)
 - `plugins/rite/commands/wiki/lint.md` ステップ 6.2 — `all_source_refs_read_ok` 3 値 enum (unknown / true / io_error) variant 実装。ステップ 6.0 からの派生だが、per-page で legitimate absence を吸収するため集合レベルでは `absent` 値を持たない。Pattern 3 を多対一の集合処理に適用する場合の参照
 
-> **Note**: `lint.md` ステップ 2.3 の `index_read_ok` は 2 値 enum (true / false) で absent と io_error を区別していないため、Pattern 3 (absence vs IO error classification) の参照実装には当てはまらない。Pattern 3 を新規採用する site は、単一ファイル読取なら ステップ 6.0 (実装: `hooks/scripts/wiki-lint-skipped-refs.sh`)、複数ファイル集合なら ステップ 6.2 (実装: `hooks/scripts/wiki-lint-source-refs.sh`) を reference として使うこと。
+> **Note**: `wiki-lint-orphans.sh` (lint.md ステップ 5 委譲先) の `orphan_check_ok` は index.md 読出失敗を `index_unreadable` に一本化し absent と io_error を区別しないため、Pattern 3 (absence vs IO error classification) の参照実装には当てはまらない (孤児検出は index.md が無ければいずれにせよ skip が正解という設計判断)。Pattern 3 を新規採用する site は、単一ファイル読取なら ステップ 6.0 (実装: `hooks/scripts/wiki-lint-skipped-refs.sh`)、複数ファイル集合なら ステップ 6.2 (実装: `hooks/scripts/wiki-lint-source-refs.sh`) を reference として使うこと。
 
 ---
 

@@ -188,6 +188,14 @@ What `/rite:init --upgrade` does:
     append is applied without an additional prompt)
   ✓ Appends the `wiki:` section if it is absent, so the Wiki
     auto-initialization step of `/rite:init` can run for existing projects
+  ✓ Back-adds the `multi_session:` section with `enabled: true` if it is
+    absent, so upgraded projects get the default-on per-session worktree
+    behavior; an existing explicit `enabled: false` is preserved
+  ✓ Fills in sub-keys that are missing from a section you already have,
+    adding only the absent keys from the template default while preserving
+    every existing sibling value you customized
+  ✓ Adds any new active top-level section the template introduces, so the
+    upgrade keeps pace with newly added defaults
   ✓ Updates `schema_version` to the latest value on success
 
 The upgrade is non-destructive: user-customized values are preserved, and a

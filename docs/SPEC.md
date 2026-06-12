@@ -589,6 +589,7 @@ followed by AskUserQuestion confirmation)
  - If conditions are met, propose decomposition to user
 
 2. **Phase 0.7**: Specification document generation
+ - Apply Assumption Surfacing (see Phase 1.5) before generating the design document
  - Generate design document based on deep-dive interview results
  - Save to `docs/designs/{slug}.md`
 
@@ -631,7 +632,7 @@ Before Confirmation & Creation, surface the assumptions the model implicitly fil
    - **(c) deferrable** → document under Section 1 "Assumptions / Open Questions" in the Issue body.
 3. **Wiki cross-check** (SHOULD): match the draft Contract against `wiki:query` results and surface contradictions as assumptions. Silently skipped when the Wiki is opt-out or uninitialized.
 
-**Question intensity** follows the anticipated Complexity (Phase 1): XS/S → 0–1 question; M and above → at most 3. When more than three (b) items are found, the highest-impact three are asked and the remainder move to (c). For the L/XL decomposition path, the same surfacing is applied before specification-document generation (Phase 0.7).
+**Question intensity** follows the anticipated Complexity (Phase 1): XS/S → 0–1 question; M and above → at most 3. When more than three (b) items are found, the highest-impact three are asked and the remainder move to (c). The same surfacing also applies to the L/XL decomposition path (Phase 0.6-0.9), where it runs inside the specification-document generation step (Phase 0.7) before the design document is written.
 
 #### Phase 2: Confirmation & Creation
 

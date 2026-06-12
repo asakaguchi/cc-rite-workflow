@@ -364,18 +364,18 @@ fi
 # - chmod 600 / TMPDIR 尊重を helper 経由で取得
 # - filter は flow-state.sh の cross-session guard pass-through (3-pattern:
 #   `^WARNING:|^  |^jq: `) を `^ERROR:` で superset 化した 4-pattern 拡張版。
-#   `_resolve-flow-state-path.sh` は `_validate-helpers.sh` / `_validate-state-root.sh`
+#   `flow-state.sh path` は `_validate-helpers.sh` / `_validate-state-root.sh`
 #   経由で `ERROR:` 行を emit する (resolver self-validation contract) ため、
 #   reader-side filter より広い範囲を要求する。indented continuation 行と
 #   raw `jq:` parse error は flow-state.sh と同じく pass-through する
-# - success arm でも tempfile を inspect する (`_resolve-flow-state-path.sh`
+# - success arm でも tempfile を inspect する (`flow-state.sh path`
 #   が graceful-degrade で exit 0 を返す経路、例えば `_resolve-session-id-from-file.sh`
 #   の tr IO failure による empty SID + WARNING 出力 + exit 0 経路で
 #   inner helper の WARNING を silent drop しないため)
 _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "session-start" \
   "resolve-flow-state-err" \
-  "_resolve-flow-state-path.sh の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
+  "flow-state.sh path の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
 # Single-pass branch: capture resolver outcome, then run filter once regardless
 # of success/failure (helper may graceful-degrade exit 0 with WARNING in stderr,
 # e.g., empty SID via tr IO failure — both paths require pass-through).

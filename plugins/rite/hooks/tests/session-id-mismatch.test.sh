@@ -2,7 +2,7 @@
 # Tests for session_id mismatch hook no-op — Issue #672 / #684 (T-04 / AC-4)
 #
 # Purpose:
-#   per-session file では `_resolve-flow-state-path.sh` が
+#   per-session file では `flow-state.sh path` が
 #   resolver を経由する caller には現セッションの per-session path のみを返すため
 #   ownership は構造的に保証される。しかし将来 resolver を経由しない caller が
 #   foreign per-session file を直接渡した場合のために `check_session_ownership`

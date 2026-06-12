@@ -24,6 +24,12 @@
 #        to an existing template section that init.md fails to list fails this
 #        test, forcing init.md to be updated so `--upgrade` does not silently
 #        miss it (mirrors the sub-key merge rule, init.md Step 6 item 4).
+#   T-13 (Issue #1459): the `--upgrade` `current >= latest` short-circuit path is
+#        routed through Step 4 Identify -> Step 6 Apply (drift back-add) instead of
+#        skipping Step 4-6, and the Wiki-only Step 3.5 block is folded into Step 6
+#        item 7. Static guards on init.md's branching table + Step 6 wording; the
+#        back-add behavior itself runs in the LLM procedure (init.md), not a fixture,
+#        so these assert the corrected routing cannot silently regress.
 #
 # Usage: bash plugins/rite/hooks/tests/init-upgrade-drift.test.sh
 set -euo pipefail
@@ -125,6 +131,37 @@ else
     fi
   done
 fi
+
+echo "=== T-13 (Issue #1459): current >= latest short-circuit path runs drift back-add ==="
+
+# Issue #1459: the `current >= latest` short-circuit path previously ran only
+# "Step 3 Backup -> Step 3.5 Wiki Append -> Step 7" and skipped Step 4-6, so
+# multi_session / new active sections / missing sub-keys were silently omitted.
+# The fix routes the short-circuit path through Step 4 Identify -> Step 6 Apply
+# (drift back-add) and folds the Wiki-only Step 3.5 into Step 6 item 7. init.md is
+# an LLM procedure doc, so the back-add behavior itself is exercised by the LLM at
+# runtime, not by a fixture here; these static assertions guard that init.md keeps
+# the corrected routing so the short-circuit path cannot silently regress.
+
+# Positive: the short-circuit row backs up FIRST, then routes Step 4 Identify -> Step 6
+# Apply, asserted as one ordered pattern so it doubles as the AC-6 Backup-precondition
+# guard AND the routing guard. Ordering matters: a regression that restores the old
+# "Step 3 Backup -> Step 3.5 Wiki Append -> skip Step 4-6" routing fails this assertion
+# because Step 4 Identify / Step 6 Apply are absent from that row. (A bare
+# 'current >= latest.*Step 3 Backup' would pass even on the buggy old row, since Backup
+# was always present on the short-circuit row — anchoring Backup *before* Step 4/6 is
+# what gives the assertion its regression-detecting power.)
+assert_grep "init.md 'current >= latest' row backs up first, then routes Step 4 Identify -> Step 6 Apply (AC-6 precondition + routing order)" \
+  "$INIT_MD" 'current >= latest.*Step 3 Backup.*Step 4 Identify.*Step 6 Apply'
+# Step 6 spells out which items the short-circuit path applies (the drift back-add set).
+assert_grep "init.md Step 6 applies only the drift back-add items on the short-circuit path" \
+  "$INIT_MD" 'short-circuit path.*only items 3, 4, 6, 7'
+
+# Negative: the old skip wording and the folded-away Wiki-only Step 3.5 block are gone.
+assert_not_grep "init.md no longer says the short-circuit path skips Step 4-6" \
+  "$INIT_MD" 'Step 4-6 はスキップ'
+assert_not_grep "init.md no longer carries the Wiki-only 'Step 3.5: Wiki Section Append' block" \
+  "$INIT_MD" 'Step 3\.5: Wiki Section Append'
 
 # --- Summary ---
 if ! print_summary "init-upgrade-drift" \

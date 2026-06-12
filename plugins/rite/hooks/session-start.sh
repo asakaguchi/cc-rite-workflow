@@ -150,6 +150,55 @@ if [ "$SOURCE" = "startup" ]; then
           ;;
       esac
     fi
+
+    # --- Deprecated flow_state.schema_version: 1 warning (Issue #1458) ---
+    # The legacy single-file (.rite-flow-state) selection path was removed in the
+    # per-session unification; flow-state is always per-session now. An explicit
+    # `flow_state.schema_version: 1` no longer selects single-file — it is ignored.
+    # Warn once per session start (gated on SOURCE=startup → AC-3 "1 回のみ") so the
+    # user removes the now-dead key (D-01). Section-absent or `: 2` stays silent
+    # (AC-4). Reads the `flow_state:` sub-key directly (the top-level _rite_read_yaml_key
+    # only matches column-0 keys, so it cannot see an indented sub-key). Read failure is
+    # surfaced as a WARNING rather than silently degraded, matching the _rite_read_yaml_key
+    # convention above (silent degradation would suppress the deprecation advisory). The
+    # `_fs_sv=""` fallback keeps the startup hook non-blocking; pipefail makes the if-test
+    # catch an awk failure even though the trailing `tr` would otherwise exit 0.
+    _fs_sv_err=$(mktemp 2>/dev/null) || _fs_sv_err=""
+    if _fs_sv=$(awk '
+      /^[^[:space:]#]/ { in_fs = 0 }
+      /^flow_state:[[:space:]]*(#.*)?$/ { in_fs = 1; next }
+      in_fs && /^[[:space:]]+schema_version:/ {
+        line = $0
+        sub(/.*schema_version:[[:space:]]*/, "", line)
+        sub(/[[:space:]]*#.*/, "", line)
+        print line
+        exit
+      }
+    ' "$_rite_config" 2>"${_fs_sv_err:-/dev/null}" | tr -d "[:space:]\"'"); then
+      :
+    else
+      echo "[rite] WARNING: session-start: flow_state.schema_version 読み取り失敗 — ${_rite_config}" >&2
+      [ -n "$_fs_sv_err" ] && [ -s "$_fs_sv_err" ] && head -3 "$_fs_sv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+      _fs_sv=""
+    fi
+    [ -n "$_fs_sv_err" ] && rm -f "$_fs_sv_err"
+    if [ "$_fs_sv" = "1" ]; then
+      _fs_lang=$(_rite_read_yaml_key language "$_rite_config" "language")
+      if [ "$_fs_lang" = "auto" ] || [ -z "$_fs_lang" ]; then
+        case "${LANG:-}" in
+          ja*) _fs_lang="ja" ;;
+          *) _fs_lang="en" ;;
+        esac
+      fi
+      case "$_fs_lang" in
+        ja)
+          echo "[rite] ⚠️ rite-config.yml の flow_state.schema_version: 1 は非推奨です。legacy single-file 形式は撤去され、flow-state は常に per-session で動作します。このキーは無視されます — rite-config.yml から削除してください。" >&2
+          ;;
+        *)
+          echo "[rite] ⚠️ rite-config.yml flow_state.schema_version: 1 is deprecated. The legacy single-file format was removed; flow-state is always per-session now. This key is ignored — remove it from rite-config.yml." >&2
+          ;;
+      esac
+    fi
   fi
 fi
 
@@ -303,11 +352,11 @@ if [ "$CWD" = "$STATE_ROOT" ]; then
 fi
 
 # Resolve active flow-state file path.
-# `_resolve-flow-state-path.sh` returns the per-session file
-# (`.rite/sessions/<sid>.flow-state`) when schema_version=2 and a valid
-# session_id is present, otherwise the legacy `.rite-flow-state`. The
-# fallback path keeps the hook non-blocking under helper deploy regression
-# (e.g. chmod -x or partial install).
+# `flow-state.sh path` always returns the per-session file
+# (`.rite/sessions/<sid>.flow-state`) — the legacy single-file `.rite-flow-state`
+# selection path was removed (Issue #1458). The empty-string fallback below keeps
+# the hook non-blocking under helper deploy regression (e.g. chmod -x or partial
+# install) by skipping recovery rather than reading a single-file form.
 #
 # Issue #749: stderr pass-through for diagnostic visibility, via canonical
 # helper `_mktemp-stderr-guard.sh`.
@@ -315,18 +364,18 @@ fi
 # - chmod 600 / TMPDIR 尊重を helper 経由で取得
 # - filter は flow-state.sh の cross-session guard pass-through (3-pattern:
 #   `^WARNING:|^  |^jq: `) を `^ERROR:` で superset 化した 4-pattern 拡張版。
-#   `_resolve-flow-state-path.sh` は `_validate-helpers.sh` / `_validate-state-root.sh`
+#   `flow-state.sh path` は `_validate-helpers.sh` / `_validate-state-root.sh`
 #   経由で `ERROR:` 行を emit する (resolver self-validation contract) ため、
 #   reader-side filter より広い範囲を要求する。indented continuation 行と
 #   raw `jq:` parse error は flow-state.sh と同じく pass-through する
-# - success arm でも tempfile を inspect する (`_resolve-flow-state-path.sh`
+# - success arm でも tempfile を inspect する (`flow-state.sh path`
 #   が graceful-degrade で exit 0 を返す経路、例えば `_resolve-session-id-from-file.sh`
 #   の tr IO failure による empty SID + WARNING 出力 + exit 0 経路で
 #   inner helper の WARNING を silent drop しないため)
 _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "session-start" \
   "resolve-flow-state-err" \
-  "_resolve-flow-state-path.sh の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
+  "flow-state.sh path の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
 # Single-pass branch: capture resolver outcome, then run filter once regardless
 # of success/failure (helper may graceful-degrade exit 0 with WARNING in stderr,
 # e.g., empty SID via tr IO failure — both paths require pass-through).

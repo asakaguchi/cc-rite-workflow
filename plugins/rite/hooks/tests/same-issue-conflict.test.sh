@@ -2,7 +2,7 @@
 # Tests for same-issue concurrent target — Issue #672 / #684 (T-05 / AC-5)
 #
 # Contract (Option C, decided in #684 Phase 3):
-#   schema_version=2 (per-session file) では「両 session が同一 issue_number を
+#   per-session file では「両 session が同一 issue_number を
 #   target にしても、それぞれ独立した per-session file (`.rite/sessions/{sid}.flow-state`)
 #   に書き込まれるため両方成功する」を **明示的 contract として固定** する。
 #
@@ -11,9 +11,9 @@
 #   明示的競合エラー reject」は別 Issue で tracking する (本 PR scope 外)。
 #
 # Test cases:
-#   TC-1: schema=2 sequential 同 issue 2 session create → 両方成功 + 独立 file (Option C)
-#   TC-2: schema=2 concurrent 同 issue 2 session create → 両方成功 (race-free)
-#   TC-3: schema=2 同 issue patch → 各 session 独立に更新 (no field leak)
+#   TC-1: sequential 同 issue 2 session create → 両方成功 + 独立 file (Option C)
+#   TC-2: concurrent 同 issue 2 session create → 両方成功 (race-free)
+#   TC-3: 同 issue patch → 各 session 独立に更新 (no field leak)
 #   TC-6: contract sentence regression guard — 本ファイル冒頭の Option C 文言を pin
 #
 # Removed (PR 2a refactor, v3 SoT):
@@ -58,14 +58,12 @@ pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); FAILED_NAMES+=("$1"); echo "  ❌ FAIL: $1"; }
 
 make_test_dir() {
-  local schema="${1:-2}"
   local d
   d=$(mktemp -d) || { echo "ERROR: mktemp -d failed" >&2; return 1; }
   cleanup_dirs+=("$d")
-  cat > "$d/rite-config.yml" <<EOF
-flow_state:
-  schema_version: $schema
-EOF
+  # rite-config.yml sandbox marker. flow-state is always per-session (no
+  # `flow_state.schema_version` selection — Issue #1458).
+  printf '# rite test sandbox config\n' > "$d/rite-config.yml"
   echo "$d"
 }
 
@@ -73,10 +71,10 @@ echo "=== same-issue-conflict tests (Issue #672 / #684 T-05 AC-5, Option C) ==="
 echo ""
 
 # -------------------------------------------------------------------------
-# TC-1: schema=2 sequential 同 issue 2 session create → 両方成功
+# TC-1: sequential 同 issue 2 session create → 両方成功
 # -------------------------------------------------------------------------
-echo "TC-1: schema=2 sequential 同 issue 2 session → 両方成功 + 独立 file (Option C)"
-TD=$(make_test_dir 2)
+echo "TC-1: sequential 同 issue 2 session → 両方成功 + 独立 file (Option C)"
+TD=$(make_test_dir)
 ISSUE=684
 SID_A="aaaaaaaa-1111-2222-3333-444455556601"
 SID_B="bbbbbbbb-1111-2222-3333-444455556601"
@@ -108,7 +106,7 @@ else
 fi
 
 # -------------------------------------------------------------------------
-# TC-2: schema=2 concurrent 同 issue 2 session create → 両方成功
+# TC-2: concurrent 同 issue 2 session create → 両方成功
 # -------------------------------------------------------------------------
 # F-06 fix (Issue #760): barrier sync で起動 jitter を排除し true concurrent 化。
 # 旧実装は単純な `cmd & cmd &` で両 process を background 起動していたが、
@@ -119,8 +117,8 @@ fi
 # canonical 防御: barrier file (`$TD/.barrier-tc2`) を pre-create し、各 child は
 # `while [ -f barrier ]; do sleep 0.001; done` で busy-wait → parent が rm barrier
 # して同時 release。これで両 child が ms 単位で同時起動することを保証する。
-echo "TC-2: schema=2 concurrent 同 issue 2 session create → race-free 両方成功"
-TD=$(make_test_dir 2)
+echo "TC-2: concurrent 同 issue 2 session create → race-free 両方成功"
+TD=$(make_test_dir)
 SID_C="cccccccc-1111-2222-3333-444455556601"
 SID_D="dddddddd-1111-2222-3333-444455556601"
 
@@ -162,10 +160,10 @@ else
 fi
 
 # -------------------------------------------------------------------------
-# TC-3: schema=2 同 issue patch → 各 session 独立に更新 (no field leak)
+# TC-3: 同 issue patch → 各 session 独立に更新 (no field leak)
 # -------------------------------------------------------------------------
-echo "TC-3: schema=2 同 issue patch → 独立更新 (no cross-session leak)"
-TD=$(make_test_dir 2)
+echo "TC-3: 同 issue patch → 独立更新 (no cross-session leak)"
+TD=$(make_test_dir)
 SID_E="eeeeeeee-1111-2222-3333-444455556601"
 SID_F="ffffffff-1111-2222-3333-444455556601"
 

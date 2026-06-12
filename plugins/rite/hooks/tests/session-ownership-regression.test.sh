@@ -1,6 +1,6 @@
 #!/bin/bash
 # Session Ownership 系列 (#173 / #206 / #216 / #558 / #660) regression on
-# multi-state format (per-session file, schema_version=2).
+# multi-state format (per-session file).
 #
 # Issue #683 / parent #672 AC-7 を verify する。
 # 過去 5 件の Issue で導入した防御層が、新形式上でも構造的に成立することを mechanical に確認する。
@@ -50,11 +50,8 @@ make_test_dir() {
 }
 
 write_config() {
-  local d="$1" sv="$2"
-  cat > "$d/rite-config.yml" << EOF
-flow_state:
-  schema_version: $sv
-EOF
+  local d="$1"
+  printf '# rite test sandbox config\n' > "$d/rite-config.yml"
 }
 
 write_session_id() {
@@ -85,7 +82,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-173 (Per-session isolation): 2 session が異なる per-session file に独立書き込み"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
-write_config "$TD" 2
+write_config "$TD"
 SID_A="11111111-1111-1111-1111-111111111111"
 SID_B="22222222-2222-2222-2222-222222222222"
 
@@ -118,7 +115,7 @@ fi
 # --------------------------------------------------------------------------
 echo "TC-216 (.rite-session-id auto-read):"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
-write_config "$TD" 2
+write_config "$TD"
 SID_AUTO="33333333-3333-3333-3333-333333333333"
 write_session_id "$TD" "$SID_AUTO"
 
@@ -151,7 +148,7 @@ fi
 # --------------------------------------------------------------------------
 echo "TC-206 + TC-558 (SOURCE=startup reset semantics):"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
-write_config "$TD" 2
+write_config "$TD"
 SID_OWN="55555555-5555-5555-5555-555555555555"
 write_session_id "$TD" "$SID_OWN"
 
@@ -183,7 +180,7 @@ fi
 # AC-02: 他 session の state は reset しない
 echo "TC-558 AC-02: 他 session の per-session state は reset されない"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
-write_config "$TD" 2
+write_config "$TD"
 SID_ME="77777777-7777-7777-7777-777777777777"
 SID_OTHER="88888888-8888-8888-8888-888888888888"
 write_session_id "$TD" "$SID_ME"
@@ -217,7 +214,7 @@ fi
 # AC-03: SOURCE=clear でも同様
 echo "TC-206 AC-2 (SOURCE=clear reset)"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
-write_config "$TD" 2
+write_config "$TD"
 SID_CLEAR="99999999-9999-9999-9999-999999999999"
 write_session_id "$TD" "$SID_CLEAR"
 (cd "$TD" && bash "$HOOK" set --session "$SID_CLEAR" \
@@ -246,7 +243,7 @@ fi
 # --------------------------------------------------------------------------
 echo "TC-660 (active=true gate, AND-logic):"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
-write_config "$TD" 2
+write_config "$TD"
 SID_GATE="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 write_session_id "$TD" "$SID_GATE"
 

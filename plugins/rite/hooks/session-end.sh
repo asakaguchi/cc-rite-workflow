@@ -32,15 +32,15 @@ fi
 # SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
-# Resolve the active flow-state file: per-session for schema_version=2 with a
-# valid SID, otherwise legacy. Stderr is captured via the canonical
-# _mktemp-stderr-guard.sh helper (see session-start.sh for the same pattern) so
+# Resolve the active flow-state file: always the per-session file (the legacy
+# single-file selection path was removed, Issue #1458). Stderr is captured via the
+# canonical _mktemp-stderr-guard.sh helper (see session-start.sh for the same pattern) so
 # resolver WARNING/ERROR lines don't get silently dropped — even on the success
 # arm, where helper graceful-degrade paths still emit diagnostics.
 _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "session-end" \
   "resolve-flow-state-err" \
-  "_resolve-flow-state-path.sh の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
+  "flow-state.sh path の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
 # Single-pass branch (filter runs once regardless of resolver exit status).
 _resolve_failed=0
 STATE_FILE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
@@ -221,10 +221,11 @@ WARN_MSG
     # to this session, so even a corrupt one has no value post-termination, and
     # leaving it would only confuse the next session-start defensive reset.
     # Detection: STATE_FILE matches `*/.rite/sessions/*.flow-state` (the per-session
-    # path returned by `_resolve-flow-state-path.sh`).
-    # Legacy `.rite-flow-state` is intentionally preserved (it may be the only
-    # state file in repos still running schema_version=1, and active=false marks
-    # it as terminated for /rite:resume's recovery flow).
+    # path returned by `flow-state.sh path`, now the only resolved form — Issue #1458).
+    # A residual legacy `.rite-flow-state` single-file (left over from a pre-v3
+    # checkout) is intentionally preserved here so the next session-start's
+    # `flow-state.sh migrate` can absorb it into per-session/v3 rather than have it
+    # silently deleted.
     # Stale-file cleanup (long-running sessions / crash leftovers) is out of scope
     # for this Issue per Issue #680 §4.3 (handled by a follow-up).
     if [[ "$STATE_FILE" == *"/.rite/sessions/"*".flow-state" ]] && [ -f "$STATE_FILE" ]; then

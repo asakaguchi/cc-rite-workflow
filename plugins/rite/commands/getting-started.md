@@ -180,12 +180,14 @@ What `/rite:init --upgrade` does:
   ✓ Shows a preview of changes: deprecated keys to remove, new sections to
     add (including commented-out Advanced sections), and values that will be
     preserved (e.g., `project_number`, `owner`, `branch.base`, `language`)
-  ✓ Asks for confirmation via AskUserQuestion before applying any schema
-    changes (this single apply/cancel prompt also gates the wiki-section
-    append below when both are pending, though the `wiki:` section may not
-    be itemized separately in the preview list; when the schema is already
-    up to date and only the `wiki:` section happens to be missing, the
-    append is applied without an additional prompt)
+  ✓ Asks for confirmation via AskUserQuestion before applying schema changes
+    on the upgrade path (deprecated-key removal, `schema_version` bump, new
+    sections); this single apply/cancel prompt also gates the drift back-add
+    items below when a schema upgrade is pending. When the schema is already
+    up to date, the short-circuit path back-adds any missing drift — the
+    `multi_session` / `wiki:` sections, newly added active sections, and
+    missing sub-keys — idempotently and without an additional prompt (the
+    preview/confirm step is shown only on the schema-upgrade path)
   ✓ Appends the `wiki:` section if it is absent, so the Wiki
     auto-initialization step of `/rite:init` can run for existing projects
   ✓ Back-adds the `multi_session:` section with `enabled: true` if it is
@@ -199,12 +201,13 @@ What `/rite:init --upgrade` does:
   ✓ Updates `schema_version` to the latest value on success
 
 The upgrade is non-destructive: user-customized values are preserved, and a
-backup is created before any edits are made. If your configuration is already
-up to date and Wiki is already initialized, the command makes no changes to
-`rite-config.yml` itself — it still creates a timestamped backup, reports
-"configuration is up to date", then runs the Wiki auto-initialization
-idempotency check of `/rite:init` and displays a final Wiki status line
-before exiting.
+backup is created before any edits are made. If your configuration has no
+missing drift (all active sections, their sub-keys, and the `multi_session` /
+`wiki:` sections are already present) and Wiki is already initialized, the
+command makes no changes to `rite-config.yml` itself — it still creates a
+timestamped backup, reports "configuration is up to date", then runs the Wiki
+auto-initialization idempotency check of `/rite:init` and displays a final
+Wiki status line before exiting.
 
 Check if `rite-config.yml` exists:
 

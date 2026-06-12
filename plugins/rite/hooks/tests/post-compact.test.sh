@@ -182,17 +182,14 @@ fi
 
 # --- TC-680-A (Issue #680, AC-LOCAL-2): per-session active=true + recovering → recovery output ---
 # Verifies post-compact reads & writes the per-session file (not legacy) when
-# schema_version=2 + valid SID + per-session file exists, and that the
+# a valid SID + per-session file exists, and that the
 # `.active=true` precondition path still triggers recovery.
 echo "TC-680-A (Issue #680, AC-LOCAL-2): per-session + recovering → auto-recovery from per-session file"
 TC_DIR=$(setup_test "tc680a")
 sid680a="aaaabbbb-cccc-dddd-eeee-ffffaaaa1111"
 mkdir -p "$TC_DIR/.rite/sessions"
 echo "$sid680a" > "$TC_DIR/.rite-session-id"
-cat > "$TC_DIR/rite-config.yml" <<EOF
-flow_state:
-  schema_version: 2
-EOF
+printf '# rite test sandbox config\n' > "$TC_DIR/rite-config.yml"
 per_session_file="$TC_DIR/.rite/sessions/${sid680a}.flow-state"
 jq -n '{active: true, issue_number: 680, phase: "phase5_review", next_action: "review", loop_count: 0, pr_number: 0, branch: "refactor/issue-680-test", session_id: "'"$sid680a"'"}' > "$per_session_file"
 cs680a="$(compact_state_path "$TC_DIR" "$sid680a")"
@@ -218,10 +215,7 @@ TC_DIR=$(setup_test "tc680b")
 sid680b="22222222-3333-4444-5555-666666666666"
 mkdir -p "$TC_DIR/.rite/sessions"
 echo "$sid680b" > "$TC_DIR/.rite-session-id"
-cat > "$TC_DIR/rite-config.yml" <<EOF
-flow_state:
-  schema_version: 2
-EOF
+printf '# rite test sandbox config\n' > "$TC_DIR/rite-config.yml"
 jq -n '{active: false, issue_number: 681}' > "$TC_DIR/.rite/sessions/${sid680b}.flow-state"
 cs680b="$(compact_state_path "$TC_DIR" "$sid680b")"
 jq -n '{compact_state: "recovering"}' > "$cs680b"

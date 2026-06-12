@@ -296,7 +296,7 @@ Plugin metadata file format:
 ```json
 {
  "name": "rite",
- "version": "0.5.1",
+ "version": "0.5.2",
  "description": "Universal Issue-driven development workflow for Claude Code",
  "author": { "name": "B16B1RD" },
  "license": "MIT"
@@ -502,7 +502,7 @@ followed by AskUserQuestion confirmation)
 
 #### --upgrade Option (Existing Configuration Schema Upgrade)
 
-**Purpose:** Bring an existing project's `rite-config.yml` up to the latest schema while preserving user-customized values (`project_number`, `owner`, `branch.base`, `language`, and so on). The upgrade applies the additions (new sections), removals (deprecated keys), and `schema_version` bump in a single confirmed batch.
+**Purpose:** Bring an existing project's `rite-config.yml` up to the latest schema while preserving user-customized values (`project_number`, `owner`, `branch.base`, `language`, and so on). On the schema-upgrade path (`current < latest`) the upgrade applies the additions (new sections), removals (deprecated keys), and `schema_version` bump in a single confirmed batch; when the schema is already current (`current >= latest`) it instead back-adds any missing active-section / sub-key / `multi_session` / `wiki:` drift without a confirmation prompt (see Phase 4.1.3 below).
 
 **When to use:**
 
@@ -524,26 +524,25 @@ followed by AskUserQuestion confirmation)
  Copy the existing file to `rite-config.yml.bak.YYYYMMDD-HHMMSS` for rollback.
 3. **Branching**
  - `current < latest`: Run Step 4–6 (identify changes → preview → apply after approval), then Step 7 (Phase 4.7 Wiki initialization).
- - `current == latest` and `wiki:` section absent: After backup, append the `wiki:` block from the template and run Phase 4.7.
- - `current == latest` and `wiki:` section present: No-op; display "configuration is up to date" and run Phase 4.7 (idempotent — no-op if Wiki is already initialized).
-4. **Identify and classify changes** (Step 4, only on the `current < latest` path)
+ - `current >= latest`: Run Step 4 (identify drift only) → Step 6 (back-add any missing `multi_session` section, newly added active top-level sections, missing sub-keys, and the `wiki:` section — preserving all user-customized values, idempotent, applied without a preview/confirmation prompt), then Step 7. The schema is already current, but the template can gain active sections/sub-keys without a schema bump; this path follows that drift. When nothing is missing, the config is left unchanged and "configuration is up to date" is displayed; Phase 4.7 still runs (idempotent — no-op if Wiki is already initialized).
+4. **Identify and classify changes** (Step 4, runs on both paths; on the `current >= latest` short-circuit path only the drift back-add items — missing `multi_session` / active sections / sub-keys / `wiki:` — are identified)
  Each key is classified as one of:
  - **User-customized value** (preserve): `project_number`, `owner`, `iteration` settings, `branch.base`, `language`, etc.
- - **Deprecated key** (remove): `project.name`, `commit.style`, `commit.enforce`, `branch.release`, `branch.types`, `version`
+ - **Deprecated key** (remove): `project.name`, `commit.style`, `commit.enforce`, `commit.contextual`, `branch.release`, `branch.types`, `version`
  - **Missing section** (add with template defaults): `review.debate`, `review.fact_check`, `verification`, etc.
  - **Advanced section** (add as commented-out block): `parallel`, `metrics`, `safety`, `investigate`
  - **Unknown key** (preserve with warning): user-added keys not present in the template
 5. **Preview and confirm** (Step 5)
  Display deprecated keys to be removed, sections to be added, and preserved existing settings; ask via `AskUserQuestion` to either apply or cancel.
 6. **Apply** (Step 6)
- On approval, update `schema_version` to the latest value, remove deprecated keys, add missing sections (including commented-out Advanced sections), and append the `wiki:` section if it was absent. All user-customized values are preserved.
+ On the `current < latest` path, after approval, update `schema_version` to the latest value, remove deprecated keys, add missing sections (including commented-out Advanced sections), and append the `wiki:` section if it was absent. On the `current >= latest` short-circuit path (no preview), apply only the idempotent drift back-add items — missing `multi_session` / active sections / sub-keys / `wiki:` — without confirmation. All user-customized values (including an explicit `enabled: false`) are preserved on both paths.
 7. **Run Phase 4.7 (Wiki initialization)** (Step 7)
  Invoke Phase 4.7 to bring existing users up to the Wiki-initialized state. If Wiki is already initialized, the phase is an idempotent no-op. Phase 4.7 is non-blocking: its failure does not affect `--upgrade` success. A final Wiki status line is displayed before the command exits.
 
 **Relationship with `schema_version`:**
 
 - The `schema_version` key at the top of `rite-config.yml` is an integer that identifies the configuration schema version (e.g., `schema_version: 2`). It is incremented whenever the rite workflow introduces a backward-incompatible schema change.
-- `--upgrade` compares the `schema_version` in the current file against the one in the bundled template and runs the Phase 4.1.3 flow above when the current file is behind.
+- `--upgrade` compares the `schema_version` in the current file against the one in the bundled template. When the current file is behind it runs the full Step 4–6 flow (preview + confirm); when the schema is already current it still runs the `current >= latest` short-circuit to back-add any active-section / sub-key / `multi_session` / `wiki:` drift the template introduced without a schema bump.
 - Configuration files without a `schema_version` key are implicitly treated as v1 and can be brought up to date via `--upgrade`.
 
 **Relationship with Phase 5 (new-install completion report):**
@@ -1429,9 +1428,9 @@ The `session_id` is the same UUID stored in `.rite-session-id` and propagated to
 
 Legacy state files (flat JSON without `schema_version`, or any file with `schema_version != 3`) are auto-migrated to v3 on session start by [`flow-state.sh migrate`](../plugins/rite/hooks/flow-state.sh) — the `cmd_migrate` / `_migrate_file` path — invoked from [`session-start.sh`](../plugins/rite/hooks/session-start.sh). `_migrate_file` rewrites each file **in place** via `mktemp + flock + atomic mv` (`_atomic_write`): it strips the legacy `previous_phase` field, normalizes `branch_name` → `branch`, reduces the legacy `phase` value to the v3 enum, bumps `schema_version` to `3`, and refreshes `updated_at`, while preserving `last_synced_phase`. There is no separate `.rite-flow-state.legacy.{timestamp}` backup — the rewrite is in place. A performed migration always prints an explicit `migrated:` line to stderr (unconditional, not gated on `--verbose`, so the session-start auto path surfaces it — silent skip is forbidden, AC-8); the no-op already-v3 case stays quiet unless `--verbose`. The `--dry-run` preview (`would migrate:`) also goes to stderr for symmetry with the `migrated:` announcement, so dry-run output surfaces alongside real migrations under the session-start stdout-only silence policy. The multi-session atomicity / glob-collision rationale is in [`docs/designs/multi-session-state.md`](designs/multi-session-state.md#migration-戦略).
 
-**Rollback strategy:**
+**Legacy single-file selection (removed):**
 
-`rite-config.yml` accepts `flow_state.schema_version: 1` to force the legacy code path (adapter pattern). The dual logic is intended to be removed after a soak period (target: v0.5.0).
+`rite-config.yml` previously accepted `flow_state.schema_version: 1` to force the legacy single-file (`.rite-flow-state`) code path (adapter pattern). That dual logic has been removed (Issue #1458) — flow-state is always per-session (`.rite/sessions/{session_id}.flow-state`). An explicit `flow_state.schema_version: 1` is now ignored; `session-start.sh` emits a deprecation warning once per session start (every startup until the key is removed) prompting its removal. A residual `.rite-flow-state` single-file is absorbed into per-session/v3 by the `flow-state.sh migrate` path above.
 
 **Sub-Issues API parent-child structure:**
 

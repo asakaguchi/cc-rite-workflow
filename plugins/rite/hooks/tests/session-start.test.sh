@@ -856,7 +856,7 @@ echo ""
 # --------------------------------------------------------------------------
 # TC-680-A (Issue #680, AC-LOCAL-2): per-session active=true → "Active rite workflow detected"
 # Verifies that session-start reads the per-session file (not legacy) when
-# schema_version=2 + valid SID + per-session file exists, and that the
+# a valid SID + per-session file exists, and that the
 # `.active=true` precondition still fires the workflow-detected output.
 # --------------------------------------------------------------------------
 echo "TC-680-A (Issue #680, AC-LOCAL-2): per-session active=true → workflow detected"
@@ -864,10 +864,7 @@ dir680a="$TEST_DIR/tc680a"
 mkdir -p "$dir680a/.rite/sessions"
 sid680a="aaaabbbb-cccc-dddd-eeee-ffffaaaa1111"
 echo "$sid680a" > "$dir680a/.rite-session-id"
-cat > "$dir680a/rite-config.yml" <<EOF
-flow_state:
-  schema_version: 2
-EOF
+printf '# rite test sandbox config\n' > "$dir680a/rite-config.yml"
 ts_t680a=$(iso8601_now 0)
 cat > "$dir680a/.rite/sessions/${sid680a}.flow-state" <<EOF
 {"active": true, "issue_number": 680, "branch": "refactor/issue-680-test", "phase": "phase5_review", "next_action": "review", "loop_count": 0, "session_id": "$sid680a", "updated_at": "$ts_t680a"}
@@ -891,10 +888,7 @@ dir680b="$TEST_DIR/tc680b"
 mkdir -p "$dir680b/.rite/sessions"
 sid680b="22222222-3333-4444-5555-666666666666"
 echo "$sid680b" > "$dir680b/.rite-session-id"
-cat > "$dir680b/rite-config.yml" <<EOF
-flow_state:
-  schema_version: 2
-EOF
+printf '# rite test sandbox config\n' > "$dir680b/rite-config.yml"
 ts_t680b=$(iso8601_now 0)
 cat > "$dir680b/.rite/sessions/${sid680b}.flow-state" <<EOF
 {"active": false, "issue_number": 681, "branch": "refactor/issue-681-test", "phase": "completed", "session_id": "$sid680b", "updated_at": "$ts_t680b"}
@@ -1107,6 +1101,77 @@ if printf '%s' "$err_1241c" | grep -qF 'settings.local.json の JSON 形式 / en
   fail "TC-1241-MISSING-SCRIPT: JSON hint misdirects on missing-script (subtask 3 regression); stderr: $err_1241c"
 else
   pass "TC-1241-MISSING-SCRIPT: JSON hint suppressed when python3 emits its own stderr (no misdirection)"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-DEP-1..4: flow_state.schema_version: 1 deprecation warning (Issue #1458)
+#   AC-2 / T-02: explicit `: 1` at startup → one-line stderr deprecation warning.
+#   AC-3 / T-03: gated on SOURCE=startup (only session-start emits it, and only
+#                on startup), so a session start surfaces exactly one — verified
+#                via count==1 plus the non-startup-source negative case (TC-DEP-4).
+#   AC-4 / T-04: flow_state section absent → no warning.
+#   AC-1 boundary: explicit `: 2` → no warning.
+# --------------------------------------------------------------------------
+_dep_git_repo() {
+  local d="$1" sv="$2"  # sv: "1" | "2" | "" (empty → omit flow_state section)
+  mkdir -p "$d"
+  (cd "$d" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q && git checkout -b "feat/issue-1458-test" -q)
+  if [ -n "$sv" ]; then
+    printf 'schema_version: 2\nlanguage: ja\nflow_state:\n  schema_version: %s\n' "$sv" > "$d/rite-config.yml"
+  else
+    printf 'schema_version: 2\nlanguage: ja\n' > "$d/rite-config.yml"
+  fi
+}
+# Invoke the hook directly (not via run_hook_with_source) and capture stderr to a
+# parent-scope file: run_hook_with_source assigns LAST_STDERR_FILE inside a
+# command-substitution subshell, so the value never reaches the parent and a
+# `grep "$LAST_STDERR_FILE"` here would read a stale earlier file. Echoes the
+# count of deprecation-warning lines (grep -c prints 0 / exits 1 on no match).
+_dep_warn_count() {
+  local d="$1" src="$2" stderr_f
+  stderr_f=$(mktemp "$TEST_DIR/stderr.dep.XXXXXX")
+  echo "{\"cwd\": \"$d\", \"source\": \"$src\"}" | bash "$HOOK" >/dev/null 2>"$stderr_f" || true
+  grep -c 'flow_state.schema_version: 1' "$stderr_f" 2>/dev/null || true
+}
+
+echo "TC-DEP-1: startup + flow_state.schema_version: 1 → one deprecation warning"
+_dep_git_repo "$TEST_DIR/git_dep1" "1"
+dep_n=$(_dep_warn_count "$TEST_DIR/git_dep1" "startup")
+if [ "$dep_n" -eq 1 ]; then
+  pass "explicit flow_state.schema_version: 1 → exactly one deprecation warning (AC-2/AC-3)"
+else
+  fail "Expected exactly one deprecation warning, got count=$dep_n"
+fi
+echo ""
+
+echo "TC-DEP-2: startup + no flow_state section → no deprecation warning"
+_dep_git_repo "$TEST_DIR/git_dep2" ""
+dep_n=$(_dep_warn_count "$TEST_DIR/git_dep2" "startup")
+if [ "$dep_n" -eq 0 ]; then
+  pass "flow_state section absent → no deprecation warning (AC-4)"
+else
+  fail "Expected no warning, got count=$dep_n"
+fi
+echo ""
+
+echo "TC-DEP-3: startup + flow_state.schema_version: 2 → no deprecation warning"
+_dep_git_repo "$TEST_DIR/git_dep3" "2"
+dep_n=$(_dep_warn_count "$TEST_DIR/git_dep3" "startup")
+if [ "$dep_n" -eq 0 ]; then
+  pass "flow_state.schema_version: 2 → no deprecation warning (AC-1 boundary)"
+else
+  fail "Expected no warning, got count=$dep_n"
+fi
+echo ""
+
+echo "TC-DEP-4: compact source + flow_state.schema_version: 1 → no deprecation warning (startup gate)"
+_dep_git_repo "$TEST_DIR/git_dep4" "1"
+dep_n=$(_dep_warn_count "$TEST_DIR/git_dep4" "compact")
+if [ "$dep_n" -eq 0 ]; then
+  pass "compact source → no deprecation warning (startup-gated; supports AC-3 once-per-session)"
+else
+  fail "Expected no warning on compact source, got count=$dep_n"
 fi
 echo ""
 

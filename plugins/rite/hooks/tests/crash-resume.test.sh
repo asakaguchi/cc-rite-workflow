@@ -6,8 +6,7 @@
 #   `mktemp ${FLOW_STATE}.XXXXXX` → 書込 → `mv` の atomic write pattern を採るため、
 #   write 中に SIGKILL されても state file 本体は (a) 直前の整合状態を保持するか
 #   (b) ENOENT のいずれかであり、partial-write は構造的に不在となる。本テストは
-#   その invariant を per-session file (schema_version=2) と legacy (schema_version=1)
-#   両経路で empirical 検証する。
+#   その invariant を per-session file 経路で empirical 検証する。
 #
 # Test cases:
 #   TC-1: write 中 SIGKILL → state file 整合 (jq parse 成功 or ENOENT)、partial-write 不在
@@ -15,7 +14,6 @@
 #         phase / issue_number / branch) が読み出せる
 #   TC-3: per-session file 構造で session A SIGKILL 中に session B が独立に create 可能
 #         (兄弟 session blast radius なし)
-#   TC-4: legacy mode (schema_version=1) でも crash resume invariant が成立
 #   TC-5: stale tempfile (`${FLOW_STATE}.XXXXXX`) は filesystem に残るが、state file 本体
 #         には流入しない (atomic property の structural guarantee)
 #
@@ -82,25 +80,17 @@ pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); FAILED_NAMES+=("$1"); echo "  ❌ FAIL: $1"; }
 
 make_test_dir() {
-  local schema="${1:-2}"
   local d
   d=$(mktemp -d) || { echo "ERROR: mktemp -d failed" >&2; return 1; }
   cleanup_dirs+=("$d")
-  cat > "$d/rite-config.yml" <<EOF
-flow_state:
-  schema_version: $schema
-EOF
+  printf '# rite test sandbox config\n' > "$d/rite-config.yml"
   echo "$d"
 }
 
-# Look up the state file path for a given (test_dir, session_id, schema).
+# Look up the state file path for a given (test_dir, session_id).
 state_path() {
-  local d="$1" sid="$2" schema="${3:-2}"
-  if [ "$schema" = "2" ]; then
-    echo "$d/.rite/sessions/${sid}.flow-state"
-  else
-    echo "$d/.rite-flow-state"
-  fi
+  local d="$1" sid="$2"
+  echo "$d/.rite/sessions/${sid}.flow-state"
 }
 
 # Detect partial-write artefacts in the state directory. Atomic property
@@ -137,7 +127,7 @@ echo ""
 # wait iter を 1 回追加し、jq empty が dead code でないことも mechanical に
 # 通す。
 echo "TC-1: write 中 SIGKILL → state file 整合 (atomic invariant + race window 実証)"
-TD=$(make_test_dir 2)
+TD=$(make_test_dir)
 SID="aabbccdd-eeff-0011-2233-445566778899"
 ITERATIONS=50
 flake_partial=0
@@ -156,7 +146,7 @@ for i in $(seq 1 "$ITERATIONS"); do
   kill -KILL "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
 
-  state_file=$(state_path "$TD" "$SID" 2)
+  state_file=$(state_path "$TD" "$SID")
   outcome=$(classify_outcome "$state_file")
   case "$outcome" in
     pre)         pre_count=$((pre_count + 1)) ;;
@@ -185,7 +175,7 @@ fi
 # (旧実装のコメント line 105-107 で謳いつつ未実装だった意図を実装化)
 (cd "$TD" && bash "$HOOK" set --session "$SID" \
   --phase "phase_final" --issue 684 --branch "feat/final" --pr 0 --next "nfinal" >/dev/null 2>&1)
-state_file=$(state_path "$TD" "$SID" 2)
+state_file=$(state_path "$TD" "$SID")
 if [ -f "$state_file" ] && jq empty "$state_file" 2>/dev/null; then
   pass "TC-1.3: kill しない iter で state file integral (jq empty 経路を mechanical に通過)"
 else
@@ -196,9 +186,9 @@ fi
 # TC-2: active=true state を pre-place → resume 用 fields が読み出せる
 # -------------------------------------------------------------------------
 echo "TC-2: pre-placed active state → resume fields readable"
-TD=$(make_test_dir 2)
+TD=$(make_test_dir)
 SID="11223344-5566-7788-99aa-bbccddeeff00"
-state_file=$(state_path "$TD" "$SID" 2)
+state_file=$(state_path "$TD" "$SID")
 
 # flow-state.sh resolves session_id from `.rite-session-id` when no --session is
 # passed. Pre-place the file so a fresh process can locate the per-session state.
@@ -231,7 +221,7 @@ fi
 # TC-3: per-session file → session A SIGKILL 中に session B 独立 create 可能
 # -------------------------------------------------------------------------
 echo "TC-3: session A SIGKILL → session B 独立 create (兄弟 blast radius なし)"
-TD=$(make_test_dir 2)
+TD=$(make_test_dir)
 SID_A="aaaa1111-2222-3333-4444-555566667777"
 SID_B="bbbb1111-2222-3333-4444-555566667777"
 
@@ -251,7 +241,7 @@ b_rc=0
 (cd "$TD" && bash "$HOOK" set --session "$SID_B" \
   --phase "phaseB" --issue 684 --branch "fb" --pr 0 --next "nb" >/dev/null 2>&1) || b_rc=$?
 
-state_b=$(state_path "$TD" "$SID_B" 2)
+state_b=$(state_path "$TD" "$SID_B")
 if [ "$b_rc" -eq 0 ] && [ -f "$state_b" ] && [ "$(jq -r '.phase' "$state_b")" = "phaseB" ]; then
   pass "TC-3.1: session B create succeeded after session A SIGKILL"
 else
@@ -259,7 +249,7 @@ else
 fi
 
 # Verify session A's file (if it exists) is integral — partial-write guard
-state_a=$(state_path "$TD" "$SID_A" 2)
+state_a=$(state_path "$TD" "$SID_A")
 if state_file_is_integral "$state_a"; then
   pass "TC-3.2: session A state file is integral (jq parse ok or ENOENT)"
 else
@@ -267,12 +257,12 @@ else
 fi
 
 # -------------------------------------------------------------------------
-# TC-4: legacy mode (schema_version=1) でも crash resume invariant 成立
+# TC-5: stale tempfile residue does not corrupt state file
 # -------------------------------------------------------------------------
 echo "TC-5: stale tempfile residue does not corrupt state file"
-TD=$(make_test_dir 2)
+TD=$(make_test_dir)
 SID="cccc1111-2222-3333-4444-555566667777"
-state_file=$(state_path "$TD" "$SID" 2)
+state_file=$(state_path "$TD" "$SID")
 
 # First, create a baseline state
 (cd "$TD" && bash "$HOOK" set --session "$SID" \

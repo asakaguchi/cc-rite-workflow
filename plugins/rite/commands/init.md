@@ -303,16 +303,16 @@ Read both files with the Read tool:
 - Current: Read `schema_version` from existing file. If missing, treat as v1.
 - Latest: Read `schema_version` from template. If missing, treat as v1.
 
-**Branching** (AC-3 compliance — #491): schema 同等であっても Wiki 未初期化の既存ユーザーを追従させる必要があるため、以下のとおり分岐する。**表の実行順序は左から右** (Step 番号順ではなく矢印順):
+**Branching** (#491 Wiki follow-through を含む全 drift 追従 — #1459): schema 同等であってもテンプレートはスキーマ版を bump せずに active セクション/サブキー（`multi_session`・新規セクション・Wiki 等）を獲得し得るため、`current >= latest` 経路でも config に欠落している drift を back-add して最新デフォルトへ追従させる必要がある。以下のとおり分岐する。**表の実行順序は左から右** (Step 番号順ではなく矢印順):
 
 | Condition | Execution order (left → right) |
 |-----------|--------------------------------|
 | `current < latest` | (1) Step 3 Backup → (2) Step 4 Identify → (3) Step 5 Preview → (4) Step 6 Apply → (5) Step 7 Phase 4.7 |
-| `current >= latest` | (1) Step 3 Backup → (2) Step 3.5 Wiki Section Append (conditional) → (3) Step 7 Phase 4.7。Step 4-6 はスキップ |
+| `current >= latest` | (1) Step 3 Backup → (2) Step 4 Identify（drift のみ）→ (3) Step 6 Apply（multi_session/新規セクション/欠落サブキー/Wiki の back-add。User-customized 保全・冪等・preview なし）→ (4) Step 7 Phase 4.7 |
 
-`current >= latest` 経路では Step 3.5 が config を変更する可能性があるため Step 3 Backup を必ず先に実行する (precondition)。
+両経路とも Step 6 が config を変更し得るため Step 3 Backup を必ず先に実行する (precondition)。`current >= latest` 経路は Step 5 Preview/confirm を挟まず、欠落している active セクション/サブキーのみを冪等に back-add する（テンプレート defaults への追従であり、User-customized 値（明示的な `enabled: false` を含む）は保全されるため無確認で適用する）。旧 Step 3.5 の Wiki 専用救済（#491）はこの一般化に吸収され、Wiki も他の active セクションと同様に Step 6 item 7 で back-add される（drift anchor SoT に一貫化）。
 
-schema 同等 + Wiki 既に初期化済みの場合、Step 3.5 は「既に `^wiki:` active section が存在する」ことを検出して no-op となる。この経路で `rite-config.yml は最新です (v{current})` を表示するタイミングは **Step 3.5 の no-op 確定時** (Phase 4.7 進入前) とする。Phase 4.7 はそのまま実行され、Phase 4.7.2 が `wiki_status=already_initialized` を set して Skill 呼び出しは skip される (冪等)。
+`current >= latest` 経路で back-add 対象が皆無（全 active セクション/サブキーが既存）の場合、Step 6 は config を書き換えず `rite-config.yml は最新です (v{current})` を表示する。Phase 4.7 はそのまま実行され、Wiki 初期化済みなら Phase 4.7.2 が `wiki_status=already_initialized` を set して Skill 呼び出しは skip される (冪等)。
 
 **Step 3: Create backup**
 
@@ -322,20 +322,6 @@ cp rite-config.yml "rite-config.yml.bak.$(date +%Y%m%d-%H%M%S)"
 
 Display "バックアップを作成しました: {path}".
 
-**Step 3.5: Wiki Section Append (conditional — #491)**
-
-**Precondition**: Step 3 Backup must have completed successfully.
-
-**Execution condition**: This step runs only on the `current >= latest` short-circuit path (see Step 2 branching table). On the `current < latest` path, wiki append is handled by Step 6 item 5 instead, so Step 3.5 is skipped.
-
-**Procedure**:
-
-1. Grep `rite-config.yml` for `^wiki:` (excluding lines starting with `#`) to detect an existing active wiki section.
-2. **If an active `^wiki:` match is found** (Wiki section already present): no-op. Display `rite-config.yml は最新です (v{current})` and proceed to Step 7 (Phase 4.7). Phase 4.7.2 will subsequently detect the initialized Wiki and set `wiki_status=already_initialized`.
-3. **If no active `^wiki:` match**: invoke the same append procedure defined in Step 6 item 5 below (single source of truth for the wiki block literal source and anchor selection). After the append completes, display `rite-config.yml に wiki セクションを追加しました（active）。` and proceed to Step 7.
-
-**Anchor/append handoff**: Step 3.5 does NOT duplicate the wiki block literal or anchor-selection logic. Both are defined in Step 6 item 5 below; Step 3.5 simply invokes that same procedure. This keeps the wiki block definition in a single location within `init.md` and prevents drift between the two paths.
-
 **Step 4: Identify changes**
 
 Compare current config against the template and classify each key:
@@ -344,16 +330,16 @@ Compare current config against the template and classify each key:
 |---------------|--------|
 | **User-customized value** (project_number, owner, iteration settings, branch.base, language, etc.) | **Preserve** — keep the user's value |
 | **Deprecated key** (`project.name`, `commit.style`, `commit.enforce`, `commit.contextual`, `branch.release`, `branch.types`, `version`) | **Remove** — delete from config |
-| **Missing section** — any active top-level section above the `--- Advanced ---` marker (github, iteration, branch, commands, verification, issue, review, `fix`, `flow_state`, etc. — **excluding `wiki:` and `multi_session:`**, which have dedicated rows below) | **Add** — insert the whole section from the template with default values |
+| **Missing section** — any active top-level section above the `--- Advanced ---` marker (github, iteration, branch, commands, verification, issue, review, `fix`, etc. — **excluding `wiki:` and `multi_session:`**, which have dedicated rows below) | **Add** — insert the whole section from the template with default values |
 | **Missing sub-key** — a key newly added to the template *inside* a section the config already has (e.g., `review.fact_check.verify_internal_likelihood`) | **Add the missing key only** from the template default; **preserve** all existing sibling values (e.g., a customized `review.fact_check.max_claims`). No-op when the key already exists |
 | **`multi_session:` section** | **Back-add on --upgrade with `enabled: true`** (#1391 default-on; #1446 D-01). `multi_session:` is declared above the `--- Advanced ---` marker (active). When missing from an existing config, insert the template active block (`enabled: true` + `worktree_base`) so `--upgrade`-ed projects receive the same default-on behavior as new `/rite:init` generation. If a user's config already has a `multi_session:` block, it is preserved as a User-customized value (no overwrite — **including an explicit `enabled: false`**). Idempotent: no-op when the active section already exists |
 | **Advanced section** (parallel, metrics, safety, investigate) | **Add as comments** — insert commented-out with default values |
-| **`wiki:` section** | **Step 3/4 は扱わない**。wiki セクションの追加は **Phase 4.1.2 Step 2 (新規生成: template の Advanced 境界より上にある active block が自動コピーされる) および Phase 4.1.3 Step 3.5 / Step 6 item 5 (Upgrade path: 未存在時に active block として append) の専権**。template 側にはコメント形式の `# wiki:` ブロックは存在しない (`#491` で active 位置に移動済み) ため、重複追加経路はない |
+| **`wiki:` section** | **Step 3/4 は扱わない**。wiki セクションの追加は **Phase 4.1.2 Step 2 (新規生成: template の Advanced 境界より上にある active block が自動コピーされる) および Phase 4.1.3 Step 6 item 7 (Upgrade path: 未存在時に active block として append。`current < latest` / `current >= latest` 両経路で実行) の専権**。template 側にはコメント形式の `# wiki:` ブロックは存在しない (`#491` で active 位置に移動済み) ため、重複追加経路はない |
 | **Unknown key** (user-added keys not in template) | **Preserve with warning** — keep but display warning |
 
 **Unknown key 判定の scope**: Step 4 の "Unknown key" 判定 (user-added keys not in template) は、**template の `# --- Advanced (below this line) ---` 境界より上の active section のみ**を参照する。境界より下 (コメント形式の Advanced sections + 末尾コメント) は template 側で意図的に省略または注記のため存在する領域であり、ユーザー設定の classification 対象外。
 
-**Active top-level sections covered on --upgrade** (drift anchor — the `init-upgrade-drift` test asserts this list ⊇ the template's active top-level keys above the `--- Advanced ---` marker): `schema_version`, `github`, `iteration`, `branch`, `commands`, `verification`, `issue`, `review`, `fix`, `language`, `wiki`, `flow_state`, `multi_session`. Each is handled by Step 4/Step 6 above (User-customized values are preserved, missing sections/sub-keys are added). **When a new active top-level section is added to the template, add it to this list too** — otherwise the drift test fails and `--upgrade` would silently miss it.
+**Active top-level sections covered on --upgrade** (drift anchor — the `init-upgrade-drift` test asserts this list ⊇ the template's active top-level keys above the `--- Advanced ---` marker): `schema_version`, `github`, `iteration`, `branch`, `commands`, `verification`, `issue`, `review`, `fix`, `language`, `wiki`, `multi_session`. Each is handled by Step 4/Step 6 above (User-customized values are preserved, missing sections/sub-keys are added). **When a new active top-level section is added to the template, add it to this list too** — otherwise the drift test fails and `--upgrade` would silently miss it.
 
 **Active sub-keys covered on --upgrade** (drift anchor — the `init-upgrade-drift` test T-12 asserts, per section, this list ⊇ each template active section's **direct** sub-keys above the `--- Advanced ---` marker; Step 6 item 4 adds any missing sub-key while preserving existing siblings). Sections whose value is a scalar (`schema_version`, `language`) have no sub-keys and are omitted:
 
@@ -366,12 +352,11 @@ Compare current config against the template and classify each key:
 - `review`: `min_reviewers`, `criteria`, `loop`, `security_reviewer`, `debate`, `confidence_threshold`, `fact_check`, `scope_assignment`
 - `fix`: `fail_fast_response`
 - `wiki`: `enabled`, `branch_strategy`, `branch_name`, `auto_ingest`, `auto_query`
-- `flow_state`: `schema_version`
 - `multi_session`: `enabled`, `worktree_base`
 
 **When a new sub-key is added to an existing template section, add it to the matching row above too** — otherwise the T-12 sub-key drift test fails and `--upgrade` would silently miss it (the same guard as the top-level list, one level down).
 
-**Step 5: Preview and confirm**
+**Step 5: Preview and confirm** (`current < latest` 経路のみ — `current >= latest` 短絡経路は Step 5 を挟まず Step 6 で欠落 drift を冪等に back-add する)
 
 Display the changes to the user:
 
@@ -399,7 +384,9 @@ Ask with `AskUserQuestion`:
 
 **Step 6: Apply changes**
 
-If the user confirms:
+**Path-dependent application**: On the `current < latest` path, apply all items below after the user confirms in Step 5. On the `current >= latest` short-circuit path (Step 5 skipped), apply **only items 3, 4, 6, 7** — the drift back-add (missing active sections / missing sub-keys / multi_session / wiki) — directly without confirmation. Items 1, 2, 5 (schema_version bump / deprecated-key removal / Advanced-section comments) are full-upgrade-only and are skipped on the short-circuit path (schema is already current, so item 1 would be a no-op anyway). Every back-add item (3, 4, 6, 7) is idempotent and preserves User-customized values (including an explicit `enabled: false`), so the short-circuit path applies unattended; when no item finds anything missing, the config is left unchanged and `rite-config.yml は最新です (v{current})` is displayed.
+
+Apply the following:
 
 1. Update `schema_version` to latest value
 2. Remove deprecated keys using the Edit tool. Display "廃止キーを削除しました: {keys}".

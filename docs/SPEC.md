@@ -528,7 +528,7 @@ followed by AskUserQuestion confirmation)
 4. **Identify and classify changes** (Step 4, runs on both paths; on the `current >= latest` short-circuit path only the drift back-add items — missing `multi_session` / active sections / sub-keys / `wiki:` — are identified)
  Each key is classified as one of:
  - **User-customized value** (preserve): `project_number`, `owner`, `iteration` settings, `branch.base`, `language`, etc.
- - **Deprecated key** (remove): `project.name`, `commit.style`, `commit.enforce`, `branch.release`, `branch.types`, `version`
+ - **Deprecated key** (remove): `project.name`, `commit.style`, `commit.enforce`, `commit.contextual`, `branch.release`, `branch.types`, `version`
  - **Missing section** (add with template defaults): `review.debate`, `review.fact_check`, `verification`, etc.
  - **Advanced section** (add as commented-out block): `parallel`, `metrics`, `safety`, `investigate`
  - **Unknown key** (preserve with warning): user-added keys not present in the template

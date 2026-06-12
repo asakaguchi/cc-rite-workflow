@@ -130,6 +130,32 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
   - All functional contracts preserved (`pre-tool-bash-guard.sh` Bypass block / Terminal Completion pattern / `4-site-symmetry.test.sh` / sentinel emit). flow-state phase tokens unchanged (NFR-4 compliance).
   - For detailed completion report and AC achievement evidence, see `docs/designs/issue-create-zerobase-redesign.md` Section 11.
 
+## [0.5.0] - 2026-06-12
+
+### Added
+
+- **Session worktrees for work isolation** — `multi_session` configuration with session-scoped worktree creation via `EnterWorktree`, resume re-entry, and lazy reap on cleanup. Default ON (opt-in → default).
+- **Issue claim mechanism** (`issue-claim.sh`) — fail-fast guard preventing two sessions from working the same Issue concurrently.
+- **`/rite:learn`** — Socratic understanding-check command for completed Issue/PR sessions.
+- **Assumption Surfacing step** in `/rite:issue:create` — surfaces implicit model assumptions and classifies them (derive / ask / defer).
+- **Knowledge routing (4-channel)** added to coding principles, with comment why-over-what and rejected-alternative routing.
+- **Review scope classification** — `scope` / `pre_existing` / `acknowledged` fields (review-result-schema 1.1.0), 3-way recommendation disposition, and a Phase 7 post-condition gate.
+- **Wiki lint helper scripts** for the three machine-decidable categories, plus concurrent-ingest exclusion (session lock + push retry).
+- **New `/rite:lint` guards** — hardcoded line-number drift, CLOSED+COMPLETED board-not-Done drift, and operational bash-block heaviness.
+- Artifacts schema 1.1.0 migration script + version-drift hook.
+
+### Changed
+
+- `multi_session.enabled` now defaults to `true` for new projects.
+- Numerous Source-of-Truth consolidations across commands, references, and templates (Type crosswalk, contract section mapping, etc.).
+- Reviewer base / severity-levels gained Scope Assignment responsibility.
+
+### Fixed
+
+- Extensive stabilization across the review-fix loop, hooks (flow-state multi-state API, legacy `.rite-flow-state` migration, bang-backtick guard, drift-check), Issue/PR orchestration, and Wiki ingest/query (300+ fixes consolidated since v0.4.0).
+
+> This is a large consolidation release (644 commits since v0.4.0). Entries are summarized at the feature level per the project's CHANGELOG policy.
+
 ## [0.4.0] - 2026-04-22
 
 ### BREAKING CHANGE
@@ -550,6 +576,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.5.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.10...v0.4.0
 [0.3.10]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.9...v0.3.10
 [0.3.9]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.8...v0.3.9

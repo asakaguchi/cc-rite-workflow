@@ -58,14 +58,12 @@ pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); FAILED_NAMES+=("$1"); echo "  ❌ FAIL: $1"; }
 
 make_test_dir() {
-  local schema="${1:-2}"
   local d
   d=$(mktemp -d) || { echo "ERROR: mktemp -d failed" >&2; return 1; }
   cleanup_dirs+=("$d")
-  cat > "$d/rite-config.yml" <<EOF
-flow_state:
-  schema_version: $schema
-EOF
+  # rite-config.yml sandbox marker. flow-state is always per-session (no
+  # `flow_state.schema_version` selection — Issue #1458).
+  printf '# rite test sandbox config\n' > "$d/rite-config.yml"
   echo "$d"
 }
 
@@ -76,7 +74,7 @@ echo ""
 # TC-1: schema=2 sequential 同 issue 2 session create → 両方成功
 # -------------------------------------------------------------------------
 echo "TC-1: schema=2 sequential 同 issue 2 session → 両方成功 + 独立 file (Option C)"
-TD=$(make_test_dir 2)
+TD=$(make_test_dir)
 ISSUE=684
 SID_A="aaaaaaaa-1111-2222-3333-444455556601"
 SID_B="bbbbbbbb-1111-2222-3333-444455556601"
@@ -120,7 +118,7 @@ fi
 # `while [ -f barrier ]; do sleep 0.001; done` で busy-wait → parent が rm barrier
 # して同時 release。これで両 child が ms 単位で同時起動することを保証する。
 echo "TC-2: schema=2 concurrent 同 issue 2 session create → race-free 両方成功"
-TD=$(make_test_dir 2)
+TD=$(make_test_dir)
 SID_C="cccccccc-1111-2222-3333-444455556601"
 SID_D="dddddddd-1111-2222-3333-444455556601"
 
@@ -165,7 +163,7 @@ fi
 # TC-3: schema=2 同 issue patch → 各 session 独立に更新 (no field leak)
 # -------------------------------------------------------------------------
 echo "TC-3: schema=2 同 issue patch → 独立更新 (no cross-session leak)"
-TD=$(make_test_dir 2)
+TD=$(make_test_dir)
 SID_E="eeeeeeee-1111-2222-3333-444455556601"
 SID_F="ffffffff-1111-2222-3333-444455556601"
 

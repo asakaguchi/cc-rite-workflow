@@ -29,7 +29,8 @@ fi
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
 # Resolve active flow-state file path.
-# Returns the per-session file when schema_version=2 with a valid SID; otherwise legacy.
+# Always returns the per-session file (the legacy single-file selection path was
+# removed, Issue #1458).
 #
 # Issue #749: stderr pass-through for diagnostic visibility, via canonical helper
 # `_mktemp-stderr-guard.sh`. 詳細は session-start.sh の同パターンを参照。

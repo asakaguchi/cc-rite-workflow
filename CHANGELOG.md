@@ -17,6 +17,17 @@ rationale and Keep a Changelog 1.1.0 "Guiding Principles" for conventions.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-06-12
+
+### Fixed
+
+- **`/rite:init --upgrade` short-circuit path no longer drops drift back-adds** (#1461) — when no pending drift was detected, the `--upgrade` short-circuit path skipped the back-add step that the full path performs, so projects taking the short-circuit could miss newly added config sections and sub-keys. The short-circuit now applies the same drift back-add logic, covered by an added drift-detection test.
+- **Fixed broken references to the non-existent `_resolve-flow-state-path.sh`** (#1466) — updated stale script references in the hooks documentation to the actual `flow-state.sh` path.
+
+### Changed
+
+- **Unified flow state on the per-session model** (#1460) — removed the legacy `flow_state.schema_version=1` (single-file) path from the hooks (`session-start`, `session-end`, `post-compact`, `pre-compact`, `post-tool-wm-sync`), `init.md`, and the config template, consolidating on per-session flow state. Stale `schema_version` test fixtures/labels were neutralized (#1465), `commit.contextual` was added to the SPEC Deprecated key list (#1469), and `SPEC.md` / `getting-started.md` were updated to follow the `--upgrade` drift back-add behavior change (#1467).
+
 ## [0.5.1] - 2026-06-12
 
 ### Fixed
@@ -469,6 +480,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.5.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.10...v0.4.0

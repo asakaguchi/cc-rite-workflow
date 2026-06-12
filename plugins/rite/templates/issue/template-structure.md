@@ -28,7 +28,16 @@ For the Complexity Gate, Type Definitions (incl. the Commit Type ↔ Contract Ty
 ### Non-goal
 
 - {what_is_explicitly_not_in_scope}
+
+### Assumptions / Open Questions
+
+<!-- Optional subsection. Populated by create.md ステップ 4.0 (Assumption Surfacing) with deferred (c) assumptions. Omit the entire subsection when there are none. -->
+
+- 前提: {assumption_taken_to_proceed}
+- Open Question: {unresolved_question_to_settle_later}
 ```
+
+> **Assumptions / Open Questions**: Section 1 の任意サブセクション。`create.md` ステップ 4.0 で **defer** に分類された仮定（着手はできるが後続で解消する前提・未解決の問い）の記載位置。`Non-goal` と同じく内容が無ければサブセクションごと省略する。新規 numbered section ではなく Section 1 (always MUST) のサブセクションのため、Complexity Gate への行追加は不要。
 
 ### 2. Scope
 

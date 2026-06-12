@@ -2,6 +2,11 @@
 # Static / offline drift + consistency tests for the `/rite:init --upgrade` config
 # follow-through (Issue #1446).
 #
+# Sources the shared `_test-helpers.sh` (Issue #1450) for pass / fail /
+# assert_grep / assert_not_grep / _helpers_resolve_repo_root / print_summary,
+# so the pass/fail stream, glyphs (✅/❌) and summary block follow the same
+# convention as the other source-based tests in this directory.
+#
 # Verifies:
 #   T-10 (AC-10): every active top-level key in the template above the
 #        `# --- Advanced (below this line) ---` marker is enumerated in init.md's
@@ -24,23 +29,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+source "$SCRIPT_DIR/_test-helpers.sh"
+REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 INIT_MD="$REPO_ROOT/plugins/rite/commands/init.md"
 TEMPLATE="$REPO_ROOT/plugins/rite/templates/config/rite-config.yml"
-
-PASS=0
-FAIL=0
-FAILURES=()
-
-pass() { PASS=$((PASS + 1)); echo "  ✓ $1"; }
-fail() { FAIL=$((FAIL + 1)); FAILURES+=("$1"); echo "  ✗ $1" >&2; }
-
-assert_contains() { # file pattern description
-  if grep -qE -e "$2" "$1"; then pass "$3"; else fail "$3 (missing pattern: $2)"; fi
-}
-assert_absent() { # file fixed-string description
-  if grep -qF -- "$2" "$1"; then fail "$3 (stale text present: $2)"; else pass "$3"; fi
-}
 
 # --- Preconditions ---
 [ -f "$INIT_MD" ]   || { echo "FATAL: init.md not found at $INIT_MD" >&2; exit 1; }
@@ -78,18 +70,22 @@ fi
 echo "=== T-11: multi_session back-add wording is consistent (no stale text) ==="
 
 # Positive: both files state the back-add policy.
-assert_contains "$INIT_MD" 'multi_session.*[Bb]ack-add on --upgrade with .enabled: true.' \
-  "init.md Step 4 row states multi_session is back-added with enabled: true"
-assert_contains "$TEMPLATE" 'back-added with .enabled: true.' \
-  "template comment states multi_session is back-added with enabled: true on --upgrade"
+# assert_grep takes ERE patterns; the originals already used grep -E so the
+# patterns carry over unchanged.
+assert_grep "init.md Step 4 row states multi_session is back-added with enabled: true" \
+  "$INIT_MD" 'multi_session.*[Bb]ack-add on --upgrade with .enabled: true.'
+assert_grep "template comment states multi_session is back-added with enabled: true on --upgrade" \
+  "$TEMPLATE" 'back-added with .enabled: true.'
 
-# Negative: no stale "do not back-add" wording remains.
-assert_absent "$INIT_MD" 'Do NOT back-add on --upgrade' \
-  "init.md no longer says 'Do NOT back-add on --upgrade'"
-assert_absent "$TEMPLATE" 'intentionally NOT back-added' \
-  "template no longer says 'intentionally NOT back-added'"
-assert_absent "$INIT_MD" 'left absent' \
-  "init.md no longer says multi_session is 'left absent' on upgrade"
+# Negative: no stale "do not back-add" wording remains. The original assert_absent
+# matched fixed strings; these three patterns contain no ERE metacharacters, so
+# assert_not_grep (ERE) is exactly equivalent.
+assert_not_grep "init.md no longer says 'Do NOT back-add on --upgrade'" \
+  "$INIT_MD" 'Do NOT back-add on --upgrade'
+assert_not_grep "template no longer says 'intentionally NOT back-added'" \
+  "$TEMPLATE" 'intentionally NOT back-added'
+assert_not_grep "init.md no longer says multi_session is 'left absent' on upgrade" \
+  "$INIT_MD" 'left absent'
 
 echo "=== T-12: template active section direct sub-keys ⊆ init.md sub-key drift anchor ==="
 
@@ -131,12 +127,8 @@ else
 fi
 
 # --- Summary ---
-echo ""
-echo "==============================="
-echo "init-upgrade-drift: $PASS passed, $FAIL failed"
-if [ "$FAIL" -gt 0 ]; then
-  echo "Failures:"
-  for f in "${FAILURES[@]}"; do echo "  - $f"; done
+if ! print_summary "init-upgrade-drift" \
+  "Drift: sync init.md's '--upgrade' anchors ('Active top-level sections covered on --upgrade' and 'Active sub-keys covered on --upgrade') with the template's active sections/sub-keys above the '--- Advanced ---' marker."; then
   exit 1
 fi
 echo "All init-upgrade-drift checks passed!"

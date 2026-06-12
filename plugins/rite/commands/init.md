@@ -344,13 +344,16 @@ Compare current config against the template and classify each key:
 |---------------|--------|
 | **User-customized value** (project_number, owner, iteration settings, branch.base, language, etc.) | **Preserve** — keep the user's value |
 | **Deprecated key** (`project.name`, `commit.style`, `commit.enforce`, `commit.contextual`, `branch.release`, `branch.types`, `version`) | **Remove** — delete from config |
-| **Missing section** (review.debate, review.fact_check, verification, etc. — **excluding wiki and multi_session**) | **Add** — insert from template with default values |
-| **`multi_session:` section** | **Do NOT back-add on --upgrade**. `multi_session:` is declared above the `--- Advanced ---` marker (active, #1391) so new generation (Phase 4.1.2 Step 2) emits it with `enabled: true`. On the `--upgrade` path it is intentionally **left absent** when missing from an existing config, so the `pr:open` parser fallback keeps it `false` — this preserves backward compat for projects created before #1391 ("the default-on change takes effect only at new /rite:init generation"). If a user's config already has a `multi_session:` block, it is preserved as a User-customized value (no overwrite) |
+| **Missing section** — any active top-level section above the `--- Advanced ---` marker (github, iteration, branch, commands, verification, issue, review, `fix`, `flow_state`, etc. — **excluding `wiki:` and `multi_session:`**, which have dedicated rows below) | **Add** — insert the whole section from the template with default values |
+| **Missing sub-key** — a key newly added to the template *inside* a section the config already has (e.g., `review.fact_check.verify_internal_likelihood`) | **Add the missing key only** from the template default; **preserve** all existing sibling values (e.g., a customized `review.fact_check.max_claims`). No-op when the key already exists |
+| **`multi_session:` section** | **Back-add on --upgrade with `enabled: true`** (#1391 default-on; #1446 D-01). `multi_session:` is declared above the `--- Advanced ---` marker (active). When missing from an existing config, insert the template active block (`enabled: true` + `worktree_base`) so `--upgrade`-ed projects receive the same default-on behavior as new `/rite:init` generation. If a user's config already has a `multi_session:` block, it is preserved as a User-customized value (no overwrite — **including an explicit `enabled: false`**). Idempotent: no-op when the active section already exists |
 | **Advanced section** (parallel, metrics, safety, investigate) | **Add as comments** — insert commented-out with default values |
 | **`wiki:` section** | **Step 3/4 は扱わない**。wiki セクションの追加は **Phase 4.1.2 Step 2 (新規生成: template の Advanced 境界より上にある active block が自動コピーされる) および Phase 4.1.3 Step 3.5 / Step 6 item 5 (Upgrade path: 未存在時に active block として append) の専権**。template 側にはコメント形式の `# wiki:` ブロックは存在しない (`#491` で active 位置に移動済み) ため、重複追加経路はない |
 | **Unknown key** (user-added keys not in template) | **Preserve with warning** — keep but display warning |
 
 **Unknown key 判定の scope**: Step 4 の "Unknown key" 判定 (user-added keys not in template) は、**template の `# --- Advanced (below this line) ---` 境界より上の active section のみ**を参照する。境界より下 (コメント形式の Advanced sections + 末尾コメント) は template 側で意図的に省略または注記のため存在する領域であり、ユーザー設定の classification 対象外。
+
+**Active top-level sections covered on --upgrade** (drift anchor — the `init-upgrade-drift` test asserts this list ⊇ the template's active top-level keys above the `--- Advanced ---` marker): `schema_version`, `github`, `iteration`, `branch`, `commands`, `verification`, `issue`, `review`, `fix`, `language`, `wiki`, `flow_state`, `multi_session`. Each is handled by Step 4/Step 6 above (User-customized values are preserved, missing sections/sub-keys are added). **When a new active top-level section is added to the template, add it to this list too** — otherwise the drift test fails and `--upgrade` would silently miss it.
 
 **Step 5: Preview and confirm**
 
@@ -361,9 +364,13 @@ Display the changes to the user:
 
 廃止キー削除: {deprecated_keys}
 新規セクション追加: {new_sections}
+サブキー補完: {new_subkeys}
+multi_session back-add: {multi_session_status}
 Advanced セクション追加（コメントアウト）: {advanced_sections}
 保持される既存設定: {preserved_keys}
 ```
+
+> `{multi_session_status}` は back-add を実行した場合 `enabled: true`、既存ブロックが存在し変更しなかった場合 `（既存のため変更なし）` を表示する。
 
 Ask with `AskUserQuestion`:
 
@@ -381,8 +388,16 @@ If the user confirms:
 1. Update `schema_version` to latest value
 2. Remove deprecated keys using the Edit tool. Display "廃止キーを削除しました: {keys}".
 3. Add missing sections from the template using the Edit tool. Display "新しいセクションを追加しました: {sections}".
-4. Add Advanced sections as comments (prefixed with `#`) using the Edit tool
-5. **If `wiki:` section is absent**: append the active `wiki:` block from the template (single source of truth) so Phase 4.7 can auto-initialize Wiki.
+4. **Merge missing sub-keys**: for each active section already present in the config, compare its keys against the template section and add **only the missing sub-keys** (with their template default values) using the Edit tool, preserving every existing sibling value. No-op for keys already present (idempotent). Display "サブキーを補完しました: {section.key, ...}" only when at least one key was added.
+5. Add Advanced sections as comments (prefixed with `#`) using the Edit tool
+6. **If `multi_session:` section is absent**: append the active `multi_session:` block from the template (`enabled: true` + `worktree_base`) so `--upgrade`-ed projects get the same default-on session-worktree behavior as new generation (#1446 D-01).
+
+   **Block source (SSOT)**: Read `{plugin_root}/templates/config/rite-config.yml` and extract the active `multi_session:` block (the `multi_session:` key line through its last sub-key, above the `# --- Advanced (below this line) ---` marker). Do not duplicate the literal here — any change to template defaults propagates to both new-install and `--upgrade`.
+
+   **Idempotency guard**: Before inserting, Grep `^multi_session:` (excluding comment lines starting with `#`) in the project's `rite-config.yml`. If an active section already exists, skip the Edit entirely (no-op) — this preserves a user's existing block, **including an explicit `enabled: false`** (never overwrite `enabled`).
+
+   **Anchor selection**: insert immediately before the `# --- Advanced (below this line) ---` marker line (`old_string` = marker line, `new_string` = multi_session block + `\n\n` + marker line). If the Advanced marker is absent (user-trimmed config), append after the last top-level active key. Display `rite-config.yml に multi_session セクションを追加しました（active, enabled: true）。` only when the Edit actually ran.
+7. **If `wiki:` section is absent**: append the active `wiki:` block from the template (single source of truth) so Phase 4.7 can auto-initialize Wiki.
 
    **Wiki block source (SSOT)**: Read `{plugin_root}/templates/config/rite-config.yml` and extract the block from `# Wiki settings` through the end of the `wiki:` section (the lines above the `# --- Advanced (below this line) ---` marker). This avoids literal duplication between `init.md` and the template — any change to default values (e.g., `auto_ingest`, `branch_strategy`) in the template automatically propagates to both new-install and `--upgrade` paths.
 
@@ -399,7 +414,7 @@ If the user confirms:
    (For the Advanced-marker fallback, swap: `new_string` = wiki block + `\n\n` + marker line)
 
    Display `rite-config.yml に wiki セクションを追加しました（active）。` only when the Edit actually ran (skip the message on idempotency no-op).
-6. Preserve all user-customized values
+8. Preserve all user-customized values
 
 Display "rite-config.yml をアップグレードしました (v{current} → v{latest})".
 

@@ -156,8 +156,10 @@ flow_state:
 # (node_modules, venv, build caches) are NOT shared and may be rebuilt per worktree.
 # Declared ABOVE the `--- Advanced ---` marker (like wiki / flow_state, #491) so
 # /rite:init new-generation emits it as an active block (so new projects actually
-# get the default-on behavior). On --upgrade it is intentionally NOT back-added to
-# existing configs (see init.md Step 4 classification) to preserve backward compat.
+# get the default-on behavior). On --upgrade it is back-added with `enabled: true`
+# to existing configs (see init.md Step 4 classification, #1446 D-01) so upgraded
+# projects receive the same default-on behavior; an existing explicit
+# `enabled: false` is preserved.
 multi_session:
   enabled: true                    # per-session worktrees (on by default, #1391); false to disable
   worktree_base: ".rite/worktrees" # session worktree base (issue-{N} subdirs)

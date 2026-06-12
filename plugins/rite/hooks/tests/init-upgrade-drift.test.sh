@@ -143,12 +143,16 @@ echo "=== T-13 (Issue #1459): current >= latest short-circuit path runs drift ba
 # runtime, not by a fixture here; these static assertions guard that init.md keeps
 # the corrected routing so the short-circuit path cannot silently regress.
 
-# Positive: the short-circuit row drives Step 4 Identify -> Step 6 Apply in order,
-# and still backs up first (AC-6 precondition preserved).
-assert_grep "init.md 'current >= latest' row runs Step 4 Identify then Step 6 Apply" \
-  "$INIT_MD" 'current >= latest.*Step 4 Identify.*Step 6 Apply'
-assert_grep "init.md 'current >= latest' row keeps the Step 3 Backup precondition" \
-  "$INIT_MD" 'current >= latest.*Step 3 Backup'
+# Positive: the short-circuit row backs up FIRST, then routes Step 4 Identify -> Step 6
+# Apply, asserted as one ordered pattern so it doubles as the AC-6 Backup-precondition
+# guard AND the routing guard. Ordering matters: a regression that restores the old
+# "Step 3 Backup -> Step 3.5 Wiki Append -> skip Step 4-6" routing fails this assertion
+# because Step 4 Identify / Step 6 Apply are absent from that row. (A bare
+# 'current >= latest.*Step 3 Backup' would pass even on the buggy old row, since Backup
+# was always present on the short-circuit row — anchoring Backup *before* Step 4/6 is
+# what gives the assertion its regression-detecting power.)
+assert_grep "init.md 'current >= latest' row backs up first, then routes Step 4 Identify -> Step 6 Apply (AC-6 precondition + routing order)" \
+  "$INIT_MD" 'current >= latest.*Step 3 Backup.*Step 4 Identify.*Step 6 Apply'
 # Step 6 spells out which items the short-circuit path applies (the drift back-add set).
 assert_grep "init.md Step 6 applies only the drift back-add items on the short-circuit path" \
   "$INIT_MD" 'short-circuit path.*only items 3, 4, 6, 7'

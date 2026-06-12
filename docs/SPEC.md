@@ -524,9 +524,8 @@ followed by AskUserQuestion confirmation)
  Copy the existing file to `rite-config.yml.bak.YYYYMMDD-HHMMSS` for rollback.
 3. **Branching**
  - `current < latest`: Run Step 4–6 (identify changes → preview → apply after approval), then Step 7 (Phase 4.7 Wiki initialization).
- - `current == latest` and `wiki:` section absent: After backup, append the `wiki:` block from the template and run Phase 4.7.
- - `current == latest` and `wiki:` section present: No-op; display "configuration is up to date" and run Phase 4.7 (idempotent — no-op if Wiki is already initialized).
-4. **Identify and classify changes** (Step 4, only on the `current < latest` path)
+ - `current >= latest`: Run Step 4 (identify drift only) → Step 6 (back-add any missing `multi_session` section, newly added active top-level sections, missing sub-keys, and the `wiki:` section — preserving all user-customized values, idempotent, applied without a preview/confirmation prompt), then Step 7. The schema is already current, but the template can gain active sections/sub-keys without a schema bump; this path follows that drift. When nothing is missing, the config is left unchanged and "configuration is up to date (v{current})" is displayed; Phase 4.7 still runs (idempotent — no-op if Wiki is already initialized).
+4. **Identify and classify changes** (Step 4, runs on both paths; on the `current >= latest` short-circuit path only the drift back-add items — missing `multi_session` / active sections / sub-keys / `wiki:` — are identified)
  Each key is classified as one of:
  - **User-customized value** (preserve): `project_number`, `owner`, `iteration` settings, `branch.base`, `language`, etc.
  - **Deprecated key** (remove): `project.name`, `commit.style`, `commit.enforce`, `branch.release`, `branch.types`, `version`
@@ -536,14 +535,14 @@ followed by AskUserQuestion confirmation)
 5. **Preview and confirm** (Step 5)
  Display deprecated keys to be removed, sections to be added, and preserved existing settings; ask via `AskUserQuestion` to either apply or cancel.
 6. **Apply** (Step 6)
- On approval, update `schema_version` to the latest value, remove deprecated keys, add missing sections (including commented-out Advanced sections), and append the `wiki:` section if it was absent. All user-customized values are preserved.
+ On the `current < latest` path, after approval, update `schema_version` to the latest value, remove deprecated keys, add missing sections (including commented-out Advanced sections), and append the `wiki:` section if it was absent. On the `current >= latest` short-circuit path (no preview), apply only the idempotent drift back-add items — missing `multi_session` / active sections / sub-keys / `wiki:` — without confirmation. All user-customized values (including an explicit `enabled: false`) are preserved on both paths.
 7. **Run Phase 4.7 (Wiki initialization)** (Step 7)
  Invoke Phase 4.7 to bring existing users up to the Wiki-initialized state. If Wiki is already initialized, the phase is an idempotent no-op. Phase 4.7 is non-blocking: its failure does not affect `--upgrade` success. A final Wiki status line is displayed before the command exits.
 
 **Relationship with `schema_version`:**
 
 - The `schema_version` key at the top of `rite-config.yml` is an integer that identifies the configuration schema version (e.g., `schema_version: 2`). It is incremented whenever the rite workflow introduces a backward-incompatible schema change.
-- `--upgrade` compares the `schema_version` in the current file against the one in the bundled template and runs the Phase 4.1.3 flow above when the current file is behind.
+- `--upgrade` compares the `schema_version` in the current file against the one in the bundled template. When the current file is behind it runs the full Step 4–6 flow (preview + confirm); when the schema is already current it still runs the `current >= latest` short-circuit to back-add any active-section / sub-key / `multi_session` / `wiki:` drift the template introduced without a schema bump.
 - Configuration files without a `schema_version` key are implicitly treated as v1 and can be brought up to date via `--upgrade`.
 
 **Relationship with Phase 5 (new-install completion report):**

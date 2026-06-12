@@ -856,7 +856,7 @@ echo ""
 # --------------------------------------------------------------------------
 # TC-680-A (Issue #680, AC-LOCAL-2): per-session active=true → "Active rite workflow detected"
 # Verifies that session-start reads the per-session file (not legacy) when
-# schema_version=2 + valid SID + per-session file exists, and that the
+# a valid SID + per-session file exists, and that the
 # `.active=true` precondition still fires the workflow-detected output.
 # --------------------------------------------------------------------------
 echo "TC-680-A (Issue #680, AC-LOCAL-2): per-session active=true → workflow detected"
@@ -864,10 +864,7 @@ dir680a="$TEST_DIR/tc680a"
 mkdir -p "$dir680a/.rite/sessions"
 sid680a="aaaabbbb-cccc-dddd-eeee-ffffaaaa1111"
 echo "$sid680a" > "$dir680a/.rite-session-id"
-cat > "$dir680a/rite-config.yml" <<EOF
-flow_state:
-  schema_version: 2
-EOF
+printf '# rite test sandbox config\n' > "$dir680a/rite-config.yml"
 ts_t680a=$(iso8601_now 0)
 cat > "$dir680a/.rite/sessions/${sid680a}.flow-state" <<EOF
 {"active": true, "issue_number": 680, "branch": "refactor/issue-680-test", "phase": "phase5_review", "next_action": "review", "loop_count": 0, "session_id": "$sid680a", "updated_at": "$ts_t680a"}
@@ -891,10 +888,7 @@ dir680b="$TEST_DIR/tc680b"
 mkdir -p "$dir680b/.rite/sessions"
 sid680b="22222222-3333-4444-5555-666666666666"
 echo "$sid680b" > "$dir680b/.rite-session-id"
-cat > "$dir680b/rite-config.yml" <<EOF
-flow_state:
-  schema_version: 2
-EOF
+printf '# rite test sandbox config\n' > "$dir680b/rite-config.yml"
 ts_t680b=$(iso8601_now 0)
 cat > "$dir680b/.rite/sessions/${sid680b}.flow-state" <<EOF
 {"active": false, "issue_number": 681, "branch": "refactor/issue-681-test", "phase": "completed", "session_id": "$sid680b", "updated_at": "$ts_t680b"}

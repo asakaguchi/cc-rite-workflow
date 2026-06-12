@@ -607,17 +607,14 @@ echo ""
 
 # --- TC-680-A (Issue #680, AC-LOCAL-2): per-session active=true → updated_at touched ---
 # Verifies pre-compact reads & writes the per-session file (not legacy) when
-# schema_version=2 + valid SID + per-session file exists. Also confirms the
+# a valid SID + per-session file exists. Also confirms the
 # `.active=true` precondition path still fires the workflow-active branch.
 echo "TC-680-A (Issue #680, AC-LOCAL-2): per-session active=true → updated_at touched"
 dir680a="$TEST_DIR/tc680a"
 mkdir -p "$dir680a/.rite/sessions"
 sid680a="aaaabbbb-cccc-dddd-eeee-ffffaaaa1111"
 echo "$sid680a" > "$dir680a/.rite-session-id"
-cat > "$dir680a/rite-config.yml" <<EOF
-flow_state:
-  schema_version: 2
-EOF
+printf '# rite test sandbox config\n' > "$dir680a/rite-config.yml"
 per_session_file="$dir680a/.rite/sessions/${sid680a}.flow-state"
 echo '{"active": true, "phase": "phase5_review", "issue_number": 680, "branch": "refactor/issue-680-test", "updated_at": "2020-01-01T00:00:00+00:00"}' \
   > "$per_session_file"

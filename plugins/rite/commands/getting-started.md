@@ -206,9 +206,8 @@ missing drift (all active sections, their sub-keys, and the `multi_session` /
 `wiki:` sections are already present) and Wiki is already initialized, the
 command makes no changes to `rite-config.yml` itself — it still creates a
 timestamped backup, reports "configuration is up to date", then runs the Wiki
-auto-initialization
-idempotency check of `/rite:init` and displays a final Wiki status line
-before exiting.
+auto-initialization idempotency check of `/rite:init` and displays a final
+Wiki status line before exiting.
 
 Check if `rite-config.yml` exists:
 

@@ -502,7 +502,7 @@ followed by AskUserQuestion confirmation)
 
 #### --upgrade Option (Existing Configuration Schema Upgrade)
 
-**Purpose:** Bring an existing project's `rite-config.yml` up to the latest schema while preserving user-customized values (`project_number`, `owner`, `branch.base`, `language`, and so on). The upgrade applies the additions (new sections), removals (deprecated keys), and `schema_version` bump in a single confirmed batch.
+**Purpose:** Bring an existing project's `rite-config.yml` up to the latest schema while preserving user-customized values (`project_number`, `owner`, `branch.base`, `language`, and so on). On the schema-upgrade path (`current < latest`) the upgrade applies the additions (new sections), removals (deprecated keys), and `schema_version` bump in a single confirmed batch; when the schema is already current (`current >= latest`) it instead back-adds any missing active-section / sub-key / `multi_session` / `wiki:` drift without a confirmation prompt (see Phase 4.1.3 below).
 
 **When to use:**
 
@@ -524,7 +524,7 @@ followed by AskUserQuestion confirmation)
  Copy the existing file to `rite-config.yml.bak.YYYYMMDD-HHMMSS` for rollback.
 3. **Branching**
  - `current < latest`: Run Step 4–6 (identify changes → preview → apply after approval), then Step 7 (Phase 4.7 Wiki initialization).
- - `current >= latest`: Run Step 4 (identify drift only) → Step 6 (back-add any missing `multi_session` section, newly added active top-level sections, missing sub-keys, and the `wiki:` section — preserving all user-customized values, idempotent, applied without a preview/confirmation prompt), then Step 7. The schema is already current, but the template can gain active sections/sub-keys without a schema bump; this path follows that drift. When nothing is missing, the config is left unchanged and "configuration is up to date (v{current})" is displayed; Phase 4.7 still runs (idempotent — no-op if Wiki is already initialized).
+ - `current >= latest`: Run Step 4 (identify drift only) → Step 6 (back-add any missing `multi_session` section, newly added active top-level sections, missing sub-keys, and the `wiki:` section — preserving all user-customized values, idempotent, applied without a preview/confirmation prompt), then Step 7. The schema is already current, but the template can gain active sections/sub-keys without a schema bump; this path follows that drift. When nothing is missing, the config is left unchanged and "configuration is up to date" is displayed; Phase 4.7 still runs (idempotent — no-op if Wiki is already initialized).
 4. **Identify and classify changes** (Step 4, runs on both paths; on the `current >= latest` short-circuit path only the drift back-add items — missing `multi_session` / active sections / sub-keys / `wiki:` — are identified)
  Each key is classified as one of:
  - **User-customized value** (preserve): `project_number`, `owner`, `iteration` settings, `branch.base`, `language`, etc.

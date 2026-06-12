@@ -2,7 +2,7 @@
 # Tests for session_id mismatch hook no-op — Issue #672 / #684 (T-04 / AC-4)
 #
 # Purpose:
-#   schema_version=2 (per-session file) では `_resolve-flow-state-path.sh` が
+#   per-session file では `_resolve-flow-state-path.sh` が
 #   resolver を経由する caller には現セッションの per-session path のみを返すため
 #   ownership は構造的に保証される。しかし将来 resolver を経由しない caller が
 #   foreign per-session file を直接渡した場合のために `check_session_ownership`
@@ -210,10 +210,7 @@ mkdir -p "$TD/.rite/sessions"
 SID_OWN="abcdef01-2345-6789-abcd-ef0123456789"
 SID_HOOK_FOREIGN="00000000-0000-0000-0000-deadbeef0001"
 echo "$SID_OWN" > "$TD/.rite-session-id"
-cat > "$TD/rite-config.yml" <<EOF
-flow_state:
-  schema_version: 2
-EOF
+printf '# rite test sandbox config\n' > "$TD/rite-config.yml"
 state_file="$TD/.rite/sessions/${SID_OWN}.flow-state"
 echo "{\"active\":true,\"phase\":\"phase5_test\",\"session_id\":\"$SID_OWN\"}" > "$state_file"
 

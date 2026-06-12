@@ -8,7 +8,7 @@
 #   - T-LOCAL-1  : flake-free 100 連続実行 (concurrent create)
 #
 # Issue #672 の core value proposition (lock 不要で並行性が構造的に保証される) を
-# verify する CRITICAL path。マルチステート (per-session file, schema_version=2)
+# verify する CRITICAL path。マルチステート (per-session file)
 # の上でのみ pass する設計。
 #
 # Out of scope (#684 で扱う):
@@ -42,12 +42,9 @@ make_test_dir() {
 }
 
 write_config() {
-  # $1=test_dir, $2=schema_version
-  local d="$1" sv="$2"
-  cat > "$d/rite-config.yml" << EOF
-flow_state:
-  schema_version: $sv
-EOF
+  # $1=test_dir
+  local d="$1"
+  printf '# rite test sandbox config\n' > "$d/rite-config.yml"
 }
 
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
@@ -74,7 +71,7 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-1: sequential interleave (independent per-session files)"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
-write_config "$TD" 2
+write_config "$TD"
 SID_A="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa01"
 SID_B="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb01"
 
@@ -115,7 +112,7 @@ fi
 # --------------------------------------------------------------------------
 echo "TC-2: concurrent create (parallel subshells with wait)"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
-write_config "$TD" 2
+write_config "$TD"
 SID_C="cccccccc-cccc-cccc-cccc-cccccccccc01"
 SID_D="dddddddd-dddd-dddd-dddd-dddddddddd01"
 
@@ -155,7 +152,7 @@ fi
 # --------------------------------------------------------------------------
 echo "TC-3: concurrent patch (cross-session isolation)"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
-write_config "$TD" 2
+write_config "$TD"
 SID_E="eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01"
 SID_F="ffffffff-ffff-ffff-ffff-ffffffffff01"
 
@@ -203,7 +200,7 @@ fi
 # --------------------------------------------------------------------------
 echo "TC-4: same-issue concurrent (両 session が同 Issue でも state は分離)"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
-write_config "$TD" 2
+write_config "$TD"
 SID_G="11111111-1111-1111-1111-111111111101"
 SID_H="22222222-2222-2222-2222-222222222201"
 
@@ -244,7 +241,7 @@ echo "T-LOCAL-1: 100 iteration flake-free check (concurrent create)"
 ITERATIONS=100
 flake=0
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
-write_config "$TD" 2
+write_config "$TD"
 
 # Each iteration uses fresh session UUIDs to avoid file reuse interference.
 for i in $(seq 1 "$ITERATIONS"); do

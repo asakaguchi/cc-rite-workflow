@@ -427,10 +427,7 @@ dir680a="$TEST_DIR/tc680a"
 mkdir -p "$dir680a/.rite/sessions"
 sid680a="abcdef01-2345-6789-abcd-ef0123456789"
 echo "$sid680a" > "$dir680a/.rite-session-id"
-cat > "$dir680a/rite-config.yml" <<EOF
-flow_state:
-  schema_version: 2
-EOF
+printf '# rite test sandbox config\n' > "$dir680a/rite-config.yml"
 per_session_file="$dir680a/.rite/sessions/${sid680a}.flow-state"
 echo '{"active": true, "phase": "phase5_review", "issue_number": 680, "branch": "refactor/issue-680-test"}' > "$per_session_file"
 run_hook "$dir680a" >/dev/null || true
@@ -466,10 +463,7 @@ dir680c="$TEST_DIR/tc680c"
 mkdir -p "$dir680c/.rite/sessions"
 sid680c="11111111-2222-3333-4444-555555555555"
 echo "$sid680c" > "$dir680c/.rite-session-id"
-cat > "$dir680c/rite-config.yml" <<EOF
-flow_state:
-  schema_version: 2
-EOF
+printf '# rite test sandbox config\n' > "$dir680c/rite-config.yml"
 echo '{"active": true, "phase": "create_interview", "issue_number": 682, "branch": "feat/issue-682"}' \
   > "$dir680c/.rite/sessions/${sid680c}.flow-state"
 run_hook "$dir680c" >/dev/null || true

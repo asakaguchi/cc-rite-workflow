@@ -23,7 +23,6 @@
 #   TC-3: Mutation test — sandbox に hook をコピー、create mode の `mv` を `false` に改変、
 #         改変版を実行後 (a) exit code 非 0 (b) state file が baseline のまま を verify
 #         (mutation 検出 → test の identification power、Wiki 経験則「Test pin protection theater」)
-#   TC-4: per-session と legacy 両 schema で atomic invariant 成立
 #   TC-5: 連続 SIGKILL 後の最終 state file が完全な JSON object (key 数 ≥ 5) を保持
 #
 # Out of scope:
@@ -84,25 +83,17 @@ pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); FAILED_NAMES+=("$1"); echo "  ❌ FAIL: $1"; }
 
 make_test_dir() {
-  local schema="${1:-2}"
   local d
   d=$(mktemp -d) || { echo "ERROR: mktemp -d failed" >&2; return 1; }
   cleanup_dirs+=("$d")
-  cat > "$d/rite-config.yml" <<EOF
-flow_state:
-  schema_version: $schema
-EOF
+  printf '# rite test sandbox config\n' > "$d/rite-config.yml"
   echo "$d"
 }
 
 # Per-session state file path lookup
 state_path() {
-  local d="$1" sid="$2" schema="${3:-2}"
-  if [ "$schema" = "2" ]; then
-    echo "$d/.rite/sessions/${sid}.flow-state"
-  else
-    echo "$d/.rite-flow-state"
-  fi
+  local d="$1" sid="$2"
+  echo "$d/.rite/sessions/${sid}.flow-state"
 }
 
 # state file integrity predicate: ENOENT は許容、存在時は jq parse 成功必須
@@ -125,7 +116,7 @@ echo ""
 # (c) mid_or_temp + post >= 1 を assert して race が実際に当たったことを実証
 # (旧実装は全 100 iter pre のみで PASS する false positive 経路があった)
 echo "TC-1: 50 iter SIGKILL probe → integral + race window 実証"
-TD=$(make_test_dir 2)
+TD=$(make_test_dir)
 SID="aaaaaaaa-9999-9999-9999-999999999999"
 ITERATIONS=50
 flake_partial=0
@@ -144,7 +135,7 @@ for i in $(seq 1 "$ITERATIONS"); do
   kill -KILL "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
 
-  state_file=$(state_path "$TD" "$SID" 2)
+  state_file=$(state_path "$TD" "$SID")
   outcome=$(classify_outcome "$state_file")
   case "$outcome" in
     pre)         pre_count=$((pre_count + 1)) ;;
@@ -174,9 +165,9 @@ fi
 # still produce the expected final state. This guards against "atomic
 # property holds because nothing ever wrote" false-positive.
 echo "TC-2: 連続 patch 50 回 (no kill) → 最終 phase が完了 patch と一致"
-TD=$(make_test_dir 2)
+TD=$(make_test_dir)
 SID="bbbbbbbb-9999-9999-9999-999999999999"
-state_file=$(state_path "$TD" "$SID" 2)
+state_file=$(state_path "$TD" "$SID")
 
 (cd "$TD" && bash "$HOOK" set --session "$SID" \
   --phase "phase_init" --issue 684 --branch "feat/test" --pr 0 --next "init" >/dev/null 2>&1)
@@ -219,9 +210,9 @@ fi
 # trap の cleanup 経路と独立に mutation を検出できる。
 # -------------------------------------------------------------------------
 echo "TC-5: SIGKILL'd writes 後の state file が完全 JSON object を保持"
-TD=$(make_test_dir 2)
+TD=$(make_test_dir)
 SID="eeeeeeee-9999-9999-9999-999999999999"
-state_file=$(state_path "$TD" "$SID" 2)
+state_file=$(state_path "$TD" "$SID")
 
 # Make a clean baseline with full keys
 (cd "$TD" && bash "$HOOK" set --session "$SID" \

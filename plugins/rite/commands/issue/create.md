@@ -111,6 +111,46 @@ title 類似度 / label 一致 / 更新日時 / state（OPEN > CLOSED）で top 
 
 ## ステップ 4: 単一 Issue 作成（Single Issue Path）
 
+### 4.0 仮定表面化（Assumption Surfacing）
+
+Contract 生成（4.2）の前に、モデルが暗黙に補完した仮定を表面化し 3 分類で処理する。**設計原則**: 質問はユーザーの頭の中にしかない情報（ユーザー固有の意思決定）のみに限定し、リポジトリ・Wiki から導出可能な情報はモデルが探索で自己解決する。
+
+**質問強度（見込み Complexity 連動）**: ステップ 3.1 で見込まれた規模（未確定なら入力 Scope から XS〜XL を概算。確定値は 4.1 で確認）に連動させる:
+
+| 見込み Complexity | 質問上限 |
+|------------------|---------|
+| XS / S | 0〜1 問 |
+| M 以上 | 最大 3 問 |
+
+**手順**:
+
+1. **仮定列挙**: ステップ 1.3 で抽出した What/Why/Where/Scope/Constraints に対し、Contract 化に必要だが入力に明示されていない仮定（対象ファイルの具体パス・命名規則・既存パターンへの準拠・後方互換方針・エラー時挙動など）を列挙する。
+2. **3 分類**:
+   - **(a) 導出可能（derive）**: リポジトリ / Wiki から探索で確定できる仮定。質問せず Grep / Read / `git` / wiki:query で自己解決する。
+   - **(b) ユーザー固有の意思決定（ask）**: ユーザーの頭の中にしかない意思決定（優先する選択肢・UX 方針・トレードオフの取り方など）。AskUserQuestion で確認する。
+   - **(c) 保留可能（defer）**: いま確定しなくても着手でき後続で解消できる仮定。4.2 で Issue body の前提 / Open Questions（Section 1 の `Assumptions / Open Questions` サブセクション。位置は [`template-structure.md`](../../templates/issue/template-structure.md) Section 1 参照）に明文化する。
+3. **wiki:query クロスチェック（SHOULD）**: ドラフト Contract のキーワードで Wiki を検索し、蓄積された経験則と矛盾する仮定があれば (b) または (c) として表面化する。Wiki 無効 / 未初期化時は silent skip（`wiki-query-inject.sh` が空出力で返るため、エラー・警告を出さない）:
+
+   ```bash
+   # plugin_root は Plugin Path Resolution で解決
+   if [ -f "{plugin_root}/hooks/wiki-query-inject.sh" ]; then
+     bash "{plugin_root}/hooks/wiki-query-inject.sh" --keywords "{contract_keywords}" --format compact 2>/dev/null || true
+   fi
+   ```
+
+4. **質問の発行**: (b) のみを AskUserQuestion で確認し、各問に推奨案を付ける（第 1 選択肢を推奨とする）。
+
+**制約**:
+
+| 条件 | 挙動 |
+|------|------|
+| 仮定 0 件 | 質問せず 4.1 へ進む（空の AskUserQuestion を出さない） |
+| (b) が 4 件以上 | 影響の大きい順に 3 問へ絞り、溢れた分は (c) として body に明文化する |
+| 見込み XS / S | 質問は最大 1 問に抑制する |
+| Wiki 無効 / 未初期化 | wiki クロスチェックを silent skip する |
+| ユーザーが質問で「中止」を選択 | workflow を終了する（既存ポリシー） |
+| 全仮定が (a) で解決 | 表面化ステップの出力を 1 行サマリに省略してよい（MAY） |
+
 ### 4.1 Issue 情報の最終確認
 
 AskUserQuestion で Issue の以下を確認/補完する:
@@ -138,7 +178,7 @@ Read tool で以下を読み込む:
 
 1. **Complexity Gate 適用**: 確定 Complexity の列で `M`(MUST) を必ず含め、`S`(SHOULD) は Step 1.3 で情報が得られた場合のみ含め、`O`(OMIT) は省略
 2. **Type Core Section (Section 3) 選択**: Step 4.1 で確定した値は **Commit Type**（feat/fix/...）。[`default.md` Type Definitions](../../templates/issue/default.md#type-definitions) の crosswalk で **Contract Type**（Feature/BugFix/...）へ対応付け、その Contract Type に対応する Section 3 を [Step 2 mapping](./references/contract-section-mapping.md#step-2-type--type-core-section-section-3-mapping) で 1 つ選択する。Section 0 Meta の `**Type**` には Step 4.1 で確定した Commit Type をそのまま記載し、Step 4.4 完了レポートの Type と一致させる（crosswalk は Section 3 選択のためにのみ用い、Meta 値は変換しない）
-3. **入力のマッピング**: Step 1.3 で抽出した What/Why/Where/Scope/Constraints を [Step 3 mapping](./references/contract-section-mapping.md#step-3-perspective--target-sections-mapping) と [Section Inclusion Rules](./references/contract-section-mapping.md#section-inclusion-rules) に従って各 Section へ反映（What → Section 1 Goal / Why → Section 1-2 / Where → Section 4.1 Target Files / Scope → Section 2 Scope(In/Out) / Constraints → Section 4.5 / Section 7）
+3. **入力のマッピング**: Step 1.3 で抽出した What/Why/Where/Scope/Constraints を [Step 3 mapping](./references/contract-section-mapping.md#step-3-perspective--target-sections-mapping) と [Section Inclusion Rules](./references/contract-section-mapping.md#section-inclusion-rules) に従って各 Section へ反映（What → Section 1 Goal / Why → Section 1-2 / Where → Section 4.1 Target Files / Scope → Section 2 Scope(In/Out) / Constraints → Section 4.5 / Section 7）。あわせて Step 4.0 で **defer** された仮定があれば Section 1 の `Assumptions / Open Questions` サブセクションへ記載する（仮定が無ければ当該サブセクションは省略）
 4. **MUST だが情報未収集の Section**: 空見出しを残さず `<!-- 情報未収集 -->` プレースホルダーを挿入
 
 **Step 3: AC / Test 数の整合**
@@ -241,6 +281,10 @@ fi
 ---
 
 ## ステップ 5: Sub-Issue 分解（Decompose Path）
+
+### 5.0 仮定表面化（Assumption Surfacing）
+
+設計仕様書生成（5.1）の前に、ステップ 4.0 の仮定表面化手順を適用する。分解パスは見込み Complexity が L/XL のため質問上限は最大 3 問。(b) ユーザー固有の意思決定のみを確認し、(c) 保留仮定は 5.1 の仕様書に前提として明文化したうえで、各 Sub-Issue body の Section 1 `Assumptions / Open Questions` へ引き継ぐ。仮定 0 件時の素通り・(b) 4 件以上の (c) 降格・Wiki 無効時の silent skip・中止選択時の終了といった制約は 4.0 と同一。
 
 ### 5.1 仕様書生成
 

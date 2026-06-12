@@ -29,6 +29,7 @@ The name comes from the English word **rite**, meaning "ritual" or "ceremony." I
 - **Preflight Check**: Unified pre-execution verification across all commands
 - **Local Work Memory**: Compact-resilient work state management with lock/resuming support
 - **Implementation Contract**: Structured Issue template format for clear specifications
+- **Assumption Surfacing**: Before generating the Implementation Contract, `/rite:issue:create` surfaces the assumptions the model implicitly filled in and processes them in three categories — derivable (self-resolved from the repository/Wiki), user-specific decisions (confirmed with up to three recommended-option questions), and deferrable (documented as Assumptions / Open Questions in the Issue body). **Design principle**: questions are limited to information that exists only in the user's head; anything derivable from the repository or Wiki is resolved by the model. This keeps implicit guesses from being silently locked into the contract that drives the whole downstream pipeline
 - **Experience Wiki**: LLM-driven project knowledge base. Auto-ingests review/fix outcomes into topical pages and injects relevant heuristics at the start of each Issue (opt-out)
 
 ## Installation

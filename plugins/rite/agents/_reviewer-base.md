@@ -22,7 +22,8 @@ Any Bash invocation that matches the following patterns is forbidden inside a re
 | `git clean` / `git gc` / `git reflog expire` | working tree / ref 操作 | 代替なし — reviewer は実行禁止 |
 | `git worktree remove` / `git worktree prune` | worktree 削除 | 代替なし — reviewer は実行禁止 |
 | `git branch -D` / `-d` / `-f` / `-m` / `-M` / `--delete` / `--force` / `--move` / `--copy` | ブランチ ref の削除/強制移動 | 代替なし — reviewer は実行禁止。`git branch --list` / `--show-current` / `-a` は read-only として許可 |
-| `git branch <new-branch>` (flag なしでの新規ブランチ作成) | 新規 ref 作成 | `git worktree add <path> <ref>` を使って隔離ディレクトリで検証する |
+| `git branch <new-branch>` (flag なしでの新規ブランチ作成) | 新規 ref 作成 | `git worktree add --detach <path> <ref>` を使って隔離ディレクトリで検証する (detached HEAD で named branch を作らない) |
+| `git worktree add -b <newbranch> <path> [<ref>]` / 引数なし `git worktree add <path>` (新規 named branch 作成を伴う形式) | worktree 作成と同時に新規 ref が leak する (cleanup は reviewer 自身が実行禁止のため再発する) | `git worktree add --detach <path> <ref>` または `git worktree add <path> <existing-branch>` (既存 branch を別ディレクトリに展開、新規 ref を作らない) |
 | `git update-ref` / `git symbolic-ref` | 低レベル ref 操作 | 代替なし — reviewer は実行禁止 |
 | `git reflog expire` / `git reflog delete` | reflog 改変 | 代替なし — reviewer は実行禁止。`git reflog` の単純な display は read-only として許可 |
 | `git am` / `git apply` | patch 適用 (index 書き換え) | `git show <ref>` で patch 内容のみを参照する |
@@ -37,10 +38,61 @@ Reviewer subagents **may** use the following read-only commands for evidence gat
 - **Branch display (read-only)**: `git branch --list`, `git branch --show-current`, `git branch -a`, `git branch -r`, `git branch -v` (list/display sub-commands only — `-D/-d/-f/-m/-M` and flag-less new-branch creation are forbidden per the table above)
 - **Tag / stash / reflog (display only)**: `git tag -l`, `git tag --list`, `git stash list`, `git stash show`, `git reflog` (bare list), `git worktree list` (display-only sub-commands — `git tag -d/-a/--delete/--force`, `git stash push/pop/drop/apply/clear`, `git reflog expire/delete`, and `git worktree remove/prune` remain forbidden)
 - **Remote sync (bare fetch only)**: `git fetch` (bare form only — **`git fetch --prune` / `--force` は禁止**。reviewer コンテキストでは local tracking ref を削除する可能性があるため)
-- **Isolated worktree creation**: `git worktree add` (reads from refs, writes only to a fresh directory the reviewer owns)
+- **Isolated worktree creation**: `git worktree add --detach <path> <ref>` または `git worktree add <path> <existing-branch>` (既存 ref のみを別ディレクトリに展開する形式に限定。`-b <newbranch>` および引数なし形式は新規 ref が leak する原因となるため禁止 — orchestrator 側の `hooks/scripts/pr-cycle-cleanup.sh` で残置回収するが、reviewer 側で named branch を作らないのが第一防御線)
 - **Workflow helpers**: `gh` CLI for reading PR/Issue metadata, plugin hook scripts, test runners (`bash <test>`, `pytest`, `npm test`, etc.)
 
 **Rationale**: The `[READ-ONLY RULE]` is not just a tool-level (`Edit`/`Write`) restriction — it is a **state-level** guarantee. A reviewer that runs `git checkout develop -- path/to/file` silently pollutes the parent session's index, which later surfaces as a "ghost diff" the parent session cannot attribute. Always compare blobs via `git show <ref>:<file>` or `git diff <ref> -- <file>` instead. 同様に、`git stash` は「undo すれば戻る」ように見えるが、stash entry の作成自体が parent session の working tree をクリアし、並列レビュアー間で race を起こす。`git add` / `git reset` も index を汚染し、後続の `/rite:pr:fix` が diff を誤認する根本原因になる。`git fetch --prune` は remote-tracking branch を削除するため、後続の `git diff origin/<branch>` が「unknown revision」で壊れる silent regression を引き起こす。
+
+### Shell-command wrappers are blocked — even for read-only probes
+
+`hooks/pre-tool-bash-guard.sh` は reviewer subagent からの **shell-command wrapper** (`eval`, `bash -c`, `sh -c`, `zsh -c`, `ksh -c`, `dash -c`, `fish -c`) を**中身に関係なく一律 block** する。これは「中身が read-only な挙動プローブなら許可してほしい」という直感に反するように見えるが、意図的な設計である。
+
+- **理由**: guard は Bash 組み込みの word-boundary マッチで state-mutating git を検出するが、quote の中身 (`bash -c '...'` の `...`) はこのマッチから opaque で、`bash -c 'git reset --hard'` のような state-mutating git を隠して bypass できてしまう。quote 内を信頼できる形で解析するのは fragile で新たな bypass 面を生むため、wrapper 自体を一律 block する方が安全側に倒せる。
+- **read-only プローブの代替**: wrapper を外す。コマンドを直接実行する / 複数コマンドは subshell `( cmd1; cmd2 )` でまとめる / スクリプト化して `bash <script.sh>` で実行する (上記 "Allowed Bash/Git commands" の `bash <test>` と同じ経路)。これらは block されない。
+
+> 補足: read-only な挙動プローブのために `bash -c` を使うと block されるが、`( ... )` / 直接実行 / `bash <script.sh>` で検証強度を落とさず代替できる。block 時の deny メッセージにもこの代替が表示される。
+
+### Mutation experiments and verification (worktree-only)
+
+Reviewer が **mutation testing / verification experiment** (例: 「ある line を `return 1` から `exit 1` に変えたら test が失敗するか」「helper を inline 展開したら sibling test が落ちるか」) を実行する必要がある場合、**parent repo の working tree / branch を絶対に変更してはならない**。正規経路は以下の **worktree-only mutation pattern** に限定される。
+
+**Rationale**: 過去に reviewer subagent が「mutation 検証」のために新規 named branch を作成し、`git checkout <test-branch>` → file 変更 → `git checkout develop` という遷移を行った結果、parent session の working tree が `develop` のクリーン状態に置き換わり、後続の `/rite:pr:fix` が PR ブランチを見失う事故が起きた。prose レベルの「禁止」だけでは LLM agent は mutation 検証の必要性を過大評価して bypass する傾向があるため、**正規経路を明示**し、`hooks/pre-tool-bash-guard.sh` の structural enforcement と組み合わせて多層防御する。
+
+**正規パターン (detached HEAD / 既存 branch)**:
+
+```bash
+# 1. detached HEAD でテンポラリ worktree を作成 (named branch を leak させない)
+mutation_dir=$(mktemp -d -t rite-review-mutation-XXXXXX)
+git worktree add --detach "$mutation_dir" HEAD  # または特定の ref
+
+# 2. mutation を適用 (parent repo は完全に無影響)
+cd "$mutation_dir"
+# ファイル編集 → test 実行 → 結果観測
+sed -i 's/return 1/exit 1/' some-file.sh
+bash hooks/tests/some.test.sh
+cd -  # parent repo に戻る (HEAD 変更なし、stash なし)
+
+# 3. cleanup (reviewer は `git worktree remove` を実行禁止のため、
+#    orchestrator 側の hooks/scripts/pr-cycle-cleanup.sh が回収する。
+#    worktree path は `/tmp/rite-review-mutation-*` 命名で識別可能)
+```
+
+**禁止パターン (parent working tree を mutate する一切の経路)**:
+
+| 禁止経路 | 代替 (worktree-only pattern) |
+|---------|-----------------------------|
+| `git checkout -b pr-N-test` → file 変更 → `git checkout <orig>` | `git worktree add --detach $(mktemp -d -t rite-review-mutation-XXXXXX) HEAD` |
+| `git stash` → file 変更 → test → `git stash pop` | 同上 (stash は禁止) |
+| `cp file file.bak` → file 変更 → test → `mv file.bak file` (parent working tree 内) | 同上 (parent working tree の file 変更自体が禁止 — `Edit`/`Write` tool レベル違反でもある) |
+| `git checkout HEAD~1 -- file` → test → `git checkout HEAD -- file` | `git show HEAD~1:file` で blob を取得し、worktree 内で適用 |
+
+**Invariant**: Reviewer subagent が exit する時点で **以下のすべて**が true であること。各 invariant は `commands/pr/review.md` ステップ 5.0.A 経由で `post-review-state-verify.sh` により automatic check される (state vector は branch / stash count / branch list の 3 軸 — working tree の差分判定は `git status --porcelain` hash の cost が高く、本 PR では未 enforce):
+
+1. `git branch --show-current` の値が reviewer 起動時と同一 (state vector axis 1: branch、`--original-branch` で check)
+2. `git stash list` の長さが reviewer 起動時と同一 (state vector axis 2: stash count、`--original-stash-count` で check)
+3. `git branch --list` の出力が reviewer 起動時と同一 (state vector axis 3: branch_list hash、`--original-branch-list-hash` で check — 新規 named branch leak 検出)
+
+これらの invariant 違反は orchestrator 側 (`commands/pr/review.md` ステップ 5.0.A post-review state verification) で post-condition check され、drift 検出時は WARNING を stderr に出力 + (branch drift のみ) automatic recovery (`git checkout <original_branch>`) を行う。stash/branch_list drift は内容を失うリスク回避のため auto-recover せず manual action を案内する。
 
 ## Reviewer Mindset
 
@@ -60,7 +112,7 @@ All reviewers MUST adopt these principles:
 3. **Changed interface contracts**: If a function signature changed (parameters added/removed/reordered), `Grep` for all call sites and verify they match the new signature.
 4. **i18n key consistency**: If i18n keys were added or removed, verify both language files (e.g., `ja.yml` and `en.yml`) have matching keys.
 5. **Keyword list / enumeration consistency**: If the diff modifies a keyword list, enumeration, or option set (e.g., severity levels, phase names, status values, tool names), `Grep` for all other copies of the same list across the codebase. Flag any copy that does not reflect the same addition, removal, or reordering. Skip this check when the diff does not touch any list-like structure.
-6. **Documentation i18n parity**: When modifying localized documentation pairs (e.g., `README.md` ↔ `README.ja.md`, `CHANGELOG.md` ↔ `CHANGELOG.ja.md`, `docs/en/*.md` ↔ `docs/ja/*.md`, `i18n/ja.yml` ↔ `i18n/en.yml`), verify that **both locale variants are updated in sync**. Flag when only one side has changes, or when the two sides have diverged in structure (section headings added/removed on one side only, ordering drift, metadata block drift). Check #4 (`i18n key consistency`) handles structured key-value locale files; this check (#6) handles human-readable localized documentation and narrative content. Skip this check when the diff does not touch any localized documentation pair.
+6. **Documentation i18n parity**: When modifying localized documentation pairs (e.g., `CHANGELOG.md` ↔ `CHANGELOG.ja.md`, or any `*.md` ↔ `*.<locale>.md` pair in the reviewed project), verify that **both locale variants are updated in sync**. Flag when only one side has changes, or when the two sides have diverged in structure (section headings added/removed on one side only, ordering drift, metadata block drift). Check #4 (`i18n key consistency`) handles structured key-value locale files; this check (#6) handles human-readable localized documentation and narrative content. Skip this check when the diff does not touch any localized documentation pair.
 7. **Pattern portability and representation ambiguity**: When the diff introduces or modifies regex patterns, glob patterns, identifiers, or character-class assumptions, verify:
    - **Regex portability**: Patterns that may fail in non-ASCII locales (e.g., `[a-zA-Z]` for name matching in a UTF-8 corpus, `\w` assumptions that differ between POSIX BRE/ERE and PCRE, `\s` that does not match U+00A0 NO-BREAK SPACE in some engines).
    - **Case-sensitivity drift**: Patterns whose case sensitivity does not match the target context (e.g., a case-sensitive regex matching filenames on case-insensitive file systems, or an identifier lookup that assumes lowercase but the source has mixed case).
@@ -86,7 +138,7 @@ Before including a finding in the issues table, assign an internal confidence sc
 - 60-79: The issue is plausible but you haven't verified all assumptions
 - <60: Speculation or stylistic preference without project-specific justification
 
-**Important**: The confidence score is an internal decision aid. Do NOT add a confidence column to the output table. The table structure `| 重要度 | ファイル:行 | 内容 | 推奨対応 |` must remain unchanged for fix.md parser compatibility.
+**Important**: The confidence score is an internal decision aid. Do NOT add a confidence column to the output table. The table structure `| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |` (schema 1.1.0+, 5 columns including the `scope` column) must remain stable for fix.md parser compatibility — adding extra columns beyond this 5-column structure is prohibited. The `scope` column accepts the 3 enum values defined in `references/review-result-schema.md`: `current-pr` / `follow-up` / `nit-noted`. See [Scope Assignment Flowchart](#scope-assignment-flowchart) for the assignment procedure.
 
 The default confidence threshold is 80. This value is also recorded in `review.confidence_threshold` in `rite-config.yml` for reference.
 
@@ -137,7 +189,7 @@ Where `<evidence_type>` is one of the following literal labels:
 
 The `Likelihood-Evidence:` prefix is the required anchor for downstream mechanical detection of the Observed Likelihood Gate (Phase 5 fact-check, dedup, Layer 2 assessment-rules). Findings that do not contain a `Likelihood-Evidence: <label> ...` line in the `内容` column are treated as Hypothetical and downgraded per the Impact × Likelihood Matrix.
 
-**Relationship with tech-writer Doc-Heavy Mode `Evidence:`**: Doc-Heavy Mode findings MUST still include the separate `Evidence: tool=<Grep|Read|Glob|WebFetch>, path=..., line=...` line for the 5-category verification protocol (see `skills/reviewers/tech-writer.md`). Both prefixes may coexist in the same `内容` cell — they are orthogonal checks (Observed Likelihood Gate vs. Doc-Heavy verification execution). Phase 5.1.3 post-condition only requires the tech-writer `Evidence: tool=...` form; the Observed Likelihood Gate check detects `Likelihood-Evidence:` separately.
+**Relationship with tech-writer Doc-Heavy Mode `Evidence:`**: Doc-Heavy Mode findings MUST still include the separate `Evidence: tool=<Grep|Read|Glob|WebFetch>, path=..., line=...` line for the 5-category verification protocol (see `tech-writer-reviewer.md`). Both prefixes may coexist in the same `内容` cell — they are orthogonal checks (Observed Likelihood Gate vs. Doc-Heavy verification execution). Phase 5.1.3 post-condition only requires the tech-writer `Evidence: tool=...` form; the Observed Likelihood Gate check detects `Likelihood-Evidence:` separately.
 
 **Hypothetical Exception Category interaction**: Reviewers in the Hypothetical Exception Categories (security / database migration / devops infra / dependencies) MAY omit the `Likelihood-Evidence:` line when the finding is explicitly Hypothetical — in that case the required marker instead is `Likelihood: Hypothetical (例外カテゴリ: <name>)` in the `内容` column, as specified in each of those reviewer skill files. This is the single exception to the mandatory `Likelihood-Evidence:` rule.
 
@@ -148,7 +200,131 @@ The following patterns are typical Hypothetical claims that MUST be downgraded (
 - "もし null が渡されたら crash するかもしれない" — without showing a call site that can pass null
 - "race condition の可能性がある" — without showing two concurrent paths that actually reach the shared state
 - "メモリリークするかもしれない" — without showing a long-running entrypoint that exercises the leak
-- "悪意あるユーザーが ... できる" — without an entrypoint exposing the surface (this is exception-category-eligible if `security.md` is the reviewer)
+- "悪意あるユーザーが ... できる" — without an entrypoint exposing the surface (this is exception-category-eligible if `security-reviewer.md` is the reviewer)
+
+## Scope Assignment Flowchart
+
+> **Reference**: scope enum 定義と Cross-field invariants は [`review-result-schema.md` §findings.scope](../references/review-result-schema.md) を参照 (schema 1.1.0 で導入)。severity × scope の禁止セルは [`severity-levels.md` §Severity × Scope Matrix](../references/severity-levels.md#severity--scope-matrix) を参照。
+
+各 finding には **重要度 (severity)** とは独立に **スコープ (scope)** を assign する。scope は 3 値 enum:
+
+| スコープ値 | 意味 | 典型的用法 |
+|----------|------|----------|
+| `current-pr` | 本 PR で修正必須 | 本 PR の diff が直接導入した bug / 機能欠陥 / 仕様違反 |
+| `follow-up` | 本 PR では deferred、別 Issue として後続対応 | revert test pass (本 PR diff 由来) かつ scope 外の改善 / 巨大な refactor 要求 |
+| `nit-noted` | 情報共有のみ、修正不要 (`acknowledged` で受け流し) | 好み寄りの提案 / bounded blast radius の localized 問題 |
+
+### 判定順序 (revert test 優先)
+
+scope の決定は **必ず以下の順序** で行う。順序逆転は finding scope の誤分類を生む。
+
+```
+1. Revert test (必須最初に実行 — Necessary conditions §3 参照)
+   ├─ Revert test FAIL (本 PR diff が原因でない pre-existing) → finding 自体を破棄 (本 PR scope 外)
+   └─ Revert test PASS (本 PR diff 由来) → step 2 へ
+
+2. Severity ベースのデフォルト assignment
+   ├─ CRITICAL → デフォルト `current-pr` 強制 (許容: `current-pr` のみ; `follow-up` / `nit-noted` 禁止)
+   ├─ HIGH → デフォルト `current-pr` (許容: `current-pr` / `follow-up` — 本 PR scope 外 deferred として `follow-up` 可、ただし `nit-noted` は禁止)
+   ├─ MEDIUM → デフォルト `current-pr` (許容: `current-pr` / `follow-up` / `nit-noted`; LOW-MEDIUM 寄り case のみ nit-noted へ降格可能、`nit_reason` 必須)
+   ├─ LOW-MEDIUM → デフォルト `nit-noted` (許容: 全 3 値; 1 行修正で完了する localized 問題なら current-pr、本 PR scope 外の改善なら follow-up)
+   └─ LOW → デフォルト `nit-noted` (許容: `current-pr` (本 PR が文体修正のみの場合) / `nit-noted`; `follow-up` は禁止)
+
+3. Finding Quality Guardrail 通過後の自己降格 check
+   └─ reviewer 自身が「好み寄り (bikeshedding)」と認める場合のみ `nit-noted` へ降格 (severity 自己降格との二重 degrade は scope 自己降格パターンとして Guardrail で警告)
+```
+
+### Severity × Scope 禁止セル (FAIL invariant 該当のみ抜粋)
+
+以下の組み合わせは **schema 1.1.0 cross-field invariant #4 で FAIL** (jq invariant で機械的阻止)。reviewer は本セルに該当する finding を **絶対に出力してはならない**:
+
+| Severity | 禁止 scope (FAIL invariant) | 理由 |
+|----------|---------------------------|------|
+| CRITICAL | `follow-up` / `nit-noted` | blocker 級の指摘を deferred / 受け流しできない |
+| HIGH | `nit-noted` | 同上 (`follow-up` は許容 — 本 PR 外の deferred は可) |
+
+> **Note**: 上記は **FAIL invariant 該当の禁止セルのみ** を抜粋。これに加えて **LOW × `follow-up`** (jq invariant 非該当だが意味論的禁止: LOW 級は本 PR で修正するか nit として受け流すかの二択、別 Issue 化は冗長) も禁止セルに含まれる。**LOW × follow-up を含む完全な matrix** は [`severity-levels.md` §Severity × Scope Matrix](../references/severity-levels.md#severity--scope-matrix) を参照。
+
+### Hypothetical Exception カテゴリの nit-noted 禁止
+
+[Hypothetical Exception Categories](../references/severity-levels.md#hypothetical-exception-categories) に該当する **4 reviewer** (`security` / `database` / `devops` / `dependencies`) は **scope=`nit-noted` の出力を全 severity 帯で禁止** する。理由は以下:
+
+| Reviewer | nit-noted 禁止の根拠 |
+|----------|---------------------|
+| `security-reviewer.md` | 攻撃者が「いつ exploit を demonstrate するか選ぶ」性質上、nit (修正不要) として受け流すと CRITICAL リスクが silent に蓄積する。`acknowledged` 経路で見落とすことを阻止 |
+| `database-reviewer.md` | migration は production で 1 回しか実行されない。「nit」として受け流した destructive migration が後続 PR で取り返しのつかない state にする可能性 |
+| `devops-reviewer.md` | deploy / rollback / infra path は exercise 頻度が低い。「nit」受け流しが本番障害時に silent failure として顕在化 |
+| `dependencies-reviewer.md` | CVE / supply chain / license は「いつ起きるか」が攻撃者依存。nit 化は許容できないリスクモデル |
+
+**実装契機** (本 reference 制定時点では記述のみで、reviewer ファイル本体への禁止記述追加と hook enforcement は後続 Sub-Issue で実施予定): 4 agent ファイル (`security-reviewer.md` / `database-reviewer.md` / `devops-reviewer.md` / `dependencies-reviewer.md`) に `scope == "nit-noted"` の出力を禁止する記述を追加し、hook 層で機械的に reject する (CRITICAL/HIGH × nit-noted の FAIL invariant と同質の防衛層)。reviewer が「nit として受け流したい」と判断した finding は、本 4 reviewer では `follow-up` (別 Issue 化) または `current-pr` (本 PR で修正) のいずれかに必ず assign し直すこと。
+
+### Likelihood-Evidence との関係
+
+scope 値は Likelihood (Observed / Demonstrable / Hypothetical) とは **独立軸** であり、Hypothetical Exception カテゴリは Likelihood 軸の例外であって scope 軸の例外ではない。scope=`nit-noted` への降格は 4 例外 reviewer であっても許容されない。
+
+## Comment Quality Finding Gate
+
+> **Reference**: 検出基準の本文と原則は SoT である [`comment-best-practices.md`](../skills/rite-workflow/references/comment-best-practices.md) を参照。本セクションは reviewer 側の **Finding Gate** (重要度プリセット・スコープ限定・Hypothetical 昇格 signal・whitelist 適用順序) を一元化する。検出パターンの一覧は [`tech-writer-reviewer.md` の `#### 6. Comment Quality Heuristics`](./tech-writer-reviewer.md#6-comment-quality-heuristics) を参照。
+
+### Scope: 新規 diff の追加行限定
+
+本 Gate は **新規 diff の追加行** (`git diff {base_branch}...HEAD` の `+` 行に出現するコメント / docstring、および command/skill markdown の手順書本文・ドキュメント散文・Wiki ページの追加行) を対象とする。既存ファイルに pre-existing で残存しているジャーナル / 行番号参照 / ジャーゴンは本 Gate の finding 対象外とし、retrofit 系の cleanup Epic で別途対応する。これは初回適用時の finding 爆発を防ぎ、reviewer の signal-to-noise 比を保つための設計上の明示制約。
+
+**Verification 手順**:
+
+1. `git diff {base_branch}...HEAD` で diff hunks を取得 (`{base_branch}` は `rite-config.yml` の `branch.base`、デフォルト `develop`)
+2. 追加行 (`+` で始まる行) のみを判定対象にする (`-` 行・context 行は対象外)
+3. 抽出した追加行に対して [`tech-writer-reviewer.md` の (a)-(f) heuristics](./tech-writer-reviewer.md#6-comment-quality-heuristics) を適用
+
+> **既存違反の retrofit は本 Gate のスコープ外**: pre-existing comment に対する finding は `/rite:investigate` 系・retrofit Epic で別経路で扱う。本 reviewer は revert test (Necessary conditions §3) も「新規 diff 由来であること」を担保する — diff の `+` 行に対象コメントが含まれていなければ revert test fail として finding を破棄する。
+
+### 重要度プリセット
+
+| 違反パターン | check 参照 | プリセット重要度 |
+|------------|-----------|----------------|
+| Comment Rot (security/correctness 主張が現コードと不一致) | tech-writer #3 critical pattern | **CRITICAL** |
+| ジャーナルコメント (例示は [SoT 原則 2 — no_journal_comment](../skills/rite-workflow/references/comment-best-practices.md#2-no_journal_comment-ジャーナルコメント禁止) を参照) | tech-writer #6 (a) | **HIGH** |
+| 変更動機の散文 (番号なしの経緯コメント — 変更動機 Why は commit message が受け皿) | tech-writer #6 (f) | **MEDIUM** |
+| 行番号・cycle 番号参照 (`file:42` / `cycle 35 F-04`) | tech-writer #6 (b) | **HIGH** |
+| 過剰冗長 (内部 helper のコメント密度逆転、公開 API の docstring 0 行) | tech-writer #6 (d)/(e) | **MEDIUM** |
+| 独自ジャーゴン濫用 (Whitelist 外の造語) | tech-writer #6 (c) | **LOW-MEDIUM** |
+| 内部 helper の些末 WHAT コメント | tech-writer #5 (既存) | **LOW** |
+
+このプリセットは reviewer 単独判断の finding にも適用する。reviewer は SoT / check 参照を `Likelihood-Evidence:` 行に示し、上記重要度プリセットに従って finding を発行する。重要度のずれが [`tech-writer-reviewer.md` `#### 6` の SoT 対応表](./tech-writer-reviewer.md#6-comment-quality-heuristics) と本 Gate で発生した場合、本 Finding Gate を主、tech-writer 側のクイックリファレンスを従とする。
+
+### Hypothetical → Demonstrable 昇格 signal
+
+コメント品質違反は通常 **Demonstrable** に分類される (diff hunks の追加行に対象コメントが直接出現するため、`Likelihood-Evidence: new_call_site {file}:{line} (本 PR diff の `+` 行で追加)` を提示できる)。以下の追加 signal を観測できた場合は、より明確に「reviewer 主観ではなく機械検出可能」であることを示せる:
+
+- **Git log evidence**: `git log -L :{function}:{file}` または `git log --follow {file}` でコメント merge 時刻を確認し、コードの最終変更とコメントの最終変更の乖離を観測 (Comment Rot の「stale 化した時点」を特定)
+- **Cross-file pattern detection**: 同一 codebase の他ファイルでの同パターン出現を `Grep -r 'verified-review cycle' plugins/` で観測 (孤立違反 vs 蔓延違反の区別 — 蔓延の場合は retrofit Epic 側で扱うべきと主張)
+- **Whitelist diff observation**: SoT [`Whitelist (プロジェクト固有ジャーゴン)`](../skills/rite-workflow/references/comment-best-practices.md#whitelist-プロジェクト固有ジャーゴン) に未登録のトークンで、`git log --diff-filter=A -S '{token}'` で初出 commit を確認 (本 PR で導入されたトークンか pre-existing トークンかの判定)
+
+**Likelihood-Evidence ラベル**:
+
+```
+Likelihood-Evidence: new_call_site {file}:{line} (本 PR diff の `+` 行で追加)
+```
+
+Hypothetical Exception Category 適用は不要 (コメント品質は security / database migration / devops infra / dependencies のいずれにも該当しない)。コメント品質違反は常に Demonstrable の前提で finding を発行し、Demonstrable に到達できない場合は finding を破棄する (新規 diff の `+` 行に出現していなければ、それは pre-existing 違反であり本 Gate のスコープ外)。
+
+### Whitelist 適用順序
+
+トークン検出時の判定順序は以下に従う (順序を入れ替えると false positive が増える):
+
+1. **SoT Whitelist 表との突合** (substring match): SoT [`## Whitelist (プロジェクト固有ジャーゴン)`](../skills/rite-workflow/references/comment-best-practices.md#whitelist-プロジェクト固有ジャーゴン) の表に列挙されたジャーゴンであれば許容。
+2. **`rite-config.yml` の `comment_best_practices.jargon_whitelist` 拡張** (将来予約 — MVP では未実装): プロジェクト固有 Whitelist の拡張・上書き。schema は SoT 末尾の YAML 想定例を参照。
+3. **一般辞書チェック**: 英語・日本語の一般単語・略語・標準ライブラリ識別子であれば許容。
+4. **プロジェクト内独立登場頻度チェック**: `Grep -r '{token}' plugins/` で 3 件以上 (本コメント・近接コメント以外) の独立登場があれば事実上の慣習語として許容 (Severity LOW 据え置き判定)。
+5. **上記すべて該当しない造語のみ finding として発行**: Severity LOW (孤立 1 hit) 〜 MEDIUM (本 PR で複数箇所新規導入) を判断。
+
+> **実装ノート**: 上記 1 → 2 → 3 → 4 → 5 を必ずこの順で適用すること。順序の本質的意義は以下の 3 点である:
+>
+> 1. **意味的階層の保持**: project 固有の意図を最も明示する SoT Whitelist (順序 1) と `rite-config.yml` 拡張 (順序 2) が、一般辞書 (順序 3) や独立登場頻度ヒューリスティクス (順序 4) より先に評価されることで、reviewer は「Whitelist は project 固有意図、一般辞書は default」という階層を運用判断 (Whitelist 拡張提案) で見失わない
+> 2. **Substring 衝突の早期解決**: `sentinel` のような Whitelist 内ジャーゴンが部分文字列として他のトークン (例: `sentinelize`、`sentinel-marker`) に出現する場合、Whitelist 表マッチで早期確定することで `sentinel` 自体が独立登場頻度チェック (順序 4) で誤って造語と判定される経路を避けられる
+> 3. **計算コスト節約**: 早期 return により下流の Grep / LLM 判定 (順序 4) を skip できる
+>
+> 順序 1 と順序 3 はどちらも「許容」へ進む判定であり、入れ替えても最終的な finding 採否は変わらないが、上記 (1) (2) の意味的・運用的理由から **順序逆転は禁止** とする。
 
 ## Fail-Fast First
 
@@ -166,10 +342,10 @@ The default response to a missing error path is therefore:
 
 ### When a fallback IS justified (skill-side exceptions)
 
-A fallback recommendation is acceptable only when the **reviewer's own skill file** explicitly lists the case as an allowed fallback. Examples:
+A fallback recommendation is acceptable only when the **reviewer's own agent definition** explicitly lists the case as an allowed fallback. Examples:
 
-- `error-handling.md` may list "graceful degradation in non-critical UI render paths" as an allowed fallback.
-- `frontend.md` may list "default avatar image when user upload fails" as an allowed fallback.
+- `error-handling-reviewer.md` may list "graceful degradation in non-critical UI render paths" as an allowed fallback.
+- `frontend-reviewer.md` may list "default avatar image when user upload fails" as an allowed fallback.
 
 If the reviewer's skill file does NOT list the case, the reviewer MUST recommend `throw` / `raise` and document the recommendation in the `推奨対応` column with explicit reasoning (e.g., "throw して呼び出し元の error boundary に伝播。fallback は silent failure を生むため非推奨").
 
@@ -192,7 +368,7 @@ If the Wiki documents a project-specific allowance for the fallback pattern in q
 | Try/catch swallow | "`try { ... } catch {}` で安全化" | "catch ブロックを削除し、上位の error boundary に到達させる。silent swallow は CRITICAL anti-pattern" |
 | Retry + give-up | "3 回 retry 後 default を返す" | "3 回 retry 後 throw。caller が retry 戦略を決定すべき" |
 
-## Finding Quality Guardrail (#557)
+## Finding Quality Guardrail
 
 Reviewers MUST filter out the following categories of findings **before** writing them to the output table. The filter is applied after Observed Likelihood Gate and Fail-Fast First but before Confidence Scoring. Filtered findings are logged to the reviewer's `監査ログ` section (optional) but MUST NOT appear in `指摘事項`.
 
@@ -206,6 +382,7 @@ This guardrail implements Quality Signal 4 of the four review-fix loop quality s
 | 2 | **Defensive code suggestion** | "念のため null check を追加", "想定外の値に備えて default を返す", "型的に到達不可能な else に throw を追加" | Filter **unless** the reviewer identifies a concrete call site that can reach the undefended branch. Suggestions based on "just in case" without a demonstrable call path → filter |
 | 3 | **Hypothetical without entry point** | "もし悪意あるユーザーが ... できたら", "もし race condition が起きたら" | Already governed by Observed Likelihood Gate; here this guardrail adds a belt-and-suspenders filter. If the finding has no `Likelihood-Evidence:` line and the reviewer is not in an Exception Category → filter |
 | 4 | **Style-only without rule** | "コメント文体を揃える", "ファイル末尾改行", "import 並び替え" unless enforced by a configured linter | Filter |
+| 5 | **Scope self-degradation chain** | reviewer が CRITICAL/HIGH と判定した finding を severity 自己降格 (CRITICAL → MEDIUM) と同時に scope 自己降格 (current-pr → nit-noted) させる二重 degrade パターン。例: CRITICAL → MEDIUM (severity 降格) + current-pr → nit-noted (scope 降格) の連鎖。本来の severity を保ったまま `original_severity` フィールドに記録すべき (schema 1.1.0 `findings[].original_severity` 参照) | Filter **and** warn the reviewer to either: (a) keep the original severity and use `current-pr` / `follow-up` scope, or (b) downgrade only severity (LOW-MEDIUM などへ) keeping `current-pr` scope. **CRITICAL/HIGH を本 Category #5 で filter した場合、reviewer は強制的に [Reviewer self-degradation → Signal 4](#reviewer-self-degradation--signal-4) の `Status: degraded` を emit すること** (Signal 4 強制発火 — silent suppression 防止)。二重 degrade は finding を silent suppression する経路となり review-fix loop の収束を阻害するため、本 Filter は完全消去ではなく **warn + escalation** を意図する設計上の対称性を担保する |
 
 ### Why these are filtered
 
@@ -235,6 +412,19 @@ The orchestrator interprets this as Signal 4 of the four quality signals and esc
 | **Finding Quality Guardrail** | After per-finding evaluation, before output | **Filter bikeshedding / defensive / style-only**, degrade reviewer if nothing remains |
 | Confidence Scoring | Final output | Assign 0-100 confidence to surviving findings |
 
+## External Claim Awareness
+
+When citing external specifications (library behavior, tool configuration, version compatibility, API behavior, CVE/vulnerability information) in findings, reviewers should follow these guidelines:
+
+| Guideline | Description |
+|-----------|-------------|
+| **Cite specific versions** | Include the version number when claiming version-specific behavior (e.g., "npm v11.10.0 introduced..." instead of "npm supports...") |
+| **Prefer observable facts** | Reference behavior observable in the codebase (package.json versions, config files) rather than general claims about external tools |
+| **Flag uncertainty** | If unsure about external behavior, note "要検証" in the recommendation column to signal that fact-checking should prioritize this claim |
+| **Avoid speculation** | Do not claim specific library/tool behavior without concrete evidence from investigation or documentation |
+
+**Note**: External specification claims in findings are verified by the Fact-Checking Phase (`review.md` ステップ 5 Critic Phase) using WebSearch/WebFetch against official documentation. Claims found to contradict official documentation are removed from the review report and recorded in a dedicated section. Reviewers benefit from accuracy here because contradicted findings are flagged as errors, reducing overall review quality.
+
 ## Input
 
 This agent receives the following input via Task tool's `prompt` parameter:
@@ -254,18 +444,20 @@ Output using this format with evaluation (可/条件付き/要修正), findings 
 ### 所見
 {所見}
 ### 指摘事項
-| 重要度 | ファイル:行 | 内容 | 推奨対応 |
-|--------|------------|------|----------|
-| {SEVERITY} | {file:line} | {issue} | {recommendation} |
+| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|--------|----------|------------|------|----------|
+| {SEVERITY} | {SCOPE} | {file:line} | {issue} | {recommendation} |
 ```
 
 ### Column Structure Rules
 
 | Column | Structure | Description |
 |--------|-----------|-------------|
+| **重要度** | enum | `CRITICAL` / `HIGH` / `MEDIUM` / `LOW-MEDIUM` / `LOW` — Impact 軸（[Severity Levels](../references/severity-levels.md) 参照） |
+| **スコープ** | enum | `current-pr` / `follow-up` / `nit-noted` — 指摘の scope 分類。値の決定は [Scope Assignment Flowchart](#scope-assignment-flowchart) に従う。schema 1.1.0+ |
 | **内容** | WHAT + WHY | 何が問題か（1文目）→ なぜそれが問題か（2文目: 影響、リスク、既存パターンとの比較） |
 | **推奨対応** | FIX + EXAMPLE | 具体的な修正方法 → インラインコード例（コード変更が伴う場合） |
 
 WHY が省略された findings は修正エージェントの判断精度を下げる。WHAT のみで WHY が自明な場合でも、影響範囲や既存コードとの比較を含めること。
 
-See [Severity Levels](../references/severity-levels.md) for common severity definitions and evaluation flowchart.
+See [Severity Levels](../references/severity-levels.md) for common severity definitions and the [Severity × Scope Matrix](../references/severity-levels.md#severity--scope-matrix) for allowed/forbidden combinations.

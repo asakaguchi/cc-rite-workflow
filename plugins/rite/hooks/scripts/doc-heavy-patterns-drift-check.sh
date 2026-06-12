@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
 # doc-heavy-patterns-drift-check.sh
 #
-# Detect drift in `doc_file_patterns` across 3 files that MUST agree on the
+# Detect drift in `doc_file_patterns` across 2 files that MUST agree on the
 # same set of glob tokens for tech-writer Activation / Doc-Heavy PR detection:
 #
-#   1. plugins/rite/skills/reviewers/tech-writer.md  (Activation section;
-#      treated as the source of truth)
-#   2. plugins/rite/commands/pr/review.md            (Phase 1.2.7
+#   1. plugins/rite/commands/pr/review.md            (ステップ 1.2.7
 #      `doc_file_patterns` pseudo-code block)
-#   3. plugins/rite/skills/reviewers/SKILL.md        (Reviewers table,
-#      Technical Writer row)
+#   2. plugins/rite/skills/reviewers/SKILL.md        (Reviewers table,
+#      Technical Writer row — source of truth for tech-writer Activation
+#      patterns after the per-reviewer skill files were consolidated into the
+#      named-subagent definitions)
 #
 # Issue #353 covers 系統 1 of the drift invariants catalogued in
 # commands/pr/references/internal-consistency.md. 系統 2 (canonical category
-# name literal match) and 系統 3 (review.md Phase 5.4 Doc-Heavy section 2-place
+# name literal match) and 系統 3 (review.md ステップ 5.4 Doc-Heavy section 2-place
 # duplication) are out of scope for this checker.
 #
-# The 3 files encode the same pattern list in 3 different textual forms (list
-# with backticks / pseudo-code without backticks / Markdown table cell). This
-# checker does NOT compare the raw text — it extracts glob tokens per file and
-# compares the resulting sets. Syntactic differences (ordering, spacing, line
-# breaks) are tolerated by design; only set-level drift is reported.
+# The 2 files encode the same pattern list in 2 different textual forms
+# (pseudo-code without backticks / Markdown table cell). This checker does NOT
+# compare the raw text — it extracts glob tokens per file and compares the
+# resulting sets. Syntactic differences (ordering, spacing, line breaks) are
+# tolerated by design; only set-level drift is reported.
 #
 # --- Token extraction contract -----------------------------------------------
 #
@@ -31,25 +31,21 @@
 # text elsewhere in the file (other skills, other pseudo-code, Note paragraphs
 # that repeat pattern examples) does NOT bleed into the comparison:
 #
-#   tech-writer.md : only lines starting with `- ` between `## Activation` and
-#                    `### Conditional Activation`. The intro sentence and Note
-#                    paragraphs within the section are deliberately skipped
-#                    because they re-state patterns in prose form.
 #   review.md      : only lines strictly between `doc_file_patterns = [` and
 #                    the subsequent closing `]` at column 0.
 #   SKILL.md       : only the single table row that begins with
 #                    `| Technical Writer |`.
 #
-# Drift reporting is based on pairwise set difference (`comm -23`) across all 3
-# pairs. Every token present in only one file of a pair is emitted as a
-# finding. Exit code 1 when any finding is emitted, 0 when all 3 sets are
+# Drift reporting is based on set difference (`comm -23`) in both directions
+# between the 2 files. Every token present in only one file is emitted as a
+# finding. Exit code 1 when any finding is emitted, 0 when both sets are
 # identical.
 #
 # Usage:
 #   doc-heavy-patterns-drift-check.sh --all [--repo-root DIR] [--quiet]
 #
 # Exit codes:
-#   0  No drift detected across the 3 files
+#   0  No drift detected across the 2 files
 #   1  Drift detected (symmetric set difference non-empty)
 #   2  Invocation error (bad args, missing files, empty section)
 
@@ -64,9 +60,9 @@ usage() {
 Usage: doc-heavy-patterns-drift-check.sh --all [options]
 
 Options:
-  --all              Scan the 3 canonical doc_file_patterns files
-                     (tech-writer.md / review.md / SKILL.md) under plugins/rite/.
-                     This is the only supported mode; the 3-file invariant
+  --all              Scan the 2 canonical doc_file_patterns files
+                     (review.md / SKILL.md) under plugins/rite/.
+                     This is the only supported mode; the invariant
                      has no meaning for arbitrary targets.
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
   --quiet            Suppress progress/summary log lines on stderr
@@ -74,7 +70,7 @@ Options:
   -h, --help         Show this help
 
 Exit codes:
-  0  No drift detected across the 3 files
+  0  No drift detected across the 2 files
   1  Drift detected (symmetric set difference non-empty)
   2  Invocation error (bad args, missing files, empty section)
 EOF
@@ -93,7 +89,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "$USE_ALL" -ne 1 ]; then
-  echo "ERROR: --all is required (doc_file_patterns drift is a fixed 3-file check)" >&2
+  echo "ERROR: --all is required (doc_file_patterns drift is a fixed 2-file check)" >&2
   usage >&2
   exit 2
 fi
@@ -103,11 +99,10 @@ if [ -z "$REPO_ROOT" ]; then
 fi
 cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
 
-TW_FILE="plugins/rite/skills/reviewers/tech-writer.md"
 REVIEW_FILE="plugins/rite/commands/pr/review.md"
 SKILL_FILE="plugins/rite/skills/reviewers/SKILL.md"
 
-for f in "$TW_FILE" "$REVIEW_FILE" "$SKILL_FILE"; do
+for f in "$REVIEW_FILE" "$SKILL_FILE"; do
   if [ ! -f "$f" ]; then
     echo "ERROR: required file not found: $f" >&2
     echo "  Likely cause: invoked outside the rite plugin source tree (e.g. marketplace install layout)" >&2
@@ -135,20 +130,7 @@ WORK_DIR="$(mktemp -d)" || { echo "ERROR: mktemp -d failed" >&2; exit 2; }
 
 # --- Section extractors ------------------------------------------------------
 
-# tech-writer.md: list items (`- ...`) between `## Activation` and
-# `### Conditional Activation`. The Note paragraphs inside the section
-# re-state patterns in prose and would otherwise pollute the token set with
-# duplicates and bare `i18n/**`-style fragments — exclude them by gating on the
-# list-item marker.
-extract_tw() {
-  awk '
-    /^## Activation/ { in_sec = 1; next }
-    /^### Conditional Activation/ { in_sec = 0 }
-    in_sec && /^- / { print }
-  ' "$TW_FILE"
-}
-
-# review.md: the Phase 1.2.7 pseudo-code block between `doc_file_patterns = [`
+# review.md: the ステップ 1.2.7 pseudo-code block between `doc_file_patterns = [`
 # and the next line consisting of `]` at column 0.
 extract_review() {
   awk '
@@ -203,12 +185,6 @@ normalize_set() {
 # `if !` guard below catches mid-pipeline failures. Do NOT toggle pipefail
 # locally — doing so either duplicates the global setting or silently
 # disables it for the remainder of the script, breaking future pipe guards.
-if ! extract_tw | extract_tokens | normalize_set > "$WORK_DIR/tw.set"; then
-  echo "ERROR: ${TW_FILE} extractor pipeline failed (grep/awk IO error or write failure)" >&2
-  echo "  Likely cause: read permission on ${TW_FILE}, or /tmp write failure" >&2
-  echo "  Recovery: inspect the file and re-run; do not confuse this with a section-marker change" >&2
-  exit 2
-fi
 if ! extract_review | extract_tokens | normalize_set > "$WORK_DIR/review.set"; then
   echo "ERROR: ${REVIEW_FILE} extractor pipeline failed (grep/awk IO error or write failure)" >&2
   echo "  Likely cause: read permission on ${REVIEW_FILE}, or /tmp write failure" >&2
@@ -222,11 +198,9 @@ if ! extract_skill | extract_tokens | normalize_set > "$WORK_DIR/skill.set"; the
   exit 2
 fi
 
-tw_count=$(wc -l < "$WORK_DIR/tw.set")
 review_count=$(wc -l < "$WORK_DIR/review.set")
 skill_count=$(wc -l < "$WORK_DIR/skill.set")
 
-log "tech-writer.md   : ${tw_count} glob tokens"
 log "review.md        : ${review_count} glob tokens"
 log "SKILL.md         : ${skill_count} glob tokens"
 
@@ -234,7 +208,7 @@ log "SKILL.md         : ${skill_count} glob tokens"
 # list has 18 as of this writing). An empty or undersized set almost always
 # means the section markers changed and extraction fell off the end, so fail
 # fast with an invocation error rather than silently reporting a large drift.
-for kv in "tech-writer.md:${tw_count}" "review.md:${review_count}" "SKILL.md:${skill_count}"; do
+for kv in "review.md:${review_count}" "SKILL.md:${skill_count}"; do
   file="${kv%:*}"
   count="${kv##*:}"
   if [ "$count" -lt 10 ]; then
@@ -262,20 +236,10 @@ report_diff() {
   fi
 }
 
-report_diff "$WORK_DIR/tw.set"     "tech-writer.md Activation" \
-            "$WORK_DIR/review.set" "review.md Phase 1.2.7 doc_file_patterns"
-report_diff "$WORK_DIR/review.set" "review.md Phase 1.2.7 doc_file_patterns" \
-            "$WORK_DIR/tw.set"     "tech-writer.md Activation"
-
-report_diff "$WORK_DIR/tw.set"     "tech-writer.md Activation" \
+report_diff "$WORK_DIR/review.set" "review.md ステップ 1.2.7 doc_file_patterns" \
             "$WORK_DIR/skill.set"  "SKILL.md Technical Writer row"
 report_diff "$WORK_DIR/skill.set"  "SKILL.md Technical Writer row" \
-            "$WORK_DIR/tw.set"     "tech-writer.md Activation"
-
-report_diff "$WORK_DIR/review.set" "review.md Phase 1.2.7 doc_file_patterns" \
-            "$WORK_DIR/skill.set"  "SKILL.md Technical Writer row"
-report_diff "$WORK_DIR/skill.set"  "SKILL.md Technical Writer row" \
-            "$WORK_DIR/review.set" "review.md Phase 1.2.7 doc_file_patterns"
+            "$WORK_DIR/review.set" "review.md ステップ 1.2.7 doc_file_patterns"
 
 log "==> Total doc-heavy-patterns-drift findings: ${diff_count}"
 

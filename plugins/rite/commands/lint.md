@@ -5,14 +5,14 @@ description: 品質チェックを実行
 # /rite:lint
 
 ## Contract
-**Input**: rite-config.yml `commands` section (lint/test/typecheck commands), `.rite-flow-state` (optional, e2e flow)
+**Input**: rite-config.yml `commands` section (lint/test/typecheck commands), flow state (optional, e2e flow)
 **Output**: `[lint:success]` | `[lint:skipped]` | `[lint:error]` | `[lint:aborted]`
 
 品質チェック（lint）を実行し、結果を報告する
 
 ## E2E Output Minimization
 
-When called from the `/rite:issue:start` end-to-end flow, minimize output to reduce context window consumption:
+When called from the `/rite:pr:open` end-to-end flow, minimize output to reduce context window consumption:
 
 | Phase | Standalone | E2E Flow |
 |-------|-----------|----------|
@@ -32,13 +32,13 @@ Execute the following phases in order when this command is invoked.
 
 ## Caller Context and End-to-End Flow
 
-> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
 
-This command has two invocation cases: standalone execution and being called from the `/rite:issue:start` end-to-end flow.
+This command has two invocation cases: standalone execution and being called from the `/rite:pr:open` end-to-end flow.
 
 | Caller | Output Pattern | Subsequent Action |
 |-----------|-------------|---------------|
-| `/rite:issue:start` (end-to-end flow) | Output (required) | `/rite:issue:start` calls `rite:pr:create` after executing Phase 5.2.1 |
+| `/rite:pr:open` (end-to-end flow) | Output (required) | `/rite:pr:open` calls `rite:pr:create` at ステップ 6 after consuming the lint result at ステップ 5.1 |
 | Standalone execution | Output (required) | Display "next steps" guidance |
 
 **Determination method**: Claude determines the caller from conversation context:
@@ -56,7 +56,7 @@ This command has two invocation cases: standalone execution and being called fro
 - `[lint:error]` - lint errors detected
 - `[lint:aborted]` - user aborted
 
-> **Important (flow continuation responsibility)**: When executed within the end-to-end flow, **this command does NOT directly call `rite:pr:create`; it returns control to the caller `/rite:issue:start`**. `/rite:issue:start` calls `rite:pr:create` after executing Phase 5.2.1 (checklist confirmation).
+> **Important (flow continuation responsibility)**: When executed within the end-to-end flow, **this command does NOT directly call `rite:pr:create`; it returns control to the caller `/rite:pr:open`**. `/rite:pr:open` calls `rite:pr:create` at ステップ 6 after consuming the lint result at ステップ 5.1 (checklist completion confirmation happens earlier at ステップ 4.4).
 
 ---
 
@@ -78,7 +78,7 @@ Determine the caller from conversation context:
 
 | Condition | Result | Action |
 |------|---------|------|
-| Conversation history contains rich context from `/rite:issue:start` | Within end-to-end flow | Work memory loading optional (information available in context) |
+| Conversation history contains rich context from `/rite:pr:open` | Within end-to-end flow | Work memory loading optional (information available in context) |
 | `/rite:lint` was executed standalone | Standalone execution | Can identify Issue from branch name |
 
 ### 0.2 Load Work Memory
@@ -114,89 +114,6 @@ Extract the following information from work memory and retain in context:
 If the Issue number cannot be obtained or the work memory comment does not exist:
 - Display a warning and skip
 - Continue with normal lint execution (proceed to Phase 1)
-
----
-
-## Phase 0.5: Config Deprecation Scan (v0.4.0 #557)
-
-Before running lint, scan `rite-config.yml` for deprecated review-fix loop configuration keys and emit warnings. Legacy keys are **silently ignored** at runtime (they have no effect), but leaving them in the config file creates confusion, so warn the user to remove them.
-
-**Deprecated keys** (removed in v0.4.0 by #557):
-
-| Key | Path | Replaced by |
-|-----|------|-------------|
-| `severity_gating_cycle_threshold` | `review.loop.*` | Quality Signal 1 (fingerprint cycling) — no configuration needed |
-| `scope_lock_cycle_threshold` | `review.loop.*` | Quality Signal 1 (fingerprint cycling) — no configuration needed |
-| `max_review_fix_loops` | `safety.*` | Fully removed — loop now exits on 0 findings or on any of the 4 quality signals |
-
-**Step 1**: Scan `rite-config.yml` for each deprecated key name and record which are present:
-
-```bash
-deprecated_found=""
-for key in severity_gating_cycle_threshold scope_lock_cycle_threshold max_review_fix_loops; do
-  # 先頭 `#` で始まるコメント行は誤検出しないが、top-level (インデント 0) の key も検出対象に含める
-  if grep -qE "^[[:space:]]*${key}[[:space:]]*:" rite-config.yml 2>/dev/null; then
-    deprecated_found="${deprecated_found}${key} "
-  fi
-done
-if [ -n "$deprecated_found" ]; then
-  echo "⚠️ rite-config.yml に廃止済みキーが残存しています: ${deprecated_found}" >&2
-  echo "⚠️ これらのキーは v0.4.0 (#557) で廃止され、値は無視されます。rite-config.yml から削除してください。" >&2
-  echo "[CONTEXT] DEPRECATED_KEYS=${deprecated_found}"
-else
-  echo "[CONTEXT] DEPRECATED_KEYS=none"
-fi
-```
-
-**Step 2**: Continue to Phase 1 regardless of whether deprecated keys were found. The warning is informational and does not change the lint exit code.
-
-**Step 3**: When deprecated keys are detected, include a short line in the final lint report so it is visible alongside normal lint output:
-
-```
-⚠️ Deprecated config keys detected: {keys}. See CHANGELOG v0.4.0 migration guide.
-```
-
-This is appended to the report produced by Phase 4 irrespective of lint success/error.
-
----
-
-## Phase 0.6: Terminal Output Structure Verification (v0.4.0 #561)
-
-Run the regression guard for `/rite:issue:create` terminal output structure. This check ensures that Terminal Completion sections in `create-register.md` / `create-decompose.md` / `create-interview.md` emit the completion sentinel (`[create:completed:{N}]` / `[interview:*]`) as an HTML comment wrapper so the user-visible final line is the `✅` completion message + next steps (Issue #561 AC-2, AC-3, AC-6).
-
-**Rationale**: Prior regressions (Issues #525, #552, #561) showed that bare sentinel tokens as the absolute last line coupled the LLM's turn-boundary heuristic with the sentinel, causing premature `continue`-requiring stops. The HTML-comment form (`<!-- [create:completed:{N}] -->`) keeps the sentinel grep-matchable while hiding it from rendered Markdown output.
-
-**Condition**: Always execute when the script exists (Phase 3.5-3.8 の plugin-specific check と同 pattern)。
-
-**Execution:**
-
-```bash
-if [ -f {plugin_root}/hooks/verify-terminal-output.sh ]; then
-  verify_terminal_output=$(bash {plugin_root}/hooks/verify-terminal-output.sh --quiet 2>&1)
-  verify_terminal_exit_code=$?
-else
-  verify_terminal_exit_code=-1  # script not found
-fi
-```
-
-**Result handling:**
-
-| Exit Code | `verify_terminal_status` | Action |
-|-----------|--------------------------|--------|
-| `0` | `success` | All terminal output checks passed — continue to Phase 1 |
-| `1` | `warning` | Regression detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
-| `2` | `error` | Invocation error — record as warning, display error message |
-| `-1` | `skipped` | Script not found — skip silently (marketplace install without hooks) |
-
-**Important**: Terminal output check results are treated as **warnings**, not errors — same policy as Phase 3.5-3.8 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`).
-
-**Record results** for Phase 4 reporting:
-
-- `verify_terminal_status`: `success` / `warning` / `error` / `skipped`
-- `verify_terminal_finding_count`: Extract from `verify_terminal_output` by counting `FAIL:` lines (regex: `/^FAIL:/`). If no match found, default to `0`
-- `verify_terminal_output`: Script output (truncated if >50 lines)
-
-**Non-blocking rationale**: This phase runs on every lint invocation; blocking would prevent unrelated PRs from merging if a Terminal Completion file has an unintended drift. Making it informational keeps the regression visible (via lint report + potential PR review) without halting the workflow.
 
 ---
 
@@ -255,25 +172,25 @@ If the lint command cannot be detected, use the `AskUserQuestion` tool to intera
 **Note**: `AskUserQuestion` is a standard Claude Code tool that presents choices to the user and retrieves their response.
 
 ```
-{i18n:lint_command_not_found}
+lint コマンドを検出できませんでした
 
-{i18n:lint_supported_detection}:
+対応している自動検出:
 - Node.js: package.json の scripts.lint
 - Python: ruff check（pyproject.toml 検出時）
 - Rust: cargo clippy（Cargo.toml 検出時）
 - Go: golangci-lint run（go.mod 検出時）
 
 オプション:
-- {i18n:lint_option_skip}
-- {i18n:lint_option_specify}
-- {i18n:lint_option_abort}
+- スキップして続行（推奨）: lint をスキップし、次のステップに進みます
+- コマンドを指定: lint コマンドを手動で入力します
+- 中断: 処理を中断します
 ```
 
 **Subsequent processing for each choice:**
 
 | Choice | Subsequent Processing |
 |--------|----------|
-| **Skip and continue** | Record "lint skipped" in conversation context, skip Phase 2 onward, and complete normally. If called from `/rite:issue:start`, proceed to the next step (PR creation) |
+| **Skip and continue** | Record "lint skipped" in conversation context, skip Phase 2 onward, and complete normally. If called from `/rite:pr:open`, proceed to the next step (PR creation) |
 | **Specify command** | Follow up with `AskUserQuestion` to prompt for command input (see below), then execute Phase 2 onward with the entered command |
 | **Abort** | Abort processing and display guidance to "configure lint and run again" |
 
@@ -284,37 +201,37 @@ When lint is skipped, output the completion message in the following format:
 **Standalone execution:**
 ```
 [lint:skipped]
-{i18n:lint_skipped}
-{i18n:lint_skip_reason}
+lint をスキップしました。
+理由: lint コマンド未検出
 
-{i18n:lint_next_steps}:
-1. {i18n:lint_skip_next_step}
+次のステップ:
+1. 必要に応じて `/rite:pr:create` で PR 作成
 ```
 
-**When called from `/rite:issue:start`:**
+**When called from `/rite:pr:open`:**
 ```
 [lint:skipped]
-{i18n:lint_skipped}
-{i18n:lint_skip_reason}
+lint をスキップしました。
+理由: lint コマンド未検出
 
 ---
-{i18n:lint_flow_continue}
+🔄 **フロー継続**: 呼び出し元の `/rite:pr:open` が ステップ 6（PR 作成）を実行
 ```
 
-> If `/rite:lint` continues to PR creation directly, it bypasses the checklist confirmation (5.2.1) in the caller, potentially creating a PR with incomplete tasks.
-> **CRITICAL**: When called from `/rite:issue:start`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:issue:start` after Phase 5.2.1 is complete.
+> If `/rite:lint` continues to PR creation directly, it bypasses the checklist confirmation in the caller, potentially creating a PR with incomplete tasks.
+> **CRITICAL**: When called from `/rite:pr:open`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:pr:open` at ステップ 6 after the lint result is consumed at ステップ 5.1.
 
 **Meaning of output patterns:**
-- `[lint:skipped]`: Used by `/rite:issue:start` Phase 5.2 to detect this pattern and decide to proceed to 5.3 (PR creation)
+- `[lint:skipped]`: Used by `/rite:pr:open` ステップ 5.1 to detect this pattern and decide to proceed to ステップ 6 (PR creation)
 - `[lint:success]`: When lint completed successfully (output in Phase 4.1)
 - `[lint:error]`: When lint detected errors (output in Phase 4.2)
 - `[lint:aborted]`: When the user selected "Abort"
 
 **Clarification of responsibilities:**
 
-Reflecting the lint skip in the PR body is the responsibility of `/rite:issue:start` Phase 5.3:
+Reflecting the lint skip in the PR body is the responsibility of `/rite:pr:open` ステップ 5:
 1. `/rite:lint` only outputs the above output patterns
-2. When `/rite:issue:start` detects `[lint:skipped]`, it prepares the PR body template before calling `/rite:pr:create`
+2. When `/rite:pr:open` detects `[lint:skipped]`, it prepares the PR body template before calling `/rite:pr:create`
 3. The "Known Issues" section of the PR body includes the following:
 
 ```markdown
@@ -327,12 +244,12 @@ Reflecting the lint skip in the PR body is the responsibility of `/rite:issue:st
 When "Specify command" is selected, use `AskUserQuestion` to prompt for command input:
 
 ```
-{i18n:lint_command_prompt}
+使用する lint コマンドを入力してください（例: npm run lint, ruff check .）
 
 オプション:
 - npm run lint
 - ruff check .
-- {i18n:lint_command_other}
+- 他のコマンドを入力（Other を選択）
 ```
 
 **Note**: Present representative commands as choices in `AskUserQuestion` `options`. The user can also select "Other" to enter a custom command.
@@ -352,17 +269,17 @@ When the user enters/selects a command:
 Use the specified path as-is:
 
 ```
-{i18n:lint_target_path}: {path}
+対象: {path}
 ```
 
 If the path does not exist:
 
 ```
-{i18n:lint_path_not_found} (variables: path={path})
+指定されたパス '{path}' が見つかりません
 
-{i18n:resume_actions}:
-1. {i18n:lint_check_path_correct}
-2. {i18n:lint_check_path_exists}
+対処:
+1. パスが正しいか確認
+2. ファイル/ディレクトリが存在するか確認
 ```
 
 ### 2.2 When Arguments Are Omitted
@@ -430,7 +347,7 @@ Terminate processing. Do not silently fall back to `HEAD` diff or targeting the 
 **When there are no changed files:**
 
 ```
-{i18n:lint_no_changed_files}
+変更ファイルがありません。プロジェクト全体をチェックします
 
 ベースブランチとの差分がないため、プロジェクト全体をチェックします。
 特定のパスに限定するには /rite:lint <path> を指定してください。
@@ -445,10 +362,10 @@ Target the entire project (current directory) with a visible warning that the sc
 ### 3.1 Pre-Execution Notice
 
 ```
-{i18n:lint_running}
+品質チェックを実行しています...
 
-{i18n:lint_command}: {lint_command}
-{i18n:lint_target_path}: {target_path または "変更ファイル ({count} files)"}
+コマンド: {lint_command}
+対象: {target_path または "変更ファイル ({count} files)"}
 ```
 
 ### 3.2 Command Execution
@@ -482,16 +399,16 @@ Execute test commands as part of quality check when configured.
 
 **Note**: When the `verification` section does not exist in `rite-config.yml`, treat defaults as enabled (`run_tests_before_pr: true`). The test execution condition still requires `commands.test` to be set.
 
-**Duplicate execution avoidance**: When called from the `/rite:issue:start` end-to-end flow and tests were already run and passed in `implement.md` Phase 5.1.0.6 (test results available in conversation context), skip duplicate test execution and reuse previous results.
+**Duplicate execution avoidance**: When called from the `/rite:pr:open` end-to-end flow and tests were already run and passed in `implement.md` Phase 5.1.0.6 (Test Verification Gate — implement.md retains its own internal phase numbering; test results available in conversation context), skip duplicate test execution and reuse previous results.
 
 When skipped, no output needed (silent skip).
 
 **Execution:**
 
 ```
-{i18n:lint_running_tests}
+テストを実行しています...
 
-{i18n:lint_command}: {test_command}
+コマンド: {test_command}
 ```
 
 ```bash
@@ -511,13 +428,13 @@ When skipped, no output needed (silent skip).
 - `test_error_count`: Number of failed tests (0 if success)
 - `test_output`: Test command output (truncated if >500 lines)
 
+**Common contract for the plugin-specific checks (3.5–3.18)**: each check below runs its `{plugin_root}/hooks/scripts/*.sh` script when that script exists, is **independent of `commands.lint` configuration** (a rite-workflow internal quality check), and is **skipped silently** when the script file is absent (e.g., marketplace install without the `hooks/scripts/` directory). Unless a check states otherwise, its findings are recorded as **warnings** (they do NOT change the overall `[lint:success]` result). Each check's section below states only its script-specific execution and result handling.
+
 ### 3.5 Plugin-specific Checks (Distributed Fix Drift Detection)
 
 Execute the distributed fix drift check script to detect documentation drift patterns in rite-workflow procedural markdown files.
 
-**Condition**: Always execute when `{plugin_root}/hooks/scripts/distributed-fix-drift-check.sh` exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
-
-**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+**Condition**: Always execute when `{plugin_root}/hooks/scripts/distributed-fix-drift-check.sh` exists.
 
 **Execution:**
 
@@ -550,9 +467,7 @@ fi
 
 Execute the bang-backtick check script to detect Skill loader triggering patterns (backtick + bang adjacency) in **`plugins/rite/commands/**/*.md`** and **`plugins/rite/skills/**/*.md`** (plugin-scoped; the script walks the rite plugin tree specifically and does not scan repository-root `commands/` or `skills/` directories that may belong to other plugins). This is the static lint counterpart to Issue #365 / PR #367 where inline-code bang adjacency broke Skill loading via bash history expansion. See the script header comment at `plugins/rite/hooks/scripts/bang-backtick-check.sh` for concrete detection patterns.
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
-
-**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+**Condition**: Always execute when the script exists.
 
 **Execution:**
 
@@ -583,11 +498,9 @@ fi
 
 ### 3.7 Plugin-specific Checks (Doc-Heavy Patterns Drift Detection)
 
-Execute the doc-heavy patterns drift check script to detect divergence between the `doc_file_patterns` declared in 3 files that MUST stay in sync: `plugins/rite/skills/reviewers/tech-writer.md` (Activation section), `plugins/rite/commands/pr/review.md` (Phase 1.2.7 `doc_file_patterns` pseudo-code block), and `plugins/rite/skills/reviewers/SKILL.md` (Reviewers table Technical Writer row). Drift between these files silently changes tech-writer activation and Doc-Heavy PR detection — Issue #353 系統 1. See the script header at `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` for the extraction contract.
+Execute the doc-heavy patterns drift check script to detect divergence between the `doc_file_patterns` declared in 2 files that MUST stay in sync: `plugins/rite/commands/pr/review.md` (ステップ 1.2.7 `doc_file_patterns` pseudo-code block) and `plugins/rite/skills/reviewers/SKILL.md` (Reviewers table Technical Writer row). Drift between these files silently changes tech-writer activation and Doc-Heavy PR detection — Issue #353 系統 1. See the script header at `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` for the extraction contract.
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
-
-**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+**Condition**: Always execute when the script exists.
 
 **Execution:**
 
@@ -604,12 +517,12 @@ fi
 
 | Exit Code | `doc_heavy_drift_status` | Action |
 |-----------|--------------------------|--------|
-| 0 | `success` | No drift across the 3 files — continue to Phase 4 |
+| 0 | `success` | No drift across the 2 files — continue to Phase 4 |
 | 1 | `warning` | Drift detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
 | 2 | `error` | Invocation error — record as warning, display error message |
 | -1 | `skipped` | Script not found — skip silently |
 
-**Important**: Drift detection results are treated as **warnings**, not errors — same policy as Phase 3.5 drift check and Phase 3.6 bang-backtick check. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). Reason: existing checks stay non-blocking during staged rollout, and the 3-file invariant should be fixed promptly by the author of the diverging change but not gate CI until coverage is validated across the rite plugin's self-hosting workflow.
+**Important**: Drift detection results are treated as **warnings**, not errors — same policy as Phase 3.5 drift check and Phase 3.6 bang-backtick check. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). Reason: existing checks stay non-blocking during staged rollout, and the 2-file invariant should be fixed promptly by the author of the diverging change but not gate CI until coverage is validated across the rite plugin's self-hosting workflow.
 
 **Record drift results** for Phase 4 reporting:
 - `doc_heavy_drift_status`: `success` / `warning` / `error` / `skipped`
@@ -618,9 +531,9 @@ fi
 
 ### 3.8 Plugin-specific Checks (Wiki Growth Check) — Issue #524 layer 3
 
-Execute the Wiki growth check script to detect "Phase X.X.W silently skipped" regressions. The script warns (non-blocking) when the wiki branch has gone unchanged for `wiki.growth_check.threshold_prs` consecutive merged PRs on the development base branch — strong evidence that `pr/review.md` Phase 6.5.W / `pr/fix.md` Phase 4.6.W / `issue/close.md` Phase 4.4.W are being skipped silently. See `plugins/rite/hooks/scripts/wiki-growth-check.sh` header for the detection contract and Issue #524 specification for the 3-layer defense rationale.
+Execute the Wiki growth check script to detect "Phase X.X.W silently skipped" regressions. The script warns (non-blocking) when the wiki branch has gone unchanged for `wiki.growth_check.threshold_prs` consecutive merged PRs on the development base branch — strong evidence that `pr/review.md` ステップ 6.5.W / `pr/fix.md` ステップ 4.6.W / `issue/close.md` Phase 4.4.W are being skipped silently. See `plugins/rite/hooks/scripts/wiki-growth-check.sh` header for the detection contract and Issue #524 specification for the 3-layer defense rationale.
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
+**Condition**: Always execute when the script exists.
 
 **Skip condition**: Only the script's own absence (e.g., marketplace install without `hooks/scripts/` directory) makes lint.md skip the entire Phase 3.8. All other no-op cases (wiki disabled / wiki branch absent / `gh` CLI missing / `rite-config.yml` absent) are handled **inside** `wiki-growth-check.sh`, which still returns exit 0 → `wiki_growth_status=success` (with `findings_count=0`). lint.md does NOT need to detect these cases — the script's exit-0 contract takes care of them and the Phase 4 summary row will simply show `success (0 findings)` for any of these legitimate no-op states.
 
@@ -651,11 +564,11 @@ fi
 - `wiki_growth_finding_count`: Extract from `wiki_growth_output` by matching the line `==> Total wiki-growth-check findings: N` (regex: `/Total wiki-growth-check findings: (\d+)/`). If no match found, default to 0
 - `wiki_growth_output`: Script output (truncated if >50 lines)
 
-### 3.9 Plugin-specific Checks (Gitignore Health Check) — Issue #567
+### 3.9 Plugin-specific Checks (Gitignore Health Check)
 
 Execute the gitignore health check script to detect regressions of the `.rite/wiki/` exclusion rule that PR #564 added as the last line of defense against wiki-ingest-trigger.sh silent leaks on the develop branch. If a future `.gitignore` cleanup PR removes the rule, this check surfaces the drift before the leak reaches production. See `plugins/rite/hooks/scripts/gitignore-health-check.sh` header for the strategy-aware detection contract (separate_branch uses `git check-ignore`; same_branch uses `git add --dry-run` because negation rules make `git check-ignore` non-deterministic per `.gitignore` L101-113 spec).
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
+**Condition**: Always execute when the script exists.
 
 **Skip condition**: Only the script's own absence (e.g., marketplace install without `hooks/scripts/` directory) makes lint.md skip the entire Phase 3.9. All other no-op cases (`wiki.enabled=false`, `rite-config.yml` absent, wiki section absent) are handled **inside** `gitignore-health-check.sh`, which returns exit 0 with `findings: 0`.
 
@@ -675,24 +588,22 @@ fi
 | Exit Code | `gitignore_health_status` | Action |
 |-----------|---------------------------|--------|
 | 0 | `success` | `.rite/wiki/` rule healthy (or legitimate no-op: wiki disabled / `rite-config.yml` absent — script handled internally and returned 0 with `findings: 0`) — continue to Phase 4 |
-| 1 | `warning` | Drift detected — record as **warning** (does NOT cause `[lint:error]`). A `[CONTEXT] WORKFLOW_INCIDENT=1; type=gitignore_drift; ...` sentinel is also emitted on stdout so Phase 5.4.4.1 can auto-register a tracking Issue. Display findings and allow flow to continue |
+| 1 | `warning` | Drift detected — record as **warning** (does NOT cause `[lint:error]`). A `WARNING` is also emitted on stderr so the operator can triage the drift. Display findings and allow flow to continue |
 | 2 | `error` | Invocation error (not in git repo, `git check-ignore` failure, `same_branch` 戦略で probe file 作成不能 — read-only filesystem / permission denied / disk full 等) — record as warning, display error message |
 | -1 | `skipped` | Script not found (marketplace install without `hooks/scripts/`) — skip silently |
 
-**Important**: Gitignore health check results are treated as **warnings**, not errors — same policy as Phase 0.6 / 3.5 / 3.6 / 3.7 / 3.8 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). Issue #567 explicitly mandates this non-blocking contract — the check exists to detect regression immediately while not halting merges.
+**Important**: Gitignore health check results are treated as **warnings**, not errors — same policy as Phase 3.5 / 3.6 / 3.7 / 3.8 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). Issue #567 explicitly mandates this non-blocking contract — the check exists to detect regression immediately while not halting merges.
 
 **Record gitignore health check results** for Phase 4 reporting:
 - `gitignore_health_status`: `success` / `warning` / `error` / `skipped`
 - `gitignore_health_finding_count`: Extract from `gitignore_health_output` by matching the line `==> Total gitignore-health-check findings: N` (regex: `/Total gitignore-health-check findings: (\d+)/`). If no match found, default to 0
 - `gitignore_health_output`: Script output (truncated if >50 lines)
 
-### 3.10 Plugin-specific Checks (Backlink Format Check) — Issue #627
+### 3.10 Plugin-specific Checks (Backlink Format Check)
 
-Execute the backlink format check script to detect bidirectional backlink format invariant violations. PR #620 (Issue #620) established colon notation (file-path-colon-phase-number) as the canonical format for `Downstream reference:` backlink comments, and PR #626 unified all 9 existing sites. This lint check detects regressions to the two legacy dialects (PR #605 space-separated dialect and PR #619 parenthetical DRIFT-CHECK ANCHOR dialect). See `plugins/rite/hooks/scripts/backlink-format-check.sh` header and `.rite/wiki/pages/patterns/drift-check-anchor-semantic-name.md` for the canonical format specification.
+Execute the backlink format check script to detect bidirectional backlink format invariant violations. Colon notation (file-path-colon-phase-number) is the canonical format for `Downstream reference:` backlink comments. This lint check detects regressions to two legacy dialects (a space-separated dialect and a parenthetical DRIFT-CHECK ANCHOR dialect). See `plugins/rite/hooks/scripts/backlink-format-check.sh` header and `.rite/wiki/pages/patterns/drift-check-anchor-semantic-name.md` for the canonical format specification.
 
-**Condition**: Always execute when the script exists. This check is independent of `commands.lint` configuration — it is a rite-workflow internal quality check.
-
-**Skip condition**: Script file does not exist (e.g., marketplace install without hooks/scripts directory).
+**Condition**: Always execute when the script exists.
 
 **Execution:**
 
@@ -721,36 +632,357 @@ fi
 - `backlink_format_finding_count`: Extract from `backlink_format_output` by matching the line `==> Total backlink-format findings: N` (regex: `/Total backlink-format findings: (\d+)/`). If no match found, default to 0
 - `backlink_format_output`: Script output (truncated if >50 lines)
 
+### 3.11 Plugin-specific Checks (Hardcoded Line-Number Check)
+
+Execute the hardcoded line-number check script to detect prose-level hardcoded line-number references in `plugins/rite/commands/**/*.md`. This complements the Phase 3.5 distributed fix drift check by catching three drift-prone patterns that the existing `(line N, M)`-only propagation scan missed during PR #661 cycle 2/3:
+
+- **P-A** parenthesized form `(line N)` / `(line N, M)`
+- **P-B** Japanese prose form (qualifier `直前` / `直後` / `上記` / `下記` / `上方` / `下方` / `本セクション` near `line N`)
+- **P-C** cross-file form `{file}.md:N` (single line, not range)
+
+See the script header at `plugins/rite/hooks/scripts/hardcoded-line-number-check.sh` for the exact regex literals and exclusion rules (fenced code blocks, range form `:N-M`, backtick-quoted spans, self-exclusion).
+
+**Condition**: Always execute when the script exists.
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/hardcoded-line-number-check.sh ]; then
+  hardcoded_line_output=$(bash {plugin_root}/hooks/scripts/hardcoded-line-number-check.sh --all 2>&1)
+  hardcoded_line_exit_code=$?
+else
+  hardcoded_line_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `hardcoded_line_status` | Action |
+|-----------|-------------------------|--------|
+| 0 | `success` | No hardcoded line-number references — continue to Phase 4 |
+| 1 | `warning` | Reference detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| 2 | `error` | Invocation error — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Hardcoded line-number check results are treated as **warnings**, not errors — same policy as Phase 3.5 / 3.6 / 3.7 / 3.8 / 3.9 / 3.10 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). This stays warning-level so the rule can be enforced progressively without gating CI; structural references are preferred over hardcoded line numbers because they self-document and survive content insertions/deletions.
+
+**Record hardcoded line-number check results** for Phase 4 reporting:
+- `hardcoded_line_status`: `success` / `warning` / `error` / `skipped`
+- `hardcoded_line_finding_count`: Extract from `hardcoded_line_output` by matching the line `==> Total hardcoded line-number findings: N` (regex: `/Total hardcoded line-number findings: (\d+)/`). If no match found, default to 0
+- `hardcoded_line_output`: Script output (truncated if >50 lines)
+
+### 3.12 Plugin-specific Checks (Comment Journal Narration)
+
+Execute the comment journal check to detect high-confidence narrative comment violations **and descriptive Issue/PR number references** in **`plugins/rite/**/*.{sh,md}`**, repo-root **`docs/**/*.md`**, and **`.rite/wiki/**/*.md`** (ドキュメント散文・Wiki ページまでスコープ拡張 — SoT [適用スコープ](../skills/rite-workflow/references/comment-best-practices.md#適用スコープ) の永続成果物全般)。This is the fast-fail mechanical layer below the LLM reviewers — patterns that are 100%-mechanically detectable get killed here so the reviewer queue stays focused on WHY > WHAT semantic judgments. See the script header at `plugins/rite/hooks/scripts/comment-journal-check.sh` for the exact regex literals and whitelist rules.
+
+Detected patterns:
+
+- **P1** `verified-review cycle N` — leftover narration referring to a verified-review iteration
+- **P2** `旧実装(は|では)` — comments explaining what the previous version did (belongs in commit/PR history)
+- **P3** `PR #N cycle N fix` — comments tagging a fix to a specific PR review cycle
+- **P4** `cycle N F-N で(導入|確立|集約)` — comments referencing review-finding identifiers
+- **P5** descriptive Issue/PR ref `See / Refs / Related to / Closes / Fixes / Resolves #N` — Why の代替として貼られた説明的参照
+- **P6** descriptive Issue/PR ref (ja) `#N で(別途)対応` / `詳細は #N` — 同上 (日本語)
+
+Whitelist (line-level skip): `<!-- example:` / `# example:` / `// example:` markers, and **`TODO` / `FIXME` lines** (追跡番号は前方ポインタ=維持). ファイル名アンカー (`xxx.test.sh` 等) は `#N` を含まないため P5/P6 に該当せず自然に除外される。Self-exclude: the script itself, `comment-best-practices.md` SoT, and the parity test (禁止句を例示として保持するため)。
+
+**Condition**: Always execute when the script exists.
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/comment-journal-check.sh ]; then
+  comment_journal_output=$(bash {plugin_root}/hooks/scripts/comment-journal-check.sh --all 2>&1)
+  comment_journal_exit_code=$?
+else
+  comment_journal_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `comment_journal_status` | Action |
+|-----------|--------------------------|--------|
+| 0 | `success` | No journal narration — continue to Phase 4 |
+| 1 | `warning` | Pattern detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| 2 | `error` | Invocation error — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Comment journal results are treated as **warnings**, not errors — same policy as Phase 3.5 / 3.6 / 3.7 / 3.8 / 3.9 / 3.10 / 3.11 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). The CI-only adoption keeps this warning-level so authors can clean up journal narration progressively; pre-commit integration is intentionally out of scope.
+
+**Record comment journal check results** for Phase 4 reporting:
+- `comment_journal_status`: `success` / `warning` / `error` / `skipped`
+- `comment_journal_finding_count`: Extract from `comment_journal_output` by matching `==> Total comment-journal findings: N` (regex: `/Total comment-journal findings: (\d+)/`). If no match found, default to 0
+- `comment_journal_output`: Script output (truncated if >50 lines)
+
+### 3.13 Plugin-specific Checks (Comment Line-Number Reference)
+
+Execute the comment line-number reference check to detect hardcoded `<file>.<ext>:<NN>` references inside shell comments under **`plugins/rite/**/*.sh`**. This complements the Phase 3.11 hardcoded line-number check (which targets prose in markdown) by closing the same drift gap inside shell-script comments. See the script header at `plugins/rite/hooks/scripts/comment-line-ref-check.sh` for the exact regex literal and exclusion rules.
+
+Detected pattern (in shell comments only, with shebang excluded):
+
+- `[A-Za-z][A-Za-z0-9_.-]*\.(sh|md|ts|py|js|tsx):[0-9]+`
+
+Exclusions: shebang 「#!」, fenced code blocks, range form `:N-M`, backtick-quoted spans, whitelist markers (`# example:` / `<!-- example: -->` / `// example:`), self.
+
+**Condition**: Always execute when the script exists.
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/comment-line-ref-check.sh ]; then
+  comment_line_ref_output=$(bash {plugin_root}/hooks/scripts/comment-line-ref-check.sh --all 2>&1)
+  comment_line_ref_exit_code=$?
+else
+  comment_line_ref_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `comment_line_ref_status` | Action |
+|-----------|---------------------------|--------|
+| 0 | `success` | No comment line-number references — continue to Phase 4 |
+| 1 | `warning` | Reference detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| 2 | `error` | Invocation error — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Comment line-ref check results are treated as **warnings**, not errors — same policy as the rest of Phase 3.x. A finding does NOT change `[lint:success]`. Structural references (e.g., `lint.md Phase 3.11`) survive content insertions/deletions; raw `lint.md:742` references decay the moment a line is added above. The CI-only adoption keeps this warning-level so authors can migrate references progressively.
+
+**Record comment line-ref check results** for Phase 4 reporting:
+- `comment_line_ref_status`: `success` / `warning` / `error` / `skipped`
+- `comment_line_ref_finding_count`: Extract from `comment_line_ref_output` by matching `==> Total comment-line-ref findings: N` (regex: `/Total comment-line-ref findings: (\d+)/`). If no match found, default to 0
+- `comment_line_ref_output`: Script output (truncated if >50 lines)
+
+### 3.14 Plugin-specific Checks (Direct gh issue create Invocation)
+
+Execute the direct `gh issue create` invocation guard to detect Issue creation paths in `plugins/rite/commands/**/*.md` that bypass the `create-issue-with-projects.sh` helper. This complements the Issue #669 AC-3 guard by extending its enforcement scope from the two original files (`commands/issue/start.md` plus the now-deleted `commands/issue/parent-routing.md`) to every command/sub-skill markdown file. The original incident showed that scope-creep follow-up Issue creation invoked at orchestration time — specifically the canonical Issue creation paths in `pr/review.md` and `pr/fix.md` — could regress to direct `gh issue create` shortcuts, leaving Issues unregistered in GitHub Projects. See the script header at `plugins/rite/scripts/check-no-direct-gh-issue-create.sh` for the exact detection pattern and false-positive avoidance rules (fenced code blocks, blockquotes, single-line and multi-line Markdown comments, inline backtick spans).
+
+Detected pattern (after stripping fenced code blocks / blockquotes / Markdown comments / inline backticks):
+
+- `gh issue create [-$"\047]` — literal `gh issue create ` followed by `-` (option flag), `$` (shell variable), `"` (double-quoted argument), or `'` (single-quoted argument)
+
+Exclusions handled by the script: fenced code blocks (``` and ~~~), blockquote lines (`> ...`), Markdown comments (`<!-- ... -->` single-line and multi-line), inline backtick spans (`` `...` ``).
+
+**Condition**: Always execute when the script exists.
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/scripts/check-no-direct-gh-issue-create.sh ]; then
+  direct_gh_issue_output=$(bash {plugin_root}/scripts/check-no-direct-gh-issue-create.sh --all 2>&1)
+  direct_gh_issue_exit_code=$?
+else
+  direct_gh_issue_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `direct_gh_issue_status` | Action |
+|-----------|--------------------------|--------|
+| 0 | `success` | No direct invocations — continue to Phase 4 |
+| 1 | `warning` | Direct invocation detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| 2 | `error` | Invocation error (usage error / missing commands directory / empty `--all` expansion) — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Direct `gh issue create` invocation check results are treated as **warnings**, not errors — same policy as Phase 3.5 / 3.6 / 3.7 / 3.8 / 3.9 / 3.10 / 3.11 / 3.12 / 3.13 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). Issue #958 specifies warning-level non-blocking behaviour so the helper-script guideline can be enforced progressively without gating CI; the structural enforcement (every command/sub-skill must call `create-issue-with-projects.sh`) is the long-term goal, and warning-level surfacing on each lint run is sufficient to redirect contributors to the helper before merge.
+
+**Record direct gh issue create check results** for Phase 4 reporting:
+- `direct_gh_issue_status`: `success` / `warning` / `error` / `skipped`
+- `direct_gh_issue_finding_count`: Extract from `direct_gh_issue_output` by matching the line `Total files with violations: N` (regex: `/Total files with violations: (\d+)/`). If no match found, default to 0
+- `direct_gh_issue_output`: Script output (truncated if >50 lines)
+
+### 3.15 Plugin-specific Checks (Orphan Reference File Detection)
+
+Execute the orphan reference lint guard to detect reference files (`plugins/rite/{commands,references,skills,agents}/**/*.md`) that exist but have zero inbound references AND no test pin protection. The motivation comes from PR #1162 cycle 15, where `plugins/rite/commands/issue/references/projects-status-update-callsites.md` (146 lines) was found to be a complete orphan — no other file referenced it, no test pinned its content, and it survived multiple workflow refactorings undetected. This check catches the same class of orphan accumulation mechanically before it grows into a maintenance burden.
+
+Detection logic (see `plugins/rite/hooks/scripts/orphan-reference-check.sh` for the exact algorithm):
+
+- Inbound references searched in `plugins/rite/`, `docs/`, `.github/` (excluding self-references)
+- Test pin searched in `plugins/rite/hooks/tests/` and `plugins/rite/scripts/tests/` (any `assert_grep` / `contains` containing the filename)
+- Skip well-known static assets (`.gitkeep`, `__init__.py`, `LICENSE`, `CHANGELOG.md`)
+- A file is flagged as **orphan** only when inbound count == 0 AND test pin count == 0
+
+**Condition**: Always execute when the script exists.
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/orphan-reference-check.sh ]; then
+  orphan_check_output=$(bash {plugin_root}/hooks/scripts/orphan-reference-check.sh --all 2>&1)
+  orphan_check_exit_code=$?
+else
+  orphan_check_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `orphan_check_status` | Action |
+|-----------|------------------------|--------|
+| 0 | `success` | No orphans — continue to Phase 4 |
+| 1 | `warning` | Orphan(s) detected — record as **warning** (does NOT cause `[lint:error]`). Display orphan list but allow flow to continue |
+| 2 | `error` | Invocation error (usage error / missing repo-root / empty `--all` expansion) — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Orphan reference check results are treated as **warnings**, not errors — same policy as Phase 3.5–3.14 checks. A finding does NOT change `[lint:success]`. Orphan files are not actively harmful (they don't break workflow execution), but their accumulation degrades plugin maintainability over time. Warning-level surfacing on each lint run is sufficient to redirect contributors to either remove the orphan or add an inbound reference / test pin before merge.
+
+**Record orphan check results** for Phase 4 reporting:
+- `orphan_check_status`: `success` / `warning` / `error` / `skipped`
+- `orphan_check_finding_count`: Extract from `orphan_check_output` by matching the summary line `[orphan-reference-check] checked=N orphans=M` (regex: `/orphans=(\d+)/`). If no match found, default to 0
+- `orphan_check_output`: Script output (truncated if >50 lines)
+
+### 3.16 Plugin-specific Checks (Shell-prose Cross-file Step Reference)
+
+Execute the shell-prose cross-file step reference check to detect `<file>.(md|sh) (ステップ|Phase) <number>` references inside echo strings and comments under **`plugins/rite/**/*.sh`** that are inconsistent with the referenced markdown file's actual headings. This complements the Phase 3.13 comment line-number check (which targets raw `<file>:<NN>` references) and the markdown-side anchor check in `distributed-fix-drift-check.sh` Pattern 4 (which only scans `.md` prose). PR #1157 cycle 4 surfaced `wiki-growth-check.sh` referencing a `close.md` step with the wrong keyword (`close.md` uses the `Phase` convention, but the prose said the in-scope `ステップ` convention) — a drift that escaped cycles 1-3 because they never scanned `.sh` prose. See the script header at `plugins/rite/hooks/scripts/sh-cross-ref-check.sh` for the heading-convention model and resolution rules.
+
+Two independent checks per reference:
+
+- **dangling number**: the referenced number is not present as a heading number in the target file
+- **keyword mismatch**: the number exists, but the prose keyword (`ステップ` / `Phase`) conflicts with the target file's own convention (derived from its headings, not a hardcoded path map)
+
+Exclusions: this script's own file (self), `plugins/rite/hooks/tests/` (fixtures), lines containing the `drift-check-ignore` marker, unresolvable file references (out of scope — Issue #1159), and targets with no numbered step/phase headings.
+
+**Condition**: Always execute when the script exists.
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/sh-cross-ref-check.sh ]; then
+  sh_cross_ref_output=$(bash {plugin_root}/hooks/scripts/sh-cross-ref-check.sh --all 2>&1)
+  sh_cross_ref_exit_code=$?
+else
+  sh_cross_ref_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `sh_cross_ref_status` | Action |
+|-----------|------------------------|--------|
+| 0 | `success` | No inconsistent references — continue to Phase 4 |
+| 1 | `warning` | Inconsistency detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| 2 | `error` | Invocation error (usage error / missing repo-root / empty `--all` expansion) — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Shell-prose cross-file step reference check results are treated as **warnings**, not errors — same policy as Phase 3.5–3.15 checks. A finding does NOT change `[lint:success]`. Pre-existing inconsistencies are surfaced for cleanup (tracked in Issue #1159); intentional or historical references can be exempted with an inline `drift-check-ignore` marker.
+
+**Record shell-prose cross-ref check results** for Phase 4 reporting:
+- `sh_cross_ref_status`: `success` / `warning` / `error` / `skipped`
+- `sh_cross_ref_finding_count`: Extract from `sh_cross_ref_output` by matching the summary line `==> Total sh-cross-ref findings: N` (regex: `/Total sh-cross-ref findings: (\d+)/`). If no match found, default to 0
+- `sh_cross_ref_output`: Script output (truncated if >50 lines)
+
+### 3.17 Plugin-specific Checks (Operational Bash Block Heaviness)
+
+Execute the operational bash block heaviness check to detect "heavy" bash blocks in command markdown under **`plugins/rite/commands/**/*.md`** that violate the "operational bash block heaviness convention" added to `skills/rite-workflow/references/coding-principles.md` by PR #1193. Issue #1193 observed that large operational bash blocks (python inline / nested `$()` / multiple heredocs / long line counts) malformed Claude's tool-call parsing and silently ended the turn with no error. The convention was added as prose, but prose-only enforcement cannot stop new drift — this check surfaces it mechanically. See the script header at `plugins/rite/hooks/scripts/bash-heaviness-check.sh` for the heaviness model.
+
+A block is flagged only when it exhibits **2 or more** of these signals (a single signal — e.g. a lone helper call passing one JSON heredoc, or one block writing a long template — is intentionally not flagged, keeping false positives low):
+
+- **python-inline**: a line invokes python with inline code (`python3 -c ...` or a python heredoc)
+- **nested-cmdsub**: a line nests command substitution, e.g. `$(cmd "$(inner)")`
+- **multi-heredoc**: the block opens 2 or more heredocs
+- **long-block**: the block body is >= 25 lines (the convention 目安)
+
+Heredoc bodies are treated as data: the python-inline / nested-cmdsub signals are evaluated only on real shell lines, so a template heredoc containing `$(...)` or `python3 -c` example text does not produce a finding.
+
+Exclusions: `plugins/rite/commands/**/tests/` fixtures, and any block containing the `drift-check-ignore` marker on one of its lines (exempts intentional / already-reviewed heavy blocks).
+
+**Condition**: Always execute when the script exists.
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/bash-heaviness-check.sh ]; then
+  bash_heaviness_output=$(bash {plugin_root}/hooks/scripts/bash-heaviness-check.sh --all 2>&1)
+  bash_heaviness_exit_code=$?
+else
+  bash_heaviness_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `bash_heaviness_status` | Action |
+|-----------|-------------------------|--------|
+| 0 | `success` | No heavy blocks — continue to Phase 4 |
+| 1 | `warning` | Heavy block(s) detected — record as **warning** (does NOT cause `[lint:error]`). Display findings but allow flow to continue |
+| 2 | `error` | Invocation error (usage error / missing repo-root / empty `--all` expansion) — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Operational bash block heaviness check results are treated as **warnings**, not errors — same policy as Phase 3.5–3.16 checks. A finding does NOT change `[lint:success]`. Pre-existing heavy blocks are surfaced for incremental cleanup (refactoring an existing heavy block to a helper call is separate work, out of scope for the block's owning change); intentional or already-reviewed heavy blocks can be exempted with an inline `drift-check-ignore` marker.
+
+**Record bash heaviness check results** for Phase 4 reporting:
+- `bash_heaviness_status`: `success` / `warning` / `error` / `skipped`
+- `bash_heaviness_finding_count`: Extract from `bash_heaviness_output` by matching the summary line `==> Total bash-heaviness findings: N` (regex: `/Total bash-heaviness findings: (\d+)/`). If no match found, default to 0
+- `bash_heaviness_output`: Script output (truncated if >50 lines)
+
+### 3.18 Plugin-specific Checks (Projects Board "Done" Drift Detection)
+
+Execute the projects board drift check to detect the "CLOSED+COMPLETED but board != Done" reconciliation gap. A `Done` transition is only wired into `/rite:pr:cleanup` (ステップ8 → `commands/pr/references/archive-procedures.md` Phase 3.2) and `/rite:issue:close` (Shared: Projects Status → Done), but GitHub auto-closes an Issue the moment a PR carrying `Closes #N` merges. When `/rite:pr:cleanup` is not run afterwards, the board freezes at its last value (In Review for a ready Issue, Todo for an untouched one) and no reconciler picks it back up. The check scans recently-updated CLOSED Issues whose `stateReason` is `COMPLETED` and reports those that are on the project board with Status != "Done". Closure reason `NOT_PLANNED` (wontfix / duplicate) is intentionally excluded, and Issues that are not on the board are not drift (no board Status to reconcile). See the script header at `plugins/rite/hooks/scripts/projects-board-drift-check.sh` for the detection and reconcile contract.
+
+**Condition**: Always execute when the script exists.
+
+**Skip condition**: Only the script's own absence (e.g., marketplace install without `hooks/scripts/` directory) makes lint.md skip the entire Phase 3.18. All other no-op cases (`github.projects.enabled: false` / `project_number` unset / `rite-config.yml` absent) are handled **inside** `projects-board-drift-check.sh`, which still returns exit 0 → `projects_board_drift_status=success` (with `findings: 0`). This satisfies Issue #1305 AC-4 (skip when Projects integration is disabled) without lint.md reading the config itself.
+
+**Execution:**
+
+```bash
+if [ -f {plugin_root}/hooks/scripts/projects-board-drift-check.sh ]; then
+  projects_board_drift_output=$(bash {plugin_root}/hooks/scripts/projects-board-drift-check.sh --quiet 2>&1)
+  projects_board_drift_exit_code=$?
+else
+  projects_board_drift_exit_code=-1  # script not found
+fi
+```
+
+**Result handling:**
+
+| Exit Code | `projects_board_drift_status` | Action |
+|-----------|-------------------------------|--------|
+| 0 | `success` | No drift, OR a legitimate no-op (projects disabled / `project_number` unset / `rite-config.yml` absent — script handled internally and returned 0 with `findings: 0`) — continue to Phase 4 |
+| 1 | `warning` | Drift detected — record as **warning** (does NOT cause `[lint:error]`). Enumerate the drifted Issues but allow flow to continue |
+| 2 | `error` | Invocation error (bad args, gh/network failure, malformed API response) — record as warning, display error message |
+| -1 | `skipped` | Script not found — skip silently |
+
+**Important**: Projects board drift check results are treated as **warnings**, not errors — same policy as Phase 3.5–3.17 checks. A finding does NOT change the overall lint result pattern (`[lint:success]` remains `[lint:success]`). This check is **detect-and-enumerate only** — lint does NOT auto-reconcile. The `Done` transition stays the responsibility of `/rite:pr:cleanup` / `/rite:issue:close`. On-demand reconciliation is available via `projects-board-drift-check.sh --reconcile`, which the appendix output points to.
+
+**Record projects board drift results** for Phase 4 reporting:
+- `projects_board_drift_status`: `success` / `warning` / `error` / `skipped`
+- `projects_board_drift_finding_count`: Extract from `projects_board_drift_output` by matching the line `==> Total projects-board-drift findings: N` (regex: `/Total projects-board-drift findings: (\d+)/`). If no match found, default to 0
+- `projects_board_drift_output`: Script output (truncated if >50 lines)
+
 ---
 
 ## Phase 4: Report Results
 
 ### 4.0 Defense-in-Depth: State Update Before Output (End-to-End Flow)
 
-Before outputting any result pattern (`[lint:success]`, `[lint:skipped]`, `[lint:error]`, `[lint:aborted]`), update `.rite-flow-state` to reflect the post-lint phase (defense-in-depth, fixes #716). This prevents intermittent flow interruptions when the fork context returns to the caller — even if the LLM churns after fork return and the system forcibly terminates the turn (bypassing the Stop hook), the state file will already contain the correct `next_action` for resumption.
+Before outputting any result pattern (`[lint:success]`, `[lint:skipped]`, `[lint:error]`, `[lint:aborted]`), update flow state to reflect the post-lint phase (defense-in-depth, fixes #716). This prevents intermittent flow interruptions when the fork context returns to the caller — even if the LLM churns after fork return and the system forcibly terminates the turn (bypassing the Stop hook), the state file will already contain the correct `next_action` for resumption.
 
-**Condition**: Execute only when `.rite-flow-state` exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
+**Condition**: Execute only when flow state file exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
 
 **State update by result**:
 
 | Result | Phase | Phase Detail | Next Action |
 |--------|-------|-------------|-------------|
-| `[lint:success]` / `[lint:skipped]` | `phase5_post_lint` | `品質チェック完了` | `rite:lint completed successfully. Proceed to Phase 5.2.1 (checklist confirmation). All complete->Phase 5.3 PR creation. Incomplete->return to Phase 5.1 implementation. Do NOT stop.` |
-| `[lint:error]` | `phase5_lint_error` | `lint エラー検出` | `rite:lint found errors. Fix the errors and re-invoke rite:lint. Do NOT stop.` |
-| `[lint:aborted]` | `phase5_aborted` | `品質チェック中断` | `rite:lint was aborted by user. Proceed to Phase 5.6 (completion report). Do NOT stop.` |
+| `[lint:success]` / `[lint:skipped]` | `lint` | `品質チェック完了` | `rite:lint completed successfully. Proceed to /rite:pr:open ステップ 6 (PR 作成). Do NOT stop.` |
+| `[lint:error]` | `lint` | `lint エラー検出` | `rite:lint found errors. Fix the errors and re-invoke rite:lint, or AskUserQuestion で 修正再実行 / 強制続行 / 中止 を選択. Do NOT stop.` |
+| `[lint:aborted]` | `lint` | `品質チェック中断` | `rite:lint was aborted by user. Proceed to caller 完了レポート (orchestrator 経由なら caller へ復帰 / standalone なら開発者復帰 — abort 時は PR 作成スキップ). Do NOT stop.` |
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh patch \
+bash {plugin_root}/hooks/flow-state.sh set \
   --phase "{phase_value}" \
+  --active true \
   --next "{next_action_value}" \
   --if-exists
 ```
 
 Replace `{phase_value}` and `{next_action_value}` with the values from the table above based on the lint result.
 
-**Note on `error_count`**: `flow-state-update.sh` patch mode resets `error_count` to 0 on every phase transition (since #294). This prevents stale circuit breaker counts from one phase from poisoning subsequent phases.
+**Note on `error_count`**: `flow-state.sh set` resets `error_count` to 0 by default on every phase transition, and preserves the existing value only when `--preserve-error-count` is passed. `error_count` is currently a reserved/legacy schema slot with no production reader; resetting on transition keeps the slot well-defined for future re-introduction without carrying stale counts.
 
-**Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when `.rite-flow-state` exists:
+**Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when flow state file exists:
 
 Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../skills/rite-workflow/references/work-memory-format.md#usage-in-commands) for details and marketplace install notes.
 
@@ -766,7 +998,7 @@ WM_SOURCE="lint" \
   bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
-Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.rite-flow-state` update above. Claude substitutes these with the actual values based on the lint result before executing.
+Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the flow state update above. Claude substitutes these with the actual values based on the lint result before executing.
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.
 
@@ -775,15 +1007,15 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.r
 **Standalone execution:**
 ```
 [lint:success]
-{i18n:lint_complete}
+品質チェック完了
 
-{i18n:lint_result_success}
+問題は検出されませんでした
 
-{i18n:lint_target_path}: {target_description}
-{i18n:lint_command}: {lint_command}
+対象: {target_description}
+コマンド: {lint_command}
 ```
 
-**When called from `/rite:issue:start` (E2E Output Minimization):**
+**When called from `/rite:pr:open` (E2E Output Minimization):**
 ```
 [lint:success] — lint passed ({target_file_count} files)
 ```
@@ -809,41 +1041,90 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the `.r
 {doc_heavy_drift_output}
 ```
 
-**Wiki growth check appendix (Issue #524 layer 3)** (both standalone and E2E): When `wiki_growth_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy:
+**Wiki growth check appendix** (both standalone and E2E): When `wiki_growth_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy:
 
 ```
 ⚠️ Wiki growth check: {wiki_growth_finding_count} findings detected ({wiki_growth_status}, non-blocking)
 {wiki_growth_output}
 ```
 
-**Terminal output check appendix (Issue #561)** (both standalone and E2E): When `verify_terminal_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth:
-
-```
-⚠️ Terminal output check: {verify_terminal_finding_count} findings detected ({verify_terminal_status}, non-blocking)
-{verify_terminal_output}
-```
-
-**Gitignore health check appendix (Issue #567)** (both standalone and E2E): When `gitignore_health_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth / terminal-output. When status is `warning` (exit 1, drift detected), the appendix output includes both the stderr WARNING and the `[CONTEXT] WORKFLOW_INCIDENT=1; type=gitignore_drift; ...` sentinel from stdout (merged via `2>&1` at invocation) so the sentinel reaches the orchestrator's conversation context where Phase 5.4.4.1 grep detects it. When status is `error` (exit 2, invocation failure), the script exits before sentinel emit so the appendix contains only the stderr ERROR diagnostic:
+**Gitignore health check appendix** (both standalone and E2E): When `gitignore_health_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth. When status is `warning` (exit 1, drift detected), the appendix output includes the stderr WARNING describing the drift so the operator can triage it. When status is `error` (exit 2, invocation failure), the appendix contains the stderr ERROR diagnostic:
 
 ```
 ⚠️ Gitignore health check: {gitignore_health_finding_count} findings detected ({gitignore_health_status}, non-blocking)
 {gitignore_health_output}
 ```
 
-**Backlink format check appendix (Issue #627)** (both standalone and E2E): When `backlink_format_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth / terminal-output / gitignore-health. When status is `warning` (exit 1, dialect violations detected), the appendix output includes each violation line (`[backlink-format][P1] file:NN: ...`) so reviewers can identify and fix the offending backlink format. When status is `error` (exit 2, invocation failure), the appendix contains the stderr diagnostic:
+**Backlink format check appendix** (both standalone and E2E): When `backlink_format_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as bang-backtick / doc-heavy / wiki-growth / gitignore-health. When status is `warning` (exit 1, dialect violations detected), the appendix output includes each violation line (`[backlink-format][P1] file:NN: ...`) so reviewers can identify and fix the offending backlink format. When status is `error` (exit 2, invocation failure), the appendix contains the stderr diagnostic:
 
 ```
 ⚠️ Backlink format check: {backlink_format_finding_count} findings detected ({backlink_format_status}, non-blocking)
 {backlink_format_output}
 ```
 
-These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, terminal-output, gitignore-health, or backlink-format warnings/invocation errors.
+**Hardcoded line-number check appendix** (both standalone and E2E): When `hardcoded_line_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as the other Phase 3.x lint checks. When status is `warning` (exit 1, hardcoded reference detected), the appendix output includes each violation line (`[hardcoded-line-number][P-A|P-B|P-C] file:NN: ...`) so reviewers can identify and replace the hardcoded line number with a structural reference:
+
+```
+⚠️ Hardcoded line-number check: {hardcoded_line_finding_count} findings detected ({hardcoded_line_status}, non-blocking)
+{hardcoded_line_output}
+```
+
+**Comment journal narration appendix** (both standalone and E2E): When `comment_journal_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as the rest of Phase 3.x. When status is `warning` (exit 1, journal narration detected), the appendix output includes each violation line (`[comment-journal][P1|P2|P3|P4] file:NN: ...`) so authors can move the narration into commit message / PR description / Wiki:
+
+```
+⚠️ Comment journal narration: {comment_journal_finding_count} findings detected ({comment_journal_status}, non-blocking)
+{comment_journal_output}
+```
+
+**Comment line-ref check appendix** (both standalone and E2E): When `comment_line_ref_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as the rest of Phase 3.x. When status is `warning` (exit 1, comment line-number reference detected), the appendix output includes each violation line (`[comment-line-ref] file:NN: ...`) so authors can replace the raw `<file>.<ext>:<NN>` reference with a structural pointer:
+
+```
+⚠️ Comment line-ref check: {comment_line_ref_finding_count} findings detected ({comment_line_ref_status}, non-blocking)
+{comment_line_ref_output}
+```
+
+**Direct gh issue create check appendix** (both standalone and E2E): When `direct_gh_issue_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as the rest of Phase 3.x. When status is `warning` (exit 1, direct invocation detected), the appendix output includes each violation line (`VIOLATION:` lines listing `file:line:content`) so contributors can switch to the `create-issue-with-projects.sh` helper:
+
+```
+⚠️ Direct gh issue create check: {direct_gh_issue_finding_count} findings detected ({direct_gh_issue_status}, non-blocking)
+{direct_gh_issue_output}
+```
+
+**Orphan reference check appendix** (both standalone and E2E): When `orphan_check_status` is `warning` **or `error`**, append the orphan list (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as the rest of Phase 3.x. When status is `warning` (exit 1, orphan(s) detected), the appendix output includes each `ORPHAN:` line listing the orphan file path with `(inbound=0, test_pin=0)` annotation:
+
+```
+⚠️ Orphan reference check: {orphan_check_finding_count} findings detected ({orphan_check_status}, non-blocking)
+{orphan_check_output}
+```
+
+**Shell-prose cross-ref check appendix** (both standalone and E2E): When `sh_cross_ref_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as Phase 3.5–3.15 checks. When status is `warning` (exit 1, inconsistency detected), the appendix output includes each finding line (`[sh-cross-ref] file:NN: dangling number ...` / `[sh-cross-ref] file:NN: keyword mismatch ...`) so reviewers can correct the reference or exempt an intentional/historical one with `drift-check-ignore`:
+
+```
+⚠️ Shell-prose cross-ref check: {sh_cross_ref_finding_count} findings detected ({sh_cross_ref_status}, non-blocking)
+{sh_cross_ref_output}
+```
+
+**Operational bash block heaviness appendix** (both standalone and E2E): When `bash_heaviness_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as Phase 3.5–3.16 checks. When status is `warning` (exit 1, heavy block detected), the appendix output includes each finding line (`[bash-heaviness] file:NN: heavy operational bash block — N signals: ...`) so authors can refactor the heavy block to a helper call or exempt an intentional one with `drift-check-ignore`:
+
+```
+⚠️ Operational bash block heaviness check: {bash_heaviness_finding_count} findings detected ({bash_heaviness_status}, non-blocking)
+{bash_heaviness_output}
+```
+
+**Projects board drift appendix** (both standalone and E2E): When `projects_board_drift_status` is `warning` **or `error`**, append findings (for `warning`) or the invocation failure detail (for `error`) after the lint result output. Same warning+error appendix policy as Phase 3.5–3.17 checks. When status is `warning` (exit 1, drift detected), the appendix output includes each `[projects-board-drift] #N "title" status="X" (expected Done)` line plus the `--reconcile` hint so the operator can reconcile the board (or run `/rite:pr:cleanup` / `/rite:issue:close` on the Issue). When status is `error` (exit 2, invocation failure), the appendix contains the stderr diagnostic:
+
+```
+⚠️ Projects board drift check: {projects_board_drift_finding_count} findings detected ({projects_board_drift_status}, non-blocking)
+{projects_board_drift_output}
+```
+
+These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, gitignore-health, backlink-format, hardcoded-line-number, comment-journal, comment-line-ref, direct-gh-issue-create, orphan-reference-check, sh-cross-ref, bash-heaviness, or projects-board-drift warnings/invocation errors.
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 
-> **CRITICAL**: When called from `/rite:issue:start`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:issue:start` after Phase 5.2.1 is complete.
+> **CRITICAL**: When called from `/rite:pr:open`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr:create` is made by `/rite:pr:open` at ステップ 6 after the lint result is consumed at ステップ 5.1.
 
-**Note**: `[lint:success]` is an output pattern used by `/rite:issue:start` Phase 5.2 to determine the lint result.
+**Note**: `[lint:success]` is an output pattern used by `/rite:pr:open` ステップ 5.1 to determine the lint result.
 
 ### 4.2 When Issues Found
 
@@ -853,23 +1134,23 @@ These appendices do NOT change the result pattern — `[lint:success]` remains t
 {first 10 lines of lint_output}
 ```
 
-> **Context savings**: In e2e flow, omit fix suggestions (the caller returns to Phase 5.1 for fixes). Only include first 10 lines of lint output to identify the issue category.
+> **Context savings**: In e2e flow, omit fix suggestions (the caller returns to ステップ 4 implementation for fixes). Only include first 10 lines of lint output to identify the issue category.
 
 **Standalone execution:**
 ```
 [lint:error]
-{i18n:lint_complete}
+品質チェック完了
 
-{i18n:lint_result_errors} (variables: error_count={error_count}, warning_count={warning_count})
+{error_count} 件のエラー、{warning_count} 件の警告が検出されました
 
 {lint_output}
 
 ---
 
-{i18n:lint_fix_suggestions}:
+修正案:
 ```
 
-**Note**: `[lint:error]` is an output pattern used by `/rite:issue:start` Phase 5.2 to determine the lint result.
+**Note**: `[lint:error]` is an output pattern used by `/rite:pr:open` ステップ 5.1 to determine the lint result.
 
 **Presenting fix suggestions:**
 
@@ -877,17 +1158,17 @@ Analyze the error content and present fix suggestions when possible:
 
 1. **When auto-fix is available:**
    ```
-   {i18n:lint_ask_autofix}
+   自動修正を実行しますか？
 
-   {i18n:lint_command}: {fix_command}
-   {i18n:lint_autofix_examples}:
+   コマンド: {fix_command}
+   例:
        npm run lint -- --fix
        ruff check --fix
        cargo clippy --fix
 
    オプション:
-   - {i18n:lint_option_autofix}
-   - {i18n:lint_option_manual}
+   - はい、自動修正を実行
+   - いいえ、手動で修正
    ```
 
 2. **When manual fix is required:**
@@ -900,32 +1181,39 @@ Analyze the error content and present fix suggestions when possible:
 **Standalone execution only:**
 
 ```
-{i18n:lint_summary_title}
+品質チェック結果サマリー
 
-| {i18n:lint_summary_item} | {i18n:lint_summary_result} |
+| 項目 | 結果 |
 |------|------|
-| {i18n:lint_target_path} | {target} |
-| {i18n:lint_errors} | {error_count} |
-| {i18n:lint_warnings} | {warning_count} |
-| {i18n:lint_test} | {test_status} ({test_error_count} failures) |
-| {i18n:lint_drift_check} | {drift_status} ({drift_finding_count} findings) |
+| 対象 | {target} |
+| エラー | {error_count} |
+| 警告 | {warning_count} |
+| テスト | {test_status} ({test_error_count} failures) |
+| Drift チェック | {drift_status} ({drift_finding_count} findings) |
 | Bang-backtick check | {bang_backtick_status} ({bang_backtick_finding_count} findings) |
 | Doc-heavy patterns drift check | {doc_heavy_drift_status} ({doc_heavy_drift_finding_count} findings) |
-| Wiki growth check (#524) | {wiki_growth_status} ({wiki_growth_finding_count} findings) |
-| Terminal output check (#561) | {verify_terminal_status} ({verify_terminal_finding_count} findings) |
-| Gitignore health check (#567) | {gitignore_health_status} ({gitignore_health_finding_count} findings) |
-| Backlink format check (#627) | {backlink_format_status} ({backlink_format_finding_count} findings) |
-| {i18n:lint_duration} | {duration} |
+| Wiki growth check | {wiki_growth_status} ({wiki_growth_finding_count} findings) |
+| Gitignore health check | {gitignore_health_status} ({gitignore_health_finding_count} findings) |
+| Backlink format check | {backlink_format_status} ({backlink_format_finding_count} findings) |
+| Hardcoded line-number check | {hardcoded_line_status} ({hardcoded_line_finding_count} findings) |
+| Comment journal narration | {comment_journal_status} ({comment_journal_finding_count} findings) |
+| Comment line-ref check | {comment_line_ref_status} ({comment_line_ref_finding_count} findings) |
+| Direct gh issue create check | {direct_gh_issue_status} ({direct_gh_issue_finding_count} findings) |
+| Orphan reference check | {orphan_check_status} ({orphan_check_finding_count} findings) |
+| Shell-prose cross-ref check | {sh_cross_ref_status} ({sh_cross_ref_finding_count} findings) |
+| Operational bash block heaviness check | {bash_heaviness_status} ({bash_heaviness_finding_count} findings) |
+| Projects board drift check | {projects_board_drift_status} ({projects_board_drift_finding_count} findings) |
+| 所要時間 | {duration} |
 
-{i18n:lint_next_steps}:
-1. {i18n:lint_next_fix_errors}
-2. {i18n:lint_next_rerun}
-3. {i18n:lint_next_create_pr}
+次のステップ:
+1. エラーを修正
+2. 再度 `/rite:lint` を実行
+3. 問題がなければ `/rite:pr:create` で PR 作成
 
-> **{i18n:lint_standalone_note}**: {i18n:lint_standalone_note_detail}
+> **注**: `/rite:pr:open` の一気通貫フローから呼び出された場合、この「次のステップ」案内は**スキップ**されます。呼び出し元が出力パターン（`[lint:success]` 等）を検出し、自動的に次のアクション（PR 作成）に進みます。**この案内は単独実行時のみ参照してください**。
 ```
 
-**Note**: The `{i18n:lint_test}` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `{i18n:lint_drift_check}` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Wiki growth check (#524)` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). The `Terminal output check (#561)` row follows the same policy as `Wiki growth check`: omit when `verify_terminal_status` is `skipped` (marketplace install without hooks directory), and display with `success` / `warning` / `error` otherwise. The `Gitignore health check (#567)` row follows the same policy: omit when `gitignore_health_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = healthy rule / legitimate no-op; `warning` = drift detected; `error` = invocation failure). The `Backlink format check (#627)` row follows the same policy: omit when `backlink_format_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no dialect violations; `warning` = legacy dialect detected; `error` = invocation failure). **Asymmetry note**: The `{i18n:lint_drift_check}` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. Phase 3.7 (`Doc-heavy patterns drift check`) and Phase 3.8 (`Wiki growth check`) and Phase 0.6 (`Terminal output check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
+**Note**: The `テスト` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. The `Drift チェック` row is only shown when the drift check script exists and was executed. When `drift_status` is `skipped`, omit the row. The `Bang-backtick check` row follows the same rule: omit when `bang_backtick_status` is `skipped`. When `bang_backtick_status` is `error` (exit code 2 invocation error), display the row with the `error` status so the failure is surfaced rather than silently dropped. The `Doc-heavy patterns drift check` row follows the same policy as `Bang-backtick check`: omit when `doc_heavy_drift_status` is `skipped`, and display with the `error` status when exit code 2 surfaces an invocation failure. The `Wiki growth check` row follows the same policy: omit when `wiki_growth_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` is the healthy state showing 0 findings; `warning` indicates threshold exceeded; `error` indicates exit code 2 invocation failure). The `Gitignore health check` row follows the same policy: omit when `gitignore_health_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = healthy rule / legitimate no-op; `warning` = drift detected; `error` = invocation failure). The `Backlink format check` row follows the same policy: omit when `backlink_format_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no dialect violations; `warning` = legacy dialect detected; `error` = invocation failure). The `Hardcoded line-number check` row follows the same policy: omit when `hardcoded_line_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no hardcoded references; `warning` = P-A/P-B/P-C reference detected; `error` = invocation failure). **Asymmetry note**: The `Drift チェック` row does NOT have an equivalent `error`-status display rule because Phase 3.5 drift check's observability gap is out of scope for this PR (tracked as a follow-up). This asymmetry is intentional and temporary — both rows should converge when drift check receives the same fix in a follow-up PR. The `Comment journal narration` row follows the same policy: omit when `comment_journal_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no journal narration; `warning` = P1/P2/P3/P4 pattern detected; `error` = invocation failure). The `Comment line-ref check` row follows the same policy: omit when `comment_line_ref_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no comment line-number references; `warning` = `<file>.<ext>:<NN>` pattern detected in shell comments; `error` = invocation failure). The `Direct gh issue create check` row follows the same policy: omit when `direct_gh_issue_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no direct invocations; `warning` = direct `gh issue create` invocation detected; `error` = invocation failure / usage error / missing commands directory). The `Orphan reference check` row follows the same policy: omit when `orphan_check_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no orphans; `warning` = orphan file(s) detected; `error` = invocation failure / usage error / missing repo-root / empty --all expansion). The `Shell-prose cross-ref check` row follows the same policy: omit when `sh_cross_ref_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no inconsistent references; `warning` = dangling number / keyword mismatch detected; `error` = invocation failure / usage error / missing repo-root / empty --all expansion). The `Operational bash block heaviness check` row follows the same policy: omit when `bash_heaviness_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no heavy blocks; `warning` = block with >= 2 heaviness signals detected; `error` = invocation failure / usage error / missing repo-root / empty --all expansion). The `Projects board drift check` row follows the same policy: omit when `projects_board_drift_status` is `skipped`, display with `success` / `warning` / `error` otherwise (`success` = no drift / legitimate no-op when Projects is disabled; `warning` = CLOSED+COMPLETED Issue(s) on the board with Status != Done; `error` = invocation failure / gh / network / malformed API response). All Phase 3.x lint checks added after Phase 3.5 (3.7 `Doc-heavy patterns drift check`, 3.8 `Wiki growth check`, 3.9 `Gitignore health check`, 3.10 `Backlink format check`, 3.11 `Hardcoded line-number check`, 3.12 `Comment journal narration`, 3.13 `Comment line-ref check`, 3.14 `Direct gh issue create check`, 3.15 `Orphan reference check`, 3.16 `Shell-prose cross-ref check`, 3.17 `Operational bash block heaviness check`, 3.18 `Projects board drift check`) were added with the fixed appendix + summary-row pattern from the start, so they match Phase 3.6 rather than Phase 3.5.
 
 ### 4.4 Automatic Work Memory Update (Conditional)
 
@@ -1053,28 +1341,16 @@ rm -f "$next_steps_tmp"
 
 ---
 
-## Workflow Incident Emit Helper (#366)
-
-> **Reference**: See [workflow-incident-emit-protocol.md](../references/workflow-incident-emit-protocol.md) for the emit protocol and Sentinel Visibility Rule.
-
-This skill emits sentinels for the following failure paths:
-
-| Failure Path | Sentinel Type | Details |
-|--------------|---------------|---------|
-| Lint command not detected and user chose "skip" in Phase 1.3 | `manual_fallback_adopted` | `rite:lint command not detected, user skipped` |
-| Lint tool not found at execution time (Phase 3) | `hook_abnormal_exit` | `rite:lint tool not found: {tool_name}` |
-| Work memory append failure in Phase 4.4 | `hook_abnormal_exit` | `rite:lint work memory append failure` |
-
-**Note**: `{pr_number}` is `0` for lint (no PR exists yet at lint time).
-
 ## Error Handling
 
 See [Common Error Handling](../references/common-error-handling.md) for shared patterns (Not Found, Permission, Network errors).
 
+失敗パス (lint command 未検出で user skip / tool not found / work memory append 失敗) は plain `WARNING` を stderr に出力する。
+
 | Error | Recovery |
 |-------|----------|
 | When the lint command fails | See error output for details |
-| When the tool is not found | See [common patterns](../references/common-error-handling.md) (sentinel emit via Workflow Incident Emit Helper above) |
+| When the tool is not found | See [common patterns](../references/common-error-handling.md) (WARNING を stderr に出力) |
 
 ## Language-Specific Details
 
@@ -1137,27 +1413,27 @@ Continue the end-to-end flow based on the output pattern from Phase 4.
 
 | Output Pattern | Action in End-to-End Flow |
 |-------------|---------------------------|
-| `[lint:success]` | `/rite:lint` execution completes, and the caller `/rite:issue:start` executes Phase 5.2.1 (checklist completion confirmation) |
-| `[lint:skipped]` | `/rite:lint` execution completes, and the caller `/rite:issue:start` executes Phase 5.2.1 (checklist completion confirmation) |
+| `[lint:success]` | `/rite:lint` execution completes, and the caller `/rite:pr:open` consumes the sentinel at ステップ 5.1 then proceeds to ステップ 6 (PR creation) |
+| `[lint:skipped]` | `/rite:lint` execution completes, and the caller `/rite:pr:open` consumes the sentinel at ステップ 5.1 then proceeds to ステップ 6 (PR creation) |
 | `[lint:error]` | After fixing errors, run lint again (return to Phase 3) |
-| `[lint:aborted]` | Flow ends (execution of `/rite:issue:start` also ends) |
+| `[lint:aborted]` | Flow ends (execution of `/rite:pr:open` also ends) |
 
-**Note**: During standalone execution (when the user directly executes `/rite:lint`), the Phase 5.2.1 checklist confirmation is **not executed**. Checklist confirmation is a feature only executed within the `/rite:issue:start` end-to-end flow; standalone lint execution ends without flow continuation.
+**Note**: During standalone execution (when the user directly executes `/rite:lint`), the ステップ 5.1 sentinel consumption and ステップ 6 PR creation are **not executed**. Lint sentinel consumption and PR creation are features only executed within the `/rite:pr:open` end-to-end flow; standalone lint execution ends without flow continuation.
 
 ### 5.2 Processing After `/rite:lint` Completion
 
 When `[lint:success]` or `[lint:skipped]` is output:
 
-**`/rite:lint` execution completes**, and Claude executes `/rite:issue:start` Phase 5.2.1 (checklist completion confirmation). After that, it calls `rite:pr:create`.
+**`/rite:lint` execution completes**, and Claude returns to `/rite:pr:open` ステップ 5.1 to consume the lint sentinel, then proceeds to ステップ 6 to call `rite:pr:create`.
 
 **Important**:
 - `/rite:lint` does **NOT directly call** `rite:pr:create`
-- The caller `/rite:issue:start` performs checklist completion confirmation in Phase 5.2.1
-- After all checklist items are complete, `/rite:issue:start` calls `rite:pr:create`
+- The caller `/rite:pr:open` consumes the lint sentinel at ステップ 5.1 and proceeds to ステップ 6 (PR creation)
+- After all checklist items are complete, `/rite:pr:open` calls `rite:pr:create`
 
 **Design intent**:
-- Guard function to prevent proceeding to PR creation until all Issue checklist items are complete (Issue #398)
-- If there are incomplete items, return to Phase 5.1 to continue implementation
+- Guard function to prevent proceeding to PR creation until all Issue checklist items are complete
+- If there are incomplete items, return to ステップ 4 (implementation) to continue implementation
 
 ### 5.3 Standalone Execution Behavior
 

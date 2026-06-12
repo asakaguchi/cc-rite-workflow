@@ -10,9 +10,11 @@ description: ドラフト Pull Request を作成
 
 ドラフト PR を作成し、関連 Issue と連携する
 
+> 生成する PR description / commit message は [Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md) に従う（過去 PR / cycle 番号の本文引用を避け、経緯は git log に任せる）。
+
 ## E2E Output Minimization
 
-When called from the `/rite:issue:start` end-to-end flow, minimize output to reduce context window consumption:
+When called from an orchestrator's end-to-end flow (e.g. `/rite:pr:open` ステップ 6), minimize output to reduce context window consumption:
 
 | Phase | Standalone | E2E Flow |
 |-------|-----------|----------|
@@ -27,23 +29,23 @@ Execute the following phases in order when this command is invoked.
 
 ## Caller Context and End-to-End Flow
 
-> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
 
-This command can be invoked in two ways: standalone execution or from the `/rite:issue:start` end-to-end flow (via Phase 5.3).
+This command can be invoked in two ways: standalone execution or from an orchestrator's end-to-end flow (e.g. `/rite:pr:open` ステップ 6).
 
 | Caller | Subsequent Action |
 |-----------|---------------|
-| End-to-end flow (via `/rite:issue:start` Phase 5.3) | **Output pattern and return control to caller** |
+| End-to-end flow (via any orchestrator's Skill tool invocation, e.g. `/rite:pr:open` ステップ 6) | **Output pattern and return control to caller** |
 | Standalone execution | Display "next steps" guidance |
 
 **Determination method**: Claude determines the caller from conversation context:
 
 | Condition | Determination |
 |------|---------|
-| Invoked via `Skill` tool from the `/rite:issue:start` end-to-end flow (Phase 5.3) within the same session | Within end-to-end flow |
+| Invoked via `Skill` tool from any orchestrator within the same session (caller-name agnostic — e.g. `/rite:pr:open`) | Within end-to-end flow |
 | All other cases (user directly typed `/rite:pr:create`) | Standalone execution |
 
-> **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[pr:created:{number}]` or `[pr:create-failed]`) and **returns control to the caller** (`/rite:issue:start`). The caller determines the next action based on this output pattern.
+> **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[pr:created:{number}]` or `[pr:create-failed]`) and **returns control to the caller** (orchestrator). The caller determines the next action based on this output pattern.
 
 ---
 
@@ -65,7 +67,7 @@ Determine the caller from conversation context:
 
 | Condition | Determination | Action |
 |------|---------|------|
-| Conversation history contains rich context from the `/rite:issue:start` end-to-end flow | Within end-to-end flow | Work memory loading optional (information available in context) |
+| Conversation history contains rich context from an orchestrator's end-to-end flow (e.g. `/rite:pr:open` invocation marker) | Within end-to-end flow | Work memory loading optional (information available in context) |
 | `/rite:pr:create` was executed standalone | Standalone execution | Issue can be identified from branch name |
 
 ### 0.2 Load Work Memory
@@ -108,6 +110,48 @@ If Issue number cannot be retrieved, delegate to Phase 1.4 fallback processing.
 
 ## Phase 1: Verify Current State
 
+### 1.0 Bang-Backtick Adjacency Pre-Check (Pre-PR Gate)
+
+> **Reference**: Issue #691. Pre-submission hard gate for the parser-trigger pattern (backtick + bang adjacency in inline code spans of `plugins/rite/{commands,skills,agents,references}/**/*.md`). The underlying static check is `plugins/rite/hooks/scripts/bang-backtick-check.sh`.
+>
+> **DRIFT-CHECK ANCHOR (#691 §7 MUST)**: This bash block is intentionally synchronized between `commands/pr/create.md` §1.0 and `commands/pr/ready.md` §1.0. Any modification to either side MUST be replicated to the other. Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」の dominant failure mode を構造的に予防する。
+>
+> **Independent of `/rite:lint` Phase 3.6**: lint records bang-backtick findings as warnings (`[lint:success]` is preserved). This gate, in contrast, **blocks** PR mutation when the same pattern is present — lint is the early heads-up, this is the final hard gate before submission.
+
+Resolve plugin_root with the inline one-liner (per [Plugin Path Resolution](../../references/plugin-path-resolution.md#inline-one-liner-for-command-files)) and run the check:
+
+```bash
+plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+
+if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/bang-backtick-check.sh" ]; then
+  echo "[CONTEXT] BANG_BACKTICK_CHECK_INVOCATION_FAILED=1; reason=script_missing; resolved_root=${plugin_root:-<empty>}" >&2
+  echo "ERROR: bang-backtick-check.sh not found. Cannot proceed with PR submission gate." >&2
+  exit 1
+fi
+
+bang_output=$(bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all 2>&1)
+bang_rc=$?
+case "$bang_rc" in
+  0)
+    : # clean — proceed to next sub-phase
+    ;;
+  1)
+    echo "❌ Bang-backtick adjacency detected — PR submission blocked:" >&2
+    printf '%s\n' "$bang_output" >&2
+    echo "ACTION: Apply Style A (full-width 「!」) or Style B (expand 'if ! cmd; then') — see plugins/rite/hooks/scripts/bang-backtick-check.sh header for the judgment flow." >&2
+    exit 1
+    ;;
+  *)
+    echo "[CONTEXT] BANG_BACKTICK_CHECK_INVOCATION_FAILED=1; reason=invocation_error; rc=$bang_rc" >&2
+    echo "ERROR: bang-backtick-check.sh invocation error (rc=$bang_rc):" >&2
+    printf '%s\n' "$bang_output" >&2
+    exit 1
+    ;;
+esac
+```
+
+> **On exit 1 from this bash block**: The bash block exits before any `pr/create.md` result pattern (`[pr:created:{N}]` / `[pr:create-failed]`) is emitted, so the orchestrator treats this as a missing-result-pattern Skill invocation — default 経路は `WARNING` を stderr に出力し、AskUserQuestion で「手動作成 / 再試行 / 中止」を提示する — **NOT** a `[pr:create-failed]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
+
 ### 1.1 Retrieve Base Branch
 
 Read `rite-config.yml` at the project root using the Read tool, and get the `branch.base` value:
@@ -143,7 +187,7 @@ git branch --show-current
 エラー: 現在 {branch} ブランチにいます
 
 PR を作成するには作業ブランチに切り替えてください。
-`/rite:issue:start` で作業を開始できます。
+`/rite:pr:open` で作業を開始できます。
 ```
 
 Terminate processing.
@@ -491,7 +535,7 @@ If "Create separate Issues and continue with PR creation" is selected, create an
 | `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
 | `{owner}` | `rite-config.yml` → `github.projects.owner` | `B16B1RD` |
 | `{iteration_mode}` | `rite-config.yml` → `iteration.enabled` が `true` かつ `iteration.auto_assign` が `true` なら `"auto"`、それ以外は `"none"` | `"none"` |
-| `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) | `/home/user/.claude/plugins/rite` |
+| `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) | `/home/user/.claude/plugins/rite` |
 
 ```bash
 tmpfile=$(mktemp)
@@ -518,7 +562,9 @@ if [ ! -s "$tmpfile" ]; then
   exit 1
 fi
 
-result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
+# args_json を入れ子 $() から分離して構築する (深い入れ子 quoting の malform 源を削減。
+# 単一 JSON 引数契約は不変)
+args_json=$(jq -n \
   --arg title "fix: {problem_summary}" \
   --arg body_file "$tmpfile" \
   --argjson projects_enabled {projects_enabled} \
@@ -539,8 +585,9 @@ result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$(jq -n \
       iteration: { mode: $iter_mode }
     },
     options: { source: "pr_create", non_blocking_projects: true }
-  }'
-)")
+  }') || { echo "ERROR: args_json の jq 構築に失敗しました" >&2; exit 1; }
+
+result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$args_json")
 
 if [ -z "$result" ]; then
   echo "ERROR: create-issue-with-projects.sh returned empty result" >&2
@@ -595,7 +642,7 @@ Proceed to Phase 3.
 
 #### 2.5.7 Behavior During End-to-End Flow
 
-Behavior when invoked from `/rite:issue:start`:
+Behavior when invoked from an orchestrator (e.g. `/rite:pr:open` ステップ 6):
 
 | Situation | Behavior |
 |------|------|
@@ -651,9 +698,7 @@ Example (Japanese): feat(pr): /rite:pr:create コマンドを実装
 
 ### 3.2 Generate PR Body
 
-Use a template based on the project type (`project.type` in `rite-config.yml`).
-
-Template file: `templates/pr/{project_type}.md`
+Template file: `templates/pr/generic.md`
 
 **Language consistency rules:**
 
@@ -669,9 +714,9 @@ Information to include in the PR body: summary, related Issue (`Closes #{number}
 
 #### 3.2.1 Context Optimization During End-to-End Flow
 
-When executed via the end-to-end flow (`/rite:issue:start`), apply the following optimizations to reduce context usage.
+When executed via an orchestrator's end-to-end flow (e.g. `/rite:pr:open` ステップ 6), apply the following optimizations to reduce context usage.
 
-**Optimization conditions (OR evaluation):** During end-to-end flow execution / 20 or more changed files / Over 30 tool invocations. 30 invocations is lightweight optimization for PR creation alone; 50 invocations (see `issue/start.md`) is full-scale mitigation.
+**Optimization conditions (OR evaluation):** During end-to-end flow execution / 20 or more changed files / Over 30 tool invocations. 30 invocations is lightweight optimization for PR creation alone; 50 invocations (see `pr/open.md` 等の上位 orchestrator) is full-scale mitigation.
 
 **Optimization content:** Changes -> file list and summary only (show top 3 files), Work memory -> progress summary only, Checklist -> mandatory items only. Applied automatically without user confirmation.
 
@@ -685,31 +730,57 @@ git push -u origin {branch_name}
 
 ### 3.4 Create Draft PR
 
-**Sanitization**: Explicit escaping is not required here. The 3-layer defense pattern (mktemp + HEREDOC with quoted delimiter + empty check + --body-file) prevents shell variable expansion issues. Claude substitutes placeholders directly without manual escaping.
+> **3 段プロトコル**: PR title / body をインライン heredoc・インライン `--title` で bash ブロックに埋め込むと、特殊文字（全角記号・`≠`・括弧・コロン等）を含む長文で Claude のツールコール解析が malform し、エラーなく無言でターンが終了する。これを構造的に避けるため、LLM は (A) workdir を `mktemp -d` で確保 → (B) **Write tool** で title / body を raw ファイル化（heredoc を使わない）→ (C) bash は変数 / `--body-file` 経由で `gh pr create` を実行、の 3 段で行う。title 特殊文字を bash ブロックに一切インライン展開しないのがこの設計の要点。
+
+**(A) workdir 確保**
 
 ```bash
-# Generate body content from Phase 3.2 template and work memory (structure is consistent regardless of optimization)
-# Note: Empty check is required because {body} is dynamically generated.
-tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
+pr_workdir=$(mktemp -d -t rite-pr-create-XXXXXX)
+echo "[CONTEXT] PR_CREATE_WORKDIR=$pr_workdir"
+```
 
-cat <<'BODY_EOF' > "$tmpfile"
-{body}
-BODY_EOF
+**(B) title / body の生成（Write tool）**
 
-if [ ! -s "$tmpfile" ]; then
+直前の `[CONTEXT] PR_CREATE_WORKDIR=` から `{PR_CREATE_WORKDIR}` を読み取り、以下を **Write tool** で書く（heredoc を使わない）:
+
+1. `{PR_CREATE_WORKDIR}/pr_title.txt` ← Phase 3.1 で生成した PR title の raw 内容（1 行）
+2. `{PR_CREATE_WORKDIR}/pr_body.md` ← Phase 3.2 で生成した PR body の raw 内容
+
+**(C) gh pr create（単一 bash block）**
+
+> `{PR_CREATE_WORKDIR}` は (A) の CONTEXT marker から literal 置換する（`mktemp -d` 生成パスのため特殊文字を含まない）。冒頭で literal を shell 変数 `pr_workdir` に束縛し、以降の cat / `--body-file` / cleanup すべてで `$pr_workdir` を参照する（literal placeholder 置換漏れ時の `rm -rf "{...}"` 誤動作を防ぐ）。title は変数（ファイル読込）経由のため bash ブロックに inline しない。workdir の cleanup は inline `rm -rf` ではなく **signal-specific trap** で行い、空 body / 空 title / `gh` 失敗 / SIGINT/TERM/HUP のすべての exit 経路で確実に削除する（同一ファイル他ブロック・`coding-principles.md` Rule 5・[bash-trap-patterns.md](references/bash-trap-patterns.md#signal-specific-trap-template) の canonical 形に準拠）。空 body / 空 title チェックは title / body が動的生成のため必須（body と title は対称にガードする）。
+>
+> **既知の trade-off (Cause A)**: 3 段プロトコルは workdir を (A)/(B Write)/(C) の **別プロセス**に跨がせるため、malformed tool-call で (A) 確保後・(C) 到達前に無言終了した場合（Cause A: harness/transport 側ゆらぎ、rite では除去不能）、`mktemp -d` した空 workdir が orphan として残る。本 trap は (C) 自身の中断のみカバーし、この cross-process orphan は救えない（OS の `/tmp` reaping と `/rite:resume` 再開で実害は限定的）。この `rite-pr-create-*` 孤児 workdir の能動的 GC は `pr-cycle-cleanup.sh` Step 3 で実装済み — review/fix/cleanup の各サイクルで `${TMPDIR:-/tmp}/rite-pr-create-*` のうち age 超過 (mtime > 24h) のものを回収する。age ガードにより in-flight workdir は誤回収されない。
+
+```bash
+pr_workdir="{PR_CREATE_WORKDIR}"
+_rite_create_phase34_cleanup() {
+  [ -n "${pr_workdir:-}" ] && [ -d "$pr_workdir" ] && rm -rf "$pr_workdir"
+  return 0
+}
+trap 'rc=$?; _rite_create_phase34_cleanup; exit $rc' EXIT
+trap '_rite_create_phase34_cleanup; exit 130' INT
+trap '_rite_create_phase34_cleanup; exit 143' TERM
+trap '_rite_create_phase34_cleanup; exit 129' HUP
+
+pr_title=$(cat "$pr_workdir/pr_title.txt")
+if [ -z "$pr_title" ]; then
+  echo "ERROR: PR title is empty (pr_title.txt missing or empty — (B) Write step 漏れの可能性)" >&2
+  exit 1
+fi
+if [ ! -s "$pr_workdir/pr_body.md" ]; then
   echo "ERROR: PR body is empty" >&2
   exit 1
 fi
 
-gh pr create --draft --base "{base_branch}" --title "{title}" --body-file "$tmpfile"
+gh pr create --draft --base "{base_branch}" --title "$pr_title" --body-file "$pr_workdir/pr_body.md"
 ```
 
 ### 3.5 Update Work Memory Phase
 
 After PR creation, update the local work memory (SoT) and sync to Issue comment (backup).
 
-**Note**: Phase 3.5 performs immediate phase transition (`phase5_pr`) right after PR creation. Phase 4.1.2 later adds detailed information (progress summary, changed files, PR metadata). The `update-progress` in Phase 4.1.2 also updates the timestamp, effectively superseding Phase 3.5's timestamp. This two-step approach ensures the phase transition is recorded even if Phase 4 fails.
+**Note**: Phase 3.5 performs immediate phase transition (`pr`) right after PR creation. Phase 4.1.2 later adds detailed information (progress summary, changed files, PR metadata). The `update-progress` in Phase 4.1.2 also updates the timestamp, effectively superseding Phase 3.5's timestamp. This two-step approach ensures the phase transition is recorded even if Phase 4 fails.
 
 **Step 1: Update local work memory**
 
@@ -717,7 +788,7 @@ Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../
 
 ```bash
 WM_SOURCE="create" \
-  WM_PHASE="phase5_pr" \
+  WM_PHASE="pr" \
   WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="rite:pr:review を実行" \
   WM_BODY_TEXT="PR #{pr_number} created." \
@@ -733,7 +804,7 @@ WM_SOURCE="create" \
 bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
   --issue {issue_number} \
   --transform update-phase \
-  --phase "phase5_pr" --phase-detail "PR作成完了" \
+  --phase "pr" --phase-detail "PR作成完了" \
   2>/dev/null || true
 ```
 
@@ -894,8 +965,10 @@ Output the following pattern based on PR creation result:
 
 **Important**:
 - Do **NOT** invoke `rite:pr:review` via the Skill tool
-- Return control to the caller (`/rite:issue:start`)
+- Return control to the caller (orchestrator — caller-name agnostic, e.g. `/rite:pr:open`)
 - The caller determines the next action based on this output pattern
+
+> **Missing-sentinel recovery contract**: Phase 3.4 で `gh pr create` が malformed tool-call により sentinel を 1 つも emit せず無言でターンが終了する（Cause A: harness/transport 側のゆらぎ。rite では除去不能）ことがある。この場合 caller（orchestrator）は `[pr:created:{N}]` / `[pr:create-failed]` のいずれも context に観測できないため **missing-sentinel** として扱う。本 Skill は flow-state を所有せず caller が `phase` を保持するため、caller 側の missing-sentinel 検出 → `/rite:resume` 再開で PR 作成ステップを安全にやり直せる（重複 draft PR の検出・再構成は orchestrator の resume 経路が担う。`commands/pr/open.md` ステップ 0 phase=pr / ステップ 6 参照）。Phase 3.4 の Write tool 委譲はこの Cause A 自体を消すものではなく、Cause B（インライン heredoc / 特殊文字 title による malform 増幅）を除去して発生確率を下げる対策である。
 
 **Example output:**
 ```

@@ -33,8 +33,7 @@ rite workflow はコードベースではなく、Claude Code 用のプロンプ
 {command}-{section}.test.md
 ```
 
-例:
-- `start-5.2.0.1.test.md` - start.md の 5.2.0.1 セクションのテスト
+例: `<command>-<section>.test.md`（コマンドの特定 Phase / セクションを対象とするテストの命名形式）
 
 ### Issue ベーステスト
 
@@ -51,8 +50,8 @@ rite workflow はコードベースではなく、Claude Code 用のプロンプ
 {script-name}.test.md
 ```
 
-例:
-- `stop-guard.test.md` - stop-guard.sh のテスト仕様書
+例（命名形式のみ。対応するシェルスクリプトと同名の `.test.md` を置く）:
+- `<script-name>.test.md` — `<script-name>.sh` のテスト仕様書
 
 対応するテストスクリプト（`*.test.sh`）は対象スクリプトと同階層の `tests/` ディレクトリに配置する。
 
@@ -95,11 +94,5 @@ rite workflow はコードベースではなく、Claude Code 用のプロンプ
 
 | ファイル | 対象 | 説明 |
 |---------|------|------|
-| `start-5.1.1.test.md` | `start.md` 5.1.1 | Phase 5.1.1 完了後の必須アクションボックスの動作確認 |
-| `start-5.2.0.1.test.md` | `start.md` 5.2.0.1 | 範囲外警告の自動 Issue 化 + Projects フィールド設定 |
-| `start-5.2.1.test.md` | `start.md` 5.2.1 | チェックリスト完了確認（PR 作成前バリデーション） |
-| `start-flow-continuation.test.md` | `start.md` Phase 5 | フロー継続の責任パターンの検証（Issue #377） |
-| `start-pr-detection.test.md` | `start.md` 再開時 | 既存 PR 検出時の自動遷移 |
-| `cleanup-1.7.3.2.1.test.md` | `cleanup.md` 1.7.3.2.1 | Projects への追加とフィールド設定 |
+| `rite-issue-create-e2e-smoke.test.md` | `/rite:issue:create` | Issue 作成コアフローの手動 e2e スモークテスト |
 | `skill-structure-358.test.md` | Issue #358 | スキル構造改善の検証テスト |
-| `stop-guard.test.md` | `stop-guard.sh` | stop-guard.sh のシェルスクリプトテスト（#506） |

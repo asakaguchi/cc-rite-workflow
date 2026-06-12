@@ -66,7 +66,7 @@ Variables use the following formats:
 
 | Variable | Description | Source | Example |
 |----------|-------------|--------|---------|
-| `{command}` | Command being executed | Work memory `コマンド` field | `/rite:issue:start` |
+| `{command}` | Command being executed | Work memory `コマンド` field | `/rite:pr:open` |
 | `{phase}` | Work phase | Work memory `フェーズ` field | `実装作業中`, `品質検証` |
 | `{phase_detail}` | Phase detail | Work memory or command context | `PR 作成中` |
 | `{timestamp}` | Timestamp | ISO 8601 format | `2026-02-10T07:00:00Z` |
@@ -84,7 +84,6 @@ Variables use the following formats:
 
 | Variable | Description | Source | Example |
 |----------|-------------|--------|---------|
-| `{project_type}` | Project type | `rite-config.yml` `project.type` | `webapp`, `library`, `cli` |
 | `{language}` | Configured language | `rite-config.yml` `language` | `ja`, `en`, `auto` |
 
 ---
@@ -104,19 +103,10 @@ Variables use the following formats:
 All PR templates use these common variables:
 
 - **`templates/pr/generic.md`**
-- **`templates/pr/webapp.md`**
-- **`templates/pr/library.md`**
-- **`templates/pr/cli.md`**
-- **`templates/pr/documentation.md`**
 
 Common variables:
 - `{issue_number}` or `#{issue_number}` — Related issue reference
 - `{owner}` — Repository owner in footer link
-
-### Report Templates
-
-- **`templates/completion-report.md`**
-  - `{number}`, `{title}`, `{owner}`, `{repo}`, `{branch_name}`, `{iteration_title}`, `{score}`, `{pr_number}`, `{pr_state}`, `{status}`, `{changed_files_count}`, `{review_result}`
 
 ---
 
@@ -131,14 +121,10 @@ Variables are replaced at runtime by the command that reads the template:
    - Replaces: `{owner}`
 
 2. **PR creation** (`/rite:pr:create`)
-   - Reads: `templates/pr/{project_type}.md`
+   - Reads: `templates/pr/generic.md`
    - Replaces: `{issue_number}`, `{owner}`
 
-3. **Work memory updates** (`/rite:issue:update`, `/rite:issue:start`)
-   - Reads: `templates/completion-report.md`
-   - Replaces: All work-related variables
-
-4. **Error messages** (all commands)
+3. **Error messages** (all commands)
    - Inline replacement in command Markdown
 
 ### Replacement Implementation
@@ -216,8 +202,7 @@ Commands should check for these variables and handle their absence gracefully.
 
 ## References
 
-- [Completion Report Template](completion-report.md) — Full format specification
-- [Work Memory Format](../references/work-memory-format.md) — Work memory structure
+- [Work Memory Format](../skills/rite-workflow/references/work-memory-format.md) — Work memory structure
 - [gh CLI Patterns](../references/gh-cli-patterns.md) — GitHub CLI command patterns
 
 ---

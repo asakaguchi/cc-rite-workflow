@@ -9,6 +9,7 @@ This document defines the common severity levels and evaluation criteria used by
 | **CRITICAL** | Immediately exploitable vulnerabilities, deployment failures, or production crashes | Must fix before merge |
 | **HIGH** | Serious issues with significant impact (security risks, data exposure, perceptible degradation) | Recommended to fix before merge |
 | **MEDIUM** | Potential concerns or best practice violations that should be addressed | Address early |
+| **LOW-MEDIUM** | Minor concerns whose blast radius is bounded (例: 独自ジャーゴン濫用 — 個別修正で完了する localized 問題) | Address when convenient (LOW より優先) |
 | **LOW** | Minor improvements or optimization opportunities | Address when time permits |
 
 **Note**: Each reviewer may provide domain-specific examples of what constitutes each severity level in their respective documentation.
@@ -46,33 +47,113 @@ If a static text search (`Grep`) returns no results, that alone does NOT downgra
 
 ## Impact × Observed Likelihood Matrix
 
-The final severity reported in the findings table is determined by combining the Impact axis (CRITICAL / HIGH / MEDIUM / LOW) with the Observed Likelihood axis. The matrix below is the mechanical rule reviewers apply at finding-emission time:
+The final severity reported in the findings table is determined by combining the Impact axis (CRITICAL / HIGH / MEDIUM / LOW-MEDIUM / LOW) with the Observed Likelihood axis. The matrix below is the mechanical rule reviewers apply at finding-emission time:
 
 | Impact \ Likelihood | Observed | Demonstrable | Hypothetical |
 |---|---|---|---|
 | **CRITICAL** | CRITICAL | CRITICAL | **降格 → 推奨事項** (例外カテゴリを除く) |
 | **HIGH** | HIGH | HIGH | **降格 → 推奨事項** (例外カテゴリを除く) |
 | **MEDIUM** | MEDIUM | MEDIUM | **降格 → 推奨事項** (例外カテゴリを除く) |
+| **LOW-MEDIUM** | LOW-MEDIUM | LOW-MEDIUM | **降格 → 推奨事項** (例外カテゴリを除く) |
 | **LOW** | LOW | LOW | 報告禁止 |
 
-**Rule**: Hypothetical findings in the CRITICAL / HIGH / MEDIUM rows are all downgraded to **推奨事項** (a single, mechanical destination — no reviewer-side judgment required). LOW × Hypothetical is **報告禁止** because both axes are already at the lowest tier and further downgrade would produce zero-information findings. The only exceptions are reviewers in the Hypothetical Exception Categories below.
+**Rule**: Hypothetical findings in the CRITICAL / HIGH / MEDIUM / LOW-MEDIUM rows are all downgraded to **推奨事項** (a single, mechanical destination — no reviewer-side judgment required). LOW × Hypothetical is **報告禁止** because both axes are already at the lowest tier and further downgrade would produce zero-information findings. The only exceptions are reviewers in the Hypothetical Exception Categories below.
+
+## COMMENT_QUALITY 軸 (Impact カテゴリ)
+
+`COMMENT_QUALITY` は Impact 軸 (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) に対する Impact カテゴリ分類の一つで、コメント品質違反 (Comment Rot / ジャーナルコメント / 過剰冗長 / 内部 helper の些末コメント等) を Impact × Likelihood Matrix で扱うための軸である。本軸は Issue #699 の SoT ([`comment-best-practices.md`](../skills/rite-workflow/references/comment-best-practices.md)) と Issue #700 の reviewer 側 [`Comment Quality Finding Gate`](../agents/_reviewer-base.md#comment-quality-finding-gate) を統合する severity 判定の入口となる。
+
+### Impact 等級概要
+
+| Impact 等級 | 該当する Comment Quality 違反 (高レベル概要) |
+|-----------|-----------------------------------------|
+| **CRITICAL** | Comment Rot (security/correctness 主張が現コードと不一致 — 読者を能動的にミスリード) |
+| **HIGH** | ジャーナルコメント (`cycle N` / `verified-review` / `PR #N` 等)、行番号・cycle 番号参照 |
+| **MEDIUM** | 過剰冗長 (内部 helper のコメント密度逆転、公開 API の docstring 0 行 等) |
+| **LOW-MEDIUM** | 独自ジャーゴン濫用 (Whitelist 外の造語) |
+| **LOW** | 内部 helper の些末 WHAT コメント等 (詳細粒度は SoT 参照) |
+
+> **重要度プリセット表本体は SoT に集約**: 上記は概要のみ。各違反パターンと SoT check 参照を含む完全な重要度プリセット表は [`_reviewer-base.md` の Comment Quality Finding Gate](../agents/_reviewer-base.md#comment-quality-finding-gate) を参照すること。本ファイル (`severity-levels.md`) で表本体を複製すると Issue #707 が解消しようとしている SoT 重複問題 (= 同じ重要度プリセット表が複数ファイルに重複している状態。Issue #707 で別途整理予定) を再導入してしまうため、forward-pointer のみとする。粒度の対応関係: SoT 表は検出パターン単位で記述され (各 Impact 等級に対して 1 つ以上の具体的検出パターンを列挙)、概要表は Impact 等級単位で要約する。両者の粒度差は意図的であり、reviewer は finding 発行時に SoT 表で対応する具体的検出パターンを参照する。
+
+### Hypothetical 降格ルール (本軸での適用例)
+
+`COMMENT_QUALITY` カテゴリは Hypothetical Exception Categories (security / database migration / devops infra / dependencies) に **含まれない**。したがって Impact × Observed Likelihood Matrix の通常ルールに従い、Hypothetical 判定の finding は **推奨事項に降格** される。
+
+典型的な Hypothetical 降格例:
+
+- 「将来の cycle で orphan になるかもしれない」コメント (e.g., `// 旧実装は ... — cycle 8 で削除予定`) — 削除予定コードが現時点で reachable な call site を持たず、`Grep` でも参照が確認できない場合は Hypothetical → **推奨事項** に降格
+- 「もしリファクタが入ったら drift する可能性がある」cycle 番号参照 — 現時点で参照先 cycle が存在しなくても、コメント単体が誤誘導しているわけではない場合は Hypothetical → **推奨事項** に降格
+
+### Demonstrable 昇格 signal (本軸での適用例)
+
+逆に、以下のような observation を提示できれば Hypothetical → **Demonstrable** に昇格させ、Impact 等級そのままで finding を発行できる:
+
+- **`git blame` 実証**: `git blame {file}` で当該コメント行が対応する code change より明確に古い (= merge 済み) ことを示し、かつコメント中の reference (`cycle N` / `PR #N` / 関数名) が現コードベースで grep ヒット 0 であることを実証 → 該当 reference の宛先が更新されていない Comment Rot として **HIGH** 以上で finding 発行可
+- **新規 diff 由来**: `git diff {base_branch}...HEAD` の `+` 行に対象コメントが追加されている場合、`Likelihood-Evidence: new_call_site {file}:{line} (本 PR diff の `+` 行で追加)` を提示できるため Demonstrable 確定 (これは [`_reviewer-base.md` Comment Quality Finding Gate `Hypothetical → Demonstrable 昇格 signal`](../agents/_reviewer-base.md#hypothetical--demonstrable-昇格-signal) と同じ判定基準)
 
 ## Hypothetical Exception Categories
 
-Four reviewer categories MAY retain **CRITICAL / HIGH / MEDIUM** severity for Hypothetical findings (matching the Matrix rows that specify "降格 → 推奨事項 (例外カテゴリを除く)"), because in their domain a single occurrence of the bug is catastrophic and "wait until we observe it in production" is not an acceptable risk model:
+Four reviewer categories MAY retain **CRITICAL / HIGH / MEDIUM / LOW-MEDIUM** severity for Hypothetical findings (matching the Matrix rows that specify "降格 → 推奨事項 (例外カテゴリを除く)"), because in their domain a single occurrence of the bug is catastrophic and "wait until we observe it in production" is not an acceptable risk model:
 
 | Category | Reviewer | Rationale |
 |---|---|---|
-| **Security** | `security.md` | Adversarial input is the reviewer's job. A SQL injection vector that has no observed exploit today is still a CRITICAL risk because the attacker chooses when to demonstrate it. |
-| **Database migration** | `database.md` | A migration runs once in production. A destructive or irreversible migration cannot be retried. The blast radius is the entire production dataset. |
-| **Infrastructure** | `devops.md` | Deployment, rollback, and infra-as-code paths are exercised rarely but failure leaves production in a broken state with no rollback. |
-| **Dependencies** | `dependencies.md` | Known CVEs, supply-chain compromise, and license violations are inherently "could happen any time" risks. Waiting for observed exploitation is wrong. |
+| **Security** | `security-reviewer.md` | Adversarial input is the reviewer's job. A SQL injection vector that has no observed exploit today is still a CRITICAL risk because the attacker chooses when to demonstrate it. |
+| **Database migration** | `database-reviewer.md` | A migration runs once in production. A destructive or irreversible migration cannot be retried. The blast radius is the entire production dataset. |
+| **Infrastructure** | `devops-reviewer.md` | Deployment, rollback, and infra-as-code paths are exercised rarely but failure leaves production in a broken state with no rollback. |
+| **Dependencies** | `dependencies-reviewer.md` | Known CVEs, supply-chain compromise, and license violations are inherently "could happen any time" risks. Waiting for observed exploitation is wrong. |
 
 Reviewers in these categories MUST still record the Likelihood classification in the finding's `内容` column (e.g., "Likelihood: Hypothetical (例外カテゴリ: security)") so the reader knows the severity was not auto-downgraded.
 
 All other reviewers MUST apply the matrix above and downgrade Hypothetical findings.
 
 > **Note — 3 ゲート運用への forward-pointer**: 指摘事項化の必要条件は impact + likelihood の 2 軸に加えて **revert test を含む 3 ゲート** を同時充足することが求められます。revert test の運用手順は [`agents/_reviewer-base.md` "Necessary conditions for inclusion in 指摘事項"](../agents/_reviewer-base.md#necessary-conditions-for-inclusion-in-指摘事項) を参照してください。本ファイル (severity-levels.md) は impact + likelihood の 2 軸定義に特化しており、revert test の定義は意図的に `_reviewer-base.md` に集約されています。
+
+## Severity × Scope Matrix
+
+> **Reference**: scope enum 定義と Cross-field invariants は [`review-result-schema.md` §findings.scope](./review-result-schema.md) を参照。scope assign 手順の SoT は [`_reviewer-base.md` §Scope Assignment Flowchart](../agents/_reviewer-base.md#scope-assignment-flowchart)。
+
+各 finding は Impact 軸 (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) に加えて **scope 軸 (current-pr / follow-up / nit-noted)** を持つ。両軸の許容組み合わせは以下のマトリクスで定義する。
+
+| Severity | デフォルト scope | 許容 scope | 禁止 scope |
+|---|---|---|---|
+| **CRITICAL** | `current-pr` | `current-pr` のみ | `follow-up` / `nit-noted` |
+| **HIGH** | `current-pr` | `current-pr` / `follow-up` | `nit-noted` |
+| **MEDIUM** | `current-pr` | `current-pr` / `follow-up` / `nit-noted` (LOW-MEDIUM 寄り case のみ、`nit_reason` 必須) | — |
+| **LOW-MEDIUM** | `nit-noted` | 全 3 値 | — |
+| **LOW** | `nit-noted` | `current-pr` (本 PR が文体修正のみの場合) / `nit-noted` | `follow-up` |
+
+### 禁止セルの根拠
+
+| 禁止セル | 根拠 | Cross-field invariant |
+|---------|------|----------------------|
+| **CRITICAL × follow-up** | CRITICAL 級の脆弱性 / 機能崩壊を別 Issue として deferred することは silent risk accumulation。CRITICAL は必ず本 PR で修正必須 | (本ファイル独自) |
+| **CRITICAL × nit-noted** | 同上に加えて「修正不要の nit」として受け流すことは更に重大。schema 1.1.0 invariant #4 で **FAIL invariant** として jq 阻止 | [review-result-schema §Cross-field invariants #4](./review-result-schema.md) |
+| **HIGH × nit-noted** | HIGH 級の重大度を nit として受け流すことは review-fix loop の信頼性を毀損。schema 1.1.0 invariant #4 で **FAIL invariant** として jq 阻止 | [review-result-schema §Cross-field invariants #4](./review-result-schema.md) |
+| **LOW × follow-up** | LOW 級は本 PR で修正するか nit として受け流すかの二択。別 Issue を切るほどの blast radius がないため follow-up は冗長 | (本ファイル独自) |
+
+### 自動 default mapping (schema 1.0 後方互換)
+
+schema 1.0 / 1.0.0 の review-results JSON は `scope` フィールドを持たないため、read 側で severity ベースの default mapping を適用する:
+
+| Severity | Default scope (schema 1.0 read 時) |
+|----------|-----------------------------------|
+| CRITICAL / HIGH | `current-pr` |
+| MEDIUM | `current-pr` |
+| LOW-MEDIUM | `nit-noted` |
+| LOW | `nit-noted` |
+
+詳細な jq 表現と `[CONTEXT] REVIEW_SOURCE_SCOPE_DEFAULTED=1` emit ルールは [`review-result-schema.md` §後方互換性](./review-result-schema.md) を参照。
+
+### Hypothetical Exception カテゴリの scope 制約
+
+[Hypothetical Exception Categories](#hypothetical-exception-categories) に該当する 4 reviewer (`security` / `database` / `devops` / `dependencies`) は、Likelihood 軸の例外であって scope 軸の例外ではない。**全 severity 帯で scope=`nit-noted` の出力を禁止** する (詳細は [`_reviewer-base.md` §Scope Assignment Flowchart](../agents/_reviewer-base.md#hypothetical-exception-カテゴリの-nit-noted-禁止) を参照)。
+
+| Reviewer | scope=`nit-noted` | 許容 scope |
+|----------|------------------|----------|
+| `security-reviewer.md` | ❌ 禁止 | `current-pr` / `follow-up` |
+| `database-reviewer.md` | ❌ 禁止 | `current-pr` / `follow-up` |
+| `devops-reviewer.md` | ❌ 禁止 | `current-pr` / `follow-up` |
+| `dependencies-reviewer.md` | ❌ 禁止 | `current-pr` / `follow-up` |
 
 ## Evaluation Criteria
 
@@ -88,7 +169,7 @@ CRITICAL 指摘あり？ ──Yes──> 評価: 要修正
 HIGH 指摘あり？ ──Yes──> 評価: 要修正
   │No
   ▼
-MEDIUM 指摘あり？ ──Yes──> 評価: 条件付き
+MEDIUM or LOW-MEDIUM 指摘あり？ ──Yes──> 評価: 条件付き
   │No
   ▼
 LOW 指摘のみ or 指摘なし？ ──Yes──> 評価: 可
@@ -97,5 +178,5 @@ LOW 指摘のみ or 指摘なし？ ──Yes──> 評価: 可
 | Evaluation | Condition |
 |------|------|
 | **要修正** | 1 or more CRITICAL or HIGH findings |
-| **条件付き** | 1 or more MEDIUM findings (no CRITICAL/HIGH) |
+| **条件付き** | 1 or more MEDIUM or LOW-MEDIUM findings (no CRITICAL/HIGH) |
 | **可** | LOW only, or no findings |

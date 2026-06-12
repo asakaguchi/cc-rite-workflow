@@ -1,0 +1,457 @@
+#!/bin/bash
+# Tests for plugins/rite/hooks/stop-loop-continuation.sh (Issue #1168)
+# Verifies the Stop hook re-injects the review↔fix loop continuation command when a
+# handoff marker is present, allows the stop otherwise, and consumes the marker one-shot.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_test-helpers.sh"
+PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
+HOOK="$PLUGIN_ROOT/hooks/stop-loop-continuation.sh"
+FS="$PLUGIN_ROOT/hooks/flow-state.sh"
+
+if [ ! -x "$HOOK" ]; then
+  echo "ERROR: $HOOK not found or not executable" >&2
+  exit 1
+fi
+if ! command -v jq >/dev/null 2>&1; then
+  echo "ERROR: jq is required" >&2
+  exit 1
+fi
+
+SID="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+# Create a git sandbox so state-path-resolve.sh returns the sandbox root.
+new_sandbox() {
+  local d
+  d=$(make_plain_sandbox --soft) || return 1
+  (cd "$d" && git init -q && echo a > a && git add a && \
+    git -c user.email=t@test.local -c user.name=test commit -q -m init) >/dev/null
+  echo "$d"
+}
+
+# Emit a Stop payload JSON for the given cwd / session_id.
+stop_payload() {
+  local cwd="$1" sid="${2:-$SID}" active="${3:-false}"
+  jq -nc --arg c "$cwd" --arg s "$sid" --argjson a "$active" \
+    '{session_id:$s, cwd:$c, hook_event_name:"Stop", stop_hook_active:$a}'
+}
+
+state_file_for() { echo "$1/.rite/sessions/${SID}.flow-state"; }
+
+# --- TC-1: handoff present → block with continuation command in reason ---
+echo "=== TC-1: handoff present → decision:block re-injects the command ==="
+d=$(new_sandbox)
+RITE_STATE_ROOT="$d" bash "$FS" set --phase review --issue 1168 --branch b --pr 99 \
+  --next n --handoff "/rite:pr:fix 99" --session "$SID" >/dev/null
+out=$(stop_payload "$d" | bash "$HOOK")
+assert "TC-1: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "/rite:pr:fix 99"; then
+  pass "TC-1: reason contains the handoff command"
+else
+  fail "TC-1: reason missing handoff command: $out"
+fi
+# Symmetric to TC-7 (AC-3 bidirectional): the continuation branch must NOT use the
+# FINALIZE completion-notice phrasing — pins both sides of the prefix split.
+if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "完了通知"; then
+  fail "TC-1: continuation reason wrongly used the FINALIZE completion-notice phrasing: $out"
+else
+  pass "TC-1: continuation reason is distinct from the FINALIZE branch"
+fi
+
+# --- TC-2: handoff consumed (deleted) after the block (one-shot) ---
+echo ""
+echo "=== TC-2: handoff is deleted from flow-state after block (one-shot consume) ==="
+sf=$(state_file_for "$d")
+assert "TC-2: handoff deleted after block" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$sf")"
+out2=$(stop_payload "$d" "$SID" true | bash "$HOOK")
+assert "TC-2: second stop allows (no output)" "" "$out2"
+
+# --- TC-3: no flow-state file → allow stop ---
+echo ""
+echo "=== TC-3: no flow-state file → allow (no output) ==="
+d3=$(new_sandbox)
+out=$(stop_payload "$d3" | bash "$HOOK")
+assert "TC-3: allow when no flow-state" "" "$out"
+
+# --- TC-4: flow-state without handoff → allow stop ---
+echo ""
+echo "=== TC-4: flow-state without handoff → allow (no output) ==="
+d4=$(new_sandbox)
+RITE_STATE_ROOT="$d4" bash "$FS" set --phase review --issue 1168 --branch b --pr 99 \
+  --next n --session "$SID" >/dev/null
+out=$(stop_payload "$d4" | bash "$HOOK")
+assert "TC-4: allow when handoff absent" "" "$out"
+
+# --- TC-5: missing session_id in payload → allow stop ---
+echo ""
+echo "=== TC-5: payload missing session_id → allow (no output) ==="
+d5=$(new_sandbox)
+RITE_STATE_ROOT="$d5" bash "$FS" set --phase fix --issue 1168 --branch b --pr 99 \
+  --next n --handoff "/rite:pr:review 99" --session "$SID" >/dev/null
+out=$(jq -nc --arg c "$d5" '{cwd:$c, hook_event_name:"Stop"}' | bash "$HOOK")
+assert "TC-5: allow when session_id missing" "" "$out"
+
+# --- TC-6: fix→review direction (handoff = /rite:pr:review) blocks ---
+echo ""
+echo "=== TC-6: fix→review handoff also blocks with the review command ==="
+d6=$(new_sandbox)
+RITE_STATE_ROOT="$d6" bash "$FS" set --phase fix --issue 1168 --branch b --pr 99 \
+  --next n --handoff "/rite:pr:review 99" --session "$SID" >/dev/null
+out=$(stop_payload "$d6" | bash "$HOOK")
+assert "TC-6: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "/rite:pr:review 99"; then
+  pass "TC-6: reason contains the review command"
+else
+  fail "TC-6: reason missing review command: $out"
+fi
+# Symmetric to TC-7 (AC-3 bidirectional): the fix→review continuation branch must NOT
+# use the FINALIZE completion-notice phrasing.
+if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "完了通知"; then
+  fail "TC-6: continuation reason wrongly used the FINALIZE completion-notice phrasing: $out"
+else
+  pass "TC-6: continuation reason is distinct from the FINALIZE branch"
+fi
+
+# --- TC-7: FINALIZE handoff present → block with completion-notice reason (Issue #1176 AC-1/AC-3) ---
+echo ""
+echo "=== TC-7: FINALIZE handoff → decision:block re-injects the completion-notice directive ==="
+d7=$(new_sandbox)
+RITE_STATE_ROOT="$d7" bash "$FS" set --phase review --issue 1176 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
+out=$(stop_payload "$d7" | bash "$HOOK")
+assert "TC-7: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+_reason7=$(printf '%s' "$out" | jq -r '.reason // ""')
+if printf '%s' "$_reason7" | grep -q "完了通知"; then
+  pass "TC-7: reason requests the ステップ5 completion notice"
+else
+  fail "TC-7: reason missing completion-notice directive: $out"
+fi
+# The FINALIZE branch must NOT re-inject a continuation command (would falsely restart the loop).
+if printf '%s' "$_reason7" | grep -q "停止せず、次を実行してください"; then
+  fail "TC-7: FINALIZE reason wrongly used the continuation phrasing: $out"
+else
+  pass "TC-7: FINALIZE reason is distinct from the continuation branch"
+fi
+# The terminal result identifier should be surfaced for context.
+if printf '%s' "$_reason7" | grep -q "review:mergeable:99"; then
+  pass "TC-7: reason surfaces the terminal result (review:mergeable:99)"
+else
+  fail "TC-7: reason missing the terminal result identifier: $out"
+fi
+
+# --- TC-8: FINALIZE handoff consumed one-shot → second stop allows (Issue #1176 AC-2/AC-5) ---
+echo ""
+echo "=== TC-8: FINALIZE handoff is one-shot — second stop allows (no infinite block) ==="
+sf8=$(state_file_for "$d7")
+assert "TC-8: FINALIZE handoff deleted after block" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$sf8")"
+out8=$(stop_payload "$d7" "$SID" true | bash "$HOOK")
+assert "TC-8: second stop allows (no output)" "" "$out8"
+
+# --- TC-9: replied-only / cancelled-by-user FINALIZE variants also block with the finalize reason (AC-1) ---
+echo ""
+echo "=== TC-9: [fix:replied-only] / [fix:cancelled-by-user] FINALIZE handoffs block once ==="
+for _ho in "FINALIZE:fix:replied-only:99" "FINALIZE:fix:cancelled-by-user:99"; do
+  d9=$(new_sandbox)
+  RITE_STATE_ROOT="$d9" bash "$FS" set --phase fix --issue 1176 --branch b --pr 99 \
+    --next n --handoff "$_ho" --session "$SID" >/dev/null
+  out=$(stop_payload "$d9" | bash "$HOOK")
+  assert "TC-9: ${_ho} → decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+  if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "完了通知"; then
+    pass "TC-9: ${_ho} reason requests the completion notice"
+  else
+    fail "TC-9: ${_ho} reason missing completion-notice directive: $out"
+  fi
+  # one-shot: second stop allows
+  out_b=$(stop_payload "$d9" "$SID" true | bash "$HOOK")
+  assert "TC-9: ${_ho} second stop allows (one-shot)" "" "$out_b"
+done
+
+# --- TC-10: FINALIZE handoff with empty result part still blocks once (edge case) ---
+# ${HANDOFF#FINALIZE:} becomes "" when a sub-skill emits a malformed "FINALIZE:" handoff
+# (e.g. a typo dropping the {result}:{pr} suffix). The hook must still take the FINALIZE
+# branch and force the completion notice rather than silently allowing the stop.
+echo ""
+echo "=== TC-10: FINALIZE: (empty result part) still blocks with the completion-notice reason ==="
+d10=$(new_sandbox)
+RITE_STATE_ROOT="$d10" bash "$FS" set --phase review --issue 1176 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:" --session "$SID" >/dev/null
+out=$(stop_payload "$d10" | bash "$HOOK")
+assert "TC-10: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "完了通知"; then
+  pass "TC-10: empty-result FINALIZE still requests the completion notice"
+else
+  fail "TC-10: empty-result FINALIZE missing completion-notice directive: $out"
+fi
+# one-shot: second stop allows (no infinite block even for the malformed handoff)
+out_b=$(stop_payload "$d10" "$SID" true | bash "$HOOK")
+assert "TC-10: second stop allows (one-shot)" "" "$out_b"
+
+# --- TC-11: WIKICHAIN handoff → block with the cleanup-chain continuation reason (Issue #1245 AC-2/AC-3) ---
+echo ""
+echo "=== TC-11: WIKICHAIN handoff → decision:block re-injects the cleanup chain continuation ==="
+d11=$(new_sandbox)
+RITE_STATE_ROOT="$d11" bash "$FS" set --phase cleanup --issue 1245 --branch b --pr 99 \
+  --next n --handoff "WIKICHAIN:cleanup:99" --session "$SID" >/dev/null
+out=$(stop_payload "$d11" | bash "$HOOK")
+assert "TC-11: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+_reason11=$(printf '%s' "$out" | jq -r '.reason // ""')
+if printf '%s' "$_reason11" | grep -q "wiki:lint チェーン"; then
+  pass "TC-11: reason identifies the cleanup → ingest → lint chain"
+else
+  fail "TC-11: reason missing the chain identification: $out"
+fi
+if printf '%s' "$_reason11" | grep -q "PR #99"; then
+  pass "TC-11: reason surfaces the PR number from the handoff"
+else
+  fail "TC-11: reason missing the PR number: $out"
+fi
+if printf '%s' "$_reason11" | grep -q "ステップ 10"; then
+  pass "TC-11: reason directs continuation to cleanup ステップ 10-12"
+else
+  fail "TC-11: reason missing the cleanup step continuation directive: $out"
+fi
+# Distinctness pins (symmetric to TC-1/TC-7 bidirectional checks): the WIKICHAIN branch must
+# use neither the FINALIZE completion-notice phrasing nor the review↔fix loop phrasing.
+if printf '%s' "$_reason11" | grep -q "完了通知"; then
+  fail "TC-11: WIKICHAIN reason wrongly used the FINALIZE completion-notice phrasing: $out"
+else
+  pass "TC-11: WIKICHAIN reason is distinct from the FINALIZE branch"
+fi
+if printf '%s' "$_reason11" | grep -q "review↔fix"; then
+  fail "TC-11: WIKICHAIN reason wrongly used the review↔fix loop phrasing: $out"
+else
+  pass "TC-11: WIKICHAIN reason is distinct from the continuation branch"
+fi
+
+# --- TC-12: WIKICHAIN handoff consumed one-shot → second stop allows (Issue #1245 AC-3) ---
+echo ""
+echo "=== TC-12: WIKICHAIN handoff is one-shot — second stop allows (no infinite block) ==="
+sf12=$(state_file_for "$d11")
+assert "TC-12: WIKICHAIN handoff deleted after block" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$sf12")"
+out12=$(stop_payload "$d11" "$SID" true | bash "$HOOK")
+assert "TC-12: second stop allows (no output)" "" "$out12"
+
+# --- TC-13: unknown handoff prefix → fail-loud WARNING + verbatim re-inject (PR #1177 lesson) ---
+# The case catch-all must not silently absorb future prefixes into a named-branch behavior:
+# it blocks (handoff non-empty → block axis) but surfaces a WARNING on stderr so a missing
+# case arm is observable instead of masquerading as the review↔fix continuation.
+echo ""
+echo "=== TC-13: unknown handoff prefix → block + WARNING (no silent default absorption) ==="
+d13=$(new_sandbox)
+RITE_STATE_ROOT="$d13" bash "$FS" set --phase cleanup --issue 1245 --branch b --pr 99 \
+  --next n --handoff "FUTUREPREFIX:something:99" --session "$SID" >/dev/null
+err13=$(mktemp)
+out=$(stop_payload "$d13" | bash "$HOOK" 2>"$err13")
+assert "TC-13: decision=block (handoff non-empty axis preserved)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "FUTUREPREFIX:something:99"; then
+  pass "TC-13: reason re-injects the handoff verbatim"
+else
+  fail "TC-13: reason missing the verbatim handoff: $out"
+fi
+if grep -q "unknown handoff prefix" "$err13"; then
+  pass "TC-13: WARNING surfaced on stderr for the unknown prefix"
+else
+  fail "TC-13: missing unknown-prefix WARNING on stderr: $(cat "$err13")"
+fi
+# The unknown-prefix branch must not claim the review↔fix loop identity.
+if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "review↔fix"; then
+  fail "TC-13: unknown-prefix reason wrongly claimed the review↔fix loop identity: $out"
+else
+  pass "TC-13: unknown-prefix reason avoids the review↔fix loop phrasing"
+fi
+rm -f "$err13"
+# one-shot: second stop allows
+out_b=$(stop_payload "$d13" "$SID" true | bash "$HOOK")
+assert "TC-13: second stop allows (one-shot)" "" "$out_b"
+
+# --- TC-14: unknown-prefix WARNING neutralizes control bytes (Issue #1269 / #1274) ---
+# The stderr WARNING must not pass raw control bytes (ANSI escapes etc.) to the operator's
+# terminal — same neutralize_ctrl shared-helper convention (control-char-neutralize.sh) as
+# flow-state.sh _emit_jq_err_snippet, covering C0 + DEL + C1 0x80-0x9f byte-wise. The
+# decision:block reason keeps the handoff verbatim (TC-13 contract): neutralize scope is
+# the WARNING line only.
+echo ""
+echo "=== TC-14: unknown-prefix WARNING neutralizes control bytes (WARNING-only scope) ==="
+d14=$(new_sandbox)
+RITE_STATE_ROOT="$d14" bash "$FS" set --phase cleanup --issue 1269 --branch b --pr 99 \
+  --next n --handoff "$(printf 'EVILPREFIX:\x1b[31mred\x1b[0m:99')" --session "$SID" >/dev/null
+err14=$(mktemp)
+out14=$(stop_payload "$d14" | bash "$HOOK" 2>"$err14")
+assert "TC-14: decision=block (block axis unaffected by neutralize)" "block" "$(printf '%s' "$out14" | jq -r '.decision // "NONE"')"
+if grep -q $'\x1b' "$err14"; then
+  fail "TC-14: WARNING leaked a raw ESC byte to stderr: $(cat -v "$err14")"
+else
+  pass "TC-14: WARNING contains no raw control bytes"
+fi
+if grep -qF 'EVILPREFIX:?[31mred?[0m:99' "$err14"; then
+  pass "TC-14: control bytes replaced with ? in the WARNING"
+else
+  fail "TC-14: neutralized handoff missing from WARNING: $(cat -v "$err14")"
+fi
+# Scope pin: the reason keeps the raw handoff verbatim (re-injection contract). If the
+# neutralize scope is ever widened to the reason, update this pin deliberately.
+if printf '%s' "$out14" | jq -r '.reason // ""' | grep -q $'\x1b'; then
+  pass "TC-14: reason keeps the handoff verbatim (neutralize does not widen to re-injection)"
+else
+  fail "TC-14: reason lost the verbatim handoff bytes: $out14"
+fi
+rm -f "$err14"
+
+# --- TC-15: unknown-prefix WARNING neutralizes C1 8-bit control bytes (Issue #1274) ---
+# U+009B (UTF-8: 0xc2 0x9b) is valid UTF-8, so it survives the flow-state JSON round-trip
+# (raw 0x9b would be replaced with U+FFFD by jq) and reaches the WARNING line — the realistic
+# C1 attack byte sequence (xterm-class terminals interpret C1 as control even in UTF-8 mode).
+# The former ${HANDOFF//[[:cntrl:]]/?} let the 0x9b byte through because glibc does not
+# classify C1 as cntrl; byte-wise neutralize_ctrl replaces it, so no raw 0x9b on stderr.
+echo ""
+echo "=== TC-15: unknown-prefix WARNING neutralizes C1 bytes (U+009B via JSON round-trip) ==="
+d15=$(new_sandbox)
+RITE_STATE_ROOT="$d15" bash "$FS" set --phase cleanup --issue 1274 --branch b --pr 99 \
+  --next n --handoff "$(printf 'EVILPREFIX:\xc2\x9bCSI:99')" --session "$SID" >/dev/null
+err15=$(mktemp)
+out15=$(stop_payload "$d15" | bash "$HOOK" 2>"$err15")
+assert "TC-15: decision=block (block axis unaffected by C1 neutralize)" "block" "$(printf '%s' "$out15" | jq -r '.decision // "NONE"')"
+if grep -qE 'WARNING:.*unknown handoff prefix' "$err15"; then
+  pass "TC-15: unknown-prefix WARNING emitted (C1 経路に到達した sanity pin)"
+else
+  fail "TC-15: missing unknown-prefix WARNING on stderr: $(cat -v "$err15")"
+fi
+if LC_ALL=C grep -q $'\x9b' "$err15"; then
+  fail "TC-15: WARNING leaked a raw C1 0x9b byte to stderr: $(cat -v "$err15")"
+else
+  pass "TC-15: WARNING contains no raw C1 0x9b byte (Issue #1274)"
+fi
+rm -f "$err15"
+
+# --- TC-16: JSON emit fallback neutralizes raw C0 bytes → valid JSON (Issue #1275) ---
+# The manual-escape fallback (taken when the final `jq -n` emit fails) only escaped
+# \ / " / \n, letting raw C0 bytes (e.g. ESC from a control-byte handoff) through into
+# the JSON string literal — invalid JSON per RFC 8259. The fix appends
+# `neutralize_ctrl --c0-only` after the manual escapes: C0+DEL → ?, while UTF-8
+# multibyte text (the Japanese continuation directive) stays intact (the default
+# neutralize mode would byte-wise destroy it — that asymmetry is why --c0-only exists).
+# jq full absence is NOT testable here: the payload parse at the top of the hook would
+# fail first and the hook fail-opens. The realistic fallback trigger is an emit-only jq
+# failure, simulated by a fake jq that fails only for `jq -n` and delegates the rest
+# (payload parse / consume-handoff) to the real jq.
+echo ""
+echo "=== TC-16: JSON emit fallback — raw C0 neutralized, valid JSON, Japanese preserved ==="
+d16=$(new_sandbox)
+RITE_STATE_ROOT="$d16" bash "$FS" set --phase cleanup --issue 1275 --branch b --pr 99 \
+  --next n --handoff "$(printf 'EVILPREFIX:\x1b[31mred\x1b[0m:99')" --session "$SID" >/dev/null
+fake_bin=$(mktemp -d)
+real_jq=$(command -v jq)
+cat > "$fake_bin/jq" <<EOF
+#!/bin/bash
+if [ "\$1" = "-n" ]; then exit 1; fi
+exec "$real_jq" "\$@"
+EOF
+chmod +x "$fake_bin/jq"
+err16=$(mktemp)
+out16=$(stop_payload "$d16" | PATH="$fake_bin:$PATH" bash "$HOOK" 2>"$err16")
+# Sanity pin: the fallback path actually emitted (not the primary jq path).
+if [ -n "$out16" ]; then
+  pass "TC-16: fallback emitted output despite jq -n failure"
+else
+  fail "TC-16: no output — fallback path not reached: $(cat -v "$err16")"
+fi
+if printf '%s' "$out16" | LC_ALL=C grep -q $'\x1b'; then
+  fail "TC-16: fallback JSON leaked a raw ESC byte: $(printf '%s' "$out16" | cat -v)"
+else
+  pass "TC-16: fallback JSON contains no raw C0 bytes"
+fi
+# RFC 8259 validity — raw C0 in a string literal would make this parse fail.
+if printf '%s' "$out16" | "$real_jq" -e . >/dev/null 2>&1; then
+  pass "TC-16: fallback output is valid JSON"
+else
+  fail "TC-16: fallback output is not parseable JSON: $(printf '%s' "$out16" | cat -v)"
+fi
+assert "TC-16: decision=block survives the fallback" "block" "$(printf '%s' "$out16" | "$real_jq" -r '.decision // "NONE"')"
+_reason16=$(printf '%s' "$out16" | "$real_jq" -r '.reason // ""')
+# The Japanese continuation directive must survive (--c0-only does not touch UTF-8
+# multibyte bytes; the default neutralize mode would shred it into ? runs).
+if printf '%s' "$_reason16" | grep -q "停止せず"; then
+  pass "TC-16: Japanese directive text preserved in the fallback reason"
+else
+  fail "TC-16: Japanese directive text lost from the fallback reason: $out16"
+fi
+# The handoff's ESC bytes are ?-neutralized inside the re-injected reason.
+if printf '%s' "$_reason16" | grep -qF 'EVILPREFIX:?[31mred?[0m:99'; then
+  pass "TC-16: handoff control bytes neutralized to ? in the fallback reason"
+else
+  fail "TC-16: neutralized handoff missing from the fallback reason: $out16"
+fi
+rm -rf "$fake_bin" "$err16"
+# one-shot: second stop allows (fallback path still consumes the handoff)
+out_b=$(stop_payload "$d16" "$SID" true | bash "$HOOK")
+assert "TC-16: second stop allows (one-shot)" "" "$out_b"
+
+# --- TC-17: JSON emit fallback neutralize failure → static placeholder, block preserved (Issue #1282) ---
+# TC-16 pins the escape-succeeded side of the fallback (handoff re-injected with C0 → ?).
+# This TC pins the next failure layer: the fallback's own `neutralize_ctrl --c0-only` (a
+# fixed-argument tr pipe the helper header calls "実質失敗しない") also fails, forcing the
+# `_r_esc` static placeholder degradation. Forced via a fake tr that exits 1 only when $1
+# carries the neutralize_ctrl `\000-` range string — other tr uses inside the hook chain
+# (flow-state contains_ctrl's `tr -d ...` has $1=-d) delegate to the real tr, so the
+# consume-handoff path stays intact. A known prefix (`/rite:pr:fix 99`) is used instead of
+# TC-16's EVILPREFIX: the unknown-prefix arm would hit the WARNING-side neutralize (its own
+# placeholder) first, entangling two degradations — the known prefix isolates the JSON emit
+# placeholder. Non-vacuous proof (TC-116 vacuous lesson): the normal reason carries the
+# handoff command + Japanese directive, so asserting "placeholder text present + normal
+# reason absent" proves the degradation actually fired.
+echo ""
+echo "=== TC-17: JSON emit fallback neutralize failure → placeholder degradation, block preserved ==="
+d17=$(new_sandbox)
+RITE_STATE_ROOT="$d17" bash "$FS" set --phase review --issue 1282 --branch b --pr 99 \
+  --next n --handoff "/rite:pr:fix 99" --session "$SID" >/dev/null
+fake_bin17=$(mktemp -d)
+real_jq=$(command -v jq)
+real_tr=$(command -v tr)
+cat > "$fake_bin17/jq" <<EOF
+#!/bin/bash
+if [ "\$1" = "-n" ]; then exit 1; fi
+exec "$real_jq" "\$@"
+EOF
+cat > "$fake_bin17/tr" <<EOF
+#!/bin/bash
+case "\$1" in *000-*) exit 1 ;; esac
+exec "$real_tr" "\$@"
+EOF
+chmod +x "$fake_bin17/jq" "$fake_bin17/tr"
+err17=$(mktemp)
+out17=$(stop_payload "$d17" | PATH="$fake_bin17:$PATH" bash "$HOOK" 2>"$err17")
+# Sanity pin: the placeholder path still emitted (did not degrade into a silent allow).
+if [ -n "$out17" ]; then
+  pass "TC-17: placeholder path emitted output despite jq -n + tr failure"
+else
+  fail "TC-17: no output — placeholder path not reached: $(cat -v "$err17")"
+fi
+if printf '%s' "$out17" | "$real_jq" -e . >/dev/null 2>&1; then
+  pass "TC-17: placeholder output is valid JSON"
+else
+  fail "TC-17: placeholder output is not parseable JSON: $(printf '%s' "$out17" | cat -v)"
+fi
+assert "TC-17: decision=block survives the placeholder degradation" "block" "$(printf '%s' "$out17" | "$real_jq" -r '.decision // "NONE"')"
+_reason17=$(printf '%s' "$out17" | "$real_jq" -r '.reason // ""')
+# 縮退の発生証明 (非 vacuous): placeholder 文言 + /rite:resume 案内あり、通常 reason
+# (handoff コマンド再注入 / 日本語継続指示) なし。
+if printf '%s' "$_reason17" | grep -q "rite handoff continuation pending (reason neutralization failed)" \
+   && printf '%s' "$_reason17" | grep -qF "/rite:resume"; then
+  pass "TC-17: reason degraded to the static placeholder with recovery guidance"
+else
+  fail "TC-17: expected static placeholder reason, got: $out17"
+fi
+if printf '%s' "$_reason17" | grep -qF "/rite:pr:fix 99" || printf '%s' "$_reason17" | grep -q "停止せず"; then
+  fail "TC-17: normal-path reason leaked into the placeholder degradation: $out17"
+else
+  pass "TC-17: normal-path reason absent (degradation actually fired, non-vacuous)"
+fi
+rm -rf "$fake_bin17" "$err17"
+# one-shot: second stop allows (the placeholder path still consumes the handoff)
+out17b=$(stop_payload "$d17" "$SID" true | bash "$HOOK")
+assert "TC-17: second stop allows (one-shot consume preserved through placeholder path)" "" "$out17b"
+
+if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (Issue #1168 review↔fix loop continuation + #1176 FINALIZE terminal backstop + #1245 WIKICHAIN cleanup-chain gate + #1274 C1 8-bit coverage via shared neutralize_ctrl + #1275 JSON emit fallback C0 neutralization + #1282 neutralize-failure placeholder degradation)"; then
+  exit 1
+fi

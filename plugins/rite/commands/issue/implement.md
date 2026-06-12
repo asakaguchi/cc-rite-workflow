@@ -8,12 +8,13 @@ This module handles the actual implementation work, commits, pushes, and checkli
 
 ## 5.1 Implementation Work
 
-Perform actual implementation work following the implementation plan approved in Phase 3.
+Perform actual implementation work following the implementation plan approved in `pr/open.md` ステップ 3 (実装計画).
 
 > **Reference**: Apply the Phase 5.1 checklist from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
-> In particular, check `simplicity_enforcement`, `scope_discipline`, and `dead_code_hygiene`.
+> In particular, check `simplicity_enforcement`, `scope_discipline`, `dead_code_hygiene`, and `knowledge_routing` — route each finding to its durable medium (How → code, What → tests, Why → commit log, Why not → comments).
+> Also follow [Comment Best Practices](../../skills/rite-workflow/references/comment-best-practices.md) for WHY > WHAT, journal/line-number/cycle-number prohibition, jargon whitelist, and density-by-audience rules.
 
-> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing bash hook commands in this file.
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
 
 ### 5.0.W Wiki Query Injection (Conditional)
 
@@ -103,82 +104,6 @@ Skill ツール呼び出し:
 
 **Note**: Can be omitted for small changes. Recommended at session end or interruption.
 
-### 5.1.0.T TDD Light: Test Skeleton Generation (Conditional)
-
-> **Reference**: [TDD Light Reference](../../references/tdd-light.md) for complete specification (classification logic, hash normalization, skeleton templates, idempotency rules).
-
-**Skip conditions** (any match → skip to 5.1.0):
-
-- `tdd.mode` is not `"light"` (or `tdd` section undefined → `off`)
-- `commands.test` is `null` or not set
-- `tdd_state.skeleton_generated` is `true` AND tag strings exist in codebase (idempotency)
-
-When skipped, display: `TDD Light: スキップ（{reason}）` — where `{reason}` is one of `tdd.mode: off`, `commands.test 未設定`, `スケルトン生成済み`.
-
-**Execution steps** (when not skipped):
-
-**Step 1: Baseline** (if `tdd.run_baseline: true`)
-
-Run existing tests to capture baseline state per [Output Processing](../../references/tdd-light.md#output-processing):
-
-```bash
-baseline_output=$(mktemp)
-trap 'rm -f "$baseline_output"' EXIT
-set -o pipefail
-TERM=dumb {test_command} 2>&1 | sed 's/\x1b\[[0-9;]*m//g' > "$baseline_output"
-baseline_rc=${PIPESTATUS[0]}
-```
-
-Record baseline exit code. Existing failures are logged but do not block.
-
-**Step 2: Extract acceptance criteria**
-
-Extract from Issue body (use body from Phase 0.1). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。スケルトン生成をスキップします`, record skip stub in work memory, and skip to 5.1.0.
-
-**Heading match rules**: Match any of the following headings (case-insensitive, level 2 `##`):
-
-| Pattern | Examples |
-|---------|---------|
-| `## 受入条件` | Exact match (Japanese) |
-| `## Acceptance Criteria` | Exact match (English) |
-| `## 受け入れ条件` | Alternative Japanese form |
-
-The section extends from the matched heading to the next `##` heading or end of body.
-
-- Pattern: lines matching `^- \[[ xX]\] (.+)$` under the heading
-- Exclude Issue references: `^- \[[ xX]\] #\d+`
-
-If no acceptance criteria section found (none of the above headings found), record skip stub in work memory and skip to 5.1.0.
-
-**Step 3: Generate skeletons**
-
-For each criterion (up to `tdd.max_skeletons`):
-
-1. Compute hash per [Hash Normalization](../../references/tdd-light.md#hash-normalization)
-2. Sanitize summary per [Criterion Summary Sanitization](../../references/tdd-light.md#criterion-summary-sanitization)
-3. Check per-criterion idempotency (tag exists in test files → skip)
-4. Generate skeleton using framework-appropriate template (see [Skeleton Templates](../../references/tdd-light.md#skeleton-templates))
-
-If framework cannot be determined, skip generation and record skip stub.
-
-**Step 4: Red confirmation**
-
-Run tests per [Output Processing](../../references/tdd-light.md#output-processing) and classify result per [Classification Logic](../../references/tdd-light.md#classification-logic):
-
-| Classification | Action |
-|---------------|--------|
-| `TDD_RED_CONFIRMED` | Proceed to implementation (5.1.0) |
-| `TDD_TRIVIALLY_PASSING` | WARNING — review skeletons, then proceed |
-| `TDD_ALL_PASSING` | INFO — no skeleton tests detected, proceed |
-| `TDD_NO_SKELETON_OUTPUT` | WARNING — skeletons may not be reachable, proceed |
-| `TDD_RUNNER_ABORTED_OR_BLOCKED` | ERROR — display error, proceed with implementation |
-
-**Step 5: Record and commit**
-
-1. Update work memory `### TDD 状態` section (see [Work Memory Format - TDD State](../../skills/rite-workflow/references/work-memory-format.md#tdd-state-section))
-2. Commit skeleton files: `test(tdd): add acceptance criteria skeletons for #{issue_number}`
-3. Push to remote
-
 ### 5.1.0 Parallel Implementation (Conditional)
 
 Execute parallel implementation when conditions are met if `parallel.enabled` is `true` (default) in `rite-config.yml`.
@@ -195,7 +120,7 @@ Execute parallel implementation when **all** of the following conditions are met
 
 **Independent task determination:**
 
-Analyze the "files to change" from the implementation plan (Phase 3) and determine independence using the following criteria:
+Analyze the "files to change" from the implementation plan (`pr/open.md` ステップ 3) and determine independence using the following criteria:
 
 | Criterion | Determined as Independent | Determined as Dependent |
 |-----------|--------------------------|------------------------|
@@ -326,7 +251,7 @@ Use sequential implementation when: `parallel.enabled: false`, complexity S or b
 
 After completing each implementation step, re-evaluate the remaining steps before proceeding to the next one. This follows the "tackle the next most obvious problem" strategy from autonomous agent patterns.
 
-**When to execute**: After every step completion when the plan uses the dependency graph format (Phase 3.3 table with `depends_on` column). Skip if the plan was skipped in Phase 3.4 or if the plan lacks a `depends_on` column (pre-existing numbered list format).
+**When to execute**: After every step completion when the plan uses the dependency graph format (`pr/open.md` ステップ 3.3 plan table with `depends_on` column). Skip if the plan was skipped at `pr/open.md` ステップ 3.4 user confirmation, or if the plan lacks a `depends_on` column (pre-existing numbered list format).
 
 **Relationship with parallel implementation (5.1.0.1-5.1.0.4)**: When parallel implementation is active, execute the re-evaluation checkpoint **after each parallel batch completes** (not after each individual parallel task). The batch completion triggers dependency state update, and newly unblocked steps are candidates for the next parallel batch.
 
@@ -412,7 +337,7 @@ After completing each implementation step, re-evaluate the remaining steps befor
 
    **When threshold exceeded**:
    1. **Discover Oracle and re-decompose**: Follow [Bottleneck Detection Reference](../../references/bottleneck-detection.md) — discover Oracle (Priority 1→2→3), then re-decompose step into sub-steps `S{n}.1`, `S{n}.2`, etc.
-   2. **Update plan**: Insert sub-steps into the dependency graph, replacing the original step. Update the implementation plan in work memory per [3.5.1 Mid-Implementation Replanning](./implementation-plan.md#351-mid-implementation-replanning-triggered-by-bottleneck-detection)
+   2. **Update plan**: Insert sub-steps into the dependency graph, replacing the original step. Update the implementation plan in work memory per [Step Re-decomposition Procedure](../../references/bottleneck-detection.md#step-re-decomposition-procedure)
    3. **Display and record**: Use the bottleneck display format (see below). Add entry to work memory "ボトルネック検出ログ" section at next bulk update (commit time)
    4. **Continue**: Execute the first sub-step (`S{n}.1`) — do NOT re-evaluate the parent step
 
@@ -518,7 +443,7 @@ Return to Phase 5.1 (implementation). Do NOT proceed to commit.
 
 **Re-execution limit**: Test re-execution follows the `safety.max_implementation_rounds` limit in `rite-config.yml`. When the limit is reached, display via `AskUserQuestion`: `テスト再実行の上限に達しました（{max_implementation_rounds}回）。続行しますか？ オプション: 継続する / 中断してユーザーに確認`
 
-**Note**: When called from the `/rite:issue:start` end-to-end flow, test results are retained in conversation context. The subsequent `/rite:lint` Phase 3.4 can skip duplicate test execution if tests were already run and passed in this phase.
+**Note**: When called from the `/rite:pr:open` end-to-end flow, test results are retained in conversation context. The subsequent `/rite:lint` Phase 3.4 can skip duplicate test execution if tests were already run and passed in this phase.
 
 ##### 5.1.0.6.1 Acceptance Criteria Check (Conditional)
 
@@ -538,7 +463,7 @@ The section extends from the matched heading to the next `##` heading or end of 
 - `verification.acceptance_criteria_check` is `false`
 - Issue body does not contain an acceptance criteria section (none of the above headings found)
 
-**Issue body retrieval**: Use the Issue body already obtained in Phase 0.1 (retained in conversation context). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。受入条件チェックをスキップします` and skip to 5.1.0.7 (then 5.1.1).
+**Issue body retrieval**: Use the Issue body already obtained at `pr/open.md` ステップ 1.1 Issue 情報取得 (retained in conversation context). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。受入条件チェックをスキップします` and skip to 5.1.0.7 (then 5.1.1).
 
 **Check procedure:**
 
@@ -593,10 +518,10 @@ From the implementation just completed, extract user-facing identifiers that may
 
 | Source | Examples |
 |--------|---------|
-| Renamed / added / removed commands | `/rite:issue:start`, slash-command names |
+| Renamed / added / removed commands | `/rite:pr:open`, slash-command names |
 | Renamed / added / removed config keys | `rite-config.yml` keys (`branch.base`, `wiki.enabled`) |
 | Renamed / added / removed file paths | Section file paths a user copies into their project |
-| Renamed / added / removed phase / workflow names | `Phase 5.4`, `review-fix loop` |
+| Renamed / added / removed phase / workflow names | `pr/iterate.md` fix side, `review-fix loop` |
 | Renamed / added / removed public function / hook names | hook script names, exported helpers |
 
 Use the work memory's `決定事項・メモ` and the diff itself as the source. Skip identifiers that are clearly internal.
@@ -672,45 +597,7 @@ Follow the `language` setting in `rite-config.yml` (`auto`: detect user input la
 
 **Commit body:**
 
-> **Reference**: [Contextual Commits Reference](../../skills/rite-workflow/references/contextual-commits.md) for action line specification, mapping tables, output rules, and scope derivation.
-
-Check `commit.contextual` in `rite-config.yml` to determine the commit body format.
-
-**When `commit.contextual: true` (default):**
-
-Generate structured action lines in the commit body following the Contextual Commits format. This embeds decision records directly in git history.
-
-- Leave a blank line between the description line and the action lines
-- Can be omitted for trivial changes (typo fixes, formatting, dependency bumps, etc.)
-
-**Generation procedure:**
-
-1. **Read work memory**: Extract from `決定事項・メモ`, `計画逸脱ログ`, `要確認事項` sections (Priority 1 — highest reliability)
-2. **Extract from Issue body**: Derive `intent` from Issue purpose/motivation, `constraint` from acceptance criteria and technical restrictions (Priority 2)
-3. **Infer from diff**: When the diff shows clear technical choices (new dependencies, library switches, API design), infer `decision` (Priority 3 — use only when evident)
-4. **Apply mapping table**: Map each extracted item to action types using the [Work Memory → Action Line Mapping](../../skills/rite-workflow/references/contextual-commits.md#work-memory--action-line-mapping) table
-5. **Filter to 10-line limit**: If action lines exceed 10, trim in order: `learned` → `constraint` → `rejected` → `decision` → `intent` (intent is preserved last as the core "why")
-
-**Output rules:**
-- Action type names are always in English (`intent`, `decision`, `rejected`, `constraint`, `learned`)
-- Description follows the `language` setting in `rite-config.yml`
-- Do not repeat information already visible in the diff
-- Do not fabricate action lines without evidence from work memory, Issue body, or diff
-- Conversation context is supplementary only (Priority 4 — lowest, lost after `/clear`)
-
-**Example (language: ja):**
-
-```
-feat(commit): implement.md のコミット body に Contextual Commits を追加
-
-intent(commit): コミット履歴に意思決定の永続記録を埋め込み、セッション消失後も判断理由を参照可能にする
-decision(format): Conventional Commits の subject line を維持し body のみ拡張（既存ツールチェーンとの互換性）
-constraint(body): アクションライン最大10行（コミットメッセージの肥大化防止）
-```
-
-**When `commit.contextual: false`:**
-
-Use free-form commit body. Include the reason for the change ("why") in the commit body.
+Use a free-form commit body. Include the reason for the change ("why") in the commit body.
 
 - Leave a blank line between the description line and the body
 - Write in free-form — no specific prefix or template required
@@ -731,7 +618,7 @@ git push -u origin {branch_name}
 
 #### 5.1.1.1 Issue Body Checklist Update
 
-**Execution condition**: Execute only when Issue body checklist was extracted and retained in Phase 3.6.
+**Execution condition**: Execute only when Issue body checklist was extracted and retained at `pr/open.md` ステップ 3.5 (Issue Body Checklist 更新).
 
 **Update as each task is completed**. Immediately update the Issue body checklist as implementation, test, and documentation tasks are completed.
 
@@ -741,7 +628,7 @@ git push -u origin {branch_name}
 
 **Update procedure** (3-step safe update pattern):
 
-Execute in 3 stages (Bash → Read+Write → Bash). Since `trap` is only effective within the same process, all sub-steps in Step 1 must be executed within the same Bash tool call. On any validation failure, output a WARNING and skip remaining steps (do NOT `exit 1` — subsequent phase processing must continue).
+Execute in 3 stages (Bash → Read+Write → Bash). Shell variables do not persist across Bash tool calls, so the temp file paths output by Step 1 are passed to Step 3 as literals. On any validation failure, output a WARNING and skip remaining steps (do NOT `exit 1` — subsequent phase processing must continue).
 
 **Step 1: Bash tool call — Fetch body and validate**
 
@@ -834,7 +721,7 @@ rm -f "$changed_files_tmp"
 
 **Placeholder substitution**: Claude MUST replace `{impl_status}`, `{test_status}`, `{doc_status}` with the actual status strings determined in Step 1 (e.g., `"✅ 完了"`, `"⬜ 未着手"`). All other `{...}` placeholders follow the standard placeholder legend.
 
-**On failure**: The script outputs WARNING on stderr and exits 0 (non-blocking). The progress update is best-effort; `.rite-flow-state` is the primary state record.
+**On failure**: The script outputs WARNING on stderr and exits 0 (non-blocking). The progress update is best-effort; the flow state record is the primary state record.
 
 #### 5.1.1.3 Local Work Memory Update
 
@@ -846,7 +733,7 @@ Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../
 
 ```bash
 WM_SOURCE="implement" \
-  WM_PHASE="phase5_lint" \
+  WM_PHASE="lint" \
   WM_PHASE_DETAIL="品質チェック準備" \
   WM_NEXT_ACTION="rite:lint を実行" \
   WM_BODY_TEXT="Post-implementation. Proceeding to lint." \
@@ -854,14 +741,31 @@ WM_SOURCE="implement" \
   bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
-**On lock failure**: Log a warning (`rite: implement: local work memory lock failed`) and continue — local work memory update is best-effort. The `.rite-flow-state` update (step 4a) is the primary state record.
+**On lock failure**: Log a warning (`rite: implement: local work memory lock failed`) and continue — local work memory update is best-effort. The flow state update (step 4a) is the primary state record.
 
 #### 5.1.2 Parent Issue Progress Update (only when working on child Issue)
 
-**Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically from `.rite-flow-state` (#497 — survives context compaction):
+**Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically via `flow-state.sh` so per-session state is consulted instead of the legacy state file snapshot (also survives context compaction):
 
 ```bash
-parent_issue_number=$(jq -r '.parent_issue_number // 0' .rite-flow-state 2>/dev/null) || parent_issue_number=0
+# `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
+# 両方取る場合は if/else 形式にする。
+if parent_issue_number=$(bash {plugin_root}/hooks/flow-state.sh get --field parent_issue_number --default 0); then
+  :
+else
+  rc=$?
+  echo "ERROR: flow-state.sh failed (rc=$rc) reading parent_issue_number for parent progress sync" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=parent_progress_sync; rc=$rc" >&2
+  echo "RESUME_HINT: flow-state.sh が異常 exit (rc=$rc) しました。ファイル不在/empty/jq parse 失敗は --default で吸収 (exit 0) されるため、本経路は helper validation 失敗 / --field 引数欠落 / invalid field name 等の caller 側引数異常で発火します。\$PLUGIN_ROOT/hooks/_validate-helpers.sh と state-path-resolve.sh の存在/実行権限を確認し、必要なら /rite:resume で再開、または STATE_ROOT 配下の sessions/ を確認してください。" >&2
+  exit 1
+fi
+# non-numeric injection 経路を遮断
+case "$parent_issue_number" in
+  ''|*[!0-9]*)
+    echo "WARNING: parent_issue_number is not numeric ('$parent_issue_number'), defaulting to 0 (no parent)" >&2
+    parent_issue_number=0
+    ;;
+esac
 if [ "$parent_issue_number" -eq 0 ] 2>/dev/null; then
   echo "[CONTEXT] PARENT_ISSUE=none — skip 5.1.2"
 else
@@ -883,15 +787,19 @@ Execute in 3 stages (Bash → Read+Write → Bash). On any validation failure, o
 
 ```bash
 # Create temp files (for reading and writing)
+# Do NOT set an EXIT trap here: Step 1 is its own Bash tool call, so an EXIT trap
+# would fire when Step 1 exits and delete the temp files before Step 2's Read tool
+# can read them. The files are cleaned up explicitly instead — in Step 3 on success,
+# and in the failure branch below on a Step 1 failure.
 tmpfile_read=$(mktemp)
 tmpfile_write=$(mktemp)
-trap 'rm -f "$tmpfile_read" "$tmpfile_write"' EXIT
 
 gh issue view {parent_issue_number} --json body --jq '.body' > "$tmpfile_read"
 
 # Validate retrieval result
 if [ ! -s "$tmpfile_read" ]; then
   echo "WARNING: Parent Issue body の取得に失敗。タスクリスト更新をスキップします" >&2
+  rm -f "$tmpfile_read" "$tmpfile_write"
   exit 0  # Skip — do not abort workflow
 fi
 
@@ -937,7 +845,7 @@ fi
 
 gh issue edit {parent_issue_number} --body-file "$tmpfile_write"
 
-# trap does not carry over between processes (Bash tool calls), so delete explicitly
+# No EXIT trap is set in Step 1 (it would delete these before Step 2), so clean up here
 rm -f "$tmpfile_read" "$tmpfile_write"
 ```
 
@@ -947,24 +855,24 @@ Record progress in a comment on the parent Issue (completed child Issues, progre
 
 **5.1.2.3 Remaining Child Issues Check**
 
-Check the state of remaining child Issues with `trackedIssues` and calculate `remaining_count`. Full child Issue completion check is performed in Phase 5.7.
+Check the state of remaining child Issues with `trackedIssues` and calculate `remaining_count`. Full child Issue completion check is performed in `pr/open.md` ステップ 1.2 (parent detection) / `issue/close.md` (parent close) (parent close judgement).
 
 **After 5.1.1 commit/push completion:**
 
 1. Parent Issue progress update (only when working on child Issue, see 5.1.2)
 2. **Update work memory** (record phase info, changed files, next steps)
 3. **Update local work memory** (`.rite-work-memory/issue-{n}.md`) — see 5.1.1.3 above
-4. **CRITICAL: Initialize `.rite-flow-state` and invoke lint** (atomic pair - MUST execute both):
+4. **CRITICAL: Initialize flow state and invoke lint** (atomic pair - MUST execute both):
 
-   > **Note**: All `.rite-flow-state` writes use `flow-state-update.sh` which handles atomic write (PID-based temp file + `mv`) internally to prevent race conditions with concurrent hook shell processes (stop-guard, pre-compact).
+   > **Note**: All flow state writes use `flow-state.sh` which handles atomic write (PID-based temp file + `mv`) internally to prevent race conditions with concurrent hook shell processes (e.g. pre-compact, post-compact, session-start, session-end, post-tool-wm-sync, cleanup-work-memory).
 
    **4a**: Create state file:
 
    ```bash
-   bash {plugin_root}/hooks/flow-state-update.sh create \
-     --phase "phase5_lint" --issue {issue_number} --branch "{branch_name}" \
+   bash {plugin_root}/hooks/flow-state.sh set \
+     --phase "lint" --issue {issue_number} --branch "{branch_name}" \
      --pr 0 \
-     --next "After rite:lint returns: [lint:success/skipped]->Phase 5.2.1 (checklist). [lint:error]->fix and re-invoke. [lint:aborted]->Phase 5.6. Do NOT stop."
+     --next "After rite:lint returns: [lint:success/skipped]->/rite:pr:open ステップ 6 (PR creation). [lint:error]->fix and re-invoke. [lint:aborted]->/rite:pr:open 完了通知でユーザー判断. Do NOT stop."
    ```
 
    **4b**: **Immediately** invoke `rite:lint` via Skill tool (following the flow continuation principle, stopping is prohibited)

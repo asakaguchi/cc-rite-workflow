@@ -51,11 +51,10 @@ chore: maintenance
 ```
 plugins/rite/
 ├── commands/         # Slash command execution procedures (Markdown)
-│   ├── issue/        #   Issue operations (start, create, list, edit, close, update, implement, ...)
-│   │   └── completion-report.md  # Completion report format (extracted from start.md)
-│   ├── pr/           #   PR operations (create, review, fix, ready, cleanup)
+│   ├── issue/        #   Issue operations (create, list, edit, close, update, implement, ...)
+│   │   └── references/  # Edge-case rules, complexity gates, bulk-create patterns
+│   ├── pr/           #   PR operations (open, iterate, merge, ready, create, review, fix, cleanup)
 │   │   └── references/  # Assessment rules, archive procedures
-│   ├── sprint/       #   Sprint operations (plan, list, current, execute, team-execute)
 │   ├── wiki/         #   Experience Wiki operations (init, query, ingest, lint)
 │   ├── skill/        #   Skill operations (suggest)
 │   ├── template/     #   Template operations (reset)
@@ -72,11 +71,11 @@ plugins/rite/
 │   └── wiki/         #   Experience Wiki skill (ingest/query/lint heuristics)
 ├── agents/           # Sub-agent definitions for PR review
 ├── hooks/            # Event handler scripts (Bash)
+│   ├── scripts/      #   Internal helper scripts (drift-check, bang-backtick-check, etc.)
 │   └── tests/        #   Shell script tests
 ├── templates/        # Issue/PR/completion report templates
 ├── references/       # gh CLI patterns, GraphQL helpers
-├── scripts/          # Utility scripts (Issue creation with Projects integration)
-└── i18n/             # Internationalization (ja.yml, en.yml)
+└── scripts/          # Utility scripts (Issue creation with Projects integration)
 ```
 
 ## Hook Development Guide
@@ -85,38 +84,28 @@ Hooks are shell scripts that respond to Claude Code lifecycle events. They are r
 
 ### Hook Directory Structure
 
+Representative entries (not exhaustive — see the note below):
+
 ```
 plugins/rite/hooks/
-├── stop-guard.sh             # Stop hook: prevents Claude from stopping during active workflow
-├── session-start.sh          # SessionStart hook: re-injects flow state after compact or resume
-├── session-end.sh            # SessionEnd hook: saves final state when session ends
-├── session-ownership.sh      # Helper: session ownership guard for .rite-flow-state writes
-├── pre-compact.sh            # PreCompact hook: saves work memory snapshot before context compaction
-├── post-compact.sh           # PostCompact hook: restores state after context compaction
-├── pre-tool-bash-guard.sh    # PreToolUse hook (Bash): blocks known-bad Bash command patterns
-├── post-tool-wm-sync.sh      # PostToolUse hook (Bash): auto-creates local work memory when missing
-├── preflight-check.sh        # Guard script called by commands before execution
-├── notification.sh           # Sends notifications to configured channels (Slack, Discord, Teams)
-├── hook-preamble.sh          # Shared preamble sourced by hooks (env, logging, state path)
-├── local-wm-update.sh        # Self-resolving wrapper for local work memory file updates
-├── work-memory-update.sh     # Shared helper for local work memory atomic writes
-├── work-memory-lock.sh       # mkdir-based lock/unlock for issue-level work memory access
-├── issue-comment-wm-sync.sh  # Sync local work memory to Issue comment backup
-├── issue-comment-wm-update.py # Python helper for Issue comment work memory updates
-├── state-path-resolve.sh     # Resolves root directory for rite state files
-├── cleanup-work-memory.sh    # Deterministic cleanup of local work memory files
-├── flow-state-update.sh      # Atomic .rite-flow-state create/patch/increment operations
-├── issue-body-safe-update.sh # Safe Issue body fetch/apply with backup and validation
-├── wiki-ingest-trigger.sh    # Hook: trigger Wiki ingest on review/fix/close events
-├── wiki-query-inject.sh      # Hook: inject Wiki heuristics at start/review/fix/implement
-├── workflow-incident-emit.sh # Emit workflow incident sentinel for auto Issue registration (#366)
-├── work-memory-parse.py      # YAML frontmatter parser for work memory files
-├── hooks.json                # Native plugin hook registration (managed by Claude Code plugin system)
-├── scripts/                  # Internal helper scripts (drift-check, bang-backtick-check, etc.)
-└── tests/                    # Test scripts
+├── session-start.sh / session-end.sh        # SessionStart / SessionEnd lifecycle hooks
+├── pre-compact.sh / post-compact.sh          # PreCompact / PostCompact (context compaction)
+├── pre-tool-bash-guard.sh                    # PreToolUse (Bash): blocks known-bad command patterns
+├── post-tool-wm-sync.sh                      # PostToolUse (Bash): auto-creates local work memory
+├── flow-state.sh                             # Unified per-session flow-state management
+├── session-ownership.sh / hook-preamble.sh   # Sourced helper libraries (not registered hooks)
+├── work-memory-*.sh / local-wm-update.sh     # Local work memory read / write / lock helpers
+├── issue-body-safe-update.sh                 # Safe Issue body fetch / apply with backup
+├── wiki-ingest-trigger.sh / wiki-query-inject.sh  # Wiki ingest / query helpers (invoked from commands)
+├── _resolve-*.sh / _validate-*.sh            # Internal session-id / state-root helpers
+├── hooks.json                                # Native plugin hook registration (Claude Code reads this)
+├── scripts/                                  # Internal helper scripts (drift-check, wiki commit, etc.)
+└── tests/                                    # Hook test suite
 ```
 
-> **Note**: Context pressure monitoring hooks (previously `context-pressure.sh`, `post-compact-guard.sh`) were retired in PR #481 / commit 77f0c49. Stop/compact recovery is now handled by `stop-guard.sh` + `pre-compact.sh` + `post-compact.sh` + `session-start.sh` exclusively.
+> **Note**: This is a representative list, not a complete enumeration. The canonical full list is the `plugins/rite/hooks/` directory itself (and the Plugin Structure section of `docs/SPEC.md`). Only the six events above — `SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse` — are registered in `hooks.json` (verify with `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`); every other `.sh` is a sourced helper library or a script invoked from commands. New hooks are added to the directory and `hooks.json`, so this section does **not** need to be updated for each one.
+
+> **Note**: There is no Stop hook. A Stop hook that blocked on exit made the LLM stall in thinking loops at phase boundaries, so workflow halting is prevented by the per-session flow-state structure and the orchestrator-level scaffolding contract instead. Compact recovery is handled by `pre-compact.sh` + `post-compact.sh` + `session-start.sh`.
 
 ### Hook Events and Registration
 
@@ -127,10 +116,9 @@ For legacy setups or environments where `hooks.json` is unavailable, `/rite:init
 ```json
 {
   "hooks": {
-    "Stop": [
+    "SessionStart": [
       {
-        "matcher": "",
-        "hooks": [{ "type": "command", "command": "bash /path/to/hooks/stop-guard.sh" }]
+        "hooks": [{ "type": "command", "command": "bash /path/to/hooks/session-start.sh" }]
       }
     ],
     "PreToolUse": [
@@ -147,7 +135,6 @@ Available hook events:
 
 | Event | Trigger | Input |
 |-------|---------|-------|
-| `Stop` | Claude attempts to stop responding | JSON via stdin (`cwd`, etc.) |
 | `SessionStart` | Session begins or resumes | JSON via stdin (`cwd`, `source`) |
 | `SessionEnd` | Session ends | JSON via stdin |
 | `PreCompact` | Before context compaction | JSON via stdin |
@@ -184,8 +171,8 @@ fi
 - Always use `set -euo pipefail` at the top
 - Read JSON input from stdin using `INPUT=$(cat)` and parse with `jq`
 - Use `state-path-resolve.sh` to resolve the state root directory
-- For guard hooks (e.g., `stop-guard.sh`, `pre-tool-bash-guard.sh`): exit code `0` means "allow", non-zero means "block"
-- For non-guard hooks (e.g., `session-start.sh`, `notification.sh`): exit code `0` indicates successful execution
+- For guard hooks (e.g., `pre-tool-bash-guard.sh`): exit code `0` means "allow", non-zero means "block"
+- For non-guard hooks (e.g., `session-start.sh`, `session-end.sh`): exit code `0` indicates successful execution
 - Use `mktemp` for temporary files with `trap 'rm -f "$tmpfile"' EXIT` for cleanup
 - Keep hooks fast — they run on every matching event
 
@@ -200,7 +187,7 @@ The project uses a lightweight custom test framework (not bats) located in `plug
 bash plugins/rite/hooks/tests/run-tests.sh
 
 # Run a single test
-bash plugins/rite/hooks/tests/stop-guard.test.sh
+bash plugins/rite/hooks/tests/pre-tool-bash-guard.test.sh
 ```
 
 ### Test File Structure

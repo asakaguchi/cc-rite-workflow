@@ -9,38 +9,33 @@ Claude Code Rite Workflow - Claude Code 用 Issue ドリブン開発ワークフ
 plugins/rite/.claude-plugin/       # プラグイン固有メタデータ（plugin.json）
 plugins/rite/
 ├── commands/         # スキルから呼び出される実行手順書（Markdown）
-│   ├── issue/        #   メイン (list, create, start, update, close, edit, recall) +
-│   │                 #   サブスキル (create-{interview,decompose,register}, implement,
-│   │                 #   implementation-plan, completion-report, branch-setup,
-│   │                 #   parent-routing, child-issue-selection, work-memory-init)
-│   ├── pr/           #   メイン (create, ready, review, fix, cleanup) +
+│   ├── issue/        #   メイン (list, create, update, close, edit, implement) +
+│   │                 #   references/ (create は flat workflow として単一 file 内に統合済)
+│   ├── pr/           #   メイン (open, iterate, merge, ready, create, review, fix, cleanup) +
 │   │                 #   references/ (fact-check, internal-consistency, fix-relaxation-rules,
 │   │                 #   assessment-rules, reviewer-fallbacks, bash-trap-patterns 等)
-│   ├── sprint/       #   Sprint 操作（list, current, plan, execute, team-execute）
 │   ├── wiki/         #   Experience Wiki 操作（init, query, ingest, lint）+ references/
 │   ├── skill/        #   /rite:skill:suggest
 │   ├── template/     #   /rite:template:reset
 │   └── init.md / getting-started.md / investigate.md / lint.md / resume.md / workflow.md
 ├── skills/           # Claude Code が自動検出するスキル定義（SKILL.md）
 │   ├── rite-workflow/  #   メインスキル + references/（コーディング原則、コンテキスト管理）
-│   ├── reviewers/      #   レビュアースキル + 13 種別の基準ファイル + references/
+│   ├── reviewers/      #   レビュアー調整スキル（SKILL.md = 選定 + テーブル）+ references/（各 reviewer の profile は agents/{type}-reviewer.md に集約）
 │   ├── investigate/    #   コード調査スキル
 │   └── wiki/           #   Experience Wiki スキル（opt-out）
 ├── agents/           # PR レビュー用サブエージェント定義
-│                     # _reviewer-base.md（共通原則）+ 13 reviewer agent + sprint-teammate
-├── templates/        # config/（rite-config.yml 最小デフォルト）、project-types/、
+│                     # _reviewer-base.md（共通原則）+ 13 reviewer agent
+├── templates/        # config/（rite-config.yml 最小デフォルト）、
 │                     # issue/, pr/, review/, wiki/ の各フォーマット
 ├── references/       # gh CLI パターン、GraphQL、severity-levels、investigation-protocol、
-│                     # wiki-patterns、workflow-incident-emit-protocol、review-result-schema 等
+│                     # wiki-patterns、review-result-schema 等
 ├── scripts/          # Projects 統合 Issue 作成、Sub-Issue リンク、レビュー結果抽出・計測 等
-├── hooks/            # Claude Code ライフサイクルフック（session / compact / stop-guard /
-│   │                 # preflight / pre-tool-bash-guard / post-tool-wm-sync /
-│   │                 # phase-transition-whitelist / verify-terminal-output /
-│   │                 # wiki-ingest-trigger / wiki-query-inject / workflow-incident-emit /
-│   │                 # session-ownership / hook-preamble 等）+ hooks.json
-│   ├── scripts/      #   Wiki commit / worktree / backlink / gitignore-health check 等のヘルパー
-│   └── tests/        #   hook レベルの自動テストスイート
-└── i18n/             # 多言語対応（ja.yml / en.yml の legacy + ja/, en/ 配下の分割ファイル）
+└── hooks/            # Claude Code ライフサイクルフック（session / compact /
+    │                 # preflight / pre-tool-bash-guard / post-tool-wm-sync /
+    │                 # wiki-ingest-trigger / wiki-query-inject /
+    │                 # session-ownership / hook-preamble 等）+ hooks.json
+    ├── scripts/      #   Wiki commit / worktree / backlink / gitignore-health check 等のヘルパー
+    └── tests/        #   hook レベルの自動テストスイート
 rite-config.yml        # プロジェクト固有設定（ブランチ戦略、Projects連携、Wiki、review loop 等）
 ```
 
@@ -63,6 +58,31 @@ rite-config.yml        # プロジェクト固有設定（ブランチ戦略、P
 ## メモリ機能
 
 このプロジェクトでは Claude Code のメモリ機能（`~/.claude/projects/*/memory/`）を使用しない。ワークフローの方針は `rite-config.yml`、`commands/`、`skills/` で表現すること。メモリファイルの新規作成・更新は行わないこと。
+
+## エージェント振る舞い原則
+
+rite workflow はワークフロー定義そのものを LLM エージェントで編集するため、以下を厳守する。
+（出典: Karpathy 2025-12 "claude coding" 観察）
+
+### 仮定を表明し、確認する
+- ユーザーの意図・前提・既存仕様について不確かな点があれば、推測で進めず質問する
+- やむを得ず推測する場合は「〇〇と仮定して進めます」と明示してから着手する
+- 仕様の矛盾・前提崩壊を見つけたら、修正案を進める前に必ず表面化する
+
+### 押し返すべきときは押し返す
+- ユーザーの指示が技術的に不適切・非効率・矛盾している場合、同意せず根拠とともに反論する
+- 「いいですね」「もちろんです」で始まる追従的な応答を避ける
+- 複数の選択肢があるときは、推奨と理由・トレードオフを提示してから実装に入る
+
+### シンプルさを死守する
+- 100 行で済むものを 1000 行にしない。新しい抽象・ラッパー・設定項目・hook を追加する前に「本当に必要か」「既存で表現できないか」を一度問う
+- skills/commands/hooks の既存パターンに合わせ、新しい構造を持ち込まない
+- タスク完了時にデッドコード・未使用 reference・コメントアウト・旧フォーマットを残さない
+
+### スコープを越えない
+- 依頼されたタスクと無関係なコマンド・スキル・hook の変更/削除をしない
+- リファクタやスタイル統一を「ついでに」やらない。気になった点は別途 Issue / 報告として切り出す
+- 「理解できない」「気に入らない」を理由に既存のワークフロー仕様を書き換えない（rite では仕様変更が即座に他の作業を壊す）
 
 ## ドッグフーディング注意事項
 

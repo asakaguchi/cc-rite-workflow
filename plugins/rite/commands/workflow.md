@@ -24,9 +24,9 @@ ls rite-config.yml 2>/dev/null || ls .claude/rite:config.yml 2>/dev/null
 **If it does not exist:**
 
 ```
-{i18n:workflow_not_initialized}
+rite workflow が初期化されていません
 
-{i18n:workflow_run_init}
+まず /rite:init を実行してセットアップを完了してください
 ```
 
 Stop here and do not execute any subsequent phases.
@@ -62,7 +62,7 @@ Display the following diagram:
   /rite:issue:create (新規 Issue 作成)
         │                              Status: Todo
         ▼
-  /rite:issue:start <番号> (ブランチ作成)
+  /rite:pr:open <番号> (ブランチ作成)
         │                              Status: In Progress
         ▼
   ┌─────────────────────┐
@@ -120,7 +120,7 @@ Display the following list:
 【Issue 管理】
   /rite:issue:list      Issue 一覧を表示
   /rite:issue:create    新規 Issue を作成
-  /rite:issue:start     Issue の作業を開始（ブランチ作成）
+  /rite:pr:open     Issue の作業を開始（ブランチ作成）
   /rite:issue:update    作業メモリを更新
   /rite:issue:close     Issue の完了状態を確認
 
@@ -135,6 +135,9 @@ Display the following list:
   /rite:resume          中断した作業を再開
 
 💡 Tips: Context limit reached で中断した場合は /clear → /rite:resume で再開できます
+💡 Tips: 複数セッションで別 Issue を並行する場合、rite-config.yml の
+         multi_session.enabled: true（#1391 でデフォルト ON）により
+         セッション別 worktree (.rite/worktrees/issue-{N}) に分離されます
 ```
 
 ---
@@ -160,6 +163,13 @@ Based on the state confirmed in Phase 1, suggest the next action.
   4. /rite:pr:create でドラフト PR を作成
 ```
 
+> **multi-session 時の注意**: `multi_session.enabled: true` の場合、この作業は
+> セッション worktree（`.rite/worktrees/issue-{N}`）内で進行しています。中断後は
+> `/rite:resume` がその worktree へ自動で再入場します（消失していればブランチから
+> 再構築）。main checkout のカレントブランチは base（`branch.base`）のままにしておく
+> こと — rite は main checkout のブランチを切り替えません。詳細は
+> `docs/designs/multi-session-worktree.md` 参照。
+
 Retrieve and display the Issue details:
 
 ```bash
@@ -177,11 +187,11 @@ gh issue view {issue-number} --json title,body,state
   1. /rite:issue:list で既存 Issue を確認
   2. /rite:issue:create <説明> で新規 Issue を作成
      または
-     /rite:issue:start <番号> で既存 Issue の作業を開始
+     /rite:pr:open <番号> で既存 Issue の作業を開始
 
   【例】
   - /rite:issue:create ログイン機能を追加
-  - /rite:issue:start 42
+  - /rite:pr:open 42
 ```
 
 ---

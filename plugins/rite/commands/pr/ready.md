@@ -5,12 +5,12 @@ description: PR を Ready for review に変更
 # /rite:pr:ready
 
 ## Contract
-**Input**: PR number (or auto-detected), `.rite-flow-state` (optional, e2e flow)
-**Output**: `[ready:completed]` | `[ready:error]`
+**Input**: PR number (or auto-detected), flow state (optional, e2e flow)
+**Output**: `[ready:returned-to-caller]` | `[ready:error]`
 
 Change PR to Ready for review and update the related Issue's Status
 
-> **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[ready:completed]` or `[ready:error]`) and **returns control to the caller** (`/rite:issue:start`). The caller determines the next action based on this output pattern.
+> **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[ready:returned-to-caller]` or `[ready:error]`) and **returns control to the caller** (orchestrator — caller-name agnostic). The caller determines the next action based on this output pattern.
 
 ---
 
@@ -28,13 +28,13 @@ When this command is executed, run the following phases in order.
 
 | Placeholder | Description | How to Obtain |
 |---------------|------|----------|
-| `{plugin_root}` | Absolute path to the plugin root directory. Works for both local dev and marketplace installs | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) |
+| `{plugin_root}` | Absolute path to the plugin root directory. Works for both local dev and marketplace installs | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 
 ---
 
 ## Phase 0: Load Work Memory (End-to-End Flow Only)
 
-> **This phase is only executed within the `/rite:issue:start` end-to-end flow. Skip when running standalone.**
+> **This phase is only executed within an orchestrator's end-to-end flow. Skip when running standalone.**
 
 > **Warning**: Work memory is published as Issue comments. In public repositories, third parties can view it. Do not record sensitive information (credentials, personal data, internal URLs, etc.) in work memory.
 
@@ -82,6 +82,48 @@ Even if the argument is omitted, retrieve and use the PR number from work memory
 ---
 
 ## Phase 1: Identify the PR
+
+### 1.0 Bang-Backtick Adjacency Pre-Check (Pre-PR Gate)
+
+> **Reference**: Issue #691. Pre-submission hard gate for the parser-trigger pattern (backtick + bang adjacency in inline code spans of `plugins/rite/{commands,skills,agents,references}/**/*.md`). The underlying static check is `plugins/rite/hooks/scripts/bang-backtick-check.sh`.
+>
+> **DRIFT-CHECK ANCHOR (#691 §7 MUST)**: This bash block is intentionally synchronized between `commands/pr/create.md` §1.0 and `commands/pr/ready.md` §1.0. Any modification to either side MUST be replicated to the other. Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」の dominant failure mode を構造的に予防する。
+>
+> **Independent of `/rite:lint` Phase 3.6**: lint records bang-backtick findings as warnings (`[lint:success]` is preserved). This gate, in contrast, **blocks** Ready transition when the same pattern is present — lint is the early heads-up, this is the final hard gate before Ready for review.
+
+Resolve plugin_root with the inline one-liner (per [Plugin Path Resolution](../../references/plugin-path-resolution.md#inline-one-liner-for-command-files)) and run the check:
+
+```bash
+plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+
+if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/bang-backtick-check.sh" ]; then
+  echo "[CONTEXT] BANG_BACKTICK_CHECK_INVOCATION_FAILED=1; reason=script_missing; resolved_root=${plugin_root:-<empty>}" >&2
+  echo "ERROR: bang-backtick-check.sh not found. Cannot proceed with Ready gate." >&2
+  exit 1
+fi
+
+bang_output=$(bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all 2>&1)
+bang_rc=$?
+case "$bang_rc" in
+  0)
+    : # clean — proceed to next sub-phase
+    ;;
+  1)
+    echo "❌ Bang-backtick adjacency detected — Ready transition blocked:" >&2
+    printf '%s\n' "$bang_output" >&2
+    echo "ACTION: Apply Style A (full-width 「!」) or Style B (expand 'if ! cmd; then') — see plugins/rite/hooks/scripts/bang-backtick-check.sh header for the judgment flow." >&2
+    exit 1
+    ;;
+  *)
+    echo "[CONTEXT] BANG_BACKTICK_CHECK_INVOCATION_FAILED=1; reason=invocation_error; rc=$bang_rc" >&2
+    echo "ERROR: bang-backtick-check.sh invocation error (rc=$bang_rc):" >&2
+    printf '%s\n' "$bang_output" >&2
+    exit 1
+    ;;
+esac
+```
+
+> **On exit 1 from this bash block**: The bash block exits before any `pr/ready.md` result pattern (`[ready:returned-to-caller]` / `[ready:error]`) is emitted, so the orchestrator treats this as a missing-result-pattern Skill invocation — default 経路は `WARNING` を stderr に出力し、AskUserQuestion で「再試行 / 強制続行 / 中止」を提示する — **NOT** a `[ready:error]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
 
 ### 1.1 Check Arguments
 
@@ -154,11 +196,60 @@ End processing.
 
 ## Phase 2: Execution Confirmation
 
-### 2.1 Confirm with User
+### 2.1 Confirm with User (Standalone Path)
 
-> **⚠️ MANDATORY**: This `AskUserQuestion` confirmation MUST be executed even within the `/rite:issue:start` end-to-end flow. Do NOT skip this step for context optimization or any other reason. The user must always confirm before changing the PR to Ready for review. Identity: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md) の `no_step_omission` / `no_context_introspection` principle 参照。
+> **Skip this confirmation when invoked from the main end-to-end flow path**: the orchestrator has already confirmed the Ready transition with the user, so a second confirmation is duplicate (per [Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md) — fourth of the five self-questions: "Is this re-confirming an already-approved decision? → eliminate duplicates"). This sub-skill reads the flow state `.phase` and `.active`, and skips the confirmation when `.phase` matches one of the post-review / post-fix transition phases — either the legacy `phase5_post_review` / `phase5_post_fix` (no current writer — these values only persist as residue in pre-v3 state files; the whitelist still accepts them for resume-from-old-state compatibility) or the flat `review` / `fix` (current writers: `pr/iterate.md` review/fix sides, plus the sub-skills themselves — `pr/review.md` ステップ 8.0 / `pr/fix.md` ステップ 5.1) — AND `.active` is `true` (the AND condition closes the same-session interruption gap — see the next paragraph for details).
+>
+> **Side paths fall back fail-safe to the standalone path (legacy behavior)**: when this sub-skill is reached via any non-main path (e.g., via `/rite:resume`, a standalone re-invocation after an in-session e2e interruption, or an unexpected `.phase` value), or when the flow state is not active (`active=false`), the `else` branch sets `in_e2e_flow=false` and the confirmation is shown. Erring on the side of "silent confirm" rather than "silent skip" preserves UX safety. Same-session interruption + standalone re-invocation is also covered by the bash AND condition (`active = "true"`): `flow-state.sh` cross-session guard classifies the legacy file as `same` (`legacy.session_id == current_sid`), so the helper returns the legacy file's stored value rather than the default. The bash test `[ "$active" = "true" ]` then rejects the legacy file because its `active` field is `false` once the e2e flow stopped.
+>
+> **Standalone execution** (direct `/rite:pr:ready` invocation): always confirm via `AskUserQuestion` as a misuse safety net.
 
-Confirm using `AskUserQuestion`:
+**E2E flow detection** (canonical pattern: on helper invocation failure, emit a WARNING + sentinel and fall back fail-safe):
+
+```bash
+if phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default ""); then
+  :
+else
+  rc=$?
+  echo "WARNING: flow-state.sh failed (rc=$rc) for --field phase in pr/ready Phase 2.1 — falling back to standalone confirmation" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=pr_ready_phase_2_1_phase; rc=$rc" >&2
+  phase=""
+fi
+# Boolean field read via flow-state.sh: `--default ""` returns "" for both stored false
+# and missing field (jq's `// $default` collapses null/false to default). The binary
+# AND check below (`[ "$active" = "true" ]`) is safe — both `active=false` and missing
+# route to the `else` branch (in_e2e_flow=false), which is the fail-safe behavior.
+# A NOT-style check (`[ x = "false" ]`) would NOT be safe under this default and is
+# explicitly forbidden by flow-state.sh's caveat block.
+if active=$(bash {plugin_root}/hooks/flow-state.sh get --field active --default ""); then
+  :
+else
+  rc=$?
+  echo "WARNING: flow-state.sh failed (rc=$rc) for --field active in pr/ready Phase 2.1 — falling back to standalone confirmation" >&2
+  echo "[CONTEXT] STATE_READ_FAILED=1; phase=pr_ready_phase_2_1_active; rc=$rc" >&2
+  active=""
+fi
+# Whitelist approach with AND condition: only the main paths (review→ready / fix→ready)
+# AND an active flow state skip the confirmation. Unexpected phase values OR
+# active!="true" fall back fail-safe to standalone confirmation. The `active=true`
+# AND condition closes the same-session interruption + standalone re-invocation gap
+# left open by the cross-session guard alone (legacy file's `active=false` after
+# e2e stop is the rejecting condition).
+# Both legacy `phase5_post_review` / `phase5_post_fix` (no current writer — only
+# residual in pre-v3 state files; accepted for resume-from-old-state compat) and
+# flat `review` / `fix` (written by the orchestrator `pr/iterate.md` review/fix sides
+# before sub-skill invocation, and by the sub-skills `pr/review.md` ステップ 8.0 /
+# `pr/fix.md` ステップ 5.1) must be accepted — the legacy names are retained in the
+# whitelist solely for backward-compatible resume from pre-v3 state files.
+if { [ "$phase" = "phase5_post_review" ] || [ "$phase" = "phase5_post_fix" ] || [ "$phase" = "review" ] || [ "$phase" = "fix" ]; } && [ "$active" = "true" ]; then
+  in_e2e_flow=true
+else
+  in_e2e_flow=false
+fi
+echo "in_e2e_flow=$in_e2e_flow"
+```
+
+The LLM reads the bash stdout (`in_e2e_flow=...`): when `in_e2e_flow=true`, skip the AskUserQuestion in this sub-section and proceed directly to Phase 3; only when `in_e2e_flow=false`, confirm via `AskUserQuestion`:
 
 ```
 PR #{number} を Ready for review に変更します。
@@ -210,12 +301,13 @@ Proceed to the next phase.
 2. GitHub Web UI から直接変更を試す
 ```
 
-**In e2e flow**: If `.rite-flow-state` exists, update the state file and output `[ready:error]` before ending to signal the failure to the caller (`start.md` Phase 5.5):
+**In e2e flow**: If flow state file exists, update the state file and output `[ready:error]` before ending to signal the failure to the caller (orchestrator). Use the dedicated `ready_error` flat phase so `/rite:resume` routes back to `/rite:pr:ready` for retry — writing `phase=pr` would route resume to `/rite:pr:open` ステップ 6 (PR creation) and re-invoke `/rite:pr:create` against the already-existing PR.
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh patch \
-  --phase "phase5_ready_error" \
-  --next "rite:pr:ready failed. Ask user: retry / skip to Phase 5.6 / terminate." \
+bash {plugin_root}/hooks/flow-state.sh set \
+  --phase "ready_error" \
+  --active true \
+  --next "rite:pr:ready failed during Ready transition. Ask user: retry / abort (orchestrator 経由なら caller に制御を戻す / standalone なら手動再実行)." \
   --if-exists
 ```
 
@@ -233,7 +325,7 @@ After `gh pr ready` succeeds, update local work memory (SoT):
 
 ```bash
 WM_SOURCE="ready" \
-  WM_PHASE="phase5_ready" \
+  WM_PHASE="ready" \
   WM_PHASE_DETAIL="Ready for review に変更完了" \
   WM_NEXT_ACTION="レビュー待ち" \
   WM_BODY_TEXT="PR marked as ready for review." \
@@ -245,64 +337,21 @@ WM_SOURCE="ready" \
 
 **Step 2: Sync to Issue comment (backup)** at phase transition (per C3 backup sync rule).
 
+`issue-comment-wm-sync.sh` の `update-phase` transform へ委譲する。comment ID 解決・backup・<50% safety check・PATCH は helper 内で完結し、backup sync が non-blocking（失敗時 WARNING + skip、exit 1 しない）である契約も helper 側で保持される（canonical pattern: `commands/pr/create.md` "Step 2: Sync to Issue comment (backup)"）。
+
 ```bash
-# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること
-# ⚠️ 置換型パターン（Python で既存行を正規表現置換）: backup sync は non-blocking のため
-#    エラー時は WARNING を出力してスキップする（exit 1 しない）。
-#    追記型パターン（printf + cat >> heredoc）の exit 1 方式とは意図的に異なる。
-comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
-comment_id=$(echo "$comment_data" | jq -r '.id // empty')
-current_body=$(echo "$comment_data" | jq -r '.body // empty')
-
-if [ -z "$comment_id" ]; then
-  echo "WARNING: Work memory comment not found. Skipping backup sync." >&2
-else
-  backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
-  printf '%s' "$current_body" > "$backup_file"
-  original_length=$(printf '%s' "$current_body" | wc -c)
-
-  tmpfile=$(mktemp)
-  body_tmp=$(mktemp)
-  trap 'rm -f "$tmpfile" "$body_tmp"' EXIT
-  printf '%s' "$current_body" > "$body_tmp"
-  python3 -c '
-import sys, re
-body_path, out_path = sys.argv[1], sys.argv[2]
-phase, phase_detail, timestamp = sys.argv[3], sys.argv[4], sys.argv[5]
-with open(body_path, "r") as f:
-    body = f.read()
-# lambda を使用: re.sub の置換文字列メタ文字（\1 等）の誤解釈を防止
-body = re.sub(r"^(- \*\*最終更新\*\*: ).*", lambda m: m.group(1) + timestamp, body, count=1, flags=re.MULTILINE)
-body = re.sub(r"^(- \*\*フェーズ\*\*: ).*", lambda m: m.group(1) + phase, body, count=1, flags=re.MULTILINE)
-body = re.sub(r"^(- \*\*フェーズ詳細\*\*: ).*", lambda m: m.group(1) + phase_detail, body, count=1, flags=re.MULTILINE)
-with open(out_path, "w") as f:
-    f.write(body)
-' "$body_tmp" "$tmpfile" "phase5_ready" "Ready for review に変更完了" "$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
-
-  # Safety checks before PATCH
-  if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
-    echo "WARNING: Updated body is empty. Skipping backup sync. Backup: $backup_file" >&2
-  elif grep -q '📜 rite 作業メモリ' "$tmpfile"; then
-    updated_length=$(wc -c < "$tmpfile")
-    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
-      echo "WARNING: Updated body < 50% of original. Skipping. Backup: $backup_file" >&2
-    else
-      jq -n --rawfile body "$tmpfile" '{"body": $body}' | \
-        gh api repos/{owner}/{repo}/issues/comments/"$comment_id" -X PATCH --input - > /dev/null 2>&1 || \
-        echo "WARNING: Issue comment backup sync failed (non-blocking)." >&2
-    fi
-  else
-    echo "WARNING: Updated body missing header. Skipping. Backup: $backup_file" >&2
-  fi
-fi
+bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform update-phase \
+  --phase "ready" --phase-detail "Ready for review に変更完了" \
+  2>/dev/null || true
 ```
 
 ---
 
 ## Phase 4: Update Issue Status
 
-> **Note**: In the end-to-end flow (`/rite:issue:start`), `start.md` Phase 5.5.1 also performs this Status update as defense-in-depth. This Phase 4 remains essential for standalone `/rite:pr:ready` execution.
+> **Note**: 新 4 コマンドアーキテクチャでは `pr/ready.md` が Projects Status In Review 更新の **唯一の writer**。本 Phase 4 は standalone / orchestrator 経由の両経路で必須。
 
 **Critical**: Do NOT skip this phase. After `gh pr ready` succeeds in Phase 3, this Status update MUST be executed before proceeding to Phase 5.
 
@@ -318,158 +367,94 @@ gh pr view {pr_number} --json body,headRefName
 1. `Closes #XX`, `Fixes #XX`, `Resolves #XX` in the PR body
 2. `issue-XX` pattern in the branch name
 
-### 4.2 Retrieve Project Configuration
+### 4.2 Update Status via Shared Script
 
-Retrieve Project information from `rite-config.yml`:
+> **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `commands/pr/open.md` ステップ 2.4 / 後続 Projects Status callsite。Direct inline `gh api graphql` (Organization-aware) + `gh project item-edit` calls have been removed because the multi-stage inline pipeline produced silent skips when LLM attention was lost between substeps, leaving Issue Status at "In Progress" instead of advancing to "In Review" (observed on #652 stuck at "In Progress" through subsequent cleanup).
 
-```yaml
-github:
-  projects:
-    project_number: {number}
-    owner: "{owner}"
-```
-
-### 4.3 Retrieve Issue's Project Item Information
+Skip Phase 4.2 if `github.projects.enabled: false` in `rite-config.yml` or if no related Issue was identified in Phase 4.1, and proceed to Phase 4.6. Otherwise, invoke the shared script to transition the Issue Status to **In Review**:
 
 ```bash
-gh api graphql -f query='
-query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    issue(number: $number) {
-      projectItems(first: 10) {
-        nodes {
-          id
-          project {
-            id
-            number
-          }
-        }
-      }
-    }
-  }
-}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number}
+status_json_args=$(jq -n \
+  --argjson issue {issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg status "In Review" \
+  --argjson auto_add false \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"
 ```
 
-### 4.4 Retrieve the Status Field
+`auto_add: false` because by ready time the Issue is already registered in the Project (`pr/open.md` ステップ 2.4 auto-added it if missing). The script internally executes the GraphQL `projectItems` query → `gh project field-list` → `gh project item-edit` triple in a single fail-fast pipeline. The query uses GraphQL の `repository(owner:)` 形式 (User / Organization どちらの owner でも透過的に解決されるため、client-side type detection は不要)。旧 ready.md inline 経路は `user(login:)` を直接 query して Organization fallback を行う実装だったが、`repository(owner:)` への delegation でこの分岐自体が不要になった。
 
-**Important**: The option ID (`{in_review_option_id}`) must always be fetched from the API. Only field IDs can be specified via `field_ids`; option IDs for each status (Done, In Progress, In Review, etc.) are not included.
+#### 4.2.1 Result Handling
 
-**Retrieving the field ID:**
+Inspect the script's stdout JSON and route by `.result`:
 
-If `github.projects.field_ids.status` is set in `rite-config.yml`, use that value directly as `{status_field_id}` (skip extracting the field ID from the API result):
+| `.result` | User-visible action | 失敗時の surface |
+|-----------|--------------------|------------------------|
+| `"updated"` | Display `Projects Status を "In Review" に更新しました` and proceed to Phase 4.6 | — (success path) |
+| `"skipped_not_in_project"` | Display `警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします` and proceed to Phase 4.6 | **MUST** `WARNING` を stderr に出力 (silent skip 禁止 — Issue #1003 AC-4) |
+| `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "In Review" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "In Review" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <in_review_option_id> を実行してください。` and proceed to Phase 4.6 | **MUST** `WARNING` を stderr に出力 (silent skip 禁止 — Issue #1003 AC-4) |
 
-Replace the configured value with your actual project ID (see CONFIGURATION.md for how to obtain it):
+**All result branches are non-blocking** — the ready-for-review transition is already complete (Phase 3 `gh pr ready` succeeded); a Status update issue MUST NOT abort the workflow.
 
-```yaml
-github:
-  projects:
-    field_ids:
-      status: "PVTSSF_your-status-field-id"
-```
+> **失敗 surface MUST**: 旧仕様では `skipped_not_in_project` / `failed` の両経路で **silent skip** していたため、observation log がどこにも残らず、user が手動確認するまで Status が `In Progress` に滞留する事象 が発生していた。本契約により、両経路は必ず `WARNING` を stderr に出力する。Status 更新失敗はブロッキングではなく、ユーザーが stderr を見て手動回復 (`/rite:resume` または手動 `gh project item-edit`) する。
 
-**Retrieving the option ID (always required):**
+> **Bash 実装 minimal skeleton (delegate-only 経路の標準形)**:
+>
+> ```bash
+> status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args") || status_json=""
+> status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+> status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+> case "$status_result" in
+>   updated)
+>     echo "Projects Status を \"In Review\" に更新しました" ;;
+>   skipped_not_in_project)
+>     echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします" >&2
+>     # Issue #1003 AC-4: silent skip 禁止 — WARNING を stderr に出力 (上の echo がそれを満たす) ;;
+>   failed|*)
+>     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
+>     echo "警告: Projects Status の \"In Review\" への更新に失敗しました。手動回復: gh project item-edit ..." >&2 ;;
+> esac
+> ```
+>
+> 上記が delegate-only 経路 (close + summary 不要) の標準パターン。`.warnings[]` の stderr surface 実装を忘れると AC-2 (失敗時 warning surface) が LLM 実行揺らぎで silent skip するため必ず含めること。**Issue #1003 AC-4**: `skipped_not_in_project` / `failed` の両経路で `WARNING` を stderr に出力することを **MUST** とする (silent skip 禁止)。Status 更新失敗は non-blocking。
+>
+> **完全形 (state machine + signal-specific trap + tempfile + Step 3 inconsistency summary)** が必要な場合 (parent Issue close と Status update の片方失敗を可視化する unified block) は `commands/issue/close.md` Phase 4.6.3 を参照すること。
 
-**Note**: This file (ready.md) uses GraphQL instead of `gh project field-list`.
-
-**Differences from other command files:**
-- `close.md` / `cleanup.md`: Use the `gh project field-list` CLI command directly (adequate when retrieving field lists only)
-- `start.md` (Phase 2.4 / 5.5.1 / 5.7.2): Delegates Projects Status updates to `plugins/rite/scripts/projects-status-update.sh`, which internally uses `gh project field-list` + `gh project item-edit` (see Issue #496 / PR #531 for the refactor)
-- This file (ready.md): Uses GraphQL (an intentional design decision for the following reasons)
-
-**Reasons for using GraphQL:**
-- Both field ID and option ID can be fetched in a single query
-- Provides a consistent method for fetching option IDs whether `field_ids` is configured or not
-- Easier to handle complex cases including Organization/User detection
-
-#### Organization Detection (Before Executing the GraphQL Query)
-
-Before executing the GraphQL query, determine whether the owner is a User or Organization:
-
-```bash
-gh api users/{owner} --jq '.type'
-```
-
-| Result | Action |
-|------|------|
-| `"Organization"` | Change `user(login: $owner)` to `organization(login: $owner)` in the query |
-| `"User"` | Use the query as-is |
-
-#### Execute the GraphQL Query
-
-```bash
-gh api graphql -f query='
-query($owner: String!, $projectNumber: Int!) {
-  user(login: $owner) {
-    projectV2(number: $projectNumber) {
-      id
-      fields(first: 20) {
-        nodes {
-          ... on ProjectV2SingleSelectField {
-            id
-            name
-            options {
-              id
-              name
-            }
-          }
-        }
-      }
-    }
-  }
-}' -f owner="{owner}" -F projectNumber={project_number}
-```
-
-**Note**: The above is the query for User. For Organization, replace `user` with `organization`.
-
-**Retrieval logic:**
-1. Execute the API (always required for obtaining option IDs)
-2. Check `github.projects.field_ids.status` in `rite-config.yml`
-3. Determine the field ID:
-   - If configured: Use the configured value as `{status_field_id}`
-   - If not configured: Obtain `{status_field_id}` from the GraphQL result
-4. Option ID: Obtain `{in_review_option_id}` from the GraphQL result
-
-### 4.5 Update Status to "In Review"
-
-```bash
-gh project item-edit --project-id {project_id} --id {item_id} --field-id {status_field_id} --single-select-option-id {in_review_option_id}
-```
-
-**If Project is not configured:**
-
-```
-警告: GitHub Projects が設定されていません
-Status の更新をスキップします
-```
+> **Underlying API documentation**: See [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) for the API-level details (GraphQL query, field-list, item-edit) that the script encapsulates.
 
 ### 4.6 Defense-in-Depth: State Update Before Output (End-to-End Flow)
 
-Before outputting the result pattern (`[ready:completed]`) or skipping output, update `.rite-flow-state` to reflect the post-ready phase (defense-in-depth, fixes #17). This prevents intermittent flow interruptions when the fork context returns to the caller — even if the LLM churns after fork return and the system forcibly terminates the turn (bypassing the Stop hook), the state file will already contain the correct `next_action` for resumption.
+Before outputting the result pattern (`[ready:returned-to-caller]`) or skipping output, update flow state to reflect the post-ready phase (defense-in-depth, fixes #17). This prevents intermittent flow interruptions when the fork context returns to the caller — LLM が fork return 後に turn を終了しても、state file に正しい `next_action` が残るため `/rite:resume` で復帰できる。なお `Stop` hook (`stop-loop-continuation.sh`, Issue #1168) は handoff マーカー (review↔fix ループ / cleanup wiki チェーン) が set されている時だけ停止を差し戻すが、ready は handoff をセットしない (ready はループの出口でありユーザー判断で merge へ進むため) — よってここでは Stop hook は停止を妨げず、継続保証は flow-state の `next_action` (resume 用) に委ねる。
 
-**Condition**: Execute only when `.rite-flow-state` exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
+**Condition**: Execute only when flow state file exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
 
 **State update**:
 
 | Result | Phase | Phase Detail | Next Action |
 |--------|-------|-------------|-------------|
-| `[ready:completed]` | `phase5_post_ready` | `Ready処理完了` | `rite:pr:ready completed. Proceed to start.md Phase 5.5.1 (Status update to In Review), then Phase 5.5.2 (metrics), then Phase 5.6 (completion report). Do NOT stop.` |
+| `[ready:returned-to-caller]` | `ready` | `Ready処理完了` | `rite:pr:ready completed. Standalone 起動の場合は次に /rite:pr:merge {pr_number} を実行。orchestrator 経由なら caller に制御を戻す。Do NOT stop.` |
 
 ```bash
-bash {plugin_root}/hooks/flow-state-update.sh patch \
-  --phase "phase5_post_ready" \
-  --next "rite:pr:ready completed. Proceed to start.md Phase 5.5.1 (Status update to In Review), then Phase 5.5.2 (metrics), then Phase 5.6 (completion report). Do NOT stop." \
+bash {plugin_root}/hooks/flow-state.sh set \
+  --phase "ready" \
+  --active true \
+  --next "rite:pr:ready completed. Standalone 起動の場合は次に /rite:pr:merge {pr_number} を実行。orchestrator 経由なら caller に制御を戻す。Do NOT stop." \
   --if-exists
 ```
 
-**Note on `error_count`**: `flow-state-update.sh` patch mode resets `error_count` to 0 on every phase transition (since #294). This prevents stale circuit breaker counts from one phase from poisoning subsequent phases.
+**Note on `error_count`**: `flow-state.sh set` resets `error_count` to 0 by default on every phase transition, and preserves the existing value only when `--preserve-error-count` is passed. `error_count` is currently a reserved/legacy schema slot with no production reader; resetting on transition keeps the slot well-defined for future re-introduction without carrying stale counts.
 
-**Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when `.rite-flow-state` exists:
+**Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when flow state file exists:
 
 ```bash
 WM_SOURCE="ready" \
-  WM_PHASE="phase5_post_ready" \
+  WM_PHASE="ready" \
   WM_PHASE_DETAIL="Ready処理完了" \
-  WM_NEXT_ACTION="start.md Phase 5.5.1 Status 更新 → 5.5.2 メトリクス → 5.6 完了レポートを実行" \
+  WM_NEXT_ACTION="Standalone なら /rite:pr:merge {pr_number} を実行。orchestrator 経由なら caller に制御を戻す" \
   WM_BODY_TEXT="Post-ready phase sync." \
   WM_REQUIRE_FLOW_STATE="true" \
   WM_READ_FROM_FLOW_STATE="true" \
@@ -489,33 +474,34 @@ Determine the caller from the conversation context:
 
 | Condition | Result | Action |
 |------|---------|---------------------|
-| Called via Skill chain from `/rite:issue:start` | Within end-to-end flow | **Skip completion report** — return control to `start.md` (Phase 5.6 handles the report) |
-| Called from `/rite:pr:review` | Within end-to-end flow | **Skip completion report** — return control to `start.md` (Phase 5.6 handles the report) |
+| Called via Skill tool from an orchestrator (caller-name agnostic) | Within end-to-end flow | **Skip completion report** — return control to caller (orchestrator handles the report) |
 | `/rite:pr:ready` executed standalone | Standalone complete | Output Phase 5.1.2 format |
+
+> **Note**: 新 4 コマンドアーキテクチャ (`/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge`) では `pr:ready` は self-contained command として user が直接 invoke するのが標準経路。本表の "Within end-to-end flow" 行は caller-name agnostic な return-to-caller 契約として保持し、任意の orchestrator が Skill tool 経由で `pr:ready` を呼んだ場合に機能する。
 
 **Detection method:**
 
 Check the conversation history and determine "within end-to-end flow" if any of the following apply:
 
-1. `/rite:issue:start` was executed in the conversation
-2. A `/rite:pr:review` -> `/rite:pr:ready` call chain is confirmed in the conversation
-3. `rite:pr:ready` was invoked via the Skill tool (not as a standalone user command)
+1. `rite:pr:ready` was invoked via the Skill tool (not as a standalone user command)
+2. A caller orchestrator の Skill invocation marker が会話履歴に存在
 
 ### 5.1 Output the Completion Report
 
 #### 5.1.1 End-to-End Flow (Skip Completion Report, Output Signal)
 
-When called within the end-to-end flow (detected in Phase 5.0), **do NOT output any completion report**. The completion report is the responsibility of `start.md` Phase 5.6 — outputting it here causes duplicate reports.
+When called within the end-to-end flow (detected in Phase 5.0), **do NOT output any completion report**. The completion report is the responsibility of the caller orchestrator — outputting it here causes duplicate reports.
 
-**Instead, output the following machine-readable signal** to indicate successful completion to the caller:
+**Instead, output the following 2-line machine-readable signal** to indicate successful return to the caller:
 
 ```
-[ready:completed]
+<!-- skill return signal: caller must continue next step -->
+<!-- [ready:returned-to-caller] -->
 ```
 
-This pattern is **mandatory** in e2e flow. It allows `start.md` Phase 5.5 to detect that `rite:pr:ready` has completed successfully and immediately proceed to Phase 5.5.1 (Status update), 5.5.2 (metrics), and 5.6 (completion report). Without this signal, the caller may incorrectly interpret the lack of output as task completion and stop before Phase 5.6.
+This pattern is **mandatory** in e2e flow. It allows the caller orchestrator to detect that `rite:pr:ready` has returned to the caller and immediately proceed to caller-specific 完了処理。Without this signal, the caller may incorrectly interpret the lack of output as task completion.
 
-No template loading, no inline format, no completion table — only the `[ready:completed]` pattern.
+The signal comment + sentinel pair replaces the older `ready:completed` form. The new naming makes explicit that the sub-skill is *returning to caller* (and the caller must continue), not *terminating the workflow* — this prevents LLM turn-boundary heuristic misfires. The sentinel is wrapped in an HTML comment to match the canonical emit style used by `create.md` / `cleanup.md` / `ingest.md` so that the user-visible terminus is never a bare bracket sentinel — disambiguator marker と sentinel が共に HTML コメント化されることで「ユーザー向けに見える最終行」と「caller への signal 行」が完全に分離される。
 
 #### 5.1.2 Standalone Execution
 

@@ -5,9 +5,8 @@
 # Markdown context block with the top-N matching Wiki pages, formatted for
 # direct inclusion in an LLM prompt. This script is the Query primitive for
 # the cycle described in docs/designs/experience-heuristics-persistence-layer.md
-# (F3) — it is called from command markdown files (query.md, start.md,
-# review.md, fix.md, implement.md) via Bash to fetch relevant experiential
-# knowledge.
+# (F3) — it is called from command markdown files (query.md, review.md, fix.md,
+# implement.md) via Bash to fetch relevant experiential knowledge.
 #
 # The script does NOT perform any LLM work — keyword matching and scoring
 # are purely mechanical. The LLM decides how to use the injected context
@@ -44,9 +43,21 @@
 #     + summary, weighted by confidence (high=1.5, medium=1.0, low=0.5).
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=control-char-neutralize.sh
+source "$SCRIPT_DIR/control-char-neutralize.sh"
+
+# Resolve project root (git root anchored). Matches session-start.sh /
+# state-path-resolve.sh convention. `$PWD`-based
+# rite-config.yml lookup would silently miss the config file when this script
+# is invoked from a subdirectory. This script is a CLI tool (not a Claude Code
+# hook), so $PWD is used in place of the stdin-supplied CWD that hook scripts
+# receive.
+STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$PWD" 2>/dev/null) || STATE_ROOT="$PWD"
+
 # Tempfile paths declared up front, trap set up before any mktemp, cleanup on
 # both normal exit and signal termination. Mirrors the repo convention used in
-# commands/pr/review.md Phase 2.2.1 and commands/pr/fix.md Phase 4.5.2 so that
+# commands/pr/review.md ステップ 2.2.1 and commands/pr/fix.md ステップ 4.5.2 so that
 # SIGINT/SIGTERM/SIGHUP cannot leave orphan files in /tmp.
 _yaml_err=""
 _index_err=""
@@ -142,7 +153,7 @@ esac
 # Same YAML parse pattern as wiki-ingest-trigger.sh (F-23 compliant):
 # awk + section range + inline-comment strip + quote strip.
 #
-# Default policy (#483): Wiki is opt-out. When `wiki:` section is absent
+# Default policy: Wiki is opt-out. When `wiki:` section is absent
 # or `wiki.enabled` key is not specified, treat as enabled. The downstream
 # index.md fetch step exits silently with empty stdout when Wiki is not
 # initialized, so opt-out remains non-blocking for fresh repositories.
@@ -154,24 +165,24 @@ esac
 # on grep no-match (exit 0), but surface legitimate IO errors as a WARNING
 # before falling through.
 wiki_section=""
-if [[ -f "rite-config.yml" ]]; then
+if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
   if ! _yaml_err=$(mktemp /tmp/rite-wiki-query-yaml-err-XXXXXX); then
     echo "WARNING: mktemp failed for YAML stderr capture; falling back to /dev/null" >&2
     echo "  対処: /tmp の permission / read-only / inode 枯渇を確認してください" >&2
     _yaml_err=""
   fi
-  if wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>"${_yaml_err:-/dev/null}"); then
+  if wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' "$STATE_ROOT/rite-config.yml" 2>"${_yaml_err:-/dev/null}"); then
     :  # success (sed no-match still returns 0)
   else
     _sed_rc=$?
     echo "WARNING: failed to read wiki section from rite-config.yml (sed rc=$_sed_rc)" >&2
-    [ -n "$_yaml_err" ] && [ -s "$_yaml_err" ] && head -3 "$_yaml_err" | sed 's/^/  /' >&2
+    [ -n "$_yaml_err" ] && [ -s "$_yaml_err" ] && head -3 "$_yaml_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     echo "  lenient fallback: treating wiki as disabled and exiting silently" >&2
     exit 0
   fi
 fi
 
-# Note (#483): wiki_section may legitimately be empty when:
+# Note: wiki_section may legitimately be empty when:
 #   1. rite-config.yml does not exist
 #   2. rite-config.yml has no `wiki:` section
 # In both cases, opt-out policy treats wiki as enabled. The downstream
@@ -221,7 +232,7 @@ else
   _awk_rc=$?
   if [ "$_awk_rc" -ne 1 ]; then
     echo "WARNING: awk failed unexpectedly while detecting wiki.enabled line (rc=$_awk_rc)" >&2
-    [ -n "$_awk_err" ] && [ -s "$_awk_err" ] && head -3 "$_awk_err" | sed 's/^/  /' >&2
+    [ -n "$_awk_err" ] && [ -s "$_awk_err" ] && head -3 "$_awk_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     echo "  lenient fallback: treating wiki.enabled as absent" >&2
   fi
   # rc == 1 is the intentional "not found" path — no warning.
@@ -259,8 +270,9 @@ index_content=""
 # On fresh clones / separate worktrees, the local wiki branch may not exist
 # even when origin/wiki is available. Reading content via the bare branch
 # name (`git show wiki:...`) fails in that case with "fatal: invalid object
-# name 'wiki'". Mirror the ref-selection pattern used by cleanup.md Phase
-# 4.W.1 Step 2 and wiki-growth-check.sh to fall back to origin.
+# name 'wiki'". Mirror the ref-selection pattern used by cleanup.md
+# ステップ 9 (Wiki Ingest 条件付き、旧 Phase 4.W.1 Step 2) and wiki-growth-check.sh
+# to fall back to origin.
 ref=""
 if [[ "$branch_strategy" == "separate_branch" ]]; then
   if git rev-parse --verify "$wiki_branch" >/dev/null 2>&1; then
@@ -279,10 +291,15 @@ if [[ "$branch_strategy" == "separate_branch" ]]; then
     echo "WARNING: mktemp failed for index.md stderr capture; falling back to /dev/null" >&2
     _index_err=""
   fi
-  if ! index_content=$(git show "${ref}:.rite/wiki/index.md" 2>"${_index_err:-/dev/null}"); then
+  # `if ! var=$(git show ...)` collapses the exit status to 0 inside the
+  # then-branch (POSIX `!`), masking the real git rc (128 = ref absent,
+  # 129 = object corrupt). if/else preserves the diagnostic rc.
+  if index_content=$(git show "${ref}:.rite/wiki/index.md" 2>"${_index_err:-/dev/null}"); then
+    :
+  else
     _index_rc=$?
     echo "WARNING: cannot read index.md from ref '$ref' (git show rc=$_index_rc)" >&2
-    [ -n "$_index_err" ] && [ -s "$_index_err" ] && head -3 "$_index_err" | sed 's/^/  /' >&2
+    [ -n "$_index_err" ] && [ -s "$_index_err" ] && head -3 "$_index_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     exit 0
   fi
 else
@@ -339,9 +356,9 @@ rows=$(printf '%s\n' "$index_content" | awk -F'|' '
     }
 
     if (path == "") next  # skip malformed rows
-    # cycle 11 HIGH F-02: unit separator \x1f (\037) を使用。tab では POSIX whitespace collapse
-    # により summary="" 等の empty field で下流の `IFS=$'\t' read` が confidence / updated を
-    # 入れ替える render corruption を起こす (stop-guard.sh cycle 10 F-01 と同型)。
+    # Unit separator (\x1f) prevents POSIX whitespace collapse: tab + summary=""
+    # would let downstream `IFS=$'\t' read` swap confidence / updated columns,
+    # rendering wrong metadata next to each Wiki entry.
     printf "%s\037%s\037%s\037%s\037%s\037%s\n", title, path, domain, summary, updated, confidence
   }
   /^## / && in_table == 1 { in_table=0 }
@@ -459,7 +476,7 @@ while IFS=$'\x1f' read -r score title path domain summary updated confidence; do
       else
         _git_show_rc=$?
         echo "WARNING: cannot read ${path} from ref '${ref}' — index.md may be stale (git show rc=${_git_show_rc})" >&2
-        [ -n "$_git_show_err" ] && [ -s "$_git_show_err" ] && head -3 "$_git_show_err" | sed 's/^/  /' >&2
+        [ -n "$_git_show_err" ] && [ -s "$_git_show_err" ] && head -3 "$_git_show_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
         page_body=""
       fi
     else

@@ -3,6 +3,12 @@
 # Usage: bash plugins/rite/hooks/tests/pre-tool-bash-guard.test.sh
 set -euo pipefail
 
+# Issue #998: Tier 3 (env var) subagent detection を導入したため、host 環境に
+# CLAUDE_SUBAGENT_TYPE / CLAUDE_AGENT_TYPE が export されていると既存の
+# main-session allow テスト (TC-022 stderr branch / TC-023 / TC-028 / TC-062 等) が
+# Tier 3 経路で誤って deny 判定され flake する。全テストで一律遮断する。
+unset CLAUDE_SUBAGENT_TYPE CLAUDE_AGENT_TYPE
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$SCRIPT_DIR/../pre-tool-bash-guard.sh"
 PASS=0
@@ -717,6 +723,189 @@ echo "TC-057c: subagent + 'git branch --force feat' → deny"
 assert_subagent_deny "subagent git branch --force blocked" "git branch --force feat"
 
 # --------------------------------------------------------------------------
+# TC-057d〜057h: Issue #995 — git worktree add new-ref-leak forms denied,
+# proper --detach / existing-branch forms allowed.
+# 既存 (E) では `git worktree remove/prune` のみ block していたため、reviewer が
+# `git worktree add -b <newbranch>` 経由で新規 named branch を leak できた gap を補完。
+# --------------------------------------------------------------------------
+echo "TC-057d: subagent + 'git worktree add -b pr-994-test /tmp/d HEAD' → deny (new branch leak)"
+assert_subagent_deny "subagent worktree add -b new-branch blocked" \
+  "git worktree add -b pr-994-test /tmp/d HEAD"
+
+echo "TC-057e: subagent + 'git worktree add --new-branch foo /tmp/d HEAD' → deny (long-form)"
+assert_subagent_deny "subagent worktree add --new-branch blocked" \
+  "git worktree add --new-branch foo /tmp/d HEAD"
+
+echo "TC-057f: subagent + 'git worktree add /tmp/d' (1 positional, auto-creates branch) → deny"
+assert_subagent_deny "subagent bare worktree add (auto-branch) blocked" \
+  "git worktree add /tmp/d"
+
+echo "TC-057g: subagent + 'git worktree add --detach /tmp/d HEAD' → allow (no ref leak)"
+assert_subagent_allow "subagent worktree add --detach allowed" \
+  "git worktree add --detach /tmp/d HEAD"
+
+echo "TC-057h: subagent + 'git worktree add /tmp/d develop' (existing branch) → allow"
+assert_subagent_allow "subagent worktree add existing-branch allowed" \
+  "git worktree add /tmp/d develop"
+
+echo "TC-057i: subagent + 'git worktree move /tmp/a /tmp/b' → deny"
+assert_subagent_deny "subagent worktree move blocked" \
+  "git worktree move /tmp/a /tmp/b"
+
+# --------------------------------------------------------------------------
+# TC-057j: Issue #995 reproduction — git checkout -b <new-branch> from subagent
+# Pattern (A) Always-deny の deny verb `git checkout` で block されることを期待
+# (Pattern (E) ではない)。reason 文字列に `reviewer-state-mutating-git` が含まれる
+# ことは assert_subagent_deny helper が確認する。
+# --------------------------------------------------------------------------
+echo "TC-057j: subagent + 'git checkout -b pr-994-test' (Issue #995 reproduction) → deny"
+assert_subagent_deny "subagent git checkout -b new-branch blocked (Issue #995)" \
+  "git checkout -b pr-994-test"
+
+# --------------------------------------------------------------------------
+# TC-057k〜057p: Pattern (E) bypass 経路の cycle 1 fix
+# (test-reviewer / security-reviewer 指摘で実機検証された bypass 経路)
+# --------------------------------------------------------------------------
+
+# -b attached form (no space): `-bNAME`
+echo "TC-057k: subagent + 'git worktree add -bpr-994-test /tmp/d HEAD' → deny (attached, no space)"
+assert_subagent_deny "subagent worktree add -bNAME (no space) blocked" \
+  "git worktree add -bpr-994-test /tmp/d HEAD"
+
+# -b attached form with `=`: `-b=NAME`
+echo "TC-057l: subagent + 'git worktree add -b=evil /tmp/d HEAD' → deny (attached '=' form)"
+assert_subagent_deny "subagent worktree add -b=NAME (attached =) blocked" \
+  "git worktree add -b=evil /tmp/d HEAD"
+
+# --new-branch=NAME (long-form attached)
+echo "TC-057m: subagent + 'git worktree add --new-branch=evil /tmp/d HEAD' → deny"
+assert_subagent_deny "subagent worktree add --new-branch=NAME blocked" \
+  "git worktree add --new-branch=evil /tmp/d HEAD"
+
+# Intermediate flag: `--track -b NAME`
+echo "TC-057n: subagent + 'git worktree add --track -b newbr /tmp/d origin/main' → deny (intermediate -b)"
+assert_subagent_deny "subagent worktree add --track -b blocked (intermediate flag)" \
+  "git worktree add --track -b newbr /tmp/d origin/main"
+
+# Positional postfix: `add /tmp/d -b newbr HEAD`
+echo "TC-057o: subagent + 'git worktree add /tmp/d -b newbr HEAD' → deny (path-then-b postfix)"
+assert_subagent_deny "subagent worktree add path-then-b blocked" \
+  "git worktree add /tmp/d -b newbr HEAD"
+
+# Absolute path bypass: `/usr/bin/git checkout -b ...`
+echo "TC-057p: subagent + '/usr/bin/git checkout -b pr-994-test' → deny (absolute path bypass)"
+assert_subagent_deny "subagent /usr/bin/git checkout -b blocked (absolute path bypass)" \
+  "/usr/bin/git checkout -b pr-994-test"
+
+# `command git` bypass
+echo "TC-057q: subagent + 'command git checkout -b foo' → deny (command builtin bypass)"
+assert_subagent_deny "subagent 'command git checkout -b' blocked" \
+  "command git checkout -b foo"
+
+# Backslash-escaped: `\git checkout`
+echo "TC-057r: subagent + '\\\\git checkout -b foo' → deny (backslash-escaped bypass)"
+assert_subagent_deny "subagent '\\\\git checkout -b' blocked (backslash-escape bypass)" \
+  '\git checkout -b foo'
+
+# --orphan flag for git worktree add (creates new orphan branch)
+echo "TC-057s: subagent + 'git worktree add --orphan newbr /tmp/d' → deny (orphan branch creation)"
+assert_subagent_deny "subagent worktree add --orphan blocked" \
+  "git worktree add --orphan newbr /tmp/d"
+
+# --------------------------------------------------------------------------
+# TC-057t〜057z: Issue #995 cycle 3 — quote bypass + git global flag bypass
+# (security-reviewer cycle 2 で empirical 発見した pre-existing limitation。
+# Pattern 4 を quote 正規化 + global flag 正規化で structural に閉じる)
+# --------------------------------------------------------------------------
+
+# Quote bypass — Pattern 5 は既に `"` / `'` を正規化しているが Pattern 4 は非対称だった
+echo "TC-057t: subagent + 'eval \"git checkout -b evil\"' → deny (eval quote bypass)"
+assert_subagent_deny "subagent eval-quoted git checkout -b blocked" \
+  'eval "git checkout -b evil"'
+
+echo "TC-057u: subagent + 'sh -c \"git checkout -b evil\"' → deny (sh -c quote bypass)"
+assert_subagent_deny "subagent sh -c quoted git checkout -b blocked" \
+  'sh -c "git checkout -b evil"'
+
+echo "TC-057v: subagent + 'bash -c \"git checkout -b evil\"' → deny (bash -c quote bypass)"
+assert_subagent_deny "subagent bash -c quoted git checkout -b blocked" \
+  'bash -c "git checkout -b evil"'
+
+# git global flag bypass — `-C` / `--git-dir` / `--work-tree` 経由で verb を後置すると bypass
+echo "TC-057w: subagent + 'git -C /tmp checkout -b evil' → deny (-C global flag bypass)"
+assert_subagent_deny "subagent git -C <dir> checkout -b blocked" \
+  "git -C /tmp checkout -b evil"
+
+echo "TC-057x: subagent + 'git --git-dir=/tmp/.git checkout -b evil' → deny (--git-dir attached)"
+assert_subagent_deny "subagent git --git-dir=X checkout -b blocked" \
+  "git --git-dir=/tmp/.git checkout -b evil"
+
+echo "TC-057y: subagent + 'git --work-tree /tmp checkout -b evil' → deny (--work-tree spaced)"
+assert_subagent_deny "subagent git --work-tree X checkout -b blocked" \
+  "git --work-tree /tmp checkout -b evil"
+
+echo "TC-057z: subagent + 'git -C /tmp worktree add -b evil .wt HEAD' → deny (-C with worktree add)"
+assert_subagent_deny "subagent git -C <dir> worktree add -b blocked" \
+  "git -C /tmp worktree add -b evil .wt HEAD"
+
+# Combined: quote + global flag double bypass
+echo "TC-057aa: subagent + 'eval \"git -C /tmp checkout -b evil\"' → deny (combined bypass)"
+assert_subagent_deny "subagent eval-quoted git -C checkout -b blocked (combined)" \
+  'eval "git -C /tmp checkout -b evil"'
+
+# Non-regression: bare flag `--bare` should still allow read-only verbs
+echo "TC-057ab: subagent + 'git --bare log --oneline' → allow (--bare with read-only verb)"
+assert_subagent_allow "subagent git --bare log allowed (--bare with read-only verb)" \
+  "git --bare log --oneline"
+
+# Non-regression: `git -C` with read-only verb should allow
+echo "TC-057ac: subagent + 'git -C /tmp log --oneline' → allow (-C with read-only verb)"
+assert_subagent_allow "subagent git -C log allowed (-C with read-only verb)" \
+  "git -C /tmp log --oneline"
+
+# --------------------------------------------------------------------------
+# TC-057ad〜af: Issue #1322 — shell-wrapper の deny message に read-only probe 用の
+# 代替ガイダンス (subshell / 直接実行 / bash <script>) を付加する。
+# pattern 名 (reviewer-state-mutating-git) は既存テスト互換のため不変で、wrapper 専用の
+# 理由・代替が reason に出ることを pin する。「(Z) bash -c 一律 block は緩和しない」判断のため、
+# read-only git を包む wrapper も依然 deny されること、wrapper block が subagent 限定で
+# main session は非影響であることも併せて固定する。
+# --------------------------------------------------------------------------
+
+# Helper: subagent deny かつ reason に wrapper guidance が含まれることを確認
+assert_subagent_deny_wrapper_guidance() {
+  local label="$1"
+  local cmd="$2"
+  local rc=0
+  local output
+  output=$(run_guard_with_transcript "Bash" "$cmd" "$SUBAGENT_TRANSCRIPT") || rc=$?
+  local decision reason
+  decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+  if [ "$decision" = "deny" ] \
+    && [[ "$reason" == *"reviewer-state-mutating-git"* ]] \
+    && [[ "$reason" == *"Shell-command wrappers"* ]] \
+    && [[ "$reason" == *"subshell"* ]] \
+    && [[ "$reason" == *"bash <script.sh>"* ]]; then
+    pass "$label"
+  else
+    fail "$label — expected deny with shell-wrapper guidance, got decision=$decision reason=$reason"
+  fi
+}
+
+echo "TC-057ad: subagent + 'bash -c \"echo readonly-probe\"' (no git) → deny + wrapper guidance (Issue #1322)"
+assert_subagent_deny_wrapper_guidance "subagent non-git bash -c probe denied with wrapper guidance" \
+  'bash -c "echo readonly-probe"'
+
+echo "TC-057ae: subagent + 'bash -c \"git status\"' (read-only git wrapped) → deny + wrapper guidance (no relaxation)"
+assert_subagent_deny_wrapper_guidance "subagent read-only-git bash -c probe still denied (policy: no relaxation)" \
+  'bash -c "git status"'
+
+echo "TC-057af: main session + 'bash -c \"echo readonly-probe\"' → allow (wrapper block is subagent-scoped)"
+assert_main_allow "main session non-git bash -c allowed (wrapper block subagent-scoped)" \
+  'bash -c "echo readonly-probe"'
+
+# --------------------------------------------------------------------------
 # TC-058: git fetch (bare) allowed, --prune denied
 # --------------------------------------------------------------------------
 echo "TC-058a: subagent + 'git fetch origin' (bare) → allow"
@@ -862,279 +1051,368 @@ assert_subagent_deny "pipe |git reset blocked" "echo x|git reset --hard HEAD"
 echo "TC-084: subagent + '{git reset --hard HEAD;}' → deny (brace boundary)"
 assert_subagent_deny "brace group git reset blocked" "{git reset --hard HEAD;}"
 
-# --------------------------------------------------------------------------
-# TC-090〜098: Pattern 5 — gh issue create during create lifecycle (#475 Mode B)
-# --------------------------------------------------------------------------
-echo ""
-echo "=== TC-090+: Pattern 5 gh issue create lifecycle blocking (#475) ==="
+# alias of MAIN_TRANSCRIPT (above) — Tier 2/3 セクションを self-contained に保つため局所定義
+MAIN_TRANSCRIPT_TC113="$MAIN_TRANSCRIPT"
 
-# Helper: run hook with explicit cwd + pre-populated .rite-flow-state
-# Args: $1=cwd_dir, $2=command, $3..=extra jq-n args (unused now)
-run_guard_with_cwd() {
-  local cwd_dir="$1"
-  local cmd="$2"
+# Helper: run hook with raw JSON input + clean env (Tier 3 env vars unset)
+#   Optional 引数: $2 / $3 に `NAME=value` 形式を渡すと、env -u で unset した後に SET する
+#   (TC-114 / TC-114b の Tier 3 env var 経路を helper 経由で表現可能にする)。
+run_guard_clean_env() {
+  local raw_input="$1"
+  local set1="${2:-}"
+  local set2="${3:-}"
   local rc=0
   local output
-  output=$(jq -n --arg tn "Bash" --arg cmd "$cmd" --arg cwd "$cwd_dir" \
-    '{tool_name: $tn, tool_input: {command: $cmd}, cwd: $cwd}' \
-    | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  # env(1) は引数順序で処理する: -u X で X を unset した直後の X=val は最終的に
+  # X=val として export される。${var:+...} expansion により空引数を env に渡さない。
+  output=$(env -u CLAUDE_SUBAGENT_TYPE -u CLAUDE_AGENT_TYPE ${set1:+"$set1"} ${set2:+"$set2"} bash -c 'echo "$1" | bash "$2" 2>"$3"' _ "$raw_input" "$HOOK" "$STDERR_FILE") || rc=$?
   echo "$output"
   return $rc
 }
 
-# Helper: create a tmp cwd with a .rite-flow-state file having the given phase/active.
-make_cwd_with_state() {
-  local phase="$1"
-  local active="$2"
-  local dir
-  dir=$(mktemp -d "/tmp/rite-test-475.XXXXXX")
-  cat > "$dir/.rite-flow-state" <<STATE_EOF
-{
-  "schema_version": 1,
-  "phase": "$phase",
-  "active": $active,
-  "issue_number": 0,
-  "branch": "",
-  "pr_number": 0,
-  "next_action": "test",
-  "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")",
-  "session_id": "test-session"
-}
-STATE_EOF
-  echo "$dir"
-}
-
-# TC-090: gh issue create during phase=create_interview (active=true) → deny
-echo "TC-090: gh issue create + create_interview active → deny"
-tmpdir=$(make_cwd_with_state "create_interview" "true")
+# --------------------------------------------------------------------------
+# TC-113: subagent_type field set → Tier 2 deny (git checkout blocked)
+# --------------------------------------------------------------------------
+echo "TC-113: input JSON subagent_type field → Tier 2 deny"
 rc=0
-output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x' --body 'y'") || rc=$?
+tc113_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: "code-reviewer"}')
+output=$(run_guard_clean_env "$tc113_input") || rc=$?
 decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
 reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
-if [ "$decision" = "deny" ] && [[ "$reason" == *"create-lifecycle-direct-gh-issue"* ]]; then
-  pass "TC-090 gh issue create blocked during create_interview"
+stderr_log=$(cat "$STDERR_FILE")
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-113 subagent_type field triggers Tier 2 fallback"
 else
-  fail "TC-090 expected deny (create-lifecycle-direct-gh-issue), got decision=$decision reason=$reason"
+  fail "TC-113 expected deny, got decision=$decision reason=$reason"
 fi
-rm -rf "$tmpdir"
-
-# TC-091: gh issue create during phase=create_post_interview (active=true) → deny
-echo "TC-091: gh issue create + create_post_interview active → deny"
-tmpdir=$(make_cwd_with_state "create_post_interview" "true")
-rc=0
-output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-if [ "$decision" = "deny" ]; then
-  pass "TC-091 blocked during create_post_interview"
+if [[ "$stderr_log" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-113 stderr block log recorded"
 else
-  fail "TC-091 expected deny, got decision=$decision"
+  fail "TC-113 expected stderr block log, got: $stderr_log"
 fi
-rm -rf "$tmpdir"
-
-# TC-092: gh issue create during phase=create_delegation (active=true) → deny
-echo "TC-092: gh issue create + create_delegation active → deny"
-tmpdir=$(make_cwd_with_state "create_delegation" "true")
-rc=0
-output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-if [ "$decision" = "deny" ]; then
-  pass "TC-092 blocked during create_delegation"
-else
-  fail "TC-092 expected deny, got decision=$decision"
-fi
-rm -rf "$tmpdir"
-
-# TC-092b: gh issue create during phase=create_post_delegation (active=true) → deny
-# (fills coverage gap identified in #501 test-reviewer MEDIUM)
-echo "TC-092b: gh issue create + create_post_delegation active → deny"
-tmpdir=$(make_cwd_with_state "create_post_delegation" "true")
-rc=0
-output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-if [ "$decision" = "deny" ]; then
-  pass "TC-092b blocked during create_post_delegation"
-else
-  fail "TC-092b expected deny, got decision=$decision"
-fi
-rm -rf "$tmpdir"
-
-# TC-093: gh issue create with phase=create_completed → allow (lifecycle finished)
-echo "TC-093: gh issue create + create_completed → allow"
-tmpdir=$(make_cwd_with_state "create_completed" "true")
-rc=0
-output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
-if [ "$rc" = "0" ] && [ -z "$output" ]; then
-  pass "TC-093 allowed after create_completed"
-else
-  fail "TC-093 expected allow, got rc=$rc output=$output"
-fi
-rm -rf "$tmpdir"
-
-# TC-094: gh issue create with active=false → allow
-echo "TC-094: gh issue create + active=false → allow"
-tmpdir=$(make_cwd_with_state "create_interview" "false")
-rc=0
-output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
-if [ "$rc" = "0" ] && [ -z "$output" ]; then
-  pass "TC-094 allowed when active=false"
-else
-  fail "TC-094 expected allow, got rc=$rc output=$output"
-fi
-rm -rf "$tmpdir"
-
-# TC-095: gh issue create with phase=phase2_branch (different workflow) → allow
-echo "TC-095: gh issue create + phase2_branch → allow (different workflow)"
-tmpdir=$(make_cwd_with_state "phase2_branch" "true")
-rc=0
-output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
-if [ "$rc" = "0" ] && [ -z "$output" ]; then
-  pass "TC-095 allowed during non-create workflow"
-else
-  fail "TC-095 expected allow, got rc=$rc output=$output"
-fi
-rm -rf "$tmpdir"
-
-# TC-096: gh issue create with no .rite-flow-state → allow
-echo "TC-096: gh issue create + no .rite-flow-state → allow"
-tmpdir=$(mktemp -d "/tmp/rite-test-475.XXXXXX")
-rc=0
-output=$(run_guard_with_cwd "$tmpdir" "gh issue create --title 'x'") || rc=$?
-if [ "$rc" = "0" ] && [ -z "$output" ]; then
-  pass "TC-096 allowed without state file"
-else
-  fail "TC-096 expected allow, got rc=$rc output=$output"
-fi
-rm -rf "$tmpdir"
-
-# TC-097: gh issue list (not create) during create_interview → allow
-echo "TC-097: gh issue list + create_interview → allow (not 'create')"
-tmpdir=$(make_cwd_with_state "create_interview" "true")
-rc=0
-output=$(run_guard_with_cwd "$tmpdir" "gh issue list --state open") || rc=$?
-if [ "$rc" = "0" ] && [ -z "$output" ]; then
-  pass "TC-097 gh issue list allowed"
-else
-  fail "TC-097 expected allow, got rc=$rc output=$output"
-fi
-rm -rf "$tmpdir"
-
-# TC-098: gh issue view (not create) during create_interview → allow
-echo "TC-098: gh issue view + create_interview → allow (not 'create')"
-tmpdir=$(make_cwd_with_state "create_interview" "true")
-rc=0
-output=$(run_guard_with_cwd "$tmpdir" "gh issue view 123 --json body") || rc=$?
-if [ "$rc" = "0" ] && [ -z "$output" ]; then
-  pass "TC-098 gh issue view allowed"
-else
-  fail "TC-098 expected allow, got rc=$rc output=$output"
-fi
-rm -rf "$tmpdir"
-
-# --------------------------------------------------------------------------
-# TC-099-108: Pattern 5 bypass vector regression tests (#501 security review)
-# --------------------------------------------------------------------------
 echo ""
-echo "=== TC-099+: Pattern 5 bypass vector blocking (#501) ==="
 
-# Helper: assert deny (for bypass tests during create_interview)
-assert_p5_deny() {
-  local label="$1"
-  local cmd="$2"
-  local tmpdir
-  tmpdir=$(make_cwd_with_state "create_interview" "true")
-  local rc=0
-  local out
-  out=$(run_guard_with_cwd "$tmpdir" "$cmd") || rc=$?
-  local decision
-  decision=$(echo "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-  if [ "$decision" = "deny" ]; then
-    pass "$label"
+# --------------------------------------------------------------------------
+# TC-113b: agent_type field set (subagent_type 不在) → Tier 2 deny
+#   実装が `.subagent_type // .agent_type` の OR 経路を持つことを検証 (silent breakage 防止)
+# --------------------------------------------------------------------------
+echo "TC-113b: agent_type field set → Tier 2 deny"
+rc=0
+tc113b_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, agent_type: "code-reviewer"}')
+output=$(run_guard_clean_env "$tc113b_input") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+stderr_log=$(cat "$STDERR_FILE")
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-113b agent_type field triggers Tier 2 fallback (OR with subagent_type)"
+else
+  fail "TC-113b expected deny, got decision=$decision reason=$reason"
+fi
+if [[ "$stderr_log" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-113b stderr block log recorded"
+else
+  fail "TC-113b expected stderr block log, got: $stderr_log"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-113c: subagent_type: "" (空文字列) → Tier 2 fires NOT (main session 扱い)
+#   `| strings` filter + `[ -n "" ]` false により presence-only check が空文字を弾く挙動を検証
+# --------------------------------------------------------------------------
+echo "TC-113c: subagent_type=\"\" → Tier 2 does not fire (main session)"
+rc=0
+tc113c_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: ""}')
+output=$(run_guard_clean_env "$tc113c_input") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-113c empty subagent_type does not trigger Tier 2 (main session preserved)"
+else
+  fail "TC-113c expected allow, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-113d: subagent_type=123 (non-string numeric) → Tier 2 fires NOT
+#   `(.subagent_type | strings // "")` filter が numeric 値を空文字に正規化することを検証。
+#   `| strings` filter を `// empty` 等に縮退する mutation を kill する coverage。
+# --------------------------------------------------------------------------
+echo "TC-113d: subagent_type=123 → Tier 2 does not fire (numeric rejected by | strings)"
+rc=0
+tc113d_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: 123}')
+output=$(run_guard_clean_env "$tc113d_input") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-113d numeric subagent_type does not trigger Tier 2 (| strings filter rejects non-string)"
+else
+  fail "TC-113d expected allow, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-113e: subagent_type=[...] (non-string array) → Tier 2 fires NOT
+#   `(.subagent_type | strings // "")` filter が array 値を空文字に正規化することを検証。
+# --------------------------------------------------------------------------
+echo "TC-113e: subagent_type=[...] → Tier 2 does not fire (array rejected by | strings)"
+rc=0
+tc113e_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: ["code-reviewer", "security"]}')
+output=$(run_guard_clean_env "$tc113e_input") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-113e array subagent_type does not trigger Tier 2 (| strings filter rejects non-string)"
+else
+  fail "TC-113e expected allow, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-113f: subagent_type={...} (non-string object) → Tier 2 fires NOT
+#   `(.subagent_type | strings // "")` filter が object 値を空文字に正規化することを検証。
+# --------------------------------------------------------------------------
+echo "TC-113f: subagent_type={...} → Tier 2 does not fire (object rejected by | strings)"
+rc=0
+tc113f_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp, subagent_type: {name: "code-reviewer", level: 1}}')
+output=$(run_guard_clean_env "$tc113f_input") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-113f object subagent_type does not trigger Tier 2 (| strings filter rejects non-string)"
+else
+  fail "TC-113f expected allow, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-114: CLAUDE_SUBAGENT_TYPE env var set → Tier 3 deny
+#   run_guard_clean_env の第 2 引数で SUBAGENT 単独経路を検証 (helper 経由 = DRY)
+# --------------------------------------------------------------------------
+echo "TC-114: CLAUDE_SUBAGENT_TYPE env var → Tier 3 deny"
+rc=0
+tc114_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git reset --hard HEAD"}, cwd: "/tmp", transcript_path: $tp}')
+output=$(run_guard_clean_env "$tc114_input" "CLAUDE_SUBAGENT_TYPE=code-reviewer") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+stderr_log=$(cat "$STDERR_FILE")
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-114 CLAUDE_SUBAGENT_TYPE triggers Tier 3 fallback"
+else
+  fail "TC-114 expected deny via env var, got decision=$decision reason=$reason"
+fi
+if [[ "$stderr_log" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-114 stderr block log recorded"
+else
+  fail "TC-114 expected stderr block log, got: $stderr_log"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-114b: CLAUDE_AGENT_TYPE env var single (SUBAGENT unset) → Tier 3 deny
+#   実装 `[ -n "${CLAUDE_SUBAGENT_TYPE:-}" ] || [ -n "${CLAUDE_AGENT_TYPE:-}" ]` の OR 経路検証
+# --------------------------------------------------------------------------
+echo "TC-114b: CLAUDE_AGENT_TYPE env var → Tier 3 deny"
+rc=0
+tc114b_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git reset --hard HEAD"}, cwd: "/tmp", transcript_path: $tp}')
+output=$(run_guard_clean_env "$tc114b_input" "CLAUDE_AGENT_TYPE=code-reviewer") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+stderr_log=$(cat "$STDERR_FILE")
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-114b CLAUDE_AGENT_TYPE triggers Tier 3 fallback (OR with CLAUDE_SUBAGENT_TYPE)"
+else
+  fail "TC-114b expected deny via env var, got decision=$decision reason=$reason"
+fi
+if [[ "$stderr_log" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-114b stderr block log recorded"
+else
+  fail "TC-114b expected stderr block log, got: $stderr_log"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-115: All three tiers unset → main session, git checkout allowed (regression guard)
+# --------------------------------------------------------------------------
+echo "TC-115: 3 tiers unset → main session allowed (regression guard)"
+rc=0
+tc115_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" '{tool_name: "Bash", tool_input: {command: "git checkout develop"}, cwd: "/tmp", transcript_path: $tp}')
+output=$(run_guard_clean_env "$tc115_input") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-115 main session git checkout allowed (Tier 2/3 no false positives)"
+else
+  fail "TC-115 expected allow, got rc=$rc output=$output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-116: deny fallback (jq -n emit failure) → valid JSON, deny preserved (Issue #1278)
+#   stop-loop-continuation.test.sh TC-16 と同じ fake jq パターン: `jq -n` のみ exit 1 させ、
+#   それ以外 (hook 冒頭の payload parse 等) は real jq へ委譲する。jq 全欠落は payload parse が
+#   先に失敗して fail-open するため、現実的な fallback トリガーは emit-only の jq 失敗。
+#   _deny_reason の構成要素は現状ハードコード文字列だが、fallback が改行 \n エスケープ +
+#   neutralize_ctrl --c0-only を経由して valid JSON を emit し deny + exit 2 を維持することを pin する。
+#   エスケープ連鎖そのものの非 vacuous 検証 (改行 / raw C0 実入力) は TC-117 が担う。
+# --------------------------------------------------------------------------
+echo "TC-116: deny fallback (jq -n emit failure) → valid JSON, deny preserved"
+rc=0
+real_jq=$(command -v jq)
+tc116_input=$("$real_jq" -n '{tool_name: "Bash", tool_input: {command: "gh pr diff 123 --stat"}, cwd: "/tmp"}')
+fake_bin_116=$(mktemp -d)
+cat > "$fake_bin_116/jq" <<EOF
+#!/bin/bash
+if [ "\$1" = "-n" ]; then exit 1; fi
+exec "$real_jq" "\$@"
+EOF
+chmod +x "$fake_bin_116/jq"
+output=$(echo "$tc116_input" | PATH="$fake_bin_116:$PATH" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+# Sanity pin: fallback 経路が emit した (primary jq 経路ではない)
+if [ -n "$output" ]; then
+  pass "TC-116 fallback emitted output despite jq -n failure"
+else
+  fail "TC-116 no output — fallback path not reached: $(cat -v "$STDERR_FILE")"
+fi
+if [ "$rc" = "2" ]; then
+  pass "TC-116 fallback exits 2 (fail-closed deny contract)"
+else
+  fail "TC-116 expected rc=2, got rc=$rc"
+fi
+# RFC 8259 validity — 改行/C0 生バイトが文字列リテラルに残ると parse が失敗する
+if printf '%s' "$output" | "$real_jq" -e . >/dev/null 2>&1; then
+  pass "TC-116 fallback output is valid JSON"
+else
+  fail "TC-116 fallback output is not parseable JSON: $(printf '%s' "$output" | cat -v)"
+fi
+decision=$(printf '%s' "$output" | "$real_jq" -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(printf '%s' "$output" | "$real_jq" -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"gh-pr-diff-stat"* ]]; then
+  pass "TC-116 deny decision and pattern name survive the fallback"
+else
+  fail "TC-116 expected deny with gh-pr-diff-stat via fallback, got decision=$decision reason=$reason"
+fi
+# raw C0 バイト (ESC 等) の非漏出 — neutralize_ctrl --c0-only の挙動 pin
+if printf '%s' "$output" | LC_ALL=C grep -q $'\x1b'; then
+  fail "TC-116 fallback JSON leaked a raw ESC byte: $(printf '%s' "$output" | cat -v)"
+else
+  pass "TC-116 fallback JSON contains no raw ESC byte"
+fi
+rm -rf "$fake_bin_116"
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-117: _bash_guard_escape_deny_reason — 改行/C0 実入力の非 vacuous 変換 pin (Issue #1278)
+#   TC-116 は fallback 経路の構造契約 (到達 / rc=2 / deny 生存) を pin するが、現行の
+#   _deny_reason は静的 ASCII のみで構成されるため、エスケープ連鎖そのものは no-op の
+#   まま pass する (vacuous)。本 TC は hook から関数定義を境界行
+#   (`_bash_guard_escape_deny_reason() {` 〜 `}`) で抽出し、改行 + raw ESC + CR + TAB +
+#   backslash + double-quote を含む入力を直接流して変換を非 vacuous に検証する。
+#   エスケープ連鎖のどの 1 行を欠落させても assertion が落ちる (mutation 耐性):
+#   \\ 行欠落 → (3) invalid JSON (\s は invalid escape)、\" 行欠落 → (3) 構造破壊、
+#   \n 行欠落 → (1) literal \n 不在 (改行は --c0-only で ? 化されるため)、
+#   neutralize 行欠落 → (2) raw ESC 残存。
+# --------------------------------------------------------------------------
+echo "TC-117: _bash_guard_escape_deny_reason neutralizes newline/C0 input (non-vacuous)"
+real_jq=$(command -v jq)
+# 依存 helper (neutralize_ctrl) を source し、関数定義を hook から抽出して取り込む
+source "$SCRIPT_DIR/../control-char-neutralize.sh"
+eval "$(awk '/^_bash_guard_escape_deny_reason\(\) \{$/,/^\}$/' "$HOOK")"
+if declare -f _bash_guard_escape_deny_reason >/dev/null 2>&1; then
+  pass "TC-117 function extracted from hook"
+  tc117_input=$(printf 'line1 "quoted" back\\slash\nline2 \x1b[31mred\x1b[0m tab:\there cr:\r.')
+  tc117_out=$(_bash_guard_escape_deny_reason "$tc117_input") || tc117_out=""
+  # (1) raw 改行ゼロ + literal \n 保存 (改行が neutralize で ? 化される mutation も検出)
+  tc117_nl_count=$(printf '%s' "$tc117_out" | LC_ALL=C wc -l | tr -d ' ')
+  if [ "$tc117_nl_count" = "0" ] && [[ "$tc117_out" == *'line1'*'\n'*'line2'* ]]; then
+    pass "TC-117 newline escaped to literal \\n (no raw newline)"
   else
-    fail "$label (cmd='$cmd', got decision=$decision)"
+    fail "TC-117 newline not escaped (raw_nl=$tc117_nl_count): $(printf '%s' "$tc117_out" | cat -v)"
   fi
-  rm -rf "$tmpdir"
-}
-
-# Helper: assert allow (for false-positive regression).
-# Checks that permissionDecision is not "deny" (rather than rc=0 && empty output), so future
-# hook changes that emit informational stdout on allow paths don't false-fail this assertion.
-assert_p5_allow() {
-  local label="$1"
-  local cmd="$2"
-  local tmpdir
-  tmpdir=$(make_cwd_with_state "create_interview" "true")
-  local rc=0
-  local out
-  out=$(run_guard_with_cwd "$tmpdir" "$cmd") || rc=$?
-  local decision
-  decision=$(echo "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-  if [ "$decision" != "deny" ]; then
-    pass "$label"
+  # (2) raw ESC/TAB/CR バイトの非漏出 (? 化)
+  tc117_c0_count=$(printf '%s' "$tc117_out" | LC_ALL=C tr -cd '\033\011\015' | LC_ALL=C wc -c | tr -d ' ')
+  if [ "$tc117_c0_count" = "0" ]; then
+    pass "TC-117 raw C0 bytes (ESC/TAB/CR) neutralized"
   else
-    fail "$label (cmd='$cmd', decision=$decision out=$out)"
+    fail "TC-117 $tc117_c0_count raw C0 byte(s) leaked: $(printf '%s' "$tc117_out" | cat -v)"
   fi
-  rm -rf "$tmpdir"
-}
+  # (3) JSON 文字列リテラル埋め込みで valid JSON (RFC 8259)
+  tc117_json=$(printf '{"reason":"%s"}' "$tc117_out")
+  if printf '%s' "$tc117_json" | "$real_jq" -e . >/dev/null 2>&1; then
+    pass "TC-117 escaped output embeds as valid JSON"
+  else
+    fail "TC-117 invalid JSON after embedding: $(printf '%s' "$tc117_json" | cat -v)"
+  fi
+  # (4) decode round-trip: " と \ の構造保持 + \n の実改行復元 + ESC の ? 化
+  tc117_decoded=$(printf '%s' "$tc117_json" | "$real_jq" -r '.reason // empty' 2>/dev/null) || tc117_decoded=""
+  if [[ "$tc117_decoded" == *'"quoted"'* ]] && [[ "$tc117_decoded" == *'back\slash'* ]] \
+     && [[ "$tc117_decoded" == *$'\n'* ]] && [[ "$tc117_decoded" == *'?[31mred?[0m'* ]]; then
+    pass "TC-117 quote/backslash/newline survive round-trip, ESC degraded to ?"
+  else
+    fail "TC-117 round-trip mismatch: $(printf '%s' "$tc117_decoded" | cat -v)"
+  fi
+else
+  fail "TC-117 could not extract _bash_guard_escape_deny_reason from hook (boundary lines changed?)"
+fi
+echo ""
 
-# TC-099: semicolon boundary → deny
-assert_p5_deny "TC-099 'gh issue create;echo x' blocked (semicolon)" "gh issue create --title x;echo done"
-
-# TC-100: pipe boundary → deny
-assert_p5_deny "TC-100 'gh issue create | tee' blocked (pipe)" "gh issue create --title x|tee out"
-
-# TC-101: ampersand boundary → deny
-assert_p5_deny "TC-101 'gh issue create &' blocked (ampersand)" "gh issue create --title x &"
-
-# TC-102: prefix shortcut 'gh issue c' → allow (ambiguous in gh CLI itself, not a real bypass)
-# gh CLI resolves `c` as ambiguous (close/comment/create) and errors out.
-# Since it never actually invokes `gh issue create`, Pattern 5 does not need to match it.
-# Note: if gh CLI ever resolves `c` to a single subcommand, TC-102 must flip to deny.
-assert_p5_allow "TC-102 'gh issue c' allowed (ambiguous in gh CLI, not a real bypass)" "gh issue c --title x"
-
-# TC-102b: 2-char prefix 'gh issue cr' → deny
-# Among `gh issue` subcommands, only `create` starts with `cr`, so gh CLI resolves
-# `gh issue cr` unambiguously to `create`. This is a real bypass vector.
-assert_p5_deny "TC-102b 'gh issue cr' blocked (2-char unambiguous prefix)" "gh issue cr --title x"
-
-# TC-103: prefix shortcut 'gh issue cre' → deny
-assert_p5_deny "TC-103 'gh issue cre' blocked (prefix shortcut)" "gh issue cre --title x"
-
-# TC-104: brace group → deny (Pattern 4 normalization)
-assert_p5_deny "TC-104 '{gh issue create;}' blocked (brace group)" "{gh issue create --title x;}"
-
-# TC-105: subshell → deny
-assert_p5_deny "TC-105 '(gh issue create)' blocked (subshell)" "(gh issue create --title x)"
-
-# TC-106: env prefix → deny (not a bypass, just verify)
-assert_p5_deny "TC-106 'FOO=bar gh issue create' blocked" "FOO=bar gh issue create --title x"
-
-# TC-107: 'gh issue close' prefix 'c' ambiguity → MUST still deny because 'c' matches both
-# NOTE: This is intentional — we err on the side of blocking. 'gh issue c' is ambiguous
-# in gh CLI itself (returns "ambiguous" error), so users should not rely on it.
-# For 'gh issue close' (full spelling), the pattern does NOT match and it's allowed:
-assert_p5_allow "TC-107 'gh issue close' allowed (full spelling, not 'create' prefix)" "gh issue close 123"
-
-# TC-108: 'gh issue comment' allowed (full spelling)
-assert_p5_allow "TC-108 'gh issue comment' allowed" "gh issue comment 123 --body x"
-
-# TC-109: heredoc-body bypass → deny (Pattern 5 uses $COMMAND directly, not $CMD_CHECK)
-# `cat <<EOF ... gh issue create ... EOF | sh` hides the command in a heredoc body.
-# Pattern 1-4 strip the heredoc via CMD_CHECK="${COMMAND%%<<*}" but Pattern 5 bypasses that
-# by operating on $COMMAND directly (#501 security review HIGH).
-assert_p5_deny "TC-109 heredoc body bypass blocked" "cat <<EOF | sh
-gh issue create --title x
-EOF"
-
-# TC-110: eval with double-quoted body → deny (quote normalization)
-assert_p5_deny "TC-110 eval \"gh issue create\" blocked (quote normalization)" 'eval "gh issue create --title x"'
-
-# TC-111: eval with single-quoted body → deny
-assert_p5_deny "TC-111 eval 'gh issue create' blocked (quote normalization)" "eval 'gh issue create --title x'"
-
-# TC-112: backslash line continuation → deny
-# `gh \<newline>  issue \<newline>  create` normalized via \n→space and \→space
-# Using $'...' ANSI-C quoting to preserve literal backslash-newline in the test input.
-assert_p5_deny "TC-112 backslash line continuation blocked" $'gh \\\n  issue \\\n  create --title x'
+# --------------------------------------------------------------------------
+# TC-118: deny fallback neutralize 失敗 → static placeholder 縮退、deny + exit 2 維持 (Issue #1282)
+#   TC-116 は fallback 経路のエスケープ成功側 (reason に pattern 名が残る) を pin する。本 TC は
+#   その先の二重障害 — fallback 内で _bash_guard_escape_deny_reason (neutralize_ctrl = 固定引数の
+#   tr パイプ) まで失敗した場合 — の static placeholder 縮退を pin する。helper header が
+#   「実質失敗しない」と明記する経路のため、fake tr で強制発火させる: neutralize_ctrl の
+#   3 モードはいずれも第 1 引数に `\000-` レンジ文字列を持つので $1 マッチでのみ exit 1 し、
+#   hook 内の他の tr 用途 (jq parse error path の `tr '\n' ' '` / flow-state contains_ctrl の
+#   `tr -d ...` は $1=-d) は real tr へ委譲して巻き添えを防ぐ。
+#   非 vacuous 性 (TC-116 の vacuous 教訓): neutralize 成功時は reason に pattern 名
+#   (gh-pr-diff-stat) が入るため、「placeholder 文言あり + pattern 名なし」の両方向 assert で
+#   縮退の発生そのものを証明する。
+# --------------------------------------------------------------------------
+echo "TC-118: deny fallback neutralize failure → static placeholder, deny + exit 2 preserved"
+rc=0
+real_jq=$(command -v jq)
+real_tr=$(command -v tr)
+tc118_input=$("$real_jq" -n '{tool_name: "Bash", tool_input: {command: "gh pr diff 123 --stat"}, cwd: "/tmp"}')
+fake_bin_118=$(mktemp -d)
+cat > "$fake_bin_118/jq" <<EOF
+#!/bin/bash
+if [ "\$1" = "-n" ]; then exit 1; fi
+exec "$real_jq" "\$@"
+EOF
+cat > "$fake_bin_118/tr" <<EOF
+#!/bin/bash
+case "\$1" in *000-*) exit 1 ;; esac
+exec "$real_tr" "\$@"
+EOF
+chmod +x "$fake_bin_118/jq" "$fake_bin_118/tr"
+output=$(echo "$tc118_input" | PATH="$fake_bin_118:$PATH" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+# Sanity pin: placeholder 縮退経路でも JSON を emit した (silent allow へ降格していない)
+if [ -n "$output" ]; then
+  pass "TC-118 placeholder path emitted output despite jq -n + tr failure"
+else
+  fail "TC-118 no output — placeholder path not reached: $(cat -v "$STDERR_FILE")"
+fi
+if [ "$rc" = "2" ]; then
+  pass "TC-118 placeholder path exits 2 (fail-closed deny contract)"
+else
+  fail "TC-118 expected rc=2, got rc=$rc"
+fi
+if printf '%s' "$output" | "$real_jq" -e . >/dev/null 2>&1; then
+  pass "TC-118 placeholder output is valid JSON"
+else
+  fail "TC-118 placeholder output is not parseable JSON: $(printf '%s' "$output" | cat -v)"
+fi
+decision=$(printf '%s' "$output" | "$real_jq" -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(printf '%s' "$output" | "$real_jq" -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "TC-118 deny decision survives the placeholder degradation"
+else
+  fail "TC-118 expected deny via placeholder path, got decision=$decision"
+fi
+# 縮退の発生証明 (非 vacuous): placeholder 文言あり + 通常 fallback の pattern 名なし
+if [[ "$reason" == *"reason neutralization failed, fail-closed"* ]] && [[ "$reason" != *"gh-pr-diff-stat"* ]]; then
+  pass "TC-118 reason degraded to the static placeholder (no pattern name leak)"
+else
+  fail "TC-118 expected static placeholder reason, got: $reason"
+fi
+# placeholder が案内する stderr ログの前提を pin (pattern 名はこちらに残る)
+if grep -q "BLOCKED pattern=gh-pr-diff-stat" "$STDERR_FILE"; then
+  pass "TC-118 stderr BLOCKED log keeps the pattern name (placeholder's referenced log)"
+else
+  fail "TC-118 stderr missing BLOCKED log: $(cat -v "$STDERR_FILE")"
+fi
+rm -rf "$fake_bin_118"
+echo ""
 
 # --------------------------------------------------------------------------
 # Summary

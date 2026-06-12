@@ -5,8 +5,7 @@
 # establishes the API relation using `link-sub-issue.sh`.
 #
 # Intended for one-shot remediation of pre-existing Issues created
-# before the mandatory linkage was wired into create-decompose / parent-routing
-# (Issue #514).
+# before the mandatory linkage was wired into the create workflow.
 #
 # Usage:
 #   bash backfill-sub-issues.sh <owner> <repo> [child_number ...]
@@ -92,7 +91,7 @@ api_error_count=0
 #
 # stderr suppression (`2>/dev/null`) は使用せず、エラー出力を一時ファイルに捕捉して
 # 呼び出し元に warning + 詳細メッセージを surface する。これにより MUST「silent skip 禁止」
-# (Issue #514) と CLAUDE.md feedback `feedback_e2e_no_stop_before_review` の精神を遵守する。
+# と CLAUDE.md feedback `feedback_e2e_no_stop_before_review` の精神を遵守する。
 extract_parent_number() {
   local child_num="$1"
   local body err_file
@@ -199,7 +198,7 @@ for child in "${TARGET_CHILDREN[@]}"; do
       failed_count=$((failed_count + 1))
       ;;
     *)
-      # 未知 status を silent 通過させない (Issue #514 MUST NOT)
+      # 未知 status を silent 通過させない
       # JSON parse 失敗や link-sub-issue.sh の将来拡張で空文字/未知値が
       # 返った場合、サイレントロスを起こさず failed として計上する。
       echo "❌ #$child: unexpected link status '$status' (msg: $message)" >&2

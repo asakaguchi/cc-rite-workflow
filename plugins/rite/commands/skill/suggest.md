@@ -52,7 +52,6 @@ ls -la package.json pyproject.toml Cargo.toml go.mod pom.xml build.gradle 2>/dev
 
 Use the Read tool to read `rite-config.yml` and check the following:
 
-- `project.type`: Project type (generic, webapp, library, cli, documentation)
 - `language`: Language setting (used to determine output language)
 
 ---
@@ -106,7 +105,6 @@ For each skill, calculate a score based on the following factors:
 | Issue title/body keyword match | 3 | Match between Issue content and skill keywords | `## Auto-Activation Keywords` |
 | Changed file types | 2 | File extensions and directory placement | `## File Patterns` or inference (see below) |
 | Label match | 2 | Relevance between Issue labels and skill | Inferred from keywords (see below) |
-| Project type | 1 | project.type from rite-config.yml | Inferred from skill directory structure |
 
 **Retrieving file patterns:**
 
@@ -114,7 +112,7 @@ For each skill, calculate a score based on the following factors:
 2. If the section does not exist -> infer from keywords:
    - `workflow`, `Issue`, `PR` -> `commands/**/*.md`, `*.yml`
    - `review`, `lint` -> all files
-   - Reviewer skills (`skills/reviewers/`) -> refer to each skill file's `Activation` section
+   - Reviewer skills (`skills/reviewers/`) -> refer to the Available Reviewers table's `Activation` column in `skills/reviewers/SKILL.md`
 
 **Inferring related labels:**
 
@@ -145,10 +143,6 @@ Infer from skill keywords using the following mapping:
   for label in issue.labels:
     if label in skill.related_labels:
       score += 2
-
-  # プロジェクト種別マッチ
-  if project.type in skill.applicable_types:
-    score += 1
 
   if score >= threshold:
     suggested_skills.append(skill)
@@ -181,63 +175,63 @@ Determine the output language according to the `language` setting read in Phase 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  {i18n:skill_suggest_title}                                  │
+│  スキル提案                                  │
 └─────────────────────────────────────────────────────────────┘
 
-{i18n:skill_suggest_current_context}:
+現在のコンテキスト:
   Issue: #{number} {title}
-  {i18n:skill_suggest_branch}: {branch_name}
-  {i18n:skill_suggest_changed_files}: {changed_files_count} {i18n:sprint_plan_count_unit}
+  ブランチ: {branch_name}
+  変更ファイル: {changed_files_count} 件
 
 ───────────────────────────────────────────────────────────────
 
-【{i18n:skill_suggest_strongly_recommended}】
+【強く推奨】
 
   📌 {skill_name}
      {skill_description}
 
-     {i18n:skill_suggest_reason}:
+     適用理由:
      - {reason_1}
      - {reason_2}
 
-     {i18n:skill_suggest_how_to_apply}: {i18n:skill_suggest_auto_apply}
+     適用方法: このスキルは自動的に適用されます
 
-【{i18n:skill_suggest_recommended}】
+【推奨】
 
   📎 {skill_name}
      {skill_description}
 
-     {i18n:skill_suggest_reason}:
+     適用理由:
      - {reason_1}
 
 ───────────────────────────────────────────────────────────────
 
-【{i18n:skill_suggest_reference_info}】
-- {i18n:skill_suggest_info_based_on_context}
-- {i18n:skill_suggest_info_defined_in}
+【参考情報】
+- 上記スキルは現在のコンテキストに基づいて提案されています
+- スキルは skills/ ディレクトリの SKILL.md で定義されています
 ```
 
 ### 4.3 When No Recommended Skills Exist
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  {i18n:skill_suggest_title}                                  │
+│  スキル提案                                  │
 └─────────────────────────────────────────────────────────────┘
 
-{i18n:skill_suggest_current_context}:
+現在のコンテキスト:
   Issue: #{number} {title}
-  {i18n:skill_suggest_branch}: {branch_name}
-  {i18n:skill_suggest_changed_files}: {changed_files_count} {i18n:sprint_plan_count_unit}
+  ブランチ: {branch_name}
+  変更ファイル: {changed_files_count} 件
 
 ───────────────────────────────────────────────────────────────
 
-{i18n:skill_suggest_no_recommended}
+現在のコンテキストに特に推奨されるスキルはありません。
 
-{i18n:skill_suggest_available_skills}:
+利用可能なスキル一覧:
 - {skill_name}: {skill_description}
 - {skill_name}: {skill_description}
 
-{i18n:skill_suggest_auto_apply_note}
+スキルは作業内容に応じて自動的に適用されます。
 ```
 
 ### 4.4 When Context Information Is Missing or Incomplete
@@ -246,18 +240,18 @@ When the Issue number cannot be determined (no `issue-{number}` pattern in branc
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  {i18n:skill_suggest_title}                                  │
+│  スキル提案                                  │
 └─────────────────────────────────────────────────────────────┘
 
-{i18n:skill_suggest_insufficient_context}:
+コンテキスト情報が不足しています:
 
 {missing_info_list}
 
-【{i18n:skill_suggest_resolution}】
-- {i18n:skill_suggest_resolution_work_on_branch}
-- {i18n:skill_suggest_resolution_use_start}
+【対処方法】
+- Issue を紐づけたブランチで作業してください
+- /rite:pr:open {number} で作業を開始すると、ブランチと Issue が自動的に紐づきます
 
-{i18n:skill_suggest_available_skills}:
+利用可能なスキル一覧:
 - {skill_name}: {skill_description}
 ```
 
@@ -270,14 +264,14 @@ When the Issue number cannot be determined (no `issue-{number}` pattern in branc
 When `--verbose` or `-v` is specified as an argument, display matching score details:
 
 ```
-【{i18n:skill_suggest_matching_details}】
+【マッチング詳細】
 
 {skill_name}:
-  {i18n:skill_suggest_total_score}: 7
-  - {i18n:skill_suggest_keyword_match}: +3 (workflow, Issue)
-  - {i18n:skill_suggest_file_match}: +2 (*.md)
-  - {i18n:skill_suggest_label_match}: +2 (enhancement)
-  - {i18n:skill_suggest_project_type}: +0
+  総合スコア: 7
+  - Issue キーワード: +3 (workflow, Issue)
+  - 変更ファイル: +2 (*.md)
+  - ラベル: +2 (enhancement)
+  - プロジェクト種別: +0
 ```
 
 ### 5.2 Filter Mode (`--filter {category}`)
@@ -298,20 +292,20 @@ Display only skills in a specific category:
 
 **Dynamic category retrieval:**
 
-Categories are dynamically retrieved from the directory structure of `{plugin_root}/skills/` (resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script)):
+Categories are dynamically retrieved from the directory structure of `{plugin_root}/skills/` (resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version)):
 - `skills/{category}/SKILL.md` -> category name is `{category}`
-- `skills/reviewers/*.md` -> included in category `review`
+- `skills/reviewers/*.md` -> included in category `review` (現状は coordination `SKILL.md` のみ。個別 reviewer 定義は `agents/*-reviewer.md` に移動済み)
 
 **Note**: When a skill is not assigned to a category or a non-existent category is specified:
 
 ```
-{i18n:skill_suggest_warning_category} (variables: category={category})
+警告: カテゴリ '{category}' に一致するスキルが見つかりません
 
-{i18n:skill_suggest_available_categories}:
+利用可能なカテゴリ:
 - workflow
 - review
 
-{i18n:skill_suggest_show_all_hint}
+すべてのスキルを表示するには --filter オプションを省略してください。
 ```
 
 ---

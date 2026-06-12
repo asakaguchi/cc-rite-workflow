@@ -40,18 +40,31 @@ fail() {
 # The lock acquisition failure fallback is covered by work-memory-lock.test.sh.
 run_hook() {
   local cwd="$1"
-  local command_id="${2:-/rite:issue:start}"
+  local command_id="${2:-/rite:pr:open}"
   local rc=0
   LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
   bash "$HOOK" --command-id "$command_id" --cwd "$cwd" 2>"$LAST_STDERR_FILE" || rc=$?
   return $rc
 }
 
-# Helper: create compact state file
+# Helper: path to the per-session compact-state file (Issue #1371). Mirrors
+# preflight-check.sh's derivation: .rite/sessions/<sid>.flow-state → .compact-state.
+compact_state_path() {
+  local dir="$1"
+  local sid="${2:-test-sid-$(basename "$dir")}"
+  echo "$dir/.rite/sessions/${sid}.compact-state"
+}
+
+# Helper: create per-session compact state file (Issue #1371). Writes a
+# deterministic .rite-session-id so preflight-check.sh resolves the same
+# per-session path that pre-compact.sh would write to.
 create_compact_state() {
   local dir="$1"
   local content="$2"
-  echo "$content" > "$dir/.rite-compact-state"
+  local sid="${3:-test-sid-$(basename "$dir")}"
+  mkdir -p "$dir/.rite/sessions"
+  printf '%s' "$sid" > "$dir/.rite-session-id"
+  echo "$content" > "$dir/.rite/sessions/${sid}.compact-state"
 }
 
 echo "=== preflight-check.sh tests ==="
@@ -91,7 +104,7 @@ echo "TC-003: compact_state=blocked → exit 1 (block)"
 dir003="$TEST_DIR/tc003"
 mkdir -p "$dir003"
 create_compact_state "$dir003" '{"compact_state": "recovering", "active_issue": 42, "compact_state_set_at": "2026-01-01T00:00:00Z"}'
-output=$(bash "$HOOK" --command-id "/rite:issue:start" --cwd "$dir003" 2>/dev/null) && rc=0 || rc=$?
+output=$(bash "$HOOK" --command-id "/rite:pr:open" --cwd "$dir003" 2>/dev/null) && rc=0 || rc=$?
 if [ $rc -eq 1 ]; then
   if echo "$output" | grep -q "#42"; then
     pass "Blocked state → exit 1 with Issue #42 in output"
@@ -143,7 +156,7 @@ stale_ts=$(date -u -d "10 minutes ago" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date
 create_compact_state "$dir006" "{\"compact_state\": \"resuming\", \"compact_state_set_at\": \"$stale_ts\", \"active_issue\": 99}"
 if run_hook "$dir006"; then
   # Verify state is still resuming (not reset to blocked)
-  new_state=$(jq -r '.compact_state' "$dir006/.rite-compact-state" 2>/dev/null)
+  new_state=$(jq -r '.compact_state' "$(compact_state_path "$dir006")" 2>/dev/null)
   if [ "$new_state" = "resuming" ]; then
     pass "Stale resuming → still allowed, state unchanged"
   else
@@ -173,9 +186,10 @@ echo ""
 # --------------------------------------------------------------------------
 echo "TC-008: Invalid JSON in compact state → exit 1 (fail-closed)"
 dir008="$TEST_DIR/tc008"
-mkdir -p "$dir008"
-echo "NOT-VALID-JSON" > "$dir008/.rite-compact-state"
-output=$(bash "$HOOK" --command-id "/rite:issue:start" --cwd "$dir008" 2>/dev/null) && rc=0 || rc=$?
+mkdir -p "$dir008/.rite/sessions"
+printf '%s' "test-sid-$(basename "$dir008")" > "$dir008/.rite-session-id"
+echo "NOT-VALID-JSON" > "$(compact_state_path "$dir008")"
+output=$(bash "$HOOK" --command-id "/rite:pr:open" --cwd "$dir008" 2>/dev/null) && rc=0 || rc=$?
 if [ $rc -eq 1 ]; then
   # Verify error message mentions read failure
   if echo "$output" | grep -qi "読み取り\|read\|parse\|fail\|error\|invalid"; then
@@ -208,7 +222,7 @@ dir010="$TEST_DIR/tc010"
 mkdir -p "$dir010"
 # Run from a clean directory without .rite-compact-state
 rc=0
-(cd "$dir010" && bash "$HOOK" --command-id "/rite:issue:start" 2>/dev/null) || rc=$?
+(cd "$dir010" && bash "$HOOK" --command-id "/rite:pr:open" 2>/dev/null) || rc=$?
 if [ $rc -eq 0 ]; then
   pass "No --cwd → uses pwd (clean dir), exit 0"
 else
@@ -256,7 +270,7 @@ echo "TC-013: Unknown compact_state value → exit 1 (block)"
 dir013="$TEST_DIR/tc013"
 mkdir -p "$dir013"
 create_compact_state "$dir013" '{"compact_state": "unknown_state", "active_issue": 1}'
-output=$(bash "$HOOK" --command-id "/rite:issue:start" --cwd "$dir013" 2>/dev/null) && rc=0 || rc=$?
+output=$(bash "$HOOK" --command-id "/rite:pr:open" --cwd "$dir013" 2>/dev/null) && rc=0 || rc=$?
 if [ $rc -eq 1 ]; then
   pass "Unknown state → exit 1 (blocked)"
 else
@@ -275,6 +289,46 @@ if run_hook "$dir014" "/rite:resume"; then
   pass "Unknown state + /rite:resume → allowed"
 else
   fail "Should allow /rite:resume regardless of state"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-LEGACY-FALLBACK: sid unresolvable → legacy .rite-compact-state read (block)
+# --------------------------------------------------------------------------
+# When the session id cannot be resolved (no .rite-session-id file AND no
+# CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID env), flow-state.sh path exits non-zero,
+# FLOW_STATE="", and preflight-check.sh falls back to reading the legacy shared
+# "$STATE_ROOT/.rite-compact-state". Seeding it with compact_state=recovering and
+# asserting a non-resume command is blocked pins that the gate reads the legacy path
+# on the fallback. env -u strips any ambient session id for determinism (fixture-based
+# TCs write .rite-session-id, which wins over env, so they are unaffected).
+echo "TC-LEGACY-FALLBACK: sid unresolvable → legacy .rite-compact-state read → block"
+dirlf="$TEST_DIR/tc-legacy-fallback"
+mkdir -p "$dirlf"
+printf '%s\n' '{"compact_state": "recovering", "active_issue": 77, "compact_state_set_at": "2026-01-01T00:00:00Z"}' > "$dirlf/.rite-compact-state"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+lf_out=$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" --command-id "/rite:pr:open" --cwd "$dirlf" 2>"$LAST_STDERR_FILE") && lf_rc=0 || lf_rc=$?
+if [ "$lf_rc" -eq 1 ] && printf '%s' "$lf_out" | grep -q "#77"; then
+  pass "sid unresolvable + legacy recovering → non-resume command blocked (legacy path read)"
+else
+  fail "Expected exit 1 with Issue #77 reading legacy path, got exit $lf_rc: $lf_out"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-LEGACY-FALLBACK-RESUME: sid unresolvable + legacy recovering + /rite:resume → allow
+# --------------------------------------------------------------------------
+# Note: /rite:resume is allowed regardless of compact-state (even when the file is
+# absent — preflight-check.sh exits 0 for /rite:resume at the no-file and resume gates
+# alike), so this case ALONE does not discriminate the legacy fallback read. Its value
+# is as the complement to the preceding block TC: together they pin that under the
+# legacy fallback a recovering state blocks non-resume commands while /rite:resume stays
+# exempt. Reuses $dirlf and its seeded legacy .rite-compact-state from that block.
+echo "TC-LEGACY-FALLBACK-RESUME: sid unresolvable + legacy recovering + /rite:resume → exit 0"
+if env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" --command-id "/rite:resume" --cwd "$dirlf" >/dev/null 2>&1; then
+  pass "/rite:resume allowed even on legacy fallback block"
+else
+  fail "/rite:resume should be allowed regardless of legacy compact state"
 fi
 echo ""
 

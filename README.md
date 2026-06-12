@@ -1,17 +1,13 @@
 # Claude Code Rite Workflow
 
-[日本語版はこちら / Japanese](README.ja.md)
-
 > Universal Issue-Driven Development Workflow for Claude Code
 
-[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.4.0)
+[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.5.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## ⚠️ Breaking Changes (v0.4.0)
 
-**v0.4.0 — Cycle-count-based review-fix degradation removed (#557)**: Three configuration keys (`review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, `safety.max_review_fix_loops`) are no longer honored. The review-fix loop now terminates only on 0 findings or when one of four **quality signals** fires (fingerprint cycling / root-cause-missing fix / cross-validation disagreement / reviewer self-degraded). Existing users should remove the three keys from `rite-config.yml`; `/rite:lint` will warn until they are removed. See [CHANGELOG](CHANGELOG.md#040---2026-04-17) for the migration guide.
-
-**v0.3 — Named subagent reviewer invocation (#358)**: `/rite:pr:review` invokes reviewer agents as **named subagents** (`rite:{reviewer_type}-reviewer`) instead of `general-purpose`. This gives reviewer discipline stronger system-prompt-level enforcement and activates per-reviewer `model` / `tools` frontmatter. Most noticeable effect: 9 reviewers are pinned to `model: opus`, so users previously running reviews on sonnet will see forced opus upgrade and a cost increase. See [`docs/migration-guides/review-named-subagent.md`](docs/migration-guides/review-named-subagent.md) for rationale, rollback scenarios, and opt-out instructions. Tracked in [#358](https://github.com/B16B1RD/cc-rite-workflow/issues/358).
+**v0.4.0 — Cycle-count-based review-fix degradation removed (#557)**: Three configuration keys (`review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, `safety.max_review_fix_loops`) are no longer honored. The review-fix loop now terminates only on 0 findings or when one of four **quality signals** fires (fingerprint cycling / root-cause-missing fix / cross-validation disagreement / reviewer self-degraded). Existing users should remove the three keys from `rite-config.yml`. See [CHANGELOG](CHANGELOG.md#040---2026-04-17) for the migration guide.
 
 ## Why "Rite"?
 
@@ -26,14 +22,14 @@ The name comes from the English word **rite**, meaning "ritual" or "ceremony." I
 - **Universal**: No dependency on specific tech stacks
 - **Automated**: Auto-detection and auto-configuration
 - **Customizable**: Flexible configuration via YAML
-- **Integrated**: GitHub Projects, notifications (Slack/Discord/Teams)
+- **Integrated**: GitHub Projects
 - **Smart Reviews**: Dynamic multi-reviewer code review with **Doc-Heavy PR Mode** for documentation-centric PRs. When a PR is detected as doc-heavy, the tech-writer reviewer verifies five doc-implementation consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) using Grep/Read/Glob. See [`plugins/rite/commands/pr/references/internal-consistency.md`](plugins/rite/commands/pr/references/internal-consistency.md) for the full verification protocol
 - **External Review Integration**: `/rite:pr:fix` accepts PR URL or comment URL arguments, so output from external review tools can feed directly into the fix loop
-- **Sprint Management**: Optional Iteration/Sprint support with team execution
-- **TDD Light Mode**: Generate test skeletons from acceptance criteria before implementation
+- **Iteration Tracking**: Optional GitHub Projects Iteration field integration (auto-assign on `/rite:pr:open`, `--sprint` / `--backlog` filters in `/rite:issue:list`)
 - **Preflight Check**: Unified pre-execution verification across all commands
 - **Local Work Memory**: Compact-resilient work state management with lock/resuming support
 - **Implementation Contract**: Structured Issue template format for clear specifications
+- **Assumption Surfacing**: Before generating the Implementation Contract, `/rite:issue:create` surfaces the assumptions the model implicitly filled in and processes them in three categories — derivable (self-resolved from the repository/Wiki), user-specific decisions (confirmed with up to three recommended-option questions), and deferrable (documented as Assumptions / Open Questions in the Issue body). **Design principle**: questions are limited to information that exists only in the user's head; anything derivable from the repository or Wiki is resolved by the model. This keeps implicit guesses from being silently locked into the contract that drives the whole downstream pipeline
 - **Experience Wiki**: LLM-driven project knowledge base. Auto-ingests review/fix outcomes into topical pages and injects relevant heuristics at the start of each Issue (opt-out)
 
 ## Installation
@@ -76,11 +72,12 @@ This will:
 | `/rite:workflow` | Show workflow guide |
 | `/rite:issue:list` | List Issues |
 | `/rite:issue:create` | Create new Issue |
-| `/rite:issue:start` | Start work (end-to-end: branch → implementation → PR → review) |
 | `/rite:issue:update` | Update work memory |
 | `/rite:issue:close` | Check Issue completion |
 | `/rite:issue:edit` | Edit existing Issue interactively |
-| `/rite:issue:recall` | Search Contextual Commit history for past decisions |
+| `/rite:pr:open` | Start work end-to-end (branch → plan → implement → lint → draft PR) |
+| `/rite:pr:iterate` | Loop review ⇄ fix until mergeable |
+| `/rite:pr:merge` | Squash-merge the PR |
 | `/rite:pr:create` | Create draft PR |
 | `/rite:pr:ready` | Mark as Ready for review |
 | `/rite:pr:review` | Multi-reviewer review |
@@ -89,11 +86,6 @@ This will:
 | `/rite:investigate` | Structured code investigation |
 | `/rite:lint` | Run quality checks |
 | `/rite:template:reset` | Regenerate templates |
-| `/rite:sprint:list` | List Sprints (optional) |
-| `/rite:sprint:current` | Current sprint details (optional) |
-| `/rite:sprint:plan` | Sprint planning (optional) |
-| `/rite:sprint:execute` | Execute sprint Issues sequentially (optional) |
-| `/rite:sprint:team-execute` | Execute sprint Issues in parallel with worktree-based teams (optional) |
 | `/rite:wiki:init` | Initialize Experience Wiki branch and directory layout |
 | `/rite:wiki:query` | Query Wiki pages for heuristics matching keywords |
 | `/rite:wiki:ingest` | Ingest raw sources (reviews, fixes, Issues) into Wiki pages |
@@ -104,10 +96,12 @@ This will:
 ## Workflow
 
 ```
-/rite:issue:create → /rite:issue:start (Implementation → /rite:lint → /rite:pr:create → /rite:pr:review → /rite:pr:fix) → /rite:pr:ready → Merge → /rite:pr:cleanup
+/rite:issue:create → /rite:pr:open (branch → plan → implement → /rite:lint → draft PR)
+                  → /rite:pr:iterate (review ⇄ fix loop until mergeable)
+                  → /rite:pr:ready → /rite:pr:merge → /rite:pr:cleanup
 ```
 
-**Note:** `/rite:issue:start` executes the complete end-to-end flow: branch creation, implementation, quality checks, draft PR creation, self-review, and review fixes - all in one continuous process. See [Phase 5: End-to-End Execution](docs/SPEC.md#phase-5-end-to-end-execution) for details.
+**Note:** The end-to-end flow is split across four single-responsibility commands (#1136). `/rite:pr:open <issue>` handles branch creation, implementation, quality checks, and draft PR creation. `/rite:pr:iterate <pr>` loops review and fix until mergeable. `/rite:pr:ready <pr>` flips the PR to Ready for review. `/rite:pr:merge <pr>` performs the squash-merge. If any step is interrupted (e.g. `Context limit reached`), run `/rite:resume` to recover.
 
 Status Transitions:
 ```
@@ -134,10 +128,7 @@ branch:
   base: "main"       # Base branch for feature branches (use "develop" for Git Flow)
   pattern: "{type}/issue-{number}-{slug}"
 
-commit:
-  contextual: true
-
-# Optional: Sprint/Iteration management
+# Optional: Iteration (GitHub Projects Iteration field) integration
 iteration:
   enabled: false  # Set true to enable
 ```
@@ -154,7 +145,6 @@ See [Configuration Reference](docs/CONFIGURATION.md) for all options.
 
 - [Full Specification](docs/SPEC.md)
 - [Configuration Reference](docs/CONFIGURATION.md)
-- [日本語ドキュメント](README.ja.md)
 
 ## Requirements
 

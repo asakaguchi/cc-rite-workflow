@@ -43,7 +43,7 @@ For each type definition:
 ### Step 4: Usefulness and Enforcement Check
 
 For each type exposed to consumers:
-- Do consumers need frequent type assertions or casts? `Grep` for `as Type`, `!`, type guards
+- Do consumers need frequent type assertions or casts? `Grep` for `as Type` (TypeScript の型アサーション、および 「!」 non-null assertion 演算子の頻出も含む) や type guards (例: `instanceof`, `typeof`, ユーザー定義型ガード関数)
 - Does the type work well with the language's type inference?
 - Are generic type parameters actually varying across usage sites, or is there only one instantiation?
 - `Grep` for the type name across the codebase to assess adoption and usability patterns
@@ -65,7 +65,74 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 
 ## Detailed Checklist
 
-Read `plugins/rite/skills/reviewers/type-design.md` for the full checklist.
+## Expertise Areas
+
+- Type encapsulation and information hiding
+- Invariant expression through the type system
+- Union types and discriminated unions
+- Generic type design and constraints
+- Branded/opaque types
+- Type inference and usability
+
+## Review Checklist
+
+### Critical (Must Fix)
+
+- [ ] **Illegal States Representable**: Type allows values that are invalid in the business domain (e.g., `status: string` instead of union type)
+- [ ] **Broken Encapsulation**: Mutable public fields that can be set to invalid values, bypassing validation
+- [ ] **Unsafe Type Assertions**: Widespread `as Type` casts indicating the type system is being fought rather than used
+
+### Important (Should Fix)
+
+- [ ] **Primitive Obsession**: Using `string` or `number` where a domain type (Email, UserId, Amount) would prevent confusion
+- [ ] **Optional Field Overload**: Interface with 10+ optional fields that represents multiple distinct states
+- [ ] **Missing Readonly**: Mutable fields on types that should be immutable after construction
+- [ ] **Weak Generic Constraints**: Unconstrained generic parameters (`T`) that should be bounded (`T extends Base`)
+
+### Recommendations
+
+- [ ] **Discriminated Union Opportunity**: Multiple boolean flags that represent mutually exclusive states
+- [ ] **Type Guard Missing**: Complex narrowing logic that could be a reusable type guard function
+- [ ] **Excessive Type Parameters**: Generic type with 4+ parameters that could be simplified
+- [ ] **Documentation**: Complex generic types without JSDoc explaining the type parameters
+
+## Severity Definitions
+
+**CRITICAL** (type allows invalid states in critical paths), **HIGH** (encapsulation broken or invariant not expressed), **MEDIUM** (type usability issue or missing constraint), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外の造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor type design improvement).
+
+## Four-Dimension Evaluation
+
+When reviewing types, assess each dimension:
+
+| Dimension | Question | Indicator |
+|-----------|----------|-----------|
+| **Encapsulation** | Can internal state be mutated to invalid values? | public mutable fields, missing readonly |
+| **Invariant Expression** | Does the type reject invalid values at compile time? | string vs union, number vs branded type |
+| **Usefulness** | Do consumers need frequent casts or assertions? | `as Type` count, type guard frequency |
+| **Enforcement** | Can the type's contract be bypassed? | direct field assignment, missing constructors |
+
+## Finding Quality Guidelines
+
+As a Type Design Expert, report findings based on concrete type system weaknesses, not stylistic preferences.
+
+### Investigation Before Reporting
+
+Perform the following investigation before reporting findings:
+
+| Investigation | Tool | Example |
+|---------|----------|-----|
+| Check type usage patterns | Grep | How is the type instantiated and consumed across the codebase? |
+| Verify invariant violations | Grep | Search for runtime checks that compensate for weak types (`if (status === "...")`) |
+| Compare with project patterns | Read | Does the project use branded types, union types, readonly patterns? |
+| Count type assertions | Grep | Search for `as TypeName` to measure type friction |
+
+### Prohibited vs Required Findings
+
+| Prohibited (Vague) | Required (Concrete) |
+|------------------|-------------------|
+| "型設計を改善すべき" | "`status: string` だが `Grep 'status ==='` で12箇所の文字列比較が確認され、タイポリスクがある。Union type に変更推奨" |
+| "カプセル化が不十分かもしれない" | "`Config.settings` が public で直接変更可能。`validate()` メソッドがバイパスされる。`Read` で確認済み" |
+| "ジェネリクスを使うべき" | "`processItem(item: any)` で型安全性がないが、`Grep 'processItem'` で3箇所の呼び出しすべてが `User` 型を渡している" |
 
 ## Output Format
 
@@ -78,8 +145,8 @@ Read `plugins/rite/agents/_reviewer-base.md` for format specification.
 ### 所見
 型設計にカプセル化の不備と不変条件の表現不足が検出されました。
 ### 指摘事項
-| 重要度 | ファイル:行 | 内容 | 推奨対応 |
-|--------|------------|------|----------|
-| HIGH | src/types/user.ts:10 | `status: string` で定義されているが、実際には `"active" \| "inactive" \| "deleted"` の3値のみ。`Grep "status ===" src/` で12箇所の文字列比較が確認され、タイポによる不正値混入リスクがある | Union type に変更: `status: "active" \| "inactive" \| "deleted"` でコンパイル時に不正値を排除 |
-| HIGH | src/models/config.ts:25 | `Config` クラスの `settings` フィールドが `public` で直接変更可能。`validate()` メソッドが存在するがバイパス可能であり、不正な設定状態を許容する | `private` + getter に変更: `private _settings: Settings; get settings(): Readonly<Settings> { return this._settings; }` |
+| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|--------|----------|------------|------|----------|
+| HIGH | current-pr | src/types/user.ts:10 | `status: string` で定義されているが、実際には `"active" \| "inactive" \| "deleted"` の3値のみ。`Grep "status ===" src/` で12箇所の文字列比較が確認され、タイポによる不正値混入リスクがある | Union type に変更: `status: "active" \| "inactive" \| "deleted"` でコンパイル時に不正値を排除 |
+| HIGH | current-pr | src/models/config.ts:25 | `Config` クラスの `settings` フィールドが `public` で直接変更可能。`validate()` メソッドが存在するがバイパス可能であり、不正な設定状態を許容する | `private` + getter に変更: `private _settings: Settings; get settings(): Readonly<Settings> { return this._settings; }` |
 ```

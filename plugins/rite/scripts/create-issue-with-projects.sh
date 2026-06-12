@@ -3,7 +3,8 @@
 # Common core script for creating a GitHub Issue and registering it in GitHub Projects.
 #
 # Usage:
-#   bash create-issue-with-projects.sh '<json_args>'
+#   bash create-issue-with-projects.sh '<json_args>'        # positional (canonical)
+#   jq -n '...' | bash create-issue-with-projects.sh        # stdin (引数なし時, additive)
 #
 # Input JSON schema:
 #   {
@@ -26,7 +27,11 @@
 #       }
 #     },
 #     "options": {
-#       "source": "interactive|pr_review|pr_fix|cleanup|lint|parent_routing|xl_decomposition|workflow_incident|fingerprint_split",
+#       "source": "interactive|pr_review|pr_create|cleanup|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split",
+#                # Note: 以下の値は legacy 互換のため enum に含めない (caller 消失済):
+#                #   - `pr_fix`:          #1136 で fix.md の Automatic Separate Issue Creation が廃止
+#                #   - `parent_routing`:  #1079 で parent-routing.md sub-skill が廃止
+#                #   - `lint`:            commands/lint.md は guard 用途のみで invoke しない
 #       "non_blocking_projects": true  # default: true
 #     }
 #   }
@@ -58,11 +63,48 @@ add_warning() {
   WARNINGS_ARR+=("$1")
 }
 
+# add_warning_with_stderr: Projects registration failures must NOT be silent.
+# Caller contract: only invoke for failures within the Projects registration phase
+# (after PROJECTS_ENABLED=true gate at L171). Do NOT use for the enabled=false skip
+# path or for informational Iteration-not-configured cases — those use add_warning.
+add_warning_with_stderr() {
+  WARNINGS_ARR+=("$1")
+  printf 'ERROR: Projects registration failed: %s\n' "$1" >&2
+}
+
 RETRY_DELAY="${RETRY_DELAY:-1}"
 if ! [[ "$RETRY_DELAY" =~ ^[0-9]+$ ]]; then
   add_warning "Invalid RETRY_DELAY value: '${RETRY_DELAY:0:20}'. Using default 1"
   RETRY_DELAY=1
 fi
+
+# retry_with_backoff: exponential backoff retry for transient API failures.
+# Usage: result=$(retry_with_backoff <max_attempts> <stderr_file> <command...>)
+# Sleeps RETRY_DELAY * 2^(n-1) seconds between attempts (1s, 2s, 4s for default delay).
+# Set RETRY_DELAY=0 in tests to skip sleep entirely.
+# Returns stdout of last attempt; exit code is exit code of last attempt.
+retry_with_backoff() {
+  local max_attempts="$1"; shift
+  local stderr_file="$1"; shift
+  local attempt=1
+  local rc=0
+  local output=""
+  while [ "$attempt" -le "$max_attempts" ]; do
+    # Capture rc directly from command substitution (avoid `if ... fi` resetting $? to 0).
+    output=$("$@" 2>"$stderr_file")
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+      printf '%s' "$output"
+      return 0
+    fi
+    if [ "$attempt" -lt "$max_attempts" ]; then
+      sleep $(( RETRY_DELAY * (1 << (attempt - 1)) ))
+    fi
+    attempt=$(( attempt + 1 ))
+  done
+  printf '%s' "$output"
+  return "$rc"
+}
 
 # --- Helper: output JSON result to stdout ---
 output_result() {
@@ -88,13 +130,21 @@ output_result() {
 }
 
 # --- Argument parsing ---
-if [ $# -lt 1 ]; then
+# JSON は positional arg ($1, canonical) または stdin (引数なし時) で受け取る。
+# stdin 対応は既存の positional-JSON 契約を温存したまま additive に追加したもので、
+# 新しい caller は `jq -n ... | bash create-issue-with-projects.sh` と書くことで
+# `$(bash ... "$(jq -n ...)")` の入れ子 $() を 1 段に削減できる。
+if [ $# -ge 1 ]; then
+  INPUT_JSON="$1"
+else
+  INPUT_JSON="$(cat)"
+fi
+
+if [ -z "$INPUT_JSON" ]; then
   add_warning "No JSON argument provided"
   output_result "" 0 "" "" "failed"
   exit 1
 fi
-
-INPUT_JSON="$1"
 
 # Extract all fields in a single jq invocation (1 subprocess instead of 13)
 eval "$(printf '%s\n' "$INPUT_JSON" | jq -r '
@@ -156,7 +206,7 @@ ISSUE_URL=$(gh "${GH_ARGS[@]}" 2>"$GH_ERR_FILE") || {
   exit 1
 }
 
-# SIGPIPE 防止 (#398): printf | grep パターンを here-string に置換。
+# SIGPIPE 防止: printf | grep パターンを here-string に置換。
 # ISSUE_URL は短い文字列だが、pipefail 下での一貫性のため統一。
 ISSUE_NUMBER=$(grep -oE '[0-9]+$' <<< "$ISSUE_URL" || true)
 
@@ -175,8 +225,9 @@ fi
 PROJECT_REG="ok"
 
 # Step 2.1: Add Issue to Project (capture item ID directly via --format json)
-ITEM_ADD_RESULT=$(gh project item-add "$PROJECT_NUMBER" --owner "$OWNER" --url "$ISSUE_URL" --format json 2>"$GH_ERR_FILE") || {
-  add_warning "gh project item-add failed for Issue #$ISSUE_NUMBER: $(cat "$GH_ERR_FILE")"
+# #669: 3-attempt exponential backoff for transient API failures.
+ITEM_ADD_RESULT=$(retry_with_backoff 3 "$GH_ERR_FILE" gh project item-add "$PROJECT_NUMBER" --owner "$OWNER" --url "$ISSUE_URL" --format json) || {
+  add_warning_with_stderr "gh project item-add failed for Issue #$ISSUE_NUMBER after 3 attempts: $(cat "$GH_ERR_FILE")"
   output_result "$ISSUE_URL" "$ISSUE_NUMBER" "" "" "failed"
   if [ "$NON_BLOCKING" = "true" ]; then
     exit 0
@@ -196,13 +247,14 @@ fi
 
 # Whitelist validation for GQL_ROOT (defense against GraphQL injection, CWE-943)
 if [[ "$GQL_ROOT" != "user" && "$GQL_ROOT" != "organization" ]]; then
-  add_warning "Invalid GQL_ROOT value: $GQL_ROOT"
+  add_warning_with_stderr "Invalid GQL_ROOT value: $GQL_ROOT"
   output_result "$ISSUE_URL" "$ISSUE_NUMBER" "" "" "partial"
   exit 0
 fi
 
 # Step 2.3: Retrieve project item ID and field information
-GQL_RESULT=$(gh api graphql -f query="
+# #669: 3-attempt exponential backoff for transient API failures.
+GQL_FIELDS_QUERY="
 query(\$owner: String!, \$projectNumber: Int!) {
   ${GQL_ROOT}(login: \$owner) {
     projectV2(number: \$projectNumber) {
@@ -242,8 +294,9 @@ query(\$owner: String!, \$projectNumber: Int!) {
       }
     }
   }
-}" -f owner="$OWNER" -F projectNumber="$PROJECT_NUMBER" 2>"$GH_ERR_FILE") || {
-  add_warning "GraphQL query failed for project field retrieval: $(cat "$GH_ERR_FILE")"
+}"
+GQL_RESULT=$(retry_with_backoff 3 "$GH_ERR_FILE" gh api graphql -f query="$GQL_FIELDS_QUERY" -f owner="$OWNER" -F projectNumber="$PROJECT_NUMBER") || {
+  add_warning_with_stderr "GraphQL query failed for project field retrieval after 3 attempts: $(cat "$GH_ERR_FILE")"
   output_result "$ISSUE_URL" "$ISSUE_NUMBER" "" "" "partial"
   exit 0
 }
@@ -251,7 +304,7 @@ query(\$owner: String!, \$projectNumber: Int!) {
 # Extract project ID (use --arg for safe variable passing to jq)
 PROJECT_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r --arg root "$GQL_ROOT" '.data[$root].projectV2.id // empty')
 if [ -z "$PROJECT_ID" ]; then
-  add_warning "Could not extract project ID"
+  add_warning_with_stderr "Could not extract project ID"
   output_result "$ISSUE_URL" "$ISSUE_NUMBER" "" "" "partial"
   exit 0
 fi
@@ -262,8 +315,8 @@ if [ -z "$ITEM_ID" ]; then
   ITEM_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r --arg root "$GQL_ROOT" --argjson num "$ISSUE_NUMBER" '.data[$root].projectV2.items.nodes[] | select(.content.number == $num) | .id // empty')
 fi
 if [ -z "$ITEM_ID" ]; then
-  # Retry with larger window
-  GQL_RETRY=$(gh api graphql -f query="
+  # Retry with larger window. #669: 3-attempt exponential backoff for transient failures.
+  GQL_ITEMS_QUERY="
 query(\$owner: String!, \$projectNumber: Int!) {
   ${GQL_ROOT}(login: \$owner) {
     projectV2(number: \$projectNumber) {
@@ -279,11 +332,12 @@ query(\$owner: String!, \$projectNumber: Int!) {
       }
     }
   }
-}" -f owner="$OWNER" -F projectNumber="$PROJECT_NUMBER" 2>"$GH_ERR_FILE") || { add_warning "GraphQL retry query failed: $(cat "$GH_ERR_FILE")"; true; }
+}"
+  GQL_RETRY=$(retry_with_backoff 3 "$GH_ERR_FILE" gh api graphql -f query="$GQL_ITEMS_QUERY" -f owner="$OWNER" -F projectNumber="$PROJECT_NUMBER") || { add_warning_with_stderr "GraphQL items lookup query failed after 3 attempts: $(cat "$GH_ERR_FILE")"; true; }
 
   ITEM_ID=$(printf '%s\n' "$GQL_RETRY" | jq -r --arg root "$GQL_ROOT" --argjson num "$ISSUE_NUMBER" '.data[$root].projectV2.items.nodes[] | select(.content.number == $num) | .id // empty' 2>"$FIELD_ERR_FILE")
   if [ -z "$ITEM_ID" ]; then
-    add_warning "Could not find item ID for Issue #$ISSUE_NUMBER in project"
+    add_warning_with_stderr "Could not find item ID for Issue #$ISSUE_NUMBER in project"
     output_result "$ISSUE_URL" "$ISSUE_NUMBER" "$PROJECT_ID" "" "partial"
     exit 0
   fi
@@ -318,18 +372,15 @@ set_field() {
   local option_id="${result##*|}"
 
   if [ -z "$field_id" ] || [ -z "$option_id" ]; then
-    add_warning "Field '$field_name' or option '$field_value' not found in project"
+    add_warning_with_stderr "Field '$field_name' or option '$field_value' not found in project"
     PROJECT_REG="partial"
     return 0
   fi
 
-  if ! gh project item-edit --project-id "$PROJECT_ID" --id "$ITEM_ID" --field-id "$field_id" --single-select-option-id "$option_id" 2>"$FIELD_ERR_FILE"; then
-    # Retry once
-    sleep "$RETRY_DELAY"
-    if ! gh project item-edit --project-id "$PROJECT_ID" --id "$ITEM_ID" --field-id "$field_id" --single-select-option-id "$option_id" 2>"$FIELD_ERR_FILE"; then
-      add_warning "Failed to set $field_name=$field_value for Issue #$ISSUE_NUMBER: $(cat "$FIELD_ERR_FILE")"
-      PROJECT_REG="partial"
-    fi
+  # #669: Replace ad-hoc 1-retry loop with retry_with_backoff (3 attempts, exponential backoff).
+  if ! retry_with_backoff 3 "$FIELD_ERR_FILE" gh project item-edit --project-id "$PROJECT_ID" --id "$ITEM_ID" --field-id "$field_id" --single-select-option-id "$option_id" >/dev/null; then
+    add_warning_with_stderr "Failed to set $field_name=$field_value for Issue #$ISSUE_NUMBER after 3 attempts: $(cat "$FIELD_ERR_FILE")"
+    PROJECT_REG="partial"
   fi
 }
 
@@ -354,7 +405,8 @@ if [ "$ITERATION_MODE" = "auto" ]; then
       | .id // empty
     ')
     if [ -n "$CURRENT_ITER_ID" ]; then
-      gh api graphql -f query='
+      # #669: 3-attempt exponential backoff for transient API failures.
+      ITER_MUTATION='
 mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $iterationId: String!) {
   updateProjectV2ItemFieldValue(
     input: {
@@ -366,8 +418,9 @@ mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $iterationId: String!) {
   ) {
     projectV2Item { id }
   }
-}' -f projectId="$PROJECT_ID" -f itemId="$ITEM_ID" -f fieldId="$ITER_FIELD_ID" -f iterationId="$CURRENT_ITER_ID" 2>"$GH_ERR_FILE" || {
-        add_warning "Iteration assignment failed for Issue #$ISSUE_NUMBER: $(cat "$GH_ERR_FILE")"
+}'
+      retry_with_backoff 3 "$GH_ERR_FILE" gh api graphql -f query="$ITER_MUTATION" -f projectId="$PROJECT_ID" -f itemId="$ITEM_ID" -f fieldId="$ITER_FIELD_ID" -f iterationId="$CURRENT_ITER_ID" >/dev/null || {
+        add_warning_with_stderr "Iteration assignment failed for Issue #$ISSUE_NUMBER after 3 attempts: $(cat "$GH_ERR_FILE")"
         PROJECT_REG="partial"
       }
     else

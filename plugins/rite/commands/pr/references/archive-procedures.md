@@ -1,6 +1,8 @@
-# Archive Procedures (Cleanup Phase 3-4)
+# Archive Procedures (Cleanup ステップ 8-11)
 
-> **Source**: Extracted from `cleanup.md` Phase 3-4. This file is the source of truth for Projects Status Update, Issue close, Parent Issue handling, and state reset procedures.
+> **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
+
+> **Source**: Extracted from `cleanup.md` ステップ 8-11 (旧 Phase 3-4 構造から flat 化済)。This file is the source of truth for Projects Status Update, Issue close, Parent Issue handling, and state reset procedures. 本ファイル内部の `## Phase 3` / `## Phase 4` 階層 heading は本 sub-document 独自の構造で、cleanup.md 側 caller は新「ステップ N」表記で参照する (双方向リンク互換: caller=ステップ N / callee=本ファイル内部 Phase。Phase N が cleanup.md に存在しなくても本ファイル内 anchor として valid)。
 
 ## Phase 3: Projects Status Update
 
@@ -15,126 +17,78 @@ github:
     owner: "{owner}"
 ```
 
-### 3.2 Retrieve Issue's Project Item Information
+### 3.2 Update Status via Shared Script
 
-If a related Issue has been identified:
+> **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `commands/pr/open.md` ステップ 2.4 / `commands/pr/ready.md` Phase 4 / `commands/issue/close.md`。
 
-```bash
-gh api graphql -f query='
-query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    issue(number: $number) {
-      projectItems(first: 10) {
-        nodes {
-          id
-          project {
-            id
-            number
-          }
-        }
-      }
-    }
-  }
-}' -f owner="{owner}" -f repo="{repo}" -F number={issue_number}
-```
-
-#### 3.2.1 Error Handling
-
-Validate the GraphQL query result and handle errors:
-
-| Condition | Action | Message |
-|-----------|--------|---------|
-| Query fails (API error, network error) | Display warning, skip Phase 3.3-3.4 | `警告: Projects 情報の取得に失敗しました。Status 更新をスキップします。理由: {error_message}` |
-| `projectItems.nodes` is empty (`[]`) | Display warning, skip Phase 3.3-3.4 | `警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします。` |
-| No node matches configured `project_number` | Display warning, skip Phase 3.3-3.4 | `警告: Issue #{issue_number} は対象 Project (#{project_number}) に登録されていません。Status 更新をスキップします。` |
-
-**Note**: All failures are non-blocking — display the warning and proceed to Phase 3.5 (work memory update). The cleanup process must not fail due to a Projects Status update issue.
-
-### 3.3 Retrieve Status Field
-
-**Important**: The option ID (`{done_option_id}`) must always be retrieved from the API. Only field IDs can be specified via `field_ids`; option IDs (Done, In Progress, etc.) are not included.
-
-**Retrieving the field ID:**
-
-If `github.projects.field_ids.status` is set in `rite-config.yml`, use that value directly as `{status_field_id}` (skip extracting the field ID from the API result):
-
-Replace the configuration value with the actual project ID (see CONFIGURATION.md for how to obtain it):
-
-```yaml
-github:
-  projects:
-    field_ids:
-      status: "PVTSSF_your-status-field-id"
-```
-
-**Retrieving the option ID (always required):**
+Skip Phase 3.2 if `github.projects.enabled: false` in `rite-config.yml` or if no related Issue was identified in `cleanup.md` ステップ 2, and proceed to Phase 3.5 (work memory update). Otherwise, invoke the shared script to transition the Issue Status to **Done**:
 
 ```bash
-gh project field-list {project_number} --owner {owner} --format json
+status_json_args=$(jq -n \
+  --argjson issue {issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg status "Done" \
+  --argjson auto_add false \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"
 ```
 
-From the resulting JSON, find the field where `name` is `"Status"` and retrieve the following information:
-- `id`: The Status field ID (`{status_field_id}`) -- only used when `field_ids` is not set
-- From the `options` array, the `id` of the option where `name` is `"Done"` (`{done_option_id}`)
+`auto_add: false` because by cleanup time the Issue is already registered in the Project (`pr/open.md` ステップ 2.4 auto-added it if missing).
 
-**Retrieval logic:**
-1. Execute the API (always required to retrieve the option ID)
-2. Check `github.projects.field_ids.status` in `rite-config.yml`
-3. Determine the field ID:
-   - If set -> Use the configured value as `{status_field_id}`
-   - If not set -> Retrieve `{status_field_id}` from the API result
-4. Option ID: Retrieve `{done_option_id}` from the API result
+#### 3.2.1 Result Handling
 
-#### 3.3.1 Error Handling
+Inspect the script's stdout JSON and route by `.result`:
 
-Validate the field retrieval result and handle errors:
+| `.result` | `projects_status_updated` | User-visible action |
+|-----------|---------------------------|--------------------|
+| `"updated"` | Set to `true` | Display `Projects Status を "Done" に更新しました` |
+| `"skipped_not_in_project"` | Stays `false` (default) | Display `警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします。` and proceed |
+| `"failed"` | Stays `false` (default) | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "Done" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "Done" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id> を実行してください。` and proceed |
 
-| Condition | Action | Message |
-|-----------|--------|---------|
-| `gh project field-list` command fails | Display warning, skip Phase 3.4 | `警告: Project フィールド情報の取得に失敗しました。Status 更新をスキップします。理由: {error_message}` |
-| Status field not found in result | Display warning, skip Phase 3.4 | `警告: Project に Status フィールドが見つかりません。Status 更新をスキップします。` |
-| "Done" option not found in Status field | Display warning, skip Phase 3.4 | `警告: Status フィールドに "Done" オプションが見つかりません。Status 更新をスキップします。` |
+**All result branches are non-blocking** — display the appropriate message and proceed to Phase 3.5 (work memory update). The cleanup process MUST NOT fail due to a Projects Status update issue.
 
-**Note**: All failures are non-blocking — display the warning and proceed to Phase 3.5.
+> **Underlying API documentation**: See [projects-integration.md §2.4](../../../references/projects-integration.md#24-github-projects-status-update) for the API-level details (GraphQL query, field-list, item-edit) that the script encapsulates.
 
-### 3.4 Update Status to "Done"
+#### 3.2.2 Phase 3 Result Summary
 
-```bash
-gh project item-edit --project-id {project_id} --id {item_id} --field-id {status_field_id} --single-select-option-id {done_option_id}
-```
-
-**Purpose of retrieved values:**
-- `{project_id}`: The Project ID retrieved in Phase 3.2 (`projectItems.nodes[].project.id`)
-- `{item_id}`: The Issue's Project item ID retrieved in Phase 3.2 (`projectItems.nodes[].id`)
-
-**If Project is not configured:**
-
-```
-警告: GitHub Projects が設定されていません
-Status の更新をスキップします
-```
-
-#### 3.4.1 Error Handling
-
-Validate the `gh project item-edit` result:
-
-| Condition | Action | Message |
-|-----------|--------|---------|
-| `gh project item-edit` command fails | Display warning, proceed to Phase 3.5 | `警告: Projects Status の "Done" への更新に失敗しました。理由: {error_message}。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "Done" に変更してください。` |
-| Command succeeds | Display confirmation | `Projects Status を "Done" に更新しました` |
-
-**Note**: Failure is non-blocking — display the warning with manual recovery instructions and proceed to Phase 3.5.
-
-#### 3.4.2 Phase 3 Result Summary
-
-Track the final success/failure of the Projects Status update for inclusion in the Phase 5 completion report:
+Track the final success/failure of the Projects Status update for inclusion in the cleanup.md ステップ 12 (完了報告):
 
 **Result variable:**
-- `projects_status_updated` = `false` (default). Set to `true` only when Phase 3.4 `gh project item-edit` succeeds.
+- `projects_status_updated` = `false` (default). Set to `true` only when Phase 3.2 returns `.result == "updated"`.
 
-When Phase 3.2 or 3.3 fails and subsequent phases are skipped, `projects_status_updated` retains its default `false` value.
+When Phase 3.2 returns `.result == "skipped_not_in_project"` or `"failed"`, `projects_status_updated` retains its default `false` value and the failure has already been surfaced via the `.warnings[]` lines + manual recovery hint above.
 
-The LLM retains this value in conversation context. Phase 5.1 uses it for conditional display of the Projects Status update result.
+The LLM retains `projects_status_updated` in conversation context. cleanup.md ステップ 12 (完了報告) で `{projects_check}` / `{projects_status_result}` placeholder を介して Projects Status 更新結果を条件付き表示するために本値を参照する (see `cleanup.md` ステップ 12)。
+
+**Bash 実装パターン** (LLM 向け実装ヒント — Phase 3.2 の `bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"` 行を以下のように書き換える):
+
+```bash
+# `|| status_json=""` fallback / jq 2>/dev/null 抑制 / `failed|*)` catch-all により
+# script が JSON-emit 前に死んだ場合も silent fall-through を防ぐ
+status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args") || status_json=""
+status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+projects_status_updated="false"  # default
+case "$status_result" in
+  updated)
+    projects_status_updated="true"
+    echo "Projects Status を \"Done\" に更新しました"
+    ;;
+  skipped_not_in_project)
+    echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします。" >&2
+    ;;
+  failed|*)
+    [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  /' >&2
+    echo "警告: Projects Status の \"Done\" への更新に失敗しました。手動で更新する場合: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id>" >&2
+    ;;
+esac
+# projects_status_updated を cleanup.md ステップ 12 (完了報告) で参照するため context-local に保持する
+```
+
+完全な bash 実装サンプルは `commands/issue/close.md` Phase 4.6.3 (parent Issue Done 更新の unified block) を参照すること (state machine + signal-specific trap + tempfile + Step 3 inconsistency summary を含む完全形)。
 
 ### 3.5 Automatic Final Update of Work Memory
 
@@ -142,173 +96,108 @@ If a work memory comment exists on the Issue, automatically append a completion 
 
 #### 3.5.1 Retrieve and Update Work Memory Comment
 
+完了情報の追記は `issue-comment-wm-sync.sh` の `append-eof` transform へ委譲する（canonical caller パターン: `commands/pr/create.md` 4.1.2 / `commands/pr/fix.md` 4.5.2）。comment 取得・backup・空body/ヘッダー/50% safety check・PATCH は helper 内部で完結するため、cleanup 側は完了情報の content-file を生成して helper を呼び、機械可読な `status=...` 行を読むだけでよい。
+
+`### 完了情報` は WM 初期テンプレに存在しない**新規セクション**のため、既存セクション専用の `append-section`（不在時 no-op）ではなく EOF へ raw 追記する `append-eof` を用いる（原 inline 実装の heredoc 追記挙動を再現。末尾改行は `\n\n` セパレータに正規化する意図的差異があるが、レンダリング結果は同一）。
+
 ```bash
-# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること（クロスプロセス変数参照を防止）
-# comment_data の取得・追記内容の heredoc 定義・PATCH を分割すると変数が失われる（Issue #693）
-comment_data=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | {id: .id, body: .body}')
-comment_id=$(echo "$comment_data" | jq -r '.id // empty')
-current_body=$(echo "$comment_data" | jq -r '.body // empty')
+# 完了情報セクションを content-file に生成し append-eof transform で委譲追記する。
+# {merged_at} 等は cleanup.md コンテキストの実値で置換する（heredoc malform 回避のため printf を使用）。
+completion_tmp=$(mktemp)
+# helper stderr（auth/rate/network/safety-check 詳細 + backup path）を退避し、失敗時に surface する。
+# canonical caller fix.md 4.5.2 / review.md 6.2 と同じ stderr-capture 規約（2>/dev/null 破棄をしない）。
+wm_sync_err=$(mktemp 2>/dev/null) || wm_sync_err=""
+trap 'rm -f "$completion_tmp" "${wm_sync_err:-}"' EXIT
+printf '%s\n' \
+  "### 完了情報" \
+  "- **マージ日時**: {merged_at}" \
+  "- **PR**: #{pr_number} - {pr_title}" \
+  "- **PR URL**: {pr_url}" \
+  "- **クリーンアップ完了**: {timestamp}" \
+  "- **削除したブランチ**: {branch_name}" \
+  "- **最終 Status**: Done" > "$completion_tmp"
 
-if [ -n "$comment_id" ]; then
-  if [ -z "$current_body" ]; then
-    echo "ERROR: 作業メモリの本文取得に失敗。更新をスキップします。" >&2
-  else
-    backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
-    printf '%s' "$current_body" > "$backup_file"
-    original_length=$(printf '%s' "$current_body" | wc -c)
+wm_status=$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform append-eof --content-file "$completion_tmp" 2>"${wm_sync_err:-/dev/null}") || true
+rm -f "$completion_tmp"
 
-    tmpfile=$(mktemp)
-    trap 'rm -f "$tmpfile"' EXIT
-    printf '%s\n\n' "$current_body" > "$tmpfile"
-    cat >> "$tmpfile" << 'NEW_SECTION_EOF'
-{3.5.2の内容を実際の値で置換して記述}
-NEW_SECTION_EOF
-
-    # Safety checks before PATCH (see gh-cli-patterns.md)
-    if [ ! -s "$tmpfile" ] || [[ "$(wc -c < "$tmpfile")" -lt 10 ]]; then
-      echo "ERROR: Updated body is empty or too short. Aborting PATCH. Backup: $backup_file" >&2
-      exit 1
-    fi
-    if ! grep -q '📜 rite 作業メモリ' "$tmpfile"; then
-      echo "ERROR: Updated body missing work memory header. Backup: $backup_file" >&2
-      exit 1
-    fi
-    updated_length=$(wc -c < "$tmpfile")
-    if [[ "${updated_length:-0}" -lt $(( ${original_length:-1} / 2 )) ]]; then
-      echo "ERROR: Updated body < 50% of original (${updated_length}/${original_length}). Aborting PATCH. Backup: $backup_file" >&2
-      exit 1
-    fi
-
-    jq -n --rawfile body "$tmpfile" '{"body": $body}' \
-      | gh api repos/{owner}/{repo}/issues/comments/"$comment_id" \
-        -X PATCH --input -
-  fi
-fi
+# 非ブロッキング: cleanup は work memory 更新失敗で停止してはならない（§3.5 は automatic final update）。
+# no_comment（作業メモリ不在 = legitimate no-op）以外の skipped/error は WARNING 表示にとどめる。
+# 失敗時は helper stderr の root-cause（先頭 5 行）も surface し、backup path / API エラー詳細を operator に残す。
+case "$wm_status" in
+  status=success)      echo "作業メモリに完了情報を追記しました" ;;
+  *reason=no_comment*) echo "作業メモリ comment が無いため完了情報の追記をスキップしました" ;;
+  *)                   echo "警告: 作業メモリ更新が完了しませんでした (${wm_status:-no-status})。cleanup は続行します。" >&2
+                       [ -n "$wm_sync_err" ] && [ -s "$wm_sync_err" ] && { echo "  helper stderr (root-cause、先頭 5 行):" >&2; head -5 "$wm_sync_err" | sed 's/^/    /' >&2; } ;;
+esac
+rm -f "${wm_sync_err:-}"
 ```
 
-**Note for Claude**: ⚠️ このブロック全体を**1つの Bash ツール呼び出し**で実行すること。`current_body` 取得・追記内容の heredoc 定義・PATCH を別の Bash ツール呼び出しに分割すると、前の呼び出しのシェル変数（`current_body` 等）が失われてヘッダーが消失する（Issue #693）。`{3.5.2の内容を実際の値で置換して記述}` を 3.5.2 のテンプレートから生成した実際の追記内容で置換し、**すべてを1ブロックで**実行する。
+**Note for Claude**: comment 取得・body 変換・safety check・PATCH・backup はすべて helper 内部で完結するため、本ブロックを単一 Bash 呼び出しに収める必要はない（旧 inline 実装のクロスプロセス変数参照制約は解消済み）。`{merged_at}` / `{pr_number}` / `{pr_title}` / `{pr_url}` / `{timestamp}` / `{branch_name}` を cleanup.md コンテキストの実値で置換すること。`{plugin_root}` はリテラル値で埋め込む。
 
 #### 3.5.2 Update Content
 
-Automatically append the following to the work memory:
+> **委譲状況（#1195 #8 完了）**: §3.5.1（`### 完了情報` の `append-eof` 追記）に続き、本節の **進捗チェックリスト merge**（`### 進捗` への dedup 追記）も `issue-comment-wm-sync.sh` の `merge-checklist` transform へ委譲済み。cleanup ステップ 11 が §3.5 全体を実行する経路で wired され、§3.5.1（完了情報）とは独立した fetch→transform→PATCH として走る（touch するセクションが異なるため順序非依存）。
 
-**Note**: If a `### 未完了タスクの処理結果` section was appended in Phase 1.7.4, preserve its content. The update in Phase 3.5 appends to the existing content and must not overwrite the Phase 1.7.4 records.
+Automatically append the following to the work memory:
 
 **Progress section merge method:**
 
-The progress section update in Phase 3.5.2 follows this logic:
+The progress section update in Phase 3.5.2 follows this logic（`merge-checklist` transform 内 Python が担う）:
 
 1. Retrieve the existing progress section
 2. Preserve all existing checklist items
-3. Append new items (`- [x] レビュー完了`, `- [x] マージ完了`, `- [x] クリーンアップ完了`) at the end (do not duplicate if already present)
-4. If `- [x] 未完了タスク処理済み` added in Phase 1.7.4 exists, preserve it as well
+3. Append new items (`- [x] レビュー完了`, `- [x] マージ完了`, `- [x] クリーンアップ完了`) at the end (do not duplicate if already present anywhere in the body — full-line exact match, 冪等)
 
-**Example (merging from a state after Phase 1.7.4 execution):**
+**Example:**
 
 ```markdown
 ### 進捗
 - [x] 実装完了
 - [x] PR マージ済み
-- [x] 未完了タスク処理済み  ← Phase 1.7.4 で追加（保持）
 - [x] レビュー完了           ← Phase 3.5.2 で追加
 - [x] マージ完了             ← Phase 3.5.2 で追加
 - [x] クリーンアップ完了     ← Phase 3.5.2 で追加
 ```
 
-**Bash implementation (Python-based section merge):**
+**Bash implementation (helper 委譲):**
+
+進捗チェックリストの完了項目を `merge-checklist` transform で委譲追記する。全文・完全行 dedup（既出項目スキップ＝冪等）・`### 進捗` セクション末尾への挿入・backup・空body/ヘッダー/safety check・PATCH はすべて helper 内部で完結する（§3.5.1 と同じ canonical caller パターン）。
 
 ```bash
-# ⚠️ 以下の処理は 3.5.1 の単一 Bash ブロック内に組み込むこと。
-# 挿入位置: 3.5.1 の current_body=$(echo "$comment_data" | jq -r '.body // empty') の直後。
-# こうすることで $current_body を再利用し、追加の API コールを回避できる。
-body_tmp=$(mktemp)
-filtered_items_file=$(mktemp)
-updated_tmp=$(mktemp)
-# backup_file is intentionally excluded from trap — preserved for post-mortem investigation
-backup_file="/tmp/rite-wm-backup-${issue_number}-$(date +%s).md"
-trap 'rm -f "$body_tmp" "$filtered_items_file" "$updated_tmp"' EXIT
+# 進捗セクションの完了項目を content-file に生成し merge-checklist transform で委譲追記する。
+# {issue_number} は cleanup.md コンテキストの実値で置換する（heredoc malform 回避のため printf を使用）。
+progress_tmp=$(mktemp)
+# helper stderr（auth/rate/network/safety-check 詳細 + backup path）を退避し、失敗時に surface する。
+# canonical caller §3.5.1 / fix.md 4.5.2 と同じ stderr-capture 規約（2>/dev/null 破棄をしない）。
+wm_sync_err=$(mktemp 2>/dev/null) || wm_sync_err=""
+trap 'rm -f "$progress_tmp" "${wm_sync_err:-}"' EXIT
+printf '%s\n' \
+  "- [x] レビュー完了" \
+  "- [x] マージ完了" \
+  "- [x] クリーンアップ完了" > "$progress_tmp"
 
-# Step 1: Backup current body
-printf '%s' "$current_body" > "$backup_file"
-printf '%s' "$current_body" > "$body_tmp"
+wm_progress_status=$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  --issue {issue_number} \
+  --transform merge-checklist --section 進捗 --content-file "$progress_tmp" 2>"${wm_sync_err:-/dev/null}") || true
+rm -f "$progress_tmp"
 
-# 追加済みでない項目のみを filtered_items_file に書き込む（完全行マッチで重複防止）
-for item in "- [x] レビュー完了" "- [x] マージ完了" "- [x] クリーンアップ完了"; do
-  if ! grep -qxF "$item" "$body_tmp"; then
-    printf '%s\n' "$item" >> "$filtered_items_file"
-  fi
-done
-
-# Step 2: Python-based section append (awk-free)
-python3 -c '
-import sys
-
-body_path = sys.argv[1]
-items_path = sys.argv[2]
-out_path = sys.argv[3]
-
-with open(body_path, "r") as f:
-    body = f.read()
-
-try:
-    with open(items_path, "r") as f:
-        new_items = [l for l in f.read().strip().split("\n") if l.strip()]
-except FileNotFoundError:
-    new_items = []
-
-if not new_items:
-    with open(out_path, "w") as f:
-        f.write(body)
-    sys.exit(0)
-
-lines = body.split("\n")
-result = []
-in_section = False
-
-for i, line in enumerate(lines):
-    if line.rstrip() == "### 進捗":
-        in_section = True
-        result.append(line)
-        continue
-    if in_section and line.startswith("### "):
-        for item in new_items:
-            result.append(item)
-        in_section = False
-        result.append(line)
-        continue
-    result.append(line)
-
-# If section was at EOF, append items
-if in_section:
-    for item in new_items:
-        result.append(item)
-
-output = "\n".join(result)
-if body.endswith("\n") and not output.endswith("\n"):
-    output += "\n"
-with open(out_path, "w") as f:
-    f.write(output)
-' "$body_tmp" "$filtered_items_file" "$updated_tmp"
-
-# Step 3: Validate updated content
-# On failure: restore backup and continue — section append failure is non-critical,
-# the original content is still valid for subsequent PATCH
-if [ ! -s "$updated_tmp" ] || [[ "$(wc -c < "$updated_tmp")" -lt 10 ]]; then
-  echo "WARNING: Updated body is empty or too short. Restoring backup." >&2
-  cp "$backup_file" "$updated_tmp"
-fi
-if grep -q -- '📜 rite 作業メモリ' "$updated_tmp"; then
-  : # Header present, proceed
-else
-  echo "WARNING: Updated body missing header. Restoring backup." >&2
-  cp "$backup_file" "$updated_tmp"
-fi
-
-current_body=$(cat "$updated_tmp")
+# 非ブロッキング: cleanup は work memory 更新失敗で停止してはならない（§3.5 は automatic final update）。
+# no_comment（作業メモリ不在 = legitimate no-op）以外の skipped/error は WARNING 表示にとどめる。
+# 失敗時は helper stderr の root-cause（先頭 5 行）も surface し、backup path / API エラー詳細を operator に残す。
+case "$wm_progress_status" in
+  status=success)      echo "作業メモリの進捗セクションを更新しました" ;;
+  *reason=no_comment*) echo "作業メモリ comment が無いため進捗更新をスキップしました" ;;
+  *)                   echo "警告: 作業メモリ進捗更新が完了しませんでした (${wm_progress_status:-no-status})。cleanup は続行します。" >&2
+                       [ -n "$wm_sync_err" ] && [ -s "$wm_sync_err" ] && { echo "  helper stderr (root-cause、先頭 5 行):" >&2; head -5 "$wm_sync_err" | sed 's/^/    /' >&2; } ;;
+esac
+rm -f "${wm_sync_err:-}"
 ```
 
-**Note for Claude**: ⚠️ awk は使用禁止。Python インラインスクリプトでセクション追記を行うこと。更新前バックアップ・空body検証・ヘッダー検証を必ず実行すること。参照: [gh-cli-patterns.md の Work Memory Update Safety Patterns](../../references/gh-cli-patterns.md#work-memory-update-safety-patterns)。
+**Note for Claude**: comment 取得・body 変換（全文 dedup + `### 進捗` セクション末尾挿入）・safety check・PATCH・backup はすべて helper 内部で完結するため、本ブロックを単一 Bash 呼び出しに収める必要はない（旧 inline 実装のクロスプロセス変数 `$current_body` 参照制約は解消済み）。`{plugin_root}` はリテラル値で埋め込み、`{issue_number}` を cleanup.md コンテキストの実値で置換すること。`### 進捗` セクション不在時は項目を drop し body を変更しない（既存 §3.5 の no-op 契約。`merge-checklist` transform がこれを保証）。参照: §3.5.1 の canonical caller パターン。
+
+> **適用範囲の注記**: `### 進捗` は **v1 (legacy) WM フォーマット限定**のセクションで、現行 default フォーマットは `### 進捗サマリー` (table) である（SoT: `skills/rite-workflow/references/work-memory-format.md`、init テンプレ: `issue-comment-wm-sync.sh`、v1/v2 分岐: `issue-comment-wm-update.py` の `update_progress` v1 fallback `"### 進捗" in body and "### 進捗サマリー" not in body`）。したがって **v2 WM では本 merge は常に no-op** になり、`### 進捗` を持つ v1 WM が残存する Issue でのみ実効する。これは原 §3.5.2 inline 実装の target section (`### 進捗`) を verbatim 保持した結果であり、`### 進捗サマリー` table 対応への変更は本委譲のスコープ外（§3.5.1 が section-novelty を明記しているのと対称の適用範囲記述）。
 
 **Standard update template:**
 
@@ -343,7 +232,7 @@ This makes it visually clear that the Issue's work has been completed.
 
 ### 3.6 Close Related Issue
 
-Close the related Issue identified in Phase 1.5.
+Close the related Issue identified in `cleanup.md` ステップ 2.
 
 #### 3.6.1 Check Issue State
 
@@ -373,7 +262,7 @@ gh issue close {issue_number} --comment "PR #{pr_number} のマージに伴い�
 
 ### 3.6.4 Update Parent Issue Tasklist Checkbox
 
-**Execution condition**: Only executed when a parent Issue was detected in Phase 1.5.1.
+**Execution condition**: Only executed when a parent Issue was detected in `cleanup.md` ステップ 2.
 
 When a child Issue's PR is merged and cleanup runs, update the parent Issue's Tasklist checkbox for this child Issue from `- [ ]` to `- [x]`.
 
@@ -381,7 +270,7 @@ When a child Issue's PR is merged and cleanup runs, update the parent Issue's Ta
 
 Replace `- [ ] #{issue_number}` with `- [x] #{issue_number}` in the parent Issue body. The pattern matches any text after the Issue number on the same line (e.g., `- [ ] #661 - description text`).
 
-**Implementation**: Use the 3-step pattern (Bash → Read+Write → Bash) per [gh-cli-patterns.md](../../references/gh-cli-patterns.md).
+**Implementation**: Use the 3-step pattern (Bash → Read+Write → Bash) per [gh-cli-patterns.md](../../../references/gh-cli-patterns.md).
 
 **Step 1: Bash tool call -- retrieve and validate the body**
 
@@ -429,7 +318,7 @@ Replace `{tmpfile_read}`, `{tmpfile_write}`, `{original_length}` with the values
 
 ### 3.7 Auto-Close Parent Issue
 
-**Execution condition**: Only executed when a parent Issue was detected in Phase 1.5.1.
+**Execution condition**: Only executed when a parent Issue was detected in `cleanup.md` ステップ 2.
 
 If all child Issues are complete, automatically close the parent Issue.
 
@@ -469,45 +358,47 @@ If all child Issues are complete, auto-close the parent Issue without user confi
 
 ##### 3.7.2.1 Update Parent Issue's Projects Status to "Done"
 
-If the parent Issue is registered in a Project, update the Status:
+Skip this substep if `github.projects.enabled: false` in `rite-config.yml` and proceed to 3.7.2.2 (close processing). Otherwise, invoke the shared script to transition the parent Issue Status to **Done** (same delegate pattern as Phase 3.2):
 
 ```bash
-# 親 Issue の Project アイテム情報を取得
-gh api graphql -f query='
-query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    issue(number: $number) {
-      projectItems(first: 10) {
-        nodes {
-          id
-          project {
-            id
-            number
-          }
-        }
-      }
-    }
-  }
-}' -f owner="{owner}" -f repo="{repo}" -F number={parent_issue_number}
+status_json_args=$(jq -n \
+  --argjson issue {parent_issue_number} \
+  --arg owner "{owner}" \
+  --arg repo "{repo}" \
+  --argjson project_number {project_number} \
+  --arg status "Done" \
+  --argjson auto_add false \
+  --argjson non_blocking true \
+  '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')
+bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"
 ```
 
-If registered in a Project:
+Inspect the script's stdout JSON:
 
-```bash
-# Status を "Done" に更新
-gh project item-edit --project-id {project_id} --id {parent_item_id} --field-id {status_field_id} --single-select-option-id {done_option_id}
-```
+| `.result` | Action |
+|-----------|--------|
+| `"updated"` | Display `親 Issue #{parent_issue_number} の Projects Status を "Done" に更新しました` and proceed to 3.7.2.2 |
+| `"skipped_not_in_project"` | Display `警告: 親 Issue #{parent_issue_number} は Project に登録されていません。Status 更新をスキップしてクローズ処理を続行します` and proceed to 3.7.2.2 |
+| `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: 親 Issue #{parent_issue_number} の Projects Status 更新に失敗しました。手動更新が必要な場合があります。クローズ処理は続行します` and proceed to 3.7.2.2 |
 
-**Note**: Use the `{done_option_id}` value already retrieved in Phase 3.3.
+**All result branches are non-blocking** — the parent Issue close (3.7.2.2) MUST proceed regardless of Status update outcome.
 
-**If the parent Issue is not registered in a Project:**
-
-Display a warning and skip the status update, but continue with the close processing (3.7.2.2):
-
-```
-警告: 親 Issue #{parent_issue_number} は Project に登録されていません
-Status 更新をスキップしてクローズ処理を続行します
-```
+> **Bash 実装 minimal skeleton (delegate-only 経路の標準形、parent Issue Done 更新版)**:
+>
+> ```bash
+> status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args") || status_json=""
+> status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+> status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
+> case "$status_result" in
+>   updated) echo "親 Issue #${parent_issue_number} の Projects Status を \"Done\" に更新しました" ;;
+>   skipped_not_in_project) echo "警告: 親 Issue #${parent_issue_number} は Project に登録されていません。Status 更新をスキップしてクローズ処理を続行します" >&2 ;;
+>   failed|*)
+>     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
+>     echo "警告: 親 Issue #${parent_issue_number} の Projects Status 更新に失敗しました。クローズ処理は続行します" >&2 ;;
+> esac
+> ```
+>
+> **完全形 (state machine + signal-specific trap + tempfile + 一体化された inconsistency summary)** が必要な場合は `commands/issue/close.md` Phase 4.6.3 を参照 (Issue close と Status update を unified block で扱う)。
 
 ##### 3.7.2.2 Close the Parent Issue
 
@@ -608,7 +499,7 @@ gh issue close {parent_issue_number}
 
 ### Fail-Closed Gate (Post-Condition Check)
 
-Before resetting state, check for residual work memory files. If Phase 3 (Projects Status Update) completed but Phase 4 was skipped (due to LLM attention loss), this ensures work memory files are still cleaned up.
+Before resetting state, check for residual work memory files. If Phase 3 (Projects Status Update) completed but Phase 4 was skipped, this ensures work memory files are still cleaned up.
 
 ```bash
 # Phase 4 開始前: 作業メモリファイル残存チェック
@@ -618,44 +509,42 @@ if ls .rite-work-memory/issue-*.md 1>/dev/null 2>&1; then
 fi
 ```
 
-Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) if not already resolved.
+Resolve `{plugin_root}` per [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script-full-version) if not already resolved.
 
 **Note**: This is a defense-in-depth mechanism. If Phase 4 executes correctly, this check is a no-op.
 
 After the Fail-Closed Gate, run the cleanup-work-memory script. This script performs all cleanup steps in a single deterministic invocation:
 
-1. Resets `.rite-flow-state` to `active: false` (prevents `post-tool-wm-sync.sh` from recreating files)
-2. Deletes `.rite-compact-state` and its lockdir (#756)
+1. Resets flow state to `active: false` (prevents `post-tool-wm-sync.sh` from recreating files)
+2. Deletes the per-session compact-state (`.rite/sessions/{session_id}.compact-state`) and its lockdir, plus the legacy shared `.rite-compact-state` and lockdir (retained for migration)
 3. Deletes ALL `.rite-work-memory/issue-*.md` files and their lockdirs (both current Issue and stale leftovers)
 4. Reports deletion results (deleted/failed/remaining counts)
 
-Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) if not already resolved.
+Resolve `{plugin_root}` per [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script-full-version) if not already resolved.
 
 ```bash
 bash {plugin_root}/hooks/cleanup-work-memory.sh
 ```
 
-**Why a script instead of inline shell**: Previous implementations (#740, #753, #776) used inline shell fragments with LLM placeholders (`{issue_number}`, `{branch_name}`, etc.). When the LLM failed to substitute these placeholders, `jq` commands failed silently and `rm` commands deleted literal filenames instead of actual files. The script reads the issue number directly from `.rite-flow-state`, eliminating placeholder dependency.
-
-**Key design**: The script resets `.rite-flow-state` to `active: false` **before** deleting files. This ordering prevents the `post-tool-wm-sync.sh` PostToolUse hook from recreating files after deletion (the hook checks `active == true` and exits early when false).
+**Key design**: The script resets flow state to `active: false` **before** deleting files. This ordering prevents the `post-tool-wm-sync.sh` PostToolUse hook from recreating files after deletion (the hook checks `active == true` and exits early when false). The script reads the issue number directly from the flow state file, eliminating LLM placeholder substitution dependency.
 
 **Error handling:**
 
 | Error Case | Response |
 |-----------|----------|
-| `.rite-flow-state` reset fails | Script displays WARNING to stderr and continues with file deletion |
+| flow state reset fails | Script displays WARNING to stderr and continues with file deletion |
 | File deletion fails | Script displays WARNING to stderr per file and continues |
 | `.rite-work-memory/` does not exist | No error (script handles gracefully) |
-| Script itself fails | Display warning and proceed to Phase 5 (non-blocking) |
+| Script itself fails | Display warning and proceed to cleanup.md ステップ 12 (non-blocking) |
 
 **Warning message on script failure:**
 
 ```
 警告: 作業メモリクリーンアップスクリプトが失敗しました
-手動でリセットする場合: .rite-flow-state を削除するか active を false に変更し、.rite-work-memory/issue-*.md を手動削除してください
+手動でリセットする場合: flow state file を削除するか active を false に変更し、.rite-work-memory/issue-*.md を手動削除してください
 ```
 
-**Note**: Failure does not block the cleanup process. Display a warning and proceed to Phase 5.
+**Note**: Failure does not block the cleanup process. Display a warning and proceed to cleanup.md ステップ 12.
 
 **Do NOT delete** the `.rite-work-memory/` directory itself — the script preserves it.
 

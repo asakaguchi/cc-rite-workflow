@@ -108,7 +108,7 @@ For each bash error handling construct identified in Step 5:
   # (auth errors, network failures, gh internal errors).
   #
   # This example follows the repository's standard bash safety convention used in
-  # plugins/rite/commands/pr/review.md Phase 2.2.1 and plugins/rite/commands/pr/fix.md Phase 4.5.2:
+  # plugins/rite/commands/pr/review.md ステップ 2.2.1 and plugins/rite/commands/pr/fix.md ステップ 4.5.2:
   # (1) path declared before trap, (2) trap installed before mktemp, (3) signal-specific
   # exit codes (EXIT/INT/TERM/HUP), (4) explicit mktemp failure handling, (5) gh api wrapped
   # in if/else to surface stderr in both success and failure branches, (6) `mktemp` uses a
@@ -156,9 +156,9 @@ For each bash error handling construct identified in Step 5:
   - **Pattern B** — When you want the full JSON response and explicit failure handling, but don't care about stderr warnings on the success path (deprecation notices). Simpler than Pattern A. Best for scripts where `gh api` failures must fail fast with a clear message and success-path warnings are low-value.
   - **Pattern C** — When you only need a single parsed field and don't care about stderr warnings at all. Most concise but loses access to the full JSON response (cannot parse additional fields later).
 
-  > **Why not hardcoded `/tmp/gh.err`?** The previous revision of this example used a hardcoded path, which is vulnerable to hardcoded-path race conditions (filename collisions when the script runs concurrently, symlink attacks on multi-user systems). The rest of this repository uniformly uses `mktemp` for temp files (see `plugins/rite/commands/pr/review.md` Phase 2.2.1, `plugins/rite/commands/pr/fix.md` Phase 4.5.2). Example code in a reviewer file must not teach patterns that the reviewer itself would flag.
+  > **Why not hardcoded `/tmp/gh.err`?** The previous revision of this example used a hardcoded path, which is vulnerable to hardcoded-path race conditions (filename collisions when the script runs concurrently, symlink attacks on multi-user systems). The rest of this repository uniformly uses `mktemp` for temp files (see `plugins/rite/commands/pr/review.md` ステップ 2.2.1, `plugins/rite/commands/pr/fix.md` ステップ 4.5.2). Example code in a reviewer file must not teach patterns that the reviewer itself would flag.
   >
-  > **Why the full path-declare → trap → mktemp pattern?** Two kinds of race conditions exist: (a) **hardcoded-path race** (filename collisions, symlink attacks — solved by `mktemp`), and (b) **signal-delivery race window** (a SIGTERM/SIGINT/SIGHUP arriving between `mktemp` success and `trap` installation leaves the tmp file orphaned — solved by declaring the path variable first, installing the trap, then running `mktemp`). The repository's standard convention (`plugins/rite/commands/pr/review.md` Phase 2.2.1, `plugins/rite/commands/pr/fix.md` Phase 4.5.2) addresses both. Pattern A mirrors that convention.
+  > **Why the full path-declare → trap → mktemp pattern?** Two kinds of race conditions exist: (a) **hardcoded-path race** (filename collisions, symlink attacks — solved by `mktemp`), and (b) **signal-delivery race window** (a SIGTERM/SIGINT/SIGHUP arriving between `mktemp` success and `trap` installation leaves the tmp file orphaned — solved by declaring the path variable first, installing the trap, then running `mktemp`). The repository's standard convention (`plugins/rite/commands/pr/review.md` ステップ 2.2.1, `plugins/rite/commands/pr/fix.md` ステップ 4.5.2) addresses both. Pattern A mirrors that convention.
   >
   > **Why signal-specific trap entries (INT/TERM/HUP)?** Relying on a bare `trap '...' EXIT` alone to handle signals is risky for two independent reasons. First, when you install an explicit signal-specific trap (e.g., `trap 'cleanup' INT`), bash's default behavior after the handler is to **continue executing** the script rather than exit — unless the handler explicitly calls `exit`. If you forget the `exit`, your script silently keeps running after an interrupt. Second, bash's signal dispatch for a bare EXIT trap (with no signal-specific entry) is **context-sensitive**: it varies with interactive vs non-interactive mode, whether a foreground child is running, and which signal was received. Rather than depending on those details, install signal-specific entries for INT/TERM/HUP that (a) run `_pa_cleanup`, and (b) explicitly `exit` with POSIX-conventional codes (SIGINT=130, SIGTERM=143, SIGHUP=129). This guarantees three things regardless of the execution context: cleanup runs with the correct per-signal exit code, the script exits deterministically rather than continuing, and callers see standard exit codes. The EXIT trap still fires as a belt-and-braces catch-all for the normal-exit and non-signal-failure cases. For the full details of bash's signal handling, see `man bash` section "SIGNALS".
   >
@@ -187,7 +187,93 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 
 ## Detailed Checklist
 
-Read `plugins/rite/skills/reviewers/error-handling.md` for the full checklist.
+## Expertise Areas
+
+- Silent failure detection
+- Error propagation patterns
+- Logging quality assessment
+- Catch block specificity
+- Fallback behavior analysis
+- Custom error class design
+
+## Review Checklist
+
+### Critical (Must Fix)
+
+- [ ] **Silent Error Swallowing**: Empty catch blocks (`catch(e) {}`) or catch blocks with no logging/propagation
+- [ ] **Lost Error Context**: Re-throwing errors without preserving the original cause or stack trace
+- [ ] **Silent Fallbacks in Critical Paths**: Returning default values in payment, auth, or data integrity operations without logging
+- [ ] **Unhandled Promise Rejections**: Missing `.catch()` on Promises that can reject, especially in async chains
+- [ ] **Bash: Missing exit-on-error**: Scripts without `set -e` or `set -euo pipefail` where failed commands silently continue
+- [ ] **Bash: Unguarded error suppression**: `command || true` or `2>/dev/null` on critical operations (API calls, file writes) that hide actionable failures
+- [ ] **Bash: `local` masking exit code**: `local var=$(command)` suppresses non-zero exit code even with `set -e` — use `local var; var=$(command)` instead
+
+### Inverse Pattern Prohibition: reviewer 自身の fallback 推奨禁止
+
+> **Reference**: [`agents/_reviewer-base.md`](./_reviewer-base.md) "Fail-Fast First" 節を必ず参照すること。
+
+silent swallow を CRITICAL として検出するのと **同じ理由** で、reviewer 自身が「null 返却を追加せよ」「catch して default を返せ」「`?? 0` で安全化せよ」と推奨することも **silent failure の共犯行為** であり、本 reviewer の禁止事項である。
+
+正解は常に **`throw` / `raise` / 再 throw で呼び出し元の error boundary に伝播させる** こと。fallback 追加を `推奨対応` 列に書く前に、以下のチェックリストを必ず実施する:
+
+1. [ ] そのコードは `throw` / `raise` で呼び出し元に伝播できるか？できるなら throw を推奨する
+2. [ ] 既存の error boundary（CLI runner / HTTP middleware / Promise root catch / Bash `trap ERR` / `set -e` 等）に到達できるか？できるなら throw + boundary 経由のログ推奨
+3. [ ] `throw` を許さない既存テストがあれば、それは **テストの方が間違っている**。テスト修正を推奨する
+4. [ ] それでも fallback が必要と判断する場合は、本 skill の「allowed fallback case」リスト（後述）に該当するかを確認し、該当しなければ throw を推奨する
+
+**fallback 推奨が許容されるケース** (本 skill の例外リスト):
+
+- **Graceful degradation in non-critical UI render paths**: ユーザーへの致命的エラー表示よりも degraded UI のほうが許容されるレンダリング経路（例: avatar 表示失敗時のデフォルト画像）。critical path（payment / auth / data write）は対象外。
+- **Idempotent retry boundaries**: べき等な操作で retry 後も失敗した場合に warning ログ + null を返すパターン（呼び出し元が null を明示的に check することが前提）。**Rationale**: 全面 `throw` は中間リトライ層 (exponential backoff / circuit breaker 等) で unwrap すべきでない例外連鎖を生むため、明示的な null sentinel + caller 側 null-check の方が contract が局所化される。ただし本例外は **retry 境界のみ** に限定 — 通常の呼び出し経路で null 返却を推奨するのは silent-failure 共犯行為なので禁止。呼び出し元が null を check していない既存コードでこのパターンを推奨してはならない (まず呼び出し元の null-check 追加を指摘する)。
+
+上記いずれにも該当しない場合、fallback の推奨は **CRITICAL** 違反として扱う。
+
+### Important (Should Fix)
+
+- [ ] **Generic Error Messages**: `throw new Error("failed")` without context about what operation failed and why
+- [ ] **Overly Broad Catch**: Catching base `Error`/`Exception` when a specific error type is expected
+- [ ] **Missing Error Logging**: Catch blocks that handle the error but don't log for post-mortem analysis
+- [ ] **Inconsistent Error Patterns**: Different error handling approaches in the same module (some log, some don't)
+- [ ] **Fallback Without Notification**: Returning defaults without informing the caller that the primary operation failed
+- [ ] **Bash: Missing trap cleanup**: Scripts creating temp files or holding locks without `trap 'cleanup' EXIT`
+- [ ] **Bash: Pipeline masking**: `cmd1 | cmd2` without `set -o pipefail`, hiding `cmd1` failures
+- [ ] **Bash: Unchecked command substitution**: `var=$(command)` without `set -e` silently captures empty string on failure
+
+### Recommendations
+
+- [ ] **Custom Error Classes**: Using generic Error where a domain-specific error class would improve handling
+- [ ] **Error Boundary Coverage**: Missing error boundaries in UI component trees
+- [ ] **Retry Logic**: Operations that could benefit from retry (network, transient DB) without retry implementation
+- [ ] **Error Documentation**: Missing JSDoc/docstring about what errors a function can throw
+
+## Severity Definitions
+
+**CRITICAL** (silent failure in critical path or data loss risk), **HIGH** (error swallowed or lost context), **MEDIUM** (inadequate logging or inconsistent patterns), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外の造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor improvement to error handling).
+
+## Finding Quality Guidelines
+
+As an Error Handling Expert, report findings based on verified silent failure patterns, not hypothetical error scenarios.
+
+### Investigation Before Reporting
+
+Perform the following investigation before reporting findings:
+
+| Investigation | Tool | Example |
+|---------|----------|-----|
+| Check error handling patterns in project | Grep | Search for `catch` patterns: how does the project typically handle errors? |
+| Verify caller expectations | Read | Does the caller check for null/error returns? |
+| Compare with adjacent error handling | Read | How do similar operations in the same file handle errors? |
+| Check logging infrastructure | Grep | Search for `logger`, `console.error`, `log.error` patterns |
+| Bash: Check `set -e`/`pipefail` usage | Grep | Search for `set -e`, `set -euo pipefail` in `.sh` files |
+| Bash: Verify error suppression intent | Read | Is `|| true` / `2>/dev/null` on a critical or non-critical path? |
+
+### Prohibited vs Required Findings
+
+| Prohibited (Vague) | Required (Concrete) |
+|------------------|-------------------|
+| "エラーハンドリングが不十分かもしれない" | "`catch(e) {}` で DB エラーを握りつぶしており、`order.ts:40` ではログ + 再スローを使用している" |
+| "例外処理を追加すべき" | "`JSON.parse(input)` が try-catch なしで呼ばれており、不正 JSON でプロセスが crash する。`config.ts:20` では try-catch 付き" |
+| "エラーメッセージを改善した方がよい" | "`throw new Error('failed')` で操作名/入力値が不明。隣接関数では `throw new Error(\`Payment ${id} failed: ${reason}\`)` を使用" |
 
 ## Output Format
 
@@ -200,8 +286,8 @@ Read `plugins/rite/agents/_reviewer-base.md` for format specification.
 ### 所見
 エラーハンドリングにサイレント失敗パターンが検出されました。エラーが握りつぶされており、障害時の診断が困難です。
 ### 指摘事項
-| 重要度 | ファイル:行 | 内容 | 推奨対応 |
-|--------|------------|------|----------|
-| CRITICAL | src/services/payment.ts:65 | `catch(e) {}` で決済エラーを完全に握りつぶしており、決済失敗時にユーザーへの通知もログも残らない。`order.ts:40` ではエラーログ + ユーザー通知を実装済み | エラーログとユーザー通知を追加: `catch(e) { logger.error('Payment failed', { userId, amount, error: e }); throw new PaymentError('決済処理に失敗しました', { cause: e }); }` |
-| HIGH | src/utils/config.ts:22 | `JSON.parse(data)` の失敗時に `return {}` で空オブジェクトを返すが、呼び出し元は有効な設定データが返されることを前提としている。パース失敗が伝播せず不正な動作の原因になる | エラーを伝播させるか、明示的にログ出力: `catch(e) { logger.warn('Config parse failed, using defaults', { error: e }); return DEFAULT_CONFIG; }` |
+| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|--------|----------|------------|------|----------|
+| CRITICAL | current-pr | src/services/payment.ts:65 | `catch(e) {}` で決済エラーを完全に握りつぶしており、決済失敗時にユーザーへの通知もログも残らない。`order.ts:40` ではエラーログ + ユーザー通知を実装済み | エラーログとユーザー通知を追加: `catch(e) { logger.error('Payment failed', { userId, amount, error: e }); throw new PaymentError('決済処理に失敗しました', { cause: e }); }` |
+| HIGH | current-pr | src/utils/config.ts:22 | `JSON.parse(data)` の失敗時に `return {}` で空オブジェクトを返すが、呼び出し元は有効な設定データが返されることを前提としている。パース失敗が伝播せず不正な動作の原因になる | エラーを伝播させるか、明示的にログ出力: `catch(e) { logger.warn('Config parse failed, using defaults', { error: e }); return DEFAULT_CONFIG; }` |
 ```

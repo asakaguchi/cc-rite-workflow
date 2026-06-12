@@ -1,5 +1,7 @@
 # `.rite-flow-state` Session Ownership — 複数インスタンス競合対策
 
+> **Status: partially superseded**. 本 design doc 内で「影響ファイル」として列挙される `create-register.md` / `create-decompose.md` / `create-interview.md` は `create.md` (flat) に統合され削除済み。Session ownership ロジック自体は `plugins/rite/hooks/session-ownership.sh` (helper) + `session-end.sh` / `post-tool-wm-sync.sh` 等の hook で維持され、`create.md` (flat) からは hook 経由で自動適用される。歴史的設計判断の参照用として残置。
+
 <!-- Section ID: SPEC-OVERVIEW -->
 ## 概要
 

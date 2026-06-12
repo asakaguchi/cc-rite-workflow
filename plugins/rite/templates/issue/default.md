@@ -1,7 +1,7 @@
 # Issue Template: Implementation Contract
 
 This template defines the "Implementation Contract" format for Issue body generation.
-Claude reads this template when creating Issues via `/rite:issue:create` (Phase 2.2)
+Claude reads this template when creating Issues via `/rite:issue:create` (ステップ 4.2)
 and dynamically generates the Issue body based on Type and Complexity.
 
 ## Usage Instructions
@@ -16,13 +16,24 @@ and dynamically generates the Issue body based on Type and Complexity.
 
 ## Type Definitions
 
-| Type | Characteristic Section | Heuristics |
-|------|----------------------|------------|
-| Feature | User Scenarios | New user-facing functionality or workflow |
-| BugFix | Bug Details (Reproduction, Root Cause) | Symptom + repro steps + incorrect current behavior |
-| Refactor | Before/After Contract, Compatibility Policy | Internal structure improvement, compatibility considerations |
-| Chore | Operational Context | Maintenance/tooling/dependency update, no behavior change |
-| Docs | Documentation Target | Documentation addition/update is the primary deliverable |
+> **Type 表記の SoT (crosswalk)**: 下表の `Commit Type` 列が、Issue body 構造で用いる **Contract Type** (Feature/BugFix/...) と Conventional Commits 系の **Commit Type** (feat/fix/...) の対応を定義する単一の Source of Truth。`commands/issue/create.md` (Step 4.1 / 4.2)、`commands/issue/references/contract-section-mapping.md`、`templates/issue/template-structure.md` Section 3 はこの crosswalk を参照する（各箇所で対応関係を再定義しない）。
+
+| Type (Contract) | Commit Type | Characteristic Section | Heuristics |
+|-----------------|-------------|----------------------|------------|
+| Feature | feat | User Scenarios | New user-facing functionality or workflow |
+| BugFix | fix | Bug Details (Reproduction, Root Cause) | Symptom + repro steps + incorrect current behavior |
+| Refactor | refactor | Before/After Contract, Compatibility Policy | Internal structure improvement, compatibility considerations |
+| Chore | chore | Operational Context | Maintenance/tooling/dependency update, no behavior change |
+| Docs | docs | Documentation Target | Documentation addition/update is the primary deliverable |
+
+### Type Notation Policy
+
+rite には 2 つの正当な type 語彙が併存する:
+
+- **Contract Type** (Feature/BugFix/Refactor/Chore/Docs): Issue body の Section 3 名・本テーブルなど **body 構造選択**の語彙。
+- **Commit Type** (feat/fix/refactor/chore/docs): commit message / branch 名 / PR title の語彙（CLAUDE.md が必須と規定する Conventional Commits 由来。`pr/open.md` の branch type 派生もこの系列）。
+
+**判断**: どちらか一方へ統一せず、両系列を残し上表 `Commit Type` 列を単一 crosswalk SoT とする。**根拠**: 統一しても seam は消えず別境界（Issue body ↔ commit/branch）へ移動するだけで、Conventional Commits は外部標準として commit/branch に不可欠、Contract Type は section 名として可読。境界マッピングを 1 箇所で明示するのが drift を最小化する。非自明な対応は `feat↔Feature` / `fix↔BugFix` のみ（他は大文字小文字差）。
 
 ## Complexity Gate
 
@@ -55,18 +66,7 @@ Legend: `M` = MUST (required), `S` = SHOULD (recommended), `O` = OMIT (skip)
 
 ## Complexity Heuristics
 
-Score +1 for each matching condition:
-
-| Condition | Score |
-|-----------|-------|
-| Changed files > 3 | +1 |
-| Spans multiple modules/services | +1 |
-| Public API/interface changes | +1 |
-| Migration/backward compatibility needed | +1 |
-| Strict non-functional requirements | +1 |
-| 2+ unresolved design decisions | +1 |
-
-Score to complexity: 0-1 = XS, 2 = S, 3-4 = M, 5 = L, 6+ = XL
+> **Moved**: 本セクションの定義は [`../../commands/issue/references/complexity-gate.md#complexity-heuristics-scoring`](../../commands/issue/references/complexity-gate.md#complexity-heuristics-scoring) に移動しました。Score テーブル (6 条件、各 +1) と Score → complexity mapping (0-1=XS / 2=S / 3-4=M / 5=L / 6+=XL) を参照してください。本テンプレート内の Heuristics 表は SoT (`references/complexity-gate.md`) の単一定義に集約されています。
 
 ---
 
@@ -74,7 +74,7 @@ Score to complexity: 0-1 = XS, 2 = S, 3-4 = M, 5 = L, 6+ = XL
 
 > **Extracted to separate file**: The full section-by-section template (Sections 0-9) has been
 > moved to [template-structure.md](./template-structure.md) to reduce context consumption.
-> Read that file only when generating the Issue body (Phase 2.2 Step 2+).
+> Read that file only when generating the Issue body (ステップ 4.2).
 
 ### Section Overview
 
@@ -95,14 +95,7 @@ Score to complexity: 0-1 = XS, 2 = S, 3-4 = M, 5 = L, 6+ = XL
 
 ## Interview to Template Mapping
 
-| Interview Perspective | Target Sections |
-|----------------------|----------------|
-| Technical Implementation | 4.1 Target Files, 4.3 Interface/Data Contract, 4.4 Behavioral Requirements |
-| User Experience | 1 Goal, 3 Type Core (Feature scenarios), 5 AC (Happy Path) |
-| Edge Cases | 5 AC (Boundary/Error), 6 Test Specification (Boundary/Error rows) |
-| Existing Feature Impact | 2 Scope (Out of Scope), 4.2 Non-Target, 4.4 MUST NOT |
-| Non-Functional Requirements | 4.5 Error/Constraints, 5 AC (NFR outcome), 6 Test Specification |
-| Tradeoffs | 1 Non-goal, 4.4 SHOULD/MAY, 9 Decision Log |
+> **Moved**: Interview Perspective → Target Sections の正規 mapping table は [`commands/issue/references/contract-section-mapping.md#step-3-perspective--target-sections-mapping`](../../commands/issue/references/contract-section-mapping.md#step-3-perspective--target-sections-mapping) に移動しました。本 template から interview mapping を参照する場合は本 reference を経由すること。
 
 ---
 

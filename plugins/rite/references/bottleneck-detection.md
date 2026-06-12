@@ -80,7 +80,7 @@ If Priority 1 yields no relevant references:
 
 1. **Same directory search**: Use Glob tool with `{current_file_directory}/*.{ext}` to find sibling files
 2. **Name pattern search**: Extract naming patterns from the bottlenecked file and search with Glob tool
-   - Example: editing `implement.md` → search `commands/issue/*.md`
+ - Example: editing `implement.md` → search `commands/issue/*.md`
 3. **Read candidates**: Read up to 2 candidate files (prioritize by modification time — more recent first)
 4. Extract structural patterns relevant to the bottleneck
 
@@ -89,7 +89,7 @@ If Priority 1 yields no relevant references:
 If Priority 2 yields no results:
 
 1. Search for test files corresponding to the bottlenecked file:
-   - Pattern: `{name}.test.{ext}`, `{name}.spec.{ext}`, `tests/{name}.*`
+ - Pattern: `{name}.test.{ext}`, `{name}.spec.{ext}`, `tests/{name}.*`
 2. If test files exist, read them to understand the expected structure
 3. Use the test structure as a guide for decomposition
 
@@ -106,11 +106,11 @@ After discovering an Oracle (or falling back to heuristics), decompose the bottl
 ```
 ボトルネック検出
 ├─ Oracle 発見
-│   ├─ 優先度1: 既存の参考実装を再利用 → 構造パターンに基づき分解
-│   ├─ 優先度2: 同ディレクトリ/パターン検索 → 類似ファイル構造に基づき分解
-│   └─ 優先度3: テスト逆引き → テスト構造に基づき分解
+│ ├─ 優先度1: 既存の参考実装を再利用 → 構造パターンに基づき分解
+│ ├─ 優先度2: 同ディレクトリ/パターン検索 → 類似ファイル構造に基づき分解
+│ └─ 優先度3: テスト逆引き → テスト構造に基づき分解
 └─ Oracle なし
-    └─ フォールバック分解 → 一般的ヒューリスティクスに基づき分解
+ └─ フォールバック分解 → 一般的ヒューリスティクスに基づき分解
 ```
 
 ### Decomposition Based on Oracle
@@ -223,7 +223,7 @@ Record in work memory at the next bulk update point (typically at commit time, p
 | Component | Integration |
 |-----------|-------------|
 | `implement.md` 5.1.0.5 | Bottleneck check added to adaptive re-evaluation checkpoint |
-| `implementation-plan.md` 3.5.1 | Mid-replanning: re-insert sub-steps into plan and work memory |
+| `pr/open.md` ステップ 3 | Mid-replanning: re-insert sub-steps into plan and work memory |
 | `coding-principles.md` `reference_discovery` | Oracle discovery reuses the same search patterns |
 | `execution-metrics.md` `plan_deviation_count` | Each re-decomposition counts as a plan deviation |
 | `work-memory-format.md` | New "ボトルネック検出ログ" section added |
@@ -233,7 +233,7 @@ Record in work memory at the next bulk update point (typically at commit time, p
 ## Related
 
 - [Implementation Guidance](../commands/issue/implement.md) - 5.1.0.5 Adaptive Re-evaluation
-- [Implementation Plan](../commands/issue/implementation-plan.md) - 3.2.1 Reference Implementation Discovery
+- [PR Open](../commands/pr/open.md) ステップ 3 — 実装計画
 - [AI Coding Principles](../skills/rite-workflow/references/coding-principles.md) - `reference_discovery` principle
 - [Execution Metrics](./execution-metrics.md) - `plan_deviation_count` metric
 - [Work Memory Format](../skills/rite-workflow/references/work-memory-format.md) - "ボトルネック検出ログ" section format

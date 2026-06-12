@@ -43,16 +43,25 @@ description: |
 
 | コマンド | 説明 | 状態 |
 |---------|------|------|
-| `/rite:wiki:init` | Wiki 初期化（ディレクトリ・テンプレート・ブランチ） | 実装済み (#468) |
-| `/rite:wiki:ingest` | Raw Source から経験則を抽出・統合 | 実装済み (#469) |
-| `/rite:wiki:query` | 経験則の参照・コンテキスト注入 | 実装済み (#470) |
-| `/rite:wiki:lint` | Wiki の品質チェック（5 ブロッキング: 矛盾・陳腐化・孤児・欠落概念・壊れた相互参照 + 1 informational: 未登録 raw） | 実装済み (#471) |
+| `/rite:wiki:init` | Wiki 初期化（ディレクトリ・テンプレート・ブランチ） | 実装済み |
+| `/rite:wiki:ingest` | Raw Source から経験則を抽出・統合 | 実装済み |
+| `/rite:wiki:query` | 経験則の参照・コンテキスト注入 | 実装済み |
+| `/rite:wiki:lint` | Wiki の品質チェック（5 ブロッキング: 矛盾・陳腐化・孤児・欠落概念・壊れた相互参照 + 2 informational: 未登録 raw・説明的番号参照） | 実装済み |
 
 ## 関連ファイル
 
 - [Wiki Patterns](../../references/wiki-patterns.md) — ディレクトリ構造・ブランチ操作・テンプレート展開の共通パターン
 - [page-template.md](../../templates/wiki/page-template.md) — Wiki ページの YAML frontmatter
 - [SCHEMA テンプレート](../../templates/wiki/schema-template.md) — 蓄積規約の初期テンプレート
+
+## Ingest 方針: 番号ではなく Why 散文を残す
+
+`/rite:wiki:ingest` で Raw Source から経験則を抽出してページ本文（概要・詳細）を書く際は、**説明目的の Issue/PR/commit 番号参照を本文に持ち込まない**。Wiki は番号の受け皿ではなく、経験則そのものを**自己完結した Why 散文**で残す場である（Comment Best Practices SoT の[適用スコープ](../../skills/rite-workflow/references/comment-best-practices.md#適用スコープ)が Wiki ページを含む）。
+
+- ❌ 「PR #1234 で導入された pattern」「詳細は #567 参照」「(refs #890)」のように番号で出所を示す
+- ✅ 「なぜこの pattern が適切か」「どの罠を回避するか」を散文で説明する
+
+知見の出所（provenance）は frontmatter の `sources.ref`（Raw Source ファイルパス、例: `raw/reviews/pr-1234-...md`）でのみ辿れるようにする。`sources.ref` は番号ではなくファイル参照であり、ingest の bookkeeping として維持する。本文の Why は番号なしで読み手が理解できる自己完結した記述にすること。番号を辿っても背景は得られず、辿る手間に見合わないため、背景は本文の散文に残す。
 
 ## 設定
 
@@ -115,13 +124,13 @@ raw source は `/rite:pr:review`（Phase 6.5.W.2）、`/rite:pr:fix`（Phase 4.6
 2. **wiki.auto_ingest を確認**: `wiki.auto_ingest: true` になっているか（`false` だと raw 蓄積のトリガーが無効化される）
 3. **wiki branch の存在を確認**: `git branch -a | grep wiki` で wiki branch が存在するか。存在しない場合は `/rite:wiki:init` を実行するか `git fetch origin wiki:wiki` を実行
 4. **Phase X.X.W の sentinel を確認**: 完了レポートの `### 📚 Wiki ingest 状況` セクションで `SKIPPED` や `FAILED` のカウントを確認
-5. **workflow incident を確認**: `[CONTEXT] WIKI_INGEST_SKIPPED=1` や `WIKI_INGEST_FAILED=1` が Phase 5.4.4.1 で検出・報告されているか
+5. **workflow incident を確認**: `[CONTEXT] WIKI_INGEST_SKIPPED=1` や `WIKI_INGEST_FAILED=1` が ステップ 8.5 で検出・報告されているか
 
 ### raw は増えているがページが増えない場合
 
 raw source は蓄積されているが `.rite/wiki/pages/` にページが生成されていない場合:
 
-1. **`/rite:wiki:ingest` を手動実行**: ページ統合は `/rite:wiki:ingest` で実行されます。自動発火は `/rite:pr:cleanup` の末尾 Phase で行われるため、cleanup を実行していない場合はページが生成されません
+1. **`/rite:wiki:ingest` を手動実行**: ページ統合は `/rite:wiki:ingest` で実行されます。自動発火は `/rite:pr:cleanup` の ステップ 9 (Wiki Ingest 条件付き) で行われるため、cleanup を実行していない場合はページが生成されません
 2. **pending raw を確認**: `wiki-growth-check.sh` の出力で `pending` 数を確認。`ingested: false` のまま残っている raw source が多い場合は ingest が実行されていません
 3. **ingest のエラーログを確認**: `/rite:wiki:ingest` 実行時に LLM 解析エラーが発生していないか確認
 4. **SCHEMA.md の整合性を確認**: `.rite/wiki/SCHEMA.md` が正しくセットアップされているか。`/rite:wiki:lint` で品質チェックを実行
@@ -130,7 +139,7 @@ raw source は蓄積されているが `.rite/wiki/pages/` にページが生成
 
 以下のタイミングで手動実行を推奨:
 
-- **PR cleanup 後に自動発火しなかった場合**: cleanup.md の末尾 Phase で ingest が skip された場合
+- **PR cleanup 後に自動発火しなかった場合**: cleanup.md ステップ 9 (Wiki Ingest 条件付き) で ingest が skip された場合
 - **`wiki-growth-check.sh` が page stall を検出した場合**: `==> Page stall detected` の出力があった場合
 - **大量の pending raw source がある場合**: `pending` 数が raw 総数の 50% を超えている場合
 - **Wiki を初めて使い始める場合**: `/rite:wiki:init` 実行後、既存の raw source をページ化するため

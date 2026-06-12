@@ -5,7 +5,7 @@
 # checked out to the configured `wiki.branch_name`. Idempotent — running
 # this script repeatedly is safe and cheap.
 #
-# Design rationale (Issue #547): the legacy Block A/B pattern in
+# Design rationale: the legacy Block A/B pattern in
 # commands/wiki/ingest.md relied on `git stash + git checkout wiki` on
 # the current working tree, which loses access to the dev-branch
 # `plugins/rite/templates/wiki/page-template.md` during the LLM
@@ -58,16 +58,24 @@ fi
 # relative to the new cwd. `BASH_SOURCE[0]` + `cd -P` anchors the path
 # to the script's own file location regardless of the caller's cwd.
 #
-# Naming convention note: sibling hook scripts (session-start.sh,
-# stop-guard.sh, work-memory-update.sh, etc.) use `SCRIPT_DIR` without
+# Naming convention note: sibling hook scripts use `SCRIPT_DIR` without
 # the underscore prefix and `cd` without `-P`. The underscore prefix
 # here marks this as a private lib-source helper (not exported for
 # external use), and `cd -P` is a defensive addition that resolves
 # symlinks to the script's physical location — both are supersets of
 # the sibling convention rather than drifts away from it.
 _SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../control-char-neutralize.sh
+source "$_SCRIPT_DIR/../control-char-neutralize.sh"
 
-repo_root=$(git rev-parse --show-toplevel)
+# Resolve to the SHARED state root (main checkout) so that — when this script
+# runs from a linked worktree session — `.rite/wiki-worktree` and its advisory
+# flock resolve to a single inode across all sessions (multi-session design §1;
+# flock excludes only on a shared inode). state-path-resolve.sh returns
+# `git rev-parse --show-toplevel` verbatim for non-worktree sessions, so this is
+# byte-identical outside multi-session use.
+repo_root=$("$_SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || repo_root=""
+[ -n "$repo_root" ] || repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
 # Advisory lock to serialise concurrent setup invocations against the
@@ -151,7 +159,8 @@ abs_target="${repo_root}/${target_path}"
 # absolute-path exact match, then on the subsequent `branch ` line to
 # confirm the checked-out branch matches `wiki_branch`. Additionally
 # detect `prunable` markers so that phantom worktrees (when the user
-# `rm -rf .rite/wiki-worktree/` per cleanup.md Phase 2.6 manual step)
+# `rm -rf .rite/wiki-worktree/` 等で worktree を手動破壊した場合 — cleanup.md ステップ 6 では
+# .rite/wiki-worktree/ を永続化する設計のため、削除は手動操作のみが想定される)
 # are not silently treated as healthy (cycle 2 MEDIUM F-10 fix).
 #
 # `git worktree list` の stderr を tempfile に capture して、corrupt
@@ -183,7 +192,7 @@ else
   wt_list_rc=$?
   echo "WARNING: git worktree list --porcelain が失敗しました (rc=$wt_list_rc)" >&2
   if [ -n "$wt_list_err" ] && [ -s "$wt_list_err" ]; then
-    head -3 "$wt_list_err" | sed 's/^/  git: /' >&2
+    head -3 "$wt_list_err" | neutralize_ctrl --keep-newline | sed 's/^/  git: /' >&2
   fi
   echo "  原因候補: corrupt .git/worktrees/ / permission denied / git binary 異常" >&2
   echo "  影響: idempotency check が空結果として進み、後段の git worktree add で初めて顕在化する可能性" >&2
@@ -196,7 +205,7 @@ if [[ "$existing_prunable" == "true" ]]; then
   if ! git worktree prune 2>"${wt_list_err:-/dev/null}"; then
     echo "ERROR: git worktree prune に失敗しました" >&2
     if [ -n "$wt_list_err" ] && [ -s "$wt_list_err" ]; then
-      head -3 "$wt_list_err" | sed 's/^/  git: /' >&2
+      head -3 "$wt_list_err" | neutralize_ctrl --keep-newline | sed 's/^/  git: /' >&2
     fi
     echo "  手動回復: git worktree prune を直接実行してから本 script を再実行してください" >&2
     exit 3
@@ -239,7 +248,7 @@ fi
 if ! git worktree add --quiet "$target_path" "$wiki_branch" 2>"${add_err:-/dev/null}"; then
   echo "ERROR: git worktree add '$target_path' '$wiki_branch' failed" >&2
   if [[ -n "$add_err" ]] && [[ -s "$add_err" ]]; then
-    head -n 10 "$add_err" | sed 's/^/  git: /' >&2
+    head -n 10 "$add_err" | neutralize_ctrl --keep-newline | sed 's/^/  git: /' >&2
   fi
   echo "  hint: ensure the wiki branch is not already checked out elsewhere (git worktree list)" >&2
   exit 3

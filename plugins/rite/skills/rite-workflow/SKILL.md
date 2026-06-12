@@ -1,14 +1,17 @@
 ---
 name: rite-workflow
 description: |
-  Automates the complete Issue-to-PR lifecycle: start working on Issues,
-  create branches, implement changes, run quality checks, and manage PRs —
-  all through a single workflow. Essential for any /rite: command, workflow
-  questions, or when working with Issues, branches, commits, or PRs.
-  Activates on "start issue", "create PR", "next steps", "workflow", "rite",
-  "Issue作業", "ブランチ", "コミット規約", "PR作成", "作業開始", "ワークフロー",
-  "次のステップ". Use for workflow state detection, phase transitions,
-  and command suggestions.
+  Automates the complete Issue-to-PR lifecycle: create new Issues,
+  start working on Issues, create branches, implement changes, run
+  quality checks, and manage PRs — all through a single workflow.
+  Essential for any /rite: command, workflow questions, or when
+  working with Issues, branches, commits, or PRs.
+  Activates on "create issue", "new issue", "起票", "Issue を作成",
+  "タスクを登録", "Issue 化", "新規 Issue", "start issue", "create PR",
+  "next steps", "workflow", "rite", "Issue作業", "ブランチ",
+  "コミット規約", "PR作成", "作業開始", "ワークフロー", "次のステップ".
+  Use for workflow state detection, phase transitions, and command
+  suggestions.
 ---
 
 # Rite Workflow Skill
@@ -22,7 +25,6 @@ This skill provides context for rite workflow operations.
 - branch, commit
 - GitHub Projects
 - review, lint
-- recall, 決定事項検索, コンテキスト, なぜ
 
 ## Context
 
@@ -51,21 +53,40 @@ When activated, this skill provides:
    - Reduce excessive AskUserQuestion usage
    - See [references/common-principles.md](./references/common-principles.md) for details
 
+6. **Comment Best Practices**
+   - WHY > WHAT, no journal comments, no line/cycle number references, jargon whitelist enforcement
+   - See [references/comment-best-practices.md](./references/comment-best-practices.md) for details
+
 ## Workflow Identity (品質 > 時間/context)
 
 rite workflow の identity は「定義された step を全て実行し、生成物の品質を担保する」ことである。**時間的制約や context 残量を理由にした step の省略は禁止**。残量の推論も禁止。context が実際に枯渇した場合の正規経路は `/clear` + `/rite:resume` の組合せであり、LLM が自己判断でワークフローを短縮する経路は存在しない。
 
-**さらに、workflow は途中で止まらない。そして最後のわけのわからない出力で終わらない。** sub-skill の return tag (`[interview:completed]` / `[create:completed:{N}]` 等) は **turn 境界ではなく継続トリガ** である。ユーザー介入 (`continue` 入力) を要求せずに、同 turn 内で次 phase へ進む。また、ワークフロー完了時の user-visible な最終行は sentinel marker ではなく「✅ Issue #{N} を作成しました: {url}」のような人間可読な完了メッセージで終わる。sentinel marker は hook/grep 契約のため出力は保持するが、HTML コメント化等で user-visible な末端に孤立させない。
+**さらに、workflow は途中で止まらない。そして最後のわけのわからない出力で終わらない。** sub-skill の return tag (`[lint:*]` / `[pr:created:N]` / `[review:*]` / `[fix:*]` / `[ready:returned-to-caller]`) は **turn 境界ではなく継続トリガ** である。ユーザー介入 (`continue` 入力) を要求せずに、同 turn 内で次 phase へ進む。
+
+`create.md` の flat workflow 終端で出力される `[create:returned-to-caller:{N}]` HTML コメント marker は、他 sub-skill の return tag と異なり create.md 内で完結する terminal sentinel である (create は orchestrator から sub-skill として呼ばれず、継続すべき caller skill を持たない)。`:returned-to-caller` という命名は terminal vocabulary (`:completed`) が LLM の turn-boundary heuristic を誤発火させるのを避けるための全 producer 統一形式であり、create に caller skill が存在することを意味しない (hook / grep 契約のため必須)。ワークフロー完了時の user-visible な最終行は sentinel marker ではなく「✅ Issue #{N} を作成しました: {url}」のような人間可読な完了メッセージとし、sentinel は HTML コメント化等で user-visible な末端に孤立させない。
+
+> **Sentinel naming policy**: skill return signal の literal は `:returned-to-caller` 形式で統一する。旧 `:completed` 形式は LLM の turn-boundary heuristic と衝突し、caller skill の次 step を skip して turn が暗黙終了する事象を構造的に誘発する (実測ベース)。新形式は「caller に return した = caller の次 step に進む」という semantic に置換することで terminal vocabulary を構造的に排除する。各 emit site では sentinel 直前に `<!-- skill return signal: caller must continue next step -->` を併記して active disambiguation を提供する。
 
 | 禁止事項 | 正規経路 |
 |---------|---------|
 | 「時間が足りないので X を省略します」 | 手順どおり実行 |
 | 「context が圧迫しているので要約します」 | 手順どおり実行 |
 | 「残量が不安なので review を切り上げます」 | `/clear` + `/rite:resume` をユーザーに案内 |
-| return tag 直後に turn を閉じる | 同 turn 内で次 phase に継続 (stop-guard + HTML コメント化 sentinel により機械的に enforcement) |
-| sentinel marker `[create:completed:{N}]` を user-visible な最終行として残す | HTML コメント `<!-- [create:completed:{N}] -->` として末尾に配置し、user-visible な最終行は `✅ ...` 完了メッセージにする |
+| return tag 直後に turn を閉じる | 同 turn 内で次 phase に継続。途中で止まった場合の正規復帰経路は `/rite:resume` (`commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) の phase→step 表に従う) |
+| sentinel marker `[create:returned-to-caller:{N}]` を user-visible な最終行として残す | HTML コメント `<!-- [create:returned-to-caller:{N}] -->` として末尾に配置し、user-visible な最終行は `✅ ...` 完了メッセージにする |
 
 詳細と Anti-pattern / Correct Pattern は [references/workflow-identity.md](./references/workflow-identity.md) を参照。各 command (start / review / fix / ready / lint / cleanup / create / resume 等) からも同 reference を引いている。
+
+## Multi-Step Workflow Task Tracking
+
+3 step 以上の sequential workflow を実行する際は、以下の手順で `TaskCreate` / `TaskUpdate` / `TaskList` を使って進捗を能動追跡する。ここで「最外側 skill」とは `TaskCreate` を発行する skill (= ユーザーが invoke した最上位の skill) を指し、それ以外の skill (最外側から Skill ツール経由で呼ばれた skill) を「nested sub-skill」と呼ぶ。閾値を「3 step 以上」とするのは、2 step 以下の skill は単一 turn 内で逐次実行する想定で TaskList 管理の overhead が利点を上回らないため。代表例: `pr:cleanup`, `pr:iterate`, `pr:open`, `pr:review`, `pr:fix`, `wiki:ingest`, `wiki:lint` (列挙は例示で完全網羅ではない)。
+
+- **開始時 (最外側 skill のみ)**: `TaskCreate` でステップ列を全件登録する。nested sub-skill は既存 TaskList に対し下記 **各 step 完了時** ルールと **nested sub-skill の return 時点** ルールのみ適用する (二重 TaskCreate 禁止)。
+- **各 step 完了時**: `TaskUpdate` で当該 step の status を `completed` に更新する。
+- **最外側 skill の return 時点**: `TaskList` で未完了タスクの有無を確認する。未完了タスクが残っている場合は、未実行の最初の step に戻って実行を継続する (turn を終了しない)。全タスクが `completed` の場合のみ turn を終了する。
+- **nested sub-skill (例: `wiki:ingest` から呼ばれた `wiki:lint`) の return 時点**: `TaskUpdate` のみ行い、turn 終了の判断は最外側 skill に委ねる。
+
+これにより skill ネスト時 (例: `pr:cleanup → wiki:ingest → wiki:lint`) の最内側 sentinel を turn 終了と誤認する事故を防ぐ。
 
 ## Workflow State Detection
 
@@ -81,12 +102,11 @@ Detect current state from:
 | State | Suggestion |
 |-------|------------|
 | On main/develop, no Issue | `/rite:issue:create` or `/rite:issue:list` |
-| On feature branch, no PR | `/rite:pr:create` after work |
-| PR open, draft | `/rite:pr:review` then `/rite:pr:ready` |
+| Have an Issue, want to start work | `/rite:pr:open <issue>` (Issue → branch → 実装 → lint → draft PR を一気通貫) |
+| On feature branch, PR open / draft, review-fix cycle | `/rite:pr:iterate <pr>` (mergeable まで review ⇄ fix を無限ループ) |
+| Review mergeable, want to mark Ready | `/rite:pr:ready <pr>` then `/rite:pr:merge <pr>` |
+| Merge 完了、branch 削除 / Wiki ingest / Projects Status Done 後処理が必要 | `/rite:pr:cleanup <pr>` |
 | Long session (30+ minutes elapsed) | `/rite:issue:update` |
-| Sprint with Todo Issues available | `/rite:sprint:execute` to run Issues sequentially |
-| Sprint with multiple independent Issues | `/rite:sprint:team-execute` to run Issues in parallel with worktrees |
-| Want to recall past decisions or context | `/rite:issue:recall` or `/rite:issue:recall {scope}` |
 
 ## Question Management
 
@@ -133,17 +153,50 @@ See [references/phase-mapping.md](./references/phase-mapping.md) for phase list.
 
 See [references/work-memory-format.md](./references/work-memory-format.md) for work memory format.
 
-## Sub-skill Return Auto-Continuation Contract
+## 4 Command Architecture
 
-When an orchestrator command (e.g., `/rite:issue:start`, `/rite:issue:create`) invokes a sub-skill via the Skill tool, the LLM **MUST** continue in the same response turn after the sub-skill returns. The return tag is a continuation trigger, not a turn boundary — stopping prematurely abandons the workflow before the terminal completion marker is output.
+`/rite:issue:start` は廃止され、**4 つの単機能コマンド** に分解されている (詳細は CHANGELOG 参照):
 
-See [references/sub-skill-return-protocol.md](./references/sub-skill-return-protocol.md) for the full contract, anti-pattern / correct-pattern examples, and the three defense-in-depth layers (prompt / flow-state / caller-continuation hint). The canonical specification lives in `docs/SPEC.md` "Sub-skill Return Auto-Continuation Contract" section.
+| コマンド | 責務 | 区分 |
+|---|---|---|
+| `/rite:pr:open <issue>` | Issue → branch → 実装 → lint → draft PR (Step 0 Resume Dispatch 含む) | orchestrator |
+| `/rite:pr:iterate <pr>` | review ↔ fix を `[review:mergeable]` まで無限ループ (cycle counter なし、abort は Ctrl+C のみ) | orchestrator |
+| `/rite:pr:ready <pr>` | Ready 化 + Projects Status + 親判定 + 完了レポート | self-contained command |
+| `/rite:pr:merge <pr>` | `gh pr merge --squash` を叩くだけ (cleanup は分離) | self-contained command |
+
+`/rite:issue:create` は引き続き flat single-file workflow を維持。マージ後の cleanup は `/rite:pr:cleanup` (既存) を別途実行する。
+
+LLM が途中で停止した場合の正規復帰経路は `/rite:resume` で、`commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) の phase→新 4 コマンド routing 表に従う。implicit-stop 対策の hook 群 (`auto-fire-step0.sh` / `stop-create-interview-block.sh` / `verify-terminal-output.sh`) は撤去済み。
+
+### Sub-skill sentinel 一覧 (orchestrator から grep される SoT)
+
+| sub-skill | emit する sentinel | invoke 元 |
+|---|---|---|
+| `rite:issue:implement` | (現状 sentinel 未発火 — 完了は work memory / flow-state 側で確認する設計) | `pr:open` Step 4 |
+| `rite:lint` | `[lint:success]` / `[lint:skipped]` / `[lint:error]` / `[lint:aborted]` | `implement` 内で autonomous invoke、`pr:open` Step 5 が結果を読む |
+| `rite:pr:create` | `[pr:created:N]` / `[pr:create-failed]` | `pr:open` Step 6 |
+| `rite:pr:review` | `[review:mergeable]` / `[review:fix-needed:N]` / `[review:error]` | `pr:iterate` 内ループ |
+| `rite:pr:fix` | `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:replied-only]` / `[fix:cancelled-by-user]` / `[fix:error]` | `pr:iterate` 内ループ |
+| `rite:pr:ready` | `[ready:returned-to-caller]` / `[ready:error]` | ユーザーが直接 invoke (orchestrator 経由なし) |
+| `rite:pr:merge` | `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]` | ユーザーが直接 invoke (orchestrator 経由なし) |
+
+orchestrator (`pr:open` / `pr:iterate`) が sub-skill 出力の sentinel を grep で routing する。`pr:ready` / `pr:merge` は self-contained で他 sub-skill を起動しない。
+
+現行の continuation enforcement は Layer 3 caller-continuation hints + Layer 4a/4b orchestrator-side reinforcements + flat sequential structure による (旧 Layer 1 prompt contract は #1144 で cleanup.md flat 化と同時に物理排除済)。
 
 ## AI Coding Principles (Summary)
 
-Avoid common AI coding failure patterns: surface assumptions, manage confusion, push back when warranted, enforce simplicity, maintain scope discipline, clean dead code, plan inline, address all discovered issues, and keep documentation in sync with specification changes (`documentation_consistency`) — when the implementation changes user-visible behavior, update related README / docs / CLAUDE.md / plugin .md files in the same PR rather than deferring to a follow-up Issue.
+Avoid common AI coding failure patterns: surface assumptions, manage confusion, push back when warranted, enforce simplicity, maintain scope discipline, clean dead code, plan inline, address all discovered issues, and keep documentation in sync with specification changes (`documentation_consistency`) — when the implementation changes user-visible behavior, update related README / docs / CLAUDE.md / plugin .md files in the same PR rather than deferring to a follow-up Issue. Route each kind of knowledge to its durable medium (`knowledge_routing`): How → code, What → tests, Why → commit log, Why not → code comments.
 
 See [references/coding-principles.md](./references/coding-principles.md) for the full principle list and details.
+
+## Simplification Charter (rite plugin maintenance)
+
+`plugins/rite/` 配下のファイルを編集する LLM・メンテナ、および rite workflow が生成する commit message / Issue body / PR description / review 指摘は、自己生成的に肥大化しないよう **Simplification Charter** に従う。runtime に効かない経緯記述は書かない / git log で代替できるものはコードに書かない / `Issue #` / `PR #` / `cycle #` の本文引用は禁止 / 重複 confirmation 禁止。
+
+特に `commands/pr/cleanup.md` および `commands/pr/references/` 配下のファイル群（**pr/cleanup 系**）は本 charter の主要適用対象であり、各ファイル冒頭に charter SoT 参照行を持つ。
+
+See [references/simplification-charter.md](./references/simplification-charter.md) for the 5 self-questions (5 つの自問) / prohibited patterns (禁止パターン) / recommended patterns (推奨パターン).
 
 ## Common Principles (AskUserQuestion Reduction)
 
@@ -153,7 +206,7 @@ See [references/common-principles.md](./references/common-principles.md) for det
 
 ## Preflight Guard (All Commands)
 
-Before executing any `/rite:*` command, run the preflight guard. Resolve `{plugin_root}` per [references/plugin-path-resolution.md](../../references/plugin-path-resolution.md#resolution-script).
+Before executing any `/rite:*` command, run the preflight guard. Resolve `{plugin_root}` per [references/plugin-path-resolution.md](../../references/plugin-path-resolution.md#resolution-script-full-version).
 
 ```bash
 bash {plugin_root}/hooks/preflight-check.sh --command-id "{current_command_id}" --cwd "$(pwd)"
@@ -172,30 +225,11 @@ All `gh` commands that accept `--body` or `--comment` parameters **MUST** use sa
 
 **Never** pass user-generated content directly via `--body` or `--comment` flags.
 
-## Workflow Incident Detection (#366)
+## Workflow Failure Surfacing
 
-The rite workflow auto-detects **workflow blockers** (Skill load failure, hook abnormal exit, manual fallback adoption) during `/rite:issue:start` end-to-end execution and registers them as Issues to prevent silent loss.
+When a step of `/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge` fails or is skipped (Skill load failure, hook abnormal exit, Wiki ingest skip/failure, etc.), the affected skill or hook emits a plain `WARNING` / `ERROR` line to **stderr**. The orchestrator surfaces it in the conversation context, and the user re-runs the affected step via `/rite:resume`. Failures are visible but not auto-registered as Issues; the user decides whether to file one.
 
-**Architecture**:
-1. Each skill (`rite:lint`, `rite:pr:fix`, `rite:pr:review`) emits a sentinel via `plugins/rite/hooks/workflow-incident-emit.sh` when an internal failure path is taken.
-2. The orchestrator (`/rite:issue:start` Phase 5.4.4.1) detects sentinels via context grep, presents `AskUserQuestion` for confirmation, and calls `create-issue-with-projects.sh` to register the incident with `Status: Todo / Priority: High / Complexity: S`.
-3. Same-session duplicate types are suppressed (1 incident per type per session).
-4. Failure to register is non-blocking — the workflow continues regardless.
-
-**Configuration** (default-on):
-
-```yaml
-workflow_incident:
-  enabled: true              # set to false to disable detection entirely
-```
-
-**Sentinel format** (`root_cause_hint` is optional and entirely omitted when empty):
-
-```
-[CONTEXT] WORKFLOW_INCIDENT=1; type=<type>; details=<details>; (root_cause_hint=<hint>; )?iteration_id=<pr>-<epoch>
-```
-
-See `docs/SPEC.md` "Workflow Incident Detection" section for the full specification, including AC mapping and Phase 7 non-interference guarantees.
+> The earlier auto-registration mechanism (`workflow-incident-emit.sh` sentinel + `/rite:issue:start` detection + `workflow_incident:` config key) was removed in #1088 (実装: #1091、PR 2b リファクタリングシリーズ) in favor of this single-layer plain-stderr design. See `docs/SPEC.md` "Workflow Failure Surfacing" for details.
 
 ## Integration
 

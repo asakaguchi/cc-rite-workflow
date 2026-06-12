@@ -26,9 +26,9 @@ gh --version
 
 If not installed, show:
 ```
-{i18n:init_gh_not_installed}
+GitHub CLI (gh) がインストールされていません
 
-{i18n:init_install_instructions}:
+インストール手順:
 - macOS: `brew install gh`
 - Linux: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
 - Windows: `winget install GitHub.cli`
@@ -61,9 +61,9 @@ gh auth status
 
 If not authenticated, show:
 ```
-{i18n:init_not_authenticated}
+GitHub に認証されていません
 
-{i18n:init_auth_command}: `gh auth login`
+認証コマンド: `gh auth login`
 ```
 and exit.
 
@@ -75,47 +75,9 @@ gh repo view --json owner,name,id,url
 
 If not a Git repository or not a GitHub repository, show:
 ```
-{i18n:init_not_github_repo}
+GitHub リポジトリではありません
 ```
 and exit.
-
----
-
-## Phase 2: Determine Project Type
-
-### 2.1 Auto-detect from File Structure
-
-Check in the following order:
-
-1. **webapp**: `package.json` exists and contains one of the following
-   - dependencies include `react`, `vue`, `angular`, `svelte`, `next`, `nuxt`
-   - `vite.config.*`, `webpack.config.*` exists
-
-2. **library**: `package.json` exists and has a `main` or `exports` field
-
-3. **cli**: One of the following
-   - `pyproject.toml` has a `[project.scripts]` section
-   - `package.json` has a `bin` field
-   - `Cargo.toml` has a `[[bin]]` section
-
-4. **documentation**: One of the following exists
-   - `mkdocs.yml`, `docusaurus.config.js`, `vuepress.config.*`
-   - Composed only of a `docs/` directory
-
-5. **generic**: Does not match any of the above
-
-### 2.2 User Confirmation
-
-Confirm the detection result with AskUserQuestion:
-
-```
-{i18n:init_confirm_project_type}:
-- webapp: {i18n:init_project_type_webapp}
-- library: {i18n:init_project_type_library}
-- cli: {i18n:init_project_type_cli}
-- documentation: {i18n:init_project_type_documentation}
-- generic: {i18n:init_project_type_generic}
-```
 
 ---
 
@@ -132,8 +94,8 @@ gh project list --owner {owner} --format json
 Select with AskUserQuestion:
 
 オプション:
-- {i18n:init_projects_use_existing}
-- {i18n:init_projects_create_new}
+- 既存の Projects と連携する（リストから選択）
+- 新規 Projects を作成する
 
 ### 3.3 If Creating New
 
@@ -238,16 +200,16 @@ Iteration/スプリント管理を使用しますか？
 Display a manual creation guide:
 
 ```
-{i18n:init_iteration_manual_create_note}
+Iteration フィールドは GitHub CLI から自動作成できないため、手動で作成する必要があります。
 
-{i18n:init_iteration_creation_steps}:
-1. {i18n:init_iteration_step1} (variables: project_url={project_url})
-2. {i18n:init_iteration_step2}
-3. {i18n:init_iteration_step3}
-4. {i18n:init_iteration_step4}
-5. {i18n:init_iteration_step5}
+作成手順:
+1. GitHub Projects の画面を開く: {project_url}
+2. 「+」ボタンをクリックして新規フィールドを追加
+3. 「Iteration」を選択
+4. フィールド名を設定（推奨: 「Sprint」）
+5. 開始日とスプリント期間を設定（推奨: 2週間）
 
-{i18n:init_iteration_after_creation}
+作成後、/rite:init を再度実行するか、rite-config.yml の iteration.enabled を手動で true に設定してください。
 ```
 
 If the user selects "set up later", proceed to Phase 4 with `iteration.enabled: false`.
@@ -258,7 +220,7 @@ If the user selects "set up later", proceed to Phase 4 with `iteration.enabled: 
 
 ### 4.1 Generate rite-config.yml
 
-> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) before executing any steps in Phase 4.1. This resolved path is used by 4.1.1 (template schema_version read), 4.1.2 (template-based generation), and 4.1.3 (upgrade).
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../references/plugin-path-resolution.md#resolution-script-full-version) before executing any steps in Phase 4.1. This resolved path is used by 4.1.1 (template schema_version read), 4.1.2 (template-based generation), and 4.1.3 (upgrade).
 
 #### 4.1.1 Check for Existing Configuration
 
@@ -272,17 +234,16 @@ Read `rite-config.yml` in the project root with the Read tool.
 2. Read `schema_version` from template config (`{plugin_root}/templates/config/rite-config.yml`). If missing, treat as v1.
 3. If existing `schema_version` < template `schema_version`, display: `rite-config.yml のスキーマが古くなっています (v{current} → v{latest})。/rite:init --upgrade でアップグレードできます。`
 
-Then compare the existing values with the values detected in Phases 2-3.5. Identify fields that differ:
+Then compare the existing values with the values detected in Phases 3-3.5. Identify fields that differ:
 
 | Field | Existing Value | Detected Value | Differs? |
 |-------|---------------|----------------|----------|
-| `project.type` | (from file) | (from Phase 2) | |
 | `github.projects.project_number` | (from file) | (from Phase 3) | |
 | `github.projects.owner` | (from file) | (from Phase 1.4) | |
 | `iteration.enabled` | (from file) | (from Phase 3.5) | |
 | `iteration.field_name` | (from file) | (from Phase 3.5) | |
 
-**If no differences** → Display "{i18n:init_config_up_to_date}" and proceed to 4.2.
+**If no differences** → Display "rite-config.yml は最新です。スキップします。" and proceed to 4.2.
 
 **If differences exist** → Show the diff table above and ask with AskUserQuestion:
 
@@ -314,7 +275,6 @@ Generate `rite-config.yml` from the template config file.
 
 | Placeholder/Field | Replacement Value |
 |-------------------|-------------------|
-| `project.type` | `{detected-type}` from Phase 2 |
 | `github.projects.project_number` | `{project-number}` from Phase 3 (null if not detected) |
 | `github.projects.owner` | `"{owner}"` from Phase 1.4 (null if not detected) |
 | `iteration.enabled` | `{iteration-enabled}` from Phase 3.5 |
@@ -322,7 +282,7 @@ Generate `rite-config.yml` from the template config file.
 
 **Step 4**: Write the result to `rite-config.yml` in the project root using the Write tool.
 
-> **Note on wiki section (#491)**: `templates/config/rite-config.yml` declares the `wiki:` section **above** the `# --- Advanced ---` boundary as an active (non-commented) block. Step 2 (extract content up to the Advanced boundary) therefore includes the active `wiki:` section automatically in the generated `rite-config.yml`. No additional append step is required for new-generation path. The Advanced boundary is the single source of truth for what gets emitted vs commented-out.
+> **Note on wiki section**: `templates/config/rite-config.yml` declares the `wiki:` section **above** the `# --- Advanced ---` boundary as an active (non-commented) block. Step 2 (extract content up to the Advanced boundary) therefore includes the active `wiki:` section automatically in the generated `rite-config.yml`. No additional append step is required for new-generation path. The Advanced boundary is the single source of truth for what gets emitted vs commented-out.
 
 #### 4.1.3 Upgrade Existing Configuration
 
@@ -330,9 +290,9 @@ Generate `rite-config.yml` from the template config file.
 
 **Step 1: Read current config and template**
 
-Display "{i18n:init_upgrade_start}" and "{i18n:init_upgrade_checking}".
+Display "rite-config.yml のアップグレードを開始します" and "スキーマバージョンを確認しています...".
 
-Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script) (required when entering via `--upgrade` skip, which bypasses the Phase 4.1 blockquote).
+Resolve `{plugin_root}` per [Plugin Path Resolution](../references/plugin-path-resolution.md#resolution-script-full-version) (required when entering via `--upgrade` skip, which bypasses the Phase 4.1 blockquote).
 
 Read both files with the Read tool:
 - `rite-config.yml` (project root)
@@ -352,7 +312,7 @@ Read both files with the Read tool:
 
 `current >= latest` 経路では Step 3.5 が config を変更する可能性があるため Step 3 Backup を必ず先に実行する (precondition)。
 
-schema 同等 + Wiki 既に初期化済みの場合、Step 3.5 は「既に `^wiki:` active section が存在する」ことを検出して no-op となる。この経路で `{i18n:init_upgrade_up_to_date}` を表示するタイミングは **Step 3.5 の no-op 確定時** (Phase 4.7 進入前) とする。Phase 4.7 はそのまま実行され、Phase 4.7.2 が `wiki_status=already_initialized` を set して Skill 呼び出しは skip される (冪等)。
+schema 同等 + Wiki 既に初期化済みの場合、Step 3.5 は「既に `^wiki:` active section が存在する」ことを検出して no-op となる。この経路で `rite-config.yml は最新です (v{current})` を表示するタイミングは **Step 3.5 の no-op 確定時** (Phase 4.7 進入前) とする。Phase 4.7 はそのまま実行され、Phase 4.7.2 が `wiki_status=already_initialized` を set して Skill 呼び出しは skip される (冪等)。
 
 **Step 3: Create backup**
 
@@ -360,7 +320,7 @@ schema 同等 + Wiki 既に初期化済みの場合、Step 3.5 は「既に `^wi
 cp rite-config.yml "rite-config.yml.bak.$(date +%Y%m%d-%H%M%S)"
 ```
 
-Display "{i18n:init_upgrade_backup_created}".
+Display "バックアップを作成しました: {path}".
 
 **Step 3.5: Wiki Section Append (conditional — #491)**
 
@@ -371,8 +331,8 @@ Display "{i18n:init_upgrade_backup_created}".
 **Procedure**:
 
 1. Grep `rite-config.yml` for `^wiki:` (excluding lines starting with `#`) to detect an existing active wiki section.
-2. **If an active `^wiki:` match is found** (Wiki section already present): no-op. Display `{i18n:init_upgrade_up_to_date}` and proceed to Step 7 (Phase 4.7). Phase 4.7.2 will subsequently detect the initialized Wiki and set `wiki_status=already_initialized`.
-3. **If no active `^wiki:` match**: invoke the same append procedure defined in Step 6 item 5 below (single source of truth for the wiki block literal source and anchor selection). After the append completes, display `{i18n:init_wiki_config_added}` and proceed to Step 7.
+2. **If an active `^wiki:` match is found** (Wiki section already present): no-op. Display `rite-config.yml は最新です (v{current})` and proceed to Step 7 (Phase 4.7). Phase 4.7.2 will subsequently detect the initialized Wiki and set `wiki_status=already_initialized`.
+3. **If no active `^wiki:` match**: invoke the same append procedure defined in Step 6 item 5 below (single source of truth for the wiki block literal source and anchor selection). After the append completes, display `rite-config.yml に wiki セクションを追加しました（active）。` and proceed to Step 7.
 
 **Anchor/append handoff**: Step 3.5 does NOT duplicate the wiki block literal or anchor-selection logic. Both are defined in Step 6 item 5 below; Step 3.5 simply invokes that same procedure. This keeps the wiki block definition in a single location within `init.md` and prevents drift between the two paths.
 
@@ -383,9 +343,10 @@ Compare current config against the template and classify each key:
 | Classification | Action |
 |---------------|--------|
 | **User-customized value** (project_number, owner, iteration settings, branch.base, language, etc.) | **Preserve** — keep the user's value |
-| **Deprecated key** (`project.name`, `commit.style`, `commit.enforce`, `branch.release`, `branch.types`, `version`) | **Remove** — delete from config |
-| **Missing section** (review.debate, review.fact_check, verification, etc. — **excluding wiki**) | **Add** — insert from template with default values |
-| **Advanced section** (tdd, parallel, team, metrics, safety, investigate) | **Add as comments** — insert commented-out with default values |
+| **Deprecated key** (`project.name`, `commit.style`, `commit.enforce`, `commit.contextual`, `branch.release`, `branch.types`, `version`) | **Remove** — delete from config |
+| **Missing section** (review.debate, review.fact_check, verification, etc. — **excluding wiki and multi_session**) | **Add** — insert from template with default values |
+| **`multi_session:` section** | **Do NOT back-add on --upgrade**. `multi_session:` is declared above the `--- Advanced ---` marker (active, #1391) so new generation (Phase 4.1.2 Step 2) emits it with `enabled: true`. On the `--upgrade` path it is intentionally **left absent** when missing from an existing config, so the `pr:open` parser fallback keeps it `false` — this preserves backward compat for projects created before #1391 ("the default-on change takes effect only at new /rite:init generation"). If a user's config already has a `multi_session:` block, it is preserved as a User-customized value (no overwrite) |
+| **Advanced section** (parallel, metrics, safety, investigate) | **Add as comments** — insert commented-out with default values |
 | **`wiki:` section** | **Step 3/4 は扱わない**。wiki セクションの追加は **Phase 4.1.2 Step 2 (新規生成: template の Advanced 境界より上にある active block が自動コピーされる) および Phase 4.1.3 Step 3.5 / Step 6 item 5 (Upgrade path: 未存在時に active block として append) の専権**。template 側にはコメント形式の `# wiki:` ブロックは存在しない (`#491` で active 位置に移動済み) ため、重複追加経路はない |
 | **Unknown key** (user-added keys not in template) | **Preserve with warning** — keep but display warning |
 
@@ -396,7 +357,7 @@ Compare current config against the template and classify each key:
 Display the changes to the user:
 
 ```
-{i18n:init_upgrade_diff_preview}
+以下の変更が適用されます:
 
 廃止キー削除: {deprecated_keys}
 新規セクション追加: {new_sections}
@@ -407,7 +368,7 @@ Advanced セクション追加（コメントアウト）: {advanced_sections}
 Ask with `AskUserQuestion`:
 
 ```
-{i18n:init_upgrade_confirm}
+アップグレードを適用しますか？
 オプション:
 - 適用する（推奨）: 上記の変更を適用します
 - キャンセル: アップグレードを中止します
@@ -418,10 +379,10 @@ Ask with `AskUserQuestion`:
 If the user confirms:
 
 1. Update `schema_version` to latest value
-2. Remove deprecated keys using the Edit tool. Display "{i18n:init_upgrade_deprecated_removed}".
-3. Add missing sections from the template using the Edit tool. Display "{i18n:init_upgrade_sections_added}".
+2. Remove deprecated keys using the Edit tool. Display "廃止キーを削除しました: {keys}".
+3. Add missing sections from the template using the Edit tool. Display "新しいセクションを追加しました: {sections}".
 4. Add Advanced sections as comments (prefixed with `#`) using the Edit tool
-5. **If `wiki:` section is absent** (#491): append the active `wiki:` block from the template (single source of truth) so Phase 4.7 can auto-initialize Wiki.
+5. **If `wiki:` section is absent**: append the active `wiki:` block from the template (single source of truth) so Phase 4.7 can auto-initialize Wiki.
 
    **Wiki block source (SSOT)**: Read `{plugin_root}/templates/config/rite-config.yml` and extract the block from `# Wiki settings` through the end of the `wiki:` section (the lines above the `# --- Advanced (below this line) ---` marker). This avoids literal duplication between `init.md` and the template — any change to default values (e.g., `auto_ingest`, `branch_strategy`) in the template automatically propagates to both new-install and `--upgrade` paths.
 
@@ -437,12 +398,12 @@ If the user confirms:
    - `new_string` = anchor line + `\n\n` + extracted wiki block
    (For the Advanced-marker fallback, swap: `new_string` = wiki block + `\n\n` + marker line)
 
-   Display `{i18n:init_wiki_config_added}` only when the Edit actually ran (skip the message on idempotency no-op).
+   Display `rite-config.yml に wiki セクションを追加しました（active）。` only when the Edit actually ran (skip the message on idempotency no-op).
 6. Preserve all user-customized values
 
-Display "{i18n:init_upgrade_applied}".
+Display "rite-config.yml をアップグレードしました (v{current} → v{latest})".
 
-**Step 7: Run Phase 4.7 and display status (#491)**
+**Step 7: Run Phase 4.7 and display status**
 
 Step 7 has two sub-steps:
 
@@ -454,22 +415,22 @@ Phase 4.7's internal "next step" instructions (e.g., "proceed to the next step: 
 
 **Step 7b: Display status line and exit**
 
-After Phase 4.7.1/4.7.2/4.7.4 returns control to Step 7, display a Wiki status line selected from the 4 literal keys based on the `wiki_status` value in LLM context, using the same explicit if/else mapping as Phase 5 (do NOT use dynamic placeholder syntax like `{i18n:init_summary_wiki_<status>}`):
+After Phase 4.7.1/4.7.2/4.7.4 returns control to Step 7, display a Wiki status line selected based on the `wiki_status` value in LLM context, using the same explicit if/else mapping as Phase 5 (select exactly one literal below; do not construct the message dynamically from `wiki_status`):
 
-- If `wiki_status == "initialized"` → `{i18n:init_summary_wiki_initialized}`
-- Else if `wiki_status == "already_initialized"` → `{i18n:init_summary_wiki_already_initialized}`
-- Else if `wiki_status == "skipped_disabled"` → `{i18n:init_summary_wiki_skipped_disabled}`
-- Else if `wiki_status == "failed"` → `{i18n:init_summary_wiki_failed}`
+- If `wiki_status == "initialized"` → `Wiki: 初期化完了`
+- Else if `wiki_status == "already_initialized"` → `Wiki: 既に初期化済み`
+- Else if `wiki_status == "skipped_disabled"` → `Wiki: スキップ（無効）`
+- Else if `wiki_status == "failed"` → `Wiki: 失敗`
 
 After displaying the status line, exit. (`--upgrade` skips Phases 1-3 and the Phase 5 full completion report, so only the Wiki status is reported — there is no merge conflict with Phase 5 because `--upgrade` does not enter the new-install path.)
 
-If the user cancels: Display "{i18n:init_upgrade_cancelled}" and exit.
+If the user cancels: Display "アップグレードをキャンセルしました" and exit.
 
 **MUST requirements**:
 - `schema_version` 未設定の config は暗黙的に v1 として扱う
 - ユーザーカスタム値（project_number, owner, iteration, branch 等）を保持する
 - バックアップ (`rite-config.yml.bak.{timestamp}`) を作成する
-- 廃止キー (`project.name`, `commit.style`, `commit.enforce`, `branch.release`, `branch.types`, `version`) を削除する
+- 廃止キー (`project.name`, `commit.style`, `commit.enforce`, `commit.contextual`, `branch.release`, `branch.types`, `version`) を削除する
 - Advanced セクションはコメントアウトで追加する
 - テンプレートにないユーザー追加キーを削除しない（Unknown key → Preserve with warning）
 
@@ -477,9 +438,9 @@ If the user cancels: Display "{i18n:init_upgrade_cancelled}" and exit.
 
 If `.github/ISSUE_TEMPLATE/` does not exist, show:
 ```
-{i18n:init_issue_template_missing}
+.github/ISSUE_TEMPLATE/ が存在しません
 
-{i18n:init_issue_template_suggestion}
+Issue テンプレートの作成を推奨します
 ```
 
 ---
@@ -488,19 +449,21 @@ If `.github/ISSUE_TEMPLATE/` does not exist, show:
 
 > **Placeholder convention**: All `{hooks_dir}` occurrences in fenced code blocks within Phase 4.5 are **templates**, not literal commands. Replace `{hooks_dir}` with the absolute path resolved in Phase 4.5.0 before executing each command via the Bash tool.
 
+> **rite hook command の判定基準 (SoT)**: Phase 4.5 の各サブフェーズで hook command が「rite 自身の hook か」を判定する箇所では、command path 中で `rite` が **hooks ディレクトリ直上の完全な path segment** である場合のみ rite hook とみなす（その間に version segment を 1 個まで許容）。具体的には dev/relative の `…/rite/hooks/` と cache install の `…/rite-marketplace/rite/<version>/hooks/` がマッチし、`favorite/hooks/`・`prerite/hooks/`・`rite-something/hooks/` のように `rite` が別 segment の部分文字列にすぎない look-alike はマッチしない。これは helper の正規表現の**単一定義実体** `scripts/settings-local-rite-hook-cleanup.py` の `RITE_HOOK_RE`（正規表現 `(?:^|/)rite/(?:[^/]+/)?hooks/`）と同一基準であり、本ドキュメントで **「rite hook command」** と表記する箇所はすべてこの基準を指す。同名 `.sh` wrapper（python3 guard・atomic write を担う）も `session-start.sh` の settings.local.json 修復経路も、JSON 変換＝regex 適用をこの `.py` に委譲するため、正規表現の定義は `.py` 1 箇所のみに存在する（session-start.sh のインライン複製を解消）。素朴な substring `rite/hooks/` 一致は `favorite/hooks/` 等を over-match するため使わない。
+
 ### 4.5.0 Resolve Hook Script Directory
 
 Run the following bash command to detect the hook scripts directory. This command assumes CWD is the project root (Claude Code's Bash tool resets CWD to the project root on each invocation):
 
 ```bash
-if [ -f "plugins/rite/hooks/stop-guard.sh" ]; then
+if [ -f "plugins/rite/hooks/pre-compact.sh" ]; then
   echo "LOCAL:$(cd plugins/rite/hooks && pwd)"
 elif ! command -v jq >/dev/null 2>&1; then
   echo "NOT_FOUND:NO_JQ"
 elif [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then
   INSTALL_PATH=$(jq -r '.plugins["rite@rite-marketplace"][0].installPath // empty' \
     "$HOME/.claude/plugins/installed_plugins.json")
-  if [ -n "$INSTALL_PATH" ] && [ -f "$INSTALL_PATH/hooks/stop-guard.sh" ]; then
+  if [ -n "$INSTALL_PATH" ] && [ -f "$INSTALL_PATH/hooks/pre-compact.sh" ]; then
     echo "MARKETPLACE:$INSTALL_PATH/hooks"
   else
     echo "NOT_FOUND:NO_HOOKS"
@@ -520,7 +483,7 @@ fi
 - If `NOT_FOUND:NO_HOOKS` → display warning and **skip the rest of Phase 4.5**:
     ```
     ⚠️ Hook scripts not found. Skipping hook registration.
-    Workflow will function normally, but auto-stop-guard and state persistence hooks will not be active.
+    Workflow will function normally, but state persistence hooks will not be active.
     ```
 
 ### 4.5.0.5 Copy-Type Install Detection and Update Guidance
@@ -669,7 +632,7 @@ Read `.claude/settings.json` (the project-level, non-local settings file) and ch
 
 1. Read `.claude/settings.json` with the Read tool. If the file does not exist or has no `.hooks` section (empty `{}` or missing), skip this sub-phase entirely and proceed to Phase 4.5.0.2.
 2. For each hook event in `.hooks`, examine all `.hooks.{EventName}[*].hooks[*].command` values.
-3. **Exclude** commands containing `rite/hooks/` (these are rite's own hooks, which may be registered here in older installations).
+3. **Exclude** **rite hook commands** (per the 判定基準 above — `rite` as a full path segment above the hooks dir; these are rite's own hooks, which may be registered here in older installations). Look-alikes such as `favorite/hooks/` are **not** excluded — they are genuine non-rite hooks and must be reported as conflicts.
 4. Collect remaining (non-rite) hook commands as **conflicting hooks**.
 
 **If conflicting hooks are found**, display:
@@ -715,57 +678,17 @@ fi
    ✅ hooks.json によるネイティブ hook 管理を検出。settings.local.json の hook 登録をスキップします。
    ```
 
-2. **Clean up stale rite hooks from `settings.local.json`**: Read `.claude/settings.local.json` and remove all hook entries whose command contains `rite/hooks/`. Non-rite hooks must be preserved. If the file does not exist or has no rite hooks, skip this step silently.
+2. **Clean up stale rite hooks from `settings.local.json`**: Read `.claude/settings.local.json` and remove all hook entries whose command is a **rite hook command** (per the 判定基準 above; the helper below is a `.sh` wrapper that enforces this via the `RITE_HOOK_RE` defined in `settings-local-rite-hook-cleanup.py`). Non-rite hooks — including look-alikes such as `favorite/hooks/` — must be preserved. If the file does not exist or has no rite hooks, skip this step silently.
 
    ```bash
-   # settings.local.json から rite hook エントリを削除
-   _settings_local=".claude/settings.local.json"
-   if [ -f "$_settings_local" ] && command -v python3 &>/dev/null; then
-     _tmp=$(mktemp "${_settings_local}.XXXXXX" 2>/dev/null) || _tmp=""
-     if [ -n "$_tmp" ] && python3 -c '
-   import json, sys, re
-   settings_path = sys.argv[1]
-   out_path = sys.argv[2]
-   with open(settings_path, "r") as f:
-       data = json.load(f)
-   hooks = data.get("hooks", {})
-   if not hooks:
-       sys.exit(1)
-   rite_hook_re = re.compile(r"rite.*?/hooks/")
-   changed = False
-   for event_name in list(hooks.keys()):
-       entries = hooks[event_name]
-       if not isinstance(entries, list):
-           continue
-       new_entries = []
-       for entry in entries:
-           hook_list = entry.get("hooks", [])
-           has_rite = any(rite_hook_re.search(h.get("command", "")) for h in hook_list)
-           if has_rite:
-               changed = True
-           else:
-               new_entries.append(entry)
-       if new_entries:
-           hooks[event_name] = new_entries
-       else:
-           del hooks[event_name]
-   if not changed:
-       sys.exit(1)
-   with open(out_path, "w") as f:
-       json.dump(data, f, indent=2, ensure_ascii=False)
-       f.write("\n")
-   ' "$_settings_local" "$_tmp" 2>/dev/null; then
-       mv "$_tmp" "$_settings_local" 2>/dev/null
-       echo "CLEANED"
-     else
-       rm -f "$_tmp" 2>/dev/null
-       echo "NO_RITE_HOOKS"
-     fi
-   fi
+   # settings.local.json から rite hook エントリを削除 (python3 guard・atomic write・JSON 変換は helper に委譲)
+   bash "{hooks_dir}/scripts/settings-local-rite-hook-cleanup.sh" ".claude/settings.local.json"
    ```
 
+   > **Helper contract**: `settings-local-rite-hook-cleanup.sh` は **rite hook を実際に除去したときのみ** `CLEANED` を返し、それ以外の安全側ケース (python3 不在・file 不在・対象 hook 不在・不正 JSON・mktemp/mv 失敗を含む) ではすべて `NO_RITE_HOOKS` を返す。ただし **mv 失敗** だけは「変換は成功したが swap-in できず stale な rite hook が残る」ケースであり真の silent skip ではないため、`NO_RITE_HOOKS` (+ exit 0 非ブロッキング) を保ったまま stderr に `[rite] WARNING: ... mv failed` を emit する。`*.py` を `*.sh` wrapper 経由で呼ぶ先例 `issue-comment-wm-update.py` / `issue-comment-wm-sync.sh` に準拠。
+
    - If `CLEANED` → display `ℹ️ settings.local.json からレガシー rite hook エントリを削除しました。`
-   - If `NO_RITE_HOOKS` → no output (already clean)
+   - If `NO_RITE_HOOKS` → no output (no rite hooks removed)
 
 3. Write cleanup marker:
    ```bash
@@ -790,14 +713,14 @@ Read `.claude/settings.local.json` and check for existing hooks section. If the 
 
 If the file already contains hooks, check each hook command for rite hook patterns:
 
-1. Scan all `.hooks.{EventName}[*].hooks[*].command` values across Stop, PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, and PostToolUse events
-2. Identify commands containing `rite/hooks/` (this covers both `plugins/rite/hooks/` relative paths and any previous absolute paths)
-3. For each matching command, construct the expected full command string `bash {hooks_dir}/{script_name}` (where `{hooks_dir}` is the absolute path resolved in Phase 4.5.0 and `{script_name}` is the filename like `stop-guard.sh`). Compare the existing command string with the expected one
+1. Scan all `.hooks.{EventName}[*].hooks[*].command` values across PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, and PostToolUse events
+2. Identify **rite hook commands** (per the 判定基準 above — `rite` as a full path segment above the hooks dir; this covers both `plugins/rite/hooks/` relative paths and any previous absolute paths, while excluding look-alikes such as `favorite/hooks/`)
+3. For each matching command, construct the expected full command string `bash {hooks_dir}/{script_name}` (where `{hooks_dir}` is the absolute path resolved in Phase 4.5.0 and `{script_name}` is the filename like `pre-tool-bash-guard.sh`). Compare the existing command string with the expected one
 4. If the existing command does NOT match the expected command, mark it as **needs update**
 
-**Note**: Phase 4.5.0 resolves `{hooks_dir}` as an absolute path (via `cd ... && pwd`). If existing hooks use relative paths (e.g., `bash plugins/rite/hooks/stop-guard.sh`), they will not match the absolute path and will be correctly marked for update. This is intentional — converting relative paths to absolute paths is one of the goals of this validation.
+**Note**: Phase 4.5.0 resolves `{hooks_dir}` as an absolute path (via `cd ... && pwd`). If existing hooks use relative paths (e.g., `bash plugins/rite/hooks/pre-tool-bash-guard.sh`), they will not match the absolute path and will be correctly marked for update. This is intentional — converting relative paths to absolute paths is one of the goals of this validation.
 
-**Display when outdated paths are detected** (where `{event}` is the hook event name such as Stop/PreCompact/PostCompact/SessionStart/SessionEnd/PreToolUse, and `{current_cmd}` is the existing command string):
+**Display when outdated paths are detected** (where `{event}` is the hook event name such as PreCompact/PostCompact/SessionStart/SessionEnd/PreToolUse, and `{current_cmd}` is the existing command string):
 ```
 ⚠️ Outdated rite hook paths detected:
 | Hook Event | Current Command | Expected Command |
@@ -811,24 +734,24 @@ If the file already contains hooks, check each hook command for rite hook patter
 
 **⚠️ このサブフェーズは 4.5.1.1 の結果に関わらず必ず実行する。** 4.5.1.1 が「全パス正常」と判定しても、フックイベント自体が欠落している可能性がある（例: SessionEnd, PreToolUse が未登録）。
 
-After validating existing hook paths in 4.5.1.1, verify that **all** required rite hooks are registered. This check prevents the scenario where some hooks (e.g., Stop, PreCompact, SessionStart) are correctly configured but others (e.g., SessionEnd, PostCompact) are missing entirely.
+After validating existing hook paths in 4.5.1.1, verify that **all** required rite hooks are registered. This check prevents the scenario where some hooks (e.g., PreCompact, SessionStart) are correctly configured but others (e.g., SessionEnd, PostCompact) are missing entirely.
 
 **Required hooks**:
 
 | Hook Event | Script | Matcher | Purpose |
 |------------|--------|---------|---------|
-| Stop | `stop-guard.sh` | `""` | Prevent premature workflow stops |
 | PreCompact | `pre-compact.sh` | `""` | Save state before compaction |
 | PostCompact | `post-compact.sh` | `""` | Auto-recover workflow after compaction |
 | SessionStart | `session-start.sh` | `""` | Re-inject state on startup/resume |
 | SessionEnd | `session-end.sh` | `""` | Reset flow state on session end |
 | PreToolUse | `pre-tool-bash-guard.sh` | `"Bash"` | Block known-bad Bash command patterns |
 | PostToolUse | `post-tool-wm-sync.sh` | `"Bash"` | Auto-create local WM |
+| PostToolUse | `scripts/bang-backtick-edit-hook.sh` | `"Edit\|Write\|MultiEdit"` | Block bang-backtick adjacency that bash would interpret as history expansion |
 
 **Check procedure**:
 
 1. For each required hook event above, check if `.hooks.{EventName}` exists in `.claude/settings.local.json`. If the event is not present, mark it as **missing**.
-2. For each required hook event that **exists** in `.hooks`, check if any hook command contains `rite/hooks/{script_name}`. If no matching command is found, mark it as **missing**.
+2. For each required hook event that **exists** in `.hooks`, check if any hook command is a **rite hook command** (per the 判定基準 above) ending in `{script_name}`. If no matching command is found, mark it as **missing**.
 3. Collect all **missing** hook events from steps 1 and 2.
 
 **Note**: If no required hooks are missing, no output is displayed from this sub-phase. The decision is deferred to the combined Decision logic below.
@@ -854,30 +777,19 @@ Add the following hooks to `.claude/settings.local.json`:
 
 | Hook Event | Script | Purpose |
 |------------|--------|---------|
-| Stop | `bash {hooks_dir}/stop-guard.sh` | Prevent premature workflow stops |
 | PreCompact | `bash {hooks_dir}/pre-compact.sh` | Save state before compaction |
 | PostCompact | `bash {hooks_dir}/post-compact.sh` | Auto-recover workflow after compaction |
 | SessionStart | `bash {hooks_dir}/session-start.sh` | Re-inject state on startup/resume |
 | PreToolUse (Bash) | `bash {hooks_dir}/pre-tool-bash-guard.sh` | Block known-bad Bash command patterns |
 | SessionEnd | `bash {hooks_dir}/session-end.sh` | Reset flow state on session end |
 | PostToolUse (Bash) | `bash {hooks_dir}/post-tool-wm-sync.sh` | Auto-create local WM |
+| PostToolUse (Edit\|Write\|MultiEdit) | `bash {hooks_dir}/scripts/bang-backtick-edit-hook.sh` | Block bang-backtick adjacency that bash would interpret as history expansion |
 
 **Hook registration format** (merge into existing settings without overwriting other entries):
 
 ```json
 {
   "hooks": {
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash {hooks_dir}/stop-guard.sh"
-          }
-        ]
-      }
-    ],
     "PreCompact": [
       {
         "matcher": "",
@@ -942,6 +854,15 @@ Add the following hooks to `.claude/settings.local.json`:
             "command": "bash {hooks_dir}/post-tool-wm-sync.sh"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {hooks_dir}/scripts/bang-backtick-edit-hook.sh"
+          }
+        ]
       }
     ]
   }
@@ -949,11 +870,11 @@ Add the following hooks to `.claude/settings.local.json`:
 ```
 
 **Important**:
-- **Non-rite hooks**: If `.claude/settings.local.json` already has hooks that do NOT contain `rite/hooks/` in their command, preserve them as-is. Do not overwrite or remove user-defined hooks.
-- **rite hooks (path update)**: If existing hooks contain `rite/hooks/` in their command but use an outdated path (detected in Phase 4.5.1.1), **replace** those hook entries with the updated `{hooks_dir}` path. This ensures re-running `/rite:init` always corrects stale paths.
-- **Missing rite hooks**: If any of the required rite hooks (Stop, PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, PostToolUse) are not present, add them.
+- **Non-rite hooks**: If `.claude/settings.local.json` already has hooks whose command is NOT a **rite hook command** (per the 判定基準 above — this includes look-alikes such as `favorite/hooks/`), preserve them as-is. Do not overwrite or remove user-defined hooks.
+- **rite hooks (path update)**: If existing hooks are **rite hook commands** (per the 判定基準 above) but use an outdated path (detected in Phase 4.5.1.1), **replace** those hook entries with the updated `{hooks_dir}` path. This ensures re-running `/rite:init` always corrects stale paths.
+- **Missing rite hooks**: If any of the required rite hooks (PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, PostToolUse) are not present, add them. PostToolUse has two matchers (`Bash` and `Edit|Write|MultiEdit`) — both entries must coexist.
 - **Obsolete hooks**: If `post-compact-guard.sh` (PreToolUse) または `context-pressure.sh` (PostToolUse) exists, **remove** it. `post-compact-guard.sh` は #133 で `post-compact.sh` に置き換え済み。`context-pressure.sh` は #481 で廃止済み。
-- **Matcher rules**: `post-tool-wm-sync.sh` and `pre-tool-bash-guard.sh` use `"matcher": "Bash"` to fire only on Bash tool calls. All other hooks use `"matcher": ""`.
+- **Matcher rules**: `post-tool-wm-sync.sh` and `pre-tool-bash-guard.sh` use `"matcher": "Bash"` to fire only on Bash tool calls. `scripts/bang-backtick-edit-hook.sh` uses `"matcher": "Edit|Write|MultiEdit"` to fire only on file-edit tool calls. All other hooks use `"matcher": ""`.
 - **Permission for WM_SOURCE**: Add `"Bash(WM_SOURCE:*)"` to `.permissions.allow` if not already present. This allows the LLM to execute work memory update commands without prompting (defense-in-depth alongside the PostToolUse hook).
 
 ### 4.5.3 Make Scripts Executable
@@ -961,7 +882,7 @@ Add the following hooks to `.claude/settings.local.json`:
 Attempt to set executable permissions regardless of source type (LOCAL or MARKETPLACE):
 
 ```bash
-chmod +x {hooks_dir}/stop-guard.sh {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh
+chmod +x {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/scripts/bang-backtick-edit-hook.sh
 ```
 
 If `chmod` fails (e.g., permission denied, read-only filesystem), display a warning and continue:
@@ -975,7 +896,7 @@ If hooks fail to run, manually run: chmod +x {hooks_dir}/*.sh
 Verify the hook scripts exist and are executable:
 
 ```bash
-ls -la {hooks_dir}/stop-guard.sh {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh
+ls -la {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh
 ```
 
 If any file is missing or lacks execute permission, display a warning and continue to Phase 5:
@@ -1013,7 +934,7 @@ Add `.rite-work-memory/` and `.rite-compact-state*` to `.gitignore` if not alrea
 
 ```bash
 # Check and add entries if missing
-for entry in ".rite-work-memory/" ".rite-compact-state" ".rite-compact-state.lockdir/" ".rite-compact-state.tmp.*" ".rite-initialized-version" ".rite-settings-hooks-cleaned"; do
+for entry in ".rite-work-memory/" ".rite-compact-state" ".rite-compact-state.lockdir/" ".rite-compact-state.tmp.*" ".rite-initialized-version" ".rite-settings-hooks-cleaned" ".rite/sessions/" ".rite/worktrees/"; do
   if ! grep -qF "$entry" .gitignore 2>/dev/null; then
     echo "$entry" >> .gitignore
   fi
@@ -1024,28 +945,28 @@ Display: `✅ Work memory directory initialized (.rite-work-memory/)`
 
 ---
 
-## Phase 4.7: Wiki Initialization (#491)
+## Phase 4.7: Wiki Initialization
 
 Auto-initialize the Experience Wiki so the user does not need to run `/rite:wiki:init` manually. Executed after Phase 4.6 (new install) and after the Phase 4.1.3 Apply step (`--upgrade` path).
 
 > **Non-blocking contract**: Phase 4.7 failure (including Skill invocation failure) MUST NOT abort `/rite:init`. On failure, display a warning and continue to Phase 5. The flow always reports Wiki status via the completion report (Phase 5).
 
-> **Status enum** (consumed by Phase 5 — identifier-compatible values, no whitespace/parens, trivial 1:1 i18n mapping):
+> **Status enum** (consumed by Phase 5 — identifier-compatible values, no whitespace/parens):
 >
-> | Status value | i18n key | Meaning |
-> |--------------|----------|---------|
-> | `initialized` | `init_summary_wiki_initialized` | Newly initialized in this `/rite:init` invocation |
-> | `already_initialized` | `init_summary_wiki_already_initialized` | Pre-existing Wiki detected and skipped |
-> | `skipped_disabled` | `init_summary_wiki_skipped_disabled` | `wiki.enabled: false` detected |
-> | `failed` | `init_summary_wiki_failed` | Post-check after Skill invocation found Wiki still uninitialized |
+> | Status value | Meaning |
+> |--------------|---------|
+> | `initialized` | Newly initialized in this `/rite:init` invocation |
+> | `already_initialized` | Pre-existing Wiki detected and skipped |
+> | `skipped_disabled` | `wiki.enabled: false` detected |
+> | `failed` | Post-check after Skill invocation found Wiki still uninitialized |
 
 **Retain `wiki_status` as LLM conversational state (NOT a shell variable)**. Claude Code's Bash tool invocations are independent subshells — shell variables do NOT persist across tool calls. Each status set point below instructs the LLM to **remember the value directly in conversation context** and carry it forward to Phase 5. Do NOT attempt `echo $wiki_status` in a subsequent Bash call.
 
-The enum values are identifier-compatible (snake_case, no whitespace or parentheses) so that the Phase 5 i18n mapping is a trivial 1:1 lookup (`init_summary_wiki_${wiki_status}`). No string transformation is required.
+The enum values are identifier-compatible (snake_case, no whitespace or parentheses) so that Phase 5 / Step 7b can branch on `wiki_status` with an explicit if/else and select the matching literal directly. Do not construct the message dynamically from `wiki_status`.
 
 ### 4.7.1 Wiki Enabled Check
 
-Read `wiki.enabled` from `rite-config.yml`. Wiki is **opt-out**: missing section / missing key / unparseable value → treat as `true`. This mirrors `commands/wiki/init.md` Phase 1.1 logic, including the typo-detection WARNING path.
+Read `wiki.enabled` from `rite-config.yml`. Wiki is **opt-out**: missing section / missing key / unparseable value → treat as `true`. This mirrors `commands/wiki/init.md` ステップ 1.1 logic, including the typo-detection WARNING path.
 
 > **sed range robustness note**: The `sed -n '/^wiki:/,/^[a-zA-Z]/p'` pattern terminates at the next line starting with any ASCII letter — which matches the next top-level YAML key. This relies on `rite-config.yml` following the standard shape produced by `/rite:init` (wiki section followed by another top-level key or EOF). In pathological user-customized configs where the wiki section is the last top-level block and is followed only by comment lines, sed reads to EOF, which is still correct. The known limitation: if a user inserts comment lines **inside** the wiki section that start with a letter (e.g., `auto_query: true # note:`), the trailing `# note:` does not affect sed (it's part of the same line). Therefore this pattern is safe for configs conforming to the template shape. Drift in non-standard configs is tracked as a known limitation, not a blocker for #491.
 
@@ -1073,11 +994,11 @@ echo "wiki_enabled=$wiki_enabled"
 ```
 
 **When `wiki_enabled=false`**:
-- Display `{i18n:init_wiki_disabled}`
+- Display `Wiki が無効化されています（wiki.enabled: false）。Phase 4.7 をスキップします。`
 - Set `wiki_status=skipped_disabled` (remember in LLM context)
 - **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit)
 
-**When `wiki_enabled=true`**: Display `{i18n:init_wiki_start}` and proceed to 4.7.2.
+**When `wiki_enabled=true`**: Display `Wiki の自動初期化を開始します...` and proceed to 4.7.2.
 
 ### 4.7.2 Pre-check: Existing Wiki Detection
 
@@ -1114,7 +1035,7 @@ fi
 ```
 
 **When `WIKI_INITIALIZED=true`**:
-- Display `{i18n:init_wiki_already_initialized}` (substitute `{detection}` with the matched branch name or file path)
+- Display `Wiki は既に初期化されています（検知: {detection}）。スキップします。` (substitute `{detection}` with the matched branch name or file path)
 - Set `wiki_status=already_initialized` (remember in LLM context)
 - **Skip the rest of Phase 4.7** and proceed to the next step (new-install: Phase 5 / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Do NOT invoke Skill (preserves existing Wiki content per AC-2)
 
@@ -1122,7 +1043,7 @@ fi
 
 ### 4.7.3 Invoke rite:wiki:init Skill
 
-Display `{i18n:init_wiki_invoking}`, then invoke the Skill tool:
+Display `rite:wiki:init を呼び出して Wiki を初期化します...`, then invoke the Skill tool:
 
 ```
 skill: "rite:wiki:init"
@@ -1162,11 +1083,11 @@ fi
 Then:
 
 **When `WIKI_INITIALIZED=true`**:
-- Display `{i18n:init_wiki_success}`
+- Display `✅ Wiki の初期化が完了しました。`
 - Set `wiki_status=initialized` (remember in LLM context)
 
 **When `WIKI_INITIALIZED=false`** (Skill invocation failed or did not complete):
-- Display `{i18n:init_wiki_failed_nonblocking}` (warning only — do NOT exit)
+- Display `⚠️ Wiki の初期化に失敗しました。/rite:init 全体は成功扱いで続行します。手動で /rite:wiki:init を実行してください。` (warning only — do NOT exit)
 - Set `wiki_status=failed` (remember in LLM context)
 
 **→ Proceed to the next step (new-install: Phase 5 full completion report / `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit). Non-blocking regardless of outcome.**
@@ -1178,52 +1099,50 @@ Then:
 ### Display Configuration Summary
 
 ```
-{i18n:init_complete}
+rite workflow セットアップが完了しました
 
-## {i18n:init_summary_config}
-- {i18n:init_summary_project_type}: {type}
+## 設定内容
 - GitHub Projects: {project-url}
-- {i18n:init_summary_iteration}: {iteration-status}
-- {i18n:init_summary_config_file}: rite-config.yml
+- Iteration/スプリント: {iteration-status}
+- 設定ファイル: rite-config.yml
 <!-- If hooks were registered in Phase 4.5 (LOCAL or MARKETPLACE detected): -->
-- {i18n:init_summary_hooks}
+- Hooks: pre-compact, session-start, session-end (registered)
 <!-- If hooks were skipped due to NOT_FOUND in Phase 4.5.0: -->
-- {i18n:init_summary_hooks_skipped}
-<!-- Wiki status line from Phase 4.7 (#491). Select exactly one of the following
-     based on the wiki_status value retained in LLM context. Do NOT use dynamic
-     placeholder syntax like {i18n:init_summary_wiki_<status>} — expand to the
-     matching literal key via explicit if/else below: -->
+- Hooks: スキップ（未検出）
+<!-- Wiki status line from Phase 4.7. Select exactly one of the following
+     based on the wiki_status value retained in LLM context via explicit if/else.
+     Do not construct the message dynamically from wiki_status: -->
 <!-- If wiki_status == "initialized":         -->
-- {i18n:init_summary_wiki_initialized}
+- Wiki: 初期化完了
 <!-- Else if wiki_status == "already_initialized": -->
-- {i18n:init_summary_wiki_already_initialized}
+- Wiki: 既に初期化済み
 <!-- Else if wiki_status == "skipped_disabled":    -->
-- {i18n:init_summary_wiki_skipped_disabled}
+- Wiki: スキップ（無効）
 <!-- Else if wiki_status == "failed":              -->
-- {i18n:init_summary_wiki_failed}
+- Wiki: 失敗
 
-## {i18n:init_summary_next_steps}
-1. {i18n:init_summary_step1}
-2. {i18n:init_summary_step2}
-3. {i18n:init_summary_step3}
+## 次のステップ
+1. /rite:issue:list で既存 Issue を確認
+2. /rite:issue:create で新規 Issue を作成
+3. /rite:pr:open <番号> で作業開始
 
 <!-- Iteration が有効な場合のみ表示 -->
-## {i18n:init_summary_sprint_mgmt}
-- {i18n:init_summary_sprint_list}
-- {i18n:init_summary_sprint_current}
-- {i18n:init_summary_sprint_plan}
+## Iteration 管理（有効な場合）
+- /rite:pr:open 時に現在の active iteration へ自動 assign（`iteration.auto_assign: true`）
+- /rite:issue:list --sprint current で現在の iteration の Issue を一覧
+- /rite:issue:list --backlog で未割当の Issue を一覧
 
-{i18n:init_summary_workflow_check}
+詳細は /rite:workflow でワークフロー全体を確認できます。
 
-## {i18n:init_summary_view_config}
+## 推奨ビュー設定（手動）
 
-{i18n:init_summary_view_note}
+GitHub Projects のビュー設定は API で自動化できないため、以下の設定を推奨します。Projects 画面右上の「+ New view」から作成してください。
 
-| {i18n:init_summary_view_name} | {i18n:init_summary_view_layout} | {i18n:init_summary_view_group} | {i18n:init_summary_view_purpose} |
+| ビュー名 | レイアウト | グループ化 | 用途 |
 |---------|-----------|-----------|------|
-| Kanban | Board | Status | {i18n:init_summary_view_kanban_purpose} |
-| Priority | Table | Priority | {i18n:init_summary_view_priority_purpose} |
-| Sprint | Board | Iteration | {i18n:init_summary_view_sprint_purpose} |
+| Kanban | Board | Status | タスク進捗の可視化 |
+| Priority | Table | Priority | 優先度別の一覧 |
+| Sprint | Board | Iteration | スプリント管理（Iteration 有効時） |
 
-{i18n:init_summary_view_sprint_note}
+※ Sprint ビューは Iteration フィールドが有効な場合のみ使用できます。
 ```

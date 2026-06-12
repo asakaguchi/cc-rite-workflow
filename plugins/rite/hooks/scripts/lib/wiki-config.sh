@@ -7,7 +7,7 @@
 # wiki-ingest-commit.sh can share a single definition instead of keeping
 # three character-exact copies in sync manually.
 #
-# Design rationale (Issue #549): previous commits (PR #548 cycle 4 review
+# Design rationale: previous commits (PR #548 cycle 4 review
 # F-05 / F-06) identified that parse_wiki_scalar had drifted across the
 # three sibling scripts, creating a transcription-failure class of bugs
 # every time the `wiki.branch_name` parsing contract changed. Extracting a
@@ -29,7 +29,7 @@
 # parse_wiki_scalar KEY
 #
 # Extract the value of `wiki.<KEY>` from rite-config.yml using the same
-# lenient YAML approach as wiki-ingest-trigger.sh / ingest.md Phase 1.1
+# lenient YAML approach as wiki-ingest-trigger.sh / ingest.md ステップ 1.1
 # (awk section extraction + inline-comment strip + quote strip).
 #
 # Security note (verified-review cycle 4 LOW): key value extraction uses

@@ -1,6 +1,6 @@
 # Interview Perspectives Template
 
-This template defines the 6 interview perspectives used by Phase 0.5 (Deep-Dive Interview) in `create-interview.md`.
+This template defines the 6 interview perspectives used by the Deep-Dive Interview step in `commands/issue/create.md` ステップ 1.
 
 ## Perspective Scope Table
 

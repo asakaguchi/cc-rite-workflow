@@ -1,10 +1,6 @@
 # rite-workflow configuration file
 schema_version: 2
 
-# Project settings
-project:
-  type: generic  # generic | webapp | library | cli | documentation
-
 # GitHub Projects integration
 github:
   projects:
@@ -49,7 +45,7 @@ github:
 iteration:
   enabled: false          # true to enable iteration features
   field_name: "Sprint"    # Name of the iteration field in Projects
-  auto_assign: true       # Auto-assign to current iteration on issue:start
+  auto_assign: true       # Auto-assign to current iteration on /rite:pr:open
   show_in_list: true      # Show iteration column in issue:list
 
 # Branch naming rules
@@ -64,10 +60,6 @@ branch:
   #   - "migration/phase{n}-{category}"    # e.g., migration/phase4-admin-tutorials
   #   - "i18n/{locale}"                    # e.g., i18n/zh-tw
   #   - "hotfix/{date}-{description}"      # e.g., hotfix/20250109-critical-fix
-
-# Commit message
-commit:
-  contextual: true     # Contextual Commits action lines in commit body (true | false)
 
 # Build/test/lint commands (null = auto-detect)
 commands:
@@ -105,56 +97,25 @@ review:
     max_claims: 20                    # External claim のみに適用（Internal Likelihood は枠外）
     use_context7: true                # context7 MCP を利用（失敗時は WebSearch fallback で自動回復）
     verify_internal_likelihood: true  # Sub-Phase B (Internal Likelihood Claim Verification) を有効化 — 詳細: plugins/rite/commands/pr/references/fact-check.md
-  # NOTE (#506 known limitation): 以下の 3 セクション (observed_likelihood_gate / fail_fast_first /
-  # separate_issue_creation) と下記 fix.fail_fast_response は config scaffolding (宣言のみ) です。
-  # 現時点では prompt 側 (fix.md / review.md / _reviewer-base.md) がハードコードで挙動を強制しており、
-  # これらのキーを false にしても挙動は変わりません (opt-out は動作しません)。
-  # runtime wiring は follow-up Issue で追跡されます。
-  #
-  # Observed Likelihood Gate (#506): 指摘の必要条件に「実発生の立証」を追加
-  # 詳細: plugins/rite/references/severity-levels.md, plugins/rite/agents/_reviewer-base.md
-  observed_likelihood_gate:
-    enabled: true                     # true で Observed Likelihood Gate を有効化（default: true）
-    security_exception: true          # security reviewer は Hypothetical でも severity 維持
-    hypothetical_exception_reviewers: # Hypothetical 例外カテゴリ reviewer
-      - security
-      - database
-      - devops
-      - dependencies
-    minimum: "demonstrable"           # demonstrable 未満は非例外 reviewer で報告禁止
-  # Fail-Fast First (#506): reviewer/fix 共に「まず throw/raise で伝播」を必須検討
-  # 詳細: plugins/rite/agents/_reviewer-base.md, plugins/rite/commands/pr/fix.md Phase 2
-  fail_fast_first:
-    enabled: true                     # true で Fail-Fast First 原則を有効化（default: true）
-    allow_skill_exceptions: true      # skill 側に明示された fallback 許容条件を尊重
-    wiki_query_required: true         # fallback 推奨前に Wiki で project-specific 許容パターンを確認必須
-  # Separate Issue Creation (#506): 別 Issue 化は人間判定必須、Source C（既存問題）報告廃止
-  # 詳細: plugins/rite/commands/pr/fix.md Phase 4.3.3
-  separate_issue_creation:
-    require_user_confirmation: true   # true で E2E でも AskUserQuestion をスキップせず常に確認（default: true）
-    report_pre_existing_issues: false # false で Source C (既存問題) の reviewer 報告を抑止（default: false）
+  scope_assignment:
+    # Issue #1018 M2 — scope=nit-noted 受け流し経路設定。reviewer が schema 1.1.0 で出力する
+    # findings[].scope に基づく fix loop routing 制御。
+    # Issue #1020 — feature flag scaffolding。新規キー (`review.scope_assignment.*`) は本テンプレ側
+    # でも必ず宣言する (init で展開される値が runtime と drift しないため)。`enabled: false` で
+    # scope-based routing 全体を opt-out し、fix.md は schema 1.0 互換動作 (severity-based default
+    # mapping のみ) にフォールバックする。
+    # ロールアウト戦略: テンプレートは新規 init ユーザ向けに保守的 default として **false** を維持
+    # (本プロジェクト rite-config.yml は #1022 検証 pass 後に true 化済、テンプレ側の bump は別 Issue で再評価)。
+    enabled: false           # scope-based routing 全体の opt-in/out (template default; 新規 init では false 維持)
+    auto_demote_low: true    # LOW × current-pr の finding を fix.md ステップ 1.2.0 で自動的に nit-noted へ降格 (default: true)。false で opt-out した場合は LOW × current-pr が通常通り blocking 扱いで fix loop に流れる。`enabled: false` の場合は本キーは effectively false 扱い (将来の runtime gating で wiring 予定)
 
 # Fix settings (#506)
 fix:
   # Fail-Fast Response Principle: throw/raise 優先の修正方針を必須化
-  # 詳細: plugins/rite/commands/pr/fix.md Phase 2 Fail-Fast Response Principle
+  # 詳細: plugins/rite/commands/pr/fix.md ステップ 2 Fail-Fast Response Principle
+  # NOTE (#506 known limitation): config scaffolding (宣言のみ)。現時点では fix.md が
+  # ハードコードで挙動を強制しており、false にしても挙動は変わりません。
   fail_fast_response: true            # true で Fail-Fast Response Principle を有効化（default: true）
-  # severity_gating strategy は #506 で廃止されました（後方互換のためキーは残置）。
-  # 非収束時は fix.md Phase 4.3.3 の AskUserQuestion に統合されています。
-  severity_gating:
-    enabled: false                    # DEPRECATED (#506): 常に false 固定扱い
-
-# Notification settings
-notifications:
-  slack:
-    enabled: false
-    webhook_url: null
-  discord:
-    enabled: false
-    webhook_url: null
-  teams:
-    enabled: false
-    webhook_url: null
 
 # Language setting (auto = auto-detect)
 language: auto  # auto | ja | en
@@ -169,17 +130,42 @@ wiki:
   auto_ingest: true           # Auto-ingest on review/fix/close (default: true)
   auto_query: true            # Auto-query on start/review/fix/implement (default: true)
 
+# Flow state file format settings (Issue #672)
+# See docs/designs/multi-session-state.md for full specification.
+#
+# ⚠️ ファイル冒頭の top-level `schema_version: 2` (rite-config.yml 自体の schema バージョン) とは
+# 別系統の設定です。本セクションの `flow_state.schema_version` は `.rite-flow-state` ファイル形式の
+# 選択のみを制御し、rite-config.yml schema 自体のバージョンとは無関係です。
+#
+# `schema_version: 2` (default) — Option A: per-session file (`.rite/sessions/{session_id}.flow-state`)。
+#   並行セッションを first-class でサポート。
+# `schema_version: 1` — legacy single-file (rollback path、v0.5.0 で撤去予定)。
+flow_state:
+  schema_version: 2
+
+# Multi-session settings (per-session Git worktree isolation)
+# See docs/designs/multi-session-worktree.md for full specification.
+# Lets multiple Claude Code sessions work different Issues in the same repo
+# concurrently: /rite:pr:open creates a session worktree (.rite/worktrees/issue-{N})
+# and EnterWorktree-s into it, so each session keeps its own working tree /
+# current branch. Default `enabled: true` (on by default since #1391); set to
+# false to restore single-session behavior.
+# NOTE: this is a SEPARATE axis from `parallel` (which is per-Issue sub-agent
+# fan-out within a single session). Do not merge the two.
+# Disk cost: each session worktree is a FULL working-tree clone — build artifacts
+# (node_modules, venv, build caches) are NOT shared and may be rebuilt per worktree.
+# Declared ABOVE the `--- Advanced ---` marker (like wiki / flow_state, #491) so
+# /rite:init new-generation emits it as an active block (so new projects actually
+# get the default-on behavior). On --upgrade it is intentionally NOT back-added to
+# existing configs (see init.md Step 4 classification) to preserve backward compat.
+multi_session:
+  enabled: true                    # per-session worktrees (on by default, #1391); false to disable
+  worktree_base: ".rite/worktrees" # session worktree base (issue-{N} subdirs)
+
 # --- Advanced (below this line) ---
 # These sections are omitted during new generation (/rite:init).
 # They are added as comments during --upgrade.
 # Uncomment and configure as needed.
-
-# TDD Light mode settings (off by default)
-# tdd:
-#   mode: "off"              # off | light (default: off)
-#   tag_prefix: "AC"         # Tag prefix for test skeleton markers
-#   run_baseline: true       # Run baseline test before skeleton generation
-#   max_skeletons: 20        # Maximum number of skeletons to generate per Issue
 
 # PR review result recording (#443)
 # デフォルトではレビュー結果を PR コメントには記録せず、タイムスタンプ付き
@@ -195,13 +181,6 @@ pr_review:
 #   max_agents: 3   # Maximum concurrent agents (default: 3)
 #   mode: "shared"  # "shared" (default) or "worktree"
 #   worktree_base: ".worktrees"
-
-# Team-based sprint execution settings
-# team:
-#   enabled: true
-#   max_concurrent_issues: 3
-#   teammate_model: "sonnet"
-#   auto_review: true
 
 # Metrics settings
 # metrics:
@@ -222,3 +201,6 @@ pr_review:
 # investigate:
 #   codex_review:
 #     enabled: true
+
+# Flow state settings are declared above the `--- Advanced ---` marker (active by default, Issue #672).
+# See docs/designs/multi-session-state.md for full specification.

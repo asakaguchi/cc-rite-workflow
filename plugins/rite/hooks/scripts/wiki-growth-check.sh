@@ -14,7 +14,7 @@
 #              Phase X.X.W.2. This is the foundation that makes layer 3 a genuine
 #              regression signal rather than a symptom of fragile LLM orchestration.
 #   - layer 1: review.md / fix.md / close.md Phase X.X.W skip 不可化
-#   - layer 2: workflow-incident-emit.sh の wiki_ingest_skipped / wiki_ingest_failed sentinel
+#   - layer 2: review/fix/close が ingest skip/failure 時に stderr へ plain WARNING を出力
 #
 # Usage:
 #   wiki-growth-check.sh [--repo-root DIR] [--quiet] [--threshold N]
@@ -24,7 +24,7 @@
 #   --repo-root DIR        Repository root (default: git rev-parse --show-toplevel)
 #   --quiet                Suppress informational output (still emits findings line)
 #   --threshold N          Override growth-stall threshold from rite-config.yml
-#   --pr-raw-threshold N   Override PR↔raw correspondence threshold (Issue #536)
+#   --pr-raw-threshold N   Override PR↔raw correspondence threshold
 #   -h, --help             Show this help
 #
 # Exit codes (drift-check と同一の非ブロッキング契約):
@@ -37,6 +37,8 @@
 #   (parsed by lint.md Phase 3.8 to populate `wiki_growth_finding_count`).
 #
 set -uo pipefail
+# shellcheck source=../control-char-neutralize.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"
 
 # Signal-specific trap (canonical signal-specific trap pattern from references/bash-trap-patterns.md):
 # - EXIT preserves the original exit code via `rc=$?`
@@ -68,7 +70,7 @@ Options:
   --threshold N            Override growth-stall threshold (default: read from
                            rite-config.yml, fallback 5)
   --pr-raw-threshold N     Override PR↔raw correspondence threshold (default:
-                           read from rite-config.yml, fallback 3) (Issue #536)
+                           read from rite-config.yml, fallback 3)
   -h, --help               Show this help
 
 Exit codes:
@@ -198,7 +200,7 @@ if [ -n "$git_log_target" ]; then
   else
     git_log_rc=$?
     echo "WARNING: git log on '$git_log_target' failed (rc=$git_log_rc) — wiki-growth-check skipped" >&2
-    [ -n "$git_log_err" ] && [ -s "$git_log_err" ] && head -3 "$git_log_err" | sed 's/^/  /' >&2
+    [ -n "$git_log_err" ] && [ -s "$git_log_err" ] && head -3 "$git_log_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     echo "  対処: repository の整合性 (.git permission / corrupt object) を確認してください" >&2
     [ -n "$git_log_err" ] && rm -f "$git_log_err"
     git_log_err=""
@@ -253,7 +255,7 @@ if gh_json_out=$(gh pr list \
 else
   gh_rc=$?
   echo "WARNING: gh pr list failed (rc=$gh_rc) — wiki-growth-check skipped" >&2
-  [ -n "$gh_pr_list_err" ] && [ -s "$gh_pr_list_err" ] && head -5 "$gh_pr_list_err" | sed 's/^/  /' >&2
+  [ -n "$gh_pr_list_err" ] && [ -s "$gh_pr_list_err" ] && head -5 "$gh_pr_list_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   echo "  対処: gh auth status (auth error) / network 接続 / rate limit を確認してください" >&2
   [ -n "$gh_pr_list_err" ] && rm -f "$gh_pr_list_err"
   gh_pr_list_err=""
@@ -273,8 +275,8 @@ jq_rc=$?
 
 if [ -z "$merged_count" ] || ! [[ "$merged_count" =~ ^[0-9]+$ ]]; then
   echo "WARNING: gh pr list の JSON 解析に失敗しました (jq rc=$jq_rc) — wiki-growth-check skipped" >&2
-  [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  jq: /' >&2
-  echo "  raw stdout (先頭 200 文字): $(printf '%s' "$gh_json_out" | head -c 200)" >&2
+  [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  jq: /' >&2
+  echo "  raw stdout (先頭 200 文字): $(printf '%s' "$gh_json_out" | head -c 200 | tr '\n' ' ' | neutralize_ctrl --c0-only)" >&2
   [ -n "$jq_err" ] && rm -f "$jq_err"
   echo "==> Total wiki-growth-check findings: 0"
   exit 0
@@ -292,7 +294,7 @@ else
   log_info "wiki-growth-check: growth-stall: healthy ($merged_count merged PRs since last '$wiki_branch' commit, threshold: $threshold)"
 fi
 
-# --- PR ↔ raw source correspondence check (Issue #536) ---
+# --- PR ↔ raw source correspondence check ---
 # For each of the last N merged PRs, check whether at least one raw source
 # file exists on the wiki branch with a matching `pr-{number}` in its name.
 # This detects regressions where PRs are merged but Phase X.X.W never fires,
@@ -330,7 +332,7 @@ check_pr_raw_correspondence() {
     --json number \
     --limit "$threshold" 2>"${gh_pr_err:-/dev/null}") || {
     echo "WARNING: wiki-growth-check: pr-raw-correspondence: gh pr list failed, skipping" >&2
-    [ -n "$gh_pr_err" ] && [ -s "$gh_pr_err" ] && head -3 "$gh_pr_err" | sed 's/^/  /' >&2
+    [ -n "$gh_pr_err" ] && [ -s "$gh_pr_err" ] && head -3 "$gh_pr_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     [ -n "$gh_pr_err" ] && rm -f "$gh_pr_err"
     return 0
   }
@@ -340,7 +342,7 @@ check_pr_raw_correspondence() {
   jq_pr_err=$(mktemp /tmp/rite-wiki-growth-jq-err-XXXXXX 2>/dev/null) || jq_pr_err=""
   recent_pr_numbers=$(printf '%s' "$recent_prs_json" | jq -r '.[].number' 2>"${jq_pr_err:-/dev/null}") || {
     echo "WARNING: wiki-growth-check: pr-raw-correspondence: jq parse failed, skipping" >&2
-    [ -n "$jq_pr_err" ] && [ -s "$jq_pr_err" ] && head -3 "$jq_pr_err" | sed 's/^/  /' >&2
+    [ -n "$jq_pr_err" ] && [ -s "$jq_pr_err" ] && head -3 "$jq_pr_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     [ -n "$jq_pr_err" ] && rm -f "$jq_pr_err"
     return 0
   }
@@ -380,7 +382,7 @@ check_pr_raw_correspondence() {
   if [ "$missing_count" -ge "$pr_raw_thresh" ]; then
     echo "==> PR↔raw correspondence gap: $missing_count of $total_checked recent merged PRs have no raw source on '$wiki_branch' (threshold: $pr_raw_thresh)"
     echo "==> Missing PRs: $missing_prs"
-    echo "==> Hint: Phase X.X.W (Wiki Ingest Trigger) may not be firing for these PRs. Verify review.md Phase 6.5.W.2 / fix.md Phase 4.6.W.2 / close.md Phase 4.4.W.2 execution."
+    echo "==> Hint: Phase X.X.W (Wiki Ingest Trigger) may not be firing for these PRs. Verify review.md ステップ 6.5.W.2 / fix.md ステップ 4.6.W.2 / close.md Phase 4.4.W.2 execution."
     return 1
   fi
 
@@ -392,7 +394,7 @@ if ! check_pr_raw_correspondence; then
   findings=$((findings + 1))
 fi
 
-# --- Comprehensive health check: raw count, page count, pending count, page stall (Issue #538) ---
+# --- Comprehensive health check: raw count, page count, pending count, page stall ---
 # DRY: git ls-tree for .rite/wiki/raw/ is called once in check_page_stall and
 # passed to helper functions to avoid 3x duplication of the same git ls-tree call.
 

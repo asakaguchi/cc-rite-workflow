@@ -20,6 +20,10 @@
 #   "no_current_iteration" - GraphQL includes iteration field but only future iterations
 #   "no_project_id"        - GraphQL returns null project ID
 #   "url_parse_fail"       - gh issue create returns non-URL string (no trailing number)
+#   "iteration_mutation_fail" - GraphQL fields query OK (iteration field present),
+#                              but the iteration assignment mutation fails (#669 F-02)
+#   "gql_items_lookup_fail"  - GraphQL fields query OK (items.nodes=[]),
+#                              but the GQL_ITEMS_QUERY (items lookup retry) fails (#669 cycle 2 follow-up)
 #
 # Scenarios (projects-status-update.sh):
 #   "psu_success"              - Issue in project, Status updated
@@ -32,6 +36,17 @@
 #   "psu_no_status_field"      - field-list returns no Status field
 #   "psu_no_status_option"     - Status field exists but requested option name missing
 #   "psu_item_edit_fail"       - gh project item-edit fails
+#
+# Scenarios (projects-items-fetch.sh):
+#   "pif_success"              - project view + 1-page items query succeed
+#   "pif_multi_page"           - 2-page pagination (state file in MOCK_GH_STATE_DIR)
+#   "pif_project_view_fail"    - gh project view fails (stderr + exit 1)
+#   "pif_view_null_id"         - project view succeeds but id is null
+#   "pif_graphql_fail"         - items query fails (stderr + exit 1)
+#   "pif_graphql_errors"       - items query returns top-level errors array
+#   "pif_missing_items"        - items query returns data.node = null (partial response)
+#   "pif_normalize_fail"       - gh succeeds (default shapes); the failure is injected by the
+#                                jq shim in projects-items-fetch.test.sh (final `jq -s` exits 2)
 #
 # The projects-status-update.sh script uses a different GraphQL shape
 # (`data.repository.issue.projectItems`) than create-issue-with-projects.sh
@@ -73,6 +88,19 @@ case "$1" in
 
   project)
     case "$2" in
+      view)
+        # `gh project view PROJECT_NUMBER --owner OWNER --format json`
+        # Used by projects-items-fetch.sh to resolve the ProjectV2 node ID.
+        if [ "$SCENARIO" = "pif_project_view_fail" ]; then
+          echo "error: could not view project" >&2
+          exit 1
+        fi
+        if [ "$SCENARIO" = "pif_view_null_id" ]; then
+          printf '{"id": null, "title": "Mock Project"}\n'
+          exit 0
+        fi
+        printf '{"id": "%s", "title": "Mock Project"}\n' "$MOCK_PROJECT_ID"
+        ;;
       field-list)
         # New: `gh project field-list PROJECT_NUMBER --owner OWNER --format json`
         # Used by projects-status-update.sh to resolve Status field + option ids.
@@ -110,8 +138,9 @@ FLJSON
           echo "error: failed to add item to project" >&2
           exit 1
         fi
-        # no_item_id_no_json: simulate item-add succeeding but without JSON output
-        if [ "$SCENARIO" = "no_item_id_no_json" ]; then
+        # no_item_id_no_json / gql_items_lookup_fail: simulate item-add succeeding but without JSON output
+        # (forces ITEM_ID retrieval to fall through to GQL_RESULT.items.nodes, then GQL_ITEMS_QUERY retry)
+        if [ "$SCENARIO" = "no_item_id_no_json" ] || [ "$SCENARIO" = "gql_items_lookup_fail" ]; then
           exit 0
         fi
         # Check if --format json was requested (pair detection: --format followed by json)
@@ -185,8 +214,15 @@ ITEMJSON
 
         # Detect query shape: projects-status-update.sh queries `repository(owner:`
         # while create-issue-with-projects.sh queries `user|organization(login:`.
+        # gql_items_lookup_fail (#669 cycle 2 follow-up): fields query (containing
+        # `fields(first: 20)`) succeeds with empty items, but the items lookup
+        # retry query (containing `items(last: 20)` and NOT `fields(first: 20)`)
+        # fails with exit 1.
         is_repository_query=false
         is_mutation=false
+        is_items_lookup_only=false
+        is_items_pagination_query=false
+        has_cursor_arg=false
         for arg in "$@"; do
           if [[ "$arg" == query=* ]]; then
             if [[ "$arg" == *"repository(owner:"* ]]; then
@@ -195,11 +231,64 @@ ITEMJSON
             if [[ "$arg" == *mutation* ]]; then
               is_mutation=true
             fi
-            break
+            if [[ "$arg" == *"items(last: 20)"* ]] && [[ "$arg" != *"fields(first: 20)"* ]]; then
+              is_items_lookup_only=true
+            fi
+            # projects-items-fetch.sh queries `node(id: $pid)` + `items(first: 100, after: $cursor)`
+            if [[ "$arg" == *"items(first: 100, after:"* ]]; then
+              is_items_pagination_query=true
+            fi
+          fi
+          if [[ "$arg" == cursor=* ]]; then
+            has_cursor_arg=true
           fi
         done
 
+        if [ "$SCENARIO" = "gql_items_lookup_fail" ] && [ "$is_items_lookup_only" = true ]; then
+          echo "error: GraphQL items lookup query failed" >&2
+          exit 1
+        fi
+
+        # --- projects-items-fetch.sh path (node(id:) + items(first: 100) pagination) ---
+        if [ "$is_items_pagination_query" = true ]; then
+          case "$SCENARIO" in
+            pif_graphql_fail)
+              echo "error: GraphQL items query failed" >&2
+              exit 1
+              ;;
+            pif_graphql_errors)
+              printf '{"errors":[{"message":"Something went wrong"},{"message":"Rate limited"}],"data":null}\n'
+              exit 0
+              ;;
+            pif_missing_items)
+              printf '{"data":{"node":null}}\n'
+              exit 0
+              ;;
+            pif_multi_page)
+              # Page 1 (no cursor arg): hasNextPage=true + item #101.
+              # Page 2 (cursor arg present): hasNextPage=false + item #102.
+              if [ "$has_cursor_arg" = true ]; then
+                printf '{"data":{"node":{"items":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"content":{"number":102},"fieldValues":{"nodes":[{"name":"Done","field":{"name":"Status"}}]}}]}}}}\n'
+              else
+                printf '{"data":{"node":{"items":{"pageInfo":{"hasNextPage":true,"endCursor":"CURSOR1"},"nodes":[{"content":{"number":101},"fieldValues":{"nodes":[{"name":"Todo","field":{"name":"Status"}}]}}]}}}}\n'
+              fi
+              exit 0
+              ;;
+            *)
+              # pif_success (default): single page with a Status item, a status-less
+              # item, and a draft item (content {}) that the normalizer must exclude.
+              printf '{"data":{"node":{"items":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"content":{"number":101},"fieldValues":{"nodes":[{"name":"In Progress","field":{"name":"Status"}},{}]}},{"content":{"number":102},"fieldValues":{"nodes":[{}]}},{"content":{},"fieldValues":{"nodes":[]}}]}}}}\n'
+              exit 0
+              ;;
+          esac
+        fi
+
         if [ "$is_mutation" = true ]; then
+          # iteration_mutation_fail: simulate iteration assignment mutation failure (#669 F-02)
+          if [ "$SCENARIO" = "iteration_mutation_fail" ]; then
+            echo "error: iteration mutation failed" >&2
+            exit 1
+          fi
           # No stdout output for mutations (only exit code matters to caller)
           exit 0
         fi
@@ -261,7 +350,7 @@ ITEMJSON
         fi
 
         ITEMS_NODES="[{\"id\":\"${MOCK_ITEM_ID}\",\"content\":{\"number\":${MOCK_ISSUE_NUMBER}}}]"
-        if [ "$SCENARIO" = "no_item_id" ] || [ "$SCENARIO" = "no_item_id_no_json" ]; then
+        if [ "$SCENARIO" = "no_item_id" ] || [ "$SCENARIO" = "no_item_id_no_json" ] || [ "$SCENARIO" = "gql_items_lookup_fail" ]; then
           ITEMS_NODES="[]"
         fi
 
@@ -273,7 +362,9 @@ ITEMJSON
         # Iteration field (conditionally included based on scenario)
         ITER_FIELD=""
         MOCK_CURRENT_SPRINT_START=$(date +%Y-%m-01)
-        if [ "$SCENARIO" = "iteration_success" ]; then
+        if [ "$SCENARIO" = "iteration_success" ] || [ "$SCENARIO" = "iteration_mutation_fail" ]; then
+          # iteration_mutation_fail も fields query では Sprint field + current iteration を返し、
+          # mutation 段階で初めて失敗させる (#669 F-02)
           ITER_FIELD=',
             {
               "id": "FIELD_SPRINT",

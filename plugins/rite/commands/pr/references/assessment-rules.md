@@ -1,6 +1,8 @@
 # Assessment Rules (Phase 5.3)
 
-> **Source**: Extracted from `review.md` Phase 5.3.1-5.3.7. This file is the source of truth for assessment rules.
+> **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
+
+> **Source**: Extracted from `review.md` ステップ 5.3.1-5.3.7. This file is the source of truth for assessment rules.
 
 ## 5.3.0 Observed Likelihood Gate (Post-Reviewer Safety Net)
 
@@ -26,7 +28,7 @@ For each finding in 全指摘事項:
         (matrix rule: LOW × Hypothetical は報告禁止)
       else:
         move to 推奨事項 section
-        (matrix rule: CRITICAL/HIGH/MEDIUM × Hypothetical → 推奨事項へ 1 ステップ降格)
+        (matrix rule: CRITICAL/HIGH/MEDIUM/LOW-MEDIUM × Hypothetical → 推奨事項へ 1 ステップ降格)
 ```
 
 **"Missing `Likelihood-Evidence:` anchor"** means the finding's `内容` column does NOT contain a match for the following regex (per `_reviewer-base.md` "Demonstrable: proof of burden"):
@@ -40,7 +42,7 @@ For each finding in 全指摘事項:
 - `(?m)` — multiline mode is **required**. Without it, `^` matches only at string start and the regex misses anchors placed after the WHAT/WHY narrative (which is the common case in `内容` columns).
 - `(?:^|<br\s*/?>|[\s|>(])` — accepts four boundary variants: (a) physical line start `^`, (b) HTML `<br>` / `<br/>` / `<br />` separator (per `_reviewer-base.md` L127 "For Markdown table cells where physical newlines are not supported, use `<br>` as the separator"), (c) whitespace/tab (same-line continuation after WHAT+WHY narrative per `_reviewer-base.md` L127), (d) Markdown table cell boundary `|` / `>` / `(` (defense-in-depth).
 
-This boundary set matches the canonical pattern used in `review.md` Phase 5.1.1.1 (`(?m)^### 修正検証結果\s*$`) and Phase 5.1.3 Step 2 (`(?m)(?:^|<br\s*/?>|[\s|>(])\s*META:`). Updates to `_reviewer-base.md` L127 placement rules MUST be synchronized with this regex — the two are the single source of truth for anchor placement (authoring) and anchor detection (safety net).
+This boundary set matches the canonical pattern used in `review.md` ステップ 5.1.1.1 (`(?m)^### 修正検証結果\s*$`) and ステップ 5.1.3 Step 2 (`(?m)(?:^|<br\s*/?>|[\s|>(])\s*META:`). Updates to `_reviewer-base.md` L127 placement rules MUST be synchronized with this regex — the two are the single source of truth for anchor placement (authoring) and anchor detection (safety net).
 
 Absence of any of these matches is the reviewer-side contract violation that Phase 5.3.0 corrects as safety net.
 
@@ -57,7 +59,7 @@ These 4 categories match [Hypothetical Exception Categories](../../../references
 
 **Relation to 5.3.7 (AI independent judgment prohibition)**: The mechanical demotion in 5.3.0 is **explicitly permitted** because it follows a deterministic algorithm (regex match on `Likelihood-Evidence:` anchor + destination fixed by matrix) with no AI discretion. In contrast, 5.3.7 prohibits AI from applying severity exceptions based on its own judgment (e.g., "this CRITICAL is actually minor"). Mechanical rule = allowed; AI judgment = forbidden.
 
-**Recording demoted findings**: Record each demoted finding in an `### Observed Likelihood 降格結果` section of the integrated report (Phase 5.4) so the demotion is auditable. The full table schema is defined by the Phase 5.4 template in `review.md`; this section only specifies the columns:
+**Recording demoted findings**: Record each demoted finding in an `### Observed Likelihood 降格結果` section of the integrated report (ステップ 5.4) so the demotion is auditable. The full table schema is defined by the ステップ 5.4 template in `review.md`; this section only specifies the columns:
 
 ```markdown
 ### Observed Likelihood 降格結果
@@ -72,19 +74,23 @@ These 4 categories match [Hypothetical Exception Categories](../../../references
 
 ## 5.3.1 Assessment Rules
 
-**Red blocking rule: If even 1 finding exists (after 5.3.0 demotion), it MUST NOT be assessed as "Merge OK"**
+**Red blocking rule: If even 1 finding with `scope ∈ {current-pr, follow-up}` exists (after 5.3.0 demotion), it MUST NOT be assessed as "Merge OK"**
 
-All findings (CRITICAL/HIGH/MEDIUM/LOW) remaining in `全指摘事項` after 5.3.0 demotion are always blocking regardless of loop count. There is no gradual relaxation — every remaining finding must be resolved before merge.
+All findings (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) with `scope ∈ {current-pr, follow-up}` remaining in `全指摘事項` after 5.3.0 demotion are always blocking regardless of loop count. There is no gradual relaxation — every remaining blocking finding must be resolved before merge.
+
+**scope=nit-noted exclusion**: Findings with `scope == "nit-noted"` (`acknowledged` トラックの informational 情報共有) are **excluded from `overall_assessment`** and **excluded from the mergeable countdown**. They are surfaced via two separate paths: (a) `/rite:pr:review` ステップ 5.4 「指摘事項」表の **scope 列** (review.md ステップ 5.4 Integrated Report の `全指摘事項` 表で scope=nit-noted 行として可視化)、および (b) `/rite:pr:fix` ステップ 1.4 display の独立した「nit (認知のみ) ({nit_noted_count}件)」セクション (fix.md 内のサブセクション、修正対象外と明示)。両者は表示先が異なるが scope=nit-noted という意味は共通で、いずれも merge を block しない。 The `/rite:pr:fix` ステップ 2.4 `nit-noted-reply` サブステップで「nit、認知済」reply を投稿することで decay-track され、ステップ 4.6 サマリでは `acknowledged_nit_count` として独立カウントされる。これは fix commit 対象からも完全除外される。schema invariant #4 (CRITICAL/HIGH × nit-noted FAIL) により blocker 級の指摘を nit に降格する経路は禁止されているため、本除外は安全に運用できる。詳細な fix loop 経路は [`fix-relaxation-rules.md`](./fix-relaxation-rules.md) §Fix Target Classification を参照。
 
 **Fact-Check exclusion**: When `review.fact_check.enabled: true`, CONTRADICTED (❌) findings and UNVERIFIED:ソース未確認 (⚠️) findings are removed from `全指摘事項` by the Fact-Checking Phase before assessment. Only findings remaining in `全指摘事項` after fact-checking are counted in `total_findings`. UNVERIFIED:リソース超過 findings remain in `全指摘事項` with `[未検証:リソース超過]` annotation and are counted (blocking maintained).
 
 **Pre-existing issue handling**: Pre-existing issues (problems that existed before the current PR's changes, confirmed via revert test) are excluded from findings entirely by the reviewer's scope judgment rule. They are NOT collected as a separate report section and NOT auto-Issue-ified. If a reviewer wants to surface a pre-existing concern, it goes into the "調査推奨" section of the integrated report (Phase 5) — the user may optionally run `/rite:investigate {file}` separately (non-blocking, not counted in `total_findings`).
 
-When executed standalone (outside a loop), the same rule applies: all findings are blocking.
+When executed standalone (outside a loop), the same rules apply: scope ∈ {current-pr, follow-up} findings are blocking, scope=nit-noted findings are excluded from blocking countdown.
 
 ## 5.3.3 Assessment Logic
 
-Use **all findings** for determination (all findings are blocking). Priority: CRITICAL findings → Requires fixes | HIGH/MEDIUM/LOW findings → Cannot merge (findings exist) | 0 findings → Merge OK.
+Use **only findings with `scope ∈ {current-pr, follow-up}`** for determination (nit-noted findings are excluded per §5.3.1 Issue #1018 M2 exclusion). Priority: CRITICAL findings → Requires fixes | HIGH/MEDIUM/LOW-MEDIUM/LOW findings → Cannot merge (blocking findings exist) | 0 blocking findings (nit-noted のみ残存可) → Merge OK.
+
+**`total_findings` definition**: `total_findings = count(findings where scope ∈ {current-pr, follow-up})`. `acknowledged_nit_count = count(findings where scope == "nit-noted")` は独立 metric で `overall_assessment` 評価には使われない (Phase 4.6 サマリ表示のみ)。
 
 ## 5.3.5 Output Format at Assessment Decision Time
 
@@ -95,6 +101,7 @@ When determining the assessment, explicitly output the finding count in the foll
 - CRITICAL: {count} 件
 - HIGH: {count} 件
 - MEDIUM: {count} 件
+- LOW-MEDIUM: {count} 件
 - LOW: {count} 件
 - 合計: {total} 件（すべて blocking）
 
@@ -129,7 +136,7 @@ When `review_mode == "verification"`, output the following in addition to the ab
 - リグレッション: {regression_count} 件
 ```
 
-**Important**: Any findings → cannot merge → `/rite:issue:start` loop continues. "Merge OK" = 0 findings.
+**Important**: Any findings → cannot merge → `/rite:pr:iterate` loop continues. "Merge OK" = 0 findings.
 
 ## 5.3.6 Return Values to Caller (Important)
 
@@ -137,7 +144,7 @@ Return: total_findings (if >0, `/rite:pr:fix` required), evaluation, review_mode
 
 **Red important constraint:**
 
-The caller (`/rite:issue:start` Phase 5.5) **mechanically** invokes `/rite:pr:fix` when `total_findings > 0` or `evaluation != "マージ可"`, **regardless of AI judgment**.
+The caller (`/rite:pr:iterate` review-fix loop) **mechanically** invokes `/rite:pr:fix` when `total_findings > 0` or `evaluation != "マージ可"`, **regardless of AI judgment**.
 
 The following decisions MUST NOT be made by `/rite:pr:review`:
 - "The findings are minor, so no action is needed"
@@ -151,6 +158,6 @@ The following decisions MUST NOT be made by `/rite:pr:review`:
 
 Prohibited actions: Exception handling by severity (e.g., "Only LOWs, so minor"), overriding assessment (e.g., "Effectively merge-OK"), inserting user confirmation.
 
-> **[READ-ONLY RULE]**: 評価結果に基づいてコードを直接修正することは禁止されています。`Edit`/`Write` ツールでプロジェクトのソースファイルを変更してはなりません。ブロック指摘が存在する場合は `[review:fix-needed:{n}]` パターンを出力し、修正は `/rite:pr:fix` に委譲してください。`Bash` ツールは workflow 操作（`gh` CLI、hook scripts、`.rite-flow-state` 更新）と **read-only な git コマンド**（完全な許可・禁止一覧は `plugins/rite/agents/_reviewer-base.md` の `## READ-ONLY Enforcement` を single source of truth として参照）のみ許可されます。working tree / index / ref を変更する git コマンド（`git checkout` / `git reset` / `git add` / `git stash` / `git restore` / `git rebase` / `git commit` / `git push` 等）は **禁止** です。
+> **[READ-ONLY RULE]**: 評価結果に基づいてコードを直接修正することは禁止されています。`Edit`/`Write` ツールでプロジェクトのソースファイルを変更してはなりません。ブロック指摘が存在する場合は `[review:fix-needed:{n}]` パターンを出力し、修正は `/rite:pr:fix` に委譲してください。`Bash` ツールは workflow 操作（`gh` CLI、hook scripts、flow state 更新）と **read-only な git コマンド**（完全な許可・禁止一覧は `plugins/rite/agents/_reviewer-base.md` の `## READ-ONLY Enforcement` を single source of truth として参照）のみ許可されます。working tree / index / ref を変更する git コマンド（`git checkout` / `git reset` / `git add` / `git stash` / `git restore` / `git rebase` / `git commit` / `git push` 等）は **禁止** です。
 
 **Principle:** Assessment logic result = final decision. AI's role = reporting + mechanical transition to the next phase only.

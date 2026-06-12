@@ -8,7 +8,7 @@ Getting Started guide for rite workflow
 
 ---
 
-When this command is executed, run the following phases in order.
+When this command is executed, run the following phases in order. Phase 4.5 is an **on-demand reference** — display it only when the user asks about running multiple Claude Code sessions in parallel, not during the normal onboarding sweep.
 
 ## Phase 1: Display Welcome Message
 
@@ -118,25 +118,12 @@ Stop here if not a valid repository.
 ### 3.1 Display Workflow Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                  Quick Start Workflow                        │
-└─────────────────────────────────────────────────────────────┘
+Quick Start (3 steps):
+  1. Setup (one-time):   /rite:init
+  2. Start an Issue:     /rite:issue:create → /rite:pr:open <番号>
+  3. Complete & submit:  /rite:pr:iterate <PR> → /rite:pr:ready <PR> → /rite:pr:merge <PR> → /rite:pr:cleanup <PR>
 
-The typical workflow consists of three main steps:
-
-1. Setup (one-time)
-   └─ /rite:init
-
-2. Start working on an Issue
-   ├─ /rite:issue:list         (view existing Issues)
-   ├─ /rite:issue:create       (create new Issue)
-   └─ /rite:issue:start <番号>  (start working)
-
-3. Complete and submit
-   ├─ /rite:lint               (quality check)
-   ├─ /rite:pr:create          (create draft PR)
-   ├─ /rite:pr:review          (self-review)
-   └─ /rite:pr:ready           (mark as ready for review)
+詳細なフロー図とコマンド一覧は /rite:workflow で表示できます。
 ```
 
 ### 3.2 Step 1: Initial Setup
@@ -155,7 +142,7 @@ What /rite:init configures:
   ✓ Creates rite-config.yml with project settings
   ✓ Configures GitHub Projects integration (optional)
   ✓ Sets up branch naming conventions
-  ✓ Configures iteration/sprint settings (optional)
+  ✓ Configures iteration settings (optional)
   ✓ Installs workflow hooks for state management
 
 This is a one-time setup. You can reconfigure later by running /rite:init again.
@@ -179,8 +166,7 @@ When to run it:
   (v{current} → v{latest})。/rite:init --upgrade でアップグレードできます。`
   and the session-start hook emits a variant ending in
   `/rite:init --upgrade を実行してください。` Both signal the same situation
-- When release notes (`CHANGELOG.md`, or migration notes referenced from the
-  release notes — e.g., `docs/migration-guides/` when present) announce new
+- When release notes (`CHANGELOG.md`) announce new
   configuration sections (e.g., `wiki:`, `review.debate:`) that are missing from
   your local `rite-config.yml`
 - When the `schema_version` value at the top of your `rite-config.yml` diverges
@@ -253,7 +239,7 @@ Option A: Work on an existing Issue
      /rite:issue:list
 
   2. Start working on a specific Issue:
-     /rite:issue:start 42
+     /rite:pr:open 42
      (Replace 42 with the Issue number)
 
 Option B: Create a new Issue
@@ -323,7 +309,7 @@ Common Issues and Solutions:
    Solution: Projects is optional. Choose "Skip Projects integration"
    or create a Project manually on GitHub first
 
-4. Branch creation fails in /rite:issue:start
+4. Branch creation fails in /rite:pr:open
    Solution: Ensure you're on the main/develop branch first
    Check with: git branch --show-current
 
@@ -338,6 +324,71 @@ Common Issues and Solutions:
 7. Unable to update Issue status
    Solution: Verify Projects integration in rite-config.yml
    Check: projects.enabled and projects.project_number fields
+
+8. Running multiple Claude Code sessions on the same repository
+   Solution: multi_session is ON by default (rite-config.yml) — session
+   worktrees are created automatically; set enabled: false to opt out
+   Ask about running multiple sessions to see the on-demand FAQ with the
+   operating rules (start each session from the repo root; keep the main
+   checkout on the base branch)
+```
+
+---
+
+## Phase 4.5: Multiple Sessions at Once (multi_session) (On Demand)
+
+This phase is **not** part of the normal onboarding sweep. Display this FAQ only
+when the user asks about running several Claude Code sessions on the same
+repository in parallel (e.g. one terminal per Issue):
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              FAQ: Multiple Sessions at Once                  │
+└─────────────────────────────────────────────────────────────┘
+
+Q: Can I work on two different Issues in two terminals at the same time?
+
+A: Yes — Worktree Mode is ON by default. In rite-config.yml:
+
+     multi_session:
+       enabled: true                   # default true; set false to opt out
+       worktree_base: ".rite/worktrees" # session worktrees: issue-{N} subdirs
+
+   With it enabled (the default), /rite:pr:open N creates a per-session Git
+   worktree at .rite/worktrees/issue-{N} and enters it via Claude Code's
+   EnterWorktree tool, so each session keeps its own working tree and current
+   branch. /rite:pr:cleanup exits and removes the worktree after merge.
+
+Operating rules (important):
+
+  • Start every session from the repository ROOT (not inside a worktree).
+    /rite:pr:open does the worktree creation + entry for you.
+
+  • Keep the main checkout on your base branch (rite-config.yml branch.base, e.g. develop).
+    rite never moves the main checkout's branch — that is a human-only action,
+    and /rite:pr:cleanup's "git pull" of the base only runs when the main
+    checkout is actually on the base branch (otherwise it warns and skips).
+
+  • Disk cost: each session worktree is a FULL working-tree clone. Build
+    environments (node_modules, venv, build caches, etc.) are NOT shared and
+    may need rebuilding inside each worktree.
+
+  • Same Issue, twice: an Issue claim (.rite/state/issue-claims/) prevents two
+    sessions from starting the SAME Issue. The second session is asked what to
+    do (it never silently steals the claim). Claims are always on, even when
+    multi_session is off.
+
+  • After a crash / restart: just run /rite:resume — it re-enters the session
+    worktree (or rebuilds it from the branch if it was removed) and continues.
+
+  • .gitignore must contain .rite/worktrees/ (/rite:init adds it; /rite:lint
+    warns if it is missing while multi_session is enabled).
+
+Note: multi_session is a SEPARATE axis from parallel.mode: "worktree".
+  - parallel  → multiple sub-agents within ONE session (.worktrees/{issue}/{task})
+  - multi_session → whole-session isolation across terminals (.rite/worktrees/issue-{N})
+
+Full design: docs/designs/multi-session-worktree.md
 ```
 
 ---
@@ -368,7 +419,7 @@ Now that you understand the basics:
   - Check current workflow state with /rite:workflow
 
 🔧 Advanced features:
-  - Sprint planning: /rite:sprint:plan (if iterations enabled)
+  - Iteration tracking: enable `iteration` in rite-config.yml (auto-assign on /rite:pr:open, --sprint / --backlog filters in /rite:issue:list)
   - Template customization: Edit template files in the plugin's templates/ directory
   - Multi-agent PR reviews: Automatic in /rite:pr:review
 

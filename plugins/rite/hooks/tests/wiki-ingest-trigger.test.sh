@@ -895,6 +895,174 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# Safe-default exit 2 on config parse failure (chmod 000 / awk error). A lenient
+# fallback here would silently treat the user's `wiki.enabled: false` as enabled
+# and leak raw sources — the whole reason for the strict exit 2 contract.
+# --------------------------------------------------------------------------
+
+echo "[TC-043] chmod 000 rite-config.yml → sed extraction fail → exit 2"
+dir43=$(mktemp -d /tmp/rite-wiki-test-tc043-XXXXXX)
+cat > "$dir43/rite-config.yml" <<EOF
+wiki:
+  enabled: true
+EOF
+chmod 000 "$dir43/rite-config.yml"
+echo "content for tc043" > "$dir43/content.md"
+( cd "$dir43" && bash "$HOOK" --type reviews --source-ref pr-tc043 --content-file content.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+chmod 644 "$dir43/rite-config.yml" 2>/dev/null || true
+if [ "$rc" -ne 2 ]; then
+  fail "TC-043 expected exit 2 (safe-default), got rc=$rc, stderr=$(cat "$dir43/err.log" 2>/dev/null)"
+elif ! grep -qE 'sed|ERROR|safe-default' "$dir43/err.log" 2>/dev/null; then
+  fail "TC-043 exit 2 returned but ERROR/safe-default message missing from stderr"
+elif [ -d "$dir43/.rite/wiki/raw/reviews" ] && [ "$(find "$dir43/.rite/wiki/raw/reviews" -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')" -ne 0 ]; then
+  fail "TC-043 raw source created despite safe-default exit (silent policy violation)"
+else
+  pass "TC-043 chmod 000 → exit 2 + ERROR message + raw not created"
+fi
+rm -rf "$dir43"
+echo ""
+
+echo "[TC-044] binary garbage in wiki section → awk fail → exit 2"
+dir44=$(mktemp -d /tmp/rite-wiki-test-tc044-XXXXXX)
+# NUL byte handling differs by platform, so this case may pass-through the
+# tr/sed pipeline. Either outcome is acceptable as long as raw is not silently
+# created when the parser bails: that is the invariant the assertion enforces.
+printf 'wiki:\n  enabled: \x00bogus\n' > "$dir44/rite-config.yml"
+echo "content for tc044" > "$dir44/content.md"
+( cd "$dir44" && bash "$HOOK" --type reviews --source-ref pr-tc044 --content-file content.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+# Acceptable outcomes:
+#   - exit 2 (parse failure detected → safe-default)
+#   - exit 0 (NUL stripped successfully and enabled resolved to non-false)
+# Unacceptable: silent staging of raw under partial parse failure with no ERROR.
+if [ "$rc" -eq 2 ]; then
+  pass "TC-044 NUL-injected wiki section → exit 2 (safe-default)"
+elif [ "$rc" -eq 0 ]; then
+  # Confirm raw was actually created and not silently dropped
+  if [ "$(find "$dir44/.rite/wiki/raw/reviews" -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')" -ge 1 ]; then
+    pass "TC-044 NUL stripped by tr / sed; raw created normally (exit 0)"
+  else
+    fail "TC-044 exit 0 but no raw created — silent drop suspected"
+  fi
+else
+  fail "TC-044 unexpected rc=$rc, stderr=$(cat "$dir44/err.log" 2>/dev/null)"
+fi
+rm -rf "$dir44"
+echo ""
+
+echo "[TC-045] wiki.enabled normalization happy path (negative control)"
+dir45=$(mktemp -d /tmp/rite-wiki-test-tc045-XXXXXX)
+# Negative control: ensure the strict guards above don't accidentally break
+# the success path. A regression here would mean the safe-default became
+# fail-closed for valid configs too.
+cat > "$dir45/rite-config.yml" <<EOF
+wiki:
+  enabled: true
+EOF
+echo "content for tc045" > "$dir45/content.md"
+( cd "$dir45" && bash "$HOOK" --type reviews --source-ref pr-tc045 --content-file content.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ "$rc" -ne 0 ]; then
+  fail "TC-045 happy path failed (rc=$rc) — wiki.enabled: true should succeed"
+elif [ "$(find "$dir45/.rite/wiki/raw/reviews" -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')" -lt 1 ]; then
+  fail "TC-045 happy path succeeded but no raw was created"
+else
+  pass "TC-045 happy path (wiki.enabled: true) creates raw normally — negative control for #2 guard"
+fi
+rm -rf "$dir45"
+echo ""
+
+echo "[TC-046] wiki.enabled: TRUE (uppercase) → normalize lowercase → exit 0"
+# Without `tr '[:upper:]' '[:lower:]'` the uppercase value would land in the
+# typo-reject arm and exit 2; the TC pins that the normalization step survives
+# future refactors.
+dir46=$(mktemp -d /tmp/rite-wiki-test-tc046-XXXXXX)
+cat > "$dir46/rite-config.yml" <<EOF
+wiki:
+  enabled: TRUE
+EOF
+echo "content for tc046" > "$dir46/content.md"
+( cd "$dir46" && bash "$HOOK" --type reviews --source-ref pr-tc046 --content-file content.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ "$rc" -eq 0 ] && [ "$(find "$dir46/.rite/wiki/raw/reviews" -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')" -ge 1 ]; then
+  pass "TC-046 wiki.enabled: TRUE (uppercase) normalized to lowercase and accepted"
+else
+  fail "TC-046 uppercase TRUE rejected (rc=$rc) — case normalization broken: $(cat "$dir46/err.log" 2>/dev/null)"
+fi
+rm -rf "$dir46"
+echo ""
+
+echo "[TC-047] wiki.enabled: False (MixedCase) → normalize lowercase → exit 2"
+# Symmetric to TC-046 for the false path. A regression that drops the
+# normalize step would let MixedCase typos bypass the disable guard.
+dir47=$(mktemp -d /tmp/rite-wiki-test-tc047-XXXXXX)
+cat > "$dir47/rite-config.yml" <<EOF
+wiki:
+  enabled: False
+EOF
+echo "content for tc047" > "$dir47/content.md"
+( cd "$dir47" && bash "$HOOK" --type reviews --source-ref pr-tc047 --content-file content.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ "$rc" -eq 2 ] && grep -q 'wiki.enabled is false' "$dir47/err.log"; then
+  pass "TC-047 wiki.enabled: False (MixedCase) correctly rejected with exit 2"
+else
+  fail "TC-047 expected exit 2 with 'wiki.enabled is false', got rc=$rc: $(cat "$dir47/err.log" 2>/dev/null)"
+fi
+rm -rf "$dir47"
+echo ""
+
+echo "[TC-048] wiki.enabled: tru (typo) → exit 2 + recognised-boolean WARNING"
+# The typo-reject arm (`*)` in the case statement) is the security-net for
+# silent typo-induced enable. Without this TC, future refactors could weaken
+# the arm to no-op and the safety net would vanish silently.
+dir48=$(mktemp -d /tmp/rite-wiki-test-tc048-XXXXXX)
+cat > "$dir48/rite-config.yml" <<EOF
+wiki:
+  enabled: tru
+EOF
+echo "content for tc048" > "$dir48/content.md"
+( cd "$dir48" && bash "$HOOK" --type reviews --source-ref pr-tc048 --content-file content.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ "$rc" -eq 2 ] && grep -q 'not a recognised boolean' "$dir48/err.log"; then
+  pass "TC-048 typo 'tru' rejected with 'not a recognised boolean' WARNING"
+else
+  fail "TC-048 expected exit 2 with typo warning, got rc=$rc: $(cat "$dir48/err.log" 2>/dev/null)"
+fi
+rm -rf "$dir48"
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-049: C1 8-bit byte (0x9b CSI) in --source-ref → exit 1 (Issue #1276)
+# --------------------------------------------------------------------------
+# 旧 `=~ [[:cntrl:]]` は glibc が C1 (0x80-0x9f) を cntrl と分類しないため
+# 0x9b 入り SOURCE_REF が validation を素通りしていた (TC-017 の newline pin と
+# 対になる C1 側 pin)。contains_ctrl (control-char-neutralize.sh) への置換で
+# reject されることを確認する。
+echo "TC-049: C1 0x9b in --source-ref → exit 1 (Issue #1276)"
+dir49="$TEST_DIR/tc49"
+mkdir -p "$dir49"
+echo "x" > "$dir49/body.md"
+( cd "$dir49" && bash "$HOOK" --type reviews --source-ref $'pr-1\x9bcsi' --content-file body.md >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'control characters' "$dir49/err.log"; then
+  pass "C1 0x9b in source-ref → exit 1 (formerly slipped through [[:cntrl:]])"
+else
+  fail "Expected exit 1 'control characters', got rc=$rc, stderr=$(cat "$dir49/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-050: C1 8-bit byte (0x9b CSI) in --title → exit 1 (Issue #1276)
+# --------------------------------------------------------------------------
+# TC-018 (newline in title) と対になる C1 側 pin。SOURCE_REF / TITLE は隣接する
+# YAML キーに着地するため、検出範囲も対称であることを保証する。
+echo "TC-050: C1 0x9b in --title → exit 1 (Issue #1276)"
+dir50="$TEST_DIR/tc50"
+mkdir -p "$dir50"
+echo "x" > "$dir50/body.md"
+( cd "$dir50" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --title $'foo\x9bbar' >/dev/null 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'control characters' "$dir50/err.log"; then
+  pass "C1 0x9b in title → exit 1 (SOURCE_REF と対称の C1 reject)"
+else
+  fail "Expected exit 1 'control characters', got rc=$rc, stderr=$(cat "$dir50/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

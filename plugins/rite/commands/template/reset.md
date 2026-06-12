@@ -32,26 +32,14 @@ ls rite-config.yml .claude/rite-config.yml 2>/dev/null
 If the configuration file does not exist:
 
 ```
-{i18n:template_reset_config_not_found}
+rite-config.yml が見つかりません
 
-{i18n:template_reset_config_not_found_hint}
+テンプレートを生成するには先に /rite:init を実行してください
 
 オプション:
-- {i18n:template_reset_option_run_init}
-- {i18n:template_reset_option_cancel}
+- /rite:init を実行
+- キャンセル
 ```
-
-### 1.2 Confirm Project Type
-
-Get `project.type` from the configuration file:
-
-- `generic` - General purpose project
-- `webapp` - Web application
-- `library` - OSS library
-- `cli` - CLI tool
-- `documentation` - Documentation site
-
----
 
 ## Phase 2: Check Existing Templates
 
@@ -75,20 +63,20 @@ ls -la rite-config.yml 2>/dev/null
 If existing files are found, confirm with `AskUserQuestion`:
 
 ```
-{i18n:template_reset_existing_found}:
+以下の既存ファイルが見つかりました:
 
-| {i18n:template_reset_file} | {i18n:template_reset_last_modified} |
+| ファイル | 最終更新 |
 |---------|---------|
 | .github/ISSUE_TEMPLATE/bug_report.md | 2025-01-01 |
 | .github/PULL_REQUEST_TEMPLATE.md | 2025-01-01 |
 
-{i18n:template_reset_ask_overwrite}？
+どのファイルを再生成しますか？
 
 オプション:
-- {i18n:template_reset_option_all}
-- {i18n:template_reset_option_issue_only}
-- {i18n:template_reset_option_pr_only}
-- {i18n:template_reset_option_cancel}
+- すべて上書き
+- Issue テンプレートのみ
+- PR テンプレートのみ
+- キャンセル
 ```
 
 If `--force` is specified, skip the confirmation and overwrite all.
@@ -200,22 +188,10 @@ assignees: ''
 
 ### 3.2 Generate PR Template
 
-Generate a PR template based on the project type.
-
-| Project Type | Template Source |
-|-----------------|-------------------|
-| `generic` | `templates/pr/generic.md` |
-| `webapp` | `templates/pr/webapp.md` |
-| `library` | `templates/pr/library.md` |
-| `cli` | `templates/pr/cli.md` |
-| `documentation` | `templates/pr/documentation.md` |
-
 **Steps:**
 
-1. Read `project.type` from `rite-config.yml`
-2. Load the corresponding template file:
-   - `templates/pr/{project_type}.md`
-3. Write as `.github/PULL_REQUEST_TEMPLATE.md`
+1. Load the template file `templates/pr/generic.md`
+2. Write as `.github/PULL_REQUEST_TEMPLATE.md`
 
 ```bash
 # Read ツールでテンプレートを読み込み
@@ -229,14 +205,14 @@ Generate a PR template based on the project type.
 Regenerate `rite-config.yml` only if the user selects to do so:
 
 ```
-{i18n:template_reset_ask_config}？
+rite-config.yml も再生成しますか？
 
-{i18n:template_reset_config_warning}
-{i18n:template_reset_backup_note}
+既存の設定（Projects 連携など）が失われます
+バックアップは自動的に作成されます
 
 オプション:
-- {i18n:template_reset_option_regenerate}
-- {i18n:template_reset_option_skip}（{i18n:sprint_plan_recommended}）
+- はい、再生成する
+- いいえ、スキップ（推奨）
 ```
 
 **Steps for regeneration:**
@@ -259,31 +235,27 @@ Regenerate `rite-config.yml` only if the user selects to do so:
 ### 4.1 Display Generation Results
 
 ```
-{i18n:template_reset_complete}
+テンプレートを再生成しました
 
-## {i18n:template_reset_generated_files}
+## 生成されたファイル
 
-| {i18n:template_reset_file} | {i18n:template_reset_status_label} |
+| ファイル | 状態 |
 |---------|------|
-| .github/ISSUE_TEMPLATE/task.md | {i18n:template_reset_status_created} |
-| .github/ISSUE_TEMPLATE/bug_report.md | {i18n:template_reset_status_created} |
-| .github/PULL_REQUEST_TEMPLATE.md | {i18n:template_reset_status_updated} |
+| .github/ISSUE_TEMPLATE/task.md | 作成 |
+| .github/ISSUE_TEMPLATE/bug_report.md | 作成 |
+| .github/PULL_REQUEST_TEMPLATE.md | 更新 |
 
-## {i18n:template_reset_backup_section}
+## バックアップ（該当する場合）
 
-| {i18n:template_reset_original_file} | {i18n:template_reset_backup_file} |
+| 元ファイル | バックアップ |
 |-----------|-------------|
 | rite-config.yml | rite-config.yml.backup.{timestamp} |
 
-## {i18n:template_reset_project_type}
+## 次のステップ
 
-{project_type}
-
-## {i18n:template_reset_next_steps}
-
-1. {i18n:template_reset_next_step1}
-2. {i18n:template_reset_next_step2}
-3. {i18n:template_reset_next_step3}
+1. 生成されたテンプレートを確認
+2. 必要に応じてカスタマイズ
+3. 変更をコミット
 ```
 
 **Note:** The backup section is only displayed when rite-config.yml was regenerated.

@@ -1,5 +1,7 @@
 # Change Intelligence Summary
 
+> **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
+
 Pre-computed change statistics provided to reviewers to improve review quality and focus.
 
 ## Purpose
@@ -90,4 +92,4 @@ Change Intelligence: New Feature — 3 files changed (1 source, 1 test, 0 config
 
 ## Integration Point
 
-The generated summary is embedded as `{change_intelligence_summary}` in the reviewer prompt template (Phase 4.5 of `review.md`). It appears before the diff content to provide upfront context.
+The generated summary is embedded as `{change_intelligence_summary}` in the reviewer prompt template (ステップ 4.5 of `review.md`). It appears before the diff content to provide upfront context.

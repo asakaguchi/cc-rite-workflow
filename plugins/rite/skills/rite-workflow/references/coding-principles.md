@@ -2,6 +2,7 @@
 
 A collection of principles to avoid common failure patterns in AI coding agents.
 Structured for rite workflow based on Andrej Karpathy's "Issues with AI Coding".
+The `knowledge_routing` principle additionally draws on t-wada's four quadrants of where knowledge lives: code = How, test code = What, commit log = Why, code comments = Why not.
 
 ## Principle List
 
@@ -19,6 +20,7 @@ Structured for rite workflow based on Andrej Karpathy's "Issues with AI Coding".
 | `reference_discovery` | Discover Reference Implementations | Phase 3 |
 | `question_self_check` | Self-Check Before Asking | All Phases |
 | `documentation_consistency` | Sync Documentation with Specification Changes | Phase 5.1 |
+| `knowledge_routing` | Route Knowledge to Its Durable Medium | Phase 5.1, PR Review |
 
 ---
 
@@ -227,7 +229,7 @@ Issue の内容に矛盾があります:
 この計画で進めますか？
 ```
 
-**Note**: For the full plan template including the "参考実装" section, see [implementation-plan.md](../../../commands/issue/implementation-plan.md) Phase 3.3.
+**Note**: For the full plan template including the "参考実装" section, see [`commands/pr/open.md`](../../../commands/pr/open.md) ステップ 3 (実装計画)。
 
 ---
 
@@ -310,9 +312,9 @@ git symbolic-ref ... || git remote show origin ... || echo "main"
 
 ✅ Good: Explicit error with guidance
 git symbolic-ref ... || {
-  echo "エラー: デフォルトブランチを検出できません"
-  echo "rite-config.yml で branch.base を設定してください"
-  exit 1
+ echo "エラー: デフォルトブランチを検出できません"
+ echo "rite-config.yml で branch.base を設定してください"
+ exit 1
 }
 
 ❌ Bad: Scope silently changes
@@ -321,9 +323,9 @@ git diff origin/develop...HEAD || git diff HEAD || lint entire project
 
 ✅ Good: Fail and explain
 git diff origin/develop...HEAD || git diff develop...HEAD || {
-  echo "エラー: 変更ファイルを特定できません"
-  echo "明示的にパスを指定してください: /rite:lint <path>"
-  exit 1
+ echo "エラー: 変更ファイルを特定できません"
+ echo "明示的にパスを指定してください: /rite:lint <path>"
+ exit 1
 }
 ```
 
@@ -395,7 +397,7 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 
 **Failure Patterns**:
 - Renaming a command or config key in code without updating README / docs / CLAUDE.md
-- Adding a new workflow phase to `commands/issue/start.md` without updating the corresponding skill / reference docs
+- Adding a new workflow phase to `commands/pr/open.md` / `commands/pr/iterate.md` 等 without updating the corresponding skill / reference docs
 - Removing a feature from code while marketing copy in README still describes it
 - Deferring documentation drift to a separate "follow-up" Issue that never gets done
 - Relying on the tech-writer reviewer at PR review time to catch drift, causing avoidable review round-trips
@@ -444,6 +446,43 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 
 ---
 
+### knowledge_routing (Route Knowledge to Its Durable Medium)
+
+**Summary**: Every implementation produces four kinds of knowledge, and each has one medium where it survives. The medium's properties — lifespan, visibility, verifiability — decide the routing. Knowledge placed in the wrong medium rots, goes unread, or becomes a lie. For an LLM agent whose session memory vanishes, these four channels are the only persistent memory, so routing them correctly is a first-class discipline. Each channel's detailed rules live in its own SoT; this principle only routes.
+
+**Four Channels**:
+
+| Knowledge | Medium | Why this medium |
+|-----------|--------|-----------------|
+| How (current behavior) | The code itself (naming, structure) | Code is executed, so it is always true — it cannot drift from the running reality |
+| What (specification, behavior) | Test code (test name + assertion) | Tests are executable specification — the name states What, the assertion proves it |
+| Why (motive at change time) | Commit message body | The commit is the immutable record of the context at the moment of change |
+| Why not (rejected alternative) — and the Why that must stay beside the code (hidden constraint, invariant, workaround) | Code comments | The comment is the only document that stays in the same place as the code it guards |
+
+**Failure Patterns**:
+- A comment describes How the code works (comment rot — the comment lies as soon as the code changes; promote it to naming instead)
+- A comment narrates the change history / motive (journal comment — that belongs in the commit message)
+- A commit body records only What changed, with no Why (the rationale is lost at the next read)
+- A rejected alternative lives only in the commit, leaving no trace on the code side (a future reader "improves" the code straight back into the rejected shape)
+- A test name describes How (an implementation detail), so it becomes a lie the moment the implementation changes
+
+**Routing flowchart** (when unsure where to record a finding):
+- Current behavior of the code → let the code say it (naming, structure)
+- Specification or behavior → a test, with the test name written as a specification sentence
+- Motive / choice / rejected alternative → if a future reader would be tempted to rewrite the code back to the naive shape, a comment (Why not); otherwise the commit message
+- Hidden constraint / invariant / workaround → a comment (Why)
+
+**Rules**:
+1. Route each kind of knowledge to its one channel; do not record the same knowledge in two channels.
+2. Defer each channel's detailed rules to its SoT — do not duplicate them here: comments → [comment-best-practices.md](./comment-best-practices.md), tests → [test-reviewer.md](../../../agents/test-reviewer.md). For commits, record the "why" in the commit message body (free-form prose).
+3. Transport misplaced knowledge to its correct medium rather than leaving it: change history found in a comment → move it to the commit; How found in a comment → promote it to naming and delete the comment.
+
+**Where to Apply**:
+- Phase 5.1 (Implementation): Route each finding to its channel while coding
+- PR Review: Flag misplaced knowledge with this principle's ID as the rationale
+
+---
+
 ## Markdown Authoring Conventions
 
 > **Note**: このセクションは Markdown 記述規約であり、上記の `## Principle List` テーブルに登録されているコード規約 (AI Coding Principles) とは別軸のため、独立セクションとして配置している。`## Related` からも参照される。
@@ -470,12 +509,12 @@ These conventions apply to authoring Markdown files loaded by the Claude Code Sk
 
 ```text
 NG pattern (demonstration — do not write this in prose):
-  backtick + bang + closing backtick (bang-backtick adjacency, no trailing token)
+ backtick + bang + closing backtick (bang-backtick adjacency, no trailing token)
 
 OK patterns:
-  `if ! cmd`
-  `if ! ...`
-  `if ! command -v foo`
+ `if ! cmd`
+ `if ! ...`
+ `if ! command -v foo`
 ```
 
 **Rules**:
@@ -484,6 +523,41 @@ OK patterns:
 3. When the NG pattern must itself be quoted for documentation, enclose it in a fenced code block tagged `text`. Fenced blocks are not subject to inline-code parsing by the loader.
 
 **Application scope** (silent retroactive sweep 回避): 本 convention は**新規編集時に目視で発見したもののみ**を対象とする。既存ファイルへの retroactive 一括書き換えは行わない — 長期間存在する既存箇所で Skill ロード失敗が観測されておらず、真のトリガ条件が未だ empirically 特定されていないため、一括書き換えは不要な変更を広範に生むリスクがある。真のトリガ条件の dry-run 実証調査は別 Issue で追跡する。
+
+---
+
+### operational bash block heaviness convention
+
+**Summary**: command / reference 本文の operational bash ブロックは軽量に保つ — **1 ブロック 1 目的・<= 25 行を目安**とし、python inline (`python3 -c`)・入れ子 `$()`・複数 heredoc を 1 ブロックに密集させない。tmpfile や中間変数を process 境界を跨いで渡す必要がある場合は、1 本の Bash invocation に詰め込まず `hooks/` または `scripts/` の helper script へ切り出す。
+
+**Failure pattern** (observed incident): Issue #1193 で、複数のコマンド本文 (`pr/ready.md` / `pr/fix.md` / `pr/review.md` 等) が 40〜360 行規模の operational bash ブロックを抱えており、各々「⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること」と注記した上で `python3 -c` heredoc・多引数 `jq -n`・入れ子 `$()`・`trap` + `mktemp` を密集させていた。Claude のツール呼び出し解析がこの巨大ブロックで malform し、**エラーすら出さず無言でターンが終了（停止）する**事象が `/rite:pr:ready` 実行中および scout 1 行で計 3 回以上観測された。ブロックを phase ごとに分割する／重いロジックを helper script へ切り出して本文を数行の呼び出しにする、のいずれかで停止は解消した。
+
+**Rules**:
+1. 1 ブロック = 1 目的。operational bash ブロックは <= 25 行を目安とする。
+2. command 本文 bash に `python3 -c` heredoc を埋め込まない。テキスト変換は helper (`*.py` を `*.sh` wrapper 経由で呼ぶ) に移す — 先例: `issue-comment-wm-update.py` / `issue-comment-wm-sync.sh`。
+3. 入れ子 `$()` (`$(cmd "$(jq -n ...)")` 等) を避ける。pipe (`jq -n ... | cmd`) もしくは stdin / tmpfile を読む helper を優先する。
+4. 1 ブロック内の複数 heredoc を避ける。file body が必要なら Write tool で tmpfile に書き出し、helper には `--content-file <tmp>` / `--body-file <tmp>` で渡す。
+5. 値を process 境界を跨いで渡す必要があるときは helper へ切り出す (work-memory / state 系は `hooks/`、issue / projects 系は `scripts/`)。その際**既存のワークフロー契約 (sentinel emit / non-blocking / trap cleanup) を verbatim で引き継ぐ**こと。
+6. `gh {pr,issue} create` の `--title` に長文 / 特殊文字（全角記号・`≠`・括弧・コロン等）の literal を**インライン展開しない**。title を **Write tool** でファイル化して bash で変数に読み込む（`pr_title=$(cat title.txt)` → `--title "$pr_title"`）か、helper の `--arg title` 経由で渡す。`gh` に `--title-file` は無い（body の `--body-file` と非対称）ため「変数経由」が canonical。先例: `pr/create.md` Phase 3.4 / `issue/create.md` 5.5 decompose path（`gh {pr,issue} create` のインライン特殊文字 title が malformed tool-call の dominant trigger だった）。
+
+**Precedents**: `projects-status-update.sh` / `local-wm-update.sh` / `issue-body-safe-update.sh` / `issue-comment-wm-sync.sh` / `create-issue-with-projects.sh` — 重い操作を positional-JSON または stdin 入力 + tmpfile body file で helper に委譲済の前例。
+
+**Where to Apply**:
+- `commands/**/*.md` の operational bash ブロックを新規記述 / 編集するとき。
+
+**Mechanical enforcement**: 上記 Rules は `/rite:lint` Phase 3.17 (`hooks/scripts/bash-heaviness-check.sh`) が `commands/**/*.md` を走査して非ブロッキング warning として機械的に surface する (`[lint:success]` は不変)。各 bash ブロックを 4 つの heaviness シグナル (+ standalone 検出 `inline-gh-create-title`) で評価し、これは Rules と対応する:
+
+| シグナル | 判定 | 対応 Rule |
+|---------|------|----------|
+| `python-inline` | `python3 -c` / python heredoc を含む | Rule 2 |
+| `nested-cmdsub` | 入れ子 `$( … $( … )`（同一行） | Rule 3 |
+| `multi-heredoc` | heredoc が 2 つ以上 | Rule 4 |
+| `long-block` | ブロック本文が >= 25 行 | Rule 1 |
+| `inline-gh-create-title` | `gh {pr,issue} create` 行に literal な `--title "…"` を inline（`--title "$var"` は対象外） | Rule 6 |
+
+**2 シグナル以上**該当したブロックのみ flag する (single signal — 単発の helper 呼び出し + 1 個の JSON heredoc、または 1 個の長文テンプレート heredoc — は誤検知を避けるため flag しない)。heredoc 本文はデータ扱いで python-inline / nested-cmdsub の評価対象外。意図的・レビュー済の重いブロックは行内 `drift-check-ignore` marker で除外できる。既存の重いブロックの helper 切り出しは段階的 cleanup であり、本 guard は awareness のための warning に留める。
+
+**例外: `inline-gh-create-title` は単独でも flag する**。これは複数シグナルの密集（heaviness）ではなく、単一行でも malform を誘発する高確度の独立パターンのため、2-signal モデルとは別に扱う。example / template の title は plain ` ``` ` fence（` ```bash ` 以外は走査対象外）や heredoc 本文（データ扱い）に置くことで誤検知を避ける。`drift-check-ignore` marker による除外は他シグナルと同様に効く。
 
 ---
 
@@ -509,6 +583,7 @@ OK patterns:
 - [ ] `no_unnecessary_fallback`: Are there fallbacks that hide failure causes?
 - [ ] `issue_accountability`: Are any discovered problems being ignored?
 - [ ] `documentation_consistency`: Has related documentation been updated for any user-visible spec changes?
+- [ ] `knowledge_routing`: Is each finding routed to its durable medium (How → code, What → tests, Why → commit, Why not → comments)?
 
 ### PR Review
 
@@ -517,6 +592,7 @@ OK patterns:
 - [ ] `scope_discipline`: Are there out-of-scope changes?
 - [ ] `no_unnecessary_fallback`: Are there fallbacks that hide failure causes?
 - [ ] `issue_accountability`: Are review comments being addressed genuinely?
+- [ ] `knowledge_routing`: Is any knowledge in the wrong medium (How in a comment, change history in a comment, Why missing from the commit body, a test name describing How)?
 
 ### Before PR Creation
 
@@ -531,10 +607,10 @@ OK patterns:
 
 - [SKILL.md](../SKILL.md) - Principle summary
 - [Phase Mapping](./phase-mapping.md) - Phase details
-- [Issue Start Workflow](../../../commands/issue/start.md) - start.md
+- [PR Open Workflow](../../../commands/pr/open.md) - pr/open.md (Issue → branch → 実装 → lint → draft PR)
 - [PR Create Command](../../../commands/pr/create.md) - Unaddressed issues check before PR creation (Phase 2.5)
 - [PR Review](../../../commands/pr/review.md) - review.md
-- [Markdown Authoring Conventions](#markdown-authoring-conventions) - Skill loader に load される Markdown ファイルの記述規約 (bash negation operator inline code convention)
+- [Markdown Authoring Conventions](#markdown-authoring-conventions) - Skill loader に load される Markdown ファイルの記述規約 (bash negation operator inline code convention / operational bash block heaviness convention)
 - [gh-cli-patterns.md](../../../references/gh-cli-patterns.md) - Related bang character (U+0021) handling in bash command contexts (Shell Escaping Notes)
 - [graphql-helpers.md](../../../references/graphql-helpers.md) - Related bang character handling in GraphQL query / jq contexts (History Expansion and Special Character Prevention)
 - [gh-cli-error-catalog.md](../../../references/gh-cli-error-catalog.md) - Related bang character handling error catalog (Category 6)

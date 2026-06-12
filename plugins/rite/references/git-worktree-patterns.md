@@ -321,3 +321,80 @@ parallel:
 **When `mode: "shared"`**: The existing parallel implementation behavior (Phase 5.1.0.2) is used. No worktree operations are performed.
 
 **When `mode: "worktree"`**: The orchestrator creates worktrees per this document's patterns. Agents are constrained to their worktree directories.
+
+---
+
+## Multi-Session Patterns
+
+These patterns apply to the **session worktree** layer governed by `multi_session.enabled`
+(default `true` since #1391; see [docs/designs/multi-session-worktree.md](../../../docs/designs/multi-session-worktree.md)).
+This is a **separate axis** from the `parallel.mode: "worktree"` patterns above:
+`parallel` is per-Issue sub-agent fan-out within one session; `multi_session` is
+session-wide lifecycle isolation. `/rite:pr:open` creates a session worktree and
+`EnterWorktree`-s into it; `/rite:pr:cleanup` exits and removes it; orphans are
+reaped lazily by `pr-cycle-cleanup.sh` Step 5.
+
+### Worktree namespaces (4 kinds — do not cross-contaminate)
+
+| Namespace | Purpose | Lifecycle |
+|---|---|---|
+| `.rite/worktrees/issue-{N}` | **Session worktree** (multi_session) | `pr:open` creates → `pr:cleanup` removes (orphans reaped via Step 5) |
+| `.worktrees/{issue}/{task}` | parallel implementation sub-agent worktree | per-batch create/remove |
+| `pr-{N}-cycle{X}` etc. | reviewer transient worktree | idempotently swept by `pr-cycle-cleanup.sh` |
+| `.rite/wiki-worktree` | persistent wiki-branch worktree | manual removal only (reap-excluded) |
+
+The session-worktree reap (`pr-cycle-cleanup.sh` Step 5) matches **only** the strict
+`^issue-[0-9]+$` directory name under `multi_session.worktree_base`, so it never
+touches the other three namespaces.
+
+### Concurrent `git fetch` — ref-lock retry (3 attempts)
+
+`refs` / `objects` / `config` are shared across all worktrees, so two sessions
+running `git fetch` at the same time can transiently fail on a ref lock. Retry up
+to 3 times:
+
+```bash
+n=0; until git fetch origin "$base" 2>/dev/null; do n=$((n+1)); [ "$n" -ge 3 ] && break; sleep 1; done
+```
+
+### main-checkout-不可侵 (inviolability) convention
+
+In `multi_session` mode rite **never switches the main checkout's current branch**
+(`git switch {base}` from a session is impossible anyway — the main checkout holds it).
+Consequences enforced across the workflow:
+
+- New session branches are created with their base as **`origin/{base}` directly**
+  (`git worktree add -b {branch} {path} origin/{base}`), not via a local `{base}`
+  that another worktree may have checked out.
+- A branch is deleted **only after** its worktree is removed (a branch checked out
+  in a worktree cannot be deleted or fetch-updated).
+- `pr:cleanup`'s base pull runs **only when the main checkout is on `{base}`**; on any
+  other branch it WARNINGs and skips (it must not yank the main checkout off a
+  human's working branch). Moving the main checkout's branch is a **human-only** action.
+
+### Issue claim + lazy reap (lifecycle bookends)
+
+Two helper-driven patterns bracket the session-worktree lifecycle:
+
+- **Issue claim** (`hooks/issue-claim.sh`, always-on regardless of the flag): `/rite:pr:open`
+  Step 1.6 claims the Issue **before** creating the branch/worktree (fail-fast against
+  double-starting), and `/rite:pr:cleanup` releases it. Claims live under the
+  gitignored `.rite/state/issue-claims/`; liveness reuses the flow-state heartbeat
+  (`active=true` ∧ `updated_at` within 2h) rather than a new heartbeat file. A live
+  `other` claim is surfaced via AskUserQuestion — never an unattended steal.
+- **Lazy reap** (`pr-cycle-cleanup.sh` Step 5): normal cleanup removes the worktree
+  immediately; reap only collects **abnormally-orphaned** worktrees, and only when a
+  self-exclusion guard plus all 3 gates pass — the guard (Gate 0) never reaps the
+  worktree the cleanup is itself running in (invocation cwd or `RITE_WORKTREE` matching
+  or nested under the candidate), so a long-lived session cannot delete its own active
+  worktree mid-flight; then strict `^issue-[0-9]+$` name under
+  `worktree_base`, claim not live (or absent + mtime > 24h), and a clean
+  `git status --porcelain` (a dirty worktree is never auto-reaped). Reap **never deletes
+  the branch** (push-pending / unpushed work is preserved; branch cleanup stays the
+  responsibility of the normal `pr:cleanup` path).
+
+> **Canonical spec**: This file documents the operational *patterns*; the canonical
+> runtime specification for the session-worktree layer (lifecycle, claim, reap,
+> shared-state-root resolution, crash recovery) lives in
+> [`docs/SPEC.md` → Multi-Session State Management → Worktree Mode](../../../docs/SPEC.md#worktree-mode-session-worktree-isolation),
+> with the full Decision Log in [`docs/designs/multi-session-worktree.md`](../../../docs/designs/multi-session-worktree.md).

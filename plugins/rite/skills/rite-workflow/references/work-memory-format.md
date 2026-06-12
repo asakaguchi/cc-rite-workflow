@@ -57,8 +57,8 @@ _ボトルネック検出はありません_
 |-------------|--------|---------|
 | `{timestamp}` | ISO 8601 `YYYY-MM-DDTHH:MM:SS+HH:MM` | `2026-01-29T14:30:00+09:00` |
 | `{branch_name}` | `{type}/issue-{number}-{slug}` | `feat/issue-13-new-feature` |
-| `{command_name}` | Command path | `/rite:issue:start`, `/rite:pr:create` |
-| `{phase}` | Phase ID (see [phase-mapping.md](./phase-mapping.md)) | `phase5_implementation` |
+| `{command_name}` | Command path | `/rite:pr:open`, `/rite:pr:create` |
+| `{phase}` | Phase ID (see [phase-mapping.md](./phase-mapping.md)) | `implement` |
 | `{phase_detail}` | Detail state | `実装作業中`, `PR 作成完了` |
 | `{next_command}` | Next command | `/rite:pr:create`, `/rite:pr:review #42` |
 | `{next_status}` | `待機中` / `実行中` / `完了` | `待機中` |
@@ -170,51 +170,6 @@ Records bottleneck detection and Oracle-based re-decomposition events during Pha
 
 **Recording timing**: At the next bulk update point (commit time), per implement.md 5.1.0.5. This avoids excessive API calls during active implementation.
 
-## TDD State Section
-
-Tracks TDD Light mode state during implementation. Added by Phase 5.1.0.T when `tdd.mode: "light"` is configured. Not present during initialization (added at first skeleton generation).
-
-```markdown
-### TDD 状態
-- **skeleton_generated**: {true/false}
-- **classification**: {TDD_RED_CONFIRMED/TDD_TRIVIALLY_PASSING/...}
-- **criteria_count**: {n}
-- **generated_count**: {n}
-- **skipped_count**: {n}
-- **skip_reason**: {reason or null}
-```
-
-**Field definitions:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `skeleton_generated` | bool | Whether skeletons have been generated |
-| `classification` | string | Classification result from Phase B (see [tdd-light.md](../../../references/tdd-light.md#classification-logic)) |
-| `criteria_count` | int | Total acceptance criteria extracted |
-| `generated_count` | int | Number of skeletons actually generated |
-| `skipped_count` | int | Number of criteria skipped (idempotency or limit) |
-| `skip_reason` | string/null | Reason if entire generation was skipped (e.g., `commands.test: null`, `no acceptance criteria`, `framework not detected`) |
-
-**Skip stub schema** (when generation is skipped entirely):
-
-```markdown
-### TDD 状態
-- **skeleton_generated**: false
-- **classification**: N/A
-- **criteria_count**: 0
-- **generated_count**: 0
-- **skipped_count**: 0
-- **skip_reason**: {reason}
-```
-
-**Idempotency rules**:
-
-- Global skip: `skeleton_generated: true` AND tags exist in codebase → skip generation
-- Per-criterion skip: tag already exists in test file → skip individual criterion
-- Tag disappearance: `skeleton_generated: true` but tags not found → WARNING + regenerate
-
-**Conditional preservation in update.md**: Preserve `### TDD 状態` section when it exists. Do not add during initial work memory creation (Phase 2.6) — only added by Phase 5.1.0.T.
-
 ## Review Response History Section
 
 Tracks the review-fix loop count. Updated by `/rite:pr:review` Phase 6.2 after each review cycle.
@@ -297,7 +252,7 @@ sync_revision: 3
 sync_status: synced
 source: pre_compact
 last_modified_at: "2026-02-21T06:30:00Z"
-phase: "phase5_implementation"
+phase: "implement"
 phase_detail: "ファイル編集"
 next_action: "テスト実行"
 branch: "feat/issue-721"
@@ -322,7 +277,7 @@ loop_count: 0
 | `sync_status` | string | No | `synced` / `pending` / `conflict` |
 | `source` | string | No | Provenance tracking (e.g., `pre_compact`, `resume`, `init`) |
 | `last_modified_at` | string | No | UTC ISO 8601 timestamp (`Z` suffix) |
-| `phase` | string | No | Current phase ID (e.g., `phase5_implementation`; see [phase-mapping.md](./phase-mapping.md)) |
+| `phase` | string | No | Current phase ID (e.g., `implement`; see [phase-mapping.md](./phase-mapping.md)) |
 | `phase_detail` | string | No | Phase detail |
 | `next_action` | string | No | Next action description |
 | `branch` | string | No | Branch name |
@@ -346,7 +301,7 @@ A local work memory file is corrupt if any of:
 
 ### Parsing
 
-Use `{plugin_root}/hooks/work-memory-parse.py` for parsing. Do NOT use shell `grep`/`sed` for YAML interpretation. Resolve `{plugin_root}` per [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script).
+Use `{plugin_root}/hooks/work-memory-parse.py` for parsing. Do NOT use shell `grep`/`sed` for YAML interpretation. Resolve `{plugin_root}` per [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script-full-version).
 
 ```bash
 python3 {plugin_root}/hooks/work-memory-parse.py .rite-work-memory/issue-721.md
@@ -377,7 +332,7 @@ Issue-level locking prevents concurrent access to local work memory files from i
 | `is_wm_locked "$lockdir"` | Check if locked |
 
 **Lock paths**:
-- Compact state lock: `.rite-compact-state.lockdir` (used by pre-compact.sh)
+- Compact state lock: `.rite/sessions/{session_id}.compact-state.lockdir` (per-session, used by pre-compact.sh; legacy shared `.rite-compact-state.lockdir` only when the session id is unresolvable)
 - Issue work memory lock: `.rite-work-memory/issue-{n}.md.lockdir` (used by commands)
 
 **Stale lock detection**: Controlled by `WM_LOCK_STALE_THRESHOLD` (default: 120s for compact, 300s for issue). When lock age exceeds the threshold, force-remove and retry once.
@@ -388,14 +343,14 @@ Issue-level locking prevents concurrent access to local work memory files from i
 
 ```bash
 WM_SOURCE="implement" \
-  WM_PHASE="phase5_lint" \
+  WM_PHASE="lint" \
   WM_PHASE_DETAIL="品質チェック準備" \
   WM_NEXT_ACTION="rite:lint を実行" \
   WM_BODY_TEXT="Post-implementation." \
   bash plugins/rite/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
-The wrapper auto-resolves the plugin root via `BASH_SOURCE`, then sources `work-memory-update.sh` and calls `update_local_work_memory`. For marketplace installs, resolve `{plugin_root}` per [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script), then use `bash {plugin_root}/hooks/local-wm-update.sh` instead. The helper handles lock acquisition, YAML frontmatter parsing, atomic write, and lock release internally. See `hooks/work-memory-update.sh` header comments for the full list of environment variables.
+The wrapper auto-resolves the plugin root via `BASH_SOURCE`, then sources `work-memory-update.sh` and calls `update_local_work_memory`. For marketplace installs, resolve `{plugin_root}` per [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script-full-version), then use `bash {plugin_root}/hooks/local-wm-update.sh` instead. The helper handles lock acquisition, YAML frontmatter parsing, atomic write, and lock release internally. See `hooks/work-memory-update.sh` header comments for the full list of environment variables.
 
 **Low-level lock API** (for non-standard use cases only):
 
@@ -409,7 +364,7 @@ if acquire_wm_lock "$LOCKDIR"; then
 fi
 ```
 
-**On lock failure**: Commands treat local work memory update as best-effort. `.rite-flow-state` is the primary state record; local work memory is for cross-session recovery.
+**On lock failure**: Commands treat local work memory update as best-effort. The flow state record is the primary state record; local work memory is for cross-session recovery.
 
 ## sync_revision Rules
 
@@ -444,7 +399,7 @@ Issue comment is a backup replica, synced at phase transitions:
 
 ## Preflight Guard Contract (Phase C)
 
-All `/rite:*` commands (except `issue/start` and `resume`, which are Orchestrators) run a preflight check before execution. `issue/start` and `resume` manage flow state via `.rite-flow-state` and delegate preflight to the sub-commands they invoke. The check detects compact-blocked state and prevents execution when recovery is needed.
+All `/rite:*` commands (except `issue/start` and `resume`, which are Orchestrators) run a preflight check before execution. `issue/start` and `resume` manage flow state and delegate preflight to the sub-commands they invoke. The check detects compact-blocked state and prevents execution when recovery is needed.
 
 ### Contract
 
@@ -460,10 +415,9 @@ bash {plugin_root}/hooks/preflight-check.sh --command-id "/rite:{command}" --cwd
 
 | Category | Commands | Local WM Operation |
 |----------|---------|-------------------|
-| **Write** | `pr/create`, `pr/review`, `pr/ready`, `pr/cleanup`†, `pr/fix`, `issue/close`, `issue/update`, `issue/implement`, `issue/work-memory-init`, `lint` | Read + Write (via `local-wm-update.sh`) |
-| **Read** | `issue/branch-setup`, `issue/implementation-plan`, `sprint/execute`, `sprint/team-execute` | Read only |
-| **Preflight only** | `issue/create`, `issue/list`, `issue/edit`, `issue/parent-routing`, `issue/child-issue-selection`, `workflow`, `getting-started`, `sprint/list`, `sprint/current`, `sprint/plan`, `skill/suggest`, `template/reset`, `init` | None |
-| **Orchestrator** | `issue/start`, `resume` | Managed by flow state (these commands orchestrate other commands; they do not directly read/write local WM but control flow via `.rite-flow-state`) |
+| **Write** | `pr/create`, `pr/review`, `pr/ready`, `pr/cleanup`†, `pr/fix`, `issue/close`, `issue/update`, `issue/implement`, `issue/start`, `lint` | Read + Write (via `local-wm-update.sh`) |
+| **Preflight only** | `issue/create`, `issue/list`, `issue/edit`, `workflow`, `getting-started`, `skill/suggest`, `template/reset`, `init` | None |
+| **Orchestrator** | `resume` | Managed by flow state (orchestrates other commands; does not directly read/write local WM but controls flow via flow state) |
 
 † `pr/cleanup` updates Issue comment directly in Phase 4.5 (final archival record) because local WM file is deleted earlier in Phase 3.
 

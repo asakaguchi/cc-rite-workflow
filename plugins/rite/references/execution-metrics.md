@@ -70,7 +70,7 @@ After 3 Issues are collected:
 
 | Classification | Definition | Required Corrective Action |
 |---------------|------------|---------------------------|
-| `plan_miss` | Implementation plan assumptions were incorrect | Add pattern to [`implementation-plan.md`](../commands/issue/implementation-plan.md) plan generation |
+| `plan_miss` | Implementation plan assumptions were incorrect | Add pattern to [`pr/open.md`](../commands/pr/open.md) ステップ 3 (実装計画) plan generation |
 | `impl_miss` | Code implementation error, test failure | Add test cases + record failure pattern in [`coding-principles.md`](../skills/rite-workflow/references/coding-principles.md) |
 | `eval_miss` | Review false positive/negative | Update reviewer skill checklist |
 
@@ -97,7 +97,7 @@ When an Issue has threshold violations:
 
 ### Work Memory Metrics Section
 
-Appended to the Issue work memory comment at workflow completion (Phase 5.5.2 of [`start.md`](../commands/issue/start.md)):
+Appended to the Issue work memory comment at workflow completion (caller orchestrator の 完了レポート、standalone なら user が `/rite:pr:cleanup` 実行時):
 
 ```markdown
 ### 📊 メトリクス
@@ -126,7 +126,7 @@ Appended to the Issue work memory comment at workflow completion (Phase 5.5.2 of
 
 ## Review Metrics
 
-Recorded in review result comment (Phase 6.1.2 of [`review.md`](../commands/pr/review.md)).
+Recorded in review result comment (ステップ 6.3 of [`review.md`](../commands/pr/review.md) — semantic owner で値の決定・記録ロジックの canonical 位置。表示位置は post_comment_mode=true 時に ステップ 6.1.b で append される).
 
 > **Note**: Debate metrics (`debate_triggered`, `debate_resolved`, `debate_escalated`, `debate_resolution_rate`) are **recording-only** — they are not included in the Metrics Definitions table above and have no threshold evaluation. They serve as observational data for reviewing the debate phase's effectiveness.
 
@@ -156,11 +156,11 @@ Defined in `rite-config.yml` under the `safety` section. See [Safety Configurati
 
 ```yaml
 safety:
-  # review-fix loop hard limit was removed in v0.4.0 (#557). Loop now exits on 0 findings or 4-signal escalation.
-  max_implementation_rounds: 20  # implementation round hard limit
-  time_budget_minutes: 120       # time budget per Issue (advisory, not enforced by timer)
-  auto_stop_on_repeated_failure: true  # stop on repeated failure
-  repeated_failure_threshold: 3  # consecutive same-class failure count
+ # review-fix loop hard limit was removed in v0.4.0. Loop now exits on 0 findings or 4-signal escalation.
+ max_implementation_rounds: 20 # implementation round hard limit
+ time_budget_minutes: 120 # time budget per Issue (advisory, not enforced by timer)
+ auto_stop_on_repeated_failure: true # stop on repeated failure
+ repeated_failure_threshold: 3 # consecutive same-class failure count
 ```
 
 ### Fail-Closed Behavior
@@ -171,23 +171,23 @@ When a safety threshold is exceeded (`max_implementation_rounds`, `repeated_fail
 
 1. **Stop** the current flow immediately
 2. **Report** the situation to the user:
-   ```
-   ⚠️ 安全装置が発動しました
-   原因: {threshold_name} 超過 ({current_value} > {limit})
-   ```
+ ```
+ ⚠️ 安全装置が発動しました
+ 原因: {threshold_name} 超過 ({current_value} > {limit})
+ ```
 3. **Present options** via `AskUserQuestion`:
-   - 続行（制限を引き上げ）
-   - 中止（作業メモリに状態保存）
-   - 手動介入（ユーザーが直接対応）
+ - 続行（制限を引き上げ）
+ - 中止（作業メモリに状態保存）
+ - 手動介入（ユーザーが直接対応）
 
 ### Repeated Failure Detection
 
 When `auto_stop_on_repeated_failure: true`:
 - Track the failure classification of the last N Issues
 - If the same classification appears `repeated_failure_threshold` times consecutively:
-  1. Trigger fail-closed
-  2. Display corrective action pointer for the repeated classification
-  3. Require user acknowledgment before continuing
+ 1. Trigger fail-closed
+ 2. Display corrective action pointer for the repeated classification
+ 3. Require user acknowledgment before continuing
 
 ---
 
@@ -196,19 +196,19 @@ When `auto_stop_on_repeated_failure: true`:
 ```yaml
 # rite-config.yml
 metrics:
-  enabled: true           # Enable/disable metrics recording
-  baseline_issues: 3      # Number of Issues for baseline collection
-  thresholds:
-    plan_deviation_rate: 30       # Max plan deviation (%)
-    test_pass_rate: 100           # Required test pass rate (%)
-    review_fix_loops: 3           # Max review-fix loops
-    review_critical_high_improvement: 0.80  # MA5 improvement factor
-    plan_deviation_improvement: 0.90        # MA5 improvement factor
+ enabled: true # Enable/disable metrics recording
+ baseline_issues: 3 # Number of Issues for baseline collection
+ thresholds:
+ plan_deviation_rate: 30 # Max plan deviation (%)
+ test_pass_rate: 100 # Required test pass rate (%)
+ review_fix_loops: 3 # Max review-fix loops
+ review_critical_high_improvement: 0.80 # MA5 improvement factor
+ plan_deviation_improvement: 0.90 # MA5 improvement factor
 
 safety:
-  # review-fix loop hard limit was removed in v0.4.0 (#557). Loop now exits on 0 findings or 4-signal escalation.
-  max_implementation_rounds: 20  # implementation round hard limit
-  time_budget_minutes: 120       # time budget per Issue (advisory, not enforced by timer)
-  auto_stop_on_repeated_failure: true  # stop on repeated failure
-  repeated_failure_threshold: 3  # consecutive same-class failure count
+ # review-fix loop hard limit was removed in v0.4.0. Loop now exits on 0 findings or 4-signal escalation.
+ max_implementation_rounds: 20 # implementation round hard limit
+ time_budget_minutes: 120 # time budget per Issue (advisory, not enforced by timer)
+ auto_stop_on_repeated_failure: true # stop on repeated failure
+ repeated_failure_threshold: 3 # consecutive same-class failure count
 ```

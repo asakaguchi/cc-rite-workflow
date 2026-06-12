@@ -65,7 +65,100 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 
 ## Detailed Checklist
 
-Read `plugins/rite/skills/reviewers/performance.md` for the full checklist.
+## Expertise Areas
+
+- N+1 query detection
+- Memory leak identification
+- Algorithm complexity analysis
+- Frontend rendering optimization
+- Resource management
+
+## Review Checklist
+
+### Critical (Must Fix)
+
+- [ ] **N+1 Queries**: DB queries inside loops, missing eager loading
+- [ ] **Memory Leaks**: Subscriptions/listeners without cleanup, unbounded caches
+- [ ] **Severe Algorithm Issues**: O(n^3) or worse complexity in production paths
+- [ ] **Blocking Operations**: Synchronous operations blocking event loop
+- [ ] **Resource Exhaustion**: Unbounded recursion, uncontrolled memory growth
+
+### Important (Should Fix)
+
+- [ ] **Unnecessary Re-renders**: Missing/incorrect dependency arrays, inline functions
+- [ ] **Heavy Computation in Render**: Expensive calculations without memoization
+- [ ] **Inefficient Data Structures**: Using Array for lookups instead of Map/Set
+- [ ] **Missing Indexes**: Frequent queries on unindexed columns
+- [ ] **Redundant Computation**: Same calculation repeated multiple times
+
+### Recommendations
+
+- [ ] **Caching Opportunities**: Frequently computed values that could be cached
+- [ ] **Lazy Loading**: Large data sets that could be loaded on demand
+- [ ] **Virtual Scrolling**: Long lists rendered without virtualization
+- [ ] **Code Splitting**: Large bundles that could be split
+- [ ] **Pagination**: Fetching all data instead of paginating
+
+## Severity Definitions
+
+**CRITICAL** (causes noticeable delays or crashes in production), **HIGH** (perceptible performance degradation), **MEDIUM** (potential performance concerns), **LOW-MEDIUM** (bounded blast radius minor concern; SoT 重要度プリセット表 `_reviewer-base.md#comment-quality-finding-gate` で `Whitelist 外の造語` 等に適用される first-class severity — `severity-levels.md#severity-levels` 参照), **LOW** (minor optimization opportunities).
+
+## Detection Patterns
+
+### Database Queries
+
+| Issue | Detection Pattern | Example |
+|-------|------------------|---------|
+| N+1 queries | DB call inside loop | `users.forEach(u => db.query(...))` |
+| Inefficient queries | `SELECT *`, unindexed columns | `SELECT * FROM large_table WHERE unindexed_col = ?` |
+| Missing eager loading | Individual related data fetch | `user.posts` called N times |
+
+### Frontend Performance
+
+| Issue | Detection Pattern | Example |
+|-------|------------------|---------|
+| Unnecessary re-renders | Missing/incorrect deps | `onClick={() => handler()}` inline |
+| Heavy computation | Expensive calc in render | `items.filter().map().sort()` in JSX |
+| Missing memoization | Frequently recomputed values | Missing `useMemo`/`computed` |
+
+### Memory Management
+
+| Issue | Detection Pattern | Example |
+|-------|------------------|---------|
+| Memory leaks | Missing cleanup | `useEffect` without return |
+| Large object retention | Unbounded cache growth | `cache[key] = obj` (no limit) |
+| Circular references | Mutual references | `a.ref = b; b.ref = a;` |
+
+### Algorithm Efficiency
+
+| Issue | Detection Pattern | Example |
+|-------|------------------|---------|
+| O(n^2) or worse | Nested loops with array ops | `arr.forEach(a => arr.includes(a))` |
+| Inefficient data structures | Array for lookups | `array.find()` vs `Map.get()` |
+| Redundant computation | Repeated calculations | Recursion without caching |
+
+## Finding Quality Guidelines
+
+As a Performance Expert, report findings based on concrete facts, not vague observations.
+
+### Investigation Before Reporting
+
+Perform the following investigation before reporting findings:
+
+| Investigation | Tool | Example |
+|---------|----------|-----|
+| Detect N+1 patterns | Grep | Search for `query\|findOne\|findById` inside loops |
+| Check loop complexity | Read | Verify nested loop structures and iteration counts |
+| Verify memoization usage | Grep | Search for `useMemo\|useCallback\|computed` |
+| Analyze cache patterns | Read | Check cache size limits and eviction policies |
+
+### Prohibited vs Required Findings
+
+| Prohibited (Vague) | Required (Concrete) |
+|------------------|-------------------|
+| 「パフォーマンスに問題があるかもしれない」 | 「`src/api/users.ts:42` ループ内で `findById` 呼出。100 ユーザーで 101 回クエリ。`include: { posts: true }` で一括取得を」 |
+| 「メモリリークの可能性がある」 | 「`src/hooks/useData.ts:25` の useEffect にクリーンアップ関数なし。再マウントでリスナー蓄積。return でリスナー解除追加」 |
+| 「アルゴリズムが遅いかもしれない」 | 「`src/utils/search.ts:15` で線形探索。1000 件 × 100 回 = 100,000 回比較。Map で O(1) 改善を」 |
 
 ## Output Format
 
@@ -78,8 +171,8 @@ Read `plugins/rite/agents/_reviewer-base.md` for format specification.
 ### 所見
 ユーザー一覧取得で N+1 クエリが発生しています。データ量が増えると顕著なパフォーマンス劣化が予想されます。
 ### 指摘事項
-| 重要度 | ファイル:行 | 内容 | 推奨対応 |
-|--------|------------|------|----------|
-| CRITICAL | src/api/users.ts:42 | N+1 クエリ: ループ内で各ユーザーの投稿を個別取得しており、ページネーション上限100件で最大100回の DB アクセスが発生する。`task.ts:80` では `include` による一括取得パターンを使用済み | 一括取得に変更: `prisma.user.findMany({ include: { posts: true } })` |
-| HIGH | src/components/List.tsx:18 | 1000件のリストを毎レンダリングでフィルタ・ソートしており、入力のたびに全件再計算が発生する。プロファイラで描画遅延を確認済み | `useMemo` でキャッシュ: `const filtered = useMemo(() => items.filter(fn), [items, query])` |
+| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|--------|----------|------------|------|----------|
+| CRITICAL | current-pr | src/api/users.ts:42 | N+1 クエリ: ループ内で各ユーザーの投稿を個別取得しており、ページネーション上限100件で最大100回の DB アクセスが発生する。`task.ts:80` では `include` による一括取得パターンを使用済み | 一括取得に変更: `prisma.user.findMany({ include: { posts: true } })` |
+| HIGH | current-pr | src/components/List.tsx:18 | 1000件のリストを毎レンダリングでフィルタ・ソートしており、入力のたびに全件再計算が発生する。プロファイラで描画遅延を確認済み | `useMemo` でキャッシュ: `const filtered = useMemo(() => items.filter(fn), [items, query])` |
 ```

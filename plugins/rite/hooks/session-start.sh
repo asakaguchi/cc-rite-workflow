@@ -17,6 +17,8 @@ fi
 
 # Source session ownership helper for session_id extraction and ownership checks
 source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
+# shellcheck source=control-char-neutralize.sh
+source "$SCRIPT_DIR/control-char-neutralize.sh"
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
@@ -25,7 +27,7 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 
-# Plugin dual-load collision guard (#591)
+# Plugin dual-load collision guard
 # Only warn when this script is running from a local plugin-dir (not from
 # the marketplace cache). Normal marketplace users should have it enabled.
 # SCRIPT_DIR already set in preamble block above (replaces SCRIPT_PATH)
@@ -43,8 +45,9 @@ fi
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
 SOURCE=$(echo "$INPUT" | jq -r '.source // "startup"' 2>/dev/null) || SOURCE="startup"
 
-# Extract session_id from hook JSON payload (#173)
-SESSION_ID=$(extract_session_id "$INPUT" 2>/dev/null) || SESSION_ID=""
+# Pass extract_session_id stderr through so corrupt hook payload WARNINGs reach
+# triage; suppressing them would hide cross-session classification failures.
+SESSION_ID=$(extract_session_id "$INPUT") || SESSION_ID=""
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
 fi
@@ -59,7 +62,7 @@ if [ -d "$_plugin_root/hooks" ]; then
   printf '%s' "$_plugin_root" > "$STATE_ROOT/.rite-plugin-root" 2>/dev/null || true
 fi
 
-# Save session_id to .rite-session-id for flow-state-update.sh auto-read (#216)
+# Save session_id to .rite-session-id for flow-state.sh auto-read
 if [ -n "$SESSION_ID" ]; then
   (umask 077; printf '%s' "$SESSION_ID" > "$STATE_ROOT/.rite-session-id") 2>/dev/null || {
     [ -n "${RITE_DEBUG:-}" ] && echo "[rite] WARNING: Failed to write .rite-session-id" >&2
@@ -67,39 +70,70 @@ if [ -n "$SESSION_ID" ]; then
   }
 fi
 
-# Helper: remove stale .rite-compact-state when no active flow (#756)
-# Called on startup when .rite-flow-state is absent or inactive, to prevent
-# stale recovering state from persisting across sessions.
+# Helper: remove stale compact-state when no active flow
+# Called on startup when the flow-state is absent or inactive, to prevent stale
+# "recovering" state from persisting across sessions.
+#
+# Cleans both the per-session compact-state (.rite/sessions/{sid}.compact-state,
+# derived from the resolved STATE_FILE) and the legacy shared path
+# (.rite-compact-state). Removing the legacy file here is the migration path for
+# pre-#1371 residue (AC-3): a leftover shared snapshot is no longer consumed by
+# post-compact.sh (which now reads the per-session path), so it must be reaped
+# here. Both are stale recovery snapshots once no active flow exists — there is
+# no silent destruction of live state.
 _cleanup_stale_compact() {
-  if [ -f "$STATE_ROOT/.rite-compact-state" ]; then
-    rm -f "$STATE_ROOT/.rite-compact-state" 2>/dev/null || true
-    rm -rf "$STATE_ROOT/.rite-compact-state.lockdir" 2>/dev/null || true
+  local _legacy="$STATE_ROOT/.rite-compact-state"
+  local _per_session=""
+  [ -n "${STATE_FILE:-}" ] && _per_session="${STATE_FILE%.flow-state}.compact-state"
+  local _cs
+  for _cs in "$_per_session" "$_legacy"; do
+    [ -n "$_cs" ] || continue
+    if [ -f "$_cs" ]; then
+      rm -f "$_cs" 2>/dev/null || true
+      rm -rf "$_cs.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=session_start_cleanup" >&2
+    fi
+  done
+}
+
+# Read a single top-level YAML key from a config file. Captures awk stderr so that
+# permission denied / missing awk / malformed file surfaces a WARNING instead of
+# silently degrading to "schema is up to date" and skipping the migration prompt.
+_rite_read_yaml_key() {
+  local _key="$1" _file="$2" _label="$3"
+  local _err="" _rc=0 _val=""
+  _err=$(mktemp 2>/dev/null) || _err=""
+  # Use literal prefix match (`index() == 1`) instead of `$0 ~ k` so a future
+  # YAML key containing regex metacharacters (`.` `*` `[` etc.) cannot cause
+  # overmatching or silent no-match. Callers are not required to pre-escape.
+  _val=$(set -o pipefail; awk -v k="${_key}:" 'index($0, k) == 1 {print $2}' "$_file" 2>"${_err:-/dev/null}" | tr -d '[:space:]"') || _rc=$?
+  if [ "$_rc" -ne 0 ]; then
+    echo "[rite] WARNING: session-start: ${_label} 読み取り失敗 (rc=$_rc) — ${_file}" >&2
+    [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
+  [ -n "$_err" ] && rm -f "$_err"
+  printf '%s' "$_val"
 }
 
 if [ "$SOURCE" = "startup" ]; then
-  # --- Schema version check (#284) ---
+  # --- Schema version check ---
   _rite_config="$STATE_ROOT/rite-config.yml"
   if [ -f "$_rite_config" ]; then
-    # Read schema_version from project config (missing or non-numeric = v1)
-    _current_sv=$(awk '/^schema_version:/{print $2}' "$_rite_config" 2>/dev/null | tr -d '[:space:]"')
+    _current_sv=$(_rite_read_yaml_key schema_version "$_rite_config" "schema_version (project)")
     if [ -z "$_current_sv" ] || ! [[ "$_current_sv" =~ ^[0-9]+$ ]]; then
       _current_sv=1
     fi
 
-    # Read schema_version from template config (missing = v1 fallback)
     _template_config="$SCRIPT_DIR/../templates/config/rite-config.yml"
     _latest_sv=1
     if [ -f "$_template_config" ]; then
-      _latest_sv=$(awk '/^schema_version:/{print $2}' "$_template_config" 2>/dev/null | tr -d '[:space:]"')
+      _latest_sv=$(_rite_read_yaml_key schema_version "$_template_config" "schema_version (template)")
       if [ -z "$_latest_sv" ] || ! [[ "$_latest_sv" =~ ^[0-9]+$ ]]; then
         _latest_sv=1
       fi
     fi
 
     if [ "$_current_sv" -lt "$_latest_sv" ]; then
-      # i18n: read language from rite-config.yml (auto -> detect from locale)
-      _sv_lang=$(awk '/^language:/{print $2}' "$_rite_config" 2>/dev/null | tr -d '[:space:]"')
+      _sv_lang=$(_rite_read_yaml_key language "$_rite_config" "language")
       if [ "$_sv_lang" = "auto" ] || [ -z "$_sv_lang" ]; then
         # Detect from LANG environment variable (e.g., ja_JP.UTF-8 -> ja)
         case "${LANG:-}" in
@@ -143,63 +177,77 @@ if [ "$SOURCE" = "startup" ]; then
   fi
 
   if [ "$_needs_cleanup" = "true" ]; then
-    # i18n: read language from rite-config.yml (same awk pattern as stop-guard.sh)
+    # i18n: language is read with the same minimal awk pattern used elsewhere so
+    # malformed YAML in adjacent keys cannot poison the value.
     _lang="en"
     _rite_config="$STATE_ROOT/rite-config.yml"
     if [ -f "$_rite_config" ]; then
-      _cfg_lang=$(awk '/^language:/{print $2}' "$_rite_config" 2>/dev/null | tr -d '[:space:]')
+      _cfg_lang=$(_rite_read_yaml_key language "$_rite_config" "language (cleanup)")
       [ -n "$_cfg_lang" ] && _lang="$_cfg_lang"
     fi
 
-    # Remove rite hook entries from settings.local.json (hooks.json handles them natively)
+    # Remove rite hook entries from settings.local.json (hooks.json handles them natively).
+    # The JSON transform (rite-hook detection via RITE_HOOK_RE + selective removal) is
+    # delegated to the shared scripts/settings-local-rite-hook-cleanup.py — the same
+    # single-source script the .sh wrapper uses — so the regex lives in exactly one place
+    # (Issue #1239; previously an inline python3 copy duplicated both the regex and the
+    # whole transform). Its documented exit codes are reused here: 0 = rite hooks removed
+    # (cleaned JSON on stdout → captured into _repair_tmp), 1 = intentional no-op (no
+    # hooks key / no rite entries), 2 = invalid JSON. Distinguishing the no-op (rc=1) from
+    # real failures (rc=2, etc.) is required so settings.local.json corruption surfaces
+    # instead of silently retrying on every session start.
     _auto_cleaned=false
     _settings_local="$STATE_ROOT/.claude/settings.local.json"
     if [ -f "$_settings_local" ] && command -v python3 &>/dev/null; then
       _repair_tmp=$(mktemp "${_settings_local}.XXXXXX" 2>/dev/null) || _repair_tmp=""
-      if [ -n "$_repair_tmp" ] && python3 -c '
-import json, sys, re
-
-settings_path = sys.argv[1]
-out_path = sys.argv[2]
-
-with open(settings_path, "r") as f:
-    data = json.load(f)
-
-hooks = data.get("hooks", {})
-if not hooks:
-    sys.exit(1)
-
-rite_hook_re = re.compile(r"rite.*?/hooks/")
-changed = False
-
-for event_name in list(hooks.keys()):
-    entries = hooks[event_name]
-    if not isinstance(entries, list):
-        continue
-    new_entries = []
-    for entry in entries:
-        hook_list = entry.get("hooks", [])
-        has_rite = any(rite_hook_re.search(h.get("command", "")) for h in hook_list)
-        if has_rite:
-            changed = True
-        else:
-            new_entries.append(entry)
-    if new_entries:
-        hooks[event_name] = new_entries
-    else:
-        del hooks[event_name]
-
-if not changed:
-    sys.exit(1)
-
-with open(out_path, "w") as f:
-    json.dump(data, f, indent=2, ensure_ascii=False)
-    f.write("\n")
-' "$_settings_local" "$_repair_tmp" 2>/dev/null; then
-        mv "$_repair_tmp" "$_settings_local" 2>/dev/null && _auto_cleaned=true
-      else
-        rm -f "$_repair_tmp" 2>/dev/null
+      _py_err=$(mktemp 2>/dev/null) || _py_err=""
+      if [ -n "$_repair_tmp" ]; then
+        # python3 must run in a set -e-exempt context (an if-condition) so a non-zero
+        # exit (rc=1 no-op / rc=2 invalid JSON / missing script) does NOT abort the
+        # whole hook before the rc branches below run. A bare statement here would trip
+        # `set -euo pipefail` and turn the entire else branch into dead code.
+        if python3 "$SCRIPT_DIR/scripts/settings-local-rite-hook-cleanup.py" \
+          < "$_settings_local" > "$_repair_tmp" 2>"${_py_err:-/dev/null}"; then
+          _py_rc=0
+        else
+          _py_rc=$?
+        fi
+        if [ "$_py_rc" -eq 0 ]; then
+          # mv must capture both rc and stderr so EXDEV / EACCES / ENOSPC / EROFS
+          # / SELinux deny is distinguishable; silent failure here would leave
+          # _auto_cleaned=false and the rite hook config would re-fire repair on
+          # every session start with no diagnosable cause.
+          _settings_mv_err=$(mktemp 2>/dev/null) || _settings_mv_err=""
+          if mv "$_repair_tmp" "$_settings_local" 2>"${_settings_mv_err:-/dev/null}"; then
+            _auto_cleaned=true
+          else
+            _mv_rc=$?
+            rm -f "$_repair_tmp" 2>/dev/null
+            echo "rite: session-start: mv settings.local.json repair failed (rc=$_mv_rc)" >&2
+            [ -n "$_settings_mv_err" ] && [ -s "$_settings_mv_err" ] && head -3 "$_settings_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+          fi
+          [ -n "$_settings_mv_err" ] && rm -f "$_settings_mv_err"
+        else
+          rm -f "$_repair_tmp" 2>/dev/null
+          # rc=1 is the intentional no-op branch (no hooks key / no rite entries).
+          # Any other rc indicates a real failure — report whenever rc != 1, and also
+          # when stderr is non-empty, letting the user disambiguate corruption from the no-op.
+          if [ "$_py_rc" -ne 1 ] || { [ -n "$_py_err" ] && [ -s "$_py_err" ]; }; then
+            echo "rite: session-start: settings.local.json repair python3 failed (rc=$_py_rc)" >&2
+            if [ -n "$_py_err" ] && [ -s "$_py_err" ]; then
+              # Non-empty stderr means python3 itself failed (missing/unreadable cleanup
+              # script, import error) — surface its diagnostic but NOT the JSON hint, which
+              # would misdirect: the fault is not the settings.local.json content.
+              head -3 "$_py_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+            elif [ "$_py_rc" -eq 2 ]; then
+              # The cleanup script ran, returned 2, and wrote nothing to stderr → invalid
+              # JSON (its only rc=2 path). This is the one case where the JSON hint is correct.
+              echo "  hint: settings.local.json の JSON 形式 / encoding を確認してください" >&2
+            fi
+          fi
+        fi
       fi
+      [ -n "$_py_err" ] && rm -f "$_py_err"
     fi
 
     # Write cleanup marker when: (1) cleanup succeeded, or (2) no settings.local.json / no rite hooks
@@ -232,32 +280,99 @@ with open(out_path, "w") as f:
   fi
 fi
 
-STATE_FILE="$STATE_ROOT/.rite-flow-state"
+# Auto-migrate any v1/v2 state files to v3 via flow-state.sh migrate subcommand.
+# Non-blocking: errors surface to stderr but the hook continues. Idempotent: files
+# already at schema_version=3 are skipped.
+# Only stdout is silenced (the "Migration complete: N" summary), which Claude reads
+# as the active-workflow injection payload. stderr is intentionally passed through:
+# _migrate_file emits an unconditional `migrated:` line per actually-migrated file
+# (AC-8, silent skip forbidden), so a real migration is always announced here while
+# quiet session starts (only v3 files → verbose-gated skip) stay silent.
+RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" migrate >/dev/null || true
 
-if [ ! -f "$STATE_FILE" ]; then
-  # Clean stale compact state on startup/clear when no flow state exists (#756, #800)
+# --- Best-effort lazy reap of orphaned session worktrees (multi-session §8) ---
+# Only when the session starts at the main checkout root (CWD == shared root):
+# sessions start at the repo root (D-1), so a worktree-rooted CWD means we are
+# inside a linked worktree and must NOT drive the reap (cannot remove a worktree
+# you are standing in — though the reap's own gates already protect live/dirty
+# trees). pr-cycle-cleanup.sh resolves repo_root to the main checkout and reaps
+# only stale + clean `.rite/worktrees/issue-{N}` trees. Fully non-blocking:
+# stdout discarded, `|| true` keeps a slow/failed GC from blocking session start.
+if [ "$CWD" = "$STATE_ROOT" ]; then
+  ( cd "$CWD" && bash "$SCRIPT_DIR/scripts/pr-cycle-cleanup.sh" ) >/dev/null 2>&1 || true
+fi
+
+# Resolve active flow-state file path.
+# `_resolve-flow-state-path.sh` returns the per-session file
+# (`.rite/sessions/<sid>.flow-state`) when schema_version=2 and a valid
+# session_id is present, otherwise the legacy `.rite-flow-state`. The
+# fallback path keeps the hook non-blocking under helper deploy regression
+# (e.g. chmod -x or partial install).
+#
+# Issue #749: stderr pass-through for diagnostic visibility, via canonical
+# helper `_mktemp-stderr-guard.sh`.
+# - mktemp 失敗時に 3 行 WARNING を emit (silent fall-through 解消)
+# - chmod 600 / TMPDIR 尊重を helper 経由で取得
+# - filter は flow-state.sh の cross-session guard pass-through (3-pattern:
+#   `^WARNING:|^  |^jq: `) を `^ERROR:` で superset 化した 4-pattern 拡張版。
+#   `_resolve-flow-state-path.sh` は `_validate-helpers.sh` / `_validate-state-root.sh`
+#   経由で `ERROR:` 行を emit する (resolver self-validation contract) ため、
+#   reader-side filter より広い範囲を要求する。indented continuation 行と
+#   raw `jq:` parse error は flow-state.sh と同じく pass-through する
+# - success arm でも tempfile を inspect する (`_resolve-flow-state-path.sh`
+#   が graceful-degrade で exit 0 を返す経路、例えば `_resolve-session-id-from-file.sh`
+#   の tr IO failure による empty SID + WARNING 出力 + exit 0 経路で
+#   inner helper の WARNING を silent drop しないため)
+_resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
+  "session-start" \
+  "resolve-flow-state-err" \
+  "_resolve-flow-state-path.sh の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
+# Single-pass branch: capture resolver outcome, then run filter once regardless
+# of success/failure (helper may graceful-degrade exit 0 with WARNING in stderr,
+# e.g., empty SID via tr IO failure — both paths require pass-through).
+_resolve_failed=0
+STATE_FILE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1
+if [ -n "$_resolve_err" ] && [ -s "$_resolve_err" ]; then
+  grep -E '^WARNING:|^ERROR:|^  |^jq: ' "$_resolve_err" >&2 || true
+fi
+if [ "$_resolve_failed" -eq 1 ]; then
+  echo "[rite] WARNING: flow-state.sh path resolution failed — STATE_FILE 不明、recovery を skip します" >&2
+  STATE_FILE=""
+fi
+[ -n "$_resolve_err" ] && rm -f "$_resolve_err"
+
+if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
+  # Clean stale compact state on startup/clear when no flow state exists
   _cleanup_stale_compact
   exit 0
 fi
 
-ACTIVE=$(jq -r '.active // false' "$STATE_FILE" 2>/dev/null) || ACTIVE=false
+_active_err=$(mktemp 2>/dev/null) || _active_err=""
+ACTIVE=$(jq -r '.active // false' "$STATE_FILE" 2>"${_active_err:-/dev/null}") || ACTIVE=false
+if [ -n "$_active_err" ] && [ -s "$_active_err" ]; then
+  # silent fallback to "inactive" だと corrupt JSON が見えず post-compact recovery が消失する
+  # 経路を operator が triage できない。stderr を expose する。
+  echo "rite: session-start: WARNING: jq parse of .active failed (STATE_FILE may be corrupt)" >&2
+  head -3 "$_active_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+fi
+[ -n "$_active_err" ] && rm -f "$_active_err"
 if [ "$ACTIVE" != "true" ]; then
-  # Clean stale compact state on startup/clear when flow is inactive (#756, #800)
   _cleanup_stale_compact
   exit 0
 fi
 
-# --- Defensive reset helper (#558, #761, #173, #206) ---
+# --- Defensive reset helper ---
 # Shared by startup and clear blocks. Resets active=false on phase != completed.
 #
 # When the state is owned by another active session (check_session_ownership
 # returns "other"), skip the reset — overwriting another session's active state
-# would clobber its in-flight work memory and trip stop-guard whitelist
-# violations on its next phase transition. For "own" / "legacy" / "stale" /
-# fail-safe paths, proceed with reset (crash-recovery and backward-compat take
-# priority over multi-instance protection).
+# would clobber its in-flight work memory: the peer session would see an
+# externally mutated .active=false flag and either silently advance past its
+# in-flight phase or fall through to create-mode init on the next hook fire.
+# For "own" / "legacy" / "stale" / fail-safe paths, proceed with reset
+# (crash-recovery and backward-compat take priority over multi-instance protection).
 #
-# Regression note (#558): a prior commit moved the check_session_ownership call
+# Regression note: a prior commit moved the check_session_ownership call
 # inside an RITE_DEBUG block as a "performance" optimization, silently disabling
 # multi-instance protection in normal runs. DO NOT re-enclose check_session_ownership
 # in conditional gates — it must run on every reset path so the "other" branch can fire.
@@ -266,15 +381,25 @@ fi
 # When issue_number is empty (e.g., state file has no issue), exits silently without message.
 _reset_active_state() {
   local _phase _issue _branch _ownership
-  _phase=$(jq -r '.phase // ""' "$STATE_FILE" 2>/dev/null) || _phase=""
-  _issue=$(jq -r '.issue_number // "" | tostring' "$STATE_FILE" 2>/dev/null) || _issue=""
-  _branch=$(jq -r '.branch // ""' "$STATE_FILE" 2>/dev/null) || _branch=""
+  # 3 field を single composite jq read で読む。3 read に分けると mid-write 中断などで
+  # .phase だけ valid / .issue_number 以降が corrupt な partial-failure を WARNING の有無で
+  # 区別できなくなり、reset reason の triage が不能になる経路ができる。
+  local _reset_jq_err _composite
+  _reset_jq_err=$(mktemp 2>/dev/null) || _reset_jq_err=""
+  _composite=$(jq -r '[(.phase // ""), (.issue_number // "" | tostring), (.branch // "")] | @tsv' \
+    "$STATE_FILE" 2>"${_reset_jq_err:-/dev/null}") || _composite=$'\t\t'
+  if [ -n "$_reset_jq_err" ] && [ -s "$_reset_jq_err" ]; then
+    echo "rite: session-start: WARNING: _reset_active_state jq read failed (STATE_FILE may be corrupt)" >&2
+    head -3 "$_reset_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  fi
+  [ -n "$_reset_jq_err" ] && rm -f "$_reset_jq_err"
+  IFS=$'\t' read -r _phase _issue _branch <<< "$_composite"
 
-  # Session ownership check runs on the normal execution path (#558), not just RITE_DEBUG.
+  # Session ownership check runs on the normal execution path, not just RITE_DEBUG.
   # Fail-safe: if the helper isn't sourced or returns non-zero, treat as "unknown"
   # and proceed with reset — crash-recovery takes priority over multi-instance protection.
   if command -v check_session_ownership >/dev/null 2>&1; then
-    _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE" 2>/dev/null) || _ownership="unknown"
+    _ownership=$(check_session_ownership "$INPUT" "$STATE_FILE") || _ownership="unknown"
   else
     _ownership="unknown"
     [ -n "${RITE_DEBUG:-}" ] && echo "[rite] ownership check unavailable (check_session_ownership not sourced)" >&2
@@ -288,16 +413,33 @@ _reset_active_state() {
   [ -n "${RITE_DEBUG:-}" ] && echo "[rite] Resetting active state (ownership: $_ownership)" >&2
 
   # Atomic write: jq to temp file, then mv. No trap — explicit cleanup on failure.
-  local _tmp
+  # Silent jq failure here leaves .active=true forever and ALL operators (user
+  # waiting for /rite:resume, peer sessions checking ownership) see a permanent
+  # "another session is active" block with no diagnosable cause. Capture stderr.
+  local _tmp _reset_jq_err _reset_mv_err
   _tmp=$(mktemp "${STATE_FILE}.XXXXXX" 2>/dev/null) || _tmp="${STATE_FILE}.tmp.$$"
+  _reset_jq_err=$(mktemp 2>/dev/null) || _reset_jq_err=""
   if jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-     '.active = false | .updated_at = $ts' "$STATE_FILE" > "$_tmp" 2>/dev/null; then
-    mv "$_tmp" "$STATE_FILE"
+     '.active = false | .updated_at = $ts' "$STATE_FILE" > "$_tmp" 2>"${_reset_jq_err:-/dev/null}"; then
+    _reset_mv_err=$(mktemp 2>/dev/null) || _reset_mv_err=""
+    if mv "$_tmp" "$STATE_FILE" 2>"${_reset_mv_err:-/dev/null}"; then
+      :
+    else
+      _mv_rc=$?
+      rm -f "$_tmp" 2>/dev/null
+      echo "rite: session-start: mv defensive reset failed (rc=$_mv_rc)" >&2
+      [ -n "$_reset_mv_err" ] && [ -s "$_reset_mv_err" ] && head -3 "$_reset_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    fi
+    [ -n "$_reset_mv_err" ] && rm -f "$_reset_mv_err"
   else
+    _reset_jq_rc=$?
+    echo "rite: session-start: jq defensive reset failed (rc=$_reset_jq_rc; STATE_FILE may be corrupt)" >&2
+    [ -n "$_reset_jq_err" ] && [ -s "$_reset_jq_err" ] && head -3 "$_reset_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     rm -f "$_tmp" 2>/dev/null
   fi
+  [ -n "$_reset_jq_err" ] && rm -f "$_reset_jq_err"
   _cleanup_stale_compact
-  # Silent reset for completed workflows (#772): no message, no /rite:resume suggestion
+  # Silent reset for completed workflows: no message, no /rite:resume suggestion
   if [ "$_phase" = "completed" ]; then
     exit 0
   fi
@@ -307,37 +449,52 @@ _reset_active_state() {
   exit 0
 }
 
-# --- Defensive reset on new session startup (#761, #173) ---
+# --- Defensive reset on new session startup ---
 if [ "$SOURCE" = "startup" ]; then
   _reset_active_state
 fi
 
-# --- Defensive reset on /clear (#781, #133, #173) ---
+# --- Defensive reset on /clear ---
 if [ "$SOURCE" = "clear" ]; then
   _reset_active_state
 fi
 
-# Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes)
-find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -type f -mmin +1 -delete 2>/dev/null || true
+# Clean up stale temporary files (older than 1 minute to avoid deleting in-progress writes).
+# `.rite-flow-state.??????*` is intended to match mktemp tempfiles
+# (`.rite-flow-state.<6-hex>`), but its `??????*` glob matches **any suffix
+# of 6 or more chars**, which would also match a `.rite-flow-state.legacy.*`
+# file. The v3 in-place migrate (`flow-state.sh` `_migrate_file`) does NOT
+# create such backups (it rewrites the file in place via `_atomic_write`), but a
+# pre-v3 rename-based migration (the now-removed `flow-state-update.sh` design)
+# may have left one across an upgrade. `-not -name '.rite-flow-state.legacy.*'`
+# defensively preserves any such legacy backup as a manual-recovery source
+# rather than auto-deleting it.
+find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -not -name ".rite-flow-state.legacy.*" -type f -mmin +1 -delete 2>/dev/null || true
 
-# Extract all fields in a single jq call for efficiency
-# cycle 11 MEDIUM F-04: unit separator \x1f (\037) を使用する理由。tab は POSIX IFS whitespace
-# で隣接 delimiter を単一区切りに collapse するため、next_action="" 時に LOOP 欄に他フィールドが
-# shift する silent 注入 bug を起こす (stop-guard.sh cycle 10 F-01 と同型)。non-whitespace IFS は
-# adjacent-delimiter を empty field として preserve する POSIX 準拠挙動となる。
+# Extract all fields in a single jq call for efficiency.
+# Unit separator (\x1f) is used instead of tab: POSIX IFS treats adjacent
+# whitespace delimiters as one separator, which collapses empty fields like
+# next_action="" and shifts later fields into earlier columns — silent data
+# corruption. A non-whitespace IFS preserves empty fields per POSIX.
 # Defense-in-depth: ACTIVE check (earlier in this script) already catches invalid JSON (jq
 # fails → ACTIVE=false → exit 0). This fallback handles the unlikely case where
 # the file becomes corrupt between the two jq reads (e.g., race condition,
 # partial write). It is not reachable by normal unit tests.
+_tsv_err=$(mktemp 2>/dev/null) || _tsv_err=""
+_tsv_rc=0
 _tsv_output=$(jq -r '[
   (.issue_number // "" | tostring),
   (.phase // "unknown"),
   (.next_action // "unknown"),
   (.loop_count // 0 | tostring)
-] | join("\u001f")' "$STATE_FILE" 2>/dev/null) || {
+] | join("\u001f")' "$STATE_FILE" 2>"${_tsv_err:-/dev/null}") || _tsv_rc=$?
+if [ "$_tsv_rc" -ne 0 ]; then
   echo "rite: Warning - state file contains invalid JSON. Use /rite:resume to recover." >&2
+  [ -n "$_tsv_err" ] && [ -s "$_tsv_err" ] && head -3 "$_tsv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  [ -n "$_tsv_err" ] && rm -f "$_tsv_err"
   exit 0
-}
+fi
+[ -n "$_tsv_err" ] && rm -f "$_tsv_err"
 IFS=$'\x1f' read -r ISSUE PHASE NEXT LOOP <<< "$_tsv_output"
 
 # Validate that critical fields are not null/empty
@@ -355,10 +512,10 @@ IMPORTANT: First inform the user that an interrupted workflow was detected.
 Display the Issue number, phase, and next action.
 Then suggest running /rite:resume to continue from where it left off.
 If the user provides a different instruction, respect it but mention the pending workflow.
-Read .rite-flow-state for full state details.
+Use \`bash {plugin_root}/hooks/flow-state.sh get --field <field>\` for full state details.
 EOF
 
-# --- Session ID notification (#173, #221) ---
-# session_id is now auto-read from .rite-session-id by flow-state-update.sh.
+# --- Session ID notification ---
+# session_id is now auto-read from .rite-session-id by flow-state.sh.
 # stdout output removed to prevent Claude from fabricating inconsistent values
 # via the {session_id} placeholder. See Issue #221.

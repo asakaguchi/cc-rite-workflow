@@ -60,7 +60,7 @@ Display in the following format:
 ───────────────────────────────────────────────────────────────
 
 【次のアクション】
-- /rite:issue:start {number}  この Issue の作業を開始
+- /rite:pr:open {number}  この Issue の作業を開始
 - /rite:issue:close {number}  完了状態を確認
 ```
 
@@ -125,7 +125,7 @@ When Issues exist:
 
 【操作】
 - /rite:issue:list #{number}  詳細を表示
-- /rite:issue:start {number}  作業を開始
+- /rite:pr:open {number}  作業を開始
 - /rite:issue:create          新規 Issue を作成
 ```
 
@@ -154,13 +154,29 @@ Display Projects information when `rite-config.yml` exists and Projects integrat
 Read `rite-config.yml` using the Read tool to check if Projects integration is enabled (`github.projects.enabled: true`).
 If the file does not exist, skip Phase 4 entirely.
 
+Also read `github.projects.project_number` and `github.projects.owner` from `rite-config.yml`. These two values are substituted into the `{project_number}` / `{owner}` placeholders of the Phase 4.2 Tool call 1 helper invocation before the script runs.
+
 ### 4.2 Fetch Projects Data and Build Status Map
 
-> **CRITICAL**: Execute each tool call exactly as described. Do NOT add `--jq` flags, inline comments, or any extra text to bash commands.
+Projects 全 item の取得と正規化は `scripts/projects-items-fetch.sh` に委譲する。helper は Project node ID 解決 (owner-type agnostic — user / organization 両対応)・`pageInfo.hasNextPage` / `endCursor` による全件 cursor pagination (固定 `--limit` が起こしていた 100/500 件超の silent truncation を防止)・各 node の `{content:{number}, status}` への正規化・signal-specific trap cleanup をすべて内包する (旧 ~44 行 inline 実装を委譲)。
 
-**Tool call 1 (Bash)**: Run this single-line command verbatim — `tmpfile=$(mktemp) && gh project item-list {project_number} --owner {owner} --format json --limit 500 > "$tmpfile" && echo "$tmpfile"`
+**出力契約** (旧 inline 実装と同一): 成功時は正規化 JSON tempfile の path を 1 行 stdout 出力。失敗時は `[projects:fetch-failed] <reason>` を出力し path は出力しない。**全経路 exit 0** (non-blocking — Phase 4 の失敗は一覧表示自体を止めない)。
 
-**Tool call 2 (Read)**: Use the Read tool to open the temp file path printed by Tool call 1. The JSON contains an `items` array; each element has `.status` (string) and `.content.number` (int). Build an in-memory map of Issue number → Status. On failure, skip Projects info and show the Phase 3 list without a Status column.
+**Tool call 1 (Bash)**: `{project_number}` / `{owner}` は Phase 4.1 で読んだ値を literal substitute する:
+
+```bash
+# plugin_root 解決 (canonical: references/plugin-path-resolution.md#inline-one-liner-for-command-files)
+plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+
+if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/scripts/projects-items-fetch.sh" ]; then
+  # helper 不在も旧実装の失敗契約と同じ sentinel に倒し、Status 列なし表示への fallback を発火させる
+  echo "[projects:fetch-failed] projects-items-fetch.sh not found (plugin_root='${plugin_root:-<empty>}')"
+else
+  bash "$plugin_root/scripts/projects-items-fetch.sh" --project-number "{project_number}" --owner "{owner}"
+fi
+```
+
+**Tool call 2 (Read)**: Use the Read tool to open the temp file path printed by Tool call 1. The JSON contains an `items` array; each element has `.status` (string or null) and `.content.number` (int). Build an in-memory map of Issue number → Status. If Tool call 1 printed `[projects:fetch-failed]` instead of a path (or the Read fails), skip Projects info and show the Phase 3 list without a Status column.
 
 Add a Status column to the list display:
 
@@ -185,7 +201,27 @@ also display the Iteration column:
 
 ### 5.1 When `--sprint current` is Used
 
-1. Identify the current iteration (same logic as `/rite:sprint:current`)
+1. Identify the current iteration:
+   - Query the Projects Iteration field for its `id` and the `configuration.iterations` list (`title` / `startDate` / `duration`):
+     ```bash
+     gh api graphql -f query='
+     query($projectId: ID!) {
+       node(id: $projectId) {
+         ... on ProjectV2 {
+           fields(first: 20) {
+             nodes {
+               ... on ProjectV2IterationField {
+                 id
+                 name
+                 configuration { iterations { id title startDate duration } }
+               }
+             }
+           }
+         }
+       }
+     }' -f projectId="{project_id}"
+     ```
+   - For each iteration compute `endDate = startDate + duration` (days). The iteration where `startDate <= today < endDate` is the current one. If none matches, report "現在アクティブなスプリントがありません" and exit.
 2. Fetch only Issues assigned to that iteration
 
 ```bash
@@ -287,7 +323,7 @@ Display items where the Iteration field value is null as "backlog":
   合計: 2 件の Issue（バックログ）
 
 【操作】
-- /rite:sprint:plan でスプリントに割り当て
+- GitHub Projects の Iteration フィールドでスプリントに割り当て（`iteration.auto_assign: true` の場合 /rite:pr:open 時に自動割当）
 ```
 
 ---

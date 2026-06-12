@@ -1431,7 +1431,7 @@ Legacy state files (flat JSON without `schema_version`, or any file with `schema
 
 **Legacy single-file selection (removed):**
 
-`rite-config.yml` previously accepted `flow_state.schema_version: 1` to force the legacy single-file (`.rite-flow-state`) code path (adapter pattern). That dual logic has been removed (Issue #1458) — flow-state is always per-session (`.rite/sessions/{session_id}.flow-state`). An explicit `flow_state.schema_version: 1` is now ignored; `session-start.sh` emits a one-time deprecation warning so the dead key is removed. A residual `.rite-flow-state` single-file is absorbed into per-session/v3 by the `flow-state.sh migrate` path above.
+`rite-config.yml` previously accepted `flow_state.schema_version: 1` to force the legacy single-file (`.rite-flow-state`) code path (adapter pattern). That dual logic has been removed (Issue #1458) — flow-state is always per-session (`.rite/sessions/{session_id}.flow-state`). An explicit `flow_state.schema_version: 1` is now ignored; `session-start.sh` emits a deprecation warning once per session start (every startup until the key is removed) prompting its removal. A residual `.rite-flow-state` single-file is absorbed into per-session/v3 by the `flow-state.sh migrate` path above.
 
 **Sub-Issues API parent-child structure:**
 

@@ -158,8 +158,13 @@ if [ "$SOURCE" = "startup" ]; then
     # Warn once per session start (gated on SOURCE=startup → AC-3 "1 回のみ") so the
     # user removes the now-dead key (D-01). Section-absent or `: 2` stays silent
     # (AC-4). Reads the `flow_state:` sub-key directly (the top-level _rite_read_yaml_key
-    # only matches column-0 keys, so it cannot see an indented sub-key).
-    _fs_sv=$(awk '
+    # only matches column-0 keys, so it cannot see an indented sub-key). Read failure is
+    # surfaced as a WARNING rather than silently degraded, matching the _rite_read_yaml_key
+    # convention above (silent degradation would suppress the deprecation advisory). The
+    # `_fs_sv=""` fallback keeps the startup hook non-blocking; pipefail makes the if-test
+    # catch an awk failure even though the trailing `tr` would otherwise exit 0.
+    _fs_sv_err=$(mktemp 2>/dev/null) || _fs_sv_err=""
+    if _fs_sv=$(awk '
       /^[^[:space:]#]/ { in_fs = 0 }
       /^flow_state:[[:space:]]*(#.*)?$/ { in_fs = 1; next }
       in_fs && /^[[:space:]]+schema_version:/ {
@@ -169,7 +174,14 @@ if [ "$SOURCE" = "startup" ]; then
         print line
         exit
       }
-    ' "$_rite_config" 2>/dev/null | tr -d "[:space:]\"'") || _fs_sv=""
+    ' "$_rite_config" 2>"${_fs_sv_err:-/dev/null}" | tr -d "[:space:]\"'"); then
+      :
+    else
+      echo "[rite] WARNING: session-start: flow_state.schema_version 読み取り失敗 — ${_rite_config}" >&2
+      [ -n "$_fs_sv_err" ] && [ -s "$_fs_sv_err" ] && head -3 "$_fs_sv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+      _fs_sv=""
+    fi
+    [ -n "$_fs_sv_err" ] && rm -f "$_fs_sv_err"
     if [ "$_fs_sv" = "1" ]; then
       _fs_lang=$(_rite_read_yaml_key language "$_rite_config" "language")
       if [ "$_fs_lang" = "auto" ] || [ -z "$_fs_lang" ]; then

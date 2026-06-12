@@ -29,12 +29,11 @@ CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
 # SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
-# Per-session state path resolution (v3 SoT): flow-state.sh path
+# Per-session state path resolution (v3 SoT): flow-state.sh path always
 # returns the per-session file (`<root>/.rite/sessions/<session_id>.flow-state`)
-# when schema_version=2 with a valid SID, or the legacy `.rite-flow-state` path
-# otherwise. The atomic write below (last_synced_phase update) targets whichever
-# file the resolver returns, preserving per-session isolation under schema 2 and
-# falling back to the single-file lock under schema 1.
+# — the legacy single-file `.rite-flow-state` selection path was removed
+# (Issue #1458). The atomic write below (last_synced_phase update) targets the
+# resolved per-session file, preserving per-session isolation.
 if FLOW_STATE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>/dev/null); then
   :
 else
@@ -58,13 +57,13 @@ IFS=$'\x1f' read -r _active issue_number _phase _last_synced_phase <<< "$_flow_d
 [ -n "$issue_number" ] || exit 0
 # Session ownership check: skip sync for other session's state.
 #
-# Note: under schema_version=2 with a per-session $FLOW_STATE,
-# `check_session_ownership` returns "own" via its schema-2 fast-path without
-# invoking jq, so the failure path is structurally absent and the
-# `|| _ownership="own"` defensive default is dead code in that branch. The
-# fallback remains active for schema_version=1 (legacy single-file path),
-# where extract_session_id / get_state_session_id may fail under
-# environmental issues (jq error, IO error). Keep both branches.
+# Note: $FLOW_STATE is always a per-session file, so
+# `check_session_ownership` returns "own" via its per-session fast-path without
+# invoking jq, and the `|| _ownership="own"` defensive default is dead code on
+# that path. The default is retained as defense-in-depth for a non-resolver
+# caller that bypasses the per-session fast-path (session-ownership.sh's
+# foreign-path / 4-state fall-through), where extract_session_id /
+# get_state_session_id may fail under environmental issues (jq error, IO error).
 _ownership=$(check_session_ownership "$INPUT" "$FLOW_STATE") || _ownership="own"
 [ "$_ownership" != "other" ] || exit 0
 # Defense-in-depth: don't recreate WM for completed workflows

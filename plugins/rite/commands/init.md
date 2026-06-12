@@ -355,6 +355,22 @@ Compare current config against the template and classify each key:
 
 **Active top-level sections covered on --upgrade** (drift anchor — the `init-upgrade-drift` test asserts this list ⊇ the template's active top-level keys above the `--- Advanced ---` marker): `schema_version`, `github`, `iteration`, `branch`, `commands`, `verification`, `issue`, `review`, `fix`, `language`, `wiki`, `flow_state`, `multi_session`. Each is handled by Step 4/Step 6 above (User-customized values are preserved, missing sections/sub-keys are added). **When a new active top-level section is added to the template, add it to this list too** — otherwise the drift test fails and `--upgrade` would silently miss it.
 
+**Active sub-keys covered on --upgrade** (drift anchor — the `init-upgrade-drift` test T-12 asserts, per section, this list ⊇ each template active section's **direct** sub-keys above the `--- Advanced ---` marker; Step 6 item 4 adds any missing sub-key while preserving existing siblings). Sections whose value is a scalar (`schema_version`, `language`) have no sub-keys and are omitted:
+
+- `github`: `projects`
+- `iteration`: `enabled`, `field_name`, `auto_assign`, `show_in_list`
+- `branch`: `base`, `pattern`
+- `commands`: `build`, `test`, `lint`
+- `verification`: `run_tests_before_pr`, `acceptance_criteria_check`
+- `issue`: `auto_decompose_threshold`
+- `review`: `min_reviewers`, `criteria`, `loop`, `security_reviewer`, `debate`, `confidence_threshold`, `fact_check`, `scope_assignment`
+- `fix`: `fail_fast_response`
+- `wiki`: `enabled`, `branch_strategy`, `branch_name`, `auto_ingest`, `auto_query`
+- `flow_state`: `schema_version`
+- `multi_session`: `enabled`, `worktree_base`
+
+**When a new sub-key is added to an existing template section, add it to the matching row above too** — otherwise the T-12 sub-key drift test fails and `--upgrade` would silently miss it (the same guard as the top-level list, one level down).
+
 **Step 5: Preview and confirm**
 
 Display the changes to the user:

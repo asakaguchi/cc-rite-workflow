@@ -12,6 +12,13 @@
 #        back-added on --upgrade (with `enabled: true`), and no stale "do NOT
 #        back-add" / "NOT back-added" / "left absent" wording survives in either
 #        file.
+#   T-12 (Issue #1448): every DIRECT sub-key of each active top-level section
+#        (above the `# --- Advanced ---` marker) is enumerated in init.md's
+#        "Active sub-keys covered on --upgrade" drift anchor, under its section's
+#        row. This extends T-10's protection one level down: a new sub-key added
+#        to an existing template section that init.md fails to list fails this
+#        test, forcing init.md to be updated so `--upgrade` does not silently
+#        miss it (mirrors the sub-key merge rule, init.md Step 6 item 4).
 #
 # Usage: bash plugins/rite/hooks/tests/init-upgrade-drift.test.sh
 set -euo pipefail
@@ -42,9 +49,12 @@ assert_absent() { # file fixed-string description
 echo "=== T-10: template active top-level sections ⊆ init.md upgrade enumeration ==="
 
 # Active top-level keys in the template above the Advanced boundary.
+# Key regex allows digits/hyphens after the first char (e.g. a future `oauth2:`),
+# a strict superset of the current all-lowercase keys so this does not change
+# T-10's extraction for today's template.
 template_sections=$(awk '
   /# --- Advanced \(below this line\) ---/ { exit }
-  /^[a-z_]+:/ { key=$0; sub(/:.*/, "", key); print key }
+  /^[a-z_][a-zA-Z0-9_-]*:/ { key=$0; sub(/:.*/, "", key); print key }
 ' "$TEMPLATE")
 
 [ -n "$template_sections" ] || { echo "FATAL: no template sections extracted (parser drift?)" >&2; exit 1; }
@@ -80,6 +90,45 @@ assert_absent "$TEMPLATE" 'intentionally NOT back-added' \
   "template no longer says 'intentionally NOT back-added'"
 assert_absent "$INIT_MD" 'left absent' \
   "init.md no longer says multi_session is 'left absent' on upgrade"
+
+echo "=== T-12: template active section direct sub-keys ⊆ init.md sub-key drift anchor ==="
+
+# Direct (exactly 2-space indented) sub-keys per active top-level section in the
+# template, emitted as "section.subkey". Deeper-nested keys (4+ spaces) and list
+# items are excluded so only one level below each section is asserted.
+template_subkeys=$(awk '
+  /# --- Advanced \(below this line\) ---/ { exit }
+  /^[a-z_][a-zA-Z0-9_-]*:/ { section=$0; sub(/:.*/, "", section); next }
+  /^  [a-z_][a-zA-Z0-9_-]*:/ { key=$0; sub(/^  /, "", key); sub(/:.*/, "", key); print section "." key }
+' "$TEMPLATE")
+
+[ -n "$template_subkeys" ] || { echo "FATAL: no template sub-keys extracted (parser drift?)" >&2; exit 1; }
+
+# The init.md sub-key drift anchor block: from the marker line through its closing
+# "When a new sub-key is added" guard line (single source of the enumeration).
+sub_anchor_start=$(grep -nF 'Active sub-keys covered on --upgrade' "$INIT_MD" | head -1 | cut -d: -f1 || true)
+if [ -z "$sub_anchor_start" ]; then
+  fail "init.md is missing the 'Active sub-keys covered on --upgrade' drift anchor"
+else
+  pass "init.md sub-key drift anchor present"
+  sub_anchor_end=$(awk -v s="$sub_anchor_start" 'NR>s && /When a new sub-key is added/ { print NR; exit }' "$INIT_MD")
+  [ -n "$sub_anchor_end" ] || sub_anchor_end=$(wc -l < "$INIT_MD")
+  anchor_block=$(sed -n "${sub_anchor_start},${sub_anchor_end}p" "$INIT_MD")
+
+  for pair in $template_subkeys; do
+    sec=${pair%%.*}
+    key=${pair#*.}
+    # The anchor row for this section, e.g. "- `review`: `min_reviewers`, ...".
+    row=$(printf '%s\n' "$anchor_block" | grep -F -- "- \`$sec\`:" | head -1 || true)
+    if [ -z "$row" ]; then
+      fail "init.md sub-key anchor has no row for section '$sec' (needed for '$pair')"
+    elif printf '%s' "$row" | grep -qF -- "\`$key\`"; then
+      pass "template sub-key '$pair' is enumerated in init.md"
+    else
+      fail "template sub-key '$pair' is NOT enumerated in init.md sub-key anchor"
+    fi
+  done
+fi
 
 # --- Summary ---
 echo ""

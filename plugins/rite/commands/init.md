@@ -365,10 +365,12 @@ Display the changes to the user:
 廃止キー削除: {deprecated_keys}
 新規セクション追加: {new_sections}
 サブキー補完: {new_subkeys}
-multi_session back-add: {multi_session_added ? "enabled: true" : "（既存のため変更なし）"}
+multi_session back-add: {multi_session_status}
 Advanced セクション追加（コメントアウト）: {advanced_sections}
 保持される既存設定: {preserved_keys}
 ```
+
+> `{multi_session_status}` は back-add を実行した場合 `enabled: true`、既存ブロックが存在し変更しなかった場合 `（既存のため変更なし）` を表示する。
 
 Ask with `AskUserQuestion`:
 

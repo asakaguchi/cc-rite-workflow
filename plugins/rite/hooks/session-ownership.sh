@@ -17,14 +17,14 @@
 #
 # Role transition: With schema_version=2 (per-session files),
 # session ownership is structurally guaranteed by the session_id encoded in
-# the filename — the resolver (`_resolve-flow-state-path.sh`) only returns
+# the filename — the resolver (`flow-state.sh path`) only returns
 # a per-session path that matches the current session. `check_session_ownership`
 # therefore uses a fast-path "own" classification when the path matches the
 # `*/.rite/sessions/*.flow-state` pattern, falling through to the legacy
 # 4-state classification only for `<root>/.rite-flow-state` (schema 1).
 # `is_per_session_state_file` exposes the same predicate to callers that want
 # to short-circuit ownership checks (e.g., when reading a path that has just
-# been resolved by `_resolve-flow-state-path.sh`).
+# been resolved by `flow-state.sh path`).
 
 # shellcheck source=control-char-neutralize.sh
 source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
@@ -90,7 +90,7 @@ get_state_session_id() {
 # Exit code: 0 or 1 (boolean — usable in `if is_per_session_state_file ...`)
 #
 # Why this exists: With schema_version=2 the resolver
-# (`_resolve-flow-state-path.sh`) only returns a per-session path whose session_id
+# (`flow-state.sh path`) only returns a per-session path whose session_id
 # segment matches the current session, so the file is structurally owned by
 # this session and the 4-state legacy classification is unnecessary. Callers
 # that already hold a resolver output can use this predicate to short-circuit

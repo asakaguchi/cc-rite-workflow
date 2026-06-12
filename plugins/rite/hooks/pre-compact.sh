@@ -41,7 +41,7 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "pre-compact" \
   "resolve-flow-state-err" \
-  "_resolve-flow-state-path.sh の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
+  "flow-state.sh path の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
 # Single-pass branch (filter runs once regardless of resolver exit status).
 _resolve_failed=0
 FLOW_STATE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>"${_resolve_err:-/dev/null}") || _resolve_failed=1

@@ -33,7 +33,7 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 _resolve_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "post-compact" \
   "resolve-flow-state-err" \
-  "_resolve-flow-state-path.sh の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
+  "flow-state.sh path の WARNING/ERROR / jq parse error / indented 補助行が pass-through されません")
 # SIGINT before the explicit rm below leaves `$_resolve_err` orphaned in /tmp;
 # clean up on any exit signal so the path never leaks even if the script aborts
 # mid-resolve.

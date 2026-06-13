@@ -60,8 +60,8 @@ assert "TC-2: DEL neutralized" "A?B" "$(printf 'A\x7fB' | neutralize_ctrl)"
 
 echo ""
 echo "=== TC-3: C1 境界 (0x80 / 0x9b CSI / 0x9f) → ? ==="
-# 旧実装 (sed [[:cntrl:]] / bash ${var//[[:cntrl:]]/?}) はこの 3 バイトを素通し
-# していた — glibc は C/UTF-8 両ロケールで C1 を cntrl と分類しないため。
+# sed [[:cntrl:]] / bash ${var//[[:cntrl:]]/?} で実装するとこの 3 バイトを素通しする
+# (glibc は C/UTF-8 両ロケールで C1 を cntrl と分類しないため)。その素通し経路を guard する。
 assert "TC-3: C1 range boundaries neutralized" "A?B?C?D" "$(printf 'A\x80B\x9bC\x9fD' | neutralize_ctrl)"
 
 echo ""

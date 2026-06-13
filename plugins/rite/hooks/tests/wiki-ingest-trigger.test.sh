@@ -740,8 +740,8 @@ echo ""
 # 本 TC は、将来 commands/*.md が mktemp デフォルトに戻った場合に fix ループの回帰テストとして
 # exit code で pitfall を検出する。
 #
-# review F-03: 旧実装は `grep -qE 'must be under.*rite'` でエラー文言の literal に依存していたため、
-# 文言を i18n / reword した瞬間に silent fail する設計欠陥があった。assertion を 2 段階にし、
+# review F-03: `grep -qE 'must be under.*rite'` でエラー文言の literal に依存すると、
+# 文言を i18n / reword した瞬間に silent fail する設計欠陥が生じる。assertion を 2 段階にし、
 # exit code (1) を必須 pass 条件とし、文言 grep は OR パターンで緩和する (defense-in-depth)。
 echo "TC-036b: Content-file from mktemp default → exit 1 (pitfall)"
 dir36b="$TEST_DIR/tc36b"

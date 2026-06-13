@@ -893,7 +893,7 @@ unset _dac_probe_err _dac_probe_parent _dac_probe _dac_probe_diag 2>/dev/null ||
 echo ""
 echo "=== TC-H7: consume-handoff on corrupt JSON → WARNING + empty + rc 0 ==="
 # Why: corrupt JSON 時の fail-open (空 + rc=0 → Stop hook が停止許可) は AC-3 上正しい安全側挙動だが、
-# 旧実装 (`|| handoff=""`) は無診断で corrupt を検出できなかった。cmd_set / cmd_get と対称に WARNING を
+# `|| handoff=""` 形式は無診断で corrupt を検出できない。cmd_set / cmd_get と対称に WARNING を
 # stderr へ emit することを pin し、silent fallback への revert を検出する。stdout 空 + rc=0 の
 # fail-open 不変も同時に固定する (WARNING 追加で停止許可挙動が崩れていないこと)。
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"

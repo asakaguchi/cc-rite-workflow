@@ -9,8 +9,8 @@
 # 逆戻りしないことを pin する。
 #
 # Bug class (silent boundary failure):
-#   旧実装は `printf '%s' "$labels_csv" | jq -R 'split(",")|map(...)'` で Sub ラベルを
-#   組み立てていた。`jq -R` は stdin を行単位で読むため、空 labels_csv では「出力なし +
+#   `printf '%s' "$labels_csv" | jq -R 'split(",")|map(...)'` で Sub ラベルを
+#   組み立てると、`jq -R` は stdin を行単位で読むため、空 labels_csv では「出力なし +
 #   exit 0」を返し sub_labels_json="" となる。`|| "[]"` ガードは jq が exit 0 で終わるため
 #   発火せず、直後の `jq --argjson labels ""` が "invalid JSON" で落ちて全 Sub-Issue 作成が
 #   失敗する。親は "epic," を前置して常に非空入力になるため成功し、共有ラベルを空にした分解

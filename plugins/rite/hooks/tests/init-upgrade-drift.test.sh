@@ -134,10 +134,10 @@ fi
 
 echo "=== T-13: current >= latest short-circuit path runs drift back-add ==="
 
-# The `current >= latest` short-circuit path previously ran only
-# "Step 3 Backup -> Step 3.5 Wiki Append -> Step 7" and skipped Step 4-6, so
-# multi_session / new active sections / missing sub-keys were silently omitted.
-# The fix routes the short-circuit path through Step 4 Identify -> Step 6 Apply
+# If the `current >= latest` short-circuit path runs only
+# "Step 3 Backup -> Step 3.5 Wiki Append -> Step 7" and skips Step 4-6, then
+# multi_session / new active sections / missing sub-keys are silently omitted.
+# The correct routing sends the short-circuit path through Step 4 Identify -> Step 6 Apply
 # (drift back-add) and folds the Wiki-only Step 3.5 into Step 6 item 7. init.md is
 # an LLM procedure doc, so the back-add behavior itself is exercised by the LLM at
 # runtime, not by a fixture here; these static assertions guard that init.md keeps

@@ -133,8 +133,9 @@ write_per_session "$SBX" "$SID" '{"phase":"phase5_lint","next_action":"continue"
 # work-memory-update.sh の update_local_work_memory 関数内の branch-based issue_number 抽出
 # (`grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+'` chain) は数字のみ抽出するため、
 # branch=fix/issue-687-test では生成 file 名は issue-687.md (not 687-test)。
-# 旧実装は issue-687-test.md を期待する dead if 分岐を持ち、常に else 経路 (WM_ISSUE_NUMBER override)
-# が実行されていた。これを branch-based extraction の直接 assert に修正する。
+# issue-687-test.md を期待する if 分岐は数字のみ抽出する extraction chain と矛盾するため到達せず、
+# 常に else 経路 (WM_ISSUE_NUMBER override) が実行される dead 分岐になる。本 TC は branch-based
+# extraction の結果 (issue-687.md) を直接 assert し、その dead 分岐への退行を guard する。
 # branch-based extraction の直接検証 (cycle 12 false negative regression guard):
 # `make_sandbox --branch fix/issue-687-test` が指定の branch を作るため、branch parsing が `687`
 # を抽出して `.rite-work-memory/issue-687.md` を生成することを確認する。

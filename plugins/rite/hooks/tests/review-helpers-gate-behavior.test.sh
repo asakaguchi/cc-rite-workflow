@@ -6,9 +6,9 @@
 #   - hooks/review-comment-post.sh      (review.md ステップ 6.1.b)
 #   - hooks/review-result-save.sh       (review.md ステップ 6.1.a)
 #
-# 従来これらの helper は shift2-loop-hardening.test.sh の shift-loop no-hang 1 軸のみで
-# カバーされており、中核 invariant である gate 分岐 (reason 語彙 / exit code / [CONTEXT] emit)
-# に behavioral test がなかった。本テストは各 gate を通過 / 遮断の両方向から検証する。
+# shift2-loop-hardening.test.sh は shift-loop no-hang の 1 軸のみをカバーし、これらの helper の
+# 中核 invariant である gate 分岐 (reason 語彙 / exit code / [CONTEXT] emit) には届かない。
+# 本テストは各 gate を通過 / 遮断の両方向から検証してその invariant を guard する。
 #
 # Coverage:
 #   TC-1 review-skip-notification.sh — post_comment_mode 3 分岐 / pr_number numeric gate /

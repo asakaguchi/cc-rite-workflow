@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for plugins/rite/hooks/stop-loop-continuation.sh (Issue #1168)
+# Tests for plugins/rite/hooks/stop-loop-continuation.sh
 # Verifies the Stop hook re-injects the review↔fix loop continuation command when a
 # handoff marker is present, allows the stop otherwise, and consumes the marker one-shot.
 set -euo pipefail
@@ -113,7 +113,7 @@ else
   pass "TC-6: continuation reason is distinct from the FINALIZE branch"
 fi
 
-# --- TC-7: FINALIZE handoff present → block with completion-notice reason (Issue #1176 AC-1/AC-3) ---
+# --- TC-7: FINALIZE handoff present → block with completion-notice reason (AC-1/AC-3) ---
 echo ""
 echo "=== TC-7: FINALIZE handoff → decision:block re-injects the completion-notice directive ==="
 d7=$(new_sandbox)
@@ -140,7 +140,7 @@ else
   fail "TC-7: reason missing the terminal result identifier: $out"
 fi
 
-# --- TC-8: FINALIZE handoff consumed one-shot → second stop allows (Issue #1176 AC-2/AC-5) ---
+# --- TC-8: FINALIZE handoff consumed one-shot → second stop allows (AC-2/AC-5) ---
 echo ""
 echo "=== TC-8: FINALIZE handoff is one-shot — second stop allows (no infinite block) ==="
 sf8=$(state_file_for "$d7")
@@ -187,7 +187,7 @@ fi
 out_b=$(stop_payload "$d10" "$SID" true | bash "$HOOK")
 assert "TC-10: second stop allows (one-shot)" "" "$out_b"
 
-# --- TC-11: WIKICHAIN handoff → block with the cleanup-chain continuation reason (Issue #1245 AC-2/AC-3) ---
+# --- TC-11: WIKICHAIN handoff → block with the cleanup-chain continuation reason (AC-2/AC-3) ---
 echo ""
 echo "=== TC-11: WIKICHAIN handoff → decision:block re-injects the cleanup chain continuation ==="
 d11=$(new_sandbox)
@@ -224,7 +224,7 @@ else
   pass "TC-11: WIKICHAIN reason is distinct from the continuation branch"
 fi
 
-# --- TC-12: WIKICHAIN handoff consumed one-shot → second stop allows (Issue #1245 AC-3) ---
+# --- TC-12: WIKICHAIN handoff consumed one-shot → second stop allows (AC-3) ---
 echo ""
 echo "=== TC-12: WIKICHAIN handoff is one-shot — second stop allows (no infinite block) ==="
 sf12=$(state_file_for "$d11")
@@ -232,7 +232,7 @@ assert "TC-12: WIKICHAIN handoff deleted after block" "ABSENT" "$(jq -r '.handof
 out12=$(stop_payload "$d11" "$SID" true | bash "$HOOK")
 assert "TC-12: second stop allows (no output)" "" "$out12"
 
-# --- TC-13: unknown handoff prefix → fail-loud WARNING + verbatim re-inject (PR #1177 lesson) ---
+# --- TC-13: unknown handoff prefix → fail-loud WARNING + verbatim re-inject ---
 # The case catch-all must not silently absorb future prefixes into a named-branch behavior:
 # it blocks (handoff non-empty → block axis) but surfaces a WARNING on stderr so a missing
 # case arm is observable instead of masquerading as the review↔fix continuation.
@@ -265,7 +265,7 @@ rm -f "$err13"
 out_b=$(stop_payload "$d13" "$SID" true | bash "$HOOK")
 assert "TC-13: second stop allows (one-shot)" "" "$out_b"
 
-# --- TC-14: unknown-prefix WARNING neutralizes control bytes (Issue #1269 / #1274) ---
+# --- TC-14: unknown-prefix WARNING neutralizes control bytes ---
 # The stderr WARNING must not pass raw control bytes (ANSI escapes etc.) to the operator's
 # terminal — same neutralize_ctrl shared-helper convention (control-char-neutralize.sh) as
 # flow-state.sh _emit_jq_err_snippet, covering C0 + DEL + C1 0x80-0x9f byte-wise. The
@@ -298,7 +298,7 @@ else
 fi
 rm -f "$err14"
 
-# --- TC-15: unknown-prefix WARNING neutralizes C1 8-bit control bytes (Issue #1274) ---
+# --- TC-15: unknown-prefix WARNING neutralizes C1 8-bit control bytes ---
 # U+009B (UTF-8: 0xc2 0x9b) is valid UTF-8, so it survives the flow-state JSON round-trip
 # (raw 0x9b would be replaced with U+FFFD by jq) and reaches the WARNING line — the realistic
 # C1 attack byte sequence (xterm-class terminals interpret C1 as control even in UTF-8 mode).
@@ -320,11 +320,11 @@ fi
 if LC_ALL=C grep -q $'\x9b' "$err15"; then
   fail "TC-15: WARNING leaked a raw C1 0x9b byte to stderr: $(cat -v "$err15")"
 else
-  pass "TC-15: WARNING contains no raw C1 0x9b byte (Issue #1274)"
+  pass "TC-15: WARNING contains no raw C1 0x9b byte"
 fi
 rm -f "$err15"
 
-# --- TC-16: JSON emit fallback neutralizes raw C0 bytes → valid JSON (Issue #1275) ---
+# --- TC-16: JSON emit fallback neutralizes raw C0 bytes → valid JSON ---
 # The manual-escape fallback (taken when the final `jq -n` emit fails) only escaped
 # \ / " / \n, letting raw C0 bytes (e.g. ESC from a control-byte handoff) through into
 # the JSON string literal — invalid JSON per RFC 8259. The fix appends
@@ -387,7 +387,7 @@ rm -rf "$fake_bin" "$err16"
 out_b=$(stop_payload "$d16" "$SID" true | bash "$HOOK")
 assert "TC-16: second stop allows (one-shot)" "" "$out_b"
 
-# --- TC-17: JSON emit fallback neutralize failure → static placeholder, block preserved (Issue #1282) ---
+# --- TC-17: JSON emit fallback neutralize failure → static placeholder, block preserved ---
 # TC-16 pins the escape-succeeded side of the fallback (handoff re-injected with C0 → ?).
 # This TC pins the next failure layer: the fallback's own `neutralize_ctrl --c0-only` (a
 # fixed-argument tr pipe the helper header calls "実質失敗しない") also fails, forcing the
@@ -452,6 +452,6 @@ rm -rf "$fake_bin17" "$err17"
 out17b=$(stop_payload "$d17" "$SID" true | bash "$HOOK")
 assert "TC-17: second stop allows (one-shot consume preserved through placeholder path)" "" "$out17b"
 
-if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (Issue #1168 review↔fix loop continuation + #1176 FINALIZE terminal backstop + #1245 WIKICHAIN cleanup-chain gate + #1274 C1 8-bit coverage via shared neutralize_ctrl + #1275 JSON emit fallback C0 neutralization + #1282 neutralize-failure placeholder degradation)"; then
+if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (review↔fix loop continuation + FINALIZE terminal backstop + WIKICHAIN cleanup-chain gate + C1 8-bit coverage via shared neutralize_ctrl + JSON emit fallback C0 neutralization + neutralize-failure placeholder degradation)"; then
   exit 1
 fi

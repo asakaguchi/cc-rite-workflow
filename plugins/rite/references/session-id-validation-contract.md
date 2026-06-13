@@ -42,7 +42,7 @@
    切り替えたり、Layer 1 validator に UUID 形式チェックを追加してはならない。
 
    - **理由**: 複数の hook test が非 UUID opaque sid を `flow-state.sh` に直接渡し、その受理に
-     依存している。代表例として `pre-compact.test.sh` の TC-1371-AC1 は
+     依存している。代表例として `pre-compact.test.sh` の TC-per-session-compact-independence-AC1 は
      `CLAUDE_CODE_SESSION_ID="session-aaaa-1371"` / `"session-bbbb-1371"` を設定し、
      `pre-compact.sh` 内の `flow-state.sh path`（Layer 1 経由）が
      `.rite/sessions/session-aaaa-1371.compact-state` 等へ解決することを期待する。
@@ -61,7 +61,7 @@
 
 以下のテストは非 UUID sid を使い、`flow-state.sh` がそれを受理することに依存する:
 
-- `pre-compact.test.sh` — `session-aaaa-1371` / `session-bbbb-1371`（TC-1371-AC1、Issue 名指しの代表例）
+- `pre-compact.test.sh` — `session-aaaa-1371` / `session-bbbb-1371`（TC-per-session-compact-independence-AC1 が使う非 UUID opaque sid fixture）
 - `pre-compact.test.sh` / `post-compact.test.sh` / `preflight-check.test.sh` / `session-start.test.sh` —
   test helper の default sid `test-sid-<dir>`（非 UUID 形）
 - `flow-state.test.sh` — TC-24（本契約を pin する正のテスト）

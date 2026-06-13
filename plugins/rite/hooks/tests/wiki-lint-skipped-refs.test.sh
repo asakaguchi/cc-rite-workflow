@@ -2,7 +2,7 @@
 # wiki-lint-skipped-refs.test.sh
 #
 # Tests for wiki-lint-skipped-refs.sh (wiki/lint.md ステップ 6.0 delegation
-# target, Issue #1196 / #1193 MEDIUM #14). The helper builds the `skipped_refs`
+# target). The helper builds the `skipped_refs`
 # set from log.md `ingest:skip` records and emits a marker block + log_read_ok
 # 4-value enum. Structure mirrors wiki-lint-source-refs.test.sh (6.2 counterpart).
 #
@@ -397,7 +397,7 @@ fi
 
 # === TC-12: same_branch io_error (log.md が directory) → log_read_ok=io_error ===
 # cat は rc≠0 で stderr "Is a directory" を出し、absent 判別 regex
-# (No such file or directory|cannot open) に match しないため io_error に降格する (Issue #1287)。
+# (No such file or directory|cannot open) に match しないため io_error に降格する。
 echo "TC-12: same_branch io_error (fault injection)"
 repo=$(make_same_branch_sandbox tc12 0)
 mkdir -p "$repo/.rite/wiki/log.md"
@@ -413,7 +413,7 @@ fi
 # === TC-13: separate_branch io_error (不在 wiki branch) → log_read_ok=io_error ===
 # blob path なしの "fatal: invalid object name '<branch>'" は absent 4 pattern の
 # いずれにも match しない (helper コメント記載の典型例: wiki_branch 自体の race 消失) ため
-# io_error に降格する (Issue #1287)。
+# io_error に降格する。
 echo "TC-13: separate_branch io_error (fault injection)"
 repo=$(make_separate_branch_sandbox tc13 1)
 run_helper "$repo" --branch-strategy separate_branch --wiki-branch no-such-branch

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for review-findings-maps.sh (Issue #1196 S4)
+# Tests for review-findings-maps.sh
 #
 # 旧 pr/fix.md ステップ 1.2.0 severity_map build inline block (~154 行) の委譲先 helper。
 # 動作保持は differential equivalence test (TC-D 系) で機械的に立証する:
@@ -364,7 +364,7 @@ fi
 # --------------------------------------------------------------------------
 echo "TC-9: norm_tmp leak なし"
 # 共有 /tmp glob の count delta は並列実行時に他プロセスの同 glob tempfile 生成/削除で
-# 両方向に flaky 化する (Issue #1287)。helper の mktemp template は
+# 両方向に flaky 化する。helper の mktemp template は
 # /tmp/rite-fix-normalized-XXXXXX の絶対 path 固定で TMPDIR 隔離が効かないため、
 # before/after の path 集合差分 (after にのみ存在する path) で leak を判定する。
 before_paths=$(ls /tmp/rite-fix-normalized-* 2>/dev/null | LC_ALL=C sort || true)

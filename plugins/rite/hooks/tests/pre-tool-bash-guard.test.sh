@@ -3,7 +3,7 @@
 # Usage: bash plugins/rite/hooks/tests/pre-tool-bash-guard.test.sh
 set -euo pipefail
 
-# Issue #998: Tier 3 (env var) subagent detection を導入したため、host 環境に
+# Tier 3 (env var) subagent detection を導入したため、host 環境に
 # CLAUDE_SUBAGENT_TYPE / CLAUDE_AGENT_TYPE が export されていると既存の
 # main-session allow テスト (TC-022 stderr branch / TC-023 / TC-028 / TC-062 等) が
 # Tier 3 経路で誤って deny 判定され flake する。全テストで一律遮断する。
@@ -61,7 +61,7 @@ run_guard_raw() {
 }
 
 # Helper: run hook with an explicit transcript_path (reviewer subagent tests)
-# Issue #442: Pattern 4 only activates when transcript_path contains "/subagents/".
+# Pattern 4 only activates when transcript_path contains "/subagents/".
 run_guard_with_transcript() {
   local tool_name="$1"
   local cmd="$2"
@@ -393,7 +393,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# Pattern 4: Reviewer subagent state-mutating git denylist (Issue #442)
+# Pattern 4: Reviewer subagent state-mutating git denylist
 #
 # Scope: Only when transcript_path contains "/subagents/".
 # Main session git operations must continue to work.
@@ -579,7 +579,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# Pattern 4 Cycle 2 additions (Issue #442 cycle 2 fixes)
+# Pattern 4 Cycle 2 additions
 #
 # Coverage expansion: every always-deny verb, bypass path, and read-only
 # sub-command that stays allowed.
@@ -723,7 +723,7 @@ echo "TC-057c: subagent + 'git branch --force feat' → deny"
 assert_subagent_deny "subagent git branch --force blocked" "git branch --force feat"
 
 # --------------------------------------------------------------------------
-# TC-057d〜057h: Issue #995 — git worktree add new-ref-leak forms denied,
+# TC-057d〜057h: git worktree add new-ref-leak forms denied,
 # proper --detach / existing-branch forms allowed.
 # 既存 (E) では `git worktree remove/prune` のみ block していたため、reviewer が
 # `git worktree add -b <newbranch>` 経由で新規 named branch を leak できた gap を補完。
@@ -753,13 +753,13 @@ assert_subagent_deny "subagent worktree move blocked" \
   "git worktree move /tmp/a /tmp/b"
 
 # --------------------------------------------------------------------------
-# TC-057j: Issue #995 reproduction — git checkout -b <new-branch> from subagent
+# TC-057j: reproduction — git checkout -b <new-branch> from subagent
 # Pattern (A) Always-deny の deny verb `git checkout` で block されることを期待
 # (Pattern (E) ではない)。reason 文字列に `reviewer-state-mutating-git` が含まれる
 # ことは assert_subagent_deny helper が確認する。
 # --------------------------------------------------------------------------
-echo "TC-057j: subagent + 'git checkout -b pr-994-test' (Issue #995 reproduction) → deny"
-assert_subagent_deny "subagent git checkout -b new-branch blocked (Issue #995)" \
+echo "TC-057j: subagent + 'git checkout -b pr-994-test' (reproduction) → deny"
+assert_subagent_deny "subagent git checkout -b new-branch blocked" \
   "git checkout -b pr-994-test"
 
 # --------------------------------------------------------------------------
@@ -813,7 +813,7 @@ assert_subagent_deny "subagent worktree add --orphan blocked" \
   "git worktree add --orphan newbr /tmp/d"
 
 # --------------------------------------------------------------------------
-# TC-057t〜057z: Issue #995 cycle 3 — quote bypass + git global flag bypass
+# TC-057t〜057z: cycle 3 — quote bypass + git global flag bypass
 # (security-reviewer cycle 2 で empirical 発見した pre-existing limitation。
 # Pattern 4 を quote 正規化 + global flag 正規化で structural に閉じる)
 # --------------------------------------------------------------------------
@@ -864,7 +864,7 @@ assert_subagent_allow "subagent git -C log allowed (-C with read-only verb)" \
   "git -C /tmp log --oneline"
 
 # --------------------------------------------------------------------------
-# TC-057ad〜af: Issue #1322 — shell-wrapper の deny message に read-only probe 用の
+# TC-057ad〜af: shell-wrapper の deny message に read-only probe 用の
 # 代替ガイダンス (subshell / 直接実行 / bash <script>) を付加する。
 # pattern 名 (reviewer-state-mutating-git) は既存テスト互換のため不変で、wrapper 専用の
 # 理由・代替が reason に出ることを pin する。「(Z) bash -c 一律 block は緩和しない」判断のため、
@@ -893,7 +893,7 @@ assert_subagent_deny_wrapper_guidance() {
   fi
 }
 
-echo "TC-057ad: subagent + 'bash -c \"echo readonly-probe\"' (no git) → deny + wrapper guidance (Issue #1322)"
+echo "TC-057ad: subagent + 'bash -c \"echo readonly-probe\"' (no git) → deny + wrapper guidance"
 assert_subagent_deny_wrapper_guidance "subagent non-git bash -c probe denied with wrapper guidance" \
   'bash -c "echo readonly-probe"'
 
@@ -953,7 +953,7 @@ echo "TC-064: main session + 'git push origin' → allow"
 assert_main_allow "main session git push allowed" "git push origin feat/foo"
 
 # --------------------------------------------------------------------------
-# Pattern 4 Cycle 3 additions (Issue #442 cycle 2 review fixes)
+# Pattern 4 Cycle 3 additions
 # --------------------------------------------------------------------------
 
 # --------------------------------------------------------------------------
@@ -1237,7 +1237,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-116: deny fallback (jq -n emit failure) → valid JSON, deny preserved (Issue #1278)
+# TC-116: deny fallback (jq -n emit failure) → valid JSON, deny preserved
 #   stop-loop-continuation.test.sh TC-16 と同じ fake jq パターン: `jq -n` のみ exit 1 させ、
 #   それ以外 (hook 冒頭の payload parse 等) は real jq へ委譲する。jq 全欠落は payload parse が
 #   先に失敗して fail-open するため、現実的な fallback トリガーは emit-only の jq 失敗。
@@ -1291,7 +1291,7 @@ rm -rf "$fake_bin_116"
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-117: _bash_guard_escape_deny_reason — 改行/C0 実入力の非 vacuous 変換 pin (Issue #1278)
+# TC-117: _bash_guard_escape_deny_reason — 改行/C0 実入力の非 vacuous 変換 pin
 #   TC-116 は fallback 経路の構造契約 (到達 / rc=2 / deny 生存) を pin するが、現行の
 #   _deny_reason は静的 ASCII のみで構成されるため、エスケープ連鎖そのものは no-op の
 #   まま pass する (vacuous)。本 TC は hook から関数定義を境界行
@@ -1346,7 +1346,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-118: deny fallback neutralize 失敗 → static placeholder 縮退、deny + exit 2 維持 (Issue #1282)
+# TC-118: deny fallback neutralize 失敗 → static placeholder 縮退、deny + exit 2 維持
 #   TC-116 は fallback 経路のエスケープ成功側 (reason に pattern 名が残る) を pin する。本 TC は
 #   その先の二重障害 — fallback 内で _bash_guard_escape_deny_reason (neutralize_ctrl = 固定引数の
 #   tr パイプ) まで失敗した場合 — の static placeholder 縮退を pin する。helper header が

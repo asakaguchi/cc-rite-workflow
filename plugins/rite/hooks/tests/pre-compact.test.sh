@@ -75,7 +75,7 @@ state_file_path() {
   echo "$dir/.rite/sessions/${sid}.flow-state"
 }
 
-# Helper: path to the per-session compact-state file (Issue #1371). Mirrors
+# Helper: path to the per-session compact-state file. Mirrors
 # pre-compact.sh's derivation: .rite/sessions/<sid>.flow-state → .compact-state.
 compact_state_path() {
   local dir="$1"
@@ -182,7 +182,7 @@ fi
 echo ""
 
 # --- TC-005: Invalid JSON on stdin → exit 0 (best-effort, lifecycle 維持) ---
-# Issue #758: pre-compact.sh は Claude Code lifecycle hook であり、invalid JSON で
+# pre-compact.sh は Claude Code lifecycle hook であり、invalid JSON で
 # exit 1 を返すと compact 処理自体が止まる risk がある。production は best-effort
 # 設計 (invalid stdin → silent skip + exit 0) を採用しており、本 TC はその contract
 # を pin する。silent skip の真正性 (downstream に副作用が漏れない) は TC-005b と
@@ -199,7 +199,7 @@ fi
 echo ""
 
 # --- TC-005b: Corrupted state file JSON → exit 0 + jq parse error stderr + 元ファイル保持 ---
-# Issue #758: production は corrupted state file 検出時に exit 0 (lifecycle 維持) かつ
+# production は corrupted state file 検出時に exit 0 (lifecycle 維持) かつ
 # jq parse error を stderr に出力 (silent failure 防止) かつ元ファイルを保持する
 # (overwrite 防止)。この 3 contract を pin する。
 echo "TC-005b: Corrupted state file → exit 0 + jq parse error stderr + 元ファイル保持"
@@ -426,8 +426,8 @@ else
 fi
 echo ""
 
-# --- TC-013: active: false → no work memory snapshot, but compact state still written (#776) ---
-echo "TC-013: active: false → no WM snapshot, compact state still written (#776)"
+# --- TC-013: active: false → no work memory snapshot, but compact state still written ---
+echo "TC-013: active: false → no WM snapshot, compact state still written"
 dir013="$TEST_DIR/tc013"
 mkdir -p "$dir013"
 create_state_file "$dir013" '{"active": false, "phase": "completed", "issue_number": 99, "branch": "fix/issue-99-test"}'
@@ -499,8 +499,8 @@ else
 fi
 echo ""
 
-# --- TC-015: resuming state is overwritten to recovering (#854, supersedes #851 AC-1) ---
-echo "TC-015: resuming state overwritten to recovering — every compact sets recovering (#854)"
+# --- TC-015: resuming state is overwritten to recovering ---
+echo "TC-015: resuming state overwritten to recovering — every compact sets recovering"
 dir015="$TEST_DIR/tc015"
 mkdir -p "$dir015"
 create_state_file "$dir015" '{"active": true, "phase": "phase5_lint", "issue_number": 851}'
@@ -521,15 +521,15 @@ if run_hook "$dir015"; then
     tc015_ok=false
   fi
   if [ "$tc015_ok" = true ]; then
-    pass "compact_state overwritten from 'resuming' to 'recovering' with new timestamp (#854)"
+    pass "compact_state overwritten from 'resuming' to 'recovering' with new timestamp"
   fi
 else
   fail "Hook should exit 0"
 fi
 echo ""
 
-# --- TC-016: resuming→recovering overwrite still saves work memory snapshot (#854, supersedes #851 AC-3) ---
-echo "TC-016: resuming→recovering overwrite still saves work memory snapshot (#854)"
+# --- TC-016: resuming→recovering overwrite still saves work memory snapshot ---
+echo "TC-016: resuming→recovering overwrite still saves work memory snapshot"
 dir016="$TEST_DIR/tc016"
 mkdir -p "$dir016"
 create_state_file "$dir016" '{"active": true, "phase": "phase5_review", "issue_number": 160, "branch": "fix/issue-160-test"}'
@@ -539,7 +539,7 @@ echo '{"compact_state":"resuming","compact_state_set_at":"2026-01-01T00:00:00Z",
 if run_hook "$dir016"; then
   wm_file="$dir016/.rite-work-memory/issue-160.md"
   tc016_ok=true
-  # compact_state should now be recovering (overwritten from resuming — #854)
+  # compact_state should now be recovering (overwritten from resuming)
   cs_state=$(jq -r '.compact_state' "$cs016" 2>/dev/null)
   if [ "$cs_state" != "recovering" ]; then
     fail "compact_state should be 'recovering', got '$cs_state'"
@@ -558,15 +558,15 @@ if run_hook "$dir016"; then
     tc016_ok=false
   fi
   if [ "$tc016_ok" = true ]; then
-    pass "compact_state overwritten to 'recovering' AND work memory snapshot created (#854)"
+    pass "compact_state overwritten to 'recovering' AND work memory snapshot created"
   fi
 else
   fail "Hook should exit 0"
 fi
 echo ""
 
-# --- TC-017: corrupted compact state JSON falls back to recovering (#851 AC-4, T-04) ---
-echo "TC-017: corrupted compact state JSON → falls back to recovering (#851)"
+# --- TC-017: corrupted compact state JSON falls back to recovering ---
+echo "TC-017: corrupted compact state JSON → falls back to recovering"
 dir017="$TEST_DIR/tc017"
 mkdir -p "$dir017"
 create_state_file "$dir017" '{"active": true, "phase": "phase5_fix", "issue_number": 170}'
@@ -585,8 +585,8 @@ else
 fi
 echo ""
 
-# --- TC-018: normal compact state transitions to recovering (#133 AC-3) ---
-echo "TC-018: normal compact state → recovering (#133)"
+# --- TC-018: normal compact state transitions to recovering ---
+echo "TC-018: normal compact state → recovering"
 dir018="$TEST_DIR/tc018"
 mkdir -p "$dir018"
 create_state_file "$dir018" '{"active": true, "phase": "phase5_impl", "issue_number": 180}'
@@ -605,11 +605,11 @@ else
 fi
 echo ""
 
-# --- TC-680-A (Issue #680, AC-LOCAL-2): per-session active=true → updated_at touched ---
+# --- TC-per-session-detect-A (AC-LOCAL-2): per-session active=true → updated_at touched ---
 # Verifies pre-compact reads & writes the per-session file (not legacy) when
 # a valid SID + per-session file exists. Also confirms the
 # `.active=true` precondition path still fires the workflow-active branch.
-echo "TC-680-A (Issue #680, AC-LOCAL-2): per-session active=true → updated_at touched"
+echo "TC-per-session-detect-A (AC-LOCAL-2): per-session active=true → updated_at touched"
 dir680a="$TEST_DIR/tc680a"
 mkdir -p "$dir680a/.rite/sessions"
 sid680a="aaaabbbb-cccc-dddd-eeee-ffffaaaa1111"
@@ -623,32 +623,32 @@ output=$(run_hook "$dir680a") && rc=0 || rc=$?
 if [ $rc -eq 0 ] && [ -f "$per_session_file" ]; then
   new_ts=$(jq -r '.updated_at' "$per_session_file" 2>/dev/null)
   if [ "$new_ts" != "$old_ts" ] && [ -n "$new_ts" ]; then
-    pass "TC-680-A: per-session file updated_at refreshed (per-session resolution working)"
+    pass "TC-per-session-detect-A: per-session file updated_at refreshed (per-session resolution working)"
   else
-    fail "TC-680-A: per-session updated_at not refreshed (old=$old_ts new=$new_ts)"
+    fail "TC-per-session-detect-A: per-session updated_at not refreshed (old=$old_ts new=$new_ts)"
   fi
 else
-  fail "TC-680-A: hook exited non-zero or per-session file missing (rc=$rc)"
+  fail "TC-per-session-detect-A: hook exited non-zero or per-session file missing (rc=$rc)"
 fi
 # Counter-assertion: workflow-active stdout fired (.active=true precondition)
 if echo "$output" | grep -q "STOP. Compact detected. Issue #680"; then
-  pass "TC-680-A: workflow-active stdout fired on per-session path (.active=true preserved)"
+  pass "TC-per-session-detect-A: workflow-active stdout fired on per-session path (.active=true preserved)"
 else
-  fail "TC-680-A: workflow-active stdout missing — .active=true precondition broke on per-session path"
+  fail "TC-per-session-detect-A: workflow-active stdout missing — .active=true precondition broke on per-session path"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-749-STDERR-PASSTHROUGH (Issue #749, AC-1 / AC-LOCAL-1)
+# TC-helper-failure-stderr-passthrough (AC-1 / AC-LOCAL-1)
 # --------------------------------------------------------------------------
-echo "TC-749-STDERR-PASSTHROUGH: helper failure → ERROR pass-through + skip WARNING"
+echo "TC-helper-failure-stderr-passthrough: helper failure → ERROR pass-through + skip WARNING"
 
 HOOKS_REAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 sbx_749="$(mktemp -d "$TEST_DIR/sbx-hooks-XXXXXX")"
 cp -a "$HOOKS_REAL_DIR/." "$sbx_749/"
 cat > "$sbx_749/flow-state.sh" <<'FAKE_RESOLVER_EOF'
 #!/bin/bash
-echo "ERROR: TC-749 simulated flow-state.sh path failure" >&2
+echo "ERROR: TC-helper-failure simulated flow-state.sh path failure" >&2
 exit 1
 FAKE_RESOLVER_EOF
 chmod +x "$sbx_749/flow-state.sh"
@@ -661,7 +661,7 @@ echo "{\"cwd\": \"$dir_749\"}" \
   | bash "$sbx_749/pre-compact.sh" >/dev/null 2>"$LAST_STDERR_FILE" || true
 stderr_749="$(cat "$LAST_STDERR_FILE")"
 
-if printf '%s' "$stderr_749" | grep -qF 'TC-749 simulated flow-state.sh path failure'; then
+if printf '%s' "$stderr_749" | grep -qF 'TC-helper-failure simulated flow-state.sh path failure'; then
   pass "ERROR line from flow-state.sh passed through to caller stderr"
 else
   fail "Expected ERROR pass-through; got stderr: $stderr_749"
@@ -773,15 +773,15 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-1371-AC1: two sessions in the same state root write INDEPENDENT
-# compact-state files (Issue #1371 — last-writer-wins resolved).
+# TC-per-session-compact-independence-AC1: two sessions in the same state root write INDEPENDENT
+# compact-state files (last-writer-wins resolved).
 # --------------------------------------------------------------------------
 # Drives two compacts in one state root under two distinct session ids (via
 # CLAUDE_CODE_SESSION_ID, no .rite-session-id file so the env var wins). Each
 # must land in its own .rite/sessions/<sid>.compact-state with its own
-# active_issue. Before #1371 both wrote the single shared .rite-compact-state
+# active_issue. Before the fix both wrote the single shared .rite-compact-state
 # and the second clobbered the first — this test would have caught that.
-echo "TC-1371-AC1: two sessions → independent compact-state files (no last-writer-wins)"
+echo "TC-per-session-compact-independence-AC1: two sessions → independent compact-state files (no last-writer-wins)"
 dirac1="$TEST_DIR/tc1371ac1"
 mkdir -p "$dirac1/.rite/sessions"
 sidA="session-aaaa-1371"

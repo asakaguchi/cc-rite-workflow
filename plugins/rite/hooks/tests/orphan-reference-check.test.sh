@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for orphan-reference-check.sh (PR #1162 cycle 17 — Issue #1159 expansion)
+# Tests for orphan-reference-check.sh
 # Usage: bash plugins/rite/hooks/tests/orphan-reference-check.test.sh
 set -euo pipefail
 
@@ -15,7 +15,7 @@ trap cleanup EXIT INT TERM HUP
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 
-echo "=== orphan-reference-check.sh tests (PR #1162) ==="
+echo "=== orphan-reference-check.sh tests ==="
 echo ""
 
 # Setup: minimal repo-like structure under TEST_DIR

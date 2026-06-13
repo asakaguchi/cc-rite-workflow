@@ -1,20 +1,20 @@
-# Regression fixture: Issue #634 — create-interview sub-skill return 後の implicit stop (self-exemplar)
+# Regression fixture: create sub-skill return 後の implicit stop — 再発（self-exemplar）
 
-- **Issue**: #634
-- **Previous accumulated fixes**: #525, #444, #475, #552, #561, #622, #628
-- **Sibling regression**: #621 (cleanup workflow 内の同型問題)
+- **症状**: create-interview sub-skill return 後の implicit stop が、原型対策の導入後も低頻度で再発する（同症状の 8 回目の再発）
+- **累積対策の系譜**: 本 fixture 以前に、同症状およびその前駆となる sub-skill / interview / sentinel まわりの turn-boundary 問題に対し 7 件の対策が累積している（本 fixture はその 8 件目）
+- **Sibling 回帰**: cleanup workflow の wiki-ingest 経路で観測された同型問題（caller / sub-skill が異なるだけで構造は同一）
 
 > **⚠️ Status: Retired（歴史的記録）**
 >
-> 本 fixture が検証していたアーキテクチャ — pre-v3 の sub-skill chain（`create-interview.md` / `create-register.md` / `create-decompose.md`）と Stop hook `stop-guard.sh` による implicit-stop ブロック機構 — は撤去済みである。sub-skill 群は flat な `create.md` へ統合され、Stop hook は PR #675 で機構ごと撤去された（phase 遷移 whitelist `phase-transition-whitelist.sh` も v2→v3 で削除）。
+> 本 fixture が検証していたアーキテクチャ — pre-v3 の sub-skill chain（`create-interview.md` / `create-register.md` / `create-decompose.md`）と Stop hook `stop-guard.sh` による implicit-stop ブロック機構 — は撤去済みである。sub-skill 群は flat な `create.md` へ統合され、Stop hook は後続 PR で機構ごと撤去された（phase 遷移 whitelist `phase-transition-whitelist.sh` も v2→v3 で削除）。
 >
-> したがって以下の検証コマンドのうち `stop-guard.sh` / `stop-guard.test.sh` / `phase-transition-whitelist.sh` / `create-interview.md` / `create-register.md` / `create-decompose.md` / `.rite-stop-guard-diag.log` を参照するものは **すべて実行不能**であり、#634 を含む同型 regression シリーズの**歴史的記録**として残置する。現在の implicit-stop 対策は orchestrator レベルの scaffolding 契約（Pre-write + 🚨 Mandatory After）と `/rite:resume` による復帰が担い、lifecycle phase の分類は `session-end.sh` の inline glob が行う。
+> したがって以下の検証コマンドのうち `stop-guard.sh` / `stop-guard.test.sh` / `phase-transition-whitelist.sh` / `create-interview.md` / `create-register.md` / `create-decompose.md` / `.rite-stop-guard-diag.log` を参照するものは **すべて実行不能**であり、本 fixture を含む同型 regression シリーズの**歴史的記録**として残置する。現在の implicit-stop 対策は orchestrator レベルの scaffolding 契約（Pre-write + 🚨 Mandatory After）と `/rite:resume` による復帰が担い、lifecycle phase の分類は `session-end.sh` の inline glob が行う。
 >
-> 本文中の `[create:completed:` / `[interview:completed]` sentinel literal は **pre-#1165 naming の歴史的記述** として保持する（Issue #1165 で skill return sentinel は `:returned-to-caller` 形式に rename されたが、#634 repro が検証していたのは当時の `:completed` 形式の sentinel であり、historical 正確性のため書き換えない）。現行 sentinel 命名規約は `plugins/rite/commands/issue/create.md` ステップ 4.4 / 5.6 の `[create:returned-to-caller:{N}]` を参照。
+> 本文中の `[create:completed:` / `[interview:completed]` sentinel literal は **skill return sentinel が `:returned-to-caller` 形式へ rename される前の歴史的形式** として保持する（後に skill return sentinel は `:returned-to-caller` 形式に rename されたが、本 fixture が検証していたのは当時の `:completed` 形式の sentinel であり、historical 正確性のため書き換えない）。現行 sentinel 命名規約は `plugins/rite/commands/issue/create.md` ステップ 4.4 / 5.6 の `[create:returned-to-caller:{N}]` を参照。
 
 ## 0. このドキュメントの位置づけ
 
-#634 は本リポジトリで 8 回目の同一 protocol violation regression (7 件の累積対策 + #634 fix)。本ドキュメントは #622 fixture (`issue-622-repro.md`) の後継として、#634 で追加した防御層の検証手順と AC 対応表を記録する。
+本 fixture は本リポジトリで 8 回目の同一 protocol violation regression（7 件の累積対策 + 本 fixture の fix）を記録する。原型 fixture (`subskill-return-implicit-stop-repro.md`) の後継として、本回帰で追加した防御層の検証手順と AC 対応表を記録する。
 
 ## 1. 再現手順 (baseline: 修正前)
 
@@ -23,7 +23,7 @@
 - `plugins/rite/hooks/hooks.json` が存在し、Claude Code の native plugin hook discovery (ファイル存在ベース) により `Stop` hook = `stop-guard.sh` が登録されている (init.md Phase 4.5.0.2 / start.md Step 2 参照)
 - `jq` がインストールされている
 - `.rite-flow-state` が存在しない (fresh start)
-- #628 までの全累積対策が適用されている HEAD
+- 本 fixture 以前の全累積対策が適用されている HEAD（直前の回帰対策まで取り込み済み）
 
 ### 1.2 実行
 
@@ -31,7 +31,7 @@
 /rite:issue:create "テスト用の bug fix Issue"
 ```
 
-### 1.3 期待される regression 挙動 (#634 fix 前)
+### 1.3 期待される regression 挙動 (本回帰 fix 前)
 
 以下が一気通貫で実行される**はず**だが、step 5 と step 6 の間で turn が切れる可能性がある:
 
@@ -40,7 +40,7 @@
 3. **Delegation to Interview Pre-write**: `.rite-flow-state.phase = create_interview` に patch
 4. `Skill: rite:issue:create-interview` invoke
 5. `create-interview.md` が Bug Fix preset を適用 (Phase 0.4.1 → skip Phase 0.5)。`<!-- [interview:skipped] -->` を最終行として emit
-6. ⚠️ **turn 境界形成 (implicit stop)** — user に `✻ Crunched for 2m XXs` (実 UI 上は `✻` U+273B prefix 付き) が表示される (#622 対策後も低頻度で再発)
+6. ⚠️ **turn 境界形成 (implicit stop)** — user に `✻ Crunched for 2m XXs` (実 UI 上は `✻` U+273B prefix 付き) が表示される (原型対策の導入後も低頻度で再発)
 7. user が `continue` を入力
 8. `create.md` の 🚨 Mandatory After Interview → Phase 0.6 → Delegation Routing → `create-register` invoke
 
@@ -53,7 +53,7 @@ tail -50 .rite-stop-guard-diag.log | grep -E 'phase=create_post_interview|phase=
 
 回帰時は `EXIT:2 reason=blocking phase=create_post_interview` が 1 件以上記録されつつ、かつ `create_post_interview → create_delegation` 方向への whitelist 遷移記録がない (= orchestrator が Delegation Routing に進んでいない) 状態。
 
-## 2. 期待動作 (#634 fix 後)
+## 2. 期待動作 (本回帰 fix 後)
 
 ### 2.1 AC-1/AC-2: 同 turn 内完走
 
@@ -114,7 +114,7 @@ bash plugins/rite/hooks/tests/stop-guard.test.sh 2>&1 | awk '
 #       L: flag 無しの patch が error_count を 0 にリセット (default behavior)
 #   - fault injection (cycle 5 F-04): TC-634-M/N
 #       M: stop-guard.sh mv failure fault injection (error_count atomic write の mv 失敗時に diag log 記録)
-#       N: flow-state-update.sh patch mode mv failure fault injection (mv 失敗時に ERROR stderr + diag log 永続痕跡 — #636 cycle 12 F-02)
+#       N: flow-state-update.sh patch mode mv failure fault injection (mv 失敗時に ERROR stderr + diag log 永続痕跡 — fault-injection 強化 cycle で追加)
 #   - AC-5 / AC-6 structural automation (cycle 6 F-06 + cycle 7 F-03): TC-634-O/P
 #       O: AC-5 contract phrase grep automation (anti-pattern / correct-pattern / same response turn / DO NOT stop)
 #       P: AC-6 structural non-regression automation (HTML sentinel / case arm / whitelist / Pre-flight /
@@ -133,17 +133,17 @@ bash plugins/rite/hooks/tests/stop-guard.test.sh 2>&1 | awk '
 
 自動化は 8-1/8-2 Future Work で検討 (本 fixture は再現手順と verification 手段を記録する範囲)。
 
-## 3. 根本原因分析 (#634 向け)
+## 3. 根本原因分析 (本回帰向け)
 
 ### 3.1 本 regression の追加仮説
 
 | ID | 仮説 | 評価 |
 |---|---|---|
-| H1 | Bug Fix / Chore preset で sub-skill 側処理が軽く「完了感」が強い → turn-boundary heuristic が発火しやすい | 主因 (#634 Issue body §3 想定) |
+| H1 | Bug Fix / Chore preset で sub-skill 側処理が軽く「完了感」が強い → turn-boundary heuristic が発火しやすい | 主因 (本回帰 Issue body §3 想定) |
 | H2 | stop-guard の case arm が発火しても stderr 経由の feedback (exit-2 contract) を LLM が確実に consume していない | 副因 (workflow_incident emit 経路は動作中だが HINT が届かないケース) |
-| H3 | HTML コメント sentinel (`<!-- [interview:skipped] -->`) は turn-boundary を弱める効果はあるが排除しきれていない | 副因 (#561 対策の限界) |
+| H3 | HTML コメント sentinel (`<!-- [interview:skipped] -->`) は turn-boundary を弱める効果はあるが排除しきれていない | 副因 (sentinel ベース対策の限界) |
 
-### 3.2 #634 fix の対策マッピング
+### 3.2 本回帰 fix の対策マッピング
 
 | Fix layer | Target | 仮説への対応 |
 |-----------|--------|------------|
@@ -159,7 +159,7 @@ bash plugins/rite/hooks/tests/stop-guard.test.sh 2>&1 | awk '
 | AC-1 (Happy path, skipped) | `/rite:issue:create` with Bug Fix preset → continue 不要で完走、`[create:completed:{N}]` が同 turn 内で emit | Manual + Integration (Section 2.4) |
 | AC-2 (Happy path, completed) | Feature preset で deep-dive 実施 → continue 不要で完走 | Manual + Integration (Section 2.4) |
 | AC-3 (Self-exemplar) | 3+ 件連続作成で `continue` 介入ゼロ | Section 2.4 の manual scenario |
-| AC-4 (Error / observable) | stop-guard block → `workflow_incident` sentinel stderr emit | TC-622-B (既存) |
+| AC-4 (Error / observable) | stop-guard block → `workflow_incident` sentinel stderr emit | 原型 fixture の既存 TC (workflow_incident emit) |
 | AC-5 (Non-regression contract phrases) | create.md に `anti-pattern` / `correct-pattern` / `same response turn` / `DO NOT stop` の各 count >= 1 | Section 5 の inline grep スニペット + TC-634-O automation の両方を規範とする (inline grep は手動 spot-check 用、TC-634-O は CI regression 検出用) |
 | AC-6 (Non-regression structure) | HTML コメント sentinel + case arm + whitelist + Pre-flight + `[create:completed:` sentinel 保持 (対象ファイル一覧は Section 5 を参照) | Section 5 の inline grep スニペット + TC-634-P automation の両方を規範とする (AC-5 と対称: inline grep は手動 spot-check 用、TC-634-P は CI regression 検出用) |
 
@@ -192,9 +192,9 @@ grep -F 'MANDATORY Pre-flight' plugins/rite/commands/issue/create-interview.md >
   && echo "✅ Pre-flight section intact" \
   || echo "❌ Pre-flight section missing"
 
-# #636 cycle 7 F-03: AC-6 判定手段として Issue #634 body で明示された
+# AC-6 判定手段として本回帰の Issue body で明示された
 # `[create:completed:` sentinel (create.md / create-register.md / create-decompose.md の 3 点)
-# の存在を grep で verify。sentinel は #561 / #622 対策の一部であり、
+# の存在を grep で verify。sentinel は原型回帰およびその前駆 sentinel 対策の一部であり、
 # 将来の削除・改名を regression として検出する。
 for f in plugins/rite/commands/issue/create.md \
          plugins/rite/commands/issue/create-register.md \
@@ -215,7 +215,7 @@ done
 
 ## 7. Decision Log
 
-- **本 Issue を #622 reopen ではなく新規 regression Issue として扱う**: PR 履歴を切り分けて retrospective を容易化
+- **本回帰を原型 Issue の reopen ではなく新規 regression Issue として扱う**: PR 履歴を切り分けて retrospective を容易化
 - **Self-exemplar を AC に含める**: 本 Issue 作成プロセスそのものが再現サンプル
 - **LLM turn-boundary heuristic 自体を制御しない方針**: externalized enforcement (stop-guard / whitelist / flow-state) で継続補強
 - **Step 0 を Step 1 と冗長化する設計**: redundancy がそのまま実装 → idempotent patch を 2 回呼ぶコストは無視できるが、2 つの concrete tool call として LLM に見せることで turn-boundary 感を分割する

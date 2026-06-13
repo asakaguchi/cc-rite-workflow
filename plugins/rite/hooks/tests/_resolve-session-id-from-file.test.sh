@@ -1,8 +1,8 @@
 #!/bin/bash
-# Tests for _resolve-session-id-from-file.sh (PR #688 cycle 13 F-02 対応)
+# Tests for _resolve-session-id-from-file.sh (cycle 13 F-02 対応)
 #
 # Purpose:
-#   PR #688 cycle 12 F-05 で `_resolve-session-id-from-file.sh:90-107` に追加された
+#   cycle 12 F-05 で `_resolve-session-id-from-file.sh:90-107` に追加された
 #   path traversal / shell metachar / 制御文字 reject ロジック (security defense-in-depth)
 #   は caller 3 site (state-read.sh / flow-state-update.sh / resume-active-flag-restore.sh)
 #   が validated path のみ渡すため、悪意ある STATE_ROOT 入力経路を exercise する test が
@@ -27,7 +27,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOKS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 HELPER="$HOOKS_DIR/_resolve-session-id-from-file.sh"
 
-# Issue #990: source common helpers for make_plain_sandbox.
+# Source common helpers for make_plain_sandbox.
 # This file's prior `make_sandbox` was a no-git variant with auto-cleanup-push;
 # we now build on make_plain_sandbox and rename the wrapper to
 # setup_session_id_sandbox, mirroring _validate-helpers.test.sh and avoiding a
@@ -72,7 +72,7 @@ assert_match() {
   fi
 }
 
-# Issue #990: thin wrapper built on make_plain_sandbox from _test-helpers.sh.
+# Thin wrapper built on make_plain_sandbox from _test-helpers.sh.
 # IMPORTANT: This wrapper does NOT push to cleanup_dirs — callers MUST push
 # from the parent shell (after capturing $(setup_session_id_sandbox)) because
 # any push performed inside $(...) is lost in the command-substitution subshell.

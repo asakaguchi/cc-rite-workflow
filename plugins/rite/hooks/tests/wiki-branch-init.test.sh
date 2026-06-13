@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for wiki-branch-init.sh (Issue #1196 S2)
+# Tests for wiki-branch-init.sh
 #
 # 旧 commands/wiki/init.md ステップ 3.1 inline block (~95 行) の委譲先 helper。
 # 動作保持は differential equivalence test (TC-D 系) で機械的に立証する:
@@ -340,7 +340,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-7: 値なしフラグ末尾 → no-hang (Issue #1224 shift; shift hardening)
+# TC-7: 値なしフラグ末尾 → no-hang (shift; shift hardening)
 # --------------------------------------------------------------------------
 echo "TC-7: value-less trailing flag no-hang"
 repo=$(make_sandbox tc7)
@@ -352,7 +352,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-8: leading-`-` の wiki_branch → fail-fast gate + exit 1 (Issue #1290)
+# TC-8: leading-`-` の wiki_branch → fail-fast gate + exit 1
 #   `--force` が `git push -u origin` の option として解釈される argument injection
 #   経路を git 操作到達前に遮断することの検証。gate は git 操作より前に発火するため
 #   ブランチ未作成・main 滞在の end state も pin する。

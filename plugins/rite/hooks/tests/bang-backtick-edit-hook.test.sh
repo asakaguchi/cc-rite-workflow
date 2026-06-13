@@ -6,7 +6,7 @@
 # Companion of `bang-backtick-check.sh` (which is the underlying scanner)
 # and the `/rite:pr:create` / `/rite:pr:ready` Phase 1.0 bulk gate.
 #
-# Issue #691 — 経路 C (immediate per-edit detection).
+# 経路 C (immediate per-edit detection).
 #
 # Pinned acceptance criteria:
 #   AC-1 (Happy path: 経路 C 即時検出)

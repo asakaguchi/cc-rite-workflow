@@ -2,7 +2,7 @@
 # bang-backtick-pr-create-pre-check.test.sh
 #
 # Regression tests for the Phase 1.0 Pre-PR Gate added to
-# `commands/pr/create.md` and `commands/pr/ready.md` by Issue #691.
+# `commands/pr/create.md` and `commands/pr/ready.md`.
 # The gate invokes `bang-backtick-check.sh --all` and exits non-zero on
 # detection or invocation failure.
 #
@@ -17,7 +17,7 @@
 #      still invoke `bang-backtick-check.sh --all` AND treat its exit
 #      code as a warning rather than an error (AC-4).
 #
-# Issue #691 — 経路 D (pre-PR hard gate).
+# 経路 D (pre-PR hard gate).
 #
 # Pinned acceptance criteria:
 #   AC-2 (Happy path: 経路 D PR 提出前 block) — TC-2

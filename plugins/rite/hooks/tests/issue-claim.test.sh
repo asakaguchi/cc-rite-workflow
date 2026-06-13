@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for issue-claim.sh (Issue #1363 / S3, multi-session design §7).
+# Tests for issue-claim.sh (multi-session design §7).
 #
 # Covers:
 #   AC-1: concurrent claim → exactly one process succeeds (noclobber atomicity)

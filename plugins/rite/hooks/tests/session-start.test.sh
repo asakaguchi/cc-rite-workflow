@@ -80,7 +80,7 @@ state_file_path() {
   echo "$dir/.rite/sessions/${sid}.flow-state"
 }
 
-# Helper: path to the per-session compact-state file (Issue #1371). Mirrors
+# Helper: path to the per-session compact-state file. Mirrors
 # session-start.sh's _cleanup_stale_compact derivation from the resolved
 # STATE_FILE: .rite/sessions/<sid>.flow-state → .compact-state.
 compact_state_path() {
@@ -112,7 +112,7 @@ run_hook_with_source() {
   return $rc
 }
 
-# Helper: run session-start hook with CWD, source, and explicit session_id (#558)
+# Helper: run session-start hook with CWD, source, and explicit session_id
 # Produces a hook JSON payload containing session_id so check_session_ownership
 # can compare against the state file's session_id.
 run_hook_with_session() {
@@ -129,7 +129,7 @@ run_hook_with_session() {
   return $rc
 }
 
-# ISO 8601 timestamp helper for state files (#558)
+# ISO 8601 timestamp helper for state files
 # Args: $1 = offset in seconds (negative = past, default 0 = now)
 iso8601_now() {
   local offset="${1:-0}"
@@ -168,7 +168,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-003: No state file + issue branch + source=compact → silent (no message) (#772)
+# TC-003: No state file + issue branch + source=compact → silent (no message)
 # Note: Tests compact source path. TC-025 tests the same scenario with explicit startup source.
 # --------------------------------------------------------------------------
 echo "TC-003: No state file + issue branch + source=compact → silent (no message)"
@@ -367,10 +367,10 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-012: source=compact + compact_state=recovering → CRITICAL message (#133)
+# TC-012: source=compact + compact_state=recovering → CRITICAL message
 # PostCompact hook now handles recovery; SessionStart(compact) falls through to CRITICAL.
 # --------------------------------------------------------------------------
-echo "TC-012: source=compact + compact_state=recovering → CRITICAL message (#133)"
+echo "TC-012: source=compact + compact_state=recovering → CRITICAL message"
 dir012="$TEST_DIR/tc012"
 mkdir -p "$dir012"
 create_state_file "$dir012" '{"active": true, "issue_number": 55, "phase": "implementing"}'
@@ -421,10 +421,10 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-015: source=clear + compact_state=recovering → defensive reset (#133)
+# TC-015: source=clear + compact_state=recovering → defensive reset
 # /clear now applies the same defensive reset as startup (compact recovery is handled by PostCompact).
 # --------------------------------------------------------------------------
-echo "TC-015: source=clear + compact_state=recovering → defensive reset (#133)"
+echo "TC-015: source=clear + compact_state=recovering → defensive reset"
 dir015="$TEST_DIR/tc015"
 mkdir -p "$dir015"
 create_state_file "$dir015" '{"active": true, "issue_number": 58, "phase": "implementing"}'
@@ -442,13 +442,13 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-1371: source=clear → _cleanup_stale_compact removes BOTH the per-session
-# compact-state and the legacy shared file (Issue #1371).
+# TC-per-session-legacy-compact-cleanup: source=clear → _cleanup_stale_compact removes BOTH the per-session
+# compact-state and the legacy shared file.
 # Non-vacuous: seeds the per-session file so a regression that only cleans the
-# legacy shared path (the pre-#1371 behavior) would leave the per-session file
+# legacy shared path (the pre-fix behavior) would leave the per-session file
 # behind and fail this assertion.
 # --------------------------------------------------------------------------
-echo "TC-1371: source=clear → per-session AND legacy compact-state both cleaned (#1371)"
+echo "TC-per-session-legacy-compact-cleanup: source=clear → per-session AND legacy compact-state both cleaned"
 dir1371="$TEST_DIR/tc1371"
 mkdir -p "$dir1371"
 create_state_file "$dir1371" '{"active": true, "issue_number": 1371, "phase": "implement"}'
@@ -466,7 +466,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-016: source=startup + compact_state=blocked + active=true → defensive reset (#761)
+# TC-016: source=startup + compact_state=blocked + active=true → defensive reset
 # --------------------------------------------------------------------------
 echo "TC-016: source=startup + compact_state=blocked + active=true → defensive reset"
 dir016="$TEST_DIR/tc016"
@@ -484,7 +484,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-017: source=startup + compact_state=blocked + active=false → clean compact state (#756)
+# TC-017: source=startup + compact_state=blocked + active=false → clean compact state
 # --------------------------------------------------------------------------
 echo "TC-017: source=startup + compact_state=blocked + active=false → clean compact state"
 dir017="$TEST_DIR/tc017"
@@ -501,7 +501,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-018: source=startup + compact_state=blocked + no flow state → clean compact state (#756)
+# TC-018: source=startup + compact_state=blocked + no flow state → clean compact state
 # --------------------------------------------------------------------------
 echo "TC-018: source=startup + compact_state=blocked + no flow state → clean compact state"
 dir018="$TEST_DIR/tc018"
@@ -518,7 +518,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-019: source=startup + compact_state=blocked + active=true → compact state cleaned (#761, #772)
+# TC-019: source=startup + compact_state=blocked + active=true → compact state cleaned
 # --------------------------------------------------------------------------
 echo "TC-019: source=startup + compact_state=blocked + active=true → compact state cleaned"
 dir019="$TEST_DIR/tc019"
@@ -535,7 +535,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-020: source=startup + compact_state=blocked + lockdir → both cleaned (#756)
+# TC-020: source=startup + compact_state=blocked + lockdir → both cleaned
 # --------------------------------------------------------------------------
 echo "TC-020: source=startup + compact_state=blocked + lockdir → both cleaned"
 dir020="$TEST_DIR/tc020"
@@ -553,10 +553,10 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-021: source=compact + compact_state=recovering + active=false → clean (#133, #756)
+# TC-021: source=compact + compact_state=recovering + active=false → clean
 # PostCompact handles active flows; SessionStart always cleans up inactive state.
 # --------------------------------------------------------------------------
-echo "TC-021: source=compact + compact_state=recovering + active=false → compact state cleaned (#133)"
+echo "TC-021: source=compact + compact_state=recovering + active=false → compact state cleaned"
 dir021="$TEST_DIR/tc021"
 mkdir -p "$dir021"
 create_state_file "$dir021" '{"active": false, "issue_number": 64, "phase": "completed"}'
@@ -564,14 +564,14 @@ echo '{"compact_state": "recovering", "active_issue": 64}' > "$dir021/.rite-comp
 
 output=$(run_hook_with_source "$dir021" "compact") && rc=0 || rc=$?
 if [ $rc -eq 0 ] && ! [ -f "$dir021/.rite-compact-state" ]; then
-  pass "source=compact + active=false → compact state cleaned (#133)"
+  pass "source=compact + active=false → compact state cleaned"
 else
   fail "Expected exit 0 and .rite-compact-state cleaned, got rc=$rc, exists=$([ -f "$dir021/.rite-compact-state" ] && echo yes || echo no)"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-022: source=startup + active=false + no compact state → no-op (#756)
+# TC-022: source=startup + active=false + no compact state → no-op
 # --------------------------------------------------------------------------
 echo "TC-022: source=startup + active=false + no compact state → no-op"
 dir022="$TEST_DIR/tc022"
@@ -588,7 +588,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-023: source=startup + active=true + phase=completed → silent reset + compact cleanup (#772)
+# TC-023: source=startup + active=true + phase=completed → silent reset + compact cleanup
 # --------------------------------------------------------------------------
 echo "TC-023: source=startup + active=true + phase=completed → silent reset + compact cleanup"
 dir023="$TEST_DIR/tc023"
@@ -606,7 +606,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-024: source=startup + active=true + phase=implementing → message shown (#772)
+# TC-024: source=startup + active=true + phase=implementing → message shown
 # --------------------------------------------------------------------------
 echo "TC-024: source=startup + active=true + phase=implementing → message shown"
 dir024="$TEST_DIR/tc024"
@@ -623,7 +623,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-025: No state file + issue branch + source=startup → silent (#772)
+# TC-025: No state file + issue branch + source=startup → silent
 # --------------------------------------------------------------------------
 echo "TC-025: No state file + issue branch + source=startup → silent"
 git_repo_025="$TEST_DIR/git_tc025"
@@ -639,7 +639,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-026: source=startup + active=true + phase=completed + needs_clear=true → silent reset (#772)
+# TC-026: source=startup + active=true + phase=completed + needs_clear=true → silent reset
 # Edge case: completed takes priority over needs_clear flag
 # --------------------------------------------------------------------------
 echo "TC-026: source=startup + phase=completed + needs_clear=true → silent reset (completed priority)"
@@ -657,7 +657,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-027: source=startup + active=true + no issue_number + phase=implementing → silent reset, no message (#772)
+# TC-027: source=startup + active=true + no issue_number + phase=implementing → silent reset, no message
 # Tests the code path where ISSUE is empty after defensive reset (phase != completed)
 # --------------------------------------------------------------------------
 echo "TC-027: source=startup + active=true + no issue_number → silent reset, no message"
@@ -675,9 +675,9 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-T01 (#558): own-session startup → reset (session_id matches)
+# TC-T01: own-session startup → reset (session_id matches)
 # --------------------------------------------------------------------------
-echo "TC-T01 (#558): own-session startup → reset proceeds"
+echo "TC-T01: own-session startup → reset proceeds"
 dirT01="$TEST_DIR/tcT01"
 mkdir -p "$dirT01"
 sid_t01="ses-T01-$(date +%s)"
@@ -696,9 +696,9 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-T02 (#558): other-session startup → SKIP reset (file unchanged)
+# TC-T02: other-session startup → SKIP reset (file unchanged)
 # --------------------------------------------------------------------------
-echo "TC-T02 (#558): other-session startup → reset skipped (regression guard)"
+echo "TC-T02: other-session startup → reset skipped (regression guard)"
 dirT02="$TEST_DIR/tcT02"
 mkdir -p "$dirT02"
 sid_state="ses-T02-state-$(date +%s)"
@@ -727,9 +727,9 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-T03 (#558): legacy state (no session_id) startup → reset (backward compat)
+# TC-T03: legacy state (no session_id) startup → reset (backward compat)
 # --------------------------------------------------------------------------
-echo "TC-T03 (#558): per-session state without internal session_id field → reset"
+echo "TC-T03: per-session state without internal session_id field → reset"
 dirT03="$TEST_DIR/tcT03"
 mkdir -p "$dirT03"
 sid_t03="ses-T03-hook"
@@ -751,11 +751,11 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-T04 (#558): check_session_ownership unavailable → fail-safe reset
+# TC-T04: check_session_ownership unavailable → fail-safe reset
 # Sandbox: copy session-start.sh + dependencies, replace session-ownership.sh
 # with a stub that fails to define the function → command -v false → reset
 # --------------------------------------------------------------------------
-echo "TC-T04 (#558): check_session_ownership unavailable → fail-safe reset"
+echo "TC-T04: check_session_ownership unavailable → fail-safe reset"
 dirT04="$TEST_DIR/tcT04"
 mkdir -p "$dirT04/sandbox/hooks"
 sandbox_hook_dir="$dirT04/sandbox/hooks"
@@ -795,10 +795,10 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-T04b (#558 / review M-EH1): check_session_ownership unavailable + RITE_DEBUG=1
+# TC-T04b (review M-EH1): check_session_ownership unavailable + RITE_DEBUG=1
 #                                 → debug log "ownership check unavailable" 出力 (AC-04 spec)
 # --------------------------------------------------------------------------
-echo "TC-T04b (#558): helper undefined + RITE_DEBUG=1 → 'ownership check unavailable' debug log"
+echo "TC-T04b: helper undefined + RITE_DEBUG=1 → 'ownership check unavailable' debug log"
 dirT04b="$TEST_DIR/tcT04b"
 mkdir -p "$dirT04b/sandbox/hooks"
 sandbox_hook_dir_b="$dirT04b/sandbox/hooks"
@@ -808,7 +808,7 @@ cp "$src_hook_dir_b/hook-preamble.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/state-path-resolve.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/control-char-neutralize.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/flow-state.sh" "$sandbox_hook_dir_b/"
-# Issue #749: canonical mktemp helper を sandbox に同期コピーする (silent suppress 禁止 — sibling cp と同じ fail-fast)
+# canonical mktemp helper を sandbox に同期コピーする (silent suppress 禁止 — sibling cp と同じ fail-fast)
 cp "$src_hook_dir_b/_mktemp-stderr-guard.sh" "$sandbox_hook_dir_b/"
 cat > "$sandbox_hook_dir_b/session-ownership.sh" <<'STUB_EOF'
 #!/bin/bash
@@ -839,9 +839,9 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-T05 (#558): static grep — old comment removed (AC-05)
+# TC-T05: static grep — old comment removed (AC-05)
 # --------------------------------------------------------------------------
-echo "TC-T05 (#558): static grep — old comment 'Always proceeds with reset...' removed"
+echo "TC-T05: static grep — old comment 'Always proceeds with reset...' removed"
 HOOK_FILE="$SCRIPT_DIR/../session-start.sh"
 # grep -c always prints the count to stdout (0 with exit 1 if no matches), so use || true (not || echo 0) to avoid double-printed "0".
 old_match_count=$(grep -c "Always proceeds with reset regardless of session ownership" "$HOOK_FILE" 2>/dev/null || true)
@@ -854,12 +854,12 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-680-A (Issue #680, AC-LOCAL-2): per-session active=true → "Active rite workflow detected"
+# TC-per-session-detect-A (AC-LOCAL-2): per-session active=true → "Active rite workflow detected"
 # Verifies that session-start reads the per-session file (not legacy) when
 # a valid SID + per-session file exists, and that the
 # `.active=true` precondition still fires the workflow-detected output.
 # --------------------------------------------------------------------------
-echo "TC-680-A (Issue #680, AC-LOCAL-2): per-session active=true → workflow detected"
+echo "TC-per-session-detect-A (AC-LOCAL-2): per-session active=true → workflow detected"
 dir680a="$TEST_DIR/tc680a"
 mkdir -p "$dir680a/.rite/sessions"
 sid680a="aaaabbbb-cccc-dddd-eeee-ffffaaaa1111"
@@ -872,18 +872,18 @@ EOF
 output=$(run_hook_with_session "$dir680a" "resume" "$sid680a") && rc=0 || rc=$?
 if [ $rc -eq 0 ] && echo "$output" | grep -q "Active rite workflow detected" \
    && echo "$output" | grep -q "Issue: #680"; then
-  pass "TC-680-A: per-session file read → 'Active rite workflow detected' fired (AC-LOCAL-2)"
+  pass "TC-per-session-detect-A: per-session file read → 'Active rite workflow detected' fired (AC-LOCAL-2)"
 else
-  fail "TC-680-A: expected workflow-detected output from per-session file; got rc=$rc, output='$output'"
+  fail "TC-per-session-detect-A: expected workflow-detected output from per-session file; got rc=$rc, output='$output'"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-680-B (Issue #680): per-session active=false → no workflow-detected output
+# TC-per-session-detect-B  : per-session active=false → no workflow-detected output
 # Counter-assertion: ensure the .active=false branch on per-session path
 # does NOT trigger the workflow-detected output (AND-logic precondition).
 # --------------------------------------------------------------------------
-echo "TC-680-B (Issue #680): per-session active=false → no detection (AND-logic preserved)"
+echo "TC-per-session-detect-B  : per-session active=false → no detection (AND-logic preserved)"
 dir680b="$TEST_DIR/tc680b"
 mkdir -p "$dir680b/.rite/sessions"
 sid680b="22222222-3333-4444-5555-666666666666"
@@ -895,14 +895,14 @@ cat > "$dir680b/.rite/sessions/${sid680b}.flow-state" <<EOF
 EOF
 output=$(run_hook_with_session "$dir680b" "resume" "$sid680b") && rc=0 || rc=$?
 if [ $rc -eq 0 ] && [ -z "$output" ]; then
-  pass "TC-680-B: per-session active=false → no detection output (silent exit)"
+  pass "TC-per-session-detect-B: per-session active=false → no detection output (silent exit)"
 else
-  fail "TC-680-B: expected silent exit; got rc=$rc, output='$output'"
+  fail "TC-per-session-detect-B: expected silent exit; got rc=$rc, output='$output'"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-749-STDERR-PASSTHROUGH (Issue #749, AC-1)
+# TC-helper-failure-stderr-passthrough (AC-1)
 # --------------------------------------------------------------------------
 # Verify that when flow-state.sh path exits non-zero, its stderr (ERROR: lines
 # from validate helpers) is passed through to the user AND a skip WARNING is
@@ -915,14 +915,14 @@ echo ""
 # any legacy file. The previous "Legacy fallback path was loaded" assertion has
 # been removed accordingly — the test now only validates that ERROR pass-through
 # and the skip WARNING reach stderr.
-echo "TC-749-STDERR-PASSTHROUGH: helper failure → ERROR pass-through + skip WARNING"
+echo "TC-helper-failure-stderr-passthrough: helper failure → ERROR pass-through + skip WARNING"
 
 HOOKS_REAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 sbx_749="$(mktemp -d "$TEST_DIR/sbx-hooks-XXXXXX")"
 cp -a "$HOOKS_REAL_DIR/." "$sbx_749/"
 cat > "$sbx_749/flow-state.sh" <<'FAKE_RESOLVER_EOF'
 #!/bin/bash
-echo "ERROR: TC-749 simulated flow-state.sh path failure" >&2
+echo "ERROR: TC-helper-failure simulated flow-state.sh path failure" >&2
 exit 1
 FAKE_RESOLVER_EOF
 chmod +x "$sbx_749/flow-state.sh"
@@ -935,7 +935,7 @@ echo "{\"cwd\": \"$dir_749\", \"source\": \"startup\"}" \
   | bash "$sbx_749/session-start.sh" >/dev/null 2>"$LAST_STDERR_FILE" || true
 stderr_749="$(cat "$LAST_STDERR_FILE")"
 
-if printf '%s' "$stderr_749" | grep -qF 'TC-749 simulated flow-state.sh path failure'; then
+if printf '%s' "$stderr_749" | grep -qF 'TC-helper-failure simulated flow-state.sh path failure'; then
   pass "ERROR line from flow-state.sh passed through to caller stderr"
 else
   fail "Expected ERROR pass-through; got stderr: $stderr_749"
@@ -992,14 +992,14 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-1241-INVALID-JSON (Issue #1241, subtask 2a): behavioral verification that an
+# TC-settings-local-invalid-json (subtask 2a): behavioral verification that an
 # invalid settings.local.json drives the cleanup script's rc=2 path WITHOUT
 # aborting the hook (set -e regression guard), surfaces the corruption WARNING,
 # and shows the JSON-format hint (the cleanup script writes nothing to stderr on
 # invalid JSON, so _py_err is empty → the hint is the correct disambiguation).
 # Pre-fix (python3 as a bare statement under set -e) the hook aborted rc=2 here.
 # --------------------------------------------------------------------------
-echo "TC-1241-INVALID-JSON: invalid settings.local.json → hook continues + corruption surfaces + JSON hint"
+echo "TC-settings-local-invalid-json: invalid settings.local.json → hook continues + corruption surfaces + JSON hint"
 dir_1241a="$TEST_DIR/tc1241a"
 mkdir -p "$dir_1241a/.claude"
 # No .rite-settings-hooks-cleaned marker → _needs_cleanup=true; source=startup gates the repair path.
@@ -1012,30 +1012,30 @@ echo "{\"cwd\": \"$dir_1241a\", \"source\": \"startup\"}" \
   | bash "$HOOK" >/dev/null 2>"$stderr_1241a" && rc_1241a=0 || rc_1241a=$?
 err_1241a="$(cat "$stderr_1241a")"
 if [ "$rc_1241a" -eq 0 ]; then
-  pass "TC-1241-INVALID-JSON: hook exits 0 (set -e did not abort on python3 rc=2)"
+  pass "TC-settings-local-invalid-json: hook exits 0 (set -e did not abort on python3 rc=2)"
 else
-  fail "TC-1241-INVALID-JSON: hook aborted (rc=$rc_1241a) — set -e regression on python3 non-zero exit"
+  fail "TC-settings-local-invalid-json: hook aborted (rc=$rc_1241a) — set -e regression on python3 non-zero exit"
 fi
 if printf '%s' "$err_1241a" | grep -qF 'settings.local.json repair python3 failed (rc=2)'; then
-  pass "TC-1241-INVALID-JSON: invalid JSON corruption surfaces on stderr (rc=2 reported, not dead code)"
+  pass "TC-settings-local-invalid-json: invalid JSON corruption surfaces on stderr (rc=2 reported, not dead code)"
 else
-  fail "TC-1241-INVALID-JSON: corruption not surfaced (report branch is dead code); stderr: $err_1241a"
+  fail "TC-settings-local-invalid-json: corruption not surfaced (report branch is dead code); stderr: $err_1241a"
 fi
 if printf '%s' "$err_1241a" | grep -qF 'settings.local.json の JSON 形式 / encoding'; then
-  pass "TC-1241-INVALID-JSON: JSON-format hint shown for genuine invalid JSON (empty script stderr)"
+  pass "TC-settings-local-invalid-json: JSON-format hint shown for genuine invalid JSON (empty script stderr)"
 else
-  fail "TC-1241-INVALID-JSON: JSON hint missing for invalid JSON; stderr: $err_1241a"
+  fail "TC-settings-local-invalid-json: JSON hint missing for invalid JSON; stderr: $err_1241a"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-1241-NOOP-DOWNSTREAM (Issue #1241, subtask 2b): behavioral verification that
+# TC-settings-local-noop-downstream (subtask 2b): behavioral verification that
 # a rc=1 no-op repair (valid settings.local.json with no rite hooks) does NOT
 # abort, stays silent (no failure WARNING), and lets the hook proceed to the
 # downstream STATE_FILE resolution + defensive reset (the reset message proves
 # the post-repair code path executed). Pre-fix the hook aborted rc=1 at python3.
 # --------------------------------------------------------------------------
-echo "TC-1241-NOOP-DOWNSTREAM: rc=1 no-op repair → hook continues silently to STATE_FILE resolution"
+echo "TC-settings-local-noop-downstream: rc=1 no-op repair → hook continues silently to STATE_FILE resolution"
 dir_1241b="$TEST_DIR/tc1241b"
 sid_1241b="11112222-3333-4444-5555-666677778888"
 mkdir -p "$dir_1241b/.claude"
@@ -1044,38 +1044,38 @@ printf '%s' '{"permissions":{"allow":["Bash(ls:*)"]}}' > "$dir_1241b/.claude/set
 # Active flow-state so the downstream defensive reset (line ~414) fires and prints a
 # reset message — the observable proof that the hook reached past the repair block.
 create_state_file "$dir_1241b" '{"active":true,"issue_number":1241,"phase":"implement","branch":"fix/issue-1241-test","session_id":"'"$sid_1241b"'"}' "$sid_1241b"
-# Direct main-shell invocation (see TC-1241-INVALID-JSON note on LAST_STDERR_FILE/subshell).
+# Direct main-shell invocation (see TC-settings-local-invalid-json note on LAST_STDERR_FILE/subshell).
 stderr_1241b="$(mktemp "$TEST_DIR/stderr.1241b.XXXXXX")"
 out_1241b=$(jq -n --arg cwd "$dir_1241b" --arg src "startup" --arg sid "$sid_1241b" \
   '{cwd: $cwd, source: $src, session_id: $sid}' \
   | bash "$HOOK" 2>"$stderr_1241b") && rc_1241b=0 || rc_1241b=$?
 err_1241b="$(cat "$stderr_1241b")"
 if [ "$rc_1241b" -eq 0 ]; then
-  pass "TC-1241-NOOP-DOWNSTREAM: hook exits 0 (set -e did not abort on python3 rc=1)"
+  pass "TC-settings-local-noop-downstream: hook exits 0 (set -e did not abort on python3 rc=1)"
 else
-  fail "TC-1241-NOOP-DOWNSTREAM: hook aborted (rc=$rc_1241b) — set -e regression on rc=1 no-op"
+  fail "TC-settings-local-noop-downstream: hook aborted (rc=$rc_1241b) — set -e regression on rc=1 no-op"
 fi
 if printf '%s' "$err_1241b" | grep -qF 'settings.local.json repair python3 failed'; then
-  fail "TC-1241-NOOP-DOWNSTREAM: rc=1 no-op misreported as failure; stderr: $err_1241b"
+  fail "TC-settings-local-noop-downstream: rc=1 no-op misreported as failure; stderr: $err_1241b"
 else
-  pass "TC-1241-NOOP-DOWNSTREAM: rc=1 no-op stays silent (no false failure WARNING)"
+  pass "TC-settings-local-noop-downstream: rc=1 no-op stays silent (no false failure WARNING)"
 fi
 if printf '%s' "$out_1241b" | grep -qF '前回のセッション状態が残っていたためリセットしました' \
    && printf '%s' "$out_1241b" | grep -qF 'Issue #1241'; then
-  pass "TC-1241-NOOP-DOWNSTREAM: downstream STATE_FILE resolution + defensive reset reached"
+  pass "TC-settings-local-noop-downstream: downstream STATE_FILE resolution + defensive reset reached"
 else
-  fail "TC-1241-NOOP-DOWNSTREAM: downstream not reached (hook stopped before reset); stdout: $out_1241b"
+  fail "TC-settings-local-noop-downstream: downstream not reached (hook stopped before reset); stdout: $out_1241b"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-1241-MISSING-SCRIPT (Issue #1241, subtask 3): behavioral verification that a
+# TC-settings-local-missing-script (subtask 3): behavioral verification that a
 # missing/unreadable cleanup script (python3 emits its OWN diagnostic to stderr,
 # exit 2) is reported WITHOUT the JSON-format hint — that hint is invalid-JSON
 # specific and would misdirect here. Run against a sandbox copy with the cleanup
 # script removed so python3 fails to open it.
 # --------------------------------------------------------------------------
-echo "TC-1241-MISSING-SCRIPT: missing cleanup script → reported without misdirecting JSON hint"
+echo "TC-settings-local-missing-script: missing cleanup script → reported without misdirecting JSON hint"
 HOOKS_REAL_DIR_1241="$(cd "$SCRIPT_DIR/.." && pwd)"
 sbx_1241c="$(mktemp -d "$TEST_DIR/sbx-1241c-XXXXXX")"
 cp -a "$HOOKS_REAL_DIR_1241/." "$sbx_1241c/"
@@ -1088,24 +1088,24 @@ echo "{\"cwd\": \"$dir_1241c\", \"source\": \"startup\"}" \
   | bash "$sbx_1241c/session-start.sh" >/dev/null 2>"$stderr_1241c" && rc_1241c=0 || rc_1241c=$?
 err_1241c="$(cat "$stderr_1241c")"
 if [ "$rc_1241c" -eq 0 ]; then
-  pass "TC-1241-MISSING-SCRIPT: hook exits 0 (set -e did not abort on missing-script python3 rc)"
+  pass "TC-settings-local-missing-script: hook exits 0 (set -e did not abort on missing-script python3 rc)"
 else
-  fail "TC-1241-MISSING-SCRIPT: hook aborted (rc=$rc_1241c) — set -e regression on missing script"
+  fail "TC-settings-local-missing-script: hook aborted (rc=$rc_1241c) — set -e regression on missing script"
 fi
 if printf '%s' "$err_1241c" | grep -qF 'settings.local.json repair python3 failed'; then
-  pass "TC-1241-MISSING-SCRIPT: python3 failure reported on stderr"
+  pass "TC-settings-local-missing-script: python3 failure reported on stderr"
 else
-  fail "TC-1241-MISSING-SCRIPT: missing-script failure not reported; stderr: $err_1241c"
+  fail "TC-settings-local-missing-script: missing-script failure not reported; stderr: $err_1241c"
 fi
 if printf '%s' "$err_1241c" | grep -qF 'settings.local.json の JSON 形式 / encoding'; then
-  fail "TC-1241-MISSING-SCRIPT: JSON hint misdirects on missing-script (subtask 3 regression); stderr: $err_1241c"
+  fail "TC-settings-local-missing-script: JSON hint misdirects on missing-script (subtask 3 regression); stderr: $err_1241c"
 else
-  pass "TC-1241-MISSING-SCRIPT: JSON hint suppressed when python3 emits its own stderr (no misdirection)"
+  pass "TC-settings-local-missing-script: JSON hint suppressed when python3 emits its own stderr (no misdirection)"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-DEP-1..4: flow_state.schema_version: 1 deprecation warning (Issue #1458)
+# TC-DEP-1..4: flow_state.schema_version: 1 deprecation warning 
 #   AC-2 / T-02: explicit `: 1` at startup → one-line stderr deprecation warning.
 #   AC-3 / T-03: gated on SOURCE=startup (only session-start emits it, and only
 #                on startup), so a session start surfaces exactly one — verified

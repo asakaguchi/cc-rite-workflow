@@ -1,9 +1,9 @@
 #!/bin/bash
 # shift2-loop-hardening.test.sh
 #
-# Regression tests for Issue #1224: sibling helper の `shift 2` 無限ループ素因の横展開 hardening。
+# Regression tests for sibling helper の `shift 2` 無限ループ素因の横展開 hardening。
 #
-# PR #1223 が wiki-lint-source-refs.sh に適用した `shift 2` → `shift; shift` 化を、同型脆弱性を
+# wiki-lint-source-refs.sh に適用した `shift 2` → `shift; shift` 化を、同型脆弱性を
 # 持つ全 sibling helper (hooks/scripts/ に留まらず hooks/ と scripts/ にも存在) へ横展開した。
 #
 # 脆弱性の成立条件 (3つ全て揃うと値なしフラグ末尾で無限ループ):
@@ -12,7 +12,7 @@
 #   3. `shift 2` 到達前に required-value ガードがない
 # (1つでも欠ければ安全: set -u+bare $2 は nounset で fail-fast / set -e は即 exit / 明示ガードは exit)
 #
-# Coverage (Issue #1224 で hardening した脆弱だった 5 スクリプト 計 18 箇所 + 新規 helper 1 件 計 4 箇所):
+# Coverage (hardening した脆弱だった 5 スクリプト 計 18 箇所 + 新規 helper 1 件 計 4 箇所):
 #   TC-1 post-review-state-verify.sh (hooks/scripts/, 4 箇所) — 値なしフラグ末尾 → no-hang + exit 2
 #   TC-2 review-comment-post.sh      (hooks/,         5 箇所) — 値なしフラグ末尾 → no-hang
 #   TC-3 review-result-save.sh       (hooks/,         3 箇所) — 値なしフラグ末尾 → no-hang
@@ -82,6 +82,6 @@ for script in \
 done
 
 if ! print_summary "$(basename "$0")" \
-  "drift: shift-2 loop hardening (Issue #1224) が後退した可能性。値付きフラグは set -e 非設定 + \${2:-} の下では \`shift; shift\` で消費しないと値なしフラグ末尾 (\$#=1) で無限ループに陥る。"; then
+  "drift: shift-2 loop hardening が後退した可能性。値付きフラグは set -e 非設定 + \${2:-} の下では \`shift; shift\` で消費しないと値なしフラグ末尾 (\$#=1) で無限ループに陥る。"; then
   exit 1
 fi

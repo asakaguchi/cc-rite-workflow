@@ -1,6 +1,6 @@
 #!/bin/bash
 # Tests for plugins/rite/hooks/scripts/distributed-fix-drift-check.sh Pattern 2
-# (reason-table drift detection). Covers Issue #1158 robustness fixes:
+# (reason-table drift detection). Covers robustness fixes:
 #   - Hyphenated reason values (no-pending) are not truncated to "no"
 #   - Shell variable expansion (reason=foo_$var) is skipped instead of producing
 #     bogus identifiers like "foo_"
@@ -309,6 +309,6 @@ fi
 
 # --- Summary ---
 echo ""
-if ! print_summary "$(basename "$0")" "Issue #1158 false positive regression"; then
+if ! print_summary "$(basename "$0")" "false positive regression"; then
   exit 1
 fi

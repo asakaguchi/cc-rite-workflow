@@ -388,7 +388,7 @@ fi
 # --------------------------------------------------------------------------
 # TC-013: Field edit failure → partial (non-blocking)
 # --------------------------------------------------------------------------
-echo "TC-013: Field edit failure → partial registration + stderr emit (#669 F-01)"
+echo "TC-013: Field edit failure → partial registration + stderr emit (F-01)"
 body_file=$(create_body_file "Test field fail")
 run_script "$(jq -n --arg bf "$body_file" '{
   issue: {title: "Field Fail", body_file: $bf},
@@ -562,12 +562,12 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-019b (#669 F-02): Iteration mutation failure → stderr emit + reg=partial
+# TC-019b (F-02): Iteration mutation failure → stderr emit + reg=partial
 # 検証: iteration assignment mutation 失敗時に retry_with_backoff が 3 回試行し、
 # add_warning_with_stderr が "Iteration assignment failed" + "after 3 attempts" を
 # stderr に emit すること。silent-fail 解消対象として明示されている経路。
 # --------------------------------------------------------------------------
-echo "TC-019b: Iteration mutation failure → stderr emit + reg=partial (#669 F-02)"
+echo "TC-019b: Iteration mutation failure → stderr emit + reg=partial (F-02)"
 body_file=$(create_body_file "Test iteration mutation fail")
 run_script "$(jq -n --arg bf "$body_file" '{
   issue: {title: "Iter Mutation Fail", body_file: $bf},
@@ -596,13 +596,13 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-019c (#669 cycle 2 follow-up): GraphQL items lookup query failure
+# TC-019c (cycle 2 follow-up): GraphQL items lookup query failure
 # 検証: ITEM_ID が item-add からも fields query.items.nodes からも取得不可な状況で、
 # GQL_ITEMS_QUERY (items lookup retry) が retry_with_backoff 3 回失敗時に
 # add_warning_with_stderr が "GraphQL items lookup query failed after 3 attempts"
 # を stderr emit すること (silent-fail 5 path の最後の経路)
 # --------------------------------------------------------------------------
-echo "TC-019c: GraphQL items lookup query failure → stderr emit + reg=partial (#669 cycle 2 follow-up)"
+echo "TC-019c: GraphQL items lookup query failure → stderr emit + reg=partial (cycle 2 follow-up)"
 body_file=$(create_body_file "Test items lookup fail")
 run_script "$(jq -n --arg bf "$body_file" '{
   issue: {title: "Items Lookup Fail", body_file: $bf},
@@ -811,10 +811,10 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-027 (#669): Projects registration failure emits root cause to stderr
+# TC-027: Projects registration failure emits root cause to stderr
 # (not just to warnings JSON). MUST 2 / MUST NOT 2: silent fail prohibited.
 # --------------------------------------------------------------------------
-echo "TC-027: project_add failure → stderr contains 'ERROR: Projects registration failed:' (#669)"
+echo "TC-027: project_add failure → stderr contains 'ERROR: Projects registration failed:'"
 body_file=$(create_body_file)
 run_script "$(jq -n --arg bf "$body_file" '{
   issue: {title: "Stderr emit test", body_file: $bf},
@@ -841,10 +841,10 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-028 (#669): GraphQL field retrieval failure emits root cause to stderr.
+# TC-028: GraphQL field retrieval failure emits root cause to stderr.
 # Validates retry_with_backoff retry count messaging in error output.
 # --------------------------------------------------------------------------
-echo "TC-028: graphql_fail → stderr contains 'ERROR: Projects registration failed:' (#669)"
+echo "TC-028: graphql_fail → stderr contains 'ERROR: Projects registration failed:'"
 body_file=$(create_body_file)
 run_script "$(jq -n --arg bf "$body_file" '{
   issue: {title: "GraphQL stderr test", body_file: $bf},
@@ -857,7 +857,7 @@ if [ "$LAST_RC" -eq 0 ]; then
   if echo "$stderr_content" | grep -q "ERROR: Projects registration failed:" \
      && echo "$stderr_content" | grep -q "after 3 attempts" \
      && [ "$reg" = "partial" ]; then
-    pass "graphql fail → stderr emit + reg=$reg + retry-count message (#669 F-04)"
+    pass "graphql fail → stderr emit + reg=$reg + retry-count message (F-04)"
   else
     fail "Expected stderr emit + 'after 3 attempts' + reg=partial, got reg=$reg, stderr='$(printf '%s' "$stderr_content" | head -2)'"
   fi
@@ -866,11 +866,11 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-029 (#669): enabled=false skip path does NOT emit stderr (R6 既存挙動維持).
+# TC-029: enabled=false skip path does NOT emit stderr (R6 既存挙動維持).
 # Caller contract: add_warning_with_stderr must only fire for registration failures,
 # not for the early skip when projects are disabled.
 # --------------------------------------------------------------------------
-echo "TC-029: enabled=false → no stderr emit (R6 skip path) (#669)"
+echo "TC-029: enabled=false → no stderr emit (R6 skip path)"
 body_file=$(create_body_file)
 run_script "$(jq -n --arg bf "$body_file" '{
   issue: {title: "Skip path test", body_file: $bf},

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for plugins/rite/hooks/control-char-neutralize.sh (Issue #1274)
+# Tests for plugins/rite/hooks/control-char-neutralize.sh
 #
 # Purpose:
 #   neutralize_ctrl は flow-state.sh (_emit_jq_err_snippet) と
@@ -13,20 +13,20 @@
 # Test cases:
 #   TC-1: C0 制御文字 (0x01 / TAB / ESC) → ?
 #   TC-2: DEL (0x7f) → ?
-#   TC-3: C1 境界 (0x80 / 0x9b CSI / 0x9f) → ? (Issue #1274 本丸 pin)
+#   TC-3: C1 境界 (0x80 / 0x9b CSI / 0x9f) → ? (本丸 pin)
 #   TC-4: 0xa0 (C1 上限 +1) は保持される (過剰置換しない上側境界 pin)
 #   TC-5: UTF-8 U+009B (0xc2 0x9b) の 0x9b バイトが ? 化され生 0x9b が残らない
 #   TC-6: default モード: \n も ? 化 (旧 ${var//[[:cntrl:]]/?} の 1 行化挙動と同じ)
 #   TC-7: --keep-newline: \n は保持、他の制御文字は ? (旧 sed 行指向挙動と同じ)
 #   TC-8: 可読 ASCII は無傷 + 1:1 置換 (削除ではない — 長さ保存)
 #   TC-9: NUL バイト (0x00) → ? (LC_ALL=C tr のバイトストリーム性 pin)
-#   TC-10: --c0-only: C0 (0x01 / TAB / ESC) + DEL → ? (Issue #1275)
+#   TC-10: --c0-only: C0 (0x01 / TAB / ESC) + DEL → ?
 #   TC-11: --c0-only: C1 境界 (0x80 / 0x9b / 0x9f) は素通し (default との差分 pin)
 #   TC-12: --c0-only: UTF-8 マルチバイト (日本語) が無傷 (JSON フォールバック reason 保護の本丸 pin)
 #   TC-13: --c0-only: \n も ? 化 (C0 範囲 — caller は改行を先にエスケープしてから呼ぶ契約)
-#   TC-14: contains_ctrl: C0 (0x01 / TAB / \n / ESC) を検出 (Issue #1276)
+#   TC-14: contains_ctrl: C0 (0x01 / TAB / \n / ESC) を検出
 #   TC-15: contains_ctrl: DEL (0x7f) を検出
-#   TC-16: contains_ctrl: C1 境界 (0x80 / 0x9b CSI / 0x9f) を検出 (Issue #1276 本丸 pin —
+#   TC-16: contains_ctrl: C1 境界 (0x80 / 0x9b CSI / 0x9f) を検出 (本丸 pin —
 #          旧 `=~ [[:cntrl:]]` は glibc が C1 を cntrl と分類しないため素通し)
 #   TC-17: contains_ctrl: 0xa0 (C1 上限 +1) / printable ASCII は clean (過剰検出しない境界 pin)
 #   TC-18: contains_ctrl: UTF-8 U+009B (0xc2 0x9b) を 2 バイト目で検出
@@ -59,7 +59,7 @@ echo "=== TC-2: DEL (0x7f) → ? ==="
 assert "TC-2: DEL neutralized" "A?B" "$(printf 'A\x7fB' | neutralize_ctrl)"
 
 echo ""
-echo "=== TC-3: C1 境界 (0x80 / 0x9b CSI / 0x9f) → ? (Issue #1274) ==="
+echo "=== TC-3: C1 境界 (0x80 / 0x9b CSI / 0x9f) → ? ==="
 # 旧実装 (sed [[:cntrl:]] / bash ${var//[[:cntrl:]]/?}) はこの 3 バイトを素通し
 # していた — glibc は C/UTF-8 両ロケールで C1 を cntrl と分類しないため。
 assert "TC-3: C1 range boundaries neutralized" "A?B?C?D" "$(printf 'A\x80B\x9bC\x9fD' | neutralize_ctrl)"
@@ -94,7 +94,7 @@ echo "=== TC-9: NUL バイト (0x00) → ? (バイトストリーム性 pin) ===
 assert "TC-9: NUL neutralized" "413f42" "$(printf 'A\x00B' | neutralize_ctrl | to_hex)"
 
 echo ""
-echo "=== TC-10: --c0-only — C0 (0x01 / TAB / ESC) + DEL → ? (Issue #1275) ==="
+echo "=== TC-10: --c0-only — C0 (0x01 / TAB / ESC) + DEL → ? ==="
 assert "TC-10: C0 bytes neutralized" "A?B?C?D?E" "$(printf 'A\x01B\tC\x1bD\x7fE' | neutralize_ctrl --c0-only)"
 
 echo ""
@@ -118,7 +118,7 @@ assert "TC-13: newline neutralized in c0-only mode" "l1?l2" "$(printf 'l1\nl2' |
 ctrl_verdict() { if contains_ctrl "$1"; then echo detected; else echo clean; fi; }
 
 echo ""
-echo "=== TC-14: contains_ctrl — C0 (0x01 / TAB / \\n / ESC) を検出 (Issue #1276) ==="
+echo "=== TC-14: contains_ctrl — C0 (0x01 / TAB / \\n / ESC) を検出 ==="
 assert "TC-14: SOH (0x01) detected" "detected" "$(ctrl_verdict $'a\x01b')"
 assert "TC-14: TAB detected" "detected" "$(ctrl_verdict $'a\tb')"
 assert "TC-14: newline detected" "detected" "$(ctrl_verdict $'a\nb')"
@@ -129,7 +129,7 @@ echo "=== TC-15: contains_ctrl — DEL (0x7f) を検出 ==="
 assert "TC-15: DEL detected" "detected" "$(ctrl_verdict $'a\x7fb')"
 
 echo ""
-echo "=== TC-16: contains_ctrl — C1 境界 (0x80 / 0x9b CSI / 0x9f) を検出 (Issue #1276 本丸) ==="
+echo "=== TC-16: contains_ctrl — C1 境界 (0x80 / 0x9b CSI / 0x9f) を検出 (本丸) ==="
 # 旧 `=~ [[:cntrl:]]` (flow-state.sh / wiki-ingest-trigger.sh の reject 経路) は
 # glibc が C/UTF-8 両ロケールで C1 を cntrl と分類しないためこの 3 バイトを素通ししていた。
 assert "TC-16: C1 lower bound (0x80) detected" "detected" "$(ctrl_verdict $'a\x80b')"
@@ -150,10 +150,10 @@ assert "TC-18: U+009B detected via second byte" "detected" "$(ctrl_verdict $'x\x
 echo ""
 echo "=== TC-19: contains_ctrl — empty は clean / 日本語は検出 (byte-wise 設計判断 pin) ==="
 assert "TC-19: empty string clean" "clean" "$(ctrl_verdict '')"
-# UTF-8 継続バイト (0x80-0x9f 重複) の検出は accepted trade-off (Issue #1276 設計判断)。
+# UTF-8 継続バイト (0x80-0x9f 重複) の検出は accepted trade-off (設計判断)。
 # この assert が fail し始めたら byte-wise 契約自体が変わったことを意味する。
 assert "TC-19: multibyte (Japanese) detected via continuation bytes" "detected" "$(ctrl_verdict 'あ')"
 
-if ! print_summary "$(basename "$0")" "control-char-neutralize.sh — Issue #1274/#1276 C0+DEL+C1 byte-wise neutralization + detection shared helper"; then
+if ! print_summary "$(basename "$0")" "control-char-neutralize.sh — C0+DEL+C1 byte-wise neutralization + detection shared helper"; then
   exit 1
 fi

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for sh-cross-ref-check.sh (Issue #1160 — PR #1157 cycle 4 follow-up)
+# Tests for sh-cross-ref-check.sh
 # Usage: bash plugins/rite/hooks/tests/sh-cross-ref-check.test.sh
 set -euo pipefail
 
@@ -15,13 +15,13 @@ trap cleanup EXIT INT TERM HUP
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 
-echo "=== sh-cross-ref-check.sh tests (Issue #1160) ==="
+echo "=== sh-cross-ref-check.sh tests ==="
 echo ""
 
 # --------------------------------------------------------------------------
 # Synthetic repo: a Phase-style file (close.md) and a ステップ-style file
 # (review.md), each carrying a bare-number sub-step heading (no keyword), which
-# mirrors the real heading convention discovered in Issue #1160.
+# mirrors the real heading convention discovered in production.
 # --------------------------------------------------------------------------
 mkdir -p "$TEST_DIR/plugins/rite/commands/issue"
 mkdir -p "$TEST_DIR/plugins/rite/commands/pr"
@@ -135,7 +135,7 @@ if [ "$rc" -eq 1 ] && echo "$output" | grep -q "keyword mismatch"; then
 else fail "expected rc=1 keyword mismatch, got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
-# TC-009: unresolvable file reference → skipped (out of scope, #1159) → exit 0
+# TC-009: unresolvable file reference → skipped (out of scope) → exit 0
 # --------------------------------------------------------------------------
 echo "TC-009: unresolvable file ref → exit 0"
 echo 'echo "Verify nonexistent-file.md Phase 1.2 path."' > "$f"

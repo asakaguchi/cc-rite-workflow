@@ -52,7 +52,7 @@ if [ -n "${STUB_CREATE_FAIL_TITLE:-}" ] && [ "$title" = "$STUB_CREATE_FAIL_TITLE
 fi
 n=$(cat "$STUB_NUM_FILE")
 echo "$((n + 1))" > "$STUB_NUM_FILE"
-# Partial-Projects mode (#1206 / #669 reproduction): emit `ERROR: ...` on stderr
+# Partial-Projects mode: emit `ERROR: ...` on stderr
 # AND a valid JSON (with issue_number + warnings) on stdout, then exit 0. A caller
 # that captures with `2>&1` would splice the ERROR ahead of the JSON and break the
 # downstream `jq -r .issue_number`, miscounting this created sub as failed.
@@ -211,7 +211,7 @@ assert_err_contains "親 Issue 作成失敗" "parent create failure ERROR"
 unset STUB_CREATE_FAIL_TITLE
 
 # -----------------------------------------------------------------
-echo "--- Test 7: partial-Projects (stderr ERROR + stdout JSON + exit 0) counts as created, not failed (#1206) ---"
+echo "--- Test 7: partial-Projects (stderr ERROR + stdout JSON + exit 0) counts as created, not failed ---"
 wd7="$TEST_DIR/wd7"; mkdir -p "$wd7"
 printf '%s' "Parent" > "$wd7/parent.md"; printf '%s' "Sub 1" > "$wd7/s1.md"; printf '%s' "Sub 2" > "$wd7/s2.md"
 spec7=$(build_spec "$wd7" "Epic7" "$wd7/parent.md" "refactor" \

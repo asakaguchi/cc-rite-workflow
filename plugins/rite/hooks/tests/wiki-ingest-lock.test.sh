@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for wiki-ingest-lock.sh (Issue #1365 / S5, multi-session design §9).
+# Tests for wiki-ingest-lock.sh (multi-session design §9).
 #
 # Verifies the ingest session lock used to serialize the LLM Write/Edit phase
 # across sessions:

@@ -1,5 +1,5 @@
 #!/bin/bash
-# T-1 (Issue #1017, extended in #1040): reviewer SoT 群すべてが 5 列形式の Output Format を持つ
+# T-1: reviewer SoT 群すべてが 5 列形式の Output Format を持つ
 #
 # Verification:
 #   - agents/_reviewer-base.md (Japanese 列名: 重要度|スコープ|ファイル:行|内容|推奨対応)
@@ -7,7 +7,7 @@
 #     performance/prompt-engineer/security/tech-writer/test/type-design) すべての example 表
 #     (Japanese 列名)
 #   - skills/reviewers/{SKILL.md, references/output-format.md, references/finding-examples.md}
-#     (English 列名: Severity|Scope|File:Line|Issue|Recommendation) — Issue #1040 で拡張
+#     (English 列名: Severity|Scope|File:Line|Issue|Recommendation)
 
 set -euo pipefail
 
@@ -47,11 +47,11 @@ reviewers=(
 
 for r in "${reviewers[@]}"; do
   f="$AGENTS_DIR/$r.md"
-  # File-existence guard (Issue #1048 → Issue #1051): assert_grep / assert_not_grep は
+  # File-existence guard: assert_grep / assert_not_grep は
   # それぞれ独立にファイル不在チェックを行うため、不在時には 1 reviewer = 2 fail message
   # に膨張する。assert_file_exists_or_fail で 1 件 fail + caller の `|| continue` で
   # 後続 assertion を skip し、原本の「1 reviewer = 1 fail」挙動を維持する
-  # (Issue #1051 で _test-helpers.sh 側に共通化済)。
+  # (_test-helpers.sh 側に共通化済)。
   assert_file_exists_or_fail "$r.md" "$f" || continue
   assert_grep "$r.md: 5-column header present" \
     "$f" \
@@ -62,9 +62,9 @@ for r in "${reviewers[@]}"; do
 done
 
 # 4. skills/reviewers/* の SoT ファイル群 (英語列名) が 5 列形式 を持つ
-#    Issue #1040: agent 側 (日本語列名) と同じ symmetric pair (5-column present /
+#    agent 側 (日本語列名) と同じ symmetric pair (5-column present /
 #    4-column drift NOT present) を skills 側 (英語列名) にも適用する。
-#    Asymmetric Fix Transcription (対称位置への伝播漏れ) を防ぐため、Issue #1037 で
+#    Asymmetric Fix Transcription (対称位置への伝播漏れ) を防ぐため、
 #    skills/reviewers/* を 4 列 → 5 列に同期した変更が将来 regression で 4 列に
 #    戻された場合に静かに通過しないよう保護する。
 SKILLS_DIR="$REPO_ROOT/plugins/rite/skills/reviewers"

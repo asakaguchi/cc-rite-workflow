@@ -13,6 +13,16 @@ CHANGELOG entries must remain stable across such refactors. When a change
 genuinely needs locational precision, prefer referencing the file name
 (e.g. `review.md`) over internal phase numbers. See Keep a Changelog 1.1.0
 "Guiding Principles" for the rationale and conventions.
+
+History-dependent phrasing policy: Entries describe each change at the feature
+level. A Fixed/Changed/Removed entry may state the prior behavior it corrects —
+that is the change log's purpose — but it must name the specific key, feature,
+or behavior involved (e.g. `multi_session.enabled`, `max_review_fix_loops`)
+rather than a vague implicit reference ("the previous behavior", "the old way")
+whose baseline a new reader cannot resolve. Each version section is itself the
+comparison anchor, so avoid cross-version "used to / previously" framing that is
+not tied to a named key or feature. Breaking-change notices and migration guides
+that aid upgraders are kept verbatim.
 -->
 
 ## [Unreleased]

@@ -254,9 +254,9 @@ rite-workflow/
 │ │ ├── default.md / decomposition-spec.md
 │ │ ├── interview-perspectives.md / template-structure.md
 │ ├── pr/
-│ │ └── generic.md # Generic PR template (cli/library/webapp/documentation/fix-report.md were all deleted)
+│ │ └── generic.md # Generic PR template (used for all project types)
 │ ├── review/
-│ │ └── reply.md # Why-only PR review reply SoT (the prior orphan comment.md was deleted in the same PR)
+│ │ └── reply.md # Why-only PR review reply SoT
 │ └── wiki/
 │ ├── index-template.md / log-template.md
 │ ├── page-template.md / schema-template.md

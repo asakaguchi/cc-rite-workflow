@@ -15,7 +15,7 @@ Variables use the following formats:
 
 | Variable | Description | Source | Example |
 |----------|-------------|--------|---------|
-| `{owner}` | Repository owner (user or organization) | `gh repo view --json owner --jq '.owner.login'` | `B16B1RD` |
+| `{owner}` | Repository owner (user or organization) | `gh repo view --json owner --jq '.owner.login'` | `asakaguchi` |
 | `{repo}` | Repository name | `gh repo view --json name --jq '.name'` | `cc-rite-workflow` |
 | `{default_branch}` | Repository default branch | `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` | `main` or `develop` |
 

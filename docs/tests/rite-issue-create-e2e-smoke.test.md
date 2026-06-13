@@ -134,7 +134,7 @@ flow-state は `flow-state.sh` 経由で生成する (手動作成は schema dri
 
 - かつて存在した `start.md ステップ 8.5` 実行中に `manual_fallback_adopted` を含む sentinel が前セッション会話に存在する場合、tracking Issue が GitHub に作成される (削除済 — 現行体系では発生しない)
 - `.rite-flow-state-diag.log` に `flow_state_*` 行が記録され、phase transition の経過が監査可能
-- `session-end.sh` の inline glob fallback が legacy create_* phase を正しく detect する (`session-end.test.sh` TC-475-WARN-A〜D で覆われる契約)
+- `session-end.sh` の inline glob fallback が legacy create_* phase を正しく detect する (`session-end.test.sh` TC-create-lifecycle-warn-A〜D で覆われる契約)
 
 ### 検証コマンド
 
@@ -153,7 +153,7 @@ tail -20 .rite-flow-state-diag.log
 |------|--------|
 | retrospective scan が sentinel を取り逃す | かつて存在した `start.md ステップ 8.5` の grep パターン確認 (削除済 — 現行は手動 grep で代替) |
 | diag log に flow-state 行が全く残らない | `flow-state.sh` の write path で mv/jq が silent fail していないか — 全 mv site で rc capture + WARNING が出ている前提で、欠落がないか確認する |
-| `session-end.sh` の inline glob が legacy create_* phase を取り逃す | `session-end.test.sh` TC-475-WARN-A〜D が PASS しているか確認 |
+| `session-end.sh` の inline glob が legacy create_* phase を取り逃す | `session-end.test.sh` TC-create-lifecycle-warn-A〜D が PASS しているか確認 |
 
 ## 回帰検出のトリガー
 

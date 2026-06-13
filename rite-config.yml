@@ -115,7 +115,7 @@ parallel:
 # 複数の Claude Code セッションが同一リポジトリで別 Issue を並行して進められるようにする。
 # /rite:pr:open がセッション worktree (.rite/worktrees/issue-{N}) を作成し EnterWorktree で入場する。
 # `parallel`（1 セッション内の Issue 別サブエージェント並列）とは直交する別軸のため統合しない。
-# default `enabled: true`（デフォルト ON）。false にすると従来の単一セッション挙動に戻る。
+# default `enabled: true`（デフォルト ON）。false にすると 1 セッション 1 作業ツリーで動作する。
 multi_session:
   enabled: true                    # セッション別 worktree（default ON）。false で無効化
   worktree_base: ".rite/worktrees" # セッション worktree のベース（issue-{N} サブディレクトリ）
@@ -144,8 +144,8 @@ investigate:
 # ファイル冒頭の top-level `schema_version` (rite-config.yml 自身のスキーマ) とは別系統。
 #
 # 2: per-session ファイル (`.rite/sessions/{session_id}.flow-state`)。並行セッションを first-class サポート。
-# 1: legacy 単一ファイル (`.rite-flow-state`)。rollback 用。
-# 旧形式は `.rite-flow-state.legacy.{timestamp}` に backup された上で自動マイグレーションされる。
+# 1: 単一ファイル形式 (`.rite-flow-state`)。rollback 用。
+# schema_version 1 の `.rite-flow-state` を検出すると `.rite-flow-state.legacy.{timestamp}` に backup した上で per-session 形式へ移行する。
 flow_state:
   schema_version: 2
 

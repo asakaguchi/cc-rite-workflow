@@ -7,7 +7,7 @@
 
 ## ⚠️ Breaking Changes (v0.4.0)
 
-**v0.4.0 — Cycle-count-based review-fix degradation removed**: Three configuration keys (`review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, `safety.max_review_fix_loops`) are no longer honored. The review-fix loop now terminates only on 0 findings or when one of four **quality signals** fires (fingerprint cycling / root-cause-missing fix / cross-validation disagreement / reviewer self-degraded). Existing users should remove the three keys from `rite-config.yml`. See [CHANGELOG](CHANGELOG.md#040---2026-04-17) for the migration guide.
+**Cycle-count-based review-fix degradation removed**: Three configuration keys (`review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, `safety.max_review_fix_loops`) are no longer honored — remove them from `rite-config.yml` when upgrading. The review-fix loop terminates only on 0 findings (normal exit) or manual abort (`Ctrl+C` → `/rite:resume`). See [CHANGELOG](CHANGELOG.md#040---2026-04-17) for the full migration guide.
 
 ## Why "Rite"?
 

@@ -106,11 +106,11 @@ common=$(git rev-parse --path-format=absolute --git-common-dir)
 
 ```yaml
 multi_session:
-  enabled: true                      # デフォルト true。false で従来の単一セッション挙動
+  enabled: true                      # デフォルト true。false で 1 セッション 1 作業ツリー（単一セッション動作）
   worktree_base: ".rite/worktrees"   # セッション worktree 配置（issue-{N} サブディレクトリ）
 ```
 
-> **デフォルト ON 化**: 新規 `/rite:init` 生成 config は `enabled: true` を含む。`multi_session:` ブロックを持たない旧 config では pr:open の parse fallback が `false` となり、既存プロジェクトの挙動は不変（後方互換）。`false` を明示設定すれば従来どおり挙動変化ゼロ。
+> **デフォルト ON 化**: 新規 `/rite:init` 生成 config は `enabled: true` を含む。`multi_session:` ブロックを持たない旧 config では pr:open の parse fallback が `false` となり、既存プロジェクトの挙動は不変（後方互換）。`false` を明示設定すれば単一セッション動作となり挙動は変わらない。
 
 - `parallel:` セクションと**統合しない**: `parallel.mode/worktree_base` は「1 Issue 内の並列実装サブエージェント」の軸、
   `multi_session` は「セッション全体のライフサイクル分離」の軸で直交する。

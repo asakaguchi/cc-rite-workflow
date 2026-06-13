@@ -390,10 +390,13 @@ else
 fi
 
 # --- TC-10: emit-only file (no reason table AND no enumeration) is skipped ---
-# Exercises the compound early-return guard `[ -z "$table_reasons" ] && [ -z "$enum_reasons" ]`.
-# A file that emits reasons but documents them elsewhere (delegated helper) must
-# NOT be flagged — Pattern-2 is out of scope without an in-file tracking structure.
-# Without this case, deleting the second operand of the compound guard goes undetected.
+# Exercises the BOTH-EMPTY branch of the compound early-return guard
+# `[ -z "$table_reasons" ] && [ -z "$enum_reasons" ]`. A file that emits reasons
+# but documents them elsewhere (delegated helper) must NOT be flagged — Pattern-2
+# is out of scope without an in-file tracking structure. This case detects
+# removal of the WHOLE guard (both operands), but not single-operand deletion
+# (table absent skips on the first operand alone). TC-11 below pins the second
+# operand independently (enum present + table absent + undocumented emit).
 echo ""
 echo "=== TC-10: emit-only file (no reason table, no enumeration) → skipped, no drift ==="
 d=$(make_fixture_sandbox '# Test
@@ -420,6 +423,50 @@ if printf '%s\n' "$out" | grep -Fq "orphan_reason"; then
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 else
   pass "TC-10: no spurious flag for emit-only reason without tracking structure"
+fi
+
+# --- TC-11: enumeration present but reason table absent → guard must NOT skip ---
+# Pins the SECOND operand of `[ -z "$table_reasons" ] && [ -z "$enum_reasons" ]`
+# independently. With table absent + enum present, the guard must fall through to
+# the comparison (first operand true, second false → AND false), and an emit not
+# in the enumeration must be flagged. If the second operand were dropped (guard
+# reduced to `[ -z "$table_reasons" ]`), the table-absent file would skip and the
+# undocumented emit would go undetected — this case fails under that mutation.
+echo ""
+echo "=== TC-11: enumeration present, table absent, undocumented emit → flagged ==="
+d=$(make_fixture_sandbox '# Test
+
+No reason table here, only an eval-table enumeration.
+
+Eval order: ( `enumerated_reason` )
+
+```bash
+echo "[CONTEXT] X=1; reason=enumerated_reason"
+echo "[CONTEXT] Y=1; reason=orphan_not_in_enum"
+```
+')
+cleanup_dirs+=("$d")
+rc=0
+out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
+  --repo-root "$d" 2>/dev/null) || rc=$?
+assert_checker_rc "TC-11" "$rc"
+if [ "$rc" -eq 1 ]; then
+  pass "TC-11: guard falls through (enum present) and flags the undocumented emit"
+else
+  fail "TC-11: expected drift (rc=1), got rc=$rc (second operand of compound guard not exercised)"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+if printf '%s\n' "$out" | grep -Fq "orphan_not_in_enum"; then
+  pass "TC-11: undocumented emit (not in enumeration) correctly flagged"
+else
+  fail "TC-11: orphan_not_in_enum should be flagged (emitted, in neither table nor enumeration)"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+if printf '%s\n' "$out" | grep -Fq "enumerated_reason"; then
+  fail "TC-11: enumerated_reason spuriously flagged (it IS documented in the enumeration)"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+else
+  pass "TC-11: enumeration-documented reason not flagged"
 fi
 
 # --- Summary ---

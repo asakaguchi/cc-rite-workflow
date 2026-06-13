@@ -172,7 +172,10 @@ cat > "$P5_INERT" <<'EOF'
 |--------|-------------|
 | `documented_reason` | listed in the table |
 
-The narrative also emits reason=undocumented_p5_reason which is NOT in the table.
+```bash
+echo "[CONTEXT] X=1; reason=documented_reason"
+echo "[CONTEXT] Y=1; reason=undocumented_p5_reason"
+```
 EOF
 "$SCRIPT" --pattern 2 --target "$P5_INERT" >/dev/null 2>&1
 p2_inert_rc=$?

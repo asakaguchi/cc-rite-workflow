@@ -98,22 +98,22 @@ review:
     use_context7: true                # context7 MCP を利用（失敗時は WebSearch fallback で自動回復）
     verify_internal_likelihood: true  # Sub-Phase B (Internal Likelihood Claim Verification) を有効化 — 詳細: plugins/rite/commands/pr/references/fact-check.md
   scope_assignment:
-    # Issue #1018 M2 — scope=nit-noted 受け流し経路設定。reviewer が schema 1.1.0 で出力する
+    # scope=nit-noted 受け流し経路設定。reviewer が schema 1.1.0 で出力する
     # findings[].scope に基づく fix loop routing 制御。
-    # Issue #1020 — feature flag scaffolding。新規キー (`review.scope_assignment.*`) は本テンプレ側
+    # feature flag scaffolding。新規キー (`review.scope_assignment.*`) は本テンプレ側
     # でも必ず宣言する (init で展開される値が runtime と drift しないため)。`enabled: false` で
     # scope-based routing 全体を opt-out し、fix.md は schema 1.0 互換動作 (severity-based default
     # mapping のみ) にフォールバックする。
     # ロールアウト戦略: テンプレートは新規 init ユーザ向けに保守的 default として **false** を維持
-    # (本プロジェクト rite-config.yml は #1022 検証 pass 後に true 化済、テンプレ側の bump は別 Issue で再評価)。
+    # (本プロジェクト rite-config.yml は検証 pass 後に true 化済、テンプレ側の bump は別途再評価)。
     enabled: false           # scope-based routing 全体の opt-in/out (template default; 新規 init では false 維持)
     auto_demote_low: true    # LOW × current-pr の finding を fix.md ステップ 1.2.0 で自動的に nit-noted へ降格 (default: true)。false で opt-out した場合は LOW × current-pr が通常通り blocking 扱いで fix loop に流れる。`enabled: false` の場合は本キーは effectively false 扱い (将来の runtime gating で wiring 予定)
 
-# Fix settings (#506)
+# Fix settings
 fix:
   # Fail-Fast Response Principle: throw/raise 優先の修正方針を必須化
   # 詳細: plugins/rite/commands/pr/fix.md ステップ 2 Fail-Fast Response Principle
-  # NOTE (#506 known limitation): config scaffolding (宣言のみ)。現時点では fix.md が
+  # NOTE (known limitation): config scaffolding (宣言のみ)。現時点では fix.md が
   # ハードコードで挙動を強制しており、false にしても挙動は変わりません。
   fail_fast_response: true            # true で Fail-Fast Response Principle を有効化（default: true）
 
@@ -135,20 +135,20 @@ wiki:
 # Lets multiple Claude Code sessions work different Issues in the same repo
 # concurrently: /rite:pr:open creates a session worktree (.rite/worktrees/issue-{N})
 # and EnterWorktree-s into it, so each session keeps its own working tree /
-# current branch. Default `enabled: true` (on by default since #1391); set to
+# current branch. Default `enabled: true` (on by default); set to
 # false to restore single-session behavior.
 # NOTE: this is a SEPARATE axis from `parallel` (which is per-Issue sub-agent
 # fan-out within a single session). Do not merge the two.
 # Disk cost: each session worktree is a FULL working-tree clone — build artifacts
 # (node_modules, venv, build caches) are NOT shared and may be rebuilt per worktree.
-# Declared ABOVE the `--- Advanced ---` marker (like wiki, #491) so
+# Declared ABOVE the `--- Advanced ---` marker (like wiki) so
 # /rite:init new-generation emits it as an active block (so new projects actually
 # get the default-on behavior). On --upgrade it is back-added with `enabled: true`
-# to existing configs (see init.md Step 4 classification, #1446 D-01) so upgraded
+# to existing configs (see init.md Step 4 classification) so upgraded
 # projects receive the same default-on behavior; an existing explicit
 # `enabled: false` is preserved.
 multi_session:
-  enabled: true                    # per-session worktrees (on by default, #1391); false to disable
+  enabled: true                    # per-session worktrees (on by default); false to disable
   worktree_base: ".rite/worktrees" # session worktree base (issue-{N} subdirs)
 
 # --- Advanced (below this line) ---
@@ -156,7 +156,7 @@ multi_session:
 # They are added as comments during --upgrade.
 # Uncomment and configure as needed.
 
-# PR review result recording (#443)
+# PR review result recording
 # デフォルトではレビュー結果を PR コメントには記録せず、タイムスタンプ付き
 # ローカルファイル (.rite/review-results/{pr_number}-{timestamp}.json) に保存する。
 # /rite:pr:fix は「会話 > ローカルファイル > PR コメント」の優先順位で自動読取する。
@@ -183,7 +183,7 @@ pr_review:
 #   auto_stop_on_repeated_failure: true
 #   repeated_failure_threshold: 3
 
-# Wiki settings are declared above the `--- Advanced ---` marker (active by default, #491).
+# Wiki settings are declared above the `--- Advanced ---` marker (active by default).
 # See docs/designs/experience-heuristics-persistence-layer.md for full specification.
 
 # Investigation settings
@@ -191,5 +191,5 @@ pr_review:
 #   codex_review:
 #     enabled: true
 
-# Flow state settings are declared above the `--- Advanced ---` marker (active by default, Issue #672).
+# Flow state settings are declared above the `--- Advanced ---` marker (active by default).
 # See docs/designs/multi-session-state.md for full specification.

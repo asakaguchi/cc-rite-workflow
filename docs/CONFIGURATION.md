@@ -91,15 +91,15 @@ review:
   loop:
     verification_mode: false    # Enable verification mode as supplement to full review (default: false)
     allow_new_findings_in_unchanged_code: false  # Block new findings in unchanged code (default: false)
-    # Review-fix loop termination (post-#1136)
-    # Cycle-count-based degradation (v0.4.0 #557 introduced 4 quality signals as the abnormal-exit
-    # mechanism) was retired in #1136 along with the entire quality-signal escalation. The current
+    # Review-fix loop termination
+    # Cycle-count-based degradation (v0.4.0 introduced 4 quality signals as the abnormal-exit
+    # mechanism) was retired along with the entire quality-signal escalation. The current
     # loop terminates only on (a) 0 findings remaining → [review:mergeable] (normal exit), or
     # (b) manual abort via Ctrl+C → /rite:resume (or fix.md AskUserQuestion "中止" → [fix:cancelled-by-user]).
     # The keys below remain as config scaffolding for historical compatibility but have no
     # runtime effect on loop termination — see commands/pr/iterate.md ループ仕様 and
     # commands/pr/references/fix-relaxation-rules.md "Loop Termination" for the live spec.
-    convergence_monitoring: true          # (scaffolding only post-#1136 — see comment above)
+    convergence_monitoring: true          # (scaffolding only — see comment above)
     auto_propagation_scan: true           # Run similar-pattern propagation scan after fix (default: true)
     pre_commit_drift_check: true          # Run distributed-fix-drift-check before commit (default: true)
   doc_heavy:
@@ -156,7 +156,7 @@ pr_review:
 safety:
   max_implementation_rounds: 20    # implementation round hard limit per Issue (default: 20)
   # max_review_fix_loops was removed in v0.4.0; the 4-signal escalation that replaced it
-  # was itself retired in #1136. Loop now exits only on 0 findings or manual Ctrl+C / /rite:resume.
+  # was itself retired. Loop now exits only on 0 findings or manual Ctrl+C / /rite:resume.
   time_budget_minutes: 120         # time budget per Issue in minutes (advisory) (default: 120)
   auto_stop_on_repeated_failure: true   # stop when same failure class repeats (default: true)
   repeated_failure_threshold: 3         # consecutive same-class failure count to trigger stop (default: 3)
@@ -406,7 +406,7 @@ issue:
 | `criteria` | array | `[file_types, content_analysis]` | Review criteria |
 | `loop.verification_mode` | boolean | `false` | Enable verification mode as supplement to full review. When enabled, reviews after the first cycle perform both full review and verification of previous fixes with incremental diff regression checks |
 | `loop.allow_new_findings_in_unchanged_code` | boolean | `false` | Whether new findings in unchanged code should be blocking. When `false`, new MEDIUM/LOW findings in unchanged code are reported as "stability concerns" (non-blocking) |
-| `loop.convergence_monitoring` | boolean | `true` | **Scaffolding only post-#1136** — the original fingerprint-based cycling detection (#557 Quality Signal 1) escalated via `AskUserQuestion`, but the entire quality-signal escalation mechanism was retired in #1136. The current review-fix loop only exits on 0 findings (normal) or manual abort (Ctrl+C → `/rite:resume`). Setting this key has no runtime effect — see `commands/pr/iterate.md` for the live spec |
+| `loop.convergence_monitoring` | boolean | `true` | **Scaffolding only** — the original fingerprint-based cycling detection (Quality Signal 1) escalated via `AskUserQuestion`, but the entire quality-signal escalation mechanism was retired. The current review-fix loop only exits on 0 findings (normal) or manual abort (Ctrl+C → `/rite:resume`). Setting this key has no runtime effect — see `commands/pr/iterate.md` for the live spec |
 | `loop.auto_propagation_scan` | boolean | `true` | After a fix is applied, automatically scan for similar patterns elsewhere in the codebase to catch propagation gaps |
 | `loop.pre_commit_drift_check` | boolean | `true` | Run `distributed-fix-drift-check` before committing fix changes to catch inconsistent partial applications |
 | `doc_heavy.enabled` | boolean | `true` | Enable Doc-Heavy PR detection. When a PR's diff is dominated by documentation changes, the `tech-writer` reviewer is boosted and verifies five doc-implementation consistency categories via Grep/Read/Glob |
@@ -423,7 +423,7 @@ issue:
 | `fact_check.use_context7` | boolean | `true` | Use context7 MCP tool for verification. Auto-falls back to WebSearch when context7 is unavailable |
 | `fact_check.verify_internal_likelihood` | boolean | `true` | Enable Sub-Phase B (Internal Likelihood Claim Verification) via Grep-based call site / entry point checks |
 
-**Review-fix loop exit (post-#1136):**
+**Review-fix loop exit:**
 
 The review-fix loop has two exit paths and no automatic abnormal-exit mechanism:
 
@@ -432,7 +432,7 @@ The review-fix loop has two exit paths and no automatic abnormal-exit mechanism:
 | Normal | 0 findings remaining → `[review:mergeable]` |
 | Manual abort | User aborts via `Ctrl+C` → `/rite:resume` (or selects "中止" in `fix.md` AskUserQuestion → `[fix:cancelled-by-user]`) |
 
-> **Historical note (#557 → #1136)**: v0.4.0 introduced "4 quality signals" as the abnormal-exit mechanism (fingerprint cycling / root-cause missing / cross-validation disagreement / reviewer self-degraded) with an `AskUserQuestion` that offered `本 PR 内で再試行 / 別 Issue として切り出す / PR を取り下げる / 手動レビューへエスカレーション` options. #1136 retired this entire mechanism — the design rationale is "指摘ゼロになるまでループ" with manual abort only (see `commands/pr/iterate.md` 設計判断)。 The 4 underlying detection points still exist in code as reviewer-side heuristics: fingerprint cycling (`commands/issue/references/fingerprint-cycling.md`), root-cause-missing (`fix.md` Phase 3.2.1 commit body gate), cross-validation disagreement (`review.md` Phase 5.2 + debate phase), reviewer self-degraded (`_reviewer-base.md` Finding Quality Guardrail) — but they no longer escalate to `AskUserQuestion` or trigger early loop exit.
+> **Historical note**: v0.4.0 introduced "4 quality signals" as the abnormal-exit mechanism (fingerprint cycling / root-cause missing / cross-validation disagreement / reviewer self-degraded) with an `AskUserQuestion` that offered `本 PR 内で再試行 / 別 Issue として切り出す / PR を取り下げる / 手動レビューへエスカレーション` options. A subsequent release retired this entire mechanism — the design rationale is "指摘ゼロになるまでループ" with manual abort only (see `commands/pr/iterate.md` 設計判断)。 The 4 underlying detection points still exist in code as reviewer-side heuristics: fingerprint cycling (`commands/issue/references/fingerprint-cycling.md`), root-cause-missing (`fix.md` Phase 3.2.1 commit body gate), cross-validation disagreement (`review.md` Phase 5.2 + debate phase), reviewer self-degraded (`_reviewer-base.md` Finding Quality Guardrail) — but they no longer escalate to `AskUserQuestion` or trigger early loop exit.
 
 **Fix settings:**
 
@@ -582,7 +582,7 @@ Settings for per-session Git worktree isolation, letting multiple Claude Code se
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | boolean | `true` | Enable per-session worktrees (on by default since #1391). Set to `false` to restore single-session behavior (identical to pre-#1391, zero change). New projects get `enabled: true` from the `/rite:init` template; existing configs that predate the feature and omit the `multi_session` block fall back to `false` for backward compatibility |
+| `enabled` | boolean | `true` | Enable per-session worktrees (on by default). Set to `false` to restore single-session behavior (identical to the previous default, zero change). New projects get `enabled: true` from the `/rite:init` template; existing configs that predate the feature and omit the `multi_session` block fall back to `false` for backward compatibility |
 | `worktree_base` | string | `".rite/worktrees"` | Base directory for session worktrees (each Issue gets an `issue-{N}` subdirectory) |
 
 **Separate axis from `parallel`:** `parallel.*` governs per-Issue sub-agent fan-out *within a single session*; `multi_session.*` governs lifecycle isolation *across whole sessions*. The two are orthogonal and intentionally not merged — `parallel.mode: "worktree"` uses `.worktrees/{issue}/{task}`, while `multi_session` uses `.rite/worktrees/issue-{N}`.
@@ -667,7 +667,7 @@ Settings for PR review **output** recording. This section is intentionally separ
 |-------|------|---------|-------------|
 | `post_comment` | boolean | `false` | When `true`, review results are posted as PR comments (equivalent to `--post-comment`). When `false` (default), results are saved to `.rite/review-results/{pr_number}-{timestamp}.json` only |
 
-`/rite:pr:fix` automatically reads review results in the priority order: **conversation > local file > PR comment**. Most users should leave `post_comment: false` to keep PR comment history clean. Enable it only if you want an auditable review trail on the PR itself. See #443 for rationale.
+`/rite:pr:fix` automatically reads review results in the priority order: **conversation > local file > PR comment**. Most users should leave `post_comment: false` to keep PR comment history clean. Enable it only if you want an auditable review trail on the PR itself.
 
 ### wiki
 
@@ -681,8 +681,8 @@ Settings for the Experience Wiki — an LLM-driven project knowledge base that p
 | `auto_ingest` | boolean | `true` | Automatically run `/rite:wiki:ingest` on review/fix/close events to extract heuristics from raw sources |
 | `auto_query` | boolean | `true` | Automatically run `/rite:wiki:query` at the start of Issue work and at review/fix/implement phases to inject relevant heuristics into the conversation context |
 | `auto_lint` | boolean | `true` | Automatically run `/rite:wiki:lint --auto` after each ingest to detect contradictions, staleness, orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs |
-| `growth_check.threshold_prs` | integer | `5` | Issue #524 layer 3 (lint growth check) — `/rite:lint` Phase 3.8 emits a non-blocking warning when this many merged PRs accumulate on the development base branch since the last commit on `branch_name` (signalling that Phase X.X.W may be silently skipped). Increase to relax the check; setting it to a very large number effectively disables the lint warning while preserving layers 1-2 |
-| `growth_check.pr_raw_threshold` | integer | `3` | Issue #536 — warn when this many of the last `threshold_prs` merged PRs have no corresponding raw source on the wiki branch. Detects regressions where PRs are merged but Phase X.X.W never fires. Override at runtime with `--pr-raw-threshold N` |
+| `growth_check.threshold_prs` | integer | `5` | Lint growth check layer 3 — `/rite:lint` Phase 3.8 emits a non-blocking warning when this many merged PRs accumulate on the development base branch since the last commit on `branch_name` (signalling that Phase X.X.W may be silently skipped). Increase to relax the check; setting it to a very large number effectively disables the lint warning while preserving layers 1-2 |
+| `growth_check.pr_raw_threshold` | integer | `3` | Warn when this many of the last `threshold_prs` merged PRs have no corresponding raw source on the wiki branch. Detects regressions where PRs are merged but Phase X.X.W never fires. Override at runtime with `--pr-raw-threshold N` |
 
 **Example (opt out completely):**
 

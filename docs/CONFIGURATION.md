@@ -92,11 +92,9 @@ review:
     verification_mode: false    # Enable verification mode as supplement to full review (default: false)
     allow_new_findings_in_unchanged_code: false  # Block new findings in unchanged code (default: false)
     # Review-fix loop termination
-    # Cycle-count-based degradation (v0.4.0 introduced 4 quality signals as the abnormal-exit
-    # mechanism) was retired along with the entire quality-signal escalation. The current
-    # loop terminates only on (a) 0 findings remaining → [review:mergeable] (normal exit), or
+    # The loop terminates only on (a) 0 findings remaining → [review:mergeable] (normal exit), or
     # (b) manual abort via Ctrl+C → /rite:resume (or fix.md AskUserQuestion "中止" → [fix:cancelled-by-user]).
-    # The keys below remain as config scaffolding for historical compatibility but have no
+    # The keys below remain as config scaffolding but have no
     # runtime effect on loop termination — see commands/pr/iterate.md ループ仕様 and
     # commands/pr/references/fix-relaxation-rules.md "Loop Termination" for the live spec.
     convergence_monitoring: true          # (scaffolding only — see comment above)
@@ -155,8 +153,8 @@ pr_review:
 # Safety settings (fail-closed thresholds)
 safety:
   max_implementation_rounds: 20    # implementation round hard limit per Issue (default: 20)
-  # max_review_fix_loops was removed in v0.4.0; the 4-signal escalation that replaced it
-  # was itself retired. Loop now exits only on 0 findings or manual Ctrl+C / /rite:resume.
+  # The review-fix loop has no iteration-count limit key; it exits only on 0 findings
+  # or manual abort (Ctrl+C / /rite:resume).
   time_budget_minutes: 120         # time budget per Issue in minutes (advisory) (default: 120)
   auto_stop_on_repeated_failure: true   # stop when same failure class repeats (default: true)
   repeated_failure_threshold: 3         # consecutive same-class failure count to trigger stop (default: 3)
@@ -377,7 +375,7 @@ These variables are used in `branch.pattern` to generate new branch names:
 | `M` | Skip XS/S; analyze body at M; show proposal for L and above (default) |
 | `L` | Skip XS-M; analyze body at L; show proposal for XL |
 | `XL` | Skip XS-L; analyze body at XL only (no proposal, as XL is maximum) |
-| `none` | Always show decomposition prompt (legacy behavior) |
+| `none` | Always show decomposition prompt |
 
 **Three-tier judgment logic:**
 
@@ -406,7 +404,7 @@ issue:
 | `criteria` | array | `[file_types, content_analysis]` | Review criteria |
 | `loop.verification_mode` | boolean | `false` | Enable verification mode as supplement to full review. When enabled, reviews after the first cycle perform both full review and verification of previous fixes with incremental diff regression checks |
 | `loop.allow_new_findings_in_unchanged_code` | boolean | `false` | Whether new findings in unchanged code should be blocking. When `false`, new MEDIUM/LOW findings in unchanged code are reported as "stability concerns" (non-blocking) |
-| `loop.convergence_monitoring` | boolean | `true` | **Scaffolding only** — the original fingerprint-based cycling detection (Quality Signal 1) escalated via `AskUserQuestion`, but the entire quality-signal escalation mechanism was retired. The current review-fix loop only exits on 0 findings (normal) or manual abort (Ctrl+C → `/rite:resume`). Setting this key has no runtime effect — see `commands/pr/iterate.md` for the live spec |
+| `loop.convergence_monitoring` | boolean | `true` | **Scaffolding only** — setting this key has no runtime effect. The review-fix loop exits only on 0 findings (normal) or manual abort (Ctrl+C → `/rite:resume`) — see `commands/pr/iterate.md` for the live spec |
 | `loop.auto_propagation_scan` | boolean | `true` | After a fix is applied, automatically scan for similar patterns elsewhere in the codebase to catch propagation gaps |
 | `loop.pre_commit_drift_check` | boolean | `true` | Run `distributed-fix-drift-check` before committing fix changes to catch inconsistent partial applications |
 | `doc_heavy.enabled` | boolean | `true` | Enable Doc-Heavy PR detection. When a PR's diff is dominated by documentation changes, the `tech-writer` reviewer is boosted and verifies five doc-implementation consistency categories via Grep/Read/Glob |
@@ -431,8 +429,6 @@ The review-fix loop has two exit paths and no automatic abnormal-exit mechanism:
 |------|---------|
 | Normal | 0 findings remaining → `[review:mergeable]` |
 | Manual abort | User aborts via `Ctrl+C` → `/rite:resume` (or selects "中止" in `fix.md` AskUserQuestion → `[fix:cancelled-by-user]`) |
-
-> **Historical note**: v0.4.0 introduced "4 quality signals" as the abnormal-exit mechanism (fingerprint cycling / root-cause missing / cross-validation disagreement / reviewer self-degraded) with an `AskUserQuestion` that offered `本 PR 内で再試行 / 別 Issue として切り出す / PR を取り下げる / 手動レビューへエスカレーション` options. A subsequent release retired this entire mechanism — the design rationale is "指摘ゼロになるまでループ" with manual abort only (see `commands/pr/iterate.md` 設計判断)。 The 4 underlying detection points still exist in code as reviewer-side heuristics: fingerprint cycling (`commands/issue/references/fingerprint-cycling.md`), root-cause-missing (`fix.md` Phase 3.2.1 commit body gate), cross-validation disagreement (`review.md` Phase 5.2 + debate phase), reviewer self-degraded (`_reviewer-base.md` Finding Quality Guardrail) — but they no longer escalate to `AskUserQuestion` or trigger early loop exit.
 
 **Fix settings:**
 

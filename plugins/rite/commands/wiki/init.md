@@ -163,8 +163,8 @@ else
 fi
 
 # 2 行に分離して emit する (F-04 対応)。
-# 旧実装は `GITIGNORE_NEGATION_STATE=$state; reason=$reason` の 1 行 emit だったが、
-# bash としてはセミコロンが statement 区切りとなり意味論が混乱する。分離することで、
+# `GITIGNORE_NEGATION_STATE=$state; reason=$reason` の 1 行 emit だと、
+# bash ではセミコロンが statement 区切りとなり意味論が混乱する。分離することで、
 # LLM の marker grep も後述テーブルの列挙も単一 key=value 行として扱える。
 echo "GITIGNORE_NEGATION_STATE=$state"
 echo "GITIGNORE_NEGATION_REASON=$reason"

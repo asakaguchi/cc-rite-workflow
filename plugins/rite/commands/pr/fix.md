@@ -272,8 +272,8 @@ fi
 
 original_args="$ARGUMENTS"
 # sentinel を `null` から `__RITE_UNSET__` に変更
-# (旧実装は `--review-file null` を渡したユーザーが「`null` という名前のファイル」を意図した場合と
-# 衝突する。`__RITE_UNSET__` は legitimate な file path として現実に存在しないため衝突しない)
+# (`null` を sentinel に使うと `--review-file null` を渡したユーザーが「`null` という名前のファイル」を
+# 意図した場合と衝突する。`__RITE_UNSET__` は legitimate な file path として現実に存在しないため衝突しない)
 review_file_path="__RITE_UNSET__"  # explicit set (undefined 参照防止、衝突安全な sentinel)
 remaining_args="$original_args"
 # flag style を別変数に保持してエラーメッセージで区別する
@@ -523,7 +523,7 @@ else
   #   (a) Broad Retrieval が `📜 rite レビュー結果` コメントを発見せず tempfile を作成しなかった
   #       legitimate な経路 (新規 PR / rite:pr:review 未実行 / 既に削除済み等)
   #   (b) Claude が Priority 3 進入時に Broad Retrieval bash block を skip した前提条件違反経路
-  # 旧実装は (b) を検出する guard が無く silent fallthrough に落ちていた。本 [INFO] emit により、
+  # (b) を検出する guard が無いと silent fallthrough に落ちる。本 [INFO] emit により、
   # ステップ 1.2 Broad Retrieval が本当に実行されたかを後から trace できるようにする。
   # 機械的 enforcement (Broad Retrieval 呼出フラグの参照) は複雑で scope 外のため、
   # 最低限 observability を確保する対症療法として [INFO] を stderr に emit する。
@@ -542,14 +542,14 @@ fi
 #
 # findings の description / suggestion 列内に
 # 「### 📄 Raw JSON」リテラル文字列が含まれる場合 (本 PR 自体がまさにそういう文字列を生成する)、
-# 旧実装は finding 内の literal を `### 📄 Raw JSON` 行頭マッチとして誤検出して in_section を
-# 早期に立ててしまい、誤った JSON 抽出を招く。ステップ 6.1.b の Raw JSON section は必ず
+# finding 内の literal を `### 📄 Raw JSON` 行頭マッチとして拾うと in_section を
+# 早期に立て、誤った JSON 抽出を招く。ステップ 6.1.b の Raw JSON section は必ず
 # `---\n\n### 📄 Raw JSON\n\n```json` の構造を持つため、`---` separator の後に出現する
 # **最後** の `### 📄 Raw JSON` のみを採用する。
 #
-# 旧実装は「`---` 後の最初の `### 📄 Raw JSON`」で `in_section` を
-# 立てる構造で、コメントと実装が乖離していた (本 PR の review.md / fix.md 自体が finding 列に
-# `### 📄 Raw JSON` literal を含むため、本来の Raw JSON section より早く誤検出される反例)。
+# 「`---` 後の最初の `### 📄 Raw JSON`」で `in_section` を
+# 立てると、finding 列に `### 📄 Raw JSON` literal を含む場合 (本 PR の review.md / fix.md 自体が
+# 該当) に本来の Raw JSON section より早く誤検出される。
 # 1-pass で末尾の section start を tracking し、END 内で逆方向スキャンして「最後」を確実に採用する。
 # 以下の実装は POSIX awk のみで動作し、tac (GNU coreutils 専用) や 2-pass 読み込みを必要としない。
 raw_json=$(awk '
@@ -578,8 +578,8 @@ if [ "$awk_pr_comment_raw_json_rc" -ne 0 ]; then
   raw_json=""
 fi
 
-# 旧実装は「raw_json なし」「raw_json あるが jq empty 失敗」
-# 「raw_json あるが必須 fields 欠落」の 3 ケースをまとめて else の no-op に流していた。
+# 「raw_json なし」「raw_json あるが jq empty 失敗」
+# 「raw_json あるが必須 fields 欠落」の 3 ケースをまとめて else の no-op に流すと silent regression になる。
 # raw_json="" だけが legitimate な legacy fallthrough であり、それ以外は壊れた新形式 JSON を
 # 検出して WARNING + reason emit してから legacy parser に流すべき (silent regression 防止)。
 if [ -z "$raw_json" ]; then
@@ -734,9 +734,9 @@ else
       fi
 
       # jq exit code を明示捕捉する。
-      # 旧実装は `severity_map_json=$(printf | jq -c ...)` で jq の exit code を一切 check せず、
-      # 失敗時は severity_map_json="" のまま後段に流れ「0 件で正常終了」に見える silent regression
-      # を起こしていた。if-else で exit code を独立 capture し、失敗時は明示 fallthrough する
+      # `severity_map_json=$(printf | jq -c ...)` で jq の exit code を check しないと、
+      # 失敗時に severity_map_json="" のまま後段に流れ「0 件で正常終了」に見える silent regression
+      # になる。if-else で exit code を独立 capture し、失敗時は明示 fallthrough する
       # (legacy Markdown parser に flow を移す — review_source は pr_comment のまま維持)。
       p3_jq_err=$(mktemp /tmp/rite-fix-p3-smap-err-XXXXXX 2>/dev/null) || p3_jq_err=""
       # line nullable sentinel 正規化 (Priority 2 severity_map と同じ処理)
@@ -3089,7 +3089,7 @@ else
       ;;
     *)
       # IO/権限/構文エラー: H-2 で fail-fast から soft failure に統一:
-      # 旧実装は `exit 1` で fix.md 全体を異常終了させる意図だったが、bash の `exit 1` は Bash tool の
+      # `exit 1` は fix.md 全体を異常終了させる意図に見えるが、bash の `exit 1` は Bash tool の
       # exit code に変換されるだけで Claude のフロー制御にはならない (line 1868 に明記)。Claude は次の Phase
       # に進み、ステップ 5.1 が会話履歴で `[CONTEXT] WM_UPDATE_FAILED=1` を検出して `[fix:pushed-wm-stale]` を
       # 出力する。コメント宣言 (`[fix:error]` 相当) と実動作の矛盾を解消するため、soft failure (exit 1 削除)
@@ -3116,15 +3116,14 @@ fi
 # 2. PR 本文で見つからない場合、ブランチ名から抽出
 # 同様に IO error と「マッチなし」を融合させない。
 #
-# 旧実装は
 # `git branch --show-current 2>"$err" | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+'`
-# の 3 段 pipeline で、`git branch` の rc を末尾 grep の rc=1 (空入力) が隠蔽する
-# pipefail 罠を持っていた。git branch の終了コードを直接 if-else で捕捉し、
+# の 3 段 pipeline は、`git branch` の rc を末尾 grep の rc=1 (空入力) が隠蔽する
+# pipefail 罠を持つため使わない。git branch の終了コードを直接 if-else で捕捉し、
 # issue 番号抽出は sed -n に移譲する形に分解する。
 # wm_emit_done guard (M-5 対応): pr_body grep IO error 経路で既に retained flag emit 済みの場合、
-# branch fallback を実行せず skip する。旧実装は issue_number="" にするだけで直後の
+# branch fallback を実行せず skip する。issue_number を空にするだけだと直後の
 # `if [[ -z "$issue_number" ]]` が常に true になり、branch grep が誤起動して意図しない
-# 「IO error 経路なのに issue_number が設定される」semantics 破壊を引き起こしていた。
+# 「IO error 経路なのに issue_number が設定される」semantics 破壊を引き起こす。
 if [[ -z "$issue_number" ]] && [ "$wm_emit_done" = "0" ]; then
   branch_grep_err=$(mktemp /tmp/rite-fix-branch-grep-err-XXXXXX) || {
     echo "ERROR: branch_grep_err 一時ファイルの作成に失敗" >&2
@@ -3274,8 +3273,8 @@ wm_reason_of() { printf '%s\n' "$1" | sed -n 's/.*reason=\([a-z_]*\).*/\1/p' | h
 if [ "$git_diff_failed" -eq 0 ]; then
   # helper の stderr (root-cause 診断: auth/rate/network/safety-check 詳細 + backup path) を退避する。
   # review.md ステップ 6.2 (本 4.5 と対称化済みの Update Work Memory Phase) と同じ stderr-capture 規約。
-  # 旧実装は 2>/dev/null で helper stderr を破棄し、WM_UPDATE_FAILED 時に operator が失敗理由を
-  # 追えなかった (status reason カテゴリのみ表示)。mktemp 失敗時は /dev/null に fallback する。
+  # `2>/dev/null` で helper stderr を破棄すると、WM_UPDATE_FAILED 時に operator が失敗理由を
+  # 追えない (status reason カテゴリのみ表示)。mktemp 失敗時は /dev/null に fallback する。
   wm_sync_err=$(mktemp 2>/dev/null) || wm_sync_err=""
   # --- transform 1: 進捗サマリー + 変更ファイル更新 ---
   # {impl_status} / {test_status} / {doc_status} は Claude が git diff 結果から判定して substitute する。

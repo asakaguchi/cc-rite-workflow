@@ -56,10 +56,10 @@ fi
 
 # Derive the per-session compact-state path from the resolved flow-state path
 # .rite/sessions/{sid}.flow-state → .rite/sessions/{sid}.compact-state.
-# This makes each session's compact snapshot independent, removing the
-# last-writer-wins race on the previously shared single file. Falls back to the
-# legacy shared path only when the session id is unresolvable, preserving
-# pre-per-session behavior for sessions without a session id.
+# This makes each session's compact snapshot independent, avoiding a
+# last-writer-wins race that a single shared file would otherwise cause. Falls
+# back to the legacy shared path only when the session id is unresolvable, so
+# sessions without a session id still have a working compact-state location.
 if [ -n "$FLOW_STATE" ]; then
   COMPACT_STATE="${FLOW_STATE%.flow-state}.compact-state"
 else

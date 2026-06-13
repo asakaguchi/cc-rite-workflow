@@ -135,14 +135,13 @@ review_source_path=""
 # canonical pattern: references/bash-trap-patterns.md#signal-specific-trap-template を参照。
 # Block 全体の scope を cover するため Priority 2 のネスト内ではなく block 冒頭に配置する。
 #
-# 旧実装の `local _saved_rc=$?; rm -f ...; return $_saved_rc` は
-# 意図と実挙動が乖離していた。trap handler が `'rc=$?; _rite_fix_p120_cleanup; exit $rc'` 形式で
-# 関数を呼ぶとき、関数入場時の `$?` は trap handler 内の直前 assignment `rc=$?` の exit code
-# (= 0) であり、真のエラーコードは既に trap handler 側の `rc` 変数に捕捉されている。したがって
-# 関数内で `$?` を保存しても常に 0 となり、`return $_saved_rc` は常に 0 を返していた (コメントと
-# 実挙動の乖離)。trap handler が最終 `exit $rc` で outer rc を使うため運用上は無害だが、将来
-# 関数を直接呼び出す拡張で silent regression する罠を残していた。簡素化して trap handler の
-# rc 捕捉に一本化する。
+# cleanup 関数内で `local _saved_rc=$?; rm -f ...; return $_saved_rc` を書いてはならない。
+# trap handler が `'rc=$?; _rite_fix_p120_cleanup; exit $rc'` 形式で関数を呼ぶとき、関数入場時の
+# `$?` は trap handler 内の直前 assignment `rc=$?` の exit code (= 0) であり、真のエラーコードは
+# 既に trap handler 側の `rc` 変数に捕捉されている。したがって関数内で `$?` を保存しても常に 0 となり、
+# `return $_saved_rc` は常に 0 を返す (コメントと実挙動が乖離する)。trap handler が最終 `exit $rc` で
+# outer rc を使うため運用上は無害だが、将来関数を直接呼び出す拡張で silent regression する罠になる。
+# trap handler の rc 捕捉に一本化する。
 find_err=""
 jq_val_err_p0=""
 jq_val_err_p2=""
@@ -245,7 +244,7 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
         # (ユーザーは「レビュー実行 / 別ファイル指定 / 中止」を選択可能)。
         # [CONTEXT] REVIEW_SOURCE_STALE=1 を emit して observability は維持する。
         # jq バイナリ異常 / I/O エラーと「.commit_sha フィールド不在 (legacy schema)」を区別する。
-        # 旧実装 `2>/dev/null || echo ""` はこの 2 ケースを silent に融合させ、stale detection を silent 無効化していた。
+        # `2>/dev/null || echo ""` の素朴な実装はこの 2 ケースを silent に融合させ、stale detection を silent 無効化してしまう。
         json_commit_sha_err=$(mktemp /tmp/rite-fix-p0-commit-sha-err-XXXXXX 2>/dev/null) || json_commit_sha_err=""
         if json_commit_sha=$(jq -r '.commit_sha // empty' "$review_file_path" 2>"${json_commit_sha_err:-/dev/null}"); then
           : # jq 成功 (空 or 非空)
@@ -263,9 +262,9 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
           head_sha=""
         fi
         if [ -n "$json_commit_sha" ] && [ -n "$head_sha" ] && [ "$json_commit_sha" != "$head_sha" ]; then
-          # stale file 検出時は fallback 経路に route する。旧実装は `RITE_FIX_ACKNOWLEDGE_STALE=1` 環境変数による
-          # opt-in 続行経路を持っていたが、Claude Code Bash tool は呼び出し境界で env var を継承しないため
-          # (anthropics/claude-code#2508)、ユーザーが env var を set する手段がなく dead code だった。
+          # stale file 検出時は fallback 経路に route する。`RITE_FIX_ACKNOWLEDGE_STALE=1` 環境変数による
+          # opt-in 続行経路は設けない。Claude Code Bash tool は呼び出し境界で env var を継承しないため
+          # (anthropics/claude-code#2508)、ユーザーが env var を set する手段がなく dead code になる。
           # stale を承知で続行したいユーザーは Priority 4 Interactive fallback の「レビュー実行」or「別ファイル指定」
           # を選択する。stale な検出結果を無視したい特殊ケースは Priority 4 で「別ファイル指定」に同じ path を
           # 再入力することで実質的に対応可能 (ただし再度 stale warning が出る — 設計意図通り)。
@@ -435,9 +434,9 @@ if [ -z "$review_source" ]; then
         [ -n "${jq_val_err_p2:-}" ] && [ -s "$jq_val_err_p2" ] && head -3 "$jq_val_err_p2" | sed 's/^/  /' >&2
         echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_json_parse_failure" >&2
         # verified-review M-6 (M10) 対応: corrupted file を .corrupt-{epoch} にリネームし、
-        # 次回の lexicographic sort で選ばれないようにする。旧実装は WARNING を出すだけで
-        # corrupted file を残していたため、次回呼び出し時も同じファイルが最新 timestamp として
-        # 選ばれ、同一 WARNING が繰り返される無限 ring を起こしていた。
+        # 次回の lexicographic sort で選ばれないようにする。WARNING を出すだけで corrupted file を
+        # 残すと、次回呼び出し時も同じファイルが最新 timestamp として選ばれ、同一 WARNING が
+        # 繰り返される無限 ring に陥る。
         # ⚠️ corrupt file rename ロジック (Instance 1/2 — jq parse failure path)
         # 同一ロジックが下の schema_required_fields_missing path (Instance 2/2) にも複製されている。
         # 変更時は両方を同時に更新すること (ドリフト防止)。
@@ -593,11 +592,11 @@ if [ -z "$review_source" ]; then
 fi
 
 # Priority 0/2/3/fallback の最終 review_source 値を
-# machine-readable marker として emit する。旧実装は Priority 1 `use` branch のみが
-# `[CONTEXT] REVIEW_SOURCE=conversation` を emit しており、他 4 経路は observability 欠落だった。
+# machine-readable marker として emit する。Priority 1 `use` branch のみが
+# `[CONTEXT] REVIEW_SOURCE=conversation` を emit する状態では、他 4 経路の observability が欠落する。
 # schema.md `読取優先順位` セクションは「ステップ 4.5.3 / 4.6 で `{review_source}` を log に出すため
 # conversation 経由で取り込んだ場合も他の Priority と同様に provenance を残す必要がある」と
-# 明記するが、実装は Priority 1 のみで契約違反。本修正で全経路に展開する。
+# 明記するため、全経路で emit して契約を満たす。
 # 対象: explicit_file (Priority 0)、conversation (Priority 1、既存 emit は残し defense-in-depth
 # として後段でも emit)、local_file (Priority 2)、pr_comment (Priority 3)、fallback (Priority 0
 # 失敗 → Interactive Fallback 経路)。

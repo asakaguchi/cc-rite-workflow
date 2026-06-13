@@ -143,7 +143,7 @@ _emit_skipped() {
 # ---- index.md 読出 (旧 lint.md の index.md 事前読出ステップを内包) ------------
 # LC_ALL=C で locale 固定 (localize された diagnostic による stderr pattern 不一致を予防 —
 # sibling helpers と同じ規約)。読出失敗は legitimate absence / IO error を区別せず
-# index_unreadable に一本化する (旧 inline 実装も index_read_ok=false の単一経路だった。
+# index_unreadable に一本化する (index_read_ok=false の単一経路に集約する。
 # 孤児検出は index.md が無ければ全ページ orphan 誤検出になるため、いずれの失敗でも skip が正解)。
 index_err=$(mktemp /tmp/rite-wiki-lint-orphans-err-XXXXXX 2>/dev/null) || {
   echo "WARNING: stderr 退避 tempfile (index_err) の mktemp に失敗しました。index.md 読出の詳細エラー情報は失われます" >&2

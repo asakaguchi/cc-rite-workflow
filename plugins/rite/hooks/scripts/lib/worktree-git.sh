@@ -83,13 +83,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/../../control-char-neutralize.sh"
 # -----------------------------------------------------------------------
 # verify_worktree_branch: confirm a worktree's HEAD is on an expected branch.
 #
-# Responsibility: eliminate the duplicated rev-parse
-# --abbrev-ref HEAD verification block that previously lived in both
-# wiki-worktree-commit.sh and wiki-ingest-commit.sh. Both callers ran
-# essentially the same sequence (mktemp stderr tempfile + scope-limited
-# trap + `set +e` / `set -e` fence + rev-parse + ERROR + `head -3` + rm -f
-# + branch compare) with only the tempfile prefix differing. This helper
-# centralizes that logic so fixes propagate to both callers automatically.
+# Responsibility: hold the single rev-parse --abbrev-ref HEAD verification
+# block shared by wiki-worktree-commit.sh and wiki-ingest-commit.sh. Both
+# callers need essentially the same sequence (mktemp stderr tempfile +
+# scope-limited trap + `set +e` / `set -e` fence + rev-parse + ERROR +
+# `head -3` + rm -f + branch compare) with only the tempfile prefix differing.
+# Centralizing that logic here lets fixes propagate to both callers automatically.
 #
 # Usage:
 # verify_worktree_branch "$worktree_path" "$wiki_branch" "wwc" "$extra_hint"

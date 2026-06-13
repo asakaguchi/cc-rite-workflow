@@ -164,9 +164,8 @@ cd "$REPO_ROOT" || {
 # として surface する (init.md は exit code を読まず stdout/stderr で分岐し ステップ 2 へ進む)。
 #
 # コア検証 (git add --dry-run + grep -qF "add '<probe>'") は同ファイル same_branch case の
-# `DRIFT-CHECK ANCHOR: same_branch ...` 節と意図的に同型。旧構成では init.md がこのロジックの
-# inline copy を持ち両者を「一字一句同期」していたが、本モード導入で init.md は委譲呼び出しに
-# 置換され、同期対象は同一ファイル内の 2 箇所に閉じた (cross-file drift を解消)。
+# `DRIFT-CHECK ANCHOR: same_branch ...` 節と意図的に同型。init.md はこのロジックの inline copy を
+# 持たず本モードへ委譲するため、同期対象は同一ファイル内の 2 箇所に閉じる (cross-file drift を防ぐ)。
 if [ "$VERIFY_NEGATION" -eq 1 ]; then
   negation_probe=".rite/wiki/raw/.rite-lint-negation-probe"
   # probe 作成失敗は non-blocking skip (init.md §1.3.4 契約: WARNING + ステップ 2 進行)。
@@ -408,7 +407,7 @@ case "$branch_strategy" in
     # Sibling reference: the `--verify-negation` early-exit block above (its
     # `(verify-negation copy)` ANCHOR). Keep the mktemp stderr capture + if-wrapper rc
     # capture structure one-for-one with that copy — Wiki 経験則 patterns/high
-    # 「canonical 実装と一字一句同期」. (wiki/init.md ステップ 1.3.4 no longer holds an
+    # 「canonical 実装と一字一句同期」. (wiki/init.md ステップ 1.3.4 holds no
     # inline copy; it delegates here via `gitignore-health-check.sh --verify-negation`.)
     add_dry_err=$(mktemp /tmp/rite-gitignore-adddry-XXXXXX 2>/dev/null) || add_dry_err=""
     add_dry_out=""

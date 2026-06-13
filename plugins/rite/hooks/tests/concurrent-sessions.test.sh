@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for concurrent 2-session state independence (Issue #683 / parent #672 AC-1)
+# Tests for concurrent 2-session state independence (AC-1)
 #
 # Coverage:
 #   - T-01       : 2 並行セッションでの state 独立性
@@ -7,11 +7,11 @@
 #                  (c) concurrent patch (independent updates) / (d) cross-session isolation
 #   - T-LOCAL-1  : flake-free 100 連続実行 (concurrent create)
 #
-# Issue #672 の core value proposition (lock 不要で並行性が構造的に保証される) を
+# core value proposition (lock 不要で並行性が構造的に保証される) を
 # verify する CRITICAL path。マルチステート (per-session file)
 # の上でのみ pass する設計。
 #
-# Out of scope (#684 で扱う):
+# Out of scope:
 #   - migration / atomic write integrity / cleanup / crash resume
 #
 # Usage: bash plugins/rite/hooks/tests/concurrent-sessions.test.sh
@@ -63,7 +63,7 @@ trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
 trap 'cleanup; exit 129' HUP
 
-echo "=== concurrent-sessions tests (Issue #683 / parent #672 AC-1) ==="
+echo "=== concurrent-sessions tests (AC-1) ==="
 echo ""
 
 # --------------------------------------------------------------------------
@@ -234,7 +234,7 @@ fi
 
 # --------------------------------------------------------------------------
 # T-LOCAL-1: flake-free 100 iterations of concurrent create
-# Issue #683 AC-LOCAL-1: 並行性テストが新形式 hook 群で 100% pass (10 連続実行で flake 0)
+# AC-LOCAL-1: 並行性テストが新形式 hook 群で 100% pass (10 連続実行で flake 0)
 # 10 連続が AC だが、より強い保証として 100 連続を採用
 # --------------------------------------------------------------------------
 echo "T-LOCAL-1: 100 iteration flake-free check (concurrent create)"

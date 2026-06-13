@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for atomic write integrity — Issue #672 / #684 (T-09 / AC-9)
+# Tests for atomic write integrity — T-09 / AC-9
 #
 # Purpose:
 #   `flow-state.sh` は state file を更新する際、
@@ -105,7 +105,7 @@ state_file_is_integral() {
   jq empty "$f" >/dev/null 2>&1
 }
 
-echo "=== atomic-write tests (Issue #672 / #684 T-09 AC-9) ==="
+echo "=== atomic-write tests (T-09 AC-9) ==="
 echo ""
 
 # -------------------------------------------------------------------------
@@ -197,7 +197,7 @@ fi
 #   (b) atomic rename が起きないので state file は baseline のまま不変
 # の 2 条件を assert する。これにより mode ごとに mutation を独立検出できる。
 #
-# F-05 fix (Issue #760): 旧実装は `0,/PAT/` で create mode 1 occurrence のみを
+# F-05 fix: 旧実装は `0,/PAT/` で create mode 1 occurrence のみを
 # 置換していたため、patch / increment の atomic mv が破壊的に退化しても test が
 # PASS する false positive 経路を持っていた。canonical 防御は (1) `s|...|g` で
 # 3 occurrence 全てを mutate、(2) sed regression guard で mutation 数を pin

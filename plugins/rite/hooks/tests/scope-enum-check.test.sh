@@ -1,6 +1,6 @@
 #!/bin/bash
 # Tests for review-result schema 1.1.0 scope enum / cross-field invariants
-# Issue #1021 (Epic #1015 — schema 1.0 → 1.1.0 evolution).
+# schema 1.0 → 1.1.0 evolution.
 #
 # Test cases (AC-4):
 #   T-1: basic — scope ∈ {current-pr, follow-up, nit-noted} valid (+MEDIUM × nit-noted negative)
@@ -32,7 +32,7 @@ if [ ! -x "$MIGRATE_SCRIPT" ]; then
   exit 2
 fi
 
-# Sandbox + cleanup_dirs array for proper trap-based cleanup (Issue #1021 F-06)
+# Sandbox + cleanup_dirs array for proper trap-based cleanup (F-06)
 # Use specific path tracking instead of relying on $sandbox single rm -rf.
 declare -a cleanup_dirs=()
 _test_cleanup() {
@@ -77,7 +77,7 @@ assert "T-1 all scope values are valid enum members" "0" "$T1_INVALID_SCOPE_COUN
 
 # ------------------------------------------------------------------
 # T-2: CRITICAL/HIGH × nit-noted FAIL invariant (#4)
-#      + MEDIUM × nit-noted negative case (Issue #1021 F-04 — symmetry with T-4)
+#      + MEDIUM × nit-noted negative case (F-04 — symmetry with T-4)
 # ------------------------------------------------------------------
 echo "=== T-2: CRITICAL × nit-noted FAIL invariant ==="
 T2_FILE="$sandbox/T2.json"
@@ -112,7 +112,7 @@ else
   fail "T-2 invariant #4 missed HIGH × nit-noted (violations=$T2B_VIOLATIONS, expected ≥ 1)"
 fi
 
-# Negative case: MEDIUM × nit-noted should NOT trigger (Issue #1021 F-04)
+# Negative case: MEDIUM × nit-noted should NOT trigger (F-04)
 # selector が CRITICAL/HIGH 限定であることを verify。selector が将来 MEDIUM を含むよう
 # 誤って変更されても検出できるようにする (T-4 の pre_existing=true negative pair と対称)。
 T2C_FILE="$sandbox/T2c.json"
@@ -144,7 +144,7 @@ cat > "$T3_DIR/.rite/review-results/300-20260101000000.json" <<'EOF'
 }
 EOF
 
-# Capture stderr for diagnostic purposes (Issue #1021 F-14)
+# Capture stderr for diagnostic purposes (F-14)
 T3_STDERR=$(mktemp /tmp/rite-scope-enum-t3-stderr-XXXXXX) || { fail "T-3 stderr tmpfile mktemp failed"; T3_STDERR=""; }
 T3_RC=0
 if [ -n "$T3_STDERR" ]; then
@@ -155,7 +155,7 @@ else
   T3_RC=$?
 fi
 
-# Issue #1021 F-05: migration failure 時は後続 assert を short-circuit する
+# F-05: migration failure 時は後続 assert を short-circuit する
 if [ "$T3_RC" -ne 0 ]; then
   if [ -n "$T3_STDERR" ] && [ -s "$T3_STDERR" ]; then
     fail "T-3 migration script exit code (expected 0, got $T3_RC). stderr: $(head -5 "$T3_STDERR" | tr '\n' ' ')"
@@ -169,13 +169,13 @@ else
   T3_VER=$(jq -r '.schema_version' "$T3_DIR/.rite/review-results/300-20260101000000.json" 2>/dev/null) || T3_VER="<error>"
   assert "T-3 schema_version bumped to 1.1.0" "1.1.0" "$T3_VER"
 
-  # Issue #1021 F-01: migration script は pre_existing=false 初期化を行わない (schema doc canonical)。
+  # F-01: migration script は pre_existing=false 初期化を行わない (schema doc canonical)。
   # field 不在 (`null`) を期待する。jq の `// "<absent>"` で field 不在を sentinel 化して assert。
   T3_PE=$(jq -r '.findings[0] | if has("pre_existing") then (.pre_existing | tostring) else "<absent>" end' \
     "$T3_DIR/.rite/review-results/300-20260101000000.json" 2>/dev/null) || T3_PE="<error>"
   assert "T-3 pre_existing field NOT added (schema doc canonical default mapping = 適用しない)" "<absent>" "$T3_PE"
 
-  # accepted-fingerprints state file 初期化も verify (Issue #1021 F-06 related — migration の完全性)
+  # accepted-fingerprints state file 初期化も verify (F-06 related — migration の完全性)
   T3_STATE_FILE="$T3_DIR/.rite/state/accepted-fingerprints-300.txt"
   if [ -f "$T3_STATE_FILE" ]; then
     pass "T-3 accepted-fingerprints state file initialized for PR #300"
@@ -194,7 +194,7 @@ echo "=== T-4: pre_existing=false × nit-noted auto-correct (schema-level contra
 # review-result-schema.md invariant #5 in isolation. It does NOT verify the actual
 # read-side integration in fix.md ステップ 1.2.0. If fix.md ever drifts from this
 # canonical jq expression, T-4 alone would not catch it — that bit-exact alignment
-# is the responsibility of a separate E2E test (follow-up scope, Issue #1021 F-12).
+# is the responsibility of a separate E2E test (follow-up scope, F-12).
 T4_FILE="$sandbox/T4.json"
 cat > "$T4_FILE" <<'EOF'
 {

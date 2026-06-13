@@ -1,8 +1,8 @@
 #!/bin/bash
 # Static / offline drift + consistency tests for the `/rite:init --upgrade` config
-# follow-through (Issue #1446).
+# follow-through.
 #
-# Sources the shared `_test-helpers.sh` (Issue #1450) for pass / fail /
+# Sources the shared `_test-helpers.sh` for pass / fail /
 # assert_grep / assert_not_grep / _helpers_resolve_repo_root / print_summary,
 # so the pass/fail stream, glyphs (✅/❌) and summary block follow the same
 # convention as the other source-based tests in this directory.
@@ -17,14 +17,14 @@
 #        back-added on --upgrade (with `enabled: true`), and no stale "do NOT
 #        back-add" / "NOT back-added" / "left absent" wording survives in either
 #        file.
-#   T-12 (Issue #1448): every DIRECT sub-key of each active top-level section
+#   T-12: every DIRECT sub-key of each active top-level section
 #        (above the `# --- Advanced ---` marker) is enumerated in init.md's
 #        "Active sub-keys covered on --upgrade" drift anchor, under its section's
 #        row. This extends T-10's protection one level down: a new sub-key added
 #        to an existing template section that init.md fails to list fails this
 #        test, forcing init.md to be updated so `--upgrade` does not silently
 #        miss it (mirrors the sub-key merge rule, init.md Step 6 item 4).
-#   T-13 (Issue #1459): the `--upgrade` `current >= latest` short-circuit path is
+#   T-13: the `--upgrade` `current >= latest` short-circuit path is
 #        routed through Step 4 Identify -> Step 6 Apply (drift back-add) instead of
 #        skipping Step 4-6, and the Wiki-only Step 3.5 block is folded into Step 6
 #        item 7. Static guards on init.md's branching table + Step 6 wording; the
@@ -132,9 +132,9 @@ else
   done
 fi
 
-echo "=== T-13 (Issue #1459): current >= latest short-circuit path runs drift back-add ==="
+echo "=== T-13: current >= latest short-circuit path runs drift back-add ==="
 
-# Issue #1459: the `current >= latest` short-circuit path previously ran only
+# The `current >= latest` short-circuit path previously ran only
 # "Step 3 Backup -> Step 3.5 Wiki Append -> Step 7" and skipped Step 4-6, so
 # multi_session / new active sections / missing sub-keys were silently omitted.
 # The fix routes the short-circuit path through Step 4 Identify -> Step 6 Apply

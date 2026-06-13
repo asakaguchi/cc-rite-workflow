@@ -2,7 +2,7 @@
 # settings-local-rite-hook-cleanup.test.sh
 #
 # Pin the behavioral contract of the settings.local.json rite-hook cleanup helper
-# pair (Issue #1230). PR #1229 split the python-inline JSON edit from init.md into
+# pair. The python-inline JSON edit from init.md was split into
 # a `.py` transform + `.sh` wrapper; behavior equivalence was confirmed by hand at
 # review time but had no automated guard. These cases lock the four regression
 # points that two reviewers (code-quality + error-handling) flagged as revert-weak:
@@ -11,10 +11,10 @@
 #   2. `.py` selective removal of mixed rite/non-rite entries + event-key deletion
 #   3. `.sh` token folding: python3 exit 1/2 both collapse to NO_RITE_HOOKS
 #   4. `.sh` mv-failure path (guarded mv → NO_RITE_HOOKS), atomic write, trap cleanup
-#   5. RITE_HOOK_RE over-match boundary (#1231): `rite` must be a full path segment,
+#   5. RITE_HOOK_RE over-match boundary: `rite` must be a full path segment,
 #      so look-alikes (favorite/, prerite/, rite-something/) are preserved while the
 #      real cache form `rite-marketplace/rite/<version>/hooks/` is still removed
-#   6. `.sh` mv-failure stderr WARNING (#1232): mv failure keeps the NO_RITE_HOOKS
+#   6. `.sh` mv-failure stderr WARNING: mv failure keeps the NO_RITE_HOOKS
 #      token + exit 0, but must surface a `[rite] WARNING: ... mv failed` diagnostic
 #      (the file is NOT actually clean — stale rite hooks remain), so the failure is
 #      not silently indistinguishable from "already clean"
@@ -147,9 +147,9 @@ assert_not_grep "P-5: rite entry (pre-tool-bash-guard) は除去" "$out" 'pre-to
 assert_grep     "P-5: 混在 event key (PreToolUse) は残存" "$out" 'PreToolUse'
 assert_not_grep "P-6: 全 rite event key (SessionStart) は削除" "$out" 'SessionStart'
 
-# ─── over-match 境界 (#1231): look-alike 保持 / cache version 形除去 (B-1〜B-3) ─
+# ─── over-match 境界: look-alike 保持 / cache version 形除去 (B-1〜B-3) ─
 echo ""
-echo "=== over-match 境界 regex (#1231) (B-1〜B-3) ==="
+echo "=== over-match 境界 regex (B-1〜B-3) ==="
 
 # B-1: `rite` を部分文字列に含むだけの非 rite hook は除去対象外 (exit 1, 無出力)。
 # 旧 regex `rite.*?/hooks/` はこれらを誤マッチしユーザー hook を silent 除去していた。
@@ -253,9 +253,9 @@ assert "S-5: exit 0" "0" "$rc"
 assert_unchanged "S-5: 原ファイル保持 (mv 失敗で未置換)" "$f" "$d/ref"
 assert_no_leftover_tmp "S-5: trap cleanup で残留 tmp なし" "$f"
 
-# ─── .sh mv failure stderr WARNING (#1232) (S-6) ─────────────────────────
+# ─── .sh mv failure stderr WARNING (S-6) ─────────────────────────
 echo ""
-echo "=== .sh mv 失敗時 stderr WARNING (#1232) (S-6) ==="
+echo "=== .sh mv 失敗時 stderr WARNING (S-6) ==="
 
 # Same PATH-shimmed mv as S-5, but this time capture stderr. On mv failure the
 # helper must surface a diagnostic WARNING — the file is NOT actually clean (stale
@@ -277,9 +277,9 @@ assert "S-6: exit 0 (非ブロッキング契約維持)" "0" "$rc"
 assert_grep "S-6: mv 失敗が stderr WARNING に surface される" "$err" 'WARNING.*mv failed'
 assert_no_leftover_tmp "S-6: trap cleanup で残留 tmp なし" "$f"
 
-# ─── .sh CLEANED path + mv_err mktemp failure → exit 0 contract (#1232) (S-7) ──
+# ─── .sh CLEANED path + mv_err mktemp failure → exit 0 contract (S-7) ──
 echo ""
-echo "=== .sh CLEANED 経路で mv_err 用 mktemp 失敗時も exit 0 (#1232) (S-7) ==="
+echo "=== .sh CLEANED 経路で mv_err 用 mktemp 失敗時も exit 0 (S-7) ==="
 
 # Regression guard for the exit-code leak: on the CLEANED path the wrapper allocates
 # a second mktemp (no-arg) to capture mv's stderr. If that mktemp fails, the trailing
@@ -306,6 +306,6 @@ assert_no_leftover_tmp "S-7: trap cleanup で残留 tmp なし" "$f"
 
 echo ""
 if ! print_summary "$(basename "$0")" \
-  "drift: settings-local-rite-hook-cleanup helper (#1230 / #1231 / #1232) の挙動契約が後退した可能性。.py の exit code (0=削除 / 1=変更なし / 2=不正JSON)、混在時の選択的除去・全 rite event の key 削除、over-match 境界 (#1231: look-alike favorite/prerite/rite-something は保持・cache version 形 rite/0.2.0/hooks/ は除去)、.sh の token 畳み込み (py exit 1/2 → NO_RITE_HOOKS)・検査付き mv 失敗経路・atomic write・trap cleanup・mv 失敗時の stderr WARNING surfacing (#1232)・CLEANED 経路で mv_err 用 mktemp 失敗時も末尾 exit 0 で非ブロッキング契約維持 (#1232) を確認。"; then
+  "drift: settings-local-rite-hook-cleanup helper の挙動契約が後退した可能性。.py の exit code (0=削除 / 1=変更なし / 2=不正JSON)、混在時の選択的除去・全 rite event の key 削除、over-match 境界 (look-alike favorite/prerite/rite-something は保持・cache version 形 rite/0.2.0/hooks/ は除去)、.sh の token 畳み込み (py exit 1/2 → NO_RITE_HOOKS)・検査付き mv 失敗経路・atomic write・trap cleanup・mv 失敗時の stderr WARNING surfacing・CLEANED 経路で mv_err 用 mktemp 失敗時も末尾 exit 0 で非ブロッキング契約維持 を確認。"; then
   exit 1
 fi

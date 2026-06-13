@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for crash resume — Issue #672 / #684 (T-03 / AC-3)
+# Tests for crash resume
 #
 # Purpose:
 #   Process crash 後の state resume 可能性を verify する。flow-state.sh は
@@ -106,7 +106,7 @@ state_file_is_integral() {
   jq empty "$f" >/dev/null 2>&1
 }
 
-echo "=== crash-resume tests (Issue #672 / #684 T-03 AC-3) ==="
+echo "=== crash-resume tests ==="
 echo ""
 
 # -------------------------------------------------------------------------

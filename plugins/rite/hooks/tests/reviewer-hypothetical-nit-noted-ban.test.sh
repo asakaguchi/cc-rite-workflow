@@ -1,5 +1,5 @@
 #!/bin/bash
-# T-2 (Issue #1017): 4 reviewer (security/database/devops/dependencies) で scope=nit-noted 禁止が明記
+# T-2: 4 reviewer (security/database/devops/dependencies) で scope=nit-noted 禁止が明記
 #
 # Verification:
 #   - _reviewer-base.md の Scope Assignment Flowchart 内の Hypothetical Exception カテゴリ節に

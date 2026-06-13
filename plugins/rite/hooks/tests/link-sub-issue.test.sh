@@ -7,8 +7,8 @@
 # JSON output skeleton shape. Runtime gh calls are not mocked here.
 #
 # Caller side: also verify the Variant B JSON fallback keeps a JSON-valid escape
-# so the caller can parse the fallback result. After PR #1205 (refs #1195 item
-# #9) the parent+Sub-Issue create/link logic was extracted from create.md into
+# so the caller can parse the fallback result. The parent+Sub-Issue create/link
+# logic was extracted from create.md into
 # `scripts/decompose-issues.sh`, so the Variant B fallback now lives there
 # (the Decompose path) rather than inline in create.md.
 
@@ -56,7 +56,7 @@ echo "=== Phase 3: decompose-issues.sh Variant B JSON fallback safety ==="
 # Hand-built JSON in the fallback path was historically prone to quote-escape
 # breakage; the canonical `jq -n --arg err "$link_result" ...` form prevents that.
 # This fallback was moved from create.md into decompose-issues.sh (the Decompose
-# path) by PR #1205 — assert it against its new home, NOT delete the contract.
+# path) — assert it against its new home, NOT delete the contract.
 # Assert (a) the "fatal exit" message is preserved, (b) construction goes through
 # `jq -n`, (c) the produced JSON actually parses.
 assert_grep "decompose-issues.sh Variant B fallback has JSON status=failed" "$DECOMPOSE_SH" 'link-sub-issue\.sh fatal exit'

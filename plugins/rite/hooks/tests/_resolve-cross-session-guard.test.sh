@@ -154,7 +154,7 @@ assert_eq "TC-8.1: shell metachar UUID → 'invalid_uuid:1'" "invalid_uuid:1" "$
 # to strip prefix. If helper appended trailing newline, the captured value would carry a stray \n.
 # Verify the entire stdout has NO trailing newline.
 #
-# PR #688 followup: cycle 41 review F-05 HIGH — 旧実装は bash command substitution の trailing
+# cycle 41 review F-05 HIGH — 旧実装は bash command substitution の trailing
 # newline 自動 strip 仕様により、helper が `printf "%s\n"` (改行付き) に regress しても test が
 # pass する false-positive 構造だった (`raw_out=$(...; echo END)` で末尾 NL が strip され両ケース
 # 同形状)。bytes-exact pin に変更し、helper stdout を tempfile に書き出して `wc -c` で実バイト数
@@ -212,7 +212,7 @@ assert_eq "TC-12.1: empty current_sid → exit 1" "_EXIT_1" "$exit_marker"
 # が printf として残っていることを grep で pin。caller (state-read.sh / flow-state-update.sh) の
 # case statement と整合を保つための drift 検出。
 #
-# F-10 (LOW, PR #688 cycle 9 review): cycle 39 H-01 で追加された `printf 'corrupt:126'` (合計 6 token に
+# F-10 (LOW, cycle 9 review): cycle 39 H-01 で追加された `printf 'corrupt:126'` (合計 6 token に
 # 拡張) を TC-13 に追加。本 fallback は `_resolve-session-id.sh` 不在時の collapse-prevention emit で、
 # 削除されると helper 不在時に `invalid_uuid:1` に collapse し root cause 診断時の区別が失われる
 # silent regression を起こす。`printf 'corrupt:%d'` (生 jq rc 経路) と区別するため `corrupt:126` literal を pin。

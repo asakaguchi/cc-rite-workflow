@@ -1,5 +1,5 @@
 #!/bin/bash
-# Common test helpers for plugins/rite/hooks/tests/*.test.sh (Issue #852)
+# Common test helpers for plugins/rite/hooks/tests/*.test.sh
 #
 # Usage:
 #   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,7 +17,7 @@
 #   (`bash 4-site-symmetry.test.sh`) because it defines its own SCRIPT_DIR
 #   before sourcing this file.
 #
-# Output convention (Issue #853):
+# Output convention:
 #   Scope: applies to tests that `source` this helper. Enumerate the current
 #   set with:
 #     grep -l 'source.*_test-helpers.sh' plugins/rite/hooks/tests/*.test.sh
@@ -157,7 +157,7 @@ assert_not_grep() {
   fi
 }
 
-# File-existence pre-condition guard for assertion-pair loops (Issue #1051).
+# File-existence pre-condition guard for assertion-pair loops.
 #
 # Consolidates the inline `[ ! -f "$f" ] && fail ... && continue` boilerplate
 # previously inlined in callers that run multiple assertions against the same
@@ -187,7 +187,7 @@ assert_file_exists_or_fail() {
   return 0
 }
 
-# Section-scoped pattern presence assertion (Issue #1047).
+# Section-scoped pattern presence assertion.
 # Extracts an awk address-range section ([start_pattern, end_pattern]) from `file`
 # into a private tempfile, runs `grep -qE grep_pattern` against it, then self-cleans.
 #
@@ -256,7 +256,7 @@ assert_grep_in_section() {
   rm -f "$section_file"
 }
 
-# make_sandbox — git-init + initial-commit sandbox (Issue #990).
+# make_sandbox — git-init + initial-commit sandbox.
 #
 # Consolidates the inline `make_sandbox()` definitions previously duplicated in
 # state-read.test.sh, work-memory-update.test.sh (with `--branch` for branch

@@ -95,8 +95,8 @@ else
 fi
 echo ""
 
-# --- TC-003: active: true, phase: completed → no work memory created (#776) ---
-echo "TC-003: active: true, phase: completed → no work memory created (#776)"
+# --- TC-003: active: true, phase: completed → no work memory created ---
+echo "TC-003: active: true, phase: completed → no work memory created"
 dir003="$TEST_DIR/tc003"
 mkdir -p "$dir003"
 create_state_file "$dir003" '{"active": true, "issue_number": 42, "phase": "completed"}'
@@ -229,7 +229,7 @@ else
 fi
 echo ""
 
-# --- TC-POST-WM-PER-SESSION-1: per-session state file (Issue #681) → phase diff detection works ---
+# --- TC-POST-WM-PER-SESSION-1: per-session state file → phase diff detection works ---
 # Verifies flow-state.sh integration: when a valid SID
 # and a per-session file exists, the hook reads from `.rite/sessions/<sid>.flow-state`
 # (not the legacy `.rite-flow-state`). Phase diff detection must still work end-to-end.

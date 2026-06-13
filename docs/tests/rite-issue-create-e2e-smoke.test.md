@@ -1,15 +1,13 @@
 # /rite:issue:create end-to-end smoke test
 
-**Issue**: #552 / Extends: #525
-
-本書は `/rite:issue:create` の「sub-skill return 直後の自動継続」と「ユーザー向け完了メッセージ」を検証するための手動 smoke test 手順を定める。既存の (当時の) `start.md` ステップ 8.5 sentinel detection (#1088 で機構撤去、start.md 自体も #1136 で削除済) と異なり、回帰検出のために人間の目視確認が必要な項目を列挙する。
+本書は `/rite:issue:create` の「sub-skill return 直後の自動継続」と「ユーザー向け完了メッセージ」を検証するための手動 smoke test 手順を定める。かつて存在した `start.md` ステップ 8.5 sentinel detection (その後機構撤去され、start.md 自体も削除済) と異なり、回帰検出のために人間の目視確認が必要な項目を列挙する。
 
 ## 目的
 
-#552 で修正した 2 種類の回帰を検知する:
+以下の 2 種類の回帰を検知する:
 
 - **Bug1**: `/rite:issue:create` orchestrator が sub-skill return 直後に同 turn 内で次 phase に進まず、ユーザーの `continue` 介入を要求する自動継続停止
-- **Bug2**: 最終出力の `[create:returned-to-caller:{N}]` sentinel (旧: `[create:completed:{N}]`、#1165 で rename) がユーザー向け完了シグナルとして不十分で、「完了したのか途中なのか」判別困難
+- **Bug2**: 最終出力の `[create:returned-to-caller:{N}]` sentinel (旧形式は `[create:completed:{N}]` で、後にこの名前へ rename された) がユーザー向け完了シグナルとして不十分で、「完了したのか途中なのか」判別困難
 
 ## 前提条件
 
@@ -45,7 +43,7 @@
   3. ステップ 4.1 Issue 情報確認 → 承認
   4. ステップ 4.3 `create-issue-with-projects.sh` 実行
   5. ステップ 4.4 `✅ Issue #{N} を作成しました` テーブル + 次のアクション
-  6. `<!-- skill return signal: caller must continue next step -->` + `<!-- [create:returned-to-caller:{N}] -->` の 2 行 HTML コメント sentinel (ステップ 4.4 末尾、user-visible な最終行は完了メッセージ。#1165 で旧 `[create:completed:{N}]` から rename + active disambiguation marker を併記)
+  6. `<!-- skill return signal: caller must continue next step -->` + `<!-- [create:returned-to-caller:{N}] -->` の 2 行 HTML コメント sentinel (ステップ 4.4 末尾、user-visible な最終行は完了メッセージ。旧 `[create:completed:{N}]` から rename された形式で、active disambiguation marker を併記)
 
 - ユーザーが `continue` を入力する必要がない
 - Issue が GitHub 上に実際に作成され、Projects に Status=Todo / Priority / Complexity が設定される
@@ -54,9 +52,9 @@
 
 | 症状 | 確認先 |
 |------|--------|
-| ステップ 4 到達後 turn が終了 | `.rite-flow-state-diag.log` の `flow_state_*` 行を確認し、(当時の) `start.md ステップ 8.5 retrospective scan` 相当の遡及検出 (#1088 / #1136 で削除済 — 現行は手動で会話コンテキストを grep) が `manual_fallback_adopted` を拾ったか確認 |
+| ステップ 4 到達後 turn が終了 | `.rite-flow-state-diag.log` の `flow_state_*` 行を確認し、かつて存在した `start.md ステップ 8.5 retrospective scan` 相当の遡及検出 (機構撤去済 — 現行は手動で会話コンテキストを grep) が `manual_fallback_adopted` を拾ったか確認 |
 | `✅ Issue #{N}` が出力されない | `commands/issue/create.md` ステップ 4.4 のテンプレートが現行版か確認 |
-| `[create:returned-to-caller:{N}]` が user-visible な最終行になる | ステップ 4.4 / 5.6 完了レポート末尾の出力順序を確認（sentinel は HTML コメント化されているか。#1165 で旧 `[create:completed:{N}]` から rename） |
+| `[create:returned-to-caller:{N}]` が user-visible な最終行になる | ステップ 4.4 / 5.6 完了レポート末尾の出力順序を確認（sentinel は HTML コメント化されているか。旧 `[create:completed:{N}]` から rename された形式） |
 | Projects 登録が `failed` | `create-issue-with-projects.sh` の戻り値 `project_registration` を確認、AskUserQuestion で retry / skip を選択 |
 
 ## シナリオ 2: Decompose path（ステップ 5 経路）
@@ -83,7 +81,7 @@
 
 - ステップ 3.2 選択後、同 turn 内でステップ 5 に進行
 - ステップ 5.6 `✅ Issue #{parent_issue_number} を分解して {sub_count} 件の Sub-Issue を作成しました` テーブル出力
-- ステップ 5.6 完了レポート末尾 + `<!-- skill return signal: caller must continue next step -->` + `<!-- [create:returned-to-caller:{parent_issue_number}] -->` の 2 行 HTML sentinel (#1165 で旧 `[create:completed:{N}]` から rename + active disambiguation marker を併記)
+- ステップ 5.6 完了レポート末尾 + `<!-- skill return signal: caller must continue next step -->` + `<!-- [create:returned-to-caller:{parent_issue_number}] -->` の 2 行 HTML sentinel (旧 `[create:completed:{N}]` から rename された形式で、active disambiguation marker を併記)
 - ユーザーの `continue` 介入なし
 
 ## シナリオ 3: AC-4 後方互換性 grep 確認
@@ -94,7 +92,7 @@
 
 ```bash
 # sentinel marker 形式が `[create:returned-to-caller:{N}]` であることを確認
-# (#1165 で旧 `:completed` 形式から rename。本コマンドは新形式の存在を grep で pin する。)
+# (旧 `:completed` 形式から rename された。本コマンドは新形式の存在を grep で pin する。)
 grep -rn '\[create:returned-to-caller:' plugins/ docs/ 2>/dev/null
 
 # 旧形式の残存がないことも確認 (AC-1: 旧 sentinel literal 0 件)
@@ -106,7 +104,7 @@ grep -rnE '\[[a-z]+:completed(:[^]]*)?\]' plugins/rite/commands/ plugins/rite/sk
 
 ### 期待される動作
 
-- 全ての出現箇所で `[create:returned-to-caller:{数字}]` または `[create:returned-to-caller:{N}]` のプレースホルダー形式 (#1165 で旧 `:completed` 形式から rename)
+- 全ての出現箇所で `[create:returned-to-caller:{数字}]` または `[create:returned-to-caller:{N}]` のプレースホルダー形式 (旧 `:completed` 形式から rename された)
 - 形式変更 (例: `[create:done:...]` / `[issue:created:...]` / `[create:completed:...]` (旧形式の意図しない残存) 等) が存在しない
 - 2 つ目の `grep -rnE '\[[a-z]+:completed(:[^]]*)?\]'` コマンドが 0 件を返す (AC-1: `plugins/rite/commands/` および `plugins/rite/skills/` 配下に旧 sentinel literal の残存なし)。本 regex は suffix なし形式 (`[ingest:completed]` / `[cleanup:completed]` / `[ready:completed]` / `[merge:completed]`) と suffix あり形式 (`[create:completed:{N}]` / `[lint:completed:auto]`) の両方を捕捉する
 
@@ -114,9 +112,9 @@ grep -rnE '\[[a-z]+:completed(:[^]]*)?\]' plugins/rite/commands/ plugins/rite/sk
 
 **AC-7 を検証する（implicit stop が起きた場合に次セッションが retrospective scan で sentinel を拾えるか）**
 
-> **⚠️ Historical (廃止済機構のテスト手順)**: 本シナリオが前提とする `start.md ステップ 8.5 retrospective scan` は #1088 で機構撤去され、start.md 自体も #1136 で削除済。v3 では各 caller が plain な `WARNING` / `ERROR` を stderr に出力し、中断作業は `/rite:resume` で復帰する。tracking Issue の auto-register 経路は現行体系に存在しないため、本シナリオの手順 3 / 期待される動作 1 行目は実行不能。session-end.sh の legacy glob fallback 契約 (Scenario 4a の本来の検証対象) のみ現行でも有効。
+> **⚠️ Historical (廃止済機構のテスト手順)**: 本シナリオが前提とする `start.md ステップ 8.5 retrospective scan` は機構撤去され、start.md 自体も削除済。v3 では各 caller が plain な `WARNING` / `ERROR` を stderr に出力し、中断作業は `/rite:resume` で復帰する。tracking Issue の auto-register 経路は現行体系に存在しないため、本シナリオの手順 3 / 期待される動作 1 行目は実行不能。session-end.sh の legacy glob fallback 契約 (Scenario 4a の本来の検証対象) のみ現行でも有効。
 
-flat workflow への移行後、Stop hook による exit-2 block は廃止された。AC-7 の責務は (当時の) `start.md ステップ 8.5 retrospective scan` が次セッションの会話コンテキストを grep して `manual_fallback_adopted` 系 sentinel を検出し tracking Issue を auto-register する経路に移行していた (同経路も上記の通り削除済)。
+flat workflow への移行後、Stop hook による exit-2 block は廃止された。AC-7 の責務は、かつて存在した `start.md ステップ 8.5 retrospective scan` が次セッションの会話コンテキストを grep して `manual_fallback_adopted` 系 sentinel を検出し tracking Issue を auto-register する経路に移行していた (同経路も上記の通り削除済)。
 
 ### 共通前提
 
@@ -130,11 +128,11 @@ flow-state は `flow-state.sh` 経由で生成する (手動作成は schema dri
 
 1. flow-state を `create_post_interview` で初期化 (上記コマンド)。phase 名が legacy であることは意図的な setup
 2. Claude Code で `/clear` → `/rite:issue:start <N>` を再実行し、前セッションの implicit stop を模した state を残したまま再開
-3. (当時の) start.md ステップ 8.5 retrospective scan が `manual_fallback_adopted` キーワードを会話コンテキストから検出し、tracking Issue を auto-register することを確認 (削除済 — 冒頭の Historical 注記参照。現行体系では実行不能)
+3. かつて存在した start.md ステップ 8.5 retrospective scan が `manual_fallback_adopted` キーワードを会話コンテキストから検出し、tracking Issue を auto-register することを確認 (削除済 — 冒頭の Historical 注記参照。現行体系では実行不能)
 
 ### 期待される動作
 
-- (当時の) `start.md ステップ 8.5` 実行中に `manual_fallback_adopted` を含む sentinel が前セッション会話に存在する場合、tracking Issue が GitHub に作成される (削除済 — 現行体系では発生しない)
+- かつて存在した `start.md ステップ 8.5` 実行中に `manual_fallback_adopted` を含む sentinel が前セッション会話に存在する場合、tracking Issue が GitHub に作成される (削除済 — 現行体系では発生しない)
 - `.rite-flow-state-diag.log` に `flow_state_*` 行が記録され、phase transition の経過が監査可能
 - `session-end.sh` の inline glob fallback が legacy create_* phase を正しく detect する (`session-end.test.sh` TC-475-WARN-A〜D で覆われる契約)
 
@@ -146,14 +144,14 @@ tail -20 .rite-flow-state-diag.log
 
 # 2. 前セッション会話の grep
 # Claude Code の会話履歴 (assistant response の保存先) から sentinel を grep
-# manual_fallback_adopted / [create:returned-to-caller:*] / [ready:returned-to-caller] 等の sentinel literal を確認 (旧: `:completed`, #1165 で rename)
+# manual_fallback_adopted / [create:returned-to-caller:*] / [ready:returned-to-caller] 等の sentinel literal を確認 (旧形式は `:completed` で、後に rename された)
 ```
 
 ### 失敗時の確認項目
 
 | 症状 | 確認先 |
 |------|--------|
-| retrospective scan が sentinel を取り逃す | (当時の) `start.md ステップ 8.5` の grep パターン確認 (削除済 — 現行は手動 grep で代替) |
+| retrospective scan が sentinel を取り逃す | かつて存在した `start.md ステップ 8.5` の grep パターン確認 (削除済 — 現行は手動 grep で代替) |
 | diag log に flow-state 行が全く残らない | `flow-state.sh` の write path で mv/jq が silent fail していないか — 全 mv site で rc capture + WARNING が出ている前提で、欠落がないか確認する |
 | `session-end.sh` の inline glob が legacy create_* phase を取り逃す | `session-end.test.sh` TC-475-WARN-A〜D が PASS しているか確認 |
 
@@ -162,7 +160,7 @@ tail -20 .rite-flow-state-diag.log
 以下の修正 PR 後に本 smoke test を最低 1 回実施すること:
 
 - `plugins/rite/commands/issue/create.md`
-- (当時の) `plugins/rite/commands/issue/start.md` (ステップ 8.5 retrospective scan — #1136 で削除済、historical 参照)
+- かつて存在した `plugins/rite/commands/issue/start.md` (ステップ 8.5 retrospective scan — 削除済、historical 参照)
 - `plugins/rite/hooks/session-end.sh`（lifecycle 未完了検出の inline glob）
 - `plugins/rite/hooks/flow-state.sh`
 

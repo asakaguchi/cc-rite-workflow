@@ -8,7 +8,7 @@
 #
 #   - close.md Phase 4.5.1 keeps all three Method 1/2/3 blocks
 #   - close.md Phase 4.6 keeps the auto-close skeleton (P460_DECISION)
-#   - pr/open.md ステップ 1.2 uses the trackedIssues query (was start.md ステップ 8.4 pre-#1136)
+#   - pr/open.md ステップ 1.2 uses the trackedIssues query (was start.md ステップ 8.4)
 #   - projects-integration.md §2.4.7 documents all three methods
 
 set -euo pipefail
@@ -25,7 +25,7 @@ for f in "$CLOSE_MD" "$PR_OPEN_MD" "$PROJECTS_REF"; do
   [ -f "$f" ] || { echo "ERROR: required file not found: $f" >&2; exit 1; }
 done
 
-echo "=== Phase 1: close.md retains 3 detection methods (Issue #513 guard) ==="
+echo "=== Phase 1: close.md retains 3 detection methods (regression guard) ==="
 assert_grep "close.md retains Method 1 (## 親 Issue body meta)" "$CLOSE_MD" "## 親 Issue"
 assert_grep "close.md retains trackedIssues field usage" "$CLOSE_MD" "trackedIssues"
 assert_grep "close.md retains tasklist search method" "$CLOSE_MD" "in:body|tasklist"
@@ -36,12 +36,12 @@ assert_grep "close.md retains P460_DECISION skip_already_closed branch" "$CLOSE_
 echo "=== Phase 3: pr/open.md ステップ 1.2 trackedIssues query (no inline simplification) ==="
 assert_grep "pr/open.md ステップ 1.2 uses trackedIssues GraphQL (not bare trackedInIssues)" "$PR_OPEN_MD" "trackedIssues"
 # Negative: regression guard. Old simplification used `trackedInIssues` which is not the canonical name.
-# トラッキング trackedInIssues (Inヌキ) は GitHub API 名で本来正しいが、Issue #513 では誤った
+# トラッキング trackedInIssues (Inヌキ) は GitHub API 名で本来正しいが、過去に誤った
 # 簡略化が起きたため defensive assertion として `trackedIssues` 名の存在を必須にする。
 assert_grep "pr/open.md retains Method 1 (親 Issue body meta) reference" "$PR_OPEN_MD" "親 Issue"
 
 echo "=== Phase 4: projects-integration.md retains 3-method documentation ==="
-# Issue #513 root cause was silent collapse of the 3-method OR documentation to a
+# The root cause was silent collapse of the 3-method OR documentation to a
 # single method. Each method is asserted independently so partial removal (e.g.
 # dropping `## 親 Issue` while keeping the GraphQL block) cannot slide through.
 # Method 2 here uses the child-to-parent GraphQL query `parent { number }` via
@@ -51,4 +51,4 @@ assert_grep "projects-integration.md §2.4.7 retains Method 1 (## 親 Issue body
 assert_grep "projects-integration.md §2.4.7 retains Method 2 (sub_issues GraphQL feature)" "$PROJECTS_REF" "sub_issues"
 assert_grep "projects-integration.md §2.4.7 retains Method 3 (tasklist / in:body search)" "$PROJECTS_REF" "in:body|tasklist"
 
-print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or pr/open.md ステップ 1.2, Issue #513 regression risk reopens. Re-confirm cross-references before removing methods."
+print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or pr/open.md ステップ 1.2, regression risk reopens. Re-confirm cross-references before removing methods."

@@ -1,16 +1,16 @@
-# Regression fixture: Issue #622 — create-interview sub-skill return 後の implicit stop
+# Regression fixture: create sub-skill return 後の implicit stop — create-interview 経路（原型）
 
-- **Issue**: #622
-- **Sibling**: #621 (cleanup workflow 内の同型問題)
-- **Original**: #552 (CLOSED — 対策導入時)
+- **症状**: create-interview sub-skill が return した直後に turn 境界が形成され、orchestrator が後続フェーズへ進めない
+- **Sibling 回帰**: cleanup workflow の wiki-ingest 経路で観測された同型問題（caller / sub-skill が異なるだけで構造は同一）
+- **原型**: 同症状に対し最初に implicit-stop 対策（Stop hook ベースの継続強制）を導入した回帰がこの fixture の起点
 
 > **⚠️ Status: Retired（歴史的記録）**
 >
-> 本 fixture が検証していたアーキテクチャ — pre-v3 の sub-skill chain（`create-interview.md` 等）と Stop hook `stop-guard.sh` による implicit-stop ブロック機構 — は撤去済みである。sub-skill 群は flat な `create.md` へ統合され、Stop hook は PR #675 で機構ごと撤去された。後継 fixture の `issue-634-repro.md` も同様に Retired。
+> 本 fixture が検証していたアーキテクチャ — pre-v3 の sub-skill chain（`create-interview.md` 等）と Stop hook `stop-guard.sh` による implicit-stop ブロック機構 — は撤去済みである。sub-skill 群は flat な `create.md` へ統合され、Stop hook は後続 PR で機構ごと撤去された。後継 fixture の `subskill-return-implicit-stop-recurrence-repro.md` も同様に Retired。
 >
-> したがって以下の検証コマンドのうち `stop-guard.sh` / `stop-guard.test.sh` / `create-interview.md` / `.rite-stop-guard-diag.log` を参照するものは **すべて実行不能**であり、#622 を含む同型 regression シリーズの**歴史的記録**として残置する。現在の implicit-stop 対策は orchestrator レベルの scaffolding 契約と `/rite:resume` による復帰が担い、lifecycle phase の分類は `session-end.sh` の inline glob が行う。
+> したがって以下の検証コマンドのうち `stop-guard.sh` / `stop-guard.test.sh` / `create-interview.md` / `.rite-stop-guard-diag.log` を参照するものは **すべて実行不能**であり、本 fixture を含む同型 regression シリーズの**歴史的記録**として残置する。現在の implicit-stop 対策は orchestrator レベルの scaffolding 契約と `/rite:resume` による復帰が担い、lifecycle phase の分類は `session-end.sh` の inline glob が行う。
 >
-> 本文中の `[ingest:completed]` / `[interview:skipped]` 等の sentinel literal は **pre-#1165 naming の歴史的記述** として保持する（Issue #1165 で skill return sentinel は `:returned-to-caller` 形式に rename されたが、#622 repro が検証していたのは当時の sentinel 形式であり、historical 正確性のため書き換えない）。現行 sentinel 命名規約は `plugins/rite/commands/issue/create.md` ステップ 4.4 / 5.6 の `[create:returned-to-caller:{N}]` を参照（後継 fixture `issue-634-repro.md` と同じ disclaimer 方針）。
+> 本文中の `[ingest:completed]` / `[interview:skipped]` 等の sentinel literal は **skill return sentinel が `:returned-to-caller` 形式へ rename される前の歴史的形式** として保持する（後に skill return sentinel は `:returned-to-caller` 形式に rename されたが、本 fixture が検証していたのは当時の sentinel 形式であり、historical 正確性のため書き換えない）。現行 sentinel 命名規約は `plugins/rite/commands/issue/create.md` ステップ 4.4 / 5.6 の `[create:returned-to-caller:{N}]` を参照（後継 fixture `subskill-return-implicit-stop-recurrence-repro.md` と同じ disclaimer 方針）。
 
 ## 1. 再現手順 (baseline: 修正前)
 
@@ -80,20 +80,20 @@ tail -30 .rite-stop-guard-diag.log | grep -E 'phase=create_'
 | 1 | `plugins/rite/hooks/stop-guard.sh` に `create_interview` case arm 追加 | sub-skill mid-execution / Pre-flight 未実行状態での stop 試行を block し、WORKFLOW_HINT で継続指示を emit |
 | 2 | `plugins/rite/commands/issue/create-interview.md` の Defense-in-Depth を sub-skill 冒頭の 🚨 MANDATORY Pre-flight として移動 | Bug Fix / Chore preset (Phase 0.5 skip) 経路でも必ず `create_post_interview` に patch され、stop-guard の `create_post_interview` case arm に routing される |
 
-## 5. #621 との合同分析 (AC-7)
+## 5. cleanup 経路（sibling 回帰）との合同分析 (AC-7)
 
-| 項目 | #622 (create) | #621 (cleanup) |
+| 項目 | create 経路（本 fixture） | cleanup 経路（sibling 回帰） |
 |---|---|---|
 | Caller workflow | `/rite:issue:create` | `/rite:pr:cleanup` |
 | Sub-skill | `rite:issue:create-interview` | `rite:wiki:ingest` |
 | 停止ポイント | `<!-- [interview:skipped] -->` 出力後 | `<!-- [ingest:completed] -->` 出力後 |
-| Root cause 分類 (Decision Log) | H2 (stop-guard の case arm 不足) が主因 + H1/H3 が副因 | H1 (ingest.md 三点セットが turn-boundary heuristic 強化) + H3 (Pre-check list の self-introspection 依存) の複合 (#621 Decision Log 参照) |
+| Root cause 分類 (Decision Log) | H2 (stop-guard の case arm 不足) が主因 + H1/H3 が副因 | H1 (ingest.md 三点セットが turn-boundary heuristic 強化) + H3 (Pre-check list の self-introspection 依存) の複合 (cleanup 経路の Decision Log 参照) |
 | 対策パターン | **冒頭 🚨 MANDATORY Pre-flight (create-interview.md)** + **stop-guard `create_interview` case arm 追加** (case arm 不在が主因のため新規追加) | **既存 5 層防御の補強**: (a) cleanup.md Pre-check list Item 0 の機械化 (`[routing-check] ingest=matched\|unmatched` 1 行出力義務化)、(b) ingest.md Phase 9.1 三点セット #2 (caller 継続 HTML コメント) と #3 (sentinel) の間に recap 挿入禁止 MUST NOT 行追加、(c) test-stop-guard-cleanup.sh / docs/anti-patterns/cleanup-wiki-ingest-turn-boundary.md 新規 (既存の cleanup_pre_ingest / cleanup_post_ingest arm は存在するため新規追加不要) |
 
-**結論**: 両 Issue は「sub-skill return 経路での implicit stop」という同型問題を持つが、根本原因と既存防御層の状態が異なるため**対策は非対称**となった:
+**結論**: 両回帰は「sub-skill return 経路での implicit stop」という同型問題を持つが、根本原因と既存防御層の状態が異なるため**対策は非対称**となった:
 
-- **#622 は冒頭 Pre-flight + stop-guard case arm 追加**: 既存 stop-guard に `create_interview` arm が不在だったため、新規防御層を追加する必要があった
-- **#621 は既存 5 層防御の補強**: stop-guard arm (`cleanup_pre_ingest` / `cleanup_post_ingest`) は既に存在し、root cause も turn-boundary heuristic 強化と self-introspection 依存の方が主因だったため、Pre-check 機械化と MUST NOT 行の追加で対応
+- **create 経路は冒頭 Pre-flight + stop-guard case arm 追加**: 既存 stop-guard に `create_interview` arm が不在だったため、新規防御層を追加する必要があった
+- **cleanup 経路は既存 5 層防御の補強**: stop-guard arm (`cleanup_pre_ingest` / `cleanup_post_ingest`) は既に存在し、root cause も turn-boundary heuristic 強化と self-introspection 依存の方が主因だったため、Pre-check 機械化と MUST NOT 行の追加で対応
 
 共通根本原因として「sub-skill Defense-in-Depth が Markdown embedded instruction で LLM skip を許す」構造はあるが、既存防御層の欠落箇所が異なるため、同型の fix を両 PR で複製するのではなく、それぞれの workflow の欠落層を個別に補強する設計とした。
 
@@ -101,8 +101,8 @@ tail -30 .rite-stop-guard-diag.log | grep -E 'phase=create_'
 
 | Test ID | AC | 実装 |
 |---|----|------|
-| T-03 | AC-3 | `plugins/rite/hooks/tests/stop-guard.test.sh` の TC-622-A / TC-622-B (新規追加) |
+| T-03 | AC-3 | `plugins/rite/hooks/tests/stop-guard.test.sh` の create-interview 経路 TC（新規追加）|
 | T-01 (baseline) | AC-1 | 本 fixture の Section 1 を手動実行 |
 | T-02 (e2e) | AC-2 | 修正後 commit で本 fixture の Section 1 を実行し Section 2 の evidence を確認 |
-| T-05 | AC-6 | 本ファイルの存在を `tests/regression/issue-622-repro.md` で確認 |
+| T-05 | AC-6 | 本ファイルの存在を `tests/regression/subskill-return-implicit-stop-repro.md` で確認 |
 | T-06 | AC-7 | 本ファイル Section 5 に cross-issue 分析を記録 |

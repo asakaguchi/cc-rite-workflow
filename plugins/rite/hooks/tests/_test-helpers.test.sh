@@ -1,5 +1,5 @@
 #!/bin/bash
-# Self-test for _test-helpers.sh (Issue #852)
+# Self-test for _test-helpers.sh
 #
 # Each test case runs in a subshell that re-sources _test-helpers.sh,
 # so we can observe how the helpers mutate the PASS / FAIL / FAILED_NAMES
@@ -20,7 +20,7 @@ outer_pass() { OUTER_PASS=$((OUTER_PASS + 1)); echo "  ✅ $1"; }
 outer_fail() { OUTER_FAIL=$((OUTER_FAIL + 1)); OUTER_FAILED+=("$1"); echo "  ❌ $1"; }
 
 if [ ! -f "$HELPERS" ]; then
-  # Output convention (Issue #853): Hard precondition (missing executable) → stderr
+  # Output convention: Hard precondition (missing executable) → stderr
   echo "FATAL: $HELPERS not found" >&2
   exit 1
 fi
@@ -176,7 +176,7 @@ else
   outer_fail "TC-6.1: drift hint not found in: $summary_output"
 fi
 
-# === TC-7: make_sandbox basic (Issue #990) ===
+# === TC-7: make_sandbox basic ===
 echo
 echo "TC-7: make_sandbox default invocation → git-init + commit"
 
@@ -385,7 +385,7 @@ else
   outer_fail "TC-11.4: expected rc=1 (soft-fail on mktemp failure), got rc=$rc_plain_soft_fail"
 fi
 
-# === TC-12: assert_grep_in_section (Issue #1047) ===
+# === TC-12: assert_grep_in_section ===
 echo
 echo "TC-12: assert_grep_in_section"
 
@@ -462,7 +462,7 @@ else
   outer_fail "TC-12.4: expected FAIL=1 + 'empty section' diagnostic, got '$empty_section_state'"
 fi
 
-# === TC-13: assert_file_exists_or_fail (Issue #1051) ===
+# === TC-13: assert_file_exists_or_fail ===
 echo
 echo "TC-13: assert_file_exists_or_fail"
 

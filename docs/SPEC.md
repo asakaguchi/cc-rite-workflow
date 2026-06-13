@@ -39,10 +39,10 @@ The command prefix `rite` was chosen for:
 11. [Sub-skill Return Auto-Continuation Contract](#sub-skill-return-auto-continuation-contract)
 12. [Error Handling](#error-handling)
 13. [Migration](#migration)
-14. [~~Internationalization~~ (Retired in #1117)](#internationalization-retired-in-1117)
+14. [~~Internationalization~~ (Retired)](#internationalization-retired)
 15. [Dependencies](#dependencies)
 16. [Distribution](#distribution)
-17. [~~Project Types~~ (Retired in #1118)](#project-types-retired-in-1118)
+17. [~~Project Types~~ (Retired)](#project-types-retired)
 
 ---
 
@@ -116,7 +116,7 @@ The command prefix `rite` was chosen for:
 Issue Auto-Close
 ```
 
-**Note:** The end-to-end flow is split across four single-responsibility commands (#1136). `/rite:pr:open <issue>` handles branch creation, implementation, autonomous lint, and draft PR creation. `/rite:pr:iterate <pr>` loops review and fix until convergence (no cycle-count cap; manual abort via `Ctrl+C` + `/rite:resume`). `/rite:pr:ready <pr>` flips the PR to Ready for review. `/rite:pr:merge <pr>` runs `gh pr merge --squash`. For the canonical live spec of each command, see [`commands/pr/open.md`](../plugins/rite/commands/pr/open.md), [`iterate.md`](../plugins/rite/commands/pr/iterate.md), [`ready.md`](../plugins/rite/commands/pr/ready.md), and [`merge.md`](../plugins/rite/commands/pr/merge.md). (The legacy [Phase 5: End-to-End Execution](#phase-5-end-to-end-execution) section below documents the pre-#1136 `start.md` orchestrator for archaeological / migration reference only.)
+**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:pr:open <issue>` handles branch creation, implementation, autonomous lint, and draft PR creation. `/rite:pr:iterate <pr>` loops review and fix until convergence (no cycle-count cap; manual abort via `Ctrl+C` + `/rite:resume`). `/rite:pr:ready <pr>` flips the PR to Ready for review. `/rite:pr:merge <pr>` runs `gh pr merge --squash`. For the canonical live spec of each command, see [`commands/pr/open.md`](../plugins/rite/commands/pr/open.md), [`iterate.md`](../plugins/rite/commands/pr/iterate.md), [`ready.md`](../plugins/rite/commands/pr/ready.md), and [`merge.md`](../plugins/rite/commands/pr/merge.md). (The legacy [Phase 5: End-to-End Execution](#phase-5-end-to-end-execution) section below documents the pre-decomposition `start.md` orchestrator for archaeological / migration reference only.)
 
 **Status Transitions:**
 ```
@@ -127,7 +127,7 @@ Todo → In Progress → In Review → Done
 
 ## Plugin Structure
 
-> **Architecture**: The `/rite:issue:create` lifecycle is a single-file flat workflow. The previous `/rite:issue:start` flat workflow was decomposed in #1136 into four single-responsibility commands (`/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge`); the source file `commands/issue/start.md` was deleted. Older sub-skill files (`commands/issue/start-execute`, `start-publish`, `start-finalize`, `create-interview`, `create-register`, `create-decompose`, `parent-routing`, etc.) and implicit-stop guard hooks (`auto-fire-step0.sh`, `verify-terminal-output.sh`, `stop-create-interview-block.sh`) were earlier consolidated into the flat workflow before the start.md decomposition. Sections referencing those retired components remain only as migration anchors.
+> **Architecture**: The `/rite:issue:create` lifecycle is a single-file flat workflow. The previous `/rite:issue:start` flat workflow was decomposed into four single-responsibility commands (`/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge`); the source file `commands/issue/start.md` was deleted. Older sub-skill files (`commands/issue/start-execute`, `start-publish`, `start-finalize`, `create-interview`, `create-register`, `create-decompose`, `parent-routing`, etc.) and implicit-stop guard hooks (`auto-fire-step0.sh`, `verify-terminal-output.sh`, `stop-create-interview-block.sh`) were earlier consolidated into the flat workflow before the start.md decomposition. Sections referencing those retired components remain only as migration anchors.
 
 ```
 rite-workflow/
@@ -208,7 +208,7 @@ rite-workflow/
 ├── hooks/ # Claude Code lifecycle hooks + helpers
 │ ├── hooks.json # Hook registration manifest
 │ ├── session-start.sh / session-end.sh / session-ownership.sh
-│ ├── pre-compact.sh / post-compact.sh # #133
+│ ├── pre-compact.sh / post-compact.sh
 │ ├── preflight-check.sh
 │ ├── pre-tool-bash-guard.sh / post-tool-wm-sync.sh
 │ ├── stop-loop-continuation.sh # Stop hook: review↔fix loop continuation + terminal finalize
@@ -224,22 +224,22 @@ rite-workflow/
 │ ├── wiki-ingest-trigger.sh / wiki-query-inject.sh # Wiki auto-integration
 │ ├── scripts/ # Helper scripts invoked by hooks
 │ │ ├── wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh
-│ │ ├── wiki-branch-init.sh / wiki-lint-skipped-refs.sh # #1196 inline bash 委譲
-│ │ ├── wiki-lint-source-refs.sh # #1195 wiki/lint.md 6.2 委譲
-│ │ ├── wiki-lint-stale.sh / wiki-lint-orphans.sh / wiki-lint-broken-refs.sh # #1345 wiki/lint.md 4/5/7 委譲
-│ │ ├── wiki-growth-check.sh # #524 lint layer-3
+│ │ ├── wiki-branch-init.sh / wiki-lint-skipped-refs.sh # inline bash 委譲
+│ │ ├── wiki-lint-source-refs.sh # wiki/lint.md 6.2 委譲
+│ │ ├── wiki-lint-stale.sh / wiki-lint-orphans.sh / wiki-lint-broken-refs.sh # wiki/lint.md 4/5/7 委譲
+│ │ ├── wiki-growth-check.sh # lint layer-3
 │ │ ├── backlink-format-check.sh / bang-backtick-check.sh
-│ │ ├── bang-backtick-edit-hook.sh # PostToolUse wrapper for bang-backtick-check.sh (hooks.json 登録、#691)
-│ │ ├── bash-heaviness-check.sh # #1197 commands/**/*.md の heavy bash block 検出
+│ │ ├── bang-backtick-edit-hook.sh # PostToolUse wrapper for bang-backtick-check.sh (hooks.json 登録)
+│ │ ├── bash-heaviness-check.sh # commands/**/*.md の heavy bash block 検出
 │ │ ├── hardcoded-line-number-check.sh / comment-line-ref-check.sh # ハードコード行番号参照 lint (md / sh comment)
-│ │ ├── comment-journal-check.sh / sh-cross-ref-check.sh # comment 規約 lint (journal 語法 #702 / cross-file 参照 #1160)
-│ │ ├── orphan-reference-check.sh # #1162 未参照ファイル検出
-│ │ ├── post-review-state-verify.sh / pr-cycle-cleanup.sh # #995 reviewer 逸脱検出 / cycle worktree 掃除
-│ │ ├── review-schema-version-check.sh # #1021 review-result schema drift 検出
+│ │ ├── comment-journal-check.sh / sh-cross-ref-check.sh # comment 規約 lint (journal 語法 / cross-file 参照)
+│ │ ├── orphan-reference-check.sh # 未参照ファイル検出
+│ │ ├── post-review-state-verify.sh / pr-cycle-cleanup.sh # reviewer 逸脱検出 / cycle worktree 掃除
+│ │ ├── review-schema-version-check.sh # review-result schema drift 検出
 │ │ ├── settings-local-rite-hook-cleanup.sh / settings-local-rite-hook-cleanup.py # legacy hook entry 掃除 (.sh wrapper + .py 実体)
 │ │ ├── distributed-fix-drift-check.sh / doc-heavy-patterns-drift-check.sh
-│ │ ├── gitignore-health-check.sh # #567
-│ │ ├── projects-board-drift-check.sh # #1305 lint Phase 3.18 CLOSED+COMPLETED board≠Done 検出
+│ │ ├── gitignore-health-check.sh
+│ │ ├── projects-board-drift-check.sh # lint Phase 3.18 CLOSED+COMPLETED board≠Done 検出
 │ │ ├── lib/ # 共有ライブラリ (wiki-config.sh / worktree-git.sh)
 │ │ └── tests/ # hooks/scripts レベルのテストスイート
 │ └── tests/ # Hook-level test suite (shell-based)
@@ -248,28 +248,28 @@ rite-workflow/
 │ ├── config/
 │ │ └── rite-config.yml # Minimal default distributed by /rite:init
 │ # Note: templates/project-types/ (generic / webapp / library / cli / documentation .yml)
-│ # was deleted in #1118 together with the project.type preset feature retirement.
+│ # was deleted together with the project.type preset feature retirement.
 │ ├── issue/
 │ │ ├── default.md / decomposition-spec.md
 │ │ ├── interview-perspectives.md / template-structure.md
 │ ├── pr/
-│ │ └── generic.md # Generic PR template (cli/library/webapp/documentation/fix-report.md were all deleted in #1118)
+│ │ └── generic.md # Generic PR template (cli/library/webapp/documentation/fix-report.md were all deleted)
 │ ├── review/
-│ │ └── reply.md # Why-only PR review reply SoT (added in #1136; the prior orphan comment.md was deleted in the same PR)
+│ │ └── reply.md # Why-only PR review reply SoT (the prior orphan comment.md was deleted in the same PR)
 │ └── wiki/
 │ ├── index-template.md / log-template.md
 │ ├── page-template.md / schema-template.md
 ├── scripts/ # Projects integration / Sub-Issue / review metrics
 │ ├── create-issue-with-projects.sh
 │ ├── check-no-direct-gh-issue-create.sh # 直接 `gh issue create` 禁止の static guard
-│ ├── decompose-issues.sh # #1195 親 + Sub-Issues 一括作成
+│ ├── decompose-issues.sh # 親 + Sub-Issues 一括作成
 │ ├── backfill-sub-issues.sh / link-sub-issue.sh
 │ ├── extract-verified-review-findings.sh / measure-review-findings.sh
-│ ├── projects-status-update.sh / projects-items-fetch.sh # #1196 で items-fetch 追加
-│ ├── review-findings-maps.sh # #1196 fix.md severity_map build 委譲
-│ ├── review-source-resolve.sh # #1195 fix.md 1.2.0 review source Priority chain 解決
-│ ├── migrate-review-state-to-1.1.sh # #1021 review-result schema 1.1.0 移行
-│ ├── watchdog-status-mismatch.sh # #1003 Projects Status 不整合 watchdog
+│ ├── projects-status-update.sh / projects-items-fetch.sh
+│ ├── review-findings-maps.sh # fix.md severity_map build 委譲
+│ ├── review-source-resolve.sh # fix.md 1.2.0 review source Priority chain 解決
+│ ├── migrate-review-state-to-1.1.sh # review-result schema 1.1.0 移行
+│ ├── watchdog-status-mismatch.sh # Projects Status 不整合 watchdog
 │ └── tests/ # Script-level test suite
 ├── references/ # Cross-cutting references used by commands/skills
 │ ├── gh-cli-patterns.md / gh-cli-commands.md / gh-cli-error-catalog.md
@@ -284,8 +284,8 @@ rite-workflow/
 │ ├── common-error-handling.md
 │ └── bottleneck-detection.md
 │ # Note: references/i18n-usage.md and plugins/rite/i18n/ directory (ja.yml,
-│ # en.yml, and the ja/ + en/ split files) were deleted entirely in #1117 —
-│ # see the ## ~~Internationalization~~ (Retired in #1117) section below.
+│ # en.yml, and the ja/ + en/ split files) were deleted entirely —
+│ # see the ## ~~Internationalization~~ (Retired) section below.
 └── README.md
 ```
 
@@ -432,11 +432,11 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 | `branch.*` | `base`, `pattern`, `recognized_patterns` |
 | `commands.{build,test,lint}` | Build/test/lint auto-detection overrides |
 | `issue.auto_decompose_threshold` | Threshold for skipping the decomposition prompt |
-| `review.*` | `loop.*` (convergence_monitoring / auto_propagation_scan / pre_commit_drift_check), `doc_heavy.*`, `fact_check.*` (incl. `use_context7`), `debate.*`, `security_reviewer.*`, `confidence_threshold`. **DEPRECATED**: `observed_likelihood_gate.*` / `fail_fast_first.*` were removed entirely — see CONFIGURATION.md for the deprecation note. The `separate_issue_creation.*` keys were removed entirely in #1136 along with the `[fix:issues-created:N]` sentinel and `fix.md` Phase 4.3 |
+| `review.*` | `loop.*` (convergence_monitoring / auto_propagation_scan / pre_commit_drift_check), `doc_heavy.*`, `fact_check.*` (incl. `use_context7`), `debate.*`, `security_reviewer.*`, `confidence_threshold`. **DEPRECATED**: `observed_likelihood_gate.*` / `fail_fast_first.*` were removed entirely — see CONFIGURATION.md for the deprecation note. The `separate_issue_creation.*` keys were removed entirely along with the `[fix:issues-created:N]` sentinel and `fix.md` Phase 4.3 |
 | `fix.*` | `fail_fast_response`. **DEPRECATED**: `severity_gating.*` was removed entirely — see CONFIGURATION.md for the deprecation note |
 | `verification.*` | `run_tests_before_pr`, `acceptance_criteria_check` |
 | `parallel.*` | Parallel implementation (per-Issue sub-agent fan-out within one session) |
-| `multi_session.*` | Per-session Git worktree isolation — `enabled` (default `true` since #1391; set `false` to opt out), `worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are not merged. See [docs/designs/multi-session-worktree.md](./designs/multi-session-worktree.md) |
+| `multi_session.*` | Per-session Git worktree isolation — `enabled` (default `true`; set `false` to opt out), `worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are not merged. See [docs/designs/multi-session-worktree.md](./designs/multi-session-worktree.md) |
 | `iteration.*` | GitHub Projects Iteration field integration |
 | `safety.*` | Fail-closed thresholds (`max_implementation_rounds`, `time_budget_minutes`, etc.) |
 | `pr_review.post_comment` | PR review output destination |
@@ -444,7 +444,7 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 | `metrics.*` | Execution metrics recording |
 | `language` | `auto` / `ja` / `en` |
 
-**Migration**: `schema_version` (currently `2`) is bumped when breaking schema changes ship. `/rite:init --upgrade` performs a non-destructive merge for compatible upgrades; removed keys are silently ignored at runtime — see the [CHANGELOG](../CHANGELOG.md) for the current deprecation set (v0.4.0 removed `review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, and `safety.max_review_fix_loops` per #557).
+**Migration**: `schema_version` (currently `2`) is bumped when breaking schema changes ship. `/rite:init --upgrade` performs a non-destructive merge for compatible upgrades; removed keys are silently ignored at runtime — see the [CHANGELOG](../CHANGELOG.md) for the current deprecation set (v0.4.0 removed `review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, and `safety.max_review_fix_loops`).
 
 ---
 
@@ -468,9 +468,9 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 2. Check GitHub authentication status
 3. Get repository information
 
-#### ~~Phase 2: Project Type Detection~~ (Removed in #1118)
+#### ~~Phase 2: Project Type Detection~~ (Removed)
 
-> **Status: Removed**. The `project.type` preset feature and the Phase 2 auto-detection logic (`package.json` + frontend framework → webapp, etc.) were removed entirely in #1118. `/rite:init` no longer performs project type detection; project-specific configuration is expressed via per-key YAML directly. The original detection rules below are preserved as historical reference only.
+> **Status: Removed**. The `project.type` preset feature and the Phase 2 auto-detection logic (`package.json` + frontend framework → webapp, etc.) were removed entirely. `/rite:init` no longer performs project type detection; project-specific configuration is expressed via per-key YAML directly. The original detection rules below are preserved as historical reference only.
 
 (Historical rules — no longer executed:
 - `package.json` + frontend framework → webapp
@@ -641,7 +641,7 @@ Before Confirmation & Creation, surface the assumptions the model implicitly fil
 
 ---
 
-### /rite:issue:start (Retired in #1136)
+### /rite:issue:start (Retired)
 
 > **Status**: Decomposed into four single-responsibility commands. The 783-line `commands/issue/start.md` orchestrator was deleted; the live specification now lives in `/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge`. This section is preserved as a migration anchor so that the historical Phase numbering (Phase 0 / 1 / 1.5 / 1.6 / 2 / 3 / 4 / 5) can still be traced when reading older PRs, design docs, and CHANGELOG entries.
 
@@ -659,12 +659,12 @@ Before Confirmation & Creation, surface the assumptions the model implicitly fil
 | Phase 5.2 (Quality checks) | `/rite:pr:open` Step 5 (`/rite:issue:implement` autonomously invokes `/rite:lint`) |
 | Phase 5.3 (Draft PR creation) | `/rite:pr:open` Step 6 (invokes `/rite:pr:create` sub-skill) |
 | Phase 5.4 / 5.5 (Review + fix loop) | `/rite:pr:iterate <pr>` (loops `/rite:pr:review` ⇄ `/rite:pr:fix` until convergence) |
-| Phase 5.6 (Completion report — formerly the last sub-step of Phase 5) | `/rite:pr:ready <pr>` (Set Ready) + `/rite:pr:merge <pr>` (Merge) — split into two responsibility-isolated commands in #1136. Historically `start.md` reached completion at Phase 5.6 and then ran `gh pr merge --squash` inline as ステップ 8 of the orchestrator |
-| Phase 6 (Cleanup) | `/rite:pr:cleanup <pr>` (unchanged, decoupled from merge in #1136) |
+| Phase 5.6 (Completion report — formerly the last sub-step of Phase 5) | `/rite:pr:ready <pr>` (Set Ready) + `/rite:pr:merge <pr>` (Merge) — split into two responsibility-isolated commands. Historically `start.md` reached completion at Phase 5.6 and then ran `gh pr merge --squash` inline as ステップ 8 of the orchestrator |
+| Phase 6 (Cleanup) | `/rite:pr:cleanup <pr>` (unchanged, decoupled from merge) |
 
 The four new commands maintain the same flow-state phases (`init` / `branch` / `plan` / `implement` / `lint` / `pr` / `review` / `fix` / `ready` / `ready_error` / `cleanup` / `ingest` / `completed` — `PHASE_ENUM_V3` SoT in `hooks/flow-state.sh`), so `/rite:resume` can recover from interruptions regardless of which command was running. See [commands/resume.md](../plugins/rite/commands/resume.md) Phase 5.3 (Phase enum → Step mapping (SoT)) for the routing table.
 
-> **Historical Phase Description (pre-#1136)**: The remainder of this section describes the previous `start.md` orchestrator's Phase 0 / 1 / 1.5 / 1.6 / 2 / 3 / 4 / 5 internals. Use it only for archaeological / migration cross-reference; the live specification is in the new pr/ commands above.
+> **Historical Phase Description (pre-decomposition)**: The remainder of this section describes the previous `start.md` orchestrator's Phase 0 / 1 / 1.5 / 1.6 / 2 / 3 / 4 / 5 internals. Use it only for archaeological / migration cross-reference; the live specification is in the new pr/ commands above.
 
 #### Phase 0: Epic/Sub-issues Detection
 
@@ -784,7 +784,7 @@ The Session Info section of the work memory includes phase information indicatin
 
 **Flat workflow phase (current / 13 values — matches `PHASE_ENUM_V3` SoT in `hooks/flow-state.sh`):**
 
-| Phase | Phase Detail | 4-command step (formerly start.md step pre-#1136) |
+| Phase | Phase Detail | 4-command step (formerly start.md step pre-decomposition) |
 |-------|--------------|----------------------------------------------------|
 | `init` | Workflow initialised (Issue identified) | `/rite:pr:open` Step 1 (formerly step 1) |
 | `branch` | Branch created, ready for plan | `/rite:pr:open` Step 2 (formerly step 2) |
@@ -832,7 +832,7 @@ Older state files may contain these names from the pre-flat sub-skill chain arch
 
 After preparation, user selects:
 - **Start implementation (Recommended)**: Proceed to Phase 5 for end-to-end execution from implementation to PR creation and review
-- **Work later** (Removed in #1136 — pre-decomposition behavior): Pause here and resume later with `/rite:issue:start` (now `/rite:pr:open <issue_number>` followed by `/rite:resume` to recover from any stop)
+- **Work later** (Removed — pre-decomposition behavior): Pause here and resume later with `/rite:issue:start` (now `/rite:pr:open <issue_number>` followed by `/rite:resume` to recover from any stop)
 
 #### Phase 5: End-to-End Execution
 
@@ -880,7 +880,7 @@ Work memory is automatically updated when executing the following commands:
 |---------|---------------------|
 | `/rite:pr:open` | Initialize work memory, record implementation plan |
 | `/rite:pr:create` | Record changed files, commit history, PR info |
-| `/rite:pr:iterate` / `/rite:pr:fix` | Record review response history (fix history per cycle; no loop counter — Issue #1136 removed cycle counters and quality-signal escalation entirely) |
+| `/rite:pr:iterate` / `/rite:pr:fix` | Record review response history (fix history per cycle; no loop counter — cycle counters and quality-signal escalation were removed entirely) |
 | `/rite:pr:cleanup` | Record completion info |
 | `/rite:lint` | Record quality check results (conditional: only on issue branches) |
 
@@ -1159,7 +1159,7 @@ iteration:
 | PostToolUse | After tool execution | Auto-recover local work memory |
 | Stop | Turn end | Re-inject the `/rite:pr:iterate` review↔fix loop command or the `/rite:pr:cleanup` wiki-chain continuation (`consume-handoff` → `decision:block`) so the loop / chain continues after a continuation sentinel |
 
-> **Note:** The legacy stop-prevention hook (`stop-guard.sh`) has been removed; workflow stop prevention itself is now handled by the per-session state structure (`.rite/sessions/{session_id}.flow-state`) and the orchestrator-level scaffolding contract (Pre-write + 🚨 Mandatory After). A **distinct** `Stop` hook (`stop-loop-continuation.sh`, Issue #1168) is registered for a different purpose: it consumes the one-shot `handoff` marker and re-injects the next review↔fix loop command, or — for the `WIKICHAIN:` prefix set by `/rite:pr:cleanup` Step 9 (Issue #1245) — the continuation of the cleanup → wiki:ingest → wiki:lint chain. See the [Multi-Session State Management](#multi-session-state-management) section for details.
+> **Note:** The legacy stop-prevention hook (`stop-guard.sh`) has been removed; workflow stop prevention itself is now handled by the per-session state structure (`.rite/sessions/{session_id}.flow-state`) and the orchestrator-level scaffolding contract (Pre-write + 🚨 Mandatory After). A **distinct** `Stop` hook (`stop-loop-continuation.sh`) is registered for a different purpose: it consumes the one-shot `handoff` marker and re-injects the next review↔fix loop command, or — for the `WIKICHAIN:` prefix set by `/rite:pr:cleanup` Step 9 — the continuation of the cleanup → wiki:ingest → wiki:lint chain. See the [Multi-Session State Management](#multi-session-state-management) section for details.
 
 ### Hook Execution Order
 
@@ -1294,11 +1294,11 @@ Lifecycle-incomplete detection for the legacy `create_*` / `cleanup_*` phases no
 
 ### Verify Terminal Output (retired)
 
-> **Status: Retired**. The standalone `verify-terminal-output.sh` check was removed when `/rite:issue:create` was flattened into a single file. The Terminal Completion HTML-comment wrap contract is still required (`<!-- [create:returned-to-caller:{…}] -->` since Issue #1165; previously `<!-- [create:completed:{…}] -->`), but enforcement now lives inline in `commands/issue/create.md` ステップ 4.4 / ステップ 5.6 and is exercised via `create-md-invocation-symmetry.test.sh` rather than a standalone hook (the older `start-md-sentinel-coverage.test.sh` was deleted in #1136 — a replacement `pr-cmd-sentinel-coverage.test.sh` targeting the new `pr/` commands is planned as a follow-up; see CHANGELOG "Removed" section).
+> **Status: Retired**. The standalone `verify-terminal-output.sh` check was removed when `/rite:issue:create` was flattened into a single file. The Terminal Completion HTML-comment wrap contract is still required (`<!-- [create:returned-to-caller:{…}] -->`; previously `<!-- [create:completed:{…}] -->`), but enforcement now lives inline in `commands/issue/create.md` ステップ 4.4 / ステップ 5.6 and is exercised via `create-md-invocation-symmetry.test.sh` rather than a standalone hook (the older `start-md-sentinel-coverage.test.sh` was deleted — a replacement `pr-cmd-sentinel-coverage.test.sh` targeting the new `pr/` commands is planned as a follow-up; see CHANGELOG "Removed" section).
 
-### Session Ownership (`session-ownership.sh`) (#174–#179)
+### Session Ownership (`session-ownership.sh`)
 
-Shared library sourced by the lifecycle hooks for multi-session conflict prevention. With the per-session state structure (#672 / Issue #685 / PR #686 + #747 + #748 + #750 + #751 + #756 + #757 + #759), ownership is **structurally guaranteed** by the file naming (`.rite/sessions/{session_id}.flow-state`); this library now serves as a path/entry resolution layer rather than a runtime guard.
+Shared library sourced by the lifecycle hooks for multi-session conflict prevention. With the per-session state structure, ownership is **structurally guaranteed** by the file naming (`.rite/sessions/{session_id}.flow-state`); this library now serves as a path/entry resolution layer rather than a runtime guard.
 
 > **Canonical SoT for sourcing callers**: actual `source` directives in `plugins/rite/hooks/*.sh` (verify with `grep -rn "source.*session-ownership.sh" plugins/rite/hooks/ --include='*.sh' | grep -v tests/`). At present this resolves to: `session-start.sh` / `session-end.sh` / `pre-compact.sh` / `post-tool-wm-sync.sh`. (`flow-state.sh` is NOT a `source` caller of this library — it sources only `state-path-resolve.sh` and `control-char-neutralize.sh`. `stop-guard.sh` has been removed; `post-compact.sh` does not source this library directly. `pre-tool-bash-guard.sh` sources only `hook-preamble.sh`, does not participate in flow-state path resolution, and has never been a `source` caller of this library.)
 
@@ -1322,7 +1322,7 @@ A pair of hooks that automate Experience Wiki integration (opt-out via `wiki.ena
 | Hook | Trigger | Action |
 |------|---------|--------|
 | `wiki-ingest-trigger.sh` | `pr/review.md` Phase 5.4.3 (post review), `pr/fix.md` Phase 5.4.6 (post fix), `commands/issue/close.md` (Issue close) | Writes a raw-source file under `.rite/wiki/raw/{type}/` on the dev branch working tree. Pure file writer, no git operations. |
-| `wiki-query-inject.sh` | `commands/issue/implement.md` Phase 5.0.W (invoked from `/rite:pr:open` Step 4 sub-skill chain, formerly `start.md` ステップ 2.6 pre-#1136), `pr/review.md` Phase 4.0.W, `pr/fix.md` Phase 0.5.W | Runs `/rite:wiki:query` against the current Issue title/body and injects matching heuristics. Reads via `origin/{wiki_branch}` when the local wiki branch is absent (fresh clone / separate worktree). |
+| `wiki-query-inject.sh` | `commands/issue/implement.md` Phase 5.0.W (invoked from `/rite:pr:open` Step 4 sub-skill chain, formerly `start.md` ステップ 2.6 pre-decomposition), `pr/review.md` Phase 4.0.W, `pr/fix.md` Phase 0.5.W | Runs `/rite:wiki:query` against the current Issue title/body and injects matching heuristics. Reads via `origin/{wiki_branch}` when the local wiki branch is absent (fresh clone / separate worktree). |
 
 See [Experience Wiki](#experience-wiki) for the full Phase X.X.W contract and the separate `wiki-ingest-commit.sh` / `wiki-worktree-commit.sh` helpers that actually commit + push raw sources onto the wiki branch.
 
@@ -1334,34 +1334,34 @@ Sourced at the top of most hooks to perform shared pre-processing: plugin-root r
 
 Non-hook helper scripts invoked either directly from orchestrator commands or by other hooks:
 
-| Script | Purpose | Related Issue |
-|--------|---------|---------------|
-| `wiki-ingest-commit.sh` / `wiki-worktree-commit.sh` / `wiki-worktree-setup.sh` | Stash-based single-process commit + push of raw sources onto the `wiki` branch | #524 refactor |
-| `wiki-growth-check.sh` | `/rite:lint` Phase 3.8 layer-3 warn when `wiki.growth_check.threshold_prs` PRs accumulate without a wiki commit | #524 / #536 |
-| `backlink-format-check.sh` | Bidirectional backlink format verification for Wiki pages | #627 |
+| Script | Purpose | Notes |
+|--------|---------|-------|
+| `wiki-ingest-commit.sh` / `wiki-worktree-commit.sh` / `wiki-worktree-setup.sh` | Stash-based single-process commit + push of raw sources onto the `wiki` branch | — |
+| `wiki-growth-check.sh` | `/rite:lint` Phase 3.8 layer-3 warn when `wiki.growth_check.threshold_prs` PRs accumulate without a wiki commit | — |
+| `backlink-format-check.sh` | Bidirectional backlink format verification for Wiki pages | — |
 | `bang-backtick-check.sh` | Detect bash history-expansion pitfalls in generated content | — |
 | `distributed-fix-drift-check.sh` | Catch inconsistent partial application of the same fix across files | `review.loop.pre_commit_drift_check` |
-| `doc-heavy-patterns-drift-check.sh` | Detect Doc-Heavy PR Mode drift signals | #349 |
-| `gitignore-health-check.sh` | Verify the `.rite/wiki/` last-line-of-defense `.gitignore` rule, emit `gitignore_drift` sentinel on mismatch | #564 / #567 |
-| `projects-board-drift-check.sh` | `/rite:lint` Phase 3.18 — detect CLOSED+COMPLETED Issues whose Projects board Status is not `Done` (NOT_PLANNED excluded), optionally reconcile via `--reconcile` | #1305 |
-| `wiki-branch-init.sh` | `/rite:wiki:init` ステップ 3.1 — orphan wiki ブランチ作成 + push + 元ブランチ復帰 (stash 退避/復帰、same_branch 両対応) | #1196 |
-| `wiki-lint-skipped-refs.sh` | `/rite:wiki:lint` ステップ 6.0 — log.md の `ingest:skip` 集合を marker block + `log_read_ok` 4 値 enum で構築 (6.2 `wiki-lint-source-refs.sh` と対称) | #1196 |
-| `wiki-lint-source-refs.sh` | `/rite:wiki:lint` ステップ 6.2 — Wiki ページの Sources 行から `all_source_refs` 集合を構築 (6.0 `wiki-lint-skipped-refs.sh` と対称) | #1195 |
-| `wiki-lint-stale.sh` | `/rite:wiki:lint` ステップ 4 — frontmatter `updated` と cutoff 比較で陳腐化集合を marker block + `stale_check_ok` enum で構築 (GNU date 検査内包) | #1345 |
-| `wiki-lint-orphans.sh` | `/rite:wiki:lint` ステップ 5 — index.md 登録ページと pages_list の集合差分を marker block + `orphan_check_ok` enum で構築 (index.md 読出内包) | #1345 |
-| `wiki-lint-broken-refs.sh` | `/rite:wiki:lint` ステップ 7 — Markdown link の page-dir 起点 `realpath -m -s` 解決で壊れた相互参照集合を構築 (awk indent 不問 fence tracking) | #1345 |
-| `bang-backtick-edit-hook.sh` | `bang-backtick-check.sh` の PostToolUse(Edit\|Write\|MultiEdit) wrapper — `hooks.json` 登録済 (`tool_input.file_path` でスコープを絞る) | #691 |
-| `bash-heaviness-check.sh` | `commands/**/*.md` 内の heavy operational bash block を non-blocking warning で検出 | #1197 |
+| `doc-heavy-patterns-drift-check.sh` | Detect Doc-Heavy PR Mode drift signals | — |
+| `gitignore-health-check.sh` | Verify the `.rite/wiki/` last-line-of-defense `.gitignore` rule, emit `gitignore_drift` sentinel on mismatch | — |
+| `projects-board-drift-check.sh` | `/rite:lint` Phase 3.18 — detect CLOSED+COMPLETED Issues whose Projects board Status is not `Done` (NOT_PLANNED excluded), optionally reconcile via `--reconcile` | — |
+| `wiki-branch-init.sh` | `/rite:wiki:init` ステップ 3.1 — orphan wiki ブランチ作成 + push + 元ブランチ復帰 (stash 退避/復帰、same_branch 両対応) | — |
+| `wiki-lint-skipped-refs.sh` | `/rite:wiki:lint` ステップ 6.0 — log.md の `ingest:skip` 集合を marker block + `log_read_ok` 4 値 enum で構築 (6.2 `wiki-lint-source-refs.sh` と対称) | — |
+| `wiki-lint-source-refs.sh` | `/rite:wiki:lint` ステップ 6.2 — Wiki ページの Sources 行から `all_source_refs` 集合を構築 (6.0 `wiki-lint-skipped-refs.sh` と対称) | — |
+| `wiki-lint-stale.sh` | `/rite:wiki:lint` ステップ 4 — frontmatter `updated` と cutoff 比較で陳腐化集合を marker block + `stale_check_ok` enum で構築 (GNU date 検査内包) | — |
+| `wiki-lint-orphans.sh` | `/rite:wiki:lint` ステップ 5 — index.md 登録ページと pages_list の集合差分を marker block + `orphan_check_ok` enum で構築 (index.md 読出内包) | — |
+| `wiki-lint-broken-refs.sh` | `/rite:wiki:lint` ステップ 7 — Markdown link の page-dir 起点 `realpath -m -s` 解決で壊れた相互参照集合を構築 (awk indent 不問 fence tracking) | — |
+| `bang-backtick-edit-hook.sh` | `bang-backtick-check.sh` の PostToolUse(Edit\|Write\|MultiEdit) wrapper — `hooks.json` 登録済 (`tool_input.file_path` でスコープを絞る) | — |
+| `bash-heaviness-check.sh` | `commands/**/*.md` 内の heavy operational bash block を non-blocking warning で検出 | — |
 | `hardcoded-line-number-check.sh` | procedural markdown (`commands/**/*.md`) 内のハードコード行番号参照を検出 | — |
-| `comment-line-ref-check.sh` | shell comment 内の `<file>.<ext>:<NN>` 行番号参照を検出 (`hardcoded-line-number-check.sh` の companion) | #702 |
-| `comment-journal-check.sh` | `plugins/rite/**/*.{sh,md}` の journal 語法 comment 違反を機械検出 | #702 |
-| `sh-cross-ref-check.sh` | shell prose (echo 文字列 / comment) 内の cross-file step/phase 参照の実在を検証 | #1160 |
-| `orphan-reference-check.sh` | plugins/rite/ 配下の未参照 (orphan) ファイル検出 | #1162 |
-| `post-review-state-verify.sh` | reviewer subagent の READ-ONLY 契約違反 (working tree / branch / stash 変更) の検出 + recovery | #995 |
-| `pr-cycle-cleanup.sh` | 残留 `pr-{N}-cycle{X}` worktree / branch の冪等掃除 + `${TMPDIR:-/tmp}/rite-pr-create-*` 孤児 workdir の age ベース GC (mtime > 24h) | #995, #1311 |
-| `review-schema-version-check.sh` | review-result JSON の `schema_version` drift 検出 | #1021 |
+| `comment-line-ref-check.sh` | shell comment 内の `<file>.<ext>:<NN>` 行番号参照を検出 (`hardcoded-line-number-check.sh` の companion) | — |
+| `comment-journal-check.sh` | `plugins/rite/**/*.{sh,md}` の journal 語法 comment 違反を機械検出 | — |
+| `sh-cross-ref-check.sh` | shell prose (echo 文字列 / comment) 内の cross-file step/phase 参照の実在を検証 | — |
+| `orphan-reference-check.sh` | plugins/rite/ 配下の未参照 (orphan) ファイル検出 | — |
+| `post-review-state-verify.sh` | reviewer subagent の READ-ONLY 契約違反 (working tree / branch / stash 変更) の検出 + recovery | — |
+| `pr-cycle-cleanup.sh` | 残留 `pr-{N}-cycle{X}` worktree / branch の冪等掃除 + `${TMPDIR:-/tmp}/rite-pr-create-*` 孤児 workdir の age ベース GC (mtime > 24h) | — |
+| `review-schema-version-check.sh` | review-result JSON の `schema_version` drift 検出 | — |
 | `settings-local-rite-hook-cleanup.sh` | `.claude/settings.local.json` の stale legacy rite hook entry 削除 (`.py` 実体への wrapper、init.md Phase 4.5.0.2) | — |
-| `lib/` (`wiki-config.sh` / `worktree-git.sh`) | wiki 系 helper の共有ライブラリ (config 読取 / worktree git 操作) | #549 |
+| `lib/` (`wiki-config.sh` / `worktree-git.sh`) | wiki 系 helper の共有ライブラリ (config 読取 / worktree git 操作) | — |
 | `tests/` | hooks/scripts レベルのテストスイート | — |
 
 ---
@@ -1383,7 +1383,7 @@ A system that performs unified pre-validation before every `/rite:*` command exe
 
 > **Design rationale**: See [`docs/designs/multi-session-state.md`](designs/multi-session-state.md) for the full design selection (6-axis trade-off comparison, Option A vs B Decision Log, and Phase 2 implementation retrospective). This section is the canonical **runtime specification**; the design doc is the canonical **rationale** record.
 
-The flow state for `/rite:*` workflows uses a **per-session file** structure (`.rite/sessions/{session_id}.flow-state`) introduced by Issue #672 and landed across PR #686 / #747 / #748 + #756 / #750 / #751 / #757 / #759. Each Claude Code session writes only to its own file, so concurrent sessions on the same repository are structurally race-free without lock acquisition.
+The flow state for `/rite:*` workflows uses a **per-session file** structure (`.rite/sessions/{session_id}.flow-state`). Each Claude Code session writes only to its own file, so concurrent sessions on the same repository are structurally race-free without lock acquisition.
 
 > **Authority scope — session-scoped continuation hint, not a cross-`/clear` source of truth**: flow state is **session-scoped** and treats `/clear` as its continuation terminus — a session started after a `/clear` resolves a fresh `session_id` and therefore reads a different (structurally empty) state file. Consequently, **discrete commands** invoked standalone across a `/clear` (e.g. `/rite:pr:merge`) **must not** treat flow state as the authoritative cross-`/clear` state. Their authority lives in the persistent SoT — `gh pr view` (`isDraft` / `mergeable` / `mergeStateStatus`), GitHub Projects Status, and `.rite-work-memory/issue-{n}.md`. flow state, when present, is consumed only as a **same-session continuation hint**, and its absence is the normal (un-warned) case for discrete operation. Conversely, the **continuation-loop subsystems** — `/rite:pr:iterate`'s review↔fix loop, the `Stop` hook + `handoff` field, `/rite:pr:review` / `/rite:pr:fix`, compact recovery, and `/rite:resume` — are single-session by nature and are precisely the domain where session-scoped flow state functions correctly; they are left untouched. See [`docs/designs/clear-per-command-flow-state-decoupling.md`](designs/clear-per-command-flow-state-decoupling.md) for the full discrete-command-vs-continuation-loop decoupling analysis and per-command breakdown; `commands/pr/merge.md` Step 1 is the first application of this boundary.
 
@@ -1430,17 +1430,17 @@ Legacy state files (flat JSON without `schema_version`, or any file with `schema
 
 **Legacy single-file selection (removed):**
 
-`rite-config.yml` previously accepted `flow_state.schema_version: 1` to force the legacy single-file (`.rite-flow-state`) code path (adapter pattern). That dual logic has been removed (Issue #1458) — flow-state is always per-session (`.rite/sessions/{session_id}.flow-state`). An explicit `flow_state.schema_version: 1` is now ignored; `session-start.sh` emits a deprecation warning once per session start (every startup until the key is removed) prompting its removal. A residual `.rite-flow-state` single-file is absorbed into per-session/v3 by the `flow-state.sh migrate` path above.
+`rite-config.yml` previously accepted `flow_state.schema_version: 1` to force the legacy single-file (`.rite-flow-state`) code path (adapter pattern). That dual logic has been removed — flow-state is always per-session (`.rite/sessions/{session_id}.flow-state`). An explicit `flow_state.schema_version: 1` is now ignored; `session-start.sh` emits a deprecation warning once per session start (every startup until the key is removed) prompting its removal. A residual `.rite-flow-state` single-file is absorbed into per-session/v3 by the `flow-state.sh migrate` path above.
 
 **Sub-Issues API parent-child structure:**
 
-The Issue series that delivered this feature (#672 epic with children #678 / #679 / #680 / #681 / #682 / #683 / #684 / #685 + follow-up #749) used GitHub's native Sub-Issues API to maintain the parent-child relation. `/rite:pr:open` Step 1.2 (previously `start.md` Phase 0.3 before the #1136 decomposition) detects parent Issues via three OR-combined methods (trackedIssues API → body tasklist `- [ ] #N` → label-based `epic`/`parent`/`umbrella`). The child→parent Status promotion (Todo → In Progress) is propagated in the same OR-combined order (`## 親 Issue` body meta → Sub-Issues API `trackedInIssues` → tasklist search) by `/rite:pr:open` Step 2.4 (`### 2.4 GitHub Projects Status 更新`, sub-step 2.4.7 — see [`references/projects-integration.md`](../plugins/rite/references/projects-integration.md) §2.4.7 Parent Issue Status Update for the SoT).
+This feature uses GitHub's native Sub-Issues API to maintain the parent-child relation. `/rite:pr:open` Step 1.2 (previously `start.md` Phase 0.3 before the decomposition) detects parent Issues via three OR-combined methods (trackedIssues API → body tasklist `- [ ] #N` → label-based `epic`/`parent`/`umbrella`). The child→parent Status promotion (Todo → In Progress) is propagated in the same OR-combined order (`## 親 Issue` body meta → Sub-Issues API `trackedInIssues` → tasklist search) by `/rite:pr:open` Step 2.4 (`### 2.4 GitHub Projects Status 更新`, sub-step 2.4.7 — see [`references/projects-integration.md`](../plugins/rite/references/projects-integration.md) §2.4.7 Parent Issue Status Update for the SoT).
 
 > **Hook list canonical SoT**: The hooks that read or write per-session state are registered in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json) — currently 7 events (`SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse` / `Stop`). To re-enumerate the live registration, run `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`. The `Stop` event is registered to `stop-loop-continuation.sh` for review↔fix loop continuation; the legacy `stop-guard.sh` stop-prevention hook remains removed (see the retired-layers note below). The library script `session-ownership.sh` is sourced (not registered) and therefore does not appear in `hooks.json`.
 
 #### Worktree Mode (session worktree isolation)
 
-The per-session flow-state structure above isolates the **state** layer; **Worktree Mode** (`multi_session.enabled: true`, the default since #1391) additionally isolates the **working-tree / current-branch** layer so that multiple sessions can run *different* Issues in the same repository without their `git switch` operations destroying each other's working tree. When `multi_session.enabled: false` (explicit opt-out, or a legacy config that omits the `multi_session` block) none of the paths below activate and behavior is byte-identical to single-session. Full design rationale + Decision Log: [`docs/designs/multi-session-worktree.md`](designs/multi-session-worktree.md) (Epic #1360, default-on flip #1391).
+The per-session flow-state structure above isolates the **state** layer; **Worktree Mode** (`multi_session.enabled: true`, the default) additionally isolates the **working-tree / current-branch** layer so that multiple sessions can run *different* Issues in the same repository without their `git switch` operations destroying each other's working tree. When `multi_session.enabled: false` (explicit opt-out, or a legacy config that omits the `multi_session` block) none of the paths below activate and behavior is byte-identical to single-session. Full design rationale + Decision Log: [`docs/designs/multi-session-worktree.md`](designs/multi-session-worktree.md).
 
 **Session worktree lifecycle:**
 
@@ -1461,7 +1461,7 @@ The session worktree is one of **four non-overlapping worktree namespaces** (`.r
 
 **Crash recovery / `/rite:resume`:** After a crash a new session starts at the repository root. `/rite:resume` re-enters the worktree *before* any branch-dependent cross-check (flow-state `worktree` → else issue-number → path derivation), and reconstructs a missing worktree from the branch (local → `git worktree add`; remote-only → `git fetch` + `--track -b`; nowhere → AskUserQuestion). The `worktree` flow-state field is a **same-session hint only** — the canonical session↔worktree correspondence is the issue-number → path derivation, because `session_id` changes on crash (see the schema table's `worktree` row above).
 
-**Configuration:** `multi_session.enabled` (default `true` since #1391; set `false` to opt out — a legacy config that omits the block also falls back to `false`) and `multi_session.worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are orthogonal and intentionally not merged. `.gitignore` must include `.rite/worktrees/` (added by `/rite:init`; `gitignore-health-check.sh` emits a non-blocking warning if it is missing while `multi_session.enabled: true`). Disk cost: each session worktree is a full working-tree clone, so build artifacts (`node_modules`, etc.) may need rebuilding per worktree. See [`docs/CONFIGURATION.md` → multi_session](CONFIGURATION.md#multi_session).
+**Configuration:** `multi_session.enabled` (default `true`; set `false` to opt out — a legacy config that omits the block also falls back to `false`) and `multi_session.worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are orthogonal and intentionally not merged. `.gitignore` must include `.rite/worktrees/` (added by `/rite:init`; `gitignore-health-check.sh` emits a non-blocking warning if it is missing while `multi_session.enabled: true`). Disk cost: each session worktree is a full working-tree clone, so build artifacts (`node_modules`, etc.) may need rebuilding per worktree. See [`docs/CONFIGURATION.md` → multi_session](CONFIGURATION.md#multi_session).
 
 ### Local Work Memory + Compact Resilience
 
@@ -1645,15 +1645,15 @@ LLM analyzes diff content to determine:
 
 When a step of the end-to-end flow (`/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:ready` → `/rite:pr:merge`) fails or is skipped (Skill load failure, hook abnormal exit, Wiki ingest skip/failure, `.gitignore` drift, etc.), the relevant script or hook emits a plain `WARNING` / `ERROR` line to **stderr**. The orchestrator LLM surfaces these in the conversation context, and the user resolves them by re-running the affected step via `/rite:resume`.
 
-> **History (#1088、実装: #1091、PR 2b リファクタリングシリーズ)**: An earlier design (#366) auto-detected these as "workflow incidents" — each failure path emitted a `[CONTEXT] WORKFLOW_INCIDENT=1; ...` sentinel via a dedicated `workflow-incident-emit.sh` hook, which the (then-current) `/rite:issue:start` orchestrator's ステップ 8.5 grepped from the conversation context to auto-register the blocker as a Todo Issue (`AskUserQuestion` confirmation, per-session dedupe, `workflow_incident.enabled` opt-out). The entire mechanism — the emit hook, the ステップ 8.5 detection logic, the `workflow_incident:` config key, and the sentinel format — was removed in favor of the single-layer plain-stderr design described above. The `/rite:issue:start` orchestrator itself was subsequently decomposed in #1136 (see the [Retired section](#riteissuestart-retired-in-1136) above). Failures are now visible but no longer auto-registered; the user decides whether to file an Issue.
+> **History**: An earlier design auto-detected these as "workflow incidents" — each failure path emitted a `[CONTEXT] WORKFLOW_INCIDENT=1; ...` sentinel via a dedicated `workflow-incident-emit.sh` hook, which the (then-current) `/rite:issue:start` orchestrator's ステップ 8.5 grepped from the conversation context to auto-register the blocker as a Todo Issue (`AskUserQuestion` confirmation, per-session dedupe, `workflow_incident.enabled` opt-out). The entire mechanism — the emit hook, the ステップ 8.5 detection logic, the `workflow_incident:` config key, and the sentinel format — was removed in favor of the single-layer plain-stderr design described above. The `/rite:issue:start` orchestrator itself was subsequently decomposed into the four `pr/` commands (see the [Retired section](#riteissuestart-retired) above). Failures are now visible but no longer auto-registered; the user decides whether to file an Issue.
 
-### Reviewer-Triggered Issue Creation (Two Paths — #1136 Status)
+### Reviewer-Triggered Issue Creation (Two Paths)
 
-There are (were) two paths that converted reviewer "別 Issue として作成" recommendations into tracked GitHub Issues. Their #1136 status differs and must not be conflated:
+There are (were) two paths that converted reviewer "別 Issue として作成" recommendations into tracked GitHub Issues. Their current status differs and must not be conflated:
 
-| Path | Location | #1136 Status | Notes |
-|------|----------|--------------|-------|
-| Fix-side post-loop | `fix.md` Phase 4.3 ("Automatic Separate Issue Creation") | **Removed in #1136** | The full Phase 4.3 section and the `[fix:issues-created:N]` sentinel were deleted. The `review.separate_issue_creation.*` runtime mechanism is removed, but the scaffolding block remains in `templates/config/rite-config.yml` (no runtime effect) and is scheduled for removal in a follow-up PR — see [CONFIGURATION.md](./CONFIGURATION.md) `~~separate_issue_creation.*~~` DEPRECATED note for the template state caveat. Inside the `/rite:pr:fix` review-fix loop, reviewer recommendations are now handled per-finding via the Phase 2.1 menu (fix / accept / reply) — no post-loop auto-creation. |
+| Path | Location | Status | Notes |
+|------|----------|--------|-------|
+| Fix-side post-loop | `fix.md` Phase 4.3 ("Automatic Separate Issue Creation") | **Removed** | The full Phase 4.3 section and the `[fix:issues-created:N]` sentinel were deleted. The `review.separate_issue_creation.*` runtime mechanism is removed, but the scaffolding block remains in `templates/config/rite-config.yml` (no runtime effect) and is scheduled for removal in a follow-up PR — see [CONFIGURATION.md](./CONFIGURATION.md) `~~separate_issue_creation.*~~` DEPRECATED note for the template state caveat. Inside the `/rite:pr:fix` review-fix loop, reviewer recommendations are now handled per-finding via the Phase 2.1 menu (fix / accept / reply) — no post-loop auto-creation. |
 | Review-side | `pr/review.md` Phase 7 ("Automatic Issue Creation") | **Live (not removed)** | Calls `plugins/rite/scripts/create-issue-with-projects.sh` with `source: "pr_review"`, gated by `AskUserQuestion` confirmation. This is the canonical path for converting reviewer recommendations into tracked Issues. |
 
 The `scripts/create-issue-with-projects.sh` helper is the canonical Issue-creation path for both the review-side Phase 7 invocation above and for manual `/rite:issue:create` use.
@@ -1685,19 +1685,19 @@ When `wiki.auto_ingest`, `wiki.auto_query`, or `wiki.auto_lint` are enabled, the
 
 | Hook | Trigger | Action |
 |------|---------|--------|
-| `wiki-query-inject.sh` | `commands/issue/implement.md` Phase 5.0.W (invoked from `/rite:pr:open` Step 4 sub-skill chain, formerly `start.md` ステップ 2.6 pre-#1136), `pr/review.md` Phase 4.0.W, `pr/fix.md` Phase 0.5.W | Run `/rite:wiki:query` against the current Issue title/body and inject matching heuristics |
+| `wiki-query-inject.sh` | `commands/issue/implement.md` Phase 5.0.W (invoked from `/rite:pr:open` Step 4 sub-skill chain, formerly `start.md` ステップ 2.6 pre-decomposition), `pr/review.md` Phase 4.0.W, `pr/fix.md` Phase 0.5.W | Run `/rite:wiki:query` against the current Issue title/body and inject matching heuristics |
 | `wiki-ingest-trigger.sh` | `pr/review.md` Phase 5.4.3 (post review), `pr/fix.md` Phase 5.4.6 (post fix), `commands/issue/close.md` (Issue close) | Write a raw source file into `.rite/wiki/raw/{type}/` on the dev branch working tree (pure file writer, no git operations) |
 | `wiki-ingest-commit.sh` | Phase 6.5.W.2 (review), Phase 4.6.W.2 (fix), Phase 4.4.W.2 (close) — immediately after the trigger | Move pending raw sources onto the `wiki` branch and commit + push them **in a single shell process** with no dependency on Claude multi-step orchestration |
 | `/rite:wiki:ingest` | Manual or optional post-commit invocation | LLM-driven page integration: read accumulated raw sources, produce/update wiki pages, refresh `index.md` / `log.md` |
 | `/rite:wiki:lint --auto` | After each successful page integration (when `auto_lint: true`) | Validate Wiki consistency; surface warnings without blocking the workflow |
 
-### Phase X.X.W Mandatory Execution (#524 + shell commit refactor)
+### Phase X.X.W Mandatory Execution (shell commit refactor)
 
-`pr/review.md` Phase 6.5.W / 6.5.W.2, `pr/fix.md` Phase 4.6.W / 4.6.W.2, and `issue/close.md` Phase 4.4.W / 4.4.W.2 collectively form the **Wiki growth path**. Issue #524 hardened this path against silent skip with a 3-layer defense; the subsequent shell-commit refactor added a deterministic foundation underneath layers 1-3.
+`pr/review.md` Phase 6.5.W / 6.5.W.2, `pr/fix.md` Phase 4.6.W / 4.6.W.2, and `issue/close.md` Phase 4.4.W / 4.4.W.2 collectively form the **Wiki growth path**. This path is hardened against silent skip with a 3-layer defense; the subsequent shell-commit refactor added a deterministic foundation underneath layers 1-3.
 
 | Layer | Mechanism | Files |
 |-------|-----------|-------|
-| **0. Deterministic raw-commit path** | Phase X.X.W.2 invokes `wiki-ingest-commit.sh` directly as a single shell process. The script stashes raw sources into `/tmp`, removes them from the dev working tree, stashes any remaining unrelated changes, checks out the wiki branch, replays the staged raw sources, commits, pushes, checks out the original branch again, and pops the stash — all within one `bash` invocation. This eliminates dependency on Claude multi-step orchestration (the root cause of the pre-refactor regression where the `wiki` branch never grew despite multiple rounds of layer 1-3 defence — Issues #515, #518, #524). | `hooks/scripts/wiki-ingest-commit.sh`, `pr/review.md`, `pr/fix.md`, `issue/close.md` |
+| **0. Deterministic raw-commit path** | Phase X.X.W.2 invokes `wiki-ingest-commit.sh` directly as a single shell process. The script stashes raw sources into `/tmp`, removes them from the dev working tree, stashes any remaining unrelated changes, checks out the wiki branch, replays the staged raw sources, commits, pushes, checks out the original branch again, and pops the stash — all within one `bash` invocation. This eliminates dependency on Claude multi-step orchestration (the root cause of the pre-refactor regression where the `wiki` branch never grew despite multiple rounds of layer 1-3 defence). | `hooks/scripts/wiki-ingest-commit.sh`, `pr/review.md`, `pr/fix.md`, `issue/close.md` |
 | **1. Mandatory execution** | Each Phase X.X.W explicitly states "**NEVER** skipped under E2E Output Minimization" and emits an observable `[CONTEXT] WIKI_INGEST_DONE=1` / `WIKI_INGEST_SKIPPED=1; reason=...` / `WIKI_INGEST_FAILED=1; reason=...` line at completion (success / config-skip / commit-failure) | `pr/review.md`, `pr/fix.md`, `issue/close.md` |
 | **2. stderr observability** | Both legitimate skip (`wiki_ingest_skipped`) and commit failure (`wiki_ingest_failed`) emit a plain `WARNING` / `ERROR` line to stderr alongside the `[CONTEXT] WIKI_INGEST_SKIPPED=1` / `WIKI_INGEST_FAILED=1` status line. The orchestrator surfaces these in the conversation context; the user re-runs the affected step via `/rite:resume` if action is needed. | `pr/review.md`, `pr/fix.md`, `issue/close.md` Phase X.X.W |
 | **3. Lint growth check** | `lint.md` Phase 3.8 runs `wiki-growth-check.sh` which warns (non-blocking, `[lint:success]` retained) when `wiki.growth_check.threshold_prs` consecutive merged PRs land without a corresponding wiki branch commit. With layer 0 in place, a growth stall is a genuine regression signal (no longer confounded by fragile orchestration), and the warning is worth investigating promptly even though the contract remains non-blocking. | `wiki-growth-check.sh`, `lint.md` Phase 3.8 |
@@ -1723,23 +1723,23 @@ They share no code paths.
 
 ### Overview
 
-When an orchestrator command (e.g., `/rite:pr:open`, `/rite:pr:iterate`, `/rite:issue:create`) invokes a sub-skill via the Skill tool and the sub-skill outputs its result pattern (e.g., `[lint:success]`, `[review:mergeable]`, `[ready:returned-to-caller]`, `[ingest:returned-to-caller]`), control returns to the orchestrator LLM. The orchestrator **MUST** continue executing the next phase in the **same response turn** — the sub-skill return is a continuation trigger, not a turn boundary. (Sentinel naming: `:returned-to-caller` replaced the older `:completed` form in Issue #1165 to prevent LLM turn-boundary heuristic misfires.)
+When an orchestrator command (e.g., `/rite:pr:open`, `/rite:pr:iterate`, `/rite:issue:create`) invokes a sub-skill via the Skill tool and the sub-skill outputs its result pattern (e.g., `[lint:success]`, `[review:mergeable]`, `[ready:returned-to-caller]`, `[ingest:returned-to-caller]`), control returns to the orchestrator LLM. The orchestrator **MUST** continue executing the next phase in the **same response turn** — the sub-skill return is a continuation trigger, not a turn boundary. (Sentinel naming: `:returned-to-caller` replaced the older `:completed` form to prevent LLM turn-boundary heuristic misfires.)
 
-Violating this contract leaves the workflow partially executed: no Issue created, `.rite-flow-state` stuck in `active: true`, stale timestamps, and the user forced to type `continue` manually to recover. Issue #525 was filed after multiple instances of this failure in `/rite:issue:create` with the Bug Fix preset.
+Violating this contract leaves the workflow partially executed: no Issue created, `.rite-flow-state` stuck in `active: true`, stale timestamps, and the user forced to type `continue` manually to recover. This failure was observed multiple times in `/rite:issue:create` with the Bug Fix preset.
 
 ### The defense-in-depth layers
 
 | Layer | Mechanism | Enforced by |
 |-------|-----------|------------|
-| ~~**1. Prompt contract**~~ (retired by #1144) | (Historical) Anti-pattern / correct-pattern examples + "same response turn" / "DO NOT stop" phrases + Mandatory After prose enforced caller chain continuation across sub-skill boundaries. The enforcement source sections (`commands/pr/cleanup.md` Sub-skill Return Protocol + Mandatory After Wiki Ingest, `commands/wiki/ingest.md` Mandatory After Auto-Lint Step 0/1) have been **physically removed** as the structural solution to Issue #1144 — declarative defense layers triggered `declarative-invariant-wording-layer-escalation` anti-pattern. cleanup.md is now a flat ステップ 1-12 task list and ingest/lint use minimum HTML sentinels. Continuation now relies on caller-continuation hints (Layer 3) + the orchestrator's flat sequential structure rather than imperative prose. | (historical: deleted from cleanup.md / ingest.md by Issue #1144) |
+| ~~**1. Prompt contract**~~ (retired) | (Historical) Anti-pattern / correct-pattern examples + "same response turn" / "DO NOT stop" phrases + Mandatory After prose enforced caller chain continuation across sub-skill boundaries. The enforcement source sections (`commands/pr/cleanup.md` Sub-skill Return Protocol + Mandatory After Wiki Ingest, `commands/wiki/ingest.md` Mandatory After Auto-Lint Step 0/1) have been **physically removed** because declarative defense layers triggered the `declarative-invariant-wording-layer-escalation` anti-pattern. cleanup.md is now a flat ステップ 1-12 task list and ingest/lint use minimum HTML sentinels. Continuation now relies on caller-continuation hints (Layer 3) + the orchestrator's flat sequential structure rather than imperative prose. | (historical: deleted from cleanup.md / ingest.md) |
 | ~~**2. Flow state hard gate**~~ (retired) | (Historical) Sub-skills write `*_post_*` phase markers with `active: true` before return; `stop-guard.sh` blocked stop attempts until terminal phase. flow-state still records phase markers for observability but no longer enforces stops. | (historical: `hooks/stop-guard.sh`) |
 | **3. Caller-continuation hints** (3 sub-layers 3a/3b/3c) | Plain-text reminder + HTML comment immediately before the sub-skill's result pattern. The plain-text line renders in user-facing output; the HTML comment is visible to the LLM via conversation context but does NOT render in Markdown. Dual form ensures robustness against rendering modes that strip comments. 3a = plain-text caller line, 3b = HTML comment caller mirror, 3c = sub-skill terminal sentinel comment. | Defense-in-Depth sections in `commands/issue/create.md` (flat workflow ステップ 4.4 / 5.6), `commands/wiki/ingest.md`, `commands/pr/cleanup.md`. |
-| **4a. Pre-check list** | 4-item self-check the orchestrator runs before ending any response turn: (a) `[create:returned-to-caller:{N}]` output? (b) `✅ Issue #{N} を作成しました` shown? (c) `.rite-flow-state` deactivated? (d) last sub-skill tag handled as continuation trigger? A single `NO` means the workflow is mid-flight. Renamed from "Layer 4" to "Layer 4a" by Issue #923 to avoid numbering collision with the new mechanical enforcement layer (4b below). | `commands/issue/create.md` "Pre-check list" section |
-| **4b. Completion message** | Terminal completion emits an explicit `✅ Issue #{N} を作成しました: {url}` line **before** the `<!-- [create:returned-to-caller:{N}] -->` sentinel (HTML-comment wrap form, #561; sentinel renamed from `:completed` to `:returned-to-caller` in #1165). The sentinel remains grep-matchable for tooling (AC-4 backward compat) but is no longer the absolute last visible line. Renamed from "Layer 5" to "Layer 4b" by Issue #923 (4a/4b grouping reflects that both are orchestrator-side completion reinforcements from #552). | `commands/issue/create.md` ステップ 4.4 (Single Issue 完了レポート) / ステップ 5.6 (Decompose 完了レポート) |
+| **4a. Pre-check list** | 4-item self-check the orchestrator runs before ending any response turn: (a) `[create:returned-to-caller:{N}]` output? (b) `✅ Issue #{N} を作成しました` shown? (c) `.rite-flow-state` deactivated? (d) last sub-skill tag handled as continuation trigger? A single `NO` means the workflow is mid-flight. Renamed from "Layer 4" to "Layer 4a" to avoid numbering collision with the new mechanical enforcement layer (4b below). | `commands/issue/create.md` "Pre-check list" section |
+| **4b. Completion message** | Terminal completion emits an explicit `✅ Issue #{N} を作成しました: {url}` line **before** the `<!-- [create:returned-to-caller:{N}] -->` sentinel (HTML-comment wrap form; sentinel renamed from `:completed` to `:returned-to-caller`). The sentinel remains grep-matchable for tooling (AC-4 backward compat) but is no longer the absolute last visible line. Renamed from "Layer 5" to "Layer 4b" (4a/4b grouping reflects that both are orchestrator-side completion reinforcements). | `commands/issue/create.md` ステップ 4.4 (Single Issue 完了レポート) / ステップ 5.6 (Decompose 完了レポート) |
 | ~~**4. Mechanical enforcement**~~ (retired) | (Historical) PostToolUse hook `auto-fire-step0.sh` (matcher `Skill`) fired after sub-skill Skill tool completion to patch `*_post_*` flow-state phases and inject continuation context. The mechanical enforcement layer was removed along with the implicit-stop guard layer; recovery now relies on `/rite:resume` rather than a runtime continuation hook. | (historical: `hooks/auto-fire-step0.sh`) |
-| ~~**6. stop-guard incident emit**~~ (retired) | (Historical) When `stop-guard.sh` blocked an implicit stop, it emitted a `manual_fallback_adopted` workflow-incident sentinel for post-hoc visibility. Both the Stop hook and the workflow-incident mechanism (#1088、実装: #1091) have since been removed; an implicit stop now simply leaves the workflow mid-flight for the user to recover via `/rite:resume`. | (historical: `hooks/stop-guard.sh`) |
+| ~~**6. stop-guard incident emit**~~ (retired) | (Historical) When `stop-guard.sh` blocked an implicit stop, it emitted a `manual_fallback_adopted` workflow-incident sentinel for post-hoc visibility. Both the Stop hook and the workflow-incident mechanism have since been removed; an implicit stop now simply leaves the workflow mid-flight for the user to recover via `/rite:resume`. | (historical: `hooks/stop-guard.sh`) |
 
-The remaining **primary active layers** are the caller HTML hint (Layer 3) and the orchestrator-side reinforcements (Layer 4a pre-check list, Layer 4b completion message). Layers 1, 2, 4, and 6 are retired and shown above only as historical context (Layer 1 retired by #1144 as part of cleanup.md flat-化 refactor — declarative defense 層を物理排除した)。Weakening any active layer (e.g., loosening Layer 3 caller-continuation hints without strengthening Layer 4a/4b) re-opens the original implicit-stop failure mode. The flat-workflow refactor traded the mechanical enforcement layer for a simpler "user runs `/rite:resume` to recover" philosophy, accepting that occasional implicit stops will surface to the user; the trade-off was deemed favorable because the mechanical enforcement layer was itself a frequent failure source (auto-fire-step0.sh state mutations were hard to recover from when wrong).
+The remaining **primary active layers** are the caller HTML hint (Layer 3) and the orchestrator-side reinforcements (Layer 4a pre-check list, Layer 4b completion message). Layers 1, 2, 4, and 6 are retired and shown above only as historical context (Layer 1 was retired as part of the cleanup.md flat-化 refactor — declarative defense 層を物理排除した)。Weakening any active layer (e.g., loosening Layer 3 caller-continuation hints without strengthening Layer 4a/4b) re-opens the original implicit-stop failure mode. The flat-workflow refactor traded the mechanical enforcement layer for a simpler "user runs `/rite:resume` to recover" philosophy, accepting that occasional implicit stops will surface to the user; the trade-off was deemed favorable because the mechanical enforcement layer was itself a frequent failure source (auto-fire-step0.sh state mutations were hard to recover from when wrong).
 
 ### Contract specification
 
@@ -1749,7 +1749,7 @@ For every Skill tool invocation within an orchestrator:
 2. The orchestrator **MUST NOT** re-invoke the completed sub-skill.
 3. The orchestrator **MUST** execute its 🚨 Mandatory After section for the current phase, beginning with the `.rite-flow-state` update, then proceeding to the next phase — all in the same response turn.
 
-> **Historical note (item 4, retired)**: A former item 4 instructed the orchestrator to follow `ACTION:` instructions on `stop-guard.sh` exit 2. With the Stop hook removed, this branch is unreachable at runtime — Layer 3 (caller HTML hint) and Layer 4a/4b (orchestrator-side reinforcements) are the active enforcement after #1144 retired Layer 1.
+> **Historical note (item 4, retired)**: A former item 4 instructed the orchestrator to follow `ACTION:` instructions on `stop-guard.sh` exit 2. With the Stop hook removed, this branch is unreachable at runtime — Layer 3 (caller HTML hint) and Layer 4a/4b (orchestrator-side reinforcements) are the active enforcement now that Layer 1 is retired.
 
 The contract ends only when the orchestrator's terminal completion marker has been output:
 
@@ -1759,7 +1759,7 @@ The contract ends only when the orchestrator's terminal completion marker has be
 | `/rite:pr:iterate` | `[review:mergeable]` or `[fix:replied-only]` (whichever sub-skill returns first terminates the loop) / `[fix:cancelled-by-user]` (user-initiated cancel via fix.md AskUserQuestion) |
 | `/rite:pr:ready` | `[ready:returned-to-caller]` (E2E flow) / completion display message (standalone) |
 | `/rite:pr:merge` | `[merge:returned-to-caller]` |
-| `/rite:issue:create` | `<!-- [create:returned-to-caller:{N}] -->` (HTML-comment wrap form per #561, sentinel renamed in #1165) preceded by user-visible `✅ Issue #{N} を作成しました: {url}` and next-step guidance |
+| `/rite:issue:create` | `<!-- [create:returned-to-caller:{N}] -->` (HTML-comment wrap form) preceded by user-visible `✅ Issue #{N} を作成しました: {url}` and next-step guidance |
 
 ### Phase-aware continuation hints
 
@@ -1771,13 +1771,13 @@ The contract ends only when the orchestrator's terminal completion marker has be
 | ~~`create_delegation`~~ (retired) | (Historical) Delegation phase は flat-workflow 統合で create.md 内部に取り込まれた |
 | ~~`create_post_delegation`~~ (retired) | (Historical) Same as above |
 
-These hints are **best-effort**: the primary enforcement is the orchestrator's flat sequential structure (cleanup.md ステップ 1-12 / pr/iterate.md ステップ 7 review-fix loop 等) と Layer 3 caller-continuation hints。Layer 1 prompt contract と「🚨 Mandatory After scaffolding」は #1144 で物理排除され、現行は flat 構造そのものが mid-flight 中断を構造的に防ぐ責務を負う。
+These hints are **best-effort**: the primary enforcement is the orchestrator's flat sequential structure (cleanup.md ステップ 1-12 / pr/iterate.md ステップ 7 review-fix loop 等) と Layer 3 caller-continuation hints。Layer 1 prompt contract と「🚨 Mandatory After scaffolding」は物理排除され、現行は flat 構造そのものが mid-flight 中断を構造的に防ぐ責務を負う。
 
 ### Contract violation recovery (`auto_continuation_failed`, obsolete)
 
 When the contract is violated in practice — i.e., the user types `continue` to recover — there is **no** automatic detection or registration. The orchestrator simply resumes from where it stopped.
 
-> **History (#1088、実装: #1091、PR 2b リファクタリングシリーズ)**: A follow-up (#525 Decision Log D-02) once proposed an optional (`MAY`) `auto_continuation_failed` sentinel that would auto-register the violation as an Issue via start.md ステップ 8.5. That proposal depended on the workflow-incident mechanism, which has since been removed entirely. The `auto_continuation_failed` sentinel was never implemented and is now obsolete.
+> **History**: A follow-up (Decision Log D-02) once proposed an optional (`MAY`) `auto_continuation_failed` sentinel that would auto-register the violation as an Issue via start.md ステップ 8.5. That proposal depended on the workflow-incident mechanism, which has since been removed entirely. The `auto_continuation_failed` sentinel was never implemented and is now obsolete.
 
 ### Acceptance criteria
 
@@ -1786,10 +1786,10 @@ When the contract is violated in practice — i.e., the user types `continue` to
 | AC-1 | bug fix preset で `/rite:issue:create` が end-to-end で `[create:returned-to-caller:{N}]` まで自動完了する（利用者の `continue` 介入なし） |
 | AC-2 | M complexity 以上で flat create.md が同 turn 内で Single Issue → ステップ 4 (Heuristics + 出力) を実行する |
 | ~~AC-3~~ (retired) | (Historical) `create.md` の Sub-skill Return Protocol セクションに "anti-pattern" / "correct-pattern" / "same response turn" / "DO NOT stop" の 4 phrase が全て含まれる。The dedicated section was consolidated into the flat workflow; the contract is now enforced by `commands/pr/cleanup.md` + `commands/wiki/ingest.md` + the orchestrator's inline "Mandatory After" prose. |
-| ~~AC-4~~ (obsolete) | (Historical) `auto_continuation_failed` sentinel 実装時、ステップ 8.5 で観測可能（MAY）。The workflow-incident mechanism was removed (#1088、実装: #1091); this sentinel was never implemented. |
+| ~~AC-4~~ (obsolete) | (Historical) `auto_continuation_failed` sentinel 実装時、ステップ 8.5 で観測可能（MAY）。The workflow-incident mechanism was removed; this sentinel was never implemented. |
 | AC-5 | Terminal Completion pattern (`[create:returned-to-caller:{N}]` + `.rite-flow-state active: false`) が引き続き動作する (non-regression) |
 | AC-6 | Terminal sub-skill の最終出力に `✅` で始まるユーザー向け完了メッセージが含まれる。Register 経路: `✅ Issue #{N} を作成しました: {url}`、Decompose 経路: `✅ Issue #{N} を分解して {count} 件の Sub-Issue を作成しました: {url}`。いずれの形式も `[create:returned-to-caller:{N}]` は最終行として維持される |
-| ~~AC-7~~ (retired) | (Historical) `stop-guard.sh` が `create_post_interview` / `create_delegation` / `create_post_delegation` phase で implicit stop を block した際、`manual_fallback_adopted` sentinel を emit する。Both the Stop hook layer and the workflow-incident mechanism (#1088、実装: #1091) were removed; implicit stops are now simply recovered by the user via `/rite:resume`. |
+| ~~AC-7~~ (retired) | (Historical) `stop-guard.sh` が `create_post_interview` / `create_delegation` / `create_post_delegation` phase で implicit stop を block した際、`manual_fallback_adopted` sentinel を emit する。Both the Stop hook layer and the workflow-incident mechanism were removed; implicit stops are now simply recovered by the user via `/rite:resume`. |
 | AC-8 | `create.md` に "Pre-check list" セクションが存在し、4 項目全て `YES` が turn 終了の必要条件として文書化されている |
 
 ## Error Handling
@@ -1902,15 +1902,15 @@ Details: {technical details for debugging}
 
 ---
 
-## ~~Internationalization~~ (Retired in #1117)
+## ~~Internationalization~~ (Retired)
 
-> **Status: Retired**. The runtime i18n mechanism (`{i18n:key_name}` placeholder substitution, the `plugins/rite/i18n/` directory tree with `ja.yml` / `en.yml` legacy monolithic files and `ja/` / `en/` per-domain split files, and the `references/i18n-usage.md` reference doc) was deleted entirely in #1117 (commit `d3a105f1`). All 364 placeholders across 10 remaining command/sub-skill files were resolved to inline Japanese, removing the runtime i18n resolution dependency. No language file structure remains in the plugin source tree.
+> **Status: Retired**. The runtime i18n mechanism (`{i18n:key_name}` placeholder substitution, the `plugins/rite/i18n/` directory tree with `ja.yml` / `en.yml` legacy monolithic files and `ja/` / `en/` per-domain split files, and the `references/i18n-usage.md` reference doc) was deleted entirely (commit `d3a105f1`). All 364 placeholders across 10 remaining command/sub-skill files were resolved to inline Japanese, removing the runtime i18n resolution dependency. No language file structure remains in the plugin source tree.
 >
-> The remaining language-related controls are documentation-side conventions only. The `language` setting in `rite-config.yml` (still live) controls the output language of LLM-generated content — including commit messages (`commands/issue/implement.md`, `commands/pr/fix.md`), PR title and body (`commands/pr/create.md`), Issue creation prompts (`commands/issue/create.md`), workflow / list output (`commands/workflow.md`, `commands/issue/list.md`). It does not select a runtime UI message catalog (no such catalog exists post-#1117).
+> The remaining language-related controls are documentation-side conventions only. The `language` setting in `rite-config.yml` (still live) controls the output language of LLM-generated content — including commit messages (`commands/issue/implement.md`, `commands/pr/fix.md`), PR title and body (`commands/pr/create.md`), Issue creation prompts (`commands/issue/create.md`), workflow / list output (`commands/workflow.md`, `commands/issue/list.md`). It does not select a runtime UI message catalog (no such catalog exists after the i18n retirement).
 
 ### Documentation language conventions
 
-When authoring Japanese documentation or UI wording, the following terms are **kept in English** (not translated). `finding` was added per the #1083 decision.
+When authoring Japanese documentation or UI wording, the following terms are **kept in English** (not translated). `finding` is included in this set.
 
 | Term | Note |
 |------|------|
@@ -1924,7 +1924,7 @@ When authoring Japanese documentation or UI wording, the following terms are **k
 
 `worktree` / `hook` / `sentinel` / `marker` 等の英語固有概念も、意味を保つ必要があれば英語のまま使用してよい。文体は常体 (である調)、半角英数字と日本語の間は半角スペース、YAML キー名・コマンド名・Projects フィールド名は翻訳しない。
 
-**document-vs-inline split**: ドキュメント (`*.ja.md`) では `finding` を英語のまま使う。一方 commands / sub-skills の UI 文言では、ユーザーに見せる行為的表現として「指摘」を使い、技術識別子としては素の `finding` を保持する (旧 `plugins/rite/i18n/ja/` の使い分けを #1117 削除後も日本語直書きで継承)。
+**document-vs-inline split**: ドキュメント (`*.ja.md`) では `finding` を英語のまま使う。一方 commands / sub-skills の UI 文言では、ユーザーに見せる行為的表現として「指摘」を使い、技術識別子としては素の `finding` を保持する (旧 `plugins/rite/i18n/ja/` の使い分けを i18n 削除後も日本語直書きで継承)。
 
 ---
 
@@ -1958,9 +1958,9 @@ Distributed via Claude Code plugin system:
 
 ---
 
-## ~~Project Types~~ (Retired in #1118)
+## ~~Project Types~~ (Retired)
 
-> **Status: Retired**. The `project.type` preset feature (`generic` / `webapp` / `library` / `cli` / `documentation`) and the associated `templates/project-types/*.yml` files were removed entirely in #1118. The Type-Specific PR templates (`templates/pr/{cli,library,webapp,documentation,fix-report}.md`) were also deleted in the same wave — only `templates/pr/generic.md` remains. Project-specific configuration is now expressed via the per-key YAML structure directly in `rite-config.yml` (see [CONFIGURATION.md](./CONFIGURATION.md) `~~Project Type Presets~~ (DEPRECATED in #1118)` section).
+> **Status: Retired**. The `project.type` preset feature (`generic` / `webapp` / `library` / `cli` / `documentation`) and the associated `templates/project-types/*.yml` files were removed entirely. The Type-Specific PR templates (`templates/pr/{cli,library,webapp,documentation,fix-report}.md`) were also deleted in the same wave — only `templates/pr/generic.md` remains. Project-specific configuration is now expressed via the per-key YAML structure directly in `rite-config.yml` (see [CONFIGURATION.md](./CONFIGURATION.md) `~~Project Type Presets~~ (DEPRECATED)` section).
 >
 > The content below is preserved as **historical reference only** and does not reflect the v0.5.0 behavior. Do not consult these sections for current implementation guidance.
 

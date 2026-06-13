@@ -11,7 +11,7 @@ This module handles GitHub Projects integration including Status updates and Ite
 Retrieve the Project item ID and update Status to "In Progress".
 **Automatically add the Issue to the Project if it is not registered.**
 
-> **Runtime execution**: Callers (`commands/pr/open.md` ステップ 2.4 / `commands/pr/ready.md` Phase 4 / `commands/issue/close.md`) invoke `plugins/rite/scripts/projects-status-update.sh`, which is the single source of truth for Projects Status updates. The bash examples in §2.4.2 – §2.4.5 below document the underlying API calls for reference and debugging. Do NOT reproduce them inline in new commands — delegate to the script instead (see Issue #496 for the refactor rationale).
+> **Runtime execution**: Callers (`commands/pr/open.md` ステップ 2.4 / `commands/pr/ready.md` Phase 4 / `commands/issue/close.md`) invoke `plugins/rite/scripts/projects-status-update.sh`, which is the single source of truth for Projects Status updates. The bash examples in §2.4.2 – §2.4.5 below document the underlying API calls for reference and debugging. Do NOT reproduce them inline in new commands — delegate to the script instead (inlining the API calls duplicates the single source of truth and invites drift).
 
 ### 2.4.1 Configuration Retrieval
 
@@ -122,7 +122,7 @@ gh project item-edit --project-id {project_id} --id {item_id} --field-id {status
 
 Detect the parent Issue of the current (child) Issue. **Three methods are tried in order (OR combination); the first successful result wins.** This ordering is critical: `## 親 Issue` body meta is placed PRIMARY because it is the most reliable source in repositories that use `/rite:issue:create` (Decompose Path, flat workflow; writes this section to every child), and it requires no dependency on GitHub's native Sub-Issues feature.
 
-> **Consistency requirement**: The same 3-method OR detection **structure** MUST be used in `close.md` Phase 4.5.1 — i.e., the same three method ordering (body meta → Sub-Issues API → tasklist search), the same OR combination semantics, and the same `[DEBUG] parent not detected` emission on total failure. **Context-dependent parameters MAY differ** between the two sites where the surrounding workflow demands it; specifically, Method 3's `--state` filter is `open` here (start side — closed parents do not need In Progress promotion) and `all` in close.md Phase 4.5.1 (close side — the closing Issue's parent may itself already be closed). These differences are intentional and are not drift. If the detection method ordering or OR semantics diverge between start and close, silent-skip regressions (e.g., the #115/#381/#15 incidents) reappear.
+> **Consistency requirement**: The same 3-method OR detection **structure** MUST be used in `close.md` Phase 4.5.1 — i.e., the same three method ordering (body meta → Sub-Issues API → tasklist search), the same OR combination semantics, and the same `[DEBUG] parent not detected` emission on total failure. **Context-dependent parameters MAY differ** between the two sites where the surrounding workflow demands it; specifically, Method 3's `--state` filter is `open` here (start side — closed parents do not need In Progress promotion) and `all` in close.md Phase 4.5.1 (close side — the closing Issue's parent may itself already be closed). These differences are intentional and are not drift. If the detection method ordering or OR semantics diverge between start and close, the past silent-skip regressions in parent-child sync reappear.
 
 **Method 1: `## 親 Issue` body meta (PRIMARY)**
 
@@ -136,7 +136,7 @@ Read the current (child) Issue body and search for the `## 親 Issue` section. T
 
 ```bash
 child_body=$(gh issue view {issue_number} --json body --jq '.body')
-# SIGPIPE 防止 (#398 参照): here-string で subprocess を排除
+# SIGPIPE 防止: here-string で subprocess を排除
 parent_number=$(grep -A2 '^## 親 Issue' <<< "$child_body" | grep -oE '#[0-9]+' | head -1 | tr -d '#')
 echo "method1_parent=${parent_number:-none}"
 ```
@@ -172,7 +172,7 @@ gh issue list --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x
 
 If results are non-empty, use the first result's `number` as `{parent_issue_number}` and proceed to 2.4.7.2.
 
-**When all three methods failed (no parent found)**: This is the normal path for standalone Issues (AC-4). Emit an explicit **debug log** (not a warning) so that the skip is visible in execution traces — silent skips are prohibited by Issue #513's MUST requirement ("同期失敗時は silent skip せず、明示的にログまたは warning を出力する") and the preceding incidents #115 / #381 / #15 which all stemmed from silent skips in parent-child sync:
+**When all three methods failed (no parent found)**: This is the normal path for standalone Issues (AC-4). Emit an explicit **debug log** (not a warning) so that the skip is visible in execution traces — silent skips are prohibited by the MUST requirement "同期失敗時は silent skip せず、明示的にログまたは warning を出力する" and the preceding incidents which all stemmed from silent skips in parent-child sync:
 
 ```bash
 echo "[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)"

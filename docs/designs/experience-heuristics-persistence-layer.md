@@ -101,7 +101,7 @@ rite ワークフロー実行時に関連経験則を自動参照し、コンテ
 <!-- Section ID: SPEC-ARCH-COMPONENTS -->
 ### コンポーネント構成
 
-> **実装状態**: 本図は目標アーキテクチャの全体像を示す。#468 (本 Issue) では `init.md`、`wiki-patterns.md`、`templates/wiki/` のみ実装。その他のファイル（ingest.md, query.md, lint.md, hooks, skills）は後続 Issue で実装予定。
+> **実装状態**: 本図は目標アーキテクチャの全体像を示す。本 Issue では `init.md`、`wiki-patterns.md`、`templates/wiki/` のみ実装。その他のファイル（ingest.md, query.md, lint.md, hooks, skills）は後続 Issue で実装予定。
 
 ```
 plugins/rite/
@@ -158,7 +158,7 @@ plugins/rite/
 <!-- Section ID: SPEC-IMPL-FILES -->
 ### 変更が必要なファイル/領域
 
-> **凡例**: ✅ = #468 で実装済み、📋 = 後続 Issue で実装予定
+> **凡例**: ✅ = 本 Issue で実装済み、📋 = 後続 Issue で実装予定
 
 | 領域 | 変更内容 |
 |------|---------|

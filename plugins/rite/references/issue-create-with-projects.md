@@ -118,8 +118,8 @@ projects:
 options:
  source: string # Caller identifier (pr_review|pr_create|cleanup|interactive|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split)
                 # Note: 以下の値は legacy 互換のため enum に含めない (caller 消失済、`grep -rn 'source: "<value>"' plugins/rite/` で 0 件確認):
-                #   - `pr_fix`:          #1136 で fix.md Phase 4.3 (Automatic Separate Issue Creation) が廃止
-                #   - `parent_routing`:  #1079 で parent-routing.md sub-skill が廃止
+                #   - `pr_fix`:          fix.md Phase 4.3 (Automatic Separate Issue Creation) が廃止済み
+                #   - `parent_routing`:  parent-routing.md sub-skill が廃止済み
                 #   - `lint`:            commands/lint.md は guard 用途のみで create-issue-with-projects.sh を invoke しない
  non_blocking_projects: true # Default: true. Projects failure doesn't block Issue creation
 ```
@@ -184,7 +184,7 @@ decompose path の本スクリプト呼び出しは `scripts/decompose-issues.sh
 ### 旧 caller (retired)
 
 - `parent-routing.md` Phase 1.5.4 (When No Child Issues Exist: Decomposition Proposal) — flat 化に伴い child issue 自動作成経路自体が廃止された
-- `start.md` ステップ 8.5 (Workflow Incident Detection、workflow-incident-emit.sh 経由の auto-Issue 起票経路) — workflow-incident 機構ごと #1088 で廃止された (実装: #1091)
+- `start.md` ステップ 8.5 (Workflow Incident Detection、workflow-incident-emit.sh 経由の auto-Issue 起票経路) — workflow-incident 機構ごと廃止された
 
 ---
 
@@ -213,19 +213,19 @@ The script handles errors internally with the following behavior:
 
 ### Silent Fail Prohibition
 
-Issue #669 strengthens the script so that **Projects registration failures are never silently absorbed** by the warnings array alone. Two reinforcement layers are in place:
+The script is hardened so that **Projects registration failures are never silently absorbed** by the warnings array alone. Two reinforcement layers are in place:
 
 1. **stderr emit on every registration failure** — `add_warning_with_stderr` writes `ERROR: Projects registration failed: <reason>` to stderr in addition to appending to the warnings array. The early `enabled=false` skip path uses plain `add_warning` so it stays silent (intentional skip, not failure).
 2. **3-attempt exponential backoff on transient API errors** — `gh project item-add`, all GraphQL queries (`fields`, `items`, mutations), and `gh project item-edit` are wrapped in `retry_with_backoff 3 ...` (sleeps `RETRY_DELAY * 2^(n-1)` seconds — defaults to 1s, 2s between attempts; tests set `RETRY_DELAY=0`). This satisfies the MUST 2 / MUST NOT 2 requirements:
  - MUST: stderr surfaces root cause
  - MUST NOT: failures are not confined to the warnings array under exit code 0
 
-### Static Guard for Direct `gh issue create` Invocations (#669 AC-3 / #958)
+### Static Guard for Direct `gh issue create` Invocations
 
 `plugins/rite/scripts/check-no-direct-gh-issue-create.sh` provides a mechanical check: every Issue creation path under `plugins/rite/commands/**/*.md` must go through this script. Two invocation modes are supported:
 
 ```bash
-# Mode 1: explicit file list (original #669 form)
+# Mode 1: explicit file list (original form)
 bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh \
  plugins/rite/commands/pr/open.md \
  plugins/rite/commands/issue/create.md

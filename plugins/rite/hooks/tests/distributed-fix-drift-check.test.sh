@@ -64,6 +64,8 @@ echo "=== TC-1: reason=no-pending is extracted as 'no-pending', not 'no' ==="
 d=$(make_fixture_sandbox '# Test
 
 ## reason table
+| reason | description |
+|--------|-------------|
 | `something_else` | spec |
 
 ```bash
@@ -92,17 +94,19 @@ fi
 echo ""
 echo "=== TC-2: reason=trigger_exit_\$var is skipped (truncation artifact) ==="
 # Mutation test design intent (table-side + emit-side regression guards):
-# - table-side fixture `| \`python_unexpected_exit_\` | placeholder |` は literal trailing `_` で終わる
-#   identifier 形式。table-side awk の `break` 構造下では fixture の最初の matching field のみが
-#   exercise されるため、`placeholder` cell の前に `[_-]$` で終わる identifier を置くことで
-#   filter を真に評価する。`$var` 形式の値は awk identifier regex に match せず continue されるため、
-#   filter exercise 不可能 (false positive test) になる罠を避ける。
+# - table-side fixture row `| \`python_unexpected_exit_\` | placeholder |` (reason
+#   column) は literal trailing `_` で終わる identifier 形式。column-aware awk が
+#   reason 列から抽出した値に `[_-]$` filter を適用することを評価する。`$var` 形式の値は
+#   awk identifier regex に match せず continue されるため、filter exercise 不可能
+#   (false positive test) になる罠を避ける目的で literal trailing `_` を使う。
 # - emit-side の独立 regression guard: `after == "$"` filter (二重防御) が同じ input
 #   (`reason=trigger_exit_$var`) を skip するため、`[_-]$` filter のみが skip 責務を負う input
 #   (`reason=trailing_underscore_; other=value`) を追加して独立性を保証する。
 d=$(make_fixture_sandbox '# Test
 
 ## reason table
+| reason | description |
+|--------|-------------|
 | `something_else` | spec |
 | `python_unexpected_exit_` | placeholder |
 
@@ -174,6 +178,8 @@ echo "=== TC-3: reason=commit_rc_4 (static literal, digit suffix) is preserved =
 d=$(make_fixture_sandbox '# Test
 
 ## reason table
+| reason | description |
+|--------|-------------|
 | `something_else` | spec |
 
 ```bash
@@ -198,6 +204,8 @@ echo "=== TC-4: reason=mkdir_failed (table absent) is detected as true positive 
 d=$(make_fixture_sandbox '# Test
 
 ## reason table
+| reason | description |
+|--------|-------------|
 | `something_else` | spec |
 
 ```bash
@@ -222,6 +230,8 @@ echo "=== TC-5: hyphenated reason in table cell is matched against emit ==="
 d=$(make_fixture_sandbox '# Test
 
 ## reason table
+| reason | description |
+|--------|-------------|
 | `no-pending` | wiki ingest has nothing to commit |
 
 ```bash
@@ -253,6 +263,8 @@ echo "=== TC-6: --show-extracted-reasons prints extracted reason lists ==="
 d=$(make_fixture_sandbox '# Test
 
 ## reason table
+| reason | description |
+|--------|-------------|
 | `alpha_reason` | spec |
 
 ```bash
@@ -289,6 +301,8 @@ echo "=== TC-7: extracted reasons NOT printed without flag (default behavior) ==
 d=$(make_fixture_sandbox '# Test
 
 ## reason table
+| reason | description |
+|--------|-------------|
 | `gamma_reason` | spec |
 
 ```bash
@@ -305,6 +319,74 @@ if printf '%s\n' "$err" | grep -q "P2 extracted"; then
   echo "--- stderr ---"; printf '%s\n' "$err"; echo "--- end ---"
 else
   pass "TC-7: extracted lists correctly suppressed by default"
+fi
+
+# --- TC-8: reason in 2nd column (| Flag | reason |) is recognized; a
+#           non-reason table (no `reason` header) is NOT treated as a reason table ---
+echo ""
+echo "=== TC-8: column-aware reason table (2nd column) + non-reason table skip ==="
+d=$(make_fixture_sandbox '# Test
+
+## flag-to-reason table (reason in 2nd column)
+| Flag | reason | description |
+|------|--------|-------------|
+| `SOME_FLAG` | `second_col_reason` | emitted via the 2nd column |
+
+## reviewer-type table (NOT a reason table — no `reason` header)
+| key | agent |
+|-----|-------|
+| `reviewer_type_x` | `some-agent` |
+
+```bash
+echo "[CONTEXT] SOME_FLAG=1; reason=second_col_reason"
+```
+')
+cleanup_dirs+=("$d")
+rc=0
+out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
+  --repo-root "$d" 2>/dev/null) || rc=$?
+assert_checker_rc "TC-8" "$rc"
+if [ "$rc" -eq 0 ]; then
+  pass "TC-8: 2nd-column reason documented + non-reason table ignored → no drift"
+else
+  fail "TC-8: expected no drift (rc=0), got rc=$rc"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+if printf '%s\n' "$out" | grep -Eq "reason '(second_col_reason|reviewer_type_x)'"; then
+  fail "TC-8: 2nd-column reason or reviewer-type entry spuriously flagged"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+else
+  pass "TC-8: no spurious flag for 2nd-column reason / reviewer-type table"
+fi
+
+# --- TC-9: a reason documented only in an eval-table enumeration counts as
+#           tracked (forward direction unions reason-table + enumeration) ---
+echo ""
+echo "=== TC-9: eval-table enumeration counts toward the documented set ==="
+d=$(make_fixture_sandbox '# Test
+
+## reason table
+| reason | description |
+|--------|-------------|
+| `tabled_reason` | in the reason table |
+
+Eval order: ( `enum_only_reason` / `tabled_reason` )
+
+```bash
+echo "[CONTEXT] X=1; reason=tabled_reason"
+echo "[CONTEXT] Y=1; reason=enum_only_reason"
+```
+')
+cleanup_dirs+=("$d")
+rc=0
+out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
+  --repo-root "$d" 2>/dev/null) || rc=$?
+assert_checker_rc "TC-9" "$rc"
+if [ "$rc" -eq 0 ]; then
+  pass "TC-9: enumeration-documented emit not flagged → no drift"
+else
+  fail "TC-9: expected no drift (rc=0), got rc=$rc (enum_only_reason should be documented via enumeration)"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
 
 # --- Summary ---

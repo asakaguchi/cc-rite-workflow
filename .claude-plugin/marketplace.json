@@ -1,7 +1,7 @@
 {
   "name": "rite-marketplace",
   "owner": {
-    "name": "B16B1RD"
+    "name": "asakaguchi"
   },
   "plugins": [
     {
@@ -9,7 +9,7 @@
       "source": "./plugins/rite",
       "description": "Universal Issue-driven development workflow for Claude Code",
       "version": "0.5.2",
-      "author": { "name": "B16B1RD" },
+      "author": { "name": "asakaguchi" },
       "license": "MIT"
     }
   ]

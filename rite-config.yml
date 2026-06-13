@@ -5,8 +5,8 @@ schema_version: 2
 github:
   projects:
     enabled: true
-    project_number: 6  # cc-rite-workflow project
-    owner: "B16B1RD"   # Projects オーナー（user / organization）
+    project_number: 1  # cc-rite-workflow project
+    owner: "asakaguchi"   # Projects オーナー（user / organization）
     fields:
       status:
         enabled: true

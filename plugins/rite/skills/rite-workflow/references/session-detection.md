@@ -21,7 +21,7 @@ Example: `feat/issue-288-checkpoint-removal` → Issue #288
 ```bash
 # First, get {owner} and {repo} (execute before variable expansion):
 gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'
-# → {"owner":"B16B1RD","repo":"cc-rite-workflow"}
+# → {"owner":"asakaguchi","repo":"cc-rite-workflow"}
 
 # Use the retrieved values to search for work memory:
 gh api repos/{owner}/{repo}/issues/{issue_number}/comments \

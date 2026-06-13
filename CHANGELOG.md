@@ -379,41 +379,41 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 
 ### Added
 
-- E2E flow context window overflow prevention mechanism (#80)
-- Agent delegation Skill tool format in prompts (#83)
-- Agent delegation AGENT_RESULT fallback handling (#84)
+- E2E flow context window overflow prevention mechanism
+- Agent delegation Skill tool format in prompts
+- Agent delegation AGENT_RESULT fallback handling
 
 ### Fixed
 
-- Reinforced prompt to prevent Claude from stopping during sub-skill transitions (#79)
-- Clarified work memory progress summary and changed files update logic (#75)
-- Sub-skill transition instructions strengthened in create workflow (#76)
-- Hardcoded bash hook paths replaced with `{plugin_root}` for marketplace compatibility (#73)
-- Clarified resume counter restoration execution timing and ownership (#85)
-- `context-pressure.sh` python3 startup optimization and COUNTER_VAL validation (#86)
+- Reinforced prompt to prevent Claude from stopping during sub-skill transitions
+- Clarified work memory progress summary and changed files update logic
+- Sub-skill transition instructions strengthened in create workflow
+- Hardcoded bash hook paths replaced with `{plugin_root}` for marketplace compatibility
+- Clarified resume counter restoration execution timing and ownership
+- `context-pressure.sh` python3 startup optimization and COUNTER_VAL validation
 - Ensured GitHub Projects registration when creating Issues via PR command
 - Separated work memory progress summary and changed files update from checklist update
 - `flow-state-update.sh` `--active` flag support in patch mode
 - `flow-state-update.sh` `--` separator before jq filter in patch mode
-- `fix.md` work memory trap integration for `$pr_body_tmp` (#94)
-- Fixed work memory progress summary and changed files not updating during review/fix loop (#90)
+- `fix.md` work memory trap integration for `$pr_body_tmp`
+- Fixed work memory progress summary and changed files not updating during review/fix loop
 
 ### Changed
 
-- Progress summary regex hardened for robustness (#92)
-- Updated `lint.md` references and added concrete examples to `start.md` (#87)
-- `resume.md` counter restoration snippet structured as formal subsection (#88)
-- `review.md` session info update defense-in-depth intent documented (#93)
+- Progress summary regex hardened for robustness
+- Updated `lint.md` references and added concrete examples to `start.md`
+- `resume.md` counter restoration snippet structured as formal subsection
+- `review.md` session info update defense-in-depth intent documented
 
 ## [0.2.0] - 2026-03-05
 
 ### Added
 
-- Plugin version check on session startup (#68)
+- Plugin version check on session startup
 
 ### Changed
 
-- Replaced Zen/禅 references with rite in SPEC and command docs (#67)
+- Replaced Zen/禅 references with rite in SPEC and command docs
 
 ## [0.1.3] - 2026-03-05
 
@@ -431,40 +431,40 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 
 ### Fixed
 
-- Fixed `work-memory-init` validation script missing else branch for success case (#48)
-- Fixed work memory comment being overwritten by API error response (#47)
-- Fixed unnecessary hooks unregistered message during rite workflow execution (#46)
-- Fixed `stop-guard.sh` trap missing EXIT signal (#39, #41)
-- Fixed `stop-guard.sh` compact_state stop block failure (#22)
-- Fixed `session-start.sh` jq error handling issues (#18, #20)
-- Fixed `/rite:issue:start` completion report not executing (#17)
-- Fixed parent Issue Projects status not updating from Todo to In Progress (#15)
-- Fixed `/rite:issue:start` Bash command errors (#13)
-- Fixed find cleanup pattern to be mktemp suffix-length independent (#44)
-- Fixed `ready.md` output pattern and defense-in-depth for Mandatory After (#32)
-- Applied work memory update safety patterns consistently across all commands (#50)
-- Fixed stop-guard and post-compact-guard deadlock race condition (#30)
-- Fixed `/clear → /rite:resume` duplicate guidance message (#27)
+- Fixed `work-memory-init` validation script missing else branch for success case
+- Fixed work memory comment being overwritten by API error response
+- Fixed unnecessary hooks unregistered message during rite workflow execution
+- Fixed `stop-guard.sh` trap missing EXIT signal
+- Fixed `stop-guard.sh` compact_state stop block failure
+- Fixed `session-start.sh` jq error handling issues
+- Fixed `/rite:issue:start` completion report not executing
+- Fixed parent Issue Projects status not updating from Todo to In Progress
+- Fixed `/rite:issue:start` Bash command errors
+- Fixed find cleanup pattern to be mktemp suffix-length independent
+- Fixed `ready.md` output pattern and defense-in-depth for Mandatory After
+- Applied work memory update safety patterns consistently across all commands
+- Fixed stop-guard and post-compact-guard deadlock race condition
+- Fixed `/clear → /rite:resume` duplicate guidance message
 
 ### Changed
 
-- Refactored `stop-guard.sh` grep -A20 hard-coded value to awk section extraction (#35)
-- Refactored `pre-compact.sh` echo|jq pipe to here-string (#34)
-- Refactored `stop-guard.sh` subshell optimization (#24)
-- Unified PID-based temp file naming to mktemp with fallback (#38)
+- Refactored `stop-guard.sh` grep -A20 hard-coded value to awk section extraction
+- Refactored `pre-compact.sh` echo|jq pipe to here-string
+- Refactored `stop-guard.sh` subshell optimization
+- Unified PID-based temp file naming to mktemp with fallback
 
 ### Removed
 
-- Removed rebrand mentions from v0.1.0 changelog entries (#52)
+- Removed rebrand mentions from v0.1.0 changelog entries
 
 ## [0.1.1] - 2026-03-03
 
 ### Fixed
 
-- Fixed Implementation Contract format not applied when creating single Issue for large-scope tasks (#2)
-- Fixed `/rite:issue:create` interruption after sub-skill return (#6)
-- Fixed `/rite:issue:start` interruption during end-to-end flow (#7)
-- Fixed work memory corruption on update with safety patterns and destruction prevention (#8)
+- Fixed Implementation Contract format not applied when creating single Issue for large-scope tasks
+- Fixed `/rite:issue:create` interruption after sub-skill return
+- Fixed `/rite:issue:start` interruption during end-to-end flow
+- Fixed work memory corruption on update with safety patterns and destruction prevention
 
 ## [0.1.0] - 2026-03-01
 

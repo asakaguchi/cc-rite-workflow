@@ -1,8 +1,8 @@
 # マルチセッション Git Worktree 対応 — セッション別作業ツリー分離
 
-> **Status**: ✅ 実装完了 + E2E 検証完了（S1–S9 + S11 land 済み・#1361–#1369 / #1371 CLOSED、S10=#1370 でドキュメント整備 + 2 セッション E2E 実施 → V-1〜V-8 反映済み）
+> **Status**: ✅ 実装完了 + E2E 検証完了（S1–S9 + S11 land 済み・CLOSED、S10 でドキュメント整備 + 2 セッション E2E 実施 → V-1〜V-8 反映済み）
 >
-> **関連 Issue**: 親 Issue #1360（Sub-Issue: S1=#1361 / S2=#1362 / S3=#1363 / S4=#1364 / S5=#1365 / S6=#1366 / S7=#1367 / S8=#1368 / S9=#1369 / S10=#1370 / S11=#1371 — 末尾の「Sub-Issue 分解」参照）
+> **関連 Issue**: 親 Epic Issue の下に S1〜S11 の Sub-Issue として分解（末尾の「Sub-Issue 分解」参照）
 >
 > **本ドキュメントの位置付け**: 複数の Claude Code セッションを同一リポジトリで同時起動する運用（マルチセッション）を、
 > Git worktree によるセッション別作業ツリー分離で first-class サポートするための設計選定 + 詳細設計の single source of truth。
@@ -13,7 +13,7 @@
 ## 概要
 
 rite workflow は per-session flow-state（`.rite/sessions/{session_id}.flow-state`）・session-ownership・work-memory lock により
-「状態」のマルチセッション分離を既に達成している（multi-session-state.md / Issue #672 系列）。
+「状態」のマルチセッション分離を既に達成している（[multi-session-state.md](./multi-session-state.md) の per-session 分離系列）。
 しかし **git 作業ツリーとカレントブランチは全セッションで共有**されており、複数セッションが別 Issue を並行で進めると
 `pr:open` の `git switch -c` や `pr:cleanup` の `git switch {base} && git pull` が相互に作業ツリーを破壊し合う。
 
@@ -49,7 +49,7 @@ Claude Code 組み込みツール `EnterWorktree(path)` でセッションの作
 - `EnterWorktree(path)`: **手動 `git worktree add` で作成済み**の worktree に入場できる（`git worktree list` 登録済みが条件）。
   `name` 指定は `.claude/worktrees/` 配下に origin/<デフォルトブランチ> 起点で新規作成され、branch 命名・base ref（rite は `origin/develop`）を制御できないため**使わない**。
 - `ExitWorktree(action)`: 元のディレクトリへ戻る。**path 入場した worktree は `remove` でも削除されない** → 常に `keep` で戻り、main checkout 側から `git worktree remove` する。
-- EnterWorktree のツール側ガード「ユーザーまたはプロジェクト指示で明示された場合のみ」は、`rite-config.yml` の `multi_session.enabled: true`（リポジトリにコミットされたプロジェクト指示。#1391 でデフォルト ON 化したが、値がテンプレートのデフォルト由来かユーザーの明示編集由来かに依らずプロジェクト指示として成立する）+ コマンド定義内の明示指示で満たす。pr:open は marker 経由で `enabled: true` を確認した分岐内でのみ EnterWorktree を呼ぶため、ガードの根拠は default off 時と変わらない。
+- EnterWorktree のツール側ガード「ユーザーまたはプロジェクト指示で明示された場合のみ」は、`rite-config.yml` の `multi_session.enabled: true`（リポジトリにコミットされたプロジェクト指示。後続でテンプレートのデフォルトが ON 化されたが、値がテンプレートのデフォルト由来かユーザーの明示編集由来かに依らずプロジェクト指示として成立する）+ コマンド定義内の明示指示で満たす。pr:open は marker 経由で `enabled: true` を確認した分岐内でのみ EnterWorktree を呼ぶため、ガードの根拠は default off 時と変わらない。
 - セッションのクラッシュ/再起動後、新セッションはリポジトリルートで開始される → `/rite:resume` が再入場経路を持つ（§5）。
 
 ### Git の構造的制約（設計が守るルール）
@@ -187,7 +187,7 @@ multi_session:
 - 他セッションの live claim 検出時は**常に AskUserQuestion**（無人での奪取はしない）。
 - **既知の限界**: phase 遷移なしで 2h を超える implement 中は stale 誤判定しうる → 自動奪取は reap（§8）のみ、かつ clean worktree 条件付き。
 
-#### S3 確定 CLI 契約（S6/S7/S9 配線仕様 — Issue #1363 で確定）
+#### S3 確定 CLI 契約（S6/S7/S9 配線仕様 — S3 で確定）
 
 `bash hooks/issue-claim.sh {claim|release|check} --issue N [--worktree PATH] [--session UUID]`
 
@@ -210,7 +210,7 @@ multi_session:
 2. claim liveness（§7 の述語）が **live でない**（claim 不在時は mtime > 24h の既存 age guard を再利用）
 3. `git -C <wt> status --porcelain` が**空**（**dirty worktree は絶対に auto-reap しない** — WARNING + 手動コマンド提示で skip）
 
-**Gate 0 — self-exclusion（#1438 で追加）**: 上記 3 ゲートの**前段**に、実行中の自セッション worktree（起動時 cwd、または `RITE_WORKTREE` env が候補 worktree と一致/配下）を reap 対象から除外するガードを設ける。long-lived セッションが review 開始時（review.md Step 1.0.0）に**自分の作業中 worktree**（clean かつ claim free/stale で 3 ゲートを全通過しうる）を削除する事故を防ぐ。dirty(3)/claim(2) 保護とは独立した第 4 の保護層。
+**Gate 0 — self-exclusion（後続で追加された第 4 の保護層）**: 上記 3 ゲートの**前段**に、実行中の自セッション worktree（起動時 cwd、または `RITE_WORKTREE` env が候補 worktree と一致/配下）を reap 対象から除外するガードを設ける。long-lived セッションが review 開始時（review.md Step 1.0.0）に**自分の作業中 worktree**（clean かつ claim free/stale で 3 ゲートを全通過しうる）を削除する事故を防ぐ。dirty(3)/claim(2) 保護とは独立した第 4 の保護層。
 
 処理は既存 `_reap_mutation_worktree` と同型: `git worktree remove --force` → fallback `rm -rf` → `git worktree prune` + 対応 claim ファイル削除。
 **branch は削除しない**（push 済み / 未 push 作業の保全。branch 掃除は正常系 cleanup.md の責務のまま）。
@@ -243,7 +243,7 @@ teammate の git 禁止・team lead の `git -C` 集約は無変更。
 
 ### §11 後方互換とマイグレーション
 
-- `multi_session.enabled: false`（明示 opt-out、または `multi_session:` ブロックを持たない旧 config）で worktree 経路・EnterWorktree・reap Step 5 の対象がすべて不活性。#1391 でデフォルトは `true` に変更されたが、ブロック欠落時の parse fallback は `false` のままのため既存 config の挙動は不変。
+- `multi_session.enabled: false`（明示 opt-out、または `multi_session:` ブロックを持たない旧 config）で worktree 経路・EnterWorktree・reap Step 5 の対象がすべて不活性。後続でテンプレートのデフォルトは `true` に変更されたが、ブロック欠落時の parse fallback は `false` のままのため既存 config の挙動は不変。
 - §1 の resolver 変更は非 worktree セッションで出力 byte 一致 → 状態ファイルの移動・migration は一切発生しない。
 - claim のみ常時有効（衝突がない限り無音。`.rite/state/` 配下へのファイル作成のみで既存ユーザーの体験は不変）。
 - rite-config.yml top-level `schema_version` bump（2→3）で session-start.sh の既存 upgrade prompt 機構が自動案内。
@@ -265,7 +265,7 @@ teammate の git 禁止・team lead の `git -C` 集約は無変更。
 | D-6 | 一過性アーティファクトの配置 | `review-results` / `fix-cycle-state` / `tmp` は**セッション cwd 相対のまま** | worktree 削除と同時に消えセッション間混線を構造的に防ぐ。共有 root へ寄せると pr 番号 + timestamp の衝突管理が新たに必要になる |
 | D-7 | claim の heartbeat | **新機構を作らず flow-state `updated_at` を再利用** | `flow-state.sh set` が全 phase 遷移で更新する既存挙動がそのまま heartbeat。session-ownership.sh の 2h 閾値と判定関数も再利用 |
 | D-8 | スコープ | コア lifecycle + Wiki 完全対応 + **sprint 系は claim スキップのみ** | 複数セッションでの sprint 分担実行（協調スケジューリング）はスコープ過大。将来 Issue に切り出す |
-| D-9 | rite-config.yml top-level `schema_version` bump（2→3） | **省略**（S2 で 2 のまま据え置き） | `multi_session` は additive で migration 不要（S2 時点では `enabled: false` default、#1391 でデフォルト ON 化後も `multi_session:` ブロック欠落時の parse fallback は `false` のままで既存 config の挙動は不変）。bump すると session-start.sh の upgrade prompt が全既存ユーザーに発火するが、S2 時点では pr:open/cleanup 統合（S6/S7）が develop 未マージで機能が半完成。半統合機能を全ユーザーに告知する弊害が告知価値を上回るため bump しない。`flow-state` の `worktree` field も conditional-write で非 worktree セッションの state を byte 不変に保つため schema 系のいかなる bump も不要。#1391 のデフォルト ON 化はテンプレート config 経由の配布であり schema 変更を伴わないため、本判断は維持される |
+| D-9 | rite-config.yml top-level `schema_version` bump（2→3） | **省略**（S2 で 2 のまま据え置き） | `multi_session` は additive で migration 不要（S2 時点では `enabled: false` default、後続でデフォルト ON 化された後も `multi_session:` ブロック欠落時の parse fallback は `false` のままで既存 config の挙動は不変）。bump すると session-start.sh の upgrade prompt が全既存ユーザーに発火するが、S2 時点では pr:open/cleanup 統合（S6/S7）が develop 未マージで機能が半完成。半統合機能を全ユーザーに告知する弊害が告知価値を上回るため bump しない。`flow-state` の `worktree` field も conditional-write で非 worktree セッションの state を byte 不変に保つため schema 系のいかなる bump も不要。後続のデフォルト ON 化はテンプレート config 経由の配布であり schema 変更を伴わないため、本判断は維持される |
 
 <!-- Section ID: SPEC-AC -->
 ## Acceptance Criteria
@@ -290,9 +290,9 @@ teammate の git 禁止・team lead の `git -C` 集約は無変更。
 >
 > **S1 時点の総括（2026-06-10）**: resolver 層で検証可能な V-6 / V-7 はいずれも設計どおりに動作し、§1 の前提を**確認**した（設計前提を崩す発見はなし）。EnterWorktree のツール挙動に依存する V-1/V-2/V-3/V-5/V-8 は live セッションでの観察が必要なため、S10の 2 セッション E2E に委譲する。post-tool-wm-sync.sh の git diff 分割（§1、V-1 が影響する唯一の作業ツリー依存箇所）は `git -C "$CWD"` で実装済。V-4 は既知ギャップで S11へ切り出し済。
 >
-> **S10 時点の状況（2026-06-10）**: S1–S9 がすべて land し（#1361–#1369 CLOSED）、EnterWorktree 依存経路（pr:open Step 2.2-W / 2.3-W = #1366、cleanup Step 4-W = #1367、resume 再入場 = #1368）も実装済み。残る V-1/V-2/V-3/V-5/V-8 の live 観察は本 Issue（#1370）の 2 セッション E2E で実施し、結果を下記「[E2E 検証手順と結果](#e2e-検証手順と結果s10--1370)」に記録した上で本 V 表へ転記する（AC-10）。
+> **S10 時点の状況（2026-06-10）**: S1–S9 がすべて land し（CLOSED）、EnterWorktree 依存経路（pr:open Step 2.2-W / 2.3-W = S6、cleanup Step 4-W = S7、resume 再入場 = S8）も実装済み。残る V-1/V-2/V-3/V-5/V-8 の live 観察は本 Issue（S10）の 2 セッション E2E で実施し、結果を下記「[E2E 検証手順と結果](#e2e-検証手順と結果s10)」に記録した上で本 V 表へ転記する（AC-10）。
 >
-> **S10 E2E 完了（2026-06-10）**: 2 セッション（`1b5dbaef…` / `e6171fd1…`）の並行 lifecycle を実施し、Issue #1382→PR #1385 / #1383→PR #1386 が並行マージ・セッション worktree 残骸ゼロ・並行 wiki ingest の skip 縮退を**痕跡で確認**。EnterWorktree 依存の crash→resume（V-5）と非回帰（V-1）は `crash-resume.test.sh` 7 PASS / `state-path-resolve.test.sh` 6 PASS / `issue-claim` 20 / `pr-cycle-cleanup-session-reap` 11 / `worktree-git-nff-retry` 9 PASS の自動テストで担保。V-4 は S11の compact-state per-session 化で解消。V-1〜V-8 を下表へ反映済み（AC-10 達成）。V-3（worktree 内 `/clear`）は本 E2E で明示実施せず — 構造的担保に留める。
+> **S10 E2E 完了（2026-06-10）**: 2 セッション（`1b5dbaef…` / `e6171fd1…`）の並行 lifecycle を実施し、2 つの Issue → それぞれの PR が並行マージ・セッション worktree 残骸ゼロ・並行 wiki ingest の skip 縮退を**痕跡で確認**。EnterWorktree 依存の crash→resume（V-5）と非回帰（V-1）は `crash-resume.test.sh` 7 PASS / `state-path-resolve.test.sh` 6 PASS / `issue-claim` 20 / `pr-cycle-cleanup-session-reap` 11 / `worktree-git-nff-retry` 9 PASS の自動テストで担保。V-4 は S11の compact-state per-session 化で解消。V-1〜V-8 を下表へ反映済み（AC-10 達成）。V-3（worktree 内 `/clear`）は本 E2E で明示実施せず — 構造的担保に留める。
 
 | ID | 検証項目（推測を含む） | 設計上の担保 | 結果 |
 |----|----------------------|--------------|------|
@@ -306,9 +306,9 @@ teammate の git 禁止・team lead の `git -C` 集約は無変更。
 | V-8 | ExitWorktree(keep) の戻り先 = EnterWorktree 時の cwd（サブディレクトリで起動した場合の挙動） | リポジトリルート起動が前提（D-1）だが、逸脱時の挙動を確認 | ✅ live E2E で cleanup が main checkout へ復帰しセッション worktree を削除（戻り先 = 起動時 main root）。リポジトリルート起動前提（D-1）は維持。サブディレクトリ起動の逸脱挙動は範囲外 |
 
 <!-- Section ID: SPEC-E2E -->
-## E2E 検証手順と結果（S10 / #1370）
+## E2E 検証手順と結果（S10）
 
-> **実施方法**: マルチセッションは 2 つの独立した Claude Code ターミナルの並行起動を要するため、単一の自動エージェントでは完遂できない。以下の手順を人手（坂口さん）が実行し、結果を本節の結果表に記録する。実施前提として `rite-config.yml` の `multi_session.enabled: true` を設定する（検証後に `false` へ戻す手順 5 を含む）。dogfood 有効化（恒久的な `enabled: true`）は本 E2E の結果を踏まえて別途判断する（S10/#1370 当時は検証後に既定 `false` へ復帰した）。**追記**: その後 #1391 でテンプレートのデフォルトを `true` に変更し、dogfood リポジトリの `rite-config.yml` も恒久的に `enabled: true` 化した（決定根拠は D-9 / CHANGELOG #1391 参照）。
+> **実施方法**: マルチセッションは 2 つの独立した Claude Code ターミナルの並行起動を要するため、単一の自動エージェントでは完遂できない。以下の手順を人手（坂口さん）が実行し、結果を本節の結果表に記録する。実施前提として `rite-config.yml` の `multi_session.enabled: true` を設定する（検証後に `false` へ戻す手順 5 を含む）。dogfood 有効化（恒久的な `enabled: true`）は本 E2E の結果を踏まえて別途判断する（S10 当時は検証後に既定 `false` へ復帰した）。**追記**: その後の作業でテンプレートのデフォルトを `true` に変更し、dogfood リポジトリの `rite-config.yml` も恒久的に `enabled: true` 化した（決定根拠は D-9 / デフォルト ON 化を記録した CHANGELOG エントリ参照）。
 
 ### 手順
 
@@ -325,7 +325,7 @@ teammate の git 禁止・team lead の `git -C` 集約は無変更。
 | 手順 | 対応 AC / V | 結果 | 根拠・発見事項 |
 |---|---|---|---|
 | 1 起動 | — | ✅ | 2 セッション（`1b5dbaef-96ec-4fdb-815c-f5ad345fb9ca` / `e6171fd1-d921-43b6-9b0d-d4ca0bd71e30`）がリポジトリルートから起動し、別 Issue を並行実行 |
-| 2 並行 lifecycle | AC-2 / AC-8 / V-1 / V-2 / V-8 | ✅ | Issue #1382→PR #1385、#1383→PR #1386 が約 7 分差で develop に並行マージ（相互の branch / 作業ツリー破壊なし）。`git worktree list` にセッション worktree（`.rite/worktrees/issue-*`）の残骸ゼロ＝cleanup Step 4-W が正常削除。worktree 内で pr:open〜cleanup が plugin file 解決エラーなく完走（V-2 間接確認） |
+| 2 並行 lifecycle | AC-2 / AC-8 / V-1 / V-2 / V-8 | ✅ | 2 つの Issue → それぞれの PR が約 7 分差で develop に並行マージ（相互の branch / 作業ツリー破壊なし）。`git worktree list` にセッション worktree（`.rite/worktrees/issue-*`）の残骸ゼロ＝cleanup Step 4-W が正常削除。worktree 内で pr:open〜cleanup が plugin file 解決エラーなく完走（V-2 間接確認） |
 | 3 並行 ingest | AC-7 | ✅ | wiki branch に `ingest 1 raw source(s) (worktree path)` 連続コミット + `ingest 0 new / 0 updated …(skipped: 1)` のスキップ事象＝直列化 / skip 縮退が発火、絶対パス契約も動作。`worktree-git-nff-retry.test.sh` 9 PASS で NFF push リトライを担保 |
 | 4 クラッシュ→resume | AC-4 / V-5 | ✅（テスト + コードパス担保） | `crash-resume.test.sh` 7 PASS（TC-2.1: resume path で active/phase/issue/branch を復元、TC-3.1: セッション A の SIGKILL 後にセッション B 起動成功）。resume.md Phase 3.1.5 の worktree 再入場・再構築（reenter / residue / missing+branch_local）コードパス確認。真のプロセス crash の live 実施は本 E2E では未実施 |
 | 5 false 復帰の非回帰 | AC-1 | ✅ | `multi_session.enabled: false` へ復帰。`state-path-resolve.test.sh` 6 PASS（非 worktree で resolver 出力が byte 一致する pin テスト）。本ドキュメント整備セッションも非 worktree 標準フローで正常動作 |
@@ -356,8 +356,8 @@ teammate の git 禁止・team lead の `git -C` 集約は無変更。
 <!-- Section ID: SPEC-RELATED -->
 ## 関連
 
-- 先行設計: [multi-session-state.md](./multi-session-state.md) — flow-state の per-session 分離（Option A、#672 系列で実装済み）
+- 先行設計: [multi-session-state.md](./multi-session-state.md) — flow-state の per-session 分離（Option A、先行系列で実装済み）
 - 先行設計: [session-ownership-flow-state.md](./session-ownership-flow-state.md) — session ownership 機構（2h stale 閾値を本設計の claim liveness が再利用）
 - 先行設計: [clear-per-command-flow-state-decoupling.md](./clear-per-command-flow-state-decoupling.md) — `/clear` 跨ぎの状態権威の整理（flow-state は session-scoped hint の原則）
 - worktree 操作の canonical パターン: `plugins/rite/references/git-worktree-patterns.md`
-- Wiki worktree 設計: Issue #547（`.rite/wiki-worktree` 永続化）
+- Wiki worktree 設計: `.rite/wiki-worktree` 永続化の設計

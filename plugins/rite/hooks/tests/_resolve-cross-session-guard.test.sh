@@ -154,11 +154,11 @@ assert_eq "TC-8.1: shell metachar UUID → 'invalid_uuid:1'" "invalid_uuid:1" "$
 # to strip prefix. If helper appended trailing newline, the captured value would carry a stray \n.
 # Verify the entire stdout has NO trailing newline.
 #
-# cycle 41 review F-05 HIGH — 旧実装は bash command substitution の trailing
-# newline 自動 strip 仕様により、helper が `printf "%s\n"` (改行付き) に regress しても test が
-# pass する false-positive 構造だった (`raw_out=$(...; echo END)` で末尾 NL が strip され両ケース
-# 同形状)。bytes-exact pin に変更し、helper stdout を tempfile に書き出して `wc -c` で実バイト数
-# を比較する (`echo END` 経由ではなく直接 redirect で trailing NL を保持)。
+# cycle 41 review F-05 HIGH — bash command substitution の trailing newline 自動 strip 仕様
+# のもとで `raw_out=$(...; echo END)` 経由で比較すると、helper が `printf "%s\n"` (改行付き) に
+# regress しても末尾 NL が strip され両ケース同形状になり test が pass する false-positive 構造になる。
+# bytes-exact pin に変更し、helper stdout を tempfile に書き出して `wc -c` で実バイト数を比較する
+# (`echo END` 経由ではなく直接 redirect で trailing NL を保持) ことでその false-positive を guard する。
 echo "TC-9: printf no trailing newline (caller parameter expansion safety)"
 legacy=$(mktemp_legacy); cleanup_files+=("$legacy")
 printf '%s' "{\"phase\":\"x\",\"session_id\":\"$OTHER_SID\"}" > "$legacy"

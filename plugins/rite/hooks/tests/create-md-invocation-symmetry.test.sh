@@ -187,7 +187,7 @@ check_no_flag_title_proximity "TC-3b no flag-style --title near decompose-issues
 #     - commands/pr/create.md Phase 2.5.5 → scope-out Issue 起票
 #     - commands/pr/cleanup.md ステップ 3  → 残作業 Issue 起票
 #   両 caller が nested `"$(jq -n ...)"` 形式へ戻る回帰を直接 pin する
-#   (従来は bash-heaviness-check.sh の間接保護のみ)。各 caller につき
+#   (bash-heaviness-check.sh の間接保護だけではこの回帰を捕捉できないため)。各 caller につき
 #   (a) canonical 単一引数 callsite の存在、(b) args_json が jq -n の 分離形式で
 #   構築されること、(c) 全 create-issue-with-projects.sh 呼び出しが canonical で
 #   あること、を assert する (create.md の TC-1 / TC-1c / TC-2 と対称)。

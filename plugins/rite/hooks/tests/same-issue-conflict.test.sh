@@ -109,11 +109,11 @@ fi
 # TC-2: concurrent 同 issue 2 session create → 両方成功
 # -------------------------------------------------------------------------
 # F-06 fix: barrier sync で起動 jitter を排除し true concurrent 化。
-# 旧実装は単純な `cmd & cmd &` で両 process を background 起動していたが、
-# bash の forked process startup には数十 ms の jitter があり、片方が write
-# 完了後にもう片方が start する経路で sequential 化する false negative の
-# 可能性があった (起動順序が決定的でないため race condition 検証としての
-# identification power が dilute される)。
+# 単純な `cmd & cmd &` で両 process を background 起動すると、bash の forked
+# process startup には数十 ms の jitter があり、片方が write 完了後にもう
+# 片方が start する経路で sequential 化する false negative が起こり得る
+# (起動順序が決定的でないため race condition 検証としての identification
+# power が dilute される)。
 # canonical 防御: barrier file (`$TD/.barrier-tc2`) を pre-create し、各 child は
 # `while [ -f barrier ]; do sleep 0.001; done` で busy-wait → parent が rm barrier
 # して同時 release。これで両 child が ms 単位で同時起動することを保証する。

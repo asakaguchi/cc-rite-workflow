@@ -121,9 +121,9 @@ echo ""
 # sleep を 0.003 から 0.05 に拡大して mid_or_temp / post 状態が確実に観測
 # されるようにし、(b) iteration outcome を classify_outcome で 4 状態
 # (pre / mid_or_temp / post / corrupt) に分類、(c) 「mid_or_temp + post >= 1」
-# を assert することで race window が実際に当たったことを実証する (旧実装は
-# 全 50 iter pre のみで PASS する経路があり、production の mv が破壊的に退化
-# しても false positive で PASS していた)。さらに (d) 末尾に kill しない
+# を assert することで race window が実際に当たったことを実証する (この assert
+# がないと全 50 iter pre のみで PASS する経路が残り、production の mv が破壊的に
+# 退化しても false positive で PASS してしまうため guard する)。さらに (d) 末尾に kill しない
 # wait iter を 1 回追加し、jq empty が dead code でないことも mechanical に
 # 通す。
 echo "TC-1: write 中 SIGKILL → state file 整合 (atomic invariant + race window 実証)"
@@ -172,7 +172,7 @@ else
 fi
 
 # F-02 fix: 末尾に kill しない 1 iter を追加し、jq empty 経路を mechanical に通す
-# (旧実装のコメント line 105-107 で謳いつつ未実装だった意図を実装化)
+# (kill しない iter がないと jq empty 経路が dead code のまま残るため、実際に通して guard する)
 (cd "$TD" && bash "$HOOK" set --session "$SID" \
   --phase "phase_final" --issue 684 --branch "feat/final" --pr 0 --next "nfinal" >/dev/null 2>&1)
 state_file=$(state_path "$TD" "$SID")

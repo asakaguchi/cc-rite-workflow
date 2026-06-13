@@ -76,10 +76,10 @@ assert_match() {
 
 # DEFAULT_HELPERS の SoT を production 側 (`_validate-helpers.sh`) から動的抽出する。
 # test/production 片肺更新 drift を構造的に防ぐ (cycle 13 F-01 doctrine の test layer 適用)。
-# 旧実装は production 側の DEFAULT_HELPERS と byte-for-byte 重複した hardcoded 配列を持っており、
+# production 側の DEFAULT_HELPERS と byte-for-byte 重複した hardcoded 配列を test 側に持つと、
 # 新規 helper が production に追加されても test sandbox は古い entry のまま動き続ける silent
-# regression 経路を残していた (root cause = writer/reader 片肺更新 と同型の
-# test/production 片肺更新 drift)。
+# regression 経路ができる (root cause = writer/reader 片肺更新 と同型の
+# test/production 片肺更新 drift)。動的抽出でその drift 経路を guard する。
 #
 # 抽出方法: awk で `DEFAULT_HELPERS=(...)` ブロックを抽出 + grep で helper 名 (basename) を取得。
 # `_validate-helpers.sh` を bash source する方式は `set -euo pipefail` + 引数 unset 時 exit 1 の

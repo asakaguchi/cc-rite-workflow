@@ -909,12 +909,11 @@ echo ""
 # emitted on stderr. Defends against the silent-fall-through regression that
 # the previous `2>/dev/null` produced.
 #
-# PR 2a refactor note: the legacy `.rite-flow-state` fallback that used to take
-# over on resolver failure has been removed (Phase F-3, b48aec21). The hook now
-# emits a "STATE_FILE 不明、recovery を skip" WARNING and exits without touching
-# any legacy file. The previous "Legacy fallback path was loaded" assertion has
-# been removed accordingly — the test now only validates that ERROR pass-through
-# and the skip WARNING reach stderr.
+# The hook does NOT fall back to a legacy `.rite-flow-state` file on resolver
+# failure: it emits a "STATE_FILE 不明、recovery を skip" WARNING and exits
+# without touching any legacy file. This test therefore validates only that the
+# ERROR pass-through and the skip WARNING reach stderr; it does not assert any
+# legacy-fallback load, since reintroducing one would be a regression.
 echo "TC-helper-failure-stderr-passthrough: helper failure → ERROR pass-through + skip WARNING"
 
 HOOKS_REAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"

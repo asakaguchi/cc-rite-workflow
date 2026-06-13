@@ -44,7 +44,7 @@
 #                             (default: "false")
 #
 # Security note:
-#   PR #688 followup: cycle 41 review F-13 MEDIUM (security Hypothetical exception) — 旧実装は
+#   旧実装は
 #   WM_* 環境変数を caller 責務で sanitize する設計だったが、orchestrator 経由で LLM 出力 / Issue
 #   タイトル / next_action 等の動的文字列が直接 frontmatter に流入する経路があり defense-in-depth
 #   不在だった。本 PR で `_sanitize_yaml_value()` helper を導入し、frontmatter 書き込み箇所すべてで
@@ -115,8 +115,8 @@ update_local_work_memory() {
     return 1
   fi
 
-  # PR #688 cycle 12 fix (F-01 HIGH AC-4 caller migration完遂):
-  # legacy `.rite-flow-state` 直接 `[ ! -f ]` check を flow-state.sh 経由に変更。
+  # legacy `.rite-flow-state` 直接 `[ ! -f ]` check を flow-state.sh 経由に変更
+  # (caller migration of legacy flow-state reads)。
   # cycle 10 で WM_READ_FROM_FLOW_STATE 分岐の同種 read を移行済みだが、本箇所
   # (WM_REQUIRE_FLOW_STATE check) は cycle 11 review で取り残しが指摘された。
   # (verified-review cycle 29 F-04 MEDIUM: cycle 28 で確立した semantic anchor 規範を本箇所
@@ -193,7 +193,7 @@ update_local_work_memory() {
   fi
 
   # Read flow-state fields if requested (lint pattern).
-  # PR #688 cycle 10 fix (F-02 HIGH AC-4 caller migration): legacy `.rite-flow-state` 直接読みを
+  # legacy `.rite-flow-state` 直接読みを
   # flow-state.sh 経由に変更。schema_version=2 環境では flow-state.sh が per-session file を解決
   # するため、別 session の stale residue を読まなくなる。flow-state.sh は per-session/legacy
   # 両方を transparent に解決し、両方不在時は default を返すので、外側の `[ -f ]` check は不要。
@@ -219,7 +219,6 @@ update_local_work_memory() {
     trap 'rm -f "$tmp_wm"; release_wm_lock "$lockdir"' RETURN
   fi
 
-  # PR #688 followup: cycle 41 review F-13 MEDIUM (security Hypothetical exception) —
   # YAML frontmatter 値の defense-in-depth sanitization。改行除去 + backslash escape + `"` を `\"` に escape して
   # frontmatter 破損 / 子 key injection を防ぐ (caller 責務に加えた二段目の防御層)。
   # WM_BODY_TEXT は frontmatter 外なので除外 (markdown body は改行を保持する必要がある)。

@@ -22,7 +22,7 @@ export _RITE_HOOK_RUNNING_PRETOOL=1
 # Hook version resolution preamble (must be before INPUT=$(cat) to preserve stdin)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
-# neutralize_ctrl --c0-only (deny フォールバックの JSON エスケープ用 — Issue #1278)。
+# neutralize_ctrl --c0-only (deny フォールバックの JSON エスケープ用)。
 # guard なし source は意図的な設計判断: 本 hook は Pattern 1-3 の ERR trap
 # (_rite_btg_pattern13_fail_open) が exit 0 = allow を選ぶ設計上 fail-open であり、helper
 # 欠落 (= plugin 破損) による source 失敗の exit 1 も PreToolUse では non-blocking = allow
@@ -568,7 +568,7 @@ echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] bash-guard: BLOCKED pattern=$BLOCKED_PA
 # Deny with reason and alternative. jq is required to emit the final permission
 # payload; an intermittent jq failure here would silently downgrade the deny to
 # allow. Fall back to a literal JSON envelope + exit 2 so the deny is fail-closed.
-# reason のエスケープ連鎖 (改行 \n 化 + 残存 C0 の ? 化 — Issue #1278 / #1275、
+# reason のエスケープ連鎖 (改行 \n 化 + 残存 C0 の ? 化、
 # stop-loop-continuation.sh の JSON emit フォールバックと対称) は
 # _bash_guard_escape_deny_reason に集約。neutralize 失敗時は raw を emit せず
 # static placeholder へ縮退し、deny + exit 2 の fail-closed 契約を維持する。

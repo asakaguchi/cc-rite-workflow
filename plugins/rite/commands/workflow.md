@@ -136,7 +136,7 @@ Display the following list:
 
 💡 Tips: Context limit reached で中断した場合は /clear → /rite:resume で再開できます
 💡 Tips: 複数セッションで別 Issue を並行する場合、rite-config.yml の
-         multi_session.enabled: true（#1391 でデフォルト ON）により
+         multi_session.enabled: true（デフォルト ON）により
          セッション別 worktree (.rite/worktrees/issue-{N}) に分離されます
 ```
 

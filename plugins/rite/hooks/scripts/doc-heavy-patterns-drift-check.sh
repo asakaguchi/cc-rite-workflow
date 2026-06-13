@@ -11,7 +11,7 @@
 #      patterns after the per-reviewer skill files were consolidated into the
 #      named-subagent definitions)
 #
-# Issue #353 covers 系統 1 of the drift invariants catalogued in
+# This covers 系統 1 of the drift invariants catalogued in
 # commands/pr/references/internal-consistency.md. 系統 2 (canonical category
 # name literal match) and 系統 3 (review.md ステップ 5.4 Doc-Heavy section 2-place
 # duplication) are out of scope for this checker.

@@ -11,16 +11,16 @@
 # に従い、説明的参照のみを検出し、TODO/FIXME 追跡番号 (前方ポインタ=維持) と
 # ファイル名アンカー (xxx.test.sh 等、番号ではない) は検出から除外する。
 #
-# Layered defense (Issue #702):
-#   This script is the fast-fail layer below the LLM reviewers (Issues #700,
-#   #701). The reviewers focus on WHY > WHAT semantic judgments; mechanical
-#   100%-confidence patterns are killed here before they reach the reviewer
-#   queue. Operationally invoked from /rite:lint (manual). PR review integration
-#   is intentionally out of scope (Issue #702 採択方針: CI のみ運用).
+# Layered defense:
+#   This script is the fast-fail layer below the LLM reviewers. The reviewers
+#   focus on WHY > WHAT semantic judgments; mechanical 100%-confidence patterns
+#   are killed here before they reach the reviewer queue. Operationally invoked
+#   from /rite:lint (manual). PR review integration is intentionally out of
+#   scope (採択方針: CI のみ運用).
 #
 # Detected patterns (4 regexes scanned in a single while-match awk loop, so
 # multiple triggers on the same line are all reported — same multi-match
-# discipline as bang-backtick-check.sh after the Issue #369 H-1 fix):
+# discipline as bang-backtick-check.sh):
 #
 #   P1: verified-review cycle N
 #       regex: verified-review cycle [0-9]+
@@ -73,8 +73,8 @@
 #
 # Future extension: rite-config.yml workflow.lint.comment_journal.whitelist
 # can list extra prefix tokens. Not implemented in this revision; the prefix
-# markers above already cover SoT bad-example sections (Issue #699) when the
-# author wraps the example with one of the three markers.
+# markers above already cover SoT bad-example sections when the author wraps
+# the example with one of the three markers.
 #
 # Usage:
 #   comment-journal-check.sh [--all] [--target FILE]... [--repo-root DIR] [--quiet]
@@ -190,7 +190,7 @@ FINDINGS_FILE="$(mktemp)" || { echo "ERROR: mktemp failed" >&2; exit 2; }
 
 # Single awk pass per file. Whitelist check happens up-front; the six pattern
 # scans share the same while-match loop idiom so multi-match per line is
-# preserved (parity with bang-backtick-check.sh post-#369).
+# preserved (parity with bang-backtick-check.sh).
 check_file() {
   local file="$1"
   if [ ! -f "$file" ]; then

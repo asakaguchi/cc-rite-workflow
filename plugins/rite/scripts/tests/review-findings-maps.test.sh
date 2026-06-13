@@ -145,7 +145,7 @@ if [ "$review_source" = "local_file" ] || [ "$review_source" = "explicit_file" ]
           echo "[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1; reason=pre_existing_false_scope_nit_noted; count=$norm_corrected_count" >&2
         fi
         if [ "${norm_demoted_low_count:-0}" -gt 0 ]; then
-          echo "WARNING: $norm_demoted_low_count findings (LOW × current-pr) を Issue #1018 M2 auto_demote_low により scope=nit-noted に降格しました" >&2
+          echo "WARNING: $norm_demoted_low_count findings (LOW × current-pr) を auto_demote_low により scope=nit-noted に降格しました" >&2
           echo "[CONTEXT] REVIEW_SOURCE_AUTO_DEMOTED_LOW=1; reason=low_current_pr_demoted_to_nit_noted; count=$norm_demoted_low_count" >&2
         fi
         review_source_path="$norm_tmp"

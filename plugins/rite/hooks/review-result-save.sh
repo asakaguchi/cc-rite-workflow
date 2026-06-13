@@ -106,9 +106,9 @@ case "$PR_NUMBER" in
 esac
 
 # --content-file 存在チェック (trap 登録後 = 非ブロッキング経路)。
-# Issue #1193 follow-up review F-01: 旧実装は本チェックを trap 登録前 (arg parse 直後) に置き
-# exit 1 していたため、(a) D-04「全失敗経路で exit 0」契約を破り、(b) EXIT trap が emit する
-# FILE_TIMESTAMP/ISO_TIMESTAMP/JSON_SAVED (ステップ 6.1.c が前提) を skip していた。
+# 本チェックを trap 登録前 (arg parse 直後) に置いて exit 1 すると、(a) D-04「全失敗経路で
+# exit 0」契約を破り、(b) EXIT trap が emit する FILE_TIMESTAMP/ISO_TIMESTAMP/JSON_SAVED
+# (ステップ 6.1.c が前提) を skip してしまうため、trap 登録後に配置する。
 # caller が Write tool での JSON body 書き出しを忘れる / Write 先 path と --content-file path が
 # 食い違う runtime 失敗を write_failure (JSON body を読めない = write 系失敗) として非ブロッキングに扱う。
 if [ ! -f "$CONTENT_FILE" ]; then
@@ -271,7 +271,7 @@ if [ "$_schema_ver" = "1.1.0" ] && ! jq -e '
   ' "$json_tmp" >/dev/null 2>&1; then
   violation_count_review=$(jq '[.findings[]? | select((.severity == "CRITICAL" or .severity == "HIGH") and .scope == "nit-noted")] | length' "$json_tmp" 2>/dev/null || echo "?")
   echo "WARNING: JSON の findings[] に cross-field invariant #4 違反 (severity ∈ {CRITICAL, HIGH} × scope == nit-noted) が $violation_count_review 件存在します" >&2
-  echo "  Issue #1018 M2 / Issue #1016 invariant #4: blocker (CRITICAL/HIGH) 級の指摘を nit-noted として受け流すことは禁止" >&2
+  echo "  invariant #4: blocker (CRITICAL/HIGH) 級の指摘を nit-noted として受け流すことは禁止" >&2
   echo "  対処: reviewer が severity を MEDIUM/LOW へ自己降格し、original_severity フィールドに元値を保持する経路を使う" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=critical_high_scope_nit_noted_invariant; count=$violation_count_review" >&2
   exit 0

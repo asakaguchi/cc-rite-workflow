@@ -2,7 +2,7 @@
 # migrate-review-state-to-1.1.sh
 #
 # Migrate review-result JSON files in `.rite/review-results/` from schema
-# 1.0 / 1.0.0 / missing to canonical 1.1.0. Issue #1021 (Epic #1015).
+# 1.0 / 1.0.0 / missing to canonical 1.1.0.
 #
 # Migration adds the two fields introduced in 1.1.0:
 #   - findings[].scope        — default mapping from severity

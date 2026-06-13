@@ -4,11 +4,11 @@
 # Detect "heavy" operational bash blocks in command markdown under
 # plugins/rite/commands/**/*.md and flag them as non-blocking warnings.
 # Mechanically enforces the "operational bash block heaviness convention"
-# documented in skills/rite-workflow/references/coding-principles.md (added by
-# PR #1193), which prose-only enforcement cannot prevent from drifting.
+# documented in skills/rite-workflow/references/coding-principles.md, which
+# prose-only enforcement cannot prevent from drifting.
 #
 # Why a separate hook:
-#   Issue #1193 observed that large operational bash blocks in command bodies
+#   Experience showed that large operational bash blocks in command bodies
 #   (python inline / nested $() / multiple heredocs / long line counts) caused
 #   Claude's tool-call parsing to malform and silently end the turn with no
 #   error. The writing convention was added to coding-principles.md, but prose
@@ -28,7 +28,7 @@
 # signal is intentionally NOT flagged: a lone helper invocation that passes one
 # JSON heredoc, or a single block that writes a long template, is legitimate and
 # matches the precedents (projects-status-update.sh callers etc.). Requiring two
-# signals keeps the false-positive rate low while still catching the #1193
+# signals keeps the false-positive rate low while still catching the heavy-bash
 # incident blocks, which combined all four signals at once. Heredoc *bodies* are
 # treated as data: signals (1)/(2) are evaluated only on real shell lines, not on
 # the literal content inside a heredoc, so a template heredoc that happens to

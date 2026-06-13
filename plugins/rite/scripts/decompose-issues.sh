@@ -42,14 +42,14 @@
 #
 # Exit codes:
 #   0 = decomposition completed (per-sub create/link failures are non-blocking
-#       and counted, NOT fatal — Issue #514 contract)
+#       and counted, NOT fatal — per the counting contract)
 #   1 = fatal (missing/invalid spec, empty parent body, parent create failed)
 #   2 = usage error
 #
 # NOTE: `set -e` is intentionally omitted. The Sub-Issue loop counts per-item
 # create/link failures and continues (non-blocking, mirroring the original
 # create.md inline block). `set -e` would abort on the first non-zero
-# `create_rc` capture and break the Issue #514 counting contract.
+# `create_rc` capture and break the counting contract.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -111,7 +111,7 @@ workdir=$(spec_get '.workdir // empty')
 # emits `ERROR: ...` on stderr while still printing valid JSON on stdout with
 # exit 0 on partial-Projects failures. A `2>&1` capture would splice
 # that ERROR ahead of the JSON and break the downstream `jq -r .issue_number`,
-# silently miscounting an actually-created Sub-Issue as failed (#514 contract break).
+# silently miscounting an actually-created Sub-Issue as failed (counting contract break).
 helper_err_file=$(mktemp "${TMPDIR:-/tmp}/rite-decompose-helper-err.XXXXXX") \
   || helper_err_file="${TMPDIR:-/tmp}/rite-decompose-helper-err.$$"
 trap 'rm -f "$helper_err_file"; if [ -n "$workdir" ] && [ -d "$workdir" ]; then rm -rf "$workdir"; fi' EXIT INT TERM

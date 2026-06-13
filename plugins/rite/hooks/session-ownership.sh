@@ -121,7 +121,7 @@ is_per_session_state_file() {
 #     updated_at > 2h ago    → "stale" (safe to overwrite)
 #     updated_at <= 2h ago   → "other" (active session, do not overwrite)
 #
-# Issue #681: the per-session fast-path replaces the schema-2 portion of the
+# The per-session fast-path replaces the schema-2 portion of the
 # legacy 4-state classification with a structural check. The remaining branches
 # preserve schema-1 behavior unchanged so lifecycle hooks and pre-compact
 # that depend on "legacy"/"other"/"stale" outputs continue to work.
@@ -135,7 +135,7 @@ check_session_ownership() {
   # Schema-2 fast-path: per-session file structure encodes ownership in the
   # filename. The resolver only returns a per-session path that matches the
   # current session by construction, so the typical caller passing such a
-  # path is reading its own state. As defense-in-depth (review #681 F-02),
+  # path is reading its own state. As defense-in-depth,
   # when the hook payload provides a session_id, verify that the filename's
   # session_id segment matches it. This prevents a future caller bypassing
   # the resolver and silently passing a foreign per-session file from being

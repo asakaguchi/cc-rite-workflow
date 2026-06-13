@@ -2,29 +2,28 @@
 # backlink-format-check.sh
 #
 # Detect bidirectional backlink format invariant violations in rite-workflow
-# files. PR #620 (Issue #620) established **colon notation** as the canonical
-# format for `Downstream reference:` comments, and PR #626 unified all 9
-# existing sites to the canonical form. This lint check detects future
-# regressions back to the PR #605 / PR #619 dialects.
+# files. **Colon notation** is the canonical format for `Downstream reference:`
+# comments, and all existing sites were unified to the canonical form. This
+# lint check detects future regressions back to the legacy dialects.
 #
-# Canonical format (PR #620) is described in the wiki canonical page:
+# The canonical format is described in the wiki canonical page:
 #     .rite/wiki/pages/patterns/drift-check-anchor-semantic-name.md
 # and uses the shape `reference-keyword filepath-colon-phase-number`.
 #
 # Expected canonical pattern (grep-verifiable) — see the wiki page above for
-# the exact regex. This script detects the two legacy dialects that PR #620
-# replaced:
+# the exact regex. This script detects the two legacy dialects that the
+# canonical form replaced:
 #
-#   P1: space-separated (PR #605 old dialect)
+#   P1: space-separated (old dialect)
 #       semantics: the file path and Phase token are separated by a SPACE
 #                  instead of a COLON. Canonical uses colon; this dialect
 #                  uses a space.
 #
-#   P2: parenthetical (PR #619 old dialect)
+#   P2: parenthetical (old dialect)
 #       semantics: the backlink includes a parenthetical qualifier naming
-#                  the DRIFT-CHECK anchor. PR #620 dropped this qualifier
-#                  because filepath-colon-phase already uniquely identifies
-#                  the anchor within each Phase.
+#                  the DRIFT-CHECK anchor. The canonical form dropped this
+#                  qualifier because filepath-colon-phase already uniquely
+#                  identifies the anchor within each Phase.
 #
 # Exact regex literals are kept INSIDE the awk program below (not in this
 # header) so the script does not flag itself when run with --all over
@@ -34,12 +33,12 @@
 # (e.g. free-prose references to Hint messages) are neither canonical nor
 # NG — both patterns intentionally require a `Phase` token, so such lines
 # silently pass. This is by design: they reference different semantic
-# targets and are not covered by the PR #620 invariant.
+# targets and are not covered by the canonical-format invariant.
 #
 # Out of scope:
 #   - Wiki canonical pages under `.rite/wiki/` — not on the development
 #     branch (separate `wiki` branch via worktree). Intentional scope
-#     boundary per Issue #627 "(backticks 内の example は除外)" note.
+#     boundary per the "(backticks 内の example は除外)" note.
 #   - `Downstream reference:` lines inside Markdown code fences. Lines
 #     *inside* fenced blocks are still scanned because lint.md Phase 3.5-3.9
 #     scripts treat them uniformly — see bang-backtick-check.sh for the
@@ -185,7 +184,7 @@ check_file() {
       # would match at the "same file Phase 5.1" substring (false positive).
       # We guard this by requiring the token right before " Phase " / " ステップ " to not
       # contain ":Phase" / ":ステップ" already.
-      # ステップ token: Issue #1150 wiki commands rename で導入された日本語 step token を
+      # ステップ token: wiki commands rename で導入された日本語 step token を
       # 同等に扱うため Phase|ステップ 両対応に拡張 (silent coverage loss 防止)。
       pos = 1
       while (pos <= length(line)) {
@@ -193,7 +192,7 @@ check_file() {
         if (!match(sub_s, /Downstream reference: [^ ]+ (Phase|ステップ) [0-9]+\.[0-9.]*[0-9]/)) break
         hit = substr(sub_s, RSTART, RLENGTH)
         # False-positive filter: canonical sequences include "Phase X.Y, same file:Phase Z.W"
-        # or "ステップ X.Y, same file:ステップ Z.W" (Issue #1150 wiki commands)。
+        # or "ステップ X.Y, same file:ステップ Z.W" (wiki commands)。
         # Extract the token between "reference: " and " Phase" / " ステップ" — if it contains
         # ":Phase" or ":ステップ" (e.g. "lint.md:Phase 8.3," or "lint.md:ステップ 8.3,") the hit
         # is the tail of a canonical comma-separated list, not a space-separated dialect.

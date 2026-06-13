@@ -25,10 +25,10 @@
 #     /rite:pr:iterate ステップ5 完了通知の出力を要求、"WIKICHAIN:..." は cleanup チェーンの
 #     残り step (ingest 残処理 → cleanup ステップ 10-12) の継続を要求する。
 #   - 削除済みのため、進捗 (次コマンド実行 / 完了通知出力) の後に再度停止すれば handoff は空
-#     → block しない (無限 block ループ防止 / Issue #1168 AC-3 / #1176 AC-2 / #1245 AC-3)。
-#   - 各継続点で継続 handoff が再セットされるため複数サイクル継続する (#1168 AC-1)。
-#     終了点では FINALIZE handoff が 1 回だけ block し、完了通知出力後はクリーン終了する (#1176 AC-1)。
-#     WIKICHAIN handoff も 1 回だけ block する one-shot で、チェーン再開後の再停止は許可される (#1245 AC-3)。
+#     → block しない (無限 block ループ防止)。
+#   - 各継続点で継続 handoff が再セットされるため複数サイクル継続する。
+#     終了点では FINALIZE handoff が 1 回だけ block し、完了通知出力後はクリーン終了する。
+#     WIKICHAIN handoff も 1 回だけ block する one-shot で、チェーン再開後の再停止は許可される。
 #
 # Exit behavior:
 #   exit 0 (no stdout)        — allow stop (handoff 不在 / loop 外 / 解決失敗 = fail-open)
@@ -43,7 +43,7 @@ export _RITE_HOOK_RUNNING_STOP=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/hook-preamble.sh" 2>/dev/null || true
 
-# Shared control-char neutralization (C0 + DEL + C1 0x80-0x9f → ?) — Issue #1274。
+# Shared control-char neutralization (C0 + DEL + C1 0x80-0x9f → ?)。
 # flow-state.sh と同じ必須依存扱い (unguarded source): 同 dir に無い = プラグイン破損であり、
 # set -e による hook 全体終了は「解決失敗 = fail-open (停止許可)」の既存設計軸に収束する。
 source "$SCRIPT_DIR/control-char-neutralize.sh"
@@ -83,13 +83,13 @@ fi
 #   WIKICHAIN:{caller}:{pr} = cleanup チェーン未完走 → 残り step の継続を強制
 #   /rite:...               = 継続 sentinel 到達 → 次ループコマンドを再注入
 #   それ以外                 = 未知 prefix。silent に既定動作へ吸収せず WARNING で可視化した上で
-#                             verbatim 再注入する (prefix 名前空間拡張時の分岐漏れ検出 / PR #1177 教訓)
+#                             verbatim 再注入する (prefix 名前空間拡張時の分岐漏れ検出)
 case "$HANDOFF" in
   FINALIZE:*)
     _result="${HANDOFF#FINALIZE:}"
     _reason="rite の review↔fix ループ (/rite:pr:iterate) が終了 sentinel (${_result}) に到達しました。停止する前に /rite:pr:iterate ステップ5 の完了通知 (終了理由 + 次ステップ案内) を必ず出力してください。
 
-handoff は consume 済みのため、完了通知を出力した後に再度停止すれば停止が許可されます (無限 block しません / Issue #1176)。"
+handoff は consume 済みのため、完了通知を出力した後に再度停止すれば停止が許可されます (無限 block しません)。"
     ;;
   WIKICHAIN:*)
     _pr="${HANDOFF##*:}"
@@ -107,8 +107,8 @@ handoff は consume 済みのため、進捗なく再度停止した場合は次
     # 「handoff 非空 → block」の設計軸を維持し、handoff 値を verbatim で差し戻す。
     # WARNING への埋め込みは共通ヘルパー neutralize_ctrl で制御文字を neutralize する
     # (flow-state.sh _emit_jq_err_snippet と同一規約。旧 ${HANDOFF//[[:cntrl:]]/?} が素通し
-    # していた C1 0x80-0x9f もカバー / ANSI escape による operator 端末乗っ取り防止 /
-    # Issue #1269 / #1274)。neutralize 失敗時は raw 値を echo せず placeholder へ縮退 (fail-closed)。
+    # していた C1 0x80-0x9f もカバー / ANSI escape による operator 端末乗っ取り防止)。
+    # neutralize 失敗時は raw 値を echo せず placeholder へ縮退 (fail-closed)。
     _handoff_safe=$(printf '%s' "$HANDOFF" | neutralize_ctrl) || _handoff_safe="(neutralize failed)"
     echo "WARNING: stop-loop-continuation: unknown handoff prefix (re-injecting verbatim; add an explicit case arm for new prefixes): ${_handoff_safe}" >&2
     _reason="rite の handoff マーカーが未消化のまま残っていました。停止せず、次を実行してください: ${HANDOFF}

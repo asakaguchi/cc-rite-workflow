@@ -190,7 +190,7 @@ cmd_set() {
     # — emit a WARNING so the silent skip is observable. Truly first-time sessions (no
     # `.rite-session-id`) stay silent to preserve the graceful no-op contract that
     # `commands/wiki/ingest.md` / `commands/pr/ready.md` 等の `--if-exists` caller が depend on
-    # (issue:create は Issue #1184 で flow-state 非依存化され、本契約の依存者ではなくなった)。
+    # (issue:create は flow-state 非依存化され、本契約の依存者ではなくなった)。
     if [ -f "$SESSION_ID_FILE" ]; then
       # basename only — multi-tenant 環境での絶対 path leakage を最小化 (cmd_get と対称化)
       echo "WARNING: flow-state.sh cmd_set: --if-exists skipped (resolved session_id=$sid has no state file at file: $(basename "$path"); possible stale .rite-session-id or sid drift)" >&2
@@ -200,7 +200,7 @@ cmd_set() {
   # Pull existing values for fields the caller did not specify (merge behavior).
   # `cur_last_synced` は post-tool-wm-sync.sh が runtime-only field として書き続けるため、
   # cmd_set が schema 構築時に既存値を merge しないと毎回 wipe され、wm-sync の diff guard
-  # が常に「変化あり」と判定 → GitHub API spam (issue-comment-wm-sync 連発、PR #1089 H1)。
+  # が常に「変化あり」と判定 → GitHub API spam (issue-comment-wm-sync 連発)。
   # 既存値が無い場合は空文字 → null として書き込み、wm-sync 側の `// "" | tostring` で
   # 空文字に縮退する (空 vs 非空 を別値として扱う wm-sync の diff guard と整合)。
   #
@@ -244,8 +244,7 @@ cmd_set() {
   [ -z "$active" ] && active=$cur_active
   local err_count=0
   [ $preserve_error -eq 1 ] && err_count=$cur_err
-  # `handoff` は review↔fix loop / cleanup wiki チェーンの one-shot マーカー (Issue #1168 / #1176 /
-  # #1245)。`error_count` と同様に
+  # `handoff` は review↔fix loop / cleanup wiki チェーンの one-shot マーカー。`error_count` と同様に
   # **phase transition (= 毎 set) でデフォルトクリア** する設計のため、merge-read (cur_*) に含めず
   # `--handoff` が明示指定された時だけ書き込む。`--handoff` 省略時は key 自体を付与しない
   # (= 空) ことで、loop 外の set が自動的に handoff をクリアし、stale handoff が次サイクルに漏れない。
@@ -296,7 +295,7 @@ cmd_get() {
   trap '[ -n "${jq_err:-}" ] && rm -f "${jq_err:-}"' RETURN
   # Do not silence _resolve_session_id stderr: when neither `.rite-session-id` nor
   # the env vars are usable, the helper's ERROR message must surface so the silent
-  # "empty + rc=0" failure path observed in Issue #1142 becomes diagnosable.
+  # "empty + rc=0" failure path becomes diagnosable.
   sid=$(_resolve_session_id "$session") || { printf '%s\n' "$default"; return 0; }
   path=$(_state_path "$sid")
   if [ ! -f "$path" ]; then

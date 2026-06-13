@@ -26,7 +26,7 @@ fi
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
 # Resolve the active flow-state file: always the per-session file (the legacy
-# single-file selection path was removed, Issue #1458). Stderr is captured via the
+# single-file selection path was removed). Stderr is captured via the
 # canonical _mktemp-stderr-guard.sh helper (see session-start.sh for the same pattern)
 # so resolver WARNING/ERROR lines don't get silently dropped — even on the
 # success arm, where helper graceful-degrade paths still emit diagnostics.

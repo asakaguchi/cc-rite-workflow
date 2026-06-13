@@ -43,7 +43,7 @@ wiki_enabled=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
 case "$wiki_enabled" in
  false|no|0) echo "wiki_enabled=false" ;;
  true|yes|1) echo "wiki_enabled=true" ;;
- *) echo "wiki_enabled=true" ;; # #483: opt-out default — section/key 未指定時も有効
+ *) echo "wiki_enabled=true" ;; # opt-out default — section/key 未指定時も有効
 esac
 ```
 

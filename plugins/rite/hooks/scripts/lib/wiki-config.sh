@@ -7,8 +7,7 @@
 # wiki-ingest-commit.sh can share a single definition instead of keeping
 # three character-exact copies in sync manually.
 #
-# Design rationale: previous commits (PR #548 cycle 4 review
-# F-05 / F-06) identified that parse_wiki_scalar had drifted across the
+# Design rationale: review identified that parse_wiki_scalar had drifted across the
 # three sibling scripts, creating a transcription-failure class of bugs
 # every time the `wiki.branch_name` parsing contract changed. Extracting a
 # shared lib makes future edits a one-file operation.

@@ -9,9 +9,9 @@
 # 本スクリプトは hook が edge case (subagent detection が transcript_path で失敗する場合等)
 # で機能しなかった事故の検出と recovery を担う post-condition gate。
 #
-# Issue #995: PR #994 cycle 3 で reviewer subagent が `pr-994-test` ブランチを作成して
+# 想定する事故シナリオ: reviewer subagent が `pr-<N>-test` のようなブランチを作成して
 # `git checkout` した結果、parent session の working tree が develop に切り替わって
-# `/rite:pr:fix` が PR ブランチを見失う事故が発生。これを再発させない gate。
+# `/rite:pr:fix` が PR ブランチを見失う。これを再発させない gate。
 #
 # Usage:
 #   bash post-review-state-verify.sh \

@@ -2,7 +2,7 @@
 # gitignore-health-check.sh
 #
 # Verify that `.gitignore` still excludes `.rite/wiki/` — the last-line-of-defense
-# rule added in PR #564 that prevents wiki-ingest-trigger.sh temporary writes from
+# rule that prevents wiki-ingest-trigger.sh temporary writes from
 # silently leaking into the develop branch PR diff. If a future `.gitignore`
 # cleanup PR inadvertently removes this rule, the regression must be detected
 # immediately.
@@ -27,9 +27,9 @@
 # On drift, print a plain WARNING to stderr (exit 1) so the LLM surfaces the
 # `.rite/wiki/` rule regression in the conversation context.
 #
-# Issue #567 — `.gitignore` silent-leak regression guard.
+# `.gitignore` silent-leak regression guard.
 # Companion to:
-#   - PR #564: added `.rite/wiki/` to `.gitignore` as last-line-of-defense
+#   - the rule that added `.rite/wiki/` to `.gitignore` as last-line-of-defense
 #   - plugins/rite/commands/lint.md Phase 3.9: invocation site
 #
 # Usage:
@@ -220,7 +220,7 @@ fi
 
 # --- Always-on: verify .rite/sessions/ is ignored (per-session state leak guard) ---
 # Unlike the .rite/worktrees/ block below, this is NOT gated on multi_session.enabled:
-# `.rite/sessions/{session_id}.flow-state` (per-session flow/compact state, #1381/#1384)
+# `.rite/sessions/{session_id}.flow-state` (per-session flow/compact state)
 # is written on EVERY rite session regardless of multi_session, so the leak surface is
 # always present. Placed BEFORE the wiki early-exits so a wiki.enabled=false config is
 # still verified. Non-blocking & always-on: drift → WARNING + exit 1; healthy → fall
@@ -238,7 +238,7 @@ elif [ "$sessions_ci_rc" -ge 2 ]; then
 else
   echo "==> gitignore-health-check: DRIFT DETECTED (sessions): '.rite/sessions/' rule missing from .gitignore" >&2
   echo "==> per-session state files (.rite/sessions/{session_id}.flow-state) would leak into dev-branch diffs." >&2
-  echo "==> Hint: add '.rite/sessions/' to .gitignore (init.md gitignore generation adds it; see #1384/#1389)." >&2
+  echo "==> Hint: add '.rite/sessions/' to .gitignore (init.md gitignore generation adds it)." >&2
   echo "WARNING: gitignore-health-check: .rite/sessions/ rule missing" >&2
   echo "==> Total gitignore-health-check findings: 1"
   exit 1
@@ -373,7 +373,7 @@ case "$branch_strategy" in
     if [ "$parent_rule_matched" -eq 0 ]; then
       echo "==> gitignore-health-check: DRIFT DETECTED (separate_branch): '.rite/wiki/' rule missing from .gitignore" >&2
       echo "==> git check-ignore -v $probe_path returned rc=$check_ignore_rc, output: ${check_ignore_out:-<empty>}" >&2
-      echo "==> Hint: PR #564 added '.rite/wiki/' as last-line-of-defense against wiki-ingest-trigger.sh silent leaks. Restore the rule." >&2
+      echo "==> Hint: '.rite/wiki/' is the last-line-of-defense against wiki-ingest-trigger.sh silent leaks. Restore the rule." >&2
       findings=$((findings + 1))
     else
       log_info "gitignore-health-check: separate_branch layer 1 healthy — ${parent_rule_line}"

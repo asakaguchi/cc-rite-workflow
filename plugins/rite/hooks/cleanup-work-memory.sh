@@ -117,7 +117,7 @@ if [ "$CLOSE_MODE" = false ]; then
   fi
 
   # Step 2: Clean up compact-state (legacy shared + this session's per-session file)
-  # Legacy shared path removal is retained for pre-#1371 migration residue.
+  # Legacy shared path removal is retained for legacy migration residue.
   rm -f "$STATE_ROOT/.rite-compact-state" 2>/dev/null || true
   rm -rf "$STATE_ROOT/.rite-compact-state.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=cleanup_work_memory" >&2
   # Per-session compact-state: derive from the resolved flow-state

@@ -7,7 +7,7 @@
 # silently broken" regressions where review/fix/close skip Phase X.X.W and the
 # wiki branch never grows even though PRs are landing.
 #
-# Issue #524 (Wiki ingest silent skip 3層防御) — layer 3 (lint growth check).
+# Wiki ingest silent skip 3層防御 — layer 3 (lint growth check).
 # Companion to:
 #   - layer 0: hooks/scripts/wiki-ingest-commit.sh — deterministic single-process
 #              raw-source commit path invoked from review.md / fix.md / close.md

@@ -38,7 +38,7 @@ if [[ -n "$wiki_section" ]]; then
   auto_query=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_query:/ { print; exit }' \
     | sed 's/[[:space:]]#.*//' | sed 's/.*auto_query:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
 fi
-case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="true" ;; esac  # #483: opt-out default
+case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="true" ;; esac  # opt-out default
 case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; esac
 echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 ```
@@ -552,7 +552,7 @@ For each candidate file returned by the search, use the Read tool to inspect the
 
 **Step 4: Edit and stage**
 
-Apply the necessary edits with the Edit tool. Do **not** prompt the user via `AskUserQuestion` — the auto-fix is mandatory per Issue #485 MUST NOT constraints. Stage the edited documentation files together with the implementation changes.
+Apply the necessary edits with the Edit tool. Do **not** prompt the user via `AskUserQuestion` — the auto-fix is mandatory per the MUST NOT constraints below. Stage the edited documentation files together with the implementation changes.
 
 ##### Result Handling
 
@@ -565,7 +565,7 @@ Apply the necessary edits with the Edit tool. Do **not** prompt the user via `As
 ##### Constraints
 
 - **MUST NOT** invoke `AskUserQuestion` from this step
-- **MUST NOT** defer detected drift to a separate Issue (this contradicts `issue_accountability` and the Issue #485 MUST NOT constraints)
+- **MUST NOT** defer detected drift to a separate Issue (this contradicts `issue_accountability` and the MUST NOT constraints)
 - **MUST NOT** modify files outside documentation (no code changes triggered by this step)
 - **MUST NOT** modify `plugins/rite/skills/reviewers/**`, `plugins/rite/hooks/**`, or `rite-config.yml` from this step — those are out of scope for documentation impact investigation
 

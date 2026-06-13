@@ -6,14 +6,14 @@
 # schema 1.1.0 後方互換 normalization を適用する:
 #   (a) schema 1.0/1.0.0 の scope 欠落を severity-based default mapping で補完
 #   (b) cross-field invariant #5 (pre_existing=false × scope=nit-noted) の auto-correct
-#   (e) Issue #1018 M2: auto_demote_low (LOW × current-pr → nit-noted、rite-config.yml で opt-out 可)
+#   (e) M2 auto_demote_low (LOW × current-pr → nit-noted、rite-config.yml で opt-out 可)
 # mutation 発生時のみ normalized tempfile に書き出して以降の jq が参照し、本 script 終了時に
 # trap で削除する (caller への file hand-off はしない。normalization の発生は
 # [CONTEXT] REVIEW_SOURCE_* retained flag で LLM コンテキストに伝達される)。
 #
 # Called from:
-#   - commands/pr/fix.md ステップ 1.2.0 "On Priority 2 success" (旧 ~154 行 inline block を委譲:
-#     Issue #1196 / #1193 MEDIUM #12)。Priority 3 (pr_comment) の string-based 鏡像は
+#   - commands/pr/fix.md ステップ 1.2.0 "On Priority 2 success" (旧 ~154 行 inline block を委譲)。
+#     Priority 3 (pr_comment) の string-based 鏡像は
 #     fix.md 内の 1.2.0.s 節に inline のまま残る (同 logic の鏡像。jq filter を変更する際は両方を同期すること)
 #
 # Usage:
@@ -36,7 +36,7 @@
 #   [CONTEXT] FIX_FALLBACK_FAILED=1; reason=severity_map_build_failed|scope_map_build_failed; ...
 #
 # Reason SoT (fix.md の reason 表からは bullet 形式で参照される — 委譲済 reason は
-# fix.md 内で `reason=` 構文を使わない #1221 規約):
+# fix.md 内で `reason=` 構文を使わない規約):
 #   scope_omitted_in_v1_0             — schema 1.0/1.0.0 の scope 欠落を default mapping で補完 (非ブロッキング)
 #   pre_existing_false_scope_nit_noted — invariant #5 違反を current-pr に auto-correct (非ブロッキング)
 #   low_current_pr_demoted_to_nit_noted — auto_demote_low による LOW × current-pr の降格 (非ブロッキング)
@@ -126,8 +126,8 @@ trap '_cleanup; exit 143' TERM
 trap '_cleanup; exit 129' HUP
 
 # ---- 旧 fix.md ステップ 1.2.0 severity_map build block の faithful port ----
-# Issue #1016: schema 1.1.0 後方互換 normalization (scope default mapping + invariant #5 auto-correct)。
-# Issue #1018 (M2): auto_demote_low 適用 (LOW × current-pr → nit-noted)。
+# schema 1.1.0 後方互換 normalization (scope default mapping + invariant #5 auto-correct)。
+# M2: auto_demote_low 適用 (LOW × current-pr → nit-noted)。
 # 本 script は file-based path 用 (Priority 0/2 共通)。Priority 3 (pr_comment, raw_json string) には
 # 別途 string-based 版が fix.md 内の 1.2.0.s 節に近接して実装されている (同 logic の鏡像)。
 #
@@ -142,7 +142,7 @@ trap '_cleanup; exit 129' HUP
 #     review_source_path を tempfile path に差し替えて downstream で参照させる。
 # (d) 後方互換: invariant #5 は pre_existing フィールドが存在する 1.1.0 JSON のみで発火する
 #     (1.0/1.0.0 では default mapping は scope を補完するのみで pre_existing は補完しない)。
-# (e) Issue #1018 M2: review.scope_assignment.auto_demote_low (default true) が true の場合、
+# (e) M2: review.scope_assignment.auto_demote_low (default true) が true の場合、
 #     severity == "LOW" ∧ scope == "current-pr" の finding の scope を "nit-noted" に降格する。
 #     1 件以上降格したら WARNING + [CONTEXT] REVIEW_SOURCE_AUTO_DEMOTED_LOW=1 を emit。
 #     auto_demote_low: false で opt-out 可能 (LOW × current-pr が通常通り blocking として fix loop に流れる)。
@@ -185,7 +185,7 @@ if [ "${norm_defaulted_count:-0}" -gt 0 ] || [ "${norm_corrected_count:-0}" -gt 
         echo "[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1; reason=pre_existing_false_scope_nit_noted; count=$norm_corrected_count" >&2
       fi
       if [ "${norm_demoted_low_count:-0}" -gt 0 ]; then
-        echo "WARNING: $norm_demoted_low_count findings (LOW × current-pr) を Issue #1018 M2 auto_demote_low により scope=nit-noted に降格しました" >&2
+        echo "WARNING: $norm_demoted_low_count findings (LOW × current-pr) を auto_demote_low により scope=nit-noted に降格しました" >&2
         echo "[CONTEXT] REVIEW_SOURCE_AUTO_DEMOTED_LOW=1; reason=low_current_pr_demoted_to_nit_noted; count=$norm_demoted_low_count" >&2
       fi
       review_source_path="$norm_tmp"
@@ -250,7 +250,7 @@ else
   # [fix:error] は stdout 分離契約のため caller が emit する (本 helper は非ゼロ exit のみ)
   exit 1
 fi
-# Issue #1018 M2: scope_map を severity_map と並行構築。
+# M2: scope_map を severity_map と並行構築。
 # findings[].scope は schema 1.1.0 で導入され、1.0/1.0.0 JSON では normalization 段階で
 # severity-based default mapping により補完済み (上記 (a))。本 step では normalization 後の
 # review_source_path から scope を file:line key で map 化する。

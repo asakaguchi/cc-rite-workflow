@@ -56,7 +56,7 @@ source "$SCRIPT_DIR/control-char-neutralize.sh"
 # validation 失敗 (rc=1) が区別不能 (両方とも「stdout 空文字 + exit 0」で復帰) だった。
 # state-read.sh / flow-state-update.sh は upfront で `[ ! -x ]` check を実施しているため、
 # それらの caller 経由では deploy regression が早期に検出されるが、本 helper を直接呼ぶ
-# 新規 caller が出現した場合に Issue #687 同型の silent skip 経路を作る。
+# 新規 caller が出現した場合に同種の silent skip 経路を作る。
 # state-read.sh の helper existence check ブロック (`for _helper in state-path-resolve.sh ... ; do
 # [ ! -x ... ] ; done` loop) と同型に統一する。
 # verified-review cycle 40: cycle 39 で「L77」「state-read.sh L49-57」と書いた行番号参照を
@@ -98,7 +98,7 @@ fi
 
 # Whitespace-stripped read.
 #
-# PR #688 followup: cycle 41 review F-16 LOW (security Hypothetical exception) — 旧実装
+# 旧実装
 # `2>/dev/null || raw=""` は permission denied / inode race / EIO 等の IO エラーを「空ファイル」と
 # 区別不能化していた。攻撃者が `.rite-session-id` を chmod 000 にした状態で別 session の
 # session_id を持つ legacy `.rite-flow-state` を残すと、helper が空文字を返し state-read.sh が

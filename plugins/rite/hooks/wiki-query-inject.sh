@@ -209,7 +209,7 @@ _extract_yaml_value() {
 }
 
 # Detect whether the wiki section actually contained an `enabled:` line so we
-# can distinguish "key absent" (legitimate default-on, opt-out per #483) from
+# can distinguish "key absent" (legitimate default-on, opt-out default) from
 # "key present but parse failed" (should surface a WARNING rather than silently
 # falling back).
 #
@@ -252,7 +252,7 @@ fi
 case "$wiki_enabled" in
   false|no|0) wiki_enabled="false" ;;
   true|yes|1) wiki_enabled="true" ;;
-  *)          wiki_enabled="true" ;;  # #483: opt-out default — key absent or unparseable variant
+  *)          wiki_enabled="true" ;;  # opt-out default — key absent or unparseable variant
 esac
 
 if [[ "$wiki_enabled" != "true" ]]; then
@@ -266,7 +266,7 @@ wiki_branch="${wiki_branch:-wiki}"
 
 # --- Fetch index.md content ---
 index_content=""
-# Issue #555 fix: select a readable ref (local wiki branch > origin/wiki).
+# Select a readable ref (local wiki branch > origin/wiki).
 # On fresh clones / separate worktrees, the local wiki branch may not exist
 # even when origin/wiki is available. Reading content via the bare branch
 # name (`git show wiki:...`) fails in that case with "fatal: invalid object
@@ -469,7 +469,7 @@ while IFS=$'\x1f' read -r score title path domain summary updated confidence; do
       elif [ -n "${_git_show_err:-}" ]; then
         : > "$_git_show_err"  # truncate between iterations
       fi
-      # Issue #555 fix: use the `ref` selected above so origin/wiki fallback
+      # Use the `ref` selected above so origin/wiki fallback
       # stays consistent between index.md (line 282) and per-page reads.
       if page_body=$(git show "${ref}:.rite/wiki/${path}" 2>"${_git_show_err:-/dev/null}"); then
         :

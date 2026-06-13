@@ -172,7 +172,7 @@ if wt_list=$(git worktree list --porcelain 2>"${wt_list_err:-/dev/null}"); then
             safe_branch=$(printf '%s' "$branch_name" | neutralize_ctrl)
             echo "[dry-run] would remove worktree: $safe_path (branch=$safe_branch)"
           else
-            # 失敗時は git の stderr を診断として surface する (refs #1352、従来は
+            # 失敗時は git の stderr を診断として surface する (従来は
             # `2>/dev/null` で失敗理由 — lock / 権限 / submodule 等 — が落ちていた)。
             if wt_rm_err=$(git worktree remove --force "$current_path" 2>&1); then
               worktrees_removed=$((worktrees_removed + 1))

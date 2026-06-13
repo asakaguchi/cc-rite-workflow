@@ -203,7 +203,7 @@ For review result output format, see [references/output-format.md](./references/
 |----------|-------|-----------|-------|----------------|
 | {level}  | {scope} | {location}| {WHAT + WHY} | {FIX + EXAMPLE} |
 
-The `Scope` column accepts `current-pr` / `follow-up` / `nit-noted` (schema 1.1.0+, Issue #1016). See [_reviewer-base.md Scope Assignment Flowchart](../../agents/_reviewer-base.md#scope-assignment-flowchart) for assignment rules and the [Severity × Scope Matrix](../../references/severity-levels.md#severity--scope-matrix) for forbidden combinations.
+The `Scope` column accepts `current-pr` / `follow-up` / `nit-noted` (schema 1.1.0+). See [_reviewer-base.md Scope Assignment Flowchart](../../agents/_reviewer-base.md#scope-assignment-flowchart) for assignment rules and the [Severity × Scope Matrix](../../references/severity-levels.md#severity--scope-matrix) for forbidden combinations.
 
 ## Error Handling
 

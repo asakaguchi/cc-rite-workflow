@@ -138,7 +138,7 @@ rm -f "${wm_sync_err:-}"
 
 #### 3.5.2 Update Content
 
-> **委譲状況（#1195 #8 完了）**: §3.5.1（`### 完了情報` の `append-eof` 追記）に続き、本節の **進捗チェックリスト merge**（`### 進捗` への dedup 追記）も `issue-comment-wm-sync.sh` の `merge-checklist` transform へ委譲済み。cleanup ステップ 11 が §3.5 全体を実行する経路で wired され、§3.5.1（完了情報）とは独立した fetch→transform→PATCH として走る（touch するセクションが異なるため順序非依存）。
+> **委譲状況（完了）**: §3.5.1（`### 完了情報` の `append-eof` 追記）に続き、本節の **進捗チェックリスト merge**（`### 進捗` への dedup 追記）も `issue-comment-wm-sync.sh` の `merge-checklist` transform へ委譲済み。cleanup ステップ 11 が §3.5 全体を実行する経路で wired され、§3.5.1（完了情報）とは独立した fetch→transform→PATCH として走る（touch するセクションが異なるため順序非依存）。
 
 Automatically append the following to the work memory:
 

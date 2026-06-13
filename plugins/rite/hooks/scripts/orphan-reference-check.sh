@@ -5,7 +5,7 @@
 # and have no test pin (tracked separately in plugins/rite/hooks/tests/ and
 # plugins/rite/scripts/tests/) protecting their content.
 #
-# Motivation: PR #1162 cycle 15 revealed that
+# Motivation: a review revealed that
 # `plugins/rite/commands/issue/references/projects-status-update-callsites.md`
 # (146 lines) was an orphan SoT file with zero inbound references and no test
 # pin, surviving for multiple workflow refactorings undetected. This guard

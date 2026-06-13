@@ -128,7 +128,7 @@ ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {prin
 echo "[CONTEXT] MULTI_SESSION_ENABLED=$ms_enabled; WORKTREE_BASE=$ms_base"
 ```
 
-新規プロジェクトはテンプレート config が `enabled: true`（#1391 でデフォルト ON 化）のため `MULTI_SESSION_ENABLED=true` となりステップ 2 で 2.2-W / 2.3-W（セッション worktree）を実行する。`MULTI_SESSION_ENABLED=false`（`enabled: false` を明示設定 / `multi_session:` ブロックが存在しない旧 config — 上記 `case` の fallback）のときは従来の Step 2.2 / 2.3 をそのまま実行し、挙動は単一セッション時と完全一致する。`multi_session:` キー欠落時の fallback を `false` に保つことで既存プロジェクトの後方互換を担保する（デフォルト変更が効くのは新規 `/rite:init` 生成時のみ）。
+新規プロジェクトはテンプレート config が `enabled: true`（デフォルト ON）のため `MULTI_SESSION_ENABLED=true` となりステップ 2 で 2.2-W / 2.3-W（セッション worktree）を実行する。`MULTI_SESSION_ENABLED=false`（`enabled: false` を明示設定 / `multi_session:` ブロックが存在しない旧 config — 上記 `case` の fallback）のときは従来の Step 2.2 / 2.3 をそのまま実行し、挙動は単一セッション時と完全一致する。`multi_session:` キー欠落時の fallback を `false` に保つことで既存プロジェクトの後方互換を担保する（デフォルト変更が効くのは新規 `/rite:init` 生成時のみ）。
 
 ### 1.5 Iteration 自動 assign
 
@@ -166,7 +166,7 @@ echo "[CONTEXT] ISSUE_CLAIM=$claim_out; rc=$claim_rc"
 - **type**: labels / title から推定（`bug`/`bugfix` → `fix`、`docs` → `docs`、`refactor` → `refactor`、`chore`/`maintenance` → `chore`、それ以外 → `feat`）
 - **slug**: Issue title を kebab-case 化 (英数字 + ハイフン、50 文字上限)
 
-> **ステップ 2.2 / 2.3 の分岐**: ステップ 1.4 の `[CONTEXT] MULTI_SESSION_ENABLED=` marker を読む。`true`（新規プロジェクトのデフォルト、#1391）→ 下記 **2.2-W / 2.3-W**（セッション worktree）を実行し、従来の 2.2 / 2.3 は **置換**してスキップする。`false`（`enabled: false` 明示設定 / `multi_session:` ブロック欠落の旧 config）→ 下記 **2.2 / 2.3**（従来動作、単一セッション時と完全一致）を実行する。
+> **ステップ 2.2 / 2.3 の分岐**: ステップ 1.4 の `[CONTEXT] MULTI_SESSION_ENABLED=` marker を読む。`true`（新規プロジェクトのデフォルト）→ 下記 **2.2-W / 2.3-W**（セッション worktree）を実行し、従来の 2.2 / 2.3 は **置換**してスキップする。`false`（`enabled: false` 明示設定 / `multi_session:` ブロック欠落の旧 config）→ 下記 **2.2 / 2.3**（従来動作、単一セッション時と完全一致）を実行する。
 
 ### 2.2 既存ブランチチェック（multi_session 無効時）
 
@@ -231,7 +231,7 @@ worktree を作成・再利用したら、`.rite-plugin-root` を worktree root 
 [ -f "$repo_root/.rite-plugin-root" ] && cp "$repo_root/.rite-plugin-root" "$wt_path/.rite-plugin-root" 2>/dev/null || true
 ```
 
-その後 `EnterWorktree` ツールを `path: {wt_path}` で呼び出す（`{wt_path}` は 2.2-W の `WT_CASE` marker の `path=` 値。EnterWorktree のツール側ガード「ユーザー / プロジェクト指示で明示された場合のみ」は、`rite-config.yml` の `multi_session.enabled: true`（リポジトリにコミットされた**プロジェクト指示**。値がテンプレートのデフォルト ON 由来かユーザーの明示編集由来かに依らずプロジェクト指示として成立する）+ 本コマンド定義の明示指示の両方で満たす。#1391 でデフォルトが ON になっても、この `enabled: true` を marker 経由で確認した分岐内でのみ EnterWorktree を呼ぶため、ガードの根拠は default off 時と変わらず成立する）。
+その後 `EnterWorktree` ツールを `path: {wt_path}` で呼び出す（`{wt_path}` は 2.2-W の `WT_CASE` marker の `path=` 値。EnterWorktree のツール側ガード「ユーザー / プロジェクト指示で明示された場合のみ」は、`rite-config.yml` の `multi_session.enabled: true`（リポジトリにコミットされた**プロジェクト指示**。値がテンプレートのデフォルト ON 由来かユーザーの明示編集由来かに依らずプロジェクト指示として成立する）+ 本コマンド定義の明示指示の両方で満たす。デフォルトが ON でも、この `enabled: true` を marker 経由で確認した分岐内でのみ EnterWorktree を呼ぶため、ガードの根拠は default off 時と変わらず成立する）。
 
 - **EnterWorktree が不在 / 失敗の場合**: **silent fallback はしない**。AskUserQuestion で選択する:
   - 「中止（推奨）」: worktree は保持し、再実行で再利用できる旨を案内して終了。

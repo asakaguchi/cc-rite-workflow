@@ -111,7 +111,7 @@ if [ -z "$CONTENT_FILE" ] || [ ! -f "$CONTENT_FILE" ]; then
   exit 1
 fi
 
-# iso_timestamp fail-fast gate (ISO 8601 allowlist — Issue #1200)。
+# iso_timestamp fail-fast gate (ISO 8601 allowlist)。
 # 旧 denylist (`{`-prefix / `}`-suffix / 空 / sentinel 完全一致のみ reject) は placeholder 残留の
 # 典型形しか弾けず、`&`/`\` 等の awk replacement metacharacter や任意の不正値を素通ししていた。
 # ISO 8601 形状 (`YYYY-MM-DDTHH:MM:SS` + `±HH:MM` または `Z`) の allowlist 検証に置換し、

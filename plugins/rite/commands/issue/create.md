@@ -281,7 +281,7 @@ fi
 <!-- [create:returned-to-caller:{issue_number}] -->
 ```
 
-以上で `/rite:issue:create` は完了（flow-state には触れない — Issue #1184）。
+以上で `/rite:issue:create` は完了（flow-state には触れない）。
 
 ---
 

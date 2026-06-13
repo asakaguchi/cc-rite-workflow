@@ -33,7 +33,7 @@ fi
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
 # Resolve the active flow-state file: always the per-session file (the legacy
-# single-file selection path was removed, Issue #1458). Stderr is captured via the
+# single-file selection path was removed). Stderr is captured via the
 # canonical _mktemp-stderr-guard.sh helper (see session-start.sh for the same pattern) so
 # resolver WARNING/ERROR lines don't get silently dropped — even on the success
 # arm, where helper graceful-degrade paths still emit diagnostics.
@@ -150,7 +150,7 @@ if [ -f "$STATE_FILE" ]; then
                 fi
             elif [[ "$_state_phase" == "cleanup" || "$_state_phase" == cleanup_* ]] && [ "$_state_phase" != "cleanup_completed" ]; then
                 # `cleanup*` (underscore なし) は将来 `cleanupXYZ` 等の派生 phase を誤検出するリスクがあるため、
-                # `cleanup` 完全一致 / `cleanup_*` のみを対象に精密化 (create_* 側との対称性、#608 follow-up)
+                # `cleanup` 完全一致 / `cleanup_*` のみを対象に精密化 (create_* 側との対称性)
                 _lifecycle_unfinished_kind="cleanup"
             fi
         fi
@@ -221,13 +221,13 @@ WARN_MSG
     # to this session, so even a corrupt one has no value post-termination, and
     # leaving it would only confuse the next session-start defensive reset.
     # Detection: STATE_FILE matches `*/.rite/sessions/*.flow-state` (the per-session
-    # path returned by `flow-state.sh path`, now the only resolved form — Issue #1458).
+    # path returned by `flow-state.sh path`, now the only resolved form).
     # A residual legacy `.rite-flow-state` single-file (left over from a pre-v3
     # checkout) is intentionally preserved here so the next session-start's
     # `flow-state.sh migrate` can absorb it into per-session/v3 rather than have it
     # silently deleted.
     # Stale-file cleanup (long-running sessions / crash leftovers) is out of scope
-    # for this Issue per Issue #680 §4.3 (handled by a follow-up).
+    # for this Issue (handled by a follow-up).
     if [[ "$STATE_FILE" == *"/.rite/sessions/"*".flow-state" ]] && [ -f "$STATE_FILE" ]; then
         # Surface rm failure (readonly fs / permission denied) so the next
         # session doesn't silently read stale state.

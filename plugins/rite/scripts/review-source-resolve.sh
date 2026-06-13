@@ -233,7 +233,7 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
     fi
     case "$schema_version" in
       "1.0.0"|"1.0"|"1.1.0")
-        # Issue #1016: schema 1.1.0 を accept list に追加。
+        # schema 1.1.0 を accept list に追加。
         # 1.0/1.0.0 受信時は後段の ステップ 1.2.0.s に近接した default mapping ステップで
         # findings[].scope の severity ベース補完を実施する (review-result-schema.md
         # 後方互換性セクション参照)。本 case 内では schema_version をブロックレベルで
@@ -531,7 +531,7 @@ if [ -z "$review_source" ]; then
         fi
         case "$schema_version" in
           "1.0.0"|"1.0"|"1.1.0")
-            # Issue #1016: schema 1.1.0 を accept list に追加 (Priority 2 case 文)。
+            # schema 1.1.0 を accept list に追加 (Priority 2 case 文)。
             # Priority 0/2/3 の 3 sites を symmetric に保つ (review-result-schema.md
             # Schema Version SoT セクションの「読取側 (3 値受理義務、3 箇所で完全同期)」契約)。
             #

@@ -3,7 +3,7 @@
 # Extract structured findings statistics from /rite:pr:review PR comments.
 #
 # Purpose: Provide a quantitative measurement tool for review quality
-#          (used by Phase D quantitative validation in Issue #355).
+#          (used by Phase D quantitative validation).
 #
 # Usage:
 #   bash measure-review-findings.sh --pr <pr_number> [--owner <owner>] [--repo <repo>]
@@ -53,7 +53,7 @@ OPTIONS:
   --help             Show this help message
 
 EXAMPLES:
-  # Measure all review cycles on PR #350
+  # Measure all review cycles on a PR
   measure-review-findings.sh --pr 350
 
   # Measure from a saved review comment dump
@@ -144,7 +144,7 @@ else
     exit 1
   fi
   # `--paginate` is required because GitHub API defaults to 30 comments per
-  # page; PRs with many review cycles (e.g. PR #350 with 16+ cycles) would
+  # page; PRs with many review cycles (e.g. 16+ cycles) would
   # silently truncate without it. Capture stderr to a file so error messages
   # surface the actual gh diagnostic instead of a generic "failed to fetch".
   gh api --paginate "repos/${OWNER}/${REPO}/issues/${PR_NUMBER}/comments" \

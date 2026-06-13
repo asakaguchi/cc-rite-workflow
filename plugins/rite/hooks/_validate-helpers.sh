@@ -4,11 +4,11 @@
 # verified-review F-06 (MEDIUM): state-read.sh / flow-state-update.sh が同一の
 # helper list (state-path-resolve.sh / _resolve-session-id.sh / 等) を完全に複製
 # していた DRY 違反を解消。本 helper を caller から呼び出すことで、将来 helper を
-# 1 つ追加する際に 1 ファイル更新のみで済む。Issue #687 root cause (caller 6 箇所が
+# 1 つ追加する際に 1 ファイル更新のみで済む。root cause (caller 6 箇所が
 # `.rite-flow-state` を直接 jq read する片肺更新 drift) と同型の構造的問題を別
 # layer で再発させないための DRY 化。
 #
-# PR #688 cycle 13 F-01 (HIGH): caller の helper-list 自体の duplication を解消する。
+# caller の helper-list 自体の duplication を解消する。
 # state-read.sh と flow-state-update.sh が同一 list を byte-for-byte 重複保持していた
 # 問題に対応するため、本 helper 内に **DEFAULT_HELPERS 配列** を追加し、引数 0 個
 # (script_dir のみ) で呼ばれた場合は default list を使う API 拡張を行う。これにより
@@ -39,7 +39,7 @@
 # Rationale:
 #   `set -euo pipefail` 下でも `if [ ! -x ...]` block は non-blocking として扱われ、
 #   bash が exit 127 を silent suppression する経路が散在する。本 helper で upfront
-#   fail-fast 検査することで Issue #687 同型の deploy regression を構造的に塞ぐ。
+#   fail-fast 検査することで同種の deploy regression を構造的に塞ぐ。
 #
 # DEFAULT_HELPERS scope:
 #   state-read.sh と flow-state-update.sh が依存する core helper set。両 caller は

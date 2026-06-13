@@ -5,7 +5,7 @@
 # markdown files (fix.md, review.md, tech-writer-reviewer.md, etc.).
 #
 # This is the static lint counterpart to LLM agent-based review, which has
-# been observed to miss distributed/asymmetric fix patterns (PR #350 / Issue #361).
+# been observed to miss distributed/asymmetric fix patterns.
 #
 # Patterns:
 #   1. retained-flag coverage  — `exit 1` without preceding `[CONTEXT] *_FAILED=1` emit
@@ -15,7 +15,7 @@
 #   5. eval-table list drift    — evaluation-order table parenthesized list vs emit
 #   6. review-result schema_version drift — `.rite/review-results/*.json` whose
 #      `.schema_version` is outside the accept list (delegates to
-#       `review-schema-version-check.sh`; Issue #1021)
+#       `review-schema-version-check.sh`)
 #
 # Usage:
 #   distributed-fix-drift-check.sh [--all] [--target FILE]... [--pattern N]
@@ -36,7 +36,7 @@ USE_ALL=0
 
 # Default target set when --all is given.
 # review-findings-maps.sh は fix.md ステップ 1.2.0 から委譲された reason を emit するため
-# Pattern-5 (helper docstring 内の Eval-order enumeration vs reason= emits) の対象に含める (Issue #1196)。
+# Pattern-5 (helper docstring 内の Eval-order enumeration vs reason= emits) の対象に含める。
 DEFAULT_ALL_TARGETS=(
   "plugins/rite/commands/pr/fix.md"
   "plugins/rite/commands/pr/review.md"
@@ -54,7 +54,7 @@ Options:
   --pattern N                 Only run pattern N (1-6). Default: all patterns.
   --repo-root DIR             Repository root (default: git rev-parse --show-toplevel)
   --show-extracted-reasons    Print the extracted table_reasons / emit_reasons lists for Pattern 2.
-                              Useful for differentiating real drift from regex artifacts (Issue #1158 AC-4).
+                              Useful for differentiating real drift from regex artifacts.
   --quiet                     Suppress per-finding output (still exit non-zero on drift)
   -h, --help                  Show this help
 
@@ -123,7 +123,7 @@ if [ "${#TARGETS[@]}" -eq 0 ]; then
 fi
 
 DRIFT_COUNT_FILE="$(mktemp)" || { echo "ERROR: mktemp failed" >&2; exit 2; }
-# Pattern 6 (Issue #1021) で使用する stderr capture tempfile を script-level で宣言し、
+# Pattern 6 で使用する stderr capture tempfile を script-level で宣言し、
 # 統合 trap で signal interrupt 時の orphan を防ぐ。
 PATTERN6_STDERR=""
 # Pattern 2 awk tempfile も script-level で宣言して統合 trap で signal interrupt 時の
@@ -199,7 +199,7 @@ check_pattern_1() {
 # ----- Pattern 2: reason-table drift -----------------------------------------
 # Markdown table cells like `| `reason_name` ...` vs `reason=reason_name` emits.
 #
-# Robustness notes (Issue #1158):
+# Robustness notes:
 #   - Both extractors accept hyphens in identifiers ([a-z_][a-z0-9_-]*) so that
 #     reasons such as `no-pending` are not truncated to `no`.
 #   - Both extractors skip matches that are truncation artifacts:
@@ -308,7 +308,7 @@ check_pattern_2() {
   rm -f "$AWK_EMIT_OUT" "${AWK_EMIT_ERR:-}"
   AWK_EMIT_OUT="" AWK_EMIT_ERR=""
 
-  # AC-4 (Issue #1158): expose extracted reason lists so the user can
+  # AC-4: expose extracted reason lists so the user can
   # differentiate true positives from regex artifacts at a glance.
   # `${var//$'\n'/ }` で改行を space に置換し、parameter expansion 形で渡す設計:
   # 引数渡し形 (`printf '%s ' $var`) は word-splitting と glob 展開が同時発生するため、将来
@@ -440,7 +440,7 @@ for file in "${TARGETS[@]}"; do
   run_pattern 5 && check_pattern_5 "$file"
 done
 
-# ----- Pattern 6: review-result schema_version drift (Issue #1021) -----------
+# ----- Pattern 6: review-result schema_version drift -----------
 # Delegates to review-schema-version-check.sh, which checks .rite/review-results/*.json
 # against the accept list ("1.0.0" / "1.0" / "1.1.0"). Runs once per invocation
 # (independent of the TARGETS loop above, since the JSON files are scanned by

@@ -5,7 +5,7 @@
 # 固定 `--limit` による 100/500 件超 Project の silent truncation を防ぐ (旧 inline 実装の動機を継承)。
 #
 # Called from:
-#   - commands/issue/list.md Phase 4.2 (Status Map 構築。旧 ~44 行 inline block を委譲: Issue #1196)
+#   - commands/issue/list.md Phase 4.2 (Status Map 構築。旧 ~44 行 inline block を委譲)
 #
 # Usage:
 #   bash projects-items-fetch.sh --project-number N --owner OWNER
@@ -26,7 +26,7 @@ fetch_failed() {
   exit 0
 }
 
-# --- 引数解析 (shift; shift — Issue #1224 の値なしフラグ無限ループ素因を回避) ---
+# --- 引数解析 (shift; shift — 値なしフラグによる無限ループ素因を回避) ---
 project_number=""
 owner=""
 while [ $# -gt 0 ]; do

@@ -30,9 +30,9 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 
 # Resolve active flow-state file path.
 # Always returns the per-session file (the legacy single-file selection path was
-# removed, Issue #1458).
+# removed).
 #
-# Issue #749: stderr pass-through for diagnostic visibility, via canonical helper
+# Stderr pass-through for diagnostic visibility, via canonical helper
 # `_mktemp-stderr-guard.sh`. 詳細は session-start.sh の同パターンを参照。
 # filter は flow-state.sh cross-session guard の 3-pattern を `^ERROR:` で
 # superset 化した 4-pattern 拡張版 (resolver self-validation の ERROR: を捕捉)。
@@ -260,7 +260,7 @@ if acquire_wm_lock "$LOCKDIR"; then
     fi
 
     # Delegate to shared helper (runs in subshell to isolate cd)
-    # Issue #1003 AC-7/AC-8 observability: emit snapshot diag log so analysts can correlate
+    # observability: emit snapshot diag log so analysts can correlate
     # pre-compact write timing with subsequent post-compact phase. Without this, the
     # `create_delegation` snapshot fixation hypothesis is unverifiable (no record of which
     # phase value was captured at compact time).

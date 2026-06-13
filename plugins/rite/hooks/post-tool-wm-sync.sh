@@ -31,8 +31,8 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 
 # Per-session state path resolution (v3 SoT): flow-state.sh path always
 # returns the per-session file (`<root>/.rite/sessions/<session_id>.flow-state`)
-# — the legacy single-file `.rite-flow-state` selection path was removed
-# (Issue #1458). The atomic write below (last_synced_phase update) targets the
+# — the legacy single-file `.rite-flow-state` selection path was removed.
+# The atomic write below (last_synced_phase update) targets the
 # resolved per-session file, preserving per-session isolation.
 if FLOW_STATE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>/dev/null); then
   :

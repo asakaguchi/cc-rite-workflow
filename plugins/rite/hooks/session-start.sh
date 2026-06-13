@@ -56,7 +56,7 @@ fi
 # SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
-# Write plugin root for command-file consumption (version-independent, #241)
+# Write plugin root for command-file consumption (version-independent)
 _plugin_root="$(dirname "$SCRIPT_DIR")"
 if [ -d "$_plugin_root/hooks" ]; then
   printf '%s' "$_plugin_root" > "$STATE_ROOT/.rite-plugin-root" 2>/dev/null || true
@@ -77,7 +77,7 @@ fi
 # Cleans both the per-session compact-state (.rite/sessions/{sid}.compact-state,
 # derived from the resolved STATE_FILE) and the legacy shared path
 # (.rite-compact-state). Removing the legacy file here is the migration path for
-# pre-#1371 residue (AC-3): a leftover shared snapshot is no longer consumed by
+# legacy residue: a leftover shared snapshot is no longer consumed by
 # post-compact.sh (which now reads the per-session path), so it must be reaped
 # here. Both are stale recovery snapshots once no active flow exists — there is
 # no silent destruction of live state.
@@ -151,7 +151,7 @@ if [ "$SOURCE" = "startup" ]; then
       esac
     fi
 
-    # --- Deprecated flow_state.schema_version: 1 warning (Issue #1458) ---
+    # --- Deprecated flow_state.schema_version: 1 warning ---
     # The legacy single-file (.rite-flow-state) selection path was removed in the
     # per-session unification; flow-state is always per-session now. An explicit
     # `flow_state.schema_version: 1` no longer selects single-file — it is ignored.
@@ -239,7 +239,7 @@ if [ "$SOURCE" = "startup" ]; then
     # The JSON transform (rite-hook detection via RITE_HOOK_RE + selective removal) is
     # delegated to the shared scripts/settings-local-rite-hook-cleanup.py — the same
     # single-source script the .sh wrapper uses — so the regex lives in exactly one place
-    # (Issue #1239; previously an inline python3 copy duplicated both the regex and the
+    # (previously an inline python3 copy duplicated both the regex and the
     # whole transform). Its documented exit codes are reused here: 0 = rite hooks removed
     # (cleaned JSON on stdout → captured into _repair_tmp), 1 = intentional no-op (no
     # hooks key / no rite entries), 2 = invalid JSON. Distinguishing the no-op (rc=1) from
@@ -354,11 +354,11 @@ fi
 # Resolve active flow-state file path.
 # `flow-state.sh path` always returns the per-session file
 # (`.rite/sessions/<sid>.flow-state`) — the legacy single-file `.rite-flow-state`
-# selection path was removed (Issue #1458). The empty-string fallback below keeps
+# selection path was removed. The empty-string fallback below keeps
 # the hook non-blocking under helper deploy regression (e.g. chmod -x or partial
 # install) by skipping recovery rather than reading a single-file form.
 #
-# Issue #749: stderr pass-through for diagnostic visibility, via canonical
+# Stderr pass-through for diagnostic visibility, via canonical
 # helper `_mktemp-stderr-guard.sh`.
 # - mktemp 失敗時に 3 行 WARNING を emit (silent fall-through 解消)
 # - chmod 600 / TMPDIR 尊重を helper 経由で取得
@@ -567,4 +567,4 @@ EOF
 # --- Session ID notification ---
 # session_id is now auto-read from .rite-session-id by flow-state.sh.
 # stdout output removed to prevent Claude from fabricating inconsistent values
-# via the {session_id} placeholder. See Issue #221.
+# via the {session_id} placeholder.

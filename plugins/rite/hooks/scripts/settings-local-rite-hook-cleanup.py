@@ -29,7 +29,7 @@ import sys
 # and dev/relative `.../rite/hooks/` — while rejecting look-alikes where `rite` is
 # merely a substring of another segment (`favorite/hooks/`, `prerite/hooks/`,
 # `rite-something/hooks/`), which the old `rite.*?/hooks/` over-matched and could
-# silently strip user-defined non-rite hooks from settings.local.json (Issue #1231).
+# silently strip user-defined non-rite hooks from settings.local.json.
 RITE_HOOK_RE = re.compile(r"(?:^|/)rite/(?:[^/]+/)?hooks/")
 
 

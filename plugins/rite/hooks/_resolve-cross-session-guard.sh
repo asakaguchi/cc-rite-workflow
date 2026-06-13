@@ -26,7 +26,7 @@
 #   between writer-side `_resolve_session_state_path` and reader-side state-read.sh
 #   per-session resolver. DRY-ifying eliminates the drift risk where a future
 #   tightening of the comparison (e.g., variant-bit equivalence, normalization)
-#   is applied to one side only — Issue #687 root cause was a writer-side guard
+#   is applied to one side only — the root cause was a writer-side guard
 #   that the reader-side did not yet mirror (cycle 32 added writer, cycle 33
 #   added reader).
 #

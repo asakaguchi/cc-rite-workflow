@@ -29,8 +29,8 @@
 #     "options": {
 #       "source": "interactive|pr_review|pr_create|cleanup|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split",
 #                # Note: 以下の値は legacy 互換のため enum に含めない (caller 消失済):
-#                #   - `pr_fix`:          #1136 で fix.md の Automatic Separate Issue Creation が廃止
-#                #   - `parent_routing`:  #1079 で parent-routing.md sub-skill が廃止
+#                #   - `pr_fix`:          fix.md の Automatic Separate Issue Creation が廃止されたため
+#                #   - `parent_routing`:  parent-routing.md sub-skill が廃止されたため
 #                #   - `lint`:            commands/lint.md は guard 用途のみで invoke しない
 #       "non_blocking_projects": true  # default: true
 #     }
@@ -225,7 +225,7 @@ fi
 PROJECT_REG="ok"
 
 # Step 2.1: Add Issue to Project (capture item ID directly via --format json)
-# #669: 3-attempt exponential backoff for transient API failures.
+# 3-attempt exponential backoff for transient API failures.
 ITEM_ADD_RESULT=$(retry_with_backoff 3 "$GH_ERR_FILE" gh project item-add "$PROJECT_NUMBER" --owner "$OWNER" --url "$ISSUE_URL" --format json) || {
   add_warning_with_stderr "gh project item-add failed for Issue #$ISSUE_NUMBER after 3 attempts: $(cat "$GH_ERR_FILE")"
   output_result "$ISSUE_URL" "$ISSUE_NUMBER" "" "" "failed"
@@ -253,7 +253,7 @@ if [[ "$GQL_ROOT" != "user" && "$GQL_ROOT" != "organization" ]]; then
 fi
 
 # Step 2.3: Retrieve project item ID and field information
-# #669: 3-attempt exponential backoff for transient API failures.
+# 3-attempt exponential backoff for transient API failures.
 GQL_FIELDS_QUERY="
 query(\$owner: String!, \$projectNumber: Int!) {
   ${GQL_ROOT}(login: \$owner) {
@@ -315,7 +315,7 @@ if [ -z "$ITEM_ID" ]; then
   ITEM_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r --arg root "$GQL_ROOT" --argjson num "$ISSUE_NUMBER" '.data[$root].projectV2.items.nodes[] | select(.content.number == $num) | .id // empty')
 fi
 if [ -z "$ITEM_ID" ]; then
-  # Retry with larger window. #669: 3-attempt exponential backoff for transient failures.
+  # Retry with larger window. 3-attempt exponential backoff for transient failures.
   GQL_ITEMS_QUERY="
 query(\$owner: String!, \$projectNumber: Int!) {
   ${GQL_ROOT}(login: \$owner) {
@@ -377,7 +377,7 @@ set_field() {
     return 0
   fi
 
-  # #669: Replace ad-hoc 1-retry loop with retry_with_backoff (3 attempts, exponential backoff).
+  # Use retry_with_backoff (3 attempts, exponential backoff) instead of an ad-hoc 1-retry loop.
   if ! retry_with_backoff 3 "$FIELD_ERR_FILE" gh project item-edit --project-id "$PROJECT_ID" --id "$ITEM_ID" --field-id "$field_id" --single-select-option-id "$option_id" >/dev/null; then
     add_warning_with_stderr "Failed to set $field_name=$field_value for Issue #$ISSUE_NUMBER after 3 attempts: $(cat "$FIELD_ERR_FILE")"
     PROJECT_REG="partial"
@@ -405,7 +405,7 @@ if [ "$ITERATION_MODE" = "auto" ]; then
       | .id // empty
     ')
     if [ -n "$CURRENT_ITER_ID" ]; then
-      # #669: 3-attempt exponential backoff for transient API failures.
+      # 3-attempt exponential backoff for transient API failures.
       ITER_MUTATION='
 mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $iterationId: String!) {
   updateProjectV2ItemFieldValue(

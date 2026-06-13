@@ -114,7 +114,7 @@ if [[ ! -f "rite-config.yml" ]]; then
 fi
 
 # -----------------------------------------------------------------------
-# rite-config.yml parser + branch name validator (shared lib, Issue #549)
+# rite-config.yml parser + branch name validator (shared lib)
 # -----------------------------------------------------------------------
 # shellcheck source=lib/wiki-config.sh
 source "$_SCRIPT_DIR/lib/wiki-config.sh"

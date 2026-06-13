@@ -5,7 +5,7 @@
 # review.md ステップ 6.1.c の skip notification 処理 (post_comment_mode gate + pr_number /
 # file_timestamp / local_save_failed の fail-fast gate + LOCAL_SAVE_FAILED に基づく 2 ケース分岐)
 # を担う。本文側の巨大 inline bash (機械強制 case 分割 + 2 つの cat heredoc) を helper に切り出す
-# ことで、単一 Bash invocation での malform 無言停止を回避する (Issue #1221、6.1.b の
+# ことで、単一 Bash invocation での malform 無言停止を回避する (6.1.b の
 # review-comment-post.sh 切り出しと対称)。
 #
 # Usage:

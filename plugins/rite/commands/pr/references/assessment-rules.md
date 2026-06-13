@@ -88,7 +88,7 @@ When executed standalone (outside a loop), the same rules apply: scope ∈ {curr
 
 ## 5.3.3 Assessment Logic
 
-Use **only findings with `scope ∈ {current-pr, follow-up}`** for determination (nit-noted findings are excluded per §5.3.1 Issue #1018 M2 exclusion). Priority: CRITICAL findings → Requires fixes | HIGH/MEDIUM/LOW-MEDIUM/LOW findings → Cannot merge (blocking findings exist) | 0 blocking findings (nit-noted のみ残存可) → Merge OK.
+Use **only findings with `scope ∈ {current-pr, follow-up}`** for determination (nit-noted findings are excluded per §5.3.1 nit-noted exclusion). Priority: CRITICAL findings → Requires fixes | HIGH/MEDIUM/LOW-MEDIUM/LOW findings → Cannot merge (blocking findings exist) | 0 blocking findings (nit-noted のみ残存可) → Merge OK.
 
 **`total_findings` definition**: `total_findings = count(findings where scope ∈ {current-pr, follow-up})`. `acknowledged_nit_count = count(findings where scope == "nit-noted")` は独立 metric で `overall_assessment` 評価には使われない (Phase 4.6 サマリ表示のみ)。
 

@@ -3,7 +3,7 @@
 #
 # Scans repository Issues that are linked to OPEN, Ready-for-review PRs (isDraft=false)
 # and detects ones whose GitHub Projects Status is still "In Progress" — the symptom
-# of the Issue #1003 silent-skip bug. Outputs JSON to stdout and a warning summary to
+# of the silent-skip bug. Outputs JSON to stdout and a warning summary to
 # stderr. Optionally attempts reconciliation when --reconcile is passed.
 #
 # Usage:
@@ -56,7 +56,7 @@ watchdog-status-mismatch.sh - Status Mismatch Watchdog
 
 Scans repository Issues that are linked to OPEN, Ready-for-review PRs (isDraft=false)
 and detects ones whose GitHub Projects Status is still "In Progress" — the symptom
-of the Issue #1003 silent-skip bug. Outputs JSON to stdout and a warning summary to
+of the silent-skip bug. Outputs JSON to stdout and a warning summary to
 stderr. Optionally attempts reconciliation when --reconcile is passed.
 
 Usage:

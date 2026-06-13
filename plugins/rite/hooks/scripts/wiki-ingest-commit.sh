@@ -21,9 +21,9 @@
 # ステップ 5.1 Block A + Block B. It exists because the markdown-based ステップ
 # 5.1 requires Claude to chain three Bash tool invocations across an LLM
 # Write/Edit phase, which is structurally fragile under E2E output
-# minimization and sub-skill auto-continuation failures (Issue #525, and
-# the repeated but ineffective silent-skip defence layers of #515, #518,
-# #524). By moving the git stash/checkout/commit/push sequence into a
+# minimization and sub-skill auto-continuation failures, where repeated
+# silent-skip defence layers proved ineffective. By moving the git
+# stash/checkout/commit/push sequence into a
 # single shell script, the raw source always lands on the wiki branch as
 # long as this script is invoked even once — regardless of whether Claude
 # correctly continues its prose contract afterwards.
@@ -422,7 +422,7 @@ fi
 #
 # Reached only when the wiki worktree does not exist (fresh clone /
 # pre-init state) OR the worktree is checked out to a different branch.
-# Preserves backward compat with pre-Issue-#547 setups.
+# Preserves backward compat with legacy setups.
 #
 # Design:
 # 1. Copy each pending raw file into /tmp/rite-wiki-stage-$$ (preserving
@@ -471,7 +471,7 @@ if ! git show-ref --verify --quiet "refs/heads/${wiki_branch}"; then
  echo " hint (run one of these, in order of preference):" >&2
  echo " 1) git fetch origin ${wiki_branch}:${wiki_branch} # fresh clone: create local branch from origin/${wiki_branch}" >&2
  echo " 2) /rite:wiki:init # uninitialized repo: initialize Wiki structure" >&2
- echo " NOTE: Issue #528 trade-off — this exit 2 silently defers raw source commit" >&2
+ echo " NOTE: trade-off — this exit 2 silently defers raw source commit" >&2
  echo " until the wiki branch exists locally. On a fresh clone the caller" >&2
  echo " emits wiki_ingest_skipped with reason=commit_branch_missing." >&2
  # Explicit cleanup + disarm the mini-trap so the main cleanup_body trap

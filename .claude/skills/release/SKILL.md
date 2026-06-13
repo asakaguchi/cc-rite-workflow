@@ -141,6 +141,8 @@ grep -rn "{OLD_VERSION}" .claude-plugin/ plugins/rite/.claude-plugin/ README.md 
 
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 形式で、英語版と日本語版を更新する。
 
+エントリは機能名レベルで記述し、「従来の挙動」「以前の方式」のような基準点が新規読者に不明な暗黙の歴史依存表現を避ける（修正対象の旧挙動を述べる場合も変更対象のキー・機能名を明示する）。詳細は CHANGELOG.md / CHANGELOG.ja.md 冒頭の「歴史依存表現の取扱方針」注記を参照。
+
 #### CHANGELOG.md（英語）
 
 既存の最新セクションの上に新セクションを挿入:

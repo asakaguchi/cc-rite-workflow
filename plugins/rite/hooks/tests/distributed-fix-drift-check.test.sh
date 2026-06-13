@@ -389,6 +389,39 @@ else
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
 
+# --- TC-10: emit-only file (no reason table AND no enumeration) is skipped ---
+# Exercises the compound early-return guard `[ -z "$table_reasons" ] && [ -z "$enum_reasons" ]`.
+# A file that emits reasons but documents them elsewhere (delegated helper) must
+# NOT be flagged — Pattern-2 is out of scope without an in-file tracking structure.
+# Without this case, deleting the second operand of the compound guard goes undetected.
+echo ""
+echo "=== TC-10: emit-only file (no reason table, no enumeration) → skipped, no drift ==="
+d=$(make_fixture_sandbox '# Test
+
+This file emits a reason but has no reason table and no eval-table enumeration.
+
+```bash
+echo "[CONTEXT] X=1; reason=orphan_reason"
+```
+')
+cleanup_dirs+=("$d")
+rc=0
+out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
+  --repo-root "$d" 2>/dev/null) || rc=$?
+assert_checker_rc "TC-10" "$rc"
+if [ "$rc" -eq 0 ]; then
+  pass "TC-10: emit-only file skipped (compound guard both-empty) → no drift"
+else
+  fail "TC-10: expected no drift (rc=0), got rc=$rc (emit-only file must skip Pattern-2)"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+if printf '%s\n' "$out" | grep -Fq "orphan_reason"; then
+  fail "TC-10: emit-only orphan_reason spuriously flagged (compound guard regression)"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+else
+  pass "TC-10: no spurious flag for emit-only reason without tracking structure"
+fi
+
 # --- Summary ---
 echo ""
 if ! print_summary "$(basename "$0")" "false positive regression"; then

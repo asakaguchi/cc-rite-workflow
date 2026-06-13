@@ -40,7 +40,8 @@ USE_ALL=0
 
 # Default target set when --all is given.
 # review-findings-maps.sh は fix.md ステップ 1.2.0 から委譲された reason を emit するため
-# Pattern-5 (helper docstring 内の Eval-order enumeration vs reason= emits) の対象に含める。
+# Pattern 2 の documented set (helper docstring 内の Eval-order enumeration ∪ reason 表) と
+# reason= emit の照合対象に含める。
 DEFAULT_ALL_TARGETS=(
   "plugins/rite/commands/pr/fix.md"
   "plugins/rite/commands/pr/review.md"
@@ -202,8 +203,8 @@ check_pattern_1() {
 
 # Shared extractor: eval-table parenthesized-list words `( `a` / `b` / `c` )`.
 # Hyphen-aware and skips `[_-]$` truncation artifacts so it stays consistent
-# with the emit-side filter. Used by both Pattern 2 (as part of the "documented"
-# union) and Pattern 5 (as the authoritative enumeration set). grep failure
+# with the emit-side filter. Consumed by Pattern 2 as part of the "documented"
+# union (a reason listed in an enumeration counts as documented). grep failure
 # degrades to an empty set, which can only over-report (never mask) drift.
 _extract_enum_reasons() {
   grep -oE '\([^)]*`[a-z_][a-z0-9_-]*`[^)]*\)' "$1" 2>/dev/null \
@@ -214,8 +215,9 @@ _extract_enum_reasons() {
 }
 
 # Shared extractor: reasons actually emitted as `reason=<id>`. Single source of
-# truth for both Pattern 2 and Pattern 5 (an asymmetric copy in each would be
-# exactly the distributed-fix drift this checker exists to catch). Hardened:
+# truth for Pattern 2's forward and reverse comparisons (one canonical extractor
+# keeps the emit set consistent — an asymmetric copy would be exactly the
+# distributed-fix drift this checker exists to catch). Hardened:
 #   - hyphen-aware so `no-pending` is not truncated to `no`
 #   - skips shell-variable expansion (`reason=foo_$var` → would yield `foo_`)
 #   - skips `[_-]$` truncation residues
@@ -347,10 +349,10 @@ check_pattern_2() {
     return 0
   fi
   awk_emit_rc=0
-  # Delegate to the shared `_extract_emit_reasons` helper (single source of
-  # truth shared with Pattern 5). Its trailing `| sort -u` means the `||`
-  # captures the pipeline status; under `set -o pipefail` a real awk failure
-  # still propagates here, preserving the silent-failure guard.
+  # Delegate to the shared `_extract_emit_reasons` helper (single canonical
+  # emit extractor). Its trailing `| sort -u` means the `||` captures the
+  # pipeline status; under `set -o pipefail` a real awk failure still
+  # propagates here, preserving the silent-failure guard.
   _extract_emit_reasons "$file" >"$AWK_EMIT_OUT" 2>"${AWK_EMIT_ERR:-/dev/null}" || awk_emit_rc=$?
   if [ "$awk_emit_rc" -ne 0 ]; then
     log "  [P2] Pattern 2 skipped on $file: emit-side awk rc=$awk_emit_rc"
@@ -391,7 +393,11 @@ check_pattern_2() {
   # eval-table enumeration.
   missing=$(comm -23 <(printf '%s\n' "$emit_reasons") <(printf '%s\n' "$documented"))
   # Reverse drift: a reason-table entry that is never emitted (stale doc).
-  # Scoped to the reason table only (enumeration staleness is Pattern 5's job).
+  # Scoped to the reason table only. Enumeration-only staleness (a reason listed
+  # in an `( `a` / `b` )` enumeration but never emitted) is intentionally NOT
+  # checked by any pattern: the old Pattern 5 forward check did not cover it
+  # either, and many enumerations describe reasons emitted in a delegated helper
+  # (e.g. review-result-save.sh), so a per-file reverse check would over-report.
   if [ -n "$table_reasons" ]; then
     extra=$(comm -13 <(printf '%s\n' "$emit_reasons") <(printf '%s\n' "$table_reasons"))
   else

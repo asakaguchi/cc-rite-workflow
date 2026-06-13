@@ -99,17 +99,18 @@ EOF
 rc=$?
 assert "synthetic clean file exits 0" "0" "$rc"
 
-# --- Test 4b: clean fixture WITH reason-table validates P2/P5 comparison ----
+# --- Test 4b: clean fixture WITH reason-table validates P2 comparison --------
 # Test 4 above uses prose-only content. Without a reason-table or eval-table
-# parenthesized list, Pattern-2/5 detectors hit their early-return guards
-# (`[ -z "$table_reasons" ] && return 0` at distributed-fix-drift-check.sh:179
-# and `[ -z "$table_words" ] && return 0` at line 279). The exit-0 assertion
-# in Test 4 therefore proves only "no detector ran on the comparison branch" —
-# a false negative for the actual comm-based comparison logic.
+# enumeration, the Pattern-2 detector hits its compound early-return guard
+# (`[ -z "$table_reasons" ] && [ -z "$enum_reasons" ] && return 0`). The exit-0
+# assertion in Test 4 therefore proves only "no detector ran on the comparison
+# branch" — a false negative for the actual comm-based comparison logic.
 #
-# This test adds a fixture that DOES contain a reason-table and a Pattern-5
-# parenthesized list, with `reason=...` emits matching the table 1:1.  The
-# detectors must execute their comm comparisons and emit zero findings.
+# This test adds a fixture that DOES contain a reason-table and an eval-table
+# enumeration, with `reason=...` emits matching them 1:1. Pattern-2 must execute
+# its comm comparison and emit zero findings. Pattern 5 is RETIRED (folded into
+# Pattern 2), so `--pattern 5` is inert and produces no findings — verified
+# separately below against a fixture that Pattern 2 WOULD flag.
 CLEAN_TABLE=$(mktemp)
 TMPFILES+=("$CLEAN_TABLE")
 cat > "$CLEAN_TABLE" <<'EOF'
@@ -149,16 +150,39 @@ assert "clean fixture with reason-table: 0 P2 drift" "0" "$p2_clean"
 p5_clean=$(grep -c '^\[drift\]\[P5\]' <<< "$out")
 assert "clean fixture with reason-table: 0 P5 drift" "0" "$p5_clean"
 
-# Per-pattern run: discriminator that the comparison ran rather than
+# Per-pattern run: discriminator that the P2 comparison ran rather than
 # early-returning. The fixture above guarantees both `table_reasons` and
-# `table_words` are non-empty, so neither detector can short-circuit.
+# `enum_reasons` are non-empty, so the detector cannot short-circuit.
 "$SCRIPT" --pattern 2 --target "$CLEAN_TABLE" >/dev/null 2>&1
 rc=$?
 assert "clean fixture --pattern 2 exits 0 (P2 comparison active)" "0" "$rc"
 
-"$SCRIPT" --pattern 5 --target "$CLEAN_TABLE" >/dev/null 2>&1
-rc=$?
-assert "clean fixture --pattern 5 exits 0 (P5 comparison active)" "0" "$rc"
+# Pattern 5 retirement: `--pattern 5` must be INERT (produce no findings) even on
+# a fixture that Pattern 2 WOULD flag. A bare exit-0 on the clean fixture above
+# would be a vacuous pass (it is clean for every pattern), so use a fixture with
+# a reason table plus an UNDOCUMENTED emit: Pattern 2 flags it (rc=1) while
+# Pattern 5 stays clean (rc=0, zero findings), proving P5 is inert not just clean.
+P5_INERT=$(mktemp)
+TMPFILES+=("$P5_INERT")
+cat > "$P5_INERT" <<'EOF'
+# Pattern 5 inert fixture
+
+## reason table
+| reason | description |
+|--------|-------------|
+| `documented_reason` | listed in the table |
+
+The narrative also emits reason=undocumented_p5_reason which is NOT in the table.
+EOF
+"$SCRIPT" --pattern 2 --target "$P5_INERT" >/dev/null 2>&1
+p2_inert_rc=$?
+assert "P5-inert fixture: --pattern 2 flags the undocumented emit (rc=1)" "1" "$p2_inert_rc"
+
+p5_inert_out=$("$SCRIPT" --pattern 5 --target "$P5_INERT" 2>&1)
+p5_inert_rc=$?
+assert "P5-inert fixture: --pattern 5 is inert (rc=0)" "0" "$p5_inert_rc"
+p5_inert_findings=$(grep -c '^\[drift\]\[P5\]' <<< "$p5_inert_out")
+assert "P5-inert fixture: --pattern 5 produces 0 findings (retired/inert)" "0" "$p5_inert_findings"
 
 # --- Test 5: CJK anchors resolve correctly (Pattern 4 end-to-end) ------------
 # Use a temp directory so reference files can use relative paths for Pattern 4.

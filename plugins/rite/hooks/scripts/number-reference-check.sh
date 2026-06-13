@@ -27,7 +27,6 @@
 #     by another `#` or a space, never directly by a digit.
 #
 # Exclusions (file / line level):
-#   - This script's own file (self-exclusion under --all).
 #   - plugins/rite/hooks/tests/ (fixtures intentionally embed bad refs).
 #   - Any line containing the marker `drift-check-ignore`.
 #
@@ -71,7 +70,7 @@ Options:
   -h, --help         Show this help
 
 Detected: Issue/PR number references (#NNN / Issue #NNN / PR #NNN), 3-4 digits.
-Exclusions: self / hooks/tests/ / lines containing 'drift-check-ignore'.
+Exclusions: hooks/tests/ / lines containing 'drift-check-ignore'.
 
 Exit codes:
   0  No reference detected
@@ -102,16 +101,9 @@ if [ ! -d "$REPO_ROOT" ]; then
 fi
 cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
 
-self_abs="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/$(basename "$0")"
-self_rel=""
-case "$self_abs" in
-  "$REPO_ROOT"/*) self_rel="${self_abs#"$REPO_ROOT"/}" ;;
-esac
-
 if [ "$USE_ALL" -eq 1 ]; then
   for f in "${DEFAULT_TARGETS[@]}"; do
     [ -f "$f" ] || continue                       # absent surface file — skip silently
-    [ -n "$self_rel" ] && [ "$f" = "$self_rel" ] && continue
     TARGETS+=("$f")
   done
 fi

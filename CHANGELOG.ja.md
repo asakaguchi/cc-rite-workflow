@@ -11,7 +11,7 @@ Phase 番号取扱方針: エントリは機能名レベルで変更を記述し
 番号はリファクタで採番し直される可能性があるため、CHANGELOG のエントリは
 それらの変更に対して安定でなければなりません。位置情報が必要な場合は
 内部 Phase 番号ではなくファイル名 (例: `review.md`) を参照してください。
-慣行は Keep a Changelog 1.1.0 "Guiding Principles" 参照。
+背景・慣行は Keep a Changelog 1.1.0 "Guiding Principles" 参照。
 -->
 
 ## [Unreleased]

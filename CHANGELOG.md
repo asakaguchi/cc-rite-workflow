@@ -11,8 +11,8 @@ internal `Phase X.Y.Z` implementation identifiers. Phase numbers inside
 `review.md` / `fix.md` / `pr/open.md` may be renumbered between releases, so
 CHANGELOG entries must remain stable across such refactors. When a change
 genuinely needs locational precision, prefer referencing the file name
-(e.g. `review.md`) over internal phase numbers. See the Keep a Changelog 1.1.0 "Guiding Principles" for the
-rationale and conventions.
+(e.g. `review.md`) over internal phase numbers. See Keep a Changelog 1.1.0
+"Guiding Principles" for the rationale and conventions.
 -->
 
 ## [Unreleased]

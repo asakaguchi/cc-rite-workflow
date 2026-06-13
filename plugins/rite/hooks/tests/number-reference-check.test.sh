@@ -139,6 +139,48 @@ if [ "$rc" -eq 0 ]; then pass "clean file → exit 0"
 else fail "expected rc=0, got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
+# TC-010: the `Issue #NNN` / `PR #NNN` prose forms are subsumed by the bare
+#         `#NNN` pattern (regression guard for the headline feature — the
+#         script header claims these forms are detected).
+# --------------------------------------------------------------------------
+echo "TC-010: Issue #NNN / PR #NNN prose forms detected"
+cat > "$SAMPLE_PATH" <<'MD'
+See Issue #1234 for the rationale.
+Per PR #367, the loader was fixed.
+MD
+rc=0; output=$(run "$SAMPLE") || rc=$?
+if [ "$rc" -eq 1 ] && echo "$output" | grep -q '#1234' && echo "$output" | grep -q '#367'; then
+  pass "Issue #NNN / PR #NNN prose forms detected → exit 1"
+else fail "expected rc=1 with #1234 and #367, got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
+# TC-011: exact 3-4 digit band boundaries (#100 / #9999 detected, #99 not).
+# --------------------------------------------------------------------------
+echo "TC-011: band boundary #100 / #9999 / #99"
+cat > "$SAMPLE_PATH" <<'MD'
+Lower bound (#100) is detected.
+Upper bound (#9999) is detected.
+Below band #99 is not detected.
+MD
+rc=0; output=$(run "$SAMPLE") || rc=$?
+if [ "$rc" -eq 1 ] \
+   && echo "$output" | grep -q '#100' \
+   && echo "$output" | grep -q '#9999' \
+   && ! echo "$output" | grep -q '#99\b'; then
+  pass "band boundaries: #100/#9999 detected, #99 excluded"
+else fail "expected #100 and #9999 detected without #99, got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
+# TC-012: a non-existent repo-root is an invocation error (exit 2), not a
+#         finding — keeps the exit-2 contract distinct from the exit-1 warning.
+# --------------------------------------------------------------------------
+echo "TC-012: bad --repo-root → exit 2"
+rc=0; output=$(bash "$TARGET" --repo-root /nonexistent/rite-xyz --target foo.md 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && echo "$output" | grep -q 'repo-root not a directory'; then
+  pass "bad --repo-root → exit 2 (invocation error)"
+else fail "expected rc=2 with repo-root error, got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo ""

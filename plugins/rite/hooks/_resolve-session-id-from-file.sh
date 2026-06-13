@@ -98,8 +98,7 @@ fi
 
 # Whitespace-stripped read.
 #
-# 旧実装
-# `2>/dev/null || raw=""` は permission denied / inode race / EIO 等の IO エラーを「空ファイル」と
+# 旧実装の `2>/dev/null || raw=""` は permission denied / inode race / EIO 等の IO エラーを「空ファイル」と
 # 区別不能化していた。攻撃者が `.rite-session-id` を chmod 000 にした状態で別 session の
 # session_id を持つ legacy `.rite-flow-state` を残すと、helper が空文字を返し state-read.sh が
 # legacy 経路にフォールバック → cross-session guard が空 SID で意図しない経路を通る。

@@ -44,10 +44,9 @@
 #                             (default: "false")
 #
 # Security note:
-#   旧実装は
-#   WM_* 環境変数を caller 責務で sanitize する設計だったが、orchestrator 経由で LLM 出力 / Issue
-#   タイトル / next_action 等の動的文字列が直接 frontmatter に流入する経路があり defense-in-depth
-#   不在だった。本 PR で `_sanitize_yaml_value()` helper を導入し、frontmatter 書き込み箇所すべてで
+#   WM_* 環境変数の sanitize は caller 責務とする設計だったが、orchestrator 経由で LLM 出力 / Issue
+#   タイトル / next_action 等の動的文字列が直接 frontmatter に流入する経路があり defense-in-depth が
+#   不在だった。そこで `_sanitize_yaml_value()` helper を導入し、frontmatter 書き込み箇所すべてで
 #   適用する (`"` を `\"` に escape、改行を除去)。WM_BODY_TEXT は frontmatter 外なので除外。
 #   caller 責務は引き続き有効 (helper は defense-in-depth の二段目)。
 #

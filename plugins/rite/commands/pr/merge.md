@@ -78,6 +78,7 @@ if gh pr merge {pr_number} --squash --delete-branch=false 2>"${gh_err:-/dev/null
     echo "  WARNING (gh stderr):" >&2
     head -5 "$gh_err" | sed 's/^/    /' >&2
   fi
+  : # success path を exit 0 に固定。warning surface を if…fi で書いても &&チェーンに崩して転記しても、末尾の no-op により block が成功扱いで終わり trap の exit $rc が偽の 1 を返さない
   # 完了通知は ステップ 3 で表示
 else
   merge_rc=$?

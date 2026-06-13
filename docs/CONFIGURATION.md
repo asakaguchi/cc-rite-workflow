@@ -430,8 +430,6 @@ The review-fix loop has two exit paths and no automatic abnormal-exit mechanism:
 | Normal | 0 findings remaining → `[review:mergeable]` |
 | Manual abort | User aborts via `Ctrl+C` → `/rite:resume` (or selects "中止" in `fix.md` AskUserQuestion → `[fix:cancelled-by-user]`) |
 
-> **Note**: Four detection heuristics exist in code on the reviewer side — fingerprint cycling (`commands/issue/references/fingerprint-cycling.md`), root-cause-missing (`fix.md` Phase 3.2.1 commit body gate), cross-validation disagreement (`review.md` Phase 5.2 + debate phase), and reviewer self-degraded (`_reviewer-base.md` Finding Quality Guardrail). They inform reviewer judgment but do not escalate via `AskUserQuestion` or trigger an early loop exit — the loop's only exits are the two above (0 findings / manual abort). The design rationale is "指摘ゼロになるまでループ" with manual abort only (see `commands/pr/iterate.md` 設計判断).
-
 **Fix settings:**
 
 | Field | Type | Default | Description |

@@ -63,7 +63,7 @@ Usage: number-reference-check.sh [options]
 
 Options:
   --all              Scan the number-free surface (CHANGELOG.md, CHANGELOG.ja.md,
-                     plugins/rite/commands/lint.md), excluding self
+                     plugins/rite/commands/lint.md)
   --target FILE      Check FILE (repeatable). Path relative to repo root.
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
   --quiet            Suppress progress/summary output on stderr

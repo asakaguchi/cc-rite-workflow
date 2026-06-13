@@ -230,6 +230,41 @@ assert_out_missing "parse error" "no jq parse error leaked into stdout markers"
 unset STUB_CREATE_PARTIAL_TITLE
 
 # -----------------------------------------------------------------
+# Regression: a decomposition with NO shared labels (labels_csv="") must still
+# create every sub. The old `printf '%s' "$labels_csv" | jq -R` idiom returned
+# empty output + exit 0 for empty stdin, leaving sub_labels_json="" so the
+# downstream `--argjson labels ""` died with invalid JSON and EVERY sub failed
+# (the `|| "[]"` guard never fired on exit 0). The parent still succeeded because
+# it prepends "epic,". This test runs the real script with empty labels_csv and
+# asserts the subs are created (not failed) with an empty `[]` label array. Revert
+# the fix (back to `jq -R`) and this test flips to created=0 failed=2.
+echo "--- Test 8: empty labels_csv -> subs still created with [] labels (regression) ---"
+wd8="$TEST_DIR/wd8"; mkdir -p "$wd8"
+printf '%s' "Parent" > "$wd8/parent.md"; printf '%s' "Sub 1" > "$wd8/s1.md"; printf '%s' "Sub 2" > "$wd8/s2.md"
+spec8=$(build_spec "$wd8" "Epic8" "$wd8/parent.md" "" \
+  "Sub One" "$wd8/s1.md" "M" "Sub Two" "$wd8/s2.md" "S")
+STUB_NUM_FILE="$TEST_DIR/num8"; echo 800 > "$STUB_NUM_FILE"
+STUB_CREATE_LOG="$TEST_DIR/clog8"; : > "$STUB_CREATE_LOG"
+export STUB_NUM_FILE STUB_CREATE_LOG
+unset STUB_CREATE_FAIL_TITLE STUB_LINK_FAIL_CHILD STUB_CREATE_PARTIAL_TITLE 2>/dev/null || true
+run_decompose "$spec8"
+assert_rc 0 "exit 0 with empty labels_csv"
+assert_out_contains "[CONTEXT] SUB_ISSUE_RESULT created=2 failed=0 link_failures=0" "empty labels_csv: both subs created (regression: old jq -R idiom failed every sub)"
+assert_out_contains "[CONTEXT] SUB_ISSUE_NUMBERS=801 802" "empty labels_csv: both sub numbers listed"
+# Sub label array must be the empty [] (not "" / null / missing); parent still gets ["epic"].
+if grep -q 'title=Sub One labels=\[\]' "$STUB_CREATE_LOG"; then
+  pass "empty labels_csv: sub labels are []"
+else
+  fail "empty labels_csv: sub labels are []"; cat "$STUB_CREATE_LOG"
+fi
+if head -1 "$STUB_CREATE_LOG" | grep -q 'title=Epic8 labels=\["epic"\]'; then
+  pass "empty labels_csv: parent labels are [epic]"
+else
+  fail "empty labels_csv: parent labels are [epic]"; cat "$STUB_CREATE_LOG"
+fi
+unset STUB_CREATE_LOG
+
+# -----------------------------------------------------------------
 echo "--- Test 6: usage / spec validation errors ---"
 rc=0; bash "$DECOMPOSE" >/dev/null 2>&1 || rc=$?; [ "$rc" = 2 ] && pass "no --spec -> exit 2" || fail "no --spec -> exit 2 (rc=$rc)"
 rc=0; bash "$DECOMPOSE" --bogus x >/dev/null 2>&1 || rc=$?; [ "$rc" = 2 ] && pass "unknown arg -> exit 2" || fail "unknown arg -> exit 2 (rc=$rc)"

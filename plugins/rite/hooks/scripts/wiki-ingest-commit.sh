@@ -651,11 +651,11 @@ done
 # を再び有効にする。
 #
 # Cycle 2 MEDIUM (noise reduction): only dump stderr on failure paths.
-# Previous design called `dump_git_err` after **every** git command, including
-# successful ones, which surfaced git informational messages like `Switched to
-# branch 'wiki'` on stderr — noise that drowned out real error signals. The
-# helper is now failure-only; success paths call `surface_git_warnings` which
-# only prints lines matching `^(warning|hint|error):`.
+# Calling `dump_git_err` after **every** git command, including successful ones,
+# surfaces git informational messages like `Switched to branch 'wiki'` on stderr —
+# noise that drowns out real error signals. So the helper is failure-only; success
+# paths call `surface_git_warnings` which only prints lines matching
+# `^(warning|hint|error):`.
 #
 # git_err cleanup is delegated to `cleanup_body` (see the EXIT/INT/TERM/HUP
 # traps below). A separate trap would overwrite cleanup_body's and break the
@@ -686,16 +686,16 @@ dump_git_err() {
  fi
 }
 
-# surface_git_warnings <label>: called on success paths. Instead of silently
-# truncating the captured git stderr (which previously dropped legitimate
-# warnings like "unable to rmdir 'foo': Directory not empty" or remote-side
-# hook advice), selectively surface lines that look like warnings / hints,
-# then truncate. This preserves operator visibility without re-introducing
-# informational noise like "Switched to branch 'wiki'" (which git emits
-# without a "warning:" / "hint:" prefix and which `-q` already suppresses).
+# surface_git_warnings <label>: called on success paths. Silently truncating
+# the captured git stderr drops legitimate warnings like "unable to rmdir
+# 'foo': Directory not empty" or remote-side hook advice, so instead
+# selectively surface lines that look like warnings / hints, then truncate.
+# This preserves operator visibility without re-introducing informational
+# noise like "Switched to branch 'wiki'" (which git emits without a
+# "warning:" / "hint:" prefix and which `-q` already suppresses).
 #
-# Cycle 3 MEDIUM #1 fix — replaces the old unconditional `clear_git_err`
-# truncation on success paths, which silently dropped warnings.
+# Cycle 3 MEDIUM #1 fix — an unconditional `clear_git_err` truncation on
+# success paths would silently drop warnings, so it is not used here.
 #
 # LOW #5 — all writes to git_err in this helper are `|| true` guarded so an
 # ENOSPC / EACCES truncate failure does not abort the script under set -e.
@@ -734,9 +734,9 @@ for f in "${pending_files[@]}"; do
  echo " 3) re-run wiki-ingest-commit.sh" >&2
  exit 3
  fi
- # rm -f stderr was
- # previously suppressed entirely. Propagate failures so the operator can
- # see which file could not be removed (EACCES / EIO / race).
+ # Capture rm -f stderr rather than suppressing it entirely. Propagate
+ # failures so the operator can see which file could not be removed
+ # (EACCES / EIO / race).
  if ! rm -f "$f" 2>"${git_err:-/dev/null}"; then
  echo "ERROR: failed to remove untracked raw source '$f' from '$current_branch'" >&2
  dump_git_err "rm -f $f"

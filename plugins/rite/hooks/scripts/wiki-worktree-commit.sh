@@ -222,8 +222,8 @@ esac
 
 # `|| true` で silent に握り潰さず、IO error / permission denied / broken worktree
 # の場合は WARNING + exit 3 で fail-fast する (cycle 2 MEDIUM F-12 fix)。
-# 旧実装は `untracked=""` → `has_untracked=false` で本来検出すべき untracked を
-# silent miss し、`reason=no-pending` で skip してしまう経路があった。
+# `|| true` で `untracked=""` → `has_untracked=false` に倒すと、本来検出すべき untracked を
+# silent miss し、`reason=no-pending` で skip してしまう経路が生じる。
 lsf_err=""
 trap 'rm -f "${lsf_err:-}"' EXIT INT TERM HUP
 lsf_err=$(mktemp /tmp/rite-wwc-lsf-err-XXXXXX 2>/dev/null) || lsf_err=""
@@ -292,9 +292,8 @@ fi
 # -----------------------------------------------------------------------
 # Stage all changes under .rite/wiki, commit, and push via shared helper.
 # worktree_commit_push (lib/worktree-git.sh) handles the stderr capture +
-# head -n 10 extraction pattern that was previously inlined here. Exit
-# codes: 3 = add/commit failure, 4 = commit ok / push failed, 5 = no
-# staged diff after add (no-op).
+# head -n 10 extraction pattern for the caller. Exit codes: 3 = add/commit
+# failure, 4 = commit ok / push failed, 5 = no staged diff after add (no-op).
 # -----------------------------------------------------------------------
 set +e
 wtcp_out=$(worktree_commit_push "$worktree_path" "$wiki_branch" "$COMMIT_MSG" "$wiki_rel")

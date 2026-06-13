@@ -50,10 +50,10 @@ source "$SCRIPT_DIR/control-char-neutralize.sh"
 
 # verified-review MEDIUM (silent-failure-hunter):
 # `_resolve-session-id.sh` の存在 check を upfront で実施する。
-# 旧実装 (cycle 39 helper check 追加前) は本ファイル末尾の `_resolve-session-id.sh` invocation
-# (`if validated=$(bash "$SCRIPT_DIR/_resolve-session-id.sh" "$raw" 2>/dev/null); then ...`) で
-# stderr を suppress していたため、helper missing (rc=127) / permission denied / bash 起動失敗 と
-# validation 失敗 (rc=1) が区別不能 (両方とも「stdout 空文字 + exit 0」で復帰) だった。
+# 本ファイル末尾の `_resolve-session-id.sh` invocation
+# (`if validated=$(bash "$SCRIPT_DIR/_resolve-session-id.sh" "$raw" 2>/dev/null); then ...`) は
+# stderr を suppress するため、upfront check が無いと helper missing (rc=127) / permission denied /
+# bash 起動失敗 と validation 失敗 (rc=1) が区別不能 (両方とも「stdout 空文字 + exit 0」で復帰) になる。
 # state-read.sh / flow-state-update.sh は upfront で `[ ! -x ]` check を実施しているため、
 # それらの caller 経由では deploy regression が早期に検出されるが、本 helper を直接呼ぶ
 # 新規 caller が出現した場合に同種の silent skip 経路を作る。
@@ -90,19 +90,19 @@ bash "$SCRIPT_DIR/_validate-state-root.sh" "$STATE_ROOT" || exit $?
 sid_file="$STATE_ROOT/.rite-session-id"
 
 # File-absent path: return empty string (legitimate "no session id stored yet").
-# This matches the previous inline behavior `if [ -f ... ]; then ... fi` where
-# the absent branch left `sid=""` untouched.
+# This matches the inline `if [ -f ... ]; then ... fi` contract where the
+# absent branch leaves `sid=""` untouched.
 if [ ! -f "$sid_file" ]; then
   exit 0
 fi
 
 # Whitespace-stripped read.
 #
-# 旧実装の `2>/dev/null || raw=""` は permission denied / inode race / EIO 等の IO エラーを「空ファイル」と
-# 区別不能化していた。攻撃者が `.rite-session-id` を chmod 000 にした状態で別 session の
+# `2>/dev/null || raw=""` の素朴な実装は permission denied / inode race / EIO 等の IO エラーを「空ファイル」と
+# 区別不能にする。攻撃者が `.rite-session-id` を chmod 000 にした状態で別 session の
 # session_id を持つ legacy `.rite-flow-state` を残すと、helper が空文字を返し state-read.sh が
 # legacy 経路にフォールバック → cross-session guard が空 SID で意図しない経路を通る。
-# stderr を tempfile に退避し、IO error は WARNING を emit してから空文字復帰する (caller の
+# そのため stderr を tempfile に退避し、IO error は WARNING を emit してから空文字復帰する (caller の
 # graceful degradation 動作は維持しつつ、observability を確保)。
 # cycle 43 F-08 (MEDIUM) 対応: mktemp 失敗 WARNING 統一 + chmod 600 + canonical 4 行 trap。
 # verified-review F-03 (MEDIUM) 対応:
@@ -112,9 +112,9 @@ fi
 # 該当 4 site はすでに drift 済 (実行番号と乖離) のため、semantic anchor に置換した。
 # 他 5 helper の canonical pattern (`_mktemp-stderr-guard.sh` 呼び出しブロック / canonical mktemp
 # pattern / mktemp 失敗 WARNING ブロック) と対称化する。
-# 旧実装は (a) mktemp 失敗時に WARNING emit せず silent fallback、(b) chmod 600 path-disclosure
-# defense なし、(c) trap 不在で SIGINT/SIGTERM/SIGHUP 経路で _tr_err orphan のリスク があった。
-# error-handling-reviewer Likelihood-Evidence: existing_call_site で実証済み。
+# この helper を経由しない素朴な実装では (a) mktemp 失敗時に WARNING emit せず silent fallback、
+# (b) chmod 600 path-disclosure defense なし、(c) trap 不在で SIGINT/SIGTERM/SIGHUP 経路で _tr_err orphan
+# のリスクが生じる。error-handling-reviewer Likelihood-Evidence: existing_call_site で実証済み。
 _tr_err=""
 _rite_resolve_sid_cleanup() {
   rm -f "${_tr_err:-}"
@@ -152,9 +152,9 @@ fi
 
 # Run through the canonical UUID validator. On validation failure, fall through
 # to the implicit empty-string output (exit 0 with no stdout). Callers cannot
-# distinguish "file empty" from "file invalid" from "validation failed", which
-# matches the prior inline semantics — all three paths previously collapsed to
-# `sid=""` and downstream code treated the session as effectively missing.
+# distinguish "file empty" from "file invalid" from "validation failed": all three
+# paths collapse to `sid=""` and downstream code treats the session as effectively
+# missing. This is the contract the inline caller logic relies on.
 if validated=$(bash "$SCRIPT_DIR/_resolve-session-id.sh" "$raw" 2>/dev/null); then
   printf '%s' "$validated"
 fi

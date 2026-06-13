@@ -186,9 +186,9 @@ created_numbers=()
 expected_sub_count=$(printf '%s' "$SPEC_JSON" | jq '.sub_issues | length')
 # labels_csv を --arg で渡し stdin を経由しない。`jq -R` 方式は空の labels_csv に対し
 # 空出力 + exit 0 を返すため sub_labels_json="" となり、直後の `--argjson labels ""` が
-# invalid JSON で落ちる一方 `|| "[]"` ガードは exit 0 なので発火しなかった（空ラベルでの
-# 分解が必ず失敗する境界バグ）。--arg なら "" → [] が常に有効な JSON 配列として得られ、
-# 非空 CSV も従来同等に動く。ガードは malformed 入力への保険として残す。
+# invalid JSON で落ちる一方 `|| "[]"` ガードは exit 0 なので発火しない（空ラベルでの
+# 分解が必ず失敗する境界バグになる）。--arg なら "" → [] が常に有効な JSON 配列として得られ、
+# 非空 CSV も同じ結果になる。ガードは malformed 入力への保険として残す。
 sub_labels_json=$(jq -cn --arg csv "$labels_csv" '$csv | split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))' 2>/dev/null) || {
   echo "WARNING: labels_csv の jq パースに失敗。labels を空で続行: $labels_csv" >&2
   sub_labels_json="[]"

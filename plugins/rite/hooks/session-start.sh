@@ -239,8 +239,8 @@ if [ "$SOURCE" = "startup" ]; then
     # The JSON transform (rite-hook detection via RITE_HOOK_RE + selective removal) is
     # delegated to the shared scripts/settings-local-rite-hook-cleanup.py — the same
     # single-source script the .sh wrapper uses — so the regex lives in exactly one place
-    # (previously an inline python3 copy duplicated both the regex and the
-    # whole transform). Its documented exit codes are reused here: 0 = rite hooks removed
+    # rather than being duplicated as an inline python3 copy of both the regex and
+    # the whole transform. Its documented exit codes are reused here: 0 = rite hooks removed
     # (cleaned JSON on stdout → captured into _repair_tmp), 1 = intentional no-op (no
     # hooks key / no rite entries), 2 = invalid JSON. Distinguishing the no-op (rc=1) from
     # real failures (rc=2, etc.) is required so settings.local.json corruption surfaces

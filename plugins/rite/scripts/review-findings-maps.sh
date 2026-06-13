@@ -209,16 +209,16 @@ if [ "${norm_defaulted_count:-0}" -gt 0 ] || [ "${norm_corrected_count:-0}" -gt 
 fi
 
 # verified-review H-1/H-2 対応: jq の exit code を明示捕捉する。
-# 旧実装 `duplicate_keys=$(jq ...)` / `severity_map_json=$(jq -c ...)` は exit code を一切
-# check せず、jq バイナリ異常 / OOM / TOCTOU (別プロセスが file を rm / truncate) で
-# silent に空文字になっていた。重複警告が silent skip し、severity_map 構築が無音で空にな
-# る regression を防ぐため、if-else で exit code を独立 capture する。
+# `duplicate_keys=$(jq ...)` / `severity_map_json=$(jq -c ...)` を exit code を check せずに書くと、
+# jq バイナリ異常 / OOM / TOCTOU (別プロセスが file を rm / truncate) で silent に空文字になる。
+# 重複警告が silent skip し、severity_map 構築が無音で空になる regression を防ぐため、
+# if-else で exit code を独立 capture する。
 jq_err=$(mktemp /tmp/rite-fix-jq-err-XXXXXX 2>/dev/null) || jq_err=""
 
 # line フィールドの nullable sentinel 正規化
 # review-result-schema.md L92 で line は `integer | null` (null が行非依存指摘の sentinel) に変更。
-# 旧実装は `(.line | tostring)` で `null` が `"null"` 文字列に変換される (jq `tostring` の仕様) ため
-# `src/foo.ts:null` のような key が生成され、従来の `line: 0` legacy と混在すると key 衝突するリスクがあった。
+# `(.line | tostring)` を素朴に使うと `null` が `"null"` 文字列に変換される (jq `tostring` の仕様) ため
+# `src/foo.ts:null` のような key が生成され、`line: 0` legacy の key と混在すると key 衝突するリスクがある。
 # 後方互換で `line == 0` / `line == null` の両方を `"anchor"` sentinel に正規化することで、
 # 同一ファイル複数の行非依存指摘が key 衝突で silent に畳み込まれるのを防ぐ。
 if duplicate_keys=$(jq -r '[.findings[] | (.file + ":" + (if .line == null or .line == 0 then "anchor" else (.line | tostring) end))] | group_by(.) | map(select(length > 1) | .[0]) | .[]' "$review_source_path" 2>"${jq_err:-/dev/null}"); then

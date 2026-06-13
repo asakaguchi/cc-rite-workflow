@@ -61,7 +61,7 @@ neutralize_ctrl() {
 
 # Detection-side counterpart: reject-purpose call sites
 # (flow-state.sh _validate_session_id, wiki-ingest-trigger.sh SOURCE_REF /
-# TITLE) previously used bash `=~ [[:cntrl:]]`, which on glibc misses the same
+# TITLE) must not rely on bash `=~ [[:cntrl:]]`, which on glibc misses the same
 # C1 8-bit range the neutralize side closes — letting e.g. 0x9b slip through
 # validation. Sharing the byte-range definition here keeps detection and
 # replacement symmetric.

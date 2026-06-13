@@ -62,16 +62,14 @@ source "$(dirname "${BASH_SOURCE[0]}")/work-memory-lock.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
 
 # verified-review F-04 MEDIUM: flow-state.sh 呼び出し boilerplate を helper 関数に抽出。
-# 旧実装は (a) helper executable check と (b) `if cmd; then :; else rc=$?; ...; return 2; fi` 形式の
-# fail-fast capture を 3 箇所 (line 96-110 / 175-186 / 187-193) で完全に同一構造で複製していた。
-# 共通 helper に集約することで spec 変更を 1 箇所で完結させる。
+# (a) helper executable check と (b) `if cmd; then :; else rc=$?; ...; return 2; fi` 形式の
+# fail-fast capture は本ファイル内の複数 site で同一構造になるため、共通 helper に集約して
+# spec 変更を 1 箇所で完結させる。
 #
-# verified-review F-05 (MEDIUM) 対応: 旧コメントは
-# 「resume-active-flag-restore.sh にも 2 site 存在し計 5 site の boilerplate 重複を集約する
-# (writer/reader/resume 3 layer DRY 化)」と主張していたが、resume layer の 2 site
-# (resume-active-flag-restore.sh の curr_phase / curr_next 抽出ブロック) は **本 PR では consolidate
-# されていない**。したがって本 helper の集約スコープは work-memory-update.sh 内 3 site のみで、
-# resume layer の片肺更新リスクは別 Issue で追跡する必要がある (claim と実装の整合性回復)。
+# verified-review F-05 (MEDIUM): 本 helper の集約スコープは work-memory-update.sh 内 3 site のみ。
+# resume layer の 2 site (resume-active-flag-restore.sh の curr_phase / curr_next 抽出ブロック) は
+# **この helper では consolidate しない**。したがって resume layer の片肺更新リスクは別 Issue で
+# 追跡する必要がある (「writer/reader/resume 3 layer DRY 化」を謳わないこと — 実装と整合させる)。
 #
 # Arguments:
 #   $1 var_name  caller 側で値を受け取る変数名 (e.g., "_phase")

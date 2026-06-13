@@ -5,10 +5,6 @@
 [![Version](https://img.shields.io/badge/version-0.5.2-blue.svg)](https://github.com/asakaguchi/cc-rite-workflow/releases/tag/v0.5.2)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## ⚠️ Breaking Changes (v0.4.0)
-
-**Cycle-count-based review-fix degradation removed**: Three configuration keys (`review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, `safety.max_review_fix_loops`) are no longer honored — remove them from `rite-config.yml` when upgrading. The review-fix loop terminates only on 0 findings (normal exit) or manual abort (`Ctrl+C` → `/rite:resume`). See [CHANGELOG](CHANGELOG.md#040---2026-04-17) for the full migration guide.
-
 ## Why "Rite"?
 
 The name comes from the English word **rite**, meaning "ritual" or "ceremony." Issue-driven development — creating Issues, cutting branches, implementing, reviewing, and merging — is a set of practices that every team should follow as second nature. Rite Workflow embeds these practices as a repeatable ritual so they become the natural way you build software.

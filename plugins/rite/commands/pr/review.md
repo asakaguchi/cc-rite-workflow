@@ -193,9 +193,9 @@ if [ "$flag_post" = "true" ] && [ "$flag_no_post" = "true" ]; then
 fi
 
 # --- Step 3: rite-config.yml の pr_review.post_comment 読取 (C-2: SIGPIPE-safe) ---
-# 旧実装は `sed | awk | sed | sed | tr | tr` の 6 段 pipeline で pipefail 下で SIGPIPE
-# rc=141 が発生し、fallback branch が config 値を silent に false へ上書きする latent
-# regression を抱えていた。本実装は **単一 awk 呼び出し** に統合し pipeline を排除する
+# `sed | awk | sed | sed | tr | tr` の 6 段 pipeline は pipefail 下で SIGPIPE
+# rc=141 を起こし、fallback branch が config 値を silent に false へ上書きする latent
+# regression を生む。本実装は **単一 awk 呼び出し** に統合し pipeline を排除する
 # ことで SIGPIPE 経路自体を消す。awk は file を直接読むため上流コマンドが存在しない。
 # Source: GNU bash manual — Pipelines / POSIX awk exit semantics
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || repo_root=""
@@ -836,7 +836,7 @@ Determination block の計算が完了した直後 (上記 3 flag を explicit s
 echo "[CONTEXT] doc_heavy_pr=${doc_heavy_pr_value}; doc_heavy_pr_value=${doc_heavy_pr_value}; doc_heavy_pr_decision_summary=${doc_heavy_pr_decision_summary}"
 ```
 
-**理由**: 旧実装では skip 経路 (例: `inconsistent_files_count_between_phase_1_1_and_1_2_7`) のみ `[CONTEXT]` 行を emit し、正常経路は emit しない**非対称設計**だった。後続 phase (ステップ 2.2.1 / 5.1.3 / 5.4) は「`[CONTEXT]` 行が会話履歴に存在しない = 正常」という negative inference に依存していたが、これは Claude の context grep が前 session の `[CONTEXT] doc_heavy_pr=true` を誤拾いするリスクを生む。全経路で対称に emit することで、後続 phase の grep は常に最新の `[CONTEXT]` 行を decisive に拾える。
+**理由**: skip 経路 (例: `inconsistent_files_count_between_phase_1_1_and_1_2_7`) のみ `[CONTEXT]` 行を emit し正常経路は emit しない**非対称設計**だと、後続 phase (ステップ 2.2.1 / 5.1.3 / 5.4) が「`[CONTEXT]` 行が会話履歴に存在しない = 正常」という negative inference に依存するため、Claude の context grep が前 session の `[CONTEXT] doc_heavy_pr=true` を誤拾いするリスクを生む。全経路で対称に emit することで、後続 phase の grep は常に最新の `[CONTEXT]` 行を decisive に拾える。
 
 **Note**: ゼロ除算ガード (`total_diff_lines == 0` および `total_files_count == 0`) は疑似コードブロック内にインラインで配置済みで、両方とも `doc_heavy_pr = false` を **explicit set** してから `skip to ステップ 1.3` する。Skip conditions section の `changedFiles == 0` と併せて、空 PR・分母 0・undefined 参照の三方向を防ぐ多重ガードとなる。ステップ 2.2.1 で `{doc_heavy_pr} == true` を判定する時点で `{doc_heavy_pr}` が必ず boolean として set されていることが保証される。
 
@@ -937,10 +937,10 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
  # diff 全体に fenced code block の追加が含まれるかをスキャン
  # `^+` で始まる行 (追加行) のうち ```{lang} で始まる行を grep
  #
- # 歴史的背景 — pipefail の経緯:
- # 旧実装では `git diff | grep | head` の pipeline を使用しており、`set -o pipefail`
+ # pipefail を維持する理由:
+ # `git diff | grep | head` の pipeline では `set -o pipefail`
  # がないと git diff が exit != 0 で失敗しても後段の grep / head が exit 0 + 空文字列を
- # 返し、silent failure が発生していた。
+ # 返し silent failure になる。
  # 現行実装では pipeline を廃止し、`diff_out=$(git diff ...)` で独立実行 +
  # exit code 明示 check (下記 `if ! diff_out=` 行) → `grep ... <<< "$diff_out"` の here-string 構成に
  # 移行したため、pipefail が直接必要な pipeline は存在しない。ただし将来の pipeline
@@ -1000,10 +1000,6 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
  # subprocess (printf) が存在せず、grep -m 1 の早期終了で SIGPIPE を受ける相手がいない。
  # これにより pipefail 下でも grep の exit 0 (マッチあり) / 1 (なし) / 2 (IO error) を
  # そのまま捕捉できる。
- #
- # (旧実装では「`grep -m 1` に変更すれば下流に SIGPIPE が届かない」と記述していたが、
- # これは pipeline 方向を誤解していた。printf が上流なので SIGPIPE は上流 printf に
- # 届く。)
  grep_out=$(grep -m 1 -E '^\+[[:space:]]*```[a-zA-Z]' <<< "$diff_out")
  grep_rc=$?
  case "$grep_rc" in

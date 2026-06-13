@@ -172,9 +172,9 @@ if log_content=$(git show "${wiki_branch}:.rite/wiki/log.md" 2>"${log_err:-/dev/
  log_read_ok="true"
 else
  # else 分岐冒頭で `rc=$?` を明示 capture する。
- # 旧実装は `rc=$?` を欠落させ、後段の `[ -n "..." ] && [ -s "..." ] && grep -qE ...` で `$?` が
- # grep の rc に上書きされた状態で `echo "...(rc=$rc)..."` が表示され、`rc=` が常に grep の
- # 0/1/2 を表示する silent failure 例になっていた。本 reference は canonical 教材なので、
+ # `rc=$?` を欠落させると、後段の `[ -n "..." ] && [ -s "..." ] && grep -qE ...` で `$?` が
+ # grep の rc に上書きされ、`echo "...(rc=$rc)..."` が表示される際に `rc=` が常に grep の
+ # 0/1/2 を表示する silent failure になる。本 reference は canonical 教材なので、
  # lint.md ステップ 6.0 の委譲先 wiki-lint-skipped-refs.sh (`else rc=$?;` と明示 capture する実装) と一字一句揃える。
  rc=$?
  # 2 primary pattern + 2 safety pattern = 4 pattern 網羅

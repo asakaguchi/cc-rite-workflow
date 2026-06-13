@@ -298,7 +298,7 @@ Plugin metadata file format:
  "name": "rite",
  "version": "0.5.2",
  "description": "Universal Issue-driven development workflow for Claude Code",
- "author": { "name": "B16B1RD" },
+ "author": { "name": "asakaguchi" },
  "license": "MIT"
 }
 ```
@@ -1950,7 +1950,7 @@ Distributed via Claude Code plugin system:
 
 ```bash
 # Add the marketplace
-/plugin marketplace add B16B1RD/cc-rite-workflow
+/plugin marketplace add asakaguchi/cc-rite-workflow
 
 # Install the plugin
 /plugin install rite@rite-marketplace

@@ -1,10 +1,10 @@
 #!/bin/bash
-# Tests for gitignore-health-check.sh always-on .rite/sessions/ check (Issue #1389).
+# Tests for gitignore-health-check.sh always-on .rite/sessions/ check.
 #
 # Verifies the non-blocking, ALWAYS-ON `.rite/sessions/` ignore check folded into
 # gitignore-health-check.sh. Unlike the `.rite/worktrees/` check (gated on
-# multi_session.enabled), per-session state files (.rite/sessions/{session_id}.flow-state,
-# #1381/#1384) are written on every rite session, so this check is NOT gated:
+# multi_session.enabled), per-session state files (.rite/sessions/{session_id}.flow-state)
+# are written on every rite session, so this check is NOT gated:
 #   - .rite/sessions/ NOT ignored                       → drift (exit 1)
 #   - .rite/sessions/ ignored                            → healthy (exit 0)
 #   - multi_session.enabled=false + sessions NOT ignored → still drift (NOT gated on multi_session)
@@ -91,4 +91,4 @@ case "$RUN_OUT" in
 esac
 
 print_summary "$(basename "$0")" \
-  "Drift hint: gitignore-health-check.sh always-on .rite/sessions/ check (Issue #1389) — runs before the wiki early-exits and is NOT gated on multi_session.enabled."
+  "Drift hint: gitignore-health-check.sh always-on .rite/sessions/ check — runs before the wiki early-exits and is NOT gated on multi_session.enabled."

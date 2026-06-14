@@ -5,17 +5,21 @@
 # markdown files (fix.md, review.md, tech-writer-reviewer.md, etc.).
 #
 # This is the static lint counterpart to LLM agent-based review, which has
-# been observed to miss distributed/asymmetric fix patterns (PR #350 / Issue #361).
+# been observed to miss distributed/asymmetric fix patterns.
 #
 # Patterns:
 #   1. retained-flag coverage  — `exit 1` without preceding `[CONTEXT] *_FAILED=1` emit
-#   2. reason-table drift       — markdown reason table vs actual `reason=...` emit
+#   2. reason-table drift       — `reason=...` emits vs their documentation. A reason
+#      is "documented" if it appears in the reason column of a `| reason |`-header
+#      table (any column position, so `| Flag | reason | ... |` is recognized) OR in
+#      an eval-table `( `a` / `b` )` enumeration. Forward: an emit documented in
+#      neither. Reverse: a reason-table entry never emitted (stale doc).
 #   3. if-wrap drift            — `cat <<'EOF' > "$tmpfile"` not wrapped by `if !`
 #   4. anchor drift             — markdown `[text](path#anchor)` resolving to non-existent heading
-#   5. eval-table list drift    — evaluation-order table parenthesized list vs emit
+#   5. RETIRED — folded into Pattern 2 (see the Pattern 5 note below). `--pattern 5` is inert.
 #   6. review-result schema_version drift — `.rite/review-results/*.json` whose
 #      `.schema_version` is outside the accept list (delegates to
-#       `review-schema-version-check.sh`; Issue #1021)
+#       `review-schema-version-check.sh`)
 #
 # Usage:
 #   distributed-fix-drift-check.sh [--all] [--target FILE]... [--pattern N]
@@ -36,7 +40,8 @@ USE_ALL=0
 
 # Default target set when --all is given.
 # review-findings-maps.sh は fix.md ステップ 1.2.0 から委譲された reason を emit するため
-# Pattern-5 (helper docstring 内の Eval-order enumeration vs reason= emits) の対象に含める (Issue #1196)。
+# Pattern 2 の documented set (helper docstring 内の Eval-order enumeration ∪ reason 表) と
+# reason= emit の照合対象に含める。
 DEFAULT_ALL_TARGETS=(
   "plugins/rite/commands/pr/fix.md"
   "plugins/rite/commands/pr/review.md"
@@ -54,7 +59,7 @@ Options:
   --pattern N                 Only run pattern N (1-6). Default: all patterns.
   --repo-root DIR             Repository root (default: git rev-parse --show-toplevel)
   --show-extracted-reasons    Print the extracted table_reasons / emit_reasons lists for Pattern 2.
-                              Useful for differentiating real drift from regex artifacts (Issue #1158 AC-4).
+                              Useful for differentiating real drift from regex artifacts.
   --quiet                     Suppress per-finding output (still exit non-zero on drift)
   -h, --help                  Show this help
 
@@ -123,7 +128,7 @@ if [ "${#TARGETS[@]}" -eq 0 ]; then
 fi
 
 DRIFT_COUNT_FILE="$(mktemp)" || { echo "ERROR: mktemp failed" >&2; exit 2; }
-# Pattern 6 (Issue #1021) で使用する stderr capture tempfile を script-level で宣言し、
+# Pattern 6 で使用する stderr capture tempfile を script-level で宣言し、
 # 統合 trap で signal interrupt 時の orphan を防ぐ。
 PATTERN6_STDERR=""
 # Pattern 2 awk tempfile も script-level で宣言して統合 trap で signal interrupt 時の
@@ -196,35 +201,80 @@ check_pattern_1() {
   done
 }
 
+# Shared extractor: eval-table parenthesized-list words `( `a` / `b` / `c` )`.
+# Hyphen-aware and skips `[_-]$` truncation artifacts so it stays consistent
+# with the emit-side filter. Consumed by Pattern 2 as part of the "documented"
+# union (a reason listed in an enumeration counts as documented). grep failure
+# degrades to an empty set, which can only over-report (never mask) drift.
+_extract_enum_reasons() {
+  grep -oE '\([^)]*`[a-z_][a-z0-9_-]*`[^)]*\)' "$1" 2>/dev/null \
+    | grep -oE '`[a-z_][a-z0-9_-]*`' \
+    | tr -d '`' \
+    | grep -vE '[_-]$' \
+    | sort -u
+}
+
+# Shared extractor: reasons actually emitted as `reason=<id>`. Single source of
+# truth for Pattern 2's forward and reverse comparisons (one canonical extractor
+# keeps the emit set consistent — an asymmetric copy would be exactly the
+# distributed-fix drift this checker exists to catch). Hardened:
+#   - hyphen-aware so `no-pending` is not truncated to `no`
+#   - skips shell-variable expansion (`reason=foo_$var` → would yield `foo_`)
+#   - skips `[_-]$` truncation residues
+#   - skips full-line `#` comments (illustrative examples, not real emits)
+# Static literals like `reason=commit_rc_4` are preserved (digit suffix, no
+# trailing `$`/`_`/`-`). The trailing `| sort -u` keeps awk's exit status
+# observable to callers under `set -o pipefail` (a real awk failure propagates
+# as a non-zero pipeline status rather than a silent empty result).
+_extract_emit_reasons() {
+  awk '
+    /^[[:space:]]*#/ { next }
+    {
+      rest = $0
+      while (match(rest, /reason=[a-z_][a-z0-9_-]*/)) {
+        val = substr(rest, RSTART + 7, RLENGTH - 7)
+        after = substr(rest, RSTART + RLENGTH, 1)
+        rest = substr(rest, RSTART + RLENGTH)
+        if (after == "$") continue
+        if (val ~ /[_-]$/) continue
+        print val
+      }
+    }
+  ' "$1" | sort -u
+}
+
 # ----- Pattern 2: reason-table drift -----------------------------------------
-# Markdown table cells like `| `reason_name` ...` vs `reason=reason_name` emits.
+# `reason=...` emits vs their documentation in reason tables and eval-table
+# enumerations.
 #
-# Robustness notes (Issue #1158):
-#   - Both extractors accept hyphens in identifiers ([a-z_][a-z0-9_-]*) so that
-#     reasons such as `no-pending` are not truncated to `no`.
-#   - Both extractors skip matches that are truncation artifacts:
-#       (a) emit-side: followed immediately by `$` — shell variable expansion
-#           ends the value (e.g. `reason=trigger_exit_$trigger_exit` would
-#           otherwise yield the bogus reason `trigger_exit_`)
-#       (b) both sides: ending in `_` or `-` — these are stub residues of (a)
-#           or hyphenated/underscored values that got chopped at a
-#           non-identifier boundary. table-side also applies this filter so that
-#           Markdown table cells like `| `python_unexpected_exit_$py_exit` |`
-#           do not pollute `table_reasons` with `python_unexpected_exit_` and
-#           generate a false "table has X but emit doesn't" drift entry against
-#           the emit-side `[_-]$` skip.
-#     Static literals like `reason=commit_rc_4` are preserved (they end in a
-#     digit, not `_/-`, and have no trailing `$`).
+# Documentation sources (the "documented" union for the forward direction):
+#   - reason-COLUMN of any table whose header has a `reason` cell. The column
+#     is located by header (case-insensitive), so both `| reason | ... |` and
+#     `| Flag | reason | ... |` layouts are recognized, while non-reason tables
+#     (reviewer-type / recommendation-classification) that merely share the
+#     `| `ident` |` shape are skipped.
+#   - eval-table `( `a` / `b` / `c` )` enumeration words (`_extract_enum_reasons`),
+#     so a reason tracked only in an enumeration is not falsely flagged.
+#
+# Robustness notes (shared extraction filters, see `_extract_emit_reasons` and
+# the table-side awk):
+#   - hyphen-aware identifiers ([a-z_][a-z0-9_-]*) so `no-pending` is not
+#     truncated to `no`.
+#   - skip truncation artifacts: emit-side drops `reason=foo_$var` (trailing
+#     `$` = shell expansion) and both sides drop `[_-]$` residues (so a table
+#     cell `| `python_unexpected_exit_$py_exit` |` does not pollute table_reasons).
+#   - emit-side skips full-line `#` comments (illustrative examples, not emits).
+#   Static literals like `reason=commit_rc_4` are preserved (digit suffix).
 #
 # Silent-failure guard (Pattern 2 awk rc check):
 #   awk のバイナリ異常 / syntax error / IO 失敗で `table_reasons` / `emit_reasons` が
-#   空文字列 silent fallback すると、後段 `[ -z "$table_reasons" ] && return 0` で
-#   Pattern 2 全体が暗黙 skip され drift があっても見逃される。awk の exit code を
-#   tempfile 経由で明示捕捉し、失敗時は WARNING + skip するように guard する。
+#   空文字列 silent fallback すると、後段の早期 return で Pattern 2 全体が暗黙 skip され
+#   drift があっても見逃される。awk の exit code を tempfile 経由で明示捕捉し、失敗時は
+#   WARNING + skip するように guard する。
 check_pattern_2() {
   local file="$1"
   [ -f "$file" ] || return 0
-  local table_reasons emit_reasons missing extra
+  local table_reasons emit_reasons enum_reasons documented missing extra
   local awk_table_rc awk_emit_rc
 
   # tempfile は script-level の AWK_TABLE_OUT / AWK_TABLE_ERR / AWK_EMIT_OUT / AWK_EMIT_ERR
@@ -245,13 +295,31 @@ check_pattern_2() {
   fi
   awk_table_rc=0
   awk '
-    /^\| `[a-z_][a-z0-9_-]*`/ {
-      gsub(/[|`]/, " ")
-      for (i = 1; i <= NF; i++) {
-        if ($i ~ /^[a-z_][a-z0-9_-]*$/) {
-          if ($i ~ /[_-]$/) continue
-          print $i
-          break
+    function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+    # Only treat a markdown table as a reason table when its header has a
+    # column whose cell is exactly "reason" (case-insensitive), then extract
+    # that column from the data rows. This recognizes both `| reason | ... |`
+    # (1st column) and `| Flag | reason | ... |` (2nd column) layouts while
+    # skipping non-reason tables (reviewer-type / recommendation-classification
+    # tables) that share the `| `ident` |` shape but are not reason catalogs.
+    # Truncation artifacts ([_-]$) are dropped (mirrors the emit-side filter).
+    {
+      if ($0 !~ /^[[:space:]]*\|/) { in_table = 0; reason_col = 0; next }
+      n = split($0, cells, "|")
+      is_sep = 1
+      for (c = 2; c < n; c++) { t = cells[c]; gsub(/[[:space:]]/, "", t); if (t !~ /^:?-+:?$/) is_sep = 0 }
+      if (is_sep && n > 2) next
+      if (!in_table) {
+        reason_col = 0
+        for (c = 2; c < n; c++) { if (tolower(trim(cells[c])) == "reason") { reason_col = c; break } }
+        in_table = 1
+        next
+      }
+      if (reason_col > 1 && reason_col < n) {
+        cell = cells[reason_col]
+        if (match(cell, /`[a-z_][a-z0-9_-]*`/)) {
+          id = substr(cell, RSTART + 1, RLENGTH - 2)
+          if (id !~ /[_-]$/) print id
         }
       }
     }
@@ -281,19 +349,11 @@ check_pattern_2() {
     return 0
   fi
   awk_emit_rc=0
-  awk '
-    {
-      rest = $0
-      while (match(rest, /reason=[a-z_][a-z0-9_-]*/)) {
-        val = substr(rest, RSTART + 7, RLENGTH - 7)
-        after = substr(rest, RSTART + RLENGTH, 1)
-        rest = substr(rest, RSTART + RLENGTH)
-        if (after == "$") continue
-        if (val ~ /[_-]$/) continue
-        print val
-      }
-    }
-  ' "$file" >"$AWK_EMIT_OUT" 2>"${AWK_EMIT_ERR:-/dev/null}" || awk_emit_rc=$?
+  # Delegate to the shared `_extract_emit_reasons` helper (single canonical
+  # emit extractor). Its trailing `| sort -u` means the `||` captures the
+  # pipeline status; under `set -o pipefail` a real awk failure still
+  # propagates here, preserving the silent-failure guard.
+  _extract_emit_reasons "$file" >"$AWK_EMIT_OUT" 2>"${AWK_EMIT_ERR:-/dev/null}" || awk_emit_rc=$?
   if [ "$awk_emit_rc" -ne 0 ]; then
     log "  [P2] Pattern 2 skipped on $file: emit-side awk rc=$awk_emit_rc"
     if [ -n "$AWK_EMIT_ERR" ] && [ -s "$AWK_EMIT_ERR" ]; then
@@ -308,28 +368,45 @@ check_pattern_2() {
   rm -f "$AWK_EMIT_OUT" "${AWK_EMIT_ERR:-}"
   AWK_EMIT_OUT="" AWK_EMIT_ERR=""
 
-  # AC-4 (Issue #1158): expose extracted reason lists so the user can
+  # AC-4: expose extracted reason lists so the user can
   # differentiate true positives from regex artifacts at a glance.
   # `${var//$'\n'/ }` で改行を space に置換し、parameter expansion 形で渡す設計:
   # 引数渡し形 (`printf '%s ' $var`) は word-splitting と glob 展開が同時発生するため、将来
   # reason regex に glob char (`*` / `?` / `[` 等) を許可した際に silent corrupt するリスクがある。
   # parameter expansion 形に統一することでこの経路を構造的に排除する。
+  # Eval-table enumeration words are an authoritative tracking structure too:
+  # a reason tracked in an `( `a` / `b` )` enumeration must not be reported as
+  # "missing from the reason table". The forward direction compares emits
+  # against the UNION of reason-table entries and enumeration words.
+  enum_reasons=$(_extract_enum_reasons "$file")
   if [ "${SHOW_EXTRACTED_REASONS:-0}" -eq 1 ]; then
     log "  [P2 extracted] ${file}: table_reasons=$(printf '%s' "${table_reasons//$'\n'/ }" | sed 's/[[:space:]]*$//')"
     log "  [P2 extracted] ${file}: emit_reasons=$(printf '%s' "${emit_reasons//$'\n'/ }" | sed 's/[[:space:]]*$//')"
+    log "  [P2 extracted] ${file}: enum_reasons=$(printf '%s' "${enum_reasons//$'\n'/ }" | sed 's/[[:space:]]*$//')"
   fi
-  # If the file has no reason table at all, Pattern-2 does not apply.
-  # Skipping here prevents false "never emitted" flags for emit-only files.
-  [ -z "$table_reasons" ] && return 0
-  # If the file has a table but no emits, all table entries are unused — still a drift,
-  # so we continue through to the comm comparison below.
-  # Drift = symmetric difference
-  missing=$(comm -23 <(printf '%s\n' "$emit_reasons") <(printf '%s\n' "$table_reasons"))
-  extra=$(comm -13 <(printf '%s\n' "$emit_reasons") <(printf '%s\n' "$table_reasons"))
+  # If the file has neither a reason table nor an eval-table enumeration,
+  # Pattern-2 does not apply. Skipping here prevents false "never emitted" /
+  # "not documented" flags for emit-only files.
+  [ -z "$table_reasons" ] && [ -z "$enum_reasons" ] && return 0
+  documented=$(printf '%s\n%s\n' "$table_reasons" "$enum_reasons" | grep -v '^$' | sort -u)
+  # Forward drift: emitted but documented in neither the reason table nor any
+  # eval-table enumeration.
+  missing=$(comm -23 <(printf '%s\n' "$emit_reasons") <(printf '%s\n' "$documented"))
+  # Reverse drift: a reason-table entry that is never emitted (stale doc).
+  # Scoped to the reason table only. Enumeration-only staleness (a reason listed
+  # in an `( `a` / `b` )` enumeration but never emitted) is intentionally NOT
+  # checked by any pattern: the old Pattern 5 forward check did not cover it
+  # either, and many enumerations describe reasons emitted in a delegated helper
+  # (e.g. review-result-save.sh), so a per-file reverse check would over-report.
+  if [ -n "$table_reasons" ]; then
+    extra=$(comm -13 <(printf '%s\n' "$emit_reasons") <(printf '%s\n' "$table_reasons"))
+  else
+    extra=""
+  fi
   if [ -n "$missing" ]; then
     while IFS= read -r r; do
       [ -z "$r" ] && continue
-      report 2 "$file" 0 "reason '$r' emitted but not in reason table"
+      report 2 "$file" 0 "reason '$r' emitted but not in reason table / eval-table"
     done <<< "$missing"
   fi
   if [ -n "$extra" ]; then
@@ -404,32 +481,22 @@ check_pattern_4() {
       done
 }
 
-# ----- Pattern 5: eval-table parenthesized list drift ------------------------
-# `( `a` / `b` / `c` )` style enumerations inside markdown tables vs actual
-# `reason=...` emits in the same file.
-check_pattern_5() {
-  local file="$1"
-  [ -f "$file" ] || return 0
-  local table_words emit_reasons missing
-  # Extract `xxx` words inside `( ... / ... / ... )` groups
-  table_words=$(grep -oE '\([^)]*`[a-z_][a-z0-9_]*`[^)]*\)' "$file" 2>/dev/null \
-    | grep -oE '`[a-z_][a-z0-9_]*`' \
-    | tr -d '`' | sort -u)
-  emit_reasons=$(grep -oE 'reason=[a-z_][a-z0-9_]*' "$file" 2>/dev/null \
-    | sed 's/reason=//' | sort -u)
-  # Short-circuit when either side is empty to avoid comm's environment-dependent
-  # behavior with empty/unsorted input. A file without an eval-table or without
-  # any emits is out of scope for Pattern-5.
-  [ -z "$table_words" ] && return 0
-  [ -z "$emit_reasons" ] && return 0
-  missing=$(comm -23 <(printf '%s\n' "$emit_reasons") <(printf '%s\n' "$table_words"))
-  if [ -n "$missing" ]; then
-    while IFS= read -r r; do
-      [ -z "$r" ] && continue
-      report 5 "$file" 0 "reason '$r' emitted but not in eval-table parenthesized list"
-    done <<< "$missing"
-  fi
-}
+# ----- Pattern 5: RETIRED (folded into Pattern 2) ----------------------------
+# Pattern 5 previously compared every `reason=...` emit against the union of all
+# `( `a` / `b` )` parenthesized lists in the file ("emitted but not in eval-table
+# parenthesized list"). On large multi-namespace procedural files (fix.md /
+# review.md) this structurally over-detected: a single file carries many
+# independent eval-order enumerations plus diagnostic emits that are documented
+# in reason tables rather than enumerations, and some enumerations describe
+# reasons emitted in a *delegated* helper (e.g. review-result-save.sh), not the
+# file itself — so a per-file emit comparison cannot account for them.
+#
+# Its sole sound direction (a reason emitted but documented nowhere) is now
+# owned by Pattern 2, whose forward comparison treats the UNION of reason-table
+# entries and eval-table enumeration words (`_extract_enum_reasons`) as the
+# "documented" set. That subsumes the original Pattern 5 forward check while
+# adding reason-table awareness, so Pattern 5 is retired. `--pattern 5` is now
+# inert (no findings); the enumerations remain live input to Pattern 2.
 
 for file in "${TARGETS[@]}"; do
   log "Checking $file ..."
@@ -437,10 +504,10 @@ for file in "${TARGETS[@]}"; do
   run_pattern 2 && check_pattern_2 "$file"
   run_pattern 3 && check_pattern_3 "$file"
   run_pattern 4 && check_pattern_4 "$file"
-  run_pattern 5 && check_pattern_5 "$file"
+  # Pattern 5 retired (folded into Pattern 2); `--pattern 5` is intentionally inert.
 done
 
-# ----- Pattern 6: review-result schema_version drift (Issue #1021) -----------
+# ----- Pattern 6: review-result schema_version drift -----------
 # Delegates to review-schema-version-check.sh, which checks .rite/review-results/*.json
 # against the accept list ("1.0.0" / "1.0" / "1.1.0"). Runs once per invocation
 # (independent of the TARGETS loop above, since the JSON files are scanned by

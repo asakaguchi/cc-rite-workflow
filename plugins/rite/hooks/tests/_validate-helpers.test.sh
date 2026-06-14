@@ -1,13 +1,13 @@
 #!/bin/bash
-# Tests for _validate-helpers.sh (verified-review F11-06 + PR #688 cycle 13 F-01 対応)
+# Tests for _validate-helpers.sh (verified-review F11-06 + cycle 13 F-01 対応)
 #
 # Purpose:
-#   PR #688 cycle 10 F-06 で抽出された `_validate-helpers.sh` (helper existence
+#   cycle 10 F-06 で抽出された `_validate-helpers.sh` (helper existence
 #   check の DRY 化) は state-read.sh / flow-state-update.sh の 2 caller で SoT
 #   として使われるため、helper 自体のバグは両 caller を巻き込む blast radius
 #   を持つ。本テストは helper 単体の defensive paths を pin する。
 #
-#   PR #688 cycle 13 F-01 (HIGH): caller の helper-list 自体の duplication 解消の
+#   cycle 13 F-01 (HIGH): caller の helper-list 自体の duplication 解消の
 #   ため、`DEFAULT_HELPERS` 配列を helper 内部に追加し、引数 0 個 (script_dir のみ)
 #   で呼ばれた場合は default を使う API 拡張を行った。本テストは新旧両 API path を
 #   検証する。
@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOKS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 HELPER="$HOOKS_DIR/_validate-helpers.sh"
 
-# Issue #990: source common helpers for make_plain_sandbox.
+# source common helpers for make_plain_sandbox.
 # This file's prior `make_sandbox` was a no-git variant that also pushed to
 # cleanup_dirs and populated DEFAULT_HELPERS_LIST entries; we now build on
 # make_plain_sandbox and keep the helper-placement step in a renamed wrapper
@@ -76,10 +76,10 @@ assert_match() {
 
 # DEFAULT_HELPERS の SoT を production 側 (`_validate-helpers.sh`) から動的抽出する。
 # test/production 片肺更新 drift を構造的に防ぐ (cycle 13 F-01 doctrine の test layer 適用)。
-# 旧実装は production 側の DEFAULT_HELPERS と byte-for-byte 重複した hardcoded 配列を持っており、
+# production 側の DEFAULT_HELPERS と byte-for-byte 重複した hardcoded 配列を test 側に持つと、
 # 新規 helper が production に追加されても test sandbox は古い entry のまま動き続ける silent
-# regression 経路を残していた (Issue #687 root cause = writer/reader 片肺更新 と同型の
-# test/production 片肺更新 drift)。
+# regression 経路ができる (root cause = writer/reader 片肺更新 と同型の
+# test/production 片肺更新 drift)。動的抽出でその drift 経路を guard する。
 #
 # 抽出方法: awk で `DEFAULT_HELPERS=(...)` ブロックを抽出 + grep で helper 名 (basename) を取得。
 # `_validate-helpers.sh` を bash source する方式は `set -euo pipefail` + 引数 unset 時 exit 1 の
@@ -95,7 +95,7 @@ if [ "${#DEFAULT_HELPERS_LIST[@]}" -eq 0 ]; then
   exit 1
 fi
 
-# Issue #990: build on make_plain_sandbox from _test-helpers.sh and keep the
+# build on make_plain_sandbox from _test-helpers.sh and keep the
 # helper-placement step here (this file's domain-specific setup).
 # Renamed to avoid shadowing the helper's git-init `make_sandbox`.
 # IMPORTANT: This wrapper does NOT push to cleanup_dirs — callers MUST push
@@ -186,7 +186,7 @@ assert_match "TC-7.2: ERROR mentions missing helper basename" "_resolve-cross-se
 echo "TC-8 (NEW API): DEFAULT_HELPERS 配列の全 entry すべてが検査されることを確認"
 # ================================================================
 # 1 つずつ chmod -x して、それぞれが正しく検出されることを確認することで
-# DEFAULT_HELPERS 配列の completeness を verify する (Issue #687 root cause と
+# DEFAULT_HELPERS 配列の completeness を verify する (root cause と
 # 同型の片肺更新 drift を防ぐための structural invariant 検証)
 for missing_helper in "${DEFAULT_HELPERS_LIST[@]}"; do
   sbx=$(setup_validate_sandbox); cleanup_dirs+=("$sbx")

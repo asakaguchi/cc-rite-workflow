@@ -1,17 +1,17 @@
 #!/bin/bash
-# Tests for per-session cleanup on session end — Issue #672 / #684 (T-10 / AC-10)
+# Tests for per-session cleanup on session end (T-10 / AC-10)
 #
 # Purpose:
 #   `session-end.sh` (Option A: 正常終了時の per-session file 削除) の cleanup が:
 #     (a) 当該 session の per-session file (`.rite/sessions/{sid}.flow-state`) を削除
 #     (b) **兄弟 session** の file には影響なし (blast radius 0)
-#     (c) `.rite-flow-state.legacy.*` backup には影響なし (#747 cycle 3/4 regression)
+#     (c) `.rite-flow-state.legacy.*` backup には影響なし (cycle 3/4 regression)
 #     (d) cleanup 後は flow-state.sh が ENOENT 経路 (default 値) を返し resume 不能
 #     (e) 異なる cwd (別 repo) の per-session file には影響なし
 #   を verify する。
 #
 # Differentiation from session-end.test.sh:
-#   既存 `session-end.test.sh` の TC-680-A は「per-session file removed after
+#   既存 `session-end.test.sh` の TC-per-session-cleanup-A は「per-session file removed after
 #   session-end (AC-10)」を最低限 verify している。本テストはそれを起点に、
 #   **blast radius 0 の structural guarantee** (兄弟 / backup / 別 cwd) を独立 TC
 #   として追加で固定する。Wiki 経験則「新規 file 命名と既存 find glob が collision
@@ -19,16 +19,16 @@
 #   しないことを mutation 視点でも verify する。
 #
 # Test cases:
-#   TC-1: 当該 session の per-session file 削除 (TC-680-A 等価、再 pin)
+#   TC-1: 当該 session の per-session file 削除 (TC-per-session-cleanup-A 等価、再 pin)
 #   TC-2: 兄弟 session の file は影響なし (blast radius 0)
-#   TC-3: `.rite-flow-state.legacy.*` backup は影響なし (#747 cycle 3/4 regression guard)
+#   TC-3: `.rite-flow-state.legacy.*` backup は影響なし (cycle 3/4 regression guard)
 #   TC-4: cleanup 後 flow-state.sh は default 値 (ENOENT 経路) を返す (resume 不能)
 #   TC-5: 異なる cwd (別 repo) の per-session file は影響なし
 #   TC-6: cleanup 後 sessions ディレクトリ自体は残る (mkdir レース回避)
 #
 # Out of scope:
-#   - lifecycle warning (create_interview / cleanup) → session-end.test.sh TC-475/608
-#   - JQ atomic-write WARN → session-end.test.sh TC-749-JQ-WRITE-WARN
+#   - lifecycle warning (create_interview / cleanup) → session-end.test.sh TC-create-lifecycle-warn-* / TC-cleanup-lifecycle-warn-*
+#   - JQ atomic-write WARN → session-end.test.sh TC-helper-failure-jq-write-warn
 #   - Stale tempfile cleanup → session-end.test.sh TC-009/010
 #
 # Usage: bash plugins/rite/hooks/tests/cleanup-on-session-end.test.sh
@@ -78,11 +78,11 @@ run_session_end() {
   echo "{\"cwd\":\"$cwd\"}" | bash "$HOOK" 2>&1
 }
 
-echo "=== cleanup-on-session-end tests (Issue #672 / #684 T-10 AC-10) ==="
+echo "=== cleanup-on-session-end tests (T-10 AC-10) ==="
 echo ""
 
 # -------------------------------------------------------------------------
-# TC-1: per-session file 削除 (TC-680-A 等価、再 pin)
+# TC-1: per-session file 削除 (TC-per-session-cleanup-A 等価、再 pin)
 # -------------------------------------------------------------------------
 echo "TC-1: per-session file 削除 (AC-10 base contract)"
 TD=$(make_test_dir)
@@ -133,9 +133,9 @@ else
 fi
 
 # -------------------------------------------------------------------------
-# TC-3: `.rite-flow-state.legacy.*` backup は影響なし (#747 cycle 3/4 regression)
+# TC-3: `.rite-flow-state.legacy.*` backup は影響なし (cycle 3/4 regression)
 # -------------------------------------------------------------------------
-echo "TC-3: legacy backup file への blast radius 0 (#747 regression guard)"
+echo "TC-3: legacy backup file への blast radius 0 (regression guard)"
 TD=$(make_test_dir)
 SID="dddddddd-1010-1010-1010-101010101010"
 echo "$SID" > "$TD/.rite-session-id"
@@ -159,7 +159,7 @@ if [ -f "$backup_file" ]; then
     fail "TC-3.1: legacy backup mutated"
   fi
 else
-  fail "TC-3.1: legacy backup deleted by session-end (#747 regression)"
+  fail "TC-3.1: legacy backup deleted by session-end (regression)"
 fi
 
 # -------------------------------------------------------------------------

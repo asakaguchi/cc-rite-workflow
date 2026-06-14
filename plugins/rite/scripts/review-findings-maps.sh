@@ -6,14 +6,14 @@
 # schema 1.1.0 後方互換 normalization を適用する:
 #   (a) schema 1.0/1.0.0 の scope 欠落を severity-based default mapping で補完
 #   (b) cross-field invariant #5 (pre_existing=false × scope=nit-noted) の auto-correct
-#   (e) Issue #1018 M2: auto_demote_low (LOW × current-pr → nit-noted、rite-config.yml で opt-out 可)
+#   (e) M2 auto_demote_low (LOW × current-pr → nit-noted、rite-config.yml で opt-out 可)
 # mutation 発生時のみ normalized tempfile に書き出して以降の jq が参照し、本 script 終了時に
 # trap で削除する (caller への file hand-off はしない。normalization の発生は
 # [CONTEXT] REVIEW_SOURCE_* retained flag で LLM コンテキストに伝達される)。
 #
 # Called from:
-#   - commands/pr/fix.md ステップ 1.2.0 "On Priority 2 success" (旧 ~154 行 inline block を委譲:
-#     Issue #1196 / #1193 MEDIUM #12)。Priority 3 (pr_comment) の string-based 鏡像は
+#   - commands/pr/fix.md ステップ 1.2.0 "On Priority 2 success" (旧 ~154 行 inline block を委譲)。
+#     Priority 3 (pr_comment) の string-based 鏡像は
 #     fix.md 内の 1.2.0.s 節に inline のまま残る (同 logic の鏡像。jq filter を変更する際は両方を同期すること)
 #
 # Usage:
@@ -36,7 +36,7 @@
 #   [CONTEXT] FIX_FALLBACK_FAILED=1; reason=severity_map_build_failed|scope_map_build_failed; ...
 #
 # Reason SoT (fix.md の reason 表からは bullet 形式で参照される — 委譲済 reason は
-# fix.md 内で `reason=` 構文を使わない #1221 規約):
+# fix.md 内で `reason=` 構文を使わない規約):
 #   scope_omitted_in_v1_0             — schema 1.0/1.0.0 の scope 欠落を default mapping で補完 (非ブロッキング)
 #   pre_existing_false_scope_nit_noted — invariant #5 違反を current-pr に auto-correct (非ブロッキング)
 #   low_current_pr_demoted_to_nit_noted — auto_demote_low による LOW × current-pr の降格 (非ブロッキング)
@@ -46,8 +46,10 @@
 #   severity_map_build_failed         — severity_map 構築用 jq が失敗 (exit 1、caller が [fix:error] に昇格)
 #   scope_map_build_failed            — scope_map 構築用 jq が失敗、scope_map_json="{}" で続行 (非ブロッキング)
 #
-# Eval-order enumeration (for Pattern-5 drift check — distributed-fix-drift-check.sh の
-# DEFAULT_ALL_TARGETS に本 helper が登録されており、本 enumeration が唯一の入力源):
+# Eval-order enumeration (Pattern-2 documented-union input — distributed-fix-drift-check.sh の
+# DEFAULT_ALL_TARGETS に本 helper が登録されており、本 enumeration は reason 表と共に Pattern 2 の
+# documented set へ寄与する。どちらか一方にあれば documented とみなすため、厳密な同期や
+# enumeration 側の reverse staleness は機械検証されない):
 # emit reasons sequence = (`scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `low_current_pr_demoted_to_nit_noted` / `jq_mutation_failed` / `mktemp_failure_norm_tmp` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `scope_map_build_failed`)
 #
 # Exit codes:
@@ -126,8 +128,8 @@ trap '_cleanup; exit 143' TERM
 trap '_cleanup; exit 129' HUP
 
 # ---- 旧 fix.md ステップ 1.2.0 severity_map build block の faithful port ----
-# Issue #1016: schema 1.1.0 後方互換 normalization (scope default mapping + invariant #5 auto-correct)。
-# Issue #1018 (M2): auto_demote_low 適用 (LOW × current-pr → nit-noted)。
+# schema 1.1.0 後方互換 normalization (scope default mapping + invariant #5 auto-correct)。
+# M2: auto_demote_low 適用 (LOW × current-pr → nit-noted)。
 # 本 script は file-based path 用 (Priority 0/2 共通)。Priority 3 (pr_comment, raw_json string) には
 # 別途 string-based 版が fix.md 内の 1.2.0.s 節に近接して実装されている (同 logic の鏡像)。
 #
@@ -142,7 +144,7 @@ trap '_cleanup; exit 129' HUP
 #     review_source_path を tempfile path に差し替えて downstream で参照させる。
 # (d) 後方互換: invariant #5 は pre_existing フィールドが存在する 1.1.0 JSON のみで発火する
 #     (1.0/1.0.0 では default mapping は scope を補完するのみで pre_existing は補完しない)。
-# (e) Issue #1018 M2: review.scope_assignment.auto_demote_low (default true) が true の場合、
+# (e) M2: review.scope_assignment.auto_demote_low (default true) が true の場合、
 #     severity == "LOW" ∧ scope == "current-pr" の finding の scope を "nit-noted" に降格する。
 #     1 件以上降格したら WARNING + [CONTEXT] REVIEW_SOURCE_AUTO_DEMOTED_LOW=1 を emit。
 #     auto_demote_low: false で opt-out 可能 (LOW × current-pr が通常通り blocking として fix loop に流れる)。
@@ -185,7 +187,7 @@ if [ "${norm_defaulted_count:-0}" -gt 0 ] || [ "${norm_corrected_count:-0}" -gt 
         echo "[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1; reason=pre_existing_false_scope_nit_noted; count=$norm_corrected_count" >&2
       fi
       if [ "${norm_demoted_low_count:-0}" -gt 0 ]; then
-        echo "WARNING: $norm_demoted_low_count findings (LOW × current-pr) を Issue #1018 M2 auto_demote_low により scope=nit-noted に降格しました" >&2
+        echo "WARNING: $norm_demoted_low_count findings (LOW × current-pr) を auto_demote_low により scope=nit-noted に降格しました" >&2
         echo "[CONTEXT] REVIEW_SOURCE_AUTO_DEMOTED_LOW=1; reason=low_current_pr_demoted_to_nit_noted; count=$norm_demoted_low_count" >&2
       fi
       review_source_path="$norm_tmp"
@@ -209,16 +211,16 @@ if [ "${norm_defaulted_count:-0}" -gt 0 ] || [ "${norm_corrected_count:-0}" -gt 
 fi
 
 # verified-review H-1/H-2 対応: jq の exit code を明示捕捉する。
-# 旧実装 `duplicate_keys=$(jq ...)` / `severity_map_json=$(jq -c ...)` は exit code を一切
-# check せず、jq バイナリ異常 / OOM / TOCTOU (別プロセスが file を rm / truncate) で
-# silent に空文字になっていた。重複警告が silent skip し、severity_map 構築が無音で空にな
-# る regression を防ぐため、if-else で exit code を独立 capture する。
+# `duplicate_keys=$(jq ...)` / `severity_map_json=$(jq -c ...)` を exit code を check せずに書くと、
+# jq バイナリ異常 / OOM / TOCTOU (別プロセスが file を rm / truncate) で silent に空文字になる。
+# 重複警告が silent skip し、severity_map 構築が無音で空になる regression を防ぐため、
+# if-else で exit code を独立 capture する。
 jq_err=$(mktemp /tmp/rite-fix-jq-err-XXXXXX 2>/dev/null) || jq_err=""
 
 # line フィールドの nullable sentinel 正規化
 # review-result-schema.md L92 で line は `integer | null` (null が行非依存指摘の sentinel) に変更。
-# 旧実装は `(.line | tostring)` で `null` が `"null"` 文字列に変換される (jq `tostring` の仕様) ため
-# `src/foo.ts:null` のような key が生成され、従来の `line: 0` legacy と混在すると key 衝突するリスクがあった。
+# `(.line | tostring)` を素朴に使うと `null` が `"null"` 文字列に変換される (jq `tostring` の仕様) ため
+# `src/foo.ts:null` のような key が生成され、`line: 0` legacy の key と混在すると key 衝突するリスクがある。
 # 後方互換で `line == 0` / `line == null` の両方を `"anchor"` sentinel に正規化することで、
 # 同一ファイル複数の行非依存指摘が key 衝突で silent に畳み込まれるのを防ぐ。
 if duplicate_keys=$(jq -r '[.findings[] | (.file + ":" + (if .line == null or .line == 0 then "anchor" else (.line | tostring) end))] | group_by(.) | map(select(length > 1) | .[0]) | .[]' "$review_source_path" 2>"${jq_err:-/dev/null}"); then
@@ -250,7 +252,7 @@ else
   # [fix:error] は stdout 分離契約のため caller が emit する (本 helper は非ゼロ exit のみ)
   exit 1
 fi
-# Issue #1018 M2: scope_map を severity_map と並行構築。
+# M2: scope_map を severity_map と並行構築。
 # findings[].scope は schema 1.1.0 で導入され、1.0/1.0.0 JSON では normalization 段階で
 # severity-based default mapping により補完済み (上記 (a))。本 step では normalization 後の
 # review_source_path から scope を file:line key で map 化する。

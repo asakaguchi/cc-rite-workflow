@@ -1,7 +1,7 @@
 #!/bin/bash
 # issue-comment-wm-update-merge-checklist.test.sh
 #
-# Pins the `merge-checklist` transform added in #1195 #8 (archive-procedures
+# Pins the `merge-checklist` transform (archive-procedures
 # §3.5.2 progress-merge delegation). Verifies the verbatim-fidelity contract
 # ported from the original inline Python block:
 #   - full-body exact-line dedup (idempotency / partial dedup)

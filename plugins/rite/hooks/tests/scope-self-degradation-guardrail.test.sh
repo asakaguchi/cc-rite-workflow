@@ -1,5 +1,5 @@
 #!/bin/bash
-# T-3 (Issue #1017): Finding Quality Guardrail に scope 自己降格パターン (CRITICAL/HIGH の severity と
+# T-3: Finding Quality Guardrail に scope 自己降格パターン (CRITICAL/HIGH の severity と
 # scope の二重 degrade) 検出仕様が記述されているか
 #
 # Verification:

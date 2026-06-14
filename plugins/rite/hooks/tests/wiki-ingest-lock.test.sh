@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for wiki-ingest-lock.sh (Issue #1365 / S5, multi-session design §9).
+# Tests for wiki-ingest-lock.sh (multi-session design §9).
 #
 # Verifies the ingest session lock used to serialize the LLM Write/Edit phase
 # across sessions:
@@ -65,5 +65,30 @@ PAST=$(date -u -d '3 hours ago' +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -v-
 tmp=$(mktemp); jq --arg t "$PAST" '.updated_at=$t' "$ROOT/.rite/sessions/$SID_A.flow-state" > "$tmp" && mv "$tmp" "$ROOT/.rite/sessions/$SID_A.flow-state"
 assert "TC-7 stale (2h aged)" "stale" "$(bash "$WIL" check --session "$SID_B")"
 
+echo "=== TC-8 (Issue #1530): env-first resolution — env outranks a differing .rite-session-id ==="
+# Regression guard for the env-first precedence flip in _resolve_sid (no --session override path).
+# Write a STALE .rite-session-id (SID_B) but make the live session SID_A via env. The no-override
+# resolver MUST key the lock to env (SID_A), not the stale shared file (SID_B) — this is the
+# cross-component coherence the half-migration finding (Issue #1530 review) flagged.
+bash "$WIL" release --session "$SID_A" >/dev/null 2>&1 || true
+rm -rf "$LOCKDIR" 2>/dev/null || true
+printf '%s' "$SID_B" > "$ROOT/.rite-session-id"   # shared file says SID_B (stale)
+mk_active "$SID_A"                                  # but env session SID_A is the live one
+# Precondition only — acquire on a fresh lock returns "acquired" regardless of which sid resolves;
+# the precedence guard is the holder assert on the next line.
+got=$(env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$SID_A" bash "$WIL" acquire)
+assert "TC-8 acquire succeeds (precondition; precedence pinned by next assert)" "acquired" "$got"
+assert "TC-8 holder is env sid (SID_A), not stale file sid (SID_B)" "$SID_A" "$(cat "$LOCKDIR/session_id")"
+# env-absent fallback: with env cleared AND holder==SID_B, the no-override resolver resolves the FILE
+# sid (SID_B) — proven by check==own (resolver returned SID_B == holder), not merely "held" which an
+# empty resolution would also yield. This pins that the file fallback returns SID_B specifically.
+bash "$WIL" release --session "$SID_A" >/dev/null 2>&1 || true
+rm -rf "$LOCKDIR" 2>/dev/null || true
+printf '%s' "$SID_B" > "$ROOT/.rite-session-id"     # self-contained: set the file sid this block relies on
+mk_active "$SID_B"                                  # holder SID_B; file SID_B (set just above)
+env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$WIL" acquire >/dev/null
+assert "TC-8 env-absent acquire holder resolved via file sid (SID_B)" "$SID_B" "$(cat "$LOCKDIR/session_id")"
+assert "TC-8 env-absent check own (resolver returned file sid SID_B == holder)" "own" "$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$WIL" check)"
+
 print_summary "$(basename "$0")" \
-  "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock with session-flow-state liveness (2h), reclaim stale, concurrent_ingest rc 11."
+  "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock with session-flow-state liveness (2h), reclaim stale, concurrent_ingest rc 11; _resolve_sid env-first (Issue #1530)."

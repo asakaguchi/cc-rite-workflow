@@ -1,23 +1,22 @@
 #!/bin/bash
-# Session Ownership 系列 (#173 / #206 / #216 / #558 / #660) regression on
+# Session Ownership 系列の regression on
 # multi-state format (per-session file).
 #
-# Issue #683 / parent #672 AC-7 を verify する。
-# 過去 5 件の Issue で導入した防御層が、新形式上でも構造的に成立することを mechanical に確認する。
+# 過去に導入した複数の防御層が、新形式上でも構造的に成立することを mechanical に確認する。
 #
 # Coverage:
-#   - TC-173 (Per-session isolation)         : 2 session が異なる per-session file に独立に書き込む
-#   - TC-206 (SOURCE=startup/clear reset)    : startup/clear 時に自 session の state が active=false にリセット
-#   - TC-216 (.rite-session-id auto-read)    : flow-state.sh が --session 省略時に file 経由で読み取る
-#   - TC-558 (Other-session preservation)    : 他 session の state は reset しない (核心)
-#   - TC-660 (active=true gate)              : active=false / true で防御層 (AND-logic) が正しく振舞う
+#   - TC-per-session-isolation         : 2 session が異なる per-session file に独立に書き込む
+#   - TC-startup-clear-reset           : startup/clear 時に自 session の state が active=false にリセット
+#   - TC-session-id-auto-read          : flow-state.sh が --session 省略時に file 経由で読み取る
+#   - TC-other-session-preservation    : 他 session の state は reset しない (核心)
+#   - TC-active-true-gate              : active=false / true で防御層 (AND-logic) が正しく振舞う
 #
-# Out of scope (#684 で扱う):
+# Out of scope:
 #   - migration / atomic write integrity / cleanup / crash resume
 #
-# Note (architecture drift since #660): stop-guard.sh は #674 で removal 済み。
-# #660 の active=true 前提は現在 pre-tool-bash-guard.sh の AND-logic
-# (`.active=true && phase=create_*`) に継承されており、ここを TC-660 で verify する。
+# Note (architecture drift): stop-guard.sh は removal 済み。
+# active=true 前提は現在 pre-tool-bash-guard.sh の AND-logic
+# (`.active=true && phase=create_*`) に継承されており、ここを TC-active-true-gate で verify する。
 #
 # Usage: bash plugins/rite/hooks/tests/session-ownership-regression.test.sh
 set -euo pipefail
@@ -74,13 +73,13 @@ trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
 trap 'cleanup; exit 129' HUP
 
-echo "=== session-ownership-regression tests (Issue #683 / parent #672 AC-7) ==="
+echo "=== session-ownership-regression tests ==="
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-173: Per-session file isolation (single-file race window が消滅)
+# TC-per-session-isolation: Per-session file isolation (single-file race window が消滅)
 # --------------------------------------------------------------------------
-echo "TC-173 (Per-session isolation): 2 session が異なる per-session file に独立書き込み"
+echo "TC-per-session-isolation (Per-session isolation): 2 session が異なる per-session file に独立書き込み"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
 write_config "$TD"
 SID_A="11111111-1111-1111-1111-111111111111"
@@ -97,23 +96,23 @@ B="$TD/.rite/sessions/$SID_B.flow-state"
 if [ -f "$A" ] && [ -f "$B" ] \
   && [ "$(jq -r '.session_id' "$A")" = "$SID_A" ] \
   && [ "$(jq -r '.session_id' "$B")" = "$SID_B" ]; then
-  pass "TC-173: per-session file が session_id で一意にアドレスされる (race window 構造的に消滅)"
+  pass "TC-per-session-isolation: per-session file が session_id で一意にアドレスされる (race window 構造的に消滅)"
 else
-  fail "TC-173: per-session file の独立性が成立していない"
+  fail "TC-per-session-isolation: per-session file の独立性が成立していない"
 fi
 
 # 単一ファイル時代の競合シナリオ (B が A を上書き) が新形式では起きないことを確認
 if [ "$(jq -r '.phase' "$A")" = "p_a" ] && [ "$(jq -r '.issue_number' "$A")" = "100" ]; then
-  pass "TC-173: A の state が B の create で破壊されていない"
+  pass "TC-per-session-isolation: A の state が B の create で破壊されていない"
 else
-  fail "TC-173: A の state が破壊されている (single-file race regression)"
+  fail "TC-per-session-isolation: A の state が破壊されている (single-file race regression)"
 fi
 
 # --------------------------------------------------------------------------
-# TC-216: .rite-session-id auto-read by flow-state.sh
+# TC-session-id-auto-read: .rite-session-id auto-read by flow-state.sh
 # AC-1: session-start.sh saves UUID / AC-2: flow-state-update reads it / AC-3: fallback
 # --------------------------------------------------------------------------
-echo "TC-216 (.rite-session-id auto-read):"
+echo "TC-session-id-auto-read (.rite-session-id auto-read):"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
 write_config "$TD"
 SID_AUTO="33333333-3333-3333-3333-333333333333"
@@ -125,9 +124,9 @@ write_session_id "$TD" "$SID_AUTO"
 
 AUTO="$TD/.rite/sessions/$SID_AUTO.flow-state"
 if [ -f "$AUTO" ] && [ "$(jq -r '.session_id' "$AUTO")" = "$SID_AUTO" ]; then
-  pass "TC-216 AC-2: --session 省略時に .rite-session-id 経由で UUID が解決される"
+  pass "TC-session-id-auto-read AC-2: --session 省略時に .rite-session-id 経由で UUID が解決される"
 else
-  fail "TC-216 AC-2: auto-read が機能していない (file_exists=$([ -f "$AUTO" ] && echo y || echo n))"
+  fail "TC-session-id-auto-read AC-2: auto-read が機能していない (file_exists=$([ -f "$AUTO" ] && echo y || echo n))"
 fi
 
 # AC-3: --session 引数指定時は引数優先 (.rite-session-id を上書きしない)
@@ -137,16 +136,16 @@ SID_OVERRIDE="44444444-4444-4444-4444-444444444444"
 
 OV="$TD/.rite/sessions/$SID_OVERRIDE.flow-state"
 if [ -f "$OV" ] && [ "$(jq -r '.session_id' "$OV")" = "$SID_OVERRIDE" ]; then
-  pass "TC-216 AC-3: --session 引数指定時は引数値が優先される"
+  pass "TC-session-id-auto-read AC-3: --session 引数指定時は引数値が優先される"
 else
-  fail "TC-216 AC-3: --session 引数が無視されている"
+  fail "TC-session-id-auto-read AC-3: --session 引数が無視されている"
 fi
 
 # --------------------------------------------------------------------------
-# TC-206 + TC-558: SOURCE=startup/clear reset と他 session preservation
+# TC-startup-clear-reset + TC-other-session-preservation: SOURCE=startup/clear reset と他 session preservation
 # AC-01 (own reset) / AC-02 (other not reset) / AC-03 (legacy reset)
 # --------------------------------------------------------------------------
-echo "TC-206 + TC-558 (SOURCE=startup reset semantics):"
+echo "TC-startup-clear-reset + TC-other-session-preservation (SOURCE=startup reset semantics):"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
 write_config "$TD"
 SID_OWN="55555555-5555-5555-5555-555555555555"
@@ -157,7 +156,7 @@ write_session_id "$TD" "$SID_OWN"
   --phase "phase_x" --issue 10 --branch "bx" --pr 0 --next "nx" >/dev/null 2>&1)
 
 OWN="$TD/.rite/sessions/$SID_OWN.flow-state"
-[ "$(jq -r '.active' "$OWN")" = "true" ] || fail "TC-558 setup: own state が active=true で作成されていない"
+[ "$(jq -r '.active' "$OWN")" = "true" ] || fail "TC-other-session-preservation setup: own state が active=true で作成されていない"
 
 # session-start.sh を SOURCE=startup で起動 (own session)
 HOOK_INPUT=$(jq -n --arg cwd "$TD" --arg sid "$SID_OWN" \
@@ -172,13 +171,13 @@ rm -f "$ss_err"
 
 # AC-01: own session の state は reset (active=false)
 if [ "$(jq -r '.active' "$OWN")" = "false" ]; then
-  pass "TC-206/558 AC-01: SOURCE=startup で own session の state が active=false にリセット"
+  pass "TC-startup-clear-reset AC-01: SOURCE=startup で own session の state が active=false にリセット"
 else
-  fail "TC-206/558 AC-01: own state が reset されていない (active=$(jq -r '.active' "$OWN"))"
+  fail "TC-startup-clear-reset AC-01: own state が reset されていない (active=$(jq -r '.active' "$OWN"))"
 fi
 
 # AC-02: 他 session の state は reset しない
-echo "TC-558 AC-02: 他 session の per-session state は reset されない"
+echo "TC-other-session-preservation AC-02: 他 session の per-session state は reset されない"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
 write_config "$TD"
 SID_ME="77777777-7777-7777-7777-777777777777"
@@ -189,7 +188,7 @@ write_session_id "$TD" "$SID_ME"
 (cd "$TD" && bash "$HOOK" set --session "$SID_OTHER" \
   --phase "phase_other" --issue 20 --branch "b_other" --pr 0 --next "n_other" >/dev/null 2>&1)
 OTHER="$TD/.rite/sessions/$SID_OTHER.flow-state"
-[ "$(jq -r '.active' "$OTHER")" = "true" ] || fail "TC-558 AC-02 setup: other state が active=true でない"
+[ "$(jq -r '.active' "$OTHER")" = "true" ] || fail "TC-other-session-preservation AC-02 setup: other state が active=true でない"
 
 # session-start.sh を SOURCE=startup で起動 (own session_id = SID_ME)
 # session-start.sh の resolver は own session_id 経由で per-session file を resolve するため、
@@ -206,13 +205,13 @@ rm -f "$ss_err"
 
 # 他 session の state は active=true のまま
 if [ "$(jq -r '.active' "$OTHER")" = "true" ]; then
-  pass "TC-558 AC-02: 他 session (SID_OTHER) の state は active=true のまま"
+  pass "TC-other-session-preservation AC-02: 他 session (SID_OTHER) の state は active=true のまま"
 else
-  fail "TC-558 AC-02: 他 session の state が破壊された (active=$(jq -r '.active' "$OTHER"))"
+  fail "TC-other-session-preservation AC-02: 他 session の state が破壊された (active=$(jq -r '.active' "$OTHER"))"
 fi
 
 # AC-03: SOURCE=clear でも同様
-echo "TC-206 AC-2 (SOURCE=clear reset)"
+echo "TC-startup-clear-reset AC-2 (SOURCE=clear reset)"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
 write_config "$TD"
 SID_CLEAR="99999999-9999-9999-9999-999999999999"
@@ -232,16 +231,16 @@ fi
 rm -f "$ss_err"
 
 if [ "$(jq -r '.active' "$CLEAR_F")" = "false" ]; then
-  pass "TC-206 AC-2: SOURCE=clear でも own session state が active=false にリセット"
+  pass "TC-startup-clear-reset AC-2: SOURCE=clear でも own session state が active=false にリセット"
 else
-  fail "TC-206 AC-2: clear で reset されていない"
+  fail "TC-startup-clear-reset AC-2: clear で reset されていない"
 fi
 
 # --------------------------------------------------------------------------
-# TC-660: active=true gate (AND-logic in pre-tool-bash-guard.sh)
+# TC-active-true-gate: active=true gate (AND-logic in pre-tool-bash-guard.sh)
 # AC-2 (active=false → no block) / AC-3 (active=true → block in defense scope)
 # --------------------------------------------------------------------------
-echo "TC-660 (active=true gate, AND-logic):"
+echo "TC-active-true-gate (active=true gate, AND-logic):"
 TD=$(make_test_dir); cleanup_dirs+=("$TD")
 write_config "$TD"
 SID_GATE="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
@@ -274,14 +273,14 @@ echo "$HOOK_INPUT" | (cd "$TD" && bash "$PRE_TOOL_GUARD" >/dev/null 2>&1)
 rc=$?
 set -e
 if [ "$rc" -eq 0 ]; then
-  pass "TC-660 AC-2: active=false で pre-tool-bash-guard は exit 0 (block しない)"
+  pass "TC-active-true-gate AC-2: active=false で pre-tool-bash-guard は exit 0 (block しない)"
 else
-  fail "TC-660 AC-2: active=false でも pre-tool-bash-guard が block (rc=$rc)"
+  fail "TC-active-true-gate AC-2: active=false でも pre-tool-bash-guard が block (rc=$rc)"
 fi
 
 # AC-3 removed (PR 2a refactor / Phase C scope reduction):
 #
-# Previously TC-660 AC-3 verified that `gh issue create` was blocked when
+# Previously TC-active-true-gate AC-3 verified that `gh issue create` was blocked when
 # active=true + phase=create_interview (AND-logic gate) and silently skipped
 # when active=false. Phase C (commit 7f135e13) shrank pre-tool-bash-guard.sh
 # from 850L to 540L and removed the create_*-related branch entirely — the
@@ -292,7 +291,7 @@ fi
 # unconditionally based on command-string match (and, for Pattern 4, on the
 # IS_SUBAGENT detection). The "active=true precondition fires AND-logic" /
 # "active=false silent skip" contract therefore no longer exists in the
-# code path TC-660 was probing. Verifying the remaining patterns belongs to
+# code path TC-active-true-gate was probing. Verifying the remaining patterns belongs to
 # pre-tool-bash-guard.test.sh, not session-ownership-regression.test.sh.
 
 # --------------------------------------------------------------------------
@@ -303,10 +302,10 @@ echo "==============================="
 echo "Results: $PASS passed, $FAIL failed"
 echo ""
 echo "Issue mapping:"
-echo "  TC-173: Per-session isolation (race window 構造的消滅)"
-echo "  TC-216: .rite-session-id auto-read (AC-2 / AC-3)"
-echo "  TC-206 + TC-558: SOURCE=startup/clear reset semantics (AC-01 own / AC-02 other / AC-2 clear)"
-echo "  TC-660: active=true gate (AND-logic in pre-tool-bash-guard.sh)"
+echo "  TC-per-session-isolation: Per-session isolation (race window 構造的消滅)"
+echo "  TC-session-id-auto-read: .rite-session-id auto-read (AC-2 / AC-3)"
+echo "  TC-startup-clear-reset + TC-other-session-preservation: SOURCE=startup/clear reset semantics (AC-01 own / AC-02 other / AC-2 clear)"
+echo "  TC-active-true-gate: active=true gate (AND-logic in pre-tool-bash-guard.sh)"
 
 if [ "$FAIL" -gt 0 ]; then
   exit 1

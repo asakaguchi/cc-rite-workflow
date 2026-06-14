@@ -256,8 +256,8 @@ ISSUE_NUMBER=$(grep -oE '[0-9]+$' <<< "$ISSUE_URL" || true)
 
 ### Reference
 
-- PR #396 / Issue #389: 初回修正（`review.md` の `printf | grep -m 1` → `<<<`）
-- Issue #398: 横断調査による残存パターンの一括修正
+- 初回修正: `review.md` の `printf | grep -m 1` → `<<<`
+- 横断調査による残存パターンの一括修正
 
 ---
 

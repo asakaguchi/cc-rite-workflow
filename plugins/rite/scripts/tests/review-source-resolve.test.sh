@@ -3,7 +3,7 @@
 # Usage: bash plugins/rite/scripts/tests/review-source-resolve.test.sh
 #
 # Strategy: review-source-resolve.sh resolves the Hybrid Review Source Priority
-# chain (extracted from commands/pr/fix.md ステップ 1.2.0, refs #1195 item #2).
+# chain (extracted from commands/pr/fix.md ステップ 1.2.0).
 # It has no gh dependency — only jq / git / find / mktemp — so tests are fully
 # hermetic. We run the real script inside a throwaway git repo (so commit_sha
 # stale detection has a real HEAD) and assert on:
@@ -42,7 +42,7 @@ mkdir -p "$SANDBOX"
   git commit -q --allow-empty -m init
 )
 # Real HEAD of the sandbox — commit_sha stale detection compares the JSON's
-# commit_sha against this (#1220). BOGUS_SHA is a valid-shaped SHA guaranteed
+# commit_sha against this. BOGUS_SHA is a valid-shaped SHA guaranteed
 # to differ from HEAD so the mismatch branch fires deterministically.
 HEAD_SHA=$(cd "$SANDBOX" && git rev-parse HEAD)
 BOGUS_SHA="0000000000000000000000000000000000000000"
@@ -76,7 +76,7 @@ JSON
 valid_json_sha() {
   # $1 = path, $2 = commit_sha, $3 = overall_assessment (default fix-needed).
   # Same shape as valid_json but carries an explicit commit_sha so the stale
-  # detection branch (verified-review C-1) is exercised (#1220).
+  # detection branch (verified-review C-1) is exercised.
   local p="$1" sha="$2" oa="${3:-fix-needed}"
   cat > "$p" <<JSON
 {"schema_version":"1.1.0","pr_number":123,"commit_sha":"$sha","overall_assessment":"$oa","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"current-pr"}]}
@@ -189,7 +189,7 @@ assert_stdout_empty "pr_comment fall-through"
 assert_no_fixerror_stdout "pr_comment path"
 
 # -----------------------------------------------------------------
-echo "--- Test 6: Priority 0 commit_sha stale detection (#1220) ---"
+echo "--- Test 6: Priority 0 commit_sha stale detection ---"
 # match: commit_sha == HEAD -> explicit_file resolves, no STALE marker
 valid_json_sha "$SANDBOX/sha-match.json" "$HEAD_SHA"
 run --pr-number 123 --review-file-path "$SANDBOX/sha-match.json" --conversation-decision none --p1-scan-turns 0 --p1-scan-found false
@@ -206,7 +206,7 @@ assert_err_has "REVIEW_SOURCE_STALE=1; reason=explicit_file_commit_sha_mismatch"
 assert_no_fixerror_stdout "p0 stale path"
 
 # -----------------------------------------------------------------
-echo "--- Test 7: Priority 0 invariant #4 / enum / schema_version unknown (#1220) ---"
+echo "--- Test 7: Priority 0 invariant #4 / enum / schema_version unknown ---"
 # invariant #4: severity HIGH + scope nit-noted -> fallback
 cat > "$SANDBOX/p0-inv4.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":123,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"HIGH","status":"open","scope":"nit-noted"}]}
@@ -233,7 +233,7 @@ assert_rc 0 "p0 schema_version unknown -> exit 0 (fallback)"
 assert_err_has "REVIEW_SOURCE_SCHEMA_UNKNOWN=1; reason=explicit_file_schema_version_unknown" "p0 schema_version unknown reason"
 
 # -----------------------------------------------------------------
-echo "--- Test 8: Priority 2 commit_sha stale detection (#1220) ---"
+echo "--- Test 8: Priority 2 commit_sha stale detection ---"
 RR="$SANDBOX/.rite/review-results"
 mkdir -p "$RR"
 # Distinct pr_number per case so the ${pr_number}-*.json glob isolates each file
@@ -255,7 +255,7 @@ assert_err_has "REVIEW_SOURCE_STALE=1; reason=local_file_commit_sha_mismatch" "p
 assert_no_fixerror_stdout "p2 stale path"
 
 # -----------------------------------------------------------------
-echo "--- Test 9: Priority 2 invariant #4 / enum / schema / corrupt-rename Instance 2/2 (#1220) ---"
+echo "--- Test 9: Priority 2 invariant #4 / enum / schema / corrupt-rename Instance 2/2 ---"
 # invariant #4: severity CRITICAL + scope nit-noted -> pr_comment
 cat > "$RR/700-20260101000000.json" <<'JSON'
 {"schema_version":"1.1.0","pr_number":700,"overall_assessment":"fix-needed","findings":[{"file":"a.ts","line":1,"severity":"CRITICAL","status":"open","scope":"nit-noted"}]}

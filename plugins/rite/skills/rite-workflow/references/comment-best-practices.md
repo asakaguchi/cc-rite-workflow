@@ -4,7 +4,7 @@ rite workflow がコードを生成・修正する際に従うべきコメント
 業界標準 (Clean Code 4 章 / Google Style Guide / JSDoc・TSDoc / Hillel Wayne) と
 rite workflow 独自の主張 (Contract Rigour / Output Contract / Naming is documentation) を統合する。
 
-> **MVP スコープ**: 本ドキュメントは Issue #699 の MVP として 6 原則 + Bad/Good 例 + Detection Heuristics (含 Maintenance Invariant note) + Density Guideline + 禁止句リスト (SoT) + Whitelist 条文を提供する。
+> **MVP スコープ**: 本ドキュメントは MVP として 6 原則 + Bad/Good 例 + Detection Heuristics (含 Maintenance Invariant note) + Density Guideline + 禁止句リスト (SoT) + Whitelist 条文を提供する。
 > reviewer 側の Detection Checklist 統合は後続 Issue (Issue 2a) の責務。
 
 ## 適用スコープ
@@ -344,9 +344,9 @@ if val=$(bash state-read.sh --field foo); then ...
 
 ## B. Bad / Good Examples (実プロジェクト由来)
 
-PR #688 (本 SoT 起草時点で OPEN / 未マージ、branch `fix/issue-687-wiki-ingest-auto-lint-stop`) の `plugins/rite/hooks/state-read.sh` 草案から抜粋した Bad ↔ Good 対比。
+ある未マージブランチ (`fix/issue-687-wiki-ingest-auto-lint-stop`) の `plugins/rite/hooks/state-read.sh` 草案から抜粋した Bad ↔ Good 対比。
 
-> **Note**: 引用元は origin/develop ではなく未マージブランチに存在する。Bad 例の本来の意図は「本 SoT が解消すべきジャーナルコメント大量発生の典型例を示す」ことであり、引用元のファイルが develop に存在することは保証されない。本 PR の後続でジャーナルコメント禁止が強制されれば、PR #688 の cycle 系コメントは Wiki に移管されて消滅する想定。
+> **Note**: 引用元は origin/develop ではなく未マージブランチに存在する。Bad 例の本来の意図は「本 SoT が解消すべきジャーナルコメント大量発生の典型例を示す」ことであり、引用元のファイルが develop に存在することは保証されない。ジャーナルコメント禁止が強制されれば、引用元の cycle 系コメントは Wiki に移管されて消滅する想定。
 
 ### B.1 Bad — ジャーナル + 行番号 + cycle 番号の重畳
 

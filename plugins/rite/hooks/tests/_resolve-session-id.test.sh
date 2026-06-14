@@ -1,8 +1,8 @@
 #!/bin/bash
-# Tests for _resolve-session-id.sh (PR #688 cycle 13 F-03 対応)
+# Tests for _resolve-session-id.sh (cycle 13 F-03 対応)
 #
 # Purpose:
-#   PR #688 cycle 12 F-03 の指摘により、`_resolve-session-id.sh:38-46` の UUID
+#   cycle 12 F-03 の指摘により、`_resolve-session-id.sh:38-46` の UUID
 #   validation helper には direct test がない。cycle 44 F-10 で導入された
 #   case-insensitive accept + lowercase normalize 動作 (`tr 'A-F' 'a-f'`) は
 #   caller (state-read.sh) の TC-6.INJECTION (uppercase / mixed_case vectors)

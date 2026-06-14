@@ -4,11 +4,11 @@
 # session logs (jsonl) and emit them as JSONL records for downstream
 # signal-rate auditing.
 #
-# Purpose: Issue #391 (Phase D 残タスク) で baseline_V signal rate 監査を行うため、
+# Purpose: Phase D 残タスクで baseline_V signal rate 監査を行うため、
 #          セッションログから個別指摘を構造化抽出する。PR コメントには集約結果
 #          しか残っていないため、本スクリプトが必要。
 #
-# Note (#391 実測): Issue 当初想定では「session log 58685911-* 単独に 172 件」
+# Note (実測): 当初想定では「session log 58685911-* 単独に 172 件」
 #          と想定していたが、実測では verified-review の指摘は **複数 session
 #          にまたがって散在** しており、単一 session では分母を構築できない。
 #          そのため `--session-dir` オプションでディレクトリ走査をサポートする。
@@ -44,7 +44,7 @@
 #      backtracking により順序非依存で正しくマッチする (LOW を先に置いても LOW-MEDIUM の
 #      入力で LOW match → 後続 `\s*\|` 不一致 → 別 alternative へ backtrack で LOW-MEDIUM
 #      match に成功する)。順序は perf 最適化目的
-#   3. 4 column (schema 1.0) と 5 column (schema 1.1.0 — Issue #1016 で scope 列追加) を
+#   3. 4 column (schema 1.0) と 5 column (schema 1.1.0 で scope 列追加) を
 #      両対応:
 #        schema 1.0: `| {SEVERITY} | {file:line} | {reviewer} | {description} |`
 #        schema 1.1.0: `| {SEVERITY} | {scope} | {file:line} | {reviewer} | {description} |`
@@ -91,7 +91,7 @@ Options:
   --from YYYY-MM-DD     mtime 下限 (--session-dir 専用、ISO 8601 date 形式)
   --to   YYYY-MM-DD     mtime 上限 (exclusive、--session-dir 専用、ISO 8601 date 形式)
   --min-size BYTES      ファイルサイズ下限 (--session-dir 専用、デフォルト 500000 = 500KB)
-                        500KB という値の根拠: #391 監査時の経験値。verified-review の
+                        500KB という値の根拠: 監査時の経験値。verified-review の
                         セッションは通常 2MB 以上で、500KB 未満の session は throwaway
                         セッション (test, scratch) であり verified-review の指摘を含まない
   --out <path>          出力先 jsonl (省略時は stdout、書き出し失敗時 exit 2)
@@ -189,7 +189,7 @@ min_size     = int(sys.argv[5])  # bash 側で必ず set されている (二重
 out_path     = sys.argv[6] or None
 
 # Markdown 表 row pattern: schema 1.0 (4 columns) and schema 1.1.0 (5 columns with scope)
-# Both supported via optional scope group (group 2). Issue #1016 schema 1.1.0 introduced scope.
+# Both supported via optional scope group (group 2). schema 1.1.0 introduced scope.
 #   4-col: | SEV | file_line | col4 | col5 |       → groups (1, None, 3, 4, 5)
 #   5-col: | SEV | scope | file_line | col4 | col5 | → groups (1, 2, 3, 4, 5)
 ROW_RE = re.compile(

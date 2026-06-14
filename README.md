@@ -2,12 +2,8 @@
 
 > Universal Issue-Driven Development Workflow for Claude Code
 
-[![Version](https://img.shields.io/badge/version-0.5.2-blue.svg)](https://github.com/asakaguchi/cc-rite-workflow/releases/tag/v0.5.2)
+[![Version](https://img.shields.io/badge/version-0.5.3-blue.svg)](https://github.com/asakaguchi/cc-rite-workflow/releases/tag/v0.5.3)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-## ⚠️ Breaking Changes (v0.4.0)
-
-**v0.4.0 — Cycle-count-based review-fix degradation removed (#557)**: Three configuration keys (`review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, `safety.max_review_fix_loops`) are no longer honored. The review-fix loop now terminates only on 0 findings or when one of four **quality signals** fires (fingerprint cycling / root-cause-missing fix / cross-validation disagreement / reviewer self-degraded). Existing users should remove the three keys from `rite-config.yml`. See [CHANGELOG](CHANGELOG.md#040---2026-04-17) for the migration guide.
 
 ## Why "Rite"?
 
@@ -101,7 +97,7 @@ This will:
                   → /rite:pr:ready → /rite:pr:merge → /rite:pr:cleanup
 ```
 
-**Note:** The end-to-end flow is split across four single-responsibility commands (#1136). `/rite:pr:open <issue>` handles branch creation, implementation, quality checks, and draft PR creation. `/rite:pr:iterate <pr>` loops review and fix until mergeable. `/rite:pr:ready <pr>` flips the PR to Ready for review. `/rite:pr:merge <pr>` performs the squash-merge. If any step is interrupted (e.g. `Context limit reached`), run `/rite:resume` to recover.
+**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:pr:open <issue>` handles branch creation, implementation, quality checks, and draft PR creation. `/rite:pr:iterate <pr>` loops review and fix until mergeable. `/rite:pr:ready <pr>` flips the PR to Ready for review. `/rite:pr:merge <pr>` performs the squash-merge. If any step is interrupted (e.g. `Context limit reached`), run `/rite:resume` to recover.
 
 Status Transitions:
 ```

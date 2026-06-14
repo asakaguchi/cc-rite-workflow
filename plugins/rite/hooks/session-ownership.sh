@@ -32,6 +32,14 @@ source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
 # Extract session_id from hook JSON payload
 # Args: $1 = hook JSON string (from stdin of the hook)
 # Output: session_id string, or empty string if not found
+# Consistency (Issue #1530): the hook-side payload `.session_id` returned here and
+#   the command-side env `CLAUDE_CODE_SESSION_ID` (now flow-state.sh's primary
+#   resolution source) both identify the SAME Claude session, so per-session
+#   ownership stays coherent across the hook boundary: the per-session state file
+#   `{sid}.flow-state` is keyed by env on the command side and matched against this
+#   payload sid in the fast-path below. The shared `.rite-session-id` file is no
+#   longer the authoritative source, so a stale shared file cannot mis-classify
+#   ownership when env is present.
 # Note: jq parse failures degrade to empty so ownership check falls through to
 #   the backward-compat "own" path. The WARNING is unconditional because
 #   ownership classification feeds state-overwrite decisions; suppressing it
@@ -121,7 +129,7 @@ is_per_session_state_file() {
 #     updated_at > 2h ago    → "stale" (safe to overwrite)
 #     updated_at <= 2h ago   → "other" (active session, do not overwrite)
 #
-# Issue #681: the per-session fast-path replaces the schema-2 portion of the
+# The per-session fast-path replaces the schema-2 portion of the
 # legacy 4-state classification with a structural check. The remaining branches
 # preserve schema-1 behavior unchanged so lifecycle hooks and pre-compact
 # that depend on "legacy"/"other"/"stale" outputs continue to work.
@@ -135,7 +143,7 @@ check_session_ownership() {
   # Schema-2 fast-path: per-session file structure encodes ownership in the
   # filename. The resolver only returns a per-session path that matches the
   # current session by construction, so the typical caller passing such a
-  # path is reading its own state. As defense-in-depth (review #681 F-02),
+  # path is reading its own state. As defense-in-depth,
   # when the hook payload provides a session_id, verify that the filename's
   # session_id segment matches it. This prevents a future caller bypassing
   # the resolver and silently passing a foreign per-session file from being

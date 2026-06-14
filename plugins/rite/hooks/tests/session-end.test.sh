@@ -132,7 +132,7 @@ git_repo_004="$TEST_DIR/git_tc004"
 mkdir -p "$git_repo_004"
 # cycle 11 MEDIUM F-05: `git checkout -b main` は現代 git (init.defaultBranch=main) で
 # 既存 main と衝突し `set -e` で script 全体を abort させる。その結果 cycle 9-10 で追加した
-# TC-608-WARN-A〜E が一度も実行されない regression guard 実質未検証状態になっていた。
+# TC-cleanup-lifecycle-warn-A〜E が一度も実行されない regression guard 実質未検証状態になっていた。
 # `-B` (force reset, create if missing) を使用して defaultBranch 設定に依存しない形に修正。
 (cd "$git_repo_004" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q && git checkout -B "main" -q)
 
@@ -273,9 +273,9 @@ echo ""
 # `date -u +"%Y-%m-%dT%H:%M:%SZ"` and exercised by other hooks' tests.
 
 # --------------------------------------------------------------------------
-# TC-475-WARN-A: create_interview lifecycle unfinished → stderr warning (#475 AC-9)
+# TC-create-lifecycle-warn-A: create_interview lifecycle unfinished → stderr warning (AC-9)
 # --------------------------------------------------------------------------
-echo "TC-475-WARN-A: create_interview active → lifecycle warning in stderr"
+echo "TC-create-lifecycle-warn-A: create_interview active → lifecycle warning in stderr"
 dir475wa="$TEST_DIR/tc475wa"
 mkdir -p "$dir475wa"
 create_state_file "$dir475wa" '{"active": true, "phase": "create_interview", "issue_number": 0, "branch": ""}'
@@ -287,8 +287,8 @@ else
 fi
 echo ""
 
-# TC-475-WARN-B: create_post_interview also emits warning
-echo "TC-475-WARN-B: create_post_interview active → lifecycle warning"
+# TC-create-lifecycle-warn-B: create_post_interview also emits warning
+echo "TC-create-lifecycle-warn-B: create_post_interview active → lifecycle warning"
 dir475wb="$TEST_DIR/tc475wb"
 mkdir -p "$dir475wb"
 create_state_file "$dir475wb" '{"active": true, "phase": "create_post_interview", "issue_number": 0, "branch": ""}'
@@ -300,8 +300,8 @@ else
 fi
 echo ""
 
-# TC-475-WARN-C: create_completed → NO warning (lifecycle finished)
-echo "TC-475-WARN-C: create_completed → no warning"
+# TC-create-lifecycle-warn-C: create_completed → NO warning (lifecycle finished)
+echo "TC-create-lifecycle-warn-C: create_completed → no warning"
 dir475wc="$TEST_DIR/tc475wc"
 mkdir -p "$dir475wc"
 create_state_file "$dir475wc" '{"active": true, "phase": "create_completed", "issue_number": 0, "branch": ""}'
@@ -313,8 +313,8 @@ else
 fi
 echo ""
 
-# TC-475-WARN-D: phase5_lint (different workflow) → NO warning
-echo "TC-475-WARN-D: phase5_lint → no warning (not create lifecycle)"
+# TC-create-lifecycle-warn-D: phase5_lint (different workflow) → NO warning
+echo "TC-create-lifecycle-warn-D: phase5_lint → no warning (not create lifecycle)"
 dir475wd="$TEST_DIR/tc475wd"
 mkdir -p "$dir475wd"
 create_state_file "$dir475wd" '{"active": true, "phase": "phase5_lint", "issue_number": 475, "branch": ""}'
@@ -327,12 +327,12 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-608-WARN-A: cleanup_pre_ingest lifecycle unfinished → stderr warning (#604)
+# TC-cleanup-lifecycle-warn-A: cleanup_pre_ingest lifecycle unfinished → stderr warning
 # Verifies the cleanup lifecycle warning path added in session-end.sh "Lifecycle unfinished
 # warnings" section (case "$_lifecycle_unfinished_kind" in cleanup) branch).
 # (line-number 参照を避ける理由は cycle 8 F-05 参照)
 # --------------------------------------------------------------------------
-echo "TC-608-WARN-A: cleanup_pre_ingest active → /rite:pr:cleanup lifecycle warning"
+echo "TC-cleanup-lifecycle-warn-A: cleanup_pre_ingest active → /rite:pr:cleanup lifecycle warning"
 dir608wa="$TEST_DIR/tc608wa"
 mkdir -p "$dir608wa"
 create_state_file "$dir608wa" '{"active": true, "phase": "cleanup_pre_ingest", "issue_number": 604, "branch": ""}'
@@ -346,8 +346,8 @@ else
 fi
 echo ""
 
-# TC-608-WARN-B: cleanup_completed → NO warning (lifecycle finished)
-echo "TC-608-WARN-B: cleanup_completed → no warning"
+# TC-cleanup-lifecycle-warn-B: cleanup_completed → NO warning (lifecycle finished)
+echo "TC-cleanup-lifecycle-warn-B: cleanup_completed → no warning"
 dir608wb="$TEST_DIR/tc608wb"
 mkdir -p "$dir608wb"
 create_state_file "$dir608wb" '{"active": true, "phase": "cleanup_completed", "issue_number": 604, "branch": ""}'
@@ -359,9 +359,9 @@ else
 fi
 echo ""
 
-# TC-608-WARN-C: create_* phases must NOT be misclassified as cleanup lifecycle
+# TC-cleanup-lifecycle-warn-C: create_* phases must NOT be misclassified as cleanup lifecycle
 # (regression guard — ensures the cleanup detection branch doesn't swallow create_*)
-echo "TC-608-WARN-C: create_interview active → create-specific warning (not cleanup)"
+echo "TC-cleanup-lifecycle-warn-C: create_interview active → create-specific warning (not cleanup)"
 dir608wc="$TEST_DIR/tc608wc"
 mkdir -p "$dir608wc"
 create_state_file "$dir608wc" '{"active": true, "phase": "create_interview", "issue_number": 0, "branch": ""}'
@@ -375,12 +375,12 @@ else
 fi
 echo ""
 
-# TC-608-WARN-D: cleanup_post_ingest phase branch coverage (ELIF glob 分岐 全網羅)
+# TC-cleanup-lifecycle-warn-D: cleanup_post_ingest phase branch coverage (ELIF glob 分岐 全網羅)
 # session-end.sh の cleanup lifecycle 判定 ELIF glob (`cleanup` / `cleanup_*` 一致) は cleanup /
-# cleanup_pre_ingest / cleanup_post_ingest の 3 phase をカバーする必要がある。TC-608-WARN-A は
+# cleanup_pre_ingest / cleanup_post_ingest の 3 phase をカバーする必要がある。TC-cleanup-lifecycle-warn-A は
 # cleanup_pre_ingest のみで、cleanup_post_ingest 一致が外れても WARN-A/B/C は pass し続ける
 # false-positive 構造。本 TC で補完。
-echo "TC-608-WARN-D: cleanup_post_ingest active → /rite:pr:cleanup lifecycle warning"
+echo "TC-cleanup-lifecycle-warn-D: cleanup_post_ingest active → /rite:pr:cleanup lifecycle warning"
 dir608wd="$TEST_DIR/tc608wd"
 mkdir -p "$dir608wd"
 create_state_file "$dir608wd" '{"active": true, "phase": "cleanup_post_ingest", "issue_number": 604, "branch": ""}'
@@ -394,7 +394,7 @@ else
 fi
 echo ""
 
-# TC-608-WARN-E: bare cleanup phase branch coverage
+# TC-cleanup-lifecycle-warn-E: bare cleanup phase branch coverage
 # session-end.sh の cleanup lifecycle 判定 ELIF glob 分岐 (`[[ "$_state_phase" == "cleanup" ||
 # "$_state_phase" == cleanup_* ]]`) のうち、bare `cleanup` 一致が削除されても WARN-A/B/C/D は
 # 全 pass する false-positive 構造を補完。cleanup workflow が実際に書く phase 名 ("cleanup" bare) を
@@ -405,7 +405,7 @@ echo ""
 # `type … >/dev/null` guard は常に false で、ELIF の glob 一致
 # (`[[ "$_state_phase" == "cleanup" || "$_state_phase" == cleanup_* ]]`) が唯一の active path となる。
 # 本 TC はその path を直接 exercise する。
-echo "TC-608-WARN-E: cleanup active → /rite:pr:cleanup lifecycle warning (bare cleanup arm coverage)"
+echo "TC-cleanup-lifecycle-warn-E: cleanup active → /rite:pr:cleanup lifecycle warning (bare cleanup arm coverage)"
 dir608we="$TEST_DIR/tc608we"
 mkdir -p "$dir608we"
 create_state_file "$dir608we" '{"active": true, "phase": "cleanup", "issue_number": 604, "branch": ""}'
@@ -420,9 +420,9 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-680-A (Issue #680, AC-10): per-session flow-state file is removed on session end
+# TC-per-session-cleanup-A (AC-10): per-session flow-state file is removed on session end
 # --------------------------------------------------------------------------
-echo "TC-680-A (Issue #680, AC-10): per-session file → cleanup on session end"
+echo "TC-per-session-cleanup-A (AC-10): per-session file → cleanup on session end"
 dir680a="$TEST_DIR/tc680a"
 mkdir -p "$dir680a/.rite/sessions"
 sid680a="abcdef01-2345-6789-abcd-ef0123456789"
@@ -432,20 +432,20 @@ per_session_file="$dir680a/.rite/sessions/${sid680a}.flow-state"
 echo '{"active": true, "phase": "phase5_review", "issue_number": 680, "branch": "refactor/issue-680-test"}' > "$per_session_file"
 run_hook "$dir680a" >/dev/null || true
 if [ ! -f "$per_session_file" ]; then
-  pass "TC-680-A: per-session file removed after session-end (AC-10)"
+  pass "TC-per-session-cleanup-A: per-session file removed after session-end (AC-10)"
 else
-  fail "TC-680-A: per-session file not removed (still at $per_session_file)"
+  fail "TC-per-session-cleanup-A: per-session file not removed (still at $per_session_file)"
 fi
 # Counter-assertion: legacy file (which never existed) was not created
 if [ ! -f "$dir680a/.rite-flow-state" ]; then
-  pass "TC-680-A: legacy file not created (no leakage to legacy path)"
+  pass "TC-per-session-cleanup-A: legacy file not created (no leakage to legacy path)"
 else
-  fail "TC-680-A: legacy file unexpectedly created"
+  fail "TC-per-session-cleanup-A: legacy file unexpectedly created"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-680-B: removed (PR 2a refactor)
+# TC-per-session-cleanup-B: removed (PR 2a refactor)
 # Previously verified that the legacy `.rite-flow-state` was preserved with
 # active=false marker. Under v3 the legacy single-file path is no longer used
 # (state lives exclusively in `.rite/sessions/<sid>.flow-state`); session-end
@@ -454,11 +454,11 @@ echo ""
 # --------------------------------------------------------------------------
 
 # --------------------------------------------------------------------------
-# TC-680-C (Issue #680, AC-LOCAL-2): .active=true precondition preserved on per-session path
+# TC-per-session-cleanup-C (AC-LOCAL-2): .active=true precondition preserved on per-session path
 # Defense-in-depth: ensure jq -r '.active' / `_state_active=...` paths still
 # fire correctly when the resolved STATE_FILE is per-session, not legacy.
 # --------------------------------------------------------------------------
-echo "TC-680-C (Issue #680, AC-LOCAL-2): per-session active=true → lifecycle warning fires"
+echo "TC-per-session-cleanup-C (AC-LOCAL-2): per-session active=true → lifecycle warning fires"
 dir680c="$TEST_DIR/tc680c"
 mkdir -p "$dir680c/.rite/sessions"
 sid680c="11111111-2222-3333-4444-555555555555"
@@ -468,23 +468,23 @@ echo '{"active": true, "phase": "create_interview", "issue_number": 682, "branch
   > "$dir680c/.rite/sessions/${sid680c}.flow-state"
 run_hook "$dir680c" >/dev/null || true
 if [ -f "${LAST_STDERR_FILE:-}" ] && grep -q "/rite:issue:create lifecycle was not completed" "$LAST_STDERR_FILE"; then
-  pass "TC-680-C: .active=true precondition fires lifecycle warning on per-session path (AND-logic preserved)"
+  pass "TC-per-session-cleanup-C: .active=true precondition fires lifecycle warning on per-session path (AND-logic preserved)"
 else
-  fail "TC-680-C: lifecycle warning missing — .active=true precondition broke on per-session path"
+  fail "TC-per-session-cleanup-C: lifecycle warning missing — .active=true precondition broke on per-session path"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-749-STDERR-PASSTHROUGH (Issue #749, AC-1 / AC-LOCAL-1)
+# TC-helper-failure-stderr-passthrough (AC-1 / AC-LOCAL-1)
 # --------------------------------------------------------------------------
-echo "TC-749-STDERR-PASSTHROUGH: helper failure → ERROR pass-through + skip WARNING"
+echo "TC-helper-failure-stderr-passthrough: helper failure → ERROR pass-through + skip WARNING"
 
 HOOKS_REAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 sbx_749="$(mktemp -d "$TEST_DIR/sbx-hooks-XXXXXX")"
 cp -a "$HOOKS_REAL_DIR/." "$sbx_749/"
 cat > "$sbx_749/flow-state.sh" <<'FAKE_RESOLVER_EOF'
 #!/bin/bash
-echo "ERROR: TC-749 simulated flow-state.sh path failure" >&2
+echo "ERROR: TC-helper-failure simulated flow-state.sh path failure" >&2
 exit 1
 FAKE_RESOLVER_EOF
 chmod +x "$sbx_749/flow-state.sh"
@@ -497,7 +497,7 @@ echo "{\"cwd\": \"$dir_749\"}" \
   | bash "$sbx_749/session-end.sh" >/dev/null 2>"$LAST_STDERR_FILE" || true
 stderr_749="$(cat "$LAST_STDERR_FILE")"
 
-if printf '%s' "$stderr_749" | grep -qF 'TC-749 simulated flow-state.sh path failure'; then
+if printf '%s' "$stderr_749" | grep -qF 'TC-helper-failure simulated flow-state.sh path failure'; then
   pass "ERROR line from flow-state.sh passed through to caller stderr"
 else
   fail "Expected ERROR pass-through; got stderr: $stderr_749"
@@ -514,12 +514,12 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-749-JQ-WRITE-WARN (Issue #749, AC-3)
+# TC-helper-failure-jq-write-warn (AC-3)
 # --------------------------------------------------------------------------
 # Verify that when jq fails to write the deactivated state (else arm of the
 # atomic write block), session-end emits a diagnostic WARNING to stderr
 # instead of silently swallowing the failure.
-echo "TC-749-JQ-WRITE-WARN: jq atomic write failure → WARNING emitted"
+echo "TC-helper-failure-jq-write-warn: jq atomic write failure → WARNING emitted"
 
 sbx_jq="$(mktemp -d "$TEST_DIR/sbx-hooks-jq-XXXXXX")"
 cp -a "$HOOKS_REAL_DIR/." "$sbx_jq/"
@@ -540,7 +540,7 @@ cp -a "$HOOKS_REAL_DIR/." "$sbx_jq/"
 # `/opt/homebrew/bin/jq` and Nix uses `/run/current-system/sw/bin/jq`, etc.
 JQ_REAL="$(command -v jq)"
 if [ -z "$JQ_REAL" ]; then
-  fail "TC-749-JQ-WRITE-WARN: real jq not found in PATH (cannot build fake jq)"
+  fail "TC-helper-failure-jq-write-warn: real jq not found in PATH (cannot build fake jq)"
 else
   fake_jq_bin="$(mktemp -d "$TEST_DIR/fakejq-XXXXXX")"
   # Use double-quoted heredoc so $JQ_REAL is expanded into the fake script
@@ -551,7 +551,7 @@ else
 for arg in "\$@"; do
   case "\$arg" in
     *'.active'*'.updated_at'*)
-      echo "fake jq: simulated failure for TC-749-JQ-WRITE-WARN" >&2
+      echo "fake jq: simulated failure for TC-helper-failure-jq-write-warn" >&2
       exit 1
       ;;
   esac

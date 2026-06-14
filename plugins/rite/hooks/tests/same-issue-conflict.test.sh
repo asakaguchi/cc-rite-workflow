@@ -1,13 +1,13 @@
 #!/bin/bash
-# Tests for same-issue concurrent target — Issue #672 / #684 (T-05 / AC-5)
+# Tests for same-issue concurrent target — T-05 / AC-5
 #
-# Contract (Option C, decided in #684 Phase 3):
+# Contract (Option C):
 #   per-session file では「両 session が同一 issue_number を
 #   target にしても、それぞれ独立した per-session file (`.rite/sessions/{sid}.flow-state`)
 #   に書き込まれるため両方成功する」を **明示的 contract として固定** する。
 #
 #   per-session 構造の core value proposition (lock 不要で並行性が構造的に保証)
-#   と一致する設計判断であり、Issue #672 SHOULD 要件「同 issue 同時 target 時の
+#   と一致する設計判断であり、SHOULD 要件「同 issue 同時 target 時の
 #   明示的競合エラー reject」は別 Issue で tracking する (本 PR scope 外)。
 #
 # Test cases:
@@ -62,12 +62,12 @@ make_test_dir() {
   d=$(mktemp -d) || { echo "ERROR: mktemp -d failed" >&2; return 1; }
   cleanup_dirs+=("$d")
   # rite-config.yml sandbox marker. flow-state is always per-session (no
-  # `flow_state.schema_version` selection — Issue #1458).
+  # `flow_state.schema_version` selection).
   printf '# rite test sandbox config\n' > "$d/rite-config.yml"
   echo "$d"
 }
 
-echo "=== same-issue-conflict tests (Issue #672 / #684 T-05 AC-5, Option C) ==="
+echo "=== same-issue-conflict tests (T-05 AC-5, Option C) ==="
 echo ""
 
 # -------------------------------------------------------------------------
@@ -108,12 +108,12 @@ fi
 # -------------------------------------------------------------------------
 # TC-2: concurrent 同 issue 2 session create → 両方成功
 # -------------------------------------------------------------------------
-# F-06 fix (Issue #760): barrier sync で起動 jitter を排除し true concurrent 化。
-# 旧実装は単純な `cmd & cmd &` で両 process を background 起動していたが、
-# bash の forked process startup には数十 ms の jitter があり、片方が write
-# 完了後にもう片方が start する経路で sequential 化する false negative の
-# 可能性があった (起動順序が決定的でないため race condition 検証としての
-# identification power が dilute される)。
+# F-06 fix: barrier sync で起動 jitter を排除し true concurrent 化。
+# 単純な `cmd & cmd &` で両 process を background 起動すると、bash の forked
+# process startup には数十 ms の jitter があり、片方が write 完了後にもう
+# 片方が start する経路で sequential 化する false negative が起こり得る
+# (起動順序が決定的でないため race condition 検証としての identification
+# power が dilute される)。
 # canonical 防御: barrier file (`$TD/.barrier-tc2`) を pre-create し、各 child は
 # `while [ -f barrier ]; do sleep 0.001; done` で busy-wait → parent が rm barrier
 # して同時 release。これで両 child が ms 単位で同時起動することを保証する。

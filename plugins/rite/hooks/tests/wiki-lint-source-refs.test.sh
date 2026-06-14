@@ -2,7 +2,7 @@
 # wiki-lint-source-refs.test.sh
 #
 # Smoke tests for wiki-lint-source-refs.sh (wiki/lint.md ステップ 6.2 delegation
-# target, Issue #1195 block #10). The helper builds the `all_source_refs` set
+# target). The helper builds the `all_source_refs` set
 # from Wiki page frontmatter and emits a marker block + io_error 3-value enum.
 #
 # Coverage:
@@ -20,7 +20,7 @@
 #   TC-11 separate_branch + 空 --wiki-branch → exit 2 (invocation error)
 #   TC-12 値なしフラグ末尾 (--branch-strategy 値なし) → exit 2、無限ループしない (timeout ガード)
 #   TC-13 same_branch io_error (page path が directory で cat 失敗) → read_ok=io_error
-#   TC-14 lint.md 6.2 helper-不在 fallback の io_error 出力契約 (静的回帰、Issue #1209)。
+#   TC-14 lint.md 6.2 helper-不在 fallback の io_error 出力契約 (静的回帰)。
 #         TC-1..13 は helper (.sh) を、TC-14 は delegation 元 lint.md (.md) の fallback 分岐を守る
 #
 # NOT covered (environment-dependent): mktemp failure on read-only /tmp,
@@ -246,7 +246,7 @@ assert_grep "TC-12 branch-strategy 必須エラー (経路固定)" "$errf" 'bran
 
 # === TC-13: same_branch io_error (page path が directory) → read_ok=io_error ===
 # cat は rc≠0 で stderr "Is a directory" を出し、absent 判別 regex に match しない
-# ため read_errors increment → io_error に降格する (Issue #1287。TC-9 の separate_branch
+# ため read_errors increment → io_error に降格する (TC-9 の separate_branch
 # io_error と対になる same_branch 側 fault injection — sibling skipped-refs TC-12 と対称)。
 echo "=== TC-13: same_branch io_error (fault injection) ==="
 sbx=$(make_sandbox); cleanup_dirs+=("$sbx")
@@ -266,7 +266,7 @@ assert_grep "TC-13 抽出失敗 WARNING" "$errf" '抽出に失敗'
 # all_source_refs を io_error 扱いにして空 marker block + read_ok=io_error を明示出力する
 # (silent 空集合だと真の欠落 missing_concept が false positive 化するため)。この fallback 経路は
 # helper 単体テスト (TC-1..13) の対象外で、契約行の削除 / io_error→true 改変 / marker 欠落 /
-# emit が else 側へ流出する regression をどのテストも検出しなかった (Issue #1209 task 2)。
+# emit が else 側へ流出する regression をどのテストも検出しなかった。
 # 本 TC は fallback if-branch ([! -f ...wiki-lint-source-refs.sh] .. else) 内に出力契約 4 行が
 # 存在することを静的検証する。helper rename 時は guard 内の filename も変わり section 抽出が空に
 # なる → assert_grep_in_section の empty-section fail で surface する (rename 漏れ検出)。
@@ -282,6 +282,6 @@ assert_grep_in_section "TC-14 fallback read_errors=0 (if-branch 内)" "$LINT_MD"
   '! -f .*wiki-lint-source-refs\.sh' '^else$' '"all_source_refs_read_errors=0"'
 
 if ! print_summary "$(basename "$0")" \
-  "drift: wiki-lint-source-refs.sh の挙動が変わった可能性。wiki/lint.md ステップ 6.2 委譲契約 (Issue #1195 #10) と marker block / io_error enum の出力契約を参照。"; then
+  "drift: wiki-lint-source-refs.sh の挙動が変わった可能性。wiki/lint.md ステップ 6.2 委譲契約と marker block / io_error enum の出力契約を参照。"; then
   exit 1
 fi

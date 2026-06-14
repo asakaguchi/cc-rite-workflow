@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for session_id mismatch hook no-op — Issue #672 / #684 (T-04 / AC-4)
+# Tests for session_id mismatch hook no-op — T-04 / AC-4
 #
 # Purpose:
 #   per-session file では `flow-state.sh path` が
@@ -7,8 +7,8 @@
 #   ownership は構造的に保証される。しかし将来 resolver を経由しない caller が
 #   foreign per-session file を直接渡した場合のために `check_session_ownership`
 #   は filename SID == hook SID の defense-in-depth check を持つ (Wiki 経験則
-#   「structural ownership guarantee は code-level defense-in-depth で enforce する」、
-#   PR #750 cycle 1 HIGH 参照)。本テストは:
+#   「structural ownership guarantee は code-level defense-in-depth で enforce する」
+#   参照)。本テストは:
 #     (a) check_session_ownership の classification 結果が正しいこと
 #     (b) hook 経由 (pre-tool-bash-guard.sh / post-tool-wm-sync.sh) で foreign
 #         session_id を受けた際に no-op で early exit すること
@@ -79,7 +79,7 @@ call_check_ownership() {
   )
 }
 
-echo "=== session-id-mismatch tests (Issue #672 / #684 T-04 AC-4) ==="
+echo "=== session-id-mismatch tests (T-04 AC-4) ==="
 echo ""
 
 # -------------------------------------------------------------------------
@@ -118,7 +118,7 @@ fi
 # Backward-compat path: when the hook payload has no session_id (e.g., older
 # Claude Code SDK version), trust the resolver-supplied per-session path as
 # owned. This is the "fail-secure backward-compat" branch documented in
-# session-ownership.sh and PR #750 cycle 1 HIGH.
+# session-ownership.sh.
 echo "TC-3: per-session file + 空 hook SID → 'own' (backward compat)"
 hook_json='{}'
 result=$(call_check_ownership "$hook_json" "$state_file")
@@ -150,10 +150,10 @@ fi
 # TC-5: legacy file + state_sid != hook_sid + updated_at 7200s 超え → "stale"
 # -------------------------------------------------------------------------
 echo "TC-5: legacy + state_sid != hook_sid + stale (>7200s) → 'stale'"
-# F-07 fix (Issue #760): GNU/BSD date fallback の silent failure 検出。
-# 旧実装は両 fallback が失敗した場合 `old_ts` が空になり、後続 JSON で
-# `"updated_at":""` として書き込まれ、test が undefined 動作になる経路があった。
-# `[ -z "$old_ts" ]` で empty check し、両環境で fallback 不能なら fail させる。
+# F-07 fix: GNU/BSD date fallback の silent failure 検出。
+# 両 fallback (GNU date -d / BSD date -v) が失敗すると `old_ts` が空になり、後続 JSON で
+# `"updated_at":""` として書き込まれ、test が undefined 動作になる経路がある。
+# `[ -z "$old_ts" ]` で empty check し、両環境で fallback 不能なら fail させてその経路を guard する。
 # 8000 seconds ago
 old_ts=$(date -u -d "8000 seconds ago" +'%Y-%m-%dT%H:%M:%S+00:00' 2>/dev/null \
   || date -u -v-8000S +'%Y-%m-%dT%H:%M:%S+00:00' 2>/dev/null)

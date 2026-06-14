@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for bash-heaviness-check.sh (Issue #1197 — #1193 提案 c)
+# Tests for bash-heaviness-check.sh
 # Usage: bash plugins/rite/hooks/tests/bash-heaviness-check.test.sh
 set -euo pipefail
 
@@ -15,7 +15,7 @@ trap cleanup EXIT INT TERM HUP
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 
-echo "=== bash-heaviness-check.sh tests (Issue #1197) ==="
+echo "=== bash-heaviness-check.sh tests ==="
 echo ""
 
 mkdir -p "$TEST_DIR/plugins/rite/commands/pr"
@@ -285,7 +285,7 @@ else fail "expected rc=1 + long-block(25), got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
 # TC-017: inline-gh-create-title — literal --title in a single short block must
-#         flag ON ITS OWN (no second signal needed). Issue #1307.
+#         flag ON ITS OWN (no second signal needed).
 # --------------------------------------------------------------------------
 echo "TC-017: literal --title standalone → exit 1"
 {
@@ -366,7 +366,7 @@ else fail "expected rc=0 (exempted), got rc=$rc: $output"; fi
 #         `create` anchor is load-bearing (it guards real `gh issue edit
 #         --title "{new_title}"` lines in commands/issue/edit.md). Pins that a
 #         regression loosening `(pr|issue) create` → `(pr|issue)` does not start
-#         flagging edit. Issue #1307 (F-02).
+#         flagging edit. (F-02).
 # --------------------------------------------------------------------------
 echo "TC-022: gh issue edit literal --title → exit 0 (not flagged)"
 {
@@ -381,7 +381,7 @@ else fail "expected rc=0 (edit is not create), got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
 # TC-023: `gh pr edit` with a literal --title must NOT be flagged either (same
-#         create-anchor guard, pr variant). Issue #1307 (F-02).
+#         create-anchor guard, pr variant). (F-02).
 # --------------------------------------------------------------------------
 echo "TC-023: gh pr edit literal --title → exit 0 (not flagged)"
 {
@@ -397,8 +397,8 @@ else fail "expected rc=0 (edit is not create), got rc=$rc: $output"; fi
 # --------------------------------------------------------------------------
 # TC-024: backslash line-continuation — a `gh pr create` whose literal --title is
 #         on a continuation line (the canonical multi-line form) MUST be flagged.
-#         Pins that the detection is armed across `\`-terminated lines. Issue
-#         #1307 (F-04).
+#         Pins that the detection is armed across `\`-terminated lines.
+#         (F-04).
 # --------------------------------------------------------------------------
 echo "TC-024: multi-line gh create + continuation literal --title → exit 1"
 {
@@ -415,7 +415,7 @@ else fail "expected rc=1 + inline-gh-create-title, got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
 # TC-025: empty `--title ""` is a degenerate non-special title → NOT flagged.
-#         The `[^$"']` bracket excludes the closing quote. Issue #1307 (F-06).
+#         The `[^$"']` bracket excludes the closing quote. (F-06).
 # --------------------------------------------------------------------------
 echo "TC-025: empty --title \"\" → exit 0 (not flagged)"
 {
@@ -433,7 +433,7 @@ else fail "expected rc=0 (empty title), got rc=$rc: $output"; fi
 #         too. Pins the opening-quote `["']` `'` alternative, which TC-017/019/024
 #         (all double-quote) never exercise: a `["']`→`["]` regression would still
 #         pass every existing TC. The equals separator is already pinned by TC-019,
-#         so this is the space+single-quote twin of TC-017. Issue #1312.
+#         so this is the space+single-quote twin of TC-017.
 # --------------------------------------------------------------------------
 echo "TC-026: single-quote literal --title standalone → exit 1"
 {
@@ -453,7 +453,6 @@ else fail "expected rc=1 + inline-gh-create-title, got rc=$rc: $output"; fi
 #         the single-quote path too — so it is NOT flagged. This errs toward a false
 #         negative (safe: it never blocks a real variable form). Pinning it records
 #         that intentional choice rather than leaving it as undocumented behavior.
-#         Issue #1312.
 # --------------------------------------------------------------------------
 echo "TC-027: single-quote '\$pr_title' (literal but sentinel-skipped) → exit 0"
 {
@@ -471,7 +470,7 @@ else fail "expected rc=0 (single-quote \$ skipped), got rc=$rc: $output"; fi
 #         is documentation data, not a real shell line, so it is NOT flagged.
 #         TC-013 pins the non-bash fence skip for the heaviness signals; this is the
 #         title-specific twin, completing AC-3 ("fenced code is data") traceability
-#         for inline-gh-create-title. Issue #1312.
+#         for inline-gh-create-title.
 # --------------------------------------------------------------------------
 echo "TC-028: literal --title inside non-bash fence → exit 0"
 {

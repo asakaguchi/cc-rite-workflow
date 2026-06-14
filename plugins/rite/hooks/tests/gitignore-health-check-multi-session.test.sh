@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for gitignore-health-check.sh multi_session check (Issue #1362 / S2).
+# Tests for gitignore-health-check.sh multi_session check.
 #
 # Verifies the non-blocking, opt-in `.rite/worktrees/` ignore check folded into
 # gitignore-health-check.sh (multi-session design §2):
@@ -39,8 +39,8 @@ WIKI_OK=$'wiki:\n  enabled: true\n  branch_strategy: separate_branch\n'
 WIKI_OFF=$'wiki:\n  enabled: false\n'
 MS_ON=$'multi_session:\n  enabled: true\n  worktree_base: ".rite/worktrees"\n'
 MS_OFF=$'multi_session:\n  enabled: false\n'
-# All fixtures include `.rite/sessions/` so the always-on sessions check (added for
-# Issue #1389) passes and these cases test the `.rite/worktrees/` behavior in isolation.
+# All fixtures include `.rite/sessions/` so the always-on sessions check
+# passes and these cases test the `.rite/worktrees/` behavior in isolation.
 # The dedicated sessions drift behavior lives in gitignore-health-check-sessions.test.sh.
 GI_WIKI=$'.rite/wiki/\n.rite/sessions/\n'
 GI_WIKI_WT=$'.rite/wiki/\n.rite/worktrees/\n.rite/sessions/\n'

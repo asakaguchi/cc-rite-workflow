@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for atomic write integrity — Issue #672 / #684 (T-09 / AC-9)
+# Tests for atomic write integrity — T-09 / AC-9
 #
 # Purpose:
 #   `flow-state.sh` は state file を更新する際、
@@ -105,7 +105,7 @@ state_file_is_integral() {
   jq empty "$f" >/dev/null 2>&1
 }
 
-echo "=== atomic-write tests (Issue #672 / #684 T-09 AC-9) ==="
+echo "=== atomic-write tests (T-09 AC-9) ==="
 echo ""
 
 # -------------------------------------------------------------------------
@@ -114,7 +114,7 @@ echo ""
 # F-01 fix: race window probe の identification power を確保するため、
 # (a) sleep を 0.003 → 0.05 に拡大、(b) iteration outcome を classify、
 # (c) mid_or_temp + post >= 1 を assert して race が実際に当たったことを実証
-# (旧実装は全 100 iter pre のみで PASS する false positive 経路があった)
+# (この assert がないと全 100 iter pre のみで PASS する false positive 経路を残すため guard する)
 echo "TC-1: 50 iter SIGKILL probe → integral + race window 実証"
 TD=$(make_test_dir)
 SID="aaaaaaaa-9999-9999-9999-999999999999"
@@ -197,9 +197,9 @@ fi
 #   (b) atomic rename が起きないので state file は baseline のまま不変
 # の 2 条件を assert する。これにより mode ごとに mutation を独立検出できる。
 #
-# F-05 fix (Issue #760): 旧実装は `0,/PAT/` で create mode 1 occurrence のみを
-# 置換していたため、patch / increment の atomic mv が破壊的に退化しても test が
-# PASS する false positive 経路を持っていた。canonical 防御は (1) `s|...|g` で
+# F-05 fix: `0,/PAT/` で create mode 1 occurrence のみを置換すると、
+# patch / increment の atomic mv が破壊的に退化しても test が
+# PASS する false positive 経路ができる。canonical 防御は (1) `s|...|g` で
 # 3 occurrence 全てを mutate、(2) sed regression guard で mutation 数を pin
 # (`grep -c == 3`)、(3) create/patch/increment 各 mode を独立に起動して
 # rc!=0 + state hash 不変を mode ごとに assert。

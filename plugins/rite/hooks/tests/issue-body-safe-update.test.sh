@@ -161,7 +161,7 @@ rm -rf "$mock_bin"
 # ==========================================================================
 # Failure surfacing guarantees: without these assertions a refactor can drop
 # the fetch_failure_reason / rc signal silently, and operators lose visibility
-# into auth/network/permission failures. workflow_incident 機構廃止 (#1088) 後、
+# into auth/network/permission failures. workflow_incident 機構廃止後、
 # helper は emit script に delegate せず plain WARNING を stderr に出力する。
 # ==========================================================================
 

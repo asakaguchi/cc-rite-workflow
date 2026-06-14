@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for issue-claim.sh (Issue #1363 / S3, multi-session design §7).
+# Tests for issue-claim.sh (multi-session design §7).
 #
 # Covers:
 #   AC-1: concurrent claim → exactly one process succeeds (noclobber atomicity)
@@ -96,5 +96,29 @@ echo "=== TC-12: invalid --issue rejected (rc 1) ==="
 rc=0; bash "$IC" claim --session "$SID_A" --issue abc >/dev/null 2>&1 || rc=$?; assert "TC-12 non-numeric rc 1" "1" "$rc"
 rc=0; bash "$IC" check --session "$SID_A" --issue 0 >/dev/null 2>&1 || rc=$?; assert "TC-12 zero rc 1" "1" "$rc"
 
+echo "=== TC-13 (Issue #1530): env-first resolution in _resolve_current_session_id (no --session path) ==="
+# Regression guard for the env-first precedence flip (review F-01). All TCs above pass --session,
+# so the env/file branch was never exercised — issue-claim.sh's env-first reorder was a dead guard
+# (mutation: reverting it to file-first kept every TC green). This pins env-first directly.
+#
+# Part 1: env outranks a differing .rite-session-id. A no-override claim must key its holder to env
+# (SID_A), not the stale shared file (SID_B). Reverting issue-claim.sh to file-first fails this assert.
+rm -f "$ROOT/.rite/state/issue-claims/issue-710.json" 2>/dev/null || true
+printf '%s' "$SID_B" > "$ROOT/.rite-session-id"   # shared file says SID_B (stale)
+mk_active "$SID_A" 710                              # env session SID_A is the live one
+env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$SID_A" bash "$IC" claim --issue 710 >/dev/null 2>&1
+assert "TC-13 no-override claim holder is env sid (SID_A), not stale file sid (SID_B)" \
+  "$SID_A" "$(jq -r .session_id "$ROOT/.rite/state/issue-claims/issue-710.json")"
+# Part 2: env-absent fallback resolves the FILE sid (SID_B) — proven by holder==SID_B AND check==own
+# (resolver returned SID_B == holder), not merely a non-holder classification that empty would also give.
+rm -f "$ROOT/.rite/state/issue-claims/issue-711.json" 2>/dev/null || true
+printf '%s' "$SID_B" > "$ROOT/.rite-session-id"     # self-contained: set the file sid this Part relies on
+mk_active "$SID_B" 711                              # holder SID_B, file SID_B (set just above), env unset below
+env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$IC" claim --issue 711 >/dev/null 2>&1
+assert "TC-13 env-absent claim holder resolved via file sid (SID_B)" \
+  "$SID_B" "$(jq -r .session_id "$ROOT/.rite/state/issue-claims/issue-711.json")"
+assert "TC-13 env-absent check own (resolver returned file sid SID_B == holder)" \
+  "own" "$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$IC" check --issue 711)"
+
 print_summary "$(basename "$0")" \
-  "Drift hint: issue-claim.sh §7 — claim/release/check; liveness reuses session-ownership.sh 2h threshold + parse_iso8601_to_epoch; noclobber + flock atomicity."
+  "Drift hint: issue-claim.sh §7 — claim/release/check; liveness reuses session-ownership.sh 2h threshold + parse_iso8601_to_epoch; noclobber + flock atomicity; _resolve_current_session_id env-first (Issue #1530)."

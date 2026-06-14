@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for projects-items-fetch.sh (Issue #1196 S1)
+# Tests for projects-items-fetch.sh
 #
 # 旧 issue/list.md Phase 4.2 inline block (~44 行) の委譲先 helper。
 # 動作保持は differential equivalence test (TC-D 系) で機械的に立証する:
@@ -30,7 +30,7 @@ fi
 
 # jq fault-injection shim: pif_normalize_fail シナリオでのみ最終正規化の `jq -s` を失敗させる。
 # 最終 jq -s は gh の出力ではなく中間 pages file を読むため mock-gh.sh では駆動できない
-# (helper 固有 hardening — 旧 inline block に jq -s 失敗 handling が無いため TC-D 対象外。Issue #1287)。
+# (helper 固有 hardening — 旧 inline block に jq -s 失敗 handling が無いため TC-D 対象外)。
 # 他のシナリオ / `-s` なしの jq 呼び出しは real jq に pass-through する。
 REAL_JQ="$(command -v jq)"
 cat > "$MOCK_BIN_DIR/jq" <<SHIM_EOF
@@ -254,7 +254,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-10: 値なしフラグ末尾 → no-hang (Issue #1224 shift; shift hardening)
+# TC-10: 値なしフラグ末尾 → no-hang (shift hardening)
 # --------------------------------------------------------------------------
 echo "TC-10: value-less trailing flag no-hang"
 run_fetch pif_success --project-number 6 --owner
@@ -286,7 +286,7 @@ fi
 # --------------------------------------------------------------------------
 # TC-12: jq normalization 失敗 → fetch-failed sentinel + tempfile 非 leak
 #        (jq shim による fault injection。旧 inline block は jq -s 失敗を
-#         handling しないため TC-D 差分比較の対象外 — Issue #1287)
+#         handling しないため TC-D 差分比較の対象外)
 # --------------------------------------------------------------------------
 echo "TC-12: jq normalization failure"
 run_fetch pif_normalize_fail --project-number 6 --owner test-owner

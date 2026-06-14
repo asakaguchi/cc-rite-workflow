@@ -3,8 +3,8 @@
 #
 # Detect bang-backtick adjacent patterns in plugins/rite/{commands,skills,agents,
 # references}/**/*.md that can trigger Skill loader history expansion and break
-# Skill loading (Issue #365 / PR #367 — backtick+bang adjacency in inline code
-# caused /rite:pr:fix Skill load failure). The agents/ and references/ scopes
+# Skill loading (backtick+bang adjacency in inline code caused /rite:pr:fix
+# Skill load failure). The agents/ and references/ scopes
 # were added because P3 (no-space-before-! variant) revealed that any markdown
 # the slash command parser may load — directly or transitively via Read — is
 # vulnerable, not just commands/skills entry points.
@@ -18,9 +18,8 @@
 #       regex: ` [^`]* !`
 #       semantics: inline code where the character right before the closing
 #                  backtick is literal "space + bang" (tab and other whitespace
-#                  are NOT matched — this is the exact shape that broke fix.md
-#                  in Issue #365).
-#       Example that matches:    backtick-if-space-bang-backtick   (the #365 pattern)
+#                  are NOT matched — this is the exact shape that broke fix.md).
+#       Example that matches:    backtick-if-space-bang-backtick   (the broke-fix.md pattern)
 #       Example that does NOT:   backtick-if-space-bang-space-cmd-backtick
 #                                  (bang is not adjacent to closing backtick)
 #
@@ -64,8 +63,8 @@
 # Safe equivalents (writing convention)
 # -------------------------------------
 # When this check flags a line, the canonical rewrite depends on **what the
-# inline code span refers to**. Two styles have emerged from the #609-#611
-# fix series and MUST be applied consistently:
+# inline code span refers to**. Two styles have emerged from the fix series
+# and MUST be applied consistently:
 #
 #   Style A: full-width corner brackets (「!」)
 #       Use when the span refers to the literal bang character itself as a
@@ -97,8 +96,7 @@
 #     closing-backtick shape.
 #
 # Out of scope: detecting the non-adjacent `if ! ` space-bang-space pattern.
-# That extension is tracked separately (see the --strict mode proposal on
-# Issue #613 Out of scope).
+# That extension is tracked separately (see the --strict mode proposal).
 #
 # Usage:
 #   bang-backtick-check.sh [--all] [--target FILE]... [--repo-root DIR] [--quiet]
@@ -193,15 +191,15 @@ trap 'rm -f "$FINDINGS_FILE"' EXIT
 # ----- Scan one file for both patterns ---------------------------------------
 #
 # Uses awk's `while (match(...))` idiom so that multiple triggers on a single
-# line are all reported (fixes per-line undercounting bug — Issue #369 code-quality
-# H-1). Each P1/P2 occurrence emits a dedicated finding line, eliminating the
+# line are all reported (fixes per-line undercounting bug). Each P1/P2
+# occurrence emits a dedicated finding line, eliminating the
 # post-processing case dispatch the previous revision needed. Append directly
 # to FINDINGS_FILE so the outer loop can count and print at the end.
 check_file() {
   local file="$1"
   # Non-existent targets must be reported as diagnostics — a silent `return 0` gives
-  # users false confidence when a typo'd `--target` path is passed (Issue #369 code-quality
-  # cycle 2 L-NEW1). The `--all` path is unaffected because find(1) never produces
+  # users false confidence when a typo'd `--target` path is passed. The `--all`
+  # path is unaffected because find(1) never produces
   # missing entries.
   if [ ! -f "$file" ]; then
     echo "WARNING: target not found: $file" >&2

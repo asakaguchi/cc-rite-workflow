@@ -3,13 +3,13 @@
 # Provides the single source of truth for the "control chars → ?" diagnostic
 # neutralization convention shared by all hooks/ diagnostic snippet emission
 # sites (`head -3 "$err_file" | neutralize_ctrl --keep-newline | sed ... >&2`
-# — Issue #1183 rollout; the parity is pinned by
+# — the parity is pinned by
 # tests/diag-snippet-neutralize-parity.test.sh), by stop-loop-continuation.sh
 # (unknown handoff prefix WARNING / JSON emit fallback) and
-# pre-tool-bash-guard.sh (deny fallback JSON — Issue #1278), plus the
+# pre-tool-bash-guard.sh (deny fallback JSON), plus the
 # detection-side counterpart contains_ctrl() for reject-purpose validation
 # (flow-state.sh _validate_session_id, wiki-ingest-trigger.sh
-# SOURCE_REF / TITLE — Issue #1276).
+# SOURCE_REF / TITLE).
 #
 # WHY a shared helper: the POSIX class [[:cntrl:]] on glibc
 # (C and UTF-8 locales, byte-wise verified) does NOT classify C1 8-bit control
@@ -21,7 +21,7 @@
 # and the UTF-8 U+0080-U+009F encoding path (0xc2 0x80-0x9f — its second byte
 # falls in the C1 range) are closed at once.
 #
-# Trade-off (accepted, Issue #1274): byte-wise replacement also hits UTF-8
+# Trade-off (accepted): byte-wise replacement also hits UTF-8
 # continuation bytes in the 0x80-0x9f overlap, so multibyte text (e.g. Japanese)
 # in a corrupt-state-file fragment degrades to `?` runs. The call sites are
 # diagnostic-only output for corrupt/unknown input, where neutralizing on the
@@ -61,7 +61,7 @@ neutralize_ctrl() {
 
 # Detection-side counterpart: reject-purpose call sites
 # (flow-state.sh _validate_session_id, wiki-ingest-trigger.sh SOURCE_REF /
-# TITLE) previously used bash `=~ [[:cntrl:]]`, which on glibc misses the same
+# TITLE) must not rely on bash `=~ [[:cntrl:]]`, which on glibc misses the same
 # C1 8-bit range the neutralize side closes — letting e.g. 0x9b slip through
 # validation. Sharing the byte-range definition here keeps detection and
 # replacement symmetric.

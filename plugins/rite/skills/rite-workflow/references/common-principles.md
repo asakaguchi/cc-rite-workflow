@@ -196,7 +196,6 @@ Check the following before asking any question:
 
 - [SKILL.md](../SKILL.md) - Common principles summary (references this file)
 - [coding-principles.md](./coding-principles.md) - AI coding principles (`question_self_check` holds a reference to this file)
-- Related Issues: #401 (fix asking obvious questions), #404 (create common principles file)
 
 **Reference Relationships**:
 - Detailed definition of `question_self_check` principle: **This file** (`common-principles.md`)

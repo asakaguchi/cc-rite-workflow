@@ -6,7 +6,7 @@
 # hardcoded-line-number-check.sh (which targets prose in plugins/rite/
 # commands/**/*.md).
 #
-# Why a separate hook (Issue #702):
+# Why a separate hook:
 #   hardcoded-line-number-check.sh's P-C pattern catches `foo.md:N` in
 #   markdown prose only. Code-tree comments (`# wiki-config.sh:42` inside a
 #   .sh file) drift the same way but are out of that hook's scope. This

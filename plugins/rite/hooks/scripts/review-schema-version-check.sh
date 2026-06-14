@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # review-schema-version-check.sh
 #
-# Detect schema_version drift in review-result JSON files. Issue #1021 (Epic #1015).
+# Detect schema_version drift in review-result JSON files.
 #
 # Accept list (canonical SoT: review-result-schema.md §Schema Version):
 #   "1.0.0" — canonical 1.0
@@ -119,7 +119,7 @@ is_in_accept_list() {
   return 1
 }
 
-# Emit drift marker (DRY helper — Issue #1021 F-11):
+# Emit drift marker (DRY helper):
 # 3 drift reason (missing file / invalid JSON / version mismatch) で同形式の
 # `[CONTEXT] REVIEW_SCHEMA_VERSION_DRIFT=1; file=...; schema_version=...` を emit する。
 emit_drift() {

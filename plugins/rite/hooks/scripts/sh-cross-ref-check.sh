@@ -7,12 +7,12 @@
 # comment-line-ref-check.sh (which targets `<file>:<NN>` line-number references)
 # and the markdown-side anchor check in distributed-fix-drift-check.sh Pattern 4.
 #
-# Why a separate hook (Issue #1160):
-#   PR #1157 cycle 4 found an overshoot in wiki-growth-check.sh where a hint
+# Why a separate hook:
+#   A review found an overshoot in wiki-growth-check.sh where a hint
 #   string referenced a step in close.md using the wrong keyword (the file uses
 #   the "Phase" convention, but the prose said the in-scope "ステップ"
-#   convention). Review cycles 1-3 only scanned `.md` files, so `.sh` prose was
-#   never checked. This hook closes that gap mechanically.
+#   convention). Earlier review cycles only scanned `.md` files, so `.sh` prose
+#   was never checked. This hook closes that gap mechanically.
 #
 # What is detected (two independent checks per reference):
 #   (A) dangling number  — the referenced section number does NOT exist as a
@@ -21,7 +21,7 @@
 #                          used in the prose (ステップ / Phase) does not match
 #                          the target file's own convention.
 #
-# Heading-convention model (verified against the real tree, Issue #1160):
+# Heading-convention model (verified against the real tree):
 #   Only TOP-LEVEL `##` headings carry the keyword:
 #       `## ステップ N: title`   (ステップ-style file, e.g. pr/review.md, pr/open.md)
 #       `## Phase N: title`      (Phase-style file,    e.g. issue/close.md, lint.md)
@@ -42,10 +42,10 @@
 #   - Targets that are `.sh` files or `.md` files with no numbered headings are
 #     UNVERIFIABLE and silently skipped (no step/phase headings to match).
 #   - Unresolvable file references (file not found under plugins/rite) are out of
-#     scope here — dangling *file* references are Issue #1159's concern.
+#     scope here — dangling *file* references are a separate concern.
 #   - Pre-existing inconsistencies are reported as warnings; intentional or
 #     historical references can be exempted with an inline whitelist marker
-#     (`drift-check-ignore`) on the same line (cleanup itself is Issue #1159).
+#     (`drift-check-ignore`) on the same line (cleanup itself is out of scope).
 #
 # Exclusions:
 #   - This script's own file (self-exclusion under --all).
@@ -222,7 +222,7 @@ check_ref() {
   local src="$1" lineno="$2" token="$3" kw="$4" num="$5"
   local -a candidates=()
   while IFS= read -r c; do [ -n "$c" ] && candidates+=("$c"); done < <(resolve_candidates "$token")
-  [ "${#candidates[@]}" -eq 0 ] && return 0   # unresolvable file ref — out of scope (#1159)
+  [ "${#candidates[@]}" -eq 0 ] && return 0   # unresolvable file ref — out of scope
 
   local verifiable=0 num_found=0 kw_ok=0
   local -a convs=()

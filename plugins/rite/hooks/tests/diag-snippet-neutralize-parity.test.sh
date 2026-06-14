@@ -1,9 +1,9 @@
 #!/bin/bash
-# Tests for Issue #1183: jq / コマンド stderr 診断スニペット emission site の
+# Tests for jq / コマンド stderr 診断スニペット emission site の
 # control-char 中和の横展開 parity を静的に pin する。
 #
 # Purpose:
-#   flow-state.sh (#1173/#1181) で導入された「診断スニペットは
+#   flow-state.sh で導入された「診断スニペットは
 #   neutralize_ctrl を経由して emit する」規約を、hooks/ 配下の全
 #   `head -3` emission site に対称適用したことを保証する
 #   (Wiki 経験則 Asymmetric Fix Transcription — 対称位置への伝播漏れ防止)。
@@ -21,16 +21,15 @@
 #         control-char-neutralize.sh を source している
 #         (定義元 control-char-neutralize.sh 自身は除外)
 #   TC-3: `head -c N` byte 指向 inline 埋め込み (1 行 WARNING への embed) も
-#         neutralize_ctrl を経由する (Issue #1329 — #1183 follow-up 横展開)
+#         neutralize_ctrl を経由する (follow-up 横展開)
 #   TC-4: `cat ... >&2` 形式の full-file 直接 emission も neutralize_ctrl
-#         を経由する (Issue #1329)。TC-3 と対称の fail-closed sweep:
+#         を経由する。TC-3 と対称の fail-closed sweep:
 #         unquoted (`cat $f >&2`) / `1>&2` 綴り / 複数引数 (`cat "$a" "$b" >&2`)
 #         も検出する。cat を command 位置に anchor して散文中の "cat" 語を構造的に
 #         除外し、静的 heredoc は allowlist で除外する。subshell/group redirect 等の
-#         構造的死角は TC-4 ブロックのコメント参照 (Issue #1339 — #1329 fail-open 余地の閉塞)
+#         構造的死角は TC-4 ブロックのコメント参照 (fail-open 余地の閉塞)
 #   TC-5: `>&2` が log() / surface_git_warnings() 等の関数内部に隠れる emission
 #         経路は静的 sweep で構造的に検出不能のため、既知 site を個別に pin する
-#         (Issue #1329)
 #
 # Usage: bash plugins/rite/hooks/tests/diag-snippet-neutralize-parity.test.sh
 set -euo pipefail
@@ -50,9 +49,9 @@ echo "=== TC-1: head -N emission site は全て neutralize_ctrl を経由 ==="
 # `head -[0-9]+` / `head -n [0-9]+` (行指向 snippet、両綴り) を対象とする。
 # `head -c` (byte 指向 inline 埋め込み) は 1 行 WARNING への embed で行構造が異なる
 # 別イディオムのため本 sweep の対象外 — TC-3 が head -c 全行を fail-closed sweep する
-# (非 emission site は明示 allowlist で除外、Issue #1329 で中和を横展開済み)。
+# (非 emission site は明示 allowlist で除外、中和を横展開済み)。
 # `>&2` が log() 等の関数内部に隠れて同一行に現れない emission 経路は静的 sweep で
-# 構造的に検出できないため、TC-5 が既知 site を個別に pin する (Issue #1329)
+# 構造的に検出できないため、TC-5 が既知 site を個別に pin する
 violations=$(grep -rnE 'head (-[0-9]+|-n +[0-9]+) ' "$HOOKS_DIR" --include='*.sh' \
   | grep '>&2' \
   | grep -v "$HOOKS_DIR/tests/" \
@@ -96,7 +95,7 @@ echo ""
 echo "=== TC-3: head -c byte 指向 embed site は全て neutralize_ctrl を経由 ==="
 # `head -c N` snippet の大半は `var=$(... | head -c 200 ...)` の代入行で、emission の
 # `>&2` は後続 echo 行に分離している — `>&2` 同一行条件では構造的に検出できない
-# (Issue #1329 mutation 検証で実証)。そのため head -c 全行を sweep し、非 emission の
+# (mutation 検証で実証)。そのため head -c 全行を sweep し、非 emission の
 # 既知 site のみ明示 allowlist で除外する fail-closed 設計とする。新規の head -c が
 # 非 emission 用途なら本 allowlist に追記すること。
 violations_c=$(grep -rnE 'head -c [0-9]+' "$HOOKS_DIR" --include='*.sh' \
@@ -114,11 +113,11 @@ fi
 echo ""
 echo "=== TC-4: cat full-file 直接 emission site は全て neutralize_ctrl を経由 ==="
 # `cat <fileargs> >&2` 形式の full-file stderr 直接 emission (RITE_DEBUG triage 経路等)
-# を sweep する (Issue #1329)。中和版は `neutralize_ctrl --keep-newline < "$file" >&2`。
+# を sweep する。中和版は `neutralize_ctrl --keep-newline < "$file" >&2`。
 #
 # 旧 fail-open 版 (`cat "[^"]+" *>&2`) は double-quote 単一引数 + `>&2` 形のみ検出し、
 # unquoted (`cat $f >&2`) / `1>&2` 綴り / 複数引数 (`cat "$a" "$b" >&2`) の同型 idiom を
-# 構造的に見逃した (Issue #1339)。TC-3 と対称の fail-closed 設計へ拡張: `cat ... (>&2|1>&2)`
+# 構造的に見逃した。TC-3 と対称の fail-closed 設計へ拡張: `cat ... (>&2|1>&2)`
 # を広く sweep し、非 emission の既知 site のみ明示 allowlist で除外する。新規の cat emission
 # が非中和なら必ず検出され、非該当パターンを追加する場合は本 allowlist に追記すること。
 #
@@ -144,7 +143,7 @@ echo "=== TC-4: cat full-file 直接 emission site は全て neutralize_ctrl を
 #
 # allowlist (非 emission の既知 site):
 #   - `>&2[[:space:]]*<<`: 静的 heredoc の **redirect-first 綴り** (`cat >&2 <<EOF`)。開発者記述の
-#     静的リテラルで untrusted control-char を含まないため中和不要 (Issue #1339 が明示)。
+#     静的リテラルで untrusted control-char を含まないため中和不要。
 #     なお body-first 綴り (`cat <<EOF >&2`) は本 allowlist では除外されず false positive になるが、
 #     現状 hooks の **stderr 向け cat heredoc** は全て redirect-first のため実害はない
 #     (stdout / tmpfile 向けの body-first heredoc は主 regex の `>&2` 要件で元々マッチしない。
@@ -164,7 +163,7 @@ fi
 echo ""
 echo "=== TC-5: 関数内 >&2 経由の既知 emission site は個別 pin ==="
 # log() / surface_git_warnings() 内部の >&2 は同一行 sweep で構造的に検出できない。
-# Issue #1329 で中和を適用した既知 site が回帰しないことを行単位で pin する。
+# 中和を適用した既知 site が回帰しないことを行単位で pin する。
 assert_grep "TC-5: distributed-fix-drift-check.sh table-side awk stderr log" \
   "$HOOKS_DIR/scripts/distributed-fix-drift-check.sh" \
   'head -1 "\$AWK_TABLE_ERR" \| tr -d .\\n. \| neutralize_ctrl --c0-only'
@@ -176,7 +175,7 @@ assert_grep "TC-5: wiki-ingest-commit.sh surface_git_warnings" \
   'grep -iE .\^\(warning\|hint\|error\):. \| neutralize_ctrl --keep-newline'
 
 if ! print_summary "$(basename "$0")" \
-  "診断スニペット emission site を hook に追加するときは control-char-neutralize.sh を source し、emission site の構造に応じて中和を挿入すること (Issue #1183/#1329): \
+  "診断スニペット emission site を hook に追加するときは control-char-neutralize.sh を source し、emission site の構造に応じて中和を挿入すること: \
 TC-1 (head -N 行指向) は直後に '| neutralize_ctrl --keep-newline'; \
 TC-3 (head -c byte 指向 embed) は '| tr '\\''\\n'\\'' '\\'' '\\'' | neutralize_ctrl --c0-only'; \
 TC-4 (cat full-file 直接 emission) は 'neutralize_ctrl --keep-newline < \"\$file\" >&2' へ置換; \

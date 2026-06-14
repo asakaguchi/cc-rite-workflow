@@ -21,9 +21,9 @@
 # ステップ 5.1 Block A + Block B. It exists because the markdown-based ステップ
 # 5.1 requires Claude to chain three Bash tool invocations across an LLM
 # Write/Edit phase, which is structurally fragile under E2E output
-# minimization and sub-skill auto-continuation failures (Issue #525, and
-# the repeated but ineffective silent-skip defence layers of #515, #518,
-# #524). By moving the git stash/checkout/commit/push sequence into a
+# minimization and sub-skill auto-continuation failures, where repeated
+# silent-skip defence layers proved ineffective. By moving the git
+# stash/checkout/commit/push sequence into a
 # single shell script, the raw source always lands on the wiki branch as
 # long as this script is invoked even once — regardless of whether Claude
 # correctly continues its prose contract afterwards.
@@ -422,7 +422,7 @@ fi
 #
 # Reached only when the wiki worktree does not exist (fresh clone /
 # pre-init state) OR the worktree is checked out to a different branch.
-# Preserves backward compat with pre-Issue-#547 setups.
+# Preserves backward compat with legacy setups.
 #
 # Design:
 # 1. Copy each pending raw file into /tmp/rite-wiki-stage-$$ (preserving
@@ -471,7 +471,7 @@ if ! git show-ref --verify --quiet "refs/heads/${wiki_branch}"; then
  echo " hint (run one of these, in order of preference):" >&2
  echo " 1) git fetch origin ${wiki_branch}:${wiki_branch} # fresh clone: create local branch from origin/${wiki_branch}" >&2
  echo " 2) /rite:wiki:init # uninitialized repo: initialize Wiki structure" >&2
- echo " NOTE: Issue #528 trade-off — this exit 2 silently defers raw source commit" >&2
+ echo " NOTE: trade-off — this exit 2 silently defers raw source commit" >&2
  echo " until the wiki branch exists locally. On a fresh clone the caller" >&2
  echo " emits wiki_ingest_skipped with reason=commit_branch_missing." >&2
  # Explicit cleanup + disarm the mini-trap so the main cleanup_body trap
@@ -514,22 +514,21 @@ checked_out_wiki=false
 
 # HIGH #1 / HIGH #2 — rollback-safety rewrite.
 #
-# Previous design had two latent bugs that could only surface on error /
-# signal paths (happy path was unaffected — AC-1/2/3 dogfooding still
-# passed, which is why the bugs were not caught by empirical testing):
+# This rollback-safety design guards two latent failure modes that surface only
+# on error / signal paths (the happy path is unaffected, so empirical AC-1/2/3
+# dogfooding does not catch them):
 #
-# (a) stash pop was attempted unconditionally even after checkout-back
-# to $current_branch failed, meaning a dev-branch stash could get
-# applied while the HEAD was still on the wiki branch — corrupting
-# the wiki branch working tree with unrelated dev-branch changes.
+# (a) Attempting stash pop unconditionally even after checkout-back to
+# $current_branch fails would apply a dev-branch stash while the HEAD is
+# still on the wiki branch — corrupting the wiki branch working tree with
+# unrelated dev-branch changes.
 #
-# (b) The cleanup function captured `local rc=$?` on entry. When the
-# cleanup was reached via a signal trap (INT/TERM/HUP), bash's `$?`
-# at that point reflects the last completed command (usually 0 on
-# the happy path — e.g. after `echo "[wiki-ingest-commit] ..."`),
-# not the signal. As a result, cleanup would see rc=0, skip the
-# staging-dir restore block, and exit 0. A SIGINT mid-run would
-# therefore silently drop the raw sources on the floor.
+# (b) Capturing `local rc=$?` on cleanup entry is unsafe when cleanup is
+# reached via a signal trap (INT/TERM/HUP): bash's `$?` at that point
+# reflects the last completed command (usually 0 on the happy path — e.g.
+# after `echo "[wiki-ingest-commit] ..."`), not the signal. cleanup would
+# then see rc=0, skip the staging-dir restore block, and exit 0, so a SIGINT
+# mid-run would silently drop the raw sources on the floor.
 #
 # Fix:
 # - cleanup_body takes an explicit rc parameter (`$1`) instead of
@@ -651,11 +650,11 @@ done
 # を再び有効にする。
 #
 # Cycle 2 MEDIUM (noise reduction): only dump stderr on failure paths.
-# Previous design called `dump_git_err` after **every** git command, including
-# successful ones, which surfaced git informational messages like `Switched to
-# branch 'wiki'` on stderr — noise that drowned out real error signals. The
-# helper is now failure-only; success paths call `surface_git_warnings` which
-# only prints lines matching `^(warning|hint|error):`.
+# Calling `dump_git_err` after **every** git command, including successful ones,
+# surfaces git informational messages like `Switched to branch 'wiki'` on stderr —
+# noise that drowns out real error signals. So the helper is failure-only; success
+# paths call `surface_git_warnings` which only prints lines matching
+# `^(warning|hint|error):`.
 #
 # git_err cleanup is delegated to `cleanup_body` (see the EXIT/INT/TERM/HUP
 # traps below). A separate trap would overwrite cleanup_body's and break the
@@ -686,16 +685,16 @@ dump_git_err() {
  fi
 }
 
-# surface_git_warnings <label>: called on success paths. Instead of silently
-# truncating the captured git stderr (which previously dropped legitimate
-# warnings like "unable to rmdir 'foo': Directory not empty" or remote-side
-# hook advice), selectively surface lines that look like warnings / hints,
-# then truncate. This preserves operator visibility without re-introducing
-# informational noise like "Switched to branch 'wiki'" (which git emits
-# without a "warning:" / "hint:" prefix and which `-q` already suppresses).
+# surface_git_warnings <label>: called on success paths. Silently truncating
+# the captured git stderr drops legitimate warnings like "unable to rmdir
+# 'foo': Directory not empty" or remote-side hook advice, so instead
+# selectively surface lines that look like warnings / hints, then truncate.
+# This preserves operator visibility without re-introducing informational
+# noise like "Switched to branch 'wiki'" (which git emits without a
+# "warning:" / "hint:" prefix and which `-q` already suppresses).
 #
-# Cycle 3 MEDIUM #1 fix — replaces the old unconditional `clear_git_err`
-# truncation on success paths, which silently dropped warnings.
+# Cycle 3 MEDIUM #1 fix — an unconditional `clear_git_err` truncation on
+# success paths would silently drop warnings, so it is not used here.
 #
 # LOW #5 — all writes to git_err in this helper are `|| true` guarded so an
 # ENOSPC / EACCES truncate failure does not abort the script under set -e.
@@ -734,9 +733,9 @@ for f in "${pending_files[@]}"; do
  echo " 3) re-run wiki-ingest-commit.sh" >&2
  exit 3
  fi
- # rm -f stderr was
- # previously suppressed entirely. Propagate failures so the operator can
- # see which file could not be removed (EACCES / EIO / race).
+ # Capture rm -f stderr rather than suppressing it entirely. Propagate
+ # failures so the operator can see which file could not be removed
+ # (EACCES / EIO / race).
  if ! rm -f "$f" 2>"${git_err:-/dev/null}"; then
  echo "ERROR: failed to remove untracked raw source '$f' from '$current_branch'" >&2
  dump_git_err "rm -f $f"
@@ -890,10 +889,10 @@ committed_sha=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 
 # Push is best-effort vs caller-observable:
 # Push failure MUST be observable by the
-# caller. Previous design exited 0 on push failure with only a stdout
-# `push=failed` marker, which the callers (review.md / fix.md / close.md Phase
-# X.X.W.2) did not parse — so flaky remote / auth expiry / rate limit drove
-# all push failures through the success branch and silently emitted
+# caller. Exiting 0 on push failure with only a stdout `push=failed` marker
+# is unsafe: the callers (review.md / fix.md / close.md Phase X.X.W.2) do not
+# parse that marker, so flaky remote / auth expiry / rate limit would drive
+# all push failures through the success branch and silently emit
 # WIKI_INGEST_DONE=1 without surfacing a push-failure warning.
 #
 # Fix: exit 4 on push failure so the caller's bash `if commit_out=$(...)`

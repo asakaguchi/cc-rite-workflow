@@ -685,7 +685,7 @@ fi
 echo ""
 
 # ==========================================================================
-# Phase: Issue #518 regression — /tmp/rite-* prefix と mktemp デフォルト pitfall
+# Phase: regression — /tmp/rite-* prefix と mktemp デフォルト pitfall
 # ==========================================================================
 
 # /tmp 外ファイルの明示 cleanup (review F-04: TEST_DIR 外は main cleanup() の対象外)
@@ -702,12 +702,12 @@ _rite_issue518_cleanup() {
 trap '_rite_issue518_cleanup; cleanup' EXIT
 
 # --------------------------------------------------------------------------
-# TC-036a: Content-file in /tmp/rite-* prefix → exit 0 (Issue #518 正常系 / PR #519 fix)
+# TC-036a: Content-file in /tmp/rite-* prefix → exit 0 (正常系 / fix)
 # --------------------------------------------------------------------------
-# Issue #518: pr/review.md / pr/fix.md / issue/close.md は wiki-ingest-trigger.sh を
+# pr/review.md / pr/fix.md / issue/close.md は wiki-ingest-trigger.sh を
 # 呼ぶときに tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX) でファイル生成する必要がある。
-# この TC は /tmp/rite-* prefix でのファイルが正常に受容され、PR #519 fix が正しく動作することを保証する。
-echo "TC-036a: Content-file in /tmp/rite-* prefix → exit 0 (Issue #518 regression)"
+# この TC は /tmp/rite-* prefix でのファイルが正常に受容され、fix が正しく動作することを保証する。
+echo "TC-036a: Content-file in /tmp/rite-* prefix → exit 0 (regression)"
 dir36a="$TEST_DIR/tc36a"
 mkdir -p "$dir36a"
 cat > "$dir36a/rite-config.yml" <<'EOF'
@@ -733,17 +733,17 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-036b: Content-file from mktemp default → exit 1 (Issue #518 pitfall lock)
+# TC-036b: Content-file from mktemp default → exit 1 (pitfall lock)
 # --------------------------------------------------------------------------
-# Issue #518 根本原因の再現テスト: `mktemp` をデフォルト引数で呼ぶと /tmp/tmp.XXXXXXX が
+# 根本原因の再現テスト: `mktemp` をデフォルト引数で呼ぶと /tmp/tmp.XXXXXXX が
 # 生成され、wiki-ingest-trigger.sh のパス検証 ($PWD 配下 or /tmp/rite-* prefix) で拒否される。
 # 本 TC は、将来 commands/*.md が mktemp デフォルトに戻った場合に fix ループの回帰テストとして
 # exit code で pitfall を検出する。
 #
-# review F-03: 旧実装は `grep -qE 'must be under.*rite'` でエラー文言の literal に依存していたため、
-# 文言を i18n / reword した瞬間に silent fail する設計欠陥があった。assertion を 2 段階にし、
+# review F-03: `grep -qE 'must be under.*rite'` でエラー文言の literal に依存すると、
+# 文言を i18n / reword した瞬間に silent fail する設計欠陥が生じる。assertion を 2 段階にし、
 # exit code (1) を必須 pass 条件とし、文言 grep は OR パターンで緩和する (defense-in-depth)。
-echo "TC-036b: Content-file from mktemp default → exit 1 (Issue #518 pitfall)"
+echo "TC-036b: Content-file from mktemp default → exit 1 (pitfall)"
 dir36b="$TEST_DIR/tc36b"
 mkdir -p "$dir36b"
 cat > "$dir36b/rite-config.yml" <<'EOF'
@@ -1027,13 +1027,13 @@ rm -rf "$dir48"
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-049: C1 8-bit byte (0x9b CSI) in --source-ref → exit 1 (Issue #1276)
+# TC-049: C1 8-bit byte (0x9b CSI) in --source-ref → exit 1
 # --------------------------------------------------------------------------
 # 旧 `=~ [[:cntrl:]]` は glibc が C1 (0x80-0x9f) を cntrl と分類しないため
 # 0x9b 入り SOURCE_REF が validation を素通りしていた (TC-017 の newline pin と
 # 対になる C1 側 pin)。contains_ctrl (control-char-neutralize.sh) への置換で
 # reject されることを確認する。
-echo "TC-049: C1 0x9b in --source-ref → exit 1 (Issue #1276)"
+echo "TC-049: C1 0x9b in --source-ref → exit 1"
 dir49="$TEST_DIR/tc49"
 mkdir -p "$dir49"
 echo "x" > "$dir49/body.md"
@@ -1046,11 +1046,11 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-050: C1 8-bit byte (0x9b CSI) in --title → exit 1 (Issue #1276)
+# TC-050: C1 8-bit byte (0x9b CSI) in --title → exit 1
 # --------------------------------------------------------------------------
 # TC-018 (newline in title) と対になる C1 側 pin。SOURCE_REF / TITLE は隣接する
 # YAML キーに着地するため、検出範囲も対称であることを保証する。
-echo "TC-050: C1 0x9b in --title → exit 1 (Issue #1276)"
+echo "TC-050: C1 0x9b in --title → exit 1"
 dir50="$TEST_DIR/tc50"
 mkdir -p "$dir50"
 echo "x" > "$dir50/body.md"

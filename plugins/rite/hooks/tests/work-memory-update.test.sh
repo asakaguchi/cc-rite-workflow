@@ -1,7 +1,7 @@
 #!/bin/bash
-# Tests for hooks/work-memory-update.sh — caller-side AC-4 migration verification (PR #688).
+# Tests for hooks/work-memory-update.sh — caller-side AC-4 migration verification.
 #
-# Covers Issue #687 acceptance criteria from caller perspective:
+# Covers the acceptance criteria from caller perspective:
 #   AC-4 — caller (work-memory-update.sh) integrates with flow-state.sh transparently:
 #          (TC-1) per-session file present + legacy absent + WM_REQUIRE_FLOW_STATE=true
 #                 → return 0 with WM updated (cycle 12 false negative regression guard)
@@ -39,7 +39,7 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-# Issue #990: source common helpers for make_sandbox.
+# Source common helpers for make_sandbox.
 # shellcheck source=./_test-helpers.sh
 source "$SCRIPT_DIR/_test-helpers.sh"
 
@@ -84,14 +84,14 @@ assert_contains() {
   fi
 }
 
-# Issue #990: make_sandbox is now provided by _test-helpers.sh; callers below
+# make_sandbox is now provided by _test-helpers.sh; callers below
 # invoke `make_sandbox --branch fix/issue-687-test` to preserve the
 # branch-based issue-number extraction path validated by TC-1.
 # The fix/issue-687-test branch name is the SoT for EXPECTED_ISSUE_NUM=687
 # below (any branch rename would require both call sites to sync).
 
 # rite-config.yml sandbox marker. flow-state is always per-session (no
-# `flow_state.schema_version` selection — Issue #1458), so the fixture writes a
+# `flow_state.schema_version` selection), so the fixture writes a
 # neutral config rather than modeling the removed schema_version key.
 write_config() {
   printf '# rite test sandbox config\n' > "$1/rite-config.yml"
@@ -129,19 +129,20 @@ write_session_id "$SBX" "$SID"
 write_per_session "$SBX" "$SID" '{"phase":"phase5_lint","next_action":"continue","pr_number":42,"loop_count":2,"active":true}'
 # legacy は意図的に作成しない (per-session only path)
 
-# PR #688 cycle 16 fix (F-01 MEDIUM cross-validated 3 reviewers): TC-1.2 dead code 削除。
+# Cycle 16 fix (F-01 MEDIUM cross-validated 3 reviewers): TC-1.2 dead code 削除。
 # work-memory-update.sh の update_local_work_memory 関数内の branch-based issue_number 抽出
 # (`grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+'` chain) は数字のみ抽出するため、
 # branch=fix/issue-687-test では生成 file 名は issue-687.md (not 687-test)。
-# 旧実装は issue-687-test.md を期待する dead if 分岐を持ち、常に else 経路 (WM_ISSUE_NUMBER override)
-# が実行されていた。これを branch-based extraction の直接 assert に修正する。
+# issue-687-test.md を期待する if 分岐は数字のみ抽出する extraction chain と矛盾するため到達せず、
+# 常に else 経路 (WM_ISSUE_NUMBER override) が実行される dead 分岐になる。本 TC は branch-based
+# extraction の結果 (issue-687.md) を直接 assert し、その dead 分岐への退行を guard する。
 # branch-based extraction の直接検証 (cycle 12 false negative regression guard):
 # `make_sandbox --branch fix/issue-687-test` が指定の branch を作るため、branch parsing が `687`
 # を抽出して `.rite-work-memory/issue-687.md` を生成することを確認する。
 #
-# PR #688 followup F-06 LOW (branch-name coupling 軽減): make_sandbox 呼び出しで渡している
+# F-06 LOW (branch-name coupling 軽減): make_sandbox 呼び出しで渡している
 # `--branch fix/issue-687-test` 引数と本 TC の assertion で参照する issue 番号 (687) を local var
-# で 1 か所に集約。Issue #990 cycle 3 F-01: make_sandbox は _test-helpers.sh の共通 helper に
+# で 1 か所に集約。cycle 3 F-01: make_sandbox は _test-helpers.sh の共通 helper に
 # 集約されたため、コメントの「関数内」は誤り — call site の `--branch` 引数が SoT。
 # branch 名を変更する場合は本 var と make_sandbox --branch 引数の両方を同期更新する。
 EXPECTED_ISSUE_NUM=687  # make_sandbox --branch 引数 "fix/issue-687-test" (下記 call site 参照) から抽出される値 (branch 名を変更する場合は本 var と --branch 引数の両方を同期更新)

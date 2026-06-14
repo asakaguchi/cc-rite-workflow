@@ -8,7 +8,7 @@
 #   - same_branch:     現在のブランチへそのままコミットする
 #
 # Called from:
-#   - commands/wiki/init.md ステップ 3.1 (旧 ~95 行 inline block を委譲: Issue #1196)
+#   - commands/wiki/init.md ステップ 3.1 (旧 ~95 行 inline block を委譲)
 #
 # Usage:
 #   bash wiki-branch-init.sh --branch-strategy <separate_branch|same_branch> --wiki-branch <name>
@@ -34,7 +34,7 @@ export GIT_TERMINAL_PROMPT=0
 # Mirror wiki-worktree-commit.sh: avoid hangs on hosts without an ssh agent.
 export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
 
-# --- 引数解析 (shift; shift — Issue #1224 の値なしフラグ無限ループ素因を回避) ---
+# --- 引数解析 (shift; shift — 値なしフラグ無限ループ素因を回避) ---
 branch_strategy=""
 wiki_branch=""
 while [ $# -gt 0 ]; do

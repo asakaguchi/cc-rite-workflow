@@ -6,10 +6,10 @@
 # - wiki-worktree-commit.sh (pages/index/log commits on wiki branch)
 # - wiki-ingest-commit.sh (worktree fast path for raw-source ingest)
 #
-# Design rationale: PR #548 cycle 4 F-06 identified that the
+# Design rationale: review identified that the
 # add/commit/push block + error handling (stderr tempfile -> head -n 10
 # -> sed prefix) was structurally identical across the two scripts. A
-# shared helper removes that drift vector. PR #550 review further
+# shared helper removes that drift vector. A later review further
 # tightened the contract so the lib does not silently toggle caller
 # shell options or clobber caller traps.
 #
@@ -83,13 +83,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/../../control-char-neutralize.sh"
 # -----------------------------------------------------------------------
 # verify_worktree_branch: confirm a worktree's HEAD is on an expected branch.
 #
-# Responsibility: eliminate the duplicated rev-parse
-# --abbrev-ref HEAD verification block that previously lived in both
-# wiki-worktree-commit.sh and wiki-ingest-commit.sh. Both callers ran
-# essentially the same sequence (mktemp stderr tempfile + scope-limited
-# trap + `set +e` / `set -e` fence + rev-parse + ERROR + `head -3` + rm -f
-# + branch compare) with only the tempfile prefix differing. This helper
-# centralizes that logic so fixes propagate to both callers automatically.
+# Responsibility: hold the single rev-parse --abbrev-ref HEAD verification
+# block shared by wiki-worktree-commit.sh and wiki-ingest-commit.sh. Both
+# callers need essentially the same sequence (mktemp stderr tempfile +
+# scope-limited trap + `set +e` / `set -e` fence + rev-parse + ERROR +
+# `head -3` + rm -f + branch compare) with only the tempfile prefix differing.
+# Centralizing that logic here lets fixes propagate to both callers automatically.
 #
 # Usage:
 # verify_worktree_branch "$worktree_path" "$wiki_branch" "wwc" "$extra_hint"

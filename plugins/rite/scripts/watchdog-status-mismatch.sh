@@ -3,7 +3,7 @@
 #
 # Scans repository Issues that are linked to OPEN, Ready-for-review PRs (isDraft=false)
 # and detects ones whose GitHub Projects Status is still "In Progress" — the symptom
-# of the Issue #1003 silent-skip bug. Outputs JSON to stdout and a warning summary to
+# of the silent-skip bug. Outputs JSON to stdout and a warning summary to
 # stderr. Optionally attempts reconciliation when --reconcile is passed.
 #
 # Usage:
@@ -56,7 +56,7 @@ watchdog-status-mismatch.sh - Status Mismatch Watchdog
 
 Scans repository Issues that are linked to OPEN, Ready-for-review PRs (isDraft=false)
 and detects ones whose GitHub Projects Status is still "In Progress" — the symptom
-of the Issue #1003 silent-skip bug. Outputs JSON to stdout and a warning summary to
+of the silent-skip bug. Outputs JSON to stdout and a warning summary to
 stderr. Optionally attempts reconciliation when --reconcile is passed.
 
 Usage:
@@ -142,8 +142,8 @@ if ! REPO_INFO=$(gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}")
   exit 1
 fi
 # cycle 8 C7-F02 対応: jq の `// empty` fallback + 明示 fail で `set -euo pipefail` 下の silent abort を防ぐ。
-# 旧実装は `jq -r '.owner.login'` で auth-scope 縮退時に `null` 文字列代入されるか jq exit 5 で
-# 診断情報破棄。新実装は空文字列で fail-fast し、stderr に root cause を出力する。
+# `// empty` を付けない素朴な `jq -r '.owner.login'` は auth-scope 縮退時に `null` 文字列を代入するか
+# jq exit 5 で診断情報を破棄する。空文字列で fail-fast し、stderr に root cause を出力する。
 REPO_OWNER=$(printf '%s' "$REPO_INFO" | jq -r '.owner.login // empty' 2>/dev/null) || REPO_OWNER=""
 REPO_NAME=$(printf '%s' "$REPO_INFO" | jq -r '.name // empty' 2>/dev/null) || REPO_NAME=""
 if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then

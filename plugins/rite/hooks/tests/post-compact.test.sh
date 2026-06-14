@@ -62,7 +62,7 @@ write_per_session_state() {
   printf '%s\n' "$merged" > "$dir/.rite/sessions/${sid}.flow-state"
 }
 
-# Helper: path to the per-session compact-state file (Issue #1371). Mirrors
+# Helper: path to the per-session compact-state file. Mirrors
 # post-compact.sh's derivation: .rite/sessions/<sid>.flow-state → .compact-state.
 compact_state_path() {
   local dir="$1"
@@ -180,11 +180,11 @@ else
   fail "unexpected stdout: $OUTPUT"
 fi
 
-# --- TC-680-A (Issue #680, AC-LOCAL-2): per-session active=true + recovering → recovery output ---
+# --- TC-per-session-detect-A (AC-LOCAL-2): per-session active=true + recovering → recovery output ---
 # Verifies post-compact reads & writes the per-session file (not legacy) when
 # a valid SID + per-session file exists, and that the
 # `.active=true` precondition path still triggers recovery.
-echo "TC-680-A (Issue #680, AC-LOCAL-2): per-session + recovering → auto-recovery from per-session file"
+echo "TC-per-session-detect-A (AC-LOCAL-2): per-session + recovering → auto-recovery from per-session file"
 TC_DIR=$(setup_test "tc680a")
 sid680a="aaaabbbb-cccc-dddd-eeee-ffffaaaa1111"
 mkdir -p "$TC_DIR/.rite/sessions"
@@ -197,20 +197,20 @@ jq -n '{compact_state: "recovering", compact_state_set_at: "2026-04-30T12:00:00Z
 
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
 if echo "$OUTPUT" | grep -q "Auto-compact recovery" && echo "$OUTPUT" | grep -q "Issue #680"; then
-  pass "TC-680-A: recovery output read from per-session file (.active=true preserved)"
+  pass "TC-per-session-detect-A: recovery output read from per-session file (.active=true preserved)"
 else
-  fail "TC-680-A: expected Auto-compact recovery for Issue #680 from per-session, got: $OUTPUT"
+  fail "TC-per-session-detect-A: expected Auto-compact recovery for Issue #680 from per-session, got: $OUTPUT"
 fi
 # Counter-assertion: compact_state transitioned to normal
 cs_state=$(jq -r '.compact_state' "$cs680a" 2>/dev/null)
 if [ "$cs_state" = "normal" ]; then
-  pass "TC-680-A: compact_state transitioned to normal after per-session recovery"
+  pass "TC-per-session-detect-A: compact_state transitioned to normal after per-session recovery"
 else
-  fail "TC-680-A: compact_state expected 'normal', got '$cs_state'"
+  fail "TC-per-session-detect-A: compact_state expected 'normal', got '$cs_state'"
 fi
 
-# --- TC-680-B (Issue #680): per-session active=false + recovering → cleanup ---
-echo "TC-680-B (Issue #680): per-session active=false → cleanup (no recovery)"
+# --- TC-per-session-detect-B: per-session active=false + recovering → cleanup ---
+echo "TC-per-session-detect-B: per-session active=false → cleanup (no recovery)"
 TC_DIR=$(setup_test "tc680b")
 sid680b="22222222-3333-4444-5555-666666666666"
 mkdir -p "$TC_DIR/.rite/sessions"
@@ -222,29 +222,29 @@ jq -n '{compact_state: "recovering"}' > "$cs680b"
 
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
 if [ -z "$OUTPUT" ]; then
-  pass "TC-680-B: per-session active=false → no recovery output (silent exit)"
+  pass "TC-per-session-detect-B: per-session active=false → no recovery output (silent exit)"
 else
-  fail "TC-680-B: expected silent exit on active=false, got: $OUTPUT"
+  fail "TC-per-session-detect-B: expected silent exit on active=false, got: $OUTPUT"
 fi
 if [ ! -f "$cs680b" ]; then
-  pass "TC-680-B: compact_state cleaned up on per-session inactive flow"
+  pass "TC-per-session-detect-B: compact_state cleaned up on per-session inactive flow"
 else
-  fail "TC-680-B: compact_state not cleaned up"
+  fail "TC-per-session-detect-B: compact_state not cleaned up"
 fi
 
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-749-STDERR-PASSTHROUGH (Issue #749, AC-1 / AC-LOCAL-1)
+# TC-helper-failure-stderr-passthrough (AC-1 / AC-LOCAL-1)
 # --------------------------------------------------------------------------
-echo "TC-749-STDERR-PASSTHROUGH: helper failure → ERROR pass-through + skip WARNING"
+echo "TC-helper-failure-stderr-passthrough: helper failure → ERROR pass-through + skip WARNING"
 
 HOOKS_REAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 sbx_749="$(mktemp -d "$TEST_DIR/sbx-hooks-XXXXXX")"
 cp -a "$HOOKS_REAL_DIR/." "$sbx_749/"
 cat > "$sbx_749/flow-state.sh" <<'FAKE_RESOLVER_EOF'
 #!/bin/bash
-echo "ERROR: TC-749 simulated flow-state.sh path failure" >&2
+echo "ERROR: TC-helper-failure simulated flow-state.sh path failure" >&2
 exit 1
 FAKE_RESOLVER_EOF
 chmod +x "$sbx_749/flow-state.sh"
@@ -259,7 +259,7 @@ echo "{\"cwd\": \"$dir_749\", \"source\": \"auto\"}" \
   | bash "$sbx_749/post-compact.sh" >/dev/null 2>"$stderr_file" || true
 stderr_749="$(cat "$stderr_file")"
 
-if printf '%s' "$stderr_749" | grep -qF 'TC-749 simulated flow-state.sh path failure'; then
+if printf '%s' "$stderr_749" | grep -qF 'TC-helper-failure simulated flow-state.sh path failure'; then
   pass "ERROR line from flow-state.sh passed through to caller stderr"
 else
   fail "Expected ERROR pass-through; got stderr: $stderr_749"
@@ -280,7 +280,7 @@ echo ""
 # The reconciliation block surfaces distinct root-cause tokens in plain WARNINGs
 # (state_root_inaccessible / state_root_toctou_race / pr_deleted_or_inaccessible
 # / post_compact_gh_pr_view_failed / post_compact_gh_repo_view_failed /
-# post_compact_reconciliation_failed) but none of TC-001..TC-749 set pr_number
+# post_compact_reconciliation_failed) but none of the prior TCs set pr_number
 # to a non-zero value, so the entire block is otherwise dark. Exercise it with
 # a PATH-injected gh / projects-status-update.sh mock so a misclassification
 # refactor fails here instead of in production.

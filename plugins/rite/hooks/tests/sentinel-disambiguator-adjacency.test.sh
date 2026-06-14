@@ -4,7 +4,7 @@
 # Cross-producer parity verification for sentinel + disambiguator marker pairs.
 #
 # 背景:
-#   Issue #1165 で sub-skill return sentinel を `:returned-to-caller` 形式に rename し、
+#   sub-skill return sentinel を `:returned-to-caller` 形式に rename し、
 #   各 sentinel の直前に `<!-- skill return signal: caller must continue next step -->`
 #   disambiguator marker を併記する契約を導入した。`create-md-invocation-symmetry.test.sh`
 #   の TC-7a/7b は create.md 専用の adjacency 検証として既に機能している。

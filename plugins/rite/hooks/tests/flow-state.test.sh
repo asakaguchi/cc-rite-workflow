@@ -18,6 +18,14 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
+# Clean session-id env for standalone runs (Issue #1530). flow-state.sh resolves
+# session_id env-first; the file-based sandboxes below must exercise the
+# `.rite-session-id` fallback, so the dogfooding session's ambient
+# CLAUDE_CODE_SESSION_ID must not leak in. TC-13/14/15 + T-01/T-02/T-04 set the
+# vars explicitly per-command, overriding this unset. (run-tests.sh unsets the
+# same vars for suite runs; this keeps `bash flow-state.test.sh` deterministic too.)
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
+
 # Helper: prepare a sandbox with .rite-session-id and STATE_ROOT detection
 new_sandbox() {
   local d sid
@@ -119,7 +127,7 @@ assert "cleanup_pre_ingest → cleanup" "cleanup" "$(jq -r .phase "$state_file")
 assert "branch_name → branch (rename)" "old-branch" "$(jq -r .branch "$state_file")"
 assert "branch_name dropped" "null" "$(jq -r '.branch_name // "null"' "$state_file")"
 assert "previous_phase dropped" "null" "$(jq -r '.previous_phase // "null"' "$state_file")"
-assert "last_synced_phase preserved (PR #1089 H1: post-tool-wm-sync.sh runtime-only field)" "cleanup" "$(jq -r '.last_synced_phase // "null"' "$state_file")"
+assert "last_synced_phase preserved" "cleanup" "$(jq -r '.last_synced_phase // "null"' "$state_file")"
 assert "issue_number preserved" "100" "$(jq -r .issue_number "$state_file")"
 
 # --- TC-7: migrate idempotent for already-v3 files ---
@@ -335,7 +343,7 @@ else
   fail "TC-10: JSON corrupted by concurrent writes"
 fi
 
-# --- TC-11: cmd_set preserves last_synced_phase across merge (PR #1089 H1 regression) ---
+# --- TC-11: cmd_set preserves last_synced_phase across merge ---
 echo ""
 echo "=== TC-11: cmd_set preserves last_synced_phase (post-tool-wm-sync.sh runtime field) ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
@@ -349,7 +357,7 @@ jq '.last_synced_phase = "plan"' "$state_file" > "$state_file.tmp" && mv "$state
 assert "TC-11: last_synced_phase preserved across cmd_set merge" "plan" "$(jq -r '.last_synced_phase // "null"' "$state_file")"
 assert "TC-11: phase updated as expected" "implement" "$(jq -r .phase "$state_file")"
 
-# --- TC-12: cmd_set on corrupt JSON emits WARNING (PR #1089 H3 regression) ---
+# --- TC-12: cmd_set on corrupt JSON emits WARNING ---
 echo ""
 echo "=== TC-12: cmd_set on corrupt existing state emits WARNING (no silent overwrite) ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
@@ -388,8 +396,8 @@ fi
 
 # --- TC-13: AC-4 — CLAUDE_CODE_SESSION_ID env resolves session_id when .rite-session-id is absent ---
 echo ""
-echo "=== TC-13: AC-4 CLAUDE_CODE_SESSION_ID env-only resolution (Issue #1142) ==="
-# Why: Issue #1142 root cause was that `_resolve_session_id` only honored
+echo "=== TC-13: AC-4 CLAUDE_CODE_SESSION_ID env-only resolution ==="
+# Why: the root cause was that `_resolve_session_id` only honored
 # CLAUDE_SESSION_ID, but Claude Code runtime sets CLAUDE_CODE_SESSION_ID. When
 # `.rite-session-id` was absent, get/set silently degraded (empty + rc=0 / silent skip).
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
@@ -429,7 +437,7 @@ assert "TC-14: legacy CLAUDE_SESSION_ID still resolves get" "implement" "$got"
 # --- TC-15: AC-3 — cmd_get surfaces _resolve_session_id ERROR (no silencing) ---
 echo ""
 echo "=== TC-15: AC-3 cmd_get does not silence resolution ERROR ==="
-# Why: Issue #1142 — cmd_get used `_resolve_session_id ... 2>/dev/null`, hiding the
+# Why: cmd_get used `_resolve_session_id ... 2>/dev/null`, hiding the
 # "ERROR: cannot resolve session_id" message. Now stderr must reach the operator.
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 rm -f "$d/.rite-session-id"
@@ -439,14 +447,14 @@ err=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOO
 if echo "$err" | grep -qE 'ERROR:.*cannot resolve session_id'; then
   pass "TC-15: cmd_get surfaces _resolve_session_id ERROR on stderr"
 else
-  fail "TC-15: cmd_get silenced resolution ERROR (regression of Issue #1142 fix): '$err'"
+  fail "TC-15: cmd_get silenced resolution ERROR (regression of the resolution-ERROR fix): '$err'"
 fi
 
 # --- TC-16: AC-3 — cmd_get emits WARNING for stale .rite-session-id drift ---
 echo ""
 echo "=== TC-16: AC-3 cmd_get WARNs on stale .rite-session-id drift ==="
 # Why: When `.rite-session-id` resolves to a sid whose state file does not exist,
-# the caller's "get value" intent silently degrades to default. Issue #1142 fix
+# the caller's "get value" intent silently degrades to default. The fix
 # emits a WARNING to make the drift observable. Truly first-time sessions (no
 # `.rite-session-id`) stay silent (graceful no-op).
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
@@ -479,7 +487,7 @@ fi
 # --- TC-17: AC-2 + AC-3 — cmd_set --if-exists WARNs on stale .rite-session-id drift ---
 echo ""
 echo "=== TC-17: AC-2/AC-3 cmd_set --if-exists WARNs on stale sid; first-time silent ==="
-# Why: Issue #1142 — `--if-exists` silently skipped when sid resolved to a file
+# Why: `--if-exists` silently skipped when sid resolved to a file
 # that did not exist (stale `.rite-session-id`). Caller's intent (update active
 # session state) was violated without any signal. Fix emits WARNING only when
 # `.rite-session-id` exists (caller expected a session), staying silent for the
@@ -613,7 +621,7 @@ if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*control characters'; then
 else
   fail "TC-19.6: SESSION_ID_FILE control-char not rejected: '$err'"
 fi
-# TC-19.7: C1 8-bit 制御バイト (0x9b = 8-bit CSI introducer) rejection (Issue #1276)
+# TC-19.7: C1 8-bit 制御バイト (0x9b = 8-bit CSI introducer) rejection
 # 旧 `=~ [[:cntrl:]]` は glibc が C/UTF-8 両ロケールで C1 (0x80-0x9f) を cntrl と
 # 分類しないため 0x9b 入り session_id を素通ししていた。contains_ctrl
 # (control-char-neutralize.sh と共有のバイト範囲定義) への置換で reject されることを pin。
@@ -621,7 +629,7 @@ result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 rm -f "$d/.rite-session-id"
 err=$( (cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID=$'sid\x9bwith-csi' bash "$HOOK" get --field phase --default "DEF" >/dev/null) 2>&1 || true )
 if echo "$err" | grep -qE 'ERROR:.*invalid session_id.*control characters'; then
-  pass "TC-19.7: CLAUDE_CODE_SESSION_ID rejects C1 0x9b byte (Issue #1276 detection-side pin)"
+  pass "TC-19.7: CLAUDE_CODE_SESSION_ID rejects C1 0x9b byte"
 else
   fail "TC-19.7: C1 0x9b not rejected: '$err'"
 fi
@@ -763,7 +771,7 @@ else
   fail "TC-22.2: env-set first-time で stdout に default 返却なし: '$combined'"
 fi
 
-# --- TC-H1..H5: handoff one-shot marker (Issue #1168) ---
+# --- TC-H1..H5: handoff one-shot marker ---
 echo ""
 echo "=== TC-H1: set --handoff writes handoff field ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
@@ -826,7 +834,7 @@ assert "TC-H5: handoff present after continuation set" "/rite:pr:review 99" "$(j
 assert "TC-H5: handoff cleared by subsequent no-handoff set" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
 
 echo ""
-echo "=== TC-H6: consume-handoff fail-closed on _atomic_write failure (Issue #1168 AC-3) ==="
+echo "=== TC-H6: consume-handoff fail-closed on _atomic_write failure ==="
 # Why: cmd_consume_handoff の順序は jq del → _atomic_write → printf (delete-then-print)。
 # 永続 FS 書込失敗下では _atomic_write が失敗し、printf に到達せず値が withhold される (stdout 空) +
 # handoff が file に残存 + rc=0 に縮退する。これにより Stop hook は空 HANDOFF を読んで停止を許可し、
@@ -891,9 +899,9 @@ fi
 unset _dac_probe_err _dac_probe_parent _dac_probe _dac_probe_diag 2>/dev/null || true
 
 echo ""
-echo "=== TC-H7: consume-handoff on corrupt JSON → WARNING + empty + rc 0 (Issue #1170 observability) ==="
+echo "=== TC-H7: consume-handoff on corrupt JSON → WARNING + empty + rc 0 ==="
 # Why: corrupt JSON 時の fail-open (空 + rc=0 → Stop hook が停止許可) は AC-3 上正しい安全側挙動だが、
-# 旧実装 (`|| handoff=""`) は無診断で corrupt を検出できなかった。cmd_set / cmd_get と対称に WARNING を
+# `|| handoff=""` 形式は無診断で corrupt を検出できない。cmd_set / cmd_get と対称に WARNING を
 # stderr へ emit することを pin し、silent fallback への revert を検出する。stdout 空 + rc=0 の
 # fail-open 不変も同時に固定する (WARNING 追加で停止許可挙動が崩れていないこと)。
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
@@ -916,24 +924,24 @@ else
 fi
 [ "${_tch7_stderr:-/dev/null}" != "/dev/null" ] && rm -f "$_tch7_stderr"
 unset _tch7_stderr
-# ⚠️ sandbox 隔離の留意 (Issue #1174): TC-H7 は corrupt JSON を state_file に書き込んだまま終了する
+# ⚠️ sandbox 隔離の留意: TC-H7 は corrupt JSON を state_file に書き込んだまま終了する
 # (corrupt 状態の観測が目的のため cleanup しないのは意図的)。本 TC より後ろに TC を追加する場合は、
 # 残置された corrupt state_file を引き継がないよう必ず new_sandbox で独立 sandbox を取得すること
 # (直後の TC-23 は準拠済み)。
 
-# --- TC-23: jq stderr スニペットの control-char 中和 (Issue #1173) ---
+# --- TC-23: jq stderr スニペットの control-char 中和 ---
 echo ""
-echo "=== TC-23: _emit_jq_err_snippet が jq stderr の制御文字を中和する (Issue #1173) ==="
+echo "=== TC-23: _emit_jq_err_snippet が jq stderr の制御文字を中和する ==="
 # Why: corrupt state file 断片には ANSI escape / 制御バイトが含まれうる。これが jq stderr スニペット
 # 経由で operator terminal に生のまま到達すると、カーソル移動 / 色 / タイトル書換え等で端末を駆動され
 # うる。cmd_set / cmd_get(×2) / cmd_consume_handoff の 4 emission site を共通 helper
 # `_emit_jq_err_snippet` に集約し、共通ヘルパー neutralize_ctrl (control-char-neutralize.sh /
-# Issue #1274 — C0+DEL に加え C1 0x80-0x9f もバイト単位カバー) で `?` に 1:1 中和する。4 site が同一
+# C0+DEL に加え C1 0x80-0x9f もバイト単位カバー) で `?` に 1:1 中和する。4 site が同一
 # helper 経由のため 1 経路で中和ロジックを pin すれば全 site を固定できる (対称位置への伝播漏れを
 # 構造的に回避)。jq 1.7 の parse error は入力バイトを echo しないため、`--jq-filter 'error("...")'`
 # で jq の error builtin に生 ESC を載せて確実に jq stderr (= スニペット) へ出させる。
 # assertion は 2-space indent の snippet 行に限定する: WARNING 行の `(filter: ...)` echo は caller
-# 供給の filter 文字列 (corrupt-file 由来ではない) を含むため #1173 のスコープ外。
+# 供給の filter 文字列 (corrupt-file 由来ではない) を含むため本 TC のスコープ外。
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 # valid な state file を作成 (error() は valid JSON に対しても runtime error を起こす)
 (cd "$d" && bash "$HOOK" set --phase plan --issue 1173 --branch "b" --pr 0 --next "n") >/dev/null
@@ -952,7 +960,7 @@ fi
 if printf '%s' "$snippet" | LC_ALL=C grep -q "$esc"; then
   fail "TC-23.2: snippet 行に生 ESC が残存 (control-char 中和が機能していない): '$(printf '%s' "$snippet" | cat -v)'"
 else
-  pass "TC-23.2: snippet 行の生 ESC が中和されている (Issue #1173)"
+  pass "TC-23.2: snippet 行の生 ESC が中和されている"
 fi
 # TC-23.3: 制御文字が中和マーカー '?' へ 1:1 置換され可読テキストは保持される
 # (空削除への revert と snippet 全体 drop の両方を catch する)
@@ -961,7 +969,7 @@ if printf '%s' "$snippet" | grep -qF '?[31mINJECTED?[0m'; then
 else
   fail "TC-23.3: 中和マーカー '?' パターンが不在: '$(printf '%s' "$snippet" | cat -v)'"
 fi
-# TC-23.4 (Issue #1274): C1 8-bit 制御バイトの中和。U+009B (UTF-8: 0xc2 0x9b) は valid UTF-8
+# TC-23.4: C1 8-bit 制御バイトの中和。U+009B (UTF-8: 0xc2 0x9b) は valid UTF-8
 # として jq の error builtin / JSON 経路を素通りして snippet まで届く現実の攻撃バイト列
 # (xterm 等は UTF-8 モードでも C1 を制御文字として解釈する)。旧 `s/[[:cntrl:]]/?/g` は glibc が
 # C1 を cntrl と分類しないため 0x9b を素通ししていた。バイト単位 neutralize_ctrl は 2 バイト目の
@@ -977,10 +985,10 @@ if [ -z "$snippet_c1" ]; then
 elif printf '%s' "$snippet_c1" | LC_ALL=C grep -q $'\x9b'; then
   fail "TC-23.4: snippet 行に生 0x9b (C1 CSI) が残存: '$(printf '%s' "$snippet_c1" | cat -v)'"
 else
-  pass "TC-23.4: C1 0x9b (U+009B 経由) が snippet 行で中和されている (Issue #1274)"
+  pass "TC-23.4: C1 0x9b (U+009B 経由) が snippet 行で中和されている"
 fi
 
-# --- TC-WT: --worktree field (multi-session §2 / Issue #1362) ---
+# --- TC-WT: --worktree field (multi-session §2) ---
 echo ""
 echo "=== TC-WT1: set --worktree then get returns the path ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
@@ -1005,9 +1013,9 @@ state_file2="$d2/.rite/sessions/${sid2}.flow-state"
 assert "no worktree key when --worktree never passed" "false" "$(jq 'has("worktree")' "$state_file2")"
 
 # --- TC-24: non-UUID opaque session_id is ACCEPTED (Layer 1 format-agnostic contract) ---
-# Why (Issue #1383): `_validate_session_id` is the Layer 1 security-boundary validator and is
+# Why: `_validate_session_id` is the Layer 1 security-boundary validator and is
 # format-agnostic BY DESIGN — it rejects path-traversal / control chars (pinned by TC-18/TC-19)
-# but MUST keep ACCEPTING non-UUID opaque sids. pre-compact.test.sh TC-1371-AC1 sets
+# but MUST keep ACCEPTING non-UUID opaque sids. pre-compact.test.sh TC-per-session-compact-independence-AC1 sets
 # CLAUDE_CODE_SESSION_ID="session-aaaa-1371" and relies on `flow-state.sh path` resolving it to a
 # per-session file. If this were ever routed through `_resolve-session-id.sh` (strict RFC 4122 /
 # Layer 2), such sids would degrade to legacy fallback and the dependent tests would go SILENTLY
@@ -1062,6 +1070,93 @@ else
   fail "TC-24.4: --session override non-UUID rejected/degraded. stderr: '$err'"
 fi
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + Issue #1142 silent-failure fixes + security/observability hardening + Issue #1168 handoff marker + Issue #1170 consume-handoff corrupt-read WARNING + Issue #1173 jq stderr snippet control-char neutralization + Issue #1274 C1 8-bit coverage via shared neutralize_ctrl + Issue #1362 --worktree merge-preserve field + Issue #1383 non-UUID acceptance (Layer 1 format-agnostic contract pin)"; then
+# --- TC-25: clear-worktree subcommand (Issue #1524) ---
+# Surgical del(.worktree) mirroring cmd_deactivate: removes only the worktree key,
+# preserves phase/active/branch, idempotent (no-op + no file churn when absent),
+# non-blocking on a missing state file. Used by pr-cycle-cleanup.sh reap null-ing
+# and session-start.sh dangling self-heal.
+echo ""
+echo "=== TC-25: clear-worktree removes worktree key, preserves others, idempotent ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase implement --issue 1524 --branch "fix/issue-1524" --pr 0 --next "n" \
+  --worktree "$d/.rite/worktrees/issue-1524")
+sfile="$d/.rite/sessions/${sid}.flow-state"
+assert "TC-25: worktree set via cmd_set" "$d/.rite/worktrees/issue-1524" "$(jq -r '.worktree // "ABSENT"' "$sfile")"
+(cd "$d" && bash "$HOOK" clear-worktree)
+assert "TC-25: worktree key removed" "false" "$(jq -r 'has("worktree")' "$sfile")"
+assert "TC-25: phase preserved" "implement" "$(jq -r '.phase' "$sfile")"
+assert "TC-25: active preserved" "true" "$(jq -r '.active' "$sfile")"
+assert "TC-25: branch preserved" "fix/issue-1524" "$(jq -r '.branch' "$sfile")"
+# Idempotent: re-clearing is a no-op (rc 0) AND must NOT rewrite the file (no
+# updated_at churn → wm-sync diff guard stays quiet). Pin updated_at to a known
+# PAST value after the first clear, then re-clear: the has("worktree") early-return
+# guard means the second clear performs no write, so updated_at MUST stay pinned.
+# (A `before==after` cat compare would NOT catch guard removal — the rewritten
+# updated_at would equal the original within the same wall-clock second. Pinning a
+# past value makes the assertion non-vacuous regardless of second-boundary timing.)
+pin_ts="2020-01-01T00:00:00Z"
+tmp_pin=$(mktemp); jq --arg ts "$pin_ts" '.updated_at = $ts' "$sfile" > "$tmp_pin" && mv "$tmp_pin" "$sfile"
+(cd "$d" && bash "$HOOK" clear-worktree); rc=$?
+assert "TC-25: idempotent re-clear rc=0" "0" "$rc"
+assert "TC-25: idempotent re-clear performs no write (updated_at stays pinned)" "$pin_ts" "$(jq -r '.updated_at' "$sfile")"
+# Non-blocking on a missing state file: resolving a sid with no file returns rc 0.
+miss_rc=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID \
+  bash "$HOOK" clear-worktree --session "no-such-session-1524" >/dev/null 2>&1); echo $? )
+assert "TC-25: clear-worktree on missing state file is non-blocking (rc 0)" "0" "$miss_rc"
+
+# --- T-01: AC-1 — distinct env CLAUDE_CODE_SESSION_ID → distinct per-session state files ---
+echo ""
+echo "=== T-01: AC-1 concurrent sessions sharing one state root stay isolated by env ==="
+# Two sessions share one state root (the main checkout) but carry different
+# CLAUDE_CODE_SESSION_ID. With env-first resolution each writes/reads its OWN
+# {sid}.flow-state, so session B cannot contaminate session A's issue/phase.
+result=$(new_sandbox); d="${result%|*}"
+rm -f "$d/.rite-session-id"  # force env-first path (no shared fallback file)
+sidA="aaaaaaaa-1111-2222-3333-444444444444"
+sidB="bbbbbbbb-5555-6666-7777-888888888888"
+(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sidA" bash "$HOOK" set --phase implement --issue 101 --branch "feat/a" --pr 0 --next "a")
+(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sidB" bash "$HOOK" set --phase review --issue 202 --branch "feat/b" --pr 0 --next "b")
+fileA="$d/.rite/sessions/${sidA}.flow-state"
+fileB="$d/.rite/sessions/${sidB}.flow-state"
+assert_file_exists_or_fail "T-01: session A state file exists" "$fileA" || true
+assert_file_exists_or_fail "T-01: session B state file exists" "$fileB" || true
+assert "T-01: session A issue isolated" "101" "$(jq -r .issue_number "$fileA")"
+assert "T-01: session B issue isolated" "202" "$(jq -r .issue_number "$fileB")"
+gotA=$(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sidA" bash "$HOOK" get --field issue_number --default "X")
+assert "T-01: session A read not contaminated by session B" "101" "$gotA"
+
+# --- T-02: AC-3 — env-absent runtime falls back to .rite-session-id file ---
+echo ""
+echo "=== T-02: AC-3 env-absent → .rite-session-id file fallback (backward compat) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" set --phase plan --issue 303 --branch "feat/c" --pr 0 --next "c")
+sfile="$d/.rite/sessions/${sid}.flow-state"
+assert_file_exists_or_fail "T-02: fallback state file keyed by .rite-session-id sid" "$sfile" || true
+got=$(cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" get --field issue_number --default "X")
+assert "T-02: env-absent get resolves via .rite-session-id file" "303" "$got"
+
+# --- T-04: AC-1 — env wins when env CLAUDE_CODE_SESSION_ID and .rite-session-id differ ---
+echo ""
+echo "=== T-04: env CLAUDE_CODE_SESSION_ID takes precedence over a differing .rite-session-id ==="
+# This is the regression guard for the precedence flip: file present (filesid) AND
+# env present (envsid) but different → state MUST be written under envsid, not filesid.
+result=$(new_sandbox); d="${result%|*}"; filesid="${result#*|}"
+envsid="cccccccc-9999-0000-1111-222222222222"
+(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$envsid" bash "$HOOK" set --phase fix --issue 404 --branch "feat/d" --pr 0 --next "d")
+env_file="$d/.rite/sessions/${envsid}.flow-state"
+file_file="$d/.rite/sessions/${filesid}.flow-state"
+assert_file_exists_or_fail "T-04: state written under ENV sid (env wins)" "$env_file" || true
+if [ -f "$file_file" ]; then
+  fail "T-04: state must NOT be written under .rite-session-id file sid when env present"
+else
+  pass "T-04: file-sid state correctly absent (env took precedence over file)"
+fi
+# Smoke check only — NOT a precedence guard. The precedence flip is pinned by the two
+# asserts above (env_file present + file_file absent); this end-to-end get would stay
+# green even under the old file-first ordering (set writes filesid, get reads filesid).
+got=$(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$envsid" bash "$HOOK" get --field issue_number --default "X")
+assert "T-04: get resolves via env sid (404, smoke)" "404" "$got"
+
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del (Issue #1524) + non-UUID acceptance (Layer 1 format-agnostic contract pin)"; then
   exit 1
 fi

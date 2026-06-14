@@ -2,7 +2,7 @@
 # migrate-review-state-to-1.1.sh
 #
 # Migrate review-result JSON files in `.rite/review-results/` from schema
-# 1.0 / 1.0.0 / missing to canonical 1.1.0. Issue #1021 (Epic #1015).
+# 1.0 / 1.0.0 / missing to canonical 1.1.0.
 #
 # Migration adds the two fields introduced in 1.1.0:
 #   - findings[].scope        — default mapping from severity
@@ -92,9 +92,9 @@ DEFAULT_SCOPE_FILTER='
 #   - 欠落のままで Cross-field invariant #5 (pre_existing=false × scope=nit-noted) が
 #     発火しない (`null != false`)
 #   - 1.0/1.0.0 JSON の finding は invariant #5 auto-correct 対象外となり後方互換が保たれる
-# 旧実装は `.pre_existing = false` を初期化していたが、これは migrated LOW finding を
-# scope=nit-noted + pre_existing=false の組合せにし、read 側 invariant #5 で scope を
-# current-pr に書き換えてしまう後方互換破壊だった。
+# `.pre_existing = false` を初期化してはならない。初期化すると migrated LOW finding が
+# scope=nit-noted + pre_existing=false の組合せになり、read 側 invariant #5 で scope を
+# current-pr に書き換えてしまう後方互換破壊を招く。
 MIGRATE_FILTER='
   if (.schema_version // "") == "1.1.0" then .
   else

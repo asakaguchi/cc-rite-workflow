@@ -21,9 +21,9 @@
 #   "no_project_id"        - GraphQL returns null project ID
 #   "url_parse_fail"       - gh issue create returns non-URL string (no trailing number)
 #   "iteration_mutation_fail" - GraphQL fields query OK (iteration field present),
-#                              but the iteration assignment mutation fails (#669 F-02)
+#                              but the iteration assignment mutation fails
 #   "gql_items_lookup_fail"  - GraphQL fields query OK (items.nodes=[]),
-#                              but the GQL_ITEMS_QUERY (items lookup retry) fails (#669 cycle 2 follow-up)
+#                              but the GQL_ITEMS_QUERY (items lookup retry) fails
 #
 # Scenarios (projects-status-update.sh):
 #   "psu_success"              - Issue in project, Status updated
@@ -214,7 +214,7 @@ ITEMJSON
 
         # Detect query shape: projects-status-update.sh queries `repository(owner:`
         # while create-issue-with-projects.sh queries `user|organization(login:`.
-        # gql_items_lookup_fail (#669 cycle 2 follow-up): fields query (containing
+        # gql_items_lookup_fail: fields query (containing
         # `fields(first: 20)`) succeeds with empty items, but the items lookup
         # retry query (containing `items(last: 20)` and NOT `fields(first: 20)`)
         # fails with exit 1.
@@ -284,7 +284,7 @@ ITEMJSON
         fi
 
         if [ "$is_mutation" = true ]; then
-          # iteration_mutation_fail: simulate iteration assignment mutation failure (#669 F-02)
+          # iteration_mutation_fail: simulate iteration assignment mutation failure
           if [ "$SCENARIO" = "iteration_mutation_fail" ]; then
             echo "error: iteration mutation failed" >&2
             exit 1
@@ -364,7 +364,7 @@ ITEMJSON
         MOCK_CURRENT_SPRINT_START=$(date +%Y-%m-01)
         if [ "$SCENARIO" = "iteration_success" ] || [ "$SCENARIO" = "iteration_mutation_fail" ]; then
           # iteration_mutation_fail も fields query では Sprint field + current iteration を返し、
-          # mutation 段階で初めて失敗させる (#669 F-02)
+          # mutation 段階で初めて失敗させる
           ITER_FIELD=',
             {
               "id": "FIELD_SPRINT",

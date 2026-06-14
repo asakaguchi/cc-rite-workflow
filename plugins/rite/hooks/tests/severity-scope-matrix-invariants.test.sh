@@ -1,5 +1,5 @@
 #!/bin/bash
-# T-4 (Issue #1017): severity × scope マトリクスの禁止セルが schema 1.1.0 Cross-field invariants と
+# T-4: severity × scope マトリクスの禁止セルが schema 1.1.0 Cross-field invariants と
 # 整合しているか jq invariant で検証
 #
 # Verification:

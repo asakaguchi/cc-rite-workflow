@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for state-path-resolve.sh linked-worktree awareness (Issue #1361 / S1).
+# Tests for state-path-resolve.sh linked-worktree awareness.
 #
 # Covers the multi-session design §1 contract:
 #   - Non-worktree sessions: resolver output is BYTE-IDENTICAL to the legacy

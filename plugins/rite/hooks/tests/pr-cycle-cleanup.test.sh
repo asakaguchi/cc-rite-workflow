@@ -2,13 +2,13 @@
 # Tests for pr-cycle-cleanup.sh
 # Usage: bash plugins/rite/hooks/tests/pr-cycle-cleanup.test.sh
 #
-# Test cases map to Issue #919 Acceptance Criteria:
+# Test cases map to Acceptance Criteria:
 #   T-01 → AC-1: 1 サイクル正常終了後の残置ゼロ
 #   T-02 → AC-2: 複数サイクル後の残置ゼロ
 #   T-03 → AC-3: 異常終了時の回復経路
 #   T-04 → AC-4: 無関係ブランチの保護
 #
-# Per-item failure-branch coverage (Issue #1316) — the `status=failed; errors=N`
+# Per-item failure-branch coverage — the `status=failed; errors=N`
 # path of each step's individual delete failure (T-10 covers only Step 3's find
 # *wholesale* failure):
 #   T-11 → Step 1: `git worktree remove --force` failure (locked worktree)
@@ -16,9 +16,9 @@
 #   T-13 → Step 3: `rm -rf` failure (read-only orphan-workdir parent)
 #   T-16 → Step 4: `git worktree remove --force || rm -rf` failure (read-only
 #                  mutation-worktree parent) — extends the symmetry to the
-#                  mutation-worktree reap added in #1340
+#                  mutation-worktree reap added in Step 4
 #
-# Step 4 mutation worktree reaping (Issue #1340) — path-based sweep of orphan
+# Step 4 mutation worktree reaping — path-based sweep of orphan
 # detached `rite-review-mutation-*` worktrees that the Step 1 branch sweep cannot
 # catch (they have no named branch):
 #   T-14 → Step 4: aged orphan mutation worktree reaped (mutation_worktrees=1)
@@ -59,7 +59,7 @@ trap '_cleanup_all_test_repos; exit 130' INT
 trap '_cleanup_all_test_repos; exit 143' TERM
 trap '_cleanup_all_test_repos; exit 129' HUP
 
-# Isolate TMPDIR so the orphan-workdir GC (Step 3 of the cleanup script, #1311)
+# Isolate TMPDIR so the orphan-workdir GC (Step 3 of the cleanup script)
 # scans an empty, test-owned directory instead of the developer's real /tmp.
 # Without this, a real /tmp/rite-pr-create-* orphan on the host would make T-05
 # (noop assertion) flaky and could even delete a developer's in-flight workdir.
@@ -251,16 +251,16 @@ fi
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-04b: Issue #995 — reviewer variation branches (`pr-N-test` /
+# T-04b: reviewer variation branches (`pr-N-test` /
 # `pr-N-experiment` / `pr-N-mutation` / `pr-N-verify` / `pr-N-check` /
 # `pr-N-sandbox`) are cleaned up alongside `pr-N-cycleX`.
 # Suffix variations (e.g. `pr-994-testing-suite`) must still survive.
 # -----------------------------------------------------------------------
-echo "T-04b: Issue #995 reviewer variation branches"
+echo "T-04b: reviewer variation branches"
 TEST_REPO=$(make_temp_repo)
 (
   cd "$TEST_REPO"
-  # Match — should be deleted (Issue #995 reviewer variation suffixes)
+  # Match — should be deleted (reviewer variation suffixes)
   git branch pr-994-test main
   git branch pr-995-experiment main
   git branch pr-996-mutation main
@@ -291,12 +291,12 @@ fi
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-04c: Issue #995 cycle 1 — worktree-loop の regex sync を独立検証
+# T-04c: cycle 1 — worktree-loop の regex sync を独立検証
 # (test-reviewer 指摘: T-04b は bare branch のみで worktree-loop の regex が
 # desync しても PASS する。worktree シナリオを追加し、worktree + branch のセット leak が
 # cleanup されることを確認する)
 # -----------------------------------------------------------------------
-echo "T-04c: Issue #995 reviewer variation worktrees + branches (worktree-loop regex sync)"
+echo "T-04c: reviewer variation worktrees + branches (worktree-loop regex sync)"
 TEST_REPO=$(make_temp_repo)
 (
   cd "$TEST_REPO"
@@ -342,7 +342,7 @@ fi
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-06: orphan workdir reaping (refs #1311)
+# T-06: orphan workdir reaping
 # Given: aged `rite-pr-create-*` workdirs (one empty = after-(A) orphan, one with
 #        files = after-(B) orphan) older than the age threshold exist in TMPDIR
 # When: Cleanup runs
@@ -350,7 +350,7 @@ cleanup_temp_repo "$TEST_REPO"
 # Uses `touch -t 202001010000` (POSIX-portable, far older than 24h) to backdate
 # the directory mtime AFTER writing contents (writing a file bumps the dir mtime).
 # -----------------------------------------------------------------------
-echo "T-06: 古い orphan workdir 回収 (refs #1311)"
+echo "T-06: 古い orphan workdir 回収"
 rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
 mkdir -p "$WORKDIR_SCAN_TMP/rite-pr-create-old1"
 echo "stale title" > "$WORKDIR_SCAN_TMP/rite-pr-create-old1/pr_title.txt"  # after-(B) orphan: has files
@@ -368,14 +368,14 @@ rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-07: age 未満の workdir は保護 (in-flight 誤回収防止) (refs #1311)
+# T-07: age 未満の workdir は保護 (in-flight 誤回収防止)
 # Given: a freshly-created `rite-pr-create-*` workdir (mtime = now) exists
 # When: Cleanup runs
 # Then: The workdir survives (age guard) and status=noop (nothing reaped)
 # This is the core safety assertion: a concurrent session's in-flight workdir is
 # never reaped by another session's cleanup.
 # -----------------------------------------------------------------------
-echo "T-07: age 未満の workdir は保護 (in-flight 誤回収防止) (refs #1311)"
+echo "T-07: age 未満の workdir は保護 (in-flight 誤回収防止)"
 rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
 mkdir -p "$WORKDIR_SCAN_TMP/rite-pr-create-fresh"  # just created -> mtime now -> must survive
 TEST_REPO=$(make_temp_repo)
@@ -389,13 +389,13 @@ rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-08: 無関係 prefix のディレクトリは age 超過でも保護 (refs #1311)
+# T-08: 無関係 prefix のディレクトリは age 超過でも保護
 # Given: an aged matching `rite-pr-create-victim` plus aged non-matching dirs
 #        (`rite-pr-cleanup-test-*` — the test-repo prefix — and `unrelated-dir`)
 # When: Cleanup runs
 # Then: Only `rite-pr-create-*` is reaped; the name-glob boundary protects others
 # -----------------------------------------------------------------------
-echo "T-08: 無関係 prefix のディレクトリは age 超過でも保護 (refs #1311)"
+echo "T-08: 無関係 prefix のディレクトリは age 超過でも保護"
 rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* "$WORKDIR_SCAN_TMP/rite-pr-cleanup-test-xyz" "$WORKDIR_SCAN_TMP/unrelated-dir" 2>/dev/null || true
 mkdir -p "$WORKDIR_SCAN_TMP/rite-pr-create-victim"      # match -> reaped
 mkdir -p "$WORKDIR_SCAN_TMP/rite-pr-cleanup-test-xyz"   # different prefix -> survive
@@ -414,12 +414,12 @@ rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* "$WORKDIR_SCAN_TMP/rite-pr-cleanup-t
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-09: --dry-run は orphan workdir を削除しない (refs #1311)
+# T-09: --dry-run は orphan workdir を削除しない
 # Given: an aged matching `rite-pr-create-*` workdir exists
 # When: Cleanup runs with --dry-run
 # Then: The workdir survives and a `[dry-run] would reap ...` line is printed
 # -----------------------------------------------------------------------
-echo "T-09: --dry-run は orphan workdir を削除しない (refs #1311)"
+echo "T-09: --dry-run は orphan workdir を削除しない"
 rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
 mkdir -p "$WORKDIR_SCAN_TMP/rite-pr-create-dry"
 touch -t 202001010000 "$WORKDIR_SCAN_TMP/rite-pr-create-dry"
@@ -434,7 +434,7 @@ rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-10: find wholesale 失敗が silent でない (refs #1311)
+# T-10: find wholesale 失敗が silent でない
 # Given: TMPDIR が存在しないパスを指し、Step 3 の find が wholesale 失敗する
 # When: Cleanup runs
 # Then: find 失敗は WARNING + errors++ で surface され status=failed になる
@@ -442,7 +442,7 @@ cleanup_temp_repo "$TEST_REPO"
 # TMPDIR override はこの 1 実行に限定する。cleanup script の mktemp は /tmp 直書きのため
 # bogus TMPDIR の影響を受けず、find の base 走査のみが失敗する。
 # -----------------------------------------------------------------------
-echo "T-10: find wholesale 失敗が silent でない (refs #1311)"
+echo "T-10: find wholesale 失敗が silent でない"
 TEST_REPO=$(make_temp_repo)
 t10_output=$( cd "$TEST_REPO" && TMPDIR=/nonexistent/rite-pr-cleanup-does-not-exist bash "$CLEANUP" 2>&1 )
 if echo "$t10_output" | grep -q 'status=failed' \
@@ -454,7 +454,7 @@ fi
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-11: Step 1 per-item worktree removal failure -> status=failed (refs #1316)
+# T-11: Step 1 per-item worktree removal failure -> status=failed
 # Given: a matching `pr-N-cycleX` worktree that is git-locked
 # When: cleanup runs — `git worktree remove --force` uses a SINGLE --force, which
 #       refuses to remove a locked worktree (`-f -f` would be required)
@@ -468,7 +468,7 @@ cleanup_temp_repo "$TEST_REPO"
 # "failed to delete branch" WARNING — that cascade is expected; this test pins the
 # Step 1 branch by asserting the worktree-specific WARNING.
 # -----------------------------------------------------------------------
-echo "T-11: Step 1 worktree 削除失敗で status=failed (refs #1316)"
+echo "T-11: Step 1 worktree 削除失敗で status=failed"
 TEST_REPO=$(make_temp_repo)
 (
   cd "$TEST_REPO"
@@ -486,7 +486,7 @@ fi
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-12: Step 2 per-item branch deletion failure -> status=failed (refs #1316)
+# T-12: Step 2 per-item branch deletion failure -> status=failed
 # Given: a matching `pr-N-cycleX` branch whose `.git/refs/heads` is read-only
 #        (chmod 0500), with NO worktree (so Step 1 is a clean no-op and only the
 #        Step 2 branch was the failure source)
@@ -494,7 +494,7 @@ cleanup_temp_repo "$TEST_REPO"
 # Then: `git branch -D` cannot unlink the loose ref -> WARNING "failed to delete
 #       branch" + errors++ -> status=failed, and the branch survives
 # -----------------------------------------------------------------------
-echo "T-12: Step 2 branch 削除失敗で status=failed (refs #1316)"
+echo "T-12: Step 2 branch 削除失敗で status=failed"
 if [ "$IS_ROOT" = "1" ]; then
   skip "T-12: root では perms がバイパスされ強制失敗にならないためスキップ"
 else
@@ -516,7 +516,7 @@ else
 fi
 
 # -----------------------------------------------------------------------
-# T-13: Step 3 per-item orphan workdir reap failure -> status=failed (refs #1316)
+# T-13: Step 3 per-item orphan workdir reap failure -> status=failed
 # Given: an aged matching `rite-pr-create-*` workdir whose PARENT dir is read-only
 #        (chmod 0500), so `rm -rf` cannot rmdir the workdir
 # When: cleanup runs with TMPDIR pointed at that locked base
@@ -527,7 +527,7 @@ fi
 # chmod never blocks the other tests; the cleanup script's err-file mktemp uses
 # explicit /tmp paths, so only the find/rm base is affected by the TMPDIR override.
 # -----------------------------------------------------------------------
-echo "T-13: Step 3 orphan workdir rm 失敗で status=failed (refs #1316)"
+echo "T-13: Step 3 orphan workdir rm 失敗で status=failed"
 if [ "$IS_ROOT" = "1" ]; then
   skip "T-13: root では perms がバイパスされ強制失敗にならないためスキップ"
 else
@@ -564,7 +564,7 @@ else
 fi
 
 # -----------------------------------------------------------------------
-# T-14: orphan mutation worktree reaping (refs #1340)
+# T-14: orphan mutation worktree reaping
 # Given: an aged registered detached `rite-review-mutation-*` worktree (created
 #        via `git worktree add --detach`, mirroring _reviewer-base.md's
 #        worktree-only mutation pattern) older than the age threshold in TMPDIR
@@ -575,7 +575,7 @@ fi
 # These detached worktrees have no named branch, so the Step 1 branch sweep
 # cannot catch them — this asserts the path-based Step 4 sweep.
 # -----------------------------------------------------------------------
-echo "T-14: 古い orphan mutation worktree 回収 (refs #1340)"
+echo "T-14: 古い orphan mutation worktree 回収"
 rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 TEST_REPO=$(make_temp_repo)
 ( cd "$TEST_REPO" && git worktree add --detach -q "$WORKDIR_SCAN_TMP/rite-review-mutation-old" HEAD )
@@ -594,14 +594,14 @@ rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-15: age 未満の mutation worktree は保護 (in-flight 誤回収防止) (refs #1340)
+# T-15: age 未満の mutation worktree は保護 (in-flight 誤回収防止)
 # Given: a freshly-created registered `rite-review-mutation-*` worktree (mtime now)
 # When: Cleanup runs
 # Then: The worktree survives (age guard) and status=noop / mutation_worktrees=0.
 # Core safety assertion: a concurrent reviewer's in-flight mutation worktree is
 # never reaped mid-experiment by another session's cleanup.
 # -----------------------------------------------------------------------
-echo "T-15: age 未満の mutation worktree は保護 (in-flight 誤回収防止) (refs #1340)"
+echo "T-15: age 未満の mutation worktree は保護 (in-flight 誤回収防止)"
 rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 TEST_REPO=$(make_temp_repo)
 ( cd "$TEST_REPO" && git worktree add --detach -q "$WORKDIR_SCAN_TMP/rite-review-mutation-fresh" HEAD )
@@ -618,7 +618,7 @@ rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-16: Step 4 per-item mutation worktree reap failure -> status=failed (refs #1340)
+# T-16: Step 4 per-item mutation worktree reap failure -> status=failed
 # Given: an aged registered detached `rite-review-mutation-*` worktree (as in T-14)
 #        whose PARENT dir is read-only (chmod 0500), so neither
 #        `git worktree remove --force` nor the `rm -rf` fallback can rmdir it
@@ -630,12 +630,12 @@ cleanup_temp_repo "$TEST_REPO"
 #       contents-removed husk (same mechanism T-11's docblock warns about) — the
 #       assertion checks directory *presence* (`-d`), not intactness. This is the
 #       Step 4 analogue of T-13's Step 3 gap: Step 1/2/3 pin per-item delete
-#       failures (T-11/T-12/T-13); Step 4's mutation reap (#1340) was the missing
+#       failures (T-11/T-12/T-13); Step 4's mutation reap was the missing
 #       symmetric case.
 # Mirrors T-13's dedicated locked base + TMPDIR override so the 0500 chmod never
 # blocks other tests (the script's err-file mktemp uses explicit /tmp paths).
 # -----------------------------------------------------------------------
-echo "T-16: Step 4 mutation worktree reap 失敗で status=failed (refs #1340)"
+echo "T-16: Step 4 mutation worktree reap 失敗で status=failed"
 if [ "$IS_ROOT" = "1" ]; then
   skip "T-16: root では perms がバイパスされ強制失敗にならないためスキップ"
 else
@@ -670,7 +670,7 @@ else
 fi
 
 # -----------------------------------------------------------------------
-# T-17: Step 3 newline-in-name workdir is reaped as a single entry (refs #1351)
+# T-17: Step 3 newline-in-name workdir is reaped as a single entry
 # Given: an aged `rite-pr-create-*` workdir whose directory name contains an
 #        embedded newline (the pathological case the find -print0 migration targets)
 # When: cleanup runs
@@ -681,11 +681,11 @@ fi
 # miscounted. The `find -print0` + `read -r -d ''` migration reads the whole path as
 # one NUL-delimited entry, so the real dir is removed and counted once.
 # -----------------------------------------------------------------------
-echo "T-17: Step 3 改行入り名の workdir が単一エントリで回収される (refs #1351)"
+echo "T-17: Step 3 改行入り名の workdir が単一エントリで回収される"
 rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
 # ANSI-C quoting ($'\n') で **literal 改行** を埋め込む。`$(printf '\n')` は command
 # substitution の末尾改行ストリップで改行が消え、テストが病的入力を生成しない false
-# positive (旧実装でも PASS) になるため使わない。
+# positive (改行を含まない入力では欠陥のある実装でも PASS してしまう) になるため使わない。
 t17_nl_name="rite-pr-create-nl"$'\n'"evil"
 # 前提条件 self-check: フィクスチャ名が本当に改行を含むことを固定する。将来 $'\n' が
 # 誤って書き換えられても、この guard が「病的入力を生成していない」状態を即座に検出する。
@@ -711,6 +711,241 @@ if [ -n "$t17_nl_name" ]; then
   rm -rf "$WORKDIR_SCAN_TMP"/rite-pr-create-* 2>/dev/null || true
   cleanup_temp_repo "$TEST_REPO"
 fi
+
+# =======================================================================
+# Issue #1526 — name-independent reap (bare pr-N / revert-test / manifest).
+# IDs below map to Issue #1526 §6 Test Specification:
+#   T-18 → Issue T-01 / AC-1: bare `pr-{N}` branch reaped
+#   T-19 → Issue T-03 / AC-3: near-miss branches survive (bare pattern is exact)
+#   T-20 → Issue T-02 / AC-2: aged `rite-revert-test-*` worktree reaped
+#   T-21 → Issue T-07 / AC-1: `pr-{N}-cycle{X}` regression still reaped
+#   T-22 → Issue T-04 / AC-4: manifest unknown-named branch reaped (name-independent)
+#   T-23 → Issue T-04 / AC-4: manifest worktree reaped + manifest emptied
+#   T-24 → Issue T-06 / AC-6: dirty manifest worktree skipped + kept in manifest
+#   T-25 → Issue T-03 / AC-3: non-recorded weird branch survives (誤削除防止)
+#   T-26 → Issue T-05 / AC-5: manifest branch reap FAILURE → status=failed, exit 0
+#   T-27 → Issue T-06 / AC-6: manifest worktree pointing at a non-git path is
+#          skipped WITHOUT aborting the run (regression for the set -e rc-capture fix)
+#   T-28 → Issue T-04 / AC-4: stale manifest entry (branch already gone) is dropped
+# (Steps 1-4 non-blocking failure paths are covered by T-10..T-16; T-26 adds the
+#  same contract for the new Step 4.5 manifest reap. Issue T-06 session-worktree
+#  protection by the gated Step 5 reap lives in pr-cycle-cleanup-session-reap.test.sh.)
+# -----------------------------------------------------------------------
+ARTIFACT_HELPER="$SCRIPT_DIR/../scripts/rite-tmp-artifact.sh"
+
+# T-18: bare `pr-{N}` branch reaped (AC-1)
+echo "T-18: bare pr-{N} ブランチ回収 (AC-1)"
+TEST_REPO=$(make_temp_repo)
+( cd "$TEST_REPO" && git branch pr-2024 >/dev/null 2>&1 )
+t18_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+t18_remaining=$( cd "$TEST_REPO" && git for-each-ref --format='%(refname:short)' refs/heads/ | { grep -cx 'pr-2024' || true; } )
+if [ "$t18_remaining" = "0" ] && echo "$t18_output" | grep -q 'status=cleaned'; then
+  pass "T-18: bare pr-2024 が削除された"
+else
+  fail "T-18: remaining=$t18_remaining. Output: $t18_output"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+# T-19: near-miss branches are NOT deleted by the bare/suffix patterns (AC-3 boundary)
+echo "T-19: near-miss ブランチ保護 (AC-3)"
+TEST_REPO=$(make_temp_repo)
+(
+  cd "$TEST_REPO"
+  # None of these match `^pr-[0-9]+$` or the suffixed PATTERN.
+  git branch pr-100-feature >/dev/null 2>&1   # suffix not in allowed set
+  git branch pr-fix >/dev/null 2>&1           # not all-digits after pr-
+  git branch my-pr-123 >/dev/null 2>&1        # not anchored at start
+  git branch develop >/dev/null 2>&1
+)
+( cd "$TEST_REPO" && bash "$CLEANUP" >/dev/null 2>&1 )
+t19_survivors=$( cd "$TEST_REPO" && git for-each-ref --format='%(refname:short)' refs/heads/ \
+  | { grep -Exc 'pr-100-feature|pr-fix|my-pr-123|develop' || true; } )
+if [ "$t19_survivors" = "4" ]; then
+  pass "T-19: near-miss ブランチ 4 件すべて保護された"
+else
+  fail "T-19: survivors=$t19_survivors (expected 4)"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+# T-20: aged `rite-revert-test-*` detached worktree reaped (AC-2)
+echo "T-20: 古い orphan revert-test worktree 回収 (AC-2)"
+rm -rf "$WORKDIR_SCAN_TMP"/rite-revert-test-* 2>/dev/null || true
+TEST_REPO=$(make_temp_repo)
+( cd "$TEST_REPO" && git worktree add --detach -q "$WORKDIR_SCAN_TMP/rite-revert-test-old" HEAD )
+touch -t 202001010000 "$WORKDIR_SCAN_TMP/rite-revert-test-old"
+t20_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+t20_registered=$( cd "$TEST_REPO" && git worktree list | { grep -c 'rite-revert-test-old' || true; } )
+if [ ! -e "$WORKDIR_SCAN_TMP/rite-revert-test-old" ] \
+   && echo "$t20_output" | grep -q 'status=cleaned' \
+   && echo "$t20_output" | grep -q 'mutation_worktrees=1' \
+   && [ "$t20_registered" = "0" ]; then
+  pass "T-20: 古い revert-test worktree が回収され mutation_worktrees=1 + deregistered"
+else
+  fail "T-20: dir=$([ -e "$WORKDIR_SCAN_TMP/rite-revert-test-old" ] && echo present || echo gone), registered=$t20_registered. Output: $t20_output"
+fi
+rm -rf "$WORKDIR_SCAN_TMP"/rite-revert-test-* 2>/dev/null || true
+cleanup_temp_repo "$TEST_REPO"
+
+# T-21: `pr-{N}-cycle{X}` regression — still reaped alongside the new patterns (AC-1)
+echo "T-21: pr-{N}-cycle{X} 回収の非退行 (AC-1)"
+TEST_REPO=$(make_temp_repo)
+( cd "$TEST_REPO" && git worktree add --quiet -b pr-777-cycle3 .review-wt main >/dev/null 2>&1 )
+( cd "$TEST_REPO" && bash "$CLEANUP" >/dev/null 2>&1 )
+t21_remaining=$(count_pr_cycle_branches "$TEST_REPO")
+if [ "$t21_remaining" = "0" ]; then
+  pass "T-21: pr-777-cycle3 が引き続き回収される"
+else
+  fail "T-21: $t21_remaining branch(es) remaining (expected 0)"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+# T-22: manifest-recorded unknown-named branch reaped name-independently (AC-4)
+echo "T-22: マニフェスト記録の未知命名ブランチ回収 (AC-4)"
+TEST_REPO=$(make_temp_repo)
+(
+  cd "$TEST_REPO"
+  # A name no strict pattern would ever match.
+  git branch zztmp-experiment-42 >/dev/null 2>&1
+  bash "$ARTIFACT_HELPER" record --type branch --id "zztmp-experiment-42" >/dev/null 2>&1
+)
+t22_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+t22_remaining=$( cd "$TEST_REPO" && git for-each-ref --format='%(refname:short)' refs/heads/ | { grep -cx 'zztmp-experiment-42' || true; } )
+t22_manifest_gone=$([ ! -f "$TEST_REPO/.rite/tmp-artifacts.tsv" ] && echo yes || echo no)
+if [ "$t22_remaining" = "0" ] \
+   && echo "$t22_output" | grep -q 'status=cleaned' \
+   && echo "$t22_output" | grep -q 'manifest=1' \
+   && [ "$t22_manifest_gone" = "yes" ]; then
+  pass "T-22: 未知命名ブランチが manifest 経由で回収され manifest=1 + 空 manifest 削除"
+else
+  fail "T-22: remaining=$t22_remaining, manifest_gone=$t22_manifest_gone. Output: $t22_output"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+# T-23: manifest-recorded worktree reaped (AC-4)
+echo "T-23: マニフェスト記録の worktree 回収 (AC-4)"
+rm -rf "$WORKDIR_SCAN_TMP"/mf-wt-* 2>/dev/null || true
+TEST_REPO=$(make_temp_repo)
+(
+  cd "$TEST_REPO"
+  git worktree add --detach -q "$WORKDIR_SCAN_TMP/mf-wt-clean" HEAD
+  bash "$ARTIFACT_HELPER" record --type worktree --id "$WORKDIR_SCAN_TMP/mf-wt-clean" >/dev/null 2>&1
+)
+t23_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+t23_registered=$( cd "$TEST_REPO" && git worktree list | { grep -c 'mf-wt-clean' || true; } )
+if [ ! -e "$WORKDIR_SCAN_TMP/mf-wt-clean" ] \
+   && echo "$t23_output" | grep -q 'manifest=1' \
+   && [ "$t23_registered" = "0" ]; then
+  pass "T-23: manifest 記録の worktree が回収され manifest=1 + deregistered"
+else
+  fail "T-23: dir=$([ -e "$WORKDIR_SCAN_TMP/mf-wt-clean" ] && echo present || echo gone), registered=$t23_registered. Output: $t23_output"
+fi
+rm -rf "$WORKDIR_SCAN_TMP"/mf-wt-* 2>/dev/null || true
+cleanup_temp_repo "$TEST_REPO"
+
+# T-24: dirty manifest worktree is skipped + kept in manifest (AC-6)
+echo "T-24: dirty な manifest worktree は保護 + manifest 保持 (AC-6)"
+rm -rf "$WORKDIR_SCAN_TMP"/mf-wt-* 2>/dev/null || true
+TEST_REPO=$(make_temp_repo)
+(
+  cd "$TEST_REPO"
+  git worktree add --detach -q "$WORKDIR_SCAN_TMP/mf-wt-dirty" HEAD
+  echo "uncommitted" > "$WORKDIR_SCAN_TMP/mf-wt-dirty/scratch.txt"   # untracked → dirty
+  bash "$ARTIFACT_HELPER" record --type worktree --id "$WORKDIR_SCAN_TMP/mf-wt-dirty" >/dev/null 2>&1
+)
+t24_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+t24_kept=$( { grep -c 'mf-wt-dirty' "$TEST_REPO/.rite/tmp-artifacts.tsv" 2>/dev/null || true; } )
+if [ -e "$WORKDIR_SCAN_TMP/mf-wt-dirty" ] \
+   && echo "$t24_output" | grep -q 'manifest=0' \
+   && [ "$t24_kept" = "1" ]; then
+  pass "T-24: dirty worktree は reap されず manifest=0 + manifest にエントリ保持"
+else
+  fail "T-24: dir=$([ -e "$WORKDIR_SCAN_TMP/mf-wt-dirty" ] && echo present || echo gone), kept=$t24_kept. Output: $t24_output"
+fi
+rm -rf "$WORKDIR_SCAN_TMP"/mf-wt-* 2>/dev/null || true
+cleanup_temp_repo "$TEST_REPO"
+
+# T-25: a non-recorded weird-named branch survives (誤削除防止 — manifest reaps only recorded) (AC-3)
+echo "T-25: 未記録の未知命名ブランチは保護 (AC-3)"
+TEST_REPO=$(make_temp_repo)
+( cd "$TEST_REPO" && git branch zztmp-not-recorded >/dev/null 2>&1 )   # weird name, NOT in manifest
+( cd "$TEST_REPO" && bash "$CLEANUP" >/dev/null 2>&1 )
+t25_survives=$( cd "$TEST_REPO" && git for-each-ref --format='%(refname:short)' refs/heads/ | { grep -cx 'zztmp-not-recorded' || true; } )
+if [ "$t25_survives" = "1" ]; then
+  pass "T-25: 未記録の未知命名ブランチは削除されず保護された"
+else
+  fail "T-25: survives=$t25_survives (expected 1)"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+# T-26: manifest branch reap FAILURE surfaces as status=failed + exit 0 (AC-5)
+# Force `git branch -D` to fail by making refs/heads read-only (same technique as
+# T-12). root bypasses DAC perms, so skip under root to avoid a false failure.
+echo "T-26: manifest branch reap 失敗が status=failed + exit 0 (AC-5)"
+if [ "$IS_ROOT" = "1" ]; then
+  skip "T-26: root では refs/heads read-only による削除失敗を再現できない"
+else
+  TEST_REPO=$(make_temp_repo)
+  (
+    cd "$TEST_REPO"
+    git branch zztmp-reap-fail >/dev/null 2>&1
+    bash "$ARTIFACT_HELPER" record --type branch --id "zztmp-reap-fail" >/dev/null 2>&1
+    chmod 0500 .git/refs/heads
+  )
+  t26_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 ); t26_rc=$?
+  ( cd "$TEST_REPO" && chmod 0700 .git/refs/heads )   # restore so cleanup_temp_repo can rm
+  t26_kept=$( { grep -c 'zztmp-reap-fail' "$TEST_REPO/.rite/tmp-artifacts.tsv" 2>/dev/null || true; } )
+  if echo "$t26_output" | grep -q 'status=failed' \
+     && echo "$t26_output" | grep -q 'manifest=0' \
+     && [ "$t26_rc" = "0" ] \
+     && [ "$t26_kept" = "1" ]; then
+    pass "T-26: 削除失敗が WARNING + status=failed + manifest=0 + exit 0、entry は manifest に保持"
+  else
+    fail "T-26: rc=$t26_rc, kept=$t26_kept. Output: $t26_output"
+  fi
+  cleanup_temp_repo "$TEST_REPO"
+fi
+
+# T-27: manifest worktree pointing at a NON-git path is skipped without aborting.
+# Regression for the `set -e` rc-capture fix: a bare `var=$(git -C ... status)`
+# would abort the whole run at git rc=128, never reaching the status line.
+echo "T-27: 非 git path の manifest worktree は abort せず skip (AC-6 / set -e 回帰)"
+rm -rf "$WORKDIR_SCAN_TMP"/mf-nongit-* 2>/dev/null || true
+TEST_REPO=$(make_temp_repo)
+mkdir -p "$WORKDIR_SCAN_TMP/mf-nongit-dir"   # exists but is NOT a git worktree
+( cd "$TEST_REPO" && bash "$ARTIFACT_HELPER" record --type worktree --id "$WORKDIR_SCAN_TMP/mf-nongit-dir" >/dev/null 2>&1 )
+t27_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 ); t27_rc=$?
+t27_kept=$( { grep -c 'mf-nongit-dir' "$TEST_REPO/.rite/tmp-artifacts.tsv" 2>/dev/null || true; } )
+if [ "$t27_rc" = "0" ] \
+   && echo "$t27_output" | grep -q '\[pr-cycle-cleanup\] status=' \
+   && [ -d "$WORKDIR_SCAN_TMP/mf-nongit-dir" ] \
+   && [ "$t27_kept" = "1" ]; then
+  pass "T-27: 非 git path は abort せず status 行に到達 + skip + manifest 保持 + dir 保護"
+else
+  fail "T-27: rc=$t27_rc, kept=$t27_kept, dir=$([ -d "$WORKDIR_SCAN_TMP/mf-nongit-dir" ] && echo present || echo gone). Output: $t27_output"
+fi
+rm -rf "$WORKDIR_SCAN_TMP"/mf-nongit-* 2>/dev/null || true
+cleanup_temp_repo "$TEST_REPO"
+
+# T-28: a stale manifest entry (branch already deleted) is dropped without error (AC-4)
+echo "T-28: stale manifest エントリ (branch 既削除) は無害に drop (AC-4)"
+TEST_REPO=$(make_temp_repo)
+(
+  cd "$TEST_REPO"
+  git branch zztmp-stale >/dev/null 2>&1
+  bash "$ARTIFACT_HELPER" record --type branch --id "zztmp-stale" >/dev/null 2>&1
+  git branch -D zztmp-stale >/dev/null 2>&1   # gone before cleanup runs
+)
+t28_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 ); t28_rc=$?
+t28_manifest_gone=$([ ! -f "$TEST_REPO/.rite/tmp-artifacts.tsv" ] && echo yes || echo no)
+if [ "$t28_rc" = "0" ] \
+   && ! echo "$t28_output" | grep -q 'status=failed' \
+   && echo "$t28_output" | grep -q 'manifest=0' \
+   && [ "$t28_manifest_gone" = "yes" ]; then
+  pass "T-28: stale エントリは status≠failed + manifest=0 + 空 manifest 削除で drop"
+else
+  fail "T-28: rc=$t28_rc, manifest_gone=$t28_manifest_gone. Output: $t28_output"
+fi
+cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
 # Summary

@@ -4,7 +4,7 @@
 
 ## 概要 — Quality Signal 1-4 の位置付け
 
-`/rite:pr:open` の review-fix loop には cycle-count-based safety limit が **存在しない** 設計 (旧 cycle-count monitor は #557 で完全に削除済み)。代わりに以下 **4 つの quality signal** で escalation を行う:
+`/rite:pr:open` の review-fix loop には cycle-count-based safety limit が **存在しない** 設計 (旧 cycle-count monitor は完全に削除済み)。代わりに以下 **4 つの quality signal** で escalation を行う:
 
 | Signal | 検出 phase | 内容 |
 |--------|-----------|------|
@@ -15,7 +15,7 @@
 
 Signal 1 は Phase 5.4.1.0 (本 reference §1)、Signal 3 と Signal 4 は Phase 5.4.3 Step 3.1 (本 reference §2) で検出する。4 signal すべてに対して **同じ 4-option AskUserQuestion** (本 reference §3) で escalation する。
 
-設計判断 (#557 D-02): 4 quality signal を escalation の唯一機構とし、追加で iteration counter による safety limit を導入しない。counter を再導入すると #557 が明示的に削除した cycle-count-based degradation が再発する。
+設計判断: 4 quality signal を escalation の唯一機構とし、追加で iteration counter による safety limit を導入しない。counter を再導入すると、過去に明示的に削除した cycle-count-based degradation が再発する。
 
 ## §1 — Phase 5.4.1.0 Fingerprint Cycling Detection
 
@@ -212,7 +212,7 @@ if [ ! -s "$tmpfile" ]; then
   exit 1
 fi
 
-# jq -n の出力を stdin で create-issue-with-projects.sh に渡す (pr/review.md §3992 / Issue #1193 #5 と同じ pipe 形式、入れ子 $() を回避)
+# jq -n の出力を stdin で create-issue-with-projects.sh に渡す (pr/review.md と同じ pipe 形式、入れ子 $() を回避)
 result=$(jq -n \
   --arg title "review-split: {short_summary}" \
   --arg body_file "$tmpfile" \

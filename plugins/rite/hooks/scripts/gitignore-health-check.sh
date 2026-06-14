@@ -2,7 +2,7 @@
 # gitignore-health-check.sh
 #
 # Verify that `.gitignore` still excludes `.rite/wiki/` — the last-line-of-defense
-# rule added in PR #564 that prevents wiki-ingest-trigger.sh temporary writes from
+# rule that prevents wiki-ingest-trigger.sh temporary writes from
 # silently leaking into the develop branch PR diff. If a future `.gitignore`
 # cleanup PR inadvertently removes this rule, the regression must be detected
 # immediately.
@@ -27,9 +27,9 @@
 # On drift, print a plain WARNING to stderr (exit 1) so the LLM surfaces the
 # `.rite/wiki/` rule regression in the conversation context.
 #
-# Issue #567 — `.gitignore` silent-leak regression guard.
+# `.gitignore` silent-leak regression guard.
 # Companion to:
-#   - PR #564: added `.rite/wiki/` to `.gitignore` as last-line-of-defense
+#   - the rule that added `.rite/wiki/` to `.gitignore` as last-line-of-defense
 #   - plugins/rite/commands/lint.md Phase 3.9: invocation site
 #
 # Usage:
@@ -164,9 +164,8 @@ cd "$REPO_ROOT" || {
 # として surface する (init.md は exit code を読まず stdout/stderr で分岐し ステップ 2 へ進む)。
 #
 # コア検証 (git add --dry-run + grep -qF "add '<probe>'") は同ファイル same_branch case の
-# `DRIFT-CHECK ANCHOR: same_branch ...` 節と意図的に同型。旧構成では init.md がこのロジックの
-# inline copy を持ち両者を「一字一句同期」していたが、本モード導入で init.md は委譲呼び出しに
-# 置換され、同期対象は同一ファイル内の 2 箇所に閉じた (cross-file drift を解消)。
+# `DRIFT-CHECK ANCHOR: same_branch ...` 節と意図的に同型。init.md はこのロジックの inline copy を
+# 持たず本モードへ委譲するため、同期対象は同一ファイル内の 2 箇所に閉じる (cross-file drift を防ぐ)。
 if [ "$VERIFY_NEGATION" -eq 1 ]; then
   negation_probe=".rite/wiki/raw/.rite-lint-negation-probe"
   # probe 作成失敗は non-blocking skip (init.md §1.3.4 契約: WARNING + ステップ 2 進行)。
@@ -220,7 +219,7 @@ fi
 
 # --- Always-on: verify .rite/sessions/ is ignored (per-session state leak guard) ---
 # Unlike the .rite/worktrees/ block below, this is NOT gated on multi_session.enabled:
-# `.rite/sessions/{session_id}.flow-state` (per-session flow/compact state, #1381/#1384)
+# `.rite/sessions/{session_id}.flow-state` (per-session flow/compact state)
 # is written on EVERY rite session regardless of multi_session, so the leak surface is
 # always present. Placed BEFORE the wiki early-exits so a wiki.enabled=false config is
 # still verified. Non-blocking & always-on: drift → WARNING + exit 1; healthy → fall
@@ -238,7 +237,7 @@ elif [ "$sessions_ci_rc" -ge 2 ]; then
 else
   echo "==> gitignore-health-check: DRIFT DETECTED (sessions): '.rite/sessions/' rule missing from .gitignore" >&2
   echo "==> per-session state files (.rite/sessions/{session_id}.flow-state) would leak into dev-branch diffs." >&2
-  echo "==> Hint: add '.rite/sessions/' to .gitignore (init.md gitignore generation adds it; see #1384/#1389)." >&2
+  echo "==> Hint: add '.rite/sessions/' to .gitignore (init.md gitignore generation adds it)." >&2
   echo "WARNING: gitignore-health-check: .rite/sessions/ rule missing" >&2
   echo "==> Total gitignore-health-check findings: 1"
   exit 1
@@ -373,7 +372,7 @@ case "$branch_strategy" in
     if [ "$parent_rule_matched" -eq 0 ]; then
       echo "==> gitignore-health-check: DRIFT DETECTED (separate_branch): '.rite/wiki/' rule missing from .gitignore" >&2
       echo "==> git check-ignore -v $probe_path returned rc=$check_ignore_rc, output: ${check_ignore_out:-<empty>}" >&2
-      echo "==> Hint: PR #564 added '.rite/wiki/' as last-line-of-defense against wiki-ingest-trigger.sh silent leaks. Restore the rule." >&2
+      echo "==> Hint: '.rite/wiki/' is the last-line-of-defense against wiki-ingest-trigger.sh silent leaks. Restore the rule." >&2
       findings=$((findings + 1))
     else
       log_info "gitignore-health-check: separate_branch layer 1 healthy — ${parent_rule_line}"
@@ -408,7 +407,7 @@ case "$branch_strategy" in
     # Sibling reference: the `--verify-negation` early-exit block above (its
     # `(verify-negation copy)` ANCHOR). Keep the mktemp stderr capture + if-wrapper rc
     # capture structure one-for-one with that copy — Wiki 経験則 patterns/high
-    # 「canonical 実装と一字一句同期」. (wiki/init.md ステップ 1.3.4 no longer holds an
+    # 「canonical 実装と一字一句同期」. (wiki/init.md ステップ 1.3.4 holds no
     # inline copy; it delegates here via `gitignore-health-check.sh --verify-negation`.)
     add_dry_err=$(mktemp /tmp/rite-gitignore-adddry-XXXXXX 2>/dev/null) || add_dry_err=""
     add_dry_out=""

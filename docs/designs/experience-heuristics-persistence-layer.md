@@ -101,7 +101,7 @@ rite ワークフロー実行時に関連経験則を自動参照し、コンテ
 <!-- Section ID: SPEC-ARCH-COMPONENTS -->
 ### コンポーネント構成
 
-> **実装状態**: 本図は目標アーキテクチャの全体像を示す。#468 (本 Issue) では `init.md`、`wiki-patterns.md`、`templates/wiki/` のみ実装。その他のファイル（ingest.md, query.md, lint.md, hooks, skills）は後続 Issue で実装予定。
+> **実装状態**: 本図は目標アーキテクチャの全体像を示す。本 Issue では `init.md`、`wiki-patterns.md`、`templates/wiki/` のみ実装。その他のファイル（ingest.md, query.md, lint.md, hooks, skills）は後続 Issue で実装予定。
 
 ```
 plugins/rite/
@@ -158,7 +158,7 @@ plugins/rite/
 <!-- Section ID: SPEC-IMPL-FILES -->
 ### 変更が必要なファイル/領域
 
-> **凡例**: ✅ = #468 で実装済み、📋 = 後続 Issue で実装予定
+> **凡例**: ✅ = 本 Issue で実装済み、📋 = 後続 Issue で実装予定
 
 | 領域 | 変更内容 |
 |------|---------|
@@ -183,7 +183,7 @@ plugins/rite/
 | **Wiki の肥大化** | Schema による蓄積規約が不明確だと低品質な経験則が蓄積される。Lint サイクルで定期的に品質を維持する |
 | **Git ブランチ管理** | Wiki ブランチと開発ブランチの同期タイミング、コンフリクト解決戦略が必要 |
 | **初期状態** | 新規プロジェクトや Wiki 未初期化時のフォールバック動作を定義する |
-| **後方互換性** | Wiki 機能は opt-out（デフォルト有効）。Wiki 未初期化時は hook が非ブロッキングに exit 0 するため既存動作に影響しない。明示的に `wiki.enabled: false` を設定すれば従来通り無効化可能 |
+| **後方互換性** | Wiki 機能は opt-out（デフォルト有効）。Wiki 未初期化時は hook が非ブロッキングに exit 0 するため既存動作に影響しない。明示的に `wiki.enabled: false` を設定すれば Wiki を無効化できる |
 
 <!-- Section ID: SPEC-OUT-OF-SCOPE -->
 ## スコープ外

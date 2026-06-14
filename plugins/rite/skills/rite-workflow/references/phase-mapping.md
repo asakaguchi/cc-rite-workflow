@@ -4,7 +4,7 @@ Mapping information for phase details. Used in work memory session information.
 
 ## Phase Detail Mapping
 
-`/rite:issue:start` (廃止済み、Issue #1136) は新 4 コマンド `/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge` に分解された。本 mapping は work memory `フェーズ詳細` 欄および `flow-state.json` の `phase` field の表示文字列を定義する。
+`/rite:issue:start` (廃止済み) は新 4 コマンド `/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge` に分解された。本 mapping は work memory `フェーズ詳細` 欄および `flow-state.json` の `phase` field の表示文字列を定義する。
 
 ### `/rite:issue:create` (flat workflow)
 

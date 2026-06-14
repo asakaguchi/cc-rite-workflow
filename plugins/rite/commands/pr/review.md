@@ -111,7 +111,7 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 
 **Note**: All placeholders in this document use `{variable}` format. Unlike Bash shell variable format `${var}`, these are conceptual markers that Claude substitutes with values.
 
-### 1.0 Argument Parsing (Pre-flight) — #443
+### 1.0 Argument Parsing (Pre-flight)
 
 
 **Supported arguments**:
@@ -193,9 +193,9 @@ if [ "$flag_post" = "true" ] && [ "$flag_no_post" = "true" ]; then
 fi
 
 # --- Step 3: rite-config.yml の pr_review.post_comment 読取 (C-2: SIGPIPE-safe) ---
-# 旧実装は `sed | awk | sed | sed | tr | tr` の 6 段 pipeline で pipefail 下で SIGPIPE
-# rc=141 が発生し、fallback branch が config 値を silent に false へ上書きする latent
-# regression を抱えていた。本実装は **単一 awk 呼び出し** に統合し pipeline を排除する
+# `sed | awk | sed | sed | tr | tr` の 6 段 pipeline は pipefail 下で SIGPIPE
+# rc=141 を起こし、fallback branch が config 値を silent に false へ上書きする latent
+# regression を生む。本実装は **単一 awk 呼び出し** に統合し pipeline を排除する
 # ことで SIGPIPE 経路自体を消す。awk は file を直接読むため上流コマンドが存在しない。
 # Source: GNU bash manual — Pipelines / POSIX awk exit semantics
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || repo_root=""
@@ -284,7 +284,7 @@ echo "[CONTEXT] REMAINING_ARGS=$remaining_args" >&2
 | `bash_version_incompatible` | Step 0 の `command -v mapfile` チェックが失敗 (bash 3.2 等の旧バージョン) |
 | `post_and_no_post_conflict` | `--post-comment` と `--no-post-comment` が同時指定された (Step 2、AC-8 違反、`REVIEW_ARG_PARSE_FAILED=1` retained flag を emit して `[review:error]` で exit 1) |
 
-**Eval-order enumeration** (for Pattern-5 drift check): ステップ 1.0 emit sequence = (`bash_version_incompatible` / `post_and_no_post_conflict`)
+**Eval-order enumeration** (Pattern-2 documented-union input): ステップ 1.0 emit sequence = (`bash_version_incompatible` / `post_and_no_post_conflict`)
 
 ### 1.1 Identify the PR
 
@@ -836,7 +836,7 @@ Determination block の計算が完了した直後 (上記 3 flag を explicit s
 echo "[CONTEXT] doc_heavy_pr=${doc_heavy_pr_value}; doc_heavy_pr_value=${doc_heavy_pr_value}; doc_heavy_pr_decision_summary=${doc_heavy_pr_decision_summary}"
 ```
 
-**理由**: 旧実装では skip 経路 (例: `inconsistent_files_count_between_phase_1_1_and_1_2_7`) のみ `[CONTEXT]` 行を emit し、正常経路は emit しない**非対称設計**だった。後続 phase (ステップ 2.2.1 / 5.1.3 / 5.4) は「`[CONTEXT]` 行が会話履歴に存在しない = 正常」という negative inference に依存していたが、これは Claude の context grep が前 session の `[CONTEXT] doc_heavy_pr=true` を誤拾いするリスクを生む。全経路で対称に emit することで、後続 phase の grep は常に最新の `[CONTEXT]` 行を decisive に拾える。
+**理由**: skip 経路 (例: `inconsistent_files_count_between_phase_1_1_and_1_2_7`) のみ `[CONTEXT]` 行を emit し正常経路は emit しない**非対称設計**だと、後続 phase (ステップ 2.2.1 / 5.1.3 / 5.4) が「`[CONTEXT]` 行が会話履歴に存在しない = 正常」という negative inference に依存するため、Claude の context grep が前 session の `[CONTEXT] doc_heavy_pr=true` を誤拾いするリスクを生む。全経路で対称に emit することで、後続 phase の grep は常に最新の `[CONTEXT]` 行を decisive に拾える。
 
 **Note**: ゼロ除算ガード (`total_diff_lines == 0` および `total_files_count == 0`) は疑似コードブロック内にインラインで配置済みで、両方とも `doc_heavy_pr = false` を **explicit set** してから `skip to ステップ 1.3` する。Skip conditions section の `changedFiles == 0` と併せて、空 PR・分母 0・undefined 参照の三方向を防ぐ多重ガードとなる。ステップ 2.2.1 で `{doc_heavy_pr} == true` を判定する時点で `{doc_heavy_pr}` が必ず boolean として set されていることが保証される。
 
@@ -937,10 +937,10 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
  # diff 全体に fenced code block の追加が含まれるかをスキャン
  # `^+` で始まる行 (追加行) のうち ```{lang} で始まる行を grep
  #
- # 歴史的背景 — pipefail の経緯:
- # 旧実装では `git diff | grep | head` の pipeline を使用しており、`set -o pipefail`
+ # pipefail を維持する理由:
+ # `git diff | grep | head` の pipeline では `set -o pipefail`
  # がないと git diff が exit != 0 で失敗しても後段の grep / head が exit 0 + 空文字列を
- # 返し、silent failure が発生していた。
+ # 返し silent failure になる。
  # 現行実装では pipeline を廃止し、`diff_out=$(git diff ...)` で独立実行 +
  # exit code 明示 check (下記 `if ! diff_out=` 行) → `grep ... <<< "$diff_out"` の here-string 構成に
  # 移行したため、pipefail が直接必要な pipeline は存在しない。ただし将来の pipeline
@@ -987,7 +987,7 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
  # `|| true` で吸収すると IO error と「マッチなし」が silent に融合する。pipefail 下で
  # rc=$? を捕捉し、exit 1 のみ no-op として扱う。
  #
- # 重要 — `printf | grep -m 1` ではなく here-string `<<<` を使う (本 Issue #389):
+ # 重要 — `printf | grep -m 1` ではなく here-string `<<<` を使う:
  # pipeline `printf '%s\n' "$diff_out" | grep -m 1 ...` では **printf が上流 (writer)**、
  # **grep が下流 (reader)** となる。`grep -m 1` が 1 件マッチで早期終了すると、下流の
  # reader が閉じるため、**上流の printf に SIGPIPE が届く経路** が存在する。pipefail
@@ -1000,10 +1000,6 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
  # subprocess (printf) が存在せず、grep -m 1 の早期終了で SIGPIPE を受ける相手がいない。
  # これにより pipefail 下でも grep の exit 0 (マッチあり) / 1 (なし) / 2 (IO error) を
  # そのまま捕捉できる。
- #
- # (旧実装では「`grep -m 1` に変更すれば下流に SIGPIPE が届かない」と記述していたが、
- # これは pipeline 方向を誤解していた。printf が上流なので SIGPIPE は上流 printf に
- # 届く。)
  grep_out=$(grep -m 1 -E '^\+[[:space:]]*```[a-zA-Z]' <<< "$diff_out")
  grep_rc=$?
  case "$grep_rc" in
@@ -1087,7 +1083,7 @@ When the PR is doc-heavy, override reviewer selection to ensure documentation qu
  ERROR: tech-writer-reviewer.md の `## Doc-Heavy PR Mode (Conditional)` セクションから {doc_heavy_mode_instructions} を抽出しましたが、必須キーワード {missing_keywords} が含まれていません。
  tech-writer-reviewer.md の章立てが過去のバージョンから drift しているため、ステップ 5.1.3 Step 2 (件数非依存 META check) が silent fail する恐れがあります。
  Action: tech-writer-reviewer.md の `## Doc-Heavy PR Mode (Conditional)` セクション全体を確認し、必須サブセクションが含まれているか検証してください。
- Note: 本 drift は Issue #353 系統 2 (canonical category name literal match) に分類される。Issue #353 系統 1 (doc_file_patterns 集合等価性) の drift lint `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` はこの章立て drift は検出しない。章立て drift の自動検出は将来 Issue で追跡。
+ Note: 本 drift は 系統 2 (canonical category name literal match) に分類される。系統 1 (doc_file_patterns 集合等価性) の drift lint `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` はこの章立て drift は検出しない。章立て drift の自動検出は将来 Issue で追跡。
  ```
  2. **Retained flag set**: `doc_heavy_post_condition = "error"` を context に明示保持。ステップ 5.4 表示でこの値を `error: tech-writer-reviewer.md の章立て drift により protocol 未伝達 (missing: {missing_keywords})` として表示する
  3. **Overall assessment 強制昇格**: ステップ 5 で計算される overall assessment を `修正必要` に強制 set する (本来 `マージ可` だった場合でも override する)。これにより e2e flow の review-fix loop が必ず再実行される
@@ -1408,7 +1404,7 @@ if [[ -n "$wiki_section" ]]; then
  auto_query=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_query:/ { print; exit }' \
  | sed 's/[[:space:]]#.*//' | sed 's/.*auto_query:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
 fi
-case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="true" ;; esac # #483: opt-out default
+case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="true" ;; esac # opt-out default
 case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; esac
 echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 ```
@@ -1481,9 +1477,9 @@ Execute parallel reviews using sub-agents (defined in the `agents/` directory) c
 
 3. **Extract `{shared_reviewer_principles}`** (from `_reviewer-base.md`):
 
- Under named subagent invocation (Phase B / #358), the agent file body becomes the **system prompt** automatically — so the agent-specific identity no longer needs to be extracted or injected via the user prompt. Agent-specific discipline (Core Principles, Detection Process, Confidence Calibration, Detailed Checklist, Output Format) is delivered through the named subagent's system prompt.
+ Under named subagent invocation (Phase B), the agent file body becomes the **system prompt** automatically — so the agent-specific identity no longer needs to be extracted or injected via the user prompt. Agent-specific discipline (Core Principles, Detection Process, Confidence Calibration, Detailed Checklist, Output Format) is delivered through the named subagent's system prompt.
 
- However, `_reviewer-base.md` (the shared reviewer principles) is **not** automatically injected into named subagents — it is a separate file that only a reviewer *agent* would reference. To preserve the cross-file impact checks and shared discipline across all reviewers (Phase A / #357 bug fix), this hybrid approach continues to extract `_reviewer-base.md` and pass it via the **user prompt** as `{shared_reviewer_principles}`.
+ However, `_reviewer-base.md` (the shared reviewer principles) is **not** automatically injected into named subagents — it is a separate file that only a reviewer *agent* would reference. To preserve the cross-file impact checks and shared discipline across all reviewers (Phase A bug fix), this hybrid approach continues to extract `_reviewer-base.md` and pass it via the **user prompt** as `{shared_reviewer_principles}`.
 
  **Extraction procedure**:
  - Load `{plugin_root}/agents/_reviewer-base.md` with the Read tool
@@ -1613,7 +1609,7 @@ Generate instructions for each reviewer.
 | `{diff_content}` | Diff from ステップ 1.2 | **Varies by scale** (see below) |
 | `{issue_spec}` | Issue specification obtained in ステップ 1.3.1 | Content of the "仕様詳細" section (if empty, write "仕様情報なし") |
 | `{change_intelligence_summary}` | Change Intelligence Summary from ステップ 1.2.6 | One-paragraph summary of change type, file classification, and focus area |
-| `{shared_reviewer_principles}` | `_reviewer-base.md` (shared) | Extract all sections from the document start to the `## Input` heading (exclusive). This covers `## READ-ONLY Enforcement`, `## Reviewer Mindset`, `## Cross-File Impact Check`, and `## Confidence Scoring` as a contiguous block. Agent-specific identity is NOT included here — it is delivered via the named subagent's system prompt (Phase B / #358). See ステップ 4.3 step 3 for the full extraction procedure |
+| `{shared_reviewer_principles}` | `_reviewer-base.md` (shared) | Extract all sections from the document start to the `## Input` heading (exclusive). This covers `## READ-ONLY Enforcement`, `## Reviewer Mindset`, `## Cross-File Impact Check`, and `## Confidence Scoring` as a contiguous block. Agent-specific identity is NOT included here — it is delivered via the named subagent's system prompt (Phase B). See ステップ 4.3 step 3 for the full extraction procedure |
 | `{change_summary}` | Scale information from ステップ 1.2.1 | Used only for large diffs. Change summary table |
 | `{doc_heavy_pr}` | ステップ 1.2.7 result | Boolean flag (`true` / `false`). Inject only when reviewer is `tech-writer`. If `false` or reviewer != tech-writer, set to empty string |
 | `{doc_heavy_mode_instructions}` | `agents/tech-writer-reviewer.md` `## Doc-Heavy PR Mode (Conditional)` section | **Conditional extraction**: Only populated when `reviewer_type == tech-writer` AND `{doc_heavy_pr} == true`. Extract the entire section from `## Doc-Heavy PR Mode (Conditional)` heading down to (but excluding) the next `##` heading. Otherwise set to empty string |
@@ -1827,18 +1823,21 @@ PR #{number}: {title} の検証レビューを {reviewer_type} として実行�
 case "{orig_br}" in
  "{"*"}")
  echo "ERROR: ステップ 5.0.A の {orig_br} placeholder が literal substitute されていません (値: '{orig_br}'). ステップ 4.0.A 未実行 / Bash tool 間変数の引き継ぎ失敗の可能性。" >&2
+ echo "[CONTEXT] POST_REVIEW_VERIFY_FAILED=1; reason=orig_br_placeholder_residue" >&2
  exit 1
  ;;
 esac
 case "{orig_sc}" in
  "{"*"}")
  echo "ERROR: ステップ 5.0.A の {orig_sc} placeholder が literal substitute されていません (値: '{orig_sc}')." >&2
+ echo "[CONTEXT] POST_REVIEW_VERIFY_FAILED=1; reason=orig_sc_placeholder_residue" >&2
  exit 1
  ;;
 esac
 case "{orig_blh}" in
  "{"*"}")
  echo "ERROR: ステップ 5.0.A の {orig_blh} placeholder が literal substitute されていません (値: '{orig_blh}')." >&2
+ echo "[CONTEXT] POST_REVIEW_VERIFY_FAILED=1; reason=orig_blh_placeholder_residue" >&2
  exit 1
  ;;
 esac
@@ -1852,6 +1851,14 @@ result_json=$(bash {plugin_root}/hooks/scripts/post-review-state-verify.sh \
  --auto-recover true) || true
 printf '%s\n' "$result_json"
 ```
+
+**ステップ 5.0.A placeholder 残留 gate の retained flag** (Pattern 1 retained-flag coverage との対称化 — `pr_number_placeholder_residue` 等の他 placeholder gate と同様に `exit 1` の前に `[CONTEXT] POST_REVIEW_VERIFY_FAILED=1` flag を emit し、distributed-fix drift を防ぐ):
+
+| reason | Description |
+|--------|-------------|
+| `orig_br_placeholder_residue` | ステップ 5.0.A の `{orig_br}` placeholder が literal substitute されず `{...}` 形状のまま到達 (ステップ 4.0.A 未実行 / Bash tool 間変数の引き継ぎ失敗) |
+| `orig_sc_placeholder_residue` | ステップ 5.0.A の `{orig_sc}` placeholder が未 substitute (同上) |
+| `orig_blh_placeholder_residue` | ステップ 5.0.A の `{orig_blh}` placeholder が未 substitute (同上) |
 
 スクリプトは stderr に WARNING を emit (Bash tool が transcript に取り込む)、stdout に `{"drift":..., "type":..., "recovered":...}` JSON line を出力する。drift 検出時の処理は **non-blocking** (review flow は継続)、drift 結果は ステップ 5.4 完了レポートに reflect される。drift は WARNING として surface され、ユーザーが必要に応じて手動 triage する。
 
@@ -1924,7 +1931,7 @@ When `review_mode == "verification"`, classify: NOT_FIXED/PARTIAL/REGRESSION/MIS
 
 該当 reviewer に対して ステップ 4.3.1 Task tool 呼び出し手順を再利用して verification テンプレートを再送する:
 
-- `subagent_type`: `rite:{reviewer_type}-reviewer` (ステップ 4.3.1 の mapping table を参照。Phase B / #358 以降、reviewer は named subagent として呼び出される)
+- `subagent_type`: `rite:{reviewer_type}-reviewer` (ステップ 4.3.1 の mapping table を参照。Phase B 以降、reviewer は named subagent として呼び出される)
 - `prompt` 内容: ステップ 4.5.1 verification テンプレート + ステップ 4.5 full テンプレート（元レビューと同じ 2 テンプレート concat）に、以下の strict 要件を追加:
  - 「`### 修正検証結果` heading と判定テーブル (`| # | 重要度 | ファイル:行 | 内容 | 判定 | 備考 |`) を **必ず**出力すること」
  - 「ステップ 4.5.1 verification テンプレートの Part 1 (前回指摘の修正検証) を skip せずに実行すること」
@@ -1933,7 +1940,7 @@ When `review_mode == "verification"`, classify: NOT_FIXED/PARTIAL/REGRESSION/MIS
  - **Note**: retry prompt は full + verification 両 template を concat して再送している (上記 `prompt` 内容参照) ため、retry output は元 output の全指摘 (verification mode 由来 + full mode 由来) を**包含する**。元 output 内の非 verification finding が retry 置き換えで消失することはない。
 - retry 実行後、`verification_post_condition_retry_count[{reviewer_type}]` を +1 し、もう一度判定条件を評価する。retry 後も欠落していれば `error` に昇格する
 
-**ステップ 4.4 retry classification との関係** (#358 Phase B で明示化):
+**ステップ 4.4 retry classification との関係** (Phase B で明示化):
 
 この ステップ 5.1.1.1 retry 中に ステップ 4.4 の `subagent resolution failure` (`Agent type 'rite:{reviewer_type}-reviewer' not found`) が発生した場合、以下の順序で処理する:
 
@@ -2130,7 +2137,7 @@ emit 形式 (Step 2 line で実装):
 
 | Output | suppressed findings の扱い |
 |--------|--------------------------|
-| **Markdown** (ステップ 5.4 統合レポート / ステップ 6.1.b PR コメント) | **残す** (audit log) — finding 表に通常通り表示。`内容` 列末尾に `(acknowledged — suppressed from JSON by Issue #1019 M5)` 注記を付与 |
+| **Markdown** (ステップ 5.4 統合レポート / ステップ 6.1.b PR コメント) | **残す** (audit log) — finding 表に通常通り表示。`内容` 列末尾に `(acknowledged — suppressed from JSON)` 注記を付与 |
 | **JSON** (ステップ 6.1.a local file / ステップ 6.1.b Raw JSON 埋込) | **削除** — `findings[]` 配列から除外。`/rite:pr:fix` ステップ 1.2.0 が参照するのは JSON 側のため、accepted finding は次 cycle で fix loop に entered しない |
 
 **ステップ 6.1.a JSON 生成への接続**: Claude が ステップ 6.1.a step-1 で JSON 本文 (Write tool で `/tmp/rite-review-result-{pr_number}.json` に書き出す body) を生成する際、`suppressed_findings` リストに含まれる finding は `findings[]` 配列から **除外** する。Markdown 側 (ステップ 5.4) は `non_suppressed_findings` + `suppressed_findings` の和集合で生成 (audit log 用)。
@@ -2144,6 +2151,15 @@ emit 形式 (Step 2 line で実装):
 | `ACCEPTED_FINGERPRINTS_LOADED=1; pr=N; count=M` | state file 読込成功 (suppression 対象 M 件) |
 | `ACCEPTED_FINGERPRINTS_LOADED=0; pr=N; reason=...` | state file 不在 / pr_number 不正 (suppression skip、通常 review) |
 | `FINDING_SUPPRESSED_BY_ACCEPT=1; finding_id=F-NN; original_severity=...; fingerprint=...` | 個別 finding suppression marker (per finding emit、audit log + observability) |
+
+**ステップ 5.1.2.A failure reasons** (reason table drift prevention — `ACCEPTED_FINGERPRINTS_LOADED=0` / `FINGERPRINT_COMPUTE_FAILED` flag の reason 値):
+
+| reason | Description |
+|--------|-------------|
+| `no_state_file` | `.rite/state/accepted-fingerprints-{pr}.txt` が不在 (初回 review / accept 未実施)。`ACCEPTED_FINGERPRINTS_LOADED=0` で suppression を skip し通常 review を継続 (非ブロッキング) |
+| `sha1_helper_missing` | sha1sum / shasum のいずれも環境に存在せず fingerprint 計算不可 (`FINGERPRINT_COMPUTE_FAILED` flag、極稀、CI 環境異常)。当該 finding の suppression 判定を skip して通常 finding として扱う |
+
+> **Note**: `FINGERPRINT_COMPUTE_FAILED` flag のもう 1 つの reason `pr_number_placeholder_residue` (ステップ 5.1.2.A Step 2 で `pr_number` が数値以外のとき emit) は ステップ 6 の reason 表で文書化済みのため本表には再掲しない。
 
 #### 5.1.3 Doc-Heavy PR Mode Post-Condition Check
 
@@ -2509,7 +2525,7 @@ Claude aggregates all reviewer assessments and findings, and **evaluates the fol
 Skipping 5.3.0 before 5.3.1 is **prohibited**: the Red blocking rule in 5.3.1 operates on `全指摘事項` *after* the safety net demotion, not before.
 
 
-### 5.3.8 Fix-Introduced Finding Attribution (#453 Component F)
+### 5.3.8 Fix-Introduced Finding Attribution
 
 When this is a **re-review after a fix** (verification mode or `loop_count >= 1`), attribute each finding to one of three categories to enable convergence monitoring.
 
@@ -2968,7 +2984,7 @@ fi
 
 Output the review results via two independent paths. Use `mktemp` + `--body-file` to safely handle markdown content for the PR comment path.
 
-**Issue #443 changes**: This phase now performs **two independent outputs**:
+This phase now performs **two independent outputs**:
 1. **Local JSON file save** (always, even when `{post_comment_mode}=false`)
 2. **PR comment post** (only when `{post_comment_mode}=true` from ステップ 1.0)
 
@@ -3000,13 +3016,13 @@ Output the review results via two independent paths. Use `mktemp` + `--body-file
 - `p61b_post_comment_mode_invalid`: `--post-comment-mode` が `true`/`false` 以外
 - `p61b_pr_number_invalid`: `--pr` が literal substitute されていない / 数値以外 (`p61c_pr_number_invalid` と対称)
 - `json_saved_from_p61a_unset`: `--json-saved` が `true`/`false` 以外 (ステップ 6.1.a の `[CONTEXT] JSON_SAVED=` 読取漏れ)
-- `iso_timestamp_from_p61a_unset`: `--iso-timestamp` が ISO 8601 形状でない (sentinel 残留 / 空文字 / placeholder 形式 / 非 ISO 形状を allowlist で一括 reject — ステップ 6.1.a の `[CONTEXT] ISO_TIMESTAMP=` 読取漏れ、Issue #1200)。ステップ 6.1.a の早期失敗 degraded 値 `unknown` も reject される (期待動作 — 再投入では解決せず、6.1.a の `LOCAL_SAVE_FAILED` reason の解消が必要。helper が専用診断を表示する)
+- `iso_timestamp_from_p61a_unset`: `--iso-timestamp` が ISO 8601 形状でない (sentinel 残留 / 空文字 / placeholder 形式 / 非 ISO 形状を allowlist で一括 reject — ステップ 6.1.a の `[CONTEXT] ISO_TIMESTAMP=` 読取漏れ)。ステップ 6.1.a の早期失敗 degraded 値 `unknown` も reject される (期待動作 — 再投入では解決せず、6.1.a の `LOCAL_SAVE_FAILED` reason の解消が必要。helper が専用診断を表示する)
 - `tmpfile_write_failure`: PR コメント本文の中間 tmpfile (mktemp) 失敗、または `--content-file` 不在
 - `raw_json_timestamp_injection_failed`: Raw JSON セクション内 sentinel の awk 置換 / post-condition (Raw JSON 内残留なし / Markdown 不変) が失敗
 - `gh_comment_post_failure`: `gh pr comment` 投稿が exit != 0 で失敗 (network / auth / rate-limit / permission、rc>=128 時は signal 番号併記)
 
 **ステップ 6.1.c reasons** (`review-skip-notification.sh` が `[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=...` を emit。ケース 2 の `p61c_persistence_unrecoverable` は **hard error として ステップ 6 を `exit 2` で fail**、その他の gate 違反は exit 1。正常経路 `post_comment_mode=false` は続行):
-- `p61c_post_comment_mode_invalid`: `--post-comment-mode` が `false` 以外 (`true` 誤呼出 / 不正値、Issue #510 対応、`p61b_post_comment_mode_invalid` と対称)
+- `p61c_post_comment_mode_invalid`: `--post-comment-mode` が `false` 以外 (`true` 誤呼出 / 不正値、`p61b_post_comment_mode_invalid` と対称)
 - `p61c_pr_number_invalid`: `--pr` が literal substitute されていない / 数値以外 (`p61b_pr_number_invalid` と対称)
 - `p61c_file_timestamp_unset`: `--file-timestamp` placeholder が literal substitute されていない
 - `p61c_file_timestamp_unknown_without_failure`: `file_timestamp='unknown'` だが `local_save_failed != '1'` (整合性違反、ケース 1 での `.../unknown.json` 誤提示を遮断)
@@ -3021,9 +3037,9 @@ Output the review results via two independent paths. Use `mktemp` + `--body-file
 - **ステップ 6.1.b** は `[CONTEXT] REVIEW_OUTPUT_FAILED=1` flag を emit する。reason 値は `tmpfile_write_failure` / `gh_comment_post_failure` / `json_saved_from_p61a_unset` / `p61b_post_comment_mode_invalid` のいずれか。この flag は PR コメント投稿経路の失敗を示し、hard error として ステップ 6 を fail させる (ステップ 6.1.a の非ブロッキング契約とは対照的)。なお `post_comment_mode=false` で 6.1.b に誤呼出された場合は gate が **silent skip (exit 0)** するため、caller branch selection ミスは retained flag emit せずに吸収される (データ破壊なし、gh pr comment も実行されない)。
 - **ステップ 6.1.c** は case 2 (`post_comment_mode=false` ∧ `LOCAL_SAVE_FAILED=1` の組み合わせ) で `[CONTEXT] REVIEW_OUTPUT_FAILED=1` (reason 値 `p61c_persistence_unrecoverable`) を emit し、ステップ 6 全体を `exit 2` で fail させる (silent data loss 防止)。
 
-**Eval-order enumeration** (for Pattern-5 drift check): ステップ 6.1.a emit sequence = (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `collision_resolution_exhausted` / `mv_failure`) — 14 件、bash block 内の実 emit 順 (`scope_enum_violation` / `critical_high_scope_nit_noted_invariant` は Issue #1018 M2 で finding_id_format_or_uniqueness_violation の直後に elif chain で配置); ステップ 6.1.b emit = (`p61b_post_comment_mode_invalid` / `p61b_pr_number_invalid` / `tmpfile_write_failure` / `iso_timestamp_from_p61a_unset` / `raw_json_timestamp_injection_failed` / `gh_comment_post_failure` / `json_saved_from_p61a_unset`) — `p61b_post_comment_mode_invalid` は post_comment_mode gate が bash block 冒頭で最初に評価されるため先頭に配置; ステップ 6.1.c emit = (`p61c_post_comment_mode_invalid` / `p61c_pr_number_invalid` / `p61c_file_timestamp_unset` / `p61c_file_timestamp_unknown_without_failure` / `p61c_local_save_failed_invalid` / `p61c_persistence_unrecoverable`) — `p61c_post_comment_mode_invalid` を先頭に配置 (6.1.b と対称).
+**Eval-order enumeration** (Pattern-2 documented-union input): ステップ 6.1.a emit sequence = (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `collision_resolution_exhausted` / `mv_failure`) — 14 件、bash block 内の実 emit 順 (`scope_enum_violation` / `critical_high_scope_nit_noted_invariant` は finding_id_format_or_uniqueness_violation の直後に elif chain で配置); ステップ 6.1.b emit = (`p61b_post_comment_mode_invalid` / `p61b_pr_number_invalid` / `tmpfile_write_failure` / `iso_timestamp_from_p61a_unset` / `raw_json_timestamp_injection_failed` / `gh_comment_post_failure` / `json_saved_from_p61a_unset`) — `p61b_post_comment_mode_invalid` は post_comment_mode gate が bash block 冒頭で最初に評価されるため先頭に配置; ステップ 6.1.c emit = (`p61c_post_comment_mode_invalid` / `p61c_pr_number_invalid` / `p61c_file_timestamp_unset` / `p61c_file_timestamp_unknown_without_failure` / `p61c_local_save_failed_invalid` / `p61c_persistence_unrecoverable`) — `p61c_post_comment_mode_invalid` を先頭に配置 (6.1.b と対称).
 
-#### 6.1.a Local JSON File Save (Always Executed — #443) <!-- AC-1 / D-01 / D-02 / D-04 -->
+#### 6.1.a Local JSON File Save (Always Executed) <!-- AC-1 / D-01 / D-02 / D-04 -->
 
 > **Acceptance Criteria anchor**: AC-1 (`pr_review.post_comment` 未設定時にデフォルトで PR コメント投稿せず、`.rite/review-results/{pr}-{ts}.json` のみ作成)。D-01 (ハイブリッド方式: 会話 > ローカルファイル > PR コメント)。D-02 (同一 PR の履歴を timestamp 付きで保持、best-effort、同秒衝突は `~$RANDOM` suffix で回避 — separator `~` は `.` より ASCII 大で sort -r 時に新しい collision-resolved 版が先頭に来る)。D-04 (非ブロッキング契約: ローカル保存失敗は WARNING のみで続行、`common-error-handling.md` の Non-blocking Contract 準拠 — ただし `post_comment=false` ∧ `LOCAL_SAVE_FAILED=1` 組み合わせは ステップ 6.1.c でケース 2 の ⚠️ WARNING に昇格する)。
 
@@ -3032,7 +3048,7 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
 
 **Claude substitution requirements**:
 - **JSON 本文**: Claude が review-result-schema.md に従って JSON 本文を生成し、**Write tool で `/tmp/rite-review-result-{pr_number}.json` に保存**する。生成漏れ / 不正 JSON は `review-result-save.sh` 内の jq timestamp 注入が `write_failure` として非ブロッキングに fail-fast 検出する (後続の `jq empty` post-condition `json_invalid` は注入成功後に走る defense-in-depth backstop で、syntactic invalidity では実挙動上ここに到達しない)。
- - **Issue #1019 M5 — Accepted Fingerprint Suppression 契約**: ステップ 5.1.2.A で識別された `suppressed_findings` (前 cycle で `accept (認知のみ)` 選択された finding が再出現) は、本 JSON 本文の `findings[]` 配列から **除外** する。Markdown 側 (ステップ 5.4 統合レポート / ステップ 6.1.b PR コメント本文) には audit log として残すが、JSON output (本 phase / ステップ 6.1.b Raw JSON section) には含めない。これにより `/rite:pr:fix` が JSON を読み込んだ際、accepted finding は fix loop に entered せず、decision-replay 系の同一 finding 再出現が断たれる。除外は finding 単位 (`F-NN`) で行い、各除外について ステップ 5.1.2.A Step 3 で `[CONTEXT] FINDING_SUPPRESSED_BY_ACCEPT=1; finding_id=...; original_severity=...; fingerprint=...` を emit 済 (本 phase で重複 emit は不要)。
+ - **Accepted Fingerprint Suppression 契約**: ステップ 5.1.2.A で識別された `suppressed_findings` (前 cycle で `accept (認知のみ)` 選択された finding が再出現) は、本 JSON 本文の `findings[]` 配列から **除外** する。Markdown 側 (ステップ 5.4 統合レポート / ステップ 6.1.b PR コメント本文) には audit log として残すが、JSON output (本 phase / ステップ 6.1.b Raw JSON section) には含めない。これにより `/rite:pr:fix` が JSON を読み込んだ際、accepted finding は fix loop に entered せず、decision-replay 系の同一 finding 再出現が断たれる。除外は finding 単位 (`F-NN`) で行い、各除外について ステップ 5.1.2.A Step 3 で `[CONTEXT] FINDING_SUPPRESSED_BY_ACCEPT=1; finding_id=...; original_severity=...; fingerprint=...` を emit 済 (本 phase で重複 emit は不要)。
 - `{pr_number}`: ステップ 1.0 で正規化済み。`review-result-save.sh` の `--pr {pr_number}` 引数および Write 先パス (`/tmp/rite-review-result-{pr_number}.json`) に literal substitute する。helper が数値 fail-fast gate (`pr_number_placeholder_residue`) を持つ。
 - Required JSON fields: `schema_version: "1.0.0"`, `pr_number`, `timestamp` (literal sentinel `"__RITE_TS_PLACEHOLDER_7f3a9b2c__"` を書き、helper が ISO 8601 JST 値に注入), `commit_sha`, `overall_assessment` (`mergeable` / `fix-needed`), `findings[]`. Each finding の必須フィールドは以下の通り — 完全なスキーマは [review-result-schema.md](../../references/review-result-schema.md#json-schema) を真実の源として参照すること:
  - `id`: **`F-NN` 形式、最小 2 桁ゼロパディング可変長連番** (正規表現 `^F-[0-9]{2,}$`)。99 件以下は `F-01`〜`F-99`、100 件以上は `F-100` 等に成長する。
@@ -3049,7 +3065,7 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
 
 **ステップ 6.1.a 実行手順**:
 
-1. **JSON body 生成 + Write**: Claude は [review-result-schema.md](../../references/review-result-schema.md) に従う JSON 本文を生成し、`"timestamp"` フィールドに literal sentinel `"__RITE_TS_PLACEHOLDER_7f3a9b2c__"` を書き込んだ上で、**Write tool で `/tmp/rite-review-result-{pr_number}.json` に保存**する (旧 `RITE_JSON_EOF` heredoc 埋め込みを廃止し、巨大 inline bash による malform 無言停止を回避 — Issue #1193 #3)。Issue #1019 M5 の `suppressed_findings` 除外契約は本 JSON 生成時に適用する (`findings[]` から除外、Markdown 側 (ステップ 5.4 / 6.1.b) には audit log として残す)。`timestamp` の実値は helper が `$iso_timestamp` で注入するため Claude は知る必要がない。
+1. **JSON body 生成 + Write**: Claude は [review-result-schema.md](../../references/review-result-schema.md) に従う JSON 本文を生成し、`"timestamp"` フィールドに literal sentinel `"__RITE_TS_PLACEHOLDER_7f3a9b2c__"` を書き込んだ上で、**Write tool で `/tmp/rite-review-result-{pr_number}.json` に保存**する (旧 `RITE_JSON_EOF` heredoc 埋め込みを廃止し、巨大 inline bash による malform 無言停止を回避)。`suppressed_findings` 除外契約は本 JSON 生成時に適用する (`findings[]` から除外、Markdown 側 (ステップ 5.4 / 6.1.b) には audit log として残す)。`timestamp` の実値は helper が `$iso_timestamp` で注入するため Claude は知る必要がない。
 2. **helper 実行**: 以下の bash を実行する。helper が `iso_timestamp` 算出・sentinel 注入・schema validation・同秒衝突回避・atomic mv・`[CONTEXT]` emit を担う。JSON body / ファイル名 / `[CONTEXT]` emit の timestamp は helper 内の単一 `date` 由来で完全同期する。
 
 ```bash
@@ -3076,7 +3092,7 @@ bash {plugin_root}/hooks/review-result-save.sh \
 - ステップ 6.1.c の machine-enforced bash block は `file_timestamp` と `local_save_failed` のみを substitute に使う (ユーザー向けテンプレートに embed する値)。`iso_timestamp` は **observability ログ専用** (後追い debug / drift 検出用) であり、user-facing メッセージには含まれない (責務分離)。
 - `iso_timestamp` は ステップ 6.1.a 内で算出された値であり、JSON body 生成にも使用される (Approach C bash-internal jq injection)。bash 内完全同期により Claude が独立計算した場合の秒跨ぎズレを排除している。
 
-#### 6.1.b PR Comment Post (Conditional on `{post_comment_mode}` — #443) <!-- AC-2: opt-in PR comment posting -->
+#### 6.1.b PR Comment Post (Conditional on `{post_comment_mode}`) <!-- AC-2: opt-in PR comment posting -->
 
 Execute this sub-phase **only when** `{post_comment_mode}=true` from ステップ 1.0. When `{post_comment_mode}=false`, skip this entire sub-phase and proceed directly to 6.1.c.
 
@@ -3086,10 +3102,10 @@ Execute this sub-phase **only when** `{post_comment_mode}=true` from ステッ�
 
 **ステップ 6.1.b 実行手順**:
 
-1. **コメント本文生成 + Write**: Claude は以下の構造の PR コメント本文を生成し、**Write tool で `/tmp/rite-review-comment-{pr_number}.md` に保存**する (旧 `RITE_COMMENT_EOF_7f3a9b2c` heredoc 埋め込みを廃止し、巨大 inline bash + nested code fence による malform 無言停止を回避 — Issue #1193 #4):
+1. **コメント本文生成 + Write**: Claude は以下の構造の PR コメント本文を生成し、**Write tool で `/tmp/rite-review-comment-{pr_number}.md` に保存**する (旧 `RITE_COMMENT_EOF_7f3a9b2c` heredoc 埋め込みを廃止し、巨大 inline bash + nested code fence による malform 無言停止を回避):
    - `## 📜 rite レビュー結果` + ステップ 5.4 で生成した integrated report (Markdown)。改行・バッククォート・`$` を含んでよい。`📎 reviewed_commit: {current_commit_sha}` を末尾に必ず含める (次 cycle verification mode 用)。
    - (`metrics.enabled` のとき) ステップ 6.3 で算出した metrics を integrated report の末尾 (下記 `### 📄 Raw JSON` 見出しの直前) に含める。形式は `### メトリクス` 見出し + `CRITICAL: {n} / HIGH: {n} / MEDIUM: {n} / LOW: {n}` の 1 行。これにより `post_comment_mode=true` 経路では metrics が review 結果と同一コメントに集約される (別 API 呼び出し不要、ステップ 6.3 Step 2 opt-in 行と対応)。`metrics.enabled: false` のときは省略する。
-   - `### 📄 Raw JSON` 見出し + ` ```json ` code fence + ステップ 6.1.a と構造的に**同一**の JSON 本文。`timestamp` フィールドには literal sentinel `"__RITE_TS_PLACEHOLDER_7f3a9b2c__"` を書き込む (helper が `--iso-timestamp` 値に置換する)。Issue #1019 M5 の `suppressed_findings` は `findings[]` から除外する (6.1.a と同一契約、Markdown 表側には audit log として残す)。
+   - `### 📄 Raw JSON` 見出し + ` ```json ` code fence + ステップ 6.1.a と構造的に**同一**の JSON 本文。`timestamp` フィールドには literal sentinel `"__RITE_TS_PLACEHOLDER_7f3a9b2c__"` を書き込む (helper が `--iso-timestamp` 値に置換する)。`suppressed_findings` は `findings[]` から除外する (6.1.a と同一契約、Markdown 表側には audit log として残す)。
 2. **helper 実行**: ステップ 1.0 の `[CONTEXT] POST_COMMENT_MODE=`、ステップ 6.1.a の `[CONTEXT] JSON_SAVED=` / `ISO_TIMESTAMP=` を会話コンテキストから読み取り、以下の引数に literal substitute して実行する。helper が post_comment_mode gate / 各 sentinel gate / Raw JSON section 限定の timestamp 注入 + 2 post-condition / gh pr comment / signal 検出を担う。
 
 ```bash
@@ -3427,7 +3443,7 @@ if [[ -n "$wiki_section" ]]; then
  auto_ingest=$(printf '%s\n' "$wiki_section" | awk '/^[[:space:]]+auto_ingest:/ { print; exit }' \
  | sed 's/[[:space:]]#.*//' | sed 's/.*auto_ingest:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
 fi
-case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="true" ;; esac # #483: opt-out default
+case "$wiki_enabled" in false|no|0) wiki_enabled="false" ;; true|yes|1) wiki_enabled="true" ;; *) wiki_enabled="true" ;; esac # opt-out default
 case "$auto_ingest" in true|yes|1) auto_ingest="true" ;; *) auto_ingest="false" ;; esac
 echo "wiki_enabled=$wiki_enabled auto_ingest=$auto_ingest"
 ```
@@ -3462,8 +3478,11 @@ tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX)
 trigger_stderr=$(mktemp /tmp/rite-wiki-trigger-err-XXXXXX) || trigger_stderr=/dev/null
 # rm -f /dev/null は EPERM (exit 1) を返すため trap で条件分岐する (F-07 対応)
 trap 'rm -f "$tmpfile"; [ "$trigger_stderr" != "/dev/null" ] && rm -f "$trigger_stderr"' EXIT
+content_write_failed=0  # heredoc write 失敗フラグ (Step 3 で genuine trigger 失敗と区別するため carry-forward)
 
-cat <<'REVIEW_EOF' > "$tmpfile"
+# heredoc 書き込みの exit code を捕捉 (disk full / permission 拒否で truncated content が
+# silent に ingest される regression を防ぐ。wiki ingest は非ブロッキングのため write 失敗時は ingest をスキップ)
+if ! cat <<'REVIEW_EOF' > "$tmpfile"
 ## Review Results
 
 - **PR**: #{pr_number} — {title}
@@ -3480,38 +3499,67 @@ cat <<'REVIEW_EOF' > "$tmpfile"
 - MEDIUM: {count}
 - LOW: {count}
 REVIEW_EOF
-
-bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
- --type reviews \
- --source-ref "pr-{pr_number}" \
- --content-file "$tmpfile" \
- --pr-number {pr_number} \
- --title "PR #{pr_number} review results" \
- 2>"$trigger_stderr"
-trigger_exit=$?
-echo "trigger_exit=$trigger_exit"
-if [ "$trigger_exit" -ne 0 ] && [ "$trigger_stderr" != "/dev/null" ] && [ -s "$trigger_stderr" ]; then
- # UTF-8 multi-byte 境界を safe にする (head -c 500 で切れた invalid sequence を drop)
- # (F-09 対応) iconv 不在環境 (Alpine 等) では LC_ALL=C tr で ASCII-only fallback
- if command -v iconv >/dev/null 2>&1; then
- _wiki_err_snippet=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500 | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)
- else
- _wiki_err_snippet=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500 | LC_ALL=C tr -cd '\11\12\15\40-\176')
+then
+ echo "[CONTEXT] WIKI_CONTENT_WRITE_FAILED=1; reason=cat_redirection_failed" >&2
+ echo "WARNING: review ステップ 6.5.W: tmpfile への heredoc 書き込みに失敗 (/tmp full / permission 拒否 / inode 枯渇)。wiki ingest を非ブロッキングにスキップ。" >&2
+ trigger_exit=1
+ content_write_failed=1
+ echo "trigger_exit=$trigger_exit"
+else
+ bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
+  --type reviews \
+  --source-ref "pr-{pr_number}" \
+  --content-file "$tmpfile" \
+  --pr-number {pr_number} \
+  --title "PR #{pr_number} review results" \
+  2>"$trigger_stderr"
+ trigger_exit=$?
+ echo "trigger_exit=$trigger_exit"
+ if [ "$trigger_exit" -ne 0 ] && [ "$trigger_stderr" != "/dev/null" ] && [ -s "$trigger_stderr" ]; then
+  # UTF-8 multi-byte 境界を safe にする (head -c 500 で切れた invalid sequence を drop)
+  # (F-09 対応) iconv 不在環境 (Alpine 等) では LC_ALL=C tr で ASCII-only fallback
+  if command -v iconv >/dev/null 2>&1; then
+   _wiki_err_snippet=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500 | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)
+  else
+   _wiki_err_snippet=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500 | LC_ALL=C tr -cd '\11\12\15\40-\176')
+  fi
+  echo "[CONTEXT] WIKI_TRIGGER_STDERR=${_wiki_err_snippet}" >&2
  fi
- echo "[CONTEXT] WIKI_TRIGGER_STDERR=${_wiki_err_snippet}" >&2
 fi
+echo "content_write_failed=$content_write_failed"
 ```
 
-**Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are captured in `trigger_exit` and do not halt the workflow. The LLM reads `trigger_exit` from stdout and skips ステップ 6.5.W.2 when it is non-zero. Ingest failure does not block the review workflow.
+**ステップ 6.5.W content write failure reason** (reason table drift prevention — heredoc redirection の exit code を `WIKI_CONTENT_WRITE_FAILED` flag の reason 値として surface する):
 
-**Step 3 — Failure surfacing**: When `trigger_exit != 0` AND `trigger_exit != 2` (exit 2 = Wiki disabled/uninitialized = legitimate skip already covered by Step 1), surface the failure as a plain WARNING so the operator can triage it from stderr:
+| reason | Description |
+|--------|-------------|
+| `cat_redirection_failed` | tmpfile への heredoc redirection の exit code が非ゼロ (disk full / write permission denied / inode 枯渇 / IO error)。truncated content の silent ingest を防ぐため wiki ingest を非ブロッキングにスキップする |
+
+**Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are captured in `trigger_exit` and do not halt the workflow. The LLM reads `trigger_exit` from stdout and skips ステップ 6.5.W.2 when it is non-zero. The LLM **also reads `content_write_failed` from the prior Step 2 stdout** (`echo "content_write_failed=$content_write_failed"`) and re-establishes it before evaluating Step 3 — a separate bash invocation does not inherit shell state, so the carry-forward of `content_write_failed` is required exactly as for `trigger_exit`. `content_write_failed=1` means the heredoc content write failed and the trigger was never invoked. Ingest failure does not block the review workflow.
+
+**Step 3 — Failure surfacing**: 2 つの失敗経路を区別して surface する。
+
+- **(a) content write 失敗** (`content_write_failed=1`): trigger は**起動していない**ため `trigger_exit` の値 (1) を reason にすると誤帰属になる。root cause は Step 2 の `WIKI_CONTENT_WRITE_FAILED` で既出だが、W Phase Completion Gate (ステップ 8.0.1) は `WIKI_INGEST_*` 接頭辞の sentinel しか認識しないため、gate-visible な `WIKI_INGEST_FAILED` を `reason=content_write_failed` で emit する。
+- **(b) genuine trigger 失敗** (`trigger_exit != 0` AND `trigger_exit != 2`、exit 2 = Wiki disabled/uninitialized = legitimate skip は Step 1 で既出): `wiki-ingest-trigger.sh` が実際に非ゼロ終了したので `reason=trigger_exit_$trigger_exit` で emit する。
 
 ```bash
-if [ "$trigger_exit" -ne 0 ] && [ "$trigger_exit" -ne 2 ]; then
+if [ "${content_write_failed:-0}" -eq 1 ]; then
+ # write 失敗経路: trigger は未起動。gate (ステップ 8.0.1) は WIKI_INGEST_* のみ認識するため
+ # accurate な reason を付けて WIKI_INGEST_FAILED を emit する (trigger_exit_1 への誤帰属を防ぐ)。
+ echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=content_write_failed; exit_code=1"
+ echo "WARNING: review ステップ 6.5.W: content write 失敗のため wiki ingest をスキップ (trigger は未起動)。" >&2
+elif [ "$trigger_exit" -ne 0 ] && [ "$trigger_exit" -ne 2 ]; then
  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_$trigger_exit; exit_code=$trigger_exit"
  echo "WARNING: wiki-ingest-trigger.sh exited $trigger_exit during pr/review.md ステップ 6.5.W" >&2
 fi
 ```
+
+**ステップ 6.5.W Step 3 failure surfacing reason** (`WIKI_INGEST_FAILED` flag の reason 値):
+
+| reason | Description |
+|--------|-------------|
+| `content_write_failed` | tmpfile への heredoc write 失敗 (`content_write_failed=1`)。trigger は未起動。root cause の `WIKI_CONTENT_WRITE_FAILED` とは別に、gate-visible な `WIKI_INGEST_FAILED` を accurate reason で surface する (`trigger_exit_*` への誤帰属を防ぐ) |
+| `trigger_exit_<n>` | `wiki-ingest-trigger.sh` が exit `<n>` (≠0, ≠2) で終了した genuine trigger 失敗 |
 
 #### 6.5.W.2 Wiki Raw Commit (Shell — deterministic path)
 
@@ -3593,6 +3641,13 @@ trap - EXIT INT TERM HUP
 ```
 
 **Non-blocking**: failures of this block do not halt the review workflow. `wiki-ingest-commit.sh` restores raw source files to the dev branch working tree on failure via its cleanup trap, so the next invocation can retry them.
+
+**ステップ 6.5.W.2 Wiki Raw Commit failure reasons** (reason table drift prevention — `wiki-ingest-commit.sh` の exit code を `[CONTEXT] WIKI_INGEST_*` flag の reason 値として surface する):
+
+| reason | Description |
+|--------|-------------|
+| `commit_branch_missing` | `wiki-ingest-commit.sh` が exit 2 (wiki branch 不在 / 無効) で終了 (`WIKI_INGEST_SKIPPED` flag、非ブロッキング) |
+| `commit_rc_4` | `wiki-ingest-commit.sh` が exit 4 (commit はローカルに landed したが push 失敗) で終了 (`WIKI_INGEST_PUSH_FAILED` flag、非ブロッキング)。その他の非ゼロ exit は `commit_rc_$commit_rc` 動的 reason として `WIKI_INGEST_FAILED` flag で emit される |
 
 **Position rationale**: this block sits after the review-fix loop has exited (the caller `/rite:pr:iterate` only enters ステップ 6.5.W on `[review:mergeable]` or standalone execution). Raw sources written mid-loop would reflect unsettled review state, so the placement is intentional.
 
@@ -3797,7 +3852,7 @@ fi
 
 # jq -n の出力を stdin で create-issue-with-projects.sh に渡す。
 # 旧コードは jq 出力をコマンド置換でスクリプト引数に入れ子展開していたが、パイプ + 1 段の
-# コマンド置換に削減して malform 確率を下げた (入れ子コマンド置換の literal 例は除去済 — Issue #1221)。
+# コマンド置換に削減して malform 確率を下げた (入れ子コマンド置換の literal 例は除去済)。
 result=$(jq -n \
  --arg title "{type}: {summary}" \
  --arg body_file "$tmpfile" \
@@ -3846,7 +3901,7 @@ Post Issue list to PR comment (`mktemp` + `--body-file`). Output completion repo
 
 ### 7.7 Post-condition Gate — Recommendation Disposition Enforcement
 
-本 gate は Issue #1042 で要求された **mechanical gate**。ステップ 7.1 で 1+ candidate 抽出時に ステップ 7.2 (`AskUserQuestion` for candidate_count) を実行せず `[review:mergeable]` / `[review:fix-needed:{n}]` (ステップ 8.1) を emit する silent skip を遮断する (prose-only enforcement の置換)。
+本 gate は **mechanical gate**。ステップ 7.1 で 1+ candidate 抽出時に ステップ 7.2 (`AskUserQuestion` for candidate_count) を実行せず `[review:mergeable]` / `[review:fix-needed:{n}]` (ステップ 8.1) を emit する silent skip を遮断する (prose-only enforcement の置換)。
 
 **Execution condition**: Always execute when ステップ 7 was entered (i.e., `candidate_count >= 1` (ステップ 7.1 Source A + Source B 合算、post-deduplication) was true). Skip silently when ステップ 7.1 yielded 0 candidates (ステップ 7.2 is legitimately not invoked).
 
@@ -3888,7 +3943,7 @@ ACTION: Return to ステップ 7.2, emit the sentinel, invoke AskUserQuestion fo
 
 ANTI-PATTERN reference: This gate enforces the prohibition declared in
 .rite/wiki/pages/anti-patterns/aggregate-recommendation-label-evasion.md
-(if Wiki has not yet ingested this page, see Issue #1042 background section).
+(if Wiki has not yet ingested this page, see the background section).
 Silent skip with aggregate label "推奨 N 件 (全て scope 外)" is the specific
 failure mode being blocked here.
 ```
@@ -3931,7 +3986,7 @@ commands:
 
 ### 8.0 Defense-in-Depth: State Update Before Output (End-to-End Flow)
 
-Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:{n}]`), update flow state to reflect the post-review phase (defense-in-depth, fixes #719). これはループ継続を支える **2 層構造のうち secondary (resume 用の網)** であり、フォークコンテキストが caller に戻った後に LLM が turn を終了しても、state file に正しい `next_action` が残るため `/rite:resume` で復帰できる。
+Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:{n}]`), update flow state to reflect the post-review phase (defense-in-depth). これはループ継続を支える **2 層構造のうち secondary (resume 用の網)** であり、フォークコンテキストが caller に戻った後に LLM が turn を終了しても、state file に正しい `next_action` が残るため `/rite:resume` で復帰できる。
 
 継続 (`[review:fix-needed:{n}]`) の場合はさらに `--handoff "/rite:pr:fix {pr_number}"` で **自動継続マーカー (primary)** をセットする: `Stop` hook (`stop-loop-continuation.sh`) が turn 終了時にこれを consume し、停止を差し戻して `/rite:pr:fix` を再注入する (旧 prose が前提にしていた "Stop hook" が本 Issue で実装された)。終了 (`[review:mergeable]`) の場合は `--handoff "FINALIZE:review:mergeable:{pr_number}"` で **終了通知マーカー (FINALIZE handoff)** をセットする: Stop hook が prefix `FINALIZE:` を検出し、停止を差し戻して「`/rite:pr:iterate` ステップ5 の完了通知を出力してから終えよ」と **1 回だけ** 再注入する。これにより mergeable 到達直後に完了通知を出さず停止する早期終了を構造的に防ぐ。one-shot consume のため完了通知出力後はクリーン終了する (無限 block しない)。
 
@@ -3966,7 +4021,7 @@ Replace `{next_action_value}` with the value from the table above based on the r
 
 **Note on `error_count`**: `flow-state.sh set` resets `error_count` to 0 by default on every phase transition, and preserves the existing value only when `--preserve-error-count` is passed. `error_count` is currently a reserved/legacy schema slot with no production reader; resetting on transition keeps the slot well-defined for future re-introduction without carrying stale counts.
 
-### 8.0.1 W Phase Completion Gate (Defense-in-Depth, #535)
+### 8.0.1 W Phase Completion Gate (Defense-in-Depth)
 
 本 gate は ステップ 6.5.W (Wiki Ingest) を skip した状態での result pattern (`[review:mergeable]` / `[review:fix-needed:{n}]`) emit を遮断する。ステップ 6.5.W が実行されていれば conversation context に `[CONTEXT] WIKI_INGEST_` sentinel が少なくとも 1 つ残る (Step 1 skip path / Step 3 failure path / ステップ 6.5.W.2 success/failure paths のいずれかで emit)。sentinel が全く無ければ LLM が ステップ 6.5.W を完全に skip したことを意味する。
 

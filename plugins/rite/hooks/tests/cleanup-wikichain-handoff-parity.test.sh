@@ -2,12 +2,12 @@
 # cleanup-wikichain-handoff-parity.test.sh
 #
 # `commands/pr/cleanup.md` (writer) と `hooks/stop-loop-continuation.sh` (consumer) の
-# WIKICHAIN チェーン handoff 契約 (Issue #1245) が同期していることを assert する meta-test。
+# WIKICHAIN チェーン handoff 契約が同期していることを assert する meta-test。
 #
-# 背景 — implicit stop 累積再発 (#604〜#1144 lineage):
+# 背景 — implicit stop 累積再発:
 #   cleanup → wiki:ingest → wiki:lint --auto の 2 段ネスト skill return 直後に LLM が turn を
 #   閉じる事象は declarative wording / sentinel 命名の修正では再発を止められなかった
-#   (#1144 AC-2/AC-4)。Issue #1245 は iterate ループの Stop-hook 継続保証 (#1168 / #1176) と
+#   (AC-2/AC-4)。iterate ループの Stop-hook 継続保証と
 #   同型の mechanical gate を移植した。本 test はその gate の writer / consumer 両側と
 #   チェーン各段の return sentinel 宣言を機械検証する (Wiki
 #   pages/patterns/mechanical-test-over-declarative-invariant.md 準拠)。
@@ -22,7 +22,7 @@
 #   (e) チェーン各段 (lint / ingest / cleanup) の returned-to-caller sentinel 宣言の削除/rename 漏れ
 #   (f) ステップ 9 の handoff set とステップ 12 の terminal set の間に `--handoff` なしの
 #       executable な flow-state.sh set が追加された (handoff の premature default-clear —
-#       gate が silent に外れる。prose の「制約」note のみが guard だった経路の機械化、Issue #1268)
+#       gate が silent に外れる。prose の「制約」note のみが guard だった経路の機械化)
 #
 # 検出しない drift (本 test の scope 外、他 test が担当):
 #   - hook の block / one-shot consume / reason 文面の runtime 挙動
@@ -114,7 +114,7 @@ fi
 # ──────────────────────────────────────────────────────────────────────
 # チェーンの 3 段 (最深部 lint → 中間 ingest → 最外 cleanup) がそれぞれ return signal を
 # 宣言していることを assert する。いずれかの rename / 削除は caller 側 parse / gate の
-# 前提を破る (Issue #1245 AC-4)。
+# 前提を破る (AC-4)。
 declare -A _sentinels=(
   ["$LINT_MD"]="[lint:returned-to-caller:auto]"
   ["$INGEST_MD"]="[ingest:returned-to-caller]"
@@ -132,7 +132,7 @@ done
 # ──────────────────────────────────────────────────────────────────────
 # TC-6: ステップ 9〜12 間に --handoff なしの executable intervening set が存在しない
 # ──────────────────────────────────────────────────────────────────────
-# ステップ 9 直下の「制約」note (prose guard) の機械版 (Issue #1268)。intervening
+# ステップ 9 直下の「制約」note (prose guard) の機械版。intervening
 # `flow-state.sh set` (--handoff なし) が挟まると handoff が premature default-clear され
 # gate が silent に外れる。anchor は TC-2 の handoff_line / TC-4 の terminal_set_line を
 # 再利用し、新規 anchor 追加による drift コストを避ける (anchor 不在時は skip して
@@ -163,6 +163,6 @@ else
   fi
 fi
 
-if ! print_summary "cleanup-wikichain-handoff-parity.test.sh" "drift hint: cleanup.md ステップ 9 (WIKICHAIN handoff set) / ステップ 12 (terminal set の default-clear) と stop-loop-continuation.sh の WIKICHAIN:* case arm、チェーン 3 段の return sentinel を同期させてください (Issue #1245)。ステップ 9〜12 間への新規 flow-state.sh set 追加は禁止です — --handoff 再指定は TC-1 の単一 SoT と矛盾するため不可 (cleanup.md ステップ 9 の制約 note / Issue #1268, #1271)"; then
+if ! print_summary "cleanup-wikichain-handoff-parity.test.sh" "drift hint: cleanup.md ステップ 9 (WIKICHAIN handoff set) / ステップ 12 (terminal set の default-clear) と stop-loop-continuation.sh の WIKICHAIN:* case arm、チェーン 3 段の return sentinel を同期させてください。ステップ 9〜12 間への新規 flow-state.sh set 追加は禁止です — --handoff 再指定は TC-1 の単一 SoT と矛盾するため不可 (cleanup.md ステップ 9 の制約 note)"; then
   exit 1
 fi

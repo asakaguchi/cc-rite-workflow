@@ -38,6 +38,9 @@ temp/
 .rite/fix-cycle-state/
 .rite/fix-cycle-state.json
 .rite/state/
+# Issue #1526 — name-independent reap manifest (rite-tmp-artifact.sh が記録、
+# pr-cycle-cleanup.sh が参照・回収する一時ブランチ/worktree の台帳)。runtime state。
+.rite/tmp-artifacts.tsv
 # Issue #672 — マルチセッション対応 per-session flow-state files (Option A)。
 # 各 Claude Code セッションが `.rite/sessions/{session_id}.flow-state` に独立して
 # state を保持する。session 終了時に該当ファイルが cleanup される設計。

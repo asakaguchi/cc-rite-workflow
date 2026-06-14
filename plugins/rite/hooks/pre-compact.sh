@@ -30,9 +30,9 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 
 # Resolve active flow-state file path.
 # Always returns the per-session file (the legacy single-file selection path was
-# removed, Issue #1458).
+# removed).
 #
-# Issue #749: stderr pass-through for diagnostic visibility, via canonical helper
+# Stderr pass-through for diagnostic visibility, via canonical helper
 # `_mktemp-stderr-guard.sh`. 詳細は session-start.sh の同パターンを参照。
 # filter は flow-state.sh cross-session guard の 3-pattern を `^ERROR:` で
 # superset 化した 4-pattern 拡張版 (resolver self-validation の ERROR: を捕捉)。
@@ -56,10 +56,10 @@ fi
 
 # Derive the per-session compact-state path from the resolved flow-state path
 # .rite/sessions/{sid}.flow-state → .rite/sessions/{sid}.compact-state.
-# This makes each session's compact snapshot independent, removing the
-# last-writer-wins race on the previously shared single file. Falls back to the
-# legacy shared path only when the session id is unresolvable, preserving
-# pre-per-session behavior for sessions without a session id.
+# This makes each session's compact snapshot independent, avoiding a
+# last-writer-wins race that a single shared file would otherwise cause. Falls
+# back to the legacy shared path only when the session id is unresolvable, so
+# sessions without a session id still have a working compact-state location.
 if [ -n "$FLOW_STATE" ]; then
   COMPACT_STATE="${FLOW_STATE%.flow-state}.compact-state"
 else
@@ -260,7 +260,7 @@ if acquire_wm_lock "$LOCKDIR"; then
     fi
 
     # Delegate to shared helper (runs in subshell to isolate cd)
-    # Issue #1003 AC-7/AC-8 observability: emit snapshot diag log so analysts can correlate
+    # observability: emit snapshot diag log so analysts can correlate
     # pre-compact write timing with subsequent post-compact phase. Without this, the
     # `create_delegation` snapshot fixation hypothesis is unverifiable (no record of which
     # phase value was captured at compact time).

@@ -106,6 +106,7 @@ Detect current state from:
 | On feature branch, PR open / draft, review-fix cycle | `/rite:pr:iterate <pr>` (mergeable まで review ⇄ fix を無限ループ) |
 | Review mergeable, want to mark Ready | `/rite:pr:ready <pr>` then `/rite:pr:merge <pr>` |
 | Merge 完了、branch 削除 / Wiki ingest / Projects Status Done 後処理が必要 | `/rite:pr:cleanup <pr>` |
+| 複数 Issue を open→cleanup まで一括自律実行したい | `/rite:pr:run <issue>...` (各 Issue に open→iterate→ready→merge→cleanup を順次実行、失敗で即停止) |
 | Long session (30+ minutes elapsed) | `/rite:issue:update` |
 
 ## Question Management
@@ -166,6 +167,8 @@ See [references/work-memory-format.md](./references/work-memory-format.md) for w
 
 `/rite:issue:create` は引き続き flat single-file workflow を維持。マージ後の cleanup は `/rite:pr:cleanup` (既存) を別途実行する。
 
+複数 Issue をまとめて回す場合は `/rite:pr:run <issue>...` が各 Issue に対し `pr:open → pr:iterate → pr:ready → pr:merge → pr:cleanup` を順次・完全自律で実行する (meta-orchestrator。成功する限り無確認、失敗で即停止、残りキューは `.rite/state/run-queue.json` に永続化)。flow-state の handoff は使わず、継続は flat step 構造に委ねる。
+
 LLM が途中で停止した場合の正規復帰経路は `/rite:resume` で、`commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) の phase→新 4 コマンド routing 表に従う。implicit-stop 対策の hook 群 (`auto-fire-step0.sh` / `stop-create-interview-block.sh` / `verify-terminal-output.sh`) は撤去済み。
 
 ### Sub-skill sentinel 一覧 (orchestrator から grep される SoT)
@@ -177,12 +180,13 @@ LLM が途中で停止した場合の正規復帰経路は `/rite:resume` で、
 | `rite:pr:create` | `[pr:created:N]` / `[pr:create-failed]` | `pr:open` Step 6 |
 | `rite:pr:review` | `[review:mergeable]` / `[review:fix-needed:N]` / `[review:error]` | `pr:iterate` 内ループ |
 | `rite:pr:fix` | `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:replied-only]` / `[fix:cancelled-by-user]` / `[fix:error]` | `pr:iterate` 内ループ |
-| `rite:pr:ready` | `[ready:returned-to-caller]` / `[ready:error]` | ユーザーが直接 invoke (orchestrator 経由なし) |
-| `rite:pr:merge` | `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]` | ユーザーが直接 invoke (orchestrator 経由なし) |
+| `rite:pr:ready` | `[ready:returned-to-caller]` / `[ready:error]` | ユーザー直接 / `pr:run` orchestrator |
+| `rite:pr:merge` | `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]` | ユーザー直接 / `pr:run` orchestrator |
+| `rite:pr:cleanup` | `[cleanup:returned-to-caller]` | ユーザー直接 / `pr:run` orchestrator |
 
-orchestrator (`pr:open` / `pr:iterate`) が sub-skill 出力の sentinel を grep で routing する。`pr:ready` / `pr:merge` は self-contained で他 sub-skill を起動しない。
+orchestrator (`pr:open` / `pr:iterate`) が sub-skill 出力の sentinel を grep で routing する。`pr:ready` / `pr:merge` / `pr:cleanup` は self-contained だが、`pr:run` (meta-orchestrator) が各 Issue に対し `pr:open → pr:iterate → pr:ready → pr:merge → pr:cleanup` を順に invoke し、それぞれの sentinel を grep して次段へ進む (失敗で即停止)。`pr:run` は flow-state の handoff を使わず、継続は flat step 構造に委ねる。
 
-現行の continuation enforcement は Layer 3 caller-continuation hints + Layer 4a/4b orchestrator-side reinforcements + flat sequential structure による (旧 Layer 1 prompt contract は #1144 で cleanup.md flat 化と同時に物理排除済)。
+現行の continuation enforcement は Layer 3 caller-continuation hints + Layer 4a/4b orchestrator-side reinforcements + flat sequential structure による (旧 Layer 1 prompt contract は cleanup.md flat 化と同時に物理排除済)。
 
 ## AI Coding Principles (Summary)
 
@@ -229,7 +233,7 @@ All `gh` commands that accept `--body` or `--comment` parameters **MUST** use sa
 
 When a step of `/rite:pr:open` / `/rite:pr:iterate` / `/rite:pr:ready` / `/rite:pr:merge` fails or is skipped (Skill load failure, hook abnormal exit, Wiki ingest skip/failure, etc.), the affected skill or hook emits a plain `WARNING` / `ERROR` line to **stderr**. The orchestrator surfaces it in the conversation context, and the user re-runs the affected step via `/rite:resume`. Failures are visible but not auto-registered as Issues; the user decides whether to file one.
 
-> The earlier auto-registration mechanism (`workflow-incident-emit.sh` sentinel + `/rite:issue:start` detection + `workflow_incident:` config key) was removed in #1088 (実装: #1091、PR 2b リファクタリングシリーズ) in favor of this single-layer plain-stderr design. See `docs/SPEC.md` "Workflow Failure Surfacing" for details.
+> The earlier auto-registration mechanism (`workflow-incident-emit.sh` sentinel + `/rite:issue:start` detection + `workflow_incident:` config key) was removed in favor of this single-layer plain-stderr design. See `docs/SPEC.md` "Workflow Failure Surfacing" for details.
 
 ## Integration
 

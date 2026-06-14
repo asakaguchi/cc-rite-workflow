@@ -1,5 +1,5 @@
 #!/bin/bash
-# Common test helpers for plugins/rite/hooks/tests/*.test.sh (Issue #852)
+# Common test helpers for plugins/rite/hooks/tests/*.test.sh
 #
 # Usage:
 #   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,7 +17,7 @@
 #   (`bash 4-site-symmetry.test.sh`) because it defines its own SCRIPT_DIR
 #   before sourcing this file.
 #
-# Output convention (Issue #853):
+# Output convention:
 #   Scope: applies to tests that `source` this helper. Enumerate the current
 #   set with:
 #     grep -l 'source.*_test-helpers.sh' plugins/rite/hooks/tests/*.test.sh
@@ -157,11 +157,11 @@ assert_not_grep() {
   fi
 }
 
-# File-existence pre-condition guard for assertion-pair loops (Issue #1051).
+# File-existence pre-condition guard for assertion-pair loops.
 #
 # Consolidates the inline `[ ! -f "$f" ] && fail ... && continue` boilerplate
-# previously inlined in callers that run multiple assertions against the same
-# file inside a loop. Without this guard the standalone assert_grep / assert_not_grep
+# that callers would otherwise inline when running multiple assertions against the
+# same file inside a loop. Without this guard the standalone assert_grep / assert_not_grep
 # file-existence checks each emit their own fail() when the file is absent,
 # inflating one missing file into N fails (one per assertion pair).
 #
@@ -187,11 +187,11 @@ assert_file_exists_or_fail() {
   return 0
 }
 
-# Section-scoped pattern presence assertion (Issue #1047).
+# Section-scoped pattern presence assertion.
 # Extracts an awk address-range section ([start_pattern, end_pattern]) from `file`
 # into a private tempfile, runs `grep -qE grep_pattern` against it, then self-cleans.
 #
-# Consolidates the boilerplate previously duplicated in T-2/T-3/T-4:
+# Consolidates the boilerplate that T-2/T-3/T-4 would otherwise duplicate:
 #   section_file=$(mktemp)
 #   trap 'rm -f "$section_file"' EXIT
 #   awk '/start/, /end/' "$file" > "$section_file"
@@ -256,9 +256,9 @@ assert_grep_in_section() {
   rm -f "$section_file"
 }
 
-# make_sandbox — git-init + initial-commit sandbox (Issue #990).
+# make_sandbox — git-init + initial-commit sandbox.
 #
-# Consolidates the inline `make_sandbox()` definitions previously duplicated in
+# Consolidates the inline `make_sandbox()` definition shared by
 # state-read.test.sh, work-memory-update.test.sh (with `--branch` for branch
 # parsing scenarios), and notification.test.sh TC-016 (with `--soft` for the
 # setup-failure-skip path).
@@ -354,7 +354,7 @@ make_sandbox() {
 
 # make_plain_sandbox — bare `mktemp -d` sandbox (no git init), echoes path.
 #
-# Consolidates the no-git sandbox helpers previously duplicated in
+# Consolidates the no-git sandbox helper shared by
 # _validate-helpers.test.sh and _resolve-session-id-from-file.test.sh.
 # The helper does NOT push to cleanup_dirs — callers do — to match the
 # `make_sandbox` convention (single uniform caller pattern across tests).

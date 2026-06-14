@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for worktree-git.sh non-fast-forward push retry (Issue #1365 / S5, §9).
+# Tests for worktree-git.sh non-fast-forward push retry (§9).
 #
 # Verifies:
 #   AC-1: a push whose remote branch was advanced concurrently succeeds via

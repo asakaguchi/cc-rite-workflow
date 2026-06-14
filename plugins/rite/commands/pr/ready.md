@@ -85,9 +85,9 @@ Even if the argument is omitted, retrieve and use the PR number from work memory
 
 ### 1.0 Bang-Backtick Adjacency Pre-Check (Pre-PR Gate)
 
-> **Reference**: Issue #691. Pre-submission hard gate for the parser-trigger pattern (backtick + bang adjacency in inline code spans of `plugins/rite/{commands,skills,agents,references}/**/*.md`). The underlying static check is `plugins/rite/hooks/scripts/bang-backtick-check.sh`.
+> **Reference**: Pre-submission hard gate for the parser-trigger pattern (backtick + bang adjacency in inline code spans of `plugins/rite/{commands,skills,agents,references}/**/*.md`). The underlying static check is `plugins/rite/hooks/scripts/bang-backtick-check.sh`.
 >
-> **DRIFT-CHECK ANCHOR (#691 §7 MUST)**: This bash block is intentionally synchronized between `commands/pr/create.md` §1.0 and `commands/pr/ready.md` §1.0. Any modification to either side MUST be replicated to the other. Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」の dominant failure mode を構造的に予防する。
+> **DRIFT-CHECK ANCHOR (MUST)**: This bash block is intentionally synchronized between `commands/pr/create.md` §1.0 and `commands/pr/ready.md` §1.0. Any modification to either side MUST be replicated to the other. Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」の dominant failure mode を構造的に予防する。
 >
 > **Independent of `/rite:lint` Phase 3.6**: lint records bang-backtick findings as warnings (`[lint:success]` is preserved). This gate, in contrast, **blocks** Ready transition when the same pattern is present — lint is the early heads-up, this is the final hard gate before Ready for review.
 
@@ -369,7 +369,7 @@ gh pr view {pr_number} --json body,headRefName
 
 ### 4.2 Update Status via Shared Script
 
-> **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `commands/pr/open.md` ステップ 2.4 / 後続 Projects Status callsite。Direct inline `gh api graphql` (Organization-aware) + `gh project item-edit` calls have been removed because the multi-stage inline pipeline produced silent skips when LLM attention was lost between substeps, leaving Issue Status at "In Progress" instead of advancing to "In Review" (observed on #652 stuck at "In Progress" through subsequent cleanup).
+> **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `commands/pr/open.md` ステップ 2.4 / 後続 Projects Status callsite。Direct inline `gh api graphql` (Organization-aware) + `gh project item-edit` calls have been removed because the multi-stage inline pipeline produced silent skips when LLM attention was lost between substeps, leaving Issue Status at "In Progress" instead of advancing to "In Review" (observed as a stuck "In Progress" Status persisting through subsequent cleanup).
 
 Skip Phase 4.2 if `github.projects.enabled: false` in `rite-config.yml` or if no related Issue was identified in Phase 4.1, and proceed to Phase 4.6. Otherwise, invoke the shared script to transition the Issue Status to **In Review**:
 
@@ -395,8 +395,8 @@ Inspect the script's stdout JSON and route by `.result`:
 | `.result` | User-visible action | 失敗時の surface |
 |-----------|--------------------|------------------------|
 | `"updated"` | Display `Projects Status を "In Review" に更新しました` and proceed to Phase 4.6 | — (success path) |
-| `"skipped_not_in_project"` | Display `警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします` and proceed to Phase 4.6 | **MUST** `WARNING` を stderr に出力 (silent skip 禁止 — Issue #1003 AC-4) |
-| `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "In Review" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "In Review" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <in_review_option_id> を実行してください。` and proceed to Phase 4.6 | **MUST** `WARNING` を stderr に出力 (silent skip 禁止 — Issue #1003 AC-4) |
+| `"skipped_not_in_project"` | Display `警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします` and proceed to Phase 4.6 | **MUST** `WARNING` を stderr に出力 (silent skip 禁止) |
+| `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "In Review" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "In Review" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <in_review_option_id> を実行してください。` and proceed to Phase 4.6 | **MUST** `WARNING` を stderr に出力 (silent skip 禁止) |
 
 **All result branches are non-blocking** — the ready-for-review transition is already complete (Phase 3 `gh pr ready` succeeded); a Status update issue MUST NOT abort the workflow.
 
@@ -413,14 +413,14 @@ Inspect the script's stdout JSON and route by `.result`:
 >     echo "Projects Status を \"In Review\" に更新しました" ;;
 >   skipped_not_in_project)
 >     echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします" >&2
->     # Issue #1003 AC-4: silent skip 禁止 — WARNING を stderr に出力 (上の echo がそれを満たす) ;;
+>     # silent skip 禁止 — WARNING を stderr に出力 (上の echo がそれを満たす) ;;
 >   failed|*)
 >     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
 >     echo "警告: Projects Status の \"In Review\" への更新に失敗しました。手動回復: gh project item-edit ..." >&2 ;;
 > esac
 > ```
 >
-> 上記が delegate-only 経路 (close + summary 不要) の標準パターン。`.warnings[]` の stderr surface 実装を忘れると AC-2 (失敗時 warning surface) が LLM 実行揺らぎで silent skip するため必ず含めること。**Issue #1003 AC-4**: `skipped_not_in_project` / `failed` の両経路で `WARNING` を stderr に出力することを **MUST** とする (silent skip 禁止)。Status 更新失敗は non-blocking。
+> 上記が delegate-only 経路 (close + summary 不要) の標準パターン。`.warnings[]` の stderr surface 実装を忘れると失敗時 warning surface が LLM 実行揺らぎで silent skip するため必ず含めること。`skipped_not_in_project` / `failed` の両経路で `WARNING` を stderr に出力することを **MUST** とする (silent skip 禁止)。Status 更新失敗は non-blocking。
 >
 > **完全形 (state machine + signal-specific trap + tempfile + Step 3 inconsistency summary)** が必要な場合 (parent Issue close と Status update の片方失敗を可視化する unified block) は `commands/issue/close.md` Phase 4.6.3 を参照すること。
 
@@ -428,7 +428,7 @@ Inspect the script's stdout JSON and route by `.result`:
 
 ### 4.6 Defense-in-Depth: State Update Before Output (End-to-End Flow)
 
-Before outputting the result pattern (`[ready:returned-to-caller]`) or skipping output, update flow state to reflect the post-ready phase (defense-in-depth, fixes #17). This prevents intermittent flow interruptions when the fork context returns to the caller — LLM が fork return 後に turn を終了しても、state file に正しい `next_action` が残るため `/rite:resume` で復帰できる。なお `Stop` hook (`stop-loop-continuation.sh`, Issue #1168) は handoff マーカー (review↔fix ループ / cleanup wiki チェーン) が set されている時だけ停止を差し戻すが、ready は handoff をセットしない (ready はループの出口でありユーザー判断で merge へ進むため) — よってここでは Stop hook は停止を妨げず、継続保証は flow-state の `next_action` (resume 用) に委ねる。
+Before outputting the result pattern (`[ready:returned-to-caller]`) or skipping output, update flow state to reflect the post-ready phase (defense-in-depth). This prevents intermittent flow interruptions when the fork context returns to the caller — LLM が fork return 後に turn を終了しても、state file に正しい `next_action` が残るため `/rite:resume` で復帰できる。なお `Stop` hook (`stop-loop-continuation.sh`) は handoff マーカー (review↔fix ループ / cleanup wiki チェーン) が set されている時だけ停止を差し戻すが、ready は handoff をセットしない (ready はループの出口でありユーザー判断で merge へ進むため) — よってここでは Stop hook は停止を妨げず、継続保証は flow-state の `next_action` (resume 用) に委ねる。
 
 **Condition**: Execute only when flow state file exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
 

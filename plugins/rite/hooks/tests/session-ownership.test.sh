@@ -5,7 +5,7 @@
 # Coverage:
 #   - extract_session_id        (hook JSON parsing)
 #   - get_state_session_id      (state file parsing)
-#   - is_per_session_state_file (Issue #681 path predicate)
+#   - is_per_session_state_file (path predicate)
 #   - check_session_ownership   (4-state legacy + per-session fast-path)
 #   - parse_iso8601_to_epoch    (timezone normalization)
 set -euo pipefail
@@ -78,7 +78,7 @@ fi
 echo ""
 
 # --- TC-003b: is_per_session_state_file edge cases (empty SID part, non-UUID-like) ---
-# Issue #681 F-06: the predicate uses path pattern matching only, so it accepts
+# The predicate uses path pattern matching only, so it accepts
 # any non-empty SID-like segment between `/sessions/` and `.flow-state`. These
 # tests pin the current behavior so future SID validation tightening can be
 # detected as a deliberate change.
@@ -103,7 +103,7 @@ fi
 echo ""
 
 # --- TC-004: check_session_ownership returns "own" for per-session file (matching SID fast-path) ---
-# Issue #681: structurally-owned per-session files bypass the 4-state legacy check.
+# Structurally-owned per-session files bypass the 4-state legacy check.
 # When the hook payload's session_id matches the filename's session_id segment,
 # the fast-path returns "own" without consulting the file body.
 echo "TC-004: check_session_ownership returns 'own' for per-session path with matching SID"
@@ -119,7 +119,7 @@ fi
 echo ""
 
 # --- TC-004b: check_session_ownership returns "other" for foreign per-session file (defense-in-depth) ---
-# Issue #681 F-02: when the hook payload's session_id is non-empty AND does not match
+# When the hook payload's session_id is non-empty AND does not match
 # the filename's session_id segment, the fast-path defense-in-depth branch must
 # return "other" rather than silently classifying as "own". This prevents a future
 # caller bypassing the resolver from being misclassified as own (AC-4 alignment).

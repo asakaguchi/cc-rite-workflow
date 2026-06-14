@@ -303,14 +303,14 @@ Read both files with the Read tool:
 - Current: Read `schema_version` from existing file. If missing, treat as v1.
 - Latest: Read `schema_version` from template. If missing, treat as v1.
 
-**Branching** (#491 Wiki follow-through を含む全 drift 追従 — #1459): schema 同等であってもテンプレートはスキーマ版を bump せずに active セクション/サブキー（`multi_session`・新規セクション・Wiki 等）を獲得し得るため、`current >= latest` 経路でも config に欠落している drift を back-add して最新デフォルトへ追従させる必要がある。以下のとおり分岐する。**表の実行順序は左から右** (Step 番号順ではなく矢印順):
+**Branching** (Wiki follow-through を含む全 drift 追従): schema 同等であってもテンプレートはスキーマ版を bump せずに active セクション/サブキー（`multi_session`・新規セクション・Wiki 等）を獲得し得るため、`current >= latest` 経路でも config に欠落している drift を back-add して最新デフォルトへ追従させる必要がある。以下のとおり分岐する。**表の実行順序は左から右** (Step 番号順ではなく矢印順):
 
 | Condition | Execution order (left → right) |
 |-----------|--------------------------------|
 | `current < latest` | (1) Step 3 Backup → (2) Step 4 Identify → (3) Step 5 Preview → (4) Step 6 Apply → (5) Step 7 Phase 4.7 |
 | `current >= latest` | (1) Step 3 Backup → (2) Step 4 Identify（drift のみ）→ (3) Step 6 Apply（multi_session/新規セクション/欠落サブキー/Wiki の back-add。User-customized 保全・冪等・preview なし）→ (4) Step 7 Phase 4.7 |
 
-両経路とも Step 6 が config を変更し得るため Step 3 Backup を必ず先に実行する (precondition)。`current >= latest` 経路は Step 5 Preview/confirm を挟まず、欠落している active セクション/サブキーのみを冪等に back-add する（テンプレート defaults への追従であり、User-customized 値（明示的な `enabled: false` を含む）は保全されるため無確認で適用する）。旧 Step 3.5 の Wiki 専用救済（#491）はこの一般化に吸収され、Wiki も他の active セクションと同様に Step 6 item 7 で back-add される（drift anchor SoT に一貫化）。
+両経路とも Step 6 が config を変更し得るため Step 3 Backup を必ず先に実行する (precondition)。`current >= latest` 経路は Step 5 Preview/confirm を挟まず、欠落している active セクション/サブキーのみを冪等に back-add する（テンプレート defaults への追従であり、User-customized 値（明示的な `enabled: false` を含む）は保全されるため無確認で適用する）。旧 Step 3.5 の Wiki 専用救済はこの一般化に吸収され、Wiki も他の active セクションと同様に Step 6 item 7 で back-add される（drift anchor SoT に一貫化）。
 
 `current >= latest` 経路で back-add 対象が皆無（全 active セクション/サブキーが既存）の場合、Step 6 は config を書き換えず `rite-config.yml は最新です (v{current})` を表示する。Phase 4.7 はそのまま実行され、Wiki 初期化済みなら Phase 4.7.2 が `wiki_status=already_initialized` を set して Skill 呼び出しは skip される (冪等)。
 
@@ -332,9 +332,9 @@ Compare current config against the template and classify each key:
 | **Deprecated key** (`project.name`, `commit.style`, `commit.enforce`, `commit.contextual`, `branch.release`, `branch.types`, `version`) | **Remove** — delete from config |
 | **Missing section** — any active top-level section above the `--- Advanced ---` marker (github, iteration, branch, commands, verification, issue, review, `fix`, etc. — **excluding `wiki:` and `multi_session:`**, which have dedicated rows below) | **Add** — insert the whole section from the template with default values |
 | **Missing sub-key** — a key newly added to the template *inside* a section the config already has (e.g., `review.fact_check.verify_internal_likelihood`) | **Add the missing key only** from the template default; **preserve** all existing sibling values (e.g., a customized `review.fact_check.max_claims`). No-op when the key already exists |
-| **`multi_session:` section** | **Back-add on --upgrade with `enabled: true`** (#1391 default-on; #1446 D-01). `multi_session:` is declared above the `--- Advanced ---` marker (active). When missing from an existing config, insert the template active block (`enabled: true` + `worktree_base`) so `--upgrade`-ed projects receive the same default-on behavior as new `/rite:init` generation. If a user's config already has a `multi_session:` block, it is preserved as a User-customized value (no overwrite — **including an explicit `enabled: false`**). Idempotent: no-op when the active section already exists |
+| **`multi_session:` section** | **Back-add on --upgrade with `enabled: true`** (default-on). `multi_session:` is declared above the `--- Advanced ---` marker (active). When missing from an existing config, insert the template active block (`enabled: true` + `worktree_base`) so `--upgrade`-ed projects receive the same default-on behavior as new `/rite:init` generation. If a user's config already has a `multi_session:` block, it is preserved as a User-customized value (no overwrite — **including an explicit `enabled: false`**). Idempotent: no-op when the active section already exists |
 | **Advanced section** (parallel, metrics, safety, investigate) | **Add as comments** — insert commented-out with default values |
-| **`wiki:` section** | **Step 3/4 は扱わない**。wiki セクションの追加は **Phase 4.1.2 Step 2 (新規生成: template の Advanced 境界より上にある active block が自動コピーされる) および Phase 4.1.3 Step 6 item 7 (Upgrade path: 未存在時に active block として append。`current < latest` / `current >= latest` 両経路で実行) の専権**。template 側にはコメント形式の `# wiki:` ブロックは存在しない (`#491` で active 位置に移動済み) ため、重複追加経路はない |
+| **`wiki:` section** | **Step 3/4 は扱わない**。wiki セクションの追加は **Phase 4.1.2 Step 2 (新規生成: template の Advanced 境界より上にある active block が自動コピーされる) および Phase 4.1.3 Step 6 item 7 (Upgrade path: 未存在時に active block として append。`current < latest` / `current >= latest` 両経路で実行) の専権**。template 側にはコメント形式の `# wiki:` ブロックは存在しない (active 位置に移動済み) ため、重複追加経路はない |
 | **Unknown key** (user-added keys not in template) | **Preserve with warning** — keep but display warning |
 
 **Unknown key 判定の scope**: Step 4 の "Unknown key" 判定 (user-added keys not in template) は、**template の `# --- Advanced (below this line) ---` 境界より上の active section のみ**を参照する。境界より下 (コメント形式の Advanced sections + 末尾コメント) は template 側で意図的に省略または注記のため存在する領域であり、ユーザー設定の classification 対象外。
@@ -393,7 +393,7 @@ Apply the following:
 3. Add missing sections from the template using the Edit tool. Display "新しいセクションを追加しました: {sections}".
 4. **Merge missing sub-keys**: for each active section already present in the config, compare its keys against the template section and add **only the missing sub-keys** (with their template default values) using the Edit tool, preserving every existing sibling value. No-op for keys already present (idempotent). Display "サブキーを補完しました: {section.key, ...}" only when at least one key was added.
 5. Add Advanced sections as comments (prefixed with `#`) using the Edit tool
-6. **If `multi_session:` section is absent**: append the active `multi_session:` block from the template (`enabled: true` + `worktree_base`) so `--upgrade`-ed projects get the same default-on session-worktree behavior as new generation (#1446 D-01).
+6. **If `multi_session:` section is absent**: append the active `multi_session:` block from the template (`enabled: true` + `worktree_base`) so `--upgrade`-ed projects get the same default-on session-worktree behavior as new generation.
 
    **Block source (SSOT)**: Read `{plugin_root}/templates/config/rite-config.yml` and extract the active `multi_session:` block (the `multi_session:` key line through its last sub-key, above the `# --- Advanced (below this line) ---` marker). Do not duplicate the literal here — any change to template defaults propagates to both new-install and `--upgrade`.
 
@@ -891,7 +891,7 @@ Add the following hooks to `.claude/settings.local.json`:
 - **Non-rite hooks**: If `.claude/settings.local.json` already has hooks whose command is NOT a **rite hook command** (per the 判定基準 above — this includes look-alikes such as `favorite/hooks/`), preserve them as-is. Do not overwrite or remove user-defined hooks.
 - **rite hooks (path update)**: If existing hooks are **rite hook commands** (per the 判定基準 above) but use an outdated path (detected in Phase 4.5.1.1), **replace** those hook entries with the updated `{hooks_dir}` path. This ensures re-running `/rite:init` always corrects stale paths.
 - **Missing rite hooks**: If any of the required rite hooks (PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, PostToolUse) are not present, add them. PostToolUse has two matchers (`Bash` and `Edit|Write|MultiEdit`) — both entries must coexist.
-- **Obsolete hooks**: If `post-compact-guard.sh` (PreToolUse) または `context-pressure.sh` (PostToolUse) exists, **remove** it. `post-compact-guard.sh` は #133 で `post-compact.sh` に置き換え済み。`context-pressure.sh` は #481 で廃止済み。
+- **Obsolete hooks**: If `post-compact-guard.sh` (PreToolUse) または `context-pressure.sh` (PostToolUse) exists, **remove** it. `post-compact-guard.sh` は `post-compact.sh` に置き換え済み。`context-pressure.sh` は廃止済み。
 - **Matcher rules**: `post-tool-wm-sync.sh` and `pre-tool-bash-guard.sh` use `"matcher": "Bash"` to fire only on Bash tool calls. `scripts/bang-backtick-edit-hook.sh` uses `"matcher": "Edit|Write|MultiEdit"` to fire only on file-edit tool calls. All other hooks use `"matcher": ""`.
 - **Permission for WM_SOURCE**: Add `"Bash(WM_SOURCE:*)"` to `.permissions.allow` if not already present. This allows the LLM to execute work memory update commands without prompting (defense-in-depth alongside the PostToolUse hook).
 
@@ -986,7 +986,7 @@ The enum values are identifier-compatible (snake_case, no whitespace or parenthe
 
 Read `wiki.enabled` from `rite-config.yml`. Wiki is **opt-out**: missing section / missing key / unparseable value → treat as `true`. This mirrors `commands/wiki/init.md` ステップ 1.1 logic, including the typo-detection WARNING path.
 
-> **sed range robustness note**: The `sed -n '/^wiki:/,/^[a-zA-Z]/p'` pattern terminates at the next line starting with any ASCII letter — which matches the next top-level YAML key. This relies on `rite-config.yml` following the standard shape produced by `/rite:init` (wiki section followed by another top-level key or EOF). In pathological user-customized configs where the wiki section is the last top-level block and is followed only by comment lines, sed reads to EOF, which is still correct. The known limitation: if a user inserts comment lines **inside** the wiki section that start with a letter (e.g., `auto_query: true # note:`), the trailing `# note:` does not affect sed (it's part of the same line). Therefore this pattern is safe for configs conforming to the template shape. Drift in non-standard configs is tracked as a known limitation, not a blocker for #491.
+> **sed range robustness note**: The `sed -n '/^wiki:/,/^[a-zA-Z]/p'` pattern terminates at the next line starting with any ASCII letter — which matches the next top-level YAML key. This relies on `rite-config.yml` following the standard shape produced by `/rite:init` (wiki section followed by another top-level key or EOF). In pathological user-customized configs where the wiki section is the last top-level block and is followed only by comment lines, sed reads to EOF, which is still correct. The known limitation: if a user inserts comment lines **inside** the wiki section that start with a letter (e.g., `auto_query: true # note:`), the trailing `# note:` does not affect sed (it's part of the same line). Therefore this pattern is safe for configs conforming to the template shape. Drift in non-standard configs is tracked as a known limitation, not a blocker for the wiki section drift handling.
 
 ```bash
 wiki_enabled=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \

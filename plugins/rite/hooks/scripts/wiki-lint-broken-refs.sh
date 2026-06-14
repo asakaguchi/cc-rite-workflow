@@ -18,11 +18,11 @@
 #   (same structural guarantee as wiki-lint-skipped-refs.sh /
 #   wiki-lint-source-refs.sh for ステップ 6.0 / 6.2).
 #
-# Fence handling improvement over the inline implementation:
-#   The old `sed -E '/^```/,/^```/d'` only removed fences starting at column 0.
-#   This helper tracks fence open/close indent-agnostically with awk
-#   (`/^[[:space:]]*```/`), so list-indented fences no longer leak their
-#   contents into link extraction (旧 lint.md ステップ 7 リンク抽出の既知の限界の解消)。
+# Fence handling:
+#   A column-0-only `sed -E '/^```/,/^```/d'` removes fences starting at column 0
+#   but misses list-indented fences. This helper tracks fence open/close
+#   indent-agnostically with awk (`/^[[:space:]]*```/`), so list-indented fences
+#   do not leak their contents into link extraction.
 #
 # Inputs:
 #   --branch-strategy {separate_branch|same_branch}  (required)

@@ -42,14 +42,14 @@
 #
 # Exit codes:
 #   0 = decomposition completed (per-sub create/link failures are non-blocking
-#       and counted, NOT fatal — Issue #514 contract)
+#       and counted, NOT fatal — per the counting contract)
 #   1 = fatal (missing/invalid spec, empty parent body, parent create failed)
 #   2 = usage error
 #
 # NOTE: `set -e` is intentionally omitted. The Sub-Issue loop counts per-item
 # create/link failures and continues (non-blocking, mirroring the original
 # create.md inline block). `set -e` would abort on the first non-zero
-# `create_rc` capture and break the Issue #514 counting contract.
+# `create_rc` capture and break the counting contract.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -111,7 +111,7 @@ workdir=$(spec_get '.workdir // empty')
 # emits `ERROR: ...` on stderr while still printing valid JSON on stdout with
 # exit 0 on partial-Projects failures. A `2>&1` capture would splice
 # that ERROR ahead of the JSON and break the downstream `jq -r .issue_number`,
-# silently miscounting an actually-created Sub-Issue as failed (#514 contract break).
+# silently miscounting an actually-created Sub-Issue as failed (counting contract break).
 helper_err_file=$(mktemp "${TMPDIR:-/tmp}/rite-decompose-helper-err.XXXXXX") \
   || helper_err_file="${TMPDIR:-/tmp}/rite-decompose-helper-err.$$"
 trap 'rm -f "$helper_err_file"; if [ -n "$workdir" ] && [ -d "$workdir" ]; then rm -rf "$workdir"; fi' EXIT INT TERM
@@ -184,10 +184,12 @@ failed_count=0
 link_failures=0
 created_numbers=()
 expected_sub_count=$(printf '%s' "$SPEC_JSON" | jq '.sub_issues | length')
-# Surface jq parse failure (malformed CSV / embedded newline) instead of
-# silently falling back to an empty labels array — a silent empty would
-# strip the user's intended labels without any visible signal.
-sub_labels_json=$(printf '%s' "$labels_csv" | jq -R 'split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))' 2>/dev/null) || {
+# labels_csv を --arg で渡し stdin を経由しない。`jq -R` 方式は空の labels_csv に対し
+# 空出力 + exit 0 を返すため sub_labels_json="" となり、直後の `--argjson labels ""` が
+# invalid JSON で落ちる一方 `|| "[]"` ガードは exit 0 なので発火しない（空ラベルでの
+# 分解が必ず失敗する境界バグになる）。--arg なら "" → [] が常に有効な JSON 配列として得られ、
+# 非空 CSV も同じ結果になる。ガードは malformed 入力への保険として残す。
+sub_labels_json=$(jq -cn --arg csv "$labels_csv" '$csv | split(",") | map(select(length>0) | gsub("^\\s+|\\s+$"; ""))' 2>/dev/null) || {
   echo "WARNING: labels_csv の jq パースに失敗。labels を空で続行: $labels_csv" >&2
   sub_labels_json="[]"
 }

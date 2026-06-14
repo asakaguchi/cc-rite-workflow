@@ -2,7 +2,7 @@
 # gitignore-health-check-verify-negation.test.sh
 #
 # Smoke tests for the `--verify-negation` mode of gitignore-health-check.sh
-# (wiki/init.md ステップ 1.3.4 delegation target, Issue #1195 block #11).
+# (wiki/init.md ステップ 1.3.4 delegation target).
 #
 # The mode is post-injection verification: caller (wiki/init.md ステップ 1.3.4) is
 # same_branch + has just injected the `!.rite/wiki/` negation, so the mode skips
@@ -121,6 +121,6 @@ else
 fi
 
 if ! print_summary "$(basename "$0")" \
-  "drift: gitignore-health-check.sh --verify-negation の挙動が変わった可能性。wiki/init.md ステップ 1.3.4 委譲契約 (Issue #1195 #11) を参照。"; then
+  "drift: gitignore-health-check.sh --verify-negation の挙動が変わった可能性。wiki/init.md ステップ 1.3.4 委譲契約を参照。"; then
   exit 1
 fi

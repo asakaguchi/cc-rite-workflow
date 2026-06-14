@@ -7,11 +7,11 @@
 # surface at runtime as a fatal exit when a user actually creates an Issue —
 # too late to catch in review.
 #
-# Two-path architecture (PR #1205 / refs #1195 item #9):
+# Two-path architecture (item #9):
 #   - Single-Issue path  = `commands/issue/create.md` ステップ 4.3
 #                          → `args_json=$(jq -n ...)` constructor + 1 direct
 #                            `create-issue-with-projects.sh "$args_json"` callsite
-#                            (Issue #1196 で入れ子 $() を分離。単一 JSON 引数契約は不変)。
+#                            (入れ子 $() を分離。単一 JSON 引数契約は不変)。
 #                            (A single Issue has no children, so NO link-sub-issue.sh here.)
 #   - Decompose path     = `scripts/decompose-issues.sh`
 #                          → parent + sub-issue loop both call
@@ -25,10 +25,10 @@
 # This test asserts each path independently and pins the combined total so a
 # future re-inlining or silent removal in either file is caught.
 #
-# Additional single-create callers (PR #1292 / refs #1293):
+# Additional single-create callers:
 #   - commands/pr/create.md Phase 2.5.5 → scope-out (検出問題) Issue 起票
 #   - commands/pr/cleanup.md ステップ 3  → 残作業 Issue 起票
-# Both migrated to the args_json 分離形式 in PR #1292 and share the Single-Issue
+# Both migrated to the args_json 分離形式 and share the Single-Issue
 # canonical contract (`args_json=$(jq -n ...)` constructor + a single
 # `create-issue-with-projects.sh "$args_json"` callsite). TC-9..TC-11 pin them so
 # a regression to the nested `"$(jq -n ...)"` form is caught directly here, not
@@ -48,7 +48,7 @@ PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 CREATE_MD="$PLUGIN_ROOT/commands/issue/create.md"
 DECOMPOSE_SH="$PLUGIN_ROOT/scripts/decompose-issues.sh"
 SOT_MD="$PLUGIN_ROOT/references/issue-create-with-projects.md"
-# Additional single-create callers migrated to the args_json 分離形式 in PR #1292
+# Additional single-create callers migrated to the args_json 分離形式
 # (pinned by TC-9..TC-11)。
 PR_CREATE_MD="$PLUGIN_ROOT/commands/pr/create.md"
 PR_CLEANUP_MD="$PLUGIN_ROOT/commands/pr/cleanup.md"
@@ -60,7 +60,7 @@ done
 # ──────────────────────────────────────────────────────────────────────
 # TC-1: Single-Issue path (create.md ステップ 4.3) has exactly 1 canonical
 #       create-issue-with-projects.sh callsite using the separated
-#       `"$args_json"` pattern (Issue #1196).
+#       `"$args_json"` pattern.
 # ──────────────────────────────────────────────────────────────────────
 create_md_canonical=$(grep -cE 'bash [^|]*create-issue-with-projects\.sh "\$args_json"' "$CREATE_MD" || true)
 if [ "$create_md_canonical" -ge 1 ]; then
@@ -182,12 +182,12 @@ check_no_flag_title_proximity "TC-3b no flag-style --title near decompose-issues
   "$DECOMPOSE_SH" 'bash "[$]CREATE_SCRIPT"'
 
 # ──────────────────────────────────────────────────────────────────────
-# TC-9 / TC-10: Additional single-create callers (PR #1292 で args_json 分離形式
+# TC-9 / TC-10: Additional single-create callers (args_json 分離形式
 #   へ移行) も Single-Issue path (create.md 4.3) と同一の canonical 契約を持つ:
 #     - commands/pr/create.md Phase 2.5.5 → scope-out Issue 起票
 #     - commands/pr/cleanup.md ステップ 3  → 残作業 Issue 起票
 #   両 caller が nested `"$(jq -n ...)"` 形式へ戻る回帰を直接 pin する
-#   (従来は bash-heaviness-check.sh の間接保護のみ — Issue #1293)。各 caller につき
+#   (bash-heaviness-check.sh の間接保護だけではこの回帰を捕捉できないため)。各 caller につき
 #   (a) canonical 単一引数 callsite の存在、(b) args_json が jq -n の 分離形式で
 #   構築されること、(c) 全 create-issue-with-projects.sh 呼び出しが canonical で
 #   あること、を assert する (create.md の TC-1 / TC-1c / TC-2 と対称)。
@@ -352,7 +352,7 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────
-# TC-8: create.md は flow-state ライフサイクルに関与しない (Issue #1184)
+# TC-8: create.md は flow-state ライフサイクルに関与しない
 #       ステップ6 (flow-state completed 化) 削除の regression を pin する。
 #       create.md に flow-state.sh set / --phase completed が再混入したら検出し、
 #       「別の active な work フローの flow-state を誤って上書きする」回帰を防ぐ。
@@ -360,9 +360,9 @@ fi
 flow_state_set_count=$(grep -cE 'flow-state\.sh set' "$CREATE_MD" || true)
 phase_completed_count=$(grep -cE '\-\-phase completed' "$CREATE_MD" || true)
 if [ "$flow_state_set_count" -eq 0 ] && [ "$phase_completed_count" -eq 0 ]; then
-  pass "TC-8 create.md は flow-state を init/所有しない (flow-state.sh set=$flow_state_set_count, --phase completed=$phase_completed_count; Issue #1184)"
+  pass "TC-8 create.md は flow-state を init/所有しない (flow-state.sh set=$flow_state_set_count, --phase completed=$phase_completed_count)"
 else
-  fail "TC-8 create.md に flow-state 操作が再混入 (flow-state.sh set=$flow_state_set_count, --phase completed=$phase_completed_count). Issue #1184: issue:create は flow-state ライフサイクルに関与してはならない"
+  fail "TC-8 create.md に flow-state 操作が再混入 (flow-state.sh set=$flow_state_set_count, --phase completed=$phase_completed_count). issue:create は flow-state ライフサイクルに関与してはならない"
 fi
 
 print_summary "create-md-invocation-symmetry.test.sh"

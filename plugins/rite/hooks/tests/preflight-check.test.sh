@@ -47,7 +47,7 @@ run_hook() {
   return $rc
 }
 
-# Helper: path to the per-session compact-state file (Issue #1371). Mirrors
+# Helper: path to the per-session compact-state file. Mirrors
 # preflight-check.sh's derivation: .rite/sessions/<sid>.flow-state → .compact-state.
 compact_state_path() {
   local dir="$1"
@@ -55,7 +55,7 @@ compact_state_path() {
   echo "$dir/.rite/sessions/${sid}.compact-state"
 }
 
-# Helper: create per-session compact state file (Issue #1371). Writes a
+# Helper: create per-session compact state file. Writes a
 # deterministic .rite-session-id so preflight-check.sh resolves the same
 # per-session path that pre-compact.sh would write to.
 create_compact_state() {

@@ -6,11 +6,11 @@
 # Edit/Write touches a markdown file under the rite plugin tree
 # (`plugins/rite/{commands,skills,agents,references}/**/*.md`). Detection
 # emits a stderr warning but always exits 0 — this hook is warn-only and
-# MUST NOT block Edit/Write completion (per Issue #691 §4.5 and the
-# Claude Code hooks convention that PostToolUse failures should not break
-# tool execution after the fact).
+# MUST NOT block Edit/Write completion, following the Claude Code hooks
+# convention that PostToolUse failures should not break tool execution
+# after the fact.
 #
-# Issue #691 / Phase 5.1 (経路 C — immediate per-edit detection).
+# 経路 C — immediate per-edit detection.
 # Companion to /rite:pr:create and /rite:pr:ready Phase 1 pre-check
 # (経路 D — pre-PR hard gate, exit 1).
 #
@@ -131,8 +131,8 @@ case "$hook_rc" in
     echo "  → Apply Style A (full-width 「!」) or Style B (expand 'if ! cmd') — see plugins/rite/hooks/scripts/bang-backtick-check.sh header for guidance." >&2
     ;;
   2)
-    # Invocation error in the underlying script. Per Issue #691 §4.5,
-    # demote to warning — the bulk gate (経路 D) will catch any escape.
+    # Invocation error in the underlying script. Demote to warning —
+    # the bulk gate (経路 D) will catch any escape.
     echo "⚠️ bang-backtick-check.sh invocation error during PostToolUse hook (rc=2):" >&2
     printf '%s\n' "$hook_output" >&2
     echo "  → Defense-in-depth: PR creation gate (経路 D) will re-run the check before submission." >&2

@@ -56,14 +56,21 @@ fi
 # SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
-# Write plugin root for command-file consumption (version-independent, #241)
+# Write plugin root for command-file consumption (version-independent)
 _plugin_root="$(dirname "$SCRIPT_DIR")"
 if [ -d "$_plugin_root/hooks" ]; then
   printf '%s' "$_plugin_root" > "$STATE_ROOT/.rite-plugin-root" 2>/dev/null || true
 fi
 
-# Save session_id to .rite-session-id for flow-state.sh auto-read
-if [ -n "$SESSION_ID" ]; then
+# Save session_id to .rite-session-id ONLY as the env-absent fallback channel
+# (Issue #1530). When the runtime exposes CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID,
+# that per-session env var is authoritative for flow-state.sh session_id resolution,
+# so writing the single shared `.rite-session-id` would just let concurrent sessions
+# clobber each other's value — the original flow-state contamination / worktree
+# mis-reap. Skipping the write when env is present stops every session start from
+# overwriting the shared file; env-absent runtimes (CI / headless / non-Code clients)
+# still get the file as their sole resolution channel, preserving backward compat.
+if [ -n "$SESSION_ID" ] && [ -z "${CLAUDE_CODE_SESSION_ID:-}" ] && [ -z "${CLAUDE_SESSION_ID:-}" ]; then
   (umask 077; printf '%s' "$SESSION_ID" > "$STATE_ROOT/.rite-session-id") 2>/dev/null || {
     [ -n "${RITE_DEBUG:-}" ] && echo "[rite] WARNING: Failed to write .rite-session-id" >&2
     true
@@ -77,7 +84,7 @@ fi
 # Cleans both the per-session compact-state (.rite/sessions/{sid}.compact-state,
 # derived from the resolved STATE_FILE) and the legacy shared path
 # (.rite-compact-state). Removing the legacy file here is the migration path for
-# pre-#1371 residue (AC-3): a leftover shared snapshot is no longer consumed by
+# legacy residue: a leftover shared snapshot is no longer consumed by
 # post-compact.sh (which now reads the per-session path), so it must be reaped
 # here. Both are stale recovery snapshots once no active flow exists — there is
 # no silent destruction of live state.
@@ -151,7 +158,7 @@ if [ "$SOURCE" = "startup" ]; then
       esac
     fi
 
-    # --- Deprecated flow_state.schema_version: 1 warning (Issue #1458) ---
+    # --- Deprecated flow_state.schema_version: 1 warning ---
     # The legacy single-file (.rite-flow-state) selection path was removed in the
     # per-session unification; flow-state is always per-session now. An explicit
     # `flow_state.schema_version: 1` no longer selects single-file — it is ignored.
@@ -239,8 +246,8 @@ if [ "$SOURCE" = "startup" ]; then
     # The JSON transform (rite-hook detection via RITE_HOOK_RE + selective removal) is
     # delegated to the shared scripts/settings-local-rite-hook-cleanup.py — the same
     # single-source script the .sh wrapper uses — so the regex lives in exactly one place
-    # (Issue #1239; previously an inline python3 copy duplicated both the regex and the
-    # whole transform). Its documented exit codes are reused here: 0 = rite hooks removed
+    # rather than being duplicated as an inline python3 copy of both the regex and
+    # the whole transform. Its documented exit codes are reused here: 0 = rite hooks removed
     # (cleaned JSON on stdout → captured into _repair_tmp), 1 = intentional no-op (no
     # hooks key / no rite entries), 2 = invalid JSON. Distinguishing the no-op (rc=1) from
     # real failures (rc=2, etc.) is required so settings.local.json corruption surfaces
@@ -354,11 +361,11 @@ fi
 # Resolve active flow-state file path.
 # `flow-state.sh path` always returns the per-session file
 # (`.rite/sessions/<sid>.flow-state`) — the legacy single-file `.rite-flow-state`
-# selection path was removed (Issue #1458). The empty-string fallback below keeps
+# selection path was removed. The empty-string fallback below keeps
 # the hook non-blocking under helper deploy regression (e.g. chmod -x or partial
 # install) by skipping recovery rather than reading a single-file form.
 #
-# Issue #749: stderr pass-through for diagnostic visibility, via canonical
+# Stderr pass-through for diagnostic visibility, via canonical
 # helper `_mktemp-stderr-guard.sh`.
 # - mktemp 失敗時に 3 行 WARNING を emit (silent fall-through 解消)
 # - chmod 600 / TMPDIR 尊重を helper 経由で取得
@@ -394,6 +401,33 @@ if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
   # Clean stale compact state on startup/clear when no flow state exists
   _cleanup_stale_compact
   exit 0
+fi
+
+# --- Dangling session-worktree self-heal (multi-session §8 / Issue #1524) ---
+# If the recorded `worktree` path no longer exists (e.g. it was reaped by another
+# session's lazy GC while this session was paused), null the field so neither the
+# orchestrator's re-entry path (open.md Step 0.5 / resume.md) nor a later
+# EnterWorktree is aimed at a dead directory. The harness's own /clear cwd-restore
+# cannot be intercepted by rite, so this is the SECONDARY defense (the primary is
+# the reap-side cross-session liveness guard in pr-cycle-cleanup.sh). Runs on both
+# startup and clear, for active and inactive state alike (a dangling reference is
+# harmful to a later resume regardless of `active`). `flow-state.sh clear-worktree`
+# resolves the same session_id as `path` above (same .rite-session-id + RITE_STATE_ROOT),
+# so it targets THIS session's own state file. Non-blocking: failures WARN and the
+# hook continues (AC-5).
+_recorded_wt_err=$(mktemp 2>/dev/null) || _recorded_wt_err=""
+_recorded_wt=$(jq -r '.worktree // ""' "$STATE_FILE" 2>"${_recorded_wt_err:-/dev/null}") || _recorded_wt=""
+if [ -n "$_recorded_wt_err" ] && [ -s "$_recorded_wt_err" ]; then
+  echo "rite: session-start: WARNING: jq read of .worktree failed (STATE_FILE may be corrupt)" >&2
+  head -3 "$_recorded_wt_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+fi
+[ -n "$_recorded_wt_err" ] && rm -f "$_recorded_wt_err"
+if [ -n "$_recorded_wt" ] && [ ! -d "$_recorded_wt" ]; then
+  if RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" clear-worktree >/dev/null 2>&1; then
+    echo "[rite] worktree '$(printf '%s' "$_recorded_wt" | neutralize_ctrl)' が存在しないため flow-state から参照をクリアしました（再入場は試みません）。" >&2
+  else
+    echo "[rite] WARNING: session-start: dangling worktree 参照のクリアに失敗しました（非blocking で継続します）。" >&2
+  fi
 fi
 
 _active_err=$(mktemp 2>/dev/null) || _active_err=""
@@ -567,4 +601,4 @@ EOF
 # --- Session ID notification ---
 # session_id is now auto-read from .rite-session-id by flow-state.sh.
 # stdout output removed to prevent Claude from fabricating inconsistent values
-# via the {session_id} placeholder. See Issue #221.
+# via the {session_id} placeholder.

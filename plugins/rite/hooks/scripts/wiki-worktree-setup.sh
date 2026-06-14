@@ -34,8 +34,8 @@
 #     exists remotely, the caller (e.g. /rite:wiki:init) is responsible
 #     for running `git fetch origin wiki:wiki` first.
 #   - The script does NOT prune stale worktrees. If `.rite/wiki-worktree`
-#     was previously deleted without `git worktree remove`, run
-#     `git worktree prune` manually before re-invoking this script.
+#     was deleted without `git worktree remove`, run `git worktree prune`
+#     manually before re-invoking this script.
 
 set -euo pipefail
 
@@ -114,7 +114,7 @@ if [[ ! -f "rite-config.yml" ]]; then
 fi
 
 # -----------------------------------------------------------------------
-# rite-config.yml parser + branch name validator (shared lib, Issue #549)
+# rite-config.yml parser + branch name validator (shared lib)
 # -----------------------------------------------------------------------
 # shellcheck source=lib/wiki-config.sh
 source "$_SCRIPT_DIR/lib/wiki-config.sh"

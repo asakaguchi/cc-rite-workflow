@@ -81,19 +81,22 @@ _resolve_session_id() {
     _validate_session_id "$override" "--session override" || return 1
     printf '%s\n' "$override"; return 0
   fi
-  if [ -f "$SESSION_ID_FILE" ]; then
-    local sid; sid=$(tr -d '[:space:]' < "$SESSION_ID_FILE" 2>/dev/null) || sid=""
-    if [ -n "$sid" ]; then
-      _validate_session_id "$sid" "$SESSION_ID_FILE" || return 1
-      printf '%s\n' "$sid"
-      return 0
-    fi
-  fi
-  # Claude Code runtime exposes CLAUDE_CODE_SESSION_ID; older / non-Code clients used
-  # CLAUDE_SESSION_ID. Accept both so cmd_get / cmd_set --if-exists do not silently
-  # degrade when `.rite-session-id` is absent but the runtime env IS set.
-  # 両 env-var 経路にも _validate_session_id を適用し、無検証で _state_path に渡る
-  # path-traversal / log-injection 経路を遮断する。
+  # Priority (Issue #1530): override → env CLAUDE_CODE_SESSION_ID → env
+  # CLAUDE_SESSION_ID → `.rite-session-id` file (env-absent fallback).
+  #
+  # The env var is per-session, so it isolates concurrent Claude sessions that
+  # share one state root (the main checkout). The `.rite-session-id` file is a
+  # single shared path that every session-start hook used to overwrite, so
+  # preferring it (the previous order) let the last session's id "leak" into the
+  # others — flow-state was written to a foreign `{sid}.flow-state` and an in-use
+  # worktree could be mis-reaped. Demoting the file to the env-absent fallback
+  # keeps backward compatibility for CI / headless / non-Code runtimes (which set
+  # no env var) while making the env var authoritative whenever it is present.
+  #
+  # Claude Code exposes CLAUDE_CODE_SESSION_ID; older / non-Code clients used
+  # CLAUDE_SESSION_ID — accept both. Every source (override / env / file) passes
+  # through _validate_session_id before reaching _state_path, blocking the
+  # unvalidated path-traversal / log-injection vector (§4.4 MUST NOT).
   if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
     _validate_session_id "$CLAUDE_CODE_SESSION_ID" "CLAUDE_CODE_SESSION_ID env" || return 1
     printf '%s\n' "$CLAUDE_CODE_SESSION_ID"
@@ -103,6 +106,14 @@ _resolve_session_id() {
     _validate_session_id "$CLAUDE_SESSION_ID" "CLAUDE_SESSION_ID env" || return 1
     printf '%s\n' "$CLAUDE_SESSION_ID"
     return 0
+  fi
+  if [ -f "$SESSION_ID_FILE" ]; then
+    local sid; sid=$(tr -d '[:space:]' < "$SESSION_ID_FILE" 2>/dev/null) || sid=""
+    if [ -n "$sid" ]; then
+      _validate_session_id "$sid" "$SESSION_ID_FILE" || return 1
+      printf '%s\n' "$sid"
+      return 0
+    fi
   fi
   echo "ERROR: cannot resolve session_id" >&2; return 1
 }
@@ -190,7 +201,7 @@ cmd_set() {
     # — emit a WARNING so the silent skip is observable. Truly first-time sessions (no
     # `.rite-session-id`) stay silent to preserve the graceful no-op contract that
     # `commands/wiki/ingest.md` / `commands/pr/ready.md` 等の `--if-exists` caller が depend on
-    # (issue:create は Issue #1184 で flow-state 非依存化され、本契約の依存者ではなくなった)。
+    # (issue:create は flow-state 非依存化され、本契約の依存者ではなくなった)。
     if [ -f "$SESSION_ID_FILE" ]; then
       # basename only — multi-tenant 環境での絶対 path leakage を最小化 (cmd_get と対称化)
       echo "WARNING: flow-state.sh cmd_set: --if-exists skipped (resolved session_id=$sid has no state file at file: $(basename "$path"); possible stale .rite-session-id or sid drift)" >&2
@@ -200,7 +211,7 @@ cmd_set() {
   # Pull existing values for fields the caller did not specify (merge behavior).
   # `cur_last_synced` は post-tool-wm-sync.sh が runtime-only field として書き続けるため、
   # cmd_set が schema 構築時に既存値を merge しないと毎回 wipe され、wm-sync の diff guard
-  # が常に「変化あり」と判定 → GitHub API spam (issue-comment-wm-sync 連発、PR #1089 H1)。
+  # が常に「変化あり」と判定 → GitHub API spam (issue-comment-wm-sync 連発)。
   # 既存値が無い場合は空文字 → null として書き込み、wm-sync 側の `// "" | tostring` で
   # 空文字に縮退する (空 vs 非空 を別値として扱う wm-sync の diff guard と整合)。
   #
@@ -244,8 +255,7 @@ cmd_set() {
   [ -z "$active" ] && active=$cur_active
   local err_count=0
   [ $preserve_error -eq 1 ] && err_count=$cur_err
-  # `handoff` は review↔fix loop / cleanup wiki チェーンの one-shot マーカー (Issue #1168 / #1176 /
-  # #1245)。`error_count` と同様に
+  # `handoff` は review↔fix loop / cleanup wiki チェーンの one-shot マーカー。`error_count` と同様に
   # **phase transition (= 毎 set) でデフォルトクリア** する設計のため、merge-read (cur_*) に含めず
   # `--handoff` が明示指定された時だけ書き込む。`--handoff` 省略時は key 自体を付与しない
   # (= 空) ことで、loop 外の set が自動的に handoff をクリアし、stale handoff が次サイクルに漏れない。
@@ -281,6 +291,40 @@ cmd_set() {
   _atomic_write "$path" "$new" || return 1
 }
 
+# clear-worktree: surgically remove the `worktree` field from a session's
+# flow-state, returning the file to its non-worktree (additive-key-absent) shape.
+# Mirrors cmd_deactivate's single-field write (`.active=false`) rather than going
+# through cmd_set, so callers need NOT know/preserve --phase/--next: cmd_set
+# requires both and would overwrite phase, forcing a read-modify-write of the
+# owner's phase/next just to clear one key (wider race window). Two callers:
+#   1. pr-cycle-cleanup.sh Step 5 reap → null the owning session's dangling
+#      `worktree` after the directory is removed (--session targets the owner).
+#   2. session-start.sh dangling self-heal → null the current session's `worktree`
+#      when the recorded path no longer exists.
+# Idempotent: no-op (no write, no updated_at churn) when the key is already
+# absent or the state file does not exist — keeps wm-sync's diff guard quiet and
+# preserves the merge-preserve contract of cmd_set untouched (the `--worktree ""`
+# merge-preserve path in cmd_set is intentionally NOT changed). Routes through
+# `_atomic_write` per the corruption-prevention convention; rc is propagated.
+cmd_clear_worktree() {
+  local session=""
+  while [ $# -gt 0 ]; do case "$1" in
+    --session) session="$2"; shift 2 ;;
+    *) echo "ERROR: unknown option: $1" >&2; return 1 ;;
+  esac; done
+  local sid path; sid=$(_resolve_session_id "$session") || return 1
+  path=$(_state_path "$sid"); [ ! -f "$path" ] && return 0
+  # Idempotent: skip the write when there is no worktree key. jq read failure
+  # (corrupt JSON) falls through to "false" → no-op; a corrupt file is left for
+  # the cmd_set/cmd_get WARNING paths to surface rather than rewritten blindly here.
+  local has_wt; has_wt=$(jq -r 'has("worktree")' "$path" 2>/dev/null) || has_wt="false"
+  [ "$has_wt" = "true" ] || return 0
+  local now updated; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  updated=$(jq --arg ts "$now" 'del(.worktree) | .updated_at = $ts' "$path") || return 1
+  # `_atomic_write` rc 伝播 (cmd_set / cmd_deactivate / `_migrate_file` と対称、header 契約遵守)。
+  _atomic_write "$path" "$updated" || return 1
+}
+
 cmd_get() {
   local field="" default="" session="" jq_filter=""
   while [ $# -gt 0 ]; do case "$1" in
@@ -296,7 +340,7 @@ cmd_get() {
   trap '[ -n "${jq_err:-}" ] && rm -f "${jq_err:-}"' RETURN
   # Do not silence _resolve_session_id stderr: when neither `.rite-session-id` nor
   # the env vars are usable, the helper's ERROR message must surface so the silent
-  # "empty + rc=0" failure path observed in Issue #1142 becomes diagnosable.
+  # "empty + rc=0" failure path becomes diagnosable.
   sid=$(_resolve_session_id "$session") || { printf '%s\n' "$default"; return 0; }
   path=$(_state_path "$sid")
   if [ ! -f "$path" ]; then
@@ -474,17 +518,19 @@ case "${1:-}" in
   set) shift; cmd_set "$@" ;;
   get) shift; cmd_get "$@" ;;
   deactivate) shift; cmd_deactivate "$@" ;;
+  clear-worktree) shift; cmd_clear_worktree "$@" ;;
   consume-handoff) shift; cmd_consume_handoff "$@" ;;
   migrate) shift; cmd_migrate "$@" ;;
   path) shift; cmd_path "$@" ;;
   *)
     cat >&2 <<EOF
-Usage: $0 {set|get|deactivate|consume-handoff|migrate|path} [options]
+Usage: $0 {set|get|deactivate|clear-worktree|consume-handoff|migrate|path} [options]
   set --phase <P> --next <T> [--issue N] [--branch S] [--pr N] [--parent-issue N]
       [--active true|false] [--handoff CMD] [--session UUID] [--if-exists] [--preserve-error-count]
   get --field <F> [--default V] [--session UUID]
       | --jq-filter <FILTER> [--default V] [--session UUID]
   deactivate [--next T] [--session UUID]
+  clear-worktree [--session UUID]    # surgically del(.worktree); idempotent, no phase/next needed
   consume-handoff [--session UUID]   # print + clear the one-shot handoff marker
   migrate [--dry-run] [--verbose]
   path [--session UUID]

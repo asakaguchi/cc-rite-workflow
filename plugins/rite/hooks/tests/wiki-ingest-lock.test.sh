@@ -84,7 +84,8 @@ assert "TC-8 holder is env sid (SID_A), not stale file sid (SID_B)" "$SID_A" "$(
 # empty resolution would also yield. This pins that the file fallback returns SID_B specifically.
 bash "$WIL" release --session "$SID_A" >/dev/null 2>&1 || true
 rm -rf "$LOCKDIR" 2>/dev/null || true
-mk_active "$SID_B"                                  # holder SID_B; file also SID_B (set above)
+printf '%s' "$SID_B" > "$ROOT/.rite-session-id"     # self-contained: set the file sid this block relies on
+mk_active "$SID_B"                                  # holder SID_B; file SID_B (set just above)
 env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$WIL" acquire >/dev/null
 assert "TC-8 env-absent acquire holder resolved via file sid (SID_B)" "$SID_B" "$(cat "$LOCKDIR/session_id")"
 assert "TC-8 env-absent check own (resolver returned file sid SID_B == holder)" "own" "$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$WIL" check)"

@@ -112,7 +112,8 @@ assert "TC-13 no-override claim holder is env sid (SID_A), not stale file sid (S
 # Part 2: env-absent fallback resolves the FILE sid (SID_B) — proven by holder==SID_B AND check==own
 # (resolver returned SID_B == holder), not merely a non-holder classification that empty would also give.
 rm -f "$ROOT/.rite/state/issue-claims/issue-711.json" 2>/dev/null || true
-mk_active "$SID_B" 711                              # holder SID_B, file also SID_B, env unset below
+printf '%s' "$SID_B" > "$ROOT/.rite-session-id"     # self-contained: set the file sid this Part relies on
+mk_active "$SID_B" 711                              # holder SID_B, file SID_B (set just above), env unset below
 env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$IC" claim --issue 711 >/dev/null 2>&1
 assert "TC-13 env-absent claim holder resolved via file sid (SID_B)" \
   "$SID_B" "$(jq -r .session_id "$ROOT/.rite/state/issue-claims/issue-711.json")"

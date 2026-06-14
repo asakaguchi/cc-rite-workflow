@@ -27,6 +27,32 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-06-14
+
+### Added
+
+- **`/rite:pr:run`** — a batch PR lifecycle command that runs `open → iterate → ready → merge → cleanup` sequentially and autonomously across multiple Issues.
+- **`/rite:lint` number-reference guard** — a `number-reference-check.sh` lint (non-blocking warning) that detects Issue/PR number references (`#NNN`, `Issue #NNN`, `PR #NNN`) re-introduced into the number-free surface (`CHANGELOG.md`, `CHANGELOG.ja.md`, `lint.md`), guarding the cleaned surface against recurrence.
+
+### Fixed
+
+- **Parallel sessions no longer contaminate each other's flow state** — `session_id` resolution is now env-first, so concurrent sessions resolve distinct identifiers instead of clobbering a shared `flow_state`.
+- **`/rite:pr:cleanup` reclaims temporary branches and worktrees name-independently** — cleanup no longer relies on branch or worktree naming to find and remove the artifacts it created.
+- **In-use session worktrees are protected from reap** — lazy reap skips worktrees owned by active sessions, and `/clear` self-repairs dangling session state.
+- **`drift-check` over-detection removed** — eliminated false-positive drift findings and aligned the document-missing reason emitted by the check.
+- **`decompose-issues.sh` no longer crashes on an empty `labels_csv`** — Sub-Issue creation handles an empty label set instead of failing.
+- **`/rite:pr:merge` success path terminates with a fixed `exit 0`** — a trailing no-op prevents the merge success path from inheriting a non-zero exit status.
+
+### Changed
+
+- **`wiki:ingest` write-failure handling** — the write-failure path now emits a dedicated `content_write_failed` reason instead of a generic failure reason.
+- **Documentation surface made number-free and present-tense** — removed implicit history-dependent phrasing (e.g. "the previous behavior", "the old way") and Issue/PR number references across user-facing config and docs, spec and design docs, command/skill/hook/script comments, and tests, stating the rationale directly in prose. The CHANGELOG history-dependent-phrasing policy is now documented in the file header.
+- **Account migration** — updated `B16B1RD` references to `asakaguchi` following the repository account transfer.
+
+### Removed
+
+- **README v0.4.0 Breaking Changes section** — dropped the now-historical upgrade notice from the README.
+
 ## [0.5.2] - 2026-06-12
 
 ### Fixed
@@ -490,6 +516,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.5.3]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.4.0...v0.5.0

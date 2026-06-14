@@ -65,5 +65,22 @@ PAST=$(date -u -d '3 hours ago' +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -v-
 tmp=$(mktemp); jq --arg t "$PAST" '.updated_at=$t' "$ROOT/.rite/sessions/$SID_A.flow-state" > "$tmp" && mv "$tmp" "$ROOT/.rite/sessions/$SID_A.flow-state"
 assert "TC-7 stale (2h aged)" "stale" "$(bash "$WIL" check --session "$SID_B")"
 
+echo "=== TC-8 (Issue #1530): env-first resolution — env outranks a differing .rite-session-id ==="
+# Regression guard for the env-first precedence flip in _resolve_sid (no --session override path).
+# Write a STALE .rite-session-id (SID_B) but make the live session SID_A via env. The no-override
+# resolver MUST key the lock to env (SID_A), not the stale shared file (SID_B) — this is the
+# cross-component coherence the half-migration finding (Issue #1530 review) flagged.
+bash "$WIL" release --session "$SID_A" >/dev/null 2>&1 || true
+rm -rf "$LOCKDIR" 2>/dev/null || true
+printf '%s' "$SID_B" > "$ROOT/.rite-session-id"   # shared file says SID_B (stale)
+mk_active "$SID_A"                                  # but env session SID_A is the live one
+got=$(env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$SID_A" bash "$WIL" acquire)
+assert "TC-8 acquire resolves via env" "acquired" "$got"
+assert "TC-8 holder is env sid (SID_A), not stale file sid (SID_B)" "$SID_A" "$(cat "$LOCKDIR/session_id")"
+# env-absent fallback: the SAME no-override resolver falls back to the file (SID_B), which then
+# sees the lock held by the live SID_A → held (backward-compat path still works).
+got=$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$WIL" check)
+assert "TC-8 env-absent check falls back to file sid (SID_B) → held by SID_A" "held" "$got"
+
 print_summary "$(basename "$0")" \
-  "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock with session-flow-state liveness (2h), reclaim stale, concurrent_ingest rc 11."
+  "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock with session-flow-state liveness (2h), reclaim stale, concurrent_ingest rc 11; _resolve_sid env-first (Issue #1530)."

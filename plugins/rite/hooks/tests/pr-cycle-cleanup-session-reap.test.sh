@@ -22,6 +22,14 @@
 #                       (the lost-cwd robustness path; cleanup runs from main checkout)
 set -euo pipefail
 
+# Clean session-id env (Issue #1530). The reaper resolves its session via
+# `issue-claim.sh check`, which is now env-first; this test makes the reaper act as
+# SID_B by writing `.rite-session-id`=SID_B, so the dogfooding session's ambient
+# CLAUDE_CODE_SESSION_ID must not leak in (it would make the reaper resolve a foreign
+# sid instead of SID_B). run-tests.sh unsets the same vars for suite runs; this keeps
+# the standalone run deterministic too.
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 

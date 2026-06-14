@@ -40,20 +40,24 @@ else
 fi
 LOCKDIR="$STATE_ROOT/.rite/state/wiki-ingest-session.lockdir"
 
+# Priority (Issue #1530): override → env CLAUDE_CODE_SESSION_ID → env CLAUDE_SESSION_ID
+# → `.rite-session-id` file (env-absent fallback). env-first keeps this lock helper's
+# session identity coherent with flow-state.sh; a stale shared file must not key the
+# lock to a foreign session. The file remains the env-absent fallback.
 _resolve_sid() {
   local override="${1:-}" sid=""
   if [ -n "$override" ]; then
     bash "$HOOKS_DIR/_resolve-session-id.sh" "$override" 2>/dev/null || true
     return 0
   fi
-  sid=$(bash "$HOOKS_DIR/_resolve-session-id-from-file.sh" "$STATE_ROOT" 2>/dev/null) || sid=""
+  local cand
+  for cand in "${CLAUDE_CODE_SESSION_ID:-}" "${CLAUDE_SESSION_ID:-}"; do
+    [ -n "$cand" ] || continue
+    sid=$(bash "$HOOKS_DIR/_resolve-session-id.sh" "$cand" 2>/dev/null) || sid=""
+    [ -n "$sid" ] && break
+  done
   if [ -z "$sid" ]; then
-    local cand
-    for cand in "${CLAUDE_CODE_SESSION_ID:-}" "${CLAUDE_SESSION_ID:-}"; do
-      [ -n "$cand" ] || continue
-      sid=$(bash "$HOOKS_DIR/_resolve-session-id.sh" "$cand" 2>/dev/null) || sid=""
-      [ -n "$sid" ] && break
-    done
+    sid=$(bash "$HOOKS_DIR/_resolve-session-id-from-file.sh" "$STATE_ROOT" 2>/dev/null) || sid=""
   fi
   printf '%s' "$sid"
 }

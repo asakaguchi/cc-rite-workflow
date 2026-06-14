@@ -1151,8 +1151,11 @@ if [ -f "$file_file" ]; then
 else
   pass "T-04: file-sid state correctly absent (env took precedence over file)"
 fi
+# Smoke check only — NOT a precedence guard. The precedence flip is pinned by the two
+# asserts above (env_file present + file_file absent); this end-to-end get would stay
+# green even under the old file-first ordering (set writes filesid, get reads filesid).
 got=$(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$envsid" bash "$HOOK" get --field issue_number --default "X")
-assert "T-04: get resolves via env sid (404)" "404" "$got"
+assert "T-04: get resolves via env sid (404, smoke)" "404" "$got"
 
 if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del (Issue #1524) + non-UUID acceptance (Layer 1 format-agnostic contract pin)"; then
   exit 1

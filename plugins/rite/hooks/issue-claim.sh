@@ -65,8 +65,15 @@ CLAIMS_DIR="$STATE_ROOT/.rite/state/issue-claims"
 CLAIMS_LOCK="$CLAIMS_DIR/.lock"
 
 # Resolve the CURRENT session_id. Reuses the canonical helpers:
-#   - `_resolve-session-id-from-file.sh` reads + UUID-validates `.rite-session-id`
 #   - `_resolve-session-id.sh` UUID-validates a runtime env candidate
+#   - `_resolve-session-id-from-file.sh` reads + UUID-validates `.rite-session-id`
+# Priority (Issue #1530): override → env CLAUDE_CODE_SESSION_ID → env
+# CLAUDE_SESSION_ID → `.rite-session-id` file (env-absent fallback). The per-session
+# env var must outrank the shared file so this helper stays coherent with
+# flow-state.sh (also env-first). Preferring the shared file let a stale value
+# resolve a foreign session — claim ownership / _holder_is_live then keyed off the
+# wrong sid, and the worktree reap that calls `issue-claim.sh check` could
+# mis-protect / mis-reap an in-use tree.
 # Returns empty when no valid session_id can be resolved (caller decides).
 _resolve_current_session_id() {
   local override="${1:-}" sid=""
@@ -75,14 +82,14 @@ _resolve_current_session_id() {
     printf '%s' "$sid"
     return 0
   fi
-  sid=$(bash "$SCRIPT_DIR/_resolve-session-id-from-file.sh" "$STATE_ROOT" 2>/dev/null) || sid=""
+  local cand
+  for cand in "${CLAUDE_CODE_SESSION_ID:-}" "${CLAUDE_SESSION_ID:-}"; do
+    [ -n "$cand" ] || continue
+    sid=$(bash "$SCRIPT_DIR/_resolve-session-id.sh" "$cand" 2>/dev/null) || sid=""
+    [ -n "$sid" ] && break
+  done
   if [ -z "$sid" ]; then
-    local cand
-    for cand in "${CLAUDE_CODE_SESSION_ID:-}" "${CLAUDE_SESSION_ID:-}"; do
-      [ -n "$cand" ] || continue
-      sid=$(bash "$SCRIPT_DIR/_resolve-session-id.sh" "$cand" 2>/dev/null) || sid=""
-      [ -n "$sid" ] && break
-    done
+    sid=$(bash "$SCRIPT_DIR/_resolve-session-id-from-file.sh" "$STATE_ROOT" 2>/dev/null) || sid=""
   fi
   printf '%s' "$sid"
 }

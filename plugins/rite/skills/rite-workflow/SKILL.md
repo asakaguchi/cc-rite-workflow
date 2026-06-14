@@ -106,7 +106,7 @@ Detect current state from:
 | On feature branch, PR open / draft, review-fix cycle | `/rite:pr:iterate <pr>` (mergeable まで review ⇄ fix を無限ループ) |
 | Review mergeable, want to mark Ready | `/rite:pr:ready <pr>` then `/rite:pr:merge <pr>` |
 | Merge 完了、branch 削除 / Wiki ingest / Projects Status Done 後処理が必要 | `/rite:pr:cleanup <pr>` |
-| 複数 Issue を open→cleanup まで一括自律実行したい | `/rite:pr:run <issue>...` (各 Issue に open→iterate→ready→merge→cleanup を順次実行、失敗で即停止) |
+| 複数 Issue を draft PR まで一括自律実行したい | `/rite:pr:run <issue>...` (各 Issue に open→iterate を順次実行し draft 止まり、失敗で即停止)。merge→cleanup まで完走するなら `/rite:pr:run --merge <issue>...` |
 | Long session (30+ minutes elapsed) | `/rite:issue:update` |
 
 ## Question Management
@@ -167,7 +167,7 @@ See [references/work-memory-format.md](./references/work-memory-format.md) for w
 
 `/rite:issue:create` は引き続き flat single-file workflow を維持。マージ後の cleanup は `/rite:pr:cleanup` (既存) を別途実行する。
 
-複数 Issue をまとめて回す場合は `/rite:pr:run <issue>...` が各 Issue に対し `pr:open → pr:iterate → pr:ready → pr:merge → pr:cleanup` を順次・完全自律で実行する (meta-orchestrator。成功する限り無確認、失敗で即停止、残りキューは `.rite/state/run-queue.json` に永続化)。flow-state の handoff は使わず、継続は flat step 構造に委ねる。
+複数 Issue をまとめて回す場合は `/rite:pr:run <issue>...` が各 Issue に対し **デフォルトでは** `pr:open → pr:iterate` を順次・完全自律で実行して draft PR を残し (merge せずレビュー待ち)、`--merge` 指定時のみ `pr:ready → pr:merge → pr:cleanup` まで完走する (meta-orchestrator。成功する限り無確認、失敗で即停止、残りキューとモードは `.rite/state/run-queue.json` に永続化)。flow-state の handoff は使わず、継続は flat step 構造に委ねる。
 
 LLM が途中で停止した場合の正規復帰経路は `/rite:resume` で、`commands/resume.md` Phase 5.3 (Phase enum → Step mapping (SoT)) の phase→新 4 コマンド routing 表に従う。implicit-stop 対策の hook 群 (`auto-fire-step0.sh` / `stop-create-interview-block.sh` / `verify-terminal-output.sh`) は撤去済み。
 
@@ -184,7 +184,7 @@ LLM が途中で停止した場合の正規復帰経路は `/rite:resume` で、
 | `rite:pr:merge` | `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]` | ユーザー直接 / `pr:run` orchestrator |
 | `rite:pr:cleanup` | `[cleanup:returned-to-caller]` | ユーザー直接 / `pr:run` orchestrator |
 
-orchestrator (`pr:open` / `pr:iterate`) が sub-skill 出力の sentinel を grep で routing する。`pr:ready` / `pr:merge` / `pr:cleanup` は self-contained だが、`pr:run` (meta-orchestrator) が各 Issue に対し `pr:open → pr:iterate → pr:ready → pr:merge → pr:cleanup` を順に invoke し、それぞれの sentinel を grep して次段へ進む (失敗で即停止)。`pr:run` は flow-state の handoff を使わず、継続は flat step 構造に委ねる。
+orchestrator (`pr:open` / `pr:iterate`) が sub-skill 出力の sentinel を grep で routing する。`pr:ready` / `pr:merge` / `pr:cleanup` は self-contained だが、`pr:run` (meta-orchestrator) が各 Issue に対しデフォルトでは `pr:open → pr:iterate` を、`--merge` 指定時のみ続けて `pr:ready → pr:merge → pr:cleanup` を順に invoke し、それぞれの sentinel を grep して次段へ進む (失敗で即停止)。`pr:run` は flow-state の handoff を使わず、継続は flat step 構造に委ねる。
 
 現行の continuation enforcement は Layer 3 caller-continuation hints + Layer 4a/4b orchestrator-side reinforcements + flat sequential structure による (旧 Layer 1 prompt contract は cleanup.md flat 化と同時に物理排除済)。
 

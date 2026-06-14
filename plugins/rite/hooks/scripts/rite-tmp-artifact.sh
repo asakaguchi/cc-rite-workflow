@@ -78,6 +78,34 @@ case "$art_id" in
     ;;
 esac
 
+# Reject a leading dash and enforce a conservative shape per type. This is the
+# SoT-side defense for the "cleanup deletes ONLY what a producer recorded"
+# contract: a value beginning with `-` would be read as an option by the
+# downstream `git branch -D` / `git worktree remove` / `rm` (option injection),
+# and a relative worktree path could resolve unpredictably at reap time. The
+# cleanup side also passes `--` end-of-options as defense in depth.
+case "$art_id" in
+  -*) echo "ERROR: --id must not start with '-' (option-injection guard)" >&2; exit 1 ;;
+esac
+case "$art_type" in
+  branch)
+    # git branch names: allow the common safe set; reject anything exotic so a
+    # poisoned value can never carry shell/option metacharacters into reap.
+    case "$art_id" in
+      *[!A-Za-z0-9._/-]*)
+        echo "ERROR: branch --id may contain only [A-Za-z0-9._/-]" >&2; exit 1 ;;
+    esac
+    ;;
+  worktree)
+    # Worktree paths recorded by rite are always absolute (git worktree list /
+    # mktemp -d -t emit absolute paths); a relative path here is a producer bug.
+    case "$art_id" in
+      /*) : ;;
+      *) echo "ERROR: worktree --id must be an absolute path" >&2; exit 1 ;;
+    esac
+    ;;
+esac
+
 # Resolve the SHARED state root (main checkout) so every session appends to the
 # same manifest, mirroring pr-cycle-cleanup.sh's resolution exactly.
 repo_root=$("$SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || repo_root=""

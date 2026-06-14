@@ -723,9 +723,13 @@ fi
 #   T-23 → Issue T-04 / AC-4: manifest worktree reaped + manifest emptied
 #   T-24 → Issue T-06 / AC-6: dirty manifest worktree skipped + kept in manifest
 #   T-25 → Issue T-03 / AC-3: non-recorded weird branch survives (誤削除防止)
-# (Issue T-05 / AC-5 non-blocking is already covered by T-10..T-16: status=failed
-#  with exit 0. Issue T-06 session-worktree protection by the gated Step 5 reap is
-#  covered in pr-cycle-cleanup-session-reap.test.sh.)
+#   T-26 → Issue T-05 / AC-5: manifest branch reap FAILURE → status=failed, exit 0
+#   T-27 → Issue T-06 / AC-6: manifest worktree pointing at a non-git path is
+#          skipped WITHOUT aborting the run (regression for the set -e rc-capture fix)
+#   T-28 → Issue T-04 / AC-4: stale manifest entry (branch already gone) is dropped
+# (Steps 1-4 non-blocking failure paths are covered by T-10..T-16; T-26 adds the
+#  same contract for the new Step 4.5 manifest reap. Issue T-06 session-worktree
+#  protection by the gated Step 5 reap lives in pr-cycle-cleanup-session-reap.test.sh.)
 # -----------------------------------------------------------------------
 ARTIFACT_HELPER="$SCRIPT_DIR/../scripts/rite-tmp-artifact.sh"
 
@@ -870,6 +874,76 @@ if [ "$t25_survives" = "1" ]; then
   pass "T-25: 未記録の未知命名ブランチは削除されず保護された"
 else
   fail "T-25: survives=$t25_survives (expected 1)"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+# T-26: manifest branch reap FAILURE surfaces as status=failed + exit 0 (AC-5)
+# Force `git branch -D` to fail by making refs/heads read-only (same technique as
+# T-12). root bypasses DAC perms, so skip under root to avoid a false failure.
+echo "T-26: manifest branch reap 失敗が status=failed + exit 0 (AC-5)"
+if [ "$IS_ROOT" = "1" ]; then
+  skip "T-26: root では refs/heads read-only による削除失敗を再現できない"
+else
+  TEST_REPO=$(make_temp_repo)
+  (
+    cd "$TEST_REPO"
+    git branch zztmp-reap-fail >/dev/null 2>&1
+    bash "$ARTIFACT_HELPER" record --type branch --id "zztmp-reap-fail" >/dev/null 2>&1
+    chmod 0500 .git/refs/heads
+  )
+  t26_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 ); t26_rc=$?
+  ( cd "$TEST_REPO" && chmod 0700 .git/refs/heads )   # restore so cleanup_temp_repo can rm
+  t26_kept=$( { grep -c 'zztmp-reap-fail' "$TEST_REPO/.rite/tmp-artifacts.tsv" 2>/dev/null || true; } )
+  if echo "$t26_output" | grep -q 'status=failed' \
+     && echo "$t26_output" | grep -q 'manifest=0' \
+     && [ "$t26_rc" = "0" ] \
+     && [ "$t26_kept" = "1" ]; then
+    pass "T-26: 削除失敗が WARNING + status=failed + manifest=0 + exit 0、entry は manifest に保持"
+  else
+    fail "T-26: rc=$t26_rc, kept=$t26_kept. Output: $t26_output"
+  fi
+  cleanup_temp_repo "$TEST_REPO"
+fi
+
+# T-27: manifest worktree pointing at a NON-git path is skipped without aborting.
+# Regression for the `set -e` rc-capture fix: a bare `var=$(git -C ... status)`
+# would abort the whole run at git rc=128, never reaching the status line.
+echo "T-27: 非 git path の manifest worktree は abort せず skip (AC-6 / set -e 回帰)"
+rm -rf "$WORKDIR_SCAN_TMP"/mf-nongit-* 2>/dev/null || true
+TEST_REPO=$(make_temp_repo)
+mkdir -p "$WORKDIR_SCAN_TMP/mf-nongit-dir"   # exists but is NOT a git worktree
+( cd "$TEST_REPO" && bash "$ARTIFACT_HELPER" record --type worktree --id "$WORKDIR_SCAN_TMP/mf-nongit-dir" >/dev/null 2>&1 )
+t27_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 ); t27_rc=$?
+t27_kept=$( { grep -c 'mf-nongit-dir' "$TEST_REPO/.rite/tmp-artifacts.tsv" 2>/dev/null || true; } )
+if [ "$t27_rc" = "0" ] \
+   && echo "$t27_output" | grep -q '\[pr-cycle-cleanup\] status=' \
+   && [ -d "$WORKDIR_SCAN_TMP/mf-nongit-dir" ] \
+   && [ "$t27_kept" = "1" ]; then
+  pass "T-27: 非 git path は abort せず status 行に到達 + skip + manifest 保持 + dir 保護"
+else
+  fail "T-27: rc=$t27_rc, kept=$t27_kept, dir=$([ -d "$WORKDIR_SCAN_TMP/mf-nongit-dir" ] && echo present || echo gone). Output: $t27_output"
+fi
+rm -rf "$WORKDIR_SCAN_TMP"/mf-nongit-* 2>/dev/null || true
+cleanup_temp_repo "$TEST_REPO"
+
+# T-28: a stale manifest entry (branch already deleted) is dropped without error (AC-4)
+echo "T-28: stale manifest エントリ (branch 既削除) は無害に drop (AC-4)"
+TEST_REPO=$(make_temp_repo)
+(
+  cd "$TEST_REPO"
+  git branch zztmp-stale >/dev/null 2>&1
+  bash "$ARTIFACT_HELPER" record --type branch --id "zztmp-stale" >/dev/null 2>&1
+  git branch -D zztmp-stale >/dev/null 2>&1   # gone before cleanup runs
+)
+t28_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 ); t28_rc=$?
+t28_manifest_gone=$([ ! -f "$TEST_REPO/.rite/tmp-artifacts.tsv" ] && echo yes || echo no)
+if [ "$t28_rc" = "0" ] \
+   && ! echo "$t28_output" | grep -q 'status=failed' \
+   && echo "$t28_output" | grep -q 'manifest=0' \
+   && [ "$t28_manifest_gone" = "yes" ]; then
+  pass "T-28: stale エントリは status≠failed + manifest=0 + 空 manifest 削除で drop"
+else
+  fail "T-28: rc=$t28_rc, manifest_gone=$t28_manifest_gone. Output: $t28_output"
 fi
 cleanup_temp_repo "$TEST_REPO"
 

@@ -501,7 +501,7 @@ if [ -f "$manifest_path" ]; then
           if [ "$DRY_RUN" = "1" ]; then
             echo "[dry-run] would reap manifest branch: $(printf '%s' "$_m_val" | neutralize_ctrl)"
             printf '%s\n' "$_m_line" >> "$manifest_keep"
-          elif git branch -D "$_m_val" >/dev/null 2>&1; then
+          elif git branch -D -- "$_m_val" >/dev/null 2>&1; then
             manifest_reaped=$((manifest_reaped + 1))
           else
             echo "WARNING: failed to reap manifest branch '$(printf '%s' "$_m_val" | neutralize_ctrl)'" >&2
@@ -515,9 +515,27 @@ if [ -f "$manifest_path" ]; then
             [ "$DRY_RUN" = "0" ] && git worktree prune 2>/dev/null || true
             continue
           fi
+          # Containment guard: the manifest is contract-bound to EPHEMERAL tmp
+          # artifacts. A poisoned/buggy entry pointing at the main checkout would
+          # otherwise delete repo_root — catastrophic. Canonicalize (`cd && pwd -P`,
+          # matching repo_root's resolved form) and never reap repo_root itself.
+          _m_canon=$( cd -- "$_m_val" 2>/dev/null && pwd -P ) || _m_canon=""
+          if [ -n "$_m_canon" ] && [ "$_m_canon" = "$repo_root" ]; then
+            echo "WARNING: manifest worktree '$(printf '%s' "$_m_val" | neutralize_ctrl)' は repo_root 自身を指すため reap をスキップし manifest に保持します。" >&2
+            printf '%s\n' "$_m_line" >> "$manifest_keep"
+            continue
+          fi
           # AC-6: never destroy uncommitted work. An indeterminate status
-          # (rc != 0, e.g. not a git worktree) is treated as "do not reap".
-          _m_st=$(git -C "$_m_val" status --porcelain 2>/dev/null); _m_st_rc=$?
+          # (rc != 0, e.g. the path exists but is not a git worktree) is treated
+          # as "do not reap". `if/else` (not `var=$(...); rc=$?`) is REQUIRED: a
+          # bare command-substitution assignment that fails (git rc=128 on a
+          # non-worktree path) aborts the whole script under `set -e` BEFORE the
+          # rc is captured, turning this safety branch into dead code.
+          if _m_st=$(git -C "$_m_val" status --porcelain 2>/dev/null); then
+            _m_st_rc=0
+          else
+            _m_st_rc=$?
+          fi
           if [ "$_m_st_rc" -ne 0 ] || [ -n "$_m_st" ]; then
             echo "WARNING: manifest worktree '$(printf '%s' "$_m_val" | neutralize_ctrl)' は未コミット変更があるか status 判定不能のため reap をスキップし manifest に保持します。" >&2
             printf '%s\n' "$_m_line" >> "$manifest_keep"
@@ -526,7 +544,7 @@ if [ -f "$manifest_path" ]; then
           if [ "$DRY_RUN" = "1" ]; then
             echo "[dry-run] would reap manifest worktree: $(printf '%s' "$_m_val" | neutralize_ctrl)"
             printf '%s\n' "$_m_line" >> "$manifest_keep"
-          elif git worktree remove --force "$_m_val" 2>/dev/null || rm -rf "$_m_val" 2>/dev/null; then
+          elif git worktree remove --force -- "$_m_val" 2>/dev/null || rm -rf -- "$_m_val" 2>/dev/null; then
             manifest_reaped=$((manifest_reaped + 1))
             git worktree prune 2>/dev/null || true
           else

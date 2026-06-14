@@ -513,7 +513,7 @@ case "${1:-}" in
   path) shift; cmd_path "$@" ;;
   *)
     cat >&2 <<EOF
-Usage: $0 {set|get|deactivate|consume-handoff|migrate|path} [options]
+Usage: $0 {set|get|deactivate|clear-worktree|consume-handoff|migrate|path} [options]
   set --phase <P> --next <T> [--issue N] [--branch S] [--pr N] [--parent-issue N]
       [--active true|false] [--handoff CMD] [--session UUID] [--if-exists] [--preserve-error-count]
   get --field <F> [--default V] [--session UUID]

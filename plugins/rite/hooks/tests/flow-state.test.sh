@@ -1080,11 +1080,17 @@ assert "TC-25: phase preserved" "implement" "$(jq -r '.phase' "$sfile")"
 assert "TC-25: active preserved" "true" "$(jq -r '.active' "$sfile")"
 assert "TC-25: branch preserved" "fix/issue-1524" "$(jq -r '.branch' "$sfile")"
 # Idempotent: re-clearing is a no-op (rc 0) AND must NOT rewrite the file (no
-# updated_at churn → wm-sync diff guard stays quiet).
-before=$(cat "$sfile")
+# updated_at churn → wm-sync diff guard stays quiet). Pin updated_at to a known
+# PAST value after the first clear, then re-clear: the has("worktree") early-return
+# guard means the second clear performs no write, so updated_at MUST stay pinned.
+# (A `before==after` cat compare would NOT catch guard removal — the rewritten
+# updated_at would equal the original within the same wall-clock second. Pinning a
+# past value makes the assertion non-vacuous regardless of second-boundary timing.)
+pin_ts="2020-01-01T00:00:00Z"
+tmp_pin=$(mktemp); jq --arg ts "$pin_ts" '.updated_at = $ts' "$sfile" > "$tmp_pin" && mv "$tmp_pin" "$sfile"
 (cd "$d" && bash "$HOOK" clear-worktree); rc=$?
 assert "TC-25: idempotent re-clear rc=0" "0" "$rc"
-assert "TC-25: idempotent re-clear is a no-op (no file rewrite)" "$before" "$(cat "$sfile")"
+assert "TC-25: idempotent re-clear performs no write (updated_at stays pinned)" "$pin_ts" "$(jq -r '.updated_at' "$sfile")"
 # Non-blocking on a missing state file: resolving a sid with no file returns rc 0.
 miss_rc=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID \
   bash "$HOOK" clear-worktree --session "no-such-session-1524" >/dev/null 2>&1); echo $? )

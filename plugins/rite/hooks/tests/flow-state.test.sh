@@ -1062,6 +1062,34 @@ else
   fail "TC-24.4: --session override non-UUID rejected/degraded. stderr: '$err'"
 fi
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + non-UUID acceptance (Layer 1 format-agnostic contract pin)"; then
+# --- TC-25: clear-worktree subcommand (Issue #1524) ---
+# Surgical del(.worktree) mirroring cmd_deactivate: removes only the worktree key,
+# preserves phase/active/branch, idempotent (no-op + no file churn when absent),
+# non-blocking on a missing state file. Used by pr-cycle-cleanup.sh reap null-ing
+# and session-start.sh dangling self-heal.
+echo ""
+echo "=== TC-25: clear-worktree removes worktree key, preserves others, idempotent ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase implement --issue 1524 --branch "fix/issue-1524" --pr 0 --next "n" \
+  --worktree "$d/.rite/worktrees/issue-1524")
+sfile="$d/.rite/sessions/${sid}.flow-state"
+assert "TC-25: worktree set via cmd_set" "$d/.rite/worktrees/issue-1524" "$(jq -r '.worktree // "ABSENT"' "$sfile")"
+(cd "$d" && bash "$HOOK" clear-worktree)
+assert "TC-25: worktree key removed" "false" "$(jq -r 'has("worktree")' "$sfile")"
+assert "TC-25: phase preserved" "implement" "$(jq -r '.phase' "$sfile")"
+assert "TC-25: active preserved" "true" "$(jq -r '.active' "$sfile")"
+assert "TC-25: branch preserved" "fix/issue-1524" "$(jq -r '.branch' "$sfile")"
+# Idempotent: re-clearing is a no-op (rc 0) AND must NOT rewrite the file (no
+# updated_at churn → wm-sync diff guard stays quiet).
+before=$(cat "$sfile")
+(cd "$d" && bash "$HOOK" clear-worktree); rc=$?
+assert "TC-25: idempotent re-clear rc=0" "0" "$rc"
+assert "TC-25: idempotent re-clear is a no-op (no file rewrite)" "$before" "$(cat "$sfile")"
+# Non-blocking on a missing state file: resolving a sid with no file returns rc 0.
+miss_rc=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID \
+  bash "$HOOK" clear-worktree --session "no-such-session-1524" >/dev/null 2>&1); echo $? )
+assert "TC-25: clear-worktree on missing state file is non-blocking (rc 0)" "0" "$miss_rc"
+
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del (Issue #1524) + non-UUID acceptance (Layer 1 format-agnostic contract pin)"; then
   exit 1
 fi

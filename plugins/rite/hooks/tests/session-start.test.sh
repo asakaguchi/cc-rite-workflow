@@ -1190,6 +1190,108 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-1524-* : dangling session-worktree self-heal (Issue #1524, AC-2 / AC-5)
+# When flow-state records a `worktree` path that no longer exists (reaped by
+# another session's GC while this session was paused), session-start nulls the
+# field so re-entry / harness cwd-restore is not aimed at a dead dir.
+# --------------------------------------------------------------------------
+# Shared sandbox builder: copies session-start.sh + its real deps and stubs
+# session-ownership.sh (mirrors TC-T04). Echoes the sandbox hooks dir.
+_mk_wt_sandbox() {
+  local dir="$1" sbx src f
+  mkdir -p "$dir/sandbox/hooks"
+  sbx="$dir/sandbox/hooks"
+  src="$(cd "$SCRIPT_DIR/.." && pwd)"
+  for f in session-start.sh hook-preamble.sh state-path-resolve.sh control-char-neutralize.sh flow-state.sh _mktemp-stderr-guard.sh; do
+    cp "$src/$f" "$sbx/"
+  done
+  cat > "$sbx/session-ownership.sh" <<'STUB_EOF'
+#!/bin/bash
+extract_session_id() { echo ""; }
+get_state_session_id() { echo ""; }
+parse_iso8601_to_epoch() { echo 0; }
+STUB_EOF
+  printf '%s' "$sbx"
+}
+
+echo "TC-1524-a (AC-2): /clear with dangling worktree → flow-state worktree nulled, no re-entry"
+dirWT="$TEST_DIR/tc1524a"
+sbx_wt="$(_mk_wt_sandbox "$dirWT")"
+sid_wt="ses-1524a"
+ts_wt=$(iso8601_now 0)
+mkdir -p "$dirWT/.rite/sessions"
+printf '%s' "$sid_wt" > "$dirWT/.rite-session-id"
+# `worktree` points at a path that does NOT exist (the reaped session worktree).
+cat > "$dirWT/.rite/sessions/${sid_wt}.flow-state" <<EOF
+{"active": true, "issue_number": 1524, "branch": "fix/issue-1524", "phase": "implement", "session_id": "$sid_wt", "worktree": "$dirWT/.rite/worktrees/issue-1524", "updated_at": "$ts_wt"}
+EOF
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+out_wt=$(jq -n --arg cwd "$dirWT" --arg src "clear" --arg sid "$sid_wt" \
+  '{cwd: $cwd, source: $src, session_id: $sid}' \
+  | bash "$sbx_wt/session-start.sh" 2>"$LAST_STDERR_FILE") && rc_wt=0 || rc_wt=$?
+wt_after=$(jq -r 'has("worktree")' "$dirWT/.rite/sessions/${sid_wt}.flow-state" 2>/dev/null)
+if [ "$rc_wt" -eq 0 ] && [ "$wt_after" = "false" ] \
+   && grep -q "存在しないため flow-state から参照をクリア" "$LAST_STDERR_FILE"; then
+  pass "TC-1524-a: dangling worktree nulled on /clear (rc=0, self-heal WARNING shown)"
+else
+  fail "TC-1524-a: expected worktree cleared; rc=$rc_wt has_worktree=$wt_after stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "TC-1524-b (AC-2 boundary): existing worktree dir → NOT cleared (self-heal does not over-fire)"
+dirWTb="$TEST_DIR/tc1524b"
+sbx_wtb="$(_mk_wt_sandbox "$dirWTb")"
+sid_wtb="ses-1524b"
+ts_wtb=$(iso8601_now 0)
+mkdir -p "$dirWTb/.rite/sessions"
+mkdir -p "$dirWTb/.rite/worktrees/issue-1525"   # the recorded worktree DOES exist
+printf '%s' "$sid_wtb" > "$dirWTb/.rite-session-id"
+cat > "$dirWTb/.rite/sessions/${sid_wtb}.flow-state" <<EOF
+{"active": true, "issue_number": 1525, "branch": "fix/issue-1525", "phase": "implement", "session_id": "$sid_wtb", "worktree": "$dirWTb/.rite/worktrees/issue-1525", "updated_at": "$ts_wtb"}
+EOF
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+jq -n --arg cwd "$dirWTb" --arg src "clear" --arg sid "$sid_wtb" \
+  '{cwd: $cwd, source: $src, session_id: $sid}' \
+  | bash "$sbx_wtb/session-start.sh" >/dev/null 2>"$LAST_STDERR_FILE" || true
+wt_after_b=$(jq -r '.worktree // "ABSENT"' "$dirWTb/.rite/sessions/${sid_wtb}.flow-state" 2>/dev/null)
+if [ "$wt_after_b" = "$dirWTb/.rite/worktrees/issue-1525" ]; then
+  pass "TC-1524-b: existing worktree dir preserved (self-heal correctly scoped to missing dir)"
+else
+  fail "TC-1524-b: expected worktree preserved, got '$wt_after_b'"
+fi
+echo ""
+
+echo "TC-1524-c (AC-5): clear-worktree write failure → session-start non-blocking (exit 0) + WARNING"
+if [ "$(id -u)" -eq 0 ]; then
+  # root bypasses dir-permission bits, so a read-only sessions dir cannot force the
+  # atomic-write failure this case exercises. Not a product failure — skip honestly.
+  pass "TC-1524-c: skipped under root (chmod cannot force a write failure as uid 0)"
+else
+  dirWTc="$TEST_DIR/tc1524c"
+  sbx_wtc="$(_mk_wt_sandbox "$dirWTc")"
+  sid_wtc="ses-1524c"
+  ts_wtc=$(iso8601_now 0)
+  mkdir -p "$dirWTc/.rite/sessions"
+  printf '%s' "$sid_wtc" > "$dirWTc/.rite-session-id"
+  cat > "$dirWTc/.rite/sessions/${sid_wtc}.flow-state" <<EOF
+{"active": true, "issue_number": 1526, "branch": "fix/issue-1526", "phase": "implement", "session_id": "$sid_wtc", "worktree": "$dirWTc/.rite/worktrees/issue-1526", "updated_at": "$ts_wtc"}
+EOF
+  # Read-only sessions dir → clear-worktree's _atomic_write (mktemp in dir) fails.
+  chmod 555 "$dirWTc/.rite/sessions"
+  LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+  jq -n --arg cwd "$dirWTc" --arg src "clear" --arg sid "$sid_wtc" \
+    '{cwd: $cwd, source: $src, session_id: $sid}' \
+    | bash "$sbx_wtc/session-start.sh" >/dev/null 2>"$LAST_STDERR_FILE" && rc_wtc=0 || rc_wtc=$?
+  chmod 755 "$dirWTc/.rite/sessions"   # restore so the EXIT trap can rm -rf
+  if [ "$rc_wtc" -eq 0 ] && grep -q "dangling worktree 参照のクリアに失敗" "$LAST_STDERR_FILE"; then
+    pass "TC-1524-c: clear-worktree write failure is non-blocking (exit 0) + WARNING emitted"
+  else
+    fail "TC-1524-c: expected non-blocking WARNING; rc=$rc_wtc stderr=$(cat "$LAST_STDERR_FILE")"
+  fi
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

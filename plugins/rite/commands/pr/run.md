@@ -316,7 +316,7 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 
 復旧:
 - この Issue を続きから: /rite:resume {current_issue}
-- 残りをまとめて再開: /rite:pr:run{ --merge}（引数省略で run-queue.json の cursor とモードから再開）
+- 残りをまとめて再開: /rite:pr:run（引数省略で run-queue.json の cursor とモードから再開。明示再開する場合の `--merge` 併記は下記の補足を参照）
 
 <!-- [run:stopped] -->
 ```

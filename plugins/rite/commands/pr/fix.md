@@ -3523,7 +3523,9 @@ trigger_stderr=$(mktemp /tmp/rite-wiki-trigger-err-XXXXXX) || trigger_stderr=/de
 # rm -f /dev/null は EPERM (exit 1) を返すため trap で条件分岐する (F-07 対応)
 trap 'rm -f "$tmpfile"; [ "$trigger_stderr" != "/dev/null" ] && rm -f "$trigger_stderr"' EXIT
 
-cat <<'FIX_EOF' > "$tmpfile"
+# heredoc 書き込みの exit code を捕捉 (disk full / permission 拒否で truncated content が
+# silent に ingest される regression を防ぐ。wiki ingest は非ブロッキングのため write 失敗時は ingest をスキップ)
+if ! cat <<'FIX_EOF' > "$tmpfile"
 ## Fix Results
 
 - **PR**: #{pr_number}
@@ -3538,25 +3540,31 @@ cat <<'FIX_EOF' > "$tmpfile"
 - Fixed: {fix_count}
 - Replied: {reply_count}
 FIX_EOF
-
-bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
-  --type fixes \
-  --source-ref "pr-{pr_number}" \
-  --content-file "$tmpfile" \
-  --pr-number {pr_number} \
-  --title "PR #{pr_number} fix results" \
-  2>"$trigger_stderr"
-trigger_exit=$?
-echo "trigger_exit=$trigger_exit"
-if [ "$trigger_exit" -ne 0 ] && [ "$trigger_stderr" != "/dev/null" ] && [ -s "$trigger_stderr" ]; then
-  # UTF-8 multi-byte 境界を safe にする (head -c 500 で切れた invalid sequence を drop)
-  # (F-09 対応) iconv 不在環境 (Alpine 等) では LC_ALL=C tr で ASCII-only fallback
-  if command -v iconv >/dev/null 2>&1; then
-    _wiki_err_snippet=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500 | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)
-  else
-    _wiki_err_snippet=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500 | LC_ALL=C tr -cd '\11\12\15\40-\176')
+then
+  echo "[CONTEXT] WIKI_CONTENT_WRITE_FAILED=1; reason=cat_redirection_failed" >&2
+  echo "WARNING: fix ステップ 4.6.W: tmpfile への heredoc 書き込みに失敗 (/tmp full / permission 拒否 / inode 枯渇)。wiki ingest を非ブロッキングにスキップ。" >&2
+  trigger_exit=1
+  echo "trigger_exit=$trigger_exit"
+else
+  bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
+    --type fixes \
+    --source-ref "pr-{pr_number}" \
+    --content-file "$tmpfile" \
+    --pr-number {pr_number} \
+    --title "PR #{pr_number} fix results" \
+    2>"$trigger_stderr"
+  trigger_exit=$?
+  echo "trigger_exit=$trigger_exit"
+  if [ "$trigger_exit" -ne 0 ] && [ "$trigger_stderr" != "/dev/null" ] && [ -s "$trigger_stderr" ]; then
+    # UTF-8 multi-byte 境界を safe にする (head -c 500 で切れた invalid sequence を drop)
+    # (F-09 対応) iconv 不在環境 (Alpine 等) では LC_ALL=C tr で ASCII-only fallback
+    if command -v iconv >/dev/null 2>&1; then
+      _wiki_err_snippet=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500 | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)
+    else
+      _wiki_err_snippet=$(tr '\n' ' ' < "$trigger_stderr" | head -c 500 | LC_ALL=C tr -cd '\11\12\15\40-\176')
+    fi
+    echo "[CONTEXT] WIKI_TRIGGER_STDERR=${_wiki_err_snippet}" >&2
   fi
-  echo "[CONTEXT] WIKI_TRIGGER_STDERR=${_wiki_err_snippet}" >&2
 fi
 ```
 

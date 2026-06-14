@@ -3478,6 +3478,7 @@ tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX)
 trigger_stderr=$(mktemp /tmp/rite-wiki-trigger-err-XXXXXX) || trigger_stderr=/dev/null
 # rm -f /dev/null は EPERM (exit 1) を返すため trap で条件分岐する (F-07 対応)
 trap 'rm -f "$tmpfile"; [ "$trigger_stderr" != "/dev/null" ] && rm -f "$trigger_stderr"' EXIT
+content_write_failed=0  # heredoc write 失敗フラグ (Step 3 で genuine trigger 失敗と区別するため carry-forward)
 
 # heredoc 書き込みの exit code を捕捉 (disk full / permission 拒否で truncated content が
 # silent に ingest される regression を防ぐ。wiki ingest は非ブロッキングのため write 失敗時は ingest をスキップ)
@@ -3502,6 +3503,7 @@ then
  echo "[CONTEXT] WIKI_CONTENT_WRITE_FAILED=1; reason=cat_redirection_failed" >&2
  echo "WARNING: review ステップ 6.5.W: tmpfile への heredoc 書き込みに失敗 (/tmp full / permission 拒否 / inode 枯渇)。wiki ingest を非ブロッキングにスキップ。" >&2
  trigger_exit=1
+ content_write_failed=1
  echo "trigger_exit=$trigger_exit"
 else
  bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
@@ -3524,6 +3526,7 @@ else
   echo "[CONTEXT] WIKI_TRIGGER_STDERR=${_wiki_err_snippet}" >&2
  fi
 fi
+echo "content_write_failed=$content_write_failed"
 ```
 
 **ステップ 6.5.W content write failure reason** (reason table drift prevention — heredoc redirection の exit code を `WIKI_CONTENT_WRITE_FAILED` flag の reason 値として surface する):
@@ -3534,14 +3537,29 @@ fi
 
 **Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are captured in `trigger_exit` and do not halt the workflow. The LLM reads `trigger_exit` from stdout and skips ステップ 6.5.W.2 when it is non-zero. Ingest failure does not block the review workflow.
 
-**Step 3 — Failure surfacing**: When `trigger_exit != 0` AND `trigger_exit != 2` (exit 2 = Wiki disabled/uninitialized = legitimate skip already covered by Step 1), surface the failure as a plain WARNING so the operator can triage it from stderr:
+**Step 3 — Failure surfacing**: 2 つの失敗経路を区別して surface する。
+
+- **(a) content write 失敗** (`content_write_failed=1`): trigger は**起動していない**ため `trigger_exit` の値 (1) を reason にすると誤帰属になる。root cause は Step 2 の `WIKI_CONTENT_WRITE_FAILED` で既出だが、W Phase Completion Gate (ステップ 8.0.1) は `WIKI_INGEST_*` 接頭辞の sentinel しか認識しないため、gate-visible な `WIKI_INGEST_FAILED` を `reason=content_write_failed` で emit する。
+- **(b) genuine trigger 失敗** (`trigger_exit != 0` AND `trigger_exit != 2`、exit 2 = Wiki disabled/uninitialized = legitimate skip は Step 1 で既出): `wiki-ingest-trigger.sh` が実際に非ゼロ終了したので `reason=trigger_exit_$trigger_exit` で emit する。
 
 ```bash
-if [ "$trigger_exit" -ne 0 ] && [ "$trigger_exit" -ne 2 ]; then
+if [ "${content_write_failed:-0}" -eq 1 ]; then
+ # write 失敗経路: trigger は未起動。gate (ステップ 8.0.1) は WIKI_INGEST_* のみ認識するため
+ # accurate な reason を付けて WIKI_INGEST_FAILED を emit する (trigger_exit_1 への誤帰属を防ぐ)。
+ echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=content_write_failed; exit_code=1"
+ echo "WARNING: review ステップ 6.5.W: content write 失敗のため wiki ingest をスキップ (trigger は未起動)。" >&2
+elif [ "$trigger_exit" -ne 0 ] && [ "$trigger_exit" -ne 2 ]; then
  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_$trigger_exit; exit_code=$trigger_exit"
  echo "WARNING: wiki-ingest-trigger.sh exited $trigger_exit during pr/review.md ステップ 6.5.W" >&2
 fi
 ```
+
+**ステップ 6.5.W Step 3 failure surfacing reason** (`WIKI_INGEST_FAILED` flag の reason 値):
+
+| reason | Description |
+|--------|-------------|
+| `content_write_failed` | tmpfile への heredoc write 失敗 (`content_write_failed=1`)。trigger は未起動。root cause の `WIKI_CONTENT_WRITE_FAILED` とは別に、gate-visible な `WIKI_INGEST_FAILED` を accurate reason で surface する (`trigger_exit_*` への誤帰属を防ぐ) |
+| `trigger_exit_<n>` | `wiki-ingest-trigger.sh` が exit `<n>` (≠0, ≠2) で終了した genuine trigger 失敗 |
 
 #### 6.5.W.2 Wiki Raw Commit (Shell — deterministic path)
 

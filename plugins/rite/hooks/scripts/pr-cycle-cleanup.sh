@@ -470,6 +470,12 @@ fi
 # Malformed / unparseable lines are preserved untouched (conservative).
 # -----------------------------------------------------------------------
 manifest_path="$repo_root/$TMP_ARTIFACT_MANIFEST"
+# Canonical form of repo_root for the containment guard below. `repo_root` comes
+# from git rev-parse / state-path-resolve and is NOT symlink-resolved, but the
+# per-entry `_m_canon` is (`cd && pwd -P`); on a symlinked-path host (e.g. macOS
+# `/tmp`→`/private/tmp`, this script's portability floor) an un-canonicalized
+# compare could let the guard miss. Resolve once so the compare holds.
+_repo_canon=$( cd -- "$repo_root" 2>/dev/null && pwd -P ) || _repo_canon="$repo_root"
 if [ -f "$manifest_path" ]; then
   manifest_keep=$(mktemp /tmp/rite-pr-cycle-cleanup-manifest-keep-XXXXXX 2>/dev/null) || manifest_keep=""
   if [ -z "$manifest_keep" ]; then
@@ -517,10 +523,10 @@ if [ -f "$manifest_path" ]; then
           fi
           # Containment guard: the manifest is contract-bound to EPHEMERAL tmp
           # artifacts. A poisoned/buggy entry pointing at the main checkout would
-          # otherwise delete repo_root — catastrophic. Canonicalize (`cd && pwd -P`,
-          # matching repo_root's resolved form) and never reap repo_root itself.
+          # otherwise delete repo_root — catastrophic. Both sides are symlink-
+          # resolved (`cd && pwd -P`) so the compare holds on symlinked-path hosts.
           _m_canon=$( cd -- "$_m_val" 2>/dev/null && pwd -P ) || _m_canon=""
-          if [ -n "$_m_canon" ] && [ "$_m_canon" = "$repo_root" ]; then
+          if [ -n "$_m_canon" ] && [ "$_m_canon" = "$_repo_canon" ]; then
             echo "WARNING: manifest worktree '$(printf '%s' "$_m_val" | neutralize_ctrl)' は repo_root 自身を指すため reap をスキップし manifest に保持します。" >&2
             printf '%s\n' "$_m_line" >> "$manifest_keep"
             continue

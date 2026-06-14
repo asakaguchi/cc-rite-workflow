@@ -42,6 +42,8 @@ description: 複数 Issue に対して open→iterate→ready→merge→cleanup 
 | `{current_issue}` | ステップ 1 の `RUN_NEXT=process; issue=` が指す Issue |
 | `{pr_number}` | ステップ 2 の open 完了通知（`[pr:created:N]`）から抽出 |
 | `{branch_name}` | ステップ 2 の open 完了通知「ブランチ: ...」行から抽出（ステップ 6 の cleanup に渡す） |
+| `{processed_issues}` | ステップ 7 bash の `processed=`（全完了 Issue 一覧） |
+| `{done_issues}` / `{remaining_issues}` | ステップ 8 bash の `done=` / `remaining=`（停止時の処理済み / 未処理 Issue） |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 
 ---
@@ -138,7 +140,7 @@ args: "{current_issue}"
 
 ## ステップ 3: /rite:pr:iterate を invoke
 
-> 本コマンドは iterate invoke の **前後で `flow-state.sh set` を呼ばない**（iterate 内部の handoff / FINALIZE 機構を壊さないため）。iterate は内部で review⇄fix を mergeable まで回し、完了通知を出して制御を戻す。戻った時点で handoff フィールドは空。
+> 本コマンドは iterate invoke の **前後で `flow-state.sh set` を呼ばない**（iterate 内部の handoff / FINALIZE 機構を壊さないため）。iterate は内部で review⇄fix を mergeable まで回し、完了通知を出して制御を戻す。`[review:mergeable]` 経由の正常終了では、続くステップ 4 ready の `flow-state.sh set` が残存 FINALIZE handoff を default-clear する（失敗終了時に残る handoff はステップ 8 で消費する）。
 
 ```text
 skill: rite:pr:iterate
@@ -252,6 +254,9 @@ echo "[CONTEXT] RUN_DONE; processed=$processed"
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
 queue_file="$state_root/.rite/state/run-queue.json"
+# 失敗段が iterate の場合、fix.md が set した FINALIZE handoff が残り Stop hook が
+# iterate 完了通知を差し戻しうる。停止報告の前に one-shot 消費して出力順序を確定させる。
+bash {plugin_root}/hooks/flow-state.sh consume-handoff >/dev/null 2>&1 || true
 cursor=$(jq -r '.cursor // 0' "$queue_file" 2>/dev/null || echo 0)
 done_issues=$(jq -rc ".issues[:$cursor]" "$queue_file" 2>/dev/null || echo "[]")
 remaining=$(jq -rc ".issues[$cursor:]" "$queue_file" 2>/dev/null || echo "[]")
@@ -273,6 +278,8 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 復旧:
 - この Issue を続きから: /rite:resume {current_issue}
 - 残りをまとめて再開: /rite:pr:run（引数省略で run-queue.json の cursor から再開）
+
+<!-- [run:stopped] -->
 ```
 
 > `[fix:replied-only]` で停止した場合は、停止報告に続行コマンドも併記する: `/rite:pr:ready {pr_number} && /rite:pr:merge {pr_number}`

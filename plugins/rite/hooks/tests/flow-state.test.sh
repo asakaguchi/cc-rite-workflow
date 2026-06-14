@@ -18,6 +18,14 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
+# Clean session-id env for standalone runs (Issue #1530). flow-state.sh resolves
+# session_id env-first; the file-based sandboxes below must exercise the
+# `.rite-session-id` fallback, so the dogfooding session's ambient
+# CLAUDE_CODE_SESSION_ID must not leak in. TC-13/14/15 + T-01/T-02/T-04 set the
+# vars explicitly per-command, overriding this unset. (run-tests.sh unsets the
+# same vars for suite runs; this keeps `bash flow-state.test.sh` deterministic too.)
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
+
 # Helper: prepare a sandbox with .rite-session-id and STATE_ROOT detection
 new_sandbox() {
   local d sid
@@ -1095,6 +1103,56 @@ assert "TC-25: idempotent re-clear performs no write (updated_at stays pinned)" 
 miss_rc=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID \
   bash "$HOOK" clear-worktree --session "no-such-session-1524" >/dev/null 2>&1); echo $? )
 assert "TC-25: clear-worktree on missing state file is non-blocking (rc 0)" "0" "$miss_rc"
+
+# --- T-01: AC-1 — distinct env CLAUDE_CODE_SESSION_ID → distinct per-session state files ---
+echo ""
+echo "=== T-01: AC-1 concurrent sessions sharing one state root stay isolated by env ==="
+# Two sessions share one state root (the main checkout) but carry different
+# CLAUDE_CODE_SESSION_ID. With env-first resolution each writes/reads its OWN
+# {sid}.flow-state, so session B cannot contaminate session A's issue/phase.
+result=$(new_sandbox); d="${result%|*}"
+rm -f "$d/.rite-session-id"  # force env-first path (no shared fallback file)
+sidA="aaaaaaaa-1111-2222-3333-444444444444"
+sidB="bbbbbbbb-5555-6666-7777-888888888888"
+(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sidA" bash "$HOOK" set --phase implement --issue 101 --branch "feat/a" --pr 0 --next "a")
+(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sidB" bash "$HOOK" set --phase review --issue 202 --branch "feat/b" --pr 0 --next "b")
+fileA="$d/.rite/sessions/${sidA}.flow-state"
+fileB="$d/.rite/sessions/${sidB}.flow-state"
+assert_file_exists_or_fail "T-01: session A state file exists" "$fileA" || true
+assert_file_exists_or_fail "T-01: session B state file exists" "$fileB" || true
+assert "T-01: session A issue isolated" "101" "$(jq -r .issue_number "$fileA")"
+assert "T-01: session B issue isolated" "202" "$(jq -r .issue_number "$fileB")"
+gotA=$(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$sidA" bash "$HOOK" get --field issue_number --default "X")
+assert "T-01: session A read not contaminated by session B" "101" "$gotA"
+
+# --- T-02: AC-3 — env-absent runtime falls back to .rite-session-id file ---
+echo ""
+echo "=== T-02: AC-3 env-absent → .rite-session-id file fallback (backward compat) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" set --phase plan --issue 303 --branch "feat/c" --pr 0 --next "c")
+sfile="$d/.rite/sessions/${sid}.flow-state"
+assert_file_exists_or_fail "T-02: fallback state file keyed by .rite-session-id sid" "$sfile" || true
+got=$(cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" get --field issue_number --default "X")
+assert "T-02: env-absent get resolves via .rite-session-id file" "303" "$got"
+
+# --- T-04: AC-1 — env wins when env CLAUDE_CODE_SESSION_ID and .rite-session-id differ ---
+echo ""
+echo "=== T-04: env CLAUDE_CODE_SESSION_ID takes precedence over a differing .rite-session-id ==="
+# This is the regression guard for the precedence flip: file present (filesid) AND
+# env present (envsid) but different → state MUST be written under envsid, not filesid.
+result=$(new_sandbox); d="${result%|*}"; filesid="${result#*|}"
+envsid="cccccccc-9999-0000-1111-222222222222"
+(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$envsid" bash "$HOOK" set --phase fix --issue 404 --branch "feat/d" --pr 0 --next "d")
+env_file="$d/.rite/sessions/${envsid}.flow-state"
+file_file="$d/.rite/sessions/${filesid}.flow-state"
+assert_file_exists_or_fail "T-04: state written under ENV sid (env wins)" "$env_file" || true
+if [ -f "$file_file" ]; then
+  fail "T-04: state must NOT be written under .rite-session-id file sid when env present"
+else
+  pass "T-04: file-sid state correctly absent (env took precedence over file)"
+fi
+got=$(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$envsid" bash "$HOOK" get --field issue_number --default "X")
+assert "T-04: get resolves via env sid (404)" "404" "$got"
 
 if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del (Issue #1524) + non-UUID acceptance (Layer 1 format-agnostic contract pin)"; then
   exit 1

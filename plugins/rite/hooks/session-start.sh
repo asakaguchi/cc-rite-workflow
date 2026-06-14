@@ -62,8 +62,15 @@ if [ -d "$_plugin_root/hooks" ]; then
   printf '%s' "$_plugin_root" > "$STATE_ROOT/.rite-plugin-root" 2>/dev/null || true
 fi
 
-# Save session_id to .rite-session-id for flow-state.sh auto-read
-if [ -n "$SESSION_ID" ]; then
+# Save session_id to .rite-session-id ONLY as the env-absent fallback channel
+# (Issue #1530). When the runtime exposes CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID,
+# that per-session env var is authoritative for flow-state.sh session_id resolution,
+# so writing the single shared `.rite-session-id` would just let concurrent sessions
+# clobber each other's value — the original flow-state contamination / worktree
+# mis-reap. Skipping the write when env is present stops every session start from
+# overwriting the shared file; env-absent runtimes (CI / headless / non-Code clients)
+# still get the file as their sole resolution channel, preserving backward compat.
+if [ -n "$SESSION_ID" ] && [ -z "${CLAUDE_CODE_SESSION_ID:-}" ] && [ -z "${CLAUDE_SESSION_ID:-}" ]; then
   (umask 077; printf '%s' "$SESSION_ID" > "$STATE_ROOT/.rite-session-id") 2>/dev/null || {
     [ -n "${RITE_DEBUG:-}" ] && echo "[rite] WARNING: Failed to write .rite-session-id" >&2
     true

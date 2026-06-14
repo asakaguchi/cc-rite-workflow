@@ -4,6 +4,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Run the suite with a clean session-id env (Issue #1530). flow-state.sh now
+# resolves session_id env-first (CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID) and
+# only falls back to each sandbox's `.rite-session-id` file when env is absent.
+# Most tests simulate a session by writing that file, so the dogfooding session's
+# own ambient CLAUDE_CODE_SESSION_ID must not leak into the sandboxes (it would
+# point every hook at a foreign per-session state file). Tests that exercise env
+# resolution set the vars explicitly per-command, overriding this unset.
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
+
 TOTAL=0
 PASSED=0
 FAILED=0

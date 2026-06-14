@@ -81,19 +81,22 @@ _resolve_session_id() {
     _validate_session_id "$override" "--session override" || return 1
     printf '%s\n' "$override"; return 0
   fi
-  if [ -f "$SESSION_ID_FILE" ]; then
-    local sid; sid=$(tr -d '[:space:]' < "$SESSION_ID_FILE" 2>/dev/null) || sid=""
-    if [ -n "$sid" ]; then
-      _validate_session_id "$sid" "$SESSION_ID_FILE" || return 1
-      printf '%s\n' "$sid"
-      return 0
-    fi
-  fi
-  # Claude Code runtime exposes CLAUDE_CODE_SESSION_ID; older / non-Code clients used
-  # CLAUDE_SESSION_ID. Accept both so cmd_get / cmd_set --if-exists do not silently
-  # degrade when `.rite-session-id` is absent but the runtime env IS set.
-  # 両 env-var 経路にも _validate_session_id を適用し、無検証で _state_path に渡る
-  # path-traversal / log-injection 経路を遮断する。
+  # Priority (Issue #1530): override → env CLAUDE_CODE_SESSION_ID → env
+  # CLAUDE_SESSION_ID → `.rite-session-id` file (env-absent fallback).
+  #
+  # The env var is per-session, so it isolates concurrent Claude sessions that
+  # share one state root (the main checkout). The `.rite-session-id` file is a
+  # single shared path that every session-start hook used to overwrite, so
+  # preferring it (the previous order) let the last session's id "leak" into the
+  # others — flow-state was written to a foreign `{sid}.flow-state` and an in-use
+  # worktree could be mis-reaped. Demoting the file to the env-absent fallback
+  # keeps backward compatibility for CI / headless / non-Code runtimes (which set
+  # no env var) while making the env var authoritative whenever it is present.
+  #
+  # Claude Code exposes CLAUDE_CODE_SESSION_ID; older / non-Code clients used
+  # CLAUDE_SESSION_ID — accept both. Every source (override / env / file) passes
+  # through _validate_session_id before reaching _state_path, blocking the
+  # unvalidated path-traversal / log-injection vector (§4.4 MUST NOT).
   if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
     _validate_session_id "$CLAUDE_CODE_SESSION_ID" "CLAUDE_CODE_SESSION_ID env" || return 1
     printf '%s\n' "$CLAUDE_CODE_SESSION_ID"
@@ -103,6 +106,14 @@ _resolve_session_id() {
     _validate_session_id "$CLAUDE_SESSION_ID" "CLAUDE_SESSION_ID env" || return 1
     printf '%s\n' "$CLAUDE_SESSION_ID"
     return 0
+  fi
+  if [ -f "$SESSION_ID_FILE" ]; then
+    local sid; sid=$(tr -d '[:space:]' < "$SESSION_ID_FILE" 2>/dev/null) || sid=""
+    if [ -n "$sid" ]; then
+      _validate_session_id "$sid" "$SESSION_ID_FILE" || return 1
+      printf '%s\n' "$sid"
+      return 0
+    fi
   fi
   echo "ERROR: cannot resolve session_id" >&2; return 1
 }

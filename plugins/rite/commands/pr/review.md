@@ -3535,7 +3535,7 @@ echo "content_write_failed=$content_write_failed"
 |--------|-------------|
 | `cat_redirection_failed` | tmpfile への heredoc redirection の exit code が非ゼロ (disk full / write permission denied / inode 枯渇 / IO error)。truncated content の silent ingest を防ぐため wiki ingest を非ブロッキングにスキップする |
 
-**Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are captured in `trigger_exit` and do not halt the workflow. The LLM reads `trigger_exit` from stdout and skips ステップ 6.5.W.2 when it is non-zero. Ingest failure does not block the review workflow.
+**Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are captured in `trigger_exit` and do not halt the workflow. The LLM reads `trigger_exit` from stdout and skips ステップ 6.5.W.2 when it is non-zero. The LLM **also reads `content_write_failed` from the prior Step 2 stdout** (`echo "content_write_failed=$content_write_failed"`) and re-establishes it before evaluating Step 3 — a separate bash invocation does not inherit shell state, so the carry-forward of `content_write_failed` is required exactly as for `trigger_exit`. `content_write_failed=1` means the heredoc content write failed and the trigger was never invoked. Ingest failure does not block the review workflow.
 
 **Step 3 — Failure surfacing**: 2 つの失敗経路を区別して surface する。
 

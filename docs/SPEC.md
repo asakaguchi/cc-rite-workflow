@@ -68,6 +68,7 @@ The command prefix `rite` was chosen for:
 | `/rite:pr:review` | Multi-reviewer review | `[PR number]` |
 | `/rite:pr:fix` | Address review feedback | `[PR number]` |
 | `/rite:pr:cleanup` | Post-merge cleanup | `[branch name]` |
+| `/rite:pr:run` | Run open→iterate→ready→merge→cleanup for each Issue (stop on first failure) | `<Issue number>...` |
 | `/rite:lint` | Run quality checks | `[file path]` |
 | `/rite:template:reset` | Regenerate templates | `[--force]` |
 | `/rite:wiki:init` | Initialize Experience Wiki (branch, directories, templates) | None |
@@ -158,6 +159,7 @@ rite-workflow/
 │ │ ├── review.md # /rite:pr:review
 │ │ ├── fix.md # /rite:pr:fix
 │ │ ├── cleanup.md # /rite:pr:cleanup
+│ │ ├── run.md # /rite:pr:run (Issue ごとに open→iterate→ready→merge→cleanup を順次実行)
 │ │ └── references/ # Protocol documents referenced by pr/ commands
 │ │ ├── assessment-rules.md # Review assessment rules
 │ │ ├── archive-procedures.md # Archive procedures
@@ -1761,6 +1763,7 @@ The contract ends only when the orchestrator's terminal completion marker has be
 | `/rite:pr:iterate` | `[review:mergeable]` or `[fix:replied-only]` (whichever sub-skill returns first terminates the loop) / `[fix:cancelled-by-user]` (user-initiated cancel via fix.md AskUserQuestion) |
 | `/rite:pr:ready` | `[ready:returned-to-caller]` (E2E flow) / completion display message (standalone) |
 | `/rite:pr:merge` | `[merge:returned-to-caller]` |
+| `/rite:pr:run` | `<!-- [run:all-completed] -->` (all Issues completed) / `<!-- [run:stopped] -->` (stopped on first failure; processed/remaining Issues reported). Does NOT use flow-state handoff; per-Issue continuation rides each sub-skill's own mechanism |
 | `/rite:issue:create` | `<!-- [create:returned-to-caller:{N}] -->` (HTML-comment wrap form) preceded by user-visible `✅ Issue #{N} を作成しました: {url}` and next-step guidance |
 
 ### Phase-aware continuation hints

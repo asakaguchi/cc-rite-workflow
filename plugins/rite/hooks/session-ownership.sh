@@ -32,6 +32,14 @@ source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
 # Extract session_id from hook JSON payload
 # Args: $1 = hook JSON string (from stdin of the hook)
 # Output: session_id string, or empty string if not found
+# Consistency (Issue #1530): the hook-side payload `.session_id` returned here and
+#   the command-side env `CLAUDE_CODE_SESSION_ID` (now flow-state.sh's primary
+#   resolution source) both identify the SAME Claude session, so per-session
+#   ownership stays coherent across the hook boundary: the per-session state file
+#   `{sid}.flow-state` is keyed by env on the command side and matched against this
+#   payload sid in the fast-path below. The shared `.rite-session-id` file is no
+#   longer the authoritative source, so a stale shared file cannot mis-classify
+#   ownership when env is present.
 # Note: jq parse failures degrade to empty so ownership check falls through to
 #   the backward-compat "own" path. The WARNING is unconditional because
 #   ownership classification feeds state-overwrite decisions; suppressing it

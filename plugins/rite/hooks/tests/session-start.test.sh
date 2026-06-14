@@ -16,6 +16,15 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
+# Clean session-id env (Issue #1530). session-start.sh resolves the active state
+# file via flow-state.sh, which is now env-first; the sandboxes here simulate a
+# session through `.rite-session-id`, so the dogfooding session's ambient
+# CLAUDE_CODE_SESSION_ID must not leak in (it would point the hook at a foreign
+# per-session state file). It also keeps the env-absent branch of the conditional
+# `.rite-session-id` write under test below as the default. Tests that need env
+# present set it explicitly. (run-tests.sh unsets the same vars for suite runs.)
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
+
 cleanup() {
   rm -rf "$TEST_DIR"
 }
@@ -1288,6 +1297,44 @@ EOF
   else
     fail "TC-1524-c: expected non-blocking WARNING; rc=$rc_wtc stderr=$(cat "$LAST_STDERR_FILE")"
   fi
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-1530: .rite-session-id write is conditioned on env-absence (Issue #1530)
+# --------------------------------------------------------------------------
+echo "TC-1530: .rite-session-id write conditioned on env-absence"
+
+# Case A: env absent → session-start writes .rite-session-id (the fallback channel
+# env-absent runtimes rely on for flow-state.sh resolution).
+dir1530a="$TEST_DIR/cond-env-absent"
+mkdir -p "$dir1530a"
+sid1530a="dddddddd-1111-2222-3333-444444444444"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+jq -n --arg cwd "$dir1530a" --arg src "startup" --arg sid "$sid1530a" \
+  '{cwd: $cwd, source: $src, session_id: $sid}' \
+  | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
+if [ "$(cat "$dir1530a/.rite-session-id" 2>/dev/null)" = "$sid1530a" ]; then
+  pass "TC-1530a: env-absent → .rite-session-id written with payload sid (fallback)"
+else
+  fail "TC-1530a: expected .rite-session-id='$sid1530a', got '$(cat "$dir1530a/.rite-session-id" 2>/dev/null)'"
+fi
+
+# Case B: env present → session-start must NOT write/clobber the shared
+# .rite-session-id; the per-session env var is authoritative, so leaving the
+# shared file untouched is what prevents concurrent sessions from overwriting it.
+dir1530b="$TEST_DIR/cond-env-present"
+mkdir -p "$dir1530b"
+sid1530b="eeeeeeee-5555-6666-7777-888888888888"
+env_sid_b="ffffffff-9999-0000-1111-222222222222"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+jq -n --arg cwd "$dir1530b" --arg src "startup" --arg sid "$sid1530b" \
+  '{cwd: $cwd, source: $src, session_id: $sid}' \
+  | env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$env_sid_b" bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
+if [ ! -f "$dir1530b/.rite-session-id" ]; then
+  pass "TC-1530b: env-present → shared .rite-session-id not written (no cross-session clobber)"
+else
+  fail "TC-1530b: expected no .rite-session-id when env present, got '$(cat "$dir1530b/.rite-session-id" 2>/dev/null)'"
 fi
 echo ""
 

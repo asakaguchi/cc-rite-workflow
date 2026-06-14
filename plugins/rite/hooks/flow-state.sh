@@ -280,6 +280,40 @@ cmd_set() {
   _atomic_write "$path" "$new" || return 1
 }
 
+# clear-worktree: surgically remove the `worktree` field from a session's
+# flow-state, returning the file to its non-worktree (additive-key-absent) shape.
+# Mirrors cmd_deactivate's single-field write (`.active=false`) rather than going
+# through cmd_set, so callers need NOT know/preserve --phase/--next: cmd_set
+# requires both and would overwrite phase, forcing a read-modify-write of the
+# owner's phase/next just to clear one key (wider race window). Two callers:
+#   1. pr-cycle-cleanup.sh Step 5 reap → null the owning session's dangling
+#      `worktree` after the directory is removed (--session targets the owner).
+#   2. session-start.sh dangling self-heal → null the current session's `worktree`
+#      when the recorded path no longer exists.
+# Idempotent: no-op (no write, no updated_at churn) when the key is already
+# absent or the state file does not exist — keeps wm-sync's diff guard quiet and
+# preserves the merge-preserve contract of cmd_set untouched (the `--worktree ""`
+# merge-preserve path in cmd_set is intentionally NOT changed). Routes through
+# `_atomic_write` per the corruption-prevention convention; rc is propagated.
+cmd_clear_worktree() {
+  local session=""
+  while [ $# -gt 0 ]; do case "$1" in
+    --session) session="$2"; shift 2 ;;
+    *) echo "ERROR: unknown option: $1" >&2; return 1 ;;
+  esac; done
+  local sid path; sid=$(_resolve_session_id "$session") || return 1
+  path=$(_state_path "$sid"); [ ! -f "$path" ] && return 0
+  # Idempotent: skip the write when there is no worktree key. jq read failure
+  # (corrupt JSON) falls through to "false" → no-op; a corrupt file is left for
+  # the cmd_set/cmd_get WARNING paths to surface rather than rewritten blindly here.
+  local has_wt; has_wt=$(jq -r 'has("worktree")' "$path" 2>/dev/null) || has_wt="false"
+  [ "$has_wt" = "true" ] || return 0
+  local now updated; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  updated=$(jq --arg ts "$now" 'del(.worktree) | .updated_at = $ts' "$path") || return 1
+  # `_atomic_write` rc 伝播 (cmd_set / cmd_deactivate / `_migrate_file` と対称、header 契約遵守)。
+  _atomic_write "$path" "$updated" || return 1
+}
+
 cmd_get() {
   local field="" default="" session="" jq_filter=""
   while [ $# -gt 0 ]; do case "$1" in
@@ -473,17 +507,19 @@ case "${1:-}" in
   set) shift; cmd_set "$@" ;;
   get) shift; cmd_get "$@" ;;
   deactivate) shift; cmd_deactivate "$@" ;;
+  clear-worktree) shift; cmd_clear_worktree "$@" ;;
   consume-handoff) shift; cmd_consume_handoff "$@" ;;
   migrate) shift; cmd_migrate "$@" ;;
   path) shift; cmd_path "$@" ;;
   *)
     cat >&2 <<EOF
-Usage: $0 {set|get|deactivate|consume-handoff|migrate|path} [options]
+Usage: $0 {set|get|deactivate|clear-worktree|consume-handoff|migrate|path} [options]
   set --phase <P> --next <T> [--issue N] [--branch S] [--pr N] [--parent-issue N]
       [--active true|false] [--handoff CMD] [--session UUID] [--if-exists] [--preserve-error-count]
   get --field <F> [--default V] [--session UUID]
       | --jq-filter <FILTER> [--default V] [--session UUID]
   deactivate [--next T] [--session UUID]
+  clear-worktree [--session UUID]    # surgically del(.worktree); idempotent, no phase/next needed
   consume-handoff [--session UUID]   # print + clear the one-shot handoff marker
   migrate [--dry-run] [--verbose]
   path [--session UUID]

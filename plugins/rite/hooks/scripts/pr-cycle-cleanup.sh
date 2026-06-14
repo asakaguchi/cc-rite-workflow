@@ -473,6 +473,72 @@ _rite_dir_is_self() {
 rite_self_dir="${RITE_WORKTREE:-$rite_invocation_pwd}"
 rite_self_canon=$(_rite_canonical_dir "$rite_self_dir")
 
+# Cross-session liveness guard (Issue #1524). The 4th protection layer: extend
+# Gate 0 self-exclusion to ALL live sessions. Scans `.rite/sessions/*.flow-state`
+# for a session that records this worktree as its active `worktree`. flow-state
+# liveness takes priority over the claim liveness gate (Gate 2): a session can be
+# live and standing in the worktree while its claim heartbeat has gone
+# stale/free, so the claim alone would wrongly mark the tree reapable. Returns:
+#   0 = a LIVE session (active=true) records $1 (canonical wt_path) → protect (skip reap)
+#   2 = the sessions dir cannot be enumerated, or a flow-state cannot be parsed
+#       → caller skips conservatively (AC-4): we cannot prove no live session needs it
+#   1 = no live session references it → reap may proceed (subject to other gates)
+# Reads the shared-root sessions dir ($repo_root/.rite/sessions).
+_rite_worktree_live_referenced() {
+  local target_canon="$1"
+  local sdir="$repo_root/.rite/sessions"
+  [ -d "$sdir" ] || return 1
+  # Existing-but-unreadable dir is an enumeration failure → conservative skip.
+  [ -r "$sdir" ] && [ -x "$sdir" ] || return 2
+  local f parse_failed=0
+  for f in "$sdir"/*.flow-state; do
+    [ -f "$f" ] || continue   # literal glob (no matches) or non-file → skip
+    local _row _active _wt
+    # Single composite read so a corrupt flow-state is caught as a parse failure
+    # (→ conservative skip) rather than silently degrading active/worktree to empty.
+    _row=$(jq -r '[(.active // false | tostring), (.worktree // "")] | join("")' "$f" 2>/dev/null) || { parse_failed=1; continue; }
+    IFS=$'\x1f' read -r _active _wt <<< "$_row"
+    [ "$_active" = "true" ] || continue
+    [ -n "$_wt" ] || continue
+    if [ "$_wt" = "$target_canon" ] || [ "$(_rite_canonical_dir "$_wt")" = "$target_canon" ]; then
+      return 0
+    fi
+  done
+  [ "$parse_failed" -eq 1 ] && return 2
+  return 1
+}
+
+# After a session worktree is reaped, clear the `worktree` reference from every
+# flow-state that still records it, so neither rite's own re-entry path
+# (open.md Step 0.5 / resume.md) nor a later harness cwd-restore is pointed at the
+# now-deleted directory (Issue #1524 MUST: reap → null the owner's flow-state
+# worktree). The write is routed through `flow-state.sh clear-worktree` to honor
+# the `_atomic_write` convention; per-session failure WARNs and is non-blocking
+# (AC-5). $1 = raw wt_path (already removed), $2 = its canonical form captured
+# BEFORE removal (post-removal canonicalization of a deleted dir would not match).
+_rite_null_worktree_refs() {
+  local wt_raw="$1" wt_canon="$2"
+  local sdir="$repo_root/.rite/sessions"
+  [ -d "$sdir" ] && [ -r "$sdir" ] || return 0
+  local f
+  for f in "$sdir"/*.flow-state; do
+    [ -f "$f" ] || continue
+    local _wt; _wt=$(jq -r '.worktree // ""' "$f" 2>/dev/null) || continue
+    [ -n "$_wt" ] || continue
+    if [ "$_wt" = "$wt_raw" ] || [ "$_wt" = "$wt_canon" ] || [ "$(_rite_canonical_dir "$_wt")" = "$wt_canon" ]; then
+      local _sid; _sid=$(basename "$f"); _sid="${_sid%.flow-state}"
+      if RITE_STATE_ROOT="$repo_root" bash "$SCRIPT_DIR/../flow-state.sh" clear-worktree --session "$_sid" >/dev/null 2>&1; then
+        :
+      else
+        echo "WARNING: reap 後の flow-state worktree クリアに失敗しました (session=$(printf '%s' "$_sid" | neutralize_ctrl))。非blocking で継続します。" >&2
+      fi
+    fi
+  done
+  # Explicit rc so the for-loop's trailing exit status (a non-matching `if`) never
+  # trips the caller's `set -e` when this is invoked as a standalone statement.
+  return 0
+}
+
 if [ -d "$session_wt_root" ]; then
   while IFS= read -r _wt_line; do
     case "$_wt_line" in
@@ -495,6 +561,29 @@ if [ -d "$session_wt_root" ]; then
     # silent) per AC-2.
     if [ -n "$rite_self_canon" ] && _rite_dir_is_self "$rite_self_canon" "$(_rite_canonical_dir "$wt_path")"; then
       echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' は実行中の自セッション worktree のため reap をスキップします (self-exclusion)。" >&2
+      continue
+    fi
+
+    # Canonicalize once (worktree still exists here): reused by the cross-session
+    # liveness guard below AND by the post-reap null-ing (which must use the
+    # pre-removal canonical form — a deleted dir no longer canonicalizes).
+    _wt_canon=$(_rite_canonical_dir "$wt_path")
+
+    # Gate (cross-session liveness, Issue #1524): never reap a worktree that a
+    # DIFFERENT live session records as its active `worktree`, even when that
+    # session's claim has gone stale/free (flow-state liveness > claim liveness).
+    # Evaluated before Gate 3/Gate 2, like Gate 0, so a clean+stale+aged worktree
+    # still held by a live session is preserved. Enumeration/parse failure of
+    # `.rite/sessions/` → conservative skip (AC-4). Skip is logged (not silent).
+    # `func || rc=$?` (not `func; rc=$?`): under `set -e` a bare non-zero return
+    # (rc=1 no live ref / rc=2 enum failure) would abort the whole reap loop.
+    _live_rc=0
+    _rite_worktree_live_referenced "$_wt_canon" || _live_rc=$?
+    if [ "$_live_rc" -eq 0 ]; then
+      echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' は別の live セッションが参照中のため reap をスキップします (cross-session liveness)。" >&2
+      continue
+    elif [ "$_live_rc" -eq 2 ]; then
+      echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' の保護判定に必要な flow-state の列挙/parse に失敗したため、安全側で reap をスキップします。" >&2
       continue
     fi
 
@@ -545,6 +634,10 @@ if [ -d "$session_wt_root" ]; then
     if git worktree remove --force "$wt_path" 2>/dev/null || rm -rf "$wt_path" 2>/dev/null; then
       session_worktrees_reaped=$((session_worktrees_reaped + 1))
       rm -f "$repo_root/.rite/state/issue-claims/issue-${issue_num}.json" 2>/dev/null || true
+      # Null the dangling `worktree` reference in the owning session's flow-state
+      # (uses the pre-removal canonical path) so re-entry / harness cwd-restore is
+      # not pointed at the just-removed dir. Non-blocking (AC-5).
+      _rite_null_worktree_refs "$wt_path" "$_wt_canon"
     else
       echo "WARNING: failed to reap session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)'" >&2
       errors=$((errors + 1))

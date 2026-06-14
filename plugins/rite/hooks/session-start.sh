@@ -396,6 +396,33 @@ if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
   exit 0
 fi
 
+# --- Dangling session-worktree self-heal (multi-session §8 / Issue #1524) ---
+# If the recorded `worktree` path no longer exists (e.g. it was reaped by another
+# session's lazy GC while this session was paused), null the field so neither the
+# orchestrator's re-entry path (open.md Step 0.5 / resume.md) nor a later
+# EnterWorktree is aimed at a dead directory. The harness's own /clear cwd-restore
+# cannot be intercepted by rite, so this is the SECONDARY defense (the primary is
+# the reap-side cross-session liveness guard in pr-cycle-cleanup.sh). Runs on both
+# startup and clear, for active and inactive state alike (a dangling reference is
+# harmful to a later resume regardless of `active`). `flow-state.sh clear-worktree`
+# resolves the same session_id as `path` above (same .rite-session-id + RITE_STATE_ROOT),
+# so it targets THIS session's own state file. Non-blocking: failures WARN and the
+# hook continues (AC-5).
+_recorded_wt_err=$(mktemp 2>/dev/null) || _recorded_wt_err=""
+_recorded_wt=$(jq -r '.worktree // ""' "$STATE_FILE" 2>"${_recorded_wt_err:-/dev/null}") || _recorded_wt=""
+if [ -n "$_recorded_wt_err" ] && [ -s "$_recorded_wt_err" ]; then
+  echo "rite: session-start: WARNING: jq read of .worktree failed (STATE_FILE may be corrupt)" >&2
+  head -3 "$_recorded_wt_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+fi
+[ -n "$_recorded_wt_err" ] && rm -f "$_recorded_wt_err"
+if [ -n "$_recorded_wt" ] && [ ! -d "$_recorded_wt" ]; then
+  if RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" clear-worktree >/dev/null 2>&1; then
+    echo "[rite] worktree '$(printf '%s' "$_recorded_wt" | neutralize_ctrl)' が存在しないため flow-state から参照をクリアしました（再入場は試みません）。" >&2
+  else
+    echo "[rite] WARNING: session-start: dangling worktree 参照のクリアに失敗しました（非blocking で継続します）。" >&2
+  fi
+fi
+
 _active_err=$(mktemp 2>/dev/null) || _active_err=""
 ACTIVE=$(jq -r '.active // false' "$STATE_FILE" 2>"${_active_err:-/dev/null}") || ACTIVE=false
 if [ -n "$_active_err" ] && [ -s "$_active_err" ]; then

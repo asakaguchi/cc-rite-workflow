@@ -162,5 +162,79 @@ assert "TC-11 RITE_WORKTREE-named worktree survives" "1" "$( [ -d "$R/.rite/work
 assert_grep "TC-11 self-exclusion WARNING on stderr" "$R/pcc.err" "self-exclusion"
 case "$out" in *"session_worktrees=0"*) pass "TC-11 status reports session_worktrees=0" ;; *) fail "TC-11 status: $out" ;; esac
 
+# ===========================================================================
+# Issue #1524 — cross-session liveness guard (4th protection layer) + reap-time
+# flow-state worktree null-ing. The guard protects a worktree that ANOTHER live
+# session (flow-state active=true) records as its `worktree`, EVEN when that
+# session's claim has gone stale — flow-state liveness > claim liveness (Gate 2).
+# SID_C = a third (distinct) holder session used by the prefix-collision test.
+# ===========================================================================
+SID_C="cccccccc-9999-aaaa-bbbb-cccccccccccc"
+
+# Helper: age a flow-state's updated_at so the holder's CLAIM goes stale while
+# keeping active=true + worktree recorded — the exact incident shape (live session,
+# expired claim heartbeat). Without aging, the claim stays "other" (live) and Gate 2
+# alone would protect the worktree, making the new guard's contribution vacuous.
+age_flow_state() {
+  local sf="$1" tmp
+  tmp=$(mktemp) || return 1
+  jq '.updated_at = "2020-01-01T00:00:00Z"' "$sf" > "$tmp" && mv "$tmp" "$sf"
+}
+
+echo "=== T-01 (AC-1): live-session flow-state worktree ref → NOT reaped even when claim stale ==="
+R=$(make_repo 70); cleanup_dirs+=("$R")
+# Record the worktree in SID_A's flow-state (the live-session reference), then age
+# updated_at so the claim is "stale" (Gate 2 would reap) while active=true (guard protects).
+RITE_STATE_ROOT="$R" bash "$FS" set --session "$SID_A" --phase implement --issue 70 \
+  --branch "feat/issue-70" --next n --worktree "$R/.rite/worktrees/issue-70" >/dev/null 2>&1
+age_flow_state "$R/.rite/sessions/${SID_A}.flow-state"
+claim_now=$(RITE_STATE_ROOT="$R" bash "$IC" check --issue 70 --session "$SID_B" 2>/dev/null)
+out=$(run_pcc "$R")
+assert "T-01 claim is stale (guard non-vacuous: Gate 2 alone would reap)" "stale" "$claim_now"
+assert "T-01 live-referenced worktree survives (cross-session liveness)" "1" "$( [ -d "$R/.rite/worktrees/issue-70" ] && echo 1 || echo 0 )"
+assert_grep "T-01 cross-session liveness WARNING on stderr" "$R/pcc.err" "cross-session liveness"
+case "$out" in *"session_worktrees=0"*) pass "T-01 status reports session_worktrees=0" ;; *) fail "T-01 status: $out" ;; esac
+
+echo "=== T-03 (AC-3): inactive flow-state worktree ref does NOT over-protect → reaped + owner ref nulled ==="
+R=$(make_repo 71); cleanup_dirs+=("$R")
+# SID_A records the worktree but is then deactivated (active=false) → NOT a live ref.
+RITE_STATE_ROOT="$R" bash "$FS" set --session "$SID_A" --phase implement --issue 71 \
+  --branch "feat/issue-71" --next n --worktree "$R/.rite/worktrees/issue-71" >/dev/null 2>&1
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+out=$(run_pcc "$R")
+assert "T-03 orphan worktree reaped (inactive ref not over-protected)" "0" "$( [ -d "$R/.rite/worktrees/issue-71" ] && echo 1 || echo 0 )"
+assert "T-03 claim file deleted" "0" "$( [ -f "$R/.rite/state/issue-claims/issue-71.json" ] && echo 1 || echo 0 )"
+assert "T-03 owner flow-state worktree nulled after reap" "false" "$(jq -r 'has("worktree")' "$R/.rite/sessions/${SID_A}.flow-state" 2>/dev/null)"
+case "$out" in *"session_worktrees=1"*) pass "T-03 status reports session_worktrees=1" ;; *) fail "T-03 status: $out" ;; esac
+
+echo "=== T-04 (AC-4): flow-state parse failure → conservative skip + WARNING ==="
+R=$(make_repo 72); cleanup_dirs+=("$R")
+# Stale the claim so the worktree WOULD be reaped (non-vacuous), then drop a corrupt
+# flow-state so the guard's jq parse fails → conservative skip. Corrupt-file (vs
+# chmod) keeps the test uid-independent (root would bypass an unreadable dir).
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+printf '{ this is not valid json' > "$R/.rite/sessions/corrupt-sess.flow-state"
+out=$(run_pcc "$R")
+assert "T-04 worktree survives (conservative skip on parse failure)" "1" "$( [ -d "$R/.rite/worktrees/issue-72" ] && echo 1 || echo 0 )"
+assert_grep "T-04 conservative-skip WARNING on stderr" "$R/pcc.err" "保護判定に必要な flow-state"
+case "$out" in *"session_worktrees=0"*) pass "T-04 status reports session_worktrees=0" ;; *) fail "T-04 status: $out" ;; esac
+
+echo "=== T-06 (AC-6): new guard + strict regex — issue-1 (live-ref) protected, issue-12 (orphan) reaped, no prefix bleed ==="
+R=$(make_repo 1); cleanup_dirs+=("$R")
+# issue-1: live flow-state ref (active + worktree) with a stale claim → guard protects.
+RITE_STATE_ROOT="$R" bash "$FS" set --session "$SID_A" --phase implement --issue 1 \
+  --branch "feat/issue-1" --next n --worktree "$R/.rite/worktrees/issue-1" >/dev/null 2>&1
+age_flow_state "$R/.rite/sessions/${SID_A}.flow-state"
+# issue-12: a sibling orphan held by a DIFFERENT inactive session → reapable. Proves the
+# guard's path matching + Gate 1 strict regex do not let issue-1 protect issue-12.
+( cd "$R" && $GIT worktree add -q -b "feat/issue-12" ".rite/worktrees/issue-12" >/dev/null 2>&1 )
+RITE_STATE_ROOT="$R" bash "$IC" claim --issue 12 --session "$SID_C" --worktree "$R/.rite/worktrees/issue-12" >/dev/null 2>&1
+RITE_STATE_ROOT="$R" bash "$FS" set --session "$SID_C" --phase implement --issue 12 --branch "feat/issue-12" --next n >/dev/null 2>&1
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_C" --next done >/dev/null 2>&1
+out=$(run_pcc "$R")
+assert "T-06 issue-1 (live-ref) survives" "1" "$( [ -d "$R/.rite/worktrees/issue-1" ] && echo 1 || echo 0 )"
+assert "T-06 issue-12 (orphan) reaped (no prefix bleed from issue-1)" "0" "$( [ -d "$R/.rite/worktrees/issue-12" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=1"*) pass "T-06 status reports session_worktrees=1 (only issue-12)" ;; *) fail "T-06 status: $out" ;; esac
+
 print_summary "$(basename "$0")" \
-  "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); branch preserved; wiki-worktree excluded; session-start best-effort wiring."
+  "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + cross-session liveness guard (Issue #1524: another live session's flow-state worktree ref → never reap; reap → null owner ref) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); branch preserved; wiki-worktree excluded; session-start best-effort wiring."

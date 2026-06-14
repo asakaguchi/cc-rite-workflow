@@ -74,13 +74,20 @@ bash "$WIL" release --session "$SID_A" >/dev/null 2>&1 || true
 rm -rf "$LOCKDIR" 2>/dev/null || true
 printf '%s' "$SID_B" > "$ROOT/.rite-session-id"   # shared file says SID_B (stale)
 mk_active "$SID_A"                                  # but env session SID_A is the live one
+# Precondition only — acquire on a fresh lock returns "acquired" regardless of which sid resolves;
+# the precedence guard is the holder assert on the next line.
 got=$(env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$SID_A" bash "$WIL" acquire)
-assert "TC-8 acquire resolves via env" "acquired" "$got"
+assert "TC-8 acquire succeeds (precondition; precedence pinned by next assert)" "acquired" "$got"
 assert "TC-8 holder is env sid (SID_A), not stale file sid (SID_B)" "$SID_A" "$(cat "$LOCKDIR/session_id")"
-# env-absent fallback: the SAME no-override resolver falls back to the file (SID_B), which then
-# sees the lock held by the live SID_A → held (backward-compat path still works).
-got=$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$WIL" check)
-assert "TC-8 env-absent check falls back to file sid (SID_B) → held by SID_A" "held" "$got"
+# env-absent fallback: with env cleared AND holder==SID_B, the no-override resolver resolves the FILE
+# sid (SID_B) — proven by check==own (resolver returned SID_B == holder), not merely "held" which an
+# empty resolution would also yield. This pins that the file fallback returns SID_B specifically.
+bash "$WIL" release --session "$SID_A" >/dev/null 2>&1 || true
+rm -rf "$LOCKDIR" 2>/dev/null || true
+mk_active "$SID_B"                                  # holder SID_B; file also SID_B (set above)
+env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$WIL" acquire >/dev/null
+assert "TC-8 env-absent acquire holder resolved via file sid (SID_B)" "$SID_B" "$(cat "$LOCKDIR/session_id")"
+assert "TC-8 env-absent check own (resolver returned file sid SID_B == holder)" "own" "$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$WIL" check)"
 
 print_summary "$(basename "$0")" \
   "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock with session-flow-state liveness (2h), reclaim stale, concurrent_ingest rc 11; _resolve_sid env-first (Issue #1530)."

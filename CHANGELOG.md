@@ -27,6 +27,25 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-06-16
+
+### Added
+
+- **OKF v0.1 minimal conformance for Wiki concept pages** — concept page frontmatter now carries `type` and `okf_version` fields, aligning Wiki pages with Open Knowledge Format v0.1.
+- **OKF v0.1 sync and upstream visualizer integration guide** — documentation now covers OKF v0.1-conformant synchronization and connecting the upstream visualizer.
+
+### Changed
+
+- **`/rite:pr:run` defaults to draft-only** — the command runs `open → iterate` (stopping at draft) by default, and `ready → merge → cleanup` is opt-in via the `--merge` flag.
+- **Wiki `index.md` reshaped to OKF bullet form with two-pass query** — `index.md` adopts an OKF bullet structure and `wiki:query` resolves in two passes.
+- **Wiki `log.md` reshaped to OKF form** — `log.md` adopts an OKF structure and the `ingest:skip` state moves into raw frontmatter.
+
+### Fixed
+
+- **`wiki:close` heredoc write-failure guard** — `close.md` Phase 4.4.W guards against heredoc write failure, mirroring the review/fix path.
+- **`/rite:pr` review/fix `$trigger_exit` defensive default** — Step 3 assigns a defensive default to `$trigger_exit`.
+- **Live-process worktrees protected from `/clear` "Path does not exist"** — worktrees with a live process are protected so the `/clear` "Path does not exist" error does not recur.
+
 ## [0.5.3] - 2026-06-14
 
 ### Added
@@ -516,6 +535,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.5.4]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.0...v0.5.1

@@ -397,7 +397,7 @@ fi
 {
   "category": "orphan",
   "page": ".rite/wiki/pages/patterns/new-page.md",
-  "detail": "index.md の「ページ一覧」テーブルに未登録"
+  "detail": "index.md の OKF 箇条書き（* [title](pages/...) - desc）に未登録"
 }
 ```
 

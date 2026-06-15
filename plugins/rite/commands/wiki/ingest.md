@@ -620,7 +620,7 @@ fi
 
 ## ステップ 6: index.md の更新
 
-`.rite/wiki/index.md` の OKF v0.1 予約構造（箇条書き）に新規ページ行を追加し、既存ページが更新された場合は該当行の説明文を上書きする。メタデータ（ドメイン / 確信度 / 更新日）は各ページ frontmatter を Source of Truth とするため index には重複保持しない。統計も index から分離し、総ページ数・ドメイン別カウントは `/rite:wiki:lint` のレポート出力で算出する（index を OKF クリーンに保つため）。
+`.rite/wiki/index.md` の OKF v0.1 予約構造（箇条書き）に新規ページ行を追加し、既存ページが更新された場合は該当行の説明文を上書きする。メタデータ（ドメイン / 確信度 / 更新日）は各ページ frontmatter を Source of Truth とするため index には重複保持しない。統計も index から分離し、総ページ数は `/rite:wiki:lint` のレポート出力で確認できる（ドメイン別内訳は本 Sub のスコープ外。index を OKF クリーンに保つため）。
 
 **更新ルール**:
 

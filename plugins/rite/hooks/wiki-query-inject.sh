@@ -338,7 +338,14 @@ fi
 # Both `*` and `-` bullet markers are accepted; only links whose target
 # contains `pages/` are kept (the orphan-link grep contract — see
 # wiki-lint-orphans.sh — relies on the same `pages/{domain}/{slug}.md` target).
+# HTML comment blocks (`<!-- ... -->`) are skipped so that illustrative bullet
+# examples inside the index-template.md comment are NOT parsed as real
+# candidates (otherwise a pristine `wiki:init` index would yield a phantom
+# candidate whose page does not exist, emitting a misleading "index.md may be
+# stale" WARNING on every query — Issue #1519 review F-01).
 candidates=$(printf '%s\n' "$index_content" | awk '
+  /<!--/ { in_comment=1 }
+  in_comment { if (index($0, "-->") > 0) in_comment=0; next }
   /^[[:space:]]*[*-][[:space:]]+\[/ {
     line = $0
     title = ""; path = ""; desc = ""

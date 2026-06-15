@@ -868,6 +868,6 @@ sentinel は grep 可能 (`grep -F '[ingest:returned-to-caller]'`) で rendered 
 
 - **単一責任**: Ingest は「Raw Source → Wiki ページ」の変換のみ。Query / Lint は別コマンド
 - **冪等性**: 同じ Raw Source を再 Ingest しても結果が同じ (`ingested: true` フラグで重複防止)
-- **append-only な log**: 活動ログは履歴として残し、追加のみ
+- **append-only な log**: 変更履歴ログ (log.md) は履歴として残し、追加のみ
 - **PR diff からの分離**: `separate_branch` 戦略では Wiki 変更は `.rite/wiki-worktree/` worktree 内に閉じ、dev ブランチのツリーは一切変更されない (`.gitignore` で worktree path を除外)
 - **opt-out**: `wiki.enabled: true` がデフォルト。`wiki:` セクション未指定でも有効扱い

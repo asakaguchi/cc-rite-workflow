@@ -44,9 +44,10 @@
 # NOTE on shell flags: this script manages `$?` explicitly per command. A global
 # `set -e` would break those explicit rc checks (git ls-tree / git show / find /
 # cat failures are handled per AC-7, not fatal), so it is intentionally NOT set.
-# `set -o pipefail` is also NOT used: the only remaining pipeline is the final
-# `sort -u | sed` (its rc is not consumed). `set -u` is likewise omitted; all
-# variable refs are `${var:-}`-guarded.
+# `set -o pipefail` is also NOT used: no pipeline's exit status is consumed here
+# (every `$(... | ...)` capture is judged by its output via `[ -n ... ]` / sort,
+# never by its rc), so a mid-pipeline failure cannot silently corrupt an rc check.
+# `set -u` is likewise omitted; all variable refs are `${var:-}`-guarded.
 
 # shellcheck source=../control-char-neutralize.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"

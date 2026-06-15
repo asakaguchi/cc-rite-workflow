@@ -435,7 +435,7 @@ Wiki の初期化が完了しました。
 作成されたファイル:
 - .rite/wiki/SCHEMA.md (蓄積規約)
 - .rite/wiki/index.md (ページカタログ)
-- .rite/wiki/log.md (活動ログ)
+- .rite/wiki/log.md (変更履歴ログ、OKF 形式・人間向け)
 - .rite/wiki/pages/{patterns, heuristics, anti-patterns}/.gitkeep (空ディレクトリ git 追跡用)
 
 作成されたディレクトリ:

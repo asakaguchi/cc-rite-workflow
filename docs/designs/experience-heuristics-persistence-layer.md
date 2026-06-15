@@ -73,7 +73,7 @@ rite ワークフロー実行時に関連経験則を自動参照し、コンテ
 | ファイル | 役割 | 更新タイミング |
 |---------|------|-------------|
 | `.rite/wiki/index.md` | 全 Wiki ページのカタログ（リンク + 一行サマリー + メタデータ） | 毎回の Ingest |
-| `.rite/wiki/log.md` | 活動の時系列記録（append-only） | 毎回の Ingest/Query/Lint |
+| `.rite/wiki/log.md` | 変更履歴ログ（OKF 形式・人間向け・append-only） | 毎回の Ingest/Query/Lint |
 
 <!-- Section ID: SPEC-REQ-NFR -->
 ### 非機能要件

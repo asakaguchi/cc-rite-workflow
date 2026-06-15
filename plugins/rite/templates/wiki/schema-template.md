@@ -43,7 +43,7 @@ confidence: high | medium | low
 
 | フィールド | 必須 | 説明 |
 |-----------|------|------|
-| `type` | yes | OKF v0.1 の唯一の必須フィールド。concept の種別。rite では `domain` と同値（例 domain=heuristics → type=heuristics）。OKF consumer が type ベースで routing/filtering できるようにするための標準キー |
+| `type` | yes | **OKF v0.1 が要求する唯一のフィールド**（本表の他の `yes` 項目は rite が運用上必須とする拡張で、OKF 仕様上の必須ではない）。concept の種別。rite では `domain` と同値（例 domain=heuristics → type=heuristics）。OKF consumer が type ベースで routing/filtering できるようにするための標準キー |
 | `title` | yes | ページタイトル（検索・インデックスに使用） |
 | `domain` | yes | 蓄積ドメイン（上記3種）。rite 拡張キーとして温存（query/lint は引き続き domain を参照） |
 | `description` | no | 1 行要約（OKF 推奨。index 箇条書きの説明源・検索補助） |

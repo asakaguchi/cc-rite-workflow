@@ -1,5 +1,5 @@
 ---
-type: "{type}"
+type: "{concept_type}"
 title: "{title}"
 domain: "{domain}"
 description: "{description}"

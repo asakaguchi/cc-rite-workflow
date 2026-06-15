@@ -42,8 +42,10 @@
 #   2  invocation error (引数欠落 / repo-root cd 失敗)
 #
 # NOTE on shell flags: this script manages `$?` explicitly per command. A global
-# `set -e` would break those explicit rc checks (git ls-tree / git show / find /
-# cat failures are handled per AC-7, not fatal), so it is intentionally NOT set.
+# `set -e` would break those explicit rc checks (git ls-tree / find listing
+# failures degrade to io_error per AC-7; per-file git show / cat failures are
+# isolated as non-skipped per AC-6 — all handled explicitly, none fatal), so it
+# is intentionally NOT set.
 # `set -o pipefail` is also NOT used: no pipeline's exit status is consumed here
 # (every `$(... | ...)` capture is judged by its output via `[ -n ... ]` / sort,
 # never by its rc), so a mid-pipeline failure cannot silently corrupt an rc check.

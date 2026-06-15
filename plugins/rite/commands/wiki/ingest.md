@@ -640,9 +640,9 @@ fi
 
 - 今日の日付見出し `## YYYY-MM-DD` が `# Directory Update Log` 直後（ログ先頭）に無ければ新規追加する（新しい順のため最新日付を先頭に置く）。既にあればその見出し配下の bullet 群末尾に追加する
 - 各 Raw Source 1 件につき 1 bullet を追加する:
-  - **新規**: `* **Create**: [{page_path}](pages/{domain}/{slug}.md) — {source_ref} を新規ページ化`
-  - **更新**: `* **Update**: [{page_path}](pages/{domain}/{slug}.md) — {source_ref} を統合`
-  - **スキップ**: `* **Skip**: [{raw_path}](raw/{type}/{filename}) — {skip_reason}`
+  - **新規**: `* **Create**: [{title}](pages/{domain}/{slug}.md) — {source_ref} を新規ページ化`（`{title}` はステップ 5.3 で定義したページタイトル、リンク先は index.md の箇条書きと同じ `pages/{domain}/{slug}.md`）
+  - **更新**: `* **Update**: [{title}](pages/{domain}/{slug}.md) — {source_ref} を統合`
+  - **スキップ**: `* **Skip**: [{filename}](raw/{type}/{filename}) — {skip_reason}`（`{filename}` は当該 Raw Source のファイル名、`{type}` は Raw Source type）
 - 既存の日付見出し・bullet（過去エントリ）は改変しない
 
 log.md は append-only。既存エントリを変更してはいけない。

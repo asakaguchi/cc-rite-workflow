@@ -449,7 +449,7 @@ fi
 |----|------|---------------------------------|
 | `unknown` | 初期値 (branch_strategy fail-fast で後段未到達のときのみ残る) | 表示しない (後段未実行) |
 | `true` | raw frontmatter 走査成功 (skip 集合は信頼できる) | 通常表示 (false positive なし) |
-| `absent` | raw ディレクトリ不在 (fresh / 未初期化 wiki) — 空集合は妥当 | 通常表示 (skip 記録なしは妥当) |
+| `absent` | raw 走査対象の正当な不在 (same_branch: raw ディレクトリ不在 / separate_branch: wiki branch ref 不在) — 空集合は妥当 | 通常表示 (skip 記録なしは妥当) |
 | `io_error` | raw ディレクトリ列挙失敗 (permission / 破損 / race) | ⚠️ note 表示「raw frontmatter 走査失敗により `missing_concept` 件数に false positive を含む可能性あり」 |
 
 **LLM による集合保持の契約**: 上記 bash block の stdout に `---skipped_refs_begin---` / `---skipped_refs_end---` で挟まれた行を LLM が会話コンテキストに保持し、ステップ 6.2 の (b) 分岐判定材料とする。0 件でも begin/end marker は必ず出力される (集合構築ステップが実行されたことの positive confirmation)。
@@ -660,7 +660,7 @@ echo "[CONTEXT] WIKI_DESCRIPTIVE_REFS=$n_descriptive_refs"
 
 ### 8.1 検出結果の log.md 記録
 
-Lint 完了後、`.rite/wiki/log.md` に OKF v0.1 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新）で **append-only** にエントリを追記する。今日の日付見出し `## YYYY-MM-DD` が `# Directory Update Log` 直後（ログ先頭）に無ければ新規追加し、その見出し配下に以下の 1 bullet を追加する（Issue #1520 で log.md はテーブルから OKF 形式へ移行）:
+Lint 完了後、`.rite/wiki/log.md` に OKF v0.1 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新）で **append-only** にエントリを追記する。今日の日付見出し `## YYYY-MM-DD` が `# Directory Update Log` 直後（ログ先頭）に無ければ新規追加し、その見出し配下の **bullet 群末尾** に以下の 1 bullet を追加する（同日内の追記位置を ingest.md ステップ 7 と揃え、bullet 順序を実行者非依存にする。Issue #1520 で log.md はテーブルから OKF 形式へ移行）:
 
 ```
 * **{lint_action}** — contradictions={n}, stale={n}, orphans={n}, missing_concept={n}, unregistered_raw={n}, broken_refs={n}
@@ -750,7 +750,7 @@ echo "log_path=$log_path"
 **書き込み手順**:
 
 1. Edit ツールで `{log_path}` (ステップ 8.2 で出力された値を literal substitute) に ステップ 8.1 の OKF bullet（必要なら日付見出し）を **append-only** で追加する。**注意**: シェル変数 `$log_path` は Bash ツール呼び出し境界を超えると失われ、Edit ツールはシェル変数を解釈しない。`echo "log_path=..."` 出力を会話文脈から拾って literal value で置換する
-2. 以下の bash ブロックで commit + push する (`{log_entry}` は LLM が上記契約に従い ステップ 8.1 table から生成した literal 文字列で substitute する)
+2. 以下の bash ブロックで commit + push する (`{log_entry}` は LLM が上記契約に従い ステップ 8.1 の OKF bullet 形式から生成した literal 文字列で substitute する)
 
 ```bash
 # ステップ 8.3: log.md 追記後の commit
@@ -772,7 +772,7 @@ log_entry="{log_entry}"
 case "$log_entry" in
   "{"*"}")
     echo "ERROR: ステップ 8.3 の {log_entry} placeholder が literal substitute されていません (値: '$log_entry')" >&2
-    echo "  対処: LLM は ステップ 8.1 table の Lint カウンタ値から 6 フィールド形式の 1 行文字列を組み立て、本 bash block 冒頭の log_entry= 行を実際の値で置換する必要があります" >&2
+    echo "  対処: LLM は ステップ 8.1 の OKF bullet 形式に Lint カウンタ値を埋め込んで 6 フィールド形式の 1 行文字列を組み立て、本 bash block 冒頭の log_entry= 行を実際の値で置換する必要があります" >&2
     exit 1
     ;;
 esac
@@ -1001,7 +1001,7 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 | `git ls-tree` 失敗 | WARNING + `pages_list=""`/`raw_list=""` で継続（exit 0） | ステップ 2.2 |
 | `branch_strategy` 未知値 (各 site で同型) | **exit 1 で fail-fast** | ステップ 2.2 / 8.2 / 8.3 + helper 内 (4 / 5 / 6.0 / 6.2 / 7) |
 | `index.md` 読出失敗 | WARNING + 孤児検出 skip（exit 0 + `orphan_check_ok=index_unreadable`） | ステップ 5 (helper 内) |
-| `.rite/wiki/raw/` 不在 (legitimate absence) | WARNING 抑制 + `skipped_refs=""` + `log_read_ok=absent`（exit 0） | ステップ 6.0 |
+| raw 走査対象の正当な不在 (same_branch: `.rite/wiki/raw/` 不在 / separate_branch: wiki branch ref 不在) | WARNING 抑制 + `skipped_refs=""` + `log_read_ok=absent`（exit 0） | ステップ 6.0 |
 | raw frontmatter 読出失敗 (真の IO error) | WARNING + `skipped_refs=""` + `log_read_ok=io_error` + ステップ 9.1 で false positive note 表示（exit 0） | ステップ 6.0 |
 | ls-tree / find / awk scan 失敗 | WARNING + `skipped_refs=""` で継続（exit 0） | ステップ 6.0 |
 | `date -d` パース失敗 | 該当ページを skip し WARNING を stderr に出力（`n_stale` 非加算） | ステップ 4 (helper 内) |

@@ -41,13 +41,12 @@
 #   1  fail-fast (placeholder residue / unknown branch_strategy)
 #   2  invocation error (引数欠落 / repo-root cd 失敗)
 #
-# NOTE on shell flags: this is a faithful port of the inline block which
-# manages `$?` explicitly per command. A global `set -e` would break those
-# explicit rc checks (git show / cat / awk / sort failures are handled, not
-# fatal), so it is intentionally NOT set. `set -o pipefail` is toggled locally
-# around the awk/sort pipeline exactly as the inline block did. `set -u` is
-# likewise omitted to preserve verbatim behavior; all variable refs are
-# `${var:-}`-guarded.
+# NOTE on shell flags: this script manages `$?` explicitly per command. A global
+# `set -e` would break those explicit rc checks (git ls-tree / git show / find /
+# cat failures are handled per AC-7, not fatal), so it is intentionally NOT set.
+# `set -o pipefail` is also NOT used: the only remaining pipeline is the final
+# `sort -u | sed` (its rc is not consumed). `set -u` is likewise omitted; all
+# variable refs are `${var:-}`-guarded.
 
 # shellcheck source=../control-char-neutralize.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"
@@ -169,8 +168,10 @@ log_err=$(mktemp /tmp/rite-wiki-lint-p60-err-XXXXXX 2>/dev/null) || {
 skipped_refs=""
 # log_read_ok は 4 値 enum (unknown / true / absent / io_error)。
 #   unknown: 初期値 (placeholder/strategy fail-fast 経路でのみ残る、後段未到達)
-#   true:    raw frontmatter 走査成功
-#   absent:  legitimate absence (fresh branch / raw dir 不在 / ENOENT) — skipped_refs="" は妥当
+#   true:    raw frontmatter 走査成功 (空集合含む。separate_branch では raw tree 不在も
+#            git ls-tree rc=0 + 空出力で true に倒れる)
+#   absent:  legitimate absence — same_branch: raw dir 不在 (find ENOENT) /
+#            separate_branch: wiki_branch ref 自体が不在。いずれも skipped_refs="" は妥当
 #   io_error: 真の IO error — false positive リスクあり、ステップ 9.1 完了レポートで note 表示
 # canonical 定義: references/bash-cross-boundary-state-transfer.md#pattern-1-multi-value-enum-via-key-value-stdout
 log_read_ok="unknown"
@@ -184,8 +185,10 @@ log_read_ok="unknown"
 # The `log_read_ok` enum NAME is retained for the lint.md stdout contract
 # (ステップ 6.0 / 9.1 read it verbatim); its value now reflects the raw-frontmatter
 # *scan* status rather than a log.md read:
-#   true:     raw sources scanned successfully (set is reliable)
-#   absent:   no raw directory (fresh/uninitialised wiki) — empty set is legitimate
+#   true:     raw sources scanned successfully (set is reliable; an empty raw
+#             tree under an existing separate_branch ref also yields true)
+#   absent:   legitimate absence — same_branch: no raw dir (find ENOENT);
+#             separate_branch: the wiki_branch ref itself is missing
 #   io_error: raw directory listing failed — empty set may be a false negative,
 #             so lint.md ステップ 9.1 shows the false-positive note
 #
@@ -223,7 +226,9 @@ case "$branch_strategy" in
       done <<< "$raw_files"
     else
       rc=$?
-      # wiki branch / raw path race-absence は absent、それ以外は io_error。
+      # ここに来るのは ls-tree が rc≠0 で失敗した時のみ。raw tree 不在 (path 欠落) は
+      # rc=0 + 空出力で上の then 側 (true) に倒れるため、ここには来ない。wiki_branch ref
+      # 自体の race-absence (Not a valid object name 等) のみ absent、それ以外は io_error。
       if [ -n "$log_err" ] && [ -s "$log_err" ] && \
          grep -qE "Not a valid object name|not a tree object|does not exist" "$log_err"; then
         log_read_ok="absent"

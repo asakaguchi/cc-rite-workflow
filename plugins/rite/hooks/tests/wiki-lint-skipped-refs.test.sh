@@ -193,11 +193,20 @@ else
 fi
 
 # === TC-7: separate_branch 抽出 (git ls-tree + git show) ===
-echo "TC-7: separate_branch 抽出"
+# TC-1 (same_branch) と同じ exact block を pin し、separate_branch 固有の path 正規化
+# (${f#.rite/wiki/}) を経た ref prefix 形式 (raw/{type}/{file}) まで検証する。count のみだと
+# ref 形式の regression をこの読出機構 (ls-tree+show) では検出できないため。
+echo "TC-7: separate_branch 抽出 (exact block で ref 形式も検証)"
 repo=$(make_separate_branch_sandbox tc7 1)
 run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
-if [ "$HELPER_RC" = "0" ] && grep -q '^skipped_refs_count=2$' <<<"$HELPER_STDOUT" && grep -q '^log_read_ok=true$' <<<"$HELPER_STDOUT"; then
-  pass "git ls-tree + git show 経由で count=2 + read_ok=true"
+expected_block='skipped_refs_count=2
+---skipped_refs_begin---
+raw/fixes/skip1.md
+raw/reviews/skip2.md
+---skipped_refs_end---
+log_read_ok=true'
+if [ "$HELPER_RC" = "0" ] && [ "$HELPER_STDOUT" = "$expected_block" ]; then
+  pass "git ls-tree + git show 経由で exact block 一致 (count=2 / ref prefix 形式 / read_ok=true)"
 else
   fail "unexpected (rc=$HELPER_RC): $HELPER_STDOUT / stderr: $HELPER_STDERR"
 fi
@@ -246,10 +255,12 @@ else
   fail "hang detected (timeout)"
 fi
 
-# === TC-12: same_branch io_error (raw dir を chmod 000 → find が Permission denied) ===
-# raw dir の実行/読取権限を剥がすと find は "Permission denied" で rc≠0。absent 判別 regex
-# (No such file or directory) に match しないため io_error に降格する。root は権限チェックを
-# 透過するため (find が成功してしまう) root 実行時はアサーションを skip する。
+# === TC-12: same_branch io_error (raw dir を chmod 000 → find が rc≠0) ===
+# raw dir の実行/読取権限を剥がすと find は rc≠0 で失敗する。io_error への降格判定は特定の
+# stderr 文言 (例: "Permission denied"、locale/find 実装で変動) への依存ではなく、absent 判別
+# regex (No such file or directory) に **match しない** ことで成立する。アサーションも helper
+# 自身の locale 非依存 WARNING ("find に失敗しました") を grep する。root は権限チェックを透過
+# するため (find が成功してしまう) root 実行時はアサーションを skip する。
 echo "TC-12: same_branch io_error (fault injection: chmod 000 raw dir)"
 repo=$(make_same_branch_sandbox tc12 1)
 if [ "$(id -u)" = "0" ]; then

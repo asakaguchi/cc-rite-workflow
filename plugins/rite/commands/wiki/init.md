@@ -328,8 +328,8 @@ cp "${plugin_root}/templates/wiki/schema-template.md" .rite/wiki/SCHEMA.md
 sed "s/{initialized_at}/$initialized_at/g" \
   "${plugin_root}/templates/wiki/index-template.md" > .rite/wiki/index.md
 
-# log.md (OKF 日付見出し {initialized_date} は date-only、本文の {initialized_at} は full timestamp)
-sed -e "s/{initialized_date}/$initialized_date/g" -e "s/{initialized_at}/$initialized_at/g" \
+# log.md (OKF 日付見出し {initialized_date} のみ使用、date-only。log-template.md に {initialized_at} は無い)
+sed "s/{initialized_date}/$initialized_date/g" \
   "${plugin_root}/templates/wiki/log-template.md" > .rite/wiki/log.md
 ```
 

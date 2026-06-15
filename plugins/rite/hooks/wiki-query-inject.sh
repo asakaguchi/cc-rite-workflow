@@ -22,7 +22,7 @@
 #   --min-score   Minimum raw keyword match count to include a page (default: 1)
 #                 Note: compared against the unweighted keyword match count.
 #                 Sorting uses the confidence-weighted score (raw_score *
-#                 confidence_weight) separately — see "Score rows" section.
+#                 confidence_weight) separately — see "Pass 2 + Score" section.
 #   --format      full (include full page body) or compact (summary only, default)
 #
 # Output:
@@ -39,8 +39,14 @@
 #     stdout as "no context to inject" and continue.
 #   - Reads index.md via `git show` for separate_branch strategy, via direct
 #     file read for same_branch strategy.
+#   - OKF v0.1 2-pass (Issue #1519): the index.md is an OKF reserved bullet
+#     structure (`* [title](path) - description`) carrying only title/path/
+#     description. Pass 1 parses those candidates; Pass 2 reads each candidate
+#     page's frontmatter for domain/confidence/updated (Source of Truth). A
+#     candidate whose page frontmatter is unreadable is skipped with a WARNING
+#     (non-blocking — the index→page drift surfaces but other candidates render).
 #   - Scoring is case-insensitive substring match across page title + domain
-#     + summary, weighted by confidence (high=1.5, medium=1.0, low=0.5).
+#     + description, weighted by confidence (high=1.5, medium=1.0, low=0.5).
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -320,65 +326,96 @@ if [[ -z "$index_content" ]]; then
   exit 0
 fi
 
-# --- Parse index.md table rows ---
-# Row format: | [{title}]({path}) | {domain} | {summary} | {updated} | {confidence} |
+# --- Pass 1: Parse OKF bullet index for candidates ---
+# OKF v0.1 index.md is a reserved bullet structure (Sub-2 reshape, Issue #1519):
+#   * [{title}]({path}) - {description}
+# The index intentionally carries only title + path + description; per-page
+# metadata (domain / confidence / updated) lives in each page's frontmatter
+# (Source of Truth). Pass 1 extracts the candidates; Pass 2 (in the scoring
+# loop below) reads each candidate page's frontmatter for the metadata.
 #
-# awk extracts:
-#   title | path | domain | summary | updated | confidence
-# separated by ASCII unit separator (\x1f). cycle 11 で tab から変更。
-rows=$(printf '%s\n' "$index_content" | awk -F'|' '
-  BEGIN { in_table=0 }
-  /^\| ページ \| ドメイン/ { in_table=1; next }
-  /^\|[-| ]+\|$/ { next }
-  in_table == 1 && /^\|/ && NF >= 6 {
-    # Strip leading/trailing whitespace from each field in-place, then bind to
-    # named locals exactly once. Previously the fields were bound, trimmed in
-    # place, and then re-bound — the first binding was entirely dead code and
-    # invited misreadings about which version of the values was in use.
-    for (i = 2; i <= 6; i++) {
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", $i)
-    }
-    page_cell = $2; domain = $3; summary = $4; updated = $5; confidence = $6
-
-    # Extract title and path from Markdown link [title](path)
-    title = page_cell
-    path  = ""
-    if (match(page_cell, /\[[^]]*\]\([^)]*\)/)) {
-      m = substr(page_cell, RSTART, RLENGTH)
-      # title
-      if (match(m, /\[[^]]*\]/)) {
-        title = substr(m, RSTART + 1, RLENGTH - 2)
+# awk extracts: title | path | description, separated by unit separator (\x1f).
+# Both `*` and `-` bullet markers are accepted; only links whose target
+# contains `pages/` are kept (the orphan-link grep contract — see
+# wiki-lint-orphans.sh — relies on the same `pages/{domain}/{slug}.md` target).
+# HTML comment blocks (`<!-- ... -->`) are skipped so that illustrative bullet
+# examples inside the index-template.md comment are NOT parsed as real
+# candidates (otherwise a pristine `wiki:init` index would yield a phantom
+# candidate whose page does not exist, emitting a misleading "index.md may be
+# stale" WARNING on every query).
+candidates=$(printf '%s\n' "$index_content" | awk '
+  /<!--/ { in_comment=1 }
+  in_comment { if (index($0, "-->") > 0) in_comment=0; next }
+  /^[[:space:]]*[*-][[:space:]]+\[/ {
+    line = $0
+    title = ""; path = ""; desc = ""
+    if (match(line, /\[[^]]*\]\([^)]*\)/)) {
+      link = substr(line, RSTART, RLENGTH)
+      rest = substr(line, RSTART + RLENGTH)   # text after the markdown link
+      if (match(link, /\[[^]]*\]/)) title = substr(link, RSTART + 1, RLENGTH - 2)
+      if (match(link, /\([^)]*\)/)) path  = substr(link, RSTART + 1, RLENGTH - 2)
+      # description = text after the " - " separator following the link
+      if (match(rest, /^[[:space:]]*-[[:space:]]+/)) {
+        desc = substr(rest, RSTART + RLENGTH)
       }
-      # path
-      if (match(m, /\([^)]*\)/)) {
-        path = substr(m, RSTART + 1, RLENGTH - 2)
-      }
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", desc)
     }
-
-    if (path == "") next  # skip malformed rows
-    # Unit separator (\x1f) prevents POSIX whitespace collapse: tab + summary=""
-    # would let downstream `IFS=$'\t' read` swap confidence / updated columns,
-    # rendering wrong metadata next to each Wiki entry.
-    printf "%s\037%s\037%s\037%s\037%s\037%s\n", title, path, domain, summary, updated, confidence
+    if (path == "" || index(path, "pages/") == 0) next  # skip non-page / malformed
+    printf "%s\037%s\037%s\n", title, path, desc
   }
-  /^## / && in_table == 1 { in_table=0 }
 ')
 
-if [[ -z "$rows" ]]; then
+if [[ -z "$candidates" ]]; then
   exit 0
 fi
 
-# --- Score rows ---
-# For each row, count case-insensitive substring matches across
-# title + domain + summary for each keyword. Weight by confidence.
+# Read a candidate page's frontmatter metadata (domain / confidence / updated).
+# Returns "domain\x1f confidence\x1f updated" on stdout, or exit 1 on read
+# failure (the caller treats failure as a non-blocking skip — AC-8). Reads via
+# the same `ref` (separate_branch) / working-tree (same_branch) selection used
+# for index.md and per-page body reads, keeping origin/wiki fallback consistent.
+read_page_meta() {
+  local p="$1" body=""
+  if [[ "$branch_strategy" == "separate_branch" ]]; then
+    body=$(git show "${ref}:.rite/wiki/${p}" 2>/dev/null) || return 1
+  else
+    [[ -f ".rite/wiki/${p}" ]] || return 1
+    body=$(cat ".rite/wiki/${p}" 2>/dev/null) || return 1
+  fi
+  [[ -z "$body" ]] && return 1
+  printf '%s\n' "$body" | awk '
+    BEGIN { d=""; c=""; u=""; infm=0 }
+    NR == 1 && /^---[[:space:]]*$/ { infm=1; next }
+    infm && /^---[[:space:]]*$/ { exit }
+    infm && /^domain:/     { v=$0; sub(/^domain:[[:space:]]*/,"",v);     gsub(/^["'\'']|["'\'']$/,"",v); d=v }
+    infm && /^confidence:/ { v=$0; sub(/^confidence:[[:space:]]*/,"",v); gsub(/^["'\'']|["'\'']$/,"",v); c=v }
+    infm && /^updated:/    { v=$0; sub(/^updated:[[:space:]]*/,"",v);    gsub(/^["'\'']|["'\'']$/,"",v); u=v }
+    END { printf "%s\037%s\037%s", d, c, u }
+  '
+}
+
+# --- Pass 2 + Score ---
+# For each candidate, read its page frontmatter (Pass 2) for domain/confidence/
+# updated, then count case-insensitive substring matches across
+# title + domain + description for each keyword. Weight by confidence.
 IFS=',' read -r -a kw_array <<< "$KEYWORDS"
 
-# cycle 11 HIGH F-02: delimiter を \x1f (unit separator) に統一 (awk printf 出力と整合)。
 # Build scored list: "score<US>title<US>path<US>domain<US>summary<US>updated<US>confidence"
+# (`summary` slot carries the OKF index description, keeping the render section
+# below unchanged.)
 scored=""
-while IFS=$'\x1f' read -r title path domain summary updated confidence; do
+while IFS=$'\x1f' read -r title path description; do
   [[ -z "$path" ]] && continue
-  haystack=$(printf '%s %s %s' "$title" "$domain" "$summary" | tr '[:upper:]' '[:lower:]')
+  # Pass 2: read page frontmatter for metadata. Non-blocking — a candidate whose
+  # page is unreadable (stale index → page drift) is skipped with a WARNING and
+  # the remaining candidates still render (AC-8).
+  if ! meta=$(read_page_meta "$path"); then
+    echo "WARNING: cannot read frontmatter of ${path} — skipping candidate (index.md may be stale)" >&2
+    continue
+  fi
+  IFS=$'\x1f' read -r domain confidence updated <<< "$meta"
+  [[ -z "$confidence" ]] && confidence="medium"  # default mirrors page-template.md
+  haystack=$(printf '%s %s %s' "$title" "$domain" "$description" | tr '[:upper:]' '[:lower:]')
   raw_score=0
   for kw in "${kw_array[@]}"; do
     kw_trim=$(printf '%s' "$kw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
@@ -410,9 +447,9 @@ while IFS=$'\x1f' read -r title path domain summary updated confidence; do
   if (( raw_score >= MIN_SCORE )); then
     # cycle 11 HIGH F-02: delimiter を \x1f に統一 (awk printf 出力 / IFS read と整合)
     scored+=$(printf '%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\n' \
-      "${weighted_score}" "${title}" "${path}" "${domain}" "${summary}" "${updated}" "${confidence}")$'\n'
+      "${weighted_score}" "${title}" "${path}" "${domain}" "${description}" "${updated}" "${confidence}")$'\n'
   fi
-done <<< "$rows"
+done <<< "$candidates"
 
 if [[ -z "$scored" ]]; then
   exit 0

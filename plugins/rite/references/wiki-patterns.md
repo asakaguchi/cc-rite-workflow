@@ -267,11 +267,14 @@ rite は visualizer の成果物をコピー・改変しません。取得・実
 
 visualizer は `.rite/wiki/` をファイルシステム上のディレクトリとして読みます。`branch_strategy` により materialize 手順が異なります:
 
-- **separate_branch（推奨）**: Wiki データは専用ブランチ（既定 `wiki`）にあり、開発ツリーには存在しません。既存の wiki worktree helper で materialize します:
+- **separate_branch（推奨）**: Wiki データは専用ブランチ（既定 `wiki`）にあり、開発ツリーには存在しません。既存の wiki worktree helper で materialize します。`plugin_root` は local 開発・marketplace install の両方を解決する inline one-liner（[Plugin Path Resolution](plugin-path-resolution.md#inline-one-liner-for-command-files) 参照。`commands/wiki/ingest.md` / `init.md` と同一）で得ます:
 
   ```bash
+  # plugin_root を解決（install 時は ~/.claude/plugins/.../rite に解決される）
+  plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+
   # wiki ブランチを .rite/wiki-worktree/ にチェックアウト（既存 helper を再利用）
-  bash plugins/rite/hooks/scripts/wiki-worktree-setup.sh
+  bash "$plugin_root/hooks/scripts/wiki-worktree-setup.sh"
   # → .rite/wiki-worktree/.rite/wiki/ に bundle が materialize される
   ```
 

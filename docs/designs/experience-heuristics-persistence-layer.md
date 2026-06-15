@@ -143,12 +143,12 @@ plugins/rite/
     ├── page-template.md      #   知識ページのテンプレート
     ├── schema-template.md    #   Schema の初期テンプレート
     ├── index-template.md     #   インデックス初期テンプレート
-    └── log-template.md       #   活動ログ初期テンプレート
+    └── log-template.md       #   変更履歴ログ初期テンプレート（OKF 形式）
 
 .rite/wiki/                   # プロジェクト固有の Wiki データ（Git 別ブランチ管理）
 ├── SCHEMA.md                 # Schema: 蓄積規約
 ├── index.md                  # 全ページのカタログ
-├── log.md                    # 活動ログ（append-only）
+├── log.md                    # 変更履歴ログ（OKF 形式・人間向け・append-only）
 ├── raw/                      # Raw Sources（不変の一次データ）
 │   ├── reviews/              #   レビュー結果
 │   ├── retrospectives/       #   Issue 振り返り

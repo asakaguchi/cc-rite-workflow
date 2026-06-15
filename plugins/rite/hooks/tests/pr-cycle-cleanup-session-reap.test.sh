@@ -264,9 +264,11 @@ case "$out" in *"session_worktrees=1"*) pass "T-06 status reports session_worktr
 # ===========================================================================
 echo "=== T-07 (Issue #1544): a live process standing in a clean+stale worktree → NOT reaped (live-cwd guard) ==="
 R=$(make_repo 80); cleanup_dirs+=("$R")
-# Fully drift flow-state: deactivate the holder (active=false) and leave NO
-# `worktree` field (make_repo's flow-state set records none) → neither the
-# cross-session liveness guard nor the claim gate protects issue-80. Only the
+# Fully drift flow-state so neither flow-state-based guard protects issue-80:
+# `deactivate` sets SID_A's flow-state active=false, so the cross-session liveness
+# guard short-circuits at its `active=true` requirement (_rite_worktree_live_referenced)
+# — the `worktree` field value is irrelevant once active=false — and the deactivated
+# claim resolves to `stale`, which the claim gate treats as reapable. Only the
 # OS-level live-cwd guard can save it (non-vacuous: drop the guard and T-07 flips).
 RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
 # A live process stands in the worktree — the exact "harness cwd still in the
@@ -279,7 +281,7 @@ assert "T-07 worktree with live cwd survives (live-cwd guard)" "1" "$( [ -d "$R/
 assert "T-07 claim file survives (not reaped)" "1" "$( [ -f "$R/.rite/state/issue-claims/issue-80.json" ] && echo 1 || echo 0 )"
 assert_grep "T-07 live-cwd guard WARNING on stderr" "$R/pcc.err" "live-cwd guard"
 case "$out" in *"session_worktrees=0"*) pass "T-07 status reports session_worktrees=0" ;; *) fail "T-07 status: $out" ;; esac
-kill "$_h80" 2>/dev/null; wait "$_h80" 2>/dev/null || true
+kill "$_h80" 2>/dev/null || true; wait "$_h80" 2>/dev/null || true
 
 echo "=== T-08 (Issue #1544 non-regression): same clean+stale worktree with NO live cwd → reaped ==="
 R=$(make_repo 81); cleanup_dirs+=("$R")

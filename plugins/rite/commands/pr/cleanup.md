@@ -281,12 +281,12 @@ fi
 - `CLEANUP_WT=in_worktree`（cwd がセッション worktree）:
   1. `dirty=yes` なら **AskUserQuestion**（「`git stash push` して続行 / 中止」）。stash は common git dir に格納されるため worktree 削除後も `git stash pop` 可能（完了報告の stash 案内は従来文面を流用）。
   2. `ExitWorktree` ツールを `action: "keep"` で呼び出し、main checkout に復帰する（path 入場した worktree は remove でも消えない仕様のため**常に keep**）。
-  3. main から worktree を削除する。**削除前に live-cwd guard（Issue #1544）を通す**: 別のセッションの harness cwd がまだこの worktree に立っている場合に削除すると、そのセッションの `/clear` が `Path does not exist` で失敗するため、live プロセスが cwd を置いているときは削除せず遅延 reap（S4）へ委譲する:
+  3. main から worktree を削除する。**削除前に live-cwd guard（Issue #1544）を通す**: 別のセッションの harness cwd がまだこの worktree に立っている場合に削除すると、そのセッションの `/clear` が `Path does not exist` で失敗するため、live プロセスが cwd を置いているときは削除せず遅延 reap（`pr-cycle-cleanup.sh` の session worktree reap）へ委譲する:
      ```bash
      _lc_rc=0
      bash {plugin_root}/hooks/scripts/worktree-live-cwd.sh "{flow_wt}" >/dev/null 2>&1 || _lc_rc=$?
      if [ "$_lc_rc" -eq 0 ]; then
-       echo "WARNING: worktree '{flow_wt}' に live プロセスが cwd を置いているため削除を skip しました（遅延 reap S4 に委譲。harness cwd dangling → /clear エラーの防止）。" >&2
+       echo "WARNING: worktree '{flow_wt}' に live プロセスが cwd を置いているため削除を skip しました（遅延 reap pr-cycle-cleanup.sh に委譲。harness cwd dangling → /clear エラーの防止）。" >&2
        echo "[CONTEXT] WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1; path={flow_wt}" >&2
      else
        git worktree remove "{flow_wt}" 2>/dev/null || git worktree remove --force "{flow_wt}" 2>/dev/null || echo "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path={flow_wt}" >&2
@@ -294,7 +294,7 @@ fi
      fi
      ```
      > `in_worktree` 経路ではステップ 2 の `ExitWorktree` で harness cwd が main に退避済みのため、この guard は通常 rc=1（live cwd 不在）で削除へ進む。`worktree-live-cwd.sh` が rc=2（`/proc` も `lsof` も無い環境で判定不能）を返す場合は `if` が false となり従来どおり削除を実行する（後方互換）。
-  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）または live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）は **WARNING を表示して続行**（non-blocking。S4 の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。
+  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）または live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。
 - `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の live-cwd guard が特に重要。
 - `CLEANUP_WT=none`（multi_session 無効 or worktree 未記録）: 4-W 全体を no-op でスキップ。
 
@@ -512,11 +512,18 @@ Status: {projects_status_result}
 
 各チェックボックスおよび placeholder の判定:
 
-- `{session_worktree_check}`: multi_session 無効 or worktree 未使用なら行ごと省略。worktree 削除成功なら `x`。`WORKTREE_REMOVE_FAILED=1` のときは ` ` + 手動コマンドを付記:
-  ```
-  ⚠️ セッション worktree の削除に失敗しました（遅延 reap が後で回収します）。
-    手動削除: git worktree remove --force {flow_wt} && git worktree prune
-  ```
+- `{session_worktree_check}`: multi_session 無効 or worktree 未使用なら行ごと省略。以下を**上から評価し最初に一致したもの**を採用する（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD` と `WORKTREE_REMOVE_FAILED` は Step 4-W guard の if/else で排他だが、両 `[CONTEXT]` 行が文脈に残る可能性に備えて評価順序を固定する）:
+  - `WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1` のとき（live-cwd guard が削除を skip）: ` ` + 以下を付記
+    ```
+    ℹ️ セッション worktree は別セッションが cwd を置いているため削除を skip しました（遅延 reap が後で回収します）。
+      手動削除（当該セッションの /clear 後）: git worktree remove --force {flow_wt} && git worktree prune
+    ```
+  - `WORKTREE_REMOVE_FAILED=1` のとき（削除そのものが失敗）: ` ` + 以下を付記
+    ```
+    ⚠️ セッション worktree の削除に失敗しました（遅延 reap が後で回収します）。
+      手動削除: git worktree remove --force {flow_wt} && git worktree prune
+    ```
+  - いずれの `[CONTEXT]` 行も無い（削除成功）とき: `x`
 - `{projects_status_result}`: `projects_status_updated=true` なら `Done`、false なら `⚠️ 更新失敗（手動確認が必要）`
 - `{review_cleanup_check}`: `REVIEW_CLEANUP_PARTIAL_FAILURE=1` なら ` ` + 警告付記、なければ `x`
 - `{projects_check}`: `projects_status_updated=true` なら `x`、false なら ` ` + 「GitHub Projects 画面で Issue #{issue_number} の Status を Done に変更」を付記

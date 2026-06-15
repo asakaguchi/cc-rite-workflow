@@ -69,6 +69,48 @@ assert "TC-6 while held → rc 0" "0" "$(probe_rc "$D4")"
 wait "$hp" 2>/dev/null || true
 assert "TC-6 after holder exits → rc 1" "1" "$(probe_rc "$D4")"
 
+# --- Backend-selection seam coverage (RITE_WORKTREE_LIVE_CWD_PROBE) ---
+# On Linux the auto path always takes /proc, leaving the lsof and undeterminable
+# branches dead at runtime. cleanup.md's backward-compat note explicitly relies on
+# rc=2 (undeterminable → delete proceeds), so force each backend to pin it.
+
+echo "=== TC-7: forced 'none' backend → rc 2 (undeterminable) ==="
+D5=$(mktemp -d); cleanup_dirs+=("$D5")
+assert "TC-7 probe=none → rc 2" "2" "$(RITE_WORKTREE_LIVE_CWD_PROBE=none bash "$PROBE" "$D5" >/dev/null 2>&1; echo $?)"
+
+echo "=== TC-8: invalid backend value → rc 2 ==="
+assert "TC-8 probe=bogus → rc 2" "2" "$(RITE_WORKTREE_LIVE_CWD_PROBE=bogus bash "$PROBE" "$D5" >/dev/null 2>&1; echo $?)"
+
+echo "=== TC-9: forced 'proc' backend behaves like auto on Linux ==="
+D6=$(mktemp -d); cleanup_dirs+=("$D6")
+assert "TC-9 probe=proc free dir → rc 1" "1" "$(RITE_WORKTREE_LIVE_CWD_PROBE=proc bash "$PROBE" "$D6" >/dev/null 2>&1; echo $?)"
+( cd "$D6" && sleep 30 ) & holders+=("$!")
+sleep 0.3
+assert "TC-9 probe=proc held dir → rc 0" "0" "$(RITE_WORKTREE_LIVE_CWD_PROBE=proc bash "$PROBE" "$D6" >/dev/null 2>&1; echo $?)"
+
+echo "=== TC-10: forced 'lsof' backend (the BSD/macOS fallback) ==="
+D7=$(mktemp -d); cleanup_dirs+=("$D7")
+if command -v lsof >/dev/null 2>&1; then
+  ( cd "$D7" && sleep 30 ) & holders+=("$!")
+  sleep 0.3
+  assert "TC-10 probe=lsof held dir → rc 0" "0" "$(RITE_WORKTREE_LIVE_CWD_PROBE=lsof bash "$PROBE" "$D7" >/dev/null 2>&1; echo $?)"
+else
+  # lsof absent → the lsof backend reports undeterminable (rc 2), not a false negative.
+  assert "TC-10 probe=lsof w/o lsof → rc 2" "2" "$(RITE_WORKTREE_LIVE_CWD_PROBE=lsof bash "$PROBE" "$D7" >/dev/null 2>&1; echo $?)"
+fi
+
+echo "=== TC-11: canonicalization matches a symlinked parent (pwd -P / readlink converge) ==="
+# The probe canonicalizes its arg with `cd && pwd -P`; /proc/<pid>/cwd is already
+# physical. A holder entering via a symlinked path must still match both the real
+# and the linked target — pins the canonicalization contract against a future
+# realpath swap.
+Dreal=$(mktemp -d); cleanup_dirs+=("$Dreal"); mkdir -p "$Dreal/wt/sub"
+Dlink=$(mktemp -d); cleanup_dirs+=("$Dlink"); ln -s "$Dreal/wt" "$Dlink/wtlink"
+( cd "$Dlink/wtlink/sub" && sleep 30 ) & holders+=("$!")
+sleep 0.3
+assert "TC-11 real path → rc 0" "0" "$(probe_rc "$Dreal/wt")"
+assert "TC-11 symlinked path → rc 0" "0" "$(probe_rc "$Dlink/wtlink")"
+
 if ! print_summary "$(basename "$0")" "worktree-live-cwd.sh の OS 接地 liveness 判定 (Issue #1544)"; then
   exit 1
 fi

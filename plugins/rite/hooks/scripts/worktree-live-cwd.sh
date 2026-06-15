@@ -47,32 +47,54 @@ else
 fi
 [ -n "$target_canon" ] || target_canon="$target"
 
-# Primary: Linux /proc. readlink of /proc/<pid>/cwd is the OS ground truth for a
-# process's working directory. This script's own cwd is the caller's (repo root
-# for the reaper, main checkout for cleanup), never the candidate worktree, so it
-# does not false-match itself — and the reaper's own active worktree is already
-# excluded upstream (Gate 0 self-exclusion) before this probe is consulted.
-if [ -d /proc ]; then
+# Detection backend selection. Default auto-detects (/proc → lsof → undeterminable).
+# RITE_WORKTREE_LIVE_CWD_PROBE forces a specific backend so the lsof and
+# undeterminable branches — unreachable on Linux where /proc always exists — stay
+# test-covered, and so a Linux operator can exercise the fallback if /proc is
+# unexpectedly unusable. Values: proc | lsof | none | auto (default).
+probe="${RITE_WORKTREE_LIVE_CWD_PROBE:-auto}"
+
+# /proc backend: readlink of /proc/<pid>/cwd is the OS ground truth for a process's
+# working directory. This script's own cwd is the caller's (repo root for the reaper,
+# main checkout for cleanup), never the candidate worktree, so it does not false-match
+# itself — and the reaper's own active worktree is already excluded upstream (Gate 0
+# self-exclusion) before this probe is consulted.
+_rite_probe_proc() {
+  local _pdir _cwd
   for _pdir in /proc/[0-9]*; do
     _cwd=$(readlink "$_pdir/cwd" 2>/dev/null) || continue
     [ -n "$_cwd" ] || continue
-    [ "$_cwd" = "$target_canon" ] && exit 0
+    [ "$_cwd" = "$target_canon" ] && return 0
     # Trailing-slash prefix test: `issue-1` must not match `issue-12`.
     case "$_cwd/" in
-      "$target_canon"/*) exit 0 ;;
+      "$target_canon"/*) return 0 ;;
     esac
   done
-  exit 1
-fi
+  return 1
+}
 
-# Fallback: lsof (where /proc is absent). `-a -d cwd +D <dir>` lists processes
-# whose working directory is at or under <dir>; any hit means a live cwd.
-if command -v lsof >/dev/null 2>&1; then
+# lsof backend (where /proc is absent, e.g. BSD/macOS). `-a -d cwd +D <dir>` lists
+# processes whose working directory is at or under <dir>; any hit means a live cwd.
+# Returns 2 (undeterminable) when lsof itself is unavailable.
+_rite_probe_lsof() {
+  command -v lsof >/dev/null 2>&1 || return 2
   if lsof -a -d cwd +D "$target_canon" >/dev/null 2>&1; then
-    exit 0
+    return 0
   fi
-  exit 1
-fi
+  return 1
+}
 
-# Neither /proc nor lsof — undeterminable.
-exit 2
+case "$probe" in
+  proc) _rite_probe_proc; exit $? ;;
+  lsof) _rite_probe_lsof; exit $? ;;
+  none) exit 2 ;;  # forced undeterminable (neither /proc nor lsof)
+  auto)
+    if [ -d /proc ]; then _rite_probe_proc; exit $?; fi
+    if command -v lsof >/dev/null 2>&1; then _rite_probe_lsof; exit $?; fi
+    exit 2  # neither /proc nor lsof — undeterminable
+    ;;
+  *)
+    echo "ERROR: worktree-live-cwd.sh: invalid RITE_WORKTREE_LIVE_CWD_PROBE='$probe' (expected proc|lsof|none|auto)" >&2
+    exit 2
+    ;;
+esac

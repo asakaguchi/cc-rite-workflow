@@ -1349,7 +1349,7 @@ Non-hook helper scripts invoked either directly from orchestrator commands or by
 | `projects-board-drift-check.sh` | `/rite:lint` Phase 3.18 — detect CLOSED+COMPLETED Issues whose Projects board Status is not `Done` (NOT_PLANNED excluded), optionally reconcile via `--reconcile` | — |
 | `number-reference-check.sh` | `/rite:lint` Phase 3.19 — detect Issue/PR number references (`#NNN` / `Issue #NNN` / `PR #NNN`) that crept back into the number-free documentation surface (`CHANGELOG.md` / `CHANGELOG.ja.md` / `lint.md`) | — |
 | `wiki-branch-init.sh` | `/rite:wiki:init` ステップ 3.1 — orphan wiki ブランチ作成 + push + 元ブランチ復帰 (stash 退避/復帰、same_branch 両対応) | — |
-| `wiki-lint-skipped-refs.sh` | `/rite:wiki:lint` ステップ 6.0 — log.md の `ingest:skip` 集合を marker block + `log_read_ok` 4 値 enum で構築 (6.2 `wiki-lint-source-refs.sh` と対称) | — |
+| `wiki-lint-skipped-refs.sh` | `/rite:wiki:lint` ステップ 6.0 — raw frontmatter (`ingest_status: skipped`) を走査して skipped_refs 集合を marker block + `log_read_ok` 4 値 enum で構築 (Issue #1520 で skip SoT が log.md から raw frontmatter へ移行。6.2 `wiki-lint-source-refs.sh` と対称) | — |
 | `wiki-lint-source-refs.sh` | `/rite:wiki:lint` ステップ 6.2 — Wiki ページの Sources 行から `all_source_refs` 集合を構築 (6.0 `wiki-lint-skipped-refs.sh` と対称) | — |
 | `wiki-lint-stale.sh` | `/rite:wiki:lint` ステップ 4 — frontmatter `updated` と cutoff 比較で陳腐化集合を marker block + `stale_check_ok` enum で構築 (GNU date 検査内包) | — |
 | `wiki-lint-orphans.sh` | `/rite:wiki:lint` ステップ 5 — index.md 登録ページと pages_list の集合差分を marker block + `orphan_check_ok` enum で構築 (index.md 読出内包) | — |
@@ -1673,6 +1673,19 @@ Wiki is **opt-out** by default (`wiki.enabled: true`). Configuration lives under
 ### Architecture
 
 Wiki data is stored in a dedicated branch (default: `wiki`) or inline on the working branch, controlled by `wiki.branch_strategy`. Each Wiki page is a Markdown file keyed by topic (e.g., `review-quality.md`, `fix-cycle-convergence.md`). Pages are built up incrementally from raw sources (review comments, fix outcomes, Issue discussions) through an ingest pipeline that deduplicates and merges overlapping heuristics.
+
+### OKF v0.1 Conformance
+
+The `.rite/wiki/` bundle is stored as an [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog)-conformant structure so the accumulated heuristics can be browsed as a concept graph with the upstream OKF static visualizer:
+
+| Element | Conformance | Implementation SoT |
+|---------|-------------|--------------------|
+| Page frontmatter | Declares concept `type:` (`patterns` / `heuristics` / `anti-patterns`) and `description:` | `templates/wiki/page-template.md` |
+| `index.md` | Carries `okf_version: "0.1"`; page catalog as OKF bullets `* [title](path) - desc` | `templates/wiki/index-template.md` |
+| `log.md` | Change history in OKF reserved structure (`## YYYY-MM-DD` headings + prose bullets, newest-first, append-only, human-facing) | `templates/wiki/log-template.md` |
+| Raw frontmatter | Ingest skip state held as `ingest_status: skipped` + `skip_reason:` (skip SoT; not kept in `log.md`) | `commands/wiki/ingest.md` step 5 |
+
+**Visualizer integration (not vendored)**: the upstream OKF static HTML visualizer (`GoogleCloudPlatform/knowledge-catalog`, Apache-2.0) is **not bundled** in this repo. `plugins/rite/references/wiki-patterns.md` documents the procedure to materialize the bundle (reusing `wiki-worktree-setup.sh` for `separate_branch`) and point the upstream visualizer at it, plus the license-confirmation step. Producing the conformant structure is the responsibility of `/rite:wiki:init` and `/rite:wiki:ingest`; consumers (`/rite:wiki:query`, `/rite:wiki:lint`) read it.
 
 ### Commands
 

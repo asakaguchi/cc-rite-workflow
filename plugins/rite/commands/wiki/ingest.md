@@ -620,13 +620,13 @@ fi
 
 ## ステップ 6: index.md の更新
 
-`.rite/wiki/index.md` の「ページ一覧」テーブルに新規ページの行を追加し、既存ページが更新された場合は該当行の「更新日」を更新する。「統計」セクションの総ページ数とドメイン別カウントも再計算する。
+`.rite/wiki/index.md` の OKF v0.1 予約構造（箇条書き）に新規ページ行を追加し、既存ページが更新された場合は該当行の説明文を上書きする。メタデータ（ドメイン / 確信度 / 更新日）は各ページ frontmatter を Source of Truth とするため index には重複保持しない。統計も index から分離し、総ページ数・ドメイン別カウントは `/rite:wiki:lint` のレポート出力で算出する（index を OKF クリーンに保つため）。
 
 **更新ルール**:
 
-- **新規ページ**: テーブル末尾に `| [{title}]({path}) | {domain} | {summary} | {updated} | {confidence} |` を追加
-- **既存ページ更新**: 該当行の「更新日」と必要に応じて「サマリー」「確信度」を上書き
-- **統計再計算**: テーブルの全行を数えてカウントを更新
+- **新規ページ**: 箇条書き末尾に `* [{title}]({path}) - {description}` を追加する。`{path}` は `pages/{domain}/{slug}.md` 形式を維持する（孤児検出のリンク grep `](pages/...)` 生存条件、`wiki-lint-orphans.sh`）。`{description}` はステップ 4.1 のサマリー（page frontmatter の `description` と同源、1-2 文）
+- **既存ページ更新**: 該当ページの箇条書き行の `{description}` 部分（` - ` 以降）を上書きする。リンク `[{title}]({path})` は不変
+- **統計**: index には書かない（OKF クリーン維持。query は各ページ frontmatter からメタデータを読むため、index に統計・確信度・更新日を持たせる必要がない）
 
 書き込みはステップ 5 と同じブランチコンテキスト (separate_branch なら worktree、same_branch なら dev ツリー) で行う。
 

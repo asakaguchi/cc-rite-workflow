@@ -180,6 +180,25 @@ else
   fail "TC-8 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
 fi
 
+echo "=== TC-9: OKF 箇条書き index (Sub-2 reshape) でも orphan 検出 (登録 2 / 実在 3 → orphan 1) ==="
+# Issue #1519: index.md がテーブル → OKF 箇条書き (`* [title](pages/...) - desc`) に
+# reshape されてもリンク grep `](pages/...)` が生存し orphan 検出が機能することを検証する。
+INDEX_FIXTURE_BULLET='# Wiki Index
+
+* [Pattern A](pages/patterns/a.md) - Pattern A の説明
+* [Heuristic B](./pages/heuristics/b.md) - Heuristic B の説明
+'
+repo=$(make_same_branch_sandbox tc9 1 "$INDEX_FIXTURE_BULLET")
+run_helper "$repo" "$PAGES_3" --branch-strategy same_branch
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_orphans=1' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx '\.rite/wiki/pages/anti-patterns/orphan\.md' \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'orphan_check_ok=true'; then
+  pass "TC-9 OKF 箇条書き形式でも orphan 1 件のみ検出 (./pages/ 形式 link も登録扱い)"
+else
+  fail "TC-9 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

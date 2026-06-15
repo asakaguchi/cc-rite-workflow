@@ -95,6 +95,29 @@ rite ワークフロー実行時に関連経験則を自動参照し、コンテ
 | スコープ | プロジェクトごと（リポジトリ内） | プロジェクト横断は将来スコープ |
 | 蓄積対象 | 全3領域（実装・レビュー・Fix） | 初期から全領域をカバーし、経験則の相互参照を可能にする |
 | トレードオフ | 品質 > コンテキストコスト | 経験則の参照漏れによる品質低下の方がコンテキスト消費より損失が大きい |
+| 蓄積フォーマット | OKF v0.1 準拠 | 上流 [OKF 静的 visualizer](https://github.com/GoogleCloudPlatform/knowledge-catalog) で概念グラフ閲覧を可能にしつつ、Markdown + frontmatter の人間可読性を維持（epic #1517 で導入） |
+
+## OKF アライメント
+
+本設計の LLM Wiki 構造は、[Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog) に準拠する形へ整列させた（epic #1517「OKF v0.1 準拠」、Sub-1〜4）。OKF は経験則を概念グラフとして扱う最小フォーマットであり、本 Wiki の 3 層構造・Ingest/Query/Lint サイクルと自然に対応する。
+
+### 機能要件と OKF の対応
+
+| 本設計の要件 | OKF v0.1 準拠での実現 | 導入 Sub |
+|------------|----------------------|---------|
+| F1: 3層構造（Raw / Wiki / Schema） | page frontmatter に concept `type:`（`patterns` / `heuristics` / `anti-patterns`）+ `description:` を付与し、各ページを OKF concept として表現 | Sub-1 (#1518) |
+| F5: インデックス | `index.md` に `okf_version: "0.1"` を宣言し、ページカタログを OKF 箇条書き `* [title](path) - desc` で表現 | Sub-2 (#1519) |
+| F5: ログ | `log.md` を OKF 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、新しい順、append-only、人間向け）へ整形 | Sub-3 (#1520) |
+| F2: Ingest（skip 状態） | skip 状態を raw frontmatter の `ingest_status: skipped` + `skip_reason:` に保持（SoT を log.md から分離） | Sub-3 (#1520) |
+| 閲覧手段 | 上流 OKF 静的 visualizer で概念グラフ描画。手順は `plugins/rite/references/wiki-patterns.md` に文書化 | Sub-4 (#1521) |
+
+### 非 vendoring 方針
+
+visualizer 本体（HTML）は **rite リポジトリに同梱しない**。これは「GUI / Web UI による Wiki 閲覧」を本設計のスコープ外（後述）に保ちつつ、準拠 bundle を外部ツールへ橋渡しする方針であり、保守コストとライセンス（上流 Apache-2.0）の取り込みを回避する。materialize + 起動 + ライセンス確認の手順のみを提供する。
+
+### 将来スコープとの関係
+
+OKF 準拠により、将来のプロジェクト横断経験則共有（下記スコープ外）も、共通フォーマットを介した bundle 連携として実現しやすくなる。本 epic はフォーマット整列までを範囲とし、横断共有・独自 GUI 内製は引き続きスコープ外とする。
 
 ## アーキテクチャ
 
@@ -192,6 +215,6 @@ plugins/rite/
 |------|------|
 | プロジェクト横断の経験則共有 | 将来スコープ。まずプロジェクト内で価値を実証する |
 | ベクトルストア / 外部 DB 統合 | index.md ベース検索で十分。スケール問題が顕在化してから検討 |
-| GUI / Web UI による Wiki 閲覧 | CLI + Markdown で十分。Obsidian 等の外部ツールで閲覧可能 |
+| 独自 GUI / Web UI の内製 | CLI + Markdown で十分。閲覧は外部ツール（Obsidian、または OKF v0.1 準拠により上流 OKF 静的 visualizer）に委ね、本体は同梱しない（[OKF アライメント](#okf-アライメント)参照） |
 | Claude Code auto-memory との統合 | 別メカニズム（`~/.claude/` 配下）。混同を避ける |
 | リアルタイム Wiki 更新通知 | Lint で検出すれば十分 |

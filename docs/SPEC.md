@@ -1674,6 +1674,19 @@ Wiki is **opt-out** by default (`wiki.enabled: true`). Configuration lives under
 
 Wiki data is stored in a dedicated branch (default: `wiki`) or inline on the working branch, controlled by `wiki.branch_strategy`. Each Wiki page is a Markdown file keyed by topic (e.g., `review-quality.md`, `fix-cycle-convergence.md`). Pages are built up incrementally from raw sources (review comments, fix outcomes, Issue discussions) through an ingest pipeline that deduplicates and merges overlapping heuristics.
 
+### OKF v0.1 Conformance
+
+The `.rite/wiki/` bundle is stored as an [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog)-conformant structure so the accumulated heuristics can be browsed as a concept graph with the upstream OKF static visualizer:
+
+| Element | Conformance | Implementation SoT |
+|---------|-------------|--------------------|
+| Page frontmatter | Declares concept `type:` (`patterns` / `heuristics` / `anti-patterns`) and `description:` | `templates/wiki/page-template.md` |
+| `index.md` | Carries `okf_version: "0.1"`; page catalog as OKF bullets `* [title](path) - desc` | `templates/wiki/index-template.md` |
+| `log.md` | Change history in OKF reserved structure (`## YYYY-MM-DD` headings + prose bullets, newest-first, append-only, human-facing) | `templates/wiki/log-template.md` |
+| Raw frontmatter | Ingest skip state held as `ingest_status: skipped` + `skip_reason:` (skip SoT; not kept in `log.md`) | `commands/wiki/ingest.md` step 5 |
+
+**Visualizer integration (not vendored)**: the upstream OKF static HTML visualizer (`GoogleCloudPlatform/knowledge-catalog`, Apache-2.0) is **not bundled** in this repo. `plugins/rite/references/wiki-patterns.md` documents the procedure to materialize the bundle (reusing `wiki-worktree-setup.sh` for `separate_branch`) and point the upstream visualizer at it, plus the license-confirmation step. Producing the conformant structure is the responsibility of `/rite:wiki:init` and `/rite:wiki:ingest`; consumers (`/rite:wiki:query`, `/rite:wiki:lint`) read it.
+
 ### Commands
 
 | Command | Purpose |

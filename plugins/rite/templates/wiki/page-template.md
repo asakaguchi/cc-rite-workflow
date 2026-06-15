@@ -1,6 +1,8 @@
 ---
+type: "{concept_type}"
 title: "{title}"
 domain: "{domain}"
+description: "{description}"
 created: "{created}"
 updated: "{updated}"
 sources:

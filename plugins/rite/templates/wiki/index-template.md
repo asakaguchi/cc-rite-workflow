@@ -1,14 +1,13 @@
+---
+okf_version: "0.1"
+description: "rite Experience Wiki — プロジェクト固有の経験則 bundle（OKF v0.1 準拠）"
+---
+
 # Wiki Index
 
-このファイルは Wiki 全ページのカタログです。Ingest サイクルごとに自動更新されます。
+このファイルは Wiki 全ページのカタログです。Ingest サイクルごとに OKF v0.1 予約ファイル構造（箇条書き）で自動更新されます。
 
-## ページ一覧
+bundle-root の frontmatter で OKF（Open Knowledge Format）v0.1 への準拠を `okf_version: "0.1"` として宣言します。各ページは `* [タイトル](pages/{domain}/{slug}.md) - 説明` の箇条書きで登録されます。メタデータ（ドメイン / 確信度 / 更新日）は各ページの frontmatter を Source of Truth とし、index には重複保持しません（総ページ数は `/rite:wiki:lint` のレポート出力で確認できます。ドメイン別内訳は本 Sub のスコープ外）。
 
-| ページ | ドメイン | サマリー | 更新日 | 確信度 |
-|--------|---------|---------|--------|--------|
-
-## 統計
-
-- 総ページ数: 0
-- ドメイン別: patterns=0, heuristics=0, anti-patterns=0
-- 最終更新: {initialized_at}
+<!-- 登録箇条書きの形式例（ingest が自動追記。このコメント行は登録ではない）:
+     * [ページタイトル](pages/{domain}/{slug}.md) - 1-2 文の説明 -->

@@ -14,7 +14,7 @@ Wiki データは `.rite/wiki/` 配下に3層構造で格納されます。
 .rite/wiki/
 ├── SCHEMA.md                 # Schema: 蓄積規約（人間 + LLM 共同管理）
 ├── index.md                  # 全ページのカタログ（Ingest 時に自動更新）
-├── log.md                    # 活動ログ（append-only）
+├── log.md                    # 変更履歴ログ（OKF 形式・人間向け・append-only）
 ├── raw/                      # Raw Sources（不変の一次データ）
 │   ├── reviews/              #   レビュー結果
 │   ├── retrospectives/       #   Issue 振り返り
@@ -201,7 +201,7 @@ Wiki 初期化時にテンプレートを `.rite/wiki/` に展開します。
 | `schema-template.md` | `.rite/wiki/SCHEMA.md` | 蓄積規約 |
 | `page-template.md` | (Ingest 時に使用) | 新規ページ作成テンプレート |
 | `index-template.md` | `.rite/wiki/index.md` | インデックス |
-| `log-template.md` | `.rite/wiki/log.md` | 活動ログ |
+| `log-template.md` | `.rite/wiki/log.md` | 変更履歴ログ（OKF 形式） |
 
 ### プレースホルダー置換
 
@@ -209,7 +209,9 @@ Wiki 初期化時にテンプレートを `.rite/wiki/` に展開します。
 
 | プレースホルダー | 値 |
 |----------------|-----|
-| `{initialized_at}` | 現在のタイムスタンプ（ISO 8601） |
+| `{initialized_date}` | 初期化日（`YYYY-MM-DD`、date-only）。log.md の OKF 日付見出し `## YYYY-MM-DD` に展開。index.md は OKF 移行（Issue #1519）で初期化タイムスタンプ placeholder を持たない |
+| `{okf_version}` | OKF 仕様バージョン。index.md frontmatter の `okf_version: "0.1"` に展開（OKF v0.1 準拠の宣言、Issue #1519） |
+| `{concept_type}` | concept 種別（`patterns` / `heuristics` / `anti-patterns`、`{domain}` と同値）。page-template.md frontmatter の OKF 必須フィールド `type:` に展開（Issue #1518）。詳細は `plugins/rite/commands/wiki/ingest.md` ステップ 5.3 の `{concept_type}` 行を SoT として参照 |
 | `{title}` | ページタイトル（Ingest 時） |
 | `{domain}` | ドメイン名（Ingest 時） |
 | `{created}` | 作成日時（Ingest 時） |
@@ -229,6 +231,68 @@ Wiki 初期化時にテンプレートを `.rite/wiki/` に展開します。
 > **F-14 fix 識別子の disambiguation**: lint.md にも別文脈の F-14 fix (`{log_entry}` placeholder 残留検知) があるため、識別子のみで参照する場合は本 NOTE が指す F-14 fix が「関連ページなし時の操作契約」 であることに注意。
 
 > **confidence フィールド**: page-template.md の `confidence: medium` はリテラル値であり `{confidence}` プレースホルダーではない。Write 後に Edit で ステップ 4 の判定値 (`high` / `medium` / `low`) に置換する。
+
+## OKF v0.1 準拠
+
+rite Wiki bundle（`.rite/wiki/`）は [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog) に準拠した構造で蓄積します。準拠により、上流の OKF 静的 visualizer で経験則を概念グラフとして閲覧できます（[Visualizer 連携](#okf-visualizer-連携)参照）。
+
+### 準拠規約（SoT は各テンプレート / コマンド）
+
+| 要素 | OKF 準拠内容 | 実装 SoT |
+|------|-------------|---------|
+| **page frontmatter** | concept 種別を `type:`（`patterns` / `heuristics` / `anti-patterns`）で宣言し、`description:` を持つ | `templates/wiki/page-template.md`（Issue #1518） |
+| **index.md** | frontmatter に `okf_version: "0.1"` を持ち、ページカタログを OKF 箇条書き `* [title](path) - desc` で表現 | `templates/wiki/index-template.md`（Issue #1519） |
+| **log.md** | 変更履歴を OKF 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、新しい順、append-only、人間向け）で記録 | `templates/wiki/log-template.md`（Issue #1520） |
+| **raw frontmatter** | ingest skip 状態を `ingest_status: skipped` + `skip_reason:` で保持（skip の Source of Truth。log.md には保持しない） | `commands/wiki/ingest.md` ステップ 5（Issue #1520） |
+| **SCHEMA.md** | 蓄積規約（人間 + LLM 共同管理）。OKF 予約ファイルとして bundle ルートに常駐 | `templates/wiki/schema-template.md` |
+
+> **producer 責務**: 上表の frontmatter / 構造はすべて `/rite:wiki:init`（テンプレート展開）と `/rite:wiki:ingest`（ページ生成・更新）が producer として書き込む。consumer（`/rite:wiki:query` / `/rite:wiki:lint`）はこの構造を前提に読む。準拠仕様を変更する場合は各テンプレート / コマンドを SoT として同期する。
+
+## OKF Visualizer 連携
+
+完全準拠した `.rite/wiki/` bundle は、上流の OKF 静的 HTML visualizer（[`GoogleCloudPlatform/knowledge-catalog`](https://github.com/GoogleCloudPlatform/knowledge-catalog)）で概念グラフとして閲覧できます。**visualizer 本体は rite リポジトリに同梱しません**（vendoring せず、起動手順のみ提供）。
+
+### ライセンス確認
+
+上流 visualizer は **Apache License 2.0**（2026-06 時点）で配布されています。利用前に上流リポジトリの `LICENSE` を直接確認してください:
+
+```bash
+gh api repos/GoogleCloudPlatform/knowledge-catalog/license --jq '.license.spdx_id'
+# または https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/LICENSE を参照
+```
+
+rite は visualizer の成果物をコピー・改変しません。取得・実行は利用者の責任で、上流ライセンス条件に従ってください。
+
+### bundle の materialize
+
+visualizer は `.rite/wiki/` をファイルシステム上のディレクトリとして読みます。`branch_strategy` により materialize 手順が異なります:
+
+- **separate_branch（推奨）**: Wiki データは専用ブランチ（既定 `wiki`）にあり、開発ツリーには存在しません。既存の wiki worktree helper で materialize します。`plugin_root` は local 開発・marketplace install の両方を解決する inline one-liner（[Plugin Path Resolution](plugin-path-resolution.md#inline-one-liner-for-command-files) 参照。`commands/wiki/ingest.md` / `init.md` と同一）で得ます:
+
+  ```bash
+  # plugin_root を解決（install 時は ~/.claude/plugins/.../rite に解決される）
+  plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+
+  # wiki ブランチを .rite/wiki-worktree/ にチェックアウト（既存 helper を再利用）
+  bash "$plugin_root/hooks/scripts/wiki-worktree-setup.sh"
+  # → .rite/wiki-worktree/.rite/wiki/ に bundle が materialize される
+  ```
+
+  worktree が未整備の場合も本 helper が冪等に用意します。bundle パスは `.rite/wiki-worktree/.rite/wiki/` です。
+
+- **same_branch**: Wiki データは開発ブランチに直接コミットされているため、`.rite/wiki/` がそのまま bundle パスです（materialize 不要）。
+
+### visualizer の起動
+
+上流 visualizer を取得し、materialize した bundle パスを入力として向けます（具体的な起動コマンドは上流 README を参照）。未取得でも本手順は **非破壊**（bundle を変更しません）:
+
+```bash
+# 例: 上流を取得（vendoring せず作業ディレクトリ外に clone）
+git clone https://github.com/GoogleCloudPlatform/knowledge-catalog /tmp/okf-visualizer
+# 上流 README の手順に従い、bundle パス（上記 materialize 結果）を visualizer に渡す
+```
+
+準拠 bundle では、page 間の関連リンク（frontmatter `sources` / 本文の相互参照）が概念グラフの辺として描画されます。
 
 ## Wiki 有効判定パターン
 

@@ -2,9 +2,13 @@
 # wiki-lint-skipped-refs.sh
 #
 # Build the `skipped_refs` set consumed by wiki/lint.md ステップ 6.2 (b) 分岐
-# (`unregistered_raw` 判定). Read `log.md` (via `git show` for separate_branch,
-# `cat` for same_branch), extract `ingest:skip` records, dedup, and emit the
-# set inside a marker block alongside a 4-value log_read_ok enum.
+# (`unregistered_raw` 判定). Issue #1520 (Sub-3): the skip SoT moved from log.md
+# (a table) to each raw source's frontmatter (`ingest_status: skipped`). This
+# helper now scans `.rite/wiki/raw/**/*.md` frontmatter (via `git ls-tree` +
+# `git show` for separate_branch, `find` + `cat` for same_branch), collects each
+# `ingest_status: skipped` raw as `raw/{type}/{filename}`, dedups, and emits the
+# set inside a marker block alongside a 4-value `log_read_ok` enum (enum name
+# retained for the lint.md stdout contract; value now reflects the raw scan).
 #
 # Why a helper:
 #   The inline implementation in lint.md ステップ 6.0 was a ~165-line bash
@@ -37,13 +41,15 @@
 #   1  fail-fast (placeholder residue / unknown branch_strategy)
 #   2  invocation error (引数欠落 / repo-root cd 失敗)
 #
-# NOTE on shell flags: this is a faithful port of the inline block which
-# manages `$?` explicitly per command. A global `set -e` would break those
-# explicit rc checks (git show / cat / awk / sort failures are handled, not
-# fatal), so it is intentionally NOT set. `set -o pipefail` is toggled locally
-# around the awk/sort pipeline exactly as the inline block did. `set -u` is
-# likewise omitted to preserve verbatim behavior; all variable refs are
-# `${var:-}`-guarded.
+# NOTE on shell flags: this script manages `$?` explicitly per command. A global
+# `set -e` would break those explicit rc checks (git ls-tree / find listing
+# failures degrade to io_error per AC-7; per-file git show / cat failures are
+# isolated as non-skipped per AC-6 — all handled explicitly, none fatal), so it
+# is intentionally NOT set.
+# `set -o pipefail` is also NOT used: no pipeline's exit status is consumed here
+# (every `$(... | ...)` capture is judged by its output via `[ -n ... ]` / sort,
+# never by its rc), so a mid-pipeline failure cannot silently corrupt an rc check.
+# `set -u` is likewise omitted; all variable refs are `${var:-}`-guarded.
 
 # shellcheck source=../control-char-neutralize.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"
@@ -55,8 +61,9 @@ usage() {
   cat <<'EOF'
 Usage: wiki-lint-skipped-refs.sh --branch-strategy STRATEGY [--wiki-branch BRANCH] [--repo-root DIR]
 
-Reads `.rite/wiki/log.md` per the branch strategy and emits the skipped_refs
-marker block + log_read_ok enum on stdout.
+Scans `.rite/wiki/raw/**/*.md` frontmatter (`ingest_status: skipped`) per the
+branch strategy and emits the skipped_refs marker block + log_read_ok enum on
+stdout.
 
 Options:
   --branch-strategy STRATEGY  separate_branch | same_branch (required)
@@ -120,7 +127,7 @@ case "$branch_strategy" in
     ;;
 esac
 
-# separate_branch では --wiki-branch が必須。空のまま進むと git show ":.rite/wiki/log.md" が
+# separate_branch では --wiki-branch が必須。空のまま進むと git show ":.rite/wiki/raw/..." が
 # ref ではなく git index (staging area) を読む別 semantics に陥る (wiki-lint-source-refs.sh と
 # 同じ runtime enforcement)。
 if [ "$branch_strategy" = "separate_branch" ] && [ -z "$wiki_branch" ]; then
@@ -140,10 +147,8 @@ cd "$REPO_ROOT" || { echo "ERROR: cannot cd to repo root '$REPO_ROOT'" >&2; exit
 # signal-specific trap (canonical 4 行パターン)。
 # 詳細は commands/pr/references/bash-trap-patterns.md#signal-specific-trap-template 参照。
 log_err=""
-awk_sort_err=""
 _cleanup() {
   [ -n "${log_err:-}" ] && rm -f "$log_err"
-  [ -n "${awk_sort_err:-}" ] && rm -f "$awk_sort_err"
   return 0
 }
 trap 'rc=$?; _cleanup; exit $rc' EXIT
@@ -151,126 +156,125 @@ trap '_cleanup; exit 130' INT
 trap '_cleanup; exit 143' TERM
 trap '_cleanup; exit 129' HUP
 
-# skipped_refs 空継続時の「影響」文言 helper (4 site の literal duplicate を集約)
+# skipped_refs 空継続時の「影響」文言 helper (複数 site の literal duplicate を集約)
 _rite_log_read_impact_advice() {
   echo "  影響: skipped_refs を空として継続するため、skip 済み raw が誤って missing_concept に計上される可能性あり" >&2
 }
 
-# stderr 退避失敗 + tool 失敗の複合経路の helper (separate_branch / same_branch で tool 名のみ異なる)
-_rite_log_read_sub_path_warning() {
-  local tool_desc="$1" remedy_target="$2" rc="$3"
-  echo "WARNING: .rite/wiki/log.md の ${tool_desc} に失敗し、かつ stderr 退避も失敗しました (rc=${rc}、原因区別不能のため io_error 扱い)" >&2
-  _rite_log_read_impact_advice
-  echo "  対処: /tmp の容量 / permission と ${remedy_target} を確認してください" >&2
-}
-
 log_err=$(mktemp /tmp/rite-wiki-lint-p60-err-XXXXXX 2>/dev/null) || {
-  echo "WARNING: stderr 退避 tempfile (log_err) の mktemp に失敗しました。log.md 読み出しの詳細エラー情報は失われます" >&2
+  echo "WARNING: stderr 退避 tempfile (log_err) の mktemp に失敗しました。raw 走査の詳細エラー情報は失われます" >&2
   echo "  対処: /tmp の容量 / permission / inode 枯渇を確認してください" >&2
   echo "  影響: stderr pattern match が実行不能になり io_error 側に倒れ、false positive note が常に表示される regression が起き得ます" >&2
   log_err=""
 }
 
 skipped_refs=""
-log_content=""
 # log_read_ok は 4 値 enum (unknown / true / absent / io_error)。
 #   unknown: 初期値 (placeholder/strategy fail-fast 経路でのみ残る、後段未到達)
-#   true:    log.md 読出成功
-#   absent:  legitimate absence (fresh branch / ENOENT / blob not found) — skipped_refs="" は妥当
+#   true:    raw frontmatter 走査成功 (空集合含む。separate_branch では raw tree 不在も
+#            git ls-tree rc=0 + 空出力で true に倒れる)
+#   absent:  legitimate absence — same_branch: raw dir 不在 (find ENOENT) /
+#            separate_branch: wiki_branch ref 自体が不在。いずれも skipped_refs="" は妥当
 #   io_error: 真の IO error — false positive リスクあり、ステップ 9.1 完了レポートで note 表示
 # canonical 定義: references/bash-cross-boundary-state-transfer.md#pattern-1-multi-value-enum-via-key-value-stdout
 log_read_ok="unknown"
 
+# Issue #1520 (Sub-3): the `ingest:skip` SoT moved from log.md (a table this
+# helper used to `awk -F'|'` parse) to each raw source's frontmatter
+# (`ingest_status: skipped`). log.md is now a human-facing OKF change log and is
+# NOT parsed here. This helper now scans `.rite/wiki/raw/**/*.md` frontmatter and
+# emits each skipped raw as `raw/{type}/{filename}`.
+#
+# The `log_read_ok` enum NAME is retained for the lint.md stdout contract
+# (ステップ 6.0 / 9.1 read it verbatim); its value now reflects the raw-frontmatter
+# *scan* status rather than a log.md read:
+#   true:     raw sources scanned successfully (set is reliable; an empty raw
+#             tree under an existing separate_branch ref also yields true)
+#   absent:   legitimate absence — same_branch: no raw dir (find ENOENT);
+#             separate_branch: the wiki_branch ref itself is missing
+#   io_error: raw directory listing failed — empty set may be a false negative,
+#             so lint.md ステップ 9.1 shows the false-positive note
+#
+# _emit_if_skipped: print "$rel" when the given raw content's frontmatter has
+# `ingest_status: skipped` (quotes tolerated, AC-6 permissive — absence of the
+# field means "not skipped"). $rel is the raw path relative to .rite/wiki/.
+_emit_if_skipped() {
+  printf '%s\n' "$2" | awk -v rel="$1" '
+    NR == 1 && /^---[[:space:]]*$/ { infm=1; next }
+    infm && /^---[[:space:]]*$/ { exit }
+    infm && /^ingest_status:[[:space:]]*["'"'"']?skipped["'"'"']?[[:space:]]*$/ { print rel; exit }
+  '
+}
+
+# Accumulate skipped raw refs across all raw sources. A per-file content read
+# failure skips that single raw (treated as non-skipped, AC-6) with a WARNING but
+# does NOT empty the whole set; only a directory-listing failure degrades to
+# io_error (AC-7).
+_skip_acc=""
 case "$branch_strategy" in
   separate_branch)
-    # LC_ALL=C で locale 固定 — ja_JP.UTF-8 等で git の stderr メッセージが翻訳されると legitimate
-    # absence 判別 regex (does not exist / No such file) と不一致になり io_error に誤分類される silent regression を防ぐ。
-    if log_content=$(LC_ALL=C git show "${wiki_branch}:.rite/wiki/log.md" 2>"${log_err:-/dev/null}"); then
+    # LC_ALL=C locale 固定で git stderr の翻訳による absence 判別揺れを防ぐ (旧実装と同規約)。
+    if raw_files=$(LC_ALL=C git ls-tree -r --name-only "$wiki_branch" .rite/wiki/raw/ 2>"${log_err:-/dev/null}"); then
+      # ls-tree success (空でも raw dir 不在として scan は成立) → 信頼できる集合
       log_read_ok="true"
-      # selective surface pattern: 成功時でも ambiguous ref hint 等の git stderr を surface する
-      [ -n "$log_err" ] && [ -s "$log_err" ] && head -3 "$log_err" | neutralize_ctrl --keep-newline | sed 's/^/  WARNING(git hint): /' >&2
+      while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        case "$f" in *.md) ;; *) continue ;; esac
+        if content=$(LC_ALL=C git show "${wiki_branch}:${f}" 2>/dev/null); then
+          line=$(_emit_if_skipped "${f#.rite/wiki/}" "$content")
+          [ -n "$line" ] && _skip_acc="${_skip_acc}${line}"$'\n'
+        else
+          echo "WARNING: raw source ${f} を wiki branch から読めません (skip 判定をスキップ)" >&2
+        fi
+      done <<< "$raw_files"
     else
       rc=$?
-      # legitimate absence 判別 (4 pattern を OR):
-      #   - "does not exist": blob not found (標準的な legitimate absence)
-      #   - "path '...' exists on disk, but not in": git show の path 対 ref 不整合
-      #   - "Not a valid object name": 古い git の revspec 不正メッセージ
-      #   - "fatal: invalid object name '<ref>:<path>'": blob path 指定形式
-      # 4 pattern いずれも match しない場合 (典型: blob path なしの "fatal: invalid object name 'wiki'") は
-      # wiki_branch 自体の race 消失として io_error 扱いとする (ステップ 1.3 後の race 検出)。
+      # ここに来るのは ls-tree が rc≠0 で失敗した時のみ。raw tree 不在 (path 欠落) は
+      # rc=0 + 空出力で上の then 側 (true) に倒れるため、ここには来ない。wiki_branch ref
+      # 自体の race-absence (Not a valid object name 等) のみ absent、それ以外は io_error。
       if [ -n "$log_err" ] && [ -s "$log_err" ] && \
-         grep -qE "does not exist|path '.+' exists on disk, but not in|Not a valid object name|fatal: invalid object name '[^']*:\\.rite/wiki/log\\.md'" "$log_err"; then
+         grep -qE "Not a valid object name|not a tree object|does not exist" "$log_err"; then
         log_read_ok="absent"
-      elif [ -n "$log_err" ] && [ -s "$log_err" ]; then
-        log_read_ok="io_error"
-        echo "WARNING: .rite/wiki/log.md の git show に失敗しました (rc=$rc)" >&2
-        head -3 "$log_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-        _rite_log_read_impact_advice
-        echo "  対処: wiki branch の integrity / 権限を確認してください" >&2
       else
         log_read_ok="io_error"
-        _rite_log_read_sub_path_warning "git show" "wiki branch の integrity / 権限" "$rc"
+        echo "WARNING: .rite/wiki/raw/ の git ls-tree に失敗しました (rc=$rc)" >&2
+        [ -n "$log_err" ] && [ -s "$log_err" ] && head -3 "$log_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+        _rite_log_read_impact_advice
+        echo "  対処: wiki branch の integrity / 権限を確認してください" >&2
       fi
-      log_content=""
     fi
     ;;
   same_branch)
-    if log_content=$(LC_ALL=C cat .rite/wiki/log.md 2>"${log_err:-/dev/null}"); then
+    if raw_files=$(LC_ALL=C find .rite/wiki/raw -type f -name '*.md' 2>"${log_err:-/dev/null}"); then
       log_read_ok="true"
-      [ -n "$log_err" ] && [ -s "$log_err" ] && head -3 "$log_err" | neutralize_ctrl --keep-newline | sed 's/^/  WARNING(cat hint): /' >&2
+      while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        if content=$(LC_ALL=C cat "$f" 2>/dev/null); then
+          line=$(_emit_if_skipped "${f#.rite/wiki/}" "$content")
+          [ -n "$line" ] && _skip_acc="${_skip_acc}${line}"$'\n'
+        else
+          echo "WARNING: raw source ${f} を読めません (skip 判定をスキップ)" >&2
+        fi
+      done <<< "$raw_files"
     else
       rc=$?
-      if [ -n "$log_err" ] && [ -s "$log_err" ] && grep -qE "No such file or directory|cannot open" "$log_err"; then
+      # find は .rite/wiki/raw 不在で "No such file or directory" + 非 0 → absent。
+      if [ -n "$log_err" ] && [ -s "$log_err" ] && grep -qE "No such file or directory" "$log_err"; then
         log_read_ok="absent"
-      elif [ -n "$log_err" ] && [ -s "$log_err" ]; then
-        log_read_ok="io_error"
-        echo "WARNING: .rite/wiki/log.md の cat に失敗しました (rc=$rc)" >&2
-        head -3 "$log_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-        _rite_log_read_impact_advice
-        echo "  対処: .rite/wiki/log.md の存在 / 権限を確認してください" >&2
       else
         log_read_ok="io_error"
-        _rite_log_read_sub_path_warning "cat" ".rite/wiki/log.md の存在 / 権限" "$rc"
+        echo "WARNING: .rite/wiki/raw/ の find に失敗しました (rc=$rc)" >&2
+        [ -n "$log_err" ] && [ -s "$log_err" ] && head -3 "$log_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+        _rite_log_read_impact_advice
+        echo "  対処: .rite/wiki/raw/ の存在 / 権限を確認してください" >&2
       fi
-      log_content=""
     fi
     ;;
 esac
 
-# log.md から ingest:skip レコードを抽出 (field 3 厳密一致、field 4 prefix 正規化)
-if [ -n "$log_content" ]; then
-  set -o pipefail
-  awk_sort_err=$(mktemp /tmp/rite-wiki-lint-p60-awk-err-XXXXXX 2>/dev/null) || {
-    echo "WARNING: awk/sort stderr 退避 tempfile の mktemp に失敗しました" >&2
-    echo "  対処: /tmp の容量 / inode 枯渇 / read-only filesystem / permission を確認してください" >&2
-    echo "  影響: pipeline 失敗時の詳細エラー情報 (awk syntax error / sort OOM 等) が失われます" >&2
-    awk_sort_err=""
-  }
-  skipped_refs=$(printf '%s\n' "$log_content" \
-    | awk -F'|' 'NF >= 4 {
-        action=$3
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", action)
-        if (action == "ingest:skip") {
-          target=$4
-          gsub(/^[[:space:]]+|[[:space:]]+$/, "", target)
-          sub(/^\.rite\/wiki\//, "", target)
-          if (length(target) > 0) print target
-        }
-      }' 2>"${awk_sort_err:-/dev/null}" \
-    | LC_ALL=C sort -u 2>>"${awk_sort_err:-/dev/null}")
-  rc=$?
-  if [ "$rc" -ne 0 ]; then
-    echo "WARNING: ステップ 6.0 の awk/sort pipeline が失敗しました (rc=$rc)" >&2
-    [ -n "$awk_sort_err" ] && [ -s "$awk_sort_err" ] && head -3 "$awk_sort_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-    echo "  対処: awk / sort バイナリと /tmp の容量を確認してください" >&2
-    _rite_log_read_impact_advice
-    skipped_refs=""
-    # log_read_ok="true" のまま据え置くと ステップ 9.1 で false positive note が展開されず silent 表示
-    # になる。awk/sort 失敗経路でも io_error に降格させ note 展開を発火させる
-    # (canonical: references/bash-cross-boundary-state-transfer.md Pattern 3 の「後段 pipeline 失敗も同 enum の io_error 側に降格する」)。
-    log_read_ok="io_error"
-  fi
-  set +o pipefail
+# 重複排除 (同一 raw が複数列挙されることは無いが、契約踏襲で sort -u)
+if [ -n "$_skip_acc" ]; then
+  skipped_refs=$(printf '%s' "$_skip_acc" | LC_ALL=C sort -u | sed '/^$/d')
 fi
 
 # 集合本体を marker block で stdout 出力 (ステップ 6.2 の (b) 分岐で LLM が会話コンテキストに保持する)。

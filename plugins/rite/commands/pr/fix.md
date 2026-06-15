@@ -3584,7 +3584,7 @@ if [ "${content_write_failed:-0}" -eq 1 ]; then
   # accurate な reason を付けて WIKI_INGEST_FAILED を emit する (trigger_exit_1 への誤帰属を防ぐ)。
   echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=content_write_failed; exit_code=1"
   echo "WARNING: fix ステップ 4.6.W: content write 失敗のため wiki ingest をスキップ (trigger は未起動)。" >&2
-elif [ "$trigger_exit" -ne 0 ] && [ "$trigger_exit" -ne 2 ]; then
+elif [ "${trigger_exit:-1}" -ne 0 ] && [ "${trigger_exit:-1}" -ne 2 ]; then
   echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_$trigger_exit; exit_code=$trigger_exit"
   echo "WARNING: wiki-ingest-trigger.sh exited $trigger_exit during pr/fix.md ステップ 4.6.W" >&2
 fi

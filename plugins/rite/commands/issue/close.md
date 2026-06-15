@@ -267,7 +267,14 @@ tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX)
 trigger_stderr=$(mktemp /tmp/rite-wiki-trigger-err-XXXXXX) || trigger_stderr=/dev/null
 trap 'rm -f "$tmpfile"; [ "$trigger_stderr" != "/dev/null" ] && rm -f "$trigger_stderr"' EXIT
 
-cat <<'RETRO_EOF' > "$tmpfile"
+# heredoc content write 失敗ガード (review.md 6.5.W / fix.md 4.6.W と対称、Issue #1522)。
+# /tmp full / permission 拒否 / inode 枯渇で tmpfile への write が truncate された場合、
+# truncated content を silent に wiki ingest するのを防ぐ。
+# close.md は Step 2 (heredoc) と trigger 呼び出しが単一 bash ブロックのため、
+# content_write_failed を同ブロック内で参照でき cross-invocation carry-forward は不要
+# (review.md/fix.md は Step 2/Step 3 が別 bash 呼び出しのため carry-forward が必要 — 唯一の構造差)。
+content_write_failed=0
+if ! cat <<'RETRO_EOF' > "$tmpfile"
 ## Issue Close Retrospective
 
 - **Issue**: #{issue_number} — {title}
@@ -277,25 +284,40 @@ cat <<'RETRO_EOF' > "$tmpfile"
 ### Summary
 {retrospective_summary — Issue の作業中に学んだこと、予想外の困難、有効だったアプローチを LLM が Issue body + work memory から要約して埋め込む}
 RETRO_EOF
+then
+  echo "[CONTEXT] WIKI_CONTENT_WRITE_FAILED=1; reason=cat_redirection_failed" >&2
+  echo "WARNING: close Phase 4.4.W retrospective content の tmpfile write に失敗しました (/tmp 容量 / permission / inode 枯渇)。truncated content の wiki ingest を防ぐため trigger をスキップします" >&2
+  content_write_failed=1
+fi
 
-bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
-  --type retrospectives --source-ref "issue-{issue_number}" \
-  --content-file "$tmpfile" --issue-number {issue_number} \
-  --title "Issue #{issue_number} close retrospective" \
-  2>"$trigger_stderr"
-trigger_exit=$?
-echo "trigger_exit=$trigger_exit"
-# trigger 失敗 (exit != 0 かつ != 2; exit 2 = Wiki disabled/uninitialized = legitimate skip) を surface
-if [ "$trigger_exit" -ne 0 ] && [ "$trigger_exit" -ne 2 ]; then
-  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_$trigger_exit; exit_code=$trigger_exit"
-  echo "WARNING: wiki-ingest-trigger.sh exited $trigger_exit during close Phase 4.4.W" >&2
-  if [ "$trigger_stderr" != "/dev/null" ] && [ -s "$trigger_stderr" ]; then
-    head -3 "$trigger_stderr" | sed 's/^/  /' >&2
+if [ "$content_write_failed" -eq 1 ]; then
+  # trigger は起動していないため trigger_exit の借用値で reason を誤帰属しない。
+  # root cause は上の WIKI_CONTENT_WRITE_FAILED で既出だが、W Phase の sentinel 消費側は
+  # WIKI_INGEST_* prefix のみ認識するため gate-visible な WIKI_INGEST_FAILED を
+  # reason=content_write_failed で emit する (review.md 6.5.W / fix.md 4.6.W と対称)。
+  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=content_write_failed; exit_code=1"
+  trigger_exit=1  # Phase 4.4.W.2 を LLM がスキップするための非 0 値
+  echo "trigger_exit=$trigger_exit"
+else
+  bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
+    --type retrospectives --source-ref "issue-{issue_number}" \
+    --content-file "$tmpfile" --issue-number {issue_number} \
+    --title "Issue #{issue_number} close retrospective" \
+    2>"$trigger_stderr"
+  trigger_exit=$?
+  echo "trigger_exit=$trigger_exit"
+  # trigger 失敗 (exit != 0 かつ != 2; exit 2 = Wiki disabled/uninitialized = legitimate skip) を surface
+  if [ "$trigger_exit" -ne 0 ] && [ "$trigger_exit" -ne 2 ]; then
+    echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_$trigger_exit; exit_code=$trigger_exit"
+    echo "WARNING: wiki-ingest-trigger.sh exited $trigger_exit during close Phase 4.4.W" >&2
+    if [ "$trigger_stderr" != "/dev/null" ] && [ -s "$trigger_stderr" ]; then
+      head -3 "$trigger_stderr" | sed 's/^/  /' >&2
+    fi
   fi
 fi
 ```
 
-**Non-blocking**: trigger 失敗は workflow を止めない。LLM は `trigger_exit` を読み、非 0 なら Phase 4.4.W.2 をスキップする。
+**Non-blocking**: trigger 失敗・content write 失敗のいずれも workflow を止めない。LLM は `trigger_exit` を読み、非 0 なら Phase 4.4.W.2 をスキップする。`content_write_failed=1` (heredoc write 失敗) のときは trigger を起動せず、`WIKI_INGEST_FAILED reason=content_write_failed` を gate-visible に emit したうえで `trigger_exit=1` を設定して同じスキップ経路に合流する。これにより `/tmp` full 等での truncated retrospective の silent ingest を防ぐ (review.md 6.5.W / fix.md 4.6.W と対称)。
 
 ### 4.4.W.2 Wiki Raw Commit
 

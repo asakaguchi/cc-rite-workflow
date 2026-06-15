@@ -39,7 +39,17 @@ IC="$SCRIPT_DIR/../issue-claim.sh"
 GIT="git -c user.email=t@test.local -c user.name=test -c commit.gpgsign=false"
 
 cleanup_dirs=()
-cleanup() { local d; for d in "${cleanup_dirs[@]:-}"; do [ -n "$d" ] && rm -rf "$d"; done; return 0; }
+holder_pids=()   # background processes that hold cwd inside a worktree (Issue #1544 TCs)
+cleanup() {
+  local p d
+  # `|| true`: a holder killed inline earlier is already dead here, so kill returns
+  # non-zero — without the guard, set -e would abort the EXIT trap and the whole
+  # test would exit non-zero despite all assertions passing.
+  for p in "${holder_pids[@]:-}"; do [ -n "$p" ] && kill "$p" 2>/dev/null || true; done
+  wait 2>/dev/null || true
+  for d in "${cleanup_dirs[@]:-}"; do [ -n "$d" ] && rm -rf "$d"; done
+  return 0
+}
 trap cleanup EXIT
 
 # SID_A = the "working" session that holds the claim; SID_B = the (different)
@@ -244,5 +254,42 @@ assert "T-06 issue-1 (live-ref) survives" "1" "$( [ -d "$R/.rite/worktrees/issue
 assert "T-06 issue-12 (orphan) reaped (no prefix bleed from issue-1)" "0" "$( [ -d "$R/.rite/worktrees/issue-12" ] && echo 1 || echo 0 )"
 case "$out" in *"session_worktrees=1"*) pass "T-06 status reports session_worktrees=1 (only issue-12)" ;; *) fail "T-06 status: $out" ;; esac
 
+# ===========================================================================
+# Issue #1544 — OS-level live-cwd guard (regression of #1524). The cross-session
+# liveness guard only protects worktrees a session records as its `active`
+# `worktree`; it misses the dangling cases where the owning session's harness cwd
+# is still IN the tree but its flow-state has drifted (active=false, no `worktree`
+# field, stale session-id). The live-cwd guard (worktree-live-cwd.sh) closes that
+# gap by reading the OS's own per-process cwd, independent of flow-state.
+# ===========================================================================
+echo "=== T-07 (Issue #1544): a live process standing in a clean+stale worktree → NOT reaped (live-cwd guard) ==="
+R=$(make_repo 80); cleanup_dirs+=("$R")
+# Fully drift flow-state: deactivate the holder (active=false) and leave NO
+# `worktree` field (make_repo's flow-state set records none) → neither the
+# cross-session liveness guard nor the claim gate protects issue-80. Only the
+# OS-level live-cwd guard can save it (non-vacuous: drop the guard and T-07 flips).
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+# A live process stands in the worktree — the exact "harness cwd still in the
+# tree" shape that makes /clear fail when the tree is reaped out from under it.
+( cd "$R/.rite/worktrees/issue-80" && sleep 30 ) & _h80=$!
+holder_pids+=("$_h80")
+sleep 0.3
+out=$(run_pcc "$R")
+assert "T-07 worktree with live cwd survives (live-cwd guard)" "1" "$( [ -d "$R/.rite/worktrees/issue-80" ] && echo 1 || echo 0 )"
+assert "T-07 claim file survives (not reaped)" "1" "$( [ -f "$R/.rite/state/issue-claims/issue-80.json" ] && echo 1 || echo 0 )"
+assert_grep "T-07 live-cwd guard WARNING on stderr" "$R/pcc.err" "live-cwd guard"
+case "$out" in *"session_worktrees=0"*) pass "T-07 status reports session_worktrees=0" ;; *) fail "T-07 status: $out" ;; esac
+kill "$_h80" 2>/dev/null; wait "$_h80" 2>/dev/null || true
+
+echo "=== T-08 (Issue #1544 non-regression): same clean+stale worktree with NO live cwd → reaped ==="
+R=$(make_repo 81); cleanup_dirs+=("$R")
+# Identical drift to T-07 but with nobody standing in the tree → the live-cwd
+# guard must NOT over-protect: a genuine orphan is still reaped.
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+out=$(run_pcc "$R")
+assert "T-08 free clean+stale worktree reaped (no over-protection)" "0" "$( [ -d "$R/.rite/worktrees/issue-81" ] && echo 1 || echo 0 )"
+assert "T-08 claim file deleted" "0" "$( [ -f "$R/.rite/state/issue-claims/issue-81.json" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=1"*) pass "T-08 status reports session_worktrees=1" ;; *) fail "T-08 status: $out" ;; esac
+
 print_summary "$(basename "$0")" \
-  "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + cross-session liveness guard (Issue #1524: another live session's flow-state worktree ref → never reap; reap → null owner ref) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); branch preserved; wiki-worktree excluded; session-start best-effort wiring."
+  "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + cross-session liveness guard (Issue #1524: another live session's flow-state worktree ref → never reap; reap → null owner ref) + OS-level live-cwd guard (Issue #1544: any live process standing in the tree → never reap, via worktree-live-cwd.sh) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); branch preserved; wiki-worktree excluded; session-start best-effort wiring."

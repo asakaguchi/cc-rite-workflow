@@ -281,13 +281,21 @@ fi
 - `CLEANUP_WT=in_worktree`（cwd がセッション worktree）:
   1. `dirty=yes` なら **AskUserQuestion**（「`git stash push` して続行 / 中止」）。stash は common git dir に格納されるため worktree 削除後も `git stash pop` 可能（完了報告の stash 案内は従来文面を流用）。
   2. `ExitWorktree` ツールを `action: "keep"` で呼び出し、main checkout に復帰する（path 入場した worktree は remove でも消えない仕様のため**常に keep**）。
-  3. main から worktree を削除する:
+  3. main から worktree を削除する。**削除前に live-cwd guard（Issue #1544）を通す**: 別のセッションの harness cwd がまだこの worktree に立っている場合に削除すると、そのセッションの `/clear` が `Path does not exist` で失敗するため、live プロセスが cwd を置いているときは削除せず遅延 reap（S4）へ委譲する:
      ```bash
-     git worktree remove "{flow_wt}" 2>/dev/null || git worktree remove --force "{flow_wt}" 2>/dev/null || echo "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path={flow_wt}" >&2
-     git worktree prune 2>/dev/null || true
+     _lc_rc=0
+     bash {plugin_root}/hooks/scripts/worktree-live-cwd.sh "{flow_wt}" >/dev/null 2>&1 || _lc_rc=$?
+     if [ "$_lc_rc" -eq 0 ]; then
+       echo "WARNING: worktree '{flow_wt}' に live プロセスが cwd を置いているため削除を skip しました（遅延 reap S4 に委譲。harness cwd dangling → /clear エラーの防止）。" >&2
+       echo "[CONTEXT] WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1; path={flow_wt}" >&2
+     else
+       git worktree remove "{flow_wt}" 2>/dev/null || git worktree remove --force "{flow_wt}" 2>/dev/null || echo "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path={flow_wt}" >&2
+       git worktree prune 2>/dev/null || true
+     fi
      ```
-  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）は **WARNING を表示して続行**（non-blocking。S4 の遅延 reap へ委譲。ステップ 12 報告に失敗と手動コマンドを表示）。
-- `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。
+     > `in_worktree` 経路ではステップ 2 の `ExitWorktree` で harness cwd が main に退避済みのため、この guard は通常 rc=1（live cwd 不在）で削除へ進む。`worktree-live-cwd.sh` が rc=2（`/proc` も `lsof` も無い環境で判定不能）を返す場合は `if` が false となり従来どおり削除を実行する（後方互換）。
+  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）または live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）は **WARNING を表示して続行**（non-blocking。S4 の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。
+- `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の live-cwd guard が特に重要。
 - `CLEANUP_WT=none`（multi_session 無効 or worktree 未記録）: 4-W 全体を no-op でスキップ。
 
 ### 4 base ブランチの更新（安全化）

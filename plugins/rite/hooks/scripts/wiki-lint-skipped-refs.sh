@@ -59,8 +59,9 @@ usage() {
   cat <<'EOF'
 Usage: wiki-lint-skipped-refs.sh --branch-strategy STRATEGY [--wiki-branch BRANCH] [--repo-root DIR]
 
-Reads `.rite/wiki/log.md` per the branch strategy and emits the skipped_refs
-marker block + log_read_ok enum on stdout.
+Scans `.rite/wiki/raw/**/*.md` frontmatter (`ingest_status: skipped`) per the
+branch strategy and emits the skipped_refs marker block + log_read_ok enum on
+stdout.
 
 Options:
   --branch-strategy STRATEGY  separate_branch | same_branch (required)
@@ -124,7 +125,7 @@ case "$branch_strategy" in
     ;;
 esac
 
-# separate_branch では --wiki-branch が必須。空のまま進むと git show ":.rite/wiki/log.md" が
+# separate_branch では --wiki-branch が必須。空のまま進むと git show ":.rite/wiki/raw/..." が
 # ref ではなく git index (staging area) を読む別 semantics に陥る (wiki-lint-source-refs.sh と
 # 同じ runtime enforcement)。
 if [ "$branch_strategy" = "separate_branch" ] && [ -z "$wiki_branch" ]; then
@@ -168,8 +169,8 @@ log_err=$(mktemp /tmp/rite-wiki-lint-p60-err-XXXXXX 2>/dev/null) || {
 skipped_refs=""
 # log_read_ok は 4 値 enum (unknown / true / absent / io_error)。
 #   unknown: 初期値 (placeholder/strategy fail-fast 経路でのみ残る、後段未到達)
-#   true:    log.md 読出成功
-#   absent:  legitimate absence (fresh branch / ENOENT / blob not found) — skipped_refs="" は妥当
+#   true:    raw frontmatter 走査成功
+#   absent:  legitimate absence (fresh branch / raw dir 不在 / ENOENT) — skipped_refs="" は妥当
 #   io_error: 真の IO error — false positive リスクあり、ステップ 9.1 完了レポートで note 表示
 # canonical 定義: references/bash-cross-boundary-state-transfer.md#pattern-1-multi-value-enum-via-key-value-stdout
 log_read_ok="unknown"

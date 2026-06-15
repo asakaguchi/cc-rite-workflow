@@ -891,7 +891,7 @@ Wiki Lint が完了しました。
 - 孤児ページは index.md に追加するか、不要なら削除してください
 - 欠落概念は /rite:wiki:ingest で該当 Raw Source を再処理してください
 - 壊れた相互参照は該当ページを手動で修正してください
-- 未登録 raw（skip 済）は意図的な `ingest:skip` なら放置で OK。skip 記録を取り消して経験則化したい場合は /rite:wiki:ingest で再処理してください
+- 未登録 raw（skip 済）は意図的な skip (`ingest_status: skipped`) なら放置で OK。skip 記録を取り消して経験則化したい場合は /rite:wiki:ingest で再処理してください
 - 説明的番号参照は該当ページ本文の番号を削除し、背景を Why 散文へ書き換えてください（出所は frontmatter `sources.ref` で辿れます）
 ```
 
@@ -919,7 +919,7 @@ LLM は ステップ 6.0 stdout から `log_read_ok={value}`、ステップ 6.2 
 |--------|------------------------|--------------------------------|
 | `true` | 空文字列 | 空文字列 |
 | `absent` (log_read_ok のみ) | 空文字列 | 空文字列 |
-| `io_error` (log_read_ok) | ` ⚠️ (log.md 読出失敗により false positive を含む可能性あり)` | `⚠️ log.md 読出失敗: 真の欠落 (missing_concept) 件数が正確でない可能性があります。separate_branch なら wiki branch の log.md blob integrity、same_branch なら \`.rite/wiki/log.md\` の存在 / 権限を確認して /rite:wiki:lint を再実行してください。` |
+| `io_error` (log_read_ok) | ` ⚠️ (raw frontmatter 読出失敗により false positive を含む可能性あり)` | `⚠️ raw source frontmatter 読出失敗: 真の欠落 (missing_concept) 件数が正確でない可能性があります。separate_branch なら wiki branch の \`.rite/wiki/raw/\` blob integrity (git ls-tree / git show)、same_branch なら \`.rite/wiki/raw/\` の存在 / 権限を確認して /rite:wiki:lint を再実行してください。` |
 | `io_error` (all_source_refs_read_ok) | ` ⚠️ (ページ frontmatter 読出失敗により sources.ref 集合が不完全、false positive を含む可能性あり)` | `⚠️ ページ frontmatter 読出失敗: 真の欠落 (missing_concept) 件数が正確でない可能性があります。Wiki ページ格納先 (wiki branch or \`.rite/wiki/pages/\` filesystem) の integrity / 権限を確認して /rite:wiki:lint を再実行してください。` |
 | `unknown` | 空文字列 (この状態では通常 ステップ 9.1 に到達しない) | 空文字列 |
 | `(未 emit: ステップ 6.0 / 6.2 skip、処理対象 0 件)` | 空文字列 | 空文字列 |
@@ -1001,9 +1001,9 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 | `git ls-tree` 失敗 | WARNING + `pages_list=""`/`raw_list=""` で継続（exit 0） | ステップ 2.2 |
 | `branch_strategy` 未知値 (各 site で同型) | **exit 1 で fail-fast** | ステップ 2.2 / 8.2 / 8.3 + helper 内 (4 / 5 / 6.0 / 6.2 / 7) |
 | `index.md` 読出失敗 | WARNING + 孤児検出 skip（exit 0 + `orphan_check_ok=index_unreadable`） | ステップ 5 (helper 内) |
-| `log.md` 読出失敗 (legitimate absence) | WARNING 抑制 + `skipped_refs=""` + `log_read_ok=absent`（exit 0） | ステップ 6.0 |
-| `log.md` 読出失敗 (真の IO error) | WARNING + `skipped_refs=""` + `log_read_ok=io_error` + ステップ 9.1 で false positive note 表示（exit 0） | ステップ 6.0 |
-| awk/sort pipeline 失敗 | WARNING + `skipped_refs=""` で継続（exit 0） | ステップ 6.0 |
+| `.rite/wiki/raw/` 不在 (legitimate absence) | WARNING 抑制 + `skipped_refs=""` + `log_read_ok=absent`（exit 0） | ステップ 6.0 |
+| raw frontmatter 読出失敗 (真の IO error) | WARNING + `skipped_refs=""` + `log_read_ok=io_error` + ステップ 9.1 で false positive note 表示（exit 0） | ステップ 6.0 |
+| ls-tree / find / awk scan 失敗 | WARNING + `skipped_refs=""` で継続（exit 0） | ステップ 6.0 |
 | `date -d` パース失敗 | 該当ページを skip し WARNING を stderr に出力（`n_stale` 非加算） | ステップ 4 (helper 内) |
 | `grep` no-match（indexed_pages 空） | WARNING + 孤児判定 skip（`orphan_check_ok=index_empty`、全ページ orphan 誤検出防止） | ステップ 5 (helper 内) |
 | ページ読出失敗 (broken-refs 走査中) | WARNING + 該当ページ skip + `broken_refs_read_ok=io_error`（false negative note 表示） | ステップ 7 (helper 内) |

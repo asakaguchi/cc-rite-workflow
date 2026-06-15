@@ -10,19 +10,20 @@
 # scan). Structure mirrors wiki-lint-source-refs.test.sh (6.2 counterpart).
 #
 # Coverage:
-#   TC-1  same_branch 抽出 (ingest_status:skipped 抽出 / 引用符許容 / sort -u / raw/{type}/{file} 形式)
+#   TC-1  same_branch 抽出 (ingest_status:skipped 抽出 / 引用符許容 / sort 整列 / raw/{type}/{file} 形式)
 #   TC-2  same_branch raw ディレクトリ不在 (legitimate absence) → log_read_ok=absent, 空集合
 #   TC-3  skipped 0 件 (ingest_status 欠落の raw のみ = AC-6 後方互換) → count=0 + read_ok=true
 #   TC-4  placeholder residue (--branch-strategy "{...}") → exit 1 + LINT_PHASE_6_0_PLACEHOLDER_RESIDUE marker
 #   TC-5  placeholder residue (--wiki-branch "{...}") → exit 1
 #   TC-6  unknown branch_strategy → exit 1
 #   TC-7  separate_branch 抽出 (git ls-tree + git show)
-#   TC-8  separate_branch raw 不在 (legitimate absence) → log_read_ok=absent
+#   TC-8  separate_branch 既存 branch + raw tree 不在 (ls-tree 成功・空) → log_read_ok=true
 #   TC-9  --branch-strategy 欠落 → exit 2 (invocation error)
 #   TC-10 separate_branch + 空 --wiki-branch → exit 2 (invocation error)
 #   TC-11 値なしフラグ末尾 → no-hang (timeout ガード)
 #   TC-12 same_branch io_error (raw が directory でなくファイル → find 失敗) → log_read_ok=io_error
 #   TC-13 separate_branch 不在 wiki branch → log_read_ok=absent (raw 無し = 妥当)
+#   TC-14 separate_branch io_error (fault injection: chmod 000 .git/objects → ls-tree 失敗) → io_error
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -122,7 +123,7 @@ echo "=== wiki-lint-skipped-refs.sh tests (raw frontmatter scan, Issue #1520) ==
 echo ""
 
 # === TC-1: same_branch 抽出 ===
-echo "TC-1: same_branch 抽出 (ingest_status:skipped / 引用符許容 / sort -u / raw 形式)"
+echo "TC-1: same_branch 抽出 (ingest_status:skipped / 引用符許容 / sort 整列 / raw 形式)"
 repo=$(make_same_branch_sandbox tc1 1)
 run_helper "$repo" --branch-strategy same_branch --wiki-branch wiki
 expected_block='skipped_refs_count=2
@@ -201,12 +202,16 @@ else
   fail "unexpected (rc=$HELPER_RC): $HELPER_STDOUT / stderr: $HELPER_STDERR"
 fi
 
-# === TC-8: separate_branch raw 不在 → absent ===
-echo "TC-8: separate_branch legitimate absence (raw なし)"
+# === TC-8: separate_branch 既存 branch + raw tree 不在 → read_ok=true ===
+# wiki branch は存在するが .rite/wiki/raw/ tree が無いケース。git ls-tree は path 不在でも
+# rc=0 + 空出力で成功する (path 不在 ≠ エラー) ため、これは absent ではなく scan 成功・空集合
+# = true。不在 *branch* (ls-tree 失敗) の absent 経路は TC-13 が、io_error 経路は TC-14 が担う。
+echo "TC-8: separate_branch 既存 branch + raw tree 不在 (ls-tree 成功・空 → read_ok=true)"
 repo=$(make_separate_branch_sandbox tc8 0)
 run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
-if [ "$HELPER_RC" = "0" ] && grep -q '^skipped_refs_count=0$' <<<"$HELPER_STDOUT"; then
-  pass "raw 不在 → 空集合 (ls-tree success/empty or absent)"
+if [ "$HELPER_RC" = "0" ] && grep -q '^skipped_refs_count=0$' <<<"$HELPER_STDOUT" \
+   && grep -q '^log_read_ok=true$' <<<"$HELPER_STDOUT"; then
+  pass "既存 branch・raw tree 無し → 空集合 + read_ok=true (path 不在は非エラー)"
 else
   fail "unexpected (rc=$HELPER_RC): $HELPER_STDOUT / stderr: $HELPER_STDERR"
 fi
@@ -273,6 +278,29 @@ if [ "$HELPER_RC" = "0" ] && grep -q '^log_read_ok=absent$' <<<"$HELPER_STDOUT" 
   pass "不在 branch → absent + 空集合 (exit 0 非ブロッキング)"
 else
   fail "unexpected (rc=$HELPER_RC): stdout=$HELPER_STDOUT / stderr=$HELPER_STDERR"
+fi
+
+# === TC-14: separate_branch io_error (fault injection: chmod 000 .git/objects) ===
+# 不在 branch (TC-13) は raw 走査では absent に降格するため、separate_branch の真の io_error
+# 経路を object store 破損で別途検証する。.git/objects を読めなくすると git の repository
+# discovery が rc=128 (fatal: not a git repository) で落ち、absent 判別 regex
+# (Not a valid object name|not a tree object|does not exist) に match しないため io_error に
+# 降格する。root は権限を透過するため (ls-tree が成功し得る) root 実行時はアサーションを skip する。
+echo "TC-14: separate_branch io_error (fault injection: chmod 000 .git/objects)"
+repo=$(make_separate_branch_sandbox tc14 1)
+if [ "$(id -u)" = "0" ]; then
+  pass "TC-14 skip (root 実行では permission injection が無効)"
+else
+  chmod -R 000 "$repo/.git/objects" 2>/dev/null  # 自己再帰の "読み込めません" ノイズは無視
+  run_helper "$repo" --branch-strategy separate_branch --wiki-branch wiki
+  chmod -R 755 "$repo/.git/objects" 2>/dev/null || true  # cleanup 用に権限復帰 (rm -rf 可能化)
+  if [ "$HELPER_RC" = "0" ] && grep -q '^log_read_ok=io_error$' <<<"$HELPER_STDOUT" \
+     && grep -q '^skipped_refs_count=0$' <<<"$HELPER_STDOUT" \
+     && grep -q 'git ls-tree に失敗しました' <<<"$HELPER_STDERR"; then
+    pass "io_error + 空集合 + WARNING (exit 0 非ブロッキング)"
+  else
+    fail "unexpected (rc=$HELPER_RC): stdout=$HELPER_STDOUT / stderr=$HELPER_STDERR"
+  fi
 fi
 
 echo ""

@@ -651,7 +651,7 @@ log.md は append-only。既存エントリを変更してはいけない。
 
 ## ステップ 8: 自動 Lint
 
-Ingest 直後、Wiki 全体の品質チェックを `/rite:wiki:lint --auto` として実行する。**5 ブロッキング観点** (矛盾・陳腐化・孤児ページ・欠落概念・壊れた相互参照) + **1 informational 指標** (未登録 raw、`ingest:skip` 済み) で計 6 フィールドを検査する。
+Ingest 直後、Wiki 全体の品質チェックを `/rite:wiki:lint --auto` として実行する。**5 ブロッキング観点** (矛盾・陳腐化・孤児ページ・欠落概念・壊れた相互参照) + **1 informational 指標** (未登録 raw、`ingest_status: skipped` 済み) で計 6 フィールドを検査する。
 
 ### 8.1 auto_lint 設定の確認
 
@@ -787,7 +787,7 @@ ERROR / stdout 空 / regex mismatch 経路では「Lint 結果: 実行失敗（{
 n_warnings += n_contradictions + n_stale + n_orphans + n_missing_concept + n_broken_refs
 ```
 
-**`n_unregistered_raw` は加算しない**: `ingest:skip` 済み raw は意図的に経験則化しなかった件数 (log.md に skip 理由が記録済み) であり、警告として数えると skip 運用が膨らむほど警告カウンタが無意味に肥大する。informational 指標として完了レポートの内訳にのみ表示する。
+**`n_unregistered_raw` は加算しない**: skip 済み raw (`ingest_status: skipped`) は意図的に経験則化しなかった件数 (skip 理由は raw frontmatter の `skip_reason` に記録済み) であり、警告として数えると skip 運用が膨らむほど警告カウンタが無意味に肥大する。informational 指標として完了レポートの内訳にのみ表示する。
 
 **詳細な修正対応**: 検出結果の詳細確認は、Ingest 完了後に `/rite:wiki:lint`（`--auto` なし）で再実行して取得する。
 
@@ -860,7 +860,7 @@ sentinel は grep 可能 (`grep -F '[ingest:returned-to-caller]'`) で rendered 
 | `wiki-worktree-commit.sh` exit 4 (push 失敗) | 非 fatal で継続。`git -C .rite/wiki-worktree push origin {wiki_branch}` で手動回復 |
 | `wiki-worktree-commit.sh` 未知の exit code | exit 1 で fail-fast |
 | `branch_strategy` が未知の値 | ステップ 5.1 の if/elif/else 末尾 else 分岐で fail-fast (ステップ 5.2 の bash block は same_branch 単独分岐のため未知値はステップ 5.1 の else が catch する。`rite-config.yml` の `wiki.branch_strategy` を確認) |
-| LLM が経験則を抽出できない | 該当 Raw Source は `ingest:skip` として log.md に記録、`ingested: true` に変更、`n_skipped` を +1 |
+| LLM が経験則を抽出できない | 該当 Raw Source の raw frontmatter に `ingest_status: skipped` + `skip_reason` を追記（skip 状態の SoT）、`ingested: true` に変更、log.md に人間向け Skip bullet を追記、`n_skipped` を +1（ステップ 5 step 5 参照） |
 
 ---
 

@@ -318,6 +318,8 @@ touch .rite/wiki/pages/anti-patterns/.gitkeep
 plugin_root="{plugin_root}"
 
 initialized_at=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
+# log.md の OKF 日付見出し (## YYYY-MM-DD) 用の date-only 値 (Issue #1520)。
+initialized_date=$(date -u +"%Y-%m-%d")
 
 # SCHEMA.md（{initialized_at} プレースホルダーを含まないため単純コピー）
 cp "${plugin_root}/templates/wiki/schema-template.md" .rite/wiki/SCHEMA.md
@@ -326,8 +328,8 @@ cp "${plugin_root}/templates/wiki/schema-template.md" .rite/wiki/SCHEMA.md
 sed "s/{initialized_at}/$initialized_at/g" \
   "${plugin_root}/templates/wiki/index-template.md" > .rite/wiki/index.md
 
-# log.md
-sed "s/{initialized_at}/$initialized_at/g" \
+# log.md (OKF 日付見出し {initialized_date} は date-only、本文の {initialized_at} は full timestamp)
+sed -e "s/{initialized_date}/$initialized_date/g" -e "s/{initialized_at}/$initialized_at/g" \
   "${plugin_root}/templates/wiki/log-template.md" > .rite/wiki/log.md
 ```
 

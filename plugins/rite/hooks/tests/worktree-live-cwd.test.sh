@@ -7,6 +7,11 @@
 #   TC-4: a process whose cwd is NESTED under the dir  → rc 0
 #   TC-5: sibling-prefix dir (issue-1 vs issue-12)     → no false match (rc 1)
 #   TC-6: after the holder exits, the dir is free again → rc 1
+#   TC-7: forced 'none' backend (RITE_WORKTREE_LIVE_CWD_PROBE) → rc 2
+#   TC-8: invalid backend value                        → rc 2
+#   TC-9: forced 'proc' backend (free → rc 1, held → rc 0)
+#   TC-10: forced 'lsof' backend (held → rc 0, free → rc 1; rc 2 if lsof absent)
+#   TC-11: symlinked-parent canonicalization (real & linked path both → rc 0)
 #
 # These pin the contract the reap gate (pr-cycle-cleanup.sh Step 5) and the
 # cleanup removal (cleanup.md Step 4-W) depend on: "don't delete a worktree a
@@ -64,6 +69,7 @@ assert "TC-5 issue-12 itself matched → rc 0" "0" "$(probe_rc "$D3/issue-12")"
 echo "=== TC-6: after holder exits the dir is free again → rc 1 ==="
 D4=$(mktemp -d); cleanup_dirs+=("$D4")
 ( cd "$D4" && sleep 1 ) & hp=$!
+holders+=("$hp")   # also register for trap-based teardown (defensive; wait below is the primary)
 sleep 0.3
 assert "TC-6 while held → rc 0" "0" "$(probe_rc "$D4")"
 wait "$hp" 2>/dev/null || true
@@ -91,6 +97,8 @@ assert "TC-9 probe=proc held dir → rc 0" "0" "$(RITE_WORKTREE_LIVE_CWD_PROBE=p
 echo "=== TC-10: forced 'lsof' backend (the BSD/macOS fallback) ==="
 D7=$(mktemp -d); cleanup_dirs+=("$D7")
 if command -v lsof >/dev/null 2>&1; then
+  # free dir → rc 1 (the "delete proceeds" branch cleanup.md relies on)
+  assert "TC-10 probe=lsof free dir → rc 1" "1" "$(RITE_WORKTREE_LIVE_CWD_PROBE=lsof bash "$PROBE" "$D7" >/dev/null 2>&1; echo $?)"
   ( cd "$D7" && sleep 30 ) & holders+=("$!")
   sleep 0.3
   assert "TC-10 probe=lsof held dir → rc 0" "0" "$(RITE_WORKTREE_LIVE_CWD_PROBE=lsof bash "$PROBE" "$D7" >/dev/null 2>&1; echo $?)"

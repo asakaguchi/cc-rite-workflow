@@ -602,8 +602,10 @@ fi
 
 | プレースホルダー | 値 |
 |----------------|-----|
+| `{type}` | OKF v0.1 必須フィールド。`{domain}` と同値（`patterns` / `heuristics` / `anti-patterns`）。OKF consumer の type ベース routing 用に concept 種別を明示する。domain と意味的に一致させる |
 | `{title}` | ステップ 4.1 で生成したタイトル |
 | `{domain}` | `patterns` / `heuristics` / `anti-patterns` |
+| `{description}` | ステップ 4.1 のサマリー（1 行要約）。OKF 推奨の concept 説明文。Sub-2 以降の index 箇条書きで説明源として活用される（`{summary}` と同源だが frontmatter メタデータとして機械可読に保持する） |
 | `{created}` / `{updated}` | 現在の ISO 8601 タイムスタンプ |
 | `{source_type}` | Raw Source の `type` フィールド (`reviews` / `retrospectives` / `fixes` の 3 値のみ — `wiki-ingest-trigger.sh` が受理する値と一致) |
 | `{source_ref}` | Raw Source の wiki-root 起点ファイル相対パス（例: `raw/reviews/20260413T...md`）。template 側で `../../` prefix を hardcode するため、placeholder 値自体には prefix を含めない。**⚠️ raw frontmatter の `source_ref` フィールド値（PR 識別子、例: `pr-1143`）をそのまま使ってはならない** — page の `sources[].ref` は常に Raw Source の**ファイルパス形式** `raw/{type}/{filename}` であり、PR 識別子形式ではない（同名 placeholder と raw フィールドの dual-use 混同による drift。概念は Wiki anti-pattern `placeholder-dual-use-resolution-drift`〔wiki ブランチに蓄積される経験則ページ。develop ツリーには実体なし〕）。lint はこの `ref` をファイルパス形式で raw と突合するため、PR 識別子だと raw→page 追跡が切れ false `missing_concept` を量産する |

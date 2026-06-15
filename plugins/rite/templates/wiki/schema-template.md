@@ -27,8 +27,10 @@
 
 ```yaml
 ---
+type: patterns | heuristics | anti-patterns
 title: "ページタイトル"
 domain: patterns | heuristics | anti-patterns
+description: "1 行の要約（OKF index の説明文・検索補助に使用）"
 created: "YYYY-MM-DDTHH:MM:SS+09:00"
 updated: "YYYY-MM-DDTHH:MM:SS+09:00"
 sources:
@@ -41,13 +43,17 @@ confidence: high | medium | low
 
 | フィールド | 必須 | 説明 |
 |-----------|------|------|
+| `type` | yes | OKF v0.1 の唯一の必須フィールド。concept の種別。rite では `domain` と同値（例 domain=heuristics → type=heuristics）。OKF consumer が type ベースで routing/filtering できるようにするための標準キー |
 | `title` | yes | ページタイトル（検索・インデックスに使用） |
-| `domain` | yes | 蓄積ドメイン（上記3種） |
+| `domain` | yes | 蓄積ドメイン（上記3種）。rite 拡張キーとして温存（query/lint は引き続き domain を参照） |
+| `description` | no | 1 行要約（OKF 推奨。index 箇条書きの説明源・検索補助） |
 | `created` | yes | 作成日時（ISO 8601） |
 | `updated` | yes | 最終更新日時（ISO 8601） |
 | `sources` | yes | 元データへの参照（空配列可） |
 | `tags` | no | 自由タグ（検索補助） |
 | `confidence` | no | 知見の確信度（デフォルト: medium） |
+
+> **`type` と `domain` の関係**: OKF v0.1 は `type` のみを必須とする。rite は既存の `domain` を機械可読キー（query スコアリング・lint カテゴリ集計）として温存しつつ、OKF 準拠のため `type` を同値で併記する。両者の統合（redundancy 解消）は別 Issue のスコープで、本規約では両併存を正とする。
 
 ### 蓄積トリガー
 

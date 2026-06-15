@@ -404,6 +404,12 @@ trap 'trap - EXIT; _rite_trigger_target_rollback 129; exit 129' HUP
     printf 'title: "%s"\n' "$escaped_title"
   fi
   printf 'ingested: false\n'
+  # `ingest_status` / `skip_reason` are intentionally NOT emitted at creation
+  # (Issue #1520, Sub-3): a raw source starts un-ingested with no skip status.
+  # When `/rite:wiki:ingest` ステップ 5 decides to skip a raw, it adds
+  # `ingest_status: skipped` + `skip_reason: "..."` to that raw's frontmatter.
+  # Absence of `ingest_status` means "not skipped" (wiki-lint-skipped-refs.sh
+  # treats it permissively — AC-6). The skip SoT lives here, not in log.md.
   printf -- '---\n\n'
   # `set -e` is suppressed on the LHS of `||`, so cat failures must be checked
   # explicitly. Reading from `$resolved_content` (the realpath result) instead

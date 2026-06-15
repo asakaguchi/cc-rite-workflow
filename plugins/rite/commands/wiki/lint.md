@@ -24,9 +24,9 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 | **矛盾** | 同じトピックで異なる結論を持つページ（タイトル衝突・方針逆転・重複情報） | Yes |
 | **陳腐化** | `updated` frontmatter が閾値（デフォルト 90 日）を超えて更新されていないページ | Yes |
 | **孤児ページ** | `pages/` 配下に存在するが `index.md` の OKF 箇条書き（`* [title](pages/...) - desc`）に登録されていないページ | Yes |
-| **欠落概念 (missing_concept)** | `raw/` に `ingested: true` の Raw Source があるが、対応ページも `sources.ref` 登録も `ingest:skip` 記録も存在しない真の欠落 | Yes |
+| **欠落概念 (missing_concept)** | `raw/` に `ingested: true` の Raw Source があるが、対応ページも `sources.ref` 登録も `ingest_status: skipped` 記録（raw frontmatter）も存在しない真の欠落 | Yes |
 | **壊れた相互参照** | ページ本文の Markdown リンク `](...)` が `pages/` 配下の実在ファイルを指していない | Yes |
-| **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、`log.md` に `ingest:skip` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
+| **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、raw frontmatter に `ingest_status: skipped` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
 | **説明的番号参照 (descriptive_number_ref)** | ページ本文に残った説明目的の Issue/PR/commit 番号参照（「PR #N で対応」「(refs #N)」等）。Wiki は番号の受け皿ではなく Why 散文の場のため surface する。frontmatter `sources.ref` と TODO/FIXME は除外 | **No** (`n_warnings` 不加算、ステップ 7.5) |
 
 **設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 4 / 5 / 6.0 / 6.2 / 7 / 8.2 / 8.3 で同型 fail-fast。うち 4 / 5 / 6.0 / 6.2 / 7 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)。いずれも設定ミス / 実装ミスを silent に通過させないための設計判断。
@@ -184,8 +184,8 @@ exit 0
 | `n_contradictions` | 0 | ステップ 3 で矛盾検出するごとに +1 (LLM セマンティック判定) |
 | `n_stale` | 0 | ステップ 4 の `wiki-lint-stale.sh` が emit する `n_stale=` 値を転記 (LLM 独自カウント禁止) |
 | `n_orphans` | 0 | ステップ 5 の `wiki-lint-orphans.sh` が emit する `n_orphans=` 値を転記 (LLM 独自カウント禁止) |
-| `n_missing_concept` | 0 | ステップ 6.2 で真の欠落（`ingest:skip` 記録も `sources.ref` 登録も無い）を検出するごとに +1。ingest から呼ばれた場合、ingest 側 ステップ 8.5 で `n_warnings` に加算される（ブロッキング相当） |
-| `n_unregistered_raw` | 0 | ステップ 6.2 で `ingest:skip` 記録ありの未登録 raw を検出するごとに +1。意図的に経験則化しなかった raw の informational 指標で `n_warnings` には加算しない |
+| `n_missing_concept` | 0 | ステップ 6.2 で真の欠落（raw frontmatter の `ingest_status: skipped` 記録も `sources.ref` 登録も無い）を検出するごとに +1。ingest から呼ばれた場合、ingest 側 ステップ 8.5 で `n_warnings` に加算される（ブロッキング相当） |
+| `n_unregistered_raw` | 0 | ステップ 6.2 で raw frontmatter に `ingest_status: skipped` 記録ありの未登録 raw を検出するごとに +1。意図的に経験則化しなかった raw の informational 指標で `n_warnings` には加算しない |
 | `n_broken_refs` | 0 | ステップ 7 の `wiki-lint-broken-refs.sh` が emit する `n_broken_refs=` 値を転記 (LLM 独自カウント禁止) |
 | `n_descriptive_refs` | 0 | ステップ 7.5 でページ本文の説明的 Issue/PR/commit 番号参照を検出した hits 合計。informational 指標で `n_warnings` には加算しない。canonical `Lint:` summary 行には含めない |
 | `issues[]` | `[]` | 各検出結果を `{category, page, detail}` として append (helper 委譲カテゴリは marker block の行を転記) |
@@ -409,14 +409,14 @@ fi
 
 ステップ 6 は検出結果を 2 カテゴリに分ける:
 
-- **`missing_concept`**: `ingested: true` の raw source のうち、対応ページも `sources.ref` 登録も `ingest:skip` 記録も存在しない真の欠落。`n_warnings` に加算（ブロッキング相当）
-- **`unregistered_raw`**: `ingested: true` で `sources.ref` 未登録だが `log.md` に `ingest:skip` 記録がある raw source。意図的に経験則化しなかった informational 指標（`n_warnings` 不加算）
+- **`missing_concept`**: `ingested: true` の raw source のうち、対応ページも `sources.ref` 登録も `ingest_status: skipped` 記録（raw frontmatter）も存在しない真の欠落。`n_warnings` に加算（ブロッキング相当）
+- **`unregistered_raw`**: `ingested: true` で `sources.ref` 未登録だが raw frontmatter に `ingest_status: skipped` 記録がある raw source。意図的に経験則化しなかった informational 指標（`n_warnings` 不加算）
 
-### 6.0 `ingest:skip` 済み raw source の集合構築
+### 6.0 skip 済み raw source の集合構築
 
-ステップ 6.2 で参照する `skipped_refs` 集合の構築 (ステップ 6.2 の `all_source_refs` と対称な marker block + `log_read_ok` 4 値 enum) は `wiki-lint-skipped-refs.sh` に委譲する。
+ステップ 6.2 で参照する `skipped_refs` 集合の構築 (ステップ 6.2 の `all_source_refs` と対称な marker block + `log_read_ok` 4 値 enum) は `wiki-lint-skipped-refs.sh` に委譲する。Issue #1520 (Sub-3) で skip SoT が log.md から raw frontmatter (`ingest_status: skipped`) へ移行したため、helper は log.md ではなく **raw frontmatter を走査**する。
 
-> **Reference**: 集合構築の canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-skipped-refs.sh`。helper は `branch_strategy` 別の `log.md` 読出 (`git show`(separate_branch) / `cat`(same_branch))・**legitimate absence** (fresh branch / ENOENT / blob not found) と**真の IO error** (permission / 破損 / wiki_branch race) の `LC_ALL=C` 固定 stderr pattern 判別・`ingest:skip` レコード抽出 (field 3 厳密一致 / field 4 prefix 正規化)・`sort -u` 重複排除・awk/sort pipeline 失敗時の io_error 降格・marker block / `log_read_ok` 4 値 enum 出力・signal-specific trap cleanup をすべて内包する (旧 ~165 行 inline 実装を委譲: Issue #1196)。placeholder residue gate も helper 内で実行される。state machine 契約 (marker block + 4 値 enum) は `references/bash-cross-boundary-state-transfer.md` の Pattern 1/2 を参照。
+> **Reference**: 集合構築の canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-skipped-refs.sh`。helper は `branch_strategy` 別の raw 走査 (`git ls-tree` + `git show`(separate_branch) / `find` + `cat`(same_branch)) で `.rite/wiki/raw/**/*.md` の frontmatter を読み、`ingest_status: skipped` を持つ raw を `raw/{type}/{filename}` 形式で抽出する・**legitimate absence** (raw ディレクトリ不在) と**真の IO error** (permission / 破損 / wiki_branch race) の `LC_ALL=C` 固定 stderr pattern 判別・`sort -u` 重複排除・列挙失敗時の io_error 降格・marker block / `log_read_ok` 4 値 enum 出力 (enum 名は stdout 契約のため据え置き、値は raw 走査状態を表す)・signal-specific trap cleanup をすべて内包する。`ingest_status` 欠落 raw は skipped でないものとして permissive に扱う (AC-6 後方互換)。placeholder residue gate も helper 内で実行される。state machine 契約 (marker block + 4 値 enum) は `references/bash-cross-boundary-state-transfer.md` の Pattern 1/2 を参照。
 
 **Bash tool 呼び出し境界での state 伝達**: ステップ 1.1 の `branch_strategy` / `wiki_branch` は別 Bash tool 呼び出しで定義されているため、Claude は会話コンテキストから helper の `--branch-strategy` / `--wiki-branch` arg に literal substitute する (ステップ 6.2 の `wiki-lint-source-refs.sh` 呼び出しと同じ契約)。
 
@@ -443,14 +443,14 @@ else
 fi
 ```
 
-**`log_read_ok` 4 値 enum による状態伝達**: bash 変数は Bash tool 呼び出し境界を超えて失われるため、`log_read_ok` を stdout に `log_read_ok={value}` 形式で出力する:
+**`log_read_ok` 4 値 enum による状態伝達**: bash 変数は Bash tool 呼び出し境界を超えて失われるため、`log_read_ok` を stdout に `log_read_ok={value}` 形式で出力する。Issue #1520 (Sub-3) で skip SoT が log.md から raw frontmatter (`ingest_status: skipped`) へ移行したため、本 enum は **raw frontmatter 走査の状態**を表す (enum 名は lint.md の stdout 契約のため据え置き):
 
 | 値 | 意味 | ステップ 9.1 完了レポートでの扱い |
 |----|------|---------------------------------|
 | `unknown` | 初期値 (branch_strategy fail-fast で後段未到達のときのみ残る) | 表示しない (後段未実行) |
-| `true` | log.md 読出成功 | 通常表示 (false positive なし) |
-| `absent` | legitimate absence (fresh branch / ENOENT / blob not found) | 通常表示 (skip 記録なしは妥当) |
-| `io_error` | 真の IO error (permission / 破損 / race) | ⚠️ note 表示「log.md 読出失敗により `missing_concept` 件数に false positive を含む可能性あり」 |
+| `true` | raw frontmatter 走査成功 (skip 集合は信頼できる) | 通常表示 (false positive なし) |
+| `absent` | raw ディレクトリ不在 (fresh / 未初期化 wiki) — 空集合は妥当 | 通常表示 (skip 記録なしは妥当) |
+| `io_error` | raw ディレクトリ列挙失敗 (permission / 破損 / race) | ⚠️ note 表示「raw frontmatter 走査失敗により `missing_concept` 件数に false positive を含む可能性あり」 |
 
 **LLM による集合保持の契約**: 上記 bash block の stdout に `---skipped_refs_begin---` / `---skipped_refs_end---` で挟まれた行を LLM が会話コンテキストに保持し、ステップ 6.2 の (b) 分岐判定材料とする。0 件でも begin/end marker は必ず出力される (集合構築ステップが実行されたことの positive confirmation)。
 
@@ -534,7 +534,7 @@ fi
   "category": "missing_concept",
   "raw_source": ".rite/wiki/raw/reviews/20260410T...md",
   "title": "PR #123 review findings",
-  "detail": "Ingest 済みだが対応ページも ingest:skip 記録も存在しない"
+  "detail": "Ingest 済みだが対応ページも ingest_status: skipped 記録（raw frontmatter）も存在しない"
 }
 ```
 
@@ -547,7 +547,7 @@ fi
   "category": "unregistered_raw",
   "raw_source": ".rite/wiki/raw/reviews/20260417T...md",
   "title": "Final mergeable check after fix retries",
-  "detail": "ingest:skip 済みで経験則化されなかった raw（log.md に skip 記録あり）"
+  "detail": "skip 済みで経験則化されなかった raw（raw frontmatter に ingest_status: skipped）"
 }
 ```
 
@@ -660,14 +660,13 @@ echo "[CONTEXT] WIKI_DESCRIPTIVE_REFS=$n_descriptive_refs"
 
 ### 8.1 検出結果の log.md 記録
 
-Lint 完了後、`.rite/wiki/log.md` に以下の形式で **append-only** でエントリを追記する:
+Lint 完了後、`.rite/wiki/log.md` に OKF v0.1 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新）で **append-only** にエントリを追記する。今日の日付見出し `## YYYY-MM-DD` が `# Directory Update Log` 直後（ログ先頭）に無ければ新規追加し、その見出し配下に以下の 1 bullet を追加する（Issue #1520 で log.md はテーブルから OKF 形式へ移行）:
 
-| 列 | 値 |
-|----|-----|
-| 日時 | 現在の ISO 8601 タイムスタンプ |
-| アクション | `lint:clean` / `lint:warning`（下記判定基準参照） |
-| 対象 | `—`（全体チェック） |
-| 詳細 | `contradictions={n}, stale={n}, orphans={n}, missing_concept={n}, unregistered_raw={n}, broken_refs={n}` |
+```
+* **{lint_action}** — contradictions={n}, stale={n}, orphans={n}, missing_concept={n}, unregistered_raw={n}, broken_refs={n}
+```
+
+`{lint_action}` は `lint:clean` / `lint:warning`（下記判定基準・ステップ 8.1 bash の `[CONTEXT] lint_action=` emit 参照）。既存の日付見出し・bullet は改変しない（append-only）。
 
 **`lint:clean` / `lint:warning` の判定基準** (`n_unregistered_raw` は informational で判定に含めない):
 
@@ -746,11 +745,11 @@ echo "log_path=$log_path"
 | placeholder | source | 責務 |
 |-------------|--------|------|
 | `{log_path}` | ステップ 8.2 bash block の `echo "log_path=$log_path"` | LLM は会話コンテキストから `log_path=` 行を grep し literal substitute |
-| `{log_entry}` | **LLM が ステップ 8.1 table から組み立てる** | LLM は ステップ 1.4 / 3-7 で蓄積された Lint カウンタ値を 6 フィールド形式 (`contradictions={n}, stale={n}, ...`) に埋め込み 1 行の log.md 追記文字列として生成する。**アクション列は LLM 独自判定ではなく、ステップ 8.1 bash block が emit する `[CONTEXT] lint_action=...` 行を first-match で抽出し、`=` 右辺の enum 値 (`lint:clean` / `lint:warning`) を literal 代入する** |
+| `{log_entry}` | **LLM が ステップ 8.1 の OKF bullet 形式から組み立てる** | LLM は ステップ 1.4 / 3-7 で蓄積された Lint カウンタ値を 6 フィールド形式 (`contradictions={n}, stale={n}, ...`) に埋め込み、`* **{lint_action}** — {6 フィールド}` の OKF bullet を生成する。**`{lint_action}` は LLM 独自判定ではなく、ステップ 8.1 bash block が emit する `[CONTEXT] lint_action=...` 行を first-match で抽出し、`=` 右辺の enum 値 (`lint:clean` / `lint:warning`) を literal 代入する**。追記時は今日の日付見出し `## YYYY-MM-DD` がログ先頭に無ければ追加し（新しい順）、その配下に bullet を append する |
 
 **書き込み手順**:
 
-1. Edit ツールで `{log_path}` (ステップ 8.2 で出力された値を literal substitute) に ステップ 8.1 table に基づく log.md 追記行を **append-only** で追加する。**注意**: シェル変数 `$log_path` は Bash ツール呼び出し境界を超えると失われ、Edit ツールはシェル変数を解釈しない。`echo "log_path=..."` 出力を会話文脈から拾って literal value で置換する
+1. Edit ツールで `{log_path}` (ステップ 8.2 で出力された値を literal substitute) に ステップ 8.1 の OKF bullet（必要なら日付見出し）を **append-only** で追加する。**注意**: シェル変数 `$log_path` は Bash ツール呼び出し境界を超えると失われ、Edit ツールはシェル変数を解釈しない。`echo "log_path=..."` 出力を会話文脈から拾って literal value で置換する
 2. 以下の bash ブロックで commit + push する (`{log_entry}` は LLM が上記契約に従い ステップ 8.1 table から生成した literal 文字列で substitute する)
 
 ```bash

@@ -760,6 +760,28 @@ if [ -d "$session_wt_root" ]; then
       continue
     fi
 
+    # Gate (OS-level live cwd, Issue #1544): never reap a worktree that ANY live
+    # process is standing in (cwd at or under it). This is the flow-state-
+    # independent backstop for #1524's recurrence: the cross-session liveness
+    # guard above only protects worktrees a session records as its `active`
+    # `worktree`, so it misses the dangling cases where the owning session's
+    # harness cwd is still in the tree but its flow-state has drifted (active=false,
+    # empty/nulled `worktree` field, or stale session-id). Removing such a tree
+    # leaves the harness cwd pointing at a deleted dir → `/clear` fails with
+    # `Path does not exist`. Delegated to worktree-live-cwd.sh (SoT, shared with
+    # cleanup.md Step 4-W). rc 0 = live cwd present → skip; rc 2 = undeterminable
+    # (no /proc & no lsof, e.g. older macOS) → fall through to the existing
+    # claim/dirty gates (no behavior change vs pre-#1544). `|| _cwd_rc=$?` keeps a
+    # non-zero rc from aborting the loop under `set -e`. Evaluated before Gate 3/2,
+    # like the other liveness guards, so a clean+stale worktree someone stands in
+    # is still preserved.
+    _cwd_rc=0
+    bash "$SCRIPT_DIR/worktree-live-cwd.sh" "$_wt_canon" >/dev/null 2>&1 || _cwd_rc=$?
+    if [ "$_cwd_rc" -eq 0 ]; then
+      echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' は live プロセスが cwd を置いているため reap をスキップします (live-cwd guard)。" >&2
+      continue
+    fi
+
     # Gate 3: dirty worktree is NEVER auto-reaped. An indeterminate status
     # (rc != 0) is treated conservatively as "do not reap" to avoid data loss.
     _st_out=$(git -C "$wt_path" status --porcelain 2>/dev/null)

@@ -296,6 +296,7 @@ if [ "$content_write_failed" -eq 1 ]; then
   # WIKI_INGEST_* prefix のみ認識するため gate-visible な WIKI_INGEST_FAILED を
   # reason=content_write_failed で emit する (review.md 6.5.W / fix.md 4.6.W と対称)。
   echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=content_write_failed; exit_code=1"
+  echo "WARNING: close Phase 4.4.W: content write 失敗のため wiki ingest をスキップ (trigger は未起動)。" >&2
   trigger_exit=1  # Phase 4.4.W.2 を LLM がスキップするための非 0 値
   echo "trigger_exit=$trigger_exit"
 else

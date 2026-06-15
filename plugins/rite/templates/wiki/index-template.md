@@ -1,6 +1,13 @@
+---
+okf_version: "0.1"
+description: "rite Experience Wiki — プロジェクト固有の経験則 bundle（OKF v0.1 準拠）"
+---
+
 # Wiki Index
 
 このファイルは Wiki 全ページのカタログです。Ingest サイクルごとに自動更新されます。
+
+bundle-root の frontmatter で OKF（Open Knowledge Format）v0.1 への準拠を `okf_version: "0.1"` として宣言します。
 
 ## ページ一覧
 

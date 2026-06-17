@@ -1,6 +1,5 @@
 ---
 description: rite ワークフロー全体のガイドを表示
-context: fork
 ---
 
 # /rite:workflow

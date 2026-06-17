@@ -321,7 +321,6 @@ Each command file in `commands/` must include YAML frontmatter:
 ```markdown
 ---
 description: Short description of the command
-context: fork # Optional: run in isolated context
 ---
 
 # /rite:command-name
@@ -334,15 +333,13 @@ Command documentation...
 | `description` | Yes | Short description used for command discovery |
 | `context` | No | Set to `fork` for commands that don't need main conversation context |
 
-**context: fork Usage:**
+**context: fork Usage in rite:**
 
-Commands that display information without modifying state use `context: fork` for better context efficiency:
+rite commands do **not** use `context: fork`. Although the field is available for read-only commands, forked (isolated) execution does not relay a command's own output back to the user inline — only the harness control wrapper surfaces. State-changing / interactive commands were switched away from `context: fork` in #436, and the remaining read-only commands (`/rite:issue:list`, `/rite:investigate`, `/rite:workflow`, `/rite:skill:suggest`) in #1554.
 
 | Command | context: fork | Reason |
 |---------|---------------|--------|
-| `/rite:issue:list` | ✅ | Information display only |
-| `/rite:skill:suggest` | ✅ | Independent analysis |
-| Others | ❌ | Require user interaction or state changes |
+| All rite commands | ❌ | Forked execution does not relay command output inline (#436, #1554) |
 
 ### Skill File Format
 

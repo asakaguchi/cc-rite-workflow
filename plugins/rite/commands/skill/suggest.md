@@ -1,6 +1,5 @@
 ---
 description: 現在のコンテキストを分析し、適用可能なスキルを提案
-context: fork
 ---
 
 # /rite:skill:suggest

@@ -102,11 +102,17 @@ if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/bang-backtick-che
   exit 1
 fi
 
-bang_output=$(bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all 2>&1)
+bang_output=$(bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target 2>&1)
 bang_rc=$?
 case "$bang_rc" in
   0)
-    : # clean — proceed to next sub-phase
+    # A clean scan and a not-applicable skip both mean "proceed". The skip happens
+    # in a consumer repo (rite used as a marketplace plugin only — no plugins/rite/
+    # in this working tree, hence --skip-if-no-target above). Surface a one-line
+    # informational note for the skip case so the gate pass is not silent.
+    if printf '%s' "$bang_output" | grep -q '\[bang-backtick\] not applicable'; then
+      echo "ℹ️ Bang-backtick gate: 本リポジトリは plugins/rite/ を self-host していないため N/A（clean skip）。" >&2
+    fi
     ;;
   1)
     echo "❌ Bang-backtick adjacency detected — Ready transition blocked:" >&2

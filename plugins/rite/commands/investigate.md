@@ -1,6 +1,5 @@
 ---
 description: コード調査（/investigate）
-context: fork
 ---
 
 # /rite:investigate

@@ -298,6 +298,13 @@ fi
 - `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の live-cwd guard が特に重要。
 - `CLEANUP_WT=none`（multi_session 無効 or worktree 未記録）: 4-W 全体を no-op でスキップ。
 
+> **復旧: `/clear` が `Path does not exist` で失敗する場合（Issue #1552）**
+> セッション worktree（`.rite/worktrees/issue-{N}`）が遅延 reap または手動削除で消えた後、所有セッションをハーネスが resume すると cwd 復元先が無く `/clear` が `Error: Path "...worktrees/issue-{N}" does not exist` で失敗することがある。`pr-cycle-cleanup.sh` の worktree liveness guard（Issue #1524/#1544/#1552）はこれを予防するが、ハーネスの cwd レコード自体は rite から intercept できないため、万一発生した場合は次のいずれかで復旧する:
+> 1. リポジトリ root（main checkout）で**新しいセッションを開始**する（cwd が有効になり `/clear` が機能する）。
+> 2. 作業を続けるなら、有効なディレクトリで `/rite:resume {N}` を実行する（worktree が消えていれば再構築経路に入る）。
+> 3. 残骸が残っていれば `git worktree prune` で参照を整理する。
+> session-start hook は dangling cwd を検出すると上記ガイドを stderr に表示し、flow-state の dangling worktree 参照を自動クリアする（非blocking）。
+
 ### 4 base ブランチの更新（安全化）
 
 main checkout の不可侵規約（[git-worktree-patterns.md](../../references/git-worktree-patterns.md#multi-checkout-不可侵-inviolability-convention)）に従い、**main checkout が `{base_branch}` 上にある場合のみ** pull する。別 branch 上では切り替えず WARNING + skip する:

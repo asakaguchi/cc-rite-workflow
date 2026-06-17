@@ -252,6 +252,36 @@ out=$("$SCRIPT" --target "$FIXTURE_CLEAN" 2>&1)
 rc=$?
 assert "innocent fixture (including fenced block) exits 0" "0" "$rc"
 
+# --- Test 11: consumer repo (no plugins/rite) — skip vs diagnostic (Issue #1550)
+# Two invariants are pinned here:
+#   (1) Without --skip-if-no-target, --all with no scan directory exits 2 — the
+#       marketplace-install / misconfiguration diagnostic is preserved (MUST NOT
+#       drop it unconditionally).
+#   (2) With --skip-if-no-target, the same invocation exits 0 (not-applicable
+#       clean skip) and emits the "not applicable" note. This is the consumer
+#       repo case: rite is used as a marketplace plugin only, so there is no rite
+#       markdown in this working tree to gate.
+CONSUMER_ROOT=$(mktemp -d)
+TMPFILES+=("$CONSUMER_ROOT")
+
+"$SCRIPT" --repo-root "$CONSUMER_ROOT" --all --quiet >/dev/null 2>&1
+rc=$?
+assert "consumer repo: --all without flag exits 2 (diagnostic preserved)" "2" "$rc"
+
+skip_out=$("$SCRIPT" --repo-root "$CONSUMER_ROOT" --all --skip-if-no-target 2>&1)
+rc=$?
+assert "consumer repo: --all --skip-if-no-target exits 0 (not-applicable skip)" "0" "$rc"
+skip_note=$(grep -c 'not applicable' <<< "$skip_out")
+assert_ge "consumer repo: skip emits 'not applicable' note" 1 "$skip_note"
+
+# --- Test 12: --skip-if-no-target is a no-op when scan dirs exist ------------
+# In the self-hosting repo (scan dirs present) the flag must not change the
+# result: a clean tree still exits 0, exactly as without the flag. This pins
+# that the flag only affects the no-scan-directory branch.
+"$SCRIPT" --all --skip-if-no-target --quiet >/dev/null 2>&1
+rc=$?
+assert "self-host repo: --skip-if-no-target is a no-op on a clean tree (exit 0)" "0" "$rc"
+
 # --- Summary -----------------------------------------------------------------
 echo ""
 echo "==> PASS: $PASS / FAIL: $FAIL"

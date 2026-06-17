@@ -100,8 +100,19 @@
 #
 # Usage:
 #   bang-backtick-check.sh [--all] [--target FILE]... [--repo-root DIR] [--quiet]
+#                          [--skip-if-no-target]
 #
-# Exit codes: 0 = clean, 1 = pattern detected, 2 = invocation error.
+# Exit codes: 0 = clean (or not-applicable skip), 1 = pattern detected,
+#             2 = invocation error.
+#
+# --skip-if-no-target: when --all finds NO scan directory under the repo root
+#   (i.e. this repo does not self-host plugins/rite/{commands,skills,agents,
+#   references} — the "consumer repo" case where rite is used as a marketplace
+#   plugin only), treat the run as not-applicable and exit 0 instead of the
+#   exit-2 invocation-error diagnostic. Without this flag the exit-2 diagnostic
+#   is preserved (default), so a genuinely misconfigured self-hosting invocation
+#   still surfaces an error. The bang-backtick gate only protects rite's own
+#   plugin markdown; a repo without that markdown has nothing to gate.
 
 set -uo pipefail
 
@@ -109,6 +120,7 @@ REPO_ROOT=""
 QUIET=0
 declare -a TARGETS=()
 USE_ALL=0
+SKIP_IF_NO_TARGET=0
 
 usage() {
   cat <<'EOF'
@@ -122,10 +134,15 @@ Options:
                      output on stdout is preserved; still exits non-zero on
                      detection). Use for CI log noise reduction while keeping
                      findings machine-readable.
+  --skip-if-no-target
+                     With --all, exit 0 (not 2) when no scan directory exists
+                     under the repo root — the "consumer repo" case where rite
+                     is a marketplace plugin only and there is no rite markdown
+                     to gate. Without this flag the exit-2 diagnostic is kept.
   -h, --help         Show this help
 
 Exit codes:
-  0  No bang-backtick adjacency detected
+  0  No bang-backtick adjacency detected (or not-applicable skip)
   1  Pattern detected
   2  Invocation error (bad args, missing files)
 EOF
@@ -139,6 +156,7 @@ while [ $# -gt 0 ]; do
     --target) TARGETS+=("$2"); shift 2 ;;
     --repo-root) REPO_ROOT="$2"; shift 2 ;;
     --quiet) QUIET=1; shift ;;
+    --skip-if-no-target) SKIP_IF_NO_TARGET=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "ERROR: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -168,10 +186,17 @@ if [ "$USE_ALL" -eq 1 ]; then
     fi
   done
   if [ "${#scan_dirs[@]}" -eq 0 ]; then
+    if [ "$SKIP_IF_NO_TARGET" -eq 1 ]; then
+      # Consumer repo (rite used as a marketplace plugin only): there is no
+      # rite plugin markdown in this working tree to gate, so the check is
+      # not applicable. Treat as a clean skip rather than an invocation error.
+      echo "[bang-backtick] not applicable: no plugins/rite/{commands,skills,agents,references} scan directory under $REPO_ROOT — clean skip (--skip-if-no-target)" >&2
+      exit 0
+    fi
     echo "ERROR: --all requested but no scan directory exists under $REPO_ROOT" >&2
     echo "  Expected one or more of: plugins/rite/{commands,skills,agents,references}" >&2
     echo "  Likely cause: this script was invoked outside the rite plugin repo (e.g. marketplace install)" >&2
-    echo "  Recovery: run from the rite plugin source tree, or pass --target FILE explicitly" >&2
+    echo "  Recovery: run from the rite plugin source tree, pass --target FILE explicitly, or pass --skip-if-no-target to treat as not-applicable" >&2
     exit 2
   fi
   while IFS= read -r f; do

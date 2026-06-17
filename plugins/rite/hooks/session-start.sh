@@ -48,7 +48,23 @@ SOURCE=$(echo "$INPUT" | jq -r '.source // "startup"' 2>/dev/null) || SOURCE="st
 # Pass extract_session_id stderr through so corrupt hook payload WARNINGs reach
 # triage; suppressing them would hide cross-session classification failures.
 SESSION_ID=$(extract_session_id "$INPUT") || SESSION_ID=""
-if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
+if [ -z "$CWD" ]; then
+  exit 0
+fi
+if [ ! -d "$CWD" ]; then
+  # Dangling harness cwd (Issue #1552): the session's working directory no longer
+  # exists. When it looks like a reaped session worktree, the harness restored cwd
+  # to a tree that rite's lazy reap (or a manual cleanup) removed — the exact shape
+  # that makes `/clear` fail with `Path does not exist`. rite cannot repair the
+  # harness's own cwd record, but it CAN tell the user how to recover. Best-effort:
+  # emitted to stderr; if the harness aborts before this hook runs, the guidance is
+  # delivered on the next startup in the same (still-dangling) cwd. Non-blocking.
+  case "$CWD" in
+    */worktrees/issue-*)
+      echo "[rite] 作業ディレクトリ '$(printf '%s' "$CWD" | neutralize_ctrl)' が存在しません（session worktree が削除済みの可能性）。" >&2
+      echo "[rite] /clear が 'Path does not exist' で失敗する場合の復旧: リポジトリ root で新しいセッションを開始するか、作業を続けるには有効なディレクトリで /rite:resume を実行してください。" >&2
+      ;;
+  esac
   exit 0
 fi
 
@@ -425,6 +441,7 @@ fi
 if [ -n "$_recorded_wt" ] && [ ! -d "$_recorded_wt" ]; then
   if RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" clear-worktree >/dev/null 2>&1; then
     echo "[rite] worktree '$(printf '%s' "$_recorded_wt" | neutralize_ctrl)' が存在しないため flow-state から参照をクリアしました（再入場は試みません）。" >&2
+    echo "[rite] この worktree で /clear が 'Path does not exist' を出していた場合、参照クリアにより次回以降は解消されます。" >&2
   else
     echo "[rite] WARNING: session-start: dangling worktree 参照のクリアに失敗しました（非blocking で継続します）。" >&2
   fi

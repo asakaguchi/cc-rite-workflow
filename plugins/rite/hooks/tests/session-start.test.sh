@@ -1338,6 +1338,44 @@ else
 fi
 echo ""
 
+echo "TC-1552 (AC-5): dangling harness cwd at a reaped session worktree → recovery guide + exit 0"
+# A non-existent cwd shaped like a reaped session worktree (.../worktrees/issue-N).
+# rite cannot repair the harness's own cwd record, but session-start surfaces a
+# recovery guide to stderr and exits 0 (non-blocking) — the user-facing half of
+# the /clear `Path does not exist` fix. _RITE_HOOK_RUNNING_SESSIONSTART must be
+# unset or the double-execution guard exits 0 before reaching the cwd check.
+dir1552_root="$TEST_DIR/dangling-cwd"
+mkdir -p "$dir1552_root"
+dangling_cwd="$dir1552_root/.rite/worktrees/issue-1231"   # intentionally NOT created
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+jq -n --arg cwd "$dangling_cwd" --arg src "clear" \
+  '{cwd: $cwd, source: $src, hook_event_name: "SessionStart"}' \
+  | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID -u _RITE_HOOK_RUNNING_SESSIONSTART \
+      bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE"; rc1552=$?
+if [ "$rc1552" -eq 0 ]; then
+  pass "TC-1552a: dangling cwd → hook exits 0 (non-blocking)"
+else
+  fail "TC-1552a: expected exit 0, got rc=$rc1552"
+fi
+if grep -q "Path does not exist" "$LAST_STDERR_FILE" && grep -q "/rite:resume" "$LAST_STDERR_FILE"; then
+  pass "TC-1552b: recovery guide emitted to stderr (mentions /clear failure + /rite:resume)"
+else
+  fail "TC-1552b: recovery guide missing on stderr: $(cat "$LAST_STDERR_FILE")"
+fi
+
+echo "TC-1552c (boundary): dangling cwd NOT shaped like a session worktree → no recovery guide"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+jq -n --arg cwd "$dir1552_root/some/unrelated/deleted-dir" --arg src "clear" \
+  '{cwd: $cwd, source: $src, hook_event_name: "SessionStart"}' \
+  | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID -u _RITE_HOOK_RUNNING_SESSIONSTART \
+      bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE"; rc1552c=$?
+if [ "$rc1552c" -eq 0 ] && ! grep -q "/rite:resume" "$LAST_STDERR_FILE"; then
+  pass "TC-1552c: non-worktree dangling cwd → exit 0, no recovery guide (no false positive)"
+else
+  fail "TC-1552c: unexpected output rc=$rc1552c stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------

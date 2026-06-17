@@ -282,6 +282,21 @@ assert_ge "consumer repo: skip emits 'not applicable' note" 1 "$skip_note"
 rc=$?
 assert "self-host repo: --skip-if-no-target is a no-op on a clean tree (exit 0)" "0" "$rc"
 
+# --- Test 13: --skip-if-no-target does NOT mask real detection (Issue #1550) -
+# The critical safety invariant for the flag: it must affect ONLY the
+# no-scan-directory branch. When scan dirs DO exist and contain a real
+# bang-backtick pattern, the flag must not suppress detection — exit 1 stands.
+# Test 12 pins the clean-tree no-op; this pins the dirt case, so a future
+# refactor that short-circuits on the flag (before scanning) is caught here.
+DIRT_ROOT=$(mktemp -d)
+TMPFILES+=("$DIRT_ROOT")
+mkdir -p "$DIRT_ROOT/plugins/rite/commands"
+# P1 pattern: closing backtick preceded by space+! inside an inline code span.
+printf 'Bad: `if !` adjacency must still trigger.\n' > "$DIRT_ROOT/plugins/rite/commands/dirty.md"
+"$SCRIPT" --repo-root "$DIRT_ROOT" --all --skip-if-no-target --quiet >/dev/null 2>&1
+rc=$?
+assert "self-host repo: --skip-if-no-target does NOT mask real detection (dirt+flag → exit 1)" "1" "$rc"
+
 # --- Summary -----------------------------------------------------------------
 echo ""
 echo "==> PASS: $PASS / FAIL: $FAIL"

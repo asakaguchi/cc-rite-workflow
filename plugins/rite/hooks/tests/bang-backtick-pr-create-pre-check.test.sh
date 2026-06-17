@@ -159,11 +159,13 @@ else
 fi
 
 # The not-applicable skip-note handling added to the 0) case (Issue #1550) MUST
-# also be symmetric between create.md and ready.md. The literal lives inside a
-# grep pattern with escaped brackets (\[bang-backtick\] not applicable), so pin
-# the unescaped, always-present substring "not applicable".
-skipnote_create=$(grep -cF 'not applicable' "$CREATE_MD" || true)
-skipnote_ready=$(grep -cF 'not applicable' "$READY_MD" || true)
+# also be symmetric between create.md and ready.md. Pin the skip-note's
+# user-facing echo message ("...self-host していないため N/A..."), which is
+# unique to the 0)-case skip-note block. The bare substring "not applicable"
+# is NOT used: it also appears in unrelated review-scope prose elsewhere in
+# create.md, so it would pass even if the real skip-note line were deleted.
+skipnote_create=$(grep -cF 'self-host していないため N/A' "$CREATE_MD" || true)
+skipnote_ready=$(grep -cF 'self-host していないため N/A' "$READY_MD" || true)
 if [ "$skipnote_create" -ge 1 ] && [ "$skipnote_ready" -ge 1 ]; then
   pass "TC-4 not-applicable skip-note present in BOTH create.md and ready.md"
 else

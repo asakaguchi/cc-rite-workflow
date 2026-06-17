@@ -108,9 +108,15 @@ fi
 
 if [ "$USE_ALL" -eq 1 ]; then
   FILES=()
+  # find は REPO_ROOT 相対で走査し、結果に REPO_ROOT を再付加して絶対パス化する。
+  # セッション worktree (.rite/worktrees/issue-N) では REPO_ROOT 自体のパスに
+  # `/.rite/` セグメントが含まれるため、絶対パス基準で `-not -path "*/.rite/*"` を
+  # 適用すると配下の全ファイルが誤って除外され `--all expansion empty` (exit 2) に
+  # 陥る。相対パス基準なら除外パターンは plugins/rite 配下にネストした成果物
+  # ディレクトリのみに作用し、通常 checkout との走査結果も一致する。
   while IFS= read -r f; do
-    FILES+=("$f")
-  done < <(find "$REPO_ROOT/plugins/rite" \
+    FILES+=("$REPO_ROOT/$f")
+  done < <(cd "$REPO_ROOT" && find "plugins/rite" \
     -not -path "*/.git/*" \
     -not -path "*/.rite/*" \
     -not -path "*/.rite-work-memory/*" \

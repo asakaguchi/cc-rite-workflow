@@ -122,8 +122,8 @@ rm -f "$sentinel_stderr"
 # We pin three sentinels: the scanner invocation, the sentinel emit literal,
 # and the sub-section header.
 echo "TC-4: §7 MUST — DRIFT-CHECK ANCHOR between create.md and ready.md"
-inv_create=$(grep -c 'bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all 2>&1' "$CREATE_MD" || true)
-inv_ready=$(grep -c 'bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all 2>&1' "$READY_MD" || true)
+inv_create=$(grep -c 'bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target 2>&1' "$CREATE_MD" || true)
+inv_ready=$(grep -c 'bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target 2>&1' "$READY_MD" || true)
 if [ "$inv_create" -ge 1 ] && [ "$inv_ready" -ge 1 ]; then
   pass "TC-4 scanner invocation literal present in BOTH create.md and ready.md"
 else
@@ -156,6 +156,20 @@ if [ "$anchor_create" -ge 1 ] && [ "$anchor_ready" -ge 1 ]; then
   pass "TC-4 DRIFT-CHECK ANCHOR comment present in BOTH"
 else
   fail "TC-4 DRIFT-CHECK ANCHOR comment missing (create=$anchor_create, ready=$anchor_ready)"
+fi
+
+# The not-applicable skip-note handling added to the 0) case (Issue #1550) MUST
+# also be symmetric between create.md and ready.md. Pin the skip-note's
+# user-facing echo message ("...self-host していないため N/A..."), which is
+# unique to the 0)-case skip-note block. The bare substring "not applicable"
+# is NOT used: it also appears in unrelated review-scope prose elsewhere in
+# create.md, so it would pass even if the real skip-note line were deleted.
+skipnote_create=$(grep -cF 'self-host していないため N/A' "$CREATE_MD" || true)
+skipnote_ready=$(grep -cF 'self-host していないため N/A' "$READY_MD" || true)
+if [ "$skipnote_create" -ge 1 ] && [ "$skipnote_ready" -ge 1 ]; then
+  pass "TC-4 not-applicable skip-note present in BOTH create.md and ready.md"
+else
+  fail "TC-4 skip-note mismatch (create=$skipnote_create, ready=$skipnote_ready)"
 fi
 
 # ----- TC-5: AC-4 — /rite:lint Phase 3.6 still invokes the same scanner ----
@@ -193,6 +207,36 @@ for f in "$CREATE_MD" "$READY_MD"; do
     pass "TC-12 $fname free of backtick-quoted 'if ! cmd; then' literal"
   fi
 done
+
+# ----- TC-6: AC-1/AC-2 — consumer repo (no plugins/rite) skips the gate ------
+# A repo that uses rite as a marketplace plugin only (no plugins/rite/ in the
+# working tree) must NOT hard-error the gate. With --skip-if-no-target — which
+# the Phase 1.0 blocks now pass — --all exits 0 (not-applicable clean skip) and
+# emits an informational note; without the flag the exit-2 diagnostic is still
+# preserved (MUST NOT drop it unconditionally). (Issue #1550)
+echo "TC-6: AC-1/AC-2 — consumer repo (no plugins/rite) gate skip"
+consumer_root=$(mktemp -d)
+skip_rc=0
+skip_output=$(bash "$CHECK_SCRIPT" --repo-root "$consumer_root" --all --skip-if-no-target 2>&1) || skip_rc=$?
+if [ "$skip_rc" -eq 0 ]; then
+  pass "TC-6 --all --skip-if-no-target exits 0 on consumer repo"
+else
+  fail "TC-6 expected exit 0 with --skip-if-no-target, got $skip_rc"
+  printf '%s\n' "$skip_output" | head -5 >&2
+fi
+if printf '%s\n' "$skip_output" | grep -q 'not applicable'; then
+  pass "TC-6 skip emits 'not applicable' informational note"
+else
+  fail "TC-6 skip note missing"
+fi
+diag_rc=0
+bash "$CHECK_SCRIPT" --repo-root "$consumer_root" --all --quiet >/dev/null 2>&1 || diag_rc=$?
+if [ "$diag_rc" -eq 2 ]; then
+  pass "TC-6 without flag, consumer repo still exits 2 (diagnostic preserved)"
+else
+  fail "TC-6 expected exit 2 without flag, got $diag_rc"
+fi
+rm -rf "$consumer_root"
 
 # ----- Summary --------------------------------------------------------------
 echo ""

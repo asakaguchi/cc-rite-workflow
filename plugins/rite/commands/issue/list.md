@@ -1,6 +1,5 @@
 ---
 description: GitHub Issue の一覧を表示
-context: fork
 ---
 
 # /rite:issue:list

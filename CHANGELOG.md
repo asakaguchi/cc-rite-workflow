@@ -27,6 +27,15 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-06-17
+
+### Fixed
+
+- **`bang-backtick-check.sh` no longer hard-blocks consumer repos** — a new `--skip-if-no-target` flag makes `--all` return a clean skip (rc=0) instead of an `rc=2` invocation error when there is no `plugins/rite/` markdown to scan (marketplace-only consumer repos), removing the forced manual gate bypass in `/rite:pr:ready` and `/rite:pr:create`. Self-host repos keep the original `rc=2` misconfiguration diagnostic. (#1551)
+- **Active-but-idle session worktrees protected from lazy reap** — `pr-cycle-cleanup.sh` keeps a worktree whose issue claim holder is `active=true` even when the claim heartbeat has gone stale (idle past `CLAIM_STALE_SECONDS`), preventing the `/clear` "Path does not exist" error from recurring on resume. (#1553)
+- **Read-only commands relay their real output again** — removed `context: fork` from `/rite:issue:list`, `/rite:investigate`, `/rite:workflow`, and `/rite:skill:suggest` so their output is shown inline instead of being replaced by the harness control wrapper. (#1556)
+- **`orphan-reference-check.sh --all` works inside session worktrees** — the `--all` scan now walks paths relative to `REPO_ROOT`, so running from a `.rite/worktrees/issue-N` worktree no longer excludes every file and exits `2`; orphan detection is restored under the default `multi_session.enabled: true`. (#1557)
+
 ## [0.5.4] - 2026-06-16
 
 ### Added
@@ -535,6 +544,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.5.5]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.1...v0.5.2

@@ -159,6 +159,29 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-010: --all from a worktree-like REPO_ROOT (path contains /.rite/) → scan succeeds
+# Regression guard for the bug where a session worktree path
+# (.rite/worktrees/issue-N) made every file's absolute path match the
+# `*/.rite/*` exclusion, emptying the --all expansion and forcing exit 2.
+# --------------------------------------------------------------------------
+echo "TC-010: --all from worktree-like REPO_ROOT (.rite/ in path) → scan succeeds"
+WT_ROOT="$TEST_DIR/.rite/worktrees/issue-999"
+mkdir -p "$WT_ROOT/plugins/rite/commands/issue/references"
+mkdir -p "$WT_ROOT/plugins/rite/hooks/tests"
+echo "# Orphan in worktree" > "$WT_ROOT/plugins/rite/commands/issue/references/wt-orphan-doc.md"
+rc=0
+output=$(bash "$TARGET" --all --repo-root "$WT_ROOT" 2>&1) || rc=$?
+# Must NOT be the empty-expansion usage error (exit 2). The orphan should be
+# detected (exit 1), proving the find walked the worktree subtree.
+if [ "$rc" -eq 1 ] && echo "$output" | grep -q "ORPHAN: plugins/rite/commands/issue/references/wt-orphan-doc.md"; then
+  pass "worktree-like REPO_ROOT scanned, orphan detected → exit 1"
+elif [ "$rc" -eq 2 ] && echo "$output" | grep -q "expansion empty"; then
+  fail "regression: --all expansion empty under worktree-like REPO_ROOT (the bug), output: $output"
+else
+  fail "expected rc=1 + wt-orphan-doc ORPHAN, got rc=$rc, output: $output"
+fi
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo ""

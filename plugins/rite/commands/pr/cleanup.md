@@ -301,9 +301,9 @@ fi
 > **復旧: `/clear` が `Path does not exist` で失敗する場合（Issue #1552）**
 > セッション worktree（`.rite/worktrees/issue-{N}`）が遅延 reap または手動削除で消えた後、所有セッションをハーネスが resume すると cwd 復元先が無く `/clear` が `Error: Path "...worktrees/issue-{N}" does not exist` で失敗することがある。`pr-cycle-cleanup.sh` の worktree liveness guard（Issue #1524/#1544/#1552）はこれを予防するが、ハーネスの cwd レコード自体は rite から intercept できないため、万一発生した場合は次のいずれかで復旧する:
 > 1. リポジトリ root（main checkout）で**新しいセッションを開始**する（cwd が有効になり `/clear` が機能する）。
-> 2. 作業を続けるなら、有効なディレクトリで `/rite:resume {N}` を実行する（worktree が消えていれば再構築経路に入る）。
+> 2. 作業を続けるなら、有効なディレクトリで `/rite:resume {issue_number}` を実行する（worktree が消えていれば再構築経路に入る）。
 > 3. 残骸が残っていれば `git worktree prune` で参照を整理する。
-> session-start hook は dangling cwd を検出すると上記ガイドを stderr に表示し、flow-state の dangling worktree 参照を自動クリアする（非blocking）。
+> session-start hook の挙動は 2 経路に分かれる（相互排他、同一フック実行内では片方のみ発火、いずれも非blocking）: (a) cwd 自体が消えた session worktree を指す場合は上記ガイドを stderr に表示してその場で `exit 0` する、(b) cwd は有効だが記録された worktree 参照だけが消えた場合は flow-state の dangling 参照を自動クリアする。
 
 ### 4 base ブランチの更新（安全化）
 

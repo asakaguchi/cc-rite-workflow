@@ -27,6 +27,14 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-18
+
+### Added
+
+- **Canon TDD cycle for the implementation phase** — when `tdd.enabled: true` (default on), `/rite:issue:implement` drives implementation through a Canon TDD loop: pick one behavior from the test list → confirm Red → minimal Green → Refactor → repeat until the list is empty. Falls back gracefully: `commands.test: null` runs in "Degraded TDD" mode (test-list discipline kept, auto-run skipped with a warning), and `tdd.enabled: false` restores the prior non-TDD flow. (#1567)
+- **`tdd:` configuration section, default-on (opt-out)** — distributed `rite-config.yml` ships a `tdd:` section with `enabled: true`; `/rite:init --upgrade` back-adds it to existing projects via the same active-section mechanism as `wiki` / `multi_session`. (#1566)
+- **Canon TDD documentation and test-list framing** — the Issue template Section 6 "Test Specification" is now framed as the Canon TDD test list (one T-xx row = one Red→Green→Refactor cycle), reflected across `skills/rite-workflow`, `docs/SPEC.md`, getting-started, and `pr/open.md`. (#1568)
+
 ## [0.5.5] - 2026-06-17
 
 ### Fixed
@@ -544,6 +552,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.6.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.5...v0.6.0
 [0.5.5]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.2...v0.5.3

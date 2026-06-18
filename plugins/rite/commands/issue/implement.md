@@ -105,14 +105,14 @@ echo "[CONTEXT] TDD_ENABLED=$tdd_enabled; TEST_CMD_SET=$([ -n "$test_cmd" ] && e
    - **Full mode**: run `commands.test`; confirm the new test **fails** (Red). If it passes immediately, the test does not exercise the target behavior — display `TDD: テストが最初から通過。対象挙動を検証できていない可能性` and revise the test before proceeding.
    - **Degraded mode**: skip the run and record that Red could not be auto-confirmed (test-list discipline still applies).
 4. **Green — minimal implementation**: implement the **smallest** change that makes the test pass; do not add unrequested behavior.
-   - **Full mode**: confirm Green by reusing **5.1.0.6 Test Verification Gate** — do NOT re-implement test execution here. 5.1.0.6 is the single Green-confirmation path.
+   - **Full mode**: confirm Green by reusing 5.1.0.6's **test-execution step** (run `commands.test`, check the exit code) per behavior — do NOT re-implement test execution here. This per-behavior Green check reuses only the *execution* procedure; the **full 5.1.0.6 Test Verification Gate** (with its `max_implementation_rounds` budget and "return to Phase 5.1 on failure" semantics) still runs **once** after all behaviors are complete, as the pre-commit gate (`5.1.0.6 → 5.1.0.7 → 5.1.1`).
    - **Degraded mode**: skip the run.
 5. **Refactor — only after Green**: improve structure with tests passing. **Refactoring on a Red / unverified state is prohibited** — if not Green (Full mode) or Green is unconfirmed (Degraded mode), do not refactor; return to step 4 or move to the next behavior.
 6. **Repeat** from step 2 until the test list is empty (every listed behavior implemented and, in Full mode, Green).
 
 **Relationship with 5.1.0 Parallel Implementation**: When TDD is active (Full / Degraded), the Canon TDD cycle takes precedence over parallel implementation for behavior implementation — the one-test-one-cycle sequencing must be preserved. Parallel implementation (5.1.0) is limited to independent Refactor-phase tasks (step 5) that do not share the cycle's Red/Green state.
 
-**Green confirmation reuse (no duplication)**: Both the Green step (T2.4) and the pre-commit gate delegate to 5.1.0.6 Test Verification Gate. 5.0.T only sequences *when* Red (before implementation) and Green (after implementation) are checked; the actual test run is owned by 5.1.0.6 / `commands.test`.
+**Green confirmation reuse (no duplication)**: 5.0.T does not implement its own test runner. The per-behavior Green check (T2.4) reuses 5.1.0.6's test-execution step (`commands.test` run + exit-code check); the full 5.1.0.6 Test Verification Gate then runs **once** at pre-commit time as the final verification (rounds budget / Phase-5.1-return semantics apply only to that final gate, not to each per-behavior Green check). 5.0.T only sequences *when* Red (before implementation) and Green (after implementation) are checked; the actual test run is owned by 5.1.0.6 / `commands.test`.
 
 **Disabled mode (`tdd.enabled: false`)**: 5.0.T is skipped entirely and the implementation phase behaves exactly as before this feature (conventional 5.1.0 / Basic implementation flow + the 5.1.0.6 pre-commit test gate). No behavioral change.
 

@@ -255,6 +255,8 @@ Select ONE matching the Issue type. The type confirmed in `create.md` ステッ�
 - BugFix/Refactor: add Non-regression rows
 - Non-functional requirements present: add NFR test rows
 
+**Role as the Canon TDD test list**: When `tdd.enabled: true` (default, opt-out) in `rite-config.yml`, this Section 6 table is the **initial test list** consumed by the Canon TDD cycle in `/rite:issue:implement` (see `commands/issue/implement.md` § 5.0.T). Each `T-xx` row is one behavior unit, driven through one Red → Green → Refactor cycle; behaviors discovered during implementation are appended to the list. This is a framing note only — the table structure and Minimum test rows above are unchanged. When `commands.test` is unset, the Red/Green test runs are skipped while the one-behavior-at-a-time discipline still applies; when `tdd.enabled: false`, the cycle is skipped entirely.
+
 ### 7. Important Conventions
 
 ```markdown

@@ -328,6 +328,7 @@ args: "{issue_number}"
 `/rite:issue:implement` は以下を担う:
 
 - チェックリスト駆動で各ステップを実装 (Edit / Write ツール経由)
+- `tdd.enabled: true`（デフォルト, opt-out）のとき、実装は Canon TDD サイクル（テストリスト → Red → Green → Refactor、Issue の Section 6 Test Specification を初期ソースとする）で進む。`commands.test` 未設定時は Red/Green 実行を skip して test-list 規律のみ維持、`tdd.enabled: false` では従来フロー（詳細は `commands/issue/implement.md` § 5.0.T）
 - conventional commits 形式でコミット (`{type}: {summary} (refs #{issue_number})`)
 - Work Memory のチェックリストを完了状態に更新
 - 全 step 完了後、autonomous に `rite:lint` を Skill ツール経由で invoke する

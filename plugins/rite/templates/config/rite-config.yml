@@ -161,6 +161,8 @@ multi_session:
 # /rite:init new-generation emits it as an active block (new projects get the
 # default-on behavior). On --upgrade it is back-added with `enabled: true` to
 # existing configs; an existing explicit `enabled: false` is preserved.
+# NOTE (known limitation): config scaffolding (宣言のみ)。implementation phase への
+# Canon TDD サイクル配線は未完で、現時点では本キーに runtime 効果はありません。
 tdd:
   enabled: true   # true: implementation phase runs the Canon TDD cycle (default: true, opt-out)
 

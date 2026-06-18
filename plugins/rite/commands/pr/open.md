@@ -233,9 +233,11 @@ worktree を作成・再利用したら、`.rite-plugin-root` を worktree root 
 
 その後 `EnterWorktree` ツールを `path: {wt_path}` で呼び出す（`{wt_path}` は 2.2-W の `WT_CASE` marker の `path=` 値。EnterWorktree のツール側ガード「ユーザー / プロジェクト指示で明示された場合のみ」は、`rite-config.yml` の `multi_session.enabled: true`（リポジトリにコミットされた**プロジェクト指示**。値がテンプレートのデフォルト ON 由来かユーザーの明示編集由来かに依らずプロジェクト指示として成立する）+ 本コマンド定義の明示指示の両方で満たす。デフォルトが ON でも、この `enabled: true` を marker 経由で確認した分岐内でのみ EnterWorktree を呼ぶため、ガードの根拠は default off 時と変わらず成立する）。
 
-- **EnterWorktree が不在 / 失敗の場合**: **silent fallback はしない**。AskUserQuestion で選択する:
-  - 「中止（推奨）」: worktree は保持し、再実行で再利用できる旨を案内して終了。
-  - 「従来方式で続行」: 他セッション併走中は作業ツリーを破壊し合う危険がある旨を**警告**した上で、ステップ 2.3（従来の `git switch -c`）にフォールバックする。
+- **EnterWorktree が不在 / 失敗の場合**: **silent fallback はしない**。まず失敗原因を切り分ける（補助情報として `git -C "{wt_path}" rev-parse --is-inside-work-tree` の結果を提示してよい）:
+  - **(A) harness の git 誤判定**（`.git` が存在し `git -C "{wt_path}" rev-parse` は成功するのに、起動コンテキストが `Is a git repository: false` で EnterWorktree が「not in a git repository」エラーを返す）→ **推奨**。これは harness がセッション起動時に launch ディレクトリを git リポジトリと認識できなかったことが原因で、プラグインからは直せない。診断とともに「**リポジトリ root から Claude Code を再起動**し、`/rite:pr:open {issue_number}` を再実行すれば、作成済み worktree が 2.2-W で `WT_CASE=reuse` と判定され**再作成せず継続**できる」と案内する。worktree は保持済みのため破壊しない。
+  - **(B) worktree path 消失などの別要因**（harness 誤判定以外）→ 既存どおりステップ 8（resume / S8）の worktree 再構築経路 / `/rite:resume {issue_number}` に委譲する（本コマンドでは新規 worktree を作らない。再起動案内へ誤誘導しない）。
+  - **(C) エスケープハッチ**（ユーザーが明示選択した場合のみ）: 「従来 `git switch -c` で続行」は **recommended にしない**。worktree 分離を破棄する明示的な選択肢としてのみ残し、他セッション併走中は作業ツリーを破壊し合う危険がある旨を**警告**した上でステップ 2.3 にフォールバックする。
+  - Bash 永続 cwd 駆動（cwd を main checkout に残したまま絶対パスで操作する経路）は**導入しない**（main tree を誤更新するリスクのため）。
 
 入場後、claim に worktree path を記録する（reap / resume の discovery 用）:
 

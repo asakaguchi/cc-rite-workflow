@@ -98,7 +98,7 @@ echo "[CONTEXT] TDD_ENABLED=$tdd_enabled; TEST_CMD_SET=$([ -n "$test_cmd" ] && e
 
 **Step T2: Canon TDD cycle** (Full / Degraded modes):
 
-1. **Build the test list**: Seed from the Issue's Section 6 Test Specification (`## 6. Test Specification` / `### 6.` table; each `T-xx` row is one list item). Append newly discovered behaviors to the list as they surface during implementation.
+1. **Build the test list**: Seed from the Issue's Section 6 Test Specification (the `## 6. Test Specification` table; each `T-xx` row is one list item). Append newly discovered behaviors to the list as they surface during implementation.
 2. **Pick one behavior** from the list (smallest unverified behavior first). Exactly one behavior per cycle iteration.
 3. **Red — write the test and confirm it fails**:
    - Write a single test for the picked behavior (Edit/Write).

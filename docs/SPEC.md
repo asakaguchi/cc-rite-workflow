@@ -299,7 +299,7 @@ Plugin metadata file format:
 ```json
 {
  "name": "rite",
- "version": "0.5.5",
+ "version": "0.6.0",
  "description": "Universal Issue-driven development workflow for Claude Code",
  "author": { "name": "asakaguchi" },
  "license": "MIT"
@@ -435,6 +435,7 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 | `review.*` | `loop.*` (convergence_monitoring / auto_propagation_scan / pre_commit_drift_check), `doc_heavy.*`, `fact_check.*` (incl. `use_context7`), `debate.*`, `security_reviewer.*`, `confidence_threshold`. **DEPRECATED**: `observed_likelihood_gate.*` / `fail_fast_first.*` were removed entirely — see CONFIGURATION.md for the deprecation note. The `separate_issue_creation.*` keys were removed entirely along with the `[fix:issues-created:N]` sentinel and `fix.md` Phase 4.3 |
 | `fix.*` | `fail_fast_response`. **DEPRECATED**: `severity_gating.*` was removed entirely — see CONFIGURATION.md for the deprecation note |
 | `verification.*` | `run_tests_before_pr`, `acceptance_criteria_check` |
+| `tdd.*` | Canon TDD cycle in the implementation phase — `enabled` (default `true`, opt-out). When on, `/rite:issue:implement` (§ 5.0.T) drives a test-list → Red → Green → Refactor cycle seeded from the Issue's Section 6 Test Specification; degrades to test-list discipline only when `commands.test` is unset, and is skipped entirely when `enabled: false`. See [CONFIGURATION.md](./CONFIGURATION.md) `### tdd` |
 | `parallel.*` | Parallel implementation (per-Issue sub-agent fan-out within one session) |
 | `multi_session.*` | Per-session Git worktree isolation — `enabled` (default `true`; set `false` to opt out), `worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are not merged. See [docs/designs/multi-session-worktree.md](./designs/multi-session-worktree.md) |
 | `iteration.*` | GitHub Projects Iteration field integration |

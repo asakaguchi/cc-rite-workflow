@@ -194,6 +194,8 @@ Avoid common AI coding failure patterns: surface assumptions, manage confusion, 
 
 See [references/coding-principles.md](./references/coding-principles.md) for the full principle list and details.
 
+**Canon TDD in the implementation phase**: When `tdd.enabled: true` (default, opt-out) in `rite-config.yml`, `rite:issue:implement` drives a Canon TDD cycle — build a test list (seeded from the Issue's Section 6 Test Specification), then for each behavior: write a test → confirm it fails (Red) → minimal implementation (Green) → Refactor → repeat until the list is empty. The cycle is defined in [`../../commands/issue/implement.md`](../../commands/issue/implement.md) § 5.0.T. It degrades to test-list discipline only (Red/Green runs skipped) when `commands.test` is unset, and is skipped entirely when `tdd.enabled: false`. Config schema: [docs/CONFIGURATION.md](../../../../docs/CONFIGURATION.md) `### tdd`.
+
 ## Simplification Charter (rite plugin maintenance)
 
 `plugins/rite/` 配下のファイルを編集する LLM・メンテナ、および rite workflow が生成する commit message / Issue body / PR description / review 指摘は、自己生成的に肥大化しないよう **Simplification Charter** に従う。runtime に効かない経緯記述は書かない / git log で代替できるものはコードに書かない / `Issue #` / `PR #` / `cycle #` の本文引用は禁止 / 重複 confirmation 禁止。

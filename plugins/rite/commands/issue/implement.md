@@ -64,6 +64,58 @@ fi
 
 **Step 3**: If `wiki_context` is non-empty, retain it in conversation context and reference it during implementation. The injected experiential knowledge may inform: common implementation patterns, known pitfalls, and effective approaches for similar changes.
 
+### 5.0.T Canon TDD Cycle (Conditional)
+
+> **Reference**: Canon TDD (Kent Beck) — test list → pick one behavior → Red (write a failing test) → Green (minimal implementation) → Refactor → repeat until the list is empty. The `tdd:` config key is documented in [CONFIGURATION.md](../../../../docs/CONFIGURATION.md) (`### tdd`).
+
+When `tdd.enabled: true` (default, opt-out) in `rite-config.yml`, drive the implementation phase as a Canon TDD cycle instead of the conventional "implement, then verify" flow. The cycle applies to each behavior implemented in 5.1.
+
+**Step T1: Configuration gate** (same sed/awk read pattern as 5.0.W):
+
+```bash
+# tdd.enabled を読む (opt-out default: tdd: キー欠落 / enabled: 欠落 はいずれも true 扱い)
+tdd_section=$(sed -n '/^tdd:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || tdd_section=""
+tdd_enabled=""
+if [[ -n "$tdd_section" ]]; then
+  tdd_enabled=$(printf '%s\n' "$tdd_section" | awk '/^[[:space:]]+enabled:/ { print; exit }' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+fi
+case "$tdd_enabled" in false|no|0) tdd_enabled="false" ;; *) tdd_enabled="true" ;; esac  # opt-out default
+# commands.test の有無を判定 (degrade detection)
+test_cmd=$(awk '/^commands:/{c=1;next} c&&/^[a-zA-Z]/{exit} c&&/^[[:space:]]+test:/{print;exit}' rite-config.yml 2>/dev/null \
+  | sed 's/[[:space:]]#.*//' | sed 's/.*test:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+case "$test_cmd" in ''|null|'~') test_cmd="" ;; esac
+echo "[CONTEXT] TDD_ENABLED=$tdd_enabled; TEST_CMD_SET=$([ -n "$test_cmd" ] && echo yes || echo no)"
+```
+
+**Mode routing** (read `[CONTEXT] TDD_ENABLED` / `TEST_CMD_SET` from context):
+
+| TDD_ENABLED | TEST_CMD_SET | Mode | Behavior |
+|---|---|---|---|
+| `true` | `yes` | **Full Canon TDD** | Execute the Step T2 cycle with real Red/Green test runs |
+| `true` | `no` | **Degraded TDD** | Execute Step T2 but skip the Red/Green auto-run; keep the test-list discipline. Display `TDD: テスト実行 skip（commands.test 未設定）` |
+| `false` | (any) | **Disabled** | Skip 5.0.T entirely; run the conventional flow (5.1.0 / Basic implementation flow) unchanged (behavior identical to before this feature) |
+
+**Step T2: Canon TDD cycle** (Full / Degraded modes):
+
+1. **Build the test list**: Seed from the Issue's Section 6 Test Specification (`## 6. Test Specification` / `### 6.` table; each `T-xx` row is one list item). Append newly discovered behaviors to the list as they surface during implementation.
+2. **Pick one behavior** from the list (smallest unverified behavior first). Exactly one behavior per cycle iteration.
+3. **Red — write the test and confirm it fails**:
+   - Write a single test for the picked behavior (Edit/Write).
+   - **Full mode**: run `commands.test`; confirm the new test **fails** (Red). If it passes immediately, the test does not exercise the target behavior — display `TDD: テストが最初から通過。対象挙動を検証できていない可能性` and revise the test before proceeding.
+   - **Degraded mode**: skip the run and record that Red could not be auto-confirmed (test-list discipline still applies).
+4. **Green — minimal implementation**: implement the **smallest** change that makes the test pass; do not add unrequested behavior.
+   - **Full mode**: confirm Green by reusing **5.1.0.6 Test Verification Gate** — do NOT re-implement test execution here. 5.1.0.6 is the single Green-confirmation path.
+   - **Degraded mode**: skip the run.
+5. **Refactor — only after Green**: improve structure with tests passing. **Refactoring on a Red / unverified state is prohibited** — if not Green (Full mode) or Green is unconfirmed (Degraded mode), do not refactor; return to step 4 or move to the next behavior.
+6. **Repeat** from step 2 until the test list is empty (every listed behavior implemented and, in Full mode, Green).
+
+**Relationship with 5.1.0 Parallel Implementation**: When TDD is active (Full / Degraded), the Canon TDD cycle takes precedence over parallel implementation for behavior implementation — the one-test-one-cycle sequencing must be preserved. Parallel implementation (5.1.0) is limited to independent Refactor-phase tasks (step 5) that do not share the cycle's Red/Green state.
+
+**Green confirmation reuse (no duplication)**: Both the Green step (T2.4) and the pre-commit gate delegate to 5.1.0.6 Test Verification Gate. 5.0.T only sequences *when* Red (before implementation) and Green (after implementation) are checked; the actual test run is owned by 5.1.0.6 / `commands.test`.
+
+**Disabled mode (`tdd.enabled: false`)**: 5.0.T is skipped entirely and the implementation phase behaves exactly as before this feature (conventional 5.1.0 / Basic implementation flow + the 5.1.0.6 pre-commit test gate). No behavioral change.
+
 **Basic implementation flow:**
 
 1. Check current file content with Read tool

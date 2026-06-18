@@ -151,6 +151,21 @@ multi_session:
   enabled: true                    # per-session worktrees (on by default); false to disable
   worktree_base: ".rite/worktrees" # session worktree base (issue-{N} subdirs)
 
+# Test-Driven Development (Canon TDD) settings
+# Default ON (opt-out). When enabled, the implementation phase drives a Canon TDD
+# cycle (test list -> pick one -> Red -> minimal Green -> Refactor -> repeat).
+# Set `enabled: false` for doc-centric / non-software projects, or where
+# `commands.test` is null (Red/Green auto-run is then skipped). A config that
+# omits the `tdd:` key is treated as `enabled: true` (opt-out convention).
+# Declared ABOVE the `--- Advanced ---` marker (like wiki / multi_session) so
+# /rite:init new-generation emits it as an active block (new projects get the
+# default-on behavior). On --upgrade it is back-added with `enabled: true` to
+# existing configs; an existing explicit `enabled: false` is preserved.
+# NOTE (known limitation): config scaffolding (宣言のみ)。implementation phase への
+# Canon TDD サイクル配線は未完で、現時点では本キーに runtime 効果はありません。
+tdd:
+  enabled: true   # true: implementation phase runs the Canon TDD cycle (default: true, opt-out)
+
 # --- Advanced (below this line) ---
 # These sections are omitted during new generation (/rite:init).
 # They are added as comments during --upgrade.

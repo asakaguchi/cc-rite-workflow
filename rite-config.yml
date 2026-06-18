@@ -164,5 +164,12 @@ wiki:
     threshold_prs: 5                   # この件数の merged PR が raw-source ingest なしに蓄積したら lint で警告
     pr_raw_threshold: 3                # 直近 threshold_prs 件のうち raw を持たない PR がこの数以上で警告
 
+# Canon TDD 設定
+# 本リポは markdown 中心（commands.test: null）のため、Red/Green を実行できる
+# テストコマンドが存在しない。配布テンプレートのデフォルトは ON（opt-out）だが、
+# ここでは明示的に false とし、ドッグフーディング時に TDD サイクルが空振りしないようにする。
+tdd:
+  enabled: false   # markdown 中心・commands.test: null のため明示 OFF
+
 # 言語設定
 language: ja

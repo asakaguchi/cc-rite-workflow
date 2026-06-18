@@ -173,7 +173,7 @@ metrics:
   enabled: true            # Enable/disable metrics recording (default: true)
   baseline_issues: 3       # Number of Issues for baseline collection (default: 3)
 
-# Test-Driven Development (Canon TDD) settings
+# Test-Driven Development (Canon TDD) settings (scaffolding only — not yet wired)
 tdd:
   enabled: true   # true: implementation phase runs the Canon TDD cycle (default: true, opt-out)
 
@@ -718,13 +718,13 @@ wiki:
 
 ### tdd
 
-Settings for Test-Driven Development (Canon TDD). This key controls whether the implementation phase (`/rite:issue:implement`) follows a Canon TDD cycle — write a test, confirm it fails (Red), make it pass with the minimal change (Green), then Refactor, one behavior at a time. This section documents the `tdd` configuration key itself; the implementation-phase cycle it gates is delivered by `/rite:issue:implement`.
+Settings for Test-Driven Development (Canon TDD). This key controls whether the implementation phase (`/rite:issue:implement`) follows a Canon TDD cycle — write a test, confirm it fails (Red), make it pass with the minimal change (Green), then Refactor, one behavior at a time. This section documents the `tdd` configuration key itself.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | boolean | `true` | Enable the Canon TDD cycle in the implementation phase (opt-out). Set `false` for doc-centric / non-software projects to restore the previous non-TDD implementation flow (behavior identical to before the feature). A config that omits the `tdd:` key is treated as `enabled: true` (opt-out convention), so configs predating the feature get the default-on behavior |
+| `enabled` | boolean | `true` | Enable the Canon TDD cycle in the implementation phase (opt-out). Set `false` for doc-centric / non-software projects to restore the previous non-TDD implementation flow (behavior identical to before the feature). A config that omits the `tdd:` key is treated as `enabled: true` (opt-out convention), so configs predating the feature get the default-on behavior. **⚠️ Known limitation**: config scaffolding only — the implementation-phase Canon TDD cycle is not yet wired into `/rite:issue:implement`; until it lands, this key has no runtime effect |
 
-**Graceful degrade:** when `commands.test` is `null` (no test runner configured) the Red/Green auto-run is skipped with a warning, while the one-behavior-at-a-time discipline still applies. When `enabled: false`, the Canon TDD cycle is skipped entirely and the implementation phase behaves exactly as it did before this feature.
+**Graceful degrade (intended semantics once wired):** when `commands.test` is `null` (no test runner configured) the Red/Green auto-run is skipped with a warning, while the one-behavior-at-a-time discipline still applies. When `enabled: false`, the Canon TDD cycle is skipped entirely and the implementation phase behaves exactly as it did before this feature.
 
 **Example (opt out — doc-centric project):**
 

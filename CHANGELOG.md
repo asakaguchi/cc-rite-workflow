@@ -27,6 +27,12 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-06-18
+
+### Fixed
+
+- **`EnterWorktree` failure under harness git misdetection now points to a restart remedy** — when `multi_session.enabled: true` (default), `/rite:pr:open` Step 2.3-W and `/rite:resume` re-entry detect the harness git repository misdetection (`.git` present and `git` CLI healthy, but the startup check reports false) and recommend restarting Claude Code from the repository root so the already-created worktree is reused (`WT_CASE=reuse`), instead of offering only the prior "abort / `git switch -c`" fallback. Documented in `getting-started.md` and `git-worktree-patterns.md`. (#1574)
+
 ## [0.6.0] - 2026-06-18
 
 ### Added
@@ -552,6 +558,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.6.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.5...v0.6.0
 [0.5.5]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.3...v0.5.4

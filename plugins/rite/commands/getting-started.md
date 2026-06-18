@@ -296,6 +296,15 @@ After implementing your changes:
 6. After PR is merged, the Issue is automatically closed
 ```
 
+> **Test-Driven Development (Canon TDD) is on by default.** During implementation
+> (`/rite:pr:open` → `/rite:issue:implement`), rite drives a Canon TDD cycle —
+> write a test, confirm it fails (Red), make it pass with the minimal change
+> (Green), then Refactor — seeded from the Issue's Section 6 Test Specification.
+> To turn it off for doc-centric / non-software projects, set `tdd.enabled: false`
+> in `rite-config.yml`. When `commands.test` is not configured, the Red/Green test
+> runs are skipped automatically while the one-behavior-at-a-time discipline still
+> applies.
+
 ---
 
 ## Phase 4: Common First-Time Issues and Solutions

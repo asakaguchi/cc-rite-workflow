@@ -384,6 +384,13 @@ Operating rules (important):
   • Start every session from the repository ROOT (not inside a worktree).
     /rite:pr:open does the worktree creation + entry for you.
 
+  • If EnterWorktree fails with "not in a git repository" even though .git
+    exists and git works (the harness mis-detected the launch directory as
+    non-git at startup): RESTART Claude Code from the repository ROOT and
+    re-run the same command. The already-created worktree is preserved and
+    reused (WT_CASE=reuse on /rite:pr:open, RESUME_WT=reenter on /rite:resume),
+    so nothing is rebuilt. rite never silently falls back to git switch -c.
+
   • Keep the main checkout on your base branch (rite-config.yml branch.base, e.g. develop).
     rite never moves the main checkout's branch — that is a human-only action,
     and /rite:pr:cleanup's "git pull" of the base only runs when the main

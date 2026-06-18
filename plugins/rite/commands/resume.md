@@ -188,6 +188,11 @@ fi
 | `missing` + `branch_local=yes` | branch ローカル有 → `git worktree add "{path}" "{branch}"`（`-b` なし）→ `EnterWorktree(path)` |
 | `missing` + `branch_local=no` | リモート確認 → 有れば `git fetch origin {branch}` + `git worktree add --track -b "{branch}" "{path}" "origin/{branch}"` → `EnterWorktree(path)`。どこにも無ければ **矛盾サマリ + AskUserQuestion**（新規セッション扱い / 中止）— silent に新規扱いしない |
 
+**EnterWorktree が失敗した場合**（`reenter` / `missing` 経路の `EnterWorktree(path)` がエラー）: pr:open Step 2.3-W と同じ切り分けを行い、**silent に新規セッション扱いしない**。
+
+- **harness の git 誤判定**（`.git` が存在し `git -C "{path}" rev-parse` は成功するのに、起動コンテキストが `Is a git repository: false` で EnterWorktree が「not in a git repository」エラーを返す）→ **推奨**。診断とともに「**リポジトリ root から Claude Code を再起動**し、`/rite:resume {issue_number}` を再実行すれば、登録済み worktree が `RESUME_WT=reenter` で再入場される」と案内する。worktree は保持済みのため破壊しない。
+- **worktree path 消失などの別要因** → 上表の `missing` 経路（branch ローカル有 / リモート確認 → 再構築）に従う。再起動案内へ誤誘導しない。
+
 再入場後、claim に worktree path を再記録してもよい（`issue-claim.sh claim --issue {issue_number} --worktree "{path}"`、best-effort）。
 
 ### 3.2 git 状態取得

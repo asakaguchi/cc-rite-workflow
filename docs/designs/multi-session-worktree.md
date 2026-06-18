@@ -135,7 +135,7 @@ multi_session:
      | branch も worktree もなし | `git worktree add -b {branch} {path} origin/{base}` |
      | branch が**別の worktree** で checkout 中 | **中止**（他セッション作業中の可能性を表示 — git が構造的に保証する二重着手ガード） |
   3. `.rite-plugin-root` を worktree root へコピー → `EnterWorktree(path: {path})`
-  4. **EnterWorktree 不在/失敗時**: AskUserQuestion（(a) 中止＝推奨。worktree は保持し再実行で再利用 / (b) 従来方式で続行＝他セッション併走中は危険である旨を警告）。**silent fallback はしない**。
+  4. **EnterWorktree 不在/失敗時**: **silent fallback はしない**。失敗原因を切り分ける — (A) harness の git 誤判定（`.git` 存在 + `git -C {path} rev-parse` 成功 + 起動コンテキスト git=false / 「not in a git repository」）＝推奨。リポジトリ root から Claude Code を再起動し再実行すれば worktree は `WT_CASE=reuse` で継続（worktree は保持され破壊しない）/ (B) worktree 消失等の別要因＝S8 / `/rite:resume` 再構築経路へ委譲 / (C) 従来 `git switch -c` は recommended にせず、worktree 分離を破棄する明示エスケープとしてのみ残す（併走時の危険を警告）。Bash 永続 cwd 駆動は導入しない。
 - Step 2.6 / 6.3 の flow-state set に `--worktree {path}` を追加。
 - Step 3〜6（implement / lint / push / PR create）は cwd 相対で完結するため**無変更**（§1 の state root 統一が前提）。
 

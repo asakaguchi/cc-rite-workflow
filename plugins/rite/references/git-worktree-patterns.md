@@ -357,6 +357,32 @@ to 3 times:
 n=0; until git fetch origin "$base" 2>/dev/null; do n=$((n+1)); [ "$n" -ge 3 ] && break; sleep 1; done
 ```
 
+### `EnterWorktree` fails with "not in a git repository" (harness git mis-detection)
+
+`/rite:pr:open` (Step 2.3-W) and `/rite:resume` (re-entry) enter the session
+worktree via the `EnterWorktree` tool. If the harness mis-detected the launch
+directory as non-git **at session startup** (`Is a git repository: false` in the
+launch context even though `.git` exists and `git -C {wt_path} rev-parse` succeeds),
+`EnterWorktree` rejects entry with
+`Error: ... the current directory is not in a git repository.`
+
+This is a **harness-side** startup judgement that rite cannot fix from a plugin.
+The remedy is to **restart Claude Code from the repository ROOT** and re-run the
+command:
+
+- The session worktree created by `git worktree add` is **preserved** — the failure
+  does not destroy it.
+- On re-run, `pr:open` Step 2.2-W classifies it as `WT_CASE=reuse` (and `/rite:resume`
+  as `RESUME_WT=reenter`), so the workflow continues on the existing worktree without
+  rebuilding it.
+
+rite **never** silently falls back to `git switch -c` (which would discard worktree
+isolation) or to a Bash-persisted-cwd path (which would leave the harness cwd on the
+main checkout and risk relative-path edits hitting the main tree); the workflow
+surfaces the diagnosis and the restart guidance instead. Failures from other causes
+(e.g. the worktree path vanished) follow the normal `RESUME_WT=missing` rebuild path,
+not the restart guidance.
+
 ### main-checkout-不可侵 (inviolability) convention
 
 In `multi_session` mode rite **never switches the main checkout's current branch**

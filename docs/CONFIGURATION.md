@@ -173,6 +173,10 @@ metrics:
   enabled: true            # Enable/disable metrics recording (default: true)
   baseline_issues: 3       # Number of Issues for baseline collection (default: 3)
 
+# Test-Driven Development (Canon TDD) settings
+tdd:
+  enabled: true   # true: implementation phase runs the Canon TDD cycle (default: true, opt-out)
+
 # Language setting
 language: auto  # auto | ja | en
 ```
@@ -711,6 +715,23 @@ wiki:
 ```
 
 **Related commands:** `/rite:wiki:init` (one-time setup), `/rite:wiki:ingest`, `/rite:wiki:query`, `/rite:wiki:lint`.
+
+### tdd
+
+Settings for Test-Driven Development (Canon TDD). When enabled, the implementation phase (`/rite:issue:implement`) drives a Canon TDD cycle: build a test list (seeded from the Issue's Section 6 Test Specification), pick one behavior, write a test and confirm it fails (Red), make it pass with the minimal change (Green), then Refactor — repeating until the test list is empty.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | `true` | Enable the Canon TDD cycle in the implementation phase (opt-out). Set `false` for doc-centric / non-software projects to restore the previous non-TDD implementation flow (behavior identical to before the feature). A config that omits the `tdd:` key is treated as `enabled: true` (opt-out convention), so configs predating the feature get the default-on behavior |
+
+**Graceful degrade:** when `commands.test` is `null` (no test runner configured) the Red/Green auto-run is skipped with a warning, while the test-list discipline (implement one behavior at a time) is still followed. When `enabled: false`, the Canon TDD cycle is skipped entirely.
+
+**Example (opt out — doc-centric project):**
+
+```yaml
+tdd:
+  enabled: false
+```
 
 ### language
 

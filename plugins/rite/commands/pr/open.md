@@ -208,7 +208,7 @@ git switch {base_branch} && git pull --ff-only origin {base_branch} && git switc
 
 ### 2.2-W セッション worktree の冪等準備（multi_session 有効時、2.2/2.3 を置換）
 
-worktree path は `{worktree_base}/issue-{issue_number}`（`{worktree_base}` は 1.4 の `WORKTREE_BASE` marker 値、絶対パスは `{repo_root}/{worktree_base}/issue-{issue_number}`）。base ref は checkout 中 branch の fetch 更新不可制約のため **`origin/{base_branch}` を直接指定**する（local {base_branch} を経由しない）:
+worktree path は `{worktree_base}/issue-{issue_number}`（`{worktree_base}` は 2.1-G で再確定した `WORKTREE_BASE` marker 値。2.1-G を経ずに到達した場合のみ 1.4 の同名 marker を参照する — 両者は同一パースで値が常に一致する。絶対パスは `{repo_root}/{worktree_base}/issue-{issue_number}`）。base ref は checkout 中 branch の fetch 更新不可制約のため **`origin/{base_branch}` を直接指定**する（local {base_branch} を経由しない）:
 
 ```bash
 worktree_base="{worktree_base}"
@@ -280,12 +280,17 @@ cur_top=$(git rev-parse --show-toplevel 2>/dev/null) || cur_top=""
 if [ "$cur_top" = "{wt_path}" ]; then
   echo "[CONTEXT] WORKTREE_INVARIANT=ok; toplevel=$cur_top"
 else
-  echo "[CONTEXT] WORKTREE_INVARIANT=violated; expected={wt_path}; actual=${cur_top:-<none>}"
+  # violated 経路は prose 指示だけに頼らず bash の hard stop で機械的に遮断する。
+  # echo の exit code は ok/violated とも 0 で bash 上は区別不能なため、marker を stderr に出し
+  # 非ゼロ exit することで「main ツリーで implement/commit を続行する」silent fallback を構造的に止める
+  # (2.1-G が branch 分岐を Bash で hard 化したのと対称。git-worktree-patterns.md の "stops the flow" 保証を実装で満たす)。
+  echo "[CONTEXT] WORKTREE_INVARIANT=violated; expected={wt_path}; actual=${cur_top:-<none>}" >&2
+  exit 1
 fi
 ```
 
-- `WORKTREE_INVARIANT=ok`（cwd が worktree path と一致）→ ステップ 2.4 以降へ進む。
-- `WORKTREE_INVARIANT=violated`（EnterWorktree 失敗等で cwd が main checkout 等に残存）→ **silent に続行しない**。main ツリー上での implement / commit を**行わず**、上記「EnterWorktree が不在 / 失敗の場合」の (A) harness git 誤判定 / (B) worktree path 消失 / (C) ユーザー明示選択 の切り分けへ戻る。`violated` のままブランチ実装へ進むことは禁止。
+- `WORKTREE_INVARIANT=ok`（cwd が worktree path と一致、bash exit 0）→ ステップ 2.4 以降へ進む。
+- `WORKTREE_INVARIANT=violated`（EnterWorktree 失敗等で cwd が main checkout 等に残存）→ 本ブロックは **`exit 1` で停止**するため Bash ツールが非ゼロを返す（fail-loud）。**silent に続行しない**。main ツリー上での implement / commit を**行わず**、上記「EnterWorktree が不在 / 失敗の場合」の (A) harness git 誤判定 / (B) worktree path 消失 / (C) ユーザー明示選択 の切り分けへ戻る。`violated` のままブランチ実装へ進むことは禁止。
 
 ステップ 3〜6（implement / lint / push / PR create）は cwd 相対で完結するため**無変更**（S1 の state root 統一が前提）。`WORKTREE_INVARIANT=ok` が前提条件。
 

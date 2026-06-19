@@ -1119,6 +1119,7 @@ assert "TC-26: missing → no worktree key written" "false" "$(jq -r 'has("workt
 out_ok=$( (cd "$d" && bash "$HOOK" set --phase branch --issue 1595 --branch "fix/issue-1595" --pr 0 --next "n" --worktree "$d/.rite/worktrees/issue-1595" --require-worktree) 2>&1 )
 assert "TC-26: present → WORKTREE_INVARIANT=ok marker" "ok" "$(echo "$out_ok" | grep -o 'WORKTREE_INVARIANT=[a-z]*' | head -1 | cut -d= -f2)"
 assert "TC-26: present → worktree path recorded" "$d/.rite/worktrees/issue-1595" "$(jq -r '.worktree // "ABSENT"' "$sfile")"
+assert "TC-26: present → write completes (phase recorded, symmetric with case a)" "branch" "$(jq -r '.phase' "$sfile")"
 # (c) backward compat: without --require-worktree → NO marker (unchanged behavior)
 out_plain=$( (cd "$d" && bash "$HOOK" set --phase branch --issue 1595 --branch "fix/issue-1595" --pr 0 --next "n") 2>&1 )
 assert "TC-26: backward compat → no WORKTREE_INVARIANT marker without flag" "0" "$(echo "$out_plain" | grep -c 'WORKTREE_INVARIANT')"

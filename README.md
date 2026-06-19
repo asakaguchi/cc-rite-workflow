@@ -5,6 +5,18 @@
 [![Version](https://img.shields.io/badge/version-0.6.1-blue.svg)](https://github.com/asakaguchi/cc-rite-workflow/releases/tag/v0.6.1)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+## Demo
+
+Issue から PR まで、開発を"儀式"に変える — 約100秒で分かる紹介動画（日本語字幕）。
+
+<!-- rite-intro-video: この PR の説明欄に rite-intro-bgm.mp4 をドラッグ&ドロップしてアップロードし、
+     生成された https://github.com/user-attachments/assets/<id> の URL で次行の
+     VIDEO_EMBED_URL_PLACEHOLDER を置き換える（URL を単独行に置くと動画プレイヤーとして埋め込まれる）。
+     GitHub は user-attachments / user-images の添付 URL のみ動画プレイヤー化する。
+     外部リンク・raw パス・リポジトリへの MP4 コミットは不可。 -->
+
+VIDEO_EMBED_URL_PLACEHOLDER
+
 ## Why "Rite"?
 
 The name comes from the English word **rite**, meaning "ritual" or "ceremony." Issue-driven development — creating Issues, cutting branches, implementing, reviewing, and merging — is a set of practices that every team should follow as second nature. Rite Workflow embeds these practices as a repeatable ritual so they become the natural way you build software.

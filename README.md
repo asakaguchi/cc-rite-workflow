@@ -2,14 +2,16 @@
 
 > Universal Issue-Driven Development Workflow for Claude Code
 
-[![Version](https://img.shields.io/badge/version-0.6.2-blue.svg)](https://github.com/asakaguchi/cc-rite-workflow/releases/tag/v0.6.2)
+[![Version](https://img.shields.io/badge/version-0.6.3-blue.svg)](https://github.com/asakaguchi/cc-rite-workflow/releases/tag/v0.6.3)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**English** | [日本語](README.ja.md)
 
 ## Demo
 
-Issue から PR まで、開発を"儀式"に変える — 約100秒で分かる紹介動画（日本語字幕）。
+From Issue to PR — see Rite Workflow turn development into a *rite*. A ~100-second intro (English).
 
-https://github.com/user-attachments/assets/53c21728-d085-45c1-abe9-d83ec23369bb
+https://github.com/user-attachments/assets/d6e42398-4299-40ff-9bac-86e5333880b1
 
 ## Why "Rite"?
 

@@ -27,6 +27,12 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-06-19
+
+### Docs
+
+- Restructured the README into a bilingual layout: `README.md` (English, with the English intro video) and a new `README.ja.md` (Japanese, with the Japanese intro video), cross-linked by a language switcher at the top of each (#1585, #1587)
+
 ## [0.6.2] - 2026-06-19
 
 ### Docs
@@ -564,6 +570,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.6.3]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.5...v0.6.0

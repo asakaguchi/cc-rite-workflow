@@ -27,6 +27,12 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-06-19
+
+### Docs
+
+- Added a Demo section with an introductory video (Japanese subtitles) near the top of the README (#1580)
+
 ## [0.6.1] - 2026-06-18
 
 ### Fixed
@@ -558,6 +564,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.6.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.5...v0.6.0
 [0.5.5]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.4...v0.5.5

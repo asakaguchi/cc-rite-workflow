@@ -1,7 +1,7 @@
 ---
 name: release
 description: |
-  rite workflow のリリースを実行するスキル。バージョンバンプ（4ファイル）、
+  rite workflow のリリースを実行するスキル。バージョンバンプ（5ファイル）、
   CHANGELOG 更新（英語・日本語）、develop→main マージ PR、タグ作成、
   GitHub Release 作成までを一気通貫で行う。
   「リリース」「release」「バージョンアップ」「version bump」「CHANGELOG」
@@ -118,7 +118,7 @@ git checkout -b chore/issue-{ISSUE_NUMBER}-v{VERSION_SLUG}-release-prep
 
 `{VERSION_SLUG}` はバージョン番号のドット(`.`)をハイフン(`-`)に置換（例: `0.3.0` → `0-3-0`）。
 
-### 2.3 バージョン番号の更新（4ファイル）
+### 2.3 バージョン番号の更新（5ファイル）
 
 以下の全ファイルでバージョン番号を更新する。過去のリリースで更新漏れが発生した教訓があるため、1つも漏らさないこと。
 
@@ -127,12 +127,13 @@ git checkout -b chore/issue-{ISSUE_NUMBER}-v{VERSION_SLUG}-release-prep
 | 1 | `.claude-plugin/marketplace.json` | `"version": "{VERSION}"` |
 | 2 | `plugins/rite/.claude-plugin/plugin.json` | `"version": "{VERSION}"` |
 | 3 | `README.md` | バッジ URL 内のバージョン表記（`version-{VERSION}-blue` と `tag/v{VERSION}` の2箇所） |
-| 4 | `docs/SPEC.md` | JSON 例の `"version": "{VERSION}"` |
+| 4 | `README.ja.md` | バッジ URL 内のバージョン表記（`version-{VERSION}-blue` と `tag/v{VERSION}` の2箇所） |
+| 5 | `docs/SPEC.md` | JSON 例の `"version": "{VERSION}"` |
 
 **検証**: 更新後に漏れがないか確認する:
 
 ```bash
-grep -rn "{OLD_VERSION}" .claude-plugin/ plugins/rite/.claude-plugin/ README.md docs/SPEC.md
+grep -rn "{OLD_VERSION}" .claude-plugin/ plugins/rite/.claude-plugin/ README.md README.ja.md docs/SPEC.md
 ```
 
 出力が空であれば OK。

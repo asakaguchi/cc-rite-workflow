@@ -11,14 +11,7 @@
 
 From Issue to PR — see Rite Workflow turn development into a *rite*. A ~100-second intro (English).
 
-<!--
-VIDEO EMBED — replace the placeholder line below with the GitHub user-attachments URL.
-GitHub renders a video player only for files uploaded as attachments: drag & drop
-`rite-intro-en-bgm-1080p-lite.mp4` (from the rite-intro-video-en project) into this PR or a
-comment, then paste the resulting https://github.com/user-attachments/assets/<id> URL here,
-replacing the VIDEO_EMBED_URL_PLACEHOLDER line.
--->
-VIDEO_EMBED_URL_PLACEHOLDER
+https://github.com/user-attachments/assets/d6e42398-4299-40ff-9bac-86e5333880b1
 
 ## Why "Rite"?
 

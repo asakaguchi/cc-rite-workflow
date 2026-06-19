@@ -166,7 +166,31 @@ echo "[CONTEXT] ISSUE_CLAIM=$claim_out; rc=$claim_rc"
 - **type**: labels / title から推定（`bug`/`bugfix` → `fix`、`docs` → `docs`、`refactor` → `refactor`、`chore`/`maintenance` → `chore`、それ以外 → `feat`）
 - **slug**: Issue title を kebab-case 化 (英数字 + ハイフン、50 文字上限)
 
-> **ステップ 2.2 / 2.3 の分岐**: ステップ 1.4 の `[CONTEXT] MULTI_SESSION_ENABLED=` marker を読む。`true`（新規プロジェクトのデフォルト）→ 下記 **2.2-W / 2.3-W**（セッション worktree）を実行し、従来の 2.2 / 2.3 は **置換**してスキップする。`false`（`enabled: false` 明示設定 / `multi_session:` ブロック欠落の旧 config）→ 下記 **2.2 / 2.3**（従来動作、単一セッション時と完全一致）を実行する。
+### 2.1-G ブランチ作成前の multi_session hard 再確定（marker 非依存ゲート）
+
+> **Why（#1595）**: 旧版はステップ 2.2/2.3 の分岐を **ステップ 1.4 が emit した `[CONTEXT] MULTI_SESSION_ENABLED=` marker の会話 context 残存に依存**させていた。resume / context 圧縮 / フロー途中入場で marker が context から失われると「marker 欠落 → 従来 2.2/2.3」に倒れ、`multi_session.enabled: true` でも main ツリーへ `git switch -c` する **silent fallback** が起きた（F3）。これを防ぐため、**ブランチ作成という副作用の直前に必ず本ゲートを実行**し、`multi_session` 状態を記憶に頼らず Bash で再確定する。
+
+ブランチ作成（2.2/2.3 または 2.2-W/2.3-W）へ分岐する**前に**、`multi_session` 状態を rite-config.yml から再取得する。下記はステップ 1.4 と**同一のパース**（F4 で正常確認済の解析ロジック。本ゲートはそれを変更せず再利用するだけ）であり、毎回 marker を確実に再生成する:
+
+```bash
+ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
+ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \
+  | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+case "$ms_enabled" in true|yes|1) ms_enabled=true ;; *) ms_enabled=false ;; esac
+ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {print; exit}' \
+  | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+[ -n "$ms_base" ] || ms_base=".rite/worktrees"
+echo "[CONTEXT] MULTI_SESSION_ENABLED=$ms_enabled; WORKTREE_BASE=$ms_base; SOURCE=branch-gate"
+```
+
+この `SOURCE=branch-gate` の marker が、ステップ 1.4 由来の古い marker を**上書きする最新の真実**である。分岐は必ず本ゲートの値で行う:
+
+| 本ゲートの `MULTI_SESSION_ENABLED` | 経路 |
+|---|---|
+| `true`（新規プロジェクトのデフォルト） | **2.2-W / 2.3-W**（セッション worktree）を実行し、従来の 2.2 / 2.3 は **置換**してスキップする |
+| `false`（`enabled: false` 明示設定 / `multi_session:` ブロック欠落の旧 config） | **2.2 / 2.3**（従来動作、単一セッション時と完全一致）を実行する |
+
+**silent fallback の禁止（hard invariant）**: 「marker が context に無い」ことを理由に従来 2.2/2.3 へ進む経路は **存在しない**。本ゲートは毎回 Bash で marker を再生成するため、分岐時に値が未取得になることはない。万一このゲートを実行せずにブランチ作成段へ到達した場合は、`git switch -c`（2.3）を実行せず**本ゲートに戻って再確定**すること。`true` のとき 2.2-W/2.3-W 以外でブランチを checkout してはならない。
 
 ### 2.2 既存ブランチチェック（multi_session 無効時）
 
@@ -174,7 +198,11 @@ echo "[CONTEXT] ISSUE_CLAIM=$claim_out; rc=$claim_rc"
 
 ### 2.3 ブランチ作成（multi_session 無効時）
 
+> **Hard gate（#1595）**: 本ブロックは 2.1-G で再確定した `MULTI_SESSION_ENABLED=false` のときのみ実行する。`true` のとき本経路は **実行禁止** — 下記は cwd を main checkout に置いたまま新規ブランチを checkout するため、これが旧バグの silent fallback そのものを構成する。`true` のまま本ブロックへ到達した場合は実行せず 2.2-W へ戻ること。
+
 ```bash
+# GUARD (#1595): multi_session 有効時に本経路へ来てはならない。
+# 2.1-G で false を再確定済の場合のみ実行する（true なら 2.2-W/2.3-W が正路）。
 git switch {base_branch} && git pull --ff-only origin {base_branch} && git switch -c {branch_name}
 ```
 
@@ -245,7 +273,21 @@ worktree を作成・再利用したら、`.rite-plugin-root` を worktree root 
 bash {plugin_root}/hooks/issue-claim.sh claim --issue {issue_number} --worktree "{wt_path}" >/dev/null 2>&1 || true
 ```
 
-ステップ 3〜6（implement / lint / push / PR create）は cwd 相対で完結するため**無変更**（S1 の state root 統一が前提）。
+続けて、**セッション worktree 上にいることを invariant として検証**する（#1595。EnterWorktree が失敗したのに気付かず main ツリーで implement/commit してしまう silent fallback を遮断する最終ガード）:
+
+```bash
+cur_top=$(git rev-parse --show-toplevel 2>/dev/null) || cur_top=""
+if [ "$cur_top" = "{wt_path}" ]; then
+  echo "[CONTEXT] WORKTREE_INVARIANT=ok; toplevel=$cur_top"
+else
+  echo "[CONTEXT] WORKTREE_INVARIANT=violated; expected={wt_path}; actual=${cur_top:-<none>}"
+fi
+```
+
+- `WORKTREE_INVARIANT=ok`（cwd が worktree path と一致）→ ステップ 2.4 以降へ進む。
+- `WORKTREE_INVARIANT=violated`（EnterWorktree 失敗等で cwd が main checkout 等に残存）→ **silent に続行しない**。main ツリー上での implement / commit を**行わず**、上記「EnterWorktree が不在 / 失敗の場合」の (A) harness git 誤判定 / (B) worktree path 消失 / (C) ユーザー明示選択 の切り分けへ戻る。`violated` のままブランチ実装へ進むことは禁止。
+
+ステップ 3〜6（implement / lint / push / PR create）は cwd 相対で完結するため**無変更**（S1 の state root 統一が前提）。`WORKTREE_INVARIANT=ok` が前提条件。
 
 ### 2.4 GitHub Projects Status 更新
 
@@ -263,7 +305,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
   --next "実装計画策定へ進む"
 ```
 
-`MULTI_SESSION_ENABLED=true` のときは末尾に `--worktree "{wt_path}"` を追加する（`{wt_path}` は 2.2-W の `path=` 値）。`--worktree` は merge-preserve かつ conditional-write のため、無効時（値が空）は state file に key を付与せず挙動は不変。
+`MULTI_SESSION_ENABLED=true`（2.1-G で再確定した値）のときは末尾に `--worktree "{wt_path}" --require-worktree` を追加する（`{wt_path}` は 2.2-W の `path=` 値）。`--worktree` は merge-preserve かつ conditional-write のため、無効時（値が空）は state file に key を付与せず挙動は不変。`--require-worktree` は worktree path 不在のまま branch phase を記録しようとした場合に loud WARNING + `[CONTEXT] WORKTREE_INVARIANT=missing` marker を emit するデータ層検知（#1595。書き込み自体は完了するため work は失われない）。marker が `missing` の場合は worktree 化が漏れているため 2.2-W へ戻ること。
 
 ---
 
@@ -406,7 +448,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
   --next "レビュー/修正ループへ進む (/rite:pr:iterate {pr_number})"
 ```
 
-`MULTI_SESSION_ENABLED=true` のときは末尾に `--worktree "{wt_path}"` を追加する（merge-preserve のため省略しても保持されるが、明示することで `--worktree` を伴わない他経路の set との順序非依存を担保する）。
+`MULTI_SESSION_ENABLED=true` のときは末尾に `--worktree "{wt_path}" --require-worktree` を追加する（merge-preserve のため省略しても保持されるが、明示することで `--worktree` を伴わない他経路の set との順序非依存を担保する）。`--require-worktree` 検知の意味は 2.6 と同じ（#1595）。
 
 ---
 

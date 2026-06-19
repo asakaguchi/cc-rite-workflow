@@ -173,7 +173,7 @@ _emit_jq_err_snippet() {
 cmd_set() {
   # Merge semantics: unspecified scalar fields preserve existing values (旧 patch 互換).
   # Required: --phase, --next. Optional fields fall back to existing JSON or defaults.
-  local phase="" next="" session="" if_exists=0 preserve_error=0
+  local phase="" next="" session="" if_exists=0 preserve_error=0 require_worktree=0
   local issue="" branch="" pr="" parent_issue="" active="" handoff="" worktree=""
   while [ $# -gt 0 ]; do case "$1" in
     --phase) phase="$2"; shift 2 ;;
@@ -188,6 +188,7 @@ cmd_set() {
     --session) session="$2"; shift 2 ;;
     --if-exists) if_exists=1; shift ;;
     --preserve-error-count) preserve_error=1; shift ;;
+    --require-worktree) require_worktree=1; shift ;;
     *) echo "ERROR: unknown option: $1" >&2; return 1 ;;
   esac; done
   [ -z "$phase" ] && { echo "ERROR: --phase is required" >&2; return 1; }
@@ -250,6 +251,20 @@ cmd_set() {
   # in the jq below so non-worktree sessions never gain the key (additive → no
   # schema bump, byte-identical state file for single-session use).
   [ -z "$worktree" ] && worktree=$cur_worktree
+  # --require-worktree (#1595): データ層で「multi_session 有効経路の set は worktree path を伴う」
+  # invariant を検知する。merge-preserve 後も worktree が空 = pr:open の worktree 化漏れ
+  # (Step 1.4 marker 欠落 → legacy `git switch -c` への silent fallback) の兆候。loud に
+  # WARNING + `[CONTEXT] WORKTREE_INVARIANT=` marker を stderr へ emit する (orchestrator の
+  # hard gate が読む)。書き込み自体は継続する — non-blocking で state を失わない。停止判断は
+  # caller (open.md の hard gate) 側に委ねる (flow-state は state 記録の SoT であり制御層ではない)。
+  if [ "$require_worktree" -eq 1 ]; then
+    if [ -z "$worktree" ]; then
+      echo "WARNING: flow-state.sh cmd_set: --require-worktree set but worktree path is empty (phase=$phase; multi_session worktree 化漏れの可能性 — #1595)" >&2
+      echo "[CONTEXT] WORKTREE_INVARIANT=missing; phase=$phase" >&2
+    else
+      echo "[CONTEXT] WORKTREE_INVARIANT=ok; phase=$phase; worktree=$worktree" >&2
+    fi
+  fi
   [ -z "$pr" ] && pr=$cur_pr
   [ -z "$parent_issue" ] && parent_issue=$cur_parent
   [ -z "$active" ] && active=$cur_active
@@ -527,6 +542,7 @@ case "${1:-}" in
 Usage: $0 {set|get|deactivate|clear-worktree|consume-handoff|migrate|path} [options]
   set --phase <P> --next <T> [--issue N] [--branch S] [--pr N] [--parent-issue N]
       [--active true|false] [--handoff CMD] [--session UUID] [--if-exists] [--preserve-error-count]
+      [--worktree PATH] [--require-worktree]   # --require-worktree: warn + emit WORKTREE_INVARIANT marker when worktree empty (non-blocking)
   get --field <F> [--default V] [--session UUID]
       | --jq-filter <FILTER> [--default V] [--session UUID]
   deactivate [--next T] [--session UUID]

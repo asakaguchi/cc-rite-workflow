@@ -383,6 +383,38 @@ surfaces the diagnosis and the restart guidance instead. Failures from other cau
 (e.g. the worktree path vanished) follow the normal `RESUME_WT=missing` rebuild path,
 not the restart guidance.
 
+### Branch-creation worktree invariant (marker 再確定・silent fallback 排除)
+
+In `multi_session` mode the feature branch **must** be created on the session worktree
+(`{worktree_base}/issue-{N}`), regardless of the flow entry path (fresh / `/rite:resume` /
+post-compaction mid-flow entry). The earlier failure mode (#1595) was that `/rite:pr:open`
+gated the worktree-vs-main-tree branch decision **only on the in-context
+`[CONTEXT] MULTI_SESSION_ENABLED=` marker** emitted at Step 1.4. When that marker was lost
+from context (resume / compaction / mid-flow re-entry), routing fell back to the legacy
+`git switch -c` path and the branch was created on the **main checkout**, leaving
+`{worktree_base}/` empty and the flow-state `worktree` field unset.
+
+The invariant is enforced by three complementary gates, **none of which trusts remembered
+context**:
+
+- **Re-derive at branch time, not at Step 1.4** (`pr:open` Step 2.1-G): immediately before the
+  branch-creation side effect, `multi_session` is re-parsed from `rite-config.yml` with the
+  same parser as Step 1.4, emitting a fresh `MULTI_SESSION_ENABLED=...; SOURCE=branch-gate`
+  marker. There is **no "marker missing → legacy" branch** — the marker is regenerated every
+  time, so it can never be absent at routing.
+- **Legacy path is `false`-only** (`pr:open` Step 2.3): the `git switch -c` block runs only
+  when the branch-time re-derivation yielded `false`. Reaching it with `true` is prohibited.
+- **Post-entry toplevel check** (`pr:open` Step 2.3-W): after `EnterWorktree`,
+  `git rev-parse --show-toplevel` must equal the worktree path; a mismatch
+  (`WORKTREE_INVARIANT=violated`) stops the flow instead of silently implementing on the main
+  tree. The data layer mirrors this — `flow-state.sh set --require-worktree` emits
+  `WORKTREE_INVARIANT=missing` (loud WARNING, non-blocking write) when a branch/pr-phase set
+  carries no worktree path.
+
+This complements the `EnterWorktree`-failure convention above (which forbids silent fallback
+on *entry*) by forbidding it at *branch creation* too: the worktree is a **hard invariant**,
+not best-effort.
+
 ### main-checkout-不可侵 (inviolability) convention
 
 In `multi_session` mode rite **never switches the main checkout's current branch**

@@ -27,6 +27,12 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-06-20
+
+### Fixed
+
+- **`/rite:pr:open` branch creation is now worktree-isolated as a hard invariant under `multi_session.enabled: true`** — branch creation re-resolves `multi_session` from `rite-config.yml` immediately before the branch is created (instead of relying on a `[CONTEXT]` marker that can be lost across resume / context compaction / mid-flow entry), so the `git switch -c` legacy path is reachable only when `multi_session.enabled: false`. After `EnterWorktree`, an invariant check verifies the repository top-level matches the worktree path and halts on mismatch instead of silently continuing on the main tree; `flow-state.sh set --require-worktree` emits a loud warning when a branch/PR phase would be recorded without a worktree. (#1596)
+
 ## [0.6.3] - 2026-06-19
 
 ### Docs
@@ -570,6 +576,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.6.4]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.0...v0.6.1

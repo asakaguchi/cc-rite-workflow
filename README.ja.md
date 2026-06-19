@@ -11,14 +11,7 @@
 
 Issue から PR まで、開発を“儀式”に変える — 約100秒で分かる紹介動画（日本語字幕）。
 
-<!--
-動画埋め込み — 下のプレースホルダ行を GitHub の user-attachments URL に差し替える。
-GitHub は添付アップロードしたファイルのみ動画プレイヤー化する: rite-intro-video/ の
-`rite-intro-bgm-1080p-lite.mp4`（v0.6.2・約 3.85MB）をこの PR またはコメントにドラッグ&
-ドロップし、生成された https://github.com/user-attachments/assets/<id> URL でこの
-VIDEO_EMBED_URL_PLACEHOLDER 行を置き換える。
--->
-VIDEO_EMBED_URL_PLACEHOLDER
+https://github.com/user-attachments/assets/76255c86-c999-4731-8ba2-4dbab4d57e1d
 
 ## なぜ "Rite" なのか
 

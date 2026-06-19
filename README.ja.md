@@ -11,7 +11,7 @@
 
 Issue から PR まで、開発を“儀式”に変える — 約100秒で分かる紹介動画（日本語字幕）。
 
-https://github.com/user-attachments/assets/53c21728-d085-45c1-abe9-d83ec23369bb
+https://github.com/user-attachments/assets/76255c86-c999-4731-8ba2-4dbab4d57e1d
 
 ## なぜ "Rite" なのか
 

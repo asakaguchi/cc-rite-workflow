@@ -1048,7 +1048,7 @@ For each unresolved comment:
 #### Phase 2: Cleanup Execution
 
 1. Switch to main branch
-2. Pull latest main
+2. Update base (`git fetch` + `git merge --ff-only`)
 3. Delete local branch (`git branch -d`)
 4. Delete remote branch if exists (`git push origin --delete`)
 
@@ -1075,7 +1075,7 @@ Status: Done
 
 Completed tasks:
 - [x] Switched to main branch
-- [x] Pulled latest main
+- [x] Updated base (fetch + merge --ff-only)
 - [x] Deleted local branch {branch_name}
 - [x] Deleted remote branch
 - [x] Updated Projects Status to Done

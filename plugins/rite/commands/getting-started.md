@@ -393,8 +393,9 @@ Operating rules (important):
 
   • Keep the main checkout on your base branch (rite-config.yml branch.base, e.g. develop).
     rite never moves the main checkout's branch — that is a human-only action,
-    and /rite:pr:cleanup's "git pull" of the base only runs when the main
-    checkout is actually on the base branch (otherwise it warns and skips).
+    and /rite:pr:cleanup's base update (git fetch + git merge --ff-only) only
+    runs when the main checkout is actually on the base branch (otherwise it
+    warns and skips).
 
   • Disk cost: each session worktree is a FULL working-tree clone. Build
     environments (node_modules, venv, build caches, etc.) are NOT shared and

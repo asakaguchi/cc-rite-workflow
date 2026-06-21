@@ -307,7 +307,7 @@ fi
 
 ### 4 base ブランチの更新（安全化）
 
-main checkout の不可侵規約（[git-worktree-patterns.md](../../references/git-worktree-patterns.md#multi-checkout-不可侵-inviolability-convention)）に従い、**main checkout が `{base_branch}` 上にある場合のみ** pull する。別 branch 上では切り替えず WARNING + skip する:
+main checkout の不可侵規約（[git-worktree-patterns.md](../../references/git-worktree-patterns.md#multi-checkout-不可侵-inviolability-convention)）に従い、**main checkout が `{base_branch}` 上にある場合のみ** base を更新する。別 branch 上では切り替えず WARNING + skip する:
 
 ```bash
 cur_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || cur_branch=""
@@ -315,7 +315,7 @@ if [ "$cur_branch" = "{base_branch}" ]; then
   # index.lock 競合 3 回リトライ
   n=0; until git fetch origin {base_branch} 2>/dev/null && git merge --ff-only origin/{base_branch} 2>/dev/null; do n=$((n+1)); [ "$n" -ge 3 ] && { echo "WARNING: base 更新 (git fetch + git merge --ff-only origin/{base_branch}) が失敗しました (index.lock 競合 / fast-forward 不可 / コンフリクトの可能性)。git status で確認してください。" >&2; break; }; sleep 1; done
 else
-  echo "WARNING: main checkout が '{base_branch}' ではなく '$cur_branch' 上にあるため base pull を skip しました。" >&2
+  echo "WARNING: main checkout が '{base_branch}' ではなく '$cur_branch' 上にあるため base 更新を skip しました。" >&2
   echo "  復旧手順: 別の作業が無いことを確認のうえ 'git switch {base_branch}' で main checkout を base に戻してから再実行してください（rite は multi_session モードで main checkout のカレントブランチを切り替えません）。" >&2
 fi
 ```

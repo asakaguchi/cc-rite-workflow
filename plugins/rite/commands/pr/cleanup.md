@@ -313,14 +313,14 @@ main checkout の不可侵規約（[git-worktree-patterns.md](../../references/g
 cur_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || cur_branch=""
 if [ "$cur_branch" = "{base_branch}" ]; then
   # index.lock 競合 3 回リトライ
-  n=0; until git pull --ff-only origin {base_branch} 2>/dev/null; do n=$((n+1)); [ "$n" -ge 3 ] && { echo "WARNING: git pull --ff-only origin {base_branch} が失敗しました (index.lock 競合 / コンフリクトの可能性)。git status で確認してください。" >&2; break; }; sleep 1; done
+  n=0; until git fetch origin {base_branch} 2>/dev/null && git merge --ff-only origin/{base_branch} 2>/dev/null; do n=$((n+1)); [ "$n" -ge 3 ] && { echo "WARNING: base 更新 (git fetch + git merge --ff-only origin/{base_branch}) が失敗しました (index.lock 競合 / fast-forward 不可 / コンフリクトの可能性)。git status で確認してください。" >&2; break; }; sleep 1; done
 else
   echo "WARNING: main checkout が '{base_branch}' ではなく '$cur_branch' 上にあるため base pull を skip しました。" >&2
   echo "  復旧手順: 別の作業が無いことを確認のうえ 'git switch {base_branch}' で main checkout を base に戻してから再実行してください（rite は multi_session モードで main checkout のカレントブランチを切り替えません）。" >&2
 fi
 ```
 
-> **multi_session 無効（従来モード）の場合**: 従来どおり `git checkout {base_branch} && git pull origin {base_branch}` を実行する（base branch 以外にいて未コミット変更があれば「stash して続行 / キャンセル」を確認。stash は `git stash push -m "rite-cleanup: auto-stash before cleanup"`）。pull コンフリクト時は `git status` で確認・解決後の再実行を案内し terminate。
+> **multi_session 無効（従来モード）の場合**: 従来どおり `git checkout {base_branch} && git fetch origin {base_branch} && git merge --ff-only origin/{base_branch}` を実行する（base branch 以外にいて未コミット変更があれば「stash して続行 / キャンセル」を確認。stash は `git stash push -m "rite-cleanup: auto-stash before cleanup"`）。fast-forward 不可 / コンフリクト時は `git status` で確認・解決後の再実行を案内し terminate。
 
 ---
 

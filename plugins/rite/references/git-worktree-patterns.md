@@ -426,7 +426,7 @@ Consequences enforced across the workflow:
   that another worktree may have checked out.
 - A branch is deleted **only after** its worktree is removed (a branch checked out
   in a worktree cannot be deleted or fetch-updated).
-- `pr:cleanup`'s base pull runs **only when the main checkout is on `{base}`**; on any
+- `pr:cleanup`'s base update runs **only when the main checkout is on `{base}`**; on any
   other branch it WARNINGs and skips (it must not yank the main checkout off a
   human's working branch). Moving the main checkout's branch is a **human-only** action.
 

@@ -299,7 +299,7 @@ Plugin metadata file format:
 ```json
 {
  "name": "rite",
- "version": "0.6.4",
+ "version": "0.6.5",
  "description": "Universal Issue-driven development workflow for Claude Code",
  "author": { "name": "asakaguchi" },
  "license": "MIT"
@@ -1048,14 +1048,14 @@ For each unresolved comment:
 #### Phase 2: Cleanup Execution
 
 1. Switch to main branch
-2. Pull latest main
+2. Update base (`git fetch` + `git merge --ff-only`)
 3. Delete local branch (`git branch -d`)
 4. Delete remote branch if exists (`git push origin --delete`)
 
 **On uncommitted changes:**
 - Offer to stash changes before cleanup
 
-> **Worktree Mode (`multi_session.enabled: true`)**: When `/rite:pr:cleanup` runs from inside a session worktree, Step 4-W first checks `git status --porcelain` (dirty → AskUserQuestion to stash or cancel), then `ExitWorktree(action: "keep")` back to the main checkout and `git worktree remove {path}` → `git worktree prune` (removal failure is non-blocking — deferred to the lazy reap). The local branch is deleted **only after** its worktree is removed (a checked-out branch cannot be deleted). The base pull (step 2) is replaced by the **main-checkout inviolability** rule: it runs `git pull --ff-only origin {base}` **only when the main checkout is on `{base}`**; on any other branch it WARNINGs and skips (with a "return the main checkout to `{base}`" recovery hint) rather than yanking a human's working branch. The Issue claim acquired by `/rite:pr:open` Step 1.6 is released here. See [Multi-Session State Management → Worktree Mode](#worktree-mode-session-worktree-isolation). When `multi_session.enabled: false` (explicit opt-out, or a legacy config that omits the `multi_session` block), steps 1–4 above run unchanged.
+> **Worktree Mode (`multi_session.enabled: true`)**: When `/rite:pr:cleanup` runs from inside a session worktree, Step 4-W first checks `git status --porcelain` (dirty → AskUserQuestion to stash or cancel), then `ExitWorktree(action: "keep")` back to the main checkout and `git worktree remove {path}` → `git worktree prune` (removal failure is non-blocking — deferred to the lazy reap). The local branch is deleted **only after** its worktree is removed (a checked-out branch cannot be deleted). The base update (step 2) is replaced by the **main-checkout inviolability** rule: it runs `git fetch origin {base} && git merge --ff-only origin/{base}` **only when the main checkout is on `{base}`**; on any other branch it WARNINGs and skips (with a "return the main checkout to `{base}`" recovery hint) rather than yanking a human's working branch. The Issue claim acquired by `/rite:pr:open` Step 1.6 is released here. See [Multi-Session State Management → Worktree Mode](#worktree-mode-session-worktree-isolation). When `multi_session.enabled: false` (explicit opt-out, or a legacy config that omits the `multi_session` block), steps 1–4 above run unchanged.
 
 #### Phase 3: Projects Status Update
 
@@ -1075,7 +1075,7 @@ Status: Done
 
 Completed tasks:
 - [x] Switched to main branch
-- [x] Pulled latest main
+- [x] Updated base (fetch + merge --ff-only)
 - [x] Deleted local branch {branch_name}
 - [x] Deleted remote branch
 - [x] Updated Projects Status to Done
@@ -1459,7 +1459,7 @@ The session worktree is one of **four non-overlapping worktree namespaces** (`.r
 
 **Issue claim mechanism (always-on):** Independently of `multi_session.enabled`, `/rite:pr:open` Step 1.6 acquires an Issue claim *before* any branch / worktree side-effect (fail-fast against double-starting the same Issue), and `/rite:pr:cleanup` releases it. Claims live at `.rite/state/issue-claims/issue-{N}.json` and are managed by `hooks/issue-claim.sh {claim|release|check} --issue N`. **Liveness** reuses the flow-state heartbeat — a claim is live iff the holding session's flow-state is `active=true` and `updated_at` is within 2h (the same threshold and `parse_iso8601_to_epoch` as `session-ownership.sh`); no new heartbeat file is introduced. On detecting another **live** claim, `/rite:pr:open` always surfaces an AskUserQuestion (never an unattended steal); a stale claim is reclaimed only by the reap path under the clean-worktree gate. Claims are **not** released at session end, so a crashed session's work stays resumable. Because claims only ever create files under the already-gitignored `.rite/state/`, the mechanism is silent and backward-compatible when there is no conflict (Decision D-3: always-on regardless of the worktree flag).
 
-**main-checkout inviolability convention:** In Worktree Mode rite **never switches the main checkout's current branch** (moving it is a human-only action). Consequences enforced across the workflow: new session branches are based on `origin/{base}` directly (not a local `{base}` another worktree may hold); a branch is deleted only *after* its worktree is removed (a checked-out branch can be neither deleted nor fetch-updated); `/rite:pr:cleanup`'s base pull runs **only when the main checkout is on `{base}`** and otherwise WARNINGs + skips with a recovery hint. See the `/rite:pr:cleanup` Phase 2 note and [`references/git-worktree-patterns.md`](../plugins/rite/references/git-worktree-patterns.md#multi-session-patterns).
+**main-checkout inviolability convention:** In Worktree Mode rite **never switches the main checkout's current branch** (moving it is a human-only action). Consequences enforced across the workflow: new session branches are based on `origin/{base}` directly (not a local `{base}` another worktree may hold); a branch is deleted only *after* its worktree is removed (a checked-out branch can be neither deleted nor fetch-updated); `/rite:pr:cleanup`'s base update runs **only when the main checkout is on `{base}`** and otherwise WARNINGs + skips with a recovery hint. See the `/rite:pr:cleanup` Phase 2 note and [`references/git-worktree-patterns.md`](../plugins/rite/references/git-worktree-patterns.md#multi-session-patterns).
 
 **Crash recovery / `/rite:resume`:** After a crash a new session starts at the repository root. `/rite:resume` re-enters the worktree *before* any branch-dependent cross-check (flow-state `worktree` → else issue-number → path derivation), and reconstructs a missing worktree from the branch (local → `git worktree add`; remote-only → `git fetch` + `--track -b`; nowhere → AskUserQuestion). The `worktree` flow-state field is a **same-session hint only** — the canonical session↔worktree correspondence is the issue-number → path derivation, because `session_id` changes on crash (see the schema table's `worktree` row above).
 

@@ -119,10 +119,7 @@ projects:
  iteration:
  mode: "none|auto" # Default: "none". "auto" assigns to current iteration
  field_name: "Sprint" # Default: "Sprint"
- field_names: # Optional: localized project field-name overrides
-   status: string #   each overrides the built-in EN<->JA alias for that
-   priority: string #   canonical field (Status/Priority/Complexity).
-   complexity: string #   Empty/absent -> built-in aliases only.
+ field_names: { status, priority, complexity } # Optional: each overrides the built-in EN<->JA alias for that canonical field. Empty/absent -> aliases only
 options:
  source: string # Caller identifier (pr_review|pr_create|cleanup|interactive|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split)
                 # Note: 以下の値は legacy 互換のため enum に含めない (caller 消失済、`grep -rn 'source: "<value>"' plugins/rite/` で 0 件確認):

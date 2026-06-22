@@ -238,16 +238,18 @@ ITEM_ADD_RESULT=$(retry_with_backoff 3 "$GH_ERR_FILE" gh project item-add "$PROJ
 # Extract ITEM_ID directly from item-add response (avoids race condition with GraphQL query)
 ITEM_ID=$(printf '%s\n' "$ITEM_ADD_RESULT" | jq -r '.id // empty' 2>/dev/null)
 
-# Step 2.2: Detect owner type (User vs Organization)
-OWNER_TYPE=$(gh repo view --json owner --jq '.owner.__typename' 2>"$GH_ERR_FILE" || { add_warning "Owner type detection failed: $(cat "$GH_ERR_FILE")"; printf '%s\n' "User"; })
-GQL_ROOT="user"
-if [ "$OWNER_TYPE" = "Organization" ]; then
-  GQL_ROOT="organization"
-fi
-
-# Whitelist validation for GQL_ROOT (defense against GraphQL injection, CWE-943)
-if [[ "$GQL_ROOT" != "user" && "$GQL_ROOT" != "organization" ]]; then
-  add_warning_with_stderr "Invalid GQL_ROOT value: $GQL_ROOT"
+# Step 2.2: Resolve the repository name from the created Issue URL.
+# Project queries are rooted at repository(owner, name).projectV2(number), which
+# resolves transparently for both User- and Organization-owned projects. This
+# replaces the previous owner-type branch, which relied on a type discriminator
+# that the real gh CLI does not return on the owner object; that branch therefore
+# always fell back to the user-rooted query and failed for Organization-owned
+# projects, and it inspected the current repo rather than the project owner.
+# Mirrors projects-status-update.sh. REPO_NAME is derived from ISSUE_URL so the
+# helper's input JSON schema is unchanged.
+REPO_NAME=$(printf '%s\n' "$ISSUE_URL" | sed -nE 's#^https?://[^/]+/[^/]+/([^/]+)/issues/[0-9]+.*$#\1#p')
+if [ -z "$REPO_NAME" ]; then
+  add_warning_with_stderr "Could not resolve repository name from Issue URL: $ISSUE_URL"
   output_result "$ISSUE_URL" "$ISSUE_NUMBER" "" "" "partial"
   exit 0
 fi
@@ -255,8 +257,8 @@ fi
 # Step 2.3: Retrieve project item ID and field information
 # 3-attempt exponential backoff for transient API failures.
 GQL_FIELDS_QUERY="
-query(\$owner: String!, \$projectNumber: Int!) {
-  ${GQL_ROOT}(login: \$owner) {
+query(\$owner: String!, \$repo: String!, \$projectNumber: Int!) {
+  repository(owner: \$owner, name: \$repo) {
     projectV2(number: \$projectNumber) {
       id
       items(last: 10) {
@@ -295,14 +297,14 @@ query(\$owner: String!, \$projectNumber: Int!) {
     }
   }
 }"
-GQL_RESULT=$(retry_with_backoff 3 "$GH_ERR_FILE" gh api graphql -f query="$GQL_FIELDS_QUERY" -f owner="$OWNER" -F projectNumber="$PROJECT_NUMBER") || {
+GQL_RESULT=$(retry_with_backoff 3 "$GH_ERR_FILE" gh api graphql -f query="$GQL_FIELDS_QUERY" -f owner="$OWNER" -f repo="$REPO_NAME" -F projectNumber="$PROJECT_NUMBER") || {
   add_warning_with_stderr "GraphQL query failed for project field retrieval after 3 attempts: $(cat "$GH_ERR_FILE")"
   output_result "$ISSUE_URL" "$ISSUE_NUMBER" "" "" "partial"
   exit 0
 }
 
-# Extract project ID (use --arg for safe variable passing to jq)
-PROJECT_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r --arg root "$GQL_ROOT" '.data[$root].projectV2.id // empty')
+# Extract project ID
+PROJECT_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r '.data.repository.projectV2.id // empty')
 if [ -z "$PROJECT_ID" ]; then
   add_warning_with_stderr "Could not extract project ID"
   output_result "$ISSUE_URL" "$ISSUE_NUMBER" "" "" "partial"
@@ -312,13 +314,13 @@ fi
 # Fallback: if ITEM_ID was not captured from item-add (e.g., older gh CLI without --format json),
 # try to find it via GraphQL items query
 if [ -z "$ITEM_ID" ]; then
-  ITEM_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r --arg root "$GQL_ROOT" --argjson num "$ISSUE_NUMBER" '.data[$root].projectV2.items.nodes[] | select(.content.number == $num) | .id // empty')
+  ITEM_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r --argjson num "$ISSUE_NUMBER" '.data.repository.projectV2.items.nodes[] | select(.content.number == $num) | .id // empty')
 fi
 if [ -z "$ITEM_ID" ]; then
   # Retry with larger window. 3-attempt exponential backoff for transient failures.
   GQL_ITEMS_QUERY="
-query(\$owner: String!, \$projectNumber: Int!) {
-  ${GQL_ROOT}(login: \$owner) {
+query(\$owner: String!, \$repo: String!, \$projectNumber: Int!) {
+  repository(owner: \$owner, name: \$repo) {
     projectV2(number: \$projectNumber) {
       items(last: 20) {
         nodes {
@@ -333,9 +335,9 @@ query(\$owner: String!, \$projectNumber: Int!) {
     }
   }
 }"
-  GQL_RETRY=$(retry_with_backoff 3 "$GH_ERR_FILE" gh api graphql -f query="$GQL_ITEMS_QUERY" -f owner="$OWNER" -F projectNumber="$PROJECT_NUMBER") || { add_warning_with_stderr "GraphQL items lookup query failed after 3 attempts: $(cat "$GH_ERR_FILE")"; true; }
+  GQL_RETRY=$(retry_with_backoff 3 "$GH_ERR_FILE" gh api graphql -f query="$GQL_ITEMS_QUERY" -f owner="$OWNER" -f repo="$REPO_NAME" -F projectNumber="$PROJECT_NUMBER") || { add_warning_with_stderr "GraphQL items lookup query failed after 3 attempts: $(cat "$GH_ERR_FILE")"; true; }
 
-  ITEM_ID=$(printf '%s\n' "$GQL_RETRY" | jq -r --arg root "$GQL_ROOT" --argjson num "$ISSUE_NUMBER" '.data[$root].projectV2.items.nodes[] | select(.content.number == $num) | .id // empty' 2>"$FIELD_ERR_FILE")
+  ITEM_ID=$(printf '%s\n' "$GQL_RETRY" | jq -r --argjson num "$ISSUE_NUMBER" '.data.repository.projectV2.items.nodes[] | select(.content.number == $num) | .id // empty' 2>"$FIELD_ERR_FILE")
   if [ -z "$ITEM_ID" ]; then
     add_warning_with_stderr "Could not find item ID for Issue #$ISSUE_NUMBER in project"
     output_result "$ISSUE_URL" "$ISSUE_NUMBER" "$PROJECT_ID" "" "partial"
@@ -348,8 +350,8 @@ find_field_option() {
   local field_name="$1"
   local option_name="$2"
 
-  printf '%s\n' "$GQL_RESULT" | jq -r --arg root "$GQL_ROOT" --arg fn "$field_name" --arg on "$option_name" '
-    .data[$root].projectV2.fields.nodes[] | select(.name == $fn) |
+  printf '%s\n' "$GQL_RESULT" | jq -r --arg fn "$field_name" --arg on "$option_name" '
+    .data.repository.projectV2.fields.nodes[] | select(.name == $fn) |
     (.id // "") as $fid |
     (if $fid == "" then ""
      else ((.options // [])[] | select(.name == $on) | .id // "") as $oid | "\($fid)|\($oid)"
@@ -390,13 +392,13 @@ set_field "Complexity" "$COMPLEXITY_VALUE"
 
 # Step 2.5: Iteration assignment (optional)
 if [ "$ITERATION_MODE" = "auto" ]; then
-  ITER_FIELD_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r --arg root "$GQL_ROOT" --arg fn "$ITERATION_FIELD_NAME" '.data[$root].projectV2.fields.nodes[] | select(.name == $fn) | .id // empty')
+  ITER_FIELD_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r --arg fn "$ITERATION_FIELD_NAME" '.data.repository.projectV2.fields.nodes[] | select(.name == $fn) | .id // empty')
   if [ -n "$ITER_FIELD_ID" ]; then
     # Find current iteration (startDate <= today, sorted by startDate desc)
     # ISO 8601 date strings (YYYY-MM-DD) are lexicographically comparable
     TODAY=$(date -u +%Y-%m-%d)
-    CURRENT_ITER_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r --arg root "$GQL_ROOT" --arg fn "$ITERATION_FIELD_NAME" --arg today "$TODAY" '
-      .data[$root].projectV2.fields.nodes[]
+    CURRENT_ITER_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r --arg fn "$ITERATION_FIELD_NAME" --arg today "$TODAY" '
+      .data.repository.projectV2.fields.nodes[]
       | select(.name == $fn)
       | .configuration.iterations
       | map(select(.startDate <= $today))

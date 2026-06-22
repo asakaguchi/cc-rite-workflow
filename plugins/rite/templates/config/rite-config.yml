@@ -7,9 +7,15 @@ github:
     enabled: true
     project_number: null  # Project number (null = auto-detect from repository)
     owner: null           # Project owner (null = use repository owner)
+    # Localized field-name overrides (optional):
+    #   Set `name:` under a field when your Project uses a non-English field name.
+    #   Default (key omitted) resolves via the built-in EN<->JA aliases
+    #   (Status<->ステータス, Priority<->優先度, Complexity<->複雑度), so Japanese-named
+    #   Projects work with zero config. `name:` takes precedence over the alias.
     fields:
       status:
         enabled: true
+        # name: "ステータス"   # optional: actual Status field name in the Project
         options:
           - { name: "Todo", default: true }
           - { name: "In Progress" }
@@ -17,12 +23,14 @@ github:
           - { name: "Done" }
       priority:
         enabled: true
+        # name: "優先度"       # optional: actual Priority field name in the Project
         options:
           - { name: "High" }
           - { name: "Medium", default: true }
           - { name: "Low" }
       complexity:
         enabled: true
+        # name: "複雑度"       # optional: actual Complexity field name in the Project
         options:
           - { name: "XS" }
           - { name: "S" }

@@ -24,6 +24,11 @@
 #       "iteration": {
 #         "mode": "none|auto",       # default: "none"
 #         "field_name": "Sprint"     # default: "Sprint"
+#       },
+#       "field_names": {             # optional: localized project field-name overrides
+#         "status": "ステータス",     #   each overrides the built-in EN<->JA alias for
+#         "priority": "優先度",       #   the canonical field. Empty/absent -> built-in
+#         "complexity": "複雑度"      #   aliases only (Status/Priority/Complexity).
 #       }
 #     },
 #     "options": {
@@ -160,6 +165,9 @@ eval "$(printf '%s\n' "$INPUT_JSON" | jq -r '
   @sh "COMPLEXITY_VALUE=\(.projects.complexity // "")",
   @sh "ITERATION_MODE=\(.projects.iteration.mode // "none")",
   @sh "ITERATION_FIELD_NAME=\(.projects.iteration.field_name // "Sprint")",
+  @sh "FIELD_NAME_STATUS=\(.projects.field_names.status // "")",
+  @sh "FIELD_NAME_PRIORITY=\(.projects.field_names.priority // "")",
+  @sh "FIELD_NAME_COMPLEXITY=\(.projects.field_names.complexity // "")",
   @sh "NON_BLOCKING=\(if .options.non_blocking_projects == false then false else true end)"
 ')"
 
@@ -348,43 +356,96 @@ query(\$owner: String!, \$repo: String!, \$projectNumber: Int!) {
   fi
 fi
 
-# Helper: find field ID and option ID from GQL result in a single jq call
-find_field_option() {
-  local field_name="$1"
-  local option_name="$2"
-
-  printf '%s\n' "$GQL_RESULT" | jq -r --arg fn "$field_name" --arg on "$option_name" '
-    .data.repository.projectV2.fields.nodes[] | select(.name == $fn) |
-    (.id // "") as $fid |
-    (if $fid == "" then ""
-     else ((.options // [])[] | select(.name == $on) | .id // "") as $oid | "\($fid)|\($oid)"
-     end)
-  '
+# Built-in English<->Japanese field-name aliases. Maps a canonical English field
+# name (Status/Priority/Complexity) to its built-in Japanese alias so that
+# localized Projects resolve with zero config. Extend this single table to add
+# more built-in aliases.
+field_name_alias() {
+  case "$1" in
+    Status) printf 'ステータス' ;;
+    Priority) printf '優先度' ;;
+    Complexity) printf '複雑度' ;;
+    *) printf '' ;;
+  esac
 }
 
-# Step 2.4: Set fields (reuses centralized FIELD_ERR_FILE)
+# Per-field override taken from the input JSON's projects.field_names (empty when
+# absent). Takes precedence over the built-in alias.
+field_name_override() {
+  case "$1" in
+    Status) printf '%s' "$FIELD_NAME_STATUS" ;;
+    Priority) printf '%s' "$FIELD_NAME_PRIORITY" ;;
+    Complexity) printf '%s' "$FIELD_NAME_COMPLEXITY" ;;
+    *) printf '' ;;
+  esac
+}
+
+# Look up a field id by exact name in the cached GraphQL result (empty if absent).
+field_id_by_name() {
+  printf '%s\n' "$GQL_RESULT" | jq -r --arg fn "$1" \
+    '[.data.repository.projectV2.fields.nodes[] | select(.name == $fn) | .id][0] // empty'
+}
+
+# Look up an option id within a (resolved) field name (empty if absent).
+option_id_by_name() {
+  printf '%s\n' "$GQL_RESULT" | jq -r --arg fn "$1" --arg on "$2" \
+    '[.data.repository.projectV2.fields.nodes[] | select(.name == $fn) | (.options // [])[] | select(.name == $on) | .id][0] // empty'
+}
+
+# Step 2.4: Set a single-select field. The canonical English field name is
+# resolved against candidate project field names in priority order:
+#   1. input-JSON override (projects.field_names.*)
+#   2. built-in Japanese alias
+#   3. canonical English name
+# This lets localized (e.g. Japanese-named) Projects work with zero config while
+# still allowing per-field overrides. Reuses centralized FIELD_ERR_FILE.
 set_field() {
-  local field_name="$1"
+  local canonical="$1"
   local field_value="$2"
 
   if [ -z "$field_value" ]; then
     return 0
   fi
 
-  local result
-  result=$(find_field_option "$field_name" "$field_value")
-  local field_id="${result%%|*}"
-  local option_id="${result##*|}"
+  # Build the ordered candidate field-name list (override > alias > canonical).
+  local candidates=()
+  local override alias_name
+  override=$(field_name_override "$canonical")
+  [ -n "$override" ] && candidates+=("$override")
+  alias_name=$(field_name_alias "$canonical")
+  [ -n "$alias_name" ] && candidates+=("$alias_name")
+  candidates+=("$canonical")
 
-  if [ -z "$field_id" ] || [ -z "$option_id" ]; then
-    add_warning_with_stderr "Field '$field_name' or option '$field_value' not found in project"
+  # Resolve the first candidate that exists as a field in the project.
+  local matched_name="" field_id="" candidate
+  for candidate in "${candidates[@]}"; do
+    field_id=$(field_id_by_name "$candidate")
+    if [ -n "$field_id" ]; then matched_name="$candidate"; break; fi
+  done
+
+  if [ -z "$field_id" ]; then
+    local tried=""
+    for candidate in "${candidates[@]}"; do
+      tried="${tried:+$tried, }$candidate"
+    done
+    add_warning_with_stderr "Field '$canonical' not found in project for Issue #$ISSUE_NUMBER (tried: $tried)"
+    PROJECT_REG="partial"
+    return 0
+  fi
+
+  # Field name resolved; resolve the option value within it. Reported distinctly
+  # from a field-name resolution failure (option localization is out of scope).
+  local option_id
+  option_id=$(option_id_by_name "$matched_name" "$field_value")
+  if [ -z "$option_id" ]; then
+    add_warning_with_stderr "Option '$field_value' not found in field '$matched_name' for Issue #$ISSUE_NUMBER"
     PROJECT_REG="partial"
     return 0
   fi
 
   # Use retry_with_backoff (3 attempts, exponential backoff) instead of an ad-hoc 1-retry loop.
   if ! retry_with_backoff 3 "$FIELD_ERR_FILE" gh project item-edit --project-id "$PROJECT_ID" --id "$ITEM_ID" --field-id "$field_id" --single-select-option-id "$option_id" >/dev/null; then
-    add_warning_with_stderr "Failed to set $field_name=$field_value for Issue #$ISSUE_NUMBER after 3 attempts: $(cat "$FIELD_ERR_FILE")"
+    add_warning_with_stderr "Failed to set $matched_name=$field_value for Issue #$ISSUE_NUMBER after 3 attempts: $(cat "$FIELD_ERR_FILE")"
     PROJECT_REG="partial"
   fi
 }

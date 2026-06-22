@@ -48,10 +48,11 @@
 #   "pif_normalize_fail"       - gh succeeds (default shapes); the failure is injected by the
 #                                jq shim in projects-items-fetch.test.sh (final `jq -s` exits 2)
 #
-# The projects-status-update.sh script uses a different GraphQL shape
-# (`data.repository.issue.projectItems`) than create-issue-with-projects.sh
-# (`data.{user|organization}.projectV2`), so this mock detects the query shape
-# via the `repository(owner:` token in the query string and branches accordingly.
+# Both create-issue-with-projects.sh and projects-status-update.sh root their
+# GraphQL queries at `repository(owner:, name:)`, but with different sub-shapes:
+# create uses `repository.projectV2(number:)` (-> `data.repository.projectV2`)
+# while status-update uses `repository.issue(number:).projectItems`. This mock
+# discriminates them via the `projectV2(number:` token and branches accordingly.
 set -euo pipefail
 
 SCENARIO="${MOCK_GH_SCENARIO:-success}"
@@ -176,11 +177,12 @@ ITEMJSON
   repo)
     case "$2" in
       view)
-        local_owner_type="User"
-        if [ "$SCENARIO" = "org_owner" ]; then
-          local_owner_type="Organization"
-        fi
-        json_data="{\"owner\":{\"login\":\"test-owner\",\"__typename\":\"${local_owner_type}\"}}"
+        # Real `gh repo view --json owner` returns the owner object as {id, login}
+        # only — there is NO __typename discriminator. The mock mirrors that exact
+        # shape (regression guard for the old owner-type bug, AC-3). The org_owner
+        # scenario no longer branches here; owner type is irrelevant to the new
+        # owner-type-independent repository(owner,name) path.
+        json_data="{\"owner\":{\"id\":\"O_kgM0test\",\"login\":\"test-owner\"}}"
         # Handle --jq flag: apply jq filter like real gh CLI
         jq_filter=""
         prev_arg=""
@@ -212,13 +214,15 @@ ITEMJSON
           exit 1
         fi
 
-        # Detect query shape: projects-status-update.sh queries `repository(owner:`
-        # while create-issue-with-projects.sh queries `user|organization(login:`.
+        # Detect query shape: both scripts query `repository(owner:`, so discriminate
+        # by sub-shape — create-issue-with-projects.sh uses `projectV2(number:` while
+        # projects-status-update.sh uses `issue(...).projectItems`.
         # gql_items_lookup_fail: fields query (containing
         # `fields(first: 20)`) succeeds with empty items, but the items lookup
         # retry query (containing `items(last: 20)` and NOT `fields(first: 20)`)
         # fails with exit 1.
         is_repository_query=false
+        is_projectv2_query=false
         is_mutation=false
         is_items_lookup_only=false
         is_items_pagination_query=false
@@ -227,6 +231,14 @@ ITEMJSON
           if [[ "$arg" == query=* ]]; then
             if [[ "$arg" == *"repository(owner:"* ]]; then
               is_repository_query=true
+            fi
+            # create-issue-with-projects.sh roots its project queries at
+            # repository(owner,name).projectV2(number:...); projects-status-update.sh
+            # instead queries repository(...).issue(...).projectItems. The projectV2
+            # token discriminates the two repository-rooted shapes so the create path
+            # is not misrouted to the projectItems (psu) branch below.
+            if [[ "$arg" == *"projectV2(number:"* ]]; then
+              is_projectv2_query=true
             fi
             if [[ "$arg" == *mutation* ]]; then
               is_mutation=true
@@ -293,6 +305,100 @@ ITEMJSON
           exit 0
         fi
 
+        # --- create-issue-with-projects.sh path (repository.projectV2 shape) ---
+        # Owner-type-independent: the SAME response is returned whether the owner is
+        # a User or an Organization (the org_owner scenario now succeeds, AC-4). Must
+        # be checked before the projectItems (psu) branch since both are rooted at
+        # repository(owner:...).
+        if [ "$is_projectv2_query" = true ]; then
+          ITEMS_NODES="[{\"id\":\"${MOCK_ITEM_ID}\",\"content\":{\"number\":${MOCK_ISSUE_NUMBER}}}]"
+          if [ "$SCENARIO" = "no_item_id" ] || [ "$SCENARIO" = "no_item_id_no_json" ] || [ "$SCENARIO" = "gql_items_lookup_fail" ]; then
+            ITEMS_NODES="[]"
+          fi
+
+          PROJECT_ID_VALUE="\"${MOCK_PROJECT_ID}\""
+          if [ "$SCENARIO" = "no_project_id" ]; then
+            PROJECT_ID_VALUE="null"
+          fi
+
+          # Iteration field (conditionally included based on scenario)
+          ITER_FIELD=""
+          MOCK_CURRENT_SPRINT_START=$(date +%Y-%m-01)
+          if [ "$SCENARIO" = "iteration_success" ] || [ "$SCENARIO" = "iteration_mutation_fail" ]; then
+            ITER_FIELD=',
+            {
+              "id": "FIELD_SPRINT",
+              "name": "Sprint",
+              "configuration": {
+                "iterations": [
+                  {"id": "ITER_PAST", "title": "Past Sprint", "startDate": "2020-01-01"},
+                  {"id": "ITER_CURRENT", "title": "Current Sprint", "startDate": "'"$MOCK_CURRENT_SPRINT_START"'"}
+                ]
+              }
+            }'
+          elif [ "$SCENARIO" = "no_current_iteration" ]; then
+            ITER_FIELD=',
+            {
+              "id": "FIELD_SPRINT",
+              "name": "Sprint",
+              "configuration": {
+                "iterations": [
+                  {"id": "ITER_FUTURE", "title": "Future Sprint", "startDate": "2099-01-01"}
+                ]
+              }
+            }'
+          fi
+
+          cat <<EOJSON
+{
+  "data": {
+    "repository": {
+      "projectV2": {
+        "id": ${PROJECT_ID_VALUE},
+        "items": {
+          "nodes": ${ITEMS_NODES}
+        },
+        "fields": {
+          "nodes": [
+            {
+              "id": "FIELD_STATUS",
+              "name": "Status",
+              "options": [
+                {"id": "OPT_TODO", "name": "Todo"},
+                {"id": "OPT_INPROGRESS", "name": "In Progress"},
+                {"id": "OPT_DONE", "name": "Done"}
+              ]
+            },
+            {
+              "id": "FIELD_PRIORITY",
+              "name": "Priority",
+              "options": [
+                {"id": "OPT_HIGH", "name": "High"},
+                {"id": "OPT_MEDIUM", "name": "Medium"},
+                {"id": "OPT_LOW", "name": "Low"}
+              ]
+            },
+            {
+              "id": "FIELD_COMPLEXITY",
+              "name": "Complexity",
+              "options": [
+                {"id": "OPT_XS", "name": "XS"},
+                {"id": "OPT_S", "name": "S"},
+                {"id": "OPT_M", "name": "M"},
+                {"id": "OPT_L", "name": "L"},
+                {"id": "OPT_XL", "name": "XL"}
+              ]
+            }${ITER_FIELD}
+          ]
+        }
+      }
+    }
+  }
+}
+EOJSON
+          exit 0
+        fi
+
         # --- projects-status-update.sh path ---
         if [ "$is_repository_query" = true ]; then
           # Determine scenario-dependent response shape.
@@ -343,99 +449,8 @@ ITEMJSON
           esac
         fi
 
-        # Determine GQL root based on owner type
-        GQL_ROOT="user"
-        if [ "$SCENARIO" = "org_owner" ]; then
-          GQL_ROOT="organization"
-        fi
-
-        ITEMS_NODES="[{\"id\":\"${MOCK_ITEM_ID}\",\"content\":{\"number\":${MOCK_ISSUE_NUMBER}}}]"
-        if [ "$SCENARIO" = "no_item_id" ] || [ "$SCENARIO" = "no_item_id_no_json" ] || [ "$SCENARIO" = "gql_items_lookup_fail" ]; then
-          ITEMS_NODES="[]"
-        fi
-
-        PROJECT_ID_VALUE="\"${MOCK_PROJECT_ID}\""
-        if [ "$SCENARIO" = "no_project_id" ]; then
-          PROJECT_ID_VALUE="null"
-        fi
-
-        # Iteration field (conditionally included based on scenario)
-        ITER_FIELD=""
-        MOCK_CURRENT_SPRINT_START=$(date +%Y-%m-01)
-        if [ "$SCENARIO" = "iteration_success" ] || [ "$SCENARIO" = "iteration_mutation_fail" ]; then
-          # iteration_mutation_fail も fields query では Sprint field + current iteration を返し、
-          # mutation 段階で初めて失敗させる
-          ITER_FIELD=',
-            {
-              "id": "FIELD_SPRINT",
-              "name": "Sprint",
-              "configuration": {
-                "iterations": [
-                  {"id": "ITER_PAST", "title": "Past Sprint", "startDate": "2020-01-01"},
-                  {"id": "ITER_CURRENT", "title": "Current Sprint", "startDate": "'"$MOCK_CURRENT_SPRINT_START"'"}
-                ]
-              }
-            }'
-        elif [ "$SCENARIO" = "no_current_iteration" ]; then
-          ITER_FIELD=',
-            {
-              "id": "FIELD_SPRINT",
-              "name": "Sprint",
-              "configuration": {
-                "iterations": [
-                  {"id": "ITER_FUTURE", "title": "Future Sprint", "startDate": "2099-01-01"}
-                ]
-              }
-            }'
-        fi
-
-        cat <<EOJSON
-{
-  "data": {
-    "${GQL_ROOT}": {
-      "projectV2": {
-        "id": ${PROJECT_ID_VALUE},
-        "items": {
-          "nodes": ${ITEMS_NODES}
-        },
-        "fields": {
-          "nodes": [
-            {
-              "id": "FIELD_STATUS",
-              "name": "Status",
-              "options": [
-                {"id": "OPT_TODO", "name": "Todo"},
-                {"id": "OPT_INPROGRESS", "name": "In Progress"},
-                {"id": "OPT_DONE", "name": "Done"}
-              ]
-            },
-            {
-              "id": "FIELD_PRIORITY",
-              "name": "Priority",
-              "options": [
-                {"id": "OPT_HIGH", "name": "High"},
-                {"id": "OPT_MEDIUM", "name": "Medium"},
-                {"id": "OPT_LOW", "name": "Low"}
-              ]
-            },
-            {
-              "id": "FIELD_COMPLEXITY",
-              "name": "Complexity",
-              "options": [
-                {"id": "OPT_XS", "name": "XS"},
-                {"id": "OPT_S", "name": "S"},
-                {"id": "OPT_M", "name": "M"},
-                {"id": "OPT_L", "name": "L"},
-                {"id": "OPT_XL", "name": "XL"}
-              ]
-            }${ITER_FIELD}
-          ]
-        }
-      }
-    }
-  }
-}
-EOJSON
+        # Unrecognized GraphQL query shape: return empty (no create/psu/pif/mutation
+        # token matched). Real callers always match one of the branches above.
         ;;
       *)
         echo "mock: unhandled gh api subcommand: $2" >&2

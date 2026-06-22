@@ -57,6 +57,9 @@ args_json=$(jq -n \
  --arg status "Todo" \
  --arg priority "Medium" \
  --arg complexity "S" \
+ --arg field_name_status "" \
+ --arg field_name_priority "" \
+ --arg field_name_complexity "" \
  --arg iter_mode "none" \
  --arg source "pr_review" \
  '{
@@ -68,6 +71,7 @@ args_json=$(jq -n \
  status: $status,
  priority: $priority,
  complexity: $complexity,
+ field_names: { status: $field_name_status, priority: $field_name_priority, complexity: $field_name_complexity },
  iteration: { mode: $iter_mode }
  },
  options: { source: $source, non_blocking_projects: true }
@@ -115,6 +119,7 @@ projects:
  iteration:
  mode: "none|auto" # Default: "none". "auto" assigns to current iteration
  field_name: "Sprint" # Default: "Sprint"
+ field_names: { status, priority, complexity } # Optional: each overrides the built-in EN<->JA alias for that canonical field. Empty/absent -> aliases only
 options:
  source: string # Caller identifier (pr_review|pr_create|cleanup|interactive|xl_decomposition|fingerprint_split|quality_signal_3_split|quality_signal_4_split)
                 # Note: 以下の値は legacy 互換のため enum に含めない (caller 消失済、`grep -rn 'source: "<value>"' plugins/rite/` で 0 件確認):

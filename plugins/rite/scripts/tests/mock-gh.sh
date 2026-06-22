@@ -24,6 +24,11 @@
 #                              but the iteration assignment mutation fails
 #   "gql_items_lookup_fail"  - GraphQL fields query OK (items.nodes=[]),
 #                              but the GQL_ITEMS_QUERY (items lookup retry) fails
+#   "jp_field_names"         - Project fields use Japanese names (ステータス/優先度/複雑度);
+#                              resolved by the helper's built-in aliases (zero config)
+#   "custom_field_name"      - Priority field named "重要度" (matches an input
+#                              field_names.priority override, not the 優先度 alias)
+#   "missing_priority_field" - Project has no Priority field under any candidate name
 #
 # Scenarios (projects-status-update.sh):
 #   "psu_success"              - Issue in project, Status updated
@@ -349,6 +354,46 @@ ITEMJSON
             }'
           fi
 
+          # Field names default to canonical English. Localized / custom / missing-field
+          # scenarios (Issue #1610) override them so the helper's alias + input-override
+          # resolution is exercised. Option *values* stay English (option localization
+          # is out of scope for #1610).
+          STATUS_FIELD_NAME="Status"
+          PRIORITY_FIELD_NAME="Priority"
+          COMPLEXITY_FIELD_NAME="Complexity"
+          INCLUDE_PRIORITY_FIELD=true
+          case "$SCENARIO" in
+            jp_field_names)
+              # Project uses Japanese field names → resolved by the built-in aliases (zero config).
+              STATUS_FIELD_NAME="ステータス"
+              PRIORITY_FIELD_NAME="優先度"
+              COMPLEXITY_FIELD_NAME="複雑度"
+              ;;
+            custom_field_name)
+              # Priority field is named "重要度" — matches an input field_names.priority
+              # override but NOT the built-in 優先度 alias (exercises override > alias).
+              PRIORITY_FIELD_NAME="重要度"
+              ;;
+            missing_priority_field)
+              # No Priority field under any candidate name (Priority / 優先度 / override).
+              INCLUDE_PRIORITY_FIELD=false
+              ;;
+          esac
+
+          PRIORITY_FIELD_NODE=""
+          if [ "$INCLUDE_PRIORITY_FIELD" = true ]; then
+            PRIORITY_FIELD_NODE=',
+            {
+              "id": "FIELD_PRIORITY",
+              "name": "'"$PRIORITY_FIELD_NAME"'",
+              "options": [
+                {"id": "OPT_HIGH", "name": "High"},
+                {"id": "OPT_MEDIUM", "name": "Medium"},
+                {"id": "OPT_LOW", "name": "Low"}
+              ]
+            }'
+          fi
+
           cat <<EOJSON
 {
   "data": {
@@ -362,25 +407,16 @@ ITEMJSON
           "nodes": [
             {
               "id": "FIELD_STATUS",
-              "name": "Status",
+              "name": "${STATUS_FIELD_NAME}",
               "options": [
                 {"id": "OPT_TODO", "name": "Todo"},
                 {"id": "OPT_INPROGRESS", "name": "In Progress"},
                 {"id": "OPT_DONE", "name": "Done"}
               ]
-            },
-            {
-              "id": "FIELD_PRIORITY",
-              "name": "Priority",
-              "options": [
-                {"id": "OPT_HIGH", "name": "High"},
-                {"id": "OPT_MEDIUM", "name": "Medium"},
-                {"id": "OPT_LOW", "name": "Low"}
-              ]
-            },
+            }${PRIORITY_FIELD_NODE},
             {
               "id": "FIELD_COMPLEXITY",
-              "name": "Complexity",
+              "name": "${COMPLEXITY_FIELD_NAME}",
               "options": [
                 {"id": "OPT_XS", "name": "XS"},
                 {"id": "OPT_S", "name": "S"},

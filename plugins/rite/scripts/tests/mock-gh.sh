@@ -214,8 +214,9 @@ ITEMJSON
           exit 1
         fi
 
-        # Detect query shape: projects-status-update.sh queries `repository(owner:`
-        # while create-issue-with-projects.sh queries `user|organization(login:`.
+        # Detect query shape: both scripts query `repository(owner:`, so discriminate
+        # by sub-shape — create-issue-with-projects.sh uses `projectV2(number:` while
+        # projects-status-update.sh uses `issue(...).projectItems`.
         # gql_items_lookup_fail: fields query (containing
         # `fields(first: 20)`) succeeds with empty items, but the items lookup
         # retry query (containing `items(last: 20)` and NOT `fields(first: 20)`)

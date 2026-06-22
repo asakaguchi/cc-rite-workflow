@@ -245,11 +245,14 @@ ITEM_ID=$(printf '%s\n' "$ITEM_ADD_RESULT" | jq -r '.id // empty' 2>/dev/null)
 # that the real gh CLI does not return on the owner object; that branch therefore
 # always fell back to the user-rooted query and failed for Organization-owned
 # projects, and it inspected the current repo rather than the project owner.
-# Mirrors projects-status-update.sh. REPO_NAME is derived from ISSUE_URL so the
-# helper's input JSON schema is unchanged.
+# Mirrors projects-status-update.sh's GraphQL *shape*. REPO_NAME is derived from
+# ISSUE_URL so the helper's input JSON schema is unchanged; the query owner stays
+# $OWNER (the project owner). This assumes the issue's repo and the project share
+# one owner (project owner == repo owner), which holds for rite's single-owner
+# config; the URL's owner segment is intentionally discarded.
 REPO_NAME=$(printf '%s\n' "$ISSUE_URL" | sed -nE 's#^https?://[^/]+/[^/]+/([^/]+)/issues/[0-9]+.*$#\1#p')
 if [ -z "$REPO_NAME" ]; then
-  add_warning_with_stderr "Could not resolve repository name from Issue URL: $ISSUE_URL"
+  add_warning_with_stderr "Could not resolve repository name for Issue #$ISSUE_NUMBER from URL: $ISSUE_URL"
   output_result "$ISSUE_URL" "$ISSUE_NUMBER" "" "" "partial"
   exit 0
 fi

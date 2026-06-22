@@ -307,7 +307,7 @@ fi
 
 ### 4 base ブランチの更新（安全化）
 
-main checkout の不可侵規約（[git-worktree-patterns.md](../../references/git-worktree-patterns.md#multi-checkout-不可侵-inviolability-convention)）に従い、**main checkout が `{base_branch}` 上にある場合のみ** base を更新する。別 branch 上では切り替えず WARNING + skip する:
+main checkout の不可侵規約（[git-worktree-patterns.md](../../references/git-worktree-patterns.md#main-checkout-不可侵-inviolability-convention)）に従い、**main checkout が `{base_branch}` 上にある場合のみ** base を更新する。別 branch 上では切り替えず WARNING + skip する:
 
 ```bash
 cur_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || cur_branch=""

@@ -8,87 +8,79 @@ A collection of common GraphQL query patterns used in rite workflow.
 
 ## Table of Contents
 
-1. [Owner Type Detection](#owner-type-detection)
-2. [Project ID Retrieval](#project-id-retrieval)
-3. [Iteration Field Detection](#iteration-field-detection)
-4. [Project Item Retrieval](#project-item-retrieval)
-5. [Iteration Assignment](#iteration-assignment)
-6. [PR Creation Guards](#pr-creation-guards)
-7. [Safe GraphQL Variable Encoding](#safe-graphql-variable-encoding)
-8. [Error Handling](#error-handling)
-9. [addSubIssue Helper](#addsubissue-helper)
-10. [Related Documents](#related-documents)
+1. [Owner-Agnostic Project Resolution](#owner-agnostic-project-resolution)
+2. [Iteration Field Detection](#iteration-field-detection)
+3. [Project Item Retrieval](#project-item-retrieval)
+4. [Iteration Assignment](#iteration-assignment)
+5. [PR Creation Guards](#pr-creation-guards)
+6. [Safe GraphQL Variable Encoding](#safe-graphql-variable-encoding)
+7. [Error Handling](#error-handling)
+8. [addSubIssue Helper](#addsubissue-helper)
+9. [Related Documents](#related-documents)
 
 ---
 
-## Owner Type Detection
+## Owner-Agnostic Project Resolution
 
-The GraphQL API requires different root queries for `user` and `organization`.
+GitHub Projects (V2) is resolved through `repository(owner, name).projectV2(number)`, which works transparently for both **User-owned** and **Organization-owned** projects. No owner-type branching is required.
 
-### Detection Logic
+> **⚠️ Deprecated — do not reintroduce owner-type detection**
+>
+> Earlier revisions detected the owner type (`gh api users/{owner} --jq '.type'`) and switched between `user(login:)` and `organization(login:)` root queries. This branch was removed in #1612 (resolving #1609) because:
+>
+> - The real `gh` CLI does not return a usable type discriminator on the owner object, so the branch always fell back to the user-rooted query and **failed for Organization-owned projects**.
+> - It inspected the current repository's owner rather than the project owner.
+>
+> Always root Project queries at `repository(owner, name)` instead. Reference implementations: `scripts/projects-status-update.sh` and `scripts/create-issue-with-projects.sh`.
 
-```bash
-# Owner type detection (user or organization)
-# Note: On API error, assume Organization (most public repos are organization-owned)
-OWNER_TYPE=$(gh api "users/{owner}" --jq '.type' 2>/dev/null || echo "Organization")
-# → "User" or "Organization"
-```
+### Project Node ID Retrieval
 
-### Usage Example
-
-> **Note**: The examples below use `-f query='...'` for brevity.
-> Since these queries contain 「!」 (e.g., 「String!」, 「Int!」), prefer the heredoc pattern from [Safe GraphQL Variable Encoding](#safe-graphql-variable-encoding) in production to avoid history expansion issues.
-
-```bash
-# Switch query based on detection result
-if [ "$OWNER_TYPE" = "User" ]; then
- gh api graphql -f query='
- query($owner: String!, $number: Int!) {
- user(login: $owner) {
- projectV2(number: $number) { id }
- }
- }' -f owner="$OWNER" -F number="$PROJECT_NUMBER"
-else
- gh api graphql -f query='
- query($owner: String!, $number: Int!) {
- organization(login: $owner) {
- projectV2(number: $number) { id }
- }
- }' -f owner="$OWNER" -F number="$PROJECT_NUMBER"
-fi
-```
-
----
-
-## Project ID Retrieval
-
-Retrieve Node ID from Project number.
-
-### Query (User)
+Retrieve a Project's Node ID from its number. The same query shape applies whether the project owner is a User or an Organization:
 
 ```graphql
-query($owner: String!, $number: Int!) {
- user(login: $owner) {
- projectV2(number: $number) {
- id
- title
- }
- }
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    projectV2(number: $number) {
+      id
+      title
+    }
+  }
 }
 ```
 
-### Query (Organization)
+> **Note**: The example uses `-f query='...'` for brevity. Since these queries contain 「!」 (e.g., 「String!」, 「Int!」), prefer the heredoc pattern from [Safe GraphQL Variable Encoding](#safe-graphql-variable-encoding) in production to avoid history expansion issues.
+
+```bash
+# owner = project owner, repo = repository hosting the issues.
+# repository(owner, name) resolves for both User- and Organization-owned projects,
+# so no owner-type detection is needed.
+gh api graphql -f query='...' -f owner="$OWNER" -f repo="$REPO" -F number="$PROJECT_NUMBER"
+```
+
+### Issue's Project Item (projectItems)
+
+To locate an Issue's Project item (and its parent project) — for example before updating a field — query `issue(number).projectItems` under the same `repository(owner, name)` root:
 
 ```graphql
-query($owner: String!, $number: Int!) {
- organization(login: $owner) {
- projectV2(number: $number) {
- id
- title
- }
- }
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      url
+      projectItems(first: 10) {
+        nodes {
+          id
+          project {
+            id
+            number
+          }
+        }
+      }
+    }
+  }
 }
 ```
+
+This is the shape used by `scripts/projects-status-update.sh` to find the Issue's item before editing its Status field.
 
 ---
 

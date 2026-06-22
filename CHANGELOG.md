@@ -27,6 +27,12 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-06-22
+
+### Fixed
+
+- **`/rite:pr:cleanup` and `/rite:pr:open` base-branch updates now use `git fetch` + `git merge --ff-only` instead of `git pull --ff-only`** — under a consumer environment with `pull.rebase=true` and a dirty working tree, `git pull --ff-only` aborted early with `cannot pull with rebase: You have unstaged changes` because `git pull` enters its rebase pre-check (which requires a clean working tree) even when `--ff-only` is set. Splitting the update into `git fetch origin {base}` + `git merge --ff-only origin/{base}` bypasses the rebase path entirely, so a fast-forwardable base branch updates reliably regardless of the `pull.rebase` setting or working-tree state. Applies to the `multi_session` and legacy paths of `cleanup.md`, the branch-creation chain of `open.md` (with the `git switch -c` `&&` chain preserved), and the matching descriptions in `getting-started.md` / `docs/SPEC.md`. (#1602)
+
 ## [0.6.4] - 2026-06-20
 
 ### Fixed
@@ -576,6 +582,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.6.5]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.1...v0.6.2

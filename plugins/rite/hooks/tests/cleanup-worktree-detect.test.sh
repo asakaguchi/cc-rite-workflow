@@ -39,6 +39,8 @@ assert "TC-1 derives cur_top into worktree=" "$WT" \
 echo "=== TC-2: flow_wt recorded + cwd matches → in_worktree ==="
 assert "TC-2 state" "in_worktree" \
   "$(detect_state --ms-enabled true --flow-wt "$WT" --cur-top "$WT" --issue 1622)"
+assert "TC-2 keeps recorded worktree=" "$WT" \
+  "$(detect_wt --ms-enabled true --flow-wt "$WT" --cur-top "$WT" --issue 1622)"
 
 # --- TC-3 (AC-4, T-04a): recorded worktree, cwd is main → in_main ---
 echo "=== TC-3: flow_wt recorded + cwd is main checkout → in_main ==="
@@ -76,5 +78,32 @@ assert "TC-8 state" "in_worktree_unrecorded" \
 echo "=== TC-9: parent leaf=worktrees but dir is not issue-{N} → none ==="
 assert "TC-9 state" "none" \
   "$(detect_state --ms-enabled true --flow-wt "" --cur-top "/repo/.rite/worktrees/scratch" --issue 1622)"
+
+# --- TC-10 (AC-6 regression): issue-number prefix collision must NOT match ---
+# issue-12 is NOT this session's worktree when the target issue is 1; the full-tail
+# match (`.rite/worktrees/issue-1`) must not prefix-match `.../issue-12`.
+echo "=== TC-10: cur_top is issue-12 but target is issue-1 → none (no prefix match) ==="
+assert "TC-10 state (issue-1 vs issue-12)" "none" \
+  "$(detect_state --ms-enabled true --flow-wt "" --cur-top "/repo/.rite/worktrees/issue-12" --issue 1)"
+assert "TC-10 state (issue-12 self matches)" "in_worktree_unrecorded" \
+  "$(detect_state --ms-enabled true --flow-wt "" --cur-top "/repo/.rite/worktrees/issue-12" --issue 12)"
+
+# --- TC-11 (boundary): absolute worktree_base matches by exact tail equality ---
+echo "=== TC-11: absolute worktree_base → derives in_worktree_unrecorded ==="
+assert "TC-11 state (abs base)" "in_worktree_unrecorded" \
+  "$(detect_state --ms-enabled true --flow-wt "" --cur-top "/abs/wt/issue-1622" --issue 1622 --worktree-base "/abs/wt")"
+
+# --- TC-12 (F3 regression): unrelated parent sharing only the base leaf must NOT match ---
+# `/repo/UNRELATED/worktrees/issue-1622` shares the leaf `worktrees` with base
+# `expected/worktrees` but the full tail `expected/worktrees/issue-1622` does not
+# match — the helper matches the configured tail, not just the leaf.
+echo "=== TC-12: unrelated parent with matching leaf only → none ==="
+assert "TC-12 state (leaf-only false-positive rejected)" "none" \
+  "$(detect_state --ms-enabled true --flow-wt "" --cur-top "/repo/UNRELATED/worktrees/issue-1622" --issue 1622 --worktree-base "expected/worktrees")"
+
+# --- TC-13 (boundary): leading ./ and trailing / in worktree_base are normalized ---
+echo "=== TC-13: worktree_base with ./ prefix and trailing / is normalized ==="
+assert "TC-13 state (normalized base)" "in_worktree_unrecorded" \
+  "$(detect_state --ms-enabled true --flow-wt "" --cur-top "/repo/.rite/worktrees/issue-1622" --issue 1622 --worktree-base "./.rite/worktrees/")"
 
 print_summary "cleanup-worktree-detect.test.sh"

@@ -61,7 +61,9 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$worktree_base" ] || worktree_base=".rite/worktrees"
-wt_leaf=$(basename "$worktree_base")
+# Normalize so the suffix compare is exact: strip a leading `./` and any trailing `/`.
+wt_base_norm=${worktree_base#./}
+wt_base_norm=${wt_base_norm%/}
 
 state="none"
 worktree="$flow_wt"
@@ -69,13 +71,21 @@ worktree="$flow_wt"
 if [ "$ms_enabled" = "true" ]; then
   if [ -n "$flow_wt" ] && [ "$flow_wt" = "$cur_top" ]; then
     state="in_worktree"
-  elif [ -z "$flow_wt" ] && [ -n "$cur_top" ] && [ -n "$issue" ] \
-       && [ "$(basename "$cur_top")" = "issue-${issue}" ] \
-       && [ "$(basename "$(dirname "$cur_top")")" = "$wt_leaf" ]; then
+  elif [ -z "$flow_wt" ] && [ -n "$cur_top" ] && [ -n "$issue" ]; then
     # Physical derivation (#1622): cwd IS this issue's rite session worktree even
-    # though flow-state never recorded it. Route as in_worktree, flagged unrecorded.
-    state="in_worktree_unrecorded"
-    worktree="$cur_top"
+    # though flow-state never recorded it. Match the FULL configured tail
+    # `<worktree_base>/issue-<issue>`, NOT just the leaf — so an unrelated parent
+    # dir that merely shares the base leaf (e.g. `/x/UNRELATED/worktrees/issue-N`)
+    # cannot false-match, and a sibling issue (`issue-12` vs `issue-1`) cannot
+    # prefix-match. A relative base matches as a suffix of the absolute cur_top; an
+    # absolute base matches by exact equality. Route as in_worktree, flagged unrecorded.
+    expected_tail="${wt_base_norm}/issue-${issue}"
+    case "$cur_top" in
+      "$expected_tail"|*/"$expected_tail")
+        state="in_worktree_unrecorded"
+        worktree="$cur_top"
+        ;;
+    esac
   elif [ -n "$flow_wt" ]; then
     state="in_main"
   fi

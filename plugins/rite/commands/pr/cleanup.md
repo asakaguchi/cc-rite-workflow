@@ -346,11 +346,12 @@ fi
 > **順序**: branch 削除は **worktree 削除後にのみ成功する**（Git 制約: worktree で checkout 中の branch は削除不可）。multi_session 時は必ずステップ 4-W → 本ステップの順で実行する。
 
 ```bash
-# worktree 削除が遅延された場合（ステップ 4-W が WORKTREE_REMOVE_SKIPPED_LIVE_CWD /
-# WORKTREE_REMOVE_FAILED を残した、または in_worktree_unrecorded で自セッションが立つ
-# worktree を消せなかった）、branch は worktree で checkout 中のため削除できない。その場合は
-# 強制削除も無意味なので skip し、残置を marker で surface して遅延 reap / 手動回収に委ねる（#1622）。
-if del_err=$(git branch -d {branch_name} 2>&1); then
+# worktree 削除が遅延/失敗した場合（ステップ 4-W が WORKTREE_REMOVE_SKIPPED_LIVE_CWD /
+# WORKTREE_REMOVE_FAILED を残した場合）、branch は worktree で checkout 中のため削除できない。
+# その場合は強制削除も無意味なので skip し、残置を marker で surface して遅延 reap / 手動回収に
+# 委ねる（#1622）。git 診断メッセージは locale 翻訳で揺れるため LC_ALL=C で固定して substring
+# マッチを安定させる（repo 既存の wiki-lint-*.sh と同規約）。
+if del_err=$(LC_ALL=C git branch -d {branch_name} 2>&1); then
   echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}"
 else
   case "$del_err" in
@@ -367,7 +368,7 @@ fi
 git ls-remote --heads origin {branch_name} && git push origin --delete {branch_name}
 ```
 
-`BRANCH_DELETE_UNMERGED=1`（未マージ変更）のときは「強制削除 (`-D`) / スキップ」を確認する。`BRANCH_DELETE_DEFERRED=1`（worktree checkout 中）のときは**強制削除しない**（worktree 削除後に回収。ステップ 12 で残置を報告）。リモート削除は GitHub auto-delete で既削除のエラーは無視。
+`BRANCH_DELETE_UNMERGED=1`（未マージ変更）のときは「強制削除 (`-D`) / スキップ」を確認する。**強制削除を選んだ場合**は `LC_ALL=C git branch -D {branch_name} && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=force"` を実行し、削除完了を marker で示す（ステップ 12 が `x` に分岐する）。スキップ時は marker を追加しない（残置のまま）。`BRANCH_DELETE_DEFERRED=1`（worktree checkout 中）のときは**強制削除しない**（worktree 削除後に回収。ステップ 12 で残置を報告）。リモート削除は GitHub auto-delete で既削除のエラーは無視。
 
 ---
 
@@ -570,8 +571,10 @@ Status: {projects_status_result}
     ```
     ℹ️ ローカルブランチ {branch_name} は worktree で checkout 中のため残置しました（worktree 削除の遅延に伴う）。worktree 削除後に手動削除: git branch -D {branch_name}
     ```
-  - `BRANCH_DELETE_FAILED=1` または未解決の `BRANCH_DELETE_UNMERGED=1` のとき: ` ` + 「ローカルブランチ {branch_name} の削除に失敗/保留。`git branch -D {branch_name}` で手動削除」を付記
-  - `BRANCH_DELETED=1` のとき、または上記いずれの `[CONTEXT]` 行も無いとき: `x`
+  - `BRANCH_DELETED=1` のとき（通常削除、または `BRANCH_DELETE_UNMERGED` をユーザーが強制削除 `-D` で解決した場合に emit される。**`BRANCH_DELETE_UNMERGED=1` より先に評価する**）: `x`
+  - `BRANCH_DELETE_FAILED=1` のとき: ` ` + 「ローカルブランチ {branch_name} の削除に失敗。`git branch -D {branch_name}` で手動削除（worktree で checkout 中なら worktree 削除後）」を付記
+  - `BRANCH_DELETE_UNMERGED=1` のとき（後続に `BRANCH_DELETED=1` が無い = ユーザーが skip 選択）: ` ` + 「ローカルブランチ {branch_name} は未マージのため保留。`git branch -D {branch_name}` で手動削除」を付記
+  - いずれの `[CONTEXT]` 行も無いとき: `x`
 - `{projects_status_result}`: `projects_status_updated=true` なら `Done`、false なら `⚠️ 更新失敗（手動確認が必要）`
 - `{review_cleanup_check}`: `REVIEW_CLEANUP_PARTIAL_FAILURE=1` なら ` ` + 警告付記、なければ `x`
 - `{projects_check}`: `projects_status_updated=true` なら `x`、false なら ` ` + 「GitHub Projects 画面で Issue #{issue_number} の Status を Done に変更」を付記

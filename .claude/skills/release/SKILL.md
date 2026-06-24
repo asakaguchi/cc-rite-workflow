@@ -62,10 +62,14 @@ gh project item-edit --project-id "$PROJECT_ID" --id "$ITEM_ID" \
 
 ## Phase 1: リリース情報の確認
 
-> **タグ同期（最新タグ判定の前に必須）**: リリースタグは Phase 3.3 で `--target main`（develop→main マージコミット）に付与されるため、develop からは到達不可能。`git describe --tags --abbrev=0` は HEAD から到達可能なタグしか返さず develop 上では古いタグを拾うため、最新タグの判定には使わない。最新タグは到達可能性に依存しないバージョン順（`git tag --sort=-v:refname`）で判定する。判定の前にリモートのタグをローカルへ同期しておく（ネットワーク不通でもリリースをブロックしない）:
+> **タグ同期（最新タグ判定の前に必須）**: リリースタグは Phase 3.3 で `--target main`（develop→main マージコミット）に付与されるため、develop からは到達不可能。`git describe --tags --abbrev=0` は HEAD から到達可能なタグしか返さず develop 上では古いタグを拾うため、最新タグの判定には使わない。最新タグは到達可能性に依存しないバージョン順（`git tag --sort=-v:refname`）で判定する。判定の前にリモートのタグをローカルへ同期しておく（ネットワーク不通でもリリースをブロックしない）。`--force` はリモートの正規リリースタグを真実の源とするため意図的に付与する（ローカル分岐タグが残ると最新タグ判定を誤るため。リリース運用でローカル専用のリリース形式タグを持つ現実的シナリオは無く blast radius は限定的）。fetch 失敗は silent にせず一言ログを出して続行する:
 >
 > ```bash
-> git fetch --tags --force origin >/dev/null 2>&1 || true
+> # --force でリモートの正規タグを優先（ローカル分岐タグによる最新タグ誤判定を防ぐ意図的選択）。
+> # 失敗 (ネットワーク不通等) は非ブロッキングだが silent にせずログ表示する。
+> if ! git fetch --tags --force origin >/dev/null 2>&1; then
+>   echo "ℹ️ リモートのタグ同期に失敗しました（ネットワーク不通の可能性）。ローカルのタグで続行します。"
+> fi
 > ```
 
 ### 1.1 現在のバージョン確認

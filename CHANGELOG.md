@@ -27,6 +27,19 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-06-24
+
+### Fixed
+
+- **GitHub Projects registration no longer performs owner-type detection, so Organization-owned Projects are supported** — the previous owner-type probe failed for Projects owned by an Organization; removing it lets both user-owned and organization-owned Projects register. (#1612)
+- **GitHub Projects field names resolve via built-in English/Japanese aliases plus optional config overrides, supporting Japanese-named Projects** — field lookups (`Status`/`ステータス`, etc.) now succeed on Projects whose fields use Japanese names without extra configuration. (#1614)
+- **PR cleanup worktree detection is anchored to the physical cwd**, eliminating leftover worktrees when a worktree was not recorded in flow state. (#1623)
+- **Fixed the `cleanup.md` anchor link to point to `main-checkout`.** (#1611)
+
+### Changed
+
+- **Updated the graphql-helpers owner-type documentation to a `repository()`-independent path**, aligning the docs with the registration logic that no longer depends on `repository()`. (#1615)
+
 ## [0.6.5] - 2026-06-22
 
 ### Fixed
@@ -582,6 +595,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.6.6]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.2...v0.6.3

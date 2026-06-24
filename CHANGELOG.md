@@ -27,6 +27,16 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-06-24
+
+### Fixed
+
+- **Parent-Issue detection in `cleanup.md` no longer misidentifies the closing Issue itself or an unrelated Issue as the parent** — the Tasklist fallback now fetches multiple candidates, excludes self-matches, and re-validates each candidate's body for an actual `- [ ] #N` / `- [x] #N` tasklist line instead of adopting the first GitHub code-search hit. (#1637)
+- **Parent-Issue detection via tasklist search in `projects-integration.md` and `close.md` no longer misidentifies self or unrelated Issues as the parent** — the search retrieves multiple candidates, excludes self-matches, and validates candidate bodies before adopting a parent. (#1634)
+- **`/rite:pr:open` now surfaces the parent-Issue GitHub Projects status update in `open.md`**, so starting work on a Sub-Issue transitions the parent Issue's status from Todo to In Progress instead of leaving it at Todo. (#1630)
+- **Resolved the contradictory standalone parent-not-detected handling in `projects-integration.md`** — the spec now consistently emits the `[DEBUG] parent not detected` log before skipping, matching the rule that silent skips are prohibited. (#1636)
+- **Unified the standalone parent-not-detected DEBUG wording to `methods tried:` across `close.md`, `projects-integration.md`, and `open.md`**, so all three sites emit verbatim-identical diagnostics. (#1635)
+
 ## [0.6.6] - 2026-06-24
 
 ### Fixed
@@ -595,6 +605,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.6.7]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.6...v0.6.7
 [0.6.6]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.3...v0.6.4

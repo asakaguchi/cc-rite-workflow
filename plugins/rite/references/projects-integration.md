@@ -165,12 +165,25 @@ If `parent` is not null, extract `parent.number` as `{parent_issue_number}` and 
 If Methods 1 and 2 both failed:
 
 ```bash
-gh issue list --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number,title,state --limit 5
+# GitHub code search は `[`/`]` を無視する緩いマッチのため、複数候補を取得して検証する
+candidates=$(gh issue list --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number --limit 10 --jq '.[].number')
+parent_number=""
+for cand in $candidates; do
+  # 自己マッチ除外: standalone Issue が自分自身を親と誤検出するのを防ぐ（AC-1）
+  [ "$cand" = "{issue_number}" ] && continue
+  # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（緩いマッチで拾った無関係 Issue を排除）
+  cand_body=$(gh issue view "$cand" --json body --jq '.body')
+  if grep -qE "^[[:space:]]*-[[:space:]]\[[ xX]\][[:space:]]*#{issue_number}([^0-9]|$)" <<< "$cand_body"; then
+    parent_number="$cand"
+    break
+  fi
+done
+echo "method3_parent=${parent_number:-none}"
 ```
 
-**Note**: `--state open` is intentional — closed parent Issues do not need Status updates. The search matches both unchecked (`- [ ]`) and checked (`- [x]`) tasklist items to ensure checkbox state independence (consistent with [epic-detection.md](./epic-detection.md)). GitHub code search with `[`/`]` characters is known to be unreliable, which is why this method is the last resort.
+**Note**: `--state open` is intentional — closed parent Issues do not need Status updates. The search matches both unchecked (`- [ ]`) and checked (`- [x]`) tasklist items to ensure checkbox state independence (consistent with [epic-detection.md](./epic-detection.md)). GitHub code search with `[`/`]` characters is known to be unreliable — it ignores the bracket literals and returns nearly every Issue — so Method 3 must **not** adopt a hit blindly. The self-match exclusion (`cand != {issue_number}`) plus the body re-validation (the candidate's body must actually contain the `- [ ] #{issue_number}` / `- [x] #{issue_number}` tasklist line) guard against the false positives this unreliability causes; without the body check, self-exclusion alone would simply promote the next unrelated Issue in the loose-match result set.
 
-If results are non-empty, use the first result's `number` as `{parent_issue_number}` and proceed to 2.4.7.2.
+If `parent_number` is non-empty, extract it as `{parent_issue_number}` and proceed to 2.4.7.2.
 
 **When all three methods failed (no parent found)**: This is the normal path for standalone Issues (AC-4). Emit an explicit **debug log** (not a warning) so that the skip is visible in execution traces — silent skips are prohibited by the MUST requirement "同期失敗時は silent skip せず、明示的にログまたは warning を出力する" and the preceding incidents which all stemmed from silent skips in parent-child sync:
 

@@ -389,7 +389,19 @@ echo "method2_parent=${parent_number:-none}"
 **Method 3: Tasklist search（last resort）** — 両 method が失敗した場合。GitHub code search の `[`/`]` は不安定なので最後の手段。`--state all`（closing Issue の親が既に closed の可能性）:
 
 ```bash
-parent_number=$(gh issue list --state all --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number --limit 1 --jq '.[0].number // empty')
+# GitHub code search は `[`/`]` を無視する緩いマッチのため、複数候補を取得して検証する
+candidates=$(gh issue list --state all --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number --limit 10 --jq '.[].number')
+parent_number=""
+for cand in $candidates; do
+  # 自己マッチ除外: standalone Issue が自分自身を親と誤検出するのを防ぐ（AC-1）
+  [ "$cand" = "{issue_number}" ] && continue
+  # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（緩いマッチで拾った無関係 Issue を排除）
+  cand_body=$(gh issue view "$cand" --json body --jq '.body')
+  if grep -qE "^[[:space:]]*-[[:space:]]\[[ xX]\][[:space:]]*#{issue_number}([^0-9]|$)" <<< "$cand_body"; then
+    parent_number="$cand"
+    break
+  fi
+done
 echo "method3_parent=${parent_number:-none}"
 ```
 

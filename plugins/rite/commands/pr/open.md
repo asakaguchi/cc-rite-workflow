@@ -296,7 +296,17 @@ fi
 
 ### 2.4 GitHub Projects Status 更新
 
-`rite-config.yml.github.projects.enabled: true` の場合、Projects の Status を `In Progress` に更新。詳細は `../../references/projects-integration.md` 参照。
+`rite-config.yml.github.projects.enabled: true` の場合、以下の **2 種類** の Status 更新を実行する。いずれも詳細ロジックは `../../references/projects-integration.md` を参照し、本コマンドに**複製しない**（DRY）。
+
+**(A) 着手 Issue 自身の Status 更新** — 着手した Issue (`{issue_number}`) 自身の Projects Status を `In Progress` に更新する（`projects-status-update.sh` 経由、§2.4.1–2.4.6）。
+
+**(B) 親 Issue の Status 更新（Sub-Issue 着手時、§2.4.7）** — `{issue_number}` が Sub-Issue の場合、**親 Issue の Status も In Progress に遷移させる**。これは省略不可の必須処理であり、(A) と独立に必ず実行する。ロジックは `projects-integration.md` §2.4.7 を実行する（open.md には複製しない）:
+
+1. **§2.4.7.1 親検出（3-method OR）** を必ず実行する: `## 親 Issue` body meta（PRIMARY）→ Sub-Issues API → tasklist search の順で親を検出する。この 3-method 構造は `../issue/close.md` Phase 4.5.1 と同一に保つ（method 順序・OR 意味・total-failure 時の `[DEBUG] parent not detected` emit を揃える。Method 3 の `--state open` は start 側固有の意図的差異）。
+2. 親が検出されたら **§2.4.7.2–2.4.7.4** を実行する: 親の Projects item / 現 Status を取得し、Status が **Todo または null（未設定）のときのみ** In Progress に更新する。親が既に **In Progress / In Review / Done** のときは上書きしない（sibling child による進捗を保持する）。
+3. 親が見つからない standalone Issue では `[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)` を emit して skip する（**silent skip 禁止**）。
+
+(B) はすべて non-blocking（親検出 / 親更新の失敗・親の Project 未登録は着手フローをブロックしない）。API 呼び出しの詳細とエラーハンドリングは §2.4.7 を参照する（複製しない）。
 
 ### 2.5 Work Memory 初期化
 

@@ -96,11 +96,34 @@ query($owner: String!, $repo: String!, $number: Int!) {
 }' -f owner="{owner}" -f repo="{repo}" -F number={issue_number}
 ```
 
+Tasklist fallback では、GitHub code search の `[`/`]` が不安定（リテラルを無視しほぼ全 Issue を返す）なため、`--jq '.[0]'` で先頭を盲目採用すると standalone closing Issue が自分自身や無関係 Issue を親と誤検出する。複数候補を取得し、自己マッチ除外＋候補 body の tasklist 行再検証を経た候補のみ採用する（#1629 で close.md / projects-integration.md §2.4.7.1 に導入したループと同一方針。検証ループ本体（自己除外・再検証 regex・`--limit 10`）は close.md Phase 4.5.1 / projects-integration.md §2.4.7.1 と揃える。`--state` は cleanup が `--state open`（子マージ直後で親は通常 open）を使い、これは projects-integration.md §2.4.7.1 と一致する。差異は close.md Phase 4.5.1 が `--state all`（closing Issue の親が既に closed の可能性）を使う点のみ）:
+
 ```bash
-gh issue list --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number,title,state --jq '.[0]'
+# GitHub code search は `[`/`]` を無視する緩いマッチのため、複数候補を取得して検証する
+candidates=$(gh issue list --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number --limit 10 --jq '.[].number')
+parent_issue_number=""
+for cand in $candidates; do
+  # 自己マッチ除外: standalone closing Issue が自分自身を親と誤検出するのを防ぐ（AC-1）
+  [ "$cand" = "{issue_number}" ] && continue
+  # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（緩いマッチで拾った無関係 Issue を排除、AC-2 を非回帰で通す）
+  cand_body=$(gh issue view "$cand" --json body --jq '.body')
+  if grep -qE "^[[:space:]]*-[[:space:]]\[[ xX]\][[:space:]]*#{issue_number}([^0-9]|$)" <<< "$cand_body"; then
+    parent_issue_number="$cand"
+    break
+  fi
+done
+# 検証済み親が見つかれば number/title/state を取得して保持
+if [ -n "$parent_issue_number" ]; then
+  gh issue view "$parent_issue_number" --json number,title,state
+fi
+echo "tasklist_parent=${parent_issue_number:-none}"
 ```
 
-見つからなければステップ 10 の親処理をスキップ (non-blocking)。
+両 method とも親を検出できなければ standalone として扱い、ステップ 10 の親処理をスキップする (non-blocking)。silent skip 禁止のため debug log を残す:
+
+```bash
+echo "[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: sub_issues_api, tasklist_search)"
+```
 
 ---
 

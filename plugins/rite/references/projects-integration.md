@@ -114,7 +114,7 @@ gh project item-edit --project-id {project_id} --id {item_id} --field-id {status
 
 ### 2.4.7 Parent Issue Status Update (for child Issues)
 
-**Execution condition**: Always execute 2.4.7.1 (parent detection). If a parent is found, proceed to 2.4.7.2–2.4.7.4. If no parent is found, skip silently (this is normal for standalone Issues).
+**Execution condition**: Always execute 2.4.7.1 (parent detection). If a parent is found, proceed to 2.4.7.2–2.4.7.4. If no parent is found, emit the `[DEBUG] parent not detected` log (per 2.4.7.1 — silent skips are prohibited) and then skip 2.4.7.2–2.4.7.4 (this is the normal path for standalone Issues).
 
 **Non-blocking**: All steps in 2.4.7 are non-blocking. Any failure displays a warning and continues the workflow.
 
@@ -122,7 +122,7 @@ gh project item-edit --project-id {project_id} --id {item_id} --field-id {status
 
 Detect the parent Issue of the current (child) Issue. **Three methods are tried in order (OR combination); the first successful result wins.** This ordering is critical: `## 親 Issue` body meta is placed PRIMARY because it is the most reliable source in repositories that use `/rite:issue:create` (Decompose Path, flat workflow; writes this section to every child), and it requires no dependency on GitHub's native Sub-Issues feature.
 
-> **Consistency requirement**: The same 3-method OR detection **structure** MUST be used in `close.md` Phase 4.5.1 — i.e., the same three method ordering (body meta → Sub-Issues API → tasklist search), the same OR combination semantics, and the same `[DEBUG] parent not detected` emission on total failure. **Context-dependent parameters MAY differ** between the two sites where the surrounding workflow demands it; specifically, Method 3's `--state` filter is `open` here (start side — closed parents do not need In Progress promotion) and `all` in close.md Phase 4.5.1 (close side — the closing Issue's parent may itself already be closed). These differences are intentional and are not drift. If the detection method ordering or OR semantics diverge between start and close, the past silent-skip regressions in parent-child sync reappear.
+> **Consistency requirement**: The same 3-method OR detection **structure** MUST be used in `close.md` Phase 4.5.1 — i.e., the same three method ordering (body meta → Sub-Issues API → tasklist search), the same OR combination semantics, and the same `[DEBUG] parent not detected` emission on total failure. **Context-dependent parameters MAY differ** between the two sites where the surrounding workflow demands it; specifically, Method 3's `--state` filter is `open` here (start side — closed parents do not need In Progress promotion) and `all` in close.md Phase 4.5.1 (close side — the closing Issue's parent may itself already be closed). These differences are intentional and are not drift. **Method 3's validation loop body is also a sync target**: the self-match exclusion (`cand != {issue_number}`), the body re-validation regex (which confirms the candidate body actually contains the `- [ ] #{issue_number}` / `- [x] #{issue_number}` tasklist line), and `--limit 10` MUST stay identical across both sites — only the `--state` filter differs. If the detection method ordering, the OR semantics, or the Method 3 loop body (regex / `--limit`) diverge between start and close, the past silent-skip and false-positive regressions in parent-child sync reappear.
 
 **Method 1: `## 親 Issue` body meta (PRIMARY)**
 
@@ -165,12 +165,25 @@ If `parent` is not null, extract `parent.number` as `{parent_issue_number}` and 
 If Methods 1 and 2 both failed:
 
 ```bash
-gh issue list --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number,title,state --limit 5
+# GitHub code search は `[`/`]` を無視する緩いマッチのため、複数候補を取得して検証する
+candidates=$(gh issue list --state open --search "in:body \"- [ ] #{issue_number}\" OR \"- [x] #{issue_number}\"" --json number --limit 10 --jq '.[].number')
+parent_number=""
+for cand in $candidates; do
+  # 自己マッチ除外: standalone Issue が自分自身を親と誤検出するのを防ぐ（AC-1）
+  [ "$cand" = "{issue_number}" ] && continue
+  # 妥当性検証: 候補 body に当該 tasklist 行が実在するか確認（緩いマッチで拾った無関係 Issue を排除）
+  cand_body=$(gh issue view "$cand" --json body --jq '.body')
+  if grep -qE "^[[:space:]]*-[[:space:]]\[[ xX]\][[:space:]]*#{issue_number}([^0-9]|$)" <<< "$cand_body"; then
+    parent_number="$cand"
+    break
+  fi
+done
+echo "method3_parent=${parent_number:-none}"
 ```
 
-**Note**: `--state open` is intentional — closed parent Issues do not need Status updates. The search matches both unchecked (`- [ ]`) and checked (`- [x]`) tasklist items to ensure checkbox state independence (consistent with [epic-detection.md](./epic-detection.md)). GitHub code search with `[`/`]` characters is known to be unreliable, which is why this method is the last resort.
+**Note**: `--state open` is intentional — closed parent Issues do not need Status updates. The search matches both unchecked (`- [ ]`) and checked (`- [x]`) tasklist items to ensure checkbox state independence (consistent with [epic-detection.md](./epic-detection.md)). GitHub code search with `[`/`]` characters is known to be unreliable — it ignores the bracket literals and returns nearly every Issue — so Method 3 must **not** adopt a hit blindly. The self-match exclusion (`cand != {issue_number}`) plus the body re-validation (the candidate's body must actually contain the `- [ ] #{issue_number}` / `- [x] #{issue_number}` tasklist line) guard against the false positives this unreliability causes; without the body check, self-exclusion alone would simply promote the next unrelated Issue in the loose-match result set.
 
-If results are non-empty, use the first result's `number` as `{parent_issue_number}` and proceed to 2.4.7.2.
+If `parent_number` is non-empty, extract it as `{parent_issue_number}` and proceed to 2.4.7.2.
 
 **When all three methods failed (no parent found)**: This is the normal path for standalone Issues (AC-4). Emit an explicit **debug log** (not a warning) so that the skip is visible in execution traces — silent skips are prohibited by the MUST requirement "同期失敗時は silent skip せず、明示的にログまたは warning を出力する" and the preceding incidents which all stemmed from silent skips in parent-child sync:
 
@@ -275,8 +288,8 @@ Parent Issue Status update failure does **not** block the start of work. Each st
 
 | Step | Error Case | Response |
 |------|-----------|----------|
-| 2.4.7.1 | Sub-Issues API fails | Try Tasklist fallback. If both fail, skip silently |
-| 2.4.7.1 | Tasklist search returns no results | Skip silently (standalone Issue) |
+| 2.4.7.1 | Sub-Issues API fails | Try Tasklist fallback. If both fail, emit `[DEBUG] parent not detected` and skip (per 2.4.7.1 — silent skips prohibited) |
+| 2.4.7.1 | Tasklist search returns no results | Emit `[DEBUG] parent not detected` and skip (standalone Issue — per 2.4.7.1, not silent) |
 | 2.4.7.2 | GraphQL query fails | Display `警告: 親 Issue の Projects 情報取得に失敗しました。Status 更新をスキップします` |
 | 2.4.7.2 | Parent not registered in Project | Display warning and skip (see 2.4.7.2) |
 | 2.4.7.4 | field-list fails | Display `警告: Status フィールド情報の取得に失敗しました` and skip |

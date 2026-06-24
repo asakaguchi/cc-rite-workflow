@@ -79,7 +79,7 @@ echo "Current version: $current_version"
 
 ユーザーがバージョンを指定していない場合、以下を確認して提案する：
 
-1. 前回リリースからの変更を確認: `latest_tag=$(git tag --sort=-v:refname | head -1); [ -n "$latest_tag" ] && git log "${latest_tag}..develop" --oneline`（最新タグはバージョン順で取得。`git describe --tags --abbrev=0` は develop から到達不可能なリリースタグを取りこぼすため使わない）
+1. 前回リリースからの変更を確認: `latest_tag=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1); [ -n "$latest_tag" ] && git log "${latest_tag}..develop" --oneline`（最新タグはリリースタグ形式 `vX.Y.Z` に限定してバージョン順で取得。`grep` で非バージョンタグを除外し、version sort で上位に来る非リリースタグの誤検出を防ぐ。`git describe --tags --abbrev=0` は develop から到達不可能なリリースタグを取りこぼすため使わない）
 2. 変更内容から semver のバンプ種別を判定:
    - **major**: 破壊的変更がある場合
    - **minor**: 新機能追加がある場合
@@ -91,9 +91,11 @@ echo "Current version: $current_version"
 develop ブランチと最新タグの差分から、CHANGELOG に含めるべき変更を一覧表示する。
 
 ```bash
-# 最新タグはバージョン順で取得（HEAD 到達可能性に非依存）。
+# 最新タグはリリースタグ形式 vX.Y.Z に限定してバージョン順で取得（HEAD 到達可能性に非依存）。
+# grep で非バージョンタグ（refactor-pr3-done 等）を除外し、version sort で
+# 上位に来る非リリースタグの誤検出を防ぐ。
 # リリースタグは main マージコミットに付くため git describe では取りこぼす。
-latest_tag=$(git tag --sort=-v:refname | head -1)
+latest_tag=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
 if [ -n "$latest_tag" ]; then
   git log "${latest_tag}..develop" --oneline --no-merges
 fi

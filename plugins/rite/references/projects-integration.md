@@ -114,7 +114,7 @@ gh project item-edit --project-id {project_id} --id {item_id} --field-id {status
 
 ### 2.4.7 Parent Issue Status Update (for child Issues)
 
-**Execution condition**: Always execute 2.4.7.1 (parent detection). If a parent is found, proceed to 2.4.7.2–2.4.7.4. If no parent is found, skip silently (this is normal for standalone Issues).
+**Execution condition**: Always execute 2.4.7.1 (parent detection). If a parent is found, proceed to 2.4.7.2–2.4.7.4. If no parent is found, emit the `[DEBUG] parent not detected` log (per 2.4.7.1 — silent skips are prohibited) and then skip 2.4.7.2–2.4.7.4 (this is the normal path for standalone Issues).
 
 **Non-blocking**: All steps in 2.4.7 are non-blocking. Any failure displays a warning and continues the workflow.
 
@@ -288,8 +288,8 @@ Parent Issue Status update failure does **not** block the start of work. Each st
 
 | Step | Error Case | Response |
 |------|-----------|----------|
-| 2.4.7.1 | Sub-Issues API fails | Try Tasklist fallback. If both fail, skip silently |
-| 2.4.7.1 | Tasklist search returns no results | Skip silently (standalone Issue) |
+| 2.4.7.1 | Sub-Issues API fails | Try Tasklist fallback. If both fail, emit `[DEBUG] parent not detected` and skip (per 2.4.7.1 — silent skips prohibited) |
+| 2.4.7.1 | Tasklist search returns no results | Emit `[DEBUG] parent not detected` and skip (standalone Issue — per 2.4.7.1, not silent) |
 | 2.4.7.2 | GraphQL query fails | Display `警告: 親 Issue の Projects 情報取得に失敗しました。Status 更新をスキップします` |
 | 2.4.7.2 | Parent not registered in Project | Display warning and skip (see 2.4.7.2) |
 | 2.4.7.4 | field-list fails | Display `警告: Status フィールド情報の取得に失敗しました` and skip |

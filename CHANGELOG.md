@@ -27,6 +27,17 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-06-24
+
+### Fixed
+
+- **The release skill's Phase 1 latest-tag detection is now reachability-independent and limited to the `vX.Y.Z` release-tag format** — detection uses `git tag --sort=-v:refname` filtered by `grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$'` (preceded by `git fetch --tags --force`) instead of `git describe --tags --abbrev=0`, so the latest release tag is found correctly even when it sits on a `main` merge commit unreachable from `develop`, and non-release tags are excluded from the version sort. (#1643, #1647)
+- **The release skill's Phase 1 tag-sync no longer fails silently** — a failed `git fetch --tags --force` now emits a log line and continues with local tags instead of swallowing the error. (#1648)
+
+### Docs
+
+- **Documented that the `git tag … | head -1` SIGPIPE is benign in the release skill** — the trailing `head -1` can close the pipe early, but `latest_tag` is guarded by a `[ -n "$latest_tag" ]` check so the pipeline exit status is never consulted; a note clarifies this and flags the `set -o pipefail` caveat for the future. (#1649)
+
 ## [0.6.7] - 2026-06-24
 
 ### Fixed
@@ -605,6 +616,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.6.8]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.7...v0.6.8
 [0.6.7]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.6...v0.6.7
 [0.6.6]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.4...v0.6.5

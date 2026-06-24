@@ -408,7 +408,7 @@ echo "method3_parent=${parent_number:-none}"
 **3 method すべて失敗（`parent_number` 空）の場合**は standalone として処理する（AC-4 — 正常動作。silent-skip 回帰検出のため debug log は残す）:
 
 ```bash
-echo "[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods: body_meta, sub_issues_api, tasklist_search)"
+echo "[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)"
 ```
 
 `親 Issue の参照が見つかりませんでした。親 Issue 更新をスキップします。` を表示し、Phase 4.5 残り + Phase 4.6 をスキップして Phase 5 へ。

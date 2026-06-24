@@ -27,6 +27,12 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.6.9] - 2026-06-25
+
+### Fixed
+
+- **The `.claude/scheduled_tasks.lock` file is now gitignored and untracked** — this session-specific lock file, which the Claude Code harness overwrites every session, kept the working tree permanently dirty and aborted `git pull` under `pull.rebase=true`. It is now ignored per-file (not via a blanket `.claude/` ignore, since `.claude/skills/release/SKILL.md` is intentionally committed). (#1654, #1655)
+
 ## [0.6.8] - 2026-06-24
 
 ### Fixed
@@ -616,6 +622,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.6.9]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.8...v0.6.9
 [0.6.8]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.7...v0.6.8
 [0.6.7]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.6...v0.6.7
 [0.6.6]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.5...v0.6.6

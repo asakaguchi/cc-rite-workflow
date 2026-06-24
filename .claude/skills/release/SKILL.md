@@ -62,6 +62,12 @@ gh project item-edit --project-id "$PROJECT_ID" --id "$ITEM_ID" \
 
 ## Phase 1: リリース情報の確認
 
+> **タグ同期（最新タグ判定の前に必須）**: リリースタグは Phase 3.3 で `--target main`（develop→main マージコミット）に付与されるため、develop からは到達不可能。`git describe --tags --abbrev=0` は HEAD から到達可能なタグしか返さず develop 上では古いタグを拾うため、最新タグの判定には使わない。最新タグは到達可能性に依存しないバージョン順（`git tag --sort=-v:refname`）で判定する。判定の前にリモートのタグをローカルへ同期しておく（ネットワーク不通でもリリースをブロックしない）:
+>
+> ```bash
+> git fetch --tags --force origin >/dev/null 2>&1 || true
+> ```
+
 ### 1.1 現在のバージョン確認
 
 ```bash
@@ -73,7 +79,7 @@ echo "Current version: $current_version"
 
 ユーザーがバージョンを指定していない場合、以下を確認して提案する：
 
-1. `git log $(git describe --tags --abbrev=0)..develop --oneline` で前回リリースからの変更を確認
+1. 前回リリースからの変更を確認: `latest_tag=$(git tag --sort=-v:refname | head -1); [ -n "$latest_tag" ] && git log "${latest_tag}..develop" --oneline`（最新タグはバージョン順で取得。`git describe --tags --abbrev=0` は develop から到達不可能なリリースタグを取りこぼすため使わない）
 2. 変更内容から semver のバンプ種別を判定:
    - **major**: 破壊的変更がある場合
    - **minor**: 新機能追加がある場合
@@ -85,7 +91,9 @@ echo "Current version: $current_version"
 develop ブランチと最新タグの差分から、CHANGELOG に含めるべき変更を一覧表示する。
 
 ```bash
-latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+# 最新タグはバージョン順で取得（HEAD 到達可能性に非依存）。
+# リリースタグは main マージコミットに付くため git describe では取りこぼす。
+latest_tag=$(git tag --sort=-v:refname | head -1)
 if [ -n "$latest_tag" ]; then
   git log "${latest_tag}..develop" --oneline --no-merges
 fi

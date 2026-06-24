@@ -24,6 +24,11 @@
 #       "iteration": {
 #         "mode": "none|auto",       # default: "none"
 #         "field_name": "Sprint"     # default: "Sprint"
+#       },
+#       "field_names": {             # optional: localized project field-name overrides
+#         "status": "ステータス",     #   each overrides the built-in EN<->JA alias for
+#         "priority": "優先度",       #   the canonical field. Empty/absent -> built-in
+#         "complexity": "複雑度"      #   aliases only (Status/Priority/Complexity).
 #       }
 #     },
 #     "options": {
@@ -160,6 +165,9 @@ eval "$(printf '%s\n' "$INPUT_JSON" | jq -r '
   @sh "COMPLEXITY_VALUE=\(.projects.complexity // "")",
   @sh "ITERATION_MODE=\(.projects.iteration.mode // "none")",
   @sh "ITERATION_FIELD_NAME=\(.projects.iteration.field_name // "Sprint")",
+  @sh "FIELD_NAME_STATUS=\(.projects.field_names.status // "")",
+  @sh "FIELD_NAME_PRIORITY=\(.projects.field_names.priority // "")",
+  @sh "FIELD_NAME_COMPLEXITY=\(.projects.field_names.complexity // "")",
   @sh "NON_BLOCKING=\(if .options.non_blocking_projects == false then false else true end)"
 ')"
 
@@ -238,16 +246,21 @@ ITEM_ADD_RESULT=$(retry_with_backoff 3 "$GH_ERR_FILE" gh project item-add "$PROJ
 # Extract ITEM_ID directly from item-add response (avoids race condition with GraphQL query)
 ITEM_ID=$(printf '%s\n' "$ITEM_ADD_RESULT" | jq -r '.id // empty' 2>/dev/null)
 
-# Step 2.2: Detect owner type (User vs Organization)
-OWNER_TYPE=$(gh repo view --json owner --jq '.owner.__typename' 2>"$GH_ERR_FILE" || { add_warning "Owner type detection failed: $(cat "$GH_ERR_FILE")"; printf '%s\n' "User"; })
-GQL_ROOT="user"
-if [ "$OWNER_TYPE" = "Organization" ]; then
-  GQL_ROOT="organization"
-fi
-
-# Whitelist validation for GQL_ROOT (defense against GraphQL injection, CWE-943)
-if [[ "$GQL_ROOT" != "user" && "$GQL_ROOT" != "organization" ]]; then
-  add_warning_with_stderr "Invalid GQL_ROOT value: $GQL_ROOT"
+# Step 2.2: Resolve the repository name from the created Issue URL.
+# Project queries are rooted at repository(owner, name).projectV2(number), which
+# resolves transparently for both User- and Organization-owned projects. This
+# replaces the previous owner-type branch, which relied on a type discriminator
+# that the real gh CLI does not return on the owner object; that branch therefore
+# always fell back to the user-rooted query and failed for Organization-owned
+# projects, and it inspected the current repo rather than the project owner.
+# Mirrors projects-status-update.sh's GraphQL *shape*. REPO_NAME is derived from
+# ISSUE_URL so the helper's input JSON schema is unchanged; the query owner stays
+# $OWNER (the project owner). This assumes the issue's repo and the project share
+# one owner (project owner == repo owner), which holds for rite's single-owner
+# config; the URL's owner segment is intentionally discarded.
+REPO_NAME=$(printf '%s\n' "$ISSUE_URL" | sed -nE 's#^https?://[^/]+/[^/]+/([^/]+)/issues/[0-9]+.*$#\1#p')
+if [ -z "$REPO_NAME" ]; then
+  add_warning_with_stderr "Could not resolve repository name for Issue #$ISSUE_NUMBER from URL: $ISSUE_URL"
   output_result "$ISSUE_URL" "$ISSUE_NUMBER" "" "" "partial"
   exit 0
 fi
@@ -255,8 +268,8 @@ fi
 # Step 2.3: Retrieve project item ID and field information
 # 3-attempt exponential backoff for transient API failures.
 GQL_FIELDS_QUERY="
-query(\$owner: String!, \$projectNumber: Int!) {
-  ${GQL_ROOT}(login: \$owner) {
+query(\$owner: String!, \$repo: String!, \$projectNumber: Int!) {
+  repository(owner: \$owner, name: \$repo) {
     projectV2(number: \$projectNumber) {
       id
       items(last: 10) {
@@ -295,14 +308,14 @@ query(\$owner: String!, \$projectNumber: Int!) {
     }
   }
 }"
-GQL_RESULT=$(retry_with_backoff 3 "$GH_ERR_FILE" gh api graphql -f query="$GQL_FIELDS_QUERY" -f owner="$OWNER" -F projectNumber="$PROJECT_NUMBER") || {
+GQL_RESULT=$(retry_with_backoff 3 "$GH_ERR_FILE" gh api graphql -f query="$GQL_FIELDS_QUERY" -f owner="$OWNER" -f repo="$REPO_NAME" -F projectNumber="$PROJECT_NUMBER") || {
   add_warning_with_stderr "GraphQL query failed for project field retrieval after 3 attempts: $(cat "$GH_ERR_FILE")"
   output_result "$ISSUE_URL" "$ISSUE_NUMBER" "" "" "partial"
   exit 0
 }
 
-# Extract project ID (use --arg for safe variable passing to jq)
-PROJECT_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r --arg root "$GQL_ROOT" '.data[$root].projectV2.id // empty')
+# Extract project ID
+PROJECT_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r '.data.repository.projectV2.id // empty')
 if [ -z "$PROJECT_ID" ]; then
   add_warning_with_stderr "Could not extract project ID"
   output_result "$ISSUE_URL" "$ISSUE_NUMBER" "" "" "partial"
@@ -312,13 +325,13 @@ fi
 # Fallback: if ITEM_ID was not captured from item-add (e.g., older gh CLI without --format json),
 # try to find it via GraphQL items query
 if [ -z "$ITEM_ID" ]; then
-  ITEM_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r --arg root "$GQL_ROOT" --argjson num "$ISSUE_NUMBER" '.data[$root].projectV2.items.nodes[] | select(.content.number == $num) | .id // empty')
+  ITEM_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r --argjson num "$ISSUE_NUMBER" '.data.repository.projectV2.items.nodes[] | select(.content.number == $num) | .id // empty')
 fi
 if [ -z "$ITEM_ID" ]; then
   # Retry with larger window. 3-attempt exponential backoff for transient failures.
   GQL_ITEMS_QUERY="
-query(\$owner: String!, \$projectNumber: Int!) {
-  ${GQL_ROOT}(login: \$owner) {
+query(\$owner: String!, \$repo: String!, \$projectNumber: Int!) {
+  repository(owner: \$owner, name: \$repo) {
     projectV2(number: \$projectNumber) {
       items(last: 20) {
         nodes {
@@ -333,9 +346,9 @@ query(\$owner: String!, \$projectNumber: Int!) {
     }
   }
 }"
-  GQL_RETRY=$(retry_with_backoff 3 "$GH_ERR_FILE" gh api graphql -f query="$GQL_ITEMS_QUERY" -f owner="$OWNER" -F projectNumber="$PROJECT_NUMBER") || { add_warning_with_stderr "GraphQL items lookup query failed after 3 attempts: $(cat "$GH_ERR_FILE")"; true; }
+  GQL_RETRY=$(retry_with_backoff 3 "$GH_ERR_FILE" gh api graphql -f query="$GQL_ITEMS_QUERY" -f owner="$OWNER" -f repo="$REPO_NAME" -F projectNumber="$PROJECT_NUMBER") || { add_warning_with_stderr "GraphQL items lookup query failed after 3 attempts: $(cat "$GH_ERR_FILE")"; true; }
 
-  ITEM_ID=$(printf '%s\n' "$GQL_RETRY" | jq -r --arg root "$GQL_ROOT" --argjson num "$ISSUE_NUMBER" '.data[$root].projectV2.items.nodes[] | select(.content.number == $num) | .id // empty' 2>"$FIELD_ERR_FILE")
+  ITEM_ID=$(printf '%s\n' "$GQL_RETRY" | jq -r --argjson num "$ISSUE_NUMBER" '.data.repository.projectV2.items.nodes[] | select(.content.number == $num) | .id // empty' 2>"$FIELD_ERR_FILE")
   if [ -z "$ITEM_ID" ]; then
     add_warning_with_stderr "Could not find item ID for Issue #$ISSUE_NUMBER in project"
     output_result "$ISSUE_URL" "$ISSUE_NUMBER" "$PROJECT_ID" "" "partial"
@@ -343,43 +356,96 @@ query(\$owner: String!, \$projectNumber: Int!) {
   fi
 fi
 
-# Helper: find field ID and option ID from GQL result in a single jq call
-find_field_option() {
-  local field_name="$1"
-  local option_name="$2"
-
-  printf '%s\n' "$GQL_RESULT" | jq -r --arg root "$GQL_ROOT" --arg fn "$field_name" --arg on "$option_name" '
-    .data[$root].projectV2.fields.nodes[] | select(.name == $fn) |
-    (.id // "") as $fid |
-    (if $fid == "" then ""
-     else ((.options // [])[] | select(.name == $on) | .id // "") as $oid | "\($fid)|\($oid)"
-     end)
-  '
+# Built-in English<->Japanese field-name aliases. Maps a canonical English field
+# name (Status/Priority/Complexity) to its built-in Japanese alias so that
+# localized Projects resolve with zero config. Extend this single table to add
+# more built-in aliases.
+field_name_alias() {
+  case "$1" in
+    Status) printf 'ステータス' ;;
+    Priority) printf '優先度' ;;
+    Complexity) printf '複雑度' ;;
+    *) printf '' ;;
+  esac
 }
 
-# Step 2.4: Set fields (reuses centralized FIELD_ERR_FILE)
+# Per-field override taken from the input JSON's projects.field_names (empty when
+# absent). Takes precedence over the built-in alias.
+field_name_override() {
+  case "$1" in
+    Status) printf '%s' "$FIELD_NAME_STATUS" ;;
+    Priority) printf '%s' "$FIELD_NAME_PRIORITY" ;;
+    Complexity) printf '%s' "$FIELD_NAME_COMPLEXITY" ;;
+    *) printf '' ;;
+  esac
+}
+
+# Look up a field id by exact name in the cached GraphQL result (empty if absent).
+field_id_by_name() {
+  printf '%s\n' "$GQL_RESULT" | jq -r --arg fn "$1" \
+    '[.data.repository.projectV2.fields.nodes[] | select(.name == $fn) | .id][0] // empty'
+}
+
+# Look up an option id within a (resolved) field name (empty if absent).
+option_id_by_name() {
+  printf '%s\n' "$GQL_RESULT" | jq -r --arg fn "$1" --arg on "$2" \
+    '[.data.repository.projectV2.fields.nodes[] | select(.name == $fn) | (.options // [])[] | select(.name == $on) | .id][0] // empty'
+}
+
+# Step 2.4: Set a single-select field. The canonical English field name is
+# resolved against candidate project field names in priority order:
+#   1. input-JSON override (projects.field_names.*)
+#   2. built-in Japanese alias
+#   3. canonical English name
+# This lets localized (e.g. Japanese-named) Projects work with zero config while
+# still allowing per-field overrides. Reuses centralized FIELD_ERR_FILE.
 set_field() {
-  local field_name="$1"
+  local canonical="$1"
   local field_value="$2"
 
   if [ -z "$field_value" ]; then
     return 0
   fi
 
-  local result
-  result=$(find_field_option "$field_name" "$field_value")
-  local field_id="${result%%|*}"
-  local option_id="${result##*|}"
+  # Build the ordered candidate field-name list (override > alias > canonical).
+  local candidates=()
+  local override alias_name
+  override=$(field_name_override "$canonical")
+  [ -n "$override" ] && candidates+=("$override")
+  alias_name=$(field_name_alias "$canonical")
+  [ -n "$alias_name" ] && candidates+=("$alias_name")
+  candidates+=("$canonical")
 
-  if [ -z "$field_id" ] || [ -z "$option_id" ]; then
-    add_warning_with_stderr "Field '$field_name' or option '$field_value' not found in project"
+  # Resolve the first candidate that exists as a field in the project.
+  local matched_name="" field_id="" candidate
+  for candidate in "${candidates[@]}"; do
+    field_id=$(field_id_by_name "$candidate")
+    if [ -n "$field_id" ]; then matched_name="$candidate"; break; fi
+  done
+
+  if [ -z "$field_id" ]; then
+    local tried=""
+    for candidate in "${candidates[@]}"; do
+      tried="${tried:+$tried, }$candidate"
+    done
+    add_warning_with_stderr "Field '$canonical' not found in project for Issue #$ISSUE_NUMBER (tried: $tried)"
+    PROJECT_REG="partial"
+    return 0
+  fi
+
+  # Field name resolved; resolve the option value within it. Reported distinctly
+  # from a field-name resolution failure (option localization is out of scope).
+  local option_id
+  option_id=$(option_id_by_name "$matched_name" "$field_value")
+  if [ -z "$option_id" ]; then
+    add_warning_with_stderr "Option '$field_value' not found in field '$matched_name' for Issue #$ISSUE_NUMBER"
     PROJECT_REG="partial"
     return 0
   fi
 
   # Use retry_with_backoff (3 attempts, exponential backoff) instead of an ad-hoc 1-retry loop.
   if ! retry_with_backoff 3 "$FIELD_ERR_FILE" gh project item-edit --project-id "$PROJECT_ID" --id "$ITEM_ID" --field-id "$field_id" --single-select-option-id "$option_id" >/dev/null; then
-    add_warning_with_stderr "Failed to set $field_name=$field_value for Issue #$ISSUE_NUMBER after 3 attempts: $(cat "$FIELD_ERR_FILE")"
+    add_warning_with_stderr "Failed to set $matched_name=$field_value for Issue #$ISSUE_NUMBER after 3 attempts: $(cat "$FIELD_ERR_FILE")"
     PROJECT_REG="partial"
   fi
 }
@@ -390,13 +456,13 @@ set_field "Complexity" "$COMPLEXITY_VALUE"
 
 # Step 2.5: Iteration assignment (optional)
 if [ "$ITERATION_MODE" = "auto" ]; then
-  ITER_FIELD_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r --arg root "$GQL_ROOT" --arg fn "$ITERATION_FIELD_NAME" '.data[$root].projectV2.fields.nodes[] | select(.name == $fn) | .id // empty')
+  ITER_FIELD_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r --arg fn "$ITERATION_FIELD_NAME" '.data.repository.projectV2.fields.nodes[] | select(.name == $fn) | .id // empty')
   if [ -n "$ITER_FIELD_ID" ]; then
     # Find current iteration (startDate <= today, sorted by startDate desc)
     # ISO 8601 date strings (YYYY-MM-DD) are lexicographically comparable
     TODAY=$(date -u +%Y-%m-%d)
-    CURRENT_ITER_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r --arg root "$GQL_ROOT" --arg fn "$ITERATION_FIELD_NAME" --arg today "$TODAY" '
-      .data[$root].projectV2.fields.nodes[]
+    CURRENT_ITER_ID=$(printf '%s\n' "$GQL_RESULT" | jq -r --arg fn "$ITERATION_FIELD_NAME" --arg today "$TODAY" '
+      .data.repository.projectV2.fields.nodes[]
       | select(.name == $fn)
       | .configuration.iterations
       | map(select(.startDate <= $today))

@@ -268,17 +268,34 @@ ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null
 ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \
   | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
 case "$ms_enabled" in true|yes|1) ms_enabled=true ;; *) ms_enabled=false ;; esac
+# worktree_base も読む（物理 cwd 検出時に worktree dir の親 leaf を照合する。#1622）
+ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {print; exit}' \
+  | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+[ -n "$ms_base" ] || ms_base=".rite/worktrees"
 flow_wt=$(bash {plugin_root}/hooks/flow-state.sh get --field worktree --default "") || flow_wt=""
 cur_top=$(git rev-parse --show-toplevel 2>/dev/null) || cur_top=""
-if [ "$ms_enabled" = "true" ] && [ -n "$flow_wt" ] && [ "$flow_wt" = "$cur_top" ]; then
-  dirty=$(git status --porcelain 2>/dev/null)
-  echo "[CONTEXT] CLEANUP_WT=in_worktree; worktree=$flow_wt; dirty=$([ -n "$dirty" ] && echo yes || echo no)"
-else
-  echo "[CONTEXT] CLEANUP_WT=$([ "$ms_enabled" = "true" ] && [ -n "$flow_wt" ] && echo in_main || echo none); worktree=$flow_wt"
-fi
+# 検出は helper に委譲する（#1622）。flow-state 未記録（flow_wt 空）でも、物理 cwd が当該
+# Issue の rite セッション worktree（<worktree_base leaf>/issue-{issue_number}）なら
+# in_worktree_unrecorded を返し worktree= に cur_top を導出する。これにより「物理的に
+# worktree 内にいるのに flow-state 未記録 → none で全スキップ → worktree/ブランチ残置」の
+# エアポケットを塞ぐ。
+detect=$(bash {plugin_root}/hooks/scripts/cleanup-worktree-detect.sh \
+  --ms-enabled "$ms_enabled" --flow-wt "$flow_wt" --cur-top "$cur_top" \
+  --issue "{issue_number}" --worktree-base "$ms_base") || detect="CLEANUP_WT=none; worktree=$flow_wt"
+cleanup_wt=${detect#CLEANUP_WT=}; cleanup_wt=${cleanup_wt%%;*}
+flow_wt=${detect##*worktree=}
+case "$cleanup_wt" in
+  in_worktree|in_worktree_unrecorded)
+    dirty=$(git status --porcelain 2>/dev/null)
+    echo "[CONTEXT] CLEANUP_WT=$cleanup_wt; worktree=$flow_wt; dirty=$([ -n "$dirty" ] && echo yes || echo no)"
+    ;;
+  *)
+    echo "[CONTEXT] CLEANUP_WT=$cleanup_wt; worktree=$flow_wt"
+    ;;
+esac
 ```
 
-- `CLEANUP_WT=in_worktree`（cwd がセッション worktree）:
+- `CLEANUP_WT=in_worktree` / `in_worktree_unrecorded`（cwd がセッション worktree。後者は flow-state 未記録だが物理 cwd が当該 Issue の worktree な場合 — #1622。以降の手順 1〜4 は両者で同一）:
   1. `dirty=yes` なら **AskUserQuestion**（「`git stash push` して続行 / 中止」）。stash は common git dir に格納されるため worktree 削除後も `git stash pop` 可能（完了報告の stash 案内は従来文面を流用）。
   2. `ExitWorktree` ツールを `action: "keep"` で呼び出し、main checkout に復帰する（path 入場した worktree は remove でも消えない仕様のため**常に keep**）。
   3. main から worktree を削除する。**削除前に live-cwd guard（Issue #1544）を通す**: 別のセッションの harness cwd がまだこの worktree に立っている場合に削除すると、そのセッションの `/clear` が `Path does not exist` で失敗するため、live プロセスが cwd を置いているときは削除せず遅延 reap（`pr-cycle-cleanup.sh` の session worktree reap）へ委譲する:
@@ -296,7 +313,7 @@ fi
      > `in_worktree` 経路ではステップ 2 の `ExitWorktree` で harness cwd が main に退避済みのため、この guard は通常 rc=1（live cwd 不在）で削除へ進む。`worktree-live-cwd.sh` が rc=2（`/proc` も `lsof` も無い環境で判定不能）を返す場合は `if` が false となり従来どおり削除を実行する（後方互換）。
   4. 削除失敗（`WORKTREE_REMOVE_FAILED`）または live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。
 - `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の live-cwd guard が特に重要。
-- `CLEANUP_WT=none`（multi_session 無効 or worktree 未記録）: 4-W 全体を no-op でスキップ。
+- `CLEANUP_WT=none`（multi_session 無効、または worktree 関連なし = 物理 cwd も当該 Issue の worktree でない）: 4-W 全体を no-op でスキップ。**注**: flow-state 未記録でも物理 cwd が当該 Issue の worktree なら `in_worktree_unrecorded` に分類されここには落ちない（#1622）。
 
 > **復旧: `/clear` が `Path does not exist` で失敗する場合（Issue #1552）**
 > セッション worktree（`.rite/worktrees/issue-{N}`）が遅延 reap または手動削除で消えた後、所有セッションをハーネスが resume すると cwd 復元先が無く `/clear` が `Error: Path "...worktrees/issue-{N}" does not exist` で失敗することがある。`pr-cycle-cleanup.sh` の worktree liveness guard（Issue #1524/#1544/#1552）はこれを予防するが、ハーネスの cwd レコード自体は rite から intercept できないため、万一発生した場合は次のいずれかで復旧する:
@@ -307,7 +324,7 @@ fi
 
 ### 4 base ブランチの更新（安全化）
 
-main checkout の不可侵規約（[git-worktree-patterns.md](../../references/git-worktree-patterns.md#multi-checkout-不可侵-inviolability-convention)）に従い、**main checkout が `{base_branch}` 上にある場合のみ** base を更新する。別 branch 上では切り替えず WARNING + skip する:
+main checkout の不可侵規約（[git-worktree-patterns.md](../../references/git-worktree-patterns.md#main-checkout-不可侵-inviolability-convention)）に従い、**main checkout が `{base_branch}` 上にある場合のみ** base を更新する。別 branch 上では切り替えず WARNING + skip する:
 
 ```bash
 cur_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || cur_branch=""
@@ -329,11 +346,29 @@ fi
 > **順序**: branch 削除は **worktree 削除後にのみ成功する**（Git 制約: worktree で checkout 中の branch は削除不可）。multi_session 時は必ずステップ 4-W → 本ステップの順で実行する。
 
 ```bash
-git branch -d {branch_name}
+# worktree 削除が遅延/失敗した場合（ステップ 4-W が WORKTREE_REMOVE_SKIPPED_LIVE_CWD /
+# WORKTREE_REMOVE_FAILED を残した場合）、branch は worktree で checkout 中のため削除できない。
+# その場合は強制削除も無意味なので skip し、残置を marker で surface して遅延 reap / 手動回収に
+# 委ねる（#1622）。git 診断メッセージは locale 翻訳で揺れるため LC_ALL=C で固定して substring
+# マッチを安定させる（repo 既存の wiki-lint-*.sh と同規約）。
+if del_err=$(LC_ALL=C git branch -d {branch_name} 2>&1); then
+  echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}"
+else
+  case "$del_err" in
+    *"used by worktree"*|*"checked out"*)
+      echo "[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}; reason=checked_out_in_worktree" >&2
+      echo "WARNING: ローカルブランチ {branch_name} はセッション worktree で checkout 中のため削除を skip しました（worktree 削除の遅延に伴う残置）。worktree 削除後に手動削除してください: git branch -D {branch_name}" >&2 ;;
+    *"not fully merged"*)
+      echo "[CONTEXT] BRANCH_DELETE_UNMERGED=1; branch={branch_name}" >&2 ;;
+    *)
+      echo "[CONTEXT] BRANCH_DELETE_FAILED=1; branch={branch_name}" >&2
+      echo "WARNING: ローカルブランチ {branch_name} の削除に失敗しました: $del_err" >&2 ;;
+  esac
+fi
 git ls-remote --heads origin {branch_name} && git push origin --delete {branch_name}
 ```
 
-ローカル削除が未マージ変更で失敗したら「強制削除 (`-D`) / スキップ」を確認。リモート削除は GitHub auto-delete で既削除のエラーは無視。
+`BRANCH_DELETE_UNMERGED=1`（未マージ変更）のときは「強制削除 (`-D`) / スキップ」を確認する。**強制削除を選んだ場合**は `LC_ALL=C git branch -D {branch_name} && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=force"` を実行し、削除完了を marker で示す（ステップ 12 が `x` に分岐する）。スキップ時は marker を追加しない（残置のまま）。`BRANCH_DELETE_DEFERRED=1`（worktree checkout 中）のときは**強制削除しない**（worktree 削除後に回収。ステップ 12 で残置を報告）。リモート削除は GitHub auto-delete で既削除のエラーは無視。
 
 ---
 
@@ -506,7 +541,7 @@ Status: {projects_status_result}
 実行した処理:
 - [x] base ブランチを更新 (fetch + merge --ff-only)
 - [{session_worktree_check}] セッション worktree 退出・削除 (multi_session)
-- [x] ローカル/リモートブランチ削除
+- [{local_branch_check}] ローカル/リモートブランチ削除
 - [{review_cleanup_check}] PR-specific state ファイル削除
 - [{projects_check}] Projects Status を Done に更新
 - [{wiki_ingest_check}] Wiki ingest (pending raw source のページ統合)
@@ -531,6 +566,15 @@ Status: {projects_status_result}
       手動削除: git worktree remove --force {flow_wt} && git worktree prune
     ```
   - いずれの `[CONTEXT]` 行も無い（削除成功）とき: `x`
+- `{local_branch_check}`: ステップ 5 の `[CONTEXT]` 行で判定（上から評価し最初に一致したものを採用）:
+  - `BRANCH_DELETE_DEFERRED=1` のとき（worktree で checkout 中のため削除 skip — worktree 削除の遅延に伴う残置。#1622）: ` ` + 以下を付記
+    ```
+    ℹ️ ローカルブランチ {branch_name} は worktree で checkout 中のため残置しました（worktree 削除の遅延に伴う）。worktree 削除後に手動削除: git branch -D {branch_name}
+    ```
+  - `BRANCH_DELETED=1` のとき（通常削除、または `BRANCH_DELETE_UNMERGED` をユーザーが強制削除 `-D` で解決した場合に emit される。**`BRANCH_DELETE_UNMERGED=1` より先に評価する**）: `x`
+  - `BRANCH_DELETE_FAILED=1` のとき: ` ` + 「ローカルブランチ {branch_name} の削除に失敗。`git branch -D {branch_name}` で手動削除（worktree で checkout 中なら worktree 削除後）」を付記
+  - `BRANCH_DELETE_UNMERGED=1` のとき（= ユーザーが skip 選択。強制削除で解決した場合は上位の `BRANCH_DELETED=1` 行で既に `x` 評価済みのため、ここに到達するのは skip 時のみ）: ` ` + 「ローカルブランチ {branch_name} は未マージのため保留。`git branch -D {branch_name}` で手動削除」を付記
+  - いずれの `[CONTEXT]` 行も無いとき: `x`
 - `{projects_status_result}`: `projects_status_updated=true` なら `Done`、false なら `⚠️ 更新失敗（手動確認が必要）`
 - `{review_cleanup_check}`: `REVIEW_CLEANUP_PARTIAL_FAILURE=1` なら ` ` + 警告付記、なければ `x`
 - `{projects_check}`: `projects_status_updated=true` なら `x`、false なら ` ` + 「GitHub Projects 画面で Issue #{issue_number} の Status を Done に変更」を付記

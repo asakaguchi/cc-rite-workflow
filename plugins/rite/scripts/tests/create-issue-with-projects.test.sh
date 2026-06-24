@@ -417,9 +417,10 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-014: Organization owner type detection
+# TC-014 (AC-1 / AC-4): Organization-owned Project → fields set successfully via
+# the owner-type-independent repository(owner,name) path (no owner-type branch).
 # --------------------------------------------------------------------------
-echo "TC-014: Organization owner → correct GraphQL root"
+echo "TC-014: Organization owner → fields set via repository() path (AC-1/AC-4)"
 body_file=$(create_body_file "Test org")
 run_script "$(jq -n --arg bf "$body_file" '{
   issue: {title: "Org Test", body_file: $bf},
@@ -427,20 +428,30 @@ run_script "$(jq -n --arg bf "$body_file" '{
     enabled: true,
     project_number: 2,
     owner: "test-org",
-    status: "Todo"
+    status: "Todo",
+    priority: "High",
+    complexity: "M"
   }
 }')" "org_owner"
 if [ "$LAST_RC" -eq 0 ]; then
   reg=$(json_field '.project_registration')
-  if [ "$reg" = "ok" ]; then
-    # Verify GraphQL query used organization(login:) root
-    if grep -q 'organization(login:' "$LAST_GH_LOG" 2>/dev/null; then
-      pass "Organization owner: exit=0, reg=$reg, GraphQL root=organization"
-    else
-      fail "Expected organization(login:) in GraphQL query, got: $(cat "$LAST_GH_LOG")"
-    fi
+  warns_text=$(printf '%s\n' "$LAST_OUTPUT" | jq -r '.warnings[]?' 2>/dev/null)
+  # Field setting actually reached: item-edit invoked with a single-select option id.
+  field_set=false
+  if grep -q "item-edit" "$LAST_GH_LOG" 2>/dev/null && grep -q -- "--single-select-option-id" "$LAST_GH_LOG" 2>/dev/null; then
+    field_set=true
+  fi
+  # Owner-type-independent path: query rooted at repository(owner:, no user/organization(login:).
+  repo_root=false
+  if grep -q 'repository(owner:' "$LAST_GH_LOG" 2>/dev/null \
+     && ! grep -qE '(user|organization)\(login:' "$LAST_GH_LOG" 2>/dev/null; then
+    repo_root=true
+  fi
+  if [ "$reg" = "ok" ] && [ "$field_set" = true ] && [ "$repo_root" = true ] \
+     && ! echo "$warns_text" | grep -q "Could not extract project ID"; then
+    pass "Org owner: reg=ok, fields set, repository() root, no 'Could not extract project ID' warning"
   else
-    fail "Expected reg=ok, got $reg"
+    fail "Expected reg=ok + fields set + repository() root + no project-ID warning, got reg=$reg, field_set=$field_set, repo_root=$repo_root, warns='$warns_text', log='$(cat "$LAST_GH_LOG")'"
   fi
 else
   fail "Expected exit 0, got $LAST_RC"
@@ -883,6 +894,129 @@ if [ "$LAST_RC" -eq 0 ]; then
     pass "enabled=false → reg=skipped, stderr clean"
   else
     fail "Expected reg=skipped + no stderr emit, got reg=$reg, stderr='$(printf '%s' "$stderr_content" | head -2)'"
+  fi
+else
+  fail "Expected exit 0, got $LAST_RC"
+fi
+
+# --------------------------------------------------------------------------
+# TC-030 (AC-3 / T-03): mock `gh repo view --json owner` matches the real CLI
+# shape — the owner object has {id, login} and NO __typename discriminator. The
+# org_owner scenario must not reintroduce __typename via any branch.
+# --------------------------------------------------------------------------
+echo "TC-030: mock gh repo view owner has no __typename (AC-3)"
+repo_view_out=$(MOCK_GH_SCENARIO=org_owner MOCK_ISSUE_NUMBER=42 PATH="$MOCK_BIN_DIR:$PATH" gh repo view --json owner 2>/dev/null)
+if echo "$repo_view_out" | jq -e '.owner.login' >/dev/null 2>&1 \
+   && echo "$repo_view_out" | jq -e '(.owner | has("__typename")) | not' >/dev/null 2>&1; then
+  pass "mock repo view owner = {id, login}, no __typename key (org_owner scenario)"
+else
+  fail "Expected owner with login and no __typename, got: $repo_view_out"
+fi
+
+# --------------------------------------------------------------------------
+# TC-031 (AC-5 / T-05): the owner-type detection code is fully removed from
+# create-issue-with-projects.sh — no __typename reference and no GQL_ROOT
+# user/org branch remain in the source.
+# --------------------------------------------------------------------------
+echo "TC-031: source has no __typename / GQL_ROOT residue (AC-5)"
+if grep -qE '__typename|GQL_ROOT|OWNER_TYPE' "$TARGET"; then
+  fail "Found owner-type detection residue in $TARGET: $(grep -nE '__typename|GQL_ROOT|OWNER_TYPE' "$TARGET" | head -3)"
+else
+  pass "No __typename / GQL_ROOT / OWNER_TYPE residue in source"
+fi
+
+# --------------------------------------------------------------------------
+# TC-032 (#1610 AC-1 / T-01 / T-05): Japanese-named Project fields are resolved
+# by the built-in EN<->JA aliases with zero config (no field_names input).
+# --------------------------------------------------------------------------
+echo "TC-032: Japanese field names resolved via built-in aliases (AC-1, zero config)"
+body_file=$(create_body_file "Test jp field names")
+run_script "$(jq -n --arg bf "$body_file" '{
+  issue: {title: "JP Fields", body_file: $bf},
+  projects: {
+    enabled: true,
+    project_number: 2,
+    owner: "test-owner",
+    status: "Todo",
+    priority: "High",
+    complexity: "M"
+  }
+}')" "jp_field_names"
+if [ "$LAST_RC" -eq 0 ]; then
+  reg=$(json_field '.project_registration')
+  warns_text=$(printf '%s\n' "$LAST_OUTPUT" | jq -r '.warnings[]?' 2>/dev/null)
+  # All three fields set (Status/Priority/Complexity → ステータス/優先度/複雑度).
+  edit_count=$(grep -c "item-edit" "$LAST_GH_LOG" 2>/dev/null || echo 0)
+  if [ "$reg" = "ok" ] && [ "$edit_count" -ge 3 ] \
+     && ! echo "$warns_text" | grep -q "not found"; then
+    pass "JP field names: reg=ok, 3 fields set via aliases, no 'not found' warning"
+  else
+    fail "Expected reg=ok + 3 item-edit + no warning, got reg=$reg, edits=$edit_count, warns='$warns_text'"
+  fi
+else
+  fail "Expected exit 0, got $LAST_RC"
+fi
+
+# --------------------------------------------------------------------------
+# TC-033 (#1610 AC-3 / T-03): input field_names mapping takes precedence over
+# the built-in alias — Priority field "重要度" is resolved via the override.
+# --------------------------------------------------------------------------
+echo "TC-033: input field_names mapping overrides built-in alias (AC-3)"
+body_file=$(create_body_file "Test custom field name")
+run_script "$(jq -n --arg bf "$body_file" '{
+  issue: {title: "Custom Field", body_file: $bf},
+  projects: {
+    enabled: true,
+    project_number: 2,
+    owner: "test-owner",
+    status: "Todo",
+    priority: "High",
+    field_names: { priority: "重要度" }
+  }
+}')" "custom_field_name"
+if [ "$LAST_RC" -eq 0 ]; then
+  reg=$(json_field '.project_registration')
+  warns_text=$(printf '%s\n' "$LAST_OUTPUT" | jq -r '.warnings[]?' 2>/dev/null)
+  # Priority resolved via the "重要度" override (the project has no 優先度/Priority field).
+  if [ "$reg" = "ok" ] && ! echo "$warns_text" | grep -q "Field 'Priority' not found"; then
+    pass "Custom field name: reg=ok, Priority resolved via override '重要度'"
+  else
+    fail "Expected reg=ok + no 'Field Priority not found', got reg=$reg, warns='$warns_text'"
+  fi
+else
+  fail "Expected exit 0, got $LAST_RC"
+fi
+
+# --------------------------------------------------------------------------
+# TC-034 (#1610 AC-4 / T-04): when no candidate field name matches, registration
+# is partial and the warning lists the tried candidate names (alias + canonical).
+# --------------------------------------------------------------------------
+echo "TC-034: unresolvable field → partial + warning lists tried candidates (AC-4)"
+body_file=$(create_body_file "Test missing field")
+run_script "$(jq -n --arg bf "$body_file" '{
+  issue: {title: "Missing Field", body_file: $bf},
+  projects: {
+    enabled: true,
+    project_number: 2,
+    owner: "test-owner",
+    status: "Todo",
+    priority: "High"
+  },
+  options: {non_blocking_projects: true}
+}')" "missing_priority_field"
+if [ "$LAST_RC" -eq 0 ]; then
+  reg=$(json_field '.project_registration')
+  warns_text=$(printf '%s\n' "$LAST_OUTPUT" | jq -r '.warnings[]?' 2>/dev/null)
+  stderr_content=$(cat "$LAST_STDERR" 2>/dev/null)
+  # Warning must name the canonical field and the tried candidates (built-in alias 優先度 + Priority).
+  if [ "$reg" = "partial" ] \
+     && echo "$warns_text" | grep -q "Field 'Priority' not found" \
+     && echo "$warns_text" | grep -q "優先度" \
+     && echo "$warns_text" | grep -q "tried:" \
+     && echo "$stderr_content" | grep -q "ERROR: Projects registration failed:"; then
+    pass "Missing field: reg=partial, warning lists tried candidates (優先度, Priority) + stderr emit"
+  else
+    fail "Expected reg=partial + warning with tried candidates + stderr, got reg=$reg, warns='$warns_text'"
   fi
 else
   fail "Expected exit 0, got $LAST_RC"

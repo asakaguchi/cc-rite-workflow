@@ -20,6 +20,13 @@ Thumbs.db
 tmp/
 temp/
 
+# Claude Code harness state (auto-generated)
+# scheduled task lock — session 固有の lock (sessionId/pid/procStart/acquiredAt) を
+# Claude Code 本体が毎セッション上書きするため tracked だと常に dirty になり、
+# pull.rebase=true 環境で git pull を abort させる (#1654)。.claude/ 配下の他の
+# tracked ファイル (skills/release/SKILL.md 等) には影響しないようファイル単位で除外する。
+.claude/scheduled_tasks.lock
+
 # rite workflow state (auto-generated)
 .rite-flow-state
 .rite-flow-state.tmp.*

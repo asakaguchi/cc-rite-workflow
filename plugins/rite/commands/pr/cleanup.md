@@ -96,7 +96,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
 }' -f owner="{owner}" -f repo="{repo}" -F number={issue_number}
 ```
 
-Tasklist fallback では、GitHub code search の `[`/`]` が不安定（リテラルを無視しほぼ全 Issue を返す）なため、`--jq '.[0]'` で先頭を盲目採用すると standalone closing Issue が自分自身や無関係 Issue を親と誤検出する。複数候補を取得し、自己マッチ除外＋候補 body の tasklist 行再検証を経た候補のみ採用する（#1629 で open.md / close.md に導入したループと同一方針。検証ループ本体（自己除外・再検証 regex・`--limit 10`）は close.md Phase 4.5.1 / projects-integration.md §2.4.7.1 と揃える。差異は cleanup が `--state open`（子マージ直後で親は通常 open）を使う点のみ）:
+Tasklist fallback では、GitHub code search の `[`/`]` が不安定（リテラルを無視しほぼ全 Issue を返す）なため、`--jq '.[0]'` で先頭を盲目採用すると standalone closing Issue が自分自身や無関係 Issue を親と誤検出する。複数候補を取得し、自己マッチ除外＋候補 body の tasklist 行再検証を経た候補のみ採用する（#1629 で open.md / close.md に導入したループと同一方針。検証ループ本体（自己除外・再検証 regex・`--limit 10`）は close.md Phase 4.5.1 / projects-integration.md §2.4.7.1 と揃える。`--state` は cleanup が `--state open`（子マージ直後で親は通常 open）を使い、これは projects-integration.md §2.4.7.1 と一致する。差異は close.md Phase 4.5.1 が `--state all`（closing Issue の親が既に closed の可能性）を使う点のみ）:
 
 ```bash
 # GitHub code search は `[`/`]` を無視する緩いマッチのため、複数候補を取得して検証する

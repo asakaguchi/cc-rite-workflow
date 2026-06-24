@@ -361,7 +361,7 @@ trap - EXIT INT TERM HUP
 
 ### 4.5.1 Detect Parent Issue
 
-親 Issue を **3 method の OR 検出**で特定する。この 3-method 構造は [`projects-integration.md` §2.4.7.1](../../references/projects-integration.md#247-parent-issue-status-update-for-child-issues) と一致させる（method 順序・OR 意味・total-failure 時の `[DEBUG] parent not detected` emission を揃える。乖離すると silent-skip 回帰が再発する）。
+親 Issue を **3 method の OR 検出**で特定する。この 3-method 構造は [`projects-integration.md` §2.4.7.1](../../references/projects-integration.md#247-parent-issue-status-update-for-child-issues) と一致させる（method 順序・OR 意味・total-failure 時の `[DEBUG] parent not detected` emission に加え、**Method 3 の検証ループ本体**（自己マッチ除外 `cand != {issue_number}`・候補 body の tasklist 行再検証 regex・`--limit 10`）も両サイトで揃える。差異は `--state` のみ。method 順序・OR 意味・loop 本体のいずれかが乖離すると silent-skip / 誤検出回帰が再発する）。
 
 **Method 1: `## 親 Issue` body meta（PRIMARY）** — `/rite:issue:create`（Decompose Path）が書く section:
 
@@ -386,7 +386,7 @@ echo "method2_parent=${parent_number:-none}"
 
 非空なら 4.5.2 へ。
 
-**Method 3: Tasklist search（last resort）** — 両 method が失敗した場合。GitHub code search の `[`/`]` は不安定なので最後の手段。`--state all`（closing Issue の親が既に closed の可能性）:
+**Method 3: Tasklist search（last resort）** — 両 method が失敗した場合。GitHub code search の `[`/`]` は不安定（リテラルを無視しほぼ全 Issue を返す）なので最後の手段。複数候補を取得し、自己マッチ除外＋各候補 body に当該 tasklist 行が実在するか再検証してから採用する（根拠は [`projects-integration.md` §2.4.7.1](../../references/projects-integration.md#247-parent-issue-status-update-for-child-issues) の Note 参照）。`--state all`（closing Issue の親が既に closed の可能性）:
 
 ```bash
 # GitHub code search は `[`/`]` を無視する緩いマッチのため、複数候補を取得して検証する

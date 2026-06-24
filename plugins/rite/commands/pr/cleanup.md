@@ -573,7 +573,7 @@ Status: {projects_status_result}
     ```
   - `BRANCH_DELETED=1` のとき（通常削除、または `BRANCH_DELETE_UNMERGED` をユーザーが強制削除 `-D` で解決した場合に emit される。**`BRANCH_DELETE_UNMERGED=1` より先に評価する**）: `x`
   - `BRANCH_DELETE_FAILED=1` のとき: ` ` + 「ローカルブランチ {branch_name} の削除に失敗。`git branch -D {branch_name}` で手動削除（worktree で checkout 中なら worktree 削除後）」を付記
-  - `BRANCH_DELETE_UNMERGED=1` のとき（後続に `BRANCH_DELETED=1` が無い = ユーザーが skip 選択）: ` ` + 「ローカルブランチ {branch_name} は未マージのため保留。`git branch -D {branch_name}` で手動削除」を付記
+  - `BRANCH_DELETE_UNMERGED=1` のとき（= ユーザーが skip 選択。強制削除で解決した場合は上位の `BRANCH_DELETED=1` 行で既に `x` 評価済みのため、ここに到達するのは skip 時のみ）: ` ` + 「ローカルブランチ {branch_name} は未マージのため保留。`git branch -D {branch_name}` で手動削除」を付記
   - いずれの `[CONTEXT]` 行も無いとき: `x`
 - `{projects_status_result}`: `projects_status_updated=true` なら `Done`、false なら `⚠️ 更新失敗（手動確認が必要）`
 - `{review_cleanup_check}`: `REVIEW_CLEANUP_PARTIAL_FAILURE=1` なら ` ` + 警告付記、なければ `x`

@@ -172,9 +172,11 @@ Determine the output language according to the `language` setting read in Phase 
 
 ### 4.2 When Recommended Skills Exist
 
+> **罫線の表示幅**: box の右罫線 `│` を揃えるには、全角（East Asian Width `W`/`F`）文字を 2 桁として内側幅を上罫線の `─` 本数に一致させる（`A` Ambiguous は 1 桁）。詳細は [`../../references/box-display-width.md`](../../references/box-display-width.md)。
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  スキル提案                                  │
+│  スキル提案                                                 │
 └─────────────────────────────────────────────────────────────┘
 
 現在のコンテキスト:
@@ -214,7 +216,7 @@ Determine the output language according to the `language` setting read in Phase 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  スキル提案                                  │
+│  スキル提案                                                 │
 └─────────────────────────────────────────────────────────────┘
 
 現在のコンテキスト:
@@ -239,7 +241,7 @@ When the Issue number cannot be determined (no `issue-{number}` pattern in branc
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  スキル提案                                  │
+│  スキル提案                                                 │
 └─────────────────────────────────────────────────────────────┘
 
 コンテキスト情報が不足しています:

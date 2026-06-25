@@ -104,11 +104,13 @@ Display results in the following format according to the determined language.
 
 ### 3.1 List Display Format
 
+> **罫線の表示幅**: box の右罫線 `│` を揃えるには、全角（East Asian Width `W`/`F`）文字を 2 桁として内側幅を上罫線の `─` 本数に一致させる（`A` Ambiguous は 1 桁）。詳細は [`../../references/box-display-width.md`](../../references/box-display-width.md)。
+
 When Issues exist:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Issue 一覧（{filter}）                                      │
+│  Issue 一覧（{filter}）                                     │
 └─────────────────────────────────────────────────────────────┘
 
   #{number}  {title}
@@ -132,7 +134,7 @@ When Issues exist:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Issue 一覧（{filter}）                                      │
+│  Issue 一覧（{filter}）                                     │
 └─────────────────────────────────────────────────────────────┘
 
   Issue が見つかりませんでした。
@@ -260,7 +262,7 @@ Display:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Issue 一覧（Sprint: Sprint 3）                              │
+│  Issue 一覧（Sprint: Sprint 3）                             │
 └─────────────────────────────────────────────────────────────┘
 
   #42  ログイン機能を追加                        [In Progress]
@@ -309,7 +311,7 @@ Display items where the Iteration field value is null as "backlog":
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Issue 一覧（バックログ）                                    │
+│  Issue 一覧（バックログ）                                   │
 └─────────────────────────────────────────────────────────────┘
 
   #50  将来的な機能追加                          [Todo]

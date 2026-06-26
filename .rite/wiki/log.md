@@ -6,6 +6,8 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-06-26T03:18:14+00:00 | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1663 (Issue #1662) review: 適用 24 を追記。回帰防止テストの grep token が旧コードの remediation hint 文言にもマッチし修正前でも PASS する non-discriminating 構造を指摘、修正パス固有 literal への絞り込みと修正前 base revert test での discrimination 実証を canonical 対策化 (anti-silent-failure 化修正で旧経路 hint と新経路 WARNING が同ファイル併存する場合に特に陥りやすい) |
+| 2026-06-26T03:18:14+00:00 | ingest:update | pages/patterns/worktree-based-separate-branch-write.md | PR #1663 (Issue #1662) review: corrupt/orphaned worktree (stale gitdir、リポジトリ移動由来) からの自己回復セクションを追記。fast-path 検証の rc-aware 化 + setup.sh 委譲 + legacy fallthrough、silent exit 1 廃止と WARNING surface、fallthrough コメントの実 rc 遷移正確化 |
 | 2026-06-09T05:37:30Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=229, broken_refs=0 |
 | 2026-06-09T05:36:54Z | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1317 (Issue #1312) review: 適用 20 を追記。inline-gh-create-title の開始引用符 alternation `["']` の single-quote branch を pin する TC-026/027/028 を test/error-handling reviewer が独立 mutation で非 vacuous 立証 (`["']`→`["]` で TC-026 のみ FAIL / `$` 除外撤去で TC-018+TC-027 FAIL)、0 findings / 1 cycle mergeable |
 | 2026-05-26T17:30:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=212, broken_refs=0 |

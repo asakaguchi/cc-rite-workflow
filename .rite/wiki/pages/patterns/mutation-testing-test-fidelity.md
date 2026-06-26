@@ -2,8 +2,10 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-06-10T00:38:14Z"
+updated: "2026-06-26T03:18:14+00:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260626T031814Z-pr-1663.md"
   - type: "reviews"
     ref: "raw/reviews/20260610T003030Z-pr-1337-c2.md"
   - type: "reviews"
@@ -587,6 +589,29 @@ fix 方針: `>&2` 条件を撤去して **head -c 全行を sweep し、非 emis
 
 教訓: **sweep test の検出条件 (同一行 grep / 行指向フィルタ) は、対象 idiom の構造 (代入行と emission 行の分離) と一致するかを mutation で実証してから commit する**。「条件付き sweep が綺麗」という直感は構造的盲点を隠す — fail-closed (全行 sweep + allowlist) は false positive 管理のコストを払う代わりに盲点を排除する。pivot 時は cross-reference コメントの追随も必須 ([design-pivot-stale-cross-reference-comment](../anti-patterns/design-pivot-stale-cross-reference-comment.md) 参照)。
 
+### 適用 24: 回帰防止テストの grep token は「修正パス固有」にする — 旧コードの remediation hint にもマッチする generic token は修正前でも PASS する (PR #1663 で実証)
+
+PR #1663 (Issue #1662 — corrupt/orphaned wiki-worktree からの自己回復) review で、新規追加された回帰防止テストの assertion が **旧コード (修正前) の remediation hint 文言にもマッチする generic な grep token** を使っていたため、**修正前でも PASS する non-discriminating な構造** になっていたことが指摘された。回帰防止テストの定義上、対象は「修正前は FAIL し修正後は PASS する」べきだが、grep token が修正パス固有でないと修正前でも条件を満たし identification power が 0 になる。
+
+```bash
+# 反面教材 — 修正後の自己回復経路を検証するはずの assertion
+# だが grep token が旧コードにも存在する remediation hint 文言にマッチ
+assert_err_has "WARNING"            # ← 旧コードの別 WARNING でも PASS
+assert_err_has "worktree"           # ← 旧コードの hint 文言でも PASS
+
+# 修正前 (silent exit 1 の旧経路) でも上記が PASS してしまう = non-discriminating
+```
+
+これは適用 5 Pattern 5-A (Self-grep tautology) / 適用 14 (latent matching) と同型の「test が実装の正否を弁別できない」identification power 0 の系統で、特に **「修正前後で文言が共有される領域」(同ファイル内に旧経路の hint と新経路の WARNING が併存する)** で発生しやすい。anti-silent-failure 化のような「silent → observable」遷移を検証する回帰テストは、旧経路 (silent) でも偶然 surface する generic 語ではなく、**修正で新規導入された経路固有の sentinel / reason 文字列** を grep token に選ぶ必要がある。
+
+canonical 対策:
+
+1. **grep token を修正パス固有の literal に絞る**: 修正で新規に emit するようになった `[CONTEXT]` sentinel / reason 文字列 (例: 自己回復経路でのみ出る固有 marker) を assertion token にする。`WARNING` / `error` / ドメイン共通語のような旧コードにも存在する generic token は避ける。
+2. **修正前 base に対する revert test で discrimination を実証する**: 適用 1〜3 の手順どおり、修正行を revert (または旧 silent 経路を再現) して当該 TC が **FAIL する**ことを確認してから commit する。修正前後の両方で PASS する token は non-discriminating として token を絞り直す。
+3. **「silent → observable」遷移テストは observable 側の固有 sentinel を pin する**: silent failure を observable にする修正の回帰テストは、「何かが stderr に出る」ではなく「修正が導入した固有の WARNING/sentinel 行が出る」を pin する。旧経路でも出る汎用語では silent regression (再び silent に戻る) を catch できない。
+
+教訓: 回帰防止テストの grep token は「対象の修正パスでのみ生成され、修正前のコードには存在しない literal」を選ぶ。これが満たされているかは **修正前 base での revert test が FAIL すること**で機械的に保証する。同ファイル内に旧経路 hint と新経路 WARNING が併存する anti-silent-failure 化修正で特に陥りやすい (修正自身が局所 silent 抑制を残す self-referential 失敗は [[asymmetric-fix-transcription]] / [[mktemp-failure-surface-warning]] と対で監査する)。
+
 ## 関連ページ
 
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
@@ -631,3 +656,4 @@ fix 方針: `>&2` 条件を撤去して **head -c 全行を sweep し、非 emis
 - [PR #1319 review results — review-source-resolve error 経路 assertion 追加で、negative assertion (`assert_err_lacks STALE`) の非 vacuity を match/mismatch 差分ペア構造 + all-zeros SHA 決定性で立証 (能動 mutation を READ-ONLY guard で回せない構造的代替)、reason 文字列の実装 emit byte 一致照合を test 正しさの核心と確認 (4 reviewer 可 / 0 findings / 1 cycle mergeable)](../../raw/reviews/20260609T085210Z-pr-1319.md)
 - [PR #1321 review results — dedup assertion の非 vacuity を重複 fixture (p2 に p1 と同一の正規化済み ref) で担保し `sort -u`→`cat` mutation で count=2 FAIL を立証、section-scoped 静的契約 test (TC-14) の helper rename を empty-section fail で検出する rename-detection 機構を io_error→true / rename 2 mutation で実証 (test/code-quality 2 reviewer 可 / 0 findings / 1 cycle mergeable)](../../raw/reviews/20260609T115303Z-pr-1321.md)
 - [PR #1337 review results (cycle 2) — TC-3 の >&2 同一行条件 sweep が代入行 idiom を検出できない盲点を author mutation で実証し fail-closed 全行 sweep + allowlist へ pivot、4 reviewer が独立 worktree-only mutation で TC-3/TC-4/TC-5/TC-025 の非 vacuity を再実証 (0 findings / 2 cycle mergeable)](../../raw/reviews/20260610T003030Z-pr-1337-c2.md)
+- [PR #1663 review results — 回帰防止テストの grep token が旧コードの remediation hint 文言にもマッチし修正前でも PASS する non-discriminating 構造を指摘、修正パス固有 literal への絞り込みと修正前 base revert test での discrimination 実証を canonical 対策化 (適用 24)](../../raw/reviews/20260626T031814Z-pr-1663.md)

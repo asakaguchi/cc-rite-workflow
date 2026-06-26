@@ -2,8 +2,10 @@
 title: "separate_branch 戦略は git worktree で dev ブランチ不動を実現する"
 domain: "patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-04-16T19:37:16Z"
+updated: "2026-06-26T03:18:14+00:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260626T031814Z-pr-1663.md"
   - type: "fixes"
     ref: "raw/fixes/20260416T165559Z-pr-548.md"
   - type: "fixes"
@@ -12,7 +14,7 @@ sources:
     ref: "raw/reviews/20260416T171008Z-pr-548.md"
   - type: "reviews"
     ref: "raw/reviews/20260416T182704Z-pr-548-cycle6.md"
-tags: ["git", "worktree", "wiki", "branch-strategy", "issue-547"]
+tags: ["git", "worktree", "wiki", "branch-strategy", "issue-547", "self-healing", "stale-gitdir", "rc-aware"]
 confidence: high
 ---
 
@@ -72,6 +74,26 @@ prunable: gitdir file points to non-existent location
 
 `wiki-worktree-setup.sh` はこの marker を解析して自動 prune するロジックを持つ (PR #548 cycle 2 で追加)。
 
+### corrupt/orphaned worktree (stale gitdir) からの自己回復 (PR #1663)
+
+prunable marker 経由の自動復旧 (上節) は `git worktree list` に登録されたまま gitdir が壊れたケースを扱う。一方 **リポジトリ自体の移動 (アカウント移管 / clone のコピー)** では、`.rite/wiki-worktree/.git` ポインタが旧パスを指したまま残り、かつ `git worktree list` にも未登録の**孤児ディレクトリ**になる。この corrupt/orphaned 状態は prunable marker を残さないため上節のロジックでは検出できない。
+
+PR #1663 (Issue #1662) の実機回帰では、この孤児 worktree により raw source が約 2 週間 silent に蓄積停止していた。破断連鎖:
+
+1. `wiki-ingest-commit.sh` の worktree fast-path が `[ -d .rite/wiki-worktree ]` を true 判定 (ディスク上には存在する)
+2. `verify_worktree_branch` の `git -C .rite/wiki-worktree rev-parse` が stale gitdir で失敗 (rc≠0)
+3. commit script が `|| exit 1` で **silent に exit 1**
+4. caller (close/review/fix) では non-blocking WARNING 扱いのため誰も気付かず stall
+
+canonical 対策 (commit / setup 両経路の自己回復):
+
+1. **fast-path 検証を rc-aware 化する**: worktree 存在チェック (`[ -d ]`) を「健全な registered worktree である」保証と混同しない。`verify_worktree_branch` の rc を 3 値に分離し、`rc=2` (corrupt/orphaned) は `wiki-worktree-setup.sh` に自己回復を委譲して再検証、回復不能なら legacy stash/checkout path へフォールバック、`rc=3` (wrong branch) のみ従来どおり exit する。
+2. **setup 側で stale gitdir 残留ディレクトリを除去してから再作成する**: ディスク上に存在するが registered worktree でない残留ディレクトリを `rm -rf` + `git worktree prune` で除去してから worktree を再作成する。「ディレクトリが存在する = 健全」の仮定を捨てる。
+3. **silent `exit 1` を廃止し WARNING を surface する**: 自己回復経路は必ず observable な WARNING を出す (= silent stall の構造的廃止)。anti-silent-failure 化する修正自身が局所的に `2>/dev/null || true` の silent 抑制を残さないよう、同ファイル内の既存防御パターン (stderr 退避 + WARNING surface + scope-limited trap) と**対称化**する。
+4. **fallthrough コメントは実 rc 遷移に正確化する**: rc-aware case の fallthrough コメントは実際の rc 遷移 (recreate 成功は rc=0 で case-0、case-star 到達は setup exit 2/3 / 稀な reverify-still-2 のみ) を正確に記述する。状態変化後に旧前提のコメントを残置しない ([[stale-historical-comment-after-state-change]])。
+
+リポジトリ移動・コピーは現実的なシナリオであり、「ディスク上に worktree ディレクトリが存在するが registered worktree ではない」ケースを setup / commit 両経路で想定するのが堅牢性の必須要件。
+
 ### YAML branch name の path traversal hardening
 
 `wiki.branch_name` を rite-config.yml から読む場合、ref name validation regex は `[A-Za-z0-9._/-]+$` だけだと `..` や `//` を許容してしまう。`git check-ref-format` 準拠の subset として以下を明示拒否:
@@ -86,6 +108,8 @@ prunable: gitdir file points to non-existent location
 
 - [Exit code semantic preservation: caller は case で語彙を保持する](./exit-code-semantic-preservation.md)
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
+- [mktemp 失敗は silent 握り潰さず WARNING を可視化する](./mktemp-failure-surface-warning.md)
+- [状態変化後も未来形 / 旧値前提のインラインコメントが残置する (stale historical comment drift)](../anti-patterns/stale-historical-comment-after-state-change.md)
 
 ## ソース
 
@@ -93,3 +117,4 @@ prunable: gitdir file points to non-existent location
 - [PR #548 cycle 2 fix (worktree fast path 追加、prunable auto recovery)](../../raw/fixes/20260416T172110Z-pr-548.md)
 - [PR #548 cycle 2 review (worktree collision CRITICAL、asymmetric transcription)](../../raw/reviews/20260416T171008Z-pr-548.md)
 - [PR #548 cycle 6 mergeable (worktree redesign の完成レビュー)](../../raw/reviews/20260416T182704Z-pr-548-cycle6.md)
+- [PR #1663 review results — corrupt/orphaned worktree (stale gitdir、リポジトリ移動由来) からの自己回復: rc-aware fast-path 検証 + setup.sh 委譲 + legacy fallthrough、silent exit 1 廃止と WARNING surface、fallthrough コメントの実 rc 遷移正確化](../../raw/reviews/20260626T031814Z-pr-1663.md)

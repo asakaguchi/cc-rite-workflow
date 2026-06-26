@@ -330,18 +330,49 @@ fi
 # stash/checkout path below handles the case (backward compat).
 # -----------------------------------------------------------------------
 worktree_path=".rite/wiki-worktree"
+# Probe the worktree fast path. rc semantics from verify_worktree_branch:
+# 0=on the wiki branch (usable), 2=rev-parse failed (corrupt/orphaned — e.g. a
+# stale `.git` gitdir after the repo was relocated), 3=checked out to a different
+# branch. A corrupt worktree must NOT hard-stop the commit: that silent exit is
+# what halted ALL raw-source accumulation (the failure is non-blocking upstream,
+# so the WARNING went unseen). Self-heal on rc=2, then fall back to the legacy
+# stash/checkout path if the worktree stays unusable.
+wt_usable=false
 if [ -d "$worktree_path" ]; then
- # Confirm the worktree is on the configured wiki branch. A misaligned worktree
- # (e.g. user ran `git -C .rite/wiki-worktree checkout develop` by hand) would
- # otherwise silently fall through to the legacy path below, which fails with
- # "fatal: '<wiki>' is already used by worktree at '...'" — masking the true
- # cause (worktree misalignment) behind a cryptic checkout error.
- # rev-parse + stderr capture + branch compare は
- # lib/worktree-git.sh の verify_worktree_branch() に統合済み。4th arg の extra_hint
- # で「silent fall-through to legacy path」警告を追加して元の挙動を保持する。
+ set +e
  verify_worktree_branch "$worktree_path" "$wiki_branch" "wic-wt" \
- "silent fall-through to legacy path would fail with 'already used by worktree'" \
- || exit 1
+ "silent fall-through to legacy path would fail with 'already used by worktree'"
+ vwb_rc=$?
+ set -e
+ if [ "$vwb_rc" -eq 2 ]; then
+ # Corrupt/orphaned. Delegate recovery to the idempotent setup helper — it
+ # removes the stale residue and recreates the worktree on the wiki branch —
+ # then re-verify. Its status line goes to stderr to keep this script's
+ # stdout contract (parsed by callers) clean.
+ echo "WARNING: .rite/wiki-worktree が壊れています (gitdir stale 等)。wiki-worktree-setup.sh で自己回復を試行します" >&2
+ if bash "$_SCRIPT_DIR/wiki-worktree-setup.sh" >&2; then
+ set +e
+ verify_worktree_branch "$worktree_path" "$wiki_branch" "wic-wt" ""
+ vwb_rc=$?
+ set -e
+ fi
+ fi
+ case "$vwb_rc" in
+ 0) wt_usable=true ;;
+ 3)
+ # Valid worktree but on the wrong branch — a genuine misconfiguration.
+ # Do not guess the intended branch; surface it as before.
+ exit 1
+ ;;
+ *)
+ # Still unusable after the recovery attempt (e.g. setup skipped because the
+ # wiki branch is missing locally). Recovery already removed the stale
+ # residue, so the legacy path below runs without hitting "already used by
+ # worktree". Fall through.
+ : ;;
+ esac
+fi
+if [ "$wt_usable" = "true" ]; then
  # Pre-flight: validate wiki branch name (ステップ 1.1 already validates but
  # defense-in-depth here since `git -C ... add -- "$path"` would silently
  # accept option-like paths if the validation were bypassed).

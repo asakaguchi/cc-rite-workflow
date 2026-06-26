@@ -33,9 +33,12 @@
 #   - The script does NOT fetch from origin. If the wiki branch only
 #     exists remotely, the caller (e.g. /rite:wiki:init) is responsible
 #     for running `git fetch origin wiki:wiki` first.
-#   - The script does NOT prune stale worktrees. If `.rite/wiki-worktree`
-#     was deleted without `git worktree remove`, run `git worktree prune`
-#     manually before re-invoking this script.
+#   - The script self-heals stale worktree state so a relocated/copied repo
+#     does not silently break ingest. Two cases are recovered before
+#     `git worktree add`: a `prunable` registration (directory deleted without
+#     `git worktree remove`) is pruned, and an orphaned directory (exists on
+#     disk but unresolvable by `git -C`, e.g. a stale `.git` gitdir pointing at
+#     the old path after relocation) is removed and pruned.
 
 set -euo pipefail
 
@@ -226,6 +229,26 @@ elif [[ -n "$existing_branch" ]]; then
 fi
 [ -n "$wt_list_err" ] && rm -f "$wt_list_err"
 trap - EXIT INT TERM HUP
+
+# -----------------------------------------------------------------------
+# Stale residue recovery: the target directory exists on disk but is NOT a
+# registered worktree of this repo, so `git -C` cannot resolve it. The common
+# trigger is repo relocation/copy: the worktree's `.git` file still holds a
+# `gitdir:` pointer to the OLD absolute path, leaving an orphaned directory that
+# `git worktree list` no longer reports. Reaching this point means the
+# idempotency scan above found no live worktree at this path, so a directory
+# that nevertheless exists is leftover residue and the `git worktree add` below
+# would abort with "already exists" — the exact silent stall that halted
+# raw-source accumulation. Remove the residue and prune dangling metadata so the
+# add starts clean. The `git -C ... rev-parse` guard ensures a genuinely healthy
+# worktree (e.g. one missed by a transiently failed `git worktree list`) is
+# never deleted: a healthy worktree resolves and is left untouched.
+if [ -e "$target_path" ] && ! git -C "$target_path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "WARNING: '$abs_target' は git worktree として解決できない残留ディレクトリです (stale .git gitdir — リポジトリ移動/コピー後に発生)" >&2
+  echo "  自動回復: 残留を削除し git worktree prune してから worktree を再作成します" >&2
+  rm -rf "$target_path"
+  git worktree prune 2>/dev/null || true
+fi
 
 # -----------------------------------------------------------------------
 # Create the worktree. Parent directory may already exist (e.g. because

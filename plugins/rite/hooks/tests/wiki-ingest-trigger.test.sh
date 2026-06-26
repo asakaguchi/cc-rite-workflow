@@ -1063,7 +1063,7 @@ fi
 echo ""
 
 # ==========================================================================
-# Phase: STATE_ROOT write anchoring (Issue #1664) — TC-051 〜 TC-052
+# Phase: STATE_ROOT write anchoring (Issue #1664) — TC-051 〜 TC-053
 # trigger は raw を state-path-resolve ルート (linked worktree では main
 # checkout) 配下へ書く。wiki-ingest-commit.sh の scan ルートと一致させ、
 # multi-session worktree からの起動で raw が silent に取りこぼされる回帰を防ぐ。

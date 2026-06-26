@@ -42,12 +42,19 @@ trap cleanup EXIT INT TERM HUP
 # .rite/wiki-worktree directory whose `.git` pointer is stale. Echoes the repo
 # root on stdout.
 make_fixture() {
-  local root
+  # $1: "yes" (default) creates a local wiki branch; "no" omits it (to exercise
+  #     the legacy fallthrough path where setup + legacy both exit 2 on the
+  #     missing branch).
+  local root with_wiki="${1:-yes}"
   root="$WORK/repo"
   mkdir -p "$root"
   git -C "$root" init -q -b develop
   git -C "$root" config user.email "test@example.com"
   git -C "$root" config user.name "rite test"
+  # Disable commit signing locally so the fixture commits (and the recovery
+  # commit made by the script under test) do not fail under a global
+  # commit.gpgsign=true. Matches the convention in the sibling fixture tests.
+  git -C "$root" config commit.gpgsign false
 
   printf 'wiki:\n  enabled: true\n  branch_strategy: separate_branch\n  branch_name: wiki\n' \
     > "$root/rite-config.yml"
@@ -55,15 +62,17 @@ make_fixture() {
   git -C "$root" add rite-config.yml .gitignore
   git -C "$root" commit -q -m "init develop"
 
-  # wiki branch: tracks .rite/wiki/raw/ structure.
-  git -C "$root" checkout -q --orphan wiki
-  git -C "$root" rm -q -rf . >/dev/null 2>&1 || true
-  mkdir -p "$root/.rite/wiki/raw/retrospectives"
-  printf '# wiki\n' > "$root/.rite/wiki/index.md"
-  : > "$root/.rite/wiki/raw/retrospectives/.gitkeep"
-  git -C "$root" add .rite/wiki/index.md .rite/wiki/raw/retrospectives/.gitkeep
-  git -C "$root" commit -q -m "init wiki"
-  git -C "$root" checkout -q develop
+  if [ "$with_wiki" = "yes" ]; then
+    # wiki branch: tracks .rite/wiki/raw/ structure.
+    git -C "$root" checkout -q --orphan wiki
+    git -C "$root" rm -q -rf . >/dev/null 2>&1 || true
+    mkdir -p "$root/.rite/wiki/raw/retrospectives"
+    printf '# wiki\n' > "$root/.rite/wiki/index.md"
+    : > "$root/.rite/wiki/raw/retrospectives/.gitkeep"
+    git -C "$root" add .rite/wiki/index.md .rite/wiki/raw/retrospectives/.gitkeep
+    git -C "$root" commit -q -m "init wiki"
+    git -C "$root" checkout -q develop
+  fi
 
   # Stage a pending raw source on the dev tree (untracked, as the trigger leaves it).
   mkdir -p "$root/.rite/wiki/raw/retrospectives"
@@ -120,7 +129,12 @@ fi
 echo ""
 
 echo "TC-COMMIT-NOT-SILENT: a WARNING is emitted (no silent stall)"
-if printf '%s' "$commit_err" | grep -q "自己回復\|wiki-worktree-setup.sh"; then
+# Match only the fix-specific recovery token `自己回復`. The earlier broad
+# alternative `wiki-worktree-setup.sh` also matched the pre-fix code's
+# verify_worktree_branch remediation hint ("対処: ... bash .../wiki-worktree-setup.sh"),
+# so the assertion passed even on the broken (reverted) code — a non-discriminating
+# test. `自己回復` appears only on the recovery path this PR adds.
+if printf '%s' "$commit_err" | grep -q "自己回復"; then
   pass "recovery WARNING surfaced on stderr"
 else
   fail "no recovery WARNING — silent-failure regression"
@@ -143,13 +157,40 @@ echo "TC-SETUP-RECOVER: wiki-worktree-setup.sh repairs orphaned .rite/wiki-workt
 set +e
 setup_out="$(cd "$REPO" && bash "$SETUP_SH" 2>setup_err.txt)"
 setup_rc=$?
+recovered_branch="$(git -C "$REPO/.rite/wiki-worktree" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
 set -e
-if [ "$setup_rc" -eq 0 ] && git -C "$REPO/.rite/wiki-worktree" rev-parse --abbrev-ref HEAD >/dev/null 2>&1; then
-  pass "setup repaired worktree into a resolvable git worktree (rc=$setup_rc)"
+# Assert the recovered worktree is on the wiki branch specifically, not merely
+# resolvable — a worktree recreated on the wrong branch would otherwise pass.
+if [ "$setup_rc" -eq 0 ] && [ "$recovered_branch" = "wiki" ]; then
+  pass "setup repaired worktree onto the wiki branch (rc=$setup_rc, branch=$recovered_branch)"
 else
-  fail "setup did not repair orphaned worktree (rc=$setup_rc)"
+  fail "setup did not repair orphaned worktree onto wiki (rc=$setup_rc, branch='$recovered_branch')"
   printf '%s\n' "$setup_out" | sed 's/^/    out: /'
   cat "$REPO/setup_err.txt" 2>/dev/null | sed 's/^/    err: /'
+fi
+echo ""
+
+# --- TC-FALLTHROUGH-NO-WIKI: legacy fallthrough is graceful when wiki branch is missing ---
+# This pins the case *) fallthrough path that this PR introduced in
+# wiki-ingest-commit.sh. With no local wiki branch: verify rc=2 (corrupt) →
+# setup.sh exits 2 (branch missing, before the residue-removal step) → re-verify
+# skipped → case *) falls through to the legacy stash/checkout path → legacy's own
+# `git show-ref --verify` exits 2 on the missing branch. The expected outcome is a
+# graceful exit 2 (commit_branch_missing), NOT a silent exit-1 stall or a crash.
+rm -rf "$WORK"; WORK="$(mktemp -d)"
+REPO="$(make_fixture no)"
+echo "TC-FALLTHROUGH-NO-WIKI: commit.sh falls through to legacy gracefully (exit 2) when wiki branch missing"
+set +e
+ft_out="$(cd "$REPO" && bash "$COMMIT_SH" 2>ft_err.txt)"
+ft_rc=$?
+ft_err="$(cat "$REPO/ft_err.txt" 2>/dev/null || true)"
+set -e
+if [ "$ft_rc" -eq 2 ] && printf '%s' "$ft_err" | grep -q "自己回復"; then
+  pass "graceful fallthrough exit 2 with recovery WARNING (no silent exit-1 stall)"
+else
+  fail "expected graceful exit 2 + recovery WARNING; got rc=$ft_rc"
+  printf '%s\n' "$ft_out" | sed 's/^/    out: /'
+  printf '%s\n' "$ft_err" | sed 's/^/    err: /'
 fi
 echo ""
 

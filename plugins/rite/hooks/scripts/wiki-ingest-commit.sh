@@ -365,10 +365,14 @@ if [ -d "$worktree_path" ]; then
  exit 1
  ;;
  *)
- # Still unusable after the recovery attempt (e.g. setup skipped because the
- # wiki branch is missing locally). Recovery already removed the stale
- # residue, so the legacy path below runs without hitting "already used by
- # worktree". Fall through.
+ # Still unusable after the recovery attempt. Fall through to the legacy
+ # stash/checkout path. Two sub-cases reach here safely:
+ #   - setup reached its residue-removal step and recreated/cleaned the
+ #     worktree, so the legacy path won't hit "already used by worktree".
+ #   - setup skipped early (e.g. the wiki branch is missing locally → setup
+ #     exits before the residue-removal step), so the residue remains. The
+ #     legacy path is still safe because its own `git show-ref --verify` exits
+ #     on the missing branch before reaching the checkout that would collide.
  : ;;
  esac
 fi

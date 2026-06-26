@@ -246,8 +246,24 @@ trap - EXIT INT TERM HUP
 if [ -e "$target_path" ] && ! git -C "$target_path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "WARNING: '$abs_target' は git worktree として解決できない残留ディレクトリです (stale .git gitdir — リポジトリ移動/コピー後に発生)" >&2
   echo "  自動回復: 残留を削除し git worktree prune してから worktree を再作成します" >&2
-  rm -rf "$target_path"
-  git worktree prune 2>/dev/null || true
+  # rm の失敗 (permission denied / EBUSY / read-only filesystem) を診断付きで surface する。
+  # 本ファイルの mktemp / git 各操作と同じ防御スタイル。残留が消えないまま後続の
+  # `git worktree add` が "already exists" で失敗するより、ここで原因を明示して止める。
+  if ! rm -rf "$target_path"; then
+    echo "ERROR: 残留ディレクトリ '$abs_target' の削除に失敗しました" >&2
+    echo "  対処: filesystem permission / EBUSY (プロセスが掴んでいる) / read-only filesystem を確認してください" >&2
+    exit 3
+  fi
+  # prune 失敗を 2>/dev/null で完全抑制せず WARNING として surface する (Issue #1662 の
+  # anti-silent-failure 方針、および本ファイル上方の prunable 回復が prune 失敗を扱う姿勢と整合)。
+  # 非ブロッキング: prune は dangling metadata の掃除であり、失敗しても後続の
+  # `git worktree add` が顕在化させるため exit はしない。
+  prune_err=$(mktemp /tmp/rite-wts-prune-err-XXXXXX 2>/dev/null) || prune_err=""
+  if ! git worktree prune 2>"${prune_err:-/dev/null}"; then
+    echo "WARNING: git worktree prune に失敗しました (stale metadata が残存する可能性があります)" >&2
+    [ -n "$prune_err" ] && [ -s "$prune_err" ] && head -3 "$prune_err" | neutralize_ctrl --keep-newline | sed 's/^/  git: /' >&2
+  fi
+  [ -n "$prune_err" ] && rm -f "$prune_err"
 fi
 
 # -----------------------------------------------------------------------

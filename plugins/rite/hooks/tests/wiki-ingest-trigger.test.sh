@@ -1062,6 +1062,128 @@ else
 fi
 echo ""
 
+# ==========================================================================
+# Phase: STATE_ROOT write anchoring (Issue #1664) — TC-051 〜 TC-053
+# trigger は raw を state-path-resolve ルート (linked worktree では main
+# checkout) 配下へ書く。wiki-ingest-commit.sh の scan ルートと一致させ、
+# multi-session worktree からの起動で raw が silent に取りこぼされる回帰を防ぐ。
+# ==========================================================================
+
+# --------------------------------------------------------------------------
+# TC-051: linked worktree から起動 → raw は main checkout 配下へ着地 (AC-1)
+#         かつ redirect の検知可能シグナル (NOTE) を stderr に emit する
+# --------------------------------------------------------------------------
+echo "TC-051: linked worktree 起動 → raw は main checkout の .rite/wiki/raw/ へ + NOTE"
+dir51="$TEST_DIR/tc51"
+mkdir -p "$dir51"
+git -C "$dir51" init -q
+# linked worktree add には最低 1 commit が必要 (unborn branch からは add 不可)
+git -C "$dir51" -c user.email=t@example.com -c user.name=t commit --allow-empty -q -m init
+cat > "$dir51/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+wt51="$dir51/session-wt"
+# worktree add の失敗は握り潰さない (set -euo pipefail 下で 2>&1 抑制すると、add 失敗時に
+# 原因不明のままスイート全体が silent abort する)。stderr を log に退避し if で明示判定する。
+if git -C "$dir51" worktree add -q "$wt51" -b wt-issue-1664 2>"$dir51/wt-add-err.log"; then
+  echo "Review body in worktree" > "$wt51/body.md"
+  ( cd "$wt51" && bash "$HOOK" \
+    --type reviews \
+    --source-ref pr-1664 \
+    --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
+  target_path="$(cat "$wt51/out.log" 2>/dev/null | tr -d '[:space:]' || true)"
+  # 期待: rc=0、相対パスのまま、main checkout 側に着地 + body 内容が捕捉されている、
+  # worktree 側には未着地、NOTE 出力。body grep は本バグの本質 (content の silent drop) を
+  # 直接検証する — cd リダイレクト後も worktree の content が正しく書かれたことを確認する
+  # (TC-010/TC-011 の body grep 規約に揃える)。
+  if [ $rc -eq 0 ] && \
+     echo "$target_path" | grep -q '^\.rite/wiki/raw/reviews/' && \
+     [ -f "$dir51/$target_path" ] && \
+     grep -q 'Review body in worktree' "$dir51/$target_path" && \
+     [ ! -e "$wt51/.rite/wiki/raw" ] && \
+     grep -q 'NOTE:' "$wt51/err.log" && grep -q 'Issue #1664' "$wt51/err.log"; then
+    pass "linked worktree 起動 → raw が main checkout へ着地 + body 内容捕捉 + 相対パス維持 + NOTE シグナル"
+  else
+    fail "Expected raw under main checkout ($dir51) not worktree ($wt51) with body content and NOTE, got path='$target_path' rc=$rc; worktree raw exists=$([ -e "$wt51/.rite/wiki/raw" ] && echo yes || echo no); stderr=$(cat "$wt51/err.log" 2>/dev/null)"
+  fi
+  # cleanup worktree registration (TEST_DIR rm でも消えるが prune しておく)
+  git -C "$dir51" worktree remove --force "$wt51" >/dev/null 2>&1 || true
+else
+  fail "TC-051 setup: git worktree add が失敗しました: $(head -3 "$dir51/wt-add-err.log" 2>/dev/null)"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-052: git root から起動 (単一セッション) → 挙動不変・NOTE なし (AC-2)
+# --------------------------------------------------------------------------
+echo "TC-052: git root 起動 → 相対パス維持・NOTE 非出力 (非回帰)"
+dir52="$TEST_DIR/tc52"
+mkdir -p "$dir52"
+git -C "$dir52" init -q
+cat > "$dir52/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+echo "Review body at root" > "$dir52/body.md"
+( cd "$dir52" && bash "$HOOK" \
+  --type reviews \
+  --source-ref pr-root \
+  --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
+target_path="$(cat "$dir52/out.log" 2>/dev/null | tr -d '[:space:]' || true)"
+# STATE_ROOT == $PWD == git root → cd は no-op、NOTE は出さない。body grep で
+# 単一セッション時も content が正しく書かれることを確認 (TC-051 と対称)。
+if [ $rc -eq 0 ] && \
+   echo "$target_path" | grep -q '^\.rite/wiki/raw/reviews/' && \
+   [ -f "$dir52/$target_path" ] && \
+   grep -q 'Review body at root' "$dir52/$target_path" && \
+   ! grep -q 'NOTE:' "$dir52/err.log"; then
+  pass "git root 起動 → raw が root へ着地 + body 内容捕捉 + 相対パス維持 + NOTE 非出力 (AC-2 非回帰)"
+else
+  fail "Expected raw at root with body content, relative path and NO NOTE, got path='$target_path' rc=$rc; stderr=$(cat "$dir52/err.log" 2>/dev/null)"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-053: linked worktree から起動しても path containment ガードが維持される (AC-3)
+#         worktree 起動 (STATE_ROOT != $PWD で cd が実走) の経路でも、ガードは cd の
+#         前に元 $PWD 基準で評価されるため、$PWD 外 / 非 /tmp-rite の content-file は
+#         従来どおり reject される。既存 TC-033/034/036 は git root (非 worktree) 起動
+#         のみをカバーしていたため、worktree 起動経路の AC-3 を本 TC で pin する。
+# --------------------------------------------------------------------------
+echo "TC-053: linked worktree 起動 + content-file が \$PWD 外 → exit 1 (AC-3 path containment 維持)"
+dir53="$TEST_DIR/tc53"
+mkdir -p "$dir53"
+git -C "$dir53" init -q
+git -C "$dir53" -c user.email=t@example.com -c user.name=t commit --allow-empty -q -m init
+cat > "$dir53/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+# worktree の外 (main checkout 直下) に content-file を置く。worktree から見ると $PWD 外。
+echo "outside worktree pwd" > "$dir53/outside-body.md"
+wt53="$dir53/session-wt"
+if git -C "$dir53" worktree add -q "$wt53" -b wt-issue-1664-ac3 2>"$dir53/wt-add-err.log"; then
+  # worktree ($wt53) から、$PWD 外かつ非 /tmp-rite の content-file を相対パスで渡す。
+  ( cd "$wt53" && bash "$HOOK" \
+    --type reviews \
+    --source-ref pr-ac3 \
+    --content-file ../outside-body.md > out.log 2>err.log ) && rc=0 || rc=$?
+  # 期待: exit 1 (path containment reject)、main checkout 側にも worktree 側にも raw 未生成
+  if [ "$rc" -eq 1 ] && \
+     grep -q 'must be under' "$wt53/err.log" && \
+     [ ! -e "$dir53/.rite/wiki/raw" ] && \
+     [ ! -e "$wt53/.rite/wiki/raw" ]; then
+    pass "worktree 起動 + \$PWD 外 content-file → exit 1 + raw 未生成 (AC-3 ガード維持)"
+  else
+    fail "Expected exit 1 with containment rejection and no raw written, got rc=$rc; stderr=$(cat "$wt53/err.log" 2>/dev/null)"
+  fi
+  git -C "$dir53" worktree remove --force "$wt53" >/dev/null 2>&1 || true
+else
+  fail "TC-053 setup: git worktree add が失敗しました: $(head -3 "$dir53/wt-add-err.log" 2>/dev/null)"
+fi
+echo ""
+
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------

@@ -122,6 +122,12 @@ source "$_SCRIPT_DIR/../control-char-neutralize.sh"
 # for rationale — a linked-worktree session must land its wiki worktree + flock
 # on the main checkout's single inode (multi-session design §1). Byte-identical
 # to `git rev-parse --show-toplevel` for non-worktree sessions.
+#
+# INVARIANT (Issue #1664): wiki-ingest-trigger.sh writes the Raw Source under
+# this SAME state-path-resolve.sh root. The scan below (`find .rite/wiki/raw`,
+# run after the `cd "$repo_root"` on the next line) only sees what trigger wrote
+# if both stay keyed off state-path-resolve.sh — do not switch this scan to a
+# `$PWD`-relative root or raw sources written from a linked worktree go missing.
 repo_root=$("$_SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || repo_root=""
 [ -n "$repo_root" ] || repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"

@@ -365,14 +365,17 @@ if [ -d "$worktree_path" ]; then
  exit 1
  ;;
  *)
- # Still unusable after the recovery attempt. Fall through to the legacy
- # stash/checkout path. Two sub-cases reach here safely:
- #   - setup reached its residue-removal step and recreated/cleaned the
- #     worktree, so the legacy path won't hit "already used by worktree".
- #   - setup skipped early (e.g. the wiki branch is missing locally → setup
- #     exits before the residue-removal step), so the residue remains. The
- #     legacy path is still safe because its own `git show-ref --verify` exits
- #     on the missing branch before reaching the checkout that would collide.
+ # vwb_rc is still 2 here: setup either exited non-zero (so re-verify was
+ # skipped) or returned but re-verify still failed. A successful recreate would
+ # have made re-verify return 0 and taken the case-0 branch, so it never reaches
+ # here. Fall through to the legacy stash/checkout path, which is safe because:
+ #   - the orphaned residue is unregistered, so legacy's `git checkout` does not
+ #     collide with it ("already used by worktree" cannot fire); and
+ #   - when the wiki branch is missing locally, legacy's own `git show-ref
+ #     --verify` exits first, before reaching any checkout.
+ # This covers all paths that land here: setup exit 2 (branch missing, residue
+ # left in place), setup exit 3 (rm failed → residue left, or add failed →
+ # residue already removed), and the rare setup-ok-but-reverify-still-2 case.
  : ;;
  esac
 fi

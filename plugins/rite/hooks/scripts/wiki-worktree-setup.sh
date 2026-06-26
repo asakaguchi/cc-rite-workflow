@@ -258,12 +258,18 @@ if [ -e "$target_path" ] && ! git -C "$target_path" rev-parse --is-inside-work-t
   # anti-silent-failure 方針、および本ファイル上方の prunable 回復が prune 失敗を扱う姿勢と整合)。
   # 非ブロッキング: prune は dangling metadata の掃除であり、失敗しても後続の
   # `git worktree add` が顕在化させるため exit はしない。
+  # scope-limited trap: SIGINT/TERM/HUP during `git worktree prune` must not
+  # orphan the stderr tempfile. Mirrors the wt_list_err / add_err handling in
+  # this file (trap armed before mktemp, disarmed after rm -f).
+  prune_err=""
+  trap 'rm -f "${prune_err:-}"' EXIT INT TERM HUP
   prune_err=$(mktemp /tmp/rite-wts-prune-err-XXXXXX 2>/dev/null) || prune_err=""
   if ! git worktree prune 2>"${prune_err:-/dev/null}"; then
     echo "WARNING: git worktree prune に失敗しました (stale metadata が残存する可能性があります)" >&2
     [ -n "$prune_err" ] && [ -s "$prune_err" ] && head -3 "$prune_err" | neutralize_ctrl --keep-newline | sed 's/^/  git: /' >&2
   fi
   [ -n "$prune_err" ] && rm -f "$prune_err"
+  trap - EXIT INT TERM HUP
 fi
 
 # -----------------------------------------------------------------------

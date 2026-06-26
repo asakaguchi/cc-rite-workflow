@@ -33,11 +33,13 @@ What is rite workflow?
 
 ### 2.1 Display Prerequisites
 
+> **罫線の表示幅**: box の右罫線 `│` を揃えるには、全角（East Asian Width `W`/`F`）文字を 2 桁として内側幅を上罫線の `─` 本数に一致させる（`A` Ambiguous は 1 桁）。詳細は [`../references/box-display-width.md`](../references/box-display-width.md)。
+
 Display the following checklist:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     Prerequisites                            │
+│                     Prerequisites                           │
 └─────────────────────────────────────────────────────────────┘
 
 Required:
@@ -132,7 +134,7 @@ Explain the setup process:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                  Step 1: Initial Setup                       │
+│                  Step 1: Initial Setup                      │
 └─────────────────────────────────────────────────────────────┘
 
 Run the initialization wizard:
@@ -242,7 +244,7 @@ After setup is complete, return here or proceed directly to working on Issues.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│              Step 2: Create or Start an Issue                │
+│              Step 2: Create or Start an Issue               │
 └─────────────────────────────────────────────────────────────┘
 
 Option A: Work on an existing Issue
@@ -270,7 +272,7 @@ What happens when you start an Issue:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│              Step 3: Complete and Submit                     │
+│              Step 3: Complete and Submit                    │
 └─────────────────────────────────────────────────────────────┘
 
 After implementing your changes:
@@ -313,7 +315,7 @@ Display the following troubleshooting guide:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                  Troubleshooting Guide                       │
+│                  Troubleshooting Guide                      │
 └─────────────────────────────────────────────────────────────┘
 
 Common Issues and Solutions:
@@ -363,7 +365,7 @@ repository in parallel (e.g. one terminal per Issue):
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│              FAQ: Multiple Sessions at Once                  │
+│              FAQ: Multiple Sessions at Once                 │
 └─────────────────────────────────────────────────────────────┘
 
 Q: Can I work on two different Issues in two terminals at the same time?
@@ -427,7 +429,7 @@ Display the following guidance:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      Next Steps                              │
+│                      Next Steps                             │
 └─────────────────────────────────────────────────────────────┘
 
 Now that you understand the basics:

@@ -122,6 +122,12 @@ source "$_SCRIPT_DIR/../control-char-neutralize.sh"
 # for rationale — a linked-worktree session must land its wiki worktree + flock
 # on the main checkout's single inode (multi-session design §1). Byte-identical
 # to `git rev-parse --show-toplevel` for non-worktree sessions.
+#
+# INVARIANT (Issue #1664): wiki-ingest-trigger.sh writes the Raw Source under
+# this SAME state-path-resolve.sh root. The scan below (`find .rite/wiki/raw`,
+# run after the `cd "$repo_root"` on the next line) only sees what trigger wrote
+# if both stay keyed off state-path-resolve.sh — do not switch this scan to a
+# `$PWD`-relative root or raw sources written from a linked worktree go missing.
 repo_root=$("$_SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || repo_root=""
 [ -n "$repo_root" ] || repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
@@ -330,18 +336,56 @@ fi
 # stash/checkout path below handles the case (backward compat).
 # -----------------------------------------------------------------------
 worktree_path=".rite/wiki-worktree"
+# Probe the worktree fast path. rc semantics from verify_worktree_branch:
+# 0=on the wiki branch (usable), 2=rev-parse failed (corrupt/orphaned — e.g. a
+# stale `.git` gitdir after the repo was relocated), 3=checked out to a different
+# branch. A corrupt worktree must NOT hard-stop the commit: that silent exit is
+# what halted ALL raw-source accumulation (the failure is non-blocking upstream,
+# so the WARNING went unseen). Self-heal on rc=2, then fall back to the legacy
+# stash/checkout path if the worktree stays unusable.
+wt_usable=false
 if [ -d "$worktree_path" ]; then
- # Confirm the worktree is on the configured wiki branch. A misaligned worktree
- # (e.g. user ran `git -C .rite/wiki-worktree checkout develop` by hand) would
- # otherwise silently fall through to the legacy path below, which fails with
- # "fatal: '<wiki>' is already used by worktree at '...'" — masking the true
- # cause (worktree misalignment) behind a cryptic checkout error.
- # rev-parse + stderr capture + branch compare は
- # lib/worktree-git.sh の verify_worktree_branch() に統合済み。4th arg の extra_hint
- # で「silent fall-through to legacy path」警告を追加して元の挙動を保持する。
+ set +e
  verify_worktree_branch "$worktree_path" "$wiki_branch" "wic-wt" \
- "silent fall-through to legacy path would fail with 'already used by worktree'" \
- || exit 1
+ "silent fall-through to legacy path would fail with 'already used by worktree'"
+ vwb_rc=$?
+ set -e
+ if [ "$vwb_rc" -eq 2 ]; then
+ # Corrupt/orphaned. Delegate recovery to the idempotent setup helper — it
+ # removes the stale residue and recreates the worktree on the wiki branch —
+ # then re-verify. Its status line goes to stderr to keep this script's
+ # stdout contract (parsed by callers) clean.
+ echo "WARNING: .rite/wiki-worktree が壊れています (gitdir stale 等)。wiki-worktree-setup.sh で自己回復を試行します" >&2
+ if bash "$_SCRIPT_DIR/wiki-worktree-setup.sh" >&2; then
+ set +e
+ verify_worktree_branch "$worktree_path" "$wiki_branch" "wic-wt" ""
+ vwb_rc=$?
+ set -e
+ fi
+ fi
+ case "$vwb_rc" in
+ 0) wt_usable=true ;;
+ 3)
+ # Valid worktree but on the wrong branch — a genuine misconfiguration.
+ # Do not guess the intended branch; surface it as before.
+ exit 1
+ ;;
+ *)
+ # vwb_rc is still 2 here: setup either exited non-zero (so re-verify was
+ # skipped) or returned but re-verify still failed. A successful recreate would
+ # have made re-verify return 0 and taken the case-0 branch, so it never reaches
+ # here. Fall through to the legacy stash/checkout path, which is safe because:
+ #   - the orphaned residue is unregistered, so legacy's `git checkout` does not
+ #     collide with it ("already used by worktree" cannot fire); and
+ #   - when the wiki branch is missing locally, legacy's own `git show-ref
+ #     --verify` exits first, before reaching any checkout.
+ # This covers all paths that land here: setup exit 2 (branch missing, residue
+ # left in place), setup exit 3 (rm failed → residue left, or add failed →
+ # residue already removed), and the rare setup-ok-but-reverify-still-2 case.
+ : ;;
+ esac
+fi
+if [ "$wt_usable" = "true" ]; then
  # Pre-flight: validate wiki branch name (ステップ 1.1 already validates but
  # defense-in-depth here since `git -C ... add -- "$path"` would silently
  # accept option-like paths if the validation were bypassed).

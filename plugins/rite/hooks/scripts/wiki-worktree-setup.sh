@@ -33,9 +33,12 @@
 #   - The script does NOT fetch from origin. If the wiki branch only
 #     exists remotely, the caller (e.g. /rite:wiki:init) is responsible
 #     for running `git fetch origin wiki:wiki` first.
-#   - The script does NOT prune stale worktrees. If `.rite/wiki-worktree`
-#     was deleted without `git worktree remove`, run `git worktree prune`
-#     manually before re-invoking this script.
+#   - The script self-heals stale worktree state so a relocated/copied repo
+#     does not silently break ingest. Two cases are recovered before
+#     `git worktree add`: a `prunable` registration (directory deleted without
+#     `git worktree remove`) is pruned, and an orphaned directory (exists on
+#     disk but unresolvable by `git -C`, e.g. a stale `.git` gitdir pointing at
+#     the old path after relocation) is removed and pruned.
 
 set -euo pipefail
 
@@ -226,6 +229,48 @@ elif [[ -n "$existing_branch" ]]; then
 fi
 [ -n "$wt_list_err" ] && rm -f "$wt_list_err"
 trap - EXIT INT TERM HUP
+
+# -----------------------------------------------------------------------
+# Stale residue recovery: the target directory exists on disk but is NOT a
+# registered worktree of this repo, so `git -C` cannot resolve it. The common
+# trigger is repo relocation/copy: the worktree's `.git` file still holds a
+# `gitdir:` pointer to the OLD absolute path, leaving an orphaned directory that
+# `git worktree list` no longer reports. Reaching this point means the
+# idempotency scan above found no live worktree at this path, so a directory
+# that nevertheless exists is leftover residue and the `git worktree add` below
+# would abort with "already exists" — the exact silent stall that halted
+# raw-source accumulation. Remove the residue and prune dangling metadata so the
+# add starts clean. The `git -C ... rev-parse` guard ensures a genuinely healthy
+# worktree (e.g. one missed by a transiently failed `git worktree list`) is
+# never deleted: a healthy worktree resolves and is left untouched.
+if [ -e "$target_path" ] && ! git -C "$target_path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "WARNING: '$abs_target' は git worktree として解決できない残留ディレクトリです (stale .git gitdir — リポジトリ移動/コピー後に発生)" >&2
+  echo "  自動回復: 残留を削除し git worktree prune してから worktree を再作成します" >&2
+  # rm の失敗 (permission denied / EBUSY / read-only filesystem) を診断付きで surface する。
+  # 本ファイルの mktemp / git 各操作と同じ防御スタイル。残留が消えないまま後続の
+  # `git worktree add` が "already exists" で失敗するより、ここで原因を明示して止める。
+  if ! rm -rf "$target_path"; then
+    echo "ERROR: 残留ディレクトリ '$abs_target' の削除に失敗しました" >&2
+    echo "  対処: filesystem permission / EBUSY (プロセスが掴んでいる) / read-only filesystem を確認してください" >&2
+    exit 3
+  fi
+  # prune 失敗を 2>/dev/null で完全抑制せず WARNING として surface する (Issue #1662 の
+  # anti-silent-failure 方針、および本ファイル上方の prunable 回復が prune 失敗を扱う姿勢と整合)。
+  # 非ブロッキング: prune は dangling metadata の掃除であり、失敗しても後続の
+  # `git worktree add` が顕在化させるため exit はしない。
+  # scope-limited trap: SIGINT/TERM/HUP during `git worktree prune` must not
+  # orphan the stderr tempfile. Mirrors the wt_list_err / add_err handling in
+  # this file (trap armed before mktemp, disarmed after rm -f).
+  prune_err=""
+  trap 'rm -f "${prune_err:-}"' EXIT INT TERM HUP
+  prune_err=$(mktemp /tmp/rite-wts-prune-err-XXXXXX 2>/dev/null) || prune_err=""
+  if ! git worktree prune 2>"${prune_err:-/dev/null}"; then
+    echo "WARNING: git worktree prune に失敗しました (stale metadata が残存する可能性があります)" >&2
+    [ -n "$prune_err" ] && [ -s "$prune_err" ] && head -3 "$prune_err" | neutralize_ctrl --keep-newline | sed 's/^/  git: /' >&2
+  fi
+  [ -n "$prune_err" ] && rm -f "$prune_err"
+  trap - EXIT INT TERM HUP
+fi
 
 # -----------------------------------------------------------------------
 # Create the worktree. Parent directory may already exist (e.g. because

@@ -1062,6 +1062,77 @@ else
 fi
 echo ""
 
+# ==========================================================================
+# Phase: STATE_ROOT write anchoring (Issue #1664) — TC-051 〜 TC-052
+# trigger は raw を state-path-resolve ルート (linked worktree では main
+# checkout) 配下へ書く。wiki-ingest-commit.sh の scan ルートと一致させ、
+# multi-session worktree からの起動で raw が silent に取りこぼされる回帰を防ぐ。
+# ==========================================================================
+
+# --------------------------------------------------------------------------
+# TC-051: linked worktree から起動 → raw は main checkout 配下へ着地 (AC-1)
+#         かつ redirect の検知可能シグナル (NOTE) を stderr に emit する
+# --------------------------------------------------------------------------
+echo "TC-051: linked worktree 起動 → raw は main checkout の .rite/wiki/raw/ へ + NOTE"
+dir51="$TEST_DIR/tc51"
+mkdir -p "$dir51"
+git -C "$dir51" init -q
+# linked worktree add には最低 1 commit が必要 (unborn branch からは add 不可)
+git -C "$dir51" -c user.email=t@example.com -c user.name=t commit --allow-empty -q -m init
+cat > "$dir51/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+wt51="$dir51/session-wt"
+git -C "$dir51" worktree add -q "$wt51" -b wt-issue-1664 >/dev/null 2>&1
+echo "Review body in worktree" > "$wt51/body.md"
+( cd "$wt51" && bash "$HOOK" \
+  --type reviews \
+  --source-ref pr-1664 \
+  --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
+target_path="$(cat "$wt51/out.log" 2>/dev/null | tr -d '[:space:]' || true)"
+# 期待: rc=0、相対パスのまま、main checkout 側に着地、worktree 側には未着地、NOTE 出力
+if [ $rc -eq 0 ] && \
+   echo "$target_path" | grep -q '^\.rite/wiki/raw/reviews/' && \
+   [ -f "$dir51/$target_path" ] && \
+   [ ! -e "$wt51/.rite/wiki/raw" ] && \
+   grep -q 'NOTE:' "$wt51/err.log" && grep -q 'Issue #1664' "$wt51/err.log"; then
+  pass "linked worktree 起動 → raw が main checkout へ着地 + 相対パス維持 + NOTE シグナル"
+else
+  fail "Expected raw under main checkout ($dir51) not worktree ($wt51) with NOTE, got path='$target_path' rc=$rc; worktree raw exists=$([ -e "$wt51/.rite/wiki/raw" ] && echo yes || echo no); stderr=$(cat "$wt51/err.log" 2>/dev/null)"
+fi
+# cleanup worktree registration (TEST_DIR rm でも消えるが prune しておく)
+git -C "$dir51" worktree remove --force "$wt51" >/dev/null 2>&1 || true
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-052: git root から起動 (単一セッション) → 挙動不変・NOTE なし (AC-2)
+# --------------------------------------------------------------------------
+echo "TC-052: git root 起動 → 相対パス維持・NOTE 非出力 (非回帰)"
+dir52="$TEST_DIR/tc52"
+mkdir -p "$dir52"
+git -C "$dir52" init -q
+cat > "$dir52/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+echo "Review body at root" > "$dir52/body.md"
+( cd "$dir52" && bash "$HOOK" \
+  --type reviews \
+  --source-ref pr-root \
+  --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
+target_path="$(cat "$dir52/out.log" 2>/dev/null | tr -d '[:space:]' || true)"
+# STATE_ROOT == $PWD == git root → cd は no-op、NOTE は出さない
+if [ $rc -eq 0 ] && \
+   echo "$target_path" | grep -q '^\.rite/wiki/raw/reviews/' && \
+   [ -f "$dir52/$target_path" ] && \
+   ! grep -q 'NOTE:' "$dir52/err.log"; then
+  pass "git root 起動 → raw が root へ着地 + 相対パス維持 + NOTE 非出力 (AC-2 非回帰)"
+else
+  fail "Expected raw at root with relative path and NO NOTE, got path='$target_path' rc=$rc; stderr=$(cat "$dir52/err.log" 2>/dev/null)"
+fi
+echo ""
+
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------

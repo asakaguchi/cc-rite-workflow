@@ -53,6 +53,15 @@ source "$SCRIPT_DIR/control-char-neutralize.sh"
 # a `$PWD`-based rite-config.yml lookup would silently miss the config when the
 # script runs from a subdirectory. CLI tool (not a hook), so $PWD takes the
 # place of the stdin-supplied CWD that hook scripts receive.
+#
+# STATE_ROOT is ALSO the write anchor for the Raw Source (see "Compute target
+# path" below): wiki-ingest-commit.sh scans `.rite/wiki/raw` after `cd
+# "$repo_root"` where repo_root == this same state-path-resolve.sh result. In a
+# multi-session linked worktree state-path-resolve.sh unifies to the main
+# checkout, so anchoring the write here keeps trigger (write) and commit (scan)
+# on the SAME root. A `$PWD`-relative write would land the raw in the worktree's
+# `.rite/wiki/raw` while commit scans the main checkout's — silently dropping it
+# (Issue #1664). The two scripts MUST stay keyed off state-path-resolve.sh.
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$PWD" 2>/dev/null) || STATE_ROOT="$PWD"
 
 TYPE=""
@@ -340,7 +349,30 @@ if [[ -z "$slug" ]]; then
   exit 1
 fi
 
+# --- Anchor the write at STATE_ROOT (Issue #1664) ---
+# All path-containment validation above evaluates `--content-file` against the
+# ORIGINAL $PWD (and reads the body via the absolute realpath result
+# $resolved_content), so they have already completed — moving cwd now does not
+# relax that guard (AC-3). From here on the write must target the same root
+# wiki-ingest-commit.sh scans (state-path-resolve.sh; the main checkout under a
+# linked worktree), so cd into STATE_ROOT and keep target_dir relative. When
+# STATE_ROOT == $PWD (single-session run from repo root, or non-git fallback)
+# this is a no-op and behaviour is byte-identical to before (AC-2).
+if [ "$STATE_ROOT" != "$PWD" ]; then
+  # Detectable signal (re-divergence guard): surface that the raw is written to
+  # the resolved state root rather than cwd, so a multi-session worktree /
+  # subdirectory invocation is observable instead of silently redirecting.
+  echo "NOTE: raw source を state-path-resolve ルート '$STATE_ROOT' 配下へ書き込みます (cwd='$PWD' とは別 — multi-session worktree / サブディレクトリ起動)。wiki-ingest-commit.sh の scan ルートと一致させる整合動作です (Issue #1664)。" >&2
+fi
+cd "$STATE_ROOT" || {
+  echo "ERROR: state root '$STATE_ROOT' への cd に失敗しました — raw source の書込先を確定できません" >&2
+  exit 3
+}
+
 # --- Compute target path ---
+# Relative to STATE_ROOT (we cd'd into it above) so the printed path stays
+# `.rite/wiki/raw/...` — the documented relative-path contract — and matches the
+# relative path wiki-ingest-commit.sh resolves after its own `cd "$repo_root"`.
 target_dir=".rite/wiki/raw/${TYPE}"
 timestamp_iso=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
 timestamp_compact=$(date -u +"%Y%m%dT%H%M%SZ")

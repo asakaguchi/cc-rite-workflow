@@ -27,6 +27,14 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.6.10] - 2026-06-26
+
+### Fixed
+
+- **The `/rite:wiki:ingest` raw-source write path now matches the commit scan path in multi-session worktree mode** — under `multi_session.enabled: true`, `wiki-ingest-trigger.sh` wrote raw sources to a `$PWD`-relative `.rite/wiki/raw/` (the session worktree) while `wiki-ingest-commit.sh` scanned the main checkout's `.rite/wiki/raw/`, so raw sources collected from a session worktree were silently dropped instead of committed to the wiki branch. Both sites now resolve the same scan root. (#1664, #1665)
+- **Raw-source accumulation now self-heals from a corrupt/orphaned `.rite/wiki-worktree`** — a stale gitdir pointer (e.g. after a repository move) left an orphaned `.rite/wiki-worktree` that passed the `[ -d ]` fast-path but failed `git rev-parse`, silently halting raw-source accumulation; the path now recovers instead of stopping silently. (#1662, #1663)
+- **Box-drawing frames no longer misalign their right border when the header contains full-width characters** — right-border padding was counted by code points, so full-width (East Asian Width `W`/`F`) characters widened the inner width; padding now treats full-width characters as 2 columns to match the top border's `─` count, with the rule captured in `references/box-display-width.md`. (#1660, #1661)
+
 ## [0.6.9] - 2026-06-25
 
 ### Fixed
@@ -622,6 +630,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.6.10]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.9...v0.6.10
 [0.6.9]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.8...v0.6.9
 [0.6.8]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.7...v0.6.8
 [0.6.7]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.6...v0.6.7

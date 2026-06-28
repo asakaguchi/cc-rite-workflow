@@ -55,6 +55,12 @@ assert "TC-2 no --self-root → rc 2" "2" "$(probe_rc "$D")"
 echo "=== TC-3: non-numeric --self-root → rc 2 ==="
 assert "TC-3 bad --self-root → rc 2" "2" "$(probe_rc "$D" --self-root notapid)"
 
+echo "=== TC-3b: trailing --self-root with NO value → rc 2, no hang ==="
+# A `--self-root` token with no following value must fail-fast (rc 2), not underflow
+# `shift 2` and re-process the same token forever. `timeout` bounds the would-be hang;
+# rc 124 (timeout-killed) would mean the guard regressed.
+assert "TC-3b dangling --self-root → rc 2 (no hang)" "2" "$(timeout 5 bash "$PROBE" "$D" --self-root >/dev/null 2>&1; echo $?)"
+
 echo "=== TC-4: free dir, nobody inside → rc 1 ==="
 assert "TC-4 free dir → rc 1" "1" "$(probe_rc "$D" --self-root 99999)"
 

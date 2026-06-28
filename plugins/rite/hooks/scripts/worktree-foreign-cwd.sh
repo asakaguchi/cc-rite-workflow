@@ -44,7 +44,13 @@ target=""
 self_root=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --self-root) self_root="${2:-}"; shift 2 ;;
+    --self-root)
+      # Guard the value before `shift 2`: a trailing `--self-root` with no value
+      # would underflow `shift 2` (bash leaves $# unchanged when it exceeds $#),
+      # re-processing the same token forever (hang). Fail fast with the documented
+      # rc=2 "bad arguments" contract instead.
+      [ $# -ge 2 ] || { echo "ERROR: worktree-foreign-cwd.sh: --self-root requires a value" >&2; exit 2; }
+      self_root="$2"; shift 2 ;;
     --*) echo "ERROR: worktree-foreign-cwd.sh: unknown option: $1" >&2; exit 2 ;;
     *) [ -z "$target" ] && target="$1"; shift ;;
   esac

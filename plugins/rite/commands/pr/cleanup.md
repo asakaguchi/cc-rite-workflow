@@ -66,7 +66,7 @@ gh pr list --head {branch_name} --state all --json number,title,state,mergedAt,u
 
 PR 未検出: `AskUserQuestion` で「ブランチを削除して続行 / キャンセル」を確認。未マージ PR: 「キャンセル (推奨) / 強制クリーンアップ」を確認。
 
-`mergedAt` が非 null（= PR が merge 済み）なら `{pr_merged}=true`、未マージ PR の強制クリーンアップを選んだ場合のみ `{pr_merged}=false` として保持する。ステップ 5 のブランチ削除（squash 残渣の強制削除 / 遅延ブランチの manifest 記録）で参照する。
+`mergedAt` が非 null（= PR が merge 済み）なら `{pr_merged}=true` として保持する。**それ以外のすべての経路**（未マージ PR の強制クリーンアップ、PR 未検出でブランチ削除を選んで続行した経路など）は `{pr_merged}=false` を既定とする。これによりステップ 5 のすべての分岐で `{pr_merged}` が必ず literal substitute 可能になる（未定義値参照を防ぐ）。ステップ 5 のブランチ削除（squash 残渣の強制削除 / 遅延ブランチの manifest 記録）で参照する。
 
 ### 1.4 リポジトリ情報取得
 
@@ -391,16 +391,21 @@ if del_err=$(LC_ALL=C git branch -d {branch_name} 2>&1); then
 else
   case "$del_err" in
     *"used by worktree"*|*"checked out"*)
-      echo "[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}; reason=checked_out_in_worktree" >&2
-      # #1670: 遅延ブランチを次セッション回収へ配線する（dead-letter 解消）。PR は merged 済みなので
-      # reap manifest に記録し、別 live セッションが worktree を解放したあと pr-cycle-cleanup.sh
-      # Step 5 が安全に回収できるようにする。未マージ PR の強制 cleanup 時（{pr_merged}=false）は
-      # 記録しない（作業損失防止 — AC-4）。
-      if [ "{pr_merged}" = "true" ]; then
-        bash {plugin_root}/hooks/scripts/rite-tmp-artifact.sh record --type branch --id "{branch_name}" 2>/dev/null \
-          || echo "WARNING: 遅延ブランチ {branch_name} の reap manifest 記録に失敗しました。手動削除: git branch -D {branch_name}（worktree 解放後）。" >&2
-      fi
-      echo "WARNING: ローカルブランチ {branch_name} はまだ別のセッションの作業ツリーで使用中のため、削除を見送りました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で回収されます。" >&2 ;;
+      # #1670: 遅延ブランチを次セッション回収へ配線する（dead-letter 解消）。PR が merged 済み
+      # （{pr_merged}=true）のときのみ reap manifest に記録し、別 live セッションが worktree を
+      # 解放したあと pr-cycle-cleanup.sh Step 5 が安全に回収できるようにする。未マージ PR の強制
+      # cleanup 時（{pr_merged}=false）は記録しない（作業損失防止 — AC-4）。
+      # **recovery= の意味（AC-6）**: 記録が成功したときだけ「自動回収される」のが事実なので、
+      # marker に recovery=auto/manual を載せてステップ 12 が正しい文面を出し分ける。記録に失敗した
+      # 経路や {pr_merged}=false の経路で「自動で回収されます」と偽の約束を出さない。`&&` 短絡で
+      # 「pr_merged=true かつ記録成功」のときのみ recovery=auto になる。
+      if [ "{pr_merged}" = "true" ] && bash {plugin_root}/hooks/scripts/rite-tmp-artifact.sh record --type branch --id "{branch_name}" 2>/dev/null; then
+        echo "[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}; reason=checked_out_in_worktree; recovery=auto" >&2
+        echo "WARNING: ローカルブランチ {branch_name} はまだ別のセッションの作業ツリーで使用中のため、削除を見送りました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で回収されます。" >&2
+      else
+        echo "[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}; reason=checked_out_in_worktree; recovery=manual" >&2
+        echo "WARNING: ローカルブランチ {branch_name} は作業ツリーで使用中のため、削除を見送りました。その作業ツリーが解放されたあと、手動で削除してください: git branch -D {branch_name}" >&2
+      fi ;;
     *"not fully merged"*)
       if [ "{pr_merged}" = "true" ]; then
         # squash merge の残渣 — PR は merged 済みなので強制削除して安全。
@@ -617,10 +622,15 @@ Status: {projects_status_result}
     ```
   - いずれの `[CONTEXT]` 行も無い（削除成功）とき: `x`
 - `{local_branch_check}`: ステップ 5 の `[CONTEXT]` 行で判定（上から評価し最初に一致したものを採用）:
-  - `BRANCH_DELETE_DEFERRED=1` のとき（別セッションが作業ツリーを使用中で削除を見送った。ブランチは reap manifest に記録済みで自動回収される。#1670）: ` ` + 以下を付記
-    ```
-    ℹ️ ローカルブランチ {branch_name} は、別セッションが使用中の作業ツリーで参照されているため残しました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で削除されます（手動操作は不要）。
-    ```
+  - `BRANCH_DELETE_DEFERRED=1` のとき（別セッションが作業ツリーを使用中で削除を見送った。#1670）。**marker の `recovery=` フィールドで文面を出し分ける**（記録できていない経路で「自動回収」と偽らないため — AC-6）: ` ` + 以下を付記
+    - `recovery=auto`（PR が merged 済みで reap manifest に記録成功 → 次セッションで自動回収される）:
+      ```
+      ℹ️ ローカルブランチ {branch_name} は、別セッションが使用中の作業ツリーで参照されているため残しました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で削除されます（手動操作は不要）。
+      ```
+    - `recovery=manual`（未マージ PR の強制 cleanup、または manifest 記録に失敗 → 自動回収されないため手動が必要）:
+      ```
+      ℹ️ ローカルブランチ {branch_name} は、作業ツリーで参照されているため残しました。その作業ツリーが解放されたあと、手動で削除してください: git branch -D {branch_name}
+      ```
   - `BRANCH_DELETED=1` のとき（通常削除、squash 残渣の自動強制削除 `via=squash-merged`、または `BRANCH_DELETE_UNMERGED` をユーザーが強制削除 `-D` で解決した場合に emit される。**`BRANCH_DELETE_UNMERGED=1` より先に評価する**）: `x`
   - `BRANCH_DELETE_FAILED=1` のとき: ` ` + 「ローカルブランチ {branch_name} の削除に失敗。`git branch -D {branch_name}` で手動削除（作業ツリーで使用中なら解放後）」を付記
   - `BRANCH_DELETE_UNMERGED=1` のとき（= 未マージ PR の強制 cleanup でユーザーが skip 選択。強制削除で解決した場合は上位の `BRANCH_DELETED=1` 行で既に `x` 評価済みのため、ここに到達するのは skip 時のみ）: ` ` + 「ローカルブランチ {branch_name} は未マージのため保留。`git branch -D {branch_name}` で手動削除」を付記

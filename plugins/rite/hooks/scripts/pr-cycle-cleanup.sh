@@ -508,12 +508,28 @@ if [ -f "$manifest_path" ]; then
           if [ "$DRY_RUN" = "1" ]; then
             echo "[dry-run] would reap manifest branch: $(printf '%s' "$_m_val" | neutralize_ctrl)"
             printf '%s\n' "$_m_line" >> "$manifest_keep"
-          elif git branch -D -- "$_m_val" >/dev/null 2>&1; then
+          elif _m_bd_err=$(LC_ALL=C git branch -D -- "$_m_val" 2>&1); then
             manifest_reaped=$((manifest_reaped + 1))
           else
-            echo "WARNING: failed to reap manifest branch '$(printf '%s' "$_m_val" | neutralize_ctrl)'" >&2
-            errors=$((errors + 1))
-            printf '%s\n' "$_m_line" >> "$manifest_keep"
+            # #1670: cleanup.md records a deferred SESSION-worktree branch here while
+            # it is still checked out in its (not-yet-reaped) worktree. At this point
+            # (Step 4.5 < Step 5) `git branch -D` legitimately fails with "used by
+            # worktree" / "checked out" — Step 5 reaps that worktree and recovers the
+            # branch later in THIS run (the manifest contract "session worktrees go
+            # through Step 5's gated reap, never here"). That expected case must NOT
+            # count as an error (it would flip a fully-successful run to status=failed)
+            # nor emit a "failed to reap" WARNING. Preserve the entry silently; it
+            # self-heals on the next run's verify-already-gone drop. LC_ALL=C fixes the
+            # git diagnostic locale so the substring match is stable (same convention as
+            # cleanup.md Step 5).
+            case "$_m_bd_err" in
+              *"used by worktree"*|*"checked out"*)
+                printf '%s\n' "$_m_line" >> "$manifest_keep" ;;
+              *)
+                echo "WARNING: failed to reap manifest branch '$(printf '%s' "$_m_val" | neutralize_ctrl)'" >&2
+                errors=$((errors + 1))
+                printf '%s\n' "$_m_line" >> "$manifest_keep" ;;
+            esac
           fi
           ;;
         worktree)
@@ -887,10 +903,15 @@ if [ -d "$session_wt_root" ]; then
       # commits are not ancestors of base) → force-delete is safe. A non-recorded
       # unmerged branch is kept with a WARNING (never destroy unmerged work).
       if [ -n "$_reaped_branch" ] && [ "$_reaped_branch" != "HEAD" ]; then
-        if git branch -d "$_reaped_branch" >/dev/null 2>&1; then
+        # `--` (end-of-options) on every `git branch -d/-D` is a defense-in-depth
+        # invariant shared with the manifest reap (`git branch -D -- ...`) and
+        # documented in rite-tmp-artifact.sh: `_reaped_branch` comes straight from
+        # `git rev-parse --abbrev-ref HEAD` without the recorder's leading-dash guard,
+        # so `--` is the explicit backstop against an option-injecting branch name.
+        if git branch -d -- "$_reaped_branch" >/dev/null 2>&1; then
           session_branches_deleted=$((session_branches_deleted + 1))
         elif [ -f "$manifest_path" ] && grep -qxF "branch$(printf '\t')$_reaped_branch" "$manifest_path" 2>/dev/null; then
-          if git branch -D "$_reaped_branch" >/dev/null 2>&1; then
+          if git branch -D -- "$_reaped_branch" >/dev/null 2>&1; then
             session_branches_deleted=$((session_branches_deleted + 1))
             # The stale manifest `branch\t<name>` entry self-heals on the next run's
             # Step 4.5 (verify fails → already-gone → dropped), so no rewrite here.

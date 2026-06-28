@@ -380,6 +380,13 @@ out=$(run_pcc "$R")
 assert "B-02 worktree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-91" ] && echo 1 || echo 0 )"
 assert "B-02 manifest-recorded merged branch FORCE-recovered (gone)" "0" "$( cd "$R" && $GIT rev-parse --verify feat/issue-91 >/dev/null 2>&1 && echo 1 || echo 0 )"
 case "$out" in *"session_branches=1"*) pass "B-02 status reports session_branches=1" ;; *) fail "B-02 status: $out" ;; esac
+# Clean-recovery contract: the deferred-branch manifest entry is still checked out in
+# its worktree when Step 4.5 runs (before Step 5 reaps it). That expected case must
+# NOT flip the run to status=failed nor emit a "failed to reap manifest branch" WARNING
+# — the recovery is clean (status=cleaned, errors absent). Without this the false
+# "status=failed; errors=1" of the marquee dead-letter path slips through silently.
+case "$out" in *"status=cleaned"*) pass "B-02 reports status=cleaned (no false failure)" ;; *) fail "B-02 status not cleaned: $out" ;; esac
+assert_not_grep "B-02 no misleading 'failed to reap manifest branch' WARNING" "$R/pcc.err" "failed to reap manifest branch"
 
 echo "=== B-03 (#1670 surgical): a manifest entry NEVER force-deletes an unrecorded unmerged sibling ==="
 R=$(make_repo 92); cleanup_dirs+=("$R")
@@ -399,6 +406,14 @@ RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/
 out=$(run_pcc "$R")
 assert "B-03 recorded branch feat/issue-92 force-recovered (gone)" "0" "$( cd "$R" && $GIT rev-parse --verify feat/issue-92 >/dev/null 2>&1 && echo 1 || echo 0 )"
 assert "B-03 unrecorded sibling feat/issue-93 PRESERVED" "1" "$( cd "$R" && $GIT rev-parse --verify feat/issue-93 >/dev/null 2>&1 && echo 1 || echo 0 )"
+# issue-93's worktree MUST be reaped for the "preserved" assertion to be meaningful:
+# the surgical guarantee (a recorded entry never licenses deleting an unrecorded
+# sibling) only has teeth when issue-93's branch-recovery path actually ran. Pin it so
+# a future regression where issue-93 is never reaped cannot make "preserved" pass for
+# the wrong reason.
+assert "B-03 issue-93 worktree reaped (recovery path ran)" "0" "$( [ -d "$R/.rite/worktrees/issue-93" ] && echo 1 || echo 0 )"
+case "$out" in *"status=cleaned"*) pass "B-03 reports status=cleaned (no false failure)" ;; *) fail "B-03 status not cleaned: $out" ;; esac
+assert_not_grep "B-03 no misleading 'failed to reap manifest branch' WARNING" "$R/pcc.err" "failed to reap manifest branch"
 
 print_summary "$(basename "$0")" \
   "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + worktree liveness guard (Issue #1524: a session's active flow-state worktree ref → never reap; reap → null owner ref / Issue #1552: claim-join — issue's claim holder still active=true, even with a stale 2h heartbeat → never reap) + OS-level live-cwd guard (Issue #1544: any live process standing in the tree → never reap, via worktree-live-cwd.sh) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); Issue #1670 branch recovery: after reap, SAFE-delete the branch (merged → recovered) and FORCE-delete only manifest-recorded (merge-confirmed) branches, preserving unmerged work; wiki-worktree excluded; session-start best-effort wiring."

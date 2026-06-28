@@ -5,7 +5,7 @@
 #   AC-1: a worktree whose claim is LIVE is NOT reaped.
 #   AC-2: a worktree whose claim is STALE and clean IS reaped, claim file deleted.
 #   AC-3: a DIRTY worktree is NOT reaped (claim stale) — WARNING + manual hint.
-#   AC-4: after reap the corresponding branch still exists.
+#   AC-4: after reap a MERGED branch is recovered (TC-4); an UNMERGED, non-manifest-recorded branch is preserved (B-01) — #1670 refined "preserve the branch" to "recover merge-confirmed branches only, never destroy unmerged work".
 #   AC-5: `.rite/wiki-worktree` and non-issue dirs are NOT matched (regression).
 #
 # Gate 0 — self-exclusion guard. A long-lived session must never

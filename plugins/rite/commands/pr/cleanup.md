@@ -381,8 +381,8 @@ fi
 # 自セッションの worktree は 4-W の self-exclusion で即時削除されるため、本経路に来るのは
 # 別 live セッション在席時のみ。git 診断メッセージは locale 翻訳で揺れるため LC_ALL=C で固定して
 # substring マッチを安定させる（repo 既存の wiki-lint-*.sh と同規約）。
-# `{pr_merged}` はステップ 1.3 の PR 状態（`mergedAt` 非 null なら `true`、未マージ PR の
-# 強制 cleanup 時のみ `false`）を Claude が literal substitute する。squash merge では feature の
+# `{pr_merged}` はステップ 1.3 の PR 状態（`mergedAt` 非 null なら `true`、それ以外すべて
+# `false`。Step 1.3 と同一定義）を Claude が literal substitute する。squash merge では feature の
 # コミットが base の祖先にならないため、worktree 解放後でも `git branch -d` が "not fully merged" で
 # 拒否する。PR が merged 済み（{pr_merged}=true）ならこれは squash の残渣であり強制削除して安全
 # （ユニークな未マージ作業は無い）。
@@ -395,11 +395,21 @@ else
       # （{pr_merged}=true）のときのみ reap manifest に記録し、別 live セッションが worktree を
       # 解放したあと pr-cycle-cleanup.sh Step 5 が安全に回収できるようにする。未マージ PR の強制
       # cleanup 時（{pr_merged}=false）は記録しない（作業損失防止 — AC-4）。
-      # **recovery= の意味（AC-6）**: 記録が成功したときだけ「自動回収される」のが事実なので、
-      # marker に recovery=auto/manual を載せてステップ 12 が正しい文面を出し分ける。記録に失敗した
-      # 経路や {pr_merged}=false の経路で「自動で回収されます」と偽の約束を出さない。`&&` 短絡で
-      # 「pr_merged=true かつ記録成功」のときのみ recovery=auto になる。
-      if [ "{pr_merged}" = "true" ] && bash {plugin_root}/hooks/scripts/rite-tmp-artifact.sh record --type branch --id "{branch_name}" 2>/dev/null; then
+      # **recovery= の意味（AC-6）**: rite-tmp-artifact.sh は非ブロッキング契約で、append 失敗でも
+      # WARNING を出して exit 0 を返す（非 0 は usage error のみ）。したがって record の exit code では
+      # 記録成否を判定できない。共有 manifest を直接 verify し、エントリが実在するときだけ
+      # recovery=auto を emit する（記録できていない経路で「自動で回収されます」と偽らない）。
+      # {pr_merged}=false / 記録漏れ / shared-root 解決不能はすべて recovery=manual に倒す。
+      _recovery=manual
+      if [ "{pr_merged}" = "true" ]; then
+        bash {plugin_root}/hooks/scripts/rite-tmp-artifact.sh record --type branch --id "{branch_name}" 2>/dev/null || true
+        _shared_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _shared_root=""
+        [ -n "$_shared_root" ] || _shared_root=$(git rev-parse --show-toplevel 2>/dev/null) || _shared_root=""
+        if [ -n "$_shared_root" ] && grep -qxF "branch$(printf '\t'){branch_name}" "$_shared_root/.rite/tmp-artifacts.tsv" 2>/dev/null; then
+          _recovery=auto
+        fi
+      fi
+      if [ "$_recovery" = "auto" ]; then
         echo "[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}; reason=checked_out_in_worktree; recovery=auto" >&2
         echo "WARNING: ローカルブランチ {branch_name} はまだ別のセッションの作業ツリーで使用中のため、削除を見送りました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で回収されます。" >&2
       else
@@ -423,7 +433,7 @@ fi
 git ls-remote --heads origin {branch_name} && git push origin --delete {branch_name}
 ```
 
-`BRANCH_DELETED=1; via=squash-merged`（PR が merged 済みで `git branch -d` が squash 残渣により拒否したケース）は通常削除と同様にステップ 12 で `x` に分岐する。`BRANCH_DELETE_UNMERGED=1`（未マージ PR の強制 cleanup で `{pr_merged}=false` のとき）は「強制削除 (`-D`) / スキップ」を確認する。**強制削除を選んだ場合**は `LC_ALL=C git branch -D {branch_name} && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=force"` を実行し、削除完了を marker で示す（ステップ 12 が `x` に分岐する）。スキップ時は marker を追加しない（残置のまま）。`BRANCH_DELETE_DEFERRED=1`（別セッションが worktree を使用中で削除を遅延したケース）のときは**強制削除しない**（reap manifest に記録済みで、worktree 解放後に `pr-cycle-cleanup.sh` Step 5 が回収。ステップ 12 で残置と自動回収予定を報告）。リモート削除は GitHub auto-delete で既削除のエラーは無視。
+`BRANCH_DELETED=1; via=squash-merged`（PR が merged 済みで `git branch -d` が squash 残渣により拒否したケース）は通常削除と同様にステップ 12 で `x` に分岐する。`BRANCH_DELETE_UNMERGED=1`（未マージ PR の強制 cleanup で `{pr_merged}=false` のとき）は「強制削除 (`-D`) / スキップ」を確認する。**強制削除を選んだ場合**は `LC_ALL=C git branch -D {branch_name} && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=force"` を実行し、削除完了を marker で示す（ステップ 12 が `x` に分岐する）。スキップ時は marker を追加しない（残置のまま）。`BRANCH_DELETE_DEFERRED=1`（別セッションが worktree を使用中で削除を遅延したケース）のときは**強制削除しない**。marker の `recovery=` で次セッション回収の可否が決まる: `recovery=auto`（{pr_merged}=true かつ reap manifest への記録を verify 済み）は worktree 解放後に `pr-cycle-cleanup.sh` Step 5 が自動回収する。`recovery=manual`（未マージ PR の強制 cleanup、または記録漏れ）は自動回収されないため手動 `git branch -D` が必要。ステップ 12 はこの `recovery=` 値で残置メッセージを出し分ける。リモート削除は GitHub auto-delete で既削除のエラーは無視。
 
 ---
 

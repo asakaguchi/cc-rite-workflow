@@ -13,8 +13,11 @@
 #   step. The worktree + its checked-out local branch then fell into an air-pocket:
 #   neither the in-session removal (4-W skipped) nor the lazy reap
 #   (pr-cycle-cleanup.sh Step 5 self-excludes the running session's own worktree)
-#   handled them, and the lazy reap never deletes branches — so the local branch
-#   leaked permanently.
+#   handled them, and (at the time) the lazy reap never deleted branches — so the
+#   local branch leaked permanently. (Issue #1670 has since added a self-exclusion
+#   to the 4-W live-cwd guard so the running session removes its own worktree, and a
+#   merge-confirmed branch-recovery path to the lazy reap; this helper's
+#   in_worktree_unrecorded routing remains the front-line fix for the detection gap.)
 #
 #   This helper adds a PHYSICAL derivation: with `flow_wt` empty but `cur_top`
 #   shaped like the rite session worktree for THIS issue

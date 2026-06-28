@@ -213,7 +213,8 @@ multi_session:
 **Gate 0 — self-exclusion（後続で追加された第 4 の保護層）**: 上記 3 ゲートの**前段**に、実行中の自セッション worktree（起動時 cwd、または `RITE_WORKTREE` env が候補 worktree と一致/配下）を reap 対象から除外するガードを設ける。long-lived セッションが review 開始時（review.md Step 1.0.0）に**自分の作業中 worktree**（clean かつ claim free/stale で 3 ゲートを全通過しうる）を削除する事故を防ぐ。dirty(3)/claim(2) 保護とは独立した第 4 の保護層。
 
 処理は既存 `_reap_mutation_worktree` と同型: `git worktree remove --force` → fallback `rm -rf` → `git worktree prune` + 対応 claim ファイル削除。
-**branch は削除しない**（push 済み / 未 push 作業の保全。branch 掃除は正常系 cleanup.md の責務のまま）。
+
+**branch recovery（Issue #1670 で精緻化）**: 初期設計は「branch は削除しない（作業保全）」だったが、これだと cleanup.md が別 live セッションの在席で削除を遅延した feature ブランチが回収経路を持たず永久残置（dead-letter）した。現在は worktree reap 後にその branch を**安全に回収**する: `git branch -d`（safe — 未マージは拒否するため**未マージ作業は破壊しない**）を第一手とし、`-d` が squash-merge 残渣で拒否しても **reap manifest に記録された branch**（cleanup.md が PR merged を確認して `rite-tmp-artifact.sh record --type branch` で記録）のみ `git branch -D` で強制削除する。manifest 未記録の未マージ branch は WARNING を出して保持する。これにより「branch は保全」方針は「**merge 確認済み branch のみ回収・未マージ作業は破壊しない**」へと精緻化された。
 
 トリガー: cleanup.md の既存 `pr-cycle-cleanup.sh` 呼び出しに内包 + `session-start.sh`（main checkout 起動時）から `|| true` の best-effort 呼び出し
 （worktree list + status check のみの軽量処理で hook timeout 30s 内に収まることをテストで担保）。

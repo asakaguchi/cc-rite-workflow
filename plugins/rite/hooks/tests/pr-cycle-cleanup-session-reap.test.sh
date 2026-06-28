@@ -5,7 +5,7 @@
 #   AC-1: a worktree whose claim is LIVE is NOT reaped.
 #   AC-2: a worktree whose claim is STALE and clean IS reaped, claim file deleted.
 #   AC-3: a DIRTY worktree is NOT reaped (claim stale) — WARNING + manual hint.
-#   AC-4: after reap the corresponding branch still exists.
+#   AC-4: after reap a MERGED branch is recovered (TC-4); an UNMERGED, non-manifest-recorded branch is preserved (B-01) — #1670 refined "preserve the branch" to "recover merge-confirmed branches only, never destroy unmerged work".
 #   AC-5: `.rite/wiki-worktree` and non-issue dirs are NOT matched (regression).
 #
 # Gate 0 — self-exclusion guard. A long-lived session must never
@@ -91,8 +91,12 @@ assert "TC-2 stale worktree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-51" ]
 assert "TC-2 claim file deleted" "0" "$( [ -f "$R/.rite/state/issue-claims/issue-51.json" ] && echo 1 || echo 0 )"
 case "$out" in *"session_worktrees=1"*) pass "TC-2 status reports session_worktrees=1" ;; *) fail "TC-2 status: $out" ;; esac
 
-echo "=== TC-4 (AC-4): branch preserved after reap ==="
-assert "TC-4 branch feat/issue-51 still exists" "0" "$( cd "$R" && $GIT rev-parse --verify feat/issue-51 >/dev/null 2>&1; echo $? )"
+echo "=== TC-4 (#1670): merged-into-base branch recovered after reap ==="
+# feat/issue-51 was created from develop with no new commits → merged/even with the
+# base, so `git branch -d` recovers it once the worktree is gone (#1670 branch
+# recovery, closing the dead-letter gap). Previously the branch was preserved.
+assert "TC-4 merged branch feat/issue-51 recovered (gone)" "0" "$( cd "$R" && $GIT rev-parse --verify feat/issue-51 >/dev/null 2>&1 && echo 1 || echo 0 )"
+case "$out" in *"session_branches=1"*) pass "TC-4 status reports session_branches=1" ;; *) fail "TC-4 status: $out" ;; esac
 
 echo "=== TC-3 (AC-3): dirty worktree (stale claim) → NOT reaped + WARNING ==="
 R=$(make_repo 52); cleanup_dirs+=("$R")
@@ -334,5 +338,82 @@ out=$(run_pcc "$R")
 assert "T-10 mismatched-claim worktree IS reaped (no blanket protection)" "0" "$( [ -d "$R/.rite/worktrees/issue-83" ] && echo 1 || echo 0 )"
 case "$out" in *"session_worktrees=1"*) pass "T-10 status reports session_worktrees=1" ;; *) fail "T-10 status: $out" ;; esac
 
+# ===========================================================================
+# Issue #1670 — session-feature-branch recovery after reap (dead-letter fix).
+# The lazy reap used to delete the worktree but NEVER the branch, so a feature
+# branch whose cleanup deferred its worktree (live-cwd guard) leaked forever.
+# Step 5 now recovers the branch after reaping its worktree: SAFE-delete first
+# (preserves unmerged work — AC-4); FORCE-delete only when the branch is recorded
+# in the reap manifest (cleanup.md confirmed its PR merged — the squash-merge case
+# `git branch -d` cannot detect). TC-4 above already covers the merged-into-base
+# branch recovered by the safe delete + session_branches=1 status.
+# ===========================================================================
+GITC() { $GIT -C "$1" "${@:2}"; }   # run git in worktree $1
+
+echo "=== B-01 (#1670 AC-4): UNMERGED branch (not manifest-recorded) is PRESERVED after reap ==="
+R=$(make_repo 90); cleanup_dirs+=("$R")
+# Give feat/issue-90 a commit that is NOT in develop → `git branch -d` refuses it.
+# The commit is COMMITTED (worktree stays clean → Gate 3 passes → worktree reaped),
+# but the branch is NOT in the manifest → must be preserved (no data loss).
+echo "wip" > "$R/.rite/worktrees/issue-90/wip.txt"
+GITC "$R/.rite/worktrees/issue-90" add wip.txt >/dev/null 2>&1
+GITC "$R/.rite/worktrees/issue-90" commit -q -m "wip: unmerged work" >/dev/null 2>&1
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+out=$(run_pcc "$R")
+assert "B-01 unmerged worktree reaped (clean → Gate 3 passes)" "0" "$( [ -d "$R/.rite/worktrees/issue-90" ] && echo 1 || echo 0 )"
+assert "B-01 unmerged branch PRESERVED (not destroyed)" "1" "$( cd "$R" && $GIT rev-parse --verify feat/issue-90 >/dev/null 2>&1 && echo 1 || echo 0 )"
+assert_grep "B-01 unmerged-branch WARNING on stderr" "$R/pcc.err" "未マージのため保持"
+case "$out" in *"session_branches=0"*) pass "B-01 status reports session_branches=0" ;; *) fail "B-01 status: $out" ;; esac
+
+echo "=== B-02 (#1670 AC-3): squash-merged branch RECORDED in manifest → force-recovered after reap ==="
+R=$(make_repo 91); cleanup_dirs+=("$R")
+# Same unmerged shape as B-01 (a commit not in develop, so `git branch -d` refuses —
+# the squash-merge signature), but cleanup.md confirmed the PR merged and recorded
+# the branch in the reap manifest. Step 5 must FORCE-delete it (single-session
+# recovery of the deferred dead-letter branch).
+echo "squashed" > "$R/.rite/worktrees/issue-91/done.txt"
+GITC "$R/.rite/worktrees/issue-91" add done.txt >/dev/null 2>&1
+GITC "$R/.rite/worktrees/issue-91" commit -q -m "feat: squash-merged work" >/dev/null 2>&1
+printf 'branch\tfeat/issue-91\n' > "$R/.rite/tmp-artifacts.tsv"   # cleanup.md's merge-confirmed record
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+out=$(run_pcc "$R")
+assert "B-02 worktree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-91" ] && echo 1 || echo 0 )"
+assert "B-02 manifest-recorded merged branch FORCE-recovered (gone)" "0" "$( cd "$R" && $GIT rev-parse --verify feat/issue-91 >/dev/null 2>&1 && echo 1 || echo 0 )"
+case "$out" in *"session_branches=1"*) pass "B-02 status reports session_branches=1" ;; *) fail "B-02 status: $out" ;; esac
+# Clean-recovery contract: the deferred-branch manifest entry is still checked out in
+# its worktree when Step 4.5 runs (before Step 5 reaps it). That expected case must
+# NOT flip the run to status=failed nor emit a "failed to reap manifest branch" WARNING
+# — the recovery is clean (status=cleaned, errors absent). Without this the false
+# "status=failed; errors=1" of the marquee dead-letter path slips through silently.
+case "$out" in *"status=cleaned"*) pass "B-02 reports status=cleaned (no false failure)" ;; *) fail "B-02 status not cleaned: $out" ;; esac
+assert_not_grep "B-02 no misleading 'failed to reap manifest branch' WARNING" "$R/pcc.err" "failed to reap manifest branch"
+
+echo "=== B-03 (#1670 surgical): a manifest entry NEVER force-deletes an unrecorded unmerged sibling ==="
+R=$(make_repo 92); cleanup_dirs+=("$R")
+# issue-92 has an unmerged commit and IS recorded → force-recovered. A second
+# orphan issue-93 has an unmerged commit but is NOT recorded → preserved. Proves
+# the manifest gate is exact (a recorded branch never licenses deleting another).
+echo "a" > "$R/.rite/worktrees/issue-92/a.txt"
+GITC "$R/.rite/worktrees/issue-92" add a.txt >/dev/null 2>&1
+GITC "$R/.rite/worktrees/issue-92" commit -q -m "feat: 92" >/dev/null 2>&1
+( cd "$R" && $GIT worktree add -q -b "feat/issue-93" ".rite/worktrees/issue-93" >/dev/null 2>&1 )
+RITE_STATE_ROOT="$R" bash "$IC" claim --issue 93 --session "$SID_A" --worktree "$R/.rite/worktrees/issue-93" >/dev/null 2>&1
+echo "b" > "$R/.rite/worktrees/issue-93/b.txt"
+GITC "$R/.rite/worktrees/issue-93" add b.txt >/dev/null 2>&1
+GITC "$R/.rite/worktrees/issue-93" commit -q -m "wip: 93" >/dev/null 2>&1
+printf 'branch\tfeat/issue-92\n' > "$R/.rite/tmp-artifacts.tsv"   # only issue-92 recorded
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+out=$(run_pcc "$R")
+assert "B-03 recorded branch feat/issue-92 force-recovered (gone)" "0" "$( cd "$R" && $GIT rev-parse --verify feat/issue-92 >/dev/null 2>&1 && echo 1 || echo 0 )"
+assert "B-03 unrecorded sibling feat/issue-93 PRESERVED" "1" "$( cd "$R" && $GIT rev-parse --verify feat/issue-93 >/dev/null 2>&1 && echo 1 || echo 0 )"
+# issue-93's worktree MUST be reaped for the "preserved" assertion to be meaningful:
+# the surgical guarantee (a recorded entry never licenses deleting an unrecorded
+# sibling) only has teeth when issue-93's branch-recovery path actually ran. Pin it so
+# a future regression where issue-93 is never reaped cannot make "preserved" pass for
+# the wrong reason.
+assert "B-03 issue-93 worktree reaped (recovery path ran)" "0" "$( [ -d "$R/.rite/worktrees/issue-93" ] && echo 1 || echo 0 )"
+case "$out" in *"status=cleaned"*) pass "B-03 reports status=cleaned (no false failure)" ;; *) fail "B-03 status not cleaned: $out" ;; esac
+assert_not_grep "B-03 no misleading 'failed to reap manifest branch' WARNING" "$R/pcc.err" "failed to reap manifest branch"
+
 print_summary "$(basename "$0")" \
-  "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + worktree liveness guard (Issue #1524: a session's active flow-state worktree ref → never reap; reap → null owner ref / Issue #1552: claim-join — issue's claim holder still active=true, even with a stale 2h heartbeat → never reap) + OS-level live-cwd guard (Issue #1544: any live process standing in the tree → never reap, via worktree-live-cwd.sh) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); branch preserved; wiki-worktree excluded; session-start best-effort wiring."
+  "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + worktree liveness guard (Issue #1524: a session's active flow-state worktree ref → never reap; reap → null owner ref / Issue #1552: claim-join — issue's claim holder still active=true, even with a stale 2h heartbeat → never reap) + OS-level live-cwd guard (Issue #1544: any live process standing in the tree → never reap, via worktree-live-cwd.sh) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); Issue #1670 branch recovery: after reap, SAFE-delete the branch (merged → recovered) and FORCE-delete only manifest-recorded (merge-confirmed) branches, preserving unmerged work; wiki-worktree excluded; session-start best-effort wiring."

@@ -66,6 +66,8 @@ gh pr list --head {branch_name} --state all --json number,title,state,mergedAt,u
 
 PR 未検出: `AskUserQuestion` で「ブランチを削除して続行 / キャンセル」を確認。未マージ PR: 「キャンセル (推奨) / 強制クリーンアップ」を確認。
 
+`mergedAt` が非 null（= PR が merge 済み）なら `{pr_merged}=true` として保持する。**それ以外のすべての経路**（未マージ PR の強制クリーンアップ、PR 未検出でブランチ削除を選んで続行した経路など）は `{pr_merged}=false` を既定とする。これによりステップ 5 のすべての分岐で `{pr_merged}` が必ず literal substitute 可能になる（未定義値参照を防ぐ）。ステップ 5 のブランチ削除（squash 残渣の強制削除 / 遅延ブランチの manifest 記録）で参照する。
+
 ### 1.4 リポジトリ情報取得
 
 ```bash
@@ -321,21 +323,24 @@ esac
 - `CLEANUP_WT=in_worktree` / `in_worktree_unrecorded`（cwd がセッション worktree。後者は flow-state 未記録だが物理 cwd が当該 Issue の worktree な場合 — #1622。以降の手順 1〜4 は両者で同一）:
   1. `dirty=yes` なら **AskUserQuestion**（「`git stash push` して続行 / 中止」）。stash は common git dir に格納されるため worktree 削除後も `git stash pop` 可能（完了報告の stash 案内は従来文面を流用）。
   2. `ExitWorktree` ツールを `action: "keep"` で呼び出し、main checkout に復帰する（path 入場した worktree は remove でも消えない仕様のため**常に keep**）。
-  3. main から worktree を削除する。**削除前に live-cwd guard（Issue #1544）を通す**: 別のセッションの harness cwd がまだこの worktree に立っている場合に削除すると、そのセッションの `/clear` が `Path does not exist` で失敗するため、live プロセスが cwd を置いているときは削除せず遅延 reap（`pr-cycle-cleanup.sh` の session worktree reap）へ委譲する:
+  3. main から worktree を削除する。**削除前に self-exclusion 付き live-cwd guard（Issue #1544 / #1670）を通す**: **別の**セッションの harness cwd がまだこの worktree に立っている場合に削除すると、そのセッションの `/clear` が `Path does not exist` で失敗するため、削除せず遅延回収へ委譲する。一方、cleanup を実行している**自セッション自身**（ハーネス = この Bash の親 `$PPID` の process subtree）は除外する — これを除外しないと、ステップ 2 の `ExitWorktree(keep)` が no-op だった経路（`in_worktree_unrecorded` 等で worktree が EnterWorktree 記録なしに path 入場された場合）で自セッションを「live」と誤検出し、cleanup 自身を理由に削除をブロックする自己ブロッキングが起きる（#1670）。判定は self-exclusion を内蔵した `worktree-foreign-cwd.sh` に委譲する（`worktree-live-cwd.sh` 自体は変更しない — #1670 Non-Target）:
      ```bash
-     _lc_rc=0
-     bash {plugin_root}/hooks/scripts/worktree-live-cwd.sh "{flow_wt}" >/dev/null 2>&1 || _lc_rc=$?
-     if [ "$_lc_rc" -eq 0 ]; then
-       echo "WARNING: worktree '{flow_wt}' に live プロセスが cwd を置いているため削除を skip しました（遅延 reap pr-cycle-cleanup.sh に委譲。harness cwd dangling → /clear エラーの防止）。" >&2
+     # rc 0 = 別の live セッションが cwd を置く → 削除を遅延 / rc 1 = 自セッションだけ or 不在
+     #        → 削除 / rc 2 = 判定不能（/proc 無し）→ 削除（従来 worktree-live-cwd.sh rc=2 と同じ後方互換）。
+     # --self-root "$PPID" でこの Bash の親（claude ハーネス）の process subtree を self として除外する。
+     _fc_rc=0
+     bash {plugin_root}/hooks/scripts/worktree-foreign-cwd.sh "{flow_wt}" --self-root "$PPID" >/dev/null 2>&1 || _fc_rc=$?
+     if [ "$_fc_rc" -eq 0 ]; then
+       echo "WARNING: 別のセッションがこの作業ツリー（{flow_wt}）を使用中のため、削除を見送りました。そのセッションが終了したあと、次回のセッション開始時に作業ツリーとローカルブランチが自動で回収されます。" >&2
        echo "[CONTEXT] WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1; path={flow_wt}" >&2
      else
        git worktree remove "{flow_wt}" 2>/dev/null || git worktree remove --force "{flow_wt}" 2>/dev/null || echo "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path={flow_wt}" >&2
        git worktree prune 2>/dev/null || true
      fi
      ```
-     > `in_worktree` 経路ではステップ 2 の `ExitWorktree` で harness cwd が main に退避済みのため、この guard は通常 rc=1（live cwd 不在）で削除へ進む。`worktree-live-cwd.sh` が rc=2（`/proc` も `lsof` も無い環境で判定不能）を返す場合は `if` が false となり従来どおり削除を実行する（後方互換）。
+     > 通常の `in_worktree` 経路ではステップ 2 の `ExitWorktree(keep)` で自セッションの harness cwd が main に退避済みのため、worktree には自他いずれの cwd も無く `worktree-foreign-cwd.sh` は rc=1（削除）を返す。`ExitWorktree(keep)` が no-op だった経路（`in_worktree_unrecorded` 等）でも、残る live cwd は自セッションのハーネス（`$PPID` subtree）だけなので self-exclusion により rc=1（削除）となり、自己ブロッキングしない。rc=0（遅延）になるのは別セッションのハーネスが実際にこの worktree 内に cwd を持つ場合のみ。`/proc` の無い環境では rc=2 となり従来どおり削除を実行する（後方互換）。
   4. 削除失敗（`WORKTREE_REMOVE_FAILED`）または live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。
-- `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の live-cwd guard が特に重要。
+- `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の self-exclusion 付き live-cwd guard が特に重要（別セッション在席時のみ遅延する）。
 - `CLEANUP_WT=none`（multi_session 無効、または worktree 関連なし = 物理 cwd も当該 Issue の worktree でない）: 4-W 全体を no-op でスキップ。**注**: flow-state 未記録でも物理 cwd が当該 Issue の worktree なら `in_worktree_unrecorded` に分類されここには落ちない（#1622）。
 
 > **復旧: `/clear` が `Path does not exist` で失敗する場合（Issue #1552）**
@@ -369,20 +374,57 @@ fi
 > **順序**: branch 削除は **worktree 削除後にのみ成功する**（Git 制約: worktree で checkout 中の branch は削除不可）。multi_session 時は必ずステップ 4-W → 本ステップの順で実行する。
 
 ```bash
-# worktree 削除が遅延/失敗した場合（ステップ 4-W が WORKTREE_REMOVE_SKIPPED_LIVE_CWD /
-# WORKTREE_REMOVE_FAILED を残した場合）、branch は worktree で checkout 中のため削除できない。
-# その場合は強制削除も無意味なので skip し、残置を marker で surface して遅延 reap / 手動回収に
-# 委ねる（#1622）。git 診断メッセージは locale 翻訳で揺れるため LC_ALL=C で固定して substring
-# マッチを安定させる（repo 既存の wiki-lint-*.sh と同規約）。
+# worktree 削除が遅延した場合（ステップ 4-W が WORKTREE_REMOVE_SKIPPED_LIVE_CWD を残した =
+# 別 live セッションが worktree 使用中）、branch は worktree で checkout 中のため削除できない。
+# その場合は強制削除せず reap manifest に記録し（#1670）、worktree が解放されたあと
+# pr-cycle-cleanup.sh Step 5 が次セッションで branch・worktree の双方を回収する（dead-letter 解消）。
+# 自セッションの worktree は 4-W の self-exclusion で即時削除されるため、本経路に来るのは
+# 別 live セッション在席時のみ。git 診断メッセージは locale 翻訳で揺れるため LC_ALL=C で固定して
+# substring マッチを安定させる（repo 既存の wiki-lint-*.sh と同規約）。
+# `{pr_merged}` はステップ 1.3 の PR 状態（`mergedAt` 非 null なら `true`、それ以外すべて
+# `false`。Step 1.3 と同一定義）を Claude が literal substitute する。squash merge では feature の
+# コミットが base の祖先にならないため、worktree 解放後でも `git branch -d` が "not fully merged" で
+# 拒否する。PR が merged 済み（{pr_merged}=true）ならこれは squash の残渣であり強制削除して安全
+# （ユニークな未マージ作業は無い）。
 if del_err=$(LC_ALL=C git branch -d {branch_name} 2>&1); then
   echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}"
 else
   case "$del_err" in
     *"used by worktree"*|*"checked out"*)
-      echo "[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}; reason=checked_out_in_worktree" >&2
-      echo "WARNING: ローカルブランチ {branch_name} はセッション worktree で checkout 中のため削除を skip しました（worktree 削除の遅延に伴う残置）。worktree 削除後に手動削除してください: git branch -D {branch_name}" >&2 ;;
+      # #1670: 遅延ブランチを次セッション回収へ配線する（dead-letter 解消）。PR が merged 済み
+      # （{pr_merged}=true）のときのみ reap manifest に記録し、別 live セッションが worktree を
+      # 解放したあと pr-cycle-cleanup.sh Step 5 が安全に回収できるようにする。未マージ PR の強制
+      # cleanup 時（{pr_merged}=false）は記録しない（作業損失防止 — AC-4）。
+      # **recovery= の意味（AC-6）**: rite-tmp-artifact.sh は非ブロッキング契約で、append 失敗でも
+      # WARNING を出して exit 0 を返す（非 0 は usage error のみ）。したがって record の exit code では
+      # 記録成否を判定できない。共有 manifest を直接 verify し、エントリが実在するときだけ
+      # recovery=auto を emit する（記録できていない経路で「自動で回収されます」と偽らない）。
+      # {pr_merged}=false / 記録漏れ / shared-root 解決不能はすべて recovery=manual に倒す。
+      _recovery=manual
+      if [ "{pr_merged}" = "true" ]; then
+        bash {plugin_root}/hooks/scripts/rite-tmp-artifact.sh record --type branch --id "{branch_name}" 2>/dev/null || true
+        _shared_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _shared_root=""
+        [ -n "$_shared_root" ] || _shared_root=$(git rev-parse --show-toplevel 2>/dev/null) || _shared_root=""
+        if [ -n "$_shared_root" ] && grep -qxF "branch$(printf '\t'){branch_name}" "$_shared_root/.rite/tmp-artifacts.tsv" 2>/dev/null; then
+          _recovery=auto
+        fi
+      fi
+      if [ "$_recovery" = "auto" ]; then
+        echo "[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}; reason=checked_out_in_worktree; recovery=auto" >&2
+        echo "WARNING: ローカルブランチ {branch_name} はまだ別のセッションの作業ツリーで使用中のため、削除を見送りました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で回収されます。" >&2
+      else
+        echo "[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}; reason=checked_out_in_worktree; recovery=manual" >&2
+        echo "WARNING: ローカルブランチ {branch_name} は作業ツリーで使用中のため、削除を見送りました。その作業ツリーが解放されたあと、手動で削除してください: git branch -D {branch_name}" >&2
+      fi ;;
     *"not fully merged"*)
-      echo "[CONTEXT] BRANCH_DELETE_UNMERGED=1; branch={branch_name}" >&2 ;;
+      if [ "{pr_merged}" = "true" ]; then
+        # squash merge の残渣 — PR は merged 済みなので強制削除して安全。
+        LC_ALL=C git branch -D {branch_name} >/dev/null 2>&1 \
+          && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=squash-merged" \
+          || echo "[CONTEXT] BRANCH_DELETE_FAILED=1; branch={branch_name}" >&2
+      else
+        echo "[CONTEXT] BRANCH_DELETE_UNMERGED=1; branch={branch_name}" >&2
+      fi ;;
     *)
       echo "[CONTEXT] BRANCH_DELETE_FAILED=1; branch={branch_name}" >&2
       echo "WARNING: ローカルブランチ {branch_name} の削除に失敗しました: $del_err" >&2 ;;
@@ -391,7 +433,7 @@ fi
 git ls-remote --heads origin {branch_name} && git push origin --delete {branch_name}
 ```
 
-`BRANCH_DELETE_UNMERGED=1`（未マージ変更）のときは「強制削除 (`-D`) / スキップ」を確認する。**強制削除を選んだ場合**は `LC_ALL=C git branch -D {branch_name} && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=force"` を実行し、削除完了を marker で示す（ステップ 12 が `x` に分岐する）。スキップ時は marker を追加しない（残置のまま）。`BRANCH_DELETE_DEFERRED=1`（worktree checkout 中）のときは**強制削除しない**（worktree 削除後に回収。ステップ 12 で残置を報告）。リモート削除は GitHub auto-delete で既削除のエラーは無視。
+`BRANCH_DELETED=1; via=squash-merged`（PR が merged 済みで `git branch -d` が squash 残渣により拒否したケース）は通常削除と同様にステップ 12 で `x` に分岐する。`BRANCH_DELETE_UNMERGED=1`（未マージ PR の強制 cleanup で `{pr_merged}=false` のとき）は「強制削除 (`-D`) / スキップ」を確認する。**強制削除を選んだ場合**は `LC_ALL=C git branch -D {branch_name} && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=force"` を実行し、削除完了を marker で示す（ステップ 12 が `x` に分岐する）。スキップ時は marker を追加しない（残置のまま）。`BRANCH_DELETE_DEFERRED=1`（別セッションが worktree を使用中で削除を遅延したケース）のときは**強制削除しない**。marker の `recovery=` で次セッション回収の可否が決まる: `recovery=auto`（{pr_merged}=true かつ reap manifest への記録を verify 済み）は worktree 解放後に `pr-cycle-cleanup.sh` Step 5 が自動回収する。`recovery=manual`（未マージ PR の強制 cleanup、または記録漏れ）は自動回収されないため手動 `git branch -D` が必要。ステップ 12 はこの `recovery=` 値で残置メッセージを出し分ける。リモート削除は GitHub auto-delete で既削除のエラーは無視。
 
 ---
 
@@ -578,25 +620,30 @@ Status: {projects_status_result}
 各チェックボックスおよび placeholder の判定:
 
 - `{session_worktree_check}`: multi_session 無効 or worktree 未使用なら行ごと省略。以下を**上から評価し最初に一致したもの**を採用する（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD` と `WORKTREE_REMOVE_FAILED` は Step 4-W guard の if/else で排他だが、両 `[CONTEXT]` 行が文脈に残る可能性に備えて評価順序を固定する）:
-  - `WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1` のとき（live-cwd guard が削除を skip）: ` ` + 以下を付記
+  - `WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1` のとき（別のセッションが作業ツリーを使用中のため削除を見送った）: ` ` + 以下を付記
     ```
-    ℹ️ セッション worktree は別セッションが cwd を置いているため削除を skip しました（遅延 reap が後で回収します）。
-      手動削除（当該セッションの /clear 後）: git worktree remove --force {flow_wt} && git worktree prune
+    ℹ️ この作業ツリーは別のセッションが使用中のため、削除を見送りました。そのセッションが終了したあと、次回のセッション開始時に作業ツリーとローカルブランチが自動で回収されます。
+      すぐに消したい場合（別セッションを閉じたあと）: git worktree remove --force {flow_wt} && git worktree prune
     ```
   - `WORKTREE_REMOVE_FAILED=1` のとき（削除そのものが失敗）: ` ` + 以下を付記
     ```
-    ⚠️ セッション worktree の削除に失敗しました（遅延 reap が後で回収します）。
-      手動削除: git worktree remove --force {flow_wt} && git worktree prune
+    ⚠️ 作業ツリーの削除に失敗しました。次回のセッション開始時に自動で再回収されます。
+      すぐに消したい場合: git worktree remove --force {flow_wt} && git worktree prune
     ```
   - いずれの `[CONTEXT]` 行も無い（削除成功）とき: `x`
 - `{local_branch_check}`: ステップ 5 の `[CONTEXT]` 行で判定（上から評価し最初に一致したものを採用）:
-  - `BRANCH_DELETE_DEFERRED=1` のとき（worktree で checkout 中のため削除 skip — worktree 削除の遅延に伴う残置。#1622）: ` ` + 以下を付記
-    ```
-    ℹ️ ローカルブランチ {branch_name} は worktree で checkout 中のため残置しました（worktree 削除の遅延に伴う）。worktree 削除後に手動削除: git branch -D {branch_name}
-    ```
-  - `BRANCH_DELETED=1` のとき（通常削除、または `BRANCH_DELETE_UNMERGED` をユーザーが強制削除 `-D` で解決した場合に emit される。**`BRANCH_DELETE_UNMERGED=1` より先に評価する**）: `x`
-  - `BRANCH_DELETE_FAILED=1` のとき: ` ` + 「ローカルブランチ {branch_name} の削除に失敗。`git branch -D {branch_name}` で手動削除（worktree で checkout 中なら worktree 削除後）」を付記
-  - `BRANCH_DELETE_UNMERGED=1` のとき（= ユーザーが skip 選択。強制削除で解決した場合は上位の `BRANCH_DELETED=1` 行で既に `x` 評価済みのため、ここに到達するのは skip 時のみ）: ` ` + 「ローカルブランチ {branch_name} は未マージのため保留。`git branch -D {branch_name}` で手動削除」を付記
+  - `BRANCH_DELETE_DEFERRED=1` のとき（別セッションが作業ツリーを使用中で削除を見送った。#1670）。**marker の `recovery=` フィールドで文面を出し分ける**（記録できていない経路で「自動回収」と偽らないため — AC-6）: ` ` + 以下を付記
+    - `recovery=auto`（PR が merged 済みで reap manifest に記録成功 → 次セッションで自動回収される）:
+      ```
+      ℹ️ ローカルブランチ {branch_name} は、別セッションが使用中の作業ツリーで参照されているため残しました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で削除されます（手動操作は不要）。
+      ```
+    - `recovery=manual`（未マージ PR の強制 cleanup、または manifest 記録に失敗 → 自動回収されないため手動が必要）:
+      ```
+      ℹ️ ローカルブランチ {branch_name} は、作業ツリーで参照されているため残しました。その作業ツリーが解放されたあと、手動で削除してください: git branch -D {branch_name}
+      ```
+  - `BRANCH_DELETED=1` のとき（通常削除、squash 残渣の自動強制削除 `via=squash-merged`、または `BRANCH_DELETE_UNMERGED` をユーザーが強制削除 `-D` で解決した場合に emit される。**`BRANCH_DELETE_UNMERGED=1` より先に評価する**）: `x`
+  - `BRANCH_DELETE_FAILED=1` のとき: ` ` + 「ローカルブランチ {branch_name} の削除に失敗。`git branch -D {branch_name}` で手動削除（作業ツリーで使用中なら解放後）」を付記
+  - `BRANCH_DELETE_UNMERGED=1` のとき（= 未マージ PR の強制 cleanup でユーザーが skip 選択。強制削除で解決した場合は上位の `BRANCH_DELETED=1` 行で既に `x` 評価済みのため、ここに到達するのは skip 時のみ）: ` ` + 「ローカルブランチ {branch_name} は未マージのため保留。`git branch -D {branch_name}` で手動削除」を付記
   - いずれの `[CONTEXT]` 行も無いとき: `x`
 - `{projects_status_result}`: `projects_status_updated=true` なら `Done`、false なら `⚠️ 更新失敗（手動確認が必要）`
 - `{review_cleanup_check}`: `REVIEW_CLEANUP_PARTIAL_FAILURE=1` なら ` ` + 警告付記、なければ `x`

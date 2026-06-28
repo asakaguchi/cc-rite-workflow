@@ -140,6 +140,7 @@ branches_deleted=0
 workdirs_reaped=0
 mutation_worktrees_reaped=0
 session_worktrees_reaped=0
+session_branches_deleted=0
 manifest_reaped=0
 errors=0
 
@@ -507,12 +508,28 @@ if [ -f "$manifest_path" ]; then
           if [ "$DRY_RUN" = "1" ]; then
             echo "[dry-run] would reap manifest branch: $(printf '%s' "$_m_val" | neutralize_ctrl)"
             printf '%s\n' "$_m_line" >> "$manifest_keep"
-          elif git branch -D -- "$_m_val" >/dev/null 2>&1; then
+          elif _m_bd_err=$(LC_ALL=C git branch -D -- "$_m_val" 2>&1); then
             manifest_reaped=$((manifest_reaped + 1))
           else
-            echo "WARNING: failed to reap manifest branch '$(printf '%s' "$_m_val" | neutralize_ctrl)'" >&2
-            errors=$((errors + 1))
-            printf '%s\n' "$_m_line" >> "$manifest_keep"
+            # #1670: cleanup.md records a deferred SESSION-worktree branch here while
+            # it is still checked out in its (not-yet-reaped) worktree. At this point
+            # (Step 4.5 < Step 5) `git branch -D` legitimately fails with "used by
+            # worktree" / "checked out" — Step 5 reaps that worktree and recovers the
+            # branch later in THIS run (the manifest contract "session worktrees go
+            # through Step 5's gated reap, never here"). That expected case must NOT
+            # count as an error (it would flip a fully-successful run to status=failed)
+            # nor emit a "failed to reap" WARNING. Preserve the entry silently; it
+            # self-heals on the next run's verify-already-gone drop. LC_ALL=C fixes the
+            # git diagnostic locale so the substring match is stable (same convention as
+            # cleanup.md Step 5).
+            case "$_m_bd_err" in
+              *"used by worktree"*|*"checked out"*)
+                printf '%s\n' "$_m_line" >> "$manifest_keep" ;;
+              *)
+                echo "WARNING: failed to reap manifest branch '$(printf '%s' "$_m_val" | neutralize_ctrl)'" >&2
+                errors=$((errors + 1))
+                printf '%s\n' "$_m_line" >> "$manifest_keep" ;;
+            esac
           fi
           ;;
         worktree)
@@ -598,8 +615,16 @@ fi
 #   3. `git -C <wt> status --porcelain` が空 (dirty worktree は絶対に auto-reap
 #      しない — WARNING + 手動コマンド提示で skip)
 # 処理は Step 1/4 と同型: `git worktree remove --force` → fallback `rm -rf` →
-# ループ後 `git worktree prune` + 対応 claim ファイル削除。**branch は削除しない**
-# (push 済み / 未 push 作業の保全。branch 掃除は正常系 cleanup.md の責務のまま)。
+# ループ後 `git worktree prune` + 対応 claim ファイル削除。
+#
+# **Branch recovery (Issue #1670)**: worktree reap 後に、その worktree が checkout
+# していた feature ブランチを **安全に回収する**。従来は branch を一切削除せず、cleanup.md
+# が live-cwd guard で削除を遅延した feature ブランチが回収経路を持たず永久残置 (dead-letter)
+# だった。回収は `git branch -d` (safe — 未マージは拒否 → クラッシュセッションの作業を保全, AC-4)
+# を第一手とし、`-d` が squash-merge 残渣で拒否しても **reap manifest に記録された** ブランチ
+# (cleanup.md が PR merged を確認して記録) のみ `git branch -D` で強制削除する。manifest 未記録の
+# 未マージブランチは保持する。これにより #1524 の「branch は保全」方針は「**merge 確認済み**
+# ブランチのみ回収・未マージ作業は破壊しない」へと精緻化される。
 # -----------------------------------------------------------------------
 session_wt_base=""
 if [ -f "$repo_root/rite-config.yml" ]; then
@@ -855,9 +880,13 @@ if [ -d "$session_wt_root" ]; then
       continue
     fi
 
+    # Capture the checked-out branch BEFORE removal (the worktree is gone after) so
+    # the post-reap branch recovery (#1670) can target it. Detached HEAD yields
+    # "HEAD" → no branch to recover.
+    _reaped_branch=$(git -C "$wt_path" rev-parse --abbrev-ref HEAD 2>/dev/null) || _reaped_branch=""
+
     # Reap: remove --force first (drops worktree metadata + dir atomically),
-    # rm -rf fallback for dirs whose registration was already lost. The branch
-    # is intentionally preserved.
+    # rm -rf fallback for dirs whose registration was already lost.
     if git worktree remove --force "$wt_path" 2>/dev/null || rm -rf "$wt_path" 2>/dev/null; then
       session_worktrees_reaped=$((session_worktrees_reaped + 1))
       rm -f "$repo_root/.rite/state/issue-claims/issue-${issue_num}.json" 2>/dev/null || true
@@ -865,6 +894,35 @@ if [ -d "$session_wt_root" ]; then
       # (uses the pre-removal canonical path) so re-entry / harness cwd-restore is
       # not pointed at the just-removed dir. Non-blocking (AC-5).
       _rite_null_worktree_refs "$wt_path" "$_wt_canon"
+
+      # Branch recovery (#1670): the worktree is gone, so its branch is no longer
+      # checked out and can be deleted. SAFE-delete first — `git branch -d` refuses
+      # an unmerged branch, preserving a crashed session's in-progress work (AC-4).
+      # If `-d` refuses BUT the branch is in the reap manifest, cleanup.md confirmed
+      # its PR merged (the squash-merge case `-d` cannot detect, since squashed
+      # commits are not ancestors of base) → force-delete is safe. A non-recorded
+      # unmerged branch is kept with a WARNING (never destroy unmerged work).
+      if [ -n "$_reaped_branch" ] && [ "$_reaped_branch" != "HEAD" ]; then
+        # `--` (end-of-options) on every `git branch -d/-D` is a defense-in-depth
+        # invariant shared with the manifest reap (`git branch -D -- ...`) and
+        # documented in rite-tmp-artifact.sh: `_reaped_branch` comes straight from
+        # `git rev-parse --abbrev-ref HEAD` without the recorder's leading-dash guard,
+        # so `--` is the explicit backstop against an option-injecting branch name.
+        if git branch -d -- "$_reaped_branch" >/dev/null 2>&1; then
+          session_branches_deleted=$((session_branches_deleted + 1))
+        elif [ -f "$manifest_path" ] && grep -qxF "branch$(printf '\t')$_reaped_branch" "$manifest_path" 2>/dev/null; then
+          if git branch -D -- "$_reaped_branch" >/dev/null 2>&1; then
+            session_branches_deleted=$((session_branches_deleted + 1))
+            # The stale manifest `branch\t<name>` entry self-heals on the next run's
+            # Step 4.5 (verify fails → already-gone → dropped), so no rewrite here.
+          else
+            echo "WARNING: failed to reap session worktree branch '$(printf '%s' "$_reaped_branch" | neutralize_ctrl)'" >&2
+            errors=$((errors + 1))
+          fi
+        else
+          echo "WARNING: session worktree branch '$(printf '%s' "$_reaped_branch" | neutralize_ctrl)' は未マージのため保持しました（不要なら手動削除: git branch -D '$(printf '%s' "$_reaped_branch" | neutralize_ctrl)'）。" >&2
+        fi
+      fi
     else
       echo "WARNING: failed to reap session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)'" >&2
       errors=$((errors + 1))
@@ -882,11 +940,11 @@ fi
 if [ "$DRY_RUN" = "1" ]; then
   echo "[pr-cycle-cleanup] status=dry-run; pattern=$PATTERN"
 elif [ "$errors" -gt 0 ]; then
-  echo "[pr-cycle-cleanup] status=failed; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped; manifest=$manifest_reaped; errors=$errors"
-elif [ "$worktrees_removed" -eq 0 ] && [ "$branches_deleted" -eq 0 ] && [ "$workdirs_reaped" -eq 0 ] && [ "$mutation_worktrees_reaped" -eq 0 ] && [ "$session_worktrees_reaped" -eq 0 ] && [ "$manifest_reaped" -eq 0 ]; then
-  echo "[pr-cycle-cleanup] status=noop; worktrees=0; branches=0; workdirs=0; mutation_worktrees=0; session_worktrees=0; manifest=0"
+  echo "[pr-cycle-cleanup] status=failed; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped; session_branches=$session_branches_deleted; manifest=$manifest_reaped; errors=$errors"
+elif [ "$worktrees_removed" -eq 0 ] && [ "$branches_deleted" -eq 0 ] && [ "$workdirs_reaped" -eq 0 ] && [ "$mutation_worktrees_reaped" -eq 0 ] && [ "$session_worktrees_reaped" -eq 0 ] && [ "$session_branches_deleted" -eq 0 ] && [ "$manifest_reaped" -eq 0 ]; then
+  echo "[pr-cycle-cleanup] status=noop; worktrees=0; branches=0; workdirs=0; mutation_worktrees=0; session_worktrees=0; session_branches=0; manifest=0"
 else
-  echo "[pr-cycle-cleanup] status=cleaned; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped; manifest=$manifest_reaped"
+  echo "[pr-cycle-cleanup] status=cleaned; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped; session_branches=$session_branches_deleted; manifest=$manifest_reaped"
 fi
 
 exit 0

@@ -27,6 +27,12 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.6.11] - 2026-06-28
+
+### Fixed
+
+- **`/rite:pr:cleanup` no longer self-blocks worktree and branch deletion for the Issue it is cleaning up** — the cleanup live-cwd guard (`worktree-live-cwd.sh`) could not distinguish the cleanup session's own working directory from another session's, so it detected itself as "live" and deferred deletion. A new `worktree-foreign-cwd.sh` probe excludes the self process tree (`--self-root`) so deletion is deferred only when another live session is actually present. Branches that are genuinely deferred — previously left permanently with no recovery path — are now recorded in the reap manifest and reclaimed by the next session, while unmerged/dirty branches stay protected. (#1670, #1671)
+
 ## [0.6.10] - 2026-06-26
 
 ### Fixed
@@ -630,6 +636,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.6.11]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.10...v0.6.11
 [0.6.10]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.9...v0.6.10
 [0.6.9]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.8...v0.6.9
 [0.6.8]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.7...v0.6.8

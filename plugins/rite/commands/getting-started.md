@@ -390,7 +390,7 @@ Operating rules (important):
     exists and git works (the harness mis-detected the launch directory as
     non-git at startup): RESTART Claude Code from the repository ROOT and
     re-run the same command. The already-created worktree is preserved and
-    reused (WT_CASE=reuse on /rite:pr:open, RESUME_WT=reenter on /rite:resume),
+    reused (WT_CASE=reuse on /rite:pr:open, WT_ENSURE=reenter on /rite:resume),
     so nothing is rebuilt. rite never silently falls back to git switch -c.
 
   • Keep the main checkout on your base branch (rite-config.yml branch.base, e.g. develop).

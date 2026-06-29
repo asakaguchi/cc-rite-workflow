@@ -145,53 +145,29 @@ echo "[CONTEXT] STATE_PARENT_DISPLAY=$parent_issue_display"
 
 git/PR 状態クロスチェック（Phase 3.2 / 3.3 の `git rev-list origin/{base}..HEAD` / `gh pr view`）は**カレントブランチ依存**のため、worktree への再入場は**その前に**行う必要がある（順序が本質）。session ⇄ worktree は 1:1 でない（クラッシュで session_id が変わる）ため、**issue 番号 → worktree パス導出（discovery fallback）が正規の対応関係**であり、flow-state `worktree` field は同一セッション内のヒントに留まる:
 
-```bash
-ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
-ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \
-  | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
-case "$ms_enabled" in true|yes|1) ms_enabled=true ;; *) ms_enabled=false ;; esac
-ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {print; exit}' \
-  | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
-[ -n "$ms_base" ] || ms_base=".rite/worktrees"
+検出・再構築は共通ヘルパー `ensure_session_worktree`（[`lib/worktree-git.sh`](../hooks/scripts/lib/worktree-git.sh)、#1676 で #1368 のロジックを SoT 化）に委譲する。ヘルパーは `multi_session` の読取・worktree パス導出（`--git-common-dir` から main checkout root を求める）・branch 解決（issue-N の local/remote ref から自動）・**再構築（`git worktree add`）まで bash 側で完結**し、唯一の `[CONTEXT] WT_ENSURE=` marker を emit する。session ⇄ worktree は 1:1 でない（クラッシュで session_id が変わる）ため、helper は issue 番号 → worktree パス導出を正規の対応とし、flow-state `worktree` field には依存しない:
 
-if [ "$ms_enabled" != "true" ]; then
-  echo "[CONTEXT] RESUME_WT=disabled"
-else
-  # flow-state worktree を優先。空なら（新 session_id では空が正常）issue 番号から導出。
-  flow_wt=$(bash {plugin_root}/hooks/flow-state.sh get --field worktree --default "") || flow_wt=""
-  repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || repo_root="$PWD"
-  derived_wt="$repo_root/$ms_base/issue-$issue_arg"
-  wt_path="${flow_wt:-$derived_wt}"
-  cur_top=$(git rev-parse --show-toplevel 2>/dev/null) || cur_top=""
-  registered=$(git worktree list --porcelain 2>/dev/null | awk -v p="$wt_path" '$1=="worktree" && $2==p {print "yes"}')
-  branch_local=$(git rev-parse --verify "{branch}" >/dev/null 2>&1 && echo yes || echo no)
-  if [ "$registered" = "yes" ] && [ "$cur_top" = "$wt_path" ]; then
-    echo "[CONTEXT] RESUME_WT=already_in; path=$wt_path"
-  elif [ "$registered" = "yes" ]; then
-    echo "[CONTEXT] RESUME_WT=reenter; path=$wt_path"
-  elif [ -e "$wt_path" ]; then
-    git worktree prune
-    echo "[CONTEXT] RESUME_WT=$([ -e "$wt_path" ] && echo residue || echo missing); path=$wt_path; branch_local=$branch_local"
-  else
-    echo "[CONTEXT] RESUME_WT=missing; path=$wt_path; branch_local=$branch_local"
-  fi
-fi
+```bash
+bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --issue "$issue_arg"
 ```
 
-`RESUME_WT` で分岐する（branch 名は Phase 1.1 の issue から `{type}/issue-{number}-{slug}` で再構成、`{base_branch}` は Phase 3.2 の base）:
+> **本ブロックは WT_ENSURE 分岐表の SoT**（pr:review / pr:iterate / pr:fix の入場ゲートが参照する。#1676）。EnterWorktree は LLM ツールのため helper からは呼べず、`reenter` / `reconstructed` の入場のみ下記表に従い LLM が実行する。
 
-| `RESUME_WT` | アクション |
+`WT_ENSURE` で分岐する:
+
+| `WT_ENSURE` | アクション |
 |---|---|
 | `disabled` / `already_in` | no-op（従来フロー / 既に worktree 内）。Phase 3.2 へ |
-| `reenter` | `EnterWorktree` ツールを `path: {path}` で呼び出してから Phase 3.2 へ |
-| `residue` | パスは存在するが worktree 未登録（prune 後も残存）→ AskUserQuestion（削除して再構築 / 中止） |
-| `missing` + `branch_local=yes` | branch ローカル有 → `git worktree add "{path}" "{branch}"`（`-b` なし）→ `EnterWorktree(path)` |
-| `missing` + `branch_local=no` | リモート確認 → 有れば `git fetch origin {branch}` + `git worktree add --track -b "{branch}" "{path}" "origin/{branch}"` → `EnterWorktree(path)`。どこにも無ければ **矛盾サマリ + AskUserQuestion**（新規セッション扱い / 中止）— silent に新規扱いしない |
+| `reenter` / `reconstructed` | `EnterWorktree` ツールを `path: {path}` で呼び出してから Phase 3.2 へ（`{path}` は marker の `path=` 値。`reconstructed` は helper が `git worktree add` 済み） |
+| `residue` | パスは存在するが worktree 未登録（prune 後も残存）→ AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止） |
+| `branch_other_worktree` | branch が**別の worktree** で checkout 中（並行セッションの可能性）→ **中止**。`other=` のパスを表示する（git が構造的に保証する二重着手ガード） |
+| `branch_absent` | branch がローカル・リモートどこにも無い → **矛盾サマリ + AskUserQuestion**（新規セッション扱い / 中止）。helper は再構築しない（silent に新規扱いもしない） |
+| `failed` | 再構築（`git fetch` / `git worktree add`）が失敗（helper rc=1, stderr に原因 + 復旧手順）→ **silent fallback せず明示停止**。develop 上で resume を続行しない |
 
-**EnterWorktree が失敗した場合**（`reenter` / `missing` 経路の `EnterWorktree(path)` がエラー）: pr:open Step 2.3-W と同じ切り分けを行い、**silent に新規セッション扱いしない**。
+**EnterWorktree が失敗した場合**（`reenter` / `reconstructed` 経路の `EnterWorktree(path)` がエラー）: pr:open Step 2.3-W と同じ切り分けを行い、**silent に新規セッション扱いしない**。
 
-- **harness の git 誤判定**（`.git` が存在し `git -C "{path}" rev-parse` は成功するのに、起動コンテキストが `Is a git repository: false` で EnterWorktree が「not in a git repository」エラーを返す）→ **推奨**。診断とともに「**リポジトリ root から Claude Code を再起動**し、`/rite:resume {issue_number}` を再実行すれば、登録済み worktree が `RESUME_WT=reenter` で再入場される」と案内する。worktree は保持済みのため破壊しない。
-- **worktree path 消失などの別要因** → 上表の `missing` 経路（branch ローカル有 / リモート確認 → 再構築）に従う。再起動案内へ誤誘導しない。
+- **harness の git 誤判定**（`.git` が存在し `git -C "{path}" rev-parse` は成功するのに、起動コンテキストが `Is a git repository: false` で EnterWorktree が「not in a git repository」エラーを返す）→ **推奨**。診断とともに「**リポジトリ root から Claude Code を再起動**し、`/rite:resume {issue_number}` を再実行すれば、登録済み worktree が `WT_ENSURE=reenter` で再入場される」と案内する。worktree は保持済みのため破壊しない。
+- **worktree path 消失などの別要因** → 再度本ヘルパーを実行すれば `branch_absent` 以外なら再構築される。再起動案内へ誤誘導しない。
 
 再入場後、claim に worktree path を再記録してもよい（`issue-claim.sh claim --issue {issue_number} --worktree "{path}"`、best-effort）。
 
@@ -300,11 +276,11 @@ echo "[CONTEXT] FINAL_PHASE=$user_selected_phase"
 
 ### 5.1 ブランチ切り替え（worktree モードでは検証のみ）
 
-`RESUME_WT=reenter` / `missing`（Phase 3.1.5 で worktree へ再入場・再構築済み）の worktree モードでは、worktree の HEAD は既に state branch を指しているはずなので **`git switch` は行わず検証のみ**にする（worktree 内から base への switch は不可かつ不要）。不一致は WARNING に留める:
+`WT_ENSURE=reenter` / `reconstructed`（Phase 3.1.5 で worktree へ再入場・再構築済み。`already_in` も worktree モード）では、worktree の HEAD は既に state branch を指しているはずなので **`git switch` は行わず検証のみ**にする（worktree 内から base への switch は不可かつ不要）。不一致は WARNING に留める:
 
 ```bash
 if [ "$RESUME_WT_MODE" = "worktree" ]; then
-  # worktree モード: 検証のみ（RESUME_WT が disabled/already_in 以外だったケース）
+  # worktree モード: 検証のみ（WT_ENSURE が already_in/reenter/reconstructed だったケース）
   cur=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || cur=""
   if [ -n "$state_branch" ] && [ "$cur" != "$state_branch" ]; then
     echo "WARNING: worktree のカレントブランチ ($cur) が state branch ($state_branch) と不一致です。手動で git switch '$state_branch' を確認してください。" >&2
@@ -318,7 +294,7 @@ elif [ -n "$state_branch" ] && [ "$git_branch" != "$state_branch" ]; then
 fi
 ```
 
-> `RESUME_WT_MODE` は Phase 3.1.5 の `[CONTEXT] RESUME_WT=` marker が `reenter` / `residue` / `missing`（= worktree に入った / 再構築した）のとき `worktree`、それ以外（`disabled` / `already_in`）は空（従来分岐）として LLM が置換する。
+> `RESUME_WT_MODE` は Phase 3.1.5 の `[CONTEXT] WT_ENSURE=` marker が `already_in` / `reenter` / `reconstructed`（= worktree に入った / 再構築した）のとき `worktree`、それ以外（`disabled`（従来分岐） / `residue` / `branch_other_worktree` / `branch_absent` / `failed`（= worktree に入っていない。停止 or 新規セッション扱いへ分岐）のとき空として LLM が置換する。
 
 ### 5.2 flow-state の active=true 復元
 

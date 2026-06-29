@@ -3,10 +3,5 @@
   "version": "0.6.12",
   "description": "Universal Issue-driven development workflow for Claude Code",
   "author": { "name": "asakaguchi" },
-  "license": "MIT",
-  "skills": [
-    "./skills/rite-workflow/",
-    "./skills/reviewers/",
-    "./skills/wiki/"
-  ]
+  "license": "MIT"
 }

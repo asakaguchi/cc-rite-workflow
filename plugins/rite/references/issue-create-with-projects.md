@@ -14,7 +14,7 @@ Referenced from:
 - `commands/pr/cleanup.md` ステップ 3 (未完了タスクのチェック → 残作業 Issue 化)
 - `commands/issue/create.md` ステップ 4.3 (Single Issue creation)
 - `scripts/decompose-issues.sh` (XL decomposition の decompose path — 親 Issue 作成 + Sub-Issue 一括作成を内包。`commands/issue/create.md` の「5.3 + 5.4 + 5.5 Step 1」から単一呼び出しで委譲される)
-- `commands/issue/references/fingerprint-cycling.md` (Quality Signal 1/3/4 由来の split → `fingerprint_split` / `quality_signal_3_split` / `quality_signal_4_split`)
+- `skills/issue-create/references/fingerprint-cycling.md` (Quality Signal 1/3/4 由来の split → `fingerprint_split` / `quality_signal_3_split` / `quality_signal_4_split`)
 
 Related documents:
 - [projects-integration.md](./projects-integration.md) - Existing Issue Status update / Iteration assignment (this document covers new Issue creation with Projects registration)
@@ -80,7 +80,7 @@ args_json=$(jq -n \
 result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$args_json")
 ```
 
-**Accepted alternative (pipe-stdin form)**: `jq -n ... | bash {plugin_root}/scripts/create-issue-with-projects.sh` — used by `commands/pr/review.md` ステップ 7.4.2 / `commands/issue/references/fingerprint-cycling.md`。Either form keeps the single-JSON contract; do not introduce flag-style (`--title` 等) invocations.
+**Accepted alternative (pipe-stdin form)**: `jq -n ... | bash {plugin_root}/scripts/create-issue-with-projects.sh` — used by `commands/pr/review.md` ステップ 7.4.2 / `skills/issue-create/references/fingerprint-cycling.md`。Either form keeps the single-JSON contract; do not introduce flag-style (`--title` 等) invocations.
 
 ### Step 3: Parse the Result
 

@@ -431,9 +431,14 @@ ensure_session_worktree() {
   local issue="" branch="" wt_base_override=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --issue)         issue="${2:-}"; shift 2 ;;
-      --branch)        branch="${2:-}"; shift 2 ;;
-      --worktree-base) wt_base_override="${2:-}"; shift 2 ;;
+      # `shift 2 || shift`: a value-taking flag passed as the LAST token (no
+      # value) leaves $#=1; bash `shift 2` is then a no-op non-zero return and
+      # the while loop would spin forever. The `|| shift` advances past the
+      # lone flag so the loop terminates (issue/branch stay "" → caught by the
+      # numeric guard below). Mirrors worktree-foreign-cwd.sh's underflow guard.
+      --issue)         issue="${2:-}"; shift 2 || shift ;;
+      --branch)        branch="${2:-}"; shift 2 || shift ;;
+      --worktree-base) wt_base_override="${2:-}"; shift 2 || shift ;;
       *)               shift ;;
     esac
   done
@@ -444,7 +449,7 @@ ensure_session_worktree() {
       return 2 ;;
   esac
 
-  # --- read multi_session (same parser as pr:open Step 2.1-G / resume 3.1.5) ---
+  # --- read multi_session (same parser as pr:open Step 2.1-G / resume.md Phase 1.1) ---
   local ms_section ms_enabled ms_base
   ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
   ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \
@@ -544,10 +549,18 @@ ensure_session_worktree() {
   fi
 
   if [ "$branch_remote" = yes ]; then
-    local n=0
-    until git fetch origin "$branch" >/dev/null 2>&1; do
-      n=$((n+1)); [ "$n" -ge 3 ] && break; sleep 1
+    # fetch is best-effort (do NOT hard-fail — an offline resume must still
+    # reconstruct from the existing origin/$branch ref). But all-retries-
+    # exhausted is surfaced as a WARNING rather than swallowed, so a stale
+    # reconstruction is never silent (Issue #1676 error table: 取得不能を明示).
+    local n=0 fetch_ok=no
+    while [ "$n" -lt 3 ]; do
+      if git fetch origin "$branch" >/dev/null 2>&1; then fetch_ok=yes; break; fi
+      n=$((n+1)); [ "$n" -lt 3 ] && sleep 1
     done
+    if [ "$fetch_ok" != yes ]; then
+      echo "WARNING: ensure_session_worktree: git fetch origin '$branch' が 3 回失敗しました — 既存の origin/$branch（stale の可能性）から再構築します (issue #$issue)" >&2
+    fi
     if git worktree add --track -b "$branch" "$wt_path" "origin/$branch" 1>&2; then
       echo "[CONTEXT] WT_ENSURE=reconstructed; path=$wt_path; branch=$branch"
       return 0

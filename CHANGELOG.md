@@ -27,6 +27,12 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.6.12] - 2026-06-29
+
+### Fixed
+
+- **Flow entry paths now detect and rebuild a missing session worktree for an existing work branch under `multi_session.enabled: true`** — when a work branch existed locally but its session worktree (`.rite/worktrees/issue-{N}`) was absent, `/rite:resume`, `/rite:pr:review`, `/rite:pr:iterate`, and `/rite:pr:fix` treated the branch as nonexistent and silently fell back to `develop`, leaving PR changes unreadable from the work tree (degraded operation). A new `ensure_session_worktree` helper in `lib/worktree-git.sh` detects the "branch exists ∧ session worktree absent" case and rebuilds the worktree (local: `git worktree add`; remote: fetch + `--track`). (#1676, #1677)
+
 ## [0.6.11] - 2026-06-28
 
 ### Fixed
@@ -636,6 +642,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.6.12]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.11...v0.6.12
 [0.6.11]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.10...v0.6.11
 [0.6.10]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.9...v0.6.10
 [0.6.9]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.8...v0.6.9

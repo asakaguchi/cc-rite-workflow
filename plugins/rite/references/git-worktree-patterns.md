@@ -372,16 +372,17 @@ command:
 
 - The session worktree created by `git worktree add` is **preserved** — the failure
   does not destroy it.
-- On re-run, `pr:open` Step 2.2-W classifies it as `WT_CASE=reuse` (and `/rite:resume`
-  as `RESUME_WT=reenter`), so the workflow continues on the existing worktree without
-  rebuilding it.
+- On re-run, `pr:open` Step 2.2-W classifies it as `WT_CASE=reuse` (and the
+  `ensure_session_worktree` helper used by `/rite:resume` / `pr:review` / `pr:iterate` /
+  `pr:fix` as `WT_ENSURE=reenter`), so the workflow continues on the existing worktree
+  without rebuilding it.
 
 rite **never** silently falls back to `git switch -c` (which would discard worktree
 isolation) or to a Bash-persisted-cwd path (which would leave the harness cwd on the
 main checkout and risk relative-path edits hitting the main tree); the workflow
 surfaces the diagnosis and the restart guidance instead. Failures from other causes
-(e.g. the worktree path vanished) follow the normal `RESUME_WT=missing` rebuild path,
-not the restart guidance.
+(e.g. the worktree path vanished) follow the normal `ensure_session_worktree` rebuild
+path (`WT_ENSURE=reconstructed`, #1676), not the restart guidance.
 
 ### Branch-creation worktree invariant (marker 再確定・silent fallback 排除)
 

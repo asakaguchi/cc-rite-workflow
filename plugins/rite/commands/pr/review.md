@@ -367,6 +367,33 @@ Terminate processing.
 
 Terminate processing.
 
+### 1.1.5 セッション worktree 健全性の保証（multi_session 有効時 / AC-1 #1676）
+
+ステップ 1.2 以降は **作業ツリーから PR の変更ファイルを読む**。その前に対象 PR の作業ブランチに対応する session worktree を保証する。これがないと、worktree 不在（resume / context 圧縮 / 別セッション跨ぎで欠落）のとき review がメインツリー（develop）上で実行され、PR 変更を作業ツリーから読めず scratchpad へ退避する **degraded 動作**になる（本 Issue の As-Is）。
+
+ステップ 1.1 で取得した PR の `headRefName`（作業ブランチ）から issue 番号を抽出し、共通ヘルパー `ensure_session_worktree`（[`lib/worktree-git.sh`](../../hooks/scripts/lib/worktree-git.sh)、検出 + 再構築を bash 側で完結し `[CONTEXT] WT_ENSURE=` を emit）で検出・再構築する（`{head_ref}` は ステップ 1.1 の `gh pr view` が返した `.headRefName`）:
+
+```bash
+issue_number=$(printf '%s' "{head_ref}" | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
+if [ -n "$issue_number" ]; then
+  bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --issue "$issue_number" --branch "{head_ref}"
+else
+  # head_ref が issue ブランチでない（session worktree の対象外）→ 従来どおり単一ツリーで続行
+  echo "[CONTEXT] WT_ENSURE=skip (head_ref が issue ブランチでないため worktree 対象外: {head_ref})"
+fi
+```
+
+`[CONTEXT] WT_ENSURE=` marker の分岐は [commands/resume.md](../resume.md) Phase 3.1.5 の **WT_ENSURE 分岐表（SoT）** に従う（`disabled`〜`reconstructed` の共通 case は SoT 表と同一。**終端の `branch_absent` / `failed` のみ caller 固有**で、resume の AskUserQuestion / 停止に対し、非対話サブ起動の review は機械的に `[review:error]` 停止する — 下記）:
+
+- `disabled` / `already_in` / `skip` → no-op、ステップ 1.2 へ（`disabled` = `multi_session.enabled: false`。従来どおり単一ツリーで動作し挙動不変）。
+- `reenter` / `reconstructed` → `EnterWorktree` ツールを `path: {path}`（marker の `path=` 値）で呼び出してからステップ 1.2 へ。`reconstructed` は helper が `git worktree add` 済み。EnterWorktree 失敗時の切り分けは resume.md Phase 3.1.5 / pr:open Step 2.3-W と同じ（silent に新規扱いしない）。
+- `residue` → AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
+- `branch_other_worktree` → 中止（並行セッションの可能性。`other=` のパスを表示）。
+- `branch_absent` → 対象ブランチがローカル・リモートどこにも実在しない。誤再構築しない（AC-5）。ただし ステップ 1.1 で `gh pr view {pr_number}` が成功している以上、PR の head ブランチは本来 remote に存在するはずで、`branch_absent` の到達は PR 状態との不整合を意味する。**develop 上で review を続行せず**、`[review:error]` を emit して明示停止する（`failed` と同じ機械的停止。silent に develop の作業ツリーを読まない）。
+- `failed` → 再構築失敗（helper rc=1, stderr に原因 + 復旧手順）。**silent fallback せず `[review:error]` を emit して明示停止**する（review を mergeable / completed 扱いにしない / AC-4）。
+
+> **silent fallback 禁止（本 Issue の核）**: `branch_absent` / `failed` のとき、worktree 不在を理由に develop 上で review を継続し PR 変更を読めないまま完了扱いにしてはならない（§4.4 MUST NOT）。
+
 ### 1.2 Retrieve Changes
 
 > **Reference**: See [Review Context Optimization](./references/review-context-optimization.md) for scale determination and diff retrieval strategies.

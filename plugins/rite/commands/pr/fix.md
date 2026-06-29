@@ -392,6 +392,31 @@ Terminate processing.
 
 Terminate processing.
 
+### 1.1.5 セッション worktree 健全性の保証（multi_session 有効時 / #1676）
+
+fix は ステップ 2 以降で **作業ツリーのファイルを Edit / Write で修正**する。その前に対象 PR の作業ブランチに対応する session worktree を保証する。これがないと、worktree 不在（resume / context 圧縮 / 別セッション跨ぎで欠落）のとき fix がメインツリー（develop）上で実行され、`git branch --show-current` が develop を返して issue 番号抽出が空になり、最悪 **develop の作業ツリーへ修正を書き込む**（§4.4 MUST / MUST NOT）。
+
+ステップ 1.1 で取得した PR の `headRefName`（作業ブランチ）から issue 番号を抽出し、共通ヘルパー `ensure_session_worktree`（[`lib/worktree-git.sh`](../../hooks/scripts/lib/worktree-git.sh)、検出 + 再構築を bash 側で完結し `[CONTEXT] WT_ENSURE=` を emit）で検出・再構築する（`{head_ref}` は ステップ 1.1 の `gh pr view` が返した `.headRefName`）:
+
+```bash
+issue_number=$(printf '%s' "{head_ref}" | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
+if [ -n "$issue_number" ]; then
+  bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --issue "$issue_number" --branch "{head_ref}"
+else
+  # head_ref が issue ブランチでない（session worktree の対象外）→ 従来どおり単一ツリーで続行
+  echo "[CONTEXT] WT_ENSURE=skip (head_ref が issue ブランチでないため worktree 対象外: {head_ref})"
+fi
+```
+
+`[CONTEXT] WT_ENSURE=` marker の分岐は [commands/resume.md](../resume.md) Phase 3.1.5 の **WT_ENSURE 分岐表（SoT）** に従う（`disabled`〜`reconstructed` の共通 case は SoT 表と同一。**終端の `branch_absent` / `failed` のみ caller 固有**で、resume の AskUserQuestion / 停止に対し、非対話サブ起動の fix は機械的に `[fix:error]` 停止する — 下記）:
+
+- `disabled` / `already_in` / `skip` → no-op、ステップ 1.2 へ（`disabled` = `multi_session.enabled: false`。従来どおり単一ツリーで動作し挙動不変）。
+- `reenter` / `reconstructed` → `EnterWorktree` ツールを `path: {path}`（marker の `path=` 値）で呼び出してからステップ 1.2 へ。`reconstructed` は helper が `git worktree add` 済み。EnterWorktree 失敗時の切り分けは resume.md Phase 3.1.5 / pr:open Step 2.3-W と同じ（silent に新規扱いしない）。
+- `residue` → AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
+- `branch_other_worktree` → 中止（並行セッションの可能性。`other=` のパスを表示）。
+- `branch_absent` → 対象ブランチがローカル・リモートどこにも実在しない。誤再構築しない。ただし ステップ 1.1 で `gh pr view {pr_number}` が成功している以上、PR の head ブランチは本来 remote に存在するはずで、`branch_absent` の到達は PR 状態との不整合を意味する。**develop 上で fix を続行せず**、`[fix:error]` を emit して明示停止する（`failed` と同じ機械的停止。ステップ 2 以降の Edit/Write へ進まない＝develop の作業ツリーへ書かない）。
+- `failed` → 再構築失敗（helper rc=1, stderr に原因 + 復旧手順）。**silent fallback せず `[fix:error]` を emit して明示停止**する（develop の作業ツリーへ修正を書かない）。
+
 ### 1.2 Retrieve Review Comments
 
 #### 1.2.0 Hybrid Review Source Resolution <!-- AC-3 / AC-4 / AC-5 / D-01 -->

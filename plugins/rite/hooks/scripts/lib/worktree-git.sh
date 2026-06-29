@@ -1,10 +1,22 @@
-# rite workflow - Worktree-scoped git add/commit/push helper
+# rite workflow - Worktree git helpers (commit/push + session-worktree ensure)
 #
-# Responsibility: provide the canonical `git -C <worktree> add / commit /
-# push` flow with stderr tempfile capture, head -n 10 extraction, and
-# exit-code semantics shared by:
+# Responsibility 1 (source-only): provide the canonical
+# `git -C <worktree> add / commit / push` flow with stderr tempfile
+# capture, head -n 10 extraction, and exit-code semantics shared by:
 # - wiki-worktree-commit.sh (pages/index/log commits on wiki branch)
 # - wiki-ingest-commit.sh (worktree fast path for raw-source ingest)
+#
+# Responsibility 2 (#1676, source OR standalone): provide
+# `ensure_session_worktree`, the single bash-side SoT for the
+# "branch exists ∧ session worktree absent → reconstruct" gate used by
+# the flow ENTRY paths (resume / pr:review / pr:iterate / pr:fix) so a
+# missing worktree never silently degrades the flow onto the main
+# checkout (develop). Callers invoke it standalone as
+# `bash lib/worktree-git.sh ensure-session-worktree --issue <N> ...` and
+# route on the emitted `[CONTEXT] WT_ENSURE=` marker (see the function
+# header below and commands/resume.md Phase 3.1.5 for the canonical
+# marker→action table). The dispatch at the bottom of this file exposes
+# only that subcommand; the commit/push helpers stay source-only.
 #
 # Design rationale: review identified that the
 # add/commit/push block + error handling (stderr tempfile -> head -n 10
@@ -361,3 +373,224 @@ worktree_commit_push() {
  fi
  return 0
 }
+
+# -----------------------------------------------------------------------
+# ensure_session_worktree: detect + reconstruct a multi_session session
+# worktree for an Issue at a flow ENTRY path (#1676).
+#
+# This is the single bash-side SoT for the "branch exists ∧ worktree
+# absent → reconstruct" gate that #1368 first introduced inline in
+# resume.md. It performs detection AND reconstruction (git worktree add);
+# the EnterWorktree tool call and any AskUserQuestion routing stay with the
+# LLM caller, driven by the emitted [CONTEXT] WT_ENSURE marker. The
+# canonical marker→action routing table lives in commands/resume.md
+# Phase 3.1.5 (consumed verbatim by pr:review / pr:iterate / pr:fix).
+#
+# It does NOT call EnterWorktree (an LLM tool, not a shell command) and it
+# NEVER `git switch -c`-es onto the main checkout — a missing worktree is
+# reconstructed in place or reported, never silently bypassed.
+#
+# Usage:
+#   ensure_session_worktree --issue <N> [--branch <branch>] [--worktree-base <base>]
+#   bash lib/worktree-git.sh ensure-session-worktree --issue <N> [...]
+#
+# Arguments:
+#   --issue          Issue number (required, numeric)
+#   --branch         feature branch name. Optional — resolved from
+#                    local/remote refs matching issue-<N> when omitted.
+#   --worktree-base  override multi_session.worktree_base (default: parsed
+#                    from rite-config.yml, fallback .rite/worktrees)
+#
+# stdout (always exactly one marker line):
+#   [CONTEXT] WT_ENSURE=<case>; path=<wt_path>; branch=<branch>[; other=<p>]
+#
+# <case> → caller action:
+#   disabled              multi_session off → no-op, proceed on main checkout
+#   already_in            registered AND cwd already inside it → no-op
+#   reenter               registered, cwd elsewhere → EnterWorktree(path)
+#   reconstructed         was missing, branch existed (local/remote),
+#                         `git worktree add` succeeded → EnterWorktree(path)
+#   residue               path exists but not a registered worktree (prune
+#                         did not clear) → AskUserQuestion (rm -rf + re-run / abort)
+#   branch_other_worktree branch checked out in ANOTHER worktree → caller
+#                         aborts (concurrent session; structural double-start guard)
+#   branch_absent         branch exists nowhere → caller delegates to its
+#                         existing non-existence handling; DO NOT reconstruct
+#   failed                fetch / git worktree add failed → caller STOPS loud;
+#                         NO silent fallback to the main checkout
+#
+# Exit codes:
+#   0  disabled|already_in|reenter|reconstructed|residue|branch_other_worktree|branch_absent
+#   1  failed (cause on stderr; marker still emitted on stdout)
+#   2  argument error (missing/invalid --issue)
+#
+# stdout discipline: every git command that could print to stdout is
+# captured into a variable or redirected to stderr (1>&2) / /dev/null, so
+# the marker line is the ONLY thing on stdout (callers grep for it).
+ensure_session_worktree() {
+  local issue="" branch="" wt_base_override=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      # `shift 2 || shift`: a value-taking flag passed as the LAST token (no
+      # value) leaves $#=1; bash `shift 2` is then a no-op non-zero return and
+      # the while loop would spin forever. The `|| shift` advances past the
+      # lone flag so the loop terminates (issue/branch stay "" → caught by the
+      # numeric guard below). Mirrors worktree-foreign-cwd.sh's underflow guard.
+      --issue)         issue="${2:-}"; shift 2 || shift ;;
+      --branch)        branch="${2:-}"; shift 2 || shift ;;
+      --worktree-base) wt_base_override="${2:-}"; shift 2 || shift ;;
+      *)               shift ;;
+    esac
+  done
+
+  case "$issue" in
+    ''|*[!0-9]*)
+      echo "ERROR: ensure_session_worktree: --issue <N> (numeric) required" >&2
+      return 2 ;;
+  esac
+
+  # --- read multi_session (same parser as pr:open Step 2.1-G / resume.md Phase 1.1) ---
+  local ms_section ms_enabled ms_base
+  ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
+  ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \
+    | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+  case "$ms_enabled" in true|yes|1) ms_enabled=true ;; *) ms_enabled=false ;; esac
+  if [ -n "$wt_base_override" ]; then
+    ms_base="$wt_base_override"
+  else
+    ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {print; exit}' \
+      | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
+    [ -n "$ms_base" ] || ms_base=".rite/worktrees"
+  fi
+
+  if [ "$ms_enabled" != "true" ]; then
+    echo "[CONTEXT] WT_ENSURE=disabled; path=; branch=$branch"
+    return 0
+  fi
+
+  # --- derive the MAIN checkout root via --git-common-dir, NOT
+  #     --show-toplevel (which returns the worktree itself when we are
+  #     already inside one, breaking the already_in compare). ---
+  local git_common main_root
+  git_common=$(git rev-parse --git-common-dir 2>/dev/null) || {
+    echo "ERROR: ensure_session_worktree: not in a git repository (issue #$issue)" >&2
+    echo "[CONTEXT] WT_ENSURE=failed; path=; branch=$branch"
+    return 1
+  }
+  case "$git_common" in /*) ;; *) git_common="$(pwd -P)/$git_common" ;; esac
+  main_root=$(cd -- "$(dirname -- "$git_common")" 2>/dev/null && pwd -P) || main_root="$(pwd -P)"
+
+  # --- compute this issue's session worktree path ---
+  local wt_path
+  case "$ms_base" in
+    /*) wt_path="$ms_base/issue-$issue" ;;
+    *)  wt_path="$main_root/$ms_base/issue-$issue" ;;
+  esac
+
+  # --- resolve the branch from issue-<N> refs when not supplied ---
+  if [ -z "$branch" ]; then
+    branch=$(git for-each-ref --format='%(refname:short)' refs/heads/ 2>/dev/null \
+      | grep -E "(^|/)issue-${issue}(-|$)" | head -1)
+    if [ -z "$branch" ]; then
+      branch=$(git for-each-ref --format='%(refname:short)' refs/remotes/origin/ 2>/dev/null \
+        | sed 's|^origin/||' | grep -E "(^|/)issue-${issue}(-|$)" | head -1)
+    fi
+  fi
+
+  # --- detection: registered / already_in / reenter / residue ---
+  local cur_top registered
+  cur_top=$(git rev-parse --show-toplevel 2>/dev/null) || cur_top=""
+  registered=$(git worktree list --porcelain 2>/dev/null | awk -v p="$wt_path" '$1=="worktree" && $2==p {print "yes"}')
+
+  if [ "$registered" = "yes" ] && [ "$cur_top" = "$wt_path" ]; then
+    echo "[CONTEXT] WT_ENSURE=already_in; path=$wt_path; branch=$branch"
+    return 0
+  fi
+  if [ "$registered" = "yes" ]; then
+    echo "[CONTEXT] WT_ENSURE=reenter; path=$wt_path; branch=$branch"
+    return 0
+  fi
+  if [ -e "$wt_path" ]; then
+    git worktree prune >/dev/null 2>&1 || true
+    if [ -e "$wt_path" ]; then
+      echo "[CONTEXT] WT_ENSURE=residue; path=$wt_path; branch=$branch"
+      return 0
+    fi
+  fi
+
+  # --- worktree missing → reconstruct only if the branch exists somewhere ---
+  # If the branch is checked out in ANOTHER worktree (concurrent session),
+  # do not reconstruct — mirror open.md's branch_other_worktree guard.
+  if [ -n "$branch" ]; then
+    local branch_wt
+    branch_wt=$(git worktree list --porcelain 2>/dev/null | awk -v b="refs/heads/$branch" '
+      $1=="worktree"{wt=$2} $1=="branch" && $2==b {print wt}')
+    if [ -n "$branch_wt" ]; then
+      echo "[CONTEXT] WT_ENSURE=branch_other_worktree; path=$wt_path; branch=$branch; other=$branch_wt"
+      return 0
+    fi
+  fi
+
+  local branch_local=no branch_remote=no
+  if [ -n "$branch" ]; then
+    git rev-parse --verify --quiet "refs/heads/$branch" >/dev/null 2>&1 && branch_local=yes
+    git rev-parse --verify --quiet "refs/remotes/origin/$branch" >/dev/null 2>&1 && branch_remote=yes
+  fi
+
+  if [ "$branch_local" = yes ]; then
+    if git worktree add "$wt_path" "$branch" 1>&2; then
+      echo "[CONTEXT] WT_ENSURE=reconstructed; path=$wt_path; branch=$branch"
+      return 0
+    fi
+    echo "ERROR: ensure_session_worktree: git worktree add '$wt_path' '$branch' failed (issue #$issue)" >&2
+    echo "  recovery: restart Claude Code from the repo root, or run: git worktree add '$wt_path' '$branch'" >&2
+    echo "[CONTEXT] WT_ENSURE=failed; path=$wt_path; branch=$branch"
+    return 1
+  fi
+
+  if [ "$branch_remote" = yes ]; then
+    # fetch is best-effort (do NOT hard-fail — an offline resume must still
+    # reconstruct from the existing origin/$branch ref). But all-retries-
+    # exhausted is surfaced as a WARNING rather than swallowed, so a stale
+    # reconstruction is never silent (Issue #1676 error table: 取得不能を明示).
+    local n=0 fetch_ok=no
+    while [ "$n" -lt 3 ]; do
+      if git fetch origin "$branch" >/dev/null 2>&1; then fetch_ok=yes; break; fi
+      n=$((n+1)); [ "$n" -lt 3 ] && sleep 1
+    done
+    if [ "$fetch_ok" != yes ]; then
+      echo "WARNING: ensure_session_worktree: git fetch origin '$branch' が 3 回失敗しました — 既存の origin/$branch（stale の可能性）から再構築します (issue #$issue)" >&2
+    fi
+    if git worktree add --track -b "$branch" "$wt_path" "origin/$branch" 1>&2; then
+      echo "[CONTEXT] WT_ENSURE=reconstructed; path=$wt_path; branch=$branch"
+      return 0
+    fi
+    echo "ERROR: ensure_session_worktree: git worktree add --track -b '$branch' '$wt_path' 'origin/$branch' failed (issue #$issue)" >&2
+    echo "  recovery: restart Claude Code from the repo root, or run the add manually" >&2
+    echo "[CONTEXT] WT_ENSURE=failed; path=$wt_path; branch=$branch"
+    return 1
+  fi
+
+  # branch exists nowhere → delegate to the caller's non-existence handling.
+  echo "[CONTEXT] WT_ENSURE=branch_absent; path=$wt_path; branch=$branch"
+  return 0
+}
+
+# -----------------------------------------------------------------------
+# Standalone CLI dispatch. Sourcing this file is a no-op here (the guard is
+# false); running it as `bash lib/worktree-git.sh <subcommand>` dispatches.
+# Only ensure-session-worktree is exposed; the commit/push helpers above
+# are source-only by design.
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+  case "${1:-}" in
+    ensure-session-worktree)
+      shift
+      ensure_session_worktree "$@"
+      exit $?
+      ;;
+    *)
+      echo "ERROR: worktree-git.sh: unknown subcommand '${1:-}' (expected: ensure-session-worktree)" >&2
+      exit 2
+      ;;
+  esac
+fi

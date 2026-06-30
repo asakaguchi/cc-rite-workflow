@@ -22,7 +22,7 @@
 #   {
 #     "cycle": 4,                              # cycle 番号 (1-8)
 #     "severity": "CRITICAL",                  # CRITICAL | HIGH | MEDIUM | LOW-MEDIUM | LOW
-#     "file_line": "plugins/rite/commands/pr/fix.md:258-262",
+#     "file_line": "plugins/rite/skills/fix/SKILL.md:258-262",
 #     "reviewer": "silent-failure-hunter (HIGH-1) / code-reviewer (M2)",
 #     "description": "...",
 #     "raw_row": "| CRITICAL | ... |",        # 元 markdown 行 (デバッグ用)

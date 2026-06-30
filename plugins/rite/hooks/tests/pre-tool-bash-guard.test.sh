@@ -496,7 +496,7 @@ echo ""
 
 # --------------------------------------------------------------------------
 # TC-028: Main session + git reset → allow (non-regression)
-# The /rite:pr:fix flow in the main session may use git reset legitimately.
+# The /rite:fix flow in the main session may use git reset legitimately.
 # --------------------------------------------------------------------------
 echo "TC-028: main session + 'git reset' → allow (non-regression)"
 rc=0

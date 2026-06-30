@@ -2,7 +2,7 @@
 # hardcoded-line-number-check.sh
 #
 # Detect hardcoded line-number references in rite-workflow procedural
-# markdown files (commands/**/*.md). Complements distributed-fix-drift-check.sh
+# markdown files (skills/**/*.md). Complements distributed-fix-drift-check.sh
 # by catching prose-level references that drift when content is added or
 # removed but the references are not updated in lockstep.
 #
@@ -46,7 +46,7 @@ usage() {
 Usage: hardcoded-line-number-check.sh [options]
 
 Options:
-  --all              Scan plugins/rite/commands/**/*.md
+  --all              Scan plugins/rite/skills/**/*.md
   --target FILE      Check FILE (repeatable). Path relative to repo root.
   --pattern X        Only run pattern X (A, B, or C). Default: all patterns.
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
@@ -85,9 +85,9 @@ fi
 cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
 
 if [ "$USE_ALL" -eq 1 ]; then
-  commands_dir="plugins/rite/commands"
-  if [ ! -d "$commands_dir" ]; then
-    echo "ERROR: --all requested but $commands_dir does not exist under $REPO_ROOT" >&2
+  skills_dir="plugins/rite/skills"
+  if [ ! -d "$skills_dir" ]; then
+    echo "ERROR: --all requested but $skills_dir does not exist under $REPO_ROOT" >&2
     echo "  Likely cause: invoked outside the rite plugin repo (e.g. marketplace install)" >&2
     echo "  Recovery: run from the rite plugin source tree, or pass --target FILE explicitly" >&2
     exit 2
@@ -103,7 +103,7 @@ if [ "$USE_ALL" -eq 1 ]; then
       continue
     fi
     TARGETS+=("$f")
-  done < <(find "$commands_dir" -type f -name '*.md' 2>/dev/null | sort)
+  done < <(find "$skills_dir" -type f -name '*.md' 2>/dev/null | sort)
 fi
 
 if [ "${#TARGETS[@]}" -eq 0 ]; then
@@ -113,7 +113,7 @@ if [ "${#TARGETS[@]}" -eq 0 ]; then
 fi
 
 # trap + cleanup pattern (signal-specific, INT/TERM/HUP coverage)
-# Reference: plugins/rite/commands/pr/references/bash-trap-patterns.md#signal-specific-trap-template
+# Reference: plugins/rite/references/bash-trap-patterns.md#signal-specific-trap-template
 FINDINGS_FILE=""
 _rite_hardcoded_line_cleanup() {
   rm -f "${FINDINGS_FILE:-}"

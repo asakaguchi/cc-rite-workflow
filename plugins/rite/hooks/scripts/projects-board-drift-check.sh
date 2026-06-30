@@ -2,9 +2,9 @@
 # rite workflow - Projects Board "Done" Drift Check
 #
 # Reconciliation drift-guard for the "CLOSED+COMPLETED but board != Done" gap.
-# A Done transition is only wired into /rite:pr:cleanup and /rite:issue:close, but
+# A Done transition is only wired into /rite:cleanup and /rite:issue-close, but
 # GitHub auto-closes Issues via a PR body "Closes #N" the moment the PR merges. When
-# /rite:pr:cleanup is not run afterwards, the board freezes at its last value (In Review
+# /rite:cleanup is not run afterwards, the board freezes at its last value (In Review
 # for a ready Issue, Todo for an untouched one). No reconciliation picks these back up.
 #
 # This script scans recently-updated CLOSED Issues and reports the ones whose closure
@@ -38,7 +38,7 @@
 #
 # Output (stdout): human-readable findings, terminated by the summary line
 #   ==> Total projects-board-drift findings: N
-# consumed by commands/lint.md Phase 3.18 (regex: /Total projects-board-drift findings: (\d+)/).
+# consumed by skills/lint/SKILL.md Phase 3.18 (regex: /Total projects-board-drift findings: (\d+)/).
 #
 # Exit codes (lint Phase 3.x drift-check convention):
 #   0  no drift — OR a legitimate no-op (projects disabled / project_number unset /
@@ -73,7 +73,7 @@ projects-board-drift-check.sh - Projects Board "Done" Drift Check
 
 Scans recently-updated CLOSED Issues and reports the ones whose closure reason is
 COMPLETED yet whose GitHub Projects board Status is not "Done" — the symptom of a
-merge that auto-closed an Issue without /rite:pr:cleanup running to set Done.
+merge that auto-closed an Issue without /rite:cleanup running to set Done.
 
 Usage:
   bash projects-board-drift-check.sh [options]
@@ -256,7 +256,7 @@ if [ -n "$DRIFT_TSV" ]; then
 fi
 
 if [ "$DRIFT_COUNT" -gt 0 ] && [ "$RECONCILE" != "true" ]; then
-  echo "対処: 'bash $PLUGIN_ROOT/hooks/scripts/projects-board-drift-check.sh --reconcile' で Status を Done へ是正できます (または /rite:issue:close / /rite:pr:cleanup を当該 Issue に対して実行)"
+  echo "対処: 'bash $PLUGIN_ROOT/hooks/scripts/projects-board-drift-check.sh --reconcile' で Status を Done へ是正できます (または /rite:issue-close / /rite:cleanup を当該 Issue に対して実行)"
 fi
 if [ "$RECONCILE" = "true" ]; then
   echo "reconcile summary: $RECONCILED updated, $RECONCILE_FAILURES failed"

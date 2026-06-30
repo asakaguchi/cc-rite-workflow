@@ -1,15 +1,15 @@
 #!/bin/bash
 # rite workflow - Hybrid Review Source Resolution (Priority chain)
 #
-# Resolves WHICH review-result source `/rite:pr:fix` should consume, following
-# the Priority chain documented in commands/pr/fix.md ステップ 1.2.0:
+# Resolves WHICH review-result source `/rite:fix` should consume, following
+# the Priority chain documented in skills/fix/SKILL.md ステップ 1.2.0:
 #   Priority 0: explicit --review-file (caller's --review-file-path)
 #   Priority 1: conversation context  (caller's --conversation-decision + receipt)
 #   Priority 2: latest local JSON file (.rite/review-results/{pr_number}-*.json)
 #   Priority 3: PR comment (backward-compat fall-through)
 #   fallback  : none usable → caller routes to interactive fallback (ステップ 1.2.0.1)
 #
-# Extracted from `commands/pr/fix.md` ステップ 1.2.0 Selection logic block
+# Extracted from `skills/fix/SKILL.md` ステップ 1.2.0 Selection logic block
 # The old ~550-line inline bash block required
 # the LLM to literal-substitute pr_number / review_file_path / Priority 1
 # decision+receipt directly into the markdown fence; those substitution points
@@ -271,8 +271,8 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
           echo "⛔ ERROR: --review-file の commit_sha ($json_commit_sha) が現 HEAD ($head_sha) と不一致です" >&2
           echo "  このファイルは古い commit に対して生成されました。既修正項目を再指摘する可能性があります。" >&2
           echo "  対処 (いずれかを選択):" >&2
-          echo "    1. /rite:pr:review を再実行して新しい review を生成する (推奨)" >&2
-          echo "    2. 生成時点の commit ($json_commit_sha) に git checkout してから /rite:pr:fix を実行する" >&2
+          echo "    1. /rite:review を再実行して新しい review を生成する (推奨)" >&2
+          echo "    2. 生成時点の commit ($json_commit_sha) に git checkout してから /rite:fix を実行する" >&2
           echo "[CONTEXT] REVIEW_SOURCE_STALE=1; reason=explicit_file_commit_sha_mismatch; json_sha=$json_commit_sha; head_sha=$head_sha" >&2
           echo "  fallback 経路に route します (Priority 4 Interactive fallback)" >&2
           review_source="fallback"
@@ -294,7 +294,7 @@ fi
 
 # Priority 1: Conversation context (caller が判断)
 # ⚠️ caller への指示: Priority 0 が未発火 (review_source="") の状態で、同一 session 内の直前
-# assistant turn に `## 📜 rite レビュー結果` を含む /rite:pr:review 出力が残っていれば、
+# assistant turn に `## 📜 rite レビュー結果` を含む /rite:review 出力が残っていれば、
 # 会話コンテキストから findings を読み取り --conversation-decision use を渡す。
 # 会話に review 結果がなければ --conversation-decision none を渡す。
 # substitute 漏れ (literal placeholder 残留) は silent fallthrough / silent P1 hijack を起こすため fail-fast する。
@@ -559,7 +559,7 @@ if [ -z "$review_source" ]; then
             if [ -n "$json_commit_sha" ] && [ -n "$head_sha" ] && [ "$json_commit_sha" != "$head_sha" ]; then
               echo "WARNING: $latest_file の commit_sha ($json_commit_sha) が現 HEAD ($head_sha) と不一致です (stale)" >&2
               echo "  本ファイルは古い commit に対して生成されました。Priority 3 (PR コメント) に routing します。" >&2
-              echo "  対処: /rite:pr:review を再実行すれば新しい timestamp + 現 HEAD の commit_sha を持つファイルが生成されます。" >&2
+              echo "  対処: /rite:review を再実行すれば新しい timestamp + 現 HEAD の commit_sha を持つファイルが生成されます。" >&2
               echo "[CONTEXT] REVIEW_SOURCE_STALE=1; reason=local_file_commit_sha_mismatch; json_sha=$json_commit_sha; head_sha=$head_sha" >&2
               review_source="pr_comment"
               review_source_path=""

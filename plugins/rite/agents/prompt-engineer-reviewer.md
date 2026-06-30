@@ -52,7 +52,7 @@ For each placeholder in the file:
 
 For each technical claim in the changed file (bash behavior, tool semantics, API contracts, shell quoting rules, exit code semantics):
 - Identify the claim and the context in which it appears
-- Verify the claim against known shell/tool behavior (e.g., `local` always returns 0 regardless of the command substitution's exit code, `grep -c` returns exit code 1 when 0 matches are found and exit code 2 on error). Cross-reference with existing patterns in `commands/**/*.md` via `Grep`
+- Verify the claim against known shell/tool behavior (e.g., `local` always returns 0 regardless of the command substitution's exit code, `grep -c` returns exit code 1 when 0 matches are found and exit code 2 on error). Cross-reference with existing patterns in `skills/**/*.md` via `Grep`
 - Flag claims that are incorrect or misleading, citing the actual behavior
 - When the changed file contains bash code blocks, pay special attention to: `set -e` / `set -o pipefail` interaction with `local`, `$(...)` subshell exit codes, `grep -c` exit codes. For tool-specific claims: `jq` null handling, `gh api` error responses
 
@@ -109,7 +109,7 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **85**: A placeholder `{issue_number}` has no documented source in the placeholder table
 - **85**: A condition table lists fewer severity levels than the referenced `severity-levels.md` actually defines (例: 表に列挙されている severity 等級数が SoT の定義数より少ない) — confirmed by `Read`
 - **85**: (hypothetical) A YAML frontmatter `description` says "Reviews skill and command definitions" but the Activation section lists patterns for `commands/**/*.md`, `skills/**/*.md`, AND `agents/**/*.md` — scope mismatch confirmed by `Read`
-- **82**: An instruction says "use `grep -P`" but the project convention (confirmed by `Grep` across `commands/`) is to use `grep -E` to avoid PCRE dependency
+- **82**: An instruction says "use `grep -P`" but the project convention (confirmed by `Grep` across `skills/`) is to use `grep -E` to avoid PCRE dependency
 - **70**: An instruction "seems unclear" but could be interpreted correctly by a capable LLM — move to recommendations
 - **50**: Style preference for instruction wording — do NOT report
 
@@ -194,7 +194,7 @@ Perform the following investigation before reporting findings:
 | Investigation | Tool | Example |
 |---------|----------|-----|
 | Verify tool names and parameters | WebSearch/WebFetch | Check correct tool names in Claude Code official documentation |
-| Consistency with existing commands | Read | Check similar patterns in other `commands/*.md` files |
+| Consistency with existing commands | Read | Check similar patterns in other `skills/**/*.md` files |
 | Consistency between phases | Read | Verify that referenced Phases exist within the same file |
 | Placeholder definitions | Grep | Search whether `{placeholder}` values are defined |
 | Technical claim accuracy | Read/Grep | Verify bash semantics and tool behavior by cross-referencing with known patterns in existing commands (e.g., `set -e` interaction with `local`) |

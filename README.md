@@ -27,13 +27,12 @@ The name comes from the English word **rite**, meaning "ritual" or "ceremony." I
 - **Automated**: Auto-detection and auto-configuration
 - **Customizable**: Flexible configuration via YAML
 - **Integrated**: GitHub Projects
-- **Smart Reviews**: Dynamic multi-reviewer code review with **Doc-Heavy PR Mode** for documentation-centric PRs. When a PR is detected as doc-heavy, the tech-writer reviewer verifies five doc-implementation consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) using Grep/Read/Glob. See [`plugins/rite/commands/pr/references/internal-consistency.md`](plugins/rite/commands/pr/references/internal-consistency.md) for the full verification protocol
-- **External Review Integration**: `/rite:pr:fix` accepts PR URL or comment URL arguments, so output from external review tools can feed directly into the fix loop
-- **Iteration Tracking**: Optional GitHub Projects Iteration field integration (auto-assign on `/rite:pr:open`, `--sprint` / `--backlog` filters in `/rite:issue:list`)
-- **Preflight Check**: Unified pre-execution verification across all commands
+- **Smart Reviews**: Dynamic multi-reviewer code review with **Doc-Heavy PR Mode** for documentation-centric PRs. When a PR is detected as doc-heavy, the tech-writer reviewer verifies five doc-implementation consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) using Grep/Read/Glob. See [`plugins/rite/skills/review/references/internal-consistency.md`](plugins/rite/skills/review/references/internal-consistency.md) for the full verification protocol
+- **External Review Integration**: `/rite:fix` accepts PR URL or comment URL arguments, so output from external review tools can feed directly into the fix loop
+- **Iteration Tracking**: Optional GitHub Projects Iteration field integration (auto-assign on `/rite:open`, `--sprint` / `--backlog` filters in `/rite:issue-list`)
 - **Local Work Memory**: Compact-resilient work state management with lock/resuming support
 - **Implementation Contract**: Structured Issue template format for clear specifications
-- **Assumption Surfacing**: Before generating the Implementation Contract, `/rite:issue:create` surfaces the assumptions the model implicitly filled in and processes them in three categories — derivable (self-resolved from the repository/Wiki), user-specific decisions (confirmed with up to three recommended-option questions), and deferrable (documented as Assumptions / Open Questions in the Issue body). **Design principle**: questions are limited to information that exists only in the user's head; anything derivable from the repository or Wiki is resolved by the model. This keeps implicit guesses from being silently locked into the contract that drives the whole downstream pipeline
+- **Assumption Surfacing**: Before generating the Implementation Contract, `/rite:issue-create` surfaces the assumptions the model implicitly filled in and processes them in three categories — derivable (self-resolved from the repository/Wiki), user-specific decisions (confirmed with up to three recommended-option questions), and deferrable (documented as Assumptions / Open Questions in the Issue body). **Design principle**: questions are limited to information that exists only in the user's head; anything derivable from the repository or Wiki is resolved by the model. This keeps implicit guesses from being silently locked into the contract that drives the whole downstream pipeline
 - **Experience Wiki**: LLM-driven project knowledge base, stored as an [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog)-conformant bundle (`type`/`okf_version` frontmatter, OKF index/log). Auto-ingests review/fix outcomes into topical pages and injects relevant heuristics at the start of each Issue (opt-out). The conformant bundle can be browsed as a concept graph with the upstream OKF static visualizer (not vendored; see `plugins/rite/references/wiki-patterns.md`)
 
 ## Installation
@@ -74,38 +73,38 @@ This will:
 | `/rite:init --upgrade` | Upgrade existing `rite-config.yml` to the latest schema version |
 | `/rite:getting-started` | Interactive onboarding guide |
 | `/rite:workflow` | Show workflow guide |
-| `/rite:issue:list` | List Issues |
-| `/rite:issue:create` | Create new Issue |
-| `/rite:issue:update` | Update work memory |
-| `/rite:issue:close` | Check Issue completion |
-| `/rite:issue:edit` | Edit existing Issue interactively |
-| `/rite:pr:open` | Start work end-to-end (branch → plan → implement → lint → draft PR) |
-| `/rite:pr:iterate` | Loop review ⇄ fix until mergeable |
-| `/rite:pr:merge` | Squash-merge the PR |
-| `/rite:pr:create` | Create draft PR |
-| `/rite:pr:ready` | Mark as Ready for review |
-| `/rite:pr:review` | Multi-reviewer review |
-| `/rite:pr:fix` | Address review feedback |
-| `/rite:pr:cleanup` | Post-merge cleanup |
+| `/rite:issue-list` | List Issues |
+| `/rite:issue-create` | Create new Issue |
+| `/rite:issue-update` | Update work memory |
+| `/rite:issue-close` | Check Issue completion |
+| `/rite:issue-edit` | Edit existing Issue interactively |
+| `/rite:open` | Start work end-to-end (branch → plan → implement → lint → draft PR) |
+| `/rite:iterate` | Loop review ⇄ fix until mergeable |
+| `/rite:merge` | Squash-merge the PR |
+| `/rite:pr-create` | Create draft PR |
+| `/rite:ready` | Mark as Ready for review |
+| `/rite:review` | Multi-reviewer review |
+| `/rite:fix` | Address review feedback |
+| `/rite:cleanup` | Post-merge cleanup |
 | `/rite:investigate` | Structured code investigation |
 | `/rite:lint` | Run quality checks |
-| `/rite:template:reset` | Regenerate templates |
-| `/rite:wiki:init` | Initialize Experience Wiki branch and directory layout |
-| `/rite:wiki:query` | Query Wiki pages for heuristics matching keywords |
-| `/rite:wiki:ingest` | Ingest raw sources (reviews, fixes, Issues) into Wiki pages |
-| `/rite:wiki:lint` | Lint Wiki pages for contradictions, staleness, orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs |
+| `/rite:template-reset` | Regenerate templates |
+| `/rite:wiki-init` | Initialize Experience Wiki branch and directory layout |
+| `/rite:wiki-query` | Query Wiki pages for heuristics matching keywords |
+| `/rite:wiki-ingest` | Ingest raw sources (reviews, fixes, Issues) into Wiki pages |
+| `/rite:wiki-lint` | Lint Wiki pages for contradictions, staleness, orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs |
 | `/rite:resume` | Resume interrupted work |
-| `/rite:skill:suggest` | Analyze context and suggest applicable skills |
+| `/rite:skill-suggest` | Analyze context and suggest applicable skills |
 
 ## Workflow
 
 ```
-/rite:issue:create → /rite:pr:open (branch → plan → implement → /rite:lint → draft PR)
-                  → /rite:pr:iterate (review ⇄ fix loop until mergeable)
-                  → /rite:pr:ready → /rite:pr:merge → /rite:pr:cleanup
+/rite:issue-create → /rite:open (branch → plan → implement → /rite:lint → draft PR)
+                  → /rite:iterate (review ⇄ fix loop until mergeable)
+                  → /rite:ready → /rite:merge → /rite:cleanup
 ```
 
-**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:pr:open <issue>` handles branch creation, implementation, quality checks, and draft PR creation. `/rite:pr:iterate <pr>` loops review and fix until mergeable. `/rite:pr:ready <pr>` flips the PR to Ready for review. `/rite:pr:merge <pr>` performs the squash-merge. If any step is interrupted (e.g. `Context limit reached`), run `/rite:resume` to recover.
+**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:open <issue>` handles branch creation, implementation, quality checks, and draft PR creation. `/rite:iterate <pr>` loops review and fix until mergeable. `/rite:ready <pr>` flips the PR to Ready for review. `/rite:merge <pr>` performs the squash-merge. If any step is interrupted (e.g. `Context limit reached`), run `/rite:resume` to recover.
 
 Status Transitions:
 ```

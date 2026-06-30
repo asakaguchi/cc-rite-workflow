@@ -1,8 +1,8 @@
 # 罫線 box の表示幅ルール（SoT）
 
 コマンド出力で使う罫線 box（`┌─┐` / `│ … │` / `└─┘`）の**右罫線 `│` を揃える**ための
-表示幅ルールの単一の Source of Truth。box を描画するコマンド（`commands/issue/list.md`,
-`commands/workflow.md`, `commands/skill/suggest.md`, `commands/getting-started.md` 等）は
+表示幅ルールの単一の Source of Truth。box を描画するコマンド（`skills/issue-list/SKILL.md`,
+`skills/workflow/SKILL.md`, `skills/skill-suggest/SKILL.md`, `skills/getting-started/SKILL.md` 等）は
 本ルールに従って内側のパディングを決める。
 
 ## 問題

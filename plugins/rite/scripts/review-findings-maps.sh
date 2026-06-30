@@ -12,7 +12,7 @@
 # [CONTEXT] REVIEW_SOURCE_* retained flag で LLM コンテキストに伝達される)。
 #
 # Called from:
-#   - commands/pr/fix.md ステップ 1.2.0 "On Priority 2 success" (旧 ~154 行 inline block を委譲)。
+#   - skills/fix/SKILL.md ステップ 1.2.0 "On Priority 2 success" (旧 ~154 行 inline block を委譲)。
 #     Priority 3 (pr_comment) の string-based 鏡像は
 #     fix.md 内の 1.2.0.s 節に inline のまま残る (同 logic の鏡像。jq filter を変更する際は両方を同期すること)
 #

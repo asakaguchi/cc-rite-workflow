@@ -2,12 +2,12 @@
 # rite workflow - Wiki Ingest Trigger
 #
 # Saves a Raw Source artifact under .rite/wiki/raw/{type}/ so that the
-# /rite:wiki:ingest command can later read & integrate it into Wiki pages.
+# /rite:wiki-ingest command can later read & integrate it into Wiki pages.
 #
 # This script is the staging primitive for the Ingest cycle described in
 # docs/designs/experience-heuristics-persistence-layer.md (F2). It does not
 # perform LLM integration itself — that responsibility belongs to
-# /rite:wiki:ingest (commands/wiki/ingest.md). The script's only job is to
+# /rite:wiki-ingest (skills/wiki-ingest/SKILL.md). The script's only job is to
 # write the Raw Source file with consistent naming and metadata.
 #
 # Usage:
@@ -39,7 +39,7 @@
 #
 # Notes:
 #   - The script does NOT perform git operations. Persistence to the wiki branch
-#     (separate_branch strategy) is left to /rite:wiki:ingest, which has the
+#     (separate_branch strategy) is left to /rite:wiki-ingest, which has the
 #     full branch-switching machinery.
 #   - The script does NOT do any LLM work — it is a pure file-writing utility.
 set -euo pipefail
@@ -77,7 +77,7 @@ Usage: wiki-ingest-trigger.sh --type <type> --source-ref <ref> --content-file <p
                               [--pr-number N] [--issue-number N] [--title "..."]
 
 Saves a Raw Source artifact under .rite/wiki/raw/{type}/ for later
-integration by /rite:wiki:ingest.
+integration by /rite:wiki-ingest.
 
 Required:
   --type           reviews | retrospectives | fixes
@@ -188,7 +188,7 @@ if [[ -z "$CONTENT_FILE" ]]; then
 fi
 # Reject symlinks and require path containment so a prompt-injected
 # `--content-file /etc/passwd` can't slip through the subsequent
-# `/rite:wiki:ingest` commit + push (which would publish the file to the wiki
+# `/rite:wiki-ingest` commit + push (which would publish the file to the wiki
 # branch). Symlinks bypass the containment check after resolution, so they are
 # rejected before realpath runs.
 if [[ -L "$CONTENT_FILE" ]]; then
@@ -229,7 +229,7 @@ fi
 
 # --- Wiki enable check (best-effort: checks rite-config.yml at STATE_ROOT) ---
 # STATE_ROOT is resolved via state-path-resolve.sh at script entry (git-root
-# anchored). When rite-config.yml is absent, we proceed and let /rite:wiki:ingest
+# anchored). When rite-config.yml is absent, we proceed and let /rite:wiki-ingest
 # handle the strict validation later. The trigger only refuses when wiki.enabled
 # is explicitly false.
 #
@@ -243,7 +243,7 @@ fi
 # when the lib's parse contract changes:
 #   1. this script (wiki-ingest-trigger.sh) — strict 3-arm with fail-fast `*` (safe-default policy)
 #   2. hooks/scripts/wiki-growth-check.sh — lenient (layer 3 growth stall detection)
-#   3. commands/wiki/ingest.md ステップ 1.1 — lenient 2-arm (`extract_yaml_key` helper 経由、page integration)
+#   3. skills/wiki-ingest/SKILL.md ステップ 1.1 — lenient 2-arm (`extract_yaml_key` helper 経由、page integration)
 # The lib-using scripts (wiki-ingest-commit.sh / wiki-worktree-commit.sh /
 # wiki-worktree-setup.sh) source the canonical implementation directly.
 if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
@@ -324,7 +324,7 @@ if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
     ""|true|yes|1) ;;
     false|no|0)
       echo "ERROR: wiki.enabled is false in rite-config.yml — refusing to stage Raw Source" >&2
-      echo "  hint: set wiki.enabled: true and run /rite:wiki:init first" >&2
+      echo "  hint: set wiki.enabled: true and run /rite:wiki-init first" >&2
       exit 2
       ;;
     *)
@@ -379,7 +379,7 @@ timestamp_compact=$(date -u +"%Y%m%dT%H%M%SZ")
 target_file="${target_dir}/${timestamp_compact}-${slug}.md"
 
 # Ensure directory exists (for separate_branch strategy this only takes effect
-# when /rite:wiki:ingest is later run from the wiki branch; on the dev branch
+# when /rite:wiki-ingest is later run from the wiki branch; on the dev branch
 # the directory may not exist yet, so we create it on demand).
 #
 # Surface mkdir's root cause (permission denied / read-only filesystem /
@@ -400,7 +400,7 @@ if [[ -n "$TITLE" ]]; then
 fi
 
 # Partial-write rollback: leaving a truncated `ingested: false` Raw Source on
-# disk lets the next `/rite:wiki:ingest` quietly merge incomplete content into
+# disk lets the next `/rite:wiki-ingest` quietly merge incomplete content into
 # a Wiki page and then flip `ingested: true`, sealing in the data loss. Arm
 # the trap before the first write and disarm it just before the normal exit.
 _rite_trigger_target_rollback() {
@@ -438,7 +438,7 @@ trap 'trap - EXIT; _rite_trigger_target_rollback 129; exit 129' HUP
   printf 'ingested: false\n'
   # `ingest_status` / `skip_reason` are intentionally NOT emitted at creation
   # (Issue #1520, Sub-3): a raw source starts un-ingested with no skip status.
-  # When `/rite:wiki:ingest` ステップ 5 decides to skip a raw, it adds
+  # When `/rite:wiki-ingest` ステップ 5 decides to skip a raw, it adds
   # `ingest_status: skipped` + `skip_reason: "..."` to that raw's frontmatter.
   # Absence of `ingest_status` means "not skipped" (wiki-lint-skipped-refs.sh
   # treats it permissively — AC-6). The skip SoT lives here, not in log.md.
@@ -501,5 +501,5 @@ fi
 # the path is the only thing that protects the result from the rollback hook.
 trap - EXIT INT TERM HUP
 
-# Print the relative path so callers (e.g. /rite:wiki:ingest) can pick it up
+# Print the relative path so callers (e.g. /rite:wiki-ingest) can pick it up
 printf '%s\n' "$target_file"

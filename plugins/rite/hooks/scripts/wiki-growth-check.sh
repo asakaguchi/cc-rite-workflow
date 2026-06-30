@@ -429,7 +429,7 @@ _count_pending_from_list() {
 
 # Detect page stall: raw sources are accumulating but pages are not growing
 # This catches the blind spot where Phase X.X.W fires (raw commit works)
-# but /rite:wiki:ingest never runs (pages never generated)
+# but /rite:wiki-ingest never runs (pages never generated)
 check_page_stall() {
   # Fetch raw and page file lists once (DRY — single git ls-tree per path)
   local raw_files page_files raw_count page_count pending_count
@@ -446,7 +446,7 @@ check_page_stall() {
   if [ "$raw_count" -gt 0 ] && [ "$page_count" -eq 0 ]; then
     echo "==> Page stall detected: $raw_count raw sources on '$wiki_branch' but 0 wiki pages generated"
     echo "==> Pending raw sources (ingested: false): $pending_count"
-    echo "==> Hint: /rite:wiki:ingest may never have run, or ingest.md failed silently. Run /rite:wiki:ingest manually to trigger page generation."
+    echo "==> Hint: /rite:wiki-ingest may never have run, or ingest.md failed silently. Run /rite:wiki-ingest manually to trigger page generation."
     return 1
   fi
 
@@ -456,7 +456,7 @@ check_page_stall() {
     local half_raw=$(( raw_count / 2 ))
     if [ "$pending_count" -gt "$half_raw" ]; then
       echo "==> Page stall detected: $pending_count of $raw_count raw sources are pending (ingested: false), only $page_count pages exist"
-      echo "==> Hint: raw sources are accumulating but pages are stagnating. Run /rite:wiki:ingest to process pending raw sources."
+      echo "==> Hint: raw sources are accumulating but pages are stagnating. Run /rite:wiki-ingest to process pending raw sources."
       return 1
     fi
   fi

@@ -14,7 +14,7 @@
 #   The inline implementation in lint.md ステップ 6.0 was a ~165-line bash
 #   block. Delegating it removes a malform / drift source while keeping the
 #   cross-Bash-tool-boundary state-transfer contract verbatim.
-#   See ../../commands/wiki/references/bash-cross-boundary-state-transfer.md
+#   See ../../skills/wiki-lint/references/bash-cross-boundary-state-transfer.md
 #   (Pattern 1: multi-value enum via key=value stdout, Pattern 2:
 #   marker-delimited block).
 #
@@ -145,7 +145,7 @@ cd "$REPO_ROOT" || { echo "ERROR: cannot cd to repo root '$REPO_ROOT'" >&2; exit
 
 # ---- 集合構築本体 (inline block の faithful port) ---------------------------
 # signal-specific trap (canonical 4 行パターン)。
-# 詳細は commands/pr/references/bash-trap-patterns.md#signal-specific-trap-template 参照。
+# 詳細は references/bash-trap-patterns.md#signal-specific-trap-template 参照。
 log_err=""
 _cleanup() {
   [ -n "${log_err:-}" ] && rm -f "$log_err"

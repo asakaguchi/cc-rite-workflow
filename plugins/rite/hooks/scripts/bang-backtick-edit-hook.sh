@@ -4,14 +4,14 @@
 # PostToolUse(Edit|Write|MultiEdit) wrapper for bang-backtick-check.sh.
 # Filters tool_input.file_path so the static check only fires when an
 # Edit/Write touches a markdown file under the rite plugin tree
-# (`plugins/rite/{commands,skills,agents,references}/**/*.md`). Detection
+# (`plugins/rite/{skills,agents,references}/**/*.md`). Detection
 # emits a stderr warning but always exits 0 — this hook is warn-only and
 # MUST NOT block Edit/Write completion, following the Claude Code hooks
 # convention that PostToolUse failures should not break tool execution
 # after the fact.
 #
 # 経路 C — immediate per-edit detection.
-# Companion to /rite:pr:create and /rite:pr:ready Phase 1 pre-check
+# Companion to /rite:pr-create and /rite:ready Phase 1 pre-check
 # (経路 D — pre-PR hard gate, exit 1).
 #
 # Exit semantics:
@@ -74,15 +74,12 @@ case "$FILE_PATH" in
     ;;
 esac
 
-# Scope filter: only rite plugin markdown under the four scan directories.
-# This intentionally mirrors bang-backtick-check.sh --all (commands /
-# skills / agents / references) so the per-edit guard cannot drift from
+# Scope filter: only rite plugin markdown under the three scan directories.
+# This intentionally mirrors bang-backtick-check.sh --all
+# (skills / agents / references) so the per-edit guard cannot drift from
 # the bulk lint scope. Matcher uses bash glob — extglob would also work
 # but plain `case` keeps the script POSIX-friendly.
 case "$REL_PATH" in
-  plugins/rite/commands/*.md|\
-  plugins/rite/commands/*/*.md|\
-  plugins/rite/commands/*/*/*.md|\
   plugins/rite/skills/*.md|\
   plugins/rite/skills/*/*.md|\
   plugins/rite/skills/*/*/*.md|\

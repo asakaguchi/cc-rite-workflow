@@ -43,10 +43,10 @@ state_file_for() { echo "$1/.rite/sessions/${SID}.flow-state"; }
 echo "=== TC-1: handoff present → decision:block re-injects the command ==="
 d=$(new_sandbox)
 RITE_STATE_ROOT="$d" bash "$FS" set --phase review --issue 1168 --branch b --pr 99 \
-  --next n --handoff "/rite:pr:fix 99" --session "$SID" >/dev/null
+  --next n --handoff "/rite:fix 99" --session "$SID" >/dev/null
 out=$(stop_payload "$d" | bash "$HOOK")
 assert "TC-1: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
-if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "/rite:pr:fix 99"; then
+if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "/rite:fix 99"; then
   pass "TC-1: reason contains the handoff command"
 else
   fail "TC-1: reason missing handoff command: $out"
@@ -88,19 +88,19 @@ echo ""
 echo "=== TC-5: payload missing session_id → allow (no output) ==="
 d5=$(new_sandbox)
 RITE_STATE_ROOT="$d5" bash "$FS" set --phase fix --issue 1168 --branch b --pr 99 \
-  --next n --handoff "/rite:pr:review 99" --session "$SID" >/dev/null
+  --next n --handoff "/rite:review 99" --session "$SID" >/dev/null
 out=$(jq -nc --arg c "$d5" '{cwd:$c, hook_event_name:"Stop"}' | bash "$HOOK")
 assert "TC-5: allow when session_id missing" "" "$out"
 
-# --- TC-6: fix→review direction (handoff = /rite:pr:review) blocks ---
+# --- TC-6: fix→review direction (handoff = /rite:review) blocks ---
 echo ""
 echo "=== TC-6: fix→review handoff also blocks with the review command ==="
 d6=$(new_sandbox)
 RITE_STATE_ROOT="$d6" bash "$FS" set --phase fix --issue 1168 --branch b --pr 99 \
-  --next n --handoff "/rite:pr:review 99" --session "$SID" >/dev/null
+  --next n --handoff "/rite:review 99" --session "$SID" >/dev/null
 out=$(stop_payload "$d6" | bash "$HOOK")
 assert "TC-6: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
-if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "/rite:pr:review 99"; then
+if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "/rite:review 99"; then
   pass "TC-6: reason contains the review command"
 else
   fail "TC-6: reason missing review command: $out"
@@ -196,7 +196,7 @@ RITE_STATE_ROOT="$d11" bash "$FS" set --phase cleanup --issue 1245 --branch b --
 out=$(stop_payload "$d11" | bash "$HOOK")
 assert "TC-11: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 _reason11=$(printf '%s' "$out" | jq -r '.reason // ""')
-if printf '%s' "$_reason11" | grep -q "wiki:lint チェーン"; then
+if printf '%s' "$_reason11" | grep -q "wiki-lint チェーン"; then
   pass "TC-11: reason identifies the cleanup → ingest → lint chain"
 else
   fail "TC-11: reason missing the chain identification: $out"
@@ -394,7 +394,7 @@ assert "TC-16: second stop allows (one-shot)" "" "$out_b"
 # `_r_esc` static placeholder degradation. Forced via a fake tr that exits 1 only when $1
 # carries the neutralize_ctrl `\000-` range string — other tr uses inside the hook chain
 # (flow-state contains_ctrl's `tr -d ...` has $1=-d) delegate to the real tr, so the
-# consume-handoff path stays intact. A known prefix (`/rite:pr:fix 99`) is used instead of
+# consume-handoff path stays intact. A known prefix (`/rite:fix 99`) is used instead of
 # TC-16's EVILPREFIX: the unknown-prefix arm would hit the WARNING-side neutralize (its own
 # placeholder) first, entangling two degradations — the known prefix isolates the JSON emit
 # placeholder. Non-vacuous proof (TC-116 vacuous lesson): the normal reason carries the
@@ -404,7 +404,7 @@ echo ""
 echo "=== TC-17: JSON emit fallback neutralize failure → placeholder degradation, block preserved ==="
 d17=$(new_sandbox)
 RITE_STATE_ROOT="$d17" bash "$FS" set --phase review --issue 1282 --branch b --pr 99 \
-  --next n --handoff "/rite:pr:fix 99" --session "$SID" >/dev/null
+  --next n --handoff "/rite:fix 99" --session "$SID" >/dev/null
 fake_bin17=$(mktemp -d)
 real_jq=$(command -v jq)
 real_tr=$(command -v tr)
@@ -442,7 +442,7 @@ if printf '%s' "$_reason17" | grep -q "rite handoff continuation pending (reason
 else
   fail "TC-17: expected static placeholder reason, got: $out17"
 fi
-if printf '%s' "$_reason17" | grep -qF "/rite:pr:fix 99" || printf '%s' "$_reason17" | grep -q "停止せず"; then
+if printf '%s' "$_reason17" | grep -qF "/rite:fix 99" || printf '%s' "$_reason17" | grep -q "停止せず"; then
   fail "TC-17: normal-path reason leaked into the placeholder degradation: $out17"
 else
   pass "TC-17: normal-path reason absent (degradation actually fired, non-vacuous)"

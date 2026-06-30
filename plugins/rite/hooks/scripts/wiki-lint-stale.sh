@@ -202,7 +202,7 @@ done
 
 # 集合本体を marker block で stdout 出力。0 件でも begin/end marker は必ず出力する
 # (検査ステップが実行されたことの positive confirmation —
-#  canonical: commands/wiki/references/bash-cross-boundary-state-transfer.md Pattern 2)。
+#  canonical: skills/wiki-lint/references/bash-cross-boundary-state-transfer.md Pattern 2)。
 echo "n_stale=$n_stale"
 echo "---stale_pages_begin---"
 [ -n "$stale_lines" ] && printf '%s' "$stale_lines"

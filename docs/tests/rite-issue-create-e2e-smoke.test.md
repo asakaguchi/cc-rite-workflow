@@ -1,12 +1,12 @@
-# /rite:issue:create end-to-end smoke test
+# /rite:issue-create end-to-end smoke test
 
-本書は `/rite:issue:create` の「sub-skill return 直後の自動継続」と「ユーザー向け完了メッセージ」を検証するための手動 smoke test 手順を定める。かつて存在した `start.md` ステップ 8.5 sentinel detection (その後機構撤去され、start.md 自体も削除済) と異なり、回帰検出のために人間の目視確認が必要な項目を列挙する。
+本書は `/rite:issue-create` の「sub-skill return 直後の自動継続」と「ユーザー向け完了メッセージ」を検証するための手動 smoke test 手順を定める。かつて存在した `start.md` ステップ 8.5 sentinel detection (その後機構撤去され、start.md 自体も削除済) と異なり、回帰検出のために人間の目視確認が必要な項目を列挙する。
 
 ## 目的
 
 以下の 2 種類の回帰を検知する:
 
-- **Bug1**: `/rite:issue:create` orchestrator が sub-skill return 直後に同 turn 内で次 phase に進まず、ユーザーの `continue` 介入を要求する自動継続停止
+- **Bug1**: `/rite:issue-create` orchestrator が sub-skill return 直後に同 turn 内で次 phase に進まず、ユーザーの `continue` 介入を要求する自動継続停止
 - **Bug2**: 最終出力の `[create:returned-to-caller:{N}]` sentinel (旧形式は `[create:completed:{N}]` で、後にこの名前へ rename された) がユーザー向け完了シグナルとして不十分で、「完了したのか途中なのか」判別困難
 
 ## 前提条件
@@ -23,7 +23,7 @@
 
 1. 新規セッションで以下を実行:
    ```
-   /rite:issue:create バグ修正: XXX が発生する場合の処理を追加
+   /rite:issue-create バグ修正: XXX が発生する場合の処理を追加
    ```
    distinct change が単一かつ scope keyword なしの入力にし、ステップ 3.1 で「大型タスク候補」に該当しないようにする。
 
@@ -53,7 +53,7 @@
 | 症状 | 確認先 |
 |------|--------|
 | ステップ 4 到達後 turn が終了 | `.rite-flow-state-diag.log` の `flow_state_*` 行を確認し、かつて存在した `start.md ステップ 8.5 retrospective scan` 相当の遡及検出 (機構撤去済 — 現行は手動で会話コンテキストを grep) が `manual_fallback_adopted` を拾ったか確認 |
-| `✅ Issue #{N}` が出力されない | `commands/issue/create.md` ステップ 4.4 のテンプレートが現行版か確認 |
+| `✅ Issue #{N}` が出力されない | `skills/issue-create/SKILL.md` ステップ 4.4 のテンプレートが現行版か確認 |
 | `[create:returned-to-caller:{N}]` が user-visible な最終行になる | ステップ 4.4 / 5.6 完了レポート末尾の出力順序を確認（sentinel は HTML コメント化されているか。旧 `[create:completed:{N}]` から rename された形式） |
 | Projects 登録が `failed` | `create-issue-with-projects.sh` の戻り値 `project_registration` を確認、AskUserQuestion で retry / skip を選択 |
 
@@ -65,7 +65,7 @@
 
 1. 新規セッションで以下を実行:
    ```
-   /rite:issue:create プロジェクト全体に auth, logging, caching を一括導入
+   /rite:issue-create プロジェクト全体に auth, logging, caching を一括導入
    ```
    distinct change を複数 + scope keyword（"全体" / "一括"）を含め、ステップ 3.1 の大型タスク判定を発火させる。
 
@@ -127,7 +127,7 @@ flow-state は `flow-state.sh` 経由で生成する (手動作成は schema dri
 > **Note**: 本シナリオの `create_post_interview` は flat workflow 統合により書き込み経路が無くなった legacy phase 名。`flow-state.sh set` は forward-compat で未知 phase でも受容するため初期化は通る。本シナリオの testing 目的は、`session-end.sh` の inline glob fallback (`[[ "$_state_phase" == create_* ]]`) が legacy create_* phase を依然として検出できる契約 (forward-compat) を保証することにある。
 
 1. flow-state を `create_post_interview` で初期化 (上記コマンド)。phase 名が legacy であることは意図的な setup
-2. Claude Code で `/clear` → `/rite:issue:start <N>` を再実行し、前セッションの implicit stop を模した state を残したまま再開
+2. Claude Code で `/clear` → `/rite:issue-start <N>` を再実行し、前セッションの implicit stop を模した state を残したまま再開
 3. かつて存在した start.md ステップ 8.5 retrospective scan が `manual_fallback_adopted` キーワードを会話コンテキストから検出し、tracking Issue を auto-register することを確認 (削除済 — 冒頭の Historical 注記参照。現行体系では実行不能)
 
 ### 期待される動作
@@ -159,7 +159,7 @@ tail -20 .rite-flow-state-diag.log
 
 以下の修正 PR 後に本 smoke test を最低 1 回実施すること:
 
-- `plugins/rite/commands/issue/create.md`
+- `plugins/rite/skills/issue-create/SKILL.md`
 - かつて存在した `plugins/rite/commands/issue/start.md` (ステップ 8.5 retrospective scan — 削除済、historical 参照)
 - `plugins/rite/hooks/session-end.sh`（lifecycle 未完了検出の inline glob）
 - `plugins/rite/hooks/flow-state.sh`

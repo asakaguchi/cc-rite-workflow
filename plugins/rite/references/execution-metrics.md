@@ -70,7 +70,7 @@ After 3 Issues are collected:
 
 | Classification | Definition | Required Corrective Action |
 |---------------|------------|---------------------------|
-| `plan_miss` | Implementation plan assumptions were incorrect | Add pattern to [`pr/open.md`](../commands/pr/open.md) ステップ 3 (実装計画) plan generation |
+| `plan_miss` | Implementation plan assumptions were incorrect | Add pattern to [`pr/open.md`](../skills/open/SKILL.md) ステップ 3 (実装計画) plan generation |
 | `impl_miss` | Code implementation error, test failure | Add test cases + record failure pattern in [`coding-principles.md`](../skills/rite-workflow/references/coding-principles.md) |
 | `eval_miss` | Review false positive/negative | Update reviewer skill checklist |
 
@@ -97,7 +97,7 @@ When an Issue has threshold violations:
 
 ### Work Memory Metrics Section
 
-Appended to the Issue work memory comment at workflow completion (caller orchestrator の 完了レポート、standalone なら user が `/rite:pr:cleanup` 実行時):
+Appended to the Issue work memory comment at workflow completion (caller orchestrator の 完了レポート、standalone なら user が `/rite:cleanup` 実行時):
 
 ```markdown
 ### 📊 メトリクス
@@ -126,7 +126,7 @@ Appended to the Issue work memory comment at workflow completion (caller orchest
 
 ## Review Metrics
 
-Recorded in review result comment (ステップ 6.3 of [`review.md`](../commands/pr/review.md) — semantic owner で値の決定・記録ロジックの canonical 位置。表示位置は post_comment_mode=true 時に ステップ 6.1.b で append される).
+Recorded in review result comment (ステップ 6.3 of [`review.md`](../skills/review/SKILL.md) — semantic owner で値の決定・記録ロジックの canonical 位置。表示位置は post_comment_mode=true 時に ステップ 6.1.b で append される).
 
 > **Note**: Debate metrics (`debate_triggered`, `debate_resolved`, `debate_escalated`, `debate_resolution_rate`) are **recording-only** — they are not included in the Metrics Definitions table above and have no threshold evaluation. They serve as observational data for reviewing the debate phase's effectiveness.
 

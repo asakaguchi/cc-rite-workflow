@@ -34,7 +34,7 @@
 #
 # Reference grammar matched in prose:
 #   <file-token>.(md|sh)  <keyword>  <number>
-#     file-token : bare basename (review.md) OR path (commands/pr/review.md)
+#     file-token : bare basename (review.md) OR path (skills/review/SKILL.md)
 #     keyword    : ステップ | Phase
 #     number     : N(.X)*  where X is [0-9A-Za-z]  (e.g. 6.5.W.2, 4.4.W.2, 3.15)
 #

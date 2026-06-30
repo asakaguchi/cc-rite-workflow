@@ -128,7 +128,7 @@ fi
 echo ""
 
 # ─── TC-004: close mode happy path (--issue N) ─────────────────
-# /rite:issue:close 呼び出し時の標準フロー: 指定 Issue の work memory のみを削除し、
+# /rite:issue-close 呼び出し時の標準フロー: 指定 Issue の work memory のみを削除し、
 # 他 Issue の wm は残す。逆に他 Issue を巻き込んで消すと進行中作業の状態が失われる。
 echo "TC-004: --issue N close mode removes only the specified issue's wm"
 dir004="$TEST_DIR/tc004"

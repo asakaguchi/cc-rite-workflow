@@ -1,0 +1,93 @@
+# Reviewer 指示テンプレート（Generator フェーズ）
+
+`/rite:review` ステップ 4.5 で各 reviewer agent に渡す通常レビュー指示のテンプレート。SKILL.md 側の「Placeholder embedding method」表に従い `{placeholder}` を埋めて使用する。
+
+```
+PR #{number}: {title} のレビューを {reviewer_type} として実行してください。
+
+## 変更概要
+{change_intelligence_summary}
+
+## レビュー対象ファイル
+{relevant_files}
+
+## 差分
+{diff_content}
+
+## 関連 Issue の仕様
+{issue_spec}
+
+**重要**: 上記の仕様は Issue で合意された要件です。実装が仕様と異なる場合は、以下のルールに従ってください:
+1. **仕様どおりに実装されていない場合** → 「仕様不整合」として CRITICAL で指摘
+2. **仕様自体に問題がある（矛盾、曖昧さ、技術的に不可能）と判断した場合** → 指摘として挙げず、「仕様への疑問」セクションに記載し、ユーザー確認を促す
+3. **仕様に記載がない実装判断** → 通常のレビュー基準で評価
+
+## 共通レビュー原則
+<!-- `_reviewer-base.md` から抽出される全 reviewer 共通の原則。READ-ONLY Enforcement / Mindset / Cross-File Impact Check / Confidence Scoring が含まれる。reviewer 固有の identity (Role / Core Principles / Detection Process / Detailed Checklist / Output Format) は named subagent の system prompt (agents/{reviewer_type}-reviewer.md) として自動注入されるためここには含めない -->
+{shared_reviewer_principles}
+
+## Doc-Heavy PR Mode (Conditional — 適用時のみ非空)
+<!-- reviewer_type == tech-writer かつ doc_heavy_pr == true のときのみ内容が入る。それ以外は空文字列。 -->
+{doc_heavy_mode_instructions}
+
+## プロジェクト経験則（Wiki — 該当時のみ非空）
+<!-- wiki.enabled && wiki.auto_query のとき、ステップ 4.0.W で取得した経験則。空の場合はこのセクション自体を省略 -->
+{wiki_context}
+
+## 出力フォーマット
+以下の形式で評価を出力してください:
+
+### 評価: [可 / 条件付き / 要修正]
+
+### 所見
+[レビュー結果のサマリー]
+
+### 仕様との整合性
+| 仕様項目 | 実装状態 | 備考 |
+|---------|---------|------|
+| {spec_item} | 準拠 / 不整合 / 未実装 | {notes} |
+
+### 仕様への疑問（該当がある場合のみ）
+[仕様自体に問題があると判断した点。これらは指摘ではなく、ユーザーへの確認事項として扱う]
+
+### 指摘事項
+
+**重要**: 指摘事項テーブルに記載する項目は全て**必須修正**として扱われます。「任意」「推奨」「必須ではないが」といった修正は指摘事項に含めず、下の「推奨事項」セクションに記載してください。
+
+指摘を挙げる前に、以下の **4 必須自問** に全て Yes で答えられるかを確認してください。いずれかが No の場合、推奨事項 欄に落とすか、報告しないでください:
+
+1. **マージブロック基準**: この問題を修正しなければマージすべきでないと確信できるか？
+2. **Confidence 基準**: 確信度 (Confidence) が 80 以上か？
+3. **Observed Likelihood 基準**: この問題が発生する call site を今のコードから Grep で示せるか？（ハイポセティカル禁止）
+4. **立証責任基準**: 指摘の内容欄に「{file}:{line} でこの入力が渡される」と書けるか？（証拠提示必須）
+
+| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|--------|----------|------------|------|----------|
+| {CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW} | {current-pr/follow-up/nit-noted} | {file:line} | {WHAT: 何が問題か} + {WHY: なぜ問題か（影響・リスク・既存パターンとの比較）} | {FIX: 修正方法} + {EXAMPLE: コード例（該当時）} |
+
+
+### 推奨事項
+[改善提案があれば（任意の改善、スタイル提案、本 PR の diff と無関係な気になる点など）。各推奨事項を箇条書きで記載すること。本 PR の diff と無関係で別 Issue 化が妥当な場合は `別 Issue` または `スコープ外` キーワードを含めること（ステップ 7 でユーザー確認のうえ Issue 化される）]
+
+**⚠️ 各推奨事項に 3 分類を必ず明示すること** (`aggregate label` 禁止規定):
+
+各推奨事項を `分類: <actionable|design_confirmation|boundary>` を冒頭に付して記載する。分類が無い推奨事項は ステップ 5.1 collection で `design_confirmation` (default) として扱われるが、reviewer 自身が判断したうえで明示することが望ましい。
+
+| 分類 | 意味 | 対応経路 |
+|------|------|---------|
+| `actionable` | follow-up Issue 化が妥当な改善提案 (本 PR の diff と無関係で `別 Issue` / `スコープ外` キーワードを含む or それに該当する内容) | ステップ 7.2 で `AskUserQuestion` 必須起動 → Issue 化 |
+| `design_confirmation` | reviewer 自身が「現状の判断は妥当」「対応不要」「informational 寄り」と結論しており、action 要求を伴わない観察事項 | ステップ 7 で起票なし、completion report に件数のみ表示 |
+| `boundary` | reviewer が action 要否を judgement できず user 判断を要する境界事案 | ステップ 7.2 で `AskUserQuestion` 必須起動 → user が「対応/起票/無視」を選択 |
+
+**禁止**: 「推奨 N 件」「follow-up 候補 N 件」のような **件数のみの aggregate label** で報告を済ませること。各 item の分類を明示せずに集計するのは `aggregate-recommendation-label-evasion` anti-pattern であり、ステップ 7 の機械的 gate により block される。
+
+### 調査推奨（該当がある場合のみ）
+[PR 対象ファイル内で、本 PR の diff とは無関係だが気になる既存パターンを検出した場合に記載する。**blocking ではない**ため指摘事項や推奨事項ではなく、`/rite:investigate {file}` の起動候補として integrated report に surface される。該当なしの場合はこのセクション自体を省略する。revert test で「変更前から存在」と判定された pre-existing 事項のうち、reviewer が追加調査の価値ありと判断した箇所のみを記載すること（必須ではない）。]
+
+| ファイル | 気になる点 | 補足 |
+|---------|-----------|------|
+| {file} | {concern_description} | {notes — e.g., `/rite:investigate {file}` で追加調査推奨 / 本 PR のスコープ外} |
+
+## 制約
+[READ-ONLY RULE] このレビューは読み取り専用。`Edit`/`Write` 禁止、問題は指摘事項として報告し修正は `/rite:fix` に委譲する。許可/禁止コマンドの完全一覧は上記「共通レビュー原則」に注入済みの `_reviewer-base.md` `## READ-ONLY Enforcement` を SoT として参照。
+```

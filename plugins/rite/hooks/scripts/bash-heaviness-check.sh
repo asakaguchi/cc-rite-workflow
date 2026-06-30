@@ -2,7 +2,7 @@
 # bash-heaviness-check.sh
 #
 # Detect "heavy" operational bash blocks in command markdown under
-# plugins/rite/commands/**/*.md and flag them as non-blocking warnings.
+# plugins/rite/skills/**/*.md and flag them as non-blocking warnings.
 # Mechanically enforces the "operational bash block heaviness convention"
 # documented in skills/rite-workflow/references/coding-principles.md, which
 # prose-only enforcement cannot prevent from drifting.
@@ -53,7 +53,7 @@
 #     heredoc body or a non-```bash fence do not produce a finding.
 #
 # Exclusions:
-#   - plugins/rite/commands/**/tests/ (any test fixtures, if present).
+#   - plugins/rite/skills/**/tests/ (any test fixtures, if present).
 #   - Any block containing the marker `drift-check-ignore` on one of its lines
 #     (exempts intentional / already-reviewed heavy blocks, mirroring
 #     sh-cross-ref-check.sh).
@@ -79,7 +79,7 @@ usage() {
 Usage: bash-heaviness-check.sh [options]
 
 Options:
-  --all              Scan plugins/rite/commands/**/*.md (excluding tests/)
+  --all              Scan plugins/rite/skills/**/*.md (excluding tests/)
   --target FILE      Check FILE (repeatable). Path relative to repo root.
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
   --quiet            Suppress progress output on stderr
@@ -128,7 +128,7 @@ fi
 cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
 
 if [ "$USE_ALL" -eq 1 ]; then
-  base="plugins/rite/commands"
+  base="plugins/rite/skills"
   if [ ! -d "$base" ]; then
     echo "ERROR: --all requested but $base does not exist under $REPO_ROOT" >&2
     echo "  Likely cause: invoked outside the rite plugin repo (e.g. marketplace install)" >&2

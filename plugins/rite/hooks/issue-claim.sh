@@ -26,7 +26,7 @@
 # only one of N racing processes wins the create. The stale-steal and own-refresh
 # paths serialize through an flock on `issue-claims/.lock` (same shape as
 # `flow-state.sh` `_atomic_write`). A LIVE other-session claim is NEVER stolen
-# unattended (AC-5) — `claim` returns rc=10 so the caller (pr:open Step 1.6)
+# unattended (AC-5) — `claim` returns rc=10 so the caller (open Step 1.6)
 # raises an AskUserQuestion.
 #
 # KNOWN LIMITATION: an `implement` phase that runs >2h without any phase

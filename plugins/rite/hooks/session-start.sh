@@ -571,10 +571,10 @@ fi
 # rather than auto-deleting it.
 find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite-flow-state.??????*" \) -not -name ".rite-flow-state.legacy.*" -type f -mmin +1 -delete 2>/dev/null || true
 
-# Extract all fields in a single jq call for efficiency.
+# Extract the fields used by the interruption notice in a single jq call.
 # Unit separator (\x1f) is used instead of tab: POSIX IFS treats adjacent
-# whitespace delimiters as one separator, which collapses empty fields like
-# next_action="" and shifts later fields into earlier columns — silent data
+# whitespace delimiters as one separator and trims leading/trailing whitespace,
+# which collapses an empty leading field like issue_number="" — silent data
 # corruption. A non-whitespace IFS preserves empty fields per POSIX.
 # Defense-in-depth: ACTIVE check (earlier in this script) already catches invalid JSON (jq
 # fails → ACTIVE=false → exit 0). This fallback handles the unlikely case where
@@ -584,9 +584,7 @@ _tsv_err=$(mktemp 2>/dev/null) || _tsv_err=""
 _tsv_rc=0
 _tsv_output=$(jq -r '[
   (.issue_number // "" | tostring),
-  (.phase // "unknown"),
-  (.next_action // "unknown"),
-  (.loop_count // 0 | tostring)
+  (.phase // "unknown")
 ] | join("\u001f")' "$STATE_FILE" 2>"${_tsv_err:-/dev/null}") || _tsv_rc=$?
 if [ "$_tsv_rc" -ne 0 ]; then
   echo "rite: Warning - state file contains invalid JSON. Use /rite:resume to recover." >&2
@@ -595,7 +593,7 @@ if [ "$_tsv_rc" -ne 0 ]; then
   exit 0
 fi
 [ -n "$_tsv_err" ] && rm -f "$_tsv_err"
-IFS=$'\x1f' read -r ISSUE PHASE NEXT LOOP <<< "$_tsv_output"
+IFS=$'\x1f' read -r ISSUE PHASE <<< "$_tsv_output"
 
 # Validate that critical fields are not null/empty
 if [ -z "$ISSUE" ]; then
@@ -603,17 +601,12 @@ if [ -z "$ISSUE" ]; then
   exit 0
 fi
 
-cat <<EOF
-CRITICAL: Active rite workflow detected (possibly interrupted by context limit).
-Issue: #$ISSUE | Phase: $PHASE | Loop: $LOOP
-Next action: $NEXT
-
-IMPORTANT: First inform the user that an interrupted workflow was detected.
-Display the Issue number, phase, and next action.
-Then suggest running /rite:resume to continue from where it left off.
-If the user provides a different instruction, respect it but mention the pending workflow.
-Use \`bash {plugin_root}/hooks/flow-state.sh get --field <field>\` for full state details.
-EOF
+# Quiet interruption notice (degraded from the former multi-line CRITICAL block).
+# Cross-turn recovery is preserved: /rite:resume reconstructs phase / next_action /
+# loop from flow-state. The former coercive multi-line directive ("IMPORTANT: First
+# inform the user ... Use bash {plugin_root}/...") was removed in v0.7 because it
+# contaminated unrelated /goal turns whenever a session started in a rite-active cwd.
+echo "rite: 中断した rite workflow を検出しました (Issue #${ISSUE}, phase: ${PHASE})。再開するには /rite:resume を実行してください。"
 
 # --- Session ID notification ---
 # session_id is now auto-read from .rite-session-id by flow-state.sh.

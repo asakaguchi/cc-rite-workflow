@@ -43,7 +43,7 @@
 #   status=skipped; reason=safety_check_failed body 空 / header 欠落 / <50% で PATCH 拒否
 #   status=error; reason=transform_failed   Python transform が非ゼロ exit
 #   status=error; reason=patch_failed       jq | gh api PATCH が失敗
-#   commands/pr/fix.md ステップ 4.5.2 はこの行を read し、no_comment 以外の skipped/error を
+#   skills/fix/SKILL.md ステップ 4.5.2 はこの行を read し、no_comment 以外の skipped/error を
 #   `[CONTEXT] WM_UPDATE_FAILED=1` にマップする (`[fix:pushed-wm-stale]` routing 用)。
 set -euo pipefail
 
@@ -296,7 +296,7 @@ if [ "$MODE" = "init" ]; then
 - **開始**: ${TIMESTAMP}
 - **ブランチ**: ${BRANCH}
 - **最終更新**: ${TIMESTAMP}
-- **コマンド**: /rite:pr:open
+- **コマンド**: /rite:open
 - **フェーズ**: branch
 - **フェーズ詳細**: ブランチ作成完了
 

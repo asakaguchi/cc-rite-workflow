@@ -240,14 +240,13 @@ create_state_file "$dir006" '{
 }'
 
 output=$(run_hook_with_source "$dir006" "compact")
-if echo "$output" | grep -q "CRITICAL: Active rite workflow detected" && \
-   echo "$output" | grep -q "Issue: #42" && \
-   echo "$output" | grep -q "Phase: implementing" && \
-   echo "$output" | grep -q "Loop: 3" && \
-   echo "$output" | grep -q "Next action: continue work"; then
-  pass "Active workflow re-inject message contains all expected fields"
+if echo "$output" | grep -q "中断した rite workflow を検出" && \
+   echo "$output" | grep -q "Issue #42" && \
+   echo "$output" | grep -q "phase: implementing" && \
+   echo "$output" | grep -q "/rite:resume"; then
+  pass "Interruption notice contains issue + phase + resume hint"
 else
-  fail "Re-inject message missing expected fields, got: $output"
+  fail "Interruption notice missing expected fields, got: $output"
 fi
 echo ""
 
@@ -282,12 +281,11 @@ mkdir -p "$dir008"
 create_state_file "$dir008" '{"active": true, "issue_number": 99}'
 
 output=$(run_hook_with_source "$dir008" "compact")
-if echo "$output" | grep -q "Phase: unknown" && \
-   echo "$output" | grep -q "Next action: unknown" && \
-   echo "$output" | grep -q "Loop: 0"; then
-  pass "Missing optional fields → default values (unknown, 0)"
+if echo "$output" | grep -q "Issue #99" && \
+   echo "$output" | grep -q "phase: unknown"; then
+  pass "Missing optional fields → phase defaults to unknown"
 else
-  fail "Expected default values for missing fields, got: $output"
+  fail "Expected phase default (unknown), got: $output"
 fi
 echo ""
 
@@ -365,67 +363,65 @@ create_state_file "$dir011" '{
 }'
 
 output=$(run_hook_with_source "$dir011" "compact")
-if echo "$output" | grep -q "Issue: #77" && \
-   echo "$output" | grep -q "Phase: Phase with spaces" && \
-   echo "$output" | grep -q "Loop: 5" && \
-   echo "$output" | grep -q "Next action: Action: with special chars"; then
-  pass "Unit-separator-delimited field extraction handles spaces and special chars"
+if echo "$output" | grep -q "Issue #77" && \
+   echo "$output" | grep -q "phase: Phase with spaces"; then
+  pass "Unit-separator-delimited field extraction handles spaces in phase"
 else
-  fail "Field extraction failed with spaces/special chars, got: $output"
+  fail "Field extraction failed with spaces, got: $output"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-012: source=compact + compact_state=recovering → CRITICAL message
-# PostCompact hook now handles recovery; SessionStart(compact) falls through to CRITICAL.
+# TC-012: source=compact + compact_state=recovering → interruption notice
+# PostCompact hook now handles recovery; SessionStart(compact) falls through to the notice.
 # --------------------------------------------------------------------------
-echo "TC-012: source=compact + compact_state=recovering → CRITICAL message"
+echo "TC-012: source=compact + compact_state=recovering → interruption notice"
 dir012="$TEST_DIR/tc012"
 mkdir -p "$dir012"
 create_state_file "$dir012" '{"active": true, "issue_number": 55, "phase": "implementing"}'
 echo '{"compact_state": "recovering", "active_issue": 55}' > "$dir012/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir012" "compact")
-if echo "$output" | grep -q "CRITICAL: Active rite workflow detected" && \
-   echo "$output" | grep -q "Issue: #55"; then
-  pass "source=compact + recovering → CRITICAL message (PostCompact handles recovery)"
+if echo "$output" | grep -q "中断した rite workflow を検出" && \
+   echo "$output" | grep -q "Issue #55"; then
+  pass "source=compact + recovering → interruption notice (PostCompact handles recovery)"
 else
-  fail "Expected CRITICAL message with issue #55, got: $output"
+  fail "Expected interruption notice with issue #55, got: $output"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-013: source=compact + compact_state=normal → fall through to CRITICAL
+# TC-013: source=compact + compact_state=normal → fall through to interruption notice
 # --------------------------------------------------------------------------
-echo "TC-013: source=compact + compact_state=normal → fall through to CRITICAL"
+echo "TC-013: source=compact + compact_state=normal → fall through to interruption notice"
 dir013="$TEST_DIR/tc013"
 mkdir -p "$dir013"
 create_state_file "$dir013" '{"active": true, "issue_number": 56, "phase": "reviewing"}'
 echo '{"compact_state": "normal"}' > "$dir013/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir013" "compact")
-if echo "$output" | grep -q "CRITICAL: Active rite workflow detected" && \
-   echo "$output" | grep -q "Issue: #56"; then
-  pass "source=compact + normal → normal CRITICAL message"
+if echo "$output" | grep -q "中断した rite workflow を検出" && \
+   echo "$output" | grep -q "Issue #56"; then
+  pass "source=compact + normal → interruption notice"
 else
-  fail "Expected normal CRITICAL message, got: $output"
+  fail "Expected interruption notice, got: $output"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-014: source=compact + no .rite-compact-state → fall through to CRITICAL
+# TC-014: source=compact + no .rite-compact-state → fall through to interruption notice
 # --------------------------------------------------------------------------
-echo "TC-014: source=compact + no .rite-compact-state → fall through to CRITICAL"
+echo "TC-014: source=compact + no .rite-compact-state → fall through to interruption notice"
 dir014="$TEST_DIR/tc014"
 mkdir -p "$dir014"
 create_state_file "$dir014" '{"active": true, "issue_number": 57, "phase": "testing"}'
 
 output=$(run_hook_with_source "$dir014" "compact")
-if echo "$output" | grep -q "CRITICAL: Active rite workflow detected" && \
-   echo "$output" | grep -q "Issue: #57"; then
-  pass "source=compact + no compact state file → normal CRITICAL message"
+if echo "$output" | grep -q "中断した rite workflow を検出" && \
+   echo "$output" | grep -q "Issue #57"; then
+  pass "source=compact + no compact state file → interruption notice"
 else
-  fail "Expected normal CRITICAL message, got: $output"
+  fail "Expected interruption notice, got: $output"
 fi
 echo ""
 
@@ -863,7 +859,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-per-session-detect-A (AC-LOCAL-2): per-session active=true → "Active rite workflow detected"
+# TC-per-session-detect-A (AC-LOCAL-2): per-session active=true → interruption notice
 # Verifies that session-start reads the per-session file (not legacy) when
 # a valid SID + per-session file exists, and that the
 # `.active=true` precondition still fires the workflow-detected output.
@@ -879,9 +875,9 @@ cat > "$dir680a/.rite/sessions/${sid680a}.flow-state" <<EOF
 {"active": true, "issue_number": 680, "branch": "refactor/issue-680-test", "phase": "phase5_review", "next_action": "review", "loop_count": 0, "session_id": "$sid680a", "updated_at": "$ts_t680a"}
 EOF
 output=$(run_hook_with_session "$dir680a" "resume" "$sid680a") && rc=0 || rc=$?
-if [ $rc -eq 0 ] && echo "$output" | grep -q "Active rite workflow detected" \
-   && echo "$output" | grep -q "Issue: #680"; then
-  pass "TC-per-session-detect-A: per-session file read → 'Active rite workflow detected' fired (AC-LOCAL-2)"
+if [ $rc -eq 0 ] && echo "$output" | grep -q "中断した rite workflow を検出" \
+   && echo "$output" | grep -q "Issue #680"; then
+  pass "TC-per-session-detect-A: per-session file read → interruption notice fired (AC-LOCAL-2)"
 else
   fail "TC-per-session-detect-A: expected workflow-detected output from per-session file; got rc=$rc, output='$output'"
 fi

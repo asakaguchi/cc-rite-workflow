@@ -332,17 +332,17 @@ echo ""
 # warnings" section (case "$_lifecycle_unfinished_kind" in cleanup) branch).
 # (line-number 参照を避ける理由は cycle 8 F-05 参照)
 # --------------------------------------------------------------------------
-echo "TC-cleanup-lifecycle-warn-A: cleanup_pre_ingest active → /rite:pr:cleanup lifecycle warning"
+echo "TC-cleanup-lifecycle-warn-A: cleanup_pre_ingest active → /rite:cleanup lifecycle warning"
 dir608wa="$TEST_DIR/tc608wa"
 mkdir -p "$dir608wa"
 create_state_file "$dir608wa" '{"active": true, "phase": "cleanup_pre_ingest", "issue_number": 604, "branch": ""}'
 run_hook "$dir608wa" >/dev/null || true
 if [ -f "${LAST_STDERR_FILE:-}" ] \
     && grep -q "lifecycle was not completed" "$LAST_STDERR_FILE" \
-    && grep -q "/rite:pr:cleanup" "$LAST_STDERR_FILE"; then
+    && grep -q "/rite:cleanup" "$LAST_STDERR_FILE"; then
   pass "cleanup_pre_ingest unfinished → cleanup-specific warning emitted"
 else
-  fail "expected /rite:pr:cleanup lifecycle warning, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
+  fail "expected /rite:cleanup lifecycle warning, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
 fi
 echo ""
 
@@ -367,8 +367,8 @@ mkdir -p "$dir608wc"
 create_state_file "$dir608wc" '{"active": true, "phase": "create_interview", "issue_number": 0, "branch": ""}'
 run_hook "$dir608wc" >/dev/null || true
 # create 側の warning が出て、cleanup 側の warning は出ないこと
-if grep -q "/rite:issue:create lifecycle" "${LAST_STDERR_FILE:-/dev/null}" \
-    && ! grep -q "/rite:pr:cleanup lifecycle" "${LAST_STDERR_FILE:-/dev/null}"; then
+if grep -q "/rite:issue-create lifecycle" "${LAST_STDERR_FILE:-/dev/null}" \
+    && ! grep -q "/rite:cleanup lifecycle" "${LAST_STDERR_FILE:-/dev/null}"; then
   pass "create_interview → create warning (no cleanup misclassification)"
 else
   fail "expected create-specific warning without cleanup warning, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
@@ -380,17 +380,17 @@ echo ""
 # cleanup_pre_ingest / cleanup_post_ingest の 3 phase をカバーする必要がある。TC-cleanup-lifecycle-warn-A は
 # cleanup_pre_ingest のみで、cleanup_post_ingest 一致が外れても WARN-A/B/C は pass し続ける
 # false-positive 構造。本 TC で補完。
-echo "TC-cleanup-lifecycle-warn-D: cleanup_post_ingest active → /rite:pr:cleanup lifecycle warning"
+echo "TC-cleanup-lifecycle-warn-D: cleanup_post_ingest active → /rite:cleanup lifecycle warning"
 dir608wd="$TEST_DIR/tc608wd"
 mkdir -p "$dir608wd"
 create_state_file "$dir608wd" '{"active": true, "phase": "cleanup_post_ingest", "issue_number": 604, "branch": ""}'
 run_hook "$dir608wd" >/dev/null || true
 if [ -f "${LAST_STDERR_FILE:-}" ] \
     && grep -q "lifecycle was not completed" "$LAST_STDERR_FILE" \
-    && grep -q "/rite:pr:cleanup" "$LAST_STDERR_FILE"; then
+    && grep -q "/rite:cleanup" "$LAST_STDERR_FILE"; then
   pass "cleanup_post_ingest unfinished → cleanup-specific warning emitted (branch coverage 完備)"
 else
-  fail "expected /rite:pr:cleanup lifecycle warning for cleanup_post_ingest, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
+  fail "expected /rite:cleanup lifecycle warning for cleanup_post_ingest, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
 fi
 echo ""
 
@@ -405,17 +405,17 @@ echo ""
 # `type … >/dev/null` guard は常に false で、ELIF の glob 一致
 # (`[[ "$_state_phase" == "cleanup" || "$_state_phase" == cleanup_* ]]`) が唯一の active path となる。
 # 本 TC はその path を直接 exercise する。
-echo "TC-cleanup-lifecycle-warn-E: cleanup active → /rite:pr:cleanup lifecycle warning (bare cleanup arm coverage)"
+echo "TC-cleanup-lifecycle-warn-E: cleanup active → /rite:cleanup lifecycle warning (bare cleanup arm coverage)"
 dir608we="$TEST_DIR/tc608we"
 mkdir -p "$dir608we"
 create_state_file "$dir608we" '{"active": true, "phase": "cleanup", "issue_number": 604, "branch": ""}'
 run_hook "$dir608we" >/dev/null || true
 if [ -f "${LAST_STDERR_FILE:-}" ] \
     && grep -q "lifecycle was not completed" "$LAST_STDERR_FILE" \
-    && grep -q "/rite:pr:cleanup" "$LAST_STDERR_FILE"; then
+    && grep -q "/rite:cleanup" "$LAST_STDERR_FILE"; then
   pass "bare cleanup unfinished → cleanup-specific warning emitted (ELIF glob 分岐 全網羅完成)"
 else
-  fail "expected /rite:pr:cleanup lifecycle warning for bare cleanup, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
+  fail "expected /rite:cleanup lifecycle warning for bare cleanup, got: $(cat "${LAST_STDERR_FILE:-/dev/null}" 2>/dev/null)"
 fi
 echo ""
 
@@ -467,7 +467,7 @@ printf '# rite test sandbox config\n' > "$dir680c/rite-config.yml"
 echo '{"active": true, "phase": "create_interview", "issue_number": 682, "branch": "feat/issue-682"}' \
   > "$dir680c/.rite/sessions/${sid680c}.flow-state"
 run_hook "$dir680c" >/dev/null || true
-if [ -f "${LAST_STDERR_FILE:-}" ] && grep -q "/rite:issue:create lifecycle was not completed" "$LAST_STDERR_FILE"; then
+if [ -f "${LAST_STDERR_FILE:-}" ] && grep -q "/rite:issue-create lifecycle was not completed" "$LAST_STDERR_FILE"; then
   pass "TC-per-session-cleanup-C: .active=true precondition fires lifecycle warning on per-session path (AND-logic preserved)"
 else
   fail "TC-per-session-cleanup-C: lifecycle warning missing — .active=true precondition broke on per-session path"

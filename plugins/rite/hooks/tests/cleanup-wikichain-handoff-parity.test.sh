@@ -1,11 +1,11 @@
 #!/bin/bash
 # cleanup-wikichain-handoff-parity.test.sh
 #
-# `commands/pr/cleanup.md` (writer) と `hooks/stop-loop-continuation.sh` (consumer) の
+# `skills/cleanup/SKILL.md` (writer) と `hooks/stop-loop-continuation.sh` (consumer) の
 # WIKICHAIN チェーン handoff 契約が同期していることを assert する meta-test。
 #
 # 背景 — implicit stop 累積再発:
-#   cleanup → wiki:ingest → wiki:lint --auto の 2 段ネスト skill return 直後に LLM が turn を
+#   cleanup → wiki-ingest → wiki-lint --auto の 2 段ネスト skill return 直後に LLM が turn を
 #   閉じる事象は declarative wording / sentinel 命名の修正では再発を止められなかった
 #   (AC-2/AC-4)。iterate ループの Stop-hook 継続保証と
 #   同型の mechanical gate を移植した。本 test はその gate の writer / consumer 両側と
@@ -14,7 +14,7 @@
 #
 # 検出する drift:
 #   (a) cleanup.md ステップ 9 の WIKICHAIN handoff set が削除/破損された (gate の writer 欠落)
-#   (b) handoff set が `Skill: rite:wiki:ingest` invoke より後に移動された (gate が遅すぎて無効)
+#   (b) handoff set が `Skill: rite:wiki-ingest` invoke より後に移動された (gate が遅すぎて無効)
 #   (c) stop-loop-continuation.sh の `WIKICHAIN:*` case arm が削除された (consumer 欠落 —
 #       未知 prefix WARNING 経路へ縮退し、チェーン専用の継続 directive が失われる)
 #   (d) cleanup.md ステップ 12 の terminal set に `--handoff` が付与された (default-clear 喪失
@@ -40,10 +40,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_test-helpers.sh
 source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
-CLEANUP_MD="$PLUGIN_ROOT/commands/pr/cleanup.md"
+CLEANUP_MD="$PLUGIN_ROOT/skills/cleanup/SKILL.md"
 HOOK_SH="$PLUGIN_ROOT/hooks/stop-loop-continuation.sh"
-LINT_MD="$PLUGIN_ROOT/commands/wiki/lint.md"
-INGEST_MD="$PLUGIN_ROOT/commands/wiki/ingest.md"
+LINT_MD="$PLUGIN_ROOT/skills/wiki-lint/SKILL.md"
+INGEST_MD="$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md"
 
 for f in "$CLEANUP_MD" "$HOOK_SH" "$LINT_MD" "$INGEST_MD"; do
   if [ ! -f "$f" ]; then
@@ -67,14 +67,14 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────
-# TC-2: handoff set が `Skill: rite:wiki:ingest` invoke より前に位置する
+# TC-2: handoff set が `Skill: rite:wiki-ingest` invoke より前に位置する
 # ──────────────────────────────────────────────────────────────────────
 # gate は ingest invoke 前に set されなければ premature turn close を catch できない。
 handoff_line=$(grep -nF -- '--handoff "WIKICHAIN:cleanup:{pr_number}"' "$CLEANUP_MD" | head -1 | cut -d: -f1 || true)
-ingest_invoke_line=$(grep -n '^Skill: rite:wiki:ingest$' "$CLEANUP_MD" | head -1 | cut -d: -f1 || true)
+ingest_invoke_line=$(grep -n '^Skill: rite:wiki-ingest$' "$CLEANUP_MD" | head -1 | cut -d: -f1 || true)
 
 if [ -z "$ingest_invoke_line" ]; then
-  fail "TC-2 cleanup.md に 'Skill: rite:wiki:ingest' invoke 行が見つかりません (ステップ 9 の構造変更を確認してください)"
+  fail "TC-2 cleanup.md に 'Skill: rite:wiki-ingest' invoke 行が見つかりません (ステップ 9 の構造変更を確認してください)"
 elif [ -z "$handoff_line" ]; then
   echo "  ⏭️  TC-2 skipped (TC-1 で handoff set 不在を検出済み)"
 elif [ "$handoff_line" -lt "$ingest_invoke_line" ]; then

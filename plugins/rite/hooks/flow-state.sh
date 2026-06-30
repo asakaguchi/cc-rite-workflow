@@ -201,8 +201,8 @@ cmd_set() {
     # active session. Resolved path missing means stale/drifted session_id
     # — emit a WARNING so the silent skip is observable. Truly first-time sessions (no
     # `.rite-session-id`) stay silent to preserve the graceful no-op contract that
-    # `commands/wiki/ingest.md` / `commands/pr/ready.md` 等の `--if-exists` caller が depend on
-    # (issue:create は flow-state 非依存化され、本契約の依存者ではなくなった)。
+    # `skills/wiki-ingest/SKILL.md` / `skills/ready/SKILL.md` 等の `--if-exists` caller が depend on
+    # (issue-create は flow-state 非依存化され、本契約の依存者ではなくなった)。
     if [ -f "$SESSION_ID_FILE" ]; then
       # basename only — multi-tenant 環境での絶対 path leakage を最小化 (cmd_get と対称化)
       echo "WARNING: flow-state.sh cmd_set: --if-exists skipped (resolved session_id=$sid has no state file at file: $(basename "$path"); possible stale .rite-session-id or sid drift)" >&2
@@ -252,7 +252,7 @@ cmd_set() {
   # schema bump, byte-identical state file for single-session use).
   [ -z "$worktree" ] && worktree=$cur_worktree
   # --require-worktree (#1595): データ層で「multi_session 有効経路の set は worktree path を伴う」
-  # invariant を検知する。merge-preserve 後も worktree が空 = pr:open の worktree 化漏れ
+  # invariant を検知する。merge-preserve 後も worktree が空 = open の worktree 化漏れ
   # (Step 1.4 marker 欠落 → legacy `git switch -c` への silent fallback) の兆候。loud に
   # WARNING + `[CONTEXT] WORKTREE_INVARIANT=` marker を stderr へ emit する (orchestrator の
   # hard gate が読む)。書き込み自体は継続する — non-blocking で state を失わない。停止判断は
@@ -275,10 +275,10 @@ cmd_set() {
   # `--handoff` が明示指定された時だけ書き込む。`--handoff` 省略時は key 自体を付与しない
   # (= 空) ことで、loop 外の set が自動的に handoff をクリアし、stale handoff が次サイクルに漏れない。
   # handoff には 3 種類の値が入る:
-  #   - 継続 handoff "/rite:pr:..." : 継続 sentinel (review:fix-needed / fix:pushed) を出す sub-skill が渡す。
+  #   - 継続 handoff "/rite:..." : 継続 sentinel (review:fix-needed / fix:pushed) を出す sub-skill が渡す。
   #   - 終了 handoff "FINALIZE:{result}:{pr}" : 終了 sentinel (mergeable / replied-only / cancelled) を
   #     出す sub-skill が渡す。
-  #   - チェーン handoff "WIKICHAIN:{caller}:{pr}" : cleanup.md ステップ 9 が wiki:ingest invoke 直前に
+  #   - チェーン handoff "WIKICHAIN:{caller}:{pr}" : cleanup.md ステップ 9 が wiki-ingest invoke 直前に
   #     渡す。チェーン完走時はステップ 12 の set (--handoff なし) が default-clear する。
   #   `flow-state.sh` 自体は任意文字列を verbatim 格納するため
   #   機構変更は不要 — prefix 分岐は Stop hook (stop-loop-continuation.sh) 側の reason 生成で行う。

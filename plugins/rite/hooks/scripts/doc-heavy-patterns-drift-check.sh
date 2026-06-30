@@ -4,7 +4,7 @@
 # Detect drift in `doc_file_patterns` across 2 files that MUST agree on the
 # same set of glob tokens for tech-writer Activation / Doc-Heavy PR detection:
 #
-#   1. plugins/rite/commands/pr/review.md            (ステップ 1.2.7
+#   1. plugins/rite/skills/review/SKILL.md            (ステップ 1.2.7
 #      `doc_file_patterns` pseudo-code block)
 #   2. plugins/rite/skills/reviewers/SKILL.md        (Reviewers table,
 #      Technical Writer row — source of truth for tech-writer Activation
@@ -12,7 +12,7 @@
 #      named-subagent definitions)
 #
 # This covers 系統 1 of the drift invariants catalogued in
-# commands/pr/references/internal-consistency.md. 系統 2 (canonical category
+# skills/review/references/internal-consistency.md. 系統 2 (canonical category
 # name literal match) and 系統 3 (review.md ステップ 5.4 Doc-Heavy section 2-place
 # duplication) are out of scope for this checker.
 #
@@ -99,7 +99,7 @@ if [ -z "$REPO_ROOT" ]; then
 fi
 cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
 
-REVIEW_FILE="plugins/rite/commands/pr/review.md"
+REVIEW_FILE="plugins/rite/skills/review/SKILL.md"
 SKILL_FILE="plugins/rite/skills/reviewers/SKILL.md"
 
 for f in "$REVIEW_FILE" "$SKILL_FILE"; do
@@ -112,7 +112,7 @@ for f in "$REVIEW_FILE" "$SKILL_FILE"; do
 done
 
 # Canonical signal-specific trap pattern (repo convention — see
-# commands/pr/references/bash-trap-patterns.md): declare path before mktemp,
+# references/bash-trap-patterns.md): declare path before mktemp,
 # set trap before mktemp, and guard the cleanup with ${var:-} so an early
 # signal (between path declaration and mktemp completion) cannot dereference
 # an unset variable. Signals return conventional exit codes (INT=130,

@@ -1,6 +1,6 @@
 #!/bin/bash
 # rite workflow - Review Result Local Save
-# Deterministic helper for commands/pr/review.md ステップ 6.1.a (Local JSON File Save).
+# Deterministic helper for skills/review/SKILL.md ステップ 6.1.a (Local JSON File Save).
 #
 # review.md ステップ 6.1.a のローカル JSON 保存処理 (timestamp 注入 / 多段 jq validation /
 # 同秒衝突回避 / atomic mv) を担う。本文側の巨大 inline bash を helper に切り出すことで、単一 Bash
@@ -285,7 +285,7 @@ if [ -e "$json_path" ]; then
   if [ -e "$json_path_alt" ]; then
     echo "WARNING: collision suffix 付与後も再衝突を検出しました ($json_path_alt)。保存を skip します" >&2
     echo "  原因候補: 同秒 3 回目以降の連続実行 / \$RANDOM が fallback '0' に落ちた / parallel race" >&2
-    echo "  対処: 1 秒待機してから /rite:pr:review を再実行してください" >&2
+    echo "  対処: 1 秒待機してから /rite:review を再実行してください" >&2
     echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=collision_resolution_exhausted; original=$json_path; resolved_attempt=$json_path_alt" >&2
     json_saved="false"
     exit 0

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # bang-backtick-check.sh
 #
-# Detect bang-backtick adjacent patterns in plugins/rite/{commands,skills,agents,
+# Detect bang-backtick adjacent patterns in plugins/rite/{skills,agents,
 # references}/**/*.md that can trigger Skill loader history expansion and break
-# Skill loading (backtick+bang adjacency in inline code caused /rite:pr:fix
+# Skill loading (backtick+bang adjacency in inline code caused /rite:fix
 # Skill load failure). The agents/ and references/ scopes
 # were added because P3 (no-space-before-! variant) revealed that any markdown
 # the slash command parser may load — directly or transitively via Read — is
-# vulnerable, not just commands/skills entry points.
+# vulnerable, not just skills entry points.
 #
 # Detected patterns (both are matched within a single Markdown inline code span,
 # i.e. text enclosed by paired single backticks). **All occurrences on a single
@@ -49,7 +49,7 @@
 #                  boundary.
 #
 # These patterns were chosen conservatively to produce zero false positives on
-# the existing commands/skills tree (verified at creation time on 70 files).
+# the existing skills tree (verified at creation time on 70 files).
 # Innocent patterns such as Markdown image `bang-bracket-alt-paren-url`, regex
 # literal `bang-backslash-bracket`, and bash negation `if-space-bang-space-cmd`
 # are intentionally NOT matched — in all of these the bang stays away from a
@@ -69,14 +69,14 @@
 #   Style A: full-width corner brackets (「!」)
 #       Use when the span refers to the literal bang character itself as a
 #       standalone token (e.g. "行頭を # または 「!」 から開始する").
-#       Adopted in: commands/wiki/init.md L247, L547.
+#       Adopted in: skills/wiki-init/SKILL.md L247, L547.
 #
 #   Style B: expansion form (`if ! cmd; then`)
 #       Use when the span quotes a shell syntax fragment containing `!` as
 #       an operator (e.g. "the `if ! cmd; then` rc capture is mandatory").
 #       Expand the fragment to its full minimal form so `!` is no longer
 #       adjacent to a closing backtick.
-#       Adopted in: commands/pr/cleanup.md, commands/wiki/references/
+#       Adopted in: skills/cleanup/SKILL.md, skills/wiki-lint/references/
 #       bash-cross-boundary-state-transfer.md L153.
 #
 # Judgment flow
@@ -106,7 +106,7 @@
 #             2 = invocation error.
 #
 # --skip-if-no-target: when --all finds NO scan directory under the repo root
-#   (i.e. this repo does not self-host plugins/rite/{commands,skills,agents,
+#   (i.e. this repo does not self-host plugins/rite/{skills,agents,
 #   references} — the "consumer repo" case where rite is used as a marketplace
 #   plugin only), treat the run as not-applicable and exit 0 instead of the
 #   exit-2 invocation-error diagnostic. Without this flag the exit-2 diagnostic
@@ -127,7 +127,7 @@ usage() {
 Usage: bang-backtick-check.sh [options]
 
 Options:
-  --all              Scan plugins/rite/{commands,skills,agents,references}/**/*.md
+  --all              Scan plugins/rite/{skills,agents,references}/**/*.md
   --target FILE      Check FILE (repeatable). Path relative to repo root.
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
   --quiet            Suppress progress/summary log lines on stderr (per-finding
@@ -169,12 +169,11 @@ cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
 
 # Resolve --all target list. Explicitly check that at least one of the scan
 # directories exists so marketplace-install environments (where hooks/scripts
-# lives in a different tree than the plugin commands/) get a clear diagnostic
+# lives in a different tree than the plugin skills/) get a clear diagnostic
 # instead of the generic "no targets specified" fallback.
 if [ "$USE_ALL" -eq 1 ]; then
   declare -a scan_dirs=()
   for d in \
-    "plugins/rite/commands" \
     "plugins/rite/skills" \
     "plugins/rite/agents" \
     "plugins/rite/references"
@@ -190,11 +189,11 @@ if [ "$USE_ALL" -eq 1 ]; then
       # Consumer repo (rite used as a marketplace plugin only): there is no
       # rite plugin markdown in this working tree to gate, so the check is
       # not applicable. Treat as a clean skip rather than an invocation error.
-      echo "[bang-backtick] not applicable: no plugins/rite/{commands,skills,agents,references} scan directory under $REPO_ROOT — clean skip (--skip-if-no-target)" >&2
+      echo "[bang-backtick] not applicable: no plugins/rite/{skills,agents,references} scan directory under $REPO_ROOT — clean skip (--skip-if-no-target)" >&2
       exit 0
     fi
     echo "ERROR: --all requested but no scan directory exists under $REPO_ROOT" >&2
-    echo "  Expected one or more of: plugins/rite/{commands,skills,agents,references}" >&2
+    echo "  Expected one or more of: plugins/rite/{skills,agents,references}" >&2
     echo "  Likely cause: this script was invoked outside the rite plugin repo (e.g. marketplace install)" >&2
     echo "  Recovery: run from the rite plugin source tree, pass --target FILE explicitly, or pass --skip-if-no-target to treat as not-applicable" >&2
     exit 2

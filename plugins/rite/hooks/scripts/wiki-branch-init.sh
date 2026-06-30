@@ -8,7 +8,7 @@
 #   - same_branch:     現在のブランチへそのままコミットする
 #
 # Called from:
-#   - commands/wiki/init.md ステップ 3.1 (旧 ~95 行 inline block を委譲)
+#   - skills/wiki-init/SKILL.md ステップ 3.1 (旧 ~95 行 inline block を委譲)
 #
 # Usage:
 #   bash wiki-branch-init.sh --branch-strategy <separate_branch|same_branch> --wiki-branch <name>

@@ -19,12 +19,12 @@ fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 echo "=== number-reference-check.sh tests ==="
 echo ""
 
-mkdir -p "$TEST_DIR/plugins/rite/commands"
+mkdir -p "$TEST_DIR/plugins/rite/skills"
 mkdir -p "$TEST_DIR/plugins/rite/hooks/tests"
 (cd "$TEST_DIR" && git init -q 2>/dev/null || true)
 
 run() { bash "$TARGET" --repo-root "$TEST_DIR" --target "$1" 2>&1; }
-SAMPLE="plugins/rite/commands/sample.md"
+SAMPLE="plugins/rite/skills/sample.md"
 SAMPLE_PATH="$TEST_DIR/$SAMPLE"
 
 # --------------------------------------------------------------------------

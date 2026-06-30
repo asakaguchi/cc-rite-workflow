@@ -27,6 +27,24 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-06-30
+
+### Added
+
+- The intro video HyperFrames sources are now tracked in-repo under
+  `media/intro-video/` (Japanese) and `media/intro-video-en/` (English), so
+  video updates complete inside this repository instead of an external
+  out-of-tree directory; each project carries a `PROVENANCE.md` documenting
+  build steps and BGM source/license. (#1688)
+
+### Changed
+
+- The intro video content and README video links are updated to the v0.7.0
+  spec: command names use the v0.7 flat hyphenated form (`open`, `iterate`,
+  `ready`, `merge`, `cleanup`, `issue-create`), `scene-goal` now demos
+  `/rite:run --merge` self-driving, a new `scene-docheavy` scene covers
+  Doc-Heavy PR Mode, and the README video duration note becomes ~115 seconds. (#1688)
+
 ## [0.7.0] - 2026-06-30
 
 ### Changed
@@ -654,6 +672,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.7.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.12...v0.7.0
 [0.6.12]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.11...v0.6.12
 [0.6.11]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.10...v0.6.11

@@ -24,8 +24,8 @@
 | 1 | 検証スパイク（go/no-go ゲート） | **GO（closeout）** — 第1回〜第3回実行済。§A/§C/§D 設計確定。第3回（fresh reload, 2026-06-30）で §D marker 実書込＋`CLAUDE_PLUGIN_ROOT` 解決を確認し全項目 closeout。スパイク成果物は削除済 |
 | 2 | PR lifecycle スキル化 | **完了** — 9/9 スキル移行済（merge, run, open, iterate, ready, cleanup, pr-create, fix, review）+ 参照再配置 + review の reviewer プロンプト抽出（light 分解）。完全性ゲート全パス（旧命名0・全リンク解決・hooks/tests 81/81 green）。残務は Phase 3-6（forward-ref 解決 / hook 剪定 / commands 削除）|
 | 3 | issue/wiki/meta/top-level スキル化 | **概ね完了** — 17/19 移行済（issue 6 + wiki 4 + meta 2 + top-level 5）。`investigate`・`workflow` は既存ルーター/knowledge スキルとの統合対象のためプラン §5 に従い Phase 5 へ繰延。完全性ゲート全パス（旧命名0・全リンク解決・bang-backtick 0・hooks/tests 81/81） |
-| 4 | グローバル hook 剪定 & 棚卸し | 未着手 |
-| 5 | orchestrator/knowledge 統合 | 未着手 |
+| 4 | グローバル hook 剪定 & 棚卸し | **完了** — 棚卸し成果物作成済（下記「Phase 4 — 監査結果」）。坂口さん決定 = ①8 hook 全て global 維持（skill-scoping 撤回）②SessionStart CRITICAL を静かな1行へ降格。SessionStart 降格を実装・テスト更新し **81/81 green**。dead hook 削除（preflight-check / command-id ディスパッチ）は生きた呼び出し元 rite-workflow と同時の Phase 5 へ |
+| 5 | orchestrator/knowledge 統合 | **完了** — investigate 統合（commands→skill, 広域 auto-activation 除去）・workflow 新スキル化・wiki ルーター解体削除・preflight-check 撤去・rite-workflow SKILL.md 命名/パス修正・reviewers 統合（review への cross-ref を skill パス化）・workflow-identity/anchor-naming 仕上げ。完全性ゲート全パス（Phase 5 範囲の旧命名 0・全リンク解決・bang-backtick 0/142・hooks/tests **80/80**）。残務は Phase 6（commands/ 一括削除・全リポジトリ旧命名スイープ） |
 | 6 | 後片付け & リリース | 未着手 |
 
 ## Phase 0 — 完了した編集
@@ -451,6 +451,125 @@ marker 実値:
 - **investigate / workflow（Phase 5）**: 上記の通り既存 `skills/investigate/`・`rite-workflow` との統合として実施。`commands/investigate.md`・`commands/workflow.md` 温存。
 - **既存ルーター skill 統合（Phase 5）**: `skills/wiki/`（wiki-* 4 分割で冗長化）・`skills/investigate/`・`skills/reviewers/` の重複解消。`skills/rite-workflow/references/workflow-identity.md` の自己リンク `../../skills/rite-workflow/...`（二重 skills/ で broken）も既存バグとして Phase 5 で是正。
 - **旧 commands/（Phase 6 で削除）**: issue/ wiki/ skill/ template/ + 各 references、top-level *.md。Phase 6 で commands/ 一括削除 + grep=0 最終ゲート。
+
+## Phase 4 — 監査結果（global hook 棚卸し, 2026-06-30）
+
+**結論（重要）**: プラン §3 の前提「グローバル hook が `/goal` を汚染するからスキルスコープ化する」は監査でほぼ崩れた。8 個のグローバル hook はいずれも**既に自己局在化済み**（非 rite セッションでは fast no-op / handoff キー / IS_SUBAGENT ゲート）で、真の `/goal` コンテキスト汚染残渣は **SessionStart CRITICAL 出力ただ 1 つ**。プランの skill-scoping 3 件はいずれも「効果ほぼ無し or 破壊的」と判明した。
+
+### hooks.json 登録 8 hook の棚卸し（KEEP / SCOPE / DELETE）
+
+| hook (matcher) | script | 実態 | 自己局在化 | 判定 | 根拠 |
+|---|---|---|---|---|---|
+| PreCompact | pre-compact.sh | compact 前マーカー書込 | rite state 時のみ実働・冪等 | **KEEP global** | プラン据え置き合意 |
+| PostCompact | post-compact.sh | compact 後回復マーカー | 同上 | **KEEP global** | プラン据え置き合意 |
+| SessionStart | session-start.sh | 中断検出 + CRITICAL 注入 + reap + schema check | `ACTIVE!=true`→即 exit 0。CRITICAL は `ACTIVE=true && SOURCE∈{resume,compact}` のみ | **KEEP global / CRITICAL のみ降格** | reap/schema は維持必須。CRITICAL が唯一の汚染残渣 |
+| SessionEnd | session-end.sh | orphan reap | rite state 時のみ・冪等 | **KEEP global** | プラン据え置き合意 |
+| Stop | stop-loop-continuation.sh | review↔fix / wikichain 継続 | handoff キー・コマンド名非依存・handoff 不在で即 exit 0 (fail-open) | **KEEP global 推奨**（決定待ち） | 既に pending-handoff のみに局在。skill-scope 化は未検証のネスト発火依存で得るもの限定 |
+| PreToolUse(Bash) | pre-tool-bash-guard.sh | gh/jq 普遍ガード + reviewer git 変更禁止 | Pattern1–3 は μs。Pattern4Z/4A–4G は `IS_SUBAGENT=1` ゲート（reviewer subagent 内のみ発火） | **KEEP global 推奨**（決定待ち） | reviewer ガードは subagent 内発火が必須＝global 登録が担保。review skill-scope へ移すと Task subagent へ伝播せず**ガードが壊れる** |
+| PostToolUse(Bash) | post-tool-wm-sync.sh | phase 変化検出→Issue コメント同期 | 12 早期 exit。`FLOW_STATE` 不在/active≠true/phase 不変で即 exit 0 (`<1ms`) | **KEEP global 推奨**（決定待ち） | scoping は wall-time ほぼ削減せず脆さ増（out-of-band commit の phase 変化取りこぼし・completed/cleanup 防御喪失・新スキルごとの scope 列挙） |
+| PostToolUse(Edit\|Write\|MultiEdit) | scripts/bang-backtick-edit-hook.sh | bang-backtick lint | 低衝突 | **KEEP global** | プラン据え置き合意 |
+
+### dead hook 削除：参照ゼロは皆無 → 削除は Phase 5 へ
+
+- **全 hook スクリプトに生きた参照が存在**（reference-dead = 0 件）。プラン §3 が名指しした dead 候補は実際には skill 側に呼び出し元がある:
+  - `preflight-check.sh`（command-id ディスパッチ guard）: `skills/rite-workflow/SKILL.md` L199–209「Preflight Guard」+ `skills/rite-workflow/references/work-memory-format.md` L407 が `bash {plugin_root}/hooks/preflight-check.sh --command-id ...` で**生きた呼び出し**。`rite-workflow/SKILL.md` 自体に旧コロン命名（`/rite:pr:review` 等）が残存し **Phase 5 で統合予定**。
+  - → **preflight-check.sh + command-id ディスパッチの削除は Phase 5（呼び出し元 rite-workflow の整理と同時アトミック）へ**。今 Phase 4 で消すと skill が壊れる。
+- `references/session-id-validation-contract.md` も preflight-check.test.sh を参照（reference 棚卸しは Phase 5/6）。
+
+### SessionStart CRITICAL 降格（§E の再評価・実行可能）
+
+- §E は「降格は Stop の skill-scoped 継続が入った後」と結合させていたが、**再分析で非結合と判明**: post-compact 回復は **cross-turn**（セッション再起動後の再注入）、Stop 継続は **in-turn**（live turn 内の早期停止差し戻し）で別レイヤ。CRITICAL を「`/rite:resume` を案内する静かな 1 行」に降格しても cross-turn 回復は保たれる（`/rite:resume` が phase/next-action を再構築）。
+- `session-start.sh` 構造確認済: `ACTIVE!=true`→exit 0 (L459)、`SOURCE∈{startup,clear}`→`_reset_active_state`（CRITICAL 非経由・ownership=other はスキップ）。CRITICAL (L606–616) は `ACTIVE=true && SOURCE∈{resume,compact}` でのみ到達。
+- 降格は **hook 内の変更**（skill frontmatter でない）= **本セッションで session-start.test.sh により検証可能**（plugin caching の影響を受けない）。TC-012/013/014 + L243/L866 系 assert を新文言へ更新。
+- L615 の `{plugin_root}` 言及（Claude 実行用 bash の 3-tier 手動解決プレースホルダ）は、降格で当該行ごと削除されるため `${CLAUDE_PLUGIN_ROOT}` 化問題は消滅（Bash tool call では `${CLAUDE_PLUGIN_ROOT}` は `<unset>`＝§A マトリクスより `{plugin_root}` 手動解決が正で、置換はむしろ誤り）。
+
+### 検証可能性の境界（Phase 4 固有）
+
+- **hook 側の変更（SessionStart 降格等）= 本セッションで検証可能**（`hooks/tests/` を直接実行できる。baseline 81/81 green 確認済）。
+- **skill 側の変更（global hook → skill frontmatter への移設）= 本セッションで検証不可**（Phase 1 第2回の発見: プラグインスキルはセッション開始時キャッシュ・`/clear` で再ロードされない → fresh セッション必須）。これも skill-scoping を Phase 4 で急がない理由。
+
+### 推奨する Phase 4 スコープ（プラン §3 からの是正）
+
+1. **8 hook はすべて global 維持**（自己局在化済みのため scoping は効果無し or 破壊的）。
+2. **SessionStart CRITICAL を静かな 1 行へ降格**（唯一の実取り効果・hook 内・検証可能）。
+3. **preflight-check / command-id ディスパッチの削除は Phase 5 へ**（呼び出し元と同時）。
+4. **棚卸し一覧（本節）を Phase 4 の成果物**とする。
+
+→ プランの skill-scoping 撤回は承認済みプランの実質変更のため、実行前に坂口さんへ確認した（下記「Phase 4 — 実行結果」）。
+
+## Phase 4 — 実行結果（2026-06-30）
+
+### 坂口さんの決定（AskUserQuestion で確認）
+
+- **Q1 hook scoping → 「global 維持」**: プラン §3 の skill-scope 化 3 件（Stop / pre-tool-bash-guard / post-tool-wm-sync）を**撤回**。8 hook すべて global のまま据え置き。根拠は上記「監査結果」の通り（自己局在化済み・bash-guard は subagent 伝播が切れ破壊的・Stop は未検証のネスト発火依存）。
+- **Q2 SessionStart → 「静かな1行へ降格」**: CRITICAL 多行ブロックを `/rite:resume` 案内の静かな1行へ降格。
+
+### 実装した変更（hook 内・本セッション検証済）
+
+- **`hooks/session-start.sh`**: CRITICAL 多行 heredoc（旧 606–616）を 1 行 echo へ降格:
+  - 新文言: `rite: 中断した rite workflow を検出しました (Issue #${ISSUE}, phase: ${PHASE})。再開するには /rite:resume を実行してください。`
+  - 旧ブロックの coercive 指示（「IMPORTANT: First inform the user … Use bash {plugin_root}/…」）を除去 → `/goal` コンテキスト汚染を解消。
+  - cross-turn 回復は保持（`/rite:resume` が phase/next_action/loop を再構築）。post-compact 回復（TC-012/013/014）は引き続き CRITICAL→notice 経路でフォールスルー。
+  - 脆い `{plugin_root}` 言及は降格で当該行ごと消滅（§A マトリクスより Bash tool call で `${CLAUDE_PLUGIN_ROOT}` は `<unset>`＝置換は誤りだった）。
+  - jq フィールド抽出を 4→2（issue_number + phase）に縮約し、orphan 化する next_action/loop_count を除去（unit-separator 区切り の empty-field 保全ロジックは維持）。
+- **`hooks/tests/session-start.test.sh`**: 影響 7 ケースの assert を新文言へ更新（TC-006/008/011/012/013/014 + TC-per-session-detect-A）。説明コメント/echo の "CRITICAL" 表現も "interruption notice" へ整合。
+- **検証**: `session-start.test.sh` 64/64、`run-tests.sh` **81/81 passed**。
+
+### hooks.json は無変更
+
+- 8 hook 登録すべて維持（PreCompact / PostCompact / SessionStart / SessionEnd / Stop / PreToolUse(Bash) / PostToolUse(Bash) / PostToolUse(Edit|Write|MultiEdit)）。skill frontmatter への hook 移設は行わない。
+
+### dead hook の状況（削除は Phase 5/6 へ）
+
+- **reference-dead な hook は 0 件**（全 hook に生きた参照あり）。プラン §3 の dead 候補は誤検出:
+  - `preflight-check.sh` + command-id ディスパッチ: `skills/rite-workflow/SKILL.md`（L199–209 Preflight Guard）+ `skills/rite-workflow/references/work-memory-format.md`（L407）が生きた呼び出し元 → **Phase 5（rite-workflow 統合）で呼び出し元と同時削除**。
+  - `workflow-incident-emit.sh`（プラン「旧 sentinel 監視」）: **既に撤去済**（hooks/ に不在）。
+- SPEC.md は SessionStart CRITICAL 挙動を記述していない（Stop hook の note のみで、それは global 維持なので正確）→ Phase 4 由来の doc 更新は不要。
+
+### Phase 4 から後続フェーズへ持ち越す残務
+
+- **preflight-check.sh + command-id ディスパッチ削除（Phase 5）**: `rite-workflow/SKILL.md` の「Preflight Guard」節 + `work-memory-format.md` L407 の呼び出しを除去し、hook 本体 `preflight-check.sh` + `preflight-check.test.sh` + `references/session-id-validation-contract.md` の関連記述を同時に整理。
+- **`rite-workflow/SKILL.md` の旧コロン命名（Phase 5）**: L207「/rite:lint, /rite:pr:review」・L222「/rite:pr:open/iterate/ready/merge」等が残存（Phase 3 完全性ゲートは移行済スキルのみ対象、rite-workflow は Phase 5 統合対象のため未着手）。
+- **doc 一括更新（Phase 6）**: SPEC.md L1163 等の旧コロン命名（`/rite:pr:cleanup` 等）は Phase 6 の命名スイープへ。
+
+## Phase 5 — 実行結果（orchestrator/knowledge 統合, 2026-06-30）
+
+### 着手前の設計判断（坂口さんに AskUserQuestion で確認）
+
+プラン §4「investigate/wiki/reviewers 統合（重複解消）」は具体策を定めていないため、2 点を確認し**いずれも推奨案で確定**:
+
+- **wiki ルーター（`skills/wiki/SKILL.md`）の処遇 → 解体・削除**: wiki-* 4 スキル + lint と重複する旧コロン命名の広域 auto-activation ルーター。固有の troubleshooting/overview を wiki-ingest 配下 reference へ移設し削除。
+- **preflight-check（compact 検出時に `/rite:resume` 以外をブロックする LLM 駆動ガード）の処遇 → 削除**: hooks.json 非登録、`rite-workflow` の指示で手動 bash 起動する脆い `{plugin_root}` 依存機構。Phase 4 監査が「dead ではない・決定は Phase 5」と保留した点。compact 回復は SessionStart 通知 + `/rite:resume`（cross-turn）に一本化。
+
+### 実施した統合（6 タスク）
+
+1. **investigate 統合**: `commands/investigate.md` の全 7 フェーズ手順を `skills/investigate/SKILL.md` に統合。frontmatter を `disable-model-invocation: true` + narrow desc 化し、**広域 Auto-Activation Keywords 節（「一覧」「全件」「使われ方」等の汚染源）を除去**。`references/investigation-protocol.md` の 5 リンクを `commands/investigate.md` → `skills/investigate/SKILL.md` へ更新（見出し不変のためアンカー維持）。
+2. **workflow 新スキル**: `commands/workflow.md` → `skills/workflow/SKILL.md`（`/rite:workflow`, `disable-model-invocation: true`）。Group B（depth 1→2）で `box-display-width` 参照を +1 シフト。図/コマンド一覧の旧コロン命名を新命名へ（フロー図の box 幅は対象外注記あり）。
+3. **wiki 解体・削除**: 固有の troubleshooting（raw が増えない/page が増えない/手動 ingest タイミング/growth-check alarm の読み方）+ 3 層アーキ概要を `skills/wiki-ingest/references/wiki-troubleshooting.md`（新命名）へ移設。wiki-ingest イントロにポインタ追加。唯一の参照元 `comment-best-practices.md` のジャーゴン whitelist L495 を `skills/wiki-ingest/`, `skills/wiki-query/` へ repoint。`skills/wiki/` を削除。
+4. **preflight-check 削除**: `rite-workflow/SKILL.md` の「Preflight Guard」節 + `work-memory-format.md` の「Preflight Guard Contract (Phase C)」節を除去（SoT Access Pattern サブ節は preflight 無関係のため保持し `##` へ昇格）。`hooks/preflight-check.sh` + `hooks/tests/preflight-check.test.sh` を削除。`session-id-validation-contract.md` の Layer 1 依存テスト一覧から `preflight-check.test.sh` を除去。run-tests.sh は `*.test.sh` glob 探索のため改変不要。
+5. **rite-workflow/SKILL.md 命名・パス修正**: 旧 `rite:` コロン命名（Suggested Actions 表・4 Command Architecture・sentinel 表・各所散文 計 30+）を命名 sed で新命名へ。bare colon 略記（`pr:open`/`wiki:ingest` 等）も targeted sed で変換（sentinel `[pr:created:N]`/`[pr:create-failed]` は `rite:` 接頭辞・bracket がないため非該当・全無傷を検証）。`commands/resume.md`→`skills/resume/SKILL.md`、`commands/issue/implement.md`→`skills/issue-implement/SKILL.md`（depth 補正 `../issue-implement/SKILL.md`）、`commands/pr/cleanup.md`+`commands/pr/references/`→skills 系へ。
+6. **reviewers / workflow-identity / anchor-naming 仕上げ**:
+   - **reviewers**: description の `/rite:pr:review` → `/rite:review`。review への cross-ref（`commands/pr/review.md`・`commands/pr/references/internal-consistency.md`、markdown リンク + bare `review.md` 略記 計 15 箇所）を `skills/review/SKILL.md`・`skills/review/references/internal-consistency.md` へ統一（depth 不変・ステップ番号/アンカーは Phase 2 byte 保全により解決を検証）。reviewer の file-pattern glob `commands/**/*.md` は汎用パターンのため非対象。**review→reviewers は Skill invoke でなく `Read: skills/reviewers/SKILL.md`（ファイル Read）と確認** → `disable-model-invocation:true` は整合（Phase 1 残課題 closeout）。
+   - **workflow-identity.md**: caller depth ガイダンス表（L161）を commands/ ベース → skills/ ベース（`../../skills/...` = skills/<name>/SKILL.md / `../../../skills/...` = skills/<name>/references/）へ。fenced 例（L167）の深さ依存パスを placeholder `<相対パス>` 化し自ファイル位置からの broken 表示を解消。
+   - **anchor-naming-convention.md**: `commands/pr/references/` → `skills/rite-workflow/references/` へ co-locate（唯一の参照元 simplification-charter のみ）。両者を `./` 形式の sibling link に整理。
+
+### Phase 5 完全性ゲート（全パス・2026-06-30）
+
+対象 = Phase 5 で直接移行/整備したアーティファクト（investigate, workflow, rite-workflow/SKILL.md, reviewers, wiki-troubleshooting, investigation-protocol）:
+
+1. ✅ 旧コロン命名 `rite:(pr|issue|wiki|skill|template):` = **0**
+2. ✅ bare colon 略記（sentinel 除く）= **0**（`git fetch origin wiki:wiki` の refspec は false positive）
+3. ✅ glob 以外の `commands/<g>/<x>.md` パス参照 = **0**（reviewer の `commands/**/*.md` glob は汎用パターン）
+4. ✅ 相対 markdown リンク全解決（削除/移動先への dangling 0: skills/wiki/・preflight-check・旧 anchor-naming パスへの参照すべて 0）
+5. ✅ frontmatter §B 準拠・YAML 健全（タブなし）・新規2スキルとも `disable-model-invocation: true`
+6. ✅ `bang-backtick-check.sh --all`（142 ファイル）= **0 findings**
+7. ✅ `hooks/tests/run-tests.sh` = **80/80 passed**（preflight-check.test.sh 削除で 81→80、回帰なし）
+
+### Phase 5 から Phase 6 へ持ち越す残務
+
+- **commands/ 一括削除**: 移行で orphan 化した `commands/investigate.md`・`commands/workflow.md` を含む `commands/` 全体 + commands/pr/references/ 残り。Phase 6 で削除 + 全リポジトリ grep=0 最終ゲート。
+- **全リポジトリ旧命名スイープ（Phase 6）**: 構造統合は完了したが、**Phase 5 で直接編集していない rite-workflow references の旧命名は意図的に未着手**（broad sweep に集約）。具体: `workflow-identity.md` L96/L119/L170（`/rite:pr:cleanup`・`commands/issue/create.md`・`plugins/rite/commands/` 言及）、`phase-mapping.md`(17)、`session-detection.md` 等、および `anchor-naming-convention.md` の content（`commands/pr/fix.md:1118` 等の行番号 audit・`/rite:wiki:query`・「`plugins/rite/commands/` 配下」scope 記述）。SPEC.md(165)/README(各26)/CONFIGURATION.md(20) も同スイープ。
+- **Phase 4 の未コミット変更**: `session-start.sh` + `session-start.test.sh`（CRITICAL 降格）は Phase 4 成果で本作業と同じ作業ツリーに未コミットのまま（コミットは坂口さんの指示待ち）。
 
 ## 主要調査結果（Phase 0 で実測・SoT）
 

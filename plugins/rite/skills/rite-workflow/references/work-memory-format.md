@@ -397,31 +397,7 @@ Issue comment is a backup replica, synced at phase transitions:
 | PR creation | After `rite:pr:create` completes |
 | Cleanup completion | Final state record in `rite:pr:cleanup` |
 
-## Preflight Guard Contract (Phase C)
-
-All `/rite:*` commands (except `issue/start` and `resume`, which are Orchestrators) run a preflight check before execution. `issue/start` and `resume` manage flow state and delegate preflight to the sub-commands they invoke. The check detects compact-blocked state and prevents execution when recovery is needed.
-
-### Contract
-
-```bash
-bash {plugin_root}/hooks/preflight-check.sh --command-id "/rite:{command}" --cwd "$(pwd)"
-```
-
-- Exit `0`: Allowed (proceed with command)
-- Exit `1`: Blocked (do not execute command, display preflight output)
-- `/rite:resume` is always allowed (bypasses block)
-
-### Command Categories
-
-| Category | Commands | Local WM Operation |
-|----------|---------|-------------------|
-| **Write** | `pr/create`, `pr/review`, `pr/ready`, `pr/cleanup`†, `pr/fix`, `issue/close`, `issue/update`, `issue/implement`, `issue/start`, `lint` | Read + Write (via `local-wm-update.sh`) |
-| **Preflight only** | `issue/create`, `issue/list`, `issue/edit`, `workflow`, `getting-started`, `skill/suggest`, `template/reset`, `init` | None |
-| **Orchestrator** | `resume` | Managed by flow state (orchestrates other commands; does not directly read/write local WM but controls flow via flow state) |
-
-† `pr/cleanup` updates Issue comment directly in Phase 4.5 (final archival record) because local WM file is deleted earlier in Phase 3.
-
-### SoT Access Pattern
+## SoT Access Pattern
 
 All commands that read work memory follow this priority:
 

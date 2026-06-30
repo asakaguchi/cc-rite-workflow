@@ -1,7 +1,7 @@
 ---
 name: reviewers
 description: |
-  Coordinates parallel multi-expert PR code review. Activates with /rite:pr:review
+  Coordinates parallel multi-expert PR code review. Activates with /rite:review
   or when user asks for "code review", "PR feedback", "security check", "review
   my changes", "レビューして", "PRレビュー", "コードチェック", "セキュリティ確認",
   "変更を確認", "コードレビュー". Spawns specialized reviewers (Security, API,
@@ -21,11 +21,11 @@ This skill coordinates the multi-reviewer PR review process using specialized ex
 
 ## Auto-Activation
 
-This skill is activated during `/rite:pr:review` command execution.
+This skill is activated during `/rite:review` command execution.
 
 ## Available Reviewers
 
-This table is the **source of truth** for reviewer file patterns (used by `review.md` ステップ 2 for selection). The `Agent` column names the named subagent spawned for each reviewer.
+This table is the **source of truth** for reviewer file patterns (used by `skills/review/SKILL.md` ステップ 2 for selection). The `Agent` column names the named subagent spawned for each reviewer.
 
 | Reviewer | Agent | File Patterns (Primary) |
 |----------|------------|-------------------------|
@@ -42,7 +42,7 @@ This table is the **source of truth** for reviewer file patterns (used by `revie
 | Error Handling Expert | `error-handling-reviewer.md` | Files containing `try`, `catch`, `throw`, `Error`, `reject`, `fallback` keywords (JS/TS); `set -e`, `pipefail`, `trap`, `|| true`, `|| :`, `2>/dev/null` keywords (Bash); `**/*.sh` |
 | Type Design Expert | `type-design-reviewer.md` | `**/*.ts`, `**/*.tsx`, `**/*.rs`, `**/*.go` with `interface`, `type`, `enum`, `class`, `struct` |
 
-**Note**: The Technical Writer row is kept in sync with `plugins/rite/commands/pr/review.md` ステップ 1.2.7 `doc_file_patterns`; see [`plugins/rite/commands/pr/references/internal-consistency.md`](../../commands/pr/references/internal-consistency.md#cross-reference) Cross-Reference section for the drift-prevention invariant. Automated drift detection is implemented by `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` (invoked from `/rite:lint` ステップ 3.7 as a warning/non-blocking check). The row uses **set semantics** (file matching equivalence), not pattern syntax equality — the order of patterns and exact glob syntax may differ between this row and `review.md` as long as the matched file set is identical.
+**Note**: The Technical Writer row is kept in sync with `plugins/rite/skills/review/SKILL.md` ステップ 1.2.7 `doc_file_patterns`; see [`plugins/rite/skills/review/references/internal-consistency.md`](../../skills/review/references/internal-consistency.md#cross-reference) Cross-Reference section for the drift-prevention invariant. Automated drift detection is implemented by `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` (invoked from `/rite:lint` ステップ 3.7 as a warning/non-blocking check). The row uses **set semantics** (file matching equivalence), not pattern syntax equality — the order of patterns and exact glob syntax may differ between this row and `skills/review/SKILL.md` as long as the matched file set is identical.
 
 **Code Quality co-reviewer rule**: Code Quality reviewer is additionally selected as a co-reviewer in the following cases:
 
@@ -58,7 +58,7 @@ This table is the **source of truth** for reviewer file patterns (used by `revie
 
 ## Finding Quality Policy
 
-All reviewers follow a single Finding Quality Policy enforced in [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md) and injected into each reviewer's user prompt via the `{shared_reviewer_principles}` extraction (`review.md` ステップ 4.5). It covers Reviewer Mindset (healthy skepticism, evidence-based reporting, thoroughness on every cycle), the Observed Likelihood Gate, Fail-Fast First, the Finding Quality Guardrail (filter bikeshedding / defensive / style-only — all findings are mandatory fixes, so reviewers must report only substantive issues), Confidence Scoring, and External Claim Awareness. Each reviewer's own checklist and Finding Quality Guidelines live in its named-subagent definition (`agents/{reviewer_type}-reviewer.md`).
+All reviewers follow a single Finding Quality Policy enforced in [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md) and injected into each reviewer's user prompt via the `{shared_reviewer_principles}` extraction (`skills/review/SKILL.md` ステップ 4.5). It covers Reviewer Mindset (healthy skepticism, evidence-based reporting, thoroughness on every cycle), the Observed Likelihood Gate, Fail-Fast First, the Finding Quality Guardrail (filter bikeshedding / defensive / style-only — all findings are mandatory fixes, so reviewers must report only substantive issues), Confidence Scoring, and External Claim Awareness. Each reviewer's own checklist and Finding Quality Guidelines live in its named-subagent definition (`agents/{reviewer_type}-reviewer.md`).
 
 > **Reference**: See [Finding Examples](./references/finding-examples.md) for concrete Few-shot examples of good findings, findings that should NOT be reported, and borderline judgment cases.
 
@@ -82,7 +82,7 @@ Mapping of reviewer identifiers (`reviewer_type`) to display names. Update this 
 | error-handling | エラーハンドリング専門家 | `error-handling-reviewer.md` |
 | type-design | 型設計専門家 | `type-design-reviewer.md` |
 
-**Note**: This table is the source of truth. `commands/pr/review.md` also references this table. The `code-quality` reviewer is used as a fallback when no other reviewers match (see "No Reviewers Match" section below and `review.md` ステップ 3.2), as a co-reviewer for Prompt Engineer files containing fenced code blocks, and as a sole reviewer guard co-reviewer (see "Code Quality co-reviewer rule" above).
+**Note**: This table is the source of truth. `skills/review/SKILL.md` also references this table. The `code-quality` reviewer is used as a fallback when no other reviewers match (see "No Reviewers Match" section below and `skills/review/SKILL.md` ステップ 3.2), as a co-reviewer for Prompt Engineer files containing fenced code blocks, and as a sole reviewer guard co-reviewer (see "Code Quality co-reviewer rule" above).
 
 ## Reviewer Selection Algorithm
 
@@ -106,7 +106,7 @@ Analyze diff content for:
   - Type design keywords (representative): interface, type, enum, class, struct, readonly, generic
 ```
 
-**Note**: The above are representative keyword examples. The authoritative keyword list is defined in `commands/pr/review.md` ステップ 2.3 ("Security keyword detection" section), and the authoritative file patterns are the Available Reviewers table above.
+**Note**: The above are representative keyword examples. The authoritative keyword list is defined in `skills/review/SKILL.md` ステップ 2.3 ("Security keyword detection" section), and the authoritative file patterns are the Available Reviewers table above.
 
 ### Phase 3: Select All Matching Reviewers
 
@@ -126,11 +126,11 @@ Apply constraints from rite-config.yml:
   - min_reviewers: Minimum reviewers to select
 
 Special rules:
-  - Security reviewer inclusion depends on rite-config.yml security_reviewer settings (see review.md ステップ 3.2)
+  - Security reviewer inclusion depends on rite-config.yml security_reviewer settings (see skills/review/SKILL.md ステップ 3.2)
   - If no reviewers match, use code-quality reviewer as fallback (min_reviewers)
 ```
 
-**Note**: For detailed mandatory selection conditions for Security Expert, see [`commands/pr/review.md` ステップ 3.2 (Reviewer Selection)](../../commands/pr/review.md#32-reviewer-selection).
+**Note**: For detailed mandatory selection conditions for Security Expert, see [`skills/review/SKILL.md` ステップ 3.2 (Reviewer Selection)](../../skills/review/SKILL.md#32-reviewer-selection).
 
 ## Selection Result Retention
 
@@ -139,19 +139,19 @@ Return only the reviewer list and file counts; Claude retains the selection inte
 **Data retention approach:**
 
 1. **At Phase 2 completion**: Remember the list of selected reviewers (reviewer_type), the files assigned to each, the selection rationale, and the Security Expert selection type (mandatory / recommended / detected) if selected.
-2. **Usage in Phase 4**: Embed the remembered information into each Task tool's `prompt` parameter (the `review.md` ステップ 4.5 review-instruction template).
+2. **Usage in Phase 4**: Embed the remembered information into each Task tool's `prompt` parameter (the `skills/review/SKILL.md` ステップ 4.5 review-instruction template).
 
 **Context management strategy:** For context management during large PR reviews, see [references/context-management.md](./references/context-management.md) as the source of truth for thresholds and guidelines.
 
-**Reviewer profile loading**: There is no separate skill-file load step. Each reviewer's full profile (Role / Core Principles / Detection Process / Detailed Checklist / Output Format) is its named-subagent system prompt (`agents/{reviewer_type}-reviewer.md`), injected automatically when `review.md` ステップ 4.3 spawns `rite:{reviewer_type}-reviewer`. The ステップ 4.5 user prompt carries only the per-review inputs (diff, spec, shared principles, Wiki context).
+**Reviewer profile loading**: There is no separate skill-file load step. Each reviewer's full profile (Role / Core Principles / Detection Process / Detailed Checklist / Output Format) is its named-subagent system prompt (`agents/{reviewer_type}-reviewer.md`), injected automatically when `skills/review/SKILL.md` ステップ 4.3 spawns `rite:{reviewer_type}-reviewer`. The ステップ 4.5 user prompt carries only the per-review inputs (diff, spec, shared principles, Wiki context).
 
 ## Generator-Critic Pattern Integration
 
 This skill implements the Generator-Critic pattern for enhanced review quality.
 
 **Phase mapping:**
-- **Generator Phase** = `commands/pr/review.md` **ステップ 4** (Parallel review execution)
-- **Critic Phase** = `commands/pr/review.md` **ステップ 5** (Result validation & integration)
+- **Generator Phase** = `skills/review/SKILL.md` **ステップ 4** (Parallel review execution)
+- **Critic Phase** = `skills/review/SKILL.md` **ステップ 5** (Result validation & integration)
 
 ### Generator Phase
 
@@ -230,12 +230,12 @@ If reviewer task exceeds internal timeout:
 
 ### No Reviewers Match
 
-When no file patterns match, use code-quality reviewer as fallback. Security Expert inclusion follows `rite-config.yml` settings (see `review.md` ステップ 3.2).
+When no file patterns match, use code-quality reviewer as fallback. Security Expert inclusion follows `rite-config.yml` settings (see `skills/review/SKILL.md` ステップ 3.2).
 
 ```text
 If no file patterns match:
   1. Use code-quality reviewer as fallback (min_reviewers)
-  2. Apply Security Expert selection rules from rite-config.yml (see review.md ステップ 3.2)
+  2. Apply Security Expert selection rules from rite-config.yml (see skills/review/SKILL.md ステップ 3.2)
   3. Warn user about limited review scope
   4. Suggest manual reviewer selection if needed
 ```

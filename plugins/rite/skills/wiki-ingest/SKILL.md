@@ -24,7 +24,7 @@ Wiki Ingest エンジン。`.rite/wiki/raw/` の Raw Source を読解し、`.rit
 
 Raw Source の wiki branch 着地は `wiki-ingest-commit.sh` が `review` / `fix` / `issue-close` から直接呼ばれて完了している前提。本コマンドが扱うのは page 統合の LLM 責務のみ。
 
-`separate_branch` 戦略では `.rite/wiki-worktree/` worktree のツリーに対して Read/Write/Edit を行う。dev ブランチは ingest 実行中も常にそのまま。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md) で解決する。共通パターン (ディレクトリ構造 / ブランチ管理 / テンプレート展開) は [Wiki Patterns](../../references/wiki-patterns.md) を参照。
+`separate_branch` 戦略では `.rite/wiki-worktree/` worktree のツリーに対して Read/Write/Edit を行う。dev ブランチは ingest 実行中も常にそのまま。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md) で解決する。共通パターン (ディレクトリ構造 / ブランチ管理 / テンプレート展開) は [Wiki Patterns](../../references/wiki-patterns.md) を参照。Wiki が育たない / 動作しないときの診断手順 (raw が増えない / page が増えない / growth-check alarm の読み方) は [Wiki トラブルシューティング](./references/wiki-troubleshooting.md) を参照。
 
 ## Arguments
 

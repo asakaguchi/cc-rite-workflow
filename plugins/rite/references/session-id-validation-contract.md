@@ -62,7 +62,7 @@
 以下のテストは非 UUID sid を使い、`flow-state.sh` がそれを受理することに依存する:
 
 - `pre-compact.test.sh` — `session-aaaa-1371` / `session-bbbb-1371`（TC-per-session-compact-independence-AC1 が使う非 UUID opaque sid fixture）
-- `pre-compact.test.sh` / `post-compact.test.sh` / `preflight-check.test.sh` / `session-start.test.sh` —
+- `pre-compact.test.sh` / `post-compact.test.sh` / `session-start.test.sh` —
   test helper の default sid `test-sid-<dir>`（非 UUID 形）
 - `flow-state.test.sh` — TC-24（本契約を pin する正のテスト）
 

@@ -77,4 +77,4 @@ rite workflow 自体および rite workflow が生成する成果物（commit me
 
 ## 関連
 
-- [Anchor 命名規約 (Asymmetric Fix Transcription 予防)](../../../commands/pr/references/anchor-naming-convention.md) — `# === ... ===` 形式 grep anchor の構造規約 + 対称位置への伝播漏れ failure mode の予防策。本 Charter の「散文重複禁止」を anchor 形式で機械的に担保するための運用規約。
+- [Anchor 命名規約 (Asymmetric Fix Transcription 予防)](./anchor-naming-convention.md) — `# === ... ===` 形式 grep anchor の構造規約 + 対称位置への伝播漏れ failure mode の予防策。本 Charter の「散文重複禁止」を anchor 形式で機械的に担保するための運用規約。

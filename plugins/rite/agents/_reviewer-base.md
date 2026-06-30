@@ -41,7 +41,7 @@ Reviewer subagents **may** use the following read-only commands for evidence gat
 - **Isolated worktree creation**: `git worktree add --detach <path> <ref>` または `git worktree add <path> <existing-branch>` (既存 ref のみを別ディレクトリに展開する形式に限定。`-b <newbranch>` および引数なし形式は新規 ref が leak する原因となるため禁止 — orchestrator 側の `hooks/scripts/pr-cycle-cleanup.sh` で残置回収するが、reviewer 側で named branch を作らないのが第一防御線)
 - **Workflow helpers**: `gh` CLI for reading PR/Issue metadata, plugin hook scripts, test runners (`bash <test>`, `pytest`, `npm test`, etc.)
 
-**Rationale**: The `[READ-ONLY RULE]` is not just a tool-level (`Edit`/`Write`) restriction — it is a **state-level** guarantee. A reviewer that runs `git checkout develop -- path/to/file` silently pollutes the parent session's index, which later surfaces as a "ghost diff" the parent session cannot attribute. Always compare blobs via `git show <ref>:<file>` or `git diff <ref> -- <file>` instead. 同様に、`git stash` は「undo すれば戻る」ように見えるが、stash entry の作成自体が parent session の working tree をクリアし、並列レビュアー間で race を起こす。`git add` / `git reset` も index を汚染し、後続の `/rite:pr:fix` が diff を誤認する根本原因になる。`git fetch --prune` は remote-tracking branch を削除するため、後続の `git diff origin/<branch>` が「unknown revision」で壊れる silent regression を引き起こす。
+**Rationale**: The `[READ-ONLY RULE]` is not just a tool-level (`Edit`/`Write`) restriction — it is a **state-level** guarantee. A reviewer that runs `git checkout develop -- path/to/file` silently pollutes the parent session's index, which later surfaces as a "ghost diff" the parent session cannot attribute. Always compare blobs via `git show <ref>:<file>` or `git diff <ref> -- <file>` instead. 同様に、`git stash` は「undo すれば戻る」ように見えるが、stash entry の作成自体が parent session の working tree をクリアし、並列レビュアー間で race を起こす。`git add` / `git reset` も index を汚染し、後続の `/rite:fix` が diff を誤認する根本原因になる。`git fetch --prune` は remote-tracking branch を削除するため、後続の `git diff origin/<branch>` が「unknown revision」で壊れる silent regression を引き起こす。
 
 ### Shell-command wrappers are blocked — even for read-only probes
 
@@ -56,7 +56,7 @@ Reviewer subagents **may** use the following read-only commands for evidence gat
 
 Reviewer が **mutation testing / verification experiment** (例: 「ある line を `return 1` から `exit 1` に変えたら test が失敗するか」「helper を inline 展開したら sibling test が落ちるか」) を実行する必要がある場合、**parent repo の working tree / branch を絶対に変更してはならない**。正規経路は以下の **worktree-only mutation pattern** に限定される。
 
-**Rationale**: 過去に reviewer subagent が「mutation 検証」のために新規 named branch を作成し、`git checkout <test-branch>` → file 変更 → `git checkout develop` という遷移を行った結果、parent session の working tree が `develop` のクリーン状態に置き換わり、後続の `/rite:pr:fix` が PR ブランチを見失う事故が起きた。prose レベルの「禁止」だけでは LLM agent は mutation 検証の必要性を過大評価して bypass する傾向があるため、**正規経路を明示**し、`hooks/pre-tool-bash-guard.sh` の structural enforcement と組み合わせて多層防御する。
+**Rationale**: 過去に reviewer subagent が「mutation 検証」のために新規 named branch を作成し、`git checkout <test-branch>` → file 変更 → `git checkout develop` という遷移を行った結果、parent session の working tree が `develop` のクリーン状態に置き換わり、後続の `/rite:fix` が PR ブランチを見失う事故が起きた。prose レベルの「禁止」だけでは LLM agent は mutation 検証の必要性を過大評価して bypass する傾向があるため、**正規経路を明示**し、`hooks/pre-tool-bash-guard.sh` の structural enforcement と組み合わせて多層防御する。
 
 **正規パターン (detached HEAD / 既存 branch)**:
 
@@ -86,13 +86,13 @@ cd -  # parent repo に戻る (HEAD 変更なし、stash なし)
 | `cp file file.bak` → file 変更 → test → `mv file.bak file` (parent working tree 内) | 同上 (parent working tree の file 変更自体が禁止 — `Edit`/`Write` tool レベル違反でもある) |
 | `git checkout HEAD~1 -- file` → test → `git checkout HEAD -- file` | `git show HEAD~1:file` で blob を取得し、worktree 内で適用 |
 
-**Invariant**: Reviewer subagent が exit する時点で **以下のすべて**が true であること。各 invariant は `commands/pr/review.md` ステップ 5.0.A 経由で `post-review-state-verify.sh` により automatic check される (state vector は branch / stash count / branch list の 3 軸 — working tree の差分判定は `git status --porcelain` hash の cost が高く、本 PR では未 enforce):
+**Invariant**: Reviewer subagent が exit する時点で **以下のすべて**が true であること。各 invariant は `skills/review/SKILL.md` ステップ 5.0.A 経由で `post-review-state-verify.sh` により automatic check される (state vector は branch / stash count / branch list の 3 軸 — working tree の差分判定は `git status --porcelain` hash の cost が高く、本 PR では未 enforce):
 
 1. `git branch --show-current` の値が reviewer 起動時と同一 (state vector axis 1: branch、`--original-branch` で check)
 2. `git stash list` の長さが reviewer 起動時と同一 (state vector axis 2: stash count、`--original-stash-count` で check)
 3. `git branch --list` の出力が reviewer 起動時と同一 (state vector axis 3: branch_list hash、`--original-branch-list-hash` で check — 新規 named branch leak 検出)
 
-これらの invariant 違反は orchestrator 側 (`commands/pr/review.md` ステップ 5.0.A post-review state verification) で post-condition check され、drift 検出時は WARNING を stderr に出力 + (branch drift のみ) automatic recovery (`git checkout <original_branch>`) を行う。stash/branch_list drift は内容を失うリスク回避のため auto-recover せず manual action を案内する。
+これらの invariant 違反は orchestrator 側 (`skills/review/SKILL.md` ステップ 5.0.A post-review state verification) で post-condition check され、drift 検出時は WARNING を stderr に出力 + (branch drift のみ) automatic recovery (`git checkout <original_branch>`) を行う。stash/branch_list drift は内容を失うリスク回避のため auto-recover せず manual action を案内する。
 
 ## Reviewer Mindset
 
@@ -354,7 +354,7 @@ If the reviewer's skill file does NOT list the case, the reviewer MUST recommend
 Some projects intentionally use fallback as a standard pattern for legitimate reasons (legacy migration paths, multi-tenant degradation, etc.). Before recommending `throw` over an existing fallback, the reviewer MUST consult the project's experiential knowledge wiki:
 
 ```
-/rite:wiki:query <relevant keyword>
+/rite:wiki-query <relevant keyword>
 ```
 
 If the Wiki documents a project-specific allowance for the fallback pattern in question, the reviewer respects it and does NOT recommend changing the existing fallback. The Wiki query result MUST be cited in the `推奨対応` column when it influenced the recommendation (e.g., "Wiki entry `feedback_legacy_fallback.md` により本パターンは許容").
@@ -372,7 +372,7 @@ If the Wiki documents a project-specific allowance for the fallback pattern in q
 
 Reviewers MUST filter out the following categories of findings **before** writing them to the output table. The filter is applied after Observed Likelihood Gate and Fail-Fast First but before Confidence Scoring. Filtered findings are logged to the reviewer's `監査ログ` section (optional) but MUST NOT appear in `指摘事項`.
 
-This guardrail implements Quality Signal 4 of the four review-fix loop quality signals (see `commands/pr/references/fix-relaxation-rules.md#four-quality-signals-for-escalation`). It exists because low-signal findings are the dominant root cause of non-converging review-fix loops: each low-signal finding triggers a defensive fix, which in turn attracts more low-signal findings in the defensive code.
+This guardrail implements Quality Signal 4 of the four review-fix loop quality signals (see `skills/fix/references/fix-relaxation-rules.md#four-quality-signals-for-escalation`). It exists because low-signal findings are the dominant root cause of non-converging review-fix loops: each low-signal finding triggers a defensive fix, which in turn attracts more low-signal findings in the defensive code.
 
 ### Filter categories
 

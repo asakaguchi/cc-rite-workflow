@@ -17,8 +17,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 
-CLOSE_MD="$PLUGIN_ROOT/commands/issue/close.md"
-PR_OPEN_MD="$PLUGIN_ROOT/commands/pr/open.md"
+CLOSE_MD="$PLUGIN_ROOT/skills/issue-close/SKILL.md"
+PR_OPEN_MD="$PLUGIN_ROOT/skills/open/SKILL.md"
 PROJECTS_REF="$PLUGIN_ROOT/references/projects-integration.md"
 
 for f in "$CLOSE_MD" "$PR_OPEN_MD" "$PROJECTS_REF"; do

@@ -36,7 +36,7 @@
 #                # Note: 以下の値は legacy 互換のため enum に含めない (caller 消失済):
 #                #   - `pr_fix`:          fix.md の Automatic Separate Issue Creation が廃止されたため
 #                #   - `parent_routing`:  parent-routing.md sub-skill が廃止されたため
-#                #   - `lint`:            commands/lint.md は guard 用途のみで invoke しない
+#                #   - `lint`:            skills/lint/SKILL.md は guard 用途のみで invoke しない
 #       "non_blocking_projects": true  # default: true
 #     }
 #   }

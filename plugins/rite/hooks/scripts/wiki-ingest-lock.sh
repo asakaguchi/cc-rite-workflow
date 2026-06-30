@@ -1,7 +1,7 @@
 #!/bin/bash
 # rite workflow - Wiki ingest session lock (multi-session design §9)
 #
-# Serializes the LLM Write/Edit phase of `/rite:wiki:ingest` across sessions.
+# Serializes the LLM Write/Edit phase of `/rite:wiki-ingest` across sessions.
 # An advisory flock cannot guard an ingest that spans many separate Bash tool
 # calls (each a new process), so this is a PERSISTENT mkdir lock
 # (`<shared-root>/.rite/state/wiki-ingest-session.lockdir`) held for the whole

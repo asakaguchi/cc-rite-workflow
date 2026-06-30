@@ -1,7 +1,7 @@
 #!/bin/bash
 # wiki-lint-ingest-contract-sync.test.sh
 #
-# `commands/wiki/lint.md` (producer) と `commands/wiki/ingest.md` (consumer) の
+# `skills/wiki-lint/SKILL.md` (producer) と `skills/wiki-ingest/SKILL.md` (consumer) の
 # `--auto` モード sentinel 出力契約 (n 行構造) が同期していることを assert する meta-test。
 #
 # 背景 — Asymmetric Fix Transcription anti-pattern:
@@ -30,8 +30,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_test-helpers.sh
 source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
-LINT_MD="$PLUGIN_ROOT/commands/wiki/lint.md"
-INGEST_MD="$PLUGIN_ROOT/commands/wiki/ingest.md"
+LINT_MD="$PLUGIN_ROOT/skills/wiki-lint/SKILL.md"
+INGEST_MD="$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md"
 
 if [ ! -f "$LINT_MD" ]; then
   echo "ERROR: $LINT_MD not found" >&2

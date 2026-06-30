@@ -5,7 +5,7 @@
 # 検出). Read pages_list + raw_list from stdin (`---` separator, lint.md
 # ステップ 2.2 stdout と同形式), extract Markdown links from each page body,
 # resolve them page-dir 起点 (realpath -m -s, canonical:
-# commands/wiki/references/broken-ref-resolution.md), and emit the broken set
+# skills/wiki-lint/references/broken-ref-resolution.md), and emit the broken set
 # inside a marker block alongside a broken_refs_read_ok enum + [CONTEXT]
 # sentinel.
 #

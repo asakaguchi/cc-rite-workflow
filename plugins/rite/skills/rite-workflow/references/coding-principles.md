@@ -229,7 +229,7 @@ Issue の内容に矛盾があります:
 この計画で進めますか？
 ```
 
-**Note**: For the full plan template including the "参考実装" section, see [`commands/pr/open.md`](../../../commands/pr/open.md) ステップ 3 (実装計画)。
+**Note**: For the full plan template including the "参考実装" section, see [`skills/open/SKILL.md`](../../../skills/open/SKILL.md) ステップ 3 (実装計画)。
 
 ---
 
@@ -374,8 +374,8 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 
 | 参考ファイル | 参考理由 |
 |-------------|---------|
-| commands/issue/create.md | 同ディレクトリの既存コマンド定義 |
-| commands/issue/edit.md | 類似の Issue 操作コマンド |
+| skills/issue-create/SKILL.md | 同ディレクトリの既存コマンド定義 |
+| skills/issue-edit/SKILL.md | 類似の Issue 操作コマンド |
 
 ### 参考にすべきパターン
 - Phase 番号のフォーマット: `### 3.1`, `### 3.2` 形式
@@ -397,7 +397,7 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 
 **Failure Patterns**:
 - Renaming a command or config key in code without updating README / docs / CLAUDE.md
-- Adding a new workflow phase to `commands/pr/open.md` / `commands/pr/iterate.md` 等 without updating the corresponding skill / reference docs
+- Adding a new workflow phase to `skills/open/SKILL.md` / `skills/iterate/SKILL.md` 等 without updating the corresponding skill / reference docs
 - Removing a feature from code while marketing copy in README still describes it
 - Deferring documentation drift to a separate "follow-up" Issue that never gets done
 - Relying on the tech-writer reviewer at PR review time to catch drift, causing avoidable review round-trips
@@ -417,10 +417,10 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 **Example**:
 
 ```text
-実装で /rite:issue:resume コマンドを /rite:resume にリネームした
+実装で /rite:issue-resume コマンドを /rite:resume にリネームした
 
 ドキュメント影響調査:
-- Grep "/rite:issue:resume" → README.md L142, docs/getting-started.md L88, plugins/rite/commands/init.md L23
+- Grep "/rite:issue-resume" → README.md L142, docs/getting-started.md L88, plugins/rite/skills/init/SKILL.md L23
 - 全 3 ファイルを Edit ツールで /rite:resume に更新
 - 同じブランチでステージし、実装と同じコミットに含める
 ```
@@ -501,7 +501,7 @@ These conventions apply to authoring Markdown files loaded by the Claude Code Sk
 
 **Summary**: When referencing the bash negation operator in Markdown inline code, never let a bare bang character (U+0021) sit immediately before the closing backtick of an inline code span. Always include a command, argument, or ellipsis token after the bang.
 
-**Failure pattern** (observed incident): The file `commands/pr/fix.md` once contained 5 occurrences of bang-backtick adjacency (a bang character placed directly next to the closing backtick of an inline code span, with no intervening whitespace or token). The Skill loader mis-executed surrounding documentation text as shell commands at runtime — a silent failure that was only caught through careful diffing. Replacing each occurrence with the trailing-token form (`if ! cmd` / `if ! ...`) resolved the failure.
+**Failure pattern** (observed incident): The file `skills/fix/SKILL.md` once contained 5 occurrences of bang-backtick adjacency (a bang character placed directly next to the closing backtick of an inline code span, with no intervening whitespace or token). The Skill loader mis-executed surrounding documentation text as shell commands at runtime — a silent failure that was only caught through careful diffing. Replacing each occurrence with the trailing-token form (`if ! cmd` / `if ! ...`) resolved the failure.
 
 > **Note on mechanism**: The exact trigger (bash history expansion vs. the Skill loader's internal quoting/parsing processing) is **not fully characterized**. Empirically, bang-backtick adjacency is known to trigger failures in some files and contexts but long-standing occurrences exist in other files (e.g., `plugins/rite/references/gh-cli-patterns.md`) without reported Skill-load failures. See the `gh-cli-patterns.md` "Shell Escaping Notes" section for related unresolved areas. Treat this rule as a **defensive convention grounded in the observed incident above**, not as a statement of a fully understood mechanism.
 
@@ -530,7 +530,7 @@ OK patterns:
 
 **Summary**: command / reference 本文の operational bash ブロックは軽量に保つ — **1 ブロック 1 目的・<= 25 行を目安**とし、python inline (`python3 -c`)・入れ子 `$()`・複数 heredoc を 1 ブロックに密集させない。tmpfile や中間変数を process 境界を跨いで渡す必要がある場合は、1 本の Bash invocation に詰め込まず `hooks/` または `scripts/` の helper script へ切り出す。
 
-**Failure pattern** (observed incident): 過去に複数のコマンド本文 (`pr/ready.md` / `pr/fix.md` / `pr/review.md` 等) が 40〜360 行規模の operational bash ブロックを抱えており、各々「⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること」と注記した上で `python3 -c` heredoc・多引数 `jq -n`・入れ子 `$()`・`trap` + `mktemp` を密集させていた。Claude のツール呼び出し解析がこの巨大ブロックで malform し、**エラーすら出さず無言でターンが終了（停止）する**事象が `/rite:pr:ready` 実行中および scout 1 行で計 3 回以上観測された。ブロックを phase ごとに分割する／重いロジックを helper script へ切り出して本文を数行の呼び出しにする、のいずれかで停止は解消した。
+**Failure pattern** (observed incident): 過去に複数のコマンド本文 (`pr/ready.md` / `pr/fix.md` / `pr/review.md` 等) が 40〜360 行規模の operational bash ブロックを抱えており、各々「⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること」と注記した上で `python3 -c` heredoc・多引数 `jq -n`・入れ子 `$()`・`trap` + `mktemp` を密集させていた。Claude のツール呼び出し解析がこの巨大ブロックで malform し、**エラーすら出さず無言でターンが終了（停止）する**事象が `/rite:ready` 実行中および scout 1 行で計 3 回以上観測された。ブロックを phase ごとに分割する／重いロジックを helper script へ切り出して本文を数行の呼び出しにする、のいずれかで停止は解消した。
 
 **Rules**:
 1. 1 ブロック = 1 目的。operational bash ブロックは <= 25 行を目安とする。
@@ -599,7 +599,7 @@ OK patterns:
 - [ ] `issue_accountability`: Are there unaddressed problems or review comments?
 - [ ] `issue_accountability`: Are out-of-scope problems tracked as separate Issues?
 
-**Reference**: The `/rite:pr:create` Phase 2.5 ([create.md](../../../commands/pr/create.md), "2.5 Unaddressed Issues Check" section) implements the unaddressed issues check.
+**Reference**: The `/rite:pr-create` Phase 2.5 ([create.md](../../../skills/pr-create/SKILL.md), "2.5 Unaddressed Issues Check" section) implements the unaddressed issues check.
 
 ---
 
@@ -607,9 +607,9 @@ OK patterns:
 
 - [SKILL.md](../SKILL.md) - Principle summary
 - [Phase Mapping](./phase-mapping.md) - Phase details
-- [PR Open Workflow](../../../commands/pr/open.md) - pr/open.md (Issue → branch → 実装 → lint → draft PR)
-- [PR Create Command](../../../commands/pr/create.md) - Unaddressed issues check before PR creation (Phase 2.5)
-- [PR Review](../../../commands/pr/review.md) - review.md
+- [PR Open Workflow](../../../skills/open/SKILL.md) - pr/open.md (Issue → branch → 実装 → lint → draft PR)
+- [PR Create Command](../../../skills/pr-create/SKILL.md) - Unaddressed issues check before PR creation (Phase 2.5)
+- [PR Review](../../../skills/review/SKILL.md) - review.md
 - [Markdown Authoring Conventions](#markdown-authoring-conventions) - Skill loader に load される Markdown ファイルの記述規約 (bash negation operator inline code convention / operational bash block heaviness convention)
 - [gh-cli-patterns.md](../../../references/gh-cli-patterns.md) - Related bang character (U+0021) handling in bash command contexts (Shell Escaping Notes)
 - [graphql-helpers.md](../../../references/graphql-helpers.md) - Related bang character handling in GraphQL query / jq contexts (History Expansion and Special Character Prevention)

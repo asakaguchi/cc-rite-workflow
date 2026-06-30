@@ -95,8 +95,8 @@ review:
     # The loop terminates only on (a) 0 findings remaining → [review:mergeable] (normal exit), or
     # (b) manual abort via Ctrl+C → /rite:resume (or fix.md AskUserQuestion "中止" → [fix:cancelled-by-user]).
     # The keys below remain as config scaffolding but have no
-    # runtime effect on loop termination — see commands/pr/iterate.md ループ仕様 and
-    # commands/pr/references/fix-relaxation-rules.md "Loop Termination" for the live spec.
+    # runtime effect on loop termination — see skills/iterate/SKILL.md ループ仕様 and
+    # skills/fix/references/fix-relaxation-rules.md "Loop Termination" for the live spec.
     convergence_monitoring: true          # (scaffolding only — see comment above)
     auto_propagation_scan: true           # Run similar-pattern propagation scan after fix (default: true)
     pre_commit_drift_check: true          # Run distributed-fix-drift-check before commit (default: true)
@@ -126,8 +126,8 @@ fix:
 iteration:
   enabled: false          # true to enable iteration features (default: false)
   field_name: "Sprint"    # Name of the iteration field in Projects (default: "Sprint")
-  auto_assign: true       # Auto-assign to current iteration on /rite:pr:open (default: true)
-  show_in_list: true      # Show iteration column in issue:list (default: true)
+  auto_assign: true       # Auto-assign to current iteration on /rite:open (default: true)
+  show_in_list: true      # Show iteration column in issue-list (default: true)
 
 # Verification gate settings
 verification:
@@ -146,7 +146,7 @@ parallel:
 # fact_check, etc.), while this `pr_review:` section configures PR review **output** (post_comment).
 # By default, review results are saved to timestamped local files
 # (`.rite/review-results/{pr_number}-{timestamp}.json`) instead of being posted to PR comments.
-# `/rite:pr:fix` auto-reads results in the priority order: conversation > local file > PR comment.
+# `/rite:fix` auto-reads results in the priority order: conversation > local file > PR comment.
 pr_review:
   post_comment: false   # true to enable PR comment recording (equivalent to --post-comment, default: false)
 
@@ -166,7 +166,7 @@ wiki:
   branch_name: "wiki"                  # Branch name for Wiki data (when branch_strategy is "separate_branch")
   auto_ingest: true                    # Auto-ingest on review/fix/close (default: true)
   auto_query: true                     # Auto-query on start/review/fix/implement (default: true)
-  auto_lint: true                      # Auto-run /rite:wiki:lint --auto after ingest (default: true)
+  auto_lint: true                      # Auto-run /rite:wiki-lint --auto after ingest (default: true)
 
 # Metrics settings
 metrics:
@@ -306,9 +306,9 @@ branch:
 ```
 
 This affects the following commands:
-- `/rite:pr:open`: Creates the feature branch from `branch.base`
-- `/rite:pr:create`: Sets `branch.base` as the PR target
-- `/rite:pr:cleanup`: Switches back to `branch.base` after cleanup
+- `/rite:open`: Creates the feature branch from `branch.base`
+- `/rite:pr-create`: Sets `branch.base` as the PR target
+- `/rite:cleanup`: Switches back to `branch.base` after cleanup
 - `/rite:lint`: Uses `origin/{branch.base}...HEAD` for diff detection (e.g., `origin/develop...HEAD`)
 
 **Recognized Patterns (Non-standard branches):**
@@ -342,7 +342,7 @@ These variables are used exclusively in `recognized_patterns` to match existing 
 - Internationalization: `i18n/zh-tw`
 - Hotfixes without Issues: `hotfix/20250109-critical-fix`
 
-When `/rite:pr:open` detects an existing branch matching these patterns (Step 2.2 existing branch check), it will offer to use the branch even though it doesn't contain an Issue number.
+When `/rite:open` detects an existing branch matching these patterns (Step 2.2 existing branch check), it will offer to use the branch even though it doesn't contain an Issue number.
 
 **Pattern variables for `branch.pattern`:**
 
@@ -389,7 +389,7 @@ These variables are used in `branch.pattern` to generate new branch names:
 | Complexity == threshold | Analyze Issue body to estimate scope, then decide |
 | Complexity > threshold | Show decomposition proposal |
 
-When an Issue's complexity is below the threshold, `/rite:issue:create` skips the decomposition proposal and the Issue is created as-is; `/rite:pr:open` then begins work without an intermediate confirmation. When the complexity equals the threshold, the Issue body is analyzed to estimate the scope of changes (number of files mentioned). This reduces unnecessary prompts for simple Issues while still prompting for complex ones.
+When an Issue's complexity is below the threshold, `/rite:issue-create` skips the decomposition proposal and the Issue is created as-is; `/rite:open` then begins work without an intermediate confirmation. When the complexity equals the threshold, the Issue body is analyzed to estimate the scope of changes (number of files mentioned). This reduces unnecessary prompts for simple Issues while still prompting for complex ones.
 
 **Body analysis criteria:** When complexity equals the threshold, the Issue body is analyzed. If 1-2 files are mentioned, decomposition is skipped. If 3+ files are mentioned, decomposition proposal is shown.
 
@@ -408,7 +408,7 @@ issue:
 | `criteria` | array | `[file_types, content_analysis]` | Review criteria |
 | `loop.verification_mode` | boolean | `false` | Enable verification mode as supplement to full review. When enabled, reviews after the first cycle perform both full review and verification of previous fixes with incremental diff regression checks |
 | `loop.allow_new_findings_in_unchanged_code` | boolean | `false` | Whether new findings in unchanged code should be blocking. When `false`, new MEDIUM/LOW findings in unchanged code are reported as "stability concerns" (non-blocking) |
-| `loop.convergence_monitoring` | boolean | `true` | **Scaffolding only** — setting this key has no runtime effect. The review-fix loop exits only on 0 findings (normal) or manual abort (Ctrl+C → `/rite:resume`) — see `commands/pr/iterate.md` for the live spec |
+| `loop.convergence_monitoring` | boolean | `true` | **Scaffolding only** — setting this key has no runtime effect. The review-fix loop exits only on 0 findings (normal) or manual abort (Ctrl+C → `/rite:resume`) — see `skills/iterate/SKILL.md` for the live spec |
 | `loop.auto_propagation_scan` | boolean | `true` | After a fix is applied, automatically scan for similar patterns elsewhere in the codebase to catch propagation gaps |
 | `loop.pre_commit_drift_check` | boolean | `true` | Run `distributed-fix-drift-check` before committing fix changes to catch inconsistent partial applications |
 | `doc_heavy.enabled` | boolean | `true` | Enable Doc-Heavy PR detection. When a PR's diff is dominated by documentation changes, the `tech-writer` reviewer is boosted and verifies five doc-implementation consistency categories via Grep/Read/Glob |
@@ -440,13 +440,13 @@ The review-fix loop has two exit paths and no automatic abnormal-exit mechanism:
 |-------|------|---------|-------------|
 | `fix.fail_fast_response` | boolean | `true` | Enable Fail-Fast Response Principle in `fix.md` Phase 2. Requires a 4-item checklist (throw/raise propagation / existing error boundaries / not hiding via null-check / fix the test instead) before adopting a fix approach. Fallback adoption requires a commit message justification. **⚠️ Known limitation**: config scaffolding only — not yet wired. The principle is enforced via prose in `fix.md` Phase 2; setting this to `false` currently has no effect |
 
-**Doc-Heavy PR Mode** (`doc_heavy.enabled: true` by default): A PR is classified as doc-heavy when `doc_lines / total_diff_lines >= lines_ratio_threshold`, or — for small diffs (`total_diff_lines < max_diff_lines_for_count`) — when `doc_files / total_files >= count_ratio_threshold`. In doc-heavy mode, `tech-writer-reviewer` verifies the five consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) against the actual implementation using Grep/Read/Glob. See `plugins/rite/commands/pr/references/internal-consistency.md` for the full protocol.
+**Doc-Heavy PR Mode** (`doc_heavy.enabled: true` by default): A PR is classified as doc-heavy when `doc_lines / total_diff_lines >= lines_ratio_threshold`, or — for small diffs (`total_diff_lines < max_diff_lines_for_count`) — when `doc_files / total_files >= count_ratio_threshold`. In doc-heavy mode, `tech-writer-reviewer` verifies the five consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) against the actual implementation using Grep/Read/Glob. See `plugins/rite/skills/review/references/internal-consistency.md` for the full protocol.
 
 **Verification mode** (`verification_mode: false` by default): When explicitly set to `true`, from cycle 2+, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are classified as "stability concerns" (non-blocking). The default `false` performs full review only every cycle, maximizing review quality.
 
 **Review execution:**
 
-`/rite:pr:review` uses Claude Code's Task tool to spawn parallel subagents for each reviewer role. This improves context efficiency and enables parallel execution.
+`/rite:review` uses Claude Code's Task tool to spawn parallel subagents for each reviewer role. This improves context efficiency and enables parallel execution.
 
 **Available reviewers:**
 
@@ -490,8 +490,8 @@ Settings for GitHub Projects Iteration field integration.
 |-------|------|---------|-------------|
 | `enabled` | boolean | `false` | Enable iteration features |
 | `field_name` | string | `"Sprint"` | Name of the iteration field in GitHub Projects |
-| `auto_assign` | boolean | `true` | Auto-assign Issues to current iteration on `/rite:pr:open` |
-| `show_in_list` | boolean | `true` | Show iteration column in `/rite:issue:list` output |
+| `auto_assign` | boolean | `true` | Auto-assign Issues to current iteration on `/rite:open` |
+| `show_in_list` | boolean | `true` | Show iteration column in `/rite:issue-list` output |
 
 **Example:**
 
@@ -503,7 +503,7 @@ iteration:
   show_in_list: true
 ```
 
-When enabled, `/rite:pr:open` will automatically assign the Issue to the current active iteration when starting work. Use `/rite:issue:list --sprint current` to list Issues in the current iteration, or `--backlog` for unassigned Issues.
+When enabled, `/rite:open` will automatically assign the Issue to the current active iteration when starting work. Use `/rite:issue-list --sprint current` to list Issues in the current iteration, or `--backlog` for unassigned Issues.
 
 ### verification
 
@@ -589,9 +589,9 @@ Settings for per-session Git worktree isolation, letting multiple Claude Code se
 
 **How it works (`enabled: true`):**
 
-1. `/rite:pr:open N` creates a session worktree at `.rite/worktrees/issue-{N}` and enters it via Claude Code's `EnterWorktree(path)` tool, so each session keeps its own working tree and current branch.
+1. `/rite:open N` creates a session worktree at `.rite/worktrees/issue-{N}` and enters it via Claude Code's `EnterWorktree(path)` tool, so each session keeps its own working tree and current branch.
 2. rite state / locks / wiki worktree still resolve to the shared main checkout root (`state-path-resolve.sh` is worktree-aware), so cross-session exclusion stays intact.
-3. `/rite:pr:cleanup` exits the worktree (`ExitWorktree`), removes it, and releases the Issue claim. Abnormally-orphaned worktrees are reaped lazily by `pr-cycle-cleanup.sh`.
+3. `/rite:cleanup` exits the worktree (`ExitWorktree`), removes it, and releases the Issue claim. Abnormally-orphaned worktrees are reaped lazily by `pr-cycle-cleanup.sh`.
 
 **Example:**
 
@@ -667,7 +667,7 @@ Settings for PR review **output** recording. This section is intentionally separ
 |-------|------|---------|-------------|
 | `post_comment` | boolean | `false` | When `true`, review results are posted as PR comments (equivalent to `--post-comment`). When `false` (default), results are saved to `.rite/review-results/{pr_number}-{timestamp}.json` only |
 
-`/rite:pr:fix` automatically reads review results in the priority order: **conversation > local file > PR comment**. Most users should leave `post_comment: false` to keep PR comment history clean. Enable it only if you want an auditable review trail on the PR itself.
+`/rite:fix` automatically reads review results in the priority order: **conversation > local file > PR comment**. Most users should leave `post_comment: false` to keep PR comment history clean. Enable it only if you want an auditable review trail on the PR itself.
 
 ### wiki
 
@@ -678,9 +678,9 @@ Settings for the Experience Wiki — an LLM-driven project knowledge base that p
 | `enabled` | boolean | `true` | Enable Wiki features (opt-out). Set `false` to skip all Wiki hooks and commands |
 | `branch_strategy` | string | `"separate_branch"` | Where Wiki data lives: `"separate_branch"` (dedicated orphan-like branch, recommended) or `"same_branch"` (Wiki files committed alongside code on the working branch) |
 | `branch_name` | string | `"wiki"` | Name of the Wiki branch (used only when `branch_strategy` is `"separate_branch"`) |
-| `auto_ingest` | boolean | `true` | Automatically run `/rite:wiki:ingest` on review/fix/close events to extract heuristics from raw sources |
-| `auto_query` | boolean | `true` | Automatically run `/rite:wiki:query` at the start of Issue work and at review/fix/implement phases to inject relevant heuristics into the conversation context |
-| `auto_lint` | boolean | `true` | Automatically run `/rite:wiki:lint --auto` after each ingest to detect contradictions, staleness, orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs |
+| `auto_ingest` | boolean | `true` | Automatically run `/rite:wiki-ingest` on review/fix/close events to extract heuristics from raw sources |
+| `auto_query` | boolean | `true` | Automatically run `/rite:wiki-query` at the start of Issue work and at review/fix/implement phases to inject relevant heuristics into the conversation context |
+| `auto_lint` | boolean | `true` | Automatically run `/rite:wiki-lint --auto` after each ingest to detect contradictions, staleness, orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs |
 | `growth_check.threshold_prs` | integer | `5` | Lint growth check layer 3 — `/rite:lint` Phase 3.8 emits a non-blocking warning when this many merged PRs accumulate on the development base branch since the last commit on `branch_name` (signalling that Phase X.X.W may be silently skipped). Increase to relax the check; setting it to a very large number effectively disables the lint warning while preserving layers 1-2 |
 | `growth_check.pr_raw_threshold` | integer | `3` | Warn when this many of the last `threshold_prs` merged PRs have no corresponding raw source on the wiki branch. Detects regressions where PRs are merged but Phase X.X.W never fires. Override at runtime with `--pr-raw-threshold N` |
 
@@ -714,11 +714,11 @@ wiki:
     pr_raw_threshold: 5  # warn if 5+ of last 20 PRs have no raw source
 ```
 
-**Related commands:** `/rite:wiki:init` (one-time setup), `/rite:wiki:ingest`, `/rite:wiki:query`, `/rite:wiki:lint`.
+**Related commands:** `/rite:wiki-init` (one-time setup), `/rite:wiki-ingest`, `/rite:wiki-query`, `/rite:wiki-lint`.
 
 ### tdd
 
-Settings for Test-Driven Development (Canon TDD). This key controls whether the implementation phase (`/rite:issue:implement`) follows a Canon TDD cycle — write a test, confirm it fails (Red), make it pass with the minimal change (Green), then Refactor, one behavior at a time. This section documents the `tdd` configuration key itself.
+Settings for Test-Driven Development (Canon TDD). This key controls whether the implementation phase (`/rite:issue-implement`) follows a Canon TDD cycle — write a test, confirm it fails (Red), make it pass with the minimal change (Green), then Refactor, one behavior at a time. This section documents the `tdd` configuration key itself.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|

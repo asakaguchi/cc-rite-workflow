@@ -4,7 +4,7 @@
 # Regression tests for the PostToolUse(Edit|Write|MultiEdit) wrapper that
 # guards rite plugin markdown against bang-backtick adjacency injection.
 # Companion of `bang-backtick-check.sh` (which is the underlying scanner)
-# and the `/rite:pr:create` / `/rite:pr:ready` Phase 1.0 bulk gate.
+# and the `/rite:pr-create` / `/rite:ready` Phase 1.0 bulk gate.
 #
 # 経路 C (immediate per-edit detection).
 #
@@ -52,7 +52,7 @@ make_repo() {
     cd "$d"
     git init -q
     git -c user.email=t@test.local -c user.name=test commit -q --allow-empty -m init
-    mkdir -p plugins/rite/commands/pr
+    mkdir -p plugins/rite/skills/pr
     mkdir -p plugins/rite/skills
     mkdir -p plugins/rite/agents
     mkdir -p plugins/rite/references
@@ -99,7 +99,7 @@ build_input() {
 echo "TC-1: AC-1 — dirty rite plugin md emits warning, exits 0"
 repo=$(make_repo)
 cleanup_dirs+=("$repo")
-target="$repo/plugins/rite/commands/pr/sample.md"
+target="$repo/plugins/rite/skills/pr/sample.md"
 # Inject a P1 pattern: backtick + space + bang + backtick adjacency.
 printf '%s\n' "Some prose with \` !\` adjacency to trigger detection." > "$target"
 input=$(build_input "Edit" "$target" "$repo")
@@ -141,7 +141,7 @@ rm -f "$hook_stderr"
 echo "TC-2: AC-3 — clean rite plugin md is silent, exits 0"
 repo=$(make_repo)
 cleanup_dirs+=("$repo")
-target="$repo/plugins/rite/commands/pr/clean.md"
+target="$repo/plugins/rite/skills/pr/clean.md"
 # Use Style A (full-width corner brackets) — safe canonical rewrite.
 printf '%s\n' "Some prose using full-width 「!」 instead of bang-backtick." > "$target"
 input=$(build_input "Edit" "$target" "$repo")
@@ -189,7 +189,7 @@ rm -f "$hook_stderr"
 echo "TC-4: tool_name=Bash short-circuits to exit 0"
 repo=$(make_repo)
 cleanup_dirs+=("$repo")
-target="$repo/plugins/rite/commands/pr/sample.md"
+target="$repo/plugins/rite/skills/pr/sample.md"
 printf '%s\n' "Some prose with \` !\` adjacency." > "$target"
 input=$(build_input "Bash" "$target" "$repo")
 hook_stderr=$(mktemp)
@@ -227,7 +227,7 @@ rm -f "$hook_stderr"
 echo "TC-6: missing target file → silent exit 0"
 repo=$(make_repo)
 cleanup_dirs+=("$repo")
-target="$repo/plugins/rite/commands/pr/ghost.md"
+target="$repo/plugins/rite/skills/pr/ghost.md"
 # Note: target file is intentionally NOT created.
 input=$(build_input "Edit" "$target" "$repo")
 hook_stderr=$(mktemp)

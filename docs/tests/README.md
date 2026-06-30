@@ -94,5 +94,5 @@ rite workflow はコードベースではなく、Claude Code 用のプロンプ
 
 | ファイル | 対象 | 説明 |
 |---------|------|------|
-| `rite-issue-create-e2e-smoke.test.md` | `/rite:issue:create` | Issue 作成コアフローの手動 e2e スモークテスト |
+| `rite-issue-create-e2e-smoke.test.md` | `/rite:issue-create` | Issue 作成コアフローの手動 e2e スモークテスト |
 | `skill-structure-pdf-guide.test.md` | スキル構造改善 | スキル構造改善（PDFガイド準拠）の検証テスト |

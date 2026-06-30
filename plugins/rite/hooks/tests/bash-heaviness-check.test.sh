@@ -18,12 +18,12 @@ fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 echo "=== bash-heaviness-check.sh tests ==="
 echo ""
 
-mkdir -p "$TEST_DIR/plugins/rite/commands/pr"
-mkdir -p "$TEST_DIR/plugins/rite/commands/tests"
+mkdir -p "$TEST_DIR/plugins/rite/skills/pr"
+mkdir -p "$TEST_DIR/plugins/rite/skills/tests"
 (cd "$TEST_DIR" && git init -q 2>/dev/null || true)
 
-F="$TEST_DIR/plugins/rite/commands/fixture.md"
-REL="plugins/rite/commands/fixture.md"
+F="$TEST_DIR/plugins/rite/skills/fixture.md"
+REL="plugins/rite/skills/fixture.md"
 run() { bash "$TARGET" --repo-root "$TEST_DIR" --target "$1" 2>&1; }
 
 # Helper: emit N plain echo lines (filler to cross the long-block threshold).
@@ -224,7 +224,7 @@ if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total bash-heaviness findings: 0
 else fail "expected rc=0 (non-bash), got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
-# TC-014: --all excludes commands/**/tests/ fixtures
+# TC-014: --all excludes skills/**/tests/ fixtures
 # --------------------------------------------------------------------------
 echo "TC-014: --all excludes tests/"
 {
@@ -232,7 +232,7 @@ echo "TC-014: --all excludes tests/"
   echo "python3 -c 'print(1)'"
   filler 26
   echo '```'
-} > "$TEST_DIR/plugins/rite/commands/tests/bad-fixture.md"
+} > "$TEST_DIR/plugins/rite/skills/tests/bad-fixture.md"
 # Keep the top-level fixture clean so --all stays non-empty but finds nothing.
 {
   echo '```bash'
@@ -364,7 +364,7 @@ else fail "expected rc=0 (exempted), got rc=$rc: $output"; fi
 # --------------------------------------------------------------------------
 # TC-022: `gh issue edit` with a literal --title must NOT be flagged — the
 #         `create` anchor is load-bearing (it guards real `gh issue edit
-#         --title "{new_title}"` lines in commands/issue/edit.md). Pins that a
+#         --title "{new_title}"` lines in skills/issue-edit/SKILL.md). Pins that a
 #         regression loosening `(pr|issue) create` → `(pr|issue)` does not start
 #         flagging edit. (F-02).
 # --------------------------------------------------------------------------

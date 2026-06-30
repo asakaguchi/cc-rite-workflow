@@ -4,7 +4,7 @@
 # Tests for wiki-lint-broken-refs.sh (wiki/lint.md ステップ 7 delegation
 # target). The helper extracts Markdown links from each page, resolves them
 # page-dir 起点 (realpath -m -s, canonical:
-# commands/wiki/references/broken-ref-resolution.md), and emits a marker
+# skills/wiki-lint/references/broken-ref-resolution.md), and emits a marker
 # block + broken_refs_read_ok enum + [CONTEXT] sentinel.
 # Structure mirrors wiki-lint-skipped-refs.test.sh (6.0 counterpart).
 #

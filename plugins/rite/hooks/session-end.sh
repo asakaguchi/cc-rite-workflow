@@ -158,22 +158,22 @@ if [ -f "$STATE_FILE" ]; then
     case "$_lifecycle_unfinished_kind" in
         create)
             cat >&2 <<WARN_MSG
-⚠️  rite: /rite:issue:create lifecycle was not completed (phase=$_state_phase).
+⚠️  rite: /rite:issue-create lifecycle was not completed (phase=$_state_phase).
     `create_*` phase は legacy sub-skill chain 時代の遺物で、現在の flat workflow は
     terminal phase=completed のみを書き込みます。この state file が残っているのは
     旧形式のセッションが中断したまま終わったことを意味します。
-    /rite:resume または /rite:issue:create の再実行で回復できます。
+    /rite:resume または /rite:issue-create の再実行で回復できます。
 WARN_MSG
             ;;
         cleanup)
             cat >&2 <<WARN_MSG
-⚠️  rite: /rite:pr:cleanup lifecycle was not completed (phase=$_state_phase).
+⚠️  rite: /rite:cleanup lifecycle was not completed (phase=$_state_phase).
     cleanup.md はフラットな ステップ 1-12 構造で、途中で中断されると flow-state に
     phase=cleanup, active=true が残ります。legacy phase 値 (cleanup_pre_ingest /
     cleanup_post_ingest / ingest_pre_lint / ingest_post_lint) は旧 ring 機構で書き込まれた
     state の resume routing 用途のみ残存しており、現行の cleanup.md / ingest.md は
     これらの transient phase を書き込みません。
-    Re-run /rite:pr:cleanup or use /rite:resume to recover.
+    Re-run /rite:cleanup or use /rite:resume to recover.
 WARN_MSG
             ;;
     esac

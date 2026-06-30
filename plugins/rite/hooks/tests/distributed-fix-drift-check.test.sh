@@ -32,15 +32,15 @@ cleanup() {
 trap cleanup EXIT INT TERM HUP
 
 # Helper: create a sandbox with a single fixture markdown file at
-# plugins/rite/commands/pr/fix.md and return its repo root path.
+# plugins/rite/skills/fix/SKILL.md and return its repo root path.
 # 各 caller は 戻り値の path を cleanup_dirs に push する責務を持つ。
 make_fixture_sandbox() {
   local body="$1"
   local d
   d=$(make_plain_sandbox --soft)
   (cd "$d" && git init -q && git -c user.email=t@test.local -c user.name=test commit -q --allow-empty -m init) >/dev/null
-  mkdir -p "$d/plugins/rite/commands/pr"
-  printf '%s' "$body" > "$d/plugins/rite/commands/pr/fix.md"
+  mkdir -p "$d/plugins/rite/skills/fix"
+  printf '%s' "$body" > "$d/plugins/rite/skills/fix/SKILL.md"
   echo "$d"
 }
 
@@ -74,7 +74,7 @@ echo "[CONTEXT] X=1; reason=no-pending"
 ')
 cleanup_dirs+=("$d")
 rc=0
-out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
+out=$(bash "$CHECKER" --target plugins/rite/skills/fix/SKILL.md --pattern 2 \
   --repo-root "$d" 2>/dev/null) || rc=$?
 assert_checker_rc "TC-1" "$rc"
 if printf '%s\n' "$out" | grep -Fq "reason 'no-pending'"; then
@@ -120,7 +120,7 @@ echo "[CONTEXT] V=1; reason=trailing_underscore_; other=value"
 ')
 cleanup_dirs+=("$d")
 rc=0
-out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
+out=$(bash "$CHECKER" --target plugins/rite/skills/fix/SKILL.md --pattern 2 \
   --repo-root "$d" 2>/dev/null) || rc=$?
 assert_checker_rc "TC-2" "$rc"
 # TC-2 fixture では `something_else` / `placeholder` (および `python_unexpected_exit_` を
@@ -188,7 +188,7 @@ echo "[CONTEXT] X=1; reason=commit_rc_4; exit_code=$wiki_commit_rc"
 ')
 cleanup_dirs+=("$d")
 rc=0
-out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
+out=$(bash "$CHECKER" --target plugins/rite/skills/fix/SKILL.md --pattern 2 \
   --repo-root "$d" 2>/dev/null) || rc=$?
 assert_checker_rc "TC-3" "$rc"
 if printf '%s\n' "$out" | grep -Fq "reason 'commit_rc_4'"; then
@@ -214,7 +214,7 @@ echo "[CONTEXT] X=1; reason=mkdir_failed"
 ')
 cleanup_dirs+=("$d")
 rc=0
-out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
+out=$(bash "$CHECKER" --target plugins/rite/skills/fix/SKILL.md --pattern 2 \
   --repo-root "$d" 2>/dev/null) || rc=$?
 assert_checker_rc "TC-4" "$rc"
 if printf '%s\n' "$out" | grep -Fq "reason 'mkdir_failed' emitted but not in reason table"; then
@@ -240,7 +240,7 @@ echo "[CONTEXT] X=1; reason=no-pending"
 ')
 cleanup_dirs+=("$d")
 rc=0
-out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
+out=$(bash "$CHECKER" --target plugins/rite/skills/fix/SKILL.md --pattern 2 \
   --repo-root "$d" 2>/dev/null) || rc=$?
 assert_checker_rc "TC-5" "$rc"
 if [ "$rc" -ne 0 ]; then
@@ -274,7 +274,7 @@ echo "[CONTEXT] X=1; reason=beta_reason"
 cleanup_dirs+=("$d")
 # stderr 経由で log() が出るため stderr を capture
 rc=0
-err=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
+err=$(bash "$CHECKER" --target plugins/rite/skills/fix/SKILL.md --pattern 2 \
   --show-extracted-reasons --repo-root "$d" 2>&1 >/dev/null) || rc=$?
 assert_checker_rc "TC-6" "$rc"
 # format prefix + word boundary を固定し、log 行 format 変更を assertion で検出する
@@ -311,7 +311,7 @@ echo "[CONTEXT] X=1; reason=delta_reason"
 ')
 cleanup_dirs+=("$d")
 rc=0
-err=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
+err=$(bash "$CHECKER" --target plugins/rite/skills/fix/SKILL.md --pattern 2 \
   --repo-root "$d" 2>&1 >/dev/null) || rc=$?
 assert_checker_rc "TC-7" "$rc"
 if printf '%s\n' "$err" | grep -q "P2 extracted"; then
@@ -343,7 +343,7 @@ echo "[CONTEXT] SOME_FLAG=1; reason=second_col_reason"
 ')
 cleanup_dirs+=("$d")
 rc=0
-out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
+out=$(bash "$CHECKER" --target plugins/rite/skills/fix/SKILL.md --pattern 2 \
   --repo-root "$d" 2>/dev/null) || rc=$?
 assert_checker_rc "TC-8" "$rc"
 if [ "$rc" -eq 0 ]; then
@@ -379,7 +379,7 @@ echo "[CONTEXT] Y=1; reason=enum_only_reason"
 ')
 cleanup_dirs+=("$d")
 rc=0
-out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
+out=$(bash "$CHECKER" --target plugins/rite/skills/fix/SKILL.md --pattern 2 \
   --repo-root "$d" 2>/dev/null) || rc=$?
 assert_checker_rc "TC-9" "$rc"
 if [ "$rc" -eq 0 ]; then
@@ -409,7 +409,7 @@ echo "[CONTEXT] X=1; reason=orphan_reason"
 ')
 cleanup_dirs+=("$d")
 rc=0
-out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
+out=$(bash "$CHECKER" --target plugins/rite/skills/fix/SKILL.md --pattern 2 \
   --repo-root "$d" 2>/dev/null) || rc=$?
 assert_checker_rc "TC-10" "$rc"
 if [ "$rc" -eq 0 ]; then
@@ -447,7 +447,7 @@ echo "[CONTEXT] Y=1; reason=orphan_not_in_enum"
 ')
 cleanup_dirs+=("$d")
 rc=0
-out=$(bash "$CHECKER" --target plugins/rite/commands/pr/fix.md --pattern 2 \
+out=$(bash "$CHECKER" --target plugins/rite/skills/fix/SKILL.md --pattern 2 \
   --repo-root "$d" 2>/dev/null) || rc=$?
 assert_checker_rc "TC-11" "$rc"
 if [ "$rc" -eq 1 ]; then

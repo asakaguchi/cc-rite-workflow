@@ -271,14 +271,14 @@ assert "--pattern 2 outputs no non-P2 findings" "0" "$non_p2_count"
 
 # --- Test 8: --all + --repo-root smoke ---------------------------------------
 # Build a synthetic repo root containing one of the default --all targets
-# (plugins/rite/commands/pr/fix.md) seeded with a Pattern-3 drift. The other
+# (plugins/rite/skills/fix/SKILL.md) seeded with a Pattern-3 drift. The other
 # default targets are absent and silently skipped by the per-pattern
 # `[ -f "$file" ] || return 0` guard, so this single-file fixture exercises
 # both --all expansion AND --repo-root chdir in one assertion.
 ALL_DIR=$(mktemp -d)
 TMPFILES+=("$ALL_DIR")
-mkdir -p "$ALL_DIR/plugins/rite/commands/pr"
-cat > "$ALL_DIR/plugins/rite/commands/pr/fix.md" <<'EOF'
+mkdir -p "$ALL_DIR/plugins/rite/skills/fix"
+cat > "$ALL_DIR/plugins/rite/skills/fix/SKILL.md" <<'EOF'
 # Synthetic fix.md for --all + --repo-root smoke test
 
 cat <<'INNER_EOF' > "$tmpfile"
@@ -293,7 +293,7 @@ all_p3_count=$(grep -c '^\[drift\]\[P3\]' <<< "$out")
 # Discriminator: the synthetic fix.md contains EXACTLY 1 P3 trigger (the
 # heredoc fixture above). If `--repo-root` silently no-op'd, the script would
 # fall back to the real repo cwd and scan the real
-# `plugins/rite/commands/pr/fix.md`, which would yield a different P3 count
+# `plugins/rite/skills/fix/SKILL.md`, which would yield a different P3 count
 # (currently 0 — a clean codebase — but this assertion is robust regardless of
 # whether the real file has 0 or many P3 findings, because the count would
 # almost certainly not be exactly 1). Asserting "exactly 1" therefore catches
@@ -303,7 +303,7 @@ assert "--all + --repo-root: exactly 1 P3 from synthetic target (chdir guard)" "
 # path (the script chdirs to --repo-root before checking). Both synthetic and
 # real targets share the same relative path, so this asserts the broad shape
 # rather than the absolute location.
-all_p3_path_count=$(grep -c '^\[drift\]\[P3\] plugins/rite/commands/pr/fix.md:' <<< "$out")
+all_p3_path_count=$(grep -c '^\[drift\]\[P3\] plugins/rite/skills/fix/SKILL.md:' <<< "$out")
 assert_ge "--all + --repo-root: drift line references fix.md by relative path" 1 "$all_p3_path_count"
 
 # --- Summary -----------------------------------------------------------------

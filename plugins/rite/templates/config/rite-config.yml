@@ -53,8 +53,8 @@ github:
 iteration:
   enabled: false          # true to enable iteration features
   field_name: "Sprint"    # Name of the iteration field in Projects
-  auto_assign: true       # Auto-assign to current iteration on /rite:pr:open
-  show_in_list: true      # Show iteration column in issue:list
+  auto_assign: true       # Auto-assign to current iteration on /rite:open
+  show_in_list: true      # Show iteration column in issue-list
 
 # Branch naming rules
 branch:
@@ -104,7 +104,7 @@ review:
     enabled: true
     max_claims: 20                    # External claim のみに適用（Internal Likelihood は枠外）
     use_context7: true                # context7 MCP を利用（失敗時は WebSearch fallback で自動回復）
-    verify_internal_likelihood: true  # Sub-Phase B (Internal Likelihood Claim Verification) を有効化 — 詳細: plugins/rite/commands/pr/references/fact-check.md
+    verify_internal_likelihood: true  # Sub-Phase B (Internal Likelihood Claim Verification) を有効化 — 詳細: plugins/rite/skills/review/references/fact-check.md
   scope_assignment:
     # scope=nit-noted 受け流し経路設定。reviewer が schema 1.1.0 で出力する
     # findings[].scope に基づく fix loop routing 制御。
@@ -120,7 +120,7 @@ review:
 # Fix settings
 fix:
   # Fail-Fast Response Principle: throw/raise 優先の修正方針を必須化
-  # 詳細: plugins/rite/commands/pr/fix.md ステップ 2 Fail-Fast Response Principle
+  # 詳細: plugins/rite/skills/fix/SKILL.md ステップ 2 Fail-Fast Response Principle
   # NOTE (known limitation): config scaffolding (宣言のみ)。現時点では fix.md が
   # ハードコードで挙動を強制しており、false にしても挙動は変わりません。
   fail_fast_response: true            # true で Fail-Fast Response Principle を有効化（default: true）
@@ -141,7 +141,7 @@ wiki:
 # Multi-session settings (per-session Git worktree isolation)
 # See docs/designs/multi-session-worktree.md for full specification.
 # Lets multiple Claude Code sessions work different Issues in the same repo
-# concurrently: /rite:pr:open creates a session worktree (.rite/worktrees/issue-{N})
+# concurrently: /rite:open creates a session worktree (.rite/worktrees/issue-{N})
 # and EnterWorktree-s into it, so each session keeps its own working tree /
 # current branch. Default `enabled: true` (on by default); set to
 # false to restore single-session behavior.
@@ -180,7 +180,7 @@ tdd:
 # PR review result recording
 # デフォルトではレビュー結果を PR コメントには記録せず、タイムスタンプ付き
 # ローカルファイル (.rite/review-results/{pr_number}-{timestamp}.json) に保存する。
-# /rite:pr:fix は「会話 > ローカルファイル > PR コメント」の優先順位で自動読取する。
+# /rite:fix は「会話 > ローカルファイル > PR コメント」の優先順位で自動読取する。
 # `--post-comment` フラグまたは下記 `post_comment: true` で PR コメント記録を有効化できる。
 pr_review:
   post_comment: false   # true で PR コメント記録を有効化（--post-comment 同等、デフォルト: false）

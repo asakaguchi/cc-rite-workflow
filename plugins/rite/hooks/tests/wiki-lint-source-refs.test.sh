@@ -271,7 +271,7 @@ assert_grep "TC-13 抽出失敗 WARNING" "$errf" '抽出に失敗'
 # 存在することを静的検証する。helper rename 時は guard 内の filename も変わり section 抽出が空に
 # なる → assert_grep_in_section の empty-section fail で surface する (rename 漏れ検出)。
 echo "=== TC-14: lint.md 6.2 helper-不在 fallback 契約 ==="
-LINT_MD="$PLUGIN_ROOT/commands/wiki/lint.md"
+LINT_MD="$PLUGIN_ROOT/skills/wiki-lint/SKILL.md"
 assert_grep_in_section "TC-14 fallback marker begin (if-branch 内)" "$LINT_MD" \
   '! -f .*wiki-lint-source-refs\.sh' '^else$' '"---all_source_refs_begin---"'
 assert_grep_in_section "TC-14 fallback marker end (if-branch 内)" "$LINT_MD" \

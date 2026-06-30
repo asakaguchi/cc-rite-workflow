@@ -63,7 +63,7 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$PWD" 2>/dev/null) || STATE_RO
 
 # Tempfile paths declared up front, trap set up before any mktemp, cleanup on
 # both normal exit and signal termination. Mirrors the repo convention used in
-# commands/pr/review.md ステップ 2.2.1 and commands/pr/fix.md ステップ 4.5.2 so that
+# skills/review/SKILL.md ステップ 2.2.1 and skills/fix/SKILL.md ステップ 4.5.2 so that
 # SIGINT/SIGTERM/SIGHUP cannot leave orphan files in /tmp.
 _yaml_err=""
 _index_err=""
@@ -340,7 +340,7 @@ fi
 # wiki-lint-orphans.sh — relies on the same `pages/{domain}/{slug}.md` target).
 # HTML comment blocks (`<!-- ... -->`) are skipped so that illustrative bullet
 # examples inside the index-template.md comment are NOT parsed as real
-# candidates (otherwise a pristine `wiki:init` index would yield a phantom
+# candidates (otherwise a pristine `wiki-init` index would yield a phantom
 # candidate whose page does not exist, emitting a misleading "index.md may be
 # stale" WARNING on every query).
 candidates=$(printf '%s\n' "$index_content" | awk '

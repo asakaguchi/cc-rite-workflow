@@ -16,7 +16,7 @@
 #       `.rite/wiki/`. Any other outcome is drift.
 #
 #   same_branch: `.rite/wiki/` exclusion must have a negation override so
-#       `git add .rite/wiki/...` works during /rite:wiki:ingest on the same
+#       `git add .rite/wiki/...` works during /rite:wiki-ingest on the same
 #       branch. Per `.gitignore` spec, `git check-ignore -v` is NOT deterministic
 #       under negation rules — it can return rc=0/1 for both healthy and broken
 #       states. `git add --dry-run` is the canonical sanity check.
@@ -30,7 +30,7 @@
 # `.gitignore` silent-leak regression guard.
 # Companion to:
 #   - the rule that added `.rite/wiki/` to `.gitignore` as last-line-of-defense
-#   - plugins/rite/commands/lint.md Phase 3.9: invocation site
+#   - plugins/rite/skills/lint/SKILL.md Phase 3.9: invocation site
 #
 # Usage:
 #   gitignore-health-check.sh [--repo-root DIR] [--quiet]
@@ -381,7 +381,7 @@ case "$branch_strategy" in
 
   same_branch)
     # For same_branch, we also need a negation override so `git add .rite/wiki/...`
-    # works during /rite:wiki:ingest. Per .gitignore L101-113 spec, `git check-ignore`
+    # works during /rite:wiki-ingest. Per .gitignore L101-113 spec, `git check-ignore`
     # cannot deterministically verify negation. Use `git add --dry-run` with a real
     # probe file (cleaned up by trap on exit).
     negation_probe=".rite/wiki/raw/.rite-lint-negation-probe"

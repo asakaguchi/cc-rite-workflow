@@ -2,19 +2,19 @@
 
 コード調査時の品質を保証するためのプロトコル。rite workflow の全フェーズ（実装計画、実装、レビュー等）でコード調査が必要な際に参照する。
 
-> **スキル版**: ユーザーが `/rite:investigate` を実行した場合は、[commands/investigate.md](../commands/investigate.md) の完全なフローが実行される。本ドキュメントは、他のフェーズ内でコード調査を行う際の簡潔なガイドラインである。
+> **スキル版**: ユーザーが `/rite:investigate` を実行した場合は、[skills/investigate/SKILL.md](../skills/investigate/SKILL.md) の完全なフローが実行される。本ドキュメントは、他のフェーズ内でコード調査を行う際の簡潔なガイドラインである。
 
 ## 3段階検証プロセス
 
 コード構造を調査するときは、以下の3段階を必ず守る:
 
-### 1. 検索（Grep）— 場所の特定のみ（[commands/investigate.md Phase 2](../commands/investigate.md#phase-2-検索grep) に相当）
+### 1. 検索（Grep）— 場所の特定のみ（[skills/investigate/SKILL.md Phase 2](../skills/investigate/SKILL.md#phase-2-検索grep) に相当）
 
 - Grep ツールで対象パターンを検索し、ファイルと行番号を特定する
 - **この段階では値を読み取らない** — 場所の特定のみ
-- 複数行にまたがる構造には2段階検索を使う（詳細は [commands/investigate.md Phase 2](../commands/investigate.md#2段階検索複数行にまたがる構造対策) を参照）
+- 複数行にまたがる構造には2段階検索を使う（詳細は [skills/investigate/SKILL.md Phase 2](../skills/investigate/SKILL.md#2段階検索複数行にまたがる構造対策) を参照）
 
-### 2. 検証（Read）— 実際の確認（[commands/investigate.md Phase 3](../commands/investigate.md#phase-3-検証read) に相当）
+### 2. 検証（Read）— 実際の確認（[skills/investigate/SKILL.md Phase 3](../skills/investigate/SKILL.md#phase-3-検証read) に相当）
 
 - Grep で特定した**各箇所**を Read ツールで実際に確認する
 - **必須ルール**:
@@ -24,7 +24,7 @@
   - 大きなファイルは offset/limit で分割読み
 - **完全性チェック**: grep ヒット数 = Read 検証数であることを確認。不一致なら追加 Read
 
-### 3. クロスチェック — 信頼性の担保（[commands/investigate.md Phase 6](../commands/investigate.md#phase-6-クロスチェック) に相当）
+### 3. クロスチェック — 信頼性の担保（[skills/investigate/SKILL.md Phase 6](../skills/investigate/SKILL.md#phase-6-クロスチェック) に相当）
 
 `rite-config.yml` の `investigate.codex_review.enabled` に基づき:
 
@@ -36,7 +36,7 @@
 | `codex_review.enabled` 未設定 | デフォルト `true` として動作 |
 | `investigate` セクション自体が未設定 | デフォルト `true` として動作 |
 
-**代替検証**（Codex 不使用時）: 詳細は [commands/investigate.md Phase 6b](../commands/investigate.md#phase-6b-代替検証enabled-false-または-codex-mcp-未接続時) を参照。
+**代替検証**（Codex 不使用時）: 詳細は [skills/investigate/SKILL.md Phase 6b](../skills/investigate/SKILL.md#phase-6b-代替検証enabled-false-または-codex-mcp-未接続時) を参照。
 
 ## 他フェーズでの簡易適用ガイド
 

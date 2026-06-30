@@ -1,28 +1,28 @@
 #!/bin/bash
 # rite workflow - Stop Hook: review↔fix loop continuation + terminal finalize
-#                 + cleanup → wiki:ingest → wiki:lint チェーン継続保証
+#                 + cleanup → wiki-ingest → wiki-lint チェーン継続保証
 #
-# Guarantees that /rite:pr:iterate の review↔fix ループが、LLM が継続/終了 sentinel を
+# Guarantees that /rite:iterate の review↔fix ループが、LLM が継続/終了 sentinel を
 # 出した直後に turn を終了してしまっても、構造的な層で差し戻すことを保証する。
 #   - 継続 sentinel ([review:fix-needed:N] / [fix:pushed] / [fix:pushed-wm-stale]) → 次ループへ自動継続
 #   - 終了 sentinel ([review:mergeable] / [fix:replied-only] / [fix:cancelled-by-user]) → 完了通知を強制
-# 同じ one-shot handoff 機構で /rite:pr:cleanup の wiki チェーン (cleanup → wiki:ingest →
-# wiki:lint --auto) の未完走も差し戻す:
+# 同じ one-shot handoff 機構で /rite:cleanup の wiki チェーン (cleanup → wiki-ingest →
+# wiki-lint --auto) の未完走も差し戻す:
 #   - ネスト最深部の [lint:returned-to-caller:auto] / [ingest:returned-to-caller] 直後に
 #     turn が閉じても、cleanup ステップ 10-12 までの継続を 1 回だけ強制する
 #
 # 仕組み (one-shot consume / stop_hook_active に依存しない設計):
 #   - 継続 sentinel を出す sub-skill (review.md Step 8.0 / fix.md Step 5.1) が
-#     flow-state に継続 handoff (例 "/rite:pr:fix 99") をセットする。
+#     flow-state に継続 handoff (例 "/rite:fix 99") をセットする。
 #   - 終了 sentinel を出す sub-skill (review.md Step 8.0 / fix.md Step 5.1 / Step 1.4 cancel) が
 #     flow-state に終了 handoff (例 "FINALIZE:review:mergeable:99") をセットする。
-#   - cleanup.md ステップ 9 が wiki:ingest invoke 直前にチェーン handoff
+#   - cleanup.md ステップ 9 が wiki-ingest invoke 直前にチェーン handoff
 #     (例 "WIKICHAIN:cleanup:99") をセットする。チェーンがステップ 12 まで
 #     完走した場合はステップ 12 末尾の flow-state.sh set (--handoff なし) が default-clear する。
 #   - 本 hook は turn 終了時に flow-state.sh consume-handoff で handoff を
 #     **読み取り + 削除** する (one-shot)。非空なら decision:block で停止を差し戻す。
 #     handoff の prefix で reason を分岐する: "/rite:..." は次コマンド再注入、"FINALIZE:..." は
-#     /rite:pr:iterate ステップ5 完了通知の出力を要求、"WIKICHAIN:..." は cleanup チェーンの
+#     /rite:iterate ステップ5 完了通知の出力を要求、"WIKICHAIN:..." は cleanup チェーンの
 #     残り step (ingest 残処理 → cleanup ステップ 10-12) の継続を要求する。
 #   - 削除済みのため、進捗 (次コマンド実行 / 完了通知出力) の後に再度停止すれば handoff は空
 #     → block しない (無限 block ループ防止)。
@@ -79,7 +79,7 @@ fi
 
 # handoff pending: 停止を差し戻す。handoff の prefix で reason を分岐する。
 # block 可否は「handoff 非空」の軸のみで決まり、prefix は reason 文面の選択にのみ影響する。
-#   FINALIZE:{result}:{pr}  = 終了 sentinel 到達 → /rite:pr:iterate ステップ5 完了通知を強制
+#   FINALIZE:{result}:{pr}  = 終了 sentinel 到達 → /rite:iterate ステップ5 完了通知を強制
 #   WIKICHAIN:{caller}:{pr} = cleanup チェーン未完走 → 残り step の継続を強制
 #   /rite:...               = 継続 sentinel 到達 → 次ループコマンドを再注入
 #   それ以外                 = 未知 prefix。silent に既定動作へ吸収せず WARNING で可視化した上で
@@ -87,18 +87,18 @@ fi
 case "$HANDOFF" in
   FINALIZE:*)
     _result="${HANDOFF#FINALIZE:}"
-    _reason="rite の review↔fix ループ (/rite:pr:iterate) が終了 sentinel (${_result}) に到達しました。停止する前に /rite:pr:iterate ステップ5 の完了通知 (終了理由 + 次ステップ案内) を必ず出力してください。
+    _reason="rite の review↔fix ループ (/rite:iterate) が終了 sentinel (${_result}) に到達しました。停止する前に /rite:iterate ステップ5 の完了通知 (終了理由 + 次ステップ案内) を必ず出力してください。
 
 handoff は consume 済みのため、完了通知を出力した後に再度停止すれば停止が許可されます (無限 block しません)。"
     ;;
   WIKICHAIN:*)
     _pr="${HANDOFF##*:}"
-    _reason="rite の cleanup → wiki:ingest → wiki:lint チェーン (PR #${_pr}) がまだ完走していません。停止せず、未実行の step を順に継続してください: wiki:ingest の残り step (lint 結果 parse → 完了レポート + [ingest:returned-to-caller]) → /rite:pr:cleanup ステップ 10 (関連 Issue close) → ステップ 11 (作業メモリ最終化 + ローカルファイル削除) → ステップ 12 (完了報告 + flow-state terminal)。wiki:ingest / wiki:lint の成否に関わらず cleanup ステップ 10 以降へ進むのが契約です。
+    _reason="rite の cleanup → wiki-ingest → wiki-lint チェーン (PR #${_pr}) がまだ完走していません。停止せず、未実行の step を順に継続してください: wiki-ingest の残り step (lint 結果 parse → 完了レポート + [ingest:returned-to-caller]) → /rite:cleanup ステップ 10 (関連 Issue close) → ステップ 11 (作業メモリ最終化 + ローカルファイル削除) → ステップ 12 (完了報告 + flow-state terminal)。wiki-ingest / wiki-lint の成否に関わらず cleanup ステップ 10 以降へ進むのが契約です。
 
 handoff は consume 済みのため、進捗なく再度停止した場合は次回は停止が許可されます (無限 block しません)。"
     ;;
   /rite:*)
-    _reason="rite の review↔fix ループ (/rite:pr:iterate) が継続中です。停止せず、次を実行してください: ${HANDOFF}
+    _reason="rite の review↔fix ループ (/rite:iterate) が継続中です。停止せず、次を実行してください: ${HANDOFF}
 
 このループは [review:mergeable] / [fix:replied-only] / [fix:cancelled-by-user] のいずれかに到達するか、ユーザーが Ctrl+C で中断するまで継続します。handoff は consume 済みのため、進捗なく再度停止した場合は次回は停止が許可されます。"
     ;;

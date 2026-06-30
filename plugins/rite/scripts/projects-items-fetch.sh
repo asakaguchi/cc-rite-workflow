@@ -5,7 +5,7 @@
 # 固定 `--limit` による 100/500 件超 Project の silent truncation を防ぐ (旧 inline 実装の動機を継承)。
 #
 # Called from:
-#   - commands/issue/list.md Phase 4.2 (Status Map 構築。旧 ~44 行 inline block を委譲)
+#   - skills/issue-list/SKILL.md Phase 4.2 (Status Map 構築。旧 ~44 行 inline block を委譲)
 #
 # Usage:
 #   bash projects-items-fetch.sh --project-number N --owner OWNER

@@ -153,7 +153,7 @@ run_skip --post-comment-mode false --pr 123 --file-timestamp unknown --local-sav
 assert "TC-1.8a ケース 2 (unknown ∧ local_save_failed=1): exit 2" "2" "$RC"
 assert_grep "TC-1.8a reason=p61c_persistence_unrecoverable emit" "$ERR" 'REVIEW_OUTPUT_FAILED=1; reason=p61c_persistence_unrecoverable'
 assert_grep "TC-1.8a [review:error] を stdout に emit" "$OUT" '\[review:error\]'
-assert_grep "TC-1.8a 復旧方法を案内 (pr:fix 即時実行)" "$ERR" '/rite:pr:fix'
+assert_grep "TC-1.8a 復旧方法を案内 (fix 即時実行)" "$ERR" '/rite:fix'
 # timestamp が正常値でも local_save_failed=1 ならケース 2 (分岐は LOCAL_SAVE_FAILED のみで決まる)
 run_skip --post-comment-mode false --pr 123 --file-timestamp 20260101120000 --local-save-failed 1
 assert "TC-1.8b ケース 2 (正常 timestamp ∧ local_save_failed=1): exit 2" "2" "$RC"
@@ -385,6 +385,6 @@ assert "TC-3.10 CRITICAL×nit-noted: exit 0 (非ブロッキング)" "0" "$RC"
 assert_grep "TC-3.10 reason=critical_high_scope_nit_noted_invariant emit" "$ERR" 'LOCAL_SAVE_FAILED=1; reason=critical_high_scope_nit_noted_invariant'
 
 if ! print_summary "$(basename "$0")" \
-  "drift: review helper 3 件 (review-skip-notification / review-comment-post / review-result-save) の gate 分岐・reason 語彙・exit code 契約が変更された可能性。各 helper のヘッダ契約コメントと commands/pr/review.md ステップ 6.1 を確認すること。"; then
+  "drift: review helper 3 件 (review-skip-notification / review-comment-post / review-result-save) の gate 分岐・reason 語彙・exit code 契約が変更された可能性。各 helper のヘッダ契約コメントと skills/review/SKILL.md ステップ 6.1 を確認すること。"; then
   exit 1
 fi

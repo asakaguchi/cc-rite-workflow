@@ -31,7 +31,7 @@
 #   - Any line containing the marker `drift-check-ignore`.
 #
 # Scope (--all): the number-free surface this project guarantees and guards —
-#   CHANGELOG.md, CHANGELOG.ja.md, and plugins/rite/commands/lint.md. The wider
+#   CHANGELOG.md, CHANGELOG.ja.md, and plugins/rite/skills/lint/SKILL.md. The wider
 #   comment/doc cleanup is handled by sibling work; as those land, their cleaned
 #   paths can be appended to DEFAULT_TARGETS below.
 #
@@ -46,7 +46,7 @@ set -uo pipefail
 DEFAULT_TARGETS=(
   "CHANGELOG.md"
   "CHANGELOG.ja.md"
-  "plugins/rite/commands/lint.md"
+  "plugins/rite/skills/lint/SKILL.md"
 )
 
 # Reference grammar: `#` + 3-4 digits at a trailing word boundary.
@@ -63,7 +63,7 @@ Usage: number-reference-check.sh [options]
 
 Options:
   --all              Scan the number-free surface (CHANGELOG.md, CHANGELOG.ja.md,
-                     plugins/rite/commands/lint.md)
+                     plugins/rite/skills/lint/SKILL.md)
   --target FILE      Check FILE (repeatable). Path relative to repo root.
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
   --quiet            Suppress progress/summary output on stderr

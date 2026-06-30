@@ -71,7 +71,7 @@ rite workflow 自体および rite workflow が生成する成果物（commit me
 - `plugins/rite/scripts/` 配下の .sh（実装契約として必要）
 - `plugins/rite/hooks/` の hook 自体（runtime に効く）
 - decision tree 系の reference（`complexity-gate.md` / `slug-generation.md` 等）
-- bash literal そのもの（`commands/issue/create.md` ステップ「5.3 + 5.4 + 5.5 Step 1」の Decompose Path が呼ぶ `scripts/decompose-issues.sh` 等 — bash 実体は helper へ委譲済みで、command 側に残る呼び出し block も実装契約として現状維持）
+- bash literal そのもの（`skills/issue-create/SKILL.md` ステップ「5.3 + 5.4 + 5.5 Step 1」の Decompose Path が呼ぶ `scripts/decompose-issues.sh` 等 — bash 実体は helper へ委譲済みで、command 側に残る呼び出し block も実装契約として現状維持）
 
 ただし、これら適用範囲外のファイル**内でも上記『禁止パターン』は適用される** (`Issue #` 本文引用 / cycle # 記録 / 散文対称化契約 / `🚨` 濫用 等)。「適用範囲外」とは「ファイル丸ごと削除しない」の意味であり、ファイル内の歴史記述ノイズの整理は対象。
 

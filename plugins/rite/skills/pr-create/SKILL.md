@@ -12,7 +12,7 @@ user-invocable: false
 
 ## Contract
 **Input**: Branch with commits, Issue number (from branch name or flow state)
-**Output**: `[pr:created:{number}]` | `[pr:create-failed]`
+**Output**: `[pr:created:{number}]` | `[pr-create-failed]`
 
 ドラフト PR を作成し、関連 Issue と連携する
 
@@ -51,7 +51,7 @@ This command can be invoked in two ways: standalone execution or from an orchest
 | Invoked via `Skill` tool from any orchestrator within the same session (caller-name agnostic — e.g. `/rite:open`) | Within end-to-end flow |
 | All other cases (user directly typed `/rite:pr-create`) | Standalone execution |
 
-> **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[pr:created:{number}]` or `[pr:create-failed]`) and **returns control to the caller** (orchestrator). The caller determines the next action based on this output pattern.
+> **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[pr:created:{number}]` or `[pr-create-failed]`) and **returns control to the caller** (orchestrator). The caller determines the next action based on this output pattern.
 
 ---
 
@@ -162,7 +162,7 @@ case "$bang_rc" in
 esac
 ```
 
-> **On exit 1 from this bash block**: The bash block exits before any `skills/pr-create/SKILL.md` result pattern (`[pr:created:{N}]` / `[pr:create-failed]`) is emitted, so the orchestrator treats this as a missing-result-pattern Skill invocation — default 経路は `WARNING` を stderr に出力し、AskUserQuestion で「手動作成 / 再試行 / 中止」を提示する — **NOT** a `[pr:create-failed]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
+> **On exit 1 from this bash block**: The bash block exits before any `skills/pr-create/SKILL.md` result pattern (`[pr:created:{N}]` / `[pr-create-failed]`) is emitted, so the orchestrator treats this as a missing-result-pattern Skill invocation — default 経路は `WARNING` を stderr に出力し、AskUserQuestion で「手動作成 / 再試行 / 中止」を提示する — **NOT** a `[pr-create-failed]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
 
 ### 1.1 Retrieve Base Branch
 
@@ -973,14 +973,14 @@ Output the following pattern based on PR creation result:
 | State | Output Pattern |
 |-------|---------------|
 | PR creation succeeded | `[pr:created:{pr_number}]` |
-| PR creation failed | `[pr:create-failed]` |
+| PR creation failed | `[pr-create-failed]` |
 
 **Important**:
 - Do **NOT** invoke `rite:review` via the Skill tool
 - Return control to the caller (orchestrator — caller-name agnostic, e.g. `/rite:open`)
 - The caller determines the next action based on this output pattern
 
-> **Missing-sentinel recovery contract**: Phase 3.4 で `gh pr create` が malformed tool-call により sentinel を 1 つも emit せず無言でターンが終了する（Cause A: harness/transport 側のゆらぎ。rite では除去不能）ことがある。この場合 caller（orchestrator）は `[pr:created:{N}]` / `[pr:create-failed]` のいずれも context に観測できないため **missing-sentinel** として扱う。本 Skill は flow-state を所有せず caller が `phase` を保持するため、caller 側の missing-sentinel 検出 → `/rite:resume` 再開で PR 作成ステップを安全にやり直せる（重複 draft PR の検出・再構成は orchestrator の resume 経路が担う。`skills/open/SKILL.md` ステップ 0 phase=pr / ステップ 6 参照）。Phase 3.4 の Write tool 委譲はこの Cause A 自体を消すものではなく、Cause B（インライン heredoc / 特殊文字 title による malform 増幅）を除去して発生確率を下げる対策である。
+> **Missing-sentinel recovery contract**: Phase 3.4 で `gh pr create` が malformed tool-call により sentinel を 1 つも emit せず無言でターンが終了する（Cause A: harness/transport 側のゆらぎ。rite では除去不能）ことがある。この場合 caller（orchestrator）は `[pr:created:{N}]` / `[pr-create-failed]` のいずれも context に観測できないため **missing-sentinel** として扱う。本 Skill は flow-state を所有せず caller が `phase` を保持するため、caller 側の missing-sentinel 検出 → `/rite:resume` 再開で PR 作成ステップを安全にやり直せる（重複 draft PR の検出・再構成は orchestrator の resume 経路が担う。`skills/open/SKILL.md` ステップ 0 phase=pr / ステップ 6 参照）。Phase 3.4 の Write tool 委譲はこの Cause A 自体を消すものではなく、Cause B（インライン heredoc / 特殊文字 title による malform 増幅）を除去して発生確率を下げる対策である。
 
 **Example output:**
 ```

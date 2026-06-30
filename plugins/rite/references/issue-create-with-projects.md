@@ -9,11 +9,11 @@ Guide for using the common shell script that creates a GitHub Issue and register
 **Script location**: `{plugin_root}/scripts/create-issue-with-projects.sh`
 
 Referenced from:
-- `commands/pr/review.md` ステップ 7.4.2
-- `commands/pr/create.md` Phase 2.5.5
-- `commands/pr/cleanup.md` ステップ 3 (未完了タスクのチェック → 残作業 Issue 化)
-- `commands/issue/create.md` ステップ 4.3 (Single Issue creation)
-- `scripts/decompose-issues.sh` (XL decomposition の decompose path — 親 Issue 作成 + Sub-Issue 一括作成を内包。`commands/issue/create.md` の「5.3 + 5.4 + 5.5 Step 1」から単一呼び出しで委譲される)
+- `skills/review/SKILL.md` ステップ 7.4.2
+- `skills/pr-create/SKILL.md` Phase 2.5.5
+- `skills/cleanup/SKILL.md` ステップ 3 (未完了タスクのチェック → 残作業 Issue 化)
+- `skills/issue-create/SKILL.md` ステップ 4.3 (Single Issue creation)
+- `scripts/decompose-issues.sh` (XL decomposition の decompose path — 親 Issue 作成 + Sub-Issue 一括作成を内包。`skills/issue-create/SKILL.md` の「5.3 + 5.4 + 5.5 Step 1」から単一呼び出しで委譲される)
 - `skills/issue-create/references/fingerprint-cycling.md` (Quality Signal 1/3/4 由来の split → `fingerprint_split` / `quality_signal_3_split` / `quality_signal_4_split`)
 
 Related documents:
@@ -80,7 +80,7 @@ args_json=$(jq -n \
 result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$args_json")
 ```
 
-**Accepted alternative (pipe-stdin form)**: `jq -n ... | bash {plugin_root}/scripts/create-issue-with-projects.sh` — used by `commands/pr/review.md` ステップ 7.4.2 / `skills/issue-create/references/fingerprint-cycling.md`。Either form keeps the single-JSON contract; do not introduce flag-style (`--title` 等) invocations.
+**Accepted alternative (pipe-stdin form)**: `jq -n ... | bash {plugin_root}/scripts/create-issue-with-projects.sh` — used by `skills/review/SKILL.md` ステップ 7.4.2 / `skills/issue-create/references/fingerprint-cycling.md`。Either form keeps the single-JSON contract; do not introduce flag-style (`--title` 等) invocations.
 
 ### Step 3: Parse the Result
 
@@ -125,7 +125,7 @@ options:
                 # Note: 以下の値は legacy 互換のため enum に含めない (caller 消失済、`grep -rn 'source: "<value>"' plugins/rite/` で 0 件確認):
                 #   - `pr_fix`:          fix.md Phase 4.3 (Automatic Separate Issue Creation) が廃止済み
                 #   - `parent_routing`:  parent-routing.md sub-skill が廃止済み
-                #   - `lint`:            commands/lint.md は guard 用途のみで create-issue-with-projects.sh を invoke しない
+                #   - `lint`:            skills/lint/SKILL.md は guard 用途のみで create-issue-with-projects.sh を invoke しない
  non_blocking_projects: true # Default: true. Projects failure doesn't block Issue creation
 ```
 
@@ -232,8 +232,8 @@ The script is hardened so that **Projects registration failures are never silent
 ```bash
 # Mode 1: explicit file list (original form)
 bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh \
- plugins/rite/commands/pr/open.md \
- plugins/rite/commands/issue/create.md
+ plugins/rite/skills/open/SKILL.md \
+ plugins/rite/skills/issue-create/SKILL.md
 
 # Mode 2: --all auto-expansion
 # Scans every plugins/rite/commands/**/*.md file under the resolved repository root.
@@ -241,7 +241,7 @@ bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh \
 bash plugins/rite/scripts/check-no-direct-gh-issue-create.sh --all
 ```
 
-Exit 0 = no violations. Exit 1 = direct `gh issue create -...` / `gh issue create $...` / `gh issue create "..."` / `gh issue create '...'` invocation found (after stripping fenced code blocks, blockquotes, Markdown comments, and inline backticks). Exit 2 = usage error (no arguments, missing file, `--all` expansion empty / commands directory absent, or `--repo-root` argument missing / non-existent directory). Tests live at `plugins/rite/scripts/tests/check-no-direct-gh-issue-create.test.sh` and include positive, negative, false-positive-avoidance, `--all` mode, and `--repo-root` override cases (happy path / missing argument / non-existent directory) (TC-001 through TC-015). `/rite:lint` Phase 3.14 invokes the script with `--all` on every lint run and records findings as warning-level (does not change `[lint:success]`); see [lint.md Phase 3.14](../commands/lint.md#314-plugin-specific-checks-direct-gh-issue-create-invocation) for the lint integration details.
+Exit 0 = no violations. Exit 1 = direct `gh issue create -...` / `gh issue create $...` / `gh issue create "..."` / `gh issue create '...'` invocation found (after stripping fenced code blocks, blockquotes, Markdown comments, and inline backticks). Exit 2 = usage error (no arguments, missing file, `--all` expansion empty / commands directory absent, or `--repo-root` argument missing / non-existent directory). Tests live at `plugins/rite/scripts/tests/check-no-direct-gh-issue-create.test.sh` and include positive, negative, false-positive-avoidance, `--all` mode, and `--repo-root` override cases (happy path / missing argument / non-existent directory) (TC-001 through TC-015). `/rite:lint` Phase 3.14 invokes the script with `--all` on every lint run and records findings as warning-level (does not change `[lint:success]`); see [lint.md Phase 3.14](../skills/lint/SKILL.md#314-plugin-specific-checks-direct-gh-issue-create-invocation) for the lint integration details.
 
 ---
 

@@ -11,7 +11,7 @@
 #   The inline implementation in lint.md was a ~240-line HIGH-weight bash
 #   block. Delegating it removes a heredoc-malform / drift source while
 #   keeping the cross-Bash-tool-boundary state-transfer contract verbatim.
-#   See ../../commands/wiki/references/bash-cross-boundary-state-transfer.md
+#   See ../../skills/wiki-lint/references/bash-cross-boundary-state-transfer.md
 #   (Pattern 2: marker-delimited block, Pattern 1: multi-value enum via
 #   key=value stdout).
 #

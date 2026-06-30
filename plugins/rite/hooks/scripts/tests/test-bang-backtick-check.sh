@@ -290,9 +290,9 @@ assert "self-host repo: --skip-if-no-target is a no-op on a clean tree (exit 0)"
 # refactor that short-circuits on the flag (before scanning) is caught here.
 DIRT_ROOT=$(mktemp -d)
 TMPFILES+=("$DIRT_ROOT")
-mkdir -p "$DIRT_ROOT/plugins/rite/commands"
+mkdir -p "$DIRT_ROOT/plugins/rite/skills"
 # P1 pattern: closing backtick preceded by space+! inside an inline code span.
-printf 'Bad: `if !` adjacency must still trigger.\n' > "$DIRT_ROOT/plugins/rite/commands/dirty.md"
+printf 'Bad: `if !` adjacency must still trigger.\n' > "$DIRT_ROOT/plugins/rite/skills/dirty.md"
 "$SCRIPT" --repo-root "$DIRT_ROOT" --all --skip-if-no-target --quiet >/dev/null 2>&1
 rc=$?
 assert "self-host repo: --skip-if-no-target does NOT mask real detection (dirt+flag → exit 1)" "1" "$rc"

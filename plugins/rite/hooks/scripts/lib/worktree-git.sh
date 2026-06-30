@@ -9,12 +9,12 @@
 # Responsibility 2 (#1676, source OR standalone): provide
 # `ensure_session_worktree`, the single bash-side SoT for the
 # "branch exists ∧ session worktree absent → reconstruct" gate used by
-# the flow ENTRY paths (resume / pr:review / pr:iterate / pr:fix) so a
+# the flow ENTRY paths (resume / review / iterate / fix) so a
 # missing worktree never silently degrades the flow onto the main
 # checkout (develop). Callers invoke it standalone as
 # `bash lib/worktree-git.sh ensure-session-worktree --issue <N> ...` and
 # route on the emitted `[CONTEXT] WT_ENSURE=` marker (see the function
-# header below and commands/resume.md Phase 3.1.5 for the canonical
+# header below and skills/resume/SKILL.md Phase 3.1.5 for the canonical
 # marker→action table). The dispatch at the bottom of this file exposes
 # only that subcommand; the commit/push helpers stay source-only.
 #
@@ -383,8 +383,8 @@ worktree_commit_push() {
 # resume.md. It performs detection AND reconstruction (git worktree add);
 # the EnterWorktree tool call and any AskUserQuestion routing stay with the
 # LLM caller, driven by the emitted [CONTEXT] WT_ENSURE marker. The
-# canonical marker→action routing table lives in commands/resume.md
-# Phase 3.1.5 (consumed verbatim by pr:review / pr:iterate / pr:fix).
+# canonical marker→action routing table lives in skills/resume/SKILL.md
+# Phase 3.1.5 (consumed verbatim by review / iterate / fix).
 #
 # It does NOT call EnterWorktree (an LLM tool, not a shell command) and it
 # NEVER `git switch -c`-es onto the main checkout — a missing worktree is
@@ -449,7 +449,7 @@ ensure_session_worktree() {
       return 2 ;;
   esac
 
-  # --- read multi_session (same parser as pr:open Step 2.1-G / resume.md Phase 1.1) ---
+  # --- read multi_session (same parser as open Step 2.1-G / resume.md Phase 1.1) ---
   local ms_section ms_enabled ms_base
   ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
   ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \

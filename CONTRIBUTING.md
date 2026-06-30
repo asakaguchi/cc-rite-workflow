@@ -23,8 +23,8 @@ Thank you for your interest in contributing to Claude Code Rite Workflow!
 2. Create a feature branch from `develop`: `feat/issue-XXX-description`
 3. Make your changes
 4. Run quality checks: `/rite:lint`
-5. Create a draft PR: `/rite:pr:create`
-6. Request review: `/rite:pr:ready`
+5. Create a draft PR: `/rite:pr-create`
+6. Request review: `/rite:ready`
 
 ### Commit Messages
 

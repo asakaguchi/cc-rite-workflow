@@ -65,11 +65,11 @@ PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 # 別途 covered のため除外。本 test は残り 5 producer の cross-producer 非対称 gap を埋める)
 # Format: "skill_name:relative_path"
 PRODUCERS=(
-  "cleanup:commands/pr/cleanup.md"
-  "merge:commands/pr/merge.md"
-  "ready:commands/pr/ready.md"
-  "lint:commands/wiki/lint.md"
-  "ingest:commands/wiki/ingest.md"
+  "cleanup:skills/cleanup/SKILL.md"
+  "merge:skills/merge/SKILL.md"
+  "ready:skills/ready/SKILL.md"
+  "lint:skills/wiki-lint/SKILL.md"
+  "ingest:skills/wiki-ingest/SKILL.md"
 )
 
 # ──────────────────────────────────────────────────────────────────────

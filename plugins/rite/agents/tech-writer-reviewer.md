@@ -110,9 +110,9 @@ The `docs/api.md` example states only WHAT the call does (which the function nam
 
 文書-実装整合性 (Doc-Impl Consistency) — **Doc-Heavy mode 限定 (`{doc_heavy_pr} == true` のときのみ評価)**:
 
-> **適用条件**: 以下 5 項目は **Doc-Heavy PR Mode が activated されている場合のみ**評価する (`{doc_heavy_pr} == true` の伝達経路は `commands/pr/review.md` ステップ 1.2.7 / ステップ 2.2.1 を参照)。通常の PR レビューでは適用されない。
+> **適用条件**: 以下 5 項目は **Doc-Heavy PR Mode が activated されている場合のみ**評価する (`{doc_heavy_pr} == true` の伝達経路は `skills/review/SKILL.md` ステップ 1.2.7 / ステップ 2.2.1 を参照)。通常の PR レビューでは適用されない。
 >
-> **理由**: これら 5 項目の検証プロトコルは [`commands/pr/references/internal-consistency.md`](../commands/pr/references/internal-consistency.md) の "Verification Protocol" セクションに定義されており、その protocol は Doc-Heavy mode の Activation 条件下でのみ tech-writer prompt に注入される (Phase 2.2.1 step 3)。non-Doc-Heavy mode では protocol が伝達されないため、これら 5 項目を強制すると「protocol なしで Must Fix を判定する」状態になり speculative 指摘の温床になる。
+> **理由**: これら 5 項目の検証プロトコルは [`skills/review/references/internal-consistency.md`](../skills/review/references/internal-consistency.md) の "Verification Protocol" セクションに定義されており、その protocol は Doc-Heavy mode の Activation 条件下でのみ tech-writer prompt に注入される (Phase 2.2.1 step 3)。non-Doc-Heavy mode では protocol が伝達されないため、これら 5 項目を強制すると「protocol なしで Must Fix を判定する」状態になり speculative 指摘の温床になる。
 >
 > **non-Doc-Heavy mode の tech-writer**: 下記の「基本的事項 (Baseline)」のみを Critical (Must Fix) として評価する。doc-impl 整合性を検証する余地があれば下記の Important (Should Fix) として報告するに留める。
 
@@ -136,7 +136,7 @@ The `docs/api.md` example states only WHAT the call does (which the function nam
 - [ ] **Security Issues**: Exposed credentials or sensitive data in examples
 - [ ] **Outdated Content**: Information that no longer applies
 
-> 詳細な検証プロトコルは [`commands/pr/references/internal-consistency.md`](../commands/pr/references/internal-consistency.md) を参照（5 項目の Verification Protocol が定義されている）。
+> 詳細な検証プロトコルは [`skills/review/references/internal-consistency.md`](../skills/review/references/internal-consistency.md) を参照（5 項目の Verification Protocol が定義されている）。
 
 ### Important (Should Fix)
 
@@ -183,15 +183,15 @@ The `docs/api.md` example states only WHAT the call does (which the function nam
 
 ## Doc-Heavy PR Mode (Conditional)
 
-**Activation**: This section applies only when the review caller passes `{doc_heavy_pr} == true`. The flag is computed in [`commands/pr/review.md`](../commands/pr/review.md) ステップ 1.2.7 (Doc-Heavy PR Detection) and propagated to tech-writer by ステップ 2.2.1 (Doc-Heavy Reviewer Override).
+**Activation**: This section applies only when the review caller passes `{doc_heavy_pr} == true`. The flag is computed in [`skills/review/SKILL.md`](../skills/review/SKILL.md) ステップ 1.2.7 (Doc-Heavy PR Detection) and propagated to tech-writer by ステップ 2.2.1 (Doc-Heavy Reviewer Override).
 
-In doc-heavy PR mode, the **detailed 5-category verification protocol** in [`commands/pr/references/internal-consistency.md`](../commands/pr/references/internal-consistency.md) becomes mandatory **on top of** the standard Critical (Must Fix) checklist. That file is the **single source of truth** for verification procedures, severity mapping, and confidence gating — read it first before reporting findings under this mode.
+In doc-heavy PR mode, the **detailed 5-category verification protocol** in [`skills/review/references/internal-consistency.md`](../skills/review/references/internal-consistency.md) becomes mandatory **on top of** the standard Critical (Must Fix) checklist. That file is the **single source of truth** for verification procedures, severity mapping, and confidence gating — read it first before reporting findings under this mode.
 
-This mode targets the failure pattern where standard tech-writer review missed cross-reference violations between documentation claims and implementation reality (internal case study: an internal documentation PR — *private repository, organization name redacted*; the case study yielded 12 manually-detected issues, of which 11 spanned the 5 internal-consistency categories — implementation facts, ordering/emphasis, enumeration completeness, UX flow, and screenshot completeness — and 1 was an external-spec finding handled separately by [`fact-check.md`](../commands/pr/references/fact-check.md), so the 12 → 11 + 1 split reflects the responsibility boundary between the two reference files).
+This mode targets the failure pattern where standard tech-writer review missed cross-reference violations between documentation claims and implementation reality (internal case study: an internal documentation PR — *private repository, organization name redacted*; the case study yielded 12 manually-detected issues, of which 11 spanned the 5 internal-consistency categories — implementation facts, ordering/emphasis, enumeration completeness, UX flow, and screenshot completeness — and 1 was an external-spec finding handled separately by [`fact-check.md`](../skills/review/references/fact-check.md), so the 12 → 11 + 1 split reflects the responsibility boundary between the two reference files).
 
 ### Quick Reference (entry points only — see internal-consistency.md for full procedures)
 
-For every documented service / feature / component / step / state, cross-reference the implementation source code in this repository. **本テーブルは [`internal-consistency.md`](../commands/pr/references/internal-consistency.md) の 5 verification categories と 1:1 対応する**:
+For every documented service / feature / component / step / state, cross-reference the implementation source code in this repository. **本テーブルは [`internal-consistency.md`](../skills/review/references/internal-consistency.md) の 5 verification categories と 1:1 対応する**:
 
 | Doc Claim (internal-consistency.md カテゴリ) | Verification Tool | Verification Target |
 |---------------------------------------------|-------------------|---------------------|
@@ -217,7 +217,7 @@ Documentation PRs may describe an external product whose implementation lives in
    - Affected categories: [Implementation Coverage / UX Flow Accuracy / etc.]
    ```
 
-   **Failure signal の値**: 上記 7 種から 1 つを選択する。各値の意味は [`commands/pr/references/internal-consistency.md`](../commands/pr/references/internal-consistency.md#implementation-source-not-in-this-repository-silent-skip-prohibited) の "Failure signal の値" 見出し直下の判定条件テーブルを参照 (404 = リポジトリ非存在 / 401 / 403 = 認証・権限不足 (2 値を区別して記録) / 5xx = HTTP サーバーエラー全般 / timeout = タイムアウト (2 回連続) / empty = 空レスポンス / name-unresolved = 外部 repo 名特定不能)。
+   **Failure signal の値**: 上記 7 種から 1 つを選択する。各値の意味は [`skills/review/references/internal-consistency.md`](../skills/review/references/internal-consistency.md#implementation-source-not-in-this-repository-silent-skip-prohibited) の "Failure signal の値" 見出し直下の判定条件テーブルを参照 (404 = リポジトリ非存在 / 401 / 403 = 認証・権限不足 (2 値を区別して記録) / 5xx = HTTP サーバーエラー全般 / timeout = タイムアウト (2 回連続) / empty = 空レスポンス / name-unresolved = 外部 repo 名特定不能)。
 3. The reviewer caller (review.md ステップ 5.1.3) will surface this meta-finding and require explicit user acknowledgement before treating the review as complete
 
 ### Doc-Heavy mode finding requirements
@@ -252,7 +252,7 @@ Emit **one** of the following META lines based on your execution outcome:
 | (d) (a) + Inconclusive あり | `META: All 5 verification categories executed, 0 inconsistencies found, but {N} categories were inconclusive. Inconclusive: [category_1, category_2, ...]. Categories: [Implementation Coverage, Enumeration Completeness, UX Flow Accuracy, Order-Emphasis Consistency, Screenshot Presence]` |
 | (e) (b) + Inconclusive あり | `META: All 5 verification categories executed, but {N} categories were inconclusive. Inconclusive: [category_1, category_2, ...]. Findings below.` |
 
-**(d) / (e) の詳細**: 5 カテゴリのいずれかで `target_not_found` / `extraction_failed` / `tool_failure` のような Inconclusive 判定が発生した場合、(a) / (b) の META 行に `, {N} inconclusive` を挿入する。Inconclusive の集計ルールと META 行への反映方法の詳細は [`commands/pr/references/internal-consistency.md#inconclusive-%E9%9B%86%E8%A8%88-%E3%81%A8-meta-%E8%A1%8C%E3%81%B8%E3%81%AE%E5%8F%8D%E6%98%A0`](../commands/pr/references/internal-consistency.md#inconclusive-集計-と-meta-行への反映) を参照すること。
+**(d) / (e) の詳細**: 5 カテゴリのいずれかで `target_not_found` / `extraction_failed` / `tool_failure` のような Inconclusive 判定が発生した場合、(a) / (b) の META 行に `, {N} inconclusive` を挿入する。Inconclusive の集計ルールと META 行への反映方法の詳細は [`skills/review/references/internal-consistency.md#inconclusive-%E9%9B%86%E8%A8%88-%E3%81%A8-meta-%E8%A1%8C%E3%81%B8%E3%81%AE%E5%8F%8D%E6%98%A0`](../skills/review/references/internal-consistency.md#inconclusive-集計-と-meta-行への反映) を参照すること。
 
 **重要**: finding_count >= 1 でも「5 カテゴリ実行 META 行」を省略することは silent bypass として禁止する。1 件の Evidence 付き finding だけを出して post-condition check を通過する攻撃パターン (Implementation Coverage だけ実行して他 4 カテゴリをスキップ) を防ぐため、META 行は**件数非依存で必ず出力**する。
 
@@ -260,9 +260,9 @@ This negative/positive confirmation distinguishes "protocol was fully executed" 
 
 ### Cross-Reference with internal-consistency.md
 
-For the full 5-category verification protocol (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence), see [`commands/pr/references/internal-consistency.md`](../commands/pr/references/internal-consistency.md). The Critical Checklist items in this skill file are the **entry points**; `internal-consistency.md` is the **detailed protocol** and the source of truth for severity mapping.
+For the full 5-category verification protocol (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence), see [`skills/review/references/internal-consistency.md`](../skills/review/references/internal-consistency.md). The Critical Checklist items in this skill file are the **entry points**; `internal-consistency.md` is the **detailed protocol** and the source of truth for severity mapping.
 
-> **Canonical category naming**: The 5 categories above use the canonical hyphenated form (`Order-Emphasis Consistency`). This form is **literal-substring matched** by the ステップ 5.1.3 Step 2 META check in `commands/pr/review.md`. Do not introduce variants like `Order / Emphasis Consistency` or `Order/Emphasis Consistency` — they will fail the META check and trigger a `doc_heavy_post_condition: warning` false positive.
+> **Canonical category naming**: The 5 categories above use the canonical hyphenated form (`Order-Emphasis Consistency`). This form is **literal-substring matched** by the ステップ 5.1.3 Step 2 META check in `skills/review/SKILL.md`. Do not introduce variants like `Order / Emphasis Consistency` or `Order/Emphasis Consistency` — they will fail the META check and trigger a `doc_heavy_post_condition: warning` false positive.
 
 ## Comment Accuracy Review
 

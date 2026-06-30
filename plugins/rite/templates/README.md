@@ -66,7 +66,7 @@ Variables use the following formats:
 
 | Variable | Description | Source | Example |
 |----------|-------------|--------|---------|
-| `{command}` | Command being executed | Work memory `コマンド` field | `/rite:pr:open` |
+| `{command}` | Command being executed | Work memory `コマンド` field | `/rite:open` |
 | `{phase}` | Work phase | Work memory `フェーズ` field | `実装作業中`, `品質検証` |
 | `{phase_detail}` | Phase detail | Work memory or command context | `PR 作成中` |
 | `{timestamp}` | Timestamp | ISO 8601 format | `2026-02-10T07:00:00Z` |
@@ -116,11 +116,11 @@ Common variables:
 
 Variables are replaced at runtime by the command that reads the template:
 
-1. **Issue creation** (`/rite:issue:create`)
+1. **Issue creation** (`/rite:issue-create`)
    - Reads: `templates/issue/{type}.md`
    - Replaces: `{owner}`
 
-2. **PR creation** (`/rite:pr:create`)
+2. **PR creation** (`/rite:pr-create`)
    - Reads: `templates/pr/generic.md`
    - Replaces: `{issue_number}`, `{owner}`
 

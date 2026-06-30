@@ -3,7 +3,7 @@
 # Usage: bash plugins/rite/scripts/tests/review-source-resolve.test.sh
 #
 # Strategy: review-source-resolve.sh resolves the Hybrid Review Source Priority
-# chain (extracted from commands/pr/fix.md ステップ 1.2.0).
+# chain (extracted from skills/fix/SKILL.md ステップ 1.2.0).
 # It has no gh dependency — only jq / git / find / mktemp — so tests are fully
 # hermetic. We run the real script inside a throwaway git repo (so commit_sha
 # stale detection has a real HEAD) and assert on:

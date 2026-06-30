@@ -414,7 +414,7 @@ else
 fi
 ```
 
-`[CONTEXT] WT_ENSURE=` marker の分岐は [commands/resume.md](../resume/SKILL.md) Phase 3.1.5 の **WT_ENSURE 分岐表（SoT）** に従う（`disabled`〜`reconstructed` の共通 case は SoT 表と同一。**終端の `branch_absent` / `failed` のみ caller 固有**で、resume の AskUserQuestion / 停止に対し、非対話サブ起動の fix は機械的に `[fix:error]` 停止する — 下記）:
+`[CONTEXT] WT_ENSURE=` marker の分岐は [skills/resume/SKILL.md](../resume/SKILL.md) Phase 3.1.5 の **WT_ENSURE 分岐表（SoT）** に従う（`disabled`〜`reconstructed` の共通 case は SoT 表と同一。**終端の `branch_absent` / `failed` のみ caller 固有**で、resume の AskUserQuestion / 停止に対し、非対話サブ起動の fix は機械的に `[fix:error]` 停止する — 下記）:
 
 - `disabled` / `already_in` / `skip` → no-op、ステップ 1.2 へ（`disabled` = `multi_session.enabled: false`。従来どおり単一ツリーで動作し挙動不変）。
 - `reenter` / `reconstructed` → `EnterWorktree` ツールを `path: {path}`（marker の `path=` 値）で呼び出してからステップ 1.2 へ。`reconstructed` は helper が `git worktree add` 済み。EnterWorktree 失敗時の切り分けは resume.md Phase 3.1.5 / /rite:open Step 2.3-W と同じ（silent に新規扱いしない）。
@@ -2777,7 +2777,7 @@ fix(review): {description}
 
 ### 3.2.1 Root Cause Gate
 
-Before committing a fix, the commit body **MUST** include a root-cause explanation. This gate implements Quality Signal 2 (root-cause-missing fix detection) from `commands/pr/references/fix-relaxation-rules.md#four-quality-signals-for-escalation`.
+Before committing a fix, the commit body **MUST** include a root-cause explanation. This gate implements Quality Signal 2 (root-cause-missing fix detection) from `skills/fix/references/fix-relaxation-rules.md#four-quality-signals-for-escalation`.
 
 **Step 1 — Semantic LLM check (no shell variable dependency)**: The LLM examines the commit body it generated in ステップ 3.2 and determines whether a root-cause explanation is present. Because shell variables do not persist across Bash tool invocations, this gate is intentionally LLM-semantic rather than bash-automated.
 
@@ -3783,7 +3783,7 @@ ACTION: Return to ステップ 4.6.W and execute the Wiki Ingest Trigger before 
 
 ### 5.1 Output Pattern (Return Control to Caller)
 
-The `fix` flow-state write below records the v3 phase so a `/rite:resume` started after a fix iteration classifies the resume point correctly (`commands/resume.md` Phase 5.3 の `fix` 行で `/rite:iterate {pr_number}` が invoke される):
+The `fix` flow-state write below records the v3 phase so a `/rite:resume` started after a fix iteration classifies the resume point correctly (`skills/resume/SKILL.md` Phase 5.3 の `fix` 行で `/rite:iterate {pr_number}` が invoke される):
 
 **Handoff マーカー**: 結果に応じて 3 種類に分岐する。
 - **継続** (`[fix:pushed]` / `[fix:pushed-wm-stale]`): `--handoff "/rite:review {pr_number}"` で**ループ継続マーカー**をセットする。`Stop` hook (`stop-loop-continuation.sh`) が turn 終了時にこれを consume し、LLM が re-review に進まず停止しても `/rite:review` を再注入する (review.md Step 8.0 の fix 方向版)。

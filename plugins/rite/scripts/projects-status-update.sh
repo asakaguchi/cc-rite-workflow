@@ -3,9 +3,9 @@
 # Common core script for updating a GitHub Issue's Status field in GitHub Projects.
 #
 # Called from:
-#   - commands/pr/open.md ステップ 2.4 (Status -> In Progress)
-#   - commands/pr/ready.md Phase 4 (Status -> In Review)
-#   - commands/issue/close.md (parent Issue Status -> Done)
+#   - skills/open/SKILL.md ステップ 2.4 (Status -> In Progress)
+#   - skills/ready/SKILL.md Phase 4 (Status -> In Review)
+#   - skills/issue-close/SKILL.md (parent Issue Status -> Done)
 #   - references/projects-integration.md §2.4.2-2.4.5
 #
 # Usage:

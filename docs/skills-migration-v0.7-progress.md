@@ -26,7 +26,7 @@
 | 3 | issue/wiki/meta/top-level スキル化 | **概ね完了** — 17/19 移行済（issue 6 + wiki 4 + meta 2 + top-level 5）。`investigate`・`workflow` は既存ルーター/knowledge スキルとの統合対象のためプラン §5 に従い Phase 5 へ繰延。完全性ゲート全パス（旧命名0・全リンク解決・bang-backtick 0・hooks/tests 81/81） |
 | 4 | グローバル hook 剪定 & 棚卸し | **完了** — 棚卸し成果物作成済（下記「Phase 4 — 監査結果」）。坂口さん決定 = ①8 hook 全て global 維持（skill-scoping 撤回）②SessionStart CRITICAL を静かな1行へ降格。SessionStart 降格を実装・テスト更新し **81/81 green**。dead hook 削除（preflight-check / command-id ディスパッチ）は生きた呼び出し元 rite-workflow と同時の Phase 5 へ |
 | 5 | orchestrator/knowledge 統合 | **完了** — investigate 統合（commands→skill, 広域 auto-activation 除去）・workflow 新スキル化・wiki ルーター解体削除・preflight-check 撤去・rite-workflow SKILL.md 命名/パス修正・reviewers 統合（review への cross-ref を skill パス化）・workflow-identity/anchor-naming 仕上げ。完全性ゲート全パス（Phase 5 範囲の旧命名 0・全リンク解決・bang-backtick 0/142・hooks/tests **80/80**）。残務は Phase 6（commands/ 一括削除・全リポジトリ旧命名スイープ） |
-| 6 | 後片付け & リリース | 未着手 |
+| 6 | 後片付け & リリース | **cleanup 完了 / release 残** — naming+path+bare-colon スイープ・既存 artifact 修正・scanner 7 件 commands→skills repoint（+ 連動 test 修正）・`commands/` 一括削除（42 file / -25,992 行）・完全性ゲート全パス（grep=0 / dangling 0 / 壊れリンク 0 / hooks 80/80・scripts/tests 73/73・hooks/scripts/tests 4/4・全 scanner --all rc=0）。version bump / CHANGELOG / `/release` は坂口さんの指示待ち（Phase 6b）|
 
 ## Phase 0 — 完了した編集
 
@@ -570,6 +570,46 @@ marker 実値:
 - **commands/ 一括削除**: 移行で orphan 化した `commands/investigate.md`・`commands/workflow.md` を含む `commands/` 全体 + commands/pr/references/ 残り。Phase 6 で削除 + 全リポジトリ grep=0 最終ゲート。
 - **全リポジトリ旧命名スイープ（Phase 6）**: 構造統合は完了したが、**Phase 5 で直接編集していない rite-workflow references の旧命名は意図的に未着手**（broad sweep に集約）。具体: `workflow-identity.md` L96/L119/L170（`/rite:pr:cleanup`・`commands/issue/create.md`・`plugins/rite/commands/` 言及）、`phase-mapping.md`(17)、`session-detection.md` 等、および `anchor-naming-convention.md` の content（`commands/pr/fix.md:1118` 等の行番号 audit・`/rite:wiki:query`・「`plugins/rite/commands/` 配下」scope 記述）。SPEC.md(165)/README(各26)/CONFIGURATION.md(20) も同スイープ。
 - **Phase 4 の未コミット変更**: `session-start.sh` + `session-start.test.sh`（CRITICAL 降格）は Phase 4 成果で本作業と同じ作業ツリーに未コミットのまま（コミットは坂口さんの指示待ち）。
+
+## Phase 6 — 実行結果（後片付け cleanup, 2026-06-30）
+
+### 坂口さんの決定（AskUserQuestion）
+
+- **凍結境界 → 履歴4種を凍結**: `CHANGELOG*`（書換禁止）/ `docs/designs/*`（Status:実装完了の設計記録）/ `tests/regression/*`（明示 Retired）/ `REFACTOR-PROGRESS.md`（2026-06-11 中断の**別プロジェクト**）+ 本 progress doc を grep=0 から除外。`docs/tests/*` は現行検証用なので skills/ パスへスイープ。`.claude/settings.local.json` は untracked のため自動的に対象外。
+- **到達点 → cleanup まで**: naming+path スイープ・`commands/` 削除・完全性ゲートまで。version bump / CHANGELOG / release は別ターン（鉄則どおりコミット/プッシュも指示待ち）。
+
+### 実施した cleanup（5 系統）
+
+1. **naming+path 決定論的 sed スイープ**（SWEEP 300 file 対象）: 旧コロン命名 `rite:(pr|issue|wiki|skill|template):` → フラット新命名、`commands/<g>/<x>.md` → `skills/<name>/SKILL.md`（co-located reference は新所在へ個別マップ）。117 file・689/689 対称置換。**パスは純テキスト置換で成立**（`commands/` と `skills/` は plugin-root 直下の兄弟 → `../../../` プレフィックス不変、末尾のみ置換）。
+2. **bare-colon prose スイープ**: `pr:open`→`open` / `wiki:ingest`→`wiki-ingest` 等（verb 明示列挙で sentinel `[x:y]` 無傷・217 件保全を検証）。22 file。
+3. **既存 artifact 修正**: Phase 5 sweep 由来の壊れパス `commands/skills/<name>/SKILL.md` → `skills/<name>/SKILL.md`（9 箇所。category-list `commands/skills/agents/i18n` は非該当）。
+4. **scanner 7 件を commands→skills へ repoint（必然的後片付け）**: `commands/` 温存を Phase 6 までとした方針の帰結。commands/ 削除後に lint 基盤が空スキャン/ハードエラーになるのを回避。
+   - **単独 base を skills へ**: `bash-heaviness-check` / `hardcoded-line-number-check`（`--all` で `commands_dir does not exist` エラーになっていた）/ `backlink-format-check` / `check-no-direct-gh-issue-create`。
+   - **両 scan から死んだ commands/ を除去**: `bang-backtick-check`（scan_dirs 配列）/ `bang-backtick-edit-hook`（case arms）/ `orphan-reference-check`（find 述語）。
+   - 連動 test を reseed（sandbox `commands/` → `skills/`）。汎用 sweep が write 先（`commands/pr/fix.md`→`skills/fix/SKILL.md`）を特定スキル名に変えたのに mkdir(dir) が未変換だった不整合を **distributed-fix-drift / doc-heavy / sh-cross-ref** で修正。`sh-cross-ref` は SKILL.md 命名で bare basename 解決が無効化されるため fixture を path 形へ全面更新（scanner 自体は実 tree で path 形を正しく解決・rc=0/0 findings を確認済）。`test-distributed` の `git show ${BASELINE_COMMIT=cec0140}:commands/pr/fix.md` は**歴史コミット時点のパス**なので revert（sweep が誤変換していた）。`finding-examples.md` の 1 件の hardcoded-line を backtick 退避。
+5. **reviewer agent の機能的 grep 指示**（`commands/**/*.md` を grep せよ等）を skills/ へ更新。placeholder/hypothetical 例（`commands/foo.md`・`commands/<orchestrator>.md`・L111 scope-mismatch 例）は generic 例として残置。
+
+### `commands/` 一括削除
+
+- `git rm -r plugins/rite/commands/`（**42 tracked file・-25,992 行**）。28 コマンド + 各 references。
+- untracked な runtime 残骸 `plugins/rite/commands/.rite-work-memory/issue-666.md`（gitignore 対象・私が作成したものでない）は削除せず残置 → 物理 dir のみ残るがリポジトリ非影響。
+
+### Phase 6 完全性ゲート（全パス・2026-06-30、凍結4種 + untracked 除外）
+
+1. ✅ G1 旧コロン命名 `rite:(pr|issue|wiki|skill|template):` = **0**（残 8 件は全て untracked `.claude/settings.local.json` のローカル権限エントリ＝コミット非対象）
+2. ✅ G2 bare-colon 略記（sentinel 除く）= **0**
+3. ✅ G3 dangling specific-file `commands/<g>/<x>.md` = **0**（残は SPEC migration anchor・`git show BASELINE:`・orphan motivation・state-read narrative 等の歴史参照のみ）
+4. ✅ G4 壊れる markdown リンク `](...commands/...)` = **0**
+5. ✅ G5 `commands/skills/` artifact = **0**
+6. ✅ test: `hooks/tests/run-tests.sh` **80/80**・`hooks/scripts/tests/` 4/4 rc=0・`scripts/tests/run-all.sh` **73/73**
+7. ✅ 全 scanner `--all`（commands/ 削除後の実 tree）= rc=0・findings=0（7 scanner とも skills/ を正しくスキャン）
+
+### Phase 6b（release）へ持ち越す残務
+
+- **version 0.7.0 バンプ（5 file）+ CHANGELOG（英/日）+ `/release`**（develop→main PR・タグ・GitHub Release）。坂口さんの指示待ち。
+- **ドキュメント構造 rewrite（6b doc）**: `CLAUDE.md` / `CONTRIBUTING.md` / `docs/SPEC.md` の ASCII アーキ図に残る `commands/` ディレクトリノード（命名は修正済だが構造記述が skills/ 中心へ未反転）、SPEC.md のコマンドカタログ・Workflow 図。grep=0 ゲート（naming/path）は通過済だが、削除済 dir を描く図は 6b で要更新。
+- **`.claude/settings.local.json`（ユーザーローカル・任意）**: stale な `Skill(rite:pr:create/review/ready)` 権限エントリ（→ `rite:pr-create`/`rite:review`/`rite:ready`）。untracked のため未編集。必要なら `/config` 等で更新を案内。
+- **残置した generic 例/歴史参照**: reviewer agent の placeholder `commands/foo.md` 等、SPEC/orphan-check の歴史アンカー、doc-heavy classifier の `commands/**/*.md` 除外 glob（drift-check で review/reviewers 同期・harmless）。いずれも dangling でなく意図的残置。
 
 ## 主要調査結果（Phase 0 で実測・SoT）
 

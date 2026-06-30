@@ -330,15 +330,15 @@ These patterns apply to the **session worktree** layer governed by `multi_sessio
 (default `true`; see [docs/designs/multi-session-worktree.md](../../../docs/designs/multi-session-worktree.md)).
 This is a **separate axis** from the `parallel.mode: "worktree"` patterns above:
 `parallel` is per-Issue sub-agent fan-out within one session; `multi_session` is
-session-wide lifecycle isolation. `/rite:pr:open` creates a session worktree and
-`EnterWorktree`-s into it; `/rite:pr:cleanup` exits and removes it; orphans are
+session-wide lifecycle isolation. `/rite:open` creates a session worktree and
+`EnterWorktree`-s into it; `/rite:cleanup` exits and removes it; orphans are
 reaped lazily by `pr-cycle-cleanup.sh` Step 5.
 
 ### Worktree namespaces (4 kinds — do not cross-contaminate)
 
 | Namespace | Purpose | Lifecycle |
 |---|---|---|
-| `.rite/worktrees/issue-{N}` | **Session worktree** (multi_session) | `pr:open` creates → `pr:cleanup` removes (orphans reaped via Step 5) |
+| `.rite/worktrees/issue-{N}` | **Session worktree** (multi_session) | `open` creates → `cleanup` removes (orphans reaped via Step 5) |
 | `.worktrees/{issue}/{task}` | parallel implementation sub-agent worktree | per-batch create/remove |
 | `pr-{N}-cycle{X}` etc. | reviewer transient worktree | idempotently swept by `pr-cycle-cleanup.sh` |
 | `.rite/wiki-worktree` | persistent wiki-branch worktree | manual removal only (reap-excluded) |
@@ -359,7 +359,7 @@ n=0; until git fetch origin "$base" 2>/dev/null; do n=$((n+1)); [ "$n" -ge 3 ] &
 
 ### `EnterWorktree` fails with "not in a git repository" (harness git mis-detection)
 
-`/rite:pr:open` (Step 2.3-W) and `/rite:resume` (re-entry) enter the session
+`/rite:open` (Step 2.3-W) and `/rite:resume` (re-entry) enter the session
 worktree via the `EnterWorktree` tool. If the harness mis-detected the launch
 directory as non-git **at session startup** (`Is a git repository: false` in the
 launch context even though `.git` exists and `git -C {wt_path} rev-parse` succeeds),
@@ -372,9 +372,9 @@ command:
 
 - The session worktree created by `git worktree add` is **preserved** — the failure
   does not destroy it.
-- On re-run, `pr:open` Step 2.2-W classifies it as `WT_CASE=reuse` (and the
-  `ensure_session_worktree` helper used by `/rite:resume` / `pr:review` / `pr:iterate` /
-  `pr:fix` as `WT_ENSURE=reenter`), so the workflow continues on the existing worktree
+- On re-run, `open` Step 2.2-W classifies it as `WT_CASE=reuse` (and the
+  `ensure_session_worktree` helper used by `/rite:resume` / `review` / `iterate` /
+  `fix` as `WT_ENSURE=reenter`), so the workflow continues on the existing worktree
   without rebuilding it.
 
 rite **never** silently falls back to `git switch -c` (which would discard worktree
@@ -388,7 +388,7 @@ path (`WT_ENSURE=reconstructed`, #1676), not the restart guidance.
 
 In `multi_session` mode the feature branch **must** be created on the session worktree
 (`{worktree_base}/issue-{N}`), regardless of the flow entry path (fresh / `/rite:resume` /
-post-compaction mid-flow entry). The earlier failure mode (#1595) was that `/rite:pr:open`
+post-compaction mid-flow entry). The earlier failure mode (#1595) was that `/rite:open`
 gated the worktree-vs-main-tree branch decision **only on the in-context
 `[CONTEXT] MULTI_SESSION_ENABLED=` marker** emitted at Step 1.4. When that marker was lost
 from context (resume / compaction / mid-flow re-entry), routing fell back to the legacy
@@ -398,14 +398,14 @@ from context (resume / compaction / mid-flow re-entry), routing fell back to the
 The invariant is enforced by three complementary gates, **none of which trusts remembered
 context**:
 
-- **Re-derive at branch time, not at Step 1.4** (`pr:open` Step 2.1-G): immediately before the
+- **Re-derive at branch time, not at Step 1.4** (`open` Step 2.1-G): immediately before the
   branch-creation side effect, `multi_session` is re-parsed from `rite-config.yml` with the
   same parser as Step 1.4, emitting a fresh `MULTI_SESSION_ENABLED=...; SOURCE=branch-gate`
   marker. There is **no "marker missing → legacy" branch** — the marker is regenerated every
   time, so it can never be absent at routing.
-- **Legacy path is `false`-only** (`pr:open` Step 2.3): the `git switch -c` block runs only
+- **Legacy path is `false`-only** (`open` Step 2.3): the `git switch -c` block runs only
   when the branch-time re-derivation yielded `false`. Reaching it with `true` is prohibited.
-- **Post-entry toplevel check** (`pr:open` Step 2.3-W): after `EnterWorktree`,
+- **Post-entry toplevel check** (`open` Step 2.3-W): after `EnterWorktree`,
   `git rev-parse --show-toplevel` must equal the worktree path; a mismatch
   (`WORKTREE_INVARIANT=violated`) stops the flow instead of silently implementing on the main
   tree. The data layer mirrors this — `flow-state.sh set --require-worktree` emits
@@ -427,7 +427,7 @@ Consequences enforced across the workflow:
   that another worktree may have checked out.
 - A branch is deleted **only after** its worktree is removed (a branch checked out
   in a worktree cannot be deleted or fetch-updated).
-- `pr:cleanup`'s base update runs **only when the main checkout is on `{base}`**; on any
+- `cleanup`'s base update runs **only when the main checkout is on `{base}`**; on any
   other branch it WARNINGs and skips (it must not yank the main checkout off a
   human's working branch). Moving the main checkout's branch is a **human-only** action.
 
@@ -435,9 +435,9 @@ Consequences enforced across the workflow:
 
 Two helper-driven patterns bracket the session-worktree lifecycle:
 
-- **Issue claim** (`hooks/issue-claim.sh`, always-on regardless of the flag): `/rite:pr:open`
+- **Issue claim** (`hooks/issue-claim.sh`, always-on regardless of the flag): `/rite:open`
   Step 1.6 claims the Issue **before** creating the branch/worktree (fail-fast against
-  double-starting), and `/rite:pr:cleanup` releases it. Claims live under the
+  double-starting), and `/rite:cleanup` releases it. Claims live under the
   gitignored `.rite/state/issue-claims/`; liveness reuses the flow-state heartbeat
   (`active=true` ∧ `updated_at` within 2h) rather than a new heartbeat file. A live
   `other` claim is surfaced via AskUserQuestion — never an unattended steal.
@@ -450,7 +450,7 @@ Two helper-driven patterns bracket the session-worktree lifecycle:
   `worktree_base`, claim not live (or absent + mtime > 24h), and a clean
   `git status --porcelain` (a dirty worktree is never auto-reaped). Reap **never deletes
   the branch** (push-pending / unpushed work is preserved; branch cleanup stays the
-  responsibility of the normal `pr:cleanup` path).
+  responsibility of the normal `cleanup` path).
 
 > **Canonical spec**: This file documents the operational *patterns*; the canonical
 > runtime specification for the session-worktree layer (lifecycle, claim, reap,

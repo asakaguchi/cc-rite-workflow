@@ -82,7 +82,7 @@ if ! [[ "$PARENT_NUMBER" =~ ^[0-9]+$ ]] || ! [[ "$CHILD_NUMBER" =~ ^[0-9]+$ ]]; 
 fi
 
 # Reject unsubstituted Markdown placeholders (e.g. literal "{owner}" / "{repo}" /
-# "{parent_issue_number}"). Caller commands such as `commands/issue/create.md`
+# "{parent_issue_number}"). Caller commands such as `skills/issue-create/SKILL.md`
 # document this script as a Markdown template whose `{name}` tokens Claude must
 # substitute with real values before running bash. Without this guard, a
 # forgotten substitution would surface much later as an opaque

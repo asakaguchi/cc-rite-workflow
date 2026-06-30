@@ -12,7 +12,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 
-CLEANUP="$SCRIPT_DIR/../../commands/pr/cleanup.md"
+CLEANUP="$SCRIPT_DIR/../../skills/cleanup/SKILL.md"
 
 echo "=== ステップ 4-W: self-exclusion 付き live-cwd guard の配線 ==="
 assert_grep "4-W uses worktree-foreign-cwd.sh (not the bare live-cwd probe)" "$CLEANUP" "worktree-foreign-cwd\.sh"

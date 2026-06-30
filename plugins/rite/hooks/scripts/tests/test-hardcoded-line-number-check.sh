@@ -213,10 +213,10 @@ assert "filter C: only P-C reported" "1" "$c_c_count"
 assert "filter C: P-A suppressed" "0" "$c_a_count"
 assert "filter C: P-B suppressed" "0" "$c_b_count"
 
-# --- Test 11: --all on real plugins/rite/commands (current state should be clean) ---
+# --- Test 11: --all on real plugins/rite/skills (current state should be clean) ---
 out=$("$SCRIPT" --all --quiet 2>&1)
 rc=$?
-assert "current commands/ tree exits 0 (clean baseline)" "0" "$rc"
+assert "current skills/ tree exits 0 (clean baseline)" "0" "$rc"
 
 # --- Test 12: tilde fence (~~~) exclusion ------------------------------------
 FIX_TILDE="$TMPDIR_ROOT/tilde.md"

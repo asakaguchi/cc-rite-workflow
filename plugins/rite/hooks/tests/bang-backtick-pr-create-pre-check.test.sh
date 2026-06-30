@@ -2,7 +2,7 @@
 # bang-backtick-pr-create-pre-check.test.sh
 #
 # Regression tests for the Phase 1.0 Pre-PR Gate added to
-# `commands/pr/create.md` and `commands/pr/ready.md`.
+# `skills/pr-create/SKILL.md` and `skills/ready/SKILL.md`.
 # The gate invokes `bang-backtick-check.sh --all` and exits non-zero on
 # detection or invocation failure.
 #
@@ -34,9 +34,9 @@ HOOK_DIR="$SCRIPT_DIR/.."
 PLUGIN_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$PLUGIN_ROOT/../.." && pwd)"
 CHECK_SCRIPT="$HOOK_DIR/scripts/bang-backtick-check.sh"
-CREATE_MD="$PLUGIN_ROOT/commands/pr/create.md"
-READY_MD="$PLUGIN_ROOT/commands/pr/ready.md"
-LINT_MD="$PLUGIN_ROOT/commands/lint.md"
+CREATE_MD="$PLUGIN_ROOT/skills/pr-create/SKILL.md"
+READY_MD="$PLUGIN_ROOT/skills/ready/SKILL.md"
+LINT_MD="$PLUGIN_ROOT/skills/lint/SKILL.md"
 PASS=0
 FAIL=0
 
@@ -60,16 +60,16 @@ else
 fi
 
 # ----- TC-2: AC-2 — seeded dirt produces exit 1 ----------------------------
-echo "TC-2: AC-2 — seeded dirt in plugins/rite/commands/ produces exit 1"
+echo "TC-2: AC-2 — seeded dirt in plugins/rite/skills/ produces exit 1"
 seed_dir=$(mktemp -d)
 trap 'rm -rf "$seed_dir"' EXIT
 # Recreate a minimal rite plugin layout so the scanner's --all has a tree to walk.
-mkdir -p "$seed_dir/plugins/rite/commands/pr"
+mkdir -p "$seed_dir/plugins/rite/skills/pr"
 mkdir -p "$seed_dir/plugins/rite/skills"
 mkdir -p "$seed_dir/plugins/rite/agents"
 mkdir -p "$seed_dir/plugins/rite/references"
 # Inject a P1 pattern: backtick + space + bang + closing backtick adjacency.
-printf '%s\n' "Bad: \` !\` adjacency must trigger." > "$seed_dir/plugins/rite/commands/pr/dirty.md"
+printf '%s\n' "Bad: \` !\` adjacency must trigger." > "$seed_dir/plugins/rite/skills/pr/dirty.md"
 seed_rc=0
 seed_output=$(bash "$CHECK_SCRIPT" --repo-root "$seed_dir" --all --quiet 2>&1) || seed_rc=$?
 if [ "$seed_rc" -eq 1 ]; then

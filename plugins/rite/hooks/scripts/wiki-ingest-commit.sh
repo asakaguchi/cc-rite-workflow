@@ -17,7 +17,7 @@
 # when the cleanup Issue is filed so the matching comment in
 # wiki-ingest-trigger.sh (if any) can be updated together.
 #
-# This script is the shell-only counterpart of commands/wiki/ingest.md
+# This script is the shell-only counterpart of skills/wiki-ingest/SKILL.md
 # ステップ 5.1 Block A + Block B. It exists because the markdown-based ステップ
 # 5.1 requires Claude to chain three Bash tool invocations across an LLM
 # Write/Edit phase, which is structurally fragile under E2E output
@@ -29,13 +29,13 @@
 # correctly continues its prose contract afterwards.
 #
 # Scope boundary: this script commits raw sources only. It does NOT run
-# the LLM-driven page integration — that is owned by the /rite:wiki:ingest
+# the LLM-driven page integration — that is owned by the /rite:wiki-ingest
 # Skill and can be executed later, manually or automatically. The split
 # enforces a clean separation:
 #
 # (1) raw source capture — wiki-ingest-trigger.sh (file writer)
 # (2) raw source commit path — THIS script (shell, deterministic)
-# (3) wiki page integration — /rite:wiki:ingest (LLM)
+# (3) wiki page integration — /rite:wiki-ingest (LLM)
 #
 # Steps (1) and (2) together guarantee that the wiki branch grows for
 # every review/fix/close cycle, even if step (3) is deferred.
@@ -327,7 +327,7 @@ fi
 # "fatal: '<wiki>' is already used by worktree at '...'", because git
 # refuses to checkout a branch that is occupied by a linked worktree.
 # This is a hard 100% regression triggered by every PR cycle once
-# `/rite:wiki:init` has set up the worktree. The fix detects the worktree
+# `/rite:wiki-init` has set up the worktree. The fix detects the worktree
 # and routes through `git -C .rite/wiki-worktree add/commit/push` instead,
 # which avoids the checkout entirely.
 #
@@ -442,7 +442,7 @@ if [ "$wt_usable" = "true" ]; then
  5)
  # No staged diff — files already match wiki branch. Clean up dev-tree
  # duplicates so the existing drift WARNING in ingest.md does not
- # re-flag them on the next /rite:wiki:ingest run.
+ # re-flag them on the next /rite:wiki-ingest run.
  # Symmetric with the rc=0/4 branch above: rm failures are surfaced so
  # operators can diagnose read-only FS / permission denied. Otherwise
  # stale raw files silently re-appear as pending on the next run.
@@ -514,7 +514,7 @@ if ! git show-ref --verify --quiet "refs/heads/${wiki_branch}"; then
  fi
  echo " hint (run one of these, in order of preference):" >&2
  echo " 1) git fetch origin ${wiki_branch}:${wiki_branch} # fresh clone: create local branch from origin/${wiki_branch}" >&2
- echo " 2) /rite:wiki:init # uninitialized repo: initialize Wiki structure" >&2
+ echo " 2) /rite:wiki-init # uninitialized repo: initialize Wiki structure" >&2
  echo " NOTE: trade-off — this exit 2 silently defers raw source commit" >&2
  echo " until the wiki branch exists locally. On a fresh clone the caller" >&2
  echo " emits wiki_ingest_skipped with reason=commit_branch_missing." >&2

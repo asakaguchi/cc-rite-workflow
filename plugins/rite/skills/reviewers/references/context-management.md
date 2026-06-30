@@ -31,7 +31,7 @@ When 4+ reviewers are needed:
    - Group 2: Code quality (Test + API)
    - Group 3: Documentation (Prompt Engineer + Tech Writer)
 
-2. **Manually run independent `/rite:pr:review` sessions per group**
+2. **Manually run independent `/rite:review` sessions per group**
    - Record first group's review results in unified report
    - Run next group and merge results into existing report
 

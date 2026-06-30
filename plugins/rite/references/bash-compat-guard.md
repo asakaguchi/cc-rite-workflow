@@ -1,6 +1,6 @@
 # Bash 4+ Compatibility Guard (canonical)
 
-`/rite:pr:fix` / `/rite:pr:review` / その他 `mapfile -t` を使用する command file が共有する bash 4+ 互換性チェックの canonical 実装。
+`/rite:fix` / `/rite:review` / その他 `mapfile -t` を使用する command file が共有する bash 4+ 互換性チェックの canonical 実装。
 
 ## 背景
 
@@ -27,8 +27,8 @@ fi
 
 | Command | `{CONTEXT_FLAG}` | `{OUTPUT_PATTERN}` |
 |---------|------------------|---------------------|
-| `/rite:pr:fix` | `FIX_FALLBACK_FAILED` | `[fix:error]` |
-| `/rite:pr:review` | `REVIEW_ARG_PARSE_FAILED` | `[review:error]` |
+| `/rite:fix` | `FIX_FALLBACK_FAILED` | `[fix:error]` |
+| `/rite:review` | `REVIEW_ARG_PARSE_FAILED` | `[review:error]` |
 
 新しい command を追加する際は本表に行を追加すること。`reason=bash_version_incompatible` は全 command で共通。
 

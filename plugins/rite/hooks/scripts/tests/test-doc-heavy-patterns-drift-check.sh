@@ -109,11 +109,11 @@ build_fake_tree_at() {
   local dest="$1"
   mkdir -p \
     "$dest/plugins/rite/skills/reviewers" \
-    "$dest/plugins/rite/commands/pr"
+    "$dest/plugins/rite/skills/review"
   cp "$REPO_ROOT/plugins/rite/skills/reviewers/SKILL.md" \
      "$dest/plugins/rite/skills/reviewers/SKILL.md"
-  cp "$REPO_ROOT/plugins/rite/commands/pr/review.md" \
-     "$dest/plugins/rite/commands/pr/review.md"
+  cp "$REPO_ROOT/plugins/rite/skills/review/SKILL.md" \
+     "$dest/plugins/rite/skills/review/SKILL.md"
 }
 
 # Tests allocate fake trees with the following 3-line pattern (all in the
@@ -187,7 +187,7 @@ assert "repo-wide --all exits 0 on real 2 files (no false positives)" "0" "$rc"
 FAKE_REMOVED=$(mktemp -d) || { echo "FAIL: Test 5 mktemp -d failed" >&2; exit 2; }
 TMPDIRS+=("$FAKE_REMOVED")
 build_fake_tree_at "$FAKE_REMOVED"
-REVIEW_FIXTURE="$FAKE_REMOVED/plugins/rite/commands/pr/review.md"
+REVIEW_FIXTURE="$FAKE_REMOVED/plugins/rite/skills/review/SKILL.md"
 remove_rst_adoc_line "$REVIEW_FIXTURE"
 
 # Sanity check: the line must be gone from the fixture.
@@ -234,7 +234,7 @@ assert_contains_near \
 FAKE_ADDED=$(mktemp -d) || { echo "FAIL: Test 6 mktemp -d failed" >&2; exit 2; }
 TMPDIRS+=("$FAKE_ADDED")
 build_fake_tree_at "$FAKE_ADDED"
-REVIEW_FIXTURE="$FAKE_ADDED/plugins/rite/commands/pr/review.md"
+REVIEW_FIXTURE="$FAKE_ADDED/plugins/rite/skills/review/SKILL.md"
 append_bogus_pattern "$REVIEW_FIXTURE"
 
 if ! grep -qF -- '**/*.bogus' "$REVIEW_FIXTURE"; then
@@ -277,7 +277,7 @@ out=$("$SCRIPT" --all --quiet --repo-root "$FAKE_MISSING" 2>&1)
 rc=$?
 assert "missing-file fixture exits 2" "2" "$rc"
 assert_contains "missing-file fixture names a required file" \
-  "review.md" "$out"
+  "SKILL.md" "$out"
 
 # --- Test 8: broken-section guard --------------------------------------------
 # Blank out review.md's doc_file_patterns body. The extractor should find zero
@@ -286,7 +286,7 @@ assert_contains "missing-file fixture names a required file" \
 FAKE_BROKEN=$(mktemp -d) || { echo "FAIL: Test 8 mktemp -d failed" >&2; exit 2; }
 TMPDIRS+=("$FAKE_BROKEN")
 build_fake_tree_at "$FAKE_BROKEN"
-blank_doc_patterns_body "$FAKE_BROKEN/plugins/rite/commands/pr/review.md"
+blank_doc_patterns_body "$FAKE_BROKEN/plugins/rite/skills/review/SKILL.md"
 
 out=$("$SCRIPT" --all --quiet --repo-root "$FAKE_BROKEN" 2>&1)
 rc=$?

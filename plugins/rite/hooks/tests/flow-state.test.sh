@@ -491,7 +491,7 @@ echo "=== TC-17: AC-2/AC-3 cmd_set --if-exists WARNs on stale sid; first-time si
 # that did not exist (stale `.rite-session-id`). Caller's intent (update active
 # session state) was violated without any signal. Fix emits WARNING only when
 # `.rite-session-id` exists (caller expected a session), staying silent for the
-# truly first-time case that wiki/ingest.md (get) and pr:ready 等 --if-exists caller rely on.
+# truly first-time case that wiki/ingest.md (get) and ready 等 --if-exists caller rely on.
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 echo "deadbeef-0000-0000-0000-000000000000" > "$d/.rite-session-id"
 err=$( (cd "$d" && bash "$HOOK" set --phase plan --issue 1 --branch "b" --pr 0 --next "n" --if-exists) 2>&1 )
@@ -735,7 +735,7 @@ fi
 
 # --- TC-22: env-set + state file 不在 + .rite-session-id 不在 の graceful 沈黙契約 ---
 echo ""
-echo "=== TC-22: env-set first-time silent contract (wiki/ingest.md get / pr:ready 等 --if-exists caller 依存) ==="
+echo "=== TC-22: env-set first-time silent contract (wiki/ingest.md get / ready 等 --if-exists caller 依存) ==="
 # Why: env で sid 解決成功 + state file 不在 + .rite-session-id 不在 (Claude Code 起動直後 /
 # wiki/ingest.md 初回呼び出し) では `[ -f "$SESSION_ID_FILE" ]` gate が false で graceful silent。
 # 将来 gate が除去され「path 不在で常に WARN」に変わると、依存先で WARNING ノイズが大量発生
@@ -758,7 +758,7 @@ if echo "$combined" | grep -qE 'WARNING:.*cmd_get:.*state file not found'; then
 else
   pass "TC-22.2: env-set first-time で cmd_get が graceful silent (依存先契約保持)"
 fi
-# graceful 完了 invariant: rc=0 + stdout に default 返却 (依存先 wiki/ingest.md get / pr:ready 等 --if-exists caller の契約)
+# graceful 完了 invariant: rc=0 + stdout に default 返却 (依存先 wiki/ingest.md get / ready 等 --if-exists caller の契約)
 if [ "$get_rc" = "0" ]; then
   pass "TC-22.2: env-set first-time で cmd_get が rc=0 (graceful contract)"
 else
@@ -775,9 +775,9 @@ fi
 echo ""
 echo "=== TC-H1: set --handoff writes handoff field ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
-(cd "$d" && bash "$HOOK" set --phase review --issue 1168 --branch b --pr 99 --next n --handoff "/rite:pr:fix 99")
+(cd "$d" && bash "$HOOK" set --phase review --issue 1168 --branch b --pr 99 --next n --handoff "/rite:fix 99")
 state_file="$d/.rite/sessions/${sid}.flow-state"
-assert "TC-H1: handoff set" "/rite:pr:fix 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+assert "TC-H1: handoff set" "/rite:fix 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
 
 echo ""
 echo "=== TC-H2: set WITHOUT --handoff default-clears (no handoff key) ==="
@@ -789,10 +789,10 @@ assert "TC-H2: handoff absent when --handoff omitted" "ABSENT" "$(jq -r '.handof
 echo ""
 echo "=== TC-H3: consume-handoff prints value + deletes it (one-shot) ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
-(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:pr:review 99")
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:review 99")
 state_file="$d/.rite/sessions/${sid}.flow-state"
 first=$(cd "$d" && bash "$HOOK" consume-handoff)
-assert "TC-H3: first consume returns value" "/rite:pr:review 99" "$first"
+assert "TC-H3: first consume returns value" "/rite:review 99" "$first"
 assert "TC-H3: handoff deleted after consume" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
 second=$(cd "$d" && bash "$HOOK" consume-handoff)
 assert "TC-H3: second consume is empty (one-shot)" "" "$second"
@@ -828,8 +828,8 @@ echo ""
 echo "=== TC-H5: set --handoff then set without --handoff clears it (terminal transition) ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 state_file="$d/.rite/sessions/${sid}.flow-state"
-(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:pr:review 99")
-assert "TC-H5: handoff present after continuation set" "/rite:pr:review 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:review 99")
+assert "TC-H5: handoff present after continuation set" "/rite:review 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
 (cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next "terminal")
 assert "TC-H5: handoff cleared by subsequent no-handoff set" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
 
@@ -842,7 +842,7 @@ echo "=== TC-H6: consume-handoff fail-closed on _atomic_write failure ==="
 # この correctness path に test がないと print-then-delete への revert を検出できないため pin する。
 # 書込失敗の強制は TC-8b-e/g と同じ DAC-probe (chmod 0555) を流用する。
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
-(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:pr:review 99")
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:review 99")
 state_file="$d/.rite/sessions/${sid}.flow-state"
 # DAC probe (同 TC-8b-e/g): root / fakeroot / CAP_DAC_OVERRIDE 環境では chmod 0555 が無効化され
 # write-failure path を強制できないため、実機 write probe で強制可能性を検出し silent false-pass を防ぐ。
@@ -880,7 +880,7 @@ else
     val="${out%__RC=*}"; val="${val%$'\n'}"
     assert "TC-H6: value withheld on write failure (stdout empty)" "" "$val"
     assert "TC-H6: rc 0 on write failure (Stop hook will allow stop)" "0" "$rc"
-    assert "TC-H6: handoff retained in file (delete not persisted)" "/rite:pr:review 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+    assert "TC-H6: handoff retained in file (delete not persisted)" "/rite:review 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
     # 診断 ERROR が stderr に出ること (observability: write 失敗時の triage 用。cmd_set / _atomic_write の ERROR emission と対称)
     if [ "$_tch6_stderr" = "/dev/null" ]; then
       pass "TC-H6: 診断 ERROR assert を skip (stderr capture tempfile 取得不可)"
@@ -907,7 +907,7 @@ echo "=== TC-H7: consume-handoff on corrupt JSON → WARNING + empty + rc 0 ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 state_file="$d/.rite/sessions/${sid}.flow-state"
 # 正規 set で sessions dir + valid file を作ってから corrupt JSON で上書き (実際の FS corruption を模倣)
-(cd "$d" && bash "$HOOK" set --phase fix --issue 1170 --branch b --pr 99 --next n --handoff "/rite:pr:review 99")
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1170 --branch b --pr 99 --next n --handoff "/rite:review 99")
 printf '{ this is not valid json' > "$state_file"
 _tch7_stderr=$(mktemp /tmp/rite-tch7-stderr-XXXXXX 2>/dev/null) || _tch7_stderr="/dev/null"
 out=$( (cd "$d" && bash "$HOOK" consume-handoff 2>"$_tch7_stderr"); echo "__RC=$?" )

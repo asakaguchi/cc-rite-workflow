@@ -6,7 +6,7 @@
 # this script repeatedly is safe and cheap.
 #
 # Design rationale: the legacy Block A/B pattern in
-# commands/wiki/ingest.md relied on `git stash + git checkout wiki` on
+# skills/wiki-ingest/SKILL.md relied on `git stash + git checkout wiki` on
 # the current working tree, which loses access to the dev-branch
 # `plugins/rite/templates/wiki/page-template.md` during the LLM
 # Write/Edit phase. A dedicated worktree keeps the dev-branch tree
@@ -31,7 +31,7 @@
 #     worktree metadata file (`.rite/wiki-worktree/.git`) does not
 #     pollute dev-branch diffs.
 #   - The script does NOT fetch from origin. If the wiki branch only
-#     exists remotely, the caller (e.g. /rite:wiki:init) is responsible
+#     exists remotely, the caller (e.g. /rite:wiki-init) is responsible
 #     for running `git fetch origin wiki:wiki` first.
 #   - The script self-heals stale worktree state so a relocated/copied repo
 #     does not silently break ingest. Two cases are recovered before
@@ -143,7 +143,7 @@ if ! git show-ref --verify --quiet "refs/heads/${wiki_branch}"; then
   echo "[wiki-worktree-setup] status=skipped; path=-; branch=${wiki_branch}; reason=commit_branch_missing"
   echo "  hint (run one of these, in order of preference):" >&2
   echo "    1) git fetch origin ${wiki_branch}:${wiki_branch}" >&2
-  echo "    2) /rite:wiki:init" >&2
+  echo "    2) /rite:wiki-init" >&2
   exit 2
 fi
 

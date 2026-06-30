@@ -1,7 +1,7 @@
 # Issue Template: Implementation Contract
 
 This template defines the "Implementation Contract" format for Issue body generation.
-Claude reads this template when creating Issues via `/rite:issue:create` (ステップ 4.2)
+Claude reads this template when creating Issues via `/rite:issue-create` (ステップ 4.2)
 and dynamically generates the Issue body based on Type and Complexity.
 
 ## Usage Instructions
@@ -16,7 +16,7 @@ and dynamically generates the Issue body based on Type and Complexity.
 
 ## Type Definitions
 
-> **Type 表記の SoT (crosswalk)**: 下表の `Commit Type` 列が、Issue body 構造で用いる **Contract Type** (Feature/BugFix/...) と Conventional Commits 系の **Commit Type** (feat/fix/...) の対応を定義する単一の Source of Truth。`commands/issue/create.md` (Step 4.1 / 4.2)、`commands/issue/references/contract-section-mapping.md`、`templates/issue/template-structure.md` Section 3 はこの crosswalk を参照する（各箇所で対応関係を再定義しない）。
+> **Type 表記の SoT (crosswalk)**: 下表の `Commit Type` 列が、Issue body 構造で用いる **Contract Type** (Feature/BugFix/...) と Conventional Commits 系の **Commit Type** (feat/fix/...) の対応を定義する単一の Source of Truth。`skills/issue-create/SKILL.md` (Step 4.1 / 4.2)、`skills/issue-create/references/contract-section-mapping.md`、`templates/issue/template-structure.md` Section 3 はこの crosswalk を参照する（各箇所で対応関係を再定義しない）。
 
 | Type (Contract) | Commit Type | Characteristic Section | Heuristics |
 |-----------------|-------------|----------------------|------------|
@@ -95,7 +95,7 @@ Legend: `M` = MUST (required), `S` = SHOULD (recommended), `O` = OMIT (skip)
 
 ## Interview to Template Mapping
 
-> **Moved**: Interview Perspective → Target Sections の正規 mapping table は [`commands/issue/references/contract-section-mapping.md#step-3-perspective--target-sections-mapping`](../../skills/issue-create/references/contract-section-mapping.md#step-3-perspective--target-sections-mapping) に移動しました。本 template から interview mapping を参照する場合は本 reference を経由すること。
+> **Moved**: Interview Perspective → Target Sections の正規 mapping table は [`skills/issue-create/references/contract-section-mapping.md#step-3-perspective--target-sections-mapping`](../../skills/issue-create/references/contract-section-mapping.md#step-3-perspective--target-sections-mapping) に移動しました。本 template から interview mapping を参照する場合は本 reference を経由すること。
 
 ---
 

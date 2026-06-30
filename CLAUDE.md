@@ -15,8 +15,8 @@ plugins/rite/
 │   │                 #   references/ (fact-check, internal-consistency, fix-relaxation-rules,
 │   │                 #   assessment-rules, reviewer-fallbacks, bash-trap-patterns 等)
 │   ├── wiki/         #   Experience Wiki 操作（init, query, ingest, lint）+ references/
-│   ├── skill/        #   /rite:skill:suggest
-│   ├── template/     #   /rite:template:reset
+│   ├── skill/        #   /rite:skill-suggest
+│   ├── template/     #   /rite:template-reset
 │   └── init.md / getting-started.md / investigate.md / lint.md / resume.md / workflow.md
 ├── skills/           # Claude Code が自動検出するスキル定義（SKILL.md）
 │   ├── rite-workflow/  #   メインスキル + references/（コーディング原則、コンテキスト管理）
@@ -52,7 +52,7 @@ rite-config.yml        # プロジェクト固有設定（ブランチ戦略、P
 現時点でビルド・テスト・lint コマンドは未設定（`rite-config.yml` の `commands` セクション参照）。変更の検証は以下で実施:
 
 - `/rite:lint` でプロジェクト設定に基づく品質チェック
-- `/rite:pr:review` でセルフレビュー（マルチレビュアー方式）
+- `/rite:review` でセルフレビュー（マルチレビュアー方式）
 - 手動: スキル・コマンドの変更は次回呼び出し時に反映されるため、実際に実行して動作確認
 
 ## メモリ機能

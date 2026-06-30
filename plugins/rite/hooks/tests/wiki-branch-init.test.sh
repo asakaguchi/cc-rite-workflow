@@ -1,7 +1,7 @@
 #!/bin/bash
 # Tests for wiki-branch-init.sh
 #
-# 旧 commands/wiki/init.md ステップ 3.1 inline block (~95 行) の委譲先 helper。
+# 旧 skills/wiki-init/SKILL.md ステップ 3.1 inline block (~95 行) の委譲先 helper。
 # 動作保持は differential equivalence test (TC-D 系) で機械的に立証する:
 # 旧 inline block を参照実装として verbatim 再現し、同一構成の sandbox git repo
 # (bare origin 付き) で実行して、正規化済み出力と end state (ブランチ構成 /

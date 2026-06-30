@@ -31,7 +31,7 @@
 # `feature/pr-918-cycle4`, `pr-994-testing-suite`) from accidental deletion
 # by requiring an **exact-match suffix** rather than a substring. The wiki
 # worktree (`.rite/wiki-worktree`) is excluded unconditionally — see
-# commands/pr/cleanup.md §2.6.
+# skills/cleanup/SKILL.md §2.6.
 #
 # Also reaps (Issue #1526):
 #   - bare `pr-{N}` (no suffix, `^pr-[0-9]+$`): external/manual PR-checkout leak
@@ -44,7 +44,7 @@
 #     Step 4.5 deletes ONLY recorded entries, never by guessing names (AC-4/D-05).
 #
 # Variation history:
-#   - `cycle{N}`: orchestrator-created (`/rite:pr:review` cycle worktrees)
+#   - `cycle{N}`: orchestrator-created (`/rite:review` cycle worktrees)
 #   - `test` / `experiment` / `mutation` / `verify` / `check` / `sandbox`:
 #     reviewer-subagent verification experiments (observed in practice).
 #     The reviewer's READ-ONLY contract is enforced primarily by

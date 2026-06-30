@@ -389,7 +389,7 @@ else
 fi
 ```
 
-`[CONTEXT] WT_ENSURE=` marker の分岐は [commands/resume.md](../resume/SKILL.md) Phase 3.1.5 の **WT_ENSURE 分岐表（SoT）** に従う（`disabled`〜`reconstructed` の共通 case は SoT 表と同一。**終端の `branch_absent` / `failed` のみ caller 固有**で、resume の AskUserQuestion / 停止に対し、非対話サブ起動の review は機械的に `[review:error]` 停止する — 下記）:
+`[CONTEXT] WT_ENSURE=` marker の分岐は [skills/resume/SKILL.md](../resume/SKILL.md) Phase 3.1.5 の **WT_ENSURE 分岐表（SoT）** に従う（`disabled`〜`reconstructed` の共通 case は SoT 表と同一。**終端の `branch_absent` / `failed` のみ caller 固有**で、resume の AskUserQuestion / 停止に対し、非対話サブ起動の review は機械的に `[review:error]` 停止する — 下記）:
 
 - `disabled` / `already_in` / `skip` → no-op、ステップ 1.2 へ（`disabled` = `multi_session.enabled: false`。従来どおり単一ツリーで動作し挙動不変）。
 - `reenter` / `reconstructed` → `EnterWorktree` ツールを `path: {path}`（marker の `path=` 値）で呼び出してからステップ 1.2 へ。`reconstructed` は helper が `git worktree add` 済み。EnterWorktree 失敗時の切り分けは resume.md Phase 3.1.5 / /rite:open Step 2.3-W と同じ（silent に新規扱いしない）。
@@ -596,7 +596,7 @@ YAML パーサーの仕様により `count_ratio_threshold: "0.7"` (quoted strin
 ```
 # Doc file patterns — kept in sync across 2 files (this file ステップ 1.2.7 /
 # SKILL.md Reviewers table tech-writer row). 等価性の **invariant 定義と drift 検出ルール**は
-# `commands/pr/references/internal-consistency.md` Cross-Reference セクション「drift 検出の invariant
+# `skills/review/references/internal-consistency.md` Cross-Reference セクション「drift 検出の invariant
 # (2 ファイル等価性)」に集約されている。drift 検出 lint は
 # `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` として実装済み
 # drift-check 系統 1; /rite:lint Phase 3.7 から呼び出される。
@@ -3549,7 +3549,7 @@ Claude determines the invocation source from the conversation context:
 | Conversation history has a record of `rite:review` being invoked via the `Skill` tool | Within loop -> Automatically execute the next step |
 | Otherwise (user directly entered `/rite:review`) | Standalone execution -> Confirm the next action with `AskUserQuestion` |
 
-**Note**: This adopts the same conversation context method as `commands/lint.md` and `skills/fix/SKILL.md`.
+**Note**: This adopts the same conversation context method as `skills/lint/SKILL.md` and `skills/fix/SKILL.md`.
 
 ---
 

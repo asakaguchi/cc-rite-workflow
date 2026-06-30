@@ -54,7 +54,7 @@ This command has two invocation cases: standalone execution and being called fro
 | `rite:lint` was called via the `Skill` tool immediately prior within the same session | Within end-to-end flow |
 | Otherwise (user directly typed `/rite:lint`) | Standalone execution |
 
-**Note**: `commands/skills/fix/SKILL.md` also uses conversation context for determination in the same manner.
+**Note**: `skills/fix/SKILL.md` also uses conversation context for determination in the same manner.
 
 **Output patterns (required regardless of caller):**
 - `[lint:success]` - lint completed successfully
@@ -504,7 +504,7 @@ fi
 
 ### 3.7 Plugin-specific Checks (Doc-Heavy Patterns Drift Detection)
 
-Execute the doc-heavy patterns drift check script to detect divergence between the `doc_file_patterns` declared in 2 files that MUST stay in sync: `plugins/rite/commands/skills/review/SKILL.md` (ステップ 1.2.7 `doc_file_patterns` pseudo-code block) and `plugins/rite/skills/reviewers/SKILL.md` (Reviewers table Technical Writer row). Drift between these files silently changes tech-writer activation and Doc-Heavy PR detection. See the script header at `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` for the extraction contract.
+Execute the doc-heavy patterns drift check script to detect divergence between the `doc_file_patterns` declared in 2 files that MUST stay in sync: `plugins/rite/skills/review/SKILL.md` (ステップ 1.2.7 `doc_file_patterns` pseudo-code block) and `plugins/rite/skills/reviewers/SKILL.md` (Reviewers table Technical Writer row). Drift between these files silently changes tech-writer activation and Doc-Heavy PR detection. See the script header at `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` for the extraction contract.
 
 **Condition**: Always execute when the script exists.
 
@@ -925,7 +925,7 @@ fi
 
 ### 3.18 Plugin-specific Checks (Projects Board "Done" Drift Detection)
 
-Execute the projects board drift check to detect the "CLOSED+COMPLETED but board != Done" reconciliation gap. A `Done` transition is only wired into `/rite:cleanup` (ステップ8 → `commands/pr/references/archive-procedures.md` Phase 3.2) and `/rite:issue-close` (Shared: Projects Status → Done), but GitHub auto-closes an Issue the moment a PR carrying `Closes #N` merges. When `/rite:cleanup` is not run afterwards, the board freezes at its last value (In Review for a ready Issue, Todo for an untouched one) and no reconciler picks it back up. The check scans recently-updated CLOSED Issues whose `stateReason` is `COMPLETED` and reports those that are on the project board with Status != "Done". Closure reason `NOT_PLANNED` (wontfix / duplicate) is intentionally excluded, and Issues that are not on the board are not drift (no board Status to reconcile). See the script header at `plugins/rite/hooks/scripts/projects-board-drift-check.sh` for the detection and reconcile contract.
+Execute the projects board drift check to detect the "CLOSED+COMPLETED but board != Done" reconciliation gap. A `Done` transition is only wired into `/rite:cleanup` (ステップ8 → `skills/cleanup/references/archive-procedures.md` Phase 3.2) and `/rite:issue-close` (Shared: Projects Status → Done), but GitHub auto-closes an Issue the moment a PR carrying `Closes #N` merges. When `/rite:cleanup` is not run afterwards, the board freezes at its last value (In Review for a ready Issue, Todo for an untouched one) and no reconciler picks it back up. The check scans recently-updated CLOSED Issues whose `stateReason` is `COMPLETED` and reports those that are on the project board with Status != "Done". Closure reason `NOT_PLANNED` (wontfix / duplicate) is intentionally excluded, and Issues that are not on the board are not drift (no board Status to reconcile). See the script header at `plugins/rite/hooks/scripts/projects-board-drift-check.sh` for the detection and reconcile contract.
 
 **Condition**: Always execute when the script exists.
 
@@ -960,7 +960,7 @@ fi
 
 ### 3.19 Plugin-specific Checks (Issue/PR Number Reference Detection)
 
-Execute the number reference check to detect Issue/PR number references (`#NNN`, `Issue #NNN`, `PR #NNN`) that have crept back into the number-free documentation surface — `CHANGELOG.md`, `CHANGELOG.ja.md`, and this file (`plugins/rite/commands/lint.md`). Project policy is to drop descriptive Issue/PR numbers and state the rationale directly as prose; release notes habitually re-add the merging PR (`(#NNNN)`) and command docs accrete `Issue #NNN` provenance over time, so a static check surfaces recurrence at lint time rather than at the next manual audit. The detected token is a 3-4 digit `#NNN` at a word boundary, which subsumes the `Issue #NNN` / `PR #NNN` prose forms. See the script header at `plugins/rite/hooks/scripts/number-reference-check.sh` for the grammar and scope contract.
+Execute the number reference check to detect Issue/PR number references (`#NNN`, `Issue #NNN`, `PR #NNN`) that have crept back into the number-free documentation surface — `CHANGELOG.md`, `CHANGELOG.ja.md`, and this file (`plugins/rite/skills/lint/SKILL.md`). Project policy is to drop descriptive Issue/PR numbers and state the rationale directly as prose; release notes habitually re-add the merging PR (`(#NNNN)`) and command docs accrete `Issue #NNN` provenance over time, so a static check surfaces recurrence at lint time rather than at the next manual audit. The detected token is a 3-4 digit `#NNN` at a word boundary, which subsumes the `Issue #NNN` / `PR #NNN` prose forms. See the script header at `plugins/rite/hooks/scripts/number-reference-check.sh` for the grammar and scope contract.
 
 Not matched (structural — no allowlist needed): functional code (`{issue_number}` placeholder, `issue-[0-9]+` branch-name extraction, `/issues/.../` API paths — none contain a literal `#NNN`) and markdown step/phase headings (`## 3.19`, where `#` is followed by `#` or a space, never a digit). 1-2 digit refs and 5+ digit tokens are outside the matched band.
 

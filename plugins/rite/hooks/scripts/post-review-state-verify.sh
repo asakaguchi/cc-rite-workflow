@@ -11,7 +11,7 @@
 #
 # 想定する事故シナリオ: reviewer subagent が `pr-<N>-test` のようなブランチを作成して
 # `git checkout` した結果、parent session の working tree が develop に切り替わって
-# `/rite:pr:fix` が PR ブランチを見失う。これを再発させない gate。
+# `/rite:fix` が PR ブランチを見失う。これを再発させない gate。
 #
 # Usage:
 #   bash post-review-state-verify.sh \

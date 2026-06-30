@@ -8,7 +8,7 @@
 # too late to catch in review.
 #
 # Two-path architecture (item #9):
-#   - Single-Issue path  = `commands/issue/create.md` ステップ 4.3
+#   - Single-Issue path  = `skills/issue-create/SKILL.md` ステップ 4.3
 #                          → `args_json=$(jq -n ...)` constructor + 1 direct
 #                            `create-issue-with-projects.sh "$args_json"` callsite
 #                            (入れ子 $() を分離。単一 JSON 引数契約は不変)。
@@ -26,8 +26,8 @@
 # future re-inlining or silent removal in either file is caught.
 #
 # Additional single-create callers:
-#   - commands/pr/create.md Phase 2.5.5 → scope-out (検出問題) Issue 起票
-#   - commands/pr/cleanup.md ステップ 3  → 残作業 Issue 起票
+#   - skills/pr-create/SKILL.md Phase 2.5.5 → scope-out (検出問題) Issue 起票
+#   - skills/cleanup/SKILL.md ステップ 3  → 残作業 Issue 起票
 # Both migrated to the args_json 分離形式 and share the Single-Issue
 # canonical contract (`args_json=$(jq -n ...)` constructor + a single
 # `create-issue-with-projects.sh "$args_json"` callsite). TC-9..TC-11 pin them so
@@ -45,13 +45,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_test-helpers.sh
 source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
-CREATE_MD="$PLUGIN_ROOT/commands/issue/create.md"
+CREATE_MD="$PLUGIN_ROOT/skills/issue-create/SKILL.md"
 DECOMPOSE_SH="$PLUGIN_ROOT/scripts/decompose-issues.sh"
 SOT_MD="$PLUGIN_ROOT/references/issue-create-with-projects.md"
 # Additional single-create callers migrated to the args_json 分離形式
 # (pinned by TC-9..TC-11)。
-PR_CREATE_MD="$PLUGIN_ROOT/commands/pr/create.md"
-PR_CLEANUP_MD="$PLUGIN_ROOT/commands/pr/cleanup.md"
+PR_CREATE_MD="$PLUGIN_ROOT/skills/pr-create/SKILL.md"
+PR_CLEANUP_MD="$PLUGIN_ROOT/skills/cleanup/SKILL.md"
 
 for f in "$CREATE_MD" "$DECOMPOSE_SH" "$SOT_MD" "$PR_CREATE_MD" "$PR_CLEANUP_MD"; do
   [ -f "$f" ] || { echo "ERROR: required file not found: $f" >&2; exit 1; }
@@ -184,8 +184,8 @@ check_no_flag_title_proximity "TC-3b no flag-style --title near decompose-issues
 # ──────────────────────────────────────────────────────────────────────
 # TC-9 / TC-10: Additional single-create callers (args_json 分離形式
 #   へ移行) も Single-Issue path (create.md 4.3) と同一の canonical 契約を持つ:
-#     - commands/pr/create.md Phase 2.5.5 → scope-out Issue 起票
-#     - commands/pr/cleanup.md ステップ 3  → 残作業 Issue 起票
+#     - skills/pr-create/SKILL.md Phase 2.5.5 → scope-out Issue 起票
+#     - skills/cleanup/SKILL.md ステップ 3  → 残作業 Issue 起票
 #   両 caller が nested `"$(jq -n ...)"` 形式へ戻る回帰を直接 pin する
 #   (bash-heaviness-check.sh の間接保護だけではこの回帰を捕捉できないため)。各 caller につき
 #   (a) canonical 単一引数 callsite の存在、(b) args_json が jq -n の 分離形式で
@@ -362,7 +362,7 @@ phase_completed_count=$(grep -cE '\-\-phase completed' "$CREATE_MD" || true)
 if [ "$flow_state_set_count" -eq 0 ] && [ "$phase_completed_count" -eq 0 ]; then
   pass "TC-8 create.md は flow-state を init/所有しない (flow-state.sh set=$flow_state_set_count, --phase completed=$phase_completed_count)"
 else
-  fail "TC-8 create.md に flow-state 操作が再混入 (flow-state.sh set=$flow_state_set_count, --phase completed=$phase_completed_count). issue:create は flow-state ライフサイクルに関与してはならない"
+  fail "TC-8 create.md に flow-state 操作が再混入 (flow-state.sh set=$flow_state_set_count, --phase completed=$phase_completed_count). issue-create は flow-state ライフサイクルに関与してはならない"
 fi
 
 print_summary "create-md-invocation-symmetry.test.sh"

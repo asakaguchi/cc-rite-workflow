@@ -224,7 +224,7 @@ fi
 echo "TC-010: AC-3 baseline — pr/open.md must pass (successor of start.md after parent-routing consolidation)"
 rc=0
 output=$(bash "$TARGET" \
-  "$REPO_ROOT/plugins/rite/commands/pr/open.md" 2>&1) || rc=$?
+  "$REPO_ROOT/plugins/rite/skills/open/SKILL.md" 2>&1) || rc=$?
 if [ "$rc" -eq 0 ]; then
   pass "AC-3 baseline: in-scope files have 0 direct gh issue create invocations"
 else
@@ -253,7 +253,7 @@ fi
 # violation regardless of which subdirectory it lives in.
 # --------------------------------------------------------------------------
 echo "TC-012: --all mode → exit 1 when a regression is planted"
-planted_file="$REPO_ROOT/plugins/rite/commands/__tc012_violation_fixture__.md"
+planted_file="$REPO_ROOT/plugins/rite/skills/__tc012_violation_fixture__.md"
 cleanup_planted() { rm -f "$planted_file"; }
 trap 'cleanup; cleanup_planted' EXIT
 cat > "$planted_file" <<'EOF'

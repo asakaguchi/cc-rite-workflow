@@ -1,6 +1,6 @@
 # Interview Perspectives Template
 
-This template defines the 6 interview perspectives used by the Deep-Dive Interview step in `commands/issue/create.md` ステップ 1.
+This template defines the 6 interview perspectives used by the Deep-Dive Interview step in `skills/issue-create/SKILL.md` ステップ 1.
 
 ## Perspective Scope Table
 

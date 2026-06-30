@@ -11,7 +11,7 @@ This module handles GitHub Projects integration including Status updates and Ite
 Retrieve the Project item ID and update Status to "In Progress".
 **Automatically add the Issue to the Project if it is not registered.**
 
-> **Runtime execution**: Callers (`commands/pr/open.md` ステップ 2.4 / `commands/pr/ready.md` Phase 4 / `commands/issue/close.md`) invoke `plugins/rite/scripts/projects-status-update.sh`, which is the single source of truth for Projects Status updates. The bash examples in §2.4.2 – §2.4.5 below document the underlying API calls for reference and debugging. Do NOT reproduce them inline in new commands — delegate to the script instead (inlining the API calls duplicates the single source of truth and invites drift).
+> **Runtime execution**: Callers (`skills/open/SKILL.md` ステップ 2.4 / `skills/ready/SKILL.md` Phase 4 / `skills/issue-close/SKILL.md`) invoke `plugins/rite/scripts/projects-status-update.sh`, which is the single source of truth for Projects Status updates. The bash examples in §2.4.2 – §2.4.5 below document the underlying API calls for reference and debugging. Do NOT reproduce them inline in new commands — delegate to the script instead (inlining the API calls duplicates the single source of truth and invites drift).
 
 ### 2.4.1 Configuration Retrieval
 
@@ -120,13 +120,13 @@ gh project item-edit --project-id {project_id} --id {item_id} --field-id {status
 
 #### 2.4.7.1 Parent Issue Detection
 
-Detect the parent Issue of the current (child) Issue. **Three methods are tried in order (OR combination); the first successful result wins.** This ordering is critical: `## 親 Issue` body meta is placed PRIMARY because it is the most reliable source in repositories that use `/rite:issue:create` (Decompose Path, flat workflow; writes this section to every child), and it requires no dependency on GitHub's native Sub-Issues feature.
+Detect the parent Issue of the current (child) Issue. **Three methods are tried in order (OR combination); the first successful result wins.** This ordering is critical: `## 親 Issue` body meta is placed PRIMARY because it is the most reliable source in repositories that use `/rite:issue-create` (Decompose Path, flat workflow; writes this section to every child), and it requires no dependency on GitHub's native Sub-Issues feature.
 
 > **Consistency requirement**: The same 3-method OR detection **structure** MUST be used in `close.md` Phase 4.5.1 — i.e., the same three method ordering (body meta → Sub-Issues API → tasklist search), the same OR combination semantics, and the same `[DEBUG] parent not detected` emission on total failure. **Context-dependent parameters MAY differ** between the two sites where the surrounding workflow demands it; specifically, Method 3's `--state` filter is `open` here (start side — closed parents do not need In Progress promotion) and `all` in close.md Phase 4.5.1 (close side — the closing Issue's parent may itself already be closed). These differences are intentional and are not drift. **Method 3's validation loop body is also a sync target**: the self-match exclusion (`cand != {issue_number}`), the body re-validation regex (which confirms the candidate body actually contains the `- [ ] #{issue_number}` / `- [x] #{issue_number}` tasklist line), and `--limit 10` MUST stay identical across both sites — only the `--state` filter differs. If the detection method ordering, the OR semantics, or the Method 3 loop body (regex / `--limit`) diverge between start and close, the past silent-skip and false-positive regressions in parent-child sync reappear.
 
 **Method 1: `## 親 Issue` body meta (PRIMARY)**
 
-Read the current (child) Issue body and search for the `## 親 Issue` section. This section is written by `/rite:issue:create` (Decompose Path, flat workflow) when child Issues are created from a parent. Format:
+Read the current (child) Issue body and search for the `## 親 Issue` section. This section is written by `/rite:issue-create` (Decompose Path, flat workflow) when child Issues are created from a parent. Format:
 
 ```
 ## 親 Issue

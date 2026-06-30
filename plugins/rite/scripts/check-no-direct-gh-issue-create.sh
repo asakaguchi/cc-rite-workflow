@@ -1,7 +1,7 @@
 #!/bin/bash
 # check-no-direct-gh-issue-create.sh
 # Static guard: ensure target files do not contain direct `gh issue create`
-# invocations. All Issue creation paths (`/rite:issue:create` plus follow-up
+# invocations. All Issue creation paths (`/rite:issue-create` plus follow-up
 # Issue creation in `pr/review.md` / `pr/fix.md`) must go through
 # `create-issue-with-projects.sh` so that Projects integration and field
 # population are not silently dropped.
@@ -16,7 +16,7 @@
 #   check-no-direct-gh-issue-create.sh <file.md> [<file.md> ...]
 #   check-no-direct-gh-issue-create.sh --all [--repo-root DIR]
 #
-#   --all expands to every `plugins/rite/commands/**/*.md` file under the
+#   --all expands to every `plugins/rite/skills/**/*.md` file under the
 #   resolved repository root. Use this from /rite:lint Phase 3.14 to enforce
 #   the guard across all command/sub-skill files in a single invocation.
 #   Additional files can be appended after --all.
@@ -65,16 +65,16 @@ if [ "$1" = "--all" ]; then
     echo "  Recovery: run from the rite plugin source tree, or pass --repo-root DIR explicitly" >&2
     exit 2
   fi
-  COMMANDS_DIR="$REPO_ROOT/plugins/rite/commands"
-  if [ ! -d "$COMMANDS_DIR" ]; then
-    echo "ERROR: --all mode: commands directory not found: $COMMANDS_DIR" >&2
+  SKILLS_DIR="$REPO_ROOT/plugins/rite/skills"
+  if [ ! -d "$SKILLS_DIR" ]; then
+    echo "ERROR: --all mode: skills directory not found: $SKILLS_DIR" >&2
     echo "  Likely cause: invoked outside the rite plugin repo (e.g. marketplace install)" >&2
     echo "  Recovery: run from the rite plugin source tree, or pass --repo-root DIR explicitly" >&2
     exit 2
   fi
-  mapfile -t auto_files < <(find "$COMMANDS_DIR" -type f -name '*.md' | sort)
+  mapfile -t auto_files < <(find "$SKILLS_DIR" -type f -name '*.md' | sort)
   if [ ${#auto_files[@]} -eq 0 ]; then
-    echo "ERROR: --all mode: no *.md files found under $COMMANDS_DIR" >&2
+    echo "ERROR: --all mode: no *.md files found under $SKILLS_DIR" >&2
     exit 2
   fi
   set -- "${auto_files[@]}" "$@"

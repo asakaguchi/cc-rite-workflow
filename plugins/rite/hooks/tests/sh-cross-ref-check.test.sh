@@ -19,38 +19,40 @@ echo "=== sh-cross-ref-check.sh tests ==="
 echo ""
 
 # --------------------------------------------------------------------------
-# Synthetic repo: a Phase-style file (close.md) and a ステップ-style file
-# (review.md), each carrying a bare-number sub-step heading (no keyword), which
+# Synthetic repo: a Phase-style file (skills/issue-close/SKILL.md) and a ステップ-style file
+# (skills/review/SKILL.md), each carrying a bare-number sub-step heading (no keyword), which
 # mirrors the real heading convention discovered in production.
 # --------------------------------------------------------------------------
-mkdir -p "$TEST_DIR/plugins/rite/commands/issue"
-mkdir -p "$TEST_DIR/plugins/rite/commands/pr"
+mkdir -p "$TEST_DIR/plugins/rite/skills/issue-close"
+mkdir -p "$TEST_DIR/plugins/rite/skills/review"
+mkdir -p "$TEST_DIR/plugins/rite/skills/issue-create"
+mkdir -p "$TEST_DIR/plugins/rite/skills/pr-create"
 mkdir -p "$TEST_DIR/plugins/rite/hooks/scripts"
 mkdir -p "$TEST_DIR/plugins/rite/hooks/tests"
 (cd "$TEST_DIR" && git init -q 2>/dev/null || true)
 
-cat > "$TEST_DIR/plugins/rite/commands/issue/close.md" <<'MD'
-# /rite:issue:close
+cat > "$TEST_DIR/plugins/rite/skills/issue-close/SKILL.md" <<'MD'
+# /rite:issue-close
 ## Phase 4: Completion Report
 ### 4.4.W Wiki Ingest Trigger (Conditional)
 ### 4.4.W.2 Wiki Raw Commit
 MD
 
-cat > "$TEST_DIR/plugins/rite/commands/pr/review.md" <<'MD'
-# /rite:pr:review
+cat > "$TEST_DIR/plugins/rite/skills/review/SKILL.md" <<'MD'
+# /rite:review
 ## ステップ 6: 完了
 ### 6.5 Completion Report
 #### 6.5.W.2 Wiki Raw Commit (Shell — deterministic path)
 MD
 
-# create.md split: issue/ is ステップ-style, pr/ is Phase-style (bare-name union)
-cat > "$TEST_DIR/plugins/rite/commands/issue/create.md" <<'MD'
-# /rite:issue:create
+# skills/issue-create/SKILL.md split: issue/ is ステップ-style, pr/ is Phase-style (bare-name union)
+cat > "$TEST_DIR/plugins/rite/skills/issue-create/SKILL.md" <<'MD'
+# /rite:issue-create
 ## ステップ 2: 起票
 ### 2.1 Body 生成
 MD
-cat > "$TEST_DIR/plugins/rite/commands/pr/create.md" <<'MD'
-# /rite:pr:create
+cat > "$TEST_DIR/plugins/rite/skills/pr-create/SKILL.md" <<'MD'
+# /rite:pr-create
 ## Phase 3: PR 本文生成
 MD
 
@@ -73,15 +75,15 @@ if [ "$rc" -eq 2 ] && echo "$output" | grep -q "repo-root not a directory"; then
 else fail "expected rc=2 + message, got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
-# TC-003: cycle-4 fixture — close.md (Phase-style) referenced with ステップ
+# TC-003: cycle-4 fixture — skills/issue-close/SKILL.md (Phase-style) referenced with ステップ
 #         keyword. Number exists, keyword wrong → keyword mismatch. (AC-3)
 # --------------------------------------------------------------------------
-echo "TC-003: cycle-4 fixture (close.md ステップ 4.4.W.2) → keyword mismatch"
+echo "TC-003: cycle-4 fixture (skills/issue-close/SKILL.md ステップ 4.4.W.2) → keyword mismatch"
 f="$TEST_DIR/plugins/rite/hooks/scripts/fixture.sh"
-echo 'echo "Verify close.md ステップ 4.4.W.2 execution."' > "$f"
+echo 'echo "Verify skills/issue-close/SKILL.md ステップ 4.4.W.2 execution."' > "$f"
 rc=0; output=$(run "plugins/rite/hooks/scripts/fixture.sh") || rc=$?
 if [ "$rc" -eq 1 ] && echo "$output" | grep -q "keyword mismatch" \
-   && echo "$output" | grep -q "close.md ステップ 4.4.W.2"; then
+   && echo "$output" | grep -q "skills/issue-close/SKILL.md ステップ 4.4.W.2"; then
   pass "cycle-4 overshoot detected as keyword mismatch"
 else fail "expected rc=1 + keyword mismatch, got rc=$rc: $output"; fi
 
@@ -89,7 +91,7 @@ else fail "expected rc=1 + keyword mismatch, got rc=$rc: $output"; fi
 # TC-004: correct references (both conventions) → exit 0, no findings
 # --------------------------------------------------------------------------
 echo "TC-004: correct refs (ステップ + Phase) → exit 0"
-echo 'echo "Verify review.md ステップ 6.5.W.2 / close.md Phase 4.4.W.2."' > "$f"
+echo 'echo "Verify skills/review/SKILL.md ステップ 6.5.W.2 / skills/issue-close/SKILL.md Phase 4.4.W.2."' > "$f"
 rc=0; output=$(run "plugins/rite/hooks/scripts/fixture.sh") || rc=$?
 if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total sh-cross-ref findings: 0"; then
   pass "correct refs not flagged → exit 0"
@@ -98,8 +100,8 @@ else fail "expected rc=0 + 0 findings, got rc=$rc: $output"; fi
 # --------------------------------------------------------------------------
 # TC-005: dangling number (number not present as heading) → exit 1
 # --------------------------------------------------------------------------
-echo "TC-005: dangling number (close.md Phase 9.9.9) → exit 1"
-echo 'echo "See close.md Phase 9.9.9 for nothing."' > "$f"
+echo "TC-005: dangling number (skills/issue-close/SKILL.md Phase 9.9.9) → exit 1"
+echo 'echo "See skills/issue-close/SKILL.md Phase 9.9.9 for nothing."' > "$f"
 rc=0; output=$(run "plugins/rite/hooks/scripts/fixture.sh") || rc=$?
 if [ "$rc" -eq 1 ] && echo "$output" | grep -q "dangling number"; then
   pass "dangling number detected → exit 1"
@@ -109,7 +111,7 @@ else fail "expected rc=1 + dangling number, got rc=$rc: $output"; fi
 # TC-006: whitelist marker exempts the line → exit 0
 # --------------------------------------------------------------------------
 echo "TC-006: drift-check-ignore marker exempts → exit 0"
-echo 'echo "Legacy close.md ステップ 4.4.W.2 note."  # drift-check-ignore' > "$f"
+echo 'echo "Legacy skills/issue-close/SKILL.md ステップ 4.4.W.2 note."  # drift-check-ignore' > "$f"
 rc=0; output=$(run "plugins/rite/hooks/scripts/fixture.sh") || rc=$?
 if [ "$rc" -eq 0 ]; then pass "whitelisted line skipped → exit 0"
 else fail "expected rc=0 (whitelisted), got rc=$rc: $output"; fi
@@ -118,7 +120,7 @@ else fail "expected rc=0 (whitelisted), got rc=$rc: $output"; fi
 # TC-007: references in COMMENTS are scanned too (not only echo strings)
 # --------------------------------------------------------------------------
 echo "TC-007: comment-line reference is scanned"
-echo '# close.md ステップ 4.4.W.2 runs the commit' > "$f"
+echo '# skills/issue-close/SKILL.md ステップ 4.4.W.2 runs the commit' > "$f"
 rc=0; output=$(run "plugins/rite/hooks/scripts/fixture.sh") || rc=$?
 if [ "$rc" -eq 1 ] && echo "$output" | grep -q "keyword mismatch"; then
   pass "comment reference scanned → keyword mismatch"
@@ -127,8 +129,8 @@ else fail "expected rc=1 from comment ref, got rc=$rc: $output"; fi
 # --------------------------------------------------------------------------
 # TC-008: inverse mismatch — ステップ-style file referenced with Phase keyword
 # --------------------------------------------------------------------------
-echo "TC-008: inverse mismatch (review.md Phase 6.5.W.2)"
-echo 'echo "Verify review.md Phase 6.5.W.2 path."' > "$f"
+echo "TC-008: inverse mismatch (skills/review/SKILL.md Phase 6.5.W.2)"
+echo 'echo "Verify skills/review/SKILL.md Phase 6.5.W.2 path."' > "$f"
 rc=0; output=$(run "plugins/rite/hooks/scripts/fixture.sh") || rc=$?
 if [ "$rc" -eq 1 ] && echo "$output" | grep -q "keyword mismatch"; then
   pass "Phase-on-ステップ-file detected"
@@ -144,11 +146,11 @@ if [ "$rc" -eq 0 ]; then pass "unresolvable ref skipped → exit 0"
 else fail "expected rc=0, got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
-# TC-010: bare-name union — create.md exists in issue/ (ステップ) and pr/ (Phase).
-#         `create.md ステップ 2.1` matches issue/create.md → no finding.
+# TC-010: bare-name union — skills/issue-create/SKILL.md exists in issue/ (ステップ) and pr/ (Phase).
+#         `skills/issue-create/SKILL.md ステップ 2.1` matches issue/skills/issue-create/SKILL.md → no finding.
 # --------------------------------------------------------------------------
-echo "TC-010: bare-name union (create.md ステップ 2.1) → exit 0"
-echo 'echo "Run create.md ステップ 2.1 then continue."' > "$f"
+echo "TC-010: bare-name union (skills/issue-create/SKILL.md ステップ 2.1) → exit 0"
+echo 'echo "Run skills/issue-create/SKILL.md ステップ 2.1 then continue."' > "$f"
 rc=0; output=$(run "plugins/rite/hooks/scripts/fixture.sh") || rc=$?
 if [ "$rc" -eq 0 ]; then pass "union charitable match → exit 0"
 else fail "expected rc=0 (union match), got rc=$rc: $output"; fi
@@ -159,8 +161,8 @@ else fail "expected rc=0 (union match), got rc=$rc: $output"; fi
 #         exclusion (not the empty-target guard) is what's exercised.
 # --------------------------------------------------------------------------
 echo "TC-011: --all excludes hooks/tests/"
-echo 'echo "close.md ステップ 4.4.W.2"' > "$TEST_DIR/plugins/rite/hooks/tests/bad-fixture.sh"
-echo 'echo "clean: review.md ステップ 6.5.W.2"' > "$f"
+echo 'echo "skills/issue-close/SKILL.md ステップ 4.4.W.2"' > "$TEST_DIR/plugins/rite/hooks/tests/bad-fixture.sh"
+echo 'echo "clean: skills/review/SKILL.md ステップ 6.5.W.2"' > "$f"
 rc=0; output=$(bash "$TARGET" --all --repo-root "$TEST_DIR" 2>&1) || rc=$?
 if [ "$rc" -eq 0 ] && ! echo "$output" | grep -q "bad-fixture.sh"; then
   pass "tests/ fixtures excluded from --all → exit 0"

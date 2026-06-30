@@ -449,8 +449,8 @@ skill: rite:pr-create
 | Sentinel | 次のアクション |
 |---------|--------------|
 | `[pr:created:N]` | PR 番号 `N` を `{pr_number}` として retain → ステップ 6.3 へ |
-| `[pr:create-failed]` | AskUserQuestion で「再試行 / 中止」を提示 |
-| **sentinel 不在 (missing-sentinel)** | `[pr:created:N]` / `[pr:create-failed]` のいずれも context に無い。Phase 3.4 の `gh pr create` が malformed tool-call で無言終了した可能性 (Cause A: harness/transport 側ゆらぎ、rite では除去不能 — 詳細は下記「malformed tool-call 回復契約」)。下記手順で回復する |
+| `[pr-create-failed]` | AskUserQuestion で「再試行 / 中止」を提示 |
+| **sentinel 不在 (missing-sentinel)** | `[pr:created:N]` / `[pr-create-failed]` のいずれも context に無い。Phase 3.4 の `gh pr create` が malformed tool-call で無言終了した可能性 (Cause A: harness/transport 側ゆらぎ、rite では除去不能 — 詳細は下記「malformed tool-call 回復契約」)。下記手順で回復する |
 
 **malformed tool-call 回復契約**:
 

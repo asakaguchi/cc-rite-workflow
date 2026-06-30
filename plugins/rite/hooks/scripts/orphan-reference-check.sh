@@ -35,7 +35,7 @@
 #   orphan-reference-check.sh <file> [<file> ...]
 #   orphan-reference-check.sh --all [--repo-root DIR]
 #
-#   --all expands to every `plugins/rite/{commands,references,skills,agents}/**/*.md`
+#   --all expands to every `plugins/rite/{references,skills,agents}/**/*.md`
 #   file under the resolved repository root. Use this from /rite:lint to enforce
 #   the guard across every reference doc in a single invocation.
 #
@@ -123,7 +123,7 @@ if [ "$USE_ALL" -eq 1 ]; then
     -not -path "*/.rite-flow-state*" \
     -not -path "*/.rite-compact-state*" \
     -not -path "*/node_modules/*" \
-    \( -path "*/commands/*" -o -path "*/references/*" -o -path "*/skills/*" -o -path "*/agents/*" \) \
+    \( -path "*/references/*" -o -path "*/skills/*" -o -path "*/agents/*" \) \
     -name "*.md" -type f 2>/dev/null | sort)
   if [ ${#FILES[@]} -eq 0 ]; then
     echo "ERROR: --all expansion empty (no plugins/rite/**/*.md files found under $REPO_ROOT)" >&2

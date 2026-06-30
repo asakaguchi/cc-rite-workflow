@@ -991,7 +991,7 @@ The enum values are identifier-compatible (snake_case, no whitespace or parenthe
 
 ### 4.7.1 Wiki Enabled Check
 
-Read `wiki.enabled` from `rite-config.yml`. Wiki is **opt-out**: missing section / missing key / unparseable value → treat as `true`. This mirrors `commands/skills/wiki-init/SKILL.md` ステップ 1.1 logic, including the typo-detection WARNING path.
+Read `wiki.enabled` from `rite-config.yml`. Wiki is **opt-out**: missing section / missing key / unparseable value → treat as `true`. This mirrors `skills/wiki-init/SKILL.md` ステップ 1.1 logic, including the typo-detection WARNING path.
 
 > **sed range robustness note**: The `sed -n '/^wiki:/,/^[a-zA-Z]/p'` pattern terminates at the next line starting with any ASCII letter — which matches the next top-level YAML key. This relies on `rite-config.yml` following the standard shape produced by `/rite:init` (wiki section followed by another top-level key or EOF). In pathological user-customized configs where the wiki section is the last top-level block and is followed only by comment lines, sed reads to EOF, which is still correct. The known limitation: if a user inserts comment lines **inside** the wiki section that start with a letter (e.g., `auto_query: true # note:`), the trailing `# note:` does not affect sed (it's part of the same line). Therefore this pattern is safe for configs conforming to the template shape. Drift in non-standard configs is tracked as a known limitation, not a blocker for the wiki section drift handling.
 

@@ -43,8 +43,8 @@ USE_ALL=0
 # Pattern 2 の documented set (helper docstring 内の Eval-order enumeration ∪ reason 表) と
 # reason= emit の照合対象に含める。
 DEFAULT_ALL_TARGETS=(
-  "plugins/rite/commands/pr/fix.md"
-  "plugins/rite/commands/pr/review.md"
+  "plugins/rite/skills/fix/SKILL.md"
+  "plugins/rite/skills/review/SKILL.md"
   "plugins/rite/agents/tech-writer-reviewer.md"
   "plugins/rite/scripts/review-findings-maps.sh"
 )

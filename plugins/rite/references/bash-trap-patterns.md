@@ -141,12 +141,12 @@ _rite_<scope>_<phase>_cleanup() {
 
 #### 採用 site (canonical 参照実装)
 
-- `plugins/rite/commands/wiki/lint.md` ステップ 2.2 / 6.0 / 6.2 / 8.3
+- `plugins/rite/skills/wiki-lint/SKILL.md` ステップ 2.2 / 6.0 / 6.2 / 8.3
   - うち **ステップ 6.0 / 6.2** の trap/cleanup 関数実体は `hooks/scripts/wiki-lint-skipped-refs.sh` /
     `wiki-lint-source-refs.sh` へ移設済みで、lint.md 側の bash block は helper を呼び出すだけ (本ファイル
     「Case Statement Indent Convention」節の「参照実装」サブ節の委譲注記と同一の実態)。lint.md 内に inline で残る trap/cleanup は
     **ステップ 2.2 / 8.3** の 2 site (`_cleanup` 定義 + 4 行 trap が lint.md 本文に存在)。
-- `plugins/rite/commands/wiki/ingest.md` ステップ 2.2 / 2.3 / 5.2
+- `plugins/rite/skills/wiki-ingest/SKILL.md` ステップ 2.2 / 2.3 / 5.2
 
 #### 命名規約
 
@@ -237,7 +237,7 @@ esac
 
 ### 参照実装
 
-canonical 確立先は `plugins/rite/commands/wiki/lint.md` (ステップ 6.0 / 6.2 / 8.2 / 8.3 の dispatch
+canonical 確立先は `plugins/rite/skills/wiki-lint/SKILL.md` (ステップ 6.0 / 6.2 / 8.2 / 8.3 の dispatch
 構造 case 文。うち 6.0 / 6.2 の case 文実体は `hooks/scripts/wiki-lint-skipped-refs.sh` /
 `wiki-lint-source-refs.sh` へ移設済みで helper 内にある — lint.md 側の注記と同一の委譲実態)。**Scope**: dispatch 構造の case 文 (placeholder substitute validation gate /
 strategy dispatch / rc dispatch) を対象とし、他 case arm 内にネストした dispatch case も含む。

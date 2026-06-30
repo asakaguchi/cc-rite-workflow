@@ -146,7 +146,7 @@ args: "{current_issue}"
 | Sentinel | アクション |
 |---------|-----------|
 | open 完了通知（`[pr:created:N]` と「ブランチ: ...」行） | PR 番号 `N` を `{pr_number}`、ブランチ名を `{branch_name}` として retain → ステップ 3 へ |
-| `[pr:create-failed]` / 完了通知に PR 番号が無い / sentinel 不在 | **失敗** → ステップ 8（段階=open） |
+| `[pr-create-failed]` / 完了通知に PR 番号が無い / sentinel 不在 | **失敗** → ステップ 8（段階=open） |
 
 <!-- run orchestration: after open returns, do NOT stop — retain {pr_number}/{branch_name} and proceed to ステップ 3 -->
 

@@ -65,7 +65,7 @@ usage() {
 Usage: backlink-format-check.sh [options]
 
 Options:
-  --all              Scan plugins/rite/commands/**/*.md, plugins/rite/hooks/scripts/**/*.sh,
+  --all              Scan plugins/rite/skills/**/*.md, plugins/rite/hooks/scripts/**/*.sh,
                      and the repository-root .gitignore
   --target FILE      Check FILE (repeatable). Path relative to repo root.
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
@@ -100,17 +100,17 @@ fi
 cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
 
 # Resolve --all target list. Explicitly check directory existence so marketplace
-# installs (where hooks/scripts lives separately from the plugin commands/) get
+# installs (where hooks/scripts lives separately from the plugin skills/) get
 # a clear diagnostic instead of the generic "no targets specified" fallback.
 if [ "$USE_ALL" -eq 1 ]; then
-  commands_dir="plugins/rite/commands"
+  skills_dir="plugins/rite/skills"
   scripts_dir="plugins/rite/hooks/scripts"
   gitignore_path=".gitignore"
   found_any=0
-  if [ -d "$commands_dir" ]; then
+  if [ -d "$skills_dir" ]; then
     found_any=1
   else
-    echo "WARNING: $commands_dir not found under $REPO_ROOT (skipped)" >&2
+    echo "WARNING: $skills_dir not found under $REPO_ROOT (skipped)" >&2
   fi
   if [ -d "$scripts_dir" ]; then
     found_any=1
@@ -123,15 +123,15 @@ if [ "$USE_ALL" -eq 1 ]; then
     echo "WARNING: $gitignore_path not found under $REPO_ROOT (skipped)" >&2
   fi
   if [ "$found_any" -eq 0 ]; then
-    echo "ERROR: --all requested but none of $commands_dir, $scripts_dir, or $gitignore_path exist under $REPO_ROOT" >&2
+    echo "ERROR: --all requested but none of $skills_dir, $scripts_dir, or $gitignore_path exist under $REPO_ROOT" >&2
     echo "  Likely cause: invoked outside the rite plugin repo (e.g. marketplace install)" >&2
     echo "  Recovery: run from the rite plugin source tree, or pass --target FILE explicitly" >&2
     exit 2
   fi
-  if [ -d "$commands_dir" ]; then
+  if [ -d "$skills_dir" ]; then
     while IFS= read -r f; do
       TARGETS+=("$f")
-    done < <(find "$commands_dir" -type f -name '*.md' 2>/dev/null | sort)
+    done < <(find "$skills_dir" -type f -name '*.md' 2>/dev/null | sort)
   fi
   # Self-exclusion: the awk regex literals in this script would match
   # themselves when scanned. Compute the script's own path relative to

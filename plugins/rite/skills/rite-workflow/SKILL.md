@@ -163,7 +163,7 @@ LLM が途中で停止した場合の正規復帰経路は `/rite:resume` で、
 |---|---|---|
 | `rite:issue-implement` | (現状 sentinel 未発火 — 完了は work memory / flow-state 側で確認する設計) | `open` Step 4 |
 | `rite:lint` | `[lint:success]` / `[lint:skipped]` / `[lint:error]` / `[lint:aborted]` | `implement` 内で autonomous invoke、`open` Step 5 が結果を読む |
-| `rite:pr-create` | `[pr:created:N]` / `[pr:create-failed]` | `open` Step 6 |
+| `rite:pr-create` | `[pr:created:N]` / `[pr-create-failed]` | `open` Step 6 |
 | `rite:review` | `[review:mergeable]` / `[review:fix-needed:N]` / `[review:error]` | `iterate` 内ループ |
 | `rite:fix` | `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:replied-only]` / `[fix:cancelled-by-user]` / `[fix:error]` | `iterate` 内ループ |
 | `rite:ready` | `[ready:returned-to-caller]` / `[ready:error]` | ユーザー直接 / `run` orchestrator |

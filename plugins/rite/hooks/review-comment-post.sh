@@ -1,6 +1,6 @@
 #!/bin/bash
 # rite workflow - Review Result PR Comment Post
-# Deterministic helper for commands/pr/review.md ステップ 6.1.b (PR Comment Post)。
+# Deterministic helper for skills/review/SKILL.md ステップ 6.1.b (PR Comment Post)。
 #
 # review.md ステップ 6.1.b の PR コメント投稿処理 (post_comment_mode gate + 複数 case gate +
 # scope 限定 awk sentinel 置換 + 2 つの post-condition + atomic mv + gh pr comment + signal 検出)
@@ -244,7 +244,7 @@ gh_err=$(mktemp /tmp/rite-review-p61b-gh-err-XXXXXX) || gh_err=""
 if gh pr comment "$PR_NUMBER" --body-file "$tmpfile_patched" 2>"${gh_err:-/dev/null}"; then
   if [ "$JSON_SAVED" = "false" ]; then
     echo "ℹ️ ローカルファイル保存は失敗しましたが、PR コメントへの投稿は成功しました。" >&2
-    echo "  次回 /rite:pr:fix は Priority 3 (PR コメント) から読取ります" >&2
+    echo "  次回 /rite:fix は Priority 3 (PR コメント) から読取ります" >&2
   fi
   [ -n "$gh_err" ] && rm -f "$gh_err"
 else
@@ -254,7 +254,7 @@ else
   echo "  対処: gh auth status / network 接続 / PR #${PR_NUMBER} の権限を確認してください" >&2
   if [ "$JSON_SAVED" = "true" ]; then
     echo "ℹ️ ただし、レビュー結果はローカルファイルに保存済みです (ステップ 6.1.a)" >&2
-    echo "  そのまま /rite:pr:fix を実行できます (Priority 2 で自動読取)" >&2
+    echo "  そのまま /rite:fix を実行できます (Priority 2 で自動読取)" >&2
   fi
   # SIGPIPE 等の signal 終了 (rc>=128) を retained flag に併記する (data 破損なしと write error を区別)。
   if [ "${gh_rc:-1}" -ge 128 ]; then

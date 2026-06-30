@@ -30,7 +30,6 @@ https://github.com/user-attachments/assets/76255c86-c999-4731-8ba2-4dbab4d57e1d
 - **スマートレビュー (Smart Reviews)**: ドキュメント中心の PR 向け **Doc-Heavy PR Mode** を備えた動的マルチレビュアーコードレビュー。PR が doc-heavy と判定されると、tech-writer レビュアーが Grep/Read/Glob を使って 5 つのドキュメント–実装整合カテゴリ（Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence）を検証します。完全な検証プロトコルは [`plugins/rite/skills/review/references/internal-consistency.md`](plugins/rite/skills/review/references/internal-consistency.md) を参照
 - **外部レビュー連携 (External Review Integration)**: `/rite:fix` は PR URL またはコメント URL を引数に取れるため、外部レビューツールの出力をそのまま fix ループに流し込めます
 - **イテレーション追跡 (Iteration Tracking)**: 任意の GitHub Projects Iteration フィールド連携（`/rite:open` 時に自動割当、`/rite:issue-list` の `--sprint` / `--backlog` フィルタ）
-- **プリフライトチェック (Preflight Check)**: 全コマンド共通の実行前検証
 - **ローカル作業メモリ (Local Work Memory)**: lock / 再開サポート付きの compact 耐性のある作業状態管理
 - **Implementation Contract**: 仕様を明確にする構造化 Issue テンプレート形式
 - **仮定の表面化 (Assumption Surfacing)**: Implementation Contract を生成する前に、`/rite:issue-create` はモデルが暗黙に補った仮定を表面化し、3 つのカテゴリで処理します — 導出可能（リポジトリ/Wiki から自己解決）、ユーザー固有の判断（推奨選択肢付きの質問を最大 3 件で確認）、保留可能（Issue 本文に Assumptions / Open Questions として記録）。**設計原則**: 質問はユーザーの頭の中にしか存在しない情報に限定し、リポジトリや Wiki から導出可能なものはモデルが解決します。これにより、暗黙の推測が下流パイプライン全体を駆動する contract に黙って固定化されるのを防ぎます

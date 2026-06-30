@@ -9,9 +9,9 @@
 
 ## Demo
 
-Issue から PR まで、開発を“儀式”に変える — 約100秒で分かる紹介動画（日本語字幕）。
+Issue から PR まで、開発を“儀式”に変える — 約115秒で分かる紹介動画（日本語字幕）。
 
-https://github.com/user-attachments/assets/76255c86-c999-4731-8ba2-4dbab4d57e1d
+https://github.com/user-attachments/assets/18160008-e329-4fdd-b170-fac925160e7a
 
 ## なぜ "Rite" なのか
 

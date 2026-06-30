@@ -42,7 +42,7 @@ chore: maintenance
 
 ### Code Style
 
-- Commands are written in Markdown
+- Skills are written in Markdown
 - Hooks are written in Bash with `set -euo pipefail`
 - Keep it simple and readable
 
@@ -50,31 +50,20 @@ chore: maintenance
 
 ```
 plugins/rite/
-├── commands/         # Slash command execution procedures (Markdown)
-│   ├── issue/        #   Issue operations (create, list, edit, close, update, implement, ...)
-│   │   └── references/  # Edge-case rules, complexity gates, bulk-create patterns
-│   ├── pr/           #   PR operations (open, iterate, merge, ready, create, review, fix, cleanup)
-│   │   └── references/  # Assessment rules, archive procedures
-│   ├── wiki/         #   Experience Wiki operations (init, query, ingest, lint)
-│   ├── skill/        #   Skill operations (suggest)
-│   ├── template/     #   Template operations (reset)
-│   ├── init.md       #   Initial setup wizard
-│   ├── getting-started.md  # Interactive onboarding guide
-│   ├── investigate.md      # Structured code investigation
-│   ├── lint.md       #   Quality checks
-│   ├── resume.md     #   Resume interrupted work
-│   └── workflow.md   #   Display workflow guide
-├── skills/           # Skill definitions auto-detected by Claude Code (SKILL.md)
-│   ├── rite-workflow/ #   Main skill + references (coding principles, context management)
-│   ├── reviewers/    #   Reviewer skills + review criteria
-│   ├── investigate/  #   Code investigation skill
-│   └── wiki/         #   Experience Wiki skill (ingest/query/lint heuristics)
-├── agents/           # Sub-agent definitions for PR review
+├── skills/           # Skill definitions auto-detected by Claude Code (SKILL.md); invoked as /rite:<name>
+│   │                 #   each skill = thin SKILL.md (< 500-line entrypoint) + co-located references/
+│   ├── (PR lifecycle)  # open, iterate, review, fix, ready, merge, cleanup, run, pr-create
+│   ├── (issue ops)     # issue-create, issue-list, issue-update, issue-close, issue-edit, issue-implement
+│   ├── (wiki)          # wiki-init, wiki-query, wiki-ingest, wiki-lint
+│   ├── (meta/top)      # init, getting-started, workflow, investigate, learn, lint, resume, skill-suggest, template-reset
+│   ├── rite-workflow/  # Orchestration context (state detection, phase routing) + references (coding principles)
+│   └── reviewers/      # Reviewer coordinator (selection + tables) + references (per-reviewer profiles in agents/)
+├── agents/           # Sub-agent definitions for PR review (13 reviewers + _reviewer-base)
 ├── hooks/            # Event handler scripts (Bash)
-│   ├── scripts/      #   Internal helper scripts (drift-check, bang-backtick-check, etc.)
+│   ├── scripts/      #   Internal helper scripts (drift-check, bang-backtick-check, lint scanners, etc.)
 │   └── tests/        #   Shell script tests
 ├── templates/        # Issue/PR/completion report templates
-├── references/       # gh CLI patterns, GraphQL helpers
+├── references/       # gh CLI patterns, GraphQL helpers, severity-levels, etc. (shared across skills)
 └── scripts/          # Utility scripts (Issue creation with Projects integration)
 ```
 
@@ -92,20 +81,21 @@ plugins/rite/hooks/
 ├── pre-compact.sh / post-compact.sh          # PreCompact / PostCompact (context compaction)
 ├── pre-tool-bash-guard.sh                    # PreToolUse (Bash): blocks known-bad command patterns
 ├── post-tool-wm-sync.sh                      # PostToolUse (Bash): auto-creates local work memory
+├── stop-loop-continuation.sh                 # Stop: consume one-shot handoff → re-inject next review↔fix loop / cleanup chain / finalize
 ├── flow-state.sh                             # Unified per-session flow-state management
 ├── session-ownership.sh / hook-preamble.sh   # Sourced helper libraries (not registered hooks)
 ├── work-memory-*.sh / local-wm-update.sh     # Local work memory read / write / lock helpers
 ├── issue-body-safe-update.sh                 # Safe Issue body fetch / apply with backup
-├── wiki-ingest-trigger.sh / wiki-query-inject.sh  # Wiki ingest / query helpers (invoked from commands)
+├── wiki-ingest-trigger.sh / wiki-query-inject.sh  # Wiki ingest / query helpers (invoked from skills)
 ├── _resolve-*.sh / _validate-*.sh            # Internal session-id / state-root helpers
 ├── hooks.json                                # Native plugin hook registration (Claude Code reads this)
 ├── scripts/                                  # Internal helper scripts (drift-check, wiki commit, etc.)
 └── tests/                                    # Hook test suite
 ```
 
-> **Note**: This is a representative list, not a complete enumeration. The canonical full list is the `plugins/rite/hooks/` directory itself (and the Plugin Structure section of `docs/SPEC.md`). Only the six events above — `SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse` — are registered in `hooks.json` (verify with `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`); every other `.sh` is a sourced helper library or a script invoked from commands. New hooks are added to the directory and `hooks.json`, so this section does **not** need to be updated for each one.
+> **Note**: This is a representative list, not a complete enumeration. The canonical full list is the `plugins/rite/hooks/` directory itself (and the Plugin Structure section of `docs/SPEC.md`). Only the seven events above — `SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse` / `Stop` — are registered in `hooks.json` (verify with `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`); every other `.sh` is a sourced helper library or a script invoked from skills. New hooks are added to the directory and `hooks.json`, so this section does **not** need to be updated for each one.
 
-> **Note**: There is no Stop hook. A Stop hook that blocked on exit made the LLM stall in thinking loops at phase boundaries, so workflow halting is prevented by the per-session flow-state structure and the orchestrator-level scaffolding contract instead. Compact recovery is handled by `pre-compact.sh` + `post-compact.sh` + `session-start.sh`.
+> **Note**: The `Stop` event is registered to `stop-loop-continuation.sh`, which consumes the one-shot `handoff` marker and re-injects the next review↔fix loop command (`/rite:review` ⇄ `/rite:fix`), the `/rite:cleanup` → wiki-ingest → wiki-lint chain continuation, or a terminal completion-notice (see the `handoff` field in `docs/SPEC.md`). This is **not** a stop-*prevention* hook: the legacy blocking `stop-guard.sh`, which made the LLM stall in thinking loops at phase boundaries, was removed, and general workflow halting is now prevented by the per-session flow-state structure and the orchestrator-level scaffolding contract instead. Compact recovery is handled by `pre-compact.sh` + `post-compact.sh` + `session-start.sh`.
 
 ### Hook Events and Registration
 
@@ -141,6 +131,7 @@ Available hook events:
 | `PostCompact` | After context compaction | JSON via stdin |
 | `PreToolUse` | Before a tool is executed | JSON via stdin (tool name via `matcher`) |
 | `PostToolUse` | After a tool is executed | JSON via stdin |
+| `Stop` | The agent finishes responding (turn end) | JSON via stdin (`stop_hook_active`) |
 
 ### Writing a New Hook
 

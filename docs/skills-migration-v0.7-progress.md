@@ -607,7 +607,8 @@ marker 実値:
 ### Phase 6b（release）へ持ち越す残務
 
 - **version 0.7.0 バンプ（5 file）+ CHANGELOG（英/日）+ `/release`**（develop→main PR・タグ・GitHub Release）。坂口さんの指示待ち。
-- **ドキュメント構造 rewrite（6b doc）**: `CLAUDE.md` / `CONTRIBUTING.md` / `docs/SPEC.md` の ASCII アーキ図に残る `commands/` ディレクトリノード（命名は修正済だが構造記述が skills/ 中心へ未反転）、SPEC.md のコマンドカタログ・Workflow 図。grep=0 ゲート（naming/path）は通過済だが、削除済 dir を描く図は 6b で要更新。
+- ~~**ドキュメント構造 rewrite（6b doc）**~~ → **完了（2026-06-30）**: `CLAUDE.md` / `CONTRIBUTING.md` / `docs/SPEC.md` の ASCII アーキ図を skills/ 中心へ反転（commands/ ノード除去・skills/ を 30 スキルへ展開）。SPEC.md は併せて (a) `Command File Format` 節を `Skill File Format` へ統合し §B frontmatter ポリシー（disable-model-invocation / user-invocable）を明記、(b) 削除済み `preflight-check.sh` の専用節（hooks 節 + Features 節 + test 表行）を除去（compact 回復 = SessionStart notice + `/rite:resume` に一本化）、(c) lint scanner scope `commands/**` → `skills/**`、(d) prose（orchestrator commands → skills 等）を更新。全 3 ドキュメントで構造的 commands/ ノード 0・旧命名 0・fence 整合・dangling リンク 0 を検証。残る `commands/` 言及は migration anchor / `commands:` config key / generic「コマンド」/ `gh-cli-commands.md` filename のみ（意図的保持）。
+- **未対応の既存 doc 不正確記述（移行と無関係・別途）**: `CONTRIBUTING.md` の「There is no Stop hook」注記は現状と矛盾（`stop-loop-continuation.sh` が hooks.json 登録済み）。本移行スコープ外のため未修正 → フォローアップ候補。
 - **`.claude/settings.local.json`（ユーザーローカル・任意）**: stale な `Skill(rite:pr:create/review/ready)` 権限エントリ（→ `rite:pr-create`/`rite:review`/`rite:ready`）。untracked のため未編集。必要なら `/config` 等で更新を案内。
 - **残置した generic 例/歴史参照**: reviewer agent の placeholder `commands/foo.md` 等、SPEC/orphan-check の歴史アンカー、doc-heavy classifier の `commands/**/*.md` 除外 glob（drift-check で review/reviewers 同期・harmless）。いずれも dangling でなく意図的残置。
 

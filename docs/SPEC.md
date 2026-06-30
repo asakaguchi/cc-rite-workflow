@@ -134,52 +134,6 @@ Todo → In Progress → In Review → Done
 rite-workflow/
 ├── .claude-plugin/
 │ └── plugin.json # Plugin metadata
-├── commands/ # Skill-invoked command files (Markdown)
-│ ├── init.md # /rite:init (+ --upgrade)
-│ ├── getting-started.md # /rite:getting-started
-│ ├── workflow.md # /rite:workflow
-│ ├── investigate.md # /rite:investigate
-│ ├── learn.md # /rite:learn
-│ ├── lint.md # /rite:lint
-│ ├── resume.md # /rite:resume
-│ ├── issue/
-│ │ ├── list.md # /rite:issue-list
-│ │ ├── create.md # /rite:issue-create
-│ │ ├── update.md # /rite:issue-update
-│ │ ├── close.md # /rite:issue-close
-│ │ ├── edit.md # /rite:issue-edit
-│ │ ├── implement.md # /rite:issue-implement (sub-skill, invoked from /rite:open)
-│ │ └── references/ # Edge cases, complexity gates, bulk-create patterns
-│ ├── pr/
-│ │ ├── open.md # /rite:open (start work end-to-end)
-│ │ ├── iterate.md # /rite:iterate (review ⇄ fix loop)
-│ │ ├── merge.md # /rite:merge (squash merge)
-│ │ ├── ready.md # /rite:ready
-│ │ ├── create.md # /rite:pr-create
-│ │ ├── review.md # /rite:review
-│ │ ├── fix.md # /rite:fix
-│ │ ├── cleanup.md # /rite:cleanup
-│ │ ├── run.md # /rite:run (Issue ごとに open→iterate を順次実行し draft 止まり、--merge で ready→merge→cleanup まで完走)
-│ │ └── references/ # Protocol documents referenced by pr/ commands
-│ │ ├── assessment-rules.md # Review assessment rules
-│ │ ├── archive-procedures.md # Archive procedures
-│ │ ├── bash-trap-patterns.md # Bash trap patterns for review/fix
-│ │ ├── change-intelligence.md # Change intelligence
-│ │ ├── fact-check.md # External fact-checking protocol
-│ │ ├── fix-relaxation-rules.md # Fix relaxation / 4 quality signals
-│ │ ├── internal-consistency.md # Doc-implementation consistency protocol
-│ │ └── review-context-optimization.md # Review context optimization
-│ ├── wiki/
-│ │ ├── init.md # /rite:wiki-init
-│ │ ├── query.md # /rite:wiki-query
-│ │ ├── ingest.md # /rite:wiki-ingest
-│ │ ├── lint.md # /rite:wiki-lint
-│ │ └── references/
-│ │ └── bash-cross-boundary-state-transfer.md
-│ ├── skill/
-│ │ └── suggest.md # /rite:skill-suggest
-│ └── template/
-│ └── reset.md # /rite:template-reset
 ├── agents/ # Subagent definitions for /rite:review
 │ ├── _reviewer-base.md # Shared reviewer principles (not a subagent)
 │ ├── security-reviewer.md
@@ -195,23 +149,46 @@ rite-workflow/
 │ ├── tech-writer-reviewer.md
 │ ├── error-handling-reviewer.md
 │ └── type-design-reviewer.md
-├── skills/ # Claude Code auto-discovered skills
-│ ├── rite-workflow/
-│ │ ├── SKILL.md # Main workflow skill (auto-activated)
-│ │ └── references/ # Coding principles, context management, etc.
-│ ├── reviewers/
-│ │ ├── SKILL.md # Reviewer coordinator skill (selection + tables)
-│ │ └── references/ # Shared reviewer references
-│ │ # (per-reviewer profiles live in agents/{type}-reviewer.md)
-│ ├── investigate/
-│ │ └── SKILL.md # Structured code investigation skill
-│ └── wiki/
-│ └── SKILL.md # Experience Wiki skill (opt-out)
+├── skills/ # Claude Code auto-discovered skills (各スキル = 薄い SKILL.md + co-located references/)
+│ # --- PR lifecycle ---
+│ ├── open/ # /rite:open (Issue → branch → 実装 → lint → draft PR; end-to-end)
+│ ├── iterate/ # /rite:iterate (review ⇄ fix loop, mergeable まで)
+│ ├── review/ # /rite:review (multi-reviewer; + references/) — sub-skill
+│ ├── fix/ # /rite:fix (review 指摘対応; + references/) — sub-skill
+│ ├── ready/ # /rite:ready (Ready for review 化)
+│ ├── merge/ # /rite:merge (squash merge)
+│ ├── cleanup/ # /rite:cleanup (+ references/archive-procedures.md)
+│ ├── run/ # /rite:run (複数 Issue 順次 open→iterate; --merge で ready→merge→cleanup まで)
+│ ├── pr-create/ # /rite:pr-create (draft PR 作成) — sub-skill
+│ # --- Issue 管理 ---
+│ ├── issue-create/ # /rite:issue-create (+ references/: complexity-gate / contract-section-mapping / fingerprint-cycling / slug-generation)
+│ ├── issue-list/ # /rite:issue-list
+│ ├── issue-update/ # /rite:issue-update
+│ ├── issue-close/ # /rite:issue-close
+│ ├── issue-edit/ # /rite:issue-edit
+│ ├── issue-implement/ # /rite:issue-implement (sub-skill, /rite:open から呼出)
+│ # --- Wiki ---
+│ ├── wiki-init/ # /rite:wiki-init
+│ ├── wiki-query/ # /rite:wiki-query
+│ ├── wiki-ingest/ # /rite:wiki-ingest (+ references/wiki-troubleshooting.md)
+│ ├── wiki-lint/ # /rite:wiki-lint (+ references/: broken-ref-resolution / bash-cross-boundary-state-transfer)
+│ # --- meta / top-level ---
+│ ├── init/ # /rite:init (+ --upgrade)
+│ ├── getting-started/ # /rite:getting-started
+│ ├── workflow/ # /rite:workflow (rite ワークフロー全体ガイド)
+│ ├── investigate/ # /rite:investigate (構造化コード調査)
+│ ├── learn/ # /rite:learn (Socratic 理解度チェック)
+│ ├── lint/ # /rite:lint (品質チェック; orchestrator から呼ばれる sub-skill 兼用)
+│ ├── resume/ # /rite:resume (中断した作業の再開)
+│ ├── skill-suggest/ # /rite:skill-suggest
+│ ├── template-reset/ # /rite:template-reset
+│ # --- orchestration / knowledge (auto-discovered context) ---
+│ ├── rite-workflow/ # state detection / phase routing / 共有コーディング原則 (SKILL.md + references/)
+│ └── reviewers/ # reviewer 選定 + テーブル (+ references/; per-reviewer profile は agents/{type}-reviewer.md)
 ├── hooks/ # Claude Code lifecycle hooks + helpers
 │ ├── hooks.json # Hook registration manifest
 │ ├── session-start.sh / session-end.sh / session-ownership.sh
 │ ├── pre-compact.sh / post-compact.sh
-│ ├── preflight-check.sh
 │ ├── pre-tool-bash-guard.sh / post-tool-wm-sync.sh
 │ ├── stop-loop-continuation.sh # Stop hook: review↔fix loop continuation + terminal finalize
 │ ├── hook-preamble.sh / state-path-resolve.sh / control-char-neutralize.sh # Shared helpers
@@ -222,17 +199,17 @@ rite-workflow/
 │ ├── work-memory-lock.sh / work-memory-update.sh / work-memory-parse.py
 │ ├── cleanup-work-memory.sh
 │ ├── issue-body-safe-update.sh / issue-comment-wm-sync.sh / issue-comment-wm-update.py
-│ ├── review-result-save.sh / review-comment-post.sh / review-skip-notification.sh # pr/review.md 6.1.a/b/c 委譲
+│ ├── review-result-save.sh / review-comment-post.sh / review-skip-notification.sh # skills/review/SKILL.md 6.1.a/b/c 委譲
 │ ├── wiki-ingest-trigger.sh / wiki-query-inject.sh # Wiki auto-integration
 │ ├── scripts/ # Helper scripts invoked by hooks
 │ │ ├── wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh
 │ │ ├── wiki-branch-init.sh / wiki-lint-skipped-refs.sh # inline bash 委譲
-│ │ ├── wiki-lint-source-refs.sh # wiki/lint.md 6.2 委譲
-│ │ ├── wiki-lint-stale.sh / wiki-lint-orphans.sh / wiki-lint-broken-refs.sh # wiki/lint.md 4/5/7 委譲
+│ │ ├── wiki-lint-source-refs.sh # skills/wiki-lint/SKILL.md 6.2 委譲
+│ │ ├── wiki-lint-stale.sh / wiki-lint-orphans.sh / wiki-lint-broken-refs.sh # skills/wiki-lint/SKILL.md 4/5/7 委譲
 │ │ ├── wiki-growth-check.sh # lint layer-3
 │ │ ├── backlink-format-check.sh / bang-backtick-check.sh
 │ │ ├── bang-backtick-edit-hook.sh # PostToolUse wrapper for bang-backtick-check.sh (hooks.json 登録)
-│ │ ├── bash-heaviness-check.sh # commands/**/*.md の heavy bash block 検出
+│ │ ├── bash-heaviness-check.sh # skills/**/*.md の heavy bash block 検出
 │ │ ├── hardcoded-line-number-check.sh / comment-line-ref-check.sh # ハードコード行番号参照 lint (md / sh comment)
 │ │ ├── comment-journal-check.sh / sh-cross-ref-check.sh # comment 規約 lint (journal 語法 / cross-file 参照)
 │ │ ├── orphan-reference-check.sh # 未参照ファイル検出
@@ -274,13 +251,13 @@ rite-workflow/
 │ ├── migrate-review-state-to-1.1.sh # review-result schema 1.1.0 移行
 │ ├── watchdog-status-mismatch.sh # Projects Status 不整合 watchdog
 │ └── tests/ # Script-level test suite
-├── references/ # Cross-cutting references used by commands/skills
+├── references/ # Cross-cutting references used by skills
 │ ├── gh-cli-patterns.md / gh-cli-commands.md / gh-cli-error-catalog.md
 │ ├── graphql-helpers.md / projects-integration.md
 │ ├── severity-levels.md / epic-detection.md
 │ ├── review-result-schema.md / investigation-protocol.md
 │ ├── wiki-patterns.md
-│ ├── bash-compat-guard.md / bash-defensive-patterns.md
+│ ├── bash-compat-guard.md / bash-defensive-patterns.md / bash-trap-patterns.md
 │ ├── sub-issue-link-handler.md / issue-create-with-projects.md
 │ ├── execution-metrics.md
 │ ├── plugin-path-resolution.md / git-worktree-patterns.md
@@ -314,54 +291,40 @@ Plugin metadata file format:
 | `author` | Yes | Author object with `name` field |
 | `license` | No | License identifier |
 
-### Command File Format
-
-Each command file in `commands/` must include YAML frontmatter:
-
-```markdown
----
-description: Short description of the command
----
-
-# /rite:command-name
-
-Command documentation...
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `description` | Yes | Short description used for command discovery |
-| `context` | No | Set to `fork` for commands that don't need main conversation context |
-
-**context: fork Usage in rite:**
-
-rite commands do **not** use `context: fork`. Although the field is available for read-only commands, forked (isolated) execution does not relay a command's own output back to the user inline — only the harness control wrapper surfaces. State-changing / interactive commands were switched away from `context: fork` in #436, and the remaining read-only commands (`/rite:issue-list`, `/rite:investigate`, `/rite:workflow`, `/rite:skill-suggest`) in #1554.
-
-| Command | context: fork | Reason |
-|---------|---------------|--------|
-| All rite commands | ❌ | Forked execution does not relay command output inline (#436, #1554) |
-
 ### Skill File Format
 
-Skill files (`skills/*/SKILL.md`) use YAML frontmatter for auto-activation:
+rite の全機能はスキル (`skills/<name>/SKILL.md`) として実装される（旧 `commands/` は v0.7 で全廃）。各スキルは薄い SKILL.md（< 500 行の入口）+ 同梱 `references/` で構成し、`/rite:<name>` で起動する。SKILL.md は YAML frontmatter を持つ:
 
 ```markdown
 ---
-name: skill-name
+name: <name>                        # ディレクトリ名と一致。起動は /rite:<name>
 description: |
- Multi-line description of the skill's purpose.
- Include auto-activation conditions.
+ 狭く具体的な説明 + auto-activation 条件（汎用トリガ語を誘発語にしない）
+argument-hint: "<arg-hint>"         # 引数を取るスキルのみ（autocomplete 表示）
+# disable-model-invocation: true    # leaf user-only スキルのみ
+# user-invocable: false             # 純 sub-skill / knowledge のみ（メニュー非表示）
 ---
 
-# Skill Name
+# /rite:<name>
 
 Skill documentation...
 ```
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | Yes | Unique skill identifier |
-| `description` | Yes | Detailed description with activation conditions |
+| `name` | Yes | スキル識別子（= ディレクトリ名、`/rite:<name>` で起動） |
+| `description` | Yes | auto-activation 条件を含む狭い説明。汎用トリガ語（workflow / PR / review / commit / branch / next steps 等）を誘発語として書かない |
+| `argument-hint` | No | 引数を取るスキルの autocomplete 表示 |
+| `disable-model-invocation` | No | `true` = ユーザーのみ起動（leaf）。description をコンテキストから除外・auto 発火なし・**Skill ツール経由の programmatic 呼出も遮断** |
+| `user-invocable` | No | `false` = メニュー非表示（純 sub-skill。orchestrator が Skill ツールで呼ぶ） |
+
+**frontmatter ポリシー（区分ごと）:**
+
+| 区分 | 例 | frontmatter |
+|------|----|-------------|
+| ユーザー起動 action（orchestrator からも到達） | open / iterate / ready / merge / cleanup / lint / wiki-ingest 等 | ナロー description のみ（`disable-model-invocation` は programmatic 呼出も遮断するため付けられない） |
+| leaf user-only（他スキルから呼ばれない） | issue-create / wiki-init / learn / skill-suggest 等 | `disable-model-invocation: true` |
+| 純 sub-skill（user は直接起動しない） | review / fix / pr-create / issue-implement | `user-invocable: false` |
 
 **Skill Classification:**
 
@@ -369,6 +332,8 @@ Skill documentation...
 |----------------|---------|---------|
 | Reference Contents | Always-available knowledge | `rite-workflow` (workflow rules) |
 | Task Contents | Active execution tasks | `reviewers` (review criteria) |
+
+**`context: fork` について:** rite スキルは `context: fork` を使わない。forked（isolated）実行はスキル自身の出力をユーザーへ inline で返さず harness control wrapper のみが surface するため。read-only スキル (`/rite:issue-list` / `/rite:investigate` / `/rite:workflow` / `/rite:skill-suggest`) も #1554 で fork を解除済み。
 
 ### Agent File Format
 
@@ -1176,31 +1141,7 @@ PreCompact (on compact)
 SessionEnd
 ```
 
-> **Note:** PreToolUse and PostToolUse fire on every Claude Code tool invocation. PreCommand/PostCommand have been deprecated and replaced by the Preflight check system integrated into command execution.
-
-### Preflight Check (`preflight-check.sh`)
-
-Pre-validation script called before every `/rite:*` command execution. Detects blocked state after compact and controls command execution.
-
-**Behavior:**
-
-1. Reads the per-session compact-state (`.rite/sessions/{session_id}.compact-state`, falling back to the legacy shared `.rite-compact-state` only when the session id is unresolvable; if the file doesn't exist, allows execution)
-2. If `compact_state` is `normal` or `resuming`, allows execution
-3. If the command is `/rite:resume`, always allows execution
-4. All other commands are blocked (exit 1)
-
-**Exit Codes:**
-
-| Code | Meaning |
-|------|---------|
-| 0 | Allowed (continue command execution) |
-| 1 | Blocked (do not execute command) |
-
-**Usage:**
-
-```bash
-bash plugins/rite/hooks/preflight-check.sh --command-id "/rite:open" --cwd "$PWD"
-```
+> **Note:** PreToolUse and PostToolUse fire on every Claude Code tool invocation. PreCommand/PostCommand have been deprecated and are not used by rite. (The former `preflight-check.sh` compact-blocking gate was removed in v0.7 along with `commands/`; compact recovery is now handled entirely by the SessionStart interruption notice + `/rite:resume` — see Post-Compact Recovery below.)
 
 ### Post-Compact Recovery (`post-compact.sh`)
 
@@ -1333,7 +1274,7 @@ Sourced at the top of most hooks to perform shared pre-processing: plugin-root r
 
 ### Helper Scripts (`hooks/scripts/`)
 
-Non-hook helper scripts invoked either directly from orchestrator commands or by other hooks:
+Non-hook helper scripts invoked either directly from orchestrator skills or by other hooks:
 
 | Script | Purpose | Notes |
 |--------|---------|-------|
@@ -1353,8 +1294,8 @@ Non-hook helper scripts invoked either directly from orchestrator commands or by
 | `wiki-lint-orphans.sh` | `/rite:wiki-lint` ステップ 5 — index.md 登録ページと pages_list の集合差分を marker block + `orphan_check_ok` enum で構築 (index.md 読出内包) | — |
 | `wiki-lint-broken-refs.sh` | `/rite:wiki-lint` ステップ 7 — Markdown link の page-dir 起点 `realpath -m -s` 解決で壊れた相互参照集合を構築 (awk indent 不問 fence tracking) | — |
 | `bang-backtick-edit-hook.sh` | `bang-backtick-check.sh` の PostToolUse(Edit\|Write\|MultiEdit) wrapper — `hooks.json` 登録済 (`tool_input.file_path` でスコープを絞る) | — |
-| `bash-heaviness-check.sh` | `commands/**/*.md` 内の heavy operational bash block を non-blocking warning で検出 | — |
-| `hardcoded-line-number-check.sh` | procedural markdown (`commands/**/*.md`) 内のハードコード行番号参照を検出 | — |
+| `bash-heaviness-check.sh` | `skills/**/*.md` 内の heavy operational bash block を non-blocking warning で検出 | — |
+| `hardcoded-line-number-check.sh` | procedural markdown (`skills/**/*.md`) 内のハードコード行番号参照を検出 | — |
 | `comment-line-ref-check.sh` | shell comment 内の `<file>.<ext>:<NN>` 行番号参照を検出 (`hardcoded-line-number-check.sh` の companion) | — |
 | `comment-journal-check.sh` | `plugins/rite/**/*.{sh,md}` の journal 語法 comment 違反を機械検出 | — |
 | `sh-cross-ref-check.sh` | shell prose (echo 文字列 / comment) 内の cross-file step/phase 参照の実在を検証 | — |
@@ -1369,17 +1310,6 @@ Non-hook helper scripts invoked either directly from orchestrator commands or by
 ---
 
 ## Features
-
-### Preflight Check System
-
-A system that performs unified pre-validation before every `/rite:*` command execution. Prevents command execution in invalid states after compact.
-
-**How It Works:**
-
-- Each command calls `preflight-check.sh` at its start
-- Compact state is managed per-session via `.rite/sessions/{session_id}.compact-state` (legacy shared `.rite-compact-state` retained for migration)
-- In `blocked` state, all commands except `/rite:resume` are blocked
-- Normal state is restored via `/clear` → `/rite:resume`
 
 ### Multi-Session State Management
 
@@ -1514,7 +1444,6 @@ A test framework for ensuring Hook script quality. Located in `plugins/rite/hook
 
 | Script | Test Content |
 |--------|-------------|
-| `preflight-check.sh` | Command blocking by compact state |
 | `post-compact.sh` | Recovery context emission, per-session compact-state self-healing |
 | `pre-compact.sh` | State capture before compact |
 | `pre-tool-bash-guard.sh` | Dangerous pattern detection, heredoc safety |
@@ -1940,7 +1869,7 @@ When authoring Japanese documentation or UI wording, the following terms are **k
 
 `worktree` / `hook` / `sentinel` / `marker` 等の英語固有概念も、意味を保つ必要があれば英語のまま使用してよい。文体は常体 (である調)、半角英数字と日本語の間は半角スペース、YAML キー名・コマンド名・Projects フィールド名は翻訳しない。
 
-**document-vs-inline split**: ドキュメント (`*.ja.md`) では `finding` を英語のまま使う。一方 commands / sub-skills の UI 文言では、ユーザーに見せる行為的表現として「指摘」を使い、技術識別子としては素の `finding` を保持する (旧 `plugins/rite/i18n/ja/` の使い分けを i18n 削除後も日本語直書きで継承)。
+**document-vs-inline split**: ドキュメント (`*.ja.md`) では `finding` を英語のまま使う。一方 skills / sub-skills の UI 文言では、ユーザーに見せる行為的表現として「指摘」を使い、技術識別子としては素の `finding` を保持する (旧 `plugins/rite/i18n/ja/` の使い分けを i18n 削除後も日本語直書きで継承)。
 
 ---
 

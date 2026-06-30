@@ -27,6 +27,18 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-30
+
+### Changed
+
+- **Workflow entry points migrated from `commands/` to native Claude Code skills (`skills/`)** — each former `commands/<group>/<name>.md` is now a `skills/<name>/SKILL.md` that Claude Code auto-detects, and orchestrator skills (`open`, `iterate`, `run`, …) invoke sub-skills (`review`, `fix`, `pr-create`, `issue-implement`, …) through the Skill tool. **Breaking change — the invocation namespace is flattened:** the grouped colon form is gone; invoke skills by their flat names instead. Migration: `/rite:pr:open` → `/rite:open`, `/rite:pr:review` → `/rite:review`, `/rite:pr:create` → `/rite:pr-create`, `/rite:issue:create` → `/rite:issue-create`, `/rite:wiki:ingest` → `/rite:wiki-ingest`, and likewise for the remaining `pr:` / `issue:` / `wiki:` commands. (#1682)
+- **The SessionStart hook's CRITICAL banner is downgraded to a `/rite:resume` pointer** — with the preflight mechanism removed, post-compact recovery is consolidated onto `/rite:resume` instead of an unconditional CRITICAL session-start block. (#1682)
+
+### Removed
+
+- **The `commands/` directory is removed in full (42 files)** along with the old grouped command naming; `skills/` is now the single source for both entry points and execution procedures, and the `lint` scanners were repointed from `commands/` to `skills/`. (#1682)
+- **The `preflight-check.sh` mechanism is removed** — its responsibilities are folded into `/rite:resume`, and the architecture diagram and README no longer reference Preflight Check. (#1682)
+
 ## [0.6.12] - 2026-06-29
 
 ### Fixed
@@ -642,6 +654,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.7.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.12...v0.7.0
 [0.6.12]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.11...v0.6.12
 [0.6.11]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.10...v0.6.11
 [0.6.10]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.9...v0.6.10

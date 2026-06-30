@@ -276,7 +276,7 @@ Plugin metadata file format:
 ```json
 {
  "name": "rite",
- "version": "0.7.0",
+ "version": "0.7.1",
  "description": "Universal Issue-driven development workflow for Claude Code",
  "author": { "name": "asakaguchi" },
  "license": "MIT"

@@ -182,3 +182,12 @@ __pycache__/
 # negated root .rite/ wiki rules above are left untouched.
 plugins/**/.rite/
 
+
+# Intro video projects (media/intro-video[-en]/): rendered outputs and the stock BGM
+# are NOT committed. Rendered MP4s are re-derivable via `npm run render`; the BGM is a
+# Pixabay stock track whose license forbids standalone redistribution. Both are
+# regenerated/obtained locally — see media/intro-video/PROVENANCE.md.
+media/intro-video*/*.mp4
+media/intro-video*/**/*.mp4
+media/intro-video*/*.mp3
+media/intro-video*/**/*.mp3

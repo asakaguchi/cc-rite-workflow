@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-01T06:36:00Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=231, broken_refs=0 |
 | 2026-07-01T06:35:00Z | ingest:create | pages/heuristics/policy-doc-revision-non-target-consistency-check.md | PR #1694 (Issue #1693) review×3/fix×2 を統合: frontmatter ポリシー表新設 PR で Non-Target 要素 (`reviewers/SKILL.md`) が新分類ルールと矛盾しないか確認するチェックの有効性、および 2 名独立検出→再検証で design_confirmation に降格する健全プロセスの実例。cycle 3 で prompt-engineer の MEDIUM 指摘 (第 3 区分の前提が frontmatter 実態と不一致) がエージェント応答受け渡し不具合で見落とされ PR マージ後に判明した経緯を follow-up Issue #1695 として記録 |
 | 2026-06-26T03:18:14+00:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=231, broken_refs=0 |
 | 2026-06-26T03:18:14+00:00 | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1663 (Issue #1662) review: 適用 24 を追記。回帰防止テストの grep token が旧コードの remediation hint 文言にもマッチし修正前でも PASS する non-discriminating 構造を指摘、修正パス固有 literal への絞り込みと修正前 base revert test での discrimination 実証を canonical 対策化 (anti-silent-failure 化修正で旧経路 hint と新経路 WARNING が同ファイル併存する場合に特に陥りやすい) |

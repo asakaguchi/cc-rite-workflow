@@ -5,7 +5,6 @@ description: |
   ユーザーが明示的に /rite:issue-close で起動する。auto-activate しない。
   起動: /rite:issue-close <issue_number>
 argument-hint: "<issue_number>"
-disable-model-invocation: true
 ---
 
 # /rite:issue-close

@@ -27,6 +27,16 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-07-01
+
+### Fixed
+
+- `disable-model-invocation: true` is removed from 14 user-invocable skills (`issue-create`, `issue-update`, `issue-close`, `issue-edit`, `wiki-init`, `wiki-query`, `learn`, `skill-suggest`, `template-reset`, `getting-started`, `workflow`, `investigate`, `resume`, `run`) — the Claude Code CLI routes an explicitly typed slash command and the model's own Skill-tool invocation through the same path, so when native slash-command dispatch is not recognized (e.g. with an attached image), the model's Skill-tool fallback was blocked by this flag, causing the user's own direct invocation to fail (see [anthropics/claude-code#43660](https://github.com/anthropics/claude-code/issues/43660)). `workflow` and `investigate` descriptions gain the non-auto-activate wording that the flag used to carry. (#1694)
+
+### Changed
+
+- `reviewers/SKILL.md` frontmatter gains `user-invocable: false`, and the `docs/SPEC.md` frontmatter policy table's third category is corrected to match: `user-invocable: false` guarantees the absence of a `/rite:<name>` command, while `disable-model-invocation` is reserved for suppressing auto-activation on skills with a broad description. (#1696)
+
 ## [0.7.1] - 2026-06-30
 
 ### Added
@@ -672,6 +682,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.7.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.12...v0.7.0
 [0.6.12]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.11...v0.6.12

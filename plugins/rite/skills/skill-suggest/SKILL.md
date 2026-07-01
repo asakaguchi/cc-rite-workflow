@@ -5,7 +5,6 @@ description: |
   ユーザーが明示的に /rite:skill-suggest で起動する。auto-activate しない。
   起動: /rite:skill-suggest
 argument-hint: ""
-disable-model-invocation: true
 ---
 
 # /rite:skill-suggest

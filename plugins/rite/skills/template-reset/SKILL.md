@@ -5,7 +5,6 @@ description: |
   再生成する。ユーザーが明示的に /rite:template-reset で起動する。auto-activate しない。
   起動: /rite:template-reset [target]
 argument-hint: "[target]"
-disable-model-invocation: true
 ---
 
 # /rite:template-reset

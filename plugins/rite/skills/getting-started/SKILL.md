@@ -5,7 +5,6 @@ description: |
   ユーザーが明示的に /rite:getting-started で起動する。auto-activate しない。
   起動: /rite:getting-started
 argument-hint: ""
-disable-model-invocation: true
 ---
 
 # /rite:getting-started

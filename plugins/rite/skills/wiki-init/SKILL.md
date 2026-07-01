@@ -5,7 +5,6 @@ description: |
   ブランチ作成を行う。ユーザーが明示的に /rite:wiki-init で起動する。auto-activate しない。
   起動: /rite:wiki-init
 argument-hint: ""
-disable-model-invocation: true
 ---
 
 # /rite:wiki-init

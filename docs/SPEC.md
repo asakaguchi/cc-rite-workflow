@@ -323,6 +323,7 @@ Skill documentation...
 |------|----|-------------|
 | user-invocable（`/rite:<name>` でユーザーが起動。orchestrator 到達の有無を問わない） | open / iterate / ready / merge / cleanup / lint / wiki-ingest / issue-create / wiki-init / learn / skill-suggest 等 | ナロー description のみ（`disable-model-invocation` は使用しない） |
 | 純 sub-skill（user は直接起動しない） | review / fix / pr-create / issue-implement | `user-invocable: false` |
+| Read 経由のみ到達する knowledge/coordinator（`/rite:<name>` を持たず、他スキルから `Read` で参照されるのみ） | reviewers | broad description の auto-activate 抑止目的で `disable-model-invocation: true` を許容（Skill ツール経由の invoke 自体が発生しないため、本節冒頭で述べたユーザー直叩き巻き添え遮断の問題は起きない） |
 
 **Skill Classification:**
 

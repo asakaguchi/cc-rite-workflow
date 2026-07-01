@@ -301,8 +301,7 @@ name: <name>                        # ディレクトリ名と一致。起動は
 description: |
  狭く具体的な説明 + auto-activation 条件（汎用トリガ語を誘発語にしない）
 argument-hint: "<arg-hint>"         # 引数を取るスキルのみ（autocomplete 表示）
-# disable-model-invocation: true    # leaf user-only スキルのみ
-# user-invocable: false             # 純 sub-skill / knowledge のみ（メニュー非表示）
+# user-invocable: false             # Skill ツール経由で呼ばれる純 sub-skill のみ（メニュー非表示。Read 専用の knowledge/coordinator は下記ポリシー表の第3区分を参照）
 ---
 
 # /rite:<name>
@@ -315,16 +314,16 @@ Skill documentation...
 | `name` | Yes | スキル識別子（= ディレクトリ名、`/rite:<name>` で起動） |
 | `description` | Yes | auto-activation 条件を含む狭い説明。汎用トリガ語（workflow / PR / review / commit / branch / next steps 等）を誘発語として書かない |
 | `argument-hint` | No | 引数を取るスキルの autocomplete 表示 |
-| `disable-model-invocation` | No | `true` = ユーザーのみ起動（leaf）。description をコンテキストから除外・auto 発火なし・**Skill ツール経由の programmatic 呼出も遮断** |
+| `disable-model-invocation` | **使用しない** | user-invocable スキルには使用しない方針。Claude Code CLI 側でユーザーが明示的にタイプしたスラッシュコマンドとモデル自身の Skill ツール呼び出しが同一経路を通り区別されない既知の挙動があり（[anthropics/claude-code#43660](https://github.com/anthropics/claude-code/issues/43660) 等）、`true` を付けるとユーザー直叩きも巻き添えで遮断されうる。auto-activate 抑止は narrow description のみで担保する |
 | `user-invocable` | No | `false` = メニュー非表示（純 sub-skill。orchestrator が Skill ツールで呼ぶ） |
 
 **frontmatter ポリシー（区分ごと）:**
 
 | 区分 | 例 | frontmatter |
 |------|----|-------------|
-| ユーザー起動 action（orchestrator からも到達） | open / iterate / ready / merge / cleanup / lint / wiki-ingest 等 | ナロー description のみ（`disable-model-invocation` は programmatic 呼出も遮断するため付けられない） |
-| leaf user-only（他スキルから呼ばれない） | issue-create / wiki-init / learn / skill-suggest 等 | `disable-model-invocation: true` |
+| user-invocable（`/rite:<name>` でユーザーが起動。orchestrator 到達の有無を問わない） | open / iterate / ready / merge / cleanup / lint / wiki-ingest / issue-create / wiki-init / learn / skill-suggest 等 | ナロー description のみ（`disable-model-invocation` は使用しない） |
 | 純 sub-skill（user は直接起動しない） | review / fix / pr-create / issue-implement | `user-invocable: false` |
+| Read 経由のみ到達する knowledge/coordinator（`/rite:<name>` を持たず、他スキルから `Read` で参照されるのみ） | reviewers | broad description の auto-activate 抑止目的で `disable-model-invocation: true` を許容（Skill ツール経由の invoke 自体が発生しないため、本節冒頭で述べたユーザー直叩き巻き添え遮断の問題は起きない） |
 
 **Skill Classification:**
 

@@ -6,7 +6,6 @@ description: |
   ユーザーが明示的に /rite:issue-create で起動する。auto-activate しない。
   起動: /rite:issue-create <title or description>
 argument-hint: "<title or description>"
-disable-model-invocation: true
 ---
 
 # /rite:issue-create

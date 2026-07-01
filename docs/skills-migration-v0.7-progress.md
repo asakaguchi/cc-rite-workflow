@@ -228,6 +228,12 @@ go/no-go 判定後に**3スキルとも削除**する。`.spike-stop-marker.txt`
 - **orchestrator→sub-skill の呼び出し経路 = Skill ツール invoke**（sentinel+自然継続ではない）。spike #1 成功 + §B 遮断の両方が invoke 経路を裏付ける。→ §B frontmatter ポリシーを **lock**: orchestrator 到達スキルは `disable-model-invocation:true` 不可、narrow description で /goal 非干渉を担保。
 - **`CLAUDE_CODE_SESSION_ID` は skill Bash tool call で解決する**（`CLAUDE_SESSION_ID` 別名は不可）。継続 hook の session 照合・state 参照は `CLAUDE_CODE_SESSION_ID` を正とする。
 
+### Addendum: §B lock の前提の誤り（後日判明・spike 記録自体は保持）
+
+上記 §B lock は「spike-orch が自身の SKILL.md 本文の指示に従って Skill ツールを呼ぶ」経路のみを検証しており、「ユーザー自身が `/rite:xxx` と直接タイプした場合」は未検証だった。実際には Claude Code CLI 側で、ユーザーが明示的に入力したスラッシュコマンドとモデル自身が自律的に決定した Skill ツール呼び出しが**同一の Skill ツール経路**を通り、区別されない（upstream で複数回報告済みの既知の挙動: [anthropics/claude-code#43660](https://github.com/anthropics/claude-code/issues/43660) 等）。
+
+この見落としにより、「leaf スキル（他スキルから呼ばれない）なら `disable-model-invocation:true` は安全」という誤った結論のもと、issue-create 等 14 件の user-invocable leaf スキルに `disable-model-invocation: true` を付与していた。何らかの要因（画像添付等）でネイティブなスラッシュコマンド dispatch と認識されないケースでは、モデル側の Skill ツールフォールバックが発生し、`disable-model-invocation` ガードにユーザー起動そのものが阻まれるバグを生んでいた。是正内容は別途 Issue で対応し、frontmatter ポリシーを「`disable-model-invocation` は user-invocable スキルには使用しない」へ変更した。
+
 ### 残課題（任意の第2回スパイクで closeout・load-bearing は §D のみ）
 
 第1回は #2 の hook command path（`${CLAUDE_PLUGIN_ROOT}`）と #3 の injection 経路（`${CLAUDE_SKILL_DIR}`）を正しくテストしていない。両者は公式に「動く」とされるが skill 文脈の記述は最小限。**Read 参照ロードは相対リンクで確定済・Bash plugin file は既存機構で確定済**なので、唯一 load-bearing なのは **§D 継続 hook の path 解決**。第2回を実施する場合に備え spike-orch を下記へ修正済（round 2）:

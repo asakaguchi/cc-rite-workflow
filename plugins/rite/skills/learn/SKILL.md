@@ -6,7 +6,6 @@ description: |
   ユーザーが明示的に /rite:learn で起動する。auto-activate しない。
   起動: /rite:learn [issue_or_pr]
 argument-hint: "[issue_or_pr]"
-disable-model-invocation: true
 ---
 
 # /rite:learn

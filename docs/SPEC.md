@@ -301,7 +301,7 @@ name: <name>                        # ディレクトリ名と一致。起動は
 description: |
  狭く具体的な説明 + auto-activation 条件（汎用トリガ語を誘発語にしない）
 argument-hint: "<arg-hint>"         # 引数を取るスキルのみ（autocomplete 表示）
-# user-invocable: false             # 純 sub-skill / knowledge のみ（メニュー非表示）
+# user-invocable: false             # Skill ツール経由で呼ばれる純 sub-skill のみ（メニュー非表示。Read 専用の knowledge/coordinator は下記ポリシー表の第3区分を参照）
 ---
 
 # /rite:<name>

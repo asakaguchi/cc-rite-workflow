@@ -6,7 +6,6 @@ description: |
   ユーザーが明示的に /rite:run で起動する meta-orchestrator。auto-activate しない。
   起動: /rite:run [--merge] <issue_number>...
 argument-hint: "[--merge] <issue_number>..."
-disable-model-invocation: true
 ---
 
 # /rite:run

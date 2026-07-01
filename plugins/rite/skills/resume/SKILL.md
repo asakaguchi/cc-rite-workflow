@@ -5,7 +5,6 @@ description: |
   ユーザーが明示的に /rite:resume で起動する。auto-activate しない。
   起動: /rite:resume
 argument-hint: ""
-disable-model-invocation: true
 ---
 
 # /rite:resume

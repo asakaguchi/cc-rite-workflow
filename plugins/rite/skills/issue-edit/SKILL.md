@@ -5,7 +5,6 @@ description: |
   ユーザーが明示的に /rite:issue-edit で起動する。auto-activate しない。
   起動: /rite:issue-edit <issue_number>
 argument-hint: "<issue_number>"
-disable-model-invocation: true
 ---
 
 # /rite:issue-edit

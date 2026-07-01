@@ -5,7 +5,6 @@ description: |
   ユーザーが明示的に /rite:issue-update で起動する。auto-activate しない。
   起動: /rite:issue-update
 argument-hint: ""
-disable-model-invocation: true
 ---
 
 # /rite:issue-update

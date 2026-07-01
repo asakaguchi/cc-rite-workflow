@@ -4,9 +4,9 @@ description: |
   コード構造を正確に調査し検証済みの結果を報告する (/rite:investigate)。grep で場所を特定 →
   Read で実コードを確認 → Codex(または代替検証)でクロスチェックする3段階検証により、推測による
   誤報告を防ぐ。関数呼び出し・ハッシュ・条件式・メソッドチェーン・クラス定義・設定値を網羅。
+  ユーザーが明示的に /rite:investigate で起動する。auto-activate しない。
   起動: /rite:investigate <調査対象の説明>
 argument-hint: "<調査対象の説明>"
-disable-model-invocation: true
 ---
 
 # /rite:investigate

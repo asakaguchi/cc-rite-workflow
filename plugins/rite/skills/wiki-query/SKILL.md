@@ -6,7 +6,6 @@ description: |
   auto-activate しない。
   起動: /rite:wiki-query <keywords>
 argument-hint: "<keywords>"
-disable-model-invocation: true
 ---
 
 # /rite:wiki-query

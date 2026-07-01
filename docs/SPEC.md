@@ -315,7 +315,7 @@ Skill documentation...
 | `description` | Yes | auto-activation 条件を含む狭い説明。汎用トリガ語（workflow / PR / review / commit / branch / next steps 等）を誘発語として書かない |
 | `argument-hint` | No | 引数を取るスキルの autocomplete 表示 |
 | `disable-model-invocation` | **使用しない** | user-invocable スキルには使用しない方針。Claude Code CLI 側でユーザーが明示的にタイプしたスラッシュコマンドとモデル自身の Skill ツール呼び出しが同一経路を通り区別されない既知の挙動があり（[anthropics/claude-code#43660](https://github.com/anthropics/claude-code/issues/43660) 等）、`true` を付けるとユーザー直叩きも巻き添えで遮断されうる。auto-activate 抑止は narrow description のみで担保する（例外: 下記ポリシー表第3区分の Read 専用 knowledge/coordinator は `user-invocable: false` 併用を条件に許容） |
-| `user-invocable` | No | `false` = メニュー非表示（純 sub-skill。orchestrator が Skill ツールで呼ぶ） |
+| `user-invocable` | No | `false` = メニュー非表示（純 sub-skill のほか、下記ポリシー表第3区分の Read 専用 knowledge/coordinator も併用） |
 
 **frontmatter ポリシー（区分ごと）:**
 

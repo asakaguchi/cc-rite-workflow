@@ -219,7 +219,7 @@ Wiki status line before exiting.
 Check if `rite-config.yml` exists:
 
 ```bash
-ls rite-config.yml 2>/dev/null || ls .claude/rite:config.yml 2>/dev/null
+ls rite-config.yml 2>/dev/null || ls .claude/rite-config.yml 2>/dev/null
 ```
 
 **If it exists:**
@@ -264,7 +264,8 @@ Option B: Create a new Issue
   1. Create an Issue with a description:
      /rite:issue-create Add user authentication
 
-  2. rite will automatically create the Issue and start working on it
+  2. Then start working on the created Issue:
+     /rite:open <issue number from step 1>
 
 What happens when you start an Issue:
   ✓ Creates a feature branch (e.g., feat/issue-42-description)
@@ -280,27 +281,24 @@ What happens when you start an Issue:
 │              Step 3: Complete and Submit                    │
 └─────────────────────────────────────────────────────────────┘
 
-After implementing your changes:
+/rite:open runs quality checks (/rite:lint) and creates a draft PR for you.
+After the draft PR is created:
 
-1. Run quality checks:
-   /rite:lint
+1. Run the review/fix loop until the PR is mergeable:
+   /rite:iterate <PR>
+   (Multi-reviewer analysis — code quality, security, tests, etc. —
+    with fixes applied automatically in a review ⇄ fix loop)
 
-2. Create a draft PR:
-   /rite:pr-create
-
-3. Review your changes:
-   /rite:review
-   (Multi-reviewer analysis: code quality, security, tests, etc.)
-
-4. If issues are found, fix them:
-   /rite:fix
-   (Then run /rite:review again)
-
-5. When ready for team review:
-   /rite:ready
+2. When ready for team review:
+   /rite:ready <PR>
    (Marks PR as "Ready for review")
 
-6. After PR is merged, the Issue is automatically closed
+3. Merge the PR:
+   /rite:merge <PR>
+
+4. Clean up after the merge:
+   /rite:cleanup <PR>
+   (Deletes the branch, closes the Issue, updates Projects status)
 ```
 
 > **Test-Driven Development (Canon TDD) is on by default.** During implementation
@@ -446,7 +444,7 @@ Now that you understand the basics:
 🚀 Try these workflows:
   - Start with a simple Issue to practice the flow
   - Use /rite:issue-update during work to save progress
-  - Experiment with /rite:review to see multi-reviewer analysis
+  - Experiment with /rite:iterate to see multi-reviewer analysis
 
 💡 Tips:
   - Work memory is automatically saved and restored
@@ -456,7 +454,7 @@ Now that you understand the basics:
 🔧 Advanced features:
   - Iteration tracking: enable `iteration` in rite-config.yml (auto-assign on /rite:open, --sprint / --backlog filters in /rite:issue-list)
   - Template customization: Edit template files in the plugin's templates/ directory
-  - Multi-agent PR reviews: Automatic in /rite:review
+  - Multi-agent PR reviews: Automatic in /rite:iterate
 
 Ready to start? Try:
   /rite:issue-list    (to view existing Issues)

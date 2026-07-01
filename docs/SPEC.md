@@ -314,7 +314,7 @@ Skill documentation...
 | `name` | Yes | スキル識別子（= ディレクトリ名、`/rite:<name>` で起動） |
 | `description` | Yes | auto-activation 条件を含む狭い説明。汎用トリガ語（workflow / PR / review / commit / branch / next steps 等）を誘発語として書かない |
 | `argument-hint` | No | 引数を取るスキルの autocomplete 表示 |
-| `disable-model-invocation` | **使用しない** | user-invocable スキルには使用しない方針。Claude Code CLI 側でユーザーが明示的にタイプしたスラッシュコマンドとモデル自身の Skill ツール呼び出しが同一経路を通り区別されない既知の挙動があり（[anthropics/claude-code#43660](https://github.com/anthropics/claude-code/issues/43660) 等）、`true` を付けるとユーザー直叩きも巻き添えで遮断されうる。auto-activate 抑止は narrow description のみで担保する |
+| `disable-model-invocation` | **使用しない** | user-invocable スキルには使用しない方針。Claude Code CLI 側でユーザーが明示的にタイプしたスラッシュコマンドとモデル自身の Skill ツール呼び出しが同一経路を通り区別されない既知の挙動があり（[anthropics/claude-code#43660](https://github.com/anthropics/claude-code/issues/43660) 等）、`true` を付けるとユーザー直叩きも巻き添えで遮断されうる。auto-activate 抑止は narrow description のみで担保する（例外: 下記ポリシー表第3区分の Read 専用 knowledge/coordinator は `user-invocable: false` 併用を条件に許容） |
 | `user-invocable` | No | `false` = メニュー非表示（純 sub-skill。orchestrator が Skill ツールで呼ぶ） |
 
 **frontmatter ポリシー（区分ごと）:**
@@ -323,7 +323,7 @@ Skill documentation...
 |------|----|-------------|
 | user-invocable（`/rite:<name>` でユーザーが起動。orchestrator 到達の有無を問わない） | open / iterate / ready / merge / cleanup / lint / wiki-ingest / issue-create / wiki-init / learn / skill-suggest 等 | ナロー description のみ（`disable-model-invocation` は使用しない） |
 | 純 sub-skill（user は直接起動しない） | review / fix / pr-create / issue-implement | `user-invocable: false` |
-| Read 経由のみ到達する knowledge/coordinator（`/rite:<name>` を持たず、他スキルから `Read` で参照されるのみ） | reviewers | broad description の auto-activate 抑止目的で `disable-model-invocation: true` を許容（Skill ツール経由の invoke 自体が発生しないため、本節冒頭で述べたユーザー直叩き巻き添え遮断の問題は起きない） |
+| Read 経由のみ到達する knowledge/coordinator（`/rite:<name>` を持たず、他スキルから `Read` で参照されるのみ） | reviewers | `user-invocable: false` + broad description の auto-activate 抑止目的で `disable-model-invocation: true` を併用（`user-invocable: false` によりユーザーが直接起動できる `/rite:<name>` 自体が存在しないため、`disable-model-invocation` によるユーザー直叩き巻き添え遮断の問題は起きない。Skill ツール経由の orchestrator 呼び出しの有無は本区分の判断根拠ではない） |
 
 **Skill Classification:**
 

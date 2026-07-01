@@ -8,6 +8,7 @@ description: |
   Database, DevOps, Frontend, Test, Dependencies, Prompt Engineer, Tech Writer,
   Code Quality, Error Handling, Type Design) based on changed file patterns.
   Produces unified findings with severity levels.
+user-invocable: false
 disable-model-invocation: true
 ---
 

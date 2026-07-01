@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-01T06:56:00Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1696 (Issue #1695) review を統合: reviewers/SKILL.md frontmatter ポリシー是正 PR で SPEC.md:317 に例外句を追記したが隣接する SPEC.md:318 が対称更新漏れ。tech-writer が Doc-Heavy PR Mode で actionable 推奨事項として検出し、ユーザーが本PR対応を選択して即時追加コミット。隣接2行という最小スケールでの再現例として既存ページに追記 |
 | 2026-07-01T06:36:00Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=231, broken_refs=0 |
 | 2026-07-01T06:35:00Z | ingest:create | pages/heuristics/policy-doc-revision-non-target-consistency-check.md | PR #1694 (Issue #1693) review×3/fix×2 を統合: frontmatter ポリシー表新設 PR で Non-Target 要素 (`reviewers/SKILL.md`) が新分類ルールと矛盾しないか確認するチェックの有効性、および 2 名独立検出→再検証で design_confirmation に降格する健全プロセスの実例。cycle 3 で prompt-engineer の MEDIUM 指摘 (第 3 区分の前提が frontmatter 実態と不一致) がエージェント応答受け渡し不具合で見落とされ PR マージ後に判明した経緯を follow-up Issue #1695 として記録 |
 | 2026-06-26T03:18:14+00:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=231, broken_refs=0 |

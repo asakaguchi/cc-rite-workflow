@@ -330,7 +330,7 @@ Skill documentation...
 |------|----|-------------|
 | user-invocable（`/rite:<name>` でユーザーが起動。orchestrator 到達の有無を問わない） | open / iterate / ready / merge / cleanup / lint / wiki-ingest / issue-create / wiki-init / learn / skill-suggest 等 | ナロー description のみ（`disable-model-invocation` は使用しない） |
 | 純 sub-skill（user は直接起動しない） | review / fix / pr-create / issue-implement | `user-invocable: false`（orchestrator が Skill ツールで programmatic invoke するため `disable-model-invocation` は**付けない** — 付けると programmatic invoke まで巻き添え遮断されうる #1693。auto-activate 抑止は narrow description で担保する） |
-| Read 経由のみ到達する knowledge/coordinator（`/rite:<name>` を持たず、他スキルから `Read` で参照されるのみ） | reviewers（coordinator）/ rite-workflow（knowledge） | 両者とも `user-invocable: false`（ユーザーが直接起動できる `/rite:<name>` 自体を無くすため、`disable-model-invocation` によるユーザー直叩き巻き添え遮断の問題は起きない。Skill ツール経由の orchestrator 呼び出しの有無は本区分の判断根拠ではない）。auto-activate 抑止は description の broadness で使い分ける: reviewers は broad description のため `disable-model-invocation: true` を併用、rite-workflow は narrow（否定形）description のため併用しない（区分1 と同じく narrow description で足りる） |
+| Read 経由のみ到達する knowledge/coordinator（`/rite:<name>` を持たず、他スキルから `Read` で参照されるのみ） | reviewers（coordinator）/ rite-workflow（knowledge） | 両者とも narrow（否定形）description + `user-invocable: false`（ユーザーが直接起動できる `/rite:<name>` 自体を無くすため、`disable-model-invocation` によるユーザー直叩き巻き添え遮断の問題は起きない。Skill ツール経由の orchestrator 呼び出しの有無は本区分の判断根拠ではない）。`disable-model-invocation: true` は **reviewers のみ** 防御的に併用する（description が reviewer 選定という review 隣接ドメインを説明するため、auto-activate を二重に抑止する保険。`user-invocable: false` ゆえ巻き添え遮断リスクはない）。rite-workflow は narrow 否定形 description のみで auto-activate 抑止に足りるため併用しない（区分1 と同じ判断） |
 
 **Skill Classification:**
 

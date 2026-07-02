@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-02T19:48:05+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=230, broken_refs=0 |
 | 2026-07-02T19:42:40+09:00 | ingest:update | pages/heuristics/stale-sweep-intentional-retention-boundary.md | PR #1726 (Issue #1714) review を統合: reviewer agent 定義の inert 記述掃除 PR。意図的維持境界の線引き (削除/reword/変更なしの 3 択) を path 参照一掃から inert 記述 (空 Detailed Checklist 見出し・未実装スキャフォルディング prose・forward-looking claim) へ拡張。umbrella ラベル見出し削除時の別ファイル散文 dangling は凍結対象なら follow-up Issue (#1725) へ分離、部分実装済み forward-looking prose は reword、read 側実消費 slot は変更なし |
 | 2026-07-02T18:22:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=231, broken_refs=0 |
 | 2026-07-02T18:21:39+09:00 | ingest:update | pages/heuristics/policy-doc-revision-non-target-consistency-check.md | PR #1724 (Issue #1713、#1694 defect 修正 PR) review を統合: frontmatter description の narrow 化 PR で 本文見出し整合 (frontmatter-body scope 不一致) / 同 PR 内 SPEC 自己矛盾 (自分が同 PR で変えた状態を織り込む) / user-invocable の frontmatter 実値確認 (default true の見落とし防止) の 3 次元を追加 |

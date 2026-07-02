@@ -2,7 +2,7 @@
 
 > **Charter**: Subject to [Simplification Charter](./simplification-charter.md). Runtime に効かない経緯記述・cycle 番号引用・重複 confirmation は書かない。
 
-対象: `plugins/rite/commands/` 配下の Markdown 文書中に存在する `# === ... ===` 形式の **grep anchor**。本ファイルは anchor literal の構造を定める canonical 規約と、anchor を中心に発生する Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」failure mode の予防策を集約する。Wiki 経験則本体は `/rite:wiki-query` で参照 (cf. §5)。
+対象: `plugins/rite/skills/` 配下の Markdown 文書中に存在する `# === ... ===` 形式の **grep anchor**。本ファイルは anchor literal の構造を定める canonical 規約と、anchor を中心に発生する Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」failure mode の予防策を集約する。Wiki 経験則本体は `/rite:wiki-query` で参照 (cf. §5)。
 
 > **⚠️ コード層との境界**: 本 reference は anchor の **literal 構造** (文字列としての形態) を規定する。anchor が指し示す bash block の動作仕様・契約は anchor を抱える各文書 (`pr/fix.md` / `pr/review.md` / `issue/close.md`) に存在する。anchor literal を変更する場合は本 reference 更新後に、同 anchor を citation する全 site (note / blockquote / 他 anchor の rationale 段落) を grep で検出し同時更新すること。
 
@@ -105,7 +105,7 @@ set +o pipefail
 
 <a id="audit"></a>
 
-本 reference 作成時点で `plugins/rite/commands/` 配下に存在する `# === ... ===` 形式 anchor のうち、§3.1 anti-pattern に該当する **parenthetical 付き anchor** を列挙する。実際の refactor は別 Issue で実施する (本 Issue scope は規約文書化のみ)。
+本 reference 作成時点で `plugins/rite/skills/` 配下（当時は旧 `commands/` 配下、v0.7 でスキルへ移行）に存在する `# === ... ===` 形式 anchor のうち、§3.1 anti-pattern に該当する **parenthetical 付き anchor** を列挙する。実際の refactor は別 Issue で実施する (本 Issue scope は規約文書化のみ)。
 
 ### 4.1 refactor 候補 (parenthetical 付き)
 
@@ -149,7 +149,7 @@ set +o pipefail
 
 <a id="scope"></a>
 
-本 reference は **`plugins/rite/commands/` 配下の Markdown 文書中の `# === ... ===` 形式 anchor** にのみ適用する。
+本 reference は **`plugins/rite/skills/` 配下の Markdown 文書中の `# === ... ===` 形式 anchor** にのみ適用する。
 
 適用外:
 

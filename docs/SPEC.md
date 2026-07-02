@@ -198,6 +198,7 @@ rite-workflow/
 │ ├── flow-state.sh / local-wm-update.sh
 │ ├── work-memory-lock.sh / work-memory-update.sh / work-memory-parse.py
 │ ├── cleanup-work-memory.sh
+│ ├── issue-claim.sh # Issue claim (同一 Issue 二重着手ガード、always-on)
 │ ├── issue-body-safe-update.sh / issue-comment-wm-sync.sh / issue-comment-wm-update.py
 │ ├── review-result-save.sh / review-comment-post.sh / review-skip-notification.sh # skills/review/SKILL.md 6.1.a/b/c 委譲
 │ ├── wiki-ingest-trigger.sh / wiki-query-inject.sh # Wiki auto-integration
@@ -207,6 +208,7 @@ rite-workflow/
 │ │ ├── wiki-lint-source-refs.sh # skills/wiki-lint/SKILL.md 6.2 委譲
 │ │ ├── wiki-lint-stale.sh / wiki-lint-orphans.sh / wiki-lint-broken-refs.sh # skills/wiki-lint/SKILL.md 4/5/7 委譲
 │ │ ├── wiki-growth-check.sh # lint layer-3
+│ │ ├── wiki-ingest-lock.sh # /rite:wiki-ingest のセッション間直列化ロック
 │ │ ├── backlink-format-check.sh / bang-backtick-check.sh
 │ │ ├── bang-backtick-edit-hook.sh # PostToolUse wrapper for bang-backtick-check.sh (hooks.json 登録)
 │ │ ├── bash-heaviness-check.sh # skills/**/*.md の heavy bash block 検出
@@ -214,6 +216,9 @@ rite-workflow/
 │ │ ├── comment-journal-check.sh / sh-cross-ref-check.sh # comment 規約 lint (journal 語法 / cross-file 参照)
 │ │ ├── orphan-reference-check.sh # 未参照ファイル検出
 │ │ ├── post-review-state-verify.sh / pr-cycle-cleanup.sh # reviewer 逸脱検出 / cycle worktree 掃除
+│ │ ├── cleanup-worktree-detect.sh # cleanup.md ステップ 4-W の session-worktree 状態分類
+│ │ ├── worktree-foreign-cwd.sh / worktree-live-cwd.sh # worktree cwd/liveness probe (cleanup / reap)
+│ │ ├── rite-tmp-artifact.sh # 一時成果物 manifest 記録 (name 非依存 reap 用)
 │ │ ├── review-schema-version-check.sh # review-result schema drift 検出
 │ │ ├── settings-local-rite-hook-cleanup.sh / settings-local-rite-hook-cleanup.py # legacy hook entry 掃除 (.sh wrapper + .py 実体)
 │ │ ├── distributed-fix-drift-check.sh / doc-heavy-patterns-drift-check.sh
@@ -251,22 +256,24 @@ rite-workflow/
 │ ├── migrate-review-state-to-1.1.sh # review-result schema 1.1.0 移行
 │ ├── watchdog-status-mismatch.sh # Projects Status 不整合 watchdog
 │ └── tests/ # Script-level test suite
-├── references/ # Cross-cutting references used by skills
-│ ├── gh-cli-patterns.md / gh-cli-commands.md / gh-cli-error-catalog.md
-│ ├── graphql-helpers.md / projects-integration.md
-│ ├── severity-levels.md / epic-detection.md
-│ ├── review-result-schema.md / investigation-protocol.md
-│ ├── wiki-patterns.md
-│ ├── bash-compat-guard.md / bash-defensive-patterns.md / bash-trap-patterns.md
-│ ├── sub-issue-link-handler.md / issue-create-with-projects.md
-│ ├── execution-metrics.md
-│ ├── plugin-path-resolution.md / git-worktree-patterns.md
-│ ├── common-error-handling.md
-│ └── bottleneck-detection.md
-│ # Note: references/i18n-usage.md and plugins/rite/i18n/ directory (ja.yml,
-│ # en.yml, and the ja/ + en/ split files) were deleted entirely —
-│ # see the ## ~~Internationalization~~ (Retired) section below.
-└── README.md
+└── references/ # Cross-cutting references used by skills
+  ├── gh-cli-patterns.md / gh-cli-commands.md / gh-cli-error-catalog.md
+  ├── graphql-helpers.md / projects-integration.md
+  ├── severity-levels.md / epic-detection.md
+  ├── review-result-schema.md / investigation-protocol.md
+  ├── wiki-patterns.md
+  ├── bash-compat-guard.md / bash-defensive-patterns.md / bash-trap-patterns.md
+  ├── sub-issue-link-handler.md / issue-create-with-projects.md
+  ├── execution-metrics.md
+  ├── plugin-path-resolution.md / git-worktree-patterns.md
+  ├── common-error-handling.md
+  ├── box-display-width.md # 罫線 box の表示幅ルール (SoT)
+  ├── session-id-validation-contract.md # Session ID validation contract (SoT)
+  ├── state-read-evolution.md # state-read.sh の変遷史 (rationale 保存)
+  └── bottleneck-detection.md
+  # Note: references/i18n-usage.md and plugins/rite/i18n/ directory (ja.yml,
+  # en.yml, and the ja/ + en/ split files) were deleted entirely —
+  # see the ## ~~Internationalization~~ (Retired) section below.
 ```
 
 ### plugin.json

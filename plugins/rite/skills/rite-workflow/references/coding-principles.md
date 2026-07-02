@@ -492,7 +492,6 @@ These conventions apply to authoring Markdown files loaded by the Claude Code Sk
 **Applicable file paths** (Skill loader 経路にある全カテゴリ):
 
 - `plugins/rite/skills/**/*.md`
-- `plugins/rite/commands/**/*.md`
 - `plugins/rite/agents/**/*.md`
 - `plugins/rite/references/**/*.md`
 - `plugins/rite/templates/**/*.md`

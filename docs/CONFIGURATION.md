@@ -85,6 +85,7 @@ issue:
 # Review settings
 review:
   min_reviewers: 1      # Fallback when no reviewers match
+  max_reviewers: 6      # Cost cap: max reviewers spawned per review (default 6)
   criteria:
     - file_types
     - content_analysis
@@ -400,6 +401,7 @@ issue:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `min_reviewers` | integer | `1` | Minimum number of reviewers (fallback when no reviewers match) |
+| `max_reviewers` | integer | `6` | Maximum reviewers spawned per review (cost cap). Applied after `min_reviewers` and the security/sole-reviewer guards, so it never drops a mandatory reviewer or reduces below `min_reviewers`. When the matched set exceeds the cap, reviewers are narrowed by relevance (matched file count) and the omitted reviewers are displayed (never silently capped). Invalid values (non-numeric, or `< min_reviewers`) fall back with a WARNING (default `6`, or `min_reviewers` respectively) |
 | `criteria` | array | `[file_types, content_analysis]` | Review criteria |
 | `loop.verification_mode` | boolean | `false` | Enable verification mode as supplement to full review. When enabled, reviews after the first cycle perform both full review and verification of previous fixes with incremental diff regression checks |
 | `loop.allow_new_findings_in_unchanged_code` | boolean | `false` | Whether new findings in unchanged code should be blocking. When `false`, new MEDIUM/LOW findings in unchanged code are reported as "stability concerns" (non-blocking) |

@@ -355,7 +355,7 @@ Compare current config against the template and classify each key:
 - `commands`: `build`, `test`, `lint`
 - `verification`: `run_tests_before_pr`, `acceptance_criteria_check`
 - `issue`: `auto_decompose_threshold`
-- `review`: `min_reviewers`, `criteria`, `loop`, `security_reviewer`, `debate`, `confidence_threshold`, `fact_check`, `scope_assignment`
+- `review`: `min_reviewers`, `max_reviewers`, `criteria`, `loop`, `security_reviewer`, `debate`, `confidence_threshold`, `fact_check`, `scope_assignment`
 - `wiki`: `enabled`, `branch_strategy`, `branch_name`, `auto_ingest`, `auto_query`
 - `multi_session`: `enabled`, `worktree_base`
 - `tdd`: `enabled`

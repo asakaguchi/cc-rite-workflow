@@ -116,6 +116,7 @@ Select all reviewers that:
 
 No prioritization by file count.
 All matching reviewers are selected.
+(Phase 5 narrows this set down to max_reviewers when the count exceeds the cap.)
 ```
 
 ### Phase 4: Apply Minimum Limit
@@ -130,6 +131,38 @@ Special rules:
 ```
 
 **Note**: For detailed mandatory selection conditions for Security Expert, see [`skills/review/SKILL.md` ステップ 3.2 (Reviewer Selection)](../../skills/review/SKILL.md#32-reviewer-selection).
+
+### Phase 5: Apply Maximum Limit (Cost Control)
+
+Review cost scales with reviewer count (each reviewer runs a fact_check and debate phase — see `rite-config.yml` `review.fact_check` / `review.debate`), so an upper bound caps the per-review cost. Apply this phase **after** Phase 4 so the cap never violates the minimum floor or drops a mandatory Security Expert.
+
+```text
+Apply constraints from rite-config.yml:
+  - max_reviewers: Maximum reviewers to spawn (default: 6)
+
+Relevance score (used only when narrowing is required):
+  1. matched file count per reviewer (from Phase 1 "Track file count per reviewer") — higher is more relevant
+  2. tie-break by selection_type: mandatory > recommended > detected > normal
+  3. final tie-break by Available Reviewers table order (higher row = higher priority)
+
+Cap logic:
+  - selected count <= effective_max  -> keep all (no narrowing, no omission display)
+  - selected count >  effective_max  -> sort by relevance score desc, keep the top effective_max, drop the rest
+      * NEVER drop a `mandatory` Security Expert (kept regardless of score)
+      * NEVER reduce below min_reviewers (Phase 4 floor wins)
+  - MUST display each dropped reviewer's name and relevance score (silent capping is prohibited)
+
+effective_max resolution (config validation):
+  - max_reviewers unset            -> default 6
+  - max_reviewers non-numeric      -> WARNING, fall back to default 6
+  - max_reviewers < min_reviewers  -> WARNING, min_reviewers takes priority (effective_max = min_reviewers)
+  - otherwise                      -> effective_max = max_reviewers
+
+When matched count <= effective_max (e.g. the default 6 with fewer matches), the selection is
+identical to the pre-cap behavior (backward compatible).
+```
+
+The dropped-reviewer list and the pre-spawn summary are rendered by `skills/review/SKILL.md` ステップ 3.2 (cap application) / ステップ 3.3 (Confirm Reviewers).
 
 ## Selection Result Retention
 

@@ -128,7 +128,7 @@ Stop here if not a valid repository.
 Quick Start (3 steps):
   1. Setup (one-time):   /rite:init
   2. Start an Issue:     /rite:issue-create → /rite:open <番号>
-  3. Complete & submit:  /rite:iterate <PR> → /rite:ready <PR> → /rite:merge <PR> → /rite:cleanup <PR>
+  3. Complete & submit:  /rite:iterate <pr> → /rite:ready <pr> → /rite:merge <pr> → /rite:cleanup
 
 詳細なフロー図とコマンド一覧は /rite:workflow で表示できます。
 ```
@@ -285,16 +285,16 @@ What happens when you start an Issue:
 After the draft PR is created:
 
 1. Run the review/fix loop until the PR is mergeable:
-   /rite:iterate <PR>
+   /rite:iterate <pr>
    (Multi-reviewer analysis — code quality, security, tests, etc. —
     with fixes applied automatically in a review ⇄ fix loop)
 
 2. When ready for team review:
-   /rite:ready <PR>
+   /rite:ready <pr>
    (Marks PR as "Ready for review")
 
 3. Merge the PR:
-   /rite:merge <PR>
+   /rite:merge <pr>
 
 4. Clean up after the merge:
    /rite:cleanup

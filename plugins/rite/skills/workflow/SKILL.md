@@ -74,14 +74,14 @@ Display the following diagram:
         │        → /rite:lint → draft PR 作成
         │  （作業メモリ更新は /rite:issue-update）
         ▼
-  /rite:iterate <PR> (レビュー/修正ループ)
+  /rite:iterate <pr> (レビュー/修正ループ)
         │  内部: /rite:review ⇄ /rite:fix を
         │        mergeable になるまで自律実行
         ▼
-  /rite:ready <PR> (レビュー待ちに変更)
+  /rite:ready <pr> (レビュー待ちに変更)
         │                              Status: In Review
         ▼
-  /rite:merge <PR> (squash マージ)
+  /rite:merge <pr> (squash マージ)
         │
         ▼
   /rite:cleanup (後片付け)
@@ -153,8 +153,8 @@ Based on the state confirmed in Phase 1, suggest the next action.
   【次のステップ】
   1. 実装を続ける（/rite:open が lint → draft PR 作成まで実行します）
   2. /rite:issue-update で作業メモリを更新
-  3. draft PR 作成後は /rite:iterate <PR> でレビュー/修正ループ
-  4. /rite:ready <PR> → /rite:merge <PR> → /rite:cleanup で完了
+  3. draft PR 作成後は /rite:iterate <pr> でレビュー/修正ループ
+  4. /rite:ready <pr> → /rite:merge <pr> → /rite:cleanup で完了
 ```
 
 > **multi-session 時の注意**: `multi_session.enabled: true` の場合、この作業は

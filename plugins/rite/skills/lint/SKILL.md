@@ -471,7 +471,7 @@ fi
 
 ### 3.6 Plugin-specific Checks (Bang-Backtick Adjacency Detection)
 
-Execute the bang-backtick check script to detect Skill loader triggering patterns (backtick + bang adjacency) in **`plugins/rite/commands/**/*.md`** and **`plugins/rite/skills/**/*.md`** (plugin-scoped; the script walks the rite plugin tree specifically and does not scan repository-root `commands/` or `skills/` directories that may belong to other plugins). This is the static lint counterpart to the incident where inline-code bang adjacency broke Skill loading via bash history expansion. See the script header comment at `plugins/rite/hooks/scripts/bang-backtick-check.sh` for concrete detection patterns.
+Execute the bang-backtick check script to detect Skill loader triggering patterns (backtick + bang adjacency) in **`plugins/rite/skills/**/*.md`**, **`plugins/rite/agents/**/*.md`**, and **`plugins/rite/references/**/*.md`** (plugin-scoped; the script walks the rite plugin tree specifically and does not scan repository-root `skills/` or similar directories that may belong to other plugins). This is the static lint counterpart to the incident where inline-code bang adjacency broke Skill loading via bash history expansion. See the script header comment at `plugins/rite/hooks/scripts/bang-backtick-check.sh` for concrete detection patterns.
 
 **Condition**: Always execute when the script exists.
 
@@ -640,7 +640,7 @@ fi
 
 ### 3.11 Plugin-specific Checks (Hardcoded Line-Number Check)
 
-Execute the hardcoded line-number check script to detect prose-level hardcoded line-number references in `plugins/rite/commands/**/*.md`. This complements the Phase 3.5 distributed fix drift check by catching three drift-prone patterns that the existing `(line N, M)`-only propagation scan missed:
+Execute the hardcoded line-number check script to detect prose-level hardcoded line-number references in `plugins/rite/skills/**/*.md`. This complements the Phase 3.5 distributed fix drift check by catching three drift-prone patterns that the existing `(line N, M)`-only propagation scan missed:
 
 - **P-A** parenthesized form `(line N)` / `(line N, M)`
 - **P-B** Japanese prose form (qualifier `直前` / `直後` / `上記` / `下記` / `上方` / `下方` / `本セクション` near `line N`)
@@ -762,7 +762,7 @@ fi
 
 ### 3.14 Plugin-specific Checks (Direct gh issue create Invocation)
 
-Execute the direct `gh issue create` invocation guard to detect Issue creation paths in `plugins/rite/commands/**/*.md` that bypass the `create-issue-with-projects.sh` helper. This complements the existing direct-invocation guard by extending its enforcement scope from the two original files (`commands/issue/start.md` plus the now-deleted `commands/issue/parent-routing.md`) to every command/sub-skill markdown file. The original incident showed that scope-creep follow-up Issue creation invoked at orchestration time — specifically the canonical Issue creation paths in `skills/review/SKILL.md` and `skills/fix/SKILL.md` — could regress to direct `gh issue create` shortcuts, leaving Issues unregistered in GitHub Projects. See the script header at `plugins/rite/scripts/check-no-direct-gh-issue-create.sh` for the exact detection pattern and false-positive avoidance rules (fenced code blocks, blockquotes, single-line and multi-line Markdown comments, inline backtick spans).
+Execute the direct `gh issue create` invocation guard to detect Issue creation paths in `plugins/rite/skills/**/*.md` that bypass the `create-issue-with-projects.sh` helper. This complements the existing direct-invocation guard by extending its enforcement scope from the two original files (the retired `commands/issue/start.md` plus the now-deleted `commands/issue/parent-routing.md`) to every skill / sub-skill markdown file. The original incident showed that scope-creep follow-up Issue creation invoked at orchestration time — specifically the canonical Issue creation paths in `skills/review/SKILL.md` and `skills/fix/SKILL.md` — could regress to direct `gh issue create` shortcuts, leaving Issues unregistered in GitHub Projects. See the script header at `plugins/rite/scripts/check-no-direct-gh-issue-create.sh` for the exact detection pattern and false-positive avoidance rules (fenced code blocks, blockquotes, single-line and multi-line Markdown comments, inline backtick spans).
 
 Detected pattern (after stripping fenced code blocks / blockquotes / Markdown comments / inline backticks):
 
@@ -801,7 +801,7 @@ fi
 
 ### 3.15 Plugin-specific Checks (Orphan Reference File Detection)
 
-Execute the orphan reference lint guard to detect reference files (`plugins/rite/{commands,references,skills,agents}/**/*.md`) that exist but have zero inbound references AND no test pin protection. The motivation comes from a real incident where `plugins/rite/commands/issue/references/projects-status-update-callsites.md` (146 lines) was found to be a complete orphan — no other file referenced it, no test pinned its content, and it survived multiple workflow refactorings undetected. This check catches the same class of orphan accumulation mechanically before it grows into a maintenance burden.
+Execute the orphan reference lint guard to detect reference files (`plugins/rite/{references,skills,agents}/**/*.md`) that exist but have zero inbound references AND no test pin protection. The motivation comes from a real incident where `plugins/rite/commands/issue/references/projects-status-update-callsites.md` (146 lines) was found to be a complete orphan — no other file referenced it, no test pinned its content, and it survived multiple workflow refactorings undetected. This check catches the same class of orphan accumulation mechanically before it grows into a maintenance burden.
 
 Detection logic (see `plugins/rite/hooks/scripts/orphan-reference-check.sh` for the exact algorithm):
 
@@ -881,7 +881,7 @@ fi
 
 ### 3.17 Plugin-specific Checks (Operational Bash Block Heaviness)
 
-Execute the operational bash block heaviness check to detect "heavy" bash blocks in command markdown under **`plugins/rite/commands/**/*.md`** that violate the "operational bash block heaviness convention" added to `skills/rite-workflow/references/coding-principles.md`. That convention's origin: large operational bash blocks (python inline / nested `$()` / multiple heredocs / long line counts) malformed Claude's tool-call parsing and silently ended the turn with no error. The convention was added as prose, but prose-only enforcement cannot stop new drift — this check surfaces it mechanically. See the script header at `plugins/rite/hooks/scripts/bash-heaviness-check.sh` for the heaviness model.
+Execute the operational bash block heaviness check to detect "heavy" bash blocks in skill markdown under **`plugins/rite/skills/**/*.md`** that violate the "operational bash block heaviness convention" added to `skills/rite-workflow/references/coding-principles.md`. That convention's origin: large operational bash blocks (python inline / nested `$()` / multiple heredocs / long line counts) malformed Claude's tool-call parsing and silently ended the turn with no error. The convention was added as prose, but prose-only enforcement cannot stop new drift — this check surfaces it mechanically. See the script header at `plugins/rite/hooks/scripts/bash-heaviness-check.sh` for the heaviness model.
 
 A block is flagged only when it exhibits **2 or more** of these signals (a single signal — e.g. a lone helper call passing one JSON heredoc, or one block writing a long template — is intentionally not flagged, keeping false positives low):
 
@@ -892,7 +892,7 @@ A block is flagged only when it exhibits **2 or more** of these signals (a singl
 
 Heredoc bodies are treated as data: the python-inline / nested-cmdsub signals are evaluated only on real shell lines, so a template heredoc containing `$(...)` or `python3 -c` example text does not produce a finding.
 
-Exclusions: `plugins/rite/commands/**/tests/` fixtures, and any block containing the `drift-check-ignore` marker on one of its lines (exempts intentional / already-reviewed heavy blocks).
+Exclusions: `plugins/rite/skills/**/tests/` fixtures, and any block containing the `drift-check-ignore` marker on one of its lines (exempts intentional / already-reviewed heavy blocks).
 
 **Condition**: Always execute when the script exists.
 

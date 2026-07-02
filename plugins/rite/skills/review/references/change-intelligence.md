@@ -83,7 +83,7 @@ Apply rules top-to-bottom; first match wins.
 ## Example Output
 
 ```
-Change Intelligence: Refactor — 8 files changed (5 source, 2 test, 0 config, 1 docs). 142+ / 89- lines. Focused on plugins/rite/commands/pr/.
+Change Intelligence: Refactor — 8 files changed (5 source, 2 test, 0 config, 1 docs). 142+ / 89- lines. Focused on plugins/rite/skills/review/.
 ```
 
 ```

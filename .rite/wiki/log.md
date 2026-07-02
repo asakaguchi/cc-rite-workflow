@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-02T18:21:39+09:00 | ingest:update | pages/heuristics/policy-doc-revision-non-target-consistency-check.md | PR #1724 (Issue #1713、#1694 defect 修正 PR) review を統合: frontmatter description の narrow 化 PR で 本文見出し整合 (frontmatter-body scope 不一致) / 同 PR 内 SPEC 自己矛盾 (自分が同 PR で変えた状態を織り込む) / user-invocable の frontmatter 実値確認 (default true の見落とし防止) の 3 次元を追加 |
 | 2026-07-02T17:00:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=231, broken_refs=0 |
 | 2026-07-02T16:55:00+09:00 | ingest:update | pages/heuristics/reviewer-regression-claim-revert-test-attribution.md | PR #1721 review(cycle2) を統合: revert test で pre-existing と判定されても、Issue の acceptance criteria が明確にファイル間の相互無矛盾を要求している場合、討論フェーズを経て本 PR scope 内での修正が正当化されうる例外ケースを追加 |
 | 2026-07-02T16:55:00+09:00 | ingest:create | pages/patterns/command-placeholder-notation-precheck-canonical-docs.md | PR #1721 (Issue #1720) review×3/fix×2 を統合: 複数コマンドの引数プレースホルダ表記は既存正典ドキュメント（rite-workflow/SKILL.md・run/SKILL.md 等）の慣習を事前 Grep で確認しないと、実シグネチャ不一致・伝播漏れ・大文字小文字不統一の3種類の指摘が段階的に検出される |

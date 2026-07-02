@@ -18,9 +18,9 @@ disable-model-invocation: true
 
 This skill coordinates the multi-reviewer PR review process using specialized expert agents.
 
-## Auto-Activation
+## Invocation
 
-This skill is activated during `/rite:review` command execution.
+This skill is loaded via `Read` during `/rite:review` command execution; it does not auto-activate.
 
 ## Available Reviewers
 

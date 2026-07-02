@@ -6,6 +6,7 @@ description: |
   for the rite skills. Loaded only when explicitly working within the
   rite workflow — not a general-purpose Issue / PR / commit / branch /
   review helper, and intentionally does not auto-activate on those terms.
+user-invocable: false
 ---
 
 # Rite Workflow Skill

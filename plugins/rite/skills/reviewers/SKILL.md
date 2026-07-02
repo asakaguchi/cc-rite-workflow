@@ -116,6 +116,7 @@ Select all reviewers that:
 
 No prioritization by file count.
 All matching reviewers are selected.
+(Phase 5 narrows this set down to max_reviewers when the count exceeds the cap.)
 ```
 
 ### Phase 4: Apply Minimum Limit
@@ -130,6 +131,51 @@ Special rules:
 ```
 
 **Note**: For detailed mandatory selection conditions for Security Expert, see [`skills/review/SKILL.md` ステップ 3.2 (Reviewer Selection)](../../skills/review/SKILL.md#32-reviewer-selection).
+
+### Phase 5: Apply Maximum Limit (Cost Control)
+
+Review cost scales with reviewer count (each reviewer runs a fact_check and debate phase — see `rite-config.yml` `review.fact_check` / `review.debate`), so an upper bound caps the per-review cost. Apply this phase **after** Phase 4 so the cap never violates the minimum floor or drops a reviewer whose selection_type is `mandatory`.
+
+```text
+Apply constraints from rite-config.yml:
+  - max_reviewers: Maximum reviewers to spawn (default: 6)
+
+Relevance ordering (used only when narrowing is required):
+  1. matched file count per reviewer (from Phase 1 "Track file count per reviewer") — higher is more relevant
+  2. tie-break by selection_type: mandatory > recommended > detected > normal
+       (`normal` = a reviewer selected purely by pattern/content match, with no mandatory/recommended/detected
+        promotion; the three named types are defined in `skills/review/SKILL.md` ステップ 3.2 Selection Type table)
+  3. final tie-break by Available Reviewers table order (higher row = higher priority)
+
+Cap logic:
+  - selected count <= effective_max  -> keep all (no narrowing, no omission display)
+  - selected count >  effective_max  -> sort by the relevance ordering above, keep the top effective_max, drop the rest
+      * NEVER drop a reviewer whose selection_type is `mandatory` (Security Expert when `mandatory: true`,
+        a Doc-Heavy-promoted tech-writer, or a fenced-block-triggered code-quality co-reviewer — see ステップ 2.2.1 / 3.2).
+        If a mandatory reviewer would fall outside the top N, drop the next-lowest non-mandatory reviewer instead.
+      * If the mandatory reviewer count alone already exceeds effective_max, keep ALL mandatory reviewers
+        (intentionally exceed the cap) and drop non-mandatory reviewers down to zero. Never drop a mandatory
+        reviewer to satisfy the cap — the cost cap yields to the mandatory guarantee, not the other way around.
+      * NEVER reduce below the effective floor = max(min_reviewers, sole_reviewer_guard_floor). The Phase 4
+        min_reviewers floor wins, AND the ステップ 2.3 sole-reviewer guard's floor wins: when that guard raised
+        the set to 2 to avoid a single-reviewer blind spot, the cap keeps at least 2. A `max_reviewers` below
+        that floor is clamped up to it (the guard's blind-spot protection is not overridable by the cost cap) —
+        emit the ステップ 3.2.1 WARNING so the clamp is not silent.
+  - MUST display each dropped reviewer's name and matched file count (silent capping is prohibited)
+
+effective_max resolution (config validation):
+  - max_reviewers unset            -> default 6
+  - max_reviewers non-numeric      -> WARNING, fall back to default 6
+  - max_reviewers < min_reviewers  -> WARNING, min_reviewers takes priority (effective_max = min_reviewers)
+  - otherwise                      -> effective_max = max_reviewers
+  - final clamp (all paths)        -> effective_max = max(effective_max, min_reviewers)
+        (guarantees effective_max >= min_reviewers even for the unset/non-numeric paths when min_reviewers > 6)
+
+When matched count <= effective_max (e.g. the default 6 with fewer matches), the selection is
+identical to the pre-cap behavior (backward compatible).
+```
+
+The dropped-reviewer list and the pre-spawn summary are rendered by `skills/review/SKILL.md` ステップ 3.2.1 (cap application) / ステップ 3.3 (Confirm Reviewers).
 
 ## Selection Result Retention
 

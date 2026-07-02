@@ -87,6 +87,7 @@ issue:
 # Review settings
 review:
   min_reviewers: 1      # Fallback when no reviewers match
+  max_reviewers: 6      # Cost cap: max reviewers spawned per review (default 6, silent capping prohibited)
   criteria:
     - file_types
     - content_analysis

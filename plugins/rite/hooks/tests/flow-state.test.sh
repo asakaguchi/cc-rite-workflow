@@ -1124,6 +1124,38 @@ assert "TC-26: present → write completes (phase recorded, symmetric with case 
 out_plain=$( (cd "$d" && bash "$HOOK" set --phase branch --issue 1595 --branch "fix/issue-1595" --pr 0 --next "n") 2>&1 )
 assert "TC-26: backward compat → no WORKTREE_INVARIANT marker without flag" "0" "$(echo "$out_plain" | grep -c 'WORKTREE_INVARIANT')"
 
+# --- TC-27: cycle_count is a merge-preserved additive field (#1701 review⇄fix circuit breaker) ---
+echo ""
+echo "=== TC-27: --cycle-count merge-preserve + reset (review⇄fix circuit breaker) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+sfile="$d/.rite/sessions/${sid}.flow-state"
+# (a) set --cycle-count 3 → recorded
+(cd "$d" && bash "$HOOK" set --phase review --issue 700 --branch "feat/700" --pr 42 --next "n" --cycle-count 3) >/dev/null
+assert "TC-27: cycle_count=3 recorded" "3" "$(jq -r '.cycle_count // "ABSENT"' "$sfile")"
+assert "TC-27: get returns 3" "3" "$(cd "$d" && bash "$HOOK" get --field cycle_count --default 0)"
+# (b) merge-preserve: a set WITHOUT --cycle-count (e.g. review/fix phase transition) keeps the value
+(cd "$d" && bash "$HOOK" set --phase fix --issue 700 --branch "feat/700" --pr 42 --next "n2") >/dev/null
+assert "TC-27: cycle_count preserved across --cycle-count-less set" "3" "$(jq -r '.cycle_count // "ABSENT"' "$sfile")"
+# (c) a later set overwrites cycle_count with a new value (increment is the caller's job, not the hook's)
+(cd "$d" && bash "$HOOK" set --phase review --issue 700 --branch "feat/700" --pr 42 --next "n3" --cycle-count 4) >/dev/null
+assert "TC-27: later set overwrites cycle_count to a new value (increment scenario)" "4" "$(jq -r '.cycle_count // "ABSENT"' "$sfile")"
+# (d) reset with --cycle-count 0 removes the key (get falls back to default; fresh-entry reset)
+(cd "$d" && bash "$HOOK" set --phase review --issue 700 --branch "feat/700" --pr 42 --next "n4" --cycle-count 0) >/dev/null
+assert "TC-27: --cycle-count 0 removes the key" "false" "$(jq -r 'has("cycle_count")' "$sfile")"
+assert "TC-27: get after reset returns default 0" "0" "$(cd "$d" && bash "$HOOK" get --field cycle_count --default 0)"
+# (d2) reset while OMITTING issue/branch/pr (the actual iterate ステップ0.6 fresh-reset call shape):
+#      --cycle-count 0 removes the key AND merge-preserve keeps issue/branch intact
+(cd "$d" && bash "$HOOK" set --phase review --issue 700 --branch "feat/700" --pr 42 --next "seed" --cycle-count 3) >/dev/null
+(cd "$d" && bash "$HOOK" set --phase review --next "fresh reset" --cycle-count 0) >/dev/null
+assert "TC-27: reset with issue/branch omitted removes cycle_count key" "false" "$(jq -r 'has("cycle_count")' "$sfile")"
+assert "TC-27: reset merge-preserves issue_number" "700" "$(jq -r '.issue_number' "$sfile")"
+assert "TC-27: reset merge-preserves branch" "feat/700" "$(jq -r '.branch' "$sfile")"
+# (e) backward compat: a fresh session that never sets --cycle-count has no cycle_count key
+result=$(new_sandbox); d2="${result%|*}"; sid2="${result#*|}"
+sfile2="$d2/.rite/sessions/${sid2}.flow-state"
+(cd "$d2" && bash "$HOOK" set --phase branch --issue 701 --branch "feat/701" --pr 0 --next "n") >/dev/null
+assert "TC-27: backward compat → no cycle_count key without --cycle-count" "false" "$(jq -r 'has("cycle_count")' "$sfile2")"
+
 # --- T-01: AC-1 — distinct env CLAUDE_CODE_SESSION_ID → distinct per-session state files ---
 echo ""
 echo "=== T-01: AC-1 concurrent sessions sharing one state root stay isolated by env ==="

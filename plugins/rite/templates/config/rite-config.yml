@@ -186,7 +186,8 @@ pr_review:
 
 # Safety settings (fail-closed thresholds)
 # safety:
-#   max_implementation_rounds: 20
+#   max_implementation_rounds: 20   # implementation round hard limit per Issue (default: 20)
+#   max_review_cycles: 5            # /rite:iterate review-fix loop circuit breaker per PR (default: 5)
 #   time_budget_minutes: 120
 #   auto_stop_on_repeated_failure: true
 #   repeated_failure_threshold: 3

@@ -90,7 +90,7 @@ Detect current state from:
 |-------|------------|
 | On main/develop, no Issue | `/rite:issue-create` or `/rite:issue-list` |
 | Have an Issue, want to start work | `/rite:open <issue>` (Issue → branch → 実装 → lint → draft PR を一気通貫) |
-| On feature branch, PR open / draft, review-fix cycle | `/rite:iterate <pr>` (mergeable まで review ⇄ fix を無限ループ) |
+| On feature branch, PR open / draft, review-fix cycle | `/rite:iterate <pr>` (mergeable まで review ⇄ fix をループ、`safety.max_review_cycles` 上限のサーキットブレーカーあり) |
 | Review mergeable, want to mark Ready | `/rite:ready <pr>` then `/rite:merge <pr>` |
 | Merge 完了、branch 削除 / Wiki ingest / Projects Status Done 後処理が必要 | `/rite:cleanup <pr>` |
 | 複数 Issue を draft PR まで一括自律実行したい | `/rite:run <issue>...` (各 Issue に open→iterate を順次実行し draft 止まり、失敗で即停止)。merge→cleanup まで完走するなら `/rite:run --merge <issue>...` |
@@ -148,7 +148,7 @@ See [references/work-memory-format.md](./references/work-memory-format.md) for w
 | コマンド | 責務 | 区分 |
 |---|---|---|
 | `/rite:open <issue>` | Issue → branch → 実装 → lint → draft PR (Step 0 Resume Dispatch 含む) | orchestrator |
-| `/rite:iterate <pr>` | review ↔ fix を `[review:mergeable]` まで無限ループ (cycle counter なし、abort は Ctrl+C のみ) | orchestrator |
+| `/rite:iterate <pr>` | review ↔ fix を `[review:mergeable]` までループ (`safety.max_review_cycles` 上限のサーキットブレーカーあり; abort は Ctrl+C / 上限到達時の AskUserQuestion) | orchestrator |
 | `/rite:ready <pr>` | Ready 化 + Projects Status + 親判定 + 完了レポート | self-contained command |
 | `/rite:merge <pr>` | `gh pr merge --squash` を叩くだけ (cleanup は分離) | self-contained command |
 

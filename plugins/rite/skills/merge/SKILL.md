@@ -51,7 +51,7 @@ gh pr view {pr_number} --json mergeable,mergeStateStatus,isDraft,headRefName
 | `mergeable != "MERGEABLE"` | `[merge:not-ready]` emit + 原因 (`mergeStateStatus`) 表示 + AskUserQuestion で「再判定 (`mergeStateStatus` を再取得して ステップ 1 をもう一度実行、1 回のみ) / 中止」を提示 |
 | `mergeable == "MERGEABLE"` | ステップ 2 へ |
 
-> **「再判定」option の挙動**: 再判定は **1 回のみ**。再判定後も `MERGEABLE` でなければ `[merge:not-ready]` で確定終了する (ping-pong 防止)。`gh pr view` の mergeable 計算は数秒〜数十秒遅延するため、再判定前に短時間待機 (sleep / 手動 wait) するかはユーザー判断に委ねる。自動 sleep は提供しない (cycle counter なし原則と整合)。
+> **「再判定」option の挙動**: 再判定は **1 回のみ**。再判定後も `MERGEABLE` でなければ `[merge:not-ready]` で確定終了する (ping-pong 防止)。`gh pr view` の mergeable 計算は数秒〜数十秒遅延するため、再判定前に短時間待機 (sleep / 手動 wait) するかはユーザー判断に委ねる。自動 sleep は提供しない (再判定を自動で繰り返さない最小主義と整合。iterate の review⇄fix ループとは別経路で、こちらは 1 回のみの再判定に留める)。
 
 ## ステップ 2: マージ実行
 

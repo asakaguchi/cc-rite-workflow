@@ -2232,8 +2232,8 @@ When "コードを修正する" is selected:
 
 **Purpose**: 「指摘箇所だけ直す」では既存 caller / test / 他 file の同名 symbol を
 壊す silent regression が頻発するため、修正案を確定する前に必ず周辺の影響範囲を
-列挙する。指摘ゼロまでループする以上、デグレが入ると次 cycle で reviewer が新規
-finding を出して fix ループが永久化する。
+列挙する。指摘ゼロを目指してループする以上、デグレが入ると次 cycle で reviewer が新規
+finding を出し、fix ループが収束せず（サーキットブレーカー上限まで）reviewer の context を浪費する。
 
 **Mandatory before applying any fix**:
 
@@ -2310,8 +2310,8 @@ finding を出して fix ループが永久化する。
    状態にしてから Apply する) を満たすために必要。
 
 **Why mandatory**: Doc-Heavy PR 以外でも fix が破壊的変更を起こした場合、本 PR
-内の review-fix ループは指摘ゼロにならず、結果として無限ループ + reviewer の
-context 消費という最悪結果になる。修正前の影響範囲確認で予防できる。
+内の review-fix ループは指摘ゼロにならず、結果としてループが収束せず
+(サーキットブレーカー上限まで) reviewer の context を浪費する最悪結果になる。修正前の影響範囲確認で予防できる。
 
 ### 2.3 Apply the Fix
 

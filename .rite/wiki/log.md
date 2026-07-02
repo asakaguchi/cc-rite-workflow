@@ -6,6 +6,8 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-02T16:55:00+09:00 | ingest:update | pages/heuristics/reviewer-regression-claim-revert-test-attribution.md | PR #1721 review(cycle2) を統合: revert test で pre-existing と判定されても、Issue の acceptance criteria が明確にファイル間の相互無矛盾を要求している場合、討論フェーズを経て本 PR scope 内での修正が正当化されうる例外ケースを追加 |
+| 2026-07-02T16:55:00+09:00 | ingest:create | pages/patterns/command-placeholder-notation-precheck-canonical-docs.md | PR #1721 (Issue #1720) review×3/fix×2 を統合: 複数コマンドの引数プレースホルダ表記は既存正典ドキュメント（rite-workflow/SKILL.md・run/SKILL.md 等）の慣習を事前 Grep で確認しないと、実シグネチャ不一致・伝播漏れ・大文字小文字不統一の3種類の指摘が段階的に検出される |
 | 2026-07-02T03:45:00Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=231, broken_refs=0 |
 | 2026-07-02T03:35:00Z | ingest:create | pages/heuristics/stale-sweep-intentional-retention-boundary.md | PR #1722 (Issue #1715) review×2/fix×1 を統合: grep 残照ゼロ型 AC の判定は「意図的維持」カテゴリ (歴史記録=過去形 incident 記述 / 機能コード=別 Issue 化 / 同期 invariant コメント) の明示ラベリングで線引きする。参照更新時は旧ファイル固有の Phase 番号を機械的に持ち込まず現行ファイルで実在確認したパターン名へ言い換える |
 | 2026-07-02T03:35:00Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1721 review×2/fix×1 + PR #1722 review×2/fix×1 を統合 (累積 55 回目相当): stale 参照一掃 sweep 自身の半端残り発現形態を追加 — sweep 前は「両方 stale で整合」だった参照ペア (consumer↔SoT / grep ヒント↔caller 例 / 変更セクション↔同ファイル内周辺説明) が片側更新で「内部矛盾」へ転化。propagation scan による対称位置 + 同種 stale パス 5 箇所同時追随で 2 cycle 収束 |

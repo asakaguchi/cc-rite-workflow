@@ -2,11 +2,13 @@
 title: "reviewer の regression 主張は revert test (git show / git diff) で PR 由来か pre-existing かを独立検証する"
 domain: "heuristics"
 created: "2026-06-02T01:52:19Z"
-updated: "2026-06-02T01:52:19Z"
+updated: "2026-07-02T16:55:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260602T012648Z-pr-1240.md"
-tags: ["verification-protocol", "regression-attribution", "revert-test", "reviewer-claim", "git-show", "pre-existing", "delegation-refactor"]
+  - type: "reviews"
+    ref: "raw/reviews/20260702T070751Z-pr-1721.md"
+tags: ["verification-protocol", "regression-attribution", "revert-test", "reviewer-claim", "git-show", "pre-existing", "delegation-refactor", "acceptance-criteria-override"]
 confidence: high
 ---
 
@@ -74,6 +76,18 @@ pre-existing と判明した潜在バグは rite の scope ルール (revert tes
 - reviewer が旧コードを引用 (「`git show main:` で確認」等) して主張を補強しているケース — 引用自体を git show で再検証する
 - inline → delegate / wrapper 解体系の refactor PR (Asymmetric Fix Transcription の prior が確証バイアスを生みやすい)
 - 単一 reviewer の CRITICAL が他 reviewer の「可」判定と矛盾するケース (cross-validation 不成立は独立検証の trigger)
+
+### 例外: Issue acceptance criteria が明確な場合は討論フェーズで revert test を上書きできる (PR #1721)
+
+PR #1721 (Issue #1720、ドキュメント v0.7 フロー追随) の2回目レビューで、2 reviewer 間に cross-validation disagreement が発生した: getting-started/SKILL.md:131 の `/rite:cleanup <PR>` という誤記について、prompt-engineer reviewer は「本 PR が Phase 3.4 を修正した結果、同一ファイル内で新たに矛盾が顕在化した」として HIGH (current-pr scope) を主張、code-quality reviewer は「line 131 自体は本 PR の diff に含まれない pre-existing 行であり、revert test は厳密には FAIL する」として指摘事項に計上せず調査推奨に留めた。
+
+討論フェーズ (debate phase) で両者の主張を検討した結果、以下の判断で合意した:
+
+- **revert test の技術的解釈**: line 131 自体の内容は本 PR の diff で変更されていない (`git diff develop...HEAD` に含まれない)、かつ `git blame` で本 PR より前の別コミット由来と確認できるため、狭義の revert test は不成立 (pre-existing)。
+- **しかし Issue の acceptance criteria (AC-4: 「getting-started の Phase 3.1 / 3.2 Option B / 3.4 が相互に矛盾しない」) が明確に本 PR のスコープとして矛盾解消を要求している**。本 PR が Phase 3.4 を修正したことで初めて Phase 3.1 との矛盾が顕在化したという事実は、たとえ line 131 自体が unchanged でも、「本 PR の目的そのもの (v0.7 フローへの追随・矛盾解消) に照らして対応すべき」という判断を正当化する。
+- 前回 HIGH 指摘 (`/rite:cleanup <PR>` の引数不一致) と完全に同一の実害 (コマンド実行失敗) を持つことも、本 PR scope 内での修正を後押しした。
+
+**一般化された原則**: revert test は「このバグが技術的に PR diff 由来か」を判定する厳密な gate として機能するが、**Issue の acceptance criteria が明示的にファイル全体・セクション間の相互無矛盾を要求している場合**、revert test で pre-existing と判定された箇所でも、その pre-existing な内容が本 PR の変更と直接的に矛盾する結果になった (本 PR が変更した箇所との整合性が本 PR によって初めて破れた) なら、討論フェーズを経て本 PR scope 内での修正が正当化されうる。これは revert test 原則の無効化ではなく、「PR の目的 (Issue acceptance criteria) がスコープをどう定義しているか」という別の判断軸との重み付けの問題である。
 
 ## 関連ページ
 

@@ -297,7 +297,7 @@ After the draft PR is created:
    /rite:merge <PR>
 
 4. Clean up after the merge:
-   /rite:cleanup <PR>
+   /rite:cleanup
    (Deletes the branch, closes the Issue, updates Projects status)
 ```
 

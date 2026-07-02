@@ -84,7 +84,7 @@ Display the following diagram:
   /rite:merge <PR> (squash マージ)
         │
         ▼
-  /rite:cleanup <PR> (後片付け)
+  /rite:cleanup (後片付け)
         │  ブランチ削除・Issue クローズ・Wiki 統合
         ▼
   完了                                 Status: Done
@@ -154,7 +154,7 @@ Based on the state confirmed in Phase 1, suggest the next action.
   1. 実装を続ける（/rite:open が lint → draft PR 作成まで実行します）
   2. /rite:issue-update で作業メモリを更新
   3. draft PR 作成後は /rite:iterate <PR> でレビュー/修正ループ
-  4. /rite:ready <PR> → /rite:merge <PR> → /rite:cleanup <PR> で完了
+  4. /rite:ready <PR> → /rite:merge <PR> → /rite:cleanup で完了
 ```
 
 > **multi-session 時の注意**: `multi_session.enabled: true` の場合、この作業は

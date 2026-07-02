@@ -62,7 +62,7 @@ When the diff modifies a keyword list, enumeration, or option set (e.g., severit
 - `Grep` for all other locations where the same list appears (other files, comments, tables, examples)
 - `Read` each location to compare the full list content
 - Flag any copy that is missing items, has extra items, or uses a different ordering than the modified version
-- Check that additions to a Detection Process are reflected in the corresponding checklist (e.g., the `## Detailed Checklist` section of the same `agents/*-reviewer.md`), and vice versa
+- Check that additions to a Detection Process are reflected in the corresponding checklist (e.g., the `## Review Checklist` section of the same `agents/*-reviewer.md`), and vice versa
 - Skip this step entirely when the diff does not touch any list-like structure
 
 **Sub-check 6a: Inverse reference consistency**
@@ -101,7 +101,7 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 
 - **95**: A bash command uses a variable (`$comment_id`) that is defined in a previous Bash tool call but not in the same call — shell state doesn't persist between calls
 - **93**: A file claims `local var=$(cmd)` preserves the exit code of `cmd`, but `local` always returns 0 (regardless of `set -e`), masking the substitution's exit code — verified by known shell semantics
-- **92**: A Detection Process added Step 6 but the corresponding `## Detailed Checklist` section of the same `agents/*-reviewer.md` has no item that maps to Step 6 findings — confirmed by `Read` of the file
+- **92**: A Detection Process added Step 6 but the corresponding `## Review Checklist` section of the same `agents/*-reviewer.md` has no item that maps to Step 6 findings — confirmed by `Read` of the file
 - **90**: An instruction references Phase 3.2 but the file only has Phases 1-3.1 — confirmed by `Read`
 - **90**: (hypothetical) A keyword list in one file has 5 items but the same list in another file has only 4 — confirmed by `Grep` + `Read`
 - **88**: (hypothetical) A routing table handles `[fix:pushed]` and `[fix:error]` but has no row for `[fix:replied-only]` — confirmed by `Read` of the table and the producing skill's output patterns
@@ -112,8 +112,6 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **82**: An instruction says "use `grep -P`" but the project convention (confirmed by `Grep` across `skills/`) is to use `grep -E` to avoid PCRE dependency
 - **70**: An instruction "seems unclear" but could be interpreted correctly by a capable LLM — move to recommendations
 - **50**: Style preference for instruction wording — do NOT report
-
-## Detailed Checklist
 
 ## Expertise Areas
 

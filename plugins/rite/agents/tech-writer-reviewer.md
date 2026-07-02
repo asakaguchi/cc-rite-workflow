@@ -94,8 +94,6 @@ The `docs/api.md` example states only WHAT the call does (which the function nam
 - **70**: Section seems incomplete (no error handling docs) but the feature itself has no error paths — move to recommendations
 - **50**: "Documentation style could be improved" without specific readability issue — do NOT report
 
-## Detailed Checklist
-
 ## Expertise Areas
 
 - Documentation structure

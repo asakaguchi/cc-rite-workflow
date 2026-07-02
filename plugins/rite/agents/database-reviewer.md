@@ -62,8 +62,6 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **70**: Missing foreign key constraint, but the application consistently enforces the relationship — move to recommendations
 - **50**: "This table might need partitioning in the future" without current performance evidence — do NOT report
 
-## Detailed Checklist
-
 ## Hypothetical Exception Category (migration)
 
 This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../references/severity-levels.md#hypothetical-exception-categories), but **only for migration-related findings** (destructive changes, irreversible schema mutations, breaking column drops, missing rollback paths). Migration findings MAY retain **CRITICAL / HIGH / MEDIUM** severity even when the Observed Likelihood is **Hypothetical**.

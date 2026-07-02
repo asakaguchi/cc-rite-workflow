@@ -63,8 +63,6 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **70**: Generic type parameter that could be more constrained, but current usage is correct — move to recommendations
 - **50**: "Should use branded types" in a project that doesn't use branded types anywhere — do NOT report
 
-## Detailed Checklist
-
 ## Expertise Areas
 
 - Type encapsulation and information hiding

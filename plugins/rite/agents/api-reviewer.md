@@ -61,8 +61,6 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **70**: Pagination missing on a list endpoint, but the dataset is small (< 50 items) and no performance issue is demonstrated — move to recommendations
 - **50**: "Should use HATEOAS" without evidence that the project follows HATEOAS conventions — do NOT report
 
-## Detailed Checklist
-
 ## Expertise Areas
 
 - RESTful design principles

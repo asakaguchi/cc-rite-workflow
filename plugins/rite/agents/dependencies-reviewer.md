@@ -63,8 +63,6 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **70**: Package has no updates in 2 years but no known CVEs and the API is stable — move to recommendations
 - **50**: "This package might become unmaintained" without evidence of abandonment — do NOT report
 
-## Detailed Checklist
-
 ## Hypothetical Exception Category (CVE / supply chain)
 
 This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../references/severity-levels.md#hypothetical-exception-categories). Known-CVE, supply-chain, and license findings MAY retain **CRITICAL / HIGH / MEDIUM** severity even when the Observed Likelihood is **Hypothetical**.

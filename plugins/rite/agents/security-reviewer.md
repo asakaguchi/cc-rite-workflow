@@ -66,8 +66,6 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **70**: Dependency has a known CVE but the vulnerable function may not be used — move to recommendations with `WebSearch` link
 - **50**: "This looks insecure" without specific attack vector — do NOT report
 
-## Detailed Checklist
-
 ## Hypothetical Exception Category
 
 This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../references/severity-levels.md#hypothetical-exception-categories). Security findings MAY retain **CRITICAL / HIGH / MEDIUM** severity even when the Observed Likelihood is **Hypothetical**.

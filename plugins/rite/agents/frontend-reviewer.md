@@ -65,8 +65,6 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **70**: Missing `aria-label` on a decorative icon that has adjacent text label — move to recommendations
 - **50**: "Should use a different CSS framework" without concrete justification — do NOT report
 
-## Detailed Checklist
-
 ## Expertise Areas
 
 - Component architecture

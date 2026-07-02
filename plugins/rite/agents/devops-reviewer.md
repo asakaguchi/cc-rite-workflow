@@ -63,8 +63,6 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **70**: `curl | bash` for a well-known installer (e.g., Rust's rustup) — lower risk but still non-reproducible — move to recommendations
 - **50**: "Should use a different CI provider" without concrete justification — do NOT report
 
-## Detailed Checklist
-
 ## Hypothetical Exception Category (deployment / rollback / IaC)
 
 This reviewer is in the **Hypothetical Exception Category** defined in [`references/severity-levels.md`](../references/severity-levels.md#hypothetical-exception-categories) for **deployment, rollback, and infrastructure-as-code** findings. These MAY retain **CRITICAL / HIGH / MEDIUM** severity even when the Observed Likelihood is **Hypothetical**.

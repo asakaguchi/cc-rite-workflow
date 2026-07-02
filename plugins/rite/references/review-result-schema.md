@@ -38,7 +38,7 @@
 
 - `review.md` ステップ 6.1.a — 現時点では canonical `"1.0.0"` のみを出力する。`"1.1.0"` への canonical write bump は **`_reviewer-base` への Scope Assignment 責務追加** のスコープ。reviewer が scope / pre_existing を出力できるようになった時点で本ドキュメントの書込側 canonical を `"1.1.0"` に bump する。case 文は存在せず、post-condition jq validation は `schema_version | type == "string" and length > 0` の型チェックのみで値の同期対象外 (読取側 accept list と独立に進化してよい)
 
-本セクションが Single Source of Truth であり、読取側 3 箇所の accept list を本ドキュメントと同一に保つ義務がある。現時点では `plugins/rite/hooks/scripts/distributed-fix-drift-check.sh` / `doc-heavy-patterns-drift-check.sh` は schema_version / accept list の drift を自動検出しない (enforcement 未実装)。将来の drift-check 拡張で schema_version enum を自動検証する計画。それまでは本ドキュメントを変更した際に手動で 3 箇所を同期させること。
+本セクションが Single Source of Truth であり、読取側 3 箇所の accept list を本ドキュメントと同一に保つ義務がある。`plugins/rite/hooks/scripts/distributed-fix-drift-check.sh` / `doc-heavy-patterns-drift-check.sh` は schema_version / accept list の drift を自動検出しないため、本ドキュメントを変更した際は手動で 3 箇所を同期させること。
 
 **失敗時の遷移** (Priority 別):
 
@@ -121,7 +121,7 @@
 | フィールド | 型 | 必須 | 説明 |
 |-----------|-----|------|------|
 | `id` | string | ✅ | 指摘 ID (`F-NN` 形式、最小 2 桁ゼロパディング可変長連番、正規表現 `^F-[0-9]{2,}$`)。例: `F-01`, `F-42`, `F-99`, `F-100`, `F-999`。レビュー内ユニーク。99 件以下は 2 桁、100 件以上は 3 桁以上に自然成長する。write 側 (`review.md` ステップ 6.1.a) の machine-enforced jq validation と read 側 (`fix.md`) の正規表現は同一パターンで検証される |
-| `reviewer` | string | ✅ | レビュアー種別 (例: `code-quality-reviewer`, `security-reviewer`, `tech-writer-reviewer`)。**参照整合性**: 値は `plugins/rite/agents/*-reviewer.md` の basename (拡張子を除く、接尾辞 `-reviewer` を含む) と一致する。新 reviewer を追加する際は agents/ 側のファイル追加と合わせて本ドキュメントにも追記すること (現時点では drift-check による自動検証は未実装、手動同期)。 |
+| `reviewer` | string | ✅ | レビュアー種別 (例: `code-quality-reviewer`, `security-reviewer`, `tech-writer-reviewer`)。**参照整合性**: 値は `plugins/rite/agents/*-reviewer.md` の basename (拡張子を除く、接尾辞 `-reviewer` を含む) と一致する。新 reviewer を追加する際は agents/ 側のファイル追加と合わせて本ドキュメントにも追記すること (drift-check による自動検証はないため手動同期)。 |
 | `category` | string | ✅ | カテゴリ (例: `code_quality`, `security`, `performance`, `error_handling`) |
 | `severity` | **enum** (string) | ✅ | 重要度。**受理値**: `"CRITICAL"` / `"HIGH"` / `"MEDIUM"` / `"LOW-MEDIUM"` / `"LOW"` の 5 値のみ (LOW-MEDIUM は `severity-levels.md` Severity Levels 表で正式定義された first-class severity で、`COMMENT_QUALITY` 軸の独自ジャーゴン濫用 等の bounded blast radius 違反に使う)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=severity_unknown_value; value=<val>` を stderr 出力し、該当 finding を `MEDIUM` にフォールバック (silent skip は禁止)。外部ツール出力の別名は下記「severity 別名マッピング表」に従って read 側で正規化してから本 enum に落とす |
 | `scope` | **enum** (string) | ✅ (1.1.0+) | 指摘の scope 分類 (1.1.0 から追加)。**受理値**: `"current-pr"` (本 PR で修正必須) / `"follow-up"` (本 PR では対応せず別 Issue として deferred) / `"nit-noted"` (情報共有のみ、修正不要 — `acknowledged` で受け流し) の 3 値。1.0 / 1.0.0 JSON では本フィールドは欠落しているため、read 側で severity ベースの default mapping を適用する (詳細は [後方互換性](#後方互換性-schema-10--110))。Cross-field invariant #4 (CRITICAL/HIGH × nit-noted FAIL) / #5 (pre_existing=false × nit-noted auto-correct) を参照 |

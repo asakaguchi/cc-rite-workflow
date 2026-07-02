@@ -185,8 +185,6 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **70**: Broad `catch(Error)` where a specific `catch(NetworkError)` would be more appropriate, but no `NetworkError` class exists in the project — move to recommendations
 - **50**: "Should use a custom error class" without evidence that the project uses custom error classes — do NOT report
 
-## Detailed Checklist
-
 ## Expertise Areas
 
 - Silent failure detection

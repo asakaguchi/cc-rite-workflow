@@ -63,8 +63,6 @@ Follow the Cross-File Impact Check procedure defined in `_reviewer-base.md`:
 - **70**: Test coverage "seems low" for a complex function but all main paths are covered — move to recommendations
 - **50**: Preference for a different testing library or assertion style — do NOT report
 
-## Detailed Checklist
-
 ## Expertise Areas
 
 - Unit testing patterns

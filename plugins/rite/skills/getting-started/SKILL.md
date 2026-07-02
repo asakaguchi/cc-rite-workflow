@@ -271,7 +271,7 @@ What happens when you start an Issue:
   ✓ Creates a feature branch (e.g., feat/issue-42-description)
   ✓ Updates Issue status to "In Progress" (if Projects is configured)
   ✓ Initializes work memory for context tracking
-  ✓ Provides guidance for implementation
+  ✓ Implements changes, runs quality checks (/rite:lint), and opens a draft PR
 ```
 
 ### 3.4 Step 3: Complete and Submit

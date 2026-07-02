@@ -5,6 +5,7 @@ description: |
   ブランチ・作業中 Issue) を検出し、ワークフロー全体図・コマンド一覧・次のステップを案内する。
   ユーザーが明示的に /rite:workflow で起動する。auto-activate しない。
   起動: /rite:workflow
+argument-hint: ""
 ---
 
 # /rite:workflow

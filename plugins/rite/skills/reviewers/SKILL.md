@@ -1,13 +1,11 @@
 ---
 name: reviewers
 description: |
-  Coordinates parallel multi-expert PR code review. Activates with /rite:review
-  or when user asks for "code review", "PR feedback", "security check", "review
-  my changes", "レビューして", "PRレビュー", "コードチェック", "セキュリティ確認",
-  "変更を確認", "コードレビュー". Spawns specialized reviewers (Security, API,
-  Database, DevOps, Frontend, Test, Dependencies, Prompt Engineer, Tech Writer,
-  Code Quality, Error Handling, Type Design) based on changed file patterns.
-  Produces unified findings with severity levels.
+  rite workflow のレビュアー選定コーディネータ: 変更ファイルパターンから起動すべき専門 reviewer
+  agent（Security / API / Database / DevOps / Frontend / Test / Dependencies / Prompt Engineer /
+  Tech Writer / Code Quality / Error Handling / Type Design）の選定テーブルと横断ルールを提供する。
+  /rite:review から Read でのみ参照される（ユーザー直接起動も Skill ツール invoke もされない）。
+  汎用の「コードレビュー」ヘルパーではなく、その語では auto-activate しない。
 user-invocable: false
 disable-model-invocation: true
 ---
@@ -20,9 +18,9 @@ disable-model-invocation: true
 
 This skill coordinates the multi-reviewer PR review process using specialized expert agents.
 
-## Auto-Activation
+## Invocation
 
-This skill is activated during `/rite:review` command execution.
+This skill is loaded via `Read` during `/rite:review` command execution; it does not auto-activate.
 
 ## Available Reviewers
 

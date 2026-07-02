@@ -152,11 +152,15 @@ Cap logic:
   - selected count >  effective_max  -> sort by the relevance ordering above, keep the top effective_max, drop the rest
       * NEVER drop a reviewer whose selection_type is `mandatory` (Security Expert when `mandatory: true`,
         a Doc-Heavy-promoted tech-writer, or a fenced-block-triggered code-quality co-reviewer — see ステップ 2.2.1 / 3.2).
-        If a mandatory reviewer would fall outside the top N, drop the next-lowest `normal` reviewer instead.
+        If a mandatory reviewer would fall outside the top N, drop the next-lowest non-mandatory reviewer instead.
       * If the mandatory reviewer count alone already exceeds effective_max, keep ALL mandatory reviewers
         (intentionally exceed the cap) and drop non-mandatory reviewers down to zero. Never drop a mandatory
         reviewer to satisfy the cap — the cost cap yields to the mandatory guarantee, not the other way around.
-      * NEVER reduce below min_reviewers (Phase 4 floor wins)
+      * NEVER reduce below the effective floor = max(min_reviewers, sole_reviewer_guard_floor). The Phase 4
+        min_reviewers floor wins, AND the ステップ 2.3 sole-reviewer guard's floor wins: when that guard raised
+        the set to 2 to avoid a single-reviewer blind spot, the cap keeps at least 2. A `max_reviewers` below
+        that floor is clamped up to it (the guard's blind-spot protection is not overridable by the cost cap) —
+        emit the ステップ 3.2.1 WARNING so the clamp is not silent.
   - MUST display each dropped reviewer's name and matched file count (silent capping is prohibited)
 
 effective_max resolution (config validation):

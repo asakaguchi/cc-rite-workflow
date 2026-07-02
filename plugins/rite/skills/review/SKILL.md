@@ -1285,7 +1285,7 @@ Determine Security Expert selection based on the `review.security_reviewer` sett
 **Note**: When `security_reviewer.mandatory: true`, mandatory selection for all PRs is maintained (backward compatibility). The `recommended_for_code_changes` setting is only evaluated when `mandatory: false`.
 
 **When the reviewer count is large (4 or more):**
-When the reviewer count reaches 4 or more, recommend splitting the review execution following the "Specific procedures for split execution" in `skills/reviewers/SKILL.md`.
+When the reviewer count reaches 4 or more, recommend splitting the review execution following the "Specific procedures for split execution" in `skills/reviewers/SKILL.md`. Apply this judgment to the **final post-cap reviewer count** (after ステップ 3.2.1), not the pre-cap matched set — a set narrowed to 3 by `max_reviewers` does not trigger the split recommendation.
 
 ### 3.2.1 Apply max_reviewers Cap (Cost Control)
 
@@ -1304,11 +1304,12 @@ After the Security Expert conditional and any co-reviewer / sole-reviewer-guard 
 | `max_reviewers` unset / valid `>= min_reviewers` | (none) |
 | `max_reviewers` non-numeric | `⚠️ max_reviewers が非数値のため既定値 6（min_reviewers > 6 の場合は min_reviewers）を使用します` |
 | `max_reviewers < min_reviewers` | `⚠️ max_reviewers ({max}) < min_reviewers ({min}) のため min_reviewers を優先します` |
+| `max_reviewers` below the sole-reviewer-guard floor (guard fired to reach 2) | `⚠️ max_reviewers ({max}) が sole-reviewer guard の下限 2 を下回るため 2 に引き上げます（単独レビュアーの死角回避は上限で無効化できません）` |
 
 **Cap application:**
 
 1. Let `selected` be the reviewer set after ステップ 3.2 (Security Expert + co-reviewers + sole-reviewer guard applied).
-2. Resolve `effective_max` and apply Phase 5's cap logic to `selected` (Phase 5 owns the relevance ordering, the top-N cut, mandatory protection, and the `min_reviewers` floor). Emit the matching user-facing message above when a validation case fires.
+2. Resolve `effective_max` and apply Phase 5's cap logic to `selected` (Phase 5 owns the relevance ordering, the top-N cut, mandatory protection, and the effective floor = `max(min_reviewers, sole-reviewer-guard floor)` — the cap never undoes the ステップ 2.3 sole-reviewer guard's ≥2 blind-spot protection). Emit the matching user-facing message above when a validation case fires.
 3. Retain `{selected_reviewers}`, `{dropped_reviewers}` (each with its `matched file count` and `selection_type`), and `{effective_max}` in the conversation context for the omission display in ステップ 3.3. Silent capping is prohibited (MUST NOT) — the dropped reviewers MUST be surfaced there.
 
 ### 3.3 Confirm Reviewers

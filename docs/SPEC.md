@@ -838,7 +838,7 @@ Starts when "Start implementation" is selected. The following steps are executed
 | Approve with conditions | Fix with `/rite:fix` → Return to 5.4 |
 | Request changes | Fix with `/rite:fix` → Return to 5.4 |
 
-**Review-Fix Cycle Continuation:** The `/rite:review` → `/rite:fix` → `/rite:review` cycle continues automatically until the overall assessment is "Approve" (zero blocking findings). The loop exits only when all findings are resolved — there is no iteration limit or progressive relaxation.
+**Review-Fix Cycle Continuation:** The `/rite:review` → `/rite:fix` → `/rite:review` cycle continues automatically until the overall assessment is "Approve" (zero blocking findings). The normal exit is `[review:mergeable]` (all findings resolved). A `safety.max_review_cycles` circuit breaker (#1701, default 5) additionally bounds non-convergent loops: on reach, interactive `/rite:iterate` prompts via `AskUserQuestion` (continue/abort/leave-draft) and `/rite:run` batch marks the Issue failed and advances to the next. There is no progressive relaxation.
 
 **Verification mode** (`review.loop.verification_mode`, default: `false`): When explicitly enabled, from the second iteration onward, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are reported as non-blocking "stability concerns". The default `false` performs full review every iteration, maximizing review quality.
 
@@ -852,7 +852,7 @@ Work memory is automatically updated when executing the following commands:
 |---------|---------------------|
 | `/rite:open` | Initialize work memory, record implementation plan |
 | `/rite:pr-create` | Record changed files, commit history, PR info |
-| `/rite:iterate` / `/rite:fix` | Record review response history (fix history per cycle; no loop counter — cycle counters and quality-signal escalation were removed entirely) |
+| `/rite:iterate` / `/rite:fix` | Record review response history (fix history per cycle; a review⇄fix cycle counter with a `safety.max_review_cycles` circuit breaker exists (#1701); quality-signal escalation remains absent) |
 | `/rite:cleanup` | Record completion info |
 | `/rite:lint` | Record quality check results (conditional: only on issue branches) |
 

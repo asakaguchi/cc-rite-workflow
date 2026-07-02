@@ -2310,8 +2310,8 @@ finding を出して fix ループが永久化する。
    状態にしてから Apply する) を満たすために必要。
 
 **Why mandatory**: Doc-Heavy PR 以外でも fix が破壊的変更を起こした場合、本 PR
-内の review-fix ループは指摘ゼロにならず、結果として無限ループ + reviewer の
-context 消費という最悪結果になる。修正前の影響範囲確認で予防できる。
+内の review-fix ループは指摘ゼロにならず、結果としてループが収束せず
+(サーキットブレーカー上限まで) reviewer の context を浪費する最悪結果になる。修正前の影響範囲確認で予防できる。
 
 ### 2.3 Apply the Fix
 

@@ -149,8 +149,7 @@ pr_review:
 # Safety settings (fail-closed thresholds)
 safety:
   max_implementation_rounds: 20    # implementation round hard limit per Issue (default: 20)
-  # The review-fix loop has no iteration-count limit key; it exits only on 0 findings
-  # or manual abort (Ctrl+C / /rite:resume).
+  max_review_cycles: 5             # review-fix loop (circuit breaker) hard limit per PR (default: 5)
   time_budget_minutes: 120         # time budget per Issue in minutes (advisory) (default: 120)
   auto_stop_on_repeated_failure: true   # stop when same failure class repeats (default: true)
   repeated_failure_threshold: 3         # consecutive same-class failure count to trigger stop (default: 3)
@@ -602,6 +601,7 @@ Fail-closed safety thresholds to prevent runaway workflows.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `max_implementation_rounds` | integer | `20` | Hard limit for implementation rounds per Issue (re-entries from checklist failures) |
+| `max_review_cycles` | integer | `5` | Hard limit for `/rite:iterate` review⇄fix loop cycles per PR (circuit breaker). Prevents infinite loops from non-deterministic reviewer oscillation or non-convergent PRs. Invalid values (≤ 0 or non-numeric) fall back to the default with a WARNING |
 | `time_budget_minutes` | integer | `120` | Advisory time budget per Issue in minutes (not enforced by timer) |
 | `auto_stop_on_repeated_failure` | boolean | `true` | Stop workflow when the same failure class repeats consecutively |
 | `repeated_failure_threshold` | integer | `3` | Number of consecutive same-class failures before triggering auto-stop |
@@ -611,6 +611,7 @@ Fail-closed safety thresholds to prevent runaway workflows.
 ```yaml
 safety:
   max_implementation_rounds: 20
+  max_review_cycles: 5
   time_budget_minutes: 120
   auto_stop_on_repeated_failure: true
   repeated_failure_threshold: 3
@@ -622,6 +623,15 @@ When a limit is exceeded, the workflow presents options:
 1. Continue (raise the limit)
 2. Abort (save state to work memory for later resumption)
 3. Manual intervention (user handles directly)
+
+**`max_review_cycles` (review⇄fix circuit breaker):**
+
+The `/rite:iterate` review⇄fix loop normally exits only on `[review:mergeable]` (0 findings). `max_review_cycles` adds a circuit breaker so a non-convergent PR cannot loop forever. When the cycle count reaches the limit:
+
+- **Interactive `/rite:iterate`**: an `AskUserQuestion` is presented (continue for another `max_review_cycles` cycles / abort / leave the draft as-is). The loop is never auto-continued past the limit.
+- **`/rite:run` batch**: the Issue is recorded as failed (`[iterate:max-cycles-reached]`) and the batch advances to the next Issue, leaving the draft/open PR for review. This prevents one non-convergent PR from stalling the whole batch.
+
+The cycle counter is persisted in the per-session flow-state (`cycle_count`) and continues across `/rite:resume` — an interrupted loop resumes its count rather than restarting from 0.
 
 ### metrics
 

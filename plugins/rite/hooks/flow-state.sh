@@ -174,12 +174,13 @@ cmd_set() {
   # Merge semantics: unspecified scalar fields preserve existing values (旧 patch 互換).
   # Required: --phase, --next. Optional fields fall back to existing JSON or defaults.
   local phase="" next="" session="" if_exists=0 preserve_error=0 require_worktree=0
-  local issue="" branch="" pr="" parent_issue="" active="" handoff="" worktree=""
+  local issue="" branch="" pr="" parent_issue="" active="" handoff="" worktree="" cycle_count=""
   while [ $# -gt 0 ]; do case "$1" in
     --phase) phase="$2"; shift 2 ;;
     --issue) issue="$2"; shift 2 ;;
     --branch) branch="$2"; shift 2 ;;
     --worktree) worktree="$2"; shift 2 ;;
+    --cycle-count) cycle_count="$2"; shift 2 ;;
     --pr) pr="$2"; shift 2 ;;
     --parent-issue) parent_issue="$2"; shift 2 ;;
     --next) next="$2"; shift 2 ;;
@@ -221,7 +222,7 @@ cmd_set() {
   # される。1 回の composite jq + stderr capture に集約し、jq 失敗時に WARNING を stderr emit
   # して operator が corrupt overwrite を検出できるようにする。Unit separator () で field
   # を分割し、IFS で安全に split (whitespace collapse 防止)。
-  local cur_issue=0 cur_branch="" cur_pr=0 cur_parent=0 cur_active=true cur_err=0 cur_last_synced="" cur_worktree=""
+  local cur_issue=0 cur_branch="" cur_pr=0 cur_parent=0 cur_active=true cur_err=0 cur_last_synced="" cur_worktree="" cur_cycle=0
   if [ -f "$path" ]; then
     local _cur_jq_err="" _cur_data _cur_rc=0
     _cur_jq_err=$(mktemp 2>/dev/null) || _cur_jq_err=""
@@ -234,13 +235,14 @@ cmd_set() {
                        (.active // true | tostring),
                        (.error_count // 0 | tostring),
                        (.last_synced_phase // ""),
-                       (.worktree // "")] | join("")' "$path" 2>"${_cur_jq_err:-/dev/null}") || _cur_rc=$?
+                       (.worktree // ""),
+                       (.cycle_count // 0 | tostring)] | join("")' "$path" 2>"${_cur_jq_err:-/dev/null}") || _cur_rc=$?
     if [ "$_cur_rc" -ne 0 ]; then
       # basename only — multi-tenant 環境での絶対 path leakage を最小化 (cmd_get / cmd_set --if-exists と対称化)
       echo "WARNING: flow-state.sh cmd_set: existing state read failed for $(basename "$path") (may be corrupt; merged write will use defaults)" >&2
       _emit_jq_err_snippet "$_cur_jq_err"
     else
-      IFS=$'\x1f' read -r cur_issue cur_branch cur_pr cur_parent cur_active cur_err cur_last_synced cur_worktree <<< "$_cur_data"
+      IFS=$'\x1f' read -r cur_issue cur_branch cur_pr cur_parent cur_active cur_err cur_last_synced cur_worktree cur_cycle <<< "$_cur_data"
     fi
   fi
   [ -z "$issue" ] && issue=$cur_issue
@@ -251,6 +253,12 @@ cmd_set() {
   # in the jq below so non-worktree sessions never gain the key (additive → no
   # schema bump, byte-identical state file for single-session use).
   [ -z "$worktree" ] && worktree=$cur_worktree
+  # `cycle_count` (#1701 review⇄fix サーキットブレーカー): merge-preserve like `branch`/`worktree`.
+  # /rite:iterate がループ頭で increment し `--cycle-count N` で書き込む review⇄fix cycle カウンタ。
+  # `--cycle-count` を伴わない他 skill の set (review/fix/open/ready 等) が毎 phase transition で
+  # 値を wipe しないよう既存値を merge preserve する。iterate は fresh entry で 0 を明示指定して
+  # stale 値をリセットし、resume 時は既存値を継承してカウンタを継続する (AC-3)。
+  [ -z "$cycle_count" ] && cycle_count=$cur_cycle
   # --require-worktree (#1595): データ層で「multi_session 有効経路の set は worktree path を伴う」
   # invariant を検知する。merge-preserve 後も worktree が空 = open の worktree 化漏れ
   # (Step 1.4 marker 欠落 → legacy `git switch -c` への silent fallback) の兆候。loud に
@@ -292,13 +300,15 @@ cmd_set() {
     --arg next "$next" --argjson active "$active" \
     --argjson err "$err_count" --arg ts "$now" \
     --arg lsp "$cur_last_synced" --arg handoff "$handoff" --arg worktree "$worktree" \
+    --argjson cycle "$cycle_count" \
     '{schema_version:$schema, session_id:$session, phase:$phase,
       issue_number:$issue, branch:$branch, pr_number:$pr,
       parent_issue_number:$parent, next_action:$next, active:$active,
       error_count:$err, updated_at:$ts}
      | (if $lsp != "" then .last_synced_phase = $lsp else . end)
      | (if $worktree != "" then .worktree = $worktree else . end)
-     | (if $handoff != "" then .handoff = $handoff else . end)') || return 1
+     | (if $handoff != "" then .handoff = $handoff else . end)
+     | (if $cycle != 0 then .cycle_count = $cycle else . end)') || return 1
   # `_atomic_write` の header コメント ("Callers MUST check rc") を遵守。現状は cmd_set の
   # 最終 statement のため set -e で rc が暗黙伝播するが、将来 `_atomic_write` の後に log 行を
   # 1 つ足す等の小修正で silent failure path が即復活する fragile pattern を避けるため、明示的

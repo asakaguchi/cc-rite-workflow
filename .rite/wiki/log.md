@@ -6,6 +6,8 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-02T03:35:00Z | ingest:create | pages/heuristics/stale-sweep-intentional-retention-boundary.md | PR #1722 (Issue #1715) review×2/fix×1 を統合: grep 残照ゼロ型 AC の判定は「意図的維持」カテゴリ (歴史記録=過去形 incident 記述 / 機能コード=別 Issue 化 / 同期 invariant コメント) の明示ラベリングで線引きする。参照更新時は旧ファイル固有の Phase 番号を機械的に持ち込まず現行ファイルで実在確認したパターン名へ言い換える |
+| 2026-07-02T03:35:00Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1721 review×2/fix×1 + PR #1722 review×2/fix×1 を統合 (累積 55 回目相当): stale 参照一掃 sweep 自身の半端残り発現形態を追加 — sweep 前は「両方 stale で整合」だった参照ペア (consumer↔SoT / grep ヒント↔caller 例 / 変更セクション↔同ファイル内周辺説明) が片側更新で「内部矛盾」へ転化。propagation scan による対称位置 + 同種 stale パス 5 箇所同時追随で 2 cycle 収束 |
 | 2026-07-01T06:57:00Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=231, broken_refs=0 |
 | 2026-07-01T06:56:00Z | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1696 (Issue #1695) review を統合: reviewers/SKILL.md frontmatter ポリシー是正 PR で SPEC.md:317 に例外句を追記したが隣接する SPEC.md:318 が対称更新漏れ。tech-writer が Doc-Heavy PR Mode で actionable 推奨事項として検出し、ユーザーが本PR対応を選択して即時追加コミット。隣接2行という最小スケールでの再現例として既存ページに追記 |
 | 2026-07-01T06:36:00Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=231, broken_refs=0 |

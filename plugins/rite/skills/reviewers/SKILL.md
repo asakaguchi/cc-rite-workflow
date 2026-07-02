@@ -143,6 +143,8 @@ Apply constraints from rite-config.yml:
 Relevance ordering (used only when narrowing is required):
   1. matched file count per reviewer (from Phase 1 "Track file count per reviewer") — higher is more relevant
   2. tie-break by selection_type: mandatory > recommended > detected > normal
+       (`normal` = a reviewer selected purely by pattern/content match, with no mandatory/recommended/detected
+        promotion; the three named types are defined in `skills/review/SKILL.md` ステップ 3.2 Selection Type table)
   3. final tie-break by Available Reviewers table order (higher row = higher priority)
 
 Cap logic:
@@ -151,6 +153,9 @@ Cap logic:
       * NEVER drop a reviewer whose selection_type is `mandatory` (Security Expert when `mandatory: true`,
         a Doc-Heavy-promoted tech-writer, or a fenced-block-triggered code-quality co-reviewer — see ステップ 2.2.1 / 3.2).
         If a mandatory reviewer would fall outside the top N, drop the next-lowest `normal` reviewer instead.
+      * If the mandatory reviewer count alone already exceeds effective_max, keep ALL mandatory reviewers
+        (intentionally exceed the cap) and drop non-mandatory reviewers down to zero. Never drop a mandatory
+        reviewer to satisfy the cap — the cost cap yields to the mandatory guarantee, not the other way around.
       * NEVER reduce below min_reviewers (Phase 4 floor wins)
   - MUST display each dropped reviewer's name and matched file count (silent capping is prohibited)
 

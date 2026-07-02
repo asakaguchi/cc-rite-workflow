@@ -1302,7 +1302,7 @@ After the Security Expert conditional and any co-reviewer / sole-reviewer-guard 
 | Phase 5 validation case | User-facing message |
 |-------------------------|---------------------|
 | `max_reviewers` unset / valid `>= min_reviewers` | (none) |
-| `max_reviewers` non-numeric | `⚠️ max_reviewers が非数値のため既定値 6 を使用します` |
+| `max_reviewers` non-numeric | `⚠️ max_reviewers が非数値のため既定値 6（min_reviewers > 6 の場合は min_reviewers）を使用します` |
 | `max_reviewers < min_reviewers` | `⚠️ max_reviewers ({max}) < min_reviewers ({min}) のため min_reviewers を優先します` |
 
 **Cap application:**

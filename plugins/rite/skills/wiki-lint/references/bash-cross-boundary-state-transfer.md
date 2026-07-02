@@ -1,6 +1,6 @@
 # Bash Cross-Boundary State Transfer Patterns
 
-このドキュメントは `plugins/rite/commands/wiki/*.md` (特に `lint.md` / `ingest.md`) で採用されている
+このドキュメントは `plugins/rite/skills/wiki-*/SKILL.md` (特に `wiki-lint` / `wiki-ingest`) で採用されている
 **Bash tool 呼び出し境界を跨いで状態を LLM に伝達する契約パターン**を canonical 定義として集約する。
 
 Skill tool / Bash tool 呼び出しは独立 subprocess として動作するため、シェル変数は呼び出し境界を越えて

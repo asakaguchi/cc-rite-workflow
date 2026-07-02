@@ -324,9 +324,13 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:run`
 **継続時**（counter リセット → ステップ 1 へ）:
 
 ```bash
+# reset の silent 失敗を可視化する（ステップ 0.6 / fire / ok の 3 set と対称の 4 つ目）。
+# 失敗すると cycle_count が上限のまま残り、「継続」を選んでもステップ 1 で即再発火して同じ
+# AskUserQuestion に戻る（fail-safe だが継続選択が無言で無効化される）。非ブロッキング。
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
-  --next "review⇄fix ループ継続（cycle counter reset、ユーザー承認）" --cycle-count 0
+  --next "review⇄fix ループ継続（cycle counter reset、ユーザー承認）" --cycle-count 0 \
+  || echo "WARNING: cycle counter reset に失敗（継続選択が反映されず再度ブレーカー発火の恐れ）" >&2
 ```
 
 **中止 / draft のまま停止時**（停止通知を出力して終了）:

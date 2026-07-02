@@ -59,7 +59,7 @@ argument-hint: "[--merge] <issue_number>..."
 
 ## ステップ 0: キュー初期化 / 再開判定
 
-`.rite/state/run-queue.json`（`{issues, cursor, mode, failed}` の形）を Single Source of Truth として、引数の Issue 群・モード（`--merge` の有無）と既存キューを突き合わせる。`mode` 欠落の旧形式キューは `default`（draft 止まり）として扱う（後方互換）。`failed` はサーキットブレーカー（`[iterate:max-cycles-reached]`）で非収束となった Issue の記録用配列で、欠落時は `[]` 扱い（後方互換）。
+`.rite/state/run-queue.json`（`{issues, cursor, mode, failed, active}` の形）を Single Source of Truth として、引数の Issue 群・モード（`--merge` の有無）と既存キューを突き合わせる。`mode` 欠落の旧形式キューは `default`（draft 止まり）として扱う（後方互換）。`failed` はサーキットブレーカー（`[iterate:max-cycles-reached]`）で非収束となった Issue の記録用配列で、欠落時は `[]` 扱い（後方互換）。`active` は run が iterate を駆動中かを示す真偽値で、ステップ 0 で `true`、停止（ステップ 8）で `false` にする。iterate ステップ 6 の batch 判定が停止済み dormant キューを active batch と誤判定しないための signal（欠落時は `false` = 安全側）。
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
@@ -75,17 +75,21 @@ arg_count=$(echo "$arg_issues_json" | jq 'length')
 if [ "$arg_count" -gt 0 ]; then
   if [ -f "$queue_file" ] && \
      [ "$(jq -cS '.issues' "$queue_file" 2>/dev/null)" = "$(echo "$arg_issues_json" | jq -cS '.')" ]; then
-    # 同一 Issue 群での再開: cursor は保ちつつ、今回指定のモードを権威として上書きする
+    # 同一 Issue 群での再開: cursor は保ちつつ、今回指定のモードを権威として上書きする。
+    # `active=true` を立て直す（run が iterate を駆動中であることを示す。iterate ステップ 6 の
+    # batch 判定が停止済み dormant キューを active batch と誤判定しないための signal）
     cursor=$(jq -r '.cursor // 0' "$queue_file")
-    jq --arg mode "$arg_mode" '.mode = $mode' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$queue_file"
+    jq --arg mode "$arg_mode" '.mode = $mode | .active = true' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$queue_file"
     echo "[CONTEXT] RUN_QUEUE=resume_match; cursor=$cursor; total=$arg_count; mode=$arg_mode"
   else
-    # 新規 / 既存と不一致 → 上書き（古いキューは破棄）
-    jq -n --argjson issues "$arg_issues_json" --arg mode "$arg_mode" '{issues:$issues, cursor:0, mode:$mode, failed:[]}' > "$queue_file"
+    # 新規 / 既存と不一致 → 上書き（古いキューは破棄）。`active=true` で駆動中を明示
+    jq -n --argjson issues "$arg_issues_json" --arg mode "$arg_mode" '{issues:$issues, cursor:0, mode:$mode, failed:[], active:true}' > "$queue_file"
     echo "[CONTEXT] RUN_QUEUE=initialized; cursor=0; total=$arg_count; mode=$arg_mode"
   fi
 else
   if [ -f "$queue_file" ]; then
+    # 引数省略の再開: run が再び iterate を駆動するため active=true を立て直す
+    jq '.active = true' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$queue_file"
     cursor=$(jq -r '.cursor // 0' "$queue_file"); total=$(jq -r '.issues | length' "$queue_file")
     mode=$(jq -r '.mode // "default"' "$queue_file")   # 旧形式 (mode 欠落) は default 互換
     echo "[CONTEXT] RUN_QUEUE=resume_no_args; cursor=$cursor; total=$total; mode=$mode"
@@ -236,8 +240,14 @@ args: "{branch_name}"
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
 queue_file="$state_root/.rite/state/run-queue.json"
-jq --argjson n {current_issue} '.failed = ((.failed // []) + [$n] | unique)' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$queue_file"
-echo "[CONTEXT] RUN_FAILED_RECORDED; issue={current_issue}"
+# marker は jq/mv 成功に従属させる（失敗時に「記録済み」と誤主張して完了通知の failed 一覧から
+# silent に脱落するのを防ぐ）
+if jq --argjson n {current_issue} '.failed = ((.failed // []) + [$n] | unique)' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$queue_file"; then
+  echo "[CONTEXT] RUN_FAILED_RECORDED; issue={current_issue}"
+else
+  rm -f "$queue_file.tmp"
+  echo "WARNING: failed 記録の書込に失敗（完了通知の failed 一覧から漏れる恐れ）" >&2
+fi
 ```
 
 cursor を進める（**両モード共有**。`--merge` 時は cleanup から制御が戻った後、デフォルト時はステップ 3 から直接ここへ、サーキットブレーカー時は上記 failed 記録の後にここへ到達する）:
@@ -315,6 +325,10 @@ queue_file="$state_root/.rite/state/run-queue.json"
 # 失敗段が iterate の場合、fix.md が set した FINALIZE handoff が残り Stop hook が
 # iterate 完了通知を差し戻しうる。停止報告の前に one-shot 消費して出力順序を確定させる。
 bash {plugin_root}/hooks/flow-state.sh consume-handoff >/dev/null 2>&1 || true
+# 停止時は active=false にする（run はもう iterate を駆動しない）。これにより停止後に同じ Issue を
+# 手動 /rite:iterate した際、iterate ステップ 6 が dormant キューを active batch と誤判定せず
+# 対話 AskUserQuestion を出せる（キューは cursor 保持のまま残し、引数省略 /rite:run で再開可能）
+jq '.active = false' "$queue_file" > "$queue_file.tmp" 2>/dev/null && mv "$queue_file.tmp" "$queue_file" || true
 cursor=$(jq -r '.cursor // 0' "$queue_file" 2>/dev/null || echo 0)
 mode=$(jq -r '.mode // "default"' "$queue_file" 2>/dev/null || echo "default")
 done_issues=$(jq -rc ".issues[:$cursor]" "$queue_file" 2>/dev/null || echo "[]")
@@ -363,6 +377,6 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 - **サーキットブレーカーは failed 遷移（即停止ではない）**: iterate は `safety.max_review_cycles` 到達で `[iterate:max-cycles-reached]` を emit する。run はこれを他の失敗 sentinel（`[fix:error]` 等 → 即停止）と区別し、当該 Issue のみ failed 記録して次へ進める。非収束 PR 1 件でバッチ全体がストールするのを防ぐのが本 sentinel の目的（Issue #1701）。failed 記録は run-queue.json の `failed[]` に永続化し、compact / 中断を跨いでも完了通知で報告できる。`failed[]` 欠落の旧形式キューは `[]` 互換
 - **handoff 不使用**: flow-state の `handoff` は単一フィールド + default-clear で、iterate / cleanup が内部で排他使用する。run が割り込むと sub-skill の継続保証（Stop hook 差し戻し）が壊れるため、run は handoff を一切 set しない。継続は flat step 構造に委ねる（`/rite:open` と同じ）。ただしデフォルトモードは ready を経由しないため、iterate の残存 FINALIZE handoff は次 Issue の open（`flow-state.sh set`）が default-clear し、最後の Issue 分のみステップ 7 の `consume-handoff` で消費する（merge モードでは ready が clear するため no-op）
 - **phase enum を拡張しない / resume.md を変更しない**: 各 sub-skill が自分の phase を書くため、中断時の個別 Issue 復帰は既存 `/rite:resume` がそのままカバーする。run 専用 phase は持たない
-- **キュー永続化**: 複数 Issue の残りキューは `state_root/.rite/state/run-queue.json`（`{issues, cursor, mode, failed}`）に持つ。会話コンテキストでなくディスクに置くことで compact / 中断を跨いでも残り Issue・モード・failed 記録が失われない。`mode` 欠落の旧形式は `default` 互換、`failed` 欠落は `[]` 互換として扱う（Issue #1536 D-03）。linked worktree を跨ぐため `state-path-resolve.sh` で解決した main checkout root 基準で配置する
+- **キュー永続化**: 複数 Issue の残りキューは `state_root/.rite/state/run-queue.json`（`{issues, cursor, mode, failed, active}`）に持つ。会話コンテキストでなくディスクに置くことで compact / 中断を跨いでも残り Issue・モード・failed 記録が失われない。`mode` 欠落の旧形式は `default` 互換、`failed` 欠落は `[]` 互換、`active` 欠落は `false` 互換として扱う（Issue #1536 D-03）。linked worktree を跨ぐため `state-path-resolve.sh` で解決した main checkout root 基準で配置する
 - **`[fix:replied-only]` の扱いはモード依存**: `--merge` では mergeable 未到達とみなし merge 前に停止する（未解決指摘の握り潰し防止）。デフォルトでは merge しないため即停止は不要で、draft PR を残し「未解決指摘あり」を明示してキューを次へ進める（Issue #1536 Open Question 暫定方針）
 - **専用ヘルパー/hook を作らない**: run-queue.json は run.md 内 bash の `jq` 直接操作で完結する（既存の `.rite/state/` PR-state ファイルと同じく helper なし。単一セッションが順次書くため atomic は `jq → 一時ファイル → mv` で十分）。`mode` 追加もこの方針内で `jq` フィールド 1 つの読み書きに留める

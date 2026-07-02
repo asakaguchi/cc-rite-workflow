@@ -112,9 +112,12 @@ case "$cur_phase" in
   *)          cb_mode_init=fresh ;;
 esac
 if [ "$cb_mode_init" = fresh ] && [ "$cur_cc" -gt 0 ] 2>/dev/null; then
-  # stale counter を除去（--cycle-count 0 は key 自体を削除。他フィールドは merge-preserve）
+  # stale counter を除去（--cycle-count 0 は key 自体を削除。他フィールドは merge-preserve）。
+  # reset 失敗を握り潰さず WARNING を surface する（stale counter が残るとブレーカーが早期発火し
+  # うるため）。非ブロッキング（iterate は止めない）。ステップ 6.2 継続経路の reset と対称。
   bash {plugin_root}/hooks/flow-state.sh set --phase "${cur_phase:-pr}" \
-    --next "review⇄fix ループ開始（cycle counter reset）" --cycle-count 0 >/dev/null 2>&1 || true
+    --next "review⇄fix ループ開始（cycle counter reset）" --cycle-count 0 >/dev/null 2>&1 \
+    || echo "WARNING: cycle counter reset に失敗（stale counter が残りブレーカー早期発火の恐れ）" >&2
   cur_cc=0
 fi
 echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CYCLE_MODE=$cb_mode_init"
@@ -136,6 +139,14 @@ raw_max=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_re
 case "$raw_max" in ''|0|*[!0-9]*) max_cycles=5 ;; *) max_cycles=$raw_max ;; esac  # 検証済。ここは silent fallback
 
 if [ "$cc" -ge "$max_cycles" ] 2>/dev/null; then
+  # 直前の [fix:pushed] が fix.md ステップ5.1 で set した継続 handoff (`/rite:review {pr}`) を
+  # default-clear する（`--handoff` を伴わない set は handoff を消す）。これをしないと、fire 後に
+  # turn が終わったとき stop-loop-continuation.sh が残存 handoff を consume して `/rite:review` を
+  # 再注入し、サーキットブレーカーを無視してループが継続する。`[fix:error]` が set で handoff を
+  # クリアして clean terminal になるのと同じ役割（cycle_count は merge-preserve で上限のまま維持）。
+  bash {plugin_root}/hooks/flow-state.sh set \
+    --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
+    --next "サーキットブレーカー発火 (cycle 上限 $max_cycles 到達)"
   echo "[CONTEXT] ITERATE_CB=fire; cycle=$cc; max=$max_cycles"
 else
   new_cc=$((cc + 1))
@@ -251,17 +262,18 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 
 ## ステップ 6: サーキットブレーカー（cycle 上限到達時のみ）
 
-ステップ 1 で `ITERATE_CB=fire`（`cycle_count >= max_review_cycles`）となったときのみ到達する。まず batch 実行（`/rite:run` 経由）か対話実行かを run-queue.json から判定する。`/rite:run` は処理中 Issue を run-queue.json の cursor が指すため、cursor の Issue が本 iterate の対象と一致すれば batch と判定する（read-only 参照。`{issue_number}` はステップ 0 の marker 値をリテラル置換）:
+ステップ 1 で `ITERATE_CB=fire`（`cycle_count >= max_review_cycles`）となったときのみ到達する。まず batch 実行（`/rite:run` 経由）か対話実行かを run-queue.json から判定する。`/rite:run` は駆動中に `active=true` を立て、cursor が処理中 Issue を指す。よって **`active == true` かつ** cursor の Issue が本 iterate の対象と一致すれば batch と判定する（`active` 条件は、停止済み dormant キューが cursor 一致だけで active batch と誤判定されるのを防ぐ。read-only 参照。`{issue_number}` はステップ 0 の marker 値をリテラル置換）:
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
 queue_file="$state_root/.rite/state/run-queue.json"
 cb_mode=interactive
 if [ -f "$queue_file" ]; then
+  q_active=$(jq -r '.active // false' "$queue_file" 2>/dev/null)   # active 欠落の旧形式は false（安全側 = interactive）
   q_cursor=$(jq -r '.cursor // 0' "$queue_file" 2>/dev/null)
   q_total=$(jq -r '.issues | length' "$queue_file" 2>/dev/null)
   q_issue=$(jq -r ".issues[$q_cursor] // empty" "$queue_file" 2>/dev/null)
-  if [ "$q_cursor" -lt "${q_total:-0}" ] 2>/dev/null && [ "$q_issue" = "{issue_number}" ]; then
+  if [ "$q_active" = "true" ] && [ "$q_cursor" -lt "${q_total:-0}" ] 2>/dev/null && [ "$q_issue" = "{issue_number}" ]; then
     cb_mode=batch
   fi
 fi
@@ -275,14 +287,14 @@ echo "[CONTEXT] ITERATE_CB_MODE=$cb_mode; issue={issue_number}; pr={pr_number}"
 
 ### ステップ 6.1: バッチ実行 — failed sentinel を emit
 
-review を回さず、当該 Issue を非収束（failed）として `/rite:run` に返す。`/rite:run` はこの sentinel を受けて当該 Issue を failed 記録し、次の Issue へ進む（ready/merge/cleanup はスキップ、draft/open PR はレビュー待ちで残す）。handoff は set しない（run の flat 構造 + HTML hint で継続。`[fix:error]` と同じ非 handoff 終端）:
+review を回さず、当該 Issue を非収束（failed）として `/rite:run` に返す。`/rite:run` はこの sentinel を受けて当該 Issue を failed 記録し、次の Issue へ進む（ready/merge/cleanup はスキップ、draft/open PR はレビュー待ちで残す）。継続 handoff はステップ 1 fire 分岐の `flow-state.sh set`（`--handoff` なし）で既に default-clear 済みのため、ここでは追加の handoff 操作をしない（`[fix:error]` が set で handoff をクリアして clean terminal になるのと同じ。以降は run の flat 構造 + HTML hint で継続）:
 
 ```
 ## /rite:iterate サーキットブレーカー発火（バッチ）
 
 - PR: #{pr_number}（Issue #{issue_number}）
 - 理由: review⇄fix cycle が上限 {max_review_cycles} に到達（非収束）
-- 措置: 当該 Issue を failed 扱いとし、draft/open PR をレビュー待ちで残したまま次の Issue へ進みます
+- 措置: 当該 Issue を failed 扱いとし、draft/open PR をレビュー待ちで残します（`/rite:run` が残りキューを続行、最終 Issue なら完了通知へ）
 
 <!-- [iterate:max-cycles-reached] -->
 ```
@@ -354,6 +366,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
   これらは sub-skill 内の defense-in-depth set で行われるため、**LLM が turn を終える前に確実に実行される**。
 - **Stop hook が consume + prefix 分岐で再注入**: `stop-loop-continuation.sh` が turn 終了時に `flow-state.sh consume-handoff` で handoff を読み取り + 削除し、非空なら `decision:block` で停止を差し戻す。prefix で分岐し、`/rite:...` は次コマンド (`/rite:fix` / `/rite:review`) を、`FINALIZE:...` は「ステップ5 完了通知を出力してから終えよ」を再注入する。
 - **`[fix:error]` は handoff を持たない**: clean terminal ではなく ステップ4 で AskUserQuestion (再試行/中止) に分岐するため、`--handoff` を付けない (`flow-state.sh set` がデフォルトクリア) → Stop hook は停止を許可する。
+- **サーキットブレーカー発火 (ステップ 1 fire 分岐) も handoff を能動的にクリアする**: fire は直前の `[fix:pushed]` が set した継続 handoff (`/rite:review {pr}`) の直後に到達しうる。ステップ 6 は review/fix を回さず終端するため、この pending handoff を消さないと Stop hook が `/rite:review` を再注入してブレーカーを無視する。したがって fire 分岐は `flow-state.sh set`（`--handoff` なし）でデフォルトクリアしてからステップ 6 へ進む（`[fix:error]` と同型の「set で handoff クリア」終端）。ステップ 6.2 の継続経路も `--cycle-count 0` の set でクリアされ、対称。
 - **無限 block ループ防止**: handoff は consume で one-shot 消費される。進捗 (次コマンド実行 / 完了通知出力) の後に再度停止すれば handoff は空 → block しない。handoff 自体は counter ではない (無限ループの自動安全網は別途 cycle counter サーキットブレーカー = ステップ 6 が担う)。終了 handoff も同じ one-shot 契約で **1 回だけ** block するため、完了通知を強制しても無限 block にはならない。
 - **resume との二層構造**: flow-state の `next_action` は Ctrl+C 中断後の `/rite:resume` 用の secondary な網。Stop hook は自動継続・完了通知強制の primary 層。
 

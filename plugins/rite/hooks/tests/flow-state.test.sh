@@ -1136,13 +1136,20 @@ assert "TC-27: get returns 3" "3" "$(cd "$d" && bash "$HOOK" get --field cycle_c
 # (b) merge-preserve: a set WITHOUT --cycle-count (e.g. review/fix phase transition) keeps the value
 (cd "$d" && bash "$HOOK" set --phase fix --issue 700 --branch "feat/700" --pr 42 --next "n2") >/dev/null
 assert "TC-27: cycle_count preserved across --cycle-count-less set" "3" "$(jq -r '.cycle_count // "ABSENT"' "$sfile")"
-# (c) increment
+# (c) a later set overwrites cycle_count with a new value (increment is the caller's job, not the hook's)
 (cd "$d" && bash "$HOOK" set --phase review --issue 700 --branch "feat/700" --pr 42 --next "n3" --cycle-count 4) >/dev/null
-assert "TC-27: cycle_count incremented to 4" "4" "$(jq -r '.cycle_count // "ABSENT"' "$sfile")"
+assert "TC-27: later set overwrites cycle_count to a new value (increment scenario)" "4" "$(jq -r '.cycle_count // "ABSENT"' "$sfile")"
 # (d) reset with --cycle-count 0 removes the key (get falls back to default; fresh-entry reset)
 (cd "$d" && bash "$HOOK" set --phase review --issue 700 --branch "feat/700" --pr 42 --next "n4" --cycle-count 0) >/dev/null
 assert "TC-27: --cycle-count 0 removes the key" "false" "$(jq -r 'has("cycle_count")' "$sfile")"
 assert "TC-27: get after reset returns default 0" "0" "$(cd "$d" && bash "$HOOK" get --field cycle_count --default 0)"
+# (d2) reset while OMITTING issue/branch/pr (the actual iterate ステップ0.6 fresh-reset call shape):
+#      --cycle-count 0 removes the key AND merge-preserve keeps issue/branch intact
+(cd "$d" && bash "$HOOK" set --phase review --issue 700 --branch "feat/700" --pr 42 --next "seed" --cycle-count 3) >/dev/null
+(cd "$d" && bash "$HOOK" set --phase review --next "fresh reset" --cycle-count 0) >/dev/null
+assert "TC-27: reset with issue/branch omitted removes cycle_count key" "false" "$(jq -r 'has("cycle_count")' "$sfile")"
+assert "TC-27: reset merge-preserves issue_number" "700" "$(jq -r '.issue_number' "$sfile")"
+assert "TC-27: reset merge-preserves branch" "feat/700" "$(jq -r '.branch' "$sfile")"
 # (e) backward compat: a fresh session that never sets --cycle-count has no cycle_count key
 result=$(new_sandbox); d2="${result%|*}"; sid2="${result#*|}"
 sfile2="$d2/.rite/sessions/${sid2}.flow-state"

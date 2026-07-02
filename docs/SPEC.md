@@ -630,7 +630,7 @@ Before Confirmation & Creation, surface the assumptions the model implicitly fil
 | Phase 5.1 (Implementation work) | `/rite:open` Step 4 → delegates to `/rite:issue-implement` |
 | Phase 5.2 (Quality checks) | `/rite:open` Step 5 (`/rite:issue-implement` autonomously invokes `/rite:lint`) |
 | Phase 5.3 (Draft PR creation) | `/rite:open` Step 6 (invokes `/rite:pr-create` sub-skill) |
-| Phase 5.4 / 5.5 (Review + fix loop) | `/rite:iterate <pr>` (loops `/rite:review` ⇄ `/rite:fix` until convergence) |
+| Phase 5.4 / 5.5 (Review + fix loop) | `/rite:iterate <pr>` (loops `/rite:review` ⇄ `/rite:fix` until convergence, bounded by a `safety.max_review_cycles` circuit breaker) |
 | Phase 5.6 (Completion report — formerly the last sub-step of Phase 5) | `/rite:ready <pr>` (Set Ready) + `/rite:merge <pr>` (Merge) — split into two responsibility-isolated commands. Historically `start.md` reached completion at Phase 5.6 and then ran `gh pr merge --squash` inline as ステップ 8 of the orchestrator |
 | Phase 6 (Cleanup) | `/rite:cleanup <pr>` (unchanged, decoupled from merge) |
 

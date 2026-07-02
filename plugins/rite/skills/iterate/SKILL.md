@@ -151,9 +151,13 @@ if [ "$cc" -ge "$max_cycles" ] 2>/dev/null; then
   echo "[CONTEXT] ITERATE_CB=fire; cycle=$cc; max=$max_cycles"
 else
   new_cc=$((cc + 1))
+  # counter increment（ブレーカーを前進させる主経路）の set も fail-observable にする。silent に
+  # 失敗すると cycle_count が increment されず counter が stuck → ブレーカーが永久に発火せず
+  # 無限ループ化する（fire 分岐の handoff クリア失敗と同種の「ブレーカー無効化」方向）。非ブロッキング。
   bash {plugin_root}/hooks/flow-state.sh set \
     --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
-    --next "review 実行中 (cycle $new_cc/$max_cycles)" --cycle-count "$new_cc"
+    --next "review 実行中 (cycle $new_cc/$max_cycles)" --cycle-count "$new_cc" \
+    || echo "WARNING: cycle counter increment に失敗（counter 未前進でブレーカーが発火せず無限ループ化の恐れ）" >&2
   echo "[CONTEXT] ITERATE_CB=ok; cycle=$new_cc; max=$max_cycles"
 fi
 ```

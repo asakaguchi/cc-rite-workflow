@@ -79,7 +79,8 @@ if [ "$arg_count" -gt 0 ]; then
     # `active=true` を立て直す（run が iterate を駆動中であることを示す。iterate ステップ 6 の
     # batch 判定が停止済み dormant キューを active batch と誤判定しないための signal）
     cursor=$(jq -r '.cursor // 0' "$queue_file")
-    jq --arg mode "$arg_mode" '.mode = $mode | .active = true' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$queue_file"
+    jq --arg mode "$arg_mode" '.mode = $mode | .active = true' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$queue_file" \
+      || { rm -f "$queue_file.tmp"; echo "WARNING: run-queue の mode/active=true 書込に失敗（active 未設定なら iterate は安全側 interactive）" >&2; }
     echo "[CONTEXT] RUN_QUEUE=resume_match; cursor=$cursor; total=$arg_count; mode=$arg_mode"
   else
     # 新規 / 既存と不一致 → 上書き（古いキューは破棄）。`active=true` で駆動中を明示
@@ -89,7 +90,8 @@ if [ "$arg_count" -gt 0 ]; then
 else
   if [ -f "$queue_file" ]; then
     # 引数省略の再開: run が再び iterate を駆動するため active=true を立て直す
-    jq '.active = true' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$queue_file"
+    jq '.active = true' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$queue_file" \
+      || { rm -f "$queue_file.tmp"; echo "WARNING: run-queue の active=true 書込に失敗（active 未設定なら iterate は安全側 interactive）" >&2; }
     cursor=$(jq -r '.cursor // 0' "$queue_file"); total=$(jq -r '.issues | length' "$queue_file")
     mode=$(jq -r '.mode // "default"' "$queue_file")   # 旧形式 (mode 欠落) は default 互換
     echo "[CONTEXT] RUN_QUEUE=resume_no_args; cursor=$cursor; total=$total; mode=$mode"

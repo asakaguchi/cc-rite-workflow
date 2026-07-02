@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-02T23:12:48Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=231, broken_refs=0 |
 | 2026-07-02T23:12:48Z | ingest:create | pages/heuristics/cap-respects-existing-floor-invariants.md | PR #1729 (Issue #1702) review×4/fix×3 を統合: 上限機構(cap)を既存の下限・補完機構(min_reviewers / sole-reviewer guard ≥2 / mandatory 保護)の後段に挿入すると floor を silent に undo する。cap は全 valid 入力・全経路で既存 floor を尊重し cap/guard/mandatory/min の invariant を再調停する。4 cycle (MEDIUM 2→1→1→0) 収束 |
 | 2026-07-02T23:12:48Z | ingest:skip | raw/fixes,reviews/*-pr-1727.md (3件) | PR #1727 fix×1/review×2: enumeration 片側更新漏れ / deprecation note dangling / config 相対パス表記 は既存 anti-pattern (asymmetric-fix-transcription / stale-sweep) の再確認で新規経験則なし。raw frontmatter に ingest_status: skipped を記録 |
 | 2026-07-02T19:48:05+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=230, broken_refs=0 |

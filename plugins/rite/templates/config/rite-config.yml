@@ -107,23 +107,10 @@ review:
     verify_internal_likelihood: true  # Sub-Phase B (Internal Likelihood Claim Verification) を有効化 — 詳細: plugins/rite/skills/review/references/fact-check.md
   scope_assignment:
     # scope=nit-noted 受け流し経路設定。reviewer が schema 1.1.0 で出力する
-    # findings[].scope に基づく fix loop routing 制御。
-    # feature flag scaffolding。新規キー (`review.scope_assignment.*`) は本テンプレ側
-    # でも必ず宣言する (init で展開される値が runtime と drift しないため)。`enabled: false` で
-    # scope-based routing 全体を opt-out し、fix.md は schema 1.0 互換動作 (severity-based default
-    # mapping のみ) にフォールバックする。
-    # ロールアウト戦略: テンプレートは新規 init ユーザ向けに保守的 default として **false** を維持
-    # (本プロジェクト rite-config.yml は検証 pass 後に true 化済、テンプレ側の bump は別途再評価)。
-    enabled: false           # scope-based routing 全体の opt-in/out (template default; 新規 init では false 維持)
-    auto_demote_low: true    # LOW × current-pr の finding を fix.md ステップ 1.2.0 で自動的に nit-noted へ降格 (default: true)。false で opt-out した場合は LOW × current-pr が通常通り blocking 扱いで fix loop に流れる。`enabled: false` の場合は本キーは effectively false 扱い (将来の runtime gating で wiring 予定)
-
-# Fix settings
-fix:
-  # Fail-Fast Response Principle: throw/raise 優先の修正方針を必須化
-  # 詳細: plugins/rite/skills/fix/SKILL.md ステップ 2 Fail-Fast Response Principle
-  # NOTE (known limitation): config scaffolding (宣言のみ)。現時点では fix.md が
-  # ハードコードで挙動を強制しており、false にしても挙動は変わりません。
-  fail_fast_response: true            # true で Fail-Fast Response Principle を有効化（default: true）
+    # findings[].scope に基づく fix loop routing 制御。auto_demote_low は
+    # scripts/review-findings-maps.sh と skills/fix/SKILL.md が rite-config.yml から
+    # 直接読み取って適用する（配線済み）。
+    auto_demote_low: true    # LOW × current-pr の finding を fix.md ステップ 1.2.0 で自動的に nit-noted へ降格 (default: true)。false で opt-out した場合は LOW × current-pr が通常通り blocking 扱いで fix loop に流れる
 
 # Language setting (auto = auto-detect)
 language: auto  # auto | ja | en

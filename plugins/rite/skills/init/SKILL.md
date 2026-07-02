@@ -345,7 +345,7 @@ Compare current config against the template and classify each key:
 
 **Unknown key 判定の scope**: Step 4 の "Unknown key" 判定 (user-added keys not in template) は、**template の `# --- Advanced (below this line) ---` 境界より上の active section のみ**を参照する。境界より下 (コメント形式の Advanced sections + 末尾コメント) は template 側で意図的に省略または注記のため存在する領域であり、ユーザー設定の classification 対象外。
 
-**Active top-level sections covered on --upgrade** (drift anchor — the `init-upgrade-drift` test asserts this list ⊇ the template's active top-level keys above the `--- Advanced ---` marker): `schema_version`, `github`, `iteration`, `branch`, `commands`, `verification`, `issue`, `review`, `fix`, `language`, `wiki`, `multi_session`, `tdd`. Each is handled by Step 4/Step 6 above (User-customized values are preserved, missing sections/sub-keys are added). **When a new active top-level section is added to the template, add it to this list too** — otherwise the drift test fails and `--upgrade` would silently miss it.
+**Active top-level sections covered on --upgrade** (drift anchor — the `init-upgrade-drift` test asserts this list ⊇ the template's active top-level keys above the `--- Advanced ---` marker): `schema_version`, `github`, `iteration`, `branch`, `commands`, `verification`, `issue`, `review`, `language`, `wiki`, `multi_session`, `tdd`. Each is handled by Step 4/Step 6 above (User-customized values are preserved, missing sections/sub-keys are added). **When a new active top-level section is added to the template, add it to this list too** — otherwise the drift test fails and `--upgrade` would silently miss it.
 
 **Active sub-keys covered on --upgrade** (drift anchor — the `init-upgrade-drift` test T-12 asserts, per section, this list ⊇ each template active section's **direct** sub-keys above the `--- Advanced ---` marker; Step 6 item 4 adds any missing sub-key while preserving existing siblings). Sections whose value is a scalar (`schema_version`, `language`) have no sub-keys and are omitted:
 
@@ -356,7 +356,6 @@ Compare current config against the template and classify each key:
 - `verification`: `run_tests_before_pr`, `acceptance_criteria_check`
 - `issue`: `auto_decompose_threshold`
 - `review`: `min_reviewers`, `criteria`, `loop`, `security_reviewer`, `debate`, `confidence_threshold`, `fact_check`, `scope_assignment`
-- `fix`: `fail_fast_response`
 - `wiki`: `enabled`, `branch_strategy`, `branch_name`, `auto_ingest`, `auto_query`
 - `multi_session`: `enabled`, `worktree_base`
 - `tdd`: `enabled`

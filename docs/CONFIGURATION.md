@@ -118,10 +118,6 @@ review:
     use_context7: true                 # Use context7 MCP tool for verification (default: true). Auto-falls back to WebSearch when context7 is unavailable
     verify_internal_likelihood: true   # Enable Sub-Phase B (Internal Likelihood Claim Verification) via Grep (default: true)
 
-# Fix settings
-fix:
-  fail_fast_response: true             # Enable Fail-Fast Response Principle in fix.md Phase 2 (default: true)
-
 # Iteration settings (optional)
 iteration:
   enabled: false          # true to enable iteration features (default: false)
@@ -433,12 +429,6 @@ The review-fix loop has two exit paths and no automatic abnormal-exit mechanism:
 |------|---------|
 | Normal | 0 findings remaining → `[review:mergeable]` |
 | Manual abort | User aborts via `Ctrl+C` → `/rite:resume` (or selects "中止" in `fix.md` AskUserQuestion → `[fix:cancelled-by-user]`) |
-
-**Fix settings:**
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `fix.fail_fast_response` | boolean | `true` | Enable Fail-Fast Response Principle in `fix.md` Phase 2. Requires a 4-item checklist (throw/raise propagation / existing error boundaries / not hiding via null-check / fix the test instead) before adopting a fix approach. Fallback adoption requires a commit message justification. **⚠️ Known limitation**: config scaffolding only — not yet wired. The principle is enforced via prose in `fix.md` Phase 2; setting this to `false` currently has no effect |
 
 **Doc-Heavy PR Mode** (`doc_heavy.enabled: true` by default): A PR is classified as doc-heavy when `doc_lines / total_diff_lines >= lines_ratio_threshold`, or — for small diffs (`total_diff_lines < max_diff_lines_for_count`) — when `doc_files / total_files >= count_ratio_threshold`. In doc-heavy mode, `tech-writer-reviewer` verifies the five consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) against the actual implementation using Grep/Read/Glob. See `plugins/rite/skills/review/references/internal-consistency.md` for the full protocol.
 

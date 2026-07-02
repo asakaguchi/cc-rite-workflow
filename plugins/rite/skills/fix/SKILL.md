@@ -1984,7 +1984,7 @@ rm -f "/tmp/rite-fix-target-body-{pr_number}-{target_comment_id}.txt" \
 - 外部 API 呼び出しで、stale cache を返すことが requirement に明示されている
 - ユーザー向けエラー表示で、技術的詳細を隠蔽する必要がある
 
-これらに該当しない修正を採用する場合、Wiki (`/rite:wiki-query`) で project-specific な許容パターンを事前確認すること。`rite-config.yml` の `fix.fail_fast_response: true`（default）で本原則が有効化される。
+これらに該当しない修正を採用する場合、Wiki (`/rite:wiki-query`) で project-specific な許容パターンを事前確認すること。本原則は fix.md の手順として常時適用される（config での opt-out は不可）。
 
 ### 2.1 Confirm Fix Approach
 

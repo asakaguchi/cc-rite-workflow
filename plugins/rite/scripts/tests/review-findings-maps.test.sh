@@ -38,14 +38,13 @@ make_sandbox() {
     cat > "$repo/rite-config.yml" <<'EOF'
 review:
   scope_assignment:
-    enabled: true
     auto_demote_low: false
 EOF
   else
     cat > "$repo/rite-config.yml" <<'EOF'
 review:
   scope_assignment:
-    enabled: true
+    # auto_demote_low 未設定 → default true 挙動を検証
 EOF
   fi
   echo "$repo"

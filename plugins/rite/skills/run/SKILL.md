@@ -328,7 +328,8 @@ bash {plugin_root}/hooks/flow-state.sh consume-handoff >/dev/null 2>&1 || true
 # 停止時は active=false にする（run はもう iterate を駆動しない）。これにより停止後に同じ Issue を
 # 手動 /rite:iterate した際、iterate ステップ 6 が dormant キューを active batch と誤判定せず
 # 対話 AskUserQuestion を出せる（キューは cursor 保持のまま残し、引数省略 /rite:run で再開可能）
-jq '.active = false' "$queue_file" > "$queue_file.tmp" 2>/dev/null && mv "$queue_file.tmp" "$queue_file" || true
+jq '.active = false' "$queue_file" > "$queue_file.tmp" 2>/dev/null && mv "$queue_file.tmp" "$queue_file" \
+  || { rm -f "$queue_file.tmp"; echo "WARNING: run-queue の active=false 書込に失敗（停止後の手動 iterate が batch と誤判定される恐れ）" >&2; }
 cursor=$(jq -r '.cursor // 0' "$queue_file" 2>/dev/null || echo 0)
 mode=$(jq -r '.mode // "default"' "$queue_file" 2>/dev/null || echo "default")
 done_issues=$(jq -rc ".issues[:$cursor]" "$queue_file" 2>/dev/null || echo "[]")

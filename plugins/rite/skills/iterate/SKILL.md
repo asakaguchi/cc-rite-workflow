@@ -146,7 +146,8 @@ if [ "$cc" -ge "$max_cycles" ] 2>/dev/null; then
   # クリアして clean terminal になるのと同じ役割（cycle_count は merge-preserve で上限のまま維持）。
   bash {plugin_root}/hooks/flow-state.sh set \
     --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
-    --next "サーキットブレーカー発火 (cycle 上限 $max_cycles 到達)"
+    --next "サーキットブレーカー発火 (cycle 上限 $max_cycles 到達)" \
+    || echo "WARNING: サーキットブレーカー発火時の handoff クリアに失敗（Stop hook が /rite:review を再注入しブレーカーを迂回する恐れ）" >&2
   echo "[CONTEXT] ITERATE_CB=fire; cycle=$cc; max=$max_cycles"
 else
   new_cc=$((cc + 1))

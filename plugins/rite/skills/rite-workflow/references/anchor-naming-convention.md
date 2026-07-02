@@ -4,7 +4,7 @@
 
 対象: `plugins/rite/skills/` 配下の Markdown 文書中に存在する `# === ... ===` 形式の **grep anchor**。本ファイルは anchor literal の構造を定める canonical 規約と、anchor を中心に発生する Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」failure mode の予防策を集約する。Wiki 経験則本体は `/rite:wiki-query` で参照 (cf. §5)。
 
-> **⚠️ コード層との境界**: 本 reference は anchor の **literal 構造** (文字列としての形態) を規定する。anchor が指し示す bash block の動作仕様・契約は anchor を抱える各文書 (`pr/fix.md` / `pr/review.md` / `issue/close.md`) に存在する。anchor literal を変更する場合は本 reference 更新後に、同 anchor を citation する全 site (note / blockquote / 他 anchor の rationale 段落) を grep で検出し同時更新すること。
+> **⚠️ コード層との境界**: 本 reference は anchor の **literal 構造** (文字列としての形態) を規定する。anchor が指し示す bash block の動作仕様・契約は anchor を抱える各文書 (`skills/fix/SKILL.md` / `skills/review/SKILL.md` / `skills/issue-close/SKILL.md`) に存在する。anchor literal を変更する場合は本 reference 更新後に、同 anchor を citation する全 site (note / blockquote / 他 anchor の rationale 段落) を grep で検出し同時更新すること。
 
 ---
 

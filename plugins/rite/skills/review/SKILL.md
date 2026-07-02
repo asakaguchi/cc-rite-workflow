@@ -1289,7 +1289,7 @@ When the reviewer count reaches 4 or more, recommend splitting the review execut
 
 ### 3.2.1 Apply max_reviewers Cap (Cost Control)
 
-After the Security Expert conditional and any co-reviewer / sole-reviewer-guard additions are settled, apply the `max_reviewers` upper bound. This implements `skills/reviewers/SKILL.md` **Phase 5** — do not duplicate the algorithm here; this section only wires the config read and the omission display.
+After the Security Expert conditional and any co-reviewer / sole-reviewer-guard additions are settled, apply the `max_reviewers` upper bound. **The algorithm (relevance ordering, `effective_max` resolution, cap logic, mandatory protection) is defined once in `skills/reviewers/SKILL.md` Phase 5, which is the SoT.** This section does NOT restate the algorithm — it only wires the config read, renders the user-facing validation messages, and retains the results for ステップ 3.3. When Phase 5 and this section disagree, Phase 5 wins.
 
 **Config read** (`rite-config.yml` `review` section):
 
@@ -1297,25 +1297,19 @@ After the Security Expert conditional and any co-reviewer / sole-reviewer-guard 
 |---------|---------|---------|
 | `max_reviewers` | `6` | Maximum reviewers to spawn (cost cap) |
 
-**effective_max resolution** (Phase 5 config validation):
+**User-facing messages** (rendered here; the `effective_max` value for each case is resolved by Phase 5, not recomputed here):
 
-| `max_reviewers` value | `effective_max` | User-facing message |
-|-----------------------|-----------------|---------------------|
-| unset | `6` (default) | (none) |
-| non-numeric | `6` (default) | `⚠️ max_reviewers が非数値のため既定値 6 を使用します` |
-| `< min_reviewers` | `min_reviewers` | `⚠️ max_reviewers ({max}) < min_reviewers ({min}) のため min_reviewers を優先します` |
-| valid, `>= min_reviewers` | `max_reviewers` | (none) |
+| Phase 5 validation case | User-facing message |
+|-------------------------|---------------------|
+| `max_reviewers` unset / valid `>= min_reviewers` | (none) |
+| `max_reviewers` non-numeric | `⚠️ max_reviewers が非数値のため既定値 6 を使用します` |
+| `max_reviewers < min_reviewers` | `⚠️ max_reviewers ({max}) < min_reviewers ({min}) のため min_reviewers を優先します` |
 
 **Cap application:**
 
 1. Let `selected` be the reviewer set after ステップ 3.2 (Security Expert + co-reviewers + sole-reviewer guard applied).
-2. If `count(selected) <= effective_max` → keep all. No narrowing, no omission display. Proceed to ステップ 3.3.
-3. If `count(selected) > effective_max`:
-   - Compute each reviewer's **relevance score** per Phase 5: matched file count desc → selection_type (`mandatory > recommended > detected > normal`) → Available Reviewers table order.
-   - Keep the top `effective_max` by score. **Never** drop a `mandatory` Security Expert (retain it even if outside the top N; drop the next-lowest normal reviewer instead). **Never** reduce below `min_reviewers`.
-   - Retain the list of **dropped** reviewers with their scores for the omission display in ステップ 3.3 (silent capping is prohibited — MUST NOT).
-
-Retain `{selected_reviewers}`, `{dropped_reviewers}` (name + score + reason), and `{effective_max}` in the conversation context for ステップ 3.3.
+2. Resolve `effective_max` and apply Phase 5's cap logic to `selected` (Phase 5 owns the relevance ordering, the top-N cut, mandatory protection, and the `min_reviewers` floor). Emit the matching user-facing message above when a validation case fires.
+3. Retain `{selected_reviewers}`, `{dropped_reviewers}` (each with its `matched file count` and `selection_type`), and `{effective_max}` in the conversation context for the omission display in ステップ 3.3. Silent capping is prohibited (MUST NOT) — the dropped reviewers MUST be surfaced there.
 
 ### 3.3 Confirm Reviewers
 
@@ -1336,9 +1330,9 @@ Confirm the reviewer configuration with `AskUserQuestion` (fallback: see ステ�
 2. {reviewer_type_2} - {reason} {label}
 ...
 
-省略された reviewer ({dropped_count}名、max_reviewers={effective_max} 超過のため関連度順で除外):
-- {dropped_type_1} - スコア {score_1}（{matched_files_1} ファイル一致）
-- {dropped_type_2} - スコア {score_2}（{matched_files_2} ファイル一致）
+省略された reviewer ({dropped_count}名、有効上限 {effective_max} 超過のため関連度順で除外):
+- {dropped_type_1} - {matched_files_1} ファイル一致（tie-break: {selection_type_1}）
+- {dropped_type_2} - {matched_files_2} ファイル一致（tie-break: {selection_type_2}）
 
 オプション:
 - この構成でレビュー開始（推奨）
@@ -1349,7 +1343,7 @@ Confirm the reviewer configuration with `AskUserQuestion` (fallback: see ステ�
 
 **Summary line (AC-2)**: The `起動 reviewer {count} 名: ...` line is a mandatory pre-spawn summary shown before ステップ 4 in **every** path (standalone and E2E). It gives the user the review cost scale (reviewer count) at a glance.
 
-**Omission display (AC-1, cost control)**: The `省略された reviewer` section is output **only** when ステップ 3.2.1 dropped one or more reviewers (`{dropped_count} > 0`). When nothing was dropped, omit the entire section (do not print an empty "省略された reviewer (0名)" line). Silent capping is prohibited — when a cap narrows the set, the dropped reviewer names and relevance scores MUST be shown.
+**Omission display (AC-1, cost control)**: The `省略された reviewer` section is output **only** when ステップ 3.2.1 dropped one or more reviewers (`{dropped_count} > 0`). When nothing was dropped, omit the entire section (do not print an empty "省略された reviewer (0名)" line). Silent capping is prohibited — when a cap narrows the set, the dropped reviewer names and their matched file counts MUST be shown.
 
 **Note**: `{label}` is placed after `{reason}` to keep the reviewer name as the first visible element for quick scanning. When `{label}` is empty (other reviewers), omit both the space and `{label}` from the output.
 

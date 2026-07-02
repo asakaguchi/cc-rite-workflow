@@ -336,7 +336,7 @@ Compare current config against the template and classify each key:
 |---------------|--------|
 | **User-customized value** (project_number, owner, iteration settings, branch.base, language, etc.) | **Preserve** — keep the user's value |
 | **Deprecated key** (`project.name`, `commit.style`, `commit.enforce`, `commit.contextual`, `branch.release`, `branch.types`, `version`) | **Remove** — delete from config |
-| **Missing section** — any active top-level section above the `--- Advanced ---` marker (github, iteration, branch, commands, verification, issue, review, `fix`, etc. — **excluding `wiki:` and `multi_session:`**, which have dedicated rows below) | **Add** — insert the whole section from the template with default values |
+| **Missing section** — any active top-level section above the `--- Advanced ---` marker (github, iteration, branch, commands, verification, issue, review, etc. — **excluding `wiki:` and `multi_session:`**, which have dedicated rows below) | **Add** — insert the whole section from the template with default values |
 | **Missing sub-key** — a key newly added to the template *inside* a section the config already has (e.g., `review.fact_check.verify_internal_likelihood`) | **Add the missing key only** from the template default; **preserve** all existing sibling values (e.g., a customized `review.fact_check.max_claims`). No-op when the key already exists |
 | **`multi_session:` section** | **Back-add on --upgrade with `enabled: true`** (default-on). `multi_session:` is declared above the `--- Advanced ---` marker (active). When missing from an existing config, insert the template active block (`enabled: true` + `worktree_base`) so `--upgrade`-ed projects receive the same default-on behavior as new `/rite:init` generation. If a user's config already has a `multi_session:` block, it is preserved as a User-customized value (no overwrite — **including an explicit `enabled: false`**). Idempotent: no-op when the active section already exists |
 | **Advanced section** (parallel, metrics, safety, investigate) | **Add as comments** — insert commented-out with default values |
@@ -345,7 +345,7 @@ Compare current config against the template and classify each key:
 
 **Unknown key 判定の scope**: Step 4 の "Unknown key" 判定 (user-added keys not in template) は、**template の `# --- Advanced (below this line) ---` 境界より上の active section のみ**を参照する。境界より下 (コメント形式の Advanced sections + 末尾コメント) は template 側で意図的に省略または注記のため存在する領域であり、ユーザー設定の classification 対象外。
 
-**Active top-level sections covered on --upgrade** (drift anchor — the `init-upgrade-drift` test asserts this list ⊇ the template's active top-level keys above the `--- Advanced ---` marker): `schema_version`, `github`, `iteration`, `branch`, `commands`, `verification`, `issue`, `review`, `fix`, `language`, `wiki`, `multi_session`, `tdd`. Each is handled by Step 4/Step 6 above (User-customized values are preserved, missing sections/sub-keys are added). **When a new active top-level section is added to the template, add it to this list too** — otherwise the drift test fails and `--upgrade` would silently miss it.
+**Active top-level sections covered on --upgrade** (drift anchor — the `init-upgrade-drift` test asserts this list ⊇ the template's active top-level keys above the `--- Advanced ---` marker): `schema_version`, `github`, `iteration`, `branch`, `commands`, `verification`, `issue`, `review`, `language`, `wiki`, `multi_session`, `tdd`. Each is handled by Step 4/Step 6 above (User-customized values are preserved, missing sections/sub-keys are added). **When a new active top-level section is added to the template, add it to this list too** — otherwise the drift test fails and `--upgrade` would silently miss it.
 
 **Active sub-keys covered on --upgrade** (drift anchor — the `init-upgrade-drift` test T-12 asserts, per section, this list ⊇ each template active section's **direct** sub-keys above the `--- Advanced ---` marker; Step 6 item 4 adds any missing sub-key while preserving existing siblings). Sections whose value is a scalar (`schema_version`, `language`) have no sub-keys and are omitted:
 
@@ -356,7 +356,6 @@ Compare current config against the template and classify each key:
 - `verification`: `run_tests_before_pr`, `acceptance_criteria_check`
 - `issue`: `auto_decompose_threshold`
 - `review`: `min_reviewers`, `criteria`, `loop`, `security_reviewer`, `debate`, `confidence_threshold`, `fact_check`, `scope_assignment`
-- `fix`: `fail_fast_response`
 - `wiki`: `enabled`, `branch_strategy`, `branch_name`, `auto_ingest`, `auto_query`
 - `multi_session`: `enabled`, `worktree_base`
 - `tdd`: `enabled`

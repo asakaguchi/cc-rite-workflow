@@ -8,7 +8,7 @@
 #   AC-4: release on an absent claim is idempotent (success)
 #   plus: free check, stale-steal, corrupt-claim → stale, live-other refusal (rc 10)
 #   Issue #1718: concurrent stale-STEAL CAS (TC-14, exactly one wins) + lone-steal
-#                non-regression (TC-15)
+#                non-regression (TC-15) + no-flock branch lone steal (TC-16, F-03)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -159,5 +159,35 @@ bash "$FS" deactivate --session "$SID_STALE2" --next done >/dev/null 2>&1
 assert "TC-15 lone steal → claimed" "claimed" "$(claim "$SID_A" 951)"
 assert "TC-15 holder now A" "$SID_A" "$(jq -r .session_id "$ROOT/.rite/state/issue-claims/issue-951.json")"
 
+echo "=== TC-16 (Issue #1718 F-03): no-flock branch of _atomic_claim_steal steals a lone stale claim ==="
+# TC-14/15 always exercise the flock branch (flock is present on the test host), so the
+# best-effort no-flock branch of _atomic_claim_steal never runs. Force it by invoking
+# issue-claim.sh with a PATH stub that omits flock, proving the flock-absent path still
+# steals a lone stale claim (the else/mv path). Concurrent exactly-one is intentionally
+# NOT asserted — no-flock CAS is best-effort by design and cannot guarantee it. The
+# mismatch→10 / revive→10 branches only fire on a concurrent swap / revive race, which
+# is not deterministically reproducible via the CLI, so they stay covered by the flock
+# branch's TC-14 logic.
+noflock_stub=$(mktemp -d)
+cleanup_dirs+=("$noflock_stub")
+for _c in bash sh cat date dirname git grep head jq mkdir mktemp mv rm sed tr wc sleep; do
+  _p=$(command -v "$_c" 2>/dev/null) && ln -sf "$_p" "$noflock_stub/$_c"
+done
+run_noflock() { PATH="$noflock_stub" bash "$IC" "$@" 2>/dev/null; }
+SID_NF="ffffffff-1111-2222-3333-444444444444"
+mk_active "$SID_NF" 960
+# Sanity probe: the stub must be able to run a claim at all. A curated PATH can miss a
+# host-specific tool path — skip (not fail) rather than mis-attribute a setup gap to the
+# no-flock logic (the same platform-fragility guard TC-014 in work-memory-lock applies).
+if [ "$(run_noflock claim --session "$SID_NF" --issue 960)" != "claimed" ]; then
+  pass "TC-16 skipped: no-flock PATH stub could not run a claim on this host (env-specific setup)"
+else
+  bash "$FS" deactivate --session "$SID_NF" --next done >/dev/null 2>&1  # holder now stale
+  assert "TC-16 precondition: holder classified stale" "stale" "$(check "$SID_A" 960)"
+  # Steal via the flock-absent branch: lone stealer → cur==expected, holder dead → mv → claimed.
+  assert "TC-16 no-flock lone steal → claimed (F-03)" "claimed" "$(run_noflock claim --session "$SID_A" --issue 960)"
+  assert "TC-16 holder now A" "$SID_A" "$(jq -r .session_id "$ROOT/.rite/state/issue-claims/issue-960.json")"
+fi
+
 print_summary "$(basename "$0")" \
-  "Drift hint: issue-claim.sh §7 — claim/release/check; liveness reuses session-ownership.sh 2h threshold + parse_iso8601_to_epoch; noclobber + flock atomicity; stale-steal CAS via _atomic_claim_steal (Issue #1718); _resolve_current_session_id env-first (Issue #1530)."
+  "Drift hint: issue-claim.sh §7 — claim/release/check; liveness reuses session-ownership.sh 2h threshold + parse_iso8601_to_epoch; noclobber + flock atomicity; stale-steal CAS via _atomic_claim_steal (Issue #1718, flock + no-flock branches); _resolve_current_session_id env-first (Issue #1530)."

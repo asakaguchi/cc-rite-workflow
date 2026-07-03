@@ -262,9 +262,16 @@ lockdir="$TEST_DIR/tc014.lock"
 mkdir -p "$lockdir"
 echo "$$" > "$lockdir/pid"                                # PID $$ is alive...
 echo "STALE_TOKEN_OF_DEAD_HOLDER" > "$lockdir/pid_token"  # ...but this token is the dead holder's
+token_probe=$(_proc_start_token "$$")
 touch -t "$(date -u -d '5 minutes ago' +'%Y%m%d%H%M' 2>/dev/null || date -u -v-5M +'%Y%m%d%H%M')" "$lockdir" 2>/dev/null || true
 WM_LOCK_STALE_THRESHOLD=1
-if acquire_wm_lock "$lockdir" 2; then
+if [ -z "$token_probe" ]; then
+  # Reuse detection needs a usable current token to compare the stored one against.
+  # Without a start-token source the code degrades to the legacy PID-only conservative
+  # hold (covered by TC-010) — the same platform guard TC-015 applies, so keep them
+  # symmetric to avoid a false FAIL on such platforms.
+  pass "start-token unavailable on this platform → skip (legacy PID-only covered by TC-010)"
+elif acquire_wm_lock "$lockdir" 2; then
   pass "PID reuse detected via token mismatch → stale lock reclaimed"
   release_wm_lock "$lockdir"
 else

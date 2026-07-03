@@ -2,8 +2,12 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-03T11:30:00+09:00"
+updated: "2026-07-03T18:30:00+00:00"
 sources:
+  - type: "fixes"
+    ref: "raw/fixes/20260703T175226Z-pr-1743.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260703T180609Z-pr-1743.md"
   - type: "reviews"
     ref: "raw/reviews/20260703T020624Z-pr-1733.md"
   - type: "fixes"
@@ -1340,6 +1344,10 @@ canonical 対策: stale 参照 sweep では置換対象 literal の grep hit だ
 ### template active-section 昇格時の drift anchor 3-site 同期 — mechanical test が対称性を強制する successful preventive application (PR #1732)
 
 config template のセクションを active 化 (fresh init 書き出し対象へ昇格) する変更は、同一 invariant「どのセクションが fresh init 書き出し対象か」を **3 サイトに mirror** する構造で、本 anti-pattern の典型 trigger になる。`safety` セクションを `rite-config.yml` の `--- Advanced ---` マーカーより上へ移動した PR #1732 では次の 3 site を同時更新した: (1) template のセクション位置、(2) `init/SKILL.md` の `--upgrade` drift anchor 2 箇所 (top-level sections 列挙 + sub-keys 列挙)、(3) `docs/SPEC.md` の Advanced 分類一覧 (init.md の直接ミラー)。**`init-upgrade-drift.test.sh` の T-10 / T-12 が template の Advanced マーカーより上の active セクション・サブキーを動的抽出して init.md の drift anchor に列挙されているか照合する**ため、昇格漏れ (init.md anchor 未追記) は test FAIL で機械的に surface する。2 reviewer 0 blocking findings / 1 cycle mergeable。教訓: **section 位置を SoT とし、それを参照する drift anchor / mirror doc の全 site を同 commit で更新する。mechanical test (動的抽出 → 列挙照合) が存在すれば mirror site の対称性は構造的に強制される** (wiki / multi_session / tdd の先行昇格と同型 precedent)。tech-writer は「values unchanged / position moved」コメントの厳密性 (position 移動に加え 3 キーへコメントも追加) を LOW nit で指摘したが Observed Likelihood Gate で非ブロッキング降格。
+
+### 保証文言 overclaim 修正の 3 面一貫伝播による 2 cycle 収束 (PR #1743 — Issue #1711、successful propagation application)
+
+cycle 1 で検出された保証文 overclaim（機械検証の実カバレッジより広い「forgotten table row は次回 lint で必ず検出」）の fix で、propagation scan により同種表現（`machine-checked` の全称的表現 / `forgotten table row`）を `git grep` で列挙し、CONTRIBUTING.md の入口文 (:72)・締め文 (:94) + reviewers/SKILL.md の Available Reviewers 注記 (:27) の **3 面へ同一の限定（I1/I3 は機械検出、Available 行の欠落は唯一の非検出 gap + 手動確認）を一括伝播**した。I3 限定表現で既に正確だった箇所 (:66「row/slug consistency is machine-checked」) は対象外と正しく判定（over-transcription 回避 = 「同期すべきでない site の識別」の系譜）。cycle 2 で code-quality が「修正が指摘の意図を満たす」と確認し 0 findings 収束 — 片肺修正なら cycle 3+ に伸びていた drift class を fix 内 propagation scan で 1 cycle に圧縮した実例。保証文言そのものの設計指針は [検証ツールの保証文言は検証される不変量と非検出 gap に正確に対応させる](../heuristics/verification-doc-guarantee-matches-invariants.md) に独立化。
 
 ## 関連ページ
 

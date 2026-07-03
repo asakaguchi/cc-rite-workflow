@@ -2,7 +2,7 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-07-03T08:30:23+00:00"
+updated: "2026-07-04T00:55:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260626T031814Z-pr-1663.md"
@@ -74,6 +74,26 @@ sources:
     ref: "raw/fixes/20260703T075749Z-pr-1736.md"
   - type: "fixes"
     ref: "raw/fixes/20260703T081555Z-pr-1736.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260703T140345Z-pr-1742.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260703T142317Z-pr-1742.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260703T144050Z-pr-1742.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260703T145103Z-pr-1742.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260703T153807Z-pr-1742.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260703T155000Z-pr-1742.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260703T141120Z-pr-1742.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260703T143042Z-pr-1742.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260703T144416Z-pr-1742.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260703T154111Z-pr-1742.md"
 tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage", "symmetry-claim-bidirectional-pin", "negative-assert", "non-blocking-contract-mutation"]
 confidence: high
 ---
@@ -629,6 +649,38 @@ canonical 対策:
 
 教訓: 「deny を確認する」テストの payload は、**検証対象の guard を外すと allow に戻る**もの (read-only verb / by-default-allowed 入力) を選ぶ。state-mutating verb や独立に block される入力は、guard の有無に関わらず deny され vacuous。加えて「O(n²)/slow を突く」テストは入力の**配置**まで検証対象の発火条件に合わせる (先頭一致で fast path を通ると空振り)。いずれも **guard 除去 mutant で当該 assertion が FAIL するか**を commit 前に必ず実測する ([[static-input-chain-function-extraction-non-vacuous-test]] / [[leading-dash-arg-injection-gate-pre-git]] と同じ「非 vacuous 化 → mutation 実証」の系譜)。
 
+### 適用 26: 複数ガードが論理和を構成するとき「特定ガードを exercise する」コメントは vacuous — mutation で isolate 可否を確認し、未到達な防御的分岐は正直に文書化する (PR #1718)
+
+PR #1718 (issue-claim の CAS `_atomic_claim_steal` 二段ガード = mismatch→10 / revive→10 + work-memory-lock の PID 再利用検出) の 4 cycle レビューで、実装ではなく **テストコメントの「カバレッジ主張の正確さ」** が dominant な指摘対象になった。並行奪取テスト TC-14 は全 contender を `mk_active` するため winner が live で、loser は 2 ガードのどちらでも abort しうる。ところが TC-16 のコメントは「mismatch→10 は TC-14 の losers で exercised され、mismatch path が double-steal guarantee を担う」と記し、**特定ガード (mismatch) を単独 isolate している**かのように読めた。
+
+#### 失敗の構造 — 「行実行順序」と「mutation-isolated coverage」の混同
+
+unmutated code では mismatch ガードが先に評価され loser を捕捉する。この「行実行順序」を「mutation-isolated coverage (そのガードだけを検証している)」と混同すると over-claim になる。mutation で実測すると:
+
+```bash
+# mismatch ガード単独除去 ([ "$cur" = "$expected" ] || exit 10 を削除)
+#   → TC-14 は緑のまま (winner が live なので revive ガードが loser を捕捉)
+# revive ガード単独除去 (_holder_is_live "$cur" && exit 10 を削除)
+#   → TC-14 は緑のまま (mismatch ガードが loser を捕捉)
+# 両ガード除去 → 初めて赤 (5 プロセス全 mv、_stolen=5 ≠ 1)
+```
+
+→ TC-14 は 2 ガードの **論理和** のみを検証しており、どちらのガードも単独では isolate していない。これは適用 5 Pattern 5-B (件数判定の片側 mutation 隠蔽) / 適用 10 (対称性主張の片側のみ pin) と同型の coverage gap を、対象を **「防御 in-depth の複数ガードのうち特定の 1 つを exercise する」というコメント上の主張** へ一般化したもの。
+
+#### Fix 方針 — コメント軟化も valid な fix (未到達分岐の正直な文書化)
+
+二次防御の revive 分岐 (out-of-lock classify と in-lock 再検証の間の TOCTOU race で発火) は、公開 CLI 経由では **on-disk holder ≠ expected かつ not-live** という状況を決定的に作れず未到達になる。mismatch ガードを単独 isolate するテストを追加するのも一案だが (堅牢)、この PR では **コメントを「2 ガードが協調して防ぐ／全 contender が live なため単独 isolation は本 TC では担保されない」という実態へ軟化する最小変更** (実行コード不変) で解消し、次 cycle で 4 reviewer が実装トレースで over-claim/under-claim ゼロを再検証して 0 findings 収束した。
+
+**未到達の防御的分岐を「カバー済み」と偽らず、コメントで正直に未到達と文書化する**ことは valid な fix であり (no-silent-caps)、必ずしも「テストを足す」必要はない。カバレッジ主張は必ず mutation で裏付ける。
+
+#### 併発 sub-pattern (同 PR で cross-validation)
+
+- **プラットフォーム依存 skip ガードの左右対称**: start-token 取得不能環境での legacy PID-only hold を検証する成功アサート TC (TC-014) と skip ガード TC (TC-015) は対称に揃える。片方だけガードが欠けると「コードは正しいがテストが特定環境で偽 FAIL」する非対称バグになる (詳細は [test-env-gate-ci-alignment](../heuristics/test-env-gate-ci-alignment.md))。
+- **「対称化」AC の test pin 強度非対称**: eval 前 jq 検証の対称化 AC で、対称元テスト (`projects-status-update` TC-002) が warning 文言まで pin しているのに新規側 (`create-issue` TC-015) が汎用 exit≠0 のみで新ブランチ固有挙動を pin していない non-symmetry が残った。汎用 exit≠0 は対象ブランチを削除しても下流の別経路で同 exit code になり vacuous。対称化 AC は実装だけでなく **テストの pin 強度も対称化** し、mutation (対象ブランチ削除で当該テストのみ FAIL するか) で裏付ける。
+- **SPEC 要約の over-claim 回避**: 実装の保守的縮退経路 (legacy / プラットフォーム非対応) を SPEC 要約で無条件断定せず「when a start-token was recorded」等の条件付き表現で明記する ([prose-design-without-backing-implementation](../anti-patterns/prose-design-without-backing-implementation.md) の逆方向 = 実装より強く書かない透明性)。
+
+教訓: **防御 in-depth の複数ガードのうち特定の 1 つを「exercise する」と主張するテストコメントは、mutation で当該ガードを単独除去して該当テストが FAIL するかを確認するまで信じない**。論理和構造では単独 isolation は成立せず、CLI で決定的再現不能な二次防御は「未到達」と正直に文書化するのが最小 fix。
+
 ## 関連ページ
 
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
@@ -677,3 +729,8 @@ canonical 対策:
 - [PR #1736 review results (cycle 2) — timeout bypass 対策テストで、state-mutating payload (checkout) が cap 有無に関わらず deny され vacuous になる問題と、構造 pin をコメントでなく実行文 (trap 行出現回数) で行う指摘 (F-04/F-05 MEDIUM)](../../raw/reviews/20260703T073719Z-pr-1736.md)
 - [PR #1736 fix results (cycle 2) — read-only verb payload で allow→deny flip を作り mutation 帰属を成立させる / huge command は --rawfile で argv 制限回避](../../raw/fixes/20260703T075749Z-pr-1736.md)
 - [PR #1736 fix results (cycle 3) — vacuous の 2 典型 (独立 deny される verb / `<<` 先頭で `%%<<*` fast path) を read-only heredoc payload で非 vacuous 化、guard 除去 mutant で FAIL 実証、inert 共有 tag 代入の除去](../../raw/fixes/20260703T081555Z-pr-1736.md)
+- [PR #1742 review results (cycle 1) — CAS 二段ガード + PID 再利用検出の bash 実装レビューで、TC-14/15 の platform skip ガード左右対称 / SPEC over-claim 回避 / no-flock 経路カバレッジを指摘 (適用 26)](../../raw/reviews/20260703T140345Z-pr-1742.md)
+- [PR #1742 review results (cycle 2) — cycle 1 修正 3 件を該当 reviewer が mutation 検証まで含めて解消確認、対称化 AC の test pin 強度非対称 (汎用 exit≠0 vs warning 文言 pin) を検出](../../raw/reviews/20260703T142317Z-pr-1742.md)
+- [PR #1742 review results (cycle 3) — CAS の防御的 revive 分岐が CLI 経由で決定的再現不能・未到達であり「TC-14 でカバー」コメントが mutation で削除しても green の vacuous over-claim になる問題を検出、未到達の正直な文書化 (no-silent-caps) を提示](../../raw/reviews/20260703T144050Z-pr-1742.md)
+- [PR #1742 review results (cycle 4/re-review) — 「行実行順序」と「mutation-isolated coverage」の混同による over-claim を実装トレースで確定、2 ガードが論理和構成で単独 isolate は成立しないことを mutation で立証、コメント軟化 fix の正確性を再検証し 0 findings 収束 (適用 26 の核)](../../raw/reviews/20260703T153807Z-pr-1742.md)
+- [PR #1742 fix results — TC-16 コメントの mutation-coverage over-claim をコメント軟化 (実行コード不変) で解消 / 未到達分岐の正直な文書化 / 対称 skip ガード / SPEC 条件付き表現による over-claim 回避 の 4 fix パターン](../../raw/fixes/20260703T154111Z-pr-1742.md)

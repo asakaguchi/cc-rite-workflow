@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-04T00:55:00+09:00 | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1718 (Issue #1718、review×6 + fix×4 の 4 cycle 系列) を適用 26 として統合: 複数ガードが論理和を構成するとき「特定ガードを exercise する」テストコメントは vacuous。CAS 二段ガード (mismatch→10 / revive→10) の並行奪取 TC-14 は全 contender live のため 2 ガードの論理和のみ検証し単独 isolate しない (片ガード除去で緑・両除去で赤を mutation 実測)。「行実行順序」と「mutation-isolated coverage」の混同が over-claim の根。CLI で決定的再現不能な二次防御は「未到達」と正直に文書化し、コメント軟化 (実行コード不変) も valid な fix。併発: platform skip ガード左右対称 / 対称化 AC の test pin 強度非対称 (汎用 exit≠0 は vacuous) / SPEC の条件付き表現で over-claim 回避 |
 | 2026-07-03T19:52:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 |
 | 2026-07-03T19:51:00+09:00 | ingest:update | pages/heuristics/stderr-selective-surface-over-truncate.md | PR #1741 (Issue #1738) review×2 + fix を統合: delegation-shim 以外の新規 git fetch フォールバック実装 (テストスクリプト内) でも `2>/dev/null \|\| true` 全 truncate anti-pattern が再演することを確認 (error-handling reviewer HIGH検出)。canonical selective-surface パターン (単一 tempfile 捕捉 + 失敗時 `git: ` プレフィックス付き表示) へ修正し 2 cycle で mergeable 収束 |
 | 2026-07-03T17:38:05+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 |

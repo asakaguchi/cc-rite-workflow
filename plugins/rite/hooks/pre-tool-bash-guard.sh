@@ -181,14 +181,6 @@ _rite_btg_pattern4_fail_closed() {
 }
 trap '_rite_btg_pattern13_fail_open' ERR
 
-# --- Heredoc-safe command extraction ---
-# Strip heredoc content to avoid false positives on text inside commit messages,
-# PR descriptions, etc. Only check the command prefix before the first heredoc marker.
-# Known limitation: Piped heredoc patterns (e.g., `cat <<EOF | gh pr diff`) bypass
-# this stripping because the command before `<<` is `cat`, not the target pattern.
-# Risk is limited since such patterns are rare in practice.
-CMD_CHECK="${COMMAND%%<<*}"
-
 # --- Denylist check (Bash built-ins only) ---
 
 BLOCKED_PATTERN=""
@@ -199,14 +191,61 @@ BLOCKED_ALTERNATIVE=""
 # message can explain why a read-only wrapper probe is blocked.
 BLOCKED_SUBKIND=""
 
+# --- Reviewer command length guard (O(1), primary fail-closed bound) ---
+# Runs BEFORE the heredoc strip and every pattern check because that downstream work
+# is whole-string and at least two operations degrade to catastrophically slow on a
+# large enough input: the `${COMMAND%%<<*}` heredoc strip below is O(n²) in bash
+# (empirically ~45s on ~1.3MB), and Pattern 2's `[[ =~ ]]` regex is O(n²) on a few MB
+# of meta chars (empirically >2min). A timed-out PreToolUse hook fails OPEN (Claude
+# Code cancels it and lets the tool run), so a reviewer subagent could pad a
+# state-mutating git — with huge flag VALUES, thousands of flags, or a giant meta-char
+# string — until one of those operations times out, dropping the deny and bypassing
+# the guard. The ERR trap cannot catch a timeout (the process is killed externally). A
+# legitimate reviewer git command is at most a few KB, so any oversized command is
+# denied fail-closed here, before ANY O(n) work: setting BLOCKED_PATTERN both skips the
+# O(n²) heredoc strip (below) and short-circuits Patterns 1-4 (all now guarded by
+# `[ -z "$BLOCKED_PATTERN" ]`). Guards on the RAW ${#COMMAND} (fast, O(1)-ish) so the
+# check itself never triggers the slow path. Scoped to reviewer subagents
+# (IS_SUBAGENT=1), so normal main-session Bash is never blocked by size (MUST NOT — the
+# pre-existing main-session slowdown on huge input is a separate, out-of-scope
+# convenience-pattern concern). The per-flag iteration cap inside the Pattern 4 block
+# is a secondary bound on fork COUNT for sub-ceiling commands padded with many flags.
+_RITE_BTG_MAX_SUBAGENT_CMD_BYTES=65536
+if [ "$IS_SUBAGENT" = "1" ] && [ "${#COMMAND}" -gt "$_RITE_BTG_MAX_SUBAGENT_CMD_BYTES" ]; then
+  BLOCKED_PATTERN="reviewer-state-mutating-git"
+  BLOCKED_SUBKIND="oversized-normalization"
+  BLOCKED_REASON="This reviewer command is abnormally large (${#COMMAND} bytes, ceiling ${_RITE_BTG_MAX_SUBAGENT_CMD_BYTES}). A command this size could make the guard's parsing exceed the PreToolUse hook timeout, and a timed-out hook fails OPEN (the command would be allowed) — so oversized reviewer commands are denied fail-closed to prevent a timeout-based bypass of the reviewer read-only guard."
+  BLOCKED_ALTERNATIVE="Simplify the command — reviewer git operations are at most a few KB. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the read-only command set."
+fi
+
+# --- Heredoc-safe command extraction ---
+# Strip heredoc content to avoid false positives on text inside commit messages,
+# PR descriptions, etc. Only check the command prefix before the first heredoc marker.
+# Known limitation: Piped heredoc patterns (e.g., `cat <<EOF | gh pr diff`) bypass
+# this stripping because the command before `<<` is `cat`, not the target pattern.
+# Risk is limited since such patterns are rare in practice.
+# Skipped for an already-denied (oversized) command: `${COMMAND%%<<*}` is O(n²) on
+# huge input and would itself time out the fail-open hook (the whole reason the length
+# guard runs first). CMD_CHECK is unused in that case (the command is already denied).
+if [ -z "$BLOCKED_PATTERN" ]; then
+  CMD_CHECK="${COMMAND%%<<*}"
+else
+  CMD_CHECK=""
+fi
+
 # Pattern 1: gh pr diff --stat
-case "$CMD_CHECK" in
-  *"gh pr diff"*" --stat"*)
-    BLOCKED_PATTERN="gh-pr-diff-stat"
-    BLOCKED_REASON="gh pr diff does not support the --stat flag."
-    BLOCKED_ALTERNATIVE="Use: gh pr view {pr_number} --json files --jq '.files[] | {path, additions, deletions}'"
-    ;;
-esac
+# Guarded by `[ -z "$BLOCKED_PATTERN" ]` so the length guard above short-circuits it
+# (the `*A*B*` glob would otherwise run over an oversized string). Normally
+# BLOCKED_PATTERN is empty here, so this runs exactly as before.
+if [ -z "$BLOCKED_PATTERN" ]; then
+  case "$CMD_CHECK" in
+    *"gh pr diff"*" --stat"*)
+      BLOCKED_PATTERN="gh-pr-diff-stat"
+      BLOCKED_REASON="gh pr diff does not support the --stat flag."
+      BLOCKED_ALTERNATIVE="Use: gh pr view {pr_number} --json files --jq '.files[] | {path, additions, deletions}'"
+      ;;
+  esac
+fi
 
 # Pattern 2: gh pr diff -- <path> (file filter)
 # `[^|]*` (zero-or-more) covers both forms: `gh pr diff 123 -- file` and
@@ -278,10 +317,15 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   if [ "${RITE_BTG_TEST_CRASH:-}" = "pattern4" ]; then
     false
   fi
-  # Upper bound on global-flag normalization iterations (see the loops below). A
-  # legitimate reviewer git command has well under this many global flags; the cap
-  # exists only to keep an adversarially padded command from timing out the hook and
-  # falling open. 128 is >10x the realistic maximum and keeps worst-case cost tiny.
+  # Secondary bound: cap the global-flag normalization iterations (see the loops
+  # below). The PRIMARY bound is the length guard above, which denies any command
+  # large enough to time out before it is normalized; this cap additionally bounds
+  # the fork COUNT for sub-ceiling commands padded with many small global flags (so
+  # the per-flag regex+fork loop can't run thousands of times within the byte
+  # ceiling). A legitimate reviewer git command has well under this many global
+  # flags, so 128 (>10x the realistic maximum) denies such padding while never
+  # tripping on a real command. Bounded together with the length guard, the total
+  # normalization work is at most ~128 iterations over a <64KB string.
   _RITE_BTG_MAX_GLOBAL_FLAG_NORM=128
   # Normalize whitespace AND shell meta-characters into a single space so that
   # `;git reset` / `(git checkout ...)` / `$(git commit)` / multi-line commands

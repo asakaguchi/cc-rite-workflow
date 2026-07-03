@@ -1415,6 +1415,86 @@ rm -rf "$fake_bin_118"
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-119〜122: Pattern 4 (security boundary) fail-closed vs Pattern 1-3 fail-open
+#   Issue #1717: Pattern 4 (reviewer state-mutating-git denylist) shares the
+#   fail-OPEN ERR trap with the convenience patterns, so a parse crash inside
+#   Pattern 4 converges to exit 0 (allow) and silently bypasses the security
+#   boundary. The fix installs a fail-CLOSED ERR trap over the Pattern 4 block
+#   (deny + exit 2 + WARNING) and restores fail-open afterwards. Pattern 4 uses
+#   only bash built-ins, so — unlike the deny-emit path faked in TC-118 — it
+#   cannot be crashed via a fake external binary; the hook exposes a test-only
+#   fault-injection env var (RITE_BTG_TEST_CRASH=pattern13|pattern4) that raises
+#   an ERR inside the respective trap region. These TCs drive it directly (the
+#   run_guard_* helpers do not thread extra env through the pipe).
+# --------------------------------------------------------------------------
+echo "TC-119: Pattern 4 crash in reviewer subagent → deny + exit 2 + stderr WARNING (AC-1)"
+rc=0
+tc119_input=$(jq -n --arg cmd "git status" --arg tp "$SUBAGENT_TRANSCRIPT" \
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
+output=$(echo "$tc119_input" | RITE_BTG_TEST_CRASH=pattern4 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+stderr_log=$(cat "$STDERR_FILE")
+if [ "$rc" = "2" ]; then
+  pass "TC-119 Pattern 4 crash exits 2 (fail-closed, not the old exit 0 allow)"
+else
+  fail "TC-119 expected rc=2, got rc=$rc"
+fi
+if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-state-mutating-git"* ]]; then
+  pass "TC-119 emits deny JSON with reviewer-state-mutating-git reason"
+else
+  fail "TC-119 expected deny (reviewer-state-mutating-git), got decision=$decision reason=$reason"
+fi
+if [[ "$stderr_log" == *"WARNING"* ]] && [[ "$stderr_log" == *"Pattern 4"* ]]; then
+  pass "TC-119 stderr WARNING makes the fail-closed firing visible"
+else
+  fail "TC-119 expected stderr WARNING for Pattern 4, got: $stderr_log"
+fi
+echo ""
+
+echo "TC-120: Pattern 1-3 crash → allow (exit 0), fail-open preserved (AC-3)"
+rc=0
+tc120_input=$(jq -n --arg cmd "git status" --arg tp "$SUBAGENT_TRANSCRIPT" \
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
+output=$(echo "$tc120_input" | RITE_BTG_TEST_CRASH=pattern13 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-120 crash under the Patterns 1-3 trap still resolves to allow (exit 0, no output)"
+else
+  fail "TC-120 expected fail-open allow (rc=0, empty), got rc=$rc output=$output"
+fi
+echo ""
+
+echo "TC-121: Pattern 4 crash injection on a MAIN session → allow (no false deny; MUST NOT)"
+# The fail-closed trap must be scoped to the reviewer-only Pattern 4 block. A main
+# session never enters that block, so even with the injection var set it must not be
+# denied — proves the fix does not add false denies to normal (non-reviewer) Bash.
+rc=0
+tc121_input=$(jq -n --arg cmd "git status" --arg tp "$MAIN_TRANSCRIPT" \
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
+output=$(echo "$tc121_input" | RITE_BTG_TEST_CRASH=pattern4 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-121 main-session Bash is not denied by the Pattern 4 fail-closed trap"
+else
+  fail "TC-121 expected allow (rc=0, empty) for main session, got rc=$rc output=$output"
+fi
+echo ""
+
+echo "TC-122: hooks.json PreToolUse:Bash has a timeout (AC-4)"
+HOOKS_JSON="$SCRIPT_DIR/../hooks.json"
+if jq empty "$HOOKS_JSON" 2>/dev/null; then
+  pass "TC-122 hooks.json is valid JSON"
+else
+  fail "TC-122 hooks.json is not valid JSON"
+fi
+tc122_timeout=$(jq -r '.hooks.PreToolUse[]?.hooks[]? | select((.command // "") | test("pre-tool-bash-guard")) | .timeout // empty' "$HOOKS_JSON" 2>/dev/null)
+if [ -n "$tc122_timeout" ] && [[ "$tc122_timeout" =~ ^[0-9]+$ ]]; then
+  pass "TC-122 pre-tool-bash-guard hook has a numeric timeout ($tc122_timeout)"
+else
+  fail "TC-122 expected a numeric timeout on the PreToolUse:Bash hook, got '$tc122_timeout'"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

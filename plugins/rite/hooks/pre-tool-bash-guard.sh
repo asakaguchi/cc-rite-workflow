@@ -13,6 +13,19 @@
 # Exit behavior:
 #   exit 0 — allow (no output)
 #   stdout JSON with permissionDecision: "deny" — block
+#
+# Fail direction is pattern-specific: Patterns 1-3 (convenience) fail OPEN so an
+# edge-case parse crash never false-blocks a legitimate command; Pattern 4 (the
+# reviewer state-mutating-git security boundary) fails CLOSED so a parse crash
+# never silently bypasses the guard. See the two ERR traps below.
+#
+# hooks.json timeout: this hook is registered in hooks.json (PreToolUse:Bash) with
+# a 10s timeout. hooks.json is strict JSON (no comments), so the rationale lives
+# here: the guard is a fast, synchronous pre-execution gate that runs on every
+# Bash command using only bash built-ins plus a couple of jq calls, so 10s is a
+# generous ceiling that bounds a pathological hang without risking false timeouts —
+# aligned with the other lightweight synchronous gates (Stop=10s, the Edit/Write
+# bang-backtick hook=10s).
 set -euo pipefail
 
 # Double-execution guard (hooks.json + settings.local.json migration)
@@ -130,7 +143,51 @@ _rite_btg_pattern13_fail_open() {
   fi
   exit 0
 }
+# Fail-closed ERR trap for Pattern 4 (the reviewer state-mutating-git security
+# boundary): if normalization / token-loop evaluation crashes on edge-case input,
+# DENY the command (deny JSON + exit 2 + stderr WARNING) instead of allowing it.
+# This is the OPPOSITE failure direction from the fail-open trap above: convenience
+# patterns must not false-block, but the security pattern must not false-allow — a
+# single parse crash must never silently bypass the reviewer read-only guard. This
+# trap is installed only for the Pattern 4 block (swapped in at block entry,
+# restored to the fail-open trap at block exit), so non-reviewer sessions — which
+# never enter that block — are never denied by it.
+_rite_btg_pattern4_fail_closed() {
+  local _rc=$?
+  trap - ERR  # prevent re-entrancy while emitting the deny
+  # Visibility: record that the security boundary crashed and we fell closed.
+  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: WARNING Pattern 4 (reviewer git guard) crashed (rc=$_rc) — command DENIED via fail-closed" >&2
+  if [ -n "${RITE_DEBUG:-}" ]; then
+    printf '[%s] pre-tool-bash-guard: Pattern 4 ERR trap fired (rc=%s) — deny fail-closed\n' \
+      "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$_rc" \
+      >> "${STATE_ROOT:-/tmp}/.rite-flow-debug.log" 2>/dev/null || true
+  fi
+  local _reason="BLOCKED (reviewer-state-mutating-git): Pattern 4 security-boundary evaluation crashed; denying fail-closed to avoid bypassing the reviewer read-only guard. See the bash-guard stderr WARNING for the crash context."
+  # Mirror the result-section emit contract: jq for the payload, printf fallback
+  # via _bash_guard_escape_deny_reason so a jq failure still emits a valid deny.
+  if ! jq -n --arg reason "$_reason" '{
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: $reason
+      }
+    }' 2>/dev/null; then
+    local _escaped
+    _escaped=$(_bash_guard_escape_deny_reason "$_reason" 2>/dev/null) \
+      || _escaped="BLOCKED: reviewer git command denied (Pattern 4 crash, fail-closed)."
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$_escaped"
+  fi
+  exit 2
+}
 trap '_rite_btg_pattern13_fail_open' ERR
+
+# Test-only fault injection for the fail-OPEN region (no effect in production):
+# raises an ERR while the Patterns 1-3 fail-open trap is active so the regression
+# test can confirm a crash here still resolves to allow (exit 0). Gated on an env
+# var that is never set outside the test suite.
+if [ "${RITE_BTG_TEST_CRASH:-}" = "pattern13" ]; then
+  false
+fi
 
 # --- Heredoc-safe command extraction ---
 # Strip heredoc content to avoid false positives on text inside commit messages,
@@ -210,6 +267,19 @@ fi
 #   (4) Long-form flag coverage: `git branch --delete/--force/--move/--copy`
 #       are treated the same as the short forms `-d/-f/-m/-c/-C`.
 if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
+  # Pattern 4 is the security boundary: swap the Patterns 1-3 fail-OPEN trap for a
+  # fail-CLOSED one so an unexpected crash while evaluating a reviewer's git command
+  # denies rather than allows. Restored to the fail-open trap at block exit (below)
+  # so the shared result-emit section keeps its original fail-open behavior.
+  trap '_rite_btg_pattern4_fail_closed' ERR
+  # Test-only fault injection for the fail-CLOSED region (no effect in production):
+  # Pattern 4 uses only bash built-ins, so — unlike the deny-emit path (see test
+  # TC-118) — it cannot be crashed by faking an external binary. This lets the
+  # fail-closed regression test raise an ERR deterministically inside the guarded
+  # region. Gated on an env var that is never set outside the test suite.
+  if [ "${RITE_BTG_TEST_CRASH:-}" = "pattern4" ]; then
+    false
+  fi
   # Normalize whitespace AND shell meta-characters into a single space so that
   # `;git reset` / `(git checkout ...)` / `$(git commit)` / multi-line commands
   # are recognized as `git <verb>` with proper word boundaries.
@@ -552,6 +622,10 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
       BLOCKED_ALTERNATIVE="For a read-only probe, drop the wrapper: run the command directly, group multiple commands in a subshell '( cmd1; cmd2 )', or put them in a file and run 'bash <script.sh>'. $BLOCKED_ALTERNATIVE"
     fi
   fi
+  # Restore the Patterns 1-3 fail-open trap for the shared result-emit section
+  # below: a crash there keeps the original (pre-fix) fail-open behavior, and the
+  # section already has its own fail-closed fallback for the deny-emit path.
+  trap '_rite_btg_pattern13_fail_open' ERR
 fi
 
 # --- Result ---

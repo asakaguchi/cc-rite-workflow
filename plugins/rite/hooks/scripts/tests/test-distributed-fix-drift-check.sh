@@ -23,6 +23,7 @@ fi
 
 PASS=0
 FAIL=0
+SKIP=0
 
 assert() {
   local desc="$1" expected="$2" actual="$3"
@@ -68,14 +69,22 @@ TMPFILES+=("$TMP_FIX")
 # (CI default: fetch-depth 1) do not have this commit in history yet, so try
 # fetching it directly first (Issue #1738; GitHub supports fetching arbitrary
 # reachable commit SHAs). Only if that also fails do we SKIP — silently
-# passing would produce a false green, so the skip is always logged explicitly.
+# passing would produce a false green, so the skip is always logged explicitly,
+# including the underlying fetch error (DNS/auth/"couldn't find remote ref"
+# etc.) so a real fetch failure isn't indistinguishable from "not reachable".
+FETCH_ERR=$(mktemp)
+TMPFILES+=("$FETCH_ERR")
 if ! git cat-file -e "${BASELINE_COMMIT}^{commit}" 2>/dev/null; then
-  git fetch --quiet --depth=1 origin "${BASELINE_COMMIT}" 2>/dev/null || true
+  git fetch --quiet --depth=1 origin "${BASELINE_COMMIT}" 2>"$FETCH_ERR" || true
 fi
 
 if ! git cat-file -e "${BASELINE_COMMIT}^{commit}" 2>/dev/null; then
   echo "SKIP: baseline commit ${BASELINE_COMMIT} is not reachable even after 'git fetch --depth=1 origin ${BASELINE_COMMIT}'" >&2
   echo "  Hint: unshallow the repo (git fetch --unshallow) or run this suite where network access to origin is available" >&2
+  if [ -s "$FETCH_ERR" ]; then
+    sed 's/^/  git: /' "$FETCH_ERR" >&2
+  fi
+  SKIP=$((SKIP + 1))
 elif git show "${BASELINE_COMMIT}:plugins/rite/commands/pr/fix.md" > "$TMP_FIX" 2>/dev/null; then
   out=$("$SCRIPT" --target "$TMP_FIX" 2>&1)
   rc=$?
@@ -318,6 +327,6 @@ assert_ge "--all + --repo-root: drift line references fix.md by relative path" 1
 
 # --- Summary -----------------------------------------------------------------
 echo
-echo "Results: PASS=$PASS FAIL=$FAIL"
+echo "Results: PASS=$PASS FAIL=$FAIL SKIP=$SKIP"
 [ "$FAIL" -eq 0 ] || exit 1
 exit 0

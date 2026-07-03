@@ -460,13 +460,19 @@ fi
 # --------------------------------------------------------------------------
 # TC-015: Invalid JSON argument → exit 1
 # --------------------------------------------------------------------------
-echo "TC-015: Invalid JSON argument → exit 1"
+echo "TC-015: Invalid JSON argument → eval 前に fail-fast (exit 1 + warning)"
 rc=0
 output=$(PATH="$MOCK_BIN_DIR:$PATH" bash "$TARGET" "NOT-VALID-JSON" 2>/dev/null) || rc=$?
-if [ $rc -ne 0 ]; then
-  pass "Invalid JSON → exit $rc"
+# eval 前 jq -e 検証ブランチ (AC-3) を固有に pin する。汎用の exit≠0 だけでは当該ブランチを
+# 削除しても下流の空フィールド/title-required 経路経由で exit 1 になり検出できないため、
+# projects-status-update.sh の同型ガード (TC-002) と対称に "Invalid JSON argument" warning と
+# project_registration=failed を assert する。
+if [ "$rc" -eq 1 ] \
+  && printf '%s\n' "$output" | jq -e '.warnings | map(select(. == "Invalid JSON argument")) | length == 1' >/dev/null \
+  && [ "$(printf '%s\n' "$output" | jq -r '.project_registration')" = "failed" ]; then
+  pass "Invalid JSON → eval 前 fail-fast (exit 1 + 'Invalid JSON argument' warning + project_registration=failed)"
 else
-  fail "Expected non-zero exit for invalid JSON"
+  fail "Expected exit 1 with 'Invalid JSON argument' warning and project_registration=failed, got rc=$rc output=$output"
 fi
 
 # --------------------------------------------------------------------------

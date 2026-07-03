@@ -160,6 +160,40 @@ _atomic_claim_write() {
   return "$rc"
 }
 
+# Compare-and-swap steal of a stale claim. The out-of-lock `_classify` (cmd_claim)
+# only tells us the claim WAS stale a moment ago; two sessions can both see the
+# same stale holder and both reach here. flock serializes the mv but does not make
+# the decision exclusive, so a plain _atomic_claim_write lets BOTH win (double
+# steal). This function re-verifies UNDER the lock before overwriting: it steals
+# only when the on-disk holder is still `expected` (the stale holder we classified)
+# AND that holder has not revived to live. A concurrent stealer that already swapped
+# the record (holder changed) or a holder that came back to life aborts the steal.
+# Returns: 0 stole, 10 CAS mismatch / holder revived (caller reports "other"),
+#          1 environment/IO error.
+_atomic_claim_steal() {
+  local file="$1" json="$2" expected="$3" tmp rc=0 cur
+  tmp=$(mktemp "${file}.XXXXXX" 2>/dev/null) || return 1
+  printf '%s\n' "$json" > "$tmp" || { rm -f "$tmp"; return 1; }
+  if command -v flock >/dev/null 2>&1 && ( exec 9>"$CLAIMS_LOCK" ) 2>/dev/null; then
+    (
+      exec 9>"$CLAIMS_LOCK"; flock -w 5 9 || exit 1
+      cur=$(_claim_holder "$file")
+      [ "$cur" = "$expected" ] || exit 10   # another session swapped the claim under us
+      _holder_is_live "$cur" && exit 10      # the stale holder revived → do not steal
+      mv -f "$tmp" "$file"
+    ) || rc=$?
+  else
+    # No flock (minimal containers / macOS without util-linux): best-effort CAS.
+    cur=$(_claim_holder "$file")
+    if [ "$cur" != "$expected" ]; then rc=10
+    elif _holder_is_live "$cur"; then rc=10
+    else mv -f "$tmp" "$file" || rc=$?
+    fi
+  fi
+  [ "$rc" -eq 0 ] || rm -f "$tmp" 2>/dev/null || true
+  return "$rc"
+}
+
 _validate_issue() {
   case "$1" in
     ''|*[!0-9]*) echo "ERROR: --issue must be a positive integer (got: '${1:-}')" >&2; return 1 ;;
@@ -198,8 +232,19 @@ cmd_claim() {
       return 0
       ;;
     stale)
-      local prev; prev=$(_claim_holder "$file")
-      _atomic_claim_write "$file" "$json" || { echo "ERROR: failed to steal stale claim" >&2; return 1; }
+      local prev src=0; prev=$(_claim_holder "$file")
+      _atomic_claim_steal "$file" "$json" "$prev" || src=$?
+      if [ "$src" -eq 10 ]; then
+        # CAS aborted under the lock: a concurrent stealer already won, or the
+        # holder revived. Report "other" (rc 10) so the caller (open Step 1.6)
+        # raises an AskUserQuestion instead of double-stealing (AC-1).
+        echo "[issue-claim] issue #${issue} steal aborted under lock (concurrent stealer or holder revived); not stealing" >&2
+        echo "other"
+        return 10
+      elif [ "$src" -ne 0 ]; then
+        echo "ERROR: failed to steal stale claim" >&2
+        return 1
+      fi
       echo "[issue-claim] stole stale claim for issue #${issue} (previous holder: ${prev:-<corrupt>})" >&2
       echo "claimed"
       return 0

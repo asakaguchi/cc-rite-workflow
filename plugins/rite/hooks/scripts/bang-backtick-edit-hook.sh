@@ -31,10 +31,14 @@ CHECK_SCRIPT="$SCRIPT_DIR/bang-backtick-check.sh"
 INPUT=$(cat 2>/dev/null) || INPUT=""
 [ -n "$INPUT" ] || exit 0
 
-# Extract tool_name and file_path. jq failures fall through to exit 0.
-TOOL_NAME=$(printf '%s' "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null) || TOOL_NAME=""
-FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null) || FILE_PATH=""
-CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
+# Extract tool_name, file_path and cwd in a single jq spawn via @tsv (was three
+# separate jq invocations — Issue #1716 AC-4). Empty JSON fields become empty
+# columns, which the tab-split below reads back as empty strings, so the same
+# `|| exit 0` fall-throughs still apply. jq failure yields an empty line → all
+# three variables empty → the tool-name filter below exits 0.
+IFS=$'\t' read -r TOOL_NAME FILE_PATH CWD <<< "$(
+  printf '%s' "$INPUT" | jq -r '[.tool_name // "", .tool_input.file_path // "", .cwd // ""] | @tsv' 2>/dev/null
+)"
 
 # Filter on tool name. PostToolUse hooks.json uses matcher "Edit|Write" so
 # the harness already pre-filters, but this defense-in-depth check keeps
@@ -47,6 +51,20 @@ esac
 # Bail if no file_path captured (defensive — should never happen for the
 # tools above, but the JSON contract is upstream-controlled).
 [ -n "$FILE_PATH" ] || exit 0
+
+# Front-loaded scope pre-filter (Issue #1716): a rite plugin markdown target
+# always matches `*plugins/rite/*.md` (true for both absolute and repo-relative
+# file_path). Reject anything else with a bash-builtin glob *before* resolving
+# the repo root (git rev-parse) below, so non-rite projects and the vast
+# majority of edits never spawn git. This is a necessary-but-not-sufficient gate
+# — it never rejects an in-scope path (every path the precise per-directory glob
+# accepts contains `plugins/rite/` and ends in `.md`), and the precise glob
+# still runs afterward to reject candidates that merely happen to match (e.g. a
+# repo whose own checkout path contains `plugins/rite/`).
+case "$FILE_PATH" in
+  *plugins/rite/*.md) ;;
+  *) exit 0 ;;
+esac
 
 # Resolve repo root. Prefer the cwd reported by the harness (matches the
 # user's working tree even if the hook runs from a different cwd); fall

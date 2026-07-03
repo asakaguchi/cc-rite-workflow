@@ -442,6 +442,66 @@ else
 fi
 echo ""
 
+# --- TC-EARLYEXIT-1 (AC-1): non-rite project → no git rev-parse spawn, exit 0 ---
+# The lightweight rite-project gate must early-exit before state-path-resolve.sh
+# (git rev-parse ×2). A `git` PATH-shim records every invocation; a non-rite
+# sandbox (no rite-config.yml, no .rite/, none up to /) must exit 0 with the
+# shim never touched and no work memory created.
+echo "TC-EARLYEXIT-1 (AC-1): non-rite project early-exits with no git spawn"
+dir_ee1="$TEST_DIR/tc_earlyexit1"
+mkdir -p "$dir_ee1"
+shim_ee1="$TEST_DIR/tc_earlyexit1-shim"
+mkdir -p "$shim_ee1"
+git_log_ee1="$TEST_DIR/tc_earlyexit1-git.log"
+cat > "$shim_ee1/git" <<SHIM
+#!/bin/sh
+echo "GIT_CALLED \$*" >> "$git_log_ee1"
+exit 0
+SHIM
+chmod +x "$shim_ee1/git"
+rc_ee1=0
+echo "{\"tool_name\": \"Bash\", \"cwd\": \"$dir_ee1\"}" | PATH="$shim_ee1:$PATH" bash "$HOOK" 2>/dev/null || rc_ee1=$?
+if [ ! -f "$git_log_ee1" ]; then
+  pass "TC-EARLYEXIT-1 no git rev-parse spawned in non-rite project (exit code: $rc_ee1)"
+else
+  fail "TC-EARLYEXIT-1 git was spawned in non-rite project: $(cat "$git_log_ee1")"
+fi
+if [ "$rc_ee1" -eq 0 ] && [ ! -d "$dir_ee1/.rite-work-memory" ]; then
+  pass "TC-EARLYEXIT-1 exit 0 and no work memory created"
+else
+  fail "TC-EARLYEXIT-1 unexpected: rc=$rc_ee1, wm-dir=$([ -d "$dir_ee1/.rite-work-memory" ] && echo present || echo absent)"
+fi
+echo ""
+
+# --- TC-EARLYEXIT-2 (AC-3): worktree (rite-config.yml only, no .rite/) does NOT early-exit ---
+# A multi_session worktree checks out the tracked rite-config.yml but has no
+# .rite state dir (that lives in the main checkout). The gate must detect it via
+# rite-config.yml and proceed past the gate to the resolver — proven by the git
+# shim being invoked. Guards against a regression that keys detection on .rite/
+# alone (which would false-early-exit every worktree edit).
+echo "TC-EARLYEXIT-2 (AC-3): worktree with rite-config.yml only is not early-exited"
+dir_ee2="$TEST_DIR/tc_earlyexit2"
+mkdir -p "$dir_ee2"
+printf '# rite worktree sandbox config\n' > "$dir_ee2/rite-config.yml"
+# Intentionally do NOT create .rite/ — this is the worktree-specific condition.
+shim_ee2="$TEST_DIR/tc_earlyexit2-shim"
+mkdir -p "$shim_ee2"
+git_log_ee2="$TEST_DIR/tc_earlyexit2-git.log"
+cat > "$shim_ee2/git" <<SHIM
+#!/bin/sh
+echo "GIT_CALLED \$*" >> "$git_log_ee2"
+exit 0
+SHIM
+chmod +x "$shim_ee2/git"
+rc_ee2=0
+echo "{\"tool_name\": \"Bash\", \"cwd\": \"$dir_ee2\"}" | PATH="$shim_ee2:$PATH" bash "$HOOK" 2>/dev/null || rc_ee2=$?
+if [ -f "$git_log_ee2" ]; then
+  pass "TC-EARLYEXIT-2 gate passed via rite-config.yml (git rev-parse reached, exit code: $rc_ee2)"
+else
+  fail "TC-EARLYEXIT-2 gate wrongly early-exited a worktree (git never reached — .rite-only detection regression)"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

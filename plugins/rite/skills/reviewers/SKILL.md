@@ -24,7 +24,7 @@ This skill is loaded via `Read` during `/rite:review` command execution; it does
 
 ## Available Reviewers
 
-This table is the **source of truth** for reviewer file patterns (used by `skills/review/SKILL.md` ステップ 2 for selection). The `Agent` column names the named subagent spawned for each reviewer.
+This table is the **source of truth** for reviewer file patterns (used by `skills/review/SKILL.md` ステップ 2 for selection). The `Agent` column names the named subagent spawned for each reviewer. When adding a reviewer, follow CONTRIBUTING.md "Adding a New Reviewer" — sync between `agents/`, this table, and the Reviewer Type Identifiers table is machine-checked by `plugins/rite/hooks/scripts/reviewer-registry-drift-check.sh` (invoked from `/rite:lint` ステップ 3.7.1).
 
 | Reviewer | Agent | File Patterns (Primary) |
 |----------|------------|-------------------------|
@@ -63,7 +63,7 @@ All reviewers follow a single Finding Quality Policy enforced in [`agents/_revie
 
 ## Reviewer Type Identifiers
 
-Mapping of reviewer identifiers (`reviewer_type`) to display names. Update this table when adding new reviewers.
+Mapping of reviewer identifiers (`reviewer_type`) to display names. Update this table when adding new reviewers (full procedure: CONTRIBUTING.md "Adding a New Reviewer"; row/slug consistency is machine-checked by `reviewer-registry-drift-check.sh`).
 
 | reviewer_type | 日本語表示名 | Agent |
 |---------------|-------------|------------|

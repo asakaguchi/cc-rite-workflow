@@ -25,6 +25,13 @@ if [ ! -f "$SCRIPT" ]; then
   echo "ERROR: $SCRIPT not found" >&2
   exit 1
 fi
+# The growth-stall path counts merged PRs via jq; without jq the script exits 0
+# (skip) and the exit-1 assertion below would FAIL rather than skip. Guard the
+# whole test the same way the sibling review-schema-version-check.test.sh does.
+if ! command -v jq >/dev/null 2>&1; then
+  echo "SKIP: jq not available — wiki-growth-check requires jq" >&2
+  exit 0
+fi
 
 SANDBOXES=()
 cleanup() { local d; for d in "${SANDBOXES[@]:-}"; do [ -n "$d" ] && rm -rf "$d"; done; }
@@ -42,19 +49,29 @@ chmod +x "$STUB_DIR/gh"
 
 # Build a git repo with rite-config.yml committed and (optionally) a wiki branch.
 #   $1 = wiki enabled? (true|false)   $2 = create wiki branch? (yes|no)
-# Echoes the repo path.
+# Echoes the repo path. The caller MUST register the returned path in SANDBOXES
+# from the PARENT shell — this helper runs inside a $(...) command substitution,
+# so a `SANDBOXES+=` here would be lost with the subshell (the pitfall
+# _test-helpers.sh documents). Git steps are &&-chained and HEAD is asserted so a
+# broken fixture fails loudly instead of returning an empty repo that silently
+# passes the skip-path (exit 0) assertions.
 make_wiki_repo() {
   local enabled="$1" with_wiki="$2" repo
-  repo="$(mktemp -d)"; SANDBOXES+=("$repo")
-  git -C "$repo" init -q
-  git -C "$repo" config user.email t@test.local
-  git -C "$repo" config user.name test
-  git -C "$repo" config commit.gpgsign false
+  repo="$(mktemp -d)"
+  git -C "$repo" init -q \
+    && git -C "$repo" config user.email t@test.local \
+    && git -C "$repo" config user.name test \
+    && git -C "$repo" config commit.gpgsign false \
+    || { echo "FAIL: make_wiki_repo git init/config failed" >&2; exit 1; }
   printf 'wiki:\n  enabled: %s\n  branch_name: wiki\nbranch:\n  base: develop\n' "$enabled" \
     > "$repo/rite-config.yml"
-  git -C "$repo" add rite-config.yml
-  git -C "$repo" commit -q -m init
-  [ "$with_wiki" = "yes" ] && git -C "$repo" branch wiki
+  git -C "$repo" add rite-config.yml \
+    && git -C "$repo" commit -q -m init \
+    && git -C "$repo" rev-parse HEAD >/dev/null 2>&1 \
+    || { echo "FAIL: make_wiki_repo fixture commit failed" >&2; exit 1; }
+  if [ "$with_wiki" = "yes" ]; then
+    git -C "$repo" branch wiki || { echo "FAIL: make_wiki_repo wiki branch failed" >&2; exit 1; }
+  fi
   printf '%s' "$repo"
 }
 
@@ -67,23 +84,23 @@ empty_dir="$(mktemp -d)"; SANDBOXES+=("$empty_dir")
 assert "rite-config.yml absent → skip (exit 0)" "0" \
   "$(bash "$SCRIPT" --repo-root "$empty_dir" --quiet >/dev/null 2>&1; echo $?)"
 
-disabled_repo="$(make_wiki_repo false yes)"
+disabled_repo="$(make_wiki_repo false yes)"; SANDBOXES+=("$disabled_repo")
 assert "wiki.enabled=false → skip (exit 0)" "0" \
   "$(bash "$SCRIPT" --repo-root "$disabled_repo" --quiet >/dev/null 2>&1; echo $?)"
 
-no_wiki_repo="$(make_wiki_repo true no)"
+no_wiki_repo="$(make_wiki_repo true no)"; SANDBOXES+=("$no_wiki_repo")
 assert "wiki branch absent → skip (exit 0)" "0" \
   "$(PATH="$STUB_DIR:$PATH" bash "$SCRIPT" --repo-root "$no_wiki_repo" --quiet >/dev/null 2>&1; echo $?)"
 
 # --- Healthy: wiki branch present, zero merged PRs → exit 0 -------------------
-healthy_repo="$(make_wiki_repo true yes)"
+healthy_repo="$(make_wiki_repo true yes)"; SANDBOXES+=("$healthy_repo")
 assert "no merged PRs since last wiki commit → healthy (exit 0)" "0" \
   "$(PATH="$STUB_DIR:$PATH" GH_STUB_PRS='[]' bash "$SCRIPT" --repo-root "$healthy_repo" --quiet >/dev/null 2>&1; echo $?)"
 
 # --- Growth stall detected (exit 1) ------------------------------------------
 # threshold=1 with 1 merged PR trips the stall; pr-raw-threshold set high so the
 # correspondence check stays healthy and only the growth-stall finding counts.
-stall_repo="$(make_wiki_repo true yes)"
+stall_repo="$(make_wiki_repo true yes)"; SANDBOXES+=("$stall_repo")
 assert "merged PRs >= threshold with stalled wiki → finding (exit 1)" "1" \
   "$(PATH="$STUB_DIR:$PATH" GH_STUB_PRS='[{"number":1}]' bash "$SCRIPT" \
       --repo-root "$stall_repo" --threshold 1 --pr-raw-threshold 999 --quiet >/dev/null 2>&1; echo $?)"

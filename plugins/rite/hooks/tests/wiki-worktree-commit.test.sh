@@ -37,28 +37,43 @@ cleanup() {
 trap cleanup EXIT INT TERM HUP
 
 # Build a git repo with rite-config.yml (wiki enabled|disabled). Echoes the path.
+# The caller MUST register the returned path in SANDBOXES from the PARENT shell —
+# this helper runs inside a $(...) command substitution, so a `SANDBOXES+=` here
+# would be lost with the subshell (the pitfall _test-helpers.sh documents for
+# make_sandbox). Git steps are &&-chained and HEAD is asserted so a broken fixture
+# fails loudly instead of returning a half-built repo that silently passes the
+# skip-path tests.
 new_repo() {
   local enabled="$1" repo
-  repo="$(mktemp -d)"; SANDBOXES+=("$repo")
-  git -C "$repo" init -q
-  git -C "$repo" config user.email t@test.local
-  git -C "$repo" config user.name test
-  git -C "$repo" config commit.gpgsign false
+  repo="$(mktemp -d)"
+  git -C "$repo" init -q \
+    && git -C "$repo" config user.email t@test.local \
+    && git -C "$repo" config user.name test \
+    && git -C "$repo" config commit.gpgsign false \
+    || { echo "FAIL: new_repo git init/config failed" >&2; exit 1; }
   printf 'wiki:\n  enabled: %s\n  branch_name: wiki\n' "$enabled" > "$repo/rite-config.yml"
-  git -C "$repo" add rite-config.yml
-  git -C "$repo" commit -q -m init
+  git -C "$repo" add rite-config.yml \
+    && git -C "$repo" commit -q -m init \
+    && git -C "$repo" rev-parse HEAD >/dev/null 2>&1 \
+    || { echo "FAIL: new_repo fixture commit failed" >&2; exit 1; }
   printf '%s' "$repo"
 }
 
 # Add a `wiki` branch, a local bare "origin", and a wiki-worktree on it.
+# Called directly (not in $(...)) so `SANDBOXES+=` reaches the parent and `exit 1`
+# aborts the whole run. Git steps are &&-chained and origin/wiki is asserted so a
+# failed push cannot degrade the happy-path "advanced" check into an empty-string
+# comparison that passes without a real push.
 setup_wiki_worktree() {
   local repo="$1" bare
-  git -C "$repo" branch wiki
   bare="$(mktemp -d)"; SANDBOXES+=("$bare")
-  git -C "$bare" init -q --bare
-  git -C "$repo" remote add origin "$bare"
-  git -C "$repo" push -q origin wiki
-  git -C "$repo" worktree add -q "$repo/.rite/wiki-worktree" wiki
+  git -C "$repo" branch wiki \
+    && git -C "$bare" init -q --bare \
+    && git -C "$repo" remote add origin "$bare" \
+    && git -C "$repo" push -q origin wiki \
+    && git -C "$repo" worktree add -q "$repo/.rite/wiki-worktree" wiki \
+    && git -C "$repo" rev-parse origin/wiki >/dev/null 2>&1 \
+    || { echo "FAIL: setup_wiki_worktree failed (branch/bare/remote/push/worktree)" >&2; exit 1; }
 }
 
 # Drop an untracked page under the worktree's .rite/wiki tree.
@@ -72,20 +87,19 @@ run_in() { local repo="$1"; shift; ( cd "$repo" && bash "$SCRIPT" "$@" ) 2>/dev/
 rc_in()  { local repo="$1"; shift; ( cd "$repo" && bash "$SCRIPT" "$@" >/dev/null 2>&1 ); echo $?; }
 
 # --- Invocation contract (no repo needed) ------------------------------------
+# Reuse rc_in() rather than a raw `$(( cd ... ))` — the latter reads as an
+# arithmetic-expansion opener (shellcheck SC1102) and errors under POSIX sh.
 assert "--help exits 0" "0" "$(bash "$SCRIPT" --help >/dev/null 2>&1; echo $?)"
 plain="$(mktemp -d)"; SANDBOXES+=("$plain")
-assert "unknown option exits 1" "1" "$(( cd "$plain" && bash "$SCRIPT" --bogus ) >/dev/null 2>&1; echo $?)"
-assert "outside a git repo exits 1" "1" "$(( cd "$plain" && bash "$SCRIPT" ) >/dev/null 2>&1; echo $?)"
-# newline in --message is rejected before any git op (header smuggling guard).
-assert "--message with newline exits 1" "1" \
-  "$(( cd "$plain" && bash "$SCRIPT" --message "$(printf 'a\nb')" ) >/dev/null 2>&1; echo $?)"
+assert "unknown option exits 1" "1" "$(rc_in "$plain" --bogus)"
+assert "outside a git repo exits 1" "1" "$(rc_in "$plain")"
 
 # --- Config / worktree preconditions -----------------------------------------
 norc_repo="$(mktemp -d)"; SANDBOXES+=("$norc_repo")
 git -C "$norc_repo" init -q
 assert "rite-config.yml absent exits 1" "1" "$(rc_in "$norc_repo")"
 
-disabled_repo="$(new_repo false)"
+disabled_repo="$(new_repo false)"; SANDBOXES+=("$disabled_repo")
 assert "wiki disabled exits 2" "2" "$(rc_in "$disabled_repo")"
 # Capture stdout to a variable first: run_in exits 2 here, and `set -o pipefail`
 # would make `run_in | grep` report the pipeline as failed even on a grep match.
@@ -96,11 +110,11 @@ else
   fail "wiki-disabled reason line missing: $disabled_out"
 fi
 
-missing_wt_repo="$(new_repo true)"
+missing_wt_repo="$(new_repo true)"; SANDBOXES+=("$missing_wt_repo")
 assert "worktree missing exits 1" "1" "$(rc_in "$missing_wt_repo")"
 
 # --- No pending changes → no-op commit=0 -------------------------------------
-nopending_repo="$(new_repo true)"
+nopending_repo="$(new_repo true)"; SANDBOXES+=("$nopending_repo")
 setup_wiki_worktree "$nopending_repo"
 assert "no pending changes exits 0" "0" "$(rc_in "$nopending_repo")"
 nopending_out="$(run_in "$nopending_repo")"
@@ -110,8 +124,17 @@ else
   fail "no-pending status line missing: $nopending_out"
 fi
 
+# --- newline --message guard, isolated -----------------------------------
+# The header-smuggling guard fires BEFORE the git/worktree checks. Run against a
+# fully-built repo where a benign message reaches the no-pending exit 0, so the
+# benign=0 / newline=1 differential pins the guard specifically — a bare non-git
+# dir would give exit 1 on both (from the not-a-git-repo check) and not isolate it.
+assert "benign --message reaches no-pending (exit 0)" "0" "$(rc_in "$nopending_repo" --message "safe message")"
+assert "--message with newline is rejected by the guard (exit 1)" "1" \
+  "$(rc_in "$nopending_repo" --message "$(printf 'a\nb')")"
+
 # --- Dry-run: reports pending, performs no commit ----------------------------
-dryrun_repo="$(new_repo true)"
+dryrun_repo="$(new_repo true)"; SANDBOXES+=("$dryrun_repo")
 setup_wiki_worktree "$dryrun_repo"
 add_pending "$dryrun_repo"
 wiki_before_dry="$(git -C "$dryrun_repo" rev-parse wiki)"
@@ -125,7 +148,7 @@ else
 fi
 
 # --- Happy path: commit + push to LOCAL bare origin (AC-4) --------------------
-commit_repo="$(new_repo true)"
+commit_repo="$(new_repo true)"; SANDBOXES+=("$commit_repo")
 setup_wiki_worktree "$commit_repo"
 add_pending "$commit_repo"
 origin_before="$(git -C "$commit_repo" rev-parse origin/wiki)"

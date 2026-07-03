@@ -60,7 +60,11 @@
 #
 # Output (stdout): one structured summary line
 #   [wiki-backfill] backfilled=<N>; skipped_existing=<N>; page_registered=<N>; \
-#     no_reason=<N>; total_ingested=<N>; branch_strategy=<s>[; dry_run=1]
+#     no_reason=<N>; encode_failed=<N>; write_failed=<N>; total_ingested=<N>; \
+#     branch_strategy=<s>[; dry_run=1]
+#   The six per-raw counters partition total_ingested exactly, so a non-zero
+#   encode_failed / write_failed signals a partial run even though the exit code
+#   stays 0 (edits are per-file resilient).
 #
 # Exit codes:
 #   0  Normal (including dry-run and "nothing to back-fill")
@@ -78,15 +82,21 @@ source "$_SCRIPT_DIR/lib/wiki-config.sh"
 
 DRY_RUN=0
 REPO_ROOT=""
+REPO_ROOT_EXPLICIT=0
 
 usage() {
-  sed -n '2,70p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  # Print the header comment block (everything after the shebang up to the first
+  # non-comment line), stripping the leading "# ". Line-number-independent so the
+  # help text stays correct when the header grows/shrinks.
+  awk 'NR==1 { next }
+       /^#/ { sub(/^# ?/, ""); print; next }
+       { exit }' "${BASH_SOURCE[0]}"
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1; shift ;;
-    --repo-root) REPO_ROOT="${2:-}"; shift; shift ;;
+    --repo-root) REPO_ROOT="${2:-}"; REPO_ROOT_EXPLICIT=1; shift; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "ERROR: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -117,7 +127,7 @@ if [ ! -f rite-config.yml ]; then
   echo "ERROR: rite-config.yml not found at repo root '$REPO_ROOT'" >&2
   exit 1
 fi
-wiki_enabled=$(parse_wiki_scalar enabled)
+wiki_enabled=$(parse_wiki_scalar enabled | tr '[:upper:]' '[:lower:]')
 case "$wiki_enabled" in
   true|yes|1) ;;
   *) echo "[wiki-backfill] skipped: wiki feature disabled (wiki.enabled=$wiki_enabled)" >&2; exit 1 ;;
@@ -128,16 +138,31 @@ branch_strategy=$(parse_wiki_scalar branch_strategy)
 # ---- Resolve the wiki working directory (holds raw/, pages/, log.md) --------
 case "$branch_strategy" in
   same_branch)
-    WIKI_DIR="$REPO_ROOT/.rite/wiki"
+    # same_branch keeps the wiki in the CURRENT tree (the checked-out branch).
+    # From a linked worktree session the current tree is the session worktree, NOT
+    # the shared state root — so resolve it from `git rev-parse --show-toplevel`
+    # unless the caller pinned it with --repo-root.
+    if [ "$REPO_ROOT_EXPLICIT" -eq 1 ]; then
+      WIKI_DIR="$REPO_ROOT/.rite/wiki"
+    else
+      current_tree="$(git rev-parse --show-toplevel 2>/dev/null)" || current_tree="$REPO_ROOT"
+      WIKI_DIR="$current_tree/.rite/wiki"
+    fi
     ;;
   separate_branch)
     wiki_branch=$(parse_wiki_scalar branch_name)
     [ -n "$wiki_branch" ] || wiki_branch="wiki"
+    # Defense-in-depth early validation. The branch name is not otherwise consumed
+    # here (WIKI_DIR is a fixed path and worktree creation is delegated to
+    # wiki-worktree-setup.sh); validating up front fails fast on a malformed config.
     validate_wiki_branch_name "$wiki_branch" || exit 1
+    # separate_branch's worktree lives at the shared state root (main checkout).
     WIKI_DIR="$REPO_ROOT/.rite/wiki-worktree/.rite/wiki"
     if [ ! -d "$WIKI_DIR" ]; then
-      # Ensure the worktree exists (idempotent). Non-fatal warnings tolerated.
-      bash "$_SCRIPT_DIR/wiki-worktree-setup.sh" >/dev/null 2>&1 || true
+      # Ensure the worktree exists (idempotent). Non-fatal, but let setup's stderr
+      # through (only stdout is muted) so its exit-2/3 remediation hints survive —
+      # the WIKI_DIR-missing error below is otherwise the only signal the operator sees.
+      bash "$_SCRIPT_DIR/wiki-worktree-setup.sh" >/dev/null || true
     fi
     ;;
   *)
@@ -204,7 +229,23 @@ backfilled=0
 skipped_existing=0
 page_registered=0
 no_reason=0
+encode_failed=0
+write_failed=0
 total_ingested=0
+
+# The per-raw frontmatter write goes through an in-tree tempfile (`$file.bf.tmp`)
+# next to the target for an atomic rename. Because that tempfile lives inside the
+# wiki worktree, an interrupt between the redirect and the mv would orphan it, and
+# a later `git add -- .rite/wiki` (wiki-worktree-commit.sh) would stage the junk.
+# A signal-specific trap removes the in-flight tempfile on any exit path (sibling
+# canonical 4-line pattern). `_bf_tmp` is set just before each write and cleared
+# right after a successful mv, so on normal completion the trap is a no-op.
+_bf_tmp=""
+_rite_bf_cleanup() { [ -n "${_bf_tmp:-}" ] && rm -f "$_bf_tmp"; return 0; }
+trap 'rc=$?; _rite_bf_cleanup; exit $rc' EXIT
+trap '_rite_bf_cleanup; exit 130' INT
+trap '_rite_bf_cleanup; exit 143' TERM
+trap '_rite_bf_cleanup; exit 129' HUP
 
 # Iterate raws deterministically (sort) so dry-run / real runs align.
 while IFS= read -r file; do
@@ -235,10 +276,16 @@ while IFS= read -r file; do
     echo "WARNING: no ingest:skip entry in log.md for $rel — left untouched (reason は捏造しない)" >&2
     continue
   fi
+  # Neutralize C0 control chars + DEL (0x7f) so they never reach the frontmatter.
+  # `--c0-only` is deliberate: the default mode also strips 0x80-0x9f byte-wise,
+  # which would corrupt the reason's Japanese UTF-8 (its continuation bytes fall in
+  # that range). --c0-only is the documented "preserve UTF-8 body, JSON use" mode
+  # (control-char-neutralize.sh). This also makes the sourced helper non-dead.
+  reason=$(printf '%s' "$reason" | neutralize_ctrl --c0-only)
 
   reason_json=$(printf '%s' "$reason" | yaml_encode)
   if [ -z "$reason_json" ]; then
-    no_reason=$((no_reason+1))
+    encode_failed=$((encode_failed+1))
     echo "WARNING: skip_reason の YAML エンコードに失敗しました: $rel — left untouched" >&2
     continue
   fi
@@ -253,6 +300,7 @@ while IFS= read -r file; do
   # `ingested: true` line, inside the frontmatter only (first occurrence).
   # ENVIRON is used for the reason line so awk does NOT re-process its
   # backslashes (awk -v would mangle the JSON escapes).
+  _bf_tmp="$file.bf.tmp"
   RITE_BF_REASON_LINE="skip_reason: $reason_json" \
   awk '
     BEGIN { infm=0; done=0 }
@@ -266,15 +314,21 @@ while IFS= read -r file; do
       next
     }
     { print }
-  ' "$file" > "$file.bf.tmp" && mv "$file.bf.tmp" "$file" || {
-    rm -f "$file.bf.tmp"
+  ' "$file" > "$_bf_tmp" && mv "$_bf_tmp" "$file" && _bf_tmp="" || {
+    rm -f "$_bf_tmp"
+    _bf_tmp=""
+    write_failed=$((write_failed+1))
     echo "ERROR: frontmatter 書込に失敗しました: $rel" >&2
     continue
   }
   backfilled=$((backfilled+1))
 done < <(LC_ALL=C find "$WIKI_DIR/raw" -type f -name '*.md' 2>/dev/null | LC_ALL=C sort)
 
-summary="[wiki-backfill] backfilled=$backfilled; skipped_existing=$skipped_existing; page_registered=$page_registered; no_reason=$no_reason; total_ingested=$total_ingested; branch_strategy=$branch_strategy"
+# The counters partition total_ingested exactly:
+#   backfilled + skipped_existing + page_registered + no_reason + encode_failed + write_failed == total_ingested
+# encode_failed / write_failed surface partial failures the stderr WARNINGs also
+# report, so a caller inspecting only this summary line is not misled by exit 0.
+summary="[wiki-backfill] backfilled=$backfilled; skipped_existing=$skipped_existing; page_registered=$page_registered; no_reason=$no_reason; encode_failed=$encode_failed; write_failed=$write_failed; total_ingested=$total_ingested; branch_strategy=$branch_strategy"
 [ "$DRY_RUN" -eq 1 ] && summary="$summary; dry_run=1"
 echo "$summary"
 exit 0

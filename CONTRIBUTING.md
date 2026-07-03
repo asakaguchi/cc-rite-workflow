@@ -69,7 +69,7 @@ plugins/rite/
 
 ## Adding a New Reviewer
 
-A reviewer lives in up to 4 places that must stay in sync. Sync between (1)–(3) is machine-checked by `reviewer-registry-drift-check.sh` (run from `/rite:lint` ステップ 3.7.1); (4) is free-form prose covered only by this checklist.
+A reviewer lives in up to 4 places that must stay in sync. Sync between (1)–(3) is machine-checked by `reviewer-registry-drift-check.sh` (run from `/rite:lint` ステップ 3.7.1) with one deliberate gap: a missing **Available Reviewers** row in (2) is indistinguishable from a logic-selected reviewer and is NOT machine-checked (invariant I2 is one-way) — verify edit location 2 against this checklist; (4) is free-form prose covered only by this checklist.
 
 **Edit locations:**
 
@@ -91,7 +91,7 @@ bash plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh --all
 bash plugins/rite/hooks/tests/reviewer-registry-drift-check.test.sh
 ```
 
-`/rite:lint` runs both drift checks automatically (ステップ 3.7 / 3.7.1) as non-blocking warnings, so a forgotten table row surfaces on the next lint even if you skip manual verification.
+`/rite:lint` runs both drift checks automatically (ステップ 3.7 / 3.7.1) as non-blocking warnings, so a forgotten Type Identifiers row or agent profile surfaces on the next lint (invariants I1/I3) even if you skip manual verification. A forgotten **Available Reviewers** row is the one gap the check cannot see (indistinguishable from a logic-selected reviewer) — verify edit location 2 manually.
 
 ## Hook Development Guide
 

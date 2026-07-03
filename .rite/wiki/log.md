@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-04T03:35:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 (PR #1743 ingest 後の auto-lint) |
 | 2026-07-04T03:30:00+09:00 | ingest:create | pages/patterns/positional-parse-row-count-guard.md | PR #1743 (Issue #1711): 位置依存の表パース (awk -F'|' + $N) は表形式変更で全行 skip の silent no-op になり rc=0 false pass を生む。集合抽出の下限ガードと対称の検査行数ガード (通過行数 < N → rc=2 fail fast) を対にし、列挿入 → rc=2 の回帰 TC で pin する |
 | 2026-07-04T03:30:00+09:00 | ingest:create | pages/heuristics/verification-doc-guarantee-matches-invariants.md | PR #1743 (Issue #1711): 機械検証ツール追加 PR の手順書に「漏れは必ず検出される」型の全称保証を書くと非検出 gap (I2 片方向) への過信を生む。保証文は不変量 (I1/I3) と gap を明示対応させ手動確認手順を併記、同種表現の 3 面へ一貫伝播。設計理由がある gap は文書を設計に合わせる (2 cycle 収束) |
 | 2026-07-04T03:30:00+09:00 | ingest:create | pages/heuristics/fixture-mutation-isolates-invariants.md | PR #1743 (Issue #1711): fixture 変異は発火する不変量を実行で確認。行内整合の分離検証は均衡入替 (双方向 swap)、双方向チェックの reverse 方向は明示 TC で pin、guard を exercise する decoy は guard の射程内に配置。mutation の kill 実績が non-vacuous coverage の証明 (TC-6/TC-9 + cycle 2 pipe-filter gap) |

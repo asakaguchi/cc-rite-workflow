@@ -502,7 +502,7 @@ followed by AskUserQuestion confirmation)
  - **User-customized value** (preserve): `project_number`, `owner`, `iteration` settings, `branch.base`, `language`, etc.
  - **Deprecated key** (remove): `project.name`, `commit.style`, `commit.enforce`, `commit.contextual`, `branch.release`, `branch.types`, `version`
  - **Missing section** (add with template defaults): `review.debate`, `review.fact_check`, `verification`, etc.
- - **Advanced section** (add as commented-out block): `parallel`, `metrics`, `safety`, `investigate`
+ - **Advanced section** (add as commented-out block): `parallel`, `metrics`, `investigate`
  - **Unknown key** (preserve with warning): user-added keys not present in the template
 5. **Preview and confirm** (Step 5)
  Display deprecated keys to be removed, sections to be added, and preserved existing settings; ask via `AskUserQuestion` to either apply or cancel.

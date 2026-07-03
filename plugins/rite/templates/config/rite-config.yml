@@ -160,6 +160,23 @@ multi_session:
 tdd:
   enabled: true   # true: implementation phase runs the Canon TDD cycle (default: true, opt-out)
 
+# Safety settings (fail-closed thresholds)
+# Hard limits that stop runaway autonomous loops (implementation rounds, review-fix
+# cycles, repeated failures). Declared ABOVE the `--- Advanced ---` marker (like
+# wiki / multi_session / tdd) so /rite:init new-generation emits it as an active
+# block — new projects can discover and tune the safety ceilings from the generated
+# config. Consumers read each value with an internal default, so a config that omits
+# `safety:` (or any single key) keeps the documented default behavior (backward
+# compatible). On --upgrade the section is back-added with these defaults; an
+# existing custom value is preserved. Values are UNCHANGED from the previous
+# Advanced (commented) block — only the position moved.
+safety:
+  max_implementation_rounds: 20   # implementation round hard limit per Issue (default: 20)
+  max_review_cycles: 5            # /rite:iterate review-fix loop circuit breaker per PR (default: 5)
+  time_budget_minutes: 120        # advisory time budget per Issue (not enforced by timer)
+  auto_stop_on_repeated_failure: true   # stop after repeated same-class failures
+  repeated_failure_threshold: 3   # consecutive same-class failures that trigger auto-stop
+
 # --- Advanced (below this line) ---
 # These sections are omitted during new generation (/rite:init).
 # They are added as comments during --upgrade.
@@ -184,14 +201,6 @@ pr_review:
 # metrics:
 #   enabled: true
 #   baseline_issues: 3
-
-# Safety settings (fail-closed thresholds)
-# safety:
-#   max_implementation_rounds: 20   # implementation round hard limit per Issue (default: 20)
-#   max_review_cycles: 5            # /rite:iterate review-fix loop circuit breaker per PR (default: 5)
-#   time_budget_minutes: 120
-#   auto_stop_on_repeated_failure: true
-#   repeated_failure_threshold: 3
 
 # Wiki settings are declared above the `--- Advanced ---` marker (active by default).
 # See docs/designs/experience-heuristics-persistence-layer.md for full specification.

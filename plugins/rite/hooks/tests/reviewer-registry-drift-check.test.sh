@@ -6,9 +6,20 @@
 #     SKILL.md tables is detected as drift (single-check FAIL)
 #   - T-03 (AC-1): a deliberate partial update (one table only) is detected
 #   - T-05 (AC-2): the real repository's current registry passes (no drift)
-#   - Invariant I3: slug/Agent cell mismatch is detected
+#   - Invariant I1 reverse: a Type Identifiers row without an agent profile
+#     (spawning a nonexistent subagent) is detected
+#   - Invariant I3: slug/Agent cell mismatch is detected in isolation
+#     (balanced swap keeps the sets intact so only I3 fires)
 #   - Guard: heading change → undersized extraction → invocation error (rc=2)
-#   - Arg contract: --all required (rc=2 without it)
+#   - Guard: column insertion before Agent → I3 row-count guard → rc=2
+#   - Arg contract: --all required; --repo-root requires a value (both rc=2)
+#
+# Portability note: fixture mutations use `awk` via the
+# read→transform→write→mv pattern instead of `sed -i`. BSD sed (macOS)
+# requires a mandatory backup suffix for `-i`, so GNU-style `sed -i '<expr>'`
+# aborts the suite on macOS under `set -e`. The awk pattern is identical on
+# GNU and BSD and matches the `test-doc-heavy-patterns-drift-check.sh`
+# portability convention.
 
 set -euo pipefail
 
@@ -32,6 +43,16 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM HUP
 
+# awk read→transform→write→mv helper (BSD sed -i 非互換を避ける repo 規約)。
+# 引数: <file> <awk-program>
+awk_inplace() {
+  local file="$1"
+  local prog="$2"
+  local tmp="${file}.tmp"
+  awk "$prog" "$file" > "$tmp"
+  mv "$tmp" "$file"
+}
+
 # 12 種のダミー reviewer slug（checker の >= 10 抽出ガードを満たす数）
 FIXTURE_SLUGS=(alpha bravo charlie delta echo-x foxtrot golf hotel india juliett kilo lima)
 
@@ -41,7 +62,7 @@ FIXTURE_SLUGS=(alpha bravo charlie delta echo-x foxtrot golf hotel india juliett
 # fixture to create the drift under test.
 make_registry_sandbox() {
   local d
-  d=$(make_plain_sandbox --soft)
+  d=$(make_plain_sandbox --soft) || return 1
   mkdir -p "$d/plugins/rite/agents" "$d/plugins/rite/skills/reviewers"
 
   local slug
@@ -77,7 +98,7 @@ REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 rc=0
 out=$(bash "$CHECKER" --all --quiet --repo-root "$REPO_ROOT" 2>&1) || rc=$?
 if [ "$rc" -eq 0 ]; then
-  pass "TC-1: real registry (13 reviewers) reports no drift"
+  pass "TC-1: real registry reports no drift"
 else
   fail "TC-1: expected rc=0 on real repository, got rc=$rc"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
@@ -101,10 +122,15 @@ if printf '%s\n' "$out" | grep -Fq "unrelated-reviewer.md"; then
 else
   pass "TC-2: prose outside tables correctly ignored"
 fi
+if printf '%s\n' "$out" | grep -Fq "_reviewer-base"; then
+  fail "TC-2: shared principles file leaked into the agents set"
+else
+  pass "TC-2: _reviewer-base.md correctly excluded from the agents set"
+fi
 
 # --- TC-3: dummy agent file added without table updates → drift (T-01) ---
 echo ""
-echo "=== TC-3: agent file added, tables not updated → rc=1 (I1) ==="
+echo "=== TC-3: agent file added, tables not updated → rc=1 (I1 forward) ==="
 d=$(make_registry_sandbox)
 cleanup_dirs+=("$d")
 printf '# dummy\n' > "$d/plugins/rite/agents/dummy-reviewer.md"
@@ -128,10 +154,12 @@ echo ""
 echo "=== TC-4: Available Reviewers updated, Type Identifiers not → rc=1 (I2) ==="
 d=$(make_registry_sandbox)
 cleanup_dirs+=("$d")
-# Available Reviewers 表にだけ新 reviewer 行を足す（表末尾ではなく既存行の直後に
-# 挿入し、セクション境界に依存しない位置で drift を作る）
-sed -i '/^| alpha Expert |/a | zulu Expert | `zulu-reviewer.md` | `**/zulu/**` |' \
-  "$d/plugins/rite/skills/reviewers/SKILL.md"
+# Available Reviewers 表にだけ新 reviewer 行を足す（既存行の直後に挿入し、
+# セクション境界に依存しない位置で drift を作る）
+awk_inplace "$d/plugins/rite/skills/reviewers/SKILL.md" '
+  { print }
+  /^\| alpha Expert \|/ { print "| zulu Expert | `zulu-reviewer.md` | `**/zulu/**` |" }
+'
 rc=0
 out=$(bash "$CHECKER" --all --quiet --repo-root "$d" 2>&1) || rc=$?
 if [ "$rc" -eq 1 ]; then
@@ -147,12 +175,15 @@ else
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
 
-# --- TC-5: Type Identifiers row removed alone → drift (I1 reverse) ---
+# --- TC-5: Type Identifiers row removed alone → drift (I1 forward) ---
 echo ""
 echo "=== TC-5: Type Identifiers row missing for an existing agent → rc=1 ==="
 d=$(make_registry_sandbox)
 cleanup_dirs+=("$d")
-sed -i '/^| bravo | bravo 専門家 |/d' "$d/plugins/rite/skills/reviewers/SKILL.md"
+awk_inplace "$d/plugins/rite/skills/reviewers/SKILL.md" '
+  /^\| bravo \| bravo 専門家 \|/ { next }
+  { print }
+'
 rc=0
 out=$(bash "$CHECKER" --all --quiet --repo-root "$d" 2>&1) || rc=$?
 if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -Fq "bravo-reviewer.md"; then
@@ -162,15 +193,19 @@ else
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
 
-# --- TC-6: slug/Agent cell mismatch → drift (I3) ---
+# --- TC-6: slug/Agent balanced swap → I3 fires in isolation ---
 echo ""
-echo "=== TC-6: Type Identifiers slug does not match Agent cell → rc=1 (I3) ==="
+echo "=== TC-6: Type Identifiers slug/Agent balanced swap → rc=1 (I3 only) ==="
 d=$(make_registry_sandbox)
 cleanup_dirs+=("$d")
-# charlie 行の Agent セルだけ delta に差し替える（集合としては両方存在するため
-# I1/I2 では検出されず、I3 の行内整合チェックのみが検出できる drift）
-sed -i 's/^| charlie | charlie 専門家 | `charlie-reviewer.md` |$/| charlie | charlie 専門家 | `delta-reviewer.md` |/' \
-  "$d/plugins/rite/skills/reviewers/SKILL.md"
+# charlie 行と delta 行の Agent セルを相互に入れ替える（均衡入替）。集合としては
+# 両ファイル名とも存在し続けるため I1/I2 の集合差分は発火せず、I3 の行内整合
+# チェックのみが検出できる drift になる（真に I3-isolated なテスト）
+awk_inplace "$d/plugins/rite/skills/reviewers/SKILL.md" '
+  $0 == "| charlie | charlie 専門家 | `charlie-reviewer.md` |" { print "| charlie | charlie 専門家 | `delta-reviewer.md` |"; next }
+  $0 == "| delta | delta 専門家 | `delta-reviewer.md` |" { print "| delta | delta 専門家 | `charlie-reviewer.md` |"; next }
+  { print }
+'
 rc=0
 out=$(bash "$CHECKER" --all --quiet --repo-root "$d" 2>&1) || rc=$?
 if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -Fq "slug charlie expects charlie-reviewer.md"; then
@@ -179,14 +214,24 @@ else
   fail "TC-6: expected rc=1 with slug mismatch finding, got rc=$rc"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
+# 均衡入替により集合は保存されるため、I1/I2 の集合差分 finding（"only in ..."）が
+# 混入していないことを assert する（I3 の固有価値を分離検証）
+if printf '%s\n' "$out" | grep -Fq "only in"; then
+  fail "TC-6: set-difference findings leaked — swap was not balanced (I3 not isolated)"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+else
+  pass "TC-6: I1/I2 set differences silent — I3 isolated as intended"
+fi
 
 # --- TC-7: heading change → undersized extraction → invocation error ---
 echo ""
 echo "=== TC-7: renamed section heading → rc=2 (extraction guard) ==="
 d=$(make_registry_sandbox)
 cleanup_dirs+=("$d")
-sed -i 's/^## Reviewer Type Identifiers$/## Renamed Identifiers/' \
-  "$d/plugins/rite/skills/reviewers/SKILL.md"
+awk_inplace "$d/plugins/rite/skills/reviewers/SKILL.md" '
+  $0 == "## Reviewer Type Identifiers" { print "## Renamed Identifiers"; next }
+  { print }
+'
 rc=0
 out=$(bash "$CHECKER" --all --quiet --repo-root "$d" 2>&1) || rc=$?
 if [ "$rc" -eq 2 ]; then
@@ -205,6 +250,65 @@ if [ "$rc" -eq 2 ]; then
   pass "TC-8: --all contract enforced"
 else
   fail "TC-8: expected rc=2 without --all, got rc=$rc"
+fi
+
+# --- TC-9: Type Identifiers row without agent profile → drift (I1 reverse) ---
+echo ""
+echo "=== TC-9: orphan Type Identifiers row (no agent profile) → rc=1 (I1 reverse) ==="
+d=$(make_registry_sandbox)
+cleanup_dirs+=("$d")
+# Type Identifiers 表にだけ mike 行を追加する（agents/ ファイルも Available 行も
+# 作らない）。spawn 時に存在しない subagent を解決しようとする failure mode を
+# 検出する I1 reverse 方向（identifiers → agents/）を単独で発火させる
+awk_inplace "$d/plugins/rite/skills/reviewers/SKILL.md" '
+  { print }
+  /^\| alpha \| alpha 専門家 \|/ { print "| mike | mike 専門家 | `mike-reviewer.md` |" }
+'
+rc=0
+out=$(bash "$CHECKER" --all --quiet --repo-root "$d" 2>&1) || rc=$?
+# ヘッダ行（方向ラベル）と finding 行（ファイル名）は別行のため独立に assert する
+if [ "$rc" -eq 1 ] \
+  && printf '%s\n' "$out" | grep -Fq "only in Type Identifiers table" \
+  && printf '%s\n' "$out" | grep -Fq "mike-reviewer.md"; then
+  pass "TC-9: reverse direction (identifiers row without profile) detected"
+else
+  fail "TC-9: expected rc=1 with 'only in Type Identifiers table' finding for mike-reviewer.md, got rc=$rc"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+
+# --- TC-10: column inserted before Agent → I3 row-count guard → rc=2 ---
+echo ""
+echo "=== TC-10: Type Identifiers table gains a column before Agent → rc=2 (I3 guard) ==="
+d=$(make_registry_sandbox)
+cleanup_dirs+=("$d")
+# Type Identifiers セクションのデータ行だけ Agent セルの前に EXTRA 列を挿入する。
+# Agent トークンが $4 から $5 へずれ、位置依存の I3 が全行 skip → 検査行数ガードが
+# rc=2 で fail fast することを検証する（silent false pass の遮断）。
+# データ行のみバッククォートを含むため、最初の "| `" を "| EXTRA | `" に置換する。
+awk_inplace "$d/plugins/rite/skills/reviewers/SKILL.md" '
+  /^## Reviewer Type Identifiers$/ { in_sec = 1 }
+  in_sec && /^## Trailing Section$/ { in_sec = 0 }
+  in_sec && /^\|.*`/ { sub(/\| `/, "| EXTRA | `") }
+  { print }
+'
+rc=0
+out=$(bash "$CHECKER" --all --quiet --repo-root "$d" 2>&1) || rc=$?
+if [ "$rc" -eq 2 ]; then
+  pass "TC-10: I3 row-count guard fails fast on column shift (no silent rc=0)"
+else
+  fail "TC-10: expected rc=2, got rc=$rc (I3 must not silently no-op on format change)"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+
+# --- TC-11: --repo-root without a value → rc=2 ---
+echo ""
+echo "=== TC-11: --repo-root with missing value → rc=2 (exit code contract) ==="
+rc=0
+bash "$CHECKER" --all --repo-root >/dev/null 2>&1 || rc=$?
+if [ "$rc" -eq 2 ]; then
+  pass "TC-11: bad args stay on exit 2 (not misclassified as drift rc=1)"
+else
+  fail "TC-11: expected rc=2 for --repo-root without value, got rc=$rc"
 fi
 
 # --- Summary ---

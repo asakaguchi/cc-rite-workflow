@@ -1210,7 +1210,7 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the flo
 {number_ref_output}
 ```
 
-These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, wiki-growth, gitignore-health, backlink-format, hardcoded-line-number, comment-journal, comment-line-ref, direct-gh-issue-create, orphan-reference-check, sh-cross-ref, bash-heaviness, projects-board-drift, or number-reference warnings/invocation errors.
+These appendices do NOT change the result pattern — `[lint:success]` remains the pattern even with drift, bang-backtick, doc-heavy-patterns-drift, reviewer-registry-drift, wiki-growth, gitignore-health, backlink-format, hardcoded-line-number, comment-journal, comment-line-ref, direct-gh-issue-create, orphan-reference-check, sh-cross-ref, bash-heaviness, projects-board-drift, or number-reference warnings/invocation errors.
 
 > **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
 

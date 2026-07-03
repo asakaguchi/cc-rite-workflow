@@ -74,7 +74,11 @@ log() { [ "$QUIET" -eq 1 ] || printf '%s\n' "$*" >&2; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --all) USE_ALL=1; shift ;;
-    --repo-root) REPO_ROOT="$2"; shift 2 ;;
+    --repo-root)
+      # Consume-before-validate would hit `set -u` unbound $2 and exit 1,
+      # misclassifying bad args as "drift detected" — keep bad args on exit 2.
+      [ $# -ge 2 ] || { echo "ERROR: --repo-root requires a value" >&2; usage >&2; exit 2; }
+      REPO_ROOT="$2"; shift 2 ;;
     --quiet) QUIET=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "ERROR: unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -217,17 +221,32 @@ report_diff "$WORK_DIR/available.set"   "Available Reviewers table" \
 
 # I3: reviewer_type slug consistency within each Type Identifiers row.
 # Columns: | reviewer_type | 日本語表示名 | Agent |  ->  $2=slug, $4=agent.
-slug_findings=$(extract_section_rows "Reviewer Type Identifiers" | awk -F'|' -v re="^${AGENT_RE}$" '
+# The positional parse silently no-ops if a table-format change (e.g. a column
+# inserted before Agent) shifts the agent token away from $4 — every row would
+# fail the regex filter, get skipped, and the check would false-pass with
+# exit 0. Count the rows that pass the filter and fail fast when the count
+# collapses, symmetric with the >= 10 set-extraction guard above.
+i3_out=$(extract_section_rows "Reviewer Type Identifiers" | awk -F'|' -v re="^${AGENT_RE}$" '
   {
     slug = $2; agent = $4
     gsub(/[[:space:]`]/, "", slug)
     gsub(/[[:space:]`]/, "", agent)
     if (agent !~ re) next   # header / separator rows carry no agent token
+    checked++
     expected = slug "-reviewer.md"
     if (expected != agent)
       printf "  - slug %s expects %s but Agent cell is %s\n", slug, expected, agent
   }
+  END { printf "I3_CHECKED=%d\n", checked }
 ')
+i3_checked=$(printf '%s\n' "$i3_out" | sed -n 's/^I3_CHECKED=//p')
+slug_findings=$(printf '%s\n' "$i3_out" | grep -v '^I3_CHECKED=' || true)
+if [ "${i3_checked:-0}" -lt 10 ]; then
+  echo "ERROR: I3 slug check evaluated only ${i3_checked:-0} rows (expected >= 10)" >&2
+  echo "  Likely cause: Type Identifiers table format changed (Agent cell no longer in column 4)" >&2
+  echo "  Recovery: inspect the I3 column positions in reviewer-registry-drift-check.sh" >&2
+  exit 2
+fi
 if [ -n "$slug_findings" ]; then
   echo "[reviewer-registry-drift] Type Identifiers slug/Agent mismatch:"
   printf '%s\n' "$slug_findings"

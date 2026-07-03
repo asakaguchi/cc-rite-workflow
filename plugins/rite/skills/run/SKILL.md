@@ -13,6 +13,7 @@ argument-hint: "[--merge] <issue_number>..."
 1 個以上の Issue に対して、**デフォルトでは** `/rite:open` → `/rite:iterate` を **順次・完全自律（無確認）で実行** して draft PR を残す（merge せずレビュー待ち）。`--merge` 指定時のみ `/rite:ready` → `/rite:merge` → `/rite:cleanup` まで完走する。やることは以下のシーケンシャルなタスク列:
 
 0. 引数の Issue 群とモード（`--merge` の有無）でキューを初期化 / 既存キューから再開（`.rite/state/run-queue.json`）
+0.5. **最初の `/rite:open` の前に 1 回だけ**着手前サマリを表示（対象件数・実行モード・件数ベースの目安時間・中断/再開方法）。確認は取らずそのままステップ 1 へ進む
 1. キュー先頭（cursor）の Issue を取り出す（既に CLOSED なら coarse スキップ）。残りが無ければ完了通知（ステップ 7）
 2. `/rite:open` を invoke → PR 番号とブランチ名を取得
 3. `/rite:iterate` を invoke → `[review:mergeable]` まで。**デフォルト（draft 止まり）はここで cursor を +1 してステップ 1 へループ**（ステップ 4-6 をスキップ）
@@ -47,7 +48,9 @@ argument-hint: "[--merge] <issue_number>..."
 |-------------|--------|
 | `{issue_numbers}` | 引数 `$ARGUMENTS`（`--merge` フラグ + 空白区切りの Issue 番号群。省略可） |
 | `{run_mode}` | ステップ 0 / 1 の `mode=` marker 値（`default` = draft 止まり / `merge` = フルパイプライン） |
+| `{summary_issues}` / `{summary_total}` / `{summary_remaining}` / `{summary_per_issue}` / `{summary_est_total}` | ステップ 0.5 の `RUN_SUMMARY` marker（`issues=` / `total=` / `remaining=` / `per_issue=` / `est_total=`。着手前サマリの表示に使う） |
 | `{current_issue}` | ステップ 1 の `RUN_NEXT=process; issue=` が指す Issue |
+| `{new_cursor}` / `{total}` | ステップ 6 の `RUN_ADVANCE` marker（`cursor=`（前進後のキューを進めた件数）/ `total=`。各 Issue の cursor 前進時の `✅ N/M 件処理済み` 進捗表示に使う。成功件数ではない） |
 | `{pr_number}` | ステップ 2 の open 完了通知（`[pr:created:N]`）から抽出 |
 | `{branch_name}` | ステップ 2 の open 完了通知「ブランチ: ...」行から抽出（ステップ 6 の cleanup に渡す） |
 | `{processed_issues}` | ステップ 7 bash の `processed=`（全完了 Issue 一覧） |
@@ -103,8 +106,67 @@ fi
 
 | `RUN_QUEUE` marker | アクション |
 |---|---|
-| `initialized` / `resume_match` / `resume_no_args` | `mode=` を `{run_mode}` として retain → ステップ 1 へ進む |
+| `initialized` / `resume_match` / `resume_no_args` | `mode=` を `{run_mode}` として retain → **ステップ 0.5（着手前サマリ）へ進む**（ステップ 0.5 が表示後にステップ 1 へ送る） |
 | `empty` | 引数もキューも無い。使い方 `/rite:run [--merge] <issue_number>...` を案内して終了 |
+
+> `RUN_QUEUE=empty` のときは本ステップ 0.5 に到達しない（サマリを出さずステップ 0 で終了する）。
+
+---
+
+## ステップ 0.5: 着手前サマリ表示（キュー確定直後・最初の open 前に 1 回）
+
+ステップ 0 でキューが確定したら、**最初の `/rite:open` を invoke する前に 1 回だけ**、処理サマリ（対象件数・実行モード・件数ベースの目安時間・中断/再開方法）をユーザーに提示する。「いつ終わるか分からないまま走り出す」体験を解消するのが目的（Issue #1703）。ステップ 1 のループ（cursor 前進 → ステップ 1 再入）は本サマリを再表示しない（本ステップはステップ 0 の直後に 1 回だけ通過する）。引数省略の再開時（`RUN_QUEUE=resume_no_args`）も、その run 呼び出しの最初の open 前に 1 回だけ表示する（残り件数を反映）。
+
+**AskUserQuestion は挟まない**（サマリは通知のみで、確認を取らず即座にステップ 1 へ進む。無確認自律の開始を妨げないため — Issue #1703 AC-3 / MUST NOT）。
+
+キューから件数・モード・残り件数を読み、件数ベースの粗い目安時間を算出して `RUN_SUMMARY` marker を emit する（目安時間は**正確な実行時間予測ではなく**件数ベースの粗い目安。1 Issue あたりの所要はレビュー往復回数・実装規模で大きく変動する — Issue #1703 Non-goal）:
+
+```bash
+state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
+queue_file="$state_root/.rite/state/run-queue.json"
+issues=$(jq -rc '.issues' "$queue_file")
+total=$(jq -r '.issues | length' "$queue_file")
+cursor=$(jq -r '.cursor // 0' "$queue_file")
+mode=$(jq -r '.mode // "default"' "$queue_file")
+remaining=$((total - cursor)); [ "$remaining" -lt 0 ] && remaining=0
+# 件数ベースの粗い目安（1 Issue あたりの所要レンジ・分）。モードで出し分ける
+# （merge はデフォルトの open→iterate に加え ready→merge→cleanup を回すぶん幅を広めに取る）
+if [ "$mode" = "merge" ]; then per_low=15; per_high=35; else per_low=10; per_high=25; fi
+est_low=$((remaining * per_low)); est_high=$((remaining * per_high))
+echo "[CONTEXT] RUN_SUMMARY; issues=$issues; total=$total; remaining=$remaining; cursor=$cursor; mode=$mode; per_issue=${per_low}-${per_high}min; est_total=${est_low}-${est_high}min"
+```
+
+`RUN_SUMMARY` marker の各フィールドをリテラル置換し、`mode=` で文言を出し分けてサマリを **1 回だけ**表示する。`cursor > 0`（再開）のときは対象件数に「残り {summary_remaining} 件」を併記する。
+
+**デフォルト（`mode=default`, draft 止まり）**:
+
+```
+## /rite:run 実行サマリ
+
+- 対象 Issue: {summary_total} 件 {summary_issues}（`cursor > 0` の再開時のみ「残り {summary_remaining} 件」を併記する。新規実行では併記しない）
+- 実行モード: draft 止まり（各 Issue を open→iterate まで自律処理し、**merge せず** draft PR をレビュー待ちで残します）
+- 目安時間: 1 Issue あたり約 {summary_per_issue}（件数ベースの粗い目安。レビュー往復・実装規模で変動）→ 合計約 {summary_est_total}
+- 中断/再開: 中断は Ctrl+C。中断後は個別 Issue を `/rite:resume <issue>`、残りキュー全体は引数省略の `/rite:run` で再開できます（run-queue.json に cursor とモードを永続化）
+
+このまま確認なしで最初の Issue の処理を開始します。
+```
+
+**`--merge`（`mode=merge`, フル完走）**:
+
+```
+## /rite:run 実行サマリ
+
+- 対象 Issue: {summary_total} 件 {summary_issues}（`cursor > 0` の再開時のみ「残り {summary_remaining} 件」を併記する。新規実行では併記しない）
+- 実行モード: フル完走（各 Issue を open→iterate→ready→merge→cleanup まで進め、**merge まで完走**します）
+- 目安時間: 1 Issue あたり約 {summary_per_issue}（件数ベースの粗い目安。レビュー往復・実装規模で変動）→ 合計約 {summary_est_total}
+- 中断/再開: 中断は Ctrl+C。中断後は個別 Issue を `/rite:resume <issue>`、残りキュー全体は引数省略の `/rite:run` で再開できます（run-queue.json に cursor とモード=merge を永続化）
+
+このまま確認なしで最初の Issue の処理を開始します。
+```
+
+表示後、AskUserQuestion を挟まずそのままステップ 1 へ進む。
+
+<!-- run orchestration: after emitting the summary, do NOT stop and do NOT ask — proceed directly to ステップ 1 (first issue). This summary is shown exactly once per run invocation, before the first open. -->
 
 ---
 
@@ -261,6 +323,8 @@ jq '.cursor += 1' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$qu
 new_cursor=$(jq -r '.cursor' "$queue_file"); total=$(jq -r '.issues | length' "$queue_file")
 echo "[CONTEXT] RUN_ADVANCE; cursor=$new_cursor; total=$total"
 ```
+
+上記 `RUN_ADVANCE` marker の `cursor=`（= キューを進めた件数）と `total=` を読み、`✅ {new_cursor}/{total} 件処理済み` の 1 行でユーザーに表示してから分岐する（ステップ 0.5 の着手前サマリと対になる進捗表示。バッチの見通しを保つため各 Issue の cursor 前進時に出す）。**この件数は「キューを進めた件数」であり成功件数ではない**: サーキットブレーカー（`[iterate:max-cycles-reached]`）で failed 記録した Issue や `[fix:replied-only]` で未解決指摘を残した Issue もこの前進 bash を通るため、成功／非収束の内訳（failed 含む）はステップ 7 の完了通知で報告する。
 
 `new_cursor < total` ならステップ 1 へ戻る（次の Issue を処理）。`new_cursor >= total` ならステップ 7 へ。
 

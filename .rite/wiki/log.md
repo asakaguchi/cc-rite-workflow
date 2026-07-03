@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-03T13:33:06+09:00 | ingest:create | pages/patterns/worktree-aware-git-state-detection.md | PR #1734 (Issue #1705) review を統合: worktree 運用の git 状態検出は .git 直書きせず git rev-parse --git-path で解決する。MERGE_HEAD/rebase-merge/rebase-apply は .git/worktrees/<name>/ 配下にあり直書きは取りこぼす。porcelain v1 unmerged 7 コード網羅・`[ -f ]&&yes||no` 安全性の補助知見を含む。0 blocking / 2 nit-noted で 1 cycle mergeable |
 | 2026-07-03T11:31:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 |
 | 2026-07-03T11:30:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1733 (Issue #1703) review×2/fix×1 を統合: skill の flat step 構造への新規ステップ挿入版。run/SKILL.md にステップ 0.5 を新設したが直前ステップ 0 の RUN_QUEUE routing table を未更新で新設 step を飛ばす制御フロー矛盾 (HIGH)。「新設ステップ挿入時は概要タスク列 / 直前 routing 表 / 本文セクションの 3 site 同期」を確立。3 cycle 収束 |
 | 2026-07-03T11:30:00+09:00 | ingest:create | pages/heuristics/status-display-truthful-for-all-reachable-paths.md | PR #1733 (Issue #1703) review/fix cycle2 を統合: 共有パスに置く進捗/status 表示は到達する全経路で真な文言にする。cursor 前進 bash が failed 記録経路・replied-only 未解決経路からも合流するのに ✅ N/M 件完了 と成功含意していた LOW-MEDIUM。「進めた件数(advanced)」と「成功件数(succeeded)」を区別し成功含意語を避ける |

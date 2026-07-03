@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-03T15:00:00+09:00 | ingest:create | pages/patterns/test-fixture-helper-parent-shell-cleanup-registration.md | PR #1735 (Issue #1719) fix+review を統合: path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う。$() 経由呼び出しで関数内 SANDBOXES+= が subshell に閉じ込められ trap cleanup が効かず /tmp リーク (HIGH, code-quality+error-handling の 2 reviewer 独立検出)。fixture 構築の && 連結 + rev-parse 検証・exit-code assertion の isolation (benign=0/trigger=1 差分) も併発。2 cycle 収束 |
 | 2026-07-03T13:37:32+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 |
 | 2026-07-03T13:33:06+09:00 | ingest:create | pages/patterns/worktree-aware-git-state-detection.md | PR #1734 (Issue #1705) review を統合: worktree 運用の git 状態検出は .git 直書きせず git rev-parse --git-path で解決する。MERGE_HEAD/rebase-merge/rebase-apply は .git/worktrees/<name>/ 配下にあり直書きは取りこぼす。porcelain v1 unmerged 7 コード網羅・`[ -f ]&&yes||no` 安全性の補助知見を含む。0 blocking / 2 nit-noted で 1 cycle mergeable |
 | 2026-07-03T11:31:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 |

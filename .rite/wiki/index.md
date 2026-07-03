@@ -174,9 +174,10 @@
 | [新規 helper は既存 sibling の安全規約に整合させる（trap・tree 解決・制御文字無害化）](pages/heuristics/new-helper-conform-to-sibling-safety-conventions.md) | heuristics | 新規 helper を書くとき、既存 sibling helper が確立した安全規約（signal trap での tempfile 回収 / strategy 依存の tree 解決 / 制御文字無害化 / 委譲先 stderr の素通し / summary の不変条件）へ整合させる。規約非対称は個別バグではなく複数 MEDIUM 指摘として段階的に surface する。PR #1731 で 3 cycle (5→2→0) の収束として実測。cd 前の `git rev-parse --show-toplevel` 捕捉、多バイト UTF-8 では codepoint 単位の制御文字無害化（json.dumps は C1 リテラル通過）の具体 gotcha を含む。 | 2026-07-03T00:42:39+00:00 | high |
 | [共有パスに置く進捗/status 表示は到達する全経路で真な文言にする（成功含意を避ける）](pages/heuristics/status-display-truthful-for-all-reachable-paths.md) | heuristics | 複数の実行経路が合流する共有コードパスに進捗カウンタや status 表示を置くときは、成功経路だけでなく到達する全経路で真な文言にする。「進めた件数(advanced)」と「成功件数(succeeded)」を区別し、✅ /「完了」等の成功含意語を非収束・失敗経路でも一律発火する表示に使わない。PR #1733 (Issue #1703) の /rite:run バッチ進捗表示で、cursor 前進 bash がサーキットブレーカー failed 記録経路・replied-only 未解決経路からも合流するのに ✅ N/M 件完了 と成功含意していた LOW-MEDIUM を実測。marker が収束状況を持たないなら表示は「前進した事実」に限定し、成否内訳は終端の完了通知に委ねる。 | 2026-07-03T11:30:00+09:00 | medium |
 | [worktree 運用の git 状態検出は .git 直書きせず git rev-parse --git-path で解決する](pages/patterns/worktree-aware-git-state-detection.md) | patterns | worktree では MERGE_HEAD / rebase-merge / rebase-apply が .git/worktrees/<name>/ 配下にあるため、.git 直書きパスは常に不在扱いになり merge/rebase 中断を取りこぼす。git rev-parse --git-path で per-worktree の実パスに解決してから存在判定するのが canonical。PR #1734 (Issue #1705) で /rite:resume のコンフリクト/rebase 検出実装として reviewer が実機検証。 | 2026-07-03T13:33:06+09:00 | high |
+| [path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う](pages/patterns/test-fixture-helper-parent-shell-cleanup-registration.md) | patterns | path を echo で返す fixture ヘルパーを $() コマンド置換で呼ぶと、関数内の cleanup 配列 push (SANDBOXES+= 等) が subshell に閉じ込められ親に届かず、trap cleanup が効かず /tmp にリークする。ヘルパーは path を echo するだけにし、登録は各呼び出し元（親シェル）で行う。PR #1735 (Issue #1719) で HIGH として 2 reviewer 独立検出、fixture 構築の && 連結 + rev-parse 検証・exit-code assertion の isolation も併発。 | 2026-07-03T06:00:00+09:00 | high |
 
 ## 統計
 
-- 総ページ数: 165
-- ドメイン別: patterns=57, heuristics=50, anti-patterns=56
-- 最終更新: 2026-07-03T13:33:06+09:00
+- 総ページ数: 166
+- ドメイン別: patterns=58, heuristics=50, anti-patterns=56
+- 最終更新: 2026-07-03T06:00:00+09:00

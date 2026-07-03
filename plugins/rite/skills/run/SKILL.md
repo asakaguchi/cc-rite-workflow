@@ -50,7 +50,7 @@ argument-hint: "[--merge] <issue_number>..."
 | `{run_mode}` | ステップ 0 / 1 の `mode=` marker 値（`default` = draft 止まり / `merge` = フルパイプライン） |
 | `{summary_issues}` / `{summary_total}` / `{summary_remaining}` / `{summary_per_issue}` / `{summary_est_total}` | ステップ 0.5 の `RUN_SUMMARY` marker（`issues=` / `total=` / `remaining=` / `per_issue=` / `est_total=`。着手前サマリの表示に使う） |
 | `{current_issue}` | ステップ 1 の `RUN_NEXT=process; issue=` が指す Issue |
-| `{new_cursor}` / `{total}` | ステップ 6 の `RUN_ADVANCE` marker（`cursor=`（前進後の完了済み件数）/ `total=`。各 Issue 完了時の `✅ N/M 件完了` 進捗表示に使う） |
+| `{new_cursor}` / `{total}` | ステップ 6 の `RUN_ADVANCE` marker（`cursor=`（前進後のキューを進めた件数）/ `total=`。各 Issue の cursor 前進時の `✅ N/M 件処理済み` 進捗表示に使う。成功件数ではない） |
 | `{pr_number}` | ステップ 2 の open 完了通知（`[pr:created:N]`）から抽出 |
 | `{branch_name}` | ステップ 2 の open 完了通知「ブランチ: ...」行から抽出（ステップ 6 の cleanup に渡す） |
 | `{processed_issues}` | ステップ 7 bash の `processed=`（全完了 Issue 一覧） |
@@ -324,7 +324,7 @@ new_cursor=$(jq -r '.cursor' "$queue_file"); total=$(jq -r '.issues | length' "$
 echo "[CONTEXT] RUN_ADVANCE; cursor=$new_cursor; total=$total"
 ```
 
-上記 `RUN_ADVANCE` marker の `cursor=`（= 完了済み件数）と `total=` を読み、この Issue の完了を `✅ {new_cursor}/{total} 件完了` の 1 行でユーザーに表示してから分岐する（ステップ 0.5 の着手前サマリと対になる進捗表示。バッチの見通しを保つため各 Issue 完了時に出す）。
+上記 `RUN_ADVANCE` marker の `cursor=`（= キューを進めた件数）と `total=` を読み、`✅ {new_cursor}/{total} 件処理済み` の 1 行でユーザーに表示してから分岐する（ステップ 0.5 の着手前サマリと対になる進捗表示。バッチの見通しを保つため各 Issue の cursor 前進時に出す）。**この件数は「キューを進めた件数」であり成功件数ではない**: サーキットブレーカー（`[iterate:max-cycles-reached]`）で failed 記録した Issue や `[fix:replied-only]` で未解決指摘を残した Issue もこの前進 bash を通るため、成功／非収束の内訳（failed 含む）はステップ 7 の完了通知で報告する。
 
 `new_cursor < total` ならステップ 1 へ戻る（次の Issue を処理）。`new_cursor >= total` ならステップ 7 へ。
 

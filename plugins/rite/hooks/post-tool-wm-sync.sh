@@ -37,9 +37,10 @@ CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
 # resolver would have found an active flow-state, one of these markers exists at
 # or above CWD, so the gate never skips real work. Parent-walk uses `${d%/*}`
 # (not dirname) to stay subprocess-free. Read-only: no marker is written
-# (Issue #1716 MUST NOT). A permission-denied ancestor makes `[ -e ]` false, but
-# that requires the repo root itself to be unreadable mid-workflow, where the
-# flow is already broken — the optimized path is the common non-rite one.
+# (Issue #1716 MUST NOT). A permission-denied ancestor makes the `[ -f ]` / `[ -d ]`
+# marker test false, but that requires the repo root itself to be unreadable
+# mid-workflow, where the flow is already broken — the optimized path is the
+# common non-rite one.
 _rite_gate_dir="$CWD"
 _rite_gate_found=0
 while : ; do
@@ -48,8 +49,15 @@ while : ; do
     break
   fi
   [ "$_rite_gate_dir" = "/" ] && break
-  _rite_gate_dir="${_rite_gate_dir%/*}"
-  [ -n "$_rite_gate_dir" ] || _rite_gate_dir="/"
+  _rite_gate_parent="${_rite_gate_dir%/*}"
+  # `${x%/*}` leaves a slashless segment unchanged — for a relative CWD (e.g.
+  # `a/b/c` reduced to `a`) there is no `/` to strip, so the value stops
+  # changing. Break on no-progress to avoid an infinite loop; an empty result
+  # means the segment sat directly under root, so continue from `/`. (The
+  # harness supplies an absolute .cwd in practice, but a relative one would
+  # otherwise spin forever here.)
+  [ "$_rite_gate_parent" = "$_rite_gate_dir" ] && break
+  _rite_gate_dir="${_rite_gate_parent:-/}"
 done
 [ "$_rite_gate_found" = "1" ] || exit 0
 

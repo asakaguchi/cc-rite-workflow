@@ -502,6 +502,28 @@ else
 fi
 echo ""
 
+# --- TC-EARLYEXIT-3: relative CWD terminates the gate walk (no infinite loop) ---
+# The upward-walk ascends via `${dir%/*}`, which leaves a slashless segment
+# (a relative .cwd like `reldir`) unchanged. Without the no-progress guard the
+# gate spins forever. The harness supplies an absolute .cwd in practice, but this
+# pins the guard. Run under `timeout`; a hang exits 124. Skip when `timeout` is
+# unavailable (e.g. macOS without coreutils) rather than fail spuriously.
+echo "TC-EARLYEXIT-3: relative CWD terminates the gate walk (no infinite loop)"
+dir_ee3="$TEST_DIR/tc_earlyexit3"
+mkdir -p "$dir_ee3/reldir"
+if command -v timeout >/dev/null 2>&1; then
+  rc_ee3=0
+  ( cd "$dir_ee3" && echo '{"tool_name": "Bash", "cwd": "reldir"}' | timeout 5 bash "$HOOK" >/dev/null 2>&1 ) || rc_ee3=$?
+  if [ "$rc_ee3" -ne 124 ]; then
+    pass "TC-EARLYEXIT-3 gate terminated for relative CWD (exit code: $rc_ee3, not a 124 timeout)"
+  else
+    fail "TC-EARLYEXIT-3 hook hung on relative CWD (timeout 124 — infinite-loop regression)"
+  fi
+else
+  pass "TC-EARLYEXIT-3 skipped: timeout(1) unavailable, termination not exercised"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

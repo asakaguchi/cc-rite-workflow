@@ -31,13 +31,16 @@ CHECK_SCRIPT="$SCRIPT_DIR/bang-backtick-check.sh"
 INPUT=$(cat 2>/dev/null) || INPUT=""
 [ -n "$INPUT" ] || exit 0
 
-# Extract tool_name, file_path and cwd in a single jq spawn via @tsv (was three
-# separate jq invocations — Issue #1716 AC-4). Empty JSON fields become empty
-# columns, which the tab-split below reads back as empty strings, so the same
-# `|| exit 0` fall-throughs still apply. jq failure yields an empty line → all
+# Extract tool_name, file_path and cwd in a single jq spawn (was three separate
+# jq invocations — Issue #1716 AC-4). Fields are joined on the unit separator
+# (\x1f, U+001F), not a tab: with `IFS=$'\t' read` a tab is IFS whitespace, so an
+# empty middle field (e.g. an event with no file_path) would collapse and
+# left-shift cwd into FILE_PATH. \x1f is non-whitespace, so `read` keeps empty
+# fields positional — the same convention the sibling post-tool-wm-sync.sh uses
+# and documents for exactly this hazard. jq failure yields an empty line → all
 # three variables empty → the tool-name filter below exits 0.
-IFS=$'\t' read -r TOOL_NAME FILE_PATH CWD <<< "$(
-  printf '%s' "$INPUT" | jq -r '[.tool_name // "", .tool_input.file_path // "", .cwd // ""] | @tsv' 2>/dev/null
+IFS=$'\x1f' read -r TOOL_NAME FILE_PATH CWD <<< "$(
+  printf '%s' "$INPUT" | jq -r '[.tool_name // "", .tool_input.file_path // "", .cwd // ""] | join("\u001f")' 2>/dev/null
 )"
 
 # Filter on tool name. PostToolUse hooks.json uses matcher "Edit|Write" so

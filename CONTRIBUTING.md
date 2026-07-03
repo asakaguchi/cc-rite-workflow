@@ -242,7 +242,7 @@ echo "Results: $PASS passed, $FAIL failed"
 4. Clean up with `trap cleanup EXIT`
 5. Exit with code 1 if any test fails
 
-The test runner (`run-tests.sh`) automatically discovers all `*.test.sh` files and reports aggregate results.
+The test runner (`run-tests.sh`) automatically discovers all `*.test.sh` files in `plugins/rite/hooks/tests/` plus the `test-*.sh` files in `plugins/rite/hooks/scripts/tests/`, and reports aggregate results.
 
 ## Worktree Workflow
 

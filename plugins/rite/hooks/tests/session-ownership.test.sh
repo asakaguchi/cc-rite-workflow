@@ -296,9 +296,10 @@ echo ""
 # without RITE_DEBUG.
 echo "TC-CORRUPT-01: extract_session_id WARNING fires without RITE_DEBUG"
 unset RITE_DEBUG
-out_stdout=$(extract_session_id 'not-json-corrupt-{{{' 2>/tmp/rite-corrupt01-stderr)
-out_stderr=$(cat /tmp/rite-corrupt01-stderr 2>/dev/null)
-rm -f /tmp/rite-corrupt01-stderr
+# Capture stderr under the per-run TEST_DIR (mktemp -d, trap-cleaned) instead of
+# a fixed /tmp path — the latter collides across concurrent runs and needs manual rm.
+out_stdout=$(extract_session_id 'not-json-corrupt-{{{' 2>"$TEST_DIR/corrupt01-stderr")
+out_stderr=$(cat "$TEST_DIR/corrupt01-stderr" 2>/dev/null)
 if printf '%s' "$out_stderr" | grep -qE 'WARNING: extract_session_id: jq parse failed.*rc='; then
   pass "TC-CORRUPT-01 WARNING emitted with rc capture"
 else
@@ -316,9 +317,8 @@ unset RITE_DEBUG
 corrupt_state="$TEST_DIR/corrupt-state.json"
 mkdir -p "$TEST_DIR"
 printf '{ not valid json' > "$corrupt_state"
-out_stdout=$(get_state_session_id "$corrupt_state" 2>/tmp/rite-corrupt02-stderr)
-out_stderr=$(cat /tmp/rite-corrupt02-stderr 2>/dev/null)
-rm -f /tmp/rite-corrupt02-stderr
+out_stdout=$(get_state_session_id "$corrupt_state" 2>"$TEST_DIR/corrupt02-stderr")
+out_stderr=$(cat "$TEST_DIR/corrupt02-stderr" 2>/dev/null)
 if printf '%s' "$out_stderr" | grep -qE 'WARNING: get_state_session_id: jq parse failed.*rc='; then
   pass "TC-CORRUPT-02 WARNING emitted with rc capture"
 else

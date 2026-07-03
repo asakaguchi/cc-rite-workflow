@@ -18,6 +18,35 @@ source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
 # Stale lock threshold in seconds (default: 120s for compact, 300s for issue)
 WM_LOCK_STALE_THRESHOLD="${WM_LOCK_STALE_THRESHOLD:-120}"
 
+# Process start-token: a value that changes when a PID is recycled by a new
+# process, so `kill -0` alone (which cannot tell the original holder from an
+# unrelated process that reused its PID) can be disambiguated. Linux uses the
+# monotonic starttime (field 22 of /proc/<pid>/stat, never reused within a boot);
+# BSD/macOS falls back to `ps -o lstart=` (absolute start time). Empty when
+# neither source is available — callers then degrade to the legacy PID-only check.
+_proc_start_token() {
+  local pid="$1" tok="" rest
+  if [ -r "/proc/$pid/stat" ]; then
+    # comm (field 2) is parenthesized and may contain spaces / ')', so strip
+    # through the LAST ') ' before counting: state becomes field 1, starttime 20.
+    rest=$(sed 's/.*) //' "/proc/$pid/stat" 2>/dev/null) || rest=""
+    [ -n "$rest" ] && tok=$(printf '%s\n' "$rest" | awk '{print $20}')
+  fi
+  if [ -z "$tok" ]; then
+    tok=$(ps -o lstart= -p "$pid" 2>/dev/null | tr -s ' ' '_')
+  fi
+  printf '%s' "$tok"
+}
+
+# Record the current process's PID + start-token into the lockdir. `pid` stays
+# purely numeric (backward compatible with readers / older versions); the token
+# lives in a separate `pid_token` file so its absence signals a legacy lock.
+_write_pid_record() {
+  local lockdir="$1"
+  echo $$ > "$lockdir/pid" 2>/dev/null || true
+  _proc_start_token "$$" > "$lockdir/pid_token" 2>/dev/null || true
+}
+
 acquire_wm_lock() {
   local lockdir="$1"
   local timeout="${2:-50}"  # 50 iterations * 100ms = 5 seconds
@@ -56,15 +85,32 @@ acquire_wm_lock() {
             local lock_pid
             lock_pid=$(head -c 20 "$lockdir/pid" 2>/dev/null) || lock_pid=""
             if [ -n "$lock_pid" ] && [[ "$lock_pid" =~ ^[0-9]+$ ]] && kill -0 "$lock_pid" 2>/dev/null; then
-              # Process still running — lock is not stale, give up
-              return 1
+              # PID is alive — but a dead holder's PID may have been RECYCLED by an
+              # unrelated process, in which case `kill -0` succeeds for the wrong
+              # process and we would wrongly keep an abandoned lock forever. Compare
+              # the recorded start-token against the live process's current token:
+              # a mismatch means PID reuse → the original holder is gone → stale.
+              if [ -f "$lockdir/pid_token" ]; then
+                local stored_token cur_token
+                stored_token=$(head -c 100 "$lockdir/pid_token" 2>/dev/null) || stored_token=""
+                cur_token=$(_proc_start_token "$lock_pid")
+                if [ -n "$stored_token" ] && [ -n "$cur_token" ] && [ "$stored_token" != "$cur_token" ]; then
+                  : # PID reused by a different process → fall through to reclaim
+                else
+                  return 1  # same live holder (or token unverifiable) — not stale
+                fi
+              else
+                # Legacy lock without a token file: reuse is undetectable, so stay
+                # conservative and treat the live PID as the genuine holder.
+                return 1
+              fi
             fi
           fi
-          # Stale lock — remove pid file and directory, then retry once
-          rm -f "$lockdir/pid" 2>/dev/null || true
+          # Stale lock — remove pid + token files and directory, then retry once
+          rm -f "$lockdir/pid" "$lockdir/pid_token" 2>/dev/null || true
           rmdir "$lockdir" 2>/dev/null || rm -rf "$lockdir" 2>/dev/null || true
           if mkdir "$lockdir" 2>/dev/null; then
-            echo $$ > "$lockdir/pid" 2>/dev/null || true
+            _write_pid_record "$lockdir"
             return 0
           fi
         fi
@@ -73,13 +119,13 @@ acquire_wm_lock() {
     fi
     sleep 0.1
   done
-  echo $$ > "$lockdir/pid" 2>/dev/null || true
+  _write_pid_record "$lockdir"
   return 0
 }
 
 release_wm_lock() {
   local lockdir="$1"
-  rm -f "$lockdir/pid" 2>/dev/null || true
+  rm -f "$lockdir/pid" "$lockdir/pid_token" 2>/dev/null || true
   rmdir "$lockdir" 2>/dev/null || rm -rf "$lockdir" 2>/dev/null || true
 }
 

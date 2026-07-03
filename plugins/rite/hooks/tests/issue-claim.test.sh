@@ -7,6 +7,8 @@
 #   AC-3: release removes only the OWN claim; another session's is untouched
 #   AC-4: release on an absent claim is idempotent (success)
 #   plus: free check, stale-steal, corrupt-claim → stale, live-other refusal (rc 10)
+#   Issue #1718: concurrent stale-STEAL CAS (TC-14, exactly one wins) + lone-steal
+#                non-regression (TC-15)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -120,5 +122,42 @@ assert "TC-13 env-absent claim holder resolved via file sid (SID_B)" \
 assert "TC-13 env-absent check own (resolver returned file sid SID_B == holder)" \
   "own" "$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$IC" check --issue 711)"
 
+echo "=== TC-14 (Issue #1718 AC-1): concurrent stale-STEAL → exactly one 'claimed' ==="
+# TC-11 covers concurrent claim of a FREE issue (noclobber). This covers the
+# separate stale-STEAL path: N sessions all classify the SAME stale claim as
+# reclaimable out-of-lock, then race to overwrite it. Without the in-lock CAS
+# (_atomic_claim_steal), flock only serializes the mv and BOTH would "steal"
+# (double-commit). The CAS re-verifies the holder under the lock so exactly one
+# wins; the losers see the holder already swapped and abort with "other" (rc 10).
+SID_STALE="cccccccc-9999-8888-7777-666666666666"
+mk_active "$SID_STALE" 950
+assert "TC-14 stale-holder claims first" "claimed" "$(claim "$SID_STALE" 950)"
+bash "$FS" deactivate --session "$SID_STALE" --next done >/dev/null 2>&1  # holder now inactive → stale
+assert "TC-14 precondition: holder classified stale" "stale" "$(check "$SID_A" 950)"
+rm -f "$ROOT"/stealout.* 2>/dev/null || true
+for i in 1 2 3 4 5; do mk_active "d000000$i-1111-2222-3333-444444444444" 950; done
+for i in 1 2 3 4 5; do
+  ( bash "$IC" claim --session "d000000$i-1111-2222-3333-444444444444" --issue 950 > "$ROOT/stealout.$i" 2>/dev/null ) &
+done
+wait
+_stolen=0; _other=0
+for i in 1 2 3 4 5; do
+  case "$(cat "$ROOT/stealout.$i" 2>/dev/null)" in
+    claimed) _stolen=$((_stolen+1)) ;;
+    other)   _other=$((_other+1)) ;;
+  esac
+done
+assert "TC-14 exactly one stole the stale claim (AC-1)" "1" "$_stolen"
+assert "TC-14 the other four aborted with 'other'" "4" "$_other"
+
+echo "=== TC-15 (Issue #1718 AC-2): single-session stale-steal is non-regressed ==="
+# The CAS path must still let a lone stealer succeed (holder unchanged == expected).
+SID_STALE2="eeeeeeee-1010-1010-1010-101010101010"
+mk_active "$SID_STALE2" 951
+claim "$SID_STALE2" 951 >/dev/null 2>&1
+bash "$FS" deactivate --session "$SID_STALE2" --next done >/dev/null 2>&1
+assert "TC-15 lone steal → claimed" "claimed" "$(claim "$SID_A" 951)"
+assert "TC-15 holder now A" "$SID_A" "$(jq -r .session_id "$ROOT/.rite/state/issue-claims/issue-951.json")"
+
 print_summary "$(basename "$0")" \
-  "Drift hint: issue-claim.sh §7 — claim/release/check; liveness reuses session-ownership.sh 2h threshold + parse_iso8601_to_epoch; noclobber + flock atomicity; _resolve_current_session_id env-first (Issue #1530)."
+  "Drift hint: issue-claim.sh §7 — claim/release/check; liveness reuses session-ownership.sh 2h threshold + parse_iso8601_to_epoch; noclobber + flock atomicity; stale-steal CAS via _atomic_claim_steal (Issue #1718); _resolve_current_session_id env-first (Issue #1530)."

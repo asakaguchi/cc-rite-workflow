@@ -1232,7 +1232,7 @@ Shared library script providing `mkdir`-based lock/unlock functionality. Used by
 
 **Stale Lock Detection:**
 
-If a lock's `mtime` exceeds the threshold (default: 120 seconds), the PID file is checked to verify process liveness. If the process has terminated, the lock is automatically released.
+If a lock's `mtime` exceeds the threshold (default: 120 seconds), the PID file is checked to verify process liveness. Liveness compares both the PID (`kill -0`) and a recorded process start-token, so an exited holder whose PID was later recycled by an unrelated process is still detected as gone. If the process has terminated (or its PID was reused), the lock is automatically released.
 
 ### Phase Transition Whitelist (retired)
 

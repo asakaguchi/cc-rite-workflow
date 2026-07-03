@@ -151,6 +151,16 @@ if [ -z "$INPUT_JSON" ]; then
   exit 1
 fi
 
+# Validate JSON parseability before eval'ing extracted fields — symmetric with
+# projects-status-update.sh. `@sh` escaping already prevents injection, but a
+# malformed payload would otherwise reach `eval` with every field defaulted to
+# empty, silently producing a bogus issue instead of failing loud here.
+if ! printf '%s\n' "$INPUT_JSON" | jq -e . >/dev/null 2>&1; then
+  add_warning "Invalid JSON argument"
+  output_result "" 0 "" "" "failed"
+  exit 1
+fi
+
 # Extract all fields in a single jq invocation (1 subprocess instead of 13)
 eval "$(printf '%s\n' "$INPUT_JSON" | jq -r '
   @sh "TITLE=\(.issue.title // "")",

@@ -251,6 +251,79 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-014 (Issue #1718): PID reuse — alive PID but mismatched start-token → stale
+# --------------------------------------------------------------------------
+# Simulates the classic PID-reuse race: the original holder died and its PID was
+# recycled by an unrelated (live) process. `kill -0` alone would wrongly keep the
+# abandoned lock forever; the start-token stored by the dead holder no longer
+# matches the live process's token, so the lock must be reclaimed.
+echo "TC-014: PID reuse (alive PID, mismatched start-token) is treated as stale"
+lockdir="$TEST_DIR/tc014.lock"
+mkdir -p "$lockdir"
+echo "$$" > "$lockdir/pid"                                # PID $$ is alive...
+echo "STALE_TOKEN_OF_DEAD_HOLDER" > "$lockdir/pid_token"  # ...but this token is the dead holder's
+touch -t "$(date -u -d '5 minutes ago' +'%Y%m%d%H%M' 2>/dev/null || date -u -v-5M +'%Y%m%d%H%M')" "$lockdir" 2>/dev/null || true
+WM_LOCK_STALE_THRESHOLD=1
+if acquire_wm_lock "$lockdir" 2; then
+  pass "PID reuse detected via token mismatch → stale lock reclaimed"
+  release_wm_lock "$lockdir"
+else
+  fail "Should reclaim: alive PID with mismatched token means the original holder is gone"
+  rm -rf "$lockdir"
+fi
+WM_LOCK_STALE_THRESHOLD="$DEFAULT_WM_LOCK_STALE_THRESHOLD"
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-015 (Issue #1718): alive PID with MATCHING token is NOT reclaimed
+# --------------------------------------------------------------------------
+# Guards against a false positive: a genuinely-held lock (same live process, same
+# token) must survive even past the stale mtime threshold.
+echo "TC-015: alive PID with matching start-token is NOT reclaimed"
+lockdir="$TEST_DIR/tc015.lock"
+mkdir -p "$lockdir"
+echo "$$" > "$lockdir/pid"
+_proc_start_token "$$" > "$lockdir/pid_token"   # the REAL token of this live process
+token_probe=$(_proc_start_token "$$")
+touch -t "$(date -u -d '5 minutes ago' +'%Y%m%d%H%M' 2>/dev/null || date -u -v-5M +'%Y%m%d%H%M')" "$lockdir" 2>/dev/null || true
+WM_LOCK_STALE_THRESHOLD=1
+if [ -z "$token_probe" ]; then
+  # No /proc and no usable ps on this platform → token unverifiable; the code
+  # degrades to the legacy PID-only conservative hold, which TC-010 already covers.
+  pass "start-token unavailable on this platform → skip (legacy behavior covered by TC-010)"
+elif acquire_wm_lock "$lockdir" 2; then
+  fail "Should NOT reclaim: matching token means the same live process still holds it"
+  release_wm_lock "$lockdir"
+else
+  pass "Matching token → genuine live holder → lock preserved"
+  rm -rf "$lockdir"
+fi
+WM_LOCK_STALE_THRESHOLD="$DEFAULT_WM_LOCK_STALE_THRESHOLD"
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-016 (Issue #1718): acquire writes numeric pid + pid_token; release removes both
+# --------------------------------------------------------------------------
+echo "TC-016: acquire writes numeric pid + pid_token file; release removes both"
+lockdir="$TEST_DIR/tc016.lock"
+acquire_wm_lock "$lockdir"
+_ok=1
+{ [ -f "$lockdir/pid" ] && [[ "$(cat "$lockdir/pid")" =~ ^[0-9]+$ ]]; } || _ok=0
+[ -f "$lockdir/pid_token" ] || _ok=0
+if [ "$_ok" -eq 1 ]; then
+  pass "pid (numeric) + pid_token both written on acquire"
+else
+  fail "expected numeric pid and a pid_token file after acquire"
+fi
+release_wm_lock "$lockdir"
+if [ ! -f "$lockdir/pid" ] && [ ! -f "$lockdir/pid_token" ]; then
+  pass "release removed both pid and pid_token"
+else
+  fail "release left pid/pid_token behind"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

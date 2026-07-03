@@ -193,7 +193,7 @@ multi_session:
 
 | サブコマンド | stdout | exit code | 挙動 |
 |---|---|---|---|
-| `claim` | `claimed` / `own` / `other` | `0`（claimed/own/stale-steal）/ `10`（other=live）/ `1`（usage/env エラー） | free→noclobber 取得 / own→冪等 refresh / stale→flock 奪取 / **other(live)→取得せず rc 10**（呼び出し側が AskUserQuestion） |
+| `claim` | `claimed` / `own` / `other` | `0`（claimed/own/stale-steal）/ `10`（other=live または stale-steal の CAS 中止）/ `1`（usage/env エラー） | free→noclobber 取得 / own→冪等 refresh / stale→flock 内 CAS 再検証付き奪取（並行奪取の敗者・ロック内で live に転じた holder は奪取せず `other` rc 10）/ **other(live)→取得せず rc 10**（呼び出し側が AskUserQuestion） |
 | `release` | `released` / `skipped` | `0`（冪等。不在でも `released`）/ `1` | 自セッションの claim のみ削除。他セッション保持時は `skipped`（触らない） |
 | `check` | `own` / `free` / `other` / `stale` | `0` | 読み取りのみ。corrupt/空 holder は `stale`（再取得可能） |
 

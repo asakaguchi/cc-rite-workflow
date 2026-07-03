@@ -35,9 +35,10 @@
 #   fabricate) and left untouched.
 #
 # The `skip_reason` value is emitted via `python3 json.dumps(..., ensure_ascii=
-# False)`. A JSON string literal is a valid YAML double-quoted scalar, so this is
-# a bullet-proof encoder for arbitrary reason prose (embedded `"`, `\`, `#`, `:`,
-# backticks) and matches the double-quoted style ingest.md already writes.
+# False)` after neutralizing control codepoints (C0/DEL/C1 -> "?"; see yaml_encode).
+# With control chars removed, a JSON string literal is a valid YAML double-quoted
+# scalar, so this is a bullet-proof encoder for arbitrary reason prose (embedded
+# `"`, `\`, `#`, `:`, backticks) and matches the double-quoted style ingest.md writes.
 #
 # Branch strategy:
 #   separate_branch — edits files in the `.rite/wiki-worktree` worktree (checked
@@ -75,8 +76,6 @@
 set -uo pipefail
 
 _SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../control-char-neutralize.sh
-source "$_SCRIPT_DIR/../control-char-neutralize.sh"
 # shellcheck source=lib/wiki-config.sh
 source "$_SCRIPT_DIR/lib/wiki-config.sh"
 
@@ -106,6 +105,12 @@ if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
   echo "ERROR: not inside a git repository" >&2
   exit 1
 fi
+
+# Capture the invocation tree (the current worktree) BEFORE cd-ing to the shared
+# state root below. For same_branch the wiki lives in THIS tree, which from a
+# linked worktree session is the session worktree — resolving it after the cd
+# would always collapse to the state root and defeat the branch (F-02).
+INVOKE_TREE="$(git rev-parse --show-toplevel 2>/dev/null)" || INVOKE_TREE=""
 
 # Resolve to the SHARED state root (main checkout) so `.rite/wiki-worktree`
 # resolves identically from a linked worktree session (mirrors
@@ -139,14 +144,12 @@ branch_strategy=$(parse_wiki_scalar branch_strategy)
 case "$branch_strategy" in
   same_branch)
     # same_branch keeps the wiki in the CURRENT tree (the checked-out branch).
-    # From a linked worktree session the current tree is the session worktree, NOT
-    # the shared state root — so resolve it from `git rev-parse --show-toplevel`
-    # unless the caller pinned it with --repo-root.
+    # From a linked worktree session that is the session worktree captured in
+    # INVOKE_TREE (before the cd), NOT the shared state root. --repo-root overrides.
     if [ "$REPO_ROOT_EXPLICIT" -eq 1 ]; then
       WIKI_DIR="$REPO_ROOT/.rite/wiki"
     else
-      current_tree="$(git rev-parse --show-toplevel 2>/dev/null)" || current_tree="$REPO_ROOT"
-      WIKI_DIR="$current_tree/.rite/wiki"
+      WIKI_DIR="${INVOKE_TREE:-$REPO_ROOT}/.rite/wiki"
     fi
     ;;
   separate_branch)
@@ -219,10 +222,22 @@ extract_skip_reason() {
 }
 
 # ---- yaml_encode: STDIN reason text -> valid YAML double-quoted scalar -------
-# A JSON string literal is a valid YAML flow scalar; json.dumps handles all
-# escaping (`"`, `\`, control chars) and preserves non-ASCII verbatim.
+# Decode STDIN as UTF-8 (invalid bytes -> U+FFFD, locale-independent), replace all
+# control codepoints — C0 (<0x20), DEL (0x7f), and C1 (0x80-0x9f) — with "?", then
+# json.dumps. Neutralizing at the *codepoint* level (not byte-wise) closes the
+# 8-bit C1 / CSI (0x9b) path — which json.dumps would otherwise pass through
+# literally, breaking the "valid YAML c-printable scalar" invariant — while
+# leaving Japanese (U+3000+) untouched. A JSON string literal is then a valid YAML
+# double-quoted scalar, matching the double-quoted style ingest.md writes.
 yaml_encode() {
-  python3 -c 'import json,sys; sys.stdout.write(json.dumps(sys.stdin.read(), ensure_ascii=False))'
+  python3 -c '
+import json, sys
+t = sys.stdin.buffer.read().decode("utf-8", "replace")
+def _san(c):
+    o = ord(c)
+    return "?" if (o < 0x20 or o == 0x7f or (0x80 <= o <= 0x9f)) else c
+sys.stdout.write(json.dumps("".join(_san(c) for c in t), ensure_ascii=False))
+'
 }
 
 backfilled=0
@@ -276,13 +291,8 @@ while IFS= read -r file; do
     echo "WARNING: no ingest:skip entry in log.md for $rel — left untouched (reason は捏造しない)" >&2
     continue
   fi
-  # Neutralize C0 control chars + DEL (0x7f) so they never reach the frontmatter.
-  # `--c0-only` is deliberate: the default mode also strips 0x80-0x9f byte-wise,
-  # which would corrupt the reason's Japanese UTF-8 (its continuation bytes fall in
-  # that range). --c0-only is the documented "preserve UTF-8 body, JSON use" mode
-  # (control-char-neutralize.sh). This also makes the sourced helper non-dead.
-  reason=$(printf '%s' "$reason" | neutralize_ctrl --c0-only)
-
+  # yaml_encode neutralizes control codepoints (C0/DEL/C1) itself, so no bash-side
+  # pre-pass is needed here.
   reason_json=$(printf '%s' "$reason" | yaml_encode)
   if [ -z "$reason_json" ]; then
     encode_failed=$((encode_failed+1))

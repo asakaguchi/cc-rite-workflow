@@ -37,12 +37,16 @@ argument-hint: ""
 | `{base_branch}` | Phase 3.2: `rite-config.yml` の `branch.base` (default `develop`) |
 | `{git_commit_count}` | Phase 3.2: `git rev-list --count origin/{base_branch}..HEAD` |
 | `{git_has_uncommitted}` | Phase 3.2: `git status --porcelain` の非空判定 (サマリでは「あり」/「なし」整形) |
+| `{git_conflict_files}` | Phase 3.2: `[CONTEXT] GIT_CONFLICT_FILES` marker (`git status --porcelain` の unmerged マーカー UU/AA/DD 等のファイル一覧、カンマ区切り)。Phase 3.4.5 のコンフリクト優先判定に使用 |
+| `{git_in_merge}` | Phase 3.2: `[CONTEXT] GIT_IN_MERGE` marker (`git rev-parse --git-path MERGE_HEAD` の存在判定 = merge 解決待ち) |
+| `{git_in_rebase}` | Phase 3.2: `[CONTEXT] GIT_IN_REBASE` marker (`git rev-parse --git-path rebase-merge`/`rebase-apply` の存在判定 = rebase 中断) |
 | `{state_next}` | Phase 3.1: `[CONTEXT] STATE_NEXT` marker (flow-state `next_action`) |
 | `{state_parent}` | Phase 3.1: `[CONTEXT] STATE_PARENT` marker (flow-state `parent_issue_number`) |
 | `{state_parent_display}` | Phase 3.1: `[CONTEXT] STATE_PARENT_DISPLAY` marker (`0`/空 → 「なし」、それ以外 → `#NN` 整形) |
 | `{pr_number}` | Phase 3.3: `gh pr view` の `.number` (Phase 3.1 `[CONTEXT] STATE_PR` も参照可) |
 | `{pr_state}` | Phase 3.3: `gh pr view` の `.state` (NONE/OPEN/MERGED/CLOSED) |
 | `{pr_is_draft}` | Phase 3.3: `gh pr view` の `.isDraft` |
+| `{pr_mergeable}` | Phase 3.3: `[CONTEXT] PR_MERGEABLE` marker (`gh pr view` の `.mergeable`: MERGEABLE/CONFLICTING/UNKNOWN)。Phase 3.4.5 で CONFLICTING をコンフリクト状態として扱う |
 | `{wm_next}` | Phase 3.4: work memory (`.rite-work-memory/issue-{n}.md`) の `next_action:` |
 | `{resolved_phase}` | Phase 3.5: cross-check 確定 phase (`[CONTEXT] RESOLVED_PHASE` marker)。Phase 4.2 で user が phase 変更を選んだ場合は `[CONTEXT] FINAL_PHASE` marker を優先 |
 | `{type}` / `{slug}` | ブランチ名 `{type}/issue-{number}-{slug}` の構成要素 |
@@ -187,15 +191,33 @@ base_branch="develop"
 git fetch origin "$base_branch" >/dev/null 2>&1 || true
 git_commit_count=$(git rev-list --count "origin/${base_branch}..HEAD" 2>/dev/null || echo "0")
 git_has_uncommitted=$(git status --porcelain 2>/dev/null | head -1)
+
+# コンフリクト / rebase 状態検出 (#1705): Phase 3.4.5 が phase 推定より優先させる signal。
+# worktree 運用でも正しい作業ツリーを判定するため .git/... を直書きせず git rev-parse --git-path で
+# 解決する (worktree の MERGE_HEAD / rebase 状態は .git/worktrees/<name>/ 配下にあり、直書きは常に
+# 不在扱いとなって merge/rebase 中断を取りこぼす)。
+git_conflict_files=$(git status --porcelain 2>/dev/null | grep -E '^(DD|AU|UD|UA|DU|AA|UU) ' | cut -c4- | paste -sd, -)
+[ -f "$(git rev-parse --git-path MERGE_HEAD 2>/dev/null)" ] && git_in_merge=yes || git_in_merge=no
+if [ -d "$(git rev-parse --git-path rebase-merge 2>/dev/null)" ] || [ -d "$(git rev-parse --git-path rebase-apply 2>/dev/null)" ]; then
+  git_in_rebase=yes
+else
+  git_in_rebase=no
+fi
+echo "[CONTEXT] GIT_CONFLICT_FILES=$git_conflict_files"
+echo "[CONTEXT] GIT_IN_MERGE=$git_in_merge"
+echo "[CONTEXT] GIT_IN_REBASE=$git_in_rebase"
 ```
 
 ### 3.3 PR 状態取得
 
 ```bash
-pr_info=$(gh pr view --json state,number,isDraft 2>/dev/null || echo '{"state":"NONE","number":0,"isDraft":false}')
+pr_info=$(gh pr view --json state,number,isDraft,mergeable 2>/dev/null || echo '{"state":"NONE","number":0,"isDraft":false,"mergeable":"UNKNOWN"}')
 pr_state=$(echo "$pr_info" | jq -r '.state // "NONE"')
 pr_number_gh=$(echo "$pr_info" | jq -r '.number // 0')
 pr_is_draft=$(echo "$pr_info" | jq -r '.isDraft // false')
+# mergeable=CONFLICTING は Phase 3.4.5 のコンフリクト優先判定に使う (base ブランチとの衝突)。
+pr_mergeable=$(echo "$pr_info" | jq -r '.mergeable // "UNKNOWN"')
+echo "[CONTEXT] PR_MERGEABLE=$pr_mergeable"
 ```
 
 ### 3.4 Work Memory 状態取得
@@ -209,6 +231,38 @@ if [ -f "$LOCAL_WM" ]; then
   wm_next=$(grep "^next_action:" "$LOCAL_WM" 2>/dev/null | head -1 | sed 's/next_action: *//' | tr -d '"')
 fi
 ```
+
+### 3.4.5 コンフリクト / rebase 状態の優先判定 (#1705)
+
+Phase 3.2 の `[CONTEXT] GIT_CONFLICT_FILES` / `GIT_IN_MERGE` / `GIT_IN_REBASE` marker と Phase 3.3 の `PR_MERGEABLE` marker を読み、**いずれかがコンフリクト / rebase 中断を示す場合は、Phase 3.5 の phase 推定より本判定を優先する**。コンフリクトマーカーが残ったまま generic な「実装途中」扱いで復帰し、未解決の変更を上書きコミットへ誘導される事故を防ぐのが本判定の目的（マーカーの検出は git 実態からの読み取りで完結するため flow-state schema の変更は不要）。
+
+**判定条件（OR、いずれか成立でコンフリクト状態）**:
+
+| signal | 条件 | 意味 |
+|---|---|---|
+| `GIT_IN_MERGE` | `=yes`（`MERGE_HEAD` 存在） | merge 解決待ちの中断状態 |
+| `GIT_IN_REBASE` | `=yes`（`rebase-merge` / `rebase-apply` 存在） | rebase 中断状態 |
+| `GIT_CONFLICT_FILES` | 非空（`git status --porcelain` の unmerged マーカー `UU`/`AA`/`DD`/`AU`/`UA`/`DU`/`UD`） | コンフリクトファイルが残存 |
+| `PR_MERGEABLE` | `=CONFLICTING` | PR がベースブランチとコンフリクト |
+
+いずれか成立時は、Phase 3.5 の cross-check へ進む**前に**以下を提示する:
+
+```
+⚠️ コンフリクト / rebase 中断を検出しました:
+  - Merge 解決待ち (MERGE_HEAD): {GIT_IN_MERGE}
+  - Rebase 中断 (rebase-merge/apply): {GIT_IN_REBASE}
+  - コンフリクトファイル: {GIT_CONFLICT_FILES: 一覧 or "なし"}
+  - PR mergeable: {PR_MERGEABLE}
+
+コンフリクトマーカーが残ったまま実装 phase を継続すると、未解決の変更を上書きコミットする恐れがあります。
+```
+
+続けて AskUserQuestion で以下を提示する（rite は**コンフリクトを自動解消・自動コミットしない** — 本 Issue の Non-goal）:
+
+- **解消してから継続（推奨）** — ユーザーがコンフリクトを手動解消（`git` の merge/rebase 続行 or `--abort`）した後、`/rite:resume {issue_arg}` を再実行する旨を案内していったん終了する。解消により上記 signal が消えれば、再実行時は本判定を通過して従来の cross-check に進む
+- **中止** — 何もせず終了する
+
+非コンフリクト時（上記 4 条件すべて不成立）は本判定を skip し、Phase 3.5 の従来 4 指標クロスチェックへそのまま進む（AC-3: 非干渉）。
 
 ### 3.5 整合性判定 (cross-check)
 

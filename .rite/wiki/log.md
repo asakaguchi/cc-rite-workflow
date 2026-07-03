@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-03T10:20:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1732 (Issue #1704) review を統合: config template active-section 昇格時の drift anchor 3-site 同期を successful preventive application として追加。safety を `--- Advanced ---` マーカー上へ移動する変更で template 位置 + init/SKILL.md drift anchor 2 箇所 (top-level / sub-keys) + docs/SPEC.md Advanced 一覧を同時更新、init-upgrade-drift T-10/T-12 の動的抽出照合が mirror 対称性を機械強制 (wiki/multi_session/tdd 昇格と同型)。0 blocking / 1 cycle mergeable |
 | 2026-07-03T00:42:39+00:00 | ingest:create | pages/heuristics/new-helper-conform-to-sibling-safety-conventions.md | PR #1731 review を統合: 新規 helper は既存 sibling の安全規約(signal trap / strategy 依存 tree 解決 / 制御文字無害化 / stderr 素通し / summary 不変条件)へ整合させる。cd 前の git rev-parse --show-toplevel 捕捉、多バイト UTF-8 では codepoint 単位の制御文字無害化(json.dumps は C1 リテラル通過)の具体 gotcha を含む。3 cycle (5→2→0) 収束 |
 | 2026-07-02T23:12:48Z | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=231, broken_refs=0 |
 | 2026-07-02T23:12:48Z | ingest:create | pages/heuristics/cap-respects-existing-floor-invariants.md | PR #1729 (Issue #1702) review×4/fix×3 を統合: 上限機構(cap)を既存の下限・補完機構(min_reviewers / sole-reviewer guard ≥2 / mandatory 保護)の後段に挿入すると floor を silent に undo する。cap は全 valid 入力・全経路で既存 floor を尊重し cap/guard/mandatory/min の invariant を再調停する。4 cycle (MEDIUM 2→1→1→0) 収束 |

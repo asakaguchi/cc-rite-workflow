@@ -1415,17 +1415,22 @@ rm -rf "$fake_bin_118"
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-119〜122: Pattern 4 (security boundary) fail-closed vs Pattern 1-3 fail-open
-#   Issue #1717: Pattern 4 (reviewer state-mutating-git denylist) shares the
+# TC-119〜123: Pattern 4 (security boundary) fail-closed vs Pattern 1-3 fail-open
+#   Issue #1717: Pattern 4 (reviewer state-mutating-git denylist) shared the
 #   fail-OPEN ERR trap with the convenience patterns, so a parse crash inside
-#   Pattern 4 converges to exit 0 (allow) and silently bypasses the security
+#   Pattern 4 converged to exit 0 (allow) and silently bypassed the security
 #   boundary. The fix installs a fail-CLOSED ERR trap over the Pattern 4 block
 #   (deny + exit 2 + WARNING) and restores fail-open afterwards. Pattern 4 uses
 #   only bash built-ins, so — unlike the deny-emit path faked in TC-118 — it
-#   cannot be crashed via a fake external binary; the hook exposes a test-only
-#   fault-injection env var (RITE_BTG_TEST_CRASH=pattern13|pattern4) that raises
-#   an ERR inside the respective trap region. These TCs drive it directly (the
-#   run_guard_* helpers do not thread extra env through the pipe).
+#   cannot be crashed via a fake external binary; the hook exposes a test-only,
+#   fail-CLOSED-ONLY fault-injection env var (RITE_BTG_TEST_CRASH=pattern4) that
+#   raises an ERR inside the fail-closed trap region (TC-119). A symmetric
+#   fail-OPEN injection was deliberately NOT added — an env-triggered fail-open
+#   path would be an allow-all backdoor to a security boundary — so AC-3 (Patterns
+#   1-3 stay fail-open) is pinned structurally instead (TC-120). TC-123 covers the
+#   timeout-bypass guard: an oversized global-flag command denies fail-closed before
+#   the super-linear normalization can time out the fail-open hook. These TCs drive
+#   the hook directly (the run_guard_* helpers do not thread extra env through the pipe).
 # --------------------------------------------------------------------------
 echo "TC-119: Pattern 4 crash in reviewer subagent → deny + exit 2 + stderr WARNING (AC-1)"
 rc=0
@@ -1452,15 +1457,35 @@ else
 fi
 echo ""
 
-echo "TC-120: Pattern 1-3 crash → allow (exit 0), fail-open preserved (AC-3)"
-rc=0
-tc120_input=$(jq -n --arg cmd "git status" --arg tp "$SUBAGENT_TRANSCRIPT" \
-  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
-output=$(echo "$tc120_input" | RITE_BTG_TEST_CRASH=pattern13 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
-if [ "$rc" = "0" ] && [ -z "$output" ]; then
-  pass "TC-120 crash under the Patterns 1-3 trap still resolves to allow (exit 0, no output)"
+echo "TC-120: Patterns 1-3 fail-open invariant is structurally preserved (AC-3)"
+# AC-3 requires that a crash in the Patterns 1-3 region still resolves to allow.
+# This is guaranteed structurally: the default ERR trap is the fail-OPEN handler,
+# and the fail-CLOSED trap is installed ONLY inside the reviewer-only Pattern 4
+# block and restored to fail-open at that block's exit. We deliberately do NOT ship
+# a fail-open fault-injection env var to drive this behaviorally — such a var would
+# be an allow-all backdoor to the security boundary (Issue #1717 review F-02). So we
+# pin the three invariants that guarantee AC-3 by inspecting the hook source.
+tc120_src=$(cat "$HOOK")
+# (a) the default (pre-Pattern-4) ERR trap is the fail-OPEN handler
+if [[ "$tc120_src" == *"trap '_rite_btg_pattern13_fail_open' ERR"* ]]; then
+  pass "TC-120 default ERR trap is the fail-open handler (Patterns 1-3 fail open)"
 else
-  fail "TC-120 expected fail-open allow (rc=0, empty), got rc=$rc output=$output"
+  fail "TC-120 default fail-open ERR trap not found in hook source"
+fi
+# (b) the fail-CLOSED trap is installed only inside the Pattern 4 block, and (c) the
+# fail-open trap is restored at block exit. Both restore/swap lines must be present.
+if [[ "$tc120_src" == *"trap '_rite_btg_pattern4_fail_closed' ERR"* ]] \
+   && [[ "$tc120_src" == *"Restore the Patterns 1-3 fail-open trap"* ]]; then
+  pass "TC-120 fail-closed trap is scoped to Pattern 4 and fail-open is restored at block exit"
+else
+  fail "TC-120 fail-closed swap / fail-open restore lines not found in hook source"
+fi
+# (d) no fail-open fault-injection backdoor remains (F-02): the env var must never
+# trigger an allow (fail-open) path. Assert the removed pattern13 injection is gone.
+if [[ "$tc120_src" != *'RITE_BTG_TEST_CRASH:-}" = "pattern13"'* ]]; then
+  pass "TC-120 no fail-open (pattern13) fault-injection backdoor remains"
+else
+  fail "TC-120 fail-open (pattern13) injection backdoor is still present in hook source"
 fi
 echo ""
 
@@ -1491,6 +1516,53 @@ if [ -n "$tc122_timeout" ] && [[ "$tc122_timeout" =~ ^[0-9]+$ ]]; then
   pass "TC-122 pre-tool-bash-guard hook has a numeric timeout ($tc122_timeout)"
 else
   fail "TC-122 expected a numeric timeout on the PreToolUse:Bash hook, got '$tc122_timeout'"
+fi
+# Pin the exact value (Issue #1717 review F-03): the .sh header comment documents
+# "a 10s timeout", but nothing tied that prose to the config. Pin 10 here so that
+# changing hooks.json without updating the header comment fails this test (drift
+# detection). Update BOTH this literal and the .sh header if the value ever changes.
+if [ "$tc122_timeout" = "10" ]; then
+  pass "TC-122 timeout value is 10 (matches the value documented in the .sh header)"
+else
+  fail "TC-122 expected timeout=10 (as documented in pre-tool-bash-guard.sh header), got '$tc122_timeout'"
+fi
+echo ""
+
+echo "TC-123: oversized global-flag command → fail-closed deny before timeout (AC via F-01)"
+# The Pattern 4 global-flag normalization is super-linear, and the PreToolUse hook
+# timeout is fail-OPEN. A reviewer subagent could pad a state-mutating git with
+# thousands of global flags so normalization times out → the deny is dropped → the
+# git runs (bypass). The fix caps the normalization iterations and denies fail-closed
+# past the cap. Drive it with a heavily-padded reviewer git command and assert it is
+# denied quickly (the cap keeps it far under any timeout).
+rc=0
+tc123_pad=$(printf -- '-C x %.0s' $(seq 1 400))
+tc123_cmd="git ${tc123_pad}checkout evil"
+tc123_input=$(jq -n --arg cmd "$tc123_cmd" --arg tp "$SUBAGENT_TRANSCRIPT" \
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
+output=$(echo "$tc123_input" | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "TC-123 oversized global-flag reviewer command is denied (fail-closed, not timeout→allow)"
+else
+  fail "TC-123 expected deny for oversized command, got decision=$decision rc=$rc"
+fi
+if [[ "$reason" == *"abnormally large"* ]]; then
+  pass "TC-123 deny reason explains the oversized-command / timeout-bypass rationale"
+else
+  fail "TC-123 expected oversized-command explanation in reason, got: $reason"
+fi
+# Guard scope: an oversized MAIN-session command must NOT be denied (main sessions
+# never enter Pattern 4 — the cap must not add false denies to non-reviewer Bash).
+rc=0
+tc123_main_input=$(jq -n --arg cmd "$tc123_cmd" --arg tp "$MAIN_TRANSCRIPT" \
+  '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
+output=$(echo "$tc123_main_input" | bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-123 oversized MAIN-session command is not denied by the reviewer-only cap"
+else
+  fail "TC-123 expected allow (rc=0, empty) for oversized main-session command, got rc=$rc output=$output"
 fi
 echo ""
 

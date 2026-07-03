@@ -181,14 +181,6 @@ _rite_btg_pattern4_fail_closed() {
 }
 trap '_rite_btg_pattern13_fail_open' ERR
 
-# Test-only fault injection for the fail-OPEN region (no effect in production):
-# raises an ERR while the Patterns 1-3 fail-open trap is active so the regression
-# test can confirm a crash here still resolves to allow (exit 0). Gated on an env
-# var that is never set outside the test suite.
-if [ "${RITE_BTG_TEST_CRASH:-}" = "pattern13" ]; then
-  false
-fi
-
 # --- Heredoc-safe command extraction ---
 # Strip heredoc content to avoid false positives on text inside commit messages,
 # PR descriptions, etc. Only check the command prefix before the first heredoc marker.
@@ -277,9 +269,20 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # TC-118) — it cannot be crashed by faking an external binary. This lets the
   # fail-closed regression test raise an ERR deterministically inside the guarded
   # region. Gated on an env var that is never set outside the test suite.
+  # Deliberately fail-CLOSED-only: if the env var is ever set in production, the
+  # only effect is a DENY (the guard becomes more restrictive) — it can never turn
+  # the guard into allow-all. A symmetric fail-OPEN injection was intentionally NOT
+  # added, because an env-triggered fail-open path would be an allow-all backdoor to
+  # a security boundary. AC-3 (Patterns 1-3 stay fail-open) is instead pinned
+  # structurally by the test (default trap is fail-open + restored at block exit).
   if [ "${RITE_BTG_TEST_CRASH:-}" = "pattern4" ]; then
     false
   fi
+  # Upper bound on global-flag normalization iterations (see the loops below). A
+  # legitimate reviewer git command has well under this many global flags; the cap
+  # exists only to keep an adversarially padded command from timing out the hook and
+  # falling open. 128 is >10x the realistic maximum and keeps worst-case cost tiny.
+  _RITE_BTG_MAX_GLOBAL_FLAG_NORM=128
   # Normalize whitespace AND shell meta-characters into a single space so that
   # `;git reset` / `(git checkout ...)` / `$(git commit)` / multi-line commands
   # are recognized as `git <verb>` with proper word boundaries.
@@ -355,12 +358,37 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     s="${s//\[/\\[}"
     printf '%s' "$s"
   }
+  # Global-flag normalization iteration cap (fail-closed on abnormally many flags).
+  # The per-flag regex + fork loops below are super-linear in the number of git
+  # global flags, and the PreToolUse hook timeout is fail-OPEN (a timed-out hook
+  # allows the command — Claude Code cancels the hook and lets the tool proceed). A
+  # reviewer subagent could therefore pad a state-mutating git with thousands of
+  # `-C x` global flags so this normalization exceeds the hook timeout; the deny is
+  # never emitted and the padded git executes, bypassing the guard. The ERR trap
+  # cannot catch a timeout (the process is killed externally), so this iteration cap
+  # is what keeps that failure mode fail-CLOSED. A legitimate reviewer git command
+  # has only a handful of global flags, so exceeding the cap means the input is
+  # adversarial → deny. The counter is shared across both loops so the total work is
+  # bounded regardless of which flag family is padded.
+  _gf_norm_iters=0
   while [[ " $CMD_NORMALIZED " =~ \ git\ (-C|--git-dir|--work-tree|--exec-path|--namespace|-c|--config-env)(=[^[:space:]]+|[[:space:]]+[^[:space:]]+)\  ]]; do
+    _gf_norm_iters=$((_gf_norm_iters + 1))
+    if [ "$_gf_norm_iters" -gt "$_RITE_BTG_MAX_GLOBAL_FLAG_NORM" ]; then
+      BLOCKED_PATTERN="reviewer-state-mutating-git"
+      BLOCKED_SUBKIND="oversized-normalization"
+      break
+    fi
     _matched="${BASH_REMATCH[0]}"
     _lit=$(_escape_glob_meta "${_matched# }")
     CMD_NORMALIZED="${CMD_NORMALIZED/$_lit/git }"
   done
   while [[ " $CMD_NORMALIZED " =~ \ git\ (--bare|--no-replace-objects|--paginate|--no-pager|--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--info-path|--man-path|--html-path)\  ]]; do
+    _gf_norm_iters=$((_gf_norm_iters + 1))
+    if [ "$_gf_norm_iters" -gt "$_RITE_BTG_MAX_GLOBAL_FLAG_NORM" ]; then
+      BLOCKED_PATTERN="reviewer-state-mutating-git"
+      BLOCKED_SUBKIND="oversized-normalization"
+      break
+    fi
     _matched="${BASH_REMATCH[0]}"
     _lit=$(_escape_glob_meta "${_matched# }")
     CMD_NORMALIZED="${CMD_NORMALIZED/$_lit/git }"
@@ -620,6 +648,14 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     if [ "$BLOCKED_SUBKIND" = "shell-wrapper" ]; then
       BLOCKED_REASON="Shell-command wrappers (eval / bash -c / sh -c / zsh -c / ksh -c / dash -c / fish -c) are blocked in reviewer contexts because their quoted argument is opaque to this guard's word-boundary matching and can hide state-mutating git commands. They are therefore blocked unconditionally — even when the wrapped command is read-only. $BLOCKED_REASON"
       BLOCKED_ALTERNATIVE="For a read-only probe, drop the wrapper: run the command directly, group multiple commands in a subshell '( cmd1; cmd2 )', or put them in a file and run 'bash <script.sh>'. $BLOCKED_ALTERNATIVE"
+    fi
+    # (oversized-normalization) The command has an abnormally large number of git
+    # global flags, which would make normalization exceed the fail-open hook timeout.
+    # Denied fail-closed to prevent a timeout-based bypass — explain that rather than
+    # showing the generic state-mutating message (the command may even be read-only).
+    if [ "$BLOCKED_SUBKIND" = "oversized-normalization" ]; then
+      BLOCKED_REASON="This reviewer command carries an abnormally large number of git global flags (e.g. many repeated -C / -c). Normalizing that many flags could exceed the PreToolUse hook timeout, and a timed-out hook fails OPEN (the command would be allowed) — so such oversized commands are denied fail-closed to prevent a timeout-based bypass of the reviewer read-only guard. $BLOCKED_REASON"
+      BLOCKED_ALTERNATIVE="Simplify the command — reviewer git operations never need this many global flags. $BLOCKED_ALTERNATIVE"
     fi
   fi
   # Restore the Patterns 1-3 fail-open trap for the shared result-emit section

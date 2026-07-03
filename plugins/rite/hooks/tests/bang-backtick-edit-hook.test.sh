@@ -271,9 +271,10 @@ rm -f "$hook_stderr"
 
 # ----- TC-8: AC-4 — input extraction uses a single jq spawn -----------------
 # The three separate jq calls (tool_name / file_path / cwd) were aggregated into
-# one @tsv extraction. A `jq` PATH-shim counts invocations; an out-of-scope path
-# exits right after extraction (before the check script, which uses no jq), so
-# the total jq count is exactly the one extraction call.
+# one single-jq extraction joined on the unit separator (\x1f). A `jq` PATH-shim
+# counts invocations; an out-of-scope path exits right after extraction (before
+# the check script, which uses no jq), so the total jq count is exactly the one
+# extraction call.
 echo "TC-8: AC-4 — single jq spawn for input extraction"
 repo=$(make_repo)
 cleanup_dirs+=("$repo")

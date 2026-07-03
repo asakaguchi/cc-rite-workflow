@@ -524,6 +524,35 @@ else
 fi
 echo ""
 
+# --- TC-EARLYEXIT-4: rite marker found at an ANCESTOR (multi-level upward walk) ---
+# The other early-exit TCs place the rite marker directly at CWD, so none of them
+# exercise the upward walk actually ascending. Here the marker (.rite) sits at the
+# sandbox root and CWD is several levels below it — the gate must walk up to find
+# it, proven by git being reached. Guards against a regression that narrows the
+# gate to a CWD-only check, which would still pass every other TC but break the
+# common "Bash invoked from a subdirectory of a rite project" case (WM sync would
+# silently stop).
+echo "TC-EARLYEXIT-4 (AC-1/AC-3): ancestor marker found via upward walk is not early-exited"
+dir_ee4="$TEST_DIR/tc_earlyexit4"
+mkdir -p "$dir_ee4/.rite" "$dir_ee4/sub/deep"
+shim_ee4="$TEST_DIR/tc_earlyexit4-shim"
+mkdir -p "$shim_ee4"
+git_log_ee4="$TEST_DIR/tc_earlyexit4-git.log"
+cat > "$shim_ee4/git" <<SHIM
+#!/bin/sh
+echo "GIT_CALLED \$*" >> "$git_log_ee4"
+exit 0
+SHIM
+chmod +x "$shim_ee4/git"
+rc_ee4=0
+echo "{\"tool_name\": \"Bash\", \"cwd\": \"$dir_ee4/sub/deep\"}" | PATH="$shim_ee4:$PATH" bash "$HOOK" 2>/dev/null || rc_ee4=$?
+if [ -f "$git_log_ee4" ]; then
+  pass "TC-EARLYEXIT-4 gate ascended to the ancestor .rite marker (git rev-parse reached, exit code: $rc_ee4)"
+else
+  fail "TC-EARLYEXIT-4 gate did not walk up to the ancestor marker (CWD-only detection regression)"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

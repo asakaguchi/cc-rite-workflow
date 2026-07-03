@@ -6,6 +6,8 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-03T17:30:23+09:00 | ingest:create | pages/heuristics/security-hook-timeout-is-fail-open-bound-cost-by-input-size.md | PR #1736 (Issue #1717) review+fix を統合: セキュリティ境界 hook の timeout は fail-open のため、評価コストが入力サイズで発散すると timeout→fail-open bypass が成立する。反復回数上限では不十分で、全パターン検査の前に ${#COMMAND} の O(1) ガードを置き O(n²) 経路 (${COMMAND%%<<*}=45s / Pattern 2 regex=>2min) を一括短絡する。4 cycle 収束 (HIGH 1/MEDIUM 累計 3) |
+| 2026-07-03T17:30:23+09:00 | ingest:update | pages/patterns/mutation-testing-test-fidelity.md | PR #1736 (適用 25) を統合: 「deny を確認する」テストは検証対象の guard を外すと allow に戻る read-only payload を使う (state-mutating verb は独立 deny され vacuous)、O(n²) を突く入力は配置まで発火条件に合わせる (`<<` 先頭で fast path)、inert 共有 tag 代入は削除/明示、huge command は --rawfile |
 | 2026-07-03T15:05:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 |
 | 2026-07-03T15:00:00+09:00 | ingest:create | pages/patterns/test-fixture-helper-parent-shell-cleanup-registration.md | PR #1735 (Issue #1719) fix+review を統合: path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う。$() 経由呼び出しで関数内 SANDBOXES+= が subshell に閉じ込められ trap cleanup が効かず /tmp リーク (HIGH, code-quality+error-handling の 2 reviewer 独立検出)。fixture 構築の && 連結 + rev-parse 検証・exit-code assertion の isolation (benign=0/trigger=1 差分) も併発。2 cycle 収束 |
 | 2026-07-03T13:37:32+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 |

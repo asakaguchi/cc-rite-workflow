@@ -2,7 +2,7 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-06-26T03:18:14+00:00"
+updated: "2026-07-03T08:30:23+00:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260626T031814Z-pr-1663.md"
@@ -68,6 +68,12 @@ sources:
     ref: "raw/reviews/20260604T032559Z-pr-1266.md"
   - type: "reviews"
     ref: "raw/reviews/20260604T160823Z-pr-1270.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260703T073719Z-pr-1736.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260703T075749Z-pr-1736.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260703T081555Z-pr-1736.md"
 tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage", "symmetry-claim-bidirectional-pin", "negative-assert", "non-blocking-contract-mutation"]
 confidence: high
 ---
@@ -612,6 +618,17 @@ canonical 対策:
 
 教訓: 回帰防止テストの grep token は「対象の修正パスでのみ生成され、修正前のコードには存在しない literal」を選ぶ。これが満たされているかは **修正前 base での revert test が FAIL すること**で機械的に保証する。同ファイル内に旧経路 hint と新経路 WARNING が併存する anti-silent-failure 化修正で特に陥りやすい (修正自身が局所 silent 抑制を残す self-referential 失敗は [[asymmetric-fix-transcription]] / [[mktemp-failure-surface-warning]] と対で監査する)。
 
+### 適用 25: payload/target が「本来 allow されるもの」でないと mutation に対し vacuous (PR #1736)
+
+`pre-tool-bash-guard.sh` の reviewer git guard に timeout bypass 対策 (総バイト長ガード + 反復上限) を追加した PR #1736 で、追加テストが「主張する不変条件を実際には検証していない」vacuous サブアサーションを 2 種、cycle をまたいで mutation で摘発した。
+
+- **独立に deny される payload は guard の mutation に対し vacuous**: cycle 2 の TC が `git <巨大パディング>checkout evil` を deny 判定していたが、`git checkout` は **guard/cap の有無に関わらず** Pattern 4 (A) で独立に deny される。よって cap 除去 mutant でも `decision=deny` のまま pass し、cap の検出力ゼロ。**検証したい guard が無ければ本来 allow されるはずの read-only verb (`git <巨大パディング>status`) に payload を変えた瞬間、cap 除去 mutant は `git status` に正規化され allow に flip し、初めて真の mutation-catcher になった** (allow→deny flip の観測が帰属の証拠)。「deny を確認する」テストは、対象の guard を外すと **allow に戻る** payload でなければ帰属が成立しない。
+- **O(n²) を突くつもりの入力が実は fast path を通る**: 別 TC が `${COMMAND%%<<*}` (heredoc 除去) の O(n²) スキップを検証すると称し `git checkout evil <<EOF\n<200KB>\nEOF` を使ったが、`<<` が文字列**先頭**にあると `%%<<*` は先頭一致で高速完了し、guard の有無で速度が変わらない (mutant でも `ms<5000` pass)。コメントが主張する「O(n²) strip skipped」を実測していなかった。**検証対象の性質 (どの入力配置が O(n²) を発火させるか) を正確に狙う**必要があり、O(n²) no-heredoc 経路は別 TC (`<<` なし巨大コマンド → mutant で rc=124 timeout) が担保する形へ役割分離した。
+- **共有 tag の inert write**: deny 経路が自己完結でメッセージを構築する場合、共有 `BLOCKED_SUBKIND` 等への代入は唯一の読み手 (skip される別 block 内) に届かず inert write になる。削除するか、tag-at-source の一貫性目的で残すなら inert である旨をコメントで明示する (将来の maintainer が「tag が message を駆動する」と誤読して復活させる regression を防ぐ)。
+- **huge command 入力は argv 制限回避のため tempfile + `jq --rawfile`**: MB 級のコマンドを `jq -n --arg cmd "$big"` で組むと "argument list too long" でテストハーネス自体が壊れる。file に書き出し `--rawfile` で読ませる。
+
+教訓: 「deny を確認する」テストの payload は、**検証対象の guard を外すと allow に戻る**もの (read-only verb / by-default-allowed 入力) を選ぶ。state-mutating verb や独立に block される入力は、guard の有無に関わらず deny され vacuous。加えて「O(n²)/slow を突く」テストは入力の**配置**まで検証対象の発火条件に合わせる (先頭一致で fast path を通ると空振り)。いずれも **guard 除去 mutant で当該 assertion が FAIL するか**を commit 前に必ず実測する ([[static-input-chain-function-extraction-non-vacuous-test]] / [[leading-dash-arg-injection-gate-pre-git]] と同じ「非 vacuous 化 → mutation 実証」の系譜)。
+
 ## 関連ページ
 
 - [Test が early exit 経路で silent pass する false-positive](../anti-patterns/test-false-positive-early-exit.md)
@@ -657,3 +674,6 @@ canonical 対策:
 - [PR #1321 review results — dedup assertion の非 vacuity を重複 fixture (p2 に p1 と同一の正規化済み ref) で担保し `sort -u`→`cat` mutation で count=2 FAIL を立証、section-scoped 静的契約 test (TC-14) の helper rename を empty-section fail で検出する rename-detection 機構を io_error→true / rename 2 mutation で実証 (test/code-quality 2 reviewer 可 / 0 findings / 1 cycle mergeable)](../../raw/reviews/20260609T115303Z-pr-1321.md)
 - [PR #1337 review results (cycle 2) — TC-3 の >&2 同一行条件 sweep が代入行 idiom を検出できない盲点を author mutation で実証し fail-closed 全行 sweep + allowlist へ pivot、4 reviewer が独立 worktree-only mutation で TC-3/TC-4/TC-5/TC-025 の非 vacuity を再実証 (0 findings / 2 cycle mergeable)](../../raw/reviews/20260610T003030Z-pr-1337-c2.md)
 - [PR #1663 review results — 回帰防止テストの grep token が旧コードの remediation hint 文言にもマッチし修正前でも PASS する non-discriminating 構造を指摘、修正パス固有 literal への絞り込みと修正前 base revert test での discrimination 実証を canonical 対策化 (適用 24)](../../raw/reviews/20260626T031814Z-pr-1663.md)
+- [PR #1736 review results (cycle 2) — timeout bypass 対策テストで、state-mutating payload (checkout) が cap 有無に関わらず deny され vacuous になる問題と、構造 pin をコメントでなく実行文 (trap 行出現回数) で行う指摘 (F-04/F-05 MEDIUM)](../../raw/reviews/20260703T073719Z-pr-1736.md)
+- [PR #1736 fix results (cycle 2) — read-only verb payload で allow→deny flip を作り mutation 帰属を成立させる / huge command は --rawfile で argv 制限回避](../../raw/fixes/20260703T075749Z-pr-1736.md)
+- [PR #1736 fix results (cycle 3) — vacuous の 2 典型 (独立 deny される verb / `<<` 先頭で `%%<<*` fast path) を read-only heredoc payload で非 vacuous 化、guard 除去 mutant で FAIL 実証、inert 共有 tag 代入の除去](../../raw/fixes/20260703T081555Z-pr-1736.md)

@@ -1619,20 +1619,24 @@ if [ "$decision" = "deny" ]; then
 else
   fail "TC-124 expected deny for oversized read-only command, got decision=$decision rc=$rc"
 fi
-# (c) oversized WITH a huge heredoc body → fast deny (the O(n²) ${COMMAND%%<<*} strip is skipped)
-{ printf 'git checkout evil <<EOF\n'; printf 'y%.0s' $(seq 1 200000); printf '\nEOF'; } > "$tc124_dir/hd.txt"
+# (c) oversized because of a huge heredoc BODY, with a READ-ONLY prefix → deny.
+# The length guard checks ${#COMMAND} over the WHOLE command (heredoc body included),
+# so it fires here. Non-vacuous (Issue #1717 review F-06): the prefix `git status` is
+# read-only, so WITHOUT the length guard the heredoc strip yields `git status` and the
+# command is ALLOWED — WITH it the command is denied. (Note: the `<<` sits near the
+# front, so `${COMMAND%%<<*}` is itself fast here regardless — this case pins the
+# length guard's use of the full command length, not the O(n²) strip skip; the O(n²)
+# no-heredoc path is covered by (a).)
+{ printf 'git status <<EOF\n'; printf 'y%.0s' $(seq 1 200000); printf '\nEOF'; } > "$tc124_dir/hd.txt"
 jq -n --rawfile cmd "$tc124_dir/hd.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/hdin.json"
 rc=0
-_t0=$(date +%s%N)
 output=$(timeout 15 bash "$HOOK" < "$tc124_dir/hdin.json" 2>"$STDERR_FILE") || rc=$?
-_t1=$(date +%s%N)
-_ms=$(( (_t1 - _t0) / 1000000 ))
 decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-if [ "$decision" = "deny" ] && [ "$_ms" -lt 5000 ]; then
-  pass "TC-124 oversized-with-heredoc command is denied fast (${_ms}ms — O(n²) heredoc strip skipped)"
+if [ "$decision" = "deny" ]; then
+  pass "TC-124 heredoc-body-oversized READ-ONLY command is denied (length guard uses full command length)"
 else
-  fail "TC-124 expected fast deny for oversized-with-heredoc, got decision=$decision rc=$rc ms=$_ms"
+  fail "TC-124 expected deny for heredoc-body-oversized read-only command, got decision=$decision rc=$rc"
 fi
 # (d) oversized (~80KB) MAIN-session command → must NOT be denied (MUST NOT — reviewer-only guard)
 jq -n --rawfile cmd "$tc124_dir/ro.txt" --arg tp "$MAIN_TRANSCRIPT" \

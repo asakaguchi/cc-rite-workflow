@@ -213,7 +213,9 @@ BLOCKED_SUBKIND=""
 _RITE_BTG_MAX_SUBAGENT_CMD_BYTES=65536
 if [ "$IS_SUBAGENT" = "1" ] && [ "${#COMMAND}" -gt "$_RITE_BTG_MAX_SUBAGENT_CMD_BYTES" ]; then
   BLOCKED_PATTERN="reviewer-state-mutating-git"
-  BLOCKED_SUBKIND="oversized-normalization"
+  # This path builds its own reason/alternative below and never reaches the Pattern 4
+  # block's message section (that block is skipped because BLOCKED_PATTERN is now set),
+  # so BLOCKED_SUBKIND is intentionally left unset here — it would be an inert write.
   BLOCKED_REASON="This reviewer command is abnormally large (${#COMMAND} bytes, ceiling ${_RITE_BTG_MAX_SUBAGENT_CMD_BYTES}). A command this size could make the guard's parsing exceed the PreToolUse hook timeout, and a timed-out hook fails OPEN (the command would be allowed) — so oversized reviewer commands are denied fail-closed to prevent a timeout-based bypass of the reviewer read-only guard."
   BLOCKED_ALTERNATIVE="Simplify the command — reviewer git operations are at most a few KB. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement) for the read-only command set."
 fi

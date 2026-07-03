@@ -164,10 +164,13 @@ echo "=== TC-16 (Issue #1718 F-03): no-flock branch of _atomic_claim_steal steal
 # best-effort no-flock branch of _atomic_claim_steal never runs. Force it by invoking
 # issue-claim.sh with a PATH stub that omits flock, proving the flock-absent path still
 # steals a lone stale claim (the else/mv path). Concurrent exactly-one is intentionally
-# NOT asserted — no-flock CAS is best-effort by design and cannot guarantee it. The
-# mismatch→10 / revive→10 branches only fire on a concurrent swap / revive race, which
-# is not deterministically reproducible via the CLI, so they stay covered by the flock
-# branch's TC-14 logic.
+# NOT asserted — no-flock CAS is best-effort by design and cannot guarantee it. Of the
+# two abort branches, mismatch→10 (cur != expected) IS exercised by TC-14's losers: the
+# winner swaps the holder, so each loser aborts on the mismatch. revive→10 (a stale
+# holder that becomes live between the out-of-lock classify and the in-lock re-check)
+# requires a state transition that is not deterministically reproducible via the CLI and
+# is currently exercised by no test — it is a defensive TOCTOU guard, distinct from the
+# mismatch path that carries the actual double-steal guarantee.
 noflock_stub=$(mktemp -d)
 cleanup_dirs+=("$noflock_stub")
 for _c in bash sh cat date dirname git grep head jq mkdir mktemp mv rm sed tr wc sleep; do

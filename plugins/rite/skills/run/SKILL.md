@@ -50,6 +50,7 @@ argument-hint: "[--merge] <issue_number>..."
 | `{run_mode}` | ステップ 0 / 1 の `mode=` marker 値（`default` = draft 止まり / `merge` = フルパイプライン） |
 | `{summary_issues}` / `{summary_total}` / `{summary_remaining}` / `{summary_per_issue}` / `{summary_est_total}` | ステップ 0.5 の `RUN_SUMMARY` marker（`issues=` / `total=` / `remaining=` / `per_issue=` / `est_total=`。着手前サマリの表示に使う） |
 | `{current_issue}` | ステップ 1 の `RUN_NEXT=process; issue=` が指す Issue |
+| `{new_cursor}` / `{total}` | ステップ 6 の `RUN_ADVANCE` marker（`cursor=`（前進後の完了済み件数）/ `total=`。各 Issue 完了時の `✅ N/M 件完了` 進捗表示に使う） |
 | `{pr_number}` | ステップ 2 の open 完了通知（`[pr:created:N]`）から抽出 |
 | `{branch_name}` | ステップ 2 の open 完了通知「ブランチ: ...」行から抽出（ステップ 6 の cleanup に渡す） |
 | `{processed_issues}` | ステップ 7 bash の `processed=`（全完了 Issue 一覧） |
@@ -105,7 +106,7 @@ fi
 
 | `RUN_QUEUE` marker | アクション |
 |---|---|
-| `initialized` / `resume_match` / `resume_no_args` | `mode=` を `{run_mode}` として retain → ステップ 1 へ進む |
+| `initialized` / `resume_match` / `resume_no_args` | `mode=` を `{run_mode}` として retain → **ステップ 0.5（着手前サマリ）へ進む**（ステップ 0.5 が表示後にステップ 1 へ送る） |
 | `empty` | 引数もキューも無い。使い方 `/rite:run [--merge] <issue_number>...` を案内して終了 |
 
 > `RUN_QUEUE=empty` のときは本ステップ 0.5 に到達しない（サマリを出さずステップ 0 で終了する）。
@@ -142,7 +143,7 @@ echo "[CONTEXT] RUN_SUMMARY; issues=$issues; total=$total; remaining=$remaining;
 ```
 ## /rite:run 実行サマリ
 
-- 対象 Issue: {summary_total} 件 {summary_issues}（再開時は残り {summary_remaining} 件）
+- 対象 Issue: {summary_total} 件 {summary_issues}（`cursor > 0` の再開時のみ「残り {summary_remaining} 件」を併記する。新規実行では併記しない）
 - 実行モード: draft 止まり（各 Issue を open→iterate まで自律処理し、**merge せず** draft PR をレビュー待ちで残します）
 - 目安時間: 1 Issue あたり約 {summary_per_issue}（件数ベースの粗い目安。レビュー往復・実装規模で変動）→ 合計約 {summary_est_total}
 - 中断/再開: 中断は Ctrl+C。中断後は個別 Issue を `/rite:resume <issue>`、残りキュー全体は引数省略の `/rite:run` で再開できます（run-queue.json に cursor とモードを永続化）
@@ -155,7 +156,7 @@ echo "[CONTEXT] RUN_SUMMARY; issues=$issues; total=$total; remaining=$remaining;
 ```
 ## /rite:run 実行サマリ
 
-- 対象 Issue: {summary_total} 件 {summary_issues}（再開時は残り {summary_remaining} 件）
+- 対象 Issue: {summary_total} 件 {summary_issues}（`cursor > 0` の再開時のみ「残り {summary_remaining} 件」を併記する。新規実行では併記しない）
 - 実行モード: フル完走（各 Issue を open→iterate→ready→merge→cleanup まで進め、**merge まで完走**します）
 - 目安時間: 1 Issue あたり約 {summary_per_issue}（件数ベースの粗い目安。レビュー往復・実装規模で変動）→ 合計約 {summary_est_total}
 - 中断/再開: 中断は Ctrl+C。中断後は個別 Issue を `/rite:resume <issue>`、残りキュー全体は引数省略の `/rite:run` で再開できます（run-queue.json に cursor とモード=merge を永続化）

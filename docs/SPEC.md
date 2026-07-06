@@ -421,7 +421,7 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 
 ### Schema Version Overview
 
-rite workflow has **3 independently-versioned schemas**. Each bumps on its own timeline when its own schema changes; a bump in one does not imply or require a bump in another — do not conflate them.
+rite workflow has **3 independently-versioned schemas that are commonly conflated** (their version numbers look similar and drift independently). Each bumps on its own timeline when its own schema changes; a bump in one does not imply or require a bump in another — do not conflate them. (Other artifacts also carry their own `schema_version` — e.g. the work-memory local file and the issue-claim JSON, both currently `1` — but their numbering is not easily confused with the 3 below, so they are out of scope for this table.)
 
 | Schema | `schema_version` | Format | Defined At |
 |--------|-------------------|--------|------------|

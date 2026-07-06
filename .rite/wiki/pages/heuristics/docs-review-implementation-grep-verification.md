@@ -2,8 +2,10 @@
 title: "Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする"
 domain: "heuristics"
 created: "2026-05-26T00:00:00Z"
-updated: "2026-06-07T03:10:16Z"
+updated: "2026-07-07T06:08:00+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260706T210924Z-pr-1772.md"
   - type: "reviews"
     ref: "raw/reviews/20260525T070727Z-pr-1139.md"
   - type: "reviews"
@@ -91,12 +93,17 @@ PR #1263 (Issue #1262、#1261 の follow-up にあたる SPEC.ja.md per-session 
 
 PR #1296 (Issue #1288、0 findings / 1 cycle、コメント/docstring のみの +8/-0 docs PR) で、本 protocol が **script docstring に追記した契約 claim の層** にも適用されることを successful preventive application として実測。`review-findings-maps.sh` docstring への stdout contract 追記 (severity_map_json / scope_map_json は構築検証のみで stdout に emit しない) と TC-D 観測性制約注記 (in-process validation 変数は differential test では観測できない) について、4 reviewer (test / error-handling / performance / security) 全員が「追加コメントの主張と実装の整合」を Grep/Read/テスト実行 (review-findings-maps.test.sh 19/19 pass) で独立に全数検証し、claim-実装乖離ゼロを確認した。[Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の懸念 (claim 文言の片肺化・vacuous claim 化) も非該当と判定。推奨事項 3 件 (usage() の `--help` 時 stdout 出力と「stdout contract: なし」文言の境界注記余地 — 2 reviewer が独立言及 / 将来 stdout emit 契約変更時の test pin 整備方針の defer 妥当性) はいずれも本 PR スコープ外の任意改善として扱われた。コメント追加 only の PR でも「コメントが宣言する契約」は implementation grep verify の対象であり、本 protocol が prose / CHANGELOG / SPEC に加えて docstring contract 層でも 1 cycle 収束を支えることを示す positive evidence。
 
+### Successful application — 定量的棚卸し調査文書における全数値の grep 再実行検証 (PR #1772)
+
+PR #1772 (Issue #1710、0 findings / 1 cycle) で本 protocol の**「実装 grep 検証」を、実装の現状記述ではなく調査文書自身が主張する大規模定量値（`[CONTEXT]` marker 675箇所/55ファイルの棚卸し）に適用する**変種を successful preventive application として実測。tech-writer と code-quality の両 reviewer が独立に `grep -rn '\[CONTEXT\]' plugins/rite/` を再実行し、文書が主張する全数値（総ヒット数・ファイル数・種別内訳6区分の合計・上位15ファイルの個別件数・emit/consume内訳・参照ファイルの実在）を1件残らず突合、捏造・不整合ゼロを確認して1 cycle mergeableに到達した。教訓: 大規模な定量的棚卸しを含む調査文書は、（a）再現可能な grep コマンドを本文に明記し、（b）集計を漏れなく分割された内訳（合計と一致する区分）として提示すると、reviewer 側が実装 grep verify を機械的に反復実行でき、高い信頼性を伴う短サイクル収束を実現できる。本適用は「documentation ↔ implementation」ではなく「調査文書自身の定量claim ↔ grep実測」という cross-reference 対象のバリエーションだが、根底にある「prose の factual claim は必ず機械的に再実行可能な検証手段を伴わせる」原則は同一。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 
 ## ソース
 
+- [PR #1772 review (調査文書の定量的棚卸し全数値をgrep再実行で検証、tech-writer/code-quality両者独立全数一致、0 findings 1cycle mergeable)](../../raw/reviews/20260706T210924Z-pr-1772.md)
 - [PR #1139 review cycle 1 (anchor link typo / phantom sentinel / Asymmetric Fix Transcription on #1118 wave)](../../raw/reviews/20260525T070727Z-pr-1139.md)
 - [PR #1139 review cycle 2 (CHANGELOG `remain on disk` factual error / project.type CHANGELOG vs CONFIGURATION drift)](../../raw/reviews/20260525T081823Z-pr-1139.md)
 - [PR #1139 fix cycle 5 (Verification Cross-Reference Gap 確立: review.md Phase 7 live を 5 cycle 経て初検出)](../../raw/fixes/20260525T104719Z-pr-1139.md)

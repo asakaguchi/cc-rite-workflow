@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-07T06:08:00+09:00 | update | [Documentation review は対応する実装側の grep verify を必須 step とする](pages/heuristics/docs-review-implementation-grep-verification.md) | PR #1772 (Issue #1710) — 調査文書自身の定量的棚卸し (675箇所/55ファイル) を grep 再実行検証可能な形で書いた successful application を統合 |
 | 2026-07-07T03:41:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=248, broken_refs=0 (PR #1771 ingest 後の auto-lint) |
 | 2026-07-07T03:40:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | PR #1771 (Issue #1709) cycle 3-4 fix — 新設検証ツールの scan scope が Issue In-Scope より狭い + scan scope 説明の 3 ドキュメント間 drift (tech-writer/prompt-engineer cross-validation) を統合 |
 | 2026-07-07T03:40:00+09:00 | update | [mktemp 失敗は silent 握り潰さず WARNING を可視化する](pages/patterns/mktemp-failure-surface-warning.md) | PR #1771 (Issue #1709) cycle 1 review/fix — sentinel 検証スクリプト自身の I3 ロジックで grep no-match/実エラー区別欠落 HIGH を統合 (grep 経路への一般化) |

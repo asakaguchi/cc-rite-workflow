@@ -1,0 +1,43 @@
+---
+type: "heuristics"
+title: "Orchestrator は reviewer 間の反証と reviewer 自身の自己矛盾（指摘記載 vs 結論）を解決してから blocking 判定する"
+domain: "heuristics"
+description: "複数 reviewer の所見が食い違う場合は他 reviewer の反証（既存実装の grep 確認）で解決し、単一 reviewer の指摘事項テーブル記載でも reviewer 自身が「対応不要」と結論した場合は Finding Quality Guardrail (bikeshedding filter) で blocking から除外する。"
+created: "2026-07-06T04:10:00+00:00"
+updated: "2026-07-06T04:10:00+00:00"
+sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260706T033041Z-pr-1756.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260706T040234Z-pr-1756-cycle2.md"
+tags: []
+confidence: medium
+---
+
+# Orchestrator は reviewer 間の反証と reviewer 自身の自己矛盾（指摘記載 vs 結論）を解決してから blocking 判定する
+
+## 概要
+
+PR #1756 の 2 cycle レビューで、orchestrator（consolidation 担当）が単純な「指摘事項テーブルの件数 = blocking 件数」という機械的合算をせず、(1) 複数 reviewer 間の反証関係、(2) reviewer 自身の総合評価と個別指摘の矛盾、の 2 つを見て blocking findings を確定させた 2 つの実例。
+
+## 詳細
+
+### 実例 1: cross-validation による反証（cycle 1）
+
+tech-writer が「Issue body 取得のフォールバック欠如」を懸念として指摘したが、同時に走った prompt-engineer が「Phase 1.5 で既に Issue body を無条件取得済みのため懸念は根拠がない」と独立に反証した。orchestrator は `grep` で `pr-create/SKILL.md` の Phase 1.5 実装を直接確認し、`gh issue view {issue_number} --json number,title,body,state,labels` が無条件実行されることを検証した上で、tech-writer の指摘を false positive と判断して fix 対象から除外した。
+
+**教訓**: 単一 reviewer の懸念を鵜呑みにせず、(a) 他 reviewer が独立に反証していないか、(b) 反証内容が実装の事実と一致するか、を orchestrator 自身が実ファイルで検証する。2 reviewer が食い違う所見を出すのは対立ではなく、互いの盲点を埋め合う機会として扱う。
+
+### 実例 2: Finding Quality Guardrail (bikeshedding filter) の適用（cycle 2）
+
+fix 後の cycle 2 レビューで、prompt-engineer / tech-writer の両者が「overall assessment: Approve/mergeable」と明記した上で、指摘事項テーブルには計 5 件（見出しの語順選好、文の冗長さ、参照アンカーの非対称、列挙順序の不一致、用語の近接による誤読可能性）を掲載していた。個別の指摘文はいずれも「任意」「対応不要（記録のみ）」と reviewer 自身が明記しており、プロジェクト規約の明示的違反を伴わない好み・スタイルレベルの指摘だった。orchestrator は `_reviewer-base.md` の Finding Quality Guardrail（bikeshedding: プロジェクト規約の明示的違反を伴わない好み・スタイル指摘は filter 対象）をこの 5 件に適用し、blocking findings を 0 件と判定して `[review:mergeable]` を確定した。
+
+**教訓**: 「指摘事項テーブルに載っている = 自動的に blocking」という機械的解釈をしない。reviewer 自身の overall assessment（Approve/mergeable）と個別指摘の文言（「任意」「対応不要」）が一致している場合、その指摘は Finding Quality Guardrail の対象として orchestrator が自身の判断で blocking から除外してよい。逆に、reviewer が overall assessment で懸念を示しているのに個別指摘が軽微に見える場合は、機械的に除外せず再確認する（非対称的な適用— bikeshedding filter は「reviewer 自身が要求していない追加対応をしない」ためのものであり、reviewer の総合判断を覆すためのものではない）。
+
+## 関連ページ
+
+- [`rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する](./scope-creep-rejection-empirical-gate.md)
+
+## ソース
+
+- [PR #1756 review results](../../raw/reviews/20260706T033041Z-pr-1756.md)

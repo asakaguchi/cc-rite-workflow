@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-06T11:34:59+09:00 | ingest:create | pages/heuristics/presentation-order-rule-requires-depends-on-column-check.md | PR #1752 (Issue #1747): 実装計画テンプレートに提示順ルールを追加する際、対象が depends_on 列を持たないプレーン番号リスト形式だと提示順=実行順になる構造的結合を cycle 1 で検出。計画冒頭の独立ブロック方式へ変更し解消 |
 | 2026-07-04T03:35:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 (PR #1743 ingest 後の auto-lint) |
 | 2026-07-04T03:30:00+09:00 | ingest:create | pages/patterns/positional-parse-row-count-guard.md | PR #1743 (Issue #1711): 位置依存の表パース (awk -F'|' + $N) は表形式変更で全行 skip の silent no-op になり rc=0 false pass を生む。集合抽出の下限ガードと対称の検査行数ガード (通過行数 < N → rc=2 fail fast) を対にし、列挿入 → rc=2 の回帰 TC で pin する |
 | 2026-07-04T03:30:00+09:00 | ingest:create | pages/heuristics/verification-doc-guarantee-matches-invariants.md | PR #1743 (Issue #1711): 機械検証ツール追加 PR の手順書に「漏れは必ず検出される」型の全称保証を書くと非検出 gap (I2 片方向) への過信を生む。保証文は不変量 (I1/I3) と gap を明示対応させ手動確認手順を併記、同種表現の 3 面へ一貫伝播。設計理由がある gap は文書を設計に合わせる (2 cycle 収束) |

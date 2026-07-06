@@ -179,6 +179,7 @@
 | [位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）](pages/patterns/positional-parse-row-count-guard.md) | patterns | awk -F'\|' + $N の位置依存列パースは表形式変更（列挿入等）で全行 skip の silent no-op になり rc=0 の false pass を生む。集合抽出の下限ガードと対称に「フィルタ通過行数 < N なら invocation error (rc=2) で fail fast」する検査行数ガードを行内整合チェックへ必ず対にし、回帰 TC（列挿入 → rc=2）で pin する（PR #1743 I3 + TC-10）。 | 2026-07-03T18:30:00+00:00 | high |
 | [検証ツールの保証文言は検証される不変量と非検出 gap に正確に対応させる](pages/heuristics/verification-doc-guarantee-matches-invariants.md) | heuristics | 機械検証ツールを追加する PR で「漏れは次回 lint で必ず検出される」型の全称保証を手順書に書くと、意図的に検証しない gap（例: I2 片方向 = Available 行の欠落）への過信を生む。保証文は検証される不変量（I1/I3）と非検出 gap を明示的に対応させ、gap の手動確認手順を併記し、同種表現の全出現箇所（3 面）へ一貫伝播する。設計理由がある gap はチェック側を拡張せず文書を設計に合わせる（PR #1743、2 cycle 収束）。 | 2026-07-03T18:30:00+00:00 | high |
 | [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) | heuristics | fixture 変異がどの不変量を発火させるかは推測せず実行で確認する。一方向差し替えは集合系不変量も同時発火するため行内整合の分離検証には均衡入替（双方向 swap）を使い、双方向チェックの reverse 方向は明示 TC で pin、guard を exercise する decoy は guard の射程内に置く。mutation の kill 実績が non-vacuous coverage の証明（PR #1743 TC-6/TC-9 + cycle 2 pipe-filter gap）。 | 2026-07-03T18:30:00+00:00 | high |
+| [提示順ルールを計画テンプレートに追加する際は depends_on 列の有無を確認する](pages/heuristics/presentation-order-rule-requires-depends-on-column-check.md) | heuristics | 実装計画テンプレートの「提示順」を変える変更は、対象テンプレートが depends_on 列を持つ依存グラフ形式かプレーン番号リスト形式かによって「実行順」への副作用の有無が変わる。変更前に必ず確認する。 | 2026-07-06T02:34:59Z | high |
 
 ## 統計
 

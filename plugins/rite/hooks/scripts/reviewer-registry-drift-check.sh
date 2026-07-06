@@ -38,10 +38,16 @@
 #   reviewer-registry-drift-check.sh --all [--repo-root DIR] [--quiet]
 #
 # Exit codes:
-#   0  No drift detected across the 3 sync points
+#   0  No drift detected across the 3 sync points (or not applicable —
+#      invoked outside the rite plugin source tree, e.g. marketplace/consumer
+#      install)
 #   1  Drift detected (any invariant violated)
-#   2  Invocation error (bad args, missing files, empty extraction)
+#   2  Invocation error (bad args, empty extraction)
 
+# `-e` is intentionally omitted: a `-euo` "correction" would let a no-match
+# grep pipeline (rc=1) inside a pre-guard block kill the script before the
+# >= N extraction guard runs, misclassifying an invocation error (rc=2
+# contract) as drift detected (rc=1).
 set -uo pipefail
 
 REPO_ROOT=""
@@ -63,9 +69,9 @@ Options:
   -h, --help         Show this help
 
 Exit codes:
-  0  No drift detected across the 3 sync points
+  0  No drift detected across the 3 sync points (or not applicable)
   1  Drift detected (any invariant violated)
-  2  Invocation error (bad args, missing files, empty extraction)
+  2  Invocation error (bad args, empty extraction)
 EOF
 }
 
@@ -99,16 +105,26 @@ cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
 AGENTS_DIR="plugins/rite/agents"
 SKILL_FILE="plugins/rite/skills/reviewers/SKILL.md"
 
+if [ ! -d "$AGENTS_DIR" ] && [ ! -f "$SKILL_FILE" ]; then
+  # Neither registry sync point exists: this is not the rite plugin source
+  # tree (e.g. a consumer repo that installs rite as a marketplace plugin
+  # only, with no plugins/rite/ registry to check). Treat as a clean skip
+  # rather than an invocation error, matching bang-backtick-check.sh's
+  # --skip-if-no-target precedent — this check has nothing to compare.
+  log "[reviewer-registry-drift] not applicable: neither $AGENTS_DIR nor $SKILL_FILE found under $REPO_ROOT — clean skip"
+  exit 0
+fi
+
 if [ ! -d "$AGENTS_DIR" ]; then
   echo "ERROR: required directory not found: $AGENTS_DIR" >&2
-  echo "  Likely cause: invoked outside the rite plugin source tree (e.g. marketplace install layout)" >&2
-  echo "  Recovery: run from the rite plugin source tree, or pass --repo-root pointing there" >&2
+  echo "  Likely cause: partial checkout, or the directory was moved/renamed without updating this checker" >&2
+  echo "  Recovery: verify both $AGENTS_DIR and $SKILL_FILE exist, or pass --repo-root pointing to a complete rite plugin source tree" >&2
   exit 2
 fi
 if [ ! -f "$SKILL_FILE" ]; then
   echo "ERROR: required file not found: $SKILL_FILE" >&2
-  echo "  Likely cause: invoked outside the rite plugin source tree (e.g. marketplace install layout)" >&2
-  echo "  Recovery: run from the rite plugin source tree, or pass --repo-root pointing there" >&2
+  echo "  Likely cause: partial checkout, or the file was moved/renamed without updating this checker" >&2
+  echo "  Recovery: verify both $AGENTS_DIR and $SKILL_FILE exist, or pass --repo-root pointing to a complete rite plugin source tree" >&2
   exit 2
 fi
 

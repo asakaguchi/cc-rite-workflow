@@ -10,7 +10,10 @@ PASS=0
 FAIL=0
 
 cleanup() { rm -rf "$TEST_DIR"; }
-trap cleanup EXIT INT TERM HUP
+trap 'rc=$?; cleanup; exit $rc' EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
 
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }

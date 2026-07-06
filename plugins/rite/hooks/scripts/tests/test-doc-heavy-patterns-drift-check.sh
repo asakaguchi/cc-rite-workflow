@@ -24,8 +24,11 @@
 #      "only in SKILL.md" and NOT as "only in review.md" (direction-symmetry)
 #   6. Drift by addition — token added to review.md is reported as
 #      "only in review.md" and NOT as "only in SKILL.md"
-#   7. Missing-file fixture: --repo-root pointing to a tree without the
-#      required files exits 2 with a clear diagnostic
+#   7. Missing-file fixture: --repo-root pointing to a tree with NEITHER
+#      required file (consumer/marketplace install) exits 0 (not applicable,
+#      Issue #1746)
+#   7b. Asymmetric absence: only one of the 2 required files present (partial
+#       checkout) exits 2 with a clear diagnostic, distinct from Test 7
 #   8. Broken-section fixture: empty doc_file_patterns block trips the
 #      "expected >= 10" guard and exits 2
 
@@ -265,19 +268,45 @@ assert_contains_near \
   "$out"
 
 # --- Test 7: missing-file fixture -------------------------------------------
-# A fake repo root with none of the required files should exit 2 with a
-# clear diagnostic.
+# A fake repo root with NEITHER required file present is a consumer/
+# marketplace install (not the rite plugin source tree) — this is a clean
+# skip (exit 0, "not applicable"), not an invocation error (Issue #1746).
+# --quiet is intentionally omitted here so the "not applicable" message is
+# actually observable in $out (with --quiet, log() suppresses it and this
+# assertion would pass regardless of which code path fired).
 FAKE_MISSING=$(mktemp -d) || {
   echo "FAIL: Test 7 mktemp -d failed" >&2
   exit 2
 }
 TMPDIRS+=("$FAKE_MISSING")
 mkdir -p "$FAKE_MISSING/plugins/rite"
-out=$("$SCRIPT" --all --quiet --repo-root "$FAKE_MISSING" 2>&1)
+out=$("$SCRIPT" --all --repo-root "$FAKE_MISSING" 2>&1)
 rc=$?
-assert "missing-file fixture exits 2" "2" "$rc"
-assert_contains "missing-file fixture names a required file" \
-  "SKILL.md" "$out"
+assert "missing-file fixture (neither present) exits 0 (not applicable)" "0" "$rc"
+assert_contains "missing-file fixture reports not applicable" \
+  "not applicable" "$out"
+
+# --- Test 7b: asymmetric absence (partial checkout) exits 2 -----------------
+# Only one of the 2 required files present is NOT a legitimate consumer
+# install — it signals a partial checkout or a renamed sibling file, so it
+# must remain an invocation error (rc=2), distinct from Test 7's clean skip.
+FAKE_ASYMMETRIC=$(mktemp -d) || {
+  echo "FAIL: Test 7b mktemp -d failed" >&2
+  exit 2
+}
+TMPDIRS+=("$FAKE_ASYMMETRIC")
+mkdir -p "$FAKE_ASYMMETRIC/plugins/rite/skills/review"
+cp "$REPO_ROOT/plugins/rite/skills/review/SKILL.md" \
+   "$FAKE_ASYMMETRIC/plugins/rite/skills/review/SKILL.md"
+out=$("$SCRIPT" --all --quiet --repo-root "$FAKE_ASYMMETRIC" 2>&1)
+rc=$?
+assert "asymmetric absence (SKILL.md missing) exits 2" "2" "$rc"
+# Needle is the full path of the MISSING file (reviewers/SKILL.md), not the
+# bare "SKILL.md" basename shared by both required files (review/SKILL.md and
+# reviewers/SKILL.md) — a bare basename would pass even if the diagnostic
+# named the present file instead of the missing one.
+assert_contains "asymmetric absence names the missing file" \
+  "reviewers/SKILL.md" "$out"
 
 # --- Test 8: broken-section guard --------------------------------------------
 # Blank out review.md's doc_file_patterns body. The extractor should find zero

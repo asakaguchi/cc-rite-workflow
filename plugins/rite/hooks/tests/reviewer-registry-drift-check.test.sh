@@ -15,7 +15,8 @@
 #   - Guard: column insertion before Agent → I3 row-count guard → rc=2,
 #     with the I3-guard message asserted so it isn't confused with the extraction guard
 #   - Guard: missing registry directory/file (--repo-root outside the plugin
-#     source tree) → invocation error (rc=2)
+#     source tree, e.g. marketplace/consumer install) → clean skip (rc=0,
+#     not applicable — Issue #1746)
 #   - Arg contract: --all required; --repo-root requires a value (both rc=2)
 #   - Extraction: in-section (not just out-of-section) non-pipe prose lines
 #     inside Available Reviewers / Type Identifiers must not leak into the
@@ -51,7 +52,10 @@ cleanup() {
     [ -n "$d" ] && [ -d "$d" ] && rm -rf "$d"
   done
 }
-trap cleanup EXIT INT TERM HUP
+trap 'rc=$?; cleanup; exit $rc' EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
 
 # awk read→transform→write→mv helper (BSD sed -i 非互換を避ける repo 規約)。
 # 引数: <file> <awk-program>
@@ -385,17 +389,82 @@ else
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
 
-# --- TC-13: missing registry dir/file → invocation error (rc=2) ---
+# --- TC-13: missing registry dir/file → clean skip (rc=0, not applicable) ---
 echo ""
-echo "=== TC-13: --repo-root without a registry (missing dir/file) → rc=2 ==="
+echo "=== TC-13: --repo-root without a registry (missing dir/file) → rc=0 (not applicable) ==="
 empty_dir=$(make_plain_sandbox)
 cleanup_dirs+=("$empty_dir")
 rc=0
-out=$(bash "$CHECKER" --all --quiet --repo-root "$empty_dir" 2>&1) || rc=$?
-if [ "$rc" -eq 2 ]; then
-  pass "TC-13: missing plugins/rite/agents or reviewers/SKILL.md correctly fails with rc=2"
+out=$(bash "$CHECKER" --all --repo-root "$empty_dir" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "TC-13: missing plugins/rite/agents and reviewers/SKILL.md (consumer/marketplace install) correctly no-ops with rc=0"
 else
-  fail "TC-13: expected rc=2, got rc=$rc"
+  fail "TC-13: expected rc=0, got rc=$rc"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+if printf '%s\n' "$out" | grep -Fq "not applicable"; then
+  pass "TC-13: not-applicable skip message present"
+else
+  fail "TC-13: expected 'not applicable' message in output"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+
+# --- TC-14: asymmetric absence (partial checkout) exits 2, NOT clean skip ---
+# TC-13 only proves the AND-gated clean-skip fires when NEITHER sync point
+# exists. It cannot detect an AND→OR regression in the guard (Issue #1746
+# cycle3 review: doc-heavy has this asymmetric-absence coverage via Test 7b,
+# but reviewer-registry did not — this closes that family-wide gap). A
+# targeted-deletion attack removing only one sync point must still surface as
+# an invocation error (rc=2), distinct from the legitimate both-absent skip.
+echo ""
+echo "=== TC-14a: only plugins/rite/agents/ present (reviewers/SKILL.md missing) → rc=2 ==="
+d=$(make_registry_sandbox)
+cleanup_dirs+=("$d")
+rm -f "$d/plugins/rite/skills/reviewers/SKILL.md"
+rc=0
+out=$(bash "$CHECKER" --all --quiet --repo-root "$d" 2>&1) || rc=$?
+if [ "$rc" -eq 2 ]; then
+  pass "TC-14a: asymmetric absence (SKILL.md missing) correctly fails with rc=2"
+else
+  fail "TC-14a: expected rc=2, got rc=$rc"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+if printf '%s\n' "$out" | grep -Fq "not applicable"; then
+  fail "TC-14a: asymmetric absence incorrectly treated as clean skip (not applicable)"
+else
+  pass "TC-14a: asymmetric absence not confused with the clean-skip path"
+fi
+# Needle pins the full path of the MISSING sync point — a bare "SKILL.md"
+# would pass even if the diagnostic named the wrong file.
+if printf '%s\n' "$out" | grep -Fq "reviewers/SKILL.md"; then
+  pass "TC-14a: names reviewers/SKILL.md as the missing sync point"
+else
+  fail "TC-14a: expected output to name reviewers/SKILL.md"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+
+echo ""
+echo "=== TC-14b: only reviewers/SKILL.md present (plugins/rite/agents/ missing) → rc=2 ==="
+d=$(make_registry_sandbox)
+cleanup_dirs+=("$d")
+rm -rf "$d/plugins/rite/agents"
+rc=0
+out=$(bash "$CHECKER" --all --quiet --repo-root "$d" 2>&1) || rc=$?
+if [ "$rc" -eq 2 ]; then
+  pass "TC-14b: asymmetric absence (agents/ missing) correctly fails with rc=2"
+else
+  fail "TC-14b: expected rc=2, got rc=$rc"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+if printf '%s\n' "$out" | grep -Fq "not applicable"; then
+  fail "TC-14b: asymmetric absence incorrectly treated as clean skip (not applicable)"
+else
+  pass "TC-14b: asymmetric absence not confused with the clean-skip path"
+fi
+if printf '%s\n' "$out" | grep -Fq "plugins/rite/agents"; then
+  pass "TC-14b: names plugins/rite/agents as the missing sync point"
+else
+  fail "TC-14b: expected output to name plugins/rite/agents"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
 

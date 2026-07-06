@@ -32,7 +32,10 @@ fi
 
 SANDBOX="$(make_plain_sandbox)"
 cleanup() { [ -n "${SANDBOX:-}" ] && rm -rf "$SANDBOX"; }
-trap cleanup EXIT INT TERM HUP
+trap 'rc=$?; cleanup; exit $rc' EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
 
 # --- Fixtures -----------------------------------------------------------------
 printf '{"schema_version":"1.1.0","findings":[]}\n' > "$SANDBOX/ok-110.json"

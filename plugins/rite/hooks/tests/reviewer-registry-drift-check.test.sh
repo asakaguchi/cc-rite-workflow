@@ -10,9 +10,19 @@
 #     (spawning a nonexistent subagent) is detected
 #   - Invariant I3: slug/Agent cell mismatch is detected in isolation
 #     (balanced swap keeps the sets intact so only I3 fires)
-#   - Guard: heading change → undersized extraction → invocation error (rc=2)
-#   - Guard: column insertion before Agent → I3 row-count guard → rc=2
+#   - Guard: heading change → undersized extraction → invocation error (rc=2),
+#     with the extraction-guard message asserted so it isn't confused with I3's
+#   - Guard: column insertion before Agent → I3 row-count guard → rc=2,
+#     with the I3-guard message asserted so it isn't confused with the extraction guard
+#   - Guard: missing registry directory/file (--repo-root outside the plugin
+#     source tree) → invocation error (rc=2)
 #   - Arg contract: --all required; --repo-root requires a value (both rc=2)
+#   - Extraction: in-section (not just out-of-section) non-pipe prose lines
+#     inside Available Reviewers / Type Identifiers must not leak into the
+#     token sets (kills a mutation that drops the `/^\|/` line filter)
+#   - Cross-component contract: the `==> Total reviewer-registry-drift
+#     findings: N` aggregate line (consumed by skills/lint/SKILL.md's
+#     extraction regex) is asserted verbatim without --quiet
 #
 # Portability note: fixture mutations use `awk` via the
 # read→transform→write→mv pattern instead of `sed -i`. BSD sed (macOS)
@@ -75,12 +85,14 @@ make_registry_sandbox() {
   {
     printf '# Reviewer Skills fixture\n\n'
     printf '## Available Reviewers\n\n'
+    printf 'See `victor-reviewer.md` for details (in-section prose must not leak into extraction).\n\n'
     printf '| Reviewer | Agent | File Patterns (Primary) |\n'
     printf '|----------|-------|-------------------------|\n'
     for slug in "${FIXTURE_SLUGS[@]}"; do
       printf '| %s Expert | `%s-reviewer.md` | `**/%s/**` |\n' "$slug" "$slug" "$slug"
     done
     printf '\n## Reviewer Type Identifiers\n\n'
+    printf 'See `whiskey-reviewer.md` for details (in-section prose must not leak into extraction).\n\n'
     printf '| reviewer_type | 日本語表示名 | Agent |\n'
     printf '|---------------|-------------|-------|\n'
     for slug in "${FIXTURE_SLUGS[@]}"; do
@@ -126,6 +138,24 @@ if printf '%s\n' "$out" | grep -Fq "_reviewer-base"; then
   fail "TC-2: shared principles file leaked into the agents set"
 else
   pass "TC-2: _reviewer-base.md correctly excluded from the agents set"
+fi
+# in-section 非パイプ散文行（テーブル行の直前に挿入した decoy）が抽出に漏れないこと
+# を確認する。TC-2 既存の "unrelated-reviewer.md" decoy は Trailing Section（セクション
+# 境界外）にあり `in_sec && /^## / { in_sec = 0 }` の境界判定のみを検証しているため、
+# `extract_section_rows` の `/^\|/` 行フィルタ自体（awk の pipe-prefix チェック）を
+# 削除する mutation を生き残らせてしまう。本 decoy はセクション「内」の非パイプ行
+# なので、行フィルタが外れると victor/whiskey が Available/Type Identifiers 双方の
+# 集合に漏れ出し、agents.set に存在しないため drift finding として検出され rc が
+# 1 に変わる（本 TC の rc=0 assert 自体が mutation を kill する）。
+if printf '%s\n' "$out" | grep -Fq "victor-reviewer"; then
+  fail "TC-2: in-section prose decoy (Available Reviewers) leaked into extraction"
+else
+  pass "TC-2: Available Reviewers セクション内の非パイプ散文行が正しく除外された"
+fi
+if printf '%s\n' "$out" | grep -Fq "whiskey-reviewer"; then
+  fail "TC-2: in-section prose decoy (Type Identifiers) leaked into extraction"
+else
+  pass "TC-2: Type Identifiers セクション内の非パイプ散文行が正しく除外された"
 fi
 
 # --- TC-3: dummy agent file added without table updates → drift (T-01) ---
@@ -240,6 +270,16 @@ else
   fail "TC-7: expected rc=2, got rc=$rc"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
+# rc=2 は「>= 10 抽出ガード」「I3 行数ガード」の 2 経路で発火しうる。本 TC は見出し
+# 変更による抽出崩壊が狙いなので、発火元が抽出ガードであることを文言で特定する
+# （どちらのガードが落ちたのか未検証のまま rc=2 だけ見ると、実装が別ガードで
+# 偶然 rc=2 を返す regression を見逃す）。
+if printf '%s\n' "$out" | grep -Fq "extracted only 0 reviewers"; then
+  pass "TC-7: fired via the >= 10 extraction guard (not the I3 row-count guard)"
+else
+  fail "TC-7: rc=2 but not via the extraction guard — unexpected message"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
 
 # --- TC-8: --all is required ---
 echo ""
@@ -299,6 +339,15 @@ else
   fail "TC-10: expected rc=2, got rc=$rc (I3 must not silently no-op on format change)"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
+# TC-7 と対称の guard 特定 assert。列挿入は正規表現ベースの set 抽出（>= 10 ガード）
+# 自体は通過し、位置依存の I3 行数ガードだけが落ちるはずなので、その guard 固有の
+# 文言で発火元を特定する（抽出ガードで落ちていたら列シフト検知の意図が壊れている）。
+if printf '%s\n' "$out" | grep -Fq "I3 slug check evaluated only 0 rows"; then
+  pass "TC-10: fired via the I3 row-count guard (not the >= 10 extraction guard)"
+else
+  fail "TC-10: rc=2 but not via the I3 guard — unexpected message"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
 
 # --- TC-11: --repo-root without a value → rc=2 ---
 echo ""
@@ -309,6 +358,45 @@ if [ "$rc" -eq 2 ]; then
   pass "TC-11: bad args stay on exit 2 (not misclassified as drift rc=1)"
 else
   fail "TC-11: expected rc=2 for --repo-root without value, got rc=$rc"
+fi
+
+# --- TC-12: aggregate log line contract (no --quiet) ---
+echo ""
+echo "=== TC-12: aggregate log line exact match without --quiet (skills/lint contract) ==="
+# skills/lint/SKILL.md ステップ 3.7.1 は "==> Total reviewer-registry-drift findings: N"
+# を抽出 regex で消費する cross-component 契約。他の全 TC は --quiet を付けて実行して
+# おり文言の drift を検出できないため、本 TC だけ --quiet なしで実行し完全一致で
+# assert する（TC-3 と同じ 1 finding 固定ミューテーションを再利用）。
+d=$(make_registry_sandbox)
+cleanup_dirs+=("$d")
+printf '# dummy\n' > "$d/plugins/rite/agents/dummy-reviewer.md"
+rc=0
+out=$(bash "$CHECKER" --all --repo-root "$d" 2>&1) || rc=$?
+if [ "$rc" -eq 1 ]; then
+  pass "TC-12: drift detected with rc=1 (same fixture as TC-3)"
+else
+  fail "TC-12: expected rc=1, got rc=$rc"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+if printf '%s\n' "$out" | grep -Fxq "==> Total reviewer-registry-drift findings: 1"; then
+  pass "TC-12: aggregate log line matches the skills/lint extraction contract exactly"
+else
+  fail "TC-12: aggregate log line missing or drifted from 'Total reviewer-registry-drift findings: N'"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+
+# --- TC-13: missing registry dir/file → invocation error (rc=2) ---
+echo ""
+echo "=== TC-13: --repo-root without a registry (missing dir/file) → rc=2 ==="
+empty_dir=$(make_plain_sandbox)
+cleanup_dirs+=("$empty_dir")
+rc=0
+out=$(bash "$CHECKER" --all --quiet --repo-root "$empty_dir" 2>&1) || rc=$?
+if [ "$rc" -eq 2 ]; then
+  pass "TC-13: missing plugins/rite/agents or reviewers/SKILL.md correctly fails with rc=2"
+else
+  fail "TC-13: expected rc=2, got rc=$rc"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
 
 # --- Summary ---

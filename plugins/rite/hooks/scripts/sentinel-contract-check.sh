@@ -17,10 +17,18 @@
 #       "(run 内部完結)", "(terminal、consumer なし)") have no external
 #       consumer to check and are skipped for I2.
 #   I3  Every sentinel-shaped literal (`[a-z...:a-z0-9...]`) found under
-#       plugins/rite/skills/ is declared in the SoT (after normalizing a
-#       trailing numeric segment, e.g. `:123]` -> `:N]`), except for the
-#       fixed NON_SENTINEL_DENYLIST (documented non-sentinel look-alikes —
-#       see sentinel-contract.md "Non-Sentinel な類似記法").
+#       plugins/rite/skills/ (recursive, *.md) or directly under
+#       plugins/rite/hooks/ (*.sh, non-recursive — hook helper scripts that
+#       emit sentinels at runtime, e.g. review-comment-post.sh) is declared
+#       in the SoT (after normalizing a trailing numeric segment, e.g.
+#       `:123]` -> `:N]`), except for the fixed NON_SENTINEL_DENYLIST
+#       (documented non-sentinel look-alikes — see sentinel-contract.md
+#       "Non-Sentinel な類似記法"). hooks/scripts/ and hooks/tests/ are
+#       intentionally excluded from the hooks/ scan — they hold lint-check
+#       utilities and test fixtures, not runtime sentinel emitters, and
+#       scanning them pulls in unrelated bracket-literal examples in
+#       comments/test data (Issue #1709 §2 In Scope: "SoT と skills/hooks
+#       実体の一致を検証").
 #
 # Usage:
 #   sentinel-contract-check.sh --all [--repo-root DIR] [--quiet]
@@ -88,6 +96,7 @@ cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
 
 SOT_FILE="plugins/rite/references/sentinel-contract.md"
 SKILLS_DIR="plugins/rite/skills"
+HOOKS_DIR="plugins/rite/hooks"
 
 if [ ! -f "$SOT_FILE" ] && [ ! -d "$SKILLS_DIR" ]; then
   # Consumer repo installing rite as a marketplace plugin only (no
@@ -222,6 +231,22 @@ if [ "$scan_rc" -gt 1 ]; then
   echo "ERROR: scan of $SKILLS_DIR for undeclared sentinel-shaped literals failed (rc=$scan_rc)" >&2
   echo "  $(cat "$WORK_DIR/scan.err" 2>/dev/null)" >&2
   exit 2
+fi
+
+# Also scan runtime hook helper scripts directly under $HOOKS_DIR (non-recursive
+# — hooks/scripts/ and hooks/tests/ are lint-check utilities and test fixtures,
+# not sentinel emitters, and are intentionally excluded; see I3 doc comment
+# above). Guarded by `-d` since a marketplace-consumer repo may lack this dir
+# even when $SKILLS_DIR is present (defense-in-depth, not expected in this repo).
+if [ -d "$HOOKS_DIR" ]; then
+  grep -n -oE '\[[a-z][a-z_-]*:[a-zA-Z0-9_:-]*\]' "$HOOKS_DIR"/*.sh \
+    >> "$WORK_DIR/found_raw_lines.txt" 2>"$WORK_DIR/hooks_scan.err"
+  hooks_scan_rc=$?
+  if [ "$hooks_scan_rc" -gt 1 ]; then
+    echo "ERROR: scan of $HOOKS_DIR/*.sh for undeclared sentinel-shaped literals failed (rc=$hooks_scan_rc)" >&2
+    echo "  $(cat "$WORK_DIR/hooks_scan.err" 2>/dev/null)" >&2
+    exit 2
+  fi
 fi
 # Split each `file:line:[token]` grep -n hit into a `file:line<TAB>[token]` pair
 # (file/line prefix is separated from the token by the first two colons; the

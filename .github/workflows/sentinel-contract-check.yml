@@ -12,12 +12,14 @@ on:
       - develop
     paths:
       - 'plugins/rite/skills/**'
+      - 'plugins/rite/hooks/*.sh'
       - 'plugins/rite/references/sentinel-contract.md'
       - 'plugins/rite/hooks/scripts/sentinel-contract-check.sh'
       - '.github/workflows/sentinel-contract-check.yml'
   pull_request:
     paths:
       - 'plugins/rite/skills/**'
+      - 'plugins/rite/hooks/*.sh'
       - 'plugins/rite/references/sentinel-contract.md'
       - 'plugins/rite/hooks/scripts/sentinel-contract-check.sh'
       - '.github/workflows/sentinel-contract-check.yml'

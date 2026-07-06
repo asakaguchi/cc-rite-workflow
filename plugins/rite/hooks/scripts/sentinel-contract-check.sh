@@ -223,15 +223,22 @@ if [ "$scan_rc" -gt 1 ]; then
   echo "  $(cat "$WORK_DIR/scan.err" 2>/dev/null)" >&2
   exit 2
 fi
-sed 's/^[^:]*:[0-9]*://' "$WORK_DIR/found_raw_lines.txt" > "$WORK_DIR/found_raw.txt"
+# Split each `file:line:[token]` grep -n hit into a `file:line<TAB>[token]` pair
+# (file/line prefix is separated from the token by the first two colons; the
+# token itself may contain further colons, e.g. `[skill:action:123]`).
+sed -E 's/^([^:]+:[0-9]+):/\1\t/' "$WORK_DIR/found_raw_lines.txt" > "$WORK_DIR/found_with_loc.txt"
 
 # Normalize a trailing numeric segment to N (e.g. [pr:created:123] -> [pr:created:N])
-# so concrete example instances collapse onto their canonical SoT form.
-sed -E 's/:[0-9]+\]$/:N]/' "$WORK_DIR/found_raw.txt" | sort -u > "$WORK_DIR/found_normalized.txt"
+# so concrete example instances collapse onto their canonical SoT form, while
+# keeping the first-seen file:line per normalized token so a FAIL message can
+# report a concrete location (Issue #1709 §4.5: "FAIL + 該当ファイル:行を報告").
+awk -F'\t' '{ token = $2; sub(/:[0-9]+\]$/, ":N]", token); if (!(token in loc)) { loc[token] = $1; order[++n] = token } }
+  END { for (i = 1; i <= n; i++) print order[i] "\t" loc[order[i]] }' \
+  "$WORK_DIR/found_with_loc.txt" > "$WORK_DIR/found_normalized_with_loc.txt"
 
 sort -u "$WORK_DIR/sot_sentinels.txt" > "$WORK_DIR/sot_sentinels_sorted.txt"
 
-while IFS= read -r tok; do
+while IFS=$'\t' read -r tok loc; do
   [ -z "$tok" ] && continue
   is_denied=0
   for d in "${NON_SENTINEL_DENYLIST[@]}"; do
@@ -239,10 +246,10 @@ while IFS= read -r tok; do
   done
   [ "$is_denied" -eq 1 ] && continue
   if ! grep -qxF -- "$tok" "$WORK_DIR/sot_sentinels_sorted.txt"; then
-    echo "FAIL: undeclared sentinel-shaped literal found: $tok (not in $SOT_FILE)"
+    echo "FAIL: undeclared sentinel-shaped literal found: $tok at $loc (not in $SOT_FILE)"
     n_findings=$((n_findings + 1))
   fi
-done < "$WORK_DIR/found_normalized.txt"
+done < "$WORK_DIR/found_normalized_with_loc.txt"
 
 log "[sentinel-contract] checked $n_rows SoT sentinel(s)"
 log "==> Total sentinel-contract findings: ${n_findings}"

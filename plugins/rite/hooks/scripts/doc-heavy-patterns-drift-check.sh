@@ -45,10 +45,15 @@
 #   doc-heavy-patterns-drift-check.sh --all [--repo-root DIR] [--quiet]
 #
 # Exit codes:
-#   0  No drift detected across the 2 files
+#   0  No drift detected across the 2 files (or not applicable — invoked
+#      outside the rite plugin source tree, e.g. marketplace/consumer install)
 #   1  Drift detected (symmetric set difference non-empty)
-#   2  Invocation error (bad args, missing files, empty section)
+#   2  Invocation error (bad args, empty section)
 
+# `-e` is intentionally omitted: a `-euo` "correction" would let a no-match
+# grep pipeline (rc=1) inside a pre-guard block kill the script before the
+# empty-section guard runs, misclassifying an invocation error (rc=2
+# contract) as drift detected (rc=1).
 set -uo pipefail
 
 REPO_ROOT=""
@@ -70,9 +75,9 @@ Options:
   -h, --help         Show this help
 
 Exit codes:
-  0  No drift detected across the 2 files
+  0  No drift detected across the 2 files (or not applicable)
   1  Drift detected (symmetric set difference non-empty)
-  2  Invocation error (bad args, missing files, empty section)
+  2  Invocation error (bad args, empty section)
 EOF
 }
 
@@ -102,11 +107,21 @@ cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
 REVIEW_FILE="plugins/rite/skills/review/SKILL.md"
 SKILL_FILE="plugins/rite/skills/reviewers/SKILL.md"
 
+if [ ! -f "$REVIEW_FILE" ] && [ ! -f "$SKILL_FILE" ]; then
+  # Neither canonical file exists: this is not the rite plugin source tree
+  # (e.g. a consumer repo that installs rite as a marketplace plugin only,
+  # with no plugins/rite/ markdown to gate). Treat as a clean skip rather
+  # than an invocation error, matching bang-backtick-check.sh's
+  # --skip-if-no-target precedent — this check has nothing to compare.
+  log "[doc-heavy-patterns-drift] not applicable: neither $REVIEW_FILE nor $SKILL_FILE found under $REPO_ROOT — clean skip"
+  exit 0
+fi
+
 for f in "$REVIEW_FILE" "$SKILL_FILE"; do
   if [ ! -f "$f" ]; then
     echo "ERROR: required file not found: $f" >&2
-    echo "  Likely cause: invoked outside the rite plugin source tree (e.g. marketplace install layout)" >&2
-    echo "  Recovery: run from the rite plugin source tree, or pass --repo-root pointing there" >&2
+    echo "  Likely cause: partial checkout, or the sibling file was moved/renamed without updating this checker" >&2
+    echo "  Recovery: verify both $REVIEW_FILE and $SKILL_FILE exist, or pass --repo-root pointing to a complete rite plugin source tree" >&2
     exit 2
   fi
 done

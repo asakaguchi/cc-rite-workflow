@@ -181,9 +181,10 @@
 | [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) | heuristics | fixture 変異がどの不変量を発火させるかは推測せず実行で確認する。一方向差し替えは集合系不変量も同時発火するため行内整合の分離検証には均衡入替（双方向 swap）を使い、双方向チェックの reverse 方向は明示 TC で pin、guard を exercise する decoy は guard の射程内に置く。mutation の kill 実績が non-vacuous coverage の証明（PR #1743 TC-6/TC-9 + cycle 2 pipe-filter gap）。 | 2026-07-03T18:30:00+00:00 | high |
 | [提示順ルールを計画テンプレートに追加する際は depends_on 列の有無を確認する](pages/heuristics/presentation-order-rule-requires-depends-on-column-check.md) | heuristics | 実装計画テンプレートの「提示順」を変える変更は、対象テンプレートが depends_on 列を持つ依存グラフ形式かプレーン番号リスト形式かによって「実行順」への副作用の有無が変わる。変更前に必ず確認する。 | 2026-07-06T02:34:59Z | high |
 | [Orchestrator は reviewer 間の反証と reviewer 自身の自己矛盾（指摘記載 vs 結論）を解決してから blocking 判定する](pages/heuristics/orchestrator-resolves-reviewer-self-contradiction-and-counter-evidence.md) | heuristics | 複数 reviewer の所見が食い違う場合は他 reviewer の反証（既存実装の grep 確認）で解決し、単一 reviewer の指摘事項テーブル記載でも reviewer 自身が「対応不要」と結論した場合は Finding Quality Guardrail (bikeshedding filter) で blocking から除外する。PR #1757・PR #1758（いずれも全く別の PR・reviewer 組み合わせ）でも同一パターンが再現し、PR やレビュアー専門領域に依存しない汎用的な orchestrator 責務であることを確認した。 | 2026-07-06T05:02:35+00:00 | medium |
+| [@tsv+IFS read の field-shift hazard 横断監査は cut-f免除と空フィールド可否の2条件で判定する](pages/heuristics/tsv-ifs-field-shift-hazard-audit-criteria.md) | heuristics | jq @tsv + IFS read パターンを持つ複数箇所を横断監査する際、(1) cut -f 使用箇所は区切り文字を圧縮しないため免除、(2) 全フィールドが構造的に非空（数値+1演算・末尾のみ可変等）なら hazard 対象外、の2条件で真の修正必要箇所のみを特定できる。不要な書き換えを避けスコープを厳守する。 | 2026-07-06T23:20:00+09:00 | high |
 
 ## 統計
 
-- 総ページ数: 170
-- ドメイン別: patterns=59, heuristics=53, anti-patterns=56
-- 最終更新: 2026-07-06T04:10:00+00:00
+- 総ページ数: 171
+- ドメイン別: patterns=59, heuristics=54, anti-patterns=56
+- 最終更新: 2026-07-06T23:20:00+09:00

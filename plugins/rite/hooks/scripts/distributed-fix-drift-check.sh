@@ -27,10 +27,15 @@
 #
 # Exit codes: 0 = clean, 1 = drift detected, 2 = invocation error.
 
-# `-e` is intentionally omitted: a `-euo` "correction" would let a no-match
-# grep pipeline (rc=1) inside a pre-guard block kill the script before the
-# extraction guard runs, misclassifying an invocation error (rc=2 contract)
-# as drift detected (rc=1).
+# `-e` is intentionally omitted for consistency with the sibling drift
+# checkers (doc-heavy-patterns-drift-check.sh, reviewer-registry-drift-check.sh),
+# where a `-euo` "correction" would let a no-match grep pipeline (rc=1) kill
+# the script before its extraction guard runs, misclassifying an invocation
+# error as drift. This file's own grep pipelines (e.g. _extract_enum_reasons
+# below) already redirect stderr and tolerate a no-match rc=1 by degrading to
+# an empty set — which can only over-report, never mask, drift — so `-e`
+# omission is a defensive baseline here rather than a fix for a concrete
+# failure mode local to this file.
 set -uo pipefail
 # shellcheck source=../control-char-neutralize.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"

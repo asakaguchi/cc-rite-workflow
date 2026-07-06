@@ -14,6 +14,26 @@ This document defines the common severity levels and evaluation criteria used by
 
 **Note**: Each reviewer may provide domain-specific examples of what constitutes each severity level in their respective documentation.
 
+## Severity 語彙 3 系統 Crosswalk
+
+<a id="severity-vocabulary-crosswalk"></a>
+
+rite には severity を表す 3 つの正当な語彙が併存する。それぞれ用途が異なるため統一はせず、以下の表を単一 crosswalk SoT とする(`templates/issue/default.md` の Type Notation Policy と同じ crosswalk 方式)。
+
+| schema enum (5 値) | reviewer checklist 見出し | 運用 3 段 |
+|---|---|---|
+| `CRITICAL` | Critical (Must Fix) | Critical |
+| `HIGH` | Important (Should Fix) | Important |
+| `MEDIUM` | Recommendations | Minor |
+| `LOW-MEDIUM` | Recommendations | Minor |
+| `LOW` | Recommendations | Minor |
+
+- **schema enum (5 値)**: `findings[].severity` の JSON 出力値。上記 Severity Levels 表で正式定義され、`review-result-schema.md` の schema が受理する唯一の値域。
+- **reviewer checklist 見出し (3 値)**: 各 `agents/*-reviewer.md` の `## Review Checklist` セクション見出し(`### Critical (Must Fix)` / `### Important (Should Fix)` / `### Recommendations`)。レビュー観点を投資領域ごとに整理するための見出しであり、finding 発行時の enum 値そのものではない。`Recommendations` は MEDIUM/LOW-MEDIUM/LOW の 3 値を包含する。
+- **運用 3 段 (3 値)**: ドキュメント上の説明的表現(例: `review-result-schema.md` の外部ツール別名運用に関する記述)。reviewer が「Important」を出力した場合に読み手が enum 値へ変換するための日常語彙。
+
+**判断**: どちらか一方へ統一せず、3 系列を残し上表を単一 crosswalk SoT とする。**根拠**: 5 値 enum は JSON の型契約として、checklist 見出しはレビュー観点の整理として、運用 3 段は説明用の自然言語として、それぞれ異なる目的で存在しており、統一しても境界が別の場所(schema ⇄ 見出し ⇄ 説明文)に移動するだけ。非自明な対応は `Recommendations`/`Minor` が MEDIUM 以下 3 値をまとめて指す点のみ(他は大文字小文字・字面の差)。
+
 ## Observed Likelihood Axis
 
 Severity alone (impact axis) is insufficient. Every finding must also be classified along the **Observed Likelihood** axis — the degree to which the triggering condition can be demonstrated to exist in the codebase under review.

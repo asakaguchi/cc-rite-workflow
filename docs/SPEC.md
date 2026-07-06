@@ -419,6 +419,16 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 
 **Migration**: `schema_version` (currently `2`) is bumped when breaking schema changes ship. `/rite:init --upgrade` performs a non-destructive merge for compatible upgrades; removed keys are silently ignored at runtime — see the [CHANGELOG](../CHANGELOG.md) for the current deprecation set (v0.4.0 removed `review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, and `safety.max_review_fix_loops`).
 
+### Schema Version Overview
+
+rite workflow has **3 independently-versioned schemas**. Each bumps on its own timeline when its own schema changes; a bump in one does not imply or require a bump in another — do not conflate them.
+
+| Schema | `schema_version` | Format | Defined At |
+|--------|-------------------|--------|------------|
+| `rite-config.yml` | `2` | integer | This section, above; template at `plugins/rite/templates/config/rite-config.yml` |
+| Flow state (per-session) | `3` | integer | [Multi-Session State Management](#multi-session-state-management) below; `plugins/rite/hooks/flow-state.sh` |
+| Review-result JSON | `1.1.0` | semver | [`review-result-schema.md` Schema Version (SoT)](../plugins/rite/references/review-result-schema.md#schema-version-sot) |
+
 ---
 
 ## Command Specifications

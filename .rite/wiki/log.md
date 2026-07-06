@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-06T13:11:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 (PR #1756 ingest 後の auto-lint) |
 | 2026-07-06T13:10:00+09:00 | ingest:create | pages/heuristics/orchestrator-resolves-reviewer-self-contradiction-and-counter-evidence.md | PR #1756 (Issue #1749): cycle 1 で reviewer 間の反証 (Issue body フォールバック懸念を他 reviewer が既存実装で反証) を orchestrator が grep 確認して false positive 除去、cycle 2 で reviewer 自身「対応不要」明記の 5 件を Finding Quality Guardrail (bikeshedding filter) で blocking から除外し mergeable 確定 |
 | 2026-07-06T13:09:00+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1756 (Issue #1749): 新設セクション内での言語統一ルールの部分適用漏れ（見出しは言語判定切替、同セクション内の要約行ラベルは日本語ハードコード残存）を追加。単一新設コンテンツ内の隣接要素という新規対称対象、2 reviewer 独立検出・1 cycle 修正 |
 | 2026-07-06T12:00:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 (PR #1755 ingest 後の auto-lint) |

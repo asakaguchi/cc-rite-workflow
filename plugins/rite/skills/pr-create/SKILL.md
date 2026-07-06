@@ -730,22 +730,22 @@ When executed via an orchestrator's end-to-end flow (e.g. `/rite:open` ステッ
 
 **Optimization conditions (OR evaluation):** During end-to-end flow execution / 20 or more changed files / Over 30 tool invocations. 30 invocations is lightweight optimization for PR creation alone; 50 invocations (see `skills/open/SKILL.md` 等の上位 orchestrator) is full-scale mitigation.
 
-**Optimization content:** Changes -> file list and summary only (show top 3 files), Work memory -> progress summary only, Checklist -> mandatory items only, Implementation Notes (§3.2.2) -> capped per the same section's E2E cap rule. Applied automatically without user confirmation.
+**Optimization content:** Changes -> file list and summary only (show top 3 files), Work memory -> progress summary only, Checklist -> mandatory items only, Implementation Notes -> capped per §3.2.2's E2E optimization cap rule. Applied automatically without user confirmation.
 
-#### 3.2.2 Implementation Notes Summary (Decision Log / Plan Deviation)
+#### 3.2.2 Implementation Notes Summary (Plan Deviation / Decision Log)
 
 Before finalizing the PR body, gather two additional sources so reviewers start with the same unknowns the implementer had (rather than re-deriving them from the diff alone):
 
 1. **Work memory Plan Deviation Log** (`### 計画逸脱ログ` table — see [Work Memory Format](../../skills/rite-workflow/references/work-memory-format.md#plan-deviation-log-section)). Read the local work memory file or, if absent, the Issue comment sync. If the table shows only `_計画逸脱はありません_` (or the section/file is absent), treat this source as 0 items — do not error.
 2. **Issue body Section 9 Decision Log** (`## 9. Decision Log` — see [Issue Template Structure](../../templates/issue/template-structure.md)). Read the Issue body already retained in conversation context. If the section is absent or contains no `D-xx:` entries, treat this source as 0 items — do not error.
 
-**Summarization rule**: For each item found, generate one line: `{種別}: {1 行要約} — {理由}`, where `種別` is `逸脱` (from the Plan Deviation Log) or `判断` (from the Decision Log). Keep each line to a single sentence — this is a pointer for the reviewer, not a full transcript.
+**Summarization rule**: For each item found, generate one line: `{種別}: {1 行要約} — {理由}`, where `種別` is `Deviation` / `逸脱` (from the Plan Deviation Log) or `Decision` / `判断` (from the Decision Log), following the language determined in Phase 3.1 — use the English label in `en` mode and the Japanese label in `ja` mode, matching the heading's language switch below. Keep each line to a single sentence — this is a pointer for the reviewer, not a full transcript.
 
 **Zero-item rule (MUST)**: If both sources yield 0 items, omit the entire section — heading included. Never emit an empty heading or an empty bullet list.
 
 **Section heading**: Follow the language determined in Phase 3.1 — `## Implementation Notes` (English) or `## 実装中の判断・計画逸脱` (Japanese). Place the section between `## Changes` and `## Checklist` (see `templates/pr/generic.md`).
 
-**E2E optimization cap (Phase 3.2.1)**: When Phase 3.2.1's optimization conditions are met, cap the summary to the top 3 items — Plan Deviation items first, then Decision Log items, both in source order — and append a note stating how many were omitted (e.g. `(他 N 件省略)` / `(N more omitted)`).
+**E2E optimization cap**: When Phase 3.2.1's optimization conditions are met, cap the summary to the top 3 items — Plan Deviation items first, then Decision Log items, both in source order — and append a note stating how many were omitted (e.g. `(他 N 件省略)` / `(N more omitted)`).
 
 ### 3.3 Push to Remote
 

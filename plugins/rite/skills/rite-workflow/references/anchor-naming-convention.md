@@ -74,7 +74,7 @@ set +o pipefail
 # === severity_map build (local_file/explicit_file only — referenced by pr_comment state transitions note) ===
 ```
 
-(出典: 旧 `skills/fix/SKILL.md:1118` — 本 anti-pattern の実例として過去に存在。現在は refactor 済みで anchor 自体が現存しない)
+(本 anchor は現存しない)
 
 **何が問題か**:
 
@@ -110,7 +110,7 @@ set +o pipefail
 | 経験則タイトル | キーワード例 | 根拠となる文脈 |
 |----------------|-------------|---------------|
 | Asymmetric Fix Transcription (対称位置への伝播漏れ) | `asymmetric-fix-transcription`, `anchor drift` | fix を 1 箇所に適用したとき同パターンを持つ対称位置に伝播させ忘れる failure mode の包括的記録。本 reference は **recursive recurrence in fix layer** (anchor literal 自身が parenthetical context を含む形で導入され、note との byte 不一致を新規導入する mode) への構造的予防として作成 |
-| SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する | `sot-path-reference-existence-check`, `broken-ref` | 本 reference 内の path 参照 (`skills/fix/SKILL.md:1118` 等) は本 PR マージ時点の origin/develop で実在を verify した上で記載 |
+| SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する | `sot-path-reference-existence-check`, `broken-ref` | 本 reference 内の path 参照は各記載時点の origin/develop で実在を verify した上で記載する運用とする。ただし記載後の refactor で参照先 anchor 自体が消滅することがあるため、path 参照は永続的な保証ではなく記載時点のスナップショットである点に注意する |
 | Embedded markdown bash block の observability 三要素 | `embedded-bash-block-observability-trio` | anchor を citation する bash block 自体の observability 契約。anchor は observability 設計の一部 (citation 経路を機械検証する手段) として位置付ける |
 | Asymmetric Fix Transcription 解決の hub 化戦略 | `option-b`, `hub creation` | anchor literal の drift 源を「両側で同期する」ではなく「anchor を SoT 化し他 site から citation する」hub-creation 戦略の根拠 |
 

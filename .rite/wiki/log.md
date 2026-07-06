@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-06T12:00:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 (PR #1755 ingest 後の auto-lint) |
 | 2026-07-06T11:59:13+09:00 | ingest:update | pages/anti-patterns/asymmetric-fix-transcription.md | PR #1755 (Issue #1748): 手順番号振り直し + doc mirror 整合性検証の successful preventive application を追加。同ファイル内・他ファイルからの手順番号参照 grep 全件確認 + 英語ミラー/日本語原本の手順構造一致検証（0 findings） |
 | 2026-07-06T11:36:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 (PR #1752 ingest 後の auto-lint) |
 | 2026-07-06T11:34:59+09:00 | ingest:create | pages/heuristics/presentation-order-rule-requires-depends-on-column-check.md | PR #1752 (Issue #1747): 実装計画テンプレートに提示順ルールを追加する際、対象が depends_on 列を持たないプレーン番号リスト形式だと提示順=実行順になる構造的結合を cycle 1 で検出。計画冒頭の独立ブロック方式へ変更し解消 |

@@ -613,9 +613,9 @@ OK patterns:
 
 - [SKILL.md](../SKILL.md) - Principle summary
 - [Phase Mapping](./phase-mapping.md) - Phase details
-- [PR Open Workflow](../../../skills/open/SKILL.md) - pr/open.md (Issue → branch → 実装 → lint → draft PR)
+- [PR Open Workflow](../../../skills/open/SKILL.md) - Issue → branch → 実装 → lint → draft PR
 - [PR Create Command](../../../skills/pr-create/SKILL.md) - Unaddressed issues check before PR creation (Phase 2.5)
-- [PR Review](../../../skills/review/SKILL.md) - review.md
+- [PR Review](../../../skills/review/SKILL.md)
 - [Markdown Authoring Conventions](#markdown-authoring-conventions) - Skill loader に load される Markdown ファイルの記述規約 (bash negation operator inline code convention / operational bash block heaviness convention)
 - [gh-cli-patterns.md](../../../references/gh-cli-patterns.md) - Related bang character (U+0021) handling in bash command contexts (Shell Escaping Notes)
 - [graphql-helpers.md](../../../references/graphql-helpers.md) - Related bang character handling in GraphQL query / jq contexts (History Expansion and Special Character Prevention)

@@ -2,7 +2,7 @@
 
 > **Charter**: Subject to [Simplification Charter](./simplification-charter.md). Runtime に効かない経緯記述・cycle 番号引用・重複 confirmation は書かない。
 
-対象: `plugins/rite/skills/` 配下の Markdown 文書中に存在する `# === ... ===` 形式の **grep anchor**。本ファイルは anchor literal の構造を定める canonical 規約と、anchor を中心に発生する Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」failure mode の予防策を集約する。Wiki 経験則本体は `/rite:wiki-query` で参照 (cf. §5)。
+対象: `plugins/rite/skills/` 配下の Markdown 文書中に存在する `# === ... ===` 形式の **grep anchor**。本ファイルは anchor literal の構造を定める canonical 規約と、anchor を中心に発生する Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」failure mode の予防策を集約する。Wiki 経験則本体は `/rite:wiki-query` で参照 (cf. §4)。
 
 > **⚠️ コード層との境界**: 本 reference は anchor の **literal 構造** (文字列としての形態) を規定する。anchor が指し示す bash block の動作仕様・契約は anchor を抱える各文書 (`skills/fix/SKILL.md` / `skills/review/SKILL.md` / `skills/issue-close/SKILL.md`) に存在する。anchor literal を変更する場合は本 reference 更新後に、同 anchor を citation する全 site (note / blockquote / 他 anchor の rationale 段落) を grep で検出し同時更新すること。
 
@@ -74,7 +74,7 @@ set +o pipefail
 # === severity_map build (local_file/explicit_file only — referenced by pr_comment state transitions note) ===
 ```
 
-(出典: `skills/fix/SKILL.md:1118` — refactor 候補として §4 audit に列挙)
+(出典: 旧 `skills/fix/SKILL.md:1118` — 本 anti-pattern の実例として過去に存在。現在は refactor 済みで anchor 自体が現存しない)
 
 **何が問題か**:
 
@@ -101,34 +101,7 @@ set +o pipefail
 
 ---
 
-## 4. 既存 anchor の audit (本 reference 作成時点)
-
-<a id="audit"></a>
-
-本 reference 作成時点で `plugins/rite/skills/` 配下（当時は旧 `commands/` 配下、v0.7 でスキルへ移行）に存在する `# === ... ===` 形式 anchor のうち、§3.1 anti-pattern に該当する **parenthetical 付き anchor** を列挙する。実際の refactor は別 Issue で実施する (本 Issue scope は規約文書化のみ)。
-
-### 4.1 refactor 候補 (parenthetical 付き)
-
-| File | Line | 現状の anchor literal |
-|------|------|-----------------------|
-| `skills/fix/SKILL.md` | 1118 | `# === severity_map build (local_file/explicit_file only — referenced by pr_comment state transitions note) ===` |
-
-**refactor 方針** (別 Issue で実施):
-
-- `skills/fix/SKILL.md:1118` → anchor を `# === severity_map build ===` に最小化し、`local_file/explicit_file only` 条件と `pr_comment state transitions note` への back-reference は直前のコメント行に分離
-
-### 4.2 既に canonical な anchor (参考)
-
-以下は §2 基本原則に準拠した形で、本 reference の **good example** として参照可能:
-
-| File | Line | anchor literal |
-|------|------|----------------|
-| `skills/fix/SKILL.md` | 1084 | `# === ステップ 1.2.0 Selection logic block end ===` |
-| `skills/review/SKILL.md` | 668 | `# === all_files_excluded bash impl ===` |
-
----
-
-## 5. 関連 Wiki 経験則
+## 4. 関連 Wiki 経験則
 
 <a id="related-heuristics"></a>
 
@@ -145,7 +118,7 @@ set +o pipefail
 
 ---
 
-## 6. 適用範囲
+## 5. 適用範囲
 
 <a id="scope"></a>
 

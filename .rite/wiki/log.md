@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-07T02:00:00+00:00 | create | [新設要約文の「N 個の~系統」的な断定は対象外の類似構造を見落としやすい](pages/anti-patterns/unscoped-enumeration-claim-in-new-summary.md) | raw/reviews/20260706T164658Z-pr-1770.md, raw/fixes/20260706T164946Z-pr-1770.md, raw/reviews/20260706T165606Z-pr-1770.md (PR #1770, Issue #1712) を新規ページ化 |
 | 2026-07-07T01:10:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=246, broken_refs=0 (PR #1769 ingest 後の auto-lint) |
 | 2026-07-07T01:05:00+09:00 | ingest:skip | raw/reviews/20260706T160105Z-pr-1769.md | PR #1769 (Issue #1723) cycle 2 レビュー: cycle1修正の裏付け検証で0件収束。推奨事項2件・調査推奨1件はいずれもpre-existingなscope外事項。新規の一般化可能な経験則なし |
 | 2026-07-07T01:05:00+09:00 | ingest:skip | raw/fixes/20260706T155137Z-pr-1769.md | PR #1769 fix: 軽微なドキュメント修正3件（経緯記述除去/矛盾解消/書式統一）。既存のAsymmetric Fix Transcription系ページ群がカバーする範囲内の一事例 |

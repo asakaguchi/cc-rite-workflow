@@ -53,6 +53,26 @@ Rite Workflow uses a two-step installation: first register the marketplace, then
 
 **Verify installation**: Run `/rite:init` to confirm the plugin is working.
 
+## Uninstallation
+
+Remove the plugin with:
+
+```bash
+/plugin uninstall rite@rite-marketplace
+```
+
+This removes the plugin code but leaves behind the artifacts it created in your project. Most are harmless if left in place, but here's the full list with removal steps:
+
+| Artifact | Location | Harmful if left? | Removal |
+|----------|----------|-------------------|---------|
+| `rite-config.yml` | Committed to your repo | No | `git rm rite-config.yml && git commit` |
+| `.gitignore` entries | Committed (lines added by `/rite:init`, e.g. `.rite-work-memory/`, `.rite/sessions/`) | No | Manually remove the added lines |
+| Remote `wiki` branch | GitHub remote (created by Wiki auto-init) | No | `git push origin --delete wiki` |
+| Local generated files (gitignored) | `.rite-work-memory/`, `.rite/`, `.rite-flow-state*`, `.rite-session-id`, etc. | No (untracked) | `rm -rf .rite-work-memory .rite .rite-flow-state* .rite-session-id .rite-guidance-shown .rite-plugin-root .rite-initialized-version .rite-settings-hooks-cleaned` |
+| Legacy hook registration | `.claude/settings.local.json` (only from installs predating native `hooks.json` management) | No, but may error if the plugin is gone | Remove any hook entries whose command path contains `rite/hooks/` |
+
+None of these block reinstallation or affect other tooling — clean them up at your convenience.
+
 ## Quick Start
 
 ```bash

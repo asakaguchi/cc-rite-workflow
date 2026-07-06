@@ -53,6 +53,26 @@ Rite Workflow は 2 ステップでインストールします。まずマーケ
 
 **インストール確認**: `/rite:init` を実行してプラグインが動作することを確認します。
 
+## アンインストール
+
+プラグインを削除するには:
+
+```bash
+/plugin uninstall rite@rite-marketplace
+```
+
+これによりプラグイン本体は削除されますが、プロジェクト内に生成された成果物は残ります。大半は残しても無害ですが、完全な一覧と削除手順は以下の通りです:
+
+| 成果物 | 場所 | 残すと害があるか | 削除方法 |
+|--------|------|-------------------|---------|
+| `rite-config.yml` | リポジトリに commit 済み | なし | `git rm rite-config.yml && git commit` |
+| `.gitignore` の追記行 | commit 済み（`/rite:init` が追加した `.rite-work-memory/`、`.rite/sessions/` 等の行） | なし | 追加された行を手動削除 |
+| リモート `wiki` ブランチ | GitHub リモート（Wiki 自動初期化で作成） | なし | `git push origin --delete wiki` |
+| ローカル生成物（gitignore 済み） | `.rite-work-memory/`, `.rite/`, `.rite-flow-state*`, `.rite-session-id` 等 | なし（未 commit） | `rm -rf .rite-work-memory .rite .rite-flow-state* .rite-session-id .rite-guidance-shown .rite-plugin-root .rite-initialized-version .rite-settings-hooks-cleaned` |
+| レガシー hook 登録 | `.claude/settings.local.json`（`hooks.json` によるネイティブ管理以前のインストールのみ） | プラグイン削除後にエラーになる場合あり | command パスに `rite/hooks/` を含む hook エントリを削除 |
+
+いずれも再インストールを妨げたり他のツールに影響したりしないため、都合の良いタイミングで削除してください。
+
 ## クイックスタート
 
 ```bash

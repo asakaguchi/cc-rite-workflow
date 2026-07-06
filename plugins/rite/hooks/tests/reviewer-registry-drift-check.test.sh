@@ -24,6 +24,9 @@
 #   - Cross-component contract: the `==> Total reviewer-registry-drift
 #     findings: N` aggregate line (consumed by skills/lint/SKILL.md's
 #     extraction regex) is asserted verbatim without --quiet
+#   - Regression guard: a digit-bearing slug (web3) is correctly counted
+#     across all 3 sync points, guarding against AGENT_RE reverting to a
+#     digit-unaware pattern (Issue #1763)
 #
 # Portability note: fixture mutations use `awk` via the
 # read→transform→write→mv pattern instead of `sed -i`. BSD sed (macOS)
@@ -67,11 +70,14 @@ awk_inplace() {
   mv "$tmp" "$file"
 }
 
-# 12 種のダミー reviewer slug（checker の >= 10 抽出ガードを満たす数）
-FIXTURE_SLUGS=(alpha bravo charlie delta echo-x foxtrot golf hotel india juliett kilo lima)
+# 13 種のダミー reviewer slug（checker の >= 10 抽出ガードを満たす数）。
+# web3 は数字入り slug (Issue #1763): AGENT_RE が `[a-z][a-z-]*-reviewer[.]md` に
+# 巻き戻った場合、この 1 件だけが 3 集合 + I3 行フィルタから静かに脱落する
+# （TC-15 の回帰ガード対象）。
+FIXTURE_SLUGS=(alpha bravo charlie delta echo-x foxtrot golf hotel india juliett kilo lima web3)
 
 # Helper: create a sandbox holding a synchronized reviewer registry fixture
-# (12 agent files + reviewers/SKILL.md with both tables in sync) and echo its
+# (13 agent files + reviewers/SKILL.md with both tables in sync) and echo its
 # repo root path. Callers push the path onto cleanup_dirs and then mutate the
 # fixture to create the drift under test.
 make_registry_sandbox() {
@@ -465,6 +471,50 @@ if printf '%s\n' "$out" | grep -Fq "plugins/rite/agents"; then
   pass "TC-14b: names plugins/rite/agents as the missing sync point"
 else
   fail "TC-14b: expected output to name plugins/rite/agents"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+
+# --- TC-15: numeric slug (web3) synced fixture → rc=0, correctly counted in
+# all 3 sync points (regression guard for AGENT_RE digit support, Issue #1763) ---
+# PR #1762 extended AGENT_RE from `[a-z][a-z-]*-reviewer[.]md` to
+# `[a-z][a-z0-9-]*-reviewer[.]md` so digit-bearing slugs (e.g. web3) are
+# extracted instead of silently dropping out of all 3 sets + the I3 row
+# filter. A plain rc=0 assertion on a fully-synced fixture would NOT catch a
+# regression here: if AGENT_RE reverted, web3-reviewer.md would simply be
+# excluded from every set, so the fixture would still trivially report rc=0
+# (in sync) for the wrong reason. Asserting the reported per-source counts
+# equal the full FIXTURE_SLUGS length (13) instead of 12 is what actually
+# distinguishes "correctly counted" from "silently dropped" — the log line
+# only prints its count with --quiet omitted, hence no --quiet here.
+echo ""
+echo "=== TC-15: numeric slug (web3) synced fixture → rc=0, counted in all 3 sync points ==="
+d=$(make_registry_sandbox)
+cleanup_dirs+=("$d")
+expected_count=${#FIXTURE_SLUGS[@]}
+rc=0
+out=$(bash "$CHECKER" --all --repo-root "$d" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "TC-15: numeric-slug fixture reports no drift"
+else
+  fail "TC-15: expected rc=0, got rc=$rc"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+if printf '%s\n' "$out" | grep -qE "agents/ profiles[[:space:]]*: ${expected_count} reviewers"; then
+  pass "TC-15: agents/ profiles count includes web3-reviewer.md (not silently dropped by AGENT_RE)"
+else
+  fail "TC-15: expected agents/ profiles count to be ${expected_count} (web3 must not be excluded by a digit-unaware AGENT_RE)"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+if printf '%s\n' "$out" | grep -qE "Available Reviewers table[[:space:]]*: ${expected_count} reviewers"; then
+  pass "TC-15: Available Reviewers table count includes web3-reviewer.md"
+else
+  fail "TC-15: expected Available Reviewers table count to be ${expected_count}"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+if printf '%s\n' "$out" | grep -qE "Type Identifiers table[[:space:]]*: ${expected_count} reviewers"; then
+  pass "TC-15: Type Identifiers table count includes web3-reviewer.md"
+else
+  fail "TC-15: expected Type Identifiers table count to be ${expected_count}"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
 

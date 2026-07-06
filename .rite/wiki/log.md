@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-06T19:21:50+09:00 | **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260706T093302Z-pr-1764.md, raw/fixes/20260706T093750Z-pr-1764.md, raw/fixes/20260706T100210Z-pr-1764-cycle2.md, raw/fixes/20260706T102150Z-pr-1764-cycle3.md | PR #1764 (Issue #1746、累積 56 回目) — drift-check family 横断の規約整備 PR 自身が cycle 1 (pipefail コメント矛盾 + doc-heavy 側テストカバレッジ非対称)、cycle 2 (新旧テストディレクトリ見落としによる CI RED 回帰)、cycle 3 (doc-heavy/reviewer-registry 間の非対称欠落回帰テスト) の 3 形態で本 anti-pattern を再演 |
 | 2026-07-06T18:00:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=238, broken_refs=0 (PR #1762 ingest 後の auto-lint) |
 | 2026-07-06T17:59:00+09:00 | ingest:skip | raw/reviews/20260706T085624Z-pr-1762.md | PR #1762 (Issue #1745): 指摘0件（performance/error-handling/security の3名全員「可」）。唯一のフォローアップ推奨（silent-pass fix を守る回帰テスト追加）は既存の mutation-testing-test-fidelity.md でカバーされる標準的レビュー実務であり新規の汎用的知見なし。回帰テスト追加は別Issue #1763として起票済み |
 | 2026-07-06T16:37:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=237, broken_refs=0 (PR #1761 ingest 後の auto-lint) |

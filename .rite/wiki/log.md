@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-06T23:25:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=242, broken_refs=0 (PR #1767 ingest 後の auto-lint) |
 | 2026-07-06T23:20:00+09:00 | ingest:create | raw/reviews/20260706T141300Z-pr-1767.md | PR #1767 (Issue #1740): @tsv+IFS read の field-shift hazard 横断監査手法を新規ページ化。cut-f免除条件と空フィールド可否条件の2軸判定を一般化した経験則として記録 |
 | 2026-07-06T22:24:12+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=242, broken_refs=0 (PR #1766 ingest 後の auto-lint) |
 | 2026-07-06T22:24:12+09:00 | ingest:skip | raw/reviews/20260706T132443Z-pr-1766.md | PR #1766 (Issue #1739): 指摘0件（prompt-engineer/code-quality の2名全員「可」）。壊れたMarkdownアンカー参照（typo）の1行修正で、GitHub slug生成規則の理解は既存レビュー実務の範囲内。新規の汎用的知見なし |

@@ -6,6 +6,10 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-07T03:40:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | PR #1771 (Issue #1709) cycle 3-4 fix — 新設検証ツールの scan scope が Issue In-Scope より狭い + scan scope 説明の 3 ドキュメント間 drift (tech-writer/prompt-engineer cross-validation) を統合 |
+| 2026-07-07T03:40:00+09:00 | update | [mktemp 失敗は silent 握り潰さず WARNING を可視化する](pages/patterns/mktemp-failure-surface-warning.md) | PR #1771 (Issue #1709) cycle 1 review/fix — sentinel 検証スクリプト自身の I3 ロジックで grep no-match/実エラー区別欠落 HIGH を統合 (grep 経路への一般化) |
+| 2026-07-07T03:40:00+09:00 | ingest:skip | raw/fixes/20260706T180648Z-pr-1771.md | PR #1771 cycle 2 fix: file:line 保持のための正規化パイプライン再設計。narrow な実装詳細で独立ページ化は見送り |
+| 2026-07-07T03:40:00+09:00 | ingest:skip | raw/reviews/20260706T183926Z-pr-1771.md | PR #1771 cycle 5 review (mergeable): 5 cycle 収束サマリー。個別教訓は cycle1/3/4 の raw source から既に統合済みのため重複回避 |
 | 2026-07-07T02:05:00+00:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=246, broken_refs=0 (PR #1770 ingest 後の auto-lint) |
 | 2026-07-07T02:00:00+00:00 | create | [新設要約文の「N 個の~系統」的な断定は対象外の類似構造を見落としやすい](pages/anti-patterns/unscoped-enumeration-claim-in-new-summary.md) | raw/reviews/20260706T164658Z-pr-1770.md, raw/fixes/20260706T164946Z-pr-1770.md, raw/reviews/20260706T165606Z-pr-1770.md (PR #1770, Issue #1712) を新規ページ化 |
 | 2026-07-07T01:10:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=246, broken_refs=0 (PR #1769 ingest 後の auto-lint) |

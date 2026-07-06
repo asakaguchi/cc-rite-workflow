@@ -145,15 +145,20 @@ extract_section_rows() {
 
 # --- Set extraction -------------------------------------------------------
 #
-# Agent filename tokens are `{type}-reviewer.md` (lowercase + hyphens). The
-# leading `[a-z]` excludes `_reviewer-base.md`-style shared files, and header
-# / separator rows contain no such token so they drop out naturally.
-# `[.]` (not `\.`) keeps the regex portable between grep -E and awk -v,
+# Agent filename tokens are `{type}-reviewer.md` (lowercase + hyphens +
+# digits). The leading `[a-z]` excludes `_reviewer-base.md`-style shared
+# files, and header / separator rows contain no such token so they drop out
+# naturally. `[a-z0-9-]*` (not `[a-z-]*`) so digit-bearing slugs (e.g.
+# `web3-reviewer.md`) are captured instead of silently dropping out of all 3
+# sets + the I3 row filter (which would let that reviewer's drift pass with
+# rc=0). `[.]` (not `\.`) keeps the regex portable between grep -E and awk -v,
 # where the latter would re-interpret the backslash and warn.
-AGENT_RE='[a-z][a-z-]*-reviewer[.]md'
+AGENT_RE='[a-z][a-z0-9-]*-reviewer[.]md'
 
-# Set 1: agent profile files on disk.
-find "$AGENTS_DIR" -maxdepth 1 -name '*-reviewer.md' -type f 2>/dev/null \
+# Set 1: agent profile files on disk. find's stderr is captured (not
+# discarded) so a real access error (e.g. EACCES) surfaces instead of being
+# indistinguishable from "no matching files".
+find "$AGENTS_DIR" -maxdepth 1 -name '*-reviewer.md' -type f 2>"$WORK_DIR/find.err" \
   | while IFS= read -r f; do basename "$f"; done \
   | grep -E "^${AGENT_RE}$" \
   | sort -u > "$WORK_DIR/agents.set"
@@ -162,9 +167,11 @@ find "$AGENTS_DIR" -maxdepth 1 -name '*-reviewer.md' -type f 2>/dev/null \
 extract_section_rows "Available Reviewers" \
   | grep -oE "$AGENT_RE" | sort -u > "$WORK_DIR/available.set"
 
-# Set 3: Reviewer Type Identifiers table Agent column.
-extract_section_rows "Reviewer Type Identifiers" \
-  | grep -oE "$AGENT_RE" | sort -u > "$WORK_DIR/identifiers.set"
+# Set 3: Reviewer Type Identifiers table Agent column. Rows are cached to
+# identifiers.rows so the I3 check below reuses them instead of re-invoking
+# extract_section_rows (which re-parses SKILL_FILE with awk).
+extract_section_rows "Reviewer Type Identifiers" > "$WORK_DIR/identifiers.rows"
+grep -oE "$AGENT_RE" "$WORK_DIR/identifiers.rows" | sort -u > "$WORK_DIR/identifiers.set"
 
 agents_count=$(wc -l < "$WORK_DIR/agents.set")
 available_count=$(wc -l < "$WORK_DIR/available.set")
@@ -175,9 +182,13 @@ log "Available Reviewers table  : ${available_count} reviewers"
 log "Type Identifiers table     : ${identifiers_count} reviewers"
 
 # Each sync point is expected to hold at least 10 reviewers (the registry has
-# 12-13 as of this writing). An empty or undersized set almost always means a
-# heading / table-format change made extraction fall through, so fail fast
-# with an invocation error rather than silently reporting a large drift.
+# 12-13 as of this writing). An empty or undersized set almost always means
+# extraction fell through, so fail fast with an invocation error rather than
+# silently reporting a large drift. The likely cause differs by source: the
+# agents/ directory is a find + glob over the filesystem (unrelated to
+# SKILL.md headings), while the 2 table sources depend on section boundaries
+# in SKILL_FILE — so each gets its own diagnostic instead of one shared
+# "heading changed" message that would misdirect for the agents/ source.
 for kv in "${AGENTS_DIR}:${agents_count}" \
           "Available-Reviewers-table:${available_count}" \
           "Type-Identifiers-table:${identifiers_count}"; do
@@ -185,8 +196,20 @@ for kv in "${AGENTS_DIR}:${agents_count}" \
   count="${kv##*:}"
   if [ "$count" -lt 10 ]; then
     echo "ERROR: $src extracted only $count reviewers (expected >= 10)" >&2
-    echo "  Likely cause: section heading or table format changed and extraction fell through" >&2
-    echo "  Recovery: inspect the section boundaries in reviewer-registry-drift-check.sh" >&2
+    case "$src" in
+      "$AGENTS_DIR")
+        echo "  Likely cause: directory renamed/moved, agent filenames no longer match *-reviewer.md, or the directory is unreadable" >&2
+        if [ -s "$WORK_DIR/find.err" ]; then
+          echo "  find stderr:" >&2
+          sed 's/^/    /' "$WORK_DIR/find.err" >&2
+        fi
+        echo "  Recovery: verify $AGENTS_DIR exists, check its permissions, and confirm agent filenames match *-reviewer.md" >&2
+        ;;
+      *)
+        echo "  Likely cause: section heading or table format changed and extraction fell through" >&2
+        echo "  Recovery: inspect the section boundaries in reviewer-registry-drift-check.sh" >&2
+        ;;
+    esac
     exit 2
   fi
 done
@@ -226,7 +249,9 @@ report_diff "$WORK_DIR/available.set"   "Available Reviewers table" \
 # fail the regex filter, get skipped, and the check would false-pass with
 # exit 0. Count the rows that pass the filter and fail fast when the count
 # collapses, symmetric with the >= 10 set-extraction guard above.
-i3_out=$(extract_section_rows "Reviewer Type Identifiers" | awk -F'|' -v re="^${AGENT_RE}$" '
+# Reuses identifiers.rows (cached above) instead of re-invoking
+# extract_section_rows, which would re-parse SKILL_FILE with awk a second time.
+i3_out=$(awk -F'|' -v re="^${AGENT_RE}$" '
   {
     slug = $2; agent = $4
     gsub(/[[:space:]`]/, "", slug)
@@ -238,7 +263,7 @@ i3_out=$(extract_section_rows "Reviewer Type Identifiers" | awk -F'|' -v re="^${
       printf "  - slug %s expects %s but Agent cell is %s\n", slug, expected, agent
   }
   END { printf "I3_CHECKED=%d\n", checked }
-')
+' "$WORK_DIR/identifiers.rows")
 i3_checked=$(printf '%s\n' "$i3_out" | sed -n 's/^I3_CHECKED=//p')
 slug_findings=$(printf '%s\n' "$i3_out" | grep -v '^I3_CHECKED=' || true)
 if [ "${i3_checked:-0}" -lt 10 ]; then

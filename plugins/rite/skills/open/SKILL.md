@@ -361,7 +361,7 @@ Issue body から「What / Why / Where / Acceptance Criteria」を抽出。
 - {note_1}
 ```
 
-**提示順ルール（volatile-first）**: 「実装ステップ」は、ユーザーの判断で変わりやすい項目（データモデル変更・型/インターフェース定義・ユーザー可視挙動/UX）を先頭に、機械的なリファクタ・定型作業を末尾に並べる。ステップ 3.4 の承認時にユーザーが本質的な判断へ注意を集中できるようにするため（出典: [A Field Guide to Fable: Finding Your Unknowns](https://x.com/trq212/status/2073100352921215386) — "lead with the decisions I'm most likely to tweak"）。該当項目がない計画では従来どおりの順序で出力し、空の見出し・ブロックは出さない。
+**volatile-first 提示ルール**: `## 実装計画` の直後・`### 変更対象ファイル` の前に、ユーザーの判断で変わりやすい項目（データモデル変更・型/インターフェース定義・ユーザー可視挙動/UX）があれば「要判断ポイント」として箇条書きで列挙する。ステップ 3.4 の承認時にユーザーが本質的な判断へ注意を集中できるようにするため（出典: [A Field Guide to Fable: Finding Your Unknowns](https://x.com/trq212/status/2073100352921215386) — "lead with the decisions I'm most likely to tweak"）。**「実装ステップ」自体の並び順（= 実行順）は変更しない**（issue-implement 側の実行順序決定に影響を与えないため）。該当項目がない計画ではこのブロックを出力しない。
 
 ### 3.4 ユーザー確認
 

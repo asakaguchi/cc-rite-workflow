@@ -53,6 +53,27 @@ Rite Workflow uses a two-step installation: first register the marketplace, then
 
 **Verify installation**: Run `/rite:init` to confirm the plugin is working.
 
+## Uninstallation
+
+Remove the plugin with:
+
+```bash
+/plugin uninstall rite@rite-marketplace
+```
+
+This removes the plugin code but leaves behind the artifacts it created in your project. Most are harmless if left in place, but here's the full list with removal steps:
+
+| Artifact | Location | Harmful if left? | Removal |
+|----------|----------|-------------------|---------|
+| `rite-config.yml` | Committed to your repo | No | `git rm rite-config.yml && git commit -m "chore: remove rite-config.yml"` |
+| `.gitignore` entries | Committed (lines added by `/rite:init`, e.g. `.rite-work-memory/`, `.rite/sessions/`) | No | Manually remove the added lines |
+| Remote `wiki` branch | GitHub remote (created by Wiki auto-init) | No | `git push origin --delete <branch>`, where `<branch>` is `wiki.branch_name` in `rite-config.yml` (default `wiki`) |
+| Local generated files (gitignored) | `.rite-work-memory/`, `.rite-flow-state*`, `.rite-compact-state*`, `.rite-flow-debug.log`, `.rite-session-id`, etc. | No (untracked) | `rm -rf .rite-work-memory .rite-flow-state* .rite-compact-state* .rite-flow-debug.log .rite-session-id .rite-guidance-shown .rite-plugin-root .rite-initialized-version .rite-settings-hooks-cleaned` |
+| `.rite/` internal directories (gitignored, may hold live git worktrees) | `.rite/wiki-worktree/` (Wiki `separate_branch` strategy), `.rite/worktrees/issue-*` (per-session worktrees when `multi_session` is enabled) | Yes if removed with a plain `rm -rf` — this can orphan git worktree metadata and destroy uncommitted work | Check `git worktree list` first; if either path is registered, run `git worktree remove <path>` (confirming no uncommitted changes) then `git worktree prune`. Only after that, remove the rest of `.rite/` with `rm -rf .rite` |
+| Legacy hook registration | `.claude/settings.local.json` (only from installs predating native `hooks.json` management) | No, but may error if the plugin is gone | Remove any hook entries whose command path contains `rite/` and `hooks/` as path segments — a plugin version segment may appear in between (e.g. `.../rite/hooks/foo.sh` or `.../rite/0.7.0/hooks/foo.sh` — not `favorite/hooks/foo.sh`) |
+
+None of these block reinstallation or affect other tooling — clean them up at your convenience.
+
 ## Quick Start
 
 ```bash

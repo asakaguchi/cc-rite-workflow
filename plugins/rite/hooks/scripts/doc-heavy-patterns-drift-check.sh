@@ -50,10 +50,14 @@
 #   1  Drift detected (symmetric set difference non-empty)
 #   2  Invocation error (bad args, empty section)
 
-# `-e` is intentionally omitted: a `-euo` "correction" would let a no-match
-# grep pipeline (rc=1) inside a pre-guard block kill the script before the
-# empty-section guard runs, misclassifying an invocation error (rc=2
-# contract) as drift detected (rc=1).
+# `-e` is intentionally omitted for consistency with the sibling drift
+# checkers (reviewer-registry-drift-check.sh, distributed-fix-drift-check.sh),
+# where a `-euo` "correction" would let a no-match grep pipeline kill the
+# script before its extraction guard runs and misclassify an invocation
+# error as drift. This file's only pipeline (extract_review / extract_skill)
+# is already wrapped in `if !` below, which is exempt from `-e` regardless —
+# a future refactor that removes that `if !` wrapping would reintroduce the
+# same risk here, so `-e` stays omitted as a defensive baseline.
 set -uo pipefail
 
 REPO_ROOT=""

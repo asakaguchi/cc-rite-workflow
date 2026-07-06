@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-06T14:03:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 (PR #1758 ingest 後の auto-lint) |
 | 2026-07-06T14:02:35+09:00 | ingest:update | pages/heuristics/orchestrator-resolves-reviewer-self-contradiction-and-counter-evidence.md | PR #1758 (Issue #1751): docs整合修正PR（prompt-engineer + code-quality sole-reviewer guard co-reviewer）で同一パターンが4件目として再現 — 両reviewerが計3件（すべてLow）を指摘したがoverall assessmentはいずれもmergeable、個別指摘も「対応不要」「任意」と明記されておりFinding Quality Guardrailでblocking 0件と判定 |
 | 2026-07-06T13:36:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 (PR #1757 ingest 後の auto-lint) |
 | 2026-07-06T13:34:48+09:00 | ingest:update | pages/heuristics/orchestrator-resolves-reviewer-self-contradiction-and-counter-evidence.md | PR #1757 (Issue #1750): 全く別の PR・reviewer 組み合わせ (tech-writer + code-quality、Doc-Heavy PR) で同一パターンが再現 — 両 reviewer が計5件を指摘したが overall assessment はいずれも mergeable、個別指摘も「任意」「対応不要」と明記されており Finding Quality Guardrail で blocking 0件と判定 |

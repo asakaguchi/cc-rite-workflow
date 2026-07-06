@@ -484,16 +484,20 @@ _reset_active_state() {
   # 3 field を single composite jq read で読む。3 read に分けると mid-write 中断などで
   # .phase だけ valid / .issue_number 以降が corrupt な partial-failure を WARNING の有無で
   # 区別できなくなり、reset reason の triage が不能になる経路ができる。
+  # IFS=$'\t' + @tsv collapses empty fields under POSIX whitespace rules: an empty
+  # issue_number shifts _branch's value into _issue, leaving _branch empty. The
+  # unit separator \x1f preserves empty fields safely (see post-compact.sh / the
+  # ACTIVE-fallback read below for the same convention).
   local _reset_jq_err _composite
   _reset_jq_err=$(mktemp 2>/dev/null) || _reset_jq_err=""
-  _composite=$(jq -r '[(.phase // ""), (.issue_number // "" | tostring), (.branch // "")] | @tsv' \
-    "$STATE_FILE" 2>"${_reset_jq_err:-/dev/null}") || _composite=$'\t\t'
+  _composite=$(jq -r '[(.phase // ""), (.issue_number // "" | tostring), (.branch // "")] | join("\u001f")' \
+    "$STATE_FILE" 2>"${_reset_jq_err:-/dev/null}") || _composite=$'\x1f\x1f'
   if [ -n "$_reset_jq_err" ] && [ -s "$_reset_jq_err" ]; then
     echo "rite: session-start: WARNING: _reset_active_state jq read failed (STATE_FILE may be corrupt)" >&2
     head -3 "$_reset_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   [ -n "$_reset_jq_err" ] && rm -f "$_reset_jq_err"
-  IFS=$'\t' read -r _phase _issue _branch <<< "$_composite"
+  IFS=$'\x1f' read -r _phase _issue _branch <<< "$_composite"
 
   # Session ownership check runs on the normal execution path, not just RITE_DEBUG.
   # Fail-safe: if the helper isn't sourced or returns non-zero, treat as "unknown"

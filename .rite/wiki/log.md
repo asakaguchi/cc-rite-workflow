@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-06T15:20:00+09:00 | ingest:skip | raw/reviews/20260706T061909Z-pr-1759.md | PR #1759 (Issue #1753): 指摘0件の定型レビュー結果（1行の出典表記変更のみ）で抽出可能な新規経験則なし |
 | 2026-07-06T14:03:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 (PR #1758 ingest 後の auto-lint) |
 | 2026-07-06T14:02:35+09:00 | ingest:update | pages/heuristics/orchestrator-resolves-reviewer-self-contradiction-and-counter-evidence.md | PR #1758 (Issue #1751): docs整合修正PR（prompt-engineer + code-quality sole-reviewer guard co-reviewer）で同一パターンが4件目として再現 — 両reviewerが計3件（すべてLow）を指摘したがoverall assessmentはいずれもmergeable、個別指摘も「対応不要」「任意」と明記されておりFinding Quality Guardrailでblocking 0件と判定 |
 | 2026-07-06T13:36:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 (PR #1757 ingest 後の auto-lint) |

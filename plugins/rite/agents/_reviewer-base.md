@@ -460,3 +460,5 @@ Output using this format with evaluation (可/条件付き/要修正), findings 
 WHY が省略された findings は修正エージェントの判断精度を下げる。WHAT のみで WHY が自明な場合でも、影響範囲や既存コードとの比較を含めること。
 
 See [Severity Levels](../references/severity-levels.md) for common severity definitions and the [Severity × Scope Matrix](../references/severity-levels.md#severity--scope-matrix) for allowed/forbidden combinations.
+
+**Review Checklist 見出しとの関係**: 各 reviewer ファイルの `## Review Checklist` 見出し(`Critical (Must Fix)` / `Important (Should Fix)` / `Recommendations`)はレビュー観点を投資領域ごとに整理するためのものであり、finding 発行時の **重要度** 列(schema enum 5 値)そのものではない。見出し⇄enum の変換は再定義せず [`severity-levels.md` Severity 語彙 3 系統 Crosswalk](../references/severity-levels.md#severity-vocabulary-crosswalk) を参照すること。

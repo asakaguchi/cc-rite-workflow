@@ -598,13 +598,14 @@ Before Confirmation & Creation, surface the assumptions the model implicitly fil
 **Design principle**: Questions are limited to information that exists only in the user's head (user-specific decisions). Information derivable from the repository or Wiki is resolved by the model through exploration — never asked.
 
 1. **Enumerate** the assumptions required for the Contract but not stated in the input (target file paths, naming conventions, conformance to existing patterns, backward-compatibility policy, error behavior, …).
-2. **Classify** each assumption:
+2. **Blind spot pass** (M and above only, skipped for XS/S): actively probe for unknown unknowns via two questions — what adjacent areas not touched by this Issue could break from this change, and what existing constraints/conventions/heuristics might the user be unaware of. Findings merge into the same three categories below (no separate output format).
+3. **Classify** each assumption (including blind-spot findings):
    - **(a) derivable** → self-resolve via repository/Wiki exploration (no question).
    - **(b) user-specific decision** → confirm via `AskUserQuestion`; each option carries a recommended choice.
    - **(c) deferrable** → document under Section 1 "Assumptions / Open Questions" in the Issue body.
-3. **Wiki cross-check** (SHOULD): match the draft Contract against `wiki-query` results and surface contradictions as assumptions. Silently skipped when the Wiki is opt-out or uninitialized.
+4. **Wiki cross-check** (SHOULD): match the draft Contract against `wiki-query` results and surface contradictions as assumptions. Silently skipped when the Wiki is opt-out or uninitialized.
 
-**Question intensity** follows the anticipated Complexity (Phase 1): XS/S → 0–1 question; M and above → at most 3. When more than three (b) items are found, the highest-impact three are asked and the remainder move to (c). The same surfacing also applies to the L/XL decomposition path (Phase 0.6-0.9), where it runs inside the specification-document generation step (Phase 0.7) before the design document is written.
+**Question intensity** follows the anticipated Complexity (Phase 1): XS/S → 0–1 question; M and above → at most 3. When more than three (b) items are found (original assumptions + blind-spot findings combined), the highest-impact three are asked and the remainder move to (c). The same surfacing also applies to the L/XL decomposition path (Phase 0.6-0.9), where it runs inside the specification-document generation step (Phase 0.7) before the design document is written.
 
 #### Phase 2: Confirmation & Creation
 

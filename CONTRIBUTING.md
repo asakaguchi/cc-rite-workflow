@@ -51,7 +51,7 @@ chore: maintenance
 ```
 plugins/rite/
 ├── skills/           # Skill definitions auto-detected by Claude Code (SKILL.md); invoked as /rite:<name>
-│   │                 #   each skill = thin SKILL.md (< 500-line entrypoint) + co-located references/
+│   │                 #   each skill = thin SKILL.md + co-located references/ (entry skills < 500 lines; procedural skills <= 4,000 lines, rationale in references/)
 │   ├── (PR lifecycle)  # open, iterate, review, fix, ready, merge, cleanup, run, pr-create
 │   ├── (issue ops)     # issue-create, issue-list, issue-update, issue-close, issue-edit, issue-implement
 │   ├── (wiki)          # wiki-init, wiki-query, wiki-ingest, wiki-lint

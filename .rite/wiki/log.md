@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-07T00:08:39+09:00 | ingest:skip | raw/reviews/20260706T150839Z-pr-1768.md | PR #1768 (Issue #1725): prompt-engineer/tech-writer の2名全員「可」・指摘0件の純プロース修正（umbrellaラベル表記統一）。design_confirmation分類の推奨事項2件はPR固有の判断で、一般化可能な新規知見なし |
 | 2026-07-06T23:25:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=242, broken_refs=0 (PR #1767 ingest 後の auto-lint) |
 | 2026-07-06T23:20:00+09:00 | ingest:create | raw/reviews/20260706T141300Z-pr-1767.md | PR #1767 (Issue #1740): @tsv+IFS read の field-shift hazard 横断監査手法を新規ページ化。cut-f免除条件と空フィールド可否条件の2軸判定を一般化した経験則として記録 |
 | 2026-07-06T22:24:12+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=242, broken_refs=0 (PR #1766 ingest 後の auto-lint) |

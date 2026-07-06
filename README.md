@@ -65,11 +65,12 @@ This removes the plugin code but leaves behind the artifacts it created in your 
 
 | Artifact | Location | Harmful if left? | Removal |
 |----------|----------|-------------------|---------|
-| `rite-config.yml` | Committed to your repo | No | `git rm rite-config.yml && git commit` |
+| `rite-config.yml` | Committed to your repo | No | `git rm rite-config.yml && git commit -m "chore: remove rite-config.yml"` |
 | `.gitignore` entries | Committed (lines added by `/rite:init`, e.g. `.rite-work-memory/`, `.rite/sessions/`) | No | Manually remove the added lines |
-| Remote `wiki` branch | GitHub remote (created by Wiki auto-init) | No | `git push origin --delete wiki` |
-| Local generated files (gitignored) | `.rite-work-memory/`, `.rite/`, `.rite-flow-state*`, `.rite-session-id`, etc. | No (untracked) | `rm -rf .rite-work-memory .rite .rite-flow-state* .rite-session-id .rite-guidance-shown .rite-plugin-root .rite-initialized-version .rite-settings-hooks-cleaned` |
-| Legacy hook registration | `.claude/settings.local.json` (only from installs predating native `hooks.json` management) | No, but may error if the plugin is gone | Remove any hook entries whose command path contains `rite/hooks/` |
+| Remote `wiki` branch | GitHub remote (created by Wiki auto-init) | No | `git push origin --delete <branch>`, where `<branch>` is `wiki.branch_name` in `rite-config.yml` (default `wiki`) |
+| Local generated files (gitignored) | `.rite-work-memory/`, `.rite-flow-state*`, `.rite-compact-state*`, `.rite-flow-debug.log`, `.rite-session-id`, etc. | No (untracked) | `rm -rf .rite-work-memory .rite-flow-state* .rite-compact-state* .rite-flow-debug.log .rite-session-id .rite-guidance-shown .rite-plugin-root .rite-initialized-version .rite-settings-hooks-cleaned` |
+| `.rite/` internal directories (gitignored, may hold live git worktrees) | `.rite/wiki-worktree/` (Wiki `separate_branch` strategy), `.rite/worktrees/issue-*` (per-session worktrees when `multi_session` is enabled) | Yes if removed with a plain `rm -rf` — this can orphan git worktree metadata and destroy uncommitted work | Check `git worktree list` first; if either path is registered, run `git worktree remove <path>` (confirming no uncommitted changes) then `git worktree prune`. Only after that, remove the rest of `.rite/` with `rm -rf .rite` |
+| Legacy hook registration | `.claude/settings.local.json` (only from installs predating native `hooks.json` management) | No, but may error if the plugin is gone | Remove any hook entries whose command path contains `rite/hooks/` as a full path segment (e.g. `.../rite/hooks/foo.sh` — not `favorite/hooks/foo.sh`) |
 
 None of these block reinstallation or affect other tooling — clean them up at your convenience.
 

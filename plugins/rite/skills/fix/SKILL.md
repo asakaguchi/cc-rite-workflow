@@ -339,7 +339,7 @@ echo "[CONTEXT] REVIEW_FILE_PATH=$review_file_path" >&2
 echo "[CONTEXT] REMAINING_ARGS=$remaining_args" >&2
 ```
 
-**Validation**: この Phase では **パスの存在確認は行わない**。存在確認は ステップ 1.2 のハイブリッド読取ロジック Priority 0 で実施し、失敗時は ステップ 1.2.0.1 Interactive Fallback に誘導する ([review-result-schema.md 読取優先順位セクション](../../references/review-result-schema.md#読取優先順位-prfix) 参照)。ただし `--review-file=` (値なし) のみは上記 bash block 内で即 fail-fast する (後段で silent fallback に流れないため)。
+**Validation**: この Phase では **パスの存在確認は行わない**。存在確認は ステップ 1.2 のハイブリッド読取ロジック Priority 0 で実施し、失敗時は ステップ 1.2.0.1 Interactive Fallback に誘導する ([review-result-schema.md 読取優先順位セクション](../../references/review-result-schema.md#読取優先順位-fix) 参照)。ただし `--review-file=` (値なし) のみは上記 bash block 内で即 fail-fast する (後段で silent fallback に流れないため)。
 
 **制約 — 空白を含むパスは未対応**: `--review-file` の regex parsing は `[^[:space:]]*` で値を capture するため、`/Users/name/Google Drive/foo.json` のような**空白を含むパスは正しくパースされない** (空白位置でトークン分割され、PR 番号候補として誤認される)。この制約は Claude Code の `$ARGUMENTS` が単一文字列として渡される仕様に起因し、真の argv 復元は不可能。空白を含むパスを使いたい場合は ステップ 1.2.0.1 Interactive Fallback の「ファイルパス指定」option で入力すること (AskUserQuestion は単一文字列として受け取るため空白を含むパスも受理される)。
 

@@ -213,23 +213,30 @@ Issue の内容に矛盾があります:
 ## 実装計画
 
 ### 変更対象ファイル
-| ファイル | 変更内容 |
-|---------|---------|
-| src/auth.ts | 認証ロジックの追加 |
-| src/middleware.ts | 認証ミドルウェアの追加 |
+- src/auth.ts: 認証ロジックの追加
+- src/middleware.ts: 認証ミドルウェアの追加
 
-### 実装ステップ（依存グラフ）
+### 参考実装
+| 参考ファイル | 参考理由 |
+|-------------|---------|
+| src/session.ts | 同様の認証状態管理パターンを踏襲 |
 
-| Step | 内容 | depends_on | 並列グループ |
-|------|------|------------|-------------|
-| S1 | 認証ロジックの実装 | — | A |
-| S2 | ミドルウェアの統合 | S1 | B |
-| S3 | テストの追加 | S1, S2 | C |
+### 実装ステップ
+1. 認証ロジックの実装
+2. ミドルウェアの統合
+3. テストの追加
+
+### 受入基準マッピング
+- AC1 → step 1
+- AC2 → step 2
+
+### 注意点
+- 既存セッション管理との整合性に注意
 
 この計画で進めますか？
 ```
 
-**Note**: For the full plan template including the "参考実装" section, see [`skills/open/SKILL.md`](../../../skills/open/SKILL.md) ステップ 3.3 (実装計画生成)。
+**Note**: This example mirrors the actual plan template. See [`skills/open/SKILL.md`](../../../skills/open/SKILL.md) ステップ 3.3 (実装計画生成) for the canonical template definition.
 
 ---
 

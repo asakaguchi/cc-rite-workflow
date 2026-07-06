@@ -2,8 +2,12 @@
 title: "Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする"
 domain: "heuristics"
 created: "2026-05-26T00:00:00Z"
-updated: "2026-07-07T06:08:00+09:00"
+updated: "2026-07-07T22:03:17+00:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260706T220114Z-pr-1773-cycle3.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260706T220317Z-pr-1773-cycle3.md"
   - type: "reviews"
     ref: "raw/reviews/20260706T210924Z-pr-1772.md"
   - type: "reviews"
@@ -97,12 +101,20 @@ PR #1296 (Issue #1288、0 findings / 1 cycle、コメント/docstring のみの 
 
 PR #1772 (Issue #1710、0 findings / 1 cycle) で本 protocol の**「実装 grep 検証」を、実装の現状記述ではなく調査文書自身が主張する大規模定量値（`[CONTEXT]` marker 675箇所/55ファイルの棚卸し）に適用する**変種を successful preventive application として実測。tech-writer と code-quality の両 reviewer が独立に `grep -rn '\[CONTEXT\]' plugins/rite/` を再実行し、文書が主張する全数値（総ヒット数・ファイル数・種別内訳6区分の合計・上位15ファイルの個別件数・emit/consume内訳・参照ファイルの実在）を1件残らず突合、捏造・不整合ゼロを確認して1 cycle mergeableに到達した。教訓: 大規模な定量的棚卸しを含む調査文書は、（a）再現可能な grep コマンドを本文に明記し、（b）集計を漏れなく分割された内訳（合計と一致する区分）として提示すると、reviewer 側が実装 grep verify を機械的に反復実行でき、高い信頼性を伴う短サイクル収束を実現できる。本適用は「documentation ↔ implementation」ではなく「調査文書自身の定量claim ↔ grep実測」という cross-reference 対象のバリエーションだが、根底にある「prose の factual claim は必ず機械的に再実行可能な検証手段を伴わせる」原則は同一。
 
+### Successful application — 「削除対象一覧」文書のドキュメント化石化検出 + 後方互換性を理由とした意図的な現状維持判断 (PR #1773)
+
+PR #1773 (Issue #1706、アンインストール手順ドキュメント、cycle 3 で 1 LOW 検出 → accept 決着) で、本 protocol の**「削除されるべきファイル一覧」型ドキュメントに対する implementation grep verify** バリエーションを実測。tech-writer が Doc-Heavy mode の 5 カテゴリ検証 (Implementation Coverage) で README の削除対象一覧の各項目を現行実装ソースと突合した結果、掲載されていた `.rite-guidance-shown` が過去の refactor で生成箇所自体が既に除去されており、「現行コードが生成する」という文書の暗黙前提と実装が乖離していることを発見した (`git grep` で参照ゼロを確認)。
+
+本件が既存の「実装 grep 未 verify で dead reference が残る」パターンと異なる点は、**検出後の正しい対応が「削除して仕様を最新化する」ではなく「後方互換性 (旧バージョンからのアップグレード環境での残存可能性) を理由に意図的に現状維持する」であった**こと。fix cycle でこの finding を `accept (認知のみ)` として処理し、fingerprint を永続化して次 cycle 以降の再指摘を抑制した。教訓: 「このコマンドで削除される対象一覧」ドキュメントの grep verify は、乖離を機械的に炙り出すことはできるが、乖離の是正方法 (削除 vs 意図的保持) は reviewer ではなく実装コンテキスト (後方互換性要求など) を踏まえた判断が必要であり、reviewer の役割は「乖離の可視化」に留め、是正判断は fix 側の accept 経路に委ねる責務分離が有効に機能した。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 
 ## ソース
 
+- [PR #1773 review cycle 3 (Doc-Heavy Implementation Coverage 検証で削除対象一覧ドキュメントのファサード化を検出)](../../raw/reviews/20260706T220114Z-pr-1773-cycle3.md)
+- [PR #1773 fix cycle 3 (accept 決着: 後方互換性を理由に意図的現状維持、fingerprint 永続化)](../../raw/fixes/20260706T220317Z-pr-1773-cycle3.md)
 - [PR #1772 review (調査文書の定量的棚卸し全数値をgrep再実行で検証、tech-writer/code-quality両者独立全数一致、0 findings 1cycle mergeable)](../../raw/reviews/20260706T210924Z-pr-1772.md)
 - [PR #1139 review cycle 1 (anchor link typo / phantom sentinel / Asymmetric Fix Transcription on #1118 wave)](../../raw/reviews/20260525T070727Z-pr-1139.md)
 - [PR #1139 review cycle 2 (CHANGELOG `remain on disk` factual error / project.type CHANGELOG vs CONFIGURATION drift)](../../raw/reviews/20260525T081823Z-pr-1139.md)

@@ -6,6 +6,9 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-07T22:03:17+00:00 | create | [過剰マッチ防止の精緻化修正は、実装が許容する全形状を再確認しないと過小マッチという別の欠陥を生む (振り子現象)](pages/anti-patterns/precision-tightening-pendulum-regression.md) | PR #1773 cycle 1→2 (Issue #1706) を新規ページ化 |
+| 2026-07-07T22:03:17+00:00 | create | [アンインストール/クリーンアップ手順の rm -rf 推奨は git worktree 等の live 状態管理対象を見落としやすい](pages/anti-patterns/cleanup-docs-must-exclude-live-git-worktrees.md) | PR #1773 cycle 1 (Issue #1706) を新規ページ化 |
+| 2026-07-07T22:03:17+00:00 | update | [Documentation review は対応する実装側の grep verify を必須 step とする](pages/heuristics/docs-review-implementation-grep-verification.md) | PR #1773 cycle 3 (Issue #1706) — 削除対象一覧ドキュメントの grep verify + accept による意図的現状維持判断の successful application を統合 |
 | 2026-07-07T06:12:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=248, broken_refs=0 (PR #1772 ingest 後の auto-lint) |
 | 2026-07-07T06:08:00+09:00 | update | [Documentation review は対応する実装側の grep verify を必須 step とする](pages/heuristics/docs-review-implementation-grep-verification.md) | PR #1772 (Issue #1710) — 調査文書自身の定量的棚卸し (675箇所/55ファイル) を grep 再実行検証可能な形で書いた successful application を統合 |
 | 2026-07-07T03:41:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=248, broken_refs=0 (PR #1771 ingest 後の auto-lint) |

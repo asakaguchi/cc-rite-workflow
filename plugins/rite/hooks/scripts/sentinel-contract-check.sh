@@ -108,10 +108,11 @@ if [ ! -d "$SKILLS_DIR" ]; then
 fi
 
 # Denylist of documented non-sentinel bracket look-alikes (must stay in sync
-# with sentinel-contract.md "Non-Sentinel な類似記法" section).
+# with sentinel-contract.md "Non-Sentinel な類似記法" section). Only entries
+# reachable within the I3 scan scope (*.md under plugins/rite/skills/) belong
+# here — e.g. generic placeholder names used only in hooks/tests/*.sh fixtures
+# are already out of scope and would never need a denylist entry.
 NON_SENTINEL_DENYLIST=(
-  "[skill:returned-to-caller]"
-  "[name:returned-to-caller]"
   "[file:line]"
   "[tag:value]"
 )
@@ -208,8 +209,21 @@ done < "$WORK_DIR/sot_rows.txt"
 # --- Step 2 (I3): scan for undeclared sentinel-shaped literals ---
 # Colon-required, lowercase-start pattern excludes `[CONTEXT]`/`[DEBUG]` (upper
 # first letter) and bare regex character classes (no colon) by construction.
-grep -rn --include='*.md' -oE '\[[a-z][a-z_-]*:[a-zA-Z0-9_:-]*\]' "$SKILLS_DIR" 2>/dev/null \
-  | sed 's/^[^:]*:[0-9]*://' > "$WORK_DIR/found_raw.txt" || true
+#
+# grep exit code is captured directly (no pipe) so a genuine scan failure
+# (permission denied / corrupt symlink / grep implementation error, rc > 1)
+# is distinguished from a legitimate no-match (rc=1) and does not silently
+# collapse to "0 findings" — I1/I2 above already guard their own extraction
+# this way via the `n_rows -eq 0` check; I3 lacked the symmetric guard.
+grep -rn --include='*.md' -oE '\[[a-z][a-z_-]*:[a-zA-Z0-9_:-]*\]' "$SKILLS_DIR" \
+  > "$WORK_DIR/found_raw_lines.txt" 2>"$WORK_DIR/scan.err"
+scan_rc=$?
+if [ "$scan_rc" -gt 1 ]; then
+  echo "ERROR: scan of $SKILLS_DIR for undeclared sentinel-shaped literals failed (rc=$scan_rc)" >&2
+  echo "  $(cat "$WORK_DIR/scan.err" 2>/dev/null)" >&2
+  exit 2
+fi
+sed 's/^[^:]*:[0-9]*://' "$WORK_DIR/found_raw_lines.txt" > "$WORK_DIR/found_raw.txt"
 
 # Normalize a trailing numeric segment to N (e.g. [pr:created:123] -> [pr:created:N])
 # so concrete example instances collapse onto their canonical SoT form.

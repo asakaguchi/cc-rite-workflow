@@ -301,8 +301,12 @@ cp "$REPO_ROOT/plugins/rite/skills/review/SKILL.md" \
 out=$("$SCRIPT" --all --quiet --repo-root "$FAKE_ASYMMETRIC" 2>&1)
 rc=$?
 assert "asymmetric absence (SKILL.md missing) exits 2" "2" "$rc"
+# Needle is the full path of the MISSING file (reviewers/SKILL.md), not the
+# bare "SKILL.md" basename shared by both required files (review/SKILL.md and
+# reviewers/SKILL.md) — a bare basename would pass even if the diagnostic
+# named the present file instead of the missing one.
 assert_contains "asymmetric absence names the missing file" \
-  "SKILL.md" "$out"
+  "reviewers/SKILL.md" "$out"
 
 # --- Test 8: broken-section guard --------------------------------------------
 # Blank out review.md's doc_file_patterns body. The extractor should find zero

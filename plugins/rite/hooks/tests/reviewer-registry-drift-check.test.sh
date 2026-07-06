@@ -409,6 +409,65 @@ else
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
 
+# --- TC-14: asymmetric absence (partial checkout) exits 2, NOT clean skip ---
+# TC-13 only proves the AND-gated clean-skip fires when NEITHER sync point
+# exists. It cannot detect an AND→OR regression in the guard (Issue #1746
+# cycle3 review: doc-heavy has this asymmetric-absence coverage via Test 7b,
+# but reviewer-registry did not — this closes that family-wide gap). A
+# targeted-deletion attack removing only one sync point must still surface as
+# an invocation error (rc=2), distinct from the legitimate both-absent skip.
+echo ""
+echo "=== TC-14a: only plugins/rite/agents/ present (reviewers/SKILL.md missing) → rc=2 ==="
+d=$(make_registry_sandbox)
+cleanup_dirs+=("$d")
+rm -f "$d/plugins/rite/skills/reviewers/SKILL.md"
+rc=0
+out=$(bash "$CHECKER" --all --quiet --repo-root "$d" 2>&1) || rc=$?
+if [ "$rc" -eq 2 ]; then
+  pass "TC-14a: asymmetric absence (SKILL.md missing) correctly fails with rc=2"
+else
+  fail "TC-14a: expected rc=2, got rc=$rc"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+if printf '%s\n' "$out" | grep -Fq "not applicable"; then
+  fail "TC-14a: asymmetric absence incorrectly treated as clean skip (not applicable)"
+else
+  pass "TC-14a: asymmetric absence not confused with the clean-skip path"
+fi
+# Needle pins the full path of the MISSING sync point — a bare "SKILL.md"
+# would pass even if the diagnostic named the wrong file.
+if printf '%s\n' "$out" | grep -Fq "reviewers/SKILL.md"; then
+  pass "TC-14a: names reviewers/SKILL.md as the missing sync point"
+else
+  fail "TC-14a: expected output to name reviewers/SKILL.md"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+
+echo ""
+echo "=== TC-14b: only reviewers/SKILL.md present (plugins/rite/agents/ missing) → rc=2 ==="
+d=$(make_registry_sandbox)
+cleanup_dirs+=("$d")
+rm -rf "$d/plugins/rite/agents"
+rc=0
+out=$(bash "$CHECKER" --all --quiet --repo-root "$d" 2>&1) || rc=$?
+if [ "$rc" -eq 2 ]; then
+  pass "TC-14b: asymmetric absence (agents/ missing) correctly fails with rc=2"
+else
+  fail "TC-14b: expected rc=2, got rc=$rc"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+if printf '%s\n' "$out" | grep -Fq "not applicable"; then
+  fail "TC-14b: asymmetric absence incorrectly treated as clean skip (not applicable)"
+else
+  pass "TC-14b: asymmetric absence not confused with the clean-skip path"
+fi
+if printf '%s\n' "$out" | grep -Fq "plugins/rite/agents"; then
+  pass "TC-14b: names plugins/rite/agents as the missing sync point"
+else
+  fail "TC-14b: expected output to name plugins/rite/agents"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+
 # --- Summary ---
 echo ""
 if ! print_summary "$(basename "$0")" "reviewer registry 3-way sync"; then

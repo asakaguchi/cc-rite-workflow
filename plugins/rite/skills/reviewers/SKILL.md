@@ -12,7 +12,7 @@ disable-model-invocation: true
 
 # Reviewer Skills - Main Coordinator
 
-**Structure**: `SKILL.md` is the coordinator for the reviewer group (selection logic + the cross-cutting tables below). Each expert reviewer is a named subagent defined in `agents/{reviewer_type}-reviewer.md` (e.g., `agents/security-reviewer.md`); that file is the reviewer's full profile (Role / Core Principles / Detection Process / Detailed Checklist / Output Format) and is injected as the sub-agent's system prompt at review time.
+**Structure**: `SKILL.md` is the coordinator for the reviewer group (selection logic + the cross-cutting tables below). Each expert reviewer is a named subagent defined in `agents/{reviewer_type}-reviewer.md` (e.g., `agents/security-reviewer.md`); that file is the reviewer's full profile (Role / Core Principles / Detection Process / Detailed Checklist (Expertise Areas, Review Checklist, Severity Definitions, Finding Quality Guidelines) / Output Format) and is injected as the sub-agent's system prompt at review time.
 
 ## Overview
 
@@ -188,7 +188,7 @@ Return only the reviewer list and file counts; Claude retains the selection inte
 
 **Context management strategy:** For context management during large PR reviews, see [references/context-management.md](./references/context-management.md) as the source of truth for thresholds and guidelines.
 
-**Reviewer profile loading**: There is no separate skill-file load step. Each reviewer's full profile (Role / Core Principles / Detection Process / Detailed Checklist / Output Format) is its named-subagent system prompt (`agents/{reviewer_type}-reviewer.md`), injected automatically when `skills/review/SKILL.md` ステップ 4.3 spawns `rite:{reviewer_type}-reviewer`. The ステップ 4.5 user prompt carries only the per-review inputs (diff, spec, shared principles, Wiki context).
+**Reviewer profile loading**: There is no separate skill-file load step. Each reviewer's full profile (Role / Core Principles / Detection Process / Detailed Checklist (Expertise Areas, Review Checklist, Severity Definitions, Finding Quality Guidelines) / Output Format) is its named-subagent system prompt (`agents/{reviewer_type}-reviewer.md`), injected automatically when `skills/review/SKILL.md` ステップ 4.3 spawns `rite:{reviewer_type}-reviewer`. The ステップ 4.5 user prompt carries only the per-review inputs (diff, spec, shared principles, Wiki context).
 
 ## Generator-Critic Pattern Integration
 

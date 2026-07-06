@@ -361,6 +361,8 @@ Issue body から「What / Why / Where / Acceptance Criteria」を抽出。
 - {note_1}
 ```
 
+**volatile-first 提示ルール**: `## 実装計画` の直後・`### 変更対象ファイル` の前に、ユーザーの判断で変わりやすい項目（データモデル変更・型/インターフェース定義・ユーザー可視挙動/UX）があれば「要判断ポイント」として箇条書きで列挙する。ステップ 3.4 の承認時にユーザーが本質的な判断へ注意を集中できるようにするため（出典: [A Field Guide to Fable: Finding Your Unknowns](https://x.com/trq212/status/2073100352921215386) — "lead with the decisions I'm most likely to tweak"）。**「実装ステップ」自体の並び順（= 実行順）は変更しない**（issue-implement 側の実行順序決定に影響を与えないため）。該当項目がない計画ではこのブロックを出力しない。
+
 ### 3.4 ユーザー確認
 
 AskUserQuestion で「この計画で実装開始 / 計画を修正 / 中止」を選択。

@@ -229,7 +229,7 @@ Issue の内容に矛盾があります:
 この計画で進めますか？
 ```
 
-**Note**: For the full plan template including the "参考実装" section, see [`skills/open/SKILL.md`](../../../skills/open/SKILL.md) ステップ 3 (実装計画)。
+**Note**: For the full plan template including the "参考実装" section, see [`skills/open/SKILL.md`](../../../skills/open/SKILL.md) ステップ 3.3 (実装計画生成)。
 
 ---
 

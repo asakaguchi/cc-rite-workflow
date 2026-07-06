@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-06T15:43:00+09:00 | ingest:skip | raw/reviews/20260706T064319Z-pr-1760.md | PR #1760 (Issue #1754): 指摘0件の定型レビュー結果（実装計画Exampleのテーブル→プレーンリスト構造変換のみ）で抽出可能な新規経験則なし。調査推奨2件（issue-implement/SKILL.md の depends_on 記述 pre-existing drift）はスコープ外 |
 | 2026-07-06T15:22:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=235, broken_refs=0 (PR #1759 ingest 後の auto-lint) |
 | 2026-07-06T15:20:00+09:00 | ingest:skip | raw/reviews/20260706T061909Z-pr-1759.md | PR #1759 (Issue #1753): 指摘0件の定型レビュー結果（1行の出典表記変更のみ）で抽出可能な新規経験則なし |
 | 2026-07-06T14:03:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=234, broken_refs=0 (PR #1758 ingest 後の auto-lint) |

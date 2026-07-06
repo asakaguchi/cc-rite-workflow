@@ -15,7 +15,8 @@
 #   - Guard: column insertion before Agent → I3 row-count guard → rc=2,
 #     with the I3-guard message asserted so it isn't confused with the extraction guard
 #   - Guard: missing registry directory/file (--repo-root outside the plugin
-#     source tree) → invocation error (rc=2)
+#     source tree, e.g. marketplace/consumer install) → clean skip (rc=0,
+#     not applicable — Issue #1746)
 #   - Arg contract: --all required; --repo-root requires a value (both rc=2)
 #   - Extraction: in-section (not just out-of-section) non-pipe prose lines
 #     inside Available Reviewers / Type Identifiers must not leak into the
@@ -51,7 +52,10 @@ cleanup() {
     [ -n "$d" ] && [ -d "$d" ] && rm -rf "$d"
   done
 }
-trap cleanup EXIT INT TERM HUP
+trap 'rc=$?; cleanup; exit $rc' EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
 
 # awk read→transform→write→mv helper (BSD sed -i 非互換を避ける repo 規約)。
 # 引数: <file> <awk-program>
@@ -385,17 +389,23 @@ else
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
 
-# --- TC-13: missing registry dir/file → invocation error (rc=2) ---
+# --- TC-13: missing registry dir/file → clean skip (rc=0, not applicable) ---
 echo ""
-echo "=== TC-13: --repo-root without a registry (missing dir/file) → rc=2 ==="
+echo "=== TC-13: --repo-root without a registry (missing dir/file) → rc=0 (not applicable) ==="
 empty_dir=$(make_plain_sandbox)
 cleanup_dirs+=("$empty_dir")
 rc=0
-out=$(bash "$CHECKER" --all --quiet --repo-root "$empty_dir" 2>&1) || rc=$?
-if [ "$rc" -eq 2 ]; then
-  pass "TC-13: missing plugins/rite/agents or reviewers/SKILL.md correctly fails with rc=2"
+out=$(bash "$CHECKER" --all --repo-root "$empty_dir" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "TC-13: missing plugins/rite/agents and reviewers/SKILL.md (consumer/marketplace install) correctly no-ops with rc=0"
 else
-  fail "TC-13: expected rc=2, got rc=$rc"
+  fail "TC-13: expected rc=0, got rc=$rc"
+  echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
+fi
+if printf '%s\n' "$out" | grep -Fq "not applicable"; then
+  pass "TC-13: not-applicable skip message present"
+else
+  fail "TC-13: expected 'not applicable' message in output"
   echo "--- output ---"; printf '%s\n' "$out"; echo "--- end ---"
 fi
 

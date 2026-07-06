@@ -35,7 +35,10 @@ fi
 
 SANDBOXES=()
 cleanup() { local d; for d in "${SANDBOXES[@]:-}"; do [ -n "$d" ] && rm -rf "$d"; done; }
-trap cleanup EXIT INT TERM HUP
+trap 'rc=$?; cleanup; exit $rc' EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
 
 # gh stub: emit a fixed merged-PR JSON array (GH_STUB_PRS, default []). Both the
 # growth-stall count query and the pr-raw correspondence query read this.

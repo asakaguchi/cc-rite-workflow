@@ -34,7 +34,10 @@ cleanup() {
     [ -n "$d" ] && rm -rf "$d"
   done
 }
-trap cleanup EXIT INT TERM HUP
+trap 'rc=$?; cleanup; exit $rc' EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
 
 # Build a git repo with rite-config.yml (wiki enabled|disabled). Echoes the path.
 # The caller MUST register the returned path in SANDBOXES from the PARENT shell —

@@ -27,7 +27,10 @@ fi
 
 SANDBOX="$(make_plain_sandbox)"
 cleanup() { [ -n "${SANDBOX:-}" ] && rm -rf "$SANDBOX"; }
-trap cleanup EXIT INT TERM HUP
+trap 'rc=$?; cleanup; exit $rc' EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
 
 # --- Fixtures (paths relative to --repo-root sandbox) -------------------------
 # NG: a filename:NN reference inside a shell comment.

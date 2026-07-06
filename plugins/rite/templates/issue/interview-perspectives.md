@@ -1,6 +1,6 @@
 # Interview Perspectives Template
 
-This template defines the 6 interview perspectives used by the Deep-Dive Interview step in `skills/issue-create/SKILL.md` ステップ 1.
+This template defines the 6 interview perspectives originally used by the Deep-Dive Interview step (a former `create-interview` sub-skill). That sub-skill was retired in the flat-workflow refactor, and the current Assumption Surfacing procedure in `skills/issue-create/SKILL.md` ステップ 4.0 / 5.0 uses a different mechanism (3-way a/b/c classification + blind-spot pass) that does not reference this Perspective Scope Table. This file is currently not referenced by any active skill step (orphaned); see the tracking issue for its disposition.
 
 ## Perspective Scope Table
 

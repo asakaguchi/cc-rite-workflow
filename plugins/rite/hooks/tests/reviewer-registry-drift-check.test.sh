@@ -24,6 +24,9 @@
 #   - Cross-component contract: the `==> Total reviewer-registry-drift
 #     findings: N` aggregate line (consumed by skills/lint/SKILL.md's
 #     extraction regex) is asserted verbatim without --quiet
+#   - Regression guard: a digit-bearing slug (web3) is correctly counted
+#     across all 3 sync points, guarding against AGENT_RE reverting to a
+#     digit-unaware pattern (Issue #1763)
 #
 # Portability note: fixture mutations use `awk` via the
 # read→transform→write→mv pattern instead of `sed -i`. BSD sed (macOS)

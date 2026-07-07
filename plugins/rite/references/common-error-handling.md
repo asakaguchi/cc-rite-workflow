@@ -84,6 +84,44 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 
 **例外: ステップ内の retained flag 集計による hard fail 昇格**: Non-blocking Contract に従う sub-phase が複数存在し、それらの retained flag を ステップ内の後段 sub-phase (例: `/rite:review` ステップ 6.1.c) が集計して `exit 2` 等の hard fail に昇格させることは許容される。この場合、個々の sub-phase は `exit 0` (Non-blocking) を守るが、**ステップ全体として** retained flag の組み合わせにより hard fail するケースが発生しうる。これは Non-blocking Contract の違反ではなく、「sub-phase 単独の失敗」と「ステップ全体の判定」が別レイヤであるという設計上の意図的な区別である。
 
+## [CONTEXT] Emit: stdout / stderr 2 系統の使い分け (canonical)
+
+<a id="context-emit-stdout-stderr-convention-canonical"></a>
+
+`[CONTEXT]` marker を emit する bash block は、目的に応じて **系統 A: retained-flag / 引数解析系 emit（stderr）** と **系統 B: 後続 phase への状態受け渡し emit（stdout）** の 2 系統に分かれる。この使い分けは pre-existing の運用規約として複数 skill (`fix.md` / `review.md` / `iterate.md` / `wiki-lint.md` 等) に存在していたが、明文化された SoT が無かったため、過去にコメント転記時に規約の主張範囲が誤って拡大され、実際の stdout emit 箇所と矛盾する記述が生まれたことがあった。本セクションはその根本原因 (規約の SoT 不在) を解消する。
+
+### 系統 A: retained-flag / 引数解析系 emit（stderr）
+
+**用途**:
+- sub-phase の失敗を示す retained flag: `[CONTEXT] {SCOPE}_FAILED=1; reason={reason}`。exit code により 2 パターンに分かれる — **(a) soft failure** (致命的だが loop を kill せず caller に通知): `exit 1` の直前で emit し、`distributed-fix-drift-check.sh` Pattern 1 (`exit 1` の直前 5 行以内に `[CONTEXT] *_FAILED=1` emit があるか) で機械検証される。**(b) [Non-blocking Contract](#non-blocking-contract-canonical-定義)** (本来非致命的な処理の失敗): `exit 0` の直前で emit し、Pattern 1 は `exit 1` サイトのみを検査するため対象外。いずれのパターンも retained flag 自体は stderr に emit される
+- 同一 bash block が失敗パスでユーザー向け `エラー:` / `WARNING:` メッセージも stderr に出力する引数解析ルーチンで、その解析結果 (成功パスの値も含む) を emit する場合
+
+**なぜ成功パスの値も stderr に乗るのか**: 引数解析ルーチンは失敗パスで `エラー: ...` を stderr に出力する。同一ルーチン内の `[CONTEXT]` emit を全て stderr に統一することで、診断出力とデータ受け渡しが同一チャネルに局所化され、ルーチン全体の出力を 1 箇所 (stderr) で追跡できる。例: `fix.md` ステップ 1.0.1 の `--review-file` 引数解析では、失敗パスの `FIX_FALLBACK_FAILED=1` と成功パスの `REVIEW_FILE_PATH=...` / `REMAINING_ARGS=...` が両方とも stderr に emit される。
+
+**命名規約**: retained flag は `{SCOPE}_FAILED=1; reason={reason}` 形式 (例: `FIX_FALLBACK_FAILED`, `REVIEW_SOURCE_PARSE_FAILED`, `POST_REVIEW_VERIFY_FAILED`)。reason 値は当該 phase の reason 表で列挙する。
+
+### 系統 B: 後続 phase 状態受け渡し系 emit（stdout）
+
+**用途**: Bash tool 呼び出し境界を越えるとシェル変数が保持されないため、後続の Bash block や LLM の分岐判断が必要とする値・enum・sentinel を emit する。判別軸は「失敗か成功か」でも「後続 phase が読むかどうか」でもない — 系統 A の引数解析ルーチンの成功パス値 (例: `REVIEW_FILE_PATH`) も、別の bash block (`fix.md` ステップ 1.2.0 Priority 0) が会話コンテキスト経由で後から読むため、両系統とも Bash tool 呼び出し境界を越えて消費される点は共通である。真の判別軸は「同一 bash block 内でユーザー向け診断メッセージ (`エラー:` / `WARNING:`) と同じ stderr チャネルに併置されるか」である。系統 A は診断メッセージと同居する (引数解析の失敗パスの `エラー:` と併記、または Non-blocking Contract の retained flag 自体が診断情報の一部)。系統 B は CONTEXT emit 自体が診断メッセージと同一 stderr チャネルに置かれない (stdout に置かれる) 純粋な状態伝達であり、`WIKI_INGEST_FAILED` のような失敗ステータスも、近傍に `WARNING:` 等の診断メッセージが存在しても、CONTEXT emit 自体が別チャネル (stdout) に置かれる限り系統 B に含まれる。
+
+**代表例**: `doc_heavy_pr` (review.md ステップ 1.2.7)、`WT_ENSURE` (`lib/worktree-git.sh` ensure-session-worktree)、`WIKI_INGEST_DONE` / `WIKI_INGEST_SKIPPED` / `WIKI_INGEST_FAILED` (review.md ステップ 6.5.W、cleanup.md ステップ 9 — `WIKI_INGEST_FAILED` は失敗ステータスだが、CONTEXT emit 自体は stdout に置かれ診断メッセージ (stderr) と同一チャネルに併置されないため系統 B に分類される)、`ROOT_CAUSE_GATE`、`ITERATE_ISSUE` / `ITERATE_CYCLE_MAX` (iterate.md ステップ 0/0.6)、`lint_action` (wiki-lint.md ステップ 8.1)。
+
+**注意**: `_FAILED=1; reason=...` という命名シェイプだけでは系統 A/stderr を意味しない。系統 A の命名規約 (前節) と同じ形をした `WIKI_INGEST_FAILED` は系統 B/stdout である。系統の判別は必ず下記の判定ルール表 (診断メッセージと同一 stderr チャネルでの併置の有無) で行うこと。
+
+**詳細パターン**: enum 値・begin/end marker block・legitimate-absence 判定などの具体的な実装パターンは [`bash-cross-boundary-state-transfer.md`](../skills/wiki-lint/references/bash-cross-boundary-state-transfer.md) を参照 (現状 wiki-lint/wiki-ingest 発の文書だが、Pattern 1-3 は系統 B 全般に適用可能な汎用パターンとして書かれている)。
+
+### 判定ルール (新規 bash block を書く際)
+
+| 状況 | emit 先 |
+|------|---------|
+| 失敗パスで retained flag を emit する (soft failure: `exit 1` 直前・Pattern 1 対象 / Non-blocking Contract: `exit 0` 直前・Pattern 1 対象外) | stderr (`{SCOPE}_FAILED=1; reason=...`) |
+| 同一 bash block が失敗パスで `エラー:` / `WARNING:` をユーザー向けに出力し、その `[CONTEXT]` emit 自体も同じ stderr チャネルに併置して成功パスの値も後続処理へ渡す (引数解析等) | stderr (ブロック全体で統一) |
+| 純粋な状態計算 (成功/enum/sentinel) で、エラーメッセージを伴わない | stdout |
+| 列挙値・集合を伝達する | stdout (begin/end marker、[`bash-cross-boundary-state-transfer.md`](../skills/wiki-lint/references/bash-cross-boundary-state-transfer.md#pattern-2-marker-delimited-multi-value-block) 参照) |
+| 失敗/skip ステータスだが、CONTEXT emit 自体はユーザー向け診断メッセージ (`エラー:` / `WARNING:`) と同一 stderr チャネルに併置されない (近傍に WARNING があっても別チャネル。例: `WIKI_INGEST_FAILED`) | stdout |
+
+**両系統に共通する規約**: `[CONTEXT]` prefix を必ず付与し、LLM が `grep` で決定論的に抽出できる `key=value` 形式 (`; ` 区切りで複数フィールド可) にする。stdout/stderr いずれも Bash tool の会話コンテキストに取り込まれるため、grep 側は redirect 先を区別せず literal prefix で検索すればよい。
+
 ## Review Result JSON Schema Validation (canonical snippet)
 
 <a id="jq-required-fields-snippet-canonical"></a>

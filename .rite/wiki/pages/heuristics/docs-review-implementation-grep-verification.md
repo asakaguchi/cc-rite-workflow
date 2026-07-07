@@ -2,8 +2,10 @@
 title: "Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする"
 domain: "heuristics"
 created: "2026-05-26T00:00:00Z"
-updated: "2026-07-07T22:03:17+00:00"
+updated: "2026-07-07T14:17:19+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260707T051719Z-pr-1779.md"
   - type: "reviews"
     ref: "raw/reviews/20260706T220114Z-pr-1773-cycle3.md"
   - type: "fixes"
@@ -125,3 +127,4 @@ PR #1773 (Issue #1706、アンインストール手順ドキュメント、cycle
 - [PR #1261 review (Doc-Heavy mode 5 カテゴリ検証で全実装主張を grep verify + pre-existing SPEC.ja.md i18n drift を revert-test で follow-up #1262 化、0 findings の successful application)](../../raw/reviews/20260603T162350Z-pr-1261.md)
 - [PR #1263 review (翻訳 PR での実装突合により EN 原本由来の事実誤り 2 件の転写を表面化、両レビュアー独立で follow-up 収束)](../../raw/reviews/20260603T174323Z-pr-1263.md)
 - [PR #1296 review (docstring stdout contract / TC-D 観測性制約 claim の実装整合を 4 reviewer 独立全数検証、0 findings の successful application)](../../raw/reviews/20260607T013821Z-pr-1296.md)
+- [PR #1779 review (Issue #1776、design-rationale.md への1文追記 PR で、prompt-engineer/code-quality 両レビュアーが追記内容の技術的主張を file-based/string-based 両鏡像実装の jq ロジックと突合し正確性を実地検証、0 findings の successful application)](../../raw/reviews/20260707T051719Z-pr-1779.md)

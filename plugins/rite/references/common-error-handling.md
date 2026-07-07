@@ -88,7 +88,7 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 
 <a id="context-emit-stdout-stderr-convention-canonical"></a>
 
-`[CONTEXT]` marker を emit する bash block は、目的に応じて **系統 A: retained-flag / 引数解析系 emit（stderr）** と **系統 B: 後続 phase への状態受け渡し emit（stdout）** の 2 系統に分かれる。この使い分けは pre-existing の運用規約として複数 skill (`fix.md` / `review.md` / `iterate.md` / `wiki-lint.md` 等) に存在していたが、明文化された SoT が無かったため、PR #1774 review cycle 2 (error-handling reviewer, F-01) で `fix.md` 内のコメント転記時に規約の主張範囲が誤って拡大され、実際の stdout emit 箇所と矛盾する記述が生まれた。本セクションはその根本原因 (規約の SoT 不在) を解消する。
+`[CONTEXT]` marker を emit する bash block は、目的に応じて **系統 A: retained-flag / 引数解析系 emit（stderr）** と **系統 B: 後続 phase への状態受け渡し emit（stdout）** の 2 系統に分かれる。この使い分けは pre-existing の運用規約として複数 skill (`fix.md` / `review.md` / `iterate.md` / `wiki-lint.md` 等) に存在していたが、明文化された SoT が無かったため、過去にコメント転記時に規約の主張範囲が誤って拡大され、実際の stdout emit 箇所と矛盾する記述が生まれたことがあった。本セクションはその根本原因 (規約の SoT 不在) を解消する。
 
 ### 系統 A: retained-flag / 引数解析系 emit（stderr）
 

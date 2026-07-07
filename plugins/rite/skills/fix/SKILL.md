@@ -377,7 +377,7 @@ fi
 `[CONTEXT] WT_ENSURE=` marker の分岐は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 3.1.5 の **WT_ENSURE 分岐表（SoT）** に従う（`disabled`〜`reconstructed` の共通 case は SoT 表と同一。**終端の `branch_absent` / `failed` のみ caller 固有**で、resume の AskUserQuestion / 停止に対し、非対話サブ起動の fix は機械的に `[fix:error]` 停止する — 下記）:
 
 - `disabled` / `already_in` / `skip` → no-op、ステップ 1.2 へ（`disabled` = `multi_session.enabled: false`。従来どおり単一ツリーで動作し挙動不変）。
-- `reenter` / `reconstructed` → `EnterWorktree` ツールを `path: {path}`（marker の `path=` 値）で呼び出してからステップ 1.2 へ。`reconstructed` は helper が `git worktree add` 済み。EnterWorktree 失敗時の切り分けは resume.md Phase 3.1.5 / /rite:open Step 2.3-W と同じ（silent に新規扱いしない）。
+- `reenter` / `reconstructed` → `EnterWorktree` ツールを `path: {path}`（marker の `path=` 値）で呼び出してからステップ 1.2 へ。`reconstructed` は helper が `git worktree add` 済み。EnterWorktree 失敗時の切り分けは recover.md Phase 3.1.5 / /rite:open Step 2.3-W と同じ（silent に新規扱いしない）。
 - `residue` → AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
 - `branch_other_worktree` → 中止（並行セッションの可能性。`other=` のパスを表示）。
 - `branch_absent` → 対象ブランチがローカル・リモートどこにも実在しない。誤再構築しない。ただし ステップ 1.1 で `gh pr view {pr_number}` が成功している以上、PR の head ブランチは本来 remote に存在するはずで、`branch_absent` の到達は PR 状態との不整合を意味する。**develop 上で fix を続行せず**、`[fix:error]` を emit して明示停止する（`failed` と同じ機械的停止。ステップ 2 以降の Edit/Write へ進まない＝develop の作業ツリーへ書かない）。

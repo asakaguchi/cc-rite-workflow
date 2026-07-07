@@ -422,7 +422,7 @@ fi
 # --- Dangling session-worktree self-heal (multi-session §8 / Issue #1524) ---
 # If the recorded `worktree` path no longer exists (e.g. it was reaped by another
 # session's lazy GC while this session was paused), null the field so neither the
-# orchestrator's re-entry path (open.md Step 0.5 / resume.md) nor a later
+# orchestrator's re-entry path (open.md Step 0.5 / recover.md) nor a later
 # EnterWorktree is aimed at a dead directory. The harness's own /clear cwd-restore
 # cannot be intercepted by rite, so this is the SECONDARY defense (the primary is
 # the reap-side cross-session liveness guard in pr-cycle-cleanup.sh). Runs on both

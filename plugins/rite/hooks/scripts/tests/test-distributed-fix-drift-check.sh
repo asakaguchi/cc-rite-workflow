@@ -255,6 +255,60 @@ out=$("$SCRIPT" --target "$CJK_BROKEN" 2>&1)
 p4_count=$(grep -c '^\[drift\]\[P4\]' <<< "$out")
 assert_ge "broken CJK anchor detected as drift" 1 "$p4_count"
 
+# --- Test 6b: comment-style rationale pointer anchor drift (Pattern 4) -------
+# `rationale: path#anchor` inside `# ...` / `<!-- ... -->` comments is not a
+# `[text](path#anchor)` markdown link, so it needs its own extraction path
+# (Issue #1775). Also covers the cross-skill `../other-skill/references/...`
+# pointer form.
+RATIONALE_DIR=$(mktemp -d)
+TMPFILES+=("$RATIONALE_DIR")
+mkdir -p "$RATIONALE_DIR/skill-a/references" "$RATIONALE_DIR/skill-b/references"
+RATIONALE_TARGET="$RATIONALE_DIR/skill-a/references/design-rationale.md"
+RATIONALE_CROSS_TARGET="$RATIONALE_DIR/skill-b/references/design-rationale.md"
+RATIONALE_CLEAN="$RATIONALE_DIR/skill-a/clean.md"
+RATIONALE_BROKEN="$RATIONALE_DIR/skill-a/broken.md"
+
+cat > "$RATIONALE_TARGET" <<'EOF'
+# Design Rationale
+
+## some-real-anchor
+Notes here.
+EOF
+
+cat > "$RATIONALE_CROSS_TARGET" <<'EOF'
+# Design Rationale (skill-b)
+
+## cross-skill-anchor
+Notes here.
+EOF
+
+cat > "$RATIONALE_CLEAN" <<'EOF'
+# Fixture
+
+# rationale: references/design-rationale.md#some-real-anchor
+echo hi
+
+<!-- rationale: references/design-rationale.md#some-real-anchor -->
+
+# rationale: ../skill-b/references/design-rationale.md#cross-skill-anchor
+EOF
+
+out=$("$SCRIPT" --target "$RATIONALE_CLEAN" 2>&1)
+p4_count=$(grep -c '^\[drift\]\[P4\]' <<< "$out")
+assert "comment-style rationale pointers resolve correctly (0 P4 drift)" "0" "$p4_count"
+
+cat > "$RATIONALE_BROKEN" <<'EOF'
+# Fixture
+
+# rationale: references/design-rationale.md#nonexistent-anchor
+
+<!-- rationale: references/design-rationale.md#also-nonexistent -->
+EOF
+
+out=$("$SCRIPT" --target "$RATIONALE_BROKEN" 2>&1)
+p4_count=$(grep -c '^\[drift\]\[P4\]' <<< "$out")
+assert "broken comment-style rationale anchor detected as drift (# and <!-- --> forms)" "2" "$p4_count"
+
 # --- Test 7: --pattern 2 filter outputs only P2 ------------------------------
 # Build a fixture that triggers BOTH Pattern-2 (reason-table drift) and
 # Pattern-3 (if-wrap drift). Without --pattern, the script would emit both

@@ -15,7 +15,10 @@
 #      an eval-table `( `a` / `b` )` enumeration. Forward: an emit documented in
 #      neither. Reverse: a reason-table entry never emitted (stale doc).
 #   3. if-wrap drift            — `cat <<'EOF' > "$tmpfile"` not wrapped by `if !`
-#   4. anchor drift             — markdown `[text](path#anchor)` resolving to non-existent heading
+#   4. anchor drift             — markdown `[text](path#anchor)` OR comment-style
+#      `rationale: path#anchor` (`# rationale: ...` / `<!-- rationale: ... -->`,
+#      including cross-skill `../other-skill/references/...` pointers) resolving
+#      to a non-existent heading
 #   5. RETIRED — folded into Pattern 2 (see the Pattern 5 note below). `--pattern 5` is inert.
 #   6. review-result schema_version drift — `.rite/review-results/*.json` whose
 #      `.schema_version` is outside the accept list (delegates to
@@ -450,10 +453,41 @@ check_pattern_3() {
 }
 
 # ----- Pattern 4: anchor drift -----------------------------------------------
-# Extract [text](path#anchor) and verify the anchor exists in path's headings,
-# using GitHub's anchor conversion (github-slugger compatible):
+# Extract references to path#anchor and verify the anchor exists in path's
+# headings, using GitHub's anchor conversion (github-slugger compatible):
 # lowercase, strip non-word/non-space/non-hyphen, spaces->hyphens, collapse hyphens.
-# Implemented as inline perl in check_pattern_4 for batch processing efficiency.
+# Two independent reference forms are checked (both resolve to the same
+# invariant — anchor drift — so they share `_p4_check_anchor` and report under
+# the same Pattern 4):
+#   - markdown links: [text](path#anchor)
+#   - comment-style rationale pointers: `rationale: path#anchor`, found inside
+#     `# ...` / `<!-- ... -->` comments, including cross-skill
+#     `../other-skill/references/...` pointers (see coding-principles.md
+#     "スキル行数原則").
+# Implemented as inline perl in _p4_check_anchor for batch processing efficiency.
+
+_p4_check_anchor() {
+  local file="$1" file_dir="$2" target_path="$3" anchor="$4"
+  local abs_path
+  # Skip URL-style links and self-only anchors here (handled separately if needed)
+  case "$target_path" in
+    ""|http*|mailto:*) return 0 ;;
+    /*) abs_path="$REPO_ROOT$target_path" ;;
+    *)  abs_path="$file_dir/$target_path" ;;
+  esac
+  [ -f "$abs_path" ] || return 0
+  # Build heading anchor list
+  local headings
+  headings=$(grep -E '^#{1,6}[[:space:]]' "$abs_path" 2>/dev/null \
+    | sed -E 's/^#+[[:space:]]+//' \
+    | perl -CSD -Mutf8 -pe 'chomp; $_ = lc($_); s/[^\w\s-]//g; s/\s+/-/g; s/-{2,}/-/g; s/^-|-$//g; $_ .= "\n"')
+  # Skip files with no markdown headings (e.g. pure code files) to avoid
+  # false positives where every anchor would be reported as unresolved.
+  [ -z "$headings" ] && return 0
+  if ! grep -Fxq "$anchor" <<< "$headings"; then
+    report 4 "$file" 0 "anchor '#$anchor' not found in $target_path"
+  fi
+}
 
 check_pattern_4() {
   local file="$1"
@@ -466,27 +500,22 @@ check_pattern_4() {
     | { grep -oE '\([^)]*#[^)]+\)' || true; } \
     | sed -e 's/^(//' -e 's/)$//' \
     | while IFS= read -r ref; do
-        local target_path anchor abs_path
+        local target_path anchor
         target_path="${ref%%#*}"
         anchor="${ref#*#}"
-        # Skip URL-style links and self-only anchors here (handled separately if needed)
-        case "$target_path" in
-          ""|http*|mailto:*) continue ;;
-          /*) abs_path="$REPO_ROOT$target_path" ;;
-          *)  abs_path="$file_dir/$target_path" ;;
-        esac
-        [ -f "$abs_path" ] || continue
-        # Build heading anchor list
-        local headings
-        headings=$(grep -E '^#{1,6}[[:space:]]' "$abs_path" 2>/dev/null \
-          | sed -E 's/^#+[[:space:]]+//' \
-          | perl -CSD -Mutf8 -pe 'chomp; $_ = lc($_); s/[^\w\s-]//g; s/\s+/-/g; s/-{2,}/-/g; s/^-|-$//g; $_ .= "\n"')
-        # Skip files with no markdown headings (e.g. pure code files) to avoid
-        # false positives where every anchor would be reported as unresolved.
-        [ -z "$headings" ] && continue
-        if ! grep -Fxq "$anchor" <<< "$headings"; then
-          report 4 "$file" 0 "anchor '#$anchor' not found in $target_path"
-        fi
+        _p4_check_anchor "$file" "$file_dir" "$target_path" "$anchor"
+      done
+  # Extract comment-style `rationale: path#anchor` pointers (not markdown
+  # links, so not caught by the extraction above). Anchor is restricted to
+  # ASCII kebab-case, matching the convention actually in use.
+  { grep -oE 'rationale:[[:space:]]*[^[:space:])>]+#[A-Za-z0-9_-]+' "$file" 2>/dev/null || true; } \
+    | while IFS= read -r ref; do
+        local path_anchor target_path anchor
+        path_anchor="${ref#*rationale:}"
+        path_anchor="${path_anchor#"${path_anchor%%[![:space:]]*}"}"
+        target_path="${path_anchor%%#*}"
+        anchor="${path_anchor#*#}"
+        _p4_check_anchor "$file" "$file_dir" "$target_path" "$anchor"
       done
 }
 

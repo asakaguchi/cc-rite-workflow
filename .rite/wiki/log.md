@@ -6,6 +6,8 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-07T03:56:13+00:00 | create | [rationale 転記圧縮時の主張スコープ量化拡大（この箇所→全体への過大一般化）](pages/anti-patterns/transcription-scope-quantifier-inflation.md) | PR #1774 (Issue #1708) の 5 raw source (review cycle 1-3 + fix cycle 1-2) を統合して新規ページ化 |
+| 2026-07-07T03:56:13+00:00 | update | [圧縮 refactor の AC は protected 区域 + scope 制約から逆算して決める](pages/heuristics/compression-refactor-ac-vs-structural-constraint.md) | PR #1774 (Issue #1708) cycle 1 review — AC 数値目標 (25%) と原則ベース基準 (4,000 行 cap) の乖離時に cap 達成側を採用した判断を追加観測として統合 |
 | 2026-07-07T22:05:00+00:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=248, broken_refs=0 (PR #1773 ingest 後の auto-lint) |
 | 2026-07-07T22:03:17+00:00 | create | [過剰マッチ防止の精緻化修正は、実装が許容する全形状を再確認しないと過小マッチという別の欠陥を生む (振り子現象)](pages/anti-patterns/precision-tightening-pendulum-regression.md) | PR #1773 cycle 1→2 (Issue #1706) を新規ページ化 |
 | 2026-07-07T22:03:17+00:00 | create | [アンインストール/クリーンアップ手順の rm -rf 推奨は git worktree 等の live 状態管理対象を見落としやすい](pages/anti-patterns/cleanup-docs-must-exclude-live-git-worktrees.md) | PR #1773 cycle 1 (Issue #1706) を新規ページ化 |

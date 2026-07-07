@@ -173,7 +173,7 @@ rite-workflow/
 │ ├── wiki-ingest/ # /rite:wiki-ingest (+ references/wiki-troubleshooting.md)
 │ ├── wiki-lint/ # /rite:wiki-lint (+ references/: broken-ref-resolution / bash-cross-boundary-state-transfer)
 │ # --- meta / top-level ---
-│ ├── init/ # /rite:setup (+ --upgrade)
+│ ├── setup/ # /rite:setup (+ --upgrade)
 │ ├── getting-started/ # /rite:getting-started
 │ ├── workflow/ # /rite:workflow (rite ワークフロー全体ガイド)
 │ ├── investigate/ # /rite:investigate (構造化コード調査)

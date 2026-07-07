@@ -55,7 +55,7 @@ plugins/rite/
 │   ├── (PR lifecycle)  # open, iterate, review, fix, ready, merge, cleanup, run, pr-create
 │   ├── (issue ops)     # issue-create, issue-list, issue-update, issue-close, issue-edit, issue-implement
 │   ├── (wiki)          # wiki-init, wiki-query, wiki-ingest, wiki-lint
-│   ├── (meta/top)      # init, getting-started, workflow, investigate, learn, lint, recover, skill-suggest, template-reset
+│   ├── (meta/top)      # setup, getting-started, workflow, investigate, learn, lint, recover, skill-suggest, template-reset
 │   ├── rite-workflow/  # Orchestration context (state detection, phase routing) + references (coding principles)
 │   └── reviewers/      # Reviewer coordinator (selection + tables) + references (per-reviewer profiles in agents/)
 ├── agents/           # Sub-agent definitions for PR review (13 reviewers + _reviewer-base)
@@ -180,7 +180,7 @@ fi
 ```
 
 2. Make it executable: `chmod +x plugins/rite/hooks/your-hook.sh`
-3. Register it in `plugins/rite/hooks/hooks.json` (native plugin hook registration) and — for legacy fallback — in `init.md` (Phase 4.5.2) so it also lands in `.claude/settings.local.json`
+3. Register it in `plugins/rite/hooks/hooks.json` (native plugin hook registration) and — for legacy fallback — in `setup.md` (Phase 4.5.2) so it also lands in `.claude/settings.local.json`
 4. Write tests in `plugins/rite/hooks/tests/your-hook.test.sh`
 
 ### Hook Conventions

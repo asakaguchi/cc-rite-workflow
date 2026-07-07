@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-07T20:55:00+00:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=255, broken_refs=0 (PR #1780 ingest 後の auto-lint) |
 | 2026-07-07T20:50:00+00:00 | skip | raw/reviews・fixes の 7 件 (PR #1780 cycle1-5 の系統A/B判別軸ドリフト 6 件 + cycle2 mergeable review 1 件) | 系統A/B判別軸ドリフト 6 件は既存 Asymmetric Fix Transcription anti-pattern で十分カバー済み、scope discipline 1 件は Issue #892 スコープ外指摘ハンドリングポリシー相当でカバー済みのため skip |
 | 2026-07-07T20:50:00+00:00 | update | [Cleanup refactor は reasoning prose を保持し review-history journal のみ削除する](pages/heuristics/cleanup-refactor-preserve-reasoning-remove-journal.md) | PR #1780 (Issue #1777) — 新設 canonical SoT セクション本文自体が journal narration を含んでいた preventive direction 2 例目 (PR #1066 に続く) を追加統合 |
 | 2026-07-07T14:18:30+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=248, broken_refs=0 (PR #1779 ingest 後の auto-lint) |

@@ -131,7 +131,7 @@ echo "=== TC-8: branch in a different worktree → branch_other_worktree ==="
 setup_repo; M="$REPO_MAIN"
 git -C "$M" worktree add -q "$M/elsewhere-42" fix/issue-42-foo >/dev/null 2>&1
 assert "TC-8 branch_other_worktree token" "branch_other_worktree" "$(ens_case "$M" --issue 42)"
-# other= must surface the conflicting worktree path (resume.md table 「other= のパスを表示」契約).
+# other= must surface the conflicting worktree path (recover.md table 「other= のパスを表示」契約).
 assert "TC-8 other= ends with elsewhere-42" "yes" \
   "$(case "$(ens_field "$M" other --issue 42)" in */elsewhere-42) echo yes ;; *) echo no ;; esac)"
 # Must NOT create the canonical issue-42 worktree (no silent reconstruction over a conflict).
@@ -160,4 +160,4 @@ stdout_lines=$( ( cd "$M" && bash "$HELPER" ensure-session-worktree --issue 42 2
 assert "TC-11 single stdout line" "1" "$stdout_lines"
 
 print_summary "ensure-session-worktree.test.sh" \
-  "ensure_session_worktree contract changed — sync lib/worktree-git.sh and the resume.md WT_ENSURE table"
+  "ensure_session_worktree contract changed — sync lib/worktree-git.sh and the recover.md WT_ENSURE table"

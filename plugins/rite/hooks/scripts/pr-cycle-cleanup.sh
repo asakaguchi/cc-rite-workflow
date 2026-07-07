@@ -738,7 +738,7 @@ _rite_worktree_protected_by_flow_state() {
 
 # After a session worktree is reaped, clear the `worktree` reference from every
 # flow-state that still records it, so neither rite's own re-entry path
-# (open.md Step 0.5 / resume.md) nor a later harness cwd-restore is pointed at the
+# (open.md Step 0.5 / recover.md) nor a later harness cwd-restore is pointed at the
 # now-deleted directory (Issue #1524 MUST: reap → null the owner's flow-state
 # worktree). The write is routed through `flow-state.sh clear-worktree` to honor
 # the `_atomic_write` convention; per-session failure WARNs and is non-blocking

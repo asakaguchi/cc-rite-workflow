@@ -102,9 +102,11 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 
 ### 系統 B: 後続 phase 状態受け渡し系 emit（stdout）
 
-**用途**: Bash tool 呼び出し境界を越えるとシェル変数が保持されないため、後続の Bash block や LLM の分岐判断が必要とする値・enum・sentinel を emit する。失敗を示すものではなく、単なる状態伝達。
+**用途**: Bash tool 呼び出し境界を越えるとシェル変数が保持されないため、後続の Bash block や LLM の分岐判断が必要とする値・enum・sentinel を emit する。判別軸は「失敗か成功か」ではなく「消費されるタイミング」である — 同一 bash block 内で exit 直前に消費される系統 A に対し、系統 B は Bash tool 呼び出し境界を越えて後続 phase (別 bash block や W Phase Gate 等) が読む。そのため `WIKI_INGEST_FAILED` のような失敗ステータスも、後続 phase へ渡すものであれば系統 B に含まれる。
 
-**代表例**: `doc_heavy_pr` (review.md ステップ 1.2.7)、`WT_ENSURE` (worktree-git.sh ensure-session-worktree)、`WIKI_INGEST_DONE` / `WIKI_INGEST_SKIPPED` / `WIKI_INGEST_FAILED` (review.md ステップ 6.5.W、cleanup.md ステップ 9)、`ROOT_CAUSE_GATE`、`ITERATE_ISSUE` / `ITERATE_CYCLE_MAX` (iterate.md ステップ 0/0.6)、`lint_action` (wiki-lint.md ステップ 8.1)。
+**代表例**: `doc_heavy_pr` (review.md ステップ 1.2.7)、`WT_ENSURE` (`lib/worktree-git.sh` ensure-session-worktree)、`WIKI_INGEST_DONE` / `WIKI_INGEST_SKIPPED` / `WIKI_INGEST_FAILED` (review.md ステップ 6.5.W、cleanup.md ステップ 9 — `WIKI_INGEST_FAILED` は失敗ステータスだが、W Phase Completion Gate のような後続 phase が読むため系統 B に分類される)、`ROOT_CAUSE_GATE`、`ITERATE_ISSUE` / `ITERATE_CYCLE_MAX` (iterate.md ステップ 0/0.6)、`lint_action` (wiki-lint.md ステップ 8.1)。
+
+**注意**: `_FAILED=1; reason=...` という命名シェイプだけでは系統 A/stderr を意味しない。系統 A の命名規約 (前節) と同じ形をした `WIKI_INGEST_FAILED` は系統 B/stdout である。系統の判別は必ず下記の判定ルール表 (消費タイミング) で行うこと。
 
 **詳細パターン**: enum 値・begin/end marker block・legitimate-absence 判定などの具体的な実装パターンは [`bash-cross-boundary-state-transfer.md`](../skills/wiki-lint/references/bash-cross-boundary-state-transfer.md) を参照 (現状 wiki-lint/wiki-ingest 発の文書だが、Pattern 1-3 は系統 B 全般に適用可能な汎用パターンとして書かれている)。
 
@@ -116,6 +118,7 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 | 同一 bash block が失敗パスで `エラー:` / `WARNING:` をユーザー向けに出力し、その成功パスの値も後続処理へ渡す (引数解析等) | stderr (ブロック全体で統一) |
 | 純粋な状態計算 (成功/enum/sentinel) で、エラーメッセージを伴わない | stdout |
 | 列挙値・集合を伝達する | stdout (begin/end marker、[`bash-cross-boundary-state-transfer.md`](../skills/wiki-lint/references/bash-cross-boundary-state-transfer.md#pattern-2-marker-delimited-multi-value-block) 参照) |
+| 失敗/skip ステータスだが、同一 bash block 内で消費されず Bash tool 呼び出し境界を越えて後続 phase (別 bash block・Completion Gate 等) が読む (例: `WIKI_INGEST_FAILED`) | stdout |
 
 **両系統に共通する規約**: `[CONTEXT]` prefix を必ず付与し、LLM が `grep` で決定論的に抽出できる `key=value` 形式 (`; ` 区切りで複数フィールド可) にする。stdout/stderr いずれも Bash tool の会話コンテキストに取り込まれるため、grep 側は redirect 先を区別せず literal prefix で検索すればよい。
 

@@ -70,6 +70,7 @@ caller の `exit 1` 直前に emit が必要になる。
 - (a) schema_version == "1.0"|"1.0.0" の場合、findings[] に欠落している scope を severity から default mapping (CRITICAL/HIGH/MEDIUM → current-pr、LOW-MEDIUM/LOW → nit-noted) で補完。1 件以上補完したら `[CONTEXT] REVIEW_SOURCE_SCOPE_DEFAULTED=1` を emit。
 - (b) invariant #5: pre_existing == false ∧ scope == "nit-noted" の finding を検出。1 件以上あれば WARNING + `[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1` を emit し、scope を current-pr に自動書き換え。
 - (c) (a) または (b) または (e) で mutation が発生した場合のみ raw_json を mutated 版に差し替える。
+- (d) 後方互換: invariant #5 は pre_existing フィールドが存在する 1.1.0 JSON のみで発火する (1.0/1.0.0 では default mapping は scope を補完するのみで pre_existing は補完しない)。
 - (e) auto_demote_low (default true) で severity == "LOW" ∧ scope == "current-pr" の finding scope を "nit-noted" に降格。`auto_demote_low: false` で opt-out 可。
 
 **commit_sha stale detection で mismatch 時に WARNING のみで continue する理由**: PR コメントは最新の push 後に投稿される可能性が高く、legacy Markdown parser への fallthrough はむしろ情報損失になるため。

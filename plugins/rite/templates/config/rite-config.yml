@@ -138,7 +138,7 @@ wiki:
 # Disk cost: each session worktree is a FULL working-tree clone — build artifacts
 # (node_modules, venv, build caches) are NOT shared and may be rebuilt per worktree.
 # Declared ABOVE the `--- Advanced ---` marker (like wiki) so
-# /rite:init new-generation emits it as an active block (so new projects actually
+# /rite:setup new-generation emits it as an active block (so new projects actually
 # get the default-on behavior). On --upgrade it is back-added with `enabled: true`
 # to existing configs (see init.md Step 4 classification) so upgraded
 # projects receive the same default-on behavior; an existing explicit
@@ -154,7 +154,7 @@ multi_session:
 # `commands.test` is null (Red/Green auto-run is then skipped). A config that
 # omits the `tdd:` key is treated as `enabled: true` (opt-out convention).
 # Declared ABOVE the `--- Advanced ---` marker (like wiki / multi_session) so
-# /rite:init new-generation emits it as an active block (new projects get the
+# /rite:setup new-generation emits it as an active block (new projects get the
 # default-on behavior). On --upgrade it is back-added with `enabled: true` to
 # existing configs; an existing explicit `enabled: false` is preserved.
 tdd:
@@ -163,7 +163,7 @@ tdd:
 # Safety settings (fail-closed thresholds)
 # Hard limits that stop runaway autonomous loops (implementation rounds, review-fix
 # cycles, repeated failures). Declared ABOVE the `--- Advanced ---` marker (like
-# wiki / multi_session / tdd) so /rite:init new-generation emits it as an active
+# wiki / multi_session / tdd) so /rite:setup new-generation emits it as an active
 # block — new projects can discover and tune the safety ceilings from the generated
 # config. Consumers read each value with an internal default, so a config that omits
 # `safety:` (or any single key) keeps the documented default behavior (backward
@@ -178,7 +178,7 @@ safety:
   repeated_failure_threshold: 3   # consecutive same-class failures that trigger auto-stop
 
 # --- Advanced (below this line) ---
-# These sections are omitted during new generation (/rite:init).
+# These sections are omitted during new generation (/rite:setup).
 # They are added as comments during --upgrade.
 # Uncomment and configure as needed.
 

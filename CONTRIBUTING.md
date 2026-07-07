@@ -95,7 +95,7 @@ bash plugins/rite/hooks/tests/reviewer-registry-drift-check.test.sh
 
 ## Hook Development Guide
 
-Hooks are shell scripts that respond to Claude Code lifecycle events. They are registered via `plugins/rite/hooks/hooks.json` (native plugin hook management) and executed automatically by Claude Code. For legacy setups without `hooks.json`, `/rite:init` falls back to registering hooks under the `hooks` key in `.claude/settings.local.json` — see the Hook Events and Registration section below.
+Hooks are shell scripts that respond to Claude Code lifecycle events. They are registered via `plugins/rite/hooks/hooks.json` (native plugin hook management) and executed automatically by Claude Code. For legacy setups without `hooks.json`, `/rite:setup` falls back to registering hooks under the `hooks` key in `.claude/settings.local.json` — see the Hook Events and Registration section below.
 
 ### Hook Directory Structure
 
@@ -127,7 +127,7 @@ plugins/rite/hooks/
 
 Rite Workflow uses native Claude Code plugin hook management via `plugins/rite/hooks/hooks.json`. When the plugin is installed (or developed locally), Claude Code reads this file and registers all hooks automatically — no manual edits to `.claude/settings.local.json` are required.
 
-For legacy setups or environments where `hooks.json` is unavailable, `/rite:init` falls back to registering hooks under the `hooks` key in `.claude/settings.local.json`. The following is a partial example of that fallback format:
+For legacy setups or environments where `hooks.json` is unavailable, `/rite:setup` falls back to registering hooks under the `hooks` key in `.claude/settings.local.json`. The following is a partial example of that fallback format:
 
 ```json
 {

@@ -51,7 +51,7 @@ Rite Workflow は 2 ステップでインストールします。まずマーケ
 /plugin install rite@rite-marketplace
 ```
 
-**インストール確認**: `/rite:init` を実行してプラグインが動作することを確認します。
+**インストール確認**: `/rite:setup` を実行してプラグインが動作することを確認します。
 
 ## アンインストール
 
@@ -66,7 +66,7 @@ Rite Workflow は 2 ステップでインストールします。まずマーケ
 | 成果物 | 場所 | 残すと害があるか | 削除方法 |
 |--------|------|-------------------|---------|
 | `rite-config.yml` | リポジトリに commit 済み | なし | `git rm rite-config.yml && git commit -m "chore: remove rite-config.yml"` |
-| `.gitignore` の追記行 | commit 済み（`/rite:init` が追加した `.rite-work-memory/`、`.rite/sessions/` 等の行） | なし | 追加された行を手動削除 |
+| `.gitignore` の追記行 | commit 済み（`/rite:setup` が追加した `.rite-work-memory/`、`.rite/sessions/` 等の行） | なし | 追加された行を手動削除 |
 | リモート `wiki` ブランチ | GitHub リモート（Wiki 自動初期化で作成） | なし | `git push origin --delete <ブランチ名>`（`<ブランチ名>` は `rite-config.yml` の `wiki.branch_name`、デフォルトは `wiki`） |
 | ローカル生成物（gitignore 済み） | `.rite-work-memory/`, `.rite-flow-state*`, `.rite-compact-state*`, `.rite-flow-debug.log`, `.rite-session-id` 等 | なし（未 commit） | `rm -rf .rite-work-memory .rite-flow-state* .rite-compact-state* .rite-flow-debug.log .rite-session-id .rite-guidance-shown .rite-plugin-root .rite-initialized-version .rite-settings-hooks-cleaned` |
 | `.rite/` 配下の内部ディレクトリ（gitignore 済み、live な git worktree を含む場合あり） | `.rite/wiki-worktree/`（Wiki `separate_branch` 戦略）、`.rite/worktrees/issue-*`（`multi_session` 有効時のセッション worktree） | 生の `rm -rf` で削除すると git worktree メタデータが孤立し未コミット差分を失う可能性があり、害あり | まず `git worktree list` で確認し、該当パスが登録されていれば `git worktree remove <path>`（未コミット差分がないか確認の上）→ `git worktree prune` を実行してから、残りの `.rite/` を `rm -rf .rite` で削除する |
@@ -77,7 +77,7 @@ Rite Workflow は 2 ステップでインストールします。まずマーケ
 ## クイックスタート
 
 ```bash
-/rite:init
+/rite:setup
 ```
 
 これにより以下が実行されます:
@@ -90,8 +90,8 @@ Rite Workflow は 2 ステップでインストールします。まずマーケ
 
 | コマンド | 説明 |
 |---------|------|
-| `/rite:init` | 初回セットアップウィザード |
-| `/rite:init --upgrade` | 既存の `rite-config.yml` を最新スキーマバージョンへアップグレード |
+| `/rite:setup` | 初回セットアップウィザード |
+| `/rite:setup --upgrade` | 既存の `rite-config.yml` を最新スキーマバージョンへアップグレード |
 | `/rite:getting-started` | 対話的オンボーディングガイド |
 | `/rite:workflow` | ワークフローガイドを表示 |
 | `/rite:issue-list` | Issue 一覧を表示 |

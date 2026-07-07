@@ -324,7 +324,7 @@ fi
 - `plugins/rite/skills/wiki-ingest/SKILL.md` ステップ 1.1 (`extract_yaml_key` helper 経由、`wiki_enabled` のみ呼び出し側で lowercase 適用)
 - `plugins/rite/skills/wiki-lint/SKILL.md` ステップ 1.1 (ingest.md と対称な helper 経由、`wiki_enabled` のみ呼び出し側で lowercase 適用)
 - `plugins/rite/skills/wiki-init/SKILL.md` (init 時の状態判定)
-- `plugins/rite/skills/init/SKILL.md` Phase 4.7 (`/rite:init` 内 Wiki 自動初期化判定、独自 inline 実装 + typo 検出 WARNING 付き)
+- `plugins/rite/skills/setup/SKILL.md` Phase 4.7 (`/rite:setup` 内 Wiki 自動初期化判定、独自 inline 実装 + typo 検出 WARNING 付き)
 - `plugins/rite/skills/cleanup/SKILL.md` ステップ 9 (`parse_wiki_key` helper 経由、auto_ingest 起動条件)
 - `plugins/rite/skills/fix/SKILL.md` ステップ 0.5.W / 4.6.W (Wiki query / ingest 起動条件)
 - `plugins/rite/skills/review/SKILL.md` ステップ 4.0.W / 6.5.W (Wiki query / ingest 起動条件)

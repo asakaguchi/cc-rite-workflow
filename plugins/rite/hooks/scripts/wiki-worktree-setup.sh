@@ -112,7 +112,7 @@ fi
 
 if [[ ! -f "rite-config.yml" ]]; then
   echo "ERROR: rite-config.yml not found at $repo_root" >&2
-  echo "  hint: run /rite:init first" >&2
+  echo "  hint: run /rite:setup first" >&2
   exit 1
 fi
 

@@ -126,7 +126,7 @@ Stop here if not a valid repository.
 
 ```
 Quick Start (3 steps):
-  1. Setup (one-time):   /rite:init
+  1. Setup (one-time):   /rite:setup
   2. Start an Issue:     /rite:issue-create → /rite:open <番号>
   3. Complete & submit:  /rite:iterate <pr> → /rite:ready <pr> → /rite:merge <pr> → /rite:cleanup
 
@@ -143,36 +143,36 @@ Explain the setup process:
 └─────────────────────────────────────────────────────────────┘
 
 Run the initialization wizard:
-  /rite:init
+  /rite:setup
 
-What /rite:init configures:
+What /rite:setup configures:
   ✓ Creates rite-config.yml with project settings
   ✓ Configures GitHub Projects integration (optional)
   ✓ Sets up branch naming conventions
   ✓ Configures iteration settings (optional)
   ✓ Installs workflow hooks for state management
 
-This is a one-time setup. You can reconfigure later by running /rite:init again.
+This is a one-time setup. You can reconfigure later by running /rite:setup again.
 ```
 
-**Upgrading an existing project (`/rite:init --upgrade`)**
+**Upgrading an existing project (`/rite:setup --upgrade`)**
 
 If you have been using rite workflow on this project for a while, the bundled
 configuration schema may have moved ahead of your local `rite-config.yml`. In
-that case, run the upgrade variant instead of a fresh `/rite:init`:
+that case, run the upgrade variant instead of a fresh `/rite:setup`:
 
 ```
-/rite:init --upgrade
+/rite:setup --upgrade
 ```
 
 When to run it:
 
 - After updating the rite workflow plugin and seeing a warning that
   `rite-config.yml` schema is outdated. The exact wording differs slightly
-  by emitter: `/rite:init` emits `rite-config.yml のスキーマが古くなっています
-  (v{current} → v{latest})。/rite:init --upgrade でアップグレードできます。`
+  by emitter: `/rite:setup` emits `rite-config.yml のスキーマが古くなっています
+  (v{current} → v{latest})。/rite:setup --upgrade でアップグレードできます。`
   and the session-start hook emits a variant ending in
-  `/rite:init --upgrade を実行してください。` Both signal the same situation
+  `/rite:setup --upgrade を実行してください。` Both signal the same situation
 - When release notes (`CHANGELOG.md`) announce new
   configuration sections (e.g., `wiki:`, `review.debate:`) that are missing from
   your local `rite-config.yml`
@@ -180,7 +180,7 @@ When to run it:
   from the bundled template in
   `plugins/rite/templates/config/rite-config.yml`
 
-What `/rite:init --upgrade` does:
+What `/rite:setup --upgrade` does:
 
   ✓ Creates a timestamped backup (`rite-config.yml.bak.YYYYMMDD-HHMMSS`)
   ✓ Compares your current `schema_version` against the latest template version
@@ -196,7 +196,7 @@ What `/rite:init --upgrade` does:
     missing sub-keys — idempotently and without an additional prompt (the
     preview/confirm step is shown only on the schema-upgrade path)
   ✓ Appends the `wiki:` section if it is absent, so the Wiki
-    auto-initialization step of `/rite:init` can run for existing projects
+    auto-initialization step of `/rite:setup` can run for existing projects
   ✓ Back-adds the `multi_session:` section with `enabled: true` if it is
     absent, so upgraded projects get the default-on per-session worktree
     behavior; an existing explicit `enabled: false` is preserved
@@ -213,7 +213,7 @@ missing drift (all active sections, their sub-keys, and the `multi_session` /
 `wiki:` sections are already present) and Wiki is already initialized, the
 command makes no changes to `rite-config.yml` itself — it still creates a
 timestamped backup, reports "configuration is up to date", then runs the Wiki
-auto-initialization idempotency check of `/rite:init` and displays a final
+auto-initialization idempotency check of `/rite:setup` and displays a final
 Wiki status line before exiting.
 
 Check if `rite-config.yml` exists:
@@ -233,14 +233,14 @@ You can skip Step 1 and proceed to Step 2.
 described in the "Upgrading an existing project" section above, or the
 top-level `schema_version` in your `rite-config.yml` differs from the
 bundled template in `plugins/rite/templates/config/rite-config.yml`, run
-`/rite:init --upgrade` before proceeding to Step 2 to bring the configuration
+`/rite:setup --upgrade` before proceeding to Step 2 to bring the configuration
 up to date.
 ```
 
 **If it does not exist:**
 
 ```
-⚡ Action Required: Run /rite:init to set up rite workflow
+⚡ Action Required: Run /rite:setup to set up rite workflow
 
 After setup is complete, return here or proceed directly to working on Issues.
 ```
@@ -330,7 +330,7 @@ Common Issues and Solutions:
    Solution: Ensure you're in a Git repository that's pushed to GitHub
    Check with: gh repo view
 
-3. "Projects not found" during /rite:init
+3. "Projects not found" during /rite:setup
    Solution: Projects is optional. Choose "Skip Projects integration"
    or create a Project manually on GitHub first
 
@@ -414,7 +414,7 @@ Operating rules (important):
   • After a crash / restart: just run /rite:recover — it re-enters the session
     worktree (or rebuilds it from the branch if it was removed) and continues.
 
-  • .gitignore must contain .rite/worktrees/ (/rite:init adds it; /rite:lint
+  • .gitignore must contain .rite/worktrees/ (/rite:setup adds it; /rite:lint
     warns if it is missing while multi_session is enabled).
 
 Note: multi_session is a SEPARATE axis from parallel.mode: "worktree".

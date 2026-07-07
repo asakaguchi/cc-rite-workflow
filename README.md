@@ -51,7 +51,7 @@ Rite Workflow uses a two-step installation: first register the marketplace, then
 /plugin install rite@rite-marketplace
 ```
 
-**Verify installation**: Run `/rite:init` to confirm the plugin is working.
+**Verify installation**: Run `/rite:setup` to confirm the plugin is working.
 
 ## Uninstallation
 
@@ -66,7 +66,7 @@ This removes the plugin code but leaves behind the artifacts it created in your 
 | Artifact | Location | Harmful if left? | Removal |
 |----------|----------|-------------------|---------|
 | `rite-config.yml` | Committed to your repo | No | `git rm rite-config.yml && git commit -m "chore: remove rite-config.yml"` |
-| `.gitignore` entries | Committed (lines added by `/rite:init`, e.g. `.rite-work-memory/`, `.rite/sessions/`) | No | Manually remove the added lines |
+| `.gitignore` entries | Committed (lines added by `/rite:setup`, e.g. `.rite-work-memory/`, `.rite/sessions/`) | No | Manually remove the added lines |
 | Remote `wiki` branch | GitHub remote (created by Wiki auto-init) | No | `git push origin --delete <branch>`, where `<branch>` is `wiki.branch_name` in `rite-config.yml` (default `wiki`) |
 | Local generated files (gitignored) | `.rite-work-memory/`, `.rite-flow-state*`, `.rite-compact-state*`, `.rite-flow-debug.log`, `.rite-session-id`, etc. | No (untracked) | `rm -rf .rite-work-memory .rite-flow-state* .rite-compact-state* .rite-flow-debug.log .rite-session-id .rite-guidance-shown .rite-plugin-root .rite-initialized-version .rite-settings-hooks-cleaned` |
 | `.rite/` internal directories (gitignored, may hold live git worktrees) | `.rite/wiki-worktree/` (Wiki `separate_branch` strategy), `.rite/worktrees/issue-*` (per-session worktrees when `multi_session` is enabled) | Yes if removed with a plain `rm -rf` — this can orphan git worktree metadata and destroy uncommitted work | Check `git worktree list` first; if either path is registered, run `git worktree remove <path>` (confirming no uncommitted changes) then `git worktree prune`. Only after that, remove the rest of `.rite/` with `rm -rf .rite` |
@@ -77,7 +77,7 @@ None of these block reinstallation or affect other tooling — clean them up at 
 ## Quick Start
 
 ```bash
-/rite:init
+/rite:setup
 ```
 
 This will:
@@ -90,8 +90,8 @@ This will:
 
 | Command | Description |
 |---------|-------------|
-| `/rite:init` | Initial setup wizard |
-| `/rite:init --upgrade` | Upgrade existing `rite-config.yml` to the latest schema version |
+| `/rite:setup` | Initial setup wizard |
+| `/rite:setup --upgrade` | Upgrade existing `rite-config.yml` to the latest schema version |
 | `/rite:getting-started` | Interactive onboarding guide |
 | `/rite:workflow` | Show workflow guide |
 | `/rite:issue-list` | List Issues |

@@ -73,7 +73,7 @@ fi
 ### Result Handling
 
 - `PLUGIN_ROOT:<path>` → Extract the absolute path after `PLUGIN_ROOT:` and use it as `{plugin_root}` for all subsequent file reads in the current command.
-- `PLUGIN_ROOT_NOT_FOUND:STALE_MARKER` → `.rite-plugin-root` exists but points to a deleted directory. Display warning: `Stale .rite-plugin-root detected. Re-run session or use /rite:init.` The Full Version script does not auto-fallback to Priority 2/3 in this case; use the inline one-liner (which handles fallback automatically) instead.
+- `PLUGIN_ROOT_NOT_FOUND:STALE_MARKER` → `.rite-plugin-root` exists but points to a deleted directory. Display warning: `Stale .rite-plugin-root detected. Re-run session or use /rite:setup.` The Full Version script does not auto-fallback to Priority 2/3 in this case; use the inline one-liner (which handles fallback automatically) instead.
 - `PLUGIN_ROOT_NOT_FOUND:NO_INSTALL` → Display warning: `Plugin installation not found.` Fall back to hardcoded relative paths or inline fallback content.
 
 ## How `.rite-plugin-root` Works

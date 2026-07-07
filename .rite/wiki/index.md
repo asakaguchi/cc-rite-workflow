@@ -186,9 +186,10 @@
 | [アンインストール/クリーンアップ手順の rm -rf 推奨は git worktree 等の live 状態管理対象を見落としやすい](pages/anti-patterns/cleanup-docs-must-exclude-live-git-worktrees.md) | anti-patterns | 「gitignore 済み = 無条件で rm -rf 可能」という単純化は、対象ディレクトリ配下に git worktree のような live な状態管理対象が含まれるケースを見落とす。プロジェクト自身の cleanup 実装が慎重に扱っている対象を、ドキュメントが素朴な一括削除コマンドとして誤って推奨してしまう。PR #1773 (Issue #1706) で tech-writer/code-quality 両者が独立検出した HIGH finding。 | 2026-07-07T22:03:17+00:00 | high |
 | [過剰マッチ防止の精緻化修正は、実装が許容する全形状を再確認しないと過小マッチという別の欠陥を生む (振り子現象)](pages/anti-patterns/precision-tightening-pendulum-regression.md) | anti-patterns | reviewer 指摘に応じて記述を「より厳密」に書き換える修正 (over-match 防止) は、対象実装のロジックが許容する全ての正当な形状を再度 grep/Read で確認しないと、修正前より狭い範囲になる under-match を新規導入する。PR #1773 cycle 1→2 (Issue #1706) でレガシー hook 削除ガイダンスの精緻化がバージョンセグメント付きパスを取りこぼす under-match を実測。 | 2026-07-07T22:03:17+00:00 | high |
 | [rationale 転記圧縮時の主張スコープ量化拡大（この箇所→全体への過大一般化）](pages/anti-patterns/transcription-scope-quantifier-inflation.md) | anti-patterns | rationale を references へ退避するコンテキストダイエット型 refactor で、転記圧縮時に主張の量化スコープが「この箇所の規約」→「ファイル全体/各 bash block」へ過大一般化される系統的エラー。PR #1774 (Issue #1708) で本体 (F-01) と references 側 (F-02) の 2 回発生・3 cycle 収束を実測。転記文の量化表現（各/全体/すべて）を機械的に疑い、SKILL.md 本体と references の両側を検証する。 | 2026-07-07T03:56:13+00:00 | high |
+| [識別子リネーム後の裸参照置換で除外すべき参照の分類](pages/patterns/rename-bare-reference-exclusion-classification.md) | patterns | スキル/コマンド名のリネーム（例: /rite:resume → /rite:recover）後、裸ワード参照を横断置換する際は、enum値・変数名・スクリプトファイル名・principle ID・一般語・歴史的記述例示の6種を除外対象として判別する必要がある。 | 2026-07-08T02:20:00+00:00 | medium |
 
 ## 統計
 
-- 総ページ数: 175
-- ドメイン別: patterns=59, heuristics=54, anti-patterns=60
+- 総ページ数: 176
+- ドメイン別: patterns=60, heuristics=54, anti-patterns=60
 - 最終更新: 2026-07-07T03:56:13+00:00

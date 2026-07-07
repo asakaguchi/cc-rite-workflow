@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-08T02:20:00+09:00 | create | [識別子リネーム後の裸参照置換で除外すべき参照の分類](pages/patterns/rename-bare-reference-exclusion-classification.md) | raw/reviews/20260707T171543Z-pr-1793.md を新規ページ化 — PR #1793 (Issue #1791) の resume→recover bare-word 参照統一レビューから、置換除外すべき6分類（enum値/変数名・スクリプトファイル名・principle ID・一般語・歴史的記述例示・裸ファイル名参照との混同）を抽出 |
 | 2026-07-08T01:45:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=257, broken_refs=0 (PR #1790 ingest 後の auto-lint) |
 | 2026-07-08T01:42:33+09:00 | skip | [20260707T163658Z-pr-1790.md](raw/reviews/20260707T163658Z-pr-1790.md) | PR #1790 (Issue #1789) — 0 findings のクリーンな文字列置換PR（resume.md→recover.md 散文参照統一）。PR #1788 で観測された reviewer 応答遅延は本PRでは再発せず、単発の非再現データ点のため経験則化は時期尚早、skip |
 | 2026-07-08T00:53:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=256, broken_refs=0 (PR #1788 ingest 後の auto-lint) |

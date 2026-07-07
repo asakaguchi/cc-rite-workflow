@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-07T13:48:57+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | PR #1778 (Issue #1775) — 同一ファイル内の確立済み `[_-]$` truncation-residue ガードへの新規抽出経路の非追随事例を追加統合 |
 | 2026-07-07T04:01:39+00:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=248, broken_refs=0 (PR #1774 ingest 後の auto-lint) |
 | 2026-07-07T03:56:13+00:00 | create | [rationale 転記圧縮時の主張スコープ量化拡大（この箇所→全体への過大一般化）](pages/anti-patterns/transcription-scope-quantifier-inflation.md) | PR #1774 (Issue #1708) の 5 raw source (review cycle 1-3 + fix cycle 1-2) を統合して新規ページ化 |
 | 2026-07-07T03:56:13+00:00 | update | [圧縮 refactor の AC は protected 区域 + scope 制約から逆算して決める](pages/heuristics/compression-refactor-ac-vs-structural-constraint.md) | PR #1774 (Issue #1708) cycle 1 review — AC 数値目標 (25%) と原則ベース基準 (4,000 行 cap) の乖離時に cap 達成側を採用した判断を追加観測として統合 |

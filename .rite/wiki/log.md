@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-08T03:10:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=257, broken_refs=0 (PR #1794 ingest 後の auto-lint) |
 | 2026-07-08T03:06:55+09:00 | create | [先行 Issue の明示的 Non-Target 指定は、reviewer 推奨だけで覆さずユーザー確認する](pages/heuristics/respect-prior-non-target-designation.md) | raw/reviews/20260707T175542Z-pr-1794.md を新規ページ化 — PR #1794 (Issue #1792) レビューで両レビュアーが独立に検出した flow-state.sh:24 の裸ファイル名参照について、先行 Issue #1784 / PR #1790 の明示的 Non-Target 宣言を確認しユーザーがスコープ拡大を見送った判断プロセスを抽出 |
 | 2026-07-08T02:25:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=257, broken_refs=0 (PR #1793 ingest 後の auto-lint) |
 | 2026-07-08T02:20:00+09:00 | create | [識別子リネーム後の裸参照置換で除外すべき参照の分類](pages/patterns/rename-bare-reference-exclusion-classification.md) | raw/reviews/20260707T171543Z-pr-1793.md を新規ページ化 — PR #1793 (Issue #1791) の resume→recover bare-word 参照統一レビューから、置換除外すべき6分類（enum値/変数名・スクリプトファイル名・principle ID・一般語・歴史的記述例示・裸ファイル名参照との混同）を抽出 |

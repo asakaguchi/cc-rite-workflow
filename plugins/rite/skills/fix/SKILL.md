@@ -294,7 +294,7 @@ if [ "$review_file_flag_style" != "none" ] && [ "$review_file_path" = "" ]; then
   exit 1
 fi
 
-# [CONTEXT] emit は **必ず stderr** に出力する (fix.md 全体の [CONTEXT] emit 規約統一)
+# [CONTEXT] emit は **必ず stderr** に出力する (retained flag / 引数 parse 系 emit の規約 — ステップ 1.2.0 Priority 0/2/3・6.1.a・5.1 retained flags と統一。WT_ENSURE / ROOT_CAUSE_GATE / WIKI_INGEST_* 等、後続 phase が値を読む status emit は stdout で別系統)
 echo "[CONTEXT] REVIEW_FILE_PATH=$review_file_path" >&2
 echo "[CONTEXT] REMAINING_ARGS=$remaining_args" >&2
 ```

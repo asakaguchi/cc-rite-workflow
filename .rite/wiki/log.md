@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-08T01:42:33+09:00 | skip | [20260707T163658Z-pr-1790.md](raw/reviews/20260707T163658Z-pr-1790.md) | PR #1790 (Issue #1789) — 0 findings のクリーンな文字列置換PR（resume.md→recover.md 散文参照統一）。PR #1788 で観測された reviewer 応答遅延は本PRでは再発せず、単発の非再現データ点のため経験則化は時期尚早、skip |
 | 2026-07-08T00:53:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=256, broken_refs=0 (PR #1788 ingest 後の auto-lint) |
 | 2026-07-08T00:51:28+09:00 | skip | [20260707T155128Z-pr-1788.md](raw/reviews/20260707T155128Z-pr-1788.md) | PR #1788 (Issue #1784) — 0 findings のクリーンな文字列置換PR（resume→recoverリネーム）。reviewer subagent 応答遅延（tech-writer/prompt-engineer）は根本原因不明の単発インフラ観察のため経験則化は時期尚早、skip |
 | 2026-07-07T20:55:00+00:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=255, broken_refs=0 (PR #1780 ingest 後の auto-lint) |

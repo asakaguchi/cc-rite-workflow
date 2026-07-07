@@ -367,7 +367,7 @@ if val=$(bash state-read.sh --field foo); then ...
 # 行番号参照は Wiki 経験則「DRIFT-CHECK ANCHOR は semantic name 参照で記述する — line 番号禁止」
 # (.rite/wiki/index.md) に違反し、function 内の挿入で immediately drift する fragile pattern だった。
 # 関数名 `update_local_work_memory` + capture target 変数名 (`_phase` / `pr_num` / `loop_cnt`) で参照する
-# semantic anchor 形式に置換した (resume.md / 本 PR cycle 38 F-03/F-04/F-15 系統と整合)。
+# semantic anchor 形式に置換した (recover.md / 本 PR cycle 38 F-03/F-04/F-15 系統と整合)。
 if curr=$(bash state-read.sh --field phase); then
   :
 else

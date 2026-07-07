@@ -25,7 +25,7 @@ argument-hint: "[--merge] <issue_number>..."
 
 **設計の核**: 成功する限り無確認で走る。デフォルトは各 Issue を draft PR まで進めて止め（自動 merge しない安全側に倒し人間のレビューを待つ）、`--merge` 指定時のみ merge→cleanup まで完走する。失敗（open 失敗 / merge 不可 / `[fix:error]` 等）したら即停止する。ただし iterate のサーキットブレーカー到達（`[iterate:max-cycles-reached]`）は**例外的に即停止せず**、当該 Issue を failed 記録して次の Issue へ進む（非収束 1 件でバッチ全体をストールさせない、Issue #1701 AC-2）。本コマンドは flow-state の `handoff` を **一切 set しない**（iterate / cleanup が内部で使う handoff / FINALIZE と衝突させない）。継続は flat な順次ステップ構造で担保する（`/rite:open` の Step 1→6 と同じ設計）。
 
-途中で止まったら: 処理中 Issue は各 sub-skill が flow-state に phase を残すので `/rite:resume {issue}` で個別復帰する。残りキューは `.rite/state/run-queue.json` に残るので、引数省略 `/rite:run` で cursor から再開する（モード（`--merge` の有無）も run-queue.json に永続化されるため再開時も維持される）。
+途中で止まったら: 処理中 Issue は各 sub-skill が flow-state に phase を残すので `/rite:recover {issue}` で個別復帰する。残りキューは `.rite/state/run-queue.json` に残るので、引数省略 `/rite:run` で cursor から再開する（モード（`--merge` の有無）も run-queue.json に永続化されるため再開時も維持される）。
 
 `{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) で解決する。run-queue.json のパスは `state-path-resolve.sh` で解決した state root 基準とし、linked worktree を跨いでも同一ファイルを指す（各 Issue の open/cleanup が worktree を出入りしても一貫させるため）。
 
@@ -146,7 +146,7 @@ echo "[CONTEXT] RUN_SUMMARY; issues=$issues; total=$total; remaining=$remaining;
 - 対象 Issue: {summary_total} 件 {summary_issues}（`cursor > 0` の再開時のみ「残り {summary_remaining} 件」を併記する。新規実行では併記しない）
 - 実行モード: draft 止まり（各 Issue を open→iterate まで自律処理し、**merge せず** draft PR をレビュー待ちで残します）
 - 目安時間: 1 Issue あたり約 {summary_per_issue}（件数ベースの粗い目安。レビュー往復・実装規模で変動）→ 合計約 {summary_est_total}
-- 中断/再開: 中断は Ctrl+C。中断後は個別 Issue を `/rite:resume <issue>`、残りキュー全体は引数省略の `/rite:run` で再開できます（run-queue.json に cursor とモードを永続化）
+- 中断/再開: 中断は Ctrl+C。中断後は個別 Issue を `/rite:recover <issue>`、残りキュー全体は引数省略の `/rite:run` で再開できます（run-queue.json に cursor とモードを永続化）
 
 このまま確認なしで最初の Issue の処理を開始します。
 ```
@@ -159,7 +159,7 @@ echo "[CONTEXT] RUN_SUMMARY; issues=$issues; total=$total; remaining=$remaining;
 - 対象 Issue: {summary_total} 件 {summary_issues}（`cursor > 0` の再開時のみ「残り {summary_remaining} 件」を併記する。新規実行では併記しない）
 - 実行モード: フル完走（各 Issue を open→iterate→ready→merge→cleanup まで進め、**merge まで完走**します）
 - 目安時間: 1 Issue あたり約 {summary_per_issue}（件数ベースの粗い目安。レビュー往復・実装規模で変動）→ 合計約 {summary_est_total}
-- 中断/再開: 中断は Ctrl+C。中断後は個別 Issue を `/rite:resume <issue>`、残りキュー全体は引数省略の `/rite:run` で再開できます（run-queue.json に cursor とモード=merge を永続化）
+- 中断/再開: 中断は Ctrl+C。中断後は個別 Issue を `/rite:recover <issue>`、残りキュー全体は引数省略の `/rite:run` で再開できます（run-queue.json に cursor とモード=merge を永続化）
 
 このまま確認なしで最初の Issue の処理を開始します。
 ```
@@ -297,7 +297,7 @@ args: "{branch_name}"
 | Sentinel（`--merge` 時のみ） | アクション |
 |---------|-----------|
 | `[cleanup:returned-to-caller]` | この Issue 完了。下記 bash で cursor を +1 してステップ 1 へループ |
-| sentinel 不在（cleanup 途中で停止） | merge は既に完了済み（成功扱い）。下記 bash で cursor を +1 してステップ 1 へ進む（cleanup の未完分は `/rite:resume {current_issue}` で個別補完できる旨を表示） |
+| sentinel 不在（cleanup 途中で停止） | merge は既に完了済み（成功扱い）。下記 bash で cursor を +1 してステップ 1 へ進む（cleanup の未完分は `/rite:recover {current_issue}` で個別補完できる旨を表示） |
 
 **（`[iterate:max-cycles-reached]` 経由の場合のみ）** cursor を進める前に当該 Issue を `failed[]` に記録する（ステップ 7 完了通知で報告するため。両モードで実行。`{current_issue}` はステップ 1 の marker 値をリテラル置換）:
 
@@ -416,7 +416,7 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 未処理 Issue: {remaining_issues}
 
 復旧:
-- この Issue を続きから: /rite:resume {current_issue}
+- この Issue を続きから: /rite:recover {current_issue}
 - 残りをまとめて再開: /rite:run（引数省略で run-queue.json の cursor とモードから再開。明示再開する場合の `--merge` 併記は下記の補足を参照）
 
 <!-- [run:stopped] -->
@@ -429,7 +429,7 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 
 ## エラー時の方針
 
-- **失敗は即停止**（成功する限り無確認で走る方針の対）。失敗 Issue の状態は各 sub-skill が flow-state に保持するため、`/rite:resume {issue}` で個別復帰できる
+- **失敗は即停止**（成功する限り無確認で走る方針の対）。失敗 Issue の状態は各 sub-skill が flow-state に保持するため、`/rite:recover {issue}` で個別復帰できる
 - **例外: サーキットブレーカーは即停止しない**。iterate が `[iterate:max-cycles-reached]` を返した場合は、当該 Issue を `failed[]` に記録して cursor を前進させ次の Issue へ進む（バッチ全体をストールさせない）。停止せずキューを完走し、ステップ 7 の完了通知で failed Issue を報告する（Issue #1701 AC-2）
 - run-queue.json は停止時に残す。引数省略 `/rite:run` で cursor から再開する
 - run は flow-state の `handoff` を使わないため、sub-skill 間（例: open 完了直後・iterate invoke 前）で turn が途切れた場合の構造ガードは持たない。これは `/rite:open` のステップ間遷移と同じ前提で、各 skill invoke 直前の continuation hint（HTML コメント）と flat step 構造で継続を促す
@@ -443,7 +443,7 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 - **固定パイプライン特化**: 自由記述ゴールの自律解釈（汎用ゴールソルバー）はしない。rite の決定的 sentinel/handoff 設計と相性が悪いため、Issue 番号 → 固定パイプライン（デフォルト 2 段 / `--merge` 5 段）に限定する
 - **サーキットブレーカーは failed 遷移（即停止ではない）**: iterate は `safety.max_review_cycles` 到達で `[iterate:max-cycles-reached]` を emit する。run はこれを他の失敗 sentinel（`[fix:error]` 等 → 即停止）と区別し、当該 Issue のみ failed 記録して次へ進める。非収束 PR 1 件でバッチ全体がストールするのを防ぐのが本 sentinel の目的（Issue #1701）。failed 記録は run-queue.json の `failed[]` に永続化し、compact / 中断を跨いでも完了通知で報告できる。`failed[]` 欠落の旧形式キューは `[]` 互換
 - **handoff 不使用**: flow-state の `handoff` は単一フィールド + default-clear で、iterate / cleanup が内部で排他使用する。run が割り込むと sub-skill の継続保証（Stop hook 差し戻し）が壊れるため、run は handoff を一切 set しない。継続は flat step 構造に委ねる（`/rite:open` と同じ）。ただしデフォルトモードは ready を経由しないため、iterate の残存 FINALIZE handoff は次 Issue の open（`flow-state.sh set`）が default-clear し、最後の Issue 分のみステップ 7 の `consume-handoff` で消費する（merge モードでは ready が clear するため no-op）
-- **phase enum を拡張しない / resume.md を変更しない**: 各 sub-skill が自分の phase を書くため、中断時の個別 Issue 復帰は既存 `/rite:resume` がそのままカバーする。run 専用 phase は持たない
+- **phase enum を拡張しない / resume.md を変更しない**: 各 sub-skill が自分の phase を書くため、中断時の個別 Issue 復帰は既存 `/rite:recover` がそのままカバーする。run 専用 phase は持たない
 - **キュー永続化**: 複数 Issue の残りキューは `state_root/.rite/state/run-queue.json`（`{issues, cursor, mode, failed, active}`）に持つ。会話コンテキストでなくディスクに置くことで compact / 中断を跨いでも残り Issue・モード・failed 記録が失われない。`mode` 欠落の旧形式は `default` 互換、`failed` 欠落は `[]` 互換、`active` 欠落は `false` 互換として扱う（Issue #1536 D-03）。linked worktree を跨ぐため `state-path-resolve.sh` で解決した main checkout root 基準で配置する
 - **`[fix:replied-only]` の扱いはモード依存**: `--merge` では mergeable 未到達とみなし merge 前に停止する（未解決指摘の握り潰し防止）。デフォルトでは merge しないため即停止は不要で、draft PR を残し「未解決指摘あり」を明示してキューを次へ進める（Issue #1536 Open Question 暫定方針）
 - **専用ヘルパー/hook を作らない**: run-queue.json は run.md 内 bash の `jq` 直接操作で完結する（既存の `.rite/state/` PR-state ファイルと同じく helper なし。単一セッションが順次書くため atomic は `jq → 一時ファイル → mv` で十分）。`mode` 追加もこの方針内で `jq` フィールド 1 つの読み書きに留める

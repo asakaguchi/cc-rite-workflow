@@ -243,7 +243,7 @@ output=$(run_hook_with_source "$dir006" "compact")
 if echo "$output" | grep -q "中断した rite workflow を検出" && \
    echo "$output" | grep -q "Issue #42" && \
    echo "$output" | grep -q "phase: implementing" && \
-   echo "$output" | grep -q "/rite:resume"; then
+   echo "$output" | grep -q "/rite:recover"; then
   pass "Interruption notice contains issue + phase + resume hint"
 else
   fail "Interruption notice missing expected fields, got: $output"
@@ -255,7 +255,7 @@ echo ""
 # cycle 12 HIGH F-02: cycle 11 で IFS=$'\t' → $'\x1f' に変更 (cycle 11 MEDIUM F-04) したため、
 # 旧 buggy field shift 挙動 (ISSUE='test' + CRITICAL) は消滅。unit separator は empty field を
 # preserve するため ISSUE="" になり、session-start.sh の `if [ -z "$ISSUE" ]` guard が正しく
-# 発火して "issue_number is missing. Use /rite:resume to recover" warning を出力する。
+# 発火して "issue_number is missing. Use /rite:recover to recover" warning を出力する。
 # 旧 TC-007 assertion は buggy 挙動を期待していたため、fixed 挙動に合わせて更新。
 # --------------------------------------------------------------------------
 echo "TC-007: State file missing issue_number + source=compact → issue_number missing warning"
@@ -265,10 +265,10 @@ create_state_file "$dir007" '{"active": true, "phase": "test"}'
 
 output=$(run_hook_with_source "$dir007" "compact")
 if echo "$output" | grep -q "issue_number is missing" && \
-   echo "$output" | grep -q "/rite:resume"; then
+   echo "$output" | grep -q "/rite:recover"; then
   pass "Missing issue_number → empty ISSUE guard fires with recovery hint (IFS=\$'\\x1f' correctly preserves empty field)"
 else
-  fail "Expected 'issue_number is missing' + '/rite:resume' guard (cycle 11 IFS fix should have eliminated field shift), got: $output"
+  fail "Expected 'issue_number is missing' + '/rite:recover' guard (cycle 11 IFS fix should have eliminated field shift), got: $output"
 fi
 echo ""
 
@@ -1353,8 +1353,8 @@ if [ "$rc1552" -eq 0 ]; then
 else
   fail "TC-1552a: expected exit 0, got rc=$rc1552"
 fi
-if grep -q "Path does not exist" "$LAST_STDERR_FILE" && grep -q "/rite:resume" "$LAST_STDERR_FILE"; then
-  pass "TC-1552b: recovery guide emitted to stderr (mentions /clear failure + /rite:resume)"
+if grep -q "Path does not exist" "$LAST_STDERR_FILE" && grep -q "/rite:recover" "$LAST_STDERR_FILE"; then
+  pass "TC-1552b: recovery guide emitted to stderr (mentions /clear failure + /rite:recover)"
 else
   fail "TC-1552b: recovery guide missing on stderr: $(cat "$LAST_STDERR_FILE")"
 fi
@@ -1365,7 +1365,7 @@ jq -n --arg cwd "$dir1552_root/some/unrelated/deleted-dir" --arg src "clear" \
   '{cwd: $cwd, source: $src, hook_event_name: "SessionStart"}' \
   | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID -u _RITE_HOOK_RUNNING_SESSIONSTART \
       bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE"; rc1552c=$?
-if [ "$rc1552c" -eq 0 ] && ! grep -q "/rite:resume" "$LAST_STDERR_FILE"; then
+if [ "$rc1552c" -eq 0 ] && ! grep -q "/rite:recover" "$LAST_STDERR_FILE"; then
   pass "TC-1552c: non-worktree dangling cwd → exit 0, no recovery guide (no false positive)"
 else
   fail "TC-1552c: unexpected output rc=$rc1552c stderr=$(cat "$LAST_STDERR_FILE")"

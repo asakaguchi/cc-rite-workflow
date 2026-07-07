@@ -50,7 +50,7 @@ Claude Code 組み込みツール `EnterWorktree(path)` でセッションの作
   `name` 指定は `.claude/worktrees/` 配下に origin/<デフォルトブランチ> 起点で新規作成され、branch 命名・base ref（rite は `origin/develop`）を制御できないため**使わない**。
 - `ExitWorktree(action)`: 元のディレクトリへ戻る。**path 入場した worktree は `remove` でも削除されない** → 常に `keep` で戻り、main checkout 側から `git worktree remove` する。
 - EnterWorktree のツール側ガード「ユーザーまたはプロジェクト指示で明示された場合のみ」は、`rite-config.yml` の `multi_session.enabled: true`（リポジトリにコミットされたプロジェクト指示。後続でテンプレートのデフォルトが ON 化されたが、値がテンプレートのデフォルト由来かユーザーの明示編集由来かに依らずプロジェクト指示として成立する）+ コマンド定義内の明示指示で満たす。pr:open は marker 経由で `enabled: true` を確認した分岐内でのみ EnterWorktree を呼ぶため、ガードの根拠は default off 時と変わらない。
-- セッションのクラッシュ/再起動後、新セッションはリポジトリルートで開始される → `/rite:resume` が再入場経路を持つ（§5）。
+- セッションのクラッシュ/再起動後、新セッションはリポジトリルートで開始される → `/rite:recover` が再入場経路を持つ（§5）。
 
 ### Git の構造的制約（設計が守るルール）
 
@@ -135,7 +135,7 @@ multi_session:
      | branch も worktree もなし | `git worktree add -b {branch} {path} origin/{base}` |
      | branch が**別の worktree** で checkout 中 | **中止**（他セッション作業中の可能性を表示 — git が構造的に保証する二重着手ガード） |
   3. `.rite-plugin-root` を worktree root へコピー → `EnterWorktree(path: {path})`
-  4. **EnterWorktree 不在/失敗時**: **silent fallback はしない**。失敗原因を切り分ける — (A) harness の git 誤判定（`.git` 存在 + `git -C {path} rev-parse` 成功 + 起動コンテキスト git=false / 「not in a git repository」）＝推奨。リポジトリ root から Claude Code を再起動し再実行すれば worktree は `WT_CASE=reuse` で継続（worktree は保持され破壊しない）/ (B) worktree 消失等の別要因＝S8 / `/rite:resume` 再構築経路へ委譲 / (C) 従来 `git switch -c` は recommended にせず、worktree 分離を破棄する明示エスケープとしてのみ残す（併走時の危険を警告）。Bash 永続 cwd 駆動は導入しない。
+  4. **EnterWorktree 不在/失敗時**: **silent fallback はしない**。失敗原因を切り分ける — (A) harness の git 誤判定（`.git` 存在 + `git -C {path} rev-parse` 成功 + 起動コンテキスト git=false / 「not in a git repository」）＝推奨。リポジトリ root から Claude Code を再起動し再実行すれば worktree は `WT_CASE=reuse` で継続（worktree は保持され破壊しない）/ (B) worktree 消失等の別要因＝S8 / `/rite:recover` 再構築経路へ委譲 / (C) 従来 `git switch -c` は recommended にせず、worktree 分離を破棄する明示エスケープとしてのみ残す（併走時の危険を警告）。Bash 永続 cwd 駆動は導入しない。
 - Step 2.6 / 6.3 の flow-state set に `--worktree {path}` を追加。
 - Step 3〜6（implement / lint / push / PR create）は cwd 相対で完結するため**無変更**（§1 の state root 統一が前提）。
 
@@ -276,7 +276,7 @@ teammate の git 禁止・team lead の `git -C` 集約は無変更。
 | AC-1 | `multi_session.enabled=false` で全コマンド・hook の挙動が現行と完全一致（resolver 出力の非 worktree byte 一致 pin テスト含む） | S1, S2 |
 | AC-2 | 2 セッションが別 Issue を pr:open → iterate → merge → cleanup まで並行完走（相互の branch / 作業ツリー破壊なし） | S6, S7, S10 |
 | AC-3 | pr:open の冪等 5 ケース（再利用 / 残骸 prune / branch のみ / 新規 / 他 worktree checkout 中断）が仕様どおり分岐 | S6 |
-| AC-4 | クラッシュ後の `/rite:resume` が worktree へ再入場し、worktree 消失時は branch から再構築する | S8 |
+| AC-4 | クラッシュ後の `/rite:recover` が worktree へ再入場し、worktree 消失時は branch から再構築する | S8 |
 | AC-5 | 同一 Issue への二重着手で claim 検出 → AskUserQuestion（無人奪取なし） | S3 |
 | AC-6 | アクティブセッションの worktree が reap されない（3 ゲート）。異常終了の残骸（claim stale + clean）は回収される | S4 |
 | AC-7 | 並行 wiki ingest で commit/push が直列化され、NFF push 競合はリトライで吸収、ingest lock 競合時は skip + 次回回収 | S5 |
@@ -316,7 +316,7 @@ teammate の git 禁止・team lead の `git -C` 集約は無変更。
 1. 2 つのターミナルで Claude Code をリポジトリルートから起動する（両者とも main checkout = base ブランチ上で開始）。
 2. 各ターミナルで**別々の Issue** に対して `/rite:pr:open` → `/rite:pr:iterate` → `/rite:pr:merge` → `/rite:pr:cleanup` を並行完走させ、相互の作業ツリー / ブランチ破壊が起きないことを確認する（AC-2 / AC-8）。
 3. 両セッションがほぼ同時に cleanup → wiki ingest に到達するよう仕向け、並行 ingest が直列化 / skip / 次回回収のいずれかで安全に縮退することを確認する（AC-7）。
-4. 片方のセッションを実装中にクラッシュ（プロセス kill / ターミナル強制終了）させ、新ターミナルで `/rite:resume {issue}` を実行 → セッション worktree への再入場、worktree 消失時のブランチからの再構築を確認する（AC-4）。
+4. 片方のセッションを実装中にクラッシュ（プロセス kill / ターミナル強制終了）させ、新ターミナルで `/rite:recover {issue}` を実行 → セッション worktree への再入場、worktree 消失時のブランチからの再構築を確認する（AC-4）。
 5. `multi_session.enabled: false` に戻し、従来フロー（単一セッション）が非回帰であることを確認する（AC-1）。
 
 ### 結果（2026-06-10 実施 — 坂口さんの 2 セッション並行実施 + 痕跡 / テストによる裏取り）

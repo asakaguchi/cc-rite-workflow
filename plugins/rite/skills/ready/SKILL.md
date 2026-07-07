@@ -212,7 +212,7 @@ End processing.
 
 > **Skip this confirmation when invoked from the main end-to-end flow path**: the orchestrator has already confirmed the Ready transition with the user, so a second confirmation is duplicate (per [Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md) — fourth of the five self-questions: "Is this re-confirming an already-approved decision? → eliminate duplicates"). This sub-skill reads the flow state `.phase` and `.active`, and skips the confirmation when `.phase` matches one of the post-review / post-fix transition phases — either the legacy `phase5_post_review` / `phase5_post_fix` (no current writer — these values only persist as residue in pre-v3 state files; the whitelist still accepts them for resume-from-old-state compatibility) or the flat `review` / `fix` (current writers: `skills/iterate/SKILL.md` review/fix sides, plus the sub-skills themselves — `skills/review/SKILL.md` ステップ 8.0 / `skills/fix/SKILL.md` ステップ 5.1) — AND `.active` is `true` (the AND condition closes the same-session interruption gap — see the next paragraph for details).
 >
-> **Side paths fall back fail-safe to the standalone path (legacy behavior)**: when this sub-skill is reached via any non-main path (e.g., via `/rite:resume`, a standalone re-invocation after an in-session e2e interruption, or an unexpected `.phase` value), or when the flow state is not active (`active=false`), the `else` branch sets `in_e2e_flow=false` and the confirmation is shown. Erring on the side of "silent confirm" rather than "silent skip" preserves UX safety. Same-session interruption + standalone re-invocation is also covered by the bash AND condition (`active = "true"`): `flow-state.sh` cross-session guard classifies the legacy file as `same` (`legacy.session_id == current_sid`), so the helper returns the legacy file's stored value rather than the default. The bash test `[ "$active" = "true" ]` then rejects the legacy file because its `active` field is `false` once the e2e flow stopped.
+> **Side paths fall back fail-safe to the standalone path (legacy behavior)**: when this sub-skill is reached via any non-main path (e.g., via `/rite:recover`, a standalone re-invocation after an in-session e2e interruption, or an unexpected `.phase` value), or when the flow state is not active (`active=false`), the `else` branch sets `in_e2e_flow=false` and the confirmation is shown. Erring on the side of "silent confirm" rather than "silent skip" preserves UX safety. Same-session interruption + standalone re-invocation is also covered by the bash AND condition (`active = "true"`): `flow-state.sh` cross-session guard classifies the legacy file as `same` (`legacy.session_id == current_sid`), so the helper returns the legacy file's stored value rather than the default. The bash test `[ "$active" = "true" ]` then rejects the legacy file because its `active` field is `false` once the e2e flow stopped.
 >
 > **Standalone execution** (direct `/rite:ready` invocation): always confirm via `AskUserQuestion` as a misuse safety net.
 
@@ -313,7 +313,7 @@ Proceed to the next phase.
 2. GitHub Web UI から直接変更を試す
 ```
 
-**In e2e flow**: If flow state file exists, update the state file and output `[ready:error]` before ending to signal the failure to the caller (orchestrator). Use the dedicated `ready_error` flat phase so `/rite:resume` routes back to `/rite:ready` for retry — writing `phase=pr` would route resume to `/rite:open` ステップ 6 (PR creation) and re-invoke `/rite:pr-create` against the already-existing PR.
+**In e2e flow**: If flow state file exists, update the state file and output `[ready:error]` before ending to signal the failure to the caller (orchestrator). Use the dedicated `ready_error` flat phase so `/rite:recover` routes back to `/rite:ready` for retry — writing `phase=pr` would route resume to `/rite:open` ステップ 6 (PR creation) and re-invoke `/rite:pr-create` against the already-existing PR.
 
 ```bash
 bash {plugin_root}/hooks/flow-state.sh set \
@@ -412,7 +412,7 @@ Inspect the script's stdout JSON and route by `.result`:
 
 **All result branches are non-blocking** — the ready-for-review transition is already complete (Phase 3 `gh pr ready` succeeded); a Status update issue MUST NOT abort the workflow.
 
-> **失敗 surface MUST**: 旧仕様では `skipped_not_in_project` / `failed` の両経路で **silent skip** していたため、observation log がどこにも残らず、user が手動確認するまで Status が `In Progress` に滞留する事象 が発生していた。本契約により、両経路は必ず `WARNING` を stderr に出力する。Status 更新失敗はブロッキングではなく、ユーザーが stderr を見て手動回復 (`/rite:resume` または手動 `gh project item-edit`) する。
+> **失敗 surface MUST**: 旧仕様では `skipped_not_in_project` / `failed` の両経路で **silent skip** していたため、observation log がどこにも残らず、user が手動確認するまで Status が `In Progress` に滞留する事象 が発生していた。本契約により、両経路は必ず `WARNING` を stderr に出力する。Status 更新失敗はブロッキングではなく、ユーザーが stderr を見て手動回復 (`/rite:recover` または手動 `gh project item-edit`) する。
 
 > **Bash 実装 minimal skeleton (delegate-only 経路の標準形)**:
 >
@@ -440,7 +440,7 @@ Inspect the script's stdout JSON and route by `.result`:
 
 ### 4.6 Defense-in-Depth: State Update Before Output (End-to-End Flow)
 
-Before outputting the result pattern (`[ready:returned-to-caller]`) or skipping output, update flow state to reflect the post-ready phase (defense-in-depth). This prevents intermittent flow interruptions when the fork context returns to the caller — LLM が fork return 後に turn を終了しても、state file に正しい `next_action` が残るため `/rite:resume` で復帰できる。なお `Stop` hook (`stop-loop-continuation.sh`) は handoff マーカー (review↔fix ループ / cleanup wiki チェーン) が set されている時だけ停止を差し戻すが、ready は handoff をセットしない (ready はループの出口でありユーザー判断で merge へ進むため) — よってここでは Stop hook は停止を妨げず、継続保証は flow-state の `next_action` (resume 用) に委ねる。
+Before outputting the result pattern (`[ready:returned-to-caller]`) or skipping output, update flow state to reflect the post-ready phase (defense-in-depth). This prevents intermittent flow interruptions when the fork context returns to the caller — LLM が fork return 後に turn を終了しても、state file に正しい `next_action` が残るため `/rite:recover` で復帰できる。なお `Stop` hook (`stop-loop-continuation.sh`) は handoff マーカー (review↔fix ループ / cleanup wiki チェーン) が set されている時だけ停止を差し戻すが、ready は handoff をセットしない (ready はループの出口でありユーザー判断で merge へ進むため) — よってここでは Stop hook は停止を妨げず、継続保証は flow-state の `next_action` (resume 用) に委ねる。
 
 **Condition**: Execute only when flow state file exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
 

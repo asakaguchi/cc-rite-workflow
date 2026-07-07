@@ -13,7 +13,7 @@ plugins/rite/
 │   ├── PR lifecycle  #   open, iterate, review, fix, ready, merge, cleanup, run, pr-create
 │   ├── issue 管理     #   issue-create, issue-list, issue-update, issue-close, issue-edit, issue-implement
 │   ├── wiki          #   wiki-init, wiki-query, wiki-ingest, wiki-lint
-│   ├── meta/top      #   init, getting-started, workflow, investigate, learn, lint, resume, skill-suggest, template-reset
+│   ├── meta/top      #   init, getting-started, workflow, investigate, learn, lint, recover, skill-suggest, template-reset
 │   ├── rite-workflow/  # orchestration context（状態検出・phase routing）+ references/（コーディング原則 等）
 │   └── reviewers/      # レビュアー調整（選定 + テーブル）+ references/（各 reviewer profile は agents/{type}-reviewer.md）
 ├── agents/           # PR レビュー用サブエージェント定義

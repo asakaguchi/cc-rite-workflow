@@ -57,12 +57,12 @@ Issue: #288 - checkpoint.json を廃止し Issue 作業メモリに統合
 フェーズ詳細: 実装作業中
 最終更新: 2026-01-29T12:00:00+09:00
 
-続行するには /rite:resume を実行してください。
+続行するには /rite:recover を実行してください。
 ```
 
 ## Prerequisites
 
-- The `/rite:resume` command must be available (defined in [resume.md](../../../skills/resume/SKILL.md))
+- The `/rite:recover` command must be available (defined in [recover.md](../../../skills/recover/SKILL.md))
 
 ## Related
 

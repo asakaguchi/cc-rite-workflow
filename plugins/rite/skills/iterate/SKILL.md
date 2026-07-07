@@ -21,9 +21,9 @@ argument-hint: "<pr_number>"
 5. 完了通知を出す
 6. （cycle 上限到達時のみ）サーキットブレーカー: バッチ実行（`/rite:run`）は `[iterate:max-cycles-reached]` を emit して当該 Issue を failed 扱いにさせ、対話実行は AskUserQuestion（さらに N cycle 継続 / 中止 / draft のまま停止）でユーザーに判断を委ねる
 
-**サーキットブレーカー**（`safety.max_review_cycles`、既定 5）が唯一の自動安全網。上限到達時は、対話実行では AskUserQuestion（さらに N cycle 継続 / 中止 / draft のまま停止）でユーザーに判断を委ね（自動でループを継続しない）、`/rite:run` バッチ実行では当該 Issue を failed 扱いにする sentinel を emit して次 Issue へ進ませる（バッチ全体のストール防止）。cycle_count は flow-state に永続化され resume 後も継続する（AC-3）。それ以外の中断経路は 2 種類: (a) ユーザーが fix.md 内 AskUserQuestion で「中止」を選択 → `[fix:cancelled-by-user]` emit + ループ終了、(b) ユーザーが Ctrl+C で中断 → flow-state phase 残存。どちらも `/rite:resume` で再開可。
+**サーキットブレーカー**（`safety.max_review_cycles`、既定 5）が唯一の自動安全網。上限到達時は、対話実行では AskUserQuestion（さらに N cycle 継続 / 中止 / draft のまま停止）でユーザーに判断を委ね（自動でループを継続しない）、`/rite:run` バッチ実行では当該 Issue を failed 扱いにする sentinel を emit して次 Issue へ進ませる（バッチ全体のストール防止）。cycle_count は flow-state に永続化され resume 後も継続する（AC-3）。それ以外の中断経路は 2 種類: (a) ユーザーが fix.md 内 AskUserQuestion で「中止」を選択 → `[fix:cancelled-by-user]` emit + ループ終了、(b) ユーザーが Ctrl+C で中断 → flow-state phase 残存。どちらも `/rite:recover` で再開可。
 
-途中で止まったら flow-state に現 phase (review or fix) が残るので `/rite:resume` で再開する。
+途中で止まったら flow-state に現 phase (review or fix) が残るので `/rite:recover` で再開する。
 
 `{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) で解決する。
 
@@ -73,7 +73,7 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 
 > `--branch {branch_name}` を明示することで（review/fix の `--branch {head_ref}` 渡しと対称）、helper が issue-N の ref から branch を自動推定する経路を回避し、同一 issue に複数ブランチが存在する場合でも決定的に対象ブランチを選ぶ。`ITERATE_BRANCH` が空の場合は省略してよい（helper が ref 推定にフォールバックする）。
 
-`[CONTEXT] WT_ENSURE=` marker の分岐は [skills/resume/SKILL.md](../resume/SKILL.md) Phase 3.1.5 の **WT_ENSURE 分岐表（SoT）** に従う:
+`[CONTEXT] WT_ENSURE=` marker の分岐は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 3.1.5 の **WT_ENSURE 分岐表（SoT）** に従う:
 
 - `disabled` / `already_in` → no-op、ステップ 1 へ。
 - `reenter` / `reconstructed` → `EnterWorktree` ツールを `path: {path}`（marker の `path=` 値）で呼び出してからステップ 1 へ。`reconstructed` は helper が `git worktree add` 済み。EnterWorktree 失敗時の切り分けは resume.md Phase 3.1.5 / /rite:open Step 2.3-W と同じ（silent に新規扱いしない）。
@@ -211,7 +211,7 @@ args: "{pr_number}"
 | `[fix:pushed]` | ステップ 1 (cycle 上限チェック → review 再実行) に戻る — **ループ継続**（上限到達ならステップ 6 サーキットブレーカーへ） |
 | `[fix:pushed-wm-stale]` | ステップ 1 に戻る (WM stale 警告は表示するが loop は継続。上限チェックはステップ 1 が実施) |
 | `[fix:replied-only]` | **ループ終了**（reply のみで完結） |
-| `[fix:cancelled-by-user]` | **ループ終了**（ユーザーが fix.md 内 cancel 経路 — ステップ 1.4 Cancel option / Fast Path Cancel handoff 等 — で中止選択。`/rite:resume` で再開可） |
+| `[fix:cancelled-by-user]` | **ループ終了**（ユーザーが fix.md 内 cancel 経路 — ステップ 1.4 Cancel option / Fast Path Cancel handoff 等 — で中止選択。`/rite:recover` で再開可） |
 | `[fix:error]` | AskUserQuestion で「再試行 / 中止」を提示 |
 | sentinel 不在 | AskUserQuestion で「再試行 / 中止」を提示 (どの sentinel が期待されていたか、直近の fix 出力 100 行、flow-state phase を表示) |
 
@@ -259,7 +259,7 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 - ブランチ: {branch_name}
 
 再開方法:
-- /rite:resume で本コマンドが再起動 (flow-state phase=fix のため fix invoke から再開)
+- /rite:recover で本コマンドが再起動 (flow-state phase=fix のため fix invoke から再開)
 - 手動で /rite:iterate {pr_number} を再実行することも可
 ```
 
@@ -311,8 +311,8 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:run`
 `AskUserQuestion` で以下 3 択を提示する。設問には残 findings 数の推移など観察材料を添えると判断しやすい（Scenario 2）。設問文・選択肢の `{max_review_cycles}` はリテラル置換する:
 
 - **さらに {max_review_cycles} cycle 継続**: counter を 0 にリセットしてループを再開し、もう {max_review_cycles} cycle 回す
-- **中止**: ループを終了（flow-state phase 保持、`/rite:resume` で再開可）
-- **draft のまま停止**: ループを終了し draft PR をレビュー待ちで残す（`/rite:resume` で再開可）
+- **中止**: ループを終了（flow-state phase 保持、`/rite:recover` で再開可）
+- **draft のまま停止**: ループを終了し draft PR をレビュー待ちで残す（`/rite:recover` で再開可）
 
 回答に応じて分岐する:
 
@@ -343,7 +343,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 - 選択: {中止 | draft のまま停止}
 
 再開方法:
-- /rite:resume で本コマンドが再起動（flow-state phase 保持）。cycle_count は上限のまま保持されるため、
+- /rite:recover で本コマンドが再起動（flow-state phase 保持）。cycle_count は上限のまま保持されるため、
   再開直後に再びサーキットブレーカーが発火する（安全側: 上限を越えて自動継続しない）。継続する場合は
   発火時の AskUserQuestion で「継続」を選ぶ
 - Ready 化して手動でレビューを完了させる: /rite:ready {pr_number}
@@ -355,7 +355,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ## エラー時の方針
 
-- ユーザーが Ctrl+C で中断した場合: flow-state に現 phase (review or fix) が残るので `/rite:resume` で本コマンドが再起動する (詳細な phase → command routing は [skills/resume/SKILL.md](../resume/SKILL.md) Phase 5.3 を参照)
+- ユーザーが Ctrl+C で中断した場合: flow-state に現 phase (review or fix) が残るので `/rite:recover` で本コマンドが再起動する (詳細な phase → command routing は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.3 を参照)
 - `[fix:error]` 時: 自動継続せず必ず AskUserQuestion で確認 (silent regression 防止)
 - reviewer が non-deterministic に振動 (毎 cycle で別の指摘) する場合: `safety.max_review_cycles`（既定 5）到達でサーキットブレーカーが発火する（ステップ 6）。対話実行は AskUserQuestion（継続 / 中止 / draft のまま停止）でユーザーに判断を委ね、`/rite:run` バッチ実行は `[iterate:max-cycles-reached]` を emit して当該 Issue を failed 扱いにし次 Issue へ進む。Ctrl+C による手動中断も従来どおり可能
 
@@ -377,7 +377,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 - **`[fix:error]` は handoff を持たない**: clean terminal ではなく ステップ4 で AskUserQuestion (再試行/中止) に分岐するため、`--handoff` を付けない (`flow-state.sh set` がデフォルトクリア) → Stop hook は停止を許可する。
 - **サーキットブレーカー発火 (ステップ 1 fire 分岐) も handoff を能動的にクリアする**: fire は直前の `[fix:pushed]` が set した継続 handoff (`/rite:review {pr}`) の直後に到達しうる。ステップ 6 は review/fix を回さず終端するため、この pending handoff を消さないと Stop hook が `/rite:review` を再注入してブレーカーを無視する。したがって fire 分岐は `flow-state.sh set`（`--handoff` なし）でデフォルトクリアしてからステップ 6 へ進む（`[fix:error]` と同型の「set で handoff クリア」終端）。ステップ 6.2 の継続経路も `--cycle-count 0` の set でクリアされ、対称。
 - **無限 block ループ防止**: handoff は consume で one-shot 消費される。進捗 (次コマンド実行 / 完了通知出力) の後に再度停止すれば handoff は空 → block しない。handoff 自体は counter ではない (無限ループの自動安全網は別途 cycle counter サーキットブレーカー = ステップ 6 が担う)。終了 handoff も同じ one-shot 契約で **1 回だけ** block するため、完了通知を強制しても無限 block にはならない。
-- **resume との二層構造**: flow-state の `next_action` は Ctrl+C 中断後の `/rite:resume` 用の secondary な網。Stop hook は自動継続・完了通知強制の primary 層。
+- **resume との二層構造**: flow-state の `next_action` は Ctrl+C 中断後の `/rite:recover` 用の secondary な網。Stop hook は自動継続・完了通知強制の primary 層。
 
 ## 設計判断
 

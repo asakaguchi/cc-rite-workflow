@@ -114,7 +114,7 @@ This will:
 | `/rite:wiki-query` | Query Wiki pages for heuristics matching keywords |
 | `/rite:wiki-ingest` | Ingest raw sources (reviews, fixes, Issues) into Wiki pages |
 | `/rite:wiki-lint` | Lint Wiki pages for contradictions, staleness, orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs |
-| `/rite:resume` | Resume interrupted work |
+| `/rite:recover` | Resume interrupted work |
 | `/rite:skill-suggest` | Analyze context and suggest applicable skills |
 
 ## Workflow
@@ -125,7 +125,7 @@ This will:
                   → /rite:ready → /rite:merge → /rite:cleanup
 ```
 
-**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:open <issue>` handles branch creation, implementation, quality checks, and draft PR creation. `/rite:iterate <pr>` loops review and fix until mergeable. `/rite:ready <pr>` flips the PR to Ready for review. `/rite:merge <pr>` performs the squash-merge. If any step is interrupted (e.g. `Context limit reached`), run `/rite:resume` to recover.
+**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:open <issue>` handles branch creation, implementation, quality checks, and draft PR creation. `/rite:iterate <pr>` loops review and fix until mergeable. `/rite:ready <pr>` flips the PR to Ready for review. `/rite:merge <pr>` performs the squash-merge. If any step is interrupted (e.g. `Context limit reached`), run `/rite:recover` to recover.
 
 Status Transitions:
 ```
@@ -163,7 +163,7 @@ See [Configuration Reference](docs/CONFIGURATION.md) for all options.
 
 | Issue | Solution |
 |-------|----------|
-| `Context limit reached` during long-running commands | Run `/clear` then `/rite:resume` to continue |
+| `Context limit reached` during long-running commands | Run `/clear` then `/rite:recover` to continue |
 
 ## Documentation
 

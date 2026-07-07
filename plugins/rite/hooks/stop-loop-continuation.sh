@@ -132,7 +132,7 @@ if ! jq -n --arg r "$_reason" '{decision:"block", reason:$r}'; then
   _r_esc="${_r_esc//\"/\\\"}"
   _r_esc="${_r_esc//$'\n'/\\n}"
   _r_esc=$(printf '%s' "$_r_esc" | neutralize_ctrl --c0-only) \
-    || _r_esc="rite handoff continuation pending (reason neutralization failed). Re-run the previous /rite command or run /rite:resume."
+    || _r_esc="rite handoff continuation pending (reason neutralization failed). Re-run the previous /rite command or run /rite:recover."
   printf '{"decision":"block","reason":"%s"}\n' "$_r_esc"
 fi
 exit 0

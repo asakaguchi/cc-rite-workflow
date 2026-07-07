@@ -14,7 +14,7 @@
 # checkout (develop). Callers invoke it standalone as
 # `bash lib/worktree-git.sh ensure-session-worktree --issue <N> ...` and
 # route on the emitted `[CONTEXT] WT_ENSURE=` marker (see the function
-# header below and skills/resume/SKILL.md Phase 3.1.5 for the canonical
+# header below and skills/recover/SKILL.md Phase 3.1.5 for the canonical
 # marker→action table). The dispatch at the bottom of this file exposes
 # only that subcommand; the commit/push helpers stay source-only.
 #
@@ -383,7 +383,7 @@ worktree_commit_push() {
 # resume.md. It performs detection AND reconstruction (git worktree add);
 # the EnterWorktree tool call and any AskUserQuestion routing stay with the
 # LLM caller, driven by the emitted [CONTEXT] WT_ENSURE marker. The
-# canonical marker→action routing table lives in skills/resume/SKILL.md
+# canonical marker→action routing table lives in skills/recover/SKILL.md
 # Phase 3.1.5 (consumed verbatim by review / iterate / fix).
 #
 # It does NOT call EnterWorktree (an LLM tool, not a shell command) and it

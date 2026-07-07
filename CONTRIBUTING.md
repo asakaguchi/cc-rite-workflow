@@ -55,7 +55,7 @@ plugins/rite/
 │   ├── (PR lifecycle)  # open, iterate, review, fix, ready, merge, cleanup, run, pr-create
 │   ├── (issue ops)     # issue-create, issue-list, issue-update, issue-close, issue-edit, issue-implement
 │   ├── (wiki)          # wiki-init, wiki-query, wiki-ingest, wiki-lint
-│   ├── (meta/top)      # init, getting-started, workflow, investigate, learn, lint, resume, skill-suggest, template-reset
+│   ├── (meta/top)      # init, getting-started, workflow, investigate, learn, lint, recover, skill-suggest, template-reset
 │   ├── rite-workflow/  # Orchestration context (state detection, phase routing) + references (coding principles)
 │   └── reviewers/      # Reviewer coordinator (selection + tables) + references (per-reviewer profiles in agents/)
 ├── agents/           # Sub-agent definitions for PR review (13 reviewers + _reviewer-base)

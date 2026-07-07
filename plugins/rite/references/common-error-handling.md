@@ -115,7 +115,7 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 | 状況 | emit 先 |
 |------|---------|
 | `exit 1` の直前で Non-blocking Contract の retained flag を emit する | stderr (`{SCOPE}_FAILED=1; reason=...`) |
-| 同一 bash block が失敗パスで `エラー:` / `WARNING:` をユーザー向けに出力し、その成功パスの値も後続処理へ渡す (引数解析等) | stderr (ブロック全体で統一) |
+| 同一 bash block が失敗パスで `エラー:` / `WARNING:` をユーザー向けに出力し、その `[CONTEXT]` emit 自体も同じ stderr チャネルに併置して成功パスの値も後続処理へ渡す (引数解析等) | stderr (ブロック全体で統一) |
 | 純粋な状態計算 (成功/enum/sentinel) で、エラーメッセージを伴わない | stdout |
 | 列挙値・集合を伝達する | stdout (begin/end marker、[`bash-cross-boundary-state-transfer.md`](../skills/wiki-lint/references/bash-cross-boundary-state-transfer.md#pattern-2-marker-delimited-multi-value-block) 参照) |
 | 失敗/skip ステータスだが、CONTEXT emit 自体はユーザー向け診断メッセージ (`エラー:` / `WARNING:`) と同一 stderr チャネルに併置されない (近傍に WARNING があっても別チャネル。例: `WIKI_INGEST_FAILED`) | stdout |

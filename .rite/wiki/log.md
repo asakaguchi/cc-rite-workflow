@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-07T14:18:30+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=248, broken_refs=0 (PR #1779 ingest 後の auto-lint) |
 | 2026-07-07T14:17:19+09:00 | update | [Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする](pages/heuristics/docs-review-implementation-grep-verification.md) | PR #1779 (Issue #1776) — 追記文の技術的主張を両鏡像実装の jq ロジックと突合検証した successful application 事例を追加統合 |
 | 2026-07-07T13:49:30+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=248, broken_refs=0 (PR #1778 ingest 後の auto-lint) |
 | 2026-07-07T13:48:57+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | PR #1778 (Issue #1775) — 同一ファイル内の確立済み `[_-]$` truncation-residue ガードへの新規抽出経路の非追随事例を追加統合 |

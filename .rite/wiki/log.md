@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-08T00:53:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=256, broken_refs=0 (PR #1788 ingest 後の auto-lint) |
 | 2026-07-08T00:51:28+09:00 | skip | [20260707T155128Z-pr-1788.md](raw/reviews/20260707T155128Z-pr-1788.md) | PR #1788 (Issue #1784) — 0 findings のクリーンな文字列置換PR（resume→recoverリネーム）。reviewer subagent 応答遅延（tech-writer/prompt-engineer）は根本原因不明の単発インフラ観察のため経験則化は時期尚早、skip |
 | 2026-07-07T20:55:00+00:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=255, broken_refs=0 (PR #1780 ingest 後の auto-lint) |
 | 2026-07-07T20:50:00+00:00 | skip | raw/reviews・fixes の 7 件 (PR #1780 cycle1-5 の系統A/B判別軸ドリフト 6 件 + cycle2 mergeable review 1 件) | 系統A/B判別軸ドリフト 6 件は既存 Asymmetric Fix Transcription anti-pattern で十分カバー済み、scope discipline 1 件は Issue #892 スコープ外指摘ハンドリングポリシー相当でカバー済みのため skip |

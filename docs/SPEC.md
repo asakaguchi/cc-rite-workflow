@@ -75,7 +75,7 @@ The command prefix `rite` was chosen for:
 | `/rite:wiki-query` | Search Wiki pages for heuristics by keyword and inject into context | `<keywords>` |
 | `/rite:wiki-ingest` | Extract heuristics from raw sources and update Wiki pages | `[source]` |
 | `/rite:wiki-lint` | Lint Wiki pages for contradictions, staleness, orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs | `[--auto] [--stale-days <N>]` |
-| `/rite:resume` | Resume interrupted work | `[issue_number]` |
+| `/rite:recover` | Resume interrupted work | `[issue_number]` |
 | `/rite:skill-suggest` | Analyze context and suggest applicable skills | `[--verbose\|--filter]` |
 
 ---
@@ -117,7 +117,7 @@ The command prefix `rite` was chosen for:
 Issue Auto-Close
 ```
 
-**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:open <issue>` handles branch creation, implementation, autonomous lint, and draft PR creation. `/rite:iterate <pr>` loops review and fix until convergence, bounded by a `safety.max_review_cycles` circuit breaker (default 5); on reach, interactive runs prompt via AskUserQuestion and `/rite:run` batch marks the Issue failed and advances (manual abort via `Ctrl+C` + `/rite:resume` remains available). `/rite:ready <pr>` flips the PR to Ready for review. `/rite:merge <pr>` runs `gh pr merge --squash`. For the canonical live spec of each command, see [`skills/open/SKILL.md`](../plugins/rite/skills/open/SKILL.md), [`iterate.md`](../plugins/rite/skills/iterate/SKILL.md), [`ready.md`](../plugins/rite/skills/ready/SKILL.md), and [`merge.md`](../plugins/rite/skills/merge/SKILL.md). (The legacy [Phase 5: End-to-End Execution](#phase-5-end-to-end-execution) section below documents the pre-decomposition `start.md` orchestrator for archaeological / migration reference only.)
+**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:open <issue>` handles branch creation, implementation, autonomous lint, and draft PR creation. `/rite:iterate <pr>` loops review and fix until convergence, bounded by a `safety.max_review_cycles` circuit breaker (default 5); on reach, interactive runs prompt via AskUserQuestion and `/rite:run` batch marks the Issue failed and advances (manual abort via `Ctrl+C` + `/rite:recover` remains available). `/rite:ready <pr>` flips the PR to Ready for review. `/rite:merge <pr>` runs `gh pr merge --squash`. For the canonical live spec of each command, see [`skills/open/SKILL.md`](../plugins/rite/skills/open/SKILL.md), [`iterate.md`](../plugins/rite/skills/iterate/SKILL.md), [`ready.md`](../plugins/rite/skills/ready/SKILL.md), and [`merge.md`](../plugins/rite/skills/merge/SKILL.md). (The legacy [Phase 5: End-to-End Execution](#phase-5-end-to-end-execution) section below documents the pre-decomposition `start.md` orchestrator for archaeological / migration reference only.)
 
 **Status Transitions:**
 ```
@@ -179,7 +179,7 @@ rite-workflow/
 │ ├── investigate/ # /rite:investigate (構造化コード調査)
 │ ├── learn/ # /rite:learn (Socratic 理解度チェック)
 │ ├── lint/ # /rite:lint (品質チェック; orchestrator から呼ばれる sub-skill 兼用)
-│ ├── resume/ # /rite:resume (中断した作業の再開)
+│ ├── recover/ # /rite:recover (中断した作業の再開)
 │ ├── skill-suggest/ # /rite:skill-suggest
 │ ├── template-reset/ # /rite:template-reset
 │ # --- orchestration / knowledge (auto-discovered context) ---
@@ -650,7 +650,7 @@ Before Confirmation & Creation, surface the assumptions the model implicitly fil
 | Phase 5.6 (Completion report — formerly the last sub-step of Phase 5) | `/rite:ready <pr>` (Set Ready) + `/rite:merge <pr>` (Merge) — split into two responsibility-isolated commands. Historically `start.md` reached completion at Phase 5.6 and then ran `gh pr merge --squash` inline as ステップ 8 of the orchestrator |
 | Phase 6 (Cleanup) | `/rite:cleanup <pr>` (unchanged, decoupled from merge) |
 
-The four new commands maintain the same flow-state phases (`init` / `branch` / `plan` / `implement` / `lint` / `pr` / `review` / `fix` / `ready` / `ready_error` / `cleanup` / `ingest` / `completed` — `PHASE_ENUM_V3` SoT in `hooks/flow-state.sh`), so `/rite:resume` can recover from interruptions regardless of which command was running. See [skills/resume/SKILL.md](../plugins/rite/skills/resume/SKILL.md) Phase 5.3 (Phase enum → Step mapping (SoT)) for the routing table.
+The four new commands maintain the same flow-state phases (`init` / `branch` / `plan` / `implement` / `lint` / `pr` / `review` / `fix` / `ready` / `ready_error` / `cleanup` / `ingest` / `completed` — `PHASE_ENUM_V3` SoT in `hooks/flow-state.sh`), so `/rite:recover` can recover from interruptions regardless of which command was running. See [skills/recover/SKILL.md](../plugins/rite/skills/recover/SKILL.md) Phase 5.3 (Phase enum → Step mapping (SoT)) for the routing table.
 
 > **Historical Phase Description (pre-decomposition)**: The remainder of this section describes the previous `start.md` orchestrator's Phase 0 / 1 / 1.5 / 1.6 / 2 / 3 / 4 / 5 internals. Use it only for archaeological / migration cross-reference; the live specification is in the new pr/ commands above.
 
@@ -768,7 +768,7 @@ _No review responses_
 
 **Phase Information:**
 
-The Session Info section of the work memory includes phase information indicating the current work state. This information is used by `/rite:resume` for resuming work.
+The Session Info section of the work memory includes phase information indicating the current work state. This information is used by `/rite:recover` for resuming work.
 
 **Flat workflow phase (current / 13 values — matches `PHASE_ENUM_V3` SoT in `hooks/flow-state.sh`):**
 
@@ -783,7 +783,7 @@ The Session Info section of the work memory includes phase information indicatin
 | `review` | Review in progress | `/rite:iterate` review side (formerly step 7.1) |
 | `fix` | Review-fix loop in progress | `/rite:iterate` fix side (formerly step 7.2) |
 | `ready` | `/rite:ready` succeeded; awaiting Projects Status In Review → completion report | `/rite:ready` (formerly step 8.3) |
-| `ready_error` | `/rite:ready` failed inside e2e flow; `/rite:resume` re-enters `/rite:ready` retry | `/rite:ready` retry (formerly step 8) |
+| `ready_error` | `/rite:ready` failed inside e2e flow; `/rite:recover` re-enters `/rite:ready` retry | `/rite:ready` retry (formerly step 8) |
 | `cleanup` | `/rite:cleanup` in progress (branch / worktree cleanup pre-ingest) | `/rite:cleanup` Steps 1-3 |
 | `ingest` | Wiki ingest in progress (post-cleanup `/rite:wiki-ingest` integration) | `/rite:cleanup` ステップ 9 → `/rite:wiki-ingest` |
 | `completed` | Workflow finished | `/rite:merge` / `/rite:cleanup` completed (formerly step 8 end) |
@@ -797,7 +797,7 @@ Lifecycle sub-rings (legacy granular phases — lifecycle-incomplete detection n
 
 **Legacy phase (forward-compat acceptance only — never newly written):**
 
-Older state files may contain these names from the pre-flat sub-skill chain architecture. `skills/resume/SKILL.md` Phase 3.5 整合性判定 (cross-check) resolves them to v3 enum values, then Phase 5.3 (Phase enum → Step mapping (SoT)) maps them to flat step numbers.
+Older state files may contain these names from the pre-flat sub-skill chain architecture. `skills/recover/SKILL.md` Phase 3.5 整合性判定 (cross-check) resolves them to v3 enum values, then Phase 5.3 (Phase enum → Step mapping (SoT)) maps them to flat step numbers.
 
 | Phase | Phase Detail |
 |-------|--------------|
@@ -820,7 +820,7 @@ Older state files may contain these names from the pre-flat sub-skill chain arch
 
 After preparation, user selects:
 - **Start implementation (Recommended)**: Proceed to Phase 5 for end-to-end execution from implementation to PR creation and review
-- **Work later** (Removed — pre-decomposition behavior): Pause here and resume later with `/rite:issue-start` (now `/rite:open <issue_number>` followed by `/rite:resume` to recover from any stop)
+- **Work later** (Removed — pre-decomposition behavior): Pause here and resume later with `/rite:issue-start` (now `/rite:open <issue_number>` followed by `/rite:recover` to recover from any stop)
 
 #### Phase 5: End-to-End Execution
 
@@ -885,18 +885,18 @@ Work memory is automatically updated when executing the following commands:
 If "Work later" is selected or work is interrupted:
 - Branch and work memory are preserved
 - Phase information (`Command`, `Phase`, `Phase Detail`) is recorded in work memory
-- Use `/rite:resume` to resume work from the interrupted phase
+- Use `/rite:recover` to resume work from the interrupted phase
 
 **How to Resume:**
 
 ```
-/rite:resume
+/rite:recover
 ```
 
 Or specify Issue number:
 
 ```
-/rite:resume <issue_number>
+/rite:recover <issue_number>
 ```
 
 **Session Start Auto-Detection:**
@@ -1163,7 +1163,7 @@ PreCompact (on compact)
 SessionEnd
 ```
 
-> **Note:** PreToolUse and PostToolUse fire on every Claude Code tool invocation. PreCommand/PostCommand have been deprecated and are not used by rite. (The former `preflight-check.sh` compact-blocking gate was removed in v0.7 along with `commands/`; compact recovery is now handled entirely by the SessionStart interruption notice + `/rite:resume` — see Post-Compact Recovery below.)
+> **Note:** PreToolUse and PostToolUse fire on every Claude Code tool invocation. PreCommand/PostCommand have been deprecated and are not used by rite. (The former `preflight-check.sh` compact-blocking gate was removed in v0.7 along with `commands/`; compact recovery is now handled entirely by the SessionStart interruption notice + `/rite:recover` — see Post-Compact Recovery below.)
 
 ### Post-Compact Recovery (`post-compact.sh`)
 
@@ -1206,7 +1206,7 @@ Registered as a PostToolUse hook. Automatically creates local work memory files 
 2. Retrieves active workflow and Issue number from the per-session flow state file (`.rite/sessions/{session_id}.flow-state`)
 3. Only creates `.rite-work-memory/issue-{n}.md` if it doesn't exist
 
-**Purpose:** Guarantees auto-recovery of local work memory during `/rite:resume` after compact or session restart.
+**Purpose:** Guarantees auto-recovery of local work memory during `/rite:recover` after compact or session restart.
 
 ### Local WM Update (`local-wm-update.sh`)
 
@@ -1252,7 +1252,7 @@ If a lock's `mtime` exceeds the threshold (default: 120 seconds), the PID file i
 
 ### Phase Transition Whitelist (retired)
 
-> **Status: Retired**. The `phase-transition-whitelist.sh` library (and its `phase-transition-whitelist.test.sh` suite) were removed in the v2→v3 migration. The canonical phase enum is now `PHASE_ENUM_V3` in `flow-state.sh` (`init branch plan implement lint pr review fix ready ready_error cleanup ingest completed`), validated by its `_phase_is_valid` helper; legacy phase names are resolved by `_phase_migrate` plus the `/rite:resume` cross-check rather than a transition graph.
+> **Status: Retired**. The `phase-transition-whitelist.sh` library (and its `phase-transition-whitelist.test.sh` suite) were removed in the v2→v3 migration. The canonical phase enum is now `PHASE_ENUM_V3` in `flow-state.sh` (`init branch plan implement lint pr review fix ready ready_error cleanup ingest completed`), validated by its `_phase_is_valid` helper; legacy phase names are resolved by `_phase_migrate` plus the `/rite:recover` cross-check rather than a transition graph.
 
 Lifecycle-incomplete detection for the legacy `create_*` / `cleanup_*` phases now lives inline in `session-end.sh` (the `[[ "$_state_phase" == create_* ]]` / `cleanup_*` glob branches). The former `rite_phase_is_create_lifecycle_in_progress` / `rite_phase_is_cleanup_lifecycle_in_progress` predicates no longer exist, so the `type … >/dev/null` guard in that hook always falls through to the inline glob, which is the sole active path (pinned by `session-end.test.sh` TC-create-lifecycle-warn-A〜D / TC-cleanup-lifecycle-warn-A〜E). The `rite_phase_transition_allowed` / `rite_phase_expected_next` / `rite_phase_is_known` functions and the `hooks.stop_guard.phase_transitions` override merging they backed are gone — no current hook, script, or template reads that config key.
 
@@ -1340,7 +1340,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 
 The flow state for `/rite:*` workflows uses a **per-session file** structure (`.rite/sessions/{session_id}.flow-state`). Each Claude Code session writes only to its own file, so concurrent sessions on the same repository are structurally race-free without lock acquisition.
 
-> **Authority scope — session-scoped continuation hint, not a cross-`/clear` source of truth**: flow state is **session-scoped** and treats `/clear` as its continuation terminus — a session started after a `/clear` resolves a fresh `session_id` and therefore reads a different (structurally empty) state file. Consequently, **discrete commands** invoked standalone across a `/clear` (e.g. `/rite:merge`) **must not** treat flow state as the authoritative cross-`/clear` state. Their authority lives in the persistent SoT — `gh pr view` (`isDraft` / `mergeable` / `mergeStateStatus`), GitHub Projects Status, and `.rite-work-memory/issue-{n}.md`. flow state, when present, is consumed only as a **same-session continuation hint**, and its absence is the normal (un-warned) case for discrete operation. Conversely, the **continuation-loop subsystems** — `/rite:iterate`'s review↔fix loop, the `Stop` hook + `handoff` field, `/rite:review` / `/rite:fix`, compact recovery, and `/rite:resume` — are single-session by nature and are precisely the domain where session-scoped flow state functions correctly; they are left untouched. See [`docs/designs/clear-per-command-flow-state-decoupling.md`](designs/clear-per-command-flow-state-decoupling.md) for the full discrete-command-vs-continuation-loop decoupling analysis and per-command breakdown; `skills/merge/SKILL.md` Step 1 is the first application of this boundary.
+> **Authority scope — session-scoped continuation hint, not a cross-`/clear` source of truth**: flow state is **session-scoped** and treats `/clear` as its continuation terminus — a session started after a `/clear` resolves a fresh `session_id` and therefore reads a different (structurally empty) state file. Consequently, **discrete commands** invoked standalone across a `/clear` (e.g. `/rite:merge`) **must not** treat flow state as the authoritative cross-`/clear` state. Their authority lives in the persistent SoT — `gh pr view` (`isDraft` / `mergeable` / `mergeStateStatus`), GitHub Projects Status, and `.rite-work-memory/issue-{n}.md`. flow state, when present, is consumed only as a **same-session continuation hint**, and its absence is the normal (un-warned) case for discrete operation. Conversely, the **continuation-loop subsystems** — `/rite:iterate`'s review↔fix loop, the `Stop` hook + `handoff` field, `/rite:review` / `/rite:fix`, compact recovery, and `/rite:recover` — are single-session by nature and are precisely the domain where session-scoped flow state functions correctly; they are left untouched. See [`docs/designs/clear-per-command-flow-state-decoupling.md`](designs/clear-per-command-flow-state-decoupling.md) for the full discrete-command-vs-continuation-loop decoupling analysis and per-command breakdown; `skills/merge/SKILL.md` Step 1 is the first application of this boundary.
 
 **File path:**
 
@@ -1372,13 +1372,13 @@ The `session_id` is the same UUID stored in `.rite-session-id` and propagated to
 | Optional | `loop_count` | **Reader-only legacy field** — no production writer in `flow-state.sh` (verify with `grep -n loop_count plugins/rite/hooks/flow-state.sh` → 0 hits). Consumers (`pre-compact.sh` / `post-compact.sh` / `session-start.sh` / `work-memory-update.sh`) read it as best-effort; `work-memory-update.sh` increments the work-memory document copy, not the flow-state field. Schema slot retained for forward compatibility | Review-fix loop counter |
 | Optional | `error_count` | `flow-state.sh set` (resets to `0` on phase transition; `--preserve-error-count` retains the existing value) | Half-legacy field — incrementer was removed with `stop-guard.sh`; writer is reset-only. Schema retained for forward compatibility |
 | Optional | `handoff` | `flow-state.sh set --handoff <cmd>` (writer; **default-clears on every set** — present only when `--handoff` is passed) / `flow-state.sh consume-handoff` (reader+deleter) | One-shot continuation marker with three value families: continuation `/rite:...` set by `review.md` Step 8.0 (`/rite:fix {pr}` on `[review:fix-needed]`) and `fix.md` Step 5.1 (`/rite:review {pr}` on `[fix:pushed]`/`[fix:pushed-wm-stale]`); terminal `FINALIZE:{result}:{pr}` set by the same steps on terminal sentinels; chain `WIKICHAIN:{caller}:{pr}` set by `cleanup.md` Step 9 before invoking `rite:wiki-ingest` (cleared by the Step 12 terminal set's default-clear when the chain completes). Consumed (printed + deleted) by the `Stop` hook `stop-loop-continuation.sh`, which emits `decision:block` with a prefix-selected reason. Default-clear semantics mirror `error_count`; no `schema_version` bump (additive, backward-compatible via `.handoff // ""`) |
-| Optional | `worktree` | `flow-state.sh set --worktree <abs-path>` | Session worktree absolute path under multi-session mode (`.rite/worktrees/issue-{N}`, design §2). **Merge-preserve** semantics like `branch` (NOT default-clear like `handoff`): an unspecified `--worktree` preserves the existing value across phase-transition sets. Written conditionally — non-worktree (single-session) sessions never gain the key, so the state file is byte-identical and no `schema_version` bump is needed (additive, read via `.worktree // ""`). A same-session hint only: the canonical session↔worktree correspondence is the issue-number → path derivation in `/rite:resume` (session_id changes on crash, so the field is not authoritative) |
-| Optional | `cycle_count` | `flow-state.sh set --cycle-count <N>` | The `/rite:iterate` review⇄fix cycle counter for the `safety.max_review_cycles` circuit breaker (#1701). `/rite:iterate` increments it at each loop head, resets it to `0` on a fresh entry (phase not in `review`/`fix`), and continues it across `/rite:resume` (AC-3). **Merge-preserve** semantics like `worktree`/`branch` (NOT default-clear like `handoff`): an unspecified `--cycle-count` preserves the existing value. `--cycle-count 0` deletes the key. Written conditionally — sessions that never run the breaker never gain the key, so the state file is byte-identical and no `schema_version` bump is needed (additive, read via `.cycle_count // 0`) |
+| Optional | `worktree` | `flow-state.sh set --worktree <abs-path>` | Session worktree absolute path under multi-session mode (`.rite/worktrees/issue-{N}`, design §2). **Merge-preserve** semantics like `branch` (NOT default-clear like `handoff`): an unspecified `--worktree` preserves the existing value across phase-transition sets. Written conditionally — non-worktree (single-session) sessions never gain the key, so the state file is byte-identical and no `schema_version` bump is needed (additive, read via `.worktree // ""`). A same-session hint only: the canonical session↔worktree correspondence is the issue-number → path derivation in `/rite:recover` (session_id changes on crash, so the field is not authoritative) |
+| Optional | `cycle_count` | `flow-state.sh set --cycle-count <N>` | The `/rite:iterate` review⇄fix cycle counter for the `safety.max_review_cycles` circuit breaker (#1701). `/rite:iterate` increments it at each loop head, resets it to `0` on a fresh entry (phase not in `review`/`fix`), and continues it across `/rite:recover` (AC-3). **Merge-preserve** semantics like `worktree`/`branch` (NOT default-clear like `handoff`): an unspecified `--cycle-count` preserves the existing value. `--cycle-count 0` deletes the key. Written conditionally — sessions that never run the breaker never gain the key, so the state file is byte-identical and no `schema_version` bump is needed (additive, read via `.cycle_count // 0`) |
 | Optional | `schema_version` | `flow-state.sh set` | `3` for the per-session structure; absent or `!= 3` triggers migration |
 
 > **`needs_clear` field**: Removed. The previous compact-recovery design discussed `needs_clear` as a flag, but production code never had a writer or non-test reader. Test fixtures (`pre-compact.test.sh` TC-014 / TC-014b) actively assert that `pre-compact does NOT set needs_clear`. The new schema does not include this field.
 
-> **`previous_phase` field**: Removed in the v2→v3 migration. The v2 schema auto-populated it from the outgoing `phase` value, but v3 discriminates resume routing by step-name mapping (`skills/resume/SKILL.md`) instead. `cmd_set` no longer writes it (verify with `grep -n previous_phase plugins/rite/hooks/flow-state.sh`), and `_migrate_file` strips it from migrated files via `del(.previous_phase)`.
+> **`previous_phase` field**: Removed in the v2→v3 migration. The v2 schema auto-populated it from the outgoing `phase` value, but v3 discriminates resume routing by step-name mapping (`skills/recover/SKILL.md`) instead. `cmd_set` no longer writes it (verify with `grep -n previous_phase plugins/rite/hooks/flow-state.sh`), and `_migrate_file` strips it from migrated files via `del(.previous_phase)`.
 
 **Migration from legacy single-file format:**
 
@@ -1415,7 +1415,7 @@ The session worktree is one of **four non-overlapping worktree namespaces** (`.r
 
 **main-checkout inviolability convention:** In Worktree Mode rite **never switches the main checkout's current branch** (moving it is a human-only action). Consequences enforced across the workflow: new session branches are based on `origin/{base}` directly (not a local `{base}` another worktree may hold); a branch is deleted only *after* its worktree is removed (a checked-out branch can be neither deleted nor fetch-updated); `/rite:cleanup`'s base update runs **only when the main checkout is on `{base}`** and otherwise WARNINGs + skips with a recovery hint. See the `/rite:cleanup` Phase 2 note and [`references/git-worktree-patterns.md`](../plugins/rite/references/git-worktree-patterns.md#multi-session-patterns).
 
-**Crash recovery / `/rite:resume`:** After a crash a new session starts at the repository root. `/rite:resume` re-enters the worktree *before* any branch-dependent cross-check (flow-state `worktree` → else issue-number → path derivation), and reconstructs a missing worktree from the branch (local → `git worktree add`; remote-only → `git fetch` + `--track -b`; nowhere → AskUserQuestion). The `worktree` flow-state field is a **same-session hint only** — the canonical session↔worktree correspondence is the issue-number → path derivation, because `session_id` changes on crash (see the schema table's `worktree` row above).
+**Crash recovery / `/rite:recover`:** After a crash a new session starts at the repository root. `/rite:recover` re-enters the worktree *before* any branch-dependent cross-check (flow-state `worktree` → else issue-number → path derivation), and reconstructs a missing worktree from the branch (local → `git worktree add`; remote-only → `git fetch` + `--track -b`; nowhere → AskUserQuestion). The `worktree` flow-state field is a **same-session hint only** — the canonical session↔worktree correspondence is the issue-number → path derivation, because `session_id` changes on crash (see the schema table's `worktree` row above).
 
 **Configuration:** `multi_session.enabled` (default `true`; set `false` to opt out — a legacy config that omits the block also falls back to `false`) and `multi_session.worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are orthogonal and intentionally not merged. `.gitignore` must include `.rite/worktrees/` (added by `/rite:init`; `gitignore-health-check.sh` emits a non-blocking warning if it is missing while `multi_session.enabled: true`). Disk cost: each session worktree is a full working-tree clone, so build artifacts (`node_modules`, etc.) may need rebuilding per worktree. See [`docs/CONFIGURATION.md` → multi_session](CONFIGURATION.md#multi_session).
 
@@ -1598,7 +1598,7 @@ LLM analyzes diff content to determine:
 
 ### Overview
 
-When a step of the end-to-end flow (`/rite:open` → `/rite:iterate` → `/rite:ready` → `/rite:merge`) fails or is skipped (Skill load failure, hook abnormal exit, Wiki ingest skip/failure, `.gitignore` drift, etc.), the relevant script or hook emits a plain `WARNING` / `ERROR` line to **stderr**. The orchestrator LLM surfaces these in the conversation context, and the user resolves them by re-running the affected step via `/rite:resume`.
+When a step of the end-to-end flow (`/rite:open` → `/rite:iterate` → `/rite:ready` → `/rite:merge`) fails or is skipped (Skill load failure, hook abnormal exit, Wiki ingest skip/failure, `.gitignore` drift, etc.), the relevant script or hook emits a plain `WARNING` / `ERROR` line to **stderr**. The orchestrator LLM surfaces these in the conversation context, and the user resolves them by re-running the affected step via `/rite:recover`.
 
 > **History**: An earlier design auto-detected these as "workflow incidents" — each failure path emitted a `[CONTEXT] WORKFLOW_INCIDENT=1; ...` sentinel via a dedicated `workflow-incident-emit.sh` hook, which the (then-current) `/rite:issue-start` orchestrator's ステップ 8.5 grepped from the conversation context to auto-register the blocker as a Todo Issue (`AskUserQuestion` confirmation, per-session dedupe, `workflow_incident.enabled` opt-out). The entire mechanism — the emit hook, the ステップ 8.5 detection logic, the `workflow_incident:` config key, and the sentinel format — was removed in favor of the single-layer plain-stderr design described above. The `/rite:issue-start` orchestrator itself was subsequently decomposed into the four `pr/` commands (see the [Retired section](#riteissuestart-retired) above). Failures are now visible but no longer auto-registered; the user decides whether to file an Issue.
 
@@ -1667,7 +1667,7 @@ When `wiki.auto_ingest`, `wiki.auto_query`, or `wiki.auto_lint` are enabled, the
 |-------|-----------|-------|
 | **0. Deterministic raw-commit path** | Phase X.X.W.2 invokes `wiki-ingest-commit.sh` directly as a single shell process. The script stashes raw sources into `/tmp`, removes them from the dev working tree, stashes any remaining unrelated changes, checks out the wiki branch, replays the staged raw sources, commits, pushes, checks out the original branch again, and pops the stash — all within one `bash` invocation. This eliminates dependency on Claude multi-step orchestration (the root cause of the pre-refactor regression where the `wiki` branch never grew despite multiple rounds of layer 1-3 defence). | `hooks/scripts/wiki-ingest-commit.sh`, `pr/review.md`, `pr/fix.md`, `issue/close.md` |
 | **1. Mandatory execution** | Each Phase X.X.W explicitly states "**NEVER** skipped under E2E Output Minimization" and emits an observable `[CONTEXT] WIKI_INGEST_DONE=1` / `WIKI_INGEST_SKIPPED=1; reason=...` / `WIKI_INGEST_FAILED=1; reason=...` line at completion (success / config-skip / commit-failure) | `pr/review.md`, `pr/fix.md`, `issue/close.md` |
-| **2. stderr observability** | Both legitimate skip (`wiki_ingest_skipped`) and commit failure (`wiki_ingest_failed`) emit a plain `WARNING` / `ERROR` line to stderr alongside the `[CONTEXT] WIKI_INGEST_SKIPPED=1` / `WIKI_INGEST_FAILED=1` status line. The orchestrator surfaces these in the conversation context; the user re-runs the affected step via `/rite:resume` if action is needed. | `pr/review.md`, `pr/fix.md`, `issue/close.md` Phase X.X.W |
+| **2. stderr observability** | Both legitimate skip (`wiki_ingest_skipped`) and commit failure (`wiki_ingest_failed`) emit a plain `WARNING` / `ERROR` line to stderr alongside the `[CONTEXT] WIKI_INGEST_SKIPPED=1` / `WIKI_INGEST_FAILED=1` status line. The orchestrator surfaces these in the conversation context; the user re-runs the affected step via `/rite:recover` if action is needed. | `pr/review.md`, `pr/fix.md`, `issue/close.md` Phase X.X.W |
 | **3. Lint growth check** | `lint.md` Phase 3.8 runs `wiki-growth-check.sh` which warns (non-blocking, `[lint:success]` retained) when `wiki.growth_check.threshold_prs` consecutive merged PRs land without a corresponding wiki branch commit. With layer 0 in place, a growth stall is a genuine regression signal (no longer confounded by fragile orchestration), and the warning is worth investigating promptly even though the contract remains non-blocking. | `wiki-growth-check.sh`, `lint.md` Phase 3.8 |
 
 **Responsibility split after the refactor**: `wiki-ingest-commit.sh` commits **raw sources only**. LLM-driven Wiki **page** integration (reading raw sources, deciding create/update/skip, writing `.rite/wiki/pages/*`) is **deferred** to `/rite:wiki-ingest`, which is idempotent over accumulated raw sources and can be invoked at a later, independent time (manually or in a separate session). This separation guarantees that raw sources are never lost even when page integration is skipped or fails.
@@ -1704,10 +1704,10 @@ Violating this contract leaves the workflow partially executed: no Issue created
 | **3. Caller-continuation hints** (3 sub-layers 3a/3b/3c) | Plain-text reminder + HTML comment immediately before the sub-skill's result pattern. The plain-text line renders in user-facing output; the HTML comment is visible to the LLM via conversation context but does NOT render in Markdown. Dual form ensures robustness against rendering modes that strip comments. 3a = plain-text caller line, 3b = HTML comment caller mirror, 3c = sub-skill terminal sentinel comment. | Defense-in-Depth sections in `skills/issue-create/SKILL.md` (flat workflow ステップ 4.4 / 5.6), `skills/wiki-ingest/SKILL.md`, `skills/cleanup/SKILL.md`. |
 | **4a. Pre-check list** | 4-item self-check the orchestrator runs before ending any response turn: (a) `[create:returned-to-caller:{N}]` output? (b) `✅ Issue #{N} を作成しました` shown? (c) `.rite-flow-state` deactivated? (d) last sub-skill tag handled as continuation trigger? A single `NO` means the workflow is mid-flight. Renamed from "Layer 4" to "Layer 4a" to avoid numbering collision with the new mechanical enforcement layer (4b below). | `skills/issue-create/SKILL.md` "Pre-check list" section |
 | **4b. Completion message** | Terminal completion emits an explicit `✅ Issue #{N} を作成しました: {url}` line **before** the `<!-- [create:returned-to-caller:{N}] -->` sentinel (HTML-comment wrap form; sentinel renamed from `:completed` to `:returned-to-caller`). The sentinel remains grep-matchable for tooling (AC-4 backward compat) but is no longer the absolute last visible line. Renamed from "Layer 5" to "Layer 4b" (4a/4b grouping reflects that both are orchestrator-side completion reinforcements). | `skills/issue-create/SKILL.md` ステップ 4.4 (Single Issue 完了レポート) / ステップ 5.6 (Decompose 完了レポート) |
-| ~~**4. Mechanical enforcement**~~ (retired) | (Historical) PostToolUse hook `auto-fire-step0.sh` (matcher `Skill`) fired after sub-skill Skill tool completion to patch `*_post_*` flow-state phases and inject continuation context. The mechanical enforcement layer was removed along with the implicit-stop guard layer; recovery now relies on `/rite:resume` rather than a runtime continuation hook. | (historical: `hooks/auto-fire-step0.sh`) |
-| ~~**6. stop-guard incident emit**~~ (retired) | (Historical) When `stop-guard.sh` blocked an implicit stop, it emitted a `manual_fallback_adopted` workflow-incident sentinel for post-hoc visibility. Both the Stop hook and the workflow-incident mechanism have since been removed; an implicit stop now simply leaves the workflow mid-flight for the user to recover via `/rite:resume`. | (historical: `hooks/stop-guard.sh`) |
+| ~~**4. Mechanical enforcement**~~ (retired) | (Historical) PostToolUse hook `auto-fire-step0.sh` (matcher `Skill`) fired after sub-skill Skill tool completion to patch `*_post_*` flow-state phases and inject continuation context. The mechanical enforcement layer was removed along with the implicit-stop guard layer; recovery now relies on `/rite:recover` rather than a runtime continuation hook. | (historical: `hooks/auto-fire-step0.sh`) |
+| ~~**6. stop-guard incident emit**~~ (retired) | (Historical) When `stop-guard.sh` blocked an implicit stop, it emitted a `manual_fallback_adopted` workflow-incident sentinel for post-hoc visibility. Both the Stop hook and the workflow-incident mechanism have since been removed; an implicit stop now simply leaves the workflow mid-flight for the user to recover via `/rite:recover`. | (historical: `hooks/stop-guard.sh`) |
 
-The remaining **primary active layers** are the caller HTML hint (Layer 3) and the orchestrator-side reinforcements (Layer 4a pre-check list, Layer 4b completion message). Layers 1, 2, 4, and 6 are retired and shown above only as historical context (Layer 1 was retired as part of the cleanup.md flat-化 refactor — declarative defense 層を物理排除した)。Weakening any active layer (e.g., loosening Layer 3 caller-continuation hints without strengthening Layer 4a/4b) re-opens the original implicit-stop failure mode. The flat-workflow refactor traded the mechanical enforcement layer for a simpler "user runs `/rite:resume` to recover" philosophy, accepting that occasional implicit stops will surface to the user; the trade-off was deemed favorable because the mechanical enforcement layer was itself a frequent failure source (auto-fire-step0.sh state mutations were hard to recover from when wrong).
+The remaining **primary active layers** are the caller HTML hint (Layer 3) and the orchestrator-side reinforcements (Layer 4a pre-check list, Layer 4b completion message). Layers 1, 2, 4, and 6 are retired and shown above only as historical context (Layer 1 was retired as part of the cleanup.md flat-化 refactor — declarative defense 層を物理排除した)。Weakening any active layer (e.g., loosening Layer 3 caller-continuation hints without strengthening Layer 4a/4b) re-opens the original implicit-stop failure mode. The flat-workflow refactor traded the mechanical enforcement layer for a simpler "user runs `/rite:recover` to recover" philosophy, accepting that occasional implicit stops will surface to the user; the trade-off was deemed favorable because the mechanical enforcement layer was itself a frequent failure source (auto-fire-step0.sh state mutations were hard to recover from when wrong).
 
 ### Contract specification
 
@@ -1758,7 +1758,7 @@ When the contract is violated in practice — i.e., the user types `continue` to
 | ~~AC-4~~ (obsolete) | (Historical) `auto_continuation_failed` sentinel 実装時、ステップ 8.5 で観測可能（MAY）。The workflow-incident mechanism was removed; this sentinel was never implemented. |
 | AC-5 | Terminal Completion pattern (`[create:returned-to-caller:{N}]` + `.rite-flow-state active: false`) が引き続き動作する (non-regression) |
 | AC-6 | Terminal sub-skill の最終出力に `✅` で始まるユーザー向け完了メッセージが含まれる。Register 経路: `✅ Issue #{N} を作成しました: {url}`、Decompose 経路: `✅ Issue #{N} を分解して {count} 件の Sub-Issue を作成しました: {url}`。いずれの形式も `[create:returned-to-caller:{N}]` は最終行として維持される |
-| ~~AC-7~~ (retired) | (Historical) `stop-guard.sh` が `create_post_interview` / `create_delegation` / `create_post_delegation` phase で implicit stop を block した際、`manual_fallback_adopted` sentinel を emit する。Both the Stop hook layer and the workflow-incident mechanism were removed; implicit stops are now simply recovered by the user via `/rite:resume`. |
+| ~~AC-7~~ (retired) | (Historical) `stop-guard.sh` が `create_post_interview` / `create_delegation` / `create_post_delegation` phase で implicit stop を block した際、`manual_fallback_adopted` sentinel を emit する。Both the Stop hook layer and the workflow-incident mechanism were removed; implicit stops are now simply recovered by the user via `/rite:recover`. |
 | AC-8 | `create.md` に "Pre-check list" セクションが存在し、4 項目全て `YES` が turn 終了の必要条件として文書化されている |
 
 ## Error Handling
@@ -1787,7 +1787,7 @@ For persistent errors, provide:
 | `gh: command not found` | gh CLI not installed | Guide in `/rite:init` |
 | `authentication required` | GitHub not authenticated | Guide `gh auth login` |
 | `branch already exists` | Branch conflict | Suggest alternative name |
-| `Context limit reached` | Long-running flow exceeded context window | `/clear` then `/rite:resume` |
+| `Context limit reached` | Long-running flow exceeded context window | `/clear` then `/rite:recover` |
 
 ### Context Limit Recovery
 
@@ -1796,13 +1796,13 @@ Long-running commands such as the end-to-end flow `/rite:open` → `/rite:iterat
 **Recovery steps:**
 
 1. Run `/clear` to reset the context
-2. Run `/rite:resume` to continue from where it left off
+2. Run `/rite:recover` to continue from where it left off
 
 **Why this works:**
 
-- Work memory (Issue comments + the local `.rite-work-memory/issue-{n}.md` file) and git/PR artifacts persist workflow state across sessions. The per-session flow state file is session-scoped (see [Multi-Session State Management](#multi-session-state-management)), so the post-`/clear` session reads a fresh empty file; `/rite:resume` reconstructs the resume point from work memory + git/PR cross-check, using flow state only as the same-session signal when present
+- Work memory (Issue comments + the local `.rite-work-memory/issue-{n}.md` file) and git/PR artifacts persist workflow state across sessions. The per-session flow state file is session-scoped (see [Multi-Session State Management](#multi-session-state-management)), so the post-`/clear` session reads a fresh empty file; `/rite:recover` reconstructs the resume point from work memory + git/PR cross-check, using flow state only as the same-session signal when present
 - All git artifacts (branches, commits, PRs) are preserved — nothing is lost
-- `/rite:resume` reads the persisted state and resumes the appropriate phase
+- `/rite:recover` reads the persisted state and resumes the appropriate phase
 
 **What is preserved:**
 
@@ -1812,7 +1812,7 @@ Long-running commands such as the end-to-end flow `/rite:open` → `/rite:iterat
 | Commits | Git | Yes |
 | Draft PR | GitHub | Yes |
 | Work memory | Issue comment | Yes |
-| Flow state | `.rite/sessions/{session_id}.flow-state` (see [Multi-Session State Management](#multi-session-state-management)) | Partial — the file persists on disk, but the post-`/clear` session reads a fresh empty file (session-scoped); `/rite:resume` falls back to work memory + git/PR |
+| Flow state | `.rite/sessions/{session_id}.flow-state` (see [Multi-Session State Management](#multi-session-state-management)) | Partial — the file persists on disk, but the post-`/clear` session reads a fresh empty file (session-scoped); `/rite:recover` falls back to work memory + git/PR |
 
 ### API Error Handling
 

@@ -127,9 +127,9 @@ Display the following list:
 【ユーティリティ】
   /rite:lint            品質チェックを実行
   /rite:template-reset  テンプレートを再生成
-  /rite:resume          中断した作業を再開
+  /rite:recover          中断した作業を再開
 
-💡 Tips: Context limit reached で中断した場合は /clear → /rite:resume で再開できます
+💡 Tips: Context limit reached で中断した場合は /clear → /rite:recover で再開できます
 💡 Tips: 複数セッションで別 Issue を並行する場合、rite-config.yml の
          multi_session.enabled: true（デフォルト ON）により
          セッション別 worktree (.rite/worktrees/issue-{N}) に分離されます
@@ -160,7 +160,7 @@ Based on the state confirmed in Phase 1, suggest the next action.
 
 > **multi-session 時の注意**: `multi_session.enabled: true` の場合、この作業は
 > セッション worktree（`.rite/worktrees/issue-{N}`）内で進行しています。中断後は
-> `/rite:resume` がその worktree へ自動で再入場します（消失していればブランチから
+> `/rite:recover` がその worktree へ自動で再入場します（消失していればブランチから
 > 再構築）。main checkout のカレントブランチは base（`branch.base`）のままにしておく
 > こと — rite は main checkout のブランチを切り替えません。詳細は
 > `docs/designs/multi-session-worktree.md` 参照。
@@ -241,6 +241,6 @@ The workflow diagram and command list in Phase 2 should switch output according 
 | Status display | `Status: Todo` | `Status: Todo` (common) |
 | Section heading | `【セットアップ】` | `【Setup】` |
 | Action guidance | `次のステップ:` | `Next Steps:` |
-| Tips | `💡 Tips: Context limit reached で中断した場合は /clear → /rite:resume で再開できます` | `💡 Tips: If interrupted by context limit, run /clear → /rite:resume to resume` |
+| Tips | `💡 Tips: Context limit reached で中断した場合は /clear → /rite:recover で再開できます` | `💡 Tips: If interrupted by context limit, run /clear → /rite:recover to resume` |
 
 **Note**: Status values (Todo, In Progress, etc.) use the GitHub Projects setting values as-is, so they are common regardless of the language setting.

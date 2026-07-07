@@ -434,10 +434,10 @@ else
 fi
 assert "TC-17: decision=block survives the placeholder degradation" "block" "$(printf '%s' "$out17" | "$real_jq" -r '.decision // "NONE"')"
 _reason17=$(printf '%s' "$out17" | "$real_jq" -r '.reason // ""')
-# 縮退の発生証明 (非 vacuous): placeholder 文言 + /rite:resume 案内あり、通常 reason
+# 縮退の発生証明 (非 vacuous): placeholder 文言 + /rite:recover 案内あり、通常 reason
 # (handoff コマンド再注入 / 日本語継続指示) なし。
 if printf '%s' "$_reason17" | grep -q "rite handoff continuation pending (reason neutralization failed)" \
-   && printf '%s' "$_reason17" | grep -qF "/rite:resume"; then
+   && printf '%s' "$_reason17" | grep -qF "/rite:recover"; then
   pass "TC-17: reason degraded to the static placeholder with recovery guidance"
 else
   fail "TC-17: expected static placeholder reason, got: $out17"

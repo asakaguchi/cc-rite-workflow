@@ -114,7 +114,7 @@ Rite Workflow は 2 ステップでインストールします。まずマーケ
 | `/rite:wiki-query` | キーワードに一致する経験則を Wiki ページから検索 |
 | `/rite:wiki-ingest` | Raw Source（レビュー・修正・Issue）を Wiki ページへ取り込み |
 | `/rite:wiki-lint` | 矛盾・陳腐化・孤児・欠落概念（`missing_concept`）・未登録 raw（`unregistered_raw`、informational — `n_warnings` には加算しない）・壊れた相互参照を Wiki ページについて lint |
-| `/rite:resume` | 中断した作業を再開 |
+| `/rite:recover` | 中断した作業を再開 |
 | `/rite:skill-suggest` | コンテキストを分析し適用可能なスキルを提案 |
 
 ## ワークフロー
@@ -125,7 +125,7 @@ Rite Workflow は 2 ステップでインストールします。まずマーケ
                   → /rite:ready → /rite:merge → /rite:cleanup
 ```
 
-**注意:** 一気通貫のフローは単一責務の 4 コマンドに分割されています。`/rite:open <issue>` はブランチ作成・実装・品質チェック・draft PR 作成を担当します。`/rite:iterate <pr>` は mergeable になるまで review と fix をループします。`/rite:ready <pr>` は PR を Ready for review に切り替えます。`/rite:merge <pr>` は squash merge を実行します。いずれかのステップが中断した場合（例: `Context limit reached`）、`/rite:resume` を実行して復旧します。
+**注意:** 一気通貫のフローは単一責務の 4 コマンドに分割されています。`/rite:open <issue>` はブランチ作成・実装・品質チェック・draft PR 作成を担当します。`/rite:iterate <pr>` は mergeable になるまで review と fix をループします。`/rite:ready <pr>` は PR を Ready for review に切り替えます。`/rite:merge <pr>` は squash merge を実行します。いずれかのステップが中断した場合（例: `Context limit reached`）、`/rite:recover` を実行して復旧します。
 
 ステータス遷移:
 ```
@@ -163,7 +163,7 @@ iteration:
 
 | 問題 | 解決策 |
 |------|--------|
-| 長時間実行コマンド中の `Context limit reached` | `/clear` を実行してから `/rite:resume` で継続 |
+| 長時間実行コマンド中の `Context limit reached` | `/clear` を実行してから `/rite:recover` で継続 |
 
 ## ドキュメント
 

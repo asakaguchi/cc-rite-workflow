@@ -69,7 +69,7 @@ The review-fix loop exits via:
 | Exit Type | Condition | Result |
 |-----------|-----------|--------|
 | **Normal** | 0 blocking findings remaining | `[review:mergeable]` → `/rite:iterate` がループ終了 |
-| **Manual abort** | ユーザーが Ctrl+C で中断 | `flow-state` に現 phase が残るので `/rite:resume` で復帰 |
+| **Manual abort** | ユーザーが Ctrl+C で中断 | `flow-state` に現 phase が残るので `/rite:recover` で復帰 |
 
 `/rite:iterate` は「指摘ゼロ（mergeable）までループする」契約を基本とし、加えて `safety.max_review_cycles`（既定 5）到達で発火する cycle 上限サーキットブレーカーを唯一の自動安全網として持つ（#1701）。quality-signal escalation / 同一 fingerprint 検出といった細粒度の安全網は持たない。上限到達時は、対話実行では AskUserQuestion（継続 / 中止 / draft のまま停止）、`/rite:run` バッチ実行では当該 Issue を failed 扱いにして次へ進む。Ctrl+C による手動中断も従来どおり可能。
 

@@ -12,7 +12,7 @@ argument-hint: "<title or description>"
 
 新規 Issue を作成し、GitHub Projects に登録する。重複検出・親 Issue 候補検出・XL 自動分解を含む。
 
-**途中で止まったらユーザーは `/rite:resume` で再開する**。
+**途中で止まったらユーザーは `/rite:recover` で再開する**。
 
 ## Arguments
 

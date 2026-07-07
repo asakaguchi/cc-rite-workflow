@@ -8,7 +8,7 @@
 >
 > 本 fixture が検証していたアーキテクチャ — pre-v3 の sub-skill chain（`create-interview.md` 等）と Stop hook `stop-guard.sh` による implicit-stop ブロック機構 — は撤去済みである。sub-skill 群は flat な `create.md` へ統合され、Stop hook は後続 PR で機構ごと撤去された。後継 fixture の `subskill-return-implicit-stop-recurrence-repro.md` も同様に Retired。
 >
-> したがって以下の検証コマンドのうち `stop-guard.sh` / `stop-guard.test.sh` / `create-interview.md` / `.rite-stop-guard-diag.log` を参照するものは **すべて実行不能**であり、本 fixture を含む同型 regression シリーズの**歴史的記録**として残置する。現在の implicit-stop 対策は orchestrator レベルの scaffolding 契約と `/rite:resume` による復帰が担い、lifecycle phase の分類は `session-end.sh` の inline glob が行う。
+> したがって以下の検証コマンドのうち `stop-guard.sh` / `stop-guard.test.sh` / `create-interview.md` / `.rite-stop-guard-diag.log` を参照するものは **すべて実行不能**であり、本 fixture を含む同型 regression シリーズの**歴史的記録**として残置する。現在の implicit-stop 対策は orchestrator レベルの scaffolding 契約と `/rite:recover` による復帰が担い、lifecycle phase の分類は `session-end.sh` の inline glob が行う。
 >
 > 本文中の `[ingest:completed]` / `[interview:skipped]` 等の sentinel literal は **skill return sentinel が `:returned-to-caller` 形式へ rename される前の歴史的形式** として保持する（後に skill return sentinel は `:returned-to-caller` 形式に rename されたが、本 fixture が検証していたのは当時の sentinel 形式であり、historical 正確性のため書き換えない）。現行 sentinel 命名規約は `plugins/rite/commands/issue/create.md` ステップ 4.4 / 5.6 の `[create:returned-to-caller:{N}]` を参照（後継 fixture `subskill-return-implicit-stop-recurrence-repro.md` と同じ disclaimer 方針）。
 

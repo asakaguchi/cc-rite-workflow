@@ -339,7 +339,7 @@ Common Issues and Solutions:
    Check with: git branch --show-current
 
 5. "Context limit reached" during work
-   Solution: Use /clear to compact context, then /rite:resume to continue
+   Solution: Use /clear to compact context, then /rite:recover to continue
    The workflow state is preserved and automatically restored
 
 6. PR creation fails
@@ -393,7 +393,7 @@ Operating rules (important):
     exists and git works (the harness mis-detected the launch directory as
     non-git at startup): RESTART Claude Code from the repository ROOT and
     re-run the same command. The already-created worktree is preserved and
-    reused (WT_CASE=reuse on /rite:open, WT_ENSURE=reenter on /rite:resume),
+    reused (WT_CASE=reuse on /rite:open, WT_ENSURE=reenter on /rite:recover),
     so nothing is rebuilt. rite never silently falls back to git switch -c.
 
   • Keep the main checkout on your base branch (rite-config.yml branch.base, e.g. develop).
@@ -411,7 +411,7 @@ Operating rules (important):
     do (it never silently steals the claim). Claims are always on, even when
     multi_session is off.
 
-  • After a crash / restart: just run /rite:resume — it re-enters the session
+  • After a crash / restart: just run /rite:recover — it re-enters the session
     worktree (or rebuilds it from the branch if it was removed) and continues.
 
   • .gitignore must contain .rite/worktrees/ (/rite:init adds it; /rite:lint
@@ -448,7 +448,7 @@ Now that you understand the basics:
 
 💡 Tips:
   - Work memory is automatically saved and restored
-  - Use /rite:resume if interrupted by context limits
+  - Use /rite:recover if interrupted by context limits
   - Check current workflow state with /rite:workflow
 
 🔧 Advanced features:

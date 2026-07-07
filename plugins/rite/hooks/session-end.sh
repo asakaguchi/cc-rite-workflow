@@ -162,7 +162,7 @@ if [ -f "$STATE_FILE" ]; then
     `create_*` phase は legacy sub-skill chain 時代の遺物で、現在の flat workflow は
     terminal phase=completed のみを書き込みます。この state file が残っているのは
     旧形式のセッションが中断したまま終わったことを意味します。
-    /rite:resume または /rite:issue-create の再実行で回復できます。
+    /rite:recover または /rite:issue-create の再実行で回復できます。
 WARN_MSG
             ;;
         cleanup)
@@ -173,7 +173,7 @@ WARN_MSG
     cleanup_post_ingest / ingest_pre_lint / ingest_post_lint) は旧 ring 機構で書き込まれた
     state の resume routing 用途のみ残存しており、現行の cleanup.md / ingest.md は
     これらの transient phase を書き込みません。
-    Re-run /rite:cleanup or use /rite:resume to recover.
+    Re-run /rite:cleanup or use /rite:recover to recover.
 WARN_MSG
             ;;
     esac

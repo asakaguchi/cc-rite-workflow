@@ -1,13 +1,13 @@
 ---
-name: resume
+name: recover
 description: |
   rite workflow の作業再開スキル: 中断した Issue/PR 作業の状態を検出し適切なステップへ復帰する。
-  ユーザーが明示的に /rite:resume で起動する。auto-activate しない。
-  起動: /rite:resume
+  ユーザーが明示的に /rite:recover で起動する。auto-activate しない。
+  起動: /rite:recover
 argument-hint: ""
 ---
 
-# /rite:resume
+# /rite:recover
 
 中断した rite ワークフローを再開する。flow-state (phase enum v3 SoT) と commit 数 / PR 状態 / work memory を cross-check して、最適な再開点を決定する。
 
@@ -15,7 +15,7 @@ argument-hint: ""
 - Claude Code クラッシュ後の再開
 - セッション切断後の再開
 - 手動中断後の再開
-- **Context 枯渇時の継続**: セッションの context が逼迫した場合は `/clear` で会話履歴をリセットしてから `/rite:resume` を実行する。これが rite workflow における context 枯渇時の **唯一の正規経路** (詳細: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md))。
+- **Context 枯渇時の継続**: セッションの context が逼迫した場合は `/clear` で会話履歴をリセットしてから `/rite:recover` を実行する。これが rite workflow における context 枯渇時の **唯一の正規経路** (詳細: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md))。
 
 ---
 
@@ -89,7 +89,7 @@ fi
 - `count=0`: 候補なし → 以下を表示して終了:
   ```
   ERROR: Issue 番号が判定できません (引数 / branch 名 / セッション worktree のいずれからも抽出できません)。
-    /rite:resume <number> で明示指定するか、Issue ブランチに切り替えてください。
+    /rite:recover <number> で明示指定するか、Issue ブランチに切り替えてください。
   ```
 - `count=1`: その issue 番号を `$issue_arg` として採用し、ユーザーに「#{N} を再開しますか？」を提案してから続行する。
 - `count>1`: **AskUserQuestion** で候補の issue 番号を提示し 1 件選択させる。
@@ -177,7 +177,7 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 
 **EnterWorktree が失敗した場合**（`reenter` / `reconstructed` 経路の `EnterWorktree(path)` がエラー）: open Step 2.3-W と同じ切り分けを行い、**silent に新規セッション扱いしない**。
 
-- **harness の git 誤判定**（`.git` が存在し `git -C "{path}" rev-parse` は成功するのに、起動コンテキストが `Is a git repository: false` で EnterWorktree が「not in a git repository」エラーを返す）→ **推奨**。診断とともに「**リポジトリ root から Claude Code を再起動**し、`/rite:resume {issue_number}` を再実行すれば、登録済み worktree が `WT_ENSURE=reenter` で再入場される」と案内する。worktree は保持済みのため破壊しない。
+- **harness の git 誤判定**（`.git` が存在し `git -C "{path}" rev-parse` は成功するのに、起動コンテキストが `Is a git repository: false` で EnterWorktree が「not in a git repository」エラーを返す）→ **推奨**。診断とともに「**リポジトリ root から Claude Code を再起動**し、`/rite:recover {issue_number}` を再実行すれば、登録済み worktree が `WT_ENSURE=reenter` で再入場される」と案内する。worktree は保持済みのため破壊しない。
 - **worktree path 消失などの別要因** → 再度本ヘルパーを実行すれば `branch_absent` 以外なら再構築される。再起動案内へ誤誘導しない。
 
 再入場後、claim に worktree path を再記録してもよい（`issue-claim.sh claim --issue {issue_number} --worktree "{path}"`、best-effort）。
@@ -259,7 +259,7 @@ Phase 3.2 の `[CONTEXT] GIT_CONFLICT_FILES` / `GIT_IN_MERGE` / `GIT_IN_REBASE` 
 
 続けて AskUserQuestion で以下を提示する（rite は**コンフリクトを自動解消・自動コミットしない** — 本 Issue の Non-goal）:
 
-- **解消してから継続（推奨）** — ユーザーがコンフリクトを手動解消（`git` の merge/rebase 続行 or `--abort`）した後、`/rite:resume {issue_arg}` を再実行する旨を案内していったん終了する。解消により上記 signal が消えれば、再実行時は本判定を通過して従来の cross-check に進む
+- **解消してから継続（推奨）** — ユーザーがコンフリクトを手動解消（`git` の merge/rebase 続行 or `--abort`）した後、`/rite:recover {issue_arg}` を再実行する旨を案内していったん終了する。解消により上記 signal が消えれば、再実行時は本判定を通過して従来の cross-check に進む
 - **中止** — 何もせず終了する
 
 非コンフリクト時（上記 4 条件すべて不成立）は本判定を skip し、Phase 3.5 の従来 4 指標クロスチェックへそのまま進む（AC-3: 非干渉）。

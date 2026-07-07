@@ -359,7 +359,7 @@ n=0; until git fetch origin "$base" 2>/dev/null; do n=$((n+1)); [ "$n" -ge 3 ] &
 
 ### `EnterWorktree` fails with "not in a git repository" (harness git mis-detection)
 
-`/rite:open` (Step 2.3-W) and `/rite:resume` (re-entry) enter the session
+`/rite:open` (Step 2.3-W) and `/rite:recover` (re-entry) enter the session
 worktree via the `EnterWorktree` tool. If the harness mis-detected the launch
 directory as non-git **at session startup** (`Is a git repository: false` in the
 launch context even though `.git` exists and `git -C {wt_path} rev-parse` succeeds),
@@ -373,7 +373,7 @@ command:
 - The session worktree created by `git worktree add` is **preserved** — the failure
   does not destroy it.
 - On re-run, `open` Step 2.2-W classifies it as `WT_CASE=reuse` (and the
-  `ensure_session_worktree` helper used by `/rite:resume` / `review` / `iterate` /
+  `ensure_session_worktree` helper used by `/rite:recover` / `review` / `iterate` /
   `fix` as `WT_ENSURE=reenter`), so the workflow continues on the existing worktree
   without rebuilding it.
 
@@ -387,7 +387,7 @@ path (`WT_ENSURE=reconstructed`, #1676), not the restart guidance.
 ### Branch-creation worktree invariant (marker 再確定・silent fallback 排除)
 
 In `multi_session` mode the feature branch **must** be created on the session worktree
-(`{worktree_base}/issue-{N}`), regardless of the flow entry path (fresh / `/rite:resume` /
+(`{worktree_base}/issue-{N}`), regardless of the flow entry path (fresh / `/rite:recover` /
 post-compaction mid-flow entry). The earlier failure mode (#1595) was that `/rite:open`
 gated the worktree-vs-main-tree branch decision **only on the in-context
 `[CONTEXT] MULTI_SESSION_ENABLED=` marker** emitted at Step 1.4. When that marker was lost

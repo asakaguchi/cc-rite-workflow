@@ -29,7 +29,7 @@ if [ "true" = "true" ]; then ...; fi
 
 この設計は「LLM が会話コンテキストに残った marker 行を正しく読み取り、正しい値を次の Bash 呼び出しに literal substitute する」ことに制御フローの正しさを賭けている。会話コンテキストは以下の事象で失われる・変質しうる:
 
-- **resume**: セッションが中断し `/rite:resume` で別ターンから再開する場合、marker を emit した Bash tool 呼び出し自体が会話履歴に無い
+- **resume**: セッションが中断し `/rite:recover` で別ターンから再開する場合、marker を emit した Bash tool 呼び出し自体が会話履歴に無い
 - **compact**: 長い会話が要約されるとき、`[CONTEXT]` marker 行が要約対象になり文字列として保持されない可能性がある
 - **途中入場**: orchestrator（`/rite:run`, `/rite:iterate` 等）が sub-skill を呼び出す際、sub-skill 内の marker が期待した粒度で親の会話コンテキストに伝播しないケース
 
@@ -122,7 +122,7 @@ review / fix / cleanup / wiki-lint 側には同種の「副作用直前の再生
 
 | シナリオ | 発生条件 | 影響を受けやすいパターン | リスク |
 |---|---|---|---|
-| **resume** | セッション中断後 `/rite:resume` で別ターン再開 | 長距離パターン（§2.5 全般）。resume 直後の会話コンテキストには中断前の marker が存在しない | 高 — 各スキルの resume dispatch は flow-state（`.rite-flow-state` 相当）の `phase` を SoT にしているため、marker 依存部分は「resume 直後の1回目の分岐」でのみ危険。2回目以降は同一ターン内で完結すれば安全 |
+| **resume** | セッション中断後 `/rite:recover` で別ターン再開 | 長距離パターン（§2.5 全般）。resume 直後の会話コンテキストには中断前の marker が存在しない | 高 — 各スキルの resume dispatch は flow-state（`.rite-flow-state` 相当）の `phase` を SoT にしているため、marker 依存部分は「resume 直後の1回目の分岐」でのみ危険。2回目以降は同一ターン内で完結すれば安全 |
 | **compact** | 長い会話が要約される | 全パターン。要約プロセスが `[CONTEXT]` 行を「重要でない中間出力」として圧縮対象にする可能性 | 中〜高 — 本ドキュメント作成セッション自体で「CRITICAL: Respond with TEXT ONLY... STOP. Compact detected」のような compact 発火を経験しており、実際に発生しうる事象であることを確認済み |
 | **途中入場** | orchestrator が sub-skill を Skill ツール経由で呼び出す際、期待した marker 粒度が親の会話コンテキストに伝播しない | ファイル跨ぎパターン（§2.5 #3, #5） | 中 — Skill ツール呼び出しは通常同一ターン内の会話に統合されるため直接の欠落は稀だが、大量の中間出力がある場合に LLM の注意が逸れて「読み忘れる」リスクは marker 消失と同型の failure mode |
 

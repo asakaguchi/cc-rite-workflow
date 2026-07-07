@@ -112,7 +112,7 @@ grep -rnE '\[[a-z]+:completed(:[^]]*)?\]' plugins/rite/commands/ plugins/rite/sk
 
 **AC-7 を検証する（implicit stop が起きた場合に次セッションが retrospective scan で sentinel を拾えるか）**
 
-> **⚠️ Historical (廃止済機構のテスト手順)**: 本シナリオが前提とする `start.md ステップ 8.5 retrospective scan` は機構撤去され、start.md 自体も削除済。v3 では各 caller が plain な `WARNING` / `ERROR` を stderr に出力し、中断作業は `/rite:resume` で復帰する。tracking Issue の auto-register 経路は現行体系に存在しないため、本シナリオの手順 3 / 期待される動作 1 行目は実行不能。session-end.sh の legacy glob fallback 契約 (Scenario 4a の本来の検証対象) のみ現行でも有効。
+> **⚠️ Historical (廃止済機構のテスト手順)**: 本シナリオが前提とする `start.md ステップ 8.5 retrospective scan` は機構撤去され、start.md 自体も削除済。v3 では各 caller が plain な `WARNING` / `ERROR` を stderr に出力し、中断作業は `/rite:recover` で復帰する。tracking Issue の auto-register 経路は現行体系に存在しないため、本シナリオの手順 3 / 期待される動作 1 行目は実行不能。session-end.sh の legacy glob fallback 契約 (Scenario 4a の本来の検証対象) のみ現行でも有効。
 
 flat workflow への移行後、Stop hook による exit-2 block は廃止された。AC-7 の責務は、かつて存在した `start.md ステップ 8.5 retrospective scan` が次セッションの会話コンテキストを grep して `manual_fallback_adopted` 系 sentinel を検出し tracking Issue を auto-register する経路に移行していた (同経路も上記の通り削除済)。
 

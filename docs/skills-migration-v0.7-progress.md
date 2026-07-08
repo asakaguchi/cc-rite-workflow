@@ -415,7 +415,7 @@ marker 実値:
 
 - issue group（issue-create 所有）へ co-locate: `complexity-gate`, `contract-section-mapping`, `fingerprint-cycling`, `slug-generation`。
 - wiki group（wiki-lint 所有）へ co-locate: `bash-cross-boundary-state-transfer`, `broken-ref-resolution`。
-- cross-ref 更新: `skills/review/SKILL.md`（fingerprint-cycling forward-ref 解決）、`references/issue-create-with-projects.md`（prose path）、`templates/issue/default.md`（2 markdown link）。`simplification-charter.md` L73 は backtick の例示ファイル名のみ（リンクでない）→ 更新不要。
+- cross-ref 更新: `skills/pr-review/SKILL.md`（fingerprint-cycling forward-ref 解決）、`references/issue-create-with-projects.md`（prose path）、`templates/issue/default.md`（2 markdown link）。`simplification-charter.md` L73 は backtick の例示ファイル名のみ（リンクでない）→ 更新不要。
 
 ### investigate / workflow を Phase 5 へ繰り延べ（スコープ判断）
 
@@ -555,7 +555,7 @@ marker 実値:
 4. **preflight-check 削除**: `rite-workflow/SKILL.md` の「Preflight Guard」節 + `work-memory-format.md` の「Preflight Guard Contract (Phase C)」節を除去（SoT Access Pattern サブ節は preflight 無関係のため保持し `##` へ昇格）。`hooks/preflight-check.sh` + `hooks/tests/preflight-check.test.sh` を削除。`session-id-validation-contract.md` の Layer 1 依存テスト一覧から `preflight-check.test.sh` を除去。run-tests.sh は `*.test.sh` glob 探索のため改変不要。
 5. **rite-workflow/SKILL.md 命名・パス修正**: 旧 `rite:` コロン命名（Suggested Actions 表・4 Command Architecture・sentinel 表・各所散文 計 30+）を命名 sed で新命名へ。bare colon 略記（`pr:open`/`wiki:ingest` 等）も targeted sed で変換（sentinel `[pr:created:N]`/`[pr:create-failed]` は `rite:` 接頭辞・bracket がないため非該当・全無傷を検証）。`commands/resume.md`→`skills/resume/SKILL.md`、`commands/issue/implement.md`→`skills/issue-implement/SKILL.md`（depth 補正 `../issue-implement/SKILL.md`）、`commands/pr/cleanup.md`+`commands/pr/references/`→skills 系へ。
 6. **reviewers / workflow-identity / anchor-naming 仕上げ**:
-   - **reviewers**: description の `/rite:pr:review` → `/rite:review`。review への cross-ref（`commands/pr/review.md`・`commands/pr/references/internal-consistency.md`、markdown リンク + bare `review.md` 略記 計 15 箇所）を `skills/review/SKILL.md`・`skills/review/references/internal-consistency.md` へ統一（depth 不変・ステップ番号/アンカーは Phase 2 byte 保全により解決を検証）。reviewer の file-pattern glob `commands/**/*.md` は汎用パターンのため非対象。**review→reviewers は Skill invoke でなく `Read: skills/reviewers/SKILL.md`（ファイル Read）と確認** → `disable-model-invocation:true` は整合（Phase 1 残課題 closeout）。
+   - **reviewers**: description の `/rite:pr:review` → `/rite:pr-review`。review への cross-ref（`commands/pr/review.md`・`commands/pr/references/internal-consistency.md`、markdown リンク + bare `review.md` 略記 計 15 箇所）を `skills/pr-review/SKILL.md`・`skills/pr-review/references/internal-consistency.md` へ統一（depth 不変・ステップ番号/アンカーは Phase 2 byte 保全により解決を検証）。reviewer の file-pattern glob `commands/**/*.md` は汎用パターンのため非対象。**review→reviewers は Skill invoke でなく `Read: skills/reviewers/SKILL.md`（ファイル Read）と確認** → `disable-model-invocation:true` は整合（Phase 1 残課題 closeout）。
    - **workflow-identity.md**: caller depth ガイダンス表（L161）を commands/ ベース → skills/ ベース（`../../skills/...` = skills/<name>/SKILL.md / `../../../skills/...` = skills/<name>/references/）へ。fenced 例（L167）の深さ依存パスを placeholder `<相対パス>` 化し自ファイル位置からの broken 表示を解消。
    - **anchor-naming-convention.md**: `commands/pr/references/` → `skills/rite-workflow/references/` へ co-locate（唯一の参照元 simplification-charter のみ）。両者を `./` 形式の sibling link に整理。
 
@@ -615,7 +615,7 @@ marker 実値:
 - **version 0.7.0 バンプ（5 file）+ CHANGELOG（英/日）+ `/release`**（develop→main PR・タグ・GitHub Release）。坂口さんの指示待ち。
 - ~~**ドキュメント構造 rewrite（6b doc）**~~ → **完了（2026-06-30）**: `CLAUDE.md` / `CONTRIBUTING.md` / `docs/SPEC.md` の ASCII アーキ図を skills/ 中心へ反転（commands/ ノード除去・skills/ を 30 スキルへ展開）。SPEC.md は併せて (a) `Command File Format` 節を `Skill File Format` へ統合し §B frontmatter ポリシー（disable-model-invocation / user-invocable）を明記、(b) 削除済み `preflight-check.sh` の専用節（hooks 節 + Features 節 + test 表行）を除去（compact 回復 = SessionStart notice + `/rite:recover` に一本化）、(c) lint scanner scope `commands/**` → `skills/**`、(d) prose（orchestrator commands → skills 等）を更新。全 3 ドキュメントで構造的 commands/ ノード 0・旧命名 0・fence 整合・dangling リンク 0 を検証。残る `commands/` 言及は migration anchor / `commands:` config key / generic「コマンド」/ `gh-cli-commands.md` filename のみ（意図的保持）。
 - **未対応の既存 doc 不正確記述（移行と無関係・別途）**: `CONTRIBUTING.md` の「There is no Stop hook」注記は現状と矛盾（`stop-loop-continuation.sh` が hooks.json 登録済み）。本移行スコープ外のため未修正 → フォローアップ候補。
-- **`.claude/settings.local.json`（ユーザーローカル・任意）**: stale な `Skill(rite:pr:create/review/ready)` 権限エントリ（→ `rite:pr-create`/`rite:review`/`rite:ready`）。untracked のため未編集。必要なら `/config` 等で更新を案内。
+- **`.claude/settings.local.json`（ユーザーローカル・任意）**: stale な `Skill(rite:pr:create/review/ready)` 権限エントリ（→ `rite:pr-create`/`rite:pr-review`/`rite:ready`）。untracked のため未編集。必要なら `/config` 等で更新を案内。
 - **残置した generic 例/歴史参照**: reviewer agent の placeholder `commands/foo.md` 等、SPEC/orphan-check の歴史アンカー、doc-heavy classifier の `commands/**/*.md` 除外 glob（drift-check で review/reviewers 同期・harmless）。いずれも dangling でなく意図的残置。
 
 ## 主要調査結果（Phase 0 で実測・SoT）

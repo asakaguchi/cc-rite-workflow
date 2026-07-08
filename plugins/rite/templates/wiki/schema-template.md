@@ -59,7 +59,7 @@ confidence: high | medium | low
 
 | トリガー | 抽出元 | Raw Source 保存先 |
 |---------|--------|-----------------|
-| PR レビュー完了 | `/rite:review` 結果 | `raw/reviews/` |
+| PR レビュー完了 | `/rite:pr-review` 結果 | `raw/reviews/` |
 | Issue クローズ | `/rite:issue-close` 実行時 | `raw/retrospectives/` |
 | Fix 完了 | `/rite:fix` 結果 | `raw/fixes/` |
 | 手動 | `/rite:wiki-ingest` コマンド | `raw/` (指定ディレクトリ) |

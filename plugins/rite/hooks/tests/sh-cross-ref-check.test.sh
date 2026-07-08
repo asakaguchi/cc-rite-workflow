@@ -23,11 +23,11 @@ echo ""
 
 # --------------------------------------------------------------------------
 # Synthetic repo: a Phase-style file (skills/issue-close/SKILL.md) and a ステップ-style file
-# (skills/review/SKILL.md), each carrying a bare-number sub-step heading (no keyword), which
+# (skills/pr-review/SKILL.md), each carrying a bare-number sub-step heading (no keyword), which
 # mirrors the real heading convention discovered in production.
 # --------------------------------------------------------------------------
 mkdir -p "$TEST_DIR/plugins/rite/skills/issue-close"
-mkdir -p "$TEST_DIR/plugins/rite/skills/review"
+mkdir -p "$TEST_DIR/plugins/rite/skills/pr-review"
 mkdir -p "$TEST_DIR/plugins/rite/skills/issue-create"
 mkdir -p "$TEST_DIR/plugins/rite/skills/pr-create"
 mkdir -p "$TEST_DIR/plugins/rite/hooks/scripts"
@@ -41,8 +41,8 @@ cat > "$TEST_DIR/plugins/rite/skills/issue-close/SKILL.md" <<'MD'
 ### 4.4.W.2 Wiki Raw Commit
 MD
 
-cat > "$TEST_DIR/plugins/rite/skills/review/SKILL.md" <<'MD'
-# /rite:review
+cat > "$TEST_DIR/plugins/rite/skills/pr-review/SKILL.md" <<'MD'
+# /rite:pr-review
 ## ステップ 6: 完了
 ### 6.5 Completion Report
 #### 6.5.W.2 Wiki Raw Commit (Shell — deterministic path)
@@ -94,7 +94,7 @@ else fail "expected rc=1 + keyword mismatch, got rc=$rc: $output"; fi
 # TC-004: correct references (both conventions) → exit 0, no findings
 # --------------------------------------------------------------------------
 echo "TC-004: correct refs (ステップ + Phase) → exit 0"
-echo 'echo "Verify skills/review/SKILL.md ステップ 6.5.W.2 / skills/issue-close/SKILL.md Phase 4.4.W.2."' > "$f"
+echo 'echo "Verify skills/pr-review/SKILL.md ステップ 6.5.W.2 / skills/issue-close/SKILL.md Phase 4.4.W.2."' > "$f"
 rc=0; output=$(run "plugins/rite/hooks/scripts/fixture.sh") || rc=$?
 if [ "$rc" -eq 0 ] && echo "$output" | grep -q "Total sh-cross-ref findings: 0"; then
   pass "correct refs not flagged → exit 0"
@@ -132,8 +132,8 @@ else fail "expected rc=1 from comment ref, got rc=$rc: $output"; fi
 # --------------------------------------------------------------------------
 # TC-008: inverse mismatch — ステップ-style file referenced with Phase keyword
 # --------------------------------------------------------------------------
-echo "TC-008: inverse mismatch (skills/review/SKILL.md Phase 6.5.W.2)"
-echo 'echo "Verify skills/review/SKILL.md Phase 6.5.W.2 path."' > "$f"
+echo "TC-008: inverse mismatch (skills/pr-review/SKILL.md Phase 6.5.W.2)"
+echo 'echo "Verify skills/pr-review/SKILL.md Phase 6.5.W.2 path."' > "$f"
 rc=0; output=$(run "plugins/rite/hooks/scripts/fixture.sh") || rc=$?
 if [ "$rc" -eq 1 ] && echo "$output" | grep -q "keyword mismatch"; then
   pass "Phase-on-ステップ-file detected"
@@ -165,7 +165,7 @@ else fail "expected rc=0 (union match), got rc=$rc: $output"; fi
 # --------------------------------------------------------------------------
 echo "TC-011: --all excludes hooks/tests/"
 echo 'echo "skills/issue-close/SKILL.md ステップ 4.4.W.2"' > "$TEST_DIR/plugins/rite/hooks/tests/bad-fixture.sh"
-echo 'echo "clean: skills/review/SKILL.md ステップ 6.5.W.2"' > "$f"
+echo 'echo "clean: skills/pr-review/SKILL.md ステップ 6.5.W.2"' > "$f"
 rc=0; output=$(bash "$TARGET" --all --repo-root "$TEST_DIR" 2>&1) || rc=$?
 if [ "$rc" -eq 0 ] && ! echo "$output" | grep -q "bad-fixture.sh"; then
   pass "tests/ fixtures excluded from --all → exit 0"

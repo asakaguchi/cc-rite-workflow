@@ -52,7 +52,7 @@ chore: maintenance
 plugins/rite/
 ├── skills/           # Skill definitions auto-detected by Claude Code (SKILL.md); invoked as /rite:<name>
 │   │                 #   each skill = thin SKILL.md + co-located references/ (entry skills < 500 lines; procedural skills <= 4,000 lines, rationale in references/)
-│   ├── (PR lifecycle)  # open, iterate, review, fix, ready, merge, cleanup, run, pr-create
+│   ├── (PR lifecycle)  # open, iterate, pr-review, fix, ready, merge, cleanup, run, pr-create
 │   ├── (issue ops)     # issue-create, issue-list, issue-update, issue-close, issue-edit, issue-implement
 │   ├── (wiki)          # wiki-init, wiki-query, wiki-ingest, wiki-lint
 │   ├── (meta/top)      # setup, getting-started, workflow, investigate, learn, lint, recover, skill-suggest, template-reset
@@ -76,7 +76,7 @@ A reviewer lives in up to 4 places that must stay in sync. Sync between (1)–(3
 1. **`plugins/rite/agents/{type}-reviewer.md`** (new file) — the reviewer's full profile (Role / Core Principles / Detection Process / Detailed Checklist (Expertise Areas, Review Checklist, Severity Definitions, Finding Quality Guidelines) / Output Format), injected as the named subagent's system prompt. Model an existing reviewer (e.g. `security-reviewer.md`); shared principles live in `_reviewer-base.md` and must not be duplicated.
 2. **`plugins/rite/skills/reviewers/SKILL.md` — `Available Reviewers` table** — add a row with the display name, agent filename, and activation file patterns. Skip this table only for logic-selected reviewers that have no file patterns (e.g. `code-quality`, the fallback / co-reviewer).
 3. **`plugins/rite/skills/reviewers/SKILL.md` — `Reviewer Type Identifiers` table** — add a row mapping the `reviewer_type` slug to the 日本語表示名 and agent filename. The slug MUST equal the agent basename minus `-reviewer.md` (e.g. `security-reviewer.md` → `security`); the drift check verifies this per row.
-4. **(Conditional) `plugins/rite/skills/review/SKILL.md`** — only when the reviewer activates on diff content rather than file patterns: add a keyword-detection rule to ステップ 2.3, and extend the ステップ 3.2 selection logic if the reviewer needs special selection rules (mandatory promotion, co-reviewer conditions, etc.).
+4. **(Conditional) `plugins/rite/skills/pr-review/SKILL.md`** — only when the reviewer activates on diff content rather than file patterns: add a keyword-detection rule to ステップ 2.3, and extend the ステップ 3.2 selection logic if the reviewer needs special selection rules (mandatory promotion, co-reviewer conditions, etc.).
 
 **Verification:**
 
@@ -121,7 +121,7 @@ plugins/rite/hooks/
 
 > **Note**: This is a representative list, not a complete enumeration. The canonical full list is the `plugins/rite/hooks/` directory itself (and the Plugin Structure section of `docs/SPEC.md`). Only the seven events above — `SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse` / `Stop` — are registered in `hooks.json` (verify with `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`); every other `.sh` is a sourced helper library or a script invoked from skills. New hooks are added to the directory and `hooks.json`, so this section does **not** need to be updated for each one.
 
-> **Note**: The `Stop` event is registered to `stop-loop-continuation.sh`, which consumes the one-shot `handoff` marker and re-injects the next review↔fix loop command (`/rite:review` ⇄ `/rite:fix`), the `/rite:cleanup` → wiki-ingest → wiki-lint chain continuation, or a terminal completion-notice (see the `handoff` field in `docs/SPEC.md`). This is **not** a stop-*prevention* hook: the legacy blocking `stop-guard.sh`, which made the LLM stall in thinking loops at phase boundaries, was removed, and general workflow halting is now prevented by the per-session flow-state structure and the orchestrator-level scaffolding contract instead. Compact recovery is handled by `pre-compact.sh` + `post-compact.sh` + `session-start.sh`.
+> **Note**: The `Stop` event is registered to `stop-loop-continuation.sh`, which consumes the one-shot `handoff` marker and re-injects the next review↔fix loop command (`/rite:pr-review` ⇄ `/rite:fix`), the `/rite:cleanup` → wiki-ingest → wiki-lint chain continuation, or a terminal completion-notice (see the `handoff` field in `docs/SPEC.md`). This is **not** a stop-*prevention* hook: the legacy blocking `stop-guard.sh`, which made the LLM stall in thinking loops at phase boundaries, was removed, and general workflow halting is now prevented by the per-session flow-state structure and the orchestrator-level scaffolding contract instead. Compact recovery is handled by `pre-compact.sh` + `post-compact.sh` + `session-start.sh`.
 
 ### Hook Events and Registration
 

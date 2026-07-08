@@ -65,7 +65,7 @@ The command prefix `rite` was chosen for:
 | `/rite:merge` | Squash-merge the PR | `<PR number>` |
 | `/rite:pr-create` | Create draft PR | `[PR title]` |
 | `/rite:ready` | Mark as Ready for review | `[PR number]` |
-| `/rite:review` | Multi-reviewer review | `[PR number]` |
+| `/rite:pr-review` | Multi-reviewer review | `[PR number]` |
 | `/rite:fix` | Address review feedback | `[PR number]` |
 | `/rite:cleanup` | Post-merge cleanup | `[branch name]` |
 | `/rite:run` | Run open→iterate (draft only) for each Issue; `--merge` opts into ready→merge→cleanup (stop on first failure) | `[--merge] <Issue number>...` |
@@ -102,7 +102,7 @@ The command prefix `rite` was chosen for:
  └── /rite:pr-create (Create Draft PR)
  ▼
 /rite:iterate <pr> (Review ⇄ Fix loop)
- │ Internally invokes /rite:review and /rite:fix repeatedly
+ │ Internally invokes /rite:pr-review and /rite:fix repeatedly
  │ until [review:mergeable] or [fix:replied-only]
  ▼
 /rite:ready <pr> (Ready for Review)
@@ -134,7 +134,7 @@ Todo → In Progress → In Review → Done
 rite-workflow/
 ├── .claude-plugin/
 │ └── plugin.json # Plugin metadata
-├── agents/ # Subagent definitions for /rite:review
+├── agents/ # Subagent definitions for /rite:pr-review
 │ ├── _reviewer-base.md # Shared reviewer principles (not a subagent)
 │ ├── security-reviewer.md
 │ ├── performance-reviewer.md
@@ -153,7 +153,7 @@ rite-workflow/
 │ # --- PR lifecycle ---
 │ ├── open/ # /rite:open (Issue → branch → 実装 → lint → draft PR; end-to-end)
 │ ├── iterate/ # /rite:iterate (review ⇄ fix loop, mergeable まで)
-│ ├── review/ # /rite:review (multi-reviewer; + references/) — sub-skill
+│ ├── pr-review/ # /rite:pr-review (multi-reviewer; + references/) — sub-skill
 │ ├── fix/ # /rite:fix (review 指摘対応; + references/) — sub-skill
 │ ├── ready/ # /rite:ready (Ready for review 化)
 │ ├── merge/ # /rite:merge (squash merge)
@@ -200,7 +200,7 @@ rite-workflow/
 │ ├── cleanup-work-memory.sh
 │ ├── issue-claim.sh # Issue claim (同一 Issue 二重着手ガード、always-on)
 │ ├── issue-body-safe-update.sh / issue-comment-wm-sync.sh / issue-comment-wm-update.py
-│ ├── review-result-save.sh / review-comment-post.sh / review-skip-notification.sh # skills/review/SKILL.md 6.1.a/b/c 委譲
+│ ├── review-result-save.sh / review-comment-post.sh / review-skip-notification.sh # skills/pr-review/SKILL.md 6.1.a/b/c 委譲
 │ ├── wiki-ingest-trigger.sh / wiki-query-inject.sh # Wiki auto-integration
 │ ├── scripts/ # Helper scripts invoked by hooks
 │ │ ├── wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh
@@ -303,7 +303,7 @@ Plugin metadata file format:
 
 rite の全機能はスキル (`skills/<name>/SKILL.md`) として実装される（旧 `commands/` は v0.7 で全廃）。各スキルは薄い SKILL.md + 同梱 `references/` で構成し、`/rite:<name>` で起動する。
 
-**スキル行数原則**: 入口スキルの SKILL.md は 500 行未満に保つ。実行手順書スキル（review / fix / lint / setup など bash 実行ブロックを本体に持つもの）は 4,000 行以内を上限とし、rationale（設計理由・背景解説）は SKILL.md 本体に書かず同梱 references/ へ退避して該当箇所に 1 行ポインタ（`rationale: references/<file>.md#<anchor>`）を残す。実行時に必要な情報（分岐表・sentinel 表・エラー処理指示・reason 表）は本体に維持する。
+**スキル行数原則**: 入口スキルの SKILL.md は 500 行未満に保つ。実行手順書スキル（pr-review / fix / lint / setup など bash 実行ブロックを本体に持つもの）は 4,000 行以内を上限とし、rationale（設計理由・背景解説）は SKILL.md 本体に書かず同梱 references/ へ退避して該当箇所に 1 行ポインタ（`rationale: references/<file>.md#<anchor>`）を残す。実行時に必要な情報（分岐表・sentinel 表・エラー処理指示・reason 表）は本体に維持する。
 
 SKILL.md は YAML frontmatter を持つ:
 
@@ -325,7 +325,7 @@ Skill documentation...
 |-------|----------|-------------|
 | `name` | Yes | スキル識別子（= ディレクトリ名、`/rite:<name>` で起動） |
 | `description` | Yes | auto-activation 条件を含む狭い説明。汎用トリガ語（workflow / PR / review / commit / branch / next steps 等）を誘発語として書かない |
-| `argument-hint` | 条件付き | user-invocable スキル（`/rite:<name>` を持つもの。**無引数でも `""` を付ける**）と、Skill ツールで引数を受け取る純 sub-skill（review / fix / pr-create / issue-implement）に付与する。スラッシュコマンドを持たず引数も取らない Read 専用 coordinator / knowledge skill（reviewers / rite-workflow）は autocomplete・引数受け渡しのいずれにも該当しないため付与しない |
+| `argument-hint` | 条件付き | user-invocable スキル（`/rite:<name>` を持つもの。**無引数でも `""` を付ける**）と、Skill ツールで引数を受け取る純 sub-skill（pr-review / fix / pr-create / issue-implement）に付与する。スラッシュコマンドを持たず引数も取らない Read 専用 coordinator / knowledge skill（reviewers / rite-workflow）は autocomplete・引数受け渡しのいずれにも該当しないため付与しない |
 | `disable-model-invocation` | **使用しない** | user-invocable スキルには使用しない方針。Claude Code CLI 側でユーザーが明示的にタイプしたスラッシュコマンドとモデル自身の Skill ツール呼び出しが同一経路を通り区別されない既知の挙動があり（[anthropics/claude-code#43660](https://github.com/anthropics/claude-code/issues/43660) 等）、`true` を付けるとユーザー直叩きも巻き添えで遮断されうる。auto-activate 抑止は narrow description のみで担保する（例外: 下記ポリシー表第3区分の Read 専用 knowledge/coordinator は `user-invocable: false` 併用を条件に許容） |
 | `user-invocable` | No | `false` = メニュー非表示（純 sub-skill のほか、下記ポリシー表第3区分の Read 専用 knowledge/coordinator も併用） |
 
@@ -334,7 +334,7 @@ Skill documentation...
 | 区分 | 例 | frontmatter |
 |------|----|-------------|
 | user-invocable（`/rite:<name>` でユーザーが起動。orchestrator 到達の有無を問わない） | open / iterate / ready / merge / cleanup / lint / wiki-ingest / issue-create / wiki-init / learn / skill-suggest 等 | ナロー description のみ（`disable-model-invocation` は使用しない） |
-| 純 sub-skill（user は直接起動しない） | review / fix / pr-create / issue-implement | `user-invocable: false`（orchestrator が Skill ツールで programmatic invoke するため `disable-model-invocation` は**付けない** — 付けると programmatic invoke まで巻き添え遮断されうる #1693。auto-activate 抑止は narrow description で担保する） |
+| 純 sub-skill（user は直接起動しない） | pr-review / fix / pr-create / issue-implement | `user-invocable: false`（orchestrator が Skill ツールで programmatic invoke するため `disable-model-invocation` は**付けない** — 付けると programmatic invoke まで巻き添え遮断されうる #1693。auto-activate 抑止は narrow description で担保する） |
 | Read 経由のみ到達する knowledge/coordinator（`/rite:<name>` を持たず、他スキルから `Read` で参照されるのみ） | reviewers（coordinator）/ rite-workflow（knowledge） | 両者とも narrow（否定形）description + `user-invocable: false`（ユーザーが直接起動できる `/rite:<name>` 自体を無くすため、`disable-model-invocation` によるユーザー直叩き巻き添え遮断の問題は起きない。Skill ツール経由の orchestrator 呼び出しの有無は本区分の判断根拠ではない）。`disable-model-invocation: true` は **reviewers のみ** 防御的に併用する（description が reviewer 選定という review 隣接ドメインを説明するため、auto-activate を二重に抑止する保険。`user-invocable: false` ゆえ巻き添え遮断リスクはない）。rite-workflow は narrow 否定形 description のみで auto-activate 抑止に足りるため併用しない（区分1 と同じ判断） |
 
 **Skill Classification:**
@@ -646,7 +646,7 @@ Before Confirmation & Creation, surface the assumptions the model implicitly fil
 | Phase 5.1 (Implementation work) | `/rite:open` Step 4 → delegates to `/rite:issue-implement` |
 | Phase 5.2 (Quality checks) | `/rite:open` Step 5 (`/rite:issue-implement` autonomously invokes `/rite:lint`) |
 | Phase 5.3 (Draft PR creation) | `/rite:open` Step 6 (invokes `/rite:pr-create` sub-skill) |
-| Phase 5.4 / 5.5 (Review + fix loop) | `/rite:iterate <pr>` (loops `/rite:review` ⇄ `/rite:fix` until convergence, bounded by a `safety.max_review_cycles` circuit breaker) |
+| Phase 5.4 / 5.5 (Review + fix loop) | `/rite:iterate <pr>` (loops `/rite:pr-review` ⇄ `/rite:fix` until convergence, bounded by a `safety.max_review_cycles` circuit breaker) |
 | Phase 5.6 (Completion report — formerly the last sub-step of Phase 5) | `/rite:ready <pr>` (Set Ready) + `/rite:merge <pr>` (Merge) — split into two responsibility-isolated commands. Historically `start.md` reached completion at Phase 5.6 and then ran `gh pr merge --squash` inline as ステップ 8 of the orchestrator |
 | Phase 6 (Cleanup) | `/rite:cleanup <pr>` (unchanged, decoupled from merge) |
 
@@ -833,7 +833,7 @@ Starts when "Start implementation" is selected. The following steps are executed
 | 5.1 | Implementation work (including commit & push) | - |
 | 5.2 | Quality checks | `/rite:lint` |
 | 5.3 | Draft PR creation | `/rite:pr-create` |
-| 5.4 | Self review | `/rite:review` |
+| 5.4 | Self review | `/rite:pr-review` |
 | 5.5 | Continuation based on review results | `/rite:fix` (if needed) |
 | 5.6 | Completion report | - |
 
@@ -854,7 +854,7 @@ Starts when "Start implementation" is selected. The following steps are executed
 | Approve with conditions | Fix with `/rite:fix` → Return to 5.4 |
 | Request changes | Fix with `/rite:fix` → Return to 5.4 |
 
-**Review-Fix Cycle Continuation:** The `/rite:review` → `/rite:fix` → `/rite:review` cycle continues automatically until the overall assessment is "Approve" (zero blocking findings). The normal exit is `[review:mergeable]` (all findings resolved). A `safety.max_review_cycles` circuit breaker (#1701, default 5) additionally bounds non-convergent loops: on reach, interactive `/rite:iterate` prompts via `AskUserQuestion` (continue/abort/leave-draft) and `/rite:run` batch marks the Issue failed and advances to the next. There is no progressive relaxation.
+**Review-Fix Cycle Continuation:** The `/rite:pr-review` → `/rite:fix` → `/rite:pr-review` cycle continues automatically until the overall assessment is "Approve" (zero blocking findings). The normal exit is `[review:mergeable]` (all findings resolved). A `safety.max_review_cycles` circuit breaker (#1701, default 5) additionally bounds non-convergent loops: on reach, interactive `/rite:iterate` prompts via `AskUserQuestion` (continue/abort/leave-draft) and `/rite:run` batch marks the Issue failed and advances to the next. There is no progressive relaxation.
 
 **Verification mode** (`review.loop.verification_mode`, default: `false`): When explicitly enabled, from the second iteration onward, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are reported as non-blocking "stability concerns". The default `false` performs full review every iteration, maximizing review quality.
 
@@ -914,7 +914,7 @@ When starting a session on a feature branch, the system automatically detects ph
 
 ---
 
-### /rite:review
+### /rite:pr-review
 
 **Description:** Dynamic multi-reviewer PR review
 
@@ -922,10 +922,10 @@ When starting a session on a feature branch, the system automatically detects ph
 
 #### Parallel Subagent Review
 
-`/rite:review` uses Claude Code's Task tool to spawn parallel subagents for each reviewer role:
+`/rite:pr-review` uses Claude Code's Task tool to spawn parallel subagents for each reviewer role:
 
 ```
-/rite:review start
+/rite:pr-review start
  ↓
 Get changed files list
  ↓
@@ -1340,7 +1340,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 
 The flow state for `/rite:*` workflows uses a **per-session file** structure (`.rite/sessions/{session_id}.flow-state`). Each Claude Code session writes only to its own file, so concurrent sessions on the same repository are structurally race-free without lock acquisition.
 
-> **Authority scope — session-scoped continuation hint, not a cross-`/clear` source of truth**: flow state is **session-scoped** and treats `/clear` as its continuation terminus — a session started after a `/clear` resolves a fresh `session_id` and therefore reads a different (structurally empty) state file. Consequently, **discrete commands** invoked standalone across a `/clear` (e.g. `/rite:merge`) **must not** treat flow state as the authoritative cross-`/clear` state. Their authority lives in the persistent SoT — `gh pr view` (`isDraft` / `mergeable` / `mergeStateStatus`), GitHub Projects Status, and `.rite-work-memory/issue-{n}.md`. flow state, when present, is consumed only as a **same-session continuation hint**, and its absence is the normal (un-warned) case for discrete operation. Conversely, the **continuation-loop subsystems** — `/rite:iterate`'s review↔fix loop, the `Stop` hook + `handoff` field, `/rite:review` / `/rite:fix`, compact recovery, and `/rite:recover` — are single-session by nature and are precisely the domain where session-scoped flow state functions correctly; they are left untouched. See [`docs/designs/clear-per-command-flow-state-decoupling.md`](designs/clear-per-command-flow-state-decoupling.md) for the full discrete-command-vs-continuation-loop decoupling analysis and per-command breakdown; `skills/merge/SKILL.md` Step 1 is the first application of this boundary.
+> **Authority scope — session-scoped continuation hint, not a cross-`/clear` source of truth**: flow state is **session-scoped** and treats `/clear` as its continuation terminus — a session started after a `/clear` resolves a fresh `session_id` and therefore reads a different (structurally empty) state file. Consequently, **discrete commands** invoked standalone across a `/clear` (e.g. `/rite:merge`) **must not** treat flow state as the authoritative cross-`/clear` state. Their authority lives in the persistent SoT — `gh pr view` (`isDraft` / `mergeable` / `mergeStateStatus`), GitHub Projects Status, and `.rite-work-memory/issue-{n}.md`. flow state, when present, is consumed only as a **same-session continuation hint**, and its absence is the normal (un-warned) case for discrete operation. Conversely, the **continuation-loop subsystems** — `/rite:iterate`'s review↔fix loop, the `Stop` hook + `handoff` field, `/rite:pr-review` / `/rite:fix`, compact recovery, and `/rite:recover` — are single-session by nature and are precisely the domain where session-scoped flow state functions correctly; they are left untouched. See [`docs/designs/clear-per-command-flow-state-decoupling.md`](designs/clear-per-command-flow-state-decoupling.md) for the full discrete-command-vs-continuation-loop decoupling analysis and per-command breakdown; `skills/merge/SKILL.md` Step 1 is the first application of this boundary.
 
 **File path:**
 
@@ -1371,7 +1371,7 @@ The `session_id` is the same UUID stored in `.rite-session-id` and propagated to
 | Optional | `wm_comment_id` | `issue-comment-wm-sync.sh` (cache write) | GitHub comment ID for the work memory backup |
 | Optional | `loop_count` | **Reader-only legacy field** — no production writer in `flow-state.sh` (verify with `grep -n loop_count plugins/rite/hooks/flow-state.sh` → 0 hits). Consumers (`pre-compact.sh` / `post-compact.sh` / `session-start.sh` / `work-memory-update.sh`) read it as best-effort; `work-memory-update.sh` increments the work-memory document copy, not the flow-state field. Schema slot retained for forward compatibility | Review-fix loop counter |
 | Optional | `error_count` | `flow-state.sh set` (resets to `0` on phase transition; `--preserve-error-count` retains the existing value) | Half-legacy field — incrementer was removed with `stop-guard.sh`; writer is reset-only. Schema retained for forward compatibility |
-| Optional | `handoff` | `flow-state.sh set --handoff <cmd>` (writer; **default-clears on every set** — present only when `--handoff` is passed) / `flow-state.sh consume-handoff` (reader+deleter) | One-shot continuation marker with three value families: continuation `/rite:...` set by `review.md` Step 8.0 (`/rite:fix {pr}` on `[review:fix-needed]`) and `fix.md` Step 5.1 (`/rite:review {pr}` on `[fix:pushed]`/`[fix:pushed-wm-stale]`); terminal `FINALIZE:{result}:{pr}` set by the same steps on terminal sentinels; chain `WIKICHAIN:{caller}:{pr}` set by `cleanup.md` Step 9 before invoking `rite:wiki-ingest` (cleared by the Step 12 terminal set's default-clear when the chain completes). Consumed (printed + deleted) by the `Stop` hook `stop-loop-continuation.sh`, which emits `decision:block` with a prefix-selected reason. Default-clear semantics mirror `error_count`; no `schema_version` bump (additive, backward-compatible via `.handoff // ""`) |
+| Optional | `handoff` | `flow-state.sh set --handoff <cmd>` (writer; **default-clears on every set** — present only when `--handoff` is passed) / `flow-state.sh consume-handoff` (reader+deleter) | One-shot continuation marker with three value families: continuation `/rite:...` set by `review.md` Step 8.0 (`/rite:fix {pr}` on `[review:fix-needed]`) and `fix.md` Step 5.1 (`/rite:pr-review {pr}` on `[fix:pushed]`/`[fix:pushed-wm-stale]`); terminal `FINALIZE:{result}:{pr}` set by the same steps on terminal sentinels; chain `WIKICHAIN:{caller}:{pr}` set by `cleanup.md` Step 9 before invoking `rite:wiki-ingest` (cleared by the Step 12 terminal set's default-clear when the chain completes). Consumed (printed + deleted) by the `Stop` hook `stop-loop-continuation.sh`, which emits `decision:block` with a prefix-selected reason. Default-clear semantics mirror `error_count`; no `schema_version` bump (additive, backward-compatible via `.handoff // ""`) |
 | Optional | `worktree` | `flow-state.sh set --worktree <abs-path>` | Session worktree absolute path under multi-session mode (`.rite/worktrees/issue-{N}`, design §2). **Merge-preserve** semantics like `branch` (NOT default-clear like `handoff`): an unspecified `--worktree` preserves the existing value across phase-transition sets. Written conditionally — non-worktree (single-session) sessions never gain the key, so the state file is byte-identical and no `schema_version` bump is needed (additive, read via `.worktree // ""`). A same-session hint only: the canonical session↔worktree correspondence is the issue-number → path derivation in `/rite:recover` (session_id changes on crash, so the field is not authoritative) |
 | Optional | `cycle_count` | `flow-state.sh set --cycle-count <N>` | The `/rite:iterate` review⇄fix cycle counter for the `safety.max_review_cycles` circuit breaker (#1701). `/rite:iterate` increments it at each loop head, resets it to `0` on a fresh entry (phase not in `review`/`fix`), and continues it across `/rite:recover` (AC-3). **Merge-preserve** semantics like `worktree`/`branch` (NOT default-clear like `handoff`): an unspecified `--cycle-count` preserves the existing value. `--cycle-count 0` deletes the key. Written conditionally — sessions that never run the breaker never gain the key, so the state file is byte-identical and no `schema_version` bump is needed (additive, read via `.cycle_count // 0`) |
 | Optional | `schema_version` | `flow-state.sh set` | `3` for the per-session structure; absent or `!= 3` triggers migration |

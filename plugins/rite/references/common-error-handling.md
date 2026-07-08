@@ -63,7 +63,7 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 
 ## Non-blocking Contract (canonical 定義)
 
-「Non-blocking Contract」とは、特定の sub-phase の失敗が **upstream phase 全体を失敗扱いにしない** ことを保証する設計上の契約。`/rite:review` ステップ 6.1.a (ローカル JSON 保存) や `/rite:cleanup` ステップ 6 (review 結果ファイル削除、旧 Phase 2.5) など複数 phase で参照される。両方とも本セクションの定義を SoT とすること。
+「Non-blocking Contract」とは、特定の sub-phase の失敗が **upstream phase 全体を失敗扱いにしない** ことを保証する設計上の契約。`/rite:pr-review` ステップ 6.1.a (ローカル JSON 保存) や `/rite:cleanup` ステップ 6 (review 結果ファイル削除、旧 Phase 2.5) など複数 phase で参照される。両方とも本セクションの定義を SoT とすること。
 
 **契約の構成要素**:
 
@@ -76,13 +76,13 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 | **observability emit の必須化** | 異常終了経路 (signal trap 経由含む) でも `[CONTEXT]` flag が emit されるよう、trap handler 内で flag emit を行う (skip notification phase が flag を読む前提で動作する) |
 
 **適用箇所**:
-- `/rite:review` ステップ 6.1.a (Local JSON File Save)
+- `/rite:pr-review` ステップ 6.1.a (Local JSON File Save)
 - `/rite:cleanup` ステップ 6 (Review Results File Cleanup、旧 Phase 2.5)
 - 将来追加される sub-phase で「失敗しても upstream を kill しない」契約が必要なものは本セクションを参照すること
 
 **Soft failure との違い**: `/rite:fix` ステップ 4.5 で使用される「soft failure」は **致命的だが exit 1 で fix loop を kill せず retained flag で caller に通知する**パターンで、本 Non-blocking Contract と類似する。両者の違いは: Non-blocking Contract は「sub-phase 失敗 = upstream 続行」で **本来非致命的な処理** (ローカル保存、削除) に適用、soft failure は「致命的だが loop 終了させない」で **コミット済み変更を保護したい** ケースに適用する。
 
-**例外: ステップ内の retained flag 集計による hard fail 昇格**: Non-blocking Contract に従う sub-phase が複数存在し、それらの retained flag を ステップ内の後段 sub-phase (例: `/rite:review` ステップ 6.1.c) が集計して `exit 2` 等の hard fail に昇格させることは許容される。この場合、個々の sub-phase は `exit 0` (Non-blocking) を守るが、**ステップ全体として** retained flag の組み合わせにより hard fail するケースが発生しうる。これは Non-blocking Contract の違反ではなく、「sub-phase 単独の失敗」と「ステップ全体の判定」が別レイヤであるという設計上の意図的な区別である。
+**例外: ステップ内の retained flag 集計による hard fail 昇格**: Non-blocking Contract に従う sub-phase が複数存在し、それらの retained flag を ステップ内の後段 sub-phase (例: `/rite:pr-review` ステップ 6.1.c) が集計して `exit 2` 等の hard fail に昇格させることは許容される。この場合、個々の sub-phase は `exit 0` (Non-blocking) を守るが、**ステップ全体として** retained flag の組み合わせにより hard fail するケースが発生しうる。これは Non-blocking Contract の違反ではなく、「sub-phase 単独の失敗」と「ステップ全体の判定」が別レイヤであるという設計上の意図的な区別である。
 
 ## [CONTEXT] Emit: stdout / stderr 2 系統の使い分け (canonical)
 

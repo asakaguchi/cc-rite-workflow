@@ -1,6 +1,6 @@
 #!/bin/bash
 # rite workflow - Review Result PR Comment Post
-# Deterministic helper for skills/review/SKILL.md ステップ 6.1.b (PR Comment Post)。
+# Deterministic helper for skills/pr-review/SKILL.md ステップ 6.1.b (PR Comment Post)。
 #
 # review.md ステップ 6.1.b の PR コメント投稿処理 (post_comment_mode gate + 複数 case gate +
 # scope 限定 awk sentinel 置換 + 2 つの post-condition + atomic mv + gh pr comment + signal 検出)

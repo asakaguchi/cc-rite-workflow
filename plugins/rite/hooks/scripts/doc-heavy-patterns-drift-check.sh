@@ -4,7 +4,7 @@
 # Detect drift in `doc_file_patterns` across 2 files that MUST agree on the
 # same set of glob tokens for tech-writer Activation / Doc-Heavy PR detection:
 #
-#   1. plugins/rite/skills/review/SKILL.md            (ステップ 1.2.7
+#   1. plugins/rite/skills/pr-review/SKILL.md            (ステップ 1.2.7
 #      `doc_file_patterns` pseudo-code block)
 #   2. plugins/rite/skills/reviewers/SKILL.md        (Reviewers table,
 #      Technical Writer row — source of truth for tech-writer Activation
@@ -12,8 +12,8 @@
 #      named-subagent definitions)
 #
 # This covers 系統 1 of the drift invariants catalogued in
-# skills/review/references/internal-consistency.md. 系統 2 (canonical category
-# name literal match) and 系統 3 (review.md ステップ 5.4 Doc-Heavy section 2-place
+# skills/pr-review/references/internal-consistency.md. 系統 2 (canonical category
+# name literal match) and 系統 3 (pr-review.md ステップ 5.4 Doc-Heavy section 2-place
 # duplication) are out of scope for this checker.
 #
 # The 2 files encode the same pattern list in 2 different textual forms
@@ -31,7 +31,7 @@
 # text elsewhere in the file (other skills, other pseudo-code, Note paragraphs
 # that repeat pattern examples) does NOT bleed into the comparison:
 #
-#   review.md      : only lines strictly between `doc_file_patterns = [` and
+#   pr-review.md      : only lines strictly between `doc_file_patterns = [` and
 #                    the subsequent closing `]` at column 0.
 #   SKILL.md       : only the single table row that begins with
 #                    `| Technical Writer |`.
@@ -70,7 +70,7 @@ Usage: doc-heavy-patterns-drift-check.sh --all [options]
 
 Options:
   --all              Scan the 2 canonical doc_file_patterns files
-                     (review.md / SKILL.md) under plugins/rite/.
+                     (pr-review.md / SKILL.md) under plugins/rite/.
                      This is the only supported mode; the invariant
                      has no meaning for arbitrary targets.
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
@@ -108,7 +108,7 @@ if [ -z "$REPO_ROOT" ]; then
 fi
 cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
 
-REVIEW_FILE="plugins/rite/skills/review/SKILL.md"
+REVIEW_FILE="plugins/rite/skills/pr-review/SKILL.md"
 SKILL_FILE="plugins/rite/skills/reviewers/SKILL.md"
 
 if [ ! -f "$REVIEW_FILE" ] && [ ! -f "$SKILL_FILE" ]; then
@@ -149,7 +149,7 @@ WORK_DIR="$(mktemp -d)" || { echo "ERROR: mktemp -d failed" >&2; exit 2; }
 
 # --- Section extractors ------------------------------------------------------
 
-# review.md: the ステップ 1.2.7 pseudo-code block between `doc_file_patterns = [`
+# pr-review.md: the ステップ 1.2.7 pseudo-code block between `doc_file_patterns = [`
 # and the next line consisting of `]` at column 0.
 extract_review() {
   awk '
@@ -220,14 +220,14 @@ fi
 review_count=$(wc -l < "$WORK_DIR/review.set")
 skill_count=$(wc -l < "$WORK_DIR/skill.set")
 
-log "review.md        : ${review_count} glob tokens"
+log "pr-review.md        : ${review_count} glob tokens"
 log "SKILL.md         : ${skill_count} glob tokens"
 
 # Each section is expected to define at least 10 glob tokens (the canonical
 # list has 18 as of this writing). An empty or undersized set almost always
 # means the section markers changed and extraction fell off the end, so fail
 # fast with an invocation error rather than silently reporting a large drift.
-for kv in "review.md:${review_count}" "SKILL.md:${skill_count}"; do
+for kv in "pr-review.md:${review_count}" "SKILL.md:${skill_count}"; do
   file="${kv%:*}"
   count="${kv##*:}"
   if [ "$count" -lt 10 ]; then
@@ -255,10 +255,10 @@ report_diff() {
   fi
 }
 
-report_diff "$WORK_DIR/review.set" "review.md ステップ 1.2.7 doc_file_patterns" \
+report_diff "$WORK_DIR/review.set" "pr-review.md ステップ 1.2.7 doc_file_patterns" \
             "$WORK_DIR/skill.set"  "SKILL.md Technical Writer row"
 report_diff "$WORK_DIR/skill.set"  "SKILL.md Technical Writer row" \
-            "$WORK_DIR/review.set" "review.md ステップ 1.2.7 doc_file_patterns"
+            "$WORK_DIR/review.set" "pr-review.md ステップ 1.2.7 doc_file_patterns"
 
 log "==> Total doc-heavy-patterns-drift findings: ${diff_count}"
 

@@ -56,7 +56,7 @@ USE_ALL=0
 # reason= emit の照合対象に含める。
 DEFAULT_ALL_TARGETS=(
   "plugins/rite/skills/fix/SKILL.md"
-  "plugins/rite/skills/review/SKILL.md"
+  "plugins/rite/skills/pr-review/SKILL.md"
   "plugins/rite/agents/tech-writer-reviewer.md"
   "plugins/rite/scripts/review-findings-maps.sh"
 )

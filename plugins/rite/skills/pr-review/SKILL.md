@@ -1,5 +1,5 @@
 ---
-name: review
+name: pr-review
 description: |
   rite workflow のマルチレビュアー PR レビュー sub-skill: 複数の専門 reviewer agent を並列起動し、
   指摘を統合・検証して mergeable 判定を出す。/rite:iterate ループ内から programmatic に呼ばれる
@@ -8,7 +8,7 @@ argument-hint: "[pr_number]"
 user-invocable: false
 ---
 
-# /rite:review
+# /rite:pr-review
 
 PR の変更内容を解析し、専門家スキルを動的にロードしてマルチレビュアー方式でレビューを行う。やることは以下のシーケンシャルなタスク列:
 
@@ -72,7 +72,7 @@ E2E output format (ステップ 6, replaces full display):
 | End-to-end flow (invoked from `/rite:iterate` ステップ 1) | **Output pattern and return control to caller** |
 | Standalone execution | Confirm the next action with `AskUserQuestion` |
 
-Claude は conversation context から `rite:review` が同一セッション内で直前に Skill ツール経由で invoke されたかどうかで判定する。前者は E2E、それ以外は standalone。E2E 時は machine-readable output pattern (`[review:mergeable]` / `[review:fix-needed:{n}]`) を emit し caller (`/rite:iterate`) に制御を返す。caller が output pattern を見て次のアクションを決定する。
+Claude は conversation context から `rite:pr-review` が同一セッション内で直前に Skill ツール経由で invoke されたかどうかで判定する。前者は E2E、それ以外は standalone。E2E 時は machine-readable output pattern (`[review:mergeable]` / `[review:fix-needed:{n}]`) を emit し caller (`/rite:iterate`) に制御を返す。caller が output pattern を見て次のアクションを決定する。
 
 ## Arguments
 
@@ -94,7 +94,7 @@ Determine the invocation source from the conversation context:
 | Condition | Determination | Action |
 |------|---------|------|
 | Conversation history has rich context from `/rite:pr-create` | Within the end-to-end flow | PR number can be obtained from conversation context |
-| `/rite:review` was executed standalone | Standalone execution | Obtain from argument or current branch PR |
+| `/rite:pr-review` was executed standalone | Standalone execution | Obtain from argument or current branch PR |
 
 ---
 
@@ -579,7 +579,7 @@ YAML パーサーの仕様により `count_ratio_threshold: "0.7"` (quoted strin
 ```
 # Doc file patterns — kept in sync across 2 files (this file ステップ 1.2.7 /
 # SKILL.md Reviewers table tech-writer row). 等価性の **invariant 定義と drift 検出ルール**は
-# `skills/review/references/internal-consistency.md` Cross-Reference セクション「drift 検出の invariant
+# `skills/pr-review/references/internal-consistency.md` Cross-Reference セクション「drift 検出の invariant
 # (2 ファイル等価性)」に集約されている。drift 検出 lint は
 # `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` として実装済み
 # drift-check 系統 1; /rite:lint Phase 3.7 から呼び出される。
@@ -2948,7 +2948,7 @@ if [ "${content_write_failed:-0}" -eq 1 ]; then
  echo "WARNING: review ステップ 6.5.W: content write 失敗のため wiki ingest をスキップ (trigger は未起動)。" >&2
 elif [ "${trigger_exit:-1}" -ne 0 ] && [ "${trigger_exit:-1}" -ne 2 ]; then
  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=trigger_exit_$trigger_exit; exit_code=$trigger_exit"
- echo "WARNING: wiki-ingest-trigger.sh exited $trigger_exit during skills/review/SKILL.md ステップ 6.5.W" >&2
+ echo "WARNING: wiki-ingest-trigger.sh exited $trigger_exit during skills/pr-review/SKILL.md ステップ 6.5.W" >&2
 fi
 ```
 
@@ -3007,7 +3007,7 @@ else
  case "$commit_rc" in
  2)
  echo "[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=commit_branch_missing; exit_code=$commit_rc"
- echo "WARNING: wiki-ingest-commit.sh exited 2 (wiki branch missing / disabled) during skills/review/SKILL.md ステップ 6.5.W.2" >&2
+ echo "WARNING: wiki-ingest-commit.sh exited 2 (wiki branch missing / disabled) during skills/pr-review/SKILL.md ステップ 6.5.W.2" >&2
  ;;
  4)
  echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; exit_code=$commit_rc"
@@ -3015,11 +3015,11 @@ else
  if [ -n "${commit_out:-}" ]; then
  echo "$commit_out"
  fi
- echo "WARNING: wiki-ingest-commit.sh exited 4 (commit landed locally, push failed) during skills/review/SKILL.md ステップ 6.5.W.2" >&2
+ echo "WARNING: wiki-ingest-commit.sh exited 4 (commit landed locally, push failed) during skills/pr-review/SKILL.md ステップ 6.5.W.2" >&2
  ;;
  *)
  echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=commit_rc_$commit_rc; exit_code=$commit_rc"
- echo "WARNING: wiki-ingest-commit.sh exited $commit_rc during skills/review/SKILL.md ステップ 6.5.W.2" >&2
+ echo "WARNING: wiki-ingest-commit.sh exited $commit_rc during skills/pr-review/SKILL.md ステップ 6.5.W.2" >&2
  ;;
  esac
 fi
@@ -3051,8 +3051,8 @@ Claude determines the invocation source from the conversation context:
 
 | Condition | Determination |
 |------|---------|
-| Conversation history has a record of `rite:review` being invoked via the `Skill` tool | Within loop -> Automatically execute the next step |
-| Otherwise (user directly entered `/rite:review`) | Standalone execution -> Confirm the next action with `AskUserQuestion` |
+| Conversation history has a record of `rite:pr-review` being invoked via the `Skill` tool | Within loop -> Automatically execute the next step |
+| Otherwise (user directly entered `/rite:pr-review`) | Standalone execution -> Confirm the next action with `AskUserQuestion` |
 
 **Note**: This adopts the same conversation context method as `skills/lint/SKILL.md` and `skills/fix/SKILL.md`.
 
@@ -3076,11 +3076,11 @@ Before outputting the result pattern, execute ステップ 7.1-7.4 to process re
 | **Merge OK** (0 findings) | `[review:mergeable]` |
 | **Requires fixes** (findings > 0) | `[review:fix-needed:{total_findings}]` |
 
-**Note**: Within the loop, `/rite:review` only outputs results via patterns. Subsequent processing (invoking `/rite:fix`, confirming `/rite:ready` execution, etc.) is determined and executed by `/rite:iterate` ステップ 1-4 (レビュー/修正ループ).
+**Note**: Within the loop, `/rite:pr-review` only outputs results via patterns. Subsequent processing (invoking `/rite:fix`, confirming `/rite:ready` execution, etc.) is determined and executed by `/rite:iterate` ステップ 1-4 (レビュー/修正ループ).
 
 ---
 
-**When `/rite:review` is executed standalone:**
+**When `/rite:pr-review` is executed standalone:**
 
 Confirm the next action with `AskUserQuestion`. See ステップ 1.4 for the AskUserQuestion invocation format.
 
@@ -3385,8 +3385,8 @@ Before outputting any result pattern (`[review:mergeable]`, `[review:fix-needed:
 
 | Result | Phase | Handoff (`--handoff`) | Next Action |
 |--------|-------|-----------------------|-------------|
-| `[review:mergeable]` | `review` | `FINALIZE:review:mergeable:{pr_number}` | `rite:review completed. Result: [review:mergeable]. Proceed to /rite:ready (caller の review-fix loop が ready 遷移を起動). Do NOT stop.` |
-| `[review:fix-needed:{n}]` | `review` | `/rite:fix {pr_number}` | `rite:review completed. Result: [review:fix-needed:{n}]. Proceed to /rite:fix (caller の review-fix loop が fix 起動). Do NOT stop.` |
+| `[review:mergeable]` | `review` | `FINALIZE:review:mergeable:{pr_number}` | `rite:pr-review completed. Result: [review:mergeable]. Proceed to /rite:ready (caller の review-fix loop が ready 遷移を起動). Do NOT stop.` |
+| `[review:fix-needed:{n}]` | `review` | `/rite:fix {pr_number}` | `rite:pr-review completed. Result: [review:fix-needed:{n}]. Proceed to /rite:fix (caller の review-fix loop が fix 起動). Do NOT stop.` |
 
 ```bash
 # [review:mergeable] の場合 (--handoff で FINALIZE 終了通知マーカーをセット):

@@ -76,7 +76,7 @@ Display the following diagram:
         │  （作業メモリ更新は /rite:issue-update）
         ▼
   /rite:iterate <pr> (レビュー/修正ループ)
-        │  内部: /rite:review ⇄ /rite:fix を
+        │  内部: /rite:pr-review ⇄ /rite:fix を
         │        mergeable になるまで自律実行
         ▼
   /rite:ready <pr> (レビュー待ちに変更)

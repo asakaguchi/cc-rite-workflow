@@ -327,7 +327,7 @@ fi
 - `plugins/rite/skills/setup/SKILL.md` Phase 4.7 (`/rite:setup` 内 Wiki 自動初期化判定、独自 inline 実装 + typo 検出 WARNING 付き)
 - `plugins/rite/skills/cleanup/SKILL.md` ステップ 9 (`parse_wiki_key` helper 経由、auto_ingest 起動条件)
 - `plugins/rite/skills/fix/SKILL.md` ステップ 0.5.W / 4.6.W (Wiki query / ingest 起動条件)
-- `plugins/rite/skills/review/SKILL.md` ステップ 4.0.W / 6.5.W (Wiki query / ingest 起動条件)
+- `plugins/rite/skills/pr-review/SKILL.md` ステップ 4.0.W / 6.5.W (Wiki query / ingest 起動条件)
 - `plugins/rite/skills/issue-implement/SKILL.md` (Wiki query 起動条件)
 - `plugins/rite/skills/issue-close/SKILL.md` (Wiki ingest 起動条件)
 - `plugins/rite/hooks/wiki-query-inject.sh` (auto_query 注入の前提判定、ローカル helper `_extract_yaml_value`)

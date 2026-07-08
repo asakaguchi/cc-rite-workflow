@@ -1,6 +1,6 @@
 #!/bin/bash
 # rite workflow - Measure Review Findings
-# Extract structured findings statistics from /rite:review PR comments.
+# Extract structured findings statistics from /rite:pr-review PR comments.
 #
 # Purpose: Provide a quantitative measurement tool for review quality
 #          (used by Phase D quantitative validation).

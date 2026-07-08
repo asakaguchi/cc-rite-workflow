@@ -1,6 +1,6 @@
 #!/bin/bash
 # rite workflow - Review Result Skip Notification
-# Deterministic helper for skills/review/SKILL.md ステップ 6.1.c (Skip Notification)。
+# Deterministic helper for skills/pr-review/SKILL.md ステップ 6.1.c (Skip Notification)。
 #
 # review.md ステップ 6.1.c の skip notification 処理 (post_comment_mode gate + pr_number /
 # file_timestamp / local_save_failed の fail-fast gate + LOCAL_SAVE_FAILED に基づく 2 ケース分岐)
@@ -160,9 +160,9 @@ if [ "$LOCAL_SAVE_FAILED" = "1" ]; then
 
   復旧方法 (いずれかを選択):
   1. このセッション内で即座に /rite:fix を実行する (Priority 1: 会話コンテキストから直接読取)
-  2. /rite:review --post-comment で PR コメントに投稿して永続化する
+  2. /rite:pr-review --post-comment で PR コメントに投稿して永続化する
   3. rite-config.yml で pr_review.post_comment: true を設定して全 review を永続化する
-  4. LOCAL_SAVE_FAILED の reason を解決してから /rite:review を再実行する
+  4. LOCAL_SAVE_FAILED の reason を解決してから /rite:pr-review を再実行する
 EOF
   echo "[CONTEXT] REVIEW_OUTPUT_FAILED=1; reason=p61c_persistence_unrecoverable; local_save_failed=1; post_comment_mode=false" >&2
   echo "[review:error]"

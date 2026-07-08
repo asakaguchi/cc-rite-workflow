@@ -10,7 +10,7 @@
 # on macOS. The `awk` pattern is identical on GNU and BSD and matches the
 # sibling `test-bang-backtick-check.sh` portability convention.
 #
-# The drift-check is a 2-file invariant (review.md doc_file_patterns block ↔
+# The drift-check is a 2-file invariant (pr-review.md doc_file_patterns block ↔
 # SKILL.md Technical Writer row) after the per-reviewer skill files were
 # consolidated into the named-subagent definitions. tech-writer.md no longer
 # exists as a separate Activation source.
@@ -20,10 +20,10 @@
 #   2. No --all exits 2 (invocation error)
 #   3. Unknown argument exits 2
 #   4. Repo-wide --all is clean on the real 2 files (AC: no false positives)
-#   5. Drift by removal — tokens removed from review.md are reported as
-#      "only in SKILL.md" and NOT as "only in review.md" (direction-symmetry)
-#   6. Drift by addition — token added to review.md is reported as
-#      "only in review.md" and NOT as "only in SKILL.md"
+#   5. Drift by removal — tokens removed from pr-review.md are reported as
+#      "only in SKILL.md" and NOT as "only in pr-review.md" (direction-symmetry)
+#   6. Drift by addition — token added to pr-review.md is reported as
+#      "only in pr-review.md" and NOT as "only in SKILL.md"
 #   7. Missing-file fixture: --repo-root pointing to a tree with NEITHER
 #      required file (consumer/marketplace install) exits 0 (not applicable,
 #      Issue #1746)
@@ -112,11 +112,11 @@ build_fake_tree_at() {
   local dest="$1"
   mkdir -p \
     "$dest/plugins/rite/skills/reviewers" \
-    "$dest/plugins/rite/skills/review"
+    "$dest/plugins/rite/skills/pr-review"
   cp "$REPO_ROOT/plugins/rite/skills/reviewers/SKILL.md" \
      "$dest/plugins/rite/skills/reviewers/SKILL.md"
-  cp "$REPO_ROOT/plugins/rite/skills/review/SKILL.md" \
-     "$dest/plugins/rite/skills/review/SKILL.md"
+  cp "$REPO_ROOT/plugins/rite/skills/pr-review/SKILL.md" \
+     "$dest/plugins/rite/skills/pr-review/SKILL.md"
 }
 
 # Tests allocate fake trees with the following 3-line pattern (all in the
@@ -127,7 +127,7 @@ build_fake_tree_at() {
 #   TMPDIRS+=("$FAKE")
 #   build_fake_tree_at "$FAKE"
 
-# Delete the `*.rst, *.adoc` line from review.md's doc_file_patterns block.
+# Delete the `*.rst, *.adoc` line from pr-review.md's doc_file_patterns block.
 # Uses awk (GNU/BSD-portable) rather than `sed -i`. Matches the line by its
 # trimmed content so leading indentation is tolerated.
 remove_rst_adoc_line() {
@@ -138,7 +138,7 @@ remove_rst_adoc_line() {
 }
 
 # Append an extra glob token (`**/*.bogus,`) as a new line right after the
-# `doc_file_patterns = [` opener in review.md. Also uses awk for portability.
+# `doc_file_patterns = [` opener in pr-review.md. Also uses awk for portability.
 append_bogus_pattern() {
   local file="$1"
   local tmp="${file}.tmp"
@@ -184,13 +184,13 @@ rc=$?
 assert "repo-wide --all exits 0 on real 2 files (no false positives)" "0" "$rc"
 
 # --- Test 5: drift by removal ------------------------------------------------
-# Delete the `*.rst, *.adoc` line from review.md inside a fake tree. The
+# Delete the `*.rst, *.adoc` line from pr-review.md inside a fake tree. The
 # removed tokens remain in SKILL.md, so they should be reported as
-# "only in SKILL.md" and NOT as "only in review.md" (direction-symmetry).
+# "only in SKILL.md" and NOT as "only in pr-review.md" (direction-symmetry).
 FAKE_REMOVED=$(mktemp -d) || { echo "FAIL: Test 5 mktemp -d failed" >&2; exit 2; }
 TMPDIRS+=("$FAKE_REMOVED")
 build_fake_tree_at "$FAKE_REMOVED"
-REVIEW_FIXTURE="$FAKE_REMOVED/plugins/rite/skills/review/SKILL.md"
+REVIEW_FIXTURE="$FAKE_REMOVED/plugins/rite/skills/pr-review/SKILL.md"
 remove_rst_adoc_line "$REVIEW_FIXTURE"
 
 # Sanity check: the line must be gone from the fixture.
@@ -203,17 +203,17 @@ fi
 out=$("$SCRIPT" --all --quiet --repo-root "$FAKE_REMOVED" 2>&1)
 rc=$?
 assert "drift-by-removal fixture exits 1" "1" "$rc"
-assert_contains "drift-by-removal reports *.rst as missing from review.md" \
+assert_contains "drift-by-removal reports *.rst as missing from pr-review.md" \
   "*.rst" "$out"
-assert_contains "drift-by-removal reports *.adoc as missing from review.md" \
+assert_contains "drift-by-removal reports *.adoc as missing from pr-review.md" \
   "*.adoc" "$out"
 assert_contains "drift-by-removal names SKILL.md as the source of the extra token" \
   "only in SKILL.md" "$out"
 
-# Bleed-check: review.md must NEVER be reported as a source of an extra token
-# when drift is injected by removing from review.md.
-review_source_hits=$(printf '%s' "$out" | grep -c "only in review.md" || true)
-assert "drift-by-removal does NOT falsely report review.md as source" "0" "$review_source_hits"
+# Bleed-check: pr-review.md must NEVER be reported as a source of an extra token
+# when drift is injected by removing from pr-review.md.
+review_source_hits=$(printf '%s' "$out" | grep -c "only in pr-review.md" || true)
+assert "drift-by-removal does NOT falsely report pr-review.md as source" "0" "$review_source_hits"
 
 # Header-token locality: the removed tokens must appear under the correct
 # section header (not elsewhere in the output).
@@ -231,13 +231,13 @@ assert_contains_near \
   "$out"
 
 # --- Test 6: drift by addition ----------------------------------------------
-# Insert an extra glob token into review.md's doc_file_patterns block. The
-# new token should be reported as "only in review.md" AND NOT as
+# Insert an extra glob token into pr-review.md's doc_file_patterns block. The
+# new token should be reported as "only in pr-review.md" AND NOT as
 # "only in SKILL.md" (direction-symmetry).
 FAKE_ADDED=$(mktemp -d) || { echo "FAIL: Test 6 mktemp -d failed" >&2; exit 2; }
 TMPDIRS+=("$FAKE_ADDED")
 build_fake_tree_at "$FAKE_ADDED"
-REVIEW_FIXTURE="$FAKE_ADDED/plugins/rite/skills/review/SKILL.md"
+REVIEW_FIXTURE="$FAKE_ADDED/plugins/rite/skills/pr-review/SKILL.md"
 append_bogus_pattern "$REVIEW_FIXTURE"
 
 if ! grep -qF -- '**/*.bogus' "$REVIEW_FIXTURE"; then
@@ -249,20 +249,20 @@ fi
 out=$("$SCRIPT" --all --quiet --repo-root "$FAKE_ADDED" 2>&1)
 rc=$?
 assert "drift-by-addition fixture exits 1" "1" "$rc"
-assert_contains "drift-by-addition reports **/*.bogus only in review.md" \
+assert_contains "drift-by-addition reports **/*.bogus only in pr-review.md" \
   "**/*.bogus" "$out"
-assert_contains "drift-by-addition names review.md as the source of the extra token" \
-  "only in review.md" "$out"
+assert_contains "drift-by-addition names pr-review.md as the source of the extra token" \
+  "only in pr-review.md" "$out"
 
 # Bleed-check: SKILL.md must NEVER be reported as a source when the drift
-# comes from review.md only.
+# comes from pr-review.md only.
 skill_source_hits=$(printf '%s' "$out" | grep -c "only in SKILL.md Technical Writer row" || true)
 assert "drift-by-addition does NOT falsely report SKILL.md as source" "0" "$skill_source_hits"
 
 # Header-token locality for drift-by-addition.
 assert_contains_near \
-  "drift-by-addition pins **/*.bogus under 'only in review.md' header" \
-  "only in review.md" \
+  "drift-by-addition pins **/*.bogus under 'only in pr-review.md' header" \
+  "only in pr-review.md" \
   "**/*.bogus" \
   5 \
   "$out"
@@ -295,9 +295,9 @@ FAKE_ASYMMETRIC=$(mktemp -d) || {
   exit 2
 }
 TMPDIRS+=("$FAKE_ASYMMETRIC")
-mkdir -p "$FAKE_ASYMMETRIC/plugins/rite/skills/review"
-cp "$REPO_ROOT/plugins/rite/skills/review/SKILL.md" \
-   "$FAKE_ASYMMETRIC/plugins/rite/skills/review/SKILL.md"
+mkdir -p "$FAKE_ASYMMETRIC/plugins/rite/skills/pr-review"
+cp "$REPO_ROOT/plugins/rite/skills/pr-review/SKILL.md" \
+   "$FAKE_ASYMMETRIC/plugins/rite/skills/pr-review/SKILL.md"
 out=$("$SCRIPT" --all --quiet --repo-root "$FAKE_ASYMMETRIC" 2>&1)
 rc=$?
 assert "asymmetric absence (SKILL.md missing) exits 2" "2" "$rc"
@@ -309,19 +309,19 @@ assert_contains "asymmetric absence names the missing file" \
   "reviewers/SKILL.md" "$out"
 
 # --- Test 8: broken-section guard --------------------------------------------
-# Blank out review.md's doc_file_patterns body. The extractor should find zero
+# Blank out pr-review.md's doc_file_patterns body. The extractor should find zero
 # tokens, fall through the >= 10 guard, and exit 2 with a diagnostic rather
 # than falsely reporting drift.
 FAKE_BROKEN=$(mktemp -d) || { echo "FAIL: Test 8 mktemp -d failed" >&2; exit 2; }
 TMPDIRS+=("$FAKE_BROKEN")
 build_fake_tree_at "$FAKE_BROKEN"
-blank_doc_patterns_body "$FAKE_BROKEN/plugins/rite/skills/review/SKILL.md"
+blank_doc_patterns_body "$FAKE_BROKEN/plugins/rite/skills/pr-review/SKILL.md"
 
 out=$("$SCRIPT" --all --quiet --repo-root "$FAKE_BROKEN" 2>&1)
 rc=$?
 assert "broken-section fixture exits 2 (guard trips)" "2" "$rc"
-assert_contains "broken-section fixture names review.md in the error" \
-  "review.md" "$out"
+assert_contains "broken-section fixture names pr-review.md in the error" \
+  "pr-review.md" "$out"
 
 # --- Summary -----------------------------------------------------------------
 echo ""

@@ -1,6 +1,6 @@
 # Integrated Report Templates
 
-> `skills/review/SKILL.md` ステップ 5.4 (Integrated Report Generation) が出力する統合レポートの
+> `skills/pr-review/SKILL.md` ステップ 5.4 (Integrated Report Generation) が出力する統合レポートの
 > テンプレート本文。SKILL.md 本体の Template selection 表 / emoji policy / `📎 reviewed_commit` 必須
 > ルールに従い、`review_mode` に応じたテンプレートを選択して placeholder を展開する。
 > reviewer 指示テンプレート ([reviewer-prompt-generator.md](reviewer-prompt-generator.md)) と同じ

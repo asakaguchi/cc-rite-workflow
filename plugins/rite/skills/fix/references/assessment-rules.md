@@ -78,7 +78,7 @@ These 4 categories match [Hypothetical Exception Categories](../../../references
 
 All findings (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) with `scope ∈ {current-pr, follow-up}` remaining in `全指摘事項` after 5.3.0 demotion are always blocking regardless of loop count. There is no gradual relaxation — every remaining blocking finding must be resolved before merge.
 
-**scope=nit-noted exclusion**: Findings with `scope == "nit-noted"` (`acknowledged` トラックの informational 情報共有) are **excluded from `overall_assessment`** and **excluded from the mergeable countdown**. They are surfaced via two separate paths: (a) `/rite:review` ステップ 5.4 「指摘事項」表の **scope 列** (review.md ステップ 5.4 Integrated Report の `全指摘事項` 表で scope=nit-noted 行として可視化)、および (b) `/rite:fix` ステップ 1.4 display の独立した「nit (認知のみ) ({nit_noted_count}件)」セクション (fix.md 内のサブセクション、修正対象外と明示)。両者は表示先が異なるが scope=nit-noted という意味は共通で、いずれも merge を block しない。 The `/rite:fix` ステップ 2.4 `nit-noted-reply` サブステップで「nit、認知済」reply を投稿することで decay-track され、ステップ 4.6 サマリでは `acknowledged_nit_count` として独立カウントされる。これは fix commit 対象からも完全除外される。schema invariant #4 (CRITICAL/HIGH × nit-noted FAIL) により blocker 級の指摘を nit に降格する経路は禁止されているため、本除外は安全に運用できる。詳細な fix loop 経路は [`fix-relaxation-rules.md`](./fix-relaxation-rules.md) §Fix Target Classification を参照。
+**scope=nit-noted exclusion**: Findings with `scope == "nit-noted"` (`acknowledged` トラックの informational 情報共有) are **excluded from `overall_assessment`** and **excluded from the mergeable countdown**. They are surfaced via two separate paths: (a) `/rite:pr-review` ステップ 5.4 「指摘事項」表の **scope 列** (review.md ステップ 5.4 Integrated Report の `全指摘事項` 表で scope=nit-noted 行として可視化)、および (b) `/rite:fix` ステップ 1.4 display の独立した「nit (認知のみ) ({nit_noted_count}件)」セクション (fix.md 内のサブセクション、修正対象外と明示)。両者は表示先が異なるが scope=nit-noted という意味は共通で、いずれも merge を block しない。 The `/rite:fix` ステップ 2.4 `nit-noted-reply` サブステップで「nit、認知済」reply を投稿することで decay-track され、ステップ 4.6 サマリでは `acknowledged_nit_count` として独立カウントされる。これは fix commit 対象からも完全除外される。schema invariant #4 (CRITICAL/HIGH × nit-noted FAIL) により blocker 級の指摘を nit に降格する経路は禁止されているため、本除外は安全に運用できる。詳細な fix loop 経路は [`fix-relaxation-rules.md`](./fix-relaxation-rules.md) §Fix Target Classification を参照。
 
 **Fact-Check exclusion**: When `review.fact_check.enabled: true`, CONTRADICTED (❌) findings and UNVERIFIED:ソース未確認 (⚠️) findings are removed from `全指摘事項` by the Fact-Checking Phase before assessment. Only findings remaining in `全指摘事項` after fact-checking are counted in `total_findings`. UNVERIFIED:リソース超過 findings remain in `全指摘事項` with `[未検証:リソース超過]` annotation and are counted (blocking maintained).
 
@@ -146,11 +146,11 @@ Return: total_findings (if >0, `/rite:fix` required), evaluation, review_mode.
 
 The caller (`/rite:iterate` review-fix loop) **mechanically** invokes `/rite:fix` when `total_findings > 0` or `evaluation != "マージ可"`, **regardless of AI judgment**.
 
-The following decisions MUST NOT be made by `/rite:review`:
+The following decisions MUST NOT be made by `/rite:pr-review`:
 - "The findings are minor, so no action is needed"
 - Independently modifying assessment rules
 
-`/rite:review` is responsible only for accurately reporting the assessment results.
+`/rite:pr-review` is responsible only for accurately reporting the assessment results.
 
 ## 5.3.7 Prohibition of Independent Judgment After Assessment
 

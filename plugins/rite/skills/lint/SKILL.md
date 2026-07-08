@@ -504,7 +504,7 @@ fi
 
 ### 3.7 Plugin-specific Checks (Doc-Heavy Patterns Drift Detection)
 
-Execute the doc-heavy patterns drift check script to detect divergence between the `doc_file_patterns` declared in 2 files that MUST stay in sync: `plugins/rite/skills/review/SKILL.md` (ステップ 1.2.7 `doc_file_patterns` pseudo-code block) and `plugins/rite/skills/reviewers/SKILL.md` (Reviewers table Technical Writer row). Drift between these files silently changes tech-writer activation and Doc-Heavy PR detection. See the script header at `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` for the extraction contract.
+Execute the doc-heavy patterns drift check script to detect divergence between the `doc_file_patterns` declared in 2 files that MUST stay in sync: `plugins/rite/skills/pr-review/SKILL.md` (ステップ 1.2.7 `doc_file_patterns` pseudo-code block) and `plugins/rite/skills/reviewers/SKILL.md` (Reviewers table Technical Writer row). Drift between these files silently changes tech-writer activation and Doc-Heavy PR detection. See the script header at `plugins/rite/hooks/scripts/doc-heavy-patterns-drift-check.sh` for the extraction contract.
 
 **Condition**: Always execute when the script exists.
 
@@ -570,7 +570,7 @@ fi
 
 ### 3.8 Plugin-specific Checks (Wiki Growth Check)
 
-Execute the Wiki growth check script to detect "Phase X.X.W silently skipped" regressions. The script warns (non-blocking) when the wiki branch has gone unchanged for `wiki.growth_check.threshold_prs` consecutive merged PRs on the development base branch — strong evidence that `skills/review/SKILL.md` ステップ 6.5.W / `skills/fix/SKILL.md` ステップ 4.6.W / `skills/issue-close/SKILL.md` Phase 4.4.W are being skipped silently. See `plugins/rite/hooks/scripts/wiki-growth-check.sh` header for the detection contract and the 3-layer defense rationale.
+Execute the Wiki growth check script to detect "Phase X.X.W silently skipped" regressions. The script warns (non-blocking) when the wiki branch has gone unchanged for `wiki.growth_check.threshold_prs` consecutive merged PRs on the development base branch — strong evidence that `skills/pr-review/SKILL.md` ステップ 6.5.W / `skills/fix/SKILL.md` ステップ 4.6.W / `skills/issue-close/SKILL.md` Phase 4.4.W are being skipped silently. See `plugins/rite/hooks/scripts/wiki-growth-check.sh` header for the detection contract and the 3-layer defense rationale.
 
 **Condition**: Always execute when the script exists.
 
@@ -795,7 +795,7 @@ fi
 
 ### 3.14 Plugin-specific Checks (Direct gh issue create Invocation)
 
-Execute the direct `gh issue create` invocation guard to detect Issue creation paths in `plugins/rite/skills/**/*.md` that bypass the `create-issue-with-projects.sh` helper. This complements the existing direct-invocation guard by extending its enforcement scope from the two original files (the retired `commands/issue/start.md` plus the now-deleted `commands/issue/parent-routing.md`) to every skill / sub-skill markdown file. The original incident showed that scope-creep follow-up Issue creation invoked at orchestration time — specifically the canonical Issue creation paths in `skills/review/SKILL.md` and `skills/fix/SKILL.md` — could regress to direct `gh issue create` shortcuts, leaving Issues unregistered in GitHub Projects. See the script header at `plugins/rite/scripts/check-no-direct-gh-issue-create.sh` for the exact detection pattern and false-positive avoidance rules (fenced code blocks, blockquotes, single-line and multi-line Markdown comments, inline backtick spans).
+Execute the direct `gh issue create` invocation guard to detect Issue creation paths in `plugins/rite/skills/**/*.md` that bypass the `create-issue-with-projects.sh` helper. This complements the existing direct-invocation guard by extending its enforcement scope from the two original files (the retired `commands/issue/start.md` plus the now-deleted `commands/issue/parent-routing.md`) to every skill / sub-skill markdown file. The original incident showed that scope-creep follow-up Issue creation invoked at orchestration time — specifically the canonical Issue creation paths in `skills/pr-review/SKILL.md` and `skills/fix/SKILL.md` — could regress to direct `gh issue create` shortcuts, leaving Issues unregistered in GitHub Projects. See the script header at `plugins/rite/scripts/check-no-direct-gh-issue-create.sh` for the exact detection pattern and false-positive avoidance rules (fenced code blocks, blockquotes, single-line and multi-line Markdown comments, inline backtick spans).
 
 Detected pattern (after stripping fenced code blocks / blockquotes / Markdown comments / inline backticks):
 

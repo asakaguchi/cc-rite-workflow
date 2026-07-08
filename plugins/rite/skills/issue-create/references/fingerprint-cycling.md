@@ -1,6 +1,6 @@
 # Fingerprint Cycling Detection — Quality Signal SoT
 
-> **Source of Truth**: 本ファイルは Review/Fix ループにおける **Fingerprint Cycling Detection** (review サイクル中の同一 finding 持続検出) と **Quality Signal 3 & 4 Detection** の SoT である。実際の caller は `skills/review/SKILL.md` (Signal 3) と `skills/fix/SKILL.md` (Signal 2) であり、`/rite:open` のレビュー/修正ループ (ステップ 7) 内で間接的に実行される。本ファイルは fingerprint spec / similarity / Quality Signal markers / split bash / 4-option AskUserQuestion の標準形を定義する。
+> **Source of Truth**: 本ファイルは Review/Fix ループにおける **Fingerprint Cycling Detection** (review サイクル中の同一 finding 持続検出) と **Quality Signal 3 & 4 Detection** の SoT である。実際の caller は `skills/pr-review/SKILL.md` (Signal 3) と `skills/fix/SKILL.md` (Signal 2) であり、`/rite:open` のレビュー/修正ループ (ステップ 7) 内で間接的に実行される。本ファイルは fingerprint spec / similarity / Quality Signal markers / split bash / 4-option AskUserQuestion の標準形を定義する。
 
 ## 概要 — Quality Signal 1-4 の位置付け
 
@@ -116,7 +116,7 @@ context marker を emit:
 Step 4 routing が「本 PR 内で再試行」または「別 Issue として切り出す (split bash 実行後)」の場合のみ実行:
 
 ```
-Invoke `skill: "rite:review"`.
+Invoke `skill: "rite:pr-review"`.
 ```
 
 review が return したら `skills/iterate/SKILL.md` review-fix loop の fix side へ進む。
@@ -212,7 +212,7 @@ if [ ! -s "$tmpfile" ]; then
   exit 1
 fi
 
-# jq -n の出力を stdin で create-issue-with-projects.sh に渡す (skills/review/SKILL.md と同じ pipe 形式、入れ子 $() を回避)
+# jq -n の出力を stdin で create-issue-with-projects.sh に渡す (skills/pr-review/SKILL.md と同じ pipe 形式、入れ子 $() を回避)
 result=$(jq -n \
   --arg title "review-split: {short_summary}" \
   --arg body_file "$tmpfile" \

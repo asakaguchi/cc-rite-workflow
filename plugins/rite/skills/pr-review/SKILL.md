@@ -3309,11 +3309,27 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 
 候補ごとに「Decision Log に記録」が選択されたとき、元 Issue（`{source_issue_number}`、ステップ 7.1 で解決）の Section 9 Decision Log へ 1 行 append する。Section 9 が存在しない場合は作業メモリの「決定事項・メモ」セクションへフォールバックする。
 
-**Placeholder value sources**: Claude はスクリプト生成前に候補の内容から `{decision}`（候補内容の要約、1 文）、`{reason}`（推奨機械決定表の判定根拠。例: `Hypothetical 判定のためスコープ外指摘として記録` / `推奨事項（boundary 分類）のため記録`）を生成する。`{impact}` は候補の file:line、無ければ `特定ファイルなし`。`{source_issue_number}` はステップ 7.1 で解決した値、`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) で解決する。
+**Placeholder value sources**: Claude はスクリプト生成前に候補の内容から `{decision}`（候補内容の要約、1 文。改行を含めないこと）、`{reason}`（推奨機械決定表の判定根拠。例: `Hypothetical 判定のためスコープ外指摘として記録` / `推奨事項（boundary 分類）のため記録`）を生成する。`{impact}` は候補の file:line、無ければ `特定ファイルなし`。`{source_issue_number}` はステップ 7.1 で解決した値、`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) で解決する。候補が複数ある場合も、本ブロックは **候補ごとに単一 Bash tool invocation** で実行する（複数候補を 1 呼び出しでループさせると `trap` が候補間で上書きされ tmpfile がリークするため）。
 
 ```bash
 today=$(date +%Y-%m-%d)
-line_content="{decision} / Reason: {reason} / Impact: {impact}"
+
+# {decision}/{reason}/{impact} は reviewer/レビュー指摘由来の free-text。quoted heredoc
+# (`<<'DECISION_EOF'`) でシェル展開を無害化してから読み込む（`line_content="{decision} ..."`
+# のような直接代入は backtick / `$(` / `"` 混入時にコマンド置換・文字列破壊を招くため禁止）。
+decision_tmp=$(mktemp)
+if ! cat <<'DECISION_EOF' > "$decision_tmp"
+{decision} / Reason: {reason} / Impact: {impact}
+DECISION_EOF
+then
+  echo "ERROR: Decision Log 行テンプレートの一時ファイル書き込みに失敗" >&2
+  echo "[CONTEXT] DECISION_LOG_APPEND_FAILED=1; reason=line_content_write_failure; issue={source_issue_number}" >&2
+  rm -f "$decision_tmp"
+  exit 1
+fi
+line_content=$(tr -d '\n' < "$decision_tmp")
+rm -f "$decision_tmp"
+
 body=$(gh issue view {source_issue_number} --json body --jq '.body')
 
 if [ -z "$body" ]; then
@@ -3321,7 +3337,8 @@ if [ -z "$body" ]; then
   echo "手動追記してください: - ${today} D-NN: ${line_content}" >&2
   echo "[CONTEXT] DECISION_LOG_APPEND_FAILED=1; reason=body_fetch_failure; issue={source_issue_number}" >&2
 elif printf '%s' "$body" | grep -q '^## 9\. Decision Log'; then
-  max_d=$(printf '%s' "$body" | grep -oE 'D-[0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1)
+  # `(^|[^A-Za-z])D-[0-9]+` で先頭境界を要求し、prose 中の `CARD-12` 等の部分文字列誤マッチを防ぐ
+  max_d=$(printf '%s' "$body" | grep -oE '(^|[^A-Za-z])D-[0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1)
   [ -n "$max_d" ] || max_d=0
   next_num=$((max_d + 1))
   next_d=$(printf 'D-%02d' "$next_num")
@@ -3329,14 +3346,17 @@ elif printf '%s' "$body" | grep -q '^## 9\. Decision Log'; then
 
   tmpfile=$(mktemp)
   trap 'rm -f "$tmpfile"' EXIT
+  awk_rc=0
   printf '%s\n' "$body" | awk -v line="$new_line" '
     /^## 9\. Decision Log/ { print; in_section=1; next }
-    in_section && /^## / { print line; print; in_section=0; next }
+    in_section && (/^## / || /^---[[:space:]]*$/) { print line; print; in_section=0; next }
     { print }
     END { if (in_section) print line }
-  ' > "$tmpfile"
+  ' > "$tmpfile" || awk_rc=$?
 
-  if [ -s "$tmpfile" ] && gh issue edit {source_issue_number} --body-file "$tmpfile"; then
+  # awk 異常終了時（部分出力）で body 全体を切り詰めたまま上書きしないよう、exit code も検査する
+  # （full-body PATCH のため `[ -s ]` の非空チェックだけでは途中終了の部分出力を見逃す）。
+  if [ "$awk_rc" -eq 0 ] && [ -s "$tmpfile" ] && gh issue edit {source_issue_number} --body-file "$tmpfile"; then
     echo "[CONTEXT] DECISION_LOG_APPENDED=1; issue={source_issue_number}; entry=$next_d"
     echo "記録: $new_line"
   else
@@ -3345,29 +3365,42 @@ elif printf '%s' "$body" | grep -q '^## 9\. Decision Log'; then
     echo "[CONTEXT] DECISION_LOG_APPEND_FAILED=1; reason=gh_edit_failure; issue={source_issue_number}" >&2
   fi
 else
-  # Section 9 が無い Issue → 作業メモリ「決定事項・メモ」へフォールバック
+  # Section 9 が無い Issue → 作業メモリ「決定事項・メモ」へフォールバック。
+  # issue-comment-wm-sync.sh は non_comment/失敗時も exit 0 を返し、成否は stdout の
+  # status=/reason= 行でのみ通知する契約（helper 冒頭コメント参照）。exit code のみでの成否判定は
+  # false-success を招くため、fix/SKILL.md の正典 shim パターン（status=/reason= パース）に揃える。
   memo_tmp=$(mktemp)
   trap 'rm -f "$memo_tmp"' EXIT
   printf '%s' "- ${today}: ${line_content}" > "$memo_tmp"
-  if bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
+  wm_sync_err=$(mktemp 2>/dev/null) || wm_sync_err=""
+  wm_sync_out=$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
     --issue {source_issue_number} \
     --transform append-section \
-    --section "決定事項・メモ" --content-file "$memo_tmp" 2>/dev/null; then
+    --section "決定事項・メモ" --content-file "$memo_tmp" 2>"${wm_sync_err:-/dev/null}")
+  wm_state=$(printf '%s\n' "$wm_sync_out" | sed -n 's/^status=\([a-z]*\).*/\1/p' | head -1)
+
+  if [ "$wm_state" = "success" ]; then
     echo "[CONTEXT] DECISION_LOG_APPENDED=1; issue={source_issue_number}; fallback=work_memory"
   else
-    echo "WARNING: 元 Issue #{source_issue_number} の作業メモリ「決定事項・メモ」への記録に失敗しました" >&2
+    echo "WARNING: 元 Issue #{source_issue_number} の作業メモリ「決定事項・メモ」への記録に失敗しました (helper status: $wm_sync_out)" >&2
+    if [ -n "$wm_sync_err" ] && [ -s "$wm_sync_err" ]; then
+      echo "  helper stderr (root-cause、先頭 5 行):" >&2
+      head -5 "$wm_sync_err" | sed 's/^/    /' >&2
+    fi
     echo "手動追記してください: - ${today}: ${line_content}" >&2
     echo "[CONTEXT] DECISION_LOG_APPEND_FAILED=1; reason=wm_sync_failure; issue={source_issue_number}" >&2
   fi
+  [ -n "$wm_sync_err" ] && rm -f "$wm_sync_err"
 fi
 ```
 
-Decision Log append failure reasons: (`body_fetch_failure` / `gh_edit_failure` / `wm_sync_failure`)
+Decision Log append failure reasons: (`line_content_write_failure` / `body_fetch_failure` / `gh_edit_failure` / `wm_sync_failure`)
 
 | reason | Description |
 |--------|-------------|
+| `line_content_write_failure` | Decision Log 行テンプレートの一時ファイル書き込みに失敗 |
 | `body_fetch_failure` | 元 Issue の body 取得（`gh issue view`）に失敗 |
-| `gh_edit_failure` | Section 9 への `gh issue edit` 適用に失敗 |
+| `gh_edit_failure` | Section 9 への行挿入（awk）の異常終了、または `gh issue edit` 適用に失敗 |
 | `wm_sync_failure` | Section 9 不在時の作業メモリ「決定事項・メモ」への sync に失敗 |
 
 **Error handling**（いずれも non-blocking。review フローは継続する）: 上記いずれの reason も WARNING を stderr に出力し、記録予定行（`body_fetch_failure` 時は D-NN 未確定）を表示して手動追記を案内する。

@@ -107,7 +107,7 @@ Display the following list:
 └─────────────────────────────────────────────────────────────┘
 
 【セットアップ】
-  /rite:setup            初回セットアップウィザード
+  /rite:setup           初回セットアップウィザード
   /rite:workflow        このガイドを表示
 
 【Issue 管理】

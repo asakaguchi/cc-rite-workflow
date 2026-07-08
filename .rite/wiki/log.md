@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-08T20:25:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260708T112305Z-pr-1800.md を統合 — PR #1800 (Issue #1797、review.md→pr-review.md 拡張子なし短縮表記リネーム 41ファイル・94箇所) で6 reviewer が sweep 完全性・過剰置換ゼロ・除外理由の前例裏取りの3点を独立検証し 0 findings / 1 cycle mergeable に到達した successful preventive application を追記 |
 | 2026-07-08T18:20:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=257, broken_refs=0 (PR #1796 ingest 後の auto-lint) |
 | 2026-07-08T18:15:00+09:00 | update | [識別子リネームは3階層（コマンド文字列・ファイル名shorthand・裸トークン）で置換対象を洗い出す](pages/heuristics/identifier-rename-three-tier-pattern-enumeration.md) | raw/reviews/20260708T090103Z-pr-1796.md を統合 — PR #1796 (Issue #1786、review→pr-review リネーム) で同じ Tier 2 shorthand (review.md) 残存パターンが再演したが、3名の reviewer が独立に `分類: boundary` で報告し fix loop を経ずに別 Issue (#1797) 化、1 cycle・0 blocking findings で収束した代替戦略を追記 |
 | 2026-07-08T13:17:46+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=257, broken_refs=0 (PR #1795 ingest 後の auto-lint) |

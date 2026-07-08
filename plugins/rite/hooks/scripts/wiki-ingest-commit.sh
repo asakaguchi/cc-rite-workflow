@@ -68,7 +68,7 @@
 # is preserved so the user can recover by hand. This is best-effort,
 # not absolute — see the cleanup_body function for the exact semantics.
 # - Emits a structured status line to stdout on success so the caller
-# (review.md / fix.md / close.md Phase X.X.W) can observe the result:
+# (pr-review.md / fix.md / close.md Phase X.X.W) can observe the result:
 # [wiki-ingest-commit] committed=<N>; branch=<wiki>; head=<sha>
 # or when there is nothing to do:
 # [wiki-ingest-commit] committed=0; branch=<wiki>; reason=no-pending
@@ -934,7 +934,7 @@ committed_sha=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 # Push is best-effort vs caller-observable:
 # Push failure MUST be observable by the
 # caller. Exiting 0 on push failure with only a stdout `push=failed` marker
-# is unsafe: the callers (review.md / fix.md / close.md Phase X.X.W.2) do not
+# is unsafe: the callers (pr-review.md / fix.md / close.md Phase X.X.W.2) do not
 # parse that marker, so flaky remote / auth expiry / rate limit would drive
 # all push failures through the success branch and silently emit
 # WIKI_INGEST_DONE=1 without surfacing a push-failure warning.

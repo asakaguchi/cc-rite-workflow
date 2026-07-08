@@ -105,7 +105,7 @@ If a work memory comment exists on the Issue, automatically append a completion 
 # {merged_at} 等は cleanup.md コンテキストの実値で置換する（heredoc malform 回避のため printf を使用）。
 completion_tmp=$(mktemp)
 # helper stderr（auth/rate/network/safety-check 詳細 + backup path）を退避し、失敗時に surface する。
-# canonical caller fix.md 4.5.2 / review.md 6.2 と同じ stderr-capture 規約（2>/dev/null 破棄をしない）。
+# canonical caller fix.md 4.5.2 / pr-review.md 6.2 と同じ stderr-capture 規約（2>/dev/null 破棄をしない）。
 wm_sync_err=$(mktemp 2>/dev/null) || wm_sync_err=""
 trap 'rm -f "$completion_tmp" "${wm_sync_err:-}"' EXIT
 printf '%s\n' \

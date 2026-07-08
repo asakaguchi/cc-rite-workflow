@@ -88,7 +88,7 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 
 <a id="context-emit-stdout-stderr-convention-canonical"></a>
 
-`[CONTEXT]` marker を emit する bash block は、目的に応じて **系統 A: retained-flag / 引数解析系 emit（stderr）** と **系統 B: 後続 phase への状態受け渡し emit（stdout）** の 2 系統に分かれる。この使い分けは pre-existing の運用規約として複数 skill (`fix.md` / `review.md` / `iterate.md` / `wiki-lint.md` 等) に存在していたが、明文化された SoT が無かったため、過去にコメント転記時に規約の主張範囲が誤って拡大され、実際の stdout emit 箇所と矛盾する記述が生まれたことがあった。本セクションはその根本原因 (規約の SoT 不在) を解消する。
+`[CONTEXT]` marker を emit する bash block は、目的に応じて **系統 A: retained-flag / 引数解析系 emit（stderr）** と **系統 B: 後続 phase への状態受け渡し emit（stdout）** の 2 系統に分かれる。この使い分けは pre-existing の運用規約として複数 skill (`fix.md` / `pr-review.md` / `iterate.md` / `wiki-lint.md` 等) に存在していたが、明文化された SoT が無かったため、過去にコメント転記時に規約の主張範囲が誤って拡大され、実際の stdout emit 箇所と矛盾する記述が生まれたことがあった。本セクションはその根本原因 (規約の SoT 不在) を解消する。
 
 ### 系統 A: retained-flag / 引数解析系 emit（stderr）
 
@@ -104,7 +104,7 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 
 **用途**: Bash tool 呼び出し境界を越えるとシェル変数が保持されないため、後続の Bash block や LLM の分岐判断が必要とする値・enum・sentinel を emit する。判別軸は「失敗か成功か」でも「後続 phase が読むかどうか」でもない — 系統 A の引数解析ルーチンの成功パス値 (例: `REVIEW_FILE_PATH`) も、別の bash block (`fix.md` ステップ 1.2.0 Priority 0) が会話コンテキスト経由で後から読むため、両系統とも Bash tool 呼び出し境界を越えて消費される点は共通である。真の判別軸は「同一 bash block 内でユーザー向け診断メッセージ (`エラー:` / `WARNING:`) と同じ stderr チャネルに併置されるか」である。系統 A は診断メッセージと同居する (引数解析の失敗パスの `エラー:` と併記、または Non-blocking Contract の retained flag 自体が診断情報の一部)。系統 B は CONTEXT emit 自体が診断メッセージと同一 stderr チャネルに置かれない (stdout に置かれる) 純粋な状態伝達であり、`WIKI_INGEST_FAILED` のような失敗ステータスも、近傍に `WARNING:` 等の診断メッセージが存在しても、CONTEXT emit 自体が別チャネル (stdout) に置かれる限り系統 B に含まれる。
 
-**代表例**: `doc_heavy_pr` (review.md ステップ 1.2.7)、`WT_ENSURE` (`lib/worktree-git.sh` ensure-session-worktree)、`WIKI_INGEST_DONE` / `WIKI_INGEST_SKIPPED` / `WIKI_INGEST_FAILED` (review.md ステップ 6.5.W、cleanup.md ステップ 9 — `WIKI_INGEST_FAILED` は失敗ステータスだが、CONTEXT emit 自体は stdout に置かれ診断メッセージ (stderr) と同一チャネルに併置されないため系統 B に分類される)、`ROOT_CAUSE_GATE`、`ITERATE_ISSUE` / `ITERATE_CYCLE_MAX` (iterate.md ステップ 0/0.6)、`lint_action` (wiki-lint.md ステップ 8.1)。
+**代表例**: `doc_heavy_pr` (pr-review.md ステップ 1.2.7)、`WT_ENSURE` (`lib/worktree-git.sh` ensure-session-worktree)、`WIKI_INGEST_DONE` / `WIKI_INGEST_SKIPPED` / `WIKI_INGEST_FAILED` (pr-review.md ステップ 6.5.W、cleanup.md ステップ 9 — `WIKI_INGEST_FAILED` は失敗ステータスだが、CONTEXT emit 自体は stdout に置かれ診断メッセージ (stderr) と同一チャネルに併置されないため系統 B に分類される)、`ROOT_CAUSE_GATE`、`ITERATE_ISSUE` / `ITERATE_CYCLE_MAX` (iterate.md ステップ 0/0.6)、`lint_action` (wiki-lint.md ステップ 8.1)。
 
 **注意**: `_FAILED=1; reason=...` という命名シェイプだけでは系統 A/stderr を意味しない。系統 A の命名規約 (前節) と同じ形をした `WIKI_INGEST_FAILED` は系統 B/stdout である。系統の判別は必ず下記の判定ルール表 (診断メッセージと同一 stderr チャネルでの併置の有無) で行うこと。
 
@@ -126,7 +126,7 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 
 <a id="jq-required-fields-snippet-canonical"></a>
 
-`review-result-schema.md` で定義される JSON スキーマの必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) を検証する canonical jq snippet。ステップ 6.1.a (review.md) と ステップ 1.2.0 Priority 0 / 2 / 3 (fix.md) の 4 箇所から参照される (verified-review cycle 8 M-8 対応で canonicalize)。
+`review-result-schema.md` で定義される JSON スキーマの必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) を検証する canonical jq snippet。ステップ 6.1.a (pr-review.md) と ステップ 1.2.0 Priority 0 / 2 / 3 (fix.md) の 4 箇所から参照される (verified-review cycle 8 M-8 対応で canonicalize)。
 
 **Canonical snippet** (jq 式):
 
@@ -140,7 +140,7 @@ and (.findings | type == "array")
 
 | Site | Purpose | Failure Reason |
 |------|---------|----------------|
-| `review.md` ステップ 6.1.a | JSON tmpfile の post-condition 検証 | `schema_required_fields_missing` |
+| `pr-review.md` ステップ 6.1.a | JSON tmpfile の post-condition 検証 | `schema_required_fields_missing` |
 | `fix.md` ステップ 1.2.0 Priority 0 (`--review-file`) | ユーザー明示ファイルの必須フィールド検証 | `explicit_file_schema_required_fields_missing` |
 | `fix.md` ステップ 1.2.0 Priority 2 (local file) | 最新 timestamp ファイルの必須フィールド検証 | `local_file_schema_required_fields_missing` |
 | `fix.md` ステップ 1.2.0 Priority 3 (PR comment Raw JSON) | PR コメント Raw JSON の必須フィールド検証 | `pr_comment_schema_required_fields_missing` |
@@ -149,7 +149,7 @@ and (.findings | type == "array")
 
 **Source検証**: [jq Manual](https://jqlang.org/manual/) — "false and null are considered 'false values', and anything else is a 'true value'. Everything else is 'true', even the number zero and the empty string, array and object." (`jq --help` or interactive `jq .` で確認可能)
 
-**Finding ID validation (ステップ 6.1.a のみ追加検証)**: 本 canonical snippet に加えて ステップ 6.1.a では finding id の書式 (`^F-[0-9]{2,}$`) と一意性も検証する。これは write 側 (review.md) でのみ enforce される「生成規則」であり、read 側 (fix.md) では既に書き込まれた JSON を信頼するため検証不要。
+**Finding ID validation (ステップ 6.1.a のみ追加検証)**: 本 canonical snippet に加えて ステップ 6.1.a では finding id の書式 (`^F-[0-9]{2,}$`) と一意性も検証する。これは write 側 (pr-review.md) でのみ enforce される「生成規則」であり、read 側 (fix.md) では既に書き込まれた JSON を信頼するため検証不要。
 
 ```jq
 (.findings | length == 0)
@@ -165,7 +165,7 @@ Failure reason: `finding_id_format_or_uniqueness_violation`
 
 <a id="hook-lock-contention-classification-canonical"></a>
 
-`local-wm-update.sh` / `issue-comment-wm-sync.sh` などの hook が stderr に出力するメッセージから「lock contention (best-effort skip 許容)」と「non-lock failure (WARNING + stderr 表示義務)」を分類する canonical pattern。`review.md` ステップ 6.2 / 6.4 と `fix.md` ステップ 5.1 の 3 箇所から参照される (verified-review cycle 12 H-1 対応で canonicalize)。
+`local-wm-update.sh` / `issue-comment-wm-sync.sh` などの hook が stderr に出力するメッセージから「lock contention (best-effort skip 許容)」と「non-lock failure (WARNING + stderr 表示義務)」を分類する canonical pattern。`pr-review.md` ステップ 6.2 / 6.4 と `fix.md` ステップ 5.1 の 3 箇所から参照される (verified-review cycle 12 H-1 対応で canonicalize)。
 
 **Canonical pattern** (grep 式):
 
@@ -177,8 +177,8 @@ grep -qiE '(file is locked|lock contention|resource busy)' "$err_file"
 
 | Site | Purpose |
 |------|---------|
-| `review.md` ステップ 6.2 Step 2 (`issue-comment-wm-sync`) | ステップ遷移時の backup sync |
-| `review.md` ステップ 6.4 (`_rite_review_p64_run_sync` helper) | ステップ 6.4 の 3 step 全てで本 helper が参照 |
+| `pr-review.md` ステップ 6.2 Step 2 (`issue-comment-wm-sync`) | ステップ遷移時の backup sync |
+| `pr-review.md` ステップ 6.4 (`_rite_review_p64_run_sync` helper) | ステップ 6.4 の 3 step 全てで本 helper が参照 |
 | `fix.md` ステップ 5.1 (`local-wm-update.sh`) | E2E flow 経路の post-fix local work memory 更新 |
 
 **Rationale for exact phrase match**: 旧 loose pattern `grep -qiE 'lock|contention|busy'` は以下の silent suppression 問題を抱えていた:
@@ -187,6 +187,6 @@ grep -qiE '(file is locked|lock contention|resource busy)' "$err_file"
 - NFS timeout のメッセージに `"busy"` が含まれる経路
 - 将来 hook の error message が翻訳や refactor で `"locked directory"` 等に変わった場合の false-positive 拡大 (単語単位 substring match は脆い)
 
-これらを防ぐため、exact phrase match の厳格化された regex に統一する (cycle 10 S-1 で `review.md` の Step 2 以外には適用されたが、本 cycle 12 H-1 で 4 箇所全てに波及)。
+これらを防ぐため、exact phrase match の厳格化された regex に統一する (cycle 10 S-1 で `pr-review.md` の Step 2 以外には適用されたが、本 cycle 12 H-1 で 4 箇所全てに波及)。
 
 **Non-lock failure (本 pattern が match しない) 時の責務**: WARNING + hook stderr 先頭 5 行の表示 (`head -5 "$err_file" | sed 's/^/  /' >&2`)、および「対処: hook の存在 / 実行権限 / 内容を確認してください」の案内を追加する。詳細は各 Usage site の実装例を参照。

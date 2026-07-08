@@ -536,7 +536,7 @@ OK patterns:
 
 **Summary**: command / reference 本文の operational bash ブロックは軽量に保つ — **1 ブロック 1 目的・<= 25 行を目安**とし、python inline (`python3 -c`)・入れ子 `$()`・複数 heredoc を 1 ブロックに密集させない。tmpfile や中間変数を process 境界を跨いで渡す必要がある場合は、1 本の Bash invocation に詰め込まず `hooks/` または `scripts/` の helper script へ切り出す。
 
-**Failure pattern** (observed incident): 過去に複数のコマンド本文 (`pr/ready.md` / `pr/fix.md` / `pr/review.md` 等) が 40〜360 行規模の operational bash ブロックを抱えており、各々「⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること」と注記した上で `python3 -c` heredoc・多引数 `jq -n`・入れ子 `$()`・`trap` + `mktemp` を密集させていた。Claude のツール呼び出し解析がこの巨大ブロックで malform し、**エラーすら出さず無言でターンが終了（停止）する**事象が `/rite:ready` 実行中および scout 1 行で計 3 回以上観測された。ブロックを phase ごとに分割する／重いロジックを helper script へ切り出して本文を数行の呼び出しにする、のいずれかで停止は解消した。
+**Failure pattern** (observed incident): 過去に複数のコマンド本文 (`pr/ready.md` / `pr/fix.md` / `pr/pr-review.md` 等) が 40〜360 行規模の operational bash ブロックを抱えており、各々「⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること」と注記した上で `python3 -c` heredoc・多引数 `jq -n`・入れ子 `$()`・`trap` + `mktemp` を密集させていた。Claude のツール呼び出し解析がこの巨大ブロックで malform し、**エラーすら出さず無言でターンが終了（停止）する**事象が `/rite:ready` 実行中および scout 1 行で計 3 回以上観測された。ブロックを phase ごとに分割する／重いロジックを helper script へ切り出して本文を数行の呼び出しにする、のいずれかで停止は解消した。
 
 **Rules**:
 1. 1 ブロック = 1 目的。operational bash ブロックは <= 25 行を目安とする。

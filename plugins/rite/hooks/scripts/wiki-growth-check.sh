@@ -10,10 +10,10 @@
 # Wiki ingest silent skip 3層防御 — layer 3 (lint growth check).
 # Companion to:
 #   - layer 0: hooks/scripts/wiki-ingest-commit.sh — deterministic single-process
-#              raw-source commit path invoked from review.md / fix.md / close.md
+#              raw-source commit path invoked from pr-review.md / fix.md / close.md
 #              Phase X.X.W.2. This is the foundation that makes layer 3 a genuine
 #              regression signal rather than a symptom of fragile LLM orchestration.
-#   - layer 1: review.md / fix.md / close.md Phase X.X.W skip 不可化
+#   - layer 1: pr-review.md / fix.md / close.md Phase X.X.W skip 不可化
 #   - layer 2: review/fix/close が ingest skip/failure 時に stderr へ plain WARNING を出力
 #
 # Usage:
@@ -382,7 +382,7 @@ check_pr_raw_correspondence() {
   if [ "$missing_count" -ge "$pr_raw_thresh" ]; then
     echo "==> PR↔raw correspondence gap: $missing_count of $total_checked recent merged PRs have no raw source on '$wiki_branch' (threshold: $pr_raw_thresh)"
     echo "==> Missing PRs: $missing_prs"
-    echo "==> Hint: Phase X.X.W (Wiki Ingest Trigger) may not be firing for these PRs. Verify review.md ステップ 6.5.W.2 / fix.md ステップ 4.6.W.2 / close.md Phase 4.4.W.2 execution."
+    echo "==> Hint: Phase X.X.W (Wiki Ingest Trigger) may not be firing for these PRs. Verify pr-review.md ステップ 6.5.W.2 / fix.md ステップ 4.6.W.2 / close.md Phase 4.4.W.2 execution."
     return 1
   fi
 

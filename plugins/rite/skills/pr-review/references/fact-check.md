@@ -2,7 +2,7 @@
 
 > **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
 
-> **Source**: Referenced from `review.md` ステップ 5 Critic Phase (`#### Fact-Check Phase`, between Deduplication and Specification Consistency Verification). This file is the source of truth for fact-check rules.
+> **Source**: Referenced from `pr-review.md` ステップ 5 Critic Phase (`#### Fact-Check Phase`, between Deduplication and Specification Consistency Verification). This file is the source of truth for fact-check rules.
 
 ## Overview
 
@@ -14,7 +14,7 @@ Fact-Check Phase は Critic Phase パイプラインの Deduplication と Specif
 Debate → Dedup → Fact-Check (Sub-Phase A + B) → Spec Consistency → Assessment → Report
 ```
 
-> **Sub-Phase 命名**: 本ファイル内の `Sub-Phase A` / `Sub-Phase B` は Fact-Check 内部の 2 段構成を示す独立 namespace であり、review.md 上位の ステップ 5.1 Result Collection / ステップ 5.2 Cross-Validation / ステップ 5.2.1 Debate Phase とは別空間である。上位 Phase との混同を避けるため、本ファイルでは数字サブフェーズ番号（5.1 / 5.2 等）を使わず `Sub-Phase A` / `Sub-Phase B` で一貫表記する。
+> **Sub-Phase 命名**: 本ファイル内の `Sub-Phase A` / `Sub-Phase B` は Fact-Check 内部の 2 段構成を示す独立 namespace であり、pr-review.md 上位の ステップ 5.1 Result Collection / ステップ 5.2 Cross-Validation / ステップ 5.2.1 Debate Phase とは別空間である。上位 Phase との混同を避けるため、本ファイルでは数字サブフェーズ番号（5.1 / 5.2 等）を使わず `Sub-Phase A` / `Sub-Phase B` で一貫表記する。
 
 ## Configuration
 

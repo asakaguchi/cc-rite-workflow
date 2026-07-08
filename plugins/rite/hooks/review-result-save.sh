@@ -2,7 +2,7 @@
 # rite workflow - Review Result Local Save
 # Deterministic helper for skills/pr-review/SKILL.md ステップ 6.1.a (Local JSON File Save).
 #
-# review.md ステップ 6.1.a のローカル JSON 保存処理 (timestamp 注入 / 多段 jq validation /
+# pr-review.md ステップ 6.1.a のローカル JSON 保存処理 (timestamp 注入 / 多段 jq validation /
 # 同秒衝突回避 / atomic mv) を担う。本文側の巨大 inline bash を helper に切り出すことで、単一 Bash
 # invocation での malform 無言停止を回避する。JSON body は
 # caller が Write tool で tmpfile に書き出し `--content-file` で渡す (heredoc malform 源を撤廃)。
@@ -10,7 +10,7 @@
 # Usage:
 #   bash review-result-save.sh --pr <number> --content-file <path> [--results-dir <dir>]
 #
-#   caller (review.md ステップ 6.1.a) は以下を行う:
+#   caller (pr-review.md ステップ 6.1.a) は以下を行う:
 #     1. review-result-schema.md に従う JSON body を生成し、`"timestamp"` フィールドに
 #        literal sentinel "__RITE_TS_PLACEHOLDER_7f3a9b2c__" を書き込んだ上で **Write tool** で
 #        tmpfile (例: /tmp/rite-review-result-<pr>.json) に保存する。
@@ -23,7 +23,7 @@
 #   --content-file  JSON body tmpfile path (required)
 #   --results-dir   保存先ディレクトリ (default: .rite/review-results)
 #
-# 契約 (review.md ステップ 6.1.a / D-04 と verbatim 一致):
+# 契約 (pr-review.md ステップ 6.1.a / D-04 と verbatim 一致):
 #   - 非ブロッキング: 全失敗経路で `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を stderr に emit し
 #     exit 0 (ステップ 6 全体を fail させない)。
 #   - 14 reason 語彙: pr_number_placeholder_residue / date_command_failure / mkdir_failure /
@@ -231,7 +231,7 @@ if ! jq -e '
 fi
 
 # NOTE:
-#   review.md ステップ 6.1.a の原実装は `[.findings[].id] | unique | length == (.findings | length)`
+#   pr-review.md ステップ 6.1.a の原実装は `[.findings[].id] | unique | length == (.findings | length)`
 #   と書いており、jq では `length == (.findings | length)` の `.findings` がパイプ後の配列
 #   (unique 結果) に対して評価され "Cannot index array with string findings" でエラーになる。
 #   その結果 findings を 1 件でも持つレビューは本 check が常に jq エラー → `! jq -e` が true →

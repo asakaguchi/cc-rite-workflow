@@ -774,7 +774,7 @@ exit 1
 | `jq_error_on_commit_sha` | Priority 0/2/3 の `.commit_sha` 抽出 jq が IO/binary エラーで失敗 (I-4 対応。stale detection 無効化を silent にしない。`priority=0|2|3` として retained flag に付記される) |
 | `pr_comment_severity_map_build_failed` | Priority 3 で PR コメント Raw JSON からの severity_map 構築用 jq が失敗 (legacy Markdown parser へ fallthrough) |
 | `pr_comment_tempfile_read_io_error` | Priority 3 で `pr_comment_body_file` の cat が IO エラーで失敗 (permission 変更 / NFS timeout / TOCTOU truncate) |
-| `pr_number_placeholder_residue` | ステップ 1.2.0 冒頭の `pr_number="{pr_number}"` literal substitute が忘れられ、数値以外 (空文字 / placeholder 残留) のまま bash block に入った (cleanup.md ステップ 6 / review.md ステップ 6.1.a と対称化、`[fix:error]` 昇格) |
+| `pr_number_placeholder_residue` | ステップ 1.2.0 冒頭の `pr_number="{pr_number}"` literal substitute が忘れられ、数値以外 (空文字 / placeholder 残留) のまま bash block に入った (cleanup.md ステップ 6 / pr-review.md ステップ 6.1.a と対称化、`[fix:error]` 昇格) |
 | `scope_omitted_in_v1_0` | schema 1.0/1.0.0 受信時に findings[].scope が欠落しているため severity ベースの default mapping で補完した (`REVIEW_SOURCE_SCOPE_DEFAULTED` flag、非ブロッキング、observability のみ)。本表の emit 元は Priority 3 string-based 鏡像 (ステップ 1.2.0.s)。file-based 版は `review-findings-maps.sh` が同名 reason を emit する (下記 bullet 参照) |
 | `pre_existing_false_scope_nit_noted` | cross-field invariant #5 違反 — `pre_existing == false` × `scope == "nit-noted"` の finding を検出し、scope を `current-pr` に auto-correct した (`REVIEW_SOURCE_AUTO_CORRECTED` flag、非ブロッキング)。emit 元は Priority 3 鏡像 + `review-findings-maps.sh` の dual (下記 bullet 参照) |
 | `jq_mutation_failed` | schema 1.1.0 normalization (default mapping + invariant #5 auto-correct) を行う jq mutation が失敗 (`REVIEW_SOURCE_NORMALIZATION_FAILED` flag、非ブロッキング、原 JSON のまま続行)。emit 元は Priority 3 鏡像 + `review-findings-maps.sh` の dual (下記 bullet 参照) |
@@ -3022,7 +3022,7 @@ wm_state_of() { printf '%s\n' "$1" | sed -n 's/^status=\([a-z]*\).*/\1/p' | head
 wm_reason_of() { printf '%s\n' "$1" | sed -n 's/.*reason=\([a-z_]*\).*/\1/p' | head -1; }
 
 if [ "$git_diff_failed" -eq 0 ]; then
-  # helper の stderr (root-cause 診断) を退避する (review.md ステップ 6.2 と同じ stderr-capture 規約)。
+  # helper の stderr (root-cause 診断) を退避する (pr-review.md ステップ 6.2 と同じ stderr-capture 規約)。
   # mktemp 失敗時は /dev/null に fallback する。
   wm_sync_err=$(mktemp 2>/dev/null) || wm_sync_err=""
   # --- transform 1: 進捗サマリー + 変更ファイル更新 ---
@@ -3485,13 +3485,13 @@ ACTION: Return to ステップ 4.6.W and execute the Wiki Ingest Trigger before 
 The `fix` flow-state write below records the v3 phase so a `/rite:recover` started after a fix iteration classifies the resume point correctly (`skills/recover/SKILL.md` Phase 5.3 の `fix` 行で `/rite:iterate {pr_number}` が invoke される):
 
 **Handoff マーカー**: 結果に応じて 3 種類に分岐する。
-- **継続** (`[fix:pushed]` / `[fix:pushed-wm-stale]`): `--handoff "/rite:pr-review {pr_number}"` で**ループ継続マーカー**をセットする。`Stop` hook (`stop-loop-continuation.sh`) が turn 終了時にこれを consume し、LLM が re-review に進まず停止しても `/rite:pr-review` を再注入する (review.md Step 8.0 の fix 方向版)。
+- **継続** (`[fix:pushed]` / `[fix:pushed-wm-stale]`): `--handoff "/rite:pr-review {pr_number}"` で**ループ継続マーカー**をセットする。`Stop` hook (`stop-loop-continuation.sh`) が turn 終了時にこれを consume し、LLM が re-review に進まず停止しても `/rite:pr-review` を再注入する (pr-review.md Step 8.0 の fix 方向版)。
 - **正常終了** (`[fix:replied-only]`): `--handoff "FINALIZE:fix:replied-only:{pr_number}"` で**終了通知マーカー (FINALIZE handoff)** をセットする。Stop hook が prefix `FINALIZE:` を検出し、「`/rite:iterate` ステップ5 の完了通知を出力してから終えよ」と **1 回だけ** 再注入する。one-shot consume のため完了通知出力後はクリーン終了する (無限 block しない)。
 - **エラー** (`[fix:error]`): `--handoff` を**付けない** (handoff はデフォルトクリア)。`[fix:error]` は clean terminal ではなく caller (`/rite:iterate` ステップ4) で AskUserQuestion (再試行/中止) に分岐するため、完了通知を強制してはならない。
 
 判定は本ステップ時点で**既に確定している入力**で行う (sentinel 評価テーブルより前だが、push 状態と fatal フラグは ステップ 4.6 / 4.5 / 2.4 / 1.0.1 で既知): **`プッシュ: 完了` かつ fatal フラグ (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED` / `REPORT_POST_FAILED`) が context に未 set なら継続 = `--handoff "/rite:pr-review {pr_number}"`**。push 無し (reply のみ) かつ fatal フラグ未 set なら正常終了 = `--handoff "FINALIZE:fix:replied-only:{pr_number}"`。fatal フラグ有り (`[fix:error]`) なら `--handoff` なし。`WM_UPDATE_FAILED` は `[fix:pushed-wm-stale]` (= 継続) に縮退するため継続 handoff を打ち消さない。
 
-> **Note (review がセットした handoff の消去経路)**: 上記の判定が責務とするのは fix.md が**自身でセットする** handoff (継続 `/rite:pr-review` / 終了 `FINALIZE:fix:replied-only`) のみ。review.md Step 8.0 が**セットした** `/rite:fix` handoff は `[fix:error]` 早期 exit (本 Step 5.1 不到達) では fix.md 側で消去されず、その default-clear は iterate.md ステップ3 の clearing set (`flow-state.sh set --phase fix` を `--handoff` なしで実行) にのみ依存する。iterate.md ステップ3 の set を変更/削除すると stale な `/rite:fix` handoff が残存し誤った再注入を招きうるため、そちらを触る際は本依存に注意すること。
+> **Note (review がセットした handoff の消去経路)**: 上記の判定が責務とするのは fix.md が**自身でセットする** handoff (継続 `/rite:pr-review` / 終了 `FINALIZE:fix:replied-only`) のみ。pr-review.md Step 8.0 が**セットした** `/rite:fix` handoff は `[fix:error]` 早期 exit (本 Step 5.1 不到達) では fix.md 側で消去されず、その default-clear は iterate.md ステップ3 の clearing set (`flow-state.sh set --phase fix` を `--handoff` なしで実行) にのみ依存する。iterate.md ステップ3 の set を変更/削除すると stale な `/rite:fix` handoff が残存し誤った再注入を招きうるため、そちらを触る際は本依存に注意すること。
 
 ```bash
 # 継続 ([fix:pushed] / [fix:pushed-wm-stale]: push 完了 & fatal フラグ無し) の場合 (継続 handoff):

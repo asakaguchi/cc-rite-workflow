@@ -57,7 +57,7 @@ caller の `exit 1` 直前に emit が必要になる。
 - **tempfile 経由 hand-off にした理由**: 大きい multi-line PR コメント本文を Claude が HEREDOC literal に埋め込む方式は escape 漏れ・truncate リスクがあるため廃止した。Broad Retrieval が specific path に書き出し、Priority 3 block が直接読み出す。ステップ 5.1 までの間に異常終了すると orphan 化するため trap で cleanup を保証する。
 - **cat の exit code を独立 capture する理由**: exit code を check しないと、permission 変更 / NFS timeout / TOCTOU truncate で silent に空文字列になり、後段の awk parser が no-match → `raw_json=""` → legacy fallthrough に silent 合流する。
 - **tempfile 不在時に [INFO] を emit する理由**: (a) Broad Retrieval が `📜 rite レビュー結果` コメントを発見せず tempfile を作成しなかった legitimate な経路 (新規 PR / review 未実行 / 削除済み) と、(b) Claude が Priority 3 進入時に Broad Retrieval bash block を skip した前提条件違反経路、の 2 ケースを区別して trace するため。機械的 enforcement は複雑で scope 外のため、observability を確保する対症療法として [INFO] を emit する。
-- **awk が「`---` separator 後の最後の `### 📄 Raw JSON`」を採用する理由**: findings の description / suggestion 列内に `### 📄 Raw JSON` リテラル文字列が含まれる場合 (fix.md / review.md 自身を扱う PR が該当)、最初のマッチで `in_section` を立てると本来の Raw JSON section より早く誤検出される。ステップ 6.1.b の Raw JSON section は必ず `---` separator の後にあるため、1-pass で末尾の section start を tracking し END 内で逆方向スキャンする。実装は POSIX awk のみで動作し、tac (GNU coreutils 専用) や 2-pass 読み込みを必要としない。
+- **awk が「`---` separator 後の最後の `### 📄 Raw JSON`」を採用する理由**: findings の description / suggestion 列内に `### 📄 Raw JSON` リテラル文字列が含まれる場合 (fix.md / pr-review.md 自身を扱う PR が該当)、最初のマッチで `in_section` を立てると本来の Raw JSON section より早く誤検出される。ステップ 6.1.b の Raw JSON section は必ず `---` separator の後にあるため、1-pass で末尾の section start を tracking し END 内で逆方向スキャンする。実装は POSIX awk のみで動作し、tac (GNU coreutils 専用) や 2-pass 読み込みを必要としない。
 - **here-string `<<<` を使う理由**: `printf | awk` 形式は awk の `exit` による stdin 早期終了で printf が SIGPIPE を受ける経路がある (bash-defensive-patterns.md Pattern 5)。
 - **awk exit code を明示検査する理由**: awk OOM / binary 異常の空出力が「Raw JSON section なし (legacy format)」と区別不能になり、legacy parser が新形式コメントを garble する silent regression を防ぐ。
 - **3 つの失敗ケースを else の no-op に融合させない理由**: `raw_json=""` だけが legitimate な legacy fallthrough であり、「jq empty 失敗」「必須 fields 欠落」は壊れた新形式 JSON として WARNING + reason emit してから legacy parser に流すべき。
@@ -129,7 +129,7 @@ bash の `exit 1` は Bash tool の exit code に変換されるだけで Claude
 - **wm_emit_done gate の理由**: retained flag の重複 emit はステップ 5.1 の reason 解釈を非決定的にし debug UX を悪化させる (M-4)。また IO error 経路で issue_number を空にするだけだと直後の branch fallback が誤起動して「IO error 経路なのに issue_number が設定される」semantics 破壊を起こす (M-5)。
 - **issue_number 抽出失敗で retained flag を emit する理由**: 単に WARNING を出すだけだと E2E flow / hook 経由実行で人間の目に見えず、review-fix loop が更新失敗を認識しないまま `[fix:pushed]` を silent 出力し、次 iteration が stale work memory のまま続行する (HIGH-2 対応)。
 - **4.5.2 の base_branch 解決を簡素化した理由**: grep exit 1/2 区別・sed IO エラー個別 reason は撤去済み。委譲後は git diff の失敗が単一の visible gate になるため、base_branch を誤解決しても silent fallback ではなく git diff 失敗として表面化する。
-- **helper stderr を退避する理由**: `2>/dev/null` で破棄すると `WM_UPDATE_FAILED` 時に operator が root-cause (auth/rate/network/safety-check 詳細 + backup path) を追えない。review.md ステップ 6.2 と同じ stderr-capture 規約。
+- **helper stderr を退避する理由**: `2>/dev/null` で破棄すると `WM_UPDATE_FAILED` 時に operator が root-cause (auth/rate/network/safety-check 詳細 + backup path) を追えない。pr-review.md ステップ 6.2 と同じ stderr-capture 規約。
 - **変更ゼロ時の挙動**: helper の update-progress は空 changed-files-file を受けると `### 変更ファイル` セクション本文を空文字に置換するが、4.5.2 は fix commit 後に走るため git diff は全コミットを含み、変更ゼロは実運用で発生しない。
 
 ## wiki-ingest-notes

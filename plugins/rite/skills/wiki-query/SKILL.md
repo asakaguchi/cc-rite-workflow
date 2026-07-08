@@ -159,6 +159,6 @@ bash "${plugin_root}/hooks/wiki-query-inject.sh" \
 | コマンド | 注入タイミング | キーワードソース | 統合セクション |
 |---------|--------------|------------------|--------------|
 | `/rite:open` | 実装計画生成前 | Issue タイトル + ラベル + 変更対象ファイル名 | `skills/open/SKILL.md` ステップ 3 (実装計画) |
-| `/rite:pr-review` | レビュアー投入前 | 変更ファイルパス + ファイル種別 | `review.md` ステップ 4.0.W |
+| `/rite:pr-review` | レビュアー投入前 | 変更ファイルパス + ファイル種別 | `pr-review.md` ステップ 4.0.W |
 | `/rite:fix` | 修正計画前 | レビュー指摘のカテゴリ + 対象ファイル | `fix.md` ステップ 0.5.W |
 | `/rite:issue-implement` | 実装開始前 | 計画に含まれるキーワード | `implement.md` Phase 5.0.W |

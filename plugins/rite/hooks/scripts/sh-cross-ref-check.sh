@@ -23,7 +23,7 @@
 #
 # Heading-convention model (verified against the real tree):
 #   Only TOP-LEVEL `##` headings carry the keyword:
-#       `## ステップ N: title`   (ステップ-style file, e.g. pr/review.md, pr/open.md)
+#       `## ステップ N: title`   (ステップ-style file, e.g. pr/pr-review.md, pr/open.md)
 #       `## Phase N: title`      (Phase-style file,    e.g. issue/close.md, lint.md)
 #   SUB headings are bare-number, WITHOUT the keyword:
 #       `#### 6.5.W.2 Wiki Raw Commit`
@@ -34,7 +34,7 @@
 #
 # Reference grammar matched in prose:
 #   <file-token>.(md|sh)  <keyword>  <number>
-#     file-token : bare basename (review.md) OR path (skills/pr-review/SKILL.md)
+#     file-token : bare basename (pr-review.md) OR path (skills/pr-review/SKILL.md)
 #     keyword    : ステップ | Phase
 #     number     : N(.X)*  where X is [0-9A-Za-z]  (e.g. 6.5.W.2, 4.4.W.2, 3.15)
 #

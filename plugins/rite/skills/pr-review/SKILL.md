@@ -3347,11 +3347,14 @@ elif printf '%s' "$body" | grep -q '^## 9\. Decision Log'; then
   tmpfile=$(mktemp)
   trap 'rm -f "$tmpfile"' EXIT
   awk_rc=0
-  printf '%s\n' "$body" | awk -v line="$new_line" '
+  # `awk -v` はバックスラッシュエスケープを解釈するため（`\n`→改行, `\t`→タブ, `\d`→`d` 等）、
+  # $new_line に正規表現例・Windows パス等 backslash を含む free-text が入ると「1 行 append」
+  # 不変条件（AC-3）を破って複数行に分割されうる。ENVIRON はエスケープ解釈しないため経由する。
+  printf '%s\n' "$body" | NEW_LINE="$new_line" awk '
     /^## 9\. Decision Log/ { print; in_section=1; next }
-    in_section && (/^## / || /^---[[:space:]]*$/) { print line; print; in_section=0; next }
+    in_section && (/^## / || /^---[[:space:]]*$/) { print ENVIRON["NEW_LINE"]; print; in_section=0; next }
     { print }
-    END { if (in_section) print line }
+    END { if (in_section) print ENVIRON["NEW_LINE"] }
   ' > "$tmpfile" || awk_rc=$?
 
   # awk 異常終了時（部分出力）で body 全体を切り詰めたまま上書きしないよう、exit code も検査する
@@ -3403,11 +3406,11 @@ Decision Log append failure reasons: (`line_content_write_failure` / `body_fetch
 | `gh_edit_failure` | Section 9 への行挿入（awk）の異常終了、または `gh issue edit` 適用に失敗 |
 | `wm_sync_failure` | Section 9 不在時の作業メモリ「決定事項・メモ」への sync に失敗 |
 
-**Error handling**（いずれも non-blocking。review フローは継続する）: 上記いずれの reason も WARNING を stderr に出力し、記録予定行（`body_fetch_failure` 時は D-NN 未確定）を表示して手動追記を案内する。
+**Error handling**（いずれも non-blocking。review フローは継続する）: 上記いずれの reason も WARNING を stderr に出力し、記録予定行（`body_fetch_failure` 時は D-NN 未確定）を表示して手動追記を案内する。AC-5 は stderr 表示に加えて **completion report への表示** も要求するため（2 チャネル要件）、当該記録予定行は 7.5-7.6 の completion report にも転記する。
 
 ### 7.5-7.6 Append to PR & Report
 
-Post Issue list to PR comment (`mktemp` + `--body-file`). Decision Log に記録した候補があれば件数を completion report に表示する（`[CONTEXT] DECISION_LOG_APPENDED=1` の出現回数）。Output completion report.
+Post Issue list to PR comment (`mktemp` + `--body-file`). Decision Log に記録した候補があれば件数を completion report に表示する（`[CONTEXT] DECISION_LOG_APPENDED=1` の出現回数）。**失敗した候補があれば**（`[CONTEXT] DECISION_LOG_APPEND_FAILED=1` の出現）、件数とあわせて各候補の「手動追記してください: ...」行（7.4.3 各失敗分岐が stderr に出力済みの記録予定行）を completion report にも転記し、手動追記が必要なことをユーザーに明示する（AC-5: stderr 出力のみでは completion report 表示要件を満たさない）。Output completion report.
 
 ### 7.7 Post-condition Gate — Recommendation Disposition Enforcement
 

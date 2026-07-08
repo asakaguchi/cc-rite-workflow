@@ -267,7 +267,7 @@ rite は visualizer の成果物をコピー・改変しません。取得・実
 
 visualizer は `.rite/wiki/` をファイルシステム上のディレクトリとして読みます。`branch_strategy` により materialize 手順が異なります:
 
-- **separate_branch（推奨）**: Wiki データは専用ブランチ（既定 `wiki`）にあり、開発ツリーには存在しません。既存の wiki worktree helper で materialize します。`plugin_root` は local 開発・marketplace install の両方を解決する inline one-liner（[Plugin Path Resolution](plugin-path-resolution.md#inline-one-liner-for-command-files) 参照。`skills/wiki-ingest/SKILL.md` / `init.md` と同一）で得ます:
+- **separate_branch（推奨）**: Wiki データは専用ブランチ（既定 `wiki`）にあり、開発ツリーには存在しません。既存の wiki worktree helper で materialize します。`plugin_root` は local 開発・marketplace install の両方を解決する inline one-liner（[Plugin Path Resolution](plugin-path-resolution.md#inline-one-liner-for-command-files) 参照。`skills/wiki-ingest/SKILL.md` / `setup.md` と同一）で得ます:
 
   ```bash
   # plugin_root を解決（install 時は ~/.claude/plugins/.../rite に解決される）
@@ -337,7 +337,7 @@ fi
 - `plugins/rite/hooks/scripts/lib/wiki-config.sh` (共通 helper `parse_wiki_scalar`、lenient — callers: wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh が `source` 経由で再利用)
 
 **設計差異**:
-- **lenient 経路**: ingest.md / lint.md / query.md / inject.sh / wiki-config.sh / 各 caller (cleanup.md / fix.md / review.md / implement.md / close.md / init.md) と独立 inline 実装 (growth-check.sh / gitignore-health-check.sh) は **lenient** — `false`/`no`/`0` のみ reject、それ以外 (`true`/`yes`/`1` も不明値も空文字も) は `true` として opt-out default 化する。ingest.md / lint.md は `case "$wiki_enabled" in false|no|0) wiki_enabled=false ;; *) wiki_enabled=true ;; esac` の 2-arm 形式
+- **lenient 経路**: ingest.md / lint.md / query.md / inject.sh / wiki-config.sh / 各 caller (cleanup.md / fix.md / review.md / implement.md / close.md / setup.md) と独立 inline 実装 (growth-check.sh / gitignore-health-check.sh) は **lenient** — `false`/`no`/`0` のみ reject、それ以外 (`true`/`yes`/`1` も不明値も空文字も) は `true` として opt-out default 化する。ingest.md / lint.md は `case "$wiki_enabled" in false|no|0) wiki_enabled=false ;; *) wiki_enabled=true ;; esac` の 2-arm 形式
 - **fail-fast 経路**: `wiki-ingest-trigger.sh` のみ意図的に **strict 3-arm with fail-fast `*`** (`case "$wiki_enabled"` の `*) ... exit 2` 分岐) — staging hook の safe-default policy violation 防止のため、`ture` / `yse` 等の typo / 不明値を即座に reject する。本 site だけが lenient ファミリと意図的に非対称
 - **`branch_strategy` 検証**: ingest.md ステップ 1.1 では silent default で fill (probe 段階)、ステップ 5.1 (separate_branch 戦略) の if/elif/else 末尾 `else` 分岐で fail-fast 検証 (`ERROR: 未知の branch_strategy ... exit 1`) を行う 2 段階構造。ステップ 5.2 (same_branch 戦略) の bash block は `if [ "$branch_strategy" = "same_branch" ]` 単独分岐で branch_strategy の fail-fast を持たない (未知値は先行するステップ 5.1 の else が catch する)。ステップ 5.1 内の case 文 fail-fast (`commit_msg` placeholder gate は placeholder パターン arm、`commit_rc` は `*)` arm) は branch_strategy 検証ではない。lint.md ステップ 1.1 (Wiki 設定の読み取りとブランチ戦略判定) の `branch_strategy` 検証は case-based (`*) ... exit 1`) で、ingest.md の else-based とは構文が異なるが同じ fail-fast 契約
 

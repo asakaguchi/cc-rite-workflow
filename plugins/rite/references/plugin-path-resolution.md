@@ -117,6 +117,6 @@ Command files that need plugin path resolution should include the inline one-lin
 
 **Important**: New command files should embed the one-liner directly rather than referencing this document with a link. Existing command files that still use the link-reference pattern (`per [Plugin Path Resolution](...)`) will be migrated incrementally to the inline one-liner in future Issues.
 
-## Relationship to init.md Hook Path Resolution
+## Relationship to setup.md Hook Path Resolution
 
-`init.md` Phase 4.5.0 uses a similar but specialized detection for the `hooks/` subdirectory. This helper generalizes that pattern for the entire plugin root. The detection logic is intentionally consistent between the two.
+`setup.md` Phase 4.5.0 uses a similar but specialized detection for the `hooks/` subdirectory. This helper generalizes that pattern for the entire plugin root. The detection logic is intentionally consistent between the two.

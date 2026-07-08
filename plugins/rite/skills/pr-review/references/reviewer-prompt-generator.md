@@ -1,6 +1,6 @@
 # Reviewer 指示テンプレート（Generator フェーズ）
 
-`/rite:review` ステップ 4.5 で各 reviewer agent に渡す通常レビュー指示のテンプレート。SKILL.md 側の「Placeholder embedding method」表に従い `{placeholder}` を埋めて使用する。
+`/rite:pr-review` ステップ 4.5 で各 reviewer agent に渡す通常レビュー指示のテンプレート。SKILL.md 側の「Placeholder embedding method」表に従い `{placeholder}` を埋めて使用する。
 
 ```
 PR #{number}: {title} のレビューを {reviewer_type} として実行してください。

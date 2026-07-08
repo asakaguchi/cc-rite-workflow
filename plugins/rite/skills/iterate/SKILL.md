@@ -1,7 +1,7 @@
 ---
 name: iterate
 description: |
-  rite workflow のレビュー/修正ループ: 指定 PR を /rite:review ⇄ /rite:fix で mergeable まで
+  rite workflow のレビュー/修正ループ: 指定 PR を /rite:pr-review ⇄ /rite:fix で mergeable まで
   自律的に回す。/rite:open・/rite:run から呼ばれる sub-step、または手動 /rite:iterate <pr>。
   汎用の「PR を直す」ヘルパーではなく、その語では auto-activate しない。
   起動: /rite:iterate <pr_number>
@@ -10,11 +10,11 @@ argument-hint: "<pr_number>"
 
 # /rite:iterate
 
-`/rite:review` ↔ `/rite:fix` を **指摘ゼロ（mergeable）になるまでループ** する。ただし `safety.max_review_cycles`（既定 5）を上限とする **サーキットブレーカー** を備え、reviewer の非決定的な振動や非収束 PR による無限ループを構造的に防ぐ。やることは以下のシーケンシャルなタスク列:
+`/rite:pr-review` ↔ `/rite:fix` を **指摘ゼロ（mergeable）になるまでループ** する。ただし `safety.max_review_cycles`（既定 5）を上限とする **サーキットブレーカー** を備え、reviewer の非決定的な振動や非収束 PR による無限ループを構造的に防ぐ。やることは以下のシーケンシャルなタスク列:
 
 0. flow-state から issue_number / branch_name を復元
 0.6. cycle counter を初期化（fresh は 0 にリセット / resume は継続）+ `safety.max_review_cycles` を読込・検証
-1. cycle 上限チェック → 未到達なら counter を +1 して `/rite:review` を invoke / 到達なら サーキットブレーカー（ステップ 6）へ
+1. cycle 上限チェック → 未到達なら counter を +1 して `/rite:pr-review` を invoke / 到達なら サーキットブレーカー（ステップ 6）へ
 2. review sentinel を判定（`[review:mergeable]` → 終了 / `[review:fix-needed:N]` → ステップ 3 / その他 → AskUserQuestion）
 3. `/rite:fix` を invoke
 4. fix sentinel を判定（`[fix:pushed]` → ステップ 1 に戻る / `[fix:replied-only]` `[fix:cancelled-by-user]` → 終了 / `[fix:error]` → AskUserQuestion）
@@ -82,7 +82,7 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 - `branch_absent` → 対象ブランチが実在しない。**develop 上で続行しない**。AskUserQuestion で「Issue 番号 / ブランチを確認して再実行 / 中止」を提示（誤再構築しない）。
 - `failed` → 再構築失敗（helper rc=1, stderr に原因 + 復旧手順）。**silent fallback せず明示停止**。develop 上で review/fix を回さない。
 
-> 各 review/fix cycle の入場でも `/rite:review` / `/rite:fix` が各自の入場ゲートで同じ helper を通すため、cycle 途中で worktree が失われても次 cycle 頭で再保証される（AC-2 の「cycle 前段で worktree-ensure が通る」を多層で担保）。本ステップ 0.5 はループ全体の前段ゲート。
+> 各 review/fix cycle の入場でも `/rite:pr-review` / `/rite:fix` が各自の入場ゲートで同じ helper を通すため、cycle 途中で worktree が失われても次 cycle 頭で再保証される（AC-2 の「cycle 前段で worktree-ensure が通る」を多層で担保）。本ステップ 0.5 はループ全体の前段ゲート。
 
 ---
 
@@ -127,9 +127,9 @@ echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CY
 
 ---
 
-## ステップ 1: cycle 上限チェック → /rite:review を invoke
+## ステップ 1: cycle 上限チェック → /rite:pr-review を invoke
 
-ループ頭で cycle_count を上限と比較する。**未到達なら** counter を +1 して `phase=review` に更新後 `/rite:review` を invoke、**到達済みなら** サーキットブレーカー（ステップ 6）へ分岐する。`max_review_cycles` は marker 依存を避けるため config から silent 再読込する（検証・WARNING はステップ 0.6 で実施済）:
+ループ頭で cycle_count を上限と比較する。**未到達なら** counter を +1 して `phase=review` に更新後 `/rite:pr-review` を invoke、**到達済みなら** サーキットブレーカー（ステップ 6）へ分岐する。`max_review_cycles` は marker 依存を避けるため config から silent 再読込する（検証・WARNING はステップ 0.6 で実施済）:
 
 ```bash
 cc=$(bash {plugin_root}/hooks/flow-state.sh get --field cycle_count --default 0) || cc=0
@@ -139,15 +139,15 @@ raw_max=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_re
 case "$raw_max" in ''|0|*[!0-9]*) max_cycles=5 ;; *) max_cycles=$raw_max ;; esac  # 検証済。ここは silent fallback
 
 if [ "$cc" -ge "$max_cycles" ] 2>/dev/null; then
-  # 直前の [fix:pushed] が fix.md ステップ5.1 で set した継続 handoff (`/rite:review {pr}`) を
+  # 直前の [fix:pushed] が fix.md ステップ5.1 で set した継続 handoff (`/rite:pr-review {pr}`) を
   # default-clear する（`--handoff` を伴わない set は handoff を消す）。これをしないと、fire 後に
-  # turn が終わったとき stop-loop-continuation.sh が残存 handoff を consume して `/rite:review` を
+  # turn が終わったとき stop-loop-continuation.sh が残存 handoff を consume して `/rite:pr-review` を
   # 再注入し、サーキットブレーカーを無視してループが継続する。`[fix:error]` が set で handoff を
   # クリアして clean terminal になるのと同じ役割（cycle_count は merge-preserve で上限のまま維持）。
   bash {plugin_root}/hooks/flow-state.sh set \
     --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
     --next "サーキットブレーカー発火 (cycle 上限 $max_cycles 到達)" \
-    || echo "WARNING: サーキットブレーカー発火時の handoff クリアに失敗（Stop hook が /rite:review を再注入しブレーカーを迂回する恐れ）" >&2
+    || echo "WARNING: サーキットブレーカー発火時の handoff クリアに失敗（Stop hook が /rite:pr-review を再注入しブレーカーを迂回する恐れ）" >&2
   echo "[CONTEXT] ITERATE_CB=fire; cycle=$cc; max=$max_cycles"
 else
   new_cc=$((cc + 1))
@@ -164,13 +164,13 @@ fi
 
 | `ITERATE_CB` marker | アクション |
 |---------|-----------|
-| `ok` | counter を +1 済。`/rite:review` を invoke（下記）してステップ 2 へ |
+| `ok` | counter を +1 済。`/rite:pr-review` を invoke（下記）してステップ 2 へ |
 | `fire` | cycle 上限到達。**review を invoke せず** サーキットブレーカー（ステップ 6）へ直行（mergeable 判定済 PR には発火しない = ステップ 2 で先に `[review:mergeable]` 終了するため到達しない、AC-5） |
 
-`ITERATE_CB=ok` のとき `/rite:review` を invoke:
+`ITERATE_CB=ok` のとき `/rite:pr-review` を invoke:
 
 ```text
-skill: rite:review
+skill: rite:pr-review
 args: "{pr_number}"
 ```
 
@@ -367,15 +367,15 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 - **継続 handoff (one-shot)**: 継続 sentinel を出す sub-skill が flow-state に `/rite:...` handoff をセットする。
   - `[review:fix-needed:N]` → review.md Step 8.0 が `--handoff "/rite:fix {pr}"`
-  - `[fix:pushed]` / `[fix:pushed-wm-stale]` → fix.md Step 5.1 が `--handoff "/rite:review {pr}"`
+  - `[fix:pushed]` / `[fix:pushed-wm-stale]` → fix.md Step 5.1 が `--handoff "/rite:pr-review {pr}"`
 - **終了 handoff (FINALIZE, one-shot)**: 終了 sentinel を出す sub-skill が flow-state に `FINALIZE:{result}:{pr}` handoff をセットする。
   - `[review:mergeable]` → review.md Step 8.0 が `--handoff "FINALIZE:review:mergeable:{pr}"`
   - `[fix:replied-only]` → fix.md Step 5.1 が `--handoff "FINALIZE:fix:replied-only:{pr}"`
   - `[fix:cancelled-by-user]` → fix.md Step 1.4 cancel が `--handoff "FINALIZE:fix:cancelled-by-user:{pr}"`
   これらは sub-skill 内の defense-in-depth set で行われるため、**LLM が turn を終える前に確実に実行される**。
-- **Stop hook が consume + prefix 分岐で再注入**: `stop-loop-continuation.sh` が turn 終了時に `flow-state.sh consume-handoff` で handoff を読み取り + 削除し、非空なら `decision:block` で停止を差し戻す。prefix で分岐し、`/rite:...` は次コマンド (`/rite:fix` / `/rite:review`) を、`FINALIZE:...` は「ステップ5 完了通知を出力してから終えよ」を再注入する。
+- **Stop hook が consume + prefix 分岐で再注入**: `stop-loop-continuation.sh` が turn 終了時に `flow-state.sh consume-handoff` で handoff を読み取り + 削除し、非空なら `decision:block` で停止を差し戻す。prefix で分岐し、`/rite:...` は次コマンド (`/rite:fix` / `/rite:pr-review`) を、`FINALIZE:...` は「ステップ5 完了通知を出力してから終えよ」を再注入する。
 - **`[fix:error]` は handoff を持たない**: clean terminal ではなく ステップ4 で AskUserQuestion (再試行/中止) に分岐するため、`--handoff` を付けない (`flow-state.sh set` がデフォルトクリア) → Stop hook は停止を許可する。
-- **サーキットブレーカー発火 (ステップ 1 fire 分岐) も handoff を能動的にクリアする**: fire は直前の `[fix:pushed]` が set した継続 handoff (`/rite:review {pr}`) の直後に到達しうる。ステップ 6 は review/fix を回さず終端するため、この pending handoff を消さないと Stop hook が `/rite:review` を再注入してブレーカーを無視する。したがって fire 分岐は `flow-state.sh set`（`--handoff` なし）でデフォルトクリアしてからステップ 6 へ進む（`[fix:error]` と同型の「set で handoff クリア」終端）。ステップ 6.2 の継続経路も `--cycle-count 0` の set でクリアされ、対称。
+- **サーキットブレーカー発火 (ステップ 1 fire 分岐) も handoff を能動的にクリアする**: fire は直前の `[fix:pushed]` が set した継続 handoff (`/rite:pr-review {pr}`) の直後に到達しうる。ステップ 6 は review/fix を回さず終端するため、この pending handoff を消さないと Stop hook が `/rite:pr-review` を再注入してブレーカーを無視する。したがって fire 分岐は `flow-state.sh set`（`--handoff` なし）でデフォルトクリアしてからステップ 6 へ進む（`[fix:error]` と同型の「set で handoff クリア」終端）。ステップ 6.2 の継続経路も `--cycle-count 0` の set でクリアされ、対称。
 - **無限 block ループ防止**: handoff は consume で one-shot 消費される。進捗 (次コマンド実行 / 完了通知出力) の後に再度停止すれば handoff は空 → block しない。handoff 自体は counter ではない (無限ループの自動安全網は別途 cycle counter サーキットブレーカー = ステップ 6 が担う)。終了 handoff も同じ one-shot 契約で **1 回だけ** block するため、完了通知を強制しても無限 block にはならない。
 - **resume との二層構造**: flow-state の `next_action` は Ctrl+C 中断後の `/rite:recover` 用の secondary な網。Stop hook は自動継続・完了通知強制の primary 層。
 

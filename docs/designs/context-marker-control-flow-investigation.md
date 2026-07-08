@@ -63,7 +63,7 @@ grep -rn '\[CONTEXT\]' plugins/rite/
 | # | ファイル | 件数 |
 |---:|---|---:|
 | 1 | `skills/fix/SKILL.md` | **155** |
-| 2 | `skills/review/SKILL.md` | **92** |
+| 2 | `skills/pr-review/SKILL.md` | **92** |
 | 3 | `scripts/review-source-resolve.sh` | 45 |
 | 4 | `skills/resume/SKILL.md` | 41 |
 | 5 | `hooks/review-result-save.sh` | 26 |

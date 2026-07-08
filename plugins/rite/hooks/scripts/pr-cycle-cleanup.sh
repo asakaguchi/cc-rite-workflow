@@ -44,7 +44,7 @@
 #     Step 4.5 deletes ONLY recorded entries, never by guessing names (AC-4/D-05).
 #
 # Variation history:
-#   - `cycle{N}`: orchestrator-created (`/rite:review` cycle worktrees)
+#   - `cycle{N}`: orchestrator-created (`/rite:pr-review` cycle worktrees)
 #   - `test` / `experiment` / `mutation` / `verify` / `check` / `sandbox`:
 #     reviewer-subagent verification experiments (observed in practice).
 #     The reviewer's READ-ONLY contract is enforced primarily by

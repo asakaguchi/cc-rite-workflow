@@ -63,7 +63,7 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$PWD" 2>/dev/null) || STATE_RO
 
 # Tempfile paths declared up front, trap set up before any mktemp, cleanup on
 # both normal exit and signal termination. Mirrors the repo convention used in
-# skills/review/SKILL.md ステップ 2.2.1 and skills/fix/SKILL.md ステップ 4.5.2 so that
+# skills/pr-review/SKILL.md ステップ 2.2.1 and skills/fix/SKILL.md ステップ 4.5.2 so that
 # SIGINT/SIGTERM/SIGHUP cannot leave orphan files in /tmp.
 _yaml_err=""
 _index_err=""

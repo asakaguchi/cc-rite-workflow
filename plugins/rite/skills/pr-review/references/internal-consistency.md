@@ -6,7 +6,7 @@
 >
 > **用語統一**: canonical 表記は **「文書-実装整合性」** (英訳: `Doc-Impl Consistency`)。「ドキュメント-実装整合性」/「内部事実」/「内部整合性」/「Internal Consistency」は同義。新規記述は canonical 表記を優先する。
 >
-> **Canonical category names** (literal-substring matched by `skills/review/SKILL.md` ステップ 5.1.3 META check — 表記揺れは `doc_heavy_post_condition: warning` false positive の原因):
+> **Canonical category names** (literal-substring matched by `skills/pr-review/SKILL.md` ステップ 5.1.3 META check — 表記揺れは `doc_heavy_post_condition: warning` false positive の原因):
 >
 > - `Implementation Coverage`
 > - `Enumeration Completeness`
@@ -22,7 +22,7 @@
 
 | 表記 | 用法 | 出現箇所 |
 |------|------|----------|
-| `Doc-Heavy PR Mode` | **固有名詞**: `skills/review/SKILL.md` ステップ 1.2.7 で判定される機能名 | 見出し / 文中の機能名参照 (英) |
+| `Doc-Heavy PR Mode` | **固有名詞**: `skills/pr-review/SKILL.md` ステップ 1.2.7 で判定される機能名 | 見出し / 文中の機能名参照 (英) |
 | `doc-heavy` | **形容詞** (小文字): `doc-heavy PR` / `doc-heavy mode` のような前置形容用法 | 文中の形容詞 (英) |
 | `{doc_heavy_pr}` | **変数名** (snake_case): retained context flag の名前 | bash 変数 / placeholder |
 | `ドキュメント中心 PR` | **一般説明** (日): 日本語本文での描写 | CHANGELOG.ja.md / 日本語ドキュメント |
@@ -52,7 +52,7 @@ Read `review.doc_heavy` from `rite-config.yml`:
 
 **Activation 条件**: 本プロトコルは `{doc_heavy_pr} == true` (review.md ステップ 1.2.7 で計算される) のときのみ発動する。
 
-> **Single source of truth**: skip/activation 判定は [`skills/review/SKILL.md`](../SKILL.md) ステップ 1.2.7 の `{doc_heavy_pr}` 計算結果に完全委譲（二重定義 drift 防止）。`review.doc_heavy.enabled: false` / 空 PR / rite plugin 自身のドキュメントのみ変更 (`commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`, `plugins/rite/i18n/**` — 分子から除外、分母には含める方式) / doc 比率閾値未満のいずれでも `doc_heavy_pr = false` で本プロトコル非発動。
+> **Single source of truth**: skip/activation 判定は [`skills/pr-review/SKILL.md`](../SKILL.md) ステップ 1.2.7 の `{doc_heavy_pr}` 計算結果に完全委譲（二重定義 drift 防止）。`review.doc_heavy.enabled: false` / 空 PR / rite plugin 自身のドキュメントのみ変更 (`commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md`, `plugins/rite/i18n/**` — 分子から除外、分母には含める方式) / doc 比率閾値未満のいずれでも `doc_heavy_pr = false` で本プロトコル非発動。
 
 ## Verification Protocol
 

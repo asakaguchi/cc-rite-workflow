@@ -43,7 +43,7 @@ All reviewers share these Few-shot examples to calibrate finding quality. Use th
 
 **Investigation process:**
 
-1. Reviewed diff: updated `skills/review/SKILL.md` with new review guidelines
+1. Reviewed diff: updated `skills/pr-review/SKILL.md` with new review guidelines
 2. Found instruction at line 45: "Report all potential issues, even if uncertain"
 3. Found instruction at line 120: "Only report findings with concrete evidence"
 4. Cross-referenced SKILL.md Finding Quality Policy: "No Hypothetical Concerns" principle
@@ -53,7 +53,7 @@ All reviewers share these Few-shot examples to calibrate finding quality. Use th
 
 | Severity | Scope | File:Line | Issue | Recommendation |
 |----------|-------|-----------|-------|----------------|
-| MEDIUM | current-pr | `skills/review/SKILL.md:45,120` | Contradictory instructions: line 45 says "report all potential issues, even if uncertain" while line 120 says "only report findings with concrete evidence." This contradicts SKILL.md's "No Hypothetical Concerns" principle. Agents receiving these instructions will produce inconsistent output.<br>Likelihood-Evidence: new_call_site `skills/review/SKILL.md:45,120` (本 PR で追加) | Remove line 45 or scope it to a specific context (e.g., security-only). Align with SKILL.md's established "concrete evidence only" principle. |
+| MEDIUM | current-pr | `skills/pr-review/SKILL.md:45,120` | Contradictory instructions: line 45 says "report all potential issues, even if uncertain" while line 120 says "only report findings with concrete evidence." This contradicts SKILL.md's "No Hypothetical Concerns" principle. Agents receiving these instructions will produce inconsistent output.<br>Likelihood-Evidence: new_call_site `skills/pr-review/SKILL.md:45,120` (本 PR で追加) | Remove line 45 or scope it to a specific context (e.g., security-only). Align with SKILL.md's established "concrete evidence only" principle. |
 
 **Why this is a good finding:** Identified a real contradiction by cross-referencing multiple documents, explained the downstream impact on agent behavior, provided specific resolution options.
 

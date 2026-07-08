@@ -789,10 +789,10 @@ assert "TC-H2: handoff absent when --handoff omitted" "ABSENT" "$(jq -r '.handof
 echo ""
 echo "=== TC-H3: consume-handoff prints value + deletes it (one-shot) ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
-(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:review 99")
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:pr-review 99")
 state_file="$d/.rite/sessions/${sid}.flow-state"
 first=$(cd "$d" && bash "$HOOK" consume-handoff)
-assert "TC-H3: first consume returns value" "/rite:review 99" "$first"
+assert "TC-H3: first consume returns value" "/rite:pr-review 99" "$first"
 assert "TC-H3: handoff deleted after consume" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
 second=$(cd "$d" && bash "$HOOK" consume-handoff)
 assert "TC-H3: second consume is empty (one-shot)" "" "$second"
@@ -828,8 +828,8 @@ echo ""
 echo "=== TC-H5: set --handoff then set without --handoff clears it (terminal transition) ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 state_file="$d/.rite/sessions/${sid}.flow-state"
-(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:review 99")
-assert "TC-H5: handoff present after continuation set" "/rite:review 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:pr-review 99")
+assert "TC-H5: handoff present after continuation set" "/rite:pr-review 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
 (cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next "terminal")
 assert "TC-H5: handoff cleared by subsequent no-handoff set" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
 
@@ -842,7 +842,7 @@ echo "=== TC-H6: consume-handoff fail-closed on _atomic_write failure ==="
 # この correctness path に test がないと print-then-delete への revert を検出できないため pin する。
 # 書込失敗の強制は TC-8b-e/g と同じ DAC-probe (chmod 0555) を流用する。
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
-(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:review 99")
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1168 --branch b --pr 99 --next n --handoff "/rite:pr-review 99")
 state_file="$d/.rite/sessions/${sid}.flow-state"
 # DAC probe (同 TC-8b-e/g): root / fakeroot / CAP_DAC_OVERRIDE 環境では chmod 0555 が無効化され
 # write-failure path を強制できないため、実機 write probe で強制可能性を検出し silent false-pass を防ぐ。
@@ -880,7 +880,7 @@ else
     val="${out%__RC=*}"; val="${val%$'\n'}"
     assert "TC-H6: value withheld on write failure (stdout empty)" "" "$val"
     assert "TC-H6: rc 0 on write failure (Stop hook will allow stop)" "0" "$rc"
-    assert "TC-H6: handoff retained in file (delete not persisted)" "/rite:review 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
+    assert "TC-H6: handoff retained in file (delete not persisted)" "/rite:pr-review 99" "$(jq -r '.handoff // "ABSENT"' "$state_file")"
     # 診断 ERROR が stderr に出ること (observability: write 失敗時の triage 用。cmd_set / _atomic_write の ERROR emission と対称)
     if [ "$_tch6_stderr" = "/dev/null" ]; then
       pass "TC-H6: 診断 ERROR assert を skip (stderr capture tempfile 取得不可)"
@@ -907,7 +907,7 @@ echo "=== TC-H7: consume-handoff on corrupt JSON → WARNING + empty + rc 0 ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 state_file="$d/.rite/sessions/${sid}.flow-state"
 # 正規 set で sessions dir + valid file を作ってから corrupt JSON で上書き (実際の FS corruption を模倣)
-(cd "$d" && bash "$HOOK" set --phase fix --issue 1170 --branch b --pr 99 --next n --handoff "/rite:review 99")
+(cd "$d" && bash "$HOOK" set --phase fix --issue 1170 --branch b --pr 99 --next n --handoff "/rite:pr-review 99")
 printf '{ this is not valid json' > "$state_file"
 _tch7_stderr=$(mktemp /tmp/rite-tch7-stderr-XXXXXX 2>/dev/null) || _tch7_stderr="/dev/null"
 out=$( (cd "$d" && bash "$HOOK" consume-handoff 2>"$_tch7_stderr"); echo "__RC=$?" )

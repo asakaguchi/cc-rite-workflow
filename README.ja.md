@@ -27,7 +27,7 @@ https://github.com/user-attachments/assets/18160008-e329-4fdd-b170-fac925160e7a
 - **自動化 (Automated)**: 自動検出・自動設定
 - **カスタマイズ可能 (Customizable)**: YAML による柔軟な設定
 - **統合 (Integrated)**: GitHub Projects 連携
-- **スマートレビュー (Smart Reviews)**: ドキュメント中心の PR 向け **Doc-Heavy PR Mode** を備えた動的マルチレビュアーコードレビュー。PR が doc-heavy と判定されると、tech-writer レビュアーが Grep/Read/Glob を使って 5 つのドキュメント–実装整合カテゴリ（Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence）を検証します。完全な検証プロトコルは [`plugins/rite/skills/review/references/internal-consistency.md`](plugins/rite/skills/review/references/internal-consistency.md) を参照
+- **スマートレビュー (Smart Reviews)**: ドキュメント中心の PR 向け **Doc-Heavy PR Mode** を備えた動的マルチレビュアーコードレビュー。PR が doc-heavy と判定されると、tech-writer レビュアーが Grep/Read/Glob を使って 5 つのドキュメント–実装整合カテゴリ（Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence）を検証します。完全な検証プロトコルは [`plugins/rite/skills/pr-review/references/internal-consistency.md`](plugins/rite/skills/pr-review/references/internal-consistency.md) を参照
 - **外部レビュー連携 (External Review Integration)**: `/rite:fix` は PR URL またはコメント URL を引数に取れるため、外部レビューツールの出力をそのまま fix ループに流し込めます
 - **イテレーション追跡 (Iteration Tracking)**: 任意の GitHub Projects Iteration フィールド連携（`/rite:open` 時に自動割当、`/rite:issue-list` の `--sprint` / `--backlog` フィルタ）
 - **ローカル作業メモリ (Local Work Memory)**: lock / 再開サポート付きの compact 耐性のある作業状態管理
@@ -104,7 +104,7 @@ Rite Workflow は 2 ステップでインストールします。まずマーケ
 | `/rite:merge` | PR を squash merge |
 | `/rite:pr-create` | draft PR を作成 |
 | `/rite:ready` | Ready for review に変更 |
-| `/rite:review` | マルチレビュアーレビュー |
+| `/rite:pr-review` | マルチレビュアーレビュー |
 | `/rite:fix` | レビュー指摘に対応 |
 | `/rite:cleanup` | マージ後のクリーンアップ |
 | `/rite:investigate` | 構造化コード調査 |

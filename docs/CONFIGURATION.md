@@ -431,13 +431,13 @@ The review-fix loop has two exit paths and no automatic abnormal-exit mechanism:
 | Normal | 0 findings remaining → `[review:mergeable]` |
 | Manual abort | User aborts via `Ctrl+C` → `/rite:recover` (or selects "中止" in `fix.md` AskUserQuestion → `[fix:cancelled-by-user]`) |
 
-**Doc-Heavy PR Mode** (`doc_heavy.enabled: true` by default): A PR is classified as doc-heavy when `doc_lines / total_diff_lines >= lines_ratio_threshold`, or — for small diffs (`total_diff_lines < max_diff_lines_for_count`) — when `doc_files / total_files >= count_ratio_threshold`. In doc-heavy mode, `tech-writer-reviewer` verifies the five consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) against the actual implementation using Grep/Read/Glob. See `plugins/rite/skills/review/references/internal-consistency.md` for the full protocol.
+**Doc-Heavy PR Mode** (`doc_heavy.enabled: true` by default): A PR is classified as doc-heavy when `doc_lines / total_diff_lines >= lines_ratio_threshold`, or — for small diffs (`total_diff_lines < max_diff_lines_for_count`) — when `doc_files / total_files >= count_ratio_threshold`. In doc-heavy mode, `tech-writer-reviewer` verifies the five consistency categories (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) against the actual implementation using Grep/Read/Glob. See `plugins/rite/skills/pr-review/references/internal-consistency.md` for the full protocol.
 
 **Verification mode** (`verification_mode: false` by default): When explicitly set to `true`, from cycle 2+, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are classified as "stability concerns" (non-blocking). The default `false` performs full review only every cycle, maximizing review quality.
 
 **Review execution:**
 
-`/rite:review` uses Claude Code's Task tool to spawn parallel subagents for each reviewer role. This improves context efficiency and enables parallel execution.
+`/rite:pr-review` uses Claude Code's Task tool to spawn parallel subagents for each reviewer role. This improves context efficiency and enables parallel execution.
 
 **Available reviewers:**
 

@@ -1,7 +1,7 @@
 # Review SKILL Design Rationale
 
 > **Charter**: Subject to [Simplification Charter](../../../skills/rite-workflow/references/simplification-charter.md).
-> 本ファイルは `skills/review/SKILL.md` 本体から退避した**設計理由 (Why)** の受け皿。実行手順・分岐表・sentinel 表・
+> 本ファイルは `skills/pr-review/SKILL.md` 本体から退避した**設計理由 (Why)** の受け皿。実行手順・分岐表・sentinel 表・
 > エラー処理指示・出力テンプレートは SKILL.md 本体または [integrated-report-templates.md](integrated-report-templates.md)
 > に残る。本体の該当箇所には `rationale: references/design-rationale.md#<anchor>` 形式のポインタがあり、逆引きできる。
 > ここに書いてよいのは「なぜこの実装形なのか」「変更するなら何が壊れるか」の説明のみで、手順そのものを書いてはならない。

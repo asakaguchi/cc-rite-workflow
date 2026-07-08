@@ -817,7 +817,7 @@ Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../
 WM_SOURCE="create" \
   WM_PHASE="pr" \
   WM_PHASE_DETAIL="PR作成完了" \
-  WM_NEXT_ACTION="rite:review を実行" \
+  WM_NEXT_ACTION="rite:pr-review を実行" \
   WM_BODY_TEXT="PR #{pr_number} created." \
   WM_ISSUE_NUMBER="{issue_number}" \
   bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
@@ -879,7 +879,7 @@ rm -f "$files_tmp"
 # Part (A'): 次のステップ置換
 next_tmp=$(mktemp)
 trap 'rm -f "$next_tmp"' EXIT
-printf '%s' "- **コマンド**: /rite:review #{pr_number}
+printf '%s' "- **コマンド**: /rite:pr-review #{pr_number}
 - **状態**: 待機中
 - **備考**: PR 作成完了、レビュー準備完了" > "$next_tmp"
 
@@ -926,7 +926,7 @@ The 4.1.2 bash block performs the following updates:
 |---------|--------|
 | `進捗サマリー` table | `実装` → `✅ 完了`（v2）/ `- [x] 実装`（v1 fallback） |
 | `変更ファイル` section | Replace entire content with `{changed_files_md}` |
-| `次のステップ` section | Set to `/rite:review #{pr_number}` |
+| `次のステップ` section | Set to `/rite:pr-review #{pr_number}` |
 | `最終更新` timestamp | Replace with current timestamp |
 
 **(B) Append new sections** (via heredoc):
@@ -958,7 +958,7 @@ URL: {pr_url}
 
 次のステップ:
 1. PR の内容を確認
-2. `/rite:review` でセルフレビュー
+2. `/rite:pr-review` でセルフレビュー
 3. `/rite:ready` で Ready for review に変更
 ```
 
@@ -991,7 +991,7 @@ Output the following pattern based on PR creation result:
 | PR creation failed | `[pr-create-failed]` |
 
 **Important**:
-- Do **NOT** invoke `rite:review` via the Skill tool
+- Do **NOT** invoke `rite:pr-review` via the Skill tool
 - Return control to the caller (orchestrator — caller-name agnostic, e.g. `/rite:open`)
 - The caller determines the next action based on this output pattern
 

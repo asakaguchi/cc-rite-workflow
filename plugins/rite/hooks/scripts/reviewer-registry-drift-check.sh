@@ -23,10 +23,10 @@
 #       selected by logic instead of file patterns (e.g. code-quality, the
 #       fallback / co-reviewer) have no Available Reviewers row by design.
 #   I3  Each Type Identifiers row satisfies `{reviewer_type}-reviewer.md` ==
-#       Agent cell. The slug is how `skills/review/SKILL.md` derives the
+#       Agent cell. The slug is how `skills/pr-review/SKILL.md` derives the
 #       subagent name, so a mismatched cell silently breaks spawning.
 #
-# Keyword-driven activation lists in `skills/review/SKILL.md` ステップ 2.3 are
+# Keyword-driven activation lists in `skills/pr-review/SKILL.md` ステップ 2.3 are
 # free-form prose and are NOT machine-checked here; the CONTRIBUTING.md
 # procedure covers them as a manual checklist item.
 #

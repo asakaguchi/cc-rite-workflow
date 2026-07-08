@@ -164,7 +164,7 @@ Escalate to user (via `AskUserQuestion`) when:
 
 ### Debate Metrics
 
-Record the following metrics for each debate (appended to review metrics in `review.md` ステップ 6.3 — Review Metrics Recording の semantic owner、表示は ステップ 6.1.b 経由):
+Record the following metrics for each debate (appended to review metrics in `pr-review.md` ステップ 6.3 — Review Metrics Recording の semantic owner、表示は ステップ 6.1.b 経由):
 
 | Metric | Description |
 |--------|-------------|

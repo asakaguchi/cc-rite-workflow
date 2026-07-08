@@ -20,7 +20,7 @@
 # Pair scripts:
 # - `wiki-worktree-setup.sh` — creates the worktree (idempotent)
 # - `wiki-ingest-commit.sh` — legacy shell-only raw-source committer
-# (still used by review.md / fix.md / close.md Phase X.X.W for
+# (still used by pr-review.md / fix.md / close.md Phase X.X.W for
 # raw-source staging, unchanged by this Issue)
 #
 # Usage:

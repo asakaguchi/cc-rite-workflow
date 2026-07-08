@@ -2,9 +2,9 @@
 # review-helpers-gate-behavior.test.sh
 #
 # Gate-behavior self-tests for the 3 review helpers:
-#   - hooks/review-skip-notification.sh (review.md ステップ 6.1.c)
-#   - hooks/review-comment-post.sh      (review.md ステップ 6.1.b)
-#   - hooks/review-result-save.sh       (review.md ステップ 6.1.a)
+#   - hooks/review-skip-notification.sh (pr-review.md ステップ 6.1.c)
+#   - hooks/review-comment-post.sh      (pr-review.md ステップ 6.1.b)
+#   - hooks/review-result-save.sh       (pr-review.md ステップ 6.1.a)
 #
 # shift2-loop-hardening.test.sh は shift-loop no-hang の 1 軸のみをカバーし、これらの helper の
 # 中核 invariant である gate 分岐 (reason 語彙 / exit code / [CONTEXT] emit) には届かない。

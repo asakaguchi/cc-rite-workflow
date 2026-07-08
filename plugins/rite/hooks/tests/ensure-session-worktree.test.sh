@@ -92,7 +92,7 @@ setup_repo; M="$REPO_MAIN"
 assert "TC-3 reconstructed token" "reconstructed" "$(ens_case "$M" --issue 42)"
 assert "TC-3 worktree registered" "yes" "$(wt_registered "$M" 42)"
 
-# --- TC-3b: explicit --branch (the form review.md / fix.md actually use) ---
+# --- TC-3b: explicit --branch (the form pr-review.md / fix.md actually use) ---
 echo "=== TC-3b: explicit --branch reconstructed (caller invocation form) ==="
 setup_repo; M="$REPO_MAIN"
 assert "TC-3b reconstructed token (explicit branch)" "reconstructed" \

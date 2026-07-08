@@ -27,7 +27,7 @@ Mapping information for phase details. Used in work memory session information.
 | `ready` | Ready 成功 (Projects Status / 親 Issue 完結待ち) | `/rite:ready` ステップ 3 |
 | `ready_error` | Ready 失敗 (PR は作成済み、Ready 遷移のみ rollback。`/rite:pr-create` を再実行してはならない) | `/rite:ready` リトライ |
 | `cleanup` | クリーンアップ実行中 | `/rite:cleanup` |
-| `ingest` | Wiki ingest 実行中 (legacy transient phase — 現行 cleanup.md ステップ 9 / review.md ステップ 6.5.W / fix.md ステップ 4.6.W は phase=ingest を書き込まない) | `/rite:cleanup` ステップ 9 (legacy state file の resume routing 用途のみ) |
+| `ingest` | Wiki ingest 実行中 (legacy transient phase — 現行 cleanup.md ステップ 9 / pr-review.md ステップ 6.5.W / fix.md ステップ 4.6.W は phase=ingest を書き込まない) | `/rite:cleanup` ステップ 9 (legacy state file の resume routing 用途のみ) |
 | `completed` | ワークフロー完了 (`active: false`) | `/rite:cleanup` 終端 |
 
 ### Legacy phase 名

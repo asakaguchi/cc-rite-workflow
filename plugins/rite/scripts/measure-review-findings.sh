@@ -106,7 +106,7 @@ fi
 # --- Source acquisition ---
 # Path-first-declare → trap-first-set → mktemp-last order to eliminate the
 # race window between mktemp success and trap registration where SIGTERM/SIGINT
-# could leave an orphan tempfile (matches review.md / fix.md project pattern).
+# could leave an orphan tempfile (matches pr-review.md / fix.md project pattern).
 # All mktemp results below MUST be assigned to a variable that is already
 # tracked by this trap.
 tmpfile=""

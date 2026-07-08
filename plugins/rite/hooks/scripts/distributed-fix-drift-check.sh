@@ -2,7 +2,7 @@
 # distributed-fix-drift-check.sh
 #
 # Detect "distributed fix drift" patterns in large rite-workflow procedural
-# markdown files (fix.md, review.md, tech-writer-reviewer.md, etc.).
+# markdown files (fix.md, pr-review.md, tech-writer-reviewer.md, etc.).
 #
 # This is the static lint counterpart to LLM agent-based review, which has
 # been observed to miss distributed/asymmetric fix patterns.
@@ -66,7 +66,7 @@ usage() {
 Usage: distributed-fix-drift-check.sh [options]
 
 Options:
-  --all                       Check the default target set (fix.md, review.md, tech-writer-reviewer.md, review-findings-maps.sh)
+  --all                       Check the default target set (fix.md, pr-review.md, tech-writer-reviewer.md, review-findings-maps.sh)
   --target FILE               Check FILE (repeatable). Path relative to repo root.
   --pattern N                 Only run pattern N (1-6). Default: all patterns.
   --repo-root DIR             Repository root (default: git rev-parse --show-toplevel)
@@ -523,7 +523,7 @@ check_pattern_4() {
 # Pattern 5 previously compared every `reason=...` emit against the union of all
 # `( `a` / `b` )` parenthesized lists in the file ("emitted but not in eval-table
 # parenthesized list"). On large multi-namespace procedural files (fix.md /
-# review.md) this structurally over-detected: a single file carries many
+# pr-review.md) this structurally over-detected: a single file carries many
 # independent eval-order enumerations plus diagnostic emits that are documented
 # in reason tables rather than enumerations, and some enumerations describe
 # reasons emitted in a *delegated* helper (e.g. review-result-save.sh), not the

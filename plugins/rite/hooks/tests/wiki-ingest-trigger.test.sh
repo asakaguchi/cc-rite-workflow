@@ -704,7 +704,7 @@ trap '_rite_issue518_cleanup; cleanup' EXIT
 # --------------------------------------------------------------------------
 # TC-036a: Content-file in /tmp/rite-* prefix → exit 0 (正常系 / fix)
 # --------------------------------------------------------------------------
-# pr/review.md / pr/fix.md / issue/close.md は wiki-ingest-trigger.sh を
+# pr/pr-review.md / pr/fix.md / issue/close.md は wiki-ingest-trigger.sh を
 # 呼ぶときに tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX) でファイル生成する必要がある。
 # この TC は /tmp/rite-* prefix でのファイルが正常に受容され、fix が正しく動作することを保証する。
 echo "TC-036a: Content-file in /tmp/rite-* prefix → exit 0 (regression)"
@@ -714,7 +714,7 @@ cat > "$dir36a/rite-config.yml" <<'EOF'
 wiki:
   enabled: true
 EOF
-# Create content-file using /tmp/rite-* prefix (review.md / fix.md / close.md と同パターン)
+# Create content-file using /tmp/rite-* prefix (pr-review.md / fix.md / close.md と同パターン)
 tmp_in_rite=$(mktemp /tmp/rite-wiki-content-XXXXXX)
 _rite_issue518_tmps+=("$tmp_in_rite")
 echo "review body" > "$tmp_in_rite"

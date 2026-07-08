@@ -12,7 +12,7 @@
 
 - `{pr_number}`: PR 番号（整数）
 - `{timestamp}`: `YYYYMMDDHHMMSS` 形式の JST (例: `20260411123456`)
-- 同一 PR の過去レビューは **best-effort で履歴保持** する。1 秒解像度のため、同一 PR に対し同一秒以内に 2 回 `/rite:pr-review` を実行すると file path が衝突する。review.md ステップ 6.1.a は collision 検出時に `~<4桁hex>` suffix (`~$(printf '%04x' "${RANDOM:-0}")` 相当) で衝突回避を試みるが、完全な一意性保証ではない (best-effort tradeoff)。separator には `~` (0x7E) を使用する。ファイル名 `{ts}~{hex}.json` と `{ts}.json` の分岐点で `.` (0x2E) < `~` (0x7E) となるため、collision-resolved 版が lexicographic 大となり `sort -r` で先頭に並ぶ
+- 同一 PR の過去レビューは **best-effort で履歴保持** する。1 秒解像度のため、同一 PR に対し同一秒以内に 2 回 `/rite:pr-review` を実行すると file path が衝突する。pr-review.md ステップ 6.1.a は collision 検出時に `~<4桁hex>` suffix (`~$(printf '%04x' "${RANDOM:-0}")` 相当) で衝突回避を試みるが、完全な一意性保証ではない (best-effort tradeoff)。separator には `~` (0x7E) を使用する。ファイル名 `{ts}~{hex}.json` と `{ts}.json` の分岐点で `.` (0x2E) < `~` (0x7E) となるため、collision-resolved 版が lexicographic 大となり `sort -r` で先頭に並ぶ
 - **並列実行は未サポート**: 同一 PR に対する `/rite:pr-review` の同時並列実行 (複数ターミナル / CI 並列 job 等) は未サポート。`mv` の atomicity と `[ -e ]` check の TOCTOU race window により、後勝ちでファイル上書きが発生する可能性がある。POSIX `mv` の標準オプションは `-f`/`-i` のみで、`-n` は POSIX 非標準 (GNU coreutils / BSD 拡張) のため、POSIX 準拠の観点から採用しない ([mv(1p) POSIX](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/mv.html) 参照)。並列実行する場合はユーザー自身が時系列をずらす責務を持つ (verified-review cycle 12 I-2 対応で旧 rationale 「bash 3.2 + POSIX utilities 前提と矛盾」を削除。本 plugin は [bash-compat-guard.md](./bash-compat-guard.md) で `mapfile` builtin 必須 = bash 4.0+ 前提であり、bash 3.2 portable 前提は成立しないため)
 - `.rite/review-results/` は `.gitignore` で除外される
 
@@ -36,7 +36,7 @@
 
 **書込側 (canonical 値のみ出力、同期義務なし)**:
 
-- `review.md` ステップ 6.1.a — 現時点では canonical `"1.0.0"` のみを出力する。`"1.1.0"` への canonical write bump は **`_reviewer-base` への Scope Assignment 責務追加** のスコープ。reviewer が scope / pre_existing を出力できるようになった時点で本ドキュメントの書込側 canonical を `"1.1.0"` に bump する。case 文は存在せず、post-condition jq validation は `schema_version | type == "string" and length > 0` の型チェックのみで値の同期対象外 (読取側 accept list と独立に進化してよい)
+- `pr-review.md` ステップ 6.1.a — 現時点では canonical `"1.0.0"` のみを出力する。`"1.1.0"` への canonical write bump は **`_reviewer-base` への Scope Assignment 責務追加** のスコープ。reviewer が scope / pre_existing を出力できるようになった時点で本ドキュメントの書込側 canonical を `"1.1.0"` に bump する。case 文は存在せず、post-condition jq validation は `schema_version | type == "string" and length > 0` の型チェックのみで値の同期対象外 (読取側 accept list と独立に進化してよい)
 
 本セクションが Single Source of Truth であり、読取側 3 箇所の accept list を本ドキュメントと同一に保つ義務がある。`plugins/rite/hooks/scripts/distributed-fix-drift-check.sh` / `doc-heavy-patterns-drift-check.sh` は schema_version / accept list の drift を自動検出しないため、本ドキュメントを変更した際は手動で 3 箇所を同期させること。
 
@@ -120,7 +120,7 @@
 
 | フィールド | 型 | 必須 | 説明 |
 |-----------|-----|------|------|
-| `id` | string | ✅ | 指摘 ID (`F-NN` 形式、最小 2 桁ゼロパディング可変長連番、正規表現 `^F-[0-9]{2,}$`)。例: `F-01`, `F-42`, `F-99`, `F-100`, `F-999`。レビュー内ユニーク。99 件以下は 2 桁、100 件以上は 3 桁以上に自然成長する。write 側 (`review.md` ステップ 6.1.a) の machine-enforced jq validation と read 側 (`fix.md`) の正規表現は同一パターンで検証される |
+| `id` | string | ✅ | 指摘 ID (`F-NN` 形式、最小 2 桁ゼロパディング可変長連番、正規表現 `^F-[0-9]{2,}$`)。例: `F-01`, `F-42`, `F-99`, `F-100`, `F-999`。レビュー内ユニーク。99 件以下は 2 桁、100 件以上は 3 桁以上に自然成長する。write 側 (`pr-review.md` ステップ 6.1.a) の machine-enforced jq validation と read 側 (`fix.md`) の正規表現は同一パターンで検証される |
 | `reviewer` | string | ✅ | レビュアー種別 (例: `code-quality-reviewer`, `security-reviewer`, `tech-writer-reviewer`)。**参照整合性**: 値は `plugins/rite/agents/*-reviewer.md` の basename (拡張子を除く、接尾辞 `-reviewer` を含む) と一致する。新 reviewer を追加する際は agents/ 側のファイル追加と合わせて本ドキュメントにも追記すること (drift-check による自動検証はないため手動同期)。 |
 | `category` | string | ✅ | カテゴリ (例: `code_quality`, `security`, `performance`, `error_handling`) |
 | `severity` | **enum** (string) | ✅ | 重要度。**受理値**: `"CRITICAL"` / `"HIGH"` / `"MEDIUM"` / `"LOW-MEDIUM"` / `"LOW"` の 5 値のみ (LOW-MEDIUM は `severity-levels.md` Severity Levels 表で正式定義された first-class severity で、`COMMENT_QUALITY` 軸の独自ジャーゴン濫用 等の bounded blast radius 違反に使う)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=severity_unknown_value; value=<val>` を stderr 出力し、該当 finding を `MEDIUM` にフォールバック (silent skip は禁止)。外部ツール出力の別名は下記「severity 別名マッピング表」に従って read 側で正規化してから本 enum に落とす |
@@ -146,7 +146,7 @@
 | `Low-Medium`, `LOW-MEDIUM`, `LowMedium`, `low_medium`, `中低`, `軽中` | `LOW-MEDIUM` |
 | `Low`, `LOW`, `INFO`, `TRIVIAL`, `Nit`, `NIT`, `🔵`, `低`, `情報` | `LOW` |
 
-**運用ポリシーとの関係**: schema enum 5 値 / reviewer checklist 見出し / 運用 3 段の対応関係は [`severity-levels.md` Severity 語彙 3 系統 Crosswalk](./severity-levels.md#severity-vocabulary-crosswalk) を単一 SoT とする(本ファイルでは再定義しない)。write 側 (`review.md` ステップ 6.1.a) は必ず schema enum 5 値で出力し、read 側 (`fix.md` ステップ 1.2 best-effort parser) が外部ツール由来の別名を上記マッピング表で正規化する。
+**運用ポリシーとの関係**: schema enum 5 値 / reviewer checklist 見出し / 運用 3 段の対応関係は [`severity-levels.md` Severity 語彙 3 系統 Crosswalk](./severity-levels.md#severity-vocabulary-crosswalk) を単一 SoT とする(本ファイルでは再定義しない)。write 側 (`pr-review.md` ステップ 6.1.a) は必ず schema enum 5 値で出力し、read 側 (`fix.md` ステップ 1.2 best-effort parser) が外部ツール由来の別名を上記マッピング表で正規化する。
 
 **絵文字エイリアスの実運用検証状況**: 絵文字 (`🔴`/`🟠`/`🟡`/`🔵`) は将来の互換性のため列挙しているが、主要な外部ツールが絵文字を出力する事例は未検証。新しい外部レビューツールへの対応として絵文字エイリアスを追加した場合は、本表の下に注記を追加すること。
 
@@ -154,7 +154,7 @@
 
 ### Cross-field invariants (型レベルで表現しきれない制約)
 
-以下の制約は単一フィールドの型では表現できないため、write 側 (`review.md` ステップ 6.1.a) が生成時に守る義務があり、read 側 (`fix.md` ステップ 1.2.0) は post-condition jq として検証する:
+以下の制約は単一フィールドの型では表現できないため、write 側 (`pr-review.md` ステップ 6.1.a) が生成時に守る義務があり、read 側 (`fix.md` ステップ 1.2.0) は post-condition jq として検証する:
 
 1. **ファイル名 ↔ JSON `pr_number` 同期**: `.rite/review-results/{pr_number}-{timestamp}.json` の `{pr_number}` prefix と JSON 内 `.pr_number` の値は必ず一致する。不一致時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=pr_number_mismatch` を emit して legacy parser fallthrough。手動でファイルを rename した場合のみ発火しうる。
 2. **`overall_assessment == "mergeable"` ∧ CRITICAL/HIGH open finding 存在禁止**: `overall_assessment` が `"mergeable"` のとき、`findings[]` に `severity ∈ {"CRITICAL", "HIGH"}` かつ `status == "open"` の要素が含まれてはならない。違反時は read 側で WARNING + `[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=mergeable_has_open_blockers` を emit して legacy parser fallthrough (手書き JSON で fix ループを silent に 0 件脱出させる bypass を防ぐ)。

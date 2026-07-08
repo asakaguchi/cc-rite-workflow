@@ -115,7 +115,7 @@ case "$p1_scan_found" in
 esac
 
 # pr_number の数値 fail-fast gate。
-# cleanup.md ステップ 6 の pr_number guard および review.md ステップ 6.1.a と対称化。
+# cleanup.md ステップ 6 の pr_number guard および pr-review.md ステップ 6.1.a と対称化。
 # caller が literal substitute を忘れた場合 (pr_number が "{pr_number}" 等)、find が
 # literal `{pr_number}-*.json` を探して常に 0 件を返し Priority 2 が silent fallthrough する
 # 経路を早期に閉じる。FIX_FALLBACK_FAILED を emit して caller が `[fix:error]` を出力する。

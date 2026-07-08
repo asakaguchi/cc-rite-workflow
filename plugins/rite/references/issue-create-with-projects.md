@@ -157,7 +157,7 @@ options:
 
 Each caller determines Priority using its own logic before passing it to the script.
 
-### review.md (ステップ 7.4): Severity-Based Mapping
+### pr-review.md (ステップ 7.4): Severity-Based Mapping
 
 | Finding Severity | Issue Priority | Reason |
 |-----------------|----------------|--------|

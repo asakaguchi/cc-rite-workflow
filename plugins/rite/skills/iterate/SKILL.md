@@ -223,7 +223,7 @@ args: "{pr_number}"
 
 ### ステップ 5.0: 一時残骸の最終回収 (terminal cleanup)
 
-完了通知を出力する**前に**、本ループが残した一時ブランチ・worktree を回収する。`pr-cycle-cleanup.sh` は review entry (review.md ステップ 1.0.0 PR Cycle Branch Cleanup) でも走るが、それは各 review **開始時** の発火であり、**最後の** review/fix cycle が残した残骸 (例: 最終 cycle の `rite-review-mutation-*` / `rite-revert-test-*` detached worktree、外部 checkout 由来の bare `pr-{N}` ブランチ) を sweep する後続 review が存在しない。本ループの終端で明示的に発火させ、回収の到達性を担保する (Issue #1526 AC-2)。non-blocking — 失敗してもループ完了を妨げない (AC-5):
+完了通知を出力する**前に**、本ループが残した一時ブランチ・worktree を回収する。`pr-cycle-cleanup.sh` は review entry (pr-review.md ステップ 1.0.0 PR Cycle Branch Cleanup) でも走るが、それは各 review **開始時** の発火であり、**最後の** review/fix cycle が残した残骸 (例: 最終 cycle の `rite-review-mutation-*` / `rite-revert-test-*` detached worktree、外部 checkout 由来の bare `pr-{N}` ブランチ) を sweep する後続 review が存在しない。本ループの終端で明示的に発火させ、回収の到達性を担保する (Issue #1526 AC-2)。non-blocking — 失敗してもループ完了を妨げない (AC-5):
 
 ```bash
 bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
@@ -366,10 +366,10 @@ bash {plugin_root}/hooks/flow-state.sh set \
 ステップ 2 / ステップ 4 の「次のコマンドへ進む」遷移 (継続点) と ステップ 5 の完了通知 (終了点) は本来 LLM が prose 指示 ("Do NOT stop") に従って自走するが、LLM が sentinel を出した直後に turn を終了する中断が観測された (継続点では次コマンドへ進まず停止し、終了点では `[review:mergeable]` 到達後に完了通知を出さず停止)。これを防ぐため、prose に依存しない **構造的な層** を `Stop` hook で実装している。継続点と終了点で **対称** に handoff をセットする:
 
 - **継続 handoff (one-shot)**: 継続 sentinel を出す sub-skill が flow-state に `/rite:...` handoff をセットする。
-  - `[review:fix-needed:N]` → review.md Step 8.0 が `--handoff "/rite:fix {pr}"`
+  - `[review:fix-needed:N]` → pr-review.md Step 8.0 が `--handoff "/rite:fix {pr}"`
   - `[fix:pushed]` / `[fix:pushed-wm-stale]` → fix.md Step 5.1 が `--handoff "/rite:pr-review {pr}"`
 - **終了 handoff (FINALIZE, one-shot)**: 終了 sentinel を出す sub-skill が flow-state に `FINALIZE:{result}:{pr}` handoff をセットする。
-  - `[review:mergeable]` → review.md Step 8.0 が `--handoff "FINALIZE:review:mergeable:{pr}"`
+  - `[review:mergeable]` → pr-review.md Step 8.0 が `--handoff "FINALIZE:review:mergeable:{pr}"`
   - `[fix:replied-only]` → fix.md Step 5.1 が `--handoff "FINALIZE:fix:replied-only:{pr}"`
   - `[fix:cancelled-by-user]` → fix.md Step 1.4 cancel が `--handoff "FINALIZE:fix:cancelled-by-user:{pr}"`
   これらは sub-skill 内の defense-in-depth set で行われるため、**LLM が turn を終える前に確実に実行される**。

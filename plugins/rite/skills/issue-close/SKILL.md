@@ -272,12 +272,12 @@ tmpfile=$(mktemp /tmp/rite-wiki-content-XXXXXX)
 trigger_stderr=$(mktemp /tmp/rite-wiki-trigger-err-XXXXXX) || trigger_stderr=/dev/null
 trap 'rm -f "$tmpfile"; [ "$trigger_stderr" != "/dev/null" ] && rm -f "$trigger_stderr"' EXIT
 
-# heredoc content write 失敗ガード (review.md 6.5.W / fix.md 4.6.W と対称、Issue #1522)。
+# heredoc content write 失敗ガード (pr-review.md 6.5.W / fix.md 4.6.W と対称、Issue #1522)。
 # /tmp full / permission 拒否 / inode 枯渇で tmpfile への write が truncate された場合、
 # truncated content を silent に wiki ingest するのを防ぐ。
 # close.md は Step 2 (heredoc) と trigger 呼び出しが単一 bash ブロックのため、
 # content_write_failed を同ブロック内で参照でき cross-invocation carry-forward は不要
-# (review.md/fix.md は Step 2/Step 3 が別 bash 呼び出しのため carry-forward が必要 — 唯一の構造差)。
+# (pr-review.md/fix.md は Step 2/Step 3 が別 bash 呼び出しのため carry-forward が必要 — 唯一の構造差)。
 content_write_failed=0
 if ! cat <<'RETRO_EOF' > "$tmpfile"
 ## Issue Close Retrospective
@@ -299,7 +299,7 @@ if [ "$content_write_failed" -eq 1 ]; then
   # trigger は起動していないため trigger_exit の借用値で reason を誤帰属しない。
   # root cause は上の WIKI_CONTENT_WRITE_FAILED で既出だが、W Phase の sentinel 消費側は
   # WIKI_INGEST_* prefix のみ認識するため gate-visible な WIKI_INGEST_FAILED を
-  # reason=content_write_failed で emit する (review.md 6.5.W / fix.md 4.6.W と対称)。
+  # reason=content_write_failed で emit する (pr-review.md 6.5.W / fix.md 4.6.W と対称)。
   echo "[CONTEXT] WIKI_INGEST_FAILED=1; reason=content_write_failed; exit_code=1"
   echo "WARNING: close Phase 4.4.W: content write 失敗のため wiki ingest をスキップ (trigger は未起動)。" >&2
   trigger_exit=1  # Phase 4.4.W.2 を LLM がスキップするための非 0 値
@@ -323,7 +323,7 @@ else
 fi
 ```
 
-**Non-blocking**: trigger 失敗・content write 失敗のいずれも workflow を止めない。LLM は `trigger_exit` を読み、非 0 なら Phase 4.4.W.2 をスキップする。`content_write_failed=1` (heredoc write 失敗) のときは trigger を起動せず、`WIKI_INGEST_FAILED reason=content_write_failed` を gate-visible に emit したうえで `trigger_exit=1` を設定して同じスキップ経路に合流する。これにより `/tmp` full 等での truncated retrospective の silent ingest を防ぐ (review.md 6.5.W / fix.md 4.6.W と対称)。
+**Non-blocking**: trigger 失敗・content write 失敗のいずれも workflow を止めない。LLM は `trigger_exit` を読み、非 0 なら Phase 4.4.W.2 をスキップする。`content_write_failed=1` (heredoc write 失敗) のときは trigger を起動せず、`WIKI_INGEST_FAILED reason=content_write_failed` を gate-visible に emit したうえで `trigger_exit=1` を設定して同じスキップ経路に合流する。これにより `/tmp` full 等での truncated retrospective の silent ingest を防ぐ (pr-review.md 6.5.W / fix.md 4.6.W と対称)。
 
 ### 4.4.W.2 Wiki Raw Commit
 

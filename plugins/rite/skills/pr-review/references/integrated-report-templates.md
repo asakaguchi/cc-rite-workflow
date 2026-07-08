@@ -133,7 +133,7 @@
 
 **aggregate label 禁止**: 本テーブルは各 item の分類を必ず明示する。「推奨 N 件」「follow-up 候補 N 件」のような件数のみの集計は本テーブルでも、PR コメント (ステップ 6.1.a) でも、result line (ステップ 8.1) でも禁止。ステップ 7.7 post-condition gate により aggregate label 単独報告は機械的に block される。 -->
 
-| レビュアー | 分類 | 内容 | 別 Issue 候補 |
+| レビュアー | 分類 | 内容 | トリアージ対象 |
 |-----------|------|------|:------------:|
 | {reviewer_type} | {actionable / design_confirmation / boundary} | {recommendation_content} | {✅ if classification == actionable OR (boundary AND user approves), — otherwise} |
 
@@ -313,7 +313,7 @@
 
 **aggregate label 禁止**: 本テーブルは各 item の分類を必ず明示する。「推奨 N 件」「follow-up 候補 N 件」のような件数のみの集計は本テーブルでも、PR コメント (ステップ 6.1.a) でも、result line (ステップ 8.1) でも禁止。ステップ 7.7 post-condition gate により aggregate label 単独報告は機械的に block される。 -->
 
-| レビュアー | 分類 | 内容 | 別 Issue 候補 |
+| レビュアー | 分類 | 内容 | トリアージ対象 |
 |-----------|------|------|:------------:|
 | {reviewer_type} | {actionable / design_confirmation / boundary} | {recommendation_content} | {✅ if classification == actionable OR (boundary AND user approves), — otherwise} |
 

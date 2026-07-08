@@ -66,6 +66,16 @@
 - **inconclusive variant を判定式に含める理由**: `internal-consistency.md` の "Inconclusive 集計 と META 行への反映" は、Verification protocol の各 step で `target_not_found` / `extraction_failed` / `tool_failure` が発生した場合に META 行を `(a + inconclusive)` / `(b + inconclusive)` 形式へ切り替えることを reviewer に要求している。これらを判定式に含めないと、正しく inconclusive を報告した tech-writer を「META 行なし」と誤判定して二重 penalty が起き silent fall-through する。含めることで inconclusive 報告を正しく受け入れ、Step 4.5 で acknowledgement プロセスを発火できる。
 - **literal substring match の設計選択**: カテゴリ名の空白/記号の差異 (`Order / Emphasis Consistency` 等の表記揺れ) を厳格に検出し、canonical form (`Order-Emphasis Consistency`) から逸脱した瞬間に発火する。「文書-実装整合性 mode の自己整合性」をステップ 5.1.3 自身が監視するための仕組み。
 
+## step7-triage-redesign-notes
+
+ステップ 7 の名称・推奨決定方式の再設計（自動 Issue 化 → スコープ外指摘のトリアージ）の設計理由。
+
+- **3 つのバイアスの積み重ね**: 旧「自動 Issue 化」には (1) 起票をゴールとする命名、(2) `AskUserQuestion` の選択肢列挙で「別 Issue 作成」が先頭（本 tool の規約上、先頭 = 推奨と解釈されやすい）、(3) 推奨決定の指示不在（エージェント裁量）、の 3 バイアスが積み重なっていた。エージェントには「指摘を先送りすれば fix ループが早く収束する」という構造的な先延ばし動機があり、この 3 バイアスが揃うと保険的な follow-up Issue が増殖する。fix ループ側の別 Issue 化経路は既に「先延ばしの抜け穴」として廃止済み（`skills/iterate/SKILL.md`）であり、ステップ 7 だけが取り残されていた。
+- **先延ばし禁止の設計原則**: 仮説的な将来リスクに先手を打つ Issue は大半が無駄に終わる。スコープ内の実指摘は本 PR で解決し（fix ループで強制済み）、スコープ外候補は「起票せず記録して終わり」をデフォルトにする方が、Issue の増殖を防ぎ実際に着手される確率を上げる。
+- **推奨機械決定表を裁量の代わりに置く理由**: 「裁量で決めてよい」とすると上記の構造的動機により実質的に「別 Issue 作成」へ誘導される。Likelihood（Observed/Demonstrable vs Hypothetical）と Source（A/B）という機械的に判定可能な軸だけで推奨を決定することで、エージェントの意思が介在する余地を無くす。
+- **Decision Log 記録を「追加」の経路とする理由**: fix ループの nit-noted 返信経路・acknowledged suppression（PR コメント / JSON ベースの再指摘抑制）は Decision Log 記録では代替されない。両者は別の目的（前者は次サイクルでの再指摘抑制、後者は仕様変更の記録）を持つため、置き換えではなく追加とした。
+- **元 Issue が特定できない PR での「選択肢非表示」**: PR コメント記録という代替スキーマを新設すると、記録先が「Section 9」「作業メモリ」「PR コメント」の 3 種に増え「シンプルさを死守」原則に反する。本リポジトリはブランチ命名規則上ほぼ全 PR が issue 番号を含むため、この縮退経路の実発生頻度は低いと判断し、選択肢非表示（3 択化）で単純に倒した（対象 Issue の Decision Log D-04 参照）。
+
 ## phase7-gate-notes
 
 ステップ 7.7 / 8.0.2 gate の設計理由。

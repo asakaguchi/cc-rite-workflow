@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-09T01:09:39+09:00 | skip | [20260708T160939Z-pr-1803.md](raw/reviews/20260708T160939Z-pr-1803.md) | PR #1803 (Issue #1799) — 0 findings のドキュメントラベル置換PR（docs/SPEC.md の review.md→pr-review.md 統一、PR #1796/#1800 のスコープ境界を後追いで完結）。tech-writer の LOW指摘1件は Likelihood-Evidence 欠如で Observed Likelihood Gate により機械的降格・除外。既存の Asymmetric Fix Transcription（PR #1800 事例）と Observed Likelihood Gate ページが十分カバー済みのため skip |
 | 2026-07-09T00:45:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=257, broken_refs=0 (PR #1802 ingest 後の auto-lint) |
 | 2026-07-09T00:40:00+09:00 | create | [境界での無害化は下流ツールの別エスケープ意味論までは保証しない（quoted heredoc → awk -v 伝播）](pages/anti-patterns/sanitization-gap-downstream-tool-escape-semantics.md) | raw/reviews/20260708T153610Z-pr-1802.md を統合 — PR #1802 (Issue #1801、pr-review ステップ7 スコープ外指摘トリアージ再設計) の review-fix ループで、cycle 1 の quoted heredoc による shell injection 対策が正しく機能した直後、同じ無害化済み値を awk -v へ渡した箇所で awk 自身のバックスラッシュエスケープ解釈により「1行 append」不変条件が破壊されることを cycle 2 で検出、ENVIRON 経由に修正し cycle 3 で 0 findings 収束 |
 | 2026-07-08T20:26:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=257, broken_refs=0 (PR #1800 ingest 後の auto-lint) |

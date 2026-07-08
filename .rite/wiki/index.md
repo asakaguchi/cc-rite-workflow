@@ -188,9 +188,10 @@
 | [rationale 転記圧縮時の主張スコープ量化拡大（この箇所→全体への過大一般化）](pages/anti-patterns/transcription-scope-quantifier-inflation.md) | anti-patterns | rationale を references へ退避するコンテキストダイエット型 refactor で、転記圧縮時に主張の量化スコープが「この箇所の規約」→「ファイル全体/各 bash block」へ過大一般化される系統的エラー。PR #1774 (Issue #1708) で本体 (F-01) と references 側 (F-02) の 2 回発生・3 cycle 収束を実測。転記文の量化表現（各/全体/すべて）を機械的に疑い、SKILL.md 本体と references の両側を検証する。 | 2026-07-07T03:56:13+00:00 | high |
 | [識別子リネーム後の裸参照置換で除外すべき参照の分類](pages/patterns/rename-bare-reference-exclusion-classification.md) | patterns | スキル/コマンド名のリネーム（例: /rite:resume → /rite:recover）後、裸ワード参照を横断置換する際は、enum値・変数名・スクリプトファイル名・principle ID・一般語・歴史的記述例示の6種を除外対象として判別する必要がある。 | 2026-07-08T02:20:00+00:00 | medium |
 | [先行 Issue の明示的 Non-Target 指定は、reviewer 推奨だけで覆さずユーザー確認する](pages/heuristics/respect-prior-non-target-designation.md) | heuristics | 同種のクリーンアップ系列で複数レビュアーが独立に『修正すべき』と推奨した箇所でも、先行 Issue/PR が明示的に Non-Target（対象外）と宣言していた場合は、その推奨を鵜呑みにせず先行判断の経緯をユーザーに提示し、スコープ拡大を承認制にする。 | 2026-07-08T03:06:55+09:00 | medium |
+| [識別子リネームは3階層（コマンド文字列・ファイル名shorthand・裸トークン）で置換対象を洗い出す](pages/heuristics/identifier-rename-three-tier-pattern-enumeration.md) | heuristics | 識別子リネーム PR では rite:{old} の完全コマンド文字列だけでなく {old}.md のファイル名 shorthand、および拡張子なしの裸トークンの3階層を洗い出さないと、review-fix ループが段階的に狭いスコープへ収束しながら複数サイクルを消費する。 | 2026-07-08T13:13:15+09:00 | high |
 
 ## 統計
 
-- 総ページ数: 176
-- ドメイン別: patterns=60, heuristics=54, anti-patterns=60
-- 最終更新: 2026-07-07T03:56:13+00:00
+- 総ページ数: 177
+- ドメイン別: patterns=60, heuristics=55, anti-patterns=60
+- 最終更新: 2026-07-08T13:13:15+09:00

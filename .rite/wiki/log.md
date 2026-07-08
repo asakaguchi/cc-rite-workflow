@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-08T13:13:15+09:00 | create | [識別子リネームは3階層（コマンド文字列・ファイル名shorthand・裸トークン）で置換対象を洗い出す](pages/heuristics/identifier-rename-three-tier-pattern-enumeration.md) | PR #1795 (Issue #1785) の5サイクル review-fix ループ（cycle1〜5、raw/reviews・fixes 計7件）から、識別子リネームの置換対象パターンを3階層（rite:{old} 完全コマンド文字列 / {old}.md ファイル名shorthand / 裸トークン）で洗い出すべきという知見を統合。関連する既存ページ「識別子リネーム後の裸参照置換で除外すべき参照の分類」（PR #1793由来）と相互リンク |
 | 2026-07-08T03:10:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=257, broken_refs=0 (PR #1794 ingest 後の auto-lint) |
 | 2026-07-08T03:06:55+09:00 | create | [先行 Issue の明示的 Non-Target 指定は、reviewer 推奨だけで覆さずユーザー確認する](pages/heuristics/respect-prior-non-target-designation.md) | raw/reviews/20260707T175542Z-pr-1794.md を新規ページ化 — PR #1794 (Issue #1792) レビューで両レビュアーが独立に検出した flow-state.sh:24 の裸ファイル名参照について、先行 Issue #1784 / PR #1790 の明示的 Non-Target 宣言を確認しユーザーがスコープ拡大を見送った判断プロセスを抽出 |
 | 2026-07-08T02:25:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=257, broken_refs=0 (PR #1793 ingest 後の auto-lint) |

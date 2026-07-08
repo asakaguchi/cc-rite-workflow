@@ -2,7 +2,7 @@
 name: iterate
 description: |
   rite workflow のレビュー/修正ループ: 指定 PR を /rite:pr-review ⇄ /rite:fix で mergeable まで
-  自律的に回す。/rite:open・/rite:run から呼ばれる sub-step、または手動 /rite:iterate <pr>。
+  自律的に回す。/rite:open・/rite:batch-run から呼ばれる sub-step、または手動 /rite:iterate <pr>。
   汎用の「PR を直す」ヘルパーではなく、その語では auto-activate しない。
   起動: /rite:iterate <pr_number>
 argument-hint: "<pr_number>"
@@ -19,9 +19,9 @@ argument-hint: "<pr_number>"
 3. `/rite:fix` を invoke
 4. fix sentinel を判定（`[fix:pushed]` → ステップ 1 に戻る / `[fix:replied-only]` `[fix:cancelled-by-user]` → 終了 / `[fix:error]` → AskUserQuestion）
 5. 完了通知を出す
-6. （cycle 上限到達時のみ）サーキットブレーカー: バッチ実行（`/rite:run`）は `[iterate:max-cycles-reached]` を emit して当該 Issue を failed 扱いにさせ、対話実行は AskUserQuestion（さらに N cycle 継続 / 中止 / draft のまま停止）でユーザーに判断を委ねる
+6. （cycle 上限到達時のみ）サーキットブレーカー: バッチ実行（`/rite:batch-run`）は `[iterate:max-cycles-reached]` を emit して当該 Issue を failed 扱いにさせ、対話実行は AskUserQuestion（さらに N cycle 継続 / 中止 / draft のまま停止）でユーザーに判断を委ねる
 
-**サーキットブレーカー**（`safety.max_review_cycles`、既定 5）が唯一の自動安全網。上限到達時は、対話実行では AskUserQuestion（さらに N cycle 継続 / 中止 / draft のまま停止）でユーザーに判断を委ね（自動でループを継続しない）、`/rite:run` バッチ実行では当該 Issue を failed 扱いにする sentinel を emit して次 Issue へ進ませる（バッチ全体のストール防止）。cycle_count は flow-state に永続化され resume 後も継続する（AC-3）。それ以外の中断経路は 2 種類: (a) ユーザーが fix.md 内 AskUserQuestion で「中止」を選択 → `[fix:cancelled-by-user]` emit + ループ終了、(b) ユーザーが Ctrl+C で中断 → flow-state phase 残存。どちらも `/rite:recover` で再開可。
+**サーキットブレーカー**（`safety.max_review_cycles`、既定 5）が唯一の自動安全網。上限到達時は、対話実行では AskUserQuestion（さらに N cycle 継続 / 中止 / draft のまま停止）でユーザーに判断を委ね（自動でループを継続しない）、`/rite:batch-run` バッチ実行では当該 Issue を failed 扱いにする sentinel を emit して次 Issue へ進ませる（バッチ全体のストール防止）。cycle_count は flow-state に永続化され resume 後も継続する（AC-3）。それ以外の中断経路は 2 種類: (a) ユーザーが fix.md 内 AskUserQuestion で「中止」を選択 → `[fix:cancelled-by-user]` emit + ループ終了、(b) ユーザーが Ctrl+C で中断 → flow-state phase 残存。どちらも `/rite:recover` で再開可。
 
 途中で止まったら flow-state に現 phase (review or fix) が残るので `/rite:recover` で再開する。
 
@@ -267,7 +267,7 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 
 ## ステップ 6: サーキットブレーカー（cycle 上限到達時のみ）
 
-ステップ 1 で `ITERATE_CB=fire`（`cycle_count >= max_review_cycles`）となったときのみ到達する。まず batch 実行（`/rite:run` 経由）か対話実行かを run-queue.json から判定する。`/rite:run` は駆動中に `active=true` を立て、cursor が処理中 Issue を指す。よって **`active == true` かつ** cursor の Issue が本 iterate の対象と一致すれば batch と判定する（`active` 条件は、停止済み dormant キューが cursor 一致だけで active batch と誤判定されるのを防ぐ。read-only 参照。`{issue_number}` はステップ 0 の marker 値をリテラル置換）:
+ステップ 1 で `ITERATE_CB=fire`（`cycle_count >= max_review_cycles`）となったときのみ到達する。まず batch 実行（`/rite:batch-run` 経由）か対話実行かを run-queue.json から判定する。`/rite:batch-run` は駆動中に `active=true` を立て、cursor が処理中 Issue を指す。よって **`active == true` かつ** cursor の Issue が本 iterate の対象と一致すれば batch と判定する（`active` 条件は、停止済み dormant キューが cursor 一致だけで active batch と誤判定されるのを防ぐ。read-only 参照。`{issue_number}` はステップ 0 の marker 値をリテラル置換）:
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
@@ -292,19 +292,19 @@ echo "[CONTEXT] ITERATE_CB_MODE=$cb_mode; issue={issue_number}; pr={pr_number}"
 
 ### ステップ 6.1: バッチ実行 — failed sentinel を emit
 
-review を回さず、当該 Issue を非収束（failed）として `/rite:run` に返す。`/rite:run` はこの sentinel を受けて当該 Issue を failed 記録し、次の Issue へ進む（ready/merge/cleanup はスキップ、draft/open PR はレビュー待ちで残す）。継続 handoff はステップ 1 fire 分岐の `flow-state.sh set`（`--handoff` なし）で既に default-clear 済みのため、ここでは追加の handoff 操作をしない（`[fix:error]` が set で handoff をクリアして clean terminal になるのと同じ。以降は run の flat 構造 + HTML hint で継続）:
+review を回さず、当該 Issue を非収束（failed）として `/rite:batch-run` に返す。`/rite:batch-run` はこの sentinel を受けて当該 Issue を failed 記録し、次の Issue へ進む（ready/merge/cleanup はスキップ、draft/open PR はレビュー待ちで残す）。継続 handoff はステップ 1 fire 分岐の `flow-state.sh set`（`--handoff` なし）で既に default-clear 済みのため、ここでは追加の handoff 操作をしない（`[fix:error]` が set で handoff をクリアして clean terminal になるのと同じ。以降は run の flat 構造 + HTML hint で継続）:
 
 ```
 ## /rite:iterate サーキットブレーカー発火（バッチ）
 
 - PR: #{pr_number}（Issue #{issue_number}）
 - 理由: review⇄fix cycle が上限 {max_review_cycles} に到達（非収束）
-- 措置: 当該 Issue を failed 扱いとし、draft/open PR をレビュー待ちで残します（`/rite:run` が残りキューを続行、最終 Issue なら完了通知へ）
+- 措置: 当該 Issue を failed 扱いとし、draft/open PR をレビュー待ちで残します（`/rite:batch-run` が残りキューを続行、最終 Issue なら完了通知へ）
 
 <!-- [iterate:max-cycles-reached] -->
 ```
 
-制御を `/rite:run` に戻す（run 側で cursor 前進）。
+制御を `/rite:batch-run` に戻す（run 側で cursor 前進）。
 
 ### ステップ 6.2: 対話実行 — AskUserQuestion
 
@@ -357,7 +357,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 - ユーザーが Ctrl+C で中断した場合: flow-state に現 phase (review or fix) が残るので `/rite:recover` で本コマンドが再起動する (詳細な phase → command routing は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.3 を参照)
 - `[fix:error]` 時: 自動継続せず必ず AskUserQuestion で確認 (silent regression 防止)
-- reviewer が non-deterministic に振動 (毎 cycle で別の指摘) する場合: `safety.max_review_cycles`（既定 5）到達でサーキットブレーカーが発火する（ステップ 6）。対話実行は AskUserQuestion（継続 / 中止 / draft のまま停止）でユーザーに判断を委ね、`/rite:run` バッチ実行は `[iterate:max-cycles-reached]` を emit して当該 Issue を failed 扱いにし次 Issue へ進む。Ctrl+C による手動中断も従来どおり可能
+- reviewer が non-deterministic に振動 (毎 cycle で別の指摘) する場合: `safety.max_review_cycles`（既定 5）到達でサーキットブレーカーが発火する（ステップ 6）。対話実行は AskUserQuestion（継続 / 中止 / draft のまま停止）でユーザーに判断を委ね、`/rite:batch-run` バッチ実行は `[iterate:max-cycles-reached]` を emit して当該 Issue を failed 扱いにし次 Issue へ進む。Ctrl+C による手動中断も従来どおり可能
 
 ---
 
@@ -382,6 +382,6 @@ bash {plugin_root}/hooks/flow-state.sh set \
 ## 設計判断
 
 - **指摘ゼロ（mergeable）到達が正常出口** — 加えて `safety.max_review_cycles`（既定 5）到達で発火するサーキットブレーカーを唯一の自動安全網として持つ（#1701）。reviewer の非決定的振動や非収束 PR による無限ループを構造的に防ぐ。同一 fingerprint 検出 / quality signal escalation といった細粒度の安全網は依然として持たず、cycle 上限のみに絞る（CLAUDE.md「シンプルさを死守」）
-- **上限到達時も自動中止しない**: 対話実行は AskUserQuestion でユーザーに判断を委ね（自律実行の哲学を維持）、`/rite:run` バッチ実行のみ failed 扱いで次 Issue へ自動遷移する（バッチ全体のストール防止）
+- **上限到達時も自動中止しない**: 対話実行は AskUserQuestion でユーザーに判断を委ね（自律実行の哲学を維持）、`/rite:batch-run` バッチ実行のみ failed 扱いで次 Issue へ自動遷移する（バッチ全体のストール防止）
 - **cycle counter は flow-state に保持**: 専用 state file (`.rite/state/*.count` 等) は持たず、`cycle_count` を flow-state の merge-preserve フィールドとして永続化する（`worktree` と同じ additive パターン）。resume を跨いで継続し（AC-3）、fresh entry（phase が review/fix 以外）で 0 リセットして run バッチの Issue 間リークを防ぐ。Stop hook の handoff とは独立（handoff は one-shot consume される継続マーカー、cycle_count は accumulate されるカウンタ）
 - 別 Issue 化経路は廃止済み (commit 1a で fix.md Phase 4.3 削除) — 「別 Issue にスキップして loop 終了」の抜け穴は塞がれている

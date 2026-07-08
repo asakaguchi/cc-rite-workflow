@@ -68,7 +68,7 @@ The command prefix `rite` was chosen for:
 | `/rite:pr-review` | Multi-reviewer review | `[PR number]` |
 | `/rite:fix` | Address review feedback | `[PR number]` |
 | `/rite:cleanup` | Post-merge cleanup | `[branch name]` |
-| `/rite:run` | Run open→iterate (draft only) for each Issue; `--merge` opts into ready→merge→cleanup (stop on first failure) | `[--merge] <Issue number>...` |
+| `/rite:batch-run` | Run open→iterate (draft only) for each Issue; `--merge` opts into ready→merge→cleanup (stop on first failure) | `[--merge] <Issue number>...` |
 | `/rite:lint` | Run quality checks | `[file path]` |
 | `/rite:template-reset` | Regenerate templates | `[--force]` |
 | `/rite:wiki-init` | Initialize Experience Wiki (branch, directories, templates) | None |
@@ -117,7 +117,7 @@ The command prefix `rite` was chosen for:
 Issue Auto-Close
 ```
 
-**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:open <issue>` handles branch creation, implementation, autonomous lint, and draft PR creation. `/rite:iterate <pr>` loops review and fix until convergence, bounded by a `safety.max_review_cycles` circuit breaker (default 5); on reach, interactive runs prompt via AskUserQuestion and `/rite:run` batch marks the Issue failed and advances (manual abort via `Ctrl+C` + `/rite:recover` remains available). `/rite:ready <pr>` flips the PR to Ready for review. `/rite:merge <pr>` runs `gh pr merge --squash`. For the canonical live spec of each command, see [`skills/open/SKILL.md`](../plugins/rite/skills/open/SKILL.md), [`iterate.md`](../plugins/rite/skills/iterate/SKILL.md), [`ready.md`](../plugins/rite/skills/ready/SKILL.md), and [`merge.md`](../plugins/rite/skills/merge/SKILL.md). (The legacy [Phase 5: End-to-End Execution](#phase-5-end-to-end-execution) section below documents the pre-decomposition `start.md` orchestrator for archaeological / migration reference only.)
+**Note:** The end-to-end flow is split across four single-responsibility commands. `/rite:open <issue>` handles branch creation, implementation, autonomous lint, and draft PR creation. `/rite:iterate <pr>` loops review and fix until convergence, bounded by a `safety.max_review_cycles` circuit breaker (default 5); on reach, interactive runs prompt via AskUserQuestion and `/rite:batch-run` batch marks the Issue failed and advances (manual abort via `Ctrl+C` + `/rite:recover` remains available). `/rite:ready <pr>` flips the PR to Ready for review. `/rite:merge <pr>` runs `gh pr merge --squash`. For the canonical live spec of each command, see [`skills/open/SKILL.md`](../plugins/rite/skills/open/SKILL.md), [`iterate.md`](../plugins/rite/skills/iterate/SKILL.md), [`ready.md`](../plugins/rite/skills/ready/SKILL.md), and [`merge.md`](../plugins/rite/skills/merge/SKILL.md). (The legacy [Phase 5: End-to-End Execution](#phase-5-end-to-end-execution) section below documents the pre-decomposition `start.md` orchestrator for archaeological / migration reference only.)
 
 **Status Transitions:**
 ```
@@ -158,7 +158,7 @@ rite-workflow/
 │ ├── ready/ # /rite:ready (Ready for review 化)
 │ ├── merge/ # /rite:merge (squash merge)
 │ ├── cleanup/ # /rite:cleanup (+ references/archive-procedures.md)
-│ ├── run/ # /rite:run (複数 Issue 順次 open→iterate; --merge で ready→merge→cleanup まで)
+│ ├── batch-run/ # /rite:batch-run (複数 Issue 順次 open→iterate; --merge で ready→merge→cleanup まで)
 │ ├── pr-create/ # /rite:pr-create (draft PR 作成) — sub-skill
 │ # --- Issue 管理 ---
 │ ├── issue-create/ # /rite:issue-create (+ references/: complexity-gate / contract-section-mapping / fingerprint-cycling / slug-generation)
@@ -854,7 +854,7 @@ Starts when "Start implementation" is selected. The following steps are executed
 | Approve with conditions | Fix with `/rite:fix` → Return to 5.4 |
 | Request changes | Fix with `/rite:fix` → Return to 5.4 |
 
-**Review-Fix Cycle Continuation:** The `/rite:pr-review` → `/rite:fix` → `/rite:pr-review` cycle continues automatically until the overall assessment is "Approve" (zero blocking findings). The normal exit is `[review:mergeable]` (all findings resolved). A `safety.max_review_cycles` circuit breaker (#1701, default 5) additionally bounds non-convergent loops: on reach, interactive `/rite:iterate` prompts via `AskUserQuestion` (continue/abort/leave-draft) and `/rite:run` batch marks the Issue failed and advances to the next. There is no progressive relaxation.
+**Review-Fix Cycle Continuation:** The `/rite:pr-review` → `/rite:fix` → `/rite:pr-review` cycle continues automatically until the overall assessment is "Approve" (zero blocking findings). The normal exit is `[review:mergeable]` (all findings resolved). A `safety.max_review_cycles` circuit breaker (#1701, default 5) additionally bounds non-convergent loops: on reach, interactive `/rite:iterate` prompts via `AskUserQuestion` (continue/abort/leave-draft) and `/rite:batch-run` batch marks the Issue failed and advances to the next. There is no progressive relaxation.
 
 **Verification mode** (`review.loop.verification_mode`, default: `false`): When explicitly enabled, from the second iteration onward, reviews perform both a full review and verification of previous fixes with incremental diff regression checks. New MEDIUM/LOW findings in unchanged code are reported as non-blocking "stability concerns". The default `false` performs full review every iteration, maximizing review quality.
 
@@ -1724,10 +1724,10 @@ The contract ends only when the orchestrator's terminal completion marker has be
 | Orchestrator | Terminal marker |
 |-------------|----------------|
 | `/rite:open` | Step 6 completion notice listing the draft PR number/URL and the next-command suggestions (`/rite:iterate` / `/rite:ready` / `/rite:merge` / `/rite:cleanup`) |
-| `/rite:iterate` | `[review:mergeable]` or `[fix:replied-only]` (whichever sub-skill returns first terminates the loop) / `[fix:cancelled-by-user]` (user-initiated cancel via fix.md AskUserQuestion) / `[iterate:max-cycles-reached]` (circuit breaker in a `/rite:run` batch — the Issue is marked failed and the batch advances) / `[iterate:max-cycles-stopped]` (circuit breaker in interactive mode — user chose abort / leave-draft at the `safety.max_review_cycles` AskUserQuestion) |
+| `/rite:iterate` | `[review:mergeable]` or `[fix:replied-only]` (whichever sub-skill returns first terminates the loop) / `[fix:cancelled-by-user]` (user-initiated cancel via fix.md AskUserQuestion) / `[iterate:max-cycles-reached]` (circuit breaker in a `/rite:batch-run` batch — the Issue is marked failed and the batch advances) / `[iterate:max-cycles-stopped]` (circuit breaker in interactive mode — user chose abort / leave-draft at the `safety.max_review_cycles` AskUserQuestion) |
 | `/rite:ready` | `[ready:returned-to-caller]` (E2E flow) / completion display message (standalone) |
 | `/rite:merge` | `[merge:returned-to-caller]` |
-| `/rite:run` | `<!-- [run:all-completed] -->` (all Issues completed; default = draft PRs left for review, `--merge` = merged/cleaned up) / `<!-- [run:stopped] -->` (stopped on first failure; processed/remaining Issues reported). `run-queue.json` persists `{issues, cursor, mode, failed, active}`: `mode` (`default`/`merge`; missing → `default` for backward compat), `failed` (Issues whose `/rite:iterate` tripped the `safety.max_review_cycles` circuit breaker → `[iterate:max-cycles-reached]`; missing → `[]`), and `active` (true while the batch drives iterate, set false on stop; missing → `false` — consulted by `/rite:iterate` ステップ6 so a dormant queue is not misread as an active batch). Does NOT use flow-state handoff; per-Issue continuation rides each sub-skill's own mechanism |
+| `/rite:batch-run` | `<!-- [run:all-completed] -->` (all Issues completed; default = draft PRs left for review, `--merge` = merged/cleaned up) / `<!-- [run:stopped] -->` (stopped on first failure; processed/remaining Issues reported). `run-queue.json` persists `{issues, cursor, mode, failed, active}`: `mode` (`default`/`merge`; missing → `default` for backward compat), `failed` (Issues whose `/rite:iterate` tripped the `safety.max_review_cycles` circuit breaker → `[iterate:max-cycles-reached]`; missing → `[]`), and `active` (true while the batch drives iterate, set false on stop; missing → `false` — consulted by `/rite:iterate` ステップ6 so a dormant queue is not misread as an active batch). Does NOT use flow-state handoff; per-Issue continuation rides each sub-skill's own mechanism |
 | `/rite:issue-create` | `<!-- [create:returned-to-caller:{N}] -->` (HTML-comment wrap form) preceded by user-visible `✅ Issue #{N} を作成しました: {url}` and next-step guidance |
 
 ### Phase-aware continuation hints

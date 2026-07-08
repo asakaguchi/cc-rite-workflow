@@ -631,7 +631,7 @@ When a limit is exceeded, the workflow presents options:
 The `/rite:iterate` review⇄fix loop normally exits only on `[review:mergeable]` (0 findings). `max_review_cycles` adds a circuit breaker so a non-convergent PR cannot loop forever. When the cycle count reaches the limit:
 
 - **Interactive `/rite:iterate`**: an `AskUserQuestion` is presented (continue for another `max_review_cycles` cycles / abort / leave the draft as-is). The loop is never auto-continued past the limit.
-- **`/rite:run` batch**: the Issue is recorded as failed (`[iterate:max-cycles-reached]`) and the batch advances to the next Issue, leaving the draft/open PR for review. This prevents one non-convergent PR from stalling the whole batch.
+- **`/rite:batch-run` batch**: the Issue is recorded as failed (`[iterate:max-cycles-reached]`) and the batch advances to the next Issue, leaving the draft/open PR for review. This prevents one non-convergent PR from stalling the whole batch.
 
 The cycle counter is persisted in the per-session flow-state (`cycle_count`) and continues across `/rite:recover` — an interrupted loop resumes its count rather than restarting from 0.
 

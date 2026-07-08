@@ -31,7 +31,7 @@ if [ "true" = "true" ]; then ...; fi
 
 - **resume**: セッションが中断し `/rite:recover` で別ターンから再開する場合、marker を emit した Bash tool 呼び出し自体が会話履歴に無い
 - **compact**: 長い会話が要約されるとき、`[CONTEXT]` marker 行が要約対象になり文字列として保持されない可能性がある
-- **途中入場**: orchestrator（`/rite:run`, `/rite:iterate` 等）が sub-skill を呼び出す際、sub-skill 内の marker が期待した粒度で親の会話コンテキストに伝播しないケース
+- **途中入場**: orchestrator（`/rite:batch-run`, `/rite:iterate` 等）が sub-skill を呼び出す際、sub-skill 内の marker が期待した粒度で親の会話コンテキストに伝播しないケース
 
 **実例（Issue #1595）**: `open/SKILL.md` は元々「ステップ 1.4 で `MULTI_SESSION_ENABLED` を emit し、ステップ 2.2/2.3 の分岐でその値を会話コンテキストから読む」設計だった。resume / 途中入場で marker が context から失われると、「marker が見つからない → 従来の `false` 相当の経路（`git switch -c`）にフォールバックする」暗黙の挙動が発生し、`multi_session.enabled: true` であるにも関わらず main ツリーへ直接 `git switch -c` する silent fallback バグを生んだ。対策として「副作用（ブランチ作成）直前に marker を再確定する hard gate」（2.1-G）が導入されたが、これは対症療法であり、他のスキルの同種パターンには適用されていない。
 

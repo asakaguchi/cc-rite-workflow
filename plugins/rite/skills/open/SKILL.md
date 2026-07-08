@@ -2,7 +2,7 @@
 name: open
 description: |
   rite workflow の Issue→draft PR ステップ: 指定 Issue を起点に準備→ブランチ→計画→実装→
-  lint→draft PR まで一気通貫で実行する。/rite:run・/rite:cleanup から呼ばれる sub-step、
+  lint→draft PR まで一気通貫で実行する。/rite:batch-run・/rite:cleanup から呼ばれる sub-step、
   または手動 /rite:open <issue>。汎用の「Issue に着手」ヘルパーではなく、その語では auto-activate しない。
   起動: /rite:open <issue_number>
 argument-hint: "<issue_number>"

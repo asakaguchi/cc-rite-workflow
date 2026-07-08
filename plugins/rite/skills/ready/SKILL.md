@@ -2,7 +2,7 @@
 name: ready
 description: |
   rite workflow の Ready 化ステップ: draft PR を Ready for review にし、関連 Issue の Status を
-  更新する。/rite:run から呼ばれる sub-step、または手動 /rite:ready [pr]。汎用の「PR を ready に」
+  更新する。/rite:batch-run から呼ばれる sub-step、または手動 /rite:ready [pr]。汎用の「PR を ready に」
   ヘルパーではなく、その語では auto-activate しない。
   起動: /rite:ready [pr_number]
 argument-hint: "[pr_number]"

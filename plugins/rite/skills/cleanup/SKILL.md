@@ -2,7 +2,7 @@
 name: cleanup
 description: |
   rite workflow のマージ後クリーンアップ: ブランチ削除・Projects Status→Done・Issue close・
-  Wiki ingest 等を実行する。/rite:run・/rite:merge の後続として呼ばれる、または手動 /rite:cleanup [branch]。
+  Wiki ingest 等を実行する。/rite:batch-run・/rite:merge の後続として呼ばれる、または手動 /rite:cleanup [branch]。
   汎用の「後片付け」ヘルパーではなく、その語では auto-activate しない。
   起動: /rite:cleanup [branch_name]
 argument-hint: "[branch_name]"

@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-09T00:45:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=257, broken_refs=0 (PR #1802 ingest 後の auto-lint) |
 | 2026-07-09T00:40:00+09:00 | create | [境界での無害化は下流ツールの別エスケープ意味論までは保証しない（quoted heredoc → awk -v 伝播）](pages/anti-patterns/sanitization-gap-downstream-tool-escape-semantics.md) | raw/reviews/20260708T153610Z-pr-1802.md を統合 — PR #1802 (Issue #1801、pr-review ステップ7 スコープ外指摘トリアージ再設計) の review-fix ループで、cycle 1 の quoted heredoc による shell injection 対策が正しく機能した直後、同じ無害化済み値を awk -v へ渡した箇所で awk 自身のバックスラッシュエスケープ解釈により「1行 append」不変条件が破壊されることを cycle 2 で検出、ENVIRON 経由に修正し cycle 3 で 0 findings 収束 |
 | 2026-07-08T20:26:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=257, broken_refs=0 (PR #1800 ingest 後の auto-lint) |
 | 2026-07-08T20:25:00+09:00 | update | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | raw/reviews/20260708T112305Z-pr-1800.md を統合 — PR #1800 (Issue #1797、review.md→pr-review.md 拡張子なし短縮表記リネーム 41ファイル・94箇所) で6 reviewer が sweep 完全性・過剰置換ゼロ・除外理由の前例裏取りの3点を独立検証し 0 findings / 1 cycle mergeable に到達した successful preventive application を追記 |

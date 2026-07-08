@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-08T18:20:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=257, broken_refs=0 (PR #1796 ingest 後の auto-lint) |
 | 2026-07-08T18:15:00+09:00 | update | [識別子リネームは3階層（コマンド文字列・ファイル名shorthand・裸トークン）で置換対象を洗い出す](pages/heuristics/identifier-rename-three-tier-pattern-enumeration.md) | raw/reviews/20260708T090103Z-pr-1796.md を統合 — PR #1796 (Issue #1786、review→pr-review リネーム) で同じ Tier 2 shorthand (review.md) 残存パターンが再演したが、3名の reviewer が独立に `分類: boundary` で報告し fix loop を経ずに別 Issue (#1797) 化、1 cycle・0 blocking findings で収束した代替戦略を追記 |
 | 2026-07-08T13:17:46+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=257, broken_refs=0 (PR #1795 ingest 後の auto-lint) |
 | 2026-07-08T13:13:15+09:00 | create | [識別子リネームは3階層（コマンド文字列・ファイル名shorthand・裸トークン）で置換対象を洗い出す](pages/heuristics/identifier-rename-three-tier-pattern-enumeration.md) | PR #1795 (Issue #1785) の5サイクル review-fix ループ（cycle1〜5、raw/reviews・fixes 計7件）から、識別子リネームの置換対象パターンを3階層（rite:{old} 完全コマンド文字列 / {old}.md ファイル名shorthand / 裸トークン）で洗い出すべきという知見を統合。関連する既存ページ「識別子リネーム後の裸参照置換で除外すべき参照の分類」（PR #1793由来）と相互リンク |

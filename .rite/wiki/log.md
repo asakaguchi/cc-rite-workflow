@@ -6,6 +6,7 @@
 
 | 日時 | アクション | 対象 | 詳細 |
 |------|-----------|------|------|
+| 2026-07-09T08:05:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=259, broken_refs=0 (PR #1804 ingest 後の auto-lint) |
 | 2026-07-09T08:02:19+09:00 | skip | [20260708T225253Z-pr-1804.md](raw/reviews/20260708T225253Z-pr-1804.md) | PR #1804 (Issue #1787) — 0 findings で完了した同シリーズ（組み込みコマンド基底名衝突回避）のリネーム PR（rite:run → rite:batch-run）。両レビュアーが独立に凍結済み実測スナップショット記述への言及に到達したが、これは既存運用（PR #1800 の Asymmetric Fix Transcription 記録）が機能したことの確認に留まり新規 pattern を含まないため skip |
 | 2026-07-09T01:12:00+09:00 | lint:clean | — | contradictions=0, stale=0, orphans=0, missing_concept=0, unregistered_raw=258, broken_refs=0 (PR #1803 ingest 後の auto-lint) |
 | 2026-07-09T01:09:39+09:00 | skip | [20260708T160939Z-pr-1803.md](raw/reviews/20260708T160939Z-pr-1803.md) | PR #1803 (Issue #1799) — 0 findings のドキュメントラベル置換PR（docs/SPEC.md の review.md→pr-review.md 統一、PR #1796/#1800 のスコープ境界を後追いで完結）。tech-writer の LOW指摘1件は Likelihood-Evidence 欠如で Observed Likelihood Gate により機械的降格・除外。既存の Asymmetric Fix Transcription（PR #1800 事例）と Observed Likelihood Gate ページが十分カバー済みのため skip |

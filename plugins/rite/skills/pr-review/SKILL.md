@@ -3323,7 +3323,8 @@ if [ -z "$body" ]; then
 elif printf '%s' "$body" | grep -q '^## 9\. Decision Log'; then
   max_d=$(printf '%s' "$body" | grep -oE 'D-[0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1)
   [ -n "$max_d" ] || max_d=0
-  next_d=$(printf 'D-%02d' $((max_d + 1)))
+  next_num=$((max_d + 1))
+  next_d=$(printf 'D-%02d' "$next_num")
   new_line="- ${today} ${next_d}: ${line_content}"
 
   tmpfile=$(mktemp)
@@ -3361,13 +3362,15 @@ else
 fi
 ```
 
-**Error handling**（いずれも non-blocking。review フローは継続する）:
+Decision Log append failure reasons: (`body_fetch_failure` / `gh_edit_failure` / `wm_sync_failure`)
 
-| Error Case | Response |
-|------------|----------|
-| 元 Issue body 取得失敗 | WARNING を stderr に出力し、記録予定行（D-NN 未確定）を表示して手動追記を案内 |
-| `gh issue edit` 失敗 | WARNING を stderr に出力し、記録予定行を表示して手動追記を案内 |
-| 作業メモリ「決定事項・メモ」への sync 失敗（Section 9 不在時） | WARNING を stderr に出力し、記録予定行を表示して手動追記を案内 |
+| reason | Description |
+|--------|-------------|
+| `body_fetch_failure` | 元 Issue の body 取得（`gh issue view`）に失敗 |
+| `gh_edit_failure` | Section 9 への `gh issue edit` 適用に失敗 |
+| `wm_sync_failure` | Section 9 不在時の作業メモリ「決定事項・メモ」への sync に失敗 |
+
+**Error handling**（いずれも non-blocking。review フローは継続する）: 上記いずれの reason も WARNING を stderr に出力し、記録予定行（`body_fetch_failure` 時は D-NN 未確定）を表示して手動追記を案内する。
 
 ### 7.5-7.6 Append to PR & Report
 

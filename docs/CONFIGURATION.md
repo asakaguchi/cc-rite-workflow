@@ -573,7 +573,7 @@ Settings for per-session Git worktree isolation, letting multiple Claude Code se
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | boolean | `true` | Enable per-session worktrees (on by default). Set to `false` to restore single-session behavior (identical to the previous default, zero change). New projects get `enabled: true` from the `/rite:init` template; existing configs that predate the feature and omit the `multi_session` block fall back to `false` for backward compatibility |
+| `enabled` | boolean | `true` | Enable per-session worktrees (on by default). Set to `false` to restore single-session behavior (identical to the previous default, zero change). New projects get `enabled: true` from the `/rite:setup` template; existing configs that predate the feature and omit the `multi_session` block fall back to `false` for backward compatibility |
 | `worktree_base` | string | `".rite/worktrees"` | Base directory for session worktrees (each Issue gets an `issue-{N}` subdirectory) |
 
 **Separate axis from `parallel`:** `parallel.*` governs per-Issue sub-agent fan-out *within a single session*; `multi_session.*` governs lifecycle isolation *across whole sessions*. The two are orthogonal and intentionally not merged — `parallel.mode: "worktree"` uses `.worktrees/{issue}/{task}`, while `multi_session` uses `.rite/worktrees/issue-{N}`.
@@ -592,7 +592,7 @@ multi_session:
   worktree_base: ".rite/worktrees"
 ```
 
-**`.gitignore` requirement:** add `.rite/worktrees/` so session worktrees do not leak into dev-branch diffs. `/rite:init` adds this automatically, and `/rite:lint` (via `gitignore-health-check.sh`) emits a non-blocking warning if it is missing while `multi_session.enabled: true`.
+**`.gitignore` requirement:** add `.rite/worktrees/` so session worktrees do not leak into dev-branch diffs. `/rite:setup` adds this automatically, and `/rite:lint` (via `gitignore-health-check.sh`) emits a non-blocking warning if it is missing while `multi_session.enabled: true`.
 
 **Disk cost:** each session worktree is a full working-tree clone. Build artifacts (`node_modules`, etc.) may need rebuilding per worktree.
 

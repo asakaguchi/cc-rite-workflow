@@ -3,7 +3,7 @@
 # Sourced by all registered hook scripts.
 # When running from an outdated marketplace cache version, exec-redirects
 # to the current version so that `claude plugin update rite` takes effect
-# without requiring `/rite:init` re-registration.
+# without requiring `/rite:setup` re-registration.
 #
 # Requirements:
 #   - MUST be sourced AFTER `set -euo pipefail` and BEFORE `INPUT=$(cat)`

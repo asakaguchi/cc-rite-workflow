@@ -50,7 +50,7 @@ The command prefix `rite` was chosen for:
 
 | Command | Description | Arguments |
 |---------|-------------|-----------|
-| `/rite:init` | Initial setup wizard | `[--upgrade]` (upgrade existing `rite-config.yml` schema to the latest version) |
+| `/rite:setup` | Initial setup wizard | `[--upgrade]` (upgrade existing `rite-config.yml` schema to the latest version) |
 | `/rite:getting-started` | Interactive onboarding guide | None |
 | `/rite:workflow` | Show workflow guide | None |
 | `/rite:investigate` | Structured code investigation | `<topic or question>` |
@@ -83,7 +83,7 @@ The command prefix `rite` was chosen for:
 ## Workflow Overview
 
 ```
-/rite:init (Initial Setup)
+/rite:setup (Initial Setup)
  │
  ▼
 /rite:issue-list (Check Issues)
@@ -173,7 +173,7 @@ rite-workflow/
 │ ├── wiki-ingest/ # /rite:wiki-ingest (+ references/wiki-troubleshooting.md)
 │ ├── wiki-lint/ # /rite:wiki-lint (+ references/: broken-ref-resolution / bash-cross-boundary-state-transfer)
 │ # --- meta / top-level ---
-│ ├── init/ # /rite:init (+ --upgrade)
+│ ├── setup/ # /rite:setup (+ --upgrade)
 │ ├── getting-started/ # /rite:getting-started
 │ ├── workflow/ # /rite:workflow (rite ワークフロー全体ガイド)
 │ ├── investigate/ # /rite:investigate (構造化コード調査)
@@ -232,7 +232,7 @@ rite-workflow/
 ├── templates/
 │ ├── README.md
 │ ├── config/
-│ │ └── rite-config.yml # Minimal default distributed by /rite:init
+│ │ └── rite-config.yml # Minimal default distributed by /rite:setup
 │ # Note: templates/project-types/ (generic / webapp / library / cli / documentation .yml)
 │ # was deleted together with the project.type preset feature retirement.
 │ ├── issue/
@@ -303,7 +303,7 @@ Plugin metadata file format:
 
 rite の全機能はスキル (`skills/<name>/SKILL.md`) として実装される（旧 `commands/` は v0.7 で全廃）。各スキルは薄い SKILL.md + 同梱 `references/` で構成し、`/rite:<name>` で起動する。
 
-**スキル行数原則**: 入口スキルの SKILL.md は 500 行未満に保つ。実行手順書スキル（review / fix / lint / init など bash 実行ブロックを本体に持つもの）は 4,000 行以内を上限とし、rationale（設計理由・背景解説）は SKILL.md 本体に書かず同梱 references/ へ退避して該当箇所に 1 行ポインタ（`rationale: references/<file>.md#<anchor>`）を残す。実行時に必要な情報（分岐表・sentinel 表・エラー処理指示・reason 表）は本体に維持する。
+**スキル行数原則**: 入口スキルの SKILL.md は 500 行未満に保つ。実行手順書スキル（review / fix / lint / setup など bash 実行ブロックを本体に持つもの）は 4,000 行以内を上限とし、rationale（設計理由・背景解説）は SKILL.md 本体に書かず同梱 references/ へ退避して該当箇所に 1 行ポインタ（`rationale: references/<file>.md#<anchor>`）を残す。実行時に必要な情報（分岐表・sentinel 表・エラー処理指示・reason 表）は本体に維持する。
 
 SKILL.md は YAML frontmatter を持つ:
 
@@ -397,7 +397,7 @@ Agent documentation...
 
 Place in project root or `.claude/` directory. Uses YAML format for readability and comment support.
 
-Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, which is kept in sync with `plugins/rite/templates/config/rite-config.yml` — the minimal default that `/rite:init` distributes. The template intentionally omits advanced keys; enable them by copying the key declarations from CONFIGURATION.md as needed.
+Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, which is kept in sync with `plugins/rite/templates/config/rite-config.yml` — the minimal default that `/rite:setup` distributes. The template intentionally omits advanced keys; enable them by copying the key declarations from CONFIGURATION.md as needed.
 
 **Top-level sections** (see CONFIGURATION.md for per-key details):
 
@@ -421,7 +421,7 @@ Full schema reference lives in **[docs/CONFIGURATION.md](./CONFIGURATION.md)**, 
 | `metrics.*` | Execution metrics recording |
 | `language` | `auto` / `ja` / `en` |
 
-**Migration**: `schema_version` (currently `2`) is bumped when breaking schema changes ship. `/rite:init --upgrade` performs a non-destructive merge for compatible upgrades; removed keys are silently ignored at runtime — see the [CHANGELOG](../CHANGELOG.md) for the current deprecation set (v0.4.0 removed `review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, and `safety.max_review_fix_loops`).
+**Migration**: `schema_version` (currently `2`) is bumped when breaking schema changes ship. `/rite:setup --upgrade` performs a non-destructive merge for compatible upgrades; removed keys are silently ignored at runtime — see the [CHANGELOG](../CHANGELOG.md) for the current deprecation set (v0.4.0 removed `review.loop.severity_gating_cycle_threshold`, `review.loop.scope_lock_cycle_threshold`, and `safety.max_review_fix_loops`).
 
 ### Schema Version Overview
 
@@ -437,7 +437,7 @@ rite workflow has **3 independently-versioned schemas that are commonly conflate
 
 ## Command Specifications
 
-### /rite:init
+### /rite:setup
 
 **Description:** Initial setup of rite workflow for a project
 
@@ -457,7 +457,7 @@ rite workflow has **3 independently-versioned schemas that are commonly conflate
 
 #### ~~Phase 2: Project Type Detection~~ (Removed)
 
-> **Status: Removed**. The `project.type` preset feature and the Phase 2 auto-detection logic (`package.json` + frontend framework → webapp, etc.) were removed entirely. `/rite:init` no longer performs project type detection; project-specific configuration is expressed via per-key YAML directly. The original detection rules below are preserved as historical reference only.
+> **Status: Removed**. The `project.type` preset feature and the Phase 2 auto-detection logic (`package.json` + frontend framework → webapp, etc.) were removed entirely. `/rite:setup` no longer performs project type detection; project-specific configuration is expressed via per-key YAML directly. The original detection rules below are preserved as historical reference only.
 
 (Historical rules — no longer executed:
 - `package.json` + frontend framework → webapp
@@ -479,7 +479,7 @@ followed by AskUserQuestion confirmation)
  - Recognize if exists
  - Auto-generate if not
 2. Generate `rite-config.yml`
-3. If an existing `rite-config.yml` is present, check its `schema_version`; if out of date, display guidance to run `/rite:init --upgrade`
+3. If an existing `rite-config.yml` is present, check its `schema_version`; if out of date, display guidance to run `/rite:setup --upgrade`
 
 #### Phase 5: Completion Report
 1. Display settings summary
@@ -493,14 +493,14 @@ followed by AskUserQuestion confirmation)
 
 **When to use:**
 
-- When a warning that `rite-config.yml` schema is outdated appears after upgrading the rite workflow plugin and running `/rite:init` or starting a session. The exact Japanese message emitted by `/rite:init` is: `rite-config.yml のスキーマが古くなっています (v{current} → v{latest})。/rite:init --upgrade でアップグレードできます。` The session-start hook emits a slightly different variant ending in `/rite:init --upgrade を実行してください。` ("run `/rite:init --upgrade`")
+- When a warning that `rite-config.yml` schema is outdated appears after upgrading the rite workflow plugin and running `/rite:setup` or starting a session. The exact Japanese message emitted by `/rite:setup` is: `rite-config.yml のスキーマが古くなっています (v{current} → v{latest})。/rite:setup --upgrade でアップグレードできます。` The session-start hook emits a slightly different variant ending in `/rite:setup --upgrade を実行してください。` ("run `/rite:setup --upgrade`")
 - When release notes (`CHANGELOG.md`) announce new configuration sections (e.g., `wiki:`, `review.debate:`) that are missing from your local `rite-config.yml`
 - When the `schema_version` at the top of your `rite-config.yml` diverges from the `schema_version` in the bundled template (`plugins/rite/templates/config/rite-config.yml`)
 
 **Example:**
 
 ```bash
-/rite:init --upgrade
+/rite:setup --upgrade
 ```
 
 **Phase 4.1.3 Behavior (runs only with `--upgrade`):**
@@ -1109,7 +1109,7 @@ iteration:
 
 | Command | Iteration Feature |
 |---------|-------------------|
-| `/rite:init` | Iteration field detection & setup guide |
+| `/rite:setup` | Iteration field detection & setup guide |
 | `/rite:open` | Auto-assign to current iteration when starting work |
 | `/rite:issue-create` | Iteration assignment option on creation |
 | `/rite:issue-list` | `--sprint current`, `--backlog` filters |
@@ -1326,7 +1326,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `post-review-state-verify.sh` | reviewer subagent の READ-ONLY 契約違反 (working tree / branch / stash 変更) の検出 + recovery | — |
 | `pr-cycle-cleanup.sh` | 残留 `pr-{N}-cycle{X}` worktree / branch の冪等掃除 + `${TMPDIR:-/tmp}/rite-pr-create-*` 孤児 workdir の age ベース GC (mtime > 24h) | — |
 | `review-schema-version-check.sh` | review-result JSON の `schema_version` drift 検出 | — |
-| `settings-local-rite-hook-cleanup.sh` | `.claude/settings.local.json` の stale legacy rite hook entry 削除 (`.py` 実体への wrapper、init.md Phase 4.5.0.2) | — |
+| `settings-local-rite-hook-cleanup.sh` | `.claude/settings.local.json` の stale legacy rite hook entry 削除 (`.py` 実体への wrapper、setup.md Phase 4.5.0.2) | — |
 | `lib/` (`wiki-config.sh` / `worktree-git.sh`) | wiki 系 helper の共有ライブラリ (config 読取 / worktree git 操作) | — |
 | `tests/` | hooks/scripts レベルのテストスイート | — |
 
@@ -1417,7 +1417,7 @@ The session worktree is one of **four non-overlapping worktree namespaces** (`.r
 
 **Crash recovery / `/rite:recover`:** After a crash a new session starts at the repository root. `/rite:recover` re-enters the worktree *before* any branch-dependent cross-check (flow-state `worktree` → else issue-number → path derivation), and reconstructs a missing worktree from the branch (local → `git worktree add`; remote-only → `git fetch` + `--track -b`; nowhere → AskUserQuestion). The `worktree` flow-state field is a **same-session hint only** — the canonical session↔worktree correspondence is the issue-number → path derivation, because `session_id` changes on crash (see the schema table's `worktree` row above).
 
-**Configuration:** `multi_session.enabled` (default `true`; set `false` to opt out — a legacy config that omits the block also falls back to `false`) and `multi_session.worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are orthogonal and intentionally not merged. `.gitignore` must include `.rite/worktrees/` (added by `/rite:init`; `gitignore-health-check.sh` emits a non-blocking warning if it is missing while `multi_session.enabled: true`). Disk cost: each session worktree is a full working-tree clone, so build artifacts (`node_modules`, etc.) may need rebuilding per worktree. See [`docs/CONFIGURATION.md` → multi_session](CONFIGURATION.md#multi_session).
+**Configuration:** `multi_session.enabled` (default `true`; set `false` to opt out — a legacy config that omits the block also falls back to `false`) and `multi_session.worktree_base` (default `.rite/worktrees`). A **separate axis** from `parallel.*` (per-Issue sub-agent fan-out within one session); the two are orthogonal and intentionally not merged. `.gitignore` must include `.rite/worktrees/` (added by `/rite:setup`; `gitignore-health-check.sh` emits a non-blocking warning if it is missing while `multi_session.enabled: true`). Disk cost: each session worktree is a full working-tree clone, so build artifacts (`node_modules`, etc.) may need rebuilding per worktree. See [`docs/CONFIGURATION.md` → multi_session](CONFIGURATION.md#multi_session).
 
 ### Local Work Memory + Compact Resilience
 
@@ -1525,7 +1525,7 @@ When build/test/lint commands cannot be detected, the workflow provides interact
 **Command specification behavior:**
 - The specified command is used for the current execution only
 - Configuration is not automatically saved to `rite-config.yml`
-- User is guided to use `/rite:init` or manual editing for permanent configuration
+- User is guided to use `/rite:setup` or manual editing for permanent configuration
 
 ---
 
@@ -1784,7 +1784,7 @@ For persistent errors, provide:
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| `gh: command not found` | gh CLI not installed | Guide in `/rite:init` |
+| `gh: command not found` | gh CLI not installed | Guide in `/rite:setup` |
 | `authentication required` | GitHub not authenticated | Guide `gh auth login` |
 | `branch already exists` | Branch conflict | Suggest alternative name |
 | `Context limit reached` | Long-running flow exceeded context window | `/clear` then `/rite:recover` |

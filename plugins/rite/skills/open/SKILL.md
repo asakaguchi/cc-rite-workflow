@@ -134,7 +134,7 @@ ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {prin
 echo "[CONTEXT] MULTI_SESSION_ENABLED=$ms_enabled; WORKTREE_BASE=$ms_base"
 ```
 
-新規プロジェクトはテンプレート config が `enabled: true`（デフォルト ON）のため `MULTI_SESSION_ENABLED=true` となりステップ 2 で 2.2-W / 2.3-W（セッション worktree）を実行する。`MULTI_SESSION_ENABLED=false`（`enabled: false` を明示設定 / `multi_session:` ブロックが存在しない旧 config — 上記 `case` の fallback）のときは従来の Step 2.2 / 2.3 をそのまま実行し、挙動は単一セッション時と完全一致する。`multi_session:` キー欠落時の fallback を `false` に保つことで既存プロジェクトの後方互換を担保する（デフォルト変更が効くのは新規 `/rite:init` 生成時のみ）。
+新規プロジェクトはテンプレート config が `enabled: true`（デフォルト ON）のため `MULTI_SESSION_ENABLED=true` となりステップ 2 で 2.2-W / 2.3-W（セッション worktree）を実行する。`MULTI_SESSION_ENABLED=false`（`enabled: false` を明示設定 / `multi_session:` ブロックが存在しない旧 config — 上記 `case` の fallback）のときは従来の Step 2.2 / 2.3 をそのまま実行し、挙動は単一セッション時と完全一致する。`multi_session:` キー欠落時の fallback を `false` に保つことで既存プロジェクトの後方互換を担保する（デフォルト変更が効くのは新規 `/rite:setup` 生成時のみ）。
 
 ### 1.5 Iteration 自動 assign
 

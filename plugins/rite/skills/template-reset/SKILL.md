@@ -39,10 +39,10 @@ If the configuration file does not exist:
 ```
 rite-config.yml が見つかりません
 
-テンプレートを生成するには先に /rite:init を実行してください
+テンプレートを生成するには先に /rite:setup を実行してください
 
 オプション:
-- /rite:init を実行
+- /rite:setup を実行
 - キャンセル
 ```
 

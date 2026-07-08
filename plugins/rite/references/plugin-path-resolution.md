@@ -73,7 +73,7 @@ fi
 ### Result Handling
 
 - `PLUGIN_ROOT:<path>` → Extract the absolute path after `PLUGIN_ROOT:` and use it as `{plugin_root}` for all subsequent file reads in the current command.
-- `PLUGIN_ROOT_NOT_FOUND:STALE_MARKER` → `.rite-plugin-root` exists but points to a deleted directory. Display warning: `Stale .rite-plugin-root detected. Re-run session or use /rite:init.` The Full Version script does not auto-fallback to Priority 2/3 in this case; use the inline one-liner (which handles fallback automatically) instead.
+- `PLUGIN_ROOT_NOT_FOUND:STALE_MARKER` → `.rite-plugin-root` exists but points to a deleted directory. Display warning: `Stale .rite-plugin-root detected. Re-run session or use /rite:setup.` The Full Version script does not auto-fallback to Priority 2/3 in this case; use the inline one-liner (which handles fallback automatically) instead.
 - `PLUGIN_ROOT_NOT_FOUND:NO_INSTALL` → Display warning: `Plugin installation not found.` Fall back to hardcoded relative paths or inline fallback content.
 
 ## How `.rite-plugin-root` Works
@@ -117,6 +117,6 @@ Command files that need plugin path resolution should include the inline one-lin
 
 **Important**: New command files should embed the one-liner directly rather than referencing this document with a link. Existing command files that still use the link-reference pattern (`per [Plugin Path Resolution](...)`) will be migrated incrementally to the inline one-liner in future Issues.
 
-## Relationship to init.md Hook Path Resolution
+## Relationship to setup.md Hook Path Resolution
 
-`init.md` Phase 4.5.0 uses a similar but specialized detection for the `hooks/` subdirectory. This helper generalizes that pattern for the entire plugin root. The detection logic is intentionally consistent between the two.
+`setup.md` Phase 4.5.0 uses a similar but specialized detection for the `hooks/` subdirectory. This helper generalizes that pattern for the entire plugin root. The detection logic is intentionally consistent between the two.

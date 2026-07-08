@@ -264,7 +264,7 @@ When the user enters/selects a command:
 
 1. Execute Phase 2 onward using the entered command
 2. Do not save to `rite-config.yml` (temporary use only)
-3. If saving to configuration is needed, guide the user to `/rite:init` or manual editing
+3. If saving to configuration is needed, guide the user to `/rite:setup` or manual editing
 
 ---
 

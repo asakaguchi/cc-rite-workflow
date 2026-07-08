@@ -166,10 +166,10 @@ if [ "$SOURCE" = "startup" ]; then
       fi
       case "$_sv_lang" in
         ja)
-          echo "[rite] ⚠️ rite-config.yml のスキーマが古くなっています (v${_current_sv} → v${_latest_sv})。/rite:init --upgrade を実行してください。" >&2
+          echo "[rite] ⚠️ rite-config.yml のスキーマが古くなっています (v${_current_sv} → v${_latest_sv})。/rite:setup --upgrade を実行してください。" >&2
           ;;
         *)
-          echo "[rite] ⚠️ rite-config.yml schema is outdated (v${_current_sv} → v${_latest_sv}). Run /rite:init --upgrade to update." >&2
+          echo "[rite] ⚠️ rite-config.yml schema is outdated (v${_current_sv} → v${_latest_sv}). Run /rite:setup --upgrade to update." >&2
           ;;
       esac
     fi

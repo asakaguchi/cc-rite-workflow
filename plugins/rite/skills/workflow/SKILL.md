@@ -31,7 +31,7 @@ ls rite-config.yml 2>/dev/null || ls .claude/rite-config.yml 2>/dev/null
 ```
 rite workflow が初期化されていません
 
-まず /rite:init を実行してセットアップを完了してください
+まず /rite:setup を実行してセットアップを完了してください
 ```
 
 Stop here and do not execute any subsequent phases.
@@ -107,7 +107,7 @@ Display the following list:
 └─────────────────────────────────────────────────────────────┘
 
 【セットアップ】
-  /rite:init            初回セットアップウィザード
+  /rite:setup           初回セットアップウィザード
   /rite:workflow        このガイドを表示
 
 【Issue 管理】

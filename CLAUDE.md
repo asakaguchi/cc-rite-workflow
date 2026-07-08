@@ -13,7 +13,7 @@ plugins/rite/
 │   ├── PR lifecycle  #   open, iterate, review, fix, ready, merge, cleanup, run, pr-create
 │   ├── issue 管理     #   issue-create, issue-list, issue-update, issue-close, issue-edit, issue-implement
 │   ├── wiki          #   wiki-init, wiki-query, wiki-ingest, wiki-lint
-│   ├── meta/top      #   init, getting-started, workflow, investigate, learn, lint, recover, skill-suggest, template-reset
+│   ├── meta/top      #   setup, getting-started, workflow, investigate, learn, lint, recover, skill-suggest, template-reset
 │   ├── rite-workflow/  # orchestration context（状態検出・phase routing）+ references/（コーディング原則 等）
 │   └── reviewers/      # レビュアー調整（選定 + テーブル）+ references/（各 reviewer profile は agents/{type}-reviewer.md）
 ├── agents/           # PR レビュー用サブエージェント定義
@@ -34,7 +34,7 @@ rite-config.yml        # プロジェクト固有設定（ブランチ戦略、P
 
 **コンポーネント間の関係**: スキル（`skills/`）が**エントリポイントかつ実行手順書**（v0.7 で旧 `commands/` を全廃しスキルへ統合）。orchestrator スキル（open / iterate / run 等）が sub-skill（review / fix / pr-create / issue-implement 等）を Skill ツール経由で呼び出し、各スキルは `agents/`（Task で spawn）や `references/`（自スキル内 `references/` + plugin-root `references/` の共有分）を参照する。hooks/ は Claude Code のライフサイクルから独立に発火し、orchestrator とコンテキスト注入・sentinel emit で連携する。ディレクトリ・ファイルの完全な一覧は `docs/SPEC.md` の Plugin Structure 節を参照。
 
-**スキル行数原則**: 入口スキルの SKILL.md は 500 行未満に保つ。実行手順書スキル（review / fix / lint / init など bash 実行ブロックを本体に持つもの）は 4,000 行以内を上限とし、rationale（設計理由・背景解説）は SKILL.md 本体に書かず同梱 references/ へ退避して該当箇所に 1 行ポインタ（`rationale: references/<file>.md#<anchor>`）を残す。実行時に必要な情報（分岐表・sentinel 表・エラー処理指示・reason 表）は本体に維持する。
+**スキル行数原則**: 入口スキルの SKILL.md は 500 行未満に保つ。実行手順書スキル（review / fix / lint / setup など bash 実行ブロックを本体に持つもの）は 4,000 行以内を上限とし、rationale（設計理由・背景解説）は SKILL.md 本体に書かず同梱 references/ へ退避して該当箇所に 1 行ポインタ（`rationale: references/<file>.md#<anchor>`）を残す。実行時に必要な情報（分岐表・sentinel 表・エラー処理指示・reason 表）は本体に維持する。
 
 ## 開発ルール
 

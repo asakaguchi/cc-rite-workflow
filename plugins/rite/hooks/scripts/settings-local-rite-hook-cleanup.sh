@@ -2,7 +2,7 @@
 # rite workflow - settings.local.json rite hook cleanup
 #
 # Removes stale legacy rite hook entries from .claude/settings.local.json when
-# native hooks.json management is in effect (skills/init/SKILL.md Phase 4.5.0.2).
+# native hooks.json management is in effect (skills/setup/SKILL.md Phase 4.5.0.2).
 # The JSON transform is delegated to settings-local-rite-hook-cleanup.py
 # (stdin->stdout); this wrapper owns the python3 guard and the atomic
 # mktemp+mv write so the file is never left half-written.

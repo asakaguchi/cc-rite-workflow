@@ -427,7 +427,7 @@ git diff origin/develop...HEAD || git diff develop...HEAD || {
 実装で /rite:issue-resume コマンドを /rite:recover にリネームした
 
 ドキュメント影響調査:
-- Grep "/rite:issue-resume" → README.md L142, docs/getting-started.md L88, plugins/rite/skills/init/SKILL.md L23
+- Grep "/rite:issue-resume" → README.md L142, docs/getting-started.md L88, plugins/rite/skills/setup/SKILL.md L23
 - 全 3 ファイルを Edit ツールで /rite:recover に更新
 - 同じブランチでステージし、実装と同じコミットに含める
 ```

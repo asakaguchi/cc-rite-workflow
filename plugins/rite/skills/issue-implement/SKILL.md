@@ -58,6 +58,8 @@ Keywords are derived from: implementation plan step descriptions, target file pa
 ```bash
 # {plugin_root} はリテラル値で埋め込む
 # {keywords} は実装計画のキーワード（ファイルパス、ドメイン用語等）をカンマ区切りで生成
+# （他コーラー skills/issue-create/SKILL.md / skills/fix/SKILL.md /
+#   skills/pr-review/SKILL.md / skills/unknowns/SKILL.md と同形式）
 wiki_context=$(bash {plugin_root}/hooks/wiki-query-inject.sh \
   --keywords "{keywords}" \
   --format compact 2>/dev/null) || wiki_context=""

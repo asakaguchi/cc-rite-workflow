@@ -94,6 +94,7 @@ Rite Workflow は 2 ステップでインストールします。まずマーケ
 | `/rite:setup --upgrade` | 既存の `rite-config.yml` を最新スキーマバージョンへアップグレード |
 | `/rite:getting-started` | 対話的オンボーディングガイド |
 | `/rite:workflow` | ワークフローガイドを表示 |
+| `/rite:unknowns` | 実装前探索セッション（盲点洗い出し・ブレスト・使い捨てプロトタイプ・インタビュー）— 任意・手動起動のみ |
 | `/rite:issue-list` | Issue 一覧を表示 |
 | `/rite:issue-create` | 新規 Issue を作成 |
 | `/rite:issue-update` | 作業メモリを更新 |

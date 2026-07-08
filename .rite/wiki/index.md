@@ -189,6 +189,7 @@
 | [識別子リネーム後の裸参照置換で除外すべき参照の分類](pages/patterns/rename-bare-reference-exclusion-classification.md) | patterns | スキル/コマンド名のリネーム（例: /rite:resume → /rite:recover）後、裸ワード参照を横断置換する際は、enum値・変数名・スクリプトファイル名・principle ID・一般語・歴史的記述例示の6種を除外対象として判別する必要がある。 | 2026-07-08T02:20:00+00:00 | medium |
 | [先行 Issue の明示的 Non-Target 指定は、reviewer 推奨だけで覆さずユーザー確認する](pages/heuristics/respect-prior-non-target-designation.md) | heuristics | 同種のクリーンアップ系列で複数レビュアーが独立に『修正すべき』と推奨した箇所でも、先行 Issue/PR が明示的に Non-Target（対象外）と宣言していた場合は、その推奨を鵜呑みにせず先行判断の経緯をユーザーに提示し、スコープ拡大を承認制にする。 | 2026-07-08T03:06:55+09:00 | medium |
 | [識別子リネームは3階層（コマンド文字列・ファイル名shorthand・裸トークン）で置換対象を洗い出す](pages/heuristics/identifier-rename-three-tier-pattern-enumeration.md) | heuristics | 識別子リネーム PR では rite:{old} の完全コマンド文字列だけでなく {old}.md のファイル名 shorthand、および拡張子なしの裸トークンの3階層を洗い出さないと、review-fix ループが段階的に狭いスコープへ収束しながら複数サイクルを消費する。PR #1796 では Tier 2 残存を fix loop でなく別 Issue 化で 1 cycle 収束させる代替戦略を確認。 | 2026-07-08T09:10:00+00:00 | high |
+| [境界での無害化は下流ツールの別エスケープ意味論までは保証しない（quoted heredoc → awk -v 伝播）](pages/anti-patterns/sanitization-gap-downstream-tool-escape-semantics.md) | anti-patterns | quoted heredoc でコマンド置換・変数展開を防いだ直後、同じ値を awk -v へ渡すと今度は awk 自身のバックスラッシュエスケープ解釈（\n→改行 / \t→タブ / \d→d）で複数行分割・文字破壊が起きる。1 つの脆弱性クラス（shell injection）の修正が、別の脆弱性クラス（データ破損・不変条件違反）を別ツールの境界に持ち込む典型例。PR #1802 で quoted heredoc 修正後の awk -v 経由伝播を実機検証。 | 2026-07-09T00:40:00+09:00 | high |
 
 ## 統計
 

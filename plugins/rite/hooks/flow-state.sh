@@ -313,7 +313,7 @@ cmd_set() {
      | (if $worktree != "" then .worktree = $worktree else . end)
      | (if $handoff != "" then .handoff = $handoff else . end)
      | (if $cycle != 0 then .cycle_count = $cycle else . end)
-     | (if $wmcid != "" then .wm_comment_id = ($wmcid | tonumber) else . end)') || return 1
+     | (if $wmcid != "" then .wm_comment_id = (try ($wmcid | tonumber) catch error("wm_comment_id not numeric (value=" + $wmcid + "): " + .)) else . end)') || return 1
   # `_atomic_write` の header コメント ("Callers MUST check rc") を遵守。現状は cmd_set の
   # 最終 statement のため set -e で rc が暗黙伝播するが、将来 `_atomic_write` の後に log 行を
   # 1 つ足す等の小修正で silent failure path が即復活する fragile pattern を避けるため、明示的

@@ -1178,6 +1178,15 @@ result=$(new_sandbox); d2="${result%|*}"; sid2="${result#*|}"
 sfile2="$d2/.rite/sessions/${sid2}.flow-state"
 (cd "$d2" && bash "$HOOK" set --phase branch --issue 1811 --branch "feat/1811" --pr 0 --next "n") >/dev/null
 assert "TC-28: backward compat → no wm_comment_id key when never written" "false" "$(jq -r 'has("wm_comment_id")' "$sfile2")"
+# write-time failure: a corrupted (non-numeric) wm_comment_id already on disk must make the
+# unrelated set fail loud (rc!=0) via tonumber, not silently succeed with a wiped/garbage value
+result=$(new_sandbox); d3="${result%|*}"; sid3="${result#*|}"
+sfile3="$d3/.rite/sessions/${sid3}.flow-state"
+(cd "$d3" && bash "$HOOK" set --phase init --issue 1812 --branch "" --pr 0 --next "n") >/dev/null
+jq '. + {wm_comment_id: "not-a-number"}' "$sfile3" > "$sfile3.tmp" && mv "$sfile3.tmp" "$sfile3"
+corrupt_set_rc=0
+(cd "$d3" && bash "$HOOK" set --phase branch --issue 1812 --branch "fix/issue-1812" --pr 0 --next "n2") >/dev/null 2>&1 || corrupt_set_rc=$?
+assert "TC-28: corrupt non-numeric wm_comment_id makes unrelated set fail (rc!=0)" "1" "$corrupt_set_rc"
 
 # --- T-01: AC-1 — distinct env CLAUDE_CODE_SESSION_ID → distinct per-session state files ---
 echo ""
